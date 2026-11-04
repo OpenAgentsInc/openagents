@@ -15,13 +15,14 @@ RoomVital :: struct {
   live: bool;
   pid: [TICKET_PID] u8; pid_n: int;
   hp: int; max: int;
+  xp: int;          // the XP it has (room-events.coax)
   at: int;          // wall ms it was noted
   sent: bool;       // the API has this one
 }
 RmVitals :: struct {
   v: [VITALS] RoomVital;
   last: int;        // wall ms the seats were last noted
-  out: [VITALS_BODY] u8; out_n: int;   // the post rm_vitals_due made: "t MS\nPID HP MAX\n..."
+  out: [VITALS_BODY] u8; out_n: int;   // the post rm_vitals_due made: "t MS\nPID HP MAX XP\n..."
   mac: [64] u8;                        // its X-Room-Mac
 }
 
@@ -33,7 +34,7 @@ rv_find :: (v: [] RmServer, pid: string) -> int {
   return -1;
 }
 // The player's HP now (from the seat of ticket pid).
-rv_note :: (v: [] RmServer, pid: string, hp: int, max: int) {
+rv_note :: (v: [] RmServer, pid: string, hp: int, max: int, xp: int) {
   if pid.count == 0 || pid.count > TICKET_PID || max <= 0 { return; }
   i := rv_find(v, pid);
   if i < 0 {
@@ -45,18 +46,18 @@ rv_note :: (v: [] RmServer, pid: string, hp: int, max: int) {
     }
     v[0].vit.v[i] = RoomVital.{live = true, pid_n = pid.count};
     for c: 0..<pid.count { v[0].vit.v[i].pid[c] = pid[c]; }
-  } else if v[0].vit.v[i].hp == hp && v[0].vit.v[i].max == max {
+  } else if v[0].vit.v[i].hp == hp && v[0].vit.v[i].max == max && v[0].vit.v[i].xp == xp {
     v[0].vit.v[i].at = v[0].wall_ms;
     return;
   }
-  v[0].vit.v[i].hp = hp; v[0].vit.v[i].max = max; v[0].vit.v[i].at = v[0].wall_ms; v[0].vit.v[i].sent = false;
+  v[0].vit.v[i].hp = hp; v[0].vit.v[i].max = max; v[0].vit.v[i].xp = xp; v[0].vit.v[i].at = v[0].wall_ms; v[0].vit.v[i].sent = false;
 }
 // Seat s of everglade room k: its HP noted, when its ticket names a player.
 rv_note_seat :: (v: [] RmServer, k: int, s: int) {
   tk := eg_ticket(v, k, s);
   if !tk.ok { return; }
   c := v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + s];
-  rv_note(v, cast(string) tk.pid[0..<tk.pid_n], c.hp, c.hp_max);
+  rv_note(v, cast(string) tk.pid[0..<tk.pid_n], c.hp, c.hp_max, ev_xp_of(v, k, s));
 }
 // A seat that just joined (after e5rr_join): the HP its player left with, this server's note when it
 // has one from the last 10 minutes, else its ticket's. None (or 0: it fell) leaves it full.
@@ -90,9 +91,9 @@ rm_vitals_due :: (v: [] RmServer) -> int #export_c {
   for i: 0..<VITALS {
     e := v[0].vit.v[i];
     if !e.live || e.sent { continue; }
-    if n + e.pid_n + 24 > o.count { break; }
+    if n + e.pid_n + 32 > o.count { break; }
     n = tk_add(o, n, cast(string) e.pid[0..<e.pid_n]); n = tk_add(o, n, " "); n = rv_int(o, n, e.hp);
-    n = tk_add(o, n, " "); n = rv_int(o, n, e.max); n = tk_add(o, n, "\n");
+    n = tk_add(o, n, " "); n = rv_int(o, n, e.max); n = tk_add(o, n, " "); n = rv_int(o, n, e.xp); n = tk_add(o, n, "\n");
     marked[i] = true;
   }
   if n == head { return 0; }

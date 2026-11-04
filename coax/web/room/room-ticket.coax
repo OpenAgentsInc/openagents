@@ -8,7 +8,8 @@
 // PID the player id (p-<16 hex>), ACCT 1 when the player has an account, NAME64
 // the display name in unpadded base64url ("-" none), ROOM the relay code,
 // EXPIRES wall-clock milliseconds, HP the hit points the player left with in the last 10 minutes
-// ("-" none: full; #12715, room-vitals.coax), and MAC the lowercase hex HMAC-SHA256 of
+// ("-" none: full; #12715, room-vitals.coax), optionally followed by "x" and the XP the player has
+// (#12739, room-events.coax: "14x320", "-x320"; none, 0 XP), and MAC the lowercase hex HMAC-SHA256 of
 // everything before ".MAC" under OA_ROOM_TICKET_KEY (Secret Manager
 // oa-room-ticket-key). A room joins only with a ticket for itself that has not
 // expired and whose MAC checks; the seat then carries the ticket's id, name and
@@ -28,10 +29,12 @@ Ticket :: struct {
   ok: bool;
   pid: [TICKET_PID] u8; pid_n: int;
   account: bool;
+  admin: bool;            // ACCT 2: an account who is one of the realm's admins (its demo character, room-events.coax)
   name: [TICKET_NAME] u8; name_n: int;
   expires: int;
   hp: int = -1;           // the HP it brings back (-1 none)
   shard: int = 1;         // the oa-room shard it was signed for (v2: 1)
+  xp: int;                // the XP it brings back (room-events.coax)
 }
 
 // The t= value in the request line's query ("" none).
@@ -133,18 +136,27 @@ tk_check :: (key: string, ticket: string, room: string, now: int) -> Ticket {
   if f[1].count == 0 || f[1].count > TICKET_PID { return t; }
   for c: f[1] { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return t; } }
   // the account bit
-  if f[2] != "0" && f[2] != "1" { return t; }
+  if f[2] != "0" && f[2] != "1" && f[2] != "2" { return t; }
   // when it ends: not yet, and not further off than the API ever signs
   if f[5].count == 0 || f[5].count > 15 { return t; }
   ends := 0;
   for c: f[5] { if c < '0' || c > '9' { return t; } ends = ends * 10 + cast(int) (c - '0'); }
   if now > ends || ends - now > TICKET_LIFE_MS + TICKET_SKEW_MS { return t; }
   // the HP it brings back
-  hp := -1;
-  if f[6] != "-" {
-    if f[6].count == 0 || f[6].count > 5 { return t; }
+  hp := -1; xp := 0;
+  hf := f[6];
+  for i: 0..<f[6].count {
+    if f[6][i] != 'x' { continue; }
+    hf = f[6][0..<i];
+    xs := f[6][i + 1..<f[6].count];
+    if xs.count == 0 || xs.count > 7 { return t; }
+    for c: xs { if c < '0' || c > '9' { return t; } xp = xp * 10 + cast(int) (c - '0'); }
+    break;
+  }
+  if hf != "-" {
+    if hf.count == 0 || hf.count > 5 { return t; }
     hp = 0;
-    for c: f[6] { if c < '0' || c > '9' { return t; } hp = hp * 10 + cast(int) (c - '0'); }
+    for c: hf { if c < '0' || c > '9' { return t; } hp = hp * 10 + cast(int) (c - '0'); }
   }
   // the name
   if f[3] != "-" {
@@ -154,9 +166,11 @@ tk_check :: (key: string, ticket: string, room: string, now: int) -> Ticket {
   }
   for i: 0..<f[1].count { t.pid[i] = f[1][i]; }
   t.pid_n = f[1].count;
-  t.account = f[2] == "1";
+  t.account = f[2] != "0";
+  t.admin = f[2] == "2";
   t.expires = ends;
   t.hp = hp;
+  t.xp = xp;
   t.shard = shard;
   t.ok = true;
   return t;
@@ -173,6 +187,23 @@ tk_sign :: (key: string, pid: string, account: bool, name: string, room: string,
 }
 // The same for one shard (v3; shard 0: a v2 ticket, which shard 1 takes).
 tk_sign_on :: (key: string, pid: string, account: bool, name: string, room: string, shard: int, expires: int, hp: int, out: [] u8) -> int {
+  return tk_sign_xp(key, pid, account, name, room, shard, expires, hp, -1, out);
+}
+// An admin's ticket (ACCT 2), as the API signs one for the realm's admins, for the checks.
+tk_sign_admin :: (key: string, pid: string, room: string, expires: int, out: [] u8) -> int {
+  n := tk_sign_xp(key, pid, true, "", room, 0, expires, -1, -1, out);
+  if n < 65 { return 0; }
+  b: [TICKET_TEXT] u8;
+  for i: 0..<n - 65 { b[i] = out[i]; }
+  b[3 + pid.count + 1] = '2';
+  mac: [64] u8;
+  if !tk_mac(key, cast(string) b[0..<n - 65], mac[..]) { return 0; }
+  for i: 0..<n - 65 { out[i] = b[i]; }
+  for j: 0..<64 { out[n - 64 + j] = mac[j]; }
+  return n;
+}
+// The same with the XP it brings back (xp < 0: none, as the API signs for a player with none).
+tk_sign_xp :: (key: string, pid: string, account: bool, name: string, room: string, shard: int, expires: int, hp: int, xp: int, out: [] u8) -> int {
   a := "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
   b: [TICKET_TEXT] u8; n := 0;
   if shard < 0 || shard > 99 { return 0; }
@@ -203,6 +234,12 @@ tk_sign_on :: (key: string, pid: string, account: bool, name: string, room: stri
   if hp < 0 { n = tk_add(b[..], n, "-"); }
   else {
     dn = 0; e = hp;
+    while e > 0 || dn == 0 { d[dn] = cast(u8) ('0' + e % 10); dn += 1; e = e / 10; }
+    for j: 0..<dn { if n < b.count { b[n] = d[dn - 1 - j]; n += 1; } }
+  }
+  if xp >= 0 {
+    n = tk_add(b[..], n, "x");
+    dn = 0; e = xp;
     while e > 0 || dn == 0 { d[dn] = cast(u8) ('0' + e % 10); dn += 1; e = e / 10; }
     for j: 0..<dn { if n < b.count { b[n] = d[dn - 1 - j]; n += 1; } }
   }

@@ -1,0 +1,642 @@
+// Everglade's world events and its levels 1 to 3 on the room server (spec
+// docs/verse/2026-11-03-everglade-world-events.md; epic #12737, #12738, #12739). Each Everglade
+// instance runs at most one event at a time, the same for every seat in it: the Cultist Raid first.
+//
+// The dials are the realm's, an admin's from the events pane: the API keeps them
+// (verse.room_events, coax/web/api/player.c room_event) and room-control.coax's poll hears them
+// every 2 s as two lines, which ev_control_line reads:
+//   event ON EVERY WAVES SIZE CULT FAN WL WLMAX GATES ARCH AGGR HARM REWARD MINUTES START STOP
+//   levels ON CAP      (CAP the highest level a character reaches: 1 to 3, 2 for now)
+// START and STOP count an admin's presses: a shard acts on each new count once, in every live room.
+// EVERY (minutes, 0 off) starts a raid in every live room at each whole multiple of it on the wall
+// clock, so every shard and instance starts together.
+//
+// The lifecycle (spec 3.2): idle, announce (30 s), wave (until it is down, 90 s at most), lull
+// (15 s), the waves again, climax (until the leader withdraws, 3 minutes at most), end (5 s) and
+// aftermath (60 s, then the server's own rebuild). The time limit, the town's people all down and
+// an admin's STOP end it early (spec 3.3).
+//
+// What a seat hears, in its D frames (pages that don't know them skip them):
+//   g KIND PHASE WAVE WAVES SECS LEFT STANDING SLAIN SQUARE WARDS ARCH OUTCOME FOLK LEVELS CAP
+//       the event's state on change (KIND 0: none); SECS the phase's seconds left (idle: to the
+//       next scheduled start, -1 none), LEFT the time limit's
+//   v SS LEVEL XP CAP LO HI   each seat's level, XP, the level cap, and the bar slots its character has
+//       (bit q of LO: druid slot q; bit q of HI: Warlock slot FB_WL0 + q; both 0: the whole bar)
+//   e xp SS AMOUNT, e level SS LEVEL   a gain, a level-up
+//
+// Levels (spec 6): with `levels 1`, each seat's character is the SRD 5.2.1 Druid or Fiend Warlock at
+// the level its XP gives (300 for 2, 900 for 3, never past the cap), built by the engine's rs_druid
+// and rs_warlock, with that level's kit of the bar and nothing more (ev_kit): a cast of a slot outside
+// it is refused ("r SEQ level"). Everglade's own level 9 druid and level 17 Warlock stay as a demo
+// character for the realm's admins (their ticket's ACCT 2 and the hello's FLAGS bit EV_DEMO_FLAG).
+// XP counts and saves either way: the vitals report carries it (room-vitals.coax) and the seat ticket
+// brings it back (room-ticket.coax).
+//   coax test --library coax/web/room/room.coax --steps 4000000000 --only "events:"
+
+EV_NONE :: 0; EV_RAID :: 1;
+EV_IDLE :: 0; EV_ANNOUNCE :: 1; EV_WAVE :: 2; EV_LULL :: 3; EV_CLIMAX :: 4; EV_END :: 5; EV_AFTER :: 6;
+EV_OUT_NONE :: 0; EV_OUT_HELD :: 1; EV_OUT_FELL :: 2; EV_OUT_OFF :: 3;
+EV_ARCH_AWAY :: 0; EV_ARCH_WARDED :: 1; EV_ARCH_EXPOSED :: 2; EV_ARCH_GONE :: 3;
+// the phases' lengths, seconds (spec 3.2)
+EV_ANNOUNCE_S :: 30; EV_WAVE_S :: 90; EV_LULL_S :: 15; EV_CLIMAX_S :: 180; EV_END_S :: 5; EV_AFTER_S :: 60;
+// levels (SRD 5.2.1, Character Advancement): XP for level 2 and 3; 3 is the cap
+EV_XP2 :: 300; EV_XP3 :: 900; EV_LEVEL_TOP :: 3;   // the cap is a dial (EvDials.cap), 1 to EV_LEVEL_TOP
+EV_DEMO_FLAG :: 64;             // the hello's FLAGS bit: an admin plays Everglade's own character, the demo
+EV_BONUS :: 100;                // XP to each seat that earned XP in a raid the town held (spec 7)
+EV_XP_MAX :: 9999999;
+EV_G :: 160;                    // the g entry's bytes at most
+
+// The dials (spec 8.2), each clamped to its range as it is heard.
+EvDials :: struct {
+  on: bool; every: int; waves: int = 3; size: int = 12; cult: int = 6; fan: int = 1; wl: int = 3; wlmax: int = 3;
+  gates: int = 31; arch: bool = true; aggr: int = 2; harm: bool = true; reward: int = 100; minutes: int = 15;
+  start: int; stop: int; levels: bool; cap: int = 2;
+}
+RmEvents :: struct {
+  d: EvDials;
+  known: bool;                  // the API has answered once (until then, nothing starts)
+  start_seen: int; stop_seen: int;
+  slot: int = -1;               // the schedule's period last started (wall ms / EVERY minutes)
+  levels: bool;                 // the levels switch as the rooms last applied it
+  cap: int = 2;                 // and the cap
+}
+EvRoom :: struct {
+  kind: int; phase: int; until: int;   // until: the tick the phase ends
+  wave: int; ends: int;                // ends: the tick the time limit runs out
+  standing: int; slain: int; outcome: int; arch: int; wards: int; folk: int;
+  square: int;                         // who holds the square: 0 the town, else the cult's ticks in it
+  earned: [EG_SEATS] bool;             // the seats that earned XP in this event
+  xp: [EG_SEATS] int; level: [EG_SEATS] int;   // level: the one its character is built at (0 Everglade's own)
+  demo: [EG_SEATS] bool;               // an admin asked for Everglade's own character (EV_DEMO_FLAG)
+  g: [EV_G] u8; g_n: int; g_h: int; g_tick: int = -1;
+  heard_g: [EG_SEATS] int;             // the g hash each seat last heard (0 none)
+  heard_v: [EG_SEATS * EG_SEATS] int;  // each seat's view of each seat's v: LEVEL * 10^7 + XP + 1 (0 none)
+}
+
+// ---- the dials, from the API
+
+ev_clamp :: (v: int, a: int, b: int) -> int { return ifx v < a then a else (ifx v > b then b else v); }
+// One line of room-control's answer (room-control.coax rm_control hands each one here).
+ev_control_line :: (v: [] RmServer, line: string) {
+  if line.count > 7 && line[0..<7] == "levels " {
+    on := rc_word(line, 7);
+    v[0].evc.d.levels = on == "1";
+    if line.count > 8 + on.count { c := rc_num(line[8 + on.count..<line.count]); if c > 0 { v[0].evc.d.cap = ev_clamp(c, 1, EV_LEVEL_TOP); } }
+    return;
+  }
+  if line.count < 7 || line[0..<6] != "event " { return; }
+  f: [16] int; n := 0; at := 6;
+  while at < line.count && n < 16 {
+    w := rc_word(line, at);
+    x := rc_num(w);
+    if x < 0 { return; }
+    f[n] = x; n += 1; at += w.count + 1;
+  }
+  if n != 16 { return; }
+  d := v[0].evc.d;
+  d.on = f[0] == 1;
+  d.every = ifx f[1] == 0 then 0 else ev_clamp(f[1], 15, 240);
+  d.waves = ev_clamp(f[2], 1, 8); d.size = ev_clamp(f[3], 4, 24);
+  d.cult = ev_clamp(f[4], 0, 10); d.fan = ev_clamp(f[5], 0, 10); d.wl = ev_clamp(f[6], 0, 10);
+  if d.cult + d.fan + d.wl == 0 { d.cult = 1; }
+  d.wlmax = ev_clamp(f[7], 1, 3); d.gates = ev_clamp(f[8], 1, 31);
+  d.arch = f[9] == 1; d.aggr = ev_clamp(f[10], 0, 3); d.harm = f[11] == 1;
+  d.reward = ev_clamp(f[12], 50, 300); d.minutes = ev_clamp(f[13], 5, 30);
+  d.start = f[14]; d.stop = f[15];
+  v[0].evc.d.on = d.on; v[0].evc.d.every = d.every; v[0].evc.d.waves = d.waves; v[0].evc.d.size = d.size;
+  v[0].evc.d.cult = d.cult; v[0].evc.d.fan = d.fan; v[0].evc.d.wl = d.wl; v[0].evc.d.wlmax = d.wlmax;
+  v[0].evc.d.gates = d.gates; v[0].evc.d.arch = d.arch; v[0].evc.d.aggr = d.aggr; v[0].evc.d.harm = d.harm;
+  v[0].evc.d.reward = d.reward; v[0].evc.d.minutes = d.minutes; v[0].evc.d.start = d.start; v[0].evc.d.stop = d.stop;
+}
+// After a whole answer: a new press of START or STOP acts in every live room; the first answer only
+// learns the counts (a shard that restarts doesn't replay a press). The levels switch, changed, is
+// applied to every seat.
+ev_control_done :: (v: [] RmServer) {
+  d := v[0].evc.d;
+  if !v[0].evc.known {
+    v[0].evc.known = true; v[0].evc.start_seen = d.start; v[0].evc.stop_seen = d.stop;
+  } else {
+    if d.stop != v[0].evc.stop_seen {
+      v[0].evc.stop_seen = d.stop;
+      for k: 0..<EG_ROOMS { if v[0].eg[k].live { ev_stop(v, k); } }
+    }
+    if d.start != v[0].evc.start_seen {
+      v[0].evc.start_seen = d.start;
+      if d.on { for k: 0..<EG_ROOMS { if v[0].eg[k].live { ev_start(v, k); } } }
+    }
+  }
+  if d.levels != v[0].evc.levels || d.cap != v[0].evc.cap {
+    v[0].evc.levels = d.levels; v[0].evc.cap = d.cap;
+    for k: 0..<EG_ROOMS {
+      if !v[0].eg[k].live { continue; }
+      for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live { ev_build(v, k, s); } }
+    }
+  }
+}
+
+// ---- levels and XP
+
+// The level XP gives, up to the cap (1 to EV_LEVEL_TOP).
+ev_level_of :: (xp: int, cap: int) -> int { l := ifx xp >= EV_XP3 then 3 else (ifx xp >= EV_XP2 then 2 else 1); return ev_clamp(l, 1, ev_clamp(cap, 1, EV_LEVEL_TOP)); }
+ev_level :: (v: [] RmServer, xp: int) -> int { return ev_level_of(xp, v[0].evc.d.cap); }
+
+// ---- the kits: what a character has at each level, as bar slots (SRD 5.2.1, the classes' tables)
+//
+// Druid (p. 42): level 1 Spellcasting (2 cantrips, 4 prepared spells, two 1st-level slots), Druidic
+// (a language: nothing on a bar) and Primal Order, taken as Magician (one more cantrip); level 2
+// Wild Shape (2 uses) and Wild Companion (the engine counts the uses; their bar entry waits on the
+// room's forms, #12733), 5 prepared spells and three 1st-level slots; level 3 the Druid Circle (the
+// Circle of the Land's Land's Aid, in the engine), 6 prepared and two 2nd-level slots.
+//   cantrips: Produce Flame, Starry Wisp, Ray of Frost
+//   prepared: Healing Word, Thunderwave, Entangle, Ice Knife; at 2 Faerie Fire; at 3 Moonbeam
+// Fiend Warlock (p. 70): level 1 Pact Magic (one 1st-level slot), 2 cantrips, 2 prepared spells and
+// one Eldritch Invocation, Armor of Shadows (the engine's rs_warlock: AC 13 + Dex); level 2 two more
+// invocations, Agonizing Blast and Repelling Blast on Eldritch Blast, Magical Cunning and two slots;
+// level 3 the Fiend Patron's Dark One's Blessing and 2nd-level slots.
+//   cantrips: Eldritch Blast, and Chill Touch once the Warlock's bar has it (EV_WL_KIT_WANT, #12734)
+//   prepared: Hex and Hellish Rebuke, the same
+// The rebuild and NEXT ROW are the realm's, not a class's: every kit has them.
+EV_DRUID_CANTRIPS :: [3] int.[21, 22, 43];
+EV_DRUID_L1 :: [4] int.[28, 9, 26, 13];
+EV_DRUID_L2 :: 27; EV_DRUID_L3 :: 20;
+EV_REALM_SLOTS :: [2] int.[47, 48];
+EV_WL_BLAST :: 0; EV_WL_REBUILD :: 6;          // fivebar.coax fb_warlock_bar's order
+// The bar slots a character has at `level` (0: Everglade's own, the whole bar): LO the druid's, HI the Warlock's.
+EvKit :: struct { lo: int; hi: int; }
+ev_kit :: (warlock: bool, level: int) -> EvKit {
+  if level <= 0 { return EvKit.{}; }
+  if warlock {
+    // the Warlock's level 1 and 2 spells past Eldritch Blast join here as its bar gets them (#12734)
+    return EvKit.{hi = (1 << EV_WL_BLAST) | (1 << EV_WL_REBUILD)};
+  }
+  lo := 0;
+  for q: EV_DRUID_CANTRIPS { lo = lo | (1 << q); }
+  for q: EV_DRUID_L1 { lo = lo | (1 << q); }
+  for q: EV_REALM_SLOTS { lo = lo | (1 << q); }
+  if level >= 2 { lo = lo | (1 << EV_DRUID_L2); }
+  if level >= 3 { lo = lo | (1 << EV_DRUID_L3); }
+  return EvKit.{lo = lo};
+}
+ev_kit_has :: (kit: EvKit, slot: int) -> bool {
+  if kit.lo == 0 && kit.hi == 0 { return true; }
+  if slot >= FB_WL0 { q := slot - FB_WL0; return q < 62 && (kit.hi & (1 << q)) != 0; }
+  return slot >= 0 && slot < 62 && (kit.lo & (1 << slot)) != 0;
+}
+// Seat s's character as the levels switch says: the SRD class at its XP's level, or Everglade's own
+// (level 0). Its Hit Points carry over (full stays full; a level gained adds its Hit Points).
+ev_build :: (v: [] RmServer, k: int, s: int) {
+  demo := v[0].ev[k].demo[s] && eg_ticket(v, k, s).admin;
+  want := ifx v[0].evc.d.levels && !demo then ev_level(v, v[0].ev[k].xp[s]) else 0;
+  if want == v[0].ev[k].level[s] { return; }
+  b := v[0].eg[k].rules[0].b[..];
+  i := E5RR_SEAT + s;
+  c := b[0].c[i];
+  wl := v[0].eg[k].rules[0].klass[s] == 1;
+  n: [1] RsCreature;
+  if want == 0 { n[0] = ifx wl then fb_warlock_hero("Player", 0) else fb_everglade_hero("Player", 0); }
+  else if wl { n[0] = rs_warlock("Player", 0, want, SP_ELDRITCH_BLAST); }
+  else { n[0] = rs_druid("Player", 0, want); }
+  n[0].turn_at = c.turn_at; n[0].round_at = c.round_at; n[0].x = c.x; n[0].y = c.y;
+  up := want > v[0].ev[k].level[s] && v[0].ev[k].level[s] > 0;
+  if c.dead || c.hp <= 0 { n[0].hp = 0; n[0].dead = c.dead; }
+  else if c.hp >= c.hp_max { n[0].hp = n[0].hp_max; }
+  else if up { n[0].hp = rs_min(c.hp + n[0].hp_max - c.hp_max, n[0].hp_max); }
+  else { n[0].hp = rs_max(rs_min(c.hp, n[0].hp_max), 1); }
+  b[0].c[i] = n[0];
+  v[0].ev[k].level[s] = want;
+}
+// Whether seat s's character has bar slot `slot` (entry a) in its kit, and a spell slot for it.
+ev_may_cast :: (v: [] RmServer, k: int, s: int, slot: int, a: FbAb) -> bool {
+  lv := v[0].ev[k].level[s];
+  if lv == 0 { return true; }
+  if !ev_kit_has(ev_kit(v[0].eg[k].rules[0].klass[s] == 1, lv), slot) { return false; }
+  if a.kind != FB_SPELL || a.lvl <= 0 { return true; }
+  c := v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + s];
+  for l: a.lvl..<10 { if c.slots_max[l] > 0 { return true; } }
+  return false;
+}
+// Seat s's hello (room-everglade.coax eg_heard_hello): whether it asks for the demo character.
+ev_hello :: (v: [] RmServer, k: int, s: int, flags: int) {
+  demo := (flags & EV_DEMO_FLAG) != 0;
+  if demo == v[0].ev[k].demo[s] { return; }
+  v[0].ev[k].demo[s] = demo;
+  ev_build(v, k, s);
+}
+// XP for seat s (times the reward dial), its gain heard by everyone near it, a level-up by everyone.
+ev_award :: (v: [] RmServer, k: int, s: int, base: int) {
+  if base <= 0 || s < 0 || s >= EG_SEATS || !v[0].eg[k].seat[s].live { return; }
+  amount := rs_max(base * v[0].evc.d.reward / 100, 1);
+  was := ev_level(v, v[0].ev[k].xp[s]);
+  v[0].ev[k].xp[s] = rs_min(v[0].ev[k].xp[s] + amount, EV_XP_MAX);
+  v[0].ev[k].earned[s] = true;
+  p := v[0].eg[k].seat[s].pose;
+  b: [64] u8;
+  n := wire_int(b[..], wire_int(b[..], wire_put(b[..], 0, "e xp"), s), amount);
+  eg_event(v, k, cast(string) b[0..<n], p.x, p.z, false);
+  now := ev_level(v, v[0].ev[k].xp[s]);
+  if now > was {
+    n = wire_int(b[..], wire_int(b[..], wire_put(b[..], 0, "e level"), s), now);
+    eg_event(v, k, cast(string) b[0..<n], p.x, p.z, true);
+    ev_build(v, k, s);
+  }
+}
+
+// ---- the seats
+
+// A new room in slot k: no event, no XP.
+ev_fresh :: (v: [] RmServer, k: int) {
+  if k < 0 || k >= EG_ROOMS { return; }
+  v[0].ev[k] = EvRoom.{};
+}
+// Seat s sat (after its HP came back, rv_join): its XP from this server's note or its ticket, and
+// its character at its level.
+ev_join :: (v: [] RmServer, k: int, s: int) {
+  v[0].ev[k].xp[s] = 0; v[0].ev[k].level[s] = 0; v[0].ev[k].earned[s] = false; v[0].ev[k].demo[s] = false;
+  for q: 0..<EG_SEATS { v[0].ev[k].heard_v[q * EG_SEATS + s] = 0; v[0].ev[k].heard_v[s * EG_SEATS + q] = 0; }
+  v[0].ev[k].heard_g[s] = 0;
+  tk := eg_ticket(v, k, s);
+  if tk.ok {
+    xp := tk.xp;
+    i := rv_find(v, cast(string) tk.pid[0..<tk.pid_n]);
+    if i >= 0 && v[0].vit.v[i].xp > xp { xp = v[0].vit.v[i].xp; }
+    v[0].ev[k].xp[s] = ev_clamp(xp, 0, EV_XP_MAX);
+  }
+  hp := v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + s].hp;
+  ev_build(v, k, s);
+  // a returning player's HP is theirs at the new level too (rv_join set it on Everglade's own)
+  if tk.ok && tk.hp > 0 { b := v[0].eg[k].rules[0].b[..]; b[0].c[E5RR_SEAT + s].hp = rs_min(hp, b[0].c[E5RR_SEAT + s].hp_max); }
+}
+// Seat s's class changed (its hello's CLASS: e5rr_join_as built Everglade's own): built at its level again.
+ev_class :: (v: [] RmServer, k: int, s: int) { v[0].ev[k].level[s] = 0; ev_build(v, k, s); }
+ev_xp_of :: (v: [] RmServer, k: int, s: int) -> int { return ifx k >= 0 && k < EG_ROOMS && s >= 0 && s < EG_SEATS then v[0].ev[k].xp[s] else 0; }
+
+// ---- the lifecycle
+
+ev_secs :: (n: int) -> int { return n * EG_HZ; }
+ev_phase :: (v: [] RmServer, k: int, phase: int, secs: int) {
+  v[0].ev[k].phase = phase;
+  v[0].ev[k].until = v[0].eg[k].tick + ev_secs(secs);
+}
+// A raid starts in room k now (one already running goes on).
+ev_start :: (v: [] RmServer, k: int) {
+  e := v[0].ev[k..<k + 1];
+  if e[0].phase != EV_IDLE { return; }
+  e[0].kind = EV_RAID; e[0].wave = 0; e[0].standing = 0; e[0].slain = 0; e[0].outcome = EV_OUT_NONE;
+  e[0].arch = EV_ARCH_AWAY; e[0].wards = 0; e[0].square = 0;
+  for s: 0..<EG_SEATS { e[0].earned[s] = false; }
+  e[0].ends = v[0].eg[k].tick + ev_secs(v[0].evc.d.minutes * 60);
+  ev_phase(v, k, EV_ANNOUNCE, EV_ANNOUNCE_S);
+}
+// An admin's STOP: called off, the raiders gone, no bonus.
+ev_stop :: (v: [] RmServer, k: int) {
+  e := v[0].ev[k..<k + 1];
+  if e[0].phase == EV_IDLE || e[0].phase == EV_END || e[0].phase == EV_AFTER { return; }
+  ev_raid_clear(v, k);
+  ev_end(v, k, EV_OUT_OFF);
+}
+ev_end :: (v: [] RmServer, k: int, outcome: int) {
+  e := v[0].ev[k..<k + 1];
+  e[0].outcome = outcome;
+  if outcome == EV_OUT_HELD { for s: 0..<EG_SEATS { if e[0].earned[s] { ev_award(v, k, s, EV_BONUS); } } }
+  ev_phase(v, k, EV_END, EV_END_S);
+}
+// The town's people standing (of those the world has out of doors and in the rules).
+ev_folk_up :: (v: [] RmServer, k: int) -> int {
+  b := v[0].eg[k].rules[0].b[..];
+  up := 0;
+  for j: 0..<E5R_FOLK {
+    c := b[0].c[E5RR_FOLK0 + j];
+    if c.hp_max > 0 && !c.dead && c.hp > 0 { up += 1; }
+  }
+  return up;
+}
+ev_folk_known :: (v: [] RmServer, k: int) -> bool {
+  b := v[0].eg[k].rules[0].b[..];
+  for j: 0..<E5R_FOLK { if b[0].c[E5RR_FOLK0 + j].hp_max > 0 && b[0].c[E5RR_FOLK0 + j].x != E5R_AWAY { return true; } }
+  return false;
+}
+// The server's own rebuild at the aftermath's end (spec 7): as R does, without R's waits.
+ev_rebuild :: (v: [] RmServer, k: int) {
+  v[0].eg[k].rebuild = true;
+  v[0].eg[k].rebuilt_at = v[0].eg[k].tick;
+  e5rr_folk_restore(v[0].eg[k].rules[..]);
+  e5rr_zombies_clear(v[0].eg[k].rules[..]);
+  for q: 0..<EG_PIECES { v[0].eg[k].broken[q] = false; v[0].eg[k].burning[q] = false; }
+  b: [32] u8;
+  eg_event(v, k, cast(string) b[0..<wire_put_rebuilt(b[..], 0)], 0, 0, true);
+}
+
+// Room k's tick (rm_eg_end, before the seats hear it): the schedule, the phase, then the g entry.
+ev_tick :: (v: [] RmServer, k: int) {
+  if k < 0 || k >= EG_ROOMS || !v[0].eg[k].live { return; }
+  e := v[0].ev[k..<k + 1];
+  d := v[0].evc.d;
+  t := v[0].eg[k].tick;
+  // the schedule: each whole multiple of EVERY minutes on the wall clock (checked once a second)
+  if t % EG_HZ == 0 && v[0].evc.known && d.on && d.every > 0 {
+    slot := v[0].wall_ms / (d.every * 60000);
+    if v[0].evc.slot < 0 { v[0].evc.slot = slot; }
+    if slot != v[0].evc.slot {
+      v[0].evc.slot = slot;
+      for q: 0..<EG_ROOMS { if v[0].eg[q].live { ev_start(v, q); } }
+    }
+  }
+  if e[0].phase != EV_IDLE {
+    if t % EG_HZ == 0 { ev_second(v, k); }
+    if t >= e[0].until { ev_next(v, k); }
+  }
+  ev_raid_step(v, k);
+  ev_cache(v, k);
+}
+// Once a second while an event runs: what it counts, and the ends that come early.
+ev_second :: (v: [] RmServer, k: int) {
+  e := v[0].ev[k..<k + 1];
+  e[0].standing = ev_raid_standing(v, k);
+  e[0].folk = ev_folk_up(v, k);
+  p := e[0].phase;
+  if p != EV_WAVE && p != EV_LULL && p != EV_CLIMAX { return; }
+  if ev_folk_known(v, k) && e[0].folk == 0 { ev_raid_clear(v, k); ev_end(v, k, EV_OUT_FELL); return; }
+  if e[0].square >= ev_secs(60) { ev_raid_clear(v, k); ev_end(v, k, EV_OUT_FELL); return; }
+  if v[0].eg[k].tick >= e[0].ends { ev_raid_clear(v, k); ev_end(v, k, ifx e[0].square > 0 then EV_OUT_FELL else EV_OUT_HELD); return; }
+  // a wave that is down ends early: the lull comes at once
+  if p == EV_WAVE && e[0].standing == 0 { e[0].until = v[0].eg[k].tick; }
+  if p == EV_CLIMAX && e[0].arch == EV_ARCH_GONE { ev_end(v, k, EV_OUT_HELD); }
+}
+// The phase is over: the next one.
+ev_next :: (v: [] RmServer, k: int) {
+  e := v[0].ev[k..<k + 1];
+  d := v[0].evc.d;
+  p := e[0].phase;
+  if p == EV_ANNOUNCE || p == EV_LULL {
+    e[0].wave += 1;
+    ev_phase(v, k, EV_WAVE, EV_WAVE_S);
+    ev_raid_wave(v, k);
+    e[0].standing = ev_raid_standing(v, k);
+    return;
+  }
+  if p == EV_WAVE {
+    if e[0].wave < d.waves { ev_phase(v, k, EV_LULL, EV_LULL_S); return; }
+    if d.arch { ev_phase(v, k, EV_CLIMAX, EV_CLIMAX_S); ev_raid_arch(v, k); return; }
+    // no leader: the town held once the last wave is down (it fights on until it is)
+    if e[0].standing == 0 { ev_end(v, k, EV_OUT_HELD); } else { e[0].until = v[0].eg[k].tick + EG_HZ; }
+    return;
+  }
+  if p == EV_CLIMAX { ev_raid_withdraw(v, k); ev_end(v, k, ifx e[0].square > 0 then EV_OUT_FELL else EV_OUT_HELD); return; }
+  if p == EV_END { ev_raid_flee(v, k); ev_phase(v, k, EV_AFTER, EV_AFTER_S); return; }
+  if p == EV_AFTER {
+    ev_raid_clear(v, k);
+    ev_rebuild(v, k);
+    e[0].phase = EV_IDLE; e[0].kind = EV_NONE;
+    return;
+  }
+}
+
+// ---- the raid's content. The raiders, the leader and the wards are #12740 and #12741: until they
+// land, a wave spawns nobody and the climax's leader withdraws at once, so the lifecycle runs whole.
+
+ev_raid_wave :: (v: [] RmServer, k: int) { }
+ev_raid_arch :: (v: [] RmServer, k: int) { v[0].ev[k].arch = EV_ARCH_GONE; }
+ev_raid_withdraw :: (v: [] RmServer, k: int) { if v[0].ev[k].arch != EV_ARCH_AWAY { v[0].ev[k].arch = EV_ARCH_GONE; } }
+ev_raid_flee :: (v: [] RmServer, k: int) { }
+ev_raid_clear :: (v: [] RmServer, k: int) { }
+ev_raid_standing :: (v: [] RmServer, k: int) -> int { return 0; }
+ev_raid_step :: (v: [] RmServer, k: int) { }
+
+// ---- what the seats hear
+
+// The seconds the banner counts: the phase's, or (idle) to the next scheduled start (-1 none).
+ev_banner_secs :: (v: [] RmServer, k: int) -> int {
+  e := v[0].ev[k];
+  if e.phase != EV_IDLE { return rs_max((e.until - v[0].eg[k].tick + EG_HZ - 1) / EG_HZ, 0); }
+  d := v[0].evc.d;
+  if !d.on || d.every <= 0 { return -1; }
+  per := d.every * 60000;
+  return (per - v[0].wall_ms % per + 999) / 1000;
+}
+// The g entry, written once a tick for every seat.
+ev_cache :: (v: [] RmServer, k: int) {
+  e := v[0].ev[k..<k + 1];
+  if e[0].g_tick == v[0].eg[k].tick { return; }
+  e[0].g_tick = v[0].eg[k].tick;
+  d := v[0].evc.d;
+  kind := ifx e[0].phase != EV_IDLE then e[0].kind else (ifx d.on && d.every > 0 then EV_RAID else EV_NONE);
+  left := ifx e[0].phase == EV_IDLE then 0 else rs_max((e[0].ends - v[0].eg[k].tick + EG_HZ - 1) / EG_HZ, 0);
+  b := e[0].g[..];
+  n := wire_put(b, 0, "g");
+  n = wire_int(b, n, kind); n = wire_int(b, n, e[0].phase); n = wire_int(b, n, e[0].wave); n = wire_int(b, n, d.waves);
+  n = wire_int(b, n, ev_banner_secs(v, k)); n = wire_int(b, n, left);
+  n = wire_int(b, n, e[0].standing); n = wire_int(b, n, e[0].slain); n = wire_int(b, n, e[0].square / EG_HZ);
+  n = wire_int(b, n, e[0].wards); n = wire_int(b, n, e[0].arch); n = wire_int(b, n, e[0].outcome); n = wire_int(b, n, e[0].folk);
+  n = wire_int(b, n, ifx d.levels then 1 else 0); n = wire_int(b, n, d.cap);
+  e[0].g_n = n; e[0].g_h = eg_hash(cast(string) b[0..<n]);
+}
+// Seat s's D (room-everglade.coax eg_send): the g entry and each seat's v, on change.
+ev_send :: (v: [] RmServer, k: int, s: int, full: bool, o: [] EgOut) {
+  e := v[0].ev[k..<k + 1];
+  ev_cache(v, k);
+  if full {
+    e[0].heard_g[s] = 0;
+    for q: 0..<EG_SEATS { e[0].heard_v[s * EG_SEATS + q] = 0; }
+  }
+  if e[0].heard_g[s] != e[0].g_h { eg_out_entry(o, v, k, s, 0, cast(string) e[0].g[0..<e[0].g_n]); e[0].heard_g[s] = e[0].g_h; }
+  b: [96] u8;
+  cap := v[0].evc.d.cap;
+  for q: 0..<EG_SEATS {
+    if !v[0].eg[k].seat[q].live { e[0].heard_v[s * EG_SEATS + q] = 0; continue; }
+    lv := ifx e[0].level[q] > 0 then e[0].level[q] else ev_level(v, e[0].xp[q]);
+    kit := ev_kit(v[0].eg[k].rules[0].klass[q] == 1, e[0].level[q]);
+    h := eg_hash(cast(string) b[0..<wire_int(b[..], wire_int(b[..], wire_int(b[..], wire_int(b[..], wire_int(b[..], 0, lv), e[0].xp[q]), cap), kit.lo), kit.hi)]);
+    if e[0].heard_v[s * EG_SEATS + q] == h { continue; }
+    n := wire_int(b[..], wire_int(b[..], wire_int(b[..], wire_put(b[..], 0, "v"), q), lv), e[0].xp[q]);
+    n = wire_int(b[..], wire_int(b[..], wire_int(b[..], n, cap), kit.lo), kit.hi);
+    eg_out_entry(o, v, k, s, 0, cast(string) b[0..<n]);
+    e[0].heard_v[s * EG_SEATS + q] = h;
+  }
+}
+
+// ---- checks
+
+ev_test_server :: (v: [] RmServer) -> int {
+  rm_init(v);
+  rm_clock(v, 0, 1762190000000);
+  ev := "GET /api/room/relay/everglade/pair-events HTTP/1.1\r\n\r\n";
+  #assert rm_join(v, 0, ev) == 0 && rm_join(v, 1, ev) == 1;
+  k := eg_room_at(v, v[0].conns[0].relay);
+  rm_heard(v, 0, "H 1 ranger.0.0.0 druid 0 -");
+  rm_heard(v, 1, "H 1 ranger.0.0.0 druid 0 -");
+  eg_test_tick(v, k); eg_test_tick(v, k);
+  return k;
+}
+ev_test_ticks :: (v: [] RmServer, k: int, n: int) { for q: 0..<n { eg_test_tick(v, k); } }
+
+#test "events: the dials are heard and clamped; START acts once per press, and not on the first answer" #steps 4000000000 {
+  v: [1] RmServer;
+  k := ev_test_server(v[..]);
+  rm_control(v[..], "pvp 0\nevent 1 0 99 2 6 1 3 7 31 1 9 1 1000 2 4 0\nlevels 0\n");
+  d := v[0].evc.d;
+  #assert d.on && d.waves == 8 && d.size == 4 && d.wlmax == 3 && d.aggr == 3 && d.reward == 300 && d.minutes == 5 && d.start == 4;
+  #assert v[0].ev[k].phase == EV_IDLE;   // the first answer learns the count
+  rm_control(v[..], "event 1 0 3 12 6 1 3 3 31 1 2 1 100 15 5 0\n");
+  #assert v[0].ev[k].phase == EV_ANNOUNCE && v[0].ev[k].kind == EV_RAID;
+  rm_control(v[..], "event 1 0 3 12 6 1 3 3 31 1 2 1 100 15 5 0\n");
+  #assert v[0].ev[k].phase == EV_ANNOUNCE;
+  // a malformed line changes nothing
+  rm_control(v[..], "event 1 0 3 x 6 1 3 3 31 1 2 1 100 15 5 0\n");
+  #assert v[0].evc.d.size == 12;
+}
+
+// The phase's end, now: one tick (the room's ticks are cheap, the checks' interpreter is not).
+ev_test_skip :: (v: [] RmServer, k: int) { v[0].ev[k].until = v[0].eg[k].tick + 1; ev_test_ticks(v, k, 1); }
+// To the next whole second, where the event counts.
+ev_test_second :: (v: [] RmServer, k: int) { while v[0].eg[k].tick % EG_HZ != EG_HZ - 1 { eg_test_tick(v, k); } eg_test_tick(v, k); }
+
+#test "events: a raid runs announce, its waves, the climax, end and aftermath, then rebuilds; every seat hears g" #steps 8000000000 {
+  v: [1] RmServer;
+  box: [1] EgInbox;
+  k := ev_test_server(v[..]);
+  rm_control(v[..], "event 1 0 2 12 6 1 3 3 31 1 2 1 100 15 0 0\n");
+  rm_control(v[..], "event 1 0 2 12 6 1 3 3 31 1 2 1 100 15 1 0\n");
+  #assert v[0].ev[k].until == v[0].eg[k].tick + ev_secs(EV_ANNOUNCE_S);
+  eg_test_tick(v[..], k);
+  eg_test_drain(v[..], box[..]);
+  #assert eg_test_has(eg_test_of(box[..], 0), ";g 1 1 0 2 30 900 ") && eg_test_has(eg_test_of(box[..], 1), ";g 1 1 0 2 ");
+  ev_test_skip(v[..], k);
+  #assert v[0].ev[k].phase == EV_WAVE && v[0].ev[k].wave == 1;
+  ev_test_second(v[..], k); eg_test_tick(v[..], k);   // nobody spawned: the wave is down, the lull comes
+  #assert v[0].ev[k].phase == EV_LULL && v[0].ev[k].until > v[0].eg[k].tick + ev_secs(EV_LULL_S) - 3;
+  ev_test_skip(v[..], k);
+  #assert v[0].ev[k].phase == EV_WAVE && v[0].ev[k].wave == 2;
+  ev_test_second(v[..], k); eg_test_tick(v[..], k);
+  #assert v[0].ev[k].phase == EV_CLIMAX;
+  ev_test_second(v[..], k);   // the leader withdrew (none yet): the town held
+  #assert v[0].ev[k].phase == EV_END && v[0].ev[k].outcome == EV_OUT_HELD;
+  eg_test_drain(v[..], box[..]);
+  #assert eg_test_has(eg_test_of(box[..], 1), ";g 1 5 2 2 5 ");
+  ev_test_skip(v[..], k);
+  #assert v[0].ev[k].phase == EV_AFTER && v[0].ev[k].until > v[0].eg[k].tick + ev_secs(EV_AFTER_S) - 3;
+  eg_test_drain(v[..], box[..]);
+  ev_test_skip(v[..], k);
+  eg_test_drain(v[..], box[..]);
+  #assert v[0].ev[k].phase == EV_IDLE && eg_test_has(eg_test_of(box[..], 0), "e rebuild") && eg_test_has(eg_test_of(box[..], 1), ";g 0 0 ");
+}
+
+#test "events: the time limit and STOP end a raid; STOP pays no bonus" #steps 8000000000 {
+  v: [1] RmServer;
+  k := ev_test_server(v[..]);
+  rm_control(v[..], "event 1 0 8 12 6 1 3 3 31 0 2 1 100 5 0 0\n");
+  rm_control(v[..], "event 1 0 8 12 6 1 3 3 31 0 2 1 100 5 1 0\n");
+  #assert v[0].ev[k].ends == v[0].eg[k].tick + ev_secs(5 * 60);
+  ev_test_skip(v[..], k);
+  v[0].ev[k].earned[0] = true;
+  v[0].ev[k].ends = v[0].eg[k].tick;   // the time limit is out
+  ev_test_second(v[..], k);
+  #assert v[0].ev[k].phase == EV_END && v[0].ev[k].outcome == EV_OUT_HELD && v[0].ev[k].xp[0] == EV_BONUS;
+  ev_test_skip(v[..], k); ev_test_skip(v[..], k);
+  #assert v[0].ev[k].phase == EV_IDLE;
+  rm_control(v[..], "event 1 0 8 12 6 1 3 3 31 0 2 1 100 5 2 0\n");
+  #assert v[0].ev[k].phase == EV_ANNOUNCE;
+  v[0].ev[k].earned[1] = true;
+  rm_control(v[..], "event 1 0 8 12 6 1 3 3 31 0 2 1 100 5 2 1\n");
+  #assert v[0].ev[k].phase == EV_END && v[0].ev[k].outcome == EV_OUT_OFF && v[0].ev[k].xp[1] == 0;
+}
+
+#test "events: the schedule starts every live room at a whole multiple of EVERY on the wall clock" #steps 8000000000 {
+  v: [1] RmServer;
+  k := ev_test_server(v[..]);
+  rm_control(v[..], "event 1 15 3 12 6 1 3 3 31 1 2 1 100 15 0 0\n");
+  per := 15 * 60000;
+  rm_clock(v[..], 0, (1762190000000 / per + 1) * per - 1500);
+  ev_test_second(v[..], k);
+  #assert v[0].ev[k].phase == EV_IDLE;
+  rm_clock(v[..], 0, (1762190000000 / per + 1) * per + 10);
+  ev_test_second(v[..], k);
+  #assert v[0].ev[k].phase == EV_ANNOUNCE;
+}
+
+#test "events: XP levels a seat at 300 and no further than the cap (2, then 3 at 900), times the reward dial; the SRD class at its level with its kit only" #steps 8000000000 {
+  v: [1] RmServer;
+  box: [1] EgInbox;
+  k := ev_test_server(v[..]);
+  rm_control(v[..], "event 0 0 3 12 6 1 3 3 31 1 2 1 200 15 0 0\nlevels 1 2\n");
+  b := v[0].eg[k].rules[0].b[..];
+  #assert v[0].ev[k].level[0] == 1 && b[0].c[0].level == 1 && b[0].c[0].hp_max == 9 && b[0].c[0].slots_max[1] == 2;
+  // outside the level 1 kit: Moonbeam (a 2nd-level spell) and Meteor Swarm; in it: Healing Word
+  rm_heard(v[..], 0, "C 1 20 300 0 0 -1");
+  rm_heard(v[..], 0, "C 2 0 300 0 0 -1");
+  rm_heard(v[..], 0, "C 3 28 0 0 0 1000");
+  eg_test_drain(v[..], box[..]);
+  a := eg_test_of(box[..], 0);
+  #assert eg_test_has(a, "r 1 level") && eg_test_has(a, "r 2 level") && !eg_test_has(a, "r 3 ");
+  ev_award(v[..], k, 0, 150);   // 300 at 200%
+  eg_test_tick(v[..], k);
+  eg_test_drain(v[..], box[..]);
+  #assert v[0].ev[k].xp[0] == 300 && v[0].ev[k].level[0] == 2 && b[0].c[0].level == 2 && b[0].c[0].hp_max == 15 && b[0].c[0].slots_max[1] == 3;
+  #assert eg_test_has(eg_test_of(box[..], 0), "e xp 0 300") && eg_test_has(eg_test_of(box[..], 1), "e level 0 2") && eg_test_has(eg_test_of(box[..], 1), "v 0 2 300 2 ");
+  #assert ev_kit_has(ev_kit(false, 2), 27) && !ev_kit_has(ev_kit(false, 1), 27) && !ev_kit_has(ev_kit(false, 2), 20);
+  // the cap is 2: XP past it is kept and gives nothing
+  ev_award(v[..], k, 0, 5000);
+  #assert v[0].ev[k].level[0] == 2 && v[0].ev[k].xp[0] == 10300;
+  // the cap raised to 3: the seat is level 3 at once, with Moonbeam
+  rm_control(v[..], "levels 1 3\n");
+  #assert v[0].ev[k].level[0] == 3 && b[0].c[0].slots_max[2] == 2;
+  ev_test_ticks(v[..], k, EG_CAST_GAP + 1);
+  eg_test_drain(v[..], box[..]);
+  rm_heard(v[..], 0, "C 4 20 300 0 0 -1");
+  eg_test_drain(v[..], box[..]);
+  #assert !eg_test_has(eg_test_of(box[..], 0), "r 4 level") && ev_level_of(EV_XP_MAX, 9) == EV_LEVEL_TOP;
+  // a Warlock at level 1: Eldritch Blast, not Fireball
+  rm_heard(v[..], 1, "H 1 ranger.0.0.0 warlock 0 -");
+  #assert v[0].ev[k].level[1] == 1 && b[0].c[1].klass == RS_WARLOCK && b[0].c[1].level == 1 && b[0].c[1].hp_max == 9;
+  rm_heard(v[..], 1, "C 5 65 300 0 0 -1");
+  eg_test_drain(v[..], box[..]);
+  #assert eg_test_has(eg_test_of(box[..], 1), "r 5 level");
+  // the demo character is an admin's only: a guest's FLAGS bit asks for nothing
+  rm_heard(v[..], 1, "H 1 ranger.0.0.0 warlock 64 -");
+  #assert v[0].ev[k].level[1] == 1;
+  // levels off: Everglade's own druid again, its XP kept
+  rm_control(v[..], "levels 0 3\n");
+  #assert v[0].ev[k].level[0] == 0 && b[0].c[0].level == FB_EG_LEVEL && v[0].ev[k].xp[0] == 10300;
+}
+
+#test "events: an admin's ticket (ACCT 2) and the demo bit give Everglade's own level 17 Warlock while levels are on" #steps 4000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  now := 1762190000000;
+  rm_clock(v[..], 0, now);
+  key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  rm_ticket_key(v[..], key, true);
+  rm_control(v[..], "levels 1 2\n");
+  t: [256] u8; r: [512] u8;
+  m := tk_sign_admin(key, "p-0011223344556677", "pair-tk", now + 60000, t[..]);
+  #assert m > 0 && rm_join(v[..], 0, tk_test_ask(r[..], t[..], m)) == 0 && v[0].conns[0].ticket.admin && v[0].conns[0].ticket.account;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  rm_heard(v[..], 0, "H 1 ranger.0.0.0 warlock 64 -");
+  b := v[0].eg[k].rules[0].b[..];
+  #assert v[0].ev[k].level[0] == 0 && b[0].c[0].level == FB_WL_LEVEL;
+  rm_heard(v[..], 0, "H 1 ranger.0.0.0 warlock 0 -");
+  #assert v[0].ev[k].level[0] == 1 && b[0].c[0].level == 1;
+}
+
+#test "events: a ticket brings XP back (HPxXP), an old ticket means 0 XP, and the vitals post carries it" #steps 4000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  now := 1762190000000;
+  rm_clock(v[..], 0, now);
+  key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  rm_ticket_key(v[..], key, true);
+  #assert tk_check(key, "", "r", now).xp == 0;
+  t: [256] u8; r: [512] u8;
+  n := tk_sign_xp(key, "p-0011223344556677", false, "", "pair-tk", 0, now + 60000, -1, 420, t[..]);
+  #assert eg_test_has(cast(string) t[0..<n], ".-x420.");
+  #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], n)) == 0;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  #assert v[0].ev[k].xp[0] == 420;
+  n = tk_sign_xp(key, "p-8899aabbccddeeff", false, "", "pair-tk", 0, now + 60000, 7, 0, t[..]);
+  #assert rm_join(v[..], 1, tk_test_ask(r[..], t[..], n)) == 1 && v[0].conns[1].ticket.hp == 7 && v[0].ev[k].xp[1] == 0;
+  n = tk_sign(key, "p-0123012301230123", false, "", "pair-tk", now + 60000, 5, t[..]);
+  #assert tk_check(key, cast(string) t[0..<n], "pair-tk", now).ok && tk_check(key, cast(string) t[0..<n], "pair-tk", now).xp == 0;
+  ev_award(v[..], k, 0, 30);
+  rm_left(v[..], 0);
+  #assert rm_vitals_due(v[..]) > 0;
+  #assert eg_test_has(cast(string) v[0].vit.out[0..<v[0].vit.out_n], " 450\n");
+}

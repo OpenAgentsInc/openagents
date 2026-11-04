@@ -53,6 +53,7 @@ rm_control :: (v: [] RmServer, text: string) #export_c {
     while e < text.count && text[e] != '\n' { e += 1; }
     line := text[at..<e];
     at = e + 1;
+    ev_control_line(v, line);   // world events and levels (room-events.coax)
     if line.count > 4 && line[0..<4] == "pvp " { pvp = line[4..<line.count] == "1"; }
     if line.count > 5 && line[0..<5] == "edit " { edit = rc_num(line[5..<line.count]); }
     if line.count > 5 && line[0..<5] == "kick " && kicks < CONTROL_KICKS {
@@ -64,6 +65,7 @@ rm_control :: (v: [] RmServer, text: string) #export_c {
     }
   }
   v[0].ctl.kicks = kicks;
+  ev_control_done(v);
   v[0].ctl.pvp = pvp;
   for k: 0..<EG_ROOMS { v[0].eg[k].rules[0].pvp = pvp; }
   // the board or world changed: every page asks for it again

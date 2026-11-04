@@ -7,7 +7,8 @@ This spec adds world events to Everglade (`/worlds/everglade`, Everglade 5E). A 
 timed happening that the room server runs for everyone in an instance at once. The first event
 type is the **Cultist Raid**: waves of cultists and low-level warlocks, led by a level 17 Fiend
 Warlock, attack the town. The spec also adds character progression: every character starts at
-level 1 and gains experience points (XP) up to level 3, fighting the raiders.
+level 1 and gains experience points (XP), fighting the raiders, up to a level cap: level 2 for now,
+and level 3 once the owner raises it.
 
 In the owner's words: "Figure out a system of world events where we trigger these things like
 raids on the city, which will end up at a certain point. [...] An event that I can turn on or off
@@ -48,8 +49,9 @@ Related reading:
   objective. The banner says which.
 - The raiders are SRD 5e creatures at levels 1 to 3. Players can kill them and earn XP for it.
 - The raid's leader can't be killed, and the page always shows why a hit didn't hurt it.
-- A character starts at level 1, reaches level 2 at 300 XP and level 3 at 900 XP, and stops at
-  level 3. The cap shows on screen.
+- A character starts at level 1 with exactly the SRD level 1 kit of its class, reaches level 2
+  at 300 XP and level 3 at 900 XP, and stops at the cap: level 2 for now. The cap is one dial,
+  so raising it to 3 is one change, and it shows on screen.
 - Everything runs in the room server's simulation, so it is the same for everyone in an
   instance. A full raid costs the tick little enough to keep the p95 tick time under 5 ms.
 - Nothing changes for players until an admin switches it on: the event and the levels are off by
@@ -121,7 +123,7 @@ that is closest. For the Cultist Raid, the first of these to happen ends it:
 
 | End | Outcome | How the banner shows it |
 | --- | --- | --- |
-| Every wave is beaten and the leader withdraws | The town held | `WAVE 3 OF 3`, then `MALGRIN WITHDRAWS` |
+| Every wave is beaten and the leader withdraws | The town held | `WAVE 3 OF 3`, then `DARIAN ODIODEI WITHDRAWS` |
 | The time limit runs out | The town held if the square is still held; else it fell | `9:12 LEFT` |
 | The raiders hold the square for 60 s | The town fell | `THE SQUARE: CULT 0:42` |
 | The town's people are all down | The town fell | `TOWNSFOLK 6 OF 38 STANDING` |
@@ -173,85 +175,127 @@ room's log, as a player's does.
 
 ## 5. The warlock who can't be killed
 
-The cult's leader is Malgrin, the SRD 5.2.1 Fiend Warlock at level 17 (`rs_siege_arch`), with
+The cult's leader is Darian Odiodei, the SRD 5.2.1 Fiend Warlock at level 17 (`rs_siege_arch`), with
 #12734's spells: Eldritch Blast, Fireball, Blight, Circle of Death, Finger of Death and
-Dimension Door. Players can fight Malgrin, and their hits do show, but Malgrin never dies. The
+Dimension Door. Players can fight Darian Odiodei, and their hits do show, but Darian Odiodei never dies. The
 fiction and the page both say why.
 
 ### 5.1 The wards
 
-Malgrin enters the town in the climax behind three **ward stones**: dark obelisks that the cult
+Darian Odiodei enters the town in the climax behind three **ward stones**: dark obelisks that the cult
 raises at three of the gates as the climax starts.
 
-- While any ward stone stands, nothing hurts Malgrin. Every hit on Malgrin shows `WARDED`
-  instead of a number, and a beam runs from each standing stone to Malgrin, so everyone can
+- While any ward stone stands, nothing hurts Darian Odiodei. Every hit on Darian Odiodei shows `WARDED`
+  instead of a number, and a beam runs from each standing stone to Darian Odiodei, so everyone can
   see where the protection comes from.
 - A ward stone is an object with AC 15 and 60 HP that every player can attack. The banner
   shows `WARDS 3 OF 3`.
-- When the last stone breaks, Malgrin is exposed: the banner says `MALGRIN EXPOSED`, and hits
-  hurt Malgrin as they would any creature.
+- When the last stone breaks, Darian Odiodei is exposed: the banner says `DARIAN ODIODEI EXPOSED`, and hits
+  hurt Darian Odiodei as they would any creature.
 
 ### 5.2 The retreat
 
-Malgrin's HP never reaches 0:
+Darian Odiodei's HP never reaches 0:
 
-- When Malgrin drops to half its Hit Points or below, it casts Dimension Door (a 5th-level Pact
+- When Darian Odiodei drops to half its Hit Points or below, it casts Dimension Door (a 5th-level Pact
   slot; the SRD's 500-foot teleport) out of the town, and the raid ends with
-  `MALGRIN WITHDRAWS`. The town held.
-- When the climax's 3 minutes run out, Malgrin withdraws the same way, unhurt. The town held
+  `DARIAN ODIODEI WITHDRAWS`. The town held.
+- When the climax's 3 minutes run out, Darian Odiodei withdraws the same way, unhurt. The town held
   if the square was held.
-- Damage that would take Malgrin below half its Hit Points takes it to half, then it
+- Damage that would take Darian Odiodei below half its Hit Points takes it to half, then it
   withdraws. The page shows the hit's real number, then `DIMENSION DOOR`.
 
-In the UI, Malgrin's nameplate reads `MALGRIN · LEVEL 17 · CAN'T BE KILLED`, and its HP bar
+In the UI, Darian Odiodei's nameplate reads `DARIAN ODIODEI · LEVEL 17 · CAN'T BE KILLED`, and its HP bar
 shows a mark at half, labelled `WITHDRAWS`. Nothing about this is silent: every protected hit
 says `WARDED`, and the retreat says `DIMENSION DOOR`.
 
 ### 5.3 Its aggression
 
-The admin's aggression dial sets how Malgrin fights:
+The admin's aggression dial sets how Darian Odiodei fights:
 
-| Value | What Malgrin does |
+| Value | What Darian Odiodei does |
 | --- | --- |
 | 0, watches | Stays at the square's edge and casts nothing. The wards still hold. |
 | 1, harries | Casts Eldritch Blast and Blight. |
 | 2, attacks | Also Fireball, at groups of three or more. The default. |
 | 3, razes | Also Circle of Death and Finger of Death, and casts twice as often. |
 
-Malgrin's spells use the SRD's damage, so at aggression 3 a level 1 character in a Fireball
+Darian Odiodei's spells use the SRD's damage, so at aggression 3 a level 1 character in a Fireball
 drops at once. The banner shows the aggression in words, so players know what they face.
 
 ## 6. Progression: XP and levels 1 to 3
 
-### 6.1 The levels
+### 6.1 The levels and the cap
 
-When the admin turns on **Levels 1 to 3**, every character is built at its level from the SRD
-5.2.1 class rules, instead of Everglade's level 9 druid and level 17 warlock:
+When the admin turns on **Levels**, every character is built at its level from the SRD 5.2.1
+class rules (the rules engine follows SRD 5.2.1), instead of Everglade's level 9 druid and
+level 17 warlock. The **Level cap** dial (1 to 3) is the highest level anyone reaches. It is 2
+for now; raising it to 3 is that one dial. XP past the cap is kept and gives nothing more until
+the cap rises, and then the character takes the level at once.
 
-| Level | XP (SRD 5.2.1, Character Advancement) | Druid (Circle of the Land) | Warlock (Fiend Patron) |
-| --- | --- | --- | --- |
-| 1 | 0 | 2 1st-level slots; cantrips; HP 9 | 1 1st-level Pact slot; Eldritch Blast; HP 9 |
-| 2 | 300 | 3 1st-level slots; Wild Shape, Wild Companion; HP 15 | 2 Pact slots; Agonizing and Repelling Blast; HP 15 |
-| 3 | 900 | 4 1st, 2 2nd-level slots; Land's Aid; HP 21 | 2 2nd-level Pact slots; Dark One's Blessing; HP 21 |
+| Level | XP (SRD 5.2.1, Character Advancement) |
+| --- | --- |
+| 1 | 0 |
+| 2 | 300 |
+| 3 | 900 |
 
-The numbers are the engine's own `rs_druid` and `rs_warlock` at that level. Cantrips scale
-with the character's level as the SRD says.
+Hit points are the SRD's: at level 1 the hit die's maximum plus the Constitution modifier (a
+d8 and +1 for both classes: 9), and each level after adds the hit die's fixed value plus the
+modifier (5 + 1: 15 at level 2, 21 at level 3). The numbers are the engine's own `rs_druid`
+and `rs_warlock` at that level, and cantrips scale with the character's level as the SRD says.
 
-- A spell needs a slot of its level. A level 1 druid can't cast Moonbeam (2nd level) or Meteor
-  Swarm, so the server refuses the cast with `r SEQ level` and the page says
-  `NEEDS LEVEL 3`. The page also dims those slots on the bar.
-- Level 3 is the cap. At 900 XP the XP bar fills and reads `LEVEL 3 · MAX`. XP past 900 is
-  kept but gives nothing more.
-- When the switch is off, characters play as they do today, and XP still counts and saves.
+### 6.2 What a character has at each level
 
-### 6.2 Earning XP
+A character has its class's SRD kit at its level and nothing more. The hotbar shows only the
+kit, and the server refuses a cast of anything else (`r SEQ level`). The kit's spells are
+sensible SRD defaults; a later change can let players choose.
+
+**Druid** (SRD 5.2.1, the Druid table):
+
+| Level | What it gets |
+| --- | --- |
+| 1 | Spellcasting: two 1st-level slots; cantrips Produce Flame and Starry Wisp; Druidic; Primal Order as Magician, which adds the cantrip Ray of Frost; 4 prepared spells: Healing Word, Thunderwave, Entangle and Ice Knife |
+| 2 | Three 1st-level slots; Wild Shape (2 uses) and Wild Companion; a 5th prepared spell, Faerie Fire |
+| 3 | Two 2nd-level slots; the Druid Circle (Circle of the Land, with Land's Aid); a 6th prepared spell, Moonbeam |
+
+The SRD 5.2.1 gives the Druid Circle at level 3, not 2. Wild Shape's uses are in the engine;
+its bar entry waits on the room's creature forms, which is on the abilities list in #12733.
+
+**Fiend Warlock** (SRD 5.2.1, the Warlock table):
+
+| Level | What it gets |
+| --- | --- |
+| 1 | Pact Magic: one 1st-level slot; cantrips Eldritch Blast and Chill Touch; 2 prepared spells: Hex and Hellish Rebuke; one Eldritch Invocation, Armor of Shadows (AC 13 + Dexterity) |
+| 2 | Two Pact slots; two more invocations, Agonizing Blast and Repelling Blast on Eldritch Blast; Magical Cunning |
+| 3 | 2nd-level Pact slots; the Fiend Patron and Dark One's Blessing |
+
+Every spell on a level 1 or 2 bar must work in a room on the server. Today the druid's kit is
+all on the server's bar. The warlock's bar on the server has Eldritch Blast but not yet Chill
+Touch, Hex or Hellish Rebuke; those are on the warlock list in #12734 and #12733, and until
+they land a level 1 warlock's bar holds Eldritch Blast only. The server lists each class's
+kit in one place (`ev_kit` in `coax/web/room/room-events.coax`), so a spell joins the kit in one
+line once its bar entry exists.
+
+**Reaching a level** grants its kit at once, on the server: the new HP, slots, spells and
+features. The bar updates live, and the page shows a short `LEVEL 2` notice that blocks
+nothing.
+
+### 6.3 The demo characters
+
+Everglade's own characters, the level 9 druid with the full 43-ability bar and the level 17
+warlock, stay for the realm's admins as a **DEMO CHARACTER** toggle, so the owner can show
+them. The seat ticket marks the realm's admins (its account field is `2`), and the page's hello
+asks for the demo (a FLAGS bit). Anyone else who asks gets their level's kit. The raid's leader,
+Darian Odiodei, stays level 17 and can't be killed.
+
+### 6.4 Earning XP
 
 - A raider gives its SRD XP (section 4.1), times the admin's reward multiplier.
 - **The split in multiplayer.** The SRD divides an encounter's XP among the characters who took
   part. The room does the same per raider: its XP is split evenly among the seats that hurt it
   or healed someone who did, in the 30 s before it fell, and who are within 60 m of where it
   fell. Each share is rounded down, and at least 1.
-- A ward stone gives 100 XP, split the same way. Malgrin gives no kill XP, since it can't be
+- A ward stone gives 100 XP, split the same way. Darian Odiodei gives no kill XP, since it can't be
   killed; its withdrawal pays the completion bonus (section 7).
 - Townsfolk, guards and other players give no XP.
 - The page shows each gain over the raider (`+25 XP`) and a level-up as a banner
@@ -263,7 +307,7 @@ with the character's level as the SRD says.
   100 XP times the multiplier. When the town falls or the raid is called off, there is no
   bonus.
 - **The aftermath.** For 60 s after the end, raiders still standing flee to the gates and
-  vanish, and Malgrin's Zombies fall. At the aftermath's end, the server runs the R rebuild
+  vanish, and Darian Odiodei's Zombies fall. At the aftermath's end, the server runs the R rebuild
   itself (spec 6.6): the town's pieces stand, the fires go out, and the town's people stand up
   whole. The R key's 10 s and 30 s rules don't hold the server's own rebuild back.
 - A character who drops in a raid falls as they do today: they can be healed, and they keep
@@ -299,12 +343,13 @@ value outside one is set to the nearest end and shown as set.
 | Cultists, Fanatics, Warlocks | 0 to 10 parts each | 6, 1, 3 | The wave's mix, in parts. |
 | Warlock levels | 1 to 3 | 3 | The cult's warlocks are levels 1 up to this. |
 | Gates | any of 5 | all 5 | Where waves spawn. |
-| Leader | on, off | on | Whether Malgrin comes in the climax. |
-| Aggression | 0 to 3 | 2 | How Malgrin fights (section 5.3). |
+| Leader | on, off | on | Whether Darian Odiodei comes in the climax. |
+| Aggression | 0 to 3 | 2 | How Darian Odiodei fights (section 5.3). |
 | Town damage | on, off | on | Whether the raid breaks and burns the town. |
 | Reward | 50% to 300% | 100% | The XP multiplier. |
 | Time limit | 5 to 30 minutes | 15 | The whole raid, from the announcement. |
-| Levels 1 to 3 | on, off | off | Characters at levels 1 to 3 from their XP (section 6.1). |
+| Levels | on, off | off | Characters at their level's SRD kit from their XP (section 6.1). |
+| Level cap | 1 to 3 | 2 | The highest level a character reaches. |
 
 At most 48 raiders stand in an instance at once, waves together, and the pane says so beside
 **Wave size**: `48 STANDING AT MOST`. A wave that would go past it spawns the rest as others
@@ -317,7 +362,7 @@ fall.
   admin's change. Anyone else gets 403.
 - `GET /api/playtest/room-control` adds two lines for the shards:
   `event ON EVERY WAVES SIZE CULT FAN WL WLMAX GATES ARCH AGGR HARM REWARD MINUTES START STOP`
-  and `levels 0|1`. START and STOP count each press, so a shard acts on a press once.
+  and `levels ON CAP`. START and STOP count each press, so a shard acts on a press once.
 - The dials live in a new table, `verse.room_events`, one row per realm. The migration is
   additive and safe to run twice.
 
@@ -325,11 +370,11 @@ fall.
 
 ### 9.1 Where it runs
 
-- The event, its raiders, Malgrin, the ward stones, the XP and the levels all run on the room
+- The event, its raiders, Darian Odiodei, the ward stones, the XP and the levels all run on the room
   server, in `coax/web/room/room-events.coax` and the rules' raid unit
   `apps/openagents-web/everglade5e-room-raid.coax`. The shared files get one-line hooks only.
 - Raiders are creatures of the room's one SRD battle, after the summoned creatures: 48
-  raiders, Malgrin and 3 ward stones. The battle grows from 86 creatures to 138, inside
+  raiders, Darian Odiodei and 3 ward stones. The battle grows from 86 creatures to 138, inside
   `RS_MAX` (216).
 - Each instance runs its own raid on its own copy of the town. Starts agree across instances
   and shards because each comes from the wall clock (a schedule) or a counted press (START
@@ -339,14 +384,15 @@ fall.
 
 New D entries, which pages that don't know them skip:
 
-- `g KIND PHASE WAVE WAVES SECS STANDING SLAIN SQUARE WARDS ARCH OUTCOME`: the event's state,
+- `g KIND PHASE WAVE WAVES SECS LEFT STANDING SLAIN SQUARE WARDS ARCH OUTCOME FOLK LEVELS CAP`: the event's state,
   heard by every seat on change. SECS is the phase's seconds left; SQUARE who holds the square
-  and for how long; ARCH Malgrin's state (away, warded, exposed, withdrawn).
-- `v SS LEVEL XP`: a seat's level and XP, heard by every seat on change, for nameplates and
-  your XP bar.
+  and for how long; ARCH Darian Odiodei's state (away, warded, exposed, withdrawn).
+- `v SS LEVEL XP CAP LO HI`: a seat's level, XP, the cap, and the bar slots its character has
+  (bit masks of the druid's and the warlock's bars; both 0 means the whole bar), heard by every
+  seat on change, for nameplates, your XP bar and your hotbar.
 - `e xp SS AMOUNT` and `e level SS LEVEL`: a gain and a level-up.
-- `e ward EID`: a hit that the wards stopped, so the page shows `WARDED` over Malgrin.
-- Raiders, Malgrin and the stones are `c` entries (creatures, spec 3.6), with new kinds:
+- `e ward EID`: a hit that the wards stopped, so the page shows `WARDED` over Darian Odiodei.
+- Raiders, Darian Odiodei and the stones are `c` entries (creatures, spec 3.6), with new kinds:
   `WK_RAIDER` (P1 the stat block, P2 the most HP) and `WK_WARD`.
 - A cast refused for the character's level is `r SEQ level`.
 
@@ -389,7 +435,7 @@ XP saves the way HP does (#12715):
 - **Room checks** (`coax test coax/web/room/room.coax --only "events:"`): the lifecycle from
   start to aftermath on a test clock; each end condition; the dials' clamping; XP split among
   two seats; level-up at 300 and 900 and the cap; a level 1 seat refused a 2nd-level spell;
-  Malgrin's wards, retreat at half HP, and never 0 HP.
+  Darian Odiodei's wards, retreat at half HP, and never 0 HP.
 - **API checks** (`coax/web/api/test_room.py`): `room-event` refuses visitors; dials round-trip;
   `room-control`'s new lines; XP kept by the larger value.
 - **Page checks** (`everglade5e.coax --only "events:"`): the banner from `g` entries, the XP
@@ -405,13 +451,13 @@ Epic #12737 holds the work. Each part is its own issue, built in this order:
 | The event framework on the server, the API's dials and the admin pane, off by default | #12738 | In progress |
 | XP and levels 1 to 3, with persistence | #12739 | Planned |
 | The Cultist Raid: raiders, waves, the AI and drawing them | #12740 | Waits on the Siege's stat blocks landing on `main` |
-| Malgrin: the wards, the retreat and its spells | #12741 | Waits on #12740 |
+| Darian Odiodei: the wards, the retreat and its spells | #12741 | Waits on #12740 |
 | Rewards, aftermath and the raid load test | #12742 | Waits on #12740 |
 
 ## 13. Open questions for the owner
 
-1. Should **Levels 1 to 3** be on whenever an event is on, or stay a separate switch? This spec
-   keeps it separate, so the classic level 9 druid stays until you choose.
+1. Should **Levels** be on whenever an event is on, or stay a separate switch? This spec keeps
+   it separate and off, so nothing changes for players until you switch it on.
 2. Should XP come from anything outside a raid, such as the wood's wolves?
 3. When the town falls, should anything else happen, such as the cult holding the square until
    the next rebuild? This spec rebuilds the town in the aftermath either way.

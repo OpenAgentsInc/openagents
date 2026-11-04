@@ -25,6 +25,7 @@
 #load "room-vitals.coax";
 #load "room-control.coax";
 #load "room-directory.coax";
+#load "room-events.coax";
 
 ROOMS :: 8;
 CONNS :: 512;
@@ -69,6 +70,8 @@ RmServer :: struct {
   ctl: RmControl;                        // the API's word on pvp, edits and kicks (room-control.coax)
   shard: int = 1;                        // which oa-room shard this is (rm_shard; room-directory.coax)
   dir: RmDirectory;                      // what it last told the API's instance directory
+  evc: RmEvents;                         // the realm's world-event dials (room-events.coax)
+  ev: [EG_ROOMS] EvRoom;                 // each everglade room's event, XP and levels (room-events.coax)
 }
 
 // Every field's default (seats -1, the game's own defaults): the host calls
@@ -450,7 +453,7 @@ tk_test_ask :: (r: [] u8, t: [] u8, n: int) -> string {
   n = tk_sign(key, "p-8899aabbccddeeff", false, "", "pair-tk", now + 60000, -1, t[..]);
   #assert rm_join(v[..], 1, tk_test_ask(r[..], t[..], n)) == 1;
   rm_left(v[..], 0);
-  // posted: "t MS\nPID HP MAX\n", with the MAC of the body
+  // posted: "t MS\nPID HP MAX XP\n", with the MAC of the body
   #assert rm_vitals_due(v[..]) > 0;
   body := cast(string) v[0].vit.out[0..<v[0].vit.out_n];
   want: [64] u8;

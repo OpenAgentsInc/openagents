@@ -198,7 +198,7 @@ static void ticket_word(char *out, size_t cap, const char *in) {
   }
   out[m] = 0;
 }
-static void room_ticket(const request *q, PGconn *db, const char *key, const char *room, const char *body) {
+static void room_ticket(const request *q, PGconn *db, const char *key, bool site, const char *room, const char *body) {
   if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a ticket\"}"); return; }
   const char *secret = getenv("OA_ROOM_TICKET_KEY");
   if (!secret || strlen(secret) < 32) { api_json(q->fd, 503, "{\"error\":\"no ticket key\"}"); return; }
@@ -215,7 +215,8 @@ static void room_ticket(const request *q, PGconn *db, const char *key, const cha
                                  "CASE WHEN rv.hp_at > extract(epoch FROM clock_timestamp()) * 1000 - 600000 THEN rv.hp END, "
                                  "CASE WHEN rv.wanted_at > extract(epoch FROM clock_timestamp()) * 1000 - 300000 THEN rv.wanted END, rv.look, rv.class, "
                                  "EXISTS (SELECT 1 FROM verse.room_kicks k WHERE k.player = p.id AND k.until_ms > extract(epoch FROM clock_timestamp()) * 1000), "
-                                 "(SELECT string_agg(b.blocked, ',' ORDER BY b.at_ms DESC) FROM (SELECT * FROM verse.player_blocks WHERE player = p.id ORDER BY at_ms DESC LIMIT 32) b) "
+                                 "(SELECT string_agg(b.blocked, ',' ORDER BY b.at_ms DESC) FROM (SELECT * FROM verse.player_blocks WHERE player = p.id ORDER BY at_ms DESC LIMIT 32) b), "
+                                 "coalesce(rv.xp, 0) "
                                  "FROM verse.players p LEFT JOIN verse.accounts a ON a.id = p.account "
                                  "LEFT JOIN verse.room_vitals rv ON rv.who = coalesce(p.account, p.id) "
                                  "WHERE p.key_sha256 = encode(sha256(convert_to($1, 'UTF8')), 'hex')", 1, NULL, v, NULL, NULL, 0);
@@ -236,6 +237,8 @@ static void room_ticket(const request *q, PGconn *db, const char *key, const cha
   if (PQgetvalue(r, 0, 7)[0] == 't') { PQclear(r); api_json(q->fd, 403, "{\"error\":\"kicked\"}"); return; }   /* an admin's kick, 24 hours (#12714) */
   int hp = PQgetisnull(r, 0, 3) ? -1 : atoi(PQgetvalue(r, 0, 3));
   int wanted = PQgetisnull(r, 0, 4) ? -1 : atoi(PQgetvalue(r, 0, 4));
+  int xp = atoi(PQgetvalue(r, 0, 9));   /* XP, which only rises (#12739); the ticket's HP field carries it as HPxXP */
+  if (xp < 0 || xp > 9999999) xp = 0;
   char look[40] = "", klass[24] = "";
   if (!PQgetisnull(r, 0, 5)) ticket_word(look, sizeof look, PQgetvalue(r, 0, 5));
   if (!PQgetisnull(r, 0, 6)) ticket_word(klass, sizeof klass, PQgetvalue(r, 0, 6));
@@ -262,9 +265,18 @@ static void room_ticket(const request *q, PGconn *db, const char *key, const cha
   struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts);
   long long expires = (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000 + TICKET_MS;
   char text[256];
-  char hps[16]; if (hp >= 0 && hp < 100000) snprintf(hps, sizeof hps, "%d", hp); else strcpy(hps, "-");
-  int tn = shard > 0 ? snprintf(text, sizeof text, "v3.%s.%d.%s.%s.%d.%lld.%s", pid, account ? 1 : 0, name64, room, shard, expires, hps)
-                     : snprintf(text, sizeof text, "v2.%s.%d.%s.%s.%lld.%s", pid, account ? 1 : 0, name64, room, expires, hps);
+  char hps[24]; if (hp >= 0 && hp < 100000) snprintf(hps, sizeof hps, "%d", hp); else strcpy(hps, "-");
+  if (xp > 0) snprintf(hps + strlen(hps), sizeof hps - strlen(hps), "x%d", xp);
+  /* ACCT 2: an account who is one of Everglade's admins, who may play its demo character (#12739) */
+  int acct = account ? 1 : 0;
+  if (account) {
+    const char *av[2] = {key, site ? "t" : "f"};
+    PGresult *ar = PQexecParams(db, "SELECT verse.edit_may('everglade', $1, $2::boolean)", 2, NULL, av, NULL, NULL, 0);
+    if (PQresultStatus(ar) == PGRES_TUPLES_OK && PQntuples(ar) == 1 && PQgetvalue(ar, 0, 0)[0] == 't') acct = 2;
+    PQclear(ar);
+  }
+  int tn = shard > 0 ? snprintf(text, sizeof text, "v3.%s.%d.%s.%s.%d.%lld.%s", pid, acct, name64, room, shard, expires, hps)
+                     : snprintf(text, sizeof text, "v2.%s.%d.%s.%s.%lld.%s", pid, acct, name64, room, expires, hps);
   if (tn <= 0 || (size_t)tn + 66 >= sizeof text) { api_json(q->fd, 500, "{\"error\":\"no ticket\"}"); return; }
   unsigned char mac[EVP_MAX_MD_SIZE]; unsigned int ml = 0;
   if (!HMAC(EVP_sha256(), secret, (int)strlen(secret), (const unsigned char *)text, (size_t)tn, mac, &ml) || ml != 32) { api_json(q->fd, 500, "{\"error\":\"no ticket\"}"); return; }
@@ -275,11 +287,12 @@ static void room_ticket(const request *q, PGconn *db, const char *key, const cha
   int sn = 0;
   if (hp >= 0) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"hp\":%d", hp);
   if (wanted >= 0) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"wanted\":%d", wanted);
+  if (xp > 0) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"xp\":%d", xp);
   if (look[0]) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"look\":\"%s\"", look);
   if (klass[0]) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"class\":\"%s\"", klass);
   if (shard > 0) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"room\":\"%s\",\"shard\":%d%s", room, shard, full ? ",\"full\":true" : "");
   if (blocked[0]) snprintf(st + sn, sizeof st - (size_t)sn, ",\"blocked\":\"%s\"", blocked);
-  snprintf(out, sizeof out, "{\"ticket\":\"%s\",\"id\":\"%s\",\"account\":%s,\"name\":\"%s\",\"expires\":%lld%s}", text, pid, account ? "true" : "false", en, expires, st);
+  snprintf(out, sizeof out, "{\"ticket\":\"%s\",\"id\":\"%s\",\"account\":%s,\"admin\":%s,\"name\":\"%s\",\"expires\":%lld%s}", text, pid, account ? "true" : "false", acct == 2 ? "true" : "false", en, expires, st);
   api_json(q->fd, 200, out);
 }
 
@@ -316,7 +329,7 @@ static void room_state(const request *q, PGconn *db, const char *key, const char
   if (n != 1) { api_json(q->fd, 403, "{\"error\":\"unknown player key\"}"); return; }
   api_json(q->fd, 200, "{\"kept\":true}");
 }
-// oa-room's part (#12715): "t MS\nPID HP MAX\n..." signed with the seat-ticket key (X-Room-Mac: the
+// oa-room's part (#12715): "t MS\nPID HP MAX XP\n..." (XP since #12739; a line without it keeps the XP) signed with the seat-ticket key (X-Room-Mac: the
 // hex HMAC-SHA256 of the body), within two minutes of now. Each seat's HP is kept by who the
 // player is, unless a newer one is already kept.
 static void room_vitals(const request *q, PGconn *db) {
@@ -340,17 +353,27 @@ static void room_vitals(const request *q, PGconn *db) {
   int kept = 0;
   char *line = strchr(b, '\n');
   while (line && *++line) {
-    char pid[48]; int hp, max;
+    char pid[48]; int hp, max, xp = -1;
     char *next = strchr(line, '\n');
-    if (sscanf(line, "%47s %d %d", pid, &hp, &max) == 3 && hp >= 0 && max > 0 && hp <= max && max < 100000) {
-      char hs[16], ms[16], as[24];
+    char one[128]; size_t ol = next ? (size_t)(next - line) : strlen(line);
+    if (ol >= sizeof one) ol = sizeof one - 1;
+    memcpy(one, line, ol); one[ol] = 0;
+    int got = sscanf(one, "%47s %d %d %d", pid, &hp, &max, &xp);
+    if (got < 4 || xp < 0 || xp > 9999999) xp = -1;
+    if (got >= 3 && hp >= 0 && max > 0 && hp <= max && max < 100000) {
+      char hs[16], ms[16], as[24], xs[16];
       snprintf(hs, sizeof hs, "%d", hp); snprintf(ms, sizeof ms, "%d", max); snprintf(as, sizeof as, "%lld", at);
-      const char *v[4] = {pid, hs, ms, as};
+      snprintf(xs, sizeof xs, "%d", xp);
+      const char *v[5] = {pid, hs, ms, as, xs};
+      /* XP only rises: the larger of the kept and the reported (a -1 reports none) */
       PGresult *r = PQexecParams(db,
-        "INSERT INTO verse.room_vitals (who, hp, hp_max, hp_at, at) "
-        "SELECT coalesce(account, id), $2::int, $3::int, $4::bigint, $4::bigint FROM verse.players WHERE id = $1 "
-        "ON CONFLICT (who) DO UPDATE SET hp = EXCLUDED.hp, hp_max = EXCLUDED.hp_max, hp_at = EXCLUDED.hp_at, at = EXCLUDED.at "
-        "WHERE verse.room_vitals.hp_at IS NULL OR verse.room_vitals.hp_at <= EXCLUDED.hp_at", 4, NULL, v, NULL, NULL, 0);
+        "INSERT INTO verse.room_vitals (who, hp, hp_max, hp_at, at, xp) "
+        "SELECT coalesce(account, id), $2::int, $3::int, $4::bigint, $4::bigint, nullif(greatest($5::int, -1), -1) FROM verse.players WHERE id = $1 "
+        "ON CONFLICT (who) DO UPDATE SET hp = CASE WHEN verse.room_vitals.hp_at IS NULL OR verse.room_vitals.hp_at <= EXCLUDED.hp_at THEN EXCLUDED.hp ELSE verse.room_vitals.hp END, "
+        "  hp_max = CASE WHEN verse.room_vitals.hp_at IS NULL OR verse.room_vitals.hp_at <= EXCLUDED.hp_at THEN EXCLUDED.hp_max ELSE verse.room_vitals.hp_max END, "
+        "  hp_at = greatest(verse.room_vitals.hp_at, EXCLUDED.hp_at), at = greatest(verse.room_vitals.at, EXCLUDED.at), "
+        "  xp = greatest(verse.room_vitals.xp, EXCLUDED.xp) "
+        "WHERE verse.room_vitals.hp_at IS NULL OR verse.room_vitals.hp_at <= EXCLUDED.hp_at OR EXCLUDED.xp > coalesce(verse.room_vitals.xp, -1)", 5, NULL, v, NULL, NULL, 0);
       if (PQresultStatus(r) == PGRES_COMMAND_OK) kept += atoi(PQcmdTuples(r));
       else api_log("room-vitals: %s", PQerrorMessage(db));
       PQclear(r);
@@ -382,7 +405,12 @@ static void room_control(const request *q, PGconn *db) {
     "SELECT 'pvp ' || CASE WHEN coalesce((SELECT (switched->>'pvp')::boolean FROM verse.realm_edit WHERE slug = 'everglade'), false) THEN '1' ELSE '0' END || chr(10) || "
     "'edit ' || greatest(coalesce((SELECT ms FROM verse.realm_edit WHERE slug = 'everglade'), 0), "
     "  coalesce((SELECT (published_at * 1000)::bigint FROM verse.published WHERE world = 'everglade'), 0)) || chr(10) || "
-    "coalesce((SELECT string_agg('kick ' || player, chr(10)) || chr(10) FROM verse.room_kicks WHERE until_ms > verse.now_ms()), '')",
+    "coalesce((SELECT string_agg('kick ' || player, chr(10)) || chr(10) FROM verse.room_kicks WHERE until_ms > verse.now_ms()), '') || "
+    /* the world event's dials and the levels switch (#12738, #12739; room-events.coax ev_control_line) */
+    "coalesce((SELECT 'event ' || concat_ws(' ', (d->>'on')::boolean::int, d->>'every', d->>'waves', d->>'size', d->>'cultists', d->>'fanatics', "
+    "  d->>'warlocks', d->>'warlock_level', d->>'gates', (d->>'leader')::boolean::int, d->>'aggression', (d->>'town_damage')::boolean::int, "
+    "  d->>'reward', d->>'minutes', e.start_n, e.stop_n) || chr(10) || 'levels ' || (d->>'levels')::boolean::int || ' ' || (d->>'level_cap') || chr(10) "
+    "  FROM verse.room_events e, LATERAL (SELECT verse.room_event_dials(e.dials) AS d) x WHERE e.slug = 'everglade'), '')",
     0, NULL, NULL, NULL, NULL, 0);
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("room-control: %s", PQerrorMessage(db)); PQclear(r); api_json(q->fd, 500, "{\"error\":\"no control\"}"); return; }
   const char *t = PQgetvalue(r, 0, 0);
@@ -414,6 +442,39 @@ static void room_kick(const request *q, PGconn *db, const char *key, bool site, 
   if (!may) { api_json(q->fd, 403, "{\"error\":\"Everglade's admins only\"}"); return; }
   if (!them) { api_json(q->fd, 404, "{\"error\":\"no such player\"}"); return; }
   api_json(q->fd, 200, in ? "{\"kicked\":true,\"hours\":24}" : "{\"kicked\":false}");
+}
+
+// Everglade's world event (#12738; migrations/0118_room_events.sql; spec section 8):
+//   GET  /api/playtest/room-event   -> {dials, start_n, stop_n, started_ms, admin}: the dials, each clamped
+//   POST /api/playtest/room-event {dials?, start?: true, stop?: true}   a realm admin's change -> the same; 403
+// The dials POSTed are merged into what is kept (one not named keeps its value). START counts a press
+// (every live instance starts within the 2 s poll, when the event is on), STOP the same.
+static void room_event(const request *q, PGconn *db, const char *key, bool site, const char *body) {
+  bool post = !strcmp(q->method, "POST");
+  const char *v[4] = {key ? key : "", post ? body : "{}", site ? "t" : "f", post ? "t" : "f"};
+  PGresult *r = PQexecParams(db,
+    "WITH b AS (SELECT $2::jsonb AS j), may AS (SELECT verse.edit_may('everglade', $1, $3::boolean) AS ok), "
+    "up AS (UPDATE verse.room_events e SET dials = verse.room_event_dials(e.dials || coalesce(CASE WHEN jsonb_typeof(j->'dials') = 'object' THEN j->'dials' END, '{}'::jsonb)), "
+    "  start_n = e.start_n + CASE WHEN j->'start' = 'true'::jsonb THEN 1 ELSE 0 END, "
+    "  stop_n = e.stop_n + CASE WHEN j->'stop' = 'true'::jsonb THEN 1 ELSE 0 END, "
+    "  started_ms = CASE WHEN j->'start' = 'true'::jsonb THEN verse.now_ms() ELSE e.started_ms END, "
+    "  ms = verse.now_ms(), by_who = coalesce(verse.player_of($1), 'site') "
+    "  FROM b WHERE e.slug = 'everglade' AND $4::boolean AND (SELECT ok FROM may) RETURNING e.*) "
+    "SELECT (SELECT ok FROM may), json_build_object('dials', verse.room_event_dials(x.dials), 'start_n', x.start_n, 'stop_n', x.stop_n, "
+    "  'started_ms', x.started_ms, 'admin', (SELECT ok FROM may))::text "
+    "FROM (SELECT * FROM up UNION ALL SELECT * FROM verse.room_events WHERE slug = 'everglade' AND NOT EXISTS (SELECT 1 FROM up)) x",
+    4, NULL, v, NULL, NULL, 0);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK) {
+    const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);
+    bool theirs = state && !strncmp(state, "22", 2);
+    if (!theirs) api_log("room-event: %s", PQerrorMessage(db));
+    PQclear(r); api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"no event\"}"); return;
+  }
+  if (PQntuples(r) != 1) { PQclear(r); api_json(q->fd, 404, "{\"error\":\"no event\"}"); return; }
+  bool may = PQgetvalue(r, 0, 0)[0] == 't';
+  if (post && !may) { PQclear(r); api_json(q->fd, 403, "{\"error\":\"Everglade's admins only\"}"); return; }
+  api_json(q->fd, 200, PQgetvalue(r, 0, 1));
+  PQclear(r);
 }
 
 bool player_route(const request *q) {
@@ -478,7 +539,7 @@ bool player_route(const request *q) {
   if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
   if (q->body_len) { memcpy(body, q->body, q->body_len); body[q->body_len] = 0; }
   else strcpy(body, "{}");
-  if (!strncmp(rest, "room-ticket/", 12) && segs == 2) { room_ticket(q, db, key, rest + 12, body); free(body); return true; }
+  if (!strncmp(rest, "room-ticket/", 12) && segs == 2) { room_ticket(q, db, key, site, rest + 12, body); free(body); return true; }
   if (!strcmp(rest, "room-state")) { room_state(q, db, key, body); free(body); return true; }
   if (!strcmp(rest, "player/name")) {   // a guest's own name, through the same filter (migrations/0116)
     if (strcmp(q->method, "POST")) { free(body); api_json(q->fd, 405, "{\"error\":\"POST a name\"}"); return true; }
@@ -496,6 +557,7 @@ bool player_route(const request *q) {
     return true;
   }
   if (!strcmp(rest, "room-kick")) { room_kick(q, db, key, site, body); free(body); return true; }
+  if (!strcmp(rest, "room-event")) { room_event(q, db, key, site, body); free(body); return true; }
 
   // A progress save: its bytes decoded and checked here, where CRC-32 is cheap.
   bool progress_post = !strcmp(q->method, "POST") && !strncmp(rest, "progress/", 9) && segs == 3;

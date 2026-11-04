@@ -171,6 +171,7 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
     for c: 0..<EG_PIECES { v[0].eg[q].broken[c] = false; v[0].eg[q].burning[c] = false; }
     e5rr_start(v[0].eg[q].rules[..], v[0].eg[q].seed);
     ra_fresh(v, q);   // its abilities (room-abilities.coax)
+    ev_fresh(v, q);   // its world event, XP and levels (room-events.coax)
     return q;
   }
   return -1;
@@ -184,6 +185,7 @@ eg_join :: (v: [] RmServer, r: int, conn: int, seat: int) {
   v[0].eg[k].wanted[seat] = 0;
   e5rr_join(v[0].eg[k].rules[..], seat, 0, 0);
   rv_join(v, k, seat);   // the HP its player left with (room-vitals.coax, #12715)
+  ev_join(v, k, seat);   // its XP and its character's level (room-events.coax, #12739)
   v[0].eg[k].rules[0].pvp = v[0].ctl.pvp;   // the realm's pvp row (room-control.coax, #12714)
   v[0].eg[k].seat[seat].heard_ms = v[0].mono_ms;
   b: [128] u8;
@@ -288,8 +290,9 @@ eg_heard_hello :: (v: [] RmServer, k: int, seat: int, text: string) {
   st[0].klass_n = eg_word(h.kind, st[0].klass[..]);
   // CLASS warlock: the seat's caster is the level 17 Warlock (fivebar.coax fb_warlock_hero), else the druid
   wl := ifx cast(string) st[0].klass[0..<st[0].klass_n] == "warlock" then 1 else 0;
-  if v[0].eg[k].rules[0].klass[seat] != wl { e5rr_join_as(v[0].eg[k].rules[..], seat, st[0].pose.x, st[0].pose.z, wl); }
+  if v[0].eg[k].rules[0].klass[seat] != wl { e5rr_join_as(v[0].eg[k].rules[..], seat, st[0].pose.x, st[0].pose.z, wl); ev_class(v, k, seat); }
   st[0].flags = eg_clamp(h.flags, 0, 255);
+  ev_hello(v, k, seat, st[0].flags);   // an admin's demo character (room-events.coax)
   // the name: letters, digits, spaces, '-' and '_' ("-" none)
   m := 0;
   for ch: h.name {
@@ -327,6 +330,7 @@ eg_heard_cast :: (v: [] RmServer, k: int, seat: int, text: string) {
   st := v[0].eg[k].seat[seat..<seat + 1];
   a := e5rr_entry(v[0].eg[k].rules[..], slot);
   if a.kind == FB_WORLD { eg_refuse(v, k, seat, seq, "slot"); return; }
+  if !ev_may_cast(v, k, seat, slot, a) { eg_refuse(v, k, seat, seq, "level"); return; }   // levels 1 to 3 (room-events.coax)
   if v[0].eg[k].tick - st[0].last_cast < EG_CAST_GAP { eg_refuse(v, k, seat, seq, "cooldown"); return; }
   o: [E5RR_OUT_FLOATS] f32;
   e5rr_seat_out(v[0].eg[k].rules[..], seat, o[..]);
@@ -451,6 +455,7 @@ rm_eg_end :: (v: [] RmServer, k: int) #export_c {
   e5rr_step(v[0].eg[k].rules[..], f32(t) / f32(EG_HZ));
   eg_engine_events(v, k);
   eg_sky_tick(v, k);   // the weather turned: everyone hears it (room-sky.coax)
+  ev_tick(v, k);       // its world event (room-events.coax)
   if t % EG_SEND != 0 { return; }
   for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live && v[0].eg[k].seat[s].placed { eg_send(v, k, s); } }
   v[0].eg[k].ev_n = 0; v[0].eg[k].ev_bytes = 0;
@@ -755,6 +760,7 @@ eg_send :: (v: [] RmServer, k: int, s: int) {
     st[0].heard_w[q] = v[0].eg[k].wanted[q] + 1;
   }
   ra_send(v, k, s, full_pieces, o[..]);   // what the world's abilities hold up (room-abilities.coax)
+  ev_send(v, k, s, full_pieces, o[..]);   // the world event and everyone's level (room-events.coax)
   // the events since the last state, near you
   for q: 0..<v[0].eg[k].ev_n {
     if !v[0].eg[k].ev_all[q] && !eg_near(me, v[0].eg[k].ev_x[q], v[0].eg[k].ev_z[q]) { continue; }
