@@ -454,6 +454,18 @@ XP saves the way HP does (#12715):
 - **Page checks** (`everglade5e.coax --only "events:"`): the banner from `g` entries, the XP
   bar, `WARDED`, and the admin pane's dials and ranges.
 - **Load**: section 9.3's raid case.
+- **A local raid** (`coax/web/room/raid-proof.sh BIN [N] [SECONDS] [PORT]`): it starts a room server
+  built by `build.sh`, with a local key, its control lines read from a file, and nothing sent to
+  the API. Then it joins N players, presses START NOW once they're in, and runs
+  `raid-check.coax`. Each player walks to the square and casts Starry Wisp at the nearest raider.
+  The check reports what every seat heard: the phases, waves, raiders by kind, their casts, the
+  hits on them, XP, refusals by reason, and the D rate. `RAID_DIALS` sets other dials.
+  - At the default dials (2 waves of 12), 8 level 1 players hold the square for a while, but
+    the raiders kill them and the town falls in wave 1. Every seat heard about 100 raider casts
+    and earned XP.
+  - At light dials (1 wave of 4, Darian Odiodei at aggression 1), 16 players see the whole raid:
+    the wave, the climax with Darian warded behind his stones, his withdrawal, and the town
+    held. The tick stays at 30 Hz, and all its parts add up to about 1 ms a tick.
 
 ## 12. Build list and issues
 
@@ -463,9 +475,9 @@ Epic #12737 holds the work. Each part is its own issue, built in this order:
 | --- | --- | --- |
 | The event framework on the server, the API's dials and the admin pane, off by default | #12738 | Done |
 | XP and levels 1 to 3, with persistence | #12739 | Done |
-| The Cultist Raid: raiders, waves, the AI and drawing them | #12740 | Server done; the page draws them with the preview's look (`rp_raider_at`) |
+| The Cultist Raid: raiders, waves, the AI and drawing them | #12740 | Done: the page draws each raider through the preview's `everglade_raider`, and a fallen one lies 7 s, then sinks |
 | Darian Odiodei: the wards, the retreat and its spells | #12741 | Server done |
-| Rewards, aftermath and the raid load test | #12742 | Rewards done; `raid-check.coax` runs N players against a local room |
+| Rewards, aftermath and the raid load test | #12742 | Rewards done; `raid-proof.sh` runs N players against a local room (below) |
 
 ## 13. Open questions for the owner
 
