@@ -34,5 +34,40 @@ for mode in debug release;do
   done
  done
 done
+# Step 4: the kernels against binary64, then the decoder on Metal against
+# its CPU repeat (the owned tiny model, then the pinned files).
+for unit in psionic/tests/granite-kernel-checks.coax psionic/lib/granite/host.coax;do for mode in debug release;do
+  flags=(--run-steps 200000000);[[ $mode == release ]] && flags+=(--release)
+  "$coax" test $unit "${flags[@]}" | tail -1
+done;done
+"$coax" metal-compute psionic/lib/granite/kernels.coax --release > "$out/k.metal"
+"$coax" c psionic/lib/granite/host.coax --library --release --header "$out/host.h" > "$out/host.c"
+F=(-std=c11 -O2 -g -ffp-contract=off -fno-fast-math -Wall -Wextra -Werror -Wno-unused-function -Wno-unused-parameter -Wno-unknown-pragmas -Wno-missing-field-initializers -I"$out" -Ipsionic/platform '-DGRANITE_COAX_HEADER="host.h"')
+"$cc" "${F[@]}" -c "$out/host.c" -o "$out/host.o"
+"$cc" -fobjc-arc -mmacosx-version-min=15.0 -O2 -Wall -Wextra -c psionic/platform/metal-host.m -o "$out/metal-host.o"
+"$cc" "${F[@]}" -fblocks psionic/platform/granite-file.c psionic/platform/granite-metal.c psionic/tests/granite_run.c "$out/host.o" "$out/metal-host.o" -framework Metal -framework Foundation -lm -o "$out/granite-run"
+python3 -I psionic/tests/granite_fixture.py --gguf "$out/tiny.gguf"
+"$out/granite-run" "$out/tiny.gguf" "$out/k.metal" compare --raw --prompt "hello world hello" --steps 8 --capacity 512 | tail -1
+for f in "${ggufs[@]}";do
+ q=$(basename "$f" .gguf)
+ "$out/granite-run" "$f" "$out/k.metal" compare --prompt "Move the oak tree" --steps 2 --capacity 512 | tail -1 | sed "s|^|$q: |"
+ "$out/granite-run" "$f" "$out/k.metal" generate --prompt "What is the capital of France? Answer in one sentence." --steps 24 --capacity 1024 > "$out/answer.txt"
+ grep -q "Paris" "$out/answer.txt" || { echo "$q: the answer does not name Paris" >&2; cat "$out/answer.txt" >&2; exit 1; }
+ tail -2 "$out/answer.txt" | sed "s|^|$q: |"
+done
+# Step 5: parity with the packaged llama.cpp (a reference, never a runtime
+# dependency): token ids, every layer's residual stream, full logits and a
+# greedy continuation, with the prompt fed a token at a time.
+if [[ ${PSIONIC_GRANITE_PARITY:-0} == 1 && ${#ggufs[@]} -gt 0 ]];then
+ llama=${LLAMA_PREFIX:-/opt/homebrew}
+ "$cc" -std=c11 -O2 -Wall -Wextra -I"$llama/include" psionic/tests/granite_llama.c -L"$llama/lib" -lllama -lggml -lggml-base -Wl,-rpath,"$llama/lib" -o "$out/granite-llama"
+ for f in "${ggufs[@]}";do
+  q=$(basename "$f" .gguf)
+  "$out/granite-run" "$f" "$out/k.metal" dump --prompt "Move the oak tree two meters to the left of the well." --steps 16 --capacity 1024 --out "$out/ps.bin" > /dev/null
+  ids=$(python3 -I -c 'import struct,sys;b=open(sys.argv[1],"rb").read();n=struct.unpack_from("<q",b)[0];print(",".join(map(str,struct.unpack_from(f"<{n}q",b,40))))' "$out/ps.bin")
+  GRANITE_LLAMA_ONE=1 "$out/granite-llama" "$f" "$ids" 16 "$out/ll.bin" > /dev/null
+  python3 -I psionic/tests/granite_parity.py "$out/ps.bin" "$out/ll.bin" --require | sed "s|^|$q: |"
+ done
+fi
 [[ ${#ggufs[@]} -gt 0 ]] || echo "SKIP: no pinned Granite files in $model; only owned checks ran"
-if [[ $mutate == 1 ]];then for unit in model tokenizer chat;do "$coax" mutate psionic/lib/granite/$unit.coax --root-only --jobs "$jobs" --run-steps 200000000;done;fi
+if [[ $mutate == 1 ]];then for unit in model tokenizer chat host;do "$coax" mutate psionic/lib/granite/$unit.coax --root-only --jobs "$jobs" --run-steps 200000000;done;fi

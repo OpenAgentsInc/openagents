@@ -15,7 +15,8 @@ int gr_file_open(const char *path, GrFile *f, char *error, size_t error_bytes){
     memset(f,0,sizeof *f);f->fd=open(path,O_RDONLY);
     if(f->fd<0){snprintf(error,error_bytes,"cannot open %s",path);return 1;}
     struct stat st;if(fstat(f->fd,&st)){snprintf(error,error_bytes,"cannot stat %s",path);return 1;}
-    f->size=(size_t)st.st_size;void *map=mmap(NULL,f->size,PROT_READ,MAP_PRIVATE,f->fd,0);
+    f->size=(size_t)st.st_size;size_t page=(size_t)getpagesize();f->map_size=(f->size+page-1)/page*page;
+    void *map=mmap(NULL,f->map_size,PROT_READ,MAP_PRIVATE,f->fd,0);
     if(map==MAP_FAILED){snprintf(error,error_bytes,"cannot map %s",path);return 1;}
     f->bytes=map;
     f->meta=calloc(GR_META_MAX,sizeof *f->meta);f->meta_work=calloc(GR_META_MAX,sizeof *f->meta_work);
@@ -37,7 +38,7 @@ int gr_file_open(const char *path, GrFile *f, char *error, size_t error_bytes){
     return 0;
 }
 void gr_file_close(GrFile *f){
-    if(f->bytes)munmap((void*)f->bytes,f->size);if(f->fd>0)close(f->fd);
+    if(f->bytes)munmap((void*)f->bytes,f->map_size);if(f->fd>0)close(f->fd);
     free(f->meta);free(f->meta_work);free(f->tensors);free(f->tensor_work);free(f->table);
     free(f->tables.pool.data);free(f->tables.spans.data);free(f->tables.vocab_slots.data);free(f->tables.merges.data);free(f->tables.merge_slots.data);free(f->tables.added.data);
     memset(f,0,sizeof *f);

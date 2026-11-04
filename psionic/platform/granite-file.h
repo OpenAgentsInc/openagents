@@ -6,7 +6,7 @@
 #include <stddef.h>
 #include <stdint.h>
 typedef struct GrFile {
-    const uint8_t *bytes; size_t size; int fd;
+    const uint8_t *bytes; size_t size, map_size; int fd; /* map_size: size rounded up to whole pages */
     coax_t_PgMeta *meta, *meta_work; coax_t_PgTensor *tensors, *tensor_work; coax_t_GrTensor *table;
     coax_t_GrBinding binding; coax_t_GrTables tables;
 } GrFile;

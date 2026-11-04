@@ -1,0 +1,685 @@
+// granite-metal-f32-v1: the dense Granite decoder as compute-subset kernels
+// for `coax metal-compute` (and, compiled to C, the CPU repeat that checks
+// them). Weights stay in their GGUF blocks: Q4_K and the 32-bit words of
+// its 144-byte super-blocks, Q6_K and Q8_0 as 16-bit words (their blocks
+// are 210 and 34 bytes). Activations and sums are f32, rounded once per
+// operation in a fixed order; the KV cache is f16 in pages of 256
+// positions. No host code does arithmetic on activations. The checks are
+// psionic/tests/granite-kernel-checks.coax and the CPU repeat.
+
+GR_T :: 64;      // threads in a product group
+GR_R :: 4;       // rows a product group writes
+GR_B :: 8;       // tokens a launch carries
+GR_NT :: 256;    // threads in a norm or softmax group
+GR_PAGE :: 256;  // positions in a cache page
+GR_CHUNK :: 128; // positions a context work item adds
+GR_HEAD :: 128;  // head width
+GR_HIDDEN :: -300000000000000000000000000000000000000.0;  // a hidden key's score, -3e38
+
+// ---- Scalars.
+// IEEE binary16 bits to f32, exactly.
+gr_half :: (bits:u32)->f32 {
+    sign:=(bits>>15)&1;e:=(bits>>10)&31;m:=bits&1023;v:f32=0;
+    if e==0 {v=f32(m)*0.000000059604644775390625f32;}
+    else if e==31 {v=f32_from_bits(ifx m==0 then 0x7f800000 else 0x7fc00000);}
+    else {v=f32_from_bits(((e+112)<<23)|(m<<13));}
+    if sign!=0 {return -v;}return v;
+}
+// f32 to binary16 bits, rounded to nearest even; overflow is infinity.
+gr_f16 :: (x:f32)->u32 {
+    bits:=f32_bits(x);sign:=(bits>>16)&0x8000;e:=(bits>>23)&255;m:=bits&0x7fffff;
+    if e==255 {return sign|0x7c00|(ifx m!=0 then cast(u32)0x200 else cast(u32)0);}
+    if e>=143 {return sign|0x7c00;}
+    if e>=113 {
+        h:=((e-112)<<10)|(m>>13);rest:=m&0x1fff;
+        if rest>0x1000 || (rest==0x1000 && (h&1)!=0) {h+=1;}
+        return sign|h;
+    }
+    if e<102 {return sign;}
+    full:=m|0x800000;shift:=126-e;h:=full>>shift;rest:=full&((cast(u32)1<<shift)-1);half:=cast(u32)1<<(shift-1);
+    if rest>half || (rest==half && (h&1)!=0) {h+=1;}
+    return sign|h;
+}
+gr_byte16 :: (w:[]u16,n:u32)->u32 {return (cast(u32)w[cast(int)(n/2)]>>((n%2)*8))&255;}
+gr_signed :: (b:u32)->f32 {return ifx b>=128 then f32(b)-256 else f32(b);}
+gr_silu :: (g:f32)->f32 {return g/(1+exp(-g));}
+
+// ---- Q4_K: one 144-byte super-block of 256 values is 18 words of 64
+// bits: d and dmin, then twelve bytes of 6-bit scales and mins (word 0's
+// high half and word 1), then 128 bytes of codes (words 2..17). Group g of
+// 64 values: sub-block 2g in the low nibbles of bytes 16+32g.., sub-block
+// 2g+1 in the high nibbles (ggml's block_q4_K).
+gr_byte64 :: (w:[]u64,n:u32)->u32 {return cast,trunc(u32)(w[cast(int)(n/8)]>>cast(u64)((n%8)*8))&255;}
+// Scale byte i (block byte 4+i) from words 0 and 1.
+gr_q4k_sbyte :: (w0:u64,w1:u64,i:u32)->u32 {
+    if i<4 {return cast,trunc(u32)(w0>>cast(u64)(32+8*i))&255;}
+    return cast,trunc(u32)(w1>>cast(u64)(8*(i-4)))&255;
+}
+gr_q4k_scale :: (w0:u64,w1:u64,j:u32,min:u32)->f32 {
+    if j<4 {return f32(gr_q4k_sbyte(w0,w1,j+4*min)&63);}
+    return f32(((gr_q4k_sbyte(w0,w1,j+4)>>(4*min))&15)|((gr_q4k_sbyte(w0,w1,j-4+4*min)>>6)<<4));
+}
+// Sum over the 64 values of group g of the super-block at word `at`
+// times x[xb..xb+64]: codes in order 0..31, four 8-byte words, each byte a
+// low and a high code. Indices are 32-bit: Apple GPUs have no 64-bit
+// integer arithmetic.
+gr_q4k_dot :: (w:[]u64,at:u32,g:u32,x:[]f32,xb:u32)->f32 {
+    lo:f32=0;hi:f32=0;sl:f32=0;sh:f32=0;
+    for wi:cast(u32)0..<cast(u32)4 {
+        q:=w[cast(int)add_wrap(add_wrap(at,2),add_wrap(mul_wrap(g,4),wi))];
+        for k:cast(u32)0..<cast(u32)8 {
+            byte:=cast,trunc(u32)(q>>cast(u64)(8*k))&255;i:=add_wrap(xb,add_wrap(mul_wrap(wi,8),k));a:=x[cast(int)i];c:=x[cast(int)add_wrap(i,32)];
+            lo+=f32(byte&15)*a;hi+=f32(byte>>4)*c;sl+=a;sh+=c;
+        }
+    }
+    w0:=w[cast(int)at];w1:=w[cast(int)add_wrap(at,1)];d:=gr_half(cast,trunc(u32)w0&0xffff);dmin:=gr_half(cast,trunc(u32)(w0>>16)&0xffff);
+    return d*(gr_q4k_scale(w0,w1,2*g,0)*lo+gr_q4k_scale(w0,w1,2*g+1,0)*hi)-dmin*(gr_q4k_scale(w0,w1,2*g,1)*sl+gr_q4k_scale(w0,w1,2*g+1,1)*sh);
+}
+gr_q4k_value :: (b:[]u64,k:u32)->f32 {
+    g:=k/64;part:=(k%64)/32;l:=k%32;j:=2*g+part;q:=(gr_byte64(b,16+32*g+l)>>(4*part))&15;w0:=b[0];w1:=b[1];
+    return gr_half(cast,trunc(u32)w0&0xffff)*gr_q4k_scale(w0,w1,j,0)*f32(q)-gr_half(cast,trunc(u32)(w0>>16)&0xffff)*gr_q4k_scale(w0,w1,j,1);
+}
+// ---- Q6_K: 210 bytes, 105 words of 16 bits: 128 bytes of low nibbles,
+// 64 of high pairs, 16 signed scales, d. Quarter h of 64 values: low
+// nibbles of bytes 64(h/2).. shifted by 4(h%2); two bits of byte
+// 128+32(h/2)+i%32 at 2p, p = 2(h%2)+i/32; scale 4h+i/16 (ggml's
+// block_q6_K). Values i and i+1 share a word of each.
+gr_q6k_dot :: (w:[]u16,at:u32,h:u32,x:[]f32,xb:u32)->f32 {
+    n:=h/2;shift:=4*(h%2);total:f32=0;
+    for sub:cast(u32)0..<cast(u32)4 {
+        sum:f32=0;
+        for k2:cast(u32)0..<cast(u32)8 {
+            i:=sub*16+2*k2;low:=cast(u32)w[cast(int)add_wrap(at,32*n+i/2)];high:=cast(u32)w[cast(int)add_wrap(at,64+16*n+(i%32)/2)];p:=2*(h%2)+i/32;
+            for e:cast(u32)0..<cast(u32)2 {
+                q:=((low>>(8*e+shift))&15)|(((high>>(8*e+2*p))&3)<<4);
+                v:=x[cast(int)add_wrap(xb,i+e)];sum+=f32(q)*v-32*v;
+            }
+        }
+        total+=gr_signed((cast(u32)w[cast(int)add_wrap(at,96+2*h+sub/2)]>>(8*(sub%2)))&255)*sum;
+    }
+    return gr_half(cast(u32)w[cast(int)add_wrap(at,104)])*total;
+}
+gr_q6k_value :: (b:[]u16,k:u32)->f32 {
+    n:=k/128;part:=(k%128)/32;l:=k%32;
+    q:=((gr_byte16(b,64*n+l+32*(part%2))>>(4*(part/2)))&15)|(((gr_byte16(b,128+32*n+l)>>(2*part))&3)<<4);
+    // + 0 turns a negative zero positive, as chapter 51's integer decoder has it.
+    return gr_half(cast(u32)b[104])*gr_signed(gr_byte16(b,192+k/16))*(f32(q)-32)+0;
+}
+// ---- Q8_0: 34 bytes, 17 words: d, then 32 signed codes, two a word.
+gr_q8_dot :: (w:[]u16,at:u32,x:[]f32,xb:u32)->f32 {
+    sum:f32=0;
+    for k:cast(u32)0..<cast(u32)16 {
+        v:=cast(u32)w[cast(int)add_wrap(at,1+k)];i:=add_wrap(xb,2*k);
+        sum+=gr_signed(v&255)*x[cast(int)i];sum+=gr_signed(v>>8)*x[cast(int)add_wrap(i,1)];
+    }
+    return gr_half(cast(u32)w[cast(int)at])*sum;
+}
+gr_q8_value :: (b:[]u16,k:u32)->f32 {return gr_half(cast(u32)b[0])*gr_signed(gr_byte16(b,2+k));}
+
+// ---- Products. Group `item` writes rows item*GR_R.. of out for each of
+// `tokens` tokens: out[t*rows+r] = (add ? out[t*rows+r] : 0) + w[r] . x[t].
+// Thread j adds 64-value units j, j+64, ... of a row in order; the group's
+// 64 partial sums then add in thread order.
+// book:begin product
+gr_mv_q4k :: (item:int,rows:int,cols:int,tokens:int,add:int,w:[]u64,x:[]f32,out:[]f32) #export_c {
+    part:[2048]f32;acc:[2048]f32;xr:[4096]f32;
+    nr:=cast(u32)rows;nc:=cast(u32)cols;nt:=cast(u32)tokens;units:=nc/64;words:=nc/256*18;row0:=mul_wrap(cast(u32)item,4);
+    for thread:0..<GR_T {
+        for c:0..<32 {acc[thread*32+c]=0;}
+        lane:=cast(u32)thread;
+        for u:cast(u32)0..<(units+63)/64 {
+            unit:=add_wrap(mul_wrap(u,64),lane);g:=unit%4;
+            if unit<units {
+                for t:0..<GR_B {
+                    if cast(u32)t<nt {
+                        // The unit's 64 inputs, read once for all four rows.
+                        xb:=add_wrap(mul_wrap(cast(u32)t,nc),mul_wrap(unit,64));
+                        for i:0..<64 {xr[thread*64+i]=x[cast(int)add_wrap(xb,cast(u32)i)];}
+                        sl:f32=0;sh:f32=0;for i:0..<32 {sl+=xr[thread*64+i];sh+=xr[thread*64+i+32];}
+                        for r:0..<GR_R {
+                            row:=add_wrap(row0,cast(u32)r);
+                            if row<nr {
+                                at:=add_wrap(mul_wrap(row,words),mul_wrap(unit/4,18));lo:f32=0;hi:f32=0;
+                                for wi:0..<4 {
+                                    q:=w[cast(int)add_wrap(add_wrap(at,2),add_wrap(mul_wrap(g,4),cast(u32)wi))];
+                                    for k:0..<8 {byte:=cast,trunc(u32)(q>>cast(u64)(8*k))&255;lo+=f32(byte&15)*xr[thread*64+8*wi+k];hi+=f32(byte>>4)*xr[thread*64+8*wi+k+32];}
+                                }
+                                w0:=w[cast(int)at];w1:=w[cast(int)add_wrap(at,1)];d:=gr_half(cast,trunc(u32)w0&0xffff);dmin:=gr_half(cast,trunc(u32)(w0>>16)&0xffff);
+                                acc[thread*32+r*8+t]+=d*(gr_q4k_scale(w0,w1,2*g,0)*lo+gr_q4k_scale(w0,w1,2*g+1,0)*hi)-dmin*(gr_q4k_scale(w0,w1,2*g,1)*sl+gr_q4k_scale(w0,w1,2*g+1,1)*sh);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        for c:0..<32 {part[thread*32+c]=acc[thread*32+c];}
+    }
+    for thread:0..<GR_T {
+        if thread<GR_R*tokens {
+            r:=thread/tokens;t:=thread%tokens;row:=item*GR_R+r;
+            if row<rows {
+                sum:f32=0;for j:0..<GR_T {sum+=part[j*32+r*8+t];}
+                at:=t*rows+row;if add!=0 {out[at]=out[at]+sum;}else {out[at]=sum;}
+            }
+        }
+    }
+}
+// book:end product
+gr_mv_q6k :: (item:int,rows:int,cols:int,tokens:int,add:int,w:[]u16,x:[]f32,out:[]f32) #export_c {
+    part:[2048]f32;acc:[2048]f32;
+    nr:=cast(u32)rows;nc:=cast(u32)cols;nt:=cast(u32)tokens;units:=nc/64;words:=nc/256*105;row0:=mul_wrap(cast(u32)item,4);
+    for thread:0..<GR_T {
+        for c:0..<32 {acc[thread*32+c]=0;}
+        lane:=cast(u32)thread;
+        for u:cast(u32)0..<(units+63)/64 {
+            unit:=add_wrap(mul_wrap(u,64),lane);
+            if unit<units {
+                for r:0..<GR_R {
+                    row:=add_wrap(row0,cast(u32)r);
+                    if row<nr {
+                        at:=add_wrap(mul_wrap(row,words),mul_wrap(unit/4,105));
+                        for t:0..<GR_B {if cast(u32)t<nt {xb:=add_wrap(mul_wrap(cast(u32)t,nc),mul_wrap(unit,64));acc[thread*32+r*8+t]+=gr_q6k_dot(w,at,unit%4,x,xb);}}
+                    }
+                }
+            }
+        }
+        for c:0..<32 {part[thread*32+c]=acc[thread*32+c];}
+    }
+    for thread:0..<GR_T {
+        if thread<GR_R*tokens {
+            r:=thread/tokens;t:=thread%tokens;row:=item*GR_R+r;
+            if row<rows {
+                sum:f32=0;for j:0..<GR_T {sum+=part[j*32+r*8+t];}
+                at:=t*rows+row;if add!=0 {out[at]=out[at]+sum;}else {out[at]=sum;}
+            }
+        }
+    }
+}
+gr_mv_q8 :: (item:int,rows:int,cols:int,tokens:int,add:int,w:[]u16,x:[]f32,out:[]f32) #export_c {
+    part:[2048]f32;acc:[2048]f32;
+    nr:=cast(u32)rows;nc:=cast(u32)cols;nt:=cast(u32)tokens;units:=nc/64;words:=nc/32*17;row0:=mul_wrap(cast(u32)item,4);
+    for thread:0..<GR_T {
+        for c:0..<32 {acc[thread*32+c]=0;}
+        lane:=cast(u32)thread;
+        for u:cast(u32)0..<(units+63)/64 {
+            unit:=add_wrap(mul_wrap(u,64),lane);
+            if unit<units {
+                for r:0..<GR_R {
+                    row:=add_wrap(row0,cast(u32)r);
+                    if row<nr {
+                        at:=add_wrap(mul_wrap(row,words),mul_wrap(unit,34));
+                        for t:0..<GR_B {if cast(u32)t<nt {xb:=add_wrap(mul_wrap(cast(u32)t,nc),mul_wrap(unit,64));acc[thread*32+r*8+t]+=gr_q8_dot(w,at,x,xb)+gr_q8_dot(w,add_wrap(at,17),x,add_wrap(xb,32));}}
+                    }
+                }
+            }
+        }
+        for c:0..<32 {part[thread*32+c]=acc[thread*32+c];}
+    }
+    for thread:0..<GR_T {
+        if thread<GR_R*tokens {
+            r:=thread/tokens;t:=thread%tokens;row:=item*GR_R+r;
+            if row<rows {
+                sum:f32=0;for j:0..<GR_T {sum+=part[j*32+r*8+t];}
+                at:=t*rows+row;if add!=0 {out[at]=out[at]+sum;}else {out[at]=sum;}
+            }
+        }
+    }
+}
+// ---- Decode products, one token. Group `item` of 64 threads writes rows
+// item*4..item*4+3: simdgroup s = thread/32 takes rows 2s and 2s+1, and its
+// 32 lanes split super-blocks (Q4_K, Q6_K: 8 lanes a block, 32 values
+// each, four blocks at a time) or blocks (Q8_0: a lane a block). A lane
+// keeps its 32 inputs in registers for both rows, adds its blocks in order,
+// and the 32 lane sums of a row add in lane order.
+GR_DR :: 4;          // rows a simdgroup writes
+GR_D :: 2*GR_DR;     // rows a decode group writes
+// Q4_K and Q6_K pieces: 8 lanes a block, 32 values each, four blocks at a
+// time. Q4_K piece p holds group p/2's values 16(p%2)..+16 of both
+// sub-blocks. Q6_K piece p holds half p/4's positions 8(p%4)..+8 of each
+// of its four 32-value parts. gr_dv3 runs three projections of one input
+// (q, k, v) in one launch; gr_dvglu runs gate and up rows on the two
+// simdgroups of a group and writes silu(gate) * up.
+gr_dv_q4k :: (item:int,rows:int,cols:int,add:int,w:[]u64,x:[]f32,out:[]f32) #export_c {
+    part:[256]f32;acc:[256]f32;xr:[2048]f32;
+    nr:=cast(u32)rows;nc:=cast(u32)cols;blocks:=nc/256;words:=blocks*18;row0:=mul_wrap(cast(u32)item,cast(u32)GR_D);
+    for thread:0..<64 {
+        for c:0..<GR_DR {acc[thread*GR_DR+c]=0;}
+        t:=cast(u32)thread;lane:=t%32;simd:=t/32;piece:=lane%8;g:=piece/2;off:=16*(piece%2);
+        for step:cast(u32)0..<(blocks+3)/4 {
+            block:=add_wrap(mul_wrap(step,4),lane/8);
+            if block<blocks {
+                xb:=add_wrap(mul_wrap(block,256),add_wrap(mul_wrap(g,64),off));
+                for i:0..<16 {xr[thread*32+i]=x[cast(int)add_wrap(xb,cast(u32)i)];xr[thread*32+16+i]=x[cast(int)add_wrap(xb,cast(u32)(32+i))];}
+                sl:f32=0;sh:f32=0;for i:0..<16 {sl+=xr[thread*32+i];sh+=xr[thread*32+16+i];}
+                for r:0..<GR_DR {
+                    row:=add_wrap(row0,add_wrap(mul_wrap(simd,cast(u32)GR_DR),cast(u32)r));
+                    if row<nr {
+                        at:=add_wrap(mul_wrap(row,words),mul_wrap(block,18));lo:f32=0;hi:f32=0;
+                        for wi:0..<2 {
+                            q:=w[cast(int)add_wrap(at,add_wrap(2+4*g+off/8,cast(u32)wi))];
+                            for k:0..<8 {byte:=cast,trunc(u32)(q>>cast(u64)(8*k))&255;lo+=f32(byte&15)*xr[thread*32+8*wi+k];hi+=f32(byte>>4)*xr[thread*32+16+8*wi+k];}
+                        }
+                        w0:=w[cast(int)at];w1:=w[cast(int)add_wrap(at,1)];d:=gr_half(cast,trunc(u32)w0&0xffff);dmin:=gr_half(cast,trunc(u32)(w0>>16)&0xffff);
+                        acc[thread*GR_DR+r]+=d*(gr_q4k_scale(w0,w1,2*g,0)*lo+gr_q4k_scale(w0,w1,2*g+1,0)*hi)-dmin*(gr_q4k_scale(w0,w1,2*g,1)*sl+gr_q4k_scale(w0,w1,2*g+1,1)*sh);
+                    }
+                }
+            }
+        }
+        for c:0..<GR_DR {part[thread*GR_DR+c]=acc[thread*GR_DR+c];}
+    }
+    for thread:0..<64 {
+        if thread<GR_D {
+            row:=item*GR_D+thread;simd:=thread/GR_DR;r:=thread%GR_DR;
+            if row<rows {sum:f32=0;for j:0..<32 {sum+=part[(simd*32+j)*GR_DR+r];}if add!=0 {out[row]=out[row]+sum;}else {out[row]=sum;}}
+        }
+    }
+}
+gr_dv3_q4k :: (item:int,rows_a:int,rows_b:int,rows_c:int,cols:int,wa:[]u64,wb:[]u64,wc:[]u64,x:[]f32,oa:[]f32,ob:[]f32,oc:[]f32) #export_c {
+    part:[256]f32;acc:[256]f32;xr:[2048]f32;
+    ga:=(rows_a+GR_D-1)/GR_D;gb:=(rows_b+GR_D-1)/GR_D;sel:=ifx item<ga then 0 else ifx item<ga+gb then 1 else 2;
+    local:=item-(ifx sel==0 then 0 else ifx sel==1 then ga else ga+gb);rows:=ifx sel==0 then rows_a else ifx sel==1 then rows_b else rows_c;
+    w:=ifx sel==0 then wa else ifx sel==1 then wb else wc;out:=ifx sel==0 then oa else ifx sel==1 then ob else oc;
+    nr:=cast(u32)rows;nc:=cast(u32)cols;blocks:=nc/256;words:=blocks*18;row0:=mul_wrap(cast(u32)local,cast(u32)GR_D);
+    for thread:0..<64 {
+        for c:0..<GR_DR {acc[thread*GR_DR+c]=0;}
+        t:=cast(u32)thread;lane:=t%32;simd:=t/32;piece:=lane%8;g:=piece/2;off:=16*(piece%2);
+        for step:cast(u32)0..<(blocks+3)/4 {
+            block:=add_wrap(mul_wrap(step,4),lane/8);
+            if block<blocks {
+                xb:=add_wrap(mul_wrap(block,256),add_wrap(mul_wrap(g,64),off));
+                for i:0..<16 {xr[thread*32+i]=x[cast(int)add_wrap(xb,cast(u32)i)];xr[thread*32+16+i]=x[cast(int)add_wrap(xb,cast(u32)(32+i))];}
+                sl:f32=0;sh:f32=0;for i:0..<16 {sl+=xr[thread*32+i];sh+=xr[thread*32+16+i];}
+                for r:0..<GR_DR {
+                    row:=add_wrap(row0,add_wrap(mul_wrap(simd,cast(u32)GR_DR),cast(u32)r));
+                    if row<nr {
+                        at:=add_wrap(mul_wrap(row,words),mul_wrap(block,18));lo:f32=0;hi:f32=0;
+                        for wi:0..<2 {
+                            q:=w[cast(int)add_wrap(at,add_wrap(2+4*g+off/8,cast(u32)wi))];
+                            for k:0..<8 {byte:=cast,trunc(u32)(q>>cast(u64)(8*k))&255;lo+=f32(byte&15)*xr[thread*32+8*wi+k];hi+=f32(byte>>4)*xr[thread*32+16+8*wi+k];}
+                        }
+                        w0:=w[cast(int)at];w1:=w[cast(int)add_wrap(at,1)];d:=gr_half(cast,trunc(u32)w0&0xffff);dmin:=gr_half(cast,trunc(u32)(w0>>16)&0xffff);
+                        acc[thread*GR_DR+r]+=d*(gr_q4k_scale(w0,w1,2*g,0)*lo+gr_q4k_scale(w0,w1,2*g+1,0)*hi)-dmin*(gr_q4k_scale(w0,w1,2*g,1)*sl+gr_q4k_scale(w0,w1,2*g+1,1)*sh);
+                    }
+                }
+            }
+        }
+        for c:0..<GR_DR {part[thread*GR_DR+c]=acc[thread*GR_DR+c];}
+    }
+    for thread:0..<64 {
+        if thread<GR_D {
+            row:=local*GR_D+thread;simd:=thread/GR_DR;r:=thread%GR_DR;
+            if row<rows {sum:f32=0;for j:0..<32 {sum+=part[(simd*32+j)*GR_DR+r];}out[row]=sum;}
+        }
+    }
+}
+gr_dvglu_q4k :: (item:int,rows:int,cols:int,wg:[]u64,wu:[]u64,x:[]f32,out:[]f32) #export_c {
+    part:[256]f32;acc:[256]f32;xr:[2048]f32;
+    nr:=cast(u32)rows;nc:=cast(u32)cols;blocks:=nc/256;words:=blocks*18;row0:=mul_wrap(cast(u32)item,cast(u32)GR_DR);
+    for thread:0..<64 {
+        for c:0..<GR_DR {acc[thread*GR_DR+c]=0;}
+        t:=cast(u32)thread;lane:=t%32;simd:=t/32;piece:=lane%8;g:=piece/2;off:=16*(piece%2);w:=ifx simd==0 then wg else wu;
+        for step:cast(u32)0..<(blocks+3)/4 {
+            block:=add_wrap(mul_wrap(step,4),lane/8);
+            if block<blocks {
+                xb:=add_wrap(mul_wrap(block,256),add_wrap(mul_wrap(g,64),off));
+                for i:0..<16 {xr[thread*32+i]=x[cast(int)add_wrap(xb,cast(u32)i)];xr[thread*32+16+i]=x[cast(int)add_wrap(xb,cast(u32)(32+i))];}
+                sl:f32=0;sh:f32=0;for i:0..<16 {sl+=xr[thread*32+i];sh+=xr[thread*32+16+i];}
+                for r:0..<GR_DR {
+                    row:=add_wrap(row0,cast(u32)r);
+                    if row<nr {
+                        at:=add_wrap(mul_wrap(row,words),mul_wrap(block,18));lo:f32=0;hi:f32=0;
+                        for wi:0..<2 {
+                            q:=w[cast(int)add_wrap(at,add_wrap(2+4*g+off/8,cast(u32)wi))];
+                            for k:0..<8 {byte:=cast,trunc(u32)(q>>cast(u64)(8*k))&255;lo+=f32(byte&15)*xr[thread*32+8*wi+k];hi+=f32(byte>>4)*xr[thread*32+16+8*wi+k];}
+                        }
+                        w0:=w[cast(int)at];w1:=w[cast(int)add_wrap(at,1)];d:=gr_half(cast,trunc(u32)w0&0xffff);dmin:=gr_half(cast,trunc(u32)(w0>>16)&0xffff);
+                        acc[thread*GR_DR+r]+=d*(gr_q4k_scale(w0,w1,2*g,0)*lo+gr_q4k_scale(w0,w1,2*g+1,0)*hi)-dmin*(gr_q4k_scale(w0,w1,2*g,1)*sl+gr_q4k_scale(w0,w1,2*g+1,1)*sh);
+                    }
+                }
+            }
+        }
+        for c:0..<GR_DR {part[thread*GR_DR+c]=acc[thread*GR_DR+c];}
+    }
+    for thread:0..<64 {
+        if thread<GR_DR {
+            row:=item*GR_DR+thread;
+            if row<rows {
+                g:f32=0;u:f32=0;for j:0..<32 {g+=part[j*GR_DR+thread];u+=part[(32+j)*GR_DR+thread];}
+                out[row]=gr_silu(g)*u;
+            }
+        }
+    }
+}
+gr_dv_q6k :: (item:int,rows:int,cols:int,add:int,w:[]u16,x:[]f32,out:[]f32) #export_c {
+    part:[256]f32;acc:[256]f32;xr:[2048]f32;
+    nr:=cast(u32)rows;nc:=cast(u32)cols;blocks:=nc/256;words:=blocks*105;row0:=mul_wrap(cast(u32)item,cast(u32)GR_D);
+    for thread:0..<64 {
+        for c:0..<GR_DR {acc[thread*GR_DR+c]=0;}
+        t:=cast(u32)thread;lane:=t%32;simd:=t/32;piece:=lane%8;n:=piece/4;l0:=8*(piece%4);
+        for step:cast(u32)0..<(blocks+3)/4 {
+            block:=add_wrap(mul_wrap(step,4),lane/8);
+            if block<blocks {
+                xb:=add_wrap(mul_wrap(block,256),add_wrap(mul_wrap(n,128),l0));
+                for j:0..<4 {for i:0..<8 {xr[thread*32+8*j+i]=x[cast(int)add_wrap(xb,cast(u32)(32*j+i))];}}
+                for r:0..<GR_DR {
+                    row:=add_wrap(row0,add_wrap(mul_wrap(simd,cast(u32)GR_DR),cast(u32)r));
+                    if row<nr {
+                        at:=add_wrap(mul_wrap(row,words),mul_wrap(block,105));
+                        s0:f32=0;s1:f32=0;s2:f32=0;s3:f32=0;
+                        for k2:0..<4 {
+                            a:=cast(u32)w[cast(int)add_wrap(at,32*n+l0/2+cast(u32)k2)];b:=cast(u32)w[cast(int)add_wrap(at,32*n+16+l0/2+cast(u32)k2)];hb:=cast(u32)w[cast(int)add_wrap(at,64+16*n+l0/2+cast(u32)k2)];
+                            for e:0..<2 {
+                                sh:=8*cast(u32)e;la:=(a>>sh)&255;lb:=(b>>sh)&255;hh:=(hb>>sh)&255;
+                                s0+=(f32((la&15)|((hh&3)<<4))-32)*xr[thread*32+2*k2+e];
+                                s1+=(f32((lb&15)|(((hh>>2)&3)<<4))-32)*xr[thread*32+8+2*k2+e];
+                                s2+=(f32((la>>4)|(((hh>>4)&3)<<4))-32)*xr[thread*32+16+2*k2+e];
+                                s3+=(f32((lb>>4)|(((hh>>6)&3)<<4))-32)*xr[thread*32+24+2*k2+e];
+                            }
+                        }
+                        // The scale of part j at these positions is byte 192 + 8n + 2j + l0/16.
+                        sw:=add_wrap(at,96+4*n);hs:=8*((l0/16)%2);
+                        c0:=cast(u32)w[cast(int)add_wrap(sw,l0/32)];c1:=cast(u32)w[cast(int)add_wrap(sw,1+l0/32)];c2:=cast(u32)w[cast(int)add_wrap(sw,2+l0/32)];c3:=cast(u32)w[cast(int)add_wrap(sw,3+l0/32)];
+                        total:=gr_signed((c0>>hs)&255)*s0+gr_signed((c1>>hs)&255)*s1+gr_signed((c2>>hs)&255)*s2+gr_signed((c3>>hs)&255)*s3;
+                        acc[thread*GR_DR+r]+=gr_half(cast(u32)w[cast(int)add_wrap(at,104)])*total;
+                    }
+                }
+            }
+        }
+        for c:0..<GR_DR {part[thread*GR_DR+c]=acc[thread*GR_DR+c];}
+    }
+    for thread:0..<64 {
+        if thread<GR_D {
+            row:=item*GR_D+thread;simd:=thread/GR_DR;r:=thread%GR_DR;
+            if row<rows {sum:f32=0;for j:0..<32 {sum+=part[(simd*32+j)*GR_DR+r];}if add!=0 {out[row]=out[row]+sum;}else {out[row]=sum;}}
+        }
+    }
+}
+gr_dv3_q6k :: (item:int,rows_a:int,rows_b:int,rows_c:int,cols:int,wa:[]u16,wb:[]u16,wc:[]u16,x:[]f32,oa:[]f32,ob:[]f32,oc:[]f32) #export_c {
+    part:[256]f32;acc:[256]f32;xr:[2048]f32;
+    ga:=(rows_a+GR_D-1)/GR_D;gb:=(rows_b+GR_D-1)/GR_D;sel:=ifx item<ga then 0 else ifx item<ga+gb then 1 else 2;
+    local:=item-(ifx sel==0 then 0 else ifx sel==1 then ga else ga+gb);rows:=ifx sel==0 then rows_a else ifx sel==1 then rows_b else rows_c;
+    w:=ifx sel==0 then wa else ifx sel==1 then wb else wc;out:=ifx sel==0 then oa else ifx sel==1 then ob else oc;
+    nr:=cast(u32)rows;nc:=cast(u32)cols;blocks:=nc/256;words:=blocks*105;row0:=mul_wrap(cast(u32)local,cast(u32)GR_D);
+    for thread:0..<64 {
+        for c:0..<GR_DR {acc[thread*GR_DR+c]=0;}
+        t:=cast(u32)thread;lane:=t%32;simd:=t/32;piece:=lane%8;n:=piece/4;l0:=8*(piece%4);
+        for step:cast(u32)0..<(blocks+3)/4 {
+            block:=add_wrap(mul_wrap(step,4),lane/8);
+            if block<blocks {
+                xb:=add_wrap(mul_wrap(block,256),add_wrap(mul_wrap(n,128),l0));
+                for j:0..<4 {for i:0..<8 {xr[thread*32+8*j+i]=x[cast(int)add_wrap(xb,cast(u32)(32*j+i))];}}
+                for r:0..<GR_DR {
+                    row:=add_wrap(row0,add_wrap(mul_wrap(simd,cast(u32)GR_DR),cast(u32)r));
+                    if row<nr {
+                        at:=add_wrap(mul_wrap(row,words),mul_wrap(block,105));
+                        s0:f32=0;s1:f32=0;s2:f32=0;s3:f32=0;
+                        for k2:0..<4 {
+                            a:=cast(u32)w[cast(int)add_wrap(at,32*n+l0/2+cast(u32)k2)];b:=cast(u32)w[cast(int)add_wrap(at,32*n+16+l0/2+cast(u32)k2)];hb:=cast(u32)w[cast(int)add_wrap(at,64+16*n+l0/2+cast(u32)k2)];
+                            for e:0..<2 {
+                                sh:=8*cast(u32)e;la:=(a>>sh)&255;lb:=(b>>sh)&255;hh:=(hb>>sh)&255;
+                                s0+=(f32((la&15)|((hh&3)<<4))-32)*xr[thread*32+2*k2+e];
+                                s1+=(f32((lb&15)|(((hh>>2)&3)<<4))-32)*xr[thread*32+8+2*k2+e];
+                                s2+=(f32((la>>4)|(((hh>>4)&3)<<4))-32)*xr[thread*32+16+2*k2+e];
+                                s3+=(f32((lb>>4)|(((hh>>6)&3)<<4))-32)*xr[thread*32+24+2*k2+e];
+                            }
+                        }
+                        // The scale of part j at these positions is byte 192 + 8n + 2j + l0/16.
+                        sw:=add_wrap(at,96+4*n);hs:=8*((l0/16)%2);
+                        c0:=cast(u32)w[cast(int)add_wrap(sw,l0/32)];c1:=cast(u32)w[cast(int)add_wrap(sw,1+l0/32)];c2:=cast(u32)w[cast(int)add_wrap(sw,2+l0/32)];c3:=cast(u32)w[cast(int)add_wrap(sw,3+l0/32)];
+                        total:=gr_signed((c0>>hs)&255)*s0+gr_signed((c1>>hs)&255)*s1+gr_signed((c2>>hs)&255)*s2+gr_signed((c3>>hs)&255)*s3;
+                        acc[thread*GR_DR+r]+=gr_half(cast(u32)w[cast(int)add_wrap(at,104)])*total;
+                    }
+                }
+            }
+        }
+        for c:0..<GR_DR {part[thread*GR_DR+c]=acc[thread*GR_DR+c];}
+    }
+    for thread:0..<64 {
+        if thread<GR_D {
+            row:=local*GR_D+thread;simd:=thread/GR_DR;r:=thread%GR_DR;
+            if row<rows {sum:f32=0;for j:0..<32 {sum+=part[(simd*32+j)*GR_DR+r];}out[row]=sum;}
+        }
+    }
+}
+gr_dvglu_q6k :: (item:int,rows:int,cols:int,wg:[]u16,wu:[]u16,x:[]f32,out:[]f32) #export_c {
+    part:[256]f32;acc:[256]f32;xr:[2048]f32;
+    nr:=cast(u32)rows;nc:=cast(u32)cols;blocks:=nc/256;words:=blocks*105;row0:=mul_wrap(cast(u32)item,cast(u32)GR_DR);
+    for thread:0..<64 {
+        for c:0..<GR_DR {acc[thread*GR_DR+c]=0;}
+        t:=cast(u32)thread;lane:=t%32;simd:=t/32;piece:=lane%8;n:=piece/4;l0:=8*(piece%4);w:=ifx simd==0 then wg else wu;
+        for step:cast(u32)0..<(blocks+3)/4 {
+            block:=add_wrap(mul_wrap(step,4),lane/8);
+            if block<blocks {
+                xb:=add_wrap(mul_wrap(block,256),add_wrap(mul_wrap(n,128),l0));
+                for j:0..<4 {for i:0..<8 {xr[thread*32+8*j+i]=x[cast(int)add_wrap(xb,cast(u32)(32*j+i))];}}
+                for r:0..<GR_DR {
+                    row:=add_wrap(row0,cast(u32)r);
+                    if row<nr {
+                        at:=add_wrap(mul_wrap(row,words),mul_wrap(block,105));
+                        s0:f32=0;s1:f32=0;s2:f32=0;s3:f32=0;
+                        for k2:0..<4 {
+                            a:=cast(u32)w[cast(int)add_wrap(at,32*n+l0/2+cast(u32)k2)];b:=cast(u32)w[cast(int)add_wrap(at,32*n+16+l0/2+cast(u32)k2)];hb:=cast(u32)w[cast(int)add_wrap(at,64+16*n+l0/2+cast(u32)k2)];
+                            for e:0..<2 {
+                                sh:=8*cast(u32)e;la:=(a>>sh)&255;lb:=(b>>sh)&255;hh:=(hb>>sh)&255;
+                                s0+=(f32((la&15)|((hh&3)<<4))-32)*xr[thread*32+2*k2+e];
+                                s1+=(f32((lb&15)|(((hh>>2)&3)<<4))-32)*xr[thread*32+8+2*k2+e];
+                                s2+=(f32((la>>4)|(((hh>>4)&3)<<4))-32)*xr[thread*32+16+2*k2+e];
+                                s3+=(f32((lb>>4)|(((hh>>6)&3)<<4))-32)*xr[thread*32+24+2*k2+e];
+                            }
+                        }
+                        // The scale of part j at these positions is byte 192 + 8n + 2j + l0/16.
+                        sw:=add_wrap(at,96+4*n);hs:=8*((l0/16)%2);
+                        c0:=cast(u32)w[cast(int)add_wrap(sw,l0/32)];c1:=cast(u32)w[cast(int)add_wrap(sw,1+l0/32)];c2:=cast(u32)w[cast(int)add_wrap(sw,2+l0/32)];c3:=cast(u32)w[cast(int)add_wrap(sw,3+l0/32)];
+                        total:=gr_signed((c0>>hs)&255)*s0+gr_signed((c1>>hs)&255)*s1+gr_signed((c2>>hs)&255)*s2+gr_signed((c3>>hs)&255)*s3;
+                        acc[thread*GR_DR+r]+=gr_half(cast(u32)w[cast(int)add_wrap(at,104)])*total;
+                    }
+                }
+            }
+        }
+        for c:0..<GR_DR {part[thread*GR_DR+c]=acc[thread*GR_DR+c];}
+    }
+    for thread:0..<64 {
+        if thread<GR_DR {
+            row:=item*GR_DR+thread;
+            if row<rows {
+                g:f32=0;u:f32=0;for j:0..<32 {g+=part[j*GR_DR+thread];u+=part[(32+j)*GR_DR+thread];}
+                out[row]=gr_silu(g)*u;
+            }
+        }
+    }
+}
+gr_dv_q8 :: (item:int,rows:int,cols:int,add:int,w:[]u16,x:[]f32,out:[]f32) #export_c {
+    part:[256]f32;acc:[256]f32;xr:[2048]f32;
+    nr:=cast(u32)rows;nc:=cast(u32)cols;blocks:=nc/32;words:=blocks*17;row0:=mul_wrap(cast(u32)item,cast(u32)GR_D);
+    for thread:0..<64 {
+        for c:0..<GR_DR {acc[thread*GR_DR+c]=0;}
+        t:=cast(u32)thread;lane:=t%32;simd:=t/32;
+        for step:cast(u32)0..<(blocks+31)/32 {
+            block:=add_wrap(mul_wrap(step,32),lane);
+            if block<blocks {
+                xb:=mul_wrap(block,32);
+                for i:0..<32 {xr[thread*32+i]=x[cast(int)add_wrap(xb,cast(u32)i)];}
+                for r:0..<GR_DR {
+                    row:=add_wrap(row0,add_wrap(mul_wrap(simd,cast(u32)GR_DR),cast(u32)r));
+                    if row<nr {
+                        at:=add_wrap(mul_wrap(row,words),mul_wrap(block,17));sum:f32=0;
+                        for k:0..<16 {v:=cast(u32)w[cast(int)add_wrap(at,cast(u32)(1+k))];sum+=gr_signed(v&255)*xr[thread*32+2*k];sum+=gr_signed(v>>8)*xr[thread*32+2*k+1];}
+                        acc[thread*GR_DR+r]+=gr_half(cast(u32)w[cast(int)at])*sum;
+                    }
+                }
+            }
+        }
+        for c:0..<GR_DR {part[thread*GR_DR+c]=acc[thread*GR_DR+c];}
+    }
+    for thread:0..<64 {
+        if thread<GR_D {
+            row:=item*GR_D+thread;simd:=thread/GR_DR;r:=thread%GR_DR;
+            if row<rows {sum:f32=0;for j:0..<32 {sum+=part[(simd*32+j)*GR_DR+r];}if add!=0 {out[row]=out[row]+sum;}else {out[row]=sum;}}
+        }
+    }
+}
+gr_dv3_q8 :: (item:int,rows_a:int,rows_b:int,rows_c:int,cols:int,wa:[]u16,wb:[]u16,wc:[]u16,x:[]f32,oa:[]f32,ob:[]f32,oc:[]f32) #export_c {
+    part:[256]f32;acc:[256]f32;xr:[2048]f32;
+    ga:=(rows_a+GR_D-1)/GR_D;gb:=(rows_b+GR_D-1)/GR_D;sel:=ifx item<ga then 0 else ifx item<ga+gb then 1 else 2;
+    local:=item-(ifx sel==0 then 0 else ifx sel==1 then ga else ga+gb);rows:=ifx sel==0 then rows_a else ifx sel==1 then rows_b else rows_c;
+    w:=ifx sel==0 then wa else ifx sel==1 then wb else wc;out:=ifx sel==0 then oa else ifx sel==1 then ob else oc;
+    nr:=cast(u32)rows;nc:=cast(u32)cols;blocks:=nc/32;words:=blocks*17;row0:=mul_wrap(cast(u32)local,cast(u32)GR_D);
+    for thread:0..<64 {
+        for c:0..<GR_DR {acc[thread*GR_DR+c]=0;}
+        t:=cast(u32)thread;lane:=t%32;simd:=t/32;
+        for step:cast(u32)0..<(blocks+31)/32 {
+            block:=add_wrap(mul_wrap(step,32),lane);
+            if block<blocks {
+                xb:=mul_wrap(block,32);
+                for i:0..<32 {xr[thread*32+i]=x[cast(int)add_wrap(xb,cast(u32)i)];}
+                for r:0..<GR_DR {
+                    row:=add_wrap(row0,add_wrap(mul_wrap(simd,cast(u32)GR_DR),cast(u32)r));
+                    if row<nr {
+                        at:=add_wrap(mul_wrap(row,words),mul_wrap(block,17));sum:f32=0;
+                        for k:0..<16 {v:=cast(u32)w[cast(int)add_wrap(at,cast(u32)(1+k))];sum+=gr_signed(v&255)*xr[thread*32+2*k];sum+=gr_signed(v>>8)*xr[thread*32+2*k+1];}
+                        acc[thread*GR_DR+r]+=gr_half(cast(u32)w[cast(int)at])*sum;
+                    }
+                }
+            }
+        }
+        for c:0..<GR_DR {part[thread*GR_DR+c]=acc[thread*GR_DR+c];}
+    }
+    for thread:0..<64 {
+        if thread<GR_D {
+            row:=local*GR_D+thread;simd:=thread/GR_DR;r:=thread%GR_DR;
+            if row<rows {sum:f32=0;for j:0..<32 {sum+=part[(simd*32+j)*GR_DR+r];}out[row]=sum;}
+        }
+    }
+}
+gr_dvglu_q8 :: (item:int,rows:int,cols:int,wg:[]u16,wu:[]u16,x:[]f32,out:[]f32) #export_c {
+    part:[256]f32;acc:[256]f32;xr:[2048]f32;
+    nr:=cast(u32)rows;nc:=cast(u32)cols;blocks:=nc/32;words:=blocks*17;row0:=mul_wrap(cast(u32)item,cast(u32)GR_DR);
+    for thread:0..<64 {
+        for c:0..<GR_DR {acc[thread*GR_DR+c]=0;}
+        t:=cast(u32)thread;lane:=t%32;simd:=t/32;w:=ifx simd==0 then wg else wu;
+        for step:cast(u32)0..<(blocks+31)/32 {
+            block:=add_wrap(mul_wrap(step,32),lane);
+            if block<blocks {
+                xb:=mul_wrap(block,32);
+                for i:0..<32 {xr[thread*32+i]=x[cast(int)add_wrap(xb,cast(u32)i)];}
+                for r:0..<GR_DR {
+                    row:=add_wrap(row0,cast(u32)r);
+                    if row<nr {
+                        at:=add_wrap(mul_wrap(row,words),mul_wrap(block,17));sum:f32=0;
+                        for k:0..<16 {v:=cast(u32)w[cast(int)add_wrap(at,cast(u32)(1+k))];sum+=gr_signed(v&255)*xr[thread*32+2*k];sum+=gr_signed(v>>8)*xr[thread*32+2*k+1];}
+                        acc[thread*GR_DR+r]+=gr_half(cast(u32)w[cast(int)at])*sum;
+                    }
+                }
+            }
+        }
+        for c:0..<GR_DR {part[thread*GR_DR+c]=acc[thread*GR_DR+c];}
+    }
+    for thread:0..<64 {
+        if thread<GR_DR {
+            row:=item*GR_DR+thread;
+            if row<rows {
+                g:f32=0;u:f32=0;for j:0..<32 {g+=part[j*GR_DR+thread];u+=part[(32+j)*GR_DR+thread];}
+                out[row]=gr_silu(g)*u;
+            }
+        }
+    }
+}
+
+// ---- Embedding rows: item t*cols+i is value i of token ids[t]'s row.
+gr_embed_q4k :: (item:int,cols:int,ids:[]int,w:[]u64,out:[]f32) #export_c {
+    t:=item/cols;i:=item%cols;row:=ids[t];words:=cols/256*18;b:=w[row*words+i/256*18..<row*words+i/256*18+18];
+    out[item]=gr_q4k_value(b,cast(u32)(i%256));
+}
+gr_embed_q6k :: (item:int,cols:int,ids:[]int,w:[]u16,out:[]f32) #export_c {
+    t:=item/cols;i:=item%cols;row:=ids[t];words:=cols/256*105;b:=w[row*words+i/256*105..<row*words+i/256*105+105];
+    out[item]=gr_q6k_value(b,cast(u32)(i%256));
+}
+gr_embed_q8 :: (item:int,cols:int,ids:[]int,w:[]u16,out:[]f32) #export_c {
+    t:=item/cols;i:=item%cols;row:=ids[t];words:=cols/32*17;b:=w[row*words+i/32*17..<row*words+i/32*17+17];
+    out[item]=gr_q8_value(b,cast(u32)(i%32));
+}
+
+// ---- RMS norm: group t scales token t's row of x. The sum of squares
+// adds in thread-strided order, then the 256 partial sums in thread order.
+gr_norm :: (item:int,cols:int,eps_bits:int,x:[]f32,scale:[]f32,out:[]f32) #export_c {
+    part:[256]f32;
+    row:=x[item*cols..<item*cols+cols];
+    for thread:0..<GR_NT {
+        sum:f32=0;for k:0..<(cols+GR_NT-1)/GR_NT {i:=k*GR_NT+thread;if i<cols {v:=row[i];sum+=v*v;}}
+        part[thread]=sum;
+    }
+    total:f32=0;for j:0..<GR_NT {total+=part[j];}
+    inverse:=1/sqrt(total/f32(cols)+f32_from_bits(cast(u32)eps_bits));
+    for thread:0..<GR_NT {
+        for k:0..<(cols+GR_NT-1)/GR_NT {i:=k*GR_NT+thread;if i<cols {out[item*cols+i]=row[i]*inverse*scale[i];}}
+    }
+}
+
+// ---- Rotary embedding on adjacent pairs (GGUF's order for this model):
+// item (t, head, pair) over query heads then key heads. rope holds cos,
+// sin for each position and pair.
+gr_rope :: (item:int,heads:int,kv_heads:int,position:int,rope:[]f32,q:[]f32,k:[]f32) #export_c {
+    per:=(heads+kv_heads)*64;t:=item/per;rest:=item%per;head:=rest/64;pair:=rest%64;
+    at:=(position+t)*128+2*pair;c:=rope[at];s:=rope[at+1];
+    if head<heads {
+        i:=(t*heads+head)*GR_HEAD+2*pair;a:=q[i];b:=q[i+1];q[i]=a*c-b*s;q[i+1]=a*s+b*c;
+    }else {
+        i:=(t*kv_heads+head-heads)*GR_HEAD+2*pair;a:=k[i];b:=k[i+1];k[i]=a*c-b*s;k[i+1]=a*s+b*c;
+    }
+}
+// ---- The cache. Page p of a layer holds keys then values of 256
+// positions for every key head: [K or V][kv_head][position % 256][128].
+gr_cache_at :: (pages:[]int,layer_pages:int,kv_heads:int,position:int,head:int,value:int)->int {
+    page:=pages[layer_pages+position/GR_PAGE];
+    return ((page*2+value)*kv_heads+head)*GR_PAGE*GR_HEAD+position%GR_PAGE*GR_HEAD;
+}
+// item (t, kv head, i): store token t's key and value at position + t.
+gr_store :: (item:int,kv_heads:int,position:int,layer_pages:int,pages:[]int,k:[]f32,v:[]f32,cache:[]u16) #export_c {
+    per:=kv_heads*GR_HEAD;t:=item/per;head:=item%per/GR_HEAD;i:=item%GR_HEAD;
+    kat:=gr_cache_at(pages,layer_pages,kv_heads,position+t,head,0)+i;vat:=gr_cache_at(pages,layer_pages,kv_heads,position+t,head,1)+i;
+    cache[kat]=cast,trunc(u16)gr_f16(k[item]);cache[vat]=cast,trunc(u16)gr_f16(v[item]);
+}
+// item (t, head, key): token t at position + t sees keys 0..position+t.
+gr_scores :: (item:int,heads:int,kv_heads:int,position:int,span:int,capacity:int,scale_bits:int,layer_pages:int,pages:[]int,q:[]f32,cache:[]u16,scores:[]f32) #export_c {
+    key:=item%span;th:=item/span;t:=th/heads;head:=th%heads;
+    s:f32=GR_HIDDEN;
+    if key<=position+t {
+        kh:=head/(heads/kv_heads);base:=gr_cache_at(pages,layer_pages,kv_heads,key,kh,0);row:=cache[base..<base+GR_HEAD];qr:=q[th*GR_HEAD..<th*GR_HEAD+GR_HEAD];
+        dot:f32=0;for d:0..<GR_HEAD {dot+=qr[d]*gr_half(cast(u32)row[d]);}
+        s=dot*f32_from_bits(cast(u32)scale_bits);
+    }
+    scores[th*capacity+key]=s;
+}
+// Group (t, head): scores become probabilities over the span.
+gr_softmax :: (item:int,span:int,capacity:int,scores:[]f32) #export_c {
+    part:[256]f32;sums:[256]f32;
+    row:=scores[item*capacity..<item*capacity+span];
+    for thread:0..<GR_NT {m:f32=GR_HIDDEN;for k:0..<(span+GR_NT-1)/GR_NT {i:=k*GR_NT+thread;if i<span {if row[i]>m {m=row[i];}}}part[thread]=m;}
+    top:f32=GR_HIDDEN;for j:0..<GR_NT {if part[j]>top {top=part[j];}}
+    for thread:0..<GR_NT {sum:f32=0;for k:0..<(span+GR_NT-1)/GR_NT {i:=k*GR_NT+thread;if i<span {sum+=exp(row[i]-top);}}sums[thread]=sum;}
+    total:f32=0;for j:0..<GR_NT {total+=sums[j];}
+    for thread:0..<GR_NT {for k:0..<(span+GR_NT-1)/GR_NT {i:=k*GR_NT+thread;if i<span {row[i]=exp(row[i]-top)/total;}}}
+}
+// item ((t, head, chunk), d): probabilities of 128 keys times their values.
+gr_context_part :: (item:int,heads:int,kv_heads:int,span:int,capacity:int,chunks:int,layer_pages:int,pages:[]int,scores:[]f32,cache:[]u16,partial:[]f32) #export_c {
+    d:=item%GR_HEAD;rest:=item/GR_HEAD;chunk:=rest%chunks;th:=rest/chunks;head:=th%heads;kh:=head/(heads/kv_heads);
+    sum:f32=0;first:=chunk*GR_CHUNK;
+    for j:0..<GR_CHUNK {key:=first+j;if key<span {sum+=scores[th*capacity+key]*gr_half(cast(u32)cache[gr_cache_at(pages,layer_pages,kv_heads,key,kh,1)+d]);}}
+    partial[item]=sum;
+}
+gr_context :: (item:int,chunks:int,partial:[]f32,out:[]f32) #export_c {
+    d:=item%GR_HEAD;th:=item/GR_HEAD;sum:f32=0;for c:0..<chunks {sum+=partial[(th*chunks+c)*GR_HEAD+d];}out[item]=sum;
+}
+gr_swiglu :: (item:int,gate:[]f32,up:[]f32,out:[]f32) #export_c {out[item]=gr_silu(gate[item])*up[item];}
+// ---- Greedy choice: the first largest logit; a non-finite logit refuses.
+gr_argmax_part :: (item:int,logits:[]f32,best:[]f32,index:[]int) #export_c {
+    m:f32=GR_HIDDEN;at:=-1;bad:=0;
+    for j:0..<256 {i:=item*256+j;if i<logits.count {v:=logits[i];if (f32_bits(v)&0x7f800000)==0x7f800000 {bad=1;}if v>m {m=v;at=i;}}}
+    best[item]=m;index[item]=ifx bad!=0 then -2 else at;
+}
+gr_argmax :: (item:int,parts:int,best:[]f32,index:[]int,control:[]int) #export_c {
+    m:f32=GR_HIDDEN;at:=-1;bad:=0;
+    for j:0..<parts {if index[j]== -2 {bad=1;}if index[j]>=0 && best[j]>m {m=best[j];at=index[j];}}
+    control[0]=ifx bad!=0 then -2 else at;
+}
+

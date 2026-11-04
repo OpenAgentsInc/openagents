@@ -1,0 +1,28 @@
+// The host side of the Granite decoder: the binding, the tokenizer and the
+// chat renderer (chat.coax loads them), and the rotary table. Compiled with
+// `coax c --library` next to psionic/lib/granite/kernels.coax, which runs
+// on the GPU and, compiled to C, as the CPU repeat.
+#load "chat.coax";
+#load "kernels.coax";
+#authority;
+
+// book:begin rope
+// cos and sin of position p times base^(-2i/128) for each pair i, in
+// binary64 and rounded once: out[p*128+2i] and out[p*128+2i+1].
+gr_rope_table :: (base:f32,positions:int,out:[]f32)->bool #export_c {
+    if positions<1 || out.count<positions*GR_HEAD || !(base>1) {return false;}
+    for i:0..<64 {
+        rate:=pow(f64(base),-f64(2*i)/f64(GR_HEAD));
+        for p:0..<positions {theta:=f64(p)*rate;out[p*GR_HEAD+2*i]=f32(cos(theta));out[p*GR_HEAD+2*i+1]=f32(sin(theta));}
+    }
+    return true;
+}
+// book:end rope
+#test "the rotary table: position 0 is the identity, pair 0 turns one radian a position" {
+    t:[512]f32;#assert gr_rope_table(10000000,4,t[..]);
+    for i:0..<64 {#assert t[2*i]==1 && t[2*i+1]==0;}
+    #assert t[128]==f32(cos(1.0)) && t[129]==f32(sin(1.0)) && t[3*128+1]==f32(sin(3.0));
+    #assert t[128+2*63]==f32(cos(pow(10000000.0,-126.0/128))) && t[128+2*63+1]==f32(sin(pow(10000000.0,-126.0/128)));
+    #assert t[2*128+2*32]==f32(cos(2*pow(10000000.0,-64.0/128)));
+    #assert !gr_rope_table(10000000,5,t[..]) && !gr_rope_table(10000000,0,t[..]) && !gr_rope_table(1,4,t[..]) && gr_rope_table(2,4,t[..]);
+}

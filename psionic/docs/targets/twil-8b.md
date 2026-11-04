@@ -143,6 +143,17 @@ Without them the gate runs only the owned tiny model.
   `tokenizers` 0.22.1 and `transformers` 5.15.1 token for token, and the
   GGUF vocabulary, merges and added tokens equal `tokenizer.json`.
   llama.cpp b10330 tokenizes all 48 texts the same way.
+- **Step 4 landed.** `psionic/lib/granite/kernels.coax` holds the Metal
+  kernels: Q4_K, Q6_K and Q8_0 products (batched for prefill; fused q/k/v
+  and gate/up for decode), RMSNorm, RoPE, and GQA attention over a paged
+  f16 KV cache. `psionic/platform/granite-metal.c` records the launches
+  and runs them on Metal or, as the reference, on the CPU. Both files
+  answer "The capital of France is Paris."
+- **Step 5 landed, with a speed gap.** Against llama.cpp b10330, token IDs,
+  every layer, the full logits and a 16-token greedy continuation agree
+  (worst relative RMS 6.4e-4). Decode runs at 0.5–0.7x llama.cpp's speed,
+  and prefill is much slower. See
+  `docs/verification/granite-4.2-8b-2026-11-04/README.md`.
 
 ## License notes
 

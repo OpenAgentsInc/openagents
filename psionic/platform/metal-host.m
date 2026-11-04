@@ -2,6 +2,7 @@
    Build with -fobjc-arc -framework Metal -framework Foundation. */
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
+#include <unistd.h>
 #include "metal-host.h"
 #include <stdarg.h>
 #include <stdio.h>
@@ -109,6 +110,18 @@ static PmStatus alloc_buffer(size_t bytes, PmBuffer *buffer, int zero) {
     }
 }
 PmStatus pm_alloc(size_t bytes, PmBuffer *buffer) { return alloc_buffer(bytes, buffer, 1); }
+PmStatus pm_wrap(void *bytes, size_t length, PmBuffer *buffer) {
+    @autoreleasepool {
+        if (!device) return PM_ABSENT;
+        size_t page = (size_t)getpagesize();
+        if (!bytes || length == 0 || (uintptr_t)bytes % page || length % page) { note("pm_wrap needs page-aligned memory"); return PM_ARGUMENT; }
+        id<MTLBuffer> b = [device newBufferWithBytesNoCopy:bytes length:length options:MTLResourceStorageModeShared | MTLResourceHazardTrackingModeTracked deallocator:nil];
+        if (!b) { note("cannot wrap %zu bytes", length); return PM_MEMORY; }
+        [live addObject:b];
+        *buffer = (__bridge_retained void *)b;
+        return PM_OK;
+    }
+}
 PmStatus pm_alloc_unset(size_t bytes, PmBuffer *buffer) { return alloc_buffer(bytes, buffer, 0); }
 
 PmStatus pm_free(PmBuffer buffer) {

@@ -66,6 +66,10 @@ PmStatus pm_alloc(size_t bytes, PmBuffer *buffer);
 /* pm_alloc without writing the bytes first: for a buffer the caller fills
    before anything reads it. Its pages are only touched as they are written. */
 PmStatus pm_alloc_unset(size_t bytes, PmBuffer *buffer);
+/* Shared storage over existing memory, without a copy: bytes and length must
+   be page-aligned, and the memory must outlive the buffer (a mapped model
+   file, for example). The GPU reads the bytes where they are. */
+PmStatus pm_wrap(void *bytes, size_t length, PmBuffer *buffer);
 PmStatus pm_free(PmBuffer buffer);
 void *pm_contents(PmBuffer buffer);
 
