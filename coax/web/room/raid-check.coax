@@ -1,0 +1,178 @@
+// The Cultist Raid's check (room-events.coax, apps/openagents-web/everglade5e-room-raid.coax): N
+// players (8 by default) share one Everglade room while a raid runs. Each stands where it came in and,
+// about every 0.6 s, casts Starry Wisp (slot 22) at the nearest raider it sees by its TGT code
+// (2000 + EID). The check counts what each heard: the raid's g entries (its phases, waves and leader),
+// the raiders (c, kind 12, P1 27 to 30 a Cultist, Fanatic, Warlock or Darian Odiodei, 40 a ward
+// stone), their casts (e rc), the hits on them (e hit), and the XP and levels it earned (e xp, e
+// level, v). The raid's start and its dials are the room's control lines: run it as raid-proof.sh
+// does, with a local room server whose control URL is a file the script writes.
+//   coax/web/tool.sh coax/web/room/raid-check.coax ws://127.0.0.1:8871 [N] [SECONDS]
+// Prints one JSON line, then "raids" and exits 0, or "fails" and 1.
+#load "room-socket.coax";
+
+RC_MAX :: 16;
+rc_max :: (a: int, b: int) -> int { return ifx a > b then a else b; }
+rc_min :: (a: int, b: int) -> int { return ifx a < b then a else b; }
+RC_SEEN :: 128;
+RcHeard :: struct {
+  w: bool; d: int; me_x: f32; me_z: f32; me_seen: bool;
+  phase_seen: int;                 // bit p: phase p was heard in a g entry
+  wave_max: int; arch_seen: int;   // bit a: the leader's state a
+  outcome: int;
+  ids: [RC_SEEN] int; xs: [RC_SEEN] f32; zs: [RC_SEEN] f32; forms: [RC_SEEN] int; n: int;   // the raid creatures it sees now
+  kinds: int;                      // bit (P1 - 20): the kinds it saw
+  raiders_seen: int; casts: int; hits_on: int; xp: int; level: int; levels_heard: int; v_level: int;
+  bad: int;
+}
+rc_find :: (h: [] RcHeard, id: int) -> int { for q: 0..<h[0].n { if h[0].ids[q] == id { return q; } } return -1; }
+rc_entry :: (h: [] RcHeard, me: int, t: string) {
+  k := rs_field(t, 0);
+  if k == "p" {
+    if rs_num(rs_field(t, 1)) == me { h[0].me_x = f32(rs_num(rs_field(t, 2))) / 100; h[0].me_z = f32(rs_num(rs_field(t, 4))) / 100; h[0].me_seen = true; }
+    return;
+  }
+  if k == "g" {
+    p := rs_num(rs_field(t, 2));
+    h[0].phase_seen = h[0].phase_seen | (1 << p);
+    h[0].wave_max = rc_max(h[0].wave_max, rs_num(rs_field(t, 3)));
+    h[0].arch_seen = h[0].arch_seen | (1 << rs_num(rs_field(t, 11)));
+    o := rs_num(rs_field(t, 12)); if o != 0 { h[0].outcome = o; }
+    if rs_field(t, 15).count == 0 { h[0].bad += 1; }
+    return;
+  }
+  if k == "v" {
+    if rs_num(rs_field(t, 1)) == me { h[0].v_level = rs_num(rs_field(t, 2)); }
+    return;
+  }
+  if k == "c" && rs_num(rs_field(t, 2)) == 12 {
+    form := rs_num(rs_field(t, 10));
+    if form < 20 { return; }
+    id := rs_num(rs_field(t, 1));
+    q := rc_find(h, id);
+    if q < 0 {
+      if h[0].n >= RC_SEEN { return; }
+      q = h[0].n; h[0].n += 1; h[0].raiders_seen += 1;
+    }
+    h[0].ids[q] = id; h[0].forms[q] = form;
+    h[0].xs[q] = f32(rs_num(rs_field(t, 3))) / 100; h[0].zs[q] = f32(rs_num(rs_field(t, 5))) / 100;
+    h[0].kinds = h[0].kinds | (1 << (form - 20));
+    if form != 40 && (form < 27 || form > 30) { h[0].bad += 1; }
+    return;
+  }
+  if k == "x" && rs_field(t, 1) == "c" {
+    q := rc_find(h, rs_num(rs_field(t, 2)));
+    if q >= 0 { h[0].n -= 1; h[0].ids[q] = h[0].ids[h[0].n]; h[0].xs[q] = h[0].xs[h[0].n]; h[0].zs[q] = h[0].zs[h[0].n]; h[0].forms[q] = h[0].forms[h[0].n]; }
+    return;
+  }
+  if k == "e" {
+    w := rs_field(t, 1);
+    if w == "rc" { h[0].casts += 1; if rs_field(t, 7).count == 0 { h[0].bad += 1; } }
+    if w == "hit" && rs_num(rs_field(t, 2)) > 2000 { h[0].hits_on += 1; }
+    if w == "xp" && rs_num(rs_field(t, 2)) == me { h[0].xp += rs_num(rs_field(t, 3)); }
+    if w == "level" && rs_num(rs_field(t, 2)) == me { h[0].level = rs_num(rs_field(t, 3)); h[0].levels_heard += 1; }
+  }
+}
+rc_hear :: (h: [] RcHeard, me: int, t: string) {
+  if rs_starts(t, "W ") { h[0].w = true; return; }
+  if !rs_starts(t, "D ") { return; }
+  h[0].d += 1;
+  at := 0; sp := 0;
+  while at < t.count && sp < 4 { if t[at] == ' ' { sp += 1; } at += 1; }
+  while at < t.count {
+    e := at;
+    while e < t.count && t[e] != ';' { e += 1; }
+    rc_entry(h, me, t[at..<e]);
+    at = e + 1;
+  }
+}
+rc_drain :: (c: [] RelayConn, h: [] RcHeard, n: int) {
+  for i: 0..<n { while relay_conn_poll(c[i..<i + 1], 0) == RC_TEXT { rc_hear(h[i..<i + 1], i, cast(string) c[i].text[0..<c[i].text_n]); } }
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("raid-check: bad arguments"); return 2; }
+  b: [512] u8;
+  base := rs_base(ifx args_count(a[..]) > 0 then args_at(a[..], 0) else "ws://127.0.0.1:8871", b[..]);
+  n := ifx args_count(a[..]) > 1 then rc_max(rc_min(rs_num(args_at(a[..], 1)), RC_MAX), 1) else 8;
+  secs := ifx args_count(a[..]) > 2 then rc_max(rs_num(args_at(a[..], 2)), 10) else 150;
+  u: [1024] u8;
+  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-raid-", rs_stamp());
+  c: [RC_MAX] RelayConn; h: [RC_MAX] RcHeard; seq: [RC_MAX] int; next: [RC_MAX] int;
+  for i: 0..<n {
+    ub: [1024] u8; pid: [32] u8; nm: [32] u8;
+    pn := rs_int(pid[..], rs_put(pid[..], 0, "p-raidcheck-"), i);
+    mn := rs_int(nm[..], rs_put(nm[..], 0, "Raid "), i);
+    ui := rs_ticketed(ub[..], url, cast(string) pid[0..<pn], cast(string) nm[0..<mn]);
+    if ui.count == 0 || !relay_conn_open(c[i..<i + 1], ui) { tool_err("raid-check: can't open "); tool_errln(url); print("fails\n"); return 1; }
+    hm: [96] u8;
+    hn := rs_put(hm[..], rs_put(hm[..], 0, "H 1 ranger.0.0.0 druid 0 "), cast(string) nm[0..<mn]);
+    _ := relay_conn_send(c[i..<i + 1], cast(string) hm[0..<hn]);
+    t1 := rs_now();
+    while rs_now() - t1 < 300 { rc_drain(c[..], h[..], i + 1); proc_sleep(5); }
+  }
+  t0 := rs_now(); tick := 0; sent_casts := 0;
+  while rs_now() - t0 < secs * 1000 {
+    tick += 1;
+    for i: 0..<n {
+      seq[i] += 1;
+      m: [128] u8;
+      k := rs_put(m[..], rs_int(m[..], rs_put(m[..], 0, "I "), seq[i]), " 0 0 0 0 0 0");
+      _ := relay_conn_send(c[i..<i + 1], cast(string) m[0..<k]);
+      // about every 0.6 s, a Starry Wisp at the nearest raider within 18 m (its 60 feet)
+      if tick < next[i] || !h[i].me_seen { continue; }
+      next[i] = tick + 16 + i % 4;
+      best := -1; bd: f32 = 18 * 18;
+      for q: 0..<h[i].n {
+        dx := h[i].xs[q] - h[i].me_x; dz := h[i].zs[q] - h[i].me_z;
+        if dx * dx + dz * dz < bd { bd = dx * dx + dz * dz; best = q; }
+      }
+      if best < 0 { continue; }
+      seq[i] += 1;
+      k = rs_int(m[..], rs_put(m[..], 0, "C "), seq[i]);
+      k = rs_put(m[..], k, " 22 "); k = rs_int(m[..], k, cast(int) (h[i].xs[best] * 100));
+      k = rs_put(m[..], k, " 100 "); k = rs_int(m[..], k, cast(int) (h[i].zs[best] * 100)); k = rs_put(m[..], k, " ");
+      k = rs_int(m[..], k, 2000 + h[i].ids[best]);
+      _ = relay_conn_send(c[i..<i + 1], cast(string) m[0..<k]);
+      sent_casts += 1;
+    }
+    while rs_now() - t0 < tick * 33 { rc_drain(c[..], h[..], n); proc_sleep(2); }
+  }
+  // what all heard
+  waves := 1000; climax := 0; seen := 1000; casts := 1000; hits := 1000; earned := 0; bad := 0; xp := 0; lv2 := 0; d := 1000000;
+  for i: 0..<n {
+    waves = rc_min(waves, h[i].wave_max);
+    if (h[i].phase_seen & (1 << 4)) != 0 && (h[i].arch_seen & 2) != 0 { climax += 1; }
+    seen = rc_min(seen, h[i].raiders_seen); casts = rc_min(casts, h[i].casts); hits = rc_min(hits, h[i].hits_on);
+    if h[i].xp > 0 { earned += 1; }
+    if h[i].v_level >= 2 { lv2 += 1; }
+    xp += h[i].xp; bad += h[i].bad; d = rc_min(d, h[i].d);
+  }
+  rate := f32(d) / f32(secs);
+  ok := waves >= 1 && seen >= 12 && casts > 0 && hits > 0 && earned >= n / 2 && bad == 0 && rate > 20;
+  out: [2048] u8; o: [1] Jo;
+  jo_start(o[..], out[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "players"); jo_int(o[..], n);
+  jo_key(o[..], "seconds"); jo_int(o[..], secs);
+  jo_key(o[..], "least_d_hz"); jo_int(o[..], cast(int) rate);
+  jo_key(o[..], "waves_all_heard"); jo_int(o[..], waves);
+  jo_key(o[..], "heard_climax_warded"); jo_int(o[..], climax);
+  jo_key(o[..], "least_raiders_seen"); jo_int(o[..], seen);
+  jo_key(o[..], "kinds_seat0"); jo_int(o[..], h[0].kinds);
+  jo_key(o[..], "least_raider_casts_heard"); jo_int(o[..], casts);
+  jo_key(o[..], "least_hits_on_raiders_heard"); jo_int(o[..], hits);
+  jo_key(o[..], "our_casts"); jo_int(o[..], sent_casts);
+  jo_key(o[..], "seats_earned_xp"); jo_int(o[..], earned);
+  jo_key(o[..], "xp_total"); jo_int(o[..], xp);
+  jo_key(o[..], "seats_level_2"); jo_int(o[..], lv2);
+  jo_key(o[..], "phases_seat0"); jo_int(o[..], h[0].phase_seen);
+  jo_key(o[..], "arch_seat0"); jo_int(o[..], h[0].arch_seen);
+  jo_key(o[..], "outcome_seat0"); jo_int(o[..], h[0].outcome);
+  jo_key(o[..], "bad"); jo_int(o[..], bad);
+  jo_end(o[..]);
+  print("%\n", jo_text(o[..]));
+  print("%\n", ifx ok then "raids" else "fails");
+  for i: 0..<n { _ := relay_conn_close(c[i..<i + 1], 500); }
+  return ifx ok then 0 else 1;
+}

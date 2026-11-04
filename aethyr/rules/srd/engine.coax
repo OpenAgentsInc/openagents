@@ -192,6 +192,7 @@ RsCreature :: struct {
   humanoid: bool;           // its creature type is Humanoid (Hold Person)
   resist: int; vulnerable: int; immune: int;   // damage types, bits of 1 << RS_* (Resistance, Vulnerability, Immunity)
   immune_cond: int;         // conditions it can't have
+  floor: int;               // Hit Points damage can't take it below (0: none): a story's foe who can't be killed
   weapon: int;              // what it attacks with (W_*)
   ranged: int;              // a ranged weapon it can shoot instead (-1 none)
   masteries: int;           // the weapon mastery properties it can use, bits of 1 << M_*

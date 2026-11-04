@@ -269,12 +269,11 @@ its bar entry waits on the room's creature forms, which is on the abilities list
 | 2 | Two Pact slots; two more invocations, Agonizing Blast and Repelling Blast on Eldritch Blast; Magical Cunning |
 | 3 | 2nd-level Pact slots; the Fiend Patron and Dark One's Blessing |
 
-Every spell on a level 1 or 2 bar must work in a room on the server. Today the druid's kit is
-all on the server's bar. The warlock's bar on the server has Eldritch Blast but not yet Chill
-Touch, Hex or Hellish Rebuke; those are on the warlock list in #12734 and #12733, and until
-they land a level 1 warlock's bar holds Eldritch Blast only. The server lists each class's
-kit in one place (`ev_kit` in `coax/web/room/room-events.coax`), so a spell joins the kit in one
-line once its bar entry exists.
+Every spell on a level 1 or 2 bar works in a room on the server. The druid's kit is all on
+the server's bar. The warlock's level 1 bar is Eldritch Blast, Chill Touch and Hex, and its
+Hellish Rebuke is a Reaction the engine casts when something hurts it. The server lists each
+class's kit in one place (`ev_kit` in `coax/web/room/room-events.coax`), so a spell joins the kit
+in one line once its bar entry exists.
 
 **Reaching a level** grants its kit at once, on the server: the new HP, slots, spells and
 features. The bar updates live, and the page shows a short `LEVEL 2` notice that blocks
@@ -293,8 +292,8 @@ Darian Odiodei, stays level 17 and can't be killed.
 - A raider gives its SRD XP (section 4.1), times the admin's reward multiplier.
 - **The split in multiplayer.** The SRD divides an encounter's XP among the characters who took
   part. The room does the same per raider: its XP is split evenly among the seats that hurt it
-  or healed someone who did, in the 30 s before it fell, and who are within 60 m of where it
-  fell. Each share is rounded down, and at least 1.
+  (themselves or by a creature they summoned) during the raid, and who are within 60 m of where
+  it fell. Each share is rounded down, and at least 1. Healing doesn't earn a share yet.
 - A ward stone gives 100 XP, split the same way. Darian Odiodei gives no kill XP, since it can't be
   killed; its withdrawal pays the completion bonus (section 7).
 - Townsfolk, guards and other players give no XP.
@@ -373,9 +372,18 @@ fall.
 - The event, its raiders, Darian Odiodei, the ward stones, the XP and the levels all run on the room
   server, in `coax/web/room/room-events.coax` and the rules' raid unit
   `apps/openagents-web/everglade5e-room-raid.coax`. The shared files get one-line hooks only.
-- Raiders are creatures of the room's one SRD battle, after the summoned creatures: 48
-  raiders, Darian Odiodei and 3 ward stones. The battle grows from 86 creatures to 138, inside
-  `RS_MAX` (216).
+- Raiders, Darian Odiodei and the ward stones are the room's summoned creatures (`E5rBeast`),
+  owned by no seat, with forms of 20 and up (20 plus the stat block's `RS_NPC_*`; 40 a ward
+  stone). The room's summoned places grow from 32 to 96, and a raid takes them from the top,
+  64 at most, so the players' summons always keep 32. The battle grows from 86 creatures to
+  150, inside `RS_MAX` (216).
+- Because they are summoned creatures, everything a Wolf has they have already: a player's cast
+  aimed near one names it (TGT 2000 + EID), every hit and death is the engine's event, and
+  pages draw an HP bar over each.
+- Darian Odiodei can't die because of one engine field, `RsCreature.floor`: damage stops at
+  that many Hit Points. While a ward stone stands, his floor is above his Hit Points, so no hit
+  hurts him; once the wards are down, it is half his Hit Points. When he reaches it, the room
+  withdraws him with Dimension Door.
 - Each instance runs its own raid on its own copy of the town. Starts agree across instances
   and shards because each comes from the wall clock (a schedule) or a counted press (START
   NOW) that every shard reads from the API.
@@ -391,9 +399,15 @@ New D entries, which pages that don't know them skip:
   (bit masks of the druid's and the warlock's bars; both 0 means the whole bar), heard by every
   seat on change, for nameplates, your XP bar and your hotbar.
 - `e xp SS AMOUNT` and `e level SS LEVEL`: a gain and a level-up.
-- `e ward EID`: a hit that the wards stopped, so the page shows `WARDED` over Darian Odiodei.
-- Raiders, Darian Odiodei and the stones are `c` entries (creatures, spec 3.6), with new kinds:
-  `WK_RAIDER` (P1 the stat block, P2 the most HP) and `WK_WARD`.
+- `e rc EID K AX AY AZ SEED`: a raid creature's cast, which the page plays as the Warlock's bar
+  slot K (0 Eldritch Blast, 1 Fireball, 2 Blight, 3 Circle of Death, 4 Finger of Death,
+  5 Dimension Door) from where the creature stands. With the town's damage dial on, Eldritch
+  Blast and Fireball also strike the server's town, as a player's do; the watch blames nobody.
+- Raiders, Darian Odiodei and the stones are `c` entries of kind `WK_BEAST` (12), as the
+  summoned creatures are: P1 the form (27 Cultist, 28 Cultist Fanatic, 29 Warlock, 30 Darian
+  Odiodei, 40 a ward stone), P2 the most Hit Points, OWNER -1, and F 1 while it moves plus the
+  raider's level times 256. A hit on Darian Odiodei while the wards stand changes nothing, and
+  the page shows `WARDED` there in place of its number.
 - A cast refused for the character's level is `r SEQ level`.
 
 ### 9.3 Performance
@@ -408,11 +422,10 @@ instance must add less than 0.5 ms to that instance's tick. The design keeps it 
   the summoned wolves do (`e5rr_beasts_step`), with no path search. Roads and gates give the
   routes.
 - **Attacks through the engine** on the beat only.
-- **Written once, heard by many.** Each raider's `c` entry is written and hashed once a tick,
-  as the players' entries are (`eg_cache`), and each seat compares hashes. A raider is heard
-  again when it moves 0.5 m or turns 0.3 radians, or when its HP changes.
-- **Bandwidth.** 48 raiders in view, moving, cost a seat about 20 KB/s. Raiders more than
-  120 m away aren't sent (`EG_VIEW`).
+- **Heard a third as often.** A raider's `c` entry goes out as a summoned creature's does, on
+  change, but a raider's move waits for every third tick (staggered by its place), so 48
+  raiders cost a seat about a third of what 48 Wolves would. Its going goes out at once.
+  Raiders more than 120 m away aren't sent (`EG_VIEW`).
 
 `load.coax` (#12711) gets a raid case: 16 seats in one instance and 48 raiders fighting, which
 reports the tick's p95 with and without the raid.
@@ -448,11 +461,11 @@ Epic #12737 holds the work. Each part is its own issue, built in this order:
 
 | Part | Issue | Status |
 | --- | --- | --- |
-| The event framework on the server, the API's dials and the admin pane, off by default | #12738 | In progress |
-| XP and levels 1 to 3, with persistence | #12739 | Planned |
-| The Cultist Raid: raiders, waves, the AI and drawing them | #12740 | Waits on the Siege's stat blocks landing on `main` |
-| Darian Odiodei: the wards, the retreat and its spells | #12741 | Waits on #12740 |
-| Rewards, aftermath and the raid load test | #12742 | Waits on #12740 |
+| The event framework on the server, the API's dials and the admin pane, off by default | #12738 | Done |
+| XP and levels 1 to 3, with persistence | #12739 | Done |
+| The Cultist Raid: raiders, waves, the AI and drawing them | #12740 | Server done; the page draws them with the preview's look (`rp_raider_at`) |
+| Darian Odiodei: the wards, the retreat and its spells | #12741 | Server done |
+| Rewards, aftermath and the raid load test | #12742 | Rewards done; `raid-check.coax` runs N players against a local room |
 
 ## 13. Open questions for the owner
 

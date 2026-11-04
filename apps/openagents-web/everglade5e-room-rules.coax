@@ -22,6 +22,7 @@
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 
 #load "everglade5e-rules.coax";
+#load "everglade5e-room-raid.coax";   // the Cultist Raid's raiders, ward stones and leader (#12740)
 
 E5RR_SEATS :: 16;
 E5RR_SEAT :: 0;                              // seat s is creature s
@@ -32,7 +33,7 @@ E5RR_EV_FLOATS :: 8;                         // kind, spell, by, to, amount, dam
 // a summoned creature 2000 + its id
 E5RR_TGT_SEAT :: 1000;
 E5RR_TGT_BEAST :: 2000;
-E5RR_BEASTS :: 32;                           // summoned creatures at once
+E5RR_BEASTS :: 96;                           // summoned creatures at once: the players' and a raid's (E5RD_MAX of them)
 E5RR_BEAST0 :: E5RR_FOLK0 + E5R_FOLK;        // summoned creature q is creature E5RR_BEAST0 + q
 E5RR_SCENT :: 3.048;                         // m: a pack sets on whoever is within 10 feet of where it is sent
 // The beasts themselves (E5rBeast, their forms, runs, bites and slams) are everglade5e-beasts.coax's,
@@ -55,6 +56,7 @@ E5rRoom :: struct {
   beasts: [E5RR_BEASTS] E5rBeast;
   seen: int;
   started: bool;
+  raid: [1] E5rdRaid;                        // the Cultist Raid's (everglade5e-room-raid.coax)
   pvp: bool;                                 // the realm's pvp row (oa-room room-control.coax): harm reaches other players too
 }
 
@@ -109,6 +111,7 @@ e5rr_start :: (r: [] E5rRoom, seed: int) #export_c {
   for s: 0..<E5RR_SEATS { r[0].seat[s] = FbSeat.{me = E5RR_SEAT + s}; }
   for q: 0..<E5RR_ZONES { r[0].zones[q].on = false; r[0].zone_id[q] = 0; }
   r[0].next_id = 1;
+  r[0].raid[0] = E5rdRaid.{};
   _ := fb_everglade(r[0].bar[..]);
   _ = fb_warlock_bar(r[0].wbar[..]);
   for s: 0..<E5RR_SEATS { r[0].klass[s] = 0; r[0].last_foe[s] = -1; }
@@ -205,10 +208,13 @@ e5rr_step :: (r: [] E5rRoom, clock: f32) #export_c {
   for q: 0..<E5RR_BEASTS {
     i := E5RR_BEAST0 + q;
     if r[0].beasts[q].id == 0 || b[0].c[i].dead || b[0].c[i].turn_at > b[0].clock { continue; }
-    b[0].who = i; rs_start_turn(b, i); rs_end_turn(b, i); b[0].who = -1;
+    b[0].who = i; rs_start_turn(b, i);
+    if r[0].beasts[q].form >= E5RR_FORM_RAID { e5rd_turn(r, q); }   // a raider's (everglade5e-room-raid.coax)
+    rs_end_turn(b, i); b[0].who = -1;
   }
   e5rr_rise(r);
   e5rr_beasts_step(r, dt);
+  e5rd_step(r, dt);
   for k: 0..<E5RR_ZONES / FB_ZONES { _ := fb_zones_round(r[0].zones[k * FB_ZONES..<(k + 1) * FB_ZONES], b); }
   e5rr_zones_check(r);
   e5rr_beasts_check(r);
@@ -428,9 +434,13 @@ e5rr_beasts_check :: (r: [] E5rRoom) {
     bt := r[0].beasts[q];
     if bt.id == 0 { continue; }
     i := E5RR_BEAST0 + q;
-    me := E5RR_SEAT + bt.by;
-    held := b[0].c[me].conc == bt.spell || (bt.form == E5RR_FORM_ZOMBIE && r[0].live[bt.by]);
-    if b[0].c[i].dead || b[0].c[i].hp <= 0 || !held { e5b_gone(b, r[0].beasts[..], E5RR_BEAST0, q); }
+    raid := bt.form >= E5RR_FORM_RAID;   // a raider's is the raid's, no seat's (everglade5e-room-raid.coax)
+    me := E5RR_SEAT + rs_max(bt.by, 0);
+    held := raid || b[0].c[me].conc == bt.spell || (bt.form == E5RR_FORM_ZOMBIE && r[0].live[bt.by]);
+    if b[0].c[i].dead || b[0].c[i].hp <= 0 || !held {
+      if raid { e5rd_down(r, q); }
+      e5b_gone(b, r[0].beasts[..], E5RR_BEAST0, q);
+    }
   }
 }
 

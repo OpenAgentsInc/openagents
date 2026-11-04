@@ -15,6 +15,7 @@
 E5RR_PACK :: 4;                              // Conjure Animals' wolves (everglade-circle.coax CI_WOLVES)
 E5RR_FORM_WOLF :: 1;                         // its form, as everglade-circle.coax CI_FORM_WOLF
 E5RR_FORM_ZOMBIE :: 9;                       // a Humanoid Finger of Death killed, risen (everglade-warlock.coax WL_FORM_ZOMBIE)
+E5RR_FORM_RAID :: 20;                        // a raider's form and up (everglade5e-room-raid.coax): not this file's to move
 E5RR_BEAST_TEAM :: 2;                        // neither the players' (0) nor the town's (1): all can hurt it
 E5RR_RUN :: 9.0;                             // m/s a beast runs (everglade-circle.coax CI_CA_SPEED)
 E5RR_REACH :: 1.8;                           // m: a bite's 5 feet, from middle to middle
@@ -98,7 +99,7 @@ e5b_gone :: (b: [] RsBattle, beasts: [] E5rBeast, beast0: int, q: int) {
 // folk0 + j) stands at (folk_x[j], folk_z[j]).
 e5b_step :: (b: [] RsBattle, beasts: [] E5rBeast, beast0: int, folk0: int, folk_x: [] f32, folk_z: [] f32, dt: f32) {
   for q: 0..<beasts.count {
-    if beasts[q].id == 0 { continue; }
+    if beasts[q].id == 0 || beasts[q].form >= E5RR_FORM_RAID { continue; }
     i := beast0 + q;
     if b[0].c[i].dead { continue; }
     bt := beasts[q..<q + 1];

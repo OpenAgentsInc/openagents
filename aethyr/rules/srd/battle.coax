@@ -337,6 +337,8 @@ rs_damage :: (b: [] RsBattle, by: int, j: int, amount: int, kind: int, crit: boo
     if total >= 5 + amount { dealt = hurt[0].hp + hurt[0].temp - 1; rs_add_text(l[..], ": it drops to 1 Hit Point"); } else { rs_add_text(l[..], ": failure"); }
     rs_tell(b, RS_EV_SAVE, -1, by, j, total, 0, l[..]);
   }
+  // a floor (RsCreature.floor): the damage stops there, its Temporary Hit Points first as ever
+  if hurt[0].floor > 0 && !hurt[0].dead { dealt = rs_max(rs_min(dealt, hurt[0].hp + hurt[0].temp - hurt[0].floor), 0); }
   r := rs_hurt(hurt[..], dealt, crit);
   b[0].c[j] = hurt[0];
   // Turn Undead ends early on a creature that takes any damage

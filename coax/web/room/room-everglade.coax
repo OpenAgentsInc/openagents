@@ -491,6 +491,7 @@ eg_engine_events :: (v: [] RmServer, k: int) {
     at := eg_where(v, k, who, ev[o + 6], ev[o + 7]);
     b: [96] u8; m := 0;
     if kind == RS_EV_DAMAGE { eg_crime(v, k, by, who, at.x, at.z); }
+    ev_engine(v, k, kind, by, who);   // a raider's harm, the XP's (room-events.coax)
     if kind == RS_EV_DAMAGE { m = wire_put_hit(b[..], 0, WireHit.{who = who, by = by, amt = cast(int) ev[o + 4], kind = cast(int) ev[o + 5]}); }
     else if kind == RS_EV_HEAL { m = wire_put_heal(b[..], 0, who, cast(int) ev[o + 4]); }
     else if kind == RS_EV_DEATH { m = wire_put_die(b[..], 0, who); }
@@ -738,10 +739,10 @@ eg_send :: (v: [] RmServer, k: int, s: int) {
       n := wire_put_x(e[..], 0, WireX.{k = 'c', id = was}); eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<n]);
       st[0].heard_b_id[q] = 0; st[0].heard_b[q] = 0;
     }
-    if !seen { continue; }
-    // F 1 while it runs, P1 its form, P2 its most Hit Points
+    if !seen || (was == id && ev_beast_wait(v, k, q)) { continue; }
+    // F 1 while it runs (a raider's level in bits 8 and up), P1 its form, P2 its most Hit Points
     n := wire_put_c(e[..], 0, WireC.{eid = id, kind = WK_BEAST, x = bf[0], y = bf[1], z = bf[2], yaw = bf[3], hp = cast(int) bf[4],
-                                     f = cast(int) bf[8], owner = cast(int) bf[6], p1 = cast(int) bf[7], p2 = cast(int) bf[5]});
+                                     f = cast(int) bf[8] + ev_beast_f(v, k, q), owner = cast(int) bf[6], p1 = cast(int) bf[7], p2 = cast(int) bf[5]});
     h := eg_hash(cast(string) e[0..<n]);
     if h != st[0].heard_b[q] { eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<n]); st[0].heard_b[q] = h; st[0].heard_b_id[q] = id; }
   }
