@@ -222,7 +222,7 @@ wl_shoot :: (s: [] Everglade, k: int, from: Point, at: Point, seed: int, remote:
   }
   // a Fire Bolt's mote flies from the hand to land on time, too
   if k == WL_FIRE_BOLT {
-    c := FxCause.{recipe = FXR_FIREBOLT, seed = wl_seed(seed, 0), from = wl_v(from), to = wl_v(at), col = WL_FIRE, big = 1.3, reach = 1};
+    c := FxCause.{recipe = FXR_FIREBOLT, seed = wl_seed(seed, 0), from = wl_v(from), to = wl_v(at), col = WL_FIRE, big = 1.9, reach = 1};
     c.t0 = s[0].wl.clock + hi(WL_DELAY[k] - fxp_flight(c, 22, 0.15, 0.8), 0);
     _ := fxp_start(s[0].wl.fx[..], c, s[0].wl.clock);
   }
@@ -312,12 +312,14 @@ wl_land_raid :: (s: [] Everglade, c: WlShot, from: FxV, to: FxV) {
   // Lightning Bolt: a blinding stroke down its Line, crackling and a shock where it ends; 8d6
   // Lightning (10d6 from Darian's 5th-level slot) to what it strikes
   if k == WL_LIGHTNING {
-    for j: 0..<3 {
-      off := fxp_v(0, f32(j) * 0.12, 0);
-      _ := fxp_start(p, FxCause.{recipe = FXR_STREAK, seed = wl_seed(c.seed, j), t0 = now + f32(j) * 0.05, from = fxp_add(from, off), to = fxp_add(to, off), col = WL_SPARK,
-                                 big = (ifx j == 0 then 2.4f32 else 1.5f32) * big, reach = 1}, now);
+    // the stroke flickers: seven jagged beams over half a second, each its own path
+    for j: 0..<7 {
+      off := fxp_v(0, f32(j % 3) * 0.12, 0);
+      _ := fxp_start(p, FxCause.{recipe = FXR_STREAK, seed = wl_seed(c.seed, j), t0 = now + f32(j) * 0.07, from = fxp_add(from, off), to = fxp_add(to, off), col = WL_SPARK,
+                                 big = (ifx j % 2 == 0 then 4.0f32 else 2.6f32) * big, reach = 1}, now);
     }
-    _ := fxp_start(p, FxCause.{recipe = FXR_ARCANE, seed = wl_seed(c.seed, 4), t0 = now, from = to, to = to, col = WL_SPARK, big = 1, reach = 1}, now);
+    _ := fxp_start(p, FxCause.{recipe = FXR_ARCANE, seed = wl_seed(c.seed, 4), t0 = now, from = to, to = to, col = WL_SPARK, big = 1.4, reach = 1}, now);
+    _ = fxp_start(p, FxCause.{recipe = FXR_ARCANE, seed = wl_seed(c.seed, 6), t0 = now, from = from, to = fxp_add(from, fxp_v(0, -1.2, 0)), col = WL_SPARK, big = 0.8, reach = 1}, now);
     _ = fxp_start(p, FxCause.{recipe = FXR_SHOCK, seed = wl_seed(c.seed, 5), t0 = now, from = to, to = to, col = WL_SPARK, big = 1, reach = 2}, now);
     if !c.remote { wl_break(s, c.at, WL_AREA[k], wl_lightning_damage(c.seed), false); }
   }

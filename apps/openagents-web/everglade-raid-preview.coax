@@ -138,7 +138,7 @@ everglade_raid_cast :: (s: [] Everglade, kk: int, fx: f32, fz: f32, ax: f32, az:
     s[0].rp.arcs[q] = RpArc.{live = true, from = add(from, v3(0, 0.6, 0)), to = at, seed = seed};
     return;
   }
-  big := ifx k == WL_BLAST then f32(RP_BEAM_BIG) else ifx k == WL_LIGHTNING then 1.3f32 else 1.0f32;
+  big := ifx k == WL_BLAST then f32(RP_BEAM_BIG) else ifx k == WL_LIGHTNING then 1.5f32 else 1.0f32;
   wl_shoot_n(s, k, from, at, seed, beams, big, !one);
 }
 // The middle of the standing piece of the town nearest (x, z), within 10 m; else the ground there.
