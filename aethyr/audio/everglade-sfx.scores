@@ -1,0 +1,152 @@
+fireball e1 9 Whoosh, impactful boom, then crackling and sizzling fire.
+fireball e2 9 Powerful magical fire explosion with a deep boom and crackling embers.
+fireball e3 10 Powerful whoosh, deep boom, roaring flames, crackling embers, clean explosion.
+fire-cast e1 4 A very quick, sharp, magical flick or zap, not distinctly fire.
+fire-cast e2 9 Quick, sharp magical fire whoosh and ignition
+fire-cast e3 10 Quick, sharp magical fire ignition whoosh with a small crackle.
+fire-travel e1 10 Fiery whoosh, fast air movement, game sound effect.
+fire-travel e2 9 Fiery whoosh, fast-moving flame, game sound effect.
+fire-travel e3 9 Fast, fiery whoosh, like a magical projectile flying past.
+fire-hit e1 1 Dry, blunt impact, no fire or crackle.
+fire-hit e2 3 Sharp, dry, percussive hit sound. No fire or crackle elements.
+fire-hit e3 7 Quick whoosh, sharp impact, very subtle crackle.
+frost-cast e1 9 A short, clean, crystalline shimmer with a subtle magical whoosh.
+frost-cast e2 9 Sharp, high-pitched crystalline shimmer and quick whoosh.
+frost-cast e3 7 Quick, high-pitched magical whoosh with a crystalline shimmer.
+frost-travel e1 9 Sharp, fast whoosh with a high-pitched, icy whistle.
+frost-travel e2 8 A clean, fast, high-pitched whoosh sound effect.
+frost-travel e3 10 A sharp, high-pitched, fast whoosh sound.
+frost-hit e1 10 Sharp, crisp ice shatter. Perfect for frost-hit.
+frost-hit e2 9 Sharp, crisp ice shatter with a brittle crunch, very clean.
+frost-hit e3 10 Sharp, crisp ice shattering impact.
+eldritch-cast e1 7 Eerie magical energy charge with warbling hum and crackle, abrupt end.
+eldritch-cast e2 3 Short, sharp, high-pitched electronic zap with a crackle
+eldritch-cast e3 10 Eerie, warbling hum with crackles, dark magic charging.
+eldritch-travel e1 9 Whoosh, then crackling energy discharge, streaking through the air.
+eldritch-travel e2 8 Quick whoosh and sharp electrical crackle
+eldritch-travel e3 3 Sharp, quick, high-pitched electrical zap or crackle.
+eldritch-hit e1 7 Sharp, impactful hit with a high-frequency snap.
+eldritch-hit e2 10 Deep thump, sizzling crackle, magical impact, clean.
+eldritch-hit e3 10 Deep, impactful energy hit with a sizzling crackle
+necro-cast e1 9 Airy whoosh, low dark drone, fades out.
+necro-cast e2 9 Low dark drone, airy texture, ominous spell cast
+necro-cast e3 10 Ethereal breath whoosh, followed by a low, dark, sustained drone.
+necro-travel e1 9 Ethereal, dark whoosh with a ghostly, spectral wail passing by.
+necro-travel e2 4 A quick, high-pitched whoosh or swoosh sound effect.
+necro-travel e3 8 High-pitched, ethereal whoosh sound, flying past quickly.
+necro-hit e1 10 Deep thud with decaying magical hiss
+necro-hit e2 2 A quick, light, sharp, somewhat metallic impact sound.
+necro-hit e3 9 Deep, hollow thud with a decaying, dark magical hiss.
+bolt-cast e1 6 Sharp, quick electrical crackle with a very brief buzz.
+bolt-cast e2 10 Sharp, crackling electrical static burst, very clean game sound effect.
+bolt-cast e3 6 Sharp, high-pitched electrical crackle, very short and abrupt.
+bolt-travel e1 9 Sharp, impactful electric crack and sizzle, like a lightning bolt.
+bolt-travel e2 4 Sharp, dry, high-pitched electric crackle, very short.
+bolt-travel e3 9 Sharp, clean, electric crackle or zap sound effect.
+thunder e1 10 Loud, close thunder crack followed by a powerful, rolling rumble.
+thunder e2 10 Powerful, close thunder clap with immediate, deep rolling rumble.
+thunder e3 10 Loud, close thunderclap with a powerful, short rumble.
+cone e1 9 Powerful whoosh, sustained magical energy spray, clean.
+cone e2 10 Powerful, roaring magical flame burst, fantasy spell effect.
+cone e3 9 Powerful, sustained, roaring flame blast, like a dragon's breath.
+hex e1 9 Low ominous drone with a deep, dark, resonant bell strike.
+hex e2 9 Low, dark whoosh with a resonant, slightly metallic bell tone.
+hex e3 10 Low ominous whoosh with dark, resonant bell tone.
+hold e1 3 A short, high-pitched magical shimmer or zap, quickly decaying.
+hold e2 10 Magical shimmer with a low, tense, sustained hum.
+hold e3 9 Magical shimmer with a brief, low-frequency hum.
+rebuke e1 9 Powerful magical whoosh, deep roar, and fiery crackle.
+rebuke e2 9 Sudden magical burst with a subtle, quick roar and fiery whoosh.
+rebuke e3 10 Fiery whoosh, magical burst, and a powerful, guttural roar.
+blight e1 2 A single, sharp, dry crackle or snap.
+blight e2 7 Dry, sharp crackle with a subtle sizzle and decay.
+blight e3 10 Dry crackling decay with a subtle dark hiss, magical withering effect.
+teleport e1 10 Sharp, magical whoosh and pop, very clean and professional.
+teleport e2 10 High-pitched whoosh and pop, magical teleport sound effect.
+teleport e3 10 High-pitched magical whoosh with a distinct pop.
+shield e1 0 A sharp, metallic clang or impact sound.
+shield e2 3 A short, bright, high-pitched magical chime or ping.
+shield e3 3 Quick magical whoosh with a very short, high-pitched sparkle.
+heal e1 10 Gentle, bright chimes with a warm magical sparkle effect.
+heal e2 10 Gentle, bright, magical chimes with a warm sparkle, perfect healing spell.
+heal e3 10 Gentle, bright, magical chimes with a warm sparkle.
+thunderwave e1 3 A short, dry, percussive thud or punch sound.
+thunderwave e2 1 A short, sharp, dry, high-pitched 'thwack' or 'pop' sound.
+thunderwave e3 1 A single, sharp, dry, percussive hit with no resonance.
+missile e1 10 Three distinct, quick, zapping magic missile energy projectiles.
+missile e2 10 Three distinct, quick, high-pitched energy zaps.
+missile e3 10 Three quick glowing darts zapping
+arcane-cast e1 9 Soft, shimmering, high-pitched magical whoosh, like a spell cast.
+arcane-cast e2 10 Soft magical whoosh with shimmering sparkle, very clean.
+arcane-cast e3 10 Soft magical whoosh with shimmering, high-pitched sparkle.
+arcane-hit e1 10 Bright, sharp, magical pop with a sparkling, zapping decay.
+arcane-hit e2 9 Bright, short, high-pitched magical pop with a sparkling quality.
+arcane-hit e3 10 Bright, sharp magical pop with a sparkly, high-pitched impact.
+radiant e1 9 Bright, high-pitched magical chime, shimmering, quick decay.
+radiant e2 5 A very short, high-pitched, bright, sharp magical ping or zing.
+radiant e3 9 Bright, shimmering, high-pitched whoosh, like a magical light burst.
+swing e1 9 A clean, fast sword swish sound effect.
+swing e2 10 Sharp, fast sword swish, clean and professional game sound effect.
+swing e3 10 A clean, fast, single sword swish sound effect.
+hit e1 10 Wet, meaty thud impact, like a sword hitting flesh.
+hit e2 9 Sharp, wet, meaty impact sound effect.
+hit e3 9 A distinct, wet, meaty thud impact sound.
+hit-heavy e1 7 Sharp, metallic impact sound, like a weapon hitting armour.
+hit-heavy e2 9 Sharp, heavy metallic impact with a resonant thud.
+hit-heavy e3 9 Sharp, heavy, impactful thud with a metallic resonance.
+death e1 10 Man grunts, then a heavy body thud on earth.
+death e2 9 Man's grunt followed by a solid body fall.
+stand e1 9 Clean, quick cloth and leather rustle, like a swift movement.
+stand e2 2 Quick, sharp, metallic impact or movement, very short
+stand e3 3 Sharp thud, brief metallic-like rustle.
+horn e1 10 Long, deep, resonant war horn blast, clean and professional.
+horn e2 10 Long, deep, resonant war horn blast, clear and powerful.
+horn e3 10 A long, deep, resonant war horn blast.
+wall-hit e1 10 Sharp stone crack, breaking, and falling rubble.
+wall-hit e2 9 Sharp crack, breaking stone, and falling rubble.
+wall-hit e3 9 Sharp impact, stone breaking, brief rubble fall.
+tower-hit e1 9 Heavy stone impact, breaking, and crumbling debris falling.
+tower-hit e2 7 Sharp, heavy impact with breaking debris and shrapnel.
+tower-hit e3 9 Heavy stone impact, breaking, and crumbling debris falling.
+raid-won e1 10 Short, triumphant brass fanfare, perfect fantasy victory sting.
+raid-won e2 10 Short, triumphant brass fanfare, perfect fantasy victory sting.
+raid-won e3 10 Short, triumphant brass fanfare, perfect victory sting.
+raid-lost e1 10 Low brass, slow drum, somber defeat sting
+raid-lost e2 7 A single, deep, resonant gong hit.
+raid-lost e3 10 Somber low brass sting with a slow, deep drum hit.
+step-1 e1 10 Single, clear leather boot footstep on packed dirt.
+step-1 e2 9 Single, clear, solid footstep on a hard surface.
+step-2 e1 9 Single, clear footstep of a boot on firm, packed ground.
+step-2 e2 10 A single, clear, close footstep on a hard, earthy surface.
+step-3 e1 10 A single, clear, firm footstep, like a boot on hard ground.
+step-3 e2 10 A single, clean, solid footstep on packed dirt.
+ambient e1 10 Gentle wind in leaves, natural birdsong, peaceful ambience.
+ambient e2 6 Loud insect buzzing, subtle rustling, no birdsong or clear wind.
+ambient e3 10 Gentle wind in leaves, distant birdsong, peaceful forest ambience.
+levitate e1 8 Clean, rising whoosh sound effect, suitable for a game.
+levitate e2 10 Rising airy shimmer, magical whoosh
+levitate e3 10 Rising airy magical whoosh, clean and professional.
+splash e1 9 Loud, clear, impactful water splash, good for game.
+splash e2 10 A distinct, impactful, clean water splash sound effect.
+splash e3 10 A clear, impactful, big water splash sound effect.
+ice e1 6 Single, sharp, high-pitched ice impact sound.
+ice e2 9 Sharp, brittle impacts like ice chunks hitting a hard surface.
+ice e3 7 Single, sharp, brittle impact, like ice or glass breaking.
+house-fall e2 9 Heavy wooden structure collapsing, timbers cracking and crashing with debris.
+house-fall e3 10 Heavy wooden structure collapsing with cracking timbers and debris.
+hit k1 10 A single, impactful, meaty thud, suitable for a body hit.
+hit k2 9 A wet, meaty thud, like a sword hitting flesh.
+hit-heavy k1 10 Heavy, metallic thud, weapon impact on armor.
+hit-heavy k2 10 Heavy, impactful thud with a slight crunch.
+wall-hit k1 9 Sharp stone impact, cracking, and falling rubble.
+wall-hit k2 9 Sharp impact, stone breaking, crumbling debris, rubble falling.
+death k1 9 Man grunts, then a body thudding onto the ground.
+stand k1 9 Crisp cloth and leather rustle of a person standing.
+stand k2 0 A single, sharp, hard impact sound.
+step-1 k2 9 Single, clear boot step on dirt.
+step-2 k1 9 Clear, single thud of a boot on packed dirt.
+step-3 k1 10 A single, clear, close footstep of a boot on packed dirt.
+step-3 k2 9 A single, clear, firm footstep on a hard surface.
+house-fall e1 3 A single, heavy, sharp crash or impact.
+step-1 k1 0 No audio provided for evaluation.
+death e3 9 Man grunts, followed by a clear body impact on ground.

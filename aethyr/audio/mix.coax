@@ -1,0 +1,293 @@
+// A game's sound mixer (#12832, aethyr/audio/SOURCES.md): which effects play when many go off at
+// once, and how each one varies. The host (coax/web/host.js playSoundText) plays the lines; every
+// choice is made here.
+//
+//   Voices: at most MIX_VOICES at once, and each sound its own limit (four Fire Bolts' casts, not
+//   sixty). A new voice past a limit takes the place of the weakest playing one, if it is
+//   stronger: its gain at the listener times its priority (your own casts and blows over a far
+//   raider's). A weaker one isn't played.
+//   Variation: each sound's variants in turn (round-robin), each play's pitch up to MIX_PITCH and
+//   gain up to MIX_SPREAD either way, from a seeded generator, so a run plays the same way again.
+//   The bus: a limiter at control rate. The voices' summed level (the power sum of their gains at
+//   the listener, each variant normalised to one loudness) is kept under MIX_CEILING: the bus gain
+//   falls at once to meet it and comes back over MIX_RELEASE seconds. The host's compressor and
+//   brick-wall limiter (host.js soundBus) catch what a control rate cannot.
+//   Ducking: a big event (a Fireball, the horn, a falling house) lowers the town's bed for
+//   MIX_DUCK_HOLD seconds, and it eases back.
+//   The room: an impulse response from Aethyr's reverb (synth.coax au_reverb), sent to the host as
+//   a sound once; each voice sends some of itself there (more the farther it is).
+//
+// Lines (host.js): NAME GAIN PAN DELAY LOWPASS RATE WET ID for a voice, -ID to stop one early,
+// !bus GAIN for the bus, !room NAME for the room's impulse.
+//   coax/bin/coax test aethyr/audio/mix.coax --library
+#load "synth.coax";
+#load "wav.coax";
+
+MIX_VOICES :: 32;
+MIX_SOUNDS :: 64;
+MIX_PITCH :: 0.05;          // a play's rate, 1 +/- this
+MIX_SPREAD :: 0.12;         // and its gain, 1 +/- this (about 1 dB)
+MIX_CEILING :: 0.85;        // the bus's summed level kept under this
+MIX_RELEASE :: 0.6;         // s: the bus gain's way back up
+MIX_DUCK :: 0.35;           // the bed's gain under a big event
+MIX_DUCK_HOLD :: 1.6;       // s
+MIX_DUCK_EASE :: 0.5;       // s: the bed's way back
+MIX_ROOM_MS :: 1400;        // the room's impulse
+MIX_ROOM_RATE :: 48000;
+
+// A sound as the mixer knows it: how many of it may play at once, its priority (1 a far
+// raider's, more for yours) and how many variants it has, each one's length in milliseconds.
+MixSound :: struct { limit: int = 4; variants: int; ms: [4] int; }
+MixVoice :: struct { id: int; sound: int; ends: f64; weight: f32; gain: f32; on: bool; }
+Mixer :: struct {
+  seed: u32 = 0x9e3779b9;
+  next: int = 1;                 // the next voice's id
+  voices: [MIX_VOICES] MixVoice;
+  turn: [MIX_SOUNDS] int;        // each sound's next variant
+  bus: f32 = 1;                  // the limiter's gain now
+  bus_sent: f32 = -1;            // the last !bus sent
+  duck_until: f64 = -100;
+  bed: f32 = 1;                  // the bed's ducking now, 0..1
+  stolen: int; dropped: int; played: int;
+}
+
+// The next of the seeded generator (xorshift32): 0..1.
+mix_rand :: (m: [] Mixer) -> f32 {
+  x := m[0].seed;
+  x ^= x << 13; x ^= x >> 17; x ^= x << 5;
+  m[0].seed = x;
+  return cast(f32) (f64(cast(int) (x >> 8)) / 16777216.0);
+}
+mix_seed :: (m: [] Mixer, seed: u32) { m[0].seed = ifx seed == 0 then 0x9e3779b9 else seed; }
+
+// What a play is: whether it plays, its variant, rate and gain, its voice's id, and the id of the
+// voice it takes the place of (0 none).
+MixPlay :: struct { ok: bool; variant: int; rate: f32 = 1; gain: f32; id: int; steal: int; }
+
+// The voices still sounding at `now`.
+mix_expire :: (m: [] Mixer, now: f64) {
+  for i: 0..<MIX_VOICES { if m[0].voices[i].on && m[0].voices[i].ends <= now { m[0].voices[i].on = false; } }
+}
+mix_count :: (m: [] Mixer, sound: int) -> int {
+  n := 0;
+  for i: 0..<MIX_VOICES { v := m[0].voices[i]; if v.on && (sound < 0 || v.sound == sound) { n += 1; } }
+  return n;
+}
+// The weakest sounding voice (of `sound`, or of any when sound < 0): its slot, or -1.
+mix_weakest :: (m: [] Mixer, sound: int) -> int {
+  w := -1;
+  for i: 0..<MIX_VOICES {
+    v := m[0].voices[i];
+    if !v.on || (sound >= 0 && v.sound != sound) { continue; }
+    if w < 0 || v.weight < m[0].voices[w].weight { w = i; }
+  }
+  return w;
+}
+
+// Sound `sound` (s its limit and variants) at gain `gain` at the listener, `delay` seconds from
+// `now`, with priority `priority` (1 and up).
+mix_play :: (m: [] Mixer, sound: int, s: MixSound, gain: f32, priority: f32, now: f64, delay: f32) -> MixPlay {
+  out := MixPlay.{};
+  if sound < 0 || sound >= MIX_SOUNDS || s.variants < 1 || gain <= 0 { return out; }
+  mix_expire(m, now);
+  weight := gain * mix_max(priority, 1);
+  slot := -1;
+  // its own limit, then the whole mix's: the weakest gives way to a stronger one
+  if mix_count(m, sound) >= mix_max_i(s.limit, 1) {
+    w := mix_weakest(m, sound);
+    if w < 0 || m[0].voices[w].weight >= weight { m[0].dropped += 1; return out; }
+    slot = w;
+  } else if mix_count(m, -1) >= MIX_VOICES {
+    w := mix_weakest(m, -1);
+    if w < 0 || m[0].voices[w].weight >= weight { m[0].dropped += 1; return out; }
+    slot = w;
+  }
+  if slot >= 0 { out.steal = m[0].voices[slot].id; m[0].stolen += 1; }
+  else { for i: 0..<MIX_VOICES { if !m[0].voices[i].on { slot = i; break; } } }
+  if slot < 0 { return out; }
+  v := m[0].turn[sound] % s.variants;
+  m[0].turn[sound] = (m[0].turn[sound] + 1) % 4096;
+  out.variant = v;
+  out.rate = 1 + (mix_rand(m) * 2 - 1) * MIX_PITCH;
+  out.gain = gain * (1 + (mix_rand(m) * 2 - 1) * MIX_SPREAD);
+  out.id = m[0].next; m[0].next += 1;
+  out.ok = true;
+  ms := s.ms[v];
+  m[0].voices[slot] = MixVoice.{id = out.id, sound = sound, on = true, weight = weight, gain = out.gain,
+                                ends = now + f64(mix_max(delay, 0)) + f64(ms) / 1000.0 / f64(out.rate)};
+  m[0].played += 1;
+  return out;
+}
+
+// The sounding voices' summed level: the power sum of their gains at the listener (each variant
+// is normalised to the bank's loudness), for mix_bus.
+mix_level :: (m: [] Mixer) -> f32 {
+  sum := 0.0f32;
+  for i: 0..<MIX_VOICES { v := m[0].voices[i]; if v.on { sum += v.gain * v.gain; } }
+  return sqrt(sum);
+}
+// The bus a frame on: the limiter's gain for `level` (mix_level), `dt` seconds after the last.
+// Down at once, back up over MIX_RELEASE.
+mix_bus :: (m: [] Mixer, level: f32, dt: f32) -> f32 {
+  want := ifx level > MIX_CEILING then MIX_CEILING / level else 1.0f32;
+  if want < m[0].bus { m[0].bus = want; }
+  else { k := 1 - exp(-mix_max(dt, 0) / MIX_RELEASE); m[0].bus += (want - m[0].bus) * k; }
+  return m[0].bus;
+}
+// The power sum of some gains.
+mix_gains :: (gains: [] f32) -> f32 {
+  sum := 0.0f32;
+  for g: gains { sum += g * g; }
+  return sqrt(sum);
+}
+
+// A big event at `now`: the bed ducks. mix_bed eases it: the bed's gain multiplier now.
+mix_duck :: (m: [] Mixer, now: f64) { m[0].duck_until = now + MIX_DUCK_HOLD; }
+mix_bed :: (m: [] Mixer, now: f64, dt: f32) -> f32 {
+  want := ifx now < m[0].duck_until then f32(MIX_DUCK) else 1.0f32;
+  if want < m[0].bed { m[0].bed += (want - m[0].bed) * (1 - exp(-mix_max(dt, 0) / 0.08)); }
+  else { m[0].bed += (want - m[0].bed) * (1 - exp(-mix_max(dt, 0) / MIX_DUCK_EASE)); }
+  return m[0].bed;
+}
+
+mix_max :: (a: f32, b: f32) -> f32 { return ifx a > b then a else b; }
+mix_max_i :: (a: int, b: int) -> int { return ifx a > b then a else b; }
+
+// The room's impulse response as WAV bytes (stereo, 48 kHz): the reverb's two tails, the right
+// spread from the left, under an exponential fall to -60 dB over MIX_ROOM_MS, after a short gap.
+// pcm holds 2 * frames ints, scratch frames ints. The bytes written, or -1.
+mix_room :: (pcm: [] int, scratch: [] int, out: [] u8) -> int {
+  frames := MIX_ROOM_MS * MIX_ROOM_RATE / 1000;
+  if pcm.count < 2 * frames || scratch.count < 2 * frames { return -1; }
+  imp := scratch[0..<frames]; tail := scratch[frames..<2 * frames];
+  for c: 0..<2 {
+    for i: 0..<frames { imp[i] = 0; }
+    imp[0] = AU_ONE / 2;
+    if !au_reverb(imp, tail, ifx c == 0 then 0 else 23) { return -1; }
+    for i: 0..<frames {
+      // -60 dB over the length: e^(-6.9 i / frames)
+      f := exp(-6.9 * f32(i) / f32(frames));
+      v := cast(int) (f32(tail[i]) / f32(AU_ONE) * 32767 * 2.5 * f);
+      pcm[2 * i + c] = au_clamp(v, -32767, 32767);
+    }
+  }
+  return wav_write(pcm[0..<2 * frames], 2, MIX_ROOM_RATE, out);
+}
+mix_room_bytes :: () -> int { return WAV_HEADER + 4 * (MIX_ROOM_MS * MIX_ROOM_RATE / 1000); }
+
+// ---- Checks ----
+
+mix_test_sound :: (limit: int, variants: int, ms: int) -> MixSound {
+  s := MixSound.{limit = limit, variants = variants};
+  for i: 0..<4 { s.ms[i] = ms; }
+  return s;
+}
+
+#test "a sound's limit: four at once, a fifth as weak is dropped, a stronger one takes the weakest's place" {
+  m: [1] Mixer;
+  s := mix_test_sound(4, 2, 1000);
+  ids: [4] int;
+  for i: 0..<4 { p := mix_play(m[..], 3, s, 0.1 + f32(i) * 0.1, 1, 0, 0); #assert p.ok && p.steal == 0; ids[i] = p.id; }
+  #assert mix_count(m[..], 3) == 4;
+  weak := mix_play(m[..], 3, s, 0.05, 1, 0, 0);
+  #assert !weak.ok && m[0].dropped == 1;
+  // a near one (gain 0.3, priority 2: weight 0.6) takes the quietest's (0.1) place
+  near := mix_play(m[..], 3, s, 0.3, 2, 0, 0);
+  #assert near.ok && near.steal == ids[0] && mix_count(m[..], 3) == 4;
+  // another sound has its own limit
+  other := mix_play(m[..], 4, s, 0.05, 1, 0, 0);
+  #assert other.ok && other.steal == 0;
+  // a second later they have ended: room again
+  late := mix_play(m[..], 3, s, 0.01, 1, 1.5, 0);
+  #assert late.ok && late.steal == 0 && mix_count(m[..], 3) == 1;
+}
+
+#test "the whole mix: past MIX_VOICES the weakest of any sound gives way" {
+  m: [1] Mixer;
+  s := mix_test_sound(MIX_VOICES, 1, 2000);
+  for i: 0..<MIX_VOICES { p := mix_play(m[..], i % 8, mix_test_sound(8, 1, 2000), 0.2 + f32(i) * 0.01, 1, 0, 0); #assert p.ok; }
+  #assert mix_count(m[..], -1) == MIX_VOICES;
+  #assert !mix_play(m[..], 9, s, 0.1, 1, 0, 0).ok;
+  p := mix_play(m[..], 9, s, 0.9, 1, 0, 0);
+  #assert p.ok && p.steal == 1 && mix_count(m[..], -1) == MIX_VOICES;
+}
+
+#test "variation: variants in turn, rate and gain within their spread, and the same seed plays the same again" {
+  a: [1] Mixer; b: [1] Mixer;
+  mix_seed(a[..], 12832); mix_seed(b[..], 12832);
+  s := mix_test_sound(64, 3, 10);
+  seen: [3] int;
+  for i: 0..<300 {
+    p := mix_play(a[..], 1, s, 0.5, 1, f64(i), 0);
+    q := mix_play(b[..], 1, s, 0.5, 1, f64(i), 0);
+    #assert p.ok && p.variant == i % 3 && p.variant == q.variant && p.rate == q.rate && p.gain == q.gain;
+    #assert p.rate >= 1 - MIX_PITCH && p.rate <= 1 + MIX_PITCH && p.gain >= 0.5 * (1 - MIX_SPREAD) && p.gain <= 0.5 * (1 + MIX_SPREAD);
+    if p.rate > 1.03 { seen[0] += 1; } if p.rate < 0.97 { seen[1] += 1; } if abs(p.gain - 0.5) > 0.04 { seen[2] += 1; }
+  }
+  #assert seen[0] > 30 && seen[1] > 30 && seen[2] > 30;   // it spreads, both ways
+  // another seed, another run
+  c: [1] Mixer; mix_seed(c[..], 7);
+  diff := 0;
+  for i: 0..<20 { if mix_play(c[..], 1, s, 0.5, 1, f64(i), 0).rate != mix_play(a[..], 1, s, 0.5, 1, f64(i + 300), 0).rate { diff += 1; } }
+  #assert diff > 15;
+}
+
+#test "a voice lasts its variant's length at its rate, after its delay" {
+  m: [1] Mixer;
+  s := mix_test_sound(1, 1, 1000);
+  p := mix_play(m[..], 0, s, 0.5, 1, 10, 0.5);
+  #assert p.ok;
+  e := m[0].voices[0].ends;
+  #assert abs(e - (10.5 + 1.0 / f64(p.rate))) < 0.000001;
+  mix_expire(m[..], e - 0.001);
+  #assert mix_count(m[..], 0) == 1;
+  mix_expire(m[..], e);
+  #assert mix_count(m[..], 0) == 0;
+}
+
+#test "the limiter: sixty raiders at once are held under the ceiling, one alone is left as it is, and it comes back" {
+  m: [1] Mixer;
+  #assert mix_bus(m[..], 0.4, 0.016) == 1;
+  gains: [60] f32;
+  for i: 0..<60 { gains[i] = 0.35; }
+  level := mix_gains(gains[..]);
+  #assert level > 2.5;                                // 0.35 * sqrt(60)
+  g := mix_bus(m[..], level, 0.016);
+  #assert abs(level * g - MIX_CEILING) < 0.0001;     // down at once, to the ceiling
+  // released: after one release time most of the way back, after five all of it
+  quiet := 0.3f32;
+  for i: 0..<38 { _ := mix_bus(m[..], quiet, 0.016); }   // about 0.6 s
+  #assert m[0].bus > 0.6 && m[0].bus < 0.95;
+  for i: 0..<400 { _ := mix_bus(m[..], quiet, 0.016); }
+  #assert m[0].bus > 0.999;
+  // and never over the ceiling at any level
+  for k: 1..<40 { l := f32(k) * 0.25; b := mix_bus(m[..], l, 0.016); #assert l * b <= MIX_CEILING + 0.0001; }
+}
+
+#test "ducking: the bed falls under a big event and comes back after it" {
+  m: [1] Mixer;
+  #assert mix_bed(m[..], 0, 0.016) == 1;
+  mix_duck(m[..], 1);
+  b := 1.0f32;
+  for i: 0..<30 { b = mix_bed(m[..], 1 + f64(i) * 0.016, 0.016); }
+  #assert abs(b - MIX_DUCK) < 0.01;
+  for i: 0..<300 { b = mix_bed(m[..], 3 + f64(i) * 0.016, 0.016); }
+  #assert b > 0.99;
+}
+
+#test "the room's impulse: stereo WAV bytes, a tail that falls away, its two sides apart" #steps 400000000 {
+  frames := MIX_ROOM_MS * MIX_ROOM_RATE / 1000;
+  pcm: [134400] int; scratch: [134400] int; out: [268844] u8;
+  #assert mix_room_bytes() == 268844 && 2 * frames == 134400;
+  n := mix_room(pcm[..], scratch[..], out[..]);
+  #assert n == mix_room_bytes() && out[22] == 2;
+  early := 0; late := 0; apart := 0;
+  for i: 0..<frames {
+    a := au_abs(pcm[2 * i]);
+    if i < frames / 4 { early = au_max(early, a); } else if i > frames * 3 / 4 { late = au_max(late, a); }
+    if pcm[2 * i] != pcm[2 * i + 1] { apart += 1; }
+  }
+  #assert early > 2000;
+  #assert late < early / 20;
+  #assert apart > frames / 4;
+}
