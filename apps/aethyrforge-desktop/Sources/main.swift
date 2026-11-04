@@ -40,7 +40,7 @@ final class ForgeWindow: NSWindow {
 }
 
 @MainActor
-final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
+final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, WKScriptMessageHandlerWithReply {
     let fm = FileManager.default
     var window: ForgeWindow!
     var coderHeldKeys: Set<UInt16> = []
@@ -52,6 +52,12 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     var voiceStartup: Task<Void, Error>?
     var voiceReservation: (Int32, Int)?
     var voicePort = 0
+    var microphonePrompt = false
+    var voiceCaptureRequest: Int?
+    var voiceCaptureEpoch = 0
+    var microphoneDecisions = 0
+    var microphoneCheckFailStartup = false
+    var microphoneCheckDelay = false
     var logs: [FileHandle] = []
     var startup: Task<Void, Never>?
     var framePump: Task<Void, Never>?
@@ -74,6 +80,10 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     let voiceSmoke = CommandLine.arguments.contains("--voice-smoke")
     let chatSmoke = CommandLine.arguments.contains("--chat-smoke")
     let inputSmoke = CommandLine.arguments.contains("--input-smoke")
+    var microphoneReport: URL? {
+        guard let i = CommandLine.arguments.firstIndex(of: "--microphone-check"), i + 1 < CommandLine.arguments.count else { return nil }
+        return URL(fileURLWithPath: CommandLine.arguments[i + 1])
+    }
     var launchReport: URL? {
         guard let i = CommandLine.arguments.firstIndex(of: "--launch-check"), i + 1 < CommandLine.arguments.count else { return nil }
         return URL(fileURLWithPath: CommandLine.arguments[i + 1])
@@ -125,6 +135,13 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         let config = WKWebViewConfiguration()
         config.userContentController.add(self, name: "forgeVoiceStatus")
         config.userContentController.add(self, name: "forgeVoiceCoder")
+        config.userContentController.addScriptMessageHandler(self, contentWorld: .page, name: "forgeVoiceCapture")
+        if !smoke || voiceSmoke {
+            config.userContentController.addUserScript(WKUserScript(source: """
+            globalThis.coaxialVoicePrepareCapture = capture => webkit.messageHandlers.forgeVoiceCapture.postMessage({schema:'aethyrforge.microphone-capture.v1',kind:'prepare',capture});
+            globalThis.coaxialVoiceCancelCapture = capture => webkit.messageHandlers.forgeVoiceCapture.postMessage({schema:'aethyrforge.microphone-capture.v1',kind:'cancel',capture});
+            """, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
         config.userContentController.addUserScript(WKUserScript(source: """
         globalThis.coaxialVoiceFinal = e => {
           webkit.messageHandlers.forgeVoiceCoder.postMessage(JSON.stringify({schema:'aethyrforge.voice-coder.v1',kind:'final',ticket:e.ticket,text:e.text}));
@@ -178,7 +195,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         setupPane.folderAction = { NSWorkspace.shared.open(FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".openagents")) }
         content.addSubview(setupPane)
         if !smoke {
-            if launchReport != nil { window.level = .floating }
+            if launchReport != nil || microphoneReport != nil { window.level = .floating }
             window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
         }
     }
@@ -210,7 +227,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     func start() async {
         do {
             guard let resources = Bundle.main.resourceURL else { throw ShellError.failed("Missing bundled resources.") }
-            if smoke, let report {
+            if let report = smoke ? report : microphoneReport {
                 dataURL = report.deletingLastPathComponent().appendingPathComponent("world")
             } else {
                 let base = fm.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/aethyrforge", isDirectory: true)
@@ -287,7 +304,10 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
                     }
                 }
             }
-            if inputSmoke {
+            if microphoneReport != nil {
+                await inventoryTask?.value
+                try await microphoneCheck()
+            } else if inputSmoke {
                 await inventoryTask?.value
                 try await inputSmokeCheck()
             } else if voiceSmoke {
@@ -654,15 +674,118 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         defer { voiceStartup = nil }
         try await task.value
     }
-    func cancelVoice() { fgv_cancel(); _ = web?.evaluateJavaScript("globalThis.coaxialVoiceCancel?.(); true") }
+    func cancelVoice() {
+        voiceCaptureEpoch += 1; voiceCaptureRequest = nil
+        fgv_cancel(); _ = web?.evaluateJavaScript("globalThis.coaxialVoiceCancel?.(); true")
+    }
     func armVoiceCapture() async throws {
         let ticket = fgv_arm()
         guard ticket > 0 else { throw ShellError.failed("Voice capture generation is exhausted; reopen the app.") }
         _ = try await web.evaluateJavaScript("globalThis.coaxialCoderVoiceTicket=\(ticket); true")
     }
-    func applicationDidResignActive(_ notification: Notification) { cancelVoice() }
-    func windowDidResignKey(_ notification: Notification) { coderHeldKeys.removeAll(); cancelVoice() }
+    // Permission sheets and other AppKit panels take key focus. Only leaving
+    // the app (or explicit hide/minimize/setup) cancels its live capture.
+    func applicationDidResignActive(_ notification: Notification) { if !microphonePrompt { cancelVoice() } }
+    func applicationDidHide(_ notification: Notification) { cancelVoice() }
+    func windowDidResignKey(_ notification: Notification) { coderHeldKeys.removeAll() }
     func windowDidMiniaturize(_ notification: Notification) { cancelVoice() }
+    var voiceAvailable: Bool {
+        fm_capture(!stopping && sceneReady && setupPane.isHidden,
+                   window.isVisible && !window.isMiniaturized, NSApp.isActive)
+    }
+    func trustedVoiceFrame(_ frame: WKFrameInfo) -> Bool {
+        let origin = frame.securityOrigin
+        return frame.isMainFrame && origin.protocol == "http" && origin.host == "127.0.0.1" && origin.port == pageURL?.port
+    }
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage, replyHandler: @escaping (Any?, String?) -> Void) {
+        guard message.name == "forgeVoiceCapture", trustedVoiceFrame(message.frameInfo),
+              let body = message.body as? [String: Any], body["schema"] as? String == "aethyrforge.microphone-capture.v1",
+              let capture = body["capture"] as? Int, capture > 0, capture <= 9007199254740991 else {
+            replyHandler(nil, "Invalid local microphone request."); return
+        }
+        if body["kind"] as? String == "cancel" {
+            if voiceCaptureRequest == capture { voiceCaptureEpoch += 1; voiceCaptureRequest = nil; fgv_cancel() }
+            replyHandler(true, nil); return
+        }
+        guard body["kind"] as? String == "prepare", (!smoke || voiceSmoke), (voiceSmoke || voiceAvailable),
+              (voiceSmoke || AVCaptureDevice.authorizationStatus(for: .audio) == .authorized) else {
+            replyHandler(nil, "Voice stopped. Return to Aethyrforge and hold TALK again."); return
+        }
+        voiceCaptureEpoch += 1; voiceCaptureRequest = capture
+        let epoch = voiceCaptureEpoch
+        Task {
+            do {
+                if microphoneReport != nil && microphoneCheckFailStartup {
+                    microphoneCheckFailStartup = false
+                    throw ShellError.failed("Local voice test startup failure.")
+                }
+                if microphoneReport != nil && microphoneCheckDelay { try await Task.sleep(for: .milliseconds(500)) }
+                try await ensureVoiceHost()
+                guard epoch == voiceCaptureEpoch, (voiceSmoke || voiceAvailable) else { throw ShellError.failed("Voice stopped. Hold TALK again.") }
+                try await armVoiceCapture()
+                guard epoch == voiceCaptureEpoch, (voiceSmoke || voiceAvailable) else { throw ShellError.failed("Voice stopped. Hold TALK again.") }
+                replyHandler(true, nil)
+            } catch { replyHandler(nil, error.localizedDescription) }
+        }
+    }
+
+    // SDK acceptance: real WebKit + physical microphone permission. Stop each
+    // track immediately; no audio graph, recording or recognition receives it.
+    func microphoneCheck() async throws {
+        guard let microphoneReport else { return }
+        do {
+            enterWorld()
+            guard setupPane.isHidden else { throw ShellError.failed("Microphone check needs the ready world.") }
+            window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
+            try await Task.sleep(for: .milliseconds(300))
+            // Reproduce the reported state: visible foreground app, no key window.
+            window.resignKey()
+            let withoutKey = !window.isKeyWindow
+            let first = try await web.callAsyncJavaScript("""
+            const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+            const live=stream.getAudioTracks().some(t=>t.readyState==='live');
+            stream.getTracks().forEach(t=>t.stop());
+            await coaxialVoicePrepareCapture(101);
+            const ticket=coaxialCoderVoiceTicket;
+            await coaxialVoiceCancelCapture(101);
+            return {live,ticket,closed:stream.getTracks().every(t=>t.readyState==='ended')};
+            """, arguments: [:], in: nil, contentWorld: .page) as? [String: Any] ?? [:]
+            microphoneCheckFailStartup = true
+            let second = try await web.callAsyncJavaScript("""
+            const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+            stream.getTracks().forEach(t=>t.stop());
+            let failed=false;try{await coaxialVoicePrepareCapture(102);}catch(e){failed=String(e).includes('test startup failure');}
+            const again=await navigator.mediaDevices.getUserMedia({audio:true});
+            const live=again.getAudioTracks().some(t=>t.readyState==='live');
+            again.getTracks().forEach(t=>t.stop());
+            await coaxialVoicePrepareCapture(103);
+            const ticket=coaxialCoderVoiceTicket;
+            await coaxialVoiceCancelCapture(103);
+            return {live,ticket,failed,closed:again.getTracks().every(t=>t.readyState==='ended')};
+            """, arguments: [:], in: nil, contentWorld: .page) as? [String: Any] ?? [:]
+            microphoneCheckDelay = true
+            let cancelled = try await web.callAsyncJavaScript("""
+            const pending=coaxialVoicePrepareCapture(104);
+            await coaxialVoiceCancelCapture(104);
+            try{await pending;return false;}catch(e){return String(e).includes('Voice stopped');}
+            """, arguments: [:], in: nil, contentWorld: .page) as? Bool == true
+            let one = first["ticket"] as? Int ?? 0, two = second["ticket"] as? Int ?? 0
+            guard withoutKey, first["live"] as? Bool == true, second["live"] as? Bool == true,
+                  first["closed"] as? Bool == true, second["closed"] as? Bool == true,
+                  second["failed"] as? Bool == true, one > 0, two > one, cancelled, microphoneDecisions > 0 else {
+                throw ShellError.failed("Microphone regression failed: \(first), \(second), cancelled=\(cancelled), key=\(!withoutKey).")
+            }
+            let result: [String: Any] = ["authorized": AVCaptureDevice.authorizationStatus(for: .audio) == .authorized,
+                "realMicrophone": true, "noKeyWindow": withoutKey, "tracksClosed": true,
+                "repeatCapture": true, "freshTickets": [one,two], "startupFailureRecovered": true,
+                "cancelledPreparation": cancelled, "permissionDecisions": microphoneDecisions,
+                "audioRecordedOrSent": false]
+            try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]).write(to: microphoneReport)
+        } catch {
+            try? Data(error.localizedDescription.utf8).write(to: microphoneReport.appendingPathExtension("error"))
+        }
+        NSApp.terminate(nil)
+    }
     func traceVoice(_ line: String) {
         guard let dataURL, line.utf8.count <= 1024 else { return }
         let path = dataURL.appendingPathComponent("voice-access.log")
@@ -675,7 +798,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
               let line = message.body as? String else { return }
         if message.name == "forgeVoiceStatus" { traceVoice(line); return }
         guard message.name == "forgeVoiceCoder", line.utf8.count <= 131072 else { return }
-        let available = !stopping && sceneReady && setupPane.isHidden && (voiceSmoke || window.isKeyWindow && !window.isMiniaturized)
+        let available = voiceSmoke || voiceAvailable
         let bytes = Array(line.utf8)
         let action = bytes.withUnsafeBufferPointer { fgv_message($0.baseAddress, Int64($0.count), available, chatPane.busy) }
         if action == 1 {
@@ -743,7 +866,6 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
             if try await web.evaluateJavaScript("!!globalThis.__voiceClient") as? Bool == true { break }
             try await Task.sleep(for: .milliseconds(50))
         }
-        try await armVoiceCapture()
         _ = try await web.evaluateJavaScript("__voiceClient.toggle('on'); true")
         let listenDeadline = Date().addingTimeInterval(15)
         var listening = false
@@ -816,6 +938,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
 
     @objc func reloadWorld() {
         guard !stopping, let pageURL else { return }
+        cancelVoice()
         web.load(URLRequest(url: pageURL))
     }
     @objc func openWorldFolder() { if let dataURL { NSWorkspace.shared.open(dataURL) } }
@@ -823,6 +946,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     func applicationWillTerminate(_ notification: Notification) { startup?.cancel(); stopChildren() }
     func stopChildren() {
         stopping = true
+        cancelVoice()
         chatPane?.shutdown()
         framePump?.cancel()
         inventoryTask?.cancel()
@@ -848,18 +972,18 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { fail("The world view stopped. Quit and reopen Aethyrforge.") }
     func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin, initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType, decisionHandler: @escaping (WKPermissionDecision) -> Void) {
         traceVoice("microphone request: main=\(frame.isMainFrame) local=\(origin.host == "127.0.0.1" && origin.port == pageURL?.port) key=\(window.isKeyWindow) setup=\(!setupPane.isHidden) authorization=\(AVCaptureDevice.authorizationStatus(for: .audio).rawValue)")
-        guard type == .microphone, frame.isMainFrame, origin.protocol == "http", origin.host == "127.0.0.1", origin.port == pageURL?.port,
-              !smoke, !stopping, setupPane.isHidden, window.isKeyWindow else { decisionHandler(.deny); return }
+        guard type == .microphone, trustedVoiceFrame(frame), !smoke, !stopping else { decisionHandler(.deny); return }
         Task {
-            let allowed = await AVCaptureDevice.requestAccess(for: .audio)
-            traceVoice("microphone permission: \(allowed)")
-            guard allowed, !stopping else { decisionHandler(.deny); return }
-            do {
-                try await ensureVoiceHost()
-                guard !stopping, sceneReady, setupPane.isHidden, window.isKeyWindow, origin.port == pageURL?.port else { decisionHandler(.deny); return }
-                try await armVoiceCapture(); decisionHandler(.grant)
+            if AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined {
+                microphonePrompt = true
+                _ = await AVCaptureDevice.requestAccess(for: .audio)
+                microphonePrompt = false
             }
-            catch { notice.stringValue = "Local voice: \(error.localizedDescription)"; notice.isHidden = false; decisionHandler(.deny) }
+            let allowed = fm_permission(trustedVoiceFrame(frame), type == .microphone,
+                                       AVCaptureDevice.authorizationStatus(for: .audio) == .authorized)
+            microphoneDecisions += 1
+            traceVoice("microphone permission: \(allowed) key=\(window.isKeyWindow)")
+            decisionHandler(allowed ? .grant : .deny)
         }
     }
 }

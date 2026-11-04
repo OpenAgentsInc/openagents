@@ -1,0 +1,20 @@
+// Platform permission and live capture are separate decisions. A system sheet
+// taking key focus does not revoke an existing macOS microphone grant.
+#authority;
+
+#test "only the current local main frame may receive microphone permission" {
+  for trusted:0..<2 {for audio:0..<2 {for authorized:0..<2 {
+    #assert fm_permission(trusted==1,audio==1,authorized==1)==(trusted==1 && audio==1 && authorized==1);
+  }}}
+}
+#test "capture needs the ready visible foreground app, independent of key window" {
+  for ready:0..<2 {for visible:0..<2 {for active:0..<2 {
+    #assert fm_capture(ready==1,visible==1,active==1)==(ready==1 && visible==1 && active==1);
+  }}}
+}
+fm_permission :: (trusted:bool,audio:bool,authorized:bool)->bool #export_c {
+  return trusted && audio && authorized;
+}
+fm_capture :: (ready:bool,visible:bool,active:bool)->bool #export_c {
+  return ready && visible && active;
+}

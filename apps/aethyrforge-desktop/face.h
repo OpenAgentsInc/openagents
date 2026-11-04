@@ -15,6 +15,8 @@ int64_t fgs_status(int64_t kind);
 int64_t fgs_text_byte(int64_t field, int64_t index);
 int64_t fgs_settings_byte(int64_t index);
 void fgc_reset(void);
+bool fm_permission(bool trusted, bool audio, bool authorized);
+bool fm_capture(bool ready, bool visible, bool active);
 int64_t fgv_arm(void);
 void fgv_cancel(void);
 int64_t fgv_message(const uint8_t *p, int64_t n, bool available, bool busy);

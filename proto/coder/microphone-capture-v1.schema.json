@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagents.com/proto/coder/microphone-capture-v1.schema.json",
+  "title": "Aethyrforge per-hold microphone preparation (native IPC)",
+  "type": "object",
+  "required": ["schema", "kind", "capture"],
+  "properties": {
+    "schema": {"const": "aethyrforge.microphone-capture.v1"},
+    "kind": {"enum": ["prepare", "cancel"]},
+    "capture": {"type": "integer", "minimum": 1, "maximum": 9007199254740991}
+  },
+  "additionalProperties": false
+}

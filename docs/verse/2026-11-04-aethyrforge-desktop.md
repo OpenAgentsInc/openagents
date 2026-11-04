@@ -74,9 +74,17 @@ page server, the voice Wasm and a local Parakeet voice host. This is the same
   macOS consent for audio from its own loopback main frame. First use starts a
   reserved-loopback voice host with Parakeet on Metal and local-only providers;
   the browser's voice runtime is bundled. Models stay unloaded during setup and
-  resident after first use. Capture closes on release, setup, focus loss, hiding
+  resident after first use. Capture closes on release, setup, leaving the app, hiding
   or quit. A canceled permission request cannot later reopen capture. Speech
   stays on this Mac; the public voice service is not used.
+  Microphone permission is separate from model preparation: a permission sheet
+  taking key focus no longer produces a WebKit denial, and model startup failure
+  cannot poison the site's grant. Every hold obtains a fresh native ticket even
+  when WebKit caches permission. The real-device `--microphone-check` passed
+  three captures with macOS already authorized and the window not key; tracks
+  were stopped without recording/sending audio. It also passed repeated-ticket,
+  model-failure recovery and canceled-preparation checks. The permission policy
+  killed all four mutants; 137 desktop checks passed.
 - Audio output remains muted through a live zero-gain graph so the microphone's
   AudioWorklet can process samples. A final Parakeet transcript now starts the
   same automatically routed Coder run/fork as typed input, while the Enter bar

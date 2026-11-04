@@ -115,6 +115,12 @@ export function startVoice({ send, route, wasmUrl }) {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
       if (!running || owner !== generation) { stream.getTracks().forEach(t => t.stop()); return; }
       mic = stream;
+      // Native permission is independent of model startup. Prepare every hold:
+      // WebKit can reuse a site grant without invoking its permission delegate.
+      if (typeof globalThis.coaxialVoicePrepareCapture === "function") {
+        await globalThis.coaxialVoicePrepareCapture(owner);
+        if (!running || owner !== generation) return;
+      }
       nativeTicket = globalThis.coaxialCoderVoiceTicket || 0;
       await resumed;
       if (!running || owner !== generation) return;
@@ -131,7 +137,7 @@ export function startVoice({ send, route, wasmUrl }) {
     } catch (e) {
       console.warn("voice:", e);
       if (globalThis.coaxialVoiceHost) globalThis.webkit?.messageHandlers?.forgeVoiceStatus?.postMessage(`error:${e?.name}:${e?.message}`);
-      if (owner === generation) off(e?.name === "NotAllowedError" ? "Voice needs the microphone. Allow it for this site and try again." : "Voice can't use the microphone here.");
+      if (owner === generation) off(e?.name === "NotAllowedError" ? (globalThis.coaxialVoiceHost ? "Microphone access was denied. Check macOS Settings → Privacy & Security → Microphone → Aethyrforge." : "Voice needs the microphone. Allow it for this site and try again.") : (globalThis.coaxialVoiceHost ? `Local voice: ${e?.message || "microphone unavailable"}` : "Voice can't use the microphone here."));
       return;
     }
     connect();
@@ -139,10 +145,12 @@ export function startVoice({ send, route, wasmUrl }) {
   }
 
   function off(notice = "") {
+    const capture = generation;
     generation++;
     if (letGo) { clearTimeout(letGo); letGo = 0; }
     if (!running) return;
     running = false;
+    globalThis.coaxialVoiceCancelCapture?.(capture).catch(() => {});
     globalThis.coaxialVoiceStopped?.(nativeTicket); nativeTicket = 0;
     if (turn) control(CONTROL.CANCEL, turn);
     clearInterval(timer); timer = 0;

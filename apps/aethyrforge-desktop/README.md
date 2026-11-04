@@ -118,13 +118,30 @@ word “publish” means the local document only. The undo stack is not durable 
 
 Audio output is muted. Leave EDIT with DONE/B, then hold TALK/V while speaking.
 The first request asks for macOS microphone permission and starts the local
-Parakeet service on a reserved loopback port. If the permission dialog interrupted
-the hold, hold TALK again afterward. Recognition uses the shared checkpoint on
+Parakeet service on a reserved loopback port. macOS permission is checked
+separately from model startup; system dialogs taking key focus do not turn an
+existing grant into a cached WebKit denial. Every hold prepares its own native
+capture ticket, including when WebKit reuses its site grant. If the permission
+dialog interrupted the hold, hold TALK again afterward. Recognition uses the shared checkpoint on
 Metal; the model stays resident until app quit. No model loads during setup.
 The bundled browser voice engine receives real microphone samples and returns
 the final words to Everglade's existing voice UI, without the public voice host.
-Release closes capture; setup, focus loss, hiding and quit cancel it. A permission
+Release closes capture; setup, leaving the app, hiding and quit cancel it. A permission
 request that finishes after cancellation cannot reopen capture or a voice socket.
+
+The native `--microphone-check REPORT.json` acceptance mode opens the real
+microphone through WebKit, immediately stops each track without recording or
+sending audio, and exits. It uses an isolated world beside the report and the
+existing macOS grant. It checks a visible foreground window without key focus,
+repeated captures with fresh tickets, recovery after a model startup failure
+and cancellation during preparation. On 2026-11-04 these checks passed with
+`authorization=3`, `key=false` and one WebKit permission callback across three
+captures. Both Coax permission checks passed and all four policy mutants were
+killed. The complete desktop suite now has 137 passing checks.
+The recorded-audio voice check also passed through the new per-hold preparation,
+Parakeet, Elephant routing and two live Microcoder reply chunks with the bar
+closed. The [capture IPC contract](../../docs/protocol/aethyrforge-microphone-capture-v1.md)
+records the permission/preparation boundary.
 
 Local gpt-oss interpretation, full voice-edit acceptance, typed world edits,
 remote publish/revert, bots and raid controls are future milestones in the
