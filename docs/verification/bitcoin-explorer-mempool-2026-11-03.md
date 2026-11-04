@@ -42,6 +42,10 @@ profile with bounded replay pause/503/continuation, missing interior journal
 segments, unavailable archive links, corrupt sequences, both reorgs and
 torn-tail recovery. The bounded file oracle checks 1,220 independent actual
 files under checked ASan/UBSan, now advancing one whole frame per call.
+The current native binaries also pass 133 Core/Electrs HTTP comparisons per
+profile through both real reorgs. The teaching API's entry declares its
+compile-time budget explicitly and passes the original 75 HTTP/RPC responses
+with both API and index writer under ASan/UBSan.
 
 Compiler: coax0 0.48.0, SHA-256
 `cdaceb89e69c8d523e41242a940af34774e8b6b4f945998c2d3bf38486c357fb`.

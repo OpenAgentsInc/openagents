@@ -1,5 +1,6 @@
 // Read-only small-fixture explorer service.
 // tool.sh: run-steps 250000000
+#run_steps 250000000;
 #load "../../platform/explorer-http.coax";
 tool_main :: () -> int #export_c {
   a: [1] Args; if !args_load(a[..]) || args_count(a[..]) < 4 || args_count(a[..]) > 6 { tool_errln("usage: explorer-api CHAIN STATE BLOCKFILE_OR_DIRECTORY PORT [REQUEST_LIMIT [WEB_ROOT]]"); return 2; }
