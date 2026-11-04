@@ -1,15 +1,23 @@
 // The Cultist Raid, a preview offline (?raid=preview): Darian Odiodei's cult outside the South Gate,
-// casting at the town and then charging it, while you stand ready on the road by the commons. The
-// raiders are the page's own SRD 5e battle's (everglade5e-raid.coax: the Siege's armies and how they
-// fight); this file is the page's side, the same for the room server's raid when it lands (#12740):
-//   - what it is told: each raider where it stands (everglade_raider) and each cast it makes
-//     (everglade_raid_cast), played with the Warlock's real spells (everglade-warlock.coax wl_shoot:
-//     Eldritch Blast's beams break, Fireball breaks and burns, the SRD's object damage);
-//   - how they look: robed and hooded, a Cultist's robe red, a Fanatic's black, a Warlock's violet
-//     with its casting hand alight, and Darian taller, in black and gold, horned;
-//   - &cine=1, a flight for a film: behind Darian over his swarm, the volleys, the charge, then on
-//     over the gate to the commons, where it settles into your own camera behind you and the HUD
-//     comes back. Without it the camera is yours from the start.
+// casting at the town in waves and then charging it, the town watch holding the gate, while you
+// stand ready on the road by the commons. Who fights and every roll are the page's own SRD 5e
+// battle's (everglade5e-raid.coax: the Siege's armies and how they fight); this file is the page's
+// side, and its drawing is the room server's raid's too (#12740):
+//   - what it is told: each person of the raid where they stand, how fast they go, whether they are
+//     casting or striking and whether they have fallen (everglade_raider), and each cast or shot
+//     (everglade_raid_cast);
+//   - the casts are the Warlock's real spells (everglade-warlock.coax wl_shoot_n): Eldritch Blast's
+//     beams break what they strike; a Fireball arcs over from the hand and breaks and burns where it
+//     lands. The watch's bolts and arrows fly at whom they shoot;
+//   - everyone is a body on the town's own rig and clips (verse/everglade/people-rig.coax): idle,
+//     walk, run, spell, slash, and the fall (PEOPLE_DIE) when they die, held where they fell, then
+//     sinking away. The cult hooded and robed by kind: a Cultist's robe blood red, a Fanatic's black,
+//     a Warlock's violet, its casting hand alight; Darian taller, in black, with a staff. The cult's
+//     look on the body (rp_parts) is the one place the Blender robes plug in, by look id. The
+//     watch in the town guard's leathers, the line with sword and shield (everglade-watch.coax);
+//   - &cine=1, a flight for a film: behind Darian over his swarm, the waves, the charge into the
+//     watch, then on over the gate to the commons, where it settles into your own camera behind you
+//     and the HUD comes back. Without it the camera is yours from the start.
 //   coax/bin/coax test apps/openagents-web/everglade5e.coax --only "raid preview"
 //
 // This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
@@ -17,28 +25,41 @@
 // Creative Commons Attribution 4.0 International License, available at
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 
-RP_RAIDERS :: 51;          // everglade5e-raid.coax E5R_RAIDERS
-// npcs.coax RS_NPC_*: the kinds the raid sends
+RP_PEOPLE :: 63;           // everglade5e-raid.coax E5R_RAID_PEOPLE: the raiders, then the watch
+// npcs.coax RS_NPC_*: the kinds a raid fields
+RP_GUARD :: 1; RP_VETERAN :: 2; RP_KNIGHT :: 3; RP_SCOUT :: 4;
 RP_CULTIST :: 7; RP_FANATIC :: 8; RP_WARLOCK :: 9; RP_ARCH :: 10;
 // where it happens: the leader 50 m out on the road in, the South Gate (plan.coax EG_GATE), where the
 // swarm runs once through, and you by the commons, facing the gate
 RP_LEAD :: [2] f32.[0, -106];
-RP_IN :: [2] f32.[0, -38];
+RP_IN :: [2] f32.[0, -25];
 RP_YOU :: [2] f32.[0, -16];
 // the flight (s from the raid's start): eye and look at each key, then into your camera
-RP_KEYS :: 7;
-RP_KEY_T :: [7] f32.[0, 5, 12, 15, 19, 23, 26];
-RP_KEY_EYE :: [21] f32.[2.2, 3.4, -114.5,   1.4, 4.6, -112,   -3.5, 7, -106,   -3, 7, -102,   0, 9, -84,   0, 12, -44,   -6, 5.5, -9];
-RP_KEY_AT :: [21] f32.[0, 2.4, -70,   0, 3.2, -64,   0, 3.5, -58,   0, 1.5, -72,   0, 2, -50,   0, 1, -14,   0, 1.4, -18];
+RP_KEYS :: 8;
+RP_KEY_T :: [8] f32.[0, 2.6, 6.5, 11, 15, 19.5, 23.5, 27];
+RP_KEY_EYE :: [24] f32.[2.2, 3.4, -114.5,   1.6, 4.2, -112.5,   -3.5, 6.5, -104,   -2.5, 6, -96,   1.5, 6.5, -74,   0, 9, -60,   0, 11, -40,   -5, 4.5, -9];
+RP_KEY_AT :: [24] f32.[0, 2.4, -70,   0, 4, -56,   0, 3.5, -56,   0, 1.5, -70,   0, 1.4, -56,   0, 1.2, -44,   0, 1, -16,   0, 1.4, -19];
 RP_SETTLE :: 2.5;          // s from the last key into your own camera
-RP_HUD_AT :: 27.6;         // s: the HUD back
+RP_HUD_AT :: 28.6;         // s: the HUD back
+RP_LIE :: 7.0;             // s a body lies where it fell before it sinks
+RP_SINK :: 2.5;            // s it takes to sink away
+RP_SHOTS :: 24; RP_SHOT_T :: 0.45;   // the watch's bolts and arrows in flight, and how long one flies
+RP_ARCS :: 8; RP_ARC_T :: 1.5; RP_ARC_UP :: 9.0;   // Fireballs in flight, their seconds and how high they arc
+RP_FIRE_BIG :: 1.7;        // a raid Fireball's burst against the hand's
+RP_BEAM_BIG :: 1.9;        // a raid Eldritch Blast's beams against the hand's
 
-RpRaider :: struct { npc: int; x: f32; z: f32; yaw: f32; moving: bool; walk: f32; level: int; lit: f32; }
+RpPerson :: struct { npc: int; x: f32; z: f32; yaw: f32; speed: f32; walk: f32; lit: f32; dead_t: f32 = -1; level: int; }
+RpShot :: struct { live: bool; from: Point; to: Point; t: f32; bolt: bool; }
+RpArc :: struct { live: bool; from: Point; to: Point; t: f32; seed: int; }
 RaidPreview :: struct {
   on: bool; cine: bool;
   ready: bool;               // the town can break: the raid has begun
   t: f32;                    // s since it began
-  who: [RP_RAIDERS] RpRaider;
+  who: [RP_PEOPLE] RpPerson;
+  skins: [RAID_SHOWN] Skin;  // each one's pose (everglade.coax RAID_SHOWN: its slot in the raid's draws)
+  used: [PEOPLE_PARTS] int;  // the raid's instances of each part this frame
+  shots: [RP_SHOTS] RpShot;
+  arcs: [RP_ARCS] RpArc;
 }
 
 // ?raid=preview (and &cine=1): you by the commons facing the South Gate, the raid to come.
@@ -52,33 +73,61 @@ rp_facts :: (s: [] Everglade, url: string) {
   s[0].warp = true; s[0].above = false; s[0].lift = 0;
 }
 rp_on :: (s: [] Everglade) -> bool { return s[0].rp.on && !net_live(s); }
+// Whether the raid's people are drawn this frame (everglade.coax everglade_store_used uploads them).
+rp_drawn :: (s: [] Everglade) -> bool { for k: 0..<PEOPLE_PARTS { if s[0].rp.used[k] > 0 { return true; } } return false; }
 everglade_raid_on :: (s: [] Everglade) -> bool #export_c { return rp_on(s); }
 // Once the town can break, where the raid stands (into out: the leader's x, z, the gate's, where the
 // swarm runs once in): 6, else 0 while it waits.
 everglade_raid_spot :: (s: [] Everglade, out: [] f32) -> int #export_c {
   if !rp_on(s) || !s[0].pack_ready || !sp_on(s) || out.count < 6 { return 0; }
-  s[0].rp.ready = true;
   out[0] = RP_LEAD[0]; out[1] = RP_LEAD[1]; out[2] = EG_GATE[0]; out[3] = EG_GATE[1]; out[4] = RP_IN[0]; out[5] = RP_IN[1];
   return 6;
 }
-// Raider q as the battle has it: its kind (0 gone), where it stands, its facing, whether it moves,
-// its level and the share of its cast's look left.
-everglade_raider :: (s: [] Everglade, q: int, npc: int, x: f32, z: f32, yaw: f32, moving: bool, level: int, lit: f32) #export_c {
-  if q < 0 || q >= RP_RAIDERS { return; }
+// The raid's clock: the seconds since it began, as the battle has it (the flight keeps to it).
+everglade_raid_clock :: (s: [] Everglade, t: f32) #export_c {
+  if !rp_on(s) { return; }
+  s[0].rp.ready = true; s[0].rp.t = t;
+}
+// Where you stand (into out: x, z): 2, so the raid stops short of you.
+everglade_raid_you :: (s: [] Everglade, out: [] f32) -> int #export_c {
+  if !rp_on(s) || out.count < 2 { return 0; }
+  out[0] = s[0].feet.x; out[1] = s[0].feet.z;
+  return 2;
+}
+// Person q of the raid as the battle has it: their kind (0 none), where they stand, their facing and
+// speed (m/s), level, the share of their cast's or blow's look left, and the seconds since they fell
+// (-1 standing).
+everglade_raider :: (s: [] Everglade, q: int, npc: int, x: f32, z: f32, yaw: f32, speed: f32, level: int, lit: f32, dead_t: f32) #export_c {
+  if q < 0 || q >= RP_PEOPLE { return; }
   o := s[0].rp.who[q..<q + 1];
   if npc == 0 { o[0].npc = 0; return; }
   if o[0].npc == 0 { o[0].x = x; o[0].z = z; }
   dx := x - o[0].x; dz := z - o[0].z;
   o[0].walk += sqrt(dx * dx + dz * dz);
-  o[0].npc = npc; o[0].x = x; o[0].z = z; o[0].yaw = yaw; o[0].moving = moving; o[0].level = level; o[0].lit = lit;
+  o[0] = RpPerson.{npc = npc, x = x, z = z, yaw = yaw, speed = speed, walk = o[0].walk, lit = lit, dead_t = dead_t, level = level};
 }
-// A raider's cast (0 Eldritch Blast, 1 Fireball) from (fx, fz) at (ax, az): aimed at the town's piece
-// nearest that point, as a player points at a building, and played as the Warlock's own.
+// A cast or shot of the raid's (0 Eldritch Blast, 1 Fireball, 2 an arrow, 3 a bolt) from (fx, fz) at
+// (ax, az). A spell is aimed at the town's piece nearest that point, as a player points at a building;
+// a shot at whom it was loosed at.
 everglade_raid_cast :: (s: [] Everglade, k: int, fx: f32, fz: f32, ax: f32, az: f32, seed: int, beams: int) #export_c {
-  if !rp_on(s) || !sp_on(s) { return; }
+  if !sp_on(s) { return; }
   from := v3(fx, ground_at(s, fx, fz) + 1.5, fz);
+  if k >= 2 {
+    q := 0;
+    for i: 0..<RP_SHOTS { if !s[0].rp.shots[i].live { q = i; break; } if s[0].rp.shots[i].t > s[0].rp.shots[q].t { q = i; } }
+    to := v3(ax, ground_at(s, ax, az) + (ifx beams > 0 then 1.2f32 else 0.2f32), az);
+    if beams <= 0 { to = add(to, v3(f32(seed % 7 - 3) * 0.4, 0, f32(seed % 5 - 2) * 0.5)); }   // a miss goes by
+    s[0].rp.shots[q] = RpShot.{live = true, from = from, to = to, bolt = k == 3};
+    return;
+  }
   at := rp_target(s, ax, az);
-  wl_shoot_n(s, ifx k == 1 then WL_FIREBALL else WL_BLAST, from, at, seed, beams);
+  if k == 1 {
+    q := 0;
+    for i: 0..<RP_ARCS { if !s[0].rp.arcs[i].live { q = i; break; } if s[0].rp.arcs[i].t > s[0].rp.arcs[q].t { q = i; } }
+    s[0].rp.arcs[q] = RpArc.{live = true, from = add(from, v3(0, 0.6, 0)), to = at, seed = seed};
+    return;
+  }
+  wl_shoot_n(s, WL_BLAST, from, at, seed, beams, f32(RP_BEAM_BIG));
 }
 // The middle of the standing piece of the town nearest (x, z), within 10 m; else the ground there.
 rp_target :: (s: [] Everglade, x: f32, z: f32) -> Point {
@@ -96,17 +145,27 @@ rp_target :: (s: [] Everglade, x: f32, z: f32) -> Point {
   return v3(p.cx, p.cy, p.cz);
 }
 
-// Each frame: the raid's clock. The watch takes what the raid breaks and burns for the raid's, not
-// yours: nobody hunts you for it.
+// Each frame: the raid's clock, the shots and the Fireballs on their way. The watch takes what the
+// raid breaks and burns for the raid's, not yours: nobody hunts you for it.
 rp_frame :: (s: [] Everglade, dt: f32) {
-  if !rp_on(s) || !s[0].rp.ready { return; }
-  s[0].rp.t += dt;
-  w := watch_w(s);
-  y := watch_you(w);
-  y[0].wanted = false; y[0].heat = 0; y[0].level = 0;
-  for i: 0..<WATCH_ACTORS {
-    m := w[0].actors[i].mode;
-    if (m == WM_CHASE || m == WM_FIGHT) && w[0].actors[i].foe == w[0].me { w[0].actors[i].mode = WM_BACK; }
+  if rp_on(s) && s[0].rp.ready {
+    w := watch_w(s);
+    y := watch_you(w);
+    y[0].wanted = false; y[0].heat = 0; y[0].level = 0;
+    for i: 0..<WATCH_ACTORS {
+      m := w[0].actors[i].mode;
+      if (m == WM_CHASE || m == WM_FIGHT) && w[0].actors[i].foe == w[0].me { w[0].actors[i].mode = WM_BACK; }
+    }
+  }
+  for i: 0..<RP_SHOTS { if s[0].rp.shots[i].live { s[0].rp.shots[i].t += dt; if s[0].rp.shots[i].t >= f32(RP_SHOT_T) { s[0].rp.shots[i].live = false; } } }
+  for i: 0..<RP_ARCS {
+    a := s[0].rp.arcs[i];
+    if !a.live { continue; }
+    s[0].rp.arcs[i].t += dt;
+    if s[0].rp.arcs[i].t >= f32(RP_ARC_T) {
+      s[0].rp.arcs[i].live = false;
+      wl_shoot_n(s, WL_FIREBALL, a.from, a.to, a.seed, -1, f32(RP_FIRE_BIG));
+    }
   }
 }
 // Whether the HUD is off: through the flight, till it settles behind you.
@@ -114,7 +173,7 @@ rp_hud_off :: (s: [] Everglade) -> bool { return s[0].rp.on && s[0].rp.cine && s
 
 // ---- the flight
 
-rp_key :: (k: [21] f32, i: int) -> Point { j := clamp_i(i, 0, RP_KEYS - 1) * 3; return v3(k[j], k[j + 1], k[j + 2]); }
+rp_key :: (k: [24] f32, i: int) -> Point { j := clamp_i(i, 0, RP_KEYS - 1) * 3; return v3(k[j], k[j + 1], k[j + 2]); }
 // Catmull-Rom through p1 to p2 at u.
 rp_spline :: (p0: Point, p1: Point, p2: Point, p3: Point, u: f32) -> Point {
   u2 := u * u; u3 := u2 * u;
@@ -124,7 +183,7 @@ rp_spline :: (p0: Point, p1: Point, p2: Point, p3: Point, u: f32) -> Point {
   d := times(add(sub(p3, p0), times(sub(p1, p2), 3)), u3);
   return times(add(add(a, b), add(c, d)), 0.5);
 }
-rp_path :: (k: [21] f32, t: f32) -> Point {
+rp_path :: (k: [24] f32, t: f32) -> Point {
   i := 0;
   while i < RP_KEYS - 2 && t >= RP_KEY_T[i + 1] { i += 1; }
   u := clamp((t - RP_KEY_T[i]) / (RP_KEY_T[i + 1] - RP_KEY_T[i]), 0, 1);
@@ -141,75 +200,145 @@ rp_shot :: (s: [] Everglade, follow: Shot) -> Shot {
   return Shot.{eye = mix(path.eye, follow.eye, k), at = mix(path.at, follow.at, k)};
 }
 
-// ---- the raiders drawn
+// ---- the raid drawn
 
-RP_ROBE :: [12] f32.[0.42, 0.07, 0.07,   0.07, 0.06, 0.08,   0.22, 0.08, 0.32,   0.05, 0.04, 0.06];
-RP_TRIM :: [12] f32.[0.16, 0.03, 0.03,   0.42, 0.05, 0.05,   0.10, 0.04, 0.16,   0.78, 0.6, 0.22];
+// The robes' dyes by kind (colour, how much takes), as folk.coax FOLK_DYE: a Cultist's blood red, a
+// Fanatic's black, a Warlock's violet, Darian's black.
+RP_DYE :: [16] f32.[0.2, 0.012, 0.018, 1,   0.025, 0.022, 0.028, 1,   0.11, 0.03, 0.24, 1,   0.012, 0.01, 0.016, 1];
 RP_VIOLET :: Point.{x = 0.75, y = 0.35, z = 1.0};
-rp_draw :: (s: [] Everglade) {
-  if !rp_on(s) { return; }
-  for q: 0..<RP_RAIDERS {
+rp_draw :: (s: [] Everglade, dt: f32) {
+  for k: 0..<PEOPLE_PARTS { s[0].rp.used[k] = 0; }
+  if !s[0].pack_ready { return; }   // whoever a raid has set (the preview's or the room's)
+  for q: 0..<RP_PEOPLE {
     o := s[0].rp.who[q];
     if o.npc == 0 { continue; }
-    rp_raider_at(s, o.npc, o.x, o.z, o.yaw, o.moving, o.walk, o.level, o.lit, q);
+    rp_person_at(s, q, o.npc, o.x, o.z, o.yaw, o.speed, o.lit, o.dead_t, dt);
+  }
+  // the watch's bolts and arrows: a shaft along its flight, a glint at its head
+  for i: 0..<RP_SHOTS {
+    sh := s[0].rp.shots[i];
+    if !sh.live { continue; }
+    u := sh.t / f32(RP_SHOT_T);
+    p := add(mix(sh.from, sh.to, u), v3(0, 1.2 * u * (1 - u), 0));
+    dir := unit_or(sub(sh.to, sh.from), v3(0, 0, 1));
+    ln := ifx sh.bolt then 0.45f32 else 0.8f32;
+    ci_limb(s, sub(p, times(dir, ln)), p, 0.018, v3(0.45, 0.32, 0.18), false, 1);
+    sp_glow(s, p, 0.06, v3(0.9, 0.85, 0.7));
+  }
+  // the Fireballs on their way: a bead of fire arcing over, its trail behind it
+  for i: 0..<RP_ARCS {
+    a := s[0].rp.arcs[i];
+    if !a.live { continue; }
+    for k: 0..<5 {
+      u := clamp(a.t / f32(RP_ARC_T) - f32(k) * 0.035, 0, 1);
+      p := add(mix(a.from, a.to, u), v3(0, f32(RP_ARC_UP) * 4 * u * (1 - u), 0));
+      sz := (0.6 - 0.09 * f32(k)) * 1.4;
+      sp_glow(s, p, sz, times(v3(1.0, 0.55, 0.15), 1.6 - 0.25 * f32(k)));
+    }
   }
 }
-// A raider of kind `npc` (RS_NPC_*) at (x, z) facing `yaw`, `walk` metres walked, its cast's look
-// `lit` (0 to 1) and q its number among them: the preview's raiders and the room's (everglade-net.coax).
-rp_raider_at :: (s: [] Everglade, npc: int, x: f32, z: f32, yaw: f32, moving: bool, walk: f32, level: int, lit: f32, q: int) {
-  o := RpRaider.{npc = npc, x = x, z = z, yaw = yaw, moving = moving, walk = walk, level = level, lit = lit};
-  look := ifx o.npc == RP_FANATIC then 1 else ifx o.npc == RP_WARLOCK then 2 else ifx o.npc == RP_ARCH then 3 else 0;
-  big := ifx o.npc == RP_ARCH then 1.22f32 else 0.94f32 + 0.04 * f32(q % 4);
-  g := ground_at(s, o.x, o.z);
-  f := v3(sin(o.yaw), 0, cos(o.yaw)); r := v3(f.z, 0, -f.x);
-  move := ifx o.moving then 1.0f32 else 0.0f32;
-  ph := o.walk / 1.1 * f32(TAU) + f32(q) * 0.7;
-  bob := abs(sin(ph)) * 0.06 * move;
-  lean := 0.12 * move;
-  robe := v3(RP_ROBE[look * 3], RP_ROBE[look * 3 + 1], RP_ROBE[look * 3 + 2]);
-  trim := v3(RP_TRIM[look * 3], RP_TRIM[look * 3 + 1], RP_TRIM[look * 3 + 2]);
-  feet := v3(o.x, g, o.z);
-  // the robe: a long cone from the ground to the chest, flaring as it runs
-  flare := 1 + 0.12 * move * sin(ph * 2);
-  shape(s, SHAPE_CONE, LOOK_MATTE, add(feet, v3(0, 0.78 * big + bob, 0)), o.yaw, lean, 0.78 * big * flare, 1.56 * big, 0.7 * big * flare, robe.x, robe.y, robe.z);
-  // the chest and shoulders, a hem of its trim, the hood and the dark under it
-  chest := add(feet, add(times(f, lean * 1.1 * big), v3(0, 1.28 * big + bob, 0)));
-  shape(s, SHAPE_BOX, LOOK_MATTE, chest, o.yaw, lean, 0.5 * big, 0.36 * big, 0.28 * big, robe.x, robe.y, robe.z);
-  shape(s, SHAPE_BOX, LOOK_MATTE, add(feet, v3(0, 0.08, 0)), o.yaw, 0, 0.66 * big, 0.12, 0.6 * big, trim.x, trim.y, trim.z);
-  head := add(chest, add(times(f, 0.05), v3(0, 0.36 * big, 0)));
-  shape(s, SHAPE_CONE, LOOK_MATTE, add(head, v3(0, 0.08 * big, 0)), o.yaw, lean - 0.15, 0.36 * big, 0.62 * big, 0.38 * big, robe.x * 0.85, robe.y * 0.85, robe.z * 0.85);
-  shape(s, SHAPE_BOX, LOOK_MATTE, add(head, add(times(f, 0.13 * big), v3(0, -0.04, 0))), o.yaw, 0, 0.17 * big, 0.17 * big, 0.04, 0.02, 0.015, 0.02);
-  // eyes: a cultist's dim red, a caster's its fire
-  ecol := ifx look == 2 || look == 3 then RP_VIOLET else v3(1, 0.25, 0.1);
-  sp_glow(s, add(head, add(times(f, 0.16 * big), v3(0, -0.02, 0))), 0.05 * big, times(ecol, 0.5));
-  // arms: swinging as it runs, a sickle or blade in hand; a caster's casting hand thrown out
-  for e: 0..<2 {
-    sd := ifx e == 0 then 1.0f32 else -1.0f32;
-    sh := add(chest, add(times(r, sd * 0.27 * big), v3(0, 0.12 * big, 0)));
-    swing := sin(ph + f32(e) * f32(PI)) * 0.35 * move;
-    hand := add(sh, add(times(f, 0.18 + swing), add(times(r, sd * 0.06), v3(0, -0.52 * big, 0))));
-    casting := (look == 2 || look == 3) && e == 0 && o.lit > 0;
-    if casting { hand = add(sh, add(times(f, 0.62 * big), v3(0, 0.08, 0))); }
-    if look == 3 && e == 1 { hand = add(sh, add(times(f, 0.3), v3(0, -0.2, 0))); }
-    ci_limb(s, sh, hand, 0.07 * big, robe, false, 1);
-    if casting || (look == 3 && e == 1) {
-      sp_glow(s, hand, (0.16 + 0.22 * o.lit) * big, times(RP_VIOLET, 0.6 + 0.8 * o.lit));
-    } else if look < 2 {
-      // a Cultist's Ritual Sickle, a Fanatic's Pact Blade
-      tip := add(hand, add(times(f, 0.22), v3(0, ifx look == 1 then 0.5f32 else 0.28f32, 0)));
-      ci_limb(s, hand, tip, 0.025, v3(0.62, 0.62, 0.66), false, 1);
-    }
+// What one of the cult wears on the Quaternius body (verse/everglade/folk.coax PART_*): the town's own
+// peasant cloth, head, hood and long robe, dyed by kind (RP_DYE). The Blender cult robes replace these
+// parts here, by kind, when they land (#12740).
+rp_parts :: (npc: int, female: bool, q: int, out: [] int) -> int {
+  if out.count < FOLK_PARTS_MAX { return 0; }
+  out[0] = ifx female then PART_FEMALE_PEASANT else PART_MALE_PEASANT;
+  out[1] = ifx female then PART_FEMALE_HEAD else PART_MALE_HEAD;
+  out[2] = ifx female then PART_FEMALE_HOOD else PART_MALE_HOOD;
+  out[3] = ifx female then PART_FEMALE_ROBE else PART_MALE_ROBE;
+  if !female && npc != RP_ARCH && q % 4 == 0 { out[4] = PART_BEARD; return 5; }
+  return 4;
+}
+// Person q of a raid (its slot in the raid's draws: under RAID_SHOWN), of kind `npc` (RS_NPC_*), at
+// (x, z) facing `yaw` and going at `speed` m/s; `lit` the share of its cast's or blow's look left;
+// `dead_t` the seconds since it fell (-1 standing). The preview's people and the room's.
+rp_person_at :: (s: [] Everglade, q: int, npc: int, x: f32, z: f32, yaw: f32, speed: f32, lit: f32, dead_t: f32, dt: f32) {
+  if q < 0 || q >= RAID_SHOWN { return; }
+  if dead_t >= f32(RP_LIE + RP_SINK) { return; }   // sunk away
+  town := npc >= RP_GUARD && npc <= RP_SCOUT;
+  caster := npc == RP_WARLOCK || npc == RP_ARCH;
+  shooter := npc == RP_VETERAN || npc == RP_SCOUT;
+  look := (q - 1) % 6;   // a watch look (everglade-watch.coax WATCH_NEW)
+  female := ifx town then WATCH_FEMALE[clamp_i(look, 0, 5)] else npc != RP_ARCH && q % 3 == 1;
+  rig := people_rig(s[0].people_rig[..], female);
+  sk := s[0].rp.skins[q..<q + 1];
+  sk[0].fade = 0.22;
+  // the clip: the fall when dead (held at its end), else running, walking, casting, striking, still
+  if dead_t >= 0 {
+    if sk[0].clip != PEOPLE_DIE { skin_advance(rig, sk, PEOPLE_DIE, 0, dt); }
+    else { left := hi(rig.duration[PEOPLE_DIE] - 0.02 - sk[0].time, 0); skin_advance(rig, sk, PEOPLE_DIE, 0, lo(dt, left)); }
+  } else {
+    clip := PEOPLE_IDLE;
+    if speed > 3.0 { clip = PEOPLE_RUN; } else if speed > 0.25 { clip = PEOPLE_WALK; }
+    else if lit > 0 { clip = ifx caster || shooter then PEOPLE_SPELL else PEOPLE_SLASH; }
+    else if town && !shooter { clip = PEOPLE_FOLD; }
+    skin_advance(rig, sk, clip, speed, dt);
   }
-  if look == 3 {
-    // Darian: horns from the hood, a gold collar, and the fiend's light about him
-    for e: 0..<2 {
-      sd := ifx e == 0 then 1.0f32 else -1.0f32;
-      base := add(head, add(times(r, sd * 0.13 * big), v3(0, 0.12 * big, 0)));
-      ci_limb(s, base, add(base, add(times(r, sd * 0.14), add(times(f, -0.06), v3(0, 0.32, 0)))), 0.05, v3(0.85, 0.78, 0.6), false, 1);
-    }
-    shape(s, SHAPE_BOX, LOOK_MATTE, add(chest, v3(0, 0.2 * big, 0)), o.yaw, 0, 0.56 * big, 0.08, 0.34 * big, trim.x, trim.y, trim.z);
-    sp_glow(s, add(feet, v3(0, 1.0, 0)), 1.4, times(RP_VIOLET, 0.18 + 0.1 * sin(s[0].rp.t * 3)));
+  at := RAID_PAL_AT + q * PERSON_ROWS * 4;
+  pal := s[0].palette[at..<at + PEOPLE_JOINTS * 12];
+  skin_palette(rig, sk, pal);
+  h := at + PEOPLE_JOINTS * 12;
+  tone := ifx town then WATCH_SKIN[clamp_i(look, 0, 5)] else (q * 7) % 5;
+  if npc == RP_ARCH { tone = 4; }
+  for c: 0..<3 {
+    s[0].palette[h + c] = SKIN_TONE[tone * 3 + c] * (ifx town then 1.0f32 else 0.8f32);
+    s[0].palette[h + 4 + c] = ifx town then WATCH_HAIR_RGB[clamp_i(look, 0, 5) * 3 + c] else 0.04f32;
   }
+  s[0].palette[h + 3] = f32(ifx town then WATCH_VARIANT[clamp_i(look, 0, 5)] else 1);
+  s[0].palette[h + 7] = 0;
+  kind := ifx npc == RP_FANATIC then 1 else ifx npc == RP_WARLOCK then 2 else ifx npc == RP_ARCH then 3 else 0;
+  for c: 0..<4 { s[0].palette[h + 8 + c] = ifx town then (ifx npc == RP_GUARD then WATCH_DYE[c] else RANK_DYE[(ifx npc == RP_KNIGHT then 3 else ifx npc == RP_SCOUT then 6 else 1) * 4 + c]) else RP_DYE[kind * 4 + c]; }
+  // where it stands: sinking once it has lain its while
+  big := ifx npc == RP_ARCH then 1.14f32 else 1.0f32;
+  y := folk_feet(s, x, z) - (ifx dead_t > f32(RP_LIE) then 1.3 * (dead_t - f32(RP_LIE)) / f32(RP_SINK) else 0.0f32);
+  c := cos(yaw); sn := sin(yaw);
+  rows := [12] f32.[c * big, 0, sn * big, x,   0, big, 0, y,   -sn * big, 0, c * big, z];
+  parts: [FOLK_PARTS_MAX] int;
+  n := ifx town then watch_parts(clamp_i(look, 0, 5), parts[..]) else rp_parts(npc, female, q, parts[..]);
+  for p: 0..<n {
+    part := parts[p];
+    if s[0].part_count[part] <= 0 || s[0].rp.used[part] >= RAID_SHOWN { continue; }
+    o := (RAID_AT + part * RAID_SHOWN + s[0].rp.used[part]) * OBJECT_FLOATS;
+    s[0].rp.used[part] += 1;
+    for r: 0..<12 { s[0].objects[o + r] = rows[r]; }
+    s[0].objects[o + 12] = f32(s[0].part_word[part]);
+    s[0].objects[o + 13] = f32(RAID_PAL_AT / 4 + q * PERSON_ROWS);
+    s[0].objects[o + 14] = PERSON_MARK;
+    s[0].objects[o + 15] = f32(SHAPE_SKINNED + 8 * LOOK_KIT);
+  }
+  if dead_t >= 0 && dead_t > 1.0 { return; }   // what they held is down with them
+  // what each holds, from its pose
+  hand := watch_joint(rig, sk, PEOPLE_HAND_R_J);
+  hw := add(v3(x, y, z), times(watch_world(hand.t, c, sn), big));
+  head := watch_joint(rig, sk, PEOPLE_HEAD);
+  hd := add(v3(x, y, z), times(watch_world(head.t, c, sn), big));
+  fwd := v3(sn, 0, c); right := v3(c, 0, -sn);
+  if town && !shooter { watch_arm_guard(s, rig, sk, x, y, z, yaw, true); return; }
+  if shooter {
+    // a bow or a crossbow in the left hand
+    lh := watch_joint(rig, sk, PEOPLE_HAND_L_J);
+    lw := add(v3(x, y, z), watch_world(lh.t, c, sn));
+    ci_limb(s, sub(lw, v3(0, 0.55, 0)), add(lw, v3(0, 0.55, 0)), 0.02, v3(0.32, 0.2, 0.1), false, 1);
+    return;
+  }
+  if caster {
+    // the casting hand alight; Darian's staff, its head burning violet, and his horns
+    if lit > 0 || npc == RP_ARCH { sp_glow(s, hw, (0.14 + 0.3 * lit) * big, times(RP_VIOLET, 0.5 + 1.2 * lit)); }
+    if npc == RP_ARCH {
+      lh := watch_joint(rig, sk, PEOPLE_HAND_L_J);
+      lw := add(v3(x, y, z), times(watch_world(lh.t, c, sn), big));
+      top := add(lw, v3(0, 0.95, 0)); foot := sub(lw, v3(0, 0.85, 0));
+      ci_limb(s, foot, top, 0.035, v3(0.09, 0.06, 0.05), false, 1);
+      sp_glow(s, top, 0.22, times(RP_VIOLET, 1.1 + 0.4 * sin(s[0].rp.t * 4)));
+      sp_glow(s, add(v3(x, y, z), v3(0, 1.0, 0)), 1.2, times(RP_VIOLET, 0.16 + 0.06 * sin(s[0].rp.t * 3)));
+    }
+    return;
+  }
+  // a Cultist's Ritual Sickle, a Fanatic's Pact Blade, from the right fist
+  blade := watch_world(quat_rotate(hand.q, v3(0, 0, 1)), c, sn);
+  ln := ifx npc == RP_FANATIC then 0.6f32 else 0.32f32;
+  ci_limb(s, hw, add(hw, times(blade, ln)), 0.022, v3(0.62, 0.62, 0.66), false, 1);
+  if npc == RP_FANATIC && lit > 0 { sp_glow(s, add(hw, times(blade, ln * 0.6)), 0.12, times(RP_VIOLET, lit)); }
 }
 
 #test "raid preview: the flight starts behind Darian, ends in your camera, and the HUD is off till then" {
@@ -227,8 +356,12 @@ rp_raider_at :: (s: [] Everglade, npc: int, x: f32, z: f32, yaw: f32, moving: bo
   h: [1] Everglade;
   rp_facts(h[..], "/worlds/everglade?raid=preview");
   #assert h[0].rp.on && !h[0].rp.cine && !rp_hud_off(h[..]);
-  // a raider walks where the battle says
-  everglade_raider(g[..], 3, RP_CULTIST, 1, -90, 0, true, 0, 0);
-  everglade_raider(g[..], 3, RP_CULTIST, 1, -89, 0, true, 0, 0);
+  // a raider walks where the battle says; one fallen stays down where it fell
+  everglade_raider(g[..], 3, RP_CULTIST, 1, -90, 0, 6, 0, 0, -1);
+  everglade_raider(g[..], 3, RP_CULTIST, 1, -89, 0, 6, 0, 0, -1);
   #assert g[0].rp.who[3].z == -89 && g[0].rp.who[3].walk > 0.9;
+  everglade_raider(g[..], 3, RP_CULTIST, 1, -89, 0, 0, 0, 0, 2.0);
+  #assert g[0].rp.who[3].npc == RP_CULTIST && g[0].rp.who[3].dead_t == 2.0;
+  // the raid's draws are uploaded only while there is a raid to draw
+  #assert !rp_drawn(g[..]) && everglade_store_used(g[..], 2) == RAID_PAL_AT * 4 && everglade_store_used(g[..], 1) == RAID_AT * OBJECT_FLOATS * 4;
 }

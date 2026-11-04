@@ -211,7 +211,7 @@ EXPORT("coaxial_store") uint32_t coaxial_store(uint32_t state, int32_t k) {
   if (k == 3) return (uint32_t)(uintptr_t)river.nodes.e;
   return (uint32_t)(uintptr_t)(k == 0 ? (void *)city(state)->ground_store.e : k == 1 ? (void *)city(state)->objects.e : (void *)city(state)->palette.e);
 }
-EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(uint32_t state, int32_t k) { (void)state; return coaxial_store_cap(k); }
+EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(uint32_t state, int32_t k) { return k == 1 || k == 2 ? (uint32_t)everglade_store_used(at(state), k) : coaxial_store_cap(k); }   /* the raid's people only while drawn (everglade.coax) */
 EXPORT("coaxial_store_version") uint32_t coaxial_store_version(uint32_t state, int32_t k) {
   return k == 0 ? (uint32_t)city(state)->ground_gen : k == 3 ? river_gen : frames;
 }

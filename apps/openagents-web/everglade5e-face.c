@@ -555,14 +555,16 @@ static void e5_frame(uint32_t state) {
   /* the Cultist Raid offline, a preview (?raid=preview): its raiders are this battle's (everglade5e-raid.coax),
      the page draws them and plays their casts (everglade-raid-preview.coax) */
   if (everglade_raid_on(g)) {
-    static float rb[8];
-    if (!e5r_raid_started(e5r()) && everglade_raid_spot(g, (coax_v_f32){rb, 8}) == 6) e5r_raid_start(e5r(), rb[0], rb[1], rb[2], rb[3], rb[4], rb[5]);
+    static float rb[10];
+    if (!e5r_raid_started(e5r()) && everglade_raid_spot(g, (coax_v_f32){rb, 10}) == 6) e5r_raid_start(e5r(), rb[0], rb[1], rb[2], rb[3], rb[4], rb[5]);
     if (e5r_raid_started(e5r())) {
-      for (int64_t q = 0; q < 51; q++) {
-        int64_t npc = e5r_raider(e5r(), q, (coax_v_f32){rb, 8});
-        everglade_raider(g, q, npc, rb[0], rb[1], rb[2], rb[3] > 0.5f, (int64_t)rb[4], rb[7]);
+      everglade_raid_clock(g, e5r_raid_t(e5r()));
+      if (everglade_raid_you(g, (coax_v_f32){rb, 10}) == 2) e5r_raid_you(e5r(), rb[0], rb[1]);
+      for (int64_t q = 0; q < 63; q++) {
+        int64_t npc = e5r_raider(e5r(), q, (coax_v_f32){rb, 10});
+        everglade_raider(g, q, npc, rb[0], rb[1], rb[2], rb[3], (int64_t)rb[4], rb[7], rb[8] > 0.5f ? rb[9] : -1.0f);
       }
-      while (e5r_raid_cast(e5r(), (coax_v_f32){rb, 8})) everglade_raid_cast(g, (int64_t)rb[0], rb[1], rb[2], rb[3], rb[4], (int64_t)rb[5], (int64_t)rb[6]);
+      while (e5r_raid_cast(e5r(), (coax_v_f32){rb, 10})) everglade_raid_cast(g, (int64_t)rb[0], rb[1], rb[2], rb[3], rb[4], (int64_t)rb[5], (int64_t)rb[6]);
     }
   }
   int64_t outn = e5r_out(e5r(), (coax_v_f32){e5_out_buf, 48 * 4});
@@ -714,7 +716,7 @@ EXPORT("coaxial_store") uint32_t coaxial_store(uint32_t state, int32_t k) {
   if (k == 3) return (uint32_t)(uintptr_t)river.nodes.e;
   return (uint32_t)(uintptr_t)(k == 0 ? (void *)city(state)->ground_store.e : k == 1 ? (void *)city(state)->objects.e : (void *)city(state)->palette.e);
 }
-EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(uint32_t state, int32_t k) { (void)state; return coaxial_store_cap(k); }
+EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(uint32_t state, int32_t k) { return k == 1 || k == 2 ? (uint32_t)everglade_store_used(at(state), k) : coaxial_store_cap(k); }   /* the raid's people only while drawn (everglade.coax) */
 // What the host uploads: the ground and the river only when built, the objects and joints every frame.
 EXPORT("coaxial_store_version") uint32_t coaxial_store_version(uint32_t state, int32_t k) {
   return k == 0 ? (uint32_t)city(state)->ground_gen : k == 3 ? river_gen : frames;

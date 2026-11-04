@@ -483,7 +483,7 @@ join_key :: (s: [] Everglade, key: int) -> bool {
   o := RANGER_AT * OBJECT_FLOATS;
   rangers_you_look(g[..], o);
   #assert g[0].objects[o + 14] == f32(REMOTE_MARK) && g[0].objects[o + 13] == 0 && g[0].palette[YOU_LOOK_AT] == SKIN_TONE[9] && g[0].palette[YOU_LOOK_AT + 4] == look_dye24(5);
-  #assert YOU_LOOK_AT + REMOTE_LOOK_ROWS * 4 == PALETTE_FLOATS;
+  #assert YOU_LOOK_AT + REMOTE_LOOK_ROWS * 4 == RAID_PAL_AT;
   net_step(g[..], 200, 0, 0, -84, 0, 0, 0, false, 0, false, 0);
   #assert n[0].pipe[0].n == 1 && n[0].pipe[0].op[0] == PIPE_OPEN;
   // a returning player (a saved look) goes straight in; so does a test's room

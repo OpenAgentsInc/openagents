@@ -1,19 +1,21 @@
 // The Cultist Raid offline, a preview (?raid=preview, everglade-raid-preview.coax): Darian Odiodei
-// and fifty of his cult outside the South Gate, in the page's own SRD 5e battle (everglade5e-rules.coax
-// loads this file). Every raider is a creature of that battle built from the shared armies
-// (aethyr/rules/srd/npcs.coax rs_siege_attacker, rs_siege_arch), so its stat block, speed, level and
-// spell slots are the engine's, and they fight as the 5E Lab's Siege has them (fivelab-siege.coax):
-//   - they mass first, the leader 120 feet or so behind his swarm;
-//   - then the casters open on the town: each Warlock steps up to its Eldritch Blast's 120 feet of
-//     where it aims and casts it once a beat (its beams by its level: two at 5), and Darian casts
-//     Fireball deeper in while a Pact slot is left (the slots come back on the battle's cooldown),
-//     Eldritch Blast when none is;
-//   - then the swarm charges: the Cultists and Fanatics Dash at the gate, through it and on at the
-//     town, while the Warlocks keep casting and Darian stays back.
-// The page plays each cast with the Warlock's real spells (everglade-warlock.coax wl_shoot: the beams
-// and the Fireball break and burn what they reach, the SRD's object damage) and draws the raiders.
-// The room server's raid (coax/web/room/room-events.coax, #12740) replaces this driver: the page draws
-// its raiders and plays its casts the same way (everglade_raider, everglade_raid_cast).
+// and fifty of his cult outside the South Gate, and the town watch holding it, in the page's own SRD
+// 5e battle (everglade5e-rules.coax loads this file). Every raider and defender is a creature of that
+// battle built from the shared armies (aethyr/rules/srd/npcs.coax rs_siege_attacker, rs_siege_arch,
+// rs_siege_defender), so stat blocks, speeds, levels, slots, attacks and every roll are the
+// engine's. They fight as the 5E Lab's Siege has them (fivelab-siege.coax), on Everglade's ground:
+//   - the cult masses first, its leader 30 feet or so behind his swarm;
+//   - the casters open on the town in waves, all at once: each Warlock steps up to its Eldritch
+//     Blast's 120 feet of where it aims (its beams by its level: two at 5), and Darian casts Fireball
+//     while a Pact slot is left, Eldritch Blast when none is. The first wave is at the gate towers;
+//   - then the swarm charges: the Cultists and Fanatics Dash at the gate and cut down whoever of the
+//     watch they meet, and on through it up the road;
+//   - the watch holds the gate: the Guards and Knights in a line before it meet whoever reaches them,
+//     the Veterans and Scouts on its flanks shoot their Heavy Crossbows and Longbows at the nearest.
+// Whoever drops to 0 Hit Points is dead and stays where it fell (the page plays the fall and the body).
+// The page plays each cast with the Warlock's real spells (everglade-warlock.coax wl_shoot_n) and
+// each shot as an arrow or bolt, and draws everyone on the town's own rig.
+// The room server's raid (coax/web/room/room-events.coax, #12740) replaces this driver.
 //   coax/bin/coax test --library apps/openagents-web/everglade5e-rules.coax --only "raid"
 //
 // This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
@@ -22,23 +24,33 @@
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 
 E5R_RAIDERS :: 51;          // Darian Odiodei and fifty of his cult (npcs.coax: the Siege's armies)
-E5R_RAID_CASTS :: 32;
-E5R_RAID_VOLLEY :: 3.0;     // s from the raid's start: the casters open
-E5R_RAID_CHARGE :: 13.0;    // and the swarm charges
+E5R_DEFENDERS :: 12;        // the watch at the gate (rs_siege_defender)
+E5R_RAID_PEOPLE :: E5R_RAIDERS + E5R_DEFENDERS;
+E5R_RAID_CASTS :: 64;
+E5R_RAID_VOLLEY :: 3.0;     // s from the raid's start: the first wave
+E5R_RAID_WAVE :: 3.0;       // s between the casters' waves
+E5R_RAID_CHARGE :: 12.0;    // s: the swarm charges
 E5R_RAID_RUN :: 9.0;        // m/s at 40 feet (everglade5e-beasts.coax E5RR_RUN): 30 feet is 6.75
-E5R_RAID_DASH :: 1.4;       // the Dash's extra, compressed as the battle's beat is
+E5R_RAID_DASH :: 1.3;       // the Dash's extra, compressed as the battle's beat is
+E5R_RAID_REACH :: 1.6;      // m: a melee attack's 5 feet, middle to middle
+E5R_RAID_MEET :: 9.0;       // m: a raider this near one of the watch goes for them; the watch steps out this far
+E5R_RAID_SHY :: 7.0;        // m: the cult stops this far short of you (the page's player)
 E5R_RAID_BLAST_FT :: 120; E5R_RAID_FIREBALL_FT :: 150;
-// what the page plays (everglade-warlock.coax WL_BLAST, WL_FIREBALL)
-E5R_RAID_K_BLAST :: 0; E5R_RAID_K_FIREBALL :: 1;
-E5R_RAIDER_FLOATS :: 8;     // x, z, yaw, moving, level, hp, max, casting
+// what the page plays: the Warlock's spells (everglade-warlock.coax WL_BLAST, WL_FIREBALL), a shot
+E5R_RAID_K_BLAST :: 0; E5R_RAID_K_FIREBALL :: 1; E5R_RAID_K_ARROW :: 2; E5R_RAID_K_BOLT :: 3;
+E5R_RAIDER_FLOATS :: 10;    // x, z, yaw, speed, level, hp, max, cast's look, dead (1), s since death
+E5R_TOWER_X :: 5.6;         // m either side of the gate's middle: its towers (the first wave's aim)
 
 E5rRaider :: struct {
   i: int;                     // its creature in the battle
-  npc: int;                   // RS_NPC_* (npcs.coax): Cultist, Fanatic, Warlock or the leader
-  x: f32; z: f32; yaw: f32; moving: bool;
+  npc: int;                   // RS_NPC_*: Cultist, Fanatic, Warlock, the leader, or one of the watch
+  town: bool;                 // one of the watch
+  x: f32; z: f32; yaw: f32; speed: f32;
+  post_x: f32; post_z: f32;   // the watch's place in its line
   side: f32;                  // its place across the swarm, -1 to 1
   act_at: f32;                // its next turn (the battle's beat)
-  cast_t: f32;                // when it last cast (its arm up)
+  cast_t: f32;                // when it last cast or struck (its arm's look)
+  died_t: f32;                // when it fell (-1 alive)
 }
 E5rRaidCast :: struct { k: int; fx: f32; fz: f32; ax: f32; az: f32; seed: int; beams: int; }
 E5rRaid :: struct {
@@ -47,26 +59,47 @@ E5rRaid :: struct {
   lead_x: f32; lead_z: f32;   // the leader's place
   gate_x: f32; gate_z: f32;   // the gate it comes through
   in_x: f32; in_z: f32;       // where the swarm runs once in
+  you_x: f32; you_z: f32;     // the page's player
+  wave: int;                  // the casters' waves so far
   n: int;
-  who: [E5R_RAIDERS] E5rRaider;
+  who: [E5R_RAID_PEOPLE] E5rRaider;
   casts: [E5R_RAID_CASTS] E5rRaidCast; cast_n: int; cast_read: int;
 }
 
+E5R_DEFEND_ROLES :: [12] int.[RS_NPC_GUARD, RS_NPC_GUARD, RS_NPC_KNIGHT, RS_NPC_GUARD, RS_NPC_GUARD, RS_NPC_GUARD,
+                              RS_NPC_VETERAN, RS_NPC_SCOUT, RS_NPC_SCOUT, RS_NPC_VETERAN, RS_NPC_SCOUT, RS_NPC_GUARD];
+// The k-th of the watch at the gate: the first of the shared army's town watch of its role.
+e5r_raid_defender :: (k: int) -> RsCreature {
+  want := E5R_DEFEND_ROLES[k % 12];
+  seen := 0;
+  for j: 0..<200 {
+    if rs_town_role(j) != want { continue; }
+    if seen == k / 12 + (ifx k >= 6 && want == RS_NPC_GUARD then 1 else 0) { return rs_siege_defender(j, 1); }
+    seen += 1;
+  }
+  return rs_siege_defender(k, 1);
+}
+
 // The raid outside the gate: the leader at (lead_x, lead_z), the swarm massed toward the gate at
-// (gate_x, gate_z), and (in_x, in_z) where it runs once through. Each raider joins the battle.
+// (gate_x, gate_z), and (in_x, in_z) where it runs once through. Each raider and each of the watch
+// joins the battle.
 e5r_raid_start :: (r: [] E5r, lead_x: f32, lead_z: f32, gate_x: f32, gate_z: f32, in_x: f32, in_z: f32) #export_c {
   if !r[0].started || r[0].raid[0].started { return; }
   b := r[0].b[..];
   w := r[0].raid[..];
-  w[0] = E5rRaid.{on = true, started = true, lead_x = lead_x, lead_z = lead_z, gate_x = gate_x, gate_z = gate_z, in_x = in_x, in_z = in_z};
+  w[0] = E5rRaid.{on = true, started = true, lead_x = lead_x, lead_z = lead_z, gate_x = gate_x, gate_z = gate_z, in_x = in_x, in_z = in_z,
+                  you_x = in_x, you_z = in_z + 22};
   fx := gate_x - lead_x; fz := gate_z - lead_z;
   d := sqrt(fx * fx + fz * fz); fx /= d; fz /= d;
   rx := fz; rz := -fx;
   yaw := e5rr_heading(fx, fz);
-  for q: 0..<E5R_RAIDERS {
-    c := ifx q == 0 then rs_siege_arch(RS_ARCH_NAME, 2, SP_ELDRITCH_BLAST) else rs_siege_attacker(q - 1, 2, SP_ELDRITCH_BLAST);
-    x := lead_x; z := lead_z; side: f32 = 0;
-    if q > 0 {
+  for q: 0..<E5R_RAID_PEOPLE {
+    town := q >= E5R_RAIDERS;
+    c: [1] RsCreature;
+    x := lead_x; z := lead_z; side: f32 = 0; face := yaw;
+    if q == 0 { c[0] = rs_siege_arch(RS_ARCH_NAME, 2, SP_ELDRITCH_BLAST); }
+    else if !town {
+      c[0] = rs_siege_attacker(q - 1, 2, SP_ELDRITCH_BLAST);
       // five ranks of ten, from 30 feet in front of the leader, a little out of line each
       k := q - 1; row := k / 10; col := k % 10;
       side = (f32(col) - 4.5) / 4.5;
@@ -74,32 +107,46 @@ e5r_raid_start :: (r: [] E5r, lead_x: f32, lead_z: f32, gate_x: f32, gate_z: f32
       ahead := 9.0 + f32(row) * 2.0;
       across := side * (7.5 + f32(row) * 0.8);
       x = lead_x + fx * ahead + rx * across + jx; z = lead_z + fz * ahead + rz * across + jz;
+    } else {
+      // the watch: the line before the gate (Guards and the Knight), the shooters on its flanks
+      k := q - E5R_RAIDERS;
+      c[0] = e5r_raid_defender(k);
+      shooter := c[0].npc == RS_NPC_VETERAN || c[0].npc == RS_NPC_SCOUT;
+      if shooter { sd := ifx k % 2 == 0 then 1.0f32 else -1.0f32; across := sd * (8.5 + f32(k % 3) * 2.2); x = gate_x + rx * across - fx * 2.5; z = gate_z + rz * across - fz * 2.5; }
+      else { across := (f32(k % 6) - 2.5) * 1.3; x = gate_x + rx * across - fx * (1.5 + f32(k / 6) * 1.2); z = gate_z + rz * across - fz * (1.5 + f32(k / 6) * 1.2); }
+      face = yaw + 3.14159265;
+      if face > 3.14159265 { face -= 6.2831853; }
     }
-    i := rs_add(b, c, e5r_sq(x), e5r_sq(z));
+    i := rs_add(b, c[0], e5r_sq(x), e5r_sq(z));
     b[0].c[i].turn_at = b[0].clock;
-    w[0].who[q] = E5rRaider.{i = i, npc = b[0].c[i].npc, x = x, z = z, yaw = yaw, side = side,
-                             act_at = b[0].clock + f32(E5R_RAID_VOLLEY) + 0.11 * f32(q % 13)};
+    w[0].who[q] = E5rRaider.{i = i, npc = b[0].c[i].npc, town = town, x = x, z = z, yaw = face, post_x = x, post_z = z, side = side,
+                             act_at = b[0].clock + 0.13 * f32(q % 11), died_t = -1};
   }
-  w[0].n = E5R_RAIDERS;
+  w[0].n = E5R_RAID_PEOPLE;
 }
 e5r_raid_started :: (r: [] E5r) -> bool #export_c { return r[0].raid[0].started; }
+e5r_raid_t :: (r: [] E5r) -> f32 #export_c { return r[0].raid[0].t; }
+// Where the page's player stands: the cult stops short of it (a preview's player is no one's quarry).
+e5r_raid_you :: (r: [] E5r, x: f32, z: f32) #export_c { r[0].raid[0].you_x = x; r[0].raid[0].you_z = z; }
 
-// Raider q: its stat block's kind (RS_NPC_*, 0 none), then into out x, z (metres), yaw, 1 while it
-// moves, its level, Hit Points and their most, and the share of its cast's look left (1 just cast).
+// Person q of the raid (raiders, then the watch): its kind (RS_NPC_*, 0 none), then into out x, z
+// (metres), yaw, speed (m/s), level, Hit Points and their most, the share of its cast's or blow's
+// look left (1 just now), 1 when dead, and the seconds since it fell.
 e5r_raider :: (r: [] E5r, q: int, out: [] f32) -> int #export_c {
   w := r[0].raid[0];
   if !w.started || q < 0 || q >= w.n || out.count < E5R_RAIDER_FLOATS { return 0; }
   a := w.who[q];
   c := r[0].b[0].c[a.i];
-  if c.dead { return 0; }
-  out[0] = a.x; out[1] = a.z; out[2] = a.yaw; out[3] = ifx a.moving then 1.0f32 else 0.0f32;
+  out[0] = a.x; out[1] = a.z; out[2] = a.yaw; out[3] = a.speed;
   out[4] = f32(c.level); out[5] = f32(c.hp); out[6] = f32(c.hp_max);
   left := 1 - (w.t - a.cast_t) / 0.8;
   out[7] = ifx a.cast_t <= 0 || left < 0 then 0.0f32 else ifx left > 1 then 1.0f32 else left;
+  out[8] = ifx a.died_t >= 0 then 1.0f32 else 0.0f32;
+  out[9] = ifx a.died_t >= 0 then w.t - a.died_t else 0.0f32;
   return a.npc;
 }
-// The next cast to play, into out: the page's spell (0 Eldritch Blast, 1 Fireball), from x, z, at
-// x, z, its seed and its beams; false when none is left.
+// The next cast or shot to play, into out: what (E5R_RAID_K_*), from x, z, at x, z, its seed and its
+// beams (a shot's: 1 a hit); false when none is left.
 e5r_raid_cast :: (r: [] E5r, out: [] f32) -> bool #export_c {
   w := r[0].raid[..];
   if !w[0].started || w[0].cast_read >= w[0].cast_n || out.count < 7 { return false; }
@@ -121,13 +168,41 @@ e5r_raid_beams :: (level: int) -> int {
   if level >= 5 { return 2; }
   return 1;
 }
-// The highest level with a slot left (0 none).
+// The highest level with a slot left (0 none), to 5th: a Pact slot.
 e5r_raid_slot :: (c: RsCreature) -> int {
   for d: 0..<9 { l := 9 - d; if c.slots[l] > 0 && l <= 5 { return l; } }
   return 0;
 }
+lo_r :: (a: f32, b: f32) -> f32 { return ifx a < b then a else b; }
+e5r_raid_gap :: (a: E5rRaider, x: f32, z: f32) -> f32 { dx := a.x - x; dz := a.z - z; return sqrt(dx * dx + dz * dz); }
+// The nearest of the other side to person q, alive (-1 none), within `reach` m.
+e5r_raid_foe :: (w: [] E5rRaid, b: [] RsBattle, q: int, reach: f32) -> int {
+  best := -1; gap := reach;
+  a := w[0].who[q];
+  for o: 0..<w[0].n {
+    e := w[0].who[o];
+    if e.town == a.town || b[0].c[e.i].dead { continue; }
+    d := e5r_raid_gap(e, a.x, a.z);
+    if d < gap { gap = d; best = o; }
+  }
+  return best;
+}
+// Person q strikes person o with weapon `wp` (the engine's attack, its roll and damage); a shot goes
+// to the page to fly.
+e5r_raid_strike :: (w: [] E5rRaid, b: [] RsBattle, q: int, o: int, wp: int, shot: int) {
+  a := w[0].who[q..<q + 1]; e := w[0].who[o];
+  hp := b[0].c[e.i].hp;
+  b[0].who = a[0].i;
+  _ := rs_strike(b, a[0].i, e.i, wp, false);
+  b[0].who = -1;
+  a[0].cast_t = w[0].t;
+  a[0].yaw = e5rr_heading(e.x - a[0].x, e.z - a[0].z);
+  if shot >= 0 {
+    e5r_raid_put(w, E5rRaidCast.{k = shot, fx = a[0].x, fz = a[0].z, ax = e.x, az = e.z, seed = rs_roll(b[0].dice[..], 100000), beams = ifx b[0].c[e.i].hp < hp then 1 else 0});
+  }
+}
 
-// Each dt seconds of the raid (from e5r_step): the raiders move, and each whose turn has come acts.
+// Each dt seconds of the raid (from e5r_step): everyone moves, and each whose turn has come acts.
 e5r_raid_step :: (r: [] E5r, dt: f32) {
   w := r[0].raid[..];
   if !w[0].started { return; }
@@ -138,90 +213,132 @@ e5r_raid_step :: (r: [] E5r, dt: f32) {
   fx := gx - w[0].lead_x; fz := gz - w[0].lead_z;
   d0 := sqrt(fx * fx + fz * fz); fx /= d0; fz /= d0;
   rx := fz; rz := -fx;
+  // the casters' wave: every caster in reach casts at once
+  wave := t >= f32(E5R_RAID_VOLLEY) && t >= f32(E5R_RAID_VOLLEY) + f32(w[0].wave) * f32(E5R_RAID_WAVE);
+  if wave { w[0].wave += 1; }
+  first := wave && w[0].wave == 1;
   for q: 0..<w[0].n {
     a := w[0].who[q..<q + 1];
     i := a[0].i;
-    if b[0].c[i].dead { continue; }
+    a[0].speed = 0;
+    if b[0].c[i].dead {
+      if a[0].died_t < 0 { a[0].died_t = t; }
+      continue;
+    }
     npc := a[0].npc;
     caster := npc == RS_NPC_WARLOCK || npc == RS_NPC_ARCH;
-    // where it goes
-    tx := a[0].x; tz := a[0].z; run := false;
-    if !caster && t >= f32(E5R_RAID_CHARGE) {
-      run = true;
-      // to the gate first, a few abreast, then on into the town, spread across it
-      ahead := (a[0].x - gx) * fx + (a[0].z - gz) * fz;
-      if ahead < 1.5 { tx = gx + rx * a[0].side * 2.6; tz = gz + rz * a[0].side * 2.6; tx += fx * 3; tz += fz * 3; }
-      else { tx = w[0].in_x + rx * a[0].side * 9 + fx * f32(q % 5) * 1.4; tz = w[0].in_z + rz * a[0].side * 9 + fz * f32(q % 5) * 1.4; }
-    }
-    // a caster steps up till its spell reaches where it aims
-    aim_x := gx + rx * a[0].side * 16 + fx * 3; aim_z := gz + rz * a[0].side * 16 + fz * 3;
+    shooter := a[0].town && (npc == RS_NPC_VETERAN || npc == RS_NPC_SCOUT);
     reach := f32(E5R_RAID_BLAST_FT) * 0.3048 - 3;
-    if npc == RS_NPC_ARCH {
-      aim_x = gx + fx * 12 + rx * f32(rs_roll(b[0].dice[..], 21) - 11) * 1.2;
-      aim_z = gz + fz * 12 + rz * f32(rs_roll(b[0].dice[..], 21) - 11) * 1.2;
-      reach = f32(E5R_RAID_FIREBALL_FT) * 0.3048 - 3;
+    if npc == RS_NPC_ARCH { reach = f32(E5R_RAID_FIREBALL_FT) * 0.3048 - 3; }
+    // where it aims: the first wave at the gate's towers, then along the wall and on into the town
+    aim_x := gx + rx * a[0].side * 16 + fx * 3; aim_z := gz + rz * a[0].side * 16 + fz * 3;
+    if first { sd := ifx a[0].side < 0 then -1.0f32 else 1.0f32; aim_x = gx + rx * sd * f32(E5R_TOWER_X); aim_z = gz + rz * sd * f32(E5R_TOWER_X); }
+    if npc == RS_NPC_ARCH && !first {
+      aim_x = gx + fx * 10 + rx * f32(rs_roll(b[0].dice[..], 21) - 11) * 1.2;
+      aim_z = gz + fz * 10 + rz * f32(rs_roll(b[0].dice[..], 21) - 11) * 1.2;
     }
-    if caster && t >= f32(E5R_RAID_VOLLEY) {
+    if npc == RS_NPC_ARCH && first { aim_x = gx; aim_z = gz; }
+    // where it goes
+    tx := a[0].x; tz := a[0].z; run := false; foe := -1; stop: f32 = 0.3;
+    if a[0].town {
+      // the watch: back to its place, or out to meet one come near it
+      tx = a[0].post_x; tz = a[0].post_z;
+      foe = e5r_raid_foe(w, b, q, ifx shooter then 30.0f32 else f32(E5R_RAID_MEET));
+      if foe >= 0 && !shooter && e5r_raid_gap(w[0].who[foe], a[0].post_x, a[0].post_z) < f32(E5R_RAID_MEET) {
+        tx = w[0].who[foe].x; tz = w[0].who[foe].z; stop = f32(E5R_RAID_REACH) * 0.8; run = true;
+      }
+    } else if !caster && t >= f32(E5R_RAID_CHARGE) {
+      run = true;
+      foe = e5r_raid_foe(w, b, q, f32(E5R_RAID_MEET));
+      if foe >= 0 { tx = w[0].who[foe].x; tz = w[0].who[foe].z; stop = f32(E5R_RAID_REACH) * 0.8; }
+      else {
+        // to the gate first, a few abreast, then on up the road, spread across it
+        ahead := (a[0].x - gx) * fx + (a[0].z - gz) * fz;
+        if ahead < 1.5 { tx = gx + rx * a[0].side * 2.4 + fx * 3; tz = gz + rz * a[0].side * 2.4 + fz * 3; }
+        else { tx = w[0].in_x + rx * a[0].side * 6 + fx * f32(q % 5) * 1.6; tz = w[0].in_z + rz * a[0].side * 6 + fz * f32(q % 5) * 1.6; }
+        // never onto the page's player: stop short
+        yx := tx - w[0].you_x; yz := tz - w[0].you_z; yd := sqrt(yx * yx + yz * yz);
+        if yd < f32(E5R_RAID_SHY) { tx = w[0].you_x + yx / hi_r(yd, 0.01) * f32(E5R_RAID_SHY); tz = w[0].you_z + yz / hi_r(yd, 0.01) * f32(E5R_RAID_SHY); }
+      }
+    } else if caster {
+      // a caster steps up till its spell reaches where it aims
       ax := aim_x - a[0].x; az := aim_z - a[0].z;
       far := sqrt(ax * ax + az * az);
       if far > reach { tx = a[0].x + ax / far * (far - reach + 0.5); tz = a[0].z + az / far * (far - reach + 0.5); }
     }
     dx := tx - a[0].x; dz := tz - a[0].z;
     d := sqrt(dx * dx + dz * dz);
-    a[0].moving = false;
-    if d > 0.3 {
-      speed := f32(E5R_RAID_RUN) * f32(b[0].c[i].speed) / 40.0 * (ifx run then f32(E5R_RAID_DASH) else 0.6f32);
-      step := lo_r(speed * dt, d - 0.3);
+    if d > stop {
+      speed := f32(E5R_RAID_RUN) * f32(b[0].c[i].speed) / 40.0 * (ifx run then f32(E5R_RAID_DASH) else 0.5f32);
+      step := lo_r(speed * dt, d - stop);
       a[0].x += dx / d * step; a[0].z += dz / d * step;
-      a[0].moving = step > 0.001;
+      a[0].speed = step / hi_r(dt, 0.0001);
       a[0].yaw = e5rr_heading(dx, dz);
-    }
+    } else if foe >= 0 { a[0].yaw = e5rr_heading(w[0].who[foe].x - a[0].x, w[0].who[foe].z - a[0].z); }
+    else if a[0].town { a[0].yaw = e5rr_heading(-fx, -fz); }
     b[0].c[i].x = e5r_sq(a[0].x); b[0].c[i].y = e5r_sq(a[0].z);
-    // its turn: a caster in reach casts at the town
-    if !caster || t < f32(E5R_RAID_VOLLEY) || b[0].clock < a[0].act_at { continue; }
-    a[0].act_at = b[0].clock + rs_beat(b);
-    ax := aim_x - a[0].x; az := aim_z - a[0].z;
-    if sqrt(ax * ax + az * az) > reach + 1 { continue; }
-    a[0].yaw = e5rr_heading(ax, az);
-    a[0].cast_t = t;
-    k := E5R_RAID_K_BLAST; beams := e5r_raid_beams(b[0].c[i].level);
-    if npc == RS_NPC_ARCH {
-      l := e5r_raid_slot(b[0].c[i]);
-      if l > 0 { b[0].c[i].slots[l] -= 1; k = E5R_RAID_K_FIREBALL; }   // Fireball, at a Pact slot's level
-      else { aim_x = gx + rx * f32(rs_roll(b[0].dice[..], 11) - 6) * 2; aim_z = gz + rz * f32(rs_roll(b[0].dice[..], 11) - 6) * 2; }
+    // its turn
+    if caster {
+      if !wave { continue; }
+      ax := aim_x - a[0].x; az := aim_z - a[0].z;
+      if sqrt(ax * ax + az * az) > reach + 1 { continue; }
+      a[0].yaw = e5rr_heading(ax, az);
+      a[0].cast_t = t;
+      k := E5R_RAID_K_BLAST; beams := e5r_raid_beams(b[0].c[i].level);
+      if npc == RS_NPC_ARCH {
+        l := e5r_raid_slot(b[0].c[i]);
+        if l > 0 { b[0].c[i].slots[l] -= 1; k = E5R_RAID_K_FIREBALL; }   // Fireball, at a Pact slot's level
+      }
+      e5r_raid_put(w, E5rRaidCast.{k = k, fx = a[0].x, fz = a[0].z, ax = aim_x, az = aim_z, seed = rs_roll(b[0].dice[..], 1000000) * 2 + 1, beams = beams});
+      continue;
     }
-    seed := rs_roll(b[0].dice[..], 1000000) * 2 + 1;
-    e5r_raid_put(w, E5rRaidCast.{k = k, fx = a[0].x, fz = a[0].z, ax = aim_x, az = aim_z, seed = seed, beams = beams});
+    if b[0].clock < a[0].act_at || foe < 0 || !rs_can_act(b[0].c[i]) { continue; }
+    gap := e5r_raid_gap(w[0].who[foe], a[0].x, a[0].z);
+    if shooter && b[0].c[i].ranged >= 0 {
+      a[0].act_at = b[0].clock + rs_beat(b);
+      if gap <= f32(E5R_RAID_REACH) { e5r_raid_strike(w, b, q, foe, b[0].c[i].weapon, -1); }
+      else { e5r_raid_strike(w, b, q, foe, b[0].c[i].ranged, ifx npc == RS_NPC_VETERAN then E5R_RAID_K_BOLT else E5R_RAID_K_ARROW); }
+    } else if gap <= f32(E5R_RAID_REACH) {
+      a[0].act_at = b[0].clock + rs_beat(b);
+      e5r_raid_strike(w, b, q, foe, b[0].c[i].weapon, -1);
+      // a Multiattack's second blow (Extra Attack)
+      if b[0].c[i].extra_attack > 0 && !b[0].c[w[0].who[foe].i].dead { e5r_raid_strike(w, b, q, foe, b[0].c[i].weapon, -1); }
+    }
   }
 }
-lo_r :: (a: f32, b: f32) -> f32 { return ifx a < b then a else b; }
 
-#test "raid: the Siege's armies mass, cast at the town once the volley opens, and charge" #steps 2000000000 {
+#test "raid: the Siege's armies mass, cast at the town in waves, charge, and fight the watch at the gate" #steps 2000000000 {
   r: [1] E5r;
   e5r_start(r[..], 7);
   e5r_raid_start(r[..], 0, -106, 0, -56, 0, -38);
-  #assert r[0].raid[0].n == E5R_RAIDERS;
-  out: [8] f32;
+  e5r_raid_you(r[..], 0, -16);
+  #assert r[0].raid[0].n == E5R_RAID_PEOPLE;
+  out: [10] f32;
   #assert e5r_raider(r[..], 0, out[..]) == RS_NPC_ARCH && out[4] == 17;
-  cult := 0; casters := 0;
-  for q: 1..<E5R_RAIDERS {
+  cult := 0; casters := 0; watch := 0;
+  for q: 1..<E5R_RAID_PEOPLE {
     k := e5r_raider(r[..], q, out[..]);
     if k == RS_NPC_CULTIST || k == RS_NPC_FANATIC { cult += 1; }
     if k == RS_NPC_WARLOCK { casters += 1; }
+    if k == RS_NPC_GUARD || k == RS_NPC_KNIGHT || k == RS_NPC_VETERAN || k == RS_NPC_SCOUT { watch += 1; }
   }
-  #assert cult + casters == 50 && casters > 0;
-  // nobody casts while massing
-  for f: 0..<60 { e5r_step(r[..], r[0].b[0].clock + 0.04); }
-  #assert r[0].raid[0].cast_n == 0;
-  for f: 0..<300 { e5r_step(r[..], r[0].b[0].clock + 0.04); }
-  #assert r[0].raid[0].cast_n > 4;
-  fireball := false;
+  #assert cult + casters == 50 && casters > 0 && watch == E5R_DEFENDERS;
+  // nobody casts while massing; the first wave is many casts at once, Darian's Fireball among them
   c: [7] f32;
-  while e5r_raid_cast(r[..], c[..]) { if c[0] == 1 { fireball = true; } }
-  #assert fireball;
-  // the charge: a Cultist is through the gate in a few seconds more
-  for f: 0..<400 { e5r_step(r[..], r[0].b[0].clock + 0.04); }
-  inside := 0;
-  for q: 1..<E5R_RAIDERS { k := e5r_raider(r[..], q, out[..]); if k == RS_NPC_CULTIST && out[1] > -52 { inside += 1; } }
-  #assert inside > 5;
+  for f: 0..<70 { e5r_step(r[..], r[0].b[0].clock + 0.04); }
+  while e5r_raid_cast(r[..], c[..]) { #assert c[0] >= 2; }   // the watch's shots only
+  for f: 0..<10 { e5r_step(r[..], r[0].b[0].clock + 0.04); }
+  fireball := false; spells := 0;
+  while e5r_raid_cast(r[..], c[..]) { if c[0] == 1 { fireball = true; } if c[0] <= 1 { spells += 1; } }
+  #assert fireball && spells * 2 >= casters;
+  // the charge meets the watch: some fall on both sides, and some of the cult are through
+  for f: 0..<600 { e5r_step(r[..], r[0].b[0].clock + 0.04); }
+  dead_cult := 0; dead_watch := 0; inside := 0;
+  for q: 1..<E5R_RAID_PEOPLE {
+    k := e5r_raider(r[..], q, out[..]);
+    town := q >= E5R_RAIDERS;
+    if out[8] > 0 { if town { dead_watch += 1; } else { dead_cult += 1; } }
+    if !town && out[8] == 0 && (k == RS_NPC_CULTIST || k == RS_NPC_FANATIC) && out[1] > -50 { inside += 1; #assert out[1] < -16 - 6; }
+  }
+  #assert dead_cult > 0 && dead_watch > 0 && inside > 0;
 }

@@ -207,7 +207,11 @@ SHARD_OBJECTS :: DEMO_BODIES;
 CELL_AT :: SHARD_AT + SHARD_OBJECTS;
 // Then the town's small pieces near you, copied there each frame (everglade-lod.coax).
 LOD_AT :: CELL_AT + SHARD_OBJECTS * 2;
-ALL_OBJECTS :: LOD_AT + LOD_OBJECTS;
+// Then the Cultist Raid's people (everglade-raid-preview.coax): a run per part as the town's people's,
+// RAID_SHOWN long, uploaded only while a raid is on (everglade_store_used).
+RAID_SHOWN :: 64;
+RAID_AT :: LOD_AT + LOD_OBJECTS;
+ALL_OBJECTS :: RAID_AT + PEOPLE_PARTS * RAID_SHOWN;
 // Store 2, the joints' skinning matrices (three rows of four a joint): yours,
 // then each person shown's, after theirs three rows of their colours: skin
 // (and their outfit's colourway), hair, and the dye on their cloth with how
@@ -216,7 +220,9 @@ PERSON_ROWS :: PEOPLE_JOINTS * 3 + 3;
 // A person is a skinned shape like you, told apart by colour.z (yours is 1).
 PERSON_MARK :: 2.0;
 // Then the others' Rangers' (everglade-rangers.coax REMOTE_PAL_AT).
-PALETTE_FLOATS :: RANGER_JOINTS * 12 + PEOPLE_SHOWN * PERSON_ROWS * 4 + REMOTE_PALETTE;
+RAID_PAL_AT :: RANGER_JOINTS * 12 + PEOPLE_SHOWN * PERSON_ROWS * 4 + REMOTE_PALETTE;
+// Then the raid's people's, last (everglade-raid-preview.coax).
+PALETTE_FLOATS :: RAID_PAL_AT + RAID_SHOWN * PERSON_ROWS * 4;
 OBJECT_FLOATS :: 16;
 LOOK_MATTE :: 0; LOOK_LEAVES :: 1; LOOK_STONE :: 2; LOOK_SKIN :: 3; LOOK_WATER :: 4; LOOK_KIT :: 5;
 // The kit's rocks (Rock_Medium_1 and _2: the undergrowth's and the waystone's): the kit's texture, darkened
@@ -267,7 +273,8 @@ LATHE_DRAW :: 5 + KIT_MESHES + 1;
 PEOPLE_DRAW :: LATHE_DRAW + 1;
 SHARD_DRAW :: PEOPLE_DRAW + PEOPLE_PARTS;
 RANGER_FAR_DRAW :: SHARD_DRAW + KIT_MESHES;   // the others' Rangers past REMOTE_LOD_FROM, the pack's far mesh
-WATER_DRAW :: RANGER_FAR_DRAW + 1;
+RAID_DRAW :: RANGER_FAR_DRAW + 1;   // the raid's people, a part a draw (everglade-raid-preview.coax)
+WATER_DRAW :: RAID_DRAW + PEOPLE_PARTS;
 DRAWS :: WATER_DRAW + 1;
 // The river's floats, as river.coax everglade_river_floats writes them: x,
 // y, z, yaw, how far it tips and which way, 0, and the kind (0 a duck, 1 a lily pad, 2 a rowboat).
@@ -4030,7 +4037,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   figure(s, u, ifx s[0].water == WATER_BOAT then sub(shown, v3(0, 0.42, 0)) else shown, face, speed, act == 3, t, still);
   if s[0].flock && redit_row_on(s[0].ev.ed[..], "flock") { flock_frame(s[0].birds[..], shown, face, t); birds(s); }
   people(s, u, shown, t, still);
-  rp_draw(s);   // the raid preview's raiders (everglade-raid-preview.coax)
+  rp_draw(s, t);   // the raid preview's raiders (everglade-raid-preview.coax)
   room_frame(s, t); room_draw(s, u, shown, t);   // the others in the realm's room (everglade-room.coax)
   s[0].answered += t;
   s[0].smoke_still = still;
@@ -4098,6 +4105,15 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
     s[0].draws[d + 2] = cast(u32) (EG_CELLS * EG_CELLS + PEOPLE_AT + k * PEOPLE_SHOWN);
     s[0].draws[d + 3] = cast(u32) (ifx s[0].part_count[k] > 0 then s[0].part_used[k] else 0);
     s[0].kit_triangles += s[0].part_count[k] / 3 * s[0].part_used[k];
+  }
+  // the raid's people: a part a draw, as the town's (everglade-raid-preview.coax)
+  for k: 0..<PEOPLE_PARTS {
+    d = (RAID_DRAW + k) * 4;
+    s[0].draws[d] = cast(u32) s[0].part_first[k];
+    s[0].draws[d + 1] = cast(u32) s[0].part_count[k];
+    s[0].draws[d + 2] = cast(u32) (EG_CELLS * EG_CELLS + RAID_AT + k * RAID_SHOWN);
+    s[0].draws[d + 3] = cast(u32) (ifx s[0].part_count[k] > 0 then s[0].rp.used[k] else 0);
+    s[0].kit_triangles += s[0].part_count[k] / 3 * s[0].rp.used[k];
   }
   // the debris: a draw per mesh, its instances the chunks cut from it (everglade-spells.coax sp_shards)
   for m: 0..<KIT_MESHES {
@@ -4212,6 +4228,12 @@ everglade_store_cap :: (k: int) -> int #export_c {
   if k == 0 { return EG_GROUND_POINTS * 2 * 4; }
   if k == 2 { return PALETTE_FLOATS * 4; }
   return ALL_OBJECTS * OBJECT_FLOATS * 4;
+}
+// What of store k the host uploads this frame: the raid's people's part only while a raid is drawn.
+everglade_store_used :: (s: [] Everglade, k: int) -> int #export_c {
+  if k == 2 { return ifx rp_drawn(s) then PALETTE_FLOATS * 4 else RAID_PAL_AT * 4; }
+  if k == 1 { return ifx rp_drawn(s) then ALL_OBJECTS * OBJECT_FLOATS * 4 else RAID_AT * OBJECT_FLOATS * 4; }
+  return everglade_store_cap(k);
 }
 
 // ---- checks

@@ -503,7 +503,7 @@ rangers_fixture :: (s: [] Everglade, out: [] RemoteBody, n: int) -> int {
     w := cast(int) g[0].objects[o + 15];
     #assert w % 256 == SHAPE_SKINNED + 8 * LOOK_KIT;
     lk := (w / 256) * 4;
-    #assert lk >= REMOTE_LOOK_AT && lk + REMOTE_LOOK_ROWS * 4 <= PALETTE_FLOATS && REMOTE_PAL_AT + REMOTE_PALETTE == PALETTE_FLOATS;
+    #assert lk >= REMOTE_LOOK_AT && lk + REMOTE_LOOK_ROWS * 4 <= PALETTE_FLOATS && REMOTE_PAL_AT + REMOTE_PALETTE == RAID_PAL_AT;
     base := cast(int) g[0].objects[o + 13] * 4;
     #assert base >= REMOTE_PAL_AT && base + REMOTE_BLOCK <= REMOTE_LOOK_AT;
     for i: 0..<REMOTE_BLOCK { #assert finite(g[0].palette[base + i]); }
