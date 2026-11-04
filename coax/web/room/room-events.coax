@@ -53,8 +53,8 @@ EV_XP_CULTIST :: 25;            // SRD: Cultist, CR 1/8
 EV_XP_FANATIC :: 450;           // SRD: Cultist Fanatic, CR 2
 EV_XP_WARLOCK :: [3] int.[50, 100, 200];   // Warlock, level 1 to 3: CR 1/4, 1/2, 1 (a house rule)
 EV_XP_WARD :: 100;              // a ward stone
-EV_XP_HELD :: 150;              // the town held
-EV_XP_FELL :: 100;              // the town fell
+EV_XP_HELD :: 200;              // the town held
+EV_XP_FELL :: 150;              // the town fell
 EV_DEMO_FLAG :: 64;             // the hello's FLAGS bit: an admin plays Everglade's own character, the demo
 EV_XP_MAX :: 9999999;
 EV_G :: 160;                    // the g entry's bytes at most
@@ -326,9 +326,9 @@ ev_stop :: (v: [] RmServer, k: int) {
 }
 ev_end :: (v: [] RmServer, k: int, outcome: int) {
   e := v[0].ev[k..<k + 1];
-  e[0].outcome = outcome;
   // the raiders that fell this tick first: a town that falls still pays for its last kills
   ev_raid_downs(v, k);
+  e[0].outcome = outcome;
   award := ifx outcome == EV_OUT_HELD then EV_XP_HELD else (ifx outcome == EV_OUT_FELL then EV_XP_FELL else 0);
   if award > 0 { for s: 0..<EG_SEATS { if e[0].earned[s] { ev_award(v, k, s, award); } } }
   ev_phase(v, k, EV_END, EV_END_S);

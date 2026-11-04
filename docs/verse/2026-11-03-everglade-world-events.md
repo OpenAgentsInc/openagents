@@ -355,8 +355,8 @@ Darian Odiodei, stays level 17 and can't be killed.
 
 ## 7. Rewards and aftermath
 
-- **The raid's end award.** At the end, every seat that earned XP in the raid gets 150 XP times
-  the multiplier when the town holds, or 100 XP when it falls. An admin's STOP pays nothing.
+- **The raid's end award.** At the end, every seat that earned XP in the raid gets 200 XP times
+  the multiplier when the town holds, or 150 XP when it falls. An admin's STOP pays nothing.
   Raiders struck down in the tick the town falls still pay their XP.
 - **One raid to level 2.** A new player who fights reaches level 2 (300 XP) in about one raid,
   held or fallen, with 1 player or 16 (`coax/web/room/raid-proof.sh` with `RAID_MODE=fight
