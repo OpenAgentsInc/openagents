@@ -705,11 +705,6 @@ ev_beast_f :: (v: [] RmServer, k: int, q: int) -> int {
   if bt.form < E5RR_FORM_RAID { return 0; }
   return v[0].eg[k].rules[0].raid[0].slot[q].level << 8;
 }
-// Whether a raider's move waits this tick: each is sent at most every third tick, in turn (its hits
-// and its going are sent as ever: only its moves wait).
-ev_beast_wait :: (v: [] RmServer, k: int, q: int) -> bool {
-  return v[0].eg[k].rules[0].beasts[q].form >= E5RR_FORM_RAID && (v[0].eg[k].tick + q) % 3 != 0;
-}
 
 // ---- what the seats hear
 
@@ -871,7 +866,7 @@ ev_test_count :: (v: [] RmServer, k: int, form: int) -> int {
     #assert sx * sx + sz * sz >= f32(RT_SPAWN_R) * f32(RT_SPAWN_R);
   }
   #assert near == m;
-  // a raider the page sees: a beast entry with its look (P1 27 a Cultist) and its level in F
+  // a raider the page sees: a creature row with its look (P1 27 a Cultist) and its level in G
   q0 := -1;
   for q: 0..<E5RR_BEASTS { if q0 < 0 && r[0].beasts[q].form == E5RR_FORM_RAID + RS_NPC_CULTIST { q0 = q; } }
   e5rr_beast_ground(r, q0, 0);
@@ -879,8 +874,8 @@ ev_test_count :: (v: [] RmServer, k: int, form: int) -> int {
   eg_test_drain(v[..], box[..]);
   ev_test_ticks(v[..], k, 3);
   eg_test_drain(v[..], box[..]);
-  bc: [48] u8; bn := wire_put(bc[..], 0, ";c"); bn = wire_int(bc[..], bn, r[0].beasts[q0].id);
-  #assert eg_test_has(eg_test_of(box[..], 0), cast(string) bc[0..<bn]);
+  seen := eg_test_ent(box[..], 0, WIRE_ID_MADE + r[0].beasts[q0].id);
+  #assert seen.kind == WK_BEAST && seen.p1 == E5RR_FORM_RAID + RS_NPC_CULTIST && (seen.g >> 8) == r[0].raid[0].slot[q0].level;
   // seat 0 cuts the wave down: twice the SRD's 25 XP a Cultist, 450 the Fanatic, 50, 100 or 200 a Warlock by its level
   want := 0;
   for q: 0..<E5RR_BEASTS { bt := r[0].beasts[q]; if e5rd_is(bt) { want += ev_xp_for(r[0].raid[0].slot[q].npc, r[0].raid[0].slot[q].level); } }

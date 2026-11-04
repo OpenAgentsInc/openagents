@@ -17,31 +17,19 @@ RjHeard :: struct {
   d: int;
   x: [RJ_SEATS] f32; z: [RJ_SEATS] f32; seen: [RJ_SEATS] bool; gone: [RJ_SEATS] bool;
   first_ok: bool; first_x: f32; first_z: f32;   // this socket's first word on its own seat
+  m: [1] WireMirror;                             // the rows its D's left, as the page's (its I's HEARD)
 }
-rj_cm :: (t: string) -> f32 { return f32(rs_num(t)) / 100.0; }
 rj_hear :: (h: [] RjHeard, t: string) {
   if rs_starts(t, "y ") { h[0].seat = rs_num(rs_field(t, 1)); return; }
   if !rs_starts(t, "D ") { return; }
   h[0].d += 1;
-  at := 0; sp := 0;
-  while at < t.count && sp < 4 { if t[at] == ' ' { sp += 1; } at += 1; }
-  while at < t.count {
-    e := at;
-    while e < t.count && t[e] != ';' { e += 1; }
-    q := t[at..<e];
-    k := rs_field(q, 0);
-    if k == "p" {
-      ss := rs_num(rs_field(q, 1));
-      if ss >= 0 && ss < RJ_SEATS {
-        h[0].x[ss] = rj_cm(rs_field(q, 2)); h[0].z[ss] = rj_cm(rs_field(q, 4)); h[0].seen[ss] = true; h[0].gone[ss] = false;
-        if ss == h[0].seat && !h[0].first_ok { h[0].first_ok = true; h[0].first_x = h[0].x[ss]; h[0].first_z = h[0].z[ss]; }
-      }
-    }
-    if k == "x" && rs_field(q, 1) == "p" {
-      ss := rs_num(rs_field(q, 2));
-      if ss >= 0 && ss < RJ_SEATS { h[0].gone[ss] = true; h[0].seen[ss] = false; }
-    }
-    at = e + 1;
+  _ := wire_mirror_frame(h[0].m[..], t);
+  // every seat's player as the page has them after this D: seen, or gone (x)
+  for ss: 0..<RJ_SEATS {
+    w := wire_mirror_of(h[0].m[..], ss);
+    if w.id != ss { if h[0].seen[ss] { h[0].gone[ss] = true; } h[0].seen[ss] = false; continue; }
+    h[0].x[ss] = w.x; h[0].z[ss] = w.z; h[0].seen[ss] = true; h[0].gone[ss] = false;
+    if ss == h[0].seat && !h[0].first_ok { h[0].first_ok = true; h[0].first_x = w.x; h[0].first_z = w.z; }
   }
 }
 rj_drain :: (c: [] RelayConn, h: [] RjHeard) {
@@ -49,10 +37,10 @@ rj_drain :: (c: [] RelayConn, h: [] RjHeard) {
   while relay_conn_poll(c, 0) == RC_TEXT { rj_hear(h, cast(string) c[0].text[0..<c[0].text_n]); }
 }
 // An input from socket c: walking east (kx 100) when `walk`, else standing.
-rj_input :: (c: [] RelayConn, seq: int, walk: bool) -> bool {
+rj_input :: (c: [] RelayConn, h: [] RjHeard, seq: int, walk: bool) -> bool {
   m: [64] u8;
   k := rs_int(m[..], rs_put(m[..], 0, "I "), seq);
-  k = rs_put(m[..], k, ifx walk then " 100 0 0 0 0 0" else " 0 0 0 0 0 0");
+  k = rs_put(m[..], k, ifx walk then " 100 0 0 0 0 0 " else " 0 0 0 0 0 0 "); k = rs_int(m[..], k, h[0].m[0].heard);
   return relay_conn_send(c, cast(string) m[0..<k]);
 }
 // The players other than seat `me` this socket has now.
@@ -78,7 +66,7 @@ tool_main :: () -> int #export_c {
   t0 := rs_now(); n := 0;
   while rs_now() - t0 < 4000 {
     seq_a += 1; seq_b += 1;
-    sent = rj_input(c[0..<1], seq_a, rs_now() - t0 > 1000) && rj_input(c[1..<2], seq_b, false) && sent;
+    sent = rj_input(c[0..<1], h[0..<1], seq_a, rs_now() - t0 > 1000) && rj_input(c[1..<2], h[1..<2], seq_b, false) && sent;
     n += 1;
     while rs_now() - t0 < n * 33 { rj_drain(c[0..<1], h[0..<1]); rj_drain(c[1..<2], h[1..<2]); proc_sleep(2); }
   }
@@ -86,8 +74,8 @@ tool_main :: () -> int #export_c {
   // a short stand, so A's place settles; then A's socket goes silent: B alone talks and reads for 7 s
   t1 := rs_now(); n = 0;
   while rs_now() - t1 < 7500 {
-    if rs_now() - t1 < 500 { seq_a += 1; sent = rj_input(c[0..<1], seq_a, false) && sent; rj_drain(c[0..<1], h[0..<1]); }
-    seq_b += 1; sent = rj_input(c[1..<2], seq_b, false) && sent;
+    if rs_now() - t1 < 500 { seq_a += 1; sent = rj_input(c[0..<1], h[0..<1], seq_a, false) && sent; rj_drain(c[0..<1], h[0..<1]); }
+    seq_b += 1; sent = rj_input(c[1..<2], h[1..<2], seq_b, false) && sent;
     n += 1;
     while rs_now() - t1 < n * 33 { rj_drain(c[1..<2], h[1..<2]); proc_sleep(2); }
   }
@@ -101,7 +89,7 @@ tool_main :: () -> int #export_c {
   t2 := rs_now(); n = 0;
   while opened && rs_now() - t2 < 3000 {
     seq_a += 1; seq_b += 1;
-    sent = rj_input(c[2..<3], seq_a, false) && rj_input(c[1..<2], seq_b, false) && sent;
+    sent = rj_input(c[2..<3], h[2..<3], seq_a, false) && rj_input(c[1..<2], h[1..<2], seq_b, false) && sent;
     n += 1;
     while rs_now() - t2 < n * 33 { rj_drain(c[1..<2], h[1..<2]); rj_drain(c[2..<3], h[2..<3]); proc_sleep(2); }
   }

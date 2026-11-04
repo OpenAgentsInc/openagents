@@ -176,6 +176,7 @@ EgPlayer :: struct {
   d_tick: int; dropped: int; refused: int;   // the last D's tick; ticks missed past it; r frames
   next_i: int; next_c: int; next_t: int; steps: int;   // steps: the inputs sent (I), for their 30 Hz clock
   x: f32; z: f32;             // where the server has it
+  m: [1] WireMirror;          // the rows its D's left, as the page's (its I's HEARD)
 }
 EgRun :: struct { lat: [EG_HIST] int; rtt: [EG_HIST] int; m0: int; m1: int; }
 
@@ -215,20 +216,14 @@ eg_hear :: (p: [] EgPlayer, r: [] EgRun, t: string, now: int) {
     if ack > p[0].seq - EG_RING && now >= r[0].m0 && now < r[0].m1 { eg_hist_add(r[0].lat[..], now - p[0].sent[ack % EG_RING]); }
     p[0].ack = ack;
   }
-  // the players in it: "p SS X Y Z ..." after "D TICK ACK F ", then after each ';'
-  at := 0; sp := 0;
-  while at < t.count && sp < 4 { if t[at] == ' ' { sp += 1; } at += 1; }
-  while at < t.count {
-    e := at;
-    while e < t.count && t[e] != ';' { e += 1; }
-    en := t[at..<e];
-    if rs_starts(en, "p ") {
-      ss := rs_num(rs_field(en, 1));
-      if ss >= 0 && ss < EG_SEATS { p[0].seen[ss] = true; }
-      if ss == p[0].seat { p[0].x = f32(rs_num(rs_field(en, 2))) / 100; p[0].z = f32(rs_num(rs_field(en, 4))) / 100; }
-    }
-    at = e + 1;
+  // the players in it, read as the page reads them (everglade-wire.coax's mirror)
+  _ := wire_mirror_frame(p[0].m[..], t);
+  for e: 0..<WIRE_MIRROR {
+    en := p[0].m[0].ents[e];
+    if !en.live || en.id < 0 || en.id >= EG_SEATS { continue; }
+    p[0].seen[en.id] = true;
   }
+  if p[0].seat >= 0 { me := wire_mirror_of(p[0].m[..], p[0].seat); if me.id >= 0 { p[0].x = me.x; p[0].z = me.z; } }
 }
 // A step of the random walk, from the run's clock and the player (no shared state).
 eg_rand :: (i: int, t: int) -> int { x := (i * 7919 + t * 104729) % 2003; return x - 1001; }
@@ -333,7 +328,7 @@ eg_room :: (base: string, players: int, seconds: int, stamp: int, room: int, hz:
           p[i].seq += 1; p[i].sent[p[i].seq % EG_RING] = now;
           k := rs_put(msg[..], 0, "I "); k = rs_int(msg[..], k, p[i].seq);
           k = rs_put(msg[..], k, " 0 100 0 0 "); k = rs_int(msg[..], k, ((now - t0) * 628 / 20000 + i * 40) % 628 - 314);
-          k = rs_put(msg[..], k, ifx p[i].seq % 90 < 45 then " 1" else " 0");
+          k = rs_put(msg[..], k, ifx p[i].seq % 90 < 45 then " 1 " else " 0 "); k = rs_int(msg[..], k, p[i].m[0].heard);
           if !relay_conn_send(c[i..<i + 1], cast(string) msg[0..<k]) { sends_failed += 1; }
           // on the page's clock: 30 a second exactly (33 ms a step ran 1% fast, so the server's queue
           // of a seat's inputs filled and held each one about 270 ms: #12731)

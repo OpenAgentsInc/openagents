@@ -217,6 +217,26 @@ Every page connected to a shard reconnects when its revision changes. Since
 that message arrives only with step 3's page release. Deploy oa-room when few
 players are on.
 
+### Wire version 3: step 2 and step 3 ship back to back (#12783)
+
+Since #12783 the room server and the page speak wire version 3
+(`apps/openagents-web/everglade-wire.coax`). Every entity is one `s` row,
+a delta against the last tick the page acknowledged, and the page adds that
+tick (HEARD) to the end of each `I`. The two versions don't mix:
+
+- A page from before step 3 can't read a version 3 room's rows, so it draws
+  no other players, townsfolk or creatures, and the room drops its 8-field `I`
+  inputs, so its player can't move.
+- There is no transition layer. Run step 3 right after step 2 passes, with
+  few players on, and treat the time between them as downtime.
+- If you roll back either step, roll back both: shards and page together.
+
+After step 3, the vitals next to FPS show `NET x OF y KB/S`: what
+the room sends you a second, against its byte budget (`WIRE_BUDGET`, 1000
+bytes of rows a tick, about 29 KB/s). Locally, a 16-player room measured
+19 KB/s per client (27 KB/s on version 2), and a 16-player raid 20.6 KB/s
+(25.9 KB/s).
+
 ### Checks after step 2, in order
 
 Export the seat-ticket key once for the checks that sign their own tickets:

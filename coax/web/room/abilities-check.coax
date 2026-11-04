@@ -1,8 +1,8 @@
 // The everglade rooms' abilities check (room-abilities.coax, #12733): two sockets in one world. A casts
 // Reverse Gravity (bar slot 4) where it stands: both hear the cast (e cast), both get the server's
-// cylinder (c, kind 24, an id from 900000, A's), and the server lifts A: A's own state (p) and the state
-// B hears of A have A over 3 m up within 3 s. B casts its own: both hear both cylinders, one each. A
-// casts again: both hear A's go (x c) and B's stay; B's E ends B's, and A comes down.
+// cylinder (a row of kind 24, an id from WIRE_ID_MADE + 900000, A's), and the server lifts A: A's own row
+// and the row B hears of A have A over 3 m up within 3 s. B casts its own: both hear both cylinders, one
+// each. A casts again: both hear A's go (x) and B's stay; B's E ends B's, and A comes down.
 //   coax/web/tool.sh coax/web/room/abilities-check.coax [ws://localhost:8830]
 // Prints one JSON line, then "lifts" and exits 0, or "fails" and 1.
 #load "room-socket.coax";
@@ -11,31 +11,37 @@ AC_SEATS :: 2;
 AcHeard :: struct {
   me_x: f32; me_z: f32; me_y: f32; me_y0: f32; me_top: f32; me_seen: bool;    // its own player's height
   other_y: f32; other_top: f32; other_seen: bool;       // the other's
-  cast4: bool; rg: int; rg_gone: bool;                  // e cast of slot 4; A's cylinder's id; its x c
+  cast4: bool; rg: int; rg_gone: bool;                  // e cast of slot 4; A's cylinder's id; its x
   rg_b: int; rg_b_gone: bool;                           // B's
+  m: [1] WireMirror;                                    // the rows its D's left, as the page's (its I's HEARD)
 }
 ac_cm :: (t: string) -> f32 { return f32(rs_num(t)) / 100.0; }
 ac_entry :: (h: [] AcHeard, me: int, t: string) {
   k := rs_field(t, 0);
-  if k == "p" {
-    s := rs_num(rs_field(t, 1)); y := ac_cm(rs_field(t, 3));
-    if s == me {
-      if !h[0].me_seen { h[0].me_y0 = y; h[0].me_top = y; }
-      h[0].me_x = ac_cm(rs_field(t, 2)); h[0].me_z = ac_cm(rs_field(t, 4));
-      h[0].me_y = y; h[0].me_seen = true; if y > h[0].me_top { h[0].me_top = y; }
-    } else {
-      if !h[0].other_seen { h[0].other_top = y; }
-      h[0].other_y = y; h[0].other_seen = true; if y > h[0].other_top { h[0].other_top = y; }
+  if k == "s" {
+    // a row, read into the mirror with its frame (ac_hear): what it now says
+    w := wire_mirror_of(h[0].m[..], rs_num(rs_field(t, 1)));
+    if w.id < 0 { return; }
+    if w.kind == WK_PLAYER {
+      y := w.y;
+      if w.id == me {
+        if !h[0].me_seen { h[0].me_y0 = y; h[0].me_top = y; }
+        h[0].me_x = w.x; h[0].me_z = w.z;
+        h[0].me_y = y; h[0].me_seen = true; if y > h[0].me_top { h[0].me_top = y; }
+      } else {
+        if !h[0].other_seen { h[0].other_top = y; }
+        h[0].other_y = y; h[0].other_seen = true; if y > h[0].other_top { h[0].other_top = y; }
+      }
+      return;
+    }
+    // a Reverse Gravity cylinder (ability 0) the world's abilities hold up: whose by OWNER (A seat 0, B seat 1)
+    if w.kind == WK_ZONE && w.id >= WIRE_ID_MADE + 900000 && w.p1 == 0 {
+      if w.owner == 0 { h[0].rg = w.id; h[0].rg_gone = false; } else { h[0].rg_b = w.id; h[0].rg_b_gone = false; }
     }
     return;
   }
-  if k == "c" && rs_num(rs_field(t, 2)) == 24 && rs_num(rs_field(t, 1)) >= 900000 && rs_num(rs_field(t, 10)) == 0 {
-    // whose: field 9, the owner (A is seat 0, B seat 1)
-    if rs_num(rs_field(t, 9)) == 0 { h[0].rg = rs_num(rs_field(t, 1)); h[0].rg_gone = false; } else { h[0].rg_b = rs_num(rs_field(t, 1)); h[0].rg_b_gone = false; }
-    return;
-  }
-  if k == "x" && rs_field(t, 1) == "c" {
-    id := rs_num(rs_field(t, 2));
+  if k == "x" {
+    id := rs_num(rs_field(t, 1));
     if h[0].rg > 0 && id == h[0].rg { h[0].rg_gone = true; }
     if h[0].rg_b > 0 && id == h[0].rg_b { h[0].rg_b_gone = true; }
     return;
@@ -45,10 +51,11 @@ ac_entry :: (h: [] AcHeard, me: int, t: string) {
 // A frame: D's entries (after its header), split on ';'.
 ac_hear :: (h: [] AcHeard, me: int, t: string) {
   if !rs_starts(t, "D ") { return; }
+  _ := wire_mirror_frame(h[0].m[..], t);
   i := 0; at := 0;
-  // the header is D TICK ACK F, then the first entry
+  // the header is D TICK ACK F PART, then the first entry
   sp := 0;
-  while i < t.count && sp < 4 { if t[i] == ' ' { sp += 1; } i += 1; }
+  while i < t.count && sp < 5 { if t[i] == ' ' { sp += 1; } i += 1; }
   at = i;
   while i <= t.count {
     if i == t.count || t[i] == ';' { if i > at { ac_entry(h, me, t[at..<i]); } at = i + 1; }
@@ -69,7 +76,7 @@ ac_steps :: (c: [] RelayConn, h: [] AcHeard, seq: [] int, ms: int) -> bool {
       seq[i] += 1;
       m: [96] u8;
       k := rs_int(m[..], rs_put(m[..], 0, "I "), seq[i]);
-      k = rs_put(m[..], k, " 0 0 0 0 0 0");
+      k = rs_put(m[..], k, " 0 0 0 0 0 0 "); k = rs_int(m[..], k, h[i].m[0].heard);
       if !relay_conn_send(c[i..<i + 1], cast(string) m[0..<k]) { ok = false; }
     }
     n += 1;

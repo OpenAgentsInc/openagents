@@ -718,9 +718,9 @@ rangers_fixture :: (s: [] Everglade, out: [] RemoteBody, n: int) -> int {
   #assert net_test_hear(b[..], 1, net_test_frame(room[0].r[..]));
   for q: 1..<4 {
     net_test_tick(room[0].r[..], q, 0);
-    net_test_p(room[0].r[..], WireP.{ss = 7, x = 2, y = 0.5, z = -70 + 0.043 * f32(q), yaw = 0.2, vz = 1.3, g = WG_GROUND, hp = 57, max = 57});
-    net_test_p(room[0].r[..], WireP.{ss = 8, x = -2, z = -72, g = WG_GROUND | WG_DEAD | WG_AWAY, hp = 0, max = 57});
-    net_test_p(room[0].r[..], WireP.{ss = 9, x = 0, z = -75, form = CI_FORM_WOLF, hp = 11, max = 11});
+    net_test_s(room[0].r[..], WireS.{id = 7, kind = WK_PLAYER, owner = 7, x = 2, y = 0.5, z = -70 + 0.043 * f32(q), yaw = 0.2, vz = 1.3, g = WG_GROUND, hp = 57, max = 57});
+    net_test_s(room[0].r[..], WireS.{id = 8, kind = WK_PLAYER, owner = 8, x = -2, z = -72, g = WG_GROUND | WG_DEAD | WG_AWAY, hp = 0, max = 57});
+    net_test_s(room[0].r[..], WireS.{id = 9, kind = WK_PLAYER, owner = 9, x = 0, z = -75, form = CI_FORM_WOLF, hp = 11, max = 11});
     if q == 1 { net_test_n(room[0].r[..], WireN.{ss = 7, id = "pa", look = "ranger.2.1.4", kind = "druid", flags = 2, name = "Ash"}); }
     net_step(b[..], 100 + 33 * q, 0, 0, -84, 0, 0, 0, false, 0, false, 0);
     #assert net_test_hear(b[..], 1, net_test_frame(room[0].r[..]));

@@ -1,4 +1,5 @@
-// What the room checks share (relay-check.coax, load.coax): text into a
+// What the room checks share (relay-check.coax, load.coax): the wire's mirror, so an everglade
+// check reads each D's rows as the page does and says what it heard in its I's HEARD; text into a
 // byte buffer, numbers out of a frame's space-separated fields, the room's
 // socket URL, and the clock. The sockets are coax/lib/net/relay_conn.coax
 // (ws:// and wss://, TLS through tls-native.c), so tool.sh links TLS for
@@ -11,6 +12,7 @@
 #load "../../lib/sys/args.coax";
 #load "../../lib/sys/proc.coax";
 #load "room-ticket.coax";
+#load "../../../apps/openagents-web/everglade-wire.coax";   // an everglade check reads D as the page does (WireMirror)
 
 cxproc_wall_us :: () -> int #foreign;
 

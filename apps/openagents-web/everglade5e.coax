@@ -627,10 +627,16 @@ e5_fps_draw :: (s: [] Everglade, v: [] E5, out: [] f32, at: int) -> int {
   if s[0].guide.golden || v[0].fps <= 0 { return at; }
   k := hi(s[0].dpr, 0.5);
   gutter := 16 * k; cap := 7 * k;
-  fl: [40] u8;
+  fl: [72] u8;
   tenths := cast(int) (v[0].ms * 10 + 0.5);
   fm := put_digits(fl[..], 0, cast(int) (v[0].fps + 0.5)); fm = e5_put(fl[..], fm, " FPS  ");
   fm = put_digits(fl[..], fm, tenths / 10); fm = e5_put(fl[..], fm, "."); fm = put_digits(fl[..], fm, tenths % 10); fm = e5_put(fl[..], fm, " MS");
+  // in a room: what the server sends you a second, and the most it sends (its byte budget, W)
+  if net_live(s) {
+    n := net_of(s);
+    fm = e5_put(fl[..], fm, "  NET "); fm = put_digits(fl[..], fm, (n[0].rate + 512) / 1024);
+    fm = e5_put(fl[..], fm, " OF "); fm = put_digits(fl[..], fm, (n[0].budget * n[0].hz + 512) / 1024); fm = e5_put(fl[..], fm, " KB/S");
+  }
   t := cast(string) fl[0..<fm];
   tw := text_width(t, cap);
   x0 := s[0].width - gutter - tw; y := s[0].height - 10 * k;
@@ -695,12 +701,12 @@ e5_fps_draw :: (s: [] Everglade, v: [] E5, out: [] f32, at: int) -> int {
   you[0].hp = 9; you[0].max = 9;
   // the server's word: alive, then dead
   net_test_tick(room[..], 1, 0);
-  net_test_p(room[..], WireP.{ss = 0, x = 3, z = -70, g = WG_GROUND, hp = 9, max = 9});
+  net_test_s(room[..], WireS.{id = 0, kind = WK_PLAYER, owner = 0, x = 3, z = -70, g = WG_GROUND, hp = 9, max = 9});
   #assert net_test_hear(a[..], 0, net_test_frame(room[..]));
   e5_room_death(a[..], w);
   #assert !you[0].dead;
   net_test_tick(room[..], 2, 0);
-  net_test_p(room[..], WireP.{ss = 0, x = 3, z = -70, g = WG_GROUND | WG_DEAD, hp = 0, max = 9});
+  net_test_s(room[..], WireS.{id = 0, kind = WK_PLAYER, owner = 0, x = 3, z = -70, g = WG_GROUND | WG_DEAD, hp = 0, max = 9});
   #assert net_test_hear(a[..], 0, net_test_frame(room[..]));
   e5_room_death(a[..], w);
   #assert you[0].dead && you[0].dead_t == 0 && you[0].hp == 0 && !you[0].you_body.on;
@@ -716,7 +722,7 @@ e5_fps_draw :: (s: [] Everglade, v: [] E5, out: [] f32, at: int) -> int {
   #assert watch_dark(w) > d0 && you[0].dead_t > 1.1;
   // the server stands you up: the view comes back, no respawn at the Road In
   net_test_tick(room[..], 3, 0);
-  net_test_p(room[..], WireP.{ss = 0, x = 3, z = -70, g = WG_GROUND, hp = 9, max = 9});
+  net_test_s(room[..], WireS.{id = 0, kind = WK_PLAYER, owner = 0, x = 3, z = -70, g = WG_GROUND, hp = 9, max = 9});
   #assert net_test_hear(a[..], 0, net_test_frame(room[..]));
   e5_room_death(a[..], w);
   #assert !you[0].dead && you[0].dead_t < 0 && !you[0].respawn;

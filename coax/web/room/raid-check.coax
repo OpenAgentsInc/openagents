@@ -39,6 +39,7 @@ RcHeard :: struct {
   wl: bool; casts_n: int;                        // a Warlock's seat; its casts sent, for the kit's turn
   xp_end: int;                                   // XP heard after the raid's outcome (its end award)
   bytes: int;                                    // the bytes of every frame it heard
+  m: [1] WireMirror;                             // the rows its D's left, as the page's (its I's HEARD)
 }
 // The level 1 kit's next attack for seat h (fivebar.coax bar slots), and its reach in metres (the
 // spell's range less a little, so the raider's step doesn't take it out of range).
@@ -64,8 +65,23 @@ rc_atan2 :: (y: f32, x: f32) -> f32 {
 rc_find :: (h: [] RcHeard, id: int) -> int { for q: 0..<h[0].n { if h[0].ids[q] == id { return q; } } return -1; }
 rc_entry :: (h: [] RcHeard, me: int, t: string) {
   k := rs_field(t, 0);
-  if k == "p" {
-    if rs_num(rs_field(t, 1)) == me { h[0].me_x = f32(rs_num(rs_field(t, 2))) / 100; h[0].me_z = f32(rs_num(rs_field(t, 4))) / 100; h[0].me_seen = true; }
+  if k == "s" {
+    // a row, read into the mirror with its frame (rc_hear): what it now says
+    w := wire_mirror_of(h[0].m[..], rs_num(rs_field(t, 1)));
+    if w.id < 0 { return; }
+    if w.kind == WK_PLAYER && w.id == me { h[0].me_x = w.x; h[0].me_z = w.z; h[0].me_seen = true; return; }
+    if w.kind != WK_BEAST || w.p1 < 20 { return; }
+    form := w.p1;
+    id := w.id - WIRE_ID_MADE;
+    q := rc_find(h, id);
+    if q < 0 {
+      if h[0].n >= RC_SEEN { return; }
+      q = h[0].n; h[0].n += 1; h[0].raiders_seen += 1;
+    }
+    h[0].ids[q] = id; h[0].forms[q] = form;
+    h[0].xs[q] = w.x; h[0].zs[q] = w.z;
+    h[0].kinds = h[0].kinds | (1 << (form - 20));
+    if form != 40 && (form < 27 || form > 31) { h[0].bad += 1; }   // 27 to 31: Cultist, Fanatic, Warlock, Darian, Cult Priest (#12771)
     return;
   }
   if k == "g" {
@@ -81,23 +97,8 @@ rc_entry :: (h: [] RcHeard, me: int, t: string) {
     if rs_num(rs_field(t, 1)) == me { h[0].v_level = rs_num(rs_field(t, 2)); }
     return;
   }
-  if k == "c" && rs_num(rs_field(t, 2)) == 12 {
-    form := rs_num(rs_field(t, 10));
-    if form < 20 { return; }
-    id := rs_num(rs_field(t, 1));
-    q := rc_find(h, id);
-    if q < 0 {
-      if h[0].n >= RC_SEEN { return; }
-      q = h[0].n; h[0].n += 1; h[0].raiders_seen += 1;
-    }
-    h[0].ids[q] = id; h[0].forms[q] = form;
-    h[0].xs[q] = f32(rs_num(rs_field(t, 3))) / 100; h[0].zs[q] = f32(rs_num(rs_field(t, 5))) / 100;
-    h[0].kinds = h[0].kinds | (1 << (form - 20));
-    if form != 40 && (form < 27 || form > 31) { h[0].bad += 1; }   // 27 to 31: Cultist, Fanatic, Warlock, Darian, Cult Priest (#12771)
-    return;
-  }
-  if k == "x" && rs_field(t, 1) == "c" {
-    q := rc_find(h, rs_num(rs_field(t, 2)));
+  if k == "x" {
+    q := rc_find(h, rs_num(rs_field(t, 1)) - WIRE_ID_MADE);
     if q >= 0 { h[0].n -= 1; h[0].ids[q] = h[0].ids[h[0].n]; h[0].xs[q] = h[0].xs[h[0].n]; h[0].zs[q] = h[0].zs[h[0].n]; h[0].forms[q] = h[0].forms[h[0].n]; }
     return;
   }
@@ -120,8 +121,9 @@ rc_hear :: (h: [] RcHeard, me: int, t: string) {
   }
   if !rs_starts(t, "D ") { return; }
   h[0].d += 1;
+  _ := wire_mirror_frame(h[0].m[..], t);
   at := 0; sp := 0;
-  while at < t.count && sp < 4 { if t[at] == ' ' { sp += 1; } at += 1; }
+  while at < t.count && sp < 5 { if t[at] == ' ' { sp += 1; } at += 1; }
   while at < t.count {
     e := at;
     while e < t.count && t[e] != ';' { e += 1; }
@@ -190,7 +192,7 @@ tool_main :: () -> int #export_c {
       while yaw > 3.14159 { yaw -= 6.28318; }
       while yaw < -3.14159 { yaw += 6.28318; }
       k := rs_put(m[..], rs_int(m[..], rs_put(m[..], 0, "I "), seq[i]), " 0 ");
-      k = rs_int(m[..], k, ahead); k = rs_put(m[..], k, " 0 0 "); k = rs_int(m[..], k, cast(int) (yaw * 100)); k = rs_put(m[..], k, " 1");
+      k = rs_int(m[..], k, ahead); k = rs_put(m[..], k, " 0 0 "); k = rs_int(m[..], k, cast(int) (yaw * 100)); k = rs_put(m[..], k, " 1 "); k = rs_int(m[..], k, h[i].m[0].heard);
       _ := relay_conn_send(c[i..<i + 1], cast(string) m[0..<k]);
       // about every 0.6 s, a Starry Wisp at the nearest raider within 18 m (its 60 feet)
       if tick < next[i] || !h[i].me_seen { continue; }

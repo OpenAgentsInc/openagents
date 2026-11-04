@@ -7,7 +7,7 @@
 // --phone: a 390x844 touch phone at DPR 3 (else --size, default 1440x900 at DPR 1).
 // The in-page half, coax/web/everglade-pair.js, notes the page's frames and its socket's frames.
 // What it checks, in order (each a line, then one JSON line with every number, then holds/fails):
-//   1. both join (ENTER past the CHARACTER picker), each has the other's player (D's p) and who it is
+//   1. both join (ENTER past the CHARACTER picker), each has the other's player (its row) and who it is
 //      (D's n) and draws it (net_probe 2), and the name for its nameplate isn't "-" (a local room,
 //      coax/web/room/local.sh, names players as the API does; 8b's BLOCK is skipped there, for the
 //      local stand-in keeps no blocks, and 8's link keeps the ?relay=);

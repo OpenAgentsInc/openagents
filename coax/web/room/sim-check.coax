@@ -28,36 +28,40 @@ ScHeard :: struct {
   breaks: int; break_sum: int; burns: int; rebuilt: bool; breaks_up: int; sum_up: int; // the town's pieces (e break, e burn, e rebuild)
   refused_breaking: bool; refused_n: int;                                // R too soon after a break (r SEQ breaking)
   bad: int;
+  m: [1] WireMirror;   // the rows its D's left, as the page's (its I's HEARD)
 }
 sc_cm :: (t: string) -> f32 { return f32(rs_num(t)) / 100.0; }
-// One D entry: "p SS X Y Z ...", "n SS ...", "c EID KIND ...", "x K ID", "e cast SS ...".
+// One D entry: "s ID ..." (read into the mirror with its frame: sc_hear), "n SS ...", "x ID", "e cast SS ...".
 sc_entry :: (h: [] ScHeard, me: int, t: string) {
   k := rs_field(t, 0);
-  if k == "p" {
-    s := rs_num(rs_field(t, 1)); z := sc_cm(rs_field(t, 4));
-    if s == me { h[0].me_x = sc_cm(rs_field(t, 2)); h[0].me_z = z; if !h[0].me_seen { h[0].me_z0 = z; } h[0].me_seen = true; }
-    else { if !h[0].other_seen { h[0].other_z0 = z; } h[0].other_z = z; h[0].other_seen = true; }
-    if rs_field(t, 16).count == 0 || rs_field(t, 17).count > 0 { h[0].bad += 1; }   // p and its 16 fields
+  if k == "s" {
+    w := wire_mirror_of(h[0].m[..], rs_num(rs_field(t, 1)));
+    if w.id < 0 { h[0].bad += 1; return; }   // a row its mirror couldn't read
+    if w.kind == WK_PLAYER {
+      z := w.z;
+      if w.id == me { h[0].me_x = w.x; h[0].me_z = z; if !h[0].me_seen { h[0].me_z0 = z; } h[0].me_seen = true; }
+      else { if !h[0].other_seen { h[0].other_z0 = z; } h[0].other_z = z; h[0].other_seen = true; }
+      return;
+    }
+    if w.kind == WK_BEAST {
+      id := w.id - WIRE_ID_MADE;
+      known := false;
+      for q: 0..<h[0].wolf_n { if h[0].wolves[q] == id { known = true; } }
+      if !known && h[0].wolf_n < 8 { h[0].wolves[h[0].wolf_n] = id; h[0].wolf_n += 1; }
+      if id == h[0].wolves[0] { h[0].wolf_x = w.x; h[0].wolf_z = w.z; h[0].wolf_hp = w.hp; }
+      return;
+    }
+    if w.kind == WK_FOLK {
+      i := w.id - WIRE_ID_FOLK;
+      if i < 0 || i >= 40 || w.p1 != i { h[0].bad += 1; return; }
+      if !h[0].folk[i] { h[0].folk[i] = true; h[0].folk_n += 1; }
+      x := w.x; z := w.z;
+      d := (x - h[0].me_x) * (x - h[0].me_x) + (z - h[0].me_z) * (z - h[0].me_z);
+      if i == h[0].near_i || d < h[0].near_d { h[0].near_i = i; h[0].near_d = d; h[0].near_x = x; h[0].near_z = z; }
+    }
     return;
   }
   if k == "n" { if rs_num(rs_field(t, 1)) != me && rs_ends(t, " Sim A") { h[0].other_named = true; } return; }
-  if k == "c" && rs_num(rs_field(t, 2)) == 12 {
-    id := rs_num(rs_field(t, 1));
-    known := false;
-    for q: 0..<h[0].wolf_n { if h[0].wolves[q] == id { known = true; } }
-    if !known && h[0].wolf_n < 8 { h[0].wolves[h[0].wolf_n] = id; h[0].wolf_n += 1; }
-    if id == h[0].wolves[0] { h[0].wolf_x = sc_cm(rs_field(t, 3)); h[0].wolf_z = sc_cm(rs_field(t, 5)); h[0].wolf_hp = rs_num(rs_field(t, 7)); }
-    return;
-  }
-  if k == "f" {
-    i := rs_num(rs_field(t, 1));
-    if i < 0 || i >= 40 || rs_field(t, 7).count == 0 || rs_field(t, 8).count > 0 { h[0].bad += 1; return; }   // f and its 7 fields
-    if !h[0].folk[i] { h[0].folk[i] = true; h[0].folk_n += 1; }
-    x := sc_cm(rs_field(t, 2)); z := sc_cm(rs_field(t, 3));
-    d := (x - h[0].me_x) * (x - h[0].me_x) + (z - h[0].me_z) * (z - h[0].me_z);
-    if i == h[0].near_i || d < h[0].near_d { h[0].near_i = i; h[0].near_d = d; h[0].near_x = x; h[0].near_z = z; }
-    return;
-  }
   if k == "w" {
     if rs_num(rs_field(t, 1)) == me { h[0].wanted = rs_num(rs_field(t, 2)); h[0].wanted_heard = true; }
     else { h[0].other_wanted = rs_num(rs_field(t, 2)); }
@@ -66,8 +70,9 @@ sc_entry :: (h: [] ScHeard, me: int, t: string) {
     return;
   }
   if k == "x" {
-    if rs_field(t, 1) == "c" && h[0].gone_n < 8 { h[0].gone[h[0].gone_n] = rs_num(rs_field(t, 2)); h[0].gone_n += 1; }
-    if rs_field(t, 1) == "p" && rs_num(rs_field(t, 2)) != me { h[0].other_gone = true; }
+    id := rs_num(rs_field(t, 1));
+    if id >= WIRE_ID_MADE && h[0].gone_n < 8 { h[0].gone[h[0].gone_n] = id - WIRE_ID_MADE; h[0].gone_n += 1; }
+    if id >= 0 && id < WIRE_ID_FOLK && id != me { h[0].other_gone = true; }
     return;
   }
   if k == "e" && rs_field(t, 1) == "cast" && rs_field(t, 3) == "32" { h[0].cast_seen = true; }
@@ -82,10 +87,11 @@ sc_hear :: (h: [] ScHeard, me: int, t: string) {
   if !rs_starts(t, "D ") { return; }
   h[0].d += 1;
   h[0].ack = rs_num(rs_field(t, 2));
-  if rs_field(t, 3) == "1" { h[0].snap = true; }
-  // the entries after "D TICK ACK F "
+  if (rs_num(rs_field(t, 3)) & 1) != 0 { h[0].snap = true; }
+  _ := wire_mirror_frame(h[0].m[..], t);
+  // the entries after "D TICK ACK F PART "
   at := 0; sp := 0;
-  while at < t.count && sp < 4 { if t[at] == ' ' { sp += 1; } at += 1; }
+  while at < t.count && sp < 5 { if t[at] == ' ' { sp += 1; } at += 1; }
   while at < t.count {
     e := at;
     while e < t.count && t[e] != ';' { e += 1; }
@@ -112,6 +118,7 @@ sc_steps :: (c: [] RelayConn, h: [] ScHeard, seq: [] int, ms: int, walk: bool) -
       m: [96] u8;
       k := rs_int(m[..], rs_put(m[..], 0, "I "), seq[i]);
       k = rs_put(m[..], k, ifx walk && i == 0 then " 0 100 0 0 0 0" else " 0 0 0 0 0 0");
+      k = rs_put(m[..], k, " "); k = rs_int(m[..], k, h[i].m[0].heard);
       if !relay_conn_send(c[i..<i + 1], cast(string) m[0..<k]) { ok = false; }
     }
     n += 1;

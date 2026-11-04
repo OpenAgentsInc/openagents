@@ -21,25 +21,29 @@ BcHeard :: struct {
   casts: int; burns: int;
   refused: int;                               // r SEQ WHY: a cast or an R refused
   bad: int;
+  m: [1] WireMirror;                          // the rows its D's left, as the page's (its I's HEARD)
 }
 bc_cm :: (t: string) -> f32 { return f32(rs_num(t)) / 100.0; }
 bc_hear :: (h: [] BcHeard, t: string) {
   if rs_starts(t, "r ") { h[0].refused += 1; tool_err("bridge-check: "); tool_errln(t); return; }
   if !rs_starts(t, "D ") { return; }
   h[0].d += 1;
+  _ := wire_mirror_frame(h[0].m[..], t);
+  // the two players as the page has them after this D
+  a := wire_mirror_of(h[0].m[..], 0);
+  if a.id == 0 {
+    h[0].ax = a.x; h[0].az = a.z; h[0].ag = a.g; h[0].a_seen = true;
+    if (h[0].ag & 2) != 0 && h[0].ax > BC_DECK_X0 && h[0].ax < BC_DECK_X1 { h[0].wet_in_span += 1; }
+  }
+  b := wire_mirror_of(h[0].m[..], 1);
+  if b.id == 1 { h[0].bx = b.x; h[0].bz = b.z; h[0].b_seen = true; }
   at := 0; sp := 0;
-  while at < t.count && sp < 4 { if t[at] == ' ' { sp += 1; } at += 1; }
+  while at < t.count && sp < 5 { if t[at] == ' ' { sp += 1; } at += 1; }
   while at < t.count {
     e := at;
     while e < t.count && t[e] != ';' { e += 1; }
     q := t[at..<e];
     k := rs_field(q, 0);
-    if k == "p" && rs_num(rs_field(q, 1)) == 0 {
-      if rs_field(q, 16).count == 0 { h[0].bad += 1; }
-      h[0].ax = bc_cm(rs_field(q, 2)); h[0].az = bc_cm(rs_field(q, 4)); h[0].ag = rs_num(rs_field(q, 9)); h[0].a_seen = true;
-      if (h[0].ag & 2) != 0 && h[0].ax > BC_DECK_X0 && h[0].ax < BC_DECK_X1 { h[0].wet_in_span += 1; }
-    }
-    if k == "p" && rs_num(rs_field(q, 1)) == 1 { h[0].bx = bc_cm(rs_field(q, 2)); h[0].bz = bc_cm(rs_field(q, 4)); h[0].b_seen = true; }
     if k == "e" && rs_field(q, 1) == "break" { h[0].breaks += 1; h[0].break_sum += rs_num(rs_field(q, 2)); }
     if k == "e" && rs_field(q, 1) == "cast" { h[0].casts += 1; }
     if k == "e" && rs_field(q, 1) == "burn" { h[0].burns += 1; }
@@ -78,6 +82,7 @@ bc_walk :: (c: [] RelayConn, h: [] BcHeard, seq: [] int, gx: f32, gz: f32, ms: i
       } else {
         k = rs_put(m[..], k, " 0 0 0 0 0 0");
       }
+      k = rs_put(m[..], k, " "); k = rs_int(m[..], k, h[i].m[0].heard);
       if !relay_conn_send(c[i..<i + 1], cast(string) m[0..<k]) { sent[0] = false; }
     }
     if there { return true; }
@@ -101,7 +106,7 @@ bc_idle :: (c: [] RelayConn, h: [] BcHeard, seq: [] int, ms: int, sent: [] bool)
       seq[i] += 1;
       m: [96] u8;
       k := rs_int(m[..], rs_put(m[..], 0, "I "), seq[i]);
-      k = rs_put(m[..], k, " 0 0 0 0 0 0");
+      k = rs_put(m[..], k, " 0 0 0 0 0 0 "); k = rs_int(m[..], k, h[i].m[0].heard);
       if !relay_conn_send(c[i..<i + 1], cast(string) m[0..<k]) { sent[0] = false; }
     }
     n += 1;

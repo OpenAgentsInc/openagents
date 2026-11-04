@@ -19,6 +19,7 @@
     d: [],           // D arrivals: [t, tick, my x cm, my z cm, my clip, my g, ack]
     others: {},      // seat -> [[t, x, z, clip, g], ...] as D carried them
     names: {}, casts: [], hits: [], deaths: [], wanted: {}, creatures: {}, refused: [],
+    rows: {},        // entity id -> its last rows [[tick, fields]], to read the next delta against
     pings: {}, rtt: [], sentI: [], jumpBits: [], seqPos: {}, edits: [], worldGets: [],
   });
   E.mark = (name) => { E.phase = name; E.phases.push({ name, t: now() }); return 1; };
@@ -72,19 +73,32 @@
     if (k !== "D") return;
     const parts = text.split(";");
     const head = parts[0].split(" ");
-    const tick = Number(head[1]), ack = Number(head[2]);
-    parts[0] = head.slice(4).join(" ");
+    const tick = Number(head[1]), ack = Number(head[2]), fl = Number(head[3]);
+    parts[0] = head.slice(5).join(" ");
+    // a snapshot's first part: the page forgets what it held (everglade-wire.coax's mirror)
+    if ((fl & 1) && Number(head[4]) === 0) { E.rows = {}; E.creatures = {}; }
     let mine = null;
     for (const en of parts) {
       const f = en.split(" ");
-      if (f[0] === "p") {
-        const ss = Number(f[1]), x = Number(f[2]), z = Number(f[4]), g = Number(f[9]), clip = Number(f[10]);
-        if (ss === E.seat) mine = [x, z, clip, g, Number(f[11])];
-        else { const o = (E.others[ss] ||= []); if (o.length < 20000) o.push([t, x, z, clip, g, Number(f[3])]); }
+      if (f[0] === "s") {
+        // s ID BACK MASK V...: the row as a delta against the one BACK ticks ago (0: absolute); the
+        // fields are everglade-wire.coax's WS_* (X 1, Y 2, Z 3, G 8, CLIP 9, HP 10), in cm
+        const id = Number(f[1]), back = Number(f[2]), mask = Number(f[3]);
+        const held = (E.rows[id] ||= []);
+        const base = back === 0 ? new Array(21).fill(0) : (held.find((r) => r[0] === tick - back) || [null])[1];
+        if (!base) continue;
+        const row = base.slice(); let q = 4;
+        for (let b = 0; b < 21; b++) if (mask & (1 << b)) row[b] += Number(f[q++]);
+        const was = held.findIndex((r) => r[0] === tick);
+        if (was >= 0) held[was][1] = row; else { held.push([tick, row]); if (held.length > 16) held.shift(); }
+        if (id < 100000) {
+          const x = row[1], z = row[3], g = row[8], clip = row[9];
+          if (id === E.seat) mine = [x, z, clip, g, row[10]];
+          else { const o = (E.others[id] ||= []); if (o.length < 20000) o.push([t, x, z, clip, g, row[2]]); }
+        } else if (id >= 200000) E.creatures[id - 200000] = row[10];
       } else if (f[0] === "n") E.names[Number(f[1])] = f.slice(6).join(" ");
       else if (f[0] === "w") E.wanted[Number(f[1])] = Number(f[2]);
-      else if (f[0] === "c") E.creatures[f[1]] = Number(f[7]);
-      else if (f[0] === "x" && f[1] === "c") delete E.creatures[f[2]];
+      else if (f[0] === "x") { const id = Number(f[1]); delete E.rows[id]; if (id >= 200000) delete E.creatures[id - 200000]; }
       else if (f[0] === "e" && f[1] === "cast") E.casts.push([t, Number(f[2]), Number(f[3])]);
       else if (f[0] === "e" && f[1] === "hit") E.hits.push([t, f[2], f[3], Number(f[4])]);
       else if (f[0] === "e" && f[1] === "die") E.deaths.push([t, f[2]]);
