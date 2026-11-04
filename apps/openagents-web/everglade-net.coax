@@ -1354,6 +1354,57 @@ net_probe :: (s: [] Everglade, field: int) -> int #export_c {
   if field == 41 { return n[0].folk_walk; }
   if field == 42 { return n[0].folk_still; }
   if field == 43 { return n[0].bytes_in; }
+  // the drift check's (coax/web/everglade-drift.coax, #12778): 60 the camera's heading (mrad), 61 the
+  // frame's puffs drawn and 62 staged, 45 to 48 Reverse Gravity's puffs, Wind Wall's, Wall of Stone's
+  // panels and every spell's and condition's puffs drawn last frame, 49 the bar's slots (a hash of
+  // each place's), 52 what holds you as drawn (bits: 1 you can't move, 2 Hold Person's rings and HELD,
+  // 4 Earthbind's, 8 Ray of Frost's, 16 your pace slowed), 53 the server's conditions on you, 55
+  // other players with a condition, 57 and 58 the stables' pieces down and in all, 59 (offline) Hold
+  // Person on you, 400 + P the bar
+  // slot at place P (-1 none), 600 + 3 I + 0, 1, 2 townsperson I's drawn x and z (cm) and clip
+  if field == 60 { return cast(int) (s[0].orbit.yaw * 1000); }
+  if field == 61 { return s[0].sp.sprite_n; }
+  if field == 62 { return s[0].sp.fx_seen; }
+  if field >= 45 && field <= 48 { return s[0].sp.fx_shown[field - 45]; }
+  if field == 49 { h := 7; for p: 0..<48 { h = (h * 31 + sp_at_place(s, p) + 2) % 1000000007; } return h; }
+  if field >= 400 && field < 448 { return sp_at_place(s, field - 400); }
+  if field == 52 {
+    b := ifx everglade_held(s) then 1 else 0;
+    if s[0].wv.started {
+      w := watch_w(s);
+      if watch_held(w) { b |= 2; }
+      if watch_bound(w) { b |= 4; }
+      if watch_you(w[..])[0].slow_t > 0 { b |= 8; }
+    }
+    if everglade_slow(s) < 0.999 { b |= 16; }
+    return b;
+  }
+  if field == 53 { return net_cond(s); }
+  // 59: offline, hold you as a Watch Mage's Hold Person does (3 s, saving each round): 1 when it held
+  // you (the drift check's held step; in a room another player's cast holds you)
+  if field == 59 {
+    if net_live(s) || !s[0].wv.started { return 0; }
+    w := watch_w(s);
+    if watch_you(w[..])[0].dead { return 0; }
+    watch_you(w[..])[0].held_t = 3; watch_you(w[..])[0].held_saves = 0;
+    return 1;
+  }
+  if field == 55 {
+    k := 0;
+    for e: 0..<NET_ENTS { en := n[0].ents[e]; if en.live && en.kind == WK_PLAYER && !net_mine_player(n, en) && en.p1 != 0 { k += 1; } }
+    return k;
+  }
+  if field == 57 || field == 58 {
+    if !sp_on(s) { return -1; }
+    hn := 0; hd := 0; w := sp_dm(s);
+    for i: 0..<(ifx w[0].n < w[0].pieces.count then w[0].n else w[0].pieces.count) { if rp_in_stables(w[0].pieces[i].cx, w[0].pieces[i].cz) { hn += 1; if w[0].pieces[i].state != DP_STANDING { hd += 1; } } }
+    return ifx field == 57 then hd else hn;
+  }
+  if field >= 600 && field < 600 + 3 * EG_SPOTS {
+    i := (field - 600) / 3; f := (field - 600) % 3;
+    if f == 2 { return s[0].folk[i].clip; }
+    return wire_cm(ifx f == 0 then s[0].folk[i].x else s[0].folk[i].z);
+  }
   if field >= 200 && field < 200 + SP_SLOTS + AB_N {
     you := ab_you(s);
     at := add(you, times(ab_forward(s), 3));

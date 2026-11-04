@@ -86,6 +86,7 @@ E5 :: struct {
   card: [160] u8; card_n: int; card_slot: int;
   cast_name: [40] u8; cast_name_n: int; cast_t: f32;
   used_now: bool;            // a cast the engine took this frame: its line under the bar is the engine's
+  shown: [E5_HOLDS * (E5_LINE + 1)] u8; shown_n: int;   // the status lines as last drawn, "|" between (the drift check)
 }
 
 // The realm this page is (data-realm, or a fork's slug): its analytics name, and its room's.
@@ -424,6 +425,7 @@ e5_play_hud :: (s: [] Everglade, v: [] E5, out: [] f32, u: [] f32, at: int) -> i
   cap := 6.5 * k;
   line: [120] u8;
   ln := 0;
+  v[0].shown_n = 0;
   if s[0].wv.started && !eg_pane_open(s) { n = e5_status(s, v, out, u, n); }
   e5_sweeps(s, v);
   // the armed slot's card, over the bar
@@ -511,10 +513,17 @@ e5_hold_line :: (out: [] u8, head: string, left: f32) -> int {
   m = put_digits(out, m, hi_int(cast(int) -floor(-left), 1));
   return e5_put(out, m, " S");
 }
+// The status lines as last drawn ("" none), for a headless check.
+e5_shown :: (v: [] E5) -> string #export_c { return cast(string) v[0].shown[0..<v[0].shown_n]; }
 // The lines, small, right under your Hit Points (and WANTED), each in its own plate.
 e5_status :: (s: [] Everglade, v: [] E5, out: [] f32, u: [] f32, at: int) -> int {
   lines: [E5_HOLDS * E5_LINE] u8; sizes: [E5_HOLDS] int; tone: [E5_HOLDS] int;
   c := e5_holds(s, v, lines[..], sizes[..], tone[..]);
+  v[0].shown_n = 0;
+  for q: 0..<c {
+    if q > 0 { v[0].shown[v[0].shown_n] = '|'; v[0].shown_n += 1; }
+    for i: 0..<sizes[q] { v[0].shown[v[0].shown_n] = lines[q * E5_LINE + i]; v[0].shown_n += 1; }
+  }
   n := at;
   if c == 0 { return n; }
   k := hi(s[0].dpr, 0.5);

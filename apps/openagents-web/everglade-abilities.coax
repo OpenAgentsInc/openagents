@@ -1688,10 +1688,12 @@ ab_draw :: (s: [] Everglade) {
       c := v3(st.ax + ex * f32(1 + 2 * p), st.base + hh * (2 * rise - 1) - 0.02, st.az + ez * f32(1 + 2 * p));
       tone := (0.46 + 0.05 * f32(p) + 0.04 * st.seed) * (0.7 + 0.3 * f32(left) / f32(AB_ST_HP));   // darker as it cracks
       sp_shape(s, SHAPE_BOX, LOOK_STONE, c, v3(ex * 1.99, 0, ez * 1.99), v3(0, 2 * hh, 0), times(n, 2), v3(tone, tone * 0.96, tone * 0.9));   // sp_shape takes whole sizes
+      s[0].sp.fx_by[2] += 1;   // net_probe 47
     }
   }
   few := phone(s);
   div := ifx few then 2 else 1;
+  rg0 := s[0].sp.stage_n;
   if a[0].rg_on {
     age := a[0].rg_t;
     c := a[0].rg_at; R := f32(AB_RG_R); H := f32(AB_RG_H);
@@ -1777,8 +1779,10 @@ ab_draw :: (s: [] Everglade) {
       }
     }
   }
+  s[0].sp.fx_by[0] += s[0].sp.stage_n - rg0;   // the drift check's count (net_probe 45)
   // each Wind Wall: its outline on the ground and at its top, either face, its ends' uprights, and the
   // updraft's streaks rising through it every half metre (wind_wall.rs wall_lines)
+  ww0 := s[0].sp.stage_n;
   outline := times(v3(0.55, 0.9, 1.0), 0.85 * 0.6);
   streak := times(v3(0.85, 0.97, 1.0), 0.55 * 0.6);
   for q: 0..<AB_WALLS {
@@ -1808,6 +1812,7 @@ ab_draw :: (s: [] Everglade) {
       ab_line(s, v3(lerp(wl.ax, wl.bx, u), y, lerp(wl.az, wl.bz, u)), v3(lerp(wl.ax, wl.bx, u), e, lerp(wl.az, wl.bz, u)), streak);
     }
   }
+  s[0].sp.fx_by[1] += s[0].sp.stage_n - ww0;   // net_probe 46
 }
 // The gust's streaks of wind running along its line, Levitate's glow under you and Feather Fall's
 // motes drifting round you.

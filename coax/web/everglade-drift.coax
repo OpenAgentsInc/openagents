@@ -1,0 +1,697 @@
+// Everglade's drift check (GitHub #12778, epic #12718): the same scripted session played offline and
+// in a local room, side by side, frame by frame. Any difference in what the two pages draw fails it,
+// with the probe that drifted, when and by how much. It runs on this machine only: its own room
+// server, page server, network and bots, and two headless Chromes.
+//   coax/web/tool.sh everglade-drift [--profiles local,100,250] [--bots 3] [--port 8960] [--no-raid] [--out DIR]
+// Before it: coax/web/room/build.sh (the room server, coax/web/room/bin/room) and the page
+// (apps/openagents-web/build.sh, or coax/web/wasm.sh for build/everglade5e.wasm alone).
+//
+// What it starts (and stops), on PORT and the three after it, all on 127.0.0.1:
+//   - the room server (coax/web/room/bin/room --dev coax/web/room/dev: the world the page reads too),
+//     with a seat-ticket key made up here and its control lines from a file this check writes
+//     (pvp on, levels off, so the room's bar is the whole bar, as offline);
+//   - the page server (coax/web/serve.sh --static --api ROOM);
+//   - for each network profile, the network between the room page and the room
+//     (coax/web/room/net-proxy.coax): local is none, 100 and 250 are that round trip with 30 ms of
+//     jitter and 2% of reads lost; and BOTS players in the room (coax/web/room/drift-bots.coax).
+// The session, sent to both pages at the same moments (the room page at ?relay=ws://localhost:PROXY&room=pair-drift-N: the page takes
+// only a localhost relay):
+//   start, crate (W into the crate the world puts 1.5 m ahead of the spawn), strafe (W and D: along
+//   it), walk, jump, rg (Reverse Gravity from the bar, 5, and again to end it), wos (Wall of Stone,
+//   Shift+1), ww (Wind Wall, 6), held (Hold Person on you: a bot's cast in the room, the watch's on
+//   the offline page, net_probe 59; then W, which mustn't move you), folk (standing, the town's people
+//   walking), end.
+// Then the raid (unless --no-raid): the offline page's preview raid (?raid=preview) and the room's
+// own (the shortest dials, harm on, levels on to cap 2, reward 300%) with raid-check.coax's bots;
+// the room page walks to the square and casts Starry Wisp at the nearest raider. Both pages' stables
+// must fall, and the room page's LEVEL plate must climb from LEVEL 1 to LEVEL 2 with its bar.
+//
+// The probes (coax/web/everglade-drift.js notes them every frame: everglade-net.coax net_probe 45 to
+// 62, 400+, 600+, everglade5e-face.c coaxial_field_probe and coaxial_drift_text), each compared
+// both ways within a window: a frame of one page fails when no frame of the other within WINDOW ms
+// (250 plus the round trip) has the same value, within the probe's tolerance. A probe drifts when
+// DR_RUN frames fail in a row. Some are judged on each page alone: the camera's turn in one frame
+// (DR_YAW_JUMP), the room's corrections (re-runs that moved you more than 5 cm: at most DR_FIX_RATE a
+// second, none over 0.5 m), and the town's people (walking in place: a walking clip drawn where it
+// was the frame before, on no more than DR_STALL more of the frames than offline).
+// Output: one line per probe and profile, a table, and holds or fails (exit 0 or 1). The rows, both
+// pages' screenshots as each step ends (shot-PROFILE-STEP-offline.png, -room.png) and the servers'
+// logs go to DIR (default coax/web/build/everglade-drift/STAMP).
+#import "Basic";
+#load "../lib/net/cdp.coax";
+
+DR_COLS :: 28;            // everglade-drift.js D.cols
+DR_ROWS :: 20000;         // frames kept a page (5 minutes at 60 a second)
+DR_PART :: 300;           // rows read back at once
+DR_RUN :: 6;              // frames failing in a row that make a drift
+DR_YAW_JUMP :: 300;       // mrad the camera may turn in one frame
+DR_FIX_RATE :: 1;         // corrections over 5 cm a second, at most
+DR_STALL :: 15;           // percent more frames of the town's people walking in place than offline
+DR_MARKS :: 32;
+DR_TEXTS :: 256;
+DR_PROFILES :: 6;
+// the columns
+C_T :: 0; C_X :: 2; C_Y :: 3; C_Z :: 4; C_YAW :: 5; C_LIFT :: 6; C_RERUNS :: 7; C_FIX :: 8; C_SPRITES :: 9;
+C_RG :: 10; C_WW :: 11; C_WOS :: 12; C_SPELLS :: 13; C_BAR :: 14; C_COND :: 15; C_SCOND :: 16; C_OCOND :: 17;
+C_FCOND :: 18; C_ECOND :: 19; C_SDOWN :: 20; C_SALL :: 21; C_ACT :: 22; C_CLIP :: 23; C_NET :: 24;
+C_WALK :: 25; C_STALL :: 26; C_MOVED :: 27;
+
+Buf :: struct { b: [16384] u8; n: int; bad: bool; }
+bput :: (o: [] Buf, s: string) {
+  if o[0].n + s.count > o[0].b.count { o[0].bad = true; return; }
+  for k: 0..<s.count { o[0].b[o[0].n + k] = s[k]; }
+  o[0].n += s.count;
+}
+bint :: (o: [] Buf, v: int) {
+  if v < 0 { bput(o, "-"); bint(o, -v); return; }
+  d: [20] u8; n := 0; x := v;
+  if x == 0 { d[0] = '0'; n = 1; }
+  while x > 0 { d[n] = cast(u8) ('0' + x % 10); x /= 10; n += 1; }
+  for k: 0..<n { e: [1] u8; e[0] = d[n - 1 - k]; bput(o, cast(string) e[..]); }
+}
+btext :: (o: [] Buf) -> string { return cast(string) o[0].b[0..<o[0].n]; }
+
+// One page's record: its rows, its marks (name, first row, wall ms) and its words as they changed.
+DrMark :: struct { name: [24] u8; name_n: int; row: int; t: int; }
+DrText :: struct { t: int; which: int; text: [160] u8; n: int; }
+DrPage :: struct {
+  rows: [DR_ROWS * DR_COLS] int; n: int;
+  marks: [DR_MARKS] DrMark; marks_n: int;
+  texts: [DR_TEXTS] DrText; texts_n: int;
+}
+dr_at :: (p: [] DrPage, r: int, c: int) -> int { return p[0].rows[r * DR_COLS + c]; }
+dr_mark_name :: (p: [] DrPage, k: int) -> string { return cast(string) p[0].marks[k].name[0..<p[0].marks[k].name_n]; }
+// The step a wall time falls in ("" before the first mark).
+dr_step_at :: (p: [] DrPage, t: int) -> string {
+  name := "";
+  for k: 0..<p[0].marks_n { if p[0].marks[k].t <= t { name = dr_mark_name(p, k); } }
+  return name;
+}
+dr_mark_t :: (p: [] DrPage, name: string) -> int { for k: 0..<p[0].marks_n { if dr_mark_name(p, k) == name { return p[0].marks[k].t; } } return -1; }
+
+// A probe: a column (or two for the feet), how far apart two values may be, and how it is compared.
+DR_EXACT :: 0; DR_NEAR :: 1; DR_SHARE :: 2; DR_ANGLE :: 3; DR_PLACE :: 4; DR_ON :: 5;
+DrProbe :: struct { name: string; col: int; how: int; tol: int; from: string; }
+// The verdict on one probe: whether it drifted, the first frame that did (wall ms and its step),
+// the values there and the smallest difference the window had.
+DrVerdict :: struct { drifted: bool; t: int; step: string; mine: int; other: int; by: int; frames: int; note: [200] u8; note_n: int; }
+
+dr_diff :: (how: int, a: int, b: int, a2: int, b2: int) -> int {
+  if how == DR_ANGLE {
+    d := a - b; while d > 3142 { d -= 6283; } while d < -3142 { d += 6283; }
+    return ifx d < 0 then -d else d;
+  }
+  if how == DR_PLACE { dx := f64(a - b); dz := f64(a2 - b2); return cast(int) sqrt(dx * dx + dz * dz); }
+  if how == DR_ON { return ifx (a > 0) == (b > 0) then 0 else 1; }
+  d := a - b; return ifx d < 0 then -d else d;
+}
+dr_tol :: (pr: DrProbe, a: int, b: int) -> int {
+  if pr.how == DR_SHARE { m := ifx a > b then a else b; t := m * 35 / 100; return ifx t > pr.tol then t else pr.tol; }
+  if pr.how == DR_EXACT || pr.how == DR_ON { return 0; }
+  return pr.tol;
+}
+// Frame r of page a against page b's frames within `window` ms: the smallest difference, and whether
+// one was within the tolerance (closest b value in *other).
+dr_match :: (pr: DrProbe, a: [] DrPage, r: int, b: [] DrPage, window: int, lo: int, other: [] int) -> int {
+  t := dr_at(a, r, C_T);
+  va := dr_at(a, r, pr.col); va2 := ifx pr.how == DR_PLACE then dr_at(a, r, C_Z) else 0;
+  best := 1000000000; k := lo;
+  while k < b[0].n && dr_at(b, k, C_T) < t - window { k += 1; }
+  while k < b[0].n && dr_at(b, k, C_T) <= t + window {
+    vb := dr_at(b, k, pr.col); vb2 := ifx pr.how == DR_PLACE then dr_at(b, k, C_Z) else 0;
+    d := dr_diff(pr.how, va, vb, va2, vb2);
+    if d < best { best = d; other[0] = vb; }
+    if d <= dr_tol(pr, va, vb) { return -1; }
+    k += 1;
+  }
+  return best;
+}
+// One way (a's frames against b's) of a probe, from wall ms t0 to t1.
+dr_way :: (pr: DrProbe, a: [] DrPage, b: [] DrPage, window: int, t0: int, t1: int, v: [] DrVerdict) {
+  run := 0; lo := 0;
+  for r: 0..<a[0].n {
+    t := dr_at(a, r, C_T);
+    if t < t0 || t > t1 { continue; }
+    while lo < b[0].n && dr_at(b, lo, C_T) < t - window { lo += 1; }
+    other: [1] int;
+    by := dr_match(pr, a, r, b, window, lo, other[..]);
+    if by < 0 { run = 0; continue; }
+    run += 1; v[0].frames += 1;
+    if run == DR_RUN && !v[0].drifted {
+      first := r - DR_RUN + 1;
+      v[0].drifted = true; v[0].t = dr_at(a, first, C_T); v[0].step = dr_step_at(a, v[0].t);
+      v[0].mine = dr_at(a, first, pr.col); v[0].other = other[0]; v[0].by = by;
+    }
+  }
+}
+
+// The session's script: each step's name, then its keys. Both pages get each at once.
+dr_press :: (c: [] Cdp, down: bool, key: string, code: string, vk: int, shift: bool) -> bool {
+  q: [1] Buf;
+  bput(q[..], "dispatchEvent(new KeyboardEvent('"); bput(q[..], ifx down then "keydown" else "keyup");
+  bput(q[..], "', {key: '"); bput(q[..], key); bput(q[..], "', code: '"); bput(q[..], code); bput(q[..], "', keyCode: "); bint(q[..], vk);
+  bput(q[..], ifx shift then ", shiftKey: true" else ""); bput(q[..], ", bubbles: true})); 1");
+  return dr_int(c, btext(q[..]), 0) == 1;
+}
+dr_int :: (c: [] Cdp, js: string, fallback: int) -> int {
+  v := cdp_evaluate(c, js);
+  return ifx v >= 0 then jv_int(cdp_doc(c), v, fallback) else fallback;
+}
+dr_str :: (c: [] Cdp, js: string, out: [] u8) -> string {
+  v := cdp_evaluate(c, js);
+  if v < 0 { return ""; }
+  n := jv_str(cdp_doc(c), v, out);
+  return ifx n > 0 then cast(string) out[0..<n] else "";
+}
+DrPair :: struct { a: [] Cdp; b: [] Cdp; shots: string; }
+DR_SHOT :: 8388608;
+// Both pages as they look now, into SHOTS-NAME-offline.png and -room.png (no SHOTS: none).
+dr_shots :: (p: DrPair, name: string) {
+  if p.shots.count == 0 { return; }
+  png: [DR_SHOT] u8;
+  for s: 0..<2 {
+    q: [1] Buf; bput(q[..], p.shots); bput(q[..], "-"); bput(q[..], name); bput(q[..], ifx s == 0 then "-offline.png" else "-room.png");
+    n := cdp_screenshot(ifx s == 0 then p.a else p.b, png[..]);
+    if n > 0 { _ := fs_write(btext(q[..]), cast(string) png[0..<n]); }
+  }
+}
+dr_both_key :: (p: DrPair, down: bool, key: string, code: string, vk: int) {
+  _ := dr_press(p.a, down, key, code, vk, false); _ = dr_press(p.b, down, key, code, vk, false);
+}
+dr_tap :: (p: DrPair, key: string, code: string, vk: int) { dr_both_key(p, true, key, code, vk); proc_sleep(80); dr_both_key(p, false, key, code, vk); }
+dr_mark :: (p: DrPair, name: string) {
+  if p.shots.count > 0 && name != "start" && name != "raid" { dr_shots(p, name); }
+  q: [1] Buf; bput(q[..], "__dr.mark('"); bput(q[..], name); bput(q[..], "')");
+  _ := dr_int(p.a, btext(q[..]), 0); _ = dr_int(p.b, btext(q[..]), 0);
+  print("  step %\n", name);
+}
+
+dr_script :: (p: DrPair, dir: string) {
+  dr_mark(p, "start");
+  _ := dr_press(p.a, true, "Escape", "Escape", 27, false); _ = dr_press(p.b, true, "Escape", "Escape", 27, false);
+  _ = dr_press(p.a, false, "Escape", "Escape", 27, false); _ = dr_press(p.b, false, "Escape", "Escape", 27, false);
+  proc_sleep(1500);
+  dr_mark(p, "crate");
+  dr_both_key(p, true, "w", "KeyW", 87); proc_sleep(2500);
+  dr_mark(p, "strafe");
+  dr_both_key(p, true, "d", "KeyD", 68); proc_sleep(3000); dr_both_key(p, false, "d", "KeyD", 68);
+  dr_mark(p, "walk"); proc_sleep(2500);
+  dr_mark(p, "jump");
+  dr_tap(p, " ", "Space", 32); proc_sleep(1800); dr_both_key(p, false, "w", "KeyW", 87); proc_sleep(1200);
+  dr_mark(p, "rg");
+  // a round (6 s) between casts: the rules' one action a round
+  dr_tap(p, "5", "Digit5", 53); proc_sleep(6000); dr_tap(p, "5", "Digit5", 53); proc_sleep(6500);
+  dr_mark(p, "wos");
+  _ = dr_press(p.a, true, "!", "Digit1", 49, true); _ = dr_press(p.b, true, "!", "Digit1", 49, true); proc_sleep(80);
+  _ = dr_press(p.a, false, "!", "Digit1", 49, true); _ = dr_press(p.b, false, "!", "Digit1", 49, true); proc_sleep(6500);
+  // a step aside first, so the Wind Wall (4 m ahead) isn't laid into the Wall of Stone
+  dr_both_key(p, true, "a", "KeyA", 65); proc_sleep(1500); dr_both_key(p, false, "a", "KeyA", 65); proc_sleep(500);
+  dr_mark(p, "ww");
+  dr_tap(p, "6", "Digit6", 54); proc_sleep(6500);
+  dr_mark(p, "held");
+  // the room page: bot 0's cast on you, again each round (6 s) you save, up to 10; the offline page:
+  // the watch's Hold Person (net_probe 59) the moment the room page shows you held, so they start as one
+  hb: [1024] u8; hold := fs_join(dir, "hold", hb[..]);
+  took := false; tries := 0; asked := 0;
+  while tries < 10 && !took {
+    if proc_now_ms() - asked > 6500 { _ = fs_write(hold, "1"); asked = proc_now_ms(); tries += 1; }
+    took = dr_int(p.b, "((__dr.probe(52) & 3) || __dr.probe(53) > 0) ? 1 : 0", 0) == 1;
+    if !took { proc_sleep(50); }
+  }
+  _ = fs_remove(hold);
+  held := dr_int(p.a, "__dr.probe(59)", 0);
+  if !took { print("  (the room page was never held: % casts)\n", tries); }
+  if held != 1 { print("  (the offline page did not take the hold: %)\n", held); }
+  proc_sleep(1200);
+  dr_both_key(p, true, "w", "KeyW", 87); proc_sleep(2000); dr_both_key(p, false, "w", "KeyW", 87); proc_sleep(2500);
+  dr_mark(p, "folk"); proc_sleep(6000);
+  dr_mark(p, "end"); proc_sleep(300);
+}
+
+// The page's record back from the browser.
+dr_pull :: (c: [] Cdp, pg: [] DrPage) -> bool {
+  n := dr_int(c, "__dr.count()", -1);
+  if n < 0 { return false; }
+  if n > DR_ROWS { n = DR_ROWS; }
+  pg[0].n = 0;
+  at := 0;
+  while at < n {
+    k := ifx n - at > DR_PART then DR_PART else n - at;
+    q: [1] Buf; bput(q[..], "__dr.rows("); bint(q[..], at); bput(q[..], ", "); bint(q[..], k); bput(q[..], ")");
+    v := cdp_evaluate(c, btext(q[..]));
+    if v < 0 { return false; }
+    d := cdp_doc(c);
+    e := d.nodes[v].first; i := 0;
+    while e != -1 && i < k * DR_COLS { pg[0].rows[at * DR_COLS + i] = jv_int(d, e, 0); i += 1; e = d.nodes[e].next; }
+    at += k;
+  }
+  pg[0].n = n;
+  v := cdp_evaluate(c, "__dr.marks");
+  if v >= 0 {
+    d := cdp_doc(c); e := d.nodes[v].first; pg[0].marks_n = 0;
+    while e != -1 && pg[0].marks_n < DR_MARKS {
+      m := pg[0].marks[pg[0].marks_n..<pg[0].marks_n + 1];
+      m[0].name_n = jv_str(d, jv_at(d, e, 0), m[0].name[..]); m[0].row = jv_int(d, jv_at(d, e, 1), 0); m[0].t = jv_int(d, jv_at(d, e, 2), 0);
+      pg[0].marks_n += 1; e = d.nodes[e].next;
+    }
+  }
+  v = cdp_evaluate(c, "__dr.texts.slice(-256)");
+  if v >= 0 {
+    d := cdp_doc(c); e := d.nodes[v].first; pg[0].texts_n = 0;
+    while e != -1 && pg[0].texts_n < DR_TEXTS {
+      x := pg[0].texts[pg[0].texts_n..<pg[0].texts_n + 1];
+      x[0].t = jv_int(d, jv_at(d, e, 0), 0); x[0].which = jv_int(d, jv_at(d, e, 1), 0); x[0].n = jv_str(d, jv_at(d, e, 2), x[0].text[..]);
+      if x[0].n < 0 { x[0].n = 0; }
+      pg[0].texts_n += 1; e = d.nodes[e].next;
+    }
+  }
+  return true;
+}
+
+// Words (0 the LEVEL plate, 1 the status lines) page a had at wall ms t.
+dr_text_at :: (a: [] DrPage, which: int, t: int) -> string {
+  s := "";
+  for k: 0..<a[0].texts_n { x := a[0].texts[k]; if x.which == which && x.t <= t { s = cast(string) a[0].texts[k].text[0..<x.n]; } }
+  return s;
+}
+// The words one way: every change of page a's (and each 500 ms while held) must be page b's within window.
+dr_text_way :: (a: [] DrPage, b: [] DrPage, which: int, window: int, t0: int, t1: int, v: [] DrVerdict) {
+  for k: 0..<a[0].texts_n {
+    x := a[0].texts[k];
+    if x.which != which || x.t < t0 || x.t > t1 { continue; }
+    want := cast(string) a[0].texts[k].text[0..<x.n];
+    ok := false;
+    t := x.t - window;
+    while t <= x.t + window && !ok { if dr_text_at(b, which, t) == want { ok = true; } t += 16; }
+    if ok || v[0].drifted { continue; }
+    v[0].drifted = true; v[0].t = x.t; v[0].step = dr_step_at(a, x.t);
+    got := dr_text_at(b, which, x.t);
+    q: [1] Buf; bput(q[..], "\""); bput(q[..], want); bput(q[..], "\" against \""); bput(q[..], got); bput(q[..], "\"");
+    n := ifx q[0].n < 200 then q[0].n else 200;
+    for i: 0..<n { v[0].note[i] = q[0].b[i]; } v[0].note_n = n;
+  }
+}
+
+DrResult :: struct { name: string; v: DrVerdict; }
+DR_PROBES :: 24;
+DrReport :: struct { r: [DR_PROBES] DrResult; n: int; }
+dr_add :: (rep: [] DrReport, name: string, v: DrVerdict) { if rep[0].n < DR_PROBES { rep[0].r[rep[0].n] = DrResult.{name = name, v = v}; rep[0].n += 1; } }
+
+// Every probe of the paired session, offline (a) against the room (b) and back.
+dr_compare :: (a: [] DrPage, b: [] DrPage, rtt: int, rep: [] DrReport) {
+  window := 250 + rtt;
+  t0 := dr_mark_t(a, "start"); t1 := dr_mark_t(a, "end");
+  if t0 < 0 || t1 < 0 { t0 = 0; t1 = 1 << 50; }
+  probes := [16] DrProbe.[
+    DrProbe.{name = "position", col = C_X, how = DR_PLACE, tol = 350},
+    DrProbe.{name = "camera heading", col = C_YAW, how = DR_ANGLE, tol = 200},
+    DrProbe.{name = "lift height", col = C_LIFT, how = DR_NEAR, tol = 50},
+    DrProbe.{name = "Reverse Gravity shown", col = C_RG, how = DR_ON},
+    DrProbe.{name = "Reverse Gravity particles", col = C_RG, how = DR_SHARE, tol = 12},
+    DrProbe.{name = "Wind Wall shown", col = C_WW, how = DR_ON},
+    DrProbe.{name = "Wind Wall particles", col = C_WW, how = DR_SHARE, tol = 12},
+    DrProbe.{name = "Wall of Stone shown", col = C_WOS, how = DR_ON},
+    DrProbe.{name = "Wall of Stone panels", col = C_WOS, how = DR_NEAR, tol = 0},
+    DrProbe.{name = "spell and condition particles", col = C_SPELLS, how = DR_SHARE, tol = 20},
+    DrProbe.{name = "hotbar slots", col = C_BAR, how = DR_EXACT},
+    DrProbe.{name = "condition on you", col = C_COND, how = DR_EXACT},
+    DrProbe.{name = "condition on others", col = C_OCOND, how = DR_EXACT},
+    DrProbe.{name = "conditions on the town's people", col = C_FCOND, how = DR_NEAR, tol = 0},
+    DrProbe.{name = "your engine conditions", col = C_ECOND, how = DR_EXACT},
+    DrProbe.{name = "stables down", col = C_SDOWN, how = DR_NEAR, tol = 0},
+  ];
+  for pr: probes {
+    v: [1] DrVerdict;
+    dr_way(pr, a, b, window, t0, t1, v[..]);
+    w: [1] DrVerdict;
+    dr_way(pr, b, a, window, t0, t1, w[..]);
+    // the room's side drifting first is said as the room's value against offline's
+    if w[0].drifted && (!v[0].drifted || w[0].t < v[0].t) { x := w[0]; x.mine = w[0].other; x.other = w[0].mine; x.frames += v[0].frames; v[0] = x; }
+    else { v[0].frames += w[0].frames; }
+    dr_add(rep, pr.name, v[0]);
+  }
+  for which: 0..<2 {
+    v: [1] DrVerdict;
+    dr_text_way(a, b, which, window + 500, t0, t1, v[..]);
+    if !v[0].drifted { dr_text_way(b, a, which, window + 500, t0, t1, v[..]); }
+    dr_add(rep, ifx which == 0 then "plate text" else "status lines", v[0]);
+  }
+  // each page alone: the camera's turn in a frame, the room's corrections, the town's people
+  for side: 0..<2 {
+    p := ifx side == 0 then a else b;
+    v: [1] DrVerdict;
+    for r: 1..<p[0].n {
+      t := dr_at(p, r, C_T);
+      if t < t0 || t > t1 { continue; }
+      d := dr_diff(DR_ANGLE, dr_at(p, r, C_YAW), dr_at(p, r - 1, C_YAW), 0, 0);
+      if d > DR_YAW_JUMP && !v[0].drifted {
+        v[0].drifted = true; v[0].t = t; v[0].step = dr_step_at(p, t); v[0].mine = d; v[0].by = d - DR_YAW_JUMP;
+        q: [1] Buf; bput(q[..], ifx side == 0 then "offline" else "room"); bput(q[..], " page turned "); bint(q[..], d); bput(q[..], " mrad in one frame");
+        for i: 0..<q[0].n { v[0].note[i] = q[0].b[i]; } v[0].note_n = q[0].n;
+      }
+    }
+    if side == 0 || !v[0].drifted { dr_add(rep, ifx side == 0 then "camera jump, offline" else "camera jump, room", v[0]); }
+    else { dr_add(rep, "camera jump, room", v[0]); }
+  }
+  {
+    v: [1] DrVerdict; fixes := 0; worst := 0; first := -1;
+    for r: 1..<b[0].n {
+      t := dr_at(b, r, C_T);
+      if t < t0 || t > t1 { continue; }
+      if dr_at(b, r, C_RERUNS) > dr_at(b, r - 1, C_RERUNS) && dr_at(b, r, C_FIX) > 50 {
+        fixes += 1; if first < 0 { first = t; }
+        if dr_at(b, r, C_FIX) > worst { worst = dr_at(b, r, C_FIX); }
+      }
+    }
+    secs := (t1 - t0) / 1000; if secs < 1 { secs = 1; }
+    v[0].frames = fixes;
+    if fixes > DR_FIX_RATE * secs || worst > 500 {
+      v[0].drifted = true; v[0].t = first; v[0].step = dr_step_at(b, first); v[0].mine = fixes; v[0].by = worst;
+      q: [1] Buf; bint(q[..], fixes); bput(q[..], " corrections over 5 cm in "); bint(q[..], secs); bput(q[..], " s, the largest "); bint(q[..], worst); bput(q[..], " mm");
+      for i: 0..<q[0].n { v[0].note[i] = q[0].b[i]; } v[0].note_n = q[0].n;
+    }
+    dr_add(rep, "corrections", v[0]);
+  }
+  {
+    // walking in place: a walking clip drawn where it was; and how fast those walking go
+    wa := 0; sa := 0; ma := 0; wb := 0; sb := 0; mb := 0;
+    for r: 0..<a[0].n { t := dr_at(a, r, C_T); if t >= t0 && t <= t1 { wa += dr_at(a, r, C_WALK); sa += dr_at(a, r, C_STALL); ma += dr_at(a, r, C_MOVED); } }
+    for r: 0..<b[0].n { t := dr_at(b, r, C_T); if t >= t0 && t <= t1 { wb += dr_at(b, r, C_WALK); sb += dr_at(b, r, C_STALL); mb += dr_at(b, r, C_MOVED); } }
+    pa := ifx wa > 0 then sa * 100 / wa else 0; pb := ifx wb > 0 then sb * 100 / wb else 0;
+    v: [1] DrVerdict;
+    q: [1] Buf;
+    bput(q[..], "walking in place on "); bint(q[..], pa); bput(q[..], "% of walking frames offline, "); bint(q[..], pb); bput(q[..], "% in the room; ");
+    bput(q[..], "mm a walking frame "); bint(q[..], ifx wa > 0 then ma / wa else 0); bput(q[..], " offline, "); bint(q[..], ifx wb > 0 then mb / wb else 0); bput(q[..], " in the room");
+    if pb > pa + DR_STALL || (wa > 0) != (wb > 0) { v[0].drifted = true; v[0].t = t0; v[0].step = "all"; v[0].mine = pa; v[0].other = pb; v[0].by = pb - pa; }
+    for i: 0..<q[0].n { v[0].note[i] = q[0].b[i]; } v[0].note_n = q[0].n;
+    dr_add(rep, "NPC speed against clip", v[0]);
+  }
+}
+
+dr_print :: (rep: [] DrReport, profile: string, t0: int) -> bool {
+  all := true;
+  for k: 0..<rep[0].n {
+    r := rep[0].r[k];
+    if !r.v.drifted { print("ok    % %\n", profile, r.name); continue; }
+    all = false;
+    if r.v.note_n > 0 {
+      print("DRIFT % %: at % ms (step %): %\n", profile, r.name, r.v.t - t0, r.v.step, cast(string) rep[0].r[k].v.note[0..<r.v.note_n]);
+    } else {
+      print("DRIFT % %: at % ms (step %): offline % against room %, by % (% frames off)\n", profile, r.name, r.v.t - t0, r.v.step, r.v.mine, r.v.other, r.v.by, r.v.frames);
+    }
+  }
+  return all;
+}
+
+// ---- the servers, network and bots: children of this program, stopped by it
+dr_spawn :: (cmd: string) -> int {
+  h := proc_new();
+  if !(proc_arg(h, "/bin/sh") && proc_arg(h, "-c") && proc_arg(h, cmd) && proc_quiet(h)) || proc_start(h) != 0 { return -1; }
+  return h;
+}
+dr_stop :: (h: int) {
+  if h < 0 { return; }
+  k := proc_kill(h, PROC_SIGTERM); w := proc_wait(h, 3000);
+  if w == PROC_RUNNING { k = proc_kill(h, PROC_SIGKILL); w = proc_wait(h, 1000); }
+  r := proc_release(h);
+}
+dr_ready :: (c: [] Cdp, room: bool) -> bool {
+  deadline := proc_now_ms() + 90000;
+  while proc_now_ms() < deadline {
+    proc_sleep(700);
+    ok := ifx room then dr_int(c, "__dr.probe(0) === 2 && __dr.probe(1) >= 0 ? 1 : 0", 0) == 1 else dr_int(c, "__dr.count() > 60 ? 1 : 0", 0) == 1;
+    if ok { return true; }
+    _ := dr_press(c, true, "Enter", "Enter", 13, false); _ = dr_press(c, false, "Enter", "Enter", 13, false);
+  }
+  return false;
+}
+dr_open :: (c: [] Cdp, url: string, script: string) -> bool {
+  params: [131072] u8; o: [1] Jo;
+  if cdp_call(c, "Emulation.setDeviceMetricsOverride", "{\"width\":1280,\"height\":800,\"deviceScaleFactor\":1,\"mobile\":false}", CDP_CALL_MS) < 0 { return false; }
+  if cdp_call(c, "Page.enable", "", CDP_CALL_MS) < 0 || cdp_call(c, "Emulation.setFocusEmulationEnabled", "{\"enabled\":true}", CDP_CALL_MS) < 0 { return false; }
+  if cdp_call(c, "Network.setCookie", "{\"name\":\"verse-automation\",\"value\":\"drift-check\",\"url\":\"http://127.0.0.1\"}", CDP_CALL_MS) < 0 { return false; }
+  jo_start(o[..], params[..]); jo_obj(o[..]); jo_key(o[..], "source"); jo_str(o[..], script); jo_end(o[..]);
+  if o[0].bad || cdp_call(c, "Page.addScriptToEvaluateOnNewDocument", jo_text(o[..]), CDP_CALL_MS) < 0 { return false; }
+  jo_start(o[..], params[..]); jo_obj(o[..]); jo_key(o[..], "url"); jo_str(o[..], url); jo_end(o[..]);
+  return !o[0].bad && cdp_call(c, "Page.navigate", jo_text(o[..]), CDP_CALL_MS) >= 0;
+}
+
+DR_DEV_KEY :: "local-development-room-ticket-key-not-a-secret";   // room-dev.coax DEV_KEY, the bots' tickets
+// the paired session's control lines: PvP on (bot 0's Hold Person), levels off (the whole bar on both
+// pages), no raid
+DR_CONTROL_PAIR :: "pvp 1\nedit 1\nlevels 0 2\nevent 0 0 3 12 6 1 3 3 31 1 2 1 100 15 0 0\n";
+DrRun :: struct { port: int; bots: int; stamp: int; dir: string; ctl: string; script: string; key: string; }
+
+// One paired session on one network profile: its verdicts into rep; false when it couldn't run.
+dr_session :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] DrPage, b: [] DrPage) -> bool {
+  room := run.port; page := run.port + 1; proxy := run.port + 2;
+  tool := "coax/web/tool.sh";
+  q: [1] Buf;
+  bput(q[..], "exec "); bput(q[..], tool); bput(q[..], " coax/web/room/net-proxy.coax "); bint(q[..], proxy); bput(q[..], " "); bint(q[..], room);
+  bput(q[..], " "); bint(q[..], rtt); bput(q[..], ifx rtt > 0 then " 30 20 900" else " 0 0 900");
+  bput(q[..], " > "); bput(q[..], run.dir); bput(q[..], "/proxy-"); bput(q[..], profile); bput(q[..], ".log 2>&1");
+  hp := dr_spawn(btext(q[..]));
+  code := run.stamp * 10 + rtt / 50;
+  q[0].n = 0;
+  bput(q[..], "OA_ROOM_TICKET_KEY="); bput(q[..], run.key); bput(q[..], " exec "); bput(q[..], tool); bput(q[..], " coax/web/room/drift-bots.coax ws://127.0.0.1:"); bint(q[..], room); bput(q[..], " "); bint(q[..], run.bots);
+  bput(q[..], " 150 "); bint(q[..], code); bput(q[..], " "); bput(q[..], run.dir); bput(q[..], " > "); bput(q[..], run.dir); bput(q[..], "/bots-"); bput(q[..], profile); bput(q[..], ".log 2>&1");
+  hb := dr_spawn(btext(q[..]));
+  proc_sleep(2500);
+  ua: [1] Buf; bput(ua[..], "http://127.0.0.1:"); bint(ua[..], run.port + 3); bput(ua[..], "/worlds/everglade");
+  ub: [1] Buf; bput(ub[..], "http://127.0.0.1:"); bint(ub[..], page); bput(ub[..], "/worlds/everglade?relay=ws://localhost:"); bint(ub[..], proxy); bput(ub[..], "&room=pair-drift-"); bint(ub[..], code);
+  ca: [1] Cdp; cb: [1] Cdp; ok := false;
+  if cdp_launch(ca[..], 1280, 800, "coax-drift-a-") {
+    if cdp_launch(cb[..], 1280, 800, "coax-drift-b-") {
+      if dr_open(ca[..], btext(ua[..]), run.script) && dr_open(cb[..], btext(ub[..]), run.script) && dr_ready(ca[..], false) && dr_ready(cb[..], true) {
+        proc_sleep(2500);
+        sh: [1] Buf; bput(sh[..], run.dir); bput(sh[..], "/shot-"); bput(sh[..], profile);
+        dr_script(DrPair.{a = ca[..], b = cb[..], shots = btext(sh[..])}, run.dir);
+        ok = dr_pull(ca[..], a) && dr_pull(cb[..], b);
+      } else {
+        da: [2048] u8; db: [2048] u8; js := "JSON.stringify({rows: window.__dr && __dr.count(), net: window.__dr && __dr.probe(0), seat: window.__dr && __dr.probe(1), wasm: !!(window.__dr && __dr.x), title: document.title, url: location.href})";
+        print("everglade-drift: the pages didn't come up: offline %, room %\n", dr_str(ca[..], js, da[..]), dr_str(cb[..], js, db[..]));
+      }
+      cdp_close(cb[..]);
+    }
+    cdp_close(ca[..]);
+  }
+  dr_stop(hb); dr_stop(hp);
+  if ok { dr_compare(a, b, rtt, rep); }
+  return ok;
+}
+
+// The raid, on one profile: the offline page's preview raid (a) and the room's own (b), with
+// raid-check.coax's bots holding the square; the room page walks there and casts Starry Wisp at the
+// nearest raider. Its verdicts into rep.
+DR_RAID_DIALS :: "event 1 0 2 8 6 0 0 1 1 0 3 1 300 5";   // 2 waves of 8 Cultists at the South Gate, no leader, harm on, reward 300%, 5 minutes
+DR_RAID_S :: 240;
+// The bar's slots (its hash) page pg drew at wall ms t.
+dr_bar_at :: (pg: [] DrPage, t: int) -> int { h := 0; for r: 0..<pg[0].n { if dr_at(pg, r, C_T) <= t { h = dr_at(pg, r, C_BAR); } } return h; }
+dr_raid :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] DrPage, b: [] DrPage) -> bool {
+  room := run.port; page := run.port + 1; proxy := run.port + 2;
+  cb_: [1] Buf; bput(cb_[..], "pvp 0\nedit 1\nlevels 1 2\n"); bput(cb_[..], DR_RAID_DIALS); bput(cb_[..], " 0 0\n");
+  _ := fs_write(run.ctl, btext(cb_[..]));
+  q: [1] Buf;
+  bput(q[..], "exec coax/web/tool.sh coax/web/room/net-proxy.coax "); bint(q[..], proxy); bput(q[..], " "); bint(q[..], room);
+  bput(q[..], " "); bint(q[..], rtt); bput(q[..], ifx rtt > 0 then " 30 20 900" else " 0 0 900");
+  bput(q[..], " > "); bput(q[..], run.dir); bput(q[..], "/proxy-raid-"); bput(q[..], profile); bput(q[..], ".log 2>&1");
+  hp := dr_spawn(btext(q[..]));
+  code := run.stamp * 10 + rtt / 50;
+  q[0].n = 0;
+  bput(q[..], "OA_ROOM_TICKET_KEY="); bput(q[..], run.key); bput(q[..], " exec coax/web/tool.sh coax/web/room/raid-check.coax ws://127.0.0.1:"); bint(q[..], room);
+  bput(q[..], " "); bint(q[..], run.bots); bput(q[..], " "); bint(q[..], DR_RAID_S + 20); bput(q[..], " "); bint(q[..], code);
+  bput(q[..], " druid square > "); bput(q[..], run.dir); bput(q[..], "/raid-bots-"); bput(q[..], profile); bput(q[..], ".log 2>&1");
+  hb := dr_spawn(btext(q[..]));
+  proc_sleep(3000);
+  ua: [1] Buf; bput(ua[..], "http://127.0.0.1:"); bint(ua[..], run.port + 3); bput(ua[..], "/worlds/everglade?raid=preview");
+  ub: [1] Buf; bput(ub[..], "http://127.0.0.1:"); bint(ub[..], page); bput(ub[..], "/worlds/everglade?relay=ws://localhost:"); bint(ub[..], proxy); bput(ub[..], "&room=pair-raid-"); bint(ub[..], code);
+  ca: [1] Cdp; cc: [1] Cdp; ok := false;
+  if cdp_launch(ca[..], 1280, 800, "coax-drift-a-") {
+    if cdp_launch(cc[..], 1280, 800, "coax-drift-b-") {
+      if dr_open(ca[..], btext(ua[..]), run.script) && dr_open(cc[..], btext(ub[..]), run.script) && dr_ready(ca[..], false) && dr_ready(cc[..], true) {
+        sh: [1] Buf; bput(sh[..], run.dir); bput(sh[..], "/shot-raid-"); bput(sh[..], profile);
+        p := DrPair.{a = ca[..], b = cc[..], shots = btext(sh[..])};
+        dr_mark(p, "raid");
+        // START: a new press acts in the live rooms
+        bput(cb_[..], ""); cb_[0].n = 0; bput(cb_[..], "pvp 0\nedit 1\nlevels 1 2\n"); bput(cb_[..], DR_RAID_DIALS); bput(cb_[..], " 1 0\n");
+        _ = fs_write(run.ctl, btext(cb_[..]));
+        _ = dr_press(cc[..], true, "Escape", "Escape", 27, false); _ = dr_press(cc[..], false, "Escape", "Escape", 27, false);
+        // to the square (about 100 m north of the Road In), running
+        _ = dr_press(cc[..], true, "Shift", "ShiftLeft", 16, true); _ = dr_press(cc[..], true, "w", "KeyW", 87, true);
+        proc_sleep(14000);
+        _ = dr_press(cc[..], false, "w", "KeyW", 87, true); _ = dr_press(cc[..], false, "Shift", "ShiftLeft", 16, false);
+        dr_mark(p, "fight");
+        t_end := proc_now_ms() + (DR_RAID_S - 20) * 1000;
+        while proc_now_ms() < t_end {
+          cast_ok := dr_int(cc[..], "__dr.probe(222)", 0);
+          proc_sleep(1200);
+          // done once both pages' stables fell and the room page is level 2
+          fa := dr_int(ca[..], "(() => { const f = __dr.fr[__dr.fr.length - 1]; return f && f[21] > 0 && f[20] * 2 >= f[21] ? 1 : 0; })()", 0);
+          fb := dr_int(cc[..], "(() => { const f = __dr.fr[__dr.fr.length - 1]; return f && f[21] > 0 && f[20] * 2 >= f[21] ? 1 : 0; })()", 0);
+          l2 := dr_int(cc[..], "__dr.texts.some((x) => x[1] === 0 && x[2].startsWith('LEVEL 2')) ? 1 : 0", 0);
+          if fa == 1 && fb == 1 && l2 == 1 { break; }
+        }
+        dr_mark(p, "end"); proc_sleep(300);
+        ok = dr_pull(ca[..], a) && dr_pull(cc[..], b);
+      } else { tool_errln("everglade-drift: the raid's pages didn't come up"); }
+      cdp_close(cc[..]);
+    }
+    cdp_close(ca[..]);
+  }
+  dr_stop(hb); dr_stop(hp);
+  cb_[0].n = 0; bput(cb_[..], DR_CONTROL_PAIR);
+  _ = fs_write(run.ctl, btext(cb_[..]));
+  if !ok { return false; }
+  // the stables, on each page: down (half their pieces or more) at some frame
+  for side: 0..<2 {
+    pg := ifx side == 0 then a else b;
+    v: [1] DrVerdict; fell := -1; most := 0;
+    for r: 0..<pg[0].n { all := dr_at(pg, r, C_SALL); d := dr_at(pg, r, C_SDOWN); if d > most { most = d; } if all > 0 && d * 2 >= all && fell < 0 { fell = dr_at(pg, r, C_T); } }
+    if fell < 0 {
+      v[0].drifted = true; v[0].t = dr_mark_t(pg, "raid"); v[0].step = "raid";
+      nq: [1] Buf; bput(nq[..], "the stables never fell: at most "); bint(nq[..], most); bput(nq[..], " of "); bint(nq[..], ifx pg[0].n > 0 then dr_at(pg, pg[0].n - 1, C_SALL) else 0); bput(nq[..], " pieces down");
+      for i: 0..<nq[0].n { v[0].note[i] = nq[0].b[i]; } v[0].note_n = nq[0].n;
+    }
+    dr_add(rep, ifx side == 0 then "stables collapse, offline raid" else "stables collapse, room raid", v[0]);
+  }
+  // the LEVEL plate: LEVEL 1 to LEVEL 2 with the XP, never CAP 0; the bar a level's kit, changing with it
+  {
+    v: [1] DrVerdict; l1 := -1; l2 := -1; cap0 := -1;
+    for k: 0..<b[0].texts_n {
+      x := b[0].texts[k];
+      if x.which != 0 { continue; }
+      s := cast(string) b[0].texts[k].text[0..<x.n];
+      if s.count >= 7 && s[0..<7] == "LEVEL 1" && l1 < 0 { l1 = x.t; }
+      if s.count >= 7 && s[0..<7] == "LEVEL 2" && l2 < 0 { l2 = x.t; }
+      if s.count >= 5 && s[s.count - 5..<s.count] == "CAP 0" && cap0 < 0 { cap0 = x.t; }
+    }
+    if l1 < 0 || l2 < 0 || cap0 >= 0 {
+      v[0].drifted = true; v[0].t = ifx cap0 >= 0 then cap0 else dr_mark_t(b, "raid"); v[0].step = dr_step_at(b, v[0].t);
+      nq: [1] Buf; bput(nq[..], "the plate said \""); bput(nq[..], dr_text_at(b, 0, dr_mark_t(b, "raid") + 2000)); bput(nq[..], "\" at the start and \"");
+      bput(nq[..], dr_text_at(b, 0, dr_mark_t(b, "end"))); bput(nq[..], "\" at the end");
+      n := ifx nq[0].n < 200 then nq[0].n else 200;
+      for i: 0..<n { v[0].note[i] = nq[0].b[i]; } v[0].note_n = n;
+    }
+    dr_add(rep, "level up through XP", v[0]);
+    w: [1] DrVerdict;
+    full := dr_bar_at(a, dr_mark_t(a, "end"));
+    k1 := ifx l1 >= 0 then dr_bar_at(b, l1 + 1500) else 0; k2 := ifx l2 >= 0 then dr_bar_at(b, l2 + 1500) else 0;
+    if l1 >= 0 && (k1 == full || (l2 >= 0 && k2 == k1)) {
+      w[0].drifted = true; w[0].t = l1; w[0].step = dr_step_at(b, l1); w[0].mine = full; w[0].other = k1;
+      nq: [1] Buf; bput(nq[..], ifx k1 == full then "at LEVEL 1 the room's bar is the whole bar" else "the bar didn't change at LEVEL 2");
+      for i: 0..<nq[0].n { w[0].note[i] = nq[0].b[i]; } w[0].note_n = nq[0].n;
+    }
+    dr_add(rep, "hotbar follows the level", w[0]);
+  }
+  return true;
+}
+
+dr_write_rows :: (path: string, p: [] DrPage) {
+  q: [1] Buf;
+  _ := fs_write(path, "");
+  for r: 0..<p[0].n {
+    q[0].n = 0;
+    for c: 0..<DR_COLS { if c > 0 { bput(q[..], " "); } bint(q[..], dr_at(p, r, c)); }
+    bput(q[..], "\n");
+    _ = fs_append(path, btext(q[..]));
+  }
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  ok := args_load(a[..]);
+  profiles := args_value(a[..], "--profiles", "local,100,250");
+  bots := args_whole(args_value(a[..], "--bots", "3"));
+  port := args_whole(args_value(a[..], "--port", "8960"));
+  near := (port <= 8830 && port + 3 >= 8830) || (port <= 8872 && port + 3 >= 8872);   // the owner's servers
+  if !ok || bots < 1 || port < 1024 || near {
+    tool_errln("usage: coax/web/tool.sh everglade-drift [--profiles local,100,250] [--bots 3] [--port 8960] [--no-raid] [--out DIR] (not on 8830 or 8872)"); return 2;
+  }
+  js: [65536] u8;
+  jn := fs_read("coax/web/everglade-drift.js", js[..]);
+  if jn <= 0 { tool_errln("everglade-drift: can't read coax/web/everglade-drift.js (run it from the repository's root)"); return 2; }
+  if !fs_exists("coax/web/room/bin/room") { tool_errln("everglade-drift: no coax/web/room/bin/room (coax/web/room/build.sh)"); return 2; }
+  // the helpers built first (with no arguments each prints its usage), so none joins late while it builds
+  for hk: 0..<3 {
+    helper := ifx hk == 0 then "coax/web/room/net-proxy.coax" else ifx hk == 1 then "coax/web/room/drift-bots.coax" else "coax/web/room/raid-check.coax";
+    hq: [1] Buf; bput(hq[..], "exec coax/web/tool.sh "); bput(hq[..], helper); bput(hq[..], " > /dev/null 2>&1");
+    hh := dr_spawn(btext(hq[..]));
+    if hh >= 0 { hw := proc_wait(hh, 600000); hr_ := proc_release(hh); }
+  }
+  stamp := (proc_now_ms() / 1000) % 100000;
+  db: [1] Buf; bput(db[..], "coax/web/build/everglade-drift/"); bint(db[..], stamp);
+  dir := args_value(a[..], "--out", btext(db[..]));
+  _ := fs_mkdir("coax/web/build/everglade-drift"); _ = fs_mkdir(dir);
+  // the room's --dev directory is DIR: dev/'s world, and its control lines (room-control.txt) this
+  // program's to change, as the API's answer is (room-host.c --dev, room-dev.coax)
+  wb: [262144] u8; wn := fs_read("coax/web/room/dev/world-everglade-5e.json", wb[..]);
+  if wn <= 0 { tool_errln("everglade-drift: can't read coax/web/room/dev/world-everglade-5e.json"); return 2; }
+  wp: [1] Buf; bput(wp[..], dir); bput(wp[..], "/world-everglade-5e.json");
+  _ = fs_write(btext(wp[..]), cast(string) wb[0..<wn]);
+  cb: [1] Buf; bput(cb[..], dir); bput(cb[..], "/room-control.txt");
+  ctl := btext(cb[..]);
+  _ = fs_write(ctl, DR_CONTROL_PAIR);
+  // the room server, the API's stand-in (--dev DIR): its seat tickets signed with the stand-in's key
+  q: [1] Buf;
+  bput(q[..], "exec coax/web/room/bin/room --port "); bint(q[..], port); bput(q[..], " --dev "); bput(q[..], dir); bput(q[..], " > "); bput(q[..], dir); bput(q[..], "/room.log 2>&1");
+  hr := dr_spawn(btext(q[..]));
+  q[0].n = 0;
+  bput(q[..], "exec coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:"); bint(q[..], port + 1); bput(q[..], " --api "); bint(q[..], port); bput(q[..], " --static --cache 0 > "); bput(q[..], dir); bput(q[..], "/serve.log 2>&1");
+  hs := dr_spawn(btext(q[..]));
+  // the offline page's server: the same files, its /api/ sent nowhere (port 9), so the page finds no
+  // room to join and plays offline, as it does when the rooms can't be reached
+  q[0].n = 0;
+  bput(q[..], "exec coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:"); bint(q[..], port + 3); bput(q[..], " --api 9 --static --cache 0 > "); bput(q[..], dir); bput(q[..], "/serve-offline.log 2>&1");
+  ho := dr_spawn(btext(q[..]));
+  // the bots sign their seat tickets with the room's key
+  run := DrRun.{port = port, bots = bots, stamp = stamp, dir = dir, ctl = ctl, script = cast(string) js[0..<jn], key = DR_DEV_KEY};
+  proc_sleep(2000);
+  print("everglade-drift: room 127.0.0.1:%, page 127.0.0.1:%, results in %\n", port, port + 1, dir);
+  all := true;
+  reps: [DR_PROFILES] DrReport; names: [DR_PROFILES] string; ran: [DR_PROFILES] bool; np := 0;
+  pa: [1] DrPage; pb: [1] DrPage;
+  at := 0;
+  while at < profiles.count && np < DR_PROFILES {
+    e := at; while e < profiles.count && profiles[e] != ',' { e += 1; }
+    profile := profiles[at..<e]; at = e + 1;
+    rtt := ifx profile == "local" then 0 else args_whole(profile);
+    if rtt < 0 { tool_err("everglade-drift: no such profile "); tool_errln(profile); all = false; continue; }
+    print("profile %: round trip % ms%\n", profile, rtt, ifx rtt > 0 then ", jitter 30 ms, 2% lost" else "");
+    names[np] = profile;
+    ran[np] = dr_session(run, profile, rtt, reps[np..<np + 1], pa[..], pb[..]);
+    np += 1;
+    if !ran[np - 1] { print("DRIFT % session: it didn't run\n", profile); all = false; continue; }
+    t0 := dr_mark_t(pa[..], "start");
+    held := dr_print(reps[np - 1..<np], profile, t0);
+    all = all && held;
+    rb: [1] Buf; bput(rb[..], dir); bput(rb[..], "/rows-"); bput(rb[..], profile);
+    ra: [1] Buf; bput(ra[..], btext(rb[..])); bput(ra[..], "-offline.txt"); dr_write_rows(btext(ra[..]), pa[..]);
+    rr: [1] Buf; bput(rr[..], btext(rb[..])); bput(rr[..], "-room.txt"); dr_write_rows(btext(rr[..]), pb[..]);
+    if !args_has(a[..], "--no-raid") {
+      rr0 := reps[np - 1].n;
+      if !dr_raid(run, profile, rtt, reps[np - 1..<np], pa[..], pb[..]) { print("DRIFT % raid: it didn't run\n", profile); all = false; }
+      else {
+        sub: [1] DrReport; for k: rr0..<reps[np - 1].n { dr_add(sub[..], reps[np - 1].r[k].name, reps[np - 1].r[k].v); }
+        held2 := dr_print(sub[..], profile, dr_mark_t(pb[..], "raid"));
+        all = all && held2;
+      }
+    }
+  }
+  // the table: a row a probe, a column a profile
+  print("\n| probe |");
+  for k: 0..<np { print(" % |", names[k]); }
+  print("\n|---|");
+  for k: 0..<np { print("---|"); }
+  print("\n");
+  first := -1; for k: 0..<np { if ran[k] && first < 0 { first = k; } }
+  if first >= 0 {
+    for r: 0..<reps[first].n {
+      print("| % |", reps[first].r[r].name);
+      for k: 0..<np { print(" % |", ifx !ran[k] then "-" else (ifx reps[k].r[r].v.drifted then "DRIFT" else "ok")); }
+      print("\n");
+    }
+  }
+  dr_stop(ho); dr_stop(hs); dr_stop(hr);
+  print("%\n", ifx all then "holds" else "fails");
+  return ifx all then 0 else 1;
+}

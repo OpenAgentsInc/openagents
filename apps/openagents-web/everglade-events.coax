@@ -74,6 +74,7 @@ EgEvents :: struct {
   button: Box; pane: Box;
   banner_box: Box;   // where the banner was drawn last frame (none: empty), for the names over the world to keep clear of
   level_box: Box;            // your LEVEL plate as last drawn (a phone's chat line keeps under it)
+  shown: [64] u8; shown_n: int;   // the LEVEL plate's words as last drawn, for the drift check (everglade5e-face.c coaxial_drift_text)
   minus: [EGE_DIALS] Box; plus: [EGE_DIALS] Box; boxes: [EGE_BUTTONS] Box;
   press: int = -1; finger: int = -1;
 }
@@ -321,6 +322,8 @@ ege_level_words :: (s: [] Everglade, b: [] u8) -> int {
   n = ege_int(b, ege_put(b, n, " · "), e[0].xp); n = ege_int(b, ege_put(b, n, " / "), next);
   return ege_put(b, n, " XP");
 }
+// The LEVEL plate's words as last drawn ("" none), for a headless check.
+ege_shown :: (s: [] Everglade) -> string #export_c { if !net_on(s) { return ""; } e := ege_of(s); return cast(string) e[0].shown[0..<e[0].shown_n]; }
 // How far your XP is to the next level, 0 to 1 (1 at the cap: the bar full, the plate says CAP).
 ege_xp_share :: (s: [] Everglade) -> f32 {
   e := ege_of(s);
@@ -422,6 +425,7 @@ ege_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, top: f32, under_ti
   for b: 0..<EGE_BUTTONS { e[0].boxes[b] = Box.{}; }
   for d: 0..<EGE_DIALS { e[0].minus[d] = Box.{}; e[0].plus[d] = Box.{}; }
   e[0].level_box = Box.{};
+  e[0].shown_n = 0;
   if !ege_live(s) || s[0].above { return at; }
   n := at;
   k := hi(s[0].dpr, 0.5);
@@ -429,6 +433,8 @@ ege_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, top: f32, under_ti
   w := s[0].width; gutter := 16 * k;
   // the LEVEL plate, left of the HP bar (watch_hud: 168 wide at the right gutter)
   lw: [64] u8; ln := ege_level_words(s, lw[..]);
+  for q: 0..<ln { e[0].shown[q] = lw[q]; }
+  e[0].shown_n = ln;
   if ln > 0 {
     cap := 7 * k;
     tw := text_width(cast(string) lw[0..<ln], cap) + 24 * k;

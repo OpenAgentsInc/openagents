@@ -1,0 +1,155 @@
+// The drift check's bots (coax/web/everglade-drift.coax, #12778): N players in the room the page plays
+// (pair-drift-ROOM), so the page draws other bodies and the server steps more than one seat. They
+// walk rings around the page's player, 10 m out and more (clear of you: a body you bump is a
+// correction offline never has). Bot 0 keeps 6 m from that player and, each time the file DIR/hold
+// appears and it is within 15 m (the spell's 60 feet, less the lag), casts Hold Person (bar slot 45) on them, removes the file
+// and writes DIR/held with the cast's sequence number. DIR/bots-heard.txt has what bot 0 sent and
+// heard of it: its casts, every e cast and every refusal (r SEQ WHY). The page's player is the seat that isn't a bot's.
+//   coax/web/tool.sh coax/web/room/drift-bots.coax ws://127.0.0.1:PORT N SECONDS ROOM DIR
+// Seat tickets are signed with OA_ROOM_TICKET_KEY (room-ticket.coax), as raid-check.coax's are; the
+// bots are tagged as tests: room pair-drift-ROOM, player ids p-drift-K, names "Drift K".
+// Prints one line at the end: the casts sent, those refused and the D frames heard.
+#load "room-socket.coax";
+#load "../../lib/sys/fs.coax";
+
+DB_MAX :: 8;
+DbBot :: struct { seat: int = -1; x: f32; z: f32; seen: bool; d: int; refused: int; }
+DbWorld :: struct { seats: [64] bool; px: [64] f32; pz: [64] f32; }
+
+db_atan2 :: (y: f32, x: f32) -> f32 {
+  if x == 0 && y == 0 { return 0; }
+  ax := ifx x < 0 then -x else x; ay := ifx y < 0 then -y else y;
+  a := ifx ax > ay then ay / ax else ax / ay;
+  s := a * a;
+  r := ((-0.0464964749 * s + 0.15931422) * s - 0.327622764) * s * a + a;
+  if ay > ax { r = 1.57079637 - r; }
+  if x < 0 { r = 3.14159274 - r; }
+  if y < 0 { r = -r; }
+  return r;
+}
+// Every player's place in a D frame (bot's own view), and the bot's own seat from y.
+db_hear :: (b: [] DbBot, w: [] DbWorld, t: string, notes: string) {
+  if rs_starts(t, "y ") { b[0].seat = rs_num(rs_field(t, 1)); return; }
+  if rs_starts(t, "r ") { b[0].refused += 1; if notes.count > 0 { _ := fs_append(notes, t); _ = fs_append(notes, "\n"); } return; }
+  if rs_starts(t, "e cast ") && notes.count > 0 { _ := fs_append(notes, t); _ = fs_append(notes, "\n"); }
+  if !rs_starts(t, "D ") { return; }
+  b[0].d += 1;
+  at := 0; sp := 0;
+  while at < t.count && sp < 4 { if t[at] == ' ' { sp += 1; } at += 1; }
+  for q: 0..<64 { w[0].seats[q] = false; }
+  while at < t.count {
+    e := at;
+    while e < t.count && t[e] != ';' { e += 1; }
+    en := t[at..<e];
+    at = e + 1;
+    if rs_field(en, 0) != "p" { continue; }
+    ss := rs_num(rs_field(en, 1));
+    if ss < 0 || ss >= 64 { continue; }
+    w[0].seats[ss] = true; w[0].px[ss] = f32(rs_num(rs_field(en, 2))) / 100; w[0].pz[ss] = f32(rs_num(rs_field(en, 4))) / 100;
+    if ss == b[0].seat { b[0].x = w[0].px[ss]; b[0].z = w[0].pz[ss]; b[0].seen = true; }
+  }
+}
+// The page's seat: a player that is no bot's (-1 none yet).
+db_page_seat :: (b: [] DbBot, n: int, w: [] DbWorld) -> int {
+  for ss: 0..<64 {
+    if !w[0].seats[ss] { continue; }
+    mine := false;
+    for i: 0..<n { if b[i].seat == ss { mine = true; } }
+    if !mine { return ss; }
+  }
+  return -1;
+}
+
+#test "the bots read seats and places from D" {
+  b: [2] DbBot; w: [1] DbWorld;
+  db_hear(b[0..<1], w[..], "y 1 2 1700000000000", "");
+  db_hear(b[0..<1], w[..], "D 10 3 0 x;p 0 500 0 -8400 0 0 0 0 1 0 0;p 1 100 0 200 0 0 0 0 1 0 0", "");
+  #assert b[0].seat == 1 && b[0].seen && b[0].x == 1 && b[0].z == 2 && b[0].d == 1;
+  #assert db_page_seat(b[..], 1, w[..]) == 0 && w[0].pz[0] == -84;
+  #assert db_atan2(1, 0) > 1.57 && db_atan2(1, 0) < 1.58;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 5 { tool_errln("usage: coax/web/tool.sh coax/web/room/drift-bots.coax ws://127.0.0.1:PORT N SECONDS ROOM DIR"); return 2; }
+  bb: [512] u8;
+  base := rs_base(args_at(a[..], 0), bb[..]);
+  n := rs_num(args_at(a[..], 1)); if n < 1 { n = 1; } if n > DB_MAX { n = DB_MAX; }
+  secs := rs_num(args_at(a[..], 2)); if secs < 5 { secs = 5; }
+  room := rs_num(args_at(a[..], 3));
+  dir := args_at(a[..], 4);
+  u: [1024] u8;
+  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-drift-", room);
+  hold_b: [1024] u8; held_b: [1024] u8;
+  hold := fs_join(dir, "hold", hold_b[..]); held := fs_join(dir, "held", held_b[..]);
+  log_b: [1024] u8; notes := fs_join(dir, "bots-heard.txt", log_b[..]);   // bot 0's casts heard and refusals, as they come
+  c: [DB_MAX] RelayConn; b: [DB_MAX] DbBot; w: [1] DbWorld; seq: [DB_MAX] int;
+  for i: 0..<n {
+    ub: [1024] u8; pid: [32] u8; nm: [32] u8;
+    pn := rs_int(pid[..], rs_put(pid[..], 0, "p-drift-"), i);
+    mn := rs_int(nm[..], rs_put(nm[..], 0, "Drift "), i);
+    ui := rs_ticketed(ub[..], url, cast(string) pid[0..<pn], cast(string) nm[0..<mn]);
+    if ui.count == 0 || !relay_conn_open(c[i..<i + 1], ui) { tool_err("drift-bots: can't open "); tool_errln(url); return 1; }
+    hm: [96] u8;
+    hn := rs_put(hm[..], rs_put(hm[..], 0, "H 1 ranger.0.0.0 druid 0 "), cast(string) nm[0..<mn]);
+    _ := relay_conn_send(c[i..<i + 1], cast(string) hm[0..<hn]);
+  }
+  print("drift-bots: % in %\n", n, url);
+  t0 := rs_now(); tick := 0; casts := 0;
+  while rs_now() - t0 < secs * 1000 {
+    tick += 1;
+    for i: 0..<n { while relay_conn_poll(c[i..<i + 1], 0) == RC_TEXT { db_hear(b[i..<i + 1], w[..], cast(string) c[i].text[0..<c[i].text_n], ifx i == 0 then notes else ""); } }
+    page := db_page_seat(b[..], n, w[..]);
+    for i: 0..<n {
+      if !b[i].seen { continue; }
+      // where it walks: bot 0 6 m from the page's player, the others round them 10 m and more out
+      cx := ifx page >= 0 then w[0].px[page] else b[i].x; cz := ifx page >= 0 then w[0].pz[page] else b[i].z;
+      ang := f32(tick) * 0.01 + f32(i) * 1.3;
+      r := ifx i == 0 then 6.0f32 else 8.0f32 + 2 * f32(i);
+      tx := cx + r * cos(ang); tz := cz + r * sin(ang);
+      wx := tx - b[i].x; wz := tz - b[i].z;
+      ahead := ifx wx * wx + wz * wz > 1 then 100 else 0;
+      run := ifx wx * wx + wz * wz > 16 then 1 else 0;   // running to keep up
+      // the camera's yaw (aethyr/walk.coax): it sits at theta round you, so ahead is -(sin, cos) of it
+      yaw := db_atan2(wx, wz) + 3.14159265;
+      if yaw > 3.14159265 { yaw -= 6.2831853; }
+      seq[i] += 1;
+      m: [128] u8;
+      k := rs_put(m[..], rs_int(m[..], rs_put(m[..], 0, "I "), seq[i]), " 0 ");
+      k = rs_int(m[..], k, ahead); k = rs_put(m[..], k, " 0 0 "); k = rs_int(m[..], k, cast(int) (yaw * 100)); k = rs_put(m[..], k, " "); k = rs_int(m[..], k, run);
+      _ := relay_conn_send(c[i..<i + 1], cast(string) m[0..<k]);
+    }
+    // Hold Person on the page's player, when the check asks
+    near := false;
+    if page >= 0 && b[0].seen { gx := w[0].px[page] - b[0].x; gz := w[0].pz[page] - b[0].z; near = gx * gx + gz * gz < 225; }
+    if !near && tick % 60 == 0 && fs_exists(hold) {
+      gb: [160] u8; gn := rs_put(gb[..], 0, "hold asked; bot 0 at "); gn = rs_int(gb[..], gn, cast(int) b[0].x); gn = rs_put(gb[..], gn, " "); gn = rs_int(gb[..], gn, cast(int) b[0].z);
+      gn = rs_put(gb[..], gn, ", page seat "); gn = rs_int(gb[..], gn, page);
+      if page >= 0 { gn = rs_put(gb[..], gn, " at "); gn = rs_int(gb[..], gn, cast(int) w[0].px[page]); gn = rs_put(gb[..], gn, " "); gn = rs_int(gb[..], gn, cast(int) w[0].pz[page]); }
+      _ := fs_append(notes, cast(string) gb[0..<gn]); _ = fs_append(notes, "\n");
+    }
+    if near && fs_exists(hold) {
+      _ := fs_remove(hold);
+      seq[0] += 1;
+      m: [128] u8;
+      k := rs_int(m[..], rs_put(m[..], 0, "C "), seq[0]);
+      k = rs_put(m[..], k, " 45 "); k = rs_int(m[..], k, cast(int) (w[0].px[page] * 100));
+      k = rs_put(m[..], k, " 100 "); k = rs_int(m[..], k, cast(int) (w[0].pz[page] * 100)); k = rs_put(m[..], k, " ");
+      k = rs_int(m[..], k, 1000 + page);
+      _ = relay_conn_send(c[0..<1], cast(string) m[0..<k]);
+      casts += 1;
+      sb: [160] u8; sn := rs_int(sb[..], 0, seq[0]);
+      _ = fs_write(held, cast(string) sb[0..<sn]);
+      _ = fs_append(notes, cast(string) m[0..<k]);
+      gx := w[0].px[page] - b[0].x; gz := w[0].pz[page] - b[0].z;
+      gb: [64] u8; gn := rs_int(gb[..], rs_put(gb[..], 0, " from cm away "), cast(int) (sqrt(gx * gx + gz * gz) * 100));
+      _ = fs_append(notes, cast(string) gb[0..<gn]); _ = fs_append(notes, "\n");
+    }
+    while rs_now() - t0 < tick * 33 { proc_sleep(2); }
+  }
+  refused := 0; d := 0;
+  for i: 0..<n { refused += b[i].refused; d += b[i].d; }
+  print("drift-bots: % Hold Person casts, % refused, % D frames heard\n", casts, refused, d);
+  for i: 0..<n { _ := relay_conn_close(c[i..<i + 1], 1000); }
+  return 0;
+}

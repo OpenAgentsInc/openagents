@@ -1,0 +1,163 @@
+// A bad network between a page and a room server, for the drift check (coax/web/everglade-drift.coax,
+// #12778): a TCP proxy on 127.0.0.1:LISTEN to 127.0.0.1:ROOM that holds every read for half the
+// round trip LATENCY_MS, plus or minus half of JITTER_MS, each way. A read is lost LOSS_PERMILLE times
+// in a thousand, and then arrives one resend later (TCP's: the larger of 200 ms and twice the round
+// trip). Bytes keep their order, as a TCP socket's do: a held read holds the reads after it.
+//   coax/web/tool.sh coax/web/room/net-proxy.coax LISTEN ROOM [LATENCY_MS] [JITTER_MS] [LOSS_PERMILLE] [SECONDS]
+// LATENCY_MS 0 forwards at once. It runs SECONDS (default 3600), up to NP_PAIRS sockets at once, and
+// prints a line a minute: the reads each way, those it lost and the longest hold.
+#import "Basic";
+#load "../../lib/net/socket_foreign.coax";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/proc.coax";
+
+NP_PAIRS :: 6;              // sockets through it at once (the socket table holds 16)
+NP_BUF :: 1048576;          // bytes held each way, a socket
+NP_CHUNKS :: 4096;          // reads held each way, a socket
+NP_TIMEOUT :: -2;           // socket-native.h CXSOCK_TIMEOUT: nothing to read yet
+
+// One way of one socket: the bytes held (a ring) and each read's size and when it is due.
+NpWay :: struct {
+  buf: [NP_BUF] u8; head: int; n: int;
+  size: [NP_CHUNKS] int; due: [NP_CHUNKS] int; c_head: int; c_n: int;
+  last_due: int;
+}
+NpPair :: struct { live: bool; down: int; up: int; closing: bool; ways: [2] NpWay; }
+NpNet :: struct { latency: int; jitter: int; loss: int; seed: int; reads: [2] int; lost: int; most: int; }
+
+// A number in [0, n) from the generator (an LCG mod 2^31, its high bits).
+np_rand :: (net: [] NpNet, n: int) -> int {
+  net[0].seed = (net[0].seed % 2147483648 * 1103515245 + 12345) % 2147483648;
+  if n <= 0 { return 0; }
+  return (net[0].seed / 32768) % n;
+}
+// When a read made at `now` is due on the far side, in order after the one before it (last).
+np_due :: (net: [] NpNet, now: int, last: int) -> int {
+  if net[0].latency <= 0 && net[0].jitter <= 0 && net[0].loss <= 0 { return now; }
+  d := net[0].latency / 2;
+  if net[0].jitter > 0 { d += np_rand(net, net[0].jitter + 1) - net[0].jitter / 2; }
+  if d < 0 { d = 0; }
+  if net[0].loss > 0 && np_rand(net, 1000) < net[0].loss {
+    resend := ifx 2 * net[0].latency > 200 then 2 * net[0].latency else 200;
+    d += resend; net[0].lost += 1;
+  }
+  due := now + d;
+  return ifx due < last then last else due;
+}
+
+#test "the bad network keeps order and holds for the round trip" {
+  net: [1] NpNet; net[0].latency = 100; net[0].jitter = 30; net[0].seed = 5;
+  last := 0;
+  for k: 0..<200 {
+    d := np_due(net[..], 1000 + k, last);
+    #assert d >= last && d >= 1000 + k + 35 && d <= 1000 + k + 65 + 200;
+    last = d;
+  }
+  net[0].loss = 1000;
+  #assert np_due(net[..], 5000, 0) >= 5000 + 35 + 200 && net[0].lost == 1;
+  quiet: [1] NpNet;
+  #assert np_due(quiet[..], 777, 0) == 777;
+}
+
+np_connect_room :: (port: int) -> int {
+  host := "127.0.0.1";
+  for b: host { r := cxsock_host_push(cast(int) b); }
+  return cxsock_connect(port, 2000);
+}
+// What h has now into way w, due later: false when the socket closed.
+np_take :: (net: [] NpNet, p: [] NpPair, side: int, now: int) -> bool {
+  h := ifx side == 0 then p[0].down else p[0].up;
+  w := p[0].ways[side..<side + 1];
+  r := cxsock_read(h, 0);
+  if r == NP_TIMEOUT { return true; }
+  if r <= 0 { return false; }
+  if w[0].n + r > NP_BUF || w[0].c_n >= NP_CHUNKS { tool_errln("net-proxy: more held than it keeps; the socket closes"); return false; }
+  for i: 0..<r { w[0].buf[(w[0].head + w[0].n + i) % NP_BUF] = cast(u8) cxsock_byte(h, i); }
+  w[0].n += r;
+  due := np_due(net, now, w[0].last_due);
+  w[0].last_due = due;
+  if due - now > net[0].most { net[0].most = due - now; }
+  c := (w[0].c_head + w[0].c_n) % NP_CHUNKS;
+  w[0].size[c] = r; w[0].due[c] = due; w[0].c_n += 1;
+  net[0].reads[side] += 1;
+  return true;
+}
+// Way `side`'s reads that are due, written to the other socket: false when it closed.
+np_give :: (p: [] NpPair, side: int, now: int) -> bool {
+  to := ifx side == 0 then p[0].up else p[0].down;
+  w := p[0].ways[side..<side + 1];
+  wrote := false;
+  while w[0].c_n > 0 && w[0].due[w[0].c_head] <= now {
+    k := w[0].size[w[0].c_head];
+    for i: 0..<k {
+      if cxsock_write(to, cast(int) w[0].buf[(w[0].head + i) % NP_BUF]) != 0 {
+        if cxsock_flush(to, 2000) != 0 { return false; }
+        if cxsock_write(to, cast(int) w[0].buf[(w[0].head + i) % NP_BUF]) != 0 { return false; }
+      }
+    }
+    w[0].head = (w[0].head + k) % NP_BUF; w[0].n -= k;
+    w[0].c_head = (w[0].c_head + 1) % NP_CHUNKS; w[0].c_n -= 1;
+    wrote = true;
+  }
+  return !wrote || cxsock_flush(to, 2000) == 0;
+}
+np_shut :: (p: [] NpPair) {
+  if p[0].down >= 0 { r := cxsock_close(p[0].down); }
+  if p[0].up >= 0 { r := cxsock_close(p[0].up); }
+  p[0].live = false; p[0].down = -1; p[0].up = -1;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  ok := args_load(a[..]);
+  listen := args_whole(args_at(a[..], 0)); room := args_whole(args_at(a[..], 1));
+  net: [1] NpNet;
+  net[0].latency = ifx args_count(a[..]) > 2 then args_whole(args_at(a[..], 2)) else 0;
+  net[0].jitter = ifx args_count(a[..]) > 3 then args_whole(args_at(a[..], 3)) else 0;
+  net[0].loss = ifx args_count(a[..]) > 4 then args_whole(args_at(a[..], 4)) else 0;
+  seconds := ifx args_count(a[..]) > 5 then args_whole(args_at(a[..], 5)) else 3600;
+  if !ok || listen <= 0 || room <= 0 || net[0].latency < 0 || net[0].jitter < 0 || net[0].loss < 0 || net[0].loss > 1000 || seconds <= 0 {
+    tool_errln("usage: coax/web/tool.sh coax/web/room/net-proxy.coax LISTEN ROOM [LATENCY_MS] [JITTER_MS] [LOSS_PERMILLE] [SECONDS]"); return 2;
+  }
+  net[0].seed = (cxsock_now_ms() % 2147483648) + listen;
+  l := cxsock_listen(listen);
+  if l < 0 { tool_errln("net-proxy: can't listen there"); return 1; }
+  print("net-proxy: 127.0.0.1:% to 127.0.0.1:%, round trip % ms, jitter % ms, loss % in 1000\n", listen, room, net[0].latency, net[0].jitter, net[0].loss);
+  pairs: [NP_PAIRS] NpPair;
+  for k: 0..<NP_PAIRS { pairs[k].down = -1; pairs[k].up = -1; }
+  start := cxsock_now_ms(); said := start;
+  while cxsock_now_ms() - start < seconds * 1000 {
+    now := cxsock_now_ms();
+    busy := false;
+    c := cxsock_accept(l, 0);
+    if c >= 0 {
+      slot := -1;
+      for k: 0..<NP_PAIRS { if !pairs[k].live { slot = k; break; } }
+      u := ifx slot >= 0 then np_connect_room(room) else -1;
+      if u < 0 { r := cxsock_close(c); }
+      else {
+        p := pairs[slot..<slot + 1];
+        p[0] = NpPair.{}; p[0].live = true; p[0].down = c; p[0].up = u;
+      }
+      busy = true;
+    }
+    for k: 0..<NP_PAIRS {
+      if !pairs[k].live { continue; }
+      p := pairs[k..<k + 1];
+      if !p[0].closing {
+        held := p[0].ways[0].c_n + p[0].ways[1].c_n;
+        if !np_take(net[..], p, 0, now) || !np_take(net[..], p, 1, now) { p[0].closing = true; }
+        if p[0].ways[0].c_n + p[0].ways[1].c_n > held { busy = true; }
+      }
+      if !np_give(p, 0, now) || !np_give(p, 1, now) { np_shut(p); continue; }
+      // a closed side closes the other once what it sent before has arrived
+      if p[0].closing && p[0].ways[0].c_n == 0 && p[0].ways[1].c_n == 0 { np_shut(p); }
+    }
+    if now - said >= 60000 {
+      said = now;
+      print("net-proxy: % reads up, % down, % lost, the longest hold % ms\n", net[0].reads[0], net[0].reads[1], net[0].lost, net[0].most);
+    }
+    if !busy { proc_sleep(1); }
+  }
+  return 0;
+}

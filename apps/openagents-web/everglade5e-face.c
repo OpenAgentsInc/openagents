@@ -246,6 +246,15 @@ static void net_drain(uint32_t state) {
 }
 /* For a headless check (globalThis.coaxial): everglade-net.coax net_probe's fields. */
 EXPORT("coaxial_net_probe") int32_t coaxial_net_probe(uint32_t state, int32_t field) { return (int32_t)net_probe(at(state), field); }
+/* For the drift check (coax/web/everglade-drift.coax): words as last drawn, 0 the LEVEL plate, 1 the
+   status lines under your Hit Points ("|" between); the length is coaxial_drift_text_len's. */
+static int32_t drift_text_n;
+EXPORT("coaxial_drift_text") uint32_t coaxial_drift_text(uint32_t state, int32_t which) {
+  coax_string t = which == 0 ? ege_shown(at(state)) : e5_shown(e5v());
+  drift_text_n = (int32_t)t.count;
+  return (uint32_t)(uintptr_t)t.data;
+}
+EXPORT("coaxial_drift_text_len") int32_t coaxial_drift_text_len(void) { return drift_text_n; }
 static uint32_t world_path(uint32_t state, int what) {
   return (uint32_t)everglade_world_path(at(state), (coax_v_u8){world_url_buf[what], sizeof world_url_buf[what]}, what);
 }
@@ -322,6 +331,9 @@ EXPORT("coaxial_field_probe") int32_t coaxial_field_probe(uint32_t state, int32_
   if (field == 5) return (int32_t)(probe_speed * 100);
   if (field == 6) return (int32_t)net_probe(at(state), 14);
   if (field == 7) return (int32_t)(probe_fix * 1000000);
+  /* 8: the town's people with one of the engine's conditions drawn on them; 9 yours (E5_CONDITION bits) */
+  if (field == 8) { int k = 0; for (int i = 1; i < (int)(sizeof e5_view.cond / sizeof e5_view.cond.e[0]); i++) if (e5_view.cond.e[i]) k++; return k; }
+  if (field == 9) return (int32_t)e5_view.cond.e[0];
   return -1;
 }
 

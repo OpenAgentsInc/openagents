@@ -197,6 +197,9 @@ Spells :: struct {
   fx_key: [SP_FX_STAGE] f32;   // each puff's own number in [0, 1) for the thinning (sp_fx_thin), -1 always kept
   fx_share: f32;               // the thinning's share, eased frame to frame (0: not yet set)
   fx_seen: int;                // the last frame's puffs before thinning (everglade_quality_probe 9)
+  // the drift check's counts (net_probe 45 to 48): while drawing, then the last frame's: Reverse Gravity's
+  // puffs, Wind Wall's, Wall of Stone's panels, and every spell's and condition's puffs together
+  fx_by: [4] int; fx_shown: [4] int;
   fx_ord: int;                 // the frame's glows with no seed so far (sp_fx)
   wave_at: Point; wave_t: f32; wave_r: f32;
   dusk: f32;                 // how far the day has gone to night (everglade.coax lamp_glow): smoke darkens with it   // the last orb's splash on land, flattening the plants it reaches (spells_plant)
@@ -1110,6 +1113,7 @@ sp_fx_id :: (k: f32, q: f32) -> f32 { return sp_noise(k * 0.731 + 3.1, q * 1.37 
 // The frame's puffs into `sprites`: the smoke and fire far to near (by 2 m buckets), then the glows.
 sp_fx_close :: (s: [] Everglade) {
   s[0].sp.fx_seen = s[0].sp.stage_n;
+  for k: 0..<4 { s[0].sp.fx_shown[k] = s[0].sp.fx_by[k]; s[0].sp.fx_by[k] = 0; }
   n := sp_fx_thin(s, s[0].sp.stage_n, quality_share(SP_FX, eg_knobs(s).fx, SP_FX_KEEP));
   for k: 0..<SP_FX_BUCKETS + 1 { s[0].sp.bucket[k] = 0; }
   for i: 0..<n { s[0].sp.bucket[sp_fx_bucket(s[0].sp.fx_far[i])] += 1; }
@@ -1370,10 +1374,14 @@ spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
     if p.state == DP_STANDING && p.hp < p.max_hp { sp_tint(s, i, 0.3 + 0.7 * f32(p.hp) / f32(hi_int(p.max_hp, 1))); }
   }
   sp_draw(s, dt);
+  fx0 := s[0].sp.stage_n;
   if s[0].sp.on { ab_draw(s); eg_ra_draws(s); net_draw(s); }   // and what others' spells left (everglade-net.coax)
   watch_on_you_draw(s);   // what holds you (everglade-watch.coax): Hold Person's rings, Earthbind's tendrils, frost
+  s[0].sp.fx_by[3] += s[0].sp.stage_n - fx0;
   chimney_smoke(s, s[0].smoke_still);   // the town's wood smoke (everglade-dress.coax)
+  fx0 = s[0].sp.stage_n;
   wl_draw(s);   // the Warlock's spells' looks (everglade-warlock.coax, aethyr/fx/warlock.coax)
+  s[0].sp.fx_by[3] += s[0].sp.stage_n - fx0;
   sp_fx_close(s);
   if s[0].sp.news_t > 0 { s[0].sp.news_t = hi(s[0].sp.news_t - dt, 0); }
   s[0].sp.flash = hi(s[0].sp.flash - dt * 4, 0);
