@@ -22,7 +22,8 @@
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 
 #load "everglade5e-rules.coax";
-#load "everglade5e-room-raid.coax";   // the Cultist Raid's raiders, ward stones and leader (#12740)
+#load "everglade5e-room-raid.coax";
+#load "everglade-raid-scale.coax";   // the raid's waves for the players present (room-events.coax, the EVENTS pane)   // the Cultist Raid's raiders, ward stones and leader (#12740)
 
 E5RR_SEATS :: 16;
 E5RR_SEAT :: 0;                              // seat s is creature s
@@ -184,6 +185,7 @@ e5rr_people :: (r: [] E5rRoom, folk: [] f32, folk_n: int) #export_c {
       r[0].block[j] = block;
       t := b[0].c[i].turn_at; ro := b[0].c[i].round_at;
       b[0].c[i] = fb_folk(E5R_BLOCK_NAME[block], 1, cast(int) folk[f + 6], folk_max, e5r_scores(block));
+      e5rd_arm(b[0].c[i..<i + 1], block);   // the watch's weapons, for a raid (everglade5e-room-raid.coax)
       b[0].c[i].hp = rs_min(rs_max(cast(int) folk[f + 3], 0), folk_max);
       b[0].c[i].dead = b[0].c[i].hp <= 0;
       b[0].c[i].turn_at = t; b[0].c[i].round_at = ro;
@@ -203,7 +205,7 @@ e5rr_step :: (r: [] E5rRoom, clock: f32) #export_c {
   for j: 0..<E5R_FOLK {
     i := e5rr_folk(j);
     if b[0].c[i].dead || b[0].c[i].x == E5R_AWAY || b[0].c[i].turn_at > b[0].clock { continue; }
-    b[0].who = i; rs_start_turn(b, i); rs_end_turn(b, i); b[0].who = -1;
+    b[0].who = i; rs_start_turn(b, i); e5rd_folk_turn(r, j); rs_end_turn(b, i); b[0].who = -1;   // the watch in a raid
   }
   for q: 0..<E5RR_BEASTS {
     i := E5RR_BEAST0 + q;

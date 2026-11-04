@@ -1,0 +1,72 @@
+// The Cultist Raid's scale (docs/verse/2026-11-03-everglade-world-events.md 4.2): how many come in
+// each wave for the players present, and what they are. The room server builds its waves with it
+// (coax/web/room/room-events.coax ev_raid_wave), and the admin's EVENTS pane shows what it gives
+// (everglade-events.coax), so nothing about a raid's size is hidden. Pure arithmetic: no state.
+//
+// - The SIZE dial is the wave at RAID_SIZE_AT players. Each player present adds a share of it:
+//   the default 12 is 3 raiders a player, and 24 is 6. At least RAID_WAVE_MIN come.
+// - Fanatics and Warlocks grow wave by wave. Wave w of W has w / W of their dial parts, rounded
+//   down, but always one Warlock when the dial has any; the last wave has the dials' whole mix.
+// - The Warlocks' top level grows the same way, from level 1 in the first wave to the dial's.
+//   Cultists make up the rest.
+// Created with SRD 5.2.1 stat blocks (Cultist, Cultist Fanatic, Warlock): the System Reference
+// Document 5.2.1 by Wizards of the Coast LLC, licensed under CC-BY-4.0.
+
+RAID_SIZE_AT :: 4;     // the SIZE dial is the wave for this many players
+RAID_WAVE_MIN :: 3;    // raiders a wave at least, whoever is there
+
+// Raiders in a wave for `players` present, by the SIZE dial.
+raid_wave_size :: (size: int, players: int) -> int {
+  p := ifx players < 1 then 1 else players;
+  n := (size * p + RAID_SIZE_AT / 2) / RAID_SIZE_AT;
+  return ifx n < RAID_WAVE_MIN then RAID_WAVE_MIN else n;
+}
+// Wave `wave` (1 to `waves`)'s parts of the mix, from the dials' (cult, fan, wl): into out[0..3].
+raid_wave_parts :: (cult: int, fan: int, wl: int, wave: int, waves: int, out: [] int) {
+  w := ifx wave < 1 then 1 else wave;
+  all := ifx waves < w then w else waves;
+  out[0] = cult;
+  out[1] = fan * w / all;
+  out[2] = wl * w / all;
+  if wl > 0 && out[2] == 0 { out[2] = 1; }
+  if out[0] + out[1] + out[2] == 0 { out[0] = 1; }
+}
+// Wave `wave`'s Warlocks' top level, by the dial's (1 to 3).
+raid_wave_wlmax :: (wlmax: int, wave: int, waves: int) -> int {
+  w := ifx wave < 1 then 1 else wave;
+  all := ifx waves < w then w else waves;
+  m := wlmax * w / all;
+  return ifx m < 1 then 1 else m;
+}
+// How many of each kind a wave of n has, by its parts: into out[0..3] (as the room's weighted
+// turn gives them, each the most behind its share).
+raid_wave_counts :: (n: int, parts: [] int, out: [] int) {
+  out[0] = 0; out[1] = 0; out[2] = 0;
+  total := parts[0] + parts[1] + parts[2];
+  if total <= 0 { out[0] = n; return; }
+  for m: 0..<n {
+    best := 0; lag := -1000000;
+    for c: 0..<3 {
+      if parts[c] <= 0 { continue; }
+      l := parts[c] * (m + 1) - out[c] * total;
+      if l > lag { lag = l; best = c; }
+    }
+    out[best] += 1;
+  }
+}
+
+#test "raid scale: a wave grows with the players; the Fanatics, Warlocks and their levels with the waves" {
+  #assert raid_wave_size(12, 1) == 3 && raid_wave_size(12, 4) == 12 && raid_wave_size(12, 8) == 24;
+  #assert raid_wave_size(24, 1) == 6 && raid_wave_size(4, 1) == 3 && raid_wave_size(12, 0) == 3;
+  p: [3] int; c: [3] int;
+  raid_wave_parts(6, 1, 3, 1, 2, p[..]);
+  #assert p[0] == 6 && p[1] == 0 && p[2] == 1;
+  raid_wave_parts(6, 1, 3, 2, 2, p[..]);
+  #assert p[0] == 6 && p[1] == 1 && p[2] == 3;
+  raid_wave_parts(0, 0, 0, 1, 3, p[..]);
+  #assert p[0] == 1;
+  #assert raid_wave_wlmax(3, 1, 3) == 1 && raid_wave_wlmax(3, 2, 3) == 2 && raid_wave_wlmax(3, 3, 3) == 3 && raid_wave_wlmax(3, 1, 2) == 1;
+  raid_wave_parts(6, 0, 1, 1, 2, p[..]);
+  raid_wave_counts(12, p[..], c[..]);
+  #assert c[0] + c[1] + c[2] == 12 && c[2] >= 1 && c[2] <= 2 && c[1] == 0;
+}

@@ -17,7 +17,7 @@
 // an admin's STOP end it early (spec 3.3).
 //
 // What a seat hears, in its D frames (pages that don't know them skip them):
-//   g KIND PHASE WAVE WAVES SECS LEFT STANDING SLAIN SQUARE WARDS ARCH OUTCOME FOLK LEVELS CAP
+//   g KIND PHASE WAVE WAVES SECS LEFT STANDING SLAIN SQUARE WARDS ARCH OUTCOME FOLK LEVELS CAP PLAYERS
 //       the event's state on change (KIND 0: none); SECS the phase's seconds left (idle: to the
 //       next scheduled start, -1 none), LEFT the time limit's
 //   v SS LEVEL XP CAP LO HI   each seat's level, XP, the level cap, and the bar slots its character has
@@ -47,6 +47,7 @@ EV_XP_MAX :: 9999999;
 EV_G :: 160;                    // the g entry's bytes at most
 // the raid (spec 4 and 5): at most this many raiders stand at once, waves together
 EV_STANDING_MAX :: 48;
+EV_SQUARE_PLAYER :: 3;          // on the square a player counts as this many of the town
 EV_SQUARE_R :: 18.0;            // m: the square, about its well (plan.coax EG_SQUARE 0)
 EV_XP_SHARE_M :: 60.0;          // m: a seat this near where a raider fell shares its XP
 EV_XP_WARD :: 100;
@@ -447,8 +448,11 @@ ev_raid_one :: (v: [] RmServer, k: int) -> bool {
   e := v[0].ev[k..<k + 1];
   d := v[0].evc.d;
   kinds := [3] int.[RS_NPC_CULTIST, RS_NPC_FANATIC, RS_NPC_WARLOCK];
-  parts := [3] int.[d.cult, d.fan, d.wl];
-  total := d.cult + d.fan + d.wl;
+  // this wave's mix and its Warlocks' top level (apps/openagents-web/everglade-raid-scale.coax)
+  parts: [3] int;
+  raid_wave_parts(d.cult, d.fan, d.wl, e[0].wave, d.waves, parts[..]);
+  wlmax := raid_wave_wlmax(d.wlmax, e[0].wave, d.waves);
+  total := parts[0] + parts[1] + parts[2];
   made := 0; for c: 0..<3 { made += e[0].mix[kinds[c]]; }
   npc := RS_NPC_CULTIST; lag := -1000000;
   for c: 0..<3 {
@@ -457,7 +461,7 @@ ev_raid_one :: (v: [] RmServer, k: int) -> bool {
     if l > lag { lag = l; npc = kinds[c]; }
   }
   level := 1;
-  if npc == RS_NPC_WARLOCK { level = 1 + e[0].number[RS_NPC_WARLOCK] % d.wlmax; }
+  if npc == RS_NPC_WARLOCK { level = 1 + e[0].number[RS_NPC_WARLOCK] % wlmax; }
   g: [4] f32;
   ev_gate(ev_gate_of(v, e[0].sent / 8), g[..]);
   // across the road from it, two deep
@@ -486,7 +490,7 @@ ev_raid_spawn :: (v: [] RmServer, k: int) {
 ev_raid_wave :: (v: [] RmServer, k: int) {
   e := v[0].ev[k..<k + 1];
   for n: 0..<RS_NPCS { e[0].mix[n] = 0; }
-  e[0].pending += v[0].evc.d.size;
+  e[0].pending += raid_wave_size(v[0].evc.d.size, ev_players(v, k));   // the SIZE dial for the players here
   ev_raid_spawn(v, k);
 }
 // The climax: three ward stones raised just inside three of the gates, and Darian Odiodei at the
@@ -515,14 +519,21 @@ ev_raid_withdraw :: (v: [] RmServer, k: int) {
 }
 ev_raid_flee :: (v: [] RmServer, k: int) { v[0].ev[k].pending = 0; e5rd_flee(ev_rules(v, k)); if v[0].ev[k].arch != EV_ARCH_AWAY { v[0].ev[k].arch = EV_ARCH_GONE; } }
 ev_raid_clear :: (v: [] RmServer, k: int) { v[0].ev[k].pending = 0; e5rd_clear(ev_rules(v, k)); }
+// The players in room k now.
+ev_players :: (v: [] RmServer, k: int) -> int {
+  n := 0;
+  for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live { n += 1; } }
+  return n;
+}
 // The raiders standing, and those of the wave still to come.
 ev_raid_standing :: (v: [] RmServer, k: int) -> int { return e5rd_standing(ev_rules(v, k)) + v[0].ev[k].pending; }
-// The square's second (spec 3.3): the cult holds it while more of it stand there than players and people.
+// The square's second (spec 3.3): the cult holds it while more of it stand there than the town, each
+// player there counting EV_SQUARE_PLAYER and each townsperson one.
 ev_raid_square :: (v: [] RmServer, k: int) {
   e := v[0].ev[k..<k + 1];
   r := ev_rules(v, k);
   cult := e5rd_in(r, EV_SQUARE[0], EV_SQUARE[1], f32(EV_SQUARE_R), false);
-  town := e5rd_in(r, EV_SQUARE[0], EV_SQUARE[1], f32(EV_SQUARE_R), true);
+  town := e5rd_in(r, EV_SQUARE[0], EV_SQUARE[1], f32(EV_SQUARE_R), true) * EV_SQUARE_PLAYER;
   b := r[0].b[..];
   for j: 0..<E5R_FOLK {
     i := E5RR_FOLK0 + j;
@@ -655,6 +666,7 @@ ev_cache :: (v: [] RmServer, k: int) {
   n = wire_int(b, n, e[0].standing); n = wire_int(b, n, e[0].slain); n = wire_int(b, n, e[0].square / EG_HZ);
   n = wire_int(b, n, e[0].wards); n = wire_int(b, n, e[0].arch); n = wire_int(b, n, e[0].outcome); n = wire_int(b, n, e[0].folk);
   n = wire_int(b, n, ifx d.levels then 1 else 0); n = wire_int(b, n, d.cap);
+  n = wire_int(b, n, ev_players(v, k));   // the players the waves are for (the EVENTS pane shows the scale)
   e[0].g_n = n; e[0].g_h = eg_hash(cast(string) b[0..<n]);
 }
 // Seat s's D (room-everglade.coax eg_send): the g entry and each seat's v, on change.
@@ -748,9 +760,10 @@ ev_test_count :: (v: [] RmServer, k: int, form: int) -> int {
   v: [1] RmServer;
   box: [1] EgInbox;
   k := ev_test_server(v[..]);
-  // two waves of 12: 6 Cultists, 1 Fanatic, 3 Warlocks in parts, levels 1 to 3; all gates; the leader on
-  rm_control(v[..], "event 1 0 2 12 6 1 3 3 31 1 2 1 100 15 0 0\n");
-  rm_control(v[..], "event 1 0 2 12 6 1 3 3 31 1 2 1 100 15 1 0\n");
+  // two waves of 24 at 4 players (12 for these 2): 6 Cultists, 1 Fanatic, 3 Warlocks in parts by the
+  // last wave, levels 1 to 3; all gates; the leader on
+  rm_control(v[..], "event 1 0 2 24 6 1 3 3 31 1 2 1 100 15 0 0\n");
+  rm_control(v[..], "event 1 0 2 24 6 1 3 3 31 1 2 1 100 15 1 0\n");
   #assert v[0].ev[k].until == v[0].eg[k].tick + ev_secs(EV_ANNOUNCE_S);
   eg_test_tick(v[..], k);
   eg_test_drain(v[..], box[..]);
@@ -758,7 +771,12 @@ ev_test_count :: (v: [] RmServer, k: int, form: int) -> int {
   ev_test_skip(v[..], k);
   #assert v[0].ev[k].phase == EV_WAVE && v[0].ev[k].wave == 1;
   #assert ev_raid_standing(v[..], k) == 12 && ev_test_count(v[..], k, -1) == 12;
-  #assert v[0].ev[k].mix[RS_NPC_CULTIST] == 7 && v[0].ev[k].mix[RS_NPC_FANATIC] == 1 && v[0].ev[k].mix[RS_NPC_WARLOCK] == 4;
+  // the first wave: no Fanatic yet, one Warlock part in 7, all at level 1 (everglade-raid-scale.coax)
+  pt: [3] int; ct: [3] int;
+  raid_wave_parts(6, 1, 3, 1, 2, pt[..]); raid_wave_counts(12, pt[..], ct[..]);
+  #assert v[0].ev[k].mix[RS_NPC_CULTIST] == ct[0] && v[0].ev[k].mix[RS_NPC_FANATIC] == 0 && v[0].ev[k].mix[RS_NPC_WARLOCK] == ct[2] && ct[2] >= 1;
+  lv := 0; for q: 0..<E5RR_BEASTS { if e5rd_is(v[0].eg[k].rules[0].beasts[q]) && v[0].eg[k].rules[0].raid[0].slot[q].level > lv { lv = v[0].eg[k].rules[0].raid[0].slot[q].level; } }
+  #assert lv == 1;
   // each outside a gate, a long way from the square
   r := v[0].eg[k].rules[..];
   far := 0;

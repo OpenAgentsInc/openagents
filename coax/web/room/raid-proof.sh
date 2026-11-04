@@ -11,9 +11,10 @@ root="$(cd "$here/../../.." && pwd -P)"
 bin="$1"; n="${2:-8}"; secs="${3:-160}"; port="${4:-8871}"
 dir="$(mktemp -d "${TMPDIR:-/tmp}/raid-proof.XXXXXX")"
 ctl="$dir/control.txt"
-# EVERY 0, 2 waves of 12 (6 Cultists, 1 Fanatic, 3 Warlocks in parts, levels 1 to 3), all gates,
+# the API's defaults: EVERY 0, 3 waves of 12 at 4 players (scaled to those here: everglade-raid-
+# scale.coax), 6 Cultists, 1 Fanatic, 3 Warlocks in parts by the last wave, levels up to 3, all gates,
 # the leader on at aggression 2, town damage on, 100% reward, 15 minutes; levels on, cap 2
-dials="${RAID_DIALS:-event 1 0 2 12 6 1 3 3 31 1 2 1 100 15}"   # RAID_DIALS: another raid
+dials="${RAID_DIALS:-event 1 0 3 12 6 1 3 3 31 1 2 1 100 15}"   # the API's default dials; RAID_DIALS: another raid
 printf '%s 0 0\nlevels 1 2\n' "$dials" > "$ctl"
 key="raid-proof-local-key-$$-$RANDOM-0000000000000000"   # 32 or more, as the server needs
 OA_ROOM_TICKET_KEY="$key" OA_ROOM_TICKET_REQUIRED=0 OA_ROOM_CONTROL_URL="file://$ctl" OA_ROOM_API="http://127.0.0.1:9" \
