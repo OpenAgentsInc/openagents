@@ -9,10 +9,12 @@ coax/build.sh
 apps/aethyrforge-desktop/build.sh --open
 ```
 
-The build tool is Coax. It builds the local stack when its source trees are newer,
+The build tool is Coax. It builds the local stack when its source closure is newer,
 then bundles the room, static server, engine, browser host, shaders and assets.
 It ad-hoc signs the app and, with `--open`, copies it to
-`~/Library/Caches/Aethyrforge/Aethyrforge.app` and opens that copy. The app works
+`~/.openagents/aethyrforge/Aethyrforge.app` and opens that copy. It installs the
+shared CLI and its dictation/Parakeet helpers in `~/.openagents/bin/`, retaining
+older CLI versions under `~/.openagents/versions/`. The app works
 independently of the checkout. No installation to `/Applications` or web deploy.
 
 The app opens `/worlds/everglade?forge&room=pair-aethyrforge&relay=ws://localhost:PORT#gate`
@@ -25,7 +27,16 @@ The relay uses `localhost`, the existing room client's required local override,
 so the WebSocket connects straight to the room and leaves the HTTP page proxy
 free to serve saves.
 
-The local world is `~/Library/Application Support/Aethyrforge/everglade/`:
+Every launch shows setup over the running Everglade scene. It checks the shared
+CLI, lists running local agent engines and lets you keep a preferred engine,
+shows the installed voice/edit models, and verifies Parakeet's pinned complete
+weight/tokenizer hashes. Running processes are observations, not attached agents;
+selecting one saves a preference. View → Setup… (Cmd+,) opens the pane again.
+Refresh repeats discovery; Verify voice model repeats hashing. No model is loaded
+and no microphone or agent session starts during setup.
+
+The app's files live in `~/.openagents/aethyrforge/`. `setup.json` keeps the
+preferred engine and audio-model selection. The local world is `everglade/`:
 
 - `world-everglade.json`: edits saved by the room; retained across launches.
 - `room-control.txt`: the local room's existing development controls.
@@ -43,6 +54,25 @@ Audio is muted. Voice, transcription, model loading, typed instructions, remote
 publish/revert, bots and raid controls are future milestones in the
 [desktop spec](../../docs/verse/2026-11-04-aethyrforge-desktop.md).
 
+On this Mac, the original world directory is moved from Application Support on
+the first upgraded launch, without replacing an existing destination. Models are
+shared with the CLI, Coder and the voice host under `~/.openagents/models/`:
+
+```sh
+openagents coder agents --json
+coder/tui/coder.sh agents --json
+openagents models ls --json
+openagents models verify parakeet --json
+openagents models migrate --json
+```
+
+Migration moves legacy Parakeet, Whisper and original gpt-oss directories and
+leaves compatibility symlinks, without duplicating weights. Distinct existing
+copies refuse migration. `OPENAGENTS_MODEL_CACHE` selects another shared model
+root; the existing model-specific overrides still work. The inventory's
+`present`, `verified` and `loaded` fields describe separate facts. gpt-oss is
+listed as present only; its verification/loading is future work.
+
 The native smoke check creates a hidden WKWebView and an isolated world next to
 the report. It waits for a real WebGPU scene, places a thing through the editor's
 keyboard path, checks the saved document, captures a frame, and quits both servers.
@@ -52,6 +82,15 @@ Run it again in the same directory to check the saved world survives reopening:
 mkdir -p /tmp/aethyrforge-smoke
 apps/aethyrforge-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge --smoke-test /tmp/aethyrforge-smoke/first.json
 apps/aethyrforge-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge --smoke-test /tmp/aethyrforge-smoke/reopened.json
+```
+
+The setup smoke check exercises the real bundled CLI, process inventory and
+shared-model hash verification, then enters the world, saves settings and reopens
+setup over WebGPU. It uses an isolated world beside its report:
+
+```sh
+mkdir -p /tmp/aethyrforge-setup
+apps/aethyrforge-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge --setup-smoke /tmp/aethyrforge-setup/setup.json
 ```
 
 Reports include the first-frame time and child PIDs; matching PNGs show the frame.

@@ -57,7 +57,7 @@ ds_finish :: (d:[]Dict,f:[]DictFixture,s:[]DsCli,result:int,text:string)->int {
 }
 ds_model_dir :: (out:[]u8)->string {
  env:[1200]u8;v:=proc_getenv("OPENAGENTS_STREAMING_MODEL",env[..]);if v!="" {n:=copy(v,out);return ifx n<0 then "" else cast(string)out[0..<n];}
- h:[1024]u8;return fs_join(home(h[..]),".cache/openagents/models/parakeet/nemotron-streaming-en-0.6b-ebe59e5a",out);
+ h:[1024]u8;return fs_join(home(h[..]),".openagents/models/parakeet/nemotron-streaming-en-0.6b-ebe59e5a",out);
 }
 
 ds_capture :: (d:[]Dict,f:[]DictFixture,s:[]DsCli,words:[]u8)->int {

@@ -5,7 +5,7 @@
 //                              [--backend psionic|whispercpp] [--threads N]
 //                              [--words Psionic,Coax,...] [--prompt TEXT]   (psionic)
 //   openagents transcribe models          the cached models
-//   openagents transcribe fetch MODEL     downloads one to ~/.cache/openagents/models/whisper
+//   openagents transcribe fetch MODEL     downloads one to ~/.openagents/models/whisper
 // Backends, on the same ggml model files:
 // - parakeet: the default, pinned TDT v3 safetensors, resident native engine,
 //   Metal encoder and Coax decoder. No Whisper model or fallback is selected.
@@ -55,7 +55,7 @@ tr_cache :: (out: [] u8) -> string {
   env: [1024] u8; h: [1024] u8;
   s := proc_getenv("OPENAGENTS_MODEL_CACHE", env[..]);
   if s.count > 0 { return fs_join(s, "whisper", out); }
-  return fs_join(home(h[..]), ".cache/openagents/models/whisper", out);
+  return oa_models_path(home(h[..]), "", "whisper", out);
 }
 // The model file: CACHE/ggml-NAME.bin.
 tr_model_path :: (name: string, out: [] u8) -> string {

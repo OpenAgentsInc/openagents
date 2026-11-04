@@ -230,7 +230,7 @@ corpus_dir :: (out: [] u8) -> string {
 model_dir :: (out: [] u8) -> string {
   e: [1024] u8; s := proc_getenv("OPENAGENTS_PARAKEET_MODEL", e[..]);
   t: [1] Text;
-  if s != "" { t_add(t[..], s); } else { h: [1024] u8; t_add(t[..], proc_getenv("HOME", h[..])); t_add(t[..], "/.cache/openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99"); }
+  if s != "" { t_add(t[..], s); } else { h: [1024] u8; t_add(t[..], proc_getenv("HOME", h[..])); t_add(t[..], "/.openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99"); }
   for i: 0..<t[0].n { out[i] = t[0].b[i]; }
   return cast(string) out[0..<t[0].n];
 }

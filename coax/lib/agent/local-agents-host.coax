@@ -1,0 +1,19 @@
+// Native command transport for the shared read-only inventory.
+#load "local-agents.coax";
+#load "../sys/proc.coax";
+la_command :: (json: bool) -> int {
+  r: [1] LaInventory;
+  output: [1048576] u8; err: [4096] u8;
+  cmd := [3] string.["/bin/ps", "-axo", "pid=,ppid=,comm="];
+  got := proc_run(cmd[..], 5000, output[..], err[..]);
+  if got.started != 0 || got.status != 0 || got.cut || got.timed_out { r[0].complete = false; }
+  else {
+    at := 0;
+    while at < got.out_n {
+      end := at; while end < got.out_n && output[end] != '\n' { end += 1; }
+      if end > at && !la_process_line(r[..], cast(string) output[at..<end]) { r[0].complete = false; }
+      at = end + 1;
+    }
+  }
+  return la_print(r[..], json);
+}

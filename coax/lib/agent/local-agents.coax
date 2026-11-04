@@ -1,0 +1,78 @@
+// Read-only observations of local agent processes. Never reads argv, prompts,
+// credentials or transcripts; a running process is not a grant to use it.
+#load "../sys/fs.coax";
+#load "../json/json.coax";
+
+LA_MAX :: 128;
+LaAgent :: struct { pid: int; parent: int; engine: int; }
+LaInventory :: struct { agents: [LA_MAX] LaAgent; n: int; complete: bool = true; }
+LA_NAMES :: [4] string.["claude", "codex", "coder", "cursor"];
+LA_LABELS :: [4] string.["Claude Code", "Codex", "Coder", "Cursor"];
+
+#test "local agent discovery reads executable names, never command arguments" {
+  #assert la_engine("/usr/bin/claude") == 0 && la_engine("/Applications/X/codex") == 1;
+  #assert la_engine("/tmp/coder-abcdef0123") == 2 && la_engine("/bin/coder") == 2;
+  #assert la_engine("/bin/node") == -1 && la_engine("/bin/not-codex") == -1 && la_engine("/bin/codex-helper") == -1;
+  r: [1] LaInventory;
+  #assert la_process_line(r[..], "  42  12 /opt/my app/codex");
+  #assert r[0].n == 1 && r[0].agents[0].pid == 42 && r[0].agents[0].parent == 12 && r[0].agents[0].engine == 1;
+  #assert la_process_line(r[..], " 50 12 /usr/bin/node") && r[0].n == 1;
+  #assert !la_process_line(r[..], "oops") && !la_process_line(r[..], " 0 1 /bin/claude");
+  r[0].n = LA_MAX; #assert !la_process_line(r[..], "99 1 /bin/codex");
+}
+la_engine :: (path: string) -> int {
+  name := fs_base(path);
+  if name == "claude" { return 0; }
+  if name == "codex" { return 1; }
+  if name == "coder" || (name.count > 6 && name[0..<6] == "coder-") { return 2; }
+  // Cursor's binary name alone is ambiguous ("agent"); do not infer it.
+  if name == "cursor-agent" { return 3; }
+  return -1;
+}
+la_process_line :: (r: [] LaInventory, line: string) -> bool {
+  at := 0; values: [2] int;
+  for i: 0..<2 {
+    while at < line.count && (line[at] == ' ' || line[at] == '\t') { at += 1; }
+    start := at;
+    while at < line.count && line[at] >= '0' && line[at] <= '9' {
+      if values[i] > 100000000 { return false; }
+      values[i] = values[i] * 10 + cast(int) (line[at] - '0'); at += 1;
+    }
+    if at == start || at >= line.count || (line[at] != ' ' && line[at] != '\t') { return false; }
+  }
+  while at < line.count && (line[at] == ' ' || line[at] == '\t') { at += 1; }
+  if values[0] <= 0 || at == line.count { return false; }
+  engine := la_engine(line[at..<line.count]); if engine < 0 { return true; }
+  if r[0].n >= LA_MAX { return false; }
+  r[0].agents[r[0].n] = LaAgent.{pid = values[0], parent = values[1], engine = engine}; r[0].n += 1; return true;
+}
+la_json :: (r: [] LaInventory, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], "openagents.coder.agents.v1");
+  jo_key(o[..], "ok"); jo_bool(o[..], r[0].complete);
+  jo_key(o[..], "complete"); jo_bool(o[..], r[0].complete);
+  jo_key(o[..], "scope"); jo_str(o[..], "local_running_processes");
+  jo_key(o[..], "agents"); jo_arr(o[..]);
+  for i: 0..<r[0].n {
+    a := r[0].agents[i]; jo_obj(o[..]);
+    jo_key(o[..], "engine"); jo_str(o[..], LA_NAMES[a.engine]);
+    jo_key(o[..], "name"); jo_str(o[..], LA_LABELS[a.engine]);
+    jo_key(o[..], "pid"); jo_int(o[..], a.pid);
+    jo_key(o[..], "parent_pid"); jo_int(o[..], a.parent);
+    jo_key(o[..], "state"); jo_str(o[..], "running");
+    jo_key(o[..], "attached"); jo_bool(o[..], false);
+    jo_end(o[..]);
+  }
+  jo_end(o[..]); jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+la_print :: (r: [] LaInventory, json: bool) -> int {
+  if json { b: [65536] u8; text := la_json(r, b[..]); if text == "" { return 1; } print("%\n", text); }
+  else {
+    print("Local running agents (%):\n", r[0].n);
+    for i: 0..<r[0].n { a := r[0].agents[i]; print("  %  pid %  running locally\n", LA_LABELS[a.engine], a.pid); }
+    if r[0].n == 0 { print("  No running local agents detected.\n"); }
+    if !r[0].complete { print("  Discovery was incomplete.\n"); }
+  }
+  return ifx r[0].complete then 0 else 1;
+}

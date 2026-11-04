@@ -40,15 +40,19 @@ final class ForgeApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKU
     var logs: [FileHandle] = []
     var startup: Task<Void, Never>?
     var framePump: Task<Void, Never>?
+    var inventoryTask: Task<Void, Never>?
+    var setupPane: ForgeSetupPane!
+    var sceneReady = false
     var dataURL: URL!
     var pageURL: URL!
     var lockFD: Int32 = -1
     var stopping = false
     let startedAt = Date()
     var firstFrameSeconds = 0.0
-    let smoke = CommandLine.arguments.contains("--smoke-test")
+    let setupSmoke = CommandLine.arguments.contains("--setup-smoke")
+    var smoke: Bool { setupSmoke || CommandLine.arguments.contains("--smoke-test") }
     var report: URL? {
-        guard let i = CommandLine.arguments.firstIndex(of: "--smoke-test"), i + 1 < CommandLine.arguments.count else { return nil }
+        guard let i = CommandLine.arguments.firstIndex(of: setupSmoke ? "--setup-smoke" : "--smoke-test"), i + 1 < CommandLine.arguments.count else { return nil }
         return URL(fileURLWithPath: CommandLine.arguments[i + 1])
     }
 
@@ -71,6 +75,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKU
         let viewItem = NSMenuItem(); menu.addItem(viewItem)
         let view = NSMenu(title: "View"); viewItem.submenu = view
         let reload = view.addItem(withTitle: "Reload Everglade", action: #selector(reloadWorld), keyEquivalent: "r"); reload.target = self
+        let setup = view.addItem(withTitle: "Setup…", action: #selector(showSetup), keyEquivalent: ","); setup.target = self
         let folder = view.addItem(withTitle: "Open Local World Folder", action: #selector(openWorldFolder), keyEquivalent: "o"); folder.target = self
         folder.keyEquivalentModifierMask = [.command, .shift]
         NSApp.mainMenu = menu
@@ -94,13 +99,22 @@ final class ForgeApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKU
         window = NSWindow(contentRect: web.frame, styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         window.title = "Aethyrforge"
         window.subtitle = "Everglade · Local edits · Experimental"
-        window.minSize = NSSize(width: 800, height: 600)
-        window.contentView = web; window.center()
+        window.minSize = NSSize(width: 900, height: 740)
+        let content = NSView(frame: web.frame); content.addSubview(web)
+        window.contentView = content; window.center()
         notice = NSTextField(labelWithString: "Starting local Everglade…")
         notice.textColor = .white; notice.backgroundColor = .black; notice.drawsBackground = true
         notice.alignment = .center; notice.frame = NSRect(x: 0, y: 0, width: 1280, height: 28)
         notice.autoresizingMask = [.width, .maxYMargin]
-        web.addSubview(notice)
+        content.addSubview(notice)
+        fgs_reset()
+        setupPane = ForgeSetupPane(frame: content.bounds)
+        setupPane.autoresizingMask = [.width, .height]
+        setupPane.enterAction = { [weak self] in self?.enterWorld() }
+        setupPane.refreshAction = { [weak self] in self?.refreshSetup(verify: false) }
+        setupPane.verifyAction = { [weak self] in self?.refreshSetup(verify: true) }
+        setupPane.folderAction = { NSWorkspace.shared.open(FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".openagents")) }
+        content.addSubview(setupPane)
         if !smoke { window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true) }
     }
 
@@ -132,8 +146,14 @@ final class ForgeApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKU
             if smoke, let report {
                 dataURL = report.deletingLastPathComponent().appendingPathComponent("world")
             } else {
-                dataURL = try fm.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-                    .appendingPathComponent("Aethyrforge/everglade", isDirectory: true)
+                let base = fm.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/aethyrforge", isDirectory: true)
+                try fm.createDirectory(at: base, withIntermediateDirectories: true)
+                dataURL = base.appendingPathComponent("everglade", isDirectory: true)
+                let legacy = fm.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Aethyrforge/everglade", isDirectory: true)
+                if !fm.fileExists(atPath: dataURL.path), fm.fileExists(atPath: legacy.path) {
+                    try fm.moveItem(at: legacy, to: dataURL)
+                    if (try? fm.contentsOfDirectory(atPath: legacy.deletingLastPathComponent().path).isEmpty) == true { try? fm.removeItem(at: legacy.deletingLastPathComponent()) }
+                }
             }
             try fm.createDirectory(at: dataURL, withIntermediateDirectories: true)
             lockFD = Darwin.open(dataURL.appendingPathComponent(".lock").path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
@@ -163,6 +183,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKU
             try await waitForHTTP(URL(string: "http://127.0.0.1:\(p.1)/worlds/everglade")!)
             try Data((url.absoluteString + "\n").utf8).write(to: dataURL.appendingPathComponent("local-url.txt"), options: .atomic)
             notice.stringValue = "Loading Everglade…"
+            refreshSetup(verify: true)
             web.load(URLRequest(url: url))
             if smoke {
                 framePump = Task {
@@ -175,7 +196,11 @@ final class ForgeApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKU
             try await waitForScene()
             firstFrameSeconds = Date().timeIntervalSince(startedAt)
             notice.isHidden = true
-            if smoke { try await smokeCheck() }
+            sceneReady = true; setupPane.sceneReady = true; setupPane.update()
+            if setupSmoke {
+                await inventoryTask?.value
+                try await setupSmokeCheck()
+            } else if smoke { await inventoryTask?.value; setupPane.isHidden = true; try await smokeCheck() }
         } catch { if !stopping { fail(error.localizedDescription) } }
     }
 
@@ -270,6 +295,69 @@ final class ForgeApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKU
         }
     }
 
+    var settingsURL: URL { dataURL.deletingLastPathComponent().appendingPathComponent("setup.json") }
+    var localCLI: URL {
+        if let explicit = ProcessInfo.processInfo.environment["OPENAGENTS_CLI"], !explicit.isEmpty { return URL(fileURLWithPath: explicit) }
+        if smoke { return Bundle.main.resourceURL!.appendingPathComponent("openagents") }
+        return fm.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/bin/openagents")
+    }
+    func acceptSetup(_ data: Data, kind: Int64) throws {
+        guard data.count <= 65536 else { throw ShellError.failed("The setup report is too large.") }
+        for (i, byte) in data.enumerated() { _ = fgs_input_byte(Int64(i), Int64(byte)) }
+        guard fgs_accept(kind, Int64(data.count)) == 1 else { throw ShellError.failed("The local CLI returned an invalid setup report.") }
+    }
+    func refreshSetup(verify: Bool) {
+        guard !setupPane.verifying && (inventoryTask == nil || !setupPane.checking) else { return }
+        setupPane.errorMessage = nil
+        setupPane.checking = true; setupPane.verifying = false; setupPane.update()
+        inventoryTask = Task {
+            do {
+                async let version = ForgeCLI.run(localCLI, ["version", "--json"])
+                async let agents = ForgeCLI.run(localCLI, ["coder", "agents", "--json"])
+                async let models = ForgeCLI.run(localCLI, ["models", "ls", "--json"])
+                try acceptSetup(await version, kind: 0)
+                try acceptSetup(await agents, kind: 1)
+                try acceptSetup(await models, kind: 2)
+                if let kept = try? Data(contentsOf: settingsURL) { try? acceptSetup(kept, kind: 3) }
+                setupPane.checking = false; setupPane.update()
+                if verify && fgs_status(1) > 0 {
+                    setupPane.verifying = true; setupPane.update()
+                    let verified = try await ForgeCLI.run(localCLI, ["models", "verify", "parakeet", "--json"], timeout: 120)
+                    try acceptSetup(verified, kind: 2)
+                }
+            } catch {
+                setupPane.errorMessage = error.localizedDescription
+                setupPane.cliStatus.toolTip = localCLI.path
+            }
+            setupPane.checking = false; setupPane.verifying = false; setupPane.update()
+        }
+    }
+    func enterWorld() {
+        guard fgs_can_enter(sceneReady) else { return }
+        var bytes: [UInt8] = []
+        for i in 0..<512 { let c = fgs_settings_byte(Int64(i)); if c < 0 { break }; bytes.append(UInt8(c)) }
+        do {
+            try Data(bytes).write(to: settingsURL, options: .atomic)
+            setupPane.isHidden = true; window.makeFirstResponder(web)
+        } catch { setupPane.errorMessage = "Could not save setup: \(error.localizedDescription)"; setupPane.update() }
+    }
+    @objc func showSetup() { setupPane.isHidden = false; setupPane.sceneReady = sceneReady; setupPane.update() }
+
+    func setupSmokeCheck() async throws {
+        guard let report, fgs_can_enter(sceneReady), fgs_status(1) == 2 else { throw ShellError.failed("Setup did not discover the CLI and verified shared voice model.") }
+        guard !setupPane.isHidden, setupPane.enter.isEnabled else { throw ShellError.failed("Setup did not appear over the running world.") }
+        enterWorld()
+        guard setupPane.isHidden, fm.fileExists(atPath: settingsURL.path) else { throw ShellError.failed("Setup could not enter the world and keep its choices.") }
+        showSetup()
+        let result: [String: Any] = ["ready": sceneReady, "cli": fgs_status(0) == 1, "voiceVerified": fgs_status(1) == 2,
+            "localAgents": fgs_count(-1), "selectedAgent": fgs_selected(), "voicePath": setupText(6),
+            "setupVisible": !setupPane.isHidden, "settingsSaved": true, "firstFrameSeconds": firstFrameSeconds,
+            "roomPID": room!.processIdentifier, "pagePID": page!.processIdentifier]
+        try await captureCanvas(report)
+        try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]).write(to: report, options: .atomic)
+        stopChildren(); NSApp.terminate(nil)
+    }
+
     @objc func reloadWorld() {
         guard !stopping, let pageURL else { return }
         web.load(URLRequest(url: pageURL))
@@ -280,6 +368,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKU
     func stopChildren() {
         stopping = true
         framePump?.cancel()
+        inventoryTask?.cancel()
         for child in [page, room].compactMap({ $0 }) where child.isRunning { child.terminate() }
         // Bounded shutdown; reap before releasing the single-world lock.
         let end = Date().addingTimeInterval(2)

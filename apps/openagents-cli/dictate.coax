@@ -201,7 +201,7 @@ dict_fixture_at :: (script: string, name: string) -> int {
 dict_model_dir :: (out: [] u8) -> string {
   env: [1024] u8; s := proc_getenv("OPENAGENTS_PARAKEET_MODEL", env[..]);
   if s != "" { n := copy(s, out); return ifx n < 0 then "" else cast(string) out[0..<n]; }
-  h: [1024] u8; return fs_join(home(h[..]), ".cache/openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99", out);
+  h: [1024] u8; cache: [1024] u8; return oa_models_path(home(h[..]), proc_getenv("OPENAGENTS_MODEL_CACHE", cache[..]), OA_PARAKEET_FOLDER, out);
 }
 
 // ---- the session ----

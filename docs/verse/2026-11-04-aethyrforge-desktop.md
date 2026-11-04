@@ -1,7 +1,8 @@
 # Aethyrforge for Mac: local editing by voice (experimental spec)
 
-Status: experimental desktop shell implemented, 2026-11-04. The local Everglade
-editor is the first milestone; voice and the model below remain planned. Nothing
+Status: experimental desktop shell and local setup implemented, 2026-11-04.
+The local Everglade editor, shared storage, CLI inventory and voice-model
+verification work; voice editing and the model below remain planned. Nothing
 here ships to customers or TestFlight until the owner asks.
 
 Aethyrforge for Mac is a desktop app that opens your Everglade on your own Mac and
@@ -36,11 +37,32 @@ page server. This is the same `/worlds/everglade` engine players use.
   page proxy and block subsequent saves.
 - Seeds the local world and controls from `coax/web/room/dev/` **only when absent**.
   Hand edits save through the local room into
-  `~/Library/Application Support/Aethyrforge/everglade/world-everglade.json` and
+  `~/.openagents/aethyrforge/everglade/world-everglade.json` and
   survive reopening. It does not yet fetch the current published world. The
   editor's existing “publish” request only writes this local room's document.
+- Opens setup in a front pane over Everglade. It shows the shared OpenAgents CLI,
+  Parakeet's installed/verified status and location, gpt-oss's installed status,
+  and the running local agent engines with a preferred-engine choice. Open
+  Everglade saves the choices to `~/.openagents/aethyrforge/setup.json`; View →
+  Setup… reopens the pane. Refresh scans again; Verify voice model checks the
+  pinned complete Parakeet weights and tokenizer SHA-256. Missing voice weights
+  do not prevent manual editing. Models remain unloaded during setup.
+- Uses `~/.openagents/` for app-owned files across OpenAgents apps. The app bundle
+  and world/settings/logs live in `aethyrforge/`, shared executables in `bin/`
+  with retained versions in `versions/`, and reusable model checkpoints in
+  `models/`. This is now a repository rule for future apps. Upgrading moves the
+  original Application Support world when the new destination is absent.
+- `openagents coder agents --json` and standalone `coder agents --json` expose
+  the same bounded, read-only inventory of local agent processes. They read
+  executable names/PIDs, never prompts or command arguments. Running processes
+  are explicitly `attached:false`; selecting an engine is a saved preference,
+  not an attachment to the world. Session attachment remains future work.
+- `openagents models ls --json` reports shared audio/text models; `models verify
+  parakeet --json` verifies Parakeet; `models migrate --json` moves the legacy
+  caches and leaves compatibility symlinks, refusing conflicting copies. The CLI,
+  Coder dictation, Mac dictation and voice host use the shared model defaults.
 - Audio is muted. No microphone capture, transcript bar, instruction entry,
-  Parakeet/model verification or download, typed model edits, durable undo log,
+  model download, typed model edits, durable undo log,
   remote PUBLISH/REVERT, bots or raid controls are wired into this shell yet.
 - Requires Apple Silicon and macOS 26+ for this initial WKWebView/WebGPU build.
   The app is ad-hoc signed, experimental and outside `/Applications`.
@@ -49,7 +71,7 @@ The remaining sections describe the target behavior. They do not imply the voice
 acceptance criteria already pass. Build and native smoke-check instructions are
 in [the app README](../../apps/aethyrforge-desktop/README.md).
 
-Verified on this Mac: both native smoke launches drew a WebGPU scene in 4.92 s
+Shell/save checkpoint (`d1f14ec560`): both native smoke launches drew a WebGPU scene in 4.92 s
 and 5.07 s. A keyboard placement followed by DONE saved local version 23; reopening
 kept the exact saved bytes. Both child servers exited after each check. The signed
 standalone app was opened and its EDIT view inspected. The session's two Coax
@@ -57,9 +79,23 @@ checks, native room startup check, bundle signature and plist checks passed.
 `coax/web/tool.sh tools-check` was run and reported 20 pre-existing missing-reason
 headers outside this change; the new build wrapper has its required reason.
 
+Setup checkpoint: the hidden native check drew WebGPU in 8.67 s, discovered the
+real CLI and 9 local agent processes, verified shared Parakeet files, saved the
+preferred engine, entered Everglade and reopened setup. Both child servers exited.
+The visible native pane and its Claude/Codex/Coder/Cursor choices were inspected;
+Open Everglade and Cmd+, worked. The migrated world retained the exact SHA-256
+(`f33e9c80…63ff43`). The setup/session suite passed 78 checks; shared paths and
+inventory passed 79. Model identity mutation killed all 4 mutants, with zero
+survivors. The installed shared CLI transcribed the recorded `hello-foreman.wav`
+through Metal using the shared checkpoint and helper, without a checkout or
+microphone: “Hello Foreman. What are we building today?” New inventory schema
+generation and protocol compatibility/conformance checks passed. The final
+tools audit retained the same 20 unrelated baseline findings.
+
 ## What you do
 
-1. Open **Aethyrforge.app**. It opens Everglade at the South Gate, with EDIT on.
+1. Open **Aethyrforge.app**, review setup and press **Open Everglade**. The world
+   is at the South Gate, with EDIT on.
 2. Hold **Space** (or the mic button) and say what you want:
    - "Put three barrels by the inn door."
    - "Make that crate twice as big."
@@ -89,7 +125,7 @@ panes, PUBLISH and REVERT. No mode switches.
 | Recognition | Resident Parakeet TDT v3, hold to talk, final transcripts only. | The voice host's `--recognizer parakeet` and `openagents dictate` path |
 | Edit model | Turns a transcript and the world's context into one typed edit. | gpt-oss-20b on Psionic Metal |
 | Edits | Typed, invertible edits with undo and redo. | `aethyr/forge/edit.coax` |
-| World document | Your local copy of Everglade's world. | `~/Library/Application Support/Aethyrforge/everglade/world-everglade.json` |
+| World document | Your local copy of Everglade's world. | `~/.openagents/aethyrforge/everglade/world-everglade.json` |
 
 ### Why the world view is a web view
 
@@ -140,11 +176,12 @@ resident in one GPU buffer.
 
 - The app checks for the model at start. When it isn't present, it downloads the
   pinned `openai/gpt-oss-20b` revision
-  (`6cee5e81ee83917806bbde320786a8fb61efebee`) to `~/.cache/psionic/gptoss-original/20b/`,
+  (`6cee5e81ee83917806bbde320786a8fb61efebee`) to `~/.openagents/models/gpt-oss/20b/REVISION/original/`,
   with a progress bar and size shown ("13.8 GB"). It checks every file's hash
   before use.
-- Parakeet downloads the same way to `~/.cache/openagents/models/parakeet/`.
-- This Mac already has both. The app's first run here only verifies them.
+- Parakeet downloads the same way to `~/.openagents/models/parakeet/`.
+- This Mac already has both, migrated without copying the weights. Setup verifies
+  Parakeet; full gpt-oss verification and automatic downloads remain planned.
 - Weights never go in Git.
 
 ## Saving, undo and publish
@@ -180,7 +217,7 @@ apps/aethyrforge-desktop/build.sh --open
 
 It builds the Everglade page and room when their source trees are newer, builds
 the app at `apps/aethyrforge-desktop/build/Aethyrforge.app`, and opens a complete
-copy at `~/Library/Caches/Aethyrforge/Aethyrforge.app`. That copy runs without the
+copy at `~/.openagents/aethyrforge/Aethyrforge.app`. That copy runs without the
 checkout. The app picks free local ports for the room and page server on each
 start, and stops both when it quits. The local world directory also contains
 `room.log`, `serve.log` and the current launch's `local-url.txt`.
@@ -214,6 +251,9 @@ Each step lands on `main` working end to end.
    editor and local room. Native smoke verification opens a hidden WKWebView,
    waits for a WebGPU scene, places a thing by keyboard and checks its saved
    document; a second launch verifies the saved bytes survive reopening.
+   **Setup (implemented):** the front pane, shared `~/.openagents/` storage,
+   CLI/agent/model inventories, pinned Parakeet verification and saved choices.
+   Voice/model residency and agent attachment remain later integration work.
 2. **Voice to text:** hold to talk, resident Parakeet, and the transcript bar.
 3. **Text to edits:** gpt-oss-20b under the edit grammar, the resolver for places
    and things, the edit applied and saved, undo and redo.

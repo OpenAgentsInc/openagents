@@ -21,7 +21,7 @@ Keep them outside Git. These commands download data, never executable model
 code, at revision `541d1f99c6b0c3cd0b11a95167540bb8edefd82b`:
 
 ```shell
-PARAKEET_MODEL="$HOME/.cache/openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99"
+PARAKEET_MODEL="$HOME/.openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99"
 mkdir -p "$PARAKEET_MODEL"
 curl -fL --retry 3 -o "$PARAKEET_MODEL/model.safetensors" https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3/resolve/541d1f99c6b0c3cd0b11a95167540bb8edefd82b/model.safetensors
 curl -fL --retry 3 -o "$PARAKEET_MODEL/tokenizer.json" https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3/resolve/541d1f99c6b0c3cd0b11a95167540bb8edefd82b/tokenizer.json

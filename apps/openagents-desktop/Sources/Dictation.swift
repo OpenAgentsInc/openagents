@@ -173,7 +173,7 @@ final class ResidentParakeetDictation: DictationRecognizer {
   init(directory: String? = nil) {
     self.directory = directory ?? ProcessInfo.processInfo.environment["OPENAGENTS_PARAKEET_MODEL"]
       ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(
-        ".cache/openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99").path
+        ".openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99").path
   }
   func open() throws {
     if model != nil { return }

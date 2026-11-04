@@ -26,6 +26,7 @@ workspace is restored.
 | `openagents/host/v1/`, `openagents/reach/v1/` | Recovered phone task/admission, binding/cursor and authenticated reach records. Existing wire types are unchanged. |
 | `openagents/decision/v1alpha1/` | New protobuf projection of the frozen `openagents.systemone.v1` JSON contract (request and response), served by Psionic's `/v1/systemone`. See its [README](openagents/decision/v1alpha1/README.md). |
 | `openagents/bitcoin/explorer/v1alpha1/` | New read-only explorer projection. The [HTTP v1 contract](../docs/protocol/bitcoin-explorer-v1.md) defines its JSON envelope and snapshot semantics. |
+| `openagents/cli/local/v1/` | Read-only local agent/model inventory for desktop setup. See [the JSON contract](../docs/protocol/local-inventory-v1.md). |
 | `openagents/options/v1alpha1/` | New experimental data-class, limit, presence, unit and contract annotations. Numbers are provisional pending registry review. |
 | `openagents/verse/common/v1alpha1/` | New bounded world reference. |
 | `openagents/verse/presence/v1alpha1/` | New transient presence projection using engine geometry. No change to NIP-MV, REACH or realm wire. |

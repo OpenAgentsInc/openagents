@@ -1,0 +1,127 @@
+// Setup's state and bounded CLI-report readers. AppKit renders these values;
+// scanning the machine and moving files are explicit CLI/platform effects.
+#load "../../coax/lib/json/json.coax";
+
+ForgeSetup :: struct {
+  cli: bool; agents: bool; models: bool; voice: bool; verified: bool; text_model: bool;
+  counts: [4] int; total: int; selected: int = -1;
+  version: [64] u8; version_n: int;
+  voice_path: [4096] u8; voice_path_n: int;
+  problem: int;
+}
+FSU_NAMES :: [4] string.["Claude Code", "Codex", "Coder", "Cursor"];
+FSU_IDS :: [4] string.["claude", "codex", "coder", "cursor"];
+
+#test "setup uses actual CLI, running-agent and local model reports" {
+  s: [1] ForgeSetup; fsu_reset(s[..]);
+  #assert !fsu_can_enter(s[..], true);
+  #assert fsu_read(s[..], 0, "{\"ok\":true,\"openagents\":\"1.0.0-dev\"}");
+  #assert fsu_read(s[..], 1, "{\"ok\":true,\"complete\":true,\"schema\":\"openagents.coder.agents.v1\",\"agents\":[{\"engine\":\"codex\",\"pid\":42,\"state\":\"running\",\"attached\":false}]}");
+  #assert fsu_read(s[..], 2, "{\"ok\":true,\"schema\":\"openagents.models.v1\",\"models\":[{\"id\":\"parakeet\",\"present\":true,\"verified\":false,\"path\":\"/home/me/.openagents/models/parakeet\"},{\"id\":\"gpt-oss-20b\",\"present\":true}]}");
+  #assert s[0].total == 1 && s[0].counts[1] == 1 && s[0].selected == 1;
+  #assert s[0].voice && !s[0].verified && s[0].text_model;
+  #assert fsu_can_enter(s[..], true) && !fsu_can_enter(s[..], false);
+  b: [256] u8; #assert fsu_settings(s[..], b[..]) == "{\"schema\":\"openagents.aethyrforge.setup.v1\",\"audio_model\":\"parakeet\",\"agent_engine\":\"codex\"}";
+  fsu_choose(s[..], -1); #assert s[0].selected == -1;
+  s[0].selected = 1;
+  #assert fsu_read(s[..], 3, "{\"schema\":\"openagents.aethyrforge.setup.v1\",\"agent_engine\":null}") && s[0].selected == -1;
+  #assert !fsu_read(s[..], 3, "{\"agent_engine\":\"codex\"}") && s[0].selected == -1;
+}
+#test "setup distinguishes missing data, a failed scan and a verified model" {
+  s: [1] ForgeSetup; fsu_reset(s[..]);
+  #assert !fsu_read(s[..], 1, "{\"ok\":false,\"complete\":false}") && !s[0].agents;
+  #assert !fsu_read(s[..], 2, "{}");
+  #assert fsu_read(s[..], 2, "{\"ok\":true,\"schema\":\"openagents.models.v1\",\"models\":[{\"id\":\"parakeet\",\"present\":true,\"verified\":true,\"path\":\"/shared/parakeet\"}]}");
+  #assert s[0].voice && s[0].verified && !s[0].text_model;
+  #assert !fsu_read(s[..], 0, "not json") && !s[0].cli;
+  fsu_choose(s[..], 99); #assert s[0].selected == -1;
+  #assert fsu_text_byte(s[..], 0, 0) == 'S' && fsu_text_byte(s[..], 0, -1) == -1;
+}
+
+fsu_reset :: (s: [] ForgeSetup) #export_c { s[0] = ForgeSetup.{}; }
+fsu_read :: (s: [] ForgeSetup, kind: int, text: string) -> bool #export_c {
+  nodes: [2048] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], text, nodes[..]) { s[0].problem = kind + 1; return false; }
+  v := d[0];
+  if kind == 3 {
+    if jv_raw(v, jv_get(v, 0, "schema")) != "openagents.aethyrforge.setup.v1" { return false; }
+    engine := jv_raw(v, jv_get(v, 0, "agent_engine"));
+    s[0].selected = -1;
+    for i: 0..<4 { if engine == FSU_IDS[i] && s[0].counts[i] > 0 { s[0].selected = i; } }
+    return true;
+  }
+  if kind == 0 {
+    s[0].cli = false;
+    n := jv_str(v, jv_get(v, 0, "openagents"), s[0].version[..]);
+    s[0].cli = n > 0 && jv_bool(v, jv_get(v, 0, "ok"));
+    s[0].version_n = ifx n > 0 then n else 0;
+    return s[0].cli;
+  }
+  if kind == 1 {
+    s[0].agents = false; s[0].total = 0;
+    for i: 0..<4 { s[0].counts[i] = 0; }
+    if jv_raw(v, jv_get(v, 0, "schema")) != "openagents.coder.agents.v1" || !jv_bool(v, jv_get(v, 0, "ok")) || !jv_bool(v, jv_get(v, 0, "complete")) { return false; }
+    rows := jv_get(v, 0, "agents"); if jv_kind(v, rows) != JV_ARRAY || jv_len(v, rows) > 128 { return false; }
+    for i: 0..<jv_len(v, rows) {
+      row := jv_at(v, rows, i);
+      if jv_raw(v, jv_get(v, row, "state")) != "running" || jv_int(v, jv_get(v, row, "pid"), 0) <= 0 { continue; }
+      engine := jv_raw(v, jv_get(v, row, "engine"));
+      for k: 0..<4 { if engine == FSU_IDS[k] { s[0].counts[k] += 1; s[0].total += 1; } }
+    }
+    if s[0].selected < 0 || s[0].counts[s[0].selected] == 0 {
+      s[0].selected = -1;
+      for k: 0..<4 { if s[0].counts[k] > 0 { s[0].selected = k; } }
+      if s[0].counts[1] > 0 { s[0].selected = 1; }
+    }
+    s[0].agents = true; return true;
+  }
+  if kind == 2 {
+    s[0].models = false; s[0].voice = false; s[0].verified = false; s[0].text_model = false;
+    if jv_raw(v, jv_get(v, 0, "schema")) != "openagents.models.v1" { return false; }
+    rows := jv_get(v, 0, "models"); if jv_kind(v, rows) != JV_ARRAY { return false; }
+    for i: 0..<jv_len(v, rows) {
+      row := jv_at(v, rows, i); id := jv_raw(v, jv_get(v, row, "id"));
+      if id == "parakeet" {
+        s[0].voice = jv_bool(v, jv_get(v, row, "present"));
+        s[0].verified = s[0].voice && jv_bool(v, jv_get(v, row, "verified"));
+        n := jv_str(v, jv_get(v, row, "path"), s[0].voice_path[..]); s[0].voice_path_n = ifx n > 0 then n else 0;
+      }
+      if id == "gpt-oss-20b" { s[0].text_model = jv_bool(v, jv_get(v, row, "present")); }
+    }
+    s[0].models = true; return true;
+  }
+  return false;
+}
+fsu_can_enter :: (s: [] ForgeSetup, scene: bool) -> bool #export_c { return scene && s[0].cli && s[0].agents && s[0].models; }
+fsu_choose :: (s: [] ForgeSetup, kind: int) #export_c { if kind == -1 || (kind >= 0 && kind < 4 && s[0].counts[kind] > 0) { s[0].selected = kind; } }
+fsu_count :: (s: [] ForgeSetup, kind: int) -> int #export_c { return ifx kind >= 0 && kind < 4 then s[0].counts[kind] else s[0].total; }
+fsu_selected :: (s: [] ForgeSetup) -> int #export_c { return s[0].selected; }
+fsu_status :: (s: [] ForgeSetup, kind: int) -> int #export_c {
+  if kind == 0 { return ifx s[0].cli then 1 else 0; }
+  if kind == 1 { return ifx s[0].models then (ifx s[0].verified then 2 else ifx s[0].voice then 1 else 0) else -1; }
+  return ifx s[0].agents then 1 else 0;
+}
+fsu_text :: (s: [] ForgeSetup, field: int) -> string {
+  if field == 0 { return "Set up Aethyrforge"; }
+  if field == 1 { return "Local tools. Shared models. Your world."; }
+  if field == 2 { return ifx s[0].cli then cast(string) s[0].version[0..<s[0].version_n] else "CLI unavailable"; }
+  if field == 3 { return "Parakeet TDT v3"; }
+  if field == 4 {
+    if !s[0].models { return "Checking local models…"; }
+    if s[0].verified { return "Verified checkpoint · 2.51 GB · On this Mac"; }
+    return ifx s[0].voice then "Installed · Checkpoint not yet verified" else "Model not installed";
+  }
+  if field == 5 { return ifx s[0].text_model then "gpt-oss-20b · Installed" else "gpt-oss-20b · Not installed"; }
+  if field == 6 { return cast(string) s[0].voice_path[0..<s[0].voice_path_n]; }
+  if field == 7 { return ifx !s[0].agents then "Agent discovery unavailable" else ifx s[0].total == 0 then "No running local agents" else "Running on this Mac"; }
+  if field >= 10 && field < 14 { return FSU_NAMES[field - 10]; }
+  return "";
+}
+fsu_text_byte :: (s: [] ForgeSetup, field: int, index: int) -> int #export_c { text := fsu_text(s[..], field); return ifx index >= 0 && index < text.count then cast(int) text[index] else -1; }
+fsu_settings :: (s: [] ForgeSetup, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]); jo_key(o[..], "schema"); jo_str(o[..], "openagents.aethyrforge.setup.v1");
+  jo_key(o[..], "audio_model"); jo_str(o[..], "parakeet"); jo_key(o[..], "agent_engine");
+  if s[0].selected >= 0 { jo_str(o[..], FSU_IDS[s[0].selected]); } else { jo_null(o[..]); }
+  jo_end(o[..]); return ifx o[0].bad then "" else jo_text(o[..]);
+}
+fsu_settings_byte :: (s: [] ForgeSetup, index: int) -> int #export_c { b: [512] u8; text := fsu_settings(s[..], b[..]); return ifx index >= 0 && index < text.count then cast(int) text[index] else -1; }

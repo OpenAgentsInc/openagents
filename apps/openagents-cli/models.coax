@@ -1,0 +1,80 @@
+// Shared local model inventory and explicit migration/verification. No inference,
+// microphone, download or provider connection is started by these commands.
+#load "model-identity.coax";
+
+models_usage :: () {
+  print("%\n", "Local models (shared by every OpenAgents app):");
+  print("%\n", "  models ls [--json]                  installed checkpoints in ~/.openagents/models");
+  print("%\n", "  models verify parakeet [--json]     check the pinned complete weight/tokenizer hashes");
+  print("%\n", "  models migrate [--json]             move legacy model caches into ~/.openagents/models");
+}
+models_row :: (o: [] Jo, id: string, kind: string, name: string, revision: string, path: string, present: bool, bytes: int, verified: bool) {
+  jo_obj(o); jo_key(o, "id"); jo_str(o, id); jo_key(o, "kind"); jo_str(o, kind);
+  jo_key(o, "name"); jo_str(o, name); jo_key(o, "revision"); jo_str(o, revision);
+  jo_key(o, "path"); jo_str(o, path); jo_key(o, "present"); jo_bool(o, present);
+  jo_key(o, "bytes"); jo_int(o, bytes); jo_key(o, "verified"); jo_bool(o, verified);
+  jo_key(o, "loaded"); jo_bool(o, false); jo_end(o);
+}
+models_hash :: (path: string, out: [] u8) -> string {
+  b: [1024] u8; err: [1024] u8;
+  argv := [4] string.["shasum", "-a", "256", path];
+  got := proc_run(argv[..], 120000, b[..], err[..]);
+  if got.started != 0 || got.status != 0 || got.timed_out || got.cut || got.out_n < 64 || out.count < 64 { return ""; }
+  for i: 0..<64 { out[i] = b[i]; }
+  return cast(string) out[0..<64];
+}
+models_inventory :: (verify: bool, json: bool) -> int {
+  h: [1024] u8; cache: [1024] u8; p: [2048] u8; g: [2048] u8;
+  voice := tr_pk_model(p[..]);
+  text := oa_models_path(home(h[..]), proc_getenv("OPENAGENTS_MODEL_CACHE", cache[..]), OA_GPTOSS_FOLDER, g[..]);
+  w: [4096] u8; t: [4096] u8; gw: [4096] u8;
+  weights := fs_join(voice, "model.safetensors", w[..]); tokenizer := fs_join(voice, "tokenizer.json", t[..]);
+  present := fs_kind(weights) == FS_FILE && fs_kind(tokenizer) == FS_FILE;
+  bytes := ifx present then fs_size(weights) else 0;
+  verified := false;
+  if verify && present { a: [64] u8; b: [64] u8; verified = oa_pk_verified(bytes, models_hash(weights, a[..]), models_hash(tokenizer, b[..])); }
+  gweights := fs_join(text, "model.safetensors", gw[..]); gp := fs_kind(gweights) == FS_FILE;
+  out: [16384] u8; o: [1] Jo; jo_start(o[..], out[..]); jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], "openagents.models.v1");
+  jo_key(o[..], "ok"); jo_bool(o[..], !verify || verified);
+  jo_key(o[..], "models"); jo_arr(o[..]);
+  models_row(o[..], "parakeet", "audio", "Parakeet TDT v3", "541d1f99c6b0c3cd0b11a95167540bb8edefd82b", voice, present, bytes, verified);
+  models_row(o[..], "gpt-oss-20b", "text", "gpt-oss-20b", "6cee5e81ee83917806bbde320786a8fb61efebee", text, gp, ifx gp then fs_size(gweights) else 0, false);
+  jo_end(o[..]); jo_end(o[..]);
+  if o[0].bad { return 1; }
+  if json { print("%\n", jo_text(o[..])); }
+  else {
+    print("Parakeet TDT v3  %  %\n", ifx verified then "verified" else ifx present then "installed (not loaded)" else "missing", voice);
+    print("gpt-oss-20b     %  %\n", ifx gp then "installed (not loaded)" else "missing", text);
+  }
+  return ifx verify && !verified then EXIT_FAIL else EXIT_OK;
+}
+// A move has no copy of the weights. The old name becomes a compatibility link
+// so existing clients keep using the same bytes. Two different copies refuse.
+models_move :: (old: string, target: string) -> bool {
+  if fs_kind(old) == FS_NONE { return true; }
+  a: [4096] u8; b: [4096] u8;
+  if fs_kind(target) != FS_NONE { return fs_realpath(old, a[..]) == fs_realpath(target, b[..]); }
+  if !fs_mkdir(fs_dir(target)) { return false; }
+  output: [4096] u8; err: [4096] u8;
+  move := [3] string.["mv", old, target]; got := proc_run(move[..], 120000, output[..], err[..]);
+  if got.started != 0 || got.status != 0 || got.timed_out { return false; }
+  link := [4] string.["ln", "-s", target, old]; made := proc_run(link[..], 5000, output[..], err[..]);
+  return made.started == 0 && made.status == 0 && !made.timed_out;
+}
+models_migrate :: (r: [] Rep) -> int {
+  h: [1024] u8; user := home(h[..]); if user == "" { return fail(r, EXIT_FAIL, "HOME is unavailable"); }
+  olds := [3] string.[".cache/openagents/models/parakeet", ".cache/openagents/models/whisper", ".cache/psionic/gptoss-original/20b"];
+  targets := [3] string.["models/parakeet", "models/whisper", "models/gpt-oss/20b"];
+  for i: 0..<3 {
+    a: [4096] u8; b: [4096] u8;
+    if !models_move(fs_join(user, olds[i], a[..]), oa_path(user, targets[i], b[..])) { return fail(r, EXIT_CONFLICT, "model migration refused a conflicting copy or failed a move; existing data was retained"); }
+  }
+  rep_bool(r, "migrated", true); return rep_done(r, EXIT_OK);
+}
+models_main :: (a: [] Args, r: [] Rep, verb: string) -> int {
+  if verb == "" || verb == "ls" { return models_inventory(false, r[0].json); }
+  if verb == "migrate" { return models_migrate(r); }
+  if verb == "verify" && positional(a, 2) == "parakeet" { return models_inventory(true, r[0].json); }
+  return fail(r, EXIT_USAGE, "models ls | verify parakeet | migrate [--json]");
+}

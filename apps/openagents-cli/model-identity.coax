@@ -1,0 +1,20 @@
+// The setup inventory may say "verified" only for the pinned complete files.
+#authority;
+OA_PK_BYTES :: 2508311120;
+OA_PK_HASH :: "3a2026366188c8c68598edbbff92f8d11590a08e0ae2e6775544e7b07d6a5e11";
+OA_PK_TOKEN_HASH :: "bd321b096832a3f270bd3b2a88823957920f1a5c5ada71114a26ea729d0cbe91";
+#test "voice model identity binds the exact size and both complete hashes" {
+  #assert oa_pk_verified(OA_PK_BYTES, OA_PK_HASH, OA_PK_TOKEN_HASH);
+  for size: [4] int.[-1, 0, OA_PK_BYTES - 1, OA_PK_BYTES + 1] { #assert !oa_pk_verified(size, OA_PK_HASH, OA_PK_TOKEN_HASH); }
+  #assert !oa_pk_verified(OA_PK_BYTES, "", OA_PK_TOKEN_HASH) && !oa_pk_verified(OA_PK_BYTES, OA_PK_HASH, "");
+  for i: 0..<64 {
+    a: [64] u8; b: [64] u8;
+    for j: 0..<64 { a[j] = OA_PK_HASH[j]; b[j] = OA_PK_TOKEN_HASH[j]; }
+    a[i] = 'x'; b[i] = 'x';
+    #assert !oa_pk_verified(OA_PK_BYTES, cast(string) a[..], OA_PK_TOKEN_HASH);
+    #assert !oa_pk_verified(OA_PK_BYTES, OA_PK_HASH, cast(string) b[..]);
+  }
+}
+oa_pk_verified :: (bytes: int, weights: string, tokenizer: string) -> bool {
+  return bytes == OA_PK_BYTES && weights == OA_PK_HASH && tokenizer == OA_PK_TOKEN_HASH;
+}

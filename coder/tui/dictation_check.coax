@@ -353,7 +353,7 @@ tool_main :: () -> int #export_c {
     // The pinned Parakeet model on the GPU recognizes the recording itself.
     fixture_env(d, wav, "", "");
     hb: [1024] u8; mb: [1300] u8; d[0].real_home = true;
-    env_add(d, "OPENAGENTS_PARAKEET_MODEL=", fs_join(proc_getenv("HOME", hb[..]), ".cache/openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99", mb[..]));
+    env_add(d, "OPENAGENTS_PARAKEET_MODEL=", fs_join(proc_getenv("HOME", hb[..]), ".openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99", mb[..]));
     ok := start(d, "--dictation|--dictation-args|--capture fixture --device gpu") && listen(d, "Heard:", "\0");
     settle(d, 3000); keys(d, "\0");
     ok = ok && wait_screen(d, "Dictated into the draft", 120000) && has(screen(d), "› Heard: Wait, stop.\n");

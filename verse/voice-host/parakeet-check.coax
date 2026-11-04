@@ -118,7 +118,7 @@ tool_main :: () -> int #export_c {
   mb: [1] Text;
   if model.count == 0 {
     tx_add(mb[..], proc_getenv("HOME", homeb[..]));
-    tx_add(mb[..], "/.cache/openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99");
+    tx_add(mb[..], "/.openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99");
     model = tx_str(mb[..]);
   }
   hostbin := "verse/voice-host/build/voice-host";

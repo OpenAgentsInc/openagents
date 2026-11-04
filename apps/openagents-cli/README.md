@@ -129,6 +129,26 @@ openagents vault rm ID --yes
 - Not built yet: sharing with other keys, and an openagents.com API so it
   works without gcloud.
 
+## Shared local models and agents
+
+```sh
+openagents coder agents --json          # running local agent processes
+openagents models ls --json             # shared checkpoint inventory, no loading
+openagents models verify parakeet --json # pinned complete weight/tokenizer SHA-256
+openagents models migrate --json        # move legacy caches; leave compatibility links
+```
+
+App files live under `~/.openagents/`, with reusable checkpoints under
+`~/.openagents/models/` (`OPENAGENTS_MODEL_CACHE` overrides this model root).
+Parakeet, Whisper and original gpt-oss use it across the CLI, Coder, the voice
+host and Aethyrforge. Migration refuses different existing copies.
+`openagents.coder.agents.v1` lists executable name, PID, parent and running state;
+it reads no command arguments or transcripts. `attached:false` distinguishes a
+running process from an attached session. The standalone `coder agents --json`
+uses the same parser and report. Model inventory is `openagents.models.v1`;
+present, verified and loaded are separate fields. Only the explicit verify
+command hashes Parakeet. These commands start no agent, model or microphone.
+
 ## Pylon
 
 ```sh
@@ -338,7 +358,7 @@ openagents transcribe fetch medium --backend psionic   # explicit legacy Whisper
   and an error never chooses another backend. Install the exact model data
   using [the pinned setup commands](../../psionic/docs/parakeet.md).
 - The default directory is
-  `~/.cache/openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99`;
+  `~/.openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99`;
   `OPENAGENTS_PARAKEET_MODEL` or `--model-dir DIR` selects another copy of
   the same authenticated files. Transcription never downloads a model.
 - Text, JSON, SRT and WebVTT use complete nonoverlapping model windows of
@@ -429,7 +449,7 @@ openagents dictate --device cpu --capture alsa --input hw:1   # Linux: name the 
 `--stream` selects the separate original-weight English RNNT profile
 `psionic-nemotron-streaming-en-v1` on Linux CUDA. Install the authenticated
 original files from the [manifest](../../psionic/fixtures/parakeet-streaming/manifest.json)
-under `~/.cache/openagents/models/parakeet/nemotron-streaming-en-0.6b-ebe59e5a`,
+under `~/.openagents/models/parakeet/nemotron-streaming-en-0.6b-ebe59e5a`,
 or name that model with `--model-dir DIR` / `OPENAGENTS_STREAMING_MODEL`.
 The offline `OPENAGENTS_PARAKEET_MODEL` setting does not select this model.
 

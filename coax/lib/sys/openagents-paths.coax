@@ -1,0 +1,32 @@
+// Shared on-disk locations for OpenAgents applications. Explicit environment
+// overrides select a path; defaults always live in ~/.openagents.
+
+OA_PARAKEET_FOLDER :: "parakeet/parakeet-tdt-0.6b-v3-541d1f99";
+OA_GPTOSS_FOLDER :: "gpt-oss/20b/6cee5e81ee83917806bbde320786a8fb61efebee/original";
+
+#test "OpenAgents apps and model data have one shared home" {
+  b: [512] u8;
+  #assert oa_path("/Users/me", "aethyrforge", b[..]) == "/Users/me/.openagents/aethyrforge";
+  #assert oa_models_path("/Users/me", "", "parakeet", b[..]) == "/Users/me/.openagents/models/parakeet";
+  #assert oa_models_path("/Users/me", "/disk/models", "whisper", b[..]) == "/disk/models/whisper";
+  #assert oa_path("/Users/me/", "bin/openagents", b[..]) == "/Users/me/.openagents/bin/openagents";
+  #assert oa_path("", "models", b[..]) == "";
+  small: [4] u8; #assert oa_path("/Users/me", "models", small[..]) == "" && small[0] == 0;
+}
+
+oa_join :: (base: string, leaf: string, out: [] u8) -> string {
+  end := base.count;
+  while end > 1 && base[end - 1] == '/' { end -= 1; }
+  if end == 0 || end + leaf.count + 1 > out.count { return ""; }
+  for i: 0..<end { out[i] = base[i]; }
+  out[end] = '/';
+  for i: 0..<leaf.count { out[end + 1 + i] = leaf[i]; }
+  return cast(string) out[0..<end + 1 + leaf.count];
+}
+oa_path :: (home: string, leaf: string, out: [] u8) -> string {
+  root: [4096] u8; return oa_join(oa_join(home, ".openagents", root[..]), leaf, out);
+}
+oa_models_path :: (home: string, override: string, leaf: string, out: [] u8) -> string {
+  root: [4096] u8;
+  return oa_join(ifx override.count > 0 then override else oa_path(home, "models", root[..]), leaf, out);
+}

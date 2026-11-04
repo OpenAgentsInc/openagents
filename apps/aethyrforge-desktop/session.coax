@@ -1,6 +1,7 @@
 // The desktop's local entry point. The Swift host supplies OS-assigned ports;
 // Everglade, its editor, world rules and saves stay in the existing Coax stack.
 #import "Basic";
+#load "setup.coax";
 
 #test "desktop opens the local 5e Everglade in EDIT at the South Gate" {
   b: [256] u8;

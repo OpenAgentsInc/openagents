@@ -3,6 +3,7 @@
 // links Psionic's resident Parakeet engine, whose generated C shares
 // exported names with the CLI's signing code. See dictate.coax.
 #import "Basic";
+#load "../../coax/lib/sys/openagents-paths.coax";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc.coax";

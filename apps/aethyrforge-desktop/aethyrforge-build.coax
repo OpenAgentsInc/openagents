@@ -44,8 +44,7 @@ af_finish :: (h: int, deadline: int) -> bool {
   if !ok { tool_errln(proc_stderr(h, line[..])); tool_errln("Local-stack build failed or reached its fourteen-minute limit."); }
   released := proc_release(h); return ok;
 }
-// Conservatively include the compiler, engine, hosts and page's complete source
-// trees. Ignored build outputs never make the next build stale.
+// Ignored build outputs never make the next build stale.
 af_newest :: (dir: string) -> int {
   l: [1] FsList; n := fs_list(dir, l[..]);
   if n < 0 || l[0].full { return 9223372036854775807; }
@@ -58,6 +57,38 @@ af_newest :: (dir: string) -> int {
     if stamp > latest { latest = stamp; }
   }
   return latest;
+}
+// Ask the existing source-closure tool, without evaluating every engine check.
+// New, unrelated CLI libraries must not rerun a passing Everglade build.
+af_stack_stamp :: (root: string, deadline: int) -> int {
+  path: [4096] u8; script := fs_join(root, "coax/web/tool.sh", path[..]);
+  argv := [11] string.[script, "wasm-size", "sources", "coax/web/room/room.coax", "apps/openagents-web/everglade5e.coax",
+    "apps/openagents-web/everglade-step.coax", "verse/grid.coax", "verse/everglade/river.coax",
+    "verse/everglade/guard-guide-policy.coax", "apps/openagents-web/everglade5e-rules.coax", "aethyr/render/carriers/everglade.coax"];
+  h := proc_new(); if h < 0 { return -1; }
+  ok := proc_cwd(h, root); for a: argv { ok = ok && proc_arg(h, a); }
+  if !ok || proc_start(h) != 0 { released := proc_release(h); return -1; }
+  latest := 0; line: [8192] u8;
+  while proc_now_ms() < deadline {
+    n := proc_line(h, 1000, line[..]);
+    if n == PROC_TIMEOUT { continue; }
+    if n == PROC_EOF { break; }
+    if n < 0 { released := proc_release(h); return -1; }
+    b: [4096] u8; file := fs_join(root, cast(string) line[0..<n], b[..]); stamp := fs_mtime_ns(file);
+    if stamp < 0 { released := proc_release(h); return -1; }
+    if stamp > latest { latest = stamp; }
+  }
+  status := proc_wait(h, proc_left(deadline, proc_now_ms())); released := proc_release(h);
+  if status != 0 { return -1; }
+  // Native faces, scripts, compiler and pack are outside Coax's load graph.
+  for dir: [3] string.["apps/openagents-web", "coax/web/room", "coax/platform"] {
+    b: [4096] u8; stamp := af_newest(fs_join(root, dir, b[..])); if stamp > latest { latest = stamp; }
+  }
+  for name: [2] string.["verse/voice-host/ws.c", "verse/voice-host/ws.h"] {
+    b: [4096] u8; stamp := fs_mtime_ns(fs_join(root, name, b[..])); if stamp > latest { latest = stamp; }
+  }
+  b: [4096] u8; compiler := fs_mtime_ns(fs_join(root, "coax/bin/coax", b[..]));
+  return ifx compiler > latest then compiler else latest;
 }
 tool_main :: () -> int #export_c {
   a: [1] Args;
@@ -72,10 +103,8 @@ tool_main :: () -> int #export_c {
   deadline := proc_now_ms() + 840000;
   out: [16777216] u8; env: [4096] u8;
   coax := proc_getenv("COAX", env[..]); if coax == "" { coax = af_path(p[..], root, "coax/bin/coax"); }
-  print("Checking local stack sources…\n"); newest := 0;
-  for d: [4] string.["coax", "aethyr", "verse", "apps/openagents-web"] {
-    b: [4096] u8; stamp := af_newest(fs_join(root, d, b[..])); if stamp > newest { newest = stamp; }
-  }
+  print("Checking local stack sources…\n"); newest := af_stack_stamp(root, deadline);
+  if newest < 0 { tool_errln("Cannot read the local stack's source closure."); return 1; }
   room := af_path(p[..], root, "coax/web/room/bin/room");
   room_job := -1; page_job := -1;
   if fs_mtime_ns(room) < newest {
@@ -106,8 +135,11 @@ tool_main :: () -> int #export_c {
   if n < 0 || !fs_write(code, cast(string) out[0..<n]) { return 1; }
   cc := [8] string.["/usr/bin/clang", "-std=c11", "-O2", "-c", code, "-o", object, "-Wno-unused-function"];
   if af_run(cc[..], out[..], deadline) < 0 { return 1; }
-  sw := [15] string.["xcrun", "swiftc", "-O", "-target", "arm64-apple-macos26.0", "-import-objc-header", header,
-    af_path(p[..], here, "Sources/main.swift"), object, "-framework", "AppKit", "-framework", "WebKit", "-o", af_path(p[..], mac, "Aethyrforge")];
+  bridge := af_path(p[..], work, "setup-face.o");
+  bc := [10] string.["/usr/bin/clang", "-std=c11", "-O2", "-c", af_path(p[..], here, "setup-face.c"), "-I", work, "-o", bridge, "-Wno-unused-function"];
+  if af_run(bc[..], out[..], deadline) < 0 { return 1; }
+  sw := [17] string.["xcrun", "swiftc", "-O", "-target", "arm64-apple-macos26.0", "-import-objc-header", af_path(p[..], here, "face.h"),
+    af_path(p[..], here, "Sources/main.swift"), af_path(p[..], here, "Sources/Setup.swift"), object, bridge, "-framework", "AppKit", "-framework", "WebKit", "-o", af_path(p[..], mac, "Aethyrforge")];
   if af_run(sw[..], out[..], deadline) < 0 { return 1; }
   // Keep a compact self-contained page tree: the exact engine, shaders and pack
   // the website uses, plus all generic browser host modules.
@@ -132,14 +164,41 @@ tool_main :: () -> int #export_c {
   }
   copy_room := [3] string.["ditto", room, af_path(p[..], res, "room")];
   if af_run(copy_room[..], out[..], deadline) < 0 { return 1; }
+  cli_dir := af_path(p[..], root, "apps/openagents-cli"); cli := af_path(p[..], cli_dir, "build/openagents");
+  cli_stamp := af_newest(cli_dir);
+  for dir: [4] string.["coax/lib", "coax/platform", "apps/shared", "psionic"] {
+    b: [4096] u8; stamp := af_newest(fs_join(root, dir, b[..])); if stamp > cli_stamp { cli_stamp = stamp; }
+  }
+  compiler_stamp := fs_mtime_ns(coax); if compiler_stamp > cli_stamp { cli_stamp = compiler_stamp; }
+  pk_image := af_path(p[..], root, "psionic/build/parakeet/psionic-parakeet");
+  if fs_mtime_ns(cli) < cli_stamp || fs_kind(pk_image) != FS_FILE {
+    print("Building the shared OpenAgents CLI…\n");
+    cmd := [2] string.["bash", af_path(p[..], cli_dir, "build.sh")];
+    if af_run(cmd[..], out[..], deadline) < 0 { return 1; }
+  }
+  for name: [2] string.["openagents", "openagents-dictate"] {
+    cp := [3] string.["ditto", af_path(p[..], af_path(p[..], cli_dir, "build"), name), af_path(p[..], res, name)];
+    if af_run(cp[..], out[..], deadline) < 0 { return 1; }
+  }
+  pk := [3] string.["ditto", pk_image, af_path(p[..], res, "psionic-parakeet")];
+  if af_run(pk[..], out[..], deadline) < 0 { return 1; }
   plist := [3] string.["ditto", af_path(p[..], here, "Info.plist"), af_path(p[..], app, "Contents/Info.plist")];
   if af_run(plist[..], out[..], deadline) < 0 { return 1; }
   sign := [5] string.["codesign", "--force", "--sign", "-", app]; if af_run(sign[..], out[..], deadline) < 0 { return 1; }
   print("Built %\n", app);
   if args_has(a[..], "--open") {
     home_buf: [4096] u8; home := proc_getenv("HOME", home_buf[..]); if home == "" { return 1; }
-    installed := af_path(p[..], home, "Library/Caches/Aethyrforge/Aethyrforge.app");
+    shared := af_path(p[..], home, ".openagents");
+    installed := af_path(p[..], shared, "aethyrforge/Aethyrforge.app");
     cp := [3] string.["ditto", app, installed]; if af_run(cp[..], out[..], deadline) < 0 { return 1; }
+    bins := af_path(p[..], shared, "bin"); version := af_path(p[..], shared, "versions/aethyrforge-cli-2026-11-04");
+    if !fs_mkdir(bins) || !fs_mkdir(version) { return 1; }
+    for name: [3] string.["openagents", "openagents-dictate", "psionic-parakeet"] {
+      target := af_path(p[..], version, name);
+      copy := [3] string.["ditto", af_path(p[..], res, name), target]; if af_run(copy[..], out[..], deadline) < 0 { return 1; }
+      link := [4] string.["ln", "-sfn", target, af_path(p[..], bins, name)];
+      if af_run(link[..], out[..], deadline) < 0 { return 1; }
+    }
     launch := [2] string.["open", installed]; if af_run(launch[..], out[..], deadline) < 0 { return 1; }
     print("Opened %\n", installed);
   }

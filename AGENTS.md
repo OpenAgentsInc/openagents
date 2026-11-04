@@ -55,6 +55,12 @@ them, with `git show 0b401561a0^:<path>`. Never restore them wholesale.
   run `coax mutate` on it with zero survivors. Don't mark mutants equivalent
   to make a run pass.
 - **No GitHub Actions.** Checks run locally or on our own machines.
+- **Shared OpenAgents files** (owner, 2026-11-04). App-owned persistent files
+  live under `~/.openagents/`, including future desktop apps. Aethyrforge uses
+  `~/.openagents/aethyrforge/`. Reusable audio/text model checkpoints live once
+  under `~/.openagents/models/`; shared executables live in `~/.openagents/bin/`.
+  Use the shared CLI inventory and path helpers rather than an app-private model
+  download or `Library/Application Support`. Explicit path overrides remain valid.
 - **No visible browsers.** Page checks and screenshots run in headless
   Chrome, which renders WebGPU: `coax/web/tool.sh shot URL OUT.png [WxH]
   [WAIT_MS] [--eval JS]`, or the same flags (`--headless=new --mute-audio

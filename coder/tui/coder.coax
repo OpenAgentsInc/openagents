@@ -62,6 +62,31 @@
 #load "credential.coax";
 #load "dictation.coax";
 #load "dictate.coax";
+#load "../../coax/lib/agent/local-agents.coax";
+
+// Reuse Coder's existing process transport; inventory parsing/reporting is shared
+// with openagents coder agents and does not inspect command arguments.
+cd_local_agents :: (json: bool) -> int {
+  r: [1] LaInventory; h := cxproc_new();
+  if h < 0 { r[0].complete = false; return la_print(r[..], json); }
+  ok := true;
+  for arg: [3] string.["/bin/ps", "-axo", "pid=,ppid=,comm="] { ok = ok && cl_push(h, CL_FIELD_ARG, arg); }
+  if !ok || cxproc_spawn(h) != 0 { released := cxproc_release(h); r[0].complete = false; return la_print(r[..], json); }
+  deadline := cxproc_now_ms() + 5000; eof := false; total := 0;
+  while cxproc_now_ms() < deadline {
+    n := cxproc_read_line(h, 100);
+    if n == CL_TIMEOUT { continue; }
+    if n == CL_EOF { eof = true; break; }
+    b: [4096] u8;
+    if n < 0 || n > b.count || total + n > 1048576 { r[0].complete = false; break; }
+    for i: 0..<n { b[i] = cast,trunc(u8) cxproc_line_byte(h, i); }
+    if n > 0 && !la_process_line(r[..], cast(string) b[0..<n]) { r[0].complete = false; }
+    total += n;
+  }
+  if !eof { killed := cxproc_kill(h, CL_SIGKILL); r[0].complete = false; }
+  if cxproc_wait(h, 1000) != 0 { r[0].complete = false; }
+  released := cxproc_release(h); return la_print(r[..], json);
+}
 
 cxterm_keys :: (on: int) -> int #foreign;
 cxproc_sleep_ms :: (ms: int) -> int #foreign;
@@ -2421,6 +2446,7 @@ tool_main :: () -> int #export_c {
     if rv >= 0 { return rv; }
   }
   if verb == "ls" { return cd_cmd_ls(json); }
+  if verb == "agents" { return cd_local_agents(json); }
   if verb == "import" { return cd_cmd_import(args, json); }
   if verb == "session-read" { return cd_cmd_session_read(args); }
   if verb == "status" { return cd_cmd_status(cd_positional(args, 1), json); }

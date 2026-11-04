@@ -9,6 +9,7 @@
 //   openagents coder attach ID ["MESSAGE"] | replay ID | bench [SUITE]
 //   openagents coder trigger "TEXT" | router | watch THREAD | policy list|add|rm
 // Sessions are in ~/.openagents/coder/sessions, one JSON-lines file each.
+#load "../../coax/lib/agent/local-agents-host.coax";
 
 cxproc_exec :: (h: int) -> int #foreign;
 
@@ -31,6 +32,7 @@ coder_usage :: () {
   print("%\n", "  coder mcp                          Coder's verbs as MCP tools on stdio, for Claude Code or another agent");
   print("%\n", "  coder acp [--engine E]             Coder as an agent for editors, such as Zed (Agent Client Protocol on stdio)");
   print("%\n", "  coder ls                           sessions, newest first");
+  print("%\n", "  coder agents [--json]              running local agent processes; read-only discovery");
   print("%\n", "  coder status ID                    one session's state (ID may be a prefix)");
   print("%\n", "  coder log ID                       one session's log");
   print("%\n", "");
@@ -54,6 +56,7 @@ coder_root :: (out: [] u8) -> string {
 }
 
 coder_main :: (a: [] Args, r: [] Rep) -> int {
+  if positional(a, 1) == "agents" { return la_command(r[0].json); }
   src: [1024] u8;
   root := coder_root(src[..]);
   if root.count == 0 { return fail(r, EXIT_NOT_FOUND, "no OpenAgents checkout with coder/tui/coder.sh: set OPENAGENTS_SOURCE"); }

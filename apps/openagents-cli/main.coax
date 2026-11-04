@@ -42,6 +42,7 @@
 #load "mcp.coax";
 #load "skill.coax";
 #load "vault.coax";
+#load "models.coax";
 
 CLI_VERSION :: "1.0.0-dev";
 
@@ -75,6 +76,7 @@ usage :: () {
   dictate_usage();
   labs_usage();
   coder_usage();
+  models_usage();
   mcp_usage();
   print("%\n", "Other:");
   print("%\n", "  version, help");
@@ -130,6 +132,7 @@ cli_dispatch :: (a: [] Args, r: [] Rep, profile: string, domain: string, verb: s
   if domain == "transcribe" { return transcribe_main(a, r, verb); }
   if domain == "dictate" { return dictate_launch(a, r); }
   if domain == "coder" { return coder_main(a, r); }
+  if domain == "models" { return models_main(a, r, verb); }
   if domain == "labs" { return labs_main(a, r, profile, verb); }
   if domain == "mcp" { return mcp_main(a, r, profile); }
   if domain == "skill" { return skill_main(a, r, verb); }

@@ -1,6 +1,7 @@
 // Local Parakeet through Psionic's resident engine executable. The engine
 // performs checkpoint/vocabulary validation and all inference in Coax.
 #load "parakeet-rules.coax";
+#load "../../coax/lib/sys/openagents-paths.coax";
 
 TR_PK_SOURCES :: [64]string.[
   "coax/bin/coax", "psionic/lib/parakeet.coax", "psionic/lib/tdt.coax",
@@ -29,7 +30,8 @@ TR_PK_SOURCES :: [64]string.[
 
 tr_pk_engine :: (out:[]u8)->string {
   override:=proc_getenv("OPENAGENTS_PARAKEET_CLI",out);if override!="" {return override;}
-  sr:[1024]u8;root:=source_root(sr[..]);if root=="" {return "";}
+  sr:[1024]u8;root:=source_root(sr[..]);
+  if root=="" {h:[1024]u8;installed:=oa_path(home(h[..]),"bin/psionic-parakeet",out);return ifx fs_kind(installed)==FS_FILE then installed else "";}
   d:[1100]u8;dir:=fs_join(root,"psionic/build/parakeet",d[..]);bin:=fs_join(dir,"psionic-parakeet",out);
   built:=fs_mtime_ns(bin);stale:=built<0;
   for src:TR_PK_SOURCES {p:[1200]u8;stamp:=fs_mtime_ns(fs_join(root,src,p[..]));if stamp<0 || stamp>built {stale=true;}}
@@ -44,7 +46,7 @@ tr_pk_engine :: (out:[]u8)->string {
 tr_pk_model :: (out:[]u8)->string {
   env:[1024]u8;s:=proc_getenv("OPENAGENTS_PARAKEET_MODEL",env[..]);
   if s!="" {if s.count>out.count {return "";}for i:0..<s.count {out[i]=s[i];}return cast(string)out[0..<s.count];}
-  h:[1024]u8;return fs_join(home(h[..]),".cache/openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99",out);
+  h:[1024]u8;c:[1024]u8;return oa_models_path(home(h[..]),proc_getenv("OPENAGENTS_MODEL_CACHE",c[..]),OA_PARAKEET_FOLDER,out);
 }
 tr_pk_models :: (r:[]Rep)->int {
   path:[1200]u8;model:=tr_pk_model(path[..]);a:[1300]u8;b:[1300]u8;

@@ -73,7 +73,7 @@ void speech_init(void) {
   }
   if (!g_speech.whisper_model[0]) {
     const char *home = getenv("HOME");
-    snprintf(g_speech.whisper_model, sizeof g_speech.whisper_model, "%s/.cache/openagents/models/whisper/ggml-base.en.bin",
+    snprintf(g_speech.whisper_model, sizeof g_speech.whisper_model, "%s/.openagents/models/whisper/ggml-base.en.bin",
              home ? home : "/tmp");
   }
   if (!g_speech.whisper_words[0])
@@ -83,7 +83,7 @@ void speech_init(void) {
     if (e && *e) snprintf(g_speech.parakeet_model, sizeof g_speech.parakeet_model, "%s", e);
     else
       snprintf(g_speech.parakeet_model, sizeof g_speech.parakeet_model,
-               "%s/.cache/openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99", home ? home : "/tmp");
+               "%s/.openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99", home ? home : "/tmp");
   }
 }
 
