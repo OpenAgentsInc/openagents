@@ -886,6 +886,7 @@ net_hello :: (s: [] Everglade, n: [] EgNet) {
   n[0].hello_due = false;
   look := ifx n[0].look_n > 0 then cast(string) n[0].look[0..<n[0].look_n] else "ranger.0.0.0";
   net_send(n, wire_put_hello(n[0].out[..], 0, WireHello.{look = look, kind = ifx wl_on(s) then "warlock" else "druid", flags = (ifx s[0].touch then 1 else 0) | (ifx n[0].account then 2 else 0) | (ifx ege_demo(s) then EGE_DEMO_FLAG else 0), name = ""}));
+  md_send_blocks(n);   // who you block: the room sends you nothing of them (#12789)
 }
 // Your intents: a cast from bar slot b at the aim (target an entity, -1 none), the end of what slot b
 // holds up, the town rebuilt. False when there is no room to send them to.

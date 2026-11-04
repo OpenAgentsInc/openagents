@@ -23,6 +23,8 @@
 //   E SEQ KIND ID                  interact: KIND 1 talk to townsperson ID, 2 a door, 3 a boat, 4 a quest
 //                                  board, 5 end what bar slot ID holds up (its concentration)
 //   R SEQ                          ask for the rebuild
+//   K PID PID ...                  the players you block, WIRE_BLOCKS at most, the whole list each time
+//                                  ("K -" none): the room sends you nothing of them (#12789)
 //   t MS                           a clock ping
 // Server to page (the relay's own first: y SS N T, j SS, l SS, t MS T):
 //   W TICK HZ SEED DAY WEATHER     the world header, after y, and again to everyone when the weather turns
@@ -163,6 +165,10 @@ wire_put_use :: (out: [] u8, at: int, u: WireUse) -> int {
   return n;
 }
 wire_put_rebuild :: (out: [] u8, at: int, seq: int) -> int { return wire_int(out, wire_put(out, at, "R"), seq); }
+// K PID PID ...: the players you block, the whole list each time ("K -": none). The room never sends
+// you them (coax/web/room/room-interest.coax, #12789). Start with wire_put_blocks, then a wire_text per id.
+WIRE_BLOCKS :: 32;
+wire_put_blocks :: (out: [] u8, at: int) -> int { return wire_put(out, at, "K"); }
 wire_put_world :: (out: [] u8, at: int, w: WireWorld) -> int {
   n := wire_put(out, at, "W");
   n = wire_int(out, n, w.tick); n = wire_int(out, n, w.hz); n = wire_int(out, n, w.seed); n = wire_int(out, n, w.day); n = wire_int(out, n, w.weather);

@@ -120,6 +120,8 @@ EgRoom :: struct {
   cp: [EG_SEATS * EG_ENT] u8; cp_n: [EG_SEATS] int; cp_h: [EG_SEATS] int;
   cn: [EG_SEATS * EG_ENT] u8; cn_n: [EG_SEATS] int; cn_h: [EG_SEATS] int;
   cf: [E5R_FOLK * EG_ENT] u8; cf_n: [E5R_FOLK] int; cf_h: [E5R_FOLK] int;
+  // who may receive what (room-interest.coax, #12789), and each seat's blocks by player id (K)
+  im: [1] Interest; im_blk: [EG_SEATS] ImBlockList;
 }
 EgStrike :: struct { by: int; slot: int; fx: f32; fy: f32; fz: f32; ax: f32; ay: f32; az: f32; seed: int; }
 EgCrime :: struct { by: int; x: f32; z: f32; }
@@ -208,6 +210,8 @@ eg_join :: (v: [] RmServer, r: int, conn: int, seat: int) {
   n := wire_put_world(b[..], 0, w);
   rl_queue(v, r, conn, -1, cast(string) b[0..<n], "");
   for s: 0..<EG_SEATS { v[0].eg[k].seat[s].heard_p[seat] = 0; v[0].eg[k].seat[s].heard_n[seat] = 0; }
+  v[0].eg[k].im_blk[seat] = ImBlockList.{};   // its page sends its blocks after its hello
+  im_seat_reset(v[0].eg[k].im[..], seat); im_room_blocks(v, k);
 }
 eg_left :: (v: [] RmServer, r: int, seat: int) {
   k := eg_room_at(v, r);
@@ -216,6 +220,7 @@ eg_left :: (v: [] RmServer, r: int, seat: int) {
   v[0].eg[k].seat[seat].live = false;
   e5rr_leave(v[0].eg[k].rules[..], seat);
   rc_left(v, k, seat);   // its casts on their bars stop where everyone hears (room-casts.coax)
+  v[0].eg[k].im_blk[seat] = ImBlockList.{}; im_seat_reset(v[0].eg[k].im[..], seat); im_room_blocks(v, k);
   any := false;
   for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live { any = true; } }
   if !any { v[0].eg[k].live = false; v[0].eg[k].relay = -1; }
@@ -252,6 +257,7 @@ eg_heard :: (v: [] RmServer, r: int, seat: int, text: string) {
   if c == 'I' { eg_heard_input(v, k, seat, text); return; }
   if c == 'C' { eg_heard_cast(v, k, seat, text); return; }
   if c == 'H' { eg_heard_hello(v, k, seat, text); return; }
+  if c == 'K' { im_heard_blocks(v, k, seat, text); return; }   // who it blocks (room-interest.coax, #12789)
   if c == 'E' {
     rd: [1] WireRd; rd[0] = wire_rd(text, 1);
     u := wire_read_use(text, rd[..]);

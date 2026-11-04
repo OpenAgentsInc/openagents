@@ -58,6 +58,15 @@ md_block_add :: (n: [] EgNet, pid: string) {
   m[0].blocked_n[m[0].blocks] = md_copy(m[0].blocked[..], m[0].blocks * NET_ID, NET_ID, pid);
   m[0].blocks += 1;
 }
+// K PID PID ...: your blocks to the room, which then sends you nothing of them (#12789). After each
+// hello, and on BLOCK.
+md_send_blocks :: (n: [] EgNet) {
+  m := n[0].mod[..];
+  k := wire_put_blocks(n[0].out[..], 0);
+  if m[0].blocks == 0 { k = wire_text(n[0].out[..], k, ""); }
+  for b: 0..<m[0].blocks { if b < WIRE_BLOCKS { k = wire_text(n[0].out[..], k, md_blocked_id(m, b)); } }
+  net_send(n, k);
+}
 // The seat ticket's answer: "blocked":"p-a,p-b" (none: no blocks).
 md_ticket :: (n: [] EgNet, answer: string) {
   list := net_json_field(answer, "blocked");
@@ -174,6 +183,7 @@ md_act :: (s: [] Everglade, b: int) {
   if b == MB_BLOCK {
     k = wire_put(t[..], 0, "/api/playtest/block\n{\"player\":\""); k = wire_put(t[..], k, who); k = wire_put(t[..], k, "\",\"on\":true}");
     md_block_add(n, who);   // gone from your view now; the API keeps it
+    md_send_blocks(n);      // and the room stops sending them (#12789)
     room_drop(s[0].room[..], 0, who);   // and their lines already on the chat panel
     m[0].asked = MD_ASK_BLOCK;
     md_say(s, "BLOCKED · ", name);

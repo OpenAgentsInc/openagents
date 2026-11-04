@@ -1,0 +1,67 @@
+// Who each seat of an Everglade room blocks (#12714, #12789): the page's K frame, kept by player id,
+// and the per-seat masks room-interest.coax withholds those players by.
+
+// K PID PID ...: seat s's blocks, by player id (the page's list: the ticket's "blocked" and its BLOCK
+// presses). Kept by id, so a blocked player who sits later is withheld from the tick they sit.
+ImBlockList :: struct { id: [WIRE_BLOCKS * TICKET_PID] u8; id_n: [WIRE_BLOCKS] int; n: int; }
+im_heard_blocks :: (v: [] RmServer, k: int, s: int, text: string) {
+  if k < 0 || k >= EG_ROOMS || s < 0 || s >= IM_SEATS { return; }
+  l := v[0].eg[k].im_blk[s..<s + 1];
+  l[0].n = 0;
+  r: [1] WireRd; r[0] = wire_rd(text, 1);
+  while r[0].ok && r[0].at < text.count && l[0].n < WIRE_BLOCKS {
+    w := wire_word(text, r[..]);
+    if !r[0].ok || w.count == 0 || w.count > TICKET_PID { continue; }
+    for i: 0..<w.count { l[0].id[l[0].n * TICKET_PID + i] = w[i]; }
+    l[0].id_n[l[0].n] = w.count; l[0].n += 1;
+  }
+  im_room_blocks(v, k);
+}
+// Each seat's block mask from the lists and who sits now: after a K, a join and a leave.
+im_room_blocks :: (v: [] RmServer, k: int) {
+  if k < 0 || k >= EG_ROOMS { return; }
+  for s: 0..<IM_SEATS {
+    mask := 0;
+    l := v[0].eg[k].im_blk[s];
+    if v[0].eg[k].seat[s].live && l.n > 0 {
+      for q: 0..<IM_SEATS {
+        if q == s { continue; }
+        tq := eg_ticket(v, k, q);
+        if !tq.ok { continue; }
+        pid := cast(string) tq.pid[0..<tq.pid_n];
+        for b: 0..<l.n { if cast(string) l.id[b * TICKET_PID..<b * TICKET_PID + l.id_n[b]] == pid { mask = mask | (1 << q); } }
+      }
+    }
+    im_blocks(v[0].eg[k].im[..], s, mask);
+  }
+}
+
+#test "blocks: a seat's K list withholds those players by id, a later joiner too; K - clears it; a leaver's blocks go with it" #steps 4000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  now := 1762190000000;
+  rm_clock(v[..], 0, now);
+  key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  rm_ticket_key(v[..], key, true);
+  t: [256] u8; r: [512] u8;
+  n := tk_sign(key, "p-00000000000000aa", false, "", "pair-blk", now + 60000, -1, t[..]);
+  #assert rm_join(v[..], 0, tk_test_ask_in(r[..], t[..], n, "pair-blk")) == 0;
+  n = tk_sign(key, "p-00000000000000bb", false, "", "pair-blk", now + 60000, -1, t[..]);
+  #assert rm_join(v[..], 1, tk_test_ask_in(r[..], t[..], n, "pair-blk")) == 1;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  im := v[0].eg[k].im[..];
+  rm_heard(v[..], 0, "K p-00000000000000bb p-00000000000000cc");
+  #assert im[0].blocks[0] == 2 && im[0].blocks[1] == 0;
+  // cc sits: withheld from seat 0 at once
+  n = tk_sign(key, "p-00000000000000cc", false, "", "pair-blk", now + 60000, -1, t[..]);
+  #assert rm_join(v[..], 2, tk_test_ask_in(r[..], t[..], n, "pair-blk")) == 2;
+  #assert im[0].blocks[0] == 6;
+  rm_left(v[..], 1);
+  #assert im[0].blocks[0] == 4;
+  rm_heard(v[..], 0, "K -");
+  #assert im[0].blocks[0] == 0;
+  rm_heard(v[..], 2, "K p-00000000000000aa");
+  #assert im[0].blocks[2] == 1;
+  rm_left(v[..], 2);
+  #assert im[0].blocks[2] == 0;
+}

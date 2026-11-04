@@ -1,0 +1,452 @@
+// Interest management for the Everglade rooms (#12789; docs/research/mmo.md section 7): which of a
+// room's entities each seat may receive this tick, and how much each matters. The send path
+// (room-everglade.coax eg_send, the v3 replication of #12783) asks im_pick once per seat per tick and
+// writes only what it returns, by priority, under its byte budget. Nothing here writes the wire.
+//
+// Each tick the room puts every entity it has (im_put: its wire ID, where it is, the seat it is or
+// rides on, its flags), then im_sweep drops the ones it didn't put. The entities sit in a uniform
+// grid of IM_CELL m cells, hashed into IM_BUCKETS lists, and an entity moves between lists only
+// when it changes cell. im_pick visits the cells within IM_EXIT of the seat, the room-wide list and
+// the seat's own list. It never scans every entity for every seat.
+//
+// The rules, in the order im_pick applies them:
+//   - Your own entities (of == you: your player, the effects on you) are always picked, priority IM_PRIO_OWN,
+//     so the byte budget never drops them.
+//   - Room-wide entities (IM_ROOM: the raid's state, Darian, the ward stones, lasting zones) are picked
+//     wherever they are, at IM_PRIO_ROOM plus their nearness.
+//   - Others come in within IM_ENTER m and go out past IM_EXIT m. The pick remembers who held what,
+//     per seat and entity pair, so an entity moving about one radius doesn't churn in and out.
+//   - A seat never receives a player it blocks, or anything riding on that player (#12714). The page
+//     sends the room its blocks (K PID PID ...), so a blocked player can't be read from the wire.
+//   - A hidden entity (IM_HIDDEN: its bearer has the SRD's Invisible condition, RS_INVISIBLE) goes to
+//     its own seat, and to another seat only while im_reveal has revealed it to that seat, for example
+//     after it strikes near them.
+//   - A party member out of range gets the health-only channel (IM_HEALTH). Everglade has no parties
+//     yet: im_party is the hook, and every seat starts in no party. A party member in another room is
+//     that room's (each map is its own room), so this module can't send it.
+//
+// im_counts gives the counts for the room's vitals (#12791): picked whole, picked health-only, withheld
+// as blocked and withheld as hidden, per seat, from the last pick.
+
+IM_SEATS :: 16;                 // EG_SEATS
+IM_ENTS :: 256;                 // entities a room holds at once: 16 players, 38 townsfolk, 32 zones, 96 creatures, effects
+IM_PICKS :: IM_ENTS;
+IM_KEYS :: 512;                 // the ID table's lists (a power of two)
+IM_CELL :: 32.0;                // m: a grid cell's side
+IM_BUCKETS :: 1024;             // the grid's lists (a power of two): cells hash into them
+IM_ENTER :: 110.0;              // m: an entity comes into a seat's view within this
+IM_EXIT :: 130.0;               // m: and leaves it only past this
+IM_ROOM :: 1;                   // flag: room-wide, picked at any distance
+IM_HIDDEN :: 2;                 // flag: hidden from others until revealed
+IM_FULL :: 1; IM_HEALTH :: 2;   // the channels: every field, or HP and MAX only
+IM_PRIO_OWN :: 4.0; IM_PRIO_ROOM :: 2.0; IM_PRIO_PARTY :: 0.25;
+IM_WIRE_COND_INVISIBLE :: 128;  // COND's RS_INVISIBLE bit (aethyr/rules/srd/engine.coax)
+
+ImEnt :: struct {
+  on: bool; id: int; x: f32; z: f32; of: int = -1; flags: int;
+  put: int;                     // the tick it was last put
+  cx: int; cz: int; cell: int = -1;       // its cell, and that cell's list
+  cnext: int = -1; cprev: int = -1;       // its neighbours in the cell's list
+  knext: int = -1;                        // the next in its ID list
+  onext: int = -1; oprev: int = -1;       // its neighbours in its seat's list (of >= 0)
+  room_at: int = -1;                      // its place in the room-wide list (IM_ROOM)
+}
+ImPick :: struct { id: int; prio: f32; chan: int; }
+Interest :: struct {
+  e: [IM_ENTS] ImEnt;
+  used: int;                              // slots 0 to used - 1 have been handed out; the free ones are on free
+  free: [IM_ENTS] int; free_n: int;
+  key: [IM_KEYS] int;                     // each ID list's first slot, plus 1 (0 empty)
+  cell: [IM_BUCKETS] int;                 // each cell list's first slot, plus 1
+  own: [IM_SEATS] int;                    // each seat's list's first slot, plus 1
+  room: [IM_ENTS] int; room_n: int;       // the room-wide slots
+  // per seat
+  blocks: [IM_SEATS] int;                 // the seats it blocks, one bit each
+  party: [IM_SEATS] int;                  // its party (0 none)
+  serial: [IM_SEATS] int;                 // its picks so far
+  had: [IM_SEATS * IM_ENTS] int;          // the serial of its last pick that held each slot (hysteresis)
+  reveal: [IM_SEATS * IM_ENTS] int;       // the tick each hidden slot is revealed to it until (0 none)
+  mark: [IM_ENTS] int; mark_n: int;       // the pick that last took each slot (no slot twice)
+  n_full: [IM_SEATS] int; n_health: [IM_SEATS] int; n_blocked: [IM_SEATS] int; n_hidden: [IM_SEATS] int;
+  over: int;                              // entities not held for want of a slot, since im_clear
+  visits: int;                            // entities im_pick has looked at, all seats, since im_clear (the cost)
+}
+
+im_clear :: (im: [] Interest) {
+  im[0].used = 0; im[0].free_n = 0; im[0].room_n = 0; im[0].mark_n = 0; im[0].visits = 0; im[0].over = 0;
+  for q: 0..<IM_KEYS { im[0].key[q] = 0; }
+  for q: 0..<IM_BUCKETS { im[0].cell[q] = 0; }
+  for s: 0..<IM_SEATS {
+    im[0].own[s] = 0; im[0].blocks[s] = 0; im[0].party[s] = 0; im[0].serial[s] = 0;
+    im[0].n_full[s] = 0; im[0].n_health[s] = 0; im[0].n_blocked[s] = 0; im[0].n_hidden[s] = 0;
+  }
+  for q: 0..<IM_SEATS * IM_ENTS { im[0].had[q] = 0; im[0].reveal[q] = 0; }
+  for q: 0..<IM_ENTS { im[0].e[q] = ImEnt.{}; im[0].mark[q] = 0; }
+}
+
+im_key :: (id: int) -> int { h := id * 2654435761; if h < 0 { h = -h; } return (h >> 7) & (IM_KEYS - 1); }
+im_cell_of :: (cx: int, cz: int) -> int { h := cx * 73856093 + cz * 19349663; if h < 0 { h = -h; } return h & (IM_BUCKETS - 1); }
+im_coord :: (v: f32) -> int { if !(v == v) { return 0; } return cast(int) floor(v / f32(IM_CELL)); }
+
+// The slot that holds wire ID id, or -1.
+im_find :: (im: [] Interest, id: int) -> int {
+  i := im[0].key[im_key(id)] - 1;
+  while i >= 0 { if im[0].e[i].id == id { return i; } i = im[0].e[i].knext; }
+  return -1;
+}
+
+im_cell_unlink :: (im: [] Interest, i: int) {
+  e := im[0].e[i];
+  if e.cell < 0 { return; }
+  if e.cprev >= 0 { im[0].e[e.cprev].cnext = e.cnext; } else { im[0].cell[e.cell] = e.cnext + 1; }
+  if e.cnext >= 0 { im[0].e[e.cnext].cprev = e.cprev; }
+  im[0].e[i].cell = -1; im[0].e[i].cnext = -1; im[0].e[i].cprev = -1;
+}
+im_cell_link :: (im: [] Interest, i: int, cx: int, cz: int) {
+  c := im_cell_of(cx, cz);
+  head := im[0].cell[c] - 1;
+  im[0].e[i].cell = c; im[0].e[i].cx = cx; im[0].e[i].cz = cz; im[0].e[i].cprev = -1; im[0].e[i].cnext = head;
+  if head >= 0 { im[0].e[head].cprev = i; }
+  im[0].cell[c] = i + 1;
+}
+im_own_unlink :: (im: [] Interest, i: int) {
+  e := im[0].e[i];
+  if e.of < 0 || e.of >= IM_SEATS { return; }
+  if e.oprev >= 0 { im[0].e[e.oprev].onext = e.onext; } else { im[0].own[e.of] = e.onext + 1; }
+  if e.onext >= 0 { im[0].e[e.onext].oprev = e.oprev; }
+  im[0].e[i].onext = -1; im[0].e[i].oprev = -1;
+}
+im_own_link :: (im: [] Interest, i: int, of: int) {
+  im[0].e[i].of = of;
+  if of < 0 || of >= IM_SEATS { im[0].e[i].of = -1; return; }
+  head := im[0].own[of] - 1;
+  im[0].e[i].oprev = -1; im[0].e[i].onext = head;
+  if head >= 0 { im[0].e[head].oprev = i; }
+  im[0].own[of] = i + 1;
+}
+im_room_add :: (im: [] Interest, i: int) {
+  if im[0].e[i].room_at >= 0 { return; }
+  im[0].e[i].room_at = im[0].room_n; im[0].room[im[0].room_n] = i; im[0].room_n += 1;
+}
+im_room_remove :: (im: [] Interest, i: int) {
+  at := im[0].e[i].room_at;
+  if at < 0 { return; }
+  last := im[0].room[im[0].room_n - 1];
+  im[0].room[at] = last; im[0].e[last].room_at = at;
+  im[0].room_n -= 1; im[0].e[i].room_at = -1;
+}
+
+// Entity id is at (x, z) this tick: of the seat it is or rides on (-1 none), flags IM_ROOM and IM_HIDDEN.
+// With IM_ENTS entities held already, a new one isn't (counted in over).
+im_put :: (im: [] Interest, tick: int, id: int, x: f32, z: f32, of: int, flags: int) {
+  i := im_find(im, id);
+  if i < 0 {
+    if im[0].free_n > 0 { im[0].free_n -= 1; i = im[0].free[im[0].free_n]; }
+    else if im[0].used < IM_ENTS { i = im[0].used; im[0].used += 1; }
+    else { im[0].over += 1; return; }
+    im[0].e[i] = ImEnt.{on = true, id = id};
+    k := im_key(id);
+    im[0].e[i].knext = im[0].key[k] - 1; im[0].key[k] = i + 1;
+    for s: 0..<IM_SEATS { im[0].had[s * IM_ENTS + i] = 0; im[0].reveal[s * IM_ENTS + i] = 0; }
+    im_own_link(im, i, of);
+  } else if im[0].e[i].of != of {
+    im_own_unlink(im, i); im_own_link(im, i, of);
+  }
+  im[0].e[i].x = x; im[0].e[i].z = z; im[0].e[i].put = tick;
+  cx := im_coord(x); cz := im_coord(z);
+  if im[0].e[i].cell < 0 || im[0].e[i].cx != cx || im[0].e[i].cz != cz { im_cell_unlink(im, i); im_cell_link(im, i, cx, cz); }
+  if (flags & IM_ROOM) != 0 { im_room_add(im, i); } else { im_room_remove(im, i); }
+  im[0].e[i].flags = flags;
+}
+
+// The room no longer holds entity id.
+im_drop :: (im: [] Interest, id: int) {
+  i := im_find(im, id);
+  if i < 0 { return; }
+  k := im_key(id);
+  p := -1; j := im[0].key[k] - 1;
+  while j >= 0 && j != i { p = j; j = im[0].e[j].knext; }
+  if p >= 0 { im[0].e[p].knext = im[0].e[i].knext; } else { im[0].key[k] = im[0].e[i].knext + 1; }
+  im_cell_unlink(im, i); im_own_unlink(im, i); im_room_remove(im, i);
+  im[0].e[i] = ImEnt.{};
+  im[0].free[im[0].free_n] = i; im[0].free_n += 1;
+}
+
+// Drops every entity not put this tick (once a tick, after the puts).
+im_sweep :: (im: [] Interest, tick: int) {
+  for i: 0..<im[0].used { if im[0].e[i].on && im[0].e[i].put != tick { im_drop(im, im[0].e[i].id); } }
+}
+
+im_block :: (im: [] Interest, s: int, q: int, on: bool) {
+  if s < 0 || s >= IM_SEATS || q < 0 || q >= IM_SEATS || s == q { return; }
+  im[0].blocks[s] = ifx on then im[0].blocks[s] | (1 << q) else im[0].blocks[s] - (im[0].blocks[s] & (1 << q));
+}
+im_blocks :: (im: [] Interest, s: int, mask: int) { if s >= 0 && s < IM_SEATS { im[0].blocks[s] = mask - (mask & (1 << s)); } }
+im_party :: (im: [] Interest, s: int, party: int) { if s >= 0 && s < IM_SEATS { im[0].party[s] = party; } }
+// Seat s sees hidden entity id until tick until.
+im_reveal :: (im: [] Interest, id: int, s: int, until: int) {
+  i := im_find(im, id);
+  if i >= 0 && s >= 0 && s < IM_SEATS { im[0].reveal[s * IM_ENTS + i] = until; }
+}
+// Seat s sat or left: what it held and blocked is forgotten.
+im_seat_reset :: (im: [] Interest, s: int) {
+  if s < 0 || s >= IM_SEATS { return; }
+  im[0].blocks[s] = 0; im[0].party[s] = 0;
+  for q: 0..<IM_SEATS { if q != s { im[0].blocks[q] = im[0].blocks[q] - (im[0].blocks[q] & (1 << s)); } }
+  for i: 0..<IM_ENTS { im[0].had[s * IM_ENTS + i] = 0; im[0].reveal[s * IM_ENTS + i] = 0; }
+}
+
+// Why seat s may not have slot i at tick: 0 it may, 1 it blocks the player it rides on, 2 it's hidden.
+im_withheld :: (im: [] Interest, s: int, i: int, tick: int) -> int {
+  e := im[0].e[i];
+  if e.of >= 0 && e.of != s && ((im[0].blocks[s] >> e.of) & 1) != 0 { return 1; }
+  if (e.flags & IM_HIDDEN) != 0 && e.of != s && im[0].reveal[s * IM_ENTS + i] < tick { return 2; }
+  return 0;
+}
+im_take :: (im: [] Interest, s: int, i: int, prio: f32, chan: int, out: [] ImPick, n: int) -> int {
+  im[0].mark[i] = im[0].mark_n;
+  if n >= out.count { return n; }
+  out[n] = ImPick.{id = im[0].e[i].id, prio = prio, chan = chan};
+  if chan == IM_FULL { im[0].had[s * IM_ENTS + i] = im[0].serial[s]; im[0].n_full[s] += 1; } else { im[0].n_health[s] += 1; }
+  return n + 1;
+}
+im_near :: (d2: f32) -> f32 { d := sqrt(d2); return ifx d >= f32(IM_EXIT) then 0.0f32 else 1.0f32 - d / f32(IM_EXIT); }
+
+// What seat s, standing at (x, z), may receive at tick: out filled with each entity's wire ID, priority
+// and channel; the count back. Call it once per seat per tick, after the tick's puts and sweep.
+im_pick :: (im: [] Interest, s: int, x: f32, z: f32, tick: int, out: [] ImPick) -> int {
+  if s < 0 || s >= IM_SEATS { return 0; }
+  im[0].mark_n += 1;
+  was := im[0].serial[s];
+  im[0].serial[s] = was + 1;
+  im[0].n_full[s] = 0; im[0].n_health[s] = 0; im[0].n_blocked[s] = 0; im[0].n_hidden[s] = 0;
+  n := 0;
+  // your own, always
+  i := im[0].own[s] - 1;
+  while i >= 0 { im[0].visits += 1; n = im_take(im, s, i, f32(IM_PRIO_OWN), IM_FULL, out, n); i = im[0].e[i].onext; }
+  // the room-wide ones, wherever they are
+  for r: 0..<im[0].room_n {
+    i = im[0].room[r];
+    im[0].visits += 1;
+    if im[0].mark[i] == im[0].mark_n { continue; }
+    why := im_withheld(im, s, i, tick);
+    if why != 0 { im[0].mark[i] = im[0].mark_n; if why == 1 { im[0].n_blocked[s] += 1; } else { im[0].n_hidden[s] += 1; } continue; }
+    dx := im[0].e[i].x - x; dz := im[0].e[i].z - z;
+    n = im_take(im, s, i, f32(IM_PRIO_ROOM) + im_near(dx * dx + dz * dz), IM_FULL, out, n);
+  }
+  // the cells within the exit radius
+  enter2 := f32(IM_ENTER * IM_ENTER); exit2 := f32(IM_EXIT * IM_EXIT);
+  x0 := im_coord(x - f32(IM_EXIT)); x1 := im_coord(x + f32(IM_EXIT));
+  z0 := im_coord(z - f32(IM_EXIT)); z1 := im_coord(z + f32(IM_EXIT));
+  for cx: x0..<x1 + 1 {
+    for cz: z0..<z1 + 1 {
+      i = im[0].cell[im_cell_of(cx, cz)] - 1;
+      while i >= 0 {
+        e := im[0].e[i];
+        nx := e.cnext;
+        if e.cx != cx || e.cz != cz || im[0].mark[i] == im[0].mark_n { i = nx; continue; }   // another cell in this list, or taken
+        im[0].visits += 1;
+        dx := e.x - x; dz := e.z - z; d2 := dx * dx + dz * dz;
+        held := im[0].had[s * IM_ENTS + i] == was && was > 0;
+        if d2 <= enter2 || (held && d2 <= exit2) {
+          why := im_withheld(im, s, i, tick);
+          if why != 0 { im[0].mark[i] = im[0].mark_n; if why == 1 { im[0].n_blocked[s] += 1; } else { im[0].n_hidden[s] += 1; } }
+          else { n = im_take(im, s, i, im_near(d2), IM_FULL, out, n); }
+        }
+        i = nx;
+      }
+    }
+  }
+  // party members out of range: their health only
+  if im[0].party[s] != 0 {
+    for q: 0..<IM_SEATS {
+      if q == s || im[0].party[q] != im[0].party[s] || ((im[0].blocks[s] >> q) & 1) != 0 { continue; }
+      i = im_find(im, q);   // a player's wire ID is its seat
+      if i < 0 || im[0].mark[i] == im[0].mark_n { continue; }
+      im[0].visits += 1;
+      n = im_take(im, s, i, f32(IM_PRIO_PARTY), IM_HEALTH, out, n);
+    }
+  }
+  return n;
+}
+
+// Seat s's counts from its last pick: [picked whole, picked health-only, withheld blocked, withheld hidden].
+im_counts :: (im: [] Interest, s: int, out: [] int) {
+  if s < 0 || s >= IM_SEATS || out.count < 4 { return; }
+  out[0] = im[0].n_full[s]; out[1] = im[0].n_health[s]; out[2] = im[0].n_blocked[s]; out[3] = im[0].n_hidden[s];
+}
+im_has :: (p: [] ImPick, n: int, id: int) -> int {
+  for q: 0..<n { if p[q].id == id { return q; } }
+  return -1;
+}
+
+// ---- checks
+
+#test "interest: an entity comes in at the enter radius and goes out only past the exit radius, per seat" #steps 400000000 {
+  im: [1] Interest; im_clear(im[..]);
+  p: [IM_PICKS] ImPick;
+  t := 1;
+  im_put(im[..], t, 0, 0, 0, 0, 0); im_put(im[..], t, 1, 200, 0, 1, 0);
+  im_put(im[..], t, 100005, 120, 0, -1, 0);   // a townsperson 120 m from seat 0: between the radii, never held
+  n := im_pick(im[..], 0, 0, 0, t, p[..]);
+  #assert im_has(p[..], n, 100005) < 0 && im_has(p[..], n, 0) >= 0 && p[im_has(p[..], n, 0)].prio == f32(IM_PRIO_OWN);
+  // walks to 105 m: in
+  t += 1; im_put(im[..], t, 0, 0, 0, 0, 0); im_put(im[..], t, 1, 200, 0, 1, 0); im_put(im[..], t, 100005, 105, 0, -1, 0); im_sweep(im[..], t);
+  n = im_pick(im[..], 0, 0, 0, t, p[..]);
+  #assert im_has(p[..], n, 100005) >= 0;
+  // back and forth across 110 and up to 129 m: still in, every tick
+  for q: 0..<20 {
+    t += 1;
+    im_put(im[..], t, 0, 0, 0, 0, 0); im_put(im[..], t, 1, 200, 0, 1, 0);
+    im_put(im[..], t, 100005, ifx q % 2 == 0 then 129.0f32 else 108.0f32, 0, -1, 0); im_sweep(im[..], t);
+    n = im_pick(im[..], 0, 0, 0, t, p[..]);
+    #assert im_has(p[..], n, 100005) >= 0;
+  }
+  // seat 1, 71 to 92 m off the whole time, held it too; a seat it was never in range of didn't
+  n = im_pick(im[..], 1, 200, 0, t, p[..]);
+  #assert im_has(p[..], n, 100005) >= 0;
+  // past 130 m: out, and 120 m doesn't bring it back
+  t += 1; im_put(im[..], t, 0, 0, 0, 0, 0); im_put(im[..], t, 1, 200, 0, 1, 0); im_put(im[..], t, 100005, -131, 0, -1, 0); im_sweep(im[..], t);
+  n = im_pick(im[..], 0, 0, 0, t, p[..]);
+  #assert im_has(p[..], n, 100005) < 0;
+  t += 1; im_put(im[..], t, 0, 0, 0, 0, 0); im_put(im[..], t, 1, 200, 0, 1, 0); im_put(im[..], t, 100005, -120, 0, -1, 0); im_sweep(im[..], t);
+  n = im_pick(im[..], 0, 0, 0, t, p[..]);
+  #assert im_has(p[..], n, 100005) < 0;
+  // a dropped entity is gone, and its slot's next holder starts unheld
+  im_drop(im[..], 100005);
+  im_put(im[..], t, 200009, 120, 0, -1, 0);
+  n = im_pick(im[..], 0, 0, 0, t, p[..]);
+  #assert im_has(p[..], n, 200009) < 0 && im_has(p[..], n, 100005) < 0;
+}
+
+#test "interest: a blocked player and what rides on them never reach the blocker; the other seats still get them; room-wide ones go everywhere" #steps 400000000 {
+  im: [1] Interest; im_clear(im[..]);
+  p: [IM_PICKS] ImPick;
+  c: [4] int;
+  t := 1;
+  im_put(im[..], t, 0, 0, 0, 0, 0); im_put(im[..], t, 1, 5, 0, 1, 0); im_put(im[..], t, 2, 0, 5, 2, 0);
+  im_put(im[..], t, 200040, 5, 0, 1, 0);         // an effect on seat 1
+  im_put(im[..], t, 200041, 900, 900, -1, IM_ROOM);   // Darian, far off
+  im_block(im[..], 0, 1, true);
+  n := im_pick(im[..], 0, 0, 0, t, p[..]);
+  #assert im_has(p[..], n, 1) < 0 && im_has(p[..], n, 200040) < 0 && im_has(p[..], n, 2) >= 0;
+  #assert im_has(p[..], n, 200041) >= 0 && p[im_has(p[..], n, 200041)].prio >= f32(IM_PRIO_ROOM);
+  im_counts(im[..], 0, c[..]);
+  #assert c[2] == 2 && c[0] == n;
+  n = im_pick(im[..], 2, 0, 5, t, p[..]);
+  #assert im_has(p[..], n, 1) >= 0 && im_has(p[..], n, 200040) >= 0;
+  // seat 1 still gets its own, and seat 0 (blocking isn't both ways)
+  n = im_pick(im[..], 1, 5, 0, t, p[..]);
+  #assert im_has(p[..], n, 1) >= 0 && im_has(p[..], n, 200040) >= 0 && p[im_has(p[..], n, 200040)].prio == f32(IM_PRIO_OWN) && im_has(p[..], n, 0) >= 0;
+  // unblocked: back; a seat that leaves takes its blocks with it
+  im_block(im[..], 0, 1, false);
+  n = im_pick(im[..], 0, 0, 0, t, p[..]);
+  #assert im_has(p[..], n, 1) >= 0;
+  im_blocks(im[..], 0, 2 | 4 | 1);   // its own bit is ignored
+  n = im_pick(im[..], 0, 0, 0, t, p[..]);
+  #assert im_has(p[..], n, 0) >= 0 && im_has(p[..], n, 1) < 0 && im_has(p[..], n, 2) < 0;
+  im_seat_reset(im[..], 0);
+  n = im_pick(im[..], 0, 0, 0, t, p[..]);
+  #assert im_has(p[..], n, 1) >= 0 && im_has(p[..], n, 2) >= 0;
+}
+
+#test "interest: a hidden entity goes to its own seat, and to others only while revealed; party members out of range get health only" #steps 400000000 {
+  im: [1] Interest; im_clear(im[..]);
+  p: [IM_PICKS] ImPick;
+  c: [4] int;
+  t := 10;
+  im_put(im[..], t, 0, 0, 0, 0, 0); im_put(im[..], t, 1, 3, 0, 1, IM_HIDDEN);
+  n := im_pick(im[..], 0, 0, 0, t, p[..]);
+  #assert im_has(p[..], n, 1) < 0;
+  im_counts(im[..], 0, c[..]);
+  #assert c[3] == 1;
+  n = im_pick(im[..], 1, 3, 0, t, p[..]);
+  #assert im_has(p[..], n, 1) >= 0;
+  im_reveal(im[..], 1, 0, 12);   // it struck near seat 0: seen until tick 12
+  n = im_pick(im[..], 0, 0, 0, 11, p[..]);
+  #assert im_has(p[..], n, 1) >= 0;
+  n = im_pick(im[..], 0, 0, 0, 13, p[..]);
+  #assert im_has(p[..], n, 1) < 0;
+  // a party: seat 2 is 500 m off, so seat 0 gets its health; seat 3, in no party, nothing
+  im_put(im[..], t, 1, 3, 0, 1, 0);
+  im_put(im[..], t, 2, 500, 0, 2, 0); im_put(im[..], t, 3, -500, 0, 3, 0);
+  im_party(im[..], 0, 7); im_party(im[..], 2, 7);
+  n = im_pick(im[..], 0, 0, 0, t, p[..]);
+  #assert im_has(p[..], n, 2) >= 0 && p[im_has(p[..], n, 2)].chan == IM_HEALTH && im_has(p[..], n, 3) < 0;
+  #assert p[im_has(p[..], n, 1)].chan == IM_FULL;
+  im_counts(im[..], 0, c[..]);
+  #assert c[1] == 1;
+  // in range, the party member is whole again
+  im_put(im[..], t, 2, 50, 0, 2, 0);
+  n = im_pick(im[..], 0, 0, 0, t, p[..]);
+  #assert p[im_has(p[..], n, 2)].chan == IM_FULL;
+}
+
+// A brute-force reference: every entity for every seat, with its own hysteresis.
+ImRef :: struct { id: [IM_ENTS] int; x: [IM_ENTS] f32; z: [IM_ENTS] f32; of: [IM_ENTS] int; flags: [IM_ENTS] int; n: int; had: [IM_SEATS * IM_ENTS] bool; }
+im_ref_pick :: (r: [] ImRef, blocks: int, s: int, x: f32, z: f32, out: [] int) -> int {
+  n := 0;
+  for i: 0..<r[0].n {
+    dx := r[0].x[i] - x; dz := r[0].z[i] - z; d2 := dx * dx + dz * dz;
+    blocked := r[0].of[i] >= 0 && r[0].of[i] != s && ((blocks >> r[0].of[i]) & 1) != 0;
+    own := r[0].of[i] == s;
+    in := own || (!blocked && ((r[0].flags[i] & IM_ROOM) != 0 || d2 <= f32(IM_ENTER * IM_ENTER) || (r[0].had[s * IM_ENTS + i] && d2 <= f32(IM_EXIT * IM_EXIT))));
+    r[0].had[s * IM_ENTS + i] = in;
+    if in { out[n] = r[0].id[i]; n += 1; }
+  }
+  return n;
+}
+im_rand :: (seed: [] int) -> int { seed[0] = (seed[0] * 1103515245 + 12345) & 0x7fffffff; return seed[0] >> 8; }
+
+#test "interest: the grid's picks match a brute-force scan of every entity, through a random walk with hysteresis and blocks" #steps 3000000000 {
+  im: [1] Interest; im_clear(im[..]);
+  r: [1] ImRef;
+  p: [IM_PICKS] ImPick; want: [IM_ENTS] int;
+  seed: [1] int; seed[0] = 12789;
+  // 16 players and 80 others over 600 m, 4 of them room-wide, 10 riding on players
+  r[0].n = 96;
+  for i: 0..<96 {
+    r[0].id[i] = ifx i < 16 then i else ifx i < 54 then 100000 + i else 200000 + i;
+    r[0].x[i] = f32(im_rand(seed[..]) % 60000) / 100.0 - 300.0; r[0].z[i] = f32(im_rand(seed[..]) % 60000) / 100.0 - 300.0;
+    r[0].of[i] = ifx i < 16 then i else ifx i >= 86 then i - 86 else -1;
+    r[0].flags[i] = ifx i >= 82 && i < 86 then IM_ROOM else 0;
+  }
+  blocks: [IM_SEATS] int;
+  blocks[3] = (1 << 4) | (1 << 9); blocks[7] = 1 << 0;
+  for s: 0..<IM_SEATS { im_blocks(im[..], s, blocks[s]); }
+  for t: 1..<200 {
+    for i: 0..<96 {
+      r[0].x[i] += f32(im_rand(seed[..]) % 1601 - 800) / 100.0; r[0].z[i] += f32(im_rand(seed[..]) % 1601 - 800) / 100.0;
+      if i >= 86 { r[0].x[i] = r[0].x[i - 86]; r[0].z[i] = r[0].z[i - 86]; }
+      im_put(im[..], t, r[0].id[i], r[0].x[i], r[0].z[i], r[0].of[i], r[0].flags[i]);
+    }
+    im_sweep(im[..], t);
+    for s: 0..<IM_SEATS {
+      n := im_pick(im[..], s, r[0].x[s], r[0].z[s], t, p[..]);
+      m := im_ref_pick(r[..], blocks[s], s, r[0].x[s], r[0].z[s], want[..]);
+      #assert n == m;
+      for q: 0..<m { #assert im_has(p[..], n, want[q]) >= 0; }
+    }
+  }
+}
+
+#test "interest: at 16 players and 80 entities spread over the town, a pick looks at a fraction of them" #steps 2000000000 {
+  im: [1] Interest; im_clear(im[..]);
+  p: [IM_PICKS] ImPick;
+  seed: [1] int; seed[0] = 4;
+  // a 1.2 km square, as the town, the woods and the road in: 16 players, 80 others, 2 room-wide
+  x: [96] f32; z: [96] f32;
+  for i: 0..<96 { x[i] = f32(im_rand(seed[..]) % 120000) / 100.0 - 600.0; z[i] = f32(im_rand(seed[..]) % 120000) / 100.0 - 600.0; }
+  ticks := 30;
+  picked := 0;
+  for t: 1..<ticks + 1 {
+    for i: 0..<96 { im_put(im[..], t, ifx i < 16 then i else 200000 + i, x[i], z[i], ifx i < 16 then i else -1, ifx i == 50 || i == 51 then IM_ROOM else 0); }
+    im_sweep(im[..], t);
+    for s: 0..<IM_SEATS { picked += im_pick(im[..], s, x[s], z[s], t, p[..]); }
+  }
+  per := im[0].visits / (ticks * IM_SEATS);
+  // a scan looks at all 96 every pick; the grid at the cells within 130 m of the seat (about a ninth of the square)
+  #assert per * 4 < 96;
+  #assert picked / (ticks * IM_SEATS) < 20;
+}
+
