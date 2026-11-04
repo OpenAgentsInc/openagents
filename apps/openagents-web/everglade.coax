@@ -3600,6 +3600,7 @@ labels :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, you: Point) -> int {
     }
   }
   if !overview { c = room_labels(s, ls[..], c, you, k); }   // the others' names (everglade-room.coax)
+  if !overview { c = rp_labels(s, ls[..], c, you, k); }     // Darian Odiodei's, in a raid (everglade-raid-preview.coax)
   boxes: [(LABELS_MAX + 1) * 4] f32;
   placed := 0;
   // the raid's banner (everglade-events.coax) is the first box: no name is drawn over it

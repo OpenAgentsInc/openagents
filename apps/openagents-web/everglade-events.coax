@@ -344,8 +344,9 @@ ege_up_words :: (s: [] Everglade, b: [] u8) -> int {
 
 // The banner, your LEVEL plate (left of HP) and the level-up notice; for an admin, EVENTS and its pane.
 // `top`: under the top row, as watch_hud's.
-// Over the world: the words (WARDED, +25 XP, DIMENSION DOOR), and Darian Odiodei's nameplate: who he
-// is, his level, and that he can't be killed (spec 5.2), with what comes at half his Hit Points.
+// Over the world: the words (WARDED, +25 XP, DIMENSION DOOR), and over Darian Odiodei's name (labels(),
+// everglade-raid-preview.coax rp_labels) his level and that he can't be killed (spec 5.2), with what
+// comes at half his Hit Points.
 ege_world_words :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
   n := at;
   e := ege_of(s);
@@ -374,15 +375,21 @@ ege_world_words :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
   for q: 0..<NET_ENTS {
     d := nt[0].ents[q];
     if !d.live || d.kind != WK_BEAST || d.p1 != EGE_FORM_ARCH || d.ring_n == 0 { continue; }
-    p := v3(d.shown.x, d.shown.y + 3.0, d.shown.z);
-    if flat_gap(p, you) > 60 { continue; }
+    // over his name, where his body is drawn (else as high)
+    p := ifx s[0].rp.arch_on then s[0].rp.arch_name else v3(d.shown.x, d.shown.y + 2.6, d.shown.z);
+    if flat_gap(p, you) > f32(REMOTE_PLATE_NEAR) { continue; }
     sc := on_screen(u, p, s[0].width, s[0].height);
     if !sc.ok { continue; }
-    l1 := "DARIAN ODIODEI · LEVEL 17 · CAN'T BE KILLED";
+    l1 := "LEVEL 17 · CAN'T BE KILLED";
     l2 := ifx e[0].arch == EGE_WARDED then "WARDED WHILE A WARD STONE STANDS" else "WITHDRAWS AT HALF HIT POINTS";
-    c1 := 12 * k; c2 := 10 * k;
-    n = draw_text(out, n, l1, sc.x - text_width(l1, c1) / 2, sc.y - c2 - 6 * k, c1, GAP, SPACE, ink(k, 0.95, 0.8, 0.55, 1.0), false, false);
-    n = draw_text(out, n, l2, sc.x - text_width(l2, c2) / 2, sc.y, c2, GAP, SPACE, ink(k, 0.85, PARCH_R, PARCH_G, PARCH_B), false, false);
+    c1 := 9 * k; c2 := 8 * k;
+    y2 := sc.y - 6.5 * k * 1.2 - c2;
+    // not over the raid's banner: there, his name alone
+    w := hi(text_width(l1, c1), text_width(l2, c2)) / 2;
+    bb := ege_banner_at(s);
+    if bb.x1 > bb.x0 && sc.x - w < bb.x1 && sc.x + w > bb.x0 && y2 - c1 - 3 * k < bb.y1 && y2 + c2 * 1.3 > bb.y0 { continue; }
+    n = draw_text(out, n, l1, sc.x - text_width(l1, c1) / 2, y2 - c1 - 3 * k, c1, GAP, SPACE, ink(k, 0.95, 0.8, 0.55, 1.0), false, false);
+    n = draw_text(out, n, l2, sc.x - text_width(l2, c2) / 2, y2, c2, GAP, SPACE, ink(k, 0.85, PARCH_R, PARCH_G, PARCH_B), false, false);
   }
   return n;
 }

@@ -73,6 +73,9 @@ RaidPreview :: struct {
   wall_sig: int;             // and what was down then
   steps: int;                // the raiders' footfalls played this frame (RP_STEPS at most)
   ids: [RAID_SHOWN] int;     // each body's raider: the room creature's id (0: the preview's, its place)
+  // Darian Odiodei as drawn this frame, the preview's or the room's: where his nameplate goes, and
+  // his staff's orb and how bright it burns (its light, rp_lamps)
+  arch_on: bool; arch_name: Point; arch_orb: Point; arch_glow: f32;
 }
 
 // ?raid=preview (and &cine=1): you by the commons facing the South Gate, the raid to come.
@@ -323,6 +326,7 @@ rp_pose_due :: (s: [] Everglade, q: int, new_clip: bool, d: f32, dt: f32) -> f32
 rp_draw :: (s: [] Everglade, dt: f32) {
   for k: 0..<PEOPLE_PARTS { s[0].rp.used[k] = 0; }
   s[0].rp.frame += 1; s[0].rp.posed = 0;
+  s[0].rp.arch_on = false; s[0].rp.arch_glow = 0;
   if !s[0].pack_ready { return; }   // whoever a raid has set (the preview's or the room's)
   for q: 0..<RP_PEOPLE {
     o := s[0].rp.who[q];
@@ -437,6 +441,7 @@ rp_person_at :: (s: [] Everglade, q: int, npc: int, x: f32, z: f32, yaw: f32, sp
   head := watch_joint(rig, sk, PEOPLE_HEAD);
   hd := add(v3(x, y, z), times(watch_world(head.t, c, sn), big));
   fwd := v3(sn, 0, c); right := v3(c, 0, -sn);
+  if npc == RP_ARCH && dead_t < 0 { s[0].rp.arch_on = true; s[0].rp.arch_name = add(hd, v3(0, f32(RP_NAME_OVER) * big, 0)); }
   if town && !shooter { watch_arm_guard(s, rig, sk, x, y, z, yaw, true); return; }
   if shooter {
     // a bow or a crossbow in the left hand
@@ -451,9 +456,7 @@ rp_person_at :: (s: [] Everglade, q: int, npc: int, x: f32, z: f32, yaw: f32, sp
     if npc == RP_ARCH {
       lh := watch_joint(rig, sk, PEOPLE_HAND_L_J);
       lw := add(v3(x, y, z), times(watch_world(lh.t, c, sn), big));
-      top := add(lw, v3(0, 0.95, 0)); foot := sub(lw, v3(0, 0.85, 0));
-      ci_limb(s, foot, top, 0.035, v3(0.09, 0.06, 0.05), false, 1);
-      sp_glow(s, top, 0.22, times(RP_VIOLET, 1.1 + 0.4 * sin(s[0].rp.t * 4)));
+      rp_darian_staff(s, lw, fwd, right, big, y, lit);
       sp_glow(s, add(v3(x, y, z), v3(0, 1.0, 0)), 1.2, times(RP_VIOLET, 0.16 + 0.06 * sin(s[0].rp.t * 3)));
     }
     return;
@@ -463,6 +466,113 @@ rp_person_at :: (s: [] Everglade, q: int, npc: int, x: f32, z: f32, yaw: f32, sp
   ln := ifx npc == RP_FANATIC then 0.6f32 else 0.32f32;
   ci_limb(s, hw, add(hw, times(blade, ln)), 0.022, v3(0.62, 0.62, 0.66), false, 1);
   if npc == RP_FANATIC && lit > 0 { sp_glow(s, add(hw, times(blade, ln * 0.6)), 0.12, times(RP_VIOLET, lit)); }
+}
+
+// ---- Darian Odiodei's staff and his name
+
+// His staff (the druid's staff's make, everglade-rangers.coax druid_staff, his own): a black shaft,
+// crooked and knotted, with two strands of it twisting up round it, a bronze band under the head,
+// and four claws curling up out of the wood to cage an orange orb. The orb pulses, lights what is
+// round it (rp_lamps) and throws embers; it flares as he casts. Held in his left fist, standing,
+// tipped a little forward and out. Near the eye (RP_STAFF_NEAR) 37 boxes and cones, one ball;
+// farther, the shaft, the orb and its light, with a wider halo so it reads across the field.
+RP_STAFF_NEAR :: 22.0;     // m from the eye
+RP_STAFF_UP :: 0.95;       // m of shaft above his fist, and below it at most RP_STAFF_DOWN
+RP_STAFF_DOWN :: 0.9;
+RP_ORB_R :: 0.085;         // m: the orb's radius
+RP_NAME_OVER :: 0.72;      // m over his head's joint: his name, clear of his Hit Points bar
+RP_SHAFT_RGB :: Point.{x = 0.04, y = 0.028, z = 0.026};
+RP_STRAND_RGB :: Point.{x = 0.075, y = 0.045, z = 0.035};
+RP_CLAW_RGB :: Point.{x = 0.1, y = 0.06, z = 0.045};
+RP_BAND_RGB :: Point.{x = 0.42, y = 0.27, z = 0.1};
+RP_ORB_RGB :: Point.{x = 1.9, y = 0.72, z = 0.12};      // linear light, past white: the bloom's
+RP_ORB_GLOW :: Point.{x = 0.95, y = 0.38, z = 0.06};
+RP_EMBER_RGB :: Point.{x = 1.6, y = 0.55, z = 0.1};
+// The claws' points up the head from the band and out from its middle, as STAFF_ROOT_UP and _OUT.
+RP_CLAW_UP :: [5] f32.[0, 0.05, 0.13, 0.22, 0.27];
+RP_CLAW_OUT :: [5] f32.[0.03, 0.07, 0.1, 0.085, 0.03];
+rp_darian_staff :: (s: [] Everglade, fist: Point, fwd: Point, right: Point, big: f32, ground: f32, lit: f32) {
+  ax := unit_or(add(add(v3(0, 1, 0), times(fwd, 0.12)), times(right, -0.08)), v3(0, 1, 0));
+  side := unit_or(cross(ax, fwd), right); third := cross(side, ax);
+  down := lo(f32(RP_STAFF_DOWN) * big, hi((fist.y - ground - 0.02) / ax.y, 0.2));   // its foot on the ground, not in it
+  a := sub(fist, times(ax, down));
+  neck := add(fist, times(ax, f32(RP_STAFF_UP) * big));
+  orb := add(neck, times(ax, 0.14 * big));
+  t := s[0].rp.t + f32(s[0].time);
+  f := clamp01(lit);
+  pulse := 1 + 0.16 * sin(t * 2.3) + 0.05 * sin(t * 7.1);   // a slow breath, a faint flicker
+  glow := pulse * (1 + 1.4 * f);
+  s[0].rp.arch_orb = orb; s[0].rp.arch_glow = glow;
+  near := length(sub(orb, s[0].sp.shot.eye)) < f32(RP_STAFF_NEAR);
+  if !near {
+    staff_post(s, LOOK_WOOD, a, neck, 0.034 * big, RP_SHAFT_RGB);
+  } else {
+    // the shaft: three crooked lengths, a knot at each bend
+    k1 := add(mix(a, neck, 0.36), times(side, 0.014));
+    k2 := add(mix(a, neck, 0.7), add(times(side, -0.012), times(third, 0.01)));
+    staff_post(s, LOOK_WOOD, a, k1, 0.026 * big, RP_SHAFT_RGB);
+    staff_post(s, LOOK_WOOD, k1, k2, 0.03 * big, RP_SHAFT_RGB);
+    staff_post(s, LOOK_WOOD, k2, neck, 0.034 * big, RP_SHAFT_RGB);
+    staff_knot(s, k1, ax, side, third, 0.05, RP_STRAND_RGB);
+    staff_knot(s, k2, ax, side, third, 0.056, RP_STRAND_RGB);
+    // two strands twisting up round its upper half into the head
+    for j: 0..<2 {
+      last := mix(a, neck, 0.45);
+      for q: 1..<7 {
+        u := f32(q) / 6;
+        ang := u * 9.0 + f32(j) * 3.14159;
+        p := add(mix(mix(a, neck, 0.45), neck, u), times(add(times(side, cos(ang)), times(third, sin(ang))), 0.036 * big));
+        staff_root(s, last, p, 0.012, 1.4, RP_STRAND_RGB);
+        last = p;
+      }
+    }
+    // the band under the head, the head flaring from it
+    staff_post(s, LOOK_MATTE, sub(neck, times(ax, 0.04)), neck, 0.046 * big, RP_BAND_RGB);
+    sp_shape(s, SHAPE_CONE, LOOK_WOOD, add(neck, times(ax, 0.03)), times(side, 0.075), times(ax, -0.09), times(third, 0.075), RP_CLAW_RGB);
+    // four claws curling up out round the orb and in over it
+    for r: 0..<4 {
+      last := add(neck, times(add(times(side, cos(f32(r) * 1.5708 + 0.4)), times(third, sin(f32(r) * 1.5708 + 0.4))), RP_CLAW_OUT[0]));
+      for q: 1..<5 {
+        u := f32(q) / 4;
+        ang := f32(r) * 1.5708 + 0.4 + u * 0.9;
+        out := times(add(times(side, cos(ang)), times(third, sin(ang))), RP_CLAW_OUT[q] * big);
+        p := add(add(neck, times(ax, RP_CLAW_UP[q] * big)), out);
+        staff_root(s, last, p, lerp(0.02, 0.007, u), ifx q < 4 then 1.6f32 else 1.1f32, times(RP_CLAW_RGB, 0.8 + 0.2 * f32(r % 2)));
+        last = p;
+      }
+    }
+  }
+  // the orb, its hot heart and its halo; past the near eye a wider halo, so it reads at raid distance
+  rr := f32(RP_ORB_R) * big * (ifx near then 1.0f32 else 1.5f32);   // a little larger far off, to read
+  sp_shape(s, SHAPE_SPHERE, LOOK_GLOW, orb, times(side, rr), times(ax, rr), times(third, rr), times(RP_ORB_RGB, 0.8 + 0.25 * glow));
+  sp_glow(s, orb, (0.6 + 0.5 * f) * pulse, times(RP_ORB_GLOW, 1.6 * glow));
+  sp_glow(s, orb, 0.13, times(v3(1.4, 0.8, 0.3), 0.6 + 0.3 * glow));
+  if !near {
+    sp_glow(s, orb, 0.7 + 0.4 * f, times(RP_ORB_GLOW, 1.2 * glow));
+    sp_glow(s, orb, 1.8 + 0.8 * f, times(RP_ORB_GLOW, 0.45 * glow));
+  }
+  // a few embers drifting up off it, more as he casts
+  if sp_rand(s) < (ifx near then 0.12f32 else 0.06f32) * (1 + 3 * f) {
+    ang := 6.2832 * sp_rand(s);
+    at := add(orb, times(add(times(side, cos(ang)), times(third, sin(ang))), rr * 0.8));
+    sp_add_spark(s, at, v3(0.15 * cos(ang), 0.45 + 0.35 * sp_rand(s), 0.15 * sin(ang)), 0.9 + 0.6 * sp_rand(s), 0.018, RP_EMBER_RGB, -0.15);
+  }
+}
+// The orb's light on what is round it, as the druid's fire (everglade-grove.coax gv_lamps).
+rp_lamps :: (s: [] Everglade, u: [] f32, k: int, most: int) -> int {
+  if !s[0].rp.arch_on || s[0].rp.arch_glow <= 0 { return k; }
+  return sp_lamp(u, k, most, s[0].rp.arch_orb, 5.5, v3(1.0, 0.5, 0.15), 0.9 * s[0].rp.arch_glow);
+}
+// His name over his head, for labels() (everglade.coax), in the townsfolk's and players' plate:
+// from the body drawn for him, so the preview's Darian and the room's alike.
+rp_labels :: (s: [] Everglade, ls: [] Label, c: int, you: Point, k: f32) -> int {
+  if c >= ls.count || !s[0].rp.arch_on { return c; }
+  p := s[0].rp.arch_name;
+  d := flat_gap(p, you);
+  if d > f32(REMOTE_PLATE_NEAR) { return c; }
+  light := 0.85 * clamp01((f32(REMOTE_PLATE_NEAR) - d) / f32(REMOTE_PLATE_FADE));
+  ls[c] = Label.{text = "DARIAN ODIODEI", p = p, cap = 6.5 * k, light = light, gold = false, d = d, done = false, person = true};
+  return c + 1;
 }
 
 #test "raid preview: a raider near you is posed every frame, one far off one frame in four, and a new clip at once" #steps 2000000000 {
@@ -580,4 +690,55 @@ rp_test_bunched :: (g: [] Everglade, first: int, n: int, clip: int, gap: [] f32)
   // a room's raider's gait is its creature's, wherever its body is on the page
   g[0].rp.ids[4] = 1234;
   #assert rp_id(g[..], 4) == 1234 && rp_id(g[..], 5) == 6 && rp_phase(1234) == rp_phase(rp_id(g[..], 4));
+}
+
+#test "raid preview: Darian holds his orange-orbed staff through idle, walk and cast, and his name is over his head, in the preview and in a room (#12772)" #steps 4000000000 {
+  g: [1] Everglade;
+  rp_facts(g[..], "/worlds/everglade?raid=preview");
+  people_load(g[0].people_rig[..]);
+  g[0].pack_ready = true;
+  g[0].feet = v3(0, 0, -16);
+  dt := 1.0f32 / 60;
+  ls: [4] Label;
+  // still, walking, then casting: the staff's orb rides above his head, his name above that
+  for f: 0..<150 {
+    sp := ifx f >= 40 && f < 90 then 1.2f32 else 0.0f32;
+    lit := ifx f >= 110 then 0.8f32 else 0.0f32;
+    everglade_raider(g[..], 0, RP_ARCH, 0, -40 + sp * f32(f) * dt, 0, sp, 17, lit, -1);
+    rp_draw(g[..], dt);
+    if f == 30 || f == 70 || f == 130 {
+      ground := folk_feet(g[..], 0, g[0].rp.who[0].z);
+      #assert g[0].rp.arch_on;
+      orb := g[0].rp.arch_orb.y - ground; name := g[0].rp.arch_name.y - ground;
+      #assert orb > 1.7 && orb < 3.2 && name > 2.1 && name < 3.1 && g[0].rp.arch_glow > 0.7;
+      #assert abs(g[0].rp.arch_orb.x) < 1.2 && abs(g[0].rp.arch_orb.z - g[0].rp.who[0].z) < 1.2;   // in his hand, by him
+      c := rp_labels(g[..], ls[..], 0, ab_you(g[..]), 1);
+      #assert c == 1 && ls[0].text == "DARIAN ODIODEI" && ls[0].person && !ls[0].gold && ls[0].light > 0.5;
+    }
+  }
+  #assert g[0].rp.skins[0].clip == PEOPLE_SPELL;
+  u: [U_LIGHTS + LIGHTS * 8] f32;
+  #assert rp_lamps(g[..], u[..], 0, LIGHTS) == 1 && u[U_LIGHTS + 3] > 4 && u[U_LIGHTS + 7] > 0.5;   // its light round it
+  // past REMOTE_PLATE_NEAR, no name; fallen, no name and no orb's light
+  #assert rp_labels(g[..], ls[..], 0, v3(0, 0, 40), 1) == 0;
+  everglade_raider(g[..], 0, RP_ARCH, 0, -40, 0, 0, 17, 0, 0.5);
+  rp_draw(g[..], dt);
+  #assert !g[0].rp.arch_on && rp_labels(g[..], ls[..], 0, ab_you(g[..]), 1) == 0 && rp_lamps(g[..], u[..], 0, LIGHTS) == 0;
+  // a room's Darian, from the server's creature (P1 EGE_FORM_ARCH), draws with his staff and name too
+  h: [1] Everglade; nn: [1] EgNet;
+  rp_facts(h[..], "/worlds/everglade");
+  people_load(h[0].people_rig[..]);
+  h[0].pack_ready = true;
+  h[0].feet = v3(0, 0, -16);
+  everglade_attach_net(h[..], nn[..]);
+  n := net_of(h[..]);
+  r := net_ent(n, NET_MADE_ID + 9, true);
+  n[0].ents[r].kind = WK_BEAST; n[0].ents[r].p1 = EGE_FORM_ARCH; n[0].ents[r].ring_n = 1;
+  n[0].ents[r].shown = NetState.{x = 2, z = -45};
+  h[0].time = 5;
+  ege_raider_draw(h[..], n, n[0].ents[r], 1);
+  rp_draw(h[..], dt);
+  #assert h[0].rp.arch_on && abs(h[0].rp.arch_name.x - 2) < 0.5 && abs(h[0].rp.arch_name.z + 45) < 0.5;
+  #assert h[0].rp.arch_glow > 0.7 && abs(h[0].rp.arch_orb.x - 2) < 1.2 && abs(h[0].rp.arch_orb.z + 45) < 1.2;   // and his staff
+  #assert rp_labels(h[..], ls[..], 0, ab_you(h[..]), 1) == 1 && ls[0].text == "DARIAN ODIODEI";
 }

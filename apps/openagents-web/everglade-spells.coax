@@ -1868,6 +1868,7 @@ spells_lamps :: (s: [] Everglade, u: [] f32, cap: int) {
     k = sp_lamp(u, k, most, mix(me.from, me.to, 0.55 * f + 0.45 * f * f), 14, v3(1.0, 0.6, 0.25), 1 + 1.5 * f);
   }
   k = gv_lamps(s, u, k, most);   // the druid's fire and starlight (everglade-grove.coax)
+  k = rp_lamps(s, u, k, most);   // Darian Odiodei's orb (everglade-raid-preview.coax)
   if k == first { return; }
   u[U_LIGHT_INFO] = f32(k); u[U_LIGHT_INFO + 2] = f32(k - first);
 }
