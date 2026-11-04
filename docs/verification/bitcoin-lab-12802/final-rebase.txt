@@ -1,0 +1,8 @@
+ apps/openagents-web/everglade-wire.coax           |   3 +
+ coax/web/room/rejoin-check.coax                   |  35 +++-
+ coax/web/room/room-control.coax                   |   2 +
+ coax/web/room/room-everglade.coax                 |  15 +-
+ coax/web/room/room-oldwire.coax                   | 239 ++++++++++++++++++++++
+ coax/web/room/room.coax                           |   1 +
+ docs/verse/2026-11-04-everglade-launch-runbook.md |  36 +++-
+ 7 files changed, 317 insertions(+), 14 deletions(-)

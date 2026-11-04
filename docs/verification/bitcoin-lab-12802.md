@@ -1,8 +1,12 @@
 # Bitcoin Lab 01: Linux qualification
 
 2026-11-04, coderos-4080, Linux x86-64, RTX 4080. Implementation:
-[`9d476375260fcb5e347b534f661166f807c5855a`](https://github.com/OpenAgentsInc/openagents/commit/9d476375260fcb5e347b534f661166f807c5855a),
-rebased on `284b5814d7`. No Mac, physical touchscreen, public deployment or
+[`33c2fe3136`](https://github.com/OpenAgentsInc/openagents/commit/33c2fe3136),
+rebased on `0e96c34284`. Checks were run at `9d47637526` on
+`284b5814d7`; the final rebase added only Everglade room/old-wire files
+outside the Lab dependency closure. The qualified Lab, GPU host, shader,
+chapter registry and policy bytes are unchanged. Passing checks were not
+repeated for that rebase. No Mac, physical touchscreen, public deployment or
 node service is claimed. [Design and bounds](../verse/bitcoin-lab.md).
 
 The compiler is the existing qualified native binary, SHA-256
