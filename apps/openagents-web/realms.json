@@ -472,8 +472,8 @@
       "orbit": { "r": 0.49, "a": 2.4, "size": 0.018 },
       "realm": {
         "slug": "bitcoin-lab", "title": "Bitcoin Lab",
-        "description": "An unlisted Bitcoin learning workbench: a walkable fixture Grid, seven stations and the book's 125 chapters.",
-        "alt": "Bitcoin Lab fixture Grid with linked block plinths and seven learning stations",
+        "description": "An unlisted Bitcoin workbench: recorded validated regtest blocks, transactions, output links and reorg replay on a walkable Grid, plus 125 book chapters.",
+        "alt": "Selectable Bitcoin block slabs with exact metadata, transaction and output tiles, active and stale branches, and seven learning stations",
         "module": "bitcoin-lab", "slot": "bitcoin-lab", "style": "lowpoly", "clock": "fixed:0.5",
         "golden": { "lit": 0.02, "settle": 1000, "blocks": 6 }, "assets": []
       } }

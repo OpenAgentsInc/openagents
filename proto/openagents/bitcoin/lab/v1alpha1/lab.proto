@@ -1,0 +1,89 @@
+syntax = "proto3";
+package openagents.bitcoin.lab.v1alpha1;
+
+// New read-only Lab contract. Explorer/mempool v1 retain their pow-only and
+// unvalidated semantics. HTTP JSON and refusal rules: bitcoin-lab-v1.md.
+message Snapshot {
+  string source = 1;
+  string mode = 2; // fixture or live; independent of validation profile
+  string network = 3;
+  string profile = 4; // pow-only, validated-v1, snapshot-background, unavailable
+  uint32 height = 5;
+  string hash = 6;
+  string cursor = 7; // exact opaque publication identity, not a JS integer
+  optional uint64 observed_ms = 8; // absent when a recording did not retain it
+  uint32 validated_height = 9;
+  optional uint32 background_height = 10;
+  bool complete = 11; // complete committed snapshot, not a partial import
+  bool available = 12;
+  repeated string capabilities = 13;
+}
+message Counts {
+  uint32 returned = 1;
+  optional uint32 total = 2;
+  optional uint32 omitted = 3;
+  string next = 4; // binds the snapshot cursor and next ordinal
+}
+message Block {
+  uint32 height = 1;
+  string hash = 2;
+  string previous = 3;
+  uint64 time = 4; // header time, never observation/arrival time
+  uint32 tx_count = 5;
+  uint32 size = 6; // serialized bytes
+  uint32 weight = 7; // weight units
+  string chainwork = 8; // full 256-bit hex, empty means unknown
+  bool active = 9;
+  optional uint64 fees_sat = 10;
+  optional uint64 subsidy_sat = 11;
+}
+message Input {
+  string txid = 1;
+  uint32 vout = 2;
+  bool coinbase = 3;
+  optional uint64 value_sat = 4;
+  string script_hex = 5;
+}
+message Output {
+  uint32 vout = 1;
+  uint64 value_sat = 2;
+  string script_hex = 3;
+  string address = 4;
+  string status = 5; // unspent, spent, immature, unspendable, stale, replaced
+  string spender = 6;
+  optional uint32 vin = 7;
+}
+message Transaction {
+  string txid = 1;
+  string block = 2;
+  uint32 order = 3;
+  uint32 weight = 4;
+  uint32 size = 5;
+  optional uint64 fee_sat = 6;
+  bool active = 7;
+  repeated Input inputs = 8;
+  repeated Output outputs = 9;
+  Counts input_page = 10;
+  Counts output_page = 11;
+}
+message Window {
+  string ticket = 1; // echoed request nonce; late replies cannot recycle a slot
+  Snapshot snapshot = 2;
+  repeated Block blocks = 3;
+  Counts page = 4;
+}
+message TransactionPage {
+  string ticket = 1;
+  Snapshot snapshot = 2;
+  string block = 3;
+  repeated Transaction transactions = 4;
+  Counts page = 5;
+}
+message ScriptHistory {
+  string ticket = 1;
+  Snapshot snapshot = 2;
+  string script_hex = 3;
+  optional uint64 balance_sat = 4;
+  repeated Transaction transactions = 5;
+  Counts page = 6;
+}

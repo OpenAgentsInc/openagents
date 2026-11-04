@@ -55,4 +55,5 @@ villa 520000
 voice 190000
 watchtower 290000
 waterlab 190000
-bitcoin-lab 220000
+# The acknowledged three-phase block/transaction recording adds 156 KiB of data.
+bitcoin-lab 270000

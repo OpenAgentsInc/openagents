@@ -1,0 +1,4 @@
+ok   #test recorded blocks bind to complete validated snapshots and exact graph ranges (1 case, 42935 steps, 0 ms)
+ok   #test phase admission preserves the selected hash as stale and returns it on the reverse reorg (1 case, 4448 steps, 0 ms)
+ok   #test lookup, exact outpoints, amount and fee do not infer wallet ownership (1 case, 120605 steps, 2 ms)
+3 checks, 3 passed, 0 failed

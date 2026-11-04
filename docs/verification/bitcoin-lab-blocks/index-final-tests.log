@@ -1,0 +1,11 @@
+ok   #test validated index: a real validated child publishes coins and both indexes in one body (1 case, 2328080 steps, 75 ms)
+ok   #test validated index: no light import, bad body, location or partial capacity can publish (1 case, 13468202 steps, 567 ms)
+ok   #test validated index: the validated reorganizer's accepted body includes synchronized archives (1 case, 4102095 steps, 100 ms)
+ok   #test validated index: archive growth and the last metadata byte cannot exceed publication capacity (1 case, 8305059 steps, 162 ms)
+ok   #test validated index: both fork directions preserve old archive positions and nonzero detach counts (1 case, 462406273 steps, 6236 ms)
+ok   #test validated index: initialization publishes an exact replayable metadata frame (1 case, 35489 steps, 1 ms)
+ok   #test validated index: good coins cannot repair a foreign or damaged archive cursor (1 case, 9887703 steps, 425 ms)
+ok   #test validated index: refusal preserves validator diagnostics and not-better selection (1 case, 1834310 steps, 64 ms)
+ok   #test validated index: address archive capacity is an explicit refusal after transaction indexing (1 case, 2774860 steps, 77 ms)
+9 of 752 checks (--only 'validated index:'), 9 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

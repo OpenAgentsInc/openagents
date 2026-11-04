@@ -1,0 +1,6 @@
+realm-perf: 3 cases (shard 1 of 1) at http://127.0.0.1:8833, a 4 s walk a case, p95 <= 17.5 ms and every frame <= 33 ms
+realm-perf: WebGPU adapter: hardware nvidia lovelace
+ok   1440x900 dpr 1 bitcoin-lab: 60.0 FPS, p50 16.7 ms, p95 16.7 ms, max 16.7 ms, 0/252 over 20 ms
+ok   1440x900 dpr 2 bitcoin-lab: 60.0 FPS, p50 16.7 ms, p95 16.7 ms, max 16.7 ms, 0/253 over 20 ms
+ok   390x844 phone  bitcoin-lab: 60.0 FPS, p50 16.7 ms, p95 16.7 ms, max 16.7 ms, 0/252 over 20 ms
+realm-perf: 0 of 3 cases missed 60 FPS

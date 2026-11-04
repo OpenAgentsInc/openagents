@@ -1,0 +1,63 @@
+// A transient read-only compatibility view of a checked schema-2 V origin.
+// Never persist this view or pass it to a validator/cache/writer. Original
+// snapshot identity is retained separately; the old HTTP v1 remains unchanged.
+#load "validated-index-meta.coax";
+#authority;
+VxiView :: struct {code:int;used:int;tip:LcTip;}
+
+#test "validated query view preserves origin and refuses light metadata or damaged receipts" {
+  table:[8192]u8;out:[8192]u8;batch:[8192]u8;c:=[1]LcCursor.[LcCursor.{n=kv_batch_new(batch[..])}];hash:[32]u8;hash[0]=7;
+  #assert cs_tip_set_vartime(table[..],c[..],batch[..],5,1,hash[..]) && vxi_sync(table[..],c[..],batch[..],9);
+  key:[33]u8;key[0]='H';key[1]=7;h:[116]u8;kv_put32(h[..],0,1);kv_put32(h[..],4,1);
+  #assert lc_put_vartime(table[..],c[..],batch[..],key[..],h[..]);
+  used:=c[0].used;before:[8192]u8;for i:0..<used {before[i]=table[i];}
+  r:=vxi_view(table[..],used,out[..]);
+  #assert r.code==CS_OK && r.tip.height==1 && r.tip.hash[0]==7 && axi_context_vartime(out[..],r.used)==LC_OK;
+  receipt:=lc_value_vartime(out[..],r.used,key[..]);#assert receipt.count==80 && kv_get32(receipt,0)==1;
+  #assert txi_context_vartime(out[..],r.used).next==9;
+  #assert lc_same(before[0..<used],table[0..<used]);
+  #assert cs_tip_vartime(out[..],r.used).code==CS_CONTEXT && vxi_context(out[..],r.used).code==CS_CONTEXT;
+  #assert vxi_view(table[..],used,out[0..<used-1]).code==CS_CAPACITY;
+  #assert vxi_view(table[..],used,out[0..<used]).code==CS_CAPACITY;
+  #assert vxi_view(table[..],0,out[..]).code==CS_CONTEXT;
+  for cap:used..<used+160 {
+    small:=vxi_view(table[..],used,out[0..<cap]);
+    #assert small.code==CS_CAPACITY || small.code==CS_OK;
+  }
+  for fault:0..<3 {
+    h[0]=ifx fault==0 then 2 else 1;kv_put32(h[..],4,ifx fault==1 then 2 else 1);
+    #assert lc_put_vartime(table[..],c[..],batch[..],key[..],h[0..<ifx fault==2 then 115 else 116]);
+    #assert vxi_view(table[..],c[0].used,out[..]).code==CS_CONTEXT;
+  }
+  #assert lc_put_vartime(table[..],c[..],batch[..],key[0..<1],h[..]);
+  #assert vxi_view(table[..],c[0].used,out[..]).code==CS_CONTEXT;
+}
+#test "validated query view can fit the original extent after shrinking five receipts" {
+  table:[4096]u8;out:[4096]u8;batch:[8192]u8;c:=[1]LcCursor.[LcCursor.{n=kv_batch_new(batch[..])}];hash:[32]u8;
+  #assert cs_tip_set_vartime(table[..],c[..],batch[..],5,5,hash[..]) && vxi_sync(table[..],c[..],batch[..],1);
+  key:[33]u8;key[0]='H';h:[116]u8;kv_put32(h[..],0,1);
+  for i:0..<5 {key[1]=cast(u8)i;kv_put32(h[..],4,i+1);#assert lc_put_vartime(table[..],c[..],batch[..],key[..],h[..]);}
+  #assert vxi_view(table[..],c[0].used,out[0..<c[0].used]).code==CS_OK;
+}
+vxi_view :: (table:[]u8,used:int,out:[]u8)->VxiView #export_c {
+  meta:=vxi_context(table,used);if meta.code!=CS_OK {return VxiView.{code=CS_CONTEXT};}
+  tip:=cs_tip_vartime(table,used);if used>out.count {return VxiView.{code=CS_CAPACITY};}
+  for i:0..<used {out[i]=table[i];}count:=used;
+  prefix:=[1]u8.['H'];at:=kv_seek_vartime(table,used,prefix[..]);
+  while at!=used {
+    e:=kv_entry_vartime(table,used,at);at=e.next;
+    if e.key.count==0 {break;}if e.key[0]!='H' {break;}
+    if e.key.count!=33 || e.value.count!=116 {return VxiView.{code=CS_CONTEXT};}
+    if kv_get32(e.value,0)!=CS_VERSION || kv_get32(e.value,4)>tip.height {return VxiView.{code=CS_CONTEXT};}
+    count=kv_set_vartime(out,count,e.key,e.value[0..<80]);
+    #assert !kv_is_error(count); // replacing a value with a shorter one cannot grow the table
+  }
+  // Compatibility metadata exists only in this disjoint disposable query view.
+  // Its validator refuses it (V and L cannot coexist as writable state).
+  l:=[1]u8.['L'];vkey:=CS_META;v:=lc_value_vartime(table,used,vkey[..]);
+  count=kv_set_vartime(out,count,l[..],v);if kv_is_error(count) {return VxiView.{code=CS_CAPACITY};}
+  index:[48]u8;kv_put32(index[..],0,1);kv_put32(index[..],4,tip.chain);kv_put32(index[..],8,tip.height);kv_put32(index[..],12,meta.next);
+  for i:0..<32 {index[16+i]=tip.hash[i];}
+  for p:[2]u8.['I','E'] {k:=[1]u8.[p];count=kv_set_vartime(out,count,k[..],index[..]);if kv_is_error(count) {return VxiView.{code=CS_CAPACITY};}}
+  return VxiView.{used=count,tip=tip};
+}

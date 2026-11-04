@@ -1,0 +1,3 @@
+ok   #test every chapter has one station and the integration chapters keep their homes (1 case, 15671 steps, 0 ms)
+1 of 81 checks (--only 'every chapter'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

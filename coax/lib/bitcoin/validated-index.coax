@@ -1,0 +1,185 @@
+// Schema-2 V-origin transaction/address indexing. One complete accepted body
+// contains coins, undo, archive entries and the V/X cursors. Scratch is private
+// and disjoint; failure poisons it. Publish only after append + fsync.
+#run_steps 250000000;
+#load "chainreorg.coax";
+#load "txindex.coax";
+#load "addrindex-stage.coax";
+#load "validated-index-meta.coax";
+#authority;
+
+#load "../../tests/bitcoin/validated_index_checks.coax";
+
+#test "validated index: a real validated child publishes coins and both indexes in one body" #steps 100000000 {
+  d:[1]CsDemo;vxi_demo(d[..]);before:[131072]u8;for i:0..<d[0].used {before[i]=d[0].live[i];}used:=d[0].used;
+  r:=vxi_connect(d[0].tree[..],1,d[0].raw[0..<d[0].n],TxiLoc.{pos=8},d[0].live[..],used,d[0].stage[..],d[0].batch[..],cs_demo_work(d[..]),d[0].undo[..]);
+  #assert r.code==CS_OK && r.n>12 && r.undo_n==1;
+  #assert lc_same(before[0..<used],d[0].live[0..<used]);
+  #assert cs_tip_vartime(d[0].stage[..],r.used).height==1 && vxi_context(d[0].stage[..],r.used).next==1;
+  hash:=d[0].entries[1].hash;b:=txi_block_vartime(d[0].stage[..],r.used,hash[..]);
+  #assert b.code==LC_OK && b.height==1 && b.count==1 && b.file==0 && b.pos==8;
+  prefix:=[1]u8.['F'];at:=kv_seek_vartime(d[0].stage[..],r.used,prefix[..]);entry:=kv_entry_vartime(d[0].stage[..],r.used,at);
+  #assert entry.key.count==101 && entry.key[0]=='F' && kv_get32(entry.value,0)==1;
+  replay:[131072]u8;for i:0..<used {replay[i]=d[0].live[i];}
+  applied:=kv_apply_vartime(replay[..],used,d[0].batch[0..<r.n],0);
+  #assert applied==r.used && lc_same(replay[0..<applied],d[0].stage[0..<r.used]);
+  #assert txi_context_vartime(replay[..],applied).code==LC_CONTEXT;
+}
+#test "validated index: no light import, bad body, location or partial capacity can publish" #steps 100000000 {
+  for fault:0..<8 {
+    d:[1]CsDemo;vxi_demo(d[..]);used:=d[0].used;body:=d[0].raw[0..<d[0].n];cap:=d[0].batch.count;loc:=TxiLoc.{pos=8};
+    if fault==0 {used=0;}
+    if fault==1 {d[0].raw[0]^=1;}
+    if fault==2 {loc.pos=7;}
+    if fault==3 {cap=12;}
+    if fault==4 {cap=200;}
+    if fault==5 {cap=500;}
+    if fault==6 {cap=750;}
+    if fault==7 {cap=900;}
+    r:=vxi_connect(d[0].tree[..],1,body,loc,d[0].live[..],used,d[0].stage[..],d[0].batch[0..<cap],cs_demo_work(d[..]),d[0].undo[..]);
+    if r.code!=CS_OK {#assert r.n==0 && r.used==0;}
+    else {#assert vxi_context(d[0].stage[..],r.used).code==CS_OK;}
+  }
+  d:[1]CsDemo;vxi_demo(d[..]);
+  #assert vxi_init(5,d[0].live[..],d[0].used,d[0].stage[..],d[0].batch[..]).code==CS_CONTEXT;
+  #assert vxi_init(0,d[0].live[..],0,d[0].stage[..],d[0].batch[..]).code==CS_CONTEXT;
+  #assert vxi_init(5,d[0].live[0..<0],0,d[0].stage[..],d[0].batch[..]).code==CS_CAPACITY;
+  #assert vxi_init(5,d[0].live[..],0,d[0].stage[..],d[0].batch[0..<80]).code==CS_CAPACITY;
+}
+#test "validated index: the validated reorganizer's accepted body includes synchronized archives" #steps 100000000 {
+  d:[1]CsDemo;vxi_demo(d[..]);bi_received_block_vartime(d[0].tree[..],1,1);
+  blocks:=[1]CrBlock.[CrBlock.{index=1,bytes=d[0].raw[0..<d[0].n]}];locs:=[1]TxiLoc.[TxiLoc.{pos=8}];
+  scratch:[131072]u8;aggregate:[262144]u8;temp:[262144]u8;path:[4]int;
+  work:=CrWork.{validate=cs_demo_work(d[..]),path=path[..]};
+  r:=vxi_reorg(d[0].tree[..],d[0].live[..],d[0].used,1,blocks[..],locs[..],d[0].stage[..],scratch[..],aggregate[..],temp[..],work,d[0].undo[..]);
+  #assert r.code==CS_OK && r.n>12 && r.connected==1 && r.disconnected==0 && r.block== -1;
+  #assert vxi_context(d[0].stage[..],r.used).next==1;
+  for fail:0..<3 {
+    if fail==0 {locs[0].pos=7;}else {locs[0].pos=8;}
+    r=vxi_reorg(d[0].tree[..],d[0].live[..],d[0].used,1,blocks[..],locs[0..<ifx fail==1 then 0 else 1],d[0].stage[..],scratch[..],aggregate[0..<ifx fail==2 then 12 else aggregate.count],temp[..],work,d[0].undo[..]);
+    #assert r.code!=CS_OK && r.used==0 && r.n==0;
+  }
+}
+#test "validated index: archive growth and the last metadata byte cannot exceed publication capacity" #steps 100000000 {
+  d:[1]CsDemo;vxi_demo(d[..]);
+  plain:=cs_connect_vartime(d[0].tree[..],1,d[0].raw[0..<d[0].n],d[0].live[..],d[0].used,d[0].stage[..],d[0].batch[..],cs_demo_work(d[..]),d[0].undo[..]);#assert plain.code==CS_OK;
+  full:=vxi_connect(d[0].tree[..],1,d[0].raw[0..<d[0].n],TxiLoc.{pos=8},d[0].live[..],d[0].used,d[0].stage[..],d[0].batch[..],cs_demo_work(d[..]),d[0].undo[..]);#assert full.code==CS_OK;
+  exact:=vxi_connect(d[0].tree[..],1,d[0].raw[0..<d[0].n],TxiLoc.{pos=8},d[0].live[0..<full.used],d[0].used,d[0].stage[..],d[0].batch[..],cs_demo_work(d[..]),d[0].undo[..]);#assert exact.code==CS_OK && exact.used==full.used && exact.n==full.n;
+  r:=vxi_connect(d[0].tree[..],1,d[0].raw[0..<d[0].n],TxiLoc.{pos=8},d[0].live[0..<plain.used],d[0].used,d[0].stage[..],d[0].batch[..],cs_demo_work(d[..]),d[0].undo[..]);
+  #assert r.code==CS_CAPACITY && r.n==0 && r.used==0;
+  r=vxi_connect(d[0].tree[..],1,d[0].raw[0..<d[0].n],TxiLoc.{pos=8},d[0].live[..],d[0].used,d[0].stage[..],d[0].batch[0..<full.n-1],cs_demo_work(d[..]),d[0].undo[..]);
+  #assert r.code==CS_CAPACITY && r.n==0 && r.used==0;
+  blocks:=[1]CrBlock.[CrBlock.{index=1,bytes=d[0].raw[0..<d[0].n]}];locs:=[1]TxiLoc.[TxiLoc.{pos=8}];scratch:[131072]u8;aggregate:[262144]u8;temp:[262144]u8;path:[4]int;
+  work:=CrWork.{validate=cs_demo_work(d[..]),path=path[..]};
+  good:=vxi_reorg(d[0].tree[..],d[0].live[..],d[0].used,1,blocks[..],locs[..],d[0].stage[..],scratch[..],aggregate[..],temp[..],work,d[0].undo[..]);#assert good.code==CS_OK;
+  exact_reorg:=vxi_reorg(d[0].tree[..],d[0].live[0..<good.used],d[0].used,1,blocks[..],locs[..],d[0].stage[..],scratch[..],aggregate[..],temp[..],work,d[0].undo[..]);#assert exact_reorg.code==CS_OK && exact_reorg.used==good.used && exact_reorg.n==good.n;
+  short:=vxi_reorg(d[0].tree[..],d[0].live[0..<plain.used],d[0].used,1,blocks[..],locs[..],d[0].stage[..],scratch[..],aggregate[..],temp[..],work,d[0].undo[..]);
+  #assert short.code==CS_CAPACITY && short.n==0 && short.used==0;
+  short=vxi_reorg(d[0].tree[..],d[0].live[..],d[0].used,1,blocks[..],locs[..],d[0].stage[..],scratch[..],aggregate[0..<good.n-1],temp[..],work,d[0].undo[..]);
+  #assert short.code==CS_CAPACITY && short.n==0 && short.used==0;
+  short=vxi_reorg(d[0].tree[..],d[0].live[..],0,1,blocks[..],locs[..],d[0].stage[..],scratch[..],aggregate[..],temp[..],work,d[0].undo[..]);
+  #assert short.code==CS_CONTEXT && short.n==0 && short.used==0 && short.block== -1;
+}
+#test "validated index: both fork directions preserve old archive positions and nonzero detach counts" #steps 500000000 {
+  d:[1]CrDemo;cr_demo_setup(d[..]);c:=d[0].core[..];
+  // A bounded pre-state MODEL at V100. Native record.coax separately rebuilds
+  // and indexes every prefix block from empty genesis and compares Core.
+  cursor:=[1]LcCursor.[LcCursor.{used=c[0].used,n=kv_batch_new(c[0].batch[..])}];
+  #assert vxi_sync(c[0].live[..],cursor[..],c[0].batch[..],0);c[0].used=cursor[0].used;
+  for phase:0..<3 {
+    if phase==2 {cr_demo_receive(d[..],7);cr_demo_receive(d[..],8);}
+    blocks:[4]CrBlock;locs:[4]TxiLoc;count:=[3]int.[2,3,4][phase];target:=[3]int.[102,105,109][phase];
+    for i:0..<count {
+      index:=ifx phase==0 then 101+i else ifx phase==1 then 103+i else ifx i<2 then 101+i else 106+i;
+      blocks[i]=cr_demo_block(d[..],index-101);locs[i]=TxiLoc.{pos=8+(index-101)*1024};
+    }
+    r:=vxi_reorg(c[0].tree[..],c[0].live[..],c[0].used,target,blocks[0..<count],locs[0..<count],c[0].stage[..],d[0].scratch[..],d[0].aggregate[..],d[0].temp[..],cr_demo_work(d[..]),c[0].undo[..]);
+    #assert r.code==CS_OK && r.block== -1 && r.connected==count && r.disconnected==[3]int.[0,2,3][phase];
+    #assert vxi_context(c[0].stage[..],r.used).next==[3]int.[2,5,7][phase];
+    cr_demo_commit(d[..],r,target);
+  }
+}
+#test "validated index workspace preserves all parser views" {
+  ins:[2]TxIn;outs:[3]TxOut;items:[4]TxItem;
+  w:=vxi_lwork(ValidationWork.{ins=ins[..],outs=outs[..],items=items[..]});
+  #assert w.ins.count==2 && w.outs.count==3 && w.items.count==4;
+  w.ins[0].sequence=19;w.outs[0].value=23;w.items[0].n=29;
+  #assert ins[0].sequence==19 && outs[0].value==23 && items[0].n==29;
+}
+#test "validated index: initialization publishes an exact replayable metadata frame" {
+  base:[4096]u8;stage:[4096]u8;batch:[4096]u8;replay:[4096]u8;
+  r:=vxi_init(5,base[..],0,stage[..],batch[..]);#assert r.code==CS_OK && r.n>12 && r.used>0;
+  exact:=vxi_init(5,base[0..<r.used],0,stage[..],batch[..]);#assert exact.code==CS_OK && exact.used==r.used && exact.n==r.n;
+  used:=kv_apply_vartime(replay[..],0,batch[0..<r.n],0);
+  #assert used==r.used && lc_same(replay[0..<used],stage[0..<r.used]) && vxi_context(replay[..],used).next==0;
+  #assert cs_tip_vartime(replay[..],used).height==0;
+}
+#test "validated index: good coins cannot repair a foreign or damaged archive cursor" #steps 100000000 {
+  for fault:0..<6 {
+    d:[1]CsDemo;vxi_demo(d[..]);key:=VXI_META;old:=lc_value_vartime(d[0].live[..],d[0].used,key[..]);v:[48]u8;for i:0..<48 {v[i]=old[i];}
+    if fault<4 {v[[4]int.[0,4,8,16][fault]]^=1;}
+    d[0].used=kv_set_vartime(d[0].live[..],d[0].used,key[..],v[0..<ifx fault==4 then 47 else 48]);
+    if fault==5 {foreign:=[1]u8.['I'];empty:[]u8;d[0].used=kv_set_vartime(d[0].live[..],d[0].used,foreign[..],empty);}
+    #assert cs_tip_vartime(d[0].live[..],d[0].used).code==CS_OK;
+    r:=vxi_connect(d[0].tree[..],1,d[0].raw[0..<d[0].n],TxiLoc.{pos=8},d[0].live[..],d[0].used,d[0].stage[..],d[0].batch[..],cs_demo_work(d[..]),d[0].undo[..]);
+    #assert r.code==CS_CONTEXT && r.n==0 && r.used==0;
+    blocks:=[1]CrBlock.[CrBlock.{index=1,bytes=d[0].raw[0..<d[0].n]}];locs:=[1]TxiLoc.[TxiLoc.{pos=8}];scratch:[131072]u8;aggregate:[262144]u8;temp:[262144]u8;path:[4]int;
+    rr:=vxi_reorg(d[0].tree[..],d[0].live[..],d[0].used,1,blocks[..],locs[..],d[0].stage[..],scratch[..],aggregate[..],temp[..],CrWork.{validate=cs_demo_work(d[..]),path=path[..]},d[0].undo[..]);
+    #assert rr.code==CS_CONTEXT && rr.n==0 && rr.used==0;
+  }
+}
+#test "validated index: refusal preserves validator diagnostics and not-better selection" #steps 100000000 {
+  d:[1]CsDemo;vxi_demo(d[..]);d[0].raw[0]^=1;
+  plain:=cs_connect_vartime(d[0].tree[..],1,d[0].raw[0..<d[0].n],d[0].live[..],d[0].used,d[0].stage[..],d[0].batch[..],cs_demo_work(d[..]),d[0].undo[..]);#assert plain.code!=CS_OK;
+  r:=vxi_connect(d[0].tree[..],1,d[0].raw[0..<d[0].n],TxiLoc.{pos=8},d[0].live[..],d[0].used,d[0].stage[..],d[0].batch[..],cs_demo_work(d[..]),d[0].undo[..]);
+  #assert r.code==plain.code && r.vcode==plain.vcode && r.detail==plain.detail && r.tx==plain.tx && r.input==plain.input && r.n==0 && r.used==0;
+  blocks:[1]CrBlock;locs:[1]TxiLoc;scratch:[131072]u8;aggregate:[262144]u8;temp:[262144]u8;path:[4]int;
+  rr:=vxi_reorg(d[0].tree[..],d[0].live[..],d[0].used,0,blocks[0..<0],locs[0..<0],d[0].stage[..],scratch[..],aggregate[..],temp[..],CrWork.{validate=cs_demo_work(d[..]),path=path[..]},d[0].undo[..]);
+  #assert rr.code==CR_NOT_BETTER && rr.n==0 && rr.used==0;
+}
+#test "validated index: address archive capacity is an explicit refusal after transaction indexing" #steps 100000000 {
+  d:[1]CsDemo;vxi_demo(d[..]);
+  plain:=cs_connect_vartime(d[0].tree[..],1,d[0].raw[0..<d[0].n],d[0].live[..],d[0].used,d[0].stage[..],d[0].batch[..],cs_demo_work(d[..]),d[0].undo[..]);#assert plain.code==CS_OK;
+  c:=[1]LcCursor.[LcCursor.{used=plain.used,n=plain.n}];
+  meta:=txi_stage_block_vartime(d[0].tree[..],d[0].stage[..],c[..],d[0].batch[..],LcBlock.{index=1,bytes=d[0].raw[0..<d[0].n]},TxiLoc.{pos=8},9,vxi_lwork(cs_demo_work(d[..])));
+  #assert meta.code==LC_OK && meta.next==10;capacity:=c[0].n;
+  plain=cs_connect_vartime(d[0].tree[..],1,d[0].raw[0..<d[0].n],d[0].live[..],d[0].used,d[0].stage[..],d[0].batch[..],cs_demo_work(d[..]),d[0].undo[..]);#assert plain.code==CS_OK;
+  c[0]=LcCursor.{used=plain.used,n=plain.n};
+  indexed:=vxi_archive(d[0].tree[..],d[0].stage[..],c[..],d[0].batch[0..<capacity],CrBlock.{index=1,bytes=d[0].raw[0..<d[0].n]},TxiLoc.{pos=8},9,cs_demo_work(d[..]));
+  #assert indexed.code==LC_CAPACITY;
+}
+
+vxi_init :: (network:int,table:[]u8,used:int,stage:[]u8,batch:[]u8)->CsResult #export_c {
+  r:=cs_init_vartime(network,table,used,stage,batch);if r.code!=CS_OK {return r;}
+  c:=[1]LcCursor.[LcCursor.{used=r.used,n=r.n}];
+  if !vxi_sync(stage,c[..],batch,0) || c[0].used>table.count {return CsResult.{code=CS_CAPACITY};}
+  return CsResult.{used=c[0].used,n=c[0].n};
+}
+vxi_lwork :: (w:ValidationWork)->LcWork {return LcWork.{ins=w.ins,outs=w.outs,items=w.items};}
+vxi_archive :: (tree:[]BlockTree,stage:[]u8,c:[]LcCursor,batch:[]u8,block:CrBlock,loc:TxiLoc,next:int,w:ValidationWork)->TxiMeta {
+  meta:=txi_stage_block_vartime(tree,stage,c,batch,LcBlock.{index=block.index,bytes=block.bytes},loc,next,vxi_lwork(w));
+  if meta.code!=LC_OK {return meta;}
+  hash:=tree[0].e[block.index].hash;
+  code:=axi_stage_block_vartime(stage,c,batch,block.bytes,hash[..],tree[0].l[block.index].height,w.ins,w.outs,w.items);
+  return TxiMeta.{code=code,next=meta.next};
+}
+vxi_connect :: (tree:[]BlockTree,i:int,body:[]u8,loc:TxiLoc,table:[]u8,used:int,stage:[]u8,batch:[]u8,w:ValidationWork,undo:[]u8)->CsResult #export_c {
+  meta:=vxi_context(table,used);if meta.code!=CS_OK {return CsResult.{code=CS_CONTEXT};}
+  r:=cs_connect_vartime(tree,i,body,table,used,stage,batch,w,undo);if r.code!=CS_OK {return r;}
+  c:=[1]LcCursor.[LcCursor.{used=r.used,n=r.n}];
+  indexed:=vxi_archive(tree,stage,c[..],batch,CrBlock.{index=i,bytes=body},loc,meta.next,w);
+  if indexed.code!=LC_OK {return CsResult.{code=indexed.code};}
+  if !vxi_sync(stage,c[..],batch,indexed.next) || c[0].used>table.count {return CsResult.{code=CS_CAPACITY};}
+  return CsResult.{used=c[0].used,n=c[0].n,undo_n=r.undo_n};
+}
+vxi_reorg :: (tree:[]BlockTree,table:[]u8,used:int,target:int,blocks:[]CrBlock,locs:[]TxiLoc,stage:[]u8,scratch:[]u8,batch:[]u8,temp:[]u8,w:CrWork,undo:[]u8)->CrResult #export_c {
+  meta:=vxi_context(table,used);if meta.code!=CS_OK || blocks.count!=locs.count {return cr_refused(CS_CONTEXT);}
+  r:=cr_reorg_vartime(tree,table,used,target,blocks,stage,scratch,batch,temp,w,undo);if r.code!=CS_OK {return r;}
+  c:=[1]LcCursor.[LcCursor.{used=r.used,n=r.n}];next:=meta.next;
+  for b,k:blocks {
+    indexed:=vxi_archive(tree,stage,c[..],batch,b,locs[k],next,w.validate);
+    if indexed.code!=LC_OK {return cr_refused(indexed.code);}next=indexed.next;
+  }
+  if !vxi_sync(stage,c[..],batch,next) || c[0].used>table.count {return cr_refused(CS_CAPACITY);}
+  return CrResult.{used=c[0].used,n=c[0].n,connected=r.connected,disconnected=r.disconnected,block=-1};
+}

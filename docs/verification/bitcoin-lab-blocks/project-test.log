@@ -1,0 +1,3 @@
+ok   #test projection text escapes exact identifiers and fails closed at capacity (1 case, 2131989 steps, 188 ms)
+1 of 81 checks (--only 'projection text'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

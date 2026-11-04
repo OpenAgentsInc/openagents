@@ -1,0 +1,35 @@
+// Native physical-file cuts of the acknowledged V/X journal. The old KV
+// framing is unchanged; these cuts check the new coins+index publication.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/bitcoin/kvstream.coax";
+#load "../../coax/lib/bitcoin/validated-index-view.coax";
+tool_main :: ()->int #export_c {
+  args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=2 {return 2;}
+  raw:[2097152]u8;read:[2097152]u8;table:[262144]u8;view:[262144]u8;
+  n:=fs_read(args_at(args[..],0),raw[..]);if n<20 {return 1;}
+  ends:[5]int;ends[0]=20;at:=20;frames:=0;
+  while at<n {if frames>=4 || n-at<8 {return 1;}at+=8+kv_get32(raw[..],at);frames+=1;ends[frames]=at;}
+  if at!=n || frames!=4 {return 1;}
+  checks:=0;
+  for cut:0..<n+1 {
+    near:=false;for i:0..<5 {if cut>=ends[i]-24 && cut<=ends[i]+24 {near=true;}}
+    if !near && cut%173!=0 {continue;}
+    if !fs_write(args_at(args[..],1),cast(string)raw[0..<cut]) {return 1;}
+    got:=fs_read(args_at(args[..],1),read[..]);if got!=cut {return 1;}
+    opened:=kv_open_vartime(read[0..<got],table[..]);
+    if cut<20 {if opened.code!=KV_BAD_HEADER {return 1;}continue;}
+    if opened.code!=KV_OK {print("cut % refused %\n",cut,opened.code);return 1;}
+    complete:=0;for i:1..<5 {if cut>=ends[i] {complete=i;}}
+    if opened.frames!=complete || opened.keep!=ends[complete] {return 1;}
+    if complete==0 {if vxi_context(table[..],opened.used).code!=CS_CONTEXT {return 1;}}
+    else {
+      tip:=cs_tip_vartime(table[..],opened.used);if tip.height!=[4]int.[0,102,103,104][complete-1] {return 1;}
+      if vxi_context(table[..],opened.used).code!=CS_OK {return 1;}
+      query:=vxi_view(table[..],opened.used,view[..]);if query.code!=CS_OK || axi_context_vartime(view[..],query.used)!=LC_OK {return 1;}
+      if cs_tip_vartime(view[..],query.used).code!=CS_CONTEXT {return 1;}
+    }checks+=1;
+  }
+  print("PASS: % physical-file cuts preserve the last complete V/X/coins/index snapshot\n",checks);return 0;
+}

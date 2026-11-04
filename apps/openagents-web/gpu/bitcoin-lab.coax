@@ -8,3 +8,12 @@ bitcoin_lab_fx_vs :: (i:u32,j:u32,a:bitcoin_lab_vertex,u:[]f32)->SplashV {
   return splash_fx_vs(i,j,splash_fx_vs_in.{a=a.a,b=a.b,c=a.c,d=v4(0.0f32,0.0f32,0.0f32,0.0f32)},u);
 }
 bitcoin_lab_fx_fs :: (v:SplashV,u:[]f32)->V4 {return splash_fx_fs(v,u);}
+// A bounded native mesh in the shared scene pass and depth buffer. CPU Coax
+// supplies homogeneous clip vertices from the same follow camera as labels.
+LabScene :: struct {pos:V4;colour:V4;}
+bitcoin_lab_scene_vs :: (i:u32,j:u32,u:[]f32,mesh:[]V4)->LabScene {
+  return LabScene.{pos=mesh[cast(int)i*2],colour=mesh[cast(int)i*2+1]};
+}
+bitcoin_lab_scene_fs :: (v:LabScene,u:[]f32)->V4 {
+  if v.pos.y<u[80] || v.pos.y>u[81] {return v4(0.008f32,0.012f32,0.019f32,1.0f32);}return v.colour;
+}

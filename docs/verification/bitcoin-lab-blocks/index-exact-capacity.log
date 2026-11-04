@@ -1,0 +1,3 @@
+ok   #test validated index: archive growth and the last metadata byte cannot exceed publication capacity (1 case, 10289994 steps, 189 ms)
+1 of 752 checks (--only 'archive growth'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

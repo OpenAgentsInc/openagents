@@ -1,4 +1,4 @@
-// Bitcoin Lab: an unlisted fixture Grid, not a node or a transaction graph.
+// Bitcoin Lab: an unlisted, recorded regtest block explorer on the shared Grid.
 // The shared Grid session owns walking, fixed steps, input, follow camera and replay.
 // Aethyr's HUD renderer and UI tree own strokes, text, picking and focus.
 #load "../../verse/gridwalk.coax" as gw;
@@ -7,15 +7,16 @@
 #load "../../aethyr/ui/tree.coax";
 #load "../../aethyr/budget.coax";
 #load "bitcoin-lab-chapters.coax";
+#load "bitcoin-lab-blocks.coax";
 
 LAB_VERTICES :: 72000;
 LAB_UNIFORMS :: 88;
-LAB_BUDGET :: FrameBudget.{steps=8,vertices=70000,draws=2,bytes=5000000};
+LAB_BUDGET :: FrameBudget.{steps=8,vertices=70000,draws=3,bytes=5000000};
 LAB_NAMES :: [7]string.["Chain","Transactions / UTXOs","Proof / Script","Node","Mempool / Mining","Wallets","Lightning"];
 LAB_SHORT :: [7]string.["Chain","UTXOs","Proof","Node","Mining","Wallets","Lightning"];
 LAB_X :: [7]f32.[0,-8,8,-12,12,-8,8];
 LAB_Z :: [7]f32.[0,7,7,15,15,23,23];
-LAB_NODES :: 20;
+LAB_NODES :: 96;
 BitcoinLab :: struct {
   ready:bool;session:[1]gw.GridWalk;
   w:f32;h:f32;d:f32=1;keys:int;look:f32;
@@ -26,6 +27,11 @@ BitcoinLab :: struct {
   eye:Point;forward:Point;right:Point;up:Point;
   used:int;steps:int;world_vertices:int;
   meter:[1]BudgetMeter;
+  explorer:[1]LabExplore;
+  mesh:[32768]f32;mesh_n:int;draws:[4]u32;
+  world_top:f32;world_bottom:f32;world_scale:f32;
+  inbox:[256]u8;field_box:[4]f32;
+  shown:int;
 }
 
 #test "Bitcoin Lab has all 125 book states, separate from exercises" {
@@ -86,10 +92,34 @@ BitcoinLab :: struct {
   #assert budget_declared(LAB_BUDGET,LAB_VERTICES)==BUDGET_NONE;
   #assert budget_arena_bytes(size_of(BitcoinLab),LAB_VERTICES,12,LAB_UNIFORMS)<=LAB_BUDGET.bytes;
 }
+#test "Bitcoin Lab share routes and pasted searches retain exact occurrences across reorgs" {
+  s:[1]BitcoinLab;lab_start(s[..]);lab_do(s[..],202);lab_do(s[..],205);
+  text:="e97304753dd67dc61b2f1ba8d782e19f0ae9b596729ed868428f076061267d35";
+  for i:0..<text.count {s[0].inbox[i]=text[i];}lab_message(s[..],1,text.count);
+  #assert lab_key(s[..],-2,true,0) && s[0].explorer[0].tx>=0 && LAB_BLOCKS[s[0].explorer[0].block].active;
+  lab_do(s[..],214);#assert s[0].action==3 && s[0].out_n==139;
+  other:[1]BitcoinLab;for i:0..<139 {other[0].inbox[i]=s[0].outbox[i];}lab_hash(other[..],139);
+  #assert other[0].explorer[0].phase==2 && other[0].explorer[0].tx==s[0].explorer[0].tx;
+  lab_do(s[..],213);#assert LAB_TXS[s[0].explorer[0].tx].order==2;
+  lab_do(s[..],201);lab_do(s[..],205);
+  for i:0..<text.count {s[0].inbox[i]=text[i];}lab_message(s[..],1,text.count);#assert lab_key(s[..],-2,true,0);
+  #assert LAB_BLOCKS[s[0].explorer[0].block].active;
+  lab_do(s[..],206);lab_do(s[..],208);#assert LAB_BLOCKS[s[0].explorer[0].block].height==100;
+}
+#test "Bitcoin Lab solid meshes fit short phones and every reorg viewport" #steps 100000000 {
+  s:[1]BitcoinLab;out:[LAB_VERTICES*12]f32;u:[LAB_UNIFORMS]f32;
+  for phase:0..<3 {for screen:0..<3 {
+    lab_start(s[..]);lab_do(s[..],200+phase);
+    n:=lab_frame(s[..],out[..],u[..],[3]f32.[320,390,1440][screen],[3]f32.[568,844,900][screen],1,0,false);
+    #assert n>0 && budget_ok(s[0].meter[0]) && s[0].mesh_n>=216 && s[0].mesh_n<=4096 && s[0].world_scale>0;
+    #assert s[0].draws[1]==cast(u32)s[0].mesh_n && s[0].draws[2]==0x80000000 && s[0].draws[3]==1;
+    for f:s[0].mesh[0..<s[0].mesh_n*8] {#assert f==f && abs(f)<1000000;}
+  }}
+}
 
 lab_exercise :: (chapter:int)->string {return "not available";}
 lab_start :: (s:[]BitcoinLab) {
-  if s[0].ready {return;}s[0].ready=true;s[0].map=true;s[0].focus=-1;
+  if s[0].ready {return;}s[0].ready=true;s[0].map=false;s[0].focus=-1;lb_start(s[0].explorer[..]);
   gw.gridwalk_place(s[0].session[..],0,-7,0,1.08,9);
   s[0].meter[0]=budget_meter(LAB_BUDGET);
   s[0].chapter=45;
@@ -106,6 +136,41 @@ lab_blur :: (s:[]BitcoinLab) #export_c {
 }
 lab_do :: (s:[]BitcoinLab,action:int) {
   lab_stop(s);
+  e:=s[0].explorer[..];
+  if action>=4000 && e[0].tx>=0 {index:=action-4000;if index<LAB_TXS[e[0].tx].no {e[0].output=index;}return;}
+  if action>=3000 && e[0].tx>=0 {
+    tx:=LAB_TXS[e[0].tx];i:=action-3000;if i>=tx.ni {return;}input:=LAB_INPUTS[tx.input+i];
+    parent:=lb_parent_tx(e[0].phase,tx.block,input.txid,tx.order);if parent>=0 {lb_select(e,LAB_TXS[parent].block);e[0].tx=parent;e[0].output=input.vout;}return;
+  }
+  if action>=2000 {index:=action-2000;if index>=LAB_TXS.count {return;}b:=LAB_TXS[index].block;snap:=LAB_SNAPSHOTS[e[0].phase];if b<snap.first || b>=snap.first+snap.count {return;}lb_select(e,b);e[0].tx=index;return;}
+  if action>=1000 {lb_select(e,action-1000);s[0].map=false;return;}
+  if action>=200 && action<=202 {lb_phase(e,action-200);e[0].playing=false;return;}
+  if action==203 {e[0].playing=!e[0].playing;return;}
+  if action==204 {lb_phase(e,(e[0].phase+1)%3);return;}
+  if action==205 {e[0].search=!e[0].search;e[0].n=0;e[0].miss=false;return;}
+  if action==214 {
+    s[0].out_n=0;
+    for c:"regtest/" {s[0].outbox[s[0].out_n]=c;s[0].out_n+=1;}
+    s[0].outbox[s[0].out_n]=cast(u8)(48+e[0].phase);s[0].out_n+=1;s[0].outbox[s[0].out_n]='/';s[0].out_n+=1;
+    for c:LAB_BLOCKS[e[0].block].hash {s[0].outbox[s[0].out_n]=c;s[0].out_n+=1;}
+    if e[0].tx>=0 {s[0].outbox[s[0].out_n]='/';s[0].out_n+=1;for c:LAB_TXS[e[0].tx].txid {s[0].outbox[s[0].out_n]=c;s[0].out_n+=1;}}
+    s[0].action=3;return;
+  }
+  if action==206 {e[0].tx=-1;return;}
+  if action==207 {e[0].tx=LAB_BLOCKS[e[0].block].tx;e[0].output=0;return;}
+  if action==208 || action==209 {
+    row:=LAB_BLOCKS[e[0].block];height:=row.height+(ifx action==208 then -1 else 1);b:=lb_height(e[0].phase,height);
+    if b>=0 {lb_select(e,b);}return;
+  }
+  if action==210 || action==211 {
+    row:=LAB_BLOCKS[e[0].block];if e[0].tx<0 {e[0].tx=row.tx;}
+    else {e[0].tx=row.tx+(e[0].tx-row.tx+(ifx action==210 then row.count-1 else 1))%row.count;}e[0].output=0;return;
+  }
+  if action==212 && e[0].tx>=0 {e[0].output=(e[0].output+1)%LAB_TXS[e[0].tx].no;return;}
+  if action==213 && e[0].tx>=0 {
+    out:=LAB_OUTPUTS[LAB_TXS[e[0].tx].output+e[0].output];block:=lb_block(e[0].phase,out.spend_block);
+    if block>=0 {row:=LAB_BLOCKS[block];for t:row.tx..<row.tx+row.count {if LAB_TXS[t].txid==out.spend {lb_select(e,block);e[0].tx=t;break;}}}return;
+  }
   if action>=1 && action<=7 {
     s[0].selected=action-1;s[0].map=true;
     for i:0..<125 {if LAB_CHAPTERS[i].station==s[0].selected {s[0].chapter=i;break;}}
@@ -138,9 +203,22 @@ lab_layout :: (s:[]BitcoinLab,w:f32,h:f32,d:f32) {
   }
   lab_node(s,HudBox.{x=w-96,y=16,width=80,height=44},11);
   lab_node(s,HudBox.{x=w-96,y=h-294,width=80,height=44},12);
+  if !s[0].map {
+    for i:0..<5 {lab_node(s,HudBox.{x=16+cast(f32)i*(w-32)/5,y=h-76,width=(w-32)/5-4,height=44},200+i);}
+    for i:0..<5 {lab_node(s,HudBox.{x=16+cast(f32)i*(w-32)/5,y=h-124,width=(w-32)/5-4,height=44},[5]int.[208,209,205,ifx s[0].explorer[0].tx<0 then 207 else 206,214][i]);}
+    if s[0].explorer[0].tx>=0 {for i:0..<4 {lab_node(s,HudBox.{x=16+cast(f32)i*(w-32)/4,y=h-172,width=(w-32)/4-4,height=44},[4]int.[210,211,212,213][i]);}}
+  }
 }
 lab_key :: (s:[]BitcoinLab,key:int,down:bool,mods:int)->bool #export_c {
   lab_start(s);bit:=0;
+  e:=s[0].explorer[..];
+  if e[0].search {
+    if !down {return true;}
+    if key== -1 {e[0].search=false;return true;}
+    if key== -2 {e[0].miss=!lb_find(e,cast(string)e[0].query[0..<e[0].n]);e[0].search=false;return true;}
+    if key== -3 || key==8 {if e[0].n>0 {e[0].n-=1;}return true;}
+    if key>=32 && key<=126 && e[0].n<128 {e[0].query[e[0].n]=cast(u8)key;e[0].n+=1;}return true;
+  }
   if key==119 || key==87 {bit=1;}if key==115 || key==83 {bit=2;}
   if key==97 || key==65 {bit=4;}if key==100 || key==68 {bit=8;}
   if key==32 {bit=16;}if key== -13 {bit=32;}
@@ -148,6 +226,9 @@ lab_key :: (s:[]BitcoinLab,key:int,down:bool,mods:int)->bool #export_c {
     if down && s[0].focus<0 {s[0].keys|=bit;}else {s[0].keys=(s[0].keys|bit)-bit;}return true;
   }
   if !down {return false;}
+  if key==47 {lab_do(s,205);return true;}
+  if key==91 {lab_do(s,208);return true;}if key==93 {lab_do(s,209);return true;}
+  if key==114 || key==82 {lab_do(s,204);return true;}
   if key== -15 {lab_stop(s);s[0].focus=ui_focus_next(s[0].nodes[0..<s[0].count],s[0].focus,(mods&1)!=0,UI_NONE);return true;}
   if key== -2 && s[0].focus>=0 {lab_do(s,ui_activate(s[0].nodes[0..<s[0].count],s[0].focus,UI_NONE));return true;}
   if key>=49 && key<=55 {lab_do(s,key-48);return true;}
@@ -166,7 +247,9 @@ lab_pointer :: (s:[]BitcoinLab,x:f32,y:f32,phase:int,kind:int,id:int)->bool #exp
     if slot<0 {return false;}
     s[0].active[slot]=true;s[0].pointers[slot]=id;
     s[0].press[slot]=ui_tap(s[0].nodes[0..<s[0].count],cx,cy,UI_NONE);
-    if s[0].press[slot]==0 && (cy<(ifx s[0].w<700 then 224.0f32 else 128.0f32) || (s[0].map && cy>=s[0].h-246)) {s[0].press[slot]=-1;}
+    bottom:=ifx s[0].world_bottom>0 then s[0].world_bottom else s[0].h-364;
+    top:=ifx s[0].world_top>0 then s[0].world_top else ifx s[0].w<700 then 284.0f32 else 156.0f32;
+    if s[0].press[slot]==0 && (cy<top || cy>=bottom) {s[0].press[slot]=-1;}
     s[0].focus=-1;
     if s[0].press[slot]!=0 {lab_stop(s);}
   }
@@ -183,8 +266,8 @@ LabPoint :: struct {x:f32;y:f32;depth:f32;}
 lab_project :: (s:[]BitcoinLab,p:Point)->LabPoint {
   rel:=sub(p,s[0].eye);depth:=dot(rel,s[0].forward);
   if depth<=0.2 {return LabPoint.{depth=depth};}
-  scale:=s[0].h*0.78;
-  return LabPoint.{x=s[0].w*0.5+dot(rel,s[0].right)*scale/depth,y=s[0].h*(ifx s[0].w<700 then 0.52f32 else 0.46f32)-dot(rel,s[0].up)*scale/depth,depth=depth};
+  scale:=s[0].world_scale;
+  return LabPoint.{x=s[0].w*0.5+dot(rel,s[0].right)*scale/depth,y=s[0].world_top*0.3+s[0].world_bottom*0.7-dot(rel,s[0].up)*scale/depth,depth=depth};
 }
 lab_line :: (s:[]BitcoinLab,out:[]f32,n:int,a:Point,b:Point,pen:HdPen,kind:int)->int {
   p:=lab_project(s,a);q:=lab_project(s,b);
@@ -203,9 +286,132 @@ lab_cube :: (s:[]BitcoinLab,out:[]f32,n:int,x:f32,y:f32,z:f32,r:f32,pen:HdPen,ki
   }
   return at;
 }
+lab_mesh_vertex :: (s:[]BitcoinLab,p:Point,c:Point) {
+  if s[0].mesh_n>=4096 {return;}rel:=sub(p,s[0].eye);depth:=dot(rel,s[0].forward);at:=s[0].mesh_n*8;
+  s[0].mesh[at]=2*dot(rel,s[0].right)*s[0].world_scale/s[0].w;
+  s[0].mesh[at+1]=2*dot(rel,s[0].up)*s[0].world_scale/s[0].h+(1-(s[0].world_top*0.6+s[0].world_bottom*1.4)/s[0].h)*depth;
+  s[0].mesh[at+2]=160.0/159.8*(depth-0.2);s[0].mesh[at+3]=depth;
+  s[0].mesh[at+4]=c.x;s[0].mesh[at+5]=c.y;s[0].mesh[at+6]=c.z;s[0].mesh[at+7]=1;s[0].mesh_n+=1;
+}
+lab_slab :: (s:[]BitcoinLab,x:f32,y:f32,z:f32,rx:f32,ry:f32,rz:f32,colour:Point) {
+  #assert s[0].mesh_n+36<=4096;
+  corners:[8]Point;for i:0..<8 {corners[i]=v3(x+(ifx (i&1)==0 then -rx else rx),y+(ifx (i&2)==0 then 0.0f32 else ry),z+(ifx (i&4)==0 then -rz else rz));}
+  faces:=[36]int.[0,1,3,0,3,2,4,6,7,4,7,5,0,4,5,0,5,1,2,3,7,2,7,6,0,2,6,0,6,4,1,5,7,1,7,3];
+  for i:0..<36 {light:=[6]f32.[0.70,0.58,0.45,1,0.64,0.82][i/6];lab_mesh_vertex(s,corners[faces[i]],times(colour,light));}
+}
+lab_draw_blocks :: (s:[]BitcoinLab,out:[]f32,n:int,pen:HdPen)->int {
+  at:=n;e:=s[0].explorer[..];snap:=LAB_SNAPSHOTS[e[0].phase];selected:=LAB_BLOCKS[e[0].block];s[0].shown=0;
+  visible:=ifx s[0].w<700 then 6 else 10;low:=selected.height-visible/2;if low<0 {low=0;}if low+visible>snap.height+1 {low=snap.height+1-visible;if low<0 {low=0;}}
+  for b:snap.first..<snap.first+snap.count {
+    row:=LAB_BLOCKS[b];if row.height<low || row.height>=low+visible {continue;}
+    s[0].shown+=1;
+    x:=(cast(f32)(row.height-low)-cast(f32)(visible-1)*0.5)*1.5;z:=ifx row.active then 1.5f32 else 5.0f32;
+    colour:=ifx b==e[0].block then v3(1,0.48,0.12) else ifx row.active then v3(0.12,0.53,0.72) else v3(0.55,0.24,0.08);
+    lab_slab(s,x,0.5,z,0.63,0.85,0.34,colour);
+    if row.active && row.height>low {at=lab_line(s,out,at,v3(x-0.87,0.8,z),v3(x-0.63,0.8,z),pen,2);}
+    p:=lab_project(s,v3(x,0.9,z));
+    if p.depth>0.2 && p.x>=24 && p.x<s[0].w-24 && p.y>=pen.top+22 && p.y<pen.bottom-22 {
+      box:=HudBox.{x=p.x-23,y=p.y-22,width=46,height=44};lab_node(s,box,1000+b);
+      at=hd_panel(out,at,box,pen,b==e[0].block);buf:[32]u8;k:=lab_decimal(buf[..],row.height);
+      at=hd_text_fit(out,at,cast(string)buf[0..<k],box.x+6,box.y+27,12,34,pen,ifx row.active then 0 else 2);
+    }
+  }
+  // Transaction tiles belong to the selected block only. Their width is
+  // proportional to weight, with a declared 12% visibility floor.
+  if e[0].tx>=0 {
+    row:=LAB_BLOCKS[e[0].block];largest:=1;for t:row.tx..<row.tx+row.count {if LAB_TXS[t].weight>largest {largest=LAB_TXS[t].weight;}}
+    for j:0..<row.count {
+      t:=row.tx+j;width:=hi(0.12f32,cast(f32)LAB_TXS[t].weight/cast(f32)largest);
+      lab_slab(s,(cast(f32)j-cast(f32)(row.count-1)*0.5)*2,0.5,-1.8,0.8*width,0.28,0.4,ifx t==e[0].tx then v3(1,0.62,0.18) else v3(0.1,0.6,0.45));
+      p:=lab_project(s,v3((cast(f32)j-cast(f32)(row.count-1)*0.5)*2,1.0,-1.8));
+      if p.depth>0.2 && p.y>pen.top+22 && p.y<pen.bottom-22 && p.x>=24 && p.x<s[0].w-24 {
+        box:=HudBox.{x=p.x-23,y=p.y-22,width=46,height=44};lab_node(s,box,2000+t);at=hd_panel(out,at,box,pen,t==e[0].tx);
+        at=hd_text(out,at,"T",box.x+6,box.y+27,11,pen,1);at=lab_number_at(out,at,j,box.x+22,box.y+27,12,pen,0);
+      }
+    }
+    tx:=LAB_TXS[e[0].tx];
+    for i:0..<tx.ni {
+      x:=(cast(f32)i-cast(f32)(tx.ni-1)*0.5)*1.8;lab_slab(s,x,0.45,0.1,0.4,0.22,0.25,v3(0.58,0.5,0.24));
+      at=lab_line(s,out,at,v3(x,0.6,-0.15),v3(0,0.6,-1.4),pen,2);p:=lab_project(s,v3(x,0.9,0.1));
+      if p.depth>0.2 && p.y>pen.top+22 && p.y<pen.bottom-22 && p.x>=24 && p.x<s[0].w-24 {
+        box:=HudBox.{x=p.x-23,y=p.y-22,width=46,height=44};lab_node(s,box,3000+i);at=hd_panel(out,at,box,pen,false);
+        at=hd_text(out,at,"I",box.x+6,box.y+27,11,pen,1);at=lab_number_at(out,at,i,box.x+22,box.y+27,12,pen,0);
+      }
+    }
+    for o:0..<tx.no {
+      x:=(cast(f32)o-cast(f32)(tx.no-1)*0.5)*1.8;output:=LAB_OUTPUTS[tx.output+o];
+      colour:=ifx output.status=="unspent" then v3(0.1,0.65,0.35) else ifx output.status=="stale" then v3(0.5,0.25,0.08) else v3(0.42,0.22,0.42);
+      lab_slab(s,x,0.35,-4.6,0.48,0.25,0.3,colour);
+      at=lab_line(s,out,at,v3(0,0.6,-2.2),v3(x,0.5,-4.3),pen,2);
+      p:=lab_project(s,v3(x,0.8,-4.6));
+      if p.depth>0.2 && p.y>pen.top+22 && p.y<pen.bottom-22 && p.x>=24 && p.x<s[0].w-24 {
+        box:=HudBox.{x=p.x-23,y=p.y-22,width=46,height=44};lab_node(s,box,4000+o);at=hd_panel(out,at,box,pen,o==e[0].output);at=hd_text(out,at,"O",box.x+6,box.y+27,11,pen,1);at=lab_number_at(out,at,o,box.x+22,box.y+27,12,pen,0);
+      }
+    }
+  }
+  return at;
+}
+lab_number_at :: (out:[]f32,n:int,value:int,x:f32,y:f32,size:f32,pen:HdPen,kind:int)->int {
+  buf:[32]u8;count:=lab_decimal(buf[..],value);return hd_text(out,n,cast(string)buf[0..<count],x,y,size,pen,kind);
+}
+lab_identifier :: (s:[]BitcoinLab,out:[]f32,n:int,text:string,y:f32,pen:HdPen)->int {
+  at:=n;step:=ifx s[0].w<700 then 32 else 64;
+  for i:0..<(text.count+step-1)/step {a:=i*step;b:=a+step;if b>text.count {b=text.count;}at=hd_text(out,at,text[a..<b],16,y+cast(f32)i*16,11,pen,0);}return at;
+}
+lab_inspector :: (s:[]BitcoinLab,out:[]f32,n:int,pen:HdPen)->int {
+  at:=n;e:=s[0].explorer[..];row:=LAB_BLOCKS[e[0].block];snap:=LAB_SNAPSHOTS[e[0].phase];phone:=s[0].w<700;
+  y:=s[0].world_bottom+24;line:=ifx phone then 32.0f32 else 16.0f32;
+  if e[0].search {
+    at=hd_text(out,at,"SEARCH HEIGHT / HASH / TXID / ADDRESS",16,y,12,pen,2);
+    at=hd_text_fit(out,at,cast(string)e[0].query[0..<e[0].n],16,y+28,13,s[0].w-32,pen,0);
+    return hd_text_fit(out,at,"Type or paste an identifier; Enter selects, Esc cancels.",16,y+52,11,s[0].w-32,pen,1);
+  }
+  if s[0].h<700 {
+    at=hd_text(out,at,"BLOCK",16,y,12,pen,2);at=lab_number_at(out,at,row.height,72,y,12,pen,0);
+    at=hd_text(out,at,ifx row.active then "ACTIVE" else "STALE",132,y,11,pen,2);
+    return lab_identifier(s,out,at,row.hash,y+18,pen);
+  }
+  if e[0].tx<0 {
+    at=hd_text(out,at,"BLOCK",16,y,14,pen,2);at=lab_number_at(out,at,row.height,76,y,14,pen,0);
+    at=hd_text(out,at,ifx row.active then "ACTIVE" else "STALE",150,y,12,pen,ifx row.active then 0 else 2);
+    at=lab_identifier(s,out,at,row.hash,y+20,pen);y+=line+36;
+    at=hd_text(out,at,"TX",16,y,11,pen,1);at=lab_number_at(out,at,row.count,38,y,12,pen,0);
+    at=hd_text(out,at,"BYTES",88,y,11,pen,1);at=lab_number_at(out,at,row.size,132,y,12,pen,0);
+    at=hd_text(out,at,"WU",206,y,11,pen,1);at=lab_number_at(out,at,row.weight,232,y,12,pen,0);
+    at=hd_text(out,at,"HEADER UNIX TIME",16,y+22,11,pen,1);at=lab_number_at(out,at,row.time,146,y+22,11,pen,0);
+    at=hd_text(out,at,"CHAINWORK",16,y+44,11,pen,1);at=lab_identifier(s,out,at,row.chainwork,y+62,pen);
+    fees:=0;for t:row.tx+1..<row.tx+row.count {f:=lb_fee(e[0].phase,t);if f<0 {fees=-1;break;}fees+=f;}
+    bottom:=y+line+83;
+    at=hd_text(out,at,"SUBSIDY 5000000000 SAT / FEES",16,bottom,10,pen,1);
+    if fees>=0 {at=lab_number_at(out,at,fees,256,bottom,10,pen,0);}else {at=hd_text(out,at,"UNKNOWN",256,bottom,10,pen,1);}
+    at=hd_text_fit(out,at,"Equal slabs: 1 block each. Blue active / amber stale. Select a slab or use < >.",16,bottom+21,10,s[0].w-32,pen,1);
+  }else {
+    tx:=LAB_TXS[e[0].tx];output:=LAB_OUTPUTS[tx.output+e[0].output];
+    at=hd_text(out,at,"TRANSACTION",16,y,13,pen,2);at=lab_number_at(out,at,tx.order,144,y,13,pen,0);
+    at=lab_identifier(s,out,at,tx.txid,y+19,pen);y+=line+32;
+    at=hd_text(out,at,"WU",16,y,10,pen,1);at=lab_number_at(out,at,tx.weight,40,y,11,pen,0);
+    fee:=lb_fee(e[0].phase,e[0].tx);at=hd_text(out,at,ifx tx.order==0 then "COINBASE" else "FEE SAT",112,y,10,pen,1);
+    if fee>=0 {at=lab_number_at(out,at,fee,184,y,11,pen,0);}
+    at=hd_text(out,at,"OUT",16,y+22,10,pen,1);at=lab_number_at(out,at,e[0].output,48,y+22,11,pen,0);
+    at=lab_number_at(out,at,output.value_sat,80,y+22,11,pen,0);at=hd_text(out,at,"SAT",184,y+22,10,pen,1);
+    status:=ifx output.status=="unspent" && tx.order==0 && row.height+100>snap.height then "immature" else output.status;
+    at=hd_text(out,at,status,224,y+22,11,pen,2);
+    at=hd_text(out,at,"SCRIPT",16,y+43,10,pen,1);at=lab_identifier(s,out,at,output.script_hex,y+61,pen);
+    at=hd_text_fit(out,at,ifx output.address=="" then "No standard address for this script." else output.address,16,y+line+82,10,s[0].w-32,pen,0);
+    at=hd_text_fit(out,at,"Tile width = relative weight (12% floor). Exact outputs; no ownership inference.",16,y+line+103,10,s[0].w-32,pen,1);
+  }
+  if e[0].miss {at=hd_text_fit(out,at,"Identifier unavailable in this bounded recording.",16,s[0].h-168,11,s[0].w-32,pen,2);}
+  return at;
+}
 lab_frame :: (s:[]BitcoinLab,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:bool)->int #export_c {
   lab_start(s);if !(d>0) || !(w>0) || !(h>0) || u.count<LAB_UNIFORMS {return 0;}
+  e:=s[0].explorer[..];
+  if e[0].playing {e[0].clock+=lo(dt,0.25f32);if e[0].clock>=6 {lb_phase(e,(e[0].phase+1)%3);}}
   lab_layout(s,w/d,h/d,d);
+  s[0].world_top=ifx s[0].w<700 then 284.0f32 else 156.0f32;
+  s[0].world_bottom=ifx s[0].map then s[0].h-246 else s[0].h-(ifx s[0].h<700 then 190.0f32 else ifx e[0].tx<0 then 364.0f32 else 430.0f32);
+  s[0].world_scale=lo(s[0].h*0.78,(s[0].world_bottom-s[0].world_top)*2.5);
+  s[0].field_box=[4]f32.[16*d,(s[0].world_bottom+28)*d,(s[0].w-16)*d,(s[0].world_bottom+72)*d];
   keys:=s[0].keys;before:=s[0].session[0].you.clock.ticks;
   gw.gridwalk_frame(s[0].session[..],cast(f32)((ifx (keys&8)!=0 then 1 else 0)-(ifx (keys&4)!=0 then 1 else 0)),cast(f32)((ifx (keys&1)!=0 then 1 else 0)-(ifx (keys&2)!=0 then 1 else 0)),(keys&32)!=0,(keys&16)!=0,s[0].look,0,0,w,h,d,dt,false);
   s[0].look=0;s[0].steps=s[0].session[0].you.clock.ticks-before;
@@ -214,7 +420,8 @@ lab_frame :: (s:[]BitcoinLab,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:bo
   s[0].forward=unit_or(sub(v3(at.x,at.y,at.z),s[0].eye),v3(0,0,1));
   s[0].right=unit_or(cross(s[0].forward,v3(0,1,0)),v3(-1,0,0));s[0].up=cross(s[0].right,s[0].forward);
   for i:0..<LAB_UNIFORMS {u[i]=0;}u[0]=w;u[1]=h;u[3]=1;
-  floor_pen:=HdPen.{d=d,top=ifx s[0].w<700 then 224.0f32 else 128.0f32,bottom=ifx s[0].map then s[0].h-246 else s[0].h-60,cyan=true,sans=false};
+  floor_pen:=HdPen.{d=d,top=s[0].world_top,bottom=s[0].world_bottom,cyan=true,sans=false};
+  u[80]=floor_pen.top*d;u[81]=floor_pen.bottom*d;s[0].mesh_n=0;
   n:=0;
   for i: -16..<37 {
     v:=cast(f32)i*2;
@@ -222,7 +429,7 @@ lab_frame :: (s:[]BitcoinLab,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:bo
     n=lab_line(s,out,n,v3(v,0,-32),v3(v,0,72),floor_pen,3);
   }
   for i:0..<7 {
-    n=lab_cube(s,out,n,LAB_X[i],0,LAB_Z[i],1.2,floor_pen,ifx s[0].selected==i then 2 else 0);
+    if i!=0 {n=lab_cube(s,out,n,LAB_X[i],0,LAB_Z[i],1.2,floor_pen,ifx s[0].selected==i then 2 else 0);}
     p:=lab_project(s,v3(LAB_X[i],3.2,LAB_Z[i]));
     if p.depth>0.2 && p.x>80 && p.x<s[0].w-80 && p.y>floor_pen.top+14 && p.y<floor_pen.bottom-44 {
       b:=HudBox.{x=p.x-78,y=p.y-20,width=156,height=44};
@@ -230,11 +437,7 @@ lab_frame :: (s:[]BitcoinLab,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:bo
       n=hd_text_fit(out,n,LAB_SHORT[i],b.x+10,b.y+27,13,136,floor_pen,0);
     }
   }
-  // Seven linked fixture blocks on the Chain plinth; links are decoration, not sat flows.
-  for i:0..<7 {
-    x:=-2.7+cast(f32)i*0.9;n=lab_cube(s,out,n,x,2.5,0,0.28,floor_pen,2);
-    if i<6 {n=lab_line(s,out,n,v3(x+0.28,2.78,0),v3(x+0.62,2.78,0),floor_pen,2);}
-  }
+  n=lab_draw_blocks(s,out,n,floor_pen);
   feet:=gw.gridwalk_feet(s[0].session[..]);
   n=lab_cube(s,out,n,feet.x,feet.y,feet.z,0.3,floor_pen,2);
   s[0].world_vertices=n;
@@ -245,15 +448,24 @@ lab_frame :: (s:[]BitcoinLab,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:bo
     n=hd_ring(out,n,thumbs.ox/d+thumbs.pad_x*44,thumbs.oy/d-thumbs.pad_y*44,12,12,0,6.2831853,pen,0);
   }
   n=hd_text(out,n,"BITCOIN LAB",16,34,18,pen,0);
-  n=hd_text(out,n,"FIXTURE / UNLISTED",16,61,12,pen,2);
+  n=hd_text(out,n,"RECORDED REGTEST / VALIDATED-V1",16,61,11,pen,2);
+  snap:=LAB_SNAPSHOTS[e[0].phase];sy:=ifx s[0].w<700 then 236.0f32 else 142.0f32;
+  n=hd_text(out,n,"TIP",16,sy,10,pen,1);n=lab_number_at(out,n,snap.height,42,sy,11,pen,0);
+  n=hd_text_fit(out,n,ifx e[0].playing then "REPLAYING / OBSERVATION UNKNOWN" else "PAUSED / OBSERVATION UNKNOWN",90,sy,10,s[0].w-106,pen,1);
+  if s[0].w<700 {n=lab_identifier(s,out,n,snap.hash,254,pen);}else {n=hd_text(out,n,snap.hash,430,sy,10,pen,0);}
+  n=hd_text(out,n,"WINDOW",16,s[0].world_bottom-12,10,pen,1);n=lab_number_at(out,n,s[0].shown,76,s[0].world_bottom-12,10,pen,0);
+  n=hd_text(out,n,"/",100,s[0].world_bottom-12,10,pen,1);n=lab_number_at(out,n,snap.count,114,s[0].world_bottom-12,10,pen,0);
+  n=hd_text(out,n,"RETAINED; OMITTED",150,s[0].world_bottom-12,10,pen,1);n=lab_number_at(out,n,snap.count-s[0].shown,288,s[0].world_bottom-12,10,pen,0);
   for i:0..<s[0].count {
-    node:=s[0].nodes[i];if i>=(ifx s[0].map then 12 else 9) {continue;}
+    node:=s[0].nodes[i];if node.action>=1000 {continue;}if i>=12 && node.action<=7 {continue;}
     b:=node.box;active:=s[0].focus==i || node.action==s[0].selected+1;
     n=hd_panel(out,n,b,pen,active);
     label:="";
     if node.action<=7 {label=LAB_SHORT[node.action-1];}
     if node.action==8 {label="< PREV";}if node.action==9 {label="NEXT >";}if node.action==10 {label="SOURCE";}
     if node.action==11 {label="WORLDS";}if node.action==12 {label="MAP";}
+    if node.action>=200 {label=lab_label(node.action);active=active || node.action==200+e[0].phase;}
+    if node.action==203 && e[0].playing {label="PAUSE";}
     n=hd_text_fit(out,n,label,b.x+8,b.y+27,12,b.width-16,pen,ifx active then 2 else 0);
   }
   if s[0].map {
@@ -266,10 +478,11 @@ lab_frame :: (s:[]BitcoinLab,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:bo
     n=hd_text_fit(out,n,chapter.title,80,y+27,13,s[0].w-96,pen,0);
     n=hd_text(out,n,"BOOK:",16,y+51,12,pen,1);n=hd_text(out,n,chapter.status,64,y+51,12,pen,0);
     n=hd_text(out,n,"VISUAL EXERCISE: not available",16,y+75,12,pen,1);
-    n=hd_text_fit(out,n,"Fixture map only. No node snapshot or validation claim.",16,y+96,11,s[0].w-32,pen,1);
-  }
+    n=hd_text_fit(out,n,"Recorded validated regtest blocks. Visual exercises are tracked separately.",16,y+96,11,s[0].w-32,pen,1);
+  }else {n=lab_inspector(s,out,n,pen);}
   n=hd_text_fit(out,n,ifx s[0].w<700 then "Left thumb: walk / right: look. Tap station." else "WASD walk / arrows look / 1-7 stations / N next / Tab + Enter / M map / Esc exit",16,s[0].h-18,11,s[0].w-32,pen,1);
-  budget_measure(s[0].meter[..],n,2,budget_arena_bytes(size_of(BitcoinLab),LAB_VERTICES,12,LAB_UNIFORMS));
+  s[0].draws[0]=0;s[0].draws[1]=cast(u32)s[0].mesh_n;s[0].draws[2]=0x80000000;s[0].draws[3]=1;
+  budget_measure(s[0].meter[..],n+s[0].mesh_n,3,budget_arena_bytes(size_of(BitcoinLab),LAB_VERTICES,12,LAB_UNIFORMS));
   _:=budget_take(s[0].meter[..],BUDGET_STEPS,s[0].steps);
   s[0].used=n;return n;
 }
@@ -282,6 +495,12 @@ lab_label :: (action:int)->string {
   if action>=1 && action<=7 {return LAB_NAMES[action-1];}
   if action==8 {return "Previous chapter";}if action==9 {return "Next chapter";}
   if action==10 {return "Read source chapter";}if action==11 {return "Exit to worlds";}
+  if action>=200 && action<=202 {return [3]string.["A:102","B:103","C:104"][action-200];}
+  if action==203 {return "PLAY";}if action==204 {return "STEP";}if action==205 {return "FIND";}
+  if action==206 {return "BLOCK";}if action==207 {return "TXS";}if action==208 {return "< BLK";}if action==209 {return "BLK >";}
+  if action==210 {return "< TX";}if action==211 {return "TX >";}if action==212 {return "OUTPUT";}if action==213 {return "SPEND";}
+  if action==214 {return "LINK";}
+  if action>=1000 {return "Select recorded block";}
   return "Show or hide chapter map";
 }
 lab_text :: (out:[]u8,at:int,text:string)->int {
@@ -294,17 +513,35 @@ lab_a11y :: (s:[]BitcoinLab,out:[]u8)->int #export_c {
     digits:=lab_decimal(number[..],action);n=lab_text(out,n,cast(string)number[0..<digits]);
     n=lab_text(out,n," button - ");n=lab_text(out,n,lab_label(action));n=lab_text(out,n,"\n");
   }
-  n=lab_text(out,n,"100 status - FIXTURE. Unlisted Bitcoin Lab. Station: ");
+  if !s[0].map {for action:200..<215 {
+    digits:=lab_decimal(number[..],action);n=lab_text(out,n,cast(string)number[0..<digits]);
+    n=lab_text(out,n," button - ");n=lab_text(out,n,lab_label(action));n=lab_text(out,n,"\n");
+  }}
+  n=lab_text(out,n,"100 status - RECORDED REGTEST / VALIDATED-V1. Unlisted Bitcoin Lab. Observation time unknown. Station: ");
   n=lab_text(out,n,LAB_NAMES[s[0].selected]);n=lab_text(out,n,". Chapter ");
   digits:=lab_decimal(number[..],s[0].chapter+1);n=lab_text(out,n,cast(string)number[0..<digits]);
   n=lab_text(out,n,": ");n=lab_text(out,n,LAB_CHAPTERS[s[0].chapter].title);
   n=lab_text(out,n,". Book: ");n=lab_text(out,n,LAB_CHAPTERS[s[0].chapter].status);
-  return lab_text(out,n,". Visual exercise: not available. No node snapshot.\n");
+  n=lab_text(out,n,". Visual exercise: not available. Snapshot ");
+  e:=s[0].explorer[..];snap:=LAB_SNAPSHOTS[e[0].phase];n=lab_text(out,n,snap.hash);n=lab_text(out,n,". Selected block ");
+  row:=LAB_BLOCKS[e[0].block];digits=lab_decimal(number[..],row.height);n=lab_text(out,n,cast(string)number[0..<digits]);
+  n=lab_text(out,n," ");n=lab_text(out,n,row.hash);n=lab_text(out,n,ifx row.active then " ACTIVE. " else " STALE. ");
+  if e[0].tx>=0 {
+    tx:=LAB_TXS[e[0].tx];n=lab_text(out,n,"Transaction ");n=lab_text(out,n,tx.txid);n=lab_text(out,n,". Inputs: ");
+    for i:tx.input..<tx.input+tx.ni {
+      input:=LAB_INPUTS[i];n=lab_text(out,n,input.txid);n=lab_text(out,n,":");digits=lab_decimal(number[..],input.vout);n=lab_text(out,n,cast(string)number[0..<digits]);n=lab_text(out,n," ");
+    }n=lab_text(out,n,". Outputs: ");
+    for i:tx.output..<tx.output+tx.no {
+      output:=LAB_OUTPUTS[i];digits=lab_decimal(number[..],output.value_sat);n=lab_text(out,n,cast(string)number[0..<digits]);n=lab_text(out,n," sat ");
+      n=lab_text(out,n,ifx output.status=="unspent" && tx.order==0 && row.height+100>snap.height then "immature" else output.status);n=lab_text(out,n," script ");n=lab_text(out,n,output.script_hex);n=lab_text(out,n," address ");n=lab_text(out,n,output.address);n=lab_text(out,n," spender ");n=lab_text(out,n,output.spend);n=lab_text(out,n," in block ");n=lab_text(out,n,output.spend_block);n=lab_text(out,n,"; ");
+    }
+  }
+  return lab_text(out,n,"\n");
 }
 lab_access :: (s:[]BitcoinLab,action:int,activate:bool) #export_c {
   lab_stop(s);s[0].focus=-1;
   for i:0..<s[0].count {if s[0].nodes[i].action==action {s[0].focus=i;break;}}
-  if activate && action>=1 && action<=12 {lab_do(s,action);}
+  if activate && ((action>=1 && action<=12) || (action>=200 && action<=214) || action>=1000) {lab_do(s,action);}
 }
 lab_guard :: (s:[]BitcoinLab,field:int)->int #export_c {
   if field==0 {return s[0].selected;}if field==1 {return s[0].chapter+1;}
@@ -313,6 +550,27 @@ lab_guard :: (s:[]BitcoinLab,field:int)->int #export_c {
   if field==7 {return s[0].meter[0].refused;}
   if field==8 {return s[0].session[0].you.clock.ticks;}
   if field==9 {return s[0].focus;}
+  e:=s[0].explorer[..];
+  if field==10 {return e[0].phase;}if field==11 {return LAB_BLOCKS[e[0].block].height;}
+  if field==12 {return ifx e[0].tx<0 then -1 else LAB_TXS[e[0].tx].order;}
+  if field==13 {return ifx LAB_BLOCKS[e[0].block].active then 1 else 0;}if field==14 {return s[0].mesh_n;}
+  if field>=16 && field<=18 {
+    for node:s[0].nodes[0..<s[0].count] {if node.action>=1000 && node.action<2000 && node.action!=1000+e[0].block {
+      if field==16 {return cast(int)(node.box.x+node.box.width/2);}if field==17 {return cast(int)(node.box.y+node.box.height/2);}return LAB_BLOCKS[node.action-1000].height;
+    }}return -1;
+  }
   return -1;
 }
 lab_scene_ready :: (s:[]BitcoinLab)->bool #export_c {return s[0].world_vertices>0 && s[0].world_vertices<=s[0].used;}
+lab_message :: (s:[]BitcoinLab,kind:int,n:int) #export_c {
+  if kind!=1 || n<0 || n>128 || !s[0].explorer[0].search {return;}e:=s[0].explorer[..];
+  if n>128-e[0].n {return;}for c:s[0].inbox[0..<n] {if c<33 || c>126 {return;}}
+  for c:s[0].inbox[0..<n] {e[0].query[e[0].n]=c;e[0].n+=1;}
+}
+lab_hash :: (s:[]BitcoinLab,n:int) #export_c {
+  lab_start(s);if n!=74 && n!=139 {return;}text:=cast(string)s[0].inbox[0..<n];
+  if text[0..<8]!="regtest/" || text[8]<'0' || text[8]>'2' || text[9]!='/' {return;}
+  phase:=cast(int)(text[8]-'0');block:=lb_block(phase,text[10..<74]);if block<0 {return;}
+  lb_phase(s[0].explorer[..],phase);lb_select(s[0].explorer[..],block);s[0].map=false;
+  if n==139 && text[74]=='/' {row:=LAB_BLOCKS[block];for t:row.tx..<row.tx+row.count {if LAB_TXS[t].txid==text[75..<139] {s[0].explorer[0].tx=t;}}}
+}

@@ -1,0 +1,7 @@
+// Checks for the validated index; setup helpers grant no production validity.
+vxi_demo :: (d:[]CsDemo) {
+  cs_demo_init(d);
+  cs_demo_publish(d,vxi_init(5,d[0].live[..],0,d[0].stage[..],d[0].batch[..]));
+  bi_received_block_vartime(d[0].tree[..],0,1);
+  bi_received_block_vartime(d[0].tree[..],1,1);
+}

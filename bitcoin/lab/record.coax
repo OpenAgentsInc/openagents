@@ -1,0 +1,135 @@
+// Rebuild the retained Core reorg recording through our full validator.
+// No initial coins, imported index or L cursor. Native effects are std.fs.
+// coax/web/tool.sh bitcoin/lab/record.coax OUT_DIRECTORY
+// tool.sh: run-steps 100000000
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/bitcoin/validated-index.coax";
+#load "../../coax/lib/bitcoin/validated-index-view.coax";
+#load "../../coax/lib/bitcoin/coinscache.coax";
+#load "../../coax/lib/bitcoin/kvstream.coax";
+#load "../../coax/lib/bitcoin/blockfiles.coax";
+#load "../../coax/lib/bitcoin/explorer-json.coax";
+#load "../../coax/lib/bitcoin/explorer-body.coax";
+
+LabRecorder :: struct {
+  // CsDemo supplies only disjoint bounded workspaces; its model initializer
+  // and model coin helpers are never called. Init below starts at genesis.
+  core:[1]CsDemo; raw:[1048576]u8;raw_n:int;
+  bodies:[128]CrBlock;locations:[128]TxiLoc;
+  path:[128]int;attach:[128]CrBlock;locs:[128]TxiLoc;
+  scratch:[131072]u8;aggregate:[524288]u8;temp:[262144]u8;
+  cache:[1]CoinsCache;delta:[262144]u8;spare:[262144]u8;record:[16384]u8;
+  stage:[131072]u8;batch:[524288]u8;frame:[524296]u8;
+  query:[262144]u8;json:[2097152]u8;json_n:int;seq:u64;
+}
+lab_record_path :: (dir:string,name:string,out:[]u8)->string {return fs_join(dir,name,out);}
+lab_record_commit :: (s:[]LabRecorder,path:string,n:int,used:int)->bool {
+  for i:0..<n {s[0].frame[8+i]=s[0].batch[i];}
+  kv_seal_vartime(s[0].frame[..],n,s[0].seq+1,0);
+  if !fs_append_durable(path,cast(string)s[0].frame[0..<n+8]) {return false;}
+  for i:0..<used {s[0].core[0].live[i]=s[0].stage[i];}
+  s[0].core[0].used=used;s[0].seq+=1;return true;
+}
+lab_record_init :: (s:[]LabRecorder)->bool {
+  d:=s[0].core[..];
+  if !bi_init(d[0].tree[..],CHAIN_REGTEST_PARAMS,d[0].links[..],d[0].entries[..],d[0].slots[..],d[0].chain[..]) {return false;}
+  headers:[10240]u8;
+  for name:[3]string.["headers-a","headers-b","headers-c"] {
+    path:[4096]u8;n:=fs_read(fs_join("bitcoin/fixtures/explorer-core-reorg",name,path[..]),headers[..]);
+    if n<80 || n%80!=0 {return false;}
+    for i:0..<n/80 {if bi_accept_header_vartime(d[0].tree[..],headers[80*i..<80*i+80],2000000000).code!=BI_OK {return false;}}
+  }
+  s[0].raw_n=fs_read("bitcoin/fixtures/explorer-core-reorg/blk00000.dat",s[0].raw[..]);if s[0].raw_n<0 {return false;}
+  at:=0;
+  while at<s[0].raw_n {
+    if s[0].raw_n-at<88 {return false;}
+    frame:=bf_next_vartime(s[0].raw[at..<at+88],at,s[0].raw_n,BF_BLOCK,0xdab5bffa,0);
+    if frame.code!=BF_OK {return false;}
+    body:=s[0].raw[at+8..<at+8+frame.n];hash:[32]u8;
+    if pow_block_hash_vartime(body[0..<80],hash[..])!=POW_OK {return false;}
+    index:=bi_find(d[0].tree[..],hash[..]);if index<0 || s[0].bodies[index].bytes.count!=0 {return false;}
+    s[0].bodies[index]=CrBlock.{index=index,bytes=body};s[0].locations[index]=TxiLoc.{pos=at+8};at+=frame.size;
+  }
+  bi_received_block_vartime(d[0].tree[..],0,1);return true;
+}
+lab_record_snapshot :: (s:[]LabRecorder,phase:int)->bool {
+  d:=s[0].core[..];v:=vxi_view(d[0].live[..],d[0].used,s[0].query[..]);if v.code!=CS_OK {return false;}
+  o:[1]Jo;jo_start(o[..],s[0].json[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_int(o[..],1);
+  jo_key(o[..],"snapshot");jo_obj(o[..]);jo_key(o[..],"source");jo_str(o[..],"core-regtest-reorg");
+  jo_key(o[..],"mode");jo_str(o[..],"fixture");jo_key(o[..],"network");jo_str(o[..],"regtest");
+  jo_key(o[..],"profile");jo_str(o[..],"validated-v1");jo_key(o[..],"height");jo_int(o[..],v.tip.height);
+  jo_key(o[..],"hash");ex_json_hex(o[..],v.tip.hash[..],true);jo_key(o[..],"cursor");jo_int(o[..],cast(int)s[0].seq);
+  jo_key(o[..],"observation_ms");jo_null(o[..]);jo_key(o[..],"complete");jo_bool(o[..],true);jo_end(o[..]);
+  jo_key(o[..],"blocks");jo_arr(o[..]);
+  for index:0..<d[0].tree[0].count {
+    body:=s[0].bodies[index].bytes;if body.count==0 {return false;}
+    hash:=d[0].entries[index].hash;receipt:=txi_block_vartime(d[0].live[..],d[0].used,hash[..]);
+    if index!=0 && receipt.code!=LC_OK {continue;}
+    height:=d[0].links[index].height;active:=index==0 || axi_active_vartime(s[0].query[..],v.used,hash[..],height)==1;
+    check:=block_check_vartime(body,d[0].ins[..],d[0].outs[..],d[0].items[..],d[0].ids[..],d[0].wids[..],d[0].merkle[..]);
+    if check.code!=BLOCK_OK {return false;}
+    jo_obj(o[..]);jo_key(o[..],"hash");ex_json_hex(o[..],hash[..],true);jo_key(o[..],"height");jo_int(o[..],height);
+    jo_key(o[..],"previous");ex_json_hex(o[..],body[4..<36],true);jo_key(o[..],"time");jo_int(o[..],tx_le_vartime(body,68,4));
+    jo_key(o[..],"size");jo_int(o[..],body.count);jo_key(o[..],"weight");jo_int(o[..],check.weight);
+    jo_key(o[..],"active");jo_bool(o[..],active);jo_key(o[..],"chainwork");
+    work:[32]u8;#assert u256_to_hash_vartime(d[0].entries[index].work,work[..]);ex_json_hex(o[..],work[..],true);
+    count:=tx_compact_read_vartime(body,80);at:=count.next;jo_key(o[..],"transactions");jo_arr(o[..]);
+    for order:0..<count.value {
+      raw:=body[at..<body.count];t:=tx_parse_vartime(raw,true,d[0].ins[..],d[0].outs[..],d[0].items[..]);if t.code!=TX_OK {return false;}raw=raw[0..<t.total];
+      id:[32]u8;#assert tx_txid_vartime(raw,t,id[..]);
+      jo_obj(o[..]);jo_key(o[..],"txid");ex_json_hex(o[..],id[..],true);jo_key(o[..],"order");jo_int(o[..],order);
+      jo_key(o[..],"weight");jo_int(o[..],tx_weight_vartime(t));jo_key(o[..],"size");jo_int(o[..],t.total);
+      jo_key(o[..],"inputs");jo_arr(o[..]);
+      for i:0..<t.nin {
+        p:=d[0].ins[i].outpoint;jo_obj(o[..]);jo_key(o[..],"txid");ex_json_hex(o[..],raw[p..<p+32],true);
+        jo_key(o[..],"vout");jo_int(o[..],tx_le_vartime(raw,p+32,4));jo_key(o[..],"coinbase");jo_bool(o[..],order==0);jo_end(o[..]);
+      }jo_end(o[..]);jo_key(o[..],"outputs");jo_arr(o[..]);
+      for i:0..<t.nout {
+        out:=d[0].outs[i];value:=tx_le_vartime(raw,out.value,8);script:=raw[out.script..<out.script+out.script_n];
+        point:[36]u8;for k:0..<32 {point[k]=id[k];}kv_put32(point[..],32,i);
+        state:=ifx index==0 then ExOutput.{status=3} else ex_output(s[0].query[..],v.used,point[..],height,value,script,active);
+        if state.code!=LC_OK {return false;}
+        ex_json_output(o[..],SW_REGTEST,i,value,script,state);
+      }jo_end(o[..]);jo_end(o[..]);at+=t.total;
+    }jo_end(o[..]);jo_end(o[..]);
+  }jo_end(o[..]);jo_end(o[..]);s[0].json_n=jo_text(o[..]).count;return !o[0].bad;
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {tool_errln("usage: record OUT_DIRECTORY (new directory only)");return 2;}
+  dir:=args_at(a[..],0);if fs_exists(dir) || !fs_mkdir(dir) {return 2;}
+  s:[1]LabRecorder;if !lab_record_init(s[..]) {tool_errln("raw archive/header admission refused");return 1;}
+  p:[4096]u8;state:=lab_record_path(dir,"state.kv",p[..]);header:[20]u8;#assert kv_header_vartime(0,header[..])==20;
+  if !fs_write(state,cast(string)header[..]) {return 1;}
+  d:=s[0].core[..];init:=vxi_init(5,d[0].live[..],0,s[0].stage[..],s[0].batch[..]);
+  if init.code!=CS_OK || !lab_record_commit(s[..],state,init.n,init.used) {return 1;}
+  if cc_init_vartime(s[0].cache[..],d[0].live[..],d[0].used,600000,s[0].delta[..],s[0].spare[..],s[0].record[..])!=CS_OK {return 1;}
+  for phase:0..<3 {
+    phase_headers:[10240]u8;name:=[3]string.["headers-a","headers-b","headers-c"][phase];pathbuf:[4096]u8;
+    n:=fs_read(fs_join("bitcoin/fixtures/explorer-core-reorg",name,pathbuf[..]),phase_headers[..]);hash:[32]u8;
+    if n<80 || pow_block_hash_vartime(phase_headers[n-80..<n],hash[..])!=POW_OK {return 1;}
+    target:=bi_find(d[0].tree[..],hash[..]);tip:=cs_tip_vartime(d[0].live[..],d[0].used);current:=bi_find(d[0].tree[..],tip.hash[..]);
+    fork:=bi_last_common_ancestor(d[0].links[..],current,target);
+    count:=d[0].links[target].height-d[0].links[fork].height;j:=target;
+    for k:0..<count {s[0].path[count-1-k]=j;j=d[0].links[j].prev;}
+    for k:0..<count {
+      index:=s[0].path[k];body:=s[0].bodies[index].bytes;
+      check:=block_check_vartime(body,d[0].ins[..],d[0].outs[..],d[0].items[..],d[0].ids[..],d[0].wids[..],d[0].merkle[..]);
+      if check.code!=BLOCK_OK {return 1;}bi_received_block_vartime(d[0].tree[..],index,check.count);
+      s[0].attach[k]=s[0].bodies[index];s[0].locs[k]=s[0].locations[index];
+    }
+    r:=vxi_reorg(d[0].tree[..],d[0].live[..],d[0].used,target,s[0].attach[0..<count],s[0].locs[0..<count],d[0].stage[..],s[0].scratch[..],s[0].aggregate[..],s[0].temp[..],CrWork.{validate=cs_demo_work(d),path=s[0].path[..]},d[0].undo[..]);
+    if r.code!=CS_OK {print("phase % refused code % validator % detail % block % tx % input %\n",phase,r.code,r.vcode,r.detail,r.block,r.tx,r.input);return 1;}
+    if cc_accept_vartime(s[0].cache[..],d[0].live[..],d[0].used,s[0].delta[..],s[0].aggregate[0..<r.n],s[0].spare[..],s[0].record[..],s[0].stage[..],s[0].batch[..])!=CS_OK {return 1;}
+    flush:=cc_flush_vartime(s[0].cache[..],d[0].live[..],d[0].used,s[0].delta[..],s[0].stage[..],s[0].batch[..]);
+    if flush.code!=CS_OK || vxi_context(s[0].stage[..],flush.used).code!=CS_OK || !lab_record_commit(s[..],state,flush.n,flush.used) {return 1;}
+    if !cc_ack_vartime(s[0].cache[..],flush.generation,d[0].live[..],d[0].used) || !cr_publish_vartime(d[0].tree[..],d[0].live[..],d[0].used,target) {return 1;}
+    if !lab_record_snapshot(s[..],phase) {tool_errln("snapshot refused");return 1;}
+    snapname:=[3]string.["a.json","b.json","c.json"][phase];snapbuf:[4096]u8;snapshot:=fs_join(dir,snapname,snapbuf[..]);
+    // Snapshot bytes and state originate from this same acknowledged commit.
+    if !fs_write(snapshot,cast(string)s[0].json[0..<s[0].json_n]) || !fs_append_durable(snapshot,"") {return 1;}
+    print("phase % height % detached % attached % durable bytes %\n",phase,d[0].links[target].height,r.disconnected,r.connected,d[0].used);
+  }
+  return 0;
+}

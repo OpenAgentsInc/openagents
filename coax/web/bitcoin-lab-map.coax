@@ -4,7 +4,8 @@
 #load "../lib/sys/tool.coax";
 #load "../lib/sys/fs.coax";
 #load "../lib/json/json.coax";
-MapText :: struct {bytes:[131072]u8;n:int;bad:bool;}
+#load "../../apps/openagents-web/bitcoin-lab-data.coax";
+MapText :: struct {bytes:[2097152]u8;n:int;bad:bool;}
 MAP_STATIONS :: [7]string.["Chain","Transactions/UTXOs","Proof/Script","Node","Mempool/Mining","Wallets","Lightning"];
 map_add :: (b:[]MapText,s:string) {
   if s.count>b[0].bytes.count-b[0].n {b[0].bad=true;return;}
@@ -15,7 +16,7 @@ map_number :: (b:[]MapText,n:int) {
 }
 map_save :: (b:[]MapText,path:string,check:bool)->bool {
   if b[0].bad {return false;}
-  text:=cast(string)b[0].bytes[0..<b[0].n];old:[131072]u8;k:=fs_read(path,old[..]);
+  text:=cast(string)b[0].bytes[0..<b[0].n];old:[2097152]u8;k:=fs_read(path,old[..]);
   if k>=0 && cast(string)old[0..<k]==text {return true;}
   if check {tool_err("stale: ");tool_errln(path);return false;}
   return fs_write(path,text);
@@ -25,6 +26,31 @@ map_html :: (b:[]MapText,text:string) {
     if c=='&' {map_add(b,"&amp;");}else if c=='<' {map_add(b,"&lt;");}
     else {one:=[1]u8.[c];map_add(b,cast(string)one[..]);}
   }
+}
+map_recording :: (b:[]MapText,html:bool) {
+  map_add(b,ifx html then "<section><h2>Recorded regtest blocks</h2><p>Validated-v1 recording, not a live node. Observation time unknown. Equal slabs represent one block each. Exact outpoint links imply no wallet ownership.</p>" else "\n## Recorded regtest blocks\n\nValidated-v1 recording; observation time unknown. Full transaction inputs, outputs, scripts and spend occurrences are in the HTML fallback and compiled recording.\n");
+  for phase:0..<3 {
+    snap:=LAB_SNAPSHOTS[phase];map_add(b,ifx html then "<details><summary>Snapshot " else "\n### Snapshot ");map_number(b,phase);map_add(b," — height ");map_number(b,snap.height);
+    map_add(b,ifx html then "</summary><p>Committed tip: <code>" else "\n\nCommitted tip: `");map_add(b,snap.hash);map_add(b,ifx html then "</code></p>" else "`\n\n| Height | State | Full block hash | Bytes | Weight | Transactions |\n| --- | --- | --- | --- | --- | --- |\n");
+    for index:snap.first..<snap.first+snap.count {
+      row:=LAB_BLOCKS[index];map_add(b,ifx html then "<details><summary>Block " else "| ");map_number(b,row.height);map_add(b,ifx html then " — " else " | ");map_add(b,ifx row.active then "active" else "stale");
+      map_add(b,ifx html then "</summary><p>Hash <code>" else " | ");map_add(b,row.hash);map_add(b,ifx html then "</code></p><p>Bytes " else " | ");map_number(b,row.size);map_add(b,ifx html then "; weight " else " | ");map_number(b,row.weight);map_add(b,ifx html then "; transactions " else " | ");map_number(b,row.count);
+      if !html {map_add(b," |\n");continue;}
+      map_add(b,"; header Unix time ");map_number(b,row.time);map_add(b,"</p><p>Previous <code>");map_add(b,row.previous);map_add(b,"</code>; chainwork <code>");map_add(b,row.chainwork);map_add(b,"</code></p><ul>");
+      for t:row.tx..<row.tx+row.count {
+        tx:=LAB_TXS[t];map_add(b,"<li><p>Transaction ");map_number(b,tx.order);map_add(b," <code>");map_add(b,tx.txid);map_add(b,"</code>; bytes ");map_number(b,tx.size);map_add(b,"; weight ");map_number(b,tx.weight);map_add(b,".</p><p>Inputs: ");
+        for i:tx.input..<tx.input+tx.ni {input:=LAB_INPUTS[i];if input.coinbase {map_add(b,"coinbase; ");}else {map_add(b,"<code>");map_add(b,input.txid);map_add(b,":");map_number(b,input.vout);map_add(b,"</code>; ");}}
+        map_add(b,"</p><ul>");for i:0..<tx.no {
+          output:=LAB_OUTPUTS[tx.output+i];map_add(b,"<li>Output ");map_number(b,i);map_add(b,": ");map_number(b,output.value_sat);map_add(b," sat; ");
+          map_add(b,ifx output.status=="unspent" && tx.order==0 && row.height+100>snap.height then "immature" else output.status);
+          map_add(b,"; script <code>");map_add(b,output.script_hex);map_add(b,"</code>");
+          if output.address!="" {map_add(b,"; address <code>");map_add(b,output.address);map_add(b,"</code>");}
+          if output.spend!="" {map_add(b,"; spent by <code>");map_add(b,output.spend);map_add(b,"</code> in block <code>");map_add(b,output.spend_block);map_add(b,"</code> input ");map_number(b,output.vin);}
+          map_add(b,"</li>");
+        }map_add(b,"</ul></li>");
+      }map_add(b,"</ul></details>");
+    }if html {map_add(b,"</details>");}
+  }if html {map_add(b,"</section>\n");}
 }
 map_target :: (d:Jv,row:int,plan:string,out:[]u8)->string {
   file:=jv_get(d,row,"file");if jv_kind(d,file)==JV_STRING {return jv_raw(d,file);}
@@ -90,9 +116,9 @@ tool_main :: ()->int #export_c {
     map_add(b[..],") | ");map_add(b[..],MAP_STATIONS[map_station(i+1)]);map_add(b[..]," | ");map_add(b[..],jv_raw(d[0],jv_get(d[0],row,"status")));
     map_add(b[..]," | not available |\n");
   }
-  md:=map_save(b[..],"apps/openagents-web/realms/bitcoin-lab/index.md",check);ok=ok && md;
+  map_recording(b[..],false);md:=map_save(b[..],"apps/openagents-web/realms/bitcoin-lab/index.md",check);ok=ok && md;
   b[0]=MapText.{};
-  map_add(b[..],"<h2>Chapter map</h2><p>FIXTURE / UNLISTED. No node snapshot, network, cursor or validation claim. Each chapter has a primary station. Book status and visual exercises are separate. WASD walks; left and right arrows turn; 1-7 selects stations; PageUp/PageDown changes chapter; M toggles the map. Touch: left side walks, right side looks. Escape exits to Worlds.</p><table><caption>All 125 chapters</caption><thead><tr><th>Chapter</th><th>Station</th><th>Book status</th><th>Visual exercise</th></tr></thead><tbody>\n");
+  map_add(b[..],"<h2>Chapter map</h2><p>RECORDED REGTEST / VALIDATED-V1 / UNLISTED. Select actual recorded block slabs, inspect transactions and outputs, and replay acknowledged A/B/C snapshots. Observation time unknown. This is not a live node. Each chapter has a primary station; book status and visual exercises are separate. WASD walks, arrows turn, 1-7 selects stations, M toggles the chapter map, R steps replay, / finds an identifier. Touch: left side walks, right side looks. Escape exits to Worlds.</p><table><caption>All 125 chapters</caption><thead><tr><th>Chapter</th><th>Station</th><th>Book status</th><th>Visual exercise</th></tr></thead><tbody>\n");
   for i:0..<125 {
     row:=jv_at(d[0],chapters,i);
     map_add(b[..],"<tr><td><a href=\"https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/");map_add(b[..],map_target(d[0],row,plan,target[..]));
@@ -100,6 +126,6 @@ tool_main :: ()->int #export_c {
     map_add(b[..],"</a></td><td>");map_html(b[..],MAP_STATIONS[map_station(i+1)]);map_add(b[..],"</td><td>");map_html(b[..],jv_raw(d[0],jv_get(d[0],row,"status")));
     map_add(b[..],"</td><td>not available</td></tr>\n");
   }
-  map_add(b[..],"</tbody></table>\n");html:=map_save(b[..],"apps/openagents-web/realms/bitcoin-lab/map.fallback",check);
+  map_add(b[..],"</tbody></table>\n");map_recording(b[..],true);html:=map_save(b[..],"apps/openagents-web/realms/bitcoin-lab/map.fallback",check);
   return ifx ok && html then 0 else 1;
 }

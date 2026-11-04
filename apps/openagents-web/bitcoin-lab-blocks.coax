@@ -1,0 +1,85 @@
+// Read-only exploration of immutable acknowledged snapshots. No network,
+// signing, custody, ownership inference or synthetic satoshi paths.
+#load "bitcoin-lab-data.coax";
+LabExplore :: struct {ready:bool;phase:int;block:int=-1;tx:int=-1;output:int;playing:bool;clock:f32;search:bool;query:[128]u8;n:int;miss:bool;}
+
+#test "recorded blocks bind to complete validated snapshots and exact graph ranges" {
+  for p:0..<3 {
+    snap:=LAB_SNAPSHOTS[p];#assert snap.count>0 && snap.count<=128 && snap.first>=0 && snap.first+snap.count<=LAB_BLOCKS.count;
+    #assert snap.height==102+p && snap.hash.count==64;
+    tip:=-1;
+    for b:snap.first..<snap.first+snap.count {
+      row:=LAB_BLOCKS[b];#assert row.hash.count==64 && row.previous.count==64 && row.chainwork.count==64 && row.weight>0 && row.size>0;
+      #assert row.count>=1 && row.count<=16 && row.tx>=0 && row.tx+row.count<=LAB_TXS.count;
+      if row.active && row.height==snap.height {tip=b;#assert row.hash==snap.hash;}
+      for t:row.tx..<row.tx+row.count {
+        tx:=LAB_TXS[t];#assert tx.block==b && tx.txid.count==64 && tx.order==t-row.tx;
+        #assert tx.ni>0 && tx.no>0 && tx.input>=0 && tx.output>=0 && tx.input+tx.ni<=LAB_INPUTS.count && tx.output+tx.no<=LAB_OUTPUTS.count;
+      }
+    }#assert tip>=0;
+  }
+}
+#test "phase admission preserves the selected hash as stale and returns it on the reverse reorg" {
+  s:[1]LabExplore;lb_start(s[..]);old:=LAB_BLOCKS[s[0].block].hash;
+  lb_phase(s[..],1);#assert LAB_BLOCKS[s[0].block].hash==old && !LAB_BLOCKS[s[0].block].active;
+  lb_phase(s[..],2);#assert LAB_BLOCKS[s[0].block].hash==old && LAB_BLOCKS[s[0].block].active;
+  lb_phase(s[..],0);#assert LAB_BLOCKS[s[0].block].hash==old && LAB_BLOCKS[s[0].block].active;
+  lb_phase(s[..],-1);#assert s[0].phase==0;lb_phase(s[..],3);#assert s[0].phase==0;
+}
+#test "lookup, exact outpoints, amount and fee do not infer wallet ownership" {
+  s:[1]LabExplore;lb_start(s[..]);
+  #assert lb_find(s[..],"102") && LAB_BLOCKS[s[0].block].height==102;
+  #assert lb_find(s[..],"055359B6E245148E0E02BD513F35C86BB00B82FE80BFF6F4C85884DB207E01DF") && LAB_BLOCKS[s[0].block].height==102;
+  #assert !lb_find(s[..],"999999999999999999999999999999") && !lb_find(s[..],"no such block");
+  #assert lb_find(s[..],"e97304753dd67dc61b2f1ba8d782e19f0ae9b596729ed868428f076061267d35");
+  #assert s[0].tx>=0 && lb_fee(s[0].phase,s[0].tx)>=0;
+  #assert lb_find(s[..],"2N4XUn8T63kdwxeDGq5Uxx6fFNNtvSNzMyC") && s[0].tx>=0;
+  lb_phase(s[..],1);#assert lb_find(s[..],"e97304753dd67dc61b2f1ba8d782e19f0ae9b596729ed868428f076061267d35") && LAB_BLOCKS[s[0].block].active;
+  #assert !lb_find(s[..],"");
+}
+lb_start :: (s:[]LabExplore) {if s[0].ready {return;}s[0].ready=true;s[0].block=lb_height(0,LAB_SNAPSHOTS[0].height);}
+lb_height :: (phase:int,height:int)->int {
+  snap:=LAB_SNAPSHOTS[phase];for b:snap.first..<snap.first+snap.count {if LAB_BLOCKS[b].active && LAB_BLOCKS[b].height==height {return b;}}return -1;
+}
+lb_block :: (phase:int,hash:string)->int {
+  snap:=LAB_SNAPSHOTS[phase];for b:snap.first..<snap.first+snap.count {if LAB_BLOCKS[b].hash==hash {return b;}}return -1;
+}
+lb_phase :: (s:[]LabExplore,phase:int) {
+  if phase<0 || phase>=3 {return;}lb_start(s);hash:=LAB_BLOCKS[s[0].block].hash;id:=ifx s[0].tx>=0 then LAB_TXS[s[0].tx].txid else "";
+  b:=lb_block(phase,hash);s[0].phase=phase;s[0].block=ifx b>=0 then b else lb_height(phase,LAB_SNAPSHOTS[phase].height);
+  s[0].tx=-1;s[0].output=0;s[0].clock=0;
+  row:=LAB_BLOCKS[s[0].block];for t:row.tx..<row.tx+row.count {if LAB_TXS[t].txid==id {s[0].tx=t;}}
+}
+lb_select :: (s:[]LabExplore,b:int) {
+  snap:=LAB_SNAPSHOTS[s[0].phase];if b<snap.first || b>=snap.first+snap.count {return;}
+  s[0].block=b;s[0].tx=-1;s[0].output=0;s[0].playing=false;
+}
+lb_parent_tx :: (phase:int,b:int,id:string,order:int)->int {
+  cursor:=b;
+  for step:0..<128 {
+    row:=LAB_BLOCKS[cursor];for t:row.tx..<row.tx+row.count {if LAB_TXS[t].txid==id && (cursor!=b || LAB_TXS[t].order<order) {return t;}}
+    cursor=lb_block(phase,row.previous);if cursor<0 {return -1;}
+  }return -1;
+}
+lb_fee :: (phase:int,t:int)->int {
+  tx:=LAB_TXS[t];if tx.order==0 {return -1;}total:=0;
+  for i:tx.input..<tx.input+tx.ni {
+    input:=LAB_INPUTS[i];parent:=lb_parent_tx(phase,tx.block,input.txid,tx.order);if parent<0 || input.vout>=LAB_TXS[parent].no {return -1;}
+    total+=LAB_OUTPUTS[LAB_TXS[parent].output+input.vout].value_sat;
+  }
+  for i:tx.output..<tx.output+tx.no {total-=LAB_OUTPUTS[i].value_sat;}return total;
+}
+lb_number :: (text:string)->int {if text.count==0 || text.count>9 {return -1;}n:=0;for c:text {if c<'0' || c>'9' {return -1;}n=n*10+cast(int)(c-'0');}return n;}
+lb_find :: (s:[]LabExplore,text:string)->bool {
+  if text.count==0 || text.count>128 {return false;}normalized:[128]u8;hex:=true;
+  for c,i:text {if !((c>='0' && c<='9') || (c>='a' && c<='f') || (c>='A' && c<='F')) {hex=false;}normalized[i]=ifx c>='A' && c<='F' then c+32 else c;}
+  needle:=ifx hex then cast(string)normalized[0..<text.count] else text;snap:=LAB_SNAPSHOTS[s[0].phase];height:=lb_number(needle);
+  for pass:0..<2 {for b:snap.first..<snap.first+snap.count {
+    if LAB_BLOCKS[b].active!=(pass==0) {continue;}
+    row:=LAB_BLOCKS[b];if row.hash==needle || (height>=0 && row.height==height && row.active) {lb_select(s,b);return true;}
+    for t:row.tx..<row.tx+row.count {
+      tx:=LAB_TXS[t];if tx.txid==needle {lb_select(s,b);s[0].tx=t;return true;}
+      for o:0..<tx.no {output:=LAB_OUTPUTS[tx.output+o];if output.address==text || output.script_hex==needle {lb_select(s,b);s[0].tx=t;s[0].output=o;return true;}}
+    }
+  }}return false;
+}

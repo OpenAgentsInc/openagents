@@ -1123,6 +1123,9 @@ async function loadShadersOnce() {
   ]);
   gpu.surface = su;
   gpu.bg = bg; gpu.fx = fx; gpu.scene = sc; gpu.shadow = sh; gpu.bloom = bl; gpu.post = po; gpu.caster = ca; gpu.grass = gr; // swapped whole, at the next frame
+  // A procedural scene may have stores and no fetched assets. Asset delivery
+  // also calls this; pending assets still defer binding until they are ready.
+  if (sc) bindScene();
   gpu.waterCopy = post && /var\s+water_scene\b/.test(code);
   gpu.particles = sc ? await particlePipeline(post, true) : await particlePipeline(post, !!surfaced);
   const waterGroups = gpu.waterCopy ? [...sceneGroups, ...(sceneGroups.length < 3 ? [emptyLayout()] : []), waterCopyLayout()] : sceneGroups;
@@ -2034,7 +2037,7 @@ let clipNow = 0;
 if (clipping) globalThis.coaxialClipStep = async (frames = 1, fps = 30) => {
   // a clip that records its sound starts the audio once the engine is up (no gesture needed: nothing plays)
   if (globalThis.coaxialClipAudio && engine && !audio) startAudio();
-  for (let k = 0; k < frames; k++) { clipNow += 1000 / fps; draw(clipNow); }
+  for (let k = 0; k < frames; k++) { clipNow += 1000 / fps; draw(clipNow); a11yMirror(clipNow); }
   if (gpu?.device) await gpu.device.queue.onSubmittedWorkDone();
   return engine && gpu?.bg ? 1 : 0;
 };

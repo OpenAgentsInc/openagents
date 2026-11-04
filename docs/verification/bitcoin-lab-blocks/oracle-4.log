@@ -1,0 +1,3 @@
+a: 103 blocks; all raw txids/weights/outpoints/output states; retained Core/Electrs answers and exact-script balances [0, 2999998000, 1999999000] match
+b: 106 blocks; all raw txids/weights/outpoints/output states; retained Core/Electrs answers and exact-script balances [0, 1000000000, 3999996000] match
+c: 108 blocks; all raw txids/weights/outpoints/output states; retained Core/Electrs answers and exact-script balances [0, 2999998000, 1999999000] match

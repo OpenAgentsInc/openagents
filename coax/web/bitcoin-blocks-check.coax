@@ -1,0 +1,65 @@
+// One muted, headless session: real scene, picks, full ids, both reorgs,
+// exact transaction/outpoint navigation, shared hash links and GPU readback.
+#import "Basic";
+#load "../lib/net/cdp.coax";
+bb_eval :: (c:[]Cdp,script:string)->bool {n:=cdp_evaluate(c,script);return n>=0 && jv_raw(c[0].doc[0],n)=="true";}
+bb_param :: (c:[]Cdp,method:string,key:string,value:string)->bool {
+  buf:[8192]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_obj(o[..]);jo_key(o[..],key);jo_str(o[..],value);jo_end(o[..]);return cdp_call(c,method,jo_text(o[..]),30000)>=0;
+}
+bb_probe :: (c:[]Cdp,field:int)->int {
+  buf:[128]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_put(o[..],"coaxial.guardProbe(");jo_int(o[..],field);jo_put(o[..],")");n:=cdp_evaluate(c,jo_text(o[..]));return ifx n<0 then -1 else jv_int(c[0].doc[0],n,-1);
+}
+bb_pick :: (c:[]Cdp,phone:bool)->bool {
+  x:=bb_probe(c,16);y:=bb_probe(c,17);height:=bb_probe(c,18);if x<0 || y<0 || height<0 {return false;}
+  for down:0..<2 {
+    bytes:[1024]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],"type");
+    jo_str(o[..],ifx phone then (ifx down==0 then "touchStart" else "touchEnd") else (ifx down==0 then "mousePressed" else "mouseReleased"));
+    if phone {
+      jo_key(o[..],"touchPoints");jo_arr(o[..]);if down==0 {jo_obj(o[..]);jo_key(o[..],"x");jo_int(o[..],x);jo_key(o[..],"y");jo_int(o[..],y);jo_key(o[..],"id");jo_int(o[..],81);jo_end(o[..]);}jo_end(o[..]);
+    }else {jo_key(o[..],"x");jo_int(o[..],x);jo_key(o[..],"y");jo_int(o[..],y);jo_key(o[..],"button");jo_str(o[..],"left");jo_key(o[..],"clickCount");jo_int(o[..],1);}
+    jo_end(o[..]);if cdp_call(c,ifx phone then "Input.dispatchTouchEvent" else "Input.dispatchMouseEvent",jo_text(o[..]),30000)<0 {return false;}
+  }
+  if !bb_eval(c,"coaxialClipStep(1,60).then(()=>true)") {return false;}return bb_probe(c,11)==height && bb_probe(c,12)== -1 && bb_probe(c,5)==0;
+}
+bb_capture :: (c:[]Cdp,path:string)->bool {
+  if !bb_eval(c,"(async()=>{coaxial.renderCapture=null;coaxial.captureFrame();await coaxialClipStep(1,60);for(let i=0;i<100&&!coaxial.renderCapture;i++)await new Promise(r=>setTimeout(r,10));return coaxial.renderCapture?.format==='rgba8unorm'})()") {return false;}
+  n:=cdp_evaluate(c,"(async()=>{let r=coaxial.renderCapture,c=new OffscreenCanvas(r.width,r.height);c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(r.bytes),r.width,r.height),0,0);let b=new Uint8Array(await(await c.convertToBlob({type:'image/png'})).arrayBuffer()),s='';for(let i=0;i<b.length;i+=32768)s+=String.fromCharCode(...b.subarray(i,i+32768));return btoa(s)})()");
+  if n<0 {return false;}png:[16777216]u8;count:=b64_decode(jv_raw(c[0].doc[0],n),png[..]);return count>0 && fs_write(path,cast(string)png[0..<count]);
+}
+bb_run :: (c:[]Cdp,url:string,dir:string,phone:bool)->bool {
+  unused:=cdp_call(c,"Page.enable","",30000);
+  metrics:=cdp_call(c,"Emulation.setDeviceMetricsOverride",ifx phone then "{\"width\":390,\"height\":844,\"deviceScaleFactor\":1,\"mobile\":true}" else "{\"width\":1440,\"height\":900,\"deviceScaleFactor\":1,\"mobile\":false}",30000);
+  if !bb_param(c,"Page.addScriptToEvaluateOnNewDocument","source","globalThis.coaxialClip=true;globalThis.coaxialRenderCapture=true;globalThis.coaxialRenderCaptureFormat='rgba8unorm';globalThis.blockErrors=[];addEventListener('error',e=>blockErrors.push(e.message));const ce=console.error;console.error=(...a)=>{blockErrors.push(a.map(String).join(' '));ce(...a)}") || !bb_param(c,"Page.navigate","url",url) {return false;}
+  ready:=false;until:=proc_now_ms()+30000;
+  while proc_now_ms()<until {if bb_eval(c,"(async()=>!!globalThis.coaxial?.ready&&(await coaxialClipStep(1,60))===1&&coaxial.sceneReady===true)()") {ready=true;break;}proc_sleep(100);}
+  if !ready {return false;}
+  if phone {touch:=cdp_call(c,"Emulation.setTouchEmulationEnabled","{\"enabled\":true,\"maxTouchPoints\":5}",30000);}
+  if !bb_eval(c,"coaxial.guardProbe(7)===0&&coaxial.guardProbe(10)===0&&coaxial.guardProbe(11)===102&&coaxial.guardProbe(13)===1&&coaxial.guardProbe(14)>=216") {return false;}
+  if !bb_eval(c,"coaxialClipStep(16,60).then(()=>!!document.querySelector('#coaxial-a11y button[data-id=\"201\"]'))") {return false;}
+  path:[4096]u8;
+  if !bb_capture(c,fs_join(dir,ifx phone then "blocks-phone.png" else "blocks-desktop.png",path[..])) {return false;}
+  if !bb_eval(c,"(async()=>{await coaxialClipStep(1,60);document.querySelector('#coaxial-a11y button[data-id=\"201\"]').click();await coaxialClipStep(1,60);return coaxial.guardProbe(10)===1&&coaxial.guardProbe(11)===102&&coaxial.guardProbe(13)===0})()") {return false;}
+  if !bb_capture(c,fs_join(dir,ifx phone then "reorg-phone.png" else "reorg-desktop.png",path[..])) {return false;}
+  if !bb_eval(c,"(async()=>{document.querySelector('#coaxial-a11y button[data-id=\"202\"]').click();await coaxialClipStep(1,60);return coaxial.guardProbe(10)===2&&coaxial.guardProbe(11)===102&&coaxial.guardProbe(13)===1})()") {return false;}
+  // Search is the real Coax field, populated by the shared text transport.
+  if !bb_eval(c,"(async()=>{document.querySelector('#coaxial-a11y button[data-id=\"205\"]').click();coaxial.send(1,'e97304753dd67dc61b2f1ba8d782e19f0ae9b596729ed868428f076061267d35');await coaxialClipStep(1,60);return true})()") {return false;}
+  pressed:=cdp_call(c,"Input.dispatchKeyEvent","{\"type\":\"keyDown\",\"key\":\"Enter\",\"code\":\"Enter\"}",30000);
+  released:=cdp_call(c,"Input.dispatchKeyEvent","{\"type\":\"keyUp\",\"key\":\"Enter\",\"code\":\"Enter\"}",30000);
+  if !bb_eval(c,"coaxialClipStep(1,60).then(()=>coaxial.guardProbe(11)===101&&coaxial.guardProbe(12)===1&&coaxial.guardProbe(13)===1)") {return false;}
+  if !bb_eval(c,"(async()=>{await coaxialClipStep(16,60);let s=document.querySelector('#coaxial-a11y-status').textContent;return s.includes('1000000000 sat')&&s.includes('9fa468ada3a3eab2189bebacde6ee10509eb63ec2e1fb723f563ec30262cdb8d:0')&&s.includes('VALIDATED-V1')})()") {return false;}
+  if !bb_capture(c,fs_join(dir,ifx phone then "transaction-phone.png" else "transaction-desktop.png",path[..])) {return false;}
+  if !bb_eval(c,"(async()=>{document.querySelector('#coaxial-a11y button[data-id=\"214\"]').click();await coaxialClipStep(1,60);return decodeURIComponent(location.hash).includes('regtest/2/291fb977943bf9cec15f2572c6b9ba204344a0d896b3adf85c570759ab6d9fdb/e97304753dd67dc61b2f1ba8d782e19f0ae9b596729ed868428f076061267d35')})()") {return false;}
+  if !bb_pick(c,phone) {return false;}
+  if !bb_eval(c,"(async()=>{let d=new DOMParser().parseFromString(await(await fetch(location.pathname)).text(),'text/html');return d.querySelectorAll('tbody tr').length===125&&d.querySelector('main').textContent.includes('8f1c571c5ce385fbd6250d92a8ad47f65acf9e1f72d0ef99567f12cc531c49b0')&&d.querySelector('meta[name=robots]').content==='noindex, nofollow'})()") {return false;}
+  if !bb_eval(c,"blockErrors.length===0&&coaxial.guardProbe(7)===0") {return false;}
+  print("PASS: % solid scene, bounded block window, A/B/C reorg, exact tx/outpoints, share route, GPU captures\n",ifx phone then "phone" else "desktop");return true;
+}
+tool_main :: ()->int #export_c {
+  args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=2 {return 2;}
+  for phone:0..<2 {
+    c:[1]Cdp;if !cdp_launch_background(c[..],ifx phone==1 then 390 else 1440,ifx phone==1 then 844 else 900,"bitcoin-blocks-") {return 1;}
+    path:[4096]u8;url:=fs_join(args_at(args[..],0),"worlds/bitcoin-lab",path[..]);good:=bb_run(c[..],url,args_at(args[..],1),phone==1);
+    if !good {n:=cdp_evaluate(c[..],"JSON.stringify({errors:globalThis.blockErrors,ready:coaxial?.ready,scene:coaxial?.sceneReady,guard:Array.from({length:15},(_,i)=>coaxial?.guardProbe(i)),status:document.querySelector('#coaxial-a11y-status')?.textContent})");if n>=0 {print("%\n",jv_raw(c[0].doc[0],n));}}
+    cdp_close(c[..]);if !good {return 1;}
+  }return 0;
+}

@@ -1,0 +1,49 @@
+// Lab index schema 2: only validated V origins. L/I/E metadata is foreign.
+#load "chainstate-store.coax";
+#load "addrindex-store.coax";
+#authority;
+VXI_META :: [2]u8.['X',2];
+
+#test "validated index metadata binds network height hash sequence and schema" {
+  table:[4096]u8;batch:[4096]u8;c:[1]LcCursor;hash:[32]u8;hash[0]=7;
+  #assert vxi_context(table[..],0).code==CS_CONTEXT;
+  c[0].n=kv_batch_new(batch[..]);
+  #assert cs_tip_set_vartime(table[..],c[..],batch[..],5,1,hash[..]);
+  #assert !vxi_sync(table[..],c[..],batch[..],-1) && !vxi_sync(table[..],c[..],batch[..],4294967296);
+  #assert vxi_sync(table[..],c[..],batch[..],0) && vxi_context(table[..],c[0].used).next==0;
+  #assert vxi_sync(table[..],c[..],batch[..],4294967295);
+  #assert vxi_context(table[..],c[0].used).next==4294967295;
+  #assert vxi_sync(table[..],c[..],batch[..],9) && vxi_context(table[..],c[0].used).next==9;
+  key:=VXI_META;original:[48]u8;v:=lc_value_vartime(table[..],c[0].used,key[..]);for i:0..<48 {original[i]=v[i];}
+  for fault:0..<6 {
+    broken:=original;
+    if fault<4 {broken[fault*4]^=1;}if fault==4 {broken[16]^=1;}
+    #assert lc_put_vartime(table[..],c[..],batch[..],key[..],broken[0..<ifx fault==5 then 47 else 48]);
+    if fault==3 {#assert vxi_context(table[..],c[0].used).next==8;}
+    else {#assert vxi_context(table[..],c[0].used).code==CS_CONTEXT;}
+  }
+  #assert lc_put_vartime(table[..],c[..],batch[..],key[..],original[..]);
+  for prefix:[3]u8.['L','I','E'] {
+    foreign:=[1]u8.[prefix];empty:[]u8;
+    #assert lc_put_vartime(table[..],c[..],batch[..],foreign[..],empty);
+    #assert vxi_context(table[..],c[0].used).code==CS_CONTEXT;
+    c[0].used=kv_delete_vartime(table[..],c[0].used,foreign[..]);
+  }
+  #assert vxi_context(table[..],c[0].used).code==CS_OK;
+  #assert !vxi_sync(table[..],c[..],batch[0..<12],0);
+  absent:[64]u8;bad:=[1]LcCursor.[LcCursor.{n=12}];
+  #assert !vxi_sync(absent[..],bad[..],batch[..],0);
+}
+vxi_context :: (table:[]u8,used:int)->TxiMeta #export_c {
+  tip:=cs_tip_vartime(table,used);if tip.code!=CS_OK {return TxiMeta.{code=CS_CONTEXT};}
+  for prefix:[2]u8.['I','E'] {key:=[1]u8.[prefix];if kv_find_vartime(table,used,key[..]).found {return TxiMeta.{code=CS_CONTEXT};}}
+  key:=VXI_META;v:=lc_value_vartime(table,used,key[..]);
+  if v.count!=48 {return TxiMeta.{code=CS_CONTEXT};}
+  if kv_get32(v,0)!=2 || kv_get32(v,4)!=tip.chain || kv_get32(v,8)!=tip.height || !lc_same(v[16..<48],tip.hash[..]) {return TxiMeta.{code=CS_CONTEXT};}
+  return TxiMeta.{next=kv_get32(v,12)};
+}
+vxi_sync :: (table:[]u8,c:[]LcCursor,batch:[]u8,next:int)->bool {
+  tip:=cs_tip_vartime(table,c[0].used);if tip.code!=CS_OK || next<0 || next>4294967295 {return false;}
+  key:=VXI_META;v:[48]u8;kv_put32(v[..],0,2);kv_put32(v[..],4,tip.chain);kv_put32(v[..],8,tip.height);kv_put32(v[..],12,next);
+  for i:0..<32 {v[16+i]=tip.hash[i];}return lc_put_vartime(table,c,batch,key[..],v[..]);
+}
