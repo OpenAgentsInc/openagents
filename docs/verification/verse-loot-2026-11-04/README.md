@@ -226,3 +226,32 @@ compared byte-for-byte before removing only the verified duplicate raw
 temporary files. Originals' SHA-256 and PNG hashes remain in
 `operator-originals-png/original-and-png.sha256`; no unique RGB evidence or
 previous run was deleted.
+
+## Maintenance and direct-input trace
+
+Ordinary movement reached Anvilmar after several blocked tree/wall/pillar
+attempts. The successful left entry passage reached (18745,44540); nearby
+Rybrad Coldbank's ordinary merchant UI opened at (18771,44404). Repair All
+cost 104 copper (119→15). The red broken-equipment indicator disappeared
+and the equipped robe became visible again. No item was sold or deleted.
+The water action remains empty; the remaining money is below the listed
+five-water bundle price. Vendor approach is supervised, not a qualified
+general indoor route. Quests remain untouched.
+
+Added `verse-game --trace ABSOLUTE_JSONL`, reusing the same durable broker
+exchange writer as the hunt. It preflights the output before connection/input
+and logs info/list/acquire/capture and actual key/button requests/replies.
+The direct CLI still releases its lease on socket close; the trace does not
+invent an acknowledged broker-final row. Checks: 88/88; relative trace exit 2,
+unwritable trace exit 1 before the deliberately nonexistent socket was tried.
+Live capture and movement traces append to `operator-wire.jsonl`; observed
+key-down/up pairs balance. Earlier direct commands retain passive video and
+tool-history coverage only. The `/targetexact Adlin Pridedrift` maintenance
+text was typed through X11 (normal chat command, no target change) and is not
+misrepresented as per-character broker wire. No public chat was sent.
+
+`recovery-02.video` and `vendor-01.video` each finalized 2640 frames with
+encoder status 0. The client combat log has now flushed 98,563 bytes; a raw
+snapshot is retained locally. Additional completed-run scratch PPMs were
+losslessly PNG-encoded, decoded and compared byte-exact before duplicate raw
+removal; their manifest is in `scratch-originals-png/`.

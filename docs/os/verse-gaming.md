@@ -191,6 +191,13 @@ The level-6 option stops there; spell/rank support remains level 2–5.
 `--hostile-only` limits visual acquisition to red nameplates when a recorded
 scout establishes an appropriate hostile patch.
 
+Direct maintenance/recovery commands accept `--trace /absolute/operator-wire.jsonl`
+to append every desk request/reply with monotonic timing. An unavailable trace
+refuses before connecting or injecting input. Pair it with the passive game
+video; earlier direct commands without this option have video/tool-history
+coverage only. Closing the direct CLI releases its lease; its trace does not
+claim a separate acknowledged final broker state.
+
 For longer runs with limited space, `--compact` explicitly selects
 [evidence V3](../protocol/external-combat-evidence-v3.md): every full-resolution
 scene is stored as quality-85 WebP, with the original sensor region retained
