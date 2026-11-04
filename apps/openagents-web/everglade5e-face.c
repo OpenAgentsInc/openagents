@@ -652,7 +652,8 @@ static void edit_out(uint32_t state) {
 #define ROOM_WAIT_S 10.0
 static int32_t room_id = -1, chat_id = -1;
 static double room_at = -10, room_asked_at;
-static char room_url_buf[120], chat_url_buf[120];
+static char room_url_buf[120], chat_url_buf[120], room_asked[64];   /* room_asked: the room the presence in flight is for */
+static int room_asked_n;
 static uint8_t room_body[256], chat_body[1200];
 static coax_v_t_RoomState rooms(uint32_t state) { return (coax_v_t_RoomState){&city(state)->room.e[0], 1}; }
 static void room_out(uint32_t state, float dt) {
@@ -665,21 +666,26 @@ static void room_out(uint32_t state, float dt) {
   }
   if (mint_id >= 0 || !has_player) return;
   (void)dt;
+  // the room now: the realm's name, then the instance the directory placed you in (a new room starts the panel over)
+  coax_string room = e5_room_name(at(state));
+  room_enter(rooms(state), room);
   coax_string said = chat_id < 0 ? everglade_chat_take(at(state)) : (coax_string){"", 0};
   if (said.count > 0) {
     track_chat(tr(), track_cstr("room"), said.count);   // its length only
-    int64_t un = room_url(e5_room_name(at(state)), true, (coax_v_u8){(uint8_t *)chat_url_buf, sizeof chat_url_buf});
+    int64_t un = room_url(room, true, (coax_v_u8){(uint8_t *)chat_url_buf, sizeof chat_url_buf});
     coax_string sid = {(const char *)track_state.sid.e, track_state.sid_n};
     int64_t bn = room_chat_body(said, sid, (coax_v_u8){chat_body, sizeof chat_body});
     if (un > 0 && bn > 0) {
       chat_id = coaxial_http((uint32_t)(uintptr_t)chat_url_buf, (uint32_t)un, (uint32_t)(uintptr_t)chat_body, (uint32_t)bn, 1 | 4 | 8);
-      if (chat_id < 0) chat_id = -1;
-    }
+      if (chat_id < 0) { chat_id = -1; everglade_chat_answer(at(state), (coax_string){"0\n", 2}); }
+    } else everglade_chat_answer(at(state), (coax_string){"400\n", 4});   /* a line that can't be written is dropped */
   }
   if (room_id >= 0 && now - room_asked_at < ROOM_WAIT_S) return;
   if (now - room_at < ROOM_EVERY_S) return;
   room_at = now;
-  int64_t un = room_url(e5_room_name(at(state)), false, (coax_v_u8){(uint8_t *)room_url_buf, sizeof room_url_buf});
+  int64_t un = room_url(room, false, (coax_v_u8){(uint8_t *)room_url_buf, sizeof room_url_buf});
+  room_asked_n = room.count < (int64_t)sizeof room_asked ? (int)room.count : 0;
+  memcpy(room_asked, room.data, (size_t)room_asked_n);
   coax_t_Vec3 feet = verse_player_feet(player);
   float air = player.on_ground ? 0.0f : feet.y;
   int64_t bn = room_presence_body(feet.x, air, feet.z, verse_player_face(player), city(state)->room.e[0].last, (coax_v_u8){room_body, sizeof room_body});
@@ -861,11 +867,16 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
   }
   if (room_id >= 0 && kind == 512 + room_id) {
     room_id = -1;
+    if (!room_in(rooms(state), (coax_string){room_asked, room_asked_n})) return;   /* the room you were in before the directory placed you */
     int64_t st = room_take(rooms(state), (coax_string){(const char *)inbox, length});
     if (st == 403 && has_player) { has_player = false; mint_tried = false; }
     return;
   }
-  if (chat_id >= 0 && kind == 512 + chat_id) { chat_id = -1; room_at = -10; return; }   // a line said: the room asked now, so it shows
+  if (chat_id >= 0 && kind == 512 + chat_id) {   // a line said: the room asked now, so it shows; a refusal waits and tries again (everglade-room.coax)
+    chat_id = -1; room_at = -10;
+    everglade_chat_answer(at(state), (coax_string){(const char *)inbox, length});
+    return;
+  }
   if (ask_id >= 0 && kind == 512 + ask_id) {
     ask_id = -1;
     if (length < 1 || inbox[0] != '2') track_fail(tr(), track_cstr("npc"), length > 2 ? (inbox[0] - '0') * 100 + (inbox[1] - '0') * 10 + (inbox[2] - '0') : 0);

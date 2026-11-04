@@ -38,7 +38,22 @@ RoomState :: struct {
   last: int;                      // the number of the last line read
   unread: int;                    // lines from others since the panel was last open
   heard: int;                     // lines from others in the last answer
+  room: [64] u8; room_n: int;     // the room these are from (room_enter), "" until a page names one
 }
+
+// The room the page posts to now (Everglade's instance once the directory places you, the realm's
+// name before): another room's lines are numbered on their own, so a new room starts the roster and
+// the panel over, its lines read from its first. True when the room changed.
+room_enter :: (s: [] RoomState, room: string) -> bool #export_c {
+  if room.count > 64 || room_in(s, room) { return false; }
+  s[0].joined = false; s[0].full = false; s[0].others = 0;
+  s[0].lines = 0; s[0].head = 0; s[0].last = 0; s[0].unread = 0; s[0].heard = 0;
+  for k: 0..<room.count { s[0].room[k] = room[k]; }
+  s[0].room_n = room.count;
+  return true;
+}
+// Whether an answer asked of `room` is still for the room the page is in.
+room_in :: (s: [] RoomState, room: string) -> bool #export_c { return cast(string) s[0].room[0..<s[0].room_n] == room; }
 
 room_put :: (out: [] u8, at: int, s: string) -> int {
   if at < 0 || at + s.count > out.count { return -1; }
@@ -308,6 +323,19 @@ room_line_text :: (s: [] RoomState, k: int) -> string #export_c {
   #assert cast(string) b[0..<n] == "{\"text\":\"say \\\"boo\\\" \",\"sid\":\"c0123\"}";
   small: [8] u8;
   #assert room_chat_body("hello there", "c", small[..]) == -1;
+}
+
+#test "room: a new room starts the panel over, so its first lines show (the realm's room had many more)" {
+  s: [1] RoomState;
+  #assert room_enter(s[..], "everglade") && !room_enter(s[..], "everglade");
+  #assert room_take(s[..], "200\n{\"last\": 500, \"others\": [], \"messages\": [{\"n\": 500, \"name\": \"Old\", \"text\": \"old\"}]}") == 200;
+  #assert s[0].last == 500 && s[0].lines == 1;
+  // the directory placed you in everglade-1, whose lines are numbered from 1
+  #assert room_enter(s[..], "everglade-1") && s[0].last == 0 && s[0].lines == 0 && !room_in(s[..], "everglade");
+  #assert room_take(s[..], "200\n{\"last\": 3, \"others\": [], \"messages\": [{\"n\": 3, \"name\": \"Wren\", \"text\": \"hi\"}]}") == 200;
+  #assert s[0].lines == 1 && room_line_text(s[..], 0) == "hi" && s[0].last == 3;
+  #assert room_take(s[..], "200\n{\"last\": 4, \"others\": [], \"messages\": [{\"n\": 4, \"name\": \"Wren\", \"text\": \"again\", \"mine\": false}]}") == 200;
+  #assert s[0].lines == 2 && s[0].unread == 1;
 }
 
 #test "numbers out of the server's JSON" {

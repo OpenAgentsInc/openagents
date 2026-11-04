@@ -259,6 +259,8 @@ net_ticket :: (s: [] Everglade, answer: string) #export_c {
   n[0].ticket_n = 0;
   // the directory has no seat anywhere (every shard's rooms full): said, and asked again after the wait
   if answer.count > 4 && answer[0..<4] == "503\n" { net_tell(s, n, "EVERY ROOM IS FULL · TRYING AGAIN"); }
+  // an admin's KICK or a report's HIDE (verse.room_kicks): out of the rooms and their chat for 24 hours, said
+  if answer.count > 4 && answer[0..<4] == "403\n" && net_json_field(answer, "error") == "kicked" { net_tell(s, n, "KICKED · BACK IN 24 HOURS"); }
   net_down(n);
 }
 // What became of the room, said once over the hotbar (and kept for the probe).

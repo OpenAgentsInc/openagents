@@ -409,8 +409,8 @@ static void room_out(uint32_t state, float dt) {
     int64_t bn = room_chat_body(said, sid, (coax_v_u8){chat_body, sizeof chat_body});
     if (un > 0 && bn > 0) {
       chat_id = coaxial_http((uint32_t)(uintptr_t)chat_url_buf, (uint32_t)un, (uint32_t)(uintptr_t)chat_body, (uint32_t)bn, 1 | 4 | 8);
-      if (chat_id < 0) chat_id = -1;
-    }
+      if (chat_id < 0) { chat_id = -1; everglade_chat_answer(at(state), (coax_string){"0\n", 2}); }
+    } else everglade_chat_answer(at(state), (coax_string){"400\n", 4});
   }
   if (room_id >= 0 && now - room_asked_at < ROOM_WAIT_S) return;
   if (now - room_at < ROOM_EVERY_S) return;
@@ -557,7 +557,11 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
     if (st == 403 && has_player) { has_player = false; mint_tried = false; }
     return;
   }
-  if (chat_id >= 0 && kind == 512 + chat_id) { chat_id = -1; room_at = -10; return; }   // a line said: the room asked now, so it shows
+  if (chat_id >= 0 && kind == 512 + chat_id) {   // a line said: the room asked now, so it shows; a refusal waits and tries again (everglade-room.coax)
+    chat_id = -1; room_at = -10;
+    everglade_chat_answer(at(state), (coax_string){(const char *)inbox, length});
+    return;
+  }
   if (ask_id >= 0 && kind == 512 + ask_id) {
     ask_id = -1;
     if (length < 1 || inbox[0] != '2') track_fail(tr(), track_cstr("npc"), length > 2 ? (inbox[0] - '0') * 100 + (inbox[1] - '0') * 10 + (inbox[2] - '0') : 0);

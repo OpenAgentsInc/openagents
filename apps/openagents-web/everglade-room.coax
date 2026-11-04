@@ -15,23 +15,60 @@
 EG_ROOM :: "everglade";
 ROOM_SHOWN :: 4;           // chat lines over the bar on a computer
 ROOM_FRESH :: 30.0;        // s a line stays on screen
+CHAT_QUEUE :: 4;           // lines said and not yet kept by the room, sent in order
+CHAT_RETRY :: 3.0;         // s before a line the room refused for speed, or a lost one, is sent again
+CHAT_ROWS :: 12;           // rows a long line wraps to (the room keeps 500 characters)
+CHAT_PANEL_ROWS :: 10;     // rows the panel shows on a computer, the newest line whole
+CHAT_NOTE_S :: 10.0;       // s a note on your lines stays after they're sent or dropped
+// The room's limits (coax/web/api/migrations/0014_verse_rooms.sql), said where you type
+CHAT_RATE :: "5 LINES IN 10 S";   // the field's hint says it too
+CHAT_OK :: 0; CHAT_SLOW :: 1; CHAT_LOST :: 2; CHAT_KICKED :: 3; CHAT_FULL :: 4;
 
 EgChat :: struct {
   typing: bool;            // the line is open (what you type goes in s[0].typed, as a talk's does)
-  send: bool;              // a line for the face to say
-  said: [ROOM_TEXT] u8; said_n: int;
-  box: Box;                // a phone's line: a tap opens it
+  // the lines said, in order: the head is sent (out) until the room's answer; a refusal for speed or a
+  // lost answer sends it again after `wait`, so nothing said is lost
+  queue: [CHAT_QUEUE * TYPED] u8; queue_n: [CHAT_QUEUE] int; queued: int; out: bool; wait: f32;
+  why: int; why_t: f32;    // what became of your lines (CHAT_*), and its seconds on screen
+  box: Box;                // a phone's line (or CHAT when none shows): a tap opens it
   finger: int;
   seen: int;               // the number of the last line, when it came in
   fresh: f32;              // s since the last line came in
 }
 
 everglade_room_name :: () -> string #export_c { return EG_ROOM; }
-// A line to say, once: the face takes it and posts it.
+// The next line to say, once: the face takes it and posts it, and hands the answer to everglade_chat_answer.
 everglade_chat_take :: (s: [] Everglade) -> string #export_c {
-  if !s[0].chat.send { return ""; }
-  s[0].chat.send = false;
-  return cast(string) s[0].chat.said[0..<s[0].chat.said_n];
+  c := s[0].chat;
+  if c.queued == 0 || c.out || c.wait > 0 { return ""; }
+  s[0].chat.out = true;
+  return cast(string) s[0].chat.queue[0..<s[0].chat.queue_n[0]];
+}
+chat_pop :: (s: [] Everglade) {
+  for q: 1..<s[0].chat.queued {
+    for b: 0..<TYPED { s[0].chat.queue[(q - 1) * TYPED + b] = s[0].chat.queue[q * TYPED + b]; }
+    s[0].chat.queue_n[q - 1] = s[0].chat.queue_n[q];
+  }
+  if s[0].chat.queued > 0 { s[0].chat.queued -= 1; }
+}
+chat_note :: (s: [] Everglade, why: int) { s[0].chat.why = why; s[0].chat.why_t = f32(CHAT_NOTE_S); }
+// The room's answer to the line sent ("STATUS\n" and the body; "0\n" when the network lost it): kept,
+// refused for speed (429) or lost (sent again after CHAT_RETRY), kicked (403 "kicked": the lines go,
+// and you're told), anything else the room won't keep (that line goes).
+everglade_chat_answer :: (s: [] Everglade, answer: string) #export_c {
+  s[0].chat.out = false;
+  status := 0; i := 0;
+  while i < answer.count && answer[i] >= '0' && answer[i] <= '9' { status = status * 10 + cast(int) (answer[i] - '0'); i += 1; }
+  kicked := false;
+  for k: 0..<answer.count { if k + 8 <= answer.count && answer[k..<k + 8] == "\"kicked\"" { kicked = true; } }
+  if status >= 200 && status < 300 { chat_pop(s); if s[0].chat.why != CHAT_KICKED { s[0].chat.why = CHAT_OK; } return; }
+  if status == 429 || status == 0 || status >= 500 {
+    s[0].chat.wait = f32(CHAT_RETRY);
+    chat_note(s, ifx status == 429 then CHAT_SLOW else CHAT_LOST);
+    return;
+  }
+  if kicked { s[0].chat.queued = 0; chat_note(s, CHAT_KICKED); return; }
+  chat_pop(s);
 }
 
 chat_open :: (s: [] Everglade) {
@@ -39,11 +76,14 @@ chat_open :: (s: [] Everglade) {
   s[0].chat.typing = true; s[0].typed_n = 0;
 }
 chat_close :: (s: [] Everglade) { s[0].chat.typing = false; s[0].typed_n = 0; s[0].chat.finger = -1; }
+// Enter: the line goes in order after any still waiting; with CHAT_QUEUE waiting it stays where you typed it.
 chat_say :: (s: [] Everglade) {
   n := s[0].typed_n;
   if n > 0 {
-    for k: 0..<n { s[0].chat.said[k] = s[0].typed[k]; }
-    s[0].chat.said_n = n; s[0].chat.send = true;
+    if s[0].chat.queued >= CHAT_QUEUE { chat_note(s, CHAT_FULL); return; }
+    q := s[0].chat.queued;
+    for k: 0..<n { s[0].chat.queue[q * TYPED + k] = s[0].typed[k]; }
+    s[0].chat.queue_n[q] = n; s[0].chat.queued = q + 1;
   }
   chat_close(s);
 }
@@ -54,6 +94,8 @@ room_frame :: (s: [] Everglade, dt: f32) {
   room_ease(r, dt);
   if r[0].last != s[0].chat.seen { s[0].chat.seen = r[0].last; s[0].chat.fresh = 0; }
   else { s[0].chat.fresh += dt; }
+  if s[0].chat.wait > 0 { s[0].chat.wait -= dt; }
+  if s[0].chat.why_t > 0 && (s[0].chat.queued == 0 || s[0].chat.why == CHAT_KICKED) { s[0].chat.why_t -= dt; }
 }
 
 // The others' bodies, from the relay's remote entities (everglade-rangers.coax).
@@ -70,15 +112,57 @@ room_labels :: (s: [] Everglade, ls: [] Label, c: int, you: Point, k: f32) -> in
   return rangers_labels(s, ls, c, you, k, rs[0..<n]);
 }
 
+// A line of text broken into rows that fit: the first `first` wide (after the speaker's name), the rest
+// `w` (device pixels at cap), at a space when one is in the row, else at a letter. The rows' byte ranges
+// go in starts and ends; how many there are.
+chat_wrap :: (t: string, cap: f32, first: f32, w: f32, starts: [] int, ends: [] int) -> int {
+  rows := 0; i := 0;
+  while i < t.count && rows < starts.count {
+    while i < t.count && t[i] == ' ' { i += 1; }
+    if i >= t.count { break; }
+    room := ifx rows == 0 then first else w;
+    x := 0.0f32; after := false; j := i; brk := -1;
+    while j < t.count {
+      d := decode(t, j); c := font_fold(d.code);
+      add := 0.0f32;
+      if c == ' ' { add = SPACE; } else if c >= 32 { add = glyph_width(c); if after { add += GAP; } }
+      if (x + add) * cap > room && j > i { break; }
+      if c == ' ' { brk = j; after = false; } else if c >= 32 { after = true; }
+      x += add; j += d.len;
+    }
+    e := ifx j < t.count && brk > i then brk else j;
+    starts[rows] = i; ends[rows] = e; rows += 1; i = e;
+  }
+  return rows;
+}
+// What became of your lines, for the row under them ("" nothing to say).
+chat_status :: (s: [] Everglade, out: [] u8) -> string {
+  c := s[0].chat;
+  if c.why == CHAT_OK || (c.why_t <= 0 && c.queued == 0) { return ""; }
+  k := 0;
+  if c.why == CHAT_KICKED { k = room_put(out, 0, "KICKED · NO CHAT FOR 24 HOURS"); return cast(string) out[0..<k]; }
+  if c.queued > 0 {
+    k = room_put_int(out, 0, c.queued); k = room_put(out, k, ifx c.queued == 1 then " LINE WAITING · " else " LINES WAITING · ");
+  }
+  if c.why == CHAT_LOST { k = room_put(out, k, "NO CONNECTION"); }
+  else { k = room_put(out, k, CHAT_RATE); }
+  if c.queued >= CHAT_QUEUE { k = room_put(out, k, " · "); k = room_put_int(out, k, CHAT_QUEUE); k = room_put(out, k, " AT MOST"); }
+  if c.queued > 0 && c.wait > 0 { k = room_put(out, k, " · NEXT IN "); k = room_put_int(out, k, cast(int) (c.wait + 0.99)); k = room_put(out, k, " S"); }
+  return cast(string) out[0..<k];
+}
+
 // The chat on screen: the last lines over the bar (a computer) or the latest under the place's name (a
-// phone), and the line you type in when it is open. x, y: where it starts (top left), in device pixels.
+// phone), each wrapped whole, a row on your lines when the room refused or lost them, and the line you
+// type in when it is open (its limits in it). A phone with no line showing has CHAT there to open one.
 room_chat_draw :: (s: [] Everglade, out: [] f32, u: [] f32, n0: int) -> int {
   n := n0;
   r := s[0].room[..];
   k := hi(s[0].dpr, 0.5);
   cap := 7.5 * k; lead := cap * 1.9;
   small := phone(s);
-  shown := ifx s[0].chat.typing || s[0].chat.fresh < f32(ROOM_FRESH) then (ifx small then 1 else ROOM_SHOWN) else 0;
+  nb: [96] u8; note := chat_status(s, nb[..]);
+  on := s[0].chat.typing || s[0].chat.fresh < f32(ROOM_FRESH) || note.count > 0;
+  shown := ifx on then (ifx small then 1 else ROOM_SHOWN) else 0;
   shown = lo_i(shown, r[0].lines);
   x := 16 * k;
   w := ifx small then s[0].width - 32 * k else lo(s[0].width * 0.36, 520 * k);
@@ -88,44 +172,66 @@ room_chat_draw :: (s: [] Everglade, out: [] f32, u: [] f32, n0: int) -> int {
   phone_y := (ifx !hp_on then 86 * k else ifx watch_you(watch_w(s))[0].wanted then 151 * k else 114 * k) + join_drop(s);   // under INVITE's row too (everglade-join.coax)
   // and under your LEVEL plate when it sits under the title (everglade-events.coax ege_hud)
   if small && net_on(s) { lb := ege_of(s)[0].level_box; if lb.y1 > lb.y0 && lb.x0 < s[0].width / 2 { phone_y = hi(phone_y, lb.y1 + cap + 12 * k); } }
-  y := ifx small then phone_y else s[0].height - 150 * k - f32(shown) * lead;
+  // the rows: each shown line wrapped, the oldest dropped while a computer's panel is past its rows
+  st: [ROOM_SHOWN * CHAT_ROWS] int; en: [ROOM_SHOWN * CHAT_ROWS] int; rn: [ROOM_SHOWN] int;
+  first := ROOM_SHOWN; rows := 0;
+  for q: 0..<shown {
+    line := r[0].lines - 1 - q;
+    slot := ROOM_SHOWN - 1 - q;
+    name := room_line_name(r, line);
+    fw := w - 20 * k - text_width(name, cap) - cap;
+    rn[slot] = chat_wrap(room_line_text(r, line), cap, fw, w - 20 * k, st[slot * CHAT_ROWS..<slot * CHAT_ROWS + CHAT_ROWS], en[slot * CHAT_ROWS..<slot * CHAT_ROWS + CHAT_ROWS]);
+    if rn[slot] < 1 { rn[slot] = 1; }
+    if q > 0 && rows + rn[slot] > CHAT_PANEL_ROWS { break; }
+    rows += rn[slot]; first = slot;
+  }
+  all := rows + (ifx note.count > 0 then 1 else 0);
+  y := ifx small then phone_y else s[0].height - 150 * k - f32(all) * lead;
   s[0].chat.box = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
-  // A phone has no Enter: in a room, with no line on screen, CHAT under the title is what opens the
-  // line (phone QA, November 4: with the room quiet for 30 s nothing on a phone could)
-  if small && shown == 0 && !s[0].chat.typing && net_on(s) && !s[0].above {
+  if all > 0 {
+    b := Box.{x0 = x, y0 = y - cap - 6 * k, x1 = x + w, y1 = y + f32(all - 1) * lead + 8 * k};
+    plate(s, u, b, 0.6, 1);
+    if small { s[0].chat.box = b; }
+    ly := y;
+    for slot: first..<ROOM_SHOWN {
+      line := r[0].lines - ROOM_SHOWN + slot;
+      name := room_line_name(r, line);
+      text := room_line_text(r, line);
+      n = draw_text(out, n, name, x + 10 * k, ly, cap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+      for row: 0..<rn[slot] {
+        a := st[slot * CHAT_ROWS + row]; e := en[slot * CHAT_ROWS + row];
+        tx := ifx row == 0 then x + 10 * k + text_width(name, cap) + cap else x + 10 * k;
+        if e > a { n = draw_text(out, n, text[a..<e], tx, ly, cap, GAP, SPACE, ink(k, 0.85, PARCH_R, PARCH_G, PARCH_B), false, false); }
+        ly += lead;
+      }
+    }
+    if note.count > 0 { n = draw_text(out, n, note, x + 10 * k, ly, cap, GAP, SPACE, ink(k, 0.7, PARCH_R, PARCH_G, PARCH_B), false, false); }
+  } else if small && !s[0].chat.typing && net_on(s) && !s[0].above {
+    // A phone has no Enter: in a room, with no line on screen, CHAT under the title is what opens the
+    // line (phone QA, November 4: with the room quiet for 30 s nothing on a phone could)
     cw := text_width("CHAT", cap) + 24 * k;
     b := Box.{x0 = x, y0 = y - cap - 6 * k, x1 = x + cw, y1 = y + 8 * k};
     plate(s, u, b, 0.6, 1);
     s[0].chat.box = b;
     n = draw_text(out, n, "CHAT", x + 12 * k, y, cap, GAP, SPACE, ink(k, 0.85, PARCH_R, PARCH_G, PARCH_B), false, false);
   }
-  if shown > 0 {
-    b := Box.{x0 = x, y0 = y - cap - 6 * k, x1 = x + w, y1 = y + f32(shown - 1) * lead + 8 * k};
-    plate(s, u, b, 0.6, 1);
-    if small { s[0].chat.box = b; }
-    for q: 0..<shown {
-      line := r[0].lines - shown + q;
-      name := room_line_name(r, line);
-      text := room_line_text(r, line);
-      ly := y + f32(q) * lead;
-      n = draw_text(out, n, name, x + 10 * k, ly, cap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
-      tx := x + 10 * k + text_width(name, cap) + cap;
-      shown_text := text;
-      while shown_text.count > 0 && text_width(shown_text, cap) > x + w - 10 * k - tx { shown_text = shown_text[0..<shown_text.count - 1]; }
-      while shown_text.count > 0 && (shown_text[shown_text.count - 1] & 0xC0) == 0x80 { shown_text = shown_text[0..<shown_text.count - 1]; }
-      if shown_text.count > 0 && shown_text[shown_text.count - 1] >= 0xC0 { shown_text = shown_text[0..<shown_text.count - 1]; }
-      n = draw_text(out, n, shown_text, tx, ly, cap, GAP, SPACE, ink(k, 0.85, PARCH_R, PARCH_G, PARCH_B), false, false);
-    }
-  }
   if s[0].chat.typing {
-    fy := ifx small then y + f32(lo_i(shown, 1)) * lead + 20 * k else s[0].height - 128 * k;
+    fy := ifx small then y + f32(lo_i(all, 12)) * lead + 20 * k else s[0].height - 128 * k;
     f := Box.{x0 = x, y0 = fy - cap - 9 * k, x1 = x + w, y1 = fy + 9 * k};
     s[0].field[0] = f.x0; s[0].field[1] = f.y0; s[0].field[2] = f.x1; s[0].field[3] = f.y1;
     plate(s, u, f, 0.95, 1);
+    // how much of the line is used, at the right: the line holds TYPED bytes (a letter, an accented one two, an emoji four)
+    cb: [16] u8; ck := room_put_int(cb[..], 0, s[0].typed_n); ck = room_put(cb[..], ck, " / "); ck = room_put_int(cb[..], ck, TYPED);
+    count := cast(string) cb[0..<ck];
+    cw := text_width(count, cap);
+    n = draw_text(out, n, count, x + w - 10 * k - cw, fy, cap, GAP, SPACE, ink(k, ifx s[0].typed_n >= TYPED - 20 then 0.95 else 0.5, PARCH_R, PARCH_G, PARCH_B), false, false);
     typed := typed_text(s);
-    while typed.count > 0 && text_width(typed, cap) > w - 24 * k { typed = typed[1..<typed.count]; while typed.count > 0 && (typed[0] & 0xC0) == 0x80 { typed = typed[1..<typed.count]; } }
+    room := w - 34 * k - cw;
+    while typed.count > 0 && text_width(typed, cap) > room { typed = typed[1..<typed.count]; while typed.count > 0 && (typed[0] & 0xC0) == 0x80 { typed = typed[1..<typed.count]; } }
     if typed.count > 0 { n = draw_text(out, n, typed, x + 10 * k, fy, cap, GAP, SPACE, ink(k, 0.95, 1, 1, 1), false, false); }
-    else { n = draw_text(out, n, "SAY SOMETHING", x + 10 * k, fy, cap, GAP, SPACE, ink(k, 0.5, PARCH_R, PARCH_G, PARCH_B), false, false); }
+    else {
+      n = draw_text(out, n, "SAY SOMETHING · 5 LINES IN 10 S", x + 10 * k, fy, cap, GAP, SPACE, ink(k, 0.5, PARCH_R, PARCH_G, PARCH_B), false, false);
+    }
   }
   return n;
 }
@@ -158,4 +264,53 @@ chat_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
   answer := "200\n{\"others\":[{\"id\":\"p2\",\"name\":\"WREN\",\"x\":1,\"y\":0,\"z\":-80,\"yaw\":0}],\"messages\":[{\"n\":3,\"name\":\"WREN\",\"text\":\"hello\"}]}";
   #assert room_take(g[0].room[..], answer) == 200;
   #assert g[0].room[0].others == 1 && room_other_name(g[0].room[..], 0) == "WREN" && g[0].room[0].lines == 1;
+}
+
+#test "room: a line the room refused for speed or lost is sent again in order; a kick drops them and says so" {
+  g: [1] Everglade;
+  g[0].talk = -1;
+  for t: [3] string.["one", "two", "three"] { chat_open(g[..]); talk_typed(g[..], t); chat_say(g[..]); }
+  #assert g[0].chat.queued == 3 && !g[0].chat.typing;
+  #assert everglade_chat_take(g[..]) == "one" && everglade_chat_take(g[..]) == "";   // one at a time
+  everglade_chat_answer(g[..], "429\n{\"error\": \"a little slower\"}");
+  #assert g[0].chat.queued == 3 && g[0].chat.why == CHAT_SLOW && everglade_chat_take(g[..]) == "";   // it waits CHAT_RETRY
+  nb: [96] u8;
+  #assert chat_status(g[..], nb[..]) == "3 LINES WAITING · 5 LINES IN 10 S · NEXT IN 3 S";
+  room_frame(g[..], 3.1);
+  #assert everglade_chat_take(g[..]) == "one";
+  everglade_chat_answer(g[..], "200\n{\"n\": 7}");
+  #assert g[0].chat.queued == 2 && g[0].chat.why == CHAT_OK && chat_status(g[..], nb[..]) == "" && everglade_chat_take(g[..]) == "two";
+  everglade_chat_answer(g[..], "0\n");   // the network lost it
+  #assert g[0].chat.why == CHAT_LOST && chat_status(g[..], nb[..]) == "2 LINES WAITING · NO CONNECTION · NEXT IN 3 S";
+  room_frame(g[..], 3.1);
+  #assert everglade_chat_take(g[..]) == "two";
+  everglade_chat_answer(g[..], "400\n{\"error\": \"say something\"}");   // one the room won't keep goes, the next is up
+  #assert g[0].chat.queued == 1 && everglade_chat_take(g[..]) == "three";
+  everglade_chat_answer(g[..], "403\n{\"error\": \"kicked\", \"until\": 99}");
+  #assert g[0].chat.queued == 0 && chat_status(g[..], nb[..]) == "KICKED · NO CHAT FOR 24 HOURS";
+  // a full queue keeps the line where you typed it
+  for k: 0..<CHAT_QUEUE { chat_open(g[..]); talk_typed(g[..], "x"); chat_say(g[..]); }
+  chat_open(g[..]); talk_typed(g[..], "five"); chat_say(g[..]);
+  #assert g[0].chat.queued == CHAT_QUEUE && g[0].chat.typing && typed_text(g[..]) == "five" && g[0].chat.why == CHAT_FULL;
+}
+
+#test "room: a long line wraps at its spaces, every letter shown; a word wider than a row breaks" {
+  st: [CHAT_ROWS] int; en: [CHAT_ROWS] int;
+  t := "the quick brown fox jumps over the lazy dog and keeps on running";
+  cap := 10.0f32;
+  n := chat_wrap(t, cap, 120, 160, st[..], en[..]);
+  #assert n > 2;
+  kept := 0;
+  for r: 0..<n {
+    #assert text_width(t[st[r]..<en[r]], cap) <= (ifx r == 0 then 120.0f32 else 160.0f32) && t[st[r]] != ' ';
+    if r > 0 { #assert t[st[r] - 1] == ' '; }   // broken at a space
+    for c: t[st[r]..<en[r]] { if c != ' ' { kept += 1; } }
+  }
+  all := 0; for c: t { if c != ' ' { all += 1; } }
+  #assert kept == all && en[n - 1] == t.count;
+  w := "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz";
+  m := chat_wrap(w, cap, 100, 100, st[..], en[..]);
+  #assert m > 1 && en[m - 1] == w.count && st[1] == en[0];
+  e := "émoji 🌲 ünïcode";
+  #assert chat_wrap(e, cap, 1000, 1000, st[..], en[..]) == 1 && en[0] == e.count;
 }
