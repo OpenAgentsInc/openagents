@@ -14,8 +14,8 @@
 character mayor
   name      "Mayor Tobin Hale"                # placeholder; the owner names him
   pack      everglade-mayor                   # placeholder: MetaHuman Lab's pack until the owner designs the mayor
-  voice     google en-US-Chirp3-HD-Charon     # placeholder until the audition (Chirp 3 HD takes no pitch)
+  voice     google en-US-Chirp3-HD-Charon     # for lines without a supplied take (Chirp 3 HD takes no pitch)
   framing   head-shoulders
   backdrop  town-hall-night
-  say       Odiodei = OW D IY OW D EY
+  say       Odiodei = OW D IY OW D EY       # said "Odeodei": oh-dee-oh-day
   say       Everglade = EH V ER G L EY D

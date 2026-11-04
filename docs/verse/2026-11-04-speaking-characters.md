@@ -171,6 +171,13 @@ The track is a list of controls per frame. Step 4 reads it, and a test reads it 
 - **Subtitles.** Burned-in subtitles are on by default, because promo videos mostly autoplay muted.
   They show word by word from step 1's times. You switch them off with `subtitles off` in the
   header.
+- **Supplied takes.** A `take NAME` line after a cue uses a recording instead of text-to-speech.
+  NAME is a file under the owner-local `~/.openagents/verse/private-build/speak/takes/`, cached by
+  its bytes' hash. The cue's text is the truth for subtitles and alignment: when Speech-to-Text hears
+  other spellings, the words are timed by their place in what it heard. The raid promo's take is the
+  owner's own recording.
+- **Phrases.** Subtitles start a new phrase after `.`, `?`, `!`, `,` or `--`, while the panel stays
+  up for the whole line.
 - **Video sound.** `video-audio off` in the header drops the video's own sound, so the output
   carries only the voices. The raid promo uses it.
 - **Output.** The output is H.264 at 1080p for review, per the film-review rule, and 4K only once you

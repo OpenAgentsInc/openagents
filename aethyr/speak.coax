@@ -41,7 +41,7 @@ SPK_PHONE_LEN :: [39] f32.[1.0, 1.0, 0.7, 1.0, 1.4, 1.4, 0.55, 0.8, 0.55, 0.5, 0
 
 // The pronunciations the cues need and the commonest English words, from CMUdict (BSD), stress
 // removed: "word PH PH ...", ';' between words.
-SPK_DICT :: "a AH;about AH B AW T;all AO L;am AE M;an AE N;and AE N D;are AA R;as AE Z;at AE T;attack AH T AE K;away AH W EY;back B AE K;be B IY;but B AH T;by B AY;can K AE N;come K AH M;coming K AH M IH NG;cult K AH L T;cultists K AH L T IH S T S;do D UW;down D AW N;everyone EH V R IY W AH N;everybody EH V R IY B AA D IY;for F AO R;from F R AH M;gate G EY T;get G EH T;go G OW;guard G AA R D;guards G AA R D Z;have HH AE V;he HH IY;help HH EH L P;here HH IY R;hey HH EY;hide HH AY D;hope HH OW P;i AY;in IH N;is IH Z;it IH T;just JH AH S T;know N OW;mayor M EY ER;me M IY;my M AY;night N AY T;no N OW;not N AA T;now N AW;of AH V;on AA N;one W AH N;or AO R;our AW ER;out AW T;people P IY P AH L;please P L IY Z;raid R EY D;run R AH N;she SH IY;square S K W EH R;stables S T EY B AH L Z;stay S T EY;that DH AE T;the DH AH;them DH EH M;there DH EH R;they DH EY;this DH IH S;to T UW;town T AW N;under AH N D ER;up AH P;us AH S;was W AA Z;watch W AA CH;we W IY;what W AH T;when W EH N;where W EH R;who HH UW;will W IH L;with W IH DH;yes Y EH S;you Y UW;your Y AO R";
+SPK_DICT :: "a AH;about AH B AW T;adventurer AE D V EH N CH ER ER;all AO L;am AE M;an AE N;and AE N D;are AA R;as AE Z;at AE T;attack AH T AE K;away AH W EY;back B AE K;be B IY;been B IH N;beloved B IH L AH V IH D;but B AH T;by B AY;can K AE N;come K AH M;coming K AH M IH NG;cult K AH L T;cultists K AH L T IH S T S;darian D EH R IY AH N;defenses D IH F EH N S IH Z;do D UW;down D AW N;everybody EH V R IY B AA D IY;everyone EH V R IY W AH N;for F AO R;from F R AH M;gate G EY T;get G EH T;go G OW;guard G AA R D;guards G AA R D Z;have HH AE V;he HH IY;help HH EH L P;here HH IY R;hey HH EY;hide HH AY D;hope HH OW P;i AY;in IH N;is IH Z;it IH T;just JH AH S T;know N OW;led L EH D;malicious M AH L IH SH AH S;mayor M EY ER;me M IY;months M AH N TH S;my M AY;night N AY T;no N OW;not N AA T;now N AW;of AH V;on AA N;one W AH N;or AO R;our AW ER;out AW T;people P IY P AH L;please P L IY Z;probing P R OW B IH NG;raid R EY D;run R AH N;she SH IY;square S K W EH R;stables S T EY B AH L Z;stay S T EY;struck S T R AH K;that DH AE T;the DH AH;them DH EH M;there DH EH R;these DH IY Z;they DH EY;this DH IH S;to T UW;today T AH D EY;town T AW N;under AH N D ER;up AH P;us AH S;warlock W AO R L AA K;was W AA Z;watch W AA CH;we W IY;what W AH T;when W EH N;where W EH R;who HH UW;will W IH L;with W IH DH;yes Y EH S;you Y UW;your Y AO R";
 
 SPK_WORD_BYTES :: 24;
 SPK_WORDS_MAX :: 64;
@@ -103,7 +103,7 @@ spk_num :: (text: string, at: [] int) -> f32 {
 
 // ---- words
 
-SPK_CONTRACTIONS :: "we're we are;you're you are;they're they are;i'm i am;it's it is;that's that is;there's there is;what's what is;let's let us;don't do not;can't can not;won't will not;isn't is not;aren't are not;we'll we will;i'll i will;you'll you will;we've we have;i've i have";
+SPK_CONTRACTIONS :: "we're we are;you're you are;they're they are;i'm i am;it's it is;that's that is;there's there is;what's what is;let's let us;don't do not;can't can not;won't will not;isn't is not;aren't are not;we'll we will;i'll i will;you'll you will;we've we have;they've they have;i've i have";
 
 spk_add_word :: (out: [] SpkWord, n: int, w: string) -> int {
   if n >= out.count || w.count == 0 { return n; }

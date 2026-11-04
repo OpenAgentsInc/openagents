@@ -3,7 +3,8 @@
 //   coax/web/tool.sh speak CUES OUT.mp4 [--video FILE] [--cast FILE] [--server URL]
 //       [--allow-fallback] [--revoice N] [--no-open]
 // Run from the repository root. Cue sheet header lines: "video FILE", "subtitles off", and
-// "video-audio off" (the voice only: the video's own sound is silenced, not ducked). For each cue line:
+// "video-audio off" (the voice only: the video's own sound is silenced, not ducked). A "take NAME"
+// line after a cue voices it with a recording (NAME under the cache's takes/) instead. For each cue line:
 //   1. voice   Google Cloud Text-to-Speech (the cast's Chirp 3 HD voice), through curl with a token
 //              from the gcloud automation account; then Google Speech-to-Text with word time
 //              offsets, and the tool stops if the transcript isn't the line. A take is kept by its
@@ -216,11 +217,33 @@ seconds_of :: (raw: string) -> f32 { at: [1] int; at[0] = 0; v := spk_num(raw, a
 
 // Voices a line (or takes it from the cache) and checks it: the take at wav_path, its words with
 // speech-to-text's times in t. An error's text, or "".
-voice :: (who: [] Who, line: string, mood: int, dir: string, again: bool, t: [] Take, why: [] u8) -> string {
+voice :: (who: [] Who, line: string, mood: int, dir: string, again: bool, supplied: string, t: [] Take, why: [] u8) -> string {
   wp: [4200] u8; wav := fs_join(dir, "take.wav", wp[..]);
   sp: [4200] u8; stt := fs_join(dir, "stt.json", sp[..]);
   big: [WAV_MAX] u8;
-  if again || !fs_exists(wav) || !fs_exists(stt) {
+  if supplied.count > 0 && (again || !fs_exists(wav) || !fs_exists(stt)) {
+    // a supplied take (a "take NAME" line): ffmpeg makes it 48 kHz mono 16-bit, then speech-to-text
+    cv: [256] u8; ce: [4096] u8;
+    argv := [11] string.["ffmpeg", "-v", "error", "-y", "-i", supplied, "-ar", "48000", "-ac", "1", wav];
+    r := run(argv[..], cv[..], ce[..], 120000);
+    if r.status != 0 { return "ffmpeg could not read the supplied take"; }
+    tok: [4096] u8;
+    token := gcp_token(tok[..]);
+    if token.count == 0 { return "no Google token from the automation account (gcloud auth print-access-token)"; }
+    pcm: [WAV_MAX] u8;
+    m := fs_read(wav, pcm[..]);
+    if m < 44 { return "the supplied take is empty"; }
+    b64: [WAV_MAX * 2] u8;
+    k := b64_encode(str(pcm[..], m), b64[..]);
+    req: [WAV_MAX * 2 + 4096] u8;
+    q := put(req[..], 0, "{\"config\":{\"languageCode\":\"en-US\",\"enableWordTimeOffsets\":true,\"model\":\"latest_long\"},\"audio\":{\"content\":\"");
+    q = put(req[..], q, str(b64[..], k)); q = put(req[..], q, "\"}}");
+    bp: [4200] u8; bodyp := fs_join(dir, "request.json", bp[..]);
+    if !fs_write(bodyp, str(req[..], q)) { return "could not write the request"; }
+    if !post(STT_URL, token, bodyp, stt, dir) { return "speech-to-text failed (see stt.json in the take's folder)"; }
+    gone := fs_remove(bodyp);
+  }
+  if supplied.count == 0 && (again || !fs_exists(wav) || !fs_exists(stt)) {
     if cast(string) who[0].provider[0..<who[0].provider_n] != "google" { return "only google voices are wired so far (ElevenLabs through Scenario is the spec's other provider)"; }
     tok: [4096] u8;
     token := gcp_token(tok[..]);
@@ -298,6 +321,23 @@ voice :: (who: [] Who, line: string, mood: int, dir: string, again: bool, t: [] 
   }
   want: [SPK_WORDS_MAX] SpkWord;
   wn := spk_words(line, want[..]);
+  if supplied.count > 0 && !spk_same_words(want[..], wn, t[0].words[..], t[0].n) {
+    // A supplied take's line is the truth (speech-to-text misspells names): its words take times
+    // by their place in the heard words, letter by letter, and the loudness snaps them (step 2).
+    print("speak: the take's transcript differs from the line, so its words are timed by position\n  heard: %\n", str(heard[..], hn));
+    if t[0].n == 0 || wn == 0 { return "speech-to-text heard nothing in the supplied take"; }
+    heard_n := 0; for i: 0..<t[0].n { heard_n += t[0].words[i].n; }
+    want_n := 0; for j: 0..<wn { want_n += want[j].n; }
+    at := 0;
+    for j: 0..<wn {
+      want[j].t0 = place(t[..], heard_n, f32(at) / f32(want_n));
+      at += want[j].n;
+      want[j].t1 = place(t[..], heard_n, f32(at) / f32(want_n));
+    }
+    for j: 0..<wn { t[0].words[j] = want[j]; }
+    t[0].n = wn;
+    return "";
+  }
   if !spk_same_words(want[..], wn, t[0].words[..], t[0].n) {
     m := put(why, 0, "the take doesn't say the line (voice it again with --revoice)\n  line:  ");
     m = put(why, m, line); m = put(why, m, "\n  heard: "); m = put(why, m, str(heard[..], hn));
@@ -393,9 +433,21 @@ text_image :: (path: string, text: string, w: int, h: int, x: f32, base: f32, ca
 
 // ---- the run
 
+// The time at fraction f of the heard words' letters (heard_n of them).
+place :: (t: [] Take, heard_n: int, f: f32) -> f32 {
+  x := f * f32(heard_n); c: f32 = 0;
+  for i: 0..<t[0].n {
+    w := t[0].words[i]; n := f32(spk_hi_i(w.n, 1));
+    if x <= c + n || i == t[0].n - 1 { return w.t0 + (w.t1 - w.t0) * spk_clamp((x - c) / n, 0, 1); }
+    c += n;
+  }
+  return 0;
+}
+
 Line :: struct {
   cue: [1] SpkCue; at: f32; seconds: f32; dir: [4096] u8; dir_n: int; portrait: [4096] u8; portrait_n: int;
   words: [SPK_WORDS_MAX] SpkWord; nw: int;
+  take: [256] u8; take_n: int;     // a supplied take's name, under the cache's takes/, or none
 }
 // The run's state (Coax has no globals): its lines, the take and track at hand, and an arena for
 // the strings ffmpeg's arguments keep.
@@ -448,6 +500,7 @@ tool_main :: () -> int #export_c {
     if starts(line, "video ") && video.count == 0 { video = fs_join(fs_dir(cues_path), trim(line[6..<line.count]), vb[..]); continue; }
     if line == "subtitles off" { subtitles = false; continue; }
     if line == "video-audio off" { game = false; continue; }
+    if starts(line, "take ") { if count > 0 { st[0].lines[count - 1].take_n = put(st[0].lines[count - 1].take[..], 0, trim(line[5..<line.count])); } continue; }
     if count < CUES_MAX && spk_cue(line, st[0].lines[count].cue[..]) { count += 1; }
   }
   if count == 0 { say_err("no cue lines in ", cues_path); return 1; }
@@ -493,13 +546,23 @@ speak_all :: (st: [] Run, a: [] Args, cues_path: string, out_path: string, video
     k = put(kb[..], k, "|"); k = put(kb[..], k, cast(string) who[0].voice[0..<who[0].voice_n]);
     k = put(kb[..], k, "|"); k = put(kb[..], k, SPK_MOOD_NAME[l.mood]); k = put(kb[..], k, "|"); k = put(kb[..], k, SPEAK_RATE[l.mood]);
     k = put(kb[..], k, "|"); k = put(kb[..], k, line);
+    // a supplied take: its file under takes/, keyed by its bytes' hash
+    sup: [4200] u8; supplied := "";
+    if st[0].lines[c].take_n > 0 {
+      sd: [4200] u8; supplied = fs_join(fs_join(cache, "takes", sd[..]), cast(string) st[0].lines[c].take[0..<st[0].lines[c].take_n], sup[..]);
+      fb: [WAV_MAX] u8; fbn := fs_read(supplied, fb[..]);
+      if fbn <= 0 { say_err("no supplied take at ", supplied); return 1; }
+      fh: [16] u8;
+      k = put(kb[..], 0, SPEAK_VERSION); k = put(kb[..], k, "|supplied|"); k = put(kb[..], k, hash_hex(str(fb[..], fbn), fh[..]));
+      k = put(kb[..], k, "|"); k = put(kb[..], k, line);
+    }
     hx: [16] u8; key := hash_hex(str(kb[..], k), hx[..]);
     vd: [4200] u8; vdir := fs_join(cache, "voice", vd[..]); ok := mkdirs(vdir);
     td: [4200] u8; tdir := fs_join(vdir, key, td[..]);
     if !mkdirs(tdir) { say_err("could not make ", tdir); return 1; }
     st[0].lines[c].dir_n = put(st[0].lines[c].dir[..], 0, tdir);
     print("speak: % \"%\" (take %)\n", id, line, key);
-    bad := voice(who[..], line, l.mood, tdir, revoice == c + 1, st[0].take[..], why[..]);
+    bad := voice(who[..], line, l.mood, tdir, revoice == c + 1, supplied, st[0].take[..], why[..]);
     if bad.count > 0 { say_err(bad, ""); return 1; }
     // 2. align: the take's words in the portrait clip's time (the line starts after the slide in)
     lead := f32(SPK_SLIDE);
@@ -635,26 +698,30 @@ composite :: (st: [] Run, out_path: string, video: string, count: int, subtitles
     g = put(graph[..], g, "["); g = spk_put_int(graph[..], g, ai); g = put(graph[..], g, ":a]aresample=48000,aformat=channel_layouts=stereo,adelay=");
     g = spk_put_int(graph[..], g, ms); g = put(graph[..], g, "|"); g = spk_put_int(graph[..], g, ms); g = put(graph[..], g, "[a"); g = spk_put_int(graph[..], g, c); g = put(graph[..], g, "];");
     dn = put(duck[..], dn, "*"); dn = spk_duck_expr(start, end, duck[..], dn);
-    // the words, one by one: each image shows the line's words so far, from its word's time
+    // the words, one by one: each image shows the phrase's words so far, from its word's time; a
+    // phrase ends at . ? ! , or --, and the next starts on a clear line
     if subtitles {
       line := cast(string) st[0].lines[c].cue[0].line[0..<l.line_n];
       // the line's own words (with their punctuation) and which aligned word each starts at
-      wi := 0; p := 0;
+      wi := 0; p := 0; ps := 0;
       while p < line.count {
         while p < line.count && line[p] == ' ' { p += 1; }
         q := p; while q < line.count && line[q] != ' ' { q += 1; }
         if q == p { break; }
         parts: [4] SpkWord; pn := spk_words(line[p..<q], parts[..]);
+        if p == ps || line[ps] == ' ' { ps = p; }
+        breaks := phrase_break(line[p..<q]);
+        if pn == 0 { p = q; if breaks { ps = q; } continue; }
         a0 := ifx wi < st[0].lines[c].nw then st[0].lines[c].words[wi].t0 - f32(SPK_SLIDE) + start else end;
         wi += pn;
         // until the next word, or the panel's stay after the last
         rest := q; while rest < line.count && line[rest] == ' ' { rest += 1; }
         a1 := ifx rest < line.count && wi < st[0].lines[c].nw then st[0].lines[c].words[wi].t0 - f32(SPK_SLIDE) + start else end + f32(SPK_AFTER);
-        shown := line[0..<q];
+        shown := line[ps..<q];
         sb: [4200] u8; spath_b: [64] u8;
         sname := spk_put(spath_b[..], 0, "sub-"); sname = spk_put_int(spath_b[..], sname, p); sname = spk_put(spath_b[..], sname, ".rgba");
         spath := keep(st, fs_join(tdir, str(spath_b[..], sname), sb[..]));
-        full := text_width(line, SUB_CAP);
+        full := text_width(line[ps..<phrase_end(line, ps)], SUB_CAP);
         span := OUT_W - SUB_X0 - 40;
         sw := spk_lo_i(span, cast(int) full + 40);
         sw = sw + (sw & 1);
@@ -671,6 +738,7 @@ composite :: (st: [] Run, out_path: string, video: string, count: int, subtitles
         g = put(graph[..], g, ")'[v"); g = spk_put_int(graph[..], g, vnext); g = put(graph[..], g, "];");
         vlast = vnext; vnext += 1;
         p = q;
+        if breaks { ps = q; }
       }
     }
     // the SRT and the JSON
@@ -716,6 +784,27 @@ composite :: (st: [] Run, out_path: string, video: string, count: int, subtitles
   }
   return 0;
 }
+// A word that ends a subtitle phrase: one ending in . ? ! or , or a dash.
+phrase_break :: (w: string) -> bool {
+  if w.count == 0 { return false; }
+  c := w[w.count - 1];
+  return c == '.' || c == '?' || c == '!' || c == ',' || w == "--";
+}
+// Where the phrase that starts at ps ends.
+phrase_end :: (line: string, ps: int) -> int {
+  p := ps; last := ps;
+  while p < line.count {
+    while p < line.count && line[p] == ' ' { p += 1; }
+    q := p; while q < line.count && line[q] != ' ' { q += 1; }
+    if q == p { break; }
+    parts: [4] SpkWord;
+    if spk_words(line[p..<q], parts[..]) > 0 { last = q; }
+    if phrase_break(line[p..<q]) { break; }
+    p = q;
+  }
+  return last;
+}
+
 srt_time :: (buf: [] u8, at: int, t: f32) -> int {
   ms := cast(int) floor(spk_hi(t, 0) * 1000 + 0.5);
   n := at;
@@ -752,4 +841,11 @@ srt_time :: (buf: [] u8, at: int, t: f32) -> int {
   #assert cast(string) s[0..<n] == "00:01:11,500";
   hx: [16] u8;
   #assert hash_hex("a", hx[..]).count == 16;
+}
+
+#test "subtitle phrases end at sentence ends, commas and dashes" {
+  l := "Adventurer! Our town is under attack. For months, and today they've struck -- led by Darian.";
+  #assert phrase_end(l, 0) == 11 && l[12..<phrase_end(l, 12)] == "Our town is under attack.";
+  #assert l[38..<phrase_end(l, 38)] == "For months," && l[50..<phrase_end(l, 50)] == "and today they've struck";
+  #assert phrase_break("--") && phrase_break("us?") && !phrase_break("struck");
 }
