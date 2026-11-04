@@ -579,7 +579,7 @@ net_entry :: (s: [] Everglade, n: [] EgNet, t: string, d: WireD) {
     if !r[0].ok { return; }
     n[0].hits += 1;
     if h.who >= 2000 { n[0].creature_hits += 1; }
-    if h.amt <= 0 || !s[0].started { return; }
+    if h.amt <= 0 || !s[0].started || ege_hit(s, n, h.who) { return; }   // WARDED (everglade-events.coax)
     at := net_where(s, n, net_who(h.who));
     if at.ok { watch_pop(s, v3(at.x, at.y + 2.1, at.z), h.amt, h.amt >= 25); }
     return;
@@ -1016,6 +1016,7 @@ net_draw :: (s: [] Everglade) {
     else if en.kind == WK_ZONE { net_draw_zone(s, en, age); }
     else if en.kind == WK_LINE { net_draw_line(s, en, age); }
     // a summoned creature is a beast of flesh now (the room's battle has its stat block), not a spirit
+    else if en.kind == WK_BEAST && en.p1 >= EGE_FORM_RAID { ege_raider_draw(s, n, en, age); }   // the raid's (everglade-events.coax)
     else if en.kind == WK_BEAST && en.p1 == WL_FORM_ZOMBIE { wl_zombie(s, en.eid, v3(en.shown.x, en.shown.y, en.shown.z), en.shown.yaw, en.run, ifx abs(en.shown.vx) + abs(en.shown.vz) > 0.2 then 1.0f32 else 0.0f32, clamp(age / 1.2, 0, 1)); }
     else if en.kind == WK_BEAST { ci_beast(s, clamp_i(en.p1, 1, CI_FORMS - 1), v3(en.shown.x, en.shown.y, en.shown.z), en.shown.yaw, en.run, ifx abs(en.shown.vx) + abs(en.shown.vz) > 0.2 then 1.0f32 else 0.0f32, false, clamp(age / 0.6, 0, 1)); }
   }
@@ -1033,7 +1034,7 @@ net_bars :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
   for e: 0..<NET_ENTS {
     en := nt[0].ents[e];
     if !en.live || en.kind != WK_BEAST || en.ring_n == 0 || en.p2 <= 0 { continue; }
-    p := v3(en.shown.x, en.shown.y + NET_BEAST_HEAD * (ifx en.p1 == CI_FORM_BEAR then 1.35f32 else ifx en.p1 == CI_FORM_MAMMOTH then 2.5f32 else 1.0f32), en.shown.z);
+    p := v3(en.shown.x, en.shown.y + NET_BEAST_HEAD * (ifx en.p1 >= EGE_FORM_RAID then (ifx en.p1 == EGE_FORM_WARD then 2.9f32 else 1.75f32) else ifx en.p1 == CI_FORM_BEAR then 1.35f32 else ifx en.p1 == CI_FORM_MAMMOTH then 2.5f32 else 1.0f32), en.shown.z);
     gap := flat_gap(p, you);
     if gap > f32(NET_BAR_NEAR) { continue; }
     sc := on_screen(u, p, s[0].width, s[0].height);

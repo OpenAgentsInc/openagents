@@ -40,7 +40,17 @@ EGE_B_ON :: 0; EGE_B_LEVELS :: 1; EGE_B_LEADER :: 2; EGE_B_HARM :: 3; EGE_B_DEMO
 EGE_BUTTONS :: 8;
 EGE_ASK_READ :: 1; EGE_ASK_SET :: 2;
 
+// The room's raid creatures (coax/web/room/room-events.coax, everglade5e-room-raid.coax): summoned
+// creatures (WK_BEAST) whose P1 is 20 plus their stat block (npcs.coax RS_NPC_*), or a ward stone.
+EGE_FORM_RAID :: 20; EGE_FORM_ARCH :: 30; EGE_FORM_WARD :: 40;
+EGE_LIT_MS :: 800;             // a raider's cast glows this long
+EGE_WORDS :: 8; EGE_WORD_LIFE :: 1.3;
+EGE_W_WARDED :: 0; EGE_GAINED :: 1; EGE_DOOR :: 2;
+// A word over the world: WARDED over Darian Odiodei, +25 XP over you, DIMENSION DOOR where he went.
+EgeWord :: struct { live: bool; at: Point; t: f64; what: int; amount: int; }
+
 EgEvents :: struct {
+  words: [EGE_WORDS] EgeWord;
   // the room's event (g), and when it was heard (its SECS count down from then)
   heard: bool; kind: int; phase: int; wave: int; waves: int; secs: int; left: int; standing: int; slain: int;
   square: int; wards: int; arch: int; outcome: int; folk: int; levels: bool; cap: int = 2; at: int;
@@ -114,10 +124,78 @@ ege_entry :: (s: [] Everglade, n: [] EgNet, t: string) -> bool {
   if wire_is(t, "e xp") {
     r: [1] WireRd; r[0] = wire_rd(t, 4);
     ss := wire_num(t, r[..]); amount := wire_num(t, r[..]);
-    if r[0].ok && ss == n[0].seat && amount > 0 && s[0].started { sp_say(s, "XP", amount, "EARNED"); }
+    if r[0].ok && ss == n[0].seat && amount > 0 && s[0].started { sp_say(s, "XP", amount, "EARNED"); ege_word(s, add(ab_you(s), v3(0, 2.5, 0)), EGE_GAINED, amount); }
+    return true;
+  }
+  if wire_is(t, "e rc") {
+    // a raid creature's cast: played as the Warlock's slot K from where it stands (the town's harm is the server's)
+    r: [1] WireRd; r[0] = wire_rd(t, 4);
+    id := wire_num(t, r[..]); k := wire_num(t, r[..]); ax := wire_f(t, r[..]); ay := wire_f(t, r[..]); az := wire_f(t, r[..]); seed := wire_num(t, r[..]);
+    if !r[0].ok || !s[0].started || !sp_on(s) { return true; }
+    at := v3(ax, ay, az); from := at;
+    q := net_ent(n, NET_MADE_ID + id, false);
+    if q >= 0 {
+      c := n[0].ents[q].shown;
+      from = v3(c.x, c.y + 1.5, c.z);
+      n[0].ents[q].cast_slot = WL_SLOT0 + k; n[0].ents[q].cast_at = cast(int) (s[0].time * 1000);
+    }
+    if k == WL_DOOR { ege_word(s, add(from, v3(0, 1.2, 0)), EGE_DOOR, 0); }
+    wl_play(s, k, from, at, seed, false);
     return true;
   }
   return false;
+}
+
+// A hit on Darian Odiodei while his wards stand: WARDED there, not a number (true: shown).
+ege_hit :: (s: [] Everglade, n: [] EgNet, who: int) -> bool {
+  if who <= 2000 || n[0].evp[0].arch != EGE_WARDED { return false; }
+  q := net_ent(n, NET_MADE_ID + who - 2000, false);
+  if q < 0 || n[0].ents[q].p1 != EGE_FORM_ARCH { return false; }
+  c := n[0].ents[q].shown;
+  ege_word(s, v3(c.x, c.y + 2.7, c.z), EGE_W_WARDED, 0);
+  return true;
+}
+ege_word :: (s: [] Everglade, at: Point, what: int, amount: int) {
+  if !net_on(s) { return; }
+  e := ege_of(s);
+  k := 0; oldest := s[0].time;
+  for q: 0..<EGE_WORDS {
+    if !e[0].words[q].live { k = q; break; }
+    if e[0].words[q].t < oldest { oldest = e[0].words[q].t; k = q; }
+  }
+  e[0].words[k] = EgeWord.{live = true, at = at, t = s[0].time, what = what, amount = amount};
+}
+
+// ---- the raiders, drawn
+
+// A raid creature (everglade-net.coax net_draw's): a raider in the preview's look (everglade-raid-
+// preview.coax rp_raider_at), or a ward stone, a dark obelisk with a violet light, and while the
+// wards hold, their light running to Darian Odiodei.
+ege_raider_draw :: (s: [] Everglade, n: [] EgNet, en: NetEnt, age: f32) {
+  p := en.shown;
+  if en.p1 == EGE_FORM_WARD { ege_ward_draw(s, n, p.x, p.z, age); return; }
+  lit: f32 = 0;
+  if en.cast_slot >= WL_SLOT0 { lit = clamp01(1 - (f32(s[0].time * 1000) - f32(en.cast_at)) / f32(EGE_LIT_MS)); }
+  moving := abs(p.vx) + abs(p.vz) > 0.2;
+  rp_raider_at(s, en.p1 - EGE_FORM_RAID, p.x, p.z, p.yaw, moving, en.run, p.f / 256, lit, en.eid % 4);
+}
+ege_ward_draw :: (s: [] Everglade, n: [] EgNet, x: f32, z: f32, age: f32) {
+  rise := clamp01(age / 1.5);
+  g := ground_at(s, x, z);
+  h := 3.2 * rise;
+  shape(s, SHAPE_BOX, LOOK_MATTE, v3(x, g + h / 2, z), 0.6, 0, 0.8, hi(h, 0.05), 0.8, 0.05, 0.035, 0.07);
+  top := v3(x, g + h + 0.15, z);
+  sp_glow(s, top, 0.3 + 0.08 * sin(f32(s[0].time) * 4), times(RP_VIOLET, 0.8));
+  if n[0].evp[0].arch != EGE_WARDED { return; }
+  for e: 0..<NET_ENTS {
+    d := n[0].ents[e];
+    if !d.live || d.kind != WK_BEAST || d.p1 != EGE_FORM_ARCH || d.ring_n == 0 { continue; }
+    to := v3(d.shown.x, d.shown.y + 1.6, d.shown.z);
+    for q: 1..<10 {
+      f := f32(q) / 10;
+      sp_glow(s, add(top, times(sub(to, top), f)), 0.12, times(RP_VIOLET, 0.45));
+    }
+  }
 }
 
 // ---- the words
@@ -203,6 +281,47 @@ ege_up_words :: (s: [] Everglade, b: [] u8) -> int {
 
 // The banner, your LEVEL plate (left of HP) and the level-up notice; for an admin, EVENTS and its pane.
 // `top`: under the top row, as watch_hud's.
+// Over the world: the words (WARDED, +25 XP, DIMENSION DOOR), and Darian Odiodei's nameplate: who he
+// is, his level, and that he can't be killed (spec 5.2), with what comes at half his Hit Points.
+ege_world_words :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
+  n := at;
+  e := ege_of(s);
+  k := hi(s[0].dpr, 0.5);
+  b: [48] u8;
+  for q: 0..<EGE_WORDS {
+    wd := e[0].words[q];
+    if !wd.live { continue; }
+    t := f32(s[0].time - wd.t);
+    if t >= f32(EGE_WORD_LIFE) || t < 0 { e[0].words[q].live = false; continue; }
+    sc := on_screen(u, add(wd.at, v3(0, 0.8 * t, 0)), s[0].width, s[0].height);
+    if !sc.ok { continue; }
+    m := 0;
+    if wd.what == EGE_W_WARDED { m = ege_put(b[..], 0, "WARDED"); }
+    else if wd.what == EGE_DOOR { m = ege_put(b[..], 0, "DIMENSION DOOR"); }
+    else { m = ege_put(b[..], ege_int(b[..], ege_put(b[..], 0, "+"), wd.amount), " XP"); }
+    cap := 13 * k;
+    tw := text_width(cast(string) b[0..<m], cap);
+    fade := clamp01((f32(EGE_WORD_LIFE) - t) / 0.35);
+    violet := wd.what != EGE_GAINED;
+    n = draw_text(out, n, cast(string) b[0..<m], sc.x - tw / 2, sc.y, cap, GAP, SPACE, ink(k, 0.95 * fade, ifx violet then 0.8f32 else GOLD_R, ifx violet then 0.55f32 else GOLD_G, ifx violet then 1.0f32 else GOLD_B), false, false);
+  }
+  nt := net_of(s);
+  you := ab_you(s);
+  for q: 0..<NET_ENTS {
+    d := nt[0].ents[q];
+    if !d.live || d.kind != WK_BEAST || d.p1 != EGE_FORM_ARCH || d.ring_n == 0 { continue; }
+    p := v3(d.shown.x, d.shown.y + 3.0, d.shown.z);
+    if flat_gap(p, you) > 60 { continue; }
+    sc := on_screen(u, p, s[0].width, s[0].height);
+    if !sc.ok { continue; }
+    l1 := "DARIAN ODIODEI · LEVEL 17 · CAN'T BE KILLED";
+    l2 := ifx e[0].arch == EGE_WARDED then "WARDED WHILE A WARD STONE STANDS" else "WITHDRAWS AT HALF HIT POINTS";
+    c1 := 12 * k; c2 := 10 * k;
+    n = draw_text(out, n, l1, sc.x - text_width(l1, c1) / 2, sc.y - c2 - 6 * k, c1, GAP, SPACE, ink(k, 0.95, 0.8, 0.55, 1.0), false, false);
+    n = draw_text(out, n, l2, sc.x - text_width(l2, c2) / 2, sc.y, c2, GAP, SPACE, ink(k, 0.85, PARCH_R, PARCH_G, PARCH_B), false, false);
+  }
+  return n;
+}
 ege_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, top: f32, under_title: f32) -> int {
   if !net_on(s) { return at; }
   e := ege_of(s);
@@ -212,6 +331,7 @@ ege_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, top: f32, under_ti
   if !ege_live(s) || s[0].above { return at; }
   n := at;
   k := hi(s[0].dpr, 0.5);
+  n = ege_world_words(s, out, u, n);
   w := s[0].width; gutter := 16 * k;
   // the LEVEL plate, left of the HP bar (watch_hud: 168 wide at the right gutter)
   lw: [64] u8; ln := ege_level_words(s, lw[..]);
@@ -482,6 +602,23 @@ ege_answered :: (s: [] Everglade, answer: string) -> bool {
   #assert ege_entry(g[..], n, "e level 2 2") && n[0].evp[0].up_level == 2 && n[0].evp[0].up_t == 5;
   #assert ege_entry(g[..], n, "e level 3 3") && n[0].evp[0].up_level == 2;
   #assert !ege_entry(g[..], n, "e hit 20 1001 5 4");
+}
+
+#test "events: a hit on Darian Odiodei behind his wards shows WARDED, not a number; once exposed, its number" {
+  g: [1] Everglade; nn: [1] EgNet;
+  everglade_attach_net(g[..], nn[..]);
+  n := net_of(g[..]);
+  n[0].seat = 0; n[0].state = NET_OPEN; n[0].mono = 1000;
+  q := net_ent(n, NET_MADE_ID + 9, true);
+  n[0].ents[q].kind = WK_BEAST; n[0].ents[q].p1 = EGE_FORM_ARCH; n[0].ents[q].ring_n = 1;
+  n[0].ents[q].shown = NetState.{x = 4, z = 7};
+  #assert ege_entry(g[..], n, "g 1 4 3 3 120 400 0 30 0 3 1 0 38 1 2");
+  #assert ege_hit(g[..], n, 2009) && n[0].evp[0].words[0].live && n[0].evp[0].words[0].what == EGE_W_WARDED;
+  #assert !ege_hit(g[..], n, 2010);   // another creature: its number
+  #assert ege_entry(g[..], n, "g 1 4 3 3 120 400 0 30 0 0 2 0 38 1 2");
+  #assert !ege_hit(g[..], n, 2009);
+  // a raider's cast is the events module's entry
+  #assert ege_entry(g[..], n, "e rc 9 0 400 150 700 12345");
 }
 
 #test "events: the admin pane reads the dials, steps one within its range and asks the API; a visitor has none" {
