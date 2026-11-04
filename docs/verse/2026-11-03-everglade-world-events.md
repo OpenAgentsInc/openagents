@@ -480,6 +480,18 @@ instance must add less than 0.5 ms to that instance's tick. The design keeps it 
 `load.coax` (#12711) gets a raid case: 16 seats in one instance and 60 raiders fighting, which
 reports the tick's p95 with and without the raid.
 
+The raid load test runs on a local room server (`raid-proof.sh`, 16 players, Wave size 24, 2
+waves, aggression 3), with the siege tactics (section 4.3), 2026-11-03 on an M-series Mac:
+
+| Case | Raiders | Tick rate | Tick p95 at worst | Everglade tick parts a minute | Events with no room |
+| --- | --- | --- | --- | --- | --- |
+| No raid, 16 players | 0 | 30 Hz | not taken | about 540 ms (0.15 ms a tick) | 0 |
+| Raid, 16 players | 60 standing at once, 90 in all | 30 Hz, every seat's D at 30 | 4.6 ms | 1.1 s, then 2.9 s (0.8 ms a tick) | 0 |
+
+In the raid's second minute, most of the time went to the players' own spells: the 16 casting
+players cast 1,765 times. The 60 raiders' moves, with the spacing push for each one, cost about
+0.3 ms a tick. Against 16 level 1 players, these brutal dials took the square in 123 s.
+
 ## 10. Persistence
 
 XP saves the way HP does (#12715):
