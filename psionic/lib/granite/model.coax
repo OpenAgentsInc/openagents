@@ -1,0 +1,268 @@
+// granite-gguf-v1: the GGUF `granite` architecture bound to the dense
+// decoder block. Chapter 49's reader supplies the metadata and tensor
+// descriptors; this file checks them against one supported profile and
+// names every tensor the decoder reads. Payload bytes are not read here.
+// The four Granite multipliers are read: attention.scale is applied as the
+// attention scale, and embedding_scale, residual_scale and logit_scale must
+// be exactly 1, the only value the decoder applies.
+#load "../gguf.coax";
+#load "../../fixtures/granite/tiny.coax";
+#authority;
+
+GrStatus :: enum u8 {ok;header;architecture;metadata;shape;multiplier;tensor;kind;capacity;}
+GrShape :: struct {layers:int;width:int;hidden:int;heads:int;kv_heads:int;head_dim:int;vocab:int;context:int;rope_base:f32;eps:f32;attention_scale:f32;bos:int;eos:int;unknown:int;}
+// One bound tensor: GGUF type, absolute byte range in the file, rows by cols
+// (cols is GGUF dimension 0, the contiguous one).
+GrTensor :: struct {kind:int;begin:int;bytes:int;rows:int;cols:int;}
+// Where the tokenizer arrays and the chat template start in the header.
+GrText :: struct {tokens:int;token_types:int;merges:int;vocab:int;merge_count:int;chat:int;chat_bytes:int;}
+GrBinding :: struct {status:GrStatus;cause:int;shape:GrShape;text:GrText;tensors:int;data:int;}
+
+GR_SLOTS :: 9;  // per layer
+GR_LAYER_NAMES :: [9]string.["attn_norm.weight","attn_q.weight","attn_k.weight","attn_v.weight","attn_output.weight","ffn_norm.weight","ffn_gate.weight","ffn_up.weight","ffn_down.weight"];
+GR_GLOBAL_NAMES :: [3]string.["token_embd.weight","output_norm.weight","output.weight"];
+GR_F32 :: 0;
+GR_Q8_0 :: 8;
+GR_Q4_K :: 12;
+GR_Q6_K :: 14;
+GR_LAYERS_MAX :: 128;
+
+// Slot of a tensor in the bound table: 0..2 are global, then nine a layer.
+gr_index :: (layer:int,slot:int)->int {return 3+layer*GR_SLOTS+slot;}
+gr_table_count :: (layers:int)->int {return 3+layers*GR_SLOTS;}
+// The matrix formats a projection may use, and the only format of a norm.
+gr_matrix_kind :: (kind:int)->bool {return kind==GR_Q8_0 || kind==GR_Q4_K || kind==GR_Q6_K;}
+gr_slot_norm :: (slot:int)->bool {return slot==0 || slot==5;}
+
+#test "slots, kinds and names have fixed positions" {
+    #assert gr_index(0,0)==3 && gr_index(1,0)==12 && gr_index(39,8)==362 && gr_table_count(40)==363;
+    #assert gr_matrix_kind(8) && gr_matrix_kind(12) && gr_matrix_kind(14) && !gr_matrix_kind(0) && !gr_matrix_kind(10) && !gr_matrix_kind(13) && !gr_matrix_kind(2);
+    #assert gr_slot_norm(0) && gr_slot_norm(5) && !gr_slot_norm(1) && !gr_slot_norm(8);
+    text:[64]u8;n:=gr_layer_name(7,3,text[..]);#assert cast(string)text[0..<n]=="blk.7.attn_v.weight";
+    n=gr_layer_name(39,8,text[..]);#assert cast(string)text[0..<n]=="blk.39.ffn_down.weight";
+    n=gr_layer_name(0,0,text[..]);#assert cast(string)text[0..<n]=="blk.0.attn_norm.weight";
+    n=gr_layer_name(100,1,text[..]);#assert cast(string)text[0..<n]=="blk.100.attn_q.weight";
+}
+gr_put :: (out:[]u8,at:int,s:string)->int {for i:0..<s.count {out[at+i]=s[i];}return at+s.count;}
+gr_layer_name :: (layer:int,slot:int,out:[]u8)->int {
+    at:=gr_put(out,0,"blk.");digits:[8]u8;n:=0;v:=layer;
+    while true {digits[n]=cast(u8)(48+v%10);n+=1;v/=10;if v==0 {break;}}
+    for i:0..<n {out[at+i]=digits[n-1-i];}at+=n;out[at]='.';at+=1;
+    return gr_put(out,at,GR_LAYER_NAMES[slot]);
+}
+
+
+// book:begin bind-tests
+#test "the tiny owned model binds every tensor, its shape and its tokenizer arrays" {
+    h:=GR_TINY_HEADER;m:[32]PgMeta;mw:[32]PgMeta;t:[32]PgTensor;tw:[32]PgTensor;out:[21]GrTensor;
+    b:=gr_bind(h[..],GR_TINY_BYTES,m[..],mw[..],t[..],tw[..],out[..]);
+    #assert b.status==GrStatus.ok && b.tensors==21 && b.shape.layers==2 && b.shape.width==256 && b.shape.hidden==512;
+    #assert b.shape.heads==2 && b.shape.kv_heads==1 && b.shape.head_dim==128 && b.shape.vocab==GR_TINY_VOCAB && b.shape.context==4096;
+    #assert b.shape.attention_scale==0.0078125 && b.shape.rope_base==10000000 && b.shape.eps==f32(0.00001);
+    #assert b.shape.bos==308 && b.shape.eos==305 && b.shape.unknown==309 && b.text.vocab==312 && b.text.merge_count==18 && b.text.chat_bytes==65;
+    #assert out[0].kind==GR_Q4_K && out[0].rows==312 && out[0].cols==256 && out[0].bytes==312*144 && out[0].begin==b.data;
+    #assert out[1].kind==GR_F32 && out[1].rows==1 && out[2].kind==GR_Q6_K && out[2].rows==312;
+    #assert out[gr_index(0,3)].kind==GR_Q6_K && out[gr_index(0,3)].rows==128 && out[gr_index(0,8)].cols==512 && out[gr_index(0,8)].rows==256;
+    #assert out[gr_index(1,6)].kind==GR_Q8_0 && out[gr_index(1,6)].rows==512 && out[gr_index(1,6)].bytes==512*8*34;
+    #assert gr_find(m[0..<b.text.vocab-287],"granite.vocab_size")==10 && gr_find(m[0..<25],"none")== -1;
+    #assert gr_u32(h[..],m[0..<25],"granite.vocab_size")==312 && gr_u32(h[..],m[0..<25],"granite.rope.freq_base")== -1 && gr_u32(h[..],m[0..<25],"missing")== -1;
+    #assert gr_f32_bits(h[..],m[0..<25],"granite.attention.scale")==0x3c000000 && gr_f32_bits(h[..],m[0..<25],"granite.vocab_size")== -1;
+    #assert gr_string_is(h[..],m[0..<25],"tokenizer.ggml.model","gpt2") && !gr_string_is(h[..],m[0..<25],"tokenizer.ggml.model","gpt") && !gr_string_is(h[..],m[0..<25],"granite.vocab_size","gpt2");
+    a:=gr_array(h[..],m[0..<25],"tokenizer.ggml.token_type",5);#assert a.count==312 && a.first==b.text.token_types;
+    #assert gr_array(h[..],m[0..<25],"tokenizer.ggml.token_type",8).count== -1 && gr_array(h[..],m[0..<25],"granite.vocab_size",5).count== -1;
+    #assert gr_bind(h[..],GR_TINY_BYTES,m[..],mw[..],t[..],tw[..],out[0..<20]).status==GrStatus.capacity;
+    #assert gr_bind(h[0..<100],GR_TINY_BYTES,m[..],mw[..],t[..],tw[..],out[..]).status==GrStatus.header;
+}
+// A header with one f32 value replaced.
+gr_tiny_with :: (at:int,bits:u32,out:[]GrTensor)->GrBinding {
+    h:=GR_TINY_HEADER;for i:0..<4 {h[at+i]=cast,trunc(u8)(bits>>cast(u32)(8*i));}
+    m:[32]PgMeta;mw:[32]PgMeta;t:[32]PgTensor;tw:[32]PgTensor;return gr_bind(h[..],GR_TINY_BYTES,m[..],mw[..],t[..],tw[..],out);
+}
+#test "every multiplier other than one is refused, the attention scale is applied as read" {
+    out:[21]GrTensor;
+    for at:[3]int.[GR_TINY_AT_EMBED_SCALE,GR_TINY_AT_RESIDUAL_SCALE,GR_TINY_AT_LOGIT_SCALE] {
+        for bits:[4]u32.[0x3f800001,0x40000000,0x3f7fffff,0xbf800000] {b:=gr_tiny_with(at,bits,out[..]);#assert b.status==GrStatus.multiplier;}
+    }
+    #assert gr_tiny_with(GR_TINY_AT_EMBED_SCALE,0x3f800000,out[..]).status==GrStatus.ok;
+    #assert gr_tiny_with(GR_TINY_AT_LOGIT_SCALE,0x3f800001,out[..]).cause==2 && gr_tiny_with(GR_TINY_AT_EMBED_SCALE,0,out[..]).cause==0;
+    b:=gr_tiny_with(GR_TINY_AT_ATTENTION_SCALE,0x3e000000,out[..]);#assert b.status==GrStatus.ok && b.shape.attention_scale==0.125;
+    for bits:[4]u32.[0,0x80000000,0x7f800000,0x7fc00000] {#assert gr_tiny_with(GR_TINY_AT_ATTENTION_SCALE,bits,out[..]).status==GrStatus.metadata;}
+}
+#test "architecture, shape and rotary refusals name their field" {
+    out:[21]GrTensor;
+    #assert gr_tiny_with(GR_TINY_AT_ARCH+8,0x666e6172,out[..]).status==GrStatus.architecture;
+    #assert gr_tiny_with(GR_TINY_AT_LAYERS,0,out[..]).status==GrStatus.metadata;
+    #assert gr_tiny_with(GR_TINY_AT_LAYERS,129,out[..]).status==GrStatus.shape;
+    #assert gr_tiny_with(GR_TINY_AT_LAYERS,3,out[..]).status==GrStatus.capacity;
+    #assert gr_tiny_with(GR_TINY_AT_LAYERS,1,out[..]).status==GrStatus.tensor;
+    #assert gr_tiny_with(GR_TINY_AT_HEADS,4,out[..]).status==GrStatus.shape && gr_tiny_with(GR_TINY_AT_HEADS,3,out[..]).status==GrStatus.shape;
+    #assert gr_tiny_with(GR_TINY_AT_ROPE_DIMS,64,out[..]).status==GrStatus.shape;
+}
+// book:end bind-tests
+// Where `word` first starts in the tiny header.
+gr_seek :: (h:[]u8,word:string)->int {
+    for i:0..<h.count-word.count {same:=true;for k:0..<word.count {if h[i+k]!=word[k] {same=false;break;}}if same {return i;}}
+    return -1;
+}
+// The tiny model with `width` bytes of `bits` written at `delta` bytes after
+// the end of `word`: delta 4 is a key's value, -1 its last letter.
+gr_tiny_write :: (h:[]u8,word:string,delta:int,bits:u32,width:int) {
+    at:=gr_seek(h,word)+word.count+delta;
+    for i:0..<width {h[at+i]=ifx i<4 then cast,trunc(u8)(bits>>cast(u32)(8*i)) else 0;}
+}
+gr_tiny_patch :: (word:string,delta:int,bits:u32,width:int,file_bytes:int,out:[]GrTensor)->GrBinding {
+    h:=GR_TINY_HEADER;gr_tiny_write(h[..],word,delta,bits,width);
+    m:[32]PgMeta;mw:[32]PgMeta;t:[32]PgTensor;tw:[32]PgTensor;return gr_bind(h[..],file_bytes,m[..],mw[..],t[..],tw[..],out);
+}
+gr_tiny_set :: (key:string,bits:u32,out:[]GrTensor)->GrBinding {return gr_tiny_patch(key,4,bits,4,GR_TINY_BYTES,out);}
+// The key's last letter becomes '_'.
+gr_tiny_rename :: (h:[]u8,key:string) {gr_tiny_write(h,key,-1,0x5f,1);}
+gr_tiny_drop :: (key:string,out:[]GrTensor)->GrBinding {
+    h:=GR_TINY_HEADER;gr_tiny_rename(h[..],key);
+    m:[32]PgMeta;mw:[32]PgMeta;t:[32]PgTensor;tw:[32]PgTensor;return gr_bind(h[..],GR_TINY_BYTES,m[..],mw[..],t[..],tw[..],out);
+}
+#test "a missing or out-of-range key names its cause" {
+    out:[21]GrTensor;m:[32]PgMeta;
+    h:=GR_TINY_HEADER;#assert gr_seek(h[..],"GGUF")==0 && gr_seek(h[..],"XGUF")== -1 && gr_seek(h[..],"no such key")== -1;
+    b:=gr_tiny_drop("granite.rope.freq_base",out[..]);#assert b.status==GrStatus.metadata && b.cause==8;
+    b=gr_tiny_drop("granite.attention.scale",out[..]);#assert b.status==GrStatus.metadata && b.cause==10;
+    b=gr_tiny_drop("granite.logit_scale",out[..]);#assert b.status==GrStatus.metadata && b.cause==13;
+    h2:=GR_TINY_HEADER;gr_tiny_rename(h2[..],"granite.logit_scale");mw:[32]PgMeta;t:[32]PgTensor;tw:[32]PgTensor;
+    #assert gr_bind(h2[..],GR_TINY_BYTES,m[..],mw[..],t[..],tw[..],out[..]).cause==13 && gr_find(m[0..<25],"granite.logit_scal_")==15;
+    b=gr_tiny_set("granite.rope.freq_base",0,out[..]);#assert b.status==GrStatus.metadata && b.cause==8;
+    b=gr_tiny_set("granite.attention.layer_norm_rms_epsilon",0,out[..]);#assert b.status==GrStatus.metadata && b.cause==9;
+    b=gr_tiny_set("granite.rope.freq_base",1,out[..]);#assert b.status==GrStatus.ok && f32_bits(b.shape.rope_base)==1;
+    b=gr_tiny_set("granite.logit_scale",0,out[..]);#assert b.status==GrStatus.multiplier && b.cause==2;
+    for key:[3]string.["tokenizer.ggml.bos_token_id","tokenizer.ggml.eos_token_id","tokenizer.ggml.unknown_token_id"] {
+        b=gr_tiny_drop(key,out[..]);#assert b.status==GrStatus.metadata && b.cause==14;
+        b=gr_tiny_set(key,312,out[..]);#assert b.status==GrStatus.metadata && b.cause==14;
+        #assert gr_tiny_set(key,311,out[..]).status==GrStatus.ok && gr_tiny_set(key,0,out[..]).status==GrStatus.ok;
+    }
+    b=gr_tiny_patch("tokenizer.ggml.model",15,0x33,1,GR_TINY_BYTES,out[..]);#assert b.status==GrStatus.metadata && b.cause==15;
+    b=gr_tiny_set("granite.vocab_size",311,out[..]);#assert b.status==GrStatus.metadata && b.cause==16;
+    b=gr_tiny_drop("tokenizer.ggml.token_type",out[..]);#assert b.status==GrStatus.metadata && b.cause==17;
+    b=gr_tiny_drop("tokenizer.ggml.merges",out[..]);#assert b.status==GrStatus.metadata && b.cause==18;
+    b=gr_tiny_drop("tokenizer.chat_template",out[..]);#assert b.status==GrStatus.ok && b.text.chat==0 && b.text.chat_bytes==0;
+    b=gr_tiny_set("granite.block_count",129,out[..]);#assert b.status==GrStatus.shape && b.cause==0;
+    b=gr_tiny_set("granite.rope.dimension_count",64,out[..]);#assert b.status==GrStatus.shape && b.cause==1;
+    b=gr_tiny_set("granite.block_count",1,out[..]);#assert b.status==GrStatus.tensor && b.cause== -1;
+    b=gr_tiny_set("granite.block_count",128,out[..]);#assert b.status==GrStatus.capacity;
+    b=gr_tiny_patch("output.weight",-1,0x5f,1,GR_TINY_BYTES,out[..]);#assert b.status==GrStatus.tensor && b.cause==2;
+    b=gr_tiny_patch("blk.1.attn_k.weight",4,128,8,GR_TINY_BYTES,out[..]);
+    #assert b.status==GrStatus.shape && b.cause==100+gr_index(1,2);
+    b=gr_tiny_patch("general.name",-1,0x5f,1,GR_TINY_BYTES+1,out[..]);#assert b.status==GrStatus.header && b.cause== -1;
+    b=gr_tiny_patch("general.name",-1,0x5f,1,GR_TINY_BYTES,out[..]);#assert b.status==GrStatus.ok;
+}
+#test "the bound table follows the file's tensor order, and the text arrays are found" {
+    h:=GR_TINY_HEADER;m:[32]PgMeta;mw:[32]PgMeta;t:[32]PgTensor;tw:[32]PgTensor;out:[21]GrTensor;
+    b:=gr_bind(h[..],GR_TINY_BYTES,m[..],mw[..],t[..],tw[..],out[..]);
+    for k:1..<21 {#assert out[k].begin>out[k-1].begin && out[k].begin==t[k].begin;}
+    #assert b.text.tokens==gr_array(h[..],m[0..<25],"tokenizer.ggml.tokens",8).first && b.text.merges==gr_array(h[..],m[0..<25],"tokenizer.ggml.merges",8).first;
+    template:="{% for message in messages %}{{ message['content'] }}{% endfor %}";
+    #assert b.text.chat>0 && cast(string)h[b.text.chat..<b.text.chat+b.text.chat_bytes]==template;
+    // Keys at the start of a metadata view are found too.
+    #assert gr_u32(h[..],m[2..<25],"granite.block_count")==2 && gr_f32_bits(h[..],m[8..<25],"granite.rope.freq_base")==0x4b189680;
+    #assert gr_array(h[..],m[18..<25],"tokenizer.ggml.tokens",8).count==312 && gr_string_is(h[..],m[16..<25],"tokenizer.ggml.model","gpt2");
+    // A key of the wrong type is not read as another type.
+    wrong:=[1]PgMeta.[m[16]];wrong[0].kind=4;#assert !gr_string_is(h[..],wrong[..],"tokenizer.ggml.model","gpt2");
+    wrong[0]=m[18];wrong[0].kind=8;#assert gr_array(h[..],wrong[..],"tokenizer.ggml.tokens",8).count== -1;
+    one:=GR_TINY_ONE_HEADER;c:=gr_bind(one[..],GR_TINY_ONE_BYTES,m[..],mw[..],t[..],tw[..],out[..]);
+    #assert c.status==GrStatus.ok && c.text.merge_count==1 && c.text.chat_bytes==65 && cast(string)one[c.text.chat..<c.text.chat+65]==template;
+}
+#test "norms are one row and projections rows by cols" {
+    x:=PgTensor.{rank=2,dims=[4]int.[256,128,1,1]};
+    #assert gr_dims_are(x,false,256,128) && !gr_dims_are(x,false,128,256) && !gr_dims_are(x,false,256,256) && !gr_dims_are(x,false,512,128) && !gr_dims_are(x,true,256,1);
+    x.rank=3;#assert !gr_dims_are(x,false,256,128);
+    y:=PgTensor.{rank=1,dims=[4]int.[256,1,1,1]};#assert gr_dims_are(y,true,256,1) && !gr_dims_are(y,true,128,1) && !gr_dims_are(y,false,256,1);
+    y.rank=2;#assert !gr_dims_are(y,true,256,1);
+}
+
+// book:begin metadata
+gr_find :: (meta:[]PgMeta,key:string)->int {for i:0..<meta.count {if meta[i].key==key {return i;}}return -1;}
+// An unsigned 32-bit key (GGUF type 4), or -1 when it is missing or of another type.
+gr_u32 :: (header:[]u8,meta:[]PgMeta,key:string)->int {
+    i:=gr_find(meta,key);if i<0 || meta[i].kind!=4 {return -1;}
+    return cast(int)pg_uint(PgCursor.{data=header,at=meta[i].begin},4).word;
+}
+// A binary32 key (GGUF type 6) as its bits; -1 when missing or of another type.
+gr_f32_bits :: (header:[]u8,meta:[]PgMeta,key:string)->int {
+    i:=gr_find(meta,key);if i<0 || meta[i].kind!=6 {return -1;}
+    return cast(int)pg_uint(PgCursor.{data=header,at=meta[i].begin},4).word;
+}
+gr_string_is :: (header:[]u8,meta:[]PgMeta,key:string,want:string)->bool {
+    i:=gr_find(meta,key);if i<0 || meta[i].kind!=8 {return false;}
+    return pg_string(PgCursor.{data=header,at=meta[i].begin},header.count).text==want;
+}
+// An array key of one item type: its element count and where the first
+// element starts, or count -1.
+GrArray :: struct {count:int;first:int;}
+gr_array :: (header:[]u8,meta:[]PgMeta,key:string,item:int)->GrArray {
+    i:=gr_find(meta,key);if i<0 || meta[i].kind!=9 {return GrArray.{count= -1};}
+    c:=pg_atom(PgCursor.{data=header,at=meta[i].begin},9);
+    if c.status!=PgStatus.ok || c.item!=item {return GrArray.{count= -1};}
+    return GrArray.{count=c.count,first=c.at};
+}
+// book:end metadata
+
+GR_ONE_BITS :: 0x3f800000;
+// A norm is one row of cols values; a projection is rows by cols.
+gr_dims_are :: (x:PgTensor,norm:bool,cols:int,rows:int)->bool {
+    if norm {return x.rank==1 && x.dims[0]==cols;}
+    return x.rank==2 && x.dims[0]==cols && x.dims[1]==rows;
+}
+// book:begin bind
+gr_bind :: (header:[]u8,file_bytes:int,meta:[]PgMeta,meta_work:[]PgMeta,tensors:[]PgTensor,tensor_work:[]PgTensor,out:[]GrTensor)->GrBinding #export_c {
+    r:=pg_read(header,file_bytes,meta,meta_work,tensors,tensor_work,false);
+    if r.status!=PgStatus.ok {return GrBinding.{status=GrStatus.header,cause=cast(int)(cast(u8)r.status)};}
+    m:=meta[0..<r.metadata];t:=tensors[0..<r.tensors];
+    if !gr_string_is(header,m,"general.architecture","granite") {return GrBinding.{status=GrStatus.architecture};}
+    s:=GrShape.{};
+    keys:=[8]string.["granite.block_count","granite.embedding_length","granite.feed_forward_length","granite.attention.head_count","granite.attention.head_count_kv","granite.vocab_size","granite.context_length","granite.rope.dimension_count"];
+    values:[8]int;
+    for k:0..<8 {values[k]=gr_u32(header,m,keys[k]);if values[k]<1 {return GrBinding.{status=GrStatus.metadata,cause=k};}}
+    s.layers=values[0];s.width=values[1];s.hidden=values[2];s.heads=values[3];s.kv_heads=values[4];s.vocab=values[5];s.context=values[6];
+    if s.layers>GR_LAYERS_MAX || s.width%s.heads!=0 || s.heads%s.kv_heads!=0 {return GrBinding.{status=GrStatus.shape,cause=0};}
+    s.head_dim=s.width/s.heads;
+    // Rotary embedding covers whole heads of 128 values, and every row is whole 256-value super-blocks.
+    if s.head_dim!=128 || values[7]!=s.head_dim || s.width%256!=0 || s.hidden%256!=0 {return GrBinding.{status=GrStatus.shape,cause=1};}
+    fkeys:=[5]string.["granite.rope.freq_base","granite.attention.layer_norm_rms_epsilon","granite.attention.scale","granite.embedding_scale","granite.residual_scale"];
+    bits:[6]int;
+    for k:0..<5 {bits[k]=gr_f32_bits(header,m,fkeys[k]);if bits[k]<0 {return GrBinding.{status=GrStatus.metadata,cause=8+k};}}
+    bits[5]=gr_f32_bits(header,m,"granite.logit_scale");if bits[5]<0 {return GrBinding.{status=GrStatus.metadata,cause=13};}
+    for k:0..<3 {if bits[k]<1 || bits[k]>=0x7f800000 {return GrBinding.{status=GrStatus.metadata,cause=8+k};}}
+    // The decoder applies no embedding, residual or logit multiplier.
+    for k:3..<6 {if bits[k]!=GR_ONE_BITS {return GrBinding.{status=GrStatus.multiplier,cause=k-3};}}
+    s.rope_base=f32_from_bits(cast(u32)bits[0]);s.eps=f32_from_bits(cast(u32)bits[1]);s.attention_scale=f32_from_bits(cast(u32)bits[2]);
+    s.bos=gr_u32(header,m,"tokenizer.ggml.bos_token_id");s.eos=gr_u32(header,m,"tokenizer.ggml.eos_token_id");s.unknown=gr_u32(header,m,"tokenizer.ggml.unknown_token_id");
+    if s.bos<0 || s.bos>=s.vocab || s.eos<0 || s.eos>=s.vocab || s.unknown<0 || s.unknown>=s.vocab {return GrBinding.{status=GrStatus.metadata,cause=14};}
+    if !gr_string_is(header,m,"tokenizer.ggml.model","gpt2") {return GrBinding.{status=GrStatus.metadata,cause=15};}
+    text:=GrText.{};
+    a:=gr_array(header,m,"tokenizer.ggml.tokens",8);if a.count!=s.vocab {return GrBinding.{status=GrStatus.metadata,cause=16};}text.tokens=a.first;text.vocab=a.count;
+    a=gr_array(header,m,"tokenizer.ggml.token_type",5);if a.count!=s.vocab {return GrBinding.{status=GrStatus.metadata,cause=17};}text.token_types=a.first;
+    a=gr_array(header,m,"tokenizer.ggml.merges",8);if a.count<1 {return GrBinding.{status=GrStatus.metadata,cause=18};}text.merges=a.first;text.merge_count=a.count;
+    i:=gr_find(m,"tokenizer.chat_template");
+    if i>=0 && m[i].kind==8 {c:=pg_count(PgCursor.{data=header,at=m[i].begin},header.count);text.chat=c.at;text.chat_bytes=cast(int)c.word;}
+    n:=gr_table_count(s.layers);if out.count<n {return GrBinding.{status=GrStatus.capacity};}
+    if t.count!=n {return GrBinding.{status=GrStatus.tensor,cause= -1};}
+    // The file ends where its last tensor ends: an appended file is refused.
+    if t[t.count-1].end!=file_bytes {return GrBinding.{status=GrStatus.header,cause= -1};}
+    name:[64]u8;
+    for k:0..<n {
+        want:string;if k<3 {want=GR_GLOBAL_NAMES[k];}else {count:=gr_layer_name((k-3)/GR_SLOTS,(k-3)%GR_SLOTS,name[..]);want=cast(string)name[0..<count];}
+        found:=-1;for j:0..<t.count {if t[j].name==want {found=j;break;}}
+        if found<0 {return GrBinding.{status=GrStatus.tensor,cause=k};}
+        x:=t[found];slot:=(k-3)%GR_SLOTS;norm:=k==1 || (k>=3 && gr_slot_norm(slot));
+        // GGUF dimension 0 is the input width of a projection.
+        cols:=s.width;rows:=1;
+        if k==0 || k==2 {rows=s.vocab;}
+        else if !norm {
+            if slot==1 || slot==4 {rows=s.width;}else if slot==2 || slot==3 {rows=s.kv_heads*s.head_dim;}else if slot==6 || slot==7 {rows=s.hidden;}else {rows=s.width;cols=s.hidden;}
+        }
+        if !gr_dims_are(x,norm,cols,rows) {return GrBinding.{status=GrStatus.shape,cause=100+k};}
+        if norm {if x.kind!=GR_F32 {return GrBinding.{status=GrStatus.kind,cause=k};}}
+        else if !gr_matrix_kind(x.kind) {return GrBinding.{status=GrStatus.kind,cause=k};}
+        out[k]=GrTensor.{kind=x.kind,begin=x.begin,bytes=x.bytes,rows=rows,cols=cols};
+    }
+    return GrBinding.{shape=s,text=text,tensors=n,data=r.data};
+}
+// book:end bind

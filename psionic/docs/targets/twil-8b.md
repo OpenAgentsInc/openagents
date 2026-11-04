@@ -124,6 +124,26 @@ What's missing, in order:
 Steps 1–5 apply unchanged to Granite 4.2 8B, so the work isn't lost if
 TwIL-8B's license never opens.
 
+## Status
+
+Work on `ibm-granite/granite-4.2-8b` (issue #12870). Run
+`psionic/check.sh --only granite`. The pinned files live in
+`~/models/psionic/granite-4.2-8b-a7042144125c/`: the base revision
+`a7042144125c`, and IBM's GGUF revision `93f3f6a8938e` with `SHA256SUMS`.
+Without them the gate runs only the owned tiny model.
+
+- **Steps 1–3 landed.** `psionic/lib/granite/model.coax` binds the GGUF
+  and refuses any embedding, residual or logit multiplier other than 1.
+  `psionic/lib/granite/tokenizer.coax` encodes and decodes the byte-level
+  BPE. `psionic/lib/granite/chat.coax` renders plain conversations with
+  `enable_thinking` and `low_effort`. Chapter 52 can't compile the
+  published template (its first refusal is whitespace control), and tool
+  calls are refused, not approximated. On both GGUF files, the 48
+  tokenizer texts and 11 chat renders equal Hugging Face's
+  `tokenizers` 0.22.1 and `transformers` 5.15.1 token for token, and the
+  GGUF vocabulary, merges and added tokens equal `tokenizer.json`.
+  llama.cpp b10330 tokenizes all 48 texts the same way.
+
 ## License notes
 
 - **TwIL-8B:** webAI Non-Commercial License 1.0. Section 3.3 limits use of

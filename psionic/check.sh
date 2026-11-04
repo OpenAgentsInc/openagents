@@ -122,6 +122,9 @@ if [[ ${#only[@]} -eq 1 ]]; then
     if [[ $chapter == gguf || $chapter == gguf-* ]]; then
         exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_gguf.sh --mutate --jobs "$jobs"
     fi
+    if [[ $chapter == granite || $chapter == granite/* ]]; then
+        exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_granite.sh --mutate --jobs "$jobs"
+    fi
     if [[ $chapter == tokenizer-families || $chapter == tokenizer-families-* ]]; then
         exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_tokenizer_families.sh --mutate --jobs "$jobs"
     fi

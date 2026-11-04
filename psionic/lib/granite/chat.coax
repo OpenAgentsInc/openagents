@@ -1,0 +1,121 @@
+// granite-chat-v1: Granite 4.2's chat template, typed. Chapter 52's bounded
+// Jinja cannot compile the published template (9,013 bytes against its
+// 4,096, and `macro`, `set`, `namespace`, filters and whitespace control
+// outside its subset), so gr_template_construct names the first statement
+// it refuses, and gr_chat renders the template's meaning for plain
+// conversations: an optional first system message, then user and
+// assistant turns, with enable_thinking, low_effort and the default
+// truncate_history_thinking. Tools, tool calls, tool results,
+// reasoning_content and other roles are refused, not approximated.
+#load "tokenizer.coax";
+#load "../chat-template.coax";
+#authority;
+
+GrChatStatus :: enum u8 {ok;role;size;utf8;empty;}
+GrMessage :: struct {role:string;content:string;}
+GrChat :: struct {status:GrChatStatus;written:int;cause:int;}
+GR_CHAT_MESSAGES :: 256;
+
+// book:begin construct
+// The first statement keyword of a template that chapter 52's compiler does
+// not admit, or "" when every statement is in its subset.
+gr_template_construct :: (template:string)->string #export_c {
+    at:=0;
+    while at+1<template.count {
+        if template[at]=='{' && template[at+1]=='%' {
+            p:=at+2;if p<template.count && (template[p]=='-' || template[p]=='+') {return "whitespace control";}
+            while p<template.count && template[p]==' ' {p+=1;}
+            q:=p;while q<template.count && template[q]>='a' && template[q]<='z' {q+=1;}
+            word:=template[p..<q];
+            if word!="for" && word!="endfor" && word!="if" && word!="elif" && word!="else" && word!="endif" {return word;}
+            at=q;continue;
+        }
+        at+=1;
+    }
+    return "";
+}
+// book:end construct
+#test "chapter 52 refuses the published template and names its first construct" {
+    #assert gr_template_construct("{%- macro tool_to_json(tool) -%}")=="whitespace control";
+    #assert gr_template_construct("{% macro tool_to_json(tool) %}")=="macro" && gr_template_construct("a {% if x %}{% set y = 1 %}")=="set";
+    #assert gr_template_construct("{% for message in messages %}{% endfor %}")=="" && gr_template_construct("")=="" && gr_template_construct("{")=="";
+    #assert gr_template_construct("{% elif x %}{% else %}{% endif %}{%")=="";
+    #assert jt_compile("{% macro f() %}{% endmacro %}").status==TfStatus.unsupported;
+}
+
+// Python's str.strip() whitespace: White_Space and the four separators 0x1c-0x1f.
+gr_space :: (cp:int)->bool {return gr_class(cp)==4 || (cp>=0x1c && cp<=0x1f);}
+gr_trim :: (s:string)->string {
+    a:=0;while a<s.count {r:=gr_rune(s,a);if !gr_space(r.cp) {break;}a=r.next;}
+    b:=a;pos:=a;while pos<s.count {r:=gr_rune(s,pos);if !gr_space(r.cp) {b=r.next;}pos=r.next;}
+    return s[a..<b];
+}
+// Where `word` starts in s at or after `from`, or -1; the last start, or -1.
+gr_find_text :: (s:string,word:string,from:int)->int {
+    i:=from;while i+word.count<=s.count {same:=true;for k:0..<word.count {if s[i+k]!=word[k] {same=false;break;}}if same {return i;}i+=1;}return -1;
+}
+gr_find_last :: (s:string,word:string)->int {last:=-1;at:=gr_find_text(s,word,0);while at>=0 {last=at;at=gr_find_text(s,word,at+1);}return last;}
+#test "trim and search match Python's strip, in and split" {
+    #assert gr_trim("  a b \n")=="a b" && gr_trim("")=="" && gr_trim(" \t ")=="" && gr_trim("　x ")=="x";
+    sep:=[3]u8.[0x1f,120,0x1b];#assert gr_trim(cast(string)sep[0..<2])=="x" && gr_trim(cast(string)sep[1..<3]).count==2;
+    #assert gr_space(0x1c) && gr_space(0x1f) && !gr_space(0x1b) && !gr_space(0x21) && gr_space(0x85);
+    #assert gr_find_text("a</think>b</think>c","</think>",0)==1 && gr_find_text("abc","x",0)== -1 && gr_find_text("ab","abc",0)== -1 && gr_find_text("aa","a",1)==1;
+    #assert gr_find_last("a</think>b</think>c","</think>")==10 && gr_find_last("abc","x")== -1;
+}
+
+GrWriter :: struct {status:GrChatStatus;at:int;out:[]u8;}
+gr_emit :: (w:GrWriter,s:string)->GrWriter {
+    r:=w;if r.status!=GrChatStatus.ok {return r;}
+    if s.count>r.out.count-r.at {r.status=GrChatStatus.size;return r;}
+    for i:0..<s.count {r.out[r.at+i]=s[i];}r.at+=s.count;return r;
+}
+
+#test "renders by hand: system block, thinking switches, history truncation" {
+    out:[512]u8;m:=[4]GrMessage.[GrMessage.{role="user",content="a"},GrMessage.{role="assistant",content="<think>\nx\n</think>\nb  "},GrMessage.{role="user",content="c"},GrMessage.{role="assistant",content=" d "}];
+    r:=gr_chat(m[0..<1],true,true,false,out[..]);#assert r.status==GrChatStatus.ok && cast(string)out[0..<r.written]=="<|im_start|>system\n<|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\n";
+    r=gr_chat(m[0..<3],true,false,true,out[..]);
+    #assert cast(string)out[0..<r.written]=="<|im_start|>system\n<|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think></think>\nb<|im_end|>\n<|im_start|>user\nc\n\n{reasoning effort: low}<|im_end|>\n<|im_start|>assistant\n<think></think>";
+    r=gr_chat(m[..],false,true,false,out[..]);#assert gr_find_text(cast(string)out[0..<r.written],"<|im_start|>assistant\n<think></think> d<|im_end|>\n",0)>0;
+    m[1].content="<think>\nx\n</think>\nb  ";r=gr_chat(m[0..<2],false,true,false,out[..]);#assert gr_find_text(cast(string)out[0..<r.written],"<|im_start|>assistant\n<think>\nx\n</think>\nb<|im_end|>",0)>0;
+    m[1].content=" <think> half";r=gr_chat(m[0..<3],false,true,false,out[..]);#assert gr_find_text(cast(string)out[0..<r.written],"assistant\n<think> half<|im_end|>",0)>0;
+    s:=[2]GrMessage.[GrMessage.{role="system",content="S"},GrMessage.{role="user",content="u"}];r=gr_chat(s[..],false,true,false,out[..]);#assert cast(string)out[0..<r.written]=="<|im_start|>system\nS<|im_end|>\n<|im_start|>user\nu<|im_end|>\n";
+    s[1].role="system";#assert gr_chat(s[..],false,true,false,out[..]).status==GrChatStatus.role && gr_chat(s[..],false,true,false,out[..]).cause==1;
+    s[1].role="tool";#assert gr_chat(s[..],false,true,false,out[..]).status==GrChatStatus.role;
+    #assert gr_chat(s[0..<0],true,true,false,out[..]).status==GrChatStatus.empty && gr_chat(m[0..<1],true,true,false,out[0..<40]).status==GrChatStatus.size;
+    bad:=[1]u8.[255];m[0].content=cast(string)bad[..];#assert gr_chat(m[0..<1],true,true,false,out[..]).status==GrChatStatus.utf8;
+    w:=gr_emit(GrWriter.{out=out[0..<2]},"abc");#assert w.status==GrChatStatus.size && w.at==0;#assert gr_emit(w,"").status==GrChatStatus.size;
+    #assert gr_trim_end(" a \n")==" a" && gr_trim_end("  ")=="";
+}
+// book:begin render
+gr_chat :: (messages:[]GrMessage,generation:bool,thinking:bool,low_effort:bool,out:[]u8)->GrChat #export_c {
+    if messages.count>GR_CHAT_MESSAGES {return GrChat.{status=GrChatStatus.size};}
+    if messages.count==0 {return GrChat.{status=GrChatStatus.empty};}
+    for i:0..<messages.count {m:=messages[i];
+        if !gr_utf8(m.role) || !gr_utf8(m.content) {return GrChat.{status=GrChatStatus.utf8,cause=i};}
+        if m.role!="user" && m.role!="assistant" && !(m.role=="system" && i==0) {return GrChat.{status=GrChatStatus.role,cause=i};}
+    }
+    first:=0;system:="";if messages[0].role=="system" {first=1;system=messages[0].content;}
+    last_user:=-1;for i:first..<messages.count {if messages[i].role=="user" {last_user=i-first;}}
+    w:=GrWriter.{out=out};w=gr_emit(w,"<|im_start|>system\n");w=gr_emit(w,system);w=gr_emit(w,"<|im_end|>\n");
+    for i:first..<messages.count {m:=messages[i];index:=i-first;
+        if m.role=="user" {
+            w=gr_emit(w,"<|im_start|>user\n");w=gr_emit(w,m.content);
+            if index==last_user && low_effort {w=gr_emit(w,"\n\n{reasoning effort: low}");}
+            w=gr_emit(w,"<|im_end|>\n");continue;
+        }
+        c:=m.content;plain:=gr_find_text(c,"<think>",0)<0 && gr_find_text(c,"</think>",0)<0;
+        w=gr_emit(w,"<|im_start|>assistant\n");
+        both:=gr_find_text(c,"<think>",0)>=0 && gr_find_text(c,"</think>",0)>=0;
+        if plain {w=gr_emit(w,"<think></think>");w=gr_emit(w,gr_trim_end(c));}
+        // An earlier turn keeps only what follows its last closing think.
+        else if index<last_user && both {w=gr_emit(w,"<think></think>");w=gr_emit(w,gr_trim_end(c[gr_find_last(c,"</think>")+8..<c.count]));}
+        else {w=gr_emit(w,gr_trim(c));}
+        w=gr_emit(w,"<|im_end|>\n");
+    }
+    if generation {w=gr_emit(w,ifx thinking then "<|im_start|>assistant\n<think>\n" else "<|im_start|>assistant\n<think></think>");}
+    if w.status!=GrChatStatus.ok {return GrChat.{status=w.status};}
+    return GrChat.{written=w.at};
+}
+// book:end render
+// Strip only the end: the "<think></think>" prefix shields the start.
+gr_trim_end :: (s:string)->string {b:=0;pos:=0;while pos<s.count {r:=gr_rune(s,pos);if !gr_space(r.cp) {b=r.next;}pos=r.next;}return s[0..<b];}

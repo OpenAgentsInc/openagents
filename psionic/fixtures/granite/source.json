@@ -1,0 +1,17 @@
+{
+ "model": "ibm-granite/granite-4.2-8b",
+ "revision": "a7042144125ce5ae64f89610e8289647fc000b9a",
+ "gguf_repository": "ibm-granite/granite-4.2-8b-GGUF",
+ "gguf_revision": "93f3f6a8938ee922b784cf4e5b4203cd3428df8f",
+ "oracle": {
+  "tokenizers": "0.22.1",
+  "transformers": "5.15.1"
+ },
+ "files": {
+  "tokenizer.json": "883975314d58743726347caaf2c32ac89afd5ad57222cffbc4f052f2ab27b2d7",
+  "tokenizer_config.json": "2007f26df166ed10a2d6fa881c1c8f3cdd151e451469f59b274897f14449835f",
+  "chat_template.jinja": "f0ba43f79b3cabca5e5a7584c77aec92f49feae45cdf7779c87d9fc54cd90258",
+  "config.json": "85611f4e34633d4e148e6a5f64bc2d3a23ebbc2b014bc87fbda764eecf261cd9"
+ },
+ "llama_tokenize": "version: 10330 (687e77892)"
+}

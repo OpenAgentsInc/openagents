@@ -1,0 +1,457 @@
+[
+ {
+  "messages": [
+   {
+    "role": "user",
+    "content": "Hello"
+   }
+  ],
+  "generation": true,
+  "options": {},
+  "text": "<|im_start|>system\n<|im_end|>\n<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n",
+  "ids": [
+   100256,
+   9125,
+   198,
+   100257,
+   198,
+   100256,
+   882,
+   198,
+   9906,
+   100257,
+   198,
+   100256,
+   78191,
+   198,
+   100274,
+   198
+  ]
+ },
+ {
+  "messages": [
+   {
+    "role": "user",
+    "content": "Hello"
+   }
+  ],
+  "generation": true,
+  "options": {
+   "enable_thinking": false
+  },
+  "text": "<|im_start|>system\n<|im_end|>\n<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think></think>",
+  "ids": [
+   100256,
+   9125,
+   198,
+   100257,
+   198,
+   100256,
+   882,
+   198,
+   9906,
+   100257,
+   198,
+   100256,
+   78191,
+   198,
+   100274,
+   100275
+  ]
+ },
+ {
+  "messages": [
+   {
+    "role": "user",
+    "content": "Move the oak tree north."
+   }
+  ],
+  "generation": true,
+  "options": {
+   "enable_thinking": false,
+   "low_effort": true
+  },
+  "text": "<|im_start|>system\n<|im_end|>\n<|im_start|>user\nMove the oak tree north.\n\n{reasoning effort: low}<|im_end|>\n<|im_start|>assistant\n<think></think>",
+  "ids": [
+   100256,
+   9125,
+   198,
+   100257,
+   198,
+   100256,
+   882,
+   198,
+   10061,
+   279,
+   38971,
+   5021,
+   10411,
+   13,
+   198,
+   198,
+   90,
+   20489,
+   287,
+   5149,
+   25,
+   3428,
+   92,
+   100257,
+   198,
+   100256,
+   78191,
+   198,
+   100274,
+   100275
+  ]
+ },
+ {
+  "messages": [
+   {
+    "role": "system",
+    "content": "You edit worlds."
+   },
+   {
+    "role": "user",
+    "content": "Add a lantern."
+   }
+  ],
+  "generation": true,
+  "options": {
+   "enable_thinking": false
+  },
+  "text": "<|im_start|>system\nYou edit worlds.<|im_end|>\n<|im_start|>user\nAdd a lantern.<|im_end|>\n<|im_start|>assistant\n<think></think>",
+  "ids": [
+   100256,
+   9125,
+   198,
+   2675,
+   4600,
+   24800,
+   13,
+   100257,
+   198,
+   100256,
+   882,
+   198,
+   2261,
+   264,
+   74265,
+   13,
+   100257,
+   198,
+   100256,
+   78191,
+   198,
+   100274,
+   100275
+  ]
+ },
+ {
+  "messages": [
+   {
+    "role": "system",
+    "content": "Be brief."
+   },
+   {
+    "role": "user",
+    "content": "a"
+   },
+   {
+    "role": "assistant",
+    "content": "b"
+   },
+   {
+    "role": "user",
+    "content": "c"
+   }
+  ],
+  "generation": true,
+  "options": {},
+  "text": "<|im_start|>system\nBe brief.<|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think></think>b<|im_end|>\n<|im_start|>user\nc<|im_end|>\n<|im_start|>assistant\n<think>\n",
+  "ids": [
+   100256,
+   9125,
+   198,
+   3513,
+   10015,
+   13,
+   100257,
+   198,
+   100256,
+   882,
+   198,
+   64,
+   100257,
+   198,
+   100256,
+   78191,
+   198,
+   100274,
+   100275,
+   65,
+   100257,
+   198,
+   100256,
+   882,
+   198,
+   66,
+   100257,
+   198,
+   100256,
+   78191,
+   198,
+   100274,
+   198
+  ]
+ },
+ {
+  "messages": [
+   {
+    "role": "user",
+    "content": "a"
+   },
+   {
+    "role": "assistant",
+    "content": "<think>\nx\n</think>\nb"
+   },
+   {
+    "role": "user",
+    "content": "c"
+   }
+  ],
+  "generation": true,
+  "options": {
+   "low_effort": true
+  },
+  "text": "<|im_start|>system\n<|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think></think>\nb<|im_end|>\n<|im_start|>user\nc\n\n{reasoning effort: low}<|im_end|>\n<|im_start|>assistant\n<think>\n",
+  "ids": [
+   100256,
+   9125,
+   198,
+   100257,
+   198,
+   100256,
+   882,
+   198,
+   64,
+   100257,
+   198,
+   100256,
+   78191,
+   198,
+   100274,
+   100275,
+   198,
+   65,
+   100257,
+   198,
+   100256,
+   882,
+   198,
+   66,
+   198,
+   198,
+   90,
+   20489,
+   287,
+   5149,
+   25,
+   3428,
+   92,
+   100257,
+   198,
+   100256,
+   78191,
+   198,
+   100274,
+   198
+  ]
+ },
+ {
+  "messages": [
+   {
+    "role": "user",
+    "content": "a"
+   },
+   {
+    "role": "assistant",
+    "content": "  b  "
+   }
+  ],
+  "generation": false,
+  "options": {},
+  "text": "<|im_start|>system\n<|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think></think>  b<|im_end|>\n",
+  "ids": [
+   100256,
+   9125,
+   198,
+   100257,
+   198,
+   100256,
+   882,
+   198,
+   64,
+   100257,
+   198,
+   100256,
+   78191,
+   198,
+   100274,
+   100275,
+   220,
+   293,
+   100257,
+   198
+  ]
+ },
+ {
+  "messages": [
+   {
+    "role": "user",
+    "content": "a"
+   },
+   {
+    "role": "assistant",
+    "content": "<think>\nkeep\n</think>\nb"
+   }
+  ],
+  "generation": false,
+  "options": {},
+  "text": "<|im_start|>system\n<|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\nkeep\n</think>\nb<|im_end|>\n",
+  "ids": [
+   100256,
+   9125,
+   198,
+   100257,
+   198,
+   100256,
+   882,
+   198,
+   64,
+   100257,
+   198,
+   100256,
+   78191,
+   198,
+   100274,
+   198,
+   13397,
+   198,
+   100275,
+   198,
+   65,
+   100257,
+   198
+  ]
+ },
+ {
+  "messages": [
+   {
+    "role": "user",
+    "content": "a"
+   },
+   {
+    "role": "assistant",
+    "content": ""
+   }
+  ],
+  "generation": false,
+  "options": {},
+  "text": "<|im_start|>system\n<|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think></think><|im_end|>\n",
+  "ids": [
+   100256,
+   9125,
+   198,
+   100257,
+   198,
+   100256,
+   882,
+   198,
+   64,
+   100257,
+   198,
+   100256,
+   78191,
+   198,
+   100274,
+   100275,
+   100257,
+   198
+  ]
+ },
+ {
+  "messages": [
+   {
+    "role": "user",
+    "content": "q1"
+   },
+   {
+    "role": "assistant",
+    "content": "<think>t</think>  "
+   },
+   {
+    "role": "user",
+    "content": "q2"
+   }
+  ],
+  "generation": true,
+  "options": {
+   "enable_thinking": false
+  },
+  "text": "<|im_start|>system\n<|im_end|>\n<|im_start|>user\nq1<|im_end|>\n<|im_start|>assistant\n<think></think><|im_end|>\n<|im_start|>user\nq2<|im_end|>\n<|im_start|>assistant\n<think></think>",
+  "ids": [
+   100256,
+   9125,
+   198,
+   100257,
+   198,
+   100256,
+   882,
+   198,
+   80,
+   16,
+   100257,
+   198,
+   100256,
+   78191,
+   198,
+   100274,
+   100275,
+   100257,
+   198,
+   100256,
+   882,
+   198,
+   80,
+   17,
+   100257,
+   198,
+   100256,
+   78191,
+   198,
+   100274,
+   100275
+  ]
+ },
+ {
+  "messages": [
+   {
+    "role": "system",
+    "content": "only system"
+   }
+  ],
+  "generation": false,
+  "options": {},
+  "text": "<|im_start|>system\nonly system<|im_end|>\n",
+  "ids": [
+   100256,
+   9125,
+   198,
+   3323,
+   1887,
+   100257,
+   198
+  ]
+ }
+]
