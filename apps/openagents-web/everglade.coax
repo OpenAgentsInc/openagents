@@ -370,6 +370,7 @@ Everglade :: struct {
   orbit: Orbit;
   status: [1] EgStatus;   // what holds or marks each body this frame (everglade-status.coax st_fill)
   st_words: int;          // the words drawn over others' heads last frame (1 << POP_*), for the combat check
+  st_seen: [ST_WHOS] StSeen;   // what each body last had, for the words and numbers as it changes (st_pops_frame)
   intent_x: f32; intent_z: f32;   // the motion your controls ask for (everglade_intent): the follow camera's heading
   held: int;
   drag_on: bool; drag_id: int; drag_x: f32; drag_y: f32;
@@ -383,6 +384,7 @@ Everglade :: struct {
   deck: f32;
   water_vertices: int; water_patches: int; water_triangles: int;
   floats: [FLOATS * FLOAT_FLOATS] f32; float_n: int;
+  down_t: f32 = -1;      // s you have been down (unconscious or prone: the rules' COND), -1 standing (figure)
   feet: Point; face: f32; act: int;
   above: bool;              // the map view: the camera over the city
   paint_only: bool;         // a hash ending "+paint" (the style check): the painting without the names over the world
@@ -3212,7 +3214,11 @@ wildlife :: (s: [] Everglade, you: Point, still: bool) {
 figure :: (s: [] Everglade, u: [] f32, feet: Point, face: f32, speed: f32, airborne: bool, dt: f32, still: bool) {
   rig := ranger_rig(s[0].rig[..]);
   dead := s[0].wv.started && watch_you(s[0].wt[..])[0].dead;
-  motion := rangers_you_clip(s, ifx dead then SKIN_IDLE else skin_motion(speed, airborne), airborne, dead, dt);   // the swing as you cast
+  // down: unconscious at 0 Hit Points (death saves) or knocked prone, as the rules have you (the room's
+  // COND, everglade-status.coax): you drop onto your back and lie there until you are up again
+  down := !dead && ((st_cond(s, ST_YOU) & (WC_UNCONSCIOUS | WC_PRONE)) != 0 || st_down(s, ST_YOU));
+  s[0].down_t = ifx down then (ifx s[0].down_t < 0 then 0.0f32 else s[0].down_t + (ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32)) else -1.0f32;
+  motion := rangers_you_clip(s, ifx dead || down then SKIN_IDLE else skin_motion(speed, airborne), airborne, dead || down, dt);   // the swing as you cast
   skin_advance(rig, s[0].skin[..], motion, speed, dt);
   fade := ifx s[0].skin[0].fade > 0 then s[0].skin[0].fade else f32(SKIN_FADE);
   if still && motion == SKIN_IDLE && s[0].skin[0].clock - s[0].skin[0].changed >= fade {
@@ -3239,8 +3245,10 @@ figure :: (s: [] Everglade, u: [] f32, feet: Point, face: f32, speed: f32, airbo
       rows = [12] f32.[c, sn * sp, sn * cp, feet.x,   0, cp, -sp, feet.y + 0.12 * abs(sp),   -sn, c * sp, c * cp, feet.z];
     }
   } else {
-    // Prone on the ice (everglade-frost.coax): you go down on your back and get up again
+    // Prone on the ice (everglade-frost.coax): you go down on your back and get up again; down by the
+    // rules, the same fall over half a second, held
     p := fr_prone_pitch(s);
+    if down { f := clamp01(s[0].down_t / 0.5); p = -f32(PI) * 0.47 * f * (2 - f); }
     if p != 0 {
       cp := cos(p); sp := sin(p);
       rows = [12] f32.[c, sn * sp, sn * cp, feet.x,   0, cp, -sp, feet.y + 0.12 * abs(sp),   -sn, c * sp, c * cp, feet.z];
@@ -4050,6 +4058,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   s[0].feet = feet; s[0].face = face; s[0].act = act;
   st_fill(s);   // every body's conditions, from the room's state or the page's own (everglade-status.coax)
   s[0].st_words = 0;   // the words over heads, drawn this frame (st_tags_draw, everglade5e.coax e5_play_hud)
+  st_pops_frame(s);   // and the words and numbers over heads as they change
   speed := sqrt(vx * vx + vz * vz);
   // afloat, you are where the river holds you; else on the ground or the deck
   shown := feet_in_world(feet, walk_at(s, feet.x, feet.z));

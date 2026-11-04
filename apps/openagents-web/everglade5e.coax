@@ -321,6 +321,7 @@ e5_take :: (s: [] Everglade, v: [] E5, out: [] f32, n: int, lines: [] u8, lines_
       watch_pop(s, add(you, v3(0, 2.1, 0)), lost, lost * 4 >= hi_int(watch_you(w[..])[0].max, 1) || lost >= 25);
     } else if lost < 0 && !watch_you(w[..])[0].dead {
       watch_you(w[..])[0].hp = lo_int(eh, watch_you(w[..])[0].max); watch_you(w[..])[0].temp = et;
+      watch_pop_heal(s, add(you, v3(0, 2.1, 0)), -lost);
     }
     for i: 0..<lo_int(n - 1, WATCH_ACTORS) {
       o := (1 + i) * E5_OUT_FLOATS;
@@ -337,6 +338,7 @@ e5_take :: (s: [] Everglade, v: [] E5, out: [] f32, n: int, lines: [] u8, lines_
         watch_pop(s, watch_pop_head(s, i), flost, flost * 4 >= hi_int(a[0].max, 1) || flost >= 25);
       } else if flost < 0 && a[0].mode != WM_DEAD {
         a[0].hp = lo_int(fh, a[0].max); a[0].temp = ft;
+        watch_pop_heal(s, watch_pop_head(s, i), -flost);
       }
       a[0].blind = a[0].blind || (v[0].cond[1 + i] & E5_COND_BLINDED) != 0;
     }

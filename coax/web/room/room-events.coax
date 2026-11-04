@@ -748,8 +748,10 @@ ev_house_fall :: (v: [] RmServer, k: int) {
     v[0].eg[k].strike_n += 1;
   }
 }
-// A raid creature's cast: `e rc ID K AX AY AZ SEED` to the pages near it (K the look the page plays,
-// everglade-raid-spells.coax RT_K_*), and the strike on the server's town of a spell that harms
+// A raid creature's cast: `e rc ID K AX AY AZ SEED FX FY FZ` to the pages near it and to the seat it is
+// aimed at wherever that is (K the look the page plays, FX FY FZ where it leaves the caster's hands, so a
+// page that doesn't hold the caster still draws it fly from there; K: everglade-raid-spells.coax RT_K_*),
+// and the strike on the server's town of a spell that harms
 // objects: Eldritch Blast, Fire Bolt, Fireball, Lightning Bolt.
 ev_raid_cast :: (v: [] RmServer, k: int, c: E5rdCast) {
   q := ev_slot_of(v, k, c.id);
@@ -765,6 +767,7 @@ ev_raid_cast :: (v: [] RmServer, k: int, c: E5rdCast) {
   n = wire_int(b[..], n, c.id); n = wire_int(b[..], n, c.k);
   n = wire_m(b[..], n, c.ax); n = wire_m(b[..], n, ay); n = wire_m(b[..], n, c.az);
   n = wire_int(b[..], n, c.seed);
+  n = wire_m(b[..], n, bt.x); n = wire_m(b[..], n, bt.y + 1.5); n = wire_m(b[..], n, bt.z);
   aimed := ifx c.to >= E5RR_SEAT && c.to < E5RR_SEAT + EG_SEATS then 1 << (c.to - E5RR_SEAT) else 0;
   eg_event_who(v, k, cast(string) b[0..<n], bt.x, bt.z, false, aimed);   // (aimed: a seat that blocks it isn't told, #12789)
   if v[0].evc.d.harm && (c.k == RT_K_BLAST || c.k == RT_K_FIREBALL || c.k == RT_K_FIRE_BOLT || c.k == RT_K_LIGHTNING) && v[0].eg[k].strike_n < EG_CASTS {

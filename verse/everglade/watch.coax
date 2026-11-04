@@ -200,6 +200,7 @@ Missile :: struct {
   t: f32; flight: f32; life: f32;
   hit: bool; damage: int; dc: int;
   shown: bool;               // the realm has drawn its burst
+  sent: bool;                // a room server has told the pages it left the caster's hands (everglade_room_missile)
   next: f32;                 // a Spiritual Weapon's next blow
   vx: f32; vy: f32; vz: f32; // a Magic Missile dart's velocity (ax, ay, az is where it is)
   foe: int;                  // the player (Watch.yous) it was cast at

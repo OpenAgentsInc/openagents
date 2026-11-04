@@ -333,6 +333,9 @@ static void everglade_town(int k) {
   int pn = world_people(k, people);
   rm_eg_people(view(), k, (coax_v_f32){people, WORLD_FOLK * WORLD_PEOPLE}, pn);
   for (int i = 0; i < WORLD_FOLK; i++) if (world_view(k, i, fv)) rm_eg_folk(view(), k, i, fvv);
+  /* the watch's spells that left their casters' hands: every page near draws them fly (e wm) */
+  float ms[WORLD_MISSILE];
+  for (int q = 0; q < 16 && world_missile(k, ms); q++) rm_eg_missile(view(), k, (coax_v_f32){ms, WORLD_MISSILE});
   part_us[PART_PEOPLE] += now_us() - t3;
 }
 // Room k's hotbar abilities the world runs (room-abilities.coax, everglade-room-abilities.coax; #12718):

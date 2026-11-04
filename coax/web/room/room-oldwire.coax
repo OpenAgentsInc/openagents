@@ -179,7 +179,7 @@ eg_old_send :: (v: [] RmServer, k: int, s: int) {
   }
   ev_send(v, k, s, full, unseen, o[..]);
   for q: 0..<v[0].eg[k].ev_n {
-    if !v[0].eg[k].ev_all[q] && !eg_near(me, v[0].eg[k].ev_x[q], v[0].eg[k].ev_z[q]) { continue; }
+    if !v[0].eg[k].ev_all[q] && ((v[0].eg[k].ev_who[q] >> s) & 1) == 0 && !eg_near(me, v[0].eg[k].ev_x[q], v[0].eg[k].ev_z[q]) { continue; }   // (aimed at s: wherever it is)
     if eg_im_event_withheld(v, k, s, q, unseen) { continue; }
     a := v[0].eg[k].ev_at[q];
     eg_out_entry(o[..], v, k, s, f, cast(string) v[0].eg[k].ev[a..<a + v[0].eg[k].ev_len[q]]);

@@ -60,7 +60,7 @@ EG_SLOT_STONE :: 10; EG_SLOT_TENTACLES :: 12; EG_SLOT_CONJURE :: 32; EG_SLOT_THO
 EG_SP_SLOTS :: 4;
 // the Warlock's slots that the world plays (fivebar.coax FB_WL0 + k): Eldritch Blast, Fireball, Dimension Door
 EG_WL_BLAST :: 64; EG_WL_FIREBALL :: 65; EG_WL_DOOR :: 69;
-EG_FOLK_FLOATS :: 7;            // a townsperson as the world hands them (everglade-watch.coax EG_ROOM_VIEW_FLOATS)
+EG_FOLK_FLOATS :: 10;           // a townsperson as the world hands them (everglade-watch.coax EG_ROOM_VIEW_FLOATS)
 EG_CRIMES :: 16;
 EG_REBUILD_QUIET :: 10; EG_REBUILD_EVERY :: 30;   // s: R stands the town up once no spell struck it for 10 s, once in 30 s at most
 EG_PIECES :: 6000;              // the town's pieces at most: verse/demolish.coax DEMO_PIECES, which wave 1 raised (the bridge's are past 4000)
@@ -131,8 +131,11 @@ EgRoom :: struct {
   ev_at: [EG_EVENTS] int; ev_len: [EG_EVENTS] int; ev_x: [EG_EVENTS] f32; ev_z: [EG_EVENTS] f32; ev_all: [EG_EVENTS] bool;
   ev_who: [EG_EVENTS] int;       // the seats an event also tells of beyond its own fields, one bit each (room-blocks.coax eg_im_event)
   // the town, as the host's world steps it (everglade-watch.coax everglade_room_town): each person as a
-  // page hears them (EG_FOLK_FLOATS: X Z YAW CLIP MODE HP SHOWN), each seat's WANTED level
+  // page hears them (EG_FOLK_FLOATS: X Z YAW CLIP MODE HP SHOWN CASTING KIND FOE), each seat's WANTED level
   folk: [E5R_FOLK * EG_FOLK_FLOATS] f32; folk_on: bool;
+  // the tick each person's mode began (their row's T0: a page that sees them again, or late, shows a
+  // fall where it is, not from its start), and the tick a caster's spell began (DUR)
+  folk_mode: [E5R_FOLK] int; folk_since: [E5R_FOLK] int; folk_cast: [E5R_FOLK] int;
   wanted: [EG_SEATS] int;
   // the harm seats did the town since the world last heard (a crime each), and who last harmed each person
   crimes: [EG_CRIMES] EgCrime; crime_n: int;
@@ -717,11 +720,39 @@ rm_eg_hurt :: (v: [] RmServer, k: int, s: int, amount: int, by: int) #export_c {
   v[0].eg[k].hurts[v[0].eg[k].hurt_n] = EgHurt.{s = s, amount = amount, by = by};
   v[0].eg[k].hurt_n += 1;
 }
-// Person i as pages hear them (X Z YAW CLIP MODE HP SHOWN), and seat s's WANTED level.
+// Person i as pages hear them (X Z YAW CLIP MODE HP SHOWN CASTING KIND FOE), and seat s's WANTED level.
+// A new mode starts its clock (T0), a new spell its own.
 rm_eg_folk :: (v: [] RmServer, k: int, i: int, at: [] f32) #export_c {
-  if !rm_eg_live(v, k) || i < 0 || i >= E5R_FOLK || at.count < EG_FOLK_FLOATS { return; }
-  for q: 0..<EG_FOLK_FLOATS { v[0].eg[k].folk[i * EG_FOLK_FLOATS + q] = at[q]; }
-  v[0].eg[k].folk_on = true;
+  if !rm_eg_live(v, k) || i < 0 || i >= E5R_FOLK || at.count < 7 { return; }
+  // the first 7 floats (X Y Z YAW MODE CLIP OUTDOORS) are the person; the cast's three (SINCE KIND
+  // FOE) may be missing: not casting
+  full: [EG_FOLK_FLOATS] f32;
+  full[7] = -1; full[9] = -1;
+  for q: 0..<(ifx at.count < EG_FOLK_FLOATS then at.count else EG_FOLK_FLOATS) { full[q] = at[q]; }
+  e := v[0].eg[k..<k + 1];
+  fo := i * EG_FOLK_FLOATS;
+  mode := cast(int) full[4];
+  if mode != e[0].folk_mode[i] || e[0].folk_since[i] == 0 { e[0].folk_mode[i] = mode; e[0].folk_since[i] = ifx e[0].tick < 1 then 1 else e[0].tick; }
+  was := e[0].folk[fo + 7];
+  if full[7] >= 0 && (was < 0 || full[7] < was || e[0].folk_cast[i] == 0) {
+    c := e[0].tick - cast(int) (full[7] * f32(EG_HZ));
+    e[0].folk_cast[i] = ifx c < 1 then 1 else c;
+  }
+  for q: 0..<EG_FOLK_FLOATS { e[0].folk[fo + q] = full[q]; }
+  e[0].folk_on = true;
+}
+// A watch spell that left its caster's hands (everglade-watch.coax everglade_room_missile, the floats
+// KIND CASTER FOE AX AY AZ BX BY BZ FLIGHT LIFE): `e wm KIND CASTER FOE AX AY AZ BX BY BZ FLIGHT LIFE`
+// (metres in cm, seconds in ms) to the pages near its caster, and to the seat it is for wherever it is.
+rm_eg_missile :: (v: [] RmServer, k: int, m: [] f32) #export_c {
+  if !rm_eg_live(v, k) || m.count < 11 { return; }
+  b: [160] u8;
+  n := wire_put(b[..], 0, "e wm");
+  for q: 0..<3 { n = wire_int(b[..], n, cast(int) m[q]); }
+  for q: 3..<9 { n = wire_m(b[..], n, m[q]); }
+  n = wire_int(b[..], n, cast(int) (m[9] * 1000)); n = wire_int(b[..], n, cast(int) (m[10] * 1000));
+  foe := cast(int) m[2];
+  eg_event_who(v, k, cast(string) b[0..<n], m[3], m[5], false, ifx foe >= 0 && foe < EG_SEATS then 1 << foe else 0);
 }
 rm_eg_cond :: (v: [] RmServer, k: int, s: int, bits: int) #export_c { if rm_eg_seat_live(v, k, s) { v[0].eg[k].seat[s].wcond = bits; } }
 // Seat s's watch effect by cause (WE_*): its seconds left, 0 none. A new one, or one cast again (more
@@ -805,10 +836,16 @@ eg_table :: (v: [] RmServer, k: int) {
       fo := i * EG_FOLK_FLOATS;
       fl := rm[0].folk[fo..<fo + EG_FOLK_FLOATS];
       if fl[6] < 0.5 { continue; }
+      // T0 the tick its mode began; casting, P2 its spell (MS_* + 1), DUR the tick it began, OWNER the seat it is for
+      casting := fl[7] >= 0;
+      foe := cast(int) fl[9];
       fo4: [E5RR_OUT_FLOATS] f32;
-      e5rr_folk_out(rm[0].rules[..], i, fo4[..]);   // COND: the conditions the rules have on them (their head's word, #12862)
+      e5rr_folk_out(rm[0].rules[..], i, fo4[..]);   // COND: the conditions the rules have on them
       wire_hist_put(h, EG_SLOT_FOLK + i, WireS.{id = WIRE_ID_FOLK + i, kind = WK_FOLK, x = fl[0], y = f32(v[0].ab[k].air[i]) / 100, z = fl[1], yaw = fl[2],
-                                                 clip = cast(int) fl[3], g = cast(int) fl[4], hp = cast(int) fl[5], p1 = i, cond = cast(int) fo4[3]}, wire_rel(WK_FOLK), false, true);
+                                                 clip = cast(int) fl[3], g = cast(int) fl[4], hp = cast(int) fl[5], p1 = i,
+                                                 t0 = ifx cast(int) fl[4] == 0 then 0 else rm[0].folk_since[i],
+                                                 p2 = ifx casting then cast(int) fl[8] + 1 else 0, dur = ifx casting then rm[0].folk_cast[i] else 0,
+                                                 owner = ifx casting && foe >= 0 then WIRE_TGT_SEAT + foe else -1, cond = cast(int) fo4[3]}, wire_rel(WK_FOLK), false, true);
     }
   }
   // summoned creatures (raiders among them) once their ground is known: G 1 while it runs (a raider's
@@ -934,7 +971,7 @@ eg_send :: (v: [] RmServer, k: int, s: int) {
   ev_send(v, k, s, full, unseen, o[..]);   // the world event and the level of everyone in view (room-events.coax)
   // the events since the last state, near you
   for q: 0..<v[0].eg[k].ev_n {
-    if !v[0].eg[k].ev_all[q] && !eg_near(me, v[0].eg[k].ev_x[q], v[0].eg[k].ev_z[q]) { continue; }
+    if !v[0].eg[k].ev_all[q] && ((v[0].eg[k].ev_who[q] >> s) & 1) == 0 && !eg_near(me, v[0].eg[k].ev_x[q], v[0].eg[k].ev_z[q]) { continue; }   // (aimed at s: wherever it is)
     if eg_im_event_withheld(v, k, s, q, unseen) { continue; }   // of a player it blocks or can't see (room-blocks.coax, #12789)
     a := v[0].eg[k].ev_at[q];
     eg_out_entry(o[..], v, k, s, f, cast(string) v[0].eg[k].ev[a..<a + v[0].eg[k].ev_len[q]]);
@@ -1332,4 +1369,49 @@ eg_test_input :: (v: [] RmServer, seq: int) {
   // a door past the doors there are is dropped
   rm_heard(v[..], 1, "E 3 2 99");
   #assert rm_eg_use_asks(v[..], k) == 0;
+}
+
+// #12862: a townsperson's row carries when their mode began (T0), so a page that sees a fall again, or
+// late, shows it where it is; a caster's spell (P2, DUR, OWNER) shows as it winds up; the watch's spells
+// in the air (e wm) reach the seat they are for wherever it stands, and a page near the caster.
+#test "everglade room: a fallen townsperson's row says when they fell, the same when they come back into view; a guard's spell at a far seat reaches it (#12862)" #steps 6000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  rm_clock(v[..], 0, 1762190000000);
+  ev := "GET /api/room/relay/everglade/pair-folk-t0 HTTP/1.1\r\n\r\n";
+  box: [1] EgInbox;
+  #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  rm_heard(v[..], 0, "H 4 ranger.0.0.0 druid 0 -");
+  rm_heard(v[..], 1, "H 4 ranger.0.0.0 druid 0 -");
+  for q: 0..<40 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
+  f: [EG_FOLK_FLOATS] f32;
+  // person 3 stands 10 m off, casting Hold Person (MS_HOLD 3) at seat 0, half a second in
+  f[0] = 10; f[1] = 0; f[2] = 0; f[3] = 0; f[4] = 2; f[5] = 9; f[6] = 1; f[7] = 0.5; f[8] = 3; f[9] = 0;
+  rm_eg_folk(v[..], k, 3, f[..]);
+  for q: 0..<3 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
+  r := eg_test_ent(box[..], 0, WIRE_ID_FOLK + 3);
+  #assert r.id == WIRE_ID_FOLK + 3 && r.p2 == 4 && r.owner == WIRE_TGT_SEAT + 0 && r.dur > 0 && r.dur < v[0].eg[k].tick;
+  // they fall (WM_DEAD 6): T0 is that tick, and stays it
+  f[4] = 6; f[7] = -1; f[3] = 9;
+  rm_eg_folk(v[..], k, 3, f[..]);
+  fell := v[0].eg[k].tick;
+  for q: 0..<3 { rm_eg_folk(v[..], k, 3, f[..]); eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
+  r = eg_test_ent(box[..], 0, WIRE_ID_FOLK + 3);
+  #assert r.g == 6 && r.t0 == fell && r.p2 == 0;
+  // seat 0 walks 200 m off: the row goes; back: it comes again with the same T0
+  rm_eg_moved(v[..], k, 0, 0, 200, 0, 0, 0, 0, 0, 0, 1, 0, 0);
+  for q: 0..<3 { rm_eg_folk(v[..], k, 3, f[..]); eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
+  #assert eg_test_ent(box[..], 0, WIRE_ID_FOLK + 3).id == -1;
+  rm_eg_moved(v[..], k, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0);
+  for q: 0..<3 { rm_eg_folk(v[..], k, 3, f[..]); eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
+  r = eg_test_ent(box[..], 0, WIRE_ID_FOLK + 3);
+  #assert r.id == WIRE_ID_FOLK + 3 && r.t0 == fell;
+  // a guard 300 m off casts at seat 1: seat 1 hears it fly, though far from the caster; seat 0 not
+  rm_eg_moved(v[..], k, 1, 0, 0, 0, 5, 0, 0, 0, 0, 1, 0, 0);
+  m := [11] f32.[3, 7, 1, 300, 1.45, 0, 0, 1, 5, 0.3, 0.5];
+  rm_eg_missile(v[..], k, m[..]);
+  rm_eg_moved(v[..], k, 0, 0, 0, 0, -300, 0, 0, 0, 0, 1, 0, 0);
+  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
+  #assert eg_test_has(eg_test_of(box[..], 1), "e wm 3 7 1 30000 145 0 0 100 500 300 500") && !eg_test_has(eg_test_of(box[..], 0), "e wm");
 }

@@ -185,6 +185,10 @@ ege_entry :: (s: [] Everglade, n: [] EgNet, t: string) -> bool {
     id := wire_num(t, r[..]); k := wire_num(t, r[..]); ax := wire_f(t, r[..]); ay := wire_f(t, r[..]); az := wire_f(t, r[..]); seed := wire_num(t, r[..]);
     if !r[0].ok || !s[0].started || !sp_on(s) { return true; }
     at := v3(ax, ay, az); from := at;
+    // where it leaves the caster's hands (a room since #12862 says it): a caster this page doesn't hold
+    // still casts from where it stands
+    fx := wire_f(t, r[..]); fy := wire_f(t, r[..]); fz := wire_f(t, r[..]);
+    if r[0].ok { from = v3(fx, fy, fz); }
     q := net_ent(n, NET_MADE_ID + id, false);
     if q >= 0 {
       c := n[0].ents[q].shown;
@@ -193,6 +197,18 @@ ege_entry :: (s: [] Everglade, n: [] EgNet, t: string) -> bool {
     }
     if k == WL_DOOR { ege_word(s, add(from, v3(0, 1.2, 0)), EGE_DOOR, 0); }
     wl_play(s, k, from, at, seed, false);
+    return true;
+  }
+  if wire_is(t, "e wm") {
+    // a guard's spell leaves their hands (e wm KIND CASTER FOE AX AY AZ BX BY BZ FLIGHT LIFE): it flies
+    // here as on the server, from their hands to whom it is for (everglade-watch.coax watch_net_missile)
+    r: [1] WireRd; r[0] = wire_rd(t, 4);
+    kind := wire_num(t, r[..]); caster := wire_num(t, r[..]); _ := wire_num(t, r[..]);
+    a := v3(wire_f(t, r[..]), wire_f(t, r[..]), wire_f(t, r[..]));
+    b := v3(wire_f(t, r[..]), wire_f(t, r[..]), wire_f(t, r[..]));
+    flight := f32(wire_num(t, r[..])) / 1000; life := f32(wire_num(t, r[..])) / 1000;
+    if !r[0].ok || !s[0].started || !s[0].wv.started { return true; }
+    watch_net_missile(watch_w(s), kind, caster, a, b, flight, life);
     return true;
   }
   return false;
@@ -252,13 +268,20 @@ ege_body :: (s: [] Everglade, id: int) -> int {
   if free >= 0 { e[0].body_id[free] = id; e[0].body_fell[free] = -1; }
   return free;
 }
-// A room creature gone (an x c, everglade-net.coax): a raider's body falls where it stood.
-ege_gone :: (s: [] Everglade, n: [] EgNet, k: int) {
-  en := n[0].ents[k];
-  if !en.live || en.kind != WK_BEAST || en.p1 < EGE_FORM_RAID || en.p1 == EGE_FORM_WARD { return; }
+// A room creature gone (an x c, everglade-net.coax): its row is gone, which is all an x says. It may have
+// only walked out of what this page hears (interest, #12789), so its body stays as it stood, undrawn,
+// until the server says it died (ege_died) or it is let go (ege_bodies). Nothing falls on an x alone.
+ege_gone :: (s: [] Everglade, n: [] EgNet, k: int) {}
+// A room creature died (e die 2000 + EID): a raider's body falls where it last stood.
+ege_died :: (s: [] Everglade, who: int) {
+  if who < 2000 { return; }
   e := ege_of(s);
-  egs_cue(s, SFX_DEATH, v3(en.shown.x, en.shown.y + 1.2, en.shown.z), 0, 1);   // the raider falls (everglade-sound.coax)
-  for q: 0..<EGE_BODIES { if e[0].body_id[q] == en.eid && e[0].body_fell[q] < 0 { e[0].body_fell[q] = s[0].time; } }
+  for q: 0..<EGE_BODIES {
+    if e[0].body_id[q] != NET_MADE_ID + who - 2000 || e[0].body_fell[q] >= 0 { continue; }
+    o := s[0].rp.who[q];
+    e[0].body_fell[q] = s[0].time;
+    egs_cue(s, SFX_DEATH, v3(o.x, folk_feet(s, o.x, o.z) + 1.2, o.z), 0, 1);   // the raider falls (everglade-sound.coax)
+  }
 }
 // Each frame: the fallen lie, then sink and go; a standing raider out of view is let go.
 ege_bodies :: (s: [] Everglade) {
@@ -907,7 +930,9 @@ ege_answered :: (s: [] Everglade, answer: string) -> bool {
   #assert !ege_hit(g[..], n, 2009);
   // a raider's cast is the events module's entry
   #assert ege_entry(g[..], n, "e rc 9 0 400 150 700 12345");
-  // a raider draws as a body; gone, it falls and lies, then is let go
+  // the cast from where the room says it left the caster's hands, when the page doesn't hold the caster
+  #assert ege_entry(g[..], n, "e rc 77 0 400 150 700 12345 900 150 700");
+  // a raider draws as a body; gone from view (an x alone), it doesn't fall, and is let go unseen
   r := net_ent(n, NET_MADE_ID + 12, true);
   n[0].ents[r].kind = WK_BEAST; n[0].ents[r].p1 = EGE_FORM_RAID + 27; n[0].ents[r].ring_n = 1;
   n[0].ents[r].shown = NetState.{x = 10, z = -20, f = 256 * 2};
@@ -915,8 +940,12 @@ ege_answered :: (s: [] Everglade, answer: string) -> bool {
   ege_raider_draw(g[..], n, n[0].ents[r], 1);
   b := ege_body(g[..], NET_MADE_ID + 12);
   #assert b >= 0 && g[0].rp.who[b].npc == 27 && g[0].rp.who[b].level == 2 && g[0].rp.who[b].dead_t < 0;
-  ege_gone(g[..], n, r); n[0].ents[r].live = false;
-  g[0].time = 23; ege_bodies(g[..]);
+  ege_gone(g[..], n, r);
+  g[0].time = 20.2; ege_bodies(g[..]);
+  #assert n[0].evp[0].body_fell[b] < 0;   // out of view: no fall
+  // it died (e die 2000 + EID, just after the x that took its row): it falls and lies, then is let go
+  ege_died(g[..], 2012); n[0].ents[r].live = false;
+  g[0].time = 23.5; ege_bodies(g[..]);
   #assert g[0].rp.who[b].npc == 27 && g[0].rp.who[b].dead_t > 2.9 && g[0].rp.who[b].x == 10;
   g[0].time = 30; ege_bodies(g[..]);
   #assert g[0].rp.who[b].npc == 0 && n[0].evp[0].body_id[b] == 0;

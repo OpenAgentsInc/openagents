@@ -665,7 +665,7 @@ net_entry :: (s: [] Everglade, n: [] EgNet, t: string, d: WireD) {
   if wire_is(t, "e die") {
     r[0] = wire_rd(t, 5);
     who := wire_num(t, r[..]);
-    if r[0].ok && who >= 2000 { n[0].creature_deaths += 1; }
+    if r[0].ok && who >= 2000 { n[0].creature_deaths += 1; ege_died(s, who); }   // a raider's body falls (everglade-events.coax)
     return;
   }
   if t.count > 7 && t[0..<7] == "e edit " {
@@ -767,14 +767,21 @@ net_push_row :: (en: [] NetEnt, p: NetState, hz: int) {
 }
 // Watch actor i (a townsperson or guard) as the server has them now (f), interpolated; ok false while
 // none is heard (indoors, out of view, or no room).
-NetFolk :: struct { ok: bool; x: f32; z: f32; yaw: f32; mode: int; clip: int; hp: int; cond: int; }
+// since: seconds in their mode (from the row's T0: -1 not said); casting: seconds into a spell (-1
+// none), kind its MS_*, foe the seat it is for (-1 none)
+NetFolk :: struct { ok: bool; x: f32; z: f32; yaw: f32; mode: int; clip: int; hp: int; since: f32 = -1; casting: f32 = -1; kind: int; foe: int = -1; cond: int; }
 net_folk :: (s: [] Everglade, i: int) -> NetFolk {
   if !net_live(s) { return NetFolk.{}; }
   n := net_of(s);
   k := net_ent(n, NET_FOLK_ID + i, false);
   if k < 0 { return NetFolk.{}; }
   p := n[0].ents[k].shown;
-  return NetFolk.{ok = true, x = p.x, z = p.z, yaw = p.yaw, mode = p.f, clip = p.a, hp = n[0].ents[k].hp, cond = n[0].ents[k].cond};
+  en := n[0].ents[k];
+  hz := f32(hi_int(n[0].hz, 1)); now := n[0].mir[0].tick;
+  return NetFolk.{ok = true, x = p.x, z = p.z, yaw = p.yaw, mode = p.f, clip = p.a, hp = en.hp, cond = en.cond,
+                  since = ifx en.t0 > 0 then f32(hi_int(now - en.t0, 0)) / hz else -1.0f32,
+                  casting = ifx en.p2 > 0 && en.dur > 0 then f32(hi_int(now - en.dur, 0)) / hz else -1.0f32, kind = en.p2 - 1,
+                  foe = ifx en.owner >= WIRE_TGT_SEAT && en.owner < WIRE_TGT_SEAT + 1000 then en.owner - WIRE_TGT_SEAT else -1};
 }
 // In a room whose server runs the town (it has said your WANTED level, w): its townsfolk and guards
 // are the ones drawn, and the page's own watch is still (everglade-watch.coax watch_net_frame).
@@ -1630,6 +1637,7 @@ net_probe :: (s: [] Everglade, field: int) -> int #export_c {
   // player as this page has them (bits OR'd; Unconscious for one down at 0 Hit Points), 91 the words drawn over others' heads (1 << POP_*)
   if field == 90 { c := 0; for j: 1..<ST_WHOS { c |= st_cond(s, st_who_of(j)) | (ifx st_down(s, st_who_of(j)) then WC_UNCONSCIOUS else 0); } return c; }
   if field == 91 { return s[0].st_words; }
+  if field == 92 { m := 0; if s[0].wv.started { for k: 0..<MISSILES { if s[0].wt[0].missiles[k].live { m += 1; } } } return m; }   // the watch's spells in the air drawn here
   // 59: offline, hold you as a Watch Mage's Hold Person does (3 s, saving each round): 1 when it held
   // you (the drift check's held step; in a room another player's cast holds you)
   if field == 59 {

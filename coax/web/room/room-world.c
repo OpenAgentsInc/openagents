@@ -191,6 +191,7 @@ int world_people(int k, float out[WORLD_FOLK * WORLD_PEOPLE]) {
   return world_of(k) ? (int)everglade_room_people(at(k), (coax_v_f32){out, WORLD_FOLK * WORLD_PEOPLE}) : 0;
 }
 bool world_view(int k, int i, float out[WORLD_VIEW]) { return world_of(k) && everglade_room_view(at(k), i, (coax_v_f32){out, WORLD_VIEW}); }
+bool world_missile(int k, float out[WORLD_MISSILE]) { return world_of(k) && everglade_room_missile(at(k), (coax_v_f32){out, WORLD_MISSILE}); }
 int world_wanted(int k, int s) { return world_of(k) ? (int)everglade_room_wanted(at(k), s) : 0; }
 void world_seed_wanted(int k, int s, int level) { if (world_of(k)) everglade_room_seed_wanted(at(k), s, level); }
 int world_cond(int k, int s) { return world_of(k) ? (int)everglade_room_cond(at(k), s) : 0; }

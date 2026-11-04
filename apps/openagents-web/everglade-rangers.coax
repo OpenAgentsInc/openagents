@@ -146,6 +146,7 @@ RemoteBody :: struct {
   air: bool; swim: bool; boat: bool;
   form: int;                  // CI_FORM_*: a beast's shape
   alive: bool;
+  down: bool;                 // unconscious or prone by the rules (their COND): lying, as the dead lie
   swing: f32 = 100000;        // s since their last spell went off (they swing as they cast)
   look: RangerLook;
 }
@@ -187,7 +188,7 @@ class_of :: (t: string) -> int {
 
 // The clip a body plays: as yours (figure), and the swing while their spell goes off.
 remote_clip :: (e: RemoteBody) -> int {
-  if !e.alive { return SKIN_IDLE; }
+  if !e.alive || e.down { return SKIN_IDLE; }
   if !e.air && e.swing >= 0 && e.swing < RANGER_DURATION[SKIN_SWING] { return SKIN_SWING; }
   return skin_motion(flat_length(e.v), e.air);
 }
@@ -219,6 +220,7 @@ remote_bodies :: (s: [] Everglade, out: [] RemoteBody) -> int {
                          kind = class_of(net_view_class(s, WK_PLAYER, k)),
                          p = v3(v.x, v.y, v.z), yaw = v.yaw, v = v3(v.vx, 0, v.vz),
                          air = v.air || v.act == 3, swim = v.swim, boat = v.boat, form = v.form, alive = v.alive,
+                         down = (v.p1 & (WC_UNCONSCIOUS | WC_PRONE)) != 0 || (v.max > 0 && v.hp <= 0),
                          swing = v.cast_age, look = look_parse(net_view_look(s, WK_PLAYER, k))};
     n += 1;
   }
@@ -490,8 +492,8 @@ rangers_draw :: (s: [] Everglade, u: [] f32, you: Point, dt: f32, rs: [] RemoteB
     s[0].palette[lk + 6] = 0; s[0].palette[lk + 7] = shown;
     c := cos(e.yaw); sn := sin(e.yaw);
     rows := [12] f32.[c, 0, sn, feet.x,   0, 1, 0, feet.y,   -sn, 0, c, feet.z];
-    // dead: on their back, as you lie (figure)
-    if !e.alive { rows = [12] f32.[c, -sn, 0, feet.x,   0, 0, 1, feet.y + 0.12,   -sn, -c, 0, feet.z]; }
+    // dead, or down by the rules (unconscious at 0 Hit Points, or prone): on their back, as you lie (figure)
+    if !e.alive || e.down { rows = [12] f32.[c, -sn, 0, feet.x,   0, 0, 1, feet.y + 0.12,   -sn, -c, 0, feet.z]; }
     // the whole mesh near, the far one past REMOTE_LOD_FROM or past the nearest `whole`
     far := g[0].far_count > 0 && (gaps[k] >= f32(REMOTE_LOD_FROM) || nears >= whole);
     o := ifx far then (REMOTE_FAR_AT + g[0].far_n) * OBJECT_FLOATS else (REMOTE_AT + g[0].n) * OBJECT_FLOATS;

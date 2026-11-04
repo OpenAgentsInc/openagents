@@ -28,23 +28,13 @@ WATCH_RED_R :: 0.95; WATCH_RED_G :: 0.3; WATCH_RED_B :: 0.24;
 
 NewGuard :: struct { x: f32; z: f32; yaw: f32; walking: bool; placed: bool; }
 // A damage number (watch_pop): the hit points lost, red over the head that lost them, rising as it fades.
-WATCH_POPS :: 40; POP_LIFE :: 1.1; POP_RISE :: 0.8;
-WatchPop :: struct { live: bool; at: Point; t: f32; amount: int; dx: f32; big: bool; }
-// The words for conditions over heads (everglade-status.coax st_head_word) and their colours.
+WATCH_POPS :: 40; POP_LIFE :: 1.2; POP_RISE :: 0.8;
+// A number or word over a head: harm (-6, red), healing (+4, green), or a word (POP_WORDS) as a
+// condition lands (word >= 0), each rising and fading over POP_LIFE.
+WatchPop :: struct { live: bool; at: Point; t: f32; amount: int; dx: f32; big: bool; heal: bool; word: int = -1; }
 POP_DOWN :: 0; POP_HELD :: 1; POP_ROOTED :: 2; POP_RESTRAINED :: 3; POP_STUNNED :: 4; POP_PRONE :: 5;
-POP_FRIGHTENED :: 6; POP_SLOWED :: 7;
-POP_WORDS :: [8] string.["DOWN", "HELD", "ROOTED", "RESTRAINED", "STUNNED", "PRONE", "FRIGHTENED", "SLOWED"];
-// A word's colour: red down, gold held, yellow stunned, green rooted, earth restrained, frost slowed,
-// violet the rest.
-watch_pop_rgb :: (word: int) -> Point {
-  if word == POP_HELD { return v3(1.0, 0.82, 0.35); }
-  if word == POP_ROOTED { return v3(0.4, 0.95, 0.35); }
-  if word == POP_RESTRAINED { return v3(0.95, 0.68, 0.3); }
-  if word == POP_STUNNED { return v3(1.0, 0.95, 0.4); }
-  if word == POP_SLOWED { return v3(0.65, 0.85, 1.0); }
-  if word == POP_DOWN { return v3(1.0, 0.3, 0.25); }
-  return v3(0.8, 0.55, 1.0);
-}
+POP_FRIGHTENED :: 6; POP_SLOWED :: 7; POP_BLINDED :: 8; POP_UP :: 9; POP_HALTED :: 10;
+POP_WORDS :: [11] string.["DOWN", "HELD", "ROOTED", "RESTRAINED", "STUNNED", "PRONE", "FRIGHTENED", "SLOWED", "BLINDED", "UP", "HALTED"];
 // What each one had last frame (hit points and temporary ones), so any blow shows its number.
 WatchSeen :: struct { life: int; on: bool; }
 // What the page keeps of the watch for drawing it.
@@ -249,6 +239,18 @@ watch_pose :: (r: SkinRig, a: Actor, sk: [] Skin, dt: f32, out: [] f32) {
     // come to rest: the fall's lying end blends in as the rigid turn blends out
     sk[0].clip = ifx clip == PEOPLE_IDLE then PEOPLE_KNOCK else PEOPLE_IDLE;
     skin_advance(r, sk, clip, 0, r.duration[clip] - 0.04);
+    skin_palette(r, sk, out);
+    return;
+  }
+  if a.hold && sk[0].clip != clip && a.t > 0.25 {
+    // a fall that began a while ago (a.t: the seconds in its mode, the server's in a room), on a pose
+    // just taken up (seen again past the edge of the view, or by a page that came late): where it is
+    // now, not from its start
+    fresh := sk[0].clip < 0;
+    skin_advance(r, sk, clip, 0, 0);
+    sk[0].time = clamp(a.t, 0, r.duration[clip] - 0.03);
+    if fresh || a.t > 0.6 { sk[0].changed = sk[0].clock - 10; }
+    skin_advance(r, sk, clip, 0, 0);
     skin_palette(r, sk, out);
     return;
   }
@@ -548,13 +550,43 @@ watch_rebuilt :: (s: [] Everglade) -> int {
 
 // `amount` lost at `at` (over a head, a wall): a red number there, rising and fading over a second,
 // a little to one side so hits stacked together don't cover each other; a big blow's bigger.
-watch_pop :: (s: [] Everglade, at: Point, amount: int, big: bool) {
-  if amount <= 0 { return; }
+watch_pop_slot :: (s: [] Everglade) -> int {
   k := 0; oldest := -1.0f32;
   for q: 0..<WATCH_POPS {
-    if !s[0].wv.pops[q].live { k = q; break; }
+    if !s[0].wv.pops[q].live { return q; }
     if s[0].wv.pops[q].t > oldest { oldest = s[0].wv.pops[q].t; k = q; }
   }
+  return k;
+}
+// `amount` healed at `at`: a green +N rising there, and a few green motes.
+watch_pop_heal :: (s: [] Everglade, at: Point, amount: int) {
+  if amount <= 0 { return; }
+  s[0].wv.pops[watch_pop_slot(s)] = WatchPop.{live = true, at = at, t = 0, amount = amount, dx = sp_rand(s) * 2 - 1, heal = true};
+  for q: 0..<5 { sp_add_spark(s, add(at, v3(0, -0.7, 0)), times(sp_spray(s, 0), 1.2), 0.5, 0.06, v3(0.45, 1.0, 0.45), -2); }
+}
+// Word `word` (POP_*) over a head at `at` as a condition lands, a little above the numbers; and a burst
+// on the body in the condition's colour.
+watch_pop_word :: (s: [] Everglade, at: Point, word: int, nth: int) {
+  if word < 0 || word >= POP_WORDS.count { return; }
+  s[0].wv.pops[watch_pop_slot(s)] = WatchPop.{live = true, at = add(at, v3(0, 0.35 + 0.3 * f32(nth), 0)), t = 0, dx = 0, word = word};
+  c := watch_pop_rgb(word);
+  for q: 0..<8 { sp_add_spark(s, add(at, v3(0, -1.0, 0)), times(sp_spray(s, 0), 2.0), 0.45, 0.07, c, 2); }
+}
+// A word's colour: red down, gold held, yellow stunned, green rooted, earth restrained, frost slowed,
+// white up, violet the rest.
+watch_pop_rgb :: (word: int) -> Point {
+  if word == POP_HELD { return v3(1.0, 0.82, 0.35); }
+  if word == POP_ROOTED { return v3(0.4, 0.95, 0.35); }
+  if word == POP_RESTRAINED { return v3(0.95, 0.68, 0.3); }
+  if word == POP_STUNNED { return v3(1.0, 0.95, 0.4); }
+  if word == POP_SLOWED { return v3(0.65, 0.85, 1.0); }
+  if word == POP_DOWN { return v3(1.0, 0.3, 0.25); }
+  if word == POP_UP { return v3(0.92, 0.95, 0.9); }
+  return v3(0.8, 0.55, 1.0);
+}
+watch_pop :: (s: [] Everglade, at: Point, amount: int, big: bool) {
+  if amount <= 0 { return; }
+  k := watch_pop_slot(s);
   s[0].wv.pops[k] = WatchPop.{live = true, at = at, t = 0, amount = amount, dx = sp_rand(s) * 2 - 1, big = big};
   egs_blow(s, add(at, v3(0, -0.9, 0)), big);   // the blow's sound (everglade-sound.coax)
   // the blow lands: a spray of red sparks off them
@@ -594,7 +626,7 @@ watch_pops_frame :: (s: [] Everglade, dt: f32) {
 watch_pops_draw :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
   n := at;
   k := hi(s[0].dpr, 0.5);
-  buf: [12] u8;
+  buf: [16] u8;
   for q: 0..<WATCH_POPS {
     if !s[0].wv.pops[q].live { continue; }
     p := s[0].wv.pops[q];
@@ -604,8 +636,11 @@ watch_pops_draw :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
     if !sc.ok { continue; }
     grow := 1 + 0.4 * clamp01(1 - p.t / 0.12);   // it lands a touch big, then settles
     cap := (ifx p.big then 19.0f32 else 13.0f32) * k * grow;
-    m := put_digits(buf[..], 0, p.amount);
+    m := 0;
+    if p.word >= 0 { for ch: POP_WORDS[p.word] { if m < buf.count { buf[m] = ch; m += 1; } } }
+    else { buf[0] = ifx p.heal then '+' else '-'; m = put_digits(buf[..], 1, p.amount); }
     line := cast(string) buf[0..<m];
+    if p.word >= 0 { cap = 11.0f32 * k * grow; }
     tw := text_width(line, cap);
     fade := clamp01((f32(POP_LIFE) - p.t) / 0.35);
     x := sc.x - tw / 2 + p.dx * 18 * k;
@@ -614,7 +649,8 @@ watch_pops_draw :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
     if s[0].plate_n < PLATES - 6 {
       plate(s, u, Box.{x0 = x - cap * 0.55, y0 = sc.y - cap * 1.45, x1 = x + tw + cap * 0.55, y1 = sc.y + cap * 0.45}, 0.72 * fade, PLATE_SHADE);
     }
-    body := Ink.{core = (ifx p.big then 1.5f32 else 1.05f32) * k, light = fade, glow = 0.9 * k, red = 1.0, green = 0.16, blue = 0.1, mode = 0, scale = k};
+    rgb := ifx p.word >= 0 then watch_pop_rgb(p.word) else ifx p.heal then v3(0.4, 1.0, 0.4) else v3(1.0, 0.16, 0.1);
+    body := Ink.{core = (ifx p.big then 1.5f32 else 1.05f32) * k, light = fade, glow = 0.9 * k, red = rgb.x, green = rgb.y, blue = rgb.z, mode = 0, scale = k};
     n = draw_text(out, n, line, x, sc.y, cap, GAP, SPACE, body, false, false);
   }
   return n;
@@ -777,7 +813,8 @@ watch_overlay :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
 // people's; this town takes them back each tick, and hands the rules where the people are and the
 // damage its guards deal the seats.
 EG_ROOM_SEAT_FLOATS :: 7;      // a seat as the host hands it: X Y Z LIVE HP MAX COND (LIVE 2 just sat; HP 0: dead; COND WC_*)
-EG_ROOM_VIEW_FLOATS :: 7;      // a person as a page hears them (wire f): X Z YAW CLIP MODE HP SHOWN
+EG_ROOM_VIEW_FLOATS :: 10;     // a person as a page hears them (wire f): X Z YAW CLIP MODE HP SHOWN CASTING KIND FOE
+EG_ROOM_MISSILE_FLOATS :: 11;  // a spell in the air (everglade_room_missile): KIND CASTER FOE AX AY AZ BX BY BZ FLIGHT LIFE
 EG_ROOM_HEAR :: 60.0;          // m a crime carries (the bolt's: everglade-spells.coax WATCH_HEAR)
 
 // One tick of the town, dt s, the shared clock at `world` s. seats: EG_ROOM_SEAT_FLOATS for each of n.
@@ -924,8 +961,9 @@ everglade_room_crime :: (s: [] Everglade, by: int, x: f32, z: f32) -> int #expor
   w[0].me = me;
   return turned;
 }
-// Person i as a page hears them (wire f, EG_ROOM_VIEW_FLOATS): X Z YAW CLIP MODE HP SHOWN. On their day
-// CLIP is 1 walking, 0 standing; off it, the watch's clip. SHOWN 0: indoors, taken away or not called in.
+// Person i as a page hears them (wire f, EG_ROOM_VIEW_FLOATS): X Z YAW CLIP MODE HP SHOWN, then a caster's
+// spell as it winds up: CASTING its seconds into it (-1 none), KIND (MS_*), FOE the seat it is for. On
+// their day CLIP is 1 walking, 0 standing; off it, the watch's clip. SHOWN 0: indoors, taken away or not called in.
 everglade_room_view :: (s: [] Everglade, i: int, out: [] f32) -> bool #export_c {
   if !s[0].wv.started || i < 0 || i >= WATCH_ACTORS || out.count < EG_ROOM_VIEW_FLOATS { return false; }
   w := watch_w(s);
@@ -937,6 +975,8 @@ everglade_room_view :: (s: [] Everglade, i: int, out: [] f32) -> bool #export_c 
   out[4] = f32(ifx a.ready then a.mode else WM_CALM); out[5] = f32(a.hp);
   shown := watch_here(w, i) && !(a.mode == WM_CALM && a.home_in) && !(i < EG_SPOTS && s[0].folk[i].indoors && !off);
   out[6] = ifx shown then 1.0f32 else 0.0f32;
+  casting := a.ready && a.casting >= 0 && a.mode != WM_DEAD && a.mode != WM_DOWN;
+  out[7] = ifx casting then a.casting else -1.0f32; out[8] = f32(a.cast_kind); out[9] = f32(a.foe);
   return true;
 }
 // Seat p comes back WANTED at `level` (1 to 5): the level the room saved for its player (coax/web/room/
@@ -950,6 +990,22 @@ everglade_room_seed_wanted :: (s: [] Everglade, p: int, level: int) #export_c {
   y := watch_you(w[..]);
   y[0].wanted = true; y[0].unseen = 0; y[0].heat = hi_w(y[0].heat, HEAT_AT[l]); y[0].level = hi_w(y[0].level, l);
   w[0].me = me;
+}
+// The next spell of the watch's that left its caster's hands since the last asked (EG_ROOM_MISSILE_FLOATS
+// into out), marked told; false when there is none. The room tells the pages (e wm), which draw its flight.
+everglade_room_missile :: (s: [] Everglade, out: [] f32) -> bool #export_c {
+  if !s[0].wv.started || out.count < EG_ROOM_MISSILE_FLOATS { return false; }
+  w := watch_w(s);
+  for k: 0..<MISSILES {
+    m := w[0].missiles[k];
+    if !m.live || m.sent || m.t > m.flight { continue; }
+    w[0].missiles[k].sent = true;
+    out[0] = f32(m.kind); out[1] = f32(m.caster); out[2] = f32(m.foe);
+    out[3] = m.ax; out[4] = m.ay; out[5] = m.az; out[6] = m.bx; out[7] = m.by; out[8] = m.bz;
+    out[9] = m.flight; out[10] = m.life;
+    return true;
+  }
+  return false;
 }
 // Seat p's WANTED level (0 not wanted).
 everglade_room_wanted :: (s: [] Everglade, p: int) -> int #export_c {
@@ -969,6 +1025,29 @@ watch_net_you :: (w: [] Watch, dt: f32) {
   y := watch_you(w[..]);
   if y[0].dead { y[0].you_fall += t; y[0].dead_t += t; }
   else if y[0].dead_t < 0 { y[0].dead_t = lo(y[0].dead_t + t, 0); }
+  // the watch's spells the server said left their casters' hands (e wm) fly here, drawn only: what
+  // they do is the server's
+  for k: 0..<MISSILES {
+    m := w[0].missiles[k];
+    if !m.live { continue; }
+    w[0].missiles[k].t += t;
+    if m.kind == MS_MAGIC_MISSILE { watch_dart_step(w, k, t, v3(m.bx, m.by - 1.0, m.bz)); }
+    if w[0].missiles[k].t >= m.flight + m.life { w[0].missiles[k].live = false; }
+  }
+}
+// A watch spell the room's server says left its caster's hands (e wm KIND CASTER FOE AX AY AZ BX BY BZ
+// FLIGHT LIFE): it flies on this page as on the server's, drawn by watch_missiles_draw.
+watch_net_missile :: (w: [] Watch, kind: int, caster: int, a: Point, b: Point, flight: f32, life: f32) {
+  if kind < 0 || kind > MS_EARTHBIND { return; }
+  k := watch_missile_slot(w);
+  m := Missile.{live = true, kind = kind, caster = caster, ax = a.x, ay = a.y, az = a.z, bx = b.x, by = b.y, bz = b.z,
+                t = 0, flight = clamp(flight, 0.02, 5), life = clamp(life, 0.05, 30), sent = true, foe = -1};
+  if kind == MS_MAGIC_MISSILE {
+    fwd := unit_or(sub(b, a), v3(0, 0, 1));
+    v := times(unit_or(add(times(fwd, 0.45), v3(0, 0.75, 0)), fwd), f32(MM_SPEED) * 0.6);
+    m.vx = v.x; m.vy = v.y; m.vz = v.z;
+  }
+  w[0].missiles[k] = m;
 }
 watch_net_frame :: (s: [] Everglade) {
   w := watch_w(s);
@@ -986,6 +1065,10 @@ watch_net_frame :: (s: [] Everglade) {
     a[0].homed = true;
     a[0].x = f.x; a[0].z = f.z; a[0].yaw = f.yaw; a[0].hp = f.hp;
     a[0].mode = f.mode; a[0].body.on = false;
+    // how long they have been in it, the server's: a fall seen again, or late, is where it is (watch_pose)
+    if f.since >= 0 { a[0].t = f.since; }
+    // a caster winding up: their hands glow and the bar over them fills (watch_missiles_draw)
+    a[0].casting = f.casting; a[0].cast_kind = ifx f.casting >= 0 then f.kind else a[0].cast_kind; a[0].foe = f.foe;
     if f.mode == WM_CALM {
       if i < EG_SPOTS { s[0].folk[i].x = f.x; s[0].folk[i].z = f.z; s[0].folk[i].yaw = f.yaw; s[0].folk[i].walking = f.clip == 1; s[0].folk[i].indoors = false; }
       else if !watch_is_rein(i) { k := i - EG_SPOTS; s[0].wv.at[k].x = f.x; s[0].wv.at[k].z = f.z; s[0].wv.at[k].yaw = f.yaw; s[0].wv.at[k].walking = f.clip == 1; }
@@ -1213,4 +1296,51 @@ everglade_room_cond :: (s: [] Everglade, p: int) -> int #export_c {
   everglade_room_town(g[..], 1.0 / 30.0, 1002.0, seats[..], 1, took[..]);
   #assert g[0].wv.room_talk[0] == -1;
   #assert everglade_room_talk(g[..], 0, i, fx, fz) && everglade_room_talk(g[..], 0, -1, 0, 0) && g[0].wv.room_talk[0] == -1;
+}
+
+#test "watch: a fall seen again, or late, is where its time says; a fall just begun plays from its start (#12862)" #steps 4000000000 {
+  g: [1] Everglade;
+  people_load(g[0].people_rig[..]);
+  rig := people_rig(g[0].people_rig[..], false);
+  out: [PEOPLE_JOINTS * 12] f32;
+  d := rig.duration[PEOPLE_DIE];
+  #assert d > 0.5;
+  // dead 5 s, posed fresh (the edge of the view, or a page come late): lying, the clip at its end
+  sk: [1] Skin;
+  watch_pose(rig, Actor.{mode = WM_DEAD, t = 5, clip = PEOPLE_DIE, hold = true, body = Tumble.{settle = -1}}, sk[..], 1.0 / 60, out[..]);
+  #assert sk[0].clip == PEOPLE_DIE && sk[0].time > d - 0.1;
+  watch_pose(rig, Actor.{mode = WM_DEAD, t = 5.02, clip = PEOPLE_DIE, hold = true, body = Tumble.{settle = -1}}, sk[..], 1.0 / 60, out[..]);
+  #assert sk[0].time > d - 0.1;   // and stays there
+  // 0.3 s into the fall: mid-fall
+  sk2: [1] Skin;
+  watch_pose(rig, Actor.{mode = WM_DEAD, t = 0.3, clip = PEOPLE_DIE, hold = true, body = Tumble.{settle = -1}}, sk2[..], 1.0 / 60, out[..]);
+  #assert abs(sk2[0].time - 0.3) < 0.02;
+  // just fallen: from its start
+  sk3: [1] Skin;
+  watch_pose(rig, Actor.{mode = WM_DEAD, t = 0.05, clip = PEOPLE_DIE, hold = true, body = Tumble.{settle = -1}}, sk3[..], 1.0 / 60, out[..]);
+  #assert sk3[0].time < 0.05;
+}
+
+#test "watch: words and numbers rise over heads: a condition's word as it lands, -N lost, +N healed, UP from down (#12862)" #steps 2000000000 {
+  g: [1] Everglade;
+  g[0].wv.started = true;
+  watch_pop(g[..], v3(0, 2, 0), 6, false);
+  watch_pop_heal(g[..], v3(0, 2, 0), 4);
+  st_pop_words(g[..], v3(0, 2, 0), WC_UNCONSCIOUS | WC_PRONE | WC_BOUND);
+  n := 0; down := false; root := false; prone := false; lost := false; healed := false;
+  for q: 0..<WATCH_POPS {
+    p := g[0].wv.pops[q];
+    if !p.live { continue; }
+    n += 1;
+    if p.word == POP_DOWN { down = true; }
+    if p.word == POP_ROOTED { root = true; }
+    if p.word == POP_PRONE { prone = true; }
+    if p.word < 0 && !p.heal && p.amount == 6 { lost = true; }
+    if p.word < 0 && p.heal && p.amount == 4 { healed = true; }
+  }
+  #assert n == 4 && down && root && !prone && lost && healed;   // down says prone
+  #assert POP_WORDS[POP_ROOTED] == "ROOTED" && f32(POP_LIFE) == 1.2;
+  // one word over a head while it lasts: the strongest
+  #assert st_head_word(WC_PRONE | WC_UNCONSCIOUS) == POP_DOWN && st_head_word(WC_BOUND | WC_PRONE) == POP_ROOTED && st_head_word(WC_STUNNED | WC_BOUND) == POP_STUNNED;
+  #assert st_head_word(WC_PARALYZED | WC_STUNNED) == POP_HELD && st_head_word(16) == POP_FRIGHTENED && st_head_word(0) == -1;
 }

@@ -22,7 +22,8 @@ float world_ground(int k, float x, float z);
 #define WORLD_FOLK 38          /* watch.coax WATCH_ACTORS, everglade5e-rules.coax E5R_FOLK */
 #define WORLD_SEAT_TOWN 7      /* a seat for the town: X Y Z LIVE HP MAX COND */
 #define WORLD_PEOPLE 8         /* a person for the rules: HERE X Z HP TEMP MAX AC BLOCK */
-#define WORLD_VIEW 7           /* a person for the pages: X Z YAW CLIP MODE HP SHOWN */
+#define WORLD_VIEW 10          /* a person for the pages: X Z YAW CLIP MODE HP SHOWN CASTING KIND FOE */
+#define WORLD_MISSILE 11       /* a watch spell in the air: KIND CASTER FOE AX AY AZ BX BY BZ FLIGHT LIFE */
 /* Person j's Hit Points and conditions as the rules have them, harmed by seat `by` (-1 none). */
 void world_folk_hp(int k, int j, int hp, int temp, int by, int cond);
 /* Seat `by` harmed someone of the town at (x, z): a crime. */
@@ -34,6 +35,8 @@ void world_town(int k, float dt, double world_s, const float seats[WORLD_SEATS *
 int world_people(int k, float out[WORLD_FOLK * WORLD_PEOPLE]);
 /* Person i for the pages; seat s's WANTED level. */
 bool world_view(int k, int i, float out[WORLD_VIEW]);
+/* The next watch spell that left its caster's hands since the last asked (false: none). */
+bool world_missile(int k, float out[WORLD_MISSILE]);
 int world_wanted(int k, int s);
 void world_seed_wanted(int k, int s, int level);   /* a seat back WANTED at its saved level (#12794) */
 /* Seat s's conditions from the watch (wire WC_*: Hold Person's hold, Ray of Frost's slow). */

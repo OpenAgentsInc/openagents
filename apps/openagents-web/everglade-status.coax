@@ -141,6 +141,62 @@ st_tone :: (cond: int) -> int {
 ST_WHOS :: 17;           // you, then each seat
 // The body slot j is: you, then seat j - 1 (a TGT code 1000 + SS).
 st_who_of :: (j: int) -> int { return ifx j == 0 then ST_YOU else 1000 + j - 1; }
+// ---- over the heads: what lands, what is lost and healed
+
+StSeen :: struct { on: bool; cond: int; life: int; }
+// Once a frame, after st_fill: UP over a body up from being down (while a condition lasts its word
+// stays over the head: st_tags_draw); and in a room, the Hit Points each player lost (-6) or had
+// healed (+4), as the server's rows have them. Offline your numbers are the watch's
+// (everglade-watch.coax watch_pops_frame) and the rules' (everglade5e.coax e5_take).
+st_pops_frame :: (s: [] Everglade) {
+  room := net_live(s);
+  n := net_of(s);
+  for j: 0..<ST_WHOS {
+    who := st_who_of(j);
+    w := st_where(s, who);
+    if j > 0 && (!room || j - 1 == n[0].seat) { s[0].st_seen[j].on = false; continue; }
+    if !w.ok { s[0].st_seen[j].on = false; continue; }
+    c := st_cond(s, who) | (ifx st_down(s, who) then WC_UNCONSCIOUS else 0);
+    life := st_life(s, j);
+    head := add(w.at, v3(0, 2.15, 0));
+    was := s[0].st_seen[j];
+    if was.on {
+      if (was.cond & WC_UNCONSCIOUS) != 0 && (c & WC_UNCONSCIOUS) == 0 { watch_pop_word(s, head, POP_UP, 0); }
+      st_pop_words(s, head, c & (c ^ was.cond));   // what just landed rises over the head
+      // a room's numbers: a player's, and yours when the rules' own don't show them (a 5E page: e5_before)
+      mine := room && (j > 0 || !s[0].wv.seen_you.on);
+      if mine && life >= 0 && was.life >= 0 {
+        if life < was.life { watch_pop(s, head, was.life - life, false); }
+        if life > was.life { watch_pop_heal(s, head, life - was.life); }
+      }
+    }
+    s[0].st_seen[j] = StSeen.{on = true, cond = c, life = life};
+  }
+}
+// Slot j's Hit Points and temporary ones as the room has them (-1 not known): you from your player
+// row, a seat from theirs.
+st_life :: (s: [] Everglade, j: int) -> int {
+  if !net_live(s) { return -1; }
+  n := net_of(s);
+  seat := ifx j == 0 then n[0].seat else j - 1;
+  k := net_ent(n, seat, false);
+  if k < 0 || n[0].ents[k].kind != WK_PLAYER { return -1; }
+  return n[0].ents[k].hp + n[0].ents[k].p2;
+}
+// The words for the bits that just landed, the most telling first, two at most.
+st_pop_words :: (s: [] Everglade, at: Point, bits: int) {
+  if bits == 0 { return; }
+  k := 0;
+  order := [9] int.[WC_UNCONSCIOUS, WC_PARALYZED, WC_BOUND, WC_RESTRAINED, WC_STUNNED, WC_PRONE, 16, WC_SLOWED, WC_HALTED];
+  word := [9] int.[POP_DOWN, POP_HELD, POP_ROOTED, POP_RESTRAINED, POP_STUNNED, POP_PRONE, POP_FRIGHTENED, POP_SLOWED, POP_HALTED];
+  for q: 0..<9 {
+    if (bits & order[q]) == 0 || k >= 2 { continue; }
+    if order[q] == WC_PRONE && (bits & WC_UNCONSCIOUS) != 0 { continue; }   // down says it
+    watch_pop_word(s, at, word[q], k);
+    k += 1;
+  }
+}
+
 // The strongest of what holds a body, in this order, is the one word over its head.
 ST_WORD_BITS :: [7] int.[WC_UNCONSCIOUS, WC_PARALYZED, WC_STUNNED, WC_BOUND, WC_RESTRAINED, WC_PRONE, 16];
 ST_WORD_POP :: [7] int.[POP_DOWN, POP_HELD, POP_STUNNED, POP_ROOTED, POP_RESTRAINED, POP_PRONE, POP_FRIGHTENED];
