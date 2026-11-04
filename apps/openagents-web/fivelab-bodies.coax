@@ -179,7 +179,7 @@ BdCam :: struct { ex: f32; ey: f32; ez: f32; fx: f32; fy: f32; fz: f32; rx: f32;
 
 Bodies :: struct {
   ready: bool;              // the catalog named every part
-  part_first: [16] int; part_count: [16] int; part_word: [16] int;
+  part_first: [PEOPLE_PARTS] int; part_count: [PEOPLE_PARTS] int; part_word: [PEOPLE_PARTS] int;
   slot: [BD_SLOTS] BdAnim;
   top: int;                 // 1 + the highest slot put since the last fresh start: the loops stop there
   corpse: [BD_CORPSES] BdAnim; corpse_at: int;
@@ -406,10 +406,10 @@ bd_build :: (b: [] Bodies, c: BdCam, out: [] f32) -> int {
   b[0].draw_n = 0; b[0].shown = 0; b[0].blocks = 0;
   if !b[0].ready { return 0; }
   now := b[0].now;
-  counts: [16] int; total := 0; blocks := 0; block_base := 0; block_used := 0;
+  counts: [PEOPLE_PARTS] int; total := 0; blocks := 0; block_base := 0; block_used := 0;
   // two passes over the figures: count each part's instances, then write them in its run
   for pass: 0..<2 {
-    base: [16] int; used: [16] int;
+    base: [PEOPLE_PARTS] int; used: [PEOPLE_PARTS] int;
     if pass == 1 {
       at := 0;
       for k: 0..<PEOPLE_PARTS { base[k] = at; at += counts[k]; used[k] = 0; }
