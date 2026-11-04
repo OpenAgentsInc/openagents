@@ -1,8 +1,9 @@
 # Aethyr and Verse: MMO architecture gap analysis
 
 Date: 2026-11-04. Source snapshot:
-[`eeeea52fac0d55ba7ee022d3e1f8304c2c3ac434`](https://github.com/OpenAgentsInc/openagents/tree/eeeea52fac0d55ba7ee022d3e1f8304c2c3ac434).
-GitHub issue states were read on 2026-11-04, around 16:25 UTC.
+[`3370a41ddc0c5e957c6eef4c548e5484d0b4966b`](https://github.com/OpenAgentsInc/openagents/tree/3370a41ddc0c5e957c6eef4c548e5484d0b4966b).
+GitHub issue states were read on 2026-11-04, around 16:25 UTC; #12776,
+#12778 and #12789 were rechecked around 16:35 UTC.
 
 ## Assessment
 
@@ -16,8 +17,8 @@ whose offline and remote hosts play the same game.
 
 The largest remaining gaps are integration and distributed correctness:
 
-1. Complete the single simulation and presentation path, including
-   interactions and status effects. Make the gameplay drift gate mandatory
+1. Complete the single simulation and presentation path, including the
+   remaining interactions. Make the gameplay drift gate mandatory
    once its remaining failures are resolved.
 2. Enforce interest and visibility in every live output path. The interest
    module exists, but the current sender does not use its picks.
@@ -50,6 +51,11 @@ The networking chapters 86–101 and the relevant core, world, Forge and
 shipping chapters supply the architectural detail. Their claims were checked
 against the implementation paths cited below, the multiplayer specification,
 the launch runbook, and issue bodies and discussions.
+
+The initial review used `eeeea52fac`. Movement and status changes that
+arrived during the review were inspected through `3370a41ddc` and are
+included below; the book registry and chapter prose did not change between
+those snapshots.
 
 This is a source and evidence review. It does not claim a fresh production
 load test, deployment, failure-injection run or hardware qualification.
@@ -146,7 +152,8 @@ after that baseline. Reusing its gap table unchanged would misdirect work.
 | Version check, chapters 88/98 | `WIRE_VERSION` exists but is never checked. | The hello version is checked; incompatible pages are refused; new pages reload once. [#12788 is closed](https://github.com/OpenAgentsInc/openagents/issues/12788). This is rejection and recovery, not a dual-version rolling upgrade. |
 | Diagnostics, chapter 99 | Queue age, message bytes, join bursts and ACK timing are missing. | `b35943120f` adds room vitals and an admin view. [#12791 is closed](https://github.com/OpenAgentsInc/openagents/issues/12791#issuecomment-6634588227). Some counters still approximate the old relevance rule. |
 | Interest, chapter 97 | No shared indexed interest implementation. | `room-interest.coax` and block plumbing exist (`b4826d83b2`, `aa9b488b2c`). The live `wire_seat_frame` still uses its own distance/all test. [#12789 remains open](https://github.com/OpenAgentsInc/openagents/issues/12789). |
-| Effects, chapter 94 | No effect start/duration on the wire. | Effect rows and `net_effects` exist. `st_fill_room` still fills status from player condition bits and does not call `net_effects`; presentation adoption remains under #12776. |
+| Effects, chapter 94 | No effect start/duration on the wire. | Effect rows and `net_effects` exist. `3370a41ddc` wires them into `st_fill_room`, including named causes and seconds left. Broader source/branch convergence remains under open #12776. |
+| Movement timing, chapters 89–90 | One input credit per tick, with separate credit for skipped host ticks. | `d14d704b62` credits elapsed server time, `fa1fecdcb9` bounds inputs beyond earned steps, and `3370a41ddc` puts heading in 0.1 mrad units. Current full-raid latency qualification remains separate. |
 | Offline host, chapter 95 | Local worker host planned. | Still absent at the reviewed commit. A cross-issue comment describes a worker integration, but its named files are not in this source snapshot. #12784 remains open. |
 | River, chapter 87 and host header | Swimming is described as not server-owned. | `room-world.c::world_step` now handles per-seat swimming; boats remain separate. Inspect the body and current tests before treating a header comment as a gap. |
 | Raid stables | Previous drift runs saw no room collapse. | The snapshot includes `eeeea52fac`, which changes the siege collapse. The previous failed drift result is historical; full current drift acceptance still needs its own evidence. |
@@ -199,8 +206,9 @@ correctly requires shared code and world data. The actual movement helpers
 are shared, but the page still owns offline gameplay and switches sources
 feature by feature. `eg_heard` refuses talk, door, boat and board interactions
 as `unbuilt`; server-owned swimming already exists and should be preserved.
-The status fill still omits effect cause/duration even though v3 carries
-them. These are concrete examples of integration lag behind the wire.
+The status fill now reads effect cause/duration from v3, closing that
+particular adoption gap in `3370a41ddc`. The remaining two-source structure
+still makes each new feature an integration risk.
 
 The [reopened epic](https://github.com/OpenAgentsInc/openagents/issues/12718#issuecomment-6630316736)
 records why isolated feature checks were insufficient: the room had working
@@ -491,16 +499,20 @@ compares presentation under shaped networks. Preserve that investment.
 Current evidence also shows why one fast server number is insufficient.
 The [#12791 raid record](https://github.com/OpenAgentsInc/openagents/issues/12791#issuecomment-6634588227)
 reports a 16-player local fight at tick p95 about 1.5 ms, but input-to-ACK
-p95 grew to about 528 ms as the input queue filled. A follow-up comment
-describes clock-credit work; the reviewed `rm_eg_begin` still credits one
-step per tick and `rm_eg_owe` handles host stalls. Do not treat that planned
-change as a measured fix at this snapshot.
+p95 grew to about 528 ms as the input queue filled. That is a historical
+failure: `d14d704b62` replaces per-tick credit and `rm_eg_owe` with elapsed
+monotonic-time credit, retaining the bank and per-tick execution caps.
+`fa1fecdcb9` keeps at most four additional inputs beyond earned credit and
+counts dropped excess. The movement commit records a limited walk trace
+with prediction error at most 9 mm; it does not establish a fresh full-raid
+ACK-latency result.
 
 The room tick is 30 Hz while core walking uses its own fixed 1/64-second
 profile. The engine must state how movement substeps, input upload, combat,
 replication, AI, visual drawing and persistence relate; they do not need
-one universal rate. Test elapsed-time credit, input expiry/coalescing,
-quantized heading and physical time together. Simply executing faster client
+one universal rate. Preserve and qualify the new elapsed-time credit,
+excess-input policy, finer heading quantization and physical time together
+under mixed combat, clock skew and stalls. Simply executing faster client
 input rates would create a speed advantage.
 
 For capacity, publish a curve over seats, rooms, raiders, pets, persistent
@@ -635,7 +647,7 @@ create, close or edit any issue.
 | Issue | Scope and current assessment | Gap |
 | --- | --- | --- |
 | [#12718](https://github.com/OpenAgentsInc/openagents/issues/12718) | Reopened multiplayer umbrella. Individual issue state and current evidence supersede stale child checkboxes. | G1–G10 |
-| [#12776](https://github.com/OpenAgentsInc/openagents/issues/12776) | One presentation state. Shared status filler exists; effect cause/duration consumption and full adoption remain. | G1, G3 |
+| [#12776](https://github.com/OpenAgentsInc/openagents/issues/12776) | One presentation state. Status now consumes effect cause/duration; broader path convergence and branch removal remain. | G1, G3 |
 | [#12778](https://github.com/OpenAgentsInc/openagents/issues/12778) | Drift harness exists; complete all-profile acceptance and mandatory gating remain. | G1, G8, G9 |
 | [#12784](https://github.com/OpenAgentsInc/openagents/issues/12784) | Same server in an offline worker; named worker/tick files absent at reviewed commit. | G1, G10 |
 | [#12789](https://github.com/OpenAgentsInc/openagents/issues/12789) | Indexed interest module and block inputs exist; sender adoption/raw-wire proof remain. | G2, G3 |
@@ -691,7 +703,7 @@ The document's 20 local links and anchors, fenced-block balance and final
 newline were checked. No product code or book status was changed, and no
 production test or deploy was run for this review.
 
-The required `coax/web/tool.sh tools-check` ran against the reviewed tree
+The required `coax/web/tool.sh tools-check` ran at `eeeea52fac`
 and reported 20 existing tracked tools without a `Firm reason:` header or
 port-list entry. They include `coax/web/api/test_room_stats.py`,
 `coax/web/room/cast-proof.sh`, `coax/web/room/local.sh` and the
