@@ -15,7 +15,7 @@ Nostr's cryptography is Bitcoin's, so the chapters that built it (Nostr
 chapters 1–13, 15 and 18) moved here on 2026-11-02, and the Nostr book starts
 after this book's Parts I–V.
 
-96 of the book's 125 chapters are implemented and 5 are partly implemented;
+97 of the book's 125 chapters are implemented and 5 are partly implemented;
 the [status table](book/README.md#status) lists them.
 
 Chapters [58](book/ch058-connect-and-disconnect-a-block.md) and

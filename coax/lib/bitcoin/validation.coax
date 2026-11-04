@@ -1,0 +1,299 @@
+// Bitcoin chapter 57. Full script execution, with no assumevalid shortcut.
+// The tree must come from bi_accept_header_vartime. The coin workspace is
+// private: discard it after ANY refusal. Nothing here publishes a tip.
+#run_steps 250000000;
+#load "blockindex.coax";
+#load "witness.coax";
+#load "subsidy.coax";
+#load "scriptflags.coax";
+#load "kvstore.coax";
+#authority;
+
+// book:begin types
+VALIDATE_OK :: 0; VALIDATE_CONTEXT :: 1; VALIDATE_CAPACITY :: 2;
+VALIDATE_BLOCK :: 3; VALIDATE_TX :: 4; VALIDATE_WITNESS :: 5;
+VALIDATE_SUBSIDY :: 6; VALIDATE_BIP30 :: 7; VALIDATE_SCRIPT :: 8;
+VALIDATE_SIGNET :: 9;
+ValidationResult :: struct {
+  code: int; detail: int; tx: int; input: int;
+  fees: int; sigops: int; used: int;
+}
+ValidationWork :: struct {
+  ins: [] TxIn; outs: [] TxOut; items: [] TxItem;
+  ids: [] u8; wids: [] u8; merkle: [] u8;
+  coins: [] TxcCoin; spent: [] ScriptSpent; sigops: [] SigopSpent;
+  heights: [] int; times: [] int; scripts: [] u8;
+  script: [] ScriptWork; batch: [] u8;
+  signet_ids: [] u8; signet_scratch: [] u8;
+}
+// Coin workspace v1: key 'C' + wire txid + uint32 LE output index;
+// value int64 LE satoshis + uint32 LE height + one coinbase byte + script.
+// This is a memory format, not Core's compressed chainstate disk format.
+VALIDATION_COIN_HEAD :: 13;
+// book:end types
+
+// Checks precede implementation. The native oracle also exercises the
+// entire entry point against Core-built blocks and independent coins.
+#test "validation: coin records distinguish absence and corrupt local state" {
+  raw: [14] u8; raw[13] = OP_1;
+  c := validation_coin_vartime(raw[..], 1);
+  #assert c.found && c.value == 0 && c.height == 0 && !c.coinbase;
+  raw[12] = 1; #assert validation_coin_vartime(raw[..], 1).coinbase;
+  raw[12] = 2; #assert !validation_coin_valid(raw[..], 1);
+  raw[12] = 0; kv_put32(raw[..], 8, 2);
+  #assert !validation_coin_valid(raw[..], 1);
+  kv_put32(raw[..], 8, 1); #assert validation_coin_valid(raw[..], 1);
+  #assert !validation_coin_valid(raw[0..<12], 1);
+  #assert !validation_coin_vartime(raw[0..<0], 1).found;
+  large: [10014] u8;
+  #assert validation_coin_valid(large[0..<13], 0);
+  #assert validation_coin_valid(large[0..<10013], 0) && !validation_coin_valid(large[..], 0);
+  #assert !validation_coin_valid(large[0..<13], -1);
+  kv_put64(large[..], 0, 123456789); kv_put32(large[..], 8, 7); large[12] = 1;
+  c = validation_coin_vartime(large[0..<13], 7);
+  #assert c.found && c.value == 123456789 && c.height == 7 && c.coinbase;
+}
+#test "validation: work capacity accounts for every input and interpreter" {
+  w: ValidationWork;
+  #assert !validation_work_fits(w, 0);
+  sw: [1] ScriptWork; w.script = sw[..];
+  #assert validation_work_fits(w, 0) && !validation_work_fits(w, 1);
+  coins: [1] TxcCoin; spent: [1] ScriptSpent; ops: [1] SigopSpent;
+  heights: [1] int; times: [1] int;
+  w.coins = coins[..]; w.spent = spent[..]; w.sigops = ops[..];
+  w.heights = heights[..]; w.times = times[..];
+  #assert validation_work_fits(w, 1) && !validation_work_fits(w, 2);
+  #assert !validation_work_fits(w, -1);
+  w.coins = coins[0..<0]; #assert !validation_work_fits(w, 1); w.coins = coins[..];
+  w.spent = spent[0..<0]; #assert !validation_work_fits(w, 1); w.spent = spent[..];
+  w.sigops = ops[0..<0]; #assert !validation_work_fits(w, 1); w.sigops = ops[..];
+  w.heights = heights[0..<0]; #assert !validation_work_fits(w, 1); w.heights = heights[..];
+  w.times = times[0..<0]; #assert !validation_work_fits(w, 1);
+}
+#test "validation: reject reasons preserve the underlying rule" {
+  r := ValidationResult.{code=VALIDATE_BLOCK, detail=BLOCK_TX};
+  #assert validation_reason(r) == "bad transaction";
+  r.code = VALIDATE_TX; r.detail = TXC_MISSING;
+  #assert validation_reason(r) == "bad-txns-inputs-missingorspent";
+  r.code = VALIDATE_BIP30; #assert validation_reason(r) == "bad-txns-BIP30";
+  r.code = VALIDATE_SCRIPT; #assert validation_reason(r) == "block-script-verify-flag-failed";
+  r.code = VALIDATE_OK; #assert validation_reason(r) == "ok";
+  r.code = VALIDATE_CONTEXT; #assert validation_reason(r) == "bad context";
+  r.code = VALIDATE_CAPACITY; #assert validation_reason(r) == "capacity";
+  r.code = VALIDATE_SIGNET; #assert validation_reason(r) == "bad-signet-blksig";
+  r.code = VALIDATE_SUBSIDY; r.detail = SUBSIDY_CB_AMOUNT; #assert validation_reason(r) == "bad-cb-amount";
+  r.code = VALIDATE_WITNESS; r.detail = WITNESS_NONCE_SIZE; #assert validation_reason(r) == "bad-witness-nonce-size";
+  r.detail = WITNESS_MERKLE_MATCH; #assert validation_reason(r) == "bad-witness-merkle-match";
+  r.detail = WITNESS_UNEXPECTED; #assert validation_reason(r) == "unexpected-witness";
+}
+#test "validation: workspace keys use every txid byte and LE output index" {
+  id: [32] u8; for k: 0..<32 { id[k] = cast(u8) (k+1); }
+  key: [37] u8; validation_key(key[..], id[..], 0x12345678);
+  #assert key[0] == 'C' && key[33] == 0x78 && key[34] == 0x56 && key[35] == 0x34 && key[36] == 0x12;
+  for k: 0..<32 { #assert key[k+1] == cast(u8) (k+1); }
+}
+#test "validation: entry indices, input extent and used length are bounded" {
+  tree: [1] BlockTree; table: [80] u8; b: [81] u8; w: ValidationWork;
+  tree[0].count = 1;
+  #assert validation_block_vartime(tree[0..<0], 0, b[..], table[..], 0, w).code == VALIDATE_CONTEXT;
+  #assert validation_block_vartime(tree[..], -1, b[..], table[..], 0, w).code == VALIDATE_CONTEXT;
+  #assert validation_block_vartime(tree[..], 1, b[..], table[..], 0, w).code == VALIDATE_CONTEXT;
+  #assert validation_block_vartime(tree[..], 0, b[0..<80], table[..], 0, w).code == VALIDATE_CONTEXT;
+  #assert validation_block_vartime(tree[..], 0, b[..], table[..], -1, w).code == VALIDATE_CONTEXT;
+  #assert validation_block_vartime(tree[..], 0, b[..], table[..], 81, w).code == VALIDATE_CONTEXT;
+  #assert validation_block_vartime(tree[..], 0, b[..], table[..], 80, w).code == VALIDATE_CAPACITY;
+}
+#load "../../tests/bitcoin/validation_checks.coax";
+
+validation_coin_valid :: (v: [] u8, height: int) -> bool {
+  return v.count >= VALIDATION_COIN_HEAD && v.count <= VALIDATION_COIN_HEAD + SCRIPT_MAX_SIZE && v[12] <= 1 && kv_get32(v, 8) <= height;
+}
+validation_coin_vartime :: (v: [] u8, height: int) -> TxcCoin {
+  if !validation_coin_valid(v, height) { return TxcCoin.{}; }
+  return TxcCoin.{found=true, value=tx_le_vartime(v, 0, 8), height=kv_get32(v, 8), coinbase=v[12] == 1};
+}
+validation_work_fits :: (w: ValidationWork, n: int) -> bool {
+  return n >= 0 && w.script.count >= 1 && w.coins.count >= n && w.spent.count >= n && w.sigops.count >= n && w.heights.count >= n && w.times.count >= n;
+}
+validation_value_vartime :: (table: [] u8, used: int, key: [] u8) -> [] u8 {
+  f := kv_find_vartime(table, used, key);
+  if !f.found { return table[0..<0]; }
+  at := f.at + KV_ENTRY_HEAD + kv_get16(table, f.at);
+  return table[at..<at+kv_get32(table, f.at+2)];
+}
+validation_key :: (key: [] u8, id: [] u8, n: int) {
+  // Consume the first 32 bytes; callers may pass the remaining txid arena.
+  key[0] = 'C'; for k: 0..<32 { key[1+k] = id[k]; } kv_put32(key, 33, n);
+}
+validation_reason :: (r: ValidationResult) -> string {
+  if r.code == VALIDATE_OK { return "ok"; }
+  if r.code == VALIDATE_BLOCK { return BLOCK_REASONS[r.detail]; }
+  if r.code == VALIDATE_TX { return TXC_REASONS[r.detail]; }
+  if r.code == VALIDATE_SUBSIDY { return SUBSIDY_REASONS[r.detail]; }
+  if r.code == VALIDATE_BIP30 { return "bad-txns-BIP30"; }
+  if r.code == VALIDATE_SCRIPT { return "block-script-verify-flag-failed"; }
+  if r.code == VALIDATE_SIGNET { return "bad-signet-blksig"; }
+  if r.code == VALIDATE_WITNESS {
+    if r.detail == WITNESS_NONCE_SIZE { return "bad-witness-nonce-size"; }
+    if r.detail == WITNESS_MERKLE_MATCH { return "bad-witness-merkle-match"; }
+    return "unexpected-witness";
+  }
+  if r.code == VALIDATE_CAPACITY { return "capacity"; }
+  return "bad context";
+}
+
+// book:begin validate
+// Entry i is an admitted header in tree; table is the exact UTXO view of
+// its parent, in private caller-owned storage. The entire scratch state is
+// disposable on refusal (including capacity/context refusals). All views
+// are live and disjoint. The caller alone commits a successful result.
+// This function neither upgrades the block index nor publishes a tip.
+validation_block_vartime :: (tree: [] BlockTree, i: int, b: [] u8, table: [] u8, used: int, w: ValidationWork) -> ValidationResult {
+  r := ValidationResult.{tx=-1, input=-1, used=used};
+  if tree.count != 1 || i < 0 || i >= tree[0].count || b.count < 81 || used < 0 || used > table.count { r.code = VALIDATE_CONTEXT; return r; }
+  if !validation_work_fits(w, 0) { r.code = VALIDATE_CAPACITY; return r; }
+  e := tree[0].e; l := tree[0].l; p := tree[0].p; height := l[i].height;
+  hash: [32] u8; #assert pow_block_hash_vartime(b[0..<80], hash[..]) == POW_OK;
+  if !bi_is_valid(e[i].status, BLOCK_VALID_TREE) || !bi_same(hash[..], e[i].hash[..]) { r.code = VALIDATE_CONTEXT; return r; }
+  // Decode before consensus checks, as Core's serialized-block boundary
+  // does. Once decoded, CheckBlock runs signet's challenge BEFORE the
+  // transaction Merkle root. A changed body can fail both rules.
+  if p.signet {
+    shape := witness_walk_vartime(b, w.ins, w.outs, w.items, w.ids, w.wids);
+    if shape.code != WITNESS_OK {
+      r.code = VALIDATE_BLOCK; r.detail = BLOCK_BAD;
+      if shape.code == WITNESS_CAPACITY { r.code = VALIDATE_CAPACITY; r.detail = BLOCK_CAPACITY; }
+      return r;
+    }
+    s := chain_signet_check_vartime(p, b, w.ins, w.outs, w.items, w.signet_ids, w.signet_scratch, w.script);
+    if s.code != SIGNET_OK { r.code = ifx s.code == SIGNET_CAPACITY then VALIDATE_CAPACITY else VALIDATE_SIGNET; r.detail = s.error; return r; }
+  }
+  check := block_check_vartime(b, w.ins, w.outs, w.items, w.ids, w.wids, w.merkle);
+  if check.code != BLOCK_OK {
+    r.code = VALIDATE_BLOCK; r.detail = check.code; r.tx = check.tx;
+    if check.code == BLOCK_TX { r.code = VALIDATE_TX; r.detail = check.tx_code; }
+    if check.code == BLOCK_CAPACITY { r.code = VALIDATE_CAPACITY; }
+    return r;
+  }
+  // Core does not insert the genesis coinbase in the UTXO set.
+  if height == 0 {
+    if !chain_hash_is_vartime(hash[..], p.genesis.hash) { r.code = VALIDATE_CONTEXT; }
+    return r;
+  }
+  return validation_contextual_vartime(tree, i, b, table, used, w, check);
+}
+// Internal stage: CheckBlock and the admitted header have already passed.
+// Keeping the measured BlockCheck explicit lets the boundary checks model
+// 4,000,000 and 4,000,001 without building a multi-megabyte compile-time
+// fixture. A node always enters through validation_block_vartime above.
+validation_contextual_vartime :: (tree: [] BlockTree, i: int, b: [] u8, table: [] u8, used: int, w: ValidationWork, check: BlockCheck) -> ValidationResult {
+  r := ValidationResult.{tx=-1, input=-1, used=used};
+  e := tree[0].e; l := tree[0].l; p := tree[0].p; height := l[i].height;
+  hash := e[i].hash[..];
+  parent := l[i].prev;
+  if parent < 0 || parent >= tree[0].count || l[parent].height != height - 1 || !bi_same(b[4..<b.count], e[parent].hash[..]) { r.code = VALIDATE_CONTEXT; return r; }
+  mtp := bi_median_time_past(l, e, parent);
+  start := tx_compact_read_vartime(b, 80).next; at := start;
+  // ContextualCheckBlock runs finality and BIP34 before witness/weight.
+  for n: 0..<check.count {
+    raw := b[at..<b.count]; t := tx_parse_vartime(raw, true, w.ins, w.outs, w.items);
+    code := txcheck_final_vartime(p, raw, t, w.ins, height, mtp, cast(int) e[i].time);
+    if code != TXC_OK { r.code = VALIDATE_TX; r.detail = code; r.tx = n; return r; }
+    at += t.total;
+  }
+  cb := tx_parse_vartime(b[start..<b.count], true, w.ins, w.outs, w.items);
+  cbcode := subsidy_height_check_vartime(p, b[start..<b.count], cb, w.ins, height);
+  if cbcode != SUBSIDY_OK { r.code = VALIDATE_SUBSIDY; r.detail = cbcode; r.tx = 0; return r; }
+  witness := witness_check_vartime(b, chain_deployment_active(p, DEP_SEGWIT, height), w.ins, w.outs, w.items, w.wids, w.merkle);
+  if witness.code != WITNESS_OK { r.code = ifx witness.code == WITNESS_CAPACITY then VALIDATE_CAPACITY else VALIDATE_WITNESS; r.detail = witness.code; return r; }
+  if block_weight_check_vartime(check) != BLOCK_OK { r.code = VALIDATE_BLOCK; r.detail = BLOCK_WEIGHT; return r; }
+  flags := scriptflags_vartime(p, height, hash[..]);
+  // The selector's sole error sentinel is -1; a zero mask is valid for
+  // the historical BIP16 exception.
+  if flags == -1 { r.code = VALIDATE_CONTEXT; return r; }
+  anchor: [] u8;
+  ai := bi_ancestor(l, parent, p.bip34_height);
+  if ai >= 0 { anchor = e[ai].hash[..]; }
+  bip30 := scriptflags_bip30_vartime(p, height, hash[..], anchor);
+  // The preceding flag selection checked the shared context, and anchor
+  // is either empty or exactly one stored hash. BIP30 now returns 0 or 1.
+  // Check every output against the PRE-block view, even one that would
+  // be spent by an earlier transaction in this block (BIP30).
+  key: [37] u8;
+  if bip30 == 1 {
+    at = start;
+    for n: 0..<check.count {
+      raw := b[at..<b.count]; t := tx_parse_vartime(raw, true, w.ins, w.outs, w.items);
+      for j: 0..<t.nout {
+        validation_key(key[..], w.ids[32*n..<w.ids.count], j);
+        if kv_find_vartime(table, used, key[..]).found { r.code = VALIDATE_BIP30; r.tx = n; return r; }
+      }
+      at += t.total;
+    }
+  }
+  at = start;
+  for n: 0..<check.count {
+    remaining := b[at..<b.count]; t := tx_parse_vartime(remaining, true, w.ins, w.outs, w.items); raw := remaining[0..<t.total];
+    count := ifx n == 0 then 0 else t.nin;
+    if !validation_work_fits(w, count) { r.code = VALIDATE_CAPACITY; r.tx = n; return r; }
+    sn := 0;
+    for j: 0..<count {
+      key[0] = 'C'; for k: 0..<36 { key[1+k] = raw[w.ins[j].outpoint+k]; }
+      v := validation_value_vartime(table, r.used, key[..]);
+      if v.count != 0 && !validation_coin_valid(v, height) { r.code = VALIDATE_CONTEXT; r.tx = n; r.input = j; return r; }
+      w.coins[j] = validation_coin_vartime(v, height);
+      if !w.coins[j].found { r.code = VALIDATE_TX; r.detail = TXC_MISSING; r.tx = n; r.input = j; return r; }
+      spk := v[VALIDATION_COIN_HEAD..<v.count];
+      if spk.count > w.scripts.count - sn { r.code = VALIDATE_CAPACITY; r.tx = n; return r; }
+      for k: 0..<spk.count { w.scripts[sn+k] = spk[k]; }
+      w.spent[j] = ScriptSpent.{amount=w.coins[j].value, spk=spk};
+      w.sigops[j] = SigopSpent.{value=w.coins[j].value, script=sn, script_n=spk.count}; sn += spk.count;
+      w.heights[j] = w.coins[j].height;
+      prior := bi_ancestor(l, parent, lt_max(0, w.coins[j].height - 1));
+      // A coin's checked height is at most this block's; its predecessor
+      // therefore exists in the admitted parent's connected header tree.
+      #assert prior >= 0;
+      w.times[j] = bi_median_time_past(l, e, prior);
+    }
+    if n != 0 {
+      inputs := txcheck_inputs_vartime(raw, t, w.outs, w.coins[0..<count], height);
+      if inputs.code != TXC_OK { r.code = VALIDATE_TX; r.detail = inputs.code; r.tx = n; return r; }
+      fees := subsidy_add_fee_vartime(r.fees, inputs.fee);
+      if fees < 0 { r.code = VALIDATE_SUBSIDY; r.detail = SUBSIDY_FEE_RANGE; r.tx = n; return r; } r.fees = fees;
+      locks := locktime_sequence_locks_vartime(raw, t, w.ins, chain_deployment_active(p, DEP_CSV, height), w.heights[0..<count], w.times[0..<count]);
+      if !locktime_sequence_ok_vartime(locks, height, mtp) { r.code = VALIDATE_TX; r.detail = TXC_NONFINAL; r.tx = n; return r; }
+    }
+    r.sigops += sigop_cost_vartime(raw, t, w.ins, w.outs, w.items, w.scripts[0..<sn], w.sigops[0..<count], flags);
+    if r.sigops > BLOCK_MAX_SIGOPS_COST { r.code = VALIDATE_BLOCK; r.detail = BLOCK_SIGOPS; r.tx = n; return r; }
+    for j: 0..<count {
+      spend := ScriptSpend.{b=raw, t=t, ins=w.ins, outs=w.outs, items=w.items, index=j, amount=w.spent[j].amount, spk=w.spent[j].spk, spent=w.spent[0..<count]};
+      error := script_verify_vartime(spend, flags, w.script);
+      if error != SCRIPT_ERR_OK { r.code = VALIDATE_SCRIPT; r.detail = error; r.tx = n; r.input = j; return r; }
+    }
+    // Only now change the workspace. Until then all spent scripts are
+    // borrowed from a stable table, including Taproot's OTHER inputs.
+    for j: 0..<count {
+      for k: 0..<36 { key[1+k] = raw[w.ins[j].outpoint+k]; }
+      r.used = kv_delete_vartime(table, r.used, key[..]);
+    }
+    for j: 0..<t.nout {
+      o := w.outs[j]; spk := raw[o.script..<o.script+o.script_n];
+      if spk.count > SCRIPT_MAX_SIZE || (spk.count > 0 && spk[0] == OP_RETURN) { continue; }
+      validation_key(key[..], w.ids[32*n..<w.ids.count], j);
+      value: [VALIDATION_COIN_HEAD + SCRIPT_MAX_SIZE] u8;
+      kv_put64(value[..], 0, cast(u64) tx_le_vartime(raw, o.value, 8));
+      kv_put32(value[..], 8, height); value[12] = ifx n == 0 then 1 else 0;
+      for k: 0..<spk.count { value[VALIDATION_COIN_HEAD+k] = spk[k]; }
+      next := kv_set_vartime(table, r.used, key[..], value[0..<VALIDATION_COIN_HEAD+spk.count]);
+      // The key and value bounds above are valid by construction. With
+      // a checked table, the setter's only possible refusal is KV_FULL.
+      if next == -KV_FULL { r.code = VALIDATE_CAPACITY; r.tx = n; return r; } r.used = next;
+    }
+    at += t.total;
+  }
+  cb = tx_parse_vartime(b[start..<b.count], true, w.ins, w.outs, w.items);
+  cbcode = subsidy_amount_check_vartime(p, b[start..<b.count], cb, w.ins, w.outs, height, r.fees);
+  if cbcode != SUBSIDY_OK { r.code = VALIDATE_SUBSIDY; r.detail = cbcode; r.tx = 0; }
+  return r;
+}
+// book:end validate

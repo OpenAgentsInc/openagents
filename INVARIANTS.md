@@ -175,6 +175,21 @@ tracking, never full consensus validation or authority for money. Evidence:
 chapters 58/60's partial profiles, mutation checks, and `lightchain.py`'s
 independent native UTXO/MuHash, physical-cut and real Coax file-tool journeys.
 
+## Bitcoin block validation changes only private coins
+
+`coax/lib/bitcoin/validation.coax` requires chapter 59's admitted header tree
+and an exact parent UTXO view. It runs every script with the block's consensus
+flags, keeps all input scripts stable through each transaction, checks BIP-30
+against the pre-block view and makes earlier outputs available to later
+transactions. Signet's challenge precedes the transaction Merkle-root check.
+Any refusal poisons scratch: discard it. Success publishes no durable tip,
+undo, validity level or profile upgrade. The existing light state remains
+proof-of-work-only; validated publication belongs to chapter 58.
+Chapter 57's rule table, 13 historical fixtures, 35 live Core regtest verdicts,
+four testnet4/signet comparisons, native/sanitizer coin comparisons and all
+425 root mutations qualify this boundary. Independently supplied historical
+parent context is not evidence of an own-node sync or money admission.
+
 ## Bitcoin block script rules keep their hash and ancestry context
 
 `coax/lib/bitcoin/scriptflags.coax` selects pinned Core's block script mask:
@@ -201,8 +216,8 @@ physical truncation or entirely zero preallocation, never authenticates block
 contents or undo bodies, and refuses malformed nonzero framing without
 authorizing truncation. The Coax file tool publishes an append position only
 after storage sync and truncates only a reported recoverable tail. It assumes
-no concurrent writer, rename, unlink or key change. Block validation, undo
-construction and chainstate commit order remain later chapters. Evidence:
+no concurrent writer, rename, unlink or key change. Chapter 57 validates block bodies against an admitted header and the exact
+parent coins. Undo construction and chainstate commit order remain chapter 58. Evidence:
 chapter 61, its mutation checks and `coax/tests/bitcoin/blockfiles.py` against
 Python, captured Core records and real files under ASan/UBSan.
 

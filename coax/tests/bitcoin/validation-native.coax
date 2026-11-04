@@ -1,0 +1,65 @@
+// Thin C ABI for the independent consensus oracle, with owned workspaces.
+#run_steps 250000000;
+#load "../../lib/bitcoin/validation.coax";
+ValidationNative :: struct {
+  tree: [1] BlockTree; links: [1000000] BiLink; entries: [1000000] BiEntry;
+  slots: [2097152] int; chain: [1000000] int;
+  ins: [32768] TxIn; outs: [131072] TxOut; items: [131072] TxItem;
+  ids: [2240000] u8; wids: [2240000] u8; merkle: [2240000] u8;
+  coins: [32768] TxcCoin; spent: [32768] ScriptSpent; ops: [32768] SigopSpent;
+  heights: [32768] int; times: [32768] int; scripts: [8000000] u8;
+  sw: [1] ScriptWork; signet_ids: [6720000] u8; signet_scratch: [4000200] u8;
+}
+validation_native_size :: () -> int #export_c { return size_of(ValidationNative); }
+validation_native_indexed :: (table: [] u8, flat: [] u8) -> int #export_c {
+  seed: [16] u8; used := ks_init(table, seed[..]); at := 0;
+  while at < flat.count {
+    entry := kv_entry_vartime(flat, flat.count, at);
+    if entry.code != KV_OK { return -1; }
+    used = kv_set_vartime(table, used, entry.key, entry.value);
+    if used < 0 { return used; }
+    at = entry.next;
+  }
+  return used;
+}
+validation_native_canonical :: (table: [] u8, used: int, out: [] u8) -> int #export_c {
+  at := 0; n := 0;
+  while at != used {
+    entry := kv_entry_vartime(table, used, at);
+    if entry.code == KV_NOT_FOUND { break; }
+    if entry.code != KV_OK || 6 + entry.key.count + entry.value.count > out.count - n { return -1; }
+    kv_put16(out, n, entry.key.count); kv_put32(out, n+2, entry.value.count); n += 6;
+    n = cp_put(out, n, entry.key); n = cp_put(out, n, entry.value); at = entry.next;
+  }
+  return n;
+}
+// Test-only sparse independently admitted context. Unprovided header fields
+// have no asserted authenticity. The corpus supplies every time/hash that
+// can affect its decision; this is NEVER called by a node or header loader.
+validation_native_fixture :: (d: [] ValidationNative, network: int, height: int, records: [] u8) -> int #export_c {
+  if height < 0 || height >= d[0].links.count || records.count % 84 != 0 { return -1; }
+  d[0].tree[0] = BlockTree.{p=chain_params(network), l=d[0].links[..], e=d[0].entries[..], count=height+1};
+  for h: 0..<height+1 { d[0].links[h] = BiLink.{height=h, prev=h-1, skip=ifx h == 0 then -1 else bi_skip_height(h)}; }
+  for at: 0..<records.count / 84 {
+    h := kv_get32(records, 84*at); raw := records[84*at+4..<84*at+84];
+    if h > height { return -1; }
+    e := pow_header_read_vartime(raw);
+    if e.code != POW_OK { return -1; }
+    d[0].entries[h].time = e.time; d[0].entries[h].status = BLOCK_VALID_TREE;
+    #assert pow_block_hash_vartime(raw, d[0].entries[h].hash[..]) == POW_OK;
+  }
+  return height;
+}
+validation_native_init :: (d: [] ValidationNative, chain: int, headers: [] u8) -> int #export_c {
+  if headers.count % 80 != 0 { return -1; }
+  if !bi_init(d[0].tree[..], chain_params(chain), d[0].links[..], d[0].entries[..], d[0].slots[..], d[0].chain[..]) { return -1; }
+  for at: 0..<headers.count / 80 {
+    r := bi_accept_header_vartime(d[0].tree[..], headers[80*at..<80*at+80], 2000000000);
+    if r.code != BI_OK { return -100-r.code; }
+  }
+  return d[0].tree[0].count;
+}
+validation_native_block :: (d: [] ValidationNative, i: int, block: [] u8, table: [] u8, used: int) -> ValidationResult #export_c {
+  w := ValidationWork.{ins=d[0].ins[..], outs=d[0].outs[..], items=d[0].items[..], ids=d[0].ids[..], wids=d[0].wids[..], merkle=d[0].merkle[..], coins=d[0].coins[..], spent=d[0].spent[..], sigops=d[0].ops[..], heights=d[0].heights[..], times=d[0].times[..], scripts=d[0].scripts[..], script=d[0].sw[..], signet_ids=d[0].signet_ids[..], signet_scratch=d[0].signet_scratch[..]};
+  return validation_block_vartime(d[0].tree[..], i, block, table, used, w);
+}

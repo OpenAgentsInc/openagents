@@ -1,0 +1,322 @@
+{
+ "schema": 1,
+ "source": "isolated Bitcoin Core, peers and wallet disabled",
+ "version": "/Satoshi:32.1.0/",
+ "cases": [
+  {
+   "name": "valid-parent-child",
+   "block": "98d720ff005c5436c123b23d15d2ab49d69488ac146f060bc894198ba2c30955",
+   "hash": "14ad8530a19991fcb6a5fc7f8fc5fb5f59ad39e98dce25f2d04537a315734fe2",
+   "bytes": 279,
+   "verdict": null,
+   "reason": "ok",
+   "fees": 2000
+  },
+  {
+   "name": "missing",
+   "block": "b4c968af16d09c85839d46f44f4d6d83201ec91966f9311ef5bfd9758b95ef8a",
+   "hash": "67ad685fbb7f3c881c5467ae7e9f2d38e911d1fdaf063cd1f8d7fe174adae59b",
+   "bytes": 218,
+   "verdict": "bad-txns-inputs-missingorspent",
+   "reason": "bad-txns-inputs-missingorspent",
+   "fees": null
+  },
+  {
+   "name": "immature",
+   "block": "83c72c2025495ff4c2693fd1aafde2c79d65d52c4869dcaf6bd619ddb197df76",
+   "hash": "197635ae4cc9a92999a7196849bcf663a64cdbee360ccb9f002cea45c156fb0b",
+   "bytes": 218,
+   "verdict": "bad-txns-premature-spend-of-coinbase",
+   "reason": "bad-txns-premature-spend-of-coinbase",
+   "fees": null
+  },
+  {
+   "name": "overspend",
+   "block": "90c66dcd3be0ac684460465c81a6b33919ee18e33d112963400e042d0aaed337",
+   "hash": "2536db279f6056ddfe47a79f362e0cec69f6a61337446d693688a2a29705fbee",
+   "bytes": 218,
+   "verdict": "bad-txns-in-belowout",
+   "reason": "bad-txns-in-belowout",
+   "fees": null
+  },
+  {
+   "name": "double-spend",
+   "block": "05f14953d03e1f1af5463ecdbea222a921dacc66beb1158f607753584373adb9",
+   "hash": "5692a4387de521d71070f8c057b91d40f3236f30c5607e91be4f5bc347413b72",
+   "bytes": 279,
+   "verdict": "bad-txns-inputs-missingorspent",
+   "reason": "bad-txns-inputs-missingorspent",
+   "fees": null
+  },
+  {
+   "name": "duplicate-input",
+   "block": "eddec0109fba0e95989ec01bcf11563b827fcb5419ea0e2d4cf26b08903606a9",
+   "hash": "6122a3e7ed38aa020a0cc27351ed343b3c5bda9e2f6e45736bc9118ad7292b1b",
+   "bytes": 259,
+   "verdict": "bad-txns-inputs-duplicate",
+   "reason": "bad-txns-inputs-duplicate",
+   "fees": null
+  },
+  {
+   "name": "coinbase-overpay",
+   "block": "706fddf83ae8ab92ab14f0a7e09e478aab072dab423bc7cb388feb776316e15a",
+   "hash": "01d17da27aec12b182544be624f57c1142c93913cfe674e5eb2eae9e39092956",
+   "bytes": 206,
+   "verdict": "bad-cb-amount",
+   "reason": "bad-cb-amount",
+   "fees": null
+  },
+  {
+   "name": "coinbase-height",
+   "block": "035115dc7fd02ba2e46f9c9845ee54ccc2a1c9205c263ff8d9b1b17b00454bc8",
+   "hash": "07e71b72666738193594597c936a4ec74481af9bc71fde65c2442301411fe136",
+   "bytes": 144,
+   "verdict": "bad-cb-height",
+   "reason": "bad-cb-height",
+   "fees": null
+  },
+  {
+   "name": "absolute-lock",
+   "block": "8acb365170985e65fafebfe7cc3b3e90b2d4d7a91780a3cad5fe56be86cb4207",
+   "hash": "6a5274a52450e3751ac69f75c9b84984467608a0b12e8c968f967b82cb492906",
+   "bytes": 218,
+   "verdict": "bad-txns-nonfinal",
+   "reason": "bad-txns-nonfinal",
+   "fees": null
+  },
+  {
+   "name": "relative-lock",
+   "block": "f18020138c06d0d0b3f8dd5d8c958dcca021288756395bf3f02d46882696c548",
+   "hash": "7279b890b900cda7498f3182780896b7bfee073067bfb40b6a128b1fcdcff5bf",
+   "bytes": 218,
+   "verdict": "bad-txns-nonfinal",
+   "reason": "bad-txns-nonfinal",
+   "fees": null
+  },
+  {
+   "name": "false-script",
+   "block": "eeb2300706f58a103c44039dea94e71c03dd6a7ca12c5cbaac6f59bd6401a99e",
+   "hash": "3c60300ce9dff38fdac3808513465e88321b9b52ec6e5212c7ff607305f7b7a9",
+   "bytes": 279,
+   "verdict": "block-script-verify-flag-failed (Script evaluated without error but finished with a false/empty top stack element)",
+   "reason": "block-script-verify-flag-failed",
+   "fees": null
+  },
+  {
+   "name": "output-empty",
+   "block": "3a3f06791caad93375c83bd0bf1e9c8bdabc7945a485eb00535c1afd4616e4e1",
+   "hash": "0e1d20c52e2f8f000248cac0fafd94008ef62dd478e55ab081cc0308da75caa5",
+   "bytes": 208,
+   "verdict": "bad-txns-vout-empty",
+   "reason": "bad-txns-vout-empty",
+   "fees": null
+  },
+  {
+   "name": "output-negative",
+   "block": "9030a3d0877cb526e8ab76c62edf58cf31650313f8e77dbfc849927c08d2fc35",
+   "hash": "5e9fc63413256583fa5cf14999e403219350c5b87d2bc45430615c542c105167",
+   "bytes": 218,
+   "verdict": "bad-txns-vout-negative",
+   "reason": "bad-txns-vout-negative",
+   "fees": null
+  },
+  {
+   "name": "output-too-large",
+   "block": "ff2eda86435a00ed4969ebf1706b1c8b4345c81e5cea401f72f45cd02470bdff",
+   "hash": "6770434f2374f0c8499f446ac07998d97e0c2aa13c12d6785d17c12be7a4c871",
+   "bytes": 218,
+   "verdict": "bad-txns-vout-toolarge",
+   "reason": "bad-txns-vout-toolarge",
+   "fees": null
+  },
+  {
+   "name": "output-total",
+   "block": "bdd84450266aff7f398395e6cb08a75dba40fec2fcc194604ff5eae77b087657",
+   "hash": "3ea34b4b72ebac7358b6f4e5b7e23035cbc85f29d10e5097055ac91c4aae6946",
+   "bytes": 228,
+   "verdict": "bad-txns-txouttotal-toolarge",
+   "reason": "bad-txns-txouttotal-toolarge",
+   "fees": null
+  },
+  {
+   "name": "null-prevout",
+   "block": "93cd5c36f44051c2b71e1e9bc2048cd70504d2ed6b908ec8eab0442afcc63561",
+   "hash": "6d36a78c998da3aaa39fe2aa1b00e508dc8f92b7489c31156f3055538a1437c9",
+   "bytes": 259,
+   "verdict": "bad-txns-prevout-null",
+   "reason": "bad-txns-prevout-null",
+   "fees": null
+  },
+  {
+   "name": "coinbase-length-1",
+   "block": "61fd2492cd5783c9088c9be93d7ac151fa1a31c6415809de51678c99ddfc34ab",
+   "hash": "0a3b3c5b31824da2bcea1b38fddfa72336cbec566048146661415debbabaa617",
+   "bytes": 143,
+   "verdict": "bad-cb-length",
+   "reason": "bad-cb-length",
+   "fees": null
+  },
+  {
+   "name": "coinbase-length-101",
+   "block": "2484d639d80f24b3b647544cfb79b76711d50da95deb18b267ea0445aaf2c683",
+   "hash": "05de42b2a6239b60da3c61b5f3957870bd543c8402c0e82e7c1570a29cc9fea1",
+   "bytes": 243,
+   "verdict": "bad-cb-length",
+   "reason": "bad-cb-length",
+   "fees": null
+  },
+  {
+   "name": "multiple-coinbase",
+   "block": "e5d6192c59f5104e57eb2c79771d2473de5c3e9e58f06a3a9405248efedc9931",
+   "hash": "376904899802d2c9b9b1f9c7bd0b13762878dd79f56a19b8188f4d166b1ce8bb",
+   "bytes": 233,
+   "verdict": "bad-cb-multiple",
+   "reason": "bad-cb-multiple",
+   "fees": null
+  },
+  {
+   "name": "no-coinbase",
+   "block": "2cbb98e9bc593c5bc03a87928dc21beedb62f822653a06a1b701a48bc43b22a2",
+   "hash": "100f82a665ed9b4c561b535873e0f20cdbee81c735eac49ab3ea953ca202d0a2",
+   "bytes": 142,
+   "verdict": "bad-cb-missing",
+   "reason": "bad-cb-missing",
+   "fees": null
+  },
+  {
+   "name": "merkle-duplicate",
+   "block": "fa567501b4555bebfd65028f087a0f5b137d0adc6cc98fce4db2de7bc9a917a7",
+   "hash": "32dc9df7104318e6e4a156c75d8dffc031226624f47782f426c3e7a3368076dd",
+   "bytes": 340,
+   "verdict": "bad-txns-duplicate",
+   "reason": "bad-txns-duplicate",
+   "fees": null
+  },
+  {
+   "name": "merkle-root",
+   "block": "8c44c481e94a19c9f179653cc34b5956e295bb6e667be6f2fc4ba6462aebedd4",
+   "hash": "1b3116f9d228cff4ed7b331b6d14f3a65d9fc34baaf3ac6bf14b6217feb67af6",
+   "bytes": 218,
+   "verdict": "bad-txnmrklroot",
+   "reason": "bad-txnmrklroot",
+   "fees": null
+  },
+  {
+   "name": "stripped-size",
+   "block": "12389a60d22e9a46edc67140bed39ddba8809debdd6cf0b82e0c6f04fe9d6ef6",
+   "hash": "45019dfc37b80028718408f4db850df5bed4b08fc30d5eaf4573148aa9c3e711",
+   "bytes": 1000148,
+   "verdict": "bad-blk-length",
+   "reason": "bad-blk-length",
+   "fees": null
+  },
+  {
+   "name": "legacy-sigops-20000",
+   "block": "8c18fcf6526b7926eda0f4f2bfe83d977b7c6107513f93d31f3b7165ff4567ff",
+   "hash": "7449a93eeede505af26948282ddeb21d202e44bdfa24cbb74ef3c3468c2922e8",
+   "bytes": 20146,
+   "verdict": null,
+   "reason": "ok",
+   "fees": 0
+  },
+  {
+   "name": "legacy-sigops-20001",
+   "block": "5bab6e1702c49244185de2ff2b65aad69131a065567d8634828a104492d8b866",
+   "hash": "4a20bc0ef23404ee0963646c04ea9ec1b9f8e0d976719f8bf2bc4a36c610d30c",
+   "bytes": 20147,
+   "verdict": "bad-blk-sigops",
+   "reason": "bad-blk-sigops",
+   "fees": null
+  },
+  {
+   "name": "witness-valid",
+   "block": "7b1d75c2c8f233ec447683e97592d84c2a7bd4560dac6fec0b4f06a99ca3ab42",
+   "hash": "11f2b961d78ce8f9f3b9cf611d995abbcecc0634cd8510475beab3f505455f3d",
+   "bytes": 301,
+   "verdict": null,
+   "reason": "ok",
+   "fees": 1000
+  },
+  {
+   "name": "witness-nonce",
+   "block": "5abf23a0e99faf360a69c8c15bbbc0428c88ef457ad9849a9138cc0ed1869257",
+   "hash": "0da40543783f8e7c330cc38c257172e8dd419f223d4d6a492ade16d0c8392e10",
+   "bytes": 300,
+   "verdict": "bad-witness-nonce-size",
+   "reason": "bad-witness-nonce-size",
+   "fees": null
+  },
+  {
+   "name": "witness-mismatch",
+   "block": "99219ca4a7ca42631eb318617f6056246121870505d2dac6b6066bb2962ed3d7",
+   "hash": "7b03957ebf97f109dfc6fc8c73979ad0781ce48e6fffaefc0eee5d36473e3f9a",
+   "bytes": 301,
+   "verdict": "bad-witness-merkle-match",
+   "reason": "bad-witness-merkle-match",
+   "fees": null
+  },
+  {
+   "name": "witness-unexpected",
+   "block": "fea7c268b7ea99a5bb326e8d17be5fd0e646f6dc99efc03ffd2937c969fed364",
+   "hash": "5e471291f4b553e24b15eefa76317b21713e7c72afed34ae9326403eaf1288a3",
+   "bytes": 254,
+   "verdict": "unexpected-witness",
+   "reason": "unexpected-witness",
+   "fees": null
+  },
+  {
+   "name": "witness-weight",
+   "block": "10b49ca613494ca37a6d06bc04a5f24baf158828a4152294cf51ef54af1f7e72",
+   "hash": "1f9cc5392123b1abbaa0d2d7ab902438c880e56703f45f0a52db80f265709b61",
+   "bytes": 4000309,
+   "verdict": "bad-blk-weight",
+   "reason": "bad-blk-weight",
+   "fees": null
+  },
+  {
+   "name": "header-high-hash",
+   "block": "04577c8f95452d7e4a8d5a8f952c561e3890c0b15cbc4e0feddda4ecf994cffd",
+   "hash": "96f77125ce71a88627efc5dc6ccbb5455575305124b54cd95cb0069557aa721f",
+   "bytes": 157,
+   "verdict": "high-hash",
+   "reason": "high-hash",
+   "fees": null
+  },
+  {
+   "name": "header-bad-version",
+   "block": "e1d571b595817b84e39d43d39c8e58f7d8128c2ae046f81538721d9ffc2aa6b2",
+   "hash": "008879a00771043e251bfa4d24bed9a813b65a7fe48fd3be50ce22199e6144b1",
+   "bytes": 157,
+   "verdict": "bad-version(0x00000003)",
+   "reason": "bad-version",
+   "fees": null
+  },
+  {
+   "name": "header-time-old",
+   "block": "8eb3bf6e5daeaa8ffcc880d045f69d1a984a53f75034d848b7141fec393341d3",
+   "hash": "60e19d21c5c5df919e62b2d515bd1dec2c2072c8fa84b0efcbb51174f407f950",
+   "bytes": 157,
+   "verdict": "time-too-old",
+   "reason": "time-too-old",
+   "fees": null
+  },
+  {
+   "name": "header-time-new",
+   "block": "3437a02e3179346d657376d800248b741b0657c6824794ed151ceb459112b862",
+   "hash": "27e8973d99728e0f1d56779b4e690acc57a0cadcbaa99978bed1d6231164e1e7",
+   "bytes": 157,
+   "verdict": "time-too-new",
+   "reason": "time-too-new",
+   "fees": null
+  },
+  {
+   "name": "header-difficulty",
+   "block": "a6e6fe0d1964cb9d32b29c705e3ff2c910f5b29049aab0f4669e1fc5c0635e66",
+   "hash": "19e87b6226a4c5b013feaf6503d9ee281af21cc808d5b42e7b691ca2e9056f32",
+   "bytes": 157,
+   "verdict": "bad-diffbits",
+   "reason": "bad-diffbits",
+   "fees": null
+  }
+ ]
+}

@@ -1,0 +1,213 @@
+// Bounded synthetic chain/coin models for rules whose real predecessor
+// state is supplied by the historical/native oracle.
+ValidationEdge :: struct {
+  b: [50000] u8; table: [50000] u8;
+  ins: [4] TxIn; outs: [4] TxOut; items: [8] TxItem;
+  ids: [128] u8; wids: [128] u8; merkle: [128] u8;
+  coins: [4] TxcCoin; spent: [4] ScriptSpent; ops: [4] SigopSpent;
+  heights: [4] int; times: [4] int; scripts: [30000] u8;
+  sw: [1] ScriptWork;
+}
+validation_edge_work :: (d: [] ValidationEdge) -> ValidationWork {
+  return ValidationWork.{ins=d[0].ins[..], outs=d[0].outs[..], items=d[0].items[..], ids=d[0].ids[..], wids=d[0].wids[..], merkle=d[0].merkle[..], coins=d[0].coins[..], spent=d[0].spent[..], sigops=d[0].ops[..], heights=d[0].heights[..], times=d[0].times[..], scripts=d[0].scripts[..], script=d[0].sw[..]};
+}
+validation_edge_run :: (d: [] ValidationEdge, n: int, used: int, capacity: int, weight: int) -> ValidationResult {
+  l: [2] BiLink; e: [2] BiEntry; tree: [1] BlockTree;
+  p := CHAIN_REGTEST_PARAMS;
+  l[0] = BiLink.{height=0, prev=-1, skip=-1}; l[1] = BiLink.{height=1, prev=0, skip=0};
+  #assert cp_unhex(p.genesis.hash, e[0].hash[..]) == 32;
+  #assert bitcoin_reverse32(e[0].hash[..], e[0].hash[..]) == SHA_OK;
+  for k: 0..<32 { d[0].b[4+k] = e[0].hash[k]; }
+  e[0].time = 1000; e[1].time = 1001; e[1].status = BLOCK_VALID_TREE;
+  kv_put32(d[0].b[..], 68, 1001);
+  #assert pow_block_hash_vartime(d[0].b[0..<80], e[1].hash[..]) == POW_OK;
+  tree[0] = BlockTree.{p=p, l=l[..], e=e[..], count=2};
+  w := validation_edge_work(d);
+  if weight != 0 {
+    check := block_check_vartime(d[0].b[0..<n], w.ins, w.outs, w.items, w.ids, w.wids, w.merkle);
+    #assert check.code == BLOCK_OK;
+    if weight > 0 { check.weight = weight; }
+    else if weight == -1 { w.wids = d[0].wids[0..<0]; }
+    else { w.scripts = d[0].scripts[0..<(ifx weight == -2 then 34 else 35)]; }
+    return validation_contextual_vartime(tree[..], 1, d[0].b[0..<n], d[0].table[0..<capacity], used, w, check);
+  }
+  return validation_block_vartime(tree[..], 1, d[0].b[0..<n], d[0].table[0..<capacity], used, w);
+}
+validation_edge_coin :: (d: [] ValidationEdge, used: int, point: [] u8, amount: int, spk: [] u8) -> int {
+  key: [37] u8; key[0] = 'C'; for k: 0..<36 { key[1+k] = point[k]; }
+  value: [10013] u8; kv_put64(value[..], 0, cast,trunc(u64) amount);
+  for k: 0..<spk.count { value[13+k] = spk[k]; }
+  return kv_set_vartime(d[0].table[..], used, key[..], value[0..<13+spk.count]);
+}
+validation_edge_limits :: (mode: int) -> ValidationResult {
+  d: [1] ValidationEdge; b := d[0].b[..]; w := validation_edge_work(d[..]);
+  id: [36] u8; id[0] = 42; sig := [2] u8.[OP_1, 0]; one := [1] u8.[OP_1]; empty: [] string;
+  spk: [20001] u8; for k: 0..<spk.count { spk[k] = OP_1; }
+  size := 1;
+  if mode == 0 { size = 10000; }
+  if mode == 1 { size = 10001; }
+  if mode == 2 { size = 0; }
+  if mode == 3 { spk[0] = OP_RETURN; }
+  fee_range := mode == 6;
+  at := sg_block_head(b, ifx fee_range then 3 else 2);
+  at = sg_tx(b, at, true, id[0..<32], 0, sig[..], empty, 1, ifx fee_range then 0 else 5000000001, spk[0..<size]);
+  used := 0;
+  if mode == 4 || mode == 5 {
+    size = ifx mode == 4 then 20001 else 20000;
+    for k: 0..<size { spk[k] = OP_CHECKSIG; }
+    digest: [20] u8; #assert hash160_checked(spk[0..<size], digest[..], false) == 0;
+    p2sh: [23] u8; p2sh[0] = OP_HASH160; p2sh[1] = 20; p2sh[22] = OP_EQUAL;
+    for k: 0..<20 { p2sh[2+k] = digest[k]; }
+    used = validation_edge_coin(d[..], 0, id[..], 1000, p2sh[..]);
+    redeem: [20004] u8; redeem[0] = OP_PUSHDATA2; kv_put16(redeem[..], 1, size);
+    for k: 0..<size { redeem[3+k] = spk[k]; }
+    at = sg_tx(b, at, false, id[0..<32], 0, redeem[0..<size+3], empty, 1, 999, one[..]);
+  } else {
+    used = validation_edge_coin(d[..], 0, id[..], ifx fee_range then FEE_MAX_MONEY else 1000, one[..]);
+    at = sg_tx(b, at, false, id[0..<32], 0, sig[0..<0], empty, 1, ifx fee_range then 0 else 999, one[..]);
+    if fee_range {
+      id[0] = 43;
+      used = validation_edge_coin(d[..], used, id[..], 1, one[..]);
+      at = sg_tx(b, at, false, id[0..<32], 0, sig[0..<0], empty, 1, 0, one[..]);
+    }
+  }
+  sg_fix_root(b[0..<at], w.ins, w.outs, w.items, w.ids, w.wids, w.merkle);
+  return validation_edge_run(d[..], at, used, ifx mode == 7 then used+56 else d[0].table.count, ifx mode == 8 then 4000001 else ifx mode == 9 then 4000000 else ifx mode == 10 then -1 else 0);
+}
+#test "validation: unspendable outputs and exact workspace capacity" #steps 300000000 {
+  r := validation_edge_limits(0); #assert r.code == VALIDATE_OK && r.used == 10113;
+  r = validation_edge_limits(1); #assert r.code == VALIDATE_OK && r.used == 57;
+  r = validation_edge_limits(2); #assert r.code == VALIDATE_OK && r.used == 113;
+  r = validation_edge_limits(3); #assert r.code == VALIDATE_OK && r.used == 57;
+  r = validation_edge_limits(7); #assert r.code == VALIDATE_CAPACITY && r.tx == 0;
+  r = validation_edge_limits(8); #assert r.code == VALIDATE_BLOCK && r.detail == BLOCK_WEIGHT && r.tx == -1;
+  r = validation_edge_limits(9); #assert r.code == VALIDATE_OK && r.fees == 1;
+  r = validation_edge_limits(10); #assert r.code == VALIDATE_CAPACITY && r.detail == WITNESS_CAPACITY;
+}
+#test "validation: contextual P2SH sigops run before script and accumulated fees are bounded" #steps 300000000 {
+  r := validation_edge_limits(4); #assert r.code == VALIDATE_BLOCK && r.detail == BLOCK_SIGOPS && r.tx == 1 && r.sigops == 80004;
+  r = validation_edge_limits(5); #assert r.code == VALIDATE_SCRIPT && r.detail == SCRIPT_ERR_SCRIPT_SIZE && r.sigops == 80000 && r.input == 0;
+  r = validation_edge_limits(6); #assert r.code == VALIDATE_SUBSIDY && r.detail == SUBSIDY_FEE_RANGE && r.tx == 2 && r.fees == FEE_MAX_MONEY;
+}
+
+validation_test_signed :: (mode: int) -> ValidationResult {
+  d: [1] ValidationEdge; b := d[0].b[..]; w := validation_edge_work(d[..]);
+  c := ifx mode < 2 || mode == 7 || mode == 8 || mode == 9 || mode == 11 then SI_SIGNED[1] else SI_TAPROOT[3];
+  tx: [4096] u8; tn := cp_unhex(c.tx, tx[..]);
+  t := tx_read_vartime(tx[0..<tn], true, w.ins, w.outs, w.items); #assert t.code == TX_OK;
+  second: [36] u8; second[0] = 99;
+  if mode == 4 || mode == 7 || mode == 10 || mode == 12 {
+    // SINGLE|ANYONECANPAY permits another input. Its empty witness spends
+    // OP_1; the Taproot input still needs the complete spent-output list.
+    copy: [4096] u8; split := w.ins[0].sequence + 4;
+    at := cp_put(copy[..], 0, tx[0..<split]); copy[6] = 2;
+    at = cp_put(copy[..], at, second[..]); copy[at] = 0; at += 1;
+    at = cp_le(copy[..], at, 0xffffffff, 4);
+    at = cp_put(copy[..], at, tx[split..<t.locktime]); copy[at] = 0; at += 1;
+    at = cp_put(copy[..], at, tx[t.locktime..<tn]);
+    for k: 0..<at { tx[k] = copy[k]; } tn = at;
+    t = tx_read_vartime(tx[0..<tn], true, w.ins, w.outs, w.items); #assert t.code == TX_OK && t.nin == 2;
+  }
+  if mode == 8 {
+    txc_put(tx[..], t.locktime, 1, 4);
+    txc_put(tx[..], w.ins[0].sequence, 0, 4);
+  }
+  spk: [64] u8; sn := cp_unhex(c.spk, spk[..]);
+  used := validation_edge_coin(d[..], 0, tx[w.ins[0].outpoint..<w.ins[0].outpoint+36], c.amount + (ifx mode == 1 || mode == 3 then 1 else 0), spk[0..<sn]);
+  if mode == 4 || mode == 7 || mode == 10 || mode == 12 { one := [1] u8.[OP_1]; used = validation_edge_coin(d[..], used, second[..], 1, one[..]); }
+  if mode == 9 {
+    old: [36] u8; #assert tx_txid_vartime(tx[0..<tn], t, old[0..<32]);
+    o := w.outs[0];
+    used = validation_edge_coin(d[..], used, old[..], tx_le_vartime(tx[..], o.value, 8), tx[o.script..<o.script+o.script_n]);
+  }
+  // The coinbase commits to the exact witness, not the stripped txid.
+  pair: [64] u8; root: [32] u8; nonce: [32] u8; commitment: [38] u8;
+  #assert tx_wtxid_vartime(tx[0..<tn], t, pair[32..<64]);
+  #assert sha256d_checked(pair[..], root[..], false) == SHA_OK;
+  #assert witness_commitment_script_vartime(root[..], nonce[..], commitment[..]) == 38;
+  large: [20038] u8;
+  if mode == 11 {
+    for k: 0..<38 { large[k] = commitment[k]; }
+    for k: 38..<large.count { large[k] = OP_CHECKSIG; }
+  }
+  sig := [2] u8.[OP_1, 0]; id: [32] u8;
+  witness := [1] string.["0000000000000000000000000000000000000000000000000000000000000000"];
+  at := sg_block_head(b, 2);
+  one := [1] u8.[OP_1];
+  at = sg_tx(b, at, true, id[..], 0, sig[..], witness[..], 1, 0, ifx mode == 5 then one[..] else ifx mode == 11 then large[..] else commitment[..]);
+  at = cp_put(b, at, tx[0..<tn]);
+  sg_fix_root(b[0..<at], w.ins, w.outs, w.items, w.ids, w.wids, w.merkle);
+  r := validation_edge_run(d[..], at, used, d[0].table.count, ifx mode == 10 then -2 else ifx mode == 12 then -3 else 0);
+  if r.code == VALIDATE_OK {
+    // Every input is gone, including both inputs of ANYONECANPAY's model.
+    t = tx_read_vartime(tx[0..<tn], true, w.ins, w.outs, w.items);
+    key: [37] u8; key[0] = 'C';
+    for j: 0..<t.nin {
+      for k: 0..<36 { key[1+k] = tx[w.ins[j].outpoint+k]; }
+      #assert !kv_find_vartime(d[0].table[..], r.used, key[..]).found;
+    }
+  }
+  return r;
+}
+#test "validation: a real ECDSA witness spend binds its amount" #steps 300000000 {
+  r := validation_test_signed(0); #assert r.code == VALIDATE_OK && r.fees == 0 && r.sigops == 1;
+  r = validation_test_signed(1); #assert r.code == VALIDATE_SCRIPT && r.tx == 1 && r.input == 0;
+}
+#test "validation: a real Schnorr spend binds its amount" #steps 300000000 {
+  r := validation_test_signed(2); #assert r.code == VALIDATE_OK && r.fees == 0;
+  r = validation_test_signed(3); #assert r.code == VALIDATE_SCRIPT && r.detail == SCRIPT_ERR_SCHNORR_SIG;
+}
+#test "validation: two-input signed spends carry every input's output and delete both coins" #steps 300000000 {
+  r := validation_test_signed(4); #assert r.code == VALIDATE_OK && r.fees == 1;
+  r = validation_test_signed(7); #assert r.code == VALIDATE_SCRIPT && r.sigops == 1 && r.fees == 1;
+}
+#test "validation: a witness needs a commitment" #steps 100000000 {
+  r := validation_test_signed(5); #assert r.code == VALIDATE_WITNESS && r.detail == WITNESS_UNEXPECTED;
+}
+#test "validation: finality reads witness transactions as witness transactions" #steps 100000000 {
+  r := validation_test_signed(8); #assert r.code == VALIDATE_TX && r.detail == TXC_NONFINAL && r.tx == 1;
+}
+#test "validation: BIP30 checks witness transactions' output counts" #steps 100000000 {
+  r := validation_test_signed(9); #assert r.code == VALIDATE_BIP30 && r.tx == 1;
+}
+#test "validation: scratch capacity includes all input scripts and accepts exact fill" #steps 300000000 {
+  r := validation_test_signed(10); #assert r.code == VALIDATE_CAPACITY && r.tx == 1;
+  r = validation_test_signed(12); #assert r.code == VALIDATE_OK && r.fees == 1;
+}
+#test "validation: witness sigops make the exact 80001 boundary observable" #steps 100000000 {
+  // A P2WSH OP_1 spend costs zero; use the P2WPKH signature's one sigop.
+  r := validation_test_signed(11); #assert r.code == VALIDATE_BLOCK && r.detail == BLOCK_SIGOPS && r.sigops == 80001;
+}
+
+validation_test_coin_time :: (birth: int) -> ValidationResult {
+  d: [1] ValidationEdge; b := d[0].b[..]; w := validation_edge_work(d[..]);
+  id: [36] u8; id[0] = 42;
+  sig := [2] u8.[OP_1+2, 0]; one := [1] u8.[OP_1]; empty: [] string;
+  at := sg_block_head(b, 2);
+  at = sg_tx(b, at, true, id[0..<32], 0, sig[..], empty, 1, 5000000001, one[..]);
+  begin := at;
+  at = sg_tx(b, at, false, id[0..<32], 0, sig[0..<0], empty, 1, 999, one[..]);
+  t := tx_parse_vartime(b[begin..<at], true, w.ins, w.outs, w.items);
+  txc_put(b, begin, 2, 4); txc_put(b, begin+w.ins[0].sequence, SCRIPT_SEQUENCE_TYPE | 1, 4);
+  used := validation_edge_coin(d[..], 0, id[..], 1000, one[..]);
+  key: [37] u8; key[0] = 'C'; for k: 0..<36 { key[1+k] = id[k]; }
+  coin := validation_value_vartime(d[0].table[..], used, key[..]); kv_put32(coin, 8, birth);
+  l: [4] BiLink; e: [4] BiEntry; tree: [1] BlockTree;
+  for h: 0..<4 {
+    l[h] = BiLink.{height=h, prev=h-1, skip=ifx h == 0 then -1 else bi_skip_height(h)};
+    e[h].time = cast(u32) (1000*(h+1)); e[h].hash[0] = cast(u8) (h+1);
+  }
+  e[3].status = BLOCK_VALID_TREE;
+  for k: 0..<32 { b[4+k] = e[2].hash[k]; }
+  kv_put32(b, 68, 4000);
+  sg_fix_root(b[0..<at], w.ins, w.outs, w.items, w.ids, w.wids, w.merkle);
+  #assert pow_block_hash_vartime(b[0..<80], e[3].hash[..]) == POW_OK;
+  tree[0] = BlockTree.{p=CHAIN_REGTEST_PARAMS, l=l[..], e=e[..], count=4};
+  return validation_block_vartime(tree[..], 3, b[0..<at], d[0].table[..], used, w);
+}
+#test "validation: a time lock uses the coin's immediate predecessor MTP" #steps 100000000 {
+  // Parent MTP is 2000. A coin born at 2 uses MTP(1)=2000, so the
+  // 512-second relative lock is still closed. Born at 1 uses MTP(0)=1000.
+  r := validation_test_coin_time(2); #assert r.code == VALIDATE_TX && r.detail == TXC_NONFINAL && r.tx == 1;
+  r = validation_test_coin_time(1); #assert r.code == VALIDATE_OK && r.fees == 1;
+}

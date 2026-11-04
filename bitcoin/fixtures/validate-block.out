@@ -1,0 +1,11 @@
+A 1000-sat coin pays 999: ok, fee 1 sat
+Its child pays 998 in the same block: ok, total fees 2 sat
+Coinbase ceiling: 5000000002 sat
+Missing coin: bad-txns-inputs-missingorspent
+Immature coinbase: bad-txns-premature-spend-of-coinbase
+False script: block-script-verify-flag-failed
+Excess reward: bad-cb-amount
+Nonfinal transaction: bad-txns-nonfinal
+Duplicate output: bad-txns-BIP30
+ECDSA witness spend: ok
+Two-input Taproot spend: ok

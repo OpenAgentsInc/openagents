@@ -1,0 +1,214 @@
+// Synthetic workspace checks. Real admitted headers and independent
+// Core differential cases live in validation.py.
+validation_test_case :: (mode: int) -> ValidationResult {
+  b: [4096] u8; table: [8192] u8;
+  ins: [8] TxIn; outs: [16] TxOut; items: [16] TxItem;
+  ids: [128] u8; wids: [128] u8; merkle: [128] u8;
+  coins: [8] TxcCoin; spent: [8] ScriptSpent; ops: [8] SigopSpent;
+  heights: [8] int; times: [8] int; scripts: [1024] u8;
+  sw: [1] ScriptWork; batch: [4096] u8;
+  w := ValidationWork.{ins=ins[..], outs=outs[..], items=items[..], ids=ids[..], wids=wids[..], merkle=merkle[..], coins=coins[..], spent=spent[..], sigops=ops[..], heights=heights[..], times=times[..], scripts=scripts[..], script=sw[..], batch=batch[..]};
+  l: [2] BiLink; e: [2] BiEntry; slots: [4] int; chain: [2] int; tree: [1] BlockTree;
+  p := CHAIN_REGTEST_PARAMS;
+  if mode == 11 { p.bip34_height = 1; }
+  if mode == 23 || mode == 24 || mode == 40 { p.bip34_height = 0; p.bip34_hash = p.genesis.hash; }
+  if mode == 25 { p.chain = 0; }
+  if mode == 17 { p.csv_height = 1; }
+  if mode == 41 { p.csv_height = 2; }
+  #assert bi_init(tree[..], p, l[..], e[..], slots[..], chain[..]);
+  l[0] = BiLink.{height=0, prev=-1, skip=-1};
+  e[0].time = 1000;
+  #assert cp_unhex(p.genesis.hash, e[0].hash[..]) == 32;
+  #assert bitcoin_reverse32(e[0].hash[..], e[0].hash[..]) == SHA_OK;
+  l[1] = BiLink.{height=1, prev=0, skip=0};
+  e[1].time = 1001; e[1].status = BLOCK_VALID_TREE;
+  tree[0].count = 2;
+  id: [32] u8; id[0] = 42; empty: [] string;
+  sig := [2] u8.[OP_1, 0];
+  if mode == 11 { sig[0] = 0; } spk := [1] u8.[OP_1];
+  if mode == 21 { spk[0] = OP_CHECKSIG; }
+  if mode == 40 { spk[0] = OP_RETURN; }
+  triple := mode == 8 || mode == 9 || mode == 10 || mode == 27 || mode == 28 || mode == 30;
+  at := sg_block_head(b[..], ifx triple then 3 else 2);
+  // The serialized header and tree are the same synthetic context.
+  txc_put(b[..], 68, 1001, 4);
+  for k: 0..<32 { b[4+k] = e[0].hash[k]; }
+  at = sg_tx(b[..], at, mode != 31, id[..], 0, ifx mode == 33 then sig[0..<1] else sig[..], empty, 1, ifx mode == 5 then 5000000002 else 5000000001, spk[..]);
+  first := at;
+  at = sg_tx(b[..], at, false, id[..], 0, sig[0..<0], empty, ifx mode == 39 then 2 else 1, ifx mode == 29 then -1 else ifx mode == 39 then 499 else 999, spk[..]);
+  if mode == 6 || mode == 17 || mode == 41 {
+    t := tx_parse_vartime(b[first..<at], true, ins[..], outs[..], items[..]);
+    txc_put(b[..], first+ins[0].sequence, ifx mode == 17 || mode == 41 then 2 else 0, 4);
+    if mode == 6 { txc_put(b[..], first+t.locktime, 1, 4); }
+    if mode == 17 || mode == 41 { txc_put(b[..], first, 2, 4); }
+  }
+  if triple {
+    child: [32] u8;
+    if mode == 8 { for k: 0..<32 { child[k] = id[k]; } }
+    else { sg_txid(b[..], first, at, child[..]); }
+    begin := at;
+    at = sg_tx(b[..], at, mode == 30, child[..], ifx mode == 10 then 1 else 0, sig[0..<0], empty, 1, 998, spk[..]);
+    if mode == 27 || mode == 28 {
+      t := tx_parse_vartime(b[begin..<at], true, ins[..], outs[..], items[..]);
+      txc_put(b[..], begin, 2, 4);
+      txc_put(b[..], begin+ins[0].sequence, ifx mode == 27 then 1 else SCRIPT_SEQUENCE_TYPE | 1, 4);
+    }
+  }
+  sg_fix_root(b[0..<at], ins[..], outs[..], items[..], ids[..], wids[..], merkle[..]);
+  #assert pow_block_hash_vartime(b[0..<80], e[1].hash[..]) == POW_OK;
+  if mode == 34 { b[at-1] ^= 1; }
+  if mode == 35 { l[1].prev = -1; }
+  if mode == 36 { l[1].prev = 2; }
+  if mode == 37 { l[0].height = 1; }
+  if mode == 38 { e[0].hash[0] ^= 1; }
+  key: [37] u8; validation_key(key[..], id[..], 0);
+  v: [14] u8; kv_put64(v[..], 0, ifx mode == 3 then cast(u64) 998 else cast(u64) 1000); v[13] = ifx mode == 4 then 0 else OP_1;
+  if mode == 2 { v[12] = 1; }
+  if mode == 18 { kv_put32(v[..], 8, 2); }
+  if mode == 20 { kv_put64(v[..], 0, 0xffffffffffffffff); }
+  used := 0;
+  if mode != 1 { used = kv_set_vartime(table[..], 0, key[..], v[..]); }
+  if mode == 7 || mode == 24 || mode == 39 {
+    validation_key(key[..], ifx mode == 39 then ids[32..<64] else ids[0..<32], ifx mode == 39 then 1 else 0);
+    used = kv_set_vartime(table[..], used, key[..], v[..]);
+  }
+  if mode == 12 { w.scripts = scripts[0..<0]; }
+  if mode == 13 { e[1].hash[0] ^= 1; }
+  if mode == 14 { w.ids = ids[0..<1]; }
+  if mode == 15 { w.spent = spent[0..<0]; }
+  if mode == 16 { w.script = sw[0..<0]; }
+  if mode == 19 { return validation_block_vartime(tree[..], -1, b[0..<at], table[..], used, w); }
+  r := validation_block_vartime(tree[..], 1, b[0..<at], table[..], used, w);
+  if r.code == VALIDATE_OK {
+    validation_key(key[..], id[..], 0);
+    #assert validation_value_vartime(table[..], r.used, key[..]).count == 0;
+    if mode == 40 { #assert r.used == 0; }
+    else {
+      validation_key(key[..], ids[0..<32], 0);
+      cb := validation_value_vartime(table[..], r.used, key[..]);
+      #assert cb.count == 14 && cb[12] == 1 && kv_get32(cb, 8) == 1;
+      #assert tx_le_vartime(cb, 0, 8) == 5000000001 && cb[13] == spk[0];
+      validation_key(key[..], ids[(ifx triple then 64 else 32)..<(ifx triple then 96 else 64)], 0);
+      output := validation_value_vartime(table[..], r.used, key[..]);
+      #assert tx_le_vartime(output, 0, 8) == (ifx triple then 998 else 999);
+      #assert output[12] == 0 && kv_get32(output, 8) == 1;
+    }
+  }
+  return r;
+}
+#test "validation: complete transaction flow and child spending in one block" #steps 30000000 {
+  r := validation_test_case(0); #assert r.code == VALIDATE_OK && r.fees == 1 && r.sigops == 0 && r.tx == -1 && r.input == -1;
+  r = validation_test_case(9); #assert r.code == VALIDATE_OK && r.fees == 2 && r.tx == -1 && r.input == -1;
+  r = validation_test_case(21); #assert r.code == VALIDATE_OK && r.sigops == 8;
+  #assert validation_test_case(23).code == VALIDATE_OK;
+  #assert validation_test_case(24).code == VALIDATE_OK;
+  #assert validation_test_case(40).code == VALIDATE_OK;
+  #assert validation_test_case(41).code == VALIDATE_OK;
+}
+#test "validation: spends, script failure and coinbase reward refuse" #steps 100000000 {
+  r := validation_test_case(1); #assert r.code == VALIDATE_TX && r.detail == TXC_MISSING && r.tx == 1 && r.input == 0;
+  r = validation_test_case(2); #assert r.code == VALIDATE_TX && r.detail == TXC_PREMATURE && r.tx == 1;
+  r = validation_test_case(3); #assert r.code == VALIDATE_TX && r.detail == TXC_IN_BELOW_OUT;
+  r = validation_test_case(4); #assert r.code == VALIDATE_SCRIPT && r.detail == SCRIPT_ERR_EVAL_FALSE && r.input == 0;
+  r = validation_test_case(5); #assert r.code == VALIDATE_SUBSIDY && r.detail == SUBSIDY_CB_AMOUNT && r.tx == 0;
+  r = validation_test_case(20); #assert r.code == VALIDATE_TX && r.detail == TXC_INPUT_RANGE;
+}
+#test "validation: finality, duplicate outputs, double spends and height refuse" #steps 100000000 {
+  r := validation_test_case(6); #assert r.code == VALIDATE_TX && r.detail == TXC_NONFINAL && r.tx == 1;
+  r = validation_test_case(7); #assert r.code == VALIDATE_BIP30 && r.tx == 0;
+  r = validation_test_case(39); #assert r.code == VALIDATE_BIP30 && r.tx == 1;
+  r = validation_test_case(8); #assert r.code == VALIDATE_TX && r.detail == TXC_MISSING && r.tx == 2;
+  r = validation_test_case(10); #assert r.code == VALIDATE_TX && r.detail == TXC_MISSING;
+  r = validation_test_case(11); #assert r.code == VALIDATE_SUBSIDY && r.detail == SUBSIDY_CB_HEIGHT && r.tx == 0;
+  r = validation_test_case(17); #assert r.code == VALIDATE_TX && r.detail == TXC_NONFINAL;
+  r = validation_test_case(27); #assert r.code == VALIDATE_TX && r.detail == TXC_NONFINAL && r.tx == 2;
+  r = validation_test_case(28); #assert r.code == VALIDATE_TX && r.detail == TXC_NONFINAL && r.tx == 2;
+}
+#test "validation: CheckBlock's rule and transaction location survive composition" #steps 100000000 {
+  r := validation_test_case(29); #assert r.code == VALIDATE_TX && r.detail == TXC_VOUT_NEGATIVE && r.tx == 1 && r.input == -1;
+  r = validation_test_case(30); #assert r.code == VALIDATE_BLOCK && r.detail == BLOCK_CB_MULTIPLE && r.tx == 2;
+  r = validation_test_case(31); #assert r.code == VALIDATE_BLOCK && r.detail == BLOCK_CB_MISSING && r.tx == 0;
+  r = validation_test_case(33); #assert r.code == VALIDATE_TX && r.detail == TXC_CB_LENGTH && r.tx == 0;
+  r = validation_test_case(34); #assert r.code == VALIDATE_BLOCK && r.detail == BLOCK_MERKLE && r.tx == -1;
+}
+#test "validation: local bounds refuse without a success receipt" #steps 100000000 {
+  r := validation_test_case(12); #assert r.code == VALIDATE_CAPACITY && r.tx == 1;
+  #assert validation_test_case(13).code == VALIDATE_CONTEXT;
+  r = validation_test_case(14); #assert r.code == VALIDATE_CAPACITY && r.detail == BLOCK_CAPACITY;
+  r = validation_test_case(15); #assert r.code == VALIDATE_CAPACITY && r.tx == 1;
+  #assert validation_test_case(16).code == VALIDATE_CAPACITY;
+  r = validation_test_case(18); #assert r.code == VALIDATE_CONTEXT && r.tx == 1 && r.input == 0;
+  #assert validation_test_case(19).code == VALIDATE_CONTEXT;
+  #assert validation_test_case(25).code == VALIDATE_CONTEXT;
+  #assert validation_test_case(35).code == VALIDATE_CONTEXT;
+  #assert validation_test_case(36).code == VALIDATE_CONTEXT;
+  #assert validation_test_case(37).code == VALIDATE_CONTEXT;
+  #assert validation_test_case(38).code == VALIDATE_CONTEXT;
+}
+
+validation_test_first :: (mode: int) -> ValidationResult {
+  raw: [4096] u8; table: [4096] u8;
+  ins: [8] TxIn; outs: [8] TxOut; items: [8] TxItem;
+  ids: [128] u8; wids: [128] u8; merkle: [128] u8;
+  coins: [8] TxcCoin; spent: [8] ScriptSpent; ops: [8] SigopSpent;
+  heights: [8] int; times: [8] int; scripts: [1024] u8;
+  sw: [1] ScriptWork; sids: [384] u8; scratch: [4096] u8;
+  w := ValidationWork.{ins=ins[..], outs=outs[..], items=items[..], ids=ids[..], wids=wids[..], merkle=merkle[..], coins=coins[..], spent=spent[..], sigops=ops[..], heights=heights[..], times=times[..], scripts=scripts[..], script=sw[..], signet_ids=sids[..], signet_scratch=scratch[..]};
+  p := CHAIN_SIGNET_PARAMS;
+  genesis := mode == 0 || mode == 10;
+  if genesis { p = CHAIN_MAINNET_PARAMS; }
+  n := ifx genesis then chain_genesis_block_vartime(p.genesis, raw[..]) else cp_unhex(SIGNET_BLOCK_1, raw[..]);
+  #assert n > 80;
+  if mode == 2 { raw[n-5] ^= 1; }
+  if mode == 11 {
+    // One 31-byte nonce, rather than 32; the stripped coinbase is unchanged.
+    raw[n-37] = 31;
+    for k: n-5..<n-1 { raw[k] = raw[k+1]; }
+    n -= 1;
+  }
+  if mode == 7 { raw[n-1] ^= 1; }
+  if mode == 8 { n -= 1; }
+  if mode == 10 { raw[76] ^= 1; }
+  if mode == 3 { w.signet_ids = sids[0..<0]; }
+  if mode == 4 { w.signet_scratch = scratch[0..<0]; }
+  if mode == 5 { p.challenge = "00"; }
+  if mode == 9 { w.merkle = merkle[0..<0]; }
+  if mode == 13 { w.ids = ids[0..<0]; }
+  if mode == 14 { w.wids = wids[0..<0]; }
+  l: [2] BiLink; e: [2] BiEntry; tree: [1] BlockTree;
+  i := ifx genesis then 0 else 1;
+  l[0] = BiLink.{height=0, prev=-1, skip=-1};
+  #assert cp_unhex(p.genesis.hash, e[0].hash[..]) == 32;
+  #assert bitcoin_reverse32(e[0].hash[..], e[0].hash[..]) == SHA_OK;
+  e[0].time = p.genesis.time;
+  l[1] = BiLink.{height=1, prev=0, skip=0};
+  e[i].time = cast(u32) tx_le_vartime(raw[..], 68, 4); e[i].status = BLOCK_VALID_TREE;
+  #assert pow_block_hash_vartime(raw[0..<80], e[i].hash[..]) == POW_OK;
+  if mode == 6 { e[i].status |= BLOCK_FAILED_VALID; }
+  tree[0] = BlockTree.{p=p, l=l[..], e=e[..], count=i+1};
+  return validation_block_vartime(tree[..], i, raw[0..<n], table[..], 0, w);
+}
+#test "validation: genesis adds no coin, signet executes its challenge" #steps 1000000000 {
+  r := validation_test_first(0);
+  #assert r.code == VALIDATE_OK && r.used == 0 && r.fees == 0 && r.sigops == 0 && r.tx == -1 && r.input == -1;
+  r = validation_test_first(1);
+  #assert r.code == VALIDATE_OK && r.used == 78 && r.fees == 0 && r.sigops == 0;
+  #assert validation_test_first(10).code == VALIDATE_CONTEXT;
+}
+#test "validation: signet challenge and witness failures remain different" #steps 1000000000 {
+  r := validation_test_first(2); #assert r.code == VALIDATE_WITNESS && r.detail == WITNESS_MERKLE_MATCH;
+  r = validation_test_first(5); #assert r.code == VALIDATE_SIGNET && r.detail == SCRIPT_ERR_EVAL_FALSE;
+  r = validation_test_first(11); #assert r.code == VALIDATE_WITNESS && r.detail == WITNESS_NONCE_SIZE;
+}
+#test "validation: signet capacities and malformed bodies refuse" #steps 1000000000 {
+  #assert validation_test_first(3).code == VALIDATE_CAPACITY;
+  #assert validation_test_first(4).code == VALIDATE_CAPACITY;
+  #assert validation_test_first(6).code == VALIDATE_CONTEXT;
+  // Core's CheckBlock checks signet's solution before its Merkle root.
+  r := validation_test_first(7); #assert r.code == VALIDATE_SIGNET && r.detail == SCRIPT_ERR_EVAL_FALSE;
+  r = validation_test_first(8); #assert r.code == VALIDATE_BLOCK && r.detail == BLOCK_BAD;
+  #assert validation_test_first(9).code == VALIDATE_CAPACITY;
+  r = validation_test_first(13); #assert r.code == VALIDATE_CAPACITY && r.detail == BLOCK_CAPACITY;
+  r = validation_test_first(14); #assert r.code == VALIDATE_CAPACITY && r.detail == BLOCK_CAPACITY && r.tx == -1;
+}
+#load "validation_edges.coax";

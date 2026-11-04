@@ -1286,9 +1286,9 @@
   {
    "number": 57,
    "title": "Validate a block: every consensus rule",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch057-validate-a-block-every-consensus-rule.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     43,
     45,
@@ -1301,8 +1301,19 @@
     55,
     56
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/validation.coax",
+    "bitcoin/examples/validate-block.coax",
+    "coax/tests/bitcoin/validation_checks.coax",
+    "coax/tests/bitcoin/validation_edges.coax",
+    "coax/tests/bitcoin/validation-native.coax",
+    "coax/tests/bitcoin/validation.py",
+    "coax/tests/bitcoin/validation-corpus.py",
+    "coax/tests/bitcoin/validation_sanitized.c"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

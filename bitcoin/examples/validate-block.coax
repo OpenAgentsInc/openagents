@@ -1,0 +1,21 @@
+// book:begin example
+#run_steps 250000000;
+#load "../../coax/lib/bitcoin/validation.coax";
+#import "Basic";
+
+main :: () {
+  a := validation_test_case(0);
+  b := validation_test_case(9);
+  print("A 1000-sat coin pays 999: %, fee % sat\n", validation_reason(a), a.fees);
+  print("Its child pays 998 in the same block: %, total fees % sat\n", validation_reason(b), b.fees);
+  print("Coinbase ceiling: % sat\n", subsidy_vartime(1, 150) + b.fees);
+  labels := [6] string.["Missing coin", "Immature coinbase", "False script", "Excess reward", "Nonfinal transaction", "Duplicate output"];
+  modes := [6] int.[1, 2, 4, 5, 6, 7];
+  for k: 0..<modes.count {
+    r := validation_test_case(modes[k]);
+    print("%: %\n", labels[k], validation_reason(r));
+  }
+  print("ECDSA witness spend: %\n", validation_reason(validation_test_signed(0)));
+  print("Two-input Taproot spend: %\n", validation_reason(validation_test_signed(4)));
+}
+// book:end example

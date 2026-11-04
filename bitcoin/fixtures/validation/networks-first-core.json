@@ -1,0 +1,32 @@
+{
+ "schema": 1,
+ "versions": [
+  "/Satoshi:32.1.0/"
+ ],
+ "cases": [
+  {
+   "network": "testnet4",
+   "name": "changed-body",
+   "body_sha256": "a66911f0cc7565eff580cd4e1a568444f841f061b77d829ee3d7d4e9f554273b",
+   "verdict": "bad-txnmrklroot"
+  },
+  {
+   "network": "testnet4",
+   "name": "valid-after-refusal",
+   "body_sha256": "6436855a829d5df2ac33dc1eccdb2e4d6b33fb7f27af9a05e784fd3a0c662d1e",
+   "verdict": null
+  },
+  {
+   "network": "signet",
+   "name": "changed-body",
+   "body_sha256": "2c19da2f9cc2cee2b6846edb0a8581358db7271da209029713322c29d145b432",
+   "verdict": "bad-signet-blksig"
+  },
+  {
+   "network": "signet",
+   "name": "valid-after-refusal",
+   "body_sha256": "85b2a673710c23cb88dd37c6b742900627bb0a7a4df65a2f44d0c91a2b45f50d",
+   "verdict": null
+  }
+ ]
+}

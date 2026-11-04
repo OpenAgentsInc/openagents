@@ -43,19 +43,19 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 125 chapters, 96 are implemented, 5 are partly implemented and 24 are planned. The 96 implemented
+Of the 125 chapters, 97 are implemented, 5 are partly implemented and 23 are planned. The 97 implemented
 chapters have runnable examples, qualified on native CPU, and 32 of them on
 Wasm. Fifteen of them are the cryptography Nostr already used; chapters 5, 6,
 7, 10, 12, 17, 19, 20, 21, 22, 25, 26, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37,
-38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 59, 61, 62,
+38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 59, 61, 62,
 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 77, 81, 94, 95, 96, 97, 100, 101,
 102, 103, 104, 105, 106, 107, 108, 109, 111, 112, 113, 114, 115, 116, 119, 121
 and 122 are new.
 
 Chapters 58 and 60 are partly implemented: their native explorer light path
 tracks coins and complete inverses, prepares branch changes atomically, and
-persists them with an explicit proof-of-work-only profile. Full consensus
-validation and validated-node chainstate integration remain separate work.
+persists them with an explicit proof-of-work-only profile. Chapter 57 now validates blocks fully; validated-node chainstate integration
+remains separate work.
 Chapter 82 implements bounded, unvalidated local mempool observations and
 their fees; script execution and full acceptance/relay policy remain planned.
 Chapter 90 implements the read-only explorer HTTP/RPC profile; full node RPC
@@ -231,7 +231,7 @@ Merkle trees, headers and proof of work, the chain parameters, every consensus r
 | [54. The subsidy and the coinbase](ch054-the-subsidy-and-the-coinbase.md) | Runnable: native C | Core's `GetBlockSubsidy` at every halving, zero from height 6,930,000 and after 64 halvings (BIP-42), summing to Core's 2,099,999,997,690,000 satoshis. Fourteen pinned mainnet coinbases, each proved in its header by its Merkle branch, among them both sides of every halving and of BIP-34's activation, pass the BIP-34 height rule and claim exactly the subsidy plus mempool.space's fees. One satoshi more refuses as bad-cb-amount, a changed height after activation as bad-cb-height, and a fee total past MAX_MONEY as bad-txns-accumulated-fee-outofrange. The two repeated coinbases of 2010 share their txids with the coinbases they copied, and their blocks are Core's BIP-30 exceptions. Checked against Python natively. |
 | [55. Script flags by height and their exceptions](ch055-script-flags-by-height-and-their-exceptions.md) | Runnable: native C | Core's block script mask, hash-specific BIP-16 and Taproot exceptions, and the BIP-30 lookup gate with known BIP-34 ancestry and its 1,983,702 limit. Independent native comparisons cover all five networks' deployment boundaries and every pinned mainnet header 0–2,016. Chapter 58 applies the selected rules to UTXOs. |
 | [56. The UTXO set and MuHash3072](ch056-the-utxo-set-and-muhash3072.md) | Runnable: native C | Core's coin record (VARINT, `CompressAmount` and the six special scripts), the chainstate key, `TxOutSer`, `hash_serialized_3` and MuHash3072 with insert, remove and a modular inverse. Both hashes of the coins of Core's `feature_utxo_set_hash.py` and `rpc_dumptxoutset.py` match the values those tests publish, and adding then removing a coin restores the MuHash. Checked against Core's `crypto_tests.cpp` and `compress_tests.cpp` vectors and Core's own Python `muhash.py`. |
-| 57. Validate a block: every consensus rule | Planned | Pinned mainnet, testnet4 and signet blocks, among them every soft-fork activation block, validate against the outputs they spend. A crafted block for each consensus rule refuses with Bitcoin Core's reject reason, and the chapter's rule table names the chapter that checks every rule. |
+| [57. Validate a block: every consensus rule](ch057-validate-a-block-every-consensus-rule.md) | Runnable: native C | Pinned mainnet, testnet4 and signet blocks, among them every soft-fork activation block, validate against the outputs they spend. A crafted block for each consensus rule refuses with Bitcoin Core's reject reason, and the chapter's rule table names the chapter that checks every rule. |
 
 ### Part X. Chain state and storage (chapters 58–64)
 
