@@ -121,7 +121,7 @@ CYAN :: Col.{r = 0.35, g = 0.9, b = 1.0};
 TEAM_COL :: [3] Col.[Col.{r = 0.45, g = 0.95, b = 0.55}, Col.{r = 0.62, g = 0.85, b = 1.0}, Col.{r = 0.9, g = 0.86, b = 0.74}];
 
 Line :: struct { text: [LINE_CAP] u8; n: int; col: Col; }
-Fx :: struct { kind: int; ax: f32; ay: f32; bx: f32; by: f32; t0: f32; life: f32; col: Col; text: [12] u8; n: int; }
+Fx :: struct { kind: int; ax: f32; ay: f32; bx: f32; by: f32; t0: f32; life: f32; col: Col; text: [24] u8; n: int; }
 
 Lab :: struct {
   started: bool;
@@ -170,6 +170,8 @@ Lab :: struct {
   ms: f32;   // the frame's time, milliseconds, averaged with the frames a second
   unlabelled: int;   // labels this frame left off for want of room in the strokes (SCENE_VERTS)
   cam_siege: bool;   // the Siege's camera is the home one (cam_home)
+  scene_top: f32;    // floating numbers stay below this (the sliders)
+  plates: [NP_MAX] Rect; plates_n: int;   // this frame's nameplates (draw_names3), which floating numbers keep off
   blk_up: [BLK_MAX * TEAMS] int; blk_w: int; blk_h: int;   // the standing by block and side (blk_count)
   due_t: [DUE_MAX] f32; due_i: [DUE_MAX] int; due_n: int;   // whose turn comes next (lab_due's heap)
   shown_n: int;   // the creatures the figures showed last frame (the slots past them are clear)
@@ -291,6 +293,8 @@ take_events :: (s: [] Lab) {
   s[0].seen = book[0].seq;
   k := fresh - 1;
   rep_by := -1; rep_spell := -1; rep_t: f32 = -1; rep_n := 0;
+  // one spell's damage to many at once (a Fireball, a Circle of Death): its numbers fold
+  g: [HIT_GROUPS] HitGroup; ng := hit_groups(s, book, fresh, g[..]);
   while k >= 0 {
     e := rs_recent_at(book, k);
     k -= 1;
@@ -315,7 +319,7 @@ take_events :: (s: [] Lab) {
       f.ax = f32(e.x); f.ay = f32(e.y); f.bx = f32(e.x + e.amount); f.by = f32(e.y + e.amount);
       add_fx(s, f);
     }
-    if e.kind == RS_EV_DAMAGE || e.kind == RS_EV_HEAL || e.kind == RS_EV_MISS {
+    if (e.kind == RS_EV_DAMAGE || e.kind == RS_EV_HEAL || e.kind == RS_EV_MISS) && hit_shown(s, e, g[0..<ng]) {
       f.kind = FX_TEXT; f.life = 1.2;
       f.col = ifx e.kind == RS_EV_HEAL then GREEN else ifx e.kind == RS_EV_MISS then DIM else RED;
       f.ax = f32(s[0].battle[0].c[e.to].x); f.ay = f32(s[0].battle[0].c[e.to].y);
@@ -337,6 +341,54 @@ take_events :: (s: [] Lab) {
     lw_heard(s, e);
     fx_event(s, e, f32((book[0].seq - k) % 8192) * 0.37 + 0.11, e.at + ifx e.kind == RS_EV_ATTACK || e.kind == RS_EV_MISS then f32(rep_n) * 0.14 else 0);
   }
+  // each fold's total, gold, over the middle of those it hit: "-412 · 14 HIT"
+  for q: 0..<ng {
+    if g[q].count < HIT_FOLD { continue; }
+    f: Fx; f.kind = FX_TEXT; f.life = 1.8; f.col = GOLD;
+    f.ax = g[q].sx / f32(g[q].count); f.ay = g[q].sy / f32(g[q].count) - 1.2;
+    f.n = put(f.text[..], 0, "-"); f.n = put_int(f.text[..], f.n, g[q].total); f.n = put(f.text[..], f.n, " · ");
+    f.n = put_int(f.text[..], f.n, g[q].count); f.n = put(f.text[..], f.n, " HIT");
+    add_fx(s, f);
+  }
+}
+// A spell's damage to many in one go: HIT_FOLD or more of one caster's spell at one moment. Its
+// biggest HIT_SHOW numbers float, and those on your hero or your target; the rest fold into one
+// total over them. The log keeps every roll.
+HIT_GROUPS :: 8; HIT_FOLD :: 4; HIT_SHOW :: 3;
+HitGroup :: struct { by: int; spell: int; at: f32; count: int; total: int; sx: f32; sy: f32; top: [HIT_SHOW] int; shown: int; }
+hit_group_of :: (e: RsEvent, g: [] HitGroup) -> int {
+  for q: 0..<g.count { if g[q].by == e.by && g[q].spell == e.spell && g[q].at - e.at < 0.01 && e.at - g[q].at < 0.01 { return q; } }
+  return -1;
+}
+hit_groups :: (s: [] Lab, book: [] RsLog, fresh: int, g: [] HitGroup) -> int {
+  ng := 0; b := bt(s);
+  for k: 0..<fresh {
+    e := rs_recent_at(book, k);
+    if e.kind != RS_EV_DAMAGE || e.spell < 0 || e.to < 0 || e.to >= b[0].n { continue; }
+    q := hit_group_of(e, g[0..<ng]);
+    if q < 0 {
+      if ng >= g.count { continue; }
+      q = ng; ng += 1;
+      g[q].by = e.by; g[q].spell = e.spell; g[q].at = e.at; g[q].count = 0; g[q].total = 0; g[q].sx = 0; g[q].sy = 0; g[q].shown = 0;
+      for h: 0..<HIT_SHOW { g[q].top[h] = -1; }
+    }
+    g[q].count += 1; g[q].total += e.amount;
+    g[q].sx += f32(b[0].c[e.to].x); g[q].sy += f32(b[0].c[e.to].y);
+    // the biggest HIT_SHOW amounts, largest first
+    v := e.amount;
+    for h: 0..<HIT_SHOW { if v > g[q].top[h] { w := g[q].top[h]; g[q].top[h] = v; v = w; } }
+  }
+  return ng;
+}
+// Whether event e's number floats: always, unless it's in a fold and neither among its biggest
+// nor on your hero or your target.
+hit_shown :: (s: [] Lab, e: RsEvent, g: [] HitGroup) -> bool {
+  if e.kind != RS_EV_DAMAGE { return true; }
+  q := hit_group_of(e, g);
+  if q < 0 || g[q].count < HIT_FOLD { return true; }
+  if e.to == s[0].me || e.to == s[0].target || e.to == s[0].you_me { return true; }
+  if g[q].shown < HIT_SHOW && e.amount >= g[q].top[HIT_SHOW - 1] { g[q].shown += 1; return true; }
+  return false;
 }
 // One battle event as the figures' clips: a blow swings, a cast or a shot plays the spell clip, a
 // hurt figure is knocked back (fivelab-bodies.coax figs.bd_cue).
@@ -2208,6 +2260,8 @@ layout :: (s: [] Lab, w: f32, h: f32, k: f32) {
   }
   if !s[0].player { for c: 0..<12 { s[0].picks[c] = Rect.{}; } }
   layout_sliders(s, k, scx0, scx1, top + ifx s[0].player then 34 * k else 4 * k);
+  // the scene's top for floating numbers: under the sliders
+  s[0].scene_top = top; for r: 0..<sl_count(s) { s[0].scene_top = hi(s[0].scene_top, s[0].sliders[r].y1 + 8 * k); }
   // the glade's camera, fitted to the space left of the log (above it on a phone)
   rx0 := pad; rx1 := ifx s[0].portrait then w - pad else s[0].panel.x0 - pad;
   ry0 := top; ry1 := ifx s[0].portrait then s[0].panel.y0 - pad else h - pad;
@@ -2406,6 +2460,7 @@ draw_labels3 :: (s: [] Lab, out: [] f32, at: int, k: f32, t: f32) -> int {
   }
   return n;
 }
+abs_f :: (v: f32) -> f32 { return ifx v < 0 then -v else v; }
 // The glade's nameplates, where they don't pile up: first the ones always shown (a siege's
 // leader, the hero you play, your target), then the rest nearest the camera first, each only
 // where no nameplate stands yet on the screen. One that's covered adds to the count on the one
@@ -2449,7 +2504,9 @@ draw_names3 :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
     }
   }
   l: [16] u8;
+  s[0].plates_n = 0;
   for q: 0..<np {
+    s[0].plates[q] = Rect.{x0 = px[q] - pw[q] / 2 - 2 * k, y0 = py[q] - cap - 1 * k, x1 = px[q] + pw[q] / 2 + 2 * k, y1 = py[q] + 2 * k}; s[0].plates_n = q + 1;
     if n + LABEL_VERTS > SCENE_VERTS { s[0].unlabelled += 1; continue; }
     cr := b[0].c[pi[q]..<pi[q] + 1];
     col := ifx cr[0].hp == 0 then DIM else team_col(s, cr[0].team);
@@ -2486,14 +2543,43 @@ draw_fx3 :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
     fxp_status(pf, feet, fxp_v(feet.x + 0.3, 1.1, feet.z), lf, now, f32(i) * 1.37 + 0.4);
   }
   rep := fxp_close(pf);
-  for i: 0..<FXS {
-    f := s[0].fx[i];
-    if f.kind != FX_TEXT { continue; }
-    a := (now - f.t0) / f.life;
-    if a < 0 || a > 1 { continue; }
-    p := proj(s, wx(s, f.ax) + 0.4, 2.3 + a * 1.0, wz(s, f.ay));
-    if p.z > 0 && n + LABEL_VERTS > SCENE_VERTS { s[0].unlabelled += 1; continue; }
-    if p.z > 0 && (s[0].portrait || p.x + 24 * k < s[0].panel.x0 - 8 * k) { n = say_mid(out, n, cast(string) f.text[0..<f.n], p.x + 24 * k, p.y - 14 * k, 15 * k, ink(k, 1 - a * 0.7, f.col)); }
+  // the numbers, placed as the nameplates are (draw_names3): the folds' totals first, then the
+  // rest, each lifted until it clears those placed before it
+  px: [FXS] f32; py: [FXS] f32; pw: [FXS] f32; ph: [FXS] f32; np := 0;
+  for pass: 0..<2 {
+    for i: 0..<FXS {
+      f := s[0].fx[i];
+      if f.kind != FX_TEXT { continue; }
+      total := f.life > 1.5;   // a fold's total (take_events): above the numbers it stands for, larger
+      if total != (pass == 0) { continue; }
+      a := (now - f.t0) / f.life;
+      if a < 0 || a > 1 { continue; }
+      p := proj(s, wx(s, f.ax) + 0.4, ifx total then 4.2 + a * 0.6 else 2.3 + a * 1.0, wz(s, f.ay));
+      if p.z <= 0 { continue; }
+      if n + LABEL_VERTS > SCENE_VERTS { s[0].unlabelled += 1; continue; }
+      cap := ifx total then 18 * k else 15 * k;
+      tx := cast(string) f.text[0..<f.n];
+      w := text_width(tx, cap); x := p.x + 24 * k; y := p.y - 14 * k;
+      // a total lifts up to three times to clear the others; a plain number once, and one still
+      // covered is left to the log
+      tries := 0; moved := true; most := ifx total then 3 else 1;
+      while moved && tries <= most {
+        moved = false;
+        for q: 0..<np {
+          if !moved && abs_f(x - px[q]) * 2 < w + pw[q] + 4 * k && abs_f(y - py[q]) < (cap + ph[q]) / 2 + 2 * k { y = py[q] - ph[q] - 3 * k; moved = true; }
+        }
+        // and off the nameplates
+        for q: 0..<s[0].plates_n {
+          r := s[0].plates[q];
+          if !moved && x + w / 2 > r.x0 && x - w / 2 < r.x1 && y > r.y0 && y - cap < r.y1 { y = r.y0 - 3 * k; moved = true; }
+        }
+        tries += 1;
+      }
+      if moved || y - cap < s[0].scene_top { continue; }
+      if !s[0].portrait && x + w / 2 > s[0].panel.x0 - 8 * k { continue; }
+      if np < FXS { px[np] = x; py[np] = y; pw[np] = w; ph[np] = cap; np += 1; }
+      n = say_mid(out, n, tx, x, y, cap, ink(k, 1 - a * ifx total then 0.5 else 0.7, f.col));
+    }
   }
   return n;
 }
@@ -3874,4 +3960,25 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   #assert p > 300 && p < MAX_VERTICES - 600 && s[0].portrait;
   sb := s[0].sbtn; pb := s[0].pbtn;
   #assert sb.x1 <= s[0].width && sb.x0 >= 0 && (sb.x1 <= pb.x0 || sb.x0 >= pb.x1 || sb.y1 <= pb.y0) && sb.y1 <= s[0].modal.y0;
+}
+
+#test "a Fireball's numbers fold: its three biggest float, and yours, and one gold total for the rest" #steps 400000000 {
+  s: [1] Lab; s[0].siege = true; s[0].horde = false; s[0].town = 12; s[0].cult = 0;
+  lab_start(s[..]);
+  b := bt(s[..]);
+  for i: 0..<FXS { s[0].fx[i].kind = 0; }
+  s[0].seen = b[0].book[0].seq;
+  mage := -1; for i: 0..<b[0].n { if b[0].c[i].npc == RS_NPC_MAGE { mage = i; } }
+  // a Fireball on the watch's own line, from the Mage, by hand: one damage event for each it hits
+  hit := 0;
+  for j: 0..<b[0].n {
+    if j == mage || hit >= 8 { continue; }
+    l: [1] RsLine; rs_add_text(l[..], "fire");
+    rs_tell(b, RS_EV_DAMAGE, SP_FIREBALL, mage, j, 10 + j, RS_FIRE, l[..]); hit += 1;
+  }
+  s[0].target = 0;
+  take_events(s[..]);
+  nums := 0; gold := 0;
+  for i: 0..<FXS { f := s[0].fx[i]; if f.kind == FX_TEXT { if f.col.r == GOLD.r && f.col.g == GOLD.g { gold += 1; #assert f.text[f.n - 1] == 'T'; } else { nums += 1; } } }
+  #assert hit == 8 && gold == 1 && nums == 4;   // the 3 biggest, and your target's
 }
