@@ -1,0 +1,34 @@
+// WebKit suspends frames while its view is occluded. Only time when it can
+// render consumes the first-frame budget; a background window is not failure.
+#authority;
+#test "startup counts visible time and clamps at the deadline" {
+  #assert forge_startup_budget(60000,1000,false)==60000;
+  #assert forge_startup_budget(60000,1000,true)==59000;
+  #assert forge_startup_budget(1000,999,true)==1;
+  #assert forge_startup_budget(1000,1000,true)==0 && forge_startup_budget(1000,1001,true)==0;
+  #assert forge_startup_budget(12,-1,true)==12 && forge_startup_budget(12,0,true)==12;
+  #assert forge_startup_budget(0,1,false)==0 && forge_startup_budget(-1,1,true)==0;
+  #assert forge_startup_phase(0,0,false)==2 && forge_startup_phase(-1,0,true)==2;
+  #assert forge_startup_phase(12,0,true)==0 && forge_startup_phase(12,-1,true)==0;
+  #assert forge_startup_phase(12,1,false)==0 && forge_startup_phase(12,1,true)==1;
+  #assert forge_startup_phase(12,12,true)==2 && forge_startup_phase(12,13,true)==2;
+}
+#forall "small startup budgets match counted visible milliseconds" example:0..<128 {
+  remaining:=example%8; elapsed:=(example/8)%8; visible:=example>=64;
+  expected:=remaining;
+  if visible {for ignored:0..<elapsed {if expected>0 {expected-=1;}}}
+  #assert forge_startup_budget(remaining,elapsed,visible)==expected;
+  phase:=ifx remaining==0 || (visible && elapsed>0 && expected==0) then 2 else ifx visible && elapsed>0 then 1 else 0;
+  #assert forge_startup_phase(remaining,elapsed,visible)==phase;
+}
+ForgeStartupStep :: struct {remaining:int;phase:int;} // idle, counting, expired
+forge_startup_step :: (remaining:int,elapsed:int,visible:bool)->ForgeStartupStep {
+  if remaining<=0 {return ForgeStartupStep.{phase=2};}
+  if !visible || elapsed<=0 {return ForgeStartupStep.{remaining=remaining};}
+  if elapsed>=remaining {return ForgeStartupStep.{phase=2};}
+  return ForgeStartupStep.{remaining=remaining-elapsed,phase=1};
+}
+forge_startup_budget :: (remaining:int,elapsed:int,visible:bool)->int #export_c {
+  return forge_startup_step(remaining,elapsed,visible).remaining;
+}
+forge_startup_phase :: (remaining:int,elapsed:int,visible:bool)->int #export_c {return forge_startup_step(remaining,elapsed,visible).phase;}

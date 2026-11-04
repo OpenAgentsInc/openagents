@@ -97,6 +97,18 @@ page server, the voice Wasm and a local Parakeet voice host. This is the same
   so messages do not compile tools or need a checkout. This creates an owned
   Coder conversation; discovered PIDs remain unattached. Slash commands and
   turning chat into typed world edits remain planned.
+- Startup waits on real rendered-scene readiness, using a Coax budget that
+  counts visible rendering time. WebKit's normal occlusion/background suspension
+  no longer consumes the timeout. The native Metal view occupies only the
+  composer, and both overlays explicitly report transparency. Startup/server
+  errors stop the spinner, show their cause and offer Retry startup; stale
+  process-exit callbacks cannot stop a restarted stack. The visible launch
+  check uses real animation callbacks, separately from the hidden frame-pump
+  smoke, including a 65-second hidden interval and the actual Retry control.
+  Verification on 2026-11-04: visible launch reached a ready scene in 1.11 s;
+  the background/retry check retained 64.96 s of actual hidden time and then
+  reached the new room's rendered scene with entry enabled and setup dismissed.
+  The startup unit killed all 13 mutants; all 80 session checks passed.
 - Requires Apple Silicon and macOS 26+ for this initial WKWebView/WebGPU build.
   The app is ad-hoc signed, experimental and outside `/Applications`.
 

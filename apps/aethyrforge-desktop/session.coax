@@ -2,6 +2,7 @@
 // Everglade, its editor, world rules and saves stay in the existing Coax stack.
 #import "Basic";
 #load "setup.coax";
+#load "startup.coax";
 
 #test "desktop opens the local 5e Everglade in EDIT at the South Gate" {
   b: [256] u8;

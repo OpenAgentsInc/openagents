@@ -132,7 +132,7 @@ final class ForgeSetupPane: NSView {
         refresh.isEnabled = !checking && !verifying
         verify.isEnabled = !checking && !verifying && fgs_status(1) > 0
         enter.isEnabled = errorMessage == nil && !checking && !verifying && fgs_can_enter(sceneReady)
-        if checking || verifying || !sceneReady { progress.startAnimation(nil) } else { progress.stopAnimation(nil) }
+        if errorMessage == nil && (checking || verifying || !sceneReady) { progress.startAnimation(nil) } else { progress.stopAnimation(nil) }
         setAccessibilityLabel("Aethyrforge setup")
     }
     @objc private func enterPressed() { if enter.isEnabled { enterAction?() } }

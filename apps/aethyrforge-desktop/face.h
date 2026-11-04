@@ -2,6 +2,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 int64_t forge_url_byte(int64_t page, int64_t room, int64_t index);
+int64_t forge_startup_budget(int64_t remaining, int64_t elapsed, bool visible);
+int64_t forge_startup_phase(int64_t remaining, int64_t elapsed, bool visible);
 void fgs_reset(void);
 int64_t fgs_input_byte(int64_t index, int64_t value);
 int64_t fgs_accept(int64_t kind, int64_t length);

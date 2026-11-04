@@ -49,6 +49,11 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     var setupPane: ForgeSetupPane!
     var chatPane: ForgeChatPane!
     var sceneReady = false
+    var startupPhase: Int64 = 0
+    var retryCheckStarted = false
+    var retryCheckPassed = false
+    var hiddenSince: Double?
+    var longestHiddenSeconds = 0.0
     var dataURL: URL!
     var pageURL: URL!
     var lockFD: Int32 = -1
@@ -58,6 +63,10 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     let setupSmoke = CommandLine.arguments.contains("--setup-smoke")
     let voiceSmoke = CommandLine.arguments.contains("--voice-smoke")
     let chatSmoke = CommandLine.arguments.contains("--chat-smoke")
+    var launchReport: URL? {
+        guard let i = CommandLine.arguments.firstIndex(of: "--launch-check"), i + 1 < CommandLine.arguments.count else { return nil }
+        return URL(fileURLWithPath: CommandLine.arguments[i + 1])
+    }
     var smoke: Bool { chatSmoke || setupSmoke || voiceSmoke || CommandLine.arguments.contains("--smoke-test") }
     var report: URL? {
         guard let i = CommandLine.arguments.firstIndex(of: chatSmoke ? "--chat-smoke" : voiceSmoke ? "--voice-smoke" : setupSmoke ? "--setup-smoke" : "--smoke-test"), i + 1 < CommandLine.arguments.count else { return nil }
@@ -67,7 +76,20 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(smoke ? .prohibited : .regular)
         makeWindow()
-        startup = Task { if chatSmoke { await chatSmokeCheck() } else { await start() } }
+        startup = Task {
+            if launchReport != nil && CommandLine.arguments.contains("--launch-check-background") {
+                // Let AppKit finish its initial activation before minimizing;
+                // an initial reopen event can otherwise undo a synchronous hide.
+                try? await Task.sleep(for: .seconds(1))
+                window.miniaturize(nil)
+                Task {
+                    try? await Task.sleep(for: .seconds(65))
+                    guard !stopping else { return }
+                    window.deminiaturize(nil); window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
+                }
+            }
+            if chatSmoke { await chatSmokeCheck() } else { await start() }
+        }
     }
 
     func makeWindow() {
@@ -92,6 +114,9 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         let config = WKWebViewConfiguration()
         config.userContentController.add(self, name: "forgeVoiceStatus")
         config.websiteDataStore = .nonPersistent()
+        if launchReport != nil {
+            config.userContentController.addUserScript(WKUserScript(source: "globalThis.__forgeFrameCount=0;const nativeRAF=requestAnimationFrame;globalThis.requestAnimationFrame=f=>nativeRAF(t=>{__forgeFrameCount++;f(t);});", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
         config.mediaTypesRequiringUserActionForPlayback = []
         // Keep the audio graph processing microphone samples while muting output.
         config.userContentController.addUserScript(WKUserScript(source: "globalThis.coaxialAudioTap = c => {const g=c.createGain();g.gain.value=0;g.connect(c.destination);return g;};", injectionTime: .atDocumentStart, forMainFrameOnly: true))
@@ -124,11 +149,17 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         setupPane = ForgeSetupPane(frame: content.bounds)
         setupPane.autoresizingMask = [.width, .height]
         setupPane.enterAction = { [weak self] in self?.enterWorld() }
-        setupPane.refreshAction = { [weak self] in self?.refreshSetup(verify: false) }
+        setupPane.refreshAction = { [weak self] in
+            guard let self else { return }
+            if stopping { restartStartup() } else { refreshSetup(verify: false) }
+        }
         setupPane.verifyAction = { [weak self] in self?.refreshSetup(verify: true) }
         setupPane.folderAction = { NSWorkspace.shared.open(FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".openagents")) }
         content.addSubview(setupPane)
-        if !smoke { window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true) }
+        if !smoke {
+            if launchReport != nil { window.level = .floating }
+            window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
+        }
     }
 
     func startChild(_ name: String, _ arguments: [String], resources: URL, fatal: Bool = true) throws -> Process {
@@ -145,7 +176,8 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         p.standardOutput = log; p.standardError = log
         p.terminationHandler = { [weak self] child in
             Task { @MainActor in
-                guard let self, !self.stopping else { return }
+                guard let self, !self.stopping,
+                      [self.page, self.room, self.voiceHost].contains(where: { $0 === child }) else { return }
                 if fatal { self.fail("\(name) stopped (\(child.terminationStatus)). See \(logURL.path).") }
                 else { self.notice.stringValue = "Local voice stopped. See \(logURL.path)."; self.notice.isHidden = false }
             }
@@ -214,6 +246,26 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
             firstFrameSeconds = Date().timeIntervalSince(startedAt)
             notice.isHidden = true
             sceneReady = true; setupPane.sceneReady = true; setupPane.update()
+            if let launchReport {
+                await inventoryTask?.value
+                enterWorld()
+                let state = try await launchState()
+                try Data(state.utf8).write(to: launchReport, options: .atomic)
+                window.level = .normal
+                if CommandLine.arguments.contains("--launch-check-retry"), !retryCheckStarted {
+                    retryCheckStarted = true
+                    Task {
+                        room?.terminate()
+                        let end = Date().addingTimeInterval(5)
+                        while !stopping && Date() < end { try? await Task.sleep(for: .milliseconds(50)) }
+                        guard stopping, setupPane.refresh.isEnabled, setupPane.refresh.title == "Retry startup" else {
+                            try? Data("Retry control did not become available.".utf8).write(to: launchReport.appendingPathExtension("error")); return
+                        }
+                        retryCheckPassed = true
+                        setupPane.refresh.performClick(nil)
+                    }
+                }
+            }
             if voiceSmoke {
                 await inventoryTask?.value
                 try await voiceSmokeCheck(resources)
@@ -235,14 +287,45 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     }
 
     func waitForScene() async throws {
-        let deadline = Date().addingTimeInterval(60)
-        while Date() < deadline, !stopping {
-            if let ready = try? await web.evaluateJavaScript("globalThis.coaxial?.sceneReady === true"), ready as? Bool == true { return }
-            if let message = try? await web.evaluateJavaScript("document.querySelector('#coaxial-load[data-state=fail] .le')?.textContent || ''"), let s = message as? String, !s.isEmpty { throw ShellError.failed(s) }
+        // During retry WKWebView still evaluates in the previous document
+        // until navigation commits. Its old ready flag cannot admit this boot.
+        let current = "location.origin === 'http://127.0.0.1:\(pageURL.port ?? 0)'"
+        var budget: Int64 = 60000
+        var previous = ProcessInfo.processInfo.systemUptime
+        var wasVisible = false
+        while !stopping {
+            if let launchReport, let state = try? await launchState() { try? Data(state.utf8).write(to: launchReport, options: .atomic) }
+            if let ready = try? await web.evaluateJavaScript("\(current) && globalThis.coaxial?.sceneReady === true"), ready as? Bool == true { return }
+            if let message = try? await web.evaluateJavaScript("(\(current) && document.querySelector('#coaxial-load[data-state=fail] .le')?.textContent) || ''"), let s = message as? String, !s.isEmpty { throw ShellError.failed(s) }
+            let pageVisible = (try? await web.evaluateJavaScript("!document.hidden")) as? Bool == true
+            let visible = smoke || (window.isVisible && !window.isMiniaturized && window.occlusionState.contains(.visible) && pageVisible)
+            let now = ProcessInfo.processInfo.systemUptime
+            if visible { hiddenSince = nil } else {
+                if hiddenSince == nil { hiddenSince = now }
+                longestHiddenSeconds = max(longestHiddenSeconds, now - hiddenSince!)
+            }
+            let elapsed = Int64(max(0, now - previous) * 1000)
+            startupPhase = forge_startup_phase(budget, elapsed, visible && wasVisible)
+            budget = forge_startup_budget(budget, elapsed, visible && wasVisible)
+            previous = now; wasVisible = visible
+            if startupPhase == 2 { break }
             try await Task.sleep(for: .milliseconds(200))
         }
         if smoke, let state = try? await web.evaluateJavaScript("JSON.stringify({ready:globalThis.coaxial?.ready,scene:globalThis.coaxial?.sceneReady,gpu:!!navigator.gpu,body:document.body.innerText.slice(0,1200)})") { print("Hidden view: \(state)") }
-        throw ShellError.failed("Everglade did not draw its first frame. Quit and reopen Aethyrforge to retry.")
+        throw ShellError.failed("Everglade did not finish its first visible scene frame. Press Retry startup.")
+    }
+    func launchState() async throws -> String {
+        let value = try await web.evaluateJavaScript("JSON.stringify({ready:globalThis.coaxial?.ready,scene:globalThis.coaxial?.sceneReady,frames:globalThis.__forgeFrameCount,hidden:document.hidden,focused:document.hasFocus(),canvas:!!document.querySelector('canvas'),probe:globalThis.coaxial?.probe?.()})")
+        let raw = Data((value as? String ?? "{}").utf8)
+        var state = (try? JSONSerialization.jsonObject(with: raw)) as? [String: Any] ?? [:]
+        state["nativeReady"] = sceneReady; state["enterEnabled"] = setupPane.enter.isEnabled
+        state["waitPhase"] = startupPhase
+        state["longestHiddenSeconds"] = longestHiddenSeconds
+        state["retryCheckPassed"] = retryCheckPassed
+        state["setupVisible"] = !setupPane.isHidden; state["failed"] = stopping
+        state["firstFrameSeconds"] = firstFrameSeconds
+        state["hudHeight"] = chatPane.hud.frame.height; state["windowHeight"] = web.frame.height
+        return String(decoding: try JSONSerialization.data(withJSONObject: state, options: [.sortedKeys]), as: UTF8.self)
     }
 
     // Exercises the actual WKWebView and packaged stack, without ordering a
@@ -307,12 +390,26 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
 
     func fail(_ message: String) {
         stopChildren()
+        window.level = .normal
         notice.isHidden = false; notice.stringValue = message
+        setupPane.errorMessage = message
+        setupPane.checking = false; setupPane.verifying = false
+        setupPane.isHidden = false
+        setupPane.refresh.title = "Retry startup"; setupPane.update()
         if smoke {
             if let report { try? Data("FAILED: \(message)".utf8).write(to: report) }
             fputs("Aethyrforge: \(message)\n", stderr)
             exit(1)
         }
+    }
+    func restartStartup() {
+        stopping = false; sceneReady = false; voiceStartup = nil
+        room = nil; page = nil; voiceHost = nil
+        chatPane.stopping = false
+        if launchReport != nil { window.level = .floating }
+        setupPane.sceneReady = false; setupPane.errorMessage = nil
+        setupPane.refresh.title = "Refresh"; setupPane.update()
+        startup = Task { await start() }
     }
 
     var settingsURL: URL { dataURL.deletingLastPathComponent().appendingPathComponent("setup.json") }

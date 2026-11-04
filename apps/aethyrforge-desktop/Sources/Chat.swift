@@ -33,6 +33,9 @@ final class ForgeHUD: MTKView, MTKViewDelegate {
     var pipeline: MTLRenderPipelineState?
     var queue: MTLCommandQueue?
     var busy = false
+    var viewport = NSSize.zero
+    var drawOrigin = NSPoint.zero
+    override var isOpaque: Bool { false }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
     init(frame: NSRect) {
         super.init(frame: frame, device: MTLCreateSystemDefaultDevice())
@@ -60,7 +63,10 @@ final class ForgeHUD: MTKView, MTKViewDelegate {
               let drawable = currentDrawable, let cmd = queue.makeCommandBuffer() else { return }
         var vertices = [Float](repeating: 0, count: 48000)
         let d = Float(drawableSize.width / max(bounds.width, 1))
-        let n = vertices.withUnsafeMutableBufferPointer { fgc_draw($0.baseAddress, Int64($0.count), Float(bounds.width), Float(bounds.height), d, busy) }
+        let n = vertices.withUnsafeMutableBufferPointer { fgc_draw($0.baseAddress, Int64($0.count), Float(viewport.width), Float(viewport.height), d, busy) }
+        // Coax's point-space layout is window-relative. The native Metal view
+        // covers only the composer, so WebKit can see the rest of its surface.
+        for i in 0..<Int(n) { vertices[i * 12] -= Float(drawOrigin.x) * d; vertices[i * 12 + 1] -= Float(drawOrigin.y) * d }
         guard let buffer = device.makeBuffer(bytes: &vertices, length: Int(n) * 48), let encoder = cmd.makeRenderCommandEncoder(descriptor: pass) else { return }
         var size = SIMD2<Float>(Float(drawableSize.width), Float(drawableSize.height))
         encoder.setRenderPipelineState(pipeline); encoder.setVertexBuffer(buffer, offset: 0, index: 0)
@@ -86,6 +92,7 @@ final class ForgeComposer: NSTextView {
 @MainActor
 final class ForgeChatPane: NSView, NSComboBoxDelegate {
     override var isFlipped: Bool { true }
+    override var isOpaque: Bool { false }
     let hud: ForgeHUD
     let transcript = NSTextView()
     let transcriptScroll = NSScrollView()
@@ -126,7 +133,7 @@ final class ForgeChatPane: NSView, NSComboBoxDelegate {
         return String(decoding: b.prefix(max(0, Int(n))), as: UTF8.self)
     }
     override init(frame: NSRect) {
-        hud = ForgeHUD(frame: frame)
+        hud = ForgeHUD(frame: .zero)
         cwd = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/aethyrforge/workspace")
         super.init(frame: frame)
         fgc_reset()
@@ -180,7 +187,9 @@ final class ForgeChatPane: NSView, NSComboBoxDelegate {
         return NSRect(x: v[0], y: v[1], width: v[2], height: v[3])
     }
     override func layout() {
-        super.layout(); hud.frame = bounds
+        super.layout()
+        hud.frame = box(0).insetBy(dx: -4, dy: -4)
+        hud.viewport = bounds.size; hud.drawOrigin = hud.frame.origin
         let t = box(1)
         heading.frame = NSRect(x: t.minX + 8, y: t.minY + 4, width: t.width - 104, height: 16)
         fresh.frame = NSRect(x: t.maxX - 88, y: t.minY + 1, width: 80, height: 22)

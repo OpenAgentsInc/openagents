@@ -36,6 +36,13 @@ Refresh repeats discovery; only pressing Verify voice model hashes the pinned
 complete weight/tokenizer files. No model is loaded
 and no microphone or agent session starts during setup.
 
+The Metal HUD view covers only the bottom composer; both native overlay views
+are explicitly transparent, so WebKit can keep rendering the world. Startup's
+60-second budget counts visible rendering time, pausing while the window or
+page is hidden. A genuine startup/server failure shows its error, stops the
+spinner and provides Retry startup. Retrying replaces only this app's local
+processes and preserves the saved world.
+
 The Coder HUD uses `aethyr/ui/draw.coax` for a compact, lightly tinted 88-point
 composer and shared layout, a native Metal overlay and AppKit text/IME. There
 is no frame or label around the whole window. Messages float over the world
@@ -146,6 +153,21 @@ FORGE_CHAT_SMOKE_ENGINE=codex FORGE_CHAT_SMOKE_ACTIONS=1 \
   ~/.openagents/aethyrforge/Aethyrforge.app/Contents/MacOS/Aethyrforge \
   --chat-smoke /tmp/aethyrforge-chat/result.json
 ```
+
+To check the real visible launch, without the hidden smoke's frame pump:
+
+```sh
+~/.openagents/aethyrforge/Aethyrforge.app/Contents/MacOS/Aethyrforge \
+  --launch-check /tmp/aethyrforge-launch.json
+```
+
+This opens the normal local world and records actual animation callbacks,
+WebKit visibility/readiness and whether setup enabled entry. It temporarily
+keeps the test window visible, enters the world on success and restores its
+normal window level. Add `--launch-check-background` to minimize it for 65 seconds
+before showing it, and `--launch-check-retry` to terminate its own room once
+and exercise the real Retry button. These checks preserve the world document;
+they do not synthesize animation frames or override page visibility.
 
 The hidden voice check plays the committed fixture through a synthetic media
 stream, the actual WKWebView AudioWorklet and voice Wasm, the loopback voice
