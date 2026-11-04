@@ -4,7 +4,8 @@
 // REPORT, KICK (a realm admin's only: the API checks it again) and CLOSE.
 //   - BLOCK (POST /api/playtest/block {player, on}): their body and nameplate are gone from your
 //     view at once, and stay gone in every room (the seat ticket's answer brings your blocks back,
-//     "blocked": the ids, newest first, MD_BLOCKED at most); their chat lines go too (verse.social).
+//     "blocked": the ids, newest first, MD_BLOCKED at most); their chat lines go too, those on the
+//     panel at once and the rest at the API (verse.social).
 //   - REPORT (POST /api/villa/report {kind: "player", ref: their id's 16 hex}): the admins' review
 //     queue; HIDE there keeps them out of every room for 24 hours.
 //   - KICK (POST /api/playtest/room-kick {player}): out of every room for 24 hours; the room server
@@ -173,6 +174,7 @@ md_act :: (s: [] Everglade, b: int) {
   if b == MB_BLOCK {
     k = wire_put(t[..], 0, "/api/playtest/block\n{\"player\":\""); k = wire_put(t[..], k, who); k = wire_put(t[..], k, "\",\"on\":true}");
     md_block_add(n, who);   // gone from your view now; the API keeps it
+    room_drop(s[0].room[..], 0, who);   // and their lines already on the chat panel
     m[0].asked = MD_ASK_BLOCK;
     md_say(s, "BLOCKED · ", name);
   } else if b == MB_REPORT {
@@ -305,4 +307,15 @@ md_probe :: (s: [] Everglade, field: int) -> int {
   #assert md_top(g[..], 180) == 380 + 24;
   g[0].touch = false; g[0].width = 1600; g[0].dpr = 1;
   #assert md_top(g[..], 180) == 180;   // a desktop's top row leaves the middle free
+}
+
+#test "moderate: BLOCK takes their lines off the chat panel at once, and leaves the others'" {
+  g: [1] Everglade; nn: [1] EgNet;
+  everglade_attach_net(g[..], nn[..]);
+  a := "200\n{\"last\": 2, \"others\": [], \"messages\": [{\"n\": 1, \"name\": \"Wren\", \"text\": \"rude\", \"from\": \"p-00000000000000cc\"}, {\"n\": 2, \"name\": \"Finch\", \"text\": \"hi\", \"from\": \"p-00000000000000dd\"}]}";
+  #assert room_take(g[0].room[..], a) == 200 && g[0].room[0].lines == 2;
+  md_plate(g[..], Box.{x0 = 100, y0 = 100, x1 = 160, y1 = 120}, "p-00000000000000cc", "Wren");
+  #assert md_pointer(g[..], 130, 110, 0, 1) && md_pointer(g[..], 130, 110, 2, 1);
+  md_act(g[..], MB_BLOCK);
+  #assert g[0].room[0].lines == 1 && room_line_text(g[0].room[..], 0) == "hi";
 }
