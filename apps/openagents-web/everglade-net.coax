@@ -114,7 +114,8 @@ EgNet :: struct {
   breaks_heard: int; burns_heard: int;   // the town's pieces the server broke and lit (e break, e burn)
   fx: [NET_FX] NetFx;
   air: [WATCH_ACTORS] f32;   // how high over their feet each townsperson is, as the server says (a, m)
-  said: [48] u8; said_n: int; said_t: f32;   // the last refusal's reason
+  said: [48] u8; said_n: int; said_t: f32;   // the last refusal's reason, or what became of the room
+  lost: bool;                // the room's socket closed under you: said again when you're back
   hello_due: bool;
   pipe: [1] Pipe;
   out: [WIRE_FRAME] u8;
@@ -249,7 +250,16 @@ net_ticket :: (s: [] Everglade, answer: string) #export_c {
     }
   }
   n[0].ticket_n = 0;
+  // the directory has no seat anywhere (every shard's rooms full): said, and asked again after the wait
+  if answer.count > 4 && answer[0..<4] == "503\n" { net_tell(s, n, "EVERY ROOM IS FULL · TRYING AGAIN"); }
   net_down(n);
+}
+// What became of the room, said once over the hotbar (and kept for the probe).
+net_tell :: (s: [] Everglade, n: [] EgNet, text: string) {
+  n[0].said_n = 0;
+  for ch: text { if n[0].said_n >= 48 { break; } n[0].said[n[0].said_n] = ch; n[0].said_n += 1; }
+  n[0].said_t = f32(NET_SAY);
+  if s[0].started { sp_say(s, text, -1, ""); }
 }
 // Where the API's directory put you (#12717): the instance and the oa-room shard that holds it. The
 // socket opens on that shard's path, wss://HOST/api/room/sK/relay/everglade/INSTANCE, which the load
@@ -361,6 +371,7 @@ net_event :: (s: [] Everglade, kind: int, text: string) -> bool #export_c {
   if ev.event == SOCKET_ERROR && text.count > 0 && n[0].state == NET_OPEN { return true; }   // a frame over the inbox cap: dropped
   if ev.event == SOCKET_CLOSED || ev.event == SOCKET_ERROR {
     if n[0].seat < 0 { jn_refused(s, n); }   // closed before a seat: full, or gone (everglade-join.coax)
+    else { n[0].lost = true; net_tell(s, n, "LOST THE ROOM · REJOINING"); }   // your network dropped, or the room went
     net_down(n); return true;
   }
   if ev.event == SOCKET_FRAME {
@@ -395,6 +406,7 @@ net_record :: (s: [] Everglade, n: [] EgNet, t: string) {
     seat := wire_num(t, r[..]); _ := wire_num(t, r[..]); clock := wire_num(t, r[..]);
     if seat < 0 { return; }
     n[0].seat = seat; n[0].wanted = -1; jn_seated(n);
+    if n[0].lost { n[0].lost = false; net_tell(s, n, "BACK IN THE ROOM"); }
     if r[0].ok && clock > 0 && n[0].synced < 2 { n[0].offset = clock - n[0].mono; n[0].synced = 1; }
     n[0].hello_due = true; n[0].acked = n[0].seq; n[0].fix_due = false;
     return;
@@ -1425,6 +1437,9 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   #assert na[0].pipe[0].n == 0 && net_probe(a[..], 0) == NET_DOWN;
   net_step(a[..], 300000, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
   #assert na[0].pipe[0].n == 1 && na[0].pipe[0].op[0] == NET_PIPE_TICKET;
+  // every room full: said, not silent
+  net_ticket(a[..], "503\n{\"error\":\"every room is full: try again in a minute\"}");
+  #assert cast(string) na[0].said[0..<na[0].said_n] == "EVERY ROOM IS FULL · TRYING AGAIN" && net_probe(a[..], 0) == NET_DOWN;
 }
 #test "net: the directory's instance and shard: the socket opens on the shard's path, and the next ticket asks for that instance (#12717)" {
   a: [1] Everglade; na: [1] EgNet;
@@ -1819,4 +1834,15 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   #assert net_event(a[..], SOCKET_KIND + SOCKET_CLOSED, "") && net_sky_day(a[..]) < 0 && net_sky_ms(a[..]) < 0;
   // and the wire's day is the page's 48-minute day, its seed the page's weather's
   #assert WIRE_DAY_MS == cast(int) (STYLE_CYCLE_SECONDS * 1000) && WIRE_WEATHER_SEED == EG_WEATHER_SEED;
+}
+#test "net: a room lost under you is said, and so is getting back; a socket refused before a seat says no loss" {
+  a: [1] Everglade; na: [1] EgNet;
+  #assert net_test_page(a[..], na[..], 0, "pa", 100);
+  #assert net_test_hear(a[..], 0, "y 0 1 5000100") && net_live(a[..]);
+  #assert net_event(a[..], SOCKET_KIND + SOCKET_CLOSED, "");
+  #assert !net_live(a[..]) && na[0].lost && cast(string) na[0].said[0..<na[0].said_n] == "LOST THE ROOM · REJOINING";
+  // the socket opens again and the relay seats you: back
+  na[0].state = NET_OPEN; na[0].sock = 0;
+  #assert net_test_hear(a[..], 0, "y 3 1 5009000") && net_live(a[..]);
+  #assert !na[0].lost && cast(string) na[0].said[0..<na[0].said_n] == "BACK IN THE ROOM";
 }
