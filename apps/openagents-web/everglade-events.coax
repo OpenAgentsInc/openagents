@@ -49,8 +49,14 @@ EGE_W_WARDED :: 0; EGE_GAINED :: 1; EGE_DOOR :: 2;
 // A word over the world: WARDED over Darian Odiodei, +25 XP over you, DIMENSION DOOR where he went.
 EgeWord :: struct { live: bool; at: Point; t: f64; what: int; amount: int; }
 
+EGE_BODIES :: 63;              // the raid's bodies on the page (everglade-raid-preview.coax RP_PEOPLE)
+EGE_BODY_LIE :: 9.5;           // s a fallen raider is drawn: it falls, lies and sinks
+EGE_BODY_LOST :: 0.5;          // s unseen (out of view) before a standing raider's body is let go
+
 EgEvents :: struct {
   words: [EGE_WORDS] EgeWord;
+  // which room creature each raid body is (NET_MADE_ID + EID, 0 none), when it was last drawn, and when it fell (-1 standing)
+  body_id: [EGE_BODIES] int; body_t: [EGE_BODIES] f64; body_fell: [EGE_BODIES] f64;
   // the room's event (g), and when it was heard (its SECS count down from then)
   heard: bool; kind: int; phase: int; wave: int; waves: int; secs: int; left: int; standing: int; slain: int;
   square: int; wards: int; arch: int; outcome: int; folk: int; levels: bool; cap: int = 2; at: int;
@@ -168,16 +174,51 @@ ege_word :: (s: [] Everglade, at: Point, what: int, amount: int) {
 
 // ---- the raiders, drawn
 
-// A raid creature (everglade-net.coax net_draw's): a raider in the preview's look (everglade-raid-
-// preview.coax rp_raider_at), or a ward stone, a dark obelisk with a violet light, and while the
+// A raid creature (everglade-net.coax net_draw's): a raider as the preview draws them (everglade-raid-
+// preview.coax everglade_raider, one body each, which falls and lies when it dies), or a ward stone, a dark obelisk with a violet light, and while the
 // wards hold, their light running to Darian Odiodei.
 ege_raider_draw :: (s: [] Everglade, n: [] EgNet, en: NetEnt, age: f32) {
   p := en.shown;
   if en.p1 == EGE_FORM_WARD { ege_ward_draw(s, n, p.x, p.z, age); return; }
   lit: f32 = 0;
   if en.cast_slot >= WL_SLOT0 { lit = clamp01(1 - (f32(s[0].time * 1000) - f32(en.cast_at)) / f32(EGE_LIT_MS)); }
-  moving := abs(p.vx) + abs(p.vz) > 0.2;
-  rp_raider_at(s, en.p1 - EGE_FORM_RAID, p.x, p.z, p.yaw, moving, en.run, p.f / 256, lit, en.eid % 4);
+  q := ege_body(s, en.eid);
+  if q < 0 { return; }
+  e := ege_of(s);
+  e[0].body_t[q] = s[0].time;
+  everglade_raider(s, q, en.p1 - EGE_FORM_RAID, p.x, p.z, p.yaw, sqrt(p.vx * p.vx + p.vz * p.vz), p.f / 256, lit, -1);
+}
+// The body that room creature `id` draws as: its own, else a free one (-1: all taken).
+ege_body :: (s: [] Everglade, id: int) -> int {
+  e := ege_of(s);
+  free := -1;
+  for q: 0..<EGE_BODIES {
+    if e[0].body_id[q] == id { return q; }
+    if free < 0 && e[0].body_id[q] == 0 { free = q; }
+  }
+  if free >= 0 { e[0].body_id[free] = id; e[0].body_fell[free] = -1; }
+  return free;
+}
+// A room creature gone (an x c, everglade-net.coax): a raider's body falls where it stood.
+ege_gone :: (s: [] Everglade, n: [] EgNet, k: int) {
+  en := n[0].ents[k];
+  if !en.live || en.kind != WK_BEAST || en.p1 < EGE_FORM_RAID || en.p1 == EGE_FORM_WARD { return; }
+  e := ege_of(s);
+  for q: 0..<EGE_BODIES { if e[0].body_id[q] == en.eid && e[0].body_fell[q] < 0 { e[0].body_fell[q] = s[0].time; } }
+}
+// Each frame: the fallen lie, then sink and go; a standing raider out of view is let go.
+ege_bodies :: (s: [] Everglade) {
+  e := ege_of(s);
+  for q: 0..<EGE_BODIES {
+    if e[0].body_id[q] == 0 { continue; }
+    o := s[0].rp.who[q];
+    if e[0].body_fell[q] >= 0 {
+      dead := f32(s[0].time - e[0].body_fell[q]);
+      if dead < f32(EGE_BODY_LIE) && o.npc != 0 { everglade_raider(s, q, o.npc, o.x, o.z, o.yaw, 0, o.level, 0, dead); continue; }
+    } else if s[0].time - e[0].body_t[q] < EGE_BODY_LOST { continue; }
+    everglade_raider(s, q, 0, 0, 0, 0, 0, 0, 0, -1);
+    e[0].body_id[q] = 0;
+  }
 }
 ege_ward_draw :: (s: [] Everglade, n: [] EgNet, x: f32, z: f32, age: f32) {
   rise := clamp01(age / 1.5);
@@ -286,6 +327,7 @@ ege_up_words :: (s: [] Everglade, b: [] u8) -> int {
 ege_world_words :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
   n := at;
   e := ege_of(s);
+  ege_bodies(s);
   k := hi(s[0].dpr, 0.5);
   b: [48] u8;
   for q: 0..<EGE_WORDS {
@@ -619,6 +661,19 @@ ege_answered :: (s: [] Everglade, answer: string) -> bool {
   #assert !ege_hit(g[..], n, 2009);
   // a raider's cast is the events module's entry
   #assert ege_entry(g[..], n, "e rc 9 0 400 150 700 12345");
+  // a raider draws as a body; gone, it falls and lies, then is let go
+  r := net_ent(n, NET_MADE_ID + 12, true);
+  n[0].ents[r].kind = WK_BEAST; n[0].ents[r].p1 = EGE_FORM_RAID + 27; n[0].ents[r].ring_n = 1;
+  n[0].ents[r].shown = NetState.{x = 10, z = -20, f = 256 * 2};
+  g[0].time = 20;
+  ege_raider_draw(g[..], n, n[0].ents[r], 1);
+  b := ege_body(g[..], NET_MADE_ID + 12);
+  #assert b >= 0 && g[0].rp.who[b].npc == 27 && g[0].rp.who[b].level == 2 && g[0].rp.who[b].dead_t < 0;
+  ege_gone(g[..], n, r); n[0].ents[r].live = false;
+  g[0].time = 23; ege_bodies(g[..]);
+  #assert g[0].rp.who[b].npc == 27 && g[0].rp.who[b].dead_t > 2.9 && g[0].rp.who[b].x == 10;
+  g[0].time = 30; ege_bodies(g[..]);
+  #assert g[0].rp.who[b].npc == 0 && n[0].evp[0].body_id[b] == 0;
 }
 
 #test "events: the admin pane reads the dials, steps one within its range and asks the API; a visitor has none" {

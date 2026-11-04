@@ -537,7 +537,7 @@ net_entry :: (s: [] Everglade, n: [] EgNet, t: string, d: WireD) {
     if !r[0].ok { return; }
     id := ifx x.k == 'p' then x.id else ifx x.k == 'f' then NET_FOLK_ID + x.id else NET_MADE_ID + x.id;
     k := net_ent(n, id, false);
-    if k >= 0 { n[0].ents[k].live = false; }
+    if k >= 0 { ege_gone(s, n, k); n[0].ents[k].live = false; }   // a raider's body falls (everglade-events.coax)
     return;
   }
   if c == 'a' {
