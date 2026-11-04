@@ -1,5 +1,26 @@
 # Invariants
 
+## The indexed KV arena preserves the durable v1 contract
+
+`coax/lib/bitcoin/kvskip.coax` is an optional native representation behind
+`kvstore.coax`. Its signature, SipHash layout seed, 24-level relative links
+and unreachable old records are memory state, never durable records. Both
+representations emit identical v1 headers, batches, masked values, checksums
+and ordered snapshots. Reopening a snapshot rebuilds the arena; `used`
+includes its allocated control/tower/record extent. Iteration begins at zero
+and continues only with returned offsets. C offsets identify actual keys
+and values, including the zero-cursor case. Every batch preflights all record
+and tower growth before applying any operation; deletion allocates nothing.
+
+The store and arena root gates kill 730 and 260 mutants respectively, with
+zero survivors. `kvskip.py` checks an independent ordered dictionary and
+64-bit offsets; `kvskip-store.py` checks exact durable bytes and recovery in
+debug/release and under ASan/UBSan. The chapter-125 oracle's `--arena` journey
+checks address history, balances and both reorgs on this representation,
+including every cut of the state frame. The full signet node must use
+bounded incremental file reads rather than treating the small example's
+whole-file buffers as a full-chain storage design.
+
 ## P2P frames honor the protocol limit independently of SHA workspace limits
 
 `coax/lib/bitcoin/p2p.coax` reads and writes full v1 messages through

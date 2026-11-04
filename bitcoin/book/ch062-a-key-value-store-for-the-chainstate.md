@@ -96,6 +96,8 @@ KvCommit :: struct { code: int; used: int; n: int; }
 // frames replayed, where the file's good bytes end and whether a torn tail
 // must be cut there, and the obfuscation key.
 KvOpen :: struct { code: int; used: int; seq: u64; frames: int; keep: int; cut: bool; mask: u64; }
+#load "../../tests/bitcoin/kvskip_store_checks.coax";
+#load "../../tests/bitcoin/kv_bounds_checks.coax";
 ```
 
 ## The table
@@ -117,12 +119,7 @@ prefix before any longer key.
 // Byte order, as LevelDB's default comparator: the first differing byte
 // decides, and a key that is a prefix of another sorts first.
 kv_compare :: (a: [] u8, b: [] u8) -> int {
-  n := ifx a.count < b.count then a.count else b.count;
-  for i: 0..<n {
-    if a[i] != b[i] { return ifx a[i] < b[i] then -1 else 1; }
-  }
-  if a.count == b.count { return 0; }
-  return ifx a.count < b.count then -1 else 1;
+  delta := ks_compare(a,b); return (delta >> 63)-((-delta) >> 63);
 }
 ```
 
@@ -136,6 +133,7 @@ kv_key_ok :: (key: [] u8) -> bool { return key.count >= 1 && key.count <= KV_KEY
 // The first entry whose key is at least key: its offset, and whether its
 // key is key itself.
 kv_find_vartime :: (table: [] u8, used: int, key: [] u8) -> KvFind {
+  if ks_enabled(table,used) { f := ks_find(table,used,key); return KvFind.{at=f.at,found=f.found}; }
   at := 0;
   while at < used {
     kn := kv_get16(table, at); vn := kv_get32(table, at + 2);
@@ -158,12 +156,13 @@ kv_get_vartime :: (table: [] u8, used: int, key: [] u8, out: [] u8) -> KvGet {
 // Move table[from..<used] to start at to, in either direction.
 kv_move :: (table: [] u8, from: int, to: int, used: int) {
   n := used - from;
-  if to > from { i := n - 1; while i >= 0 { table[to+i] = table[from+i]; i -= 1; } }
-  if to < from { for i: 0..<n { table[to+i] = table[from+i]; } }
+  direction := (to-from) >> 63; start := (n-1) & (direction ^ -1); step := (direction & 2)-1;
+  for i: 0..<n { at := start+i*step; table[to+at] = table[from+at]; }
 }
 // Put: insert key or replace its value, keeping the order. Returns the
 // table's new length, or minus a code with the table unchanged.
 kv_set_vartime :: (table: [] u8, used: int, key: [] u8, value: [] u8) -> int {
+  if ks_enabled(table,used) { return ks_put(table,used,key,value); }
   if !kv_key_ok(key) || value.count > KV_VALUE_MAX { return -KV_TOO_LONG; }
   f := kv_find_vartime(table, used, key);
   old := 0;
@@ -178,6 +177,7 @@ kv_set_vartime :: (table: [] u8, used: int, key: [] u8, value: [] u8) -> int {
 }
 // Delete: remove key if it is there. Returns the table's new length.
 kv_delete_vartime :: (table: [] u8, used: int, key: [] u8) -> int {
+  if ks_enabled(table,used) { return ks_delete(table,used,key); }
   f := kv_find_vartime(table, used, key);
   if !f.found { return used; }
   size := kv_entry_size(kv_get16(table, f.at), kv_get32(table, f.at + 2));
@@ -199,6 +199,7 @@ matches.
 // The entry at offset at: KV_NOT_FOUND at the end. Start at 0 for the whole
 // table, or at kv_seek_vartime's offset for the keys from a given one.
 kv_entry_vartime :: (table: [] u8, used: int, at: int) -> KvEntry {
+  if ks_enabled(table,used) { e := ks_entry(table,used,at); return KvEntry.{code=e.code,next=e.next,key=e.key,value=e.value}; }
   if at >= used { return KvEntry.{code = KV_NOT_FOUND, next = used}; }
   kn := kv_get16(table, at); vn := kv_get32(table, at + 2);
   k := at + KV_ENTRY_HEAD;
@@ -233,7 +234,7 @@ kv_batch_new :: (batch: [] u8) -> int #export_c {
 }
 kv_batch_put_vartime :: (batch: [] u8, at: int, key: [] u8, value: [] u8) -> int #export_c {
   if !kv_key_ok(key) || value.count > KV_VALUE_MAX { return -KV_TOO_LONG; }
-  if at < KV_BODY_HEAD || at > batch.count || 7 + key.count + value.count > batch.count - at { return -KV_FULL; }
+  if at < KV_BODY_HEAD || 7 + key.count + value.count > batch.count - at { return -KV_FULL; }
   batch[at] = KV_PUT; kv_put16(batch, at + 1, key.count); kv_put32(batch, at + 3, value.count);
   for i: 0..<key.count { batch[at+7+i] = key[i]; }
   for i: 0..<value.count { batch[at+7+key.count+i] = value[i]; }
@@ -242,7 +243,7 @@ kv_batch_put_vartime :: (batch: [] u8, at: int, key: [] u8, value: [] u8) -> int
 }
 kv_batch_delete_vartime :: (batch: [] u8, at: int, key: [] u8) -> int #export_c {
   if !kv_key_ok(key) { return -KV_TOO_LONG; }
-  if at < KV_BODY_HEAD || at > batch.count || 3 + key.count > batch.count - at { return -KV_FULL; }
+  if at < KV_BODY_HEAD || 3 + key.count > batch.count - at { return -KV_FULL; }
   batch[at] = KV_DELETE; kv_put16(batch, at + 1, key.count);
   for i: 0..<key.count { batch[at+3+i] = key[i]; }
   kv_put32(batch, 8, kv_get32(batch, 8) + 1);
@@ -251,14 +252,14 @@ kv_batch_delete_vartime :: (batch: [] u8, at: int, key: [] u8) -> int #export_c 
 // The operation at at, read back.
 kv_op_vartime :: (body: [] u8, at: int) -> KvOp {
   bad := KvOp.{code = KV_BAD_BATCH};
-  if body.count - at < 3 { return bad; }
+  if body.count - at < 4 { return bad; }
   kind := cast(int) body[at]; kn := kv_get16(body, at + 1);
   if kn < 1 || kn > KV_KEY_MAX { return bad; }
   if kind == KV_DELETE {
     if kn > body.count - at - 3 { return bad; }
     return KvOp.{kind = kind, key = body[at+3..<at+3+kn], next = at + 3 + kn};
   }
-  if kind != KV_PUT || body.count - at < 7 { return bad; }
+  if kind != KV_PUT || body.count - at < 8 { return bad; }
   vn := kv_get32(body, at + 3);
   if vn > KV_VALUE_MAX || kn + vn > body.count - at - 7 { return bad; }
   v := at + 7 + kn;
@@ -286,7 +287,7 @@ kv_batch_check_vartime :: (body: [] u8) -> KvBatch {
 kv_apply_vartime :: (table: [] u8, used: int, body: [] u8, mask: u64) -> int {
   b := kv_batch_check_vartime(body);
   if b.code != KV_OK { return -b.code; }
-  if b.grow > table.count - used { return -KV_FULL; }
+  if kv_table_growth(table,used,body,b.grow) > table.count - used { return -KV_FULL; }
   at := KV_BODY_HEAD; u := used;
   for i: 0..<b.count {
     op := kv_op_vartime(body, at);
@@ -299,6 +300,13 @@ kv_apply_vartime :: (table: [] u8, used: int, body: [] u8, mask: u64) -> int {
     at = op.next;
   }
   return u;
+}
+// A put may allocate a tower as well as its canonical entry. Preflight the
+// whole batch before mutating anything; deletes allocate nothing.
+kv_table_growth :: (table: [] u8, used: int, body: [] u8, base: int) -> int {
+  if !ks_enabled(table,used) { return base; }
+  grow := base; at := KV_BODY_HEAD;
+  for i: 0..<kv_get32(body,8) { op := kv_op_vartime(body,at); if op.kind == KV_PUT { grow += 8*ks_level(table,op.key)+1; } at = op.next; } return grow;
 }
 ```
 
@@ -336,6 +344,7 @@ light connector exercises such a frame through real append and reopen.
 // Every checksum here is the first 4 bytes of SHA-256d, as in a P2P
 // message header.
 kv_checksum_ok :: (data: [] u8, sum: [] u8) -> bool {
+  if sum.count != 4 { return false; }
   c: [4] u8;
   kv_checksum(data, c[..]);
   for i: 0..<4 { if c[i] != sum[i] { return false; } }
@@ -357,17 +366,20 @@ kv_seal_vartime :: (frame: [] u8, n: int, seq: u64, mask: u64) {
   kv_put64(body, 0, seq);
   kv_mask_batch(body, mask);
   kv_put32(frame, 0, n);
-  kv_checksum(body, frame[4..<8]);
+  sum: [4] u8; kv_checksum(body,sum[..]); for i: 0..<4 { frame[4+i] = sum[i]; }
 }
+kv_is_error :: (result: int) -> bool { return result < 0; }
+kv_frame_size_ok :: (n: int) -> bool { return n >= KV_BODY_HEAD && n <= KV_FRAME_MAX; }
+kv_frame_status :: (n: int) -> int { return ifx kv_frame_size_ok(n) then KV_OK else KV_TOO_LONG; }
 // Commit a batch: apply it to the table and write the frame to append.
 // The batch is committed when the host has appended the frame and fsync
 // has returned, and not before. Nothing changes on a refusal.
 kv_commit_vartime :: (table: [] u8, used: int, seq: u64, batch: [] u8, mask: u64, frame: [] u8) -> KvCommit {
   b := kv_batch_check_vartime(batch);
   if b.code != KV_OK { return KvCommit.{code = b.code}; }
-  if batch.count > KV_FRAME_MAX { return KvCommit.{code = KV_TOO_LONG}; }
-  if frame.count < KV_FRAME_HEAD + batch.count || b.grow > table.count - used { return KvCommit.{code = KV_FULL}; }
-  for i: 0..<batch.count { frame[KV_FRAME_HEAD+i] = batch[i]; }
+  size_status := kv_frame_status(batch.count); if size_status != KV_OK { return KvCommit.{code=size_status}; }
+  if frame.count < KV_FRAME_HEAD + batch.count || kv_table_growth(table,used,batch,b.grow) > table.count - used { return KvCommit.{code = KV_FULL}; }
+  for i: 8..<batch.count { frame[KV_FRAME_HEAD+i] = batch[i]; }
   kv_seal_vartime(frame, batch.count, seq + 1, mask);
   u := kv_apply_vartime(table, used, batch, 0);
   return KvCommit.{used = u, n = KV_FRAME_HEAD + batch.count};
@@ -421,15 +433,23 @@ kv_zero_from :: (file: [] u8, at: int) -> bool {
 // the host to cut the file at keep. Damage anywhere else is in committed
 // bytes, and replay refuses rather than guess.
 kv_open_vartime :: (file: [] u8, table: [] u8) -> KvOpen {
+  return kv_open_start_vartime(file,table,0);
+}
+kv_open_arena_vartime :: (file: [] u8, table: [] u8, initial: int) -> KvOpen #export_c {
+  if initial != KS_HEAD || !ks_enabled(table,initial) { return KvOpen.{code=KV_CORRUPT}; }
+  for level: 0..<KS_LEVELS { if ks_link(table,0,level) != 0 { return KvOpen.{code=KV_CORRUPT}; } }
+  return kv_open_start_vartime(file,table,initial);
+}
+kv_open_start_vartime :: (file: [] u8, table: [] u8, initial: int) -> KvOpen {
   if file.count < KV_HEADER || file[0] != 'O' || file[1] != 'A' || file[2] != 'K' || file[3] != 'V' { return KvOpen.{code = KV_BAD_HEADER}; }
   if file[4] != KV_VERSION || !kv_checksum_ok(file[0..<16], file[16..<20]) { return KvOpen.{code = KV_BAD_HEADER}; }
-  r := KvOpen.{mask = kv_get64(file, 8)};
+  r := KvOpen.{used=initial,mask = kv_get64(file, 8)};
   at := KV_HEADER;
   while at < file.count {
     if file.count - at < KV_FRAME_HEAD { r.cut = true; break; }
     n := kv_get32(file, at);
-    if n >= KV_BODY_HEAD && n <= KV_FRAME_MAX && n > file.count - at - KV_FRAME_HEAD { r.cut = true; break; }
-    if n < KV_BODY_HEAD || n > KV_FRAME_MAX {
+    if kv_frame_size_ok(n) && n > file.count - at - KV_FRAME_HEAD { r.cut = true; break; }
+    if !kv_frame_size_ok(n) {
       if kv_zero_from(file, at + 4) { r.cut = true; break; }
       return KvOpen.{code = KV_CORRUPT, keep = at};
     }
@@ -476,18 +496,18 @@ commit follows on.
 // The host writes it to a new file, fsyncs it, renames it over the old log
 // and fsyncs the directory. Returns its length, or minus a code.
 kv_snapshot_vartime :: (table: [] u8, used: int, seq: u64, mask: u64, out: [] u8) -> int #export_c {
-  if kv_header_vartime(mask, out) < 0 { return -KV_FULL; }
-  if seq == 0 { return ifx used == 0 then KV_HEADER else -KV_BAD_BATCH; }
+  if kv_is_error(kv_header_vartime(mask, out)) { return -KV_FULL; }
+  if seq == 0 { return ifx kv_entry_vartime(table,used,0).code == KV_NOT_FOUND then KV_HEADER else -KV_BAD_BATCH; }
   body := out[KV_HEADER+KV_FRAME_HEAD..<out.count];
   at := kv_batch_new(body);
-  if at < 0 { return -KV_FULL; }
+  if kv_is_error(at) { return -KV_FULL; }
   e := kv_entry_vartime(table, used, 0);
   while e.code == KV_OK {
     at = kv_batch_put_vartime(body, at, e.key, e.value);
-    if at < 0 { return at; }
+    if kv_is_error(at) { return at; }
     e = kv_entry_vartime(table, used, e.next);
   }
-  if at > KV_FRAME_MAX { return -KV_TOO_LONG; }
+  size_status := kv_frame_status(at); if size_status != KV_OK { return -size_status; }
   kv_seal_vartime(out[KV_HEADER..<out.count], at, seq, mask);
   return KV_HEADER + KV_FRAME_HEAD + at;
 }
@@ -880,6 +900,51 @@ COAX_TEST_COMPILER=coax/bin/coax python3 coax/tests/bitcoin/kvstore.py
 On 2026-11-03 the three tests pass in about 90 seconds, with 5,136 crash
 points, 2,100 damaged logs, 360 commits and 4 compactions across the two
 builds.
+
+## A native indexed arena for full-chain work
+
+The original packed table remains the default and the small worked example.
+Repeated linear searches and moving all later entries are too expensive for
+full signet history. [kvskip.coax](../../coax/lib/bitcoin/kvskip.coax) adds an
+optional caller-owned ordered arena behind the same get/put/delete/iterate
+interface. It changes no durable bytes: log headers, operations, checksums,
+masking, sequence rules and snapshot order remain KV v1.
+
+The arena starts with a 256-byte control header: an unambiguous signature,
+a sixteen-byte SipHash seed, reserved bytes and 24 head links aligned at
+byte 64. Each record has a variable-height link tower followed by the same
+six-byte key/value header, key and value. Links are 64-bit relative offsets.
+SipHash determines heights, bounded at 24; it controls layout, not Bitcoin
+identity or admission. Search follows ordered links. A replacement which
+fits updates in place; a larger replacement allocates and relinks a record.
+Deletion unlinks it. Unreachable old bytes remain until a snapshot/reopen
+rebuilds the arena. `used` is the allocated extent, including those bytes.
+
+`kv_entry_vartime(..., 0)` starts ordered iteration in either representation.
+Further offsets come from seek or the preceding entry's `next`; callers
+must not invent packed offsets for the arena. The C iterator reports actual
+key/value byte offsets, including for that initial zero cursor. A batch
+preflights every put's complete record and tower before any mutation;
+deletes allocate nothing. A fresh arena can reopen existing v1 logs with
+`kv_open_arena_vartime`. Snapshots omit the seed, links and unreachable data,
+so either representation can read the other's durable output.
+
+The [arena checks](../../coax/tests/bitcoin/kvskip_checks.coax) kill all 260
+root mutants. The extended store gate kills all 730 root mutants, with all
+imported baselines retained and zero survivors. No mutant is marked
+equivalent. The [independent ordered-dictionary oracle](../../coax/tests/bitcoin/kvskip.py)
+checks 5,000 updates, immediate seeks, scans, dirty stage copies and offsets
+above four GiB in debug, release and ASan/UBSan. The
+[wire/recovery oracle](../../coax/tests/bitcoin/kvskip-store.py) checks exact
+legacy frame/snapshot parity and 1,096 full, torn and damaged file replays
+in each mode. The original real-file oracle still passes 5,136 crash cuts,
+2,100 damaged logs, 360 commits, 1,200 table operations and four compactions.
+
+The address-index journey also runs on this arena: debug and release each
+match 630 independent address comparisons and 5,413 reorg-frame cuts. These
+checks qualify the representation; incremental full-node file loading,
+block-file rollover and live signet serving remain #12704 integration work.
+See the [verification record](../../docs/verification/bitcoin-indexed-store-2026-11-03.md).
 
 ## What this chapter leaves out
 

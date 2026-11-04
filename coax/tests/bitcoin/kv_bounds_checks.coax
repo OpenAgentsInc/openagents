@@ -1,0 +1,89 @@
+// Independent layout/capacity examples for both table representations and
+// the stable v1 log. Negative builder results are errors; zero is success.
+#test "KV ordering and overlapping moves match saved input bytes" {
+  texts := [5] string.["","a","aa","ab","b"]; a: [2] u8; b: [2] u8;
+  for i: 0..<5 { for j: 0..<5 {
+    for k: 0..<texts[i].count { a[k] = texts[i][k]; } for k: 0..<texts[j].count { b[k] = texts[j][k]; }
+    #assert kv_compare(a[0..<texts[i].count],b[0..<texts[j].count]) == ifx i < j then -1 else (ifx i == j then 0 else 1);
+  } }
+  a[0] = 255; b[0] = 0; #assert kv_compare(a[0..<1],b[0..<1]) == 1 && kv_compare(b[0..<1],a[0..<1]) == -1;
+  for from: 0..<9 { for to: 0..<9 { for n: 0..<9 {
+    bytes: [32] u8; for i: 0..<32 { bytes[i] = cast(u8)(i+1); } original := bytes; expected := bytes;
+    for i: 0..<n { expected[to+i] = original[from+i]; }
+    kv_move(bytes[..],from,to,from+n); for i: 0..<32 { #assert bytes[i] == expected[i]; }
+  } } }
+}
+#forall "KV negative result classification includes successful zero" n: -3..<4 {
+  expected := [7] bool.[true,true,true,false,false,false,false]; #assert kv_is_error(n) == expected[n+3];
+}
+#test "KV frame size admits exactly the declared protocol range" {
+  values := [8] int.[-1,0,11,12,13,67108863,67108864,67108865]; expected := [8] bool.[false,false,false,true,true,true,true,false];
+  for i: 0..<8 { #assert kv_frame_size_ok(values[i]) == expected[i] && kv_frame_status(values[i]) == ifx expected[i] then 0 else 3; }
+}
+#test "KV minimal builders, exact capacity, maximum key and value extents" {
+  bytes: [2048] u8; key: [1025] u8; key[0] = 75; value: [1048577] u8;
+  for i: 0..<bytes.count { bytes[i] = 165; }
+  #assert kv_batch_new(bytes[0..<11]) == -2 && kv_batch_new(bytes[0..<12]) == 12;
+  for i: 0..<12 { #assert bytes[i] == 0; } #assert bytes[12] == 165;
+  #assert kv_batch_check_vartime(bytes[0..<12]).code == 0 && kv_batch_check_vartime(bytes[0..<12]).count == 0;
+  #assert kv_batch_put_vartime(bytes[0..<20],12,key[0..<1],value[0..<0]) == 20;
+  op := kv_op_vartime(bytes[0..<20],12); #assert op.code == 0 && op.kind == 1 && op.key.count == 1 && op.key[0] == 75 && op.value.count == 0 && op.next == 20;
+  #assert kv_batch_put_vartime(bytes[0..<19],12,key[0..<1],value[0..<0]) == -2;
+  #assert kv_batch_put_vartime(bytes[..],0,key[0..<1],value[0..<0]) == -2 && kv_batch_put_vartime(bytes[..],2049,key[0..<1],value[0..<0]) == -2;
+  _ := kv_batch_new(bytes[..]); #assert kv_batch_delete_vartime(bytes[0..<16],12,key[0..<1]) == 16;
+  op = kv_op_vartime(bytes[0..<16],12); #assert op.code == 0 && op.kind == 2 && op.key.count == 1 && op.key[0] == 75 && op.next == 16;
+  #assert kv_batch_delete_vartime(bytes[0..<15],12,key[0..<1]) == -2;
+  #assert kv_batch_delete_vartime(bytes[..],0,key[0..<1]) == -2 && kv_batch_delete_vartime(bytes[..],2049,key[0..<1]) == -2;
+  #assert kv_batch_put_vartime(bytes[..],12,key[0..<1024],value[0..<0]) == 1043;
+  op = kv_op_vartime(bytes[0..<1043],12); #assert op.code == 0 && op.key.count == 1024;
+  #assert kv_batch_put_vartime(bytes[..],12,key[..],value[0..<0]) == -3;
+  bytes[13] = 1; bytes[14] = 4; #assert kv_op_vartime(bytes[0..<1044],12).code == 4;
+  #assert kv_batch_put_vartime(bytes[..],12,key[0..<1],value[0..<1048576]) == -2;
+  #assert kv_batch_put_vartime(bytes[..],12,key[0..<1],value[..]) == -3;
+  #assert kv_set_vartime(bytes[..],0,key[0..<1],value[0..<1048576]) == -2;
+  #assert kv_set_vartime(bytes[..],0,key[0..<1],value[..]) == -3;
+  #assert kv_set_vartime(bytes[0..<7],0,key[0..<1],value[0..<0]) == 7;
+}
+#test "KV operation reader admits full-size values without copying them" {
+  bytes: [1048597] u8; bytes[12] = 1; bytes[13] = 1; kv_put32(bytes[..],15,1048576); bytes[19] = 75;
+  op := kv_op_vartime(bytes[0..<1048596],12); #assert op.code == 0 && op.value.count == 1048576 && op.next == 1048596;
+  kv_put32(bytes[..],15,1048577); #assert kv_op_vartime(bytes[..],12).code == 4;
+}
+#test "KV headers, checksum extents, empty commits and C result fields" {
+  bytes: [512] u8; frame: [128] u8; table: [512] u8; batch: [64] u8; fields: [7] u64;
+  for i: 0..<bytes.count { bytes[i] = 165; } #assert kv_header_vartime(0,bytes[0..<20]) == 20;
+  #assert bh_hex_equal(bytes[0..<20],"4f414b56010000000000000000000000bf5147b6") && bytes[20] == 165;
+  #assert kv_header_vartime(0x123456789abcdef,bytes[0..<20]) == 20 && bh_hex_equal(bytes[0..<20],"4f414b5601010000efcdab89674523018ada55e8");
+  data := [3] u8.[97,98,99]; sum := [5] u8.[0x4f,0x8b,0x42,0xc2,165];
+  #assert kv_checksum_ok(data[..],sum[0..<4]) && !kv_checksum_ok(data[..],sum[..]) && !kv_checksum_ok(data[..],sum[0..<3]);
+  for i: 0..<4 { sum[i] ^= 1; #assert !kv_checksum_ok(data[..],sum[0..<4]); sum[i] ^= 1; }
+  n := kv_batch_new(batch[..]); for i: 0..<frame.count { frame[i] = 165; }
+  r := kv_commit_vartime(table[0..<0],0,0,batch[0..<n],0x123456789abcdef,frame[0..<20]); #assert r.code == 0 && r.used == 0 && r.n == 20;
+  for i: 0..<r.n { bytes[20+i] = frame[i]; } bytes[40] = 0;
+  for i: 0..<7 { fields[i] = 165; }
+  #assert kv_open_c(bytes[0..<41],table[..],fields[0..<6]) == 0;
+  #assert fields[0] == 0 && fields[1] == 1 && fields[2] == 1 && fields[3] == 40 && fields[4] == 1 && fields[5] == 0x123456789abcdef && fields[6] == 165;
+  #assert kv_open_c(bytes[0..<41],table[..],fields[0..<5]) == -1;
+  #assert kv_commit_c(table[..],0,0,batch[0..<n],0,frame[..],fields[0..<1]) == -1;
+  fields[0] = 165; fields[1] = 165; #assert kv_commit_c(table[..],0,0,batch[0..<n],0,frame[..],fields[0..<2]) == 0 && fields[0] == 0 && fields[1] == 20;
+  // A physically complete but invalid eight-byte frame head is corruption.
+  for i: 20..<28 { bytes[i] = 0; } bytes[24] = 1; #assert kv_open_vartime(bytes[0..<28],table[..]).code == KV_CORRUPT;
+  seed: [16] u8; _ := ks_init(table[..],seed[..]); #assert kv_open_arena_vartime(bytes[0..<20],table[0..<256],256).code == 0;
+}
+#test "KV arena batch growth follows every operation and the C iterator offsets" {
+  table: [2048] u8; seed: [16] u8; input: [9] u8; for i: 0..<16 { seed[i] = cast(u8)i; } for i: 0..<9 { input[i] = cast(u8)i; }
+  used := ks_init(table[..],seed[..]); batch: [256] u8; value := [3] u8.[7,8,9];
+  n := kv_batch_new(batch[..]); n = kv_batch_put_vartime(batch[..],n,input[0..<2],value[..]); n = kv_batch_put_vartime(batch[..],n,input[..],value[..]);
+  b := kv_batch_check_vartime(batch[0..<n]); #assert b.grow == 29 && kv_table_growth(table[..],used,batch[0..<n],b.grow) == 87;
+  #assert kv_apply_vartime(table[0..<342],used,batch[0..<n],0) == -2;
+  used = kv_apply_vartime(table[0..<343],used,batch[0..<n],0); #assert used == 343;
+  fields: [6] u64; for i: 0..<6 { fields[i] = 165; }
+  #assert kv_entry_c(table[..],used,0,fields[0..<4]) == -1;
+  #assert kv_entry_c(table[..],used,0,fields[0..<5]) == 0;
+  #assert fields[1] == 279 && fields[2] == 2 && fields[3] == 281 && fields[4] == 3 && fields[5] == 165;
+  at := kv_find_vartime(table[..],used,input[..]).at; #assert kv_entry_c(table[..],used,at,fields[0..<5]) == 0 && fields[1] == cast(u64)(at+6) && fields[2] == 9 && fields[3] == cast(u64)(at+15);
+  used = kv_set_vartime(table[..],used,input[0..<1],value[..]); #assert used == 362;
+  #assert kv_entry_c(table[..],used,0,fields[0..<5]) == 0 && fields[1] == 358 && fields[2] == 1 && fields[3] == 359;
+  used = kv_set_vartime(table[..],0,input[0..<2],value[..]); #assert used == 11;
+  #assert kv_entry_c(table[..],used,0,fields[0..<5]) == 0 && fields[0] == 11 && fields[1] == 6 && fields[2] == 2 && fields[3] == 8 && fields[4] == 3;
+}

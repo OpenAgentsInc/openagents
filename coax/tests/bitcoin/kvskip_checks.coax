@@ -1,0 +1,98 @@
+// Written before the arena implementation. Its canonical key/value behavior
+// is independent of its links, and exact capacities pin the arena layout.
+#test "indexed KV: explicit initialization, signature and no-write refusals" {
+  b: [300] u8; seed: [16] u8; for i: 0..<16 { seed[i] = cast(u8)i; }
+  for i: 0..<b.count { b[i] = 165; }
+  #assert ks_init(b[0..<255],seed[..]) == -2 && ks_init(b[..],seed[0..<15]) == -3;
+  for x: b { #assert x == 165; }
+  #assert !ks_enabled(b[..],0) && !ks_enabled(b[0..<255],256) && !ks_enabled(b[..],301);
+  #assert ks_init(b[..],seed[..]) == 256 && ks_enabled(b[..],256);
+  #assert ks_init(b[0..<256],seed[..]) == 256 && ks_enabled(b[0..<256],256);
+  for i: 0..<8 { #assert b[i] == KS_MAGIC[i]; b[i] ^= 1; #assert !ks_enabled(b[..],256); b[i] ^= 1; }
+  for i: 0..<16 { #assert b[8+i] == seed[i]; }
+  for i: 24..<256 { #assert b[i] == 0; } for i: 256..<300 { #assert b[i] == 165; }
+  e := ks_entry(b[..],256,0); #assert e.code == 1 && e.next == 256 && e.key.count == 0 && e.value.count == 0;
+  #assert ks_entry(b[..],256,256).code == 1;
+}
+#test "indexed KV: byte order, priority bounds and pinned SipHash schedule" {
+  keys := [7] string.["","a","aa","ab","b","ba","bb"]; x: [2] u8; y: [2] u8;
+  for i: 0..<7 { for j: 0..<7 {
+    for k: 0..<keys[i].count { x[k] = keys[i][k]; } for k: 0..<keys[j].count { y[k] = keys[j][k]; }
+    order := ks_compare(x[0..<keys[i].count],y[0..<keys[j].count]); #assert (order < 0) == (i < j) && (order == 0) == (i == j) && (order > 0) == (i > j);
+  } }
+  #assert ks_height(0) == 24 && ks_height(18446744073709551615) == 1;
+  for bit: 0..<64 { #assert ks_height(cast(u64)1 << bit) == ifx bit >= 23 then 24 else bit+1; }
+  b: [512] u8; seed: [16] u8; input: [63] u8; for i: 0..<16 { seed[i] = cast(u8)i; } for i: 0..<63 { input[i] = cast(u8)i; }
+  #assert ks_init(b[..],seed[..]) == 256;
+  // Derived from the pinned original vectors_sip64 bytes, not our hash.
+  heights := [64] int.[1,1,2,1,1,1,2,1,2,5,1,1,1,5,2,1,1,3,3,1,4,1,4,4,3,2,1,1,1,1,4,2,2,1,4,2,3,1,1,3,5,2,1,1,2,1,5,1,1,2,2,2,2,1,2,1,1,1,1,1,1,1,1,2];
+  for i: 0..<64 { #assert ks_level(b[..],input[0..<i]) == heights[i]; }
+}
+#test "indexed KV: exact node capacity and in-place shrink" {
+  b: [512] u8; seed: [16] u8; for i: 0..<16 { seed[i] = cast(u8)i; }
+  key := [2] u8.[0,1]; value := [3] u8.[7,8,9]; #assert ks_init(b[..],seed[..]) == 256;
+  before := b; #assert ks_put(b[0..<283],256,key[..],value[..]) == -2;
+  for i: 0..<b.count { #assert b[i] == before[i]; }
+  used := ks_put(b[0..<284],256,key[..],value[..]); #assert used == 284;
+  f := ks_find(b[..],used,key[..]); #assert f.found && f.at == 273;
+  e := ks_entry(b[..],used,f.at); #assert e.code == 0 && e.key.count == 2 && e.key[0] == 0 && e.key[1] == 1 && e.value.count == 3 && e.value[0] == 7 && e.value[2] == 9 && e.next == used;
+  changed := [3] u8.[1,2,3]; #assert ks_put(b[..],used,key[..],changed[..]) == used;
+  e = ks_entry(b[..],used,f.at); #assert e.value[0] == 1 && e.value[2] == 3;
+  #assert ks_put(b[..],used,key[..],value[0..<1]) == used;
+  e = ks_entry(b[..],used,f.at); #assert e.value.count == 1 && e.value[0] == 7;
+  #assert ks_put(b[..],used,key[..],value[0..<0]) == used;
+  e = ks_entry(b[..],used,f.at); #assert e.value.count == 0 && ks_find(b[..],used,key[..]).found;
+  #assert ks_delete(b[..],used,key[..]) == used && !ks_find(b[..],used,key[..]).found;
+  #assert ks_delete(b[..],used,key[..]) == used && ks_entry(b[..],used,0).code == 1;
+}
+#test "indexed KV: unsorted insertion, replacement, ordered seeks and deletion" {
+  b: [65536] u8; seed: [16] u8; for i: 0..<16 { seed[i] = cast(u8)i; } used := ks_init(b[..],seed[..]);
+  key: [2] u8; value: [64] u8;
+  for i: 0..<41 { number := (i*17)%41; key[0] = cast(u8)(number/3+1); key[1] = cast(u8)(number%3+1); value[0] = cast(u8)number;
+    next := ks_put(b[..],used,key[..],value[0..<1]); #assert next > used; used = next;
+  }
+  first := ks_entry(b[..],used,0); initial := 0;
+  while first.code == 0 { #assert first.key[0] == cast(u8)(initial/3+1) && first.key[1] == cast(u8)(initial%3+1) && first.value[0] == cast(u8)initial; initial += 1; first = ks_entry(b[..],used,first.next); } #assert initial == 41;
+  // Every replacement grows and must relink a newly allocated node.
+  for i: 0..<41 { key[0] = cast(u8)(i/3+1); key[1] = cast(u8)(i%3+1); for j: 0..<9 { value[j] = cast(u8)(i+j); }
+    next := ks_put(b[..],used,key[..],value[0..<9]); #assert next > used; used = next;
+  }
+  e := ks_entry(b[..],used,0); count := 0;
+  while e.code == 0 { #assert e.key.count == 2 && e.key[0] == cast(u8)(count/3+1) && e.key[1] == cast(u8)(count%3+1) && e.value.count == 9 && e.value[0] == cast(u8)count && e.value[8] == cast(u8)(count+8); count += 1; e = ks_entry(b[..],used,e.next); }
+  #assert count == 41 && e.next == used;
+  for i: 0..<41 {
+    key[0] = cast(u8)(i/3+1); key[1] = cast(u8)(i%3+1); f := ks_find(b[..],used,key[..]); #assert f.found;
+    #assert ks_find(b[..],used,key[0..<1]).at <= used; prefix := ks_find(b[..],used,key[0..<1]); pe := ks_entry(b[..],used,prefix.at); #assert !prefix.found && pe.key[0] == key[0] && pe.key[1] == 1;
+  }
+  for i: 0..<41 { if i%2 == 0 { key[0] = cast(u8)(i/3+1); key[1] = cast(u8)(i%3+1); #assert ks_delete(b[..],used,key[..]) == used; } }
+  e = ks_entry(b[..],used,0); count = 0;
+  while e.code == 0 { number := 2*count+1; #assert e.key[0] == cast(u8)(number/3+1) && e.key[1] == cast(u8)(number%3+1); count += 1; e = ks_entry(b[..],used,e.next); }
+  #assert count == 20;
+  key[0] = 255; key[1] = 0; f := ks_find(b[..],used,key[..]); #assert !f.found && f.at == used;
+  key[0] = 0; f = ks_find(b[..],used,key[0..<0]); e = ks_entry(b[..],used,f.at); #assert !f.found && e.key[0] == 1 && e.key[1] == 2;
+}
+#test "indexed KV: invalid extents and key/value bounds leave bytes untouched" {
+  b: [2048] u8; seed: [16] u8; used := ks_init(b[..],seed[..]); before := b;
+  key: [1025] u8; value: [1048577] u8;
+  #assert ks_put(b[..],used,key[0..<0],value[0..<0]) == -3;
+  #assert ks_put(b[..],used,key[..],value[0..<0]) == -3;
+  #assert ks_put(b[..],used,key[0..<1],value[..]) == -3;
+  #assert ks_put(b[..],used,key[0..<1],value[0..<1048576]) == -2;
+  #assert ks_put(b[..],0,key[0..<1],value[0..<0]) == -5;
+  for i: 0..<b.count { #assert b[i] == before[i]; }
+  #assert ks_put(b[..],used,key[0..<1024],value[0..<0]) > used;
+}
+#test "indexed KV: whole endian words, every link level and 64-bit offsets" {
+  b: [1024] u8; for i: 0..<b.count { b[i] = 165; }
+  ks_put64(b[..],3,0x0123456789abcdef);
+  expected := [8] u8.[0xef,0xcd,0xab,0x89,0x67,0x45,0x23,0x01];
+  for i: 0..<8 { #assert b[3+i] == expected[i]; } #assert b[2] == 165 && b[11] == 165 && ks_get64(b[..],3) == 0x0123456789abcdef;
+  ks_put32(b[..],3,0xfedcba98); #assert ks_get32(b[..],3) == 4275878552 && b[7] == 0x67;
+  ks_put16(b[..],3,0xfedc); #assert ks_get16(b[..],3) == 65244 && b[5] == 0xdc;
+  node := 600; b[node-1] = 24;
+  for level: 0..<24 {
+    #assert ks_link_at(b[..],0,level) == 64+8*level && ks_link_at(b[..],node,level) == 407+8*level;
+    ks_set_link(b[..],node,level,1108152157446+level); #assert ks_link(b[..],node,level) == 1108152157446+level;
+    ks_set_link(b[..],0,level,1108152157446+level); #assert ks_link(b[..],0,level) == 1108152157446+level;
+  }
+}

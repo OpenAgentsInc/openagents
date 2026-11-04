@@ -1420,7 +1420,13 @@
     "coax/lib/bitcoin/kvstore.coax",
     "bitcoin/examples/chainstate-store.coax",
     "bitcoin/examples/checks/chainstate-store.coax",
-    "coax/lib/bitcoin/kvhash.coax"
+    "coax/lib/bitcoin/kvhash.coax",
+    "coax/lib/bitcoin/kvskip.coax",
+    "coax/tests/bitcoin/kvskip_checks.coax",
+    "coax/tests/bitcoin/kvskip_store_checks.coax",
+    "coax/tests/bitcoin/kv_bounds_checks.coax",
+    "coax/tests/bitcoin/kvskip.py",
+    "coax/tests/bitcoin/kvskip-store.py"
    ],
    "qualified_targets": [
     "cpu"

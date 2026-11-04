@@ -2,6 +2,10 @@
 #run_steps 250000000;
 #load "../../lib/bitcoin/addrindex.coax";
 #load "txindex-native.coax";
+lc_native_arena_open :: (file: [] u8, table: [] u8) -> KvOpen #export_c {
+  seed: [16] u8; for i: 0..<16 { seed[i] = cast(u8)i; }
+  initial := ks_init(table,seed[..]); return kv_open_arena_vartime(file,table,initial);
+}
 axi_native_reorg :: (d: [] TxiNative, table: [] u8, used: int, indices: [] int, raw: [] u8, offsets: [] int, positions: [] int, stage: [] u8, batch: [] u8) -> LcResult #export_c {
   blocks: [128] LcBlock; locs: [128] TxiLoc;
   if indices.count < 1 || indices.count > 128 || offsets.count != indices.count+1 || positions.count != indices.count { return LcResult.{code=LC_CONTEXT}; }

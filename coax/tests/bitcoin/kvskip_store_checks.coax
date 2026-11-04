@@ -1,0 +1,48 @@
+// The arena is an implementation choice. Log bytes and visible key/value
+// order must agree with the original table for the same committed batches.
+#test "indexed KV store: canonical journal parity, fresh open and snapshot" {
+  arena: [8192] u8; reopened: [8192] u8; flat: [4096] u8; seed: [16] u8;
+  for i: 0..<16 { seed[i] = cast(u8)i; } au := ks_init(arena[..],seed[..]); fu := 0;
+  batch: [512] u8; a_frame: [512] u8; f_frame: [512] u8; journal: [2048] u8; nlog := kv_header_vartime(0x123456789abcdef,journal[..]);
+  key := [2] u8.[0,1]; value := [3] u8.[7,8,9];
+  for which: 0..<4 {
+    n := kv_batch_new(batch[..]); key[1] = cast(u8)(which%2+1);
+    n = kv_batch_put_vartime(batch[..],n,key[..],value[0..<which%4]);
+    ar := kv_commit_vartime(arena[..],au,cast(u64)which,batch[0..<n],0x123456789abcdef,a_frame[..]);
+    fr := kv_commit_vartime(flat[..],fu,cast(u64)which,batch[0..<n],0x123456789abcdef,f_frame[..]);
+    #assert ar.code == 0 && fr.code == 0 && ar.n == fr.n;
+    for i: 0..<ar.n { #assert a_frame[i] == f_frame[i]; journal[nlog+i] = a_frame[i]; } nlog += ar.n; au = ar.used; fu = fr.used;
+  }
+  a_entry := kv_entry_vartime(arena[..],au,0); f_entry := kv_entry_vartime(flat[..],fu,0);
+  while a_entry.code == 0 {
+    #assert f_entry.code == 0 && kv_compare(a_entry.key,f_entry.key) == 0 && kv_compare(a_entry.value,f_entry.value) == 0;
+    a_entry = kv_entry_vartime(arena[..],au,a_entry.next); f_entry = kv_entry_vartime(flat[..],fu,f_entry.next);
+  }
+  #assert f_entry.code == KV_NOT_FOUND;
+  init := ks_init(reopened[..],seed[..]); r := kv_open_arena_vartime(journal[0..<nlog],reopened[..],init);
+  #assert r.code == 0 && r.seq == 4 && r.frames == 4 && r.keep == nlog && !r.cut && r.mask == 0x123456789abcdef;
+  outa: [2048] u8; outf: [2048] u8;
+  na := kv_snapshot_vartime(reopened[..],r.used,r.seq,r.mask,outa[..]); nf := kv_snapshot_vartime(flat[..],fu,r.seq,r.mask,outf[..]);
+  #assert na == nf && na > 20; for i: 0..<na { #assert outa[i] == outf[i]; }
+  seek := kv_seek_vartime(reopened[..],r.used,key[..]); #assert kv_get_vartime(reopened[..],r.used,key[..],value[..]).code == 0 && kv_entry_vartime(reopened[..],r.used,seek).key.count == 2;
+  _ := ks_init(reopened[..],seed[..]); #assert kv_snapshot_vartime(reopened[..],256,0,0,outa[..]) == 20;
+  key[0] = 1; key[1] = 1; used := kv_set_vartime(reopened[..],256,key[..],value[..]);
+  #assert used > 256 && kv_delete_vartime(reopened[..],used,key[..]) == used && kv_entry_vartime(reopened[..],used,0).code == 1;
+}
+#test "indexed KV store: exact preflight, refusal atomicity and delete at capacity" {
+  table: [512] u8; seed: [16] u8; for i: 0..<16 { seed[i] = cast(u8)i; }
+  used := ks_init(table[..],seed[..]); key := [2] u8.[0,1]; value := [3] u8.[7,8,9]; batch: [128] u8; frame: [128] u8;
+  n := kv_batch_new(batch[..]); n = kv_batch_put_vartime(batch[..],n,key[..],value[..]); b := kv_batch_check_vartime(batch[0..<n]);
+  #assert kv_table_growth(table[..],used,batch[0..<n],b.grow) == 28;
+  before := table; #assert kv_apply_vartime(table[0..<283],used,batch[0..<n],0) == -KV_FULL;
+  #assert kv_commit_vartime(table[0..<283],used,0,batch[0..<n],0,frame[..]).code == KV_FULL;
+  for i: 0..<table.count { #assert table[i] == before[i]; }
+  used = kv_apply_vartime(table[0..<284],used,batch[0..<n],0); #assert used == 284;
+  #assert kv_snapshot_vartime(table[..],used,0,0,frame[..]) == -KV_BAD_BATCH;
+  n = kv_batch_new(batch[..]); n = kv_batch_delete_vartime(batch[..],n,key[..]);
+  #assert kv_table_growth(table[..],used,batch[0..<n],0) == 0 && kv_apply_vartime(table[0..<used],used,batch[0..<n],0) == used && !kv_find_vartime(table[..],used,key[..]).found;
+  #assert kv_open_arena_vartime(frame[..],table[..],0).code == KV_CORRUPT;
+  _ := ks_init(table[..],seed[..]); #assert kv_open_arena_vartime(frame[..],table[..],257).code == KV_CORRUPT;
+  for level: 0..<24 { ks_set_link(table[..],0,level,1); #assert kv_open_arena_vartime(frame[..],table[..],256).code == KV_CORRUPT; ks_set_link(table[..],0,level,0); }
+  table[0] ^= 1; #assert kv_open_arena_vartime(frame[..],table[..],256).code == KV_CORRUPT;
+}

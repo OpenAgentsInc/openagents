@@ -1,0 +1,74 @@
+// Optional in-memory ordered arena. Durable records remain chapter 62's KV
+// v1 frames: links, seed, reserved bytes and unreachable old nodes never go
+// on disk. Views/offsets refer only to an initialized caller-owned arena.
+#load "../crypto/siphash.coax";
+#authority;
+KS_HEAD :: 256; KS_LEVELS :: 24;
+KS_MAGIC :: [8] u8.[255,255,75,83,75,73,80,1];
+KsFind :: struct { at: int; found: bool; }
+KsEntry :: struct { code: int; next: int; key: [] u8; value: [] u8; }
+#load "../../tests/bitcoin/kvskip_checks.coax";
+
+ks_get16 :: (b: [] u8, at: int) -> int { return cast(int)b[at] | (cast(int)b[at+1] << 8); }
+ks_get32 :: (b: [] u8, at: int) -> int { v := 0; for i: 0..<4 { v |= cast(int)b[at+i] << (8*i); } return v; }
+ks_get64 :: (b: [] u8, at: int) -> u64 { v: u64; for i: 0..<8 { v |= cast(u64)b[at+i] << (8*i); } return v; }
+ks_put16 :: (b: [] u8, at: int, v: int) { for i: 0..<2 { b[at+i] = cast,trunc(u8)(v >> (8*i)); } }
+ks_put32 :: (b: [] u8, at: int, v: int) { for i: 0..<4 { b[at+i] = cast,trunc(u8)(v >> (8*i)); } }
+ks_put64 :: (b: [] u8, at: int, v: u64) { for i: 0..<8 { b[at+i] = cast,trunc(u8)(v >> (8*i)); } }
+ks_enabled :: (b: [] u8, used: int) -> bool #export_c {
+  if used < KS_HEAD || used > b.count { return false; }
+  for i: 0..<8 { if b[i] != KS_MAGIC[i] { return false; } } return true;
+}
+ks_init :: (b: [] u8, seed: [] u8) -> int #export_c {
+  if seed.count != 16 { return -3; } if b.count < KS_HEAD { return -2; }
+  for i: 0..<8 { b[i] = KS_MAGIC[i]; } for i: 0..<16 { b[8+i] = seed[i]; } for i: 24..<KS_HEAD { b[i] = 0; } return KS_HEAD;
+}
+ks_compare :: (a: [] u8, b: [] u8) -> int {
+  i := 0; while i < a.count && i < b.count { if a[i] != b[i] { return cast(int)a[i]-cast(int)b[i]; } i += 1; }
+  return a.count-b.count;
+}
+ks_height :: (bits: u64) -> int {
+  level := 1; v := bits; while (v & 1) == 0 && level < KS_LEVELS { level += 1; v >>= 1; } return level;
+}
+ks_level :: (b: [] u8, key: [] u8) -> int { return ks_height(siphash24(ks_get64(b,8),ks_get64(b,16),key)); }
+ks_link_at :: (b: [] u8, node: int, level: int) -> int { return ifx node == 0 then 64+8*level else node-1-8*cast(int)b[node-1]+8*level; }
+ks_link :: (b: [] u8, node: int, level: int) -> int { return cast(int)ks_get64(b,ks_link_at(b,node,level)); }
+ks_set_link :: (b: [] u8, node: int, level: int, next: int) { ks_put64(b,ks_link_at(b,node,level),cast(u64)next); }
+ks_key :: (b: [] u8, node: int) -> [] u8 { return b[node+6..<node+6+ks_get16(b,node)]; }
+ks_lower :: (b: [] u8, key: [] u8, previous: [] int) -> int {
+  node := 0; level := KS_LEVELS-1;
+  while level >= 0 {
+    next := ks_link(b,node,level);
+    while next != 0 && ks_compare(ks_key(b,next),key) < 0 { node = next; next = ks_link(b,node,level); }
+    previous[level] = node; level -= 1;
+  }
+  return ks_link(b,node,0);
+}
+ks_find :: (b: [] u8, used: int, key: [] u8) -> KsFind #export_c {
+  previous: [KS_LEVELS] int; node := ks_lower(b,key,previous[..]); if node == 0 { return KsFind.{at=used}; }
+  return KsFind.{at=node,found=ks_compare(ks_key(b,node),key) == 0};
+}
+ks_entry :: (b: [] u8, used: int, at: int) -> KsEntry #export_c {
+  node := at; if node == 0 { node = ks_link(b,0,0); }
+  if node == 0 || node >= used { return KsEntry.{code=1,next=used}; }
+  kn := ks_get16(b,node); vn := ks_get32(b,node+2); next := ks_link(b,node,0);
+  return KsEntry.{next=ifx next == 0 then used else next,key=b[node+6..<node+6+kn],value=b[node+6+kn..<node+6+kn+vn]};
+}
+ks_put :: (b: [] u8, used: int, key: [] u8, value: [] u8) -> int #export_c {
+  if !ks_enabled(b,used) { return -5; }
+  if key.count < 1 || key.count > 1024 || value.count > 1048576 { return -3; }
+  previous: [KS_LEVELS] int; old := ks_lower(b,key,previous[..]); found := old != 0 && ks_compare(ks_key(b,old),key) == 0;
+  if found && value.count <= ks_get32(b,old+2) {
+    ks_put32(b,old+2,value.count); for i: 0..<value.count { b[old+6+key.count+i] = value[i]; } return used;
+  }
+  height := ks_level(b,key); need := 8*height+1+6+key.count+value.count;
+  if need > b.count-used { return -2; } node := used+8*height+1;
+  for i: 0..<height { ks_put64(b,used+8*i,cast(u64)ks_link(b,ifx found then old else previous[i],i)); }
+  b[node-1] = cast(u8)height; ks_put16(b,node,key.count); ks_put32(b,node+2,value.count);
+  for i: 0..<key.count { b[node+6+i] = key[i]; } for i: 0..<value.count { b[node+6+key.count+i] = value[i]; }
+  for i: 0..<height { ks_set_link(b,previous[i],i,node); } return used+need;
+}
+ks_delete :: (b: [] u8, used: int, key: [] u8) -> int #export_c {
+  previous: [KS_LEVELS] int; node := ks_lower(b,key,previous[..]); if node == 0 || ks_compare(ks_key(b,node),key) != 0 { return used; }
+  for i: 0..<cast(int)b[node-1] { ks_set_link(b,previous[i],i,ks_link(b,node,i)); } return used;
+}

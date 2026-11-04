@@ -153,7 +153,7 @@ def cli_checks(tool):
         print("address file tool: independent P2WPKH/P2TR/P2PKH answers, same-block spends, reorgs, replay and torn-frame recovery pass",flush=True)
 
 
-def run(compiler,mode):
+def run(compiler,mode,arena=False):
     with tempfile.TemporaryDirectory(prefix="coax-address-") as temporary:
         directory = Path(temporary)
         source = directory/"index.c"; library = directory/"index.dylib"
@@ -169,6 +169,16 @@ def run(compiler,mode):
         lib.axi_query_vartime.argtypes = [tx.View,C.c_int64,tx.View,Outputs,Histories]; lib.axi_query_vartime.restype = Result
         lib.lc_native_frame.argtypes = [tx.View,C.c_uint64,tx.View]; lib.lc_native_frame.restype = C.c_int64
         lib.lc_native_open.argtypes = [tx.View,tx.View]; lib.lc_native_open.restype = tx.Open
+        lib.lc_native_arena_open.argtypes = [tx.View,tx.View]; lib.lc_native_arena_open.restype = tx.Open
+        lib.kv_entry_c.argtypes = [tx.View,C.c_int64,C.c_int64,tx.IntView]; lib.kv_entry_c.restype = C.c_int64
+        opener=lib.lc_native_arena_open if arena else lib.lc_native_open
+        def table_map(data):
+            if not arena:return tx.table_map(data)
+            if not data:return {}
+            backing=(C.c_uint8*len(data)).from_buffer_copy(data);fields=(C.c_int64*5)();at=0;result={}
+            while lib.kv_entry_c(tx.view(backing),len(data),at,tx.IntView(fields,5))==0:
+                result[data[fields[1]:fields[1]+fields[2]]]=data[fields[3]:fields[3]+fields[4]];at=fields[0]
+            return result
         assert lib.txi_native_headers(state,tx.view(b"".join(b[:80] for b in prefix+branches))) == len(prefix+branches)
         live,stage,batch,frame,reopened = [(C.c_uint8*(4<<20))() for _ in range(5)]
         outs = (Output*512)(); history = (History*512)(); used=sequence=queries=cuts=0
@@ -179,26 +189,30 @@ def run(compiler,mode):
             nonlocal used,sequence,log,queries,cuts
             assert r.code == 0,r.code
             before = bytes(live[:used]); after = bytes(stage[:r.used]); sequence+=1
+            before_map=table_map(before);after_map=tx.table_map(after) if arena and used==0 else table_map(after)
             n = lib.lc_native_frame(tx.view(bytes(batch[:r.n])),sequence,tx.view(frame)); rawframe=bytes(frame[:n])
             if crash:
                 # The complete chronological log is checked once below. For
                 # every cut, replay the identical pre-reorg table from one
                 # sorted snapshot frame; rebuilding 100 old frames per byte
                 # only repeats already checked prefix work quadratically.
-                records=tx.table_map(before)
+                records=before_map
                 body=struct.pack("<QI",1,len(records))+b"".join(b"\x01"+struct.pack("<HI",len(k),len(v))+k+v for k,v in records.items())
                 compact_log=header+tx.digest(header)[:4]+struct.pack("<I",len(body))+tx.digest(body)[:4]+body
-                opened=lib.lc_native_open(tx.view(compact_log),tx.view(reopened))
-                assert opened.code==0 and bytes(reopened[:opened.used])==before
+                opened=opener(tx.view(compact_log),tx.view(reopened))
+                assert opened.code==0 and table_map(bytes(reopened[:opened.used]))==before_map
                 lib.lc_native_frame(tx.view(bytes(batch[:r.n])),2,tx.view(frame)); cutframe=bytes(frame[:n])
                 for cut in range(n+1):
-                    opened = lib.lc_native_open(tx.view(compact_log+cutframe[:cut]),tx.view(reopened))
-                    assert opened.code==0 and bytes(reopened[:opened.used]) == (after if cut==n else before)
+                    opened = opener(tx.view(compact_log+cutframe[:cut]),tx.view(reopened))
+                    assert opened.code==0 and table_map(bytes(reopened[:opened.used])) == (after_map if cut==n else before_map)
                     cuts+=1
             log += rawframe
-            opened = lib.lc_native_open(tx.view(log),tx.view(reopened))
-            assert opened.code == 0 and not opened.cut and bytes(reopened[:opened.used])==after
-            C.memmove(live,stage,r.used); used=r.used
+            opened = opener(tx.view(log),tx.view(reopened))
+            assert opened.code == 0 and not opened.cut and table_map(bytes(reopened[:opened.used]))==after_map
+            if arena:C.memmove(live,reopened,opened.used);used=opened.used
+            else:
+                assert bytes(reopened[:opened.used])==after
+                C.memmove(live,stage,r.used);used=r.used
             model,hist = expected(active)
             for script in scripts:
                 q = lib.axi_query_vartime(tx.view(live),used,tx.view(script),Outputs(outs,512),Histories(history,512))
@@ -233,7 +247,7 @@ def run(compiler,mode):
         apply([103,104,105],branches[2:5],prefix[1:]+branches[2:5],True)
         apply([101,102,106,107],[*branches[:2],*branches[5:]],prefix[1:]+branches[:2]+branches[5:])
         commit(lib.axi_disconnect_vartime(tx.view(live),used,tx.view(stage),tx.view(batch)),prefix[1:]+branches[:2]+branches[5:6])
-        print(f"address index {mode}: {queries} complete address comparisons, {cuts} atomic reorg crash cuts",flush=True)
+        print(f"address index {mode}{' arena' if arena else ''}: {queries} complete address comparisons, {cuts} atomic reorg crash cuts",flush=True)
 
 
 def sanitized(compiler):
@@ -249,8 +263,8 @@ def sanitized(compiler):
 
 
 if __name__=="__main__":
-    parser=argparse.ArgumentParser();parser.add_argument("--coax");parser.add_argument("--cli-tool");parser.add_argument("--sanitize-with");parser.add_argument("--mode",choices=("debug","release","all"),default="all");a=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument("--coax");parser.add_argument("--cli-tool");parser.add_argument("--sanitize-with");parser.add_argument("--arena",action="store_true");parser.add_argument("--mode",choices=("debug","release","all"),default="all");a=parser.parse_args()
     if a.coax:
-        for mode in (("debug","release") if a.mode=="all" else (a.mode,)):run(Path(a.coax).resolve(),mode)
+        for mode in (("debug","release") if a.mode=="all" else (a.mode,)):run(Path(a.coax).resolve(),mode,a.arena)
     if a.cli_tool:cli_checks(Path(a.cli_tool).resolve())
     if a.sanitize_with:sanitized(Path(a.sanitize_with).resolve())
