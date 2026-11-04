@@ -870,9 +870,21 @@ Use `coax mutate split.coax --mutation-reference` to force the full runner.
 
 Mutants are independent: each one changes one site, runs the checks in a
 fresh evaluator and is undone. So `coax mutate` evaluates them in worker
-processes, one per available core by default. `--jobs N` sets the number
-(1 to 1,024; `--jobs 1` keeps everything in one process), and so does the
-`COAX_MUTATE_JOBS` environment variable when `--jobs` is absent. Each worker
+processes. `--jobs N` sets the most it runs at once (1 to 1,024; `--jobs 1`
+keeps everything in one process), and so do the `COAX_MUTATE_JOBS` and
+`COAX_JOBS` environment variables when `--jobs` is absent. Without any of
+them, the limit is the machine's build-worker budget.
+
+That budget is shared by every coax process on the machine, so several
+builds at once don't each take every core. It defaults to the performance
+cores less a third of them, which stay free for you (`COAX_JOBS_RESERVE`
+sets the reserve, `COAX_JOBS_BUDGET` the budget). Each worker after a
+process's first takes a token from the budget and gives it back when it
+ends, and no new one starts while the load average is at or above the
+budget. A process always runs at least one worker, so a build never waits
+for another to finish; one that can't get all the workers it could use says
+so once on standard error. `coax status` shows the budget, the reserve and
+which processes hold tokens. Each worker
 starts from a copy of the compiler made after the unmutated checks pass, and
 the report is printed only after every mutant is done, in source order. The
 mutant set, every kill or survival, the trace, the statistics and the exit

@@ -84,6 +84,7 @@ struct TimedLaps {
 #include "shader.cpp"
 #include "lex.cpp"
 #include "parse.cpp"
+#include "jobs.cpp"
 #include "verify.cpp"
 #include "proto.cpp"
 #include "sources.cpp"
@@ -1189,6 +1190,7 @@ static pid_t library_check_start(const Source *src, int32_t at, const EmitOption
   if (pid < 0) { close(fds[0]); close(fds[1]); return -1; }
   if (pid == 0) {
     close(fds[0]);
+    job_child();
     int null = open("/dev/null", O_WRONLY);
     if (null >= 0) { dup2(null, 1); dup2(null, 2); }
     g_timings.path.clear();
@@ -1354,6 +1356,7 @@ static std::vector<bool> library_units(const Source *src, const std::vector<Toke
   std::vector<Running> running;
   std::vector<bool> started(tasks.size(), false);
   const uint64_t jobs = check_jobs();
+  JobSlots workers(jobs);  // each child is one worker from the machine-wide pool
   auto decide = [&](size_t i, bool verdict, double seconds) {
     const Task &t = tasks[i];
     const std::string &canonical = src->units[(size_t)t.unit]->canonical;
@@ -1365,14 +1368,17 @@ static std::vector<bool> library_units(const Source *src, const std::vector<Toke
     out[(size_t)t.unit] = SU_library_checks(false, t.authority, t.imports, verdict);
   };
   for (size_t finished = 0; finished < tasks.size();) {
+    bool ready_left = false;  // a ready unit waits for a worker
     for (size_t i = 0; i < tasks.size() && running.size() < jobs; i++) {
       if (started[i]) continue;
       bool ready = true;
       for (int32_t c : needs[i]) ready = ready && !waiting.count(c);
       if (!ready) continue;
+      if (!workers.start()) { ready_left = true; break; }
       const auto began = std::chrono::steady_clock::now();
       int fd = -1;
       const pid_t pid = library_check_start(src, tasks[i].unit, opts, run, &fd);
+      if (pid < 0) workers.stop();
       if (pid < 0 && !running.empty()) break;  // no process to spare: wait for one to end
       started[i] = true;
       if (pid < 0) { decide(i, false, seconds_since(began)); finished++; continue; }  // as a sequential run decides it
@@ -1381,7 +1387,7 @@ static std::vector<bool> library_units(const Source *src, const std::vector<Toke
     if (running.empty()) continue;
     std::vector<pollfd> fds;
     for (const Running &r : running) fds.push_back({r.fd, POLLIN, 0});
-    if (poll(fds.data(), fds.size(), -1) < 0) {
+    if (poll(fds.data(), fds.size(), ready_left ? 250 : -1) < 0) {
       if (errno == EINTR) continue;
       for (pollfd &f : fds) f.revents = POLLHUP;  // can't watch the pipes: wait for each child in turn
     }
@@ -1390,6 +1396,7 @@ static std::vector<bool> library_units(const Source *src, const std::vector<Toke
       const Running r = running[k];
       close(r.fd);
       running.erase(running.begin() + (std::ptrdiff_t)k);
+      workers.stop();
       const bool verdict = library_check_finish(r.pid);
       decide(r.task, verdict, seconds_since(r.began));
       finished++;
@@ -1671,15 +1678,15 @@ static int usage() {
           "                    then checks entering its procedure, cheapest first); --source-order\n"
           "                    (implied by --mutation-trace) runs the rest in source order instead;\n"
           "                    only the work changes, never the report\n"
-          "                    --jobs N evaluates mutants in N processes (default: available cores,\n"
-          "                    or $COAX_MUTATE_JOBS); the report is the same for every N\n"
+          "                    --jobs N evaluates mutants in up to N processes (default: $COAX_MUTATE_JOBS,\n"
+          "                    $COAX_JOBS or the build-worker budget); the report is the same for every N\n"
           "                    --shard I/N runs mutants I-1, I-1+N, ... and prints a record on stdout\n"
           "                    --merge RECORD (repeated) combines all N records into the full report\n"
           "       coax explain CODE | --all [--markdown]\n"
           "       coax version\n"
           "       coax source-digest ROOT          (the hash of ROOT/coax's compiler sources)\n"
-          "       coax status [--json]\n"
-          "options: --arithmetic checked|wrapping selects runtime integer arithmetic\n       --target native-lp64 names the layout target for layout/deps (others: E0612)\n       --opt 0|1|2|3 selects native optimization for run/build/lib\n       --build-profile development|release selects BUILD_DEBUG source/layout\n       --release retains the legacy wrapping/O2/release/no-debug bundle\n       --profile-report FILE records the resolved profile and source/artifact hashes\n       --run-steps N sets the bounded aggregate compile-time work limit\n       --json prints diagnostics as JSON lines\n       --diagnostics json prints coax.diagnostic.v1 lines: spans, notes and fixes\n       --debug-info maps native code to original Coax source\n       --no-debug-info omits native source debugging independently\n       --source-map FILE writes debugger names/locations (implies --debug-info)\n       --timings FILE writes phase wall times and generated byte count (JSON; --timings-json FILE is the same)\n       --timings-table prints phase, check and library times on stderr\n");
+          "       coax status [--json] | --jobs [--json]   (the build-worker budget: on stderr, or alone with --jobs)\n"
+          "options: --arithmetic checked|wrapping selects runtime integer arithmetic\n       --target native-lp64 names the layout target for layout/deps (others: E0612)\n       --opt 0|1|2|3 selects native optimization for run/build/lib\n       --build-profile development|release selects BUILD_DEBUG source/layout\n       --release retains the legacy wrapping/O2/release/no-debug bundle\n       --profile-report FILE records the resolved profile and source/artifact hashes\n       --run-steps N sets the bounded aggregate compile-time work limit\n       --json prints diagnostics as JSON lines\n       --diagnostics json prints coax.diagnostic.v1 lines: spans, notes and fixes\n       --debug-info maps native code to original Coax source\n       --no-debug-info omits native source debugging independently\n       --source-map FILE writes debugger names/locations (implies --debug-info)\n       --timings FILE writes phase wall times and generated byte count (JSON; --timings-json FILE is the same)\n       --timings-table prints phase, check and library times on stderr\n       --jobs N runs at most N parallel check workers; every coax process shares one build-worker budget (coax status --jobs)\n");
   return 2;
 }
 
@@ -1857,6 +1864,8 @@ static void report_stale_compiler() {
 static int main_impl(int argc, char **argv) {
   if (argc < 2) return usage();
   std::string cmd = argv[1];
+  // What `coax status` shows for the build-worker tokens this process holds.
+  for (int i = 1; i < argc && g_jobs.command.size() < 200; i++) g_jobs.command += std::string(i > 1 ? " " : "") + argv[i];
   if (cmd == "version" || cmd == "--version") {
     puts(VERSION);
     return 0;
@@ -1872,9 +1881,18 @@ static int main_impl(int argc, char **argv) {
     return 0;
   }
   if (cmd == "status") {
+    // The release catalogue on stdout, byte for byte the checked documents
+    // (STATUS.md, release-status.json); the machine-wide build-worker budget
+    // after it on stderr. --jobs prints only the budget, on stdout.
+    const bool json = argc == 3 && std::string(argv[2]) == "--json";
+    const bool jobs = (argc == 3 && std::string(argv[2]) == "--jobs") ||
+                      (argc == 4 && std::string(argv[2]) == "--jobs" && std::string(argv[3]) == "--json");
+    if (jobs) { job_status(stdout, argc == 4); return 0; }
     if (argc==2) fputs(COAX_RELEASE_STATUS_MARKDOWN,stdout);
-    else if(argc==3 && std::string(argv[2])=="--json") fputs(COAX_RELEASE_STATUS_JSON,stdout);
+    else if(json) fputs(COAX_RELEASE_STATUS_JSON,stdout);
     else return usage();
+    fflush(stdout);
+    if (!json) { fputs("\n", stderr); job_status(stderr, false); }
     return 0;
   }
   if (cmd == "explain") return explain(argc, argv);
@@ -1984,11 +2002,14 @@ static int main_impl(int argc, char **argv) {
     else if (a == "--mutation-reference" && cmd == "mutate") mutation.reference = true;
     else if (a == "--mutation-stats" && cmd == "mutate") mutation.stats = true;
     else if (a == "--mutation-trace" && cmd == "mutate") mutation.trace = true;
-    else if (a == "--jobs" && cmd == "mutate") {
+    else if (a == "--jobs") {
+      // The most build workers this process runs at once (jobs.cpp); for
+      // mutate, the mutation workers.
       if (mutation.jobs || i + 1 >= argc || !parse_count(argv[i + 1], &mutation.jobs) || !MS_jobs_valid(mutation.jobs)) {
         fprintf(stderr, "coax: --jobs requires one count from 1 to 1024\n");
         return 1;
       }
+      job_pool().override_jobs = mutation.jobs;
       ++i;
     }
     else if (a == "--shard" && cmd == "mutate") {

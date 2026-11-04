@@ -510,7 +510,7 @@ static bool mutation_allocates_string(const File *file) {
 
 struct MutationOptions {
   bool reference = false, stats = false, trace = false, root_only = false;
-  uint64_t jobs = 0;               // 0: available cores (or $COAX_MUTATE_JOBS)
+  uint64_t jobs = 0;               // 0: the machine-wide budget (or $COAX_MUTATE_JOBS, $COAX_JOBS)
   uint64_t shard = 0, shards = 0;  // 0/0: the whole set
   std::vector<std::string> merge;  // shard records to combine instead of running
   std::string unit;                // --unit: mutate only this source unit's procedures
@@ -652,37 +652,13 @@ static MutantResult evaluate_mutant(const MutationRun &run, size_t index, size_t
   return r;
 }
 
-static uint64_t available_cores() {
-#ifdef __linux__
-  cpu_set_t set;
-  CPU_ZERO(&set);
-  if (sched_getaffinity(0, sizeof set, &set) == 0 && CPU_COUNT(&set) > 0) return (uint64_t)CPU_COUNT(&set);
-#endif
-  long n = sysconf(_SC_NPROCESSORS_ONLN);
-  return n > 0 ? (uint64_t)n : 1;
-}
-
-static bool parse_count(const char *text, uint64_t *out) {
-  if (!text || !*text) return false;
-  uint64_t v = 0;
-  for (const char *p = text; *p; p++) {
-    if (*p < '0' || *p > '9' || v > 100000000) return false;
-    v = v * 10 + (uint64_t)(*p - '0');
-  }
-  *out = v;
-  return true;
-}
-
-// How many checks run at once in forked children: the core count, or fewer
-// when $COAX_CHECK_JOBS says so. Shared by parallel #authority checks and
-// the standalone library checks (ax-library-check-cache); either way the
-// result is the sequential one.
-static uint64_t check_jobs() {
-  uint64_t jobs = 0;
-  const char *env = getenv("COAX_CHECK_JOBS");
-  if (!env || !parse_count(env, &jobs) || !jobs) jobs = available_cores();
-  return std::max<uint64_t>(1, std::min<uint64_t>(jobs, available_cores()));
-}
+// The most checks run at once in forked children: --jobs N, else
+// $COAX_CHECK_JOBS, else $COAX_JOBS, else the machine-wide budget (jobs.cpp),
+// and never more than the cores. Shared by parallel #authority checks and
+// the standalone library checks (ax-library-check-cache). How many run at a
+// time is the pool's to decide (JobSlots); either way the result is the
+// sequential one.
+static uint64_t check_jobs() { return job_cap("COAX_CHECK_JOBS", available_cores()); }
 
 // Reusing passing checks one at a time (ax-check-reuse). When an #authority
 // compile's whole-program verdict isn't in the check cache (an edit since the
@@ -1156,6 +1132,7 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
     if (pid < 0) { close(pipe_fds[0]); close(pipe_fds[1]); return false; }
     if (pid == 0) {
       close(pipe_fds[0]);
+      job_child();
       int null = open("/dev/null", O_WRONLY);
       if (null >= 0) { dup2(null, 1); dup2(null, 2); }
       memory.peak_slots = memory.slots;
@@ -1198,13 +1175,20 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
     running.push_back({pid, pipe_fds[0], index, {}});
     return true;
   };
+  // Each child is one build worker from the machine-wide pool (JobSlots):
+  // the first always starts, the others as tokens are free, and a check
+  // waiting for one tries again every quarter second.
+  JobSlots workers(jobs);
   while (!broken && (next < n || !running.empty())) {
-    while (running.size() < jobs && next < n)
-      if (!start(order[next++])) { broken = true; break; }
+    while (next < n && prefilled[order[next]]) next++;
+    while (next < n && workers.start()) {
+      if (!start(order[next++])) { workers.stop(); broken = true; break; }
+      while (next < n && prefilled[order[next]]) next++;
+    }
     if (broken || running.empty()) break;
     std::vector<pollfd> fds;
     for (const Child &c : running) fds.push_back({c.fd, POLLIN, 0});
-    if (poll(fds.data(), fds.size(), -1) < 0) {
+    if (poll(fds.data(), fds.size(), next < n && workers.running() < jobs ? 250 : -1) < 0) {
       if (errno == EINTR) continue;
       broken = true;
       break;
@@ -1226,6 +1210,7 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
         if (report[MAGIC] == REPORT && report[EXECUTED] == report.size() - FIELDS) reports[c.index] = std::move(report);
       }
       running.erase(running.begin() + (std::ptrdiff_t)k);
+      workers.stop();
     }
   }
   if (broken) {
@@ -1345,11 +1330,18 @@ static bool evaluate_parallel(MutationRun run, const std::vector<size_t> &owned,
   run.slots = slots;
   fflush(stdout);
   fflush(stderr);
+  // Each worker is one build worker from the machine-wide pool (JobSlots):
+  // the first starts at once, the others as tokens are free while mutants
+  // are left, and each worker's token goes back when it ends.
   std::vector<pid_t> pids;
+  std::vector<pid_t> live;
   pid_t parent = getpid();
-  for (uint64_t w = 0; w < workers; w++) {
+  JobSlots slots_held(workers);
+  std::string failure;
+  auto start_worker = [&]() -> bool {
     pid_t pid = fork();
     if (pid == 0) {
+      job_child();
       // A worker never outlives the run that started it.
 #ifdef __linux__
       prctl(PR_SET_PDEATHSIG, SIGKILL);
@@ -1362,16 +1354,35 @@ static bool evaluate_parallel(MutationRun run, const std::vector<size_t> &owned,
       }
       _exit(0);
     }
-    if (pid < 0) break;  // fewer workers; the ones started take all the work
+    if (pid < 0) return false;  // fewer workers; the ones started take all the work
     pids.push_back(pid);
-  }
-  std::string failure;
-  for (pid_t pid : pids) {
-    int status = 0;
-    while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
+    live.push_back(pid);
+    return true;
+  };
+  auto reap = [&](pid_t pid, int status) {
+    for (size_t i = 0; i < live.size(); i++)
+      if (live[i] == pid) { live.erase(live.begin() + (std::ptrdiff_t)i); break; }
+    slots_held.stop();
     if (failure.empty() && !(WIFEXITED(status) && WEXITSTATUS(status) == 0))
       failure = WIFSIGNALED(status) ? "terminated by signal " + std::to_string(WTERMSIG(status))
                                     : "exited with status " + std::to_string(WEXITSTATUS(status));
+  };
+  bool can_fork = true;
+  for (;;) {
+    while (can_fork && live.size() < workers && next->load() < owned.size() && slots_held.start())
+      if (!start_worker()) { slots_held.stop(); can_fork = false; }
+    if (live.empty()) break;
+    // While it may grow, look in on the workers every quarter second;
+    // after that, wait for each in turn (they end when the mutants do).
+    const bool may_grow = can_fork && live.size() < workers && next->load() < owned.size();
+    bool ended = false;
+    for (size_t i = live.size(); i-- > 0;) {
+      int status = 0;
+      pid_t pid = waitpid(live[i], &status, may_grow ? WNOHANG : 0);
+      if (pid < 0 && errno == EINTR) { ended = true; break; }
+      if (pid == live[i] || pid < 0) { reap(live[i], pid < 0 ? 0 : status); ended = true; if (!may_grow) break; }
+    }
+    if (!ended && may_grow) poll(nullptr, 0, 250);
   }
   // No worker could start: evaluate in this process.
   if (pids.empty())
@@ -1672,11 +1683,10 @@ static int mutate_command(Arena *arena, File *file, const MutationOptions &opt) 
     }
     MutationRun run{file, &m.mutants, &base, &paths, facts.selective, hints.empty() ? nullptr : &hints,
                     likely.empty() || cheap.empty() ? nullptr : &likely, cheap.empty() ? nullptr : &cheap, nullptr, nullptr};
-    uint64_t jobs = opt.jobs;
-    if (!jobs) {
-      const char *env = getenv("COAX_MUTATE_JOBS");
-      if (!env || !parse_count(env, &jobs) || !MS_jobs_valid(jobs)) jobs = std::min<uint64_t>(available_cores(), 1024);
-    }
+    // The most mutation workers at once: --jobs N, else $COAX_MUTATE_JOBS,
+    // else $COAX_JOBS, else the machine-wide budget; the pool decides how
+    // many run at a time (evaluate_parallel).
+    uint64_t jobs = opt.jobs ? opt.jobs : job_cap("COAX_MUTATE_JOBS", std::min<uint64_t>(available_cores(), 1024));
     uint64_t workers = std::min<uint64_t>(jobs, owned.size());
     if (workers <= 1) evaluate_serial(run, owned, &results);
     else if (!evaluate_parallel(run, owned, workers, &results)) {

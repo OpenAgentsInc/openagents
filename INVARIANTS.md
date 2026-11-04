@@ -4033,7 +4033,8 @@ helpers it uses; leaving out what only checks reach never changes what a
 program does.
 
 Since #12659 the units without a cached result are checked alone in forked
-children, up to the core count (`$COAX_CHECK_JOBS`). A unit's child starts
+children, up to the machine-wide build-worker budget (`$COAX_CHECK_JOBS`
+caps it). A unit's child starts
 only after every unit before it in the sequential order that it loads has a
 verdict, and a child sees only its own closure, so the verdicts, cache
 records, C and diagnostics are the sequential ones for any job count. The
@@ -4070,7 +4071,8 @@ state, not a signature: anyone who can write it can make a compile skip
 checks.
 
 Since #12657 a compile runs those checks in forked children, one check a
-child, up to the core count (`$COAX_CHECK_JOBS`), with the same evaluator,
+child, up to the machine-wide build-worker budget (`$COAX_CHECK_JOBS` caps
+it), with the same evaluator,
 budgets and limits. A child that passed contributes its steps and the
 procedures it entered (for E0380); every failing check runs again in the
 compiler, in order, so diagnostics and exit status are the sequential ones.
@@ -4081,6 +4083,19 @@ behind fits the limits, and no check failed after storage was left behind.
 Otherwise every check runs again sequentially. The order children start in
 (slowest last time first, from a times record beside the check cache)
 changes nothing else.
+
+Since `ax-job-budget` every coax process that runs work in parallel (these
+checks, the library checks and `coax mutate` workers) draws its workers from
+one budget shared by every coax process on the machine: `flock` tokens in
+`$COAX_JOBS_DIR` (default `~/.cache/coax/jobs/`), by default the performance
+cores less a third reserved for the person at the machine. Invariants: a dead
+process never holds a token (the kernel drops its locks); every process always
+runs at least one worker, so no build waits on another; no budget, reserve,
+load backoff or wait is hidden (`coax status`, and one stderr line when a build
+waits); and the pool decides only how many workers run at once, so stdout, the
+C, the mutation report and exit status are the same for every worker count.
+`coax/tests/job_budget.py` tests concurrent processes, a killed holder and
+byte-identical output at 1, 4 and all cores.
 
 The evaluator computes number, bool and enum expressions (literals, local
 reads, field and index reads, unary and binary operators, `ifx`) on a scalar

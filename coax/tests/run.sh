@@ -21,6 +21,9 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 COAX=bin/coax
+# Units compare stderr between runs, so no build-worker notice
+# (src/jobs.cpp) may depend on what else runs on the machine.
+export COAX_JOBS_QUIET=1
 COAX_ABS="$(cd "$(dirname "$COAX")" && pwd -P)/$(basename "$COAX")"
 pass=0; fail=0
 note() { echo "FAIL $1: $2"; fail=$((fail + 1)); }
@@ -99,6 +102,7 @@ unit_library_checks() { web/tool.sh tests/library-checks.coax "$COAX_ABS"; }
 unit_authority_cache() { web/tool.sh tests/authority-cache.coax "$COAX_ABS"; }
 unit_check_reuse() { web/tool.sh tests/check-reuse.coax "$COAX_ABS"; }
 unit_parallel_checks() { web/tool.sh tests/parallel-checks.coax "$COAX_ABS"; }
+unit_job_budget() { COAX_TEST_COMPILER="$COAX_ABS" python3 tests/job_budget.py; }
 unit_release() { python3 tests/release.py; }
 unit_mutation_schedule() {
   python3 tests/mutation_schedule.py && python3 tests/mutation_parallel.py && python3 tests/mutation_scope.py && python3 tests/evidence.py && python3 tests/bootstrap_mutation_shards.py && tests/mutation-gate.sh
@@ -234,7 +238,7 @@ unit_spatial() {
 
 # Every unit, in the order the whole suite runs them.
 UNITS=(pass fail examples pulse python native native_checks lexer parser budget strings traversal
-  provenance query steps library_checks authority_cache check_reuse parallel_checks release mutation_schedule
+  provenance query steps library_checks authority_cache check_reuse parallel_checks job_budget release mutation_schedule
   build_profiles semantic_profiles checker systemone results book sources reflection library_tools
   sequence bounded kept debugging nostr constant_time wrapping mul_wide cuda proto_cap proto proto_policy
   proto_message verify wire_checks generated_checks wire_core importer_checks fingerprint_checks

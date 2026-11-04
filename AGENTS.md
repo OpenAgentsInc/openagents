@@ -88,9 +88,10 @@ COAX_MUTATION_FULL=1 coax/build.sh          # the full mutation check: every sur
 coax/bin/coax test FILE                     # a file's checks, one line each as it ends, with its time
 coax/bin/coax test FILE --list              # name them, run none
 coax/bin/coax test FILE --only SUBSTR       # just the checks whose name contains SUBSTR (skips #authority coverage)
-coax/bin/coax mutate FILE                   # are the checks sharp? parallel on every core
+coax/bin/coax mutate FILE                   # are the checks sharp? parallel within the machine's build-worker budget
 coax/bin/coax mutate FILE --root-only       # entry-source sites; all baseline checks still run
-coax/bin/coax mutate FILE --jobs N          # cap the workers (or COAX_MUTATE_JOBS=N)
+coax/bin/coax mutate FILE --jobs N          # cap the workers (or COAX_MUTATE_JOBS=N, COAX_JOBS=N)
+coax/bin/coax status --jobs                 # the shared build-worker budget and who holds it
 coax/bin/coax mutate FILE --shard I/N > I.rec  # one of N parts; then --merge 1.rec --merge 2.rec ...
 psionic/check.sh --only UNIT...             # just those Psionic units: checks, mutation, native, sanitizers, book
 psionic/check.sh                            # every Psionic unit: the release gate

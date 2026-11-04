@@ -88,6 +88,15 @@ else, rather than one opaque script with its own fan-out.
 - The budget is shown in the status panel, with what is using it, so no limit
   is hidden.
 
+**The compiler enforces the floor.** The Coax compiler keeps a machine-wide
+worker budget itself: every coax process draws its check and mutation workers
+from one pool of `flock` tokens in `~/.cache/coax/jobs/`. The pool defaults to
+the performance cores less a third left for the owner, and it backs off under
+outside load. So builds that bypass the scheduler still can't overload the Mac.
+The scheduler builds on this pool: it sets the budget and reserve with
+`COAX_JOBS_BUDGET` and `COAX_JOBS_RESERVE`, and reads `coax status --jobs --json`
+for the panel.
+
 **Priority classes**, highest first:
 
 | Class | Example | Rule |

@@ -88,7 +88,7 @@ files+=(coax/CHANGELOG.md)
 if [[ -n $binary ]]; then
   "$binary" status --json > "$work/binary.json"
   "$binary" version > "$work/version"
-  "$binary" status > "$work/binary.md"
+  "$binary" status > "$work/binary.md" 2> /dev/null  # the build-worker budget goes to stderr
   if ! cmp -s "$work/binary.json" "$work/outputs/coax_release-status.json" || ! cmp -s "$work/binary.md" "$work/outputs/coax_STATUS.md"; then echo 'release/status drift: compiler binary metadata' >&2; failed=1; fi
   awk -F '"' '/COAX_RELEASE_VERSION\[\]/{print $2}' "$work/outputs/coax_src_release.h" > "$work/expected-version"
   if ! cmp -s "$work/version" "$work/expected-version"; then echo 'release/status drift: compiler version' >&2; failed=1; fi

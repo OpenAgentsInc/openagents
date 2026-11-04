@@ -1053,7 +1053,8 @@ refund_ok :: (paid: int, refund: int) -> bool {
   (`checked`). The build-only stage0 can't hash itself, so it keeps results
   only while it runs.
 - The units without a cached result are checked in forked children, as
-  many at once as there are cores (`$COAX_CHECK_JOBS` caps it). A unit's
+  many at once as the machine-wide build-worker budget allows (below;
+  `--jobs N`, `$COAX_CHECK_JOBS` or `$COAX_JOBS` caps it). A unit's
   check starts only when every unit it loads has its result, and each child
   sees only its unit's own closure, so the results, the cache records and
   the C are those of checking the units one at a time.
@@ -1095,7 +1096,8 @@ refund_ok :: (paid: int, refund: int) -> bool {
   calls and pre-folded `#run` results do not count. Every compile of the
   file runs its checks: a failing check is a failed build.
 - A compile runs those checks in parallel: each in a forked child of the
-  compiler, as many at once as there are cores (`$COAX_CHECK_JOBS` caps it),
+  compiler, as many at once as the machine-wide build-worker budget allows
+  (below; `--jobs N`, `$COAX_CHECK_JOBS` or `$COAX_JOBS` caps it),
   with the same evaluator, budgets and storage limits, the slowest of the last
   run first. The children report pass or fail, steps and the procedures each
   check entered; the compiler then reports every check in order and runs each
@@ -1108,6 +1110,27 @@ refund_ok :: (paid: int, refund: int) -> bool {
   `c`, `build`, `run`, `lib` and `header` lowers the checks' value-slot limit
   as it does for `coax test`. `--timings` reports how they ran
   (`parallel_checks`).
+- Every coax process that runs work in parallel (these checks, the library
+  checks above and `coax mutate`'s workers) draws its workers from one
+  build-worker budget shared by every coax process on the machine
+  (ax-job-budget). The budget is `$COAX_JOBS_BUDGET`, or the performance
+  cores less a reserve left for the person using the machine
+  (`$COAX_JOBS_RESERVE`, default a third of them, at least one). A worker is
+  a token: a file in `$COAX_JOBS_DIR` (default `~/.cache/coax/jobs/`) held
+  with `flock`, so a process that dies frees its tokens at once. A process's
+  first worker takes a token when one is free and runs without one when none
+  is, so every build always progresses; each further worker needs a token,
+  is not started while the 1-minute load average is at or above
+  `$COAX_JOBS_LOAD` (default: the budget; `0` turns this off),
+  and gives its token back when it ends. A process's own cap is `--jobs N`,
+  else `$COAX_CHECK_JOBS` (checks) or `$COAX_MUTATE_JOBS` (mutants), else
+  `$COAX_JOBS`, else the budget. A build that can't get all the workers it
+  could use says so once on stderr ("coax jobs: waiting for 2 of 12 build
+  workers held by 3 other coax processes"; `$COAX_JOBS_QUIET` silences it). `coax status`
+  prints the budget, the reserve, the load and each process holding tokens
+  on stderr after the release catalogue; `coax status --jobs [--json]`
+  prints only that, on stdout. The output is the same for every worker
+  count.
 - `coax mutate FILE` changes the code reached from checks one site at a time:
   comparison boundaries (`<` and `<=`), equality, arithmetic, logical and
   bitwise operators, `+=`/`-=`, integer literals (n to n+1), bool literals,

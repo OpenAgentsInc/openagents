@@ -40,6 +40,17 @@ Commit: [`1a11ccb6801a146741a7403e906489eeafb63ab1`](https://github.com/OpenAgen
   cancel a newer request. This is a serialized canonical-owner protocol,
   not general linear ownership or remote exactly-once effects. Join chapters
   6, 7, 15, 20 and 24 through the actual adapters and offline native checks.
+- Follow-up (`ax-job-budget`): every coax process on a machine shares one
+  build-worker budget for parallel `#authority` checks, library checks and
+  `coax mutate` workers, instead of each forking one worker per core. The
+  budget defaults to the performance cores less a third left for the person
+  at the machine (`COAX_JOBS_RESERVE`, `COAX_JOBS_BUDGET`). Workers are
+  `flock` tokens in `~/.cache/coax/jobs/`, freed when a process dies. A
+  process always runs one worker, adds more as tokens free up, starts none
+  while the load average is at the budget (`COAX_JOBS_LOAD`), and says
+  once on stderr when it waits. `--jobs N` and `COAX_JOBS` cap one process;
+  `COAX_CHECK_JOBS` and `COAX_MUTATE_JOBS` still work. `coax status` shows
+  the budget and who holds it; output is the same for every worker count.
 
 ## 0.47.0 — Versioned Shader Operations — 2026-11-01
 
