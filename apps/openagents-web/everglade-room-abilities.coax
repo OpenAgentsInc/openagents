@@ -27,6 +27,7 @@ EG_RA_MOVED :: 1.0;       // m between the page's cast and the server's that cas
 EgRaStrike :: struct { by: int; slot: int; from: Point; at: Point; seed: int; t: f32; }
 EgRaSeat :: struct {
   used: bool; quiet: f32;                   // started; s since its last cast with nothing up
+  rise_up: bool; rise_sink: bool;           // its rise and sink keys at its last step (everglade_room_rise)
   ab: [1] Abilities; fr: [1] Frost; td: [1] Tide; gv: [1] Grove; wd: [1] Wild; ci: [1] Circle; st: [1] Storm; po: [1] Polar; rb: [1] Rubble;
   armed: int = -1; aim: Point; aim_n: Point; aim_ok: bool;
   at: Point; face: f32; posed: bool;        // where it stands now (the server's, or as the page draws it)
@@ -69,6 +70,10 @@ eg_ra_strikes_due :: (s: [] Everglade, dt: f32) {
 // Every ability a page sends the server (everglade-net.coax net_shared), but Conjure Animals and
 // Polymorph: their creatures are the rules' (the room's battle).
 eg_ra_world :: (k: int) -> bool { return k >= 0 && k < AB_N && !net_self_ability(k) && k != AB_CONJURE && k != AB_POLYMORPH; }
+// Whether the server runs ability k in the seat's copy: the world's, and Levitate and Feather Fall,
+// which lift only their caster and whoever it holds up (the page predicts yours from its own, and the
+// keys you hold go up in the input: everglade_room_rise).
+eg_ra_runs :: (k: int) -> bool { return eg_ra_world(k) || k == AB_LEVITATE || k == AB_FEATHER; }
 eg_ra_copying :: (s: [] Everglade) -> bool { return s[0].sp.room_ab[0].in_copy > 0; }
 
 // The seat's facing toward the aim (a press goes out aimed 2 m ahead of you), else `face`.
@@ -111,7 +116,7 @@ eg_ra_in :: (s: [] Everglade, q: int, at: Point, face: f32) -> EgRaYou {
 eg_ra_out :: (s: [] Everglade, q: int, was: EgRaYou) {
   if !was.ok { return; }
   r := s[0].sp.room_ab[..];
-  for k: 0..<AB_N { r[0].seat[q].live[k] = eg_ra_world(k) && eg_ra_holds(s, k); }
+  for k: 0..<AB_N { r[0].seat[q].live[k] = eg_ra_runs(k) && eg_ra_holds(s, k); }
   s[0].feet = was.feet; s[0].face = was.face; s[0].wt[0].me = was.me;
   eg_ra_swap(s, q);
   r[0].in_copy = 0;
@@ -124,6 +129,8 @@ eg_ra_holds :: (s: [] Everglade, k: int) -> bool {
   if k == AB_REVERSE { return a[0].rg_on; }
   if k == AB_WIND { for q: 0..<AB_WALLS { if a[0].walls[q].live { return true; } } return false; }
   if k == AB_GUST { return a[0].gust_on; }
+  if k == AB_LEVITATE { return a[0].lev_on; }
+  if k == AB_FEATHER { return a[0].ff_on; }
   if k == AB_STONE { for q: 0..<AB_STONES { if a[0].stones[q].live { return true; } } return false; }
   if k == AB_TK { return a[0].tk_kind != AB_TK_NONE; }
   if k == AB_TENTACLES { return a[0].bt_on; }
@@ -153,6 +160,8 @@ eg_ra_drop :: (s: [] Everglade, k: int) {
   if k == AB_REVERSE { a[0].rg_on = false; ab_fall_all(s); return; }
   if k == AB_WIND { for q: 0..<AB_WALLS { a[0].walls[q].live = false; } return; }
   if k == AB_GUST { a[0].gust_on = false; return; }
+  if k == AB_LEVITATE { a[0].lev_on = false; a[0].lev_up = false; a[0].lev_sink = false; return; }
+  if k == AB_FEATHER { a[0].ff_on = false; return; }
   if k == AB_STONE { for q: 0..<AB_STONES { a[0].stones[q].live = false; } return; }
   if k == AB_TK { ab_tk_release(s); return; }
   if k == AB_TENTACLES { ab_bt_end(s); return; }
@@ -176,14 +185,28 @@ eg_ra_drop :: (s: [] Everglade, k: int) {
 }
 // A cast of ability k in the Everglade (a copy in it), as its slot's press does on a page: one you
 // point with is picked (its press, as the page's was) and cast at `aim`; any other is pressed.
-eg_ra_use :: (s: [] Everglade, k: int, aim: Point) {
+eg_ra_use :: (s: [] Everglade, k: int, aim: Point, mode: int) {
   b := SP_SLOTS + k;
   if !ab_aimed(k) { s[0].sp.armed = -1; ab_press(s, k); return; }
   if s[0].sp.armed != b { ab_press(s, k); s[0].sp.armed = b; }
+  eg_ra_set_mode(s, k, mode);
   s[0].sp.aim = aim; s[0].sp.aim_n = v3(0, 1, 0); s[0].sp.aim_ok = true;
   ab_cast(s, k);
 }
 
+// A spell's mode on the wire (a cast's MODE: everglade-wire.coax): Elementalism's element 1 to 4 (air,
+// earth, fire, water), Create Water 1 or Destroy Water 2; 0 for every other.
+eg_ra_mode :: (s: [] Everglade, k: int) -> int {
+  if k == AB_ELEMENTS { return 1 + clamp_i(gv_of(s)[0].el_mode, GV_EL_AIR, GV_EL_WATER); }
+  if k == AB_CREATE { return ifx td_of(s)[0].destroy then 2 else 1; }
+  return 0;
+}
+// The mode picked in the copy as the caster had it (0: the first, as a press picks).
+eg_ra_set_mode :: (s: [] Everglade, k: int, mode: int) {
+  if mode <= 0 { return; }
+  if k == AB_ELEMENTS { gv_of(s)[0].el_mode = clamp_i(mode - 1, GV_EL_AIR, GV_EL_WATER); }
+  if k == AB_CREATE { td_of(s)[0].destroy = mode == 2; }
+}
 // The watch's people's Hit Points through a copy's step: held far over 0 (the watch kills no one), and
 // what it took is put back, the rules' to deal; with `keep`, what each lost is kept as a hurt of seat q.
 EgRaHp :: struct { hp: [WATCH_ACTORS] int; }
@@ -220,7 +243,12 @@ everglade_room_ab_pose :: (s: [] Everglade, by: int, x: f32, y: f32, z: f32, yaw
 // Seat `by` casts ability k (AB_*) standing at (x, y, z) facing yaw at the aim (ax, ay, az), or (on
 // false) ends what it holds up.
 everglade_room_ability :: (s: [] Everglade, by: int, k: int, x: f32, y: f32, z: f32, yaw: f32, on: bool, ax: f32, ay: f32, az: f32) #export_c {
-  if !sp_on(s) || !eg_ra_world(k) || by < 0 || by >= EG_RA_SEATS || !finite(x) || !finite(z) { return; }
+  everglade_room_ability_mode(s, by, k, x, y, z, yaw, on, ax, ay, az, 0);
+}
+// The same with the spell's mode as its caster had it picked (eg_ra_mode: Elementalism's element,
+// Create or Destroy Water; 0 none).
+everglade_room_ability_mode :: (s: [] Everglade, by: int, k: int, x: f32, y: f32, z: f32, yaw: f32, on: bool, ax: f32, ay: f32, az: f32, mode: int) #export_c {
+  if !sp_on(s) || !eg_ra_runs(k) || by < 0 || by >= EG_RA_SEATS || !finite(x) || !finite(z) { return; }
   r := s[0].sp.room_ab[..];
   aim := v3(ax, ay, az);
   if !finite(ax) || !finite(az) { aim = v3(x, y, z); }
@@ -231,7 +259,11 @@ everglade_room_ability :: (s: [] Everglade, by: int, k: int, x: f32, y: f32, z: 
   if !was.ok { return; }
   h := eg_ra_hp_pad(s);
   if on {
-    eg_ra_use(s, k, aim);
+    // Levitate and Feather Fall go up as yours did (net_mirror sends them as they come on): a press on one
+    // already up starts it again rather than ending it
+    if k == AB_LEVITATE { ab_of(s)[0].lev_on = false; }
+    if k == AB_FEATHER { ab_of(s)[0].ff_on = false; }
+    eg_ra_use(s, k, aim, mode);
     c := r[0].seat[by..<by + 1];
     c[0].cast_at[k] = ifx ab_aimed(k) then aim else at; c[0].cast_face[k] = face; c[0].epoch[k] += 1; c[0].quiet = 0;
   } else {
@@ -239,6 +271,24 @@ everglade_room_ability :: (s: [] Everglade, by: int, k: int, x: f32, y: f32, z: 
   }
   eg_ra_hp_back(s, h, false, by);
   eg_ra_out(s, by, was);
+  // a Levitate cast with the rise key still held rises while it is (no click's half second)
+  l := r[0].seat[by].ab[..];
+  if on && k == AB_LEVITATE && l[0].lev_on && r[0].seat[by].rise_up { l[0].lev_up = true; l[0].lev_click = 0; }
+}
+// Seat q's rise and sink keys this step (input bits WB_RISE, WB_SINK: everglade-net.coax net_input),
+// the seat standing at (x, z), y over the ground there: its Levitate goes up while the rise key is held
+// and down while the sink key is, and holds where you let go, as yours does.
+everglade_room_rise :: (s: [] Everglade, q: int, up: bool, sink: bool, x: f32, z: f32, y: f32) #export_c {
+  if !sp_on(s) || q < 0 || q >= EG_RA_SEATS || !finite(x) || !finite(z) || !finite(y) { return; }
+  c := s[0].sp.room_ab[0].seat[q..<q + 1];
+  a := c[0].ab[..];
+  was_up := c[0].rise_up; was_sink := c[0].rise_sink;
+  c[0].rise_up = up; c[0].rise_sink = sink;
+  if !c[0].used || !a[0].lev_on { return; }
+  if up && !was_up { a[0].lev_up = true; a[0].lev_sink = false; a[0].lev_click = 0; }
+  if !up && was_up && a[0].lev_up { a[0].lev_up = false; a[0].lev_hold = walk_at(s, x, z) + y; }
+  if sink && !was_sink { a[0].lev_sink = true; a[0].lev_up = false; }
+  if !sink && was_sink && a[0].lev_sink { a[0].lev_sink = false; a[0].lev_hold = walk_at(s, x, z) + y; }
 }
 // Whether seat q's copy still runs: something up, someone off their feet, or a cast in the last EG_RA_REST s.
 eg_ra_busy :: (c: [] EgRaSeat) -> bool {
@@ -321,6 +371,25 @@ eg_ra_stone_bodies :: (s: [] Everglade, out: [] f32, at: int) -> int {
   for q: 0..<EG_RA_SEATS { if r[0].seat[q].used { n += ab_stone_bodies_of(r[0].seat[q].ab[..], out, at + n); } }
   return n;
 }
+// Every seat's ice (Ray of Frost's knife, Ice Storm, Sleet Storm) under anyone at (x, z): the floor
+// it makes and its footing (everglade-frost.coax fr_floor, fr_foot).
+eg_ra_floes :: (s: [] Everglade, x: f32, z: f32) -> bool {
+  r := s[0].sp.room_ab[..];
+  if r[0].in_copy > 0 { return false; }
+  for q: 0..<EG_RA_SEATS { if r[0].seat[q].used && fr_floes_in(s, r[0].seat[q].fr[..], x, z) { return true; } }
+  return false;
+}
+eg_ra_foot :: (s: [] Everglade, x: f32, z: f32) -> FrFoot {
+  out: FrFoot;
+  r := s[0].sp.room_ab[..];
+  if r[0].in_copy > 0 { return out; }
+  for q: 0..<EG_RA_SEATS {
+    if !r[0].seat[q].used { continue; }
+    f := fr_foot_in(s, r[0].seat[q].fr[..], x, z);
+    out.slip = out.slip || f.slip; out.rough = out.rough || f.rough; out.slush = out.slush || f.slush;
+  }
+  return out;
+}
 eg_ra_parted :: (s: [] Everglade, x: f32, z: f32) -> bool {
   r := s[0].sp.room_ab[..];
   if r[0].in_copy > 0 { return false; }
@@ -332,18 +401,18 @@ eg_ra_parted :: (s: [] Everglade, x: f32, z: f32) -> bool {
 
 // Seat q's copy plays the server's cast of ability k (e cast, everglade-net.coax), the seat standing at
 // `at` facing `face`, aimed at `aim`.
-eg_ra_play :: (s: [] Everglade, q: int, k: int, at: Point, face: f32, aim: Point) {
+eg_ra_play :: (s: [] Everglade, q: int, k: int, at: Point, face: f32, aim: Point, mode: int) {
   if !eg_ra_world(k) { return; }
   was := eg_ra_in(s, q, at, face);
   if !was.ok { return; }
-  eg_ra_use(s, k, aim);
+  eg_ra_use(s, k, aim, mode);
   c := s[0].sp.room_ab[0].seat[q..<q + 1];
   c[0].cast_at[k] = ifx ab_aimed(k) then aim else at; c[0].cast_face[k] = face; c[0].quiet = 0;
   eg_ra_out(s, q, was);
 }
 // Seat q's ability k as the server has it: up at `p` facing `face` (entity `id`), or not (id 0). One
 // up there the page lacks (or has more than EG_RA_MOVED off) is cast there; one not up there is ended.
-eg_ra_keep :: (s: [] Everglade, q: int, k: int, id: int, p: Point, face: f32, at: Point, at_face: f32) {
+eg_ra_keep :: (s: [] Everglade, q: int, k: int, id: int, p: Point, face: f32, at: Point, at_face: f32, mode: int) {
   if q < 0 || q >= EG_RA_SEATS || !eg_ra_world(k) { return; }
   c := s[0].sp.room_ab[0].seat[q..<q + 1];
   if id == 0 {
@@ -362,8 +431,8 @@ eg_ra_keep :: (s: [] Everglade, q: int, k: int, id: int, p: Point, face: f32, at
     was := eg_ra_in(s, q, at, at_face);
     if was.ok { eg_ra_drop(s, k); eg_ra_out(s, q, was); }
   }
-  if ab_aimed(k) { eg_ra_play(s, q, k, at, eg_ra_facing(at, p, face), p); }
-  else { eg_ra_play(s, q, k, p, face, add(p, times(v3(sin(face), 0, cos(face)), 2))); }
+  if ab_aimed(k) { eg_ra_play(s, q, k, at, eg_ra_facing(at, p, face), p, mode); }
+  else { eg_ra_play(s, q, k, p, face, add(p, times(v3(sin(face), 0, cos(face)), 2)), mode); }
 }
 // Each frame (everglade-spells.coax, after your own ab_frame): every seat's copy for dt where its seat
 // is drawn, its fields over the page's debris with yours.
@@ -516,4 +585,92 @@ eg_ra_drawn :: (s: [] Everglade, q: int, k: int) -> bool {
   for k: 0..<2 { _ := everglade_room_spells(s[..], 1.0 / 30); }    // 2.53 s: the meteors fall
   for m: 0..<SP_METEORS * 2 { if s[0].sp.meteors[m].live { live = true; } }
   #assert live && s[0].sp.room_ab[0].later_n == 0;
+}
+#test "room abilities: Levitate and Feather Fall run in their caster's copy, rise and sink with the keys the input sends, and lift only their caster" #steps 3000000000 {
+  s: [1] Everglade;
+  dm: [1] DemoWorld;
+  everglade_room_spells_start(s[..], dm[..], "");
+  g := walk_at(s[..], 0, -30);
+  st: [EG_RA_LIFE] f32;
+  everglade_room_ab_pose(s[..], 2, 0, g, -30, 0);
+  everglade_room_ability(s[..], 2, AB_LEVITATE, 0, g, -30, 0, true, 0, g, -30);
+  c := s[0].sp.room_ab[0].seat[2].ab[..];
+  #assert c[0].lev_on && everglade_room_life(s[..], 2, AB_LEVITATE, st[..]) && !ab_of(s[..])[0].lev_on;
+  // the rise key held (WB_RISE): seat 2 goes up while it is; another seat standing there doesn't
+  everglade_room_rise(s[..], 2, true, false, 0, -30, 0);
+  #assert c[0].lev_up && c[0].lev_click == 0;
+  everglade_room_seat(s[..], 2);
+  y := 0.0f32; v := 0.0f32;
+  for k: 0..<60 { l := everglade_lift(s[..], 0, -30, y, v, y + v / 30 - 0.01, v - 0.3, 1.0 / 30); #assert l.on; y = l.y; v = l.vy; }
+  #assert y > 2;
+  everglade_room_seat(s[..], 3);
+  #assert !everglade_lift(s[..], 0, -30, 0, 0, 0, 0, 1.0 / 30).on;
+  // let go: it holds there; the sink key: down, and on the ground it ends
+  everglade_room_seat(s[..], 2);
+  everglade_room_rise(s[..], 2, false, false, 0, -30, y);
+  #assert !c[0].lev_up && near(c[0].lev_hold, g + y, 0.01);
+  everglade_room_rise(s[..], 2, false, true, 0, -30, y);
+  #assert c[0].lev_sink;
+  for k: 0..<600 { if !c[0].lev_on { break; } l := everglade_lift(s[..], 0, -30, y, v, y + v / 30, v, 1.0 / 30); if l.on { y = l.y; v = l.vy; } }
+  #assert !c[0].lev_on && y < 0.01;
+  // again, and its end (E) ends it
+  everglade_room_rise(s[..], 2, false, false, 0, -30, 0);
+  everglade_room_ability(s[..], 2, AB_LEVITATE, 0, g, -30, 0, true, 0, g, -30);
+  #assert c[0].lev_on && c[0].lev_click > 0;
+  everglade_room_ability(s[..], 2, AB_LEVITATE, 0, g, -30, 0, false, 0, 0, 0);
+  #assert !c[0].lev_on && !everglade_room_life(s[..], 2, AB_LEVITATE, st[..]);
+  // Feather Fall: seat 5's, up until its end; a second press starts it again rather than ending it
+  everglade_room_ab_pose(s[..], 5, 10, g, -30, 0);
+  everglade_room_ability(s[..], 5, AB_FEATHER, 10, g, -30, 0, true, 10, g, -30);
+  everglade_room_ability(s[..], 5, AB_FEATHER, 10, g, -30, 0, true, 10, g, -30);
+  #assert s[0].sp.room_ab[0].seat[5].ab[0].ff_on && everglade_room_life(s[..], 5, AB_FEATHER, st[..]) && !ab_of(s[..])[0].ff_on;
+  everglade_room_ability(s[..], 5, AB_FEATHER, 10, g, -30, 0, false, 0, 0, 0);
+  #assert !s[0].sp.room_ab[0].seat[5].ab[0].ff_on;
+  #assert s[0].sp.room_ab[0].in_copy == 0;
+}
+#test "room abilities: a seat's Ice Knife frost is slippery for everyone on it; Create or Destroy Water and Elementalism's element go as their caster picked them" #steps 4000000000 {
+  s: [1] Everglade;
+  dm: [1] DemoWorld;
+  everglade_room_spells_start(s[..], dm[..], "");
+  g := walk_at(s[..], 0, -30);
+  at := v3(0, ground_at(s[..], 0, -22), -22);
+  everglade_room_ab_pose(s[..], 1, 0, g, -30, 0);
+  everglade_room_ability(s[..], 1, AB_KNIFE, 0, g, -30, 0, true, at.x, at.y, at.z);
+  for k: 0..<60 { everglade_room_abilities(s[..], 1.0 / 30); }
+  // the frost is seat 1's copy's, not the world's own; any seat stepping there slips
+  slipped := false;
+  for k: 0..<FR_PATCHES { if fr_of(s[..])[0].patches[k].live { slipped = true; } }
+  #assert !slipped;
+  for q: 0..<3 {
+    everglade_room_seat(s[..], q);
+    #assert fr_foot(s[..], at.x, at.z).slip && near(everglade_footing(s[..], at.x, at.z, 0).grip, f32(FR_GRIP), 0.001);
+  }
+  #assert everglade_footing(s[..], at.x + 5, at.z, 0).grip == 1;
+  // Destroy Water (mode 2) and Create Water (mode 1), each seat's as it picked
+  everglade_room_ab_pose(s[..], 3, 20, g, -30, 0);
+  everglade_room_ability_mode(s[..], 3, AB_CREATE, 20, g, -30, 0, true, 20, walk_at(s[..], 20, -26), -26, 2);
+  everglade_room_ab_pose(s[..], 4, 40, g, -30, 0);
+  everglade_room_ability_mode(s[..], 4, AB_CREATE, 40, g, -30, 0, true, 40, walk_at(s[..], 40, -26), -26, 1);
+  t3 := s[0].sp.room_ab[0].seat[3].td[..]; t4 := s[0].sp.room_ab[0].seat[4].td[..];
+  #assert t3[0].vapor_on && !t3[0].rain_on && t4[0].rain_on && !t4[0].vapor_on;
+  // Elementalism's fire (mode 3) stays seat 6's pick
+  everglade_room_ab_pose(s[..], 6, 60, g, -30, 0);
+  everglade_room_ability_mode(s[..], 6, AB_ELEMENTS, 60, g, -30, 0, true, 60, walk_at(s[..], 60, -26), -26, 1 + GV_EL_FIRE);
+  #assert s[0].sp.room_ab[0].seat[6].gv[0].el_mode == GV_EL_FIRE && gv_of(s[..])[0].el_mode == 0;
+  #assert s[0].sp.room_ab[0].in_copy == 0;
+}
+#test "room abilities: Wind Wall's and Wall of Stone's icons count what is up of the most, a cast past the most still goes and its icon shows the oldest went" #steps 3000000000 {
+  g: [1] Everglade;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  g[0].feet = v3(0, walk_at(g[..], 0, -30), -30); g[0].face = 0;
+  #assert ab_count(g[..], AB_WIND).up == 0 && ab_count(g[..], AB_WIND).most == AB_WALLS && ab_count(g[..], AB_STONE).most == AB_STONES;
+  for q: 0..<AB_WALLS { ab_press(g[..], AB_WIND); ab_frame(g[..], 1.0 / 30); }
+  c := ab_count(g[..], AB_WIND);
+  #assert c.up == AB_WALLS && c.out_ago > f32(AB_OUT_SHOW);
+  ab_press(g[..], AB_WIND);
+  c = ab_count(g[..], AB_WIND);
+  #assert c.up == AB_WALLS && c.out_ago >= 0 && c.out_ago < f32(AB_OUT_SHOW);
+  for q: 0..<60 { ab_frame(g[..], 1.0 / 30); }
+  #assert ab_count(g[..], AB_WIND).out_ago > f32(AB_OUT_SHOW);
 }

@@ -69,12 +69,12 @@ WC_PARALYZED :: 256; WC_PETRIFIED :: 512; WC_PRONE :: 2048; WC_RESTRAINED :: 409
 WC_SLOWED :: 65536;        // Ray of Frost's slow (the watch's casters)
 WC_STOPPED :: WC_PARALYZED | WC_PETRIFIED | WC_RESTRAINED | WC_STUNNED | WC_UNCONSCIOUS;   // can't move
 // an input's B bits
-WB_RUN :: 1; WB_JUMP :: 2; WB_DIVE :: 4;
+WB_RUN :: 1; WB_JUMP :: 2; WB_DIVE :: 4; WB_RISE :: 8; WB_SINK :: 16;   // (rise, sink: Levitate's keys held)
 // an interaction's KIND
 WE_TALK :: 1; WE_DOOR :: 2; WE_BOAT :: 3; WE_BOARD :: 4; WE_END :: 5;
 
 WireIn :: struct { seq: int; kx: int; ky: int; px: int; py: int; theta: f32; b: int; }
-WireCast :: struct { seq: int; slot: int; ax: f32; ay: f32; az: f32; tgt: int = -1; }
+WireCast :: struct { seq: int; slot: int; ax: f32; ay: f32; az: f32; tgt: int = -1; mode: int; }   // mode: the spell's (wire_mode), 0 sent as nothing
 WireUse :: struct { seq: int; kind: int; id: int; }
 WireHello :: struct { look: string; kind: string; flags: int; name: string; }
 WireWorld :: struct { tick: int; hz: int = WIRE_HZ; seed: int; day: int; weather: int; }
@@ -84,7 +84,7 @@ WireN :: struct { ss: int; id: string; look: string; kind: string; flags: int; n
 WireF :: struct { i: int; x: f32; z: f32; yaw: f32; clip: int; mode: int; hp: int; }
 WireC :: struct { eid: int; kind: int; x: f32; y: f32; z: f32; yaw: f32; hp: int; f: int; owner: int = -1; p1: int; p2: int; }
 WireX :: struct { k: u8; id: int; }
-WireCastE :: struct { ss: int; slot: int; ax: f32; ay: f32; az: f32; seed: int; }
+WireCastE :: struct { ss: int; slot: int; ax: f32; ay: f32; az: f32; seed: int; mode: int; }
 WireHit :: struct { who: int; by: int; amt: int; kind: int; }
 WireRd :: struct { at: int; ok: bool = true; }
 
@@ -148,6 +148,7 @@ wire_put_cast :: (out: [] u8, at: int, c: WireCast) -> int {
   n := wire_put(out, at, "C");
   n = wire_int(out, n, c.seq); n = wire_int(out, n, c.slot);
   n = wire_m(out, n, c.ax); n = wire_m(out, n, c.ay); n = wire_m(out, n, c.az); n = wire_int(out, n, c.tgt);
+  if c.mode != 0 { n = wire_int(out, n, c.mode); }
   return n;
 }
 wire_put_use :: (out: [] u8, at: int, u: WireUse) -> int {
@@ -204,7 +205,9 @@ wire_put_x :: (out: [] u8, at: int, x: WireX) -> int {
 wire_put_cast_e :: (out: [] u8, at: int, c: WireCastE) -> int {
   n := wire_put(out, at, "e cast");
   n = wire_int(out, n, c.ss); n = wire_int(out, n, c.slot); n = wire_m(out, n, c.ax); n = wire_m(out, n, c.ay); n = wire_m(out, n, c.az);
-  return wire_int(out, n, c.seed);
+  n = wire_int(out, n, c.seed);
+  if c.mode != 0 { n = wire_int(out, n, c.mode); }
+  return n;
 }
 wire_put_hit :: (out: [] u8, at: int, h: WireHit) -> int {
   n := wire_put(out, at, "e hit");
@@ -225,6 +228,12 @@ wire_put_refused :: (out: [] u8, at: int, seq: int, reason: string) -> int { ret
 
 // ---- reading (bounded: a missing or bad field sets ok false)
 
+// Whether a field is left past the reader (a record's last, optional one: a cast's mode).
+wire_more :: (t: string, r: [] WireRd) -> bool {
+  i := r[0].at;
+  while i < t.count && t[i] == ' ' { i += 1; }
+  return r[0].ok && i < t.count;
+}
 wire_num :: (t: string, r: [] WireRd) -> int {
   i := r[0].at;
   while i < t.count && t[i] == ' ' { i += 1; }
@@ -277,6 +286,7 @@ wire_read_cast :: (t: string, r: [] WireRd) -> WireCast {
   c: WireCast;
   c.seq = wire_num(t, r); c.slot = wire_num(t, r);
   c.ax = wire_f(t, r); c.ay = wire_f(t, r); c.az = wire_f(t, r); c.tgt = wire_num(t, r);
+  if wire_more(t, r) { c.mode = wire_num(t, r); }
   return c;
 }
 wire_read_use :: (t: string, r: [] WireRd) -> WireUse {
@@ -329,6 +339,7 @@ wire_read_x :: (t: string, r: [] WireRd) -> WireX {
 wire_read_cast_e :: (t: string, r: [] WireRd) -> WireCastE {
   c: WireCastE;
   c.ss = wire_num(t, r); c.slot = wire_num(t, r); c.ax = wire_f(t, r); c.ay = wire_f(t, r); c.az = wire_f(t, r); c.seed = wire_num(t, r);
+  if wire_more(t, r) { c.mode = wire_num(t, r); }
   return c;
 }
 wire_read_hit :: (t: string, r: [] WireRd) -> WireHit {
@@ -374,6 +385,16 @@ wire_entry :: (t: string, from: int, k: int) -> string {
   #assert r[0].ok && h.look == "ranger.2.1.0" && h.flags == 2 && h.name == "Ash Woodx";
   n = wire_put_cast(buf[..], 0, WireCast.{seq = 13, slot = 32, ax = 5, ay = 0, az = 6}); t = cast(string) buf[0..<n];
   #assert t == "C 13 32 500 0 600 -1";
+  // a spell's mode goes last, and only when it has one; the reader takes it, or 0 when none
+  rc: [1] WireRd; rc[0] = wire_rd(t, 1);
+  #assert wire_read_cast(t, rc[..]).mode == 0 && rc[0].ok;
+  n = wire_put_cast(buf[..], 0, WireCast.{seq = 13, slot = 29, ax = 5, ay = 0, az = 6, mode = 2}); t = cast(string) buf[0..<n];
+  rc[0] = wire_rd(t, 1);
+  wm := wire_read_cast(t, rc[..]);
+  #assert t == "C 13 29 500 0 600 -1 2" && rc[0].ok && wm.mode == 2 && wm.tgt == -1;
+  n = wire_put_cast_e(buf[..], 0, WireCastE.{ss = 3, slot = 25, ax = 1, ay = 0, az = 2, seed = 1, mode = 4}); t = cast(string) buf[0..<n];
+  rc[0] = wire_rd(t, 6);
+  #assert t == "e cast 3 25 100 0 200 1 4" && wire_read_cast_e(t, rc[..]).mode == 4 && rc[0].ok;
   n = wire_put_use(buf[..], 0, WireUse.{seq = 14, kind = WE_END, id = 32}); t = cast(string) buf[0..<n];
   r[0] = wire_rd(t, 1);
   u := wire_read_use(t, r[..]);

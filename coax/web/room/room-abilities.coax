@@ -22,8 +22,8 @@ RA_REVERSE :: 0;                // everglade-abilities.coax AB_REVERSE (bar slot
 RA_RG_R_CM :: 1524;             // its 50-foot radius (AB_RG_R)
 RA_AIR_CM :: 10;                // a person's height heard again once it changes this much
 
-RaCast :: struct { by: int; ab: int; x: f32; y: f32; z: f32; yaw: f32; on: bool; ax: f32; ay: f32; az: f32; }
-RaLive :: struct { on: bool; id: int; epoch: int; x: f32; y: f32; z: f32; yaw: f32; }
+RaCast :: struct { by: int; ab: int; x: f32; y: f32; z: f32; yaw: f32; on: bool; ax: f32; ay: f32; az: f32; mode: int; }
+RaLive :: struct { on: bool; id: int; epoch: int; x: f32; y: f32; z: f32; yaw: f32; mode: int; }   // mode: its last cast's (RaCast)
 RaRoom :: struct {
   q: [RA_CASTS] RaCast; q_n: int;
   live: [EG_SEATS * RA_ABS] RaLive;            // each seat's abilities up
@@ -42,6 +42,7 @@ ra_world_slot :: (slot: int) -> bool {
 }
 // Whether the world runs it whole: the rules roll nothing for it (Reverse Gravity has no roll).
 ra_whole :: (slot: int) -> bool { return slot - EG_SP_SLOTS == RA_REVERSE; }
+RA_MODES :: 8;   // a cast's mode at most (everglade-room-abilities.coax eg_ra_mode)
 
 ra_fresh :: (v: [] RmServer, k: int) {
   if k < 0 || k >= EG_ROOMS { return; }
@@ -57,9 +58,12 @@ ra_queue :: (v: [] RmServer, k: int, c: RaCast) -> bool {
 // A cast of bar slot `slot` from seat `seat` standing at `me`, at the aim (room-everglade.coax
 // eg_heard_cast, once it is checked): an ability the world runs goes to it (pressed again, one that
 // toggles ends: the world's copy decides, as a page's does). Whether it went.
-ra_cast :: (v: [] RmServer, k: int, seat: int, slot: int, me: EgPose, ax: f32, ay: f32, az: f32) -> bool {
-  if !ra_world_slot(slot) { return false; }
-  return ra_queue(v, k, RaCast.{by = seat, ab = slot - EG_SP_SLOTS, x = me.x, y = me.y, z = me.z, yaw = me.yaw, on = true, ax = ax, ay = ay, az = az});
+ra_cast :: (v: [] RmServer, k: int, seat: int, slot: int, me: EgPose, ax: f32, ay: f32, az: f32, mode: int) -> bool {
+  if !ra_world_slot(slot) || seat < 0 || seat >= EG_SEATS { return false; }
+  m := ifx mode >= 0 && mode <= RA_MODES then mode else 0;
+  if !ra_queue(v, k, RaCast.{by = seat, ab = slot - EG_SP_SLOTS, x = me.x, y = me.y, z = me.z, yaw = me.yaw, on = true, ax = ax, ay = ay, az = az, mode = m}) { return false; }
+  v[0].ab[k].live[seat * RA_ABS + slot - EG_SP_SLOTS].mode = m;   // its entity says it (ra_send P2)
+  return true;
 }
 // E: seat `seat` ends what bar slot `slot` holds up in the world. Whether it held one up (as the
 // world said last tick: rm_ra_live).
@@ -76,7 +80,7 @@ rm_ra_cast :: (v: [] RmServer, k: int, q: int, out: [] f32) #export_c {
   if !rm_eg_live(v, k) || q < 0 || q >= v[0].ab[k].q_n || out.count < RA_CAST_FLOATS { return; }
   c := v[0].ab[k].q[q];
   out[0] = f32(c.by); out[1] = f32(c.ab); out[2] = c.x; out[3] = c.y; out[4] = c.z; out[5] = c.yaw; out[6] = ifx c.on then 1.0f32 else 0.0f32;
-  out[7] = c.ax; out[8] = c.ay; out[9] = c.az; out[10] = 0;
+  out[7] = c.ax; out[8] = c.ay; out[9] = c.az; out[10] = f32(c.mode);
 }
 rm_ra_heard :: (v: [] RmServer, k: int) #export_c { if rm_eg_live(v, k) { v[0].ab[k].q_n = 0; } }
 // Seat s's ability ab now: up or not, where its last cast was, its facing, and its casts (`epoch`: a
@@ -130,7 +134,7 @@ ra_send :: (v: [] RmServer, k: int, s: int, full: bool, o: [] EgOut) {
     if seen && r[0].heard[h] != l.id {
       ab := q % RA_ABS;
       n := wire_put_c(e[..], 0, WireC.{eid = l.id, kind = WK_ZONE, x = l.x, y = l.y, z = l.z, yaw = l.yaw, hp = -1, f = 1,
-                                       owner = q / RA_ABS, p1 = ab, p2 = ifx ab == RA_REVERSE then RA_RG_R_CM else 0});
+                                       owner = q / RA_ABS, p1 = ab, p2 = ifx ab == RA_REVERSE then RA_RG_R_CM else l.mode});
       eg_out_entry(o, v, k, s, f, cast(string) e[0..<n]);
       r[0].heard[h] = l.id;
     }
@@ -209,4 +213,48 @@ ra_send :: (v: [] RmServer, k: int, s: int, full: bool, o: [] EgOut) {
   eg_test_drain(v[..], box[..]);
   b = eg_test_of(box[..], 1);
   #assert eg_test_has(b, "x c 900001") && !eg_test_has(b, "x c 900002") && eg_test_has(b, "x c 900003") && eg_test_has(b, "c 900004 24 ") && eg_test_has(b, "a 3 0");
+}
+#test "everglade room abilities: Levitate goes to the world, a spell's mode goes with its cast to the world, every page and its entity, and Levitate's keys in the input" #steps 2000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  rm_clock(v[..], 0, 1762190000000);
+  ev := "GET /api/room/relay/everglade/pair-mode HTTP/1.1\r\n\r\n";
+  box: [1] EgInbox;
+  #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  eg_test_tick(v[..], k); eg_test_tick(v[..], k);
+  eg_test_drain(v[..], box[..]);
+  c: [RA_CAST_FLOATS] f32;
+  // seat 0's Levitate (slot 6): the world runs it in seat 0's copy
+  rm_heard(v[..], 0, "C 1 6 0 0 0 -1");
+  #assert rm_ra_casts(v[..], k) == 1;
+  rm_ra_cast(v[..], k, 0, c[..]);
+  #assert c[0] == 0 && c[1] == 2 && c[6] == 1 && c[10] == 0;
+  rm_ra_heard(v[..], k);
+  // seat 1's Destroy Water (slot 18, mode 2): the world, the e cast and the entity carry it
+  rm_heard(v[..], 1, "C 1 18 1 0 200 -1 2");
+  #assert rm_ra_casts(v[..], k) == 1;
+  rm_ra_cast(v[..], k, 0, c[..]);
+  #assert c[0] == 1 && c[1] == 14 && c[10] == 2;
+  rm_ra_heard(v[..], k);
+  rm_ra_live(v[..], k, 1, 14, true, 1, 0, 2, 0, 1);
+  eg_test_tick(v[..], k); eg_test_tick(v[..], k);
+  eg_test_drain(v[..], box[..]);
+  a := eg_test_of(box[..], 0);
+  // its e cast ends with the mode
+  at := -1; head := "e cast 1 18 ";
+  for i: 0..<a.count - head.count { if at < 0 && a[i..<i + head.count] == head { at = i; } }
+  #assert at >= 0;
+  end := at; while end < a.count && a[end] != ';' && a[end] != '|' { end += 1; }
+  #assert a[end - 2..<end] == " 2";
+  #assert eg_test_has(a, "c 900001 24 ");
+  #assert eg_test_has(a, "c 900001 24 100 0 200 0 -1 1 1 14 2");
+  // a cast with a field past its mode is no cast
+  for q: 0..<30 { eg_test_tick(v[..], k); }
+  rm_heard(v[..], 1, "C 2 18 1 0 200 -1 2 9");
+  #assert rm_ra_casts(v[..], k) == 0;
+  // the rise and sink keys (8, 16) come through the input to the world
+  rm_heard(v[..], 0, "I 3 0 0 0 0 0 24");
+  in: [EG_IN_FIELDS] int;
+  #assert rm_eg_begin(v[..], k) && rm_eg_input(v[..], k, 0, in[..]) && in[6] == 24;
 }

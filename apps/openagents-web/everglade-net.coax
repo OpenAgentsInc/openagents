@@ -75,7 +75,7 @@ NetEnt :: struct {
   cast_slot: int = -1; cast_at: int;   // its last cast (e cast), server ms
 }
 NetInput :: struct { seq: int; input: EgMoveIn; }
-NetFx :: struct { live: bool; slot: int; caster: int; at: Point; seed: int; t: int; }
+NetFx :: struct { live: bool; slot: int; caster: int; at: Point; seed: int; t: int; mode: int; }
 // You as the server has you after input `ack` (D's p entry for your seat).
 NetFix :: struct { ok: bool; ack: int; x: f32; y: f32; z: f32; yaw: f32; vx: f32; vy: f32; vz: f32; ground: bool; carry: f32; jump: bool; }
 EgNet :: struct {
@@ -553,7 +553,7 @@ net_entry :: (s: [] Everglade, n: [] EgNet, t: string, d: WireD) {
       // the server says the cast at its press: the strike plays once the cast bar is done (the meteors
       // fall and land after its 2.5 s, as offline), on every page alike
       bar := ifx ce.slot < SP_SLOTS then cast(int) (srd_spell(SP_SPELL[ce.slot]).bar * 1000) else 0;
-      n[0].fx[q] = NetFx.{live = true, slot = ce.slot, caster = ce.ss, at = v3(ce.ax, ce.ay, ce.az), seed = ce.seed, t = n[0].tick_t + bar};
+      n[0].fx[q] = NetFx.{live = true, slot = ce.slot, caster = ce.ss, at = v3(ce.ax, ce.ay, ce.az), seed = ce.seed, t = n[0].tick_t + bar, mode = ce.mode};
       break;
     }
     return;
@@ -672,7 +672,9 @@ net_input :: (s: [] Everglade, input: EgMoveIn, dive: bool) -> int #export_c {
   n := net_of(s);
   n[0].seq += 1;
   n[0].inputs[n[0].seq % NET_HIST] = NetInput.{seq = n[0].seq, input = input};
-  b := (ifx input.run then WB_RUN else 0) | (ifx input.jump then WB_JUMP else 0) | (ifx dive then WB_DIVE else 0);
+  a := ab_of(s);   // and your Levitate's rise and sink keys, for the server's (everglade_room_rise)
+  b := (ifx input.run then WB_RUN else 0) | (ifx input.jump then WB_JUMP else 0) | (ifx dive then WB_DIVE else 0) |
+       (ifx a[0].lev_on && a[0].lev_up then WB_RISE else 0) | (ifx a[0].lev_on && a[0].lev_sink then WB_SINK else 0);
   net_send(n, wire_put_in(n[0].out[..], 0, WireIn.{seq = n[0].seq, kx = wire_axis(input.key_x), ky = wire_axis(input.key_y),
                                                    px = wire_axis(input.pad_x), py = wire_axis(input.pad_y), theta = input.theta, b = b}));
   return n[0].seq;
@@ -798,7 +800,7 @@ net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: 
       pose: [4] f32;
       if eg_ra_world(ak) && net_seat_pose(s, fx.caster, pose[..]) {
         c := v3(pose[0], pose[1], pose[2]);
-        eg_ra_play(s, fx.caster, ak, c, eg_ra_facing(c, fx.at, pose[3]), fx.at);
+        eg_ra_play(s, fx.caster, ak, c, eg_ra_facing(c, fx.at, pose[3]), fx.at, fx.mode);
       } else { net_flash(s, ak, fx.at); }
       n[0].played += 1; continue;
     }
@@ -819,7 +821,9 @@ net_cast :: (s: [] Everglade, b: int, at: Point, target: int) -> bool #export_c 
   n[0].seq += 1;
   // aimed at (or by) a server creature, the cast names it: the server aims it where the creature is
   tgt := ifx target >= 0 then target else net_creature_at(n, at, NET_PICK);
-  net_send(n, wire_put_cast(n[0].out[..], 0, WireCast.{seq = n[0].seq, slot = b, ax = at.x, ay = at.y, az = at.z, tgt = tgt}));
+  // with the spell's mode as you have it picked (Elementalism's element, Create or Destroy Water)
+  mode := ifx b >= SP_SLOTS && b < SP_SLOTS + AB_N then eg_ra_mode(s, b - SP_SLOTS) else 0;
+  net_send(n, wire_put_cast(n[0].out[..], 0, WireCast.{seq = n[0].seq, slot = b, ax = at.x, ay = at.y, az = at.z, tgt = tgt, mode = mode}));
   return true;
 }
 // The TGT code (2000 + EID) of the summoned creature nearest the point within `reach` m, -1 none.
@@ -875,6 +879,14 @@ net_self_ability :: (k: int) -> bool {
   return k == AB_LEVITATE || k == AB_FEATHER || k == AB_WWALK || k == AB_BREATH || k == AB_SHAPECHANGE || k == AB_SPEAK;
 }
 net_stacks :: (k: int) -> bool { return k == AB_WIND || k == AB_STONE; }
+// Levitate and Feather Fall, yours: this page runs them as you press (so your feet answer at once) and
+// the room's server runs them too, for where it has you (everglade-room-abilities.coax eg_ra_runs):
+// up goes as a cast where you stand, down as its end.
+net_mirror :: (s: [] Everglade, k: int, on: bool) {
+  if !net_live(s) || eg_ra_copying(s) { return; }
+  b := SP_SLOTS + k;
+  if on { _ := net_cast(s, b, ab_you(s), -1); } else { _ := net_end(s, b); }
+}
 net_shared :: (s: [] Everglade, k: int) -> bool { return net_live(s) && !net_self_ability(k) && !eg_ra_copying(s); }   // (a seat's copy casts its own: everglade-room-abilities.coax)
 // A press on a shared ability's slot (everglade-abilities.coax ab_press) with a room to send it to:
 // what it holds up ends (E); one you point with is picked or put away; any other goes out as a cast
@@ -900,13 +912,14 @@ net_press :: (s: [] Everglade, k: int) {
 net_follow :: (s: [] Everglade, n: [] EgNet, now: int) {
   // each seat's abilities as the server's entities have them (room-abilities.coax ra_send: the
   // caster's place, or the aim, and its facing): this page's copies kept to them
-  id: [EG_RA_SEATS * AB_N] int; at: [EG_RA_SEATS * AB_N] Point; face: [EG_RA_SEATS * AB_N] f32;
+  id: [EG_RA_SEATS * AB_N] int; at: [EG_RA_SEATS * AB_N] Point; face: [EG_RA_SEATS * AB_N] f32; mode: [EG_RA_SEATS * AB_N] int;
   for e: 0..<NET_ENTS {
     en := n[0].ents[e];
     if !en.live || en.ring_n == 0 || en.kind != WK_ZONE || en.eid - NET_MADE_ID < NET_ABILITY_ID { continue; }
     if en.owner < 0 || en.owner >= EG_RA_SEATS || en.p1 < 0 || en.p1 >= AB_N { continue; }
     q := en.owner * AB_N + en.p1;
     id[q] = en.eid; at[q] = v3(en.shown.x, en.shown.y, en.shown.z); face[q] = en.shown.yaw;
+    mode[q] = ifx en.p1 == AB_ELEMENTS || en.p1 == AB_CREATE then en.p2 else 0;   // its mode (room-abilities.coax ra_send)
   }
   pose: [4] f32;
   for o: 0..<EG_RA_SEATS {
@@ -916,7 +929,7 @@ net_follow :: (s: [] Everglade, n: [] EgNet, now: int) {
       if id[q] == 0 && s[0].sp.room_ab[0].seat[o].heard[k] == 0 { continue; }
       // the caster where this page draws them, else where the server has the cast
       c := ifx seated then v3(pose[0], pose[1], pose[2]) else at[q];
-      eg_ra_keep(s, o, k, id[q], at[q], face[q], c, ifx seated then pose[3] else face[q]);
+      eg_ra_keep(s, o, k, id[q], at[q], face[q], c, ifx seated then pose[3] else face[q], mode[q]);
     }
   }
 }

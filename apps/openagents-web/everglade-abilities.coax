@@ -138,6 +138,7 @@ Abilities :: struct {
   gust_on: bool; gust_t: f32; gust_at: Point; gust_dir: Point; gust_in: [WATCH_ACTORS] bool; gust_next: [WATCH_ACTORS] f32;
   tw_t: f32; tw_at: Point; tw_dir: Point;   // the last Thunderwave: since when, from where, which way
   stones: [AB_STONES] AbWall;
+  wall_out: f32; stone_out: f32;   // the clock (t) when a cast last took the oldest Wind Wall, Wall of Stone, at the most (ab_counts)
   // Telekinesis: what it holds (AB_TK_*), the body or person, the hand and where it goes, where this
   // move began, how long it has held, since the last move
   tk_kind: int; tk_body: int; tk_who: int; tk_hand: Point; tk_goal: Point; tk_from: Point; tk_t: f32; tk_moved: f32;
@@ -222,13 +223,54 @@ ab_press :: (s: [] Everglade, k: int) {
   s[0].sp.armed = -1;
   if k == AB_REVERSE { ab_reverse(s); return; }
   if k == AB_WIND { ab_wind(s); return; }
-  if k == AB_LEVITATE { ab_levitate(s); return; }
-  if k == AB_FEATHER { ab_feather(s); return; }
+  if k == AB_LEVITATE { ab_levitate(s); net_mirror(s, k, a[0].lev_on); return; }
+  if k == AB_FEATHER { ab_feather(s); net_mirror(s, k, a[0].ff_on); return; }
   if k == AB_GUST { ab_gust(s); return; }
   if k == AB_THUNDER { ab_thunder(s); return; }
   if k == AB_STONE { ab_stone(s); return; }
   if k == AB_WWALK { td_walk(s); return; }
   if k == AB_BREATH { td_breathe(s); return; }
+}
+// How many Wind Walls (k AB_WIND) or Walls of Stone (AB_STONE) you have up, and the clock when a cast
+// last took the oldest. In a room the server's copy of you casts them (everglade-room-abilities.coax),
+// and this page's copy of your seat has what it has up.
+AbCount :: struct { up: int; most: int; out_ago: f32; }
+ab_count :: (s: [] Everglade, k: int) -> AbCount {
+  a := ab_of(s);
+  if net_live(s) && net_shared(s, k) {
+    q := net_of(s)[0].seat;
+    if q >= 0 && q < EG_RA_SEATS && s[0].sp.room_ab[0].seat[q].used { a = s[0].sp.room_ab[0].seat[q].ab[..]; }
+  }
+  out := AbCount.{up = 0, most = ifx k == AB_WIND then AB_WALLS else AB_STONES, out_ago = 1000};
+  if k == AB_WIND { for i: 0..<AB_WALLS { if a[0].walls[i].live { out.up += 1; } } if a[0].wall_out > 0 { out.out_ago = a[0].t - a[0].wall_out; } }
+  else { for i: 0..<AB_STONES { if a[0].stones[i].live { out.up += 1; } } if a[0].stone_out > 0 { out.out_ago = a[0].t - a[0].stone_out; } }
+  return out;
+}
+AB_OUT_SHOW :: 1.5;   // s the count shows the oldest taken (it turns red and swells)
+// "3/4" at the foot of the Wind Wall's and Wall of Stone's icons while any is up: how many of the most
+// you have up. A cast with all of them up still goes (never refused), the oldest falling for it; the
+// count shows that for AB_OUT_SHOW s.
+ab_counts :: (s: [] Everglade, out: [] f32, at: int) -> int {
+  n := at;
+  if wl_on(s) { return n; }
+  k := hi(s[0].dpr, 0.5);
+  ks := [2] int.[AB_WIND, AB_STONE];
+  for j: 0..<2 {
+    b := SP_SLOTS + ks[j];
+    box := s[0].sp.boxes[b];
+    if box.x1 <= box.x0 { continue; }   // not on the bar now
+    c := ab_count(s, ks[j]);
+    if c.up <= 0 && c.out_ago > f32(AB_OUT_SHOW) { continue; }
+    t: [8] u8;
+    m := put_digits(t[..], 0, c.up); m = sp_put(t[..], m, "/"); m = put_digits(t[..], m, c.most);
+    line := cast(string) t[0..<m];
+    fresh := c.out_ago >= 0 && c.out_ago < f32(AB_OUT_SHOW);
+    cap := (box.x1 - box.x0) * (ifx fresh then 0.3f32 else 0.24f32);
+    lw := text_width(line, cap);
+    colour := ifx fresh then v3(1.0, 0.42, 0.3) else v3(PARCH_R, PARCH_G, PARCH_B);
+    n = draw_text(out, n, line, floor(box.x1 - lw - 2 * k), floor(box.y1 - 3 * k), cap, GAP, SPACE, ink(k, 1.0, colour.x, colour.y, colour.z), false, false);
+  }
+  return n;
 }
 // A click or a tap with ability k picked, where the pointer points (everglade-spells.coax sp_cast).
 ab_cast :: (s: [] Everglade, k: int) {
@@ -411,6 +453,7 @@ ab_wind :: (s: [] Everglade) {
   // another beside those standing; past 12 the oldest goes
   k := 0;
   for i: 0..<AB_WALLS { if !a[0].walls[i].live { k = i; break; } if a[0].walls[i].t > a[0].walls[k].t { k = i; } }
+  if a[0].walls[k].live { a[0].wall_out = hi(a[0].t, 0.001); }   // all 12 up: the oldest goes (its icon says so)
   a[0].walls[k] = AbWall.{live = true, ax = ax, az = az, bx = bx, bz = bz, base = base, t = 0, seed = sp_rand(s)};
   // whoever stands in it as it rises: a Strength save, 4d8 bludgeoning or half, and a failure is thrown up
   hit := 0; total := 0;
@@ -466,6 +509,7 @@ ab_stone :: (s: [] Everglade) {
   }
   k := 0;
   for i: 0..<AB_STONES { if !a[0].stones[i].live { k = i; break; } if a[0].stones[i].t > a[0].stones[k].t { k = i; } }
+  if a[0].stones[k].live { a[0].stone_out = hi(a[0].t, 0.001); }   // all 4 up: the oldest goes (its icon says so)
   a[0].stones[k] = AbWall.{live = true, ax = ax, az = az, bx = bx, bz = bz, base = base, t = 0, seed = sp_rand(s), hp0 = AB_ST_HP, hp1 = AB_ST_HP};
   // the ground's dust where it rises
   for q: 0..<6 {

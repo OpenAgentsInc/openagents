@@ -5,7 +5,7 @@
 // their Hit Points). B casts Starry Wisp (slot 22, one target) at one of them by its TGT code (2000 + EID) until it
 // is gone: both hear B's hits on it (e hit) and it go (x c). A leaves: B hears A gone (x p 0) and
 // the rest of the pack stay (its 10 minutes of Concentration outlast A).
-// B strikes a townsperson (WANTED, A not) and calls meteors on the town: both hear the same breaks.
+// B strikes a townsperson (WANTED, A not) and calls meteors on the town: both hear the same breaks up to the rebuild (A leaves just after it).
 // C joins then: within 1 s its snapshot has the broken town, B's WANTED and the people. B's R is
 // refused while the spell is fresh, and 10 s on stands the town up for everyone.
 //   coax/web/tool.sh coax/web/room/sim-check.coax [ws://localhost:8830]
@@ -25,7 +25,7 @@ ScHeard :: struct {
   wanted: int; wanted_heard: bool;                       // its own WANTED level (w)
   other_wanted: int;                                     // the other's (w)
   wanted_of: [16] int;                                   // every seat's (w)
-  breaks: int; break_sum: int; burns: int; rebuilt: bool; // the town's pieces (e break, e burn, e rebuild)
+  breaks: int; break_sum: int; burns: int; rebuilt: bool; breaks_up: int; sum_up: int; // the town's pieces (e break, e burn, e rebuild)
   refused_breaking: bool; refused_n: int;                                // R too soon after a break (r SEQ breaking)
   bad: int;
 }
@@ -73,7 +73,7 @@ sc_entry :: (h: [] ScHeard, me: int, t: string) {
   if k == "e" && rs_field(t, 1) == "cast" && rs_field(t, 3) == "32" { h[0].cast_seen = true; }
   if k == "e" && rs_field(t, 1) == "break" { h[0].breaks += 1; h[0].break_sum += rs_num(rs_field(t, 2)); }
   if k == "e" && rs_field(t, 1) == "burn" { h[0].burns += 1; }
-  if k == "e" && rs_field(t, 1) == "rebuild" { h[0].rebuilt = true; }
+  if k == "e" && rs_field(t, 1) == "rebuild" { if !h[0].rebuilt { h[0].breaks_up = h[0].breaks; h[0].sum_up = h[0].break_sum; } h[0].rebuilt = true; }
   if k == "e" && rs_field(t, 1) == "hit" && h[0].wolf_n > 0 && rs_num(rs_field(t, 2)) == 2000 + h[0].wolves[0] && rs_field(t, 3) == "1001" { h[0].hits += 1; }
 }
 sc_hear :: (h: [] ScHeard, me: int, t: string) {
@@ -217,7 +217,7 @@ tool_main :: () -> int #export_c {
         h[0].cast_seen && h[1].cast_seen && h[0].wolf_n == 4 && h[1].wolf_n == 4 && h[0].hits > 0 && h[1].hits > 0 &&
         sc_gone(h[0], wolf) && sc_gone(h[1], wolf) && h[1].gone_n == killed && killed < 4 && h[1].other_gone && rate > 12 &&
         h[0].folk_n >= 5 && h[1].folk_n >= 5 && h[0].wanted_heard && h[1].wanted_heard && h[1].wanted >= 1 && h[0].other_wanted >= 1 &&
-        h[0].breaks > 0 && h[0].breaks == h[1].breaks && h[0].break_sum == h[1].break_sum && h[0].rebuilt && h[1].rebuilt && !early && h[1].refused_breaking && late_ok && h[0].bad + h[1].bad + h[2].bad == 0;
+        h[0].breaks_up > 0 && h[0].breaks_up == h[1].breaks_up && h[0].sum_up == h[1].sum_up && h[0].rebuilt && h[1].rebuilt && !early && h[1].refused_breaking && late_ok && h[0].bad + h[1].bad + h[2].bad == 0;
   out: [2048] u8; o: [1] Jo;
   jo_start(o[..], out[..]);
   jo_obj(o[..]);
@@ -253,6 +253,8 @@ tool_main :: () -> int #export_c {
   jo_key(o[..], "a_heard_b_wanted"); jo_int(o[..], h[0].other_wanted);
   jo_key(o[..], "breaks_a"); jo_int(o[..], h[0].breaks);
   jo_key(o[..], "breaks_b"); jo_int(o[..], h[1].breaks);
+  jo_key(o[..], "breaks_a_to_rebuild"); jo_int(o[..], h[0].breaks_up);
+  jo_key(o[..], "breaks_b_to_rebuild"); jo_int(o[..], h[1].breaks_up);
   jo_key(o[..], "burns_a"); jo_int(o[..], h[0].burns);
   jo_key(o[..], "rebuilt"); jo_bool(o[..], h[0].rebuilt && h[1].rebuilt);
   jo_end(o[..]);

@@ -107,10 +107,11 @@ bool world_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE])
   coax_t_Everglade *g = world[k];
   coax_t_Player p = seat_p[k][s];
   const float dt = 1.0f / WORLD_HZ, frame = dt;
-  /* in: SEQ KX KY PX PY THETA B (cm-scaled sticks, centiradians, bits 1 run 2 jump 4 dive) */
+  /* in: SEQ KX KY PX PY THETA B (cm-scaled sticks, centiradians, bits 1 run 2 jump 4 dive 8 rise 16 sink) */
   coax_t_EgMoveIn input = {(float)in[1] / 100.0f, (float)in[2] / 100.0f, (float)in[3] / 100.0f, (float)in[4] / 100.0f,
                            (in[6] & 1) != 0, (in[6] & 2) != 0, (float)in[5] / 100.0f};
   everglade_room_seat(at(k), s);   /* its conditions, slow and throw are what the step reads */
+  everglade_room_rise(at(k), s, (in[6] & 8) != 0, (in[6] & 16) != 0, p.pos.x, p.pos.z, p.pos.y);   /* its Levitate's keys */
   coax_t_Swim sw = seat_swim[k][s];
   coax_t_EgMoveWorld mw = everglade_move_world(at(k), p.pos.x, p.pos.y, p.pos.z, sw.medium, sw.pace, sw.flow_x, sw.flow_z, false, 0, 0, 0, (coax_v_f32){NULL, 0});
   p = eg_step_begin(p, input, mw, dt);
@@ -177,7 +178,7 @@ void world_fresh(int k) { if (world_of(k)) everglade_room_fresh(at(k)); }
 void world_rebuild(int k) { if (world_of(k)) everglade_room_rebuild(at(k)); }
 
 void world_ability(int k, const float c[WORLD_CAST]) {
-  if (world_of(k)) everglade_room_ability(at(k), (int)c[0], (int)c[1], c[2], c[3], c[4], c[5], c[6] > 0.5f, c[7], c[8], c[9]);
+  if (world_of(k)) everglade_room_ability_mode(at(k), (int)c[0], (int)c[1], c[2], c[3], c[4], c[5], c[6] > 0.5f, c[7], c[8], c[9], (int)c[10]);
 }
 void world_abilities(int k, float dt) {
   if (!world_of(k)) return;

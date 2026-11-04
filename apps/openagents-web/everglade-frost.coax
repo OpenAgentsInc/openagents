@@ -134,8 +134,9 @@ fr_tolerance :: (p: FrPatch, cell: int) -> f32 {
 }
 FrIce :: struct { state: int; patch: int; }
 // The strongest ice on the water at (x, z), and the patch it is of.
-fr_ice_at :: (s: [] Everglade, x: f32, z: f32) -> FrIce {
-  f := fr_of(s);
+fr_ice_at :: (s: [] Everglade, x: f32, z: f32) -> FrIce { return fr_ice_in(s, fr_of(s), x, z); }
+// The same in one caster's frost f (yours, or a seat's copy in a room: everglade-room-abilities.coax).
+fr_ice_in :: (s: [] Everglade, f: [] Frost, x: f32, z: f32) -> FrIce {
   out := FrIce.{state = FR_NONE, patch = -1};
   if !fr_wet(s, x, z) { return out; }
   for k: 0..<FR_PATCHES {
@@ -148,15 +149,18 @@ fr_ice_at :: (s: [] Everglade, x: f32, z: f32) -> FrIce {
   return out;
 }
 // What you can stand on over the water at (x, z): the ice's top, else far down (walk_at takes the higher).
+// Every caster's ice counts: in a room each seat's frost is its own copy, and the ice holds anyone.
 fr_floor :: (s: [] Everglade, x: f32, z: f32) -> f32 {
   if !sp_on(s) { return -1000; }
   walk := td_floor(s, x, z);   // Water Walk (everglade-tide.coax)
-  f := fr_of(s);
+  if fr_floes_in(s, fr_of(s), x, z) || eg_ra_floes(s, x, z) { return hi(walk, water_at(s, x, z) + 0.04); }
+  return walk;
+}
+// Whether f's ice at (x, z) is floes or firmer, enough to stand on.
+fr_floes_in :: (s: [] Everglade, f: [] Frost, x: f32, z: f32) -> bool {
   any := false;
   for k: 0..<FR_PATCHES { p := f[0].patches[k]; if p.live && fr_water_stage(p) >= FR_FLOES && fr_in_disc(p, x, z) { any = true; } }
-  if !any { return walk; }
-  if fr_ice_at(s, x, z).state >= FR_FLOES { return hi(walk, water_at(s, x, z) + 0.04); }
-  return walk;
+  return any && fr_ice_in(s, f, x, z).state >= FR_FLOES;
 }
 // How far the ice holds you over the ground under it there (everglade-face.c: your height over the
 // bed, for the river's swim).
@@ -168,10 +172,15 @@ everglade_ice_lift :: (s: [] Everglade, x: f32, z: f32) -> f32 #export_c {
 FrFoot :: struct { slip: bool; rough: bool; slush: bool; }
 // The footing at (x, z): Slippery Ice, Difficult Terrain, slush to swim in.
 fr_foot :: (s: [] Everglade, x: f32, z: f32) -> FrFoot {
-  f := fr_of(s);
+  out := fr_foot_in(s, fr_of(s), x, z);
+  more := eg_ra_foot(s, x, z);   // every seat's ice in a room, slippery for anyone on it
+  out.slip = out.slip || more.slip; out.rough = out.rough || more.rough; out.slush = out.slush || more.slush;
+  return out;
+}
+fr_foot_in :: (s: [] Everglade, f: [] Frost, x: f32, z: f32) -> FrFoot {
   out: FrFoot;
   if fr_wet(s, x, z) {
-    ice := fr_ice_at(s, x, z);
+    ice := fr_ice_in(s, f, x, z);
     if ice.state >= FR_FLOES {
       p := f[0].patches[ice.patch];
       hail := p.kind == FR_STORM && p.t < f32(FR_HAIL_ROUGH);

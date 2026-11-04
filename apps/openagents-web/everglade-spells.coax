@@ -1953,6 +1953,7 @@ spells_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom: f32) ->
   // the bar, the old engine's tray; what it says over it; the cast bar
   top := sp_bar(s, out, u, n);
   n = top.n;
+  n = ab_counts(s, out, n);   // Wind Wall's and Wall of Stone's up of their most, on their icons
   phone_ := phone(s);
   y := top.top;
   if s[0].sp.casting >= 0 { n = sp_cast_bar(s, out, u, n, top.top); }
