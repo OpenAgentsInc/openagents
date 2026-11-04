@@ -516,13 +516,16 @@ gv_en_at :: (s: [] Everglade, at: Point) {
   v[0].en_on = true; v[0].en_t = 0; v[0].en_at = v3(at.x, ground_at(s, at.x, at.z), at.z);
   for i: 0..<WATCH_ACTORS { v[0].en_held[i] = false; v[0].en_next[i] = f32(GV_EN_ROUND); }
   for q: 0..<6 { sp_add_puff(s, add(gv_vine_root(s, q * 3), v3(0, 0.15, 0)), v3(0, 0.5, 0), 0.6, 1.4, 0.55); }
-  // each one there as it is cast (not you): a Strength save or Restrained
+  // each one there as it is cast (not you): a Strength save or Restrained (the rules' save, where
+  // they have the town: gv_en_hold)
   n := 0;
   if watch_on(s) {
     for i: 0..<WATCH_ACTORS {
       if !ab_person_ok(s, i) || ab_air(s, i) > 1.0 { continue; }
       pl := person_place(s, i);
-      if !gv_in_square(v[0].en_at, pl.x, pl.z) || ab_str_save(s, i) { continue; }
+      if !gv_in_square(v[0].en_at, pl.x, pl.z) { continue; }
+      held := ab_rules_hold(s, i, WC_RESTRAINED);
+      if held == 0 || (held < 0 && ab_str_save(s, i)) { continue; }
       v[0].en_held[i] = true; v[0].en_x[i] = pl.x; v[0].en_z[i] = pl.z;
       n += 1;
     }
@@ -542,12 +545,22 @@ gv_en_frame :: (s: [] Everglade, dt: f32) {
   if v[0].en_t >= f32(GV_EN_LIFE) { gv_en_end(s); sp_say(s, "ENTANGLE ENDS", -1, ""); return; }
   if !watch_on(s) { return; }
   w := watch_w(s);
-  freed := 0;
+  freed := 0; caught := 0;
   for i: 0..<WATCH_ACTORS {
+    // under the rules: whoever in the square they hold Restrained, held there; whom they let go, free
+    held := ab_rules_hold(s, i, WC_RESTRAINED);
+    if held >= 0 && ab_person_ok(s, i) {
+      pl := person_place(s, i);
+      if held == 1 && !v[0].en_held[i] && ab_air(s, i) <= 1.0 && gv_in_square(v[0].en_at, pl.x, pl.z) {
+        v[0].en_held[i] = true; v[0].en_x[i] = pl.x; v[0].en_z[i] = pl.z;
+        caught += 1;
+      }
+      if held == 0 && v[0].en_held[i] { v[0].en_held[i] = false; freed += 1; continue; }
+    }
     if !v[0].en_held[i] { continue; }
     if !ab_person_ok(s, i) { v[0].en_held[i] = false; continue; }
-    // each round a Strength (Athletics) check to tear free
-    if v[0].en_t >= v[0].en_next[i] {
+    // each round a Strength (Athletics) check to tear free (the rules' own, where they have the town)
+    if held < 0 && v[0].en_t >= v[0].en_next[i] {
       v[0].en_next[i] = v[0].en_t + f32(GV_EN_ROUND);
       if ab_str_save(s, i) { v[0].en_held[i] = false; freed += 1; continue; }
     }
@@ -556,6 +569,7 @@ gv_en_frame :: (s: [] Everglade, dt: f32) {
     if i < EG_SPOTS { s[0].folk[i].x = act[0].x; s[0].folk[i].z = act[0].z; }
     if act[0].mode == WM_DOWN { act[0].t = lo(act[0].t, 0.25); }
   }
+  if caught > 0 { gv_crime(s, v[0].en_at, f32(GV_HEAR_EN)); sp_say(s, "ENTANGLE", caught, "RESTRAINED"); }
   if freed > 0 { sp_say(s, "ENTANGLE · TORN FREE", freed, ""); }
 }
 // Vine j's root: scattered over the square, the same every frame.

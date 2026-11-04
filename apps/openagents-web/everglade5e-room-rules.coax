@@ -588,6 +588,111 @@ e5rr_test_people :: (r: [] E5rRoom) {
   #assert e5rr_use(r[..], 3, 28, 3, 0.5, E5RR_TGT_SEAT + 5);   // Healing Word on seat 5
   e5rr_seat_out(r[..], 5, out[..]); #assert out[0] > 27;
 }
+// Square q's middle in metres (e5r_sq's inverse).
+e5rr_test_m :: (q: int) -> f32 { return f32(E5R_X0) + (f32(q) + 0.5) * f32(E5R_SQ); }
+// Four guards: three on squares round (px, py) and one 40 squares off; seat 0 two squares west.
+e5rr_test_ring :: (r: [] E5rRoom, px: int, py: int) {
+  folk: [E5R_FOLK * E5R_FOLK_FLOATS] f32;
+  xs := [4] int.[px, px, px, px + 40]; ys := [4] int.[py - 1, py, py + 1, py];
+  for j: 0..<4 {
+    g := j * E5R_FOLK_FLOATS;
+    folk[g] = 1; folk[g + 1] = e5rr_test_m(xs[j]); folk[g + 2] = e5rr_test_m(ys[j]); folk[g + 3] = 200; folk[g + 5] = 200; folk[g + 6] = 16; folk[g + 7] = f32(E5R_GUARD);
+  }
+  e5rr_people(r, folk[..], E5R_FOLK);
+  e5rr_place(r, 0, e5rr_test_m(px - 2), e5rr_test_m(py));
+}
+#test "Everglade 5E room: an area spell resolves against every person in its shape, one save each, and none outside it (#12718)" #steps 4000000000 {
+  // Entangle: the three in its 20-foot square each make one Strength save; whoever fails is Restrained
+  for seed: 1..<9 {
+    r: [1] E5rRoom;
+    e5rr_start(r[..], seed);
+    e5rr_join(r[..], 0, 0, 0);
+    e5rr_test_ring(r[..], 60, 60);
+    ev: [256 * E5RR_EV_FLOATS] f32;
+    _ := e5rr_events(r[..], ev[..]);
+    #assert e5rr_use(r[..], 0, 26, e5rr_test_m(60), e5rr_test_m(60), -1);
+    n := e5rr_events(r[..], ev[..]);
+    saves: [4] int; failed: [4] int;
+    for q: 0..<n {
+      o := q * E5RR_EV_FLOATS;
+      j := cast(int) ev[o + 3];
+      if ev[o] == f32(RS_EV_SAVE) && ev[o + 1] == f32(SP_ENTANGLE) && j >= 0 && j < 4 { saves[j] += 1; }
+    }
+    out: [E5RR_OUT_FLOATS] f32;
+    for j: 0..<4 {
+      e5rr_folk_out(r[..], j, out[..]);
+      if (cast(int) out[3] & RS_RESTRAINED) != 0 { failed[j] = 1; }
+    }
+    for j: 0..<3 { #assert saves[j] == 1; }
+    #assert saves[3] == 0 && failed[3] == 0;
+  }
+  // every area the bar aims at a point: whatever it does as it is cast, it does to each person its
+  // shape covers (a Line only the one on it, a 10-foot wall two of the three) and to none outside
+  bar: [FB_EG_SLOTS] FbAb;
+  bn := fb_everglade(bar[..]);
+  tried := 0;
+  for k: 0..<bn {
+    a := bar[k];
+    if a.kind != FB_SPELL || a.tg != FB_POINT || a.sp == SP_CONJURE_ANIMALS { continue; }
+    sp := rs_spell(a.sp);
+    if sp.area == RS_A_NONE { continue; }
+    r: [1] E5rRoom;
+    e5rr_start(r[..], 3 + k);
+    e5rr_join(r[..], 0, 0, 0);
+    e5rr_test_ring(r[..], 60, 60);
+    ev: [256 * E5RR_EV_FLOATS] f32;
+    _ := e5rr_events(r[..], ev[..]);
+    // inside: as the engine's shape has it from the caster toward the point, before the cast (a push
+    // moves people out of it)
+    zn := rs_area(r[0].b[..], E5RR_SEAT, sp, e5r_sq(e5rr_test_m(60)), e5r_sq(e5rr_test_m(60)));
+    was_in: [4] bool;
+    for j: 0..<4 { c := r[0].b[0].c[e5rr_folk(j)]; was_in[j] = rs_inside(zn, c.x, c.y); }
+    if !e5rr_use(r[..], 0, k, e5rr_test_m(60), e5rr_test_m(60), -1) { continue; }
+    n := e5rr_events(r[..], ev[..]);
+    hit: [4] int; saves: [4] int;
+    for q: 0..<n {
+      o := q * E5RR_EV_FLOATS;
+      j := cast(int) ev[o + 3];
+      if j < 0 || j >= 4 || ev[o] == f32(RS_EV_CAST) || ev[o] == f32(RS_EV_ZONE) { continue; }
+      hit[j] += 1;
+      if ev[o] == f32(RS_EV_SAVE) && ev[o + 1] == f32(a.sp) { saves[j] += 1; }
+    }
+    for j: 0..<4 { #assert saves[j] <= 1; }
+    if hit[0] + hit[1] + hit[2] + hit[3] == 0 { continue; }
+    tried += 1;
+    ins := 0;
+    for j: 0..<4 {
+      inside := was_in[j];
+      // Everglade's own four (slots 0 to 3: Meteor Swarm's several spheres, the Thunderbolts' arcs)
+      // reach past one SRD shape; only the far one is out of their reach
+      if k < 4 { if j == 3 && !inside { #assert hit[j] == 0; } if inside { ins += 1; } continue; }
+      if inside { ins += 1; #assert hit[j] > 0; } else { #assert hit[j] == 0; }
+    }
+    #assert ins > 0;
+  }
+  #assert tried >= 8;
+  // Call Lightning's later bolts, a round each: every one within 5 feet of its point, not the one nearest
+  r: [1] E5rRoom;
+  e5rr_start(r[..], 5);
+  e5rr_join(r[..], 0, 0, 0);
+  e5rr_test_ring(r[..], 60, 60);
+  ev: [256 * E5RR_EV_FLOATS] f32;
+  #assert e5rr_use(r[..], 0, 30, e5rr_test_m(60), e5rr_test_m(60), -1);
+  _ := e5rr_events(r[..], ev[..]);
+  clock := r[0].b[0].clock;
+  bolts: [4] int;
+  for step: 1..<9 {
+    e5rr_step(r[..], clock + f32(step));
+    n := e5rr_events(r[..], ev[..]);
+    for q: 0..<n {
+      o := q * E5RR_EV_FLOATS;
+      j := cast(int) ev[o + 3];
+      if ev[o] == f32(RS_EV_SAVE) && ev[o + 1] == f32(SP_CALL_BOLT) && j >= 0 && j < 4 { bolts[j] += 1; }
+    }
+  }
+  for j: 0..<3 { #assert bolts[j] >= 1; }
+  #assert bolts[3] == 0;
+}
 #test "Everglade 5E room: a lasting area is the room's, with an id; it outlasts its caster's leaving until its time is up" #steps 2000000000 {
   r: [1] E5rRoom;
   e5rr_start(r[..], 9);

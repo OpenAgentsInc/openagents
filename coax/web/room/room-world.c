@@ -177,7 +177,11 @@ bool world_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE])
 
 float world_ground(int k, float x, float z) { return world_of(k) ? everglade_height(at(k), x, z) : 0.0f; }
 
-void world_folk_hp(int k, int j, int hp, int temp, int by) { if (world_of(k)) everglade_room_folk_hp(at(k), j, hp, temp, by); }
+void world_folk_hp(int k, int j, int hp, int temp, int by, int cond) {
+  if (!world_of(k)) return;
+  everglade_room_folk_hp(at(k), j, hp, temp, by);
+  everglade_room_folk_cond(at(k), j, cond);
+}
 void world_crime(int k, int by, float x, float z) { if (world_of(k)) (void)everglade_room_crime(at(k), by, x, z); }
 void world_town(int k, float dt, double world_s, const float seats[WORLD_SEATS * WORLD_SEAT_TOWN], float took[2 * WORLD_SEATS]) {
   if (!world_of(k)) return;

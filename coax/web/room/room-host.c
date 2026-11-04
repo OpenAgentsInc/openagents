@@ -284,11 +284,11 @@ static void relay_flush(void) {
 // crimes since into it, a step against every seat, then the guards' blows, WANTED and where everyone is
 // back to the room (the rules', and what the pages hear).
 static void everglade_town(int k) {
-  float hp[3], cr[3], seats[WORLD_SEATS * WORLD_SEAT_TOWN], took[2 * WORLD_SEATS], people[WORLD_FOLK * WORLD_PEOPLE], fv[WORLD_VIEW];
-  coax_v_f32 hpv = {hp, 3}, crv = {cr, 3}, fvv = {fv, WORLD_VIEW};
+  float hp[4], cr[3], seats[WORLD_SEATS * WORLD_SEAT_TOWN], took[2 * WORLD_SEATS], people[WORLD_FOLK * WORLD_PEOPLE], fv[WORLD_VIEW];
+  coax_v_f32 hpv = {hp, 4}, crv = {cr, 3}, fvv = {fv, WORLD_VIEW};
   if (rm_eg_fresh(view(), k)) world_fresh(k);
   for (int j = 0; j < WORLD_FOLK; j++)
-    if (rm_eg_folk_hp(view(), k, j, hpv)) world_folk_hp(k, j, (int)hp[0], (int)hp[1], (int)hp[2]);
+    if (rm_eg_folk_hp(view(), k, j, hpv)) world_folk_hp(k, j, (int)hp[0], (int)hp[1], (int)hp[2], (int)hp[3]);
   int64_t cn = rm_eg_crimes(view(), k);
   for (int64_t q = 0; q < cn; q++) { rm_eg_crime(view(), k, q, crv); world_crime(k, (int)cr[0], cr[1], cr[2]); }
   rm_eg_crimes_heard(view(), k);

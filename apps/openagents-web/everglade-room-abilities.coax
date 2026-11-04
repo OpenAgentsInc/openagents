@@ -596,6 +596,50 @@ eg_ra_drawn :: (s: [] Everglade, q: int, k: int) -> bool {
   for j: 0..<6 { everglade_room_ability(s[..], j, ks[j], 0, 0, 0, 0, false, 0, 0, 0); #assert !everglade_room_life(s[..], j, ks[j], st[..]); }
 }
 
+#test "room abilities: Entangle and the tentacles hold whom the rules hold Restrained in their square, rolling no save of their own (#12718)" #steps 4000000000 {
+  s: [1] Everglade;
+  dm: [1] DemoWorld;
+  everglade_room_spells_start(s[..], dm[..], "");
+  seats: [EG_ROOM_SEAT_FLOATS * WATCH_YOUS] f32; took: [2 * WATCH_YOUS] f32;
+  everglade_room_town(s[..], 1.0 / 30, 100, seats[..], 0, took[..]);   // the server's town, on
+  #assert watch_on(s[..]);
+  w := watch_w(s[..]);
+  // four people of the town: three in the square, one 20 m off (the rules hold all four Restrained,
+  // the far one by something else), and a fifth in the square who saved
+  who: [5] int; n := 0;
+  for i: 0..<EG_SPOTS { if n < 5 && watch_here(w, i) && ab_person_ok(s[..], i) { who[n] = i; n += 1; } }
+  #assert n == 5;
+  xs := [5] f32.[-1.5, 0, 1.5, 20, 0.5];
+  for q: 0..<5 {
+    i := who[q];
+    s[0].folk[i].x = xs[q]; s[0].folk[i].z = -24; s[0].folk[i].indoors = false;
+    w[0].actors[i].x = xs[q]; w[0].actors[i].z = -24;
+    everglade_room_folk_cond(s[..], i, ifx q < 4 then WC_RESTRAINED else 0);
+  }
+  g := walk_at(s[..], 0, -30);
+  everglade_room_ab_pose(s[..], 0, 0, g, -30, 0);
+  everglade_room_ability(s[..], 0, AB_ENTANGLE, 0, g, -30, 0, true, 0, walk_at(s[..], 0, -24), -24);
+  for k: 0..<10 { everglade_room_abilities(s[..], 1.0 / 30); }
+  v := s[0].sp.room_ab[0].seat[0].gv[..];
+  #assert v[0].en_on;
+  for q: 0..<3 { #assert v[0].en_held[who[q]]; }
+  #assert !v[0].en_held[who[3]] && !v[0].en_held[who[4]];
+  // the rules let one go (they tore free): the vines do
+  everglade_room_folk_cond(s[..], who[1], 0);
+  for k: 0..<3 { everglade_room_abilities(s[..], 1.0 / 30); }
+  #assert v[0].en_held[who[0]] && !v[0].en_held[who[1]] && v[0].en_held[who[2]];
+  // the same for Black Tentacles' square, cast on the same three by seat 1
+  everglade_room_folk_cond(s[..], who[1], WC_RESTRAINED);
+  everglade_room_ability(s[..], 0, AB_ENTANGLE, 0, 0, 0, 0, false, 0, 0, 0);
+  everglade_room_ab_pose(s[..], 1, 0, g, -30, 0);
+  everglade_room_ability(s[..], 1, AB_TENTACLES, 0, g, -30, 0, true, 0, walk_at(s[..], 0, -24), -24);
+  for k: 0..<10 { everglade_room_abilities(s[..], 1.0 / 30); }
+  a := s[0].sp.room_ab[0].seat[1].ab[..];
+  #assert a[0].bt_on;
+  for q: 0..<3 { #assert a[0].bt_held[who[q]]; }
+  #assert !a[0].bt_held[who[3]] && !a[0].bt_held[who[4]];
+}
+
 #test "room abilities: Everglade's four strike the server's town at the step after the room hands them over (their cast bar done: room-casts.coax)" #steps 3000000000 {
   s: [1] Everglade;
   dm: [1] DemoWorld;

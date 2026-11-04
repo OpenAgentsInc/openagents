@@ -429,6 +429,7 @@ fb_seat_next :: (b: [] RsBattle, s: [] FbSeat) -> f32 { return ifx s[0].me >= 0 
 // ---- lasting areas: each round, the part runs on whoever is in the area
 
 FB_ZONES :: 8;
+FB_STORM_BOLTS :: 6;   // Storm of Vengeance's bolts a round (its fourth on)
 FbZone :: struct { on: bool; by: int; spell: int; part: int; slot: int; cx: int; cy: int; r_ft: int; next: f32; }
 fb_zone_add :: (z: [] FbZone, b: [] RsBattle, by: int, a: FbAb, slot: int, tx: int, ty: int) {
   if a.again < 0 { return; }
@@ -437,8 +438,8 @@ fb_zone_add :: (z: [] FbZone, b: [] RsBattle, by: int, a: FbAb, slot: int, tx: i
   z[k] = FbZone.{on = true, by = by, spell = a.sp, part = a.again, slot = slot, cx = tx, cy = ty, r_ft = rs_max(rs_spell(a.sp).area_ft, 5), next = b[0].clock + f32(RS_ROUND)};
 }
 // A round on: an area whose caster no longer concentrates on its spell is gone; the rest run their
-// part on each creature but the caster in them (Call Lightning's and Storm of Vengeance's bolt on
-// the one nearest the middle). Returns how many it ran on.
+// part on each creature but the caster's side in them (Storm of Vengeance's bolts on six different
+// ones, the nearest the middle first). Returns how many it ran on.
 fb_zones_round :: (z: [] FbZone, b: [] RsBattle) -> int {
   ran := 0;
   for q: 0..<FB_ZONES {
@@ -447,17 +448,34 @@ fb_zones_round :: (z: [] FbZone, b: [] RsBattle) -> int {
     if by < 0 || by >= b[0].n || b[0].c[by].conc != z[q].spell { z[q].on = false; continue; }
     if b[0].clock < z[q].next { continue; }
     z[q].next += f32(RS_ROUND);
-    one := z[q].part == SP_CALL_BOLT || z[q].part == SP_STORM_BOLT;
-    best := -1; bd := 100000;
+    // Storm of Vengeance's bolts: six, each on a different creature under the cloud (the nearest its
+    // middle first). Every other part, Call Lightning's bolt among them, on each creature in the area
+    // (the bolt's: within 5 feet of its point), one save each (SRD 5.2.1 pp. 114, 165).
+    if z[q].part == SP_STORM_BOLT {
+      took: [FB_STORM_BOLTS] int; tn := 0;
+      while tn < FB_STORM_BOLTS {
+        best := -1; bd := 100000;
+        for j: 0..<b[0].n {
+          c := b[0].c[j];
+          if j == by || c.dead || c.team == b[0].c[by].team { continue; }
+          d := rs_feet(z[q].cx, z[q].cy, c.x, c.y);
+          if d > z[q].r_ft || d >= bd { continue; }
+          seen := false;
+          for u: 0..<tn { if took[u] == j { seen = true; } }
+          if !seen { bd = d; best = j; }
+        }
+        if best < 0 { break; }
+        took[tn] = best; tn += 1;
+        rs_affect(b, by, best, z[q].part, z[q].slot, -1); ran += 1;
+      }
+      continue;
+    }
     for j: 0..<b[0].n {
       c := b[0].c[j];
       if j == by || c.dead || c.team == b[0].c[by].team { continue; }
-      d := rs_feet(z[q].cx, z[q].cy, c.x, c.y);
-      if d > z[q].r_ft { continue; }
-      if one { if d < bd { bd = d; best = j; } continue; }
+      if rs_feet(z[q].cx, z[q].cy, c.x, c.y) > z[q].r_ft { continue; }
       rs_affect(b, by, j, z[q].part, z[q].slot, -1); ran += 1;
     }
-    if one && best >= 0 { rs_affect(b, by, best, z[q].part, z[q].slot, -1); ran += 1; }
   }
   return ran;
 }

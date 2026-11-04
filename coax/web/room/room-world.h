@@ -23,8 +23,8 @@ float world_ground(int k, float x, float z);
 #define WORLD_SEAT_TOWN 7      /* a seat for the town: X Y Z LIVE HP MAX COND */
 #define WORLD_PEOPLE 8         /* a person for the rules: HERE X Z HP TEMP MAX AC BLOCK */
 #define WORLD_VIEW 7           /* a person for the pages: X Z YAW CLIP MODE HP SHOWN */
-/* Person j's Hit Points as the rules have them, harmed by seat `by` (-1 none). */
-void world_folk_hp(int k, int j, int hp, int temp, int by);
+/* Person j's Hit Points and conditions as the rules have them, harmed by seat `by` (-1 none). */
+void world_folk_hp(int k, int j, int hp, int temp, int by, int cond);
 /* Seat `by` harmed someone of the town at (x, z): a crime. */
 void world_crime(int k, int by, float x, float z);
 /* One tick of room k's town at the shared clock `world_s` (s): took[s], what its guards took from seat s,

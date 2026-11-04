@@ -736,6 +736,21 @@ ab_tk_at :: (s: [] Everglade) -> Point {
 }
 // A person's Strength save against the spells' DC (the guards' +1, the rest's +0).
 ab_str_save :: (s: [] Everglade, i: int) -> bool { return srd_save(s[0].sp.dice[..], ifx watch_is_guard(i) then 1 else 0, AB_DC).success; }
+// The conditions the rules hold person i in (WC_*), or -1 where no rules have the town. Where they
+// do (a room's server, a page in a room, the page's own rules offline), the rules make each person's
+// one save against a spell over its whole shape (everglade5e-room-rules.coax), and an ability's hold
+// on them follows that: it rolls no save of its own, which would be a second save each (#12718).
+ab_rules_cond :: (s: [] Everglade, i: int) -> int {
+  if !s[0].wv.rules_on || i < 0 || i >= WATCH_ACTORS { return -1; }
+  return s[0].wv.rules_cond[i];
+}
+// Whether a hold of the rules' condition `bit` (WC_*) holds person i, under the rules (-1: none have
+// the town, the ability rolls its own).
+ab_rules_hold :: (s: [] Everglade, i: int, bit: int) -> int {
+  c := ab_rules_cond(s, i);
+  if c < 0 { return -1; }
+  return ifx (c & bit) != 0 then 1 else 0;
+}
 // A click with Telekinesis picked: take hold of what the pointer shows, or move what is held toward
 // where it points.
 ab_tk_click :: (s: [] Everglade) {
@@ -913,6 +928,13 @@ ab_bt_saves :: (s: [] Everglade) -> int {
     x := ifx a[0].bt_held[i] then a[0].bt_x[i] else pl.x;
     z := ifx a[0].bt_held[i] then a[0].bt_z[i] else pl.z;
     if !ab_in_square(a, x, z) || ab_air(s, i) > 1.0 { a[0].bt_next[i] = 0; continue; }
+    // under the rules (their save each, their 3d6): held while they hold them Restrained
+    held := ab_rules_hold(s, i, WC_RESTRAINED);
+    if held >= 0 {
+      if held == 1 && !a[0].bt_held[i] { a[0].bt_held[i] = true; a[0].bt_x[i] = pl.x; a[0].bt_z[i] = pl.z; n += 1; }
+      if held == 0 { a[0].bt_held[i] = false; }
+      continue;
+    }
     if a[0].bt_t < a[0].bt_next[i] { continue; }
     a[0].bt_next[i] = a[0].bt_t + f32(AB_BT_ROUND);
     if a[0].bt_held[i] && ab_str_save(s, i) { a[0].bt_held[i] = false; continue; }   // an Athletics check against the DC

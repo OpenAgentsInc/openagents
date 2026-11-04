@@ -611,12 +611,13 @@ rm_eg_seat_town :: (v: [] RmServer, k: int, s: int, out: [] f32) #export_c {
 }
 // The people where the world has them (E5R_FOLK_FLOATS each, n of them), for the rules.
 rm_eg_people :: (v: [] RmServer, k: int, folk: [] f32, n: int) #export_c { if rm_eg_live(v, k) { e5rr_people(v[0].eg[k].rules[..], folk, n); } }
-// Person j's Hit Points in the rules now, for the world: HP TEMP BY (the seat that last harmed them, -1).
+// Person j in the rules now, for the world: HP TEMP BY (the seat that last harmed them, -1) COND
+// (the conditions the rules hold them in: their holds in the world follow them).
 rm_eg_folk_hp :: (v: [] RmServer, k: int, j: int, out: [] f32) -> bool #export_c {
-  if !rm_eg_live(v, k) || j < 0 || j >= E5R_FOLK || out.count < 3 { return false; }
+  if !rm_eg_live(v, k) || j < 0 || j >= E5R_FOLK || out.count < 4 { return false; }
   o: [E5RR_OUT_FLOATS] f32;
   e5rr_folk_out(v[0].eg[k].rules[..], j, o[..]);
-  out[0] = o[0]; out[1] = o[2]; out[2] = f32(v[0].eg[k].folk_by[j]);
+  out[0] = o[0]; out[1] = o[2]; out[2] = f32(v[0].eg[k].folk_by[j]); out[3] = o[3];
   return true;
 }
 // The crimes since the world last heard: q's BY X Z, while q < the count.

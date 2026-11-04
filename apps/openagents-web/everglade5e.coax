@@ -325,6 +325,8 @@ e5_take :: (s: [] Everglade, v: [] E5, out: [] f32, n: int, lines: [] u8, lines_
     for i: 0..<lo_int(n - 1, WATCH_ACTORS) {
       o := (1 + i) * E5_OUT_FLOATS;
       v[0].cond[1 + i] = cast(int) out[o + 2];
+      // offline these rules have the town: the abilities' holds follow them (ab_rules_cond)
+      if !net_live(s) { s[0].wv.rules_on = true; s[0].wv.rules_cond[i] = v[0].cond[1 + i]; }
       if !watch_here(w, i) { continue; }
       a := w[0].actors[i..<i + 1];
       fh := cast(int) out[o]; ft := cast(int) out[o + 1];

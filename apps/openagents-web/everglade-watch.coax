@@ -61,7 +61,11 @@ WatchView :: struct {
   room_any_placed: bool;   // a placed thing was alight, sooty or gone when last read
   mend_from: [8] Point; mend_at: [8] Point; mend_n: int;   // Repairs handed over since the last step (their events go with its)
   server: bool;                    // this is the room server's world (everglade_room_town)
-  room_cond: [WATCH_YOUS] int;     // each seat's conditions in the rules (WC_*)   // where the last strike fell (a break is thrown out from it), and whose
+  room_cond: [WATCH_YOUS] int;     // each seat's conditions in the rules (WC_*)
+  // the conditions the rules hold each person in (WC_*), where rules have the town (rules_on: the
+  // room server's, a page's from the server's rows, the page's own offline): the abilities' holds
+  // follow them rather than rolling saves of their own (everglade-abilities.coax ab_rules_cond, #12718)
+  rules_cond: [WATCH_ACTORS] int; rules_on: bool;   // where the last strike fell (a break is thrown out from it), and whose
 }
 
 watch_cap :: (group: int) -> int {
@@ -889,6 +893,11 @@ everglade_room_folk_hp :: (s: [] Everglade, i: int, hp: int, temp: int, by: int)
   if lost > 0 { watch_harm(w, i, lost, s[0].wv.room_at[b]); }
   else if lost < 0 { a[0].hp = lo_w(hp, a[0].max); a[0].temp = temp; }
   w[0].me = me;
+}
+// Person i's conditions as the room's rules have them now (WC_*, the rules' RS_* numbers).
+everglade_room_folk_cond :: (s: [] Everglade, i: int, cond: int) #export_c {
+  if i < 0 || i >= WATCH_ACTORS { return; }
+  s[0].wv.rules_on = true; s[0].wv.rules_cond[i] = cond;
 }
 // Seat `by` harmed someone of the town at (x, z): a crime, heard EG_ROOM_HEAR m. How many guards turned.
 everglade_room_crime :: (s: [] Everglade, by: int, x: f32, z: f32) -> int #export_c {
