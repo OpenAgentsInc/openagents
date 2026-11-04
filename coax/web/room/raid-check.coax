@@ -38,6 +38,7 @@ RcHeard :: struct {
   flip: f32; last_gap: f32 = -1; gap_at: int;   // the walk to the square: its yaw's sign, and the gap a second ago
   wl: bool; casts_n: int;                        // a Warlock's seat; its casts sent, for the kit's turn
   xp_end: int;                                   // XP heard after the raid's outcome (its end award)
+  bytes: int;                                    // the bytes of every frame it heard
 }
 // The level 1 kit's next attack for seat h (fivebar.coax bar slots), and its reach in metres (the
 // spell's range less a little, so the raider's step doesn't take it out of range).
@@ -109,6 +110,7 @@ rc_entry :: (h: [] RcHeard, me: int, t: string) {
   }
 }
 rc_hear :: (h: [] RcHeard, me: int, t: string) {
+  h[0].bytes += t.count;
   if rs_starts(t, "W ") { h[0].w = true; return; }
   if rs_starts(t, "r ") {
     h[0].refused += 1;
@@ -213,14 +215,14 @@ tool_main :: () -> int #export_c {
     while rs_now() - t0 < tick * 33 { rc_drain(c[..], h[..], n); proc_sleep(2); }
   }
   // what all heard
-  waves := 1000; climax := 0; seen := 1000; casts := 1000; hits := 1000; earned := 0; bad := 0; xp := 0; lv2 := 0; d := 1000000;
+  waves := 1000; climax := 0; seen := 1000; casts := 1000; hits := 1000; earned := 0; bad := 0; xp := 0; lv2 := 0; d := 1000000; bytes := 0;
   for i: 0..<n {
     waves = rc_min(waves, h[i].wave_max);
     if (h[i].phase_seen & (1 << 4)) != 0 && (h[i].arch_seen & 2) != 0 { climax += 1; }
     seen = rc_min(seen, h[i].raiders_seen); casts = rc_min(casts, h[i].casts); hits = rc_min(hits, h[i].hits_on);
     if h[i].xp > 0 { earned += 1; }
     if h[i].v_level >= 2 { lv2 += 1; }
-    xp += h[i].xp; bad += h[i].bad; d = rc_min(d, h[i].d);
+    xp += h[i].xp; bad += h[i].bad; d = rc_min(d, h[i].d); bytes += h[i].bytes;
   }
   ran := rc_max((rs_now() - t0) / 1000, 1);
   rate := f32(d) / f32(ran);
@@ -232,6 +234,7 @@ tool_main :: () -> int #export_c {
   jo_key(o[..], "players"); jo_int(o[..], n);
   jo_key(o[..], "seconds"); jo_int(o[..], ran);
   jo_key(o[..], "least_d_hz"); jo_int(o[..], cast(int) rate);
+  jo_key(o[..], "bytes_per_s"); jo_int(o[..], bytes / ran / rc_max(n, 1));   // what a player hears, each player's mean
   jo_key(o[..], "waves_all_heard"); jo_int(o[..], waves);
   jo_key(o[..], "heard_climax_warded"); jo_int(o[..], climax);
   jo_key(o[..], "least_raiders_seen"); jo_int(o[..], seen);

@@ -172,6 +172,7 @@ EgPlayer :: struct {
   sent: [EG_RING] int;        // when input SEQ % EG_RING went out
   seen: [EG_SEATS] bool;      // the seats whose player it has heard
   d: int; d_counted: int;     // D frames, and those inside the measured window
+  bytes: int;                 // the bytes of every frame heard inside the measured window
   d_tick: int; dropped: int; refused: int;   // the last D's tick; ticks missed past it; r frames
   next_i: int; next_c: int; next_t: int; steps: int;   // steps: the inputs sent (I), for their 30 Hz clock
   x: f32; z: f32;             // where the server has it
@@ -197,6 +198,7 @@ eg_hist_at :: (h: [] int, q: int) -> int {
 
 eg_hear :: (p: [] EgPlayer, r: [] EgRun, t: string, now: int) {
   k := rs_field(t, 0);
+  if now >= r[0].m0 && now < r[0].m1 { p[0].bytes += t.count; }
   if k == "y" { p[0].seat = rs_num(rs_field(t, 1)); return; }
   if k == "t" { if now >= r[0].m0 && now < r[0].m1 { eg_hist_add(r[0].rtt[..], now - rs_num(rs_field(t, 1))); } return; }
   if k == "r" { p[0].refused += 1; return; }
@@ -360,12 +362,12 @@ eg_room :: (base: string, players: int, seconds: int, stamp: int, room: int, hz:
   }
   // each player's state rate in tenths of a frame a second; who saw everyone; the ACKs
   window := run[0].m1 - run[0].m0;
-  slowest := 1000000; alive := 0; blind := 0; back := 0; behind := 0; dropped := 0; refused := 0;
+  slowest := 1000000; alive := 0; blind := 0; back := 0; behind := 0; dropped := 0; refused := 0; bytes := 0;
   for i: 0..<players {
     if c[i].h >= 0 { alive += 1; }
     r := p[i].d_counted * 10000 / window;
     if r < slowest { slowest = r; }
-    back += p[i].back; dropped += p[i].dropped; refused += p[i].refused;
+    back += p[i].back; dropped += p[i].dropped; refused += p[i].refused; bytes += p[i].bytes;
     // the last input was a step (I) or a cast (C): either way the ACK is the last I stepped, at most 1 short
     if p[i].ack < p[i].seq - 1 { behind += 1; }
     for j: 0..<players { if p[j].seat >= 0 && !p[i].seen[p[j].seat] { blind += 1; } }
@@ -396,6 +398,8 @@ eg_room :: (base: string, players: int, seconds: int, stamp: int, room: int, hz:
   jo_key(o[..], "pings"); jo_int(o[..], pings);
   jo_key(o[..], "d_dropped"); jo_int(o[..], dropped);
   jo_key(o[..], "refused"); jo_int(o[..], refused);
+  // what a player hears: the room's frames' bytes a second, each player's mean
+  jo_key(o[..], "bytes_per_s"); jo_int(o[..], ifx window > 0 && players > 0 then bytes * 1000 / window / players else 0);
   jo_end(o[..]);
   print("%\n", jo_text(o[..]));
   // on this machine an input waits a tick at most (its D goes out the tick it is stepped); through the

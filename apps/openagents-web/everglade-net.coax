@@ -127,6 +127,8 @@ EgNet :: struct {
   pipe: [1] Pipe;
   out: [WIRE_FRAME] u8;
   frames_in: int; frames_out: int; played: int; hits: int; replays: int;
+  bytes_in: int;                              // the frames' bytes heard (net_probe 43)
+  folk_walk: int; folk_still: int;            // townsfolk frames drawn walking, and of them drawn where they were (net_probe 41, 42)
   creature_hits: int; creature_deaths: int;   // hits on and deaths of the server's creatures heard
   feet_y: f32;                                // your feet's height as the face last gave it (net_step's fy)
   join: [1] EgJoin;                           // the instance, the CHARACTER picker and INVITE (everglade-join.coax)
@@ -397,7 +399,7 @@ net_event :: (s: [] Everglade, kind: int, text: string) -> bool #export_c {
     net_down(n); return true;
   }
   if ev.event == SOCKET_FRAME {
-    n[0].frames_in += 1;
+    n[0].frames_in += 1; n[0].bytes_in += text.count;
     net_record(s, n, text);
   }
   return true;
@@ -817,6 +819,8 @@ net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: 
     p := net_state_at(en, rt);
     dx := p.x - en[0].shown.x; dz := p.z - en[0].shown.z;
     en[0].run += sqrt(dx * dx + dz * dz);
+    // a townsperson on their day with the walk clip (watch_net_frame): drawn moving, or walking in place
+    if en[0].kind == WK_FOLK && p.f == WM_CALM && p.a == 1 { n[0].folk_walk += 1; if dx * dx + dz * dz < 1.0e-8 { n[0].folk_still += 1; } }
     en[0].shown = p;
   }
   if net_live(s) && sp_on(s) { net_follow(s, n, now); }
@@ -1294,7 +1298,8 @@ net_self_max :: (s: [] Everglade) -> int {
 // floor's height under you, 23 the town's people heard (f), 24 your WANTED level (w, -1 none), 25 the
 // people drawn off their day, 26 breaks heard (e break), 27 fires heard (e burn), 28 the pieces down,
 // 29 your act as this frame drew you, 30 the clip your body plays; 31 to 38 and 300 + SEAT the
-// nameplates, BLOCK and its pane (everglade-moderate.coax md_probe).
+// nameplates, BLOCK and its pane (everglade-moderate.coax md_probe); 41 the townsfolk's frames drawn with
+// their walk clip, 42 of those the ones drawn where the frame before drew them, 43 the frames' bytes heard.
 // 200 + SLOT casts bar slot SLOT (net_cast, as a click does) at the nearest
 // summoned creature, else 3 m ahead of you (an ability you don't point with: 2 m ahead, as its press
 // does): 1 when it went out.
@@ -1345,6 +1350,11 @@ net_probe :: (s: [] Everglade, field: int) -> int #export_c {
   // whether the page has you dead (1)
   if field == 39 { return cast(int) (s[0].objects[RANGER_AT * OBJECT_FLOATS + 5] * 1000); }
   if field == 40 { return ifx s[0].wv.started && watch_you(s[0].wt[..])[0].dead then 1 else 0; }
+  // the townsfolk drawn with their walk clip, frames summed over them, and of those the frames drawn
+  // where the frame before drew them (walking in place); the room frames' bytes heard
+  if field == 41 { return n[0].folk_walk; }
+  if field == 42 { return n[0].folk_still; }
+  if field == 43 { return n[0].bytes_in; }
   if field >= 200 && field < 200 + SP_SLOTS + AB_N {
     you := ab_you(s);
     at := add(you, times(ab_forward(s), 3));
