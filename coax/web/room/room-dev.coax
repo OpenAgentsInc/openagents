@@ -9,6 +9,13 @@
 //   POST /api/playtest/room-state             what you bring back (WANTED, look): taken, not kept
 //   GET  /api/playtest/rooms/SLUG             the instances (rm_rooms, room-relay.coax)
 //   GET  /api/playtest/world/everglade     the world document (room-host.c)
+//   POST /api/playtest/world/everglade     publish {doc, summary}: the world document written, the next
+//                                          version, every room and page told (room-host.c dev_publish)
+//   POST /api/playtest/world/everglade/reset  the designed city back: {doc: null, version: 0}
+//   GET  /api/auth/viewer                  "A|1": the local player is the realm's admin, so EDIT and
+//                                          Aethyr Forge work as production's do for an admin (on by default
+//                                          in --dev, OA_ROOM_DEV_ADMIN=0 a visitor; there is no --dev in
+//                                          production, so never there)
 // Anything else under /api/ answers 404 {"error":"not in the local API"}.
 //   coax test --library coax/web/room/room.coax --steps 4000000000 --only "dev:"
 
@@ -19,15 +26,18 @@ DEV_NAMES_B :: [8] string.["Heron", "Otter", "Wren", "Badger", "Lynx", "Finch", 
 
 RmDev :: struct {
   on: bool;
+  admin: bool;               // the viewer is the realm's admin (rm_dev_start: on unless OA_ROOM_DEV_ADMIN=0)
   minted: int;               // players made (each key's number)
   out: [DEV_OUT] u8;         // the answer: "STATUS\n" then the JSON body
 }
 
 // --dev: the stand-in's key signs and checks every seat ticket, and a join needs one, as in production.
 rm_dev_start :: (v: [] RmServer) #export_c {
-  v[0].dev.on = true;
+  v[0].dev.on = true; v[0].dev.admin = true;
   rm_ticket_key(v, DEV_KEY, true);
 }
+// OA_ROOM_DEV_ADMIN=0 (room-host.c): the local player is a visitor, to try what a visitor sees.
+rm_dev_admin :: (v: [] RmServer, on: bool) #export_c { v[0].dev.admin = on; }
 
 dv_put :: (o: [] u8, n: int, s: string) -> int { return tk_add(o, n, s); }
 dv_hex :: (o: [] u8, n: int, mac: [] u8, digits: int) -> int {
@@ -133,6 +143,10 @@ rm_dev_api :: (v: [] RmServer, req: string) -> int #export_c {
     return dv_answer(v, "200", cast(string) b[0..<n]);
   }
   if dv_path(req, "POST", "/api/playtest/room-state") { return dv_answer(v, "200", "{\"ok\":true}"); }
+  // who is viewing: the realm's admin, or nobody logged in (a 200 with nothing, as the API's)
+  if dv_path(req, "GET", "/api/auth/viewer") { return dv_answer(v, "200", ifx v[0].dev.admin then "A|1\n" else ""); }
+  if dv_path(req, "POST", "/api/playtest/world/everglade") && !v[0].dev.admin { return dv_answer(v, "403", "{\"error\":\"an admin's\"}"); }
+  if dv_path(req, "POST", "/api/playtest/world/everglade") { return -1; }   // the host writes the world document (room-host.c dev_publish)
   if dv_path(req, "GET", "/api/playtest/rooms/") || dv_path(req, "GET", "/api/playtest/world/") { return -1; }
   if dv_path(req, "GET", "/api/") || dv_path(req, "POST", "/api/") { return dv_answer(v, "404", "{\"error\":\"not in the local API\"}"); }
   return -1;
@@ -166,6 +180,12 @@ rm_dev_api :: (v: [] RmServer, req: string) -> int #export_c {
   #assert cast(string) v[0].dev.out[0..<rm_dev_api(v[..], "POST /api/playtest/room-ticket/everglade-1 HTTP/1.1\r\n\r\n")][0..<4] == "401\n";
   #assert cast(string) v[0].dev.out[0..<rm_dev_api(v[..], "GET /api/playtest/npc/ask HTTP/1.1\r\n\r\n")][0..<4] == "404\n";
   #assert v[0].tkey_n > 0 && v[0].tkey_must;
+  // the local player is the realm's admin: EDIT without ?forge; the world's publish is the host's
+  #assert cast(string) v[0].dev.out[0..<rm_dev_api(v[..], "GET /api/auth/viewer HTTP/1.1\r\n\r\n")] == "200\nA|1\n";
+  #assert rm_dev_api(v[..], "POST /api/playtest/world/everglade HTTP/1.1\r\n\r\n{}") == -1;
+  v[0].dev.admin = false;
+  #assert cast(string) v[0].dev.out[0..<rm_dev_api(v[..], "GET /api/auth/viewer HTTP/1.1\r\n\r\n")] == "200\n";
+  #assert cast(string) v[0].dev.out[0..<rm_dev_api(v[..], "POST /api/playtest/world/everglade HTTP/1.1\r\n\r\n{}")][0..<4] == "403\n";
 }
 // A flat JSON field's text, for the checks.
 net_field_dev :: (t: string, name: string) -> string {

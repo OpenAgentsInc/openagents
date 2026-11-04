@@ -7,6 +7,10 @@
    --dev DIR is local development (coax/web/room/local.sh): the room is also the API's stand-in. Its
    world is DIR/world-everglade.json, and it answers GET /api/playtest/world/everglade with
    that same document, so a page served with `serve.sh --api` reads the world the room plays.
+   The local player is the realm's admin (GET /api/auth/viewer says A|1; OA_ROOM_DEV_ADMIN=0 a
+   visitor), so EDIT and Aethyr Forge save: POST /api/playtest/world/everglade writes that document
+   (the next version; a stale base 409) and .../reset puts the designed city back, and the room lays
+   it and tells every page (e edit) as production's API and control do (dev_publish).
    --no-rooms keeps the stand-in's API (players, tickets, the world) and answers the rooms list and every
    join 503, as when the rooms can't be reached: an offline page's API (the drift check).
    Without --dev, the world comes from the API (OA_ROOM_API, default production's), as the page's does.
@@ -60,6 +64,7 @@ static const char *dev_dir;
 static bool no_rooms;   /* --no-rooms (with --dev): the rooms list and joins answer 503, the rooms down */
 static void world_ask(void);
 static char *dev_world; static size_t dev_world_n;
+static long long dev_stamp;   /* --dev: the wall ms of the last local publish (its "edit" stamp), 0 none */
 static char *dev_read(const char *name, size_t *n) {
   char path[1024]; snprintf(path, sizeof path, "%s/%s", dev_dir, name);
   FILE *f = fopen(path, "rb");
@@ -70,6 +75,102 @@ static char *dev_read(const char *name, size_t *n) {
   if (!out) return NULL;
   memcpy(out, tmp, k); out[k] = 0; *n = k;
   return out;
+}
+
+/* --dev: a top-level JSON field's value in text (after "key": and spaces), NULL none. Depth-aware, so a
+   field of that name inside the doc isn't taken. */
+static const char *dev_field(const char *t, size_t n, const char *key) {
+  size_t kn = strlen(key); int depth = 0; bool str = false;
+  for (size_t i = 0; i < n; i++) {
+    char c = t[i];
+    if (str) { if (c == '\\') i++; else if (c == '"') str = false; continue; }
+    if (c == '{' || c == '[') { depth++; continue; }
+    if (c == '}' || c == ']') { depth--; continue; }
+    if (c != '"') continue;
+    if (depth == 1 && i + kn + 1 < n && !strncmp(t + i + 1, key, kn) && t[i + kn + 1] == '"') {
+      size_t j = i + kn + 2;
+      while (j < n && t[j] == ' ') j++;
+      if (j < n && t[j] == ':') { j++; while (j < n && t[j] == ' ') j++; return t + j; }
+    }
+    str = true;
+  }
+  return NULL;
+}
+/* The end of the JSON value at v (one past it): an object or array matched, a string, or a bare word. */
+static const char *dev_value_end(const char *v, const char *end) {
+  if (v >= end) return v;
+  if (*v == '{' || *v == '[') {
+    int depth = 0; bool str = false;
+    for (const char *p = v; p < end; p++) {
+      if (str) { if (*p == '\\') p++; else if (*p == '"') str = false; continue; }
+      if (*p == '"') str = true;
+      else if (*p == '{' || *p == '[') depth++;
+      else if ((*p == '}' || *p == ']') && --depth == 0) return p + 1;
+    }
+    return v;
+  }
+  const char *p = v;
+  while (p < end && *p != ',' && *p != '}' && *p != ' ' && *p != '\n') p++;
+  return p;
+}
+static long long dev_version(void) {
+  const char *v = dev_world ? dev_field(dev_world, dev_world_n, "version") : NULL;
+  return v ? atoll(v) : 0;
+}
+static void world_ask(void);
+/* --dev: the control's answer is DIR/room-control.txt, with the last local publish's stamp after it, so
+   a publish is said to every page in every room as production's is ("e edit", room-control.coax). */
+static void dev_control(void) {
+  static int64_t edit_seen = -1;
+  size_t n = 0; char *t = dev_read("room-control.txt", &n);
+  if (!t) { fprintf(stderr, "room: --dev %s has no room-control.txt\n", dev_dir); exit(1); }
+  char *all = malloc(n + 40);
+  if (!all) { free(t); return; }
+  memcpy(all, t, n); free(t);
+  if (dev_stamp > 0) n += (size_t)snprintf(all + n, 40, "\nedit %lld\n", dev_stamp);
+  rm_control(view(), (coax_string){all, (int64_t)n});
+  free(all);
+  if (server->ctl.edit_known && server->ctl.edit != edit_seen) { if (edit_seen >= 0) world_ask(); edit_seen = server->ctl.edit; }
+}
+/* --dev: POST /api/playtest/world/everglade ({doc, summary}, an optional base: the version it was made
+   from, 409 when another publish came first) and .../reset, as the API's (coax/web/api/player.c): the
+   world document DIR/world-everglade.json written whole (a link there is replaced by the file, so the
+   repo's dev/ copy is never written), the next version, and every room and page told. 0: not one. */
+static int dev_publish(const char *req, size_t n, char *out, size_t on) {
+  bool reset = !strncmp(req, "POST /api/playtest/world/everglade/reset", 40) && (req[40] == ' ' || req[40] == '?');
+  bool publish = !strncmp(req, "POST /api/playtest/world/everglade", 34) && (req[34] == ' ' || req[34] == '?');
+  if (!reset && !publish) return 0;
+  const char *body = req + n;
+  for (size_t k = 3; k < n; k++) if (!memcmp(req + k - 3, "\r\n\r\n", 4)) { body = req + k + 1; break; }
+  size_t bn = (size_t)(req + n - body);
+  long long was = dev_version(), next = reset ? 0 : was + 1;
+  char *doc = NULL; size_t dn = 0;
+  const char *dv = NULL, *de = NULL;
+  if (publish) {
+    const char *base = dev_field(body, bn, "base");
+    if (base && atoll(base) != was) { snprintf(out, on, "{\"error\":\"stale\",\"version\":%lld}", was); return 409; }
+    dv = dev_field(body, bn, "doc");
+    de = dv ? dev_value_end(dv, body + bn) : NULL;
+    if (!dv || *dv != '{' || de <= dv) { snprintf(out, on, "{\"error\":\"a doc\"}"); return 400; }
+  }
+  struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts);
+  doc = malloc((de ? (size_t)(de - dv) : 4) + 160);
+  if (!doc) return 500;
+  dn = (size_t)sprintf(doc, "{\"doc\": ");
+  if (dv) { memcpy(doc + dn, dv, (size_t)(de - dv)); dn += (size_t)(de - dv); } else { memcpy(doc + dn, "null", 4); dn += 4; }
+  dn += (size_t)sprintf(doc + dn, ", \"version\": %lld, \"publishedAt\": %lld.%03ld, \"publishedBy\": \"local\"}\n", next, (long long)ts.tv_sec, ts.tv_nsec / 1000000);
+  char path[1024], tmp[1100];
+  snprintf(path, sizeof path, "%s/world-everglade.json", dev_dir); snprintf(tmp, sizeof tmp, "%s.new", path);
+  FILE *f = fopen(tmp, "wb");
+  bool ok = f && fwrite(doc, 1, dn, f) == dn;
+  if (f) ok = fclose(f) == 0 && ok;
+  free(doc);
+  if (!ok || rename(tmp, path) != 0) { unlink(tmp); snprintf(out, on, "{\"error\":\"not written\"}"); return 500; }
+  dev_stamp = (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+  dev_control();   /* the room lays it (world_ask) and every page hears e edit */
+  if (reset) snprintf(out, on, "{\"reset\":true,\"was\":%lld}", was); else snprintf(out, on, "{\"version\":%lld}", next);
+  printf("room: --dev %s: version %lld\n", reset ? "the designed city back" : "a publish", next);
+  return 200;
 }
 
 // How long the server takes over one socket's bytes (its frames read and every frame they make put
@@ -337,19 +438,26 @@ static void opening(int i) {
   size_t len = (size_t)(end - c->in);
   coax_string req = {(const char *)c->in, (int64_t)len};
   /* --dev: the API's stand-in answers the page's /api/playtest/ requests (room-dev.coax), the body whole */
-  if (dev_dir && (!strncmp((char *)c->in, "POST /api/", 10) || !strncmp((char *)c->in, "GET /api/playtest/", 18))) {
+  if (dev_dir && (!strncmp((char *)c->in, "POST /api/", 10) || !strncmp((char *)c->in, "GET /api/playtest/", 18) || !strncmp((char *)c->in, "GET /api/auth/viewer", 20))) {
     size_t want = 0;
     for (uint8_t *p = c->in; p + 15 < end; p++)
       if ((p == c->in || p[-1] == '\n') && !strncasecmp((char *)p, "Content-Length:", 15)) want = (size_t)strtoul((char *)p + 15, NULL, 10);
     if (len + want > c->n && len + want < IN_CAP) return;   /* the rest of the body is still coming */
     coax_string whole = {(const char *)c->in, (int64_t)(len + want <= c->n ? len + want : c->n)};
     int64_t an = rm_dev_api(view(), whole);
+    if (an < 0) {
+      static char pub[256];
+      int st = dev_publish((const char *)c->in, len + want <= c->n ? len + want : c->n, pub, sizeof pub);
+      if (st > 0) {
+        http(i, st == 200 ? "200 OK" : st == 409 ? "409 Conflict" : st == 400 ? "400 Bad Request" : "500 Internal Server Error", "application/json", pub); return;
+      }
+    }
     if (an > 0) {
       char status[8] = {0}; int64_t nl = 0;
       while (nl < an && nl < 7 && server->dev.out.e[nl] != '\n') { status[nl] = (char)server->dev.out.e[nl]; nl++; }
       static char body[1100]; int64_t bn = an - nl - 1; if (bn < 0) bn = 0; if (bn > (int64_t)sizeof body - 1) bn = sizeof body - 1;
       memcpy(body, server->dev.out.e + nl + 1, (size_t)bn); body[bn] = 0;
-      const char *line = !strcmp(status, "200") ? "200 OK" : !strcmp(status, "401") ? "401 Unauthorized" : !strcmp(status, "404") ? "404 Not Found" : "500 Internal Server Error";
+      const char *line = !strcmp(status, "200") ? "200 OK" : !strcmp(status, "401") ? "401 Unauthorized" : !strcmp(status, "403") ? "403 Forbidden" : !strcmp(status, "404") ? "404 Not Found" : "500 Internal Server Error";
       http(i, line, "application/json", body); return;
     }
   }
@@ -496,12 +604,7 @@ static void poster_send(char kind, const char *cfg, size_t k) {
 static void control_ask(void) {
   if (!rm_control_due(view())) return;
   if (dev_dir) {   /* --dev: DIR/room-control.txt is the API's answer, read as often as the API is asked */
-    size_t n = 0; char *t = dev_read("room-control.txt", &n);
-    if (!t) { fprintf(stderr, "room: --dev %s has no room-control.txt\n", dev_dir); exit(1); }
-    static int64_t edit_seen = -1;
-    rm_control(view(), (coax_string){t, (int64_t)n});
-    free(t);
-    if (server->ctl.edit_known && server->ctl.edit != edit_seen) { if (edit_seen >= 0) world_ask(); edit_seen = server->ctl.edit; }
+    dev_control();
     return;
   }
   const char *url = getenv("OA_ROOM_CONTROL_URL");
@@ -660,7 +763,7 @@ int main(int argc, char **argv) {
   poster_start();   /* before the server's memory (vitals_post) */
   server = server_new();
   if (!server) { fprintf(stderr, "room: out of memory\n"); return 1; }
-  if (dev_dir) { rm_dev_start(view()); printf("room: --dev %s: the API's stand-in (seat tickets checked and required)\n", dev_dir); }
+  if (dev_dir) { rm_dev_start(view()); const char *da = getenv("OA_ROOM_DEV_ADMIN"); if (da && !strcmp(da, "0")) rm_dev_admin(view(), false); printf("room: --dev %s: the API's stand-in (seat tickets checked and required)\n", dev_dir); }
   world_ask();   /* the realm's published world, for every room's plan (room-world.c world_edits) */
   /* the seat-ticket key (Secret Manager oa-room-ticket-key): set, an everglade join needs a ticket (room-ticket.coax) */
   const char *tkey = getenv("OA_ROOM_TICKET_KEY");
