@@ -193,7 +193,7 @@ tool_main :: () -> int #export_c {
       while yaw > 3.14159 { yaw -= 6.28318; }
       while yaw < -3.14159 { yaw += 6.28318; }
       k := rs_put(m[..], rs_int(m[..], rs_put(m[..], 0, "I "), seq[i]), " 0 ");
-      k = rs_int(m[..], k, ahead); k = rs_put(m[..], k, " 0 0 "); k = rs_int(m[..], k, cast(int) (yaw * 100)); k = rs_put(m[..], k, " 1 "); k = rs_int(m[..], k, h[i].m[0].heard);
+      k = rs_int(m[..], k, ahead); k = rs_put(m[..], k, " 0 0 "); k = rs_int(m[..], k, cast(int) (yaw * 10000)); k = rs_put(m[..], k, " 1 "); k = rs_int(m[..], k, h[i].m[0].heard);
       _ := relay_conn_send(c[i..<i + 1], cast(string) m[0..<k]);
       // about every 0.6 s, a Starry Wisp at the nearest raider within 18 m (its 60 feet)
       if tick < next[i] || !h[i].me_seen { continue; }

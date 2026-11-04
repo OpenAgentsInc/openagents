@@ -9,7 +9,7 @@
 // A page predicts only its own movement, with the same step on the same input.
 //
 // Text frames over the relay's WebSocket, /api/room/relay/everglade/CODE. Fields are separated by one
-// space; numbers are whole: cm, cm/s, centiradians, ms; a stick or key -100 to 100. A page's frame is
+// space; numbers are whole: cm, cm/s, centiradians (an input's THETA in 0.1 mrad), ms; a stick or key -100 to 100. A page's frame is
 // at most 1024 bytes, a server's at most 3800.
 //
 // Page to server:
@@ -843,10 +843,10 @@ wire_test_send :: (st: [] WireSeat, h: [] WireHist, m: [] WireMirror, me: int, b
   // a page's
   n := wire_put_in(buf[..], 0, WireIn.{seq = 12, kx = -100, ky = 100, px = 0, py = 35, theta = 3.0, b = WB_RUN | WB_JUMP, heard = 880});
   t := cast(string) buf[0..<n];
-  #assert t == "I 12 -100 100 0 35 300 3 880";
+  #assert t == "I 12 -100 100 0 35 30000 3 880";
   r: [1] WireRd; r[0] = wire_rd(t, 1);
   i := wire_read_in(t, r[..]);
-  #assert r[0].ok && i.seq == 12 && i.kx == -100 && i.py == 35 && i.theta == 3.0 && i.b == 3 && i.heard == 880;
+  #assert r[0].ok && i.seq == 12 && i.kx == -100 && i.py == 35 && abs(i.theta - 3.0) < 0.00001 && i.b == 3 && i.heard == 880;
   #assert wire_axis(0.354) == 35 && wire_axis(-2) == -100;
   n = wire_put_hello(buf[..], 0, WireHello.{look = "ranger.2.1.0", kind = "druid", flags = 2, name = "Ash Wood;x"});
   t = cast(string) buf[0..<n];

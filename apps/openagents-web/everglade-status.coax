@@ -41,12 +41,25 @@ st_fill :: (s: [] Everglade) {
 // names (an effect entity, its cause and its time left) says which spell and for how long.
 st_fill_room :: (s: [] Everglade) {
   n := net_of(s);
+  fx: [ST_MAX] NetEffect;
+  c := net_effects(s, fx[..]);
+  for i: 0..<c {
+    who := ifx fx[i].who == WIRE_TGT_SEAT + n[0].seat then ST_YOU else fx[i].who;
+    st_add(s, who, fx[i].cond, st_cause(fx[i].cause), fx[i].left);
+  }
   for e: 0..<NET_ENTS {
     en := n[0].ents[e];
     if !en.live || en.kind != WK_PLAYER || en.seat < 0 { continue; }
     who := ifx en.seat == n[0].seat then ST_YOU else 1000 + en.seat;
     st_add_bits(s, who, en.p1);
   }
+}
+// The wire's cause (WE_*) as the line names it; -1 one it doesn't name.
+st_cause :: (we: int) -> int {
+  if we == WE_HOLD_PERSON { return ST_HOLD_PERSON; }
+  if we == WE_EARTHBIND { return ST_EARTHBIND; }
+  if we == WE_RAY_OF_FROST { return ST_RAY_OF_FROST; }
+  return -1;
 }
 // Offline: the page's own watch has you held, bound and slowed, and the rules their conditions.
 // (#12784 runs the room's simulation on the page; then this goes and st_fill_room is the only filler.)
@@ -208,4 +221,6 @@ st_draw_on :: (s: [] Everglade, you: Point, c: int) {
   st_add_bits(s[..], 1003, WC_BOUND);
   #assert st_cond(s[..], 1003) == WC_BOUND && st_cond(s[..], ST_YOU) == WC_PARALYZED | WC_SLOWED;
   #assert cast(string) b[0..<st_line(s[..], 2, b[..])] == "BOUND · EARTHBIND";
+  // the wire's causes (#12783) name the same spells; the watch's arrest names none
+  #assert st_cause(WE_HOLD_PERSON) == ST_HOLD_PERSON && st_cause(WE_EARTHBIND) == ST_EARTHBIND && st_cause(WE_RAY_OF_FROST) == ST_RAY_OF_FROST && st_cause(WE_WATCH) == -1;
 }
