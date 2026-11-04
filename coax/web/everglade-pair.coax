@@ -8,12 +8,14 @@
 // The in-page half, coax/web/everglade-pair.js, notes the page's frames and its socket's frames.
 // What it checks, in order (each a line, then one JSON line with every number, then holds/fails):
 //   1. both join (ENTER past the CHARACTER picker), each has the other's player (D's p) and who it is
-//      (D's n) and draws it (net_probe 2), and the name for its nameplate isn't "-";
+//      (D's n) and draws it (net_probe 2), and the name for its nameplate isn't "-" (skipped on a local
+//      ?relay=, which has no API to name anyone; so is 8b's BLOCK, and 8's link keeps the ?relay=);
 //   2. by the spawn: A casts Conjure Animals (bar slot 32); both hear e cast from A's seat and have
 //      the pack;
 //   3. B casts Starry Wisp (slot 22) at the nearest creature until B's own hit kills one: both hear
 //      B's hits and the same e die; both have every seat's WANTED level, the same;
-//   4. move latency: A holds W, B's socket gets A somewhere new (--trials, the sessions take turns);
+//   4. move latency: both step right off the spawn (clear of the crate the realm put on the road), then
+//      A holds W, B's socket gets A somewhere new (--trials, the sessions take turns);
 //   5. smoothness while A walks, per phase: frame spacing (p50, p99, long frames), the Coax frame's
 //      time, your drawn feet (coaxial_field_probe: speed, its frame-to-frame jerk, snaps past
 //      NET_SNAP, re-runs and those that moved you over 5 cm a second), the states' arrival and the
@@ -62,6 +64,18 @@ ep_origin :: (url: string) -> string {
   return ifx j > i + 3 then url[0..<j] else "";
 }
 ep_has_query :: (url: string) -> bool { for c: url { if c == '?' { return true; } } return false; }
+// The value of query parameter `key` ("relay") in url, "" none.
+ep_param :: (url: string, key: string) -> string {
+  for i: 0..<url.count {
+    if url[i] != '?' && url[i] != '&' { continue; }
+    j := i + 1;
+    if j + key.count + 1 > url.count || url[j..<j + key.count] != key || url[j + key.count] != '=' { continue; }
+    e := j + key.count + 1; f := e;
+    while f < url.count && url[f] != '&' && url[f] != '#' { f += 1; }
+    return url[e..<f];
+  }
+  return "";
+}
 ep_sorted_mid :: (t: [] int, n: int, q: int) -> int {
   if n <= 0 { return -1; }
   s: [EP_TRIALS_MAX] int; for i: 0..<n { s[i] = t[i]; }
@@ -72,6 +86,8 @@ ep_sorted_mid :: (t: [] int, n: int, q: int) -> int {
 
 #test "the pair smoke's pieces" {
   #assert ep_origin("https://openagents.com/worlds/everglade") == "https://openagents.com" && ep_origin("nope") == "";
+  #assert ep_param("http://127.0.0.1:8811/worlds/everglade?relay=ws://localhost:8938&room=pair-1", "relay") == "ws://localhost:8938";
+  #assert ep_param("https://openagents.com/worlds/everglade?room=pair-1", "relay") == "" && ep_param("x?norelay=1", "relay") == "";
   #assert ep_has_query("https://x/a?b=1") && !ep_has_query("https://x/a");
   t: [5] int; t[0] = 400; t[1] = 120; t[2] = 900; t[3] = 300; t[4] = 610;
   #assert ep_sorted_mid(t[..], 5, 50) == 400 && ep_sorted_mid(t[..], 5, 100) == 900 && ep_sorted_mid(t[..], 0, 50) == -1 && t[0] == 400;
@@ -206,7 +222,10 @@ ep_run :: (ca: [] Cdp, cb: [] Cdp, url: string, origin: string, mark: string, wh
   oa := ep_int(ca, "__eg.otherSeat()", -1); ob := ep_int(cb, "__eg.otherSeat()", -1);
   all = ep_check(seen && oa == sb && ob == sa, "each has the other's player and who it is (D's n) and draws its body") && all;
   named := "(() => { const n = __eg.names[__eg.otherSeat()]; return n && n !== '-' ? 1 : 0; })()";
-  all = ep_check(ep_int(ca, named, 0) == 1 && ep_int(cb, named, 0) == 1, "each has a name for the other's nameplate (not -)") && all;
+  // names come from the API's seat ticket (the server never takes a hello's); a page on a local relay
+  // (?relay=) has no API, so its players are "-" there, never on the site
+  if ep_param(url, "relay").count > 0 { print("skip the nameplate names (?relay=: a local room server without the API's seat tickets names nobody)\n"); }
+  else { all = ep_check(ep_int(ca, named, 0) == 1 && ep_int(cb, named, 0) == 1, "each has a name for the other's nameplate (not -)") && all; }
   info: [4096] u8; info2: [4096] u8;
   print("  A seat % sees %, drawn %; B seat % sees %, drawn %; names A % B %\n", sa, oa, ep_int(ca, "__eg.probe(2)", -1), sb, ob, ep_int(cb, "__eg.probe(2)", -1),
     ep_str(ca, "JSON.stringify(__eg.names)", info[..]), ep_str(cb, "JSON.stringify(__eg.names)", info[..]));
@@ -258,6 +277,12 @@ ep_run :: (ca: [] Cdp, cb: [] Cdp, url: string, origin: string, mark: string, wh
   print("  WANTED A % B %; your own (net_probe 24) A % B %\n", wanted_a, wanted_b, ep_int(ca, "__eg.probe(24)", -9), ep_int(cb, "__eg.probe(24)", -9));
   // 4. move latency: the mover's key down to the watcher's socket having it somewhere new
   ep_mark(ca, cb, "trials");
+  // both step right off the spawn first: the realm's published world puts a crate on the road about
+  // 1.5 m ahead of it, and since the room server lays the published world too (29a442405b) a walk
+  // into the crate stops on both, so the later trials' W moved nobody and were missed
+  _ = ep_press(ca, true, "d", "KeyD", 68); _ = ep_press(cb, true, "d", "KeyD", 68);
+  proc_sleep(900);
+  _ = ep_press(ca, false, "d", "KeyD", 68); _ = ep_press(cb, false, "d", "KeyD", 68);
   took: [EP_TRIALS_MAX] int; n_took := 0;
   for k: 0..<trials {
     mover := ifx k % 2 == 0 then ca else cb; watcher := ifx k % 2 == 0 then cb else ca;
@@ -351,6 +376,9 @@ ep_run :: (ca: [] Cdp, cb: [] Cdp, url: string, origin: string, mark: string, wh
   sock_b: [512] u8; sock_a := ep_str(ca, "__eg.wsUrl || ''", sock_b[..]);
   if code.count > 0 {
     lb: [1] Buf; bput(lb[..], origin); bput(lb[..], "/worlds/everglade?room="); bput(lb[..], code);
+    // on a local relay the link keeps it (the site's INVITE has no ?relay=: the API's directory places you)
+    lr := ep_param(url, "relay");
+    if lr.count > 0 { bput(lb[..], "&relay="); bput(lb[..], lr); }
     cc: [1] Cdp;
     if cdp_launch(cc[..], wh.w, wh.h, "coax-egpair-c-") {
       if ep_open(cc[..], btext(lb[..]), origin, mark, wh, phone, script) {
@@ -371,7 +399,11 @@ ep_run :: (ca: [] Cdp, cb: [] Cdp, url: string, origin: string, mark: string, wh
   // 8b. BLOCK (#12714): B opens the pane on A (as a tap on A's nameplate does), clicks BLOCK: A's body
   // goes from B's view at once while A stays in B's state, and after B reloads and joins again the
   // seat ticket's answer brings the block back
-  if ep_int(cb, "__eg.probe(37)", -1) < 0 {
+  if ep_param(url, "relay").count > 0 {
+    // a nameplate opens the pane on a player id, which only the API's seat ticket gives, and the blocks
+    // come back with the next ticket: neither exists on a local relay
+    print("skip BLOCK (?relay=: a local room server without the API has no player ids or blocks)\n");
+  } else if ep_int(cb, "__eg.probe(37)", -1) < 0 {
     print("skip BLOCK (this page has no moderation probes yet: net_probe 31 to 38)\n");
   } else {
     qo: [1] Buf; bput(qo[..], "__eg.probe("); bint(qo[..], 300 + sa); bput(qo[..], ")");
