@@ -3,9 +3,12 @@
 > **Status: unimplemented — design draft.** Today presence is an HTTP poll
 > answered from SQL (`coax/web/api/room.c`), Orbit League has its own 60 Hz
 > room server and other games use a relay of unread text frames
-> (`coax/web/room/`). This chapter plans Aethyr's rooms: who is in a realm,
-> where they are and what they look like, as one bounded, self-asserted
-> stream with interest and interpolation. Nothing here runs yet.
+> (`coax/web/room/`). This chapter plans lightweight presence: who is in a
+> realm, where they are and what they look like, as one bounded,
+> self-asserted stream. A realm whose shared state matters, such as
+> Everglade, uses an authoritative server instead: Part XII
+> ([chapters 86–101](ch086-one-server-owns-the-scene.md)) builds it.
+> Nothing here runs yet.
 
 Presence answers a small question often: who else is here, where, and doing
 what. It needs no authority (a player says where it is, and nobody's game

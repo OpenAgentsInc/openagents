@@ -363,6 +363,7 @@ wish :: (p: Player) -> Wish {
   return w;
 }
 
+// book:begin asked
 // The motion your controls ask for, m/s on the flat: the wish at the pace you walk or run. A follow
 // camera turns toward this, not toward the velocity, which a wall, a push or a room server's
 // correction changes without you asking (#12777).
@@ -372,6 +373,7 @@ walk_asked :: (p: Player) -> Vec3 {
   pace := ifx p.run then f32(RUN) else f32(WALK);
   return Vec3.{x = w.x * pace, y = 0, z = w.z * pace};
 }
+// book:end asked
 
 #test "walk: the intent is the controls' wish at the pace, whatever the velocity a wall or a correction left (#12777)" {
   p := walk_place(0, 0, 0, 0);

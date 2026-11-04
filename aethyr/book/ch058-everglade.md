@@ -46,10 +46,12 @@ streaming and frame time are decided.
   [24](ch024-liquids-from-particles.md), [28](ch028-smoke-on-a-grid.md)):
   spells' fire and smoke as particles, the river on the water system; the
   game layer may keep visual-only effects where the simulation is not needed.
-- **Others, edits and forks** ([chapters 49](ch049-rooms-and-presence.md),
-  [52](ch052-edit-a-realm-in-place.md), [55](ch055-fork-a-realm.md)):
-  other players, admin edit mode with UNDO and voice edits, and forks with
-  `night`, `waves`, `nodestroy` and `lowgrav` as declared rules.
+- **Others** ([chapter 101](ch101-the-everglade-room.md)): the shared town
+  on the authoritative room server that Part XII builds.
+- **Edits and forks** ([chapters 52](ch052-edit-a-realm-in-place.md) and
+  [55](ch055-fork-a-realm.md)): admin edit mode with UNDO and voice edits,
+  and forks with `night`, `waves`, `nodestroy` and `lowgrav` as declared
+  rules.
 - **Budgets** ([chapter 16](ch016-budgets-that-refuse.md)): kit trees,
   vertices and particle counts per tier.
 
@@ -93,4 +95,4 @@ streaming and frame time are decided.
 
 ## Dependencies
 
-Chapters 1–16, 23, 24, 28, 38, 49, 52 and 55.
+Chapters 1–16, 23, 24, 28, 38, 52, 55 and 101.

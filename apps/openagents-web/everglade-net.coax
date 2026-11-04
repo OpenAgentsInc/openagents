@@ -375,6 +375,7 @@ net_down :: (n: [] EgNet) {
   for i: 0..<WATCH_ACTORS { n[0].air[i] = 0; }
   n[0].fix_due = false; n[0].off_x = 0; n[0].off_y = 0; n[0].off_z = 0;
 }
+// book:begin quiet-socket
 // The quiet socket's watch, each frame (NET_SILENT_MS): an open socket that heard nothing for that
 // long, or one still opening after NET_OPEN_MS, is closed, said, and tried again as a closed one is.
 net_quiet :: (s: [] Everglade, n: [] EgNet, mono: int) {
@@ -388,6 +389,7 @@ net_quiet :: (s: [] Everglade, n: [] EgNet, mono: int) {
   if n[0].seat >= 0 { n[0].lost = true; net_tell(s, n, "LOST THE ROOM · REJOINING"); }
   net_down(n);
 }
+// book:end quiet-socket
 // A socket event (message kind 256 + 4 * id + event, its text in the inbox): true when it was ours.
 net_event :: (s: [] Everglade, kind: int, text: string) -> bool #export_c {
   if !net_on(s) { return false; }
@@ -703,6 +705,7 @@ net_where :: (s: [] Everglade, n: [] EgNet, id: int) -> NetWhere {
   y := ifx n[0].ents[k].kind == WK_FOLK then walk_at(s, p.x, p.z) else p.y;
   return NetWhere.{ok = true, x = p.x, y = y, z = p.z};
 }
+// book:begin interp-buffer
 // A state into an entity's ring, oldest first: one no newer than the newest replaces it.
 net_push :: (en: [] NetEnt, p: NetState) {
   c := en[0].ring_n;
@@ -727,6 +730,7 @@ net_state_at :: (en: [] NetEnt, rt: int) -> NetState {
   ahead := f32(lo_int(rt - p.t, NET_AHEAD)) / 1000;
   return NetState.{t = rt, x = p.x + p.vx * ahead, y = p.y, z = p.z + p.vz * ahead, yaw = p.yaw, vx = p.vx, vz = p.vz, f = p.f, a = p.a};
 }
+// book:end interp-buffer
 
 // ---- your movement: the inputs out, the server's word back (the face runs the step)
 
@@ -772,6 +776,7 @@ net_as_sent :: (m: EgMoveIn) -> EgMoveIn #export_c {
   return EgMoveIn.{key_x = f32(wire_axis(m.key_x)) / 100, key_y = f32(wire_axis(m.key_y)) / 100, pad_x = f32(wire_axis(m.pad_x)) / 100,
                    pad_y = f32(wire_axis(m.pad_y)) / 100, run = m.run, jump = m.jump, theta = f32(wire_cm(m.theta)) / 100};
 }
+// book:begin ease-correction
 // The re-run is done: (dx, dy, dz) is where it puts you less where you were drawn. Small, it is eased
 // out (you are drawn where you were, coming to where you are); past NET_SNAP m, taken at once.
 net_fixed :: (s: [] Everglade, dx: f32, dy: f32, dz: f32) #export_c {
@@ -790,6 +795,7 @@ net_offset :: (s: [] Everglade, dt: f32) -> Point #export_c {
   if abs(n[0].off_x) + abs(n[0].off_y) + abs(n[0].off_z) < 0.001 { n[0].off_x = 0; n[0].off_y = 0; n[0].off_z = 0; }
   return v3(n[0].off_x, n[0].off_y, n[0].off_z);
 }
+// book:end ease-correction
 
 // ---- each frame
 

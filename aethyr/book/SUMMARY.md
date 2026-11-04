@@ -66,7 +66,7 @@
 - [47. Hits through layers](ch047-hits-through-layers.md) — design draft
 - [48. One world at three fidelities](ch048-one-world-at-three-fidelities.md) — design draft
 - [49. Rooms and presence](ch049-rooms-and-presence.md) — design draft
-- [50. Shared state over the network](ch050-shared-state-over-the-network.md) — design draft
+- [50. Lockstep for small deterministic games](ch050-shared-state-over-the-network.md) — design draft
 
 **VI. Making worlds: Aethyrforge**
 
@@ -120,3 +120,26 @@
 - [83. Inspect and profile a running realm](ch083-inspect-and-profile-a-running-realm.md) — partly implemented
 - [84. One realm on every host](ch084-one-realm-on-every-host.md) — design draft
 - [85. Everyone can play](ch085-everyone-can-play.md) — design draft
+
+**XII. Many players: a multiplayer engine**
+
+- [86. One server owns the scene](ch086-one-server-owns-the-scene.md) — partly implemented
+- [87. Server and client share one step and one world](ch087-server-and-client-share-one-step.md) — partly implemented
+- [88. A seat joins with a signed ticket](ch088-a-seat-joins-with-a-signed-ticket.md) — partly implemented
+- [89. Intents in, acknowledgements out](ch089-intents-in-acknowledgements-out.md) — partly implemented
+- [90. Predict your own movement](ch090-predict-your-own-movement.md) — partly implemented
+- [91. One record for every replicated entity](ch091-one-record-for-every-replicated-entity.md) — design draft
+- [92. Priority under a budget](ch092-priority-under-a-budget.md) — design draft
+- [93. One interpolation buffer for every remote entity](ch093-one-interpolation-buffer.md) — partly implemented
+- [94. Effects are state, events are cues](ch094-effects-are-state-events-are-cues.md) — partly implemented
+- [95. Offline is a local server](ch095-offline-is-a-local-server.md) — design draft
+- [96. Casts and combat under latency](ch096-casts-and-combat-under-latency.md) — design draft
+- [97. Interest without leaks](ch097-interest-without-leaks.md) — design draft
+- [98. Versions, deploys and reconnect](ch098-versions-deploys-and-reconnect.md) — partly implemented
+- [99. Watch the whole action path](ch099-watch-the-whole-action-path.md) — partly implemented
+- [100. Prove the room plays like the game](ch100-prove-the-room-plays-like-the-game.md) — partly implemented
+- [101. The Everglade room](ch101-the-everglade-room.md) — partly implemented
+
+**Appendices**
+
+- [A. Everglade rooms against an MMO engine](appendix-mmo-gap-analysis.md)

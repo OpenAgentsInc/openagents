@@ -14,7 +14,8 @@ with its own checks and builds only on earlier chapters, until Part VII
 rebuilds every realm from them. Part VIII adds sound; it needs only Part I
 and can be read at any point after it. Parts IX–XI plan the rest of a game engine:
 water, weather, effects, creatures and other world systems; Aethyrforge's
-generation tools; and what a realm needs to ship. You need the Coax language (its book's
+generation tools; and what a realm needs to ship. Part XII builds a multiplayer
+engine, from one headless server to the full Everglade room. You need the Coax language (its book's
 Parts I–III) and, for Part IV onward, Psionic's tensor programs
 ([Psionic chapters 3–6 and 37–38](../../psionic/book/ch037-a-coax-compute-subset.md)).
 
@@ -51,8 +52,8 @@ marker must agree with it; `python3 psionic/tests/book.py --book aethyr` fails
 when they don't. When an engine-core task lands its chapter, update the
 chapter's registry entry, contents label and table row in the same commit.
 
-There are 14 implemented chapters (1–11 and 65–67), nineteen
-partly implemented chapters (12–16, 51–56, 64, 69, 72, 75, 76, 80, 81 and 83), and 52 design drafts. An implemented chapter is
+There are 14 implemented chapters (1–11 and 65–67), 31
+partly implemented chapters (12–16, 51–56, 64, 68, 69, 72, 75, 76, 80, 81, 83, 86–90, 93, 94 and 98–101), and 56 design drafts. An implemented chapter is
 qualified for its named profile; it does not imply that every realm adopted
 it or every backend is supported. For example, chapter 8 qualifies native
 kinematic contacts, not the rigid solver planned in Part IV. Chapters 65–67
@@ -217,8 +218,8 @@ capability of Genesis World 1.4.5 to a Part IV chapter.
 | [46. Time warp that stops for every event](ch046-time-warp-that-stops-for-every-event.md) | Unimplemented: design draft | Time warp as scheduling: event functions, root finding on dense output and steps split at the earliest event, so warp 1 and 10⁶ give the same event order and final state; a 1,200 km/s projectile cannot pass a target; replay at omniscient and observation levels. |
 | [47. Hits through layers](ch047-hits-through-layers.md) | Unimplemented: design draft | Hypervelocity hits as penetration through layers, using tables fitted to ballistic-limit equations that refuse outside their range, over a component graph, so a severed coolant line heats the drive and cuts thrust; large fragments become tracked bodies. |
 | [48. One world at three fidelities](ch048-one-world-at-three-fidelities.md) | Unimplemented: design draft | Engineering, game and presentation profiles over one state, typed rule modules with declared footprints, provenance on every tunable, batched rollouts and bounded learned surrogates, the scenario admitted as an environment, and a ten-scenario regression suite at engineering fidelity. |
-| [49. Rooms and presence](ch049-rooms-and-presence.md) | Unimplemented: design draft | Bounded, self-asserted presence frames keyed by stable entity IDs; remote players drawn a fixed delay behind, and only the nearest drawn as bodies, within the one-second two-session latency budget. |
-| [50. Shared state over the network](ch050-shared-state-over-the-network.md) | Unimplemented: design draft | Lockstep (orders, commits, hash checks, snapshot repair) and server authority with prediction and rewind on one session layer; every networked session's input log replays offline to the same digest. |
+| [49. Rooms and presence](ch049-rooms-and-presence.md) | Unimplemented: design draft | Bounded, self-asserted presence frames keyed by stable entity IDs, for realms whose shared state doesn't matter; remote players drawn a fixed delay behind, and only the nearest drawn as bodies, within the one-second two-session latency budget. |
+| [50. Lockstep for small deterministic games](ch050-shared-state-over-the-network.md) | Unimplemented: design draft | Lockstep for two to four seats (orders, commits, hash checks, snapshot repair) on chapter 5's replay; every lockstep session's input log replays offline to the same digest. Server authority is Part XII. |
 
 ### VI. Making worlds: Aethyrforge
 
@@ -284,3 +285,26 @@ capability of Genesis World 1.4.5 to a Part IV chapter.
 | [83. Inspect and profile a running realm](ch083-inspect-and-profile-a-running-realm.md) | Partly implemented: native C and headless Chrome (one 60 FPS rule for every realm; frame reports) | The same frame report, overlay, probes and goldens for every realm, the 60 FPS rule (95th percentile under 17.5 ms, no frame over 33 ms) extended to every listed realm, separate from chapter 37's physics measurements. |
 | [84. One realm on every host](ch084-one-realm-on-every-host.md) | Unimplemented: design draft | One versioned host contract and lifecycle events (resize, blur, hidden, shown, leave) on every host, byte-for-byte parity checks for every realm, and the native-GPU phases G0–G6. |
 | [85. Everyone can play](ch085-everyone-can-play.md) | Unimplemented: design draft | Action remapping, a time-scale setting, reduced motion, text scale up to 1.5, captions on sounds that carry information, and stable text IDs checked by pseudolocalization. |
+
+### XII. Many players: a multiplayer engine
+
+| Chapter | Status | Result |
+| --- | --- | --- |
+| [86. One server owns the scene](ch086-one-server-owns-the-scene.md) | Partly implemented: native C (oa-room's 30 Hz tick, started at its declared defaults) | oa-room steps every room's world headless at 30 Hz, from every declared default: `--start-check` compares the started server with its declarations and with a server started in `0xa5`-filled memory. |
+| [87. Server and client share one step and one world](ch087-server-and-client-share-one-step.md) | Partly implemented: native C and browser Wasm (one movement step, one rules unit and one world document) | The page and the server run one Coax movement step on the input as the wire carried it, one SRD rules unit and one world document key in every setup. |
+| [88. A seat joins with a signed ticket](ch088-a-seat-joins-with-a-signed-ticket.md) | Partly implemented: native C (HMAC seat tickets checked at join) | An HMAC-signed seat ticket from the API names the player, room and shard; the server checks it at join and seats the ticket's name, not the hello's. |
+| [89. Intents in, acknowledgements out](ch089-intents-in-acknowledgements-out.md) | Partly implemented: native C (numbered inputs, a bounded queue, owed steps and refusals) | Numbered intents into a 16-input queue that drops old and repeated ones, stepped at the rate time passes (`EG_BANK`, `EG_TICK_STEPS`), acknowledged in every state frame and refused with a reason. |
+| [90. Predict your own movement](ch090-predict-your-own-movement.md) | Partly implemented: browser Wasm (predict, reconcile and replay; corrections eased on the drawn body) | The page predicts only its own movement, replays its unacknowledged inputs from the server's state, eases the difference out of the drawn body over 0.12 s, and turns the camera toward the controls' motion. |
+| [91. One record for every replicated entity](ch091-one-record-for-every-replicated-entity.md) | Unimplemented: design draft | One record `s ID BACK MASK ...` for every entity: state at a fixed tick with velocity, deltas against an acknowledged tick, generation numbers and teleports as discontinuities. |
+| [92. Priority under a budget](ch092-priority-under-a-budget.md) | Unimplemented: design draft | Priority from distance and relevance that accumulates, a per-seat byte budget, your own state and effects always sent, and send queues bounded by age. |
+| [93. One interpolation buffer for every remote entity](ch093-one-interpolation-buffer.md) | Partly implemented: browser Wasm (an adaptive buffer for players and creatures; townsfolk still sent per kind) | Every remote entity drawn from a ring of 8 states a delay behind a ping-estimated server clock, the delay adapting from 80 to 300 ms with lateness and jitter. |
+| [94. Effects are state, events are cues](ch094-effects-are-state-events-are-cues.md) | Partly implemented: browser Wasm (lasting abilities as entities; one status state) | Lasting effects as entities with an owner, a cause, `T0` and `DUR`; particles, rings and status lines derived from them; one-shot events as cues that can't change state. |
+| [95. Offline is a local server](ch095-offline-is-a-local-server.md) | Unimplemented: design draft | The room's simulation built to Wasm and run in a Web Worker as the offline host, so the page is always a client and the offline game's own paths are deleted. |
+| [96. Casts and combat under latency](ch096-casts-and-combat-under-latency.md) | Unimplemented: design draft | Written rules for range and sight checks, command age, bounded client times, a target dying mid-cast and ordering within a tick, tested at 250 ms with 2% loss. |
+| [97. Interest without leaks](ch097-interest-without-leaks.md) | Unimplemented: design draft | Interest from a cell index with separate entry and exit radii, non-spatial subscriptions, and nothing private on the wire: blocked players and unseen invisible entities are never sent. |
+| [98. Versions, deploys and reconnect](ch098-versions-deploys-and-reconnect.md) | Partly implemented: native C and browser Wasm (rejoin after a quiet socket, back where you stood) | A wire version handshake with a reload, deploys that drain a shard, and reconnect with seat generations, a grace hold and stale frames dropped; today's rejoin after a quiet socket. |
+| [99. Watch the whole action path](ch099-watch-the-whole-action-path.md) | Partly implemented: native C (tick percentiles and time by part) | The action path measured stage by stage: tick percentiles by workload, queue depth and age, bytes by message type, entities per seat, join bursts and input-to-acknowledgement time. |
+| [100. Prove the room plays like the game](ch100-prove-the-room-plays-like-the-game.md) | Partly implemented: native C and headless Chrome (the drift check under shaped networks; bots that walk, cast and fight) | The drift check plays one session offline and in a local room at local, 100 and 250 ms with 2% loss and compares what is drawn; bots that fight; the counterexample that motivated this part. |
+| [101. The Everglade room](ch101-the-everglade-room.md) | Partly implemented: native C on 6 Cloud Run shards (16 rooms of 16 seats a process; the 60-raider raid) | Everglade's rooms: 16 seats, 16 rooms a process, 6 Cloud Run shards placed by the API's directory, and the Cultist Raid of up to 60 raiders on the server. |
+
+[Appendix A](appendix-mmo-gap-analysis.md) compares these chapters with an MMO-capable engine, capability by capability, and links the issues for each gap.

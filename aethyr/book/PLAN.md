@@ -16,13 +16,14 @@ reading order and the [introduction](README.md) the result of each chapter.
 | II. A world | 6–10 | Entities with stable IDs and safe lifetimes; one query module; ground and collision that match what is drawn; a walking character; a camera that follows without stepping physics. |
 | III. Seeing it | 11–16 | One WGSL renderer with shaders written in Coax and checked against their CPU run; materials; light and shadow; animated figures; UI and the HUD; budgets that refuse. |
 | IV. Physics | 17–37 | A physics engine at rough parity with Genesis World 1.4.5: rigid and articulated bodies with contact, five material solvers and their coupling, batched worlds, gradients, sensors, observation pictures, assets, replay and measurement. |
-| V. Big worlds | 38–50 | Worlds streamed in cells around a floating origin; spacecraft and the solar system at stated fidelity; rooms, presence and shared state over the network. |
+| V. Big worlds | 38–50 | Worlds streamed in cells around a floating origin; spacecraft and the solar system at stated fidelity; lightweight presence and lockstep for small games. |
 | VI. Making worlds | 51–55 | Aethyrforge: a realm as a typed document, edited in place, with imported assets, published as a frozen record and forked. |
 | VII. Realms | 56–64 | The Grid, made realms, Everglade, Dead Gears, Ice Cream Man, Hecate's Cemetery, Fairy Forest and the space games, each rebuilt only from earlier chapters; then every realm on Aethyr with no private copies left. |
 | VIII. Hearing it | 65–69 | Integer synthesis, a beat-grid sequencer, mixing with a reverb send, a master that never clips, WAV output and a rendered soundtrack; then real-time playback, sound placed in the world, and music that follows the game's state; then players' and agents' voices placed in the realm. |
 | IX. A living world | 70–78 | Water, sky and weather, particle effects, breakable kit pieces, wheeled vehicles, creatures that follow and watch, paths and crowds, characters who talk, and authored camera flights, each moved from `verse/` into one Aethyr module. |
 | X. Aethyrforge: generating worlds | 79–80 | A set piece chosen from a typed catalogue by a semantic selector, and terrain and scatter laid out from a seed. |
 | XI. Shipping realms | 81–85 | Saves that survive schema changes, code changed while a realm runs, inspection and profiling of a running realm, one realm on every host, and accessibility and languages. |
+| XII. Many players | 86–101 | One headless server that owns the scene; shared step, rules and world; signed seats; intents and acknowledgements; prediction; one replication model with a budget and one interpolation buffer; effects as state; offline as a local server; combat rules under latency; interest without leaks; versions, deploys and reconnect; measurement; the drift proof; the Everglade room. |
 
 ## Engine-core tasks
 
@@ -51,7 +52,7 @@ consolidates the existing Coax shader and host paths in `verse/gpu/`.
 ## Completion milestones
 
 The registry currently has 14 implemented chapters (1–11 and 65–67),
-nineteen partly implemented chapters (12–16, 51–56, 64, 69, 72, 75, 76, 80, 81 and 83), and 52 design drafts. These counts
+31 partly implemented chapters (12–16, 51–56, 64, 68, 69, 72, 75, 76, 80, 81, 83, 86–90, 93, 94 and 98–101), and 56 design drafts. These counts
 describe teaching profiles, not a percentage of the engine completed. Existing
 realm code can already provide a feature whose shared Aethyr module is a draft.
 
@@ -120,7 +121,7 @@ acceptance work:
 | 32, gradients | Add the forward solvers of 18–27 as prerequisites, as its chapter already states. | Unsupported solver/coupler modes are refused; a later gradient profile needs its own qualification. |
 | 33, sensors | 17–22 suffice for the stated joint, IMU, rigid-contact and primitive-ray checks; remove 23–28 as prerequisites. | Material-field sensors, such as chapter 28's scalar fields, extend the sensor matrix later. |
 | 35, import | 17 supplies the scene format and 19 the link/joint model. Chapters 18, 20–34 are not additional direct prerequisites for parsing and validating that data. | Those solvers, batches, gradients, sensors and observation renderers consume admitted assets and need their own integration checks. Chapter 34 retains its dependency on 35 for meshes/textures. |
-| 50, network sessions | 1, 4, 5, 6 and 49 supply ticks, actions, replay, identity and transport; remove 18–22 and 36 as prerequisites. | Physics-bearing sessions require those Part IV solvers and world replay; ordinary deterministic game sessions do not. |
+| 50, lockstep sessions | 1, 4, 5, 6 and 49 supply ticks, actions, replay, identity and transport; remove 18–22 and 36 as prerequisites. | Physics-bearing sessions require those Part IV solvers and world replay; ordinary deterministic game sessions do not. Server authority moved to Part XII. |
 | 51, realm document | 3, 6 and 16 suffice for defaults, identity and admission; remove 17 as a prerequisite. | An eventual physics-bearing realm maps the document into chapter 17's scene. |
 | 55, forks | 5, 52 and 54 supply replay, edits and a frozen base; remove 48 as a prerequisite. | Chapter 48's fidelity rules share the rule-module idea; spacecraft-profile forks additionally need that profile. |
 
@@ -140,7 +141,8 @@ its first example. Read the integration checks before claiming the full goal.
 | Physics engine | Psionic chapters 4, 37–38 and 107; 109 and 111 for gradients; Coax R12–R20, then R21–R24 | Scene 17 → rigid bodies, joints and contact 18–22 → batches 31, assets 35, replay 36 (with Psionic chapter 167's control); particle and mesh solvers 23–28 → coupling 29–30 → gradients 32; sensors and observations 33–34; measurement 37. |
 | Streaming | 6, 7, 16 and the rigid chapters 18–22 | Cells, rings and a floating origin 38. |
 | Spacecraft and the solar system | Psionic chapters 107, 109, 234 and 242; the `verse/` space modules as the starting game layer; Coax R12–R20 forms as they ship | Ephemerides and frames 39 → propagation with stated error 40 → burns 41 → rendezvous 42; heat 43, ship interiors 44 and delayed sensors 45 in any order → event-stopped time warp 46 → impacts 47 → three fidelities, batched rollouts, surrogates and an admitted environment 48. |
-| Networking | 5 and 6 | Rooms and presence 49 → shared state 50. |
+| Networking | 5 and 6 | Presence 49 → lockstep 50 for small games. |
+| Many players | 1, 3–7, 9, 10, 51 and 72 | Server 86 → shared step and world 87 → seats 88 → intents 89 → prediction 90 → the record 91 → budget 92 → interpolation 93 → effects 94 → offline host 95 → combat rules 96, interest 97, live operations 98 and measurement 99 in any order → proof 100 → the Everglade room 101. |
 | Aethyrforge | 3, 5, 6 and 16; renderer/UI for the editor; 37's measurement method for publication gates | Realm document 51 → editing 52 → assets 53 → publishing 54 → forks 55. Physics-scene mapping is an extension. |
 | Realms | The chapters each realm uses | 56–63 in any order once their chapters exist; 64 last. |
 | Sound | Coax only; 1, 2, 5 and 10 for playback in a realm | Oscillators and envelopes 65 → the beat grid 66 → scores and mixing 67 → playback, space and reaction 68 → voices 69 (also 49). |
@@ -243,9 +245,9 @@ flight qualification, and no chapter commands real hardware. Hypothetical
 propulsion, fictional rules and crew tolerances stay in declared, inspectable
 modules and are never part of the engineering profile.
 
-Chapters 49 and 50 put several people in one realm: presence first, then
-shared state by lockstep or server authority, both replayable offline from
-their input logs.
+Chapters 49 and 50 put several people in one realm cheaply: presence first,
+then lockstep for two to four seats, replayable offline from its input log.
+Server authority, for realms like Everglade, is Part XII (chapters 86–101).
 
 ## Coax features each part needs
 

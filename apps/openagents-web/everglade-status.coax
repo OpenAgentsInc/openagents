@@ -16,10 +16,12 @@ ST_YOU :: -2;            // the WHO of you (whatever seat you have)
 ST_HOLD_PERSON :: 0; ST_EARTHBIND :: 1; ST_RAY_OF_FROST :: 2;
 ST_CAUSES :: 3;
 ST_CAUSE_NAME :: [ST_CAUSES] string.["HOLD PERSON", "EARTHBIND", "RAY OF FROST"];
+// book:begin status-effect
 // An effect on a body: WHO (ST_YOU, or a TGT code: 1000 + SS a seat, 0-999 a watch actor, 2000 + EID a
 // creature), its condition bits (WC_*), the spell that made it (ST_*; -1 not said) and its seconds left (-1 held up, or not said).
 StEffect :: struct { who: int = -1; cond: int; cause: int = -1; left: f32 = -1; }
 EgStatus :: struct { n: int; e: [ST_MAX] StEffect; }
+// book:end status-effect
 
 st_add :: (s: [] Everglade, who: int, cond: int, cause: int, left: f32) {
   if cond == 0 && cause < 0 { return; }

@@ -20,9 +20,11 @@
 // (apps/openagents-web/everglade5e-room-rules.coax: one battle for the 16 seats), the engine's
 // clock moves on, and each tick each seat gets its D frame.
 
+// book:begin room-size
 EG_ROOMS :: 16;                 // simulated rooms at once (256 players)
 EG_SEATS :: 16;
 EG_HZ :: 30;
+// book:end room-size
 // A D frame every tick (30 Hz). At every 2 ticks (15 Hz), an input stepped on the odd tick waited a
 // tick for its ACK, up to 66 ms on top of the round trip (#12731); the entries every seat hears alike
 // are written once a tick (eg_cache), so the second frame costs little.
@@ -281,6 +283,7 @@ eg_heard :: (v: [] RmServer, r: int, seat: int, text: string) {
     return;
   }
 }
+// book:begin intent-queue
 // I SEQ KX KY PX PY THETA B: one step's input, queued for the tick.
 eg_heard_input :: (v: [] RmServer, k: int, seat: int, text: string) {
   r: [1] WireRd; r[0] = wire_rd(text, 1);
@@ -299,6 +302,7 @@ eg_heard_input :: (v: [] RmServer, k: int, seat: int, text: string) {
                      theta = eg_clamp(eg_round(w.theta * 100.0), -100000, 100000), b = eg_clamp(w.b, 0, 31)};
   st[0].q_n = n + 1;
 }
+// book:end intent-queue
 // H 1 LOOK CLASS FLAGS NAME
 eg_heard_hello :: (v: [] RmServer, k: int, seat: int, text: string) {
   r: [1] WireRd; r[0] = wire_rd(text, 1);

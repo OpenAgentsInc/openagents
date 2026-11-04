@@ -25,6 +25,7 @@ TICKET_NAME :: 24;
 TICKET_LIFE_MS :: 600000; // what the API signs (player.c TICKET_MS)
 TICKET_SKEW_MS :: 60000;  // clocks may differ this much
 
+// book:begin seat-ticket
 Ticket :: struct {
   ok: bool;
   pid: [TICKET_PID] u8; pid_n: int;
@@ -36,6 +37,7 @@ Ticket :: struct {
   shard: int = 1;         // the oa-room shard it was signed for (v2: 1)
   xp: int;                // the XP it brings back (room-events.coax)
 }
+// book:end seat-ticket
 
 // The t= value in the request line's query ("" none).
 tk_query :: (req: string) -> string {

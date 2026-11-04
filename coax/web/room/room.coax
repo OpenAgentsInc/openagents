@@ -78,6 +78,7 @@ RmServer :: struct {
   dev: RmDev;                            // --dev: the API's stand-in for local development (room-dev.coax)
 }
 
+// book:begin server-start
 // The server at its start. The host first gives every field its declared default
 // (coax_default_t_RmServer, room-host.c server_new: the C host's memory is otherwise zeros, and a
 // default such as the level cap's 2 would never hold), then calls this once. What it sets is what a
@@ -89,6 +90,7 @@ rm_init :: (v: [] RmServer) #export_c {
   v[0].q_head = 0; v[0].q_n = 0;
   for r: 0..<ROOMS { v[0].rooms[r].live = false; v[0].rooms[r].s[0] = OrbitLeague.{}; }
 }
+// book:end server-start
 
 // The server as the host started it, against the declared defaults: how many differ (0 holds). The
 // host runs it under --start-check (build.sh), so a zero-filled field the game reads as its default
