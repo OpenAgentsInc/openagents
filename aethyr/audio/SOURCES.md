@@ -12,6 +12,10 @@ used. The page renders them when its audio starts, so none is downloaded.
 
 Licence: CC0 1.0 (made by OpenAgents for this repository).
 
+Off by default since #12832: they sound cheap, the town's bed and the footsteps too (the bed is
+near-white hiss, spectral flatness 0.72 and centroid 3.9 kHz; a footstep is an 85 ms click centred
+at 2.7 kHz, with none of a real step's 100 to 800 Hz body). Add `?sfx=synth` to the page's URL to hear them.
+
 | Name | What it is | Played by |
 | --- | --- | --- |
 | `fire-cast`, `fire-travel`, `fire-hit` | Fire Bolt, Fireball's bead, Meteor Swarm, Produce Flame and the druid's fire spells | `everglade-sound.coax` `egs_wl_look`, `egs_sp_look`, `egs_ab_look` |
