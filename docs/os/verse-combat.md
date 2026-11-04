@@ -58,6 +58,7 @@ The live development controller is `os/game-combat.coax`, run with
 `coax/web/tool.sh os/game-combat.coax --out NEW_ABSOLUTE_DIR --kills 3`.
 It uses a rolling `frame.ppm` to keep disk use bounded, full typed JSONL
 observations and immutable `evidence-N.ppm` at starts and verified kills.
+
 ## First repeatable loop
 
 After these fixes, trial 07 completed three consecutive kills without manual
@@ -85,3 +86,87 @@ for that exact post-kill condition, with fresh life/UI/resource checks.
 The next eight-kill batch is testing it. The native bundle installation and
 Nix flake evaluation passed. See the
 [raw trials](../verification/verse-combat-2026-11-03/README.md).
+
+## Control profile v2 and failures kept visible
+
+The next long run verified four kills for 174 XP. I requested a hard stop
+while a fifth encounter was already underway, then spent too long working
+before resuming it. The low-health gate refused the resumed controller and
+Foob died. This was an operator pause error, not a successful combat run.
+Released spirit, walked the corpse route through ordinary bounded inputs,
+and accepted the resurrection. The controller then ate one food, restored
+resources and reapplied Demon Skin before pulling again.
+
+Added `OUT/finish`: stop new pulls, finish the admitted fight, wait out of
+combat, then exit. A live fixture requests this during an actual combat
+observation and checks exactly one XP kill, a living out-of-combat player
+and zero held broker input. It passed with the controller under ASan/UBSan
+and leak detection. Observation/time budgets now drain as well; hard stop
+remains immediate. A stopped process does not stop an external enemy.
+
+The first patrol run after recovery verified three kills for 104 XP.
+A subsequent sanitized batch killed one wolf, then followed a range bit in
+the wrong direction and hit the survey boundary while still healthy. Tested
+the normal interact key as a facing aid, then restored its temporary F6
+binding and the original `autoInteract=0`. The final controller uses bounded
+screen-based selection instead of persistent click-to-move.
+
+The visual detector reads neutral creature bars directly from the RGB
+capture, turns toward a central candidate and clicks it. Pixels never admit
+an attack: the next sample must identify an eligible creature and all input
+is rechecked against a second capture. Each pre-pull forward pulse requires
+another visual selection. The first visual batch verified three kills for
+130 XP. A 600×600 circuit now covers more of the patch, with an 1800-unit
+displacement fence. Original local Elephant successfully returned from
+(21122,47114) to (20306,45905), inside the radius of (20300,45900), in 60
+actions. The final longer sanitized batch is in progress.
+
+The unchanged sensor retains its prior 134/134 mutation result from
+`a3869fe159`. The v2 profile is documented separately; observation v1 was
+not changed in place.
+
+## Longer visual search and blocked terrain
+
+The first longer visual batch, under ASan/UBSan and leak detection, verified
+six kills for 208 XP in ten minutes. Minimum health was 83/88; it ended out
+of combat at 88/88 health and 272/272 mana. It did not reach its eight-kill
+request. The final screenshot showed a tree blocking the patrol leg.
+Added a 12-second distance-progress deadline and a two-step back/sidestep
+recovery that skips a blocked leg. The home is now fixed at (20300,45900),
+so repeated batches cannot gradually move the survey fence across the zone.
+
+A development recovery batch verified five kills for 182 XP. The following
+sanitized batch verified two wolves for 52 XP, then honored `finish` after
+the active fight and exited alive, out of combat. It exposed slow visual
+alignment: repeated 35 ms turns often left the observed heading unchanged.
+Large turns now use 90 ms while final alignment retains 35 ms; survey turns
+have a 60 ms minimum. This is feedback from the public heading and visible
+bar, not a claimed physical turn angle or a hidden creature position.
+
+One later pull hit the original 12-second damage deadline during its first
+successful cast, after range correction. Resumed immediately and verified
+the wolf's 26 XP. The final profile allows 20 seconds without observed
+damage within a 45-second encounter bound. Kill-count completion now uses
+the same out-of-combat drain as `finish`, rather than exiting on the kill
+sample while the game's combat flag can still linger.
+
+Final authorities: combat 343/343, visual candidate policy 117/117,
+survey 82/82 and drain/deadlines 21/21 killed, zero survivors. The controller
+closure passes 163 checks. Real final trials are recorded in the
+verification index. Emergency retreat and automatic corpse
+recovery remain outside this profile; an unsafe refused fight can still
+require intervention in the external game.
+
+The final source completed a three-kill ASan/UBSan/leak-detection trial:
+two boars and a wolf, 130 XP, minimum health 81/88, final health 88/88.
+The back/sidestep recovery ran at observations 283/284; the controller
+resumed surveying and found the third creature. It waited until combat
+cleared, recorded `finished: kill-target`, and exited successfully at
+observation 363. No manual steering, targeting or casting occurred during
+that run. The native executable was installed into the existing Verse
+bundle; artifact hashes and raw results are in the verification directory.
+
+The installed executable then passed the same live finish fixture: request
+at active combat observation 15, one wolf for 26 XP, minimum 86/88 health,
+final 88/88, alive and out of combat, zero held keys/buttons. Final XP:
+1898/2100, level 4. The controller is stopped; the game remains open.

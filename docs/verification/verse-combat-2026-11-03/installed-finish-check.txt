@@ -1,0 +1,2 @@
+records: /tmp/verse-combat-finish-uBx1av/run
+ok finish requested during combat observation 15; exactly one XP kill, alive and out of combat, no held input

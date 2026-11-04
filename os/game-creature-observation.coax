@@ -1,0 +1,17 @@
+// Read visible neutral creature bars from the captured RGB image. No input effects.
+#load "game-observation.coax";
+#load "game-creature-vision.coax";
+cv_frame :: (path: string) -> NavPpm {
+  header: [128] u8; n := fs_read_at(path, 0, header[..]); return ifx n >= 0 then nav_ppm(cast(string) header[0..<n]) else NavPpm.{};
+}
+cv_read :: (path: string) -> CreatureBar {
+  header: [128] u8; n := fs_read_at(path, 0, header[..]); if n < 0 { return CreatureBar.{}; }
+  p := nav_ppm(cast(string) header[0..<n]);
+  if p.width < 640 || p.height < 480 || fs_size(path) != p.offset + p.width * p.height * 3 { return CreatureBar.{}; }
+  row: [12288] u8; bars: [1] CreatureBars;
+  for q: 20..<(p.height - 180) / 2 {
+    y := q * 2; if fs_read_at(path, p.offset + y * p.width * 3, row[0..<p.width * 3]) != p.width * 3 { return CreatureBar.{}; }
+    cv_row(row[0..<p.width * 3], y, bars[..]);
+  }
+  return cv_best(bars[0], p.width);
+}

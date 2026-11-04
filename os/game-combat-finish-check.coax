@@ -1,0 +1,56 @@
+// Live integration check: request a graceful pause during an observed active fight.
+#import "Basic";
+#load "../coax/lib/sys/fs.coax";
+#load "game-client.coax";
+FinishReport :: struct { ok: bool = true; fight_observation: int; kills: int; xp: int; finished: bool; flags: int; }
+#test "complete journal rows distinguish an active fight from a completed pause" {
+  r := cf_report("{\"type\":\"observation\",\"sequence\":4,\"sensor\":{\"flags\":7,\"target_health\":12}}\n{\"type\":\"verified-kill\",\"gained_xp\":26}\n{\"type\":\"observation\",\"sequence\":5,\"sensor\":{\"flags\":3}}\n{\"type\":\"finished\"}\npartial");
+  #assert r.ok && r.fight_observation == 4 && r.kills == 1 && r.xp == 26 && r.finished && r.flags == 3;
+  #assert !cf_report("bad\n").ok;
+}
+cf_report :: (body: string) -> FinishReport {
+  r: FinishReport; begin := 0; nodes: [512] JvNode; parsed: [1] Jv;
+  for end: 0..<body.count {
+    if body[end] != '\n' { continue; }
+    if !jv_parse(parsed[..], body[begin..<end], nodes[..]) { r.ok = false; return r; } begin = end + 1; d := parsed[0];
+    kind := jv_raw(d, jv_get(d, 0, "type"));
+    if kind == "observation" {
+      s := jv_get(d, 0, "sensor"); r.flags = jv_int(d, jv_get(d, s, "flags"), 0);
+      if (r.flags & 4) != 0 && jv_int(d, jv_get(d, s, "target_health"), 0) > 0 { r.fight_observation = jv_int(d, jv_get(d, 0, "sequence"), 0); }
+    }
+    if kind == "verified-kill" { r.kills += 1; r.xp += jv_int(d, jv_get(d, 0, "gained_xp"), 0); }
+    if kind == "finished" { r.finished = true; }
+  }
+  return r;
+}
+tool_main :: () -> int #export_c {
+  a: [1] Args; if !args_load(a[..]) || args_count(a[..]) != 2 { tool_errln("usage: combat-finish-check COMBAT_BIN SOCKET"); return 2; }
+  bin := args_at(a[..], 0); socket := args_at(a[..], 1); temp: [4096] u8; root := fs_temp("verse-combat-finish-", temp[..]); paths: [3] [4096] u8;
+  dir := fs_join(root, "run", paths[0][..]); journal := fs_join(dir, "journal.jsonl", paths[1][..]); finish := fs_join(dir, "finish", paths[2][..]);
+  argv := [9] string.[bin,"--socket",socket,"--out",dir,"--steps","600","--kills","8"];
+  child := proc_new(); if child < 0 { return 1; }
+  for arg: argv { if !proc_arg(child, arg) { released := proc_release(child); return 1; } }
+  if proc_start(child) != 0 { released := proc_release(child); return 1; }
+  body: [2097152] u8; requested := false; observed := 0;
+  for poll: 0..<1200 {
+    n := fs_read(journal, body[..]);
+    if n >= 0 {
+      report := cf_report(cast(string) body[0..<n]);
+      if !report.ok { break; }
+      if report.fight_observation > 0 { observed = report.fight_observation; requested = fs_write(finish, "finish observed fight\n"); break; }
+    }
+    proc_sleep(100);
+  }
+  // Failure does not kill a process mid-fight: request finish, wait its bounded fight budget.
+  if !requested { saved := fs_write(finish, "finish after fixture timeout\n"); }
+  status := proc_wait(child, 55000); released := proc_release(child);
+  n := fs_read(journal, body[..]); report := ifx n >= 0 then cf_report(cast(string) body[0..<n]) else FinishReport.{ok = false};
+  h := dc_open(socket); reply: [262144] u8; t: GameTarget;
+  count := ifx h >= 0 then gc_exchange(h, t, "info", 0, false, 0, 0, 0, "", reply[..], "info") else -1;
+  nodes: [128] JvNode; d: [1] Jv;
+  clear := count > 0 && jv_parse(d[..], cast(string) reply[0..<count], nodes[..]) && !jv_bool(d[0], jv_get(d[0], 0, "active")) && jv_int(d[0], jv_get(d[0], 0, "keys"), -1) == 0 && jv_int(d[0], jv_get(d[0], 0, "buttons"), -1) == 0;
+  if h >= 0 { closed := cxsock_close(h); }
+  print("records: %\n", dir);
+  if !requested || status != 0 || !report.ok || report.kills != 1 || report.xp <= 0 || !report.finished || (report.flags & 7) != 3 || !clear { print("FAIL graceful finish: requested=% status=% kills=% xp=% flags=% clear=%\n", requested,status,report.kills,report.xp,report.flags,clear); return 1; }
+  print("ok finish requested during combat observation %; exactly one XP kill, alive and out of combat, no held input\n", observed); return 0;
+}

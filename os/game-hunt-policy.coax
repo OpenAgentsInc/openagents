@@ -1,0 +1,72 @@
+// A bounded local survey circuit. A waypoint is a request, not terrain truth.
+#authority;
+#load "game-navigation-policy.coax";
+#load "game-combat-policy.coax";
+#test "survey legs stay in a declared local rectangle and refuse overflow" {
+  anchor := NavGoal.{map = 1426, x = 20000, y = 46000};
+  expected := [4] [2] int.[[2] int.[20600,46000],[2] int.[20600,46600],[2] int.[20000,46600],[2] int.[20000,46000]];
+  for i: 0..<4 { g := hunt_goal(anchor, i); #assert g.map == 1426 && g.x == expected[i][0] && g.y == expected[i][1] && g.radius == 24 && g.aspect_milli == 1500; }
+  #assert hunt_goal(anchor, -1).map == 0 && hunt_goal(anchor, 4).map == 0;
+  t := anchor; t.x = 64936; #assert hunt_goal(t, 0).map == 0;
+  t = anchor; t.y = 64936; #assert hunt_goal(t, 0).map == 0;
+  t = anchor; t.x = 64935; t.y = 64935; #assert hunt_goal(t, 1).x == 65535 && hunt_goal(t, 1).y == 65535;
+  t = anchor; t.x = -1; #assert hunt_goal(t, 0).map == 0;
+  t = anchor; t.y = -1; #assert hunt_goal(t, 0).map == 0;
+  t = anchor; t.map = 1; #assert hunt_goal(t, 0).map == 0;
+  t = anchor; t.x = 0; t.y = 0; #assert hunt_goal(t, 3).map == 1426;
+}
+hunt_goal :: (anchor: NavGoal, leg: int) -> NavGoal {
+  if anchor.map != 1426 || leg < 0 || leg > 3 || anchor.x < 0 || anchor.x > 64935 || anchor.y < 0 || anchor.y > 64935 { return NavGoal.{}; }
+  dx := [4] int.[600,600,0,0]; dy := [4] int.[0,600,600,0];
+  return NavGoal.{map = anchor.map, x = anchor.x + dx[leg], y = anchor.y + dy[leg], radius = 24, aspect_milli = 1500};
+}
+#test "the qualified XP patch has one stable home across successive batches" {
+  h := hunt_home(); #assert h.map == 1426 && h.x == 20300 && h.y == 45900 && h.radius == 24 && h.aspect_milli == 1500;
+}
+hunt_home :: () -> NavGoal { return NavGoal.{map = 1426, x = 20300, y = 45900, radius = 24, aspect_milli = 1500}; }
+#test "survey steering reuses the qualified Aethyr angle and bounded key adapter" {
+  r := NavRoute.{ok = true, bearing = 0, distance = 200};
+  d := hunt_action(r); #assert d.ok && d.action == CT_FORWARD && d.milliseconds == 300 && d.key == 17;
+  r.distance = 1; #assert hunt_action(r).milliseconds == 40;
+  r.bearing = 1; d = hunt_action(r); #assert d.action == CT_LEFT && d.key == 30 && d.milliseconds == 100;
+  r.bearing = -1; #assert hunt_action(r).action == CT_RIGHT;
+  r.bearing = 0.16; #assert hunt_action(r).milliseconds == 60;
+  r.bearing = -0.16; #assert hunt_action(r).milliseconds == 60;
+  r.bearing = 0.5; #assert hunt_action(r).milliseconds == 60;
+  r.bearing = -0.5; #assert hunt_action(r).milliseconds == 60;
+  r.arrived = true; #assert hunt_action(r).action == CT_WAIT;
+  r.ok = false; #assert !hunt_action(r).ok;
+}
+hunt_action :: (r: NavRoute) -> CombatDecision {
+  if !r.ok { return CombatDecision.{}; }
+  a := nav_baseline(r);
+  d := cb_action(ifx a == PILOT_FORWARD then CT_FORWARD else ifx a == PILOT_LEFT then CT_LEFT else ifx a == PILOT_RIGHT then CT_RIGHT else CT_WAIT);
+  d.milliseconds = nav_duration(a, r);
+  if d.action == CT_LEFT || d.action == CT_RIGHT { d.milliseconds = ifx abs(r.bearing) > 0.5 then 100 else 60; }
+  return d;
+}
+#test "large visual turns last long enough to reach the client, with short alignment pulses near centre" {
+  #assert hunt_visualturn(-401) == 90 && hunt_visualturn(401) == 90;
+  #assert hunt_visualturn(-400) == 35 && hunt_visualturn(400) == 35 && hunt_visualturn(0) == 35;
+}
+hunt_visualturn :: (offset: int) -> int { return ifx offset < -400 || offset > 400 then 90 else 35; }
+#test "survey progress has an inclusive distance gain and bounded blocked-leg deadline" {
+  #assert hunt_progress(100,88,0) == 1 && hunt_progress(100,88,12000) == 1;
+  #assert hunt_progress(100,89,11999) == 0;
+  #assert hunt_progress(100,89,12000) == 2 && hunt_progress(100,101,12000) == 2;
+}
+hunt_progress :: (best: f32, distance: f32, elapsed: int) -> int {
+  if distance + 12 <= best { return 1; }
+  return ifx elapsed >= 12000 then 2 else 0;
+}
+HuntRecovery :: struct { action: int; remaining: int; }
+#test "a blocked observation cannot restart an unfinished sidestep recovery" {
+  first := hunt_recovery(0,true); #assert first.action == CT_BACK && first.remaining == 1;
+  next := hunt_recovery(first.remaining,true); #assert next.action == CT_STRAFE && next.remaining == 0;
+  #assert hunt_recovery(0,false).action == CT_WAIT && hunt_recovery(0,false).remaining == 0;
+  #assert hunt_recovery(1,false).action == CT_STRAFE && hunt_recovery(1,false).remaining == 0;
+}
+hunt_recovery :: (remaining: int, blocked: bool) -> HuntRecovery {
+  if remaining > 0 { return HuntRecovery.{action = CT_STRAFE}; }
+  return ifx blocked then HuntRecovery.{action = CT_BACK, remaining = 1} else HuntRecovery.{action = CT_WAIT};
+}

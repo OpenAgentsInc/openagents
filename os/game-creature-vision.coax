@@ -1,0 +1,95 @@
+// Visible neutral creature bars are selection candidates, never permission to attack.
+#authority;
+#load "../aethyr/points.coax";
+CreatureBar :: struct { x: int; y: int; width: int; rows: int; }
+CreatureBars :: struct { count: int; bars: [32] CreatureBar; }
+#test "yellow bar pixels exclude snow, shadows and small text strokes" {
+  #assert cv_yellow(255,220,0) && cv_yellow(170,130,70);
+  #assert !cv_yellow(169,130,70) && !cv_yellow(170,129,70) && !cv_yellow(170,130,71);
+  #assert cv_yellow(170,210,0) && !cv_yellow(170,211,0);
+  #assert cv_yellow(230,130,0) && !cv_yellow(231,130,0);
+  #assert !cv_yellow(255,255,255) && !cv_yellow(100,80,0);
+}
+cv_yellow :: (r: int, g: int, b: int) -> bool { return r >= 170 && g >= 130 && b <= 70 && r + 40 >= g && g + 100 >= r; }
+#test "rows merge a repeated bar, distinguish separate bars and retain a bounded set" {
+  b: [1] CreatureBars;
+  cv_add(b[..], 100,200,80); cv_add(b[..],108,212,80);
+  #assert b[0].count == 1 && b[0].bars[0].rows == 2 && b[0].bars[0].x == 100 && b[0].bars[0].y == 200 && b[0].bars[0].width == 80;
+  cv_add(b[..],109,212,80); #assert b[0].count == 2;
+  cv_add(b[..],100,213,80); #assert b[0].count == 3;
+  for i: 0..<40 { cv_add(b[..], 1000 + 20 * i, 300, 80); }
+  #assert b[0].count == 32;
+  c: [1] CreatureBars; cv_add(c[..],100,200,80); cv_add(c[..],92,200,80);
+  #assert c[0].count == 1 && c[0].bars[0].rows == 2;
+  cv_add(c[..],91,200,80); #assert c[0].count == 2;
+  cv_add(c[..],100,199,80); #assert c[0].count == 3;
+}
+cv_add :: (out: [] CreatureBars, x: int, y: int, width: int) {
+  for i: 0..<out[0].count {
+    b := out[0].bars[i];
+    if x >= b.x - 8 && x <= b.x + 8 && y >= b.y && y <= b.y + 12 { out[0].bars[i].rows += 1; return; }
+  }
+  if out[0].count == 32 { return; }
+  out[0].bars[out[0].count] = CreatureBar.{x = x, y = y, width = width, rows = 1}; out[0].count += 1;
+}
+#test "row runs have exact size bounds, exclude UI margins and include the final run" {
+  row: [1920] u8; b: [1] CreatureBars;
+  for x: 100..<160 { row[x * 3] = 255; row[x * 3 + 1] = 220; }
+  cv_row(row[..], 200, b[..]); #assert b[0].count == 1 && b[0].bars[0].x == 130 && b[0].bars[0].width == 60;
+  short: [1919] u8; for x: 100..<160 { short[x * 3] = 255; short[x * 3 + 1] = 220; }
+  cv_row(short[..], 202, b[..]); #assert b[0].count == 1 && b[0].bars[0].rows == 1;
+  for x: 100..<160 { row[x * 3] = 0; row[x * 3 + 1] = 0; }
+  for x: 260..<560 { row[x * 3] = 255; row[x * 3 + 1] = 220; }
+  cv_row(row[..], 220, b[..]); #assert b[0].count == 2 && b[0].bars[1].x == 410 && b[0].bars[1].width == 300;
+  row[259 * 3] = 255; row[259 * 3 + 1] = 220; cv_row(row[..], 240, b[..]); #assert b[0].count == 2;
+  small: [180] u8; cv_row(small[..], 260, b[..]); #assert b[0].count == 2;
+}
+#test "ROI edges and non-four-byte-aligned RGB rows retain the exact bar" {
+  row: [1923] u8; out: [1] CreatureBars;
+  for x: 0..<641 { row[x * 3 + 2] = 255; }
+  for x: 16..<76 { row[x * 3] = 255; row[x * 3 + 1] = 220; row[x * 3 + 2] = 0; }
+  cv_row(row[..],200,out[..]); #assert out[0].count == 1 && out[0].bars[0].x == 46 && out[0].bars[0].width == 60;
+  big: [3600] u8; other: [1] CreatureBars;
+  for x: 720..<780 { big[x * 3] = 255; big[x * 3 + 1] = 220; }
+  for x: 1000..<1060 { big[x * 3] = 255; big[x * 3 + 1] = 220; }
+  cv_row(big[..],200,other[..]); #assert other[0].count == 1 && other[0].bars[0].x == 750 && other[0].bars[0].width == 60;
+  top: [1] CreatureBars; cv_row(big[..],159,top[..]); #assert top[0].count == 0;
+  cv_row(big[..],160,top[..]); #assert top[0].count == 1;
+  native: [7644] u8; upper: [1] CreatureBars;
+  for x: 760..<820 { native[x * 3] = 255; native[x * 3 + 1] = 220; }
+  cv_row(native[..],100,upper[..]); #assert upper[0].count == 1 && upper[0].bars[0].x == 790;
+}
+cv_close :: (out: [] CreatureBars, begin: int, end: int, y: int) {
+  length := end - begin; if length >= 60 && length <= 300 { cv_add(out, begin + length / 2, y, length); }
+}
+cv_row :: (row: [] u8, y: int, out: [] CreatureBars) {
+  if row.count % 3 != 0 { return; }
+  width := row.count / 3; right := width - ifx width >= 1200 then 420 else 80; begin: int; in_run: bool;
+  left := ifx y < 160 && width >= 1200 then 760 else 16;
+  for x: left..<right {
+    yellow := cv_yellow(cast(int) row[x * 3], cast(int) row[x * 3 + 1], cast(int) row[x * 3 + 2]);
+    if yellow && !in_run { begin = x; in_run = true; }
+    if !yellow && in_run { cv_close(out,begin,x,y); in_run = false; }
+  }
+  if in_run { cv_close(out,begin,right,y); }
+}
+#test "candidate selection requires repeated rows and prefers central nearby bars" {
+  b: CreatureBars; #assert cv_best(b, 640).rows == 0;
+  b.count = 1; b.bars[0] = CreatureBar.{x = 320,y = 200,rows = 2}; #assert cv_best(b,640).rows == 2;
+  b.count = 3; b.bars[0] = CreatureBar.{x = 320,y = 200,rows = 1};
+  b.bars[1] = CreatureBar.{x = 300,y = 220,rows = 2}; b.bars[2] = CreatureBar.{x = 500,y = 400,rows = 2};
+  #assert cv_best(b, 640).x == 300;
+  b.bars[2].x = 300; #assert cv_best(b,640).y == 400;
+  b.count = 2; b.bars[0] = CreatureBar.{x = 300,y = 220,rows = 2}; b.bars[1] = CreatureBar.{x = 340,y = 220,rows = 2}; #assert cv_best(b,640).x == 300;
+  b.bars[0] = CreatureBar.{x = 200,y = 220,rows = 2}; b.bars[1].x = 400; #assert cv_best(b,640).x == 400;
+  b.bars[0] = CreatureBar.{x = 320,y = 150,rows = 2}; b.bars[1] = CreatureBar.{x = 330,y = 200,rows = 2}; #assert cv_best(b,640).x == 330;
+}
+cv_best :: (bars: CreatureBars, width: int) -> CreatureBar {
+  best: CreatureBar; score: f32;
+  for i: 0..<bars.count {
+    b := bars.bars[i]; if b.rows < 2 { continue; }
+    cost := abs(cast(f32) (b.x - width / 2)) * 4 - cast(f32) b.y;
+    if best.rows == 0 || cost < score { score = cost; best = b; }
+  }
+  return best;
+}

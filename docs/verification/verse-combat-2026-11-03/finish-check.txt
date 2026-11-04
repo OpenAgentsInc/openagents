@@ -1,0 +1,2 @@
+records: /tmp/verse-combat-finish-VjTp5G/run
+ok finish requested during combat observation 44; exactly one XP kill, alive and out of combat, no held input

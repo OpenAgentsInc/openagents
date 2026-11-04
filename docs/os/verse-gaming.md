@@ -131,6 +131,50 @@ arbitrary obstacles, combat and quest planning are not implemented. See the
 [work journal](verse-navigation.md) and
 [measured trials](../verification/verse-navigation-2026-11-03/README.md).
 
+## XP creature combat
+
+The bundle also includes `verse-combat` and `verse-combat-sense`. The
+installed addon reports public combat state in a second visible strip.
+Enable enemy nameplates in WoW (V), keep the normal action-bar bindings,
+and enter the world with Foob's qualified level 2–5 warlock profile.
+The starting action slots are attack on 1, Shadow Bolt on 2, Demon Skin
+on 3, water on `-` and food on `=`. A different spell/rank/layout refuses.
+
+```sh
+d="$HOME/.local/share/verse-os/current"
+"$d/verse-combat" --out /tmp/wow-combat-01 --kills 3 --steps 600
+```
+
+Use a new absolute output directory for each run. The default socket is
+`$XDG_RUNTIME_DIR/verse-desk.sock`; `--socket PATH` overrides it. The tested
+patch is Coldridge Valley's normal wolves and boars, near normalized map
+coordinates (20300,45900). Inspect the surroundings before starting in a
+different area. The controller turns/selects from screenshots and checks
+eligibility, cast/range feedback and resources before fighting. Kills count
+only with a matched player kill event and actual XP gain. Between pulls it
+eats/drinks or waits for natural regeneration. It does not do quests.
+
+Pause after the current encounter, then verify `finished` in the journal:
+
+```sh
+touch /tmp/wow-combat-01/finish
+```
+
+For immediate intervention:
+
+```sh
+touch /tmp/wow-combat-01/stop
+"$d/verse-game" --socket "$XDG_RUNTIME_DIR/verse-desk.sock" stop
+```
+
+Immediate stop releases input and can leave an enemy attacking. Use
+`finish` for a routine development pause. A development hard stop caused
+one death; it and the corpse recovery are recorded, not omitted from the
+results. Automatic corpse recovery and emergency retreat remain unqualified.
+See [control v2](../protocol/external-combat-control-v2.md), the
+[work journal](verse-combat.md), and the
+[successful and failed trials](../verification/verse-combat-2026-11-03/README.md).
+
 The first accelerated path retains CPU desk composition and frame upload;
 it is not zero-copy. Continuous turning across cursor edges and a
 sustained frame-rate target are not yet qualified. Actual launch, movement,

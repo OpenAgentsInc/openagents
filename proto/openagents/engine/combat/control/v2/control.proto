@@ -1,0 +1,20 @@
+syntax = "proto3";
+package openagents.engine.combat.control.v2;
+
+// Controller profile v2; the published combat observation v1 stays unchanged.
+message VisibleCandidate { uint32 x = 1; uint32 y = 2; uint32 width = 3; }
+message Action {
+  uint64 observation = 1;
+  string name = 2;
+  uint32 milliseconds = 3;
+  uint32 target_epoch = 4;
+  uint32 npc = 5;
+  uint32 spawn = 6;
+  bool visual_target_bound = 7;
+  VisibleCandidate candidate = 8;
+}
+message EndRequest {
+  enum Mode { IMMEDIATE = 0; FINISH_ENCOUNTER = 1; }
+  Mode mode = 1;
+}
+message Budget { uint32 observations = 1; uint32 drain_observations = 2; uint32 milliseconds = 3; }

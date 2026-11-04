@@ -431,6 +431,17 @@ They do not complete this chapter's general behavior graphs, path planning
 or realm-wide model adoption. The [navigation journal](../../docs/os/verse-navigation.md)
 records real routes, refused input and model trials.
 
+`os/game-combat.coax` adds an observed external encounter loop. Its local
+survey reuses the same Aethyr pilot geometry through
+`os/game-navigation-policy.coax`. A screenshot supplies candidate creature
+bars; public target identity, eligibility and resources admit an action,
+and another capture rechecks it before a short input lease. A matched player
+kill event plus actual XP verifies a kill. This controller is deterministic;
+Elephant remains the separately qualified local waypoint decision model.
+Its journal is evidence about an external game, not an Aethyr simulation
+replay. The [combat journal](../../docs/os/verse-combat.md) records the
+qualified starter profile, failures, recovery and graceful encounter drain.
+
 ## Still to do
 
 - **Realms on the module.** Everglade's watch

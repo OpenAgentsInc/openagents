@@ -3,6 +3,8 @@
 #load "game-combat-sensor.coax";
 CT_WAIT :: 0; CT_TAB :: 1; CT_LEFT :: 2; CT_RIGHT :: 3; CT_FORWARD :: 4;
 CT_BOLT :: 5; CT_ATTACK :: 6; CT_SKIN :: 7; CT_FOOD :: 8; CT_WATER :: 9; CT_CLEAR :: 10;
+CT_SELECT :: 11; CT_SKIP :: 12;
+CT_BACK :: 13; CT_STRAFE :: 14;
 CombatDecision :: struct { ok: bool; action: int; key: int; milliseconds: int; }
 #test "starter eligibility excludes gray players tapped elites dead and dangerous targets" {
   s := CombatSample.{ok = true, flags = 3, class_id = 9, level = 4, health = 88, health_max = 88, mana = 272, mana_max = 272,
@@ -74,19 +76,71 @@ cb_afterkill :: (s: CombatSample, age: int) -> bool {
   return age >= 0 && age <= 3000 && s.ok && (s.flags & 11) == 3 && s.health_max > 0
     && s.health * 100 >= s.health_max * 35 && (s.target_flags & 1) == 0;
 }
-#test "all supported effects have exact bounded keyboard adapters" {
-  keys := [11] int.[0,15,30,32,17,3,2,4,13,12,1];
-  for i: 0..<11 {
-    d := cb_action(i); #assert d.ok && d.action == i && d.key == keys[i];
-    #assert d.milliseconds == (ifx i == CT_WAIT then 0 else ifx i == CT_FORWARD then 200 else ifx i == CT_LEFT || i == CT_RIGHT then 60 else 40);
+#test "fresh action rechecks bind creature lifetime and current admission" {
+  s := CombatSample.{ok = true, flags = 3, class_id = 9, level = 4, health = 88, health_max = 88, mana = 272, mana_max = 272, skin = 1,
+    target_flags = 67, target_level = 2, target_health = 40, target_max = 40, npc = 705, spawn = 12, target_epoch = 2};
+  s.slots[1] = CombatSlot.{flags = 27, id = 686};
+  #assert cb_recheck(s, s, CT_BOLT, true);
+  t := s; t.target_epoch += 1; #assert !cb_recheck(s, t, CT_BOLT, true);
+  t = s; t.npc += 1; #assert !cb_recheck(s, t, CT_BOLT, true);
+  t = s; t.spawn += 1; #assert !cb_recheck(s, t, CT_BOLT, true);
+  t = s; t.ok = false; #assert !cb_recheck(s, t, CT_BOLT, true) && !cb_recheck(t, s, CT_BOLT, true);
+  t = s; t.flags |= 8; #assert !cb_recheck(s, t, CT_BOLT, true);
+  t = s; t.flags |= 16; #assert !cb_recheck(s, t, CT_BOLT, true);
+  t = s; t.target_flags |= 8; #assert !cb_recheck(s, t, CT_BOLT, true);
+  t = s; t.slots[1].cooldown = 1; #assert !cb_recheck(s, t, CT_BOLT, true);
+  #assert !cb_recheck(s, s, -1, true) && !cb_recheck(s, s, 15, true);
+  #assert !cb_recheck(s, s, CT_FORWARD, true) && !cb_recheck(s, s, CT_LEFT, true) && !cb_recheck(s, s, CT_RIGHT, true);
+  t = s; t.target_flags = 64; t.npc = 0; t.spawn = 0;
+  for action: [4] int.[CT_TAB,CT_LEFT,CT_RIGHT,CT_FORWARD] { #assert cb_recheck(t, t, action, false); }
+  t = s; t.mana = 100; #assert cb_choose(t, false).action == CT_WAIT;
+  #assert cb_recheck(t, t, CT_WAIT, false) && !cb_recheck(t, t, CT_WAIT, true);
+  t = s; t.extra = 1; t.plate_x = 20000; #assert cb_recheck(t, t, CT_LEFT, false);
+  t.plate_x = 45000; #assert cb_recheck(t, t, CT_RIGHT, false);
+  t = s; t.slots[1].flags = 11; #assert cb_recheck(t, t, CT_FORWARD, true);
+  t = s; t.target_flags |= 4; #assert cb_recheck(t, t, CT_CLEAR, false);
+  #assert !cb_recheck(s, s, CT_CLEAR, false);
+  t.target_flags = 4; #assert !cb_recheck(t, t, CT_CLEAR, false);
+  t.target_flags = 5; t.flags = 11; #assert !cb_recheck(t, t, CT_CLEAR, false);
+  t.flags = 1; #assert !cb_recheck(t, t, CT_CLEAR, false);
+  t = s; #assert cb_recheck(t,t,CT_SKIP,false) && !cb_recheck(t,t,CT_SKIP,true);
+  t.flags |= 4; #assert !cb_recheck(t,t,CT_SKIP,false);
+  t = s; t.target_flags = 64; t.npc = 0; t.spawn = 0;
+  #assert cb_recheck(t,t,CT_SELECT,false) && !cb_recheck(t,t,CT_SELECT,true) && !cb_recheck(t,t,CT_SKIP,false);
+  t.flags |= 4; #assert !cb_recheck(t,t,CT_SELECT,false);
+  #assert !cb_recheck(s,s,CT_SELECT,false);
+  t = s; t.target_flags = 65; #assert cb_recheck(t,t,CT_SKIP,false) && !cb_recheck(t,t,CT_SELECT,false);
+  t = s; t.target_flags = 64; t.npc = 0; t.spawn = 0;
+  for action: [2] int.[CT_BACK,CT_STRAFE] {
+    #assert cb_recheck(t,t,action,false) && !cb_recheck(t,t,action,true);
+    v := t; v.flags |= 4; #assert !cb_recheck(v,v,action,false);
+    #assert !cb_recheck(s,s,action,false);
+    v = s; v.slots[1].flags = 11; #assert cb_recheck(v,v,action,false);
   }
-  #assert !cb_action(-1).ok && !cb_action(11).ok;
+}
+cb_recheck :: (before: CombatSample, after: CombatSample, action: int, engaged: bool) -> bool {
+  if !before.ok || !after.ok || !cb_action(action).ok || before.target_epoch != after.target_epoch || before.npc != after.npc || before.spawn != after.spawn { return false; }
+  if action == CT_CLEAR { return (after.flags & 11) == 3 && (after.target_flags & 5) == 5; }
+  next := cb_choose(after, engaged); if !next.ok { return false; }
+  if action == CT_SELECT { return !engaged && (after.flags & 4) == 0 && (after.target_flags & 1) == 0 && next.action == CT_TAB; }
+  if action == CT_SKIP { return !engaged && (after.flags & 4) == 0 && (after.target_flags & 1) != 0; }
+  if action == CT_BACK || action == CT_STRAFE { return !engaged && (after.flags & 4) == 0 && (next.action == CT_TAB || next.action == CT_FORWARD); }
+  if action == CT_LEFT || action == CT_RIGHT || action == CT_FORWARD { return next.action == CT_TAB || next.action == action; }
+  return next.action == action;
+}
+#test "all supported effects have exact bounded keyboard adapters" {
+  keys := [15] int.[0,15,30,32,17,3,2,4,13,12,1,0,1,31,18];
+  for i: 0..<15 {
+    d := cb_action(i); #assert d.ok && d.action == i && d.key == keys[i];
+    #assert d.milliseconds == (ifx i == CT_WAIT then 0 else ifx i == CT_FORWARD || i == CT_BACK then 200 else ifx i == CT_STRAFE then 300 else ifx i == CT_LEFT || i == CT_RIGHT then 60 else 40);
+  }
+  #assert !cb_action(-1).ok && !cb_action(15).ok;
 }
 cb_action :: (action: int) -> CombatDecision {
-  if action < 0 || action > CT_CLEAR { return CombatDecision.{}; }
-  keys := [11] int.[0,15,30,32,17,3,2,4,13,12,1];
+  if action < 0 || action > CT_STRAFE { return CombatDecision.{}; }
+  keys := [15] int.[0,15,30,32,17,3,2,4,13,12,1,0,1,31,18];
   return CombatDecision.{ok = true, action = action, key = keys[action], milliseconds =
-    ifx action == CT_WAIT then 0 else ifx action == CT_FORWARD then 200 else ifx action == CT_LEFT || action == CT_RIGHT then 60 else 40};
+    ifx action == CT_WAIT then 0 else ifx action == CT_FORWARD || action == CT_BACK then 200 else ifx action == CT_STRAFE then 300 else ifx action == CT_LEFT || action == CT_RIGHT then 60 else 40};
 }
 #test "health mana cast range and action identity govern observed combat" {
   s := CombatSample.{ok = true, flags = 3, class_id = 9, level = 4, health = 88, health_max = 88, mana = 272, mana_max = 272, skin = 65535,
@@ -112,6 +166,10 @@ cb_action :: (action: int) -> CombatDecision {
   t = s; t.mana = 10; t.flags |= 4; t.slots[0] = CombatSlot.{flags = 67, id = 6603};
   t.slots[1].flags = 5; #assert cb_choose(t, true).action == CT_ATTACK;
   t.slots[0].flags |= 32; #assert cb_choose(t, true).action == CT_WAIT;
+  t = s; t.flags |= 4; t.slots[0] = CombatSlot.{flags = 67, id = 6603};
+  #assert cb_choose(t, true).action == CT_BOLT;
+  t.slots[0].flags |= 32; #assert cb_choose(t, true).action == CT_BOLT;
+  t.flags = 3; t.slots[0].flags = 67; #assert cb_choose(t, false).action == CT_BOLT;
 }
 #test "combat admission percentage boundaries and missing resource actions" {
   s := CombatSample.{ok = true, flags = 3, class_id = 9, level = 4, health = 100, health_max = 100, mana = 100, mana_max = 100, skin = 1,

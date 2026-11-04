@@ -1,0 +1,6 @@
+#import "Basic";
+#load "game-creature-observation.coax";
+tool_main :: () -> int #export_c {
+  a: [1] Args; if !args_load(a[..]) || args_count(a[..]) != 1 { return 2; }
+  b := cv_read(args_at(a[..], 0)); print("{\"x\":%,\"y\":%,\"width\":%,\"rows\":%}\n", b.x,b.y,b.width,b.rows); return ifx b.rows >= 2 then 0 else 1;
+}

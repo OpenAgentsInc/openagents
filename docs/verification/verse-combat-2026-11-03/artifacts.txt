@@ -1,0 +1,2 @@
+ae6ec9318d66863d9c9c0bcbb55dc20c303d801302470cb761e08c8823114d80  /home/christopherdavid/.local/share/verse-os/current/verse-combat
+a22e7bd6a906d462c265e81ec4ac304cde48a3a8f40fd017ea4b4f839eb95ab3  /tmp/verse-combat-asan/verse-combat

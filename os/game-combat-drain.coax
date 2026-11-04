@@ -1,0 +1,28 @@
+// Graceful development pauses/budgets finish an admitted encounter; hard stop stays separate.
+#authority;
+#test "kill targets and finish files request the same out-of-combat drain with distinct reasons" {
+  #assert cb_endrequest(2,3,false) == 0 && cb_endrequest(3,3,false) == 2 && cb_endrequest(4,3,false) == 2;
+  #assert cb_endrequest(2,3,true) == 1 && cb_endrequest(3,3,true) == 1;
+}
+cb_endrequest :: (kills: int, wanted: int, finish: bool) -> int {
+  if finish { return 1; } return ifx kills >= wanted then 2 else 0;
+}
+#test "fight deadlines allow an approach and first projectile but bound repeated ineffective casts" {
+  #assert !cb_fight_expired(45000,20000) && cb_fight_expired(45001,0);
+  #assert !cb_fight_expired(20000,20000) && cb_fight_expired(20001,20001);
+}
+cb_fight_expired :: (elapsed: int, quiet: int) -> bool { return elapsed > 45000 || quiet > 20000; }
+#test "pause and budget completion wait for combat and preserve their reason" {
+  #assert cb_drain(false,false,false,9,10,599999) == 0;
+  #assert cb_drain(false,false,false,10,10,0) == 2;
+  #assert cb_drain(false,false,false,0,10,600000) == 2;
+  #assert cb_drain(false,false,true,0,10,0) == 1;
+  #assert cb_drain(false,false,true,10,10,600000) == 1;
+  #assert cb_drain(true,false,true,10,10,600000) == 0;
+  #assert cb_drain(false,true,true,10,10,600000) == 0;
+}
+cb_drain :: (engaged: bool, combat: bool, finish: bool, used: int, budget: int, elapsed: int) -> int {
+  if engaged || combat { return 0; }
+  if finish { return 1; }
+  return ifx used >= budget || elapsed >= 600000 then 2 else 0;
+}

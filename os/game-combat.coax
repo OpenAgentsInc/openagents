@@ -1,10 +1,12 @@
 // external-combat-v1: observe, admit one bounded key, release, observe again.
-#import "Basic";
 #load "game-combat-observation.coax";
 #load "game-combat-policy.coax";
+#load "game-hunt-policy.coax";
+#load "game-combat-drain.coax";
+#load "game-creature-observation.coax";
 #load "game-client.coax";
 #load "game-policy.coax";
-CC_NAMES :: [11] string.["wait","target-next","turn-left","turn-right","approach","shadow-bolt","melee","demon-skin","food","water","clear-target"];
+CC_NAMES :: [15] string.["wait","target-next","turn-left","turn-right","approach","shadow-bolt","melee","demon-skin","food","water","clear-target","select-visible-creature","skip-target","back-away","sidestep-right"];
 cc_num :: (n: int, out: [] u8) -> string { o: [1] Jo; jo_start(o[..], out); jo_int(o[..], n); return jo_text(o[..]); }
 cc_record :: (path: string, line: string) -> bool {
   out: [32768] u8; if line.count >= out.count { return false; }
@@ -29,6 +31,15 @@ cc_key :: (h: int, t: GameTarget, d: CombatDecision, reply: [] u8) -> bool {
   if gc_exchange(h, t, "key", d.key, false, 0, 0, 0, "", reply, "done") < 0 { return false; }
   return gc_exchange(h, t, "stop", 0, false, 0, 0, 0, "", reply, "done") > 0;
 }
+cc_select :: (h: int, t: GameTarget, point: CreatureBar, reply: [] u8) -> bool {
+  if point.rows < 2 { return false; }
+  if gc_exchange(h,t,"acquire",0,false,1000,0,0,"",reply,"done") < 0 { return false; }
+  if gc_exchange(h,t,"move",0,false,0,point.x,point.y,"",reply,"done") < 0 { return false; }
+  if gc_exchange(h,t,"button",272,true,0,0,0,"",reply,"done") < 0 { return false; }
+  proc_sleep(40);
+  if gc_exchange(h,t,"button",272,false,0,0,0,"",reply,"done") < 0 { return false; }
+  return gc_exchange(h,t,"stop",0,false,0,0,0,"",reply,"done") > 0;
+}
 cc_snapshot :: (image: string, dir: string, sequence: int) -> bool {
   name: [64] u8; number: [32] u8; path: [4096] u8; o: [1] Jo; jo_start(o[..], name[..]); jo_put(o[..], "evidence-"); jo_put(o[..], cc_num(sequence, number[..])); jo_put(o[..], ".ppm");
   destination := fs_join(dir, jo_text(o[..]), path[..]);
@@ -36,13 +47,18 @@ cc_snapshot :: (image: string, dir: string, sequence: int) -> bool {
   r := proc_run(args[..], 10000, out[..], err[..]); return r.started == 0 && r.status == 0;
 }
 cc_run :: (h: int, t: GameTarget, dir: string, steps: int, wanted: int) -> int {
-  paths: [3] [4096] u8;
+  paths: [5] [4096] u8;
   image := fs_join(dir, "frame.ppm", paths[0][..]); journal := fs_join(dir, "journal.jsonl", paths[1][..]); stop := fs_join(dir, "stop", paths[2][..]);
+  finish := fs_join(dir, "finish", paths[3][..]);
+  recheck := fs_join(dir, "recheck.ppm", paths[4][..]);
   reply: [262144] u8; out: [16384] u8; sensor: [8192] u8; navtext: [1024] u8;
-  previous: CombatSample; beginning: CombatSample; start_nav: NavSample; fight: CombatSample;
+  previous: CombatSample; fight: CombatSample; home := hunt_home();
   engaged := false; fight_started := 0; last_progress := 0; scans := 0; kills := 0; total_xp := 0; rest_until := 0; killed_at := 0;
-  initial := cc_record(journal, "{\"type\":\"start\",\"schema\":\"external-combat-v1\",\"policy\":\"starter-warlock-v1\",\"images\":\"rolling frame.ppm plus immutable evidence-N.ppm at starts and outcomes\"}"); if !initial { return 1; }
-  for i: 0..<steps {
+  roaming := false; leg := 0; travel_ticks := 0; stalled := 0; last_action := CT_WAIT; previous_nav: NavSample;
+  pending_visual := false; visual_bound := false; visual_target: CombatSample; began := proc_now_ms();
+  tracked_leg := -1; survey_best: f32; survey_progress := 0; recovery := 0;
+  initial := cc_record(journal, "{\"type\":\"start\",\"schema\":\"external-combat-v1\",\"policy\":\"starter-warlock-v2\",\"images\":\"rolling frame.ppm plus immutable evidence-N.ppm at starts and outcomes\"}"); if !initial { return 1; }
+  for i: 0..<steps + 100 {
     if fs_exists(stop) { return cc_stop(journal, "stop-file"); }
     current := cc_target(h, reply[..]);
     if current.session != t.session || current.handle != t.handle || current.revision != t.revision { return cc_stop(journal, "window-changed"); }
@@ -55,9 +71,19 @@ cc_run :: (h: int, t: GameTarget, dir: string, steps: int, wanted: int) -> int {
     jo_key(o[..], "navigation"); jo_raw(o[..], nav_json(nav, navtext[..])); jo_end(o[..]);
     if !cc_record(journal, jo_text(o[..])) { return 1; }
     if !s.ok || !nav.ok || !nav.alive || nav.blocked || nav.map != 1426 { return cc_stop(journal, "unavailable-dead-menu-or-map"); }
-    if i == 0 { beginning = s; start_nav = nav; if !cc_snapshot(image, dir, i + 1) { return 1; } }
+    // A development pause drains the current encounter; immediate stop remains immediate.
+    endrequest := cb_endrequest(kills,wanted,fs_exists(finish));
+    drain := cb_drain(engaged,(s.flags & 4) != 0,endrequest != 0,i,steps,now - began);
+    if drain == 1 {
+      ending := ifx endrequest == 1 then "{\"type\":\"finished\",\"reason\":\"finish-file\"}" else "{\"type\":\"finished\",\"reason\":\"kill-target\"}";
+      return ifx cc_record(journal,ending) then 0 else 1;
+    }
+    if drain == 2 { return cc_stop(journal,"observation-or-time-budget-drained"); }
+    if pending_visual { pending_visual = false; visual_bound = cb_eligible(s); visual_target = s; }
+    if visual_target.target_epoch != s.target_epoch || visual_target.npc != s.npc || visual_target.spawn != s.spawn || !cb_eligible(s) { visual_bound = false; }
+    if i == 0 { if !cc_snapshot(image, dir, i + 1) { return 1; } }
     else if s.serial == previous.serial { return cc_stop(journal, "stale-sensor"); }
-    if abs(cast(f32) (nav.x - start_nav.x)) + abs(cast(f32) (nav.y - start_nav.y)) > 1200 { return cc_stop(journal, "survey-radius"); }
+    if abs(cast(f32) (nav.x - home.x)) + abs(cast(f32) (nav.y - home.y)) > 1800 { return cc_stop(journal, "survey-radius"); }
     d := cb_choose(s, engaged);
     if engaged {
       if s.target_health < previous.target_health { last_progress = now; }
@@ -66,9 +92,9 @@ cc_run :: (h: int, t: GameTarget, dir: string, steps: int, wanted: int) -> int {
         jo_start(o[..], out[..]); jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "verified-kill"); jo_key(o[..], "sequence"); jo_int(o[..], i + 1);
         jo_key(o[..], "npc"); jo_int(o[..], fight.npc); jo_key(o[..], "spawn"); jo_int(o[..], fight.spawn); jo_key(o[..], "gained_xp"); jo_int(o[..], gained);
         jo_key(o[..], "kills"); jo_int(o[..], kills); jo_key(o[..], "total_xp"); jo_int(o[..], total_xp); jo_key(o[..], "fight_ms"); jo_int(o[..], now - fight_started); jo_end(o[..]);
-        if !cc_record(journal, jo_text(o[..])) || !cc_snapshot(image, dir, i + 1) { return 1; } print("%\n", jo_text(o[..])); engaged = false; scans = 0; killed_at = now;
-        if kills >= wanted { return 0; } d = cb_action(ifx (s.target_flags & 1) != 0 then CT_CLEAR else CT_WAIT);
-      } else if now - fight_started > 45000 || now - last_progress > 12000 { return cc_stop(journal, "fight-or-damage-deadline"); }
+        if !cc_record(journal, jo_text(o[..])) || !cc_snapshot(image, dir, i + 1) { return 1; } print("%\n", jo_text(o[..])); engaged = false; scans = 0; roaming = false; killed_at = now;
+        d = cb_action(ifx (s.target_flags & 1) != 0 then CT_CLEAR else CT_WAIT);
+      } else if cb_fight_expired(now - fight_started,now - last_progress) { return cc_stop(journal, "fight-or-damage-deadline"); }
       else if s.kill_serial != fight.kill_serial && s.kill_npc == fight.npc && s.kill_spawn == fight.spawn { d = cb_action(CT_WAIT); }
       else if s.target_epoch != fight.target_epoch || s.npc != fight.npc || s.spawn != fight.spawn { return cc_stop(journal, "engaged-target-changed"); }
       else if (s.target_flags & 4) != 0 { d = cb_action(CT_WAIT); }
@@ -76,23 +102,82 @@ cc_run :: (h: int, t: GameTarget, dir: string, steps: int, wanted: int) -> int {
     if !d.ok && !engaged && killed_at > 0 && cb_afterkill(s, now - killed_at) { d = cb_action(CT_WAIT); }
     if !d.ok { return cc_stop(journal, "combat-policy-refused"); }
     if now < rest_until && (d.action == CT_FOOD || d.action == CT_WATER || d.action == CT_WAIT) { d = cb_action(CT_WAIT); }
-    if d.action == CT_TAB {
-      scans += 1;
-      if scans % 12 == 0 { d = cb_action(CT_FORWARD); }
-      else if scans % 3 == 0 { d = cb_action(CT_RIGHT); d.milliseconds = 160; }
+    point: CreatureBar;
+    if !engaged && (s.flags & 4) == 0 && (d.action == CT_TAB || d.action == CT_FORWARD || d.action == CT_BOLT) && !visual_bound {
+      if (s.target_flags & 1) != 0 { d = cb_action(CT_SKIP); }
+      else {
+        point = cv_read(image); dims := cv_frame(image);
+        if point.rows >= 2 {
+          if point.x < dims.width / 2 - 120 { d = cb_action(CT_LEFT); d.milliseconds = hunt_visualturn(point.x - dims.width / 2); }
+          else if point.x > dims.width / 2 + 120 { d = cb_action(CT_RIGHT); d.milliseconds = hunt_visualturn(point.x - dims.width / 2); }
+          else { d = cb_action(CT_SELECT); }
+        } else { d = cb_action(CT_TAB); }
+      }
     }
+    survey_step := false; blocked_route := false;
+    if d.action == CT_TAB {
+      if !roaming {
+        scans += 1;
+        if scans >= 12 { roaming = true; travel_ticks = 0; }
+        else if scans % 3 == 0 { d = cb_action(CT_RIGHT); d.milliseconds = 160; }
+      }
+      if roaming {
+        survey_step = true;
+        route := nav_route(nav, hunt_goal(home, leg));
+        if !route.ok { return cc_stop(journal, "invalid-survey-route"); }
+        if tracked_leg != leg { tracked_leg = leg; survey_best = route.distance; survey_progress = now; }
+        progress := hunt_progress(survey_best,route.distance,now - survey_progress);
+        if progress == 1 { survey_best = route.distance; survey_progress = now; }
+        if progress == 2 { blocked_route = true; tracked_leg = -1; }
+        if route.arrived { leg = (leg + 1) % 4; roaming = false; scans = 0; d = cb_action(CT_TAB); }
+        else {
+          travel_ticks += 1;
+          d = ifx travel_ticks % 4 == 0 then cb_action(CT_TAB) else hunt_action(route);
+        }
+      }
+    }
+    if !survey_step { tracked_leg = -1; }
+    if last_action == CT_FORWARD {
+      moved := abs(cast(f32) (nav.x - previous_nav.x)) + abs(cast(f32) (nav.y - previous_nav.y));
+      stalled = ifx moved < 4 then stalled + 1 else 0;
+      if stalled >= 3 {
+        if !engaged && (s.flags & 4) == 0 { blocked_route = true; stalled = 0; }
+        else { return cc_stop(journal, "approach-or-survey-blocked"); }
+      }
+    }
+    if (recovery > 0 || blocked_route) && !engaged && (s.flags & 4) == 0 {
+      plan := hunt_recovery(recovery,blocked_route); d = cb_action(plan.action); recovery = plan.remaining;
+      if recovery == 0 { leg = (leg + 1) % 4; roaming = false; scans = 0; tracked_leg = -1; visual_bound = false; }
+    }
+    new_fight := false;
     if d.action == CT_BOLT || d.action == CT_ATTACK {
-      if !engaged { fight = s; engaged = true; fight_started = now; last_progress = now; if !cc_snapshot(image, dir, i + 1) { return 1; } }
+      if !engaged { fight = s; engaged = true; new_fight = true; fight_started = now; last_progress = now; if !cc_snapshot(image, dir, i + 1) { return 1; } }
     }
     if d.action == CT_FOOD || d.action == CT_WATER { rest_until = now + 20000; }
     // Snapshot is current; no model inference or long work runs while a key is held.
     if fs_exists(stop) { return cc_stop(journal, "stop-file"); }
+    if d.action != CT_WAIT {
+      checked := gc_exchange(h, t, "shot", 0, false, 0, 0, 0, recheck, reply[..], "shot"); if checked < 0 { return cc_stop(journal, "recheck-capture"); }
+      latest := ct_read(recheck);
+      admitted := cb_recheck(s, latest, d.action, engaged);
+      if !admitted {
+        if new_fight { engaged = false; }
+        saved := cc_record(journal, "{\"type\":\"action-discarded\",\"reason\":\"context-changed-before-input\"}");
+        if !saved { return 1; } previous = s; previous_nav = nav; last_action = CT_WAIT; proc_sleep(500); continue;
+      }
+    }
     jo_start(o[..], out[..]); jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "action"); jo_key(o[..], "observation"); jo_int(o[..], i + 1);
     jo_key(o[..], "name"); jo_str(o[..], CC_NAMES[d.action]); jo_key(o[..], "milliseconds"); jo_int(o[..], d.milliseconds);
-    jo_key(o[..], "target_epoch"); jo_int(o[..], s.target_epoch); jo_key(o[..], "npc"); jo_int(o[..], s.npc); jo_key(o[..], "spawn"); jo_int(o[..], s.spawn); jo_end(o[..]);
+    jo_key(o[..], "target_epoch"); jo_int(o[..], s.target_epoch); jo_key(o[..], "npc"); jo_int(o[..], s.npc); jo_key(o[..], "spawn"); jo_int(o[..], s.spawn);
+    jo_key(o[..], "visual_target_bound"); jo_bool(o[..], visual_bound);
+    if point.rows >= 2 { jo_key(o[..], "candidate_x"); jo_int(o[..], point.x); jo_key(o[..], "candidate_y"); jo_int(o[..], point.y); jo_key(o[..], "candidate_width"); jo_int(o[..], point.width); }
+    jo_end(o[..]);
     if !cc_record(journal, jo_text(o[..])) { return 1; } if d.action != CT_WAIT { print("%\n", jo_text(o[..])); }
-    if !cc_key(h, t, d, reply[..]) { return cc_stop(journal, "input-interrupted"); }
-    previous = s; proc_sleep(500);
+    applied := ifx d.action == CT_SELECT then cc_select(h,t,point,reply[..]) else cc_key(h, t, d, reply[..]);
+    if !applied { return cc_stop(journal, "input-interrupted"); }
+    if d.action == CT_SELECT { pending_visual = true; }
+    if !engaged && (d.action == CT_FORWARD || d.action == CT_SKIP) { visual_bound = false; }
+    previous = s; previous_nav = nav; last_action = d.action; proc_sleep(500);
   }
   return cc_stop(journal, "observation-budget");
 }
