@@ -13,7 +13,7 @@
 #load "../../lib/sys/fs.coax";
 
 DB_MAX :: 8;
-DbBot :: struct { seat: int = -1; x: f32; z: f32; seen: bool; d: int; refused: int; }
+DbBot :: struct { seat: int = -1; x: f32; z: f32; seen: bool; d: int; refused: int; m: [1] WireMirror; }   // m: the rows its D's left, as a page's (its I's HEARD)
 DbWorld :: struct { seats: [64] bool; px: [64] f32; pz: [64] f32; }
 
 db_atan2 :: (y: f32, x: f32) -> f32 {
@@ -27,26 +27,22 @@ db_atan2 :: (y: f32, x: f32) -> f32 {
   if y < 0 { r = -r; }
   return r;
 }
-// Every player's place in a D frame (bot's own view), and the bot's own seat from y.
+// Every player's place as the bot's D frames leave them (its mirror, as a page's: wire 3 sends a
+// row only when it changed), and the bot's own seat from y.
 db_hear :: (b: [] DbBot, w: [] DbWorld, t: string, notes: string) {
   if rs_starts(t, "y ") { b[0].seat = rs_num(rs_field(t, 1)); return; }
   if rs_starts(t, "r ") { b[0].refused += 1; if notes.count > 0 { _ := fs_append(notes, t); _ = fs_append(notes, "\n"); } return; }
   if rs_starts(t, "e cast ") && notes.count > 0 { _ := fs_append(notes, t); _ = fs_append(notes, "\n"); }
   if !rs_starts(t, "D ") { return; }
   b[0].d += 1;
-  at := 0; sp := 0;
-  while at < t.count && sp < 4 { if t[at] == ' ' { sp += 1; } at += 1; }
+  _ := wire_mirror_frame(b[0].m[..], t);
   for q: 0..<64 { w[0].seats[q] = false; }
-  while at < t.count {
-    e := at;
-    while e < t.count && t[e] != ';' { e += 1; }
-    en := t[at..<e];
-    at = e + 1;
-    if rs_field(en, 0) != "p" { continue; }
-    ss := rs_num(rs_field(en, 1));
-    if ss < 0 || ss >= 64 { continue; }
-    w[0].seats[ss] = true; w[0].px[ss] = f32(rs_num(rs_field(en, 2))) / 100; w[0].pz[ss] = f32(rs_num(rs_field(en, 4))) / 100;
-    if ss == b[0].seat { b[0].x = w[0].px[ss]; b[0].z = w[0].pz[ss]; b[0].seen = true; }
+  for e: 0..<WIRE_MIRROR {
+    r := wire_mirror_get(b[0].m[..], e);
+    if r.id < 0 || r.kind != WK_PLAYER || r.id >= 64 { continue; }
+    ss := r.id;
+    w[0].seats[ss] = true; w[0].px[ss] = r.x; w[0].pz[ss] = r.z;
+    if ss == b[0].seat { b[0].x = r.x; b[0].z = r.z; b[0].seen = true; }
   }
 }
 // The page's seat: a player that is no bot's (-1 none yet).
@@ -63,9 +59,16 @@ db_page_seat :: (b: [] DbBot, n: int, w: [] DbWorld) -> int {
 #test "the bots read seats and places from D" {
   b: [2] DbBot; w: [1] DbWorld;
   db_hear(b[0..<1], w[..], "y 1 2 1700000000000", "");
-  db_hear(b[0..<1], w[..], "D 10 3 0 x;p 0 500 0 -8400 0 0 0 0 1 0 0;p 1 100 0 200 0 0 0 0 1 0 0", "");
-  #assert b[0].seat == 1 && b[0].seen && b[0].x == 1 && b[0].z == 2 && b[0].d == 1;
-  #assert db_page_seat(b[..], 1, w[..]) == 0 && w[0].pz[0] == -84;
+  // a snapshot with both players, as the room writes it
+  zero: [WIRE_SF] s32; row: [WIRE_SF] s32;
+  f: [WIRE_SERVER_FRAME] u8;
+  n := wire_put_d(f[..], 0, WireD.{tick = 10, ack = 3, f = 1});
+  wire_s_pack(WireS.{id = 0, kind = WK_PLAYER, x = 5, z = -84}, row[..]); n = wire_put_s(f[..], n, 0, 0, zero[..], row[..]);
+  n = wire_sep(f[..], n);
+  wire_s_pack(WireS.{id = 1, kind = WK_PLAYER, x = 1, z = 2}, row[..]); n = wire_put_s(f[..], n, 1, 0, zero[..], row[..]);
+  db_hear(b[0..<1], w[..], cast(string) f[0..<n], "");
+  #assert b[0].seat == 1 && b[0].seen && abs(b[0].x - 1) < 0.01 && abs(b[0].z - 2) < 0.01 && b[0].d == 1 && b[0].m[0].heard == 10;
+  #assert db_page_seat(b[..], 1, w[..]) == 0 && abs(w[0].pz[0] + 84) < 0.01;
   #assert db_atan2(1, 0) > 1.57 && db_atan2(1, 0) < 1.58;
 }
 
@@ -117,6 +120,7 @@ tool_main :: () -> int #export_c {
       m: [128] u8;
       k := rs_put(m[..], rs_int(m[..], rs_put(m[..], 0, "I "), seq[i]), " 0 ");
       k = rs_int(m[..], k, ahead); k = rs_put(m[..], k, " 0 0 "); k = rs_int(m[..], k, cast(int) (yaw * 10000)); k = rs_put(m[..], k, " "); k = rs_int(m[..], k, run);   // THETA in 0.1 mrad (WIRE_FINE)
+      k = rs_put(m[..], k, " "); k = rs_int(m[..], k, b[i].m[0].heard);   // HEARD: the newest tick its rows came whole
       _ := relay_conn_send(c[i..<i + 1], cast(string) m[0..<k]);
     }
     // Hold Person on the page's player, when the check asks

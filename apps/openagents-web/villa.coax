@@ -2099,9 +2099,10 @@ hc_uneven :: (f: int) -> f32 {
     #assert ac.ticks == i + 1;
     ref[i] = a[0].orbit;
   }
-  // it followed: the pivot came along the path, and walking east swung the camera round
+  // it followed: the pivot came along the path; walking east never turned the camera (only a look
+  // does, aethyr/camera.coax verse_orbit_follow, #12718)
   #assert ref[HC_STEPS - 1].pivot.x > f32(SPAWN_X) + 2 && ref[HC_STEPS - 1].pivot.z > f32(SPAWN_Z) + 3;
-  #assert ref[HC_STEPS - 1].yaw != ref[HC_TURN - 1].yaw;
+  #assert ref[HC_STEPS - 1].yaw == ref[HC_TURN - 1].yaw;
   fps := ifx r == 0 then 30 else ifx r == 1 then 60 else ifx r == 2 then 120 else 144;
   b: [1] Villa; villa_start(b[..]); villa_on_realm_clock(b[..]);
   bc: realm_loop.FrameClock;

@@ -130,9 +130,8 @@ FREE_PITCH_MIN :: -0.55;     // looking up past the horizon
 FREE_PITCH_MAX :: 1.3;       // nearly straight down
 FREE_FOLLOW :: 12.0;         // per second: the pivot catching up with you
 FREE_JUMP :: 12.0;           // metres: further than this in a frame is a cut
-FREE_RECENTRE_AFTER :: 1.4;  // seconds after the last look before it swings
-FREE_RECENTRE :: 1.3;        // per second: swinging behind where you walk
-FREE_TOWARD :: 2.4;          // radians: walking at the camera this square doesn't swing it
+FREE_RECENTRE_AFTER :: 1.4;  // seconds after the last look before the pitch eases back
+FREE_RECENTRE :: 1.3;        // per second: the pitch easing back while you walk
 FREE_ZOOM :: 9.0;            // per second: easing to the zoom asked for
 FREE_OUT :: 2.5;             // per second: backing out once scenery lets go
 FREE_CLEAR :: 0.25;          // how far the eye keeps from scenery
@@ -226,9 +225,12 @@ verse_orbit_zoom :: (o: Orbit, delta: f32) -> Orbit #export_c {
   return next;
 }
 
-// You are at feet, heading that way (yaw) when moving. The pivot catches
-// up; a while after the last look, walking swings the camera gently in
-// behind you, except when you walk at it.
+// You are at feet, moving or not. The pivot catches up, and a while after
+// the last look, walking eases the pitch back. The yaw is never turned here:
+// only your look turns it. Your controls move you along the camera, so a
+// camera that swung toward where you walk turned that way with it, and held
+// W and D (or any heading off straight ahead) circled it about a radian a
+// second with no look at all (#12718). heading is kept for the callers.
 verse_orbit_follow :: (o: Orbit, feet: Point, heading: f32, moving: bool, dt: f32) -> Orbit #export_c {
   next := o;
   t := ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32;
@@ -239,12 +241,8 @@ verse_orbit_follow :: (o: Orbit, feet: Point, heading: f32, moving: bool, dt: f3
   next.idle = lo(o.idle + t, 1000);
   // Looking out of your eyes it never swings: you walk where you look.
   outside := 1 - verse_orbit_first(o);
-  if moving && finite(heading) && next.idle >= f32(FREE_RECENTRE_AFTER) && outside > 0.001 {
+  if moving && next.idle >= f32(FREE_RECENTRE_AFTER) && outside > 0.001 {
     ramp := clamp01((next.idle - f32(FREE_RECENTRE_AFTER)) / 0.6) * outside;
-    d := wrap_angle(heading - o.yaw);
-    if abs(d) < f32(FREE_TOWARD) {
-      next.yaw = wrap_angle(o.yaw + d * settle(f32(FREE_RECENTRE), t) * ramp);
-    }
     next.pitch = lerp(o.pitch, f32(FREE_PITCH), settle(f32(FREE_RECENTRE), t) * ramp);
   }
   next.zoom = lerp(o.zoom, o.want, settle(f32(FREE_ZOOM), t));
@@ -531,22 +529,19 @@ settled :: (o: Orbit) -> Orbit {
   #assert same(verse_orbit_follow(o, v3(f32(0.0 / 0.0), 0, 0), 0, true, 0.1).pivot, o.pivot, 0);
 }
 
-#test "walking swings it behind you, a while after you last looked" {
-  o := verse_orbit_look(verse_orbit_start(v3(0, 0, 0), 0), 0.001, 0);
-  // Right after a look it holds.
-  a := verse_orbit_follow(o, v3(0, 0, 0), f32(PI) / 2, true, 0.5);
-  #assert near(a.yaw, o.yaw, 0.00001);
-  // Later it swings toward where you walk (+X, a quarter turn) without overshooting.
-  for i: 0..<600 { a = verse_orbit_follow(a, v3(0, 0, 0), f32(PI) / 2, true, 1.0 / 60.0); }
-  #assert near(a.yaw, f32(PI) / 2, 0.02);
-  // Standing still it doesn't.
+#test "walking never turns the camera: whatever way you walk, only your look turns it (#12718)" {
+  o := verse_orbit_look(verse_orbit_start(v3(0, 0, 0), 0), 0.001, 0.3);
+  // each way you can walk, for 10 s: the yaw stays; a while after the look the pitch eases back
+  for k: 0..<8 {
+    heading := f32(k) * f32(PI) / 4;
+    a := o;
+    for i: 0..<600 { a = verse_orbit_follow(a, v3(0, 0, 0), heading, true, 1.0 / 60.0); }
+    #assert near(a.yaw, o.yaw, 0.00001) && abs(a.pitch - f32(FREE_PITCH)) < abs(o.pitch - f32(FREE_PITCH));
+  }
+  // standing still, the pitch stays too
   b := o;
-  for i: 0..<600 { b = verse_orbit_follow(b, v3(0, 0, 0), f32(PI) / 2, false, 1.0 / 60.0); }
-  #assert near(b.yaw, o.yaw, 0.00001);
-  // Nor walking at the camera.
-  c := o;
-  for i: 0..<600 { c = verse_orbit_follow(c, v3(0, 0, 0), f32(PI), true, 1.0 / 60.0); }
-  #assert near(c.yaw, o.yaw, 0.00001);
+  for i: 0..<600 { b = verse_orbit_follow(b, v3(0, 0, 0), 0, false, 1.0 / 60.0); }
+  #assert near(b.yaw, o.yaw, 0.00001) && near(b.pitch, o.pitch, 0.00001);
 }
 
 #test "a tree behind you pulls the eye in at once; it backs out gently" {
