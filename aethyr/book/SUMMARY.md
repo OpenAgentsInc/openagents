@@ -93,7 +93,7 @@
 - [65. Sound from numbers: oscillators and envelopes](ch065-sound-from-numbers.md)
 - [66. A sequencer on the beat grid](ch066-a-sequencer-on-the-beat-grid.md)
 - [67. Scores, mixing and a soundtrack](ch067-scores-mixing-and-a-soundtrack.md)
-- [68. Sound in the world: playback, space and reaction](ch068-sound-in-the-world.md) — design draft
+- [68. Sound in the world: playback, space and reaction](ch068-sound-in-the-world.md) — partly implemented
 - [69. Voices in a realm](ch069-voices-in-a-realm.md) — partly implemented
 
 **IX. A living world**
