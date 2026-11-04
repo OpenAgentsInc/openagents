@@ -80,6 +80,9 @@ E5rRaid :: struct {
   n: int;
   who: [E5R_RAID_PEOPLE] E5rRaider;
   casts: [E5R_RAID_CASTS] E5rRaidCast; cast_n: int; cast_read: int;
+  // what of the palisade's breach sections the page's town has broken (rt_wall_broke): the cult goes
+  // through only there (#12747)
+  holes: [RT_TOWN_GATES * RT_BREACHES] int;
 }
 
 E5R_DEFEND_ROLES :: [12] int.[RS_NPC_GUARD, RS_NPC_GUARD, RS_NPC_KNIGHT, RS_NPC_GUARD, RS_NPC_GUARD, RS_NPC_GUARD,
@@ -149,6 +152,10 @@ e5r_raid_start :: (r: [] E5r, lead_x: f32, lead_z: f32, gate_x: f32, gate_z: f32
 }
 
 e5r_raid_started :: (r: [] E5r) -> bool #export_c { return r[0].raid[0].started; }
+// The page's town: the palisade whole again (then each post down, e5r_raid_broke).
+e5r_raid_whole :: (r: [] E5r) #export_c { for n: 0..<RT_TOWN_GATES * RT_BREACHES { r[0].raid[0].holes[n] = 0; } }
+// A palisade post down in the page's town at (x, z) (everglade-raid-preview.coax everglade_raid_wall).
+e5r_raid_broke :: (r: [] E5r, x: f32, z: f32) #export_c { rt_wall_broke(r[0].raid[0].holes[..], x, z); }
 e5r_raid_t :: (r: [] E5r) -> f32 #export_c { return r[0].raid[0].t; }
 // Where the page's player stands: the cult stops short of it (a preview's player is no one's quarry).
 e5r_raid_you :: (r: [] E5r, x: f32, z: f32) #export_c { r[0].raid[0].you_x = x; r[0].raid[0].you_z = z; }
@@ -332,6 +339,7 @@ e5r_raid_step :: (r: [] E5r, dt: f32) {
   b := r[0].b[..];
   w[0].t += dt;
   t := w[0].t;
+  w[0].gate = rt_with_holes(w[0].holes[..], w[0].gate);   // its wall as the page's town has it now
   g := w[0].gate;
   period := f32(RT_VOLLEY_BEATS) * rs_beat(b);
   call := ifx t < f32(E5R_RAID_CALL) then -1 else int((t - f32(E5R_RAID_CALL)) / period);
@@ -397,13 +405,11 @@ e5r_raid_step :: (r: [] E5r, dt: f32) {
     }
     dx := tx - a[0].x; dz := tz - a[0].z;
     d := sqrt(dx * dx + dz * dz);
-    // the cult goes round the town's walls and buildings, in by the gate or a breach (rt_way): it
-    // stops `stop` short of its goal, not of a corner on the way, and slides along what it meets
-    wx := dx; wz := dz; wd := d; direct := true;
-    if !a[0].town {
-      rt_way(g, a[0].x, a[0].z, tx, tz, w[0].you_x, w[0].you_z, f32(RT_SPAWN_R), p[..]);
-      wx = p[0] - a[0].x; wz = p[1] - a[0].z; wd = sqrt(wx * wx + wz * wz); direct = p[2] > 0.5;
-    }
+    // the cult and the watch go round the town's trees, walls and buildings, through the palisade
+    // by a gate or a breach (rt_way; the cult round the ground about you too): each stops `stop`
+    // short of its goal, not of a corner on the way, and slides along what it meets
+    rt_way(g, a[0].x, a[0].z, tx, tz, w[0].you_x, w[0].you_z, ifx a[0].town then 0.0f32 else f32(RT_SPAWN_R), p[..]);
+    wx := p[0] - a[0].x; wz := p[1] - a[0].z; wd := sqrt(wx * wx + wz * wz); direct := p[2] > 0.5;
     left := ifx direct then wd - stop else wd;
     if d > stop && left > 0 && wd > 0.0001 {
       speed := f32(E5R_RAID_RUN) * f32(b[0].c[i].speed) / 40.0 * (ifx run then f32(E5R_RAID_DASH) else 0.55f32);
@@ -415,9 +421,9 @@ e5r_raid_step :: (r: [] E5r, dt: f32) {
         ml := sqrt(mx * mx + mz * mz);
         lim := speed * dt;
         if ml > lim && ml > 0 { mx = mx / ml * lim; mz = mz / ml * lim; }
-        rt_slide(g, a[0].x, a[0].z, mx, mz, p[..]);
-        mx = p[0] - a[0].x; mz = p[1] - a[0].z;
       }
+      rt_slide(g, a[0].x, a[0].z, mx, mz, p[..]);
+      mx = p[0] - a[0].x; mz = p[1] - a[0].z;
       a[0].x += mx; a[0].z += mz;
       a[0].speed = sqrt(mx * mx + mz * mz) / hi_r(dt, 0.0001);
       a[0].yaw = e5rr_heading(wx, wz);
@@ -536,23 +542,34 @@ e5r_raid_step :: (r: [] E5r, dt: f32) {
   #assert out[1] < -56;
 }
 
-#test "raid: the cult goes round the stables, the houses, the walls and the towers, in only by the gate or a breach (#12747)" #steps 4000000000 {
+#test "raid: the cult and the watch go round the stables, the houses, the park's trees, the walls and the towers, through the wall only by the gate or where it is broken (#12747)" #steps 6000000000 {
   r: [1] E5r;
   e5r_start(r[..], 7);
   e5r_raid_start(r[..], 0, -106, 0, -56, 0, -25);
   e5r_raid_you(r[..], 0, -16);
-  g := r[0].raid[0].gate;
-  clips := 0; through := 0;
+  // the page's town has the wall broken through at 12.6 to 15.4 m east of the gate (squad 1's breach);
+  // the others' breaches stand whole
+  posts: [64] f32; holes: [RT_TOWN_GATES * RT_BREACHES] int;
+  np := rt_test_break(holes[..], posts[..], 0, 1, 12.6, 15.4);
+  e5r_raid_whole(r[..]);
+  for q: 0..<np { e5r_raid_broke(r[..], posts[q * 2], posts[q * 2 + 1]); }
+  clips := 0; by_gate := 0; by_breach := 0; elsewhere := 0; through := 0;
+  was: [E5R_RAID_PEOPLE] f32;
+  for q: 0..<E5R_RAID_PEOPLE { was[q] = r[0].raid[0].who[q].z; }
   for f: 0..<1500 {
     e5r_step(r[..], r[0].b[0].clock + 0.04);
-    for q: 0..<E5R_RAIDERS {
+    for q: 0..<E5R_RAID_PEOPLE {
       a := r[0].raid[0].who[q];
-      if a.died_t >= 0 { continue; }
-      if rt_test_clips(g, a.x, a.z) { clips += 1; }
+      if a.died_t >= 0 { was[q] = a.z; continue; }
+      if rt_test_clips(a.x, a.z, posts[..], np) { clips += 1; }
+      // through the line of the South wall
+      if (was[q] + 56) * (a.z + 56) < 0 && abs(a.x) < 64 {
+        if abs(a.x) < 3 { by_gate += 1; } else if a.x > 12.6 && a.x < 15.4 { by_breach += 1; } else { elsewhere += 1; }
+      }
+      was[q] = a.z;
     }
   }
-  #assert clips == 0;
-  // and they got in
+  #assert clips == 0 && elsewhere == 0 && by_gate > 0 && by_breach > 0;
   for q: 1..<E5R_RAIDERS { a := r[0].raid[0].who[q]; if a.died_t < 0 && rt_inside(a.x, a.z) { through += 1; } }
   #assert through > 5;
 }

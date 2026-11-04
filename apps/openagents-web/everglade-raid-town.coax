@@ -1,8 +1,8 @@
 // The raid's footprints are the town's (#12747): everglade-raid-tactics.coax keeps its own copy of
 // what stands in the way (RT_BOX), as the room server doesn't load the plan; this check holds it
-// to verse/everglade/plan.coax.
-//   coax test apps/openagents-web/everglade-raid-town.coax
-#load "../../verse/everglade/plan.coax";
+// to verse/everglade/plan.coax and the trunks everglade.coax plants.
+//   coax test apps/openagents-web/everglade-raid-town.coax --only "raid paths"
+#load "everglade.coax";
 #load "everglade5e-rules.coax";
 
 // Whether RT_BOX's n-th footprint is box i of the plan's src (min x, min z, max x, max z).
@@ -19,6 +19,14 @@ rp_same_box :: (src: [] f32, i: int, n: int) -> bool {
   for i: 0..<EG_BUILDINGS { #assert rp_same_box(bld[..], i, n); n += 1; }
   for i: 0..<EG_RIVER { #assert rp_same_box(prp[..], i, n); n += 1; }
   for i: 0..<EG_DHOUSES { #assert rp_same_box(dh[..], i, n); n += 1; }
+  // the great lawn's park trees: each trunk's girth (everglade.coax girth_of) either side
+  #assert RT_TREES == EG_PARK_TREES;
+  for t: 0..<EG_PARK_TREES {
+    g := girth_of(EG_PARK_TREE[t * 4], EG_PARK_TREE[t * 4 + 1], EG_PARK_TREE[t * 4 + 2], 0, cast(int) EG_PARK_TREE[t * 4 + 3]);
+    k := n * 4;
+    #assert abs(RT_BOX[k] - (g.x - g.r)) < 0.001 && abs(RT_BOX[k + 1] - (g.z - g.r)) < 0.001 && abs(RT_BOX[k + 2] - (g.x + g.r)) < 0.001 && abs(RT_BOX[k + 3] - (g.z + g.r)) < 0.001;
+    n += 1;
+  }
   #assert n == RT_BOXES && RT_TOWN_GATES == EG_GATES;
   for k: 0..<EG_GATES * 4 { #assert RT_TOWN_GATE[k] == EG_GATE[k]; }
   // every solid of the plan's but the world's edges lies in one of them
@@ -32,4 +40,15 @@ rp_same_box :: (src: [] f32, i: int, n: int) -> bool {
     }
     #assert held;
   }
+}
+
+#test "raid paths: no woods within RT_AREA, so the park's are the only trees a raider meets" #steps 400000000 {
+  // everglade.coax plants its woods' trees, the undergrowth and the thicket only in the woods
+  // (everglade_in_woods) or at the world's edge; the open town has only the park's (RT_BOX)
+  a := f32(RT_AREA);
+  #assert a + 3 < f32(EG_THICKET);
+  for i: 0..<126 { for j: 0..<126 {
+    x := -a + f32(i) * 2; z := -a + f32(j) * 2;
+    #assert !everglade_in_woods(x, z);
+  } }
 }

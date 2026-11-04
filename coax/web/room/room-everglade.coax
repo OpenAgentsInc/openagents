@@ -262,6 +262,7 @@ eg_heard :: (v: [] RmServer, r: int, seat: int, text: string) {
     v[0].eg[k].rebuild = true;
     e5rr_folk_restore(v[0].eg[k].rules[..]);
     e5rr_zombies_clear(v[0].eg[k].rules[..]);   // the Warlock's Zombies fall with it
+    e5rd_wall_whole(v[0].eg[k].rules[..]);      // the palisade whole: the raid's breaches shut
     for q: 0..<EG_PIECES { v[0].eg[k].broken[q] = false; v[0].eg[k].burning[q] = false; }
     p := v[0].eg[k].seat[seat].pose;
     b: [32] u8;
@@ -579,6 +580,7 @@ rm_eg_piece :: (v: [] RmServer, k: int, kind: int, piece: int, a: f32, b: f32, c
   e: [96] u8; n := 0;
   if kind == 1 {
     v[0].eg[k].broken[piece] = true; v[0].eg[k].burning[piece] = false;
+    e5rd_wall_broke(v[0].eg[k].rules[..], x, z);   // a palisade post down opens a raid's breach (#12747)
     n = eg_put_break(e[..], piece, a, b, c);
   } else {
     v[0].eg[k].burning[piece] = a > 0.5;

@@ -83,7 +83,15 @@ E5rdRaid :: struct {
   // its volleys at the wall so far and the call it last fired on
   sq_id: [RT_SQUADS] int; sq_anchor: [RT_SQUADS] f32; sq_at: [RT_SQUADS] f32; sq_v: [RT_SQUADS] int; sq_last: [RT_SQUADS] int;
   xs: [E5RR_BEASTS] f32; zs: [E5RR_BEASTS] f32; on: [E5RR_BEASTS] bool;   // where each raid creature stands, this step
+  // what of the palisade's breach sections is broken in the room's town (rt_wall_broke): a raider
+  // goes through only there (#12747)
+  holes: [RT_TOWN_GATES * RT_BREACHES] int;
 }
+// A piece of the room's town broke at (x, z) (room-everglade.coax rm_eg_piece): a palisade post in
+// a breach section opens it.
+e5rd_wall_broke :: (r: [] E5rRoom, x: f32, z: f32) { rt_wall_broke(r[0].raid[0].holes[..], x, z); }
+// The town is whole again (a rebuild): no breach.
+e5rd_wall_whole :: (r: [] E5rRoom) { for n: 0..<RT_TOWN_GATES * RT_BREACHES { r[0].raid[0].holes[n] = 0; } }
 E5RD_WATCH_THROW :: 20;   // feet: a Guard's Spear thrown (its normal range, SRD 5.2.1 Weapons)
 E5RD_WATCH_LOOK :: 120;   // feet: how far the watch looks for a raider to shoot at
 
@@ -547,6 +555,7 @@ e5rd_step :: (r: [] E5rRoom, dt: f32) {
     i := E5RR_BEAST0 + q;
     bt[0].moving = false;
     if bt[0].form == E5RR_FORM_WARD || b[0].c[i].dead { continue; }
+    sl[0].g = rt_with_holes(w[0].holes[..], sl[0].g);   // its wall as the town has it now
     foe := bt[0].foe;
     if foe >= 0 && !e5rd_up(r, foe) { foe = -1; bt[0].foe = -1; }
     tx := bt[0].x; tz := bt[0].z; stop: f32 = 0.3;
@@ -792,11 +801,11 @@ e5rd_test_room :: (r: [] E5rRoom) {
   #assert doors >= 1 && dx * dx + dz * dz > 20 * 20;
 }
 
-#test "room raid: squads at every gate and the bridge go round the walls, towers and buildings, in only by a gate or a breach, and home again (#12747)" #steps 30000000000 {
+#test "room raid: squads at every gate and the bridge go round the walls, towers, buildings and trees, through the wall only by a gate or where the town's wall is broken, and home again (#12747)" #steps 30000000000 {
   r: [1] E5rRoom;
   e5rd_test_room(r[..]);
   // a squad of 8 Cultists 20 m out of each way in (room-events.coax ev_way, ev_gate): an even squad
-  // goes in by its gate, an odd one by its breach, the bridge's straight on
+  // goes in by its gate, an odd one by its breach where it is broken, the bridge's straight on
   ways: [5] RtGate;
   ways[0] = rt_gate(0, -56, 6, false, -64, 64, 0, 0);
   ways[1] = rt_gate(44, 60, 5, false, -64, 64, 0, 0);
@@ -812,39 +821,55 @@ e5rd_test_room :: (r: [] E5rRoom) {
       #assert e5rd_raider(r[..], RS_NPC_CULTIST, 1, s * 8 + k + 1, from[s * 2] + g.ax * side * 1.4, from[s * 2 + 1] + g.az * side * 1.4, g, s, k, p[0], p[1]) > 0;
     }
   }
+  // the room's town breaks the North wall's posts at 56.6 to 59.4 m (the north squad's breach, 14 m
+  // along from its gate), as the room's world tells it (rm_eg_piece); the West wall stands whole,
+  // so the west squad (odd too) goes in by the West Gate
+  posts: [64] f32; holes: [RT_TOWN_GATES * RT_BREACHES] int;
+  np := rt_test_break(holes[..], posts[..], 0, 5, 56.6, 59.4);
+  for q: 0..<np { e5rd_wall_broke(r[..], posts[q * 2], posts[q * 2 + 1]); }
   // Darian behind the south squad, by the South Gate
   #assert e5rd_arch(r[..], 30, -76, 0, -56, 0, -46) > 0;
   t: f32 = 0;
-  clips := 0;
-  for f: 0..<1400 {
+  clips := 0; by_gate := 0; by_breach := 0; elsewhere := 0;
+  inside: [E5RR_BEASTS] bool;
+  for q: 0..<E5RR_BEASTS { inside[q] = rt_inside(r[0].beasts[q].x, r[0].beasts[q].z); }
+  for f: 0..<2600 {
     t += 0.05; e5rr_step(r[..], t);
+    if f == 1400 { e5rd_flee(r[..]); }   // then they flee home the way they came
     for q: 0..<E5RR_BEASTS {
       bt := r[0].beasts[q];
       if !e5rd_is(bt) || bt.form == E5RR_FORM_WARD { continue; }
-      if rt_test_clips(r[0].raid[0].slot[q].g, bt.x, bt.z) { clips += 1; }
+      if rt_test_clips(bt.x, bt.z, posts[..], np) { clips += 1; }
+      // through the palisade: by one of the four gates, or the North wall's broken posts
+      now := rt_inside(bt.x, bt.z);
+      if now != inside[q] {
+        gate := false;
+        for n: 0..<RT_TOWN_GATES {
+          w := rt_town_gate(n);
+          if abs((bt.x - w.x) * w.ax + (bt.z - w.z) * w.az) < w.w / 2 && abs((bt.x - w.x) * w.ox + (bt.z - w.z) * w.oz) < 1.5 { gate = true; }
+        }
+        if gate { by_gate += 1; } else if bt.x > 56.6 && bt.x < 59.4 && abs(bt.z - 60) < 1.5 { by_breach += 1; } else { elsewhere += 1; }
+      }
+      inside[q] = now;
+    }
+    if f == 1399 {
+      // the squads got in: most of those standing are inside the palisade
+      in := 0; on := 0;
+      for q: 0..<E5RR_BEASTS {
+        bt := r[0].beasts[q];
+        if !e5rd_is(bt) || r[0].raid[0].slot[q].role == RT_LEAD || r[0].b[0].c[E5RR_BEAST0 + q].dead { continue; }
+        on += 1;
+        if rt_inside(bt.x, bt.z) { in += 1; }
+      }
+      #assert on > 0 && in * 10 >= on * 8;
     }
   }
-  #assert clips == 0;
-  // the squads got in: most of those standing are inside the palisade
-  in := 0; on := 0;
-  for q: 0..<E5RR_BEASTS {
-    bt := r[0].beasts[q];
-    if !e5rd_is(bt) || r[0].raid[0].slot[q].role == RT_LEAD || r[0].b[0].c[E5RR_BEAST0 + q].dead { continue; }
-    on += 1;
-    if rt_inside(bt.x, bt.z) { in += 1; }
-  }
-  #assert on > 0 && in * 10 >= on * 8;
-  // they flee home the way they came, by a gate or a breach, and are gone
-  e5rd_flee(r[..]);
-  for f: 0..<1200 {
-    t += 0.05; e5rr_step(r[..], t);
-    for q: 0..<E5RR_BEASTS {
-      bt := r[0].beasts[q];
-      if e5rd_is(bt) && rt_test_clips(r[0].raid[0].slot[q].g, bt.x, bt.z) { clips += 1; }
-    }
-  }
-  #assert clips == 0;
+  #assert clips == 0 && elsewhere == 0 && by_gate > 0 && by_breach > 0;
+  // and home, all gone
   left := 0;
   for q: 0..<E5RR_BEASTS { if e5rd_is(r[0].beasts[q]) { left += 1; } }
   #assert left == 0;
+  // a rebuild shuts the breach
+  e5rd_wall_whole(r[..]);
+  #assert r[0].raid[0].holes[1 * RT_BREACHES + 1] == 0;
 }

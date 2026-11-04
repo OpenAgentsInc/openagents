@@ -340,6 +340,7 @@ ev_rebuild :: (v: [] RmServer, k: int) {
   v[0].eg[k].rebuilt_at = v[0].eg[k].tick;
   e5rr_folk_restore(v[0].eg[k].rules[..]);
   e5rr_zombies_clear(v[0].eg[k].rules[..]);
+  e5rd_wall_whole(v[0].eg[k].rules[..]);   // the palisade whole: the raid's breaches shut
   for q: 0..<EG_PIECES { v[0].eg[k].broken[q] = false; v[0].eg[k].burning[q] = false; }
   b: [32] u8;
   eg_event(v, k, cast(string) b[0..<wire_put_rebuilt(b[..], 0)], 0, 0, true);

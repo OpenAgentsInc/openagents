@@ -63,6 +63,8 @@ RaidPreview :: struct {
   used: [PEOPLE_PARTS] int;  // the raid's instances of each part this frame
   shots: [RP_SHOTS] RpShot;
   arcs: [RP_ARCS] RpArc;
+  wall_t: f32 = -1;          // the raid's clock when the palisade's posts were last looked at (everglade_raid_wall)
+  wall_sig: int;             // and what was down then
 }
 
 // ?raid=preview (and &cine=1): you by the commons facing the South Gate, the raid to come.
@@ -90,6 +92,37 @@ everglade_raid_spot :: (s: [] Everglade, out: [] f32) -> int #export_c {
 everglade_raid_clock :: (s: [] Everglade, t: f32) #export_c {
   if !rp_on(s) { return; }
   s[0].rp.ready = true; s[0].rp.t = t;
+}
+// The palisade's posts down in this page's town (verse/demolish.coax: broken or knocked loose), so the
+// raid's breaches open only where its wall is broken through (everglade5e-raid.coax e5r_raid_broke;
+// #12747): looked at twice a second, into out the x, z of each, as many as out holds; their count,
+// or -1 when they are as they were.
+RP_WALL_EVERY :: 0.5;
+everglade_raid_wall :: (s: [] Everglade, out: [] f32) -> int #export_c {
+  if !rp_on(s) || !sp_on(s) || s[0].sp.dm.count == 0 { return -1; }
+  if s[0].rp.wall_t >= 0 && s[0].rp.t - s[0].rp.wall_t < f32(RP_WALL_EVERY) && s[0].rp.t >= s[0].rp.wall_t { return -1; }
+  s[0].rp.wall_t = s[0].rp.t;
+  dm := sp_dm(s);
+  n := 0; sig := 1;
+  for i: 0..<dm[0].n {
+    if dm[0].pieces[i].state == DP_STANDING { continue; }
+    x := dm[0].pieces[i].cx; z := dm[0].pieces[i].cz;
+    if !rp_in_palisade_wall(x, z) { continue; }
+    if n * 2 + 1 < out.count { out[n * 2] = x; out[n * 2 + 1] = z; n += 1; }
+    sig = (sig * 31 + i + 1) % 1000000007;
+  }
+  if sig == s[0].rp.wall_sig { return -1; }
+  s[0].rp.wall_sig = sig;
+  return n;
+}
+// Whether (x, z) is in one of the palisade's walls (plan.coax EG_PALISADE, not its gate towers).
+rp_in_palisade_wall :: (x: f32, z: f32) -> bool {
+  for i: 0..<EG_PALISADE_N {
+    k := i * EG_BOX;
+    if EG_PALISADE[k + 4] > 5 { continue; }
+    if x >= EG_PALISADE[k] - 0.2 && x <= EG_PALISADE[k + 2] + 0.2 && z >= EG_PALISADE[k + 1] - 0.2 && z <= EG_PALISADE[k + 3] + 0.2 { return true; }
+  }
+  return false;
 }
 // Where you stand (into out: x, z): 2, so the raid stops short of you.
 everglade_raid_you :: (s: [] Everglade, out: [] f32) -> int #export_c {
