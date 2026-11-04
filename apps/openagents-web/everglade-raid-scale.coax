@@ -4,9 +4,8 @@
 // (everglade-events.coax), so nothing about a raid's size is hidden. Pure arithmetic: no state.
 //
 // - The SIZE dial is the wave at RAID_SIZE_AT players. Each player present adds a share of it:
-//   the default 12 is about 2.4 raiders a player, and 24 about 5. At least RAID_WAVE_MIN come.
-//   (Played out at 1, 4 and 8 level 1 players with the watch, raid-proof.sh: 3 a player made the
-//   town fall at 4; 2.4 a player gives a fight they win about two times in three.)
+//   the default 12 is 3 raiders a player, and 24 is 6. At least RAID_WAVE_MIN come. (Played out
+//   at 1, 4 and 8 level 1 players with the watch and the siege tactics, raid-proof.sh: spec 4.2.)
 // - Fanatics and Warlocks grow wave by wave. Wave w of W has w / W of their dial parts, rounded
 //   down, but always one Warlock when the dial has any; the last wave has the dials' whole mix.
 // - The Warlocks' top level grows the same way, from level 1 in the first wave to the dial's.
@@ -14,7 +13,7 @@
 // Created with SRD 5.2.1 stat blocks (Cultist, Cultist Fanatic, Warlock): the System Reference
 // Document 5.2.1 by Wizards of the Coast LLC, licensed under CC-BY-4.0.
 
-RAID_SIZE_AT :: 5;     // the SIZE dial is the wave for this many players
+RAID_SIZE_AT :: 4;     // the SIZE dial is the wave for this many players
 RAID_WAVE_MIN :: 3;    // raiders a wave at least, whoever is there
 
 // Raiders in a wave for `players` present, by the SIZE dial.
@@ -58,8 +57,8 @@ raid_wave_counts :: (n: int, parts: [] int, out: [] int) {
 }
 
 #test "raid scale: a wave grows with the players; the Fanatics, Warlocks and their levels with the waves" {
-  #assert raid_wave_size(12, 1) == 3 && raid_wave_size(12, 4) == 10 && raid_wave_size(12, 5) == 12 && raid_wave_size(12, 8) == 19;
-  #assert raid_wave_size(24, 1) == 5 && raid_wave_size(24, 8) == 38 && raid_wave_size(4, 1) == 3 && raid_wave_size(12, 0) == 3;
+  #assert raid_wave_size(12, 1) == 3 && raid_wave_size(12, 4) == 12 && raid_wave_size(12, 5) == 15 && raid_wave_size(12, 8) == 24;
+  #assert raid_wave_size(24, 1) == 6 && raid_wave_size(24, 8) == 48 && raid_wave_size(4, 1) == 3 && raid_wave_size(12, 0) == 3;
   p: [3] int; c: [3] int;
   raid_wave_parts(6, 1, 3, 1, 2, p[..]);
   #assert p[0] == 6 && p[1] == 0 && p[2] == 1;

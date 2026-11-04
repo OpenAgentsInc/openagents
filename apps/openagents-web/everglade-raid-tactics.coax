@@ -10,7 +10,7 @@
 //     (rt_align, rt_volley);
 //   - the siege: outside the wall, the casters' line stands RT_CAST_LINE out and the screen before it.
 //     Half of each squad's casters focus their volleys on one of the gate's towers, where the watch's
-//     archers stand, then on the other; the other half, in parallel, open a breach in a wall section
+//     archers stand, then on the other (half the siege each); the other half, in parallel, open a breach in a wall section
 //     of their own (RT_BREACH). After RT_SIEGE_VOLLEYS volleys the squad goes in, by the gate or its
 //     breach, and the casters turn on the defenders and the players (rt_siege_aim, rt_order);
 //   - the leader stays at the back: RT_BACK behind his lines, toward where he came from, and casts
@@ -31,9 +31,9 @@ RT_GAP :: 2.6;              // m between squadmates in a line
 RT_SEP :: 1.8;              // m: raiders closer than this push apart
 RT_CAST_LINE :: 14.0;       // m outside the wall: the casters' line in a siege
 RT_SCREEN_LINE :: 8.0;      // m outside the wall: the screen, before the casters
-RT_SIEGE_VOLLEYS :: 4;      // a squad's volleys at the wall before it goes in
+RT_SIEGE_VOLLEYS :: 8;      // a squad's volleys at the wall before it goes in: half on each tower
 RT_SIEGE_S :: 24.0;         // s: a squad goes in after this long at most (a squad with no casters too)
-RT_VOLLEY_BEATS :: 2;       // the battle's beats between a squad's calls
+RT_VOLLEY_BEATS :: 1;       // the battle's beats between a squad's calls (one: every caster's every turn, on its squad's call)
 RT_TOWER_AT :: 0.75;        // a gate tower's middle, in gate widths from the gate's middle
 RT_BREACHES :: 6;
 RT_BREACH :: [6] f32.[-14, 14, -24, 24, -34, 34];   // m along the wall from its gate: the sections to breach
@@ -96,12 +96,12 @@ rt_breach_along :: (g: RtGate, s: int) -> f32 {
   return 0;
 }
 // What caster k of squad s aims at in its squad's volley v (RT_AIM_*), and where (into o: x, z).
-// The first RT_SIEGE_VOLLEYS: half on a gate tower, two volleys on one then two on the other; half on
+// The first RT_SIEGE_VOLLEYS: half on a gate tower, half of them on one then the rest on the other; half on
 // the squad's breach, a little across it each time so it opens wide. Then the foes (o untouched).
 rt_siege_aim :: (g: RtGate, s: int, k: int, v: int, o: [] f32) -> int {
   if v >= RT_SIEGE_VOLLEYS { return RT_AIM_FOES; }
   if k % 2 == 0 {
-    side := ifx (s + v / 2) % 2 == 0 then -1.0f32 else 1.0f32;
+    side := ifx (s + v / (RT_SIEGE_VOLLEYS / 2)) % 2 == 0 then -1.0f32 else 1.0f32;
     rt_at(g, side * g.w * f32(RT_TOWER_AT), 0, o);
     return RT_AIM_TOWER;
   }
@@ -243,8 +243,8 @@ rt_door :: (x: f32, z: f32, fx: f32, fz: f32, hx: f32, hz: f32, o: [] f32) {
   // the aims: half the casters on one tower for two volleys, then the other; half on a breach
   t0 := rt_siege_aim(south, 0, 0, 0, p[..]);
   #assert t0 == RT_AIM_TOWER && p[0] == -4.5 && p[1] == -56;
-  t1 := rt_siege_aim(south, 0, 0, 1, p[..]); #assert t1 == RT_AIM_TOWER && p[0] == -4.5;
-  t2 := rt_siege_aim(south, 0, 0, 2, p[..]); #assert t2 == RT_AIM_TOWER && p[0] == 4.5;
+  t1 := rt_siege_aim(south, 0, 0, RT_SIEGE_VOLLEYS / 2 - 1, p[..]); #assert t1 == RT_AIM_TOWER && p[0] == -4.5;
+  t2 := rt_siege_aim(south, 0, 0, RT_SIEGE_VOLLEYS / 2, p[..]); #assert t2 == RT_AIM_TOWER && p[0] == 4.5;
   #assert rt_siege_aim(south, 0, 1, 0, p[..]) == RT_AIM_WALL && abs(p[0] + 15.5) < 0.01 && p[1] == -56;
   t3 := rt_siege_aim(south, 1, 1, 0, p[..]); #assert t3 == RT_AIM_WALL && abs(p[0] - 12.5) < 0.01;
   #assert rt_siege_aim(south, 0, 1, RT_SIEGE_VOLLEYS, p[..]) == RT_AIM_FOES;
@@ -262,8 +262,9 @@ rt_door :: (x: f32, z: f32, fx: f32, fz: f32, hx: f32, hz: f32, o: [] f32) {
   // the places inside: spread, none on another
   for a: 0..<40 { rt_ring(a, 0, 0, 3, 12, p[..]); ax := p[0]; az := p[1]; for b: a + 1..<40 { rt_ring(b, 0, 0, 3, 12, p[..]); #assert (ax - p[0]) * (ax - p[0]) + (az - p[1]) * (az - p[1]) > 0.25; } }
   // the call: casters joining at different times share their squad's calls
-  #assert rt_align(10.2, 10, 1.5) == 13 && rt_align(9, 10, 1.5) == 10;
-  #assert rt_volley(13, 10, 1.5) == 1 && rt_volley(11.5, 10, 1.5) == -1 && rt_volley(10, 10, 1.5) == 0;
+  p2 := 1.5 * f32(RT_VOLLEY_BEATS);
+  #assert rt_align(10.2, 10, 1.5) == 10 + p2 && rt_align(9, 10, 1.5) == 10;
+  #assert rt_volley(10 + 2 * p2, 10, 1.5) == 2 && rt_volley(10, 10, 1.5) == 0 && rt_volley(9, 10, 1.5) == -1;
   // keeping apart: two on one spot push opposite ways
   up := [3] bool.[true, true, true];
   ax := [3] f32.[0, 0.5, 9]; az := [3] f32.[0, 0, 0];

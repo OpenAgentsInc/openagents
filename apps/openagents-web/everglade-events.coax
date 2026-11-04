@@ -31,7 +31,7 @@ EGE_DRUID_ORDER :: [10] int.[21, 22, 43, 28, 9, 26, 13, 27, 20, 47];
 EGE_DIALS :: 9;
 EGE_D_EVERY :: 0; EGE_D_WAVES :: 1; EGE_D_SIZE :: 2; EGE_D_AGGR :: 3; EGE_D_REWARD :: 4; EGE_D_MINUTES :: 5; EGE_D_WLLVL :: 6; EGE_D_CAP :: 7; EGE_D_GATES :: 8;
 EGE_DIAL_KEY :: [9] string.["every", "waves", "size", "aggression", "reward", "minutes", "warlock_level", "level_cap", "gates"];
-EGE_DIAL_WORD :: [9] string.["EVERY", "WAVES", "RAIDERS A WAVE FOR 5 PLAYERS", "AGGRESSION", "XP REWARD", "TIME LIMIT", "CULT WARLOCKS UP TO LEVEL", "LEVEL CAP", "GATES"];
+EGE_DIAL_WORD :: [9] string.["EVERY", "WAVES", "RAIDERS A WAVE FOR 4 PLAYERS", "AGGRESSION", "XP REWARD", "TIME LIMIT", "CULT WARLOCKS UP TO LEVEL", "LEVEL CAP", "GATES"];
 EGE_DIAL_LO :: [9] int.[0, 1, 4, 0, 50, 5, 1, 1, 1];
 EGE_DIAL_HI :: [9] int.[240, 8, 24, 3, 300, 30, 3, 3, 4];
 EGE_DIAL_STEP :: [9] int.[15, 1, 2, 1, 25, 5, 1, 1, 1];
@@ -728,9 +728,9 @@ ege_answered :: (s: [] Everglade, answer: string) -> bool {
   #assert e[0].parts[0] == 6 && e[0].parts[1] == 1 && e[0].parts[2] == 3;
   e[0].players = 4;
   sw: [160] u8; sn := ege_scale_words(e, 1, sw[..]);
-  #assert cast(string) sw[0..<sn] == "FOR 4 PLAYERS, WAVE 1: 10 RAIDERS · 9 CULTISTS, 1 WARLOCK UP TO LEVEL 1";
+  #assert cast(string) sw[0..<sn] == "FOR 4 PLAYERS, WAVE 1: 12 RAIDERS · 10 CULTISTS, 2 WARLOCKS UP TO LEVEL 1";
   sn = ege_scale_words(e, 8, sw[..]);
-  #assert cast(string) sw[0..<sn] == "FOR 4 PLAYERS, LAST WAVE: 10 RAIDERS · 6 CULTISTS, 1 FANATIC, 3 WARLOCKS UP TO LEVEL 3";
+  #assert cast(string) sw[0..<sn] == "FOR 4 PLAYERS, LAST WAVE: 12 RAIDERS · 7 CULTISTS, 1 FANATIC, 4 WARLOCKS UP TO LEVEL 3";
   e[0].players = 1; sn = ege_scale_words(e, 1, sw[..]);
   #assert cast(string) sw[0..<sn] == "FOR 1 PLAYER, WAVE 1: 3 RAIDERS · 3 CULTISTS";
   ege_dial(g[..], EGE_D_WAVES, 1);   // 8 is the top: nothing asked

@@ -130,7 +130,7 @@ that is closest. For the Cultist Raid, the first of these to happen ends it:
 | An admin presses STOP | Called off | `CALLED OFF` |
 
 The square is the town's central square, a circle of 18 m about its well. The cult holds it
-while more raiders stand in it than the town has there. Each player there counts as 3, and each
+while more raiders stand in it than the town has there. Each player there counts as 2, and each
 of the watch and the townsfolk as 1.
 
 ## 4. The Cultist Raid
@@ -158,16 +158,16 @@ SRD's XP for those ratings. The raid caps the cult's warlocks at level 3 (the Si
 **A wave's size and mix follow the players present** (`apps/openagents-web/everglade-raid-scale.coax`,
 shared by the room server and the admin pane, so the pane shows exactly what comes):
 
-- The **Wave size** dial is the wave for 5 players. Each player in the instance brings a fifth
-  of it, so the default 12 is about 2.4 raiders a player: 3 for one player, 10 for four, 19 for
-  eight. A wave has at least 3. At 24 it is about 5 a player, for a brutal raid.
+- The **Wave size** dial is the wave for 4 players. Each player in the instance brings a quarter
+  of it, so the default 12 is 3 raiders a player: 3 for one player, 12 for four, 24 for eight.
+  A wave has at least 3. At 24 it is 6 a player, for a brutal raid.
 - **Fanatics and Warlocks grow wave by wave.** Wave w of W has w/W of the Fanatic and Warlock
   parts, rounded down, and always one Warlock part when the dial has any. The last wave has
   the dials' whole mix, and Cultists are the rest.
 - **Warlock levels grow the same way**, from level 1 in the first wave to the dial's in the
   last.
-- With the defaults and 4 players, wave 1 is 9 Cultists and a level 1 Warlock. The last wave is
-  6 Cultists, a Fanatic and 3 Warlocks of levels 1 to 3.
+- With the defaults and 4 players, wave 1 is 10 Cultists and 2 level 1 Warlocks. The last wave
+  is 7 Cultists, a Fanatic and 4 Warlocks of levels 1 to 3.
 
 **The fallen stand again.** A player who falls in a room (0 Hit Points, dying or dead) stands
 again where they fell, with all their Hit Points, 10 s later, as a page on its own stands you up
@@ -207,13 +207,13 @@ and the page's offline preview (`?raid=preview`) both follow it:
 - **Roles.** Fanatics and one Cultist in three fight in melee and screen the casters. The other
   Cultists cast Fire Bolt, and the Warlocks cast Eldritch Blast. Fire Bolt for the Cultists is a
   house rule: the SRD's Cultist has no spells.
-- **Volleys.** A squad's casters fire together, on a call every 2 of the battle's beats (3 s).
-  Between calls, a caster holds its spell.
+- **Volleys.** A squad's casters fire together, on its call, every one of the battle's beats
+  (1.5 s): each caster joining a squad takes its turns on the squad's call.
 - **The siege.** Outside the wall, the casters stand in a line 14 m out, with the screen 8 m out
   in front of them. Half of each squad's casters focus their volleys on one of the gate's
-  towers, where the watch's archers stand: two volleys on one tower, then two on the other. The
+  towers, where the watch's archers stand: four volleys on one tower, then four on the other. The
   other half breach a wall section of their own, in parallel, 14 m to 34 m along the wall from
-  the gate. After 4 volleys, or 24 s at most, the squad goes in: an even squad by the gate, an
+  the gate. After 8 volleys, or 24 s at most, the squad goes in: an even squad by the gate, an
   odd one by its breach. Inside, the casters turn on the defenders and the players. A foe within
   12 m of a caster at the wall is shot first.
 - **The players' spawn is clear ground.** No raider comes within 12 m of the players' spawn, a
@@ -387,7 +387,7 @@ value outside one is set to the nearest end and shown as set.
 | Event | on, off | off | Whether events start, on a schedule or by START NOW. |
 | Every | off, 15 to 240 minutes | off | The schedule's period. |
 | Waves | 1 to 8 | 3 | How many waves before the climax. |
-| Wave size | 4 to 24 raiders | 12 | The wave for 5 players; it scales with the players present (section 4.2). |
+| Wave size | 4 to 24 raiders | 12 | The wave for 4 players; it scales with the players present (section 4.2). |
 | Cultists, Fanatics, Warlocks | 0 to 10 parts each | 6, 1, 3 | The last wave's mix, in parts; earlier waves have fewer Fanatics and Warlocks (section 4.2). |
 | Warlock levels | 1 to 3 | 3 | The last wave's warlocks are levels 1 up to this; earlier waves' go less high. |
 | Gates | any of 5 | all 5 | Where waves spawn. |
@@ -400,7 +400,7 @@ value outside one is set to the nearest end and shown as set.
 | Level cap | 1 to 3 | 2 | The highest level a character reaches. |
 
 The pane shows what the dials give for the players in your instance, the first wave's and the
-last's, for example `FOR 4 PLAYERS, WAVE 1: 10 RAIDERS · 9 CULTISTS, 1 WARLOCK UP TO LEVEL 1`.
+last's, for example `FOR 4 PLAYERS, WAVE 1: 12 RAIDERS · 10 CULTISTS, 2 WARLOCKS UP TO LEVEL 1`.
 At most 60 raiders stand in an instance at once, waves together, with Darian Odiodei and his 3 ward stones the raid's 64 places. A wave that would go past it spawns the rest as others
 fall.
 
@@ -510,9 +510,19 @@ XP saves the way HP does (#12715):
   `raid-check.coax`. Each player walks to the square and casts Starry Wisp at the nearest raider.
   The check reports what every seat heard: the phases, waves, raiders by kind, their casts, the
   hits on them, XP, refusals by reason, and the D rate. `RAID_DIALS` sets other dials.
-  - At the default dials (2 waves of 12), 8 level 1 players hold the square for a while, but
-    the raiders kill them and the town falls in wave 1. Every seat heard about 100 raider casts
-    and earned XP.
+  - The balance at the default dials (3 waves, Wave size 12, aggression 2), 3 rounds each, level 1
+    players with the watch, by the shared tactics (section 4.3). A fallen player stands again
+    after 10 s; "deaths" counts the casts refused because the caster was down.
+
+    | Players | Town held | Reached Darian's wards | Reached level 2 | Most XP a seat | Deaths a raid |
+    | --- | --- | --- | --- | --- | --- |
+    | 1 | 3 of 3 | 3 of 3 | 1 of 1 every round | 400 | 0 to 17 |
+    | 4 | 3 of 3 | 3 of 3 | 4 of 4 every round | 503 to 536 | 49 to 130 |
+    | 8 | 2 of 3 (fell at 328 s, in wave 3) | 2 of 3 | 4, 7 and 7 of 8 | 488 to 626 | 153 to 221 |
+
+    At 4 to 8 players, the town held 5 times in 6, and every round was a real fight. Before the
+    siege tactics, at 3 raiders a player, 4 players lost twice in two; the tactics' slower,
+    spread approach then made it too easy, until the casters volleyed every beat.
   - At light dials (1 wave of 4, Darian Odiodei at aggression 1), 16 players see the whole raid:
     the wave, the climax with Darian warded behind his stones, his withdrawal, and the town
     held. The tick stays at 30 Hz, and all its parts add up to about 1 ms a tick.

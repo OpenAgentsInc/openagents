@@ -47,7 +47,7 @@ EV_XP_MAX :: 9999999;
 EV_G :: 160;                    // the g entry's bytes at most
 // the raid (spec 4 and 5): at most this many raiders stand at once, waves together
 EV_STANDING_MAX :: 60;          // (with Darian Odiodei and 3 ward stones, the raid's 64 places: E5RD_MAX)
-EV_SQUARE_PLAYER :: 3;
+EV_SQUARE_PLAYER :: 2;
 EV_RISE_S :: 10;                // s a fallen player lies before standing again, whole, where they fell          // on the square a player counts as this many of the town
 EV_SQUARE_R :: 18.0;            // m: the square, about its well (plan.coax EG_SQUARE 0)
 EV_XP_SHARE_M :: 60.0;          // m: a seat this near where a raider fell shares its XP
@@ -807,7 +807,7 @@ ev_test_count :: (v: [] RmServer, k: int, form: int) -> int {
   ev_test_skip(v[..], k);
   #assert v[0].ev[k].phase == EV_WAVE && v[0].ev[k].wave == 1;
   m := raid_wave_size(24, 2);
-  #assert m == 10 && ev_raid_standing(v[..], k) == m && ev_test_count(v[..], k, -1) == m;
+  #assert m == 12 && ev_raid_standing(v[..], k) == m && ev_test_count(v[..], k, -1) == m;
   // the first wave: no Fanatic yet, one Warlock part in 7, all at level 1 (everglade-raid-scale.coax)
   pt: [3] int; ct: [3] int;
   raid_wave_parts(6, 1, 3, 1, 2, pt[..]); raid_wave_counts(m, pt[..], ct[..]);
