@@ -95,7 +95,7 @@ eg_old_hash :: (f: [] s32, id: int, row: string) -> int {
 // last sent (its own player every tick: its ACK is where the page re-runs from). WireSeat's held is
 // what the page holds, last the hash it was sent at, base a townsperson's height it was sent (a).
 // only_me: its socket is behind, only its own row (the rest go once it catches up).
-eg_old_rows :: (st: [] WireSeat, h: [] WireHist, me: int, px: f32, pz: f32, view: f32, only_me: bool, out: [] u8) -> int {
+eg_old_rows :: (st: [] WireSeat, h: [] WireHist, me: int, pick: [] f32, only_me: bool, out: [] u8) -> int {
   now := h[0].now; row := now % WIRE_BASES;
   n := 0; e: [WIRE_ROW] u8;
   for q: 0..<WIRE_SLOTS {
@@ -103,8 +103,7 @@ eg_old_rows :: (st: [] WireSeat, h: [] WireHist, me: int, px: f32, pz: f32, view
     id1 := cast(int) h[0].id[row * WIRE_SLOTS + q];
     a := (row * WIRE_SLOTS + q) * WIRE_SF;
     f := h[0].f[a..<a + WIRE_SF];
-    dx := h[0].x[q] - px; dz := h[0].z[q] - pz;
-    seen := id1 != 0 && (q == me || h[0].all[q] || dx * dx + dz * dz <= view * view);
+    seen := id1 != 0 && (q == me || pick[q] >= 0);   // its interest pick (room-blocks.coax eg_im_pick, #12789)
     m := ifx seen then eg_old_row(f, id1 - 1, e[..]) else 0;
     held := cast(int) st[0].held[q];
     if held != 0 && (m == 0 || held != id1) {
@@ -158,14 +157,17 @@ eg_old_send :: (v: [] RmServer, k: int, s: int) {
   c := st[0].conn;
   behind := !full && c >= 0 && c < CONNS && v[0].conns[c].waiting > EG_BEHIND;
   if behind { v[0].eg[k].behind_n += 1; }
-  n := eg_old_rows(st[0].rep[..], rm[0].hist[..], s, me.x, me.z, f32(EG_VIEW), behind, rows[..]);
+  pick: [WIRE_SLOTS] f32;
+  eg_im_pick(v, k, s, me.x, me.z, pick[..]);
+  unseen := eg_im_unseen(v, k, s, pick[..]);
+  n := eg_old_rows(st[0].rep[..], rm[0].hist[..], s, pick[..], behind, rows[..]);
   for q: 0..<wire_entries(cast(string) rows[0..<n], 0) {
     en := wire_entry(cast(string) rows[0..<n], 0, q);
     if en.count > 0 { eg_out_entry(o[..], v, k, s, f, en); }
   }
   for q: 0..<EG_SEATS {
     other := v[0].eg[k].seat[q];
-    if !other.live || !other.placed { st[0].heard_n[q] = 0; st[0].heard_w[q] = 0; continue; }
+    if !other.live || !other.placed || ((unseen >> q) & 1) != 0 { st[0].heard_n[q] = 0; st[0].heard_w[q] = 0; continue; }
     h := rm[0].cn_h[q];
     if h != st[0].heard_n[q] { a := q * EG_ENT; eg_out_entry(o[..], v, k, s, f, cast(string) rm[0].cn[a..<a + rm[0].cn_n[q]]); st[0].heard_n[q] = h; }
     w1 := v[0].eg[k].wanted[q] + 1;
@@ -175,9 +177,10 @@ eg_old_send :: (v: [] RmServer, k: int, s: int) {
       st[0].heard_w[q] = w1;
     }
   }
-  ev_send(v, k, s, full, o[..]);
+  ev_send(v, k, s, full, unseen, o[..]);
   for q: 0..<v[0].eg[k].ev_n {
     if !v[0].eg[k].ev_all[q] && !eg_near(me, v[0].eg[k].ev_x[q], v[0].eg[k].ev_z[q]) { continue; }
+    if eg_im_event_withheld(v, k, s, q, unseen) { continue; }
     a := v[0].eg[k].ev_at[q];
     eg_out_entry(o[..], v, k, s, f, cast(string) v[0].eg[k].ev[a..<a + v[0].eg[k].ev_len[q]]);
   }
