@@ -34,7 +34,9 @@ E5R_RAID_RUN :: 9.0;        // m/s at 40 feet (everglade5e-beasts.coax E5RR_RUN)
 E5R_RAID_DASH :: 1.3;       // the Dash's extra, compressed as the battle's beat is
 E5R_RAID_REACH :: 1.6;      // m: a melee attack's 5 feet, middle to middle
 E5R_RAID_MEET :: 9.0;       // m: a raider this near one of the watch goes for them; the watch steps out this far
-E5R_RAID_SHY :: 7.0;        // m: the cult stops this far short of you (the page's player)
+E5R_RAID_SHY :: 7.0;
+E5R_RAID_BODY :: 0.75;
+E5R_RAID_ON_ONE :: 3;       // the most of the cult on any one of the watch; the rest run on      // m: how near two can stand        // m: the cult stops this far short of you (the page's player)
 E5R_RAID_BLAST_FT :: 120; E5R_RAID_FIREBALL_FT :: 150;
 // what the page plays: the Warlock's spells (everglade-warlock.coax WL_BLAST, WL_FIREBALL), a shot
 E5R_RAID_K_BLAST :: 0; E5R_RAID_K_FIREBALL :: 1; E5R_RAID_K_ARROW :: 2; E5R_RAID_K_BOLT :: 3;
@@ -176,12 +178,14 @@ e5r_raid_slot :: (c: RsCreature) -> int {
 lo_r :: (a: f32, b: f32) -> f32 { return ifx a < b then a else b; }
 e5r_raid_gap :: (a: E5rRaider, x: f32, z: f32) -> f32 { dx := a.x - x; dz := a.z - z; return sqrt(dx * dx + dz * dz); }
 // The nearest of the other side to person q, alive (-1 none), within `reach` m.
-e5r_raid_foe :: (w: [] E5rRaid, b: [] RsBattle, q: int, reach: f32) -> int {
+// At most E5R_RAID_ON_ONE of the cult go for any one of the watch (`taken` counts them this beat).
+e5r_raid_foe :: (w: [] E5rRaid, b: [] RsBattle, q: int, reach: f32, taken: [] int) -> int {
   best := -1; gap := reach;
   a := w[0].who[q];
+  if taken.count < w[0].n { return -1; }
   for o: 0..<w[0].n {
     e := w[0].who[o];
-    if e.town == a.town || b[0].c[e.i].dead { continue; }
+    if e.town == a.town || b[0].c[e.i].dead || (!a.town && taken[o] >= E5R_RAID_ON_ONE) { continue; }
     d := e5r_raid_gap(e, a.x, a.z);
     if d < gap { gap = d; best = o; }
   }
@@ -217,6 +221,7 @@ e5r_raid_step :: (r: [] E5r, dt: f32) {
   wave := t >= f32(E5R_RAID_VOLLEY) && t >= f32(E5R_RAID_VOLLEY) + f32(w[0].wave) * f32(E5R_RAID_WAVE);
   if wave { w[0].wave += 1; }
   first := wave && w[0].wave == 1;
+  taken: [E5R_RAID_PEOPLE] int;
   for q: 0..<w[0].n {
     a := w[0].who[q..<q + 1];
     i := a[0].i;
@@ -243,14 +248,14 @@ e5r_raid_step :: (r: [] E5r, dt: f32) {
     if a[0].town {
       // the watch: back to its place, or out to meet one come near it
       tx = a[0].post_x; tz = a[0].post_z;
-      foe = e5r_raid_foe(w, b, q, ifx shooter then 30.0f32 else f32(E5R_RAID_MEET));
+      foe = e5r_raid_foe(w, b, q, ifx shooter then 30.0f32 else f32(E5R_RAID_MEET), taken[..]);
       if foe >= 0 && !shooter && e5r_raid_gap(w[0].who[foe], a[0].post_x, a[0].post_z) < f32(E5R_RAID_MEET) {
         tx = w[0].who[foe].x; tz = w[0].who[foe].z; stop = f32(E5R_RAID_REACH) * 0.8; run = true;
       }
     } else if !caster && t >= f32(E5R_RAID_CHARGE) {
       run = true;
-      foe = e5r_raid_foe(w, b, q, f32(E5R_RAID_MEET));
-      if foe >= 0 { tx = w[0].who[foe].x; tz = w[0].who[foe].z; stop = f32(E5R_RAID_REACH) * 0.8; }
+      foe = e5r_raid_foe(w, b, q, f32(E5R_RAID_MEET), taken[..]);
+      if foe >= 0 { taken[foe] += 1; tx = w[0].who[foe].x; tz = w[0].who[foe].z; stop = f32(E5R_RAID_REACH) * 0.8; }
       else {
         // to the gate first, a few abreast, then on up the road, spread across it
         ahead := (a[0].x - gx) * fx + (a[0].z - gz) * fz;
@@ -276,6 +281,13 @@ e5r_raid_step :: (r: [] E5r, dt: f32) {
       a[0].yaw = e5rr_heading(dx, dz);
     } else if foe >= 0 { a[0].yaw = e5rr_heading(w[0].who[foe].x - a[0].x, w[0].who[foe].z - a[0].z); }
     else if a[0].town { a[0].yaw = e5rr_heading(-fx, -fz); }
+    // nobody stands in another: each steps out of whoever is nearer than a body's width
+    for o: 0..<w[0].n {
+      if o == q || b[0].c[w[0].who[o].i].dead { continue; }
+      ox := a[0].x - w[0].who[o].x; oz := a[0].z - w[0].who[o].z;
+      od := sqrt(ox * ox + oz * oz);
+      if od < f32(E5R_RAID_BODY) && od > 0.0001 { push := (f32(E5R_RAID_BODY) - od) * 0.5; a[0].x += ox / od * push; a[0].z += oz / od * push; }
+    }
     b[0].c[i].x = e5r_sq(a[0].x); b[0].c[i].y = e5r_sq(a[0].z);
     // its turn
     if caster {
