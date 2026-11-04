@@ -488,15 +488,17 @@ E5_HOLD_RGB :: [12] f32.[1, 0.82, 0.36,   0.86, 0.6, 0.34,   0.62, 0.86, 1,   0.
 // Into `lines` (E5_LINE bytes each), their colour index into `tone`; how many.
 E5_LINE :: 48;
 e5_holds :: (s: [] Everglade, v: [] E5, lines: [] u8, sizes: [] int, tone: [] int) -> int {
-  if !s[0].wv.started { return 0; }
-  w := watch_w(s);
-  if watch_you(w[..])[0].dead { return 0; }
+  // the status state (everglade-status.coax): the room's, or offline the page's own watch
+  t := s[0].status[..];
   c := 0;
-  if watch_held(w) && c < E5_HOLDS { sizes[c] = e5_hold_line(lines[c * E5_LINE..<(c + 1) * E5_LINE], "HELD · HOLD PERSON · ", watch_you(w[..])[0].held_t); tone[c] = 0; c += 1; }
-  if watch_bound(w) && c < E5_HOLDS { sizes[c] = e5_hold_line(lines[c * E5_LINE..<(c + 1) * E5_LINE], "BOUND · EARTHBIND · ", watch_you(w[..])[0].bound_t); tone[c] = 1; c += 1; }
-  if watch_you(w[..])[0].slow_t > 0 && c < E5_HOLDS { sizes[c] = e5_hold_line(lines[c * E5_LINE..<(c + 1) * E5_LINE], "SLOWED · RAY OF FROST · ", watch_you(w[..])[0].slow_t); tone[c] = 2; c += 1; }
-  // the engine's conditions on you (none of Everglade's: Blinded and Deafened have their own words)
-  ec := cast(int) v[0].hero[11];
+  for i: 0..<t[0].n {
+    if t[0].e[i].who != ST_YOU || c >= E5_HOLDS { continue; }
+    m := st_line(s, i, lines[c * E5_LINE..<(c + 1) * E5_LINE]);
+    if m > 0 { sizes[c] = m; tone[c] = st_tone(t[0].e[i].cond); c += 1; }
+  }
+  // the engine's conditions on you (none of Everglade's: Blinded and Deafened have their own words):
+  // the room's in your COND, offline the rules' own (#12784 makes offline the room's)
+  ec := (st_cond(s, ST_YOU) | (ifx net_live(s) then 0 else cast(int) v[0].hero[11])) & 32767 & (-1 ^ st_named(s, ST_YOU));   // (a line above says those)
   if c < E5_HOLDS && ec != 0 {
     m := 0;
     for q: 0..<15 {

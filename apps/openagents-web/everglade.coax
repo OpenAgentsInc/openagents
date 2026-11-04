@@ -81,6 +81,7 @@
 #load "everglade-sky.coax";
 #load "everglade-room.coax";
 #load "everglade-net.coax";
+#load "everglade-status.coax";   // what holds or marks each body: one state every status is drawn from (#12776)
 #load "everglade-move.coax";   // the movement step the page and the room server share (with everglade-step.coax)
 #load "everglade-fork.coax";   // FORK, and a fork's rules (docs/verse/realm-fork.md)
 #load "everglade-forge.coax";   // EDIT opens Aethyrforge's panels (docs/verse/aethyrforge.md)
@@ -367,6 +368,7 @@ Everglade :: struct {
   width: f32; height: f32; dpr: f32;
   touch: bool;
   orbit: Orbit;
+  status: [1] EgStatus;   // what holds or marks each body this frame (everglade-status.coax st_fill)
   intent_x: f32; intent_z: f32;   // the motion your controls ask for (everglade_intent): the follow camera's heading
   held: int;
   drag_on: bool; drag_id: int; drag_x: f32; drag_y: f32;
@@ -4037,6 +4039,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   feet := v3(fx, fy, fz);
   if !finite3(feet) { feet = s[0].feet; }
   s[0].feet = feet; s[0].face = face; s[0].act = act;
+  st_fill(s);   // every body's conditions, from the room's state or the page's own (everglade-status.coax)
   speed := sqrt(vx * vx + vz * vz);
   // afloat, you are where the river holds you; else on the ground or the deck
   shown := feet_in_world(feet, walk_at(s, feet.x, feet.z));

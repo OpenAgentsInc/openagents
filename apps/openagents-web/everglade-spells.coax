@@ -1376,7 +1376,7 @@ spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
   sp_draw(s, dt);
   fx0 := s[0].sp.stage_n;
   if s[0].sp.on { ab_draw(s); eg_ra_draws(s); net_draw(s); }   // and what others' spells left (everglade-net.coax)
-  watch_on_you_draw(s);   // what holds you (everglade-watch.coax): Hold Person's rings, Earthbind's tendrils, frost
+  st_bodies_draw(s);   // what holds or marks every body (everglade-status.coax): Hold Person's rings, Earthbind's tendrils, frost
   s[0].sp.fx_by[3] += s[0].sp.stage_n - fx0;
   chimney_smoke(s, s[0].smoke_still);   // the town's wood smoke (everglade-dress.coax)
   fx0 = s[0].sp.stage_n;
