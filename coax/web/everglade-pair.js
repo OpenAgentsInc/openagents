@@ -107,13 +107,26 @@
   };
   const fetch0 = window.fetch;
   window.fetch = function (u, o) { try { const s = String(u && u.url || u); if (s.includes("/api/playtest/world/") && (!o || !o.method || o.method === "GET")) E.worldGets.push([now(), s]); } catch {} return fetch0.apply(this, arguments); };
+  // E.mute(): the room socket open now goes silent both ways and never says it closed, as a network
+  // that drops under a phone or a laptop does (nothing it sends arrives, nothing reaches the page);
+  // sockets opened after it are heard as usual. E.sockets counts the room sockets the page opened.
+  E.sockets = 0;
+  E.mute = () => { if (E.ws) E.ws.__muted = true; return E.ws ? 1 : 0; };
   const WS = window.WebSocket;
   window.WebSocket = class extends WS {
     constructor(u, p) {
       super(u, p);
-      if (String(u).includes("/relay/everglade/")) { E.ws = this; E.wsUrl = String(u).split("?")[0]; E.code = E.wsUrl.split("/").pop(); this.addEventListener("message", (m) => typeof m.data === "string" && hear(m.data)); }
+      if (String(u).includes("/relay/everglade/")) { E.ws = this; E.sockets++; E.wsUrl = String(u).split("?")[0]; E.code = E.wsUrl.split("/").pop(); this.addEventListener("message", (m) => !this.__muted && typeof m.data === "string" && hear(m.data)); }
     }
-    send(d) { if (this === E.ws && typeof d === "string") said(d); return super.send(d); }
+    set onmessage(f) { super.onmessage = f && ((m) => { if (!this.__muted) f(m); }); }
+    get onmessage() { return super.onmessage; }
+    set onclose(f) { super.onclose = f && ((m) => { if (!this.__muted) f(m); }); }
+    get onclose() { return super.onclose; }
+    set onerror(f) { super.onerror = f && ((m) => { if (!this.__muted) f(m); }); }
+    get onerror() { return super.onerror; }
+    send(d) { if (this.__muted) return; if (this === E.ws && typeof d === "string") said(d); return super.send(d); }
+    // a muted socket's close goes nowhere either: the server hears it no sooner than its own silence check
+    close(c, r) { if (this.__muted) { super.onmessage = null; super.onclose = null; super.onerror = null; return; } return super.close(c, r); }
   };
 
   // ---- the report

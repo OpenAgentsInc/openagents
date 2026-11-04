@@ -54,6 +54,12 @@ NET_PINGS :: 8;
 NET_SAY :: 4.0;            // s a refusal shows
 NET_GAME :: "everglade";
 NET_OFF :: 0; NET_OPENING :: 1; NET_OPEN :: 2; NET_DOWN :: 3;
+// A socket that goes quiet is closed and tried again: the server sends state every tick, so an open
+// socket that hears nothing for NET_SILENT_MS lost its network without a close (a phone between
+// networks, a laptop's wifi gone), which the browser can take minutes to notice; one opening that
+// hasn't opened in NET_OPEN_MS the same. A frame that comes NET_STALL_MS or more after the last one (a
+// hidden or frozen tab draws none) starts the wait again: the socket had no chance to be heard.
+NET_SILENT_MS :: 6000; NET_OPEN_MS :: 10000; NET_STALL_MS :: 1000;
 // what an entity is, on this page: a player, a townsperson or guard, else a creature or zone (WK_*)
 WK_PLAYER :: 0; WK_FOLK :: 1;
 NET_FOLK_ID :: 100000; NET_MADE_ID :: 200000;   // a townsperson's and a creature's ids in the table
@@ -116,6 +122,7 @@ EgNet :: struct {
   air: [WATCH_ACTORS] f32;   // how high over their feet each townsperson is, as the server says (a, m)
   said: [48] u8; said_n: int; said_t: f32;   // the last refusal's reason, or what became of the room
   lost: bool;                // the room's socket closed under you: said again when you're back
+  quiet_frames: int; quiet_since: int; quiet_fresh: bool = true; stepped_at: int;   // the quiet socket's watch (NET_SILENT_MS)
   hello_due: bool;
   pipe: [1] Pipe;
   out: [WIRE_FRAME] u8;
@@ -351,7 +358,7 @@ net_opened :: (s: [] Everglade, id: int) #export_c {
 // Closed: the world goes with it (nothing is shown that the server isn't saying), and the socket is
 // tried again after a wait that doubles to a minute.
 net_down :: (n: [] EgNet) {
-  n[0].state = NET_DOWN; n[0].sock = -1; n[0].seat = -1;
+  n[0].state = NET_DOWN; n[0].sock = -1; n[0].seat = -1; n[0].quiet_fresh = true;
   n[0].tries += 1;
   wait := 1000;
   for q: 0..<lo_int(n[0].tries - 1, 6) { wait *= 2; }
@@ -361,13 +368,26 @@ net_down :: (n: [] EgNet) {
   for i: 0..<WATCH_ACTORS { n[0].air[i] = 0; }
   n[0].fix_due = false; n[0].off_x = 0; n[0].off_y = 0; n[0].off_z = 0;
 }
+// The quiet socket's watch, each frame (NET_SILENT_MS): an open socket that heard nothing for that
+// long, or one still opening after NET_OPEN_MS, is closed, said, and tried again as a closed one is.
+net_quiet :: (s: [] Everglade, n: [] EgNet, mono: int) {
+  gap := mono - n[0].stepped_at; n[0].stepped_at = mono;
+  watched := n[0].sock >= 0 && (n[0].state == NET_OPEN || n[0].state == NET_OPENING);
+  if !watched || n[0].quiet_fresh || n[0].frames_in != n[0].quiet_frames || gap >= NET_STALL_MS {
+    n[0].quiet_frames = n[0].frames_in; n[0].quiet_since = mono; n[0].quiet_fresh = !watched; return;
+  }
+  if mono - n[0].quiet_since < (ifx n[0].state == NET_OPEN then NET_SILENT_MS else NET_OPEN_MS) { return; }
+  _ := pipe_close(n[0].pipe[..], n[0].sock);
+  if n[0].seat >= 0 { n[0].lost = true; net_tell(s, n, "LOST THE ROOM · REJOINING"); }
+  net_down(n);
+}
 // A socket event (message kind 256 + 4 * id + event, its text in the inbox): true when it was ours.
 net_event :: (s: [] Everglade, kind: int, text: string) -> bool #export_c {
   if !net_on(s) { return false; }
   n := net_of(s);
   ev := socket_event(kind);
   if ev.id < 0 || ev.id != n[0].sock { return false; }
-  if ev.event == SOCKET_OPENED { n[0].state = NET_OPEN; n[0].tries = 0; n[0].ping_n = 0; n[0].ping_at = 0; return true; }
+  if ev.event == SOCKET_OPENED { n[0].state = NET_OPEN; n[0].tries = 0; n[0].ping_n = 0; n[0].ping_at = 0; n[0].quiet_fresh = true; return true; }
   if ev.event == SOCKET_ERROR && text.count > 0 && n[0].state == NET_OPEN { return true; }   // a frame over the inbox cap: dropped
   if ev.event == SOCKET_CLOSED || ev.event == SOCKET_ERROR {
     if n[0].seat < 0 { jn_refused(s, n); }   // closed before a seat: full, or gone (everglade-join.coax)
@@ -753,6 +773,7 @@ net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: 
   n[0].mono = mono;
   n[0].feet_y = fy;
   y := fy + walk_at(s, x, z);
+  net_quiet(s, n, mono);
   jn_step(s, n);   // no instance yet: the list asked for (everglade-join.coax)
   if n[0].want && (n[0].state == NET_OFF || (n[0].state == NET_DOWN && mono >= n[0].retry)) && jn_ready(n) {
     // each open takes a fresh seat ticket (the room refuses a join without one): asked for, then used
@@ -1835,6 +1856,37 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   #assert net_event(a[..], SOCKET_KIND + SOCKET_CLOSED, "") && net_sky_day(a[..]) < 0 && net_sky_ms(a[..]) < 0;
   // and the wire's day is the page's 48-minute day, its seed the page's weather's
   #assert WIRE_DAY_MS == cast(int) (STYLE_CYCLE_SECONDS * 1000) && WIRE_WEATHER_SEED == EG_WEATHER_SEED;
+}
+#test "net: a socket that goes quiet is closed and tried again; a hidden tab's gap is not quiet" {
+  a: [1] Everglade; na: [1] EgNet;
+  #assert net_test_page(a[..], na[..], 0, "pa", 100);
+  #assert net_test_hear(a[..], 0, "y 0 1 5000100") && net_live(a[..]);
+  // frames every 100 ms: it stays
+  t := 100;
+  for k: 0..<80 { t += 100; _ := net_test_hear(a[..], 0, "t 1"); net_step(a[..], t, 0, 0, 0, 0, 0, 0, false, 0, false, 0); }
+  #assert net_live(a[..]);
+  pipe_drained(na[0].pipe[..]);
+  // the tab is hidden 40 s (no frames drawn), then draws again: a fresh wait, not a loss
+  t += 40000; net_step(a[..], t, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  for k: 0..<50 { t += 100; net_step(a[..], t, 0, 0, 0, 0, 0, 0, false, 0, false, 0); }
+  #assert net_live(a[..]);
+  // nothing heard past NET_SILENT_MS while drawing: closed, said, and opened again after the wait
+  for k: 0..<20 { t += 100; net_step(a[..], t, 0, 0, 0, 0, 0, 0, false, 0, false, 0); }
+  #assert !net_live(a[..]) && na[0].state == NET_DOWN && na[0].lost && cast(string) na[0].said[0..<na[0].said_n] == "LOST THE ROOM · REJOINING";
+  closed := false;
+  for k: 0..<na[0].pipe[0].n { if na[0].pipe[0].op[k] == PIPE_CLOSE && na[0].pipe[0].id[k] == 0 { closed = true; } }
+  #assert closed;
+  pipe_drained(na[0].pipe[..]);
+  // the face's close comes back for the old socket: it is no longer ours
+  #assert !net_event(a[..], SOCKET_KIND + SOCKET_CLOSED, "");
+  na[0].ticket_n = net_copy(na[0].ticket[..], "tk2");
+  t += 1100; net_step(a[..], t, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  #assert na[0].state == NET_OPENING && na[0].pipe[0].n >= 1 && na[0].pipe[0].op[0] == PIPE_OPEN;
+  pipe_drained(na[0].pipe[..]);
+  // it opens as socket 1 and never answers: past NET_OPEN_MS it is tried again
+  net_opened(a[..], 1);
+  for k: 0..<101 { t += 100; net_step(a[..], t, 0, 0, 0, 0, 0, 0, false, 0, false, 0); }
+  #assert na[0].state == NET_DOWN;
 }
 #test "net: a room lost under you is said, and so is getting back; a socket refused before a seat says no loss" {
   a: [1] Everglade; na: [1] EgNet;

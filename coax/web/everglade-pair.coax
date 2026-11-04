@@ -24,6 +24,8 @@
 //      once and never shows it after, and A's act is walking again on both sockets;
 //   7. Reverse Gravity (slot 4, #12733): A casts it, the server's cylinder (an entity from 900000) is
 //      on both pages, the server lifts A over 3 m (A's own word and B's D), A's press again ends it;
+//   7b. a silent network drop: A's socket goes quiet both ways without a close; A's page rejoins
+//      within 15 s, both have each other again, and on the site B draws A once (no twin);
 //   8. INVITE: a third page opens A's link (the page with ?room= A's instance, as INVITE copies it)
 //      and must sit in A's instance on A's shard, with A in its state; then B blocks A (BLOCK in the
 //      pane a nameplate opens): A's body goes from B's view at once, and again after B reloads;
@@ -365,6 +367,33 @@ ep_run :: (ca: [] Cdp, cb: [] Cdp, url: string, origin: string, mark: string, wh
   y1 := ep_int(ca, "__eg.probe(20)", -999999);
   all = ep_check(rg_off == 1 && gone && y1 < y0 + 100, "A's press again ends it on both pages and A comes down") && all;
   print("  A's y after % cm\n", y1);
+  // 7b. a silent network drop: A's socket goes quiet both ways and never says it closed (a phone
+  // between networks). A's page notices the quiet (everglade-net.coax NET_SILENT_MS), says so, opens a
+  // new socket and is back in the room; B has A again, and on the site only once (the server gives a
+  // player's silent socket's seat to their new one; a local relay has no player ids, so there the old
+  // seat stays until the server's own 20 s silence check)
+  ep_mark(ca, cb, "drop");
+  socks0 := ep_int(ca, "__eg.sockets", 0);
+  muted := ep_int(ca, "__eg.mute()", 0) == 1;
+  t_drop := proc_now_ms(); back := false;
+  deadline = proc_now_ms() + 20000;
+  while muted && !back && proc_now_ms() < deadline { proc_sleep(250); back = ep_int(ca, "__eg.sockets", 0) > socks0 && ep_int(ca, "__eg.live()", 0) == 1; }
+  back_ms := ifx back then proc_now_ms() - t_drop else -1;
+  sa_was := sa;
+  if back { sa = ep_int(ca, "__eg.seat", sa); }
+  tb := ep_int(cb, "Math.round(__eg.now())", -1);
+  qd: [1] Buf; bput(qd[..], "((__eg.others['"); bint(qd[..], sa); bput(qd[..], "'] || []).some((r) => r[0] >= "); bint(qd[..], tb); bput(qd[..], ") && __eg.probe(2) >= 1) ? 1 : 0");
+  rejoined := false;
+  deadline = proc_now_ms() + 8000;
+  while back && !rejoined && proc_now_ms() < deadline { proc_sleep(250); rejoined = ep_int(cb, btext(qd[..]), 0) == 1 && ep_int(ca, "__eg.probe(2)", 0) >= 1; }
+  local := ep_param(url, "relay").count > 0;
+  once := local;
+  deadline = proc_now_ms() + 5000;
+  while rejoined && !once && proc_now_ms() < deadline { proc_sleep(250); once = ep_int(cb, "__eg.probe(2)", 0) == 1; }
+  print("  drop: A back after % ms on socket % in seat % (was %); B has A again %, B's players drawn %\n", back_ms, ep_int(ca, "__eg.sockets", -1), sa, sa_was, rejoined, ep_int(cb, "__eg.probe(2)", -1));
+  all = ep_check(muted && back && back_ms <= 15000 && rejoined, "a silent network drop: A's page notices, rejoins within 15 s, and both have each other again") && all;
+  if local { print("skip no twin of A after the drop (?relay=: no player ids, the old seat stays until the server's 20 s silence check)\n"); }
+  else { all = ep_check(once, "after the drop B draws A once: the server gave A's silent seat to A's new socket") && all; }
   // B walks 4 s, so A has a moving remote body too
   ep_mark(ca, cb, "walk_b");
   _ = ep_w(cb, true); proc_sleep(4000); _ = ep_w(cb, false);
