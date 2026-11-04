@@ -389,6 +389,17 @@ rm_eg_begin :: (v: [] RmServer, k: int) -> bool #export_c {
   for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live { v[0].eg[k].seat[s].bank = least(v[0].eg[k].seat[s].bank + 1, EG_BANK); v[0].eg[k].seat[s].took = 0; } }
   return true;
 }
+// The host stalled past its beat (a room's world being built, a slow minute) and skipped `steps` ticks:
+// every seat is owed them (EG_BANK at most), so the inputs its page sent meanwhile are stepped over the
+// next ticks instead of waiting in the queue for good, a tick behind each (+300 ms ACK after a 400 ms
+// stall, for as long as the seat stayed). Only time that passed is owed: no page runs ahead.
+rm_eg_owe :: (v: [] RmServer, steps: int) #export_c {
+  if steps <= 0 { return; }
+  for k: 0..<EG_ROOMS {
+    if !v[0].eg[k].live { continue; }
+    for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live { v[0].eg[k].seat[s].bank = least(v[0].eg[k].seat[s].bank + least(steps, EG_BANK), EG_BANK); } }
+  }
+}
 // Seat s's next input to step this tick, EG_IN_FIELDS into out (SEQ KX KY PX PY THETA B); false when
 // none is queued, none owed, or EG_TICK_STEPS were stepped this tick.
 rm_eg_input :: (v: [] RmServer, k: int, s: int, out: [] int) -> bool #export_c {
@@ -886,6 +897,32 @@ eg_test_input :: (v: [] RmServer, seq: int) {
   stepped := 0;
   for q: 0..<10 { was := v[0].eg[k].seat[0].ack; eg_test_tick(v[..], k); stepped += v[0].eg[k].seat[0].ack - was; }
   #assert stepped <= EG_BANK + 10;
+}
+
+#test "everglade room: a host stall's skipped ticks are owed, so the inputs sent meanwhile don't wait in the queue for good" #steps 2000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  rm_clock(v[..], 0, 1762190000000);
+  ev := "GET /api/room/relay/everglade/pair-owe HTTP/1.1\r\n\r\n";
+  #assert rm_join(v[..], 0, ev) == 0;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  eg_test_tick(v[..], k);
+  seq := 0;
+  for q: 0..<30 { seq += 1; eg_test_input(v[..], seq); eg_test_tick(v[..], k); }
+  #assert v[0].eg[k].seat[0].ack == seq;
+  v[0].eg[k].seat[0].bank = 0;   // nothing owed (what it sat with spent)
+  // the host stalls 12 ticks (no tick ran); the page sent its 12 inputs meanwhile
+  for q: 0..<12 { seq += 1; eg_test_input(v[..], seq); }
+  rm_eg_owe(v[..], 12);
+  // then one a tick again: the 12 drain at 4 a tick, and nothing waits after
+  for q: 0..<6 { seq += 1; eg_test_input(v[..], seq); eg_test_tick(v[..], k); }
+  #assert v[0].eg[k].seat[0].ack == seq && v[0].eg[k].seat[0].q_n == 0;
+  // without what it is owed, the queue would have kept the 12
+  rm_eg_owe(v[..], 0);
+  v[0].eg[k].seat[0].bank = 0;
+  for q: 0..<12 { seq += 1; eg_test_input(v[..], seq); }
+  for q: 0..<6 { seq += 1; eg_test_input(v[..], seq); eg_test_tick(v[..], k); }
+  #assert v[0].eg[k].seat[0].ack < seq && v[0].eg[k].seat[0].q_n > 0;
 }
 
 #test "everglade room: a Warlock's seat casts the Warlock's bar and not the druid's; a druid's seat not the Warlock's; everyone hears the cast" #steps 2000000000 {

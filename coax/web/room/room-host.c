@@ -529,7 +529,10 @@ int main(int argc, char **argv) {
       reap();
       ticks++;
       next += tick;
-      if ((double)now - next > 250.0) next = (double)now + tick;   // a stall: start the beat again
+      if ((double)now - next > 250.0) {   // a stall: start the beat again, and owe every seat the everglade ticks it skipped
+        rm_eg_owe(view(), (int64_t)(((double)now - next) / tick / 2.0));
+        next = (double)now + tick;
+      }
       if (now - last_vitals >= 1000) { last_vitals = now; vitals_post(); directory_post(); }
       control_ask(); control_hear();
       if (now - last_report >= 60000) { printf("room: %lld ticks in %.1f s, %lld players, %lld frames over the rate limits, %lld queue full, %lld slow sockets closed, %lld bytes the most waiting\n", (long long)ticks, (now - last_report) / 1000.0, (long long)rm_players(view()), (long long)rm_relay_dropped(view()), (long long)rm_relay_queue_full(view()), (long long)slow_closed, (long long)out_peak);

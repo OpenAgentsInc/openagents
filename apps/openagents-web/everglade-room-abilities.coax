@@ -334,11 +334,11 @@ everglade_room_abilities :: (s: [] Everglade, dt: f32) #export_c {
 // Seat q's ability k: ON X Y Z YAW EPOCH (where its last cast was: the caster, or the aim). Whether it is up.
 everglade_room_life :: (s: [] Everglade, q: int, k: int, out: [] f32) -> bool #export_c {
   if !sp_on(s) || q < 0 || q >= EG_RA_SEATS || k < 0 || k >= AB_N || out.count < EG_RA_LIFE { return false; }
-  c := s[0].sp.room_ab[0].seat[q];
-  on := c.used && c.live[k];
+  c := s[0].sp.room_ab[0].seat[q..<q + 1];   // in place: a seat holds every ability's state, too big to copy per call
+  on := c[0].used && c[0].live[k];
   out[0] = ifx on then 1.0f32 else 0.0f32;
-  p := c.cast_at[k];
-  out[1] = p.x; out[2] = p.y; out[3] = p.z; out[4] = c.cast_face[k]; out[5] = f32(c.epoch[k]);
+  p := c[0].cast_at[k];
+  out[1] = p.x; out[2] = p.y; out[3] = p.z; out[4] = c[0].cast_face[k]; out[5] = f32(c[0].epoch[k]);
   return on;
 }
 // How high over their feet person i is (m), the highest any copy has them, or 0.
@@ -485,8 +485,8 @@ eg_ra_draws :: (s: [] Everglade) {
 // Whether seat q's copy draws ability k now (the server's zone or entity for it then isn't drawn).
 eg_ra_drawn :: (s: [] Everglade, q: int, k: int) -> bool {
   if q < 0 || q >= EG_RA_SEATS || k < 0 || k >= AB_N { return false; }
-  c := s[0].sp.room_ab[0].seat[q];
-  return c.used && c.live[k];
+  c := s[0].sp.room_ab[0].seat[q..<q + 1];
+  return c[0].used && c[0].live[k];
 }
 
 #test "room abilities: two seats' Reverse Gravity stand at once, each lifts what is in it, each caster's press ends only theirs" #steps 3000000000 {
