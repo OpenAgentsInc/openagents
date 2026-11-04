@@ -58,7 +58,7 @@ cp "$here"/*.c "$here"/*.h "$stage/src/"; cp -R "$here/migrations" "$here/Docker
 # deploy; release.sh already gates the compiler before it ships.
 (cd "$work/source" && coax/build.sh) > "$work/coax-build.log" 2>&1 || { tail -30 "$work/coax-build.log"; exit 1; }
 mkdir -p "$stage/gen"
-for m in nip98 mesh-policy caller-policy anime-director-policy seat-policy; do
+for m in nip98 mesh-policy caller-policy anime-director-policy seat-policy progress-policy; do
   "$work/source/coax/bin/coax" c "$here/$m.coax" --run-steps 250000000 --library --header "$stage/gen/$m.generated.h" > "$stage/gen/$m.generated.c"
 done
 tag="$region-docker.pkg.dev/$project/cloud-run-source-deploy/oa-api:${commit:0:12}-$(date +%Y%m%d-%H%M%S)"

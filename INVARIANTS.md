@@ -404,6 +404,26 @@ row in `access.admin_audit`. Checks: `coax/web/api/tests/cli_auth.coax`
 can't remove a root, nor can a root; a root adds and removes; the removed key
 is no admin).
 
+## A player's progress save is kept only from the revision there now
+
+Each progress slot (`verse.progress`, `coax/web/api/migrations/0119_progress_revisions.sql`)
+has a revision. `POST /api/playtest/progress/<world>/<name>` names the
+revision it was made from (`rev`), and the server keeps it only when that is
+the revision there now; otherwise it answers 409 with the revision and the
+saves there now, and changes nothing. No decision reads a device's clock: a
+kept save's time is the server's. `coax/web/api/progress-policy.coax`
+(`#authority`, 0 surviving mutants) decides; `player.c` gathers the facts
+under the slot's lock and SQL does what it says. Transition rule: a save that
+names no revision (a page built before 0119) is kept only while no page with
+revisions has saved the slot (`marked`, which never clears). A change that
+names no revision (a sign-in moving a guest's saves, an erase) gets a
+revision no device has read. On a 409 a page of progress takes the server's
+save; a page of where you are or the spell bar sends its own again from the
+server's revision (`apps/openagents-web/save.coax` `SaveSync`). Server-owned
+room state (`verse.room_vitals`: HP, XP) is not a progress save: only
+`oa-room` writes it, signed with the seat-ticket key, and XP only rises,
+also when a guest's row follows them into an account (0119 `vitals_follow`).
+
 ## A made realm's document changes only from the revision it was read at
 
 A made realm is a versioned document (`verse.realm_doc`,

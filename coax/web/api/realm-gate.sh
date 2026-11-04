@@ -35,10 +35,11 @@ trap 'kill ${api_pid:-} ${site_pid:-} 2>/dev/null || true; "$pg/pg_ctl" -D "$wor
 a="$here"
 "$coax" c "$a/anime-director-policy.coax" --library --header "$work/anime-director-policy.generated.h" > "$work/anime-director-policy.generated.c"
 "$coax" c "$a/seat-policy.coax" --library --header "$work/seat-policy.generated.h" > "$work/seat-policy.generated.c"
+"$coax" c "$a/progress-policy.coax" --library --header "$work/progress-policy.generated.h" > "$work/progress-policy.generated.c"
 "${cc[@]}" -std=c11 -O1 -w -D_DEFAULT_SOURCE -I"$work" "${flags[@]}" -o "$work/api" \
   "$a"/api.c "$a"/analytics.c "$a"/admin.c "$a"/player.c "$a"/rooms.c "$a"/npc.c "$a"/room.c "$a"/private.c "$a"/drops.c "$a"/villa.c "$a"/chat.c "$a"/realms.c \
   "$a"/access.c "$a"/makers.c "$a"/inference.c "$a"/mesh.c "$a"/mesh-policy.generated.c "$a"/caller-policy.generated.c "$a"/nip98.generated.c \
-  "$a"/anime.c "$work"/anime-director-policy.generated.c "$a"/seats.c "$work"/seat-policy.generated.c "$a"/nostr.c "$a"/email.c "$a"/jobs.c "$a"/relay.c "$a"/verse_packs.c "${libs[@]}"
+  "$a"/anime.c "$work"/anime-director-policy.generated.c "$a"/seats.c "$work"/seat-policy.generated.c "$work"/progress-policy.generated.c "$a"/nostr.c "$a"/email.c "$a"/jobs.c "$a"/relay.c "$a"/verse_packs.c "${libs[@]}"
 cli="$(COAX="$coax" "$repo/apps/openagents-cli/build.sh" | tail -1)"
 "$pg/initdb" -D "$work/db" -U postgres -A trust >/dev/null
 port=$((56000 + RANDOM % 1000)); api_port=$((57000 + RANDOM % 1000))

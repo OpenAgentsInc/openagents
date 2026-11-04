@@ -23,8 +23,10 @@
 //   GET/POST /api/playtest/world/<id>/settings  {view: {view: third|first|top, allowToggle}}
 //   POST /api/playtest/world/<id>/reset       the owner takes the published world down
 //   GET  /api/playtest/log/<id>               the edit log, newest first
-//   GET/POST /api/playtest/progress/<world>/<name>   an account's save {current, previous}, each
-//                                             {bytes (base64 AESV), at (ms)}; 409 when a later one is there
+//   GET/POST /api/playtest/progress/<world>/<name>   an account's save {rev, current, previous}, each
+//                                             {bytes (base64 AESV), at (ms)}; a POST {bytes, rev} is kept
+//                                             only from the revision there now, else 409 with what is
+//                                             (progress-policy.coax, migrations/0119_progress_revisions.sql)
 //   POST /api/playtest/progress/<world>/<name>/erase
 //   POST /api/playtest/change/<id>[/<cid>/accept|decline]   offered changes (0010_verse_offers.sql)
 //   POST /api/playtest/award, GET/POST /api/playtest/planets[/mine|/<id>]   a player's realm (0011_verse_planets.sql)
@@ -42,6 +44,7 @@
 // is refused. The automation mark is the analytics one.
 #include "api.h"
 #include "nostr.h"
+#include "progress-policy.generated.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -137,6 +140,66 @@ static void feedback(const request *q, PGconn *db, const char *parts) {
     if (!theirs) api_log("feedback: %s", PQerrorMessage(db));
     PQclear(r);
     api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not kept\"}");
+    return;
+  }
+  api_json(q->fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1));
+  PQclear(r);
+}
+
+// A progress save (#12719): the slot's facts under its lock (verse.progress_facts), the decision
+// progress-policy.coax makes on them, then SQL keeps the save or refuses it, in one transaction.
+static bool progress_run(PGconn *db, const char *sql) {
+  PGresult *r = PQexec(db, sql);
+  bool ok = PQresultStatus(r) == PGRES_COMMAND_OK;
+  if (!ok) api_log("progress: %s", PQerrorMessage(db));
+  PQclear(r);
+  return ok;
+}
+static void progress_save(const request *q, PGconn *db, const char *parts, const char *body, const char *who) {
+  if (!progress_run(db, "BEGIN")) { api_json(q->fd, 500, "{\"error\":\"not kept\"}"); return; }
+  const char *fv[3] = {parts, body, who};
+  PGresult *f = PQexecParams(db, "SELECT (f->>'status')::int, coalesce(f->'body', 'null')::text, f->>'acct', f->>'slot', "
+                                 "coalesce(f->>'rev', '0'), coalesce(f->>'marked', 'false'), coalesce(f->>'sent_rev', '-1') "
+                                 "FROM verse.progress_facts($1::text[], $2::jsonb, $3::jsonb) f", 3, NULL, fv, NULL, NULL, 0);
+  if (PQresultStatus(f) != PGRES_TUPLES_OK || PQntuples(f) != 1) {
+    const char *state = PQresultErrorField(f, PG_DIAG_SQLSTATE);
+    bool theirs = state && !strncmp(state, "22", 2);
+    if (!theirs) api_log("progress: %s", PQerrorMessage(db));
+    PQclear(f); progress_run(db, "ROLLBACK");
+    api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not kept\"}");
+    return;
+  }
+  int status = atoi(PQgetvalue(f, 0, 0));
+  if (status != 0) {
+    char *out = strdup(PQgetvalue(f, 0, 1));
+    PQclear(f); progress_run(db, "ROLLBACK");
+    api_json(q->fd, status, out ? out : "{}"); free(out);
+    return;
+  }
+  int64_t rev = atoll(PQgetvalue(f, 0, 4)), sent = atoll(PQgetvalue(f, 0, 6));
+  bool marked = !strcmp(PQgetvalue(f, 0, 5), "true");
+  int64_t code = pp_save(rev, marked, sent);
+  char next[24], marks[8], st[8], words[200];
+  snprintf(next, sizeof next, "%lld", (long long)pp_next(rev));
+  snprintf(marks, sizeof marks, "%s", pp_marks(sent, marked) ? "true" : "false");
+  snprintf(st, sizeof st, "%lld", (long long)pp_status(code));
+  coax_string why = pp_text(code);
+  snprintf(words, sizeof words, "%.*s", (int)why.count, why.data);
+  PGresult *r;
+  if (code == 0) {   /* PP_KEEP */
+    const char *kv[5] = {PQgetvalue(f, 0, 2), PQgetvalue(f, 0, 3), who, next, marks};
+    r = PQexecParams(db, "SELECT (x->>'status')::int, (x->'body')::text FROM verse.progress_keep($1, $2, $3::jsonb->>'bytes', $4::bigint, $5::boolean) x",
+                     5, NULL, kv, NULL, NULL, 0);
+  } else {
+    const char *rv[4] = {PQgetvalue(f, 0, 2), PQgetvalue(f, 0, 3), st, words};
+    r = PQexecParams(db, "SELECT (x->>'status')::int, (x->'body')::text FROM verse.progress_refuse($1, $2, $3::int, $4) x",
+                     4, NULL, rv, NULL, NULL, 0);
+  }
+  PQclear(f);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1 || !progress_run(db, "COMMIT")) {
+    if (PQresultStatus(r) != PGRES_TUPLES_OK) api_log("progress: %s", PQerrorMessage(db));
+    PQclear(r); progress_run(db, "ROLLBACK");
+    api_json(q->fd, 500, "{\"error\":\"not kept\"}");
     return;
   }
   api_json(q->fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1));
@@ -592,6 +655,7 @@ bool player_route(const request *q) {
   snprintf(who + wn, wcap - wn, "}");
   if (dec) PQclear(dec);
 
+  if (progress_post && good) { progress_save(q, db, parts, body, who); free(body); free(who); return true; }
   const char *v[4] = {q->method, parts, body, who};
   PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x->'body')::text FROM verse.api($1, $2::text[], $3::jsonb, $4::jsonb) x",
                              4, NULL, v, NULL, NULL, 0);

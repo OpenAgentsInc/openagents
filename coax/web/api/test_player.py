@@ -135,22 +135,77 @@ check("the guest's world is still theirs", pt("GET", "player", key=guest["key"])
 check("joining again keeps the key and its account",
       pt("POST", "join", {"email": "kiki@example.com", "how": "email"}, key=guest["key"])[1]["player"] == {"key": guest["key"], "id": guest["id"], "account": acct})
 
-check("progress starts empty", pt("GET", slot, key=guest["key"]) == (200, {"current": None, "previous": None}))
-s1, s2 = save(b"first save, room 1"), save(b"second save, room 2")
-check("a broken save is a 400", pt("POST", slot, {"bytes": b64(s1[:-1] + b"\0"), "at": 1000}, key=guest["key"])[0] == 400)
-check("not base64 is a 400", pt("POST", slot, {"bytes": "***", "at": 1000}, key=guest["key"])[0] == 400)
-check("a version 3 container is a 400", pt("POST", slot, {"bytes": b64(save(b"x" * 20, 3)), "at": 1000}, key=guest["key"])[0] == 400)
-status, kept = pt("POST", slot, {"bytes": b64(s1), "at": 1000}, key=guest["key"])
-check("a save is kept", status == 200 and kept == {"current": {"bytes": b64(s1), "at": 1000}, "previous": None}, kept)
-status, kept = pt("POST", slot, {"bytes": b64(s2), "at": 2000}, key=guest["key"])
-check("the next keeps the last good one", kept == {"current": {"bytes": b64(s2), "at": 2000}, "previous": {"bytes": b64(s1), "at": 1000}}, kept)
-status, late = pt("POST", slot, {"bytes": b64(s1), "at": 1500}, key=guest["key"])
-check("an older save than the one there is a 409 with what is there", status == 409 and late["current"]["at"] == 2000, late)
+check("progress starts empty, at revision 0", pt("GET", slot, key=guest["key"]) == (200, {"rev": 0, "current": None, "previous": None}))
+s1, s2, s3 = save(b"first save, room 1"), save(b"second save, room 2"), save(b"third save, room 3")
+check("a broken save is a 400", pt("POST", slot, {"bytes": b64(s1[:-1] + b"\0"), "rev": 0}, key=guest["key"])[0] == 400)
+check("not base64 is a 400", pt("POST", slot, {"bytes": "***", "rev": 0}, key=guest["key"])[0] == 400)
+check("a version 3 container is a 400", pt("POST", slot, {"bytes": b64(save(b"x" * 20, 3)), "rev": 0}, key=guest["key"])[0] == 400)
+for bad in (-1, 1.5, "0", True, [0]):
+    check(f"a revision that is not a whole number ({bad!r}) is a 400", pt("POST", slot, {"bytes": b64(s1), "rev": bad}, key=guest["key"])[0] == 400)
+server_ms = lambda: int(sql("select verse.now_ms()"))
+before = server_ms()
+status, kept = pt("POST", slot, {"bytes": b64(s1), "rev": 0, "at": 1000}, key=guest["key"])
+check("a save from revision 0 is kept as revision 1, at the server's time", status == 200 and kept["rev"] == 1 and kept["current"]["bytes"] == b64(s1)
+      and before <= kept["current"]["at"] <= server_ms() and kept["previous"] is None, kept)
+# A fast clock (a day ahead) and a slow one (a day behind) decide nothing: the revision does.
+status, kept = pt("POST", slot, {"bytes": b64(s2), "rev": 1, "at": server_ms() - 86400000}, key=guest["key"])
+check("a slow clock's save from the revision there now is kept", status == 200 and kept["rev"] == 2 and kept["current"]["bytes"] == b64(s2)
+      and kept["current"]["at"] >= before and kept["previous"]["bytes"] == b64(s1), kept)
+status, late = pt("POST", slot, {"bytes": b64(s3), "rev": 1, "at": server_ms() + 86400000}, key=guest["key"])
+check("a fast clock's save from an older revision is a 409 with what is there", status == 409 and late["error"] == "changed since" and late["rev"] == 2
+      and late["current"]["bytes"] == b64(s2) and late["previous"]["bytes"] == b64(s1), late)
+status, kept = pt("POST", slot, {"bytes": b64(s3), "rev": 2, "at": server_ms() + 86400000}, key=guest["key"])
+check("from the revision there now it is kept, at the server's time, not its own", status == 200 and kept["rev"] == 3
+      and kept["current"]["at"] <= server_ms(), kept)
+# Two devices that opened revision 3 both save: the first is kept, the second is a 409.
+status, a = pt("POST", slot, {"bytes": b64(s1), "rev": 3}, key=guest["key"])
+status_b, b = pt("POST", slot, {"bytes": b64(s2), "rev": 3}, key=guest["key"])
+check("two devices from the same revision: the first is kept", status == 200 and a["rev"] == 4 and a["current"]["bytes"] == b64(s1), a)
+check("and the second is a 409 with the first's save", status_b == 409 and b["rev"] == 4 and b["current"]["bytes"] == b64(s1), b)
+check("the 409 changed nothing", pt("GET", slot, key=guest["key"])[1]["rev"] == 4)
+# The transition rule: a page from before revisions names none.
+check("an old page's save on a slot a page with revisions saved is a 409", pt("POST", slot, {"bytes": b64(s3), "at": server_ms() + 86400000}, key=guest["key"])[0] == 409)
+old_slot = "progress/haunted-house/oldpage"
+status, kept = pt("POST", old_slot, {"bytes": b64(s1), "at": server_ms() + 86400000}, key=guest["key"])
+check("an old page's save on a slot only old pages saved is kept, at the server's time", status == 200 and kept["rev"] == 1 and kept["current"]["at"] <= server_ms(), kept)
+status, kept = pt("POST", old_slot, {"bytes": b64(s2), "at": 1}, key=guest["key"])
+check("and the next one is kept whatever its clock says", status == 200 and kept["rev"] == 2 and kept["current"]["bytes"] == b64(s2), kept)
+status, kept = pt("POST", old_slot, {"bytes": b64(s3), "rev": 2}, key=guest["key"])
+check("a page with revisions saves it", status == 200 and kept["rev"] == 3, kept)
+check("and from then on an old page's save is a 409", pt("POST", old_slot, {"bytes": b64(s1)}, key=guest["key"])[0] == 409)
+status, gone = pt("POST", old_slot + "/erase", {}, key=guest["key"])
+erased = pt("GET", old_slot, key=guest["key"])[1]
+check("an erase is a new revision with no save", status == 200 and erased["rev"] > 3 and erased["current"] is None and erased["previous"] is None, erased)
+check("an old page still can't save it", pt("POST", old_slot, {"bytes": b64(s1)}, key=guest["key"])[0] == 409)
+check("nor a page from the revision before the erase", pt("POST", old_slot, {"bytes": b64(s1), "rev": 3}, key=guest["key"])[0] == 409)
+check("a page with revisions saves from the erase", pt("POST", old_slot, {"bytes": b64(s1), "rev": erased["rev"]}, key=guest["key"])[1]["rev"] == erased["rev"] + 1)
+
+# An API binary from before 0119 (a rollback) sends a good save straight to verse.api: 0004's rule
+# keeps it, and it is still a new revision no device has read.
+rb = json.dumps({"key": guest["key"], "good": True, "bytes": b64(s2)}).replace("'", "''")
+rb_rev = pt("GET", old_slot, key=guest["key"])[1]["rev"]
+check("a rollback's save still lands, as a new revision",
+      sql(f"select (x->>'status') || ' ' || ((x->'body'->>'rev') IS NULL)::text from verse.api('POST', ARRAY['progress','haunted-house','oldpage'], '{{}}'::jsonb, '{rb}'::jsonb) x") == "200 true"
+      and pt("GET", old_slot, key=guest["key"])[1]["rev"] > rb_rev and pt("GET", old_slot, key=guest["key"])[1]["current"]["bytes"] == b64(s2))
+
+# XP that oa-room wrote for a guest (verse.room_vitals, 0118) follows them into the account they join.
+status, xg = pt("POST", "player", {}, headers={"X-Verse-Automation": "api-test"})
+sql(f"insert into verse.room_vitals (who, hp, hp_max, hp_at, at, xp, look) values ('{xg['id']}', 7, 10, 5, 5, 150, 'elf.1')")
+xa = pt("POST", "join", {"email": "xp-follows@example.com", "how": "email"}, key=xg["key"])[1]["player"]["account"]
+check("a guest's XP follows them into the account they join", sql(f"select xp || ' ' || hp || ' ' || look from verse.room_vitals where who = '{xa}'") == "150 7 elf.1")
+status, xg2 = pt("POST", "player", {}, headers={"X-Verse-Automation": "api-test"})
+sql(f"insert into verse.room_vitals (who, at, xp) values ('{xg2['id']}', 9, 90)")
+sql(f"update verse.players set account = '{xa}' where id = '{xg2['id']}'")
+check("and into an account with more XP, the larger stays", sql(f"select xp from verse.room_vitals where who = '{xa}'") == "150")
+sql(f"insert into verse.room_vitals (who, at, xp) values ('{xg2['id']}', 9, 400) on conflict (who) do update set xp = 400")
+sql(f"update verse.players set account = null where id = '{xg2['id']}'")
+sql(f"update verse.players set account = '{xa}' where id = '{xg2['id']}'")
+check("or the guest's, when it is larger", sql(f"select xp from verse.room_vitals where who = '{xa}'") == "400")
 
 status, other_browser = pt("POST", "join", {"email": "kiki@example.com", "how": "email"}, key=other["key"])
 check("the same email typed in another browser opens nothing of the first's",
       other_browser["player"]["key"] == other["key"] and other_browser["player"]["account"] not in (None, acct), other_browser)
-check("its progress is its own", pt("GET", slot, key=other["key"]) == (200, {"current": None, "previous": None}))
+check("its progress is its own", pt("GET", slot, key=other["key"]) == (200, {"rev": 0, "current": None, "previous": None}))
 check("nor its worlds", pt("GET", "player", key=other["key"])[1]["worlds"] == [])
 sql("insert into verse.accounts (id, email, created_ms) values ('e-legacy', 'legacy@example.com', 0)")
 status, legacy = pt("POST", "join", {"email": "legacy@example.com", "how": "email"})

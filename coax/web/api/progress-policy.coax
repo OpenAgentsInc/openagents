@@ -1,0 +1,103 @@
+// A player's progress save (#12719, Aethyr book chapter 81): which save the server keeps when two
+// devices save the same slot. player.c gathers the facts under the slot's lock
+// (migrations/0119_progress_revisions.sql, verse.progress_facts) and SQL does what this file
+// decides; the host decides nothing.
+//
+//   by revision    every kept save is a new revision of its slot (an empty slot is revision 0).
+//                  A save names the revision it was made from, and the server keeps it only when
+//                  that is the revision there now. Otherwise it answers 409 with the revision and
+//                  the saves there now. No clock decides anything, so a device whose clock runs
+//                  fast or slow neither wins nor loses by it.
+//   server time    a kept save's time ("at") is the server's clock, never the device's.
+//   old pages      a save that names no revision comes from a page built before revisions (the
+//                  transition rule). It is kept only while no page with revisions has saved the
+//                  slot: then the save that arrives last is kept, at the server's time. Once a page
+//                  with revisions saves a slot, a save that names no revision is a 409 there.
+//                  The device's own time is read by neither rule.
+//   bad revision   a revision that is not a whole number (or is negative) is a 400.
+#authority;
+
+PP_KEEP :: 0;
+PP_CHANGED :: 1;
+PP_BAD_REV :: 2;
+PP_NO_REV :: -1;    // the body names no revision: an old page
+PP_NOT_REV :: -2;   // the body names one that is not a whole number of at least 0
+
+#test "a save from the revision there now is kept; from any other it is a 409" {
+  #assert pp_save(0, false, 0) == PP_KEEP;     // the first save of an empty slot
+  #assert pp_save(4, true, 4) == PP_KEEP;
+  #assert pp_save(4, true, 3) == PP_CHANGED;    // made from an older revision
+  #assert pp_save(4, true, 5) == PP_CHANGED;    // from one the server never kept
+  #assert pp_save(0, false, 1) == PP_CHANGED;  // the slot is empty: only 0
+  #assert pp_save(3, true, 3) == PP_KEEP;      // erased at revision 3: from 3 only
+  #assert pp_save(3, true, 0) == PP_CHANGED;
+  #assert pp_save(4, false, 4) == PP_KEEP;      // an old page saved it last
+  #assert pp_save(4, false, 2) == PP_CHANGED;
+  #assert pp_next(7) == 8 && pp_next(0) == 1;
+}
+#test "a fast clock, a slow clock and two devices from the same revision" {
+  // No device's clock is an input: a save is the revision it names. Device A's clock runs a day
+  // fast, device B's a day slow, and both opened revision 7.
+  // B saves first: kept, as revision 8, despite its slow clock
+  #assert pp_save(7, true, 7) == PP_KEEP && pp_next(7) == 8;
+  // A saves next from 7: a 409 with revision 8, despite its fast clock
+  #assert pp_save(8, true, 7) == PP_CHANGED;
+  // A takes revision 8 (it merges or asks), saves from 8: kept as 9
+  #assert pp_save(8, true, 8) == PP_KEEP && pp_next(8) == 9;
+  // and B, still at 8, now gets the 409
+  #assert pp_save(9, true, 8) == PP_CHANGED;
+}
+#test "the transition rule: an old page's save, with no revision" {
+  #assert pp_save(0, false, PP_NO_REV) == PP_KEEP;    // an empty slot
+  #assert pp_save(2, false, PP_NO_REV) == PP_KEEP;     // no page with revisions saved it
+  #assert pp_save(2, true, PP_NO_REV) == PP_CHANGED;   // one did: never overwritten by an old page
+  #assert pp_save(3, true, PP_NO_REV) == PP_CHANGED;   // erased after one did, too
+  // an old page's save marks nothing; a page with revisions marks the slot for good
+  #assert !pp_marks(PP_NO_REV, false) && pp_marks(PP_NO_REV, true);
+  #assert pp_marks(0, false) && pp_marks(5, false) && pp_marks(5, true);
+}
+#test "a revision that is not a whole number is a 400" {
+  #assert pp_save(2, false, PP_NOT_REV) == PP_BAD_REV;
+  #assert pp_save(0, false, PP_NOT_REV) == PP_BAD_REV;
+  #assert pp_save(2, true, PP_NOT_REV) == PP_BAD_REV;
+  #assert pp_save(2, false, -3) == PP_BAD_REV;
+}
+#test "each answer has its status and words" {
+  #assert pp_status(PP_KEEP) == 200 && pp_status(PP_CHANGED) == 409 && pp_status(PP_BAD_REV) == 400;
+  #assert pp_status(3) == 500 && pp_status(-1) == 500;
+  #assert pp_text(PP_CHANGED) == "changed since";
+  #assert pp_text(PP_BAD_REV) == "rev: the revision this save was made from, a whole number";
+  #assert pp_text(PP_KEEP) == "" && pp_text(3) == "" && pp_text(-1) == "";
+  #assert PP_KEEP == 0 && PP_CHANGED == 1 && PP_BAD_REV == 2 && PP_NO_REV == -1 && PP_NOT_REV == -2;
+  #assert pp_no_rev() == PP_NO_REV && pp_not_rev() == PP_NOT_REV;
+}
+
+// Whether a save is kept. rev: the slot's revision (0 when it was never saved);
+// marked: a page with revisions has saved the slot; sent_rev: the revision the save was made from
+// (PP_NO_REV none, PP_NOT_REV not a whole number).
+pp_save :: (rev: int, marked: bool, sent_rev: int) -> int #export_c {
+  if sent_rev == PP_NO_REV {
+    if marked { return PP_CHANGED; }
+    return PP_KEEP;
+  }
+  if sent_rev < 0 { return PP_BAD_REV; }
+  if sent_rev != rev { return PP_CHANGED; }
+  return PP_KEEP;
+}
+// The revision a kept save makes.
+pp_next :: (rev: int) -> int #export_c { return rev + 1; }
+// Whether the slot is marked after a kept save: once a page with revisions saves it, for good.
+pp_marks :: (sent_rev: int, marked: bool) -> bool #export_c { return marked || sent_rev >= 0; }
+pp_no_rev :: () -> int #export_c { return PP_NO_REV; }
+pp_not_rev :: () -> int #export_c { return PP_NOT_REV; }
+pp_status :: (code: int) -> int #export_c {
+  if code == PP_KEEP { return 200; }
+  if code == PP_CHANGED { return 409; }
+  if code == PP_BAD_REV { return 400; }
+  return 500;
+}
+pp_text :: (code: int) -> string #export_c {
+  if code == PP_CHANGED { return "changed since"; }
+  if code == PP_BAD_REV { return "rev: the revision this save was made from, a whole number"; }
+  return "";
+}

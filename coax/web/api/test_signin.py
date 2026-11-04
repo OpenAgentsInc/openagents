@@ -59,25 +59,30 @@ status, g2 = pt("POST", "player", {})
 g2 = pt("POST", "join", {"email": "ann@example.com", "how": "email"}, key=g2["key"])[1]["player"]
 own = g2["account"]
 older, newer = save(b"guest save, older"), save(b"guest save, newer")
-pt("POST", slot, {"bytes": b64(older), "at": 3000}, key=g2["key"])
-pt("POST", slot, {"bytes": b64(newer), "at": 4000}, key=g2["key"])
-pt("POST", "progress/haunted-house/side", {"bytes": b64(older), "at": 3000}, key=g2["key"])
+pt("POST", slot, {"bytes": b64(older), "rev": 0}, key=g2["key"])
+pt("POST", slot, {"bytes": b64(newer), "rev": 1}, key=g2["key"])
+pt("POST", "progress/haunted-house/side", {"bytes": b64(older), "rev": 0}, key=g2["key"])
 status, done = signin(ann_key, {"n": 1}, key=g2["key"])
 check("a joined guest's saves move to the pubkey", status == 200 and done["player"]["account"] == "n-" + ann and done["moved"]["saves"] == 2, done)
 check("the guest's own account keeps none", sql(f"select count(*) from verse.progress where account='{own}'") == "0")
 status, there = pt("GET", slot, key=g2["key"])
-check("the save reads back as it was", there == {"current": {"bytes": b64(newer), "at": 4000}, "previous": {"bytes": b64(older), "at": 3000}}, there)
+check("the save reads back as it was", there["current"]["bytes"] == b64(newer) and there["previous"]["bytes"] == b64(older), there)
+check("at a revision no device read from the guest's slot (#12719)", there["rev"] > 2, there)
+check("so a device still at the guest's revision gets a 409", pt("POST", slot, {"bytes": b64(older), "rev": 2}, key=g2["key"])[0] == 409)
 status, done = signin(ann_key, {"n": 2})
 check("another browser signing in with the same key gets a fresh key on the account", status == 200 and done["player"]["account"] == "n-" + ann
       and done["player"]["key"] not in (g1["key"], g2["key"]), done)
-check("and the same saves", pt("GET", slot, key=done["player"]["key"])[1]["current"]["at"] == 4000)
+check("and the same saves", pt("GET", slot, key=done["player"]["key"])[1]["current"]["bytes"] == b64(newer))
 
 status, g3 = pt("POST", "player", {})
 g3 = pt("POST", "join", {"email": "ann@example.com", "how": "email"}, key=g3["key"])[1]["player"]
-pt("POST", slot, {"bytes": b64(older), "at": 2500}, key=g3["key"])
+pt("POST", slot, {"bytes": b64(older), "rev": 0}, key=g3["key"])
+# a kept save's time is the server's (#12719): this one is made older than the account's here
+sql(f"update verse.progress set cur_at = 2500 where account = '{g3['account']}'")
+status, before = pt("GET", slot, key=done["player"]["key"])
 signin(ann_key, {"n": 3}, key=g3["key"])
 status, there = pt("GET", slot, key=g3["key"])
-check("an older guest save than the account's stays behind it", there["current"]["at"] == 4000 and there["previous"]["at"] == 3000, there)
+check("an older guest save than the account's stays behind it", there == before, (there, before))
 
 status, done = signin(bob_key, {"sid": sid1}, key=g1["key"])
 check("a key on one pubkey never moves to another: a fresh key, nothing moved", status == 200 and done["player"]["key"] != g1["key"]
