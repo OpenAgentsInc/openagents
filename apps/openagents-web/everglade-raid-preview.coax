@@ -60,6 +60,9 @@ RaidPreview :: struct {
   t: f32;                    // s since it began
   who: [RP_PEOPLE] RpPerson;
   skins: [RAID_SHOWN] Skin;  // each one's pose (everglade.coax RAID_SHOWN: its slot in the raid's draws)
+  owed: [RAID_SHOWN] f32;    // s of its clip not yet played: one farther off is posed less often
+  frame: int;                // frames drawn, to spread those poses over the frames
+  posed: int;                // poses this frame (a check's count)
   used: [PEOPLE_PARTS] int;  // the raid's instances of each part this frame
   shots: [RP_SHOTS] RpShot;
   arcs: [RP_ARCS] RpArc;
@@ -256,8 +259,19 @@ RP_DYE :: [16] f32.[0.3, 0.03, 0.035, 1,   0.16, 0.014, 0.022, 1,   0.13, 0.035,
 RP_GOLD :: [4] int.[0, 1, 0, 1];
 RP_FAR :: 22.0;            // metres from you: past this a raider wears the robe's far copy
 RP_VIOLET :: Point.{x = 0.75, y = 0.35, z = 1.0};
+// Whether raid person q, `d` m from you, is posed this frame (`new_clip`: its clip changed): the
+// seconds of its clip to play then, else -1 (they wait, owed).
+rp_pose_due :: (s: [] Everglade, q: int, new_clip: bool, d: f32, dt: f32) -> f32 {
+  s[0].rp.owed[q] += dt;
+  every := remote_every(d);
+  if every != 1 && (s[0].rp.frame + q) % every != 0 && !new_clip { return -1; }
+  owed := s[0].rp.owed[q];
+  s[0].rp.owed[q] = 0; s[0].rp.posed += 1;
+  return owed;
+}
 rp_draw :: (s: [] Everglade, dt: f32) {
   for k: 0..<PEOPLE_PARTS { s[0].rp.used[k] = 0; }
+  s[0].rp.frame += 1; s[0].rp.posed = 0;
   if !s[0].pack_ready { return; }   // whoever a raid has set (the preview's or the room's)
   for q: 0..<RP_PEOPLE {
     o := s[0].rp.who[q];
@@ -313,19 +327,29 @@ rp_person_at :: (s: [] Everglade, q: int, npc: int, x: f32, z: f32, yaw: f32, sp
   sk := s[0].rp.skins[q..<q + 1];
   sk[0].fade = 0.22;
   // the clip: the fall when dead (held at its end), else running, walking, casting, striking, still
-  if dead_t >= 0 {
-    if sk[0].clip != PEOPLE_DIE { skin_advance(rig, sk, PEOPLE_DIE, 0, dt); }
-    else { left := hi(rig.duration[PEOPLE_DIE] - 0.02 - sk[0].time, 0); skin_advance(rig, sk, PEOPLE_DIE, 0, lo(dt, left)); }
-  } else {
-    clip := PEOPLE_IDLE;
+  clip := PEOPLE_DIE;
+  if dead_t < 0 {
+    clip = PEOPLE_IDLE;
     if speed > 3.0 { clip = PEOPLE_RUN; } else if speed > 0.25 { clip = PEOPLE_WALK; }
     else if lit > 0 { clip = ifx caster || shooter then PEOPLE_SPELL else PEOPLE_SLASH; }
     else if town && !shooter { clip = PEOPLE_FOLD; }
-    skin_advance(rig, sk, clip, speed, dt);
   }
+  // posed as often as its distance asks, as the room's other players are (everglade-rangers.coax
+  // remote_every): every frame within 15 m, every second to 35 m, one in four past that, the time
+  // between played at once; a new clip at once. A 16-player raid's 60 people skinned every frame
+  // were a tenth of a phone's frame (November 4).
   at := RAID_PAL_AT + q * PERSON_ROWS * 4;
   pal := s[0].palette[at..<at + PEOPLE_JOINTS * 12];
-  skin_palette(rig, sk, pal);
+  owed := rp_pose_due(s, q, sk[0].clip != clip, flat_gap(v3(x, 0, z), s[0].feet), dt);
+  if owed >= 0 {
+    if dead_t >= 0 {
+      if sk[0].clip != PEOPLE_DIE { skin_advance(rig, sk, PEOPLE_DIE, 0, owed); }
+      else { left := hi(rig.duration[PEOPLE_DIE] - 0.02 - sk[0].time, 0); skin_advance(rig, sk, PEOPLE_DIE, 0, lo(owed, left)); }
+    } else {
+      skin_advance(rig, sk, clip, speed, owed);
+    }
+    skin_palette(rig, sk, pal);
+  }
   h := at + PEOPLE_JOINTS * 12;
   tone := ifx town then WATCH_SKIN[clamp_i(look, 0, 5)] else (q * 7) % 5;
   if npc == RP_ARCH { tone = 4; }
@@ -388,6 +412,27 @@ rp_person_at :: (s: [] Everglade, q: int, npc: int, x: f32, z: f32, yaw: f32, sp
   ln := ifx npc == RP_FANATIC then 0.6f32 else 0.32f32;
   ci_limb(s, hw, add(hw, times(blade, ln)), 0.022, v3(0.62, 0.62, 0.66), false, 1);
   if npc == RP_FANATIC && lit > 0 { sp_glow(s, add(hw, times(blade, ln * 0.6)), 0.12, times(RP_VIOLET, lit)); }
+}
+
+#test "raid preview: a raider near you is posed every frame, one far off one frame in four, and a new clip at once" #steps 2000000000 {
+  g: [1] Everglade;
+  rp_facts(g[..], "/worlds/everglade?raid=preview");
+  dt := 1.0f32 / 60;
+  near := 0; far := 0; played := 0.0f32;
+  for f: 0..<8 {
+    g[0].rp.frame += 1;
+    if rp_pose_due(g[..], 0, f == 0, 4, dt) >= 0 { near += 1; }
+    o := rp_pose_due(g[..], 1, f == 0, 60, dt);
+    if o >= 0 { far += 1; played += o; }
+  }
+  #assert near == 8 && far == 1 + 2;   // the far one at its first clip, then one frame in four
+  #assert abs(played + g[0].rp.owed[1] - 8 * dt) < 0.0001;   // no time lost: what isn't played yet is owed
+  // 25 m: every second frame; a new clip (a fall) at once
+  mid := 0;
+  for f: 0..<8 { g[0].rp.frame += 1; if rp_pose_due(g[..], 2, false, 25, dt) >= 0 { mid += 1; } }
+  #assert mid == 4;
+  g[0].rp.frame += 1;
+  #assert rp_pose_due(g[..], 1, true, 60, dt) > 0 && g[0].rp.owed[1] == 0;
 }
 
 #test "raid preview: the flight starts behind Darian, ends in your camera, and the HUD is off till then" {

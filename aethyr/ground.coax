@@ -226,6 +226,41 @@ GroundNormal :: struct { x: f32; y: f32 = 1; z: f32; }
   #assert !ground_valid(collapsed);
 }
 
+// The binary search ground_axis walked before (until November 4): the reference its guess-and-walk
+// must equal, cell for cell.
+ground_axis_searched :: (origin: f32, cell: f32, n: int, at: f32) -> int {
+  low := 0; high := n;
+  while high - low > 1 {
+    middle := (low + high) / 2;
+    if at < origin + f32(middle) * cell { high = middle; } else { low = middle; }
+  }
+  return low;
+}
+#test "ground picks the binary search's cell from its guess, at every vertex and either side of it, far from the origin too" {
+  origins := [4] f32.[0, -256, 100.1, -12345.67];
+  cells := [4] f32.[1, 0.1, 0.5, 2.3];
+  ns := [4] int.[1, 13, 256, 1000];
+  for oi: 0..<4 { for ci: 0..<4 { for ni: 0..<4 {
+    o := origins[oi]; c := cells[ci]; n := ns[ni];
+    if !ground_valid(Ground.{n = n, rows = 1, cell = c, west = o, south = 0}) { continue; }
+    step := ifx n > 40 then n / 37 else 1;
+    i := 0;
+    while i <= n {
+      v := o + f32(i) * c;
+      for d: -2..<3 {
+        at := f32(d) * 0.000001;
+        if v != 0 { at = f32_from_bits(cast(u32) (cast(int) f32_bits(v) + d)); }
+        if at < o || at > o + f32(n) * c { continue; }
+        #assert ground_axis(o, c, n, at).i == ground_axis_searched(o, c, n, at);
+      }
+      mid := v + 0.5 * c;
+      if mid < o + f32(n) * c { #assert ground_axis(o, c, n, mid).i == ground_axis_searched(o, c, n, mid); }
+      i += step;
+    }
+    #assert ground_axis(o, c, n, o - 5).i == 0 && ground_axis(o, c, n, o + f32(n) * c + 5).i == n - 1;
+  } } }
+}
+
 // ---- implementation
 
 ground_rows :: (g: Ground) -> int { return ifx g.rows > 0 then g.rows else g.n; }
@@ -255,20 +290,24 @@ ground_points :: (g: Ground) -> int {
   return (g.n + 1) * (ground_rows(g) + 1);
 }
 
-// Select the interval between actual f32 mesh vertices, not a nominal real-valued lattice.
-// Binary search takes at most 21 iterations under GROUND_MAX_AXIS. The admitted precision
-// profile keeps each selected cell's width positive, including both boundary cells.
+// Select the interval between actual f32 mesh vertices, not a nominal real-valued lattice: the
+// last vertex at or before the coordinate (of the first n). The nominal cell, (at - origin) /
+// cell, is a guess a step or two from it at most, and a walk from there along the actual f32
+// vertices finds the same cell a binary search would, in a step or two instead of up to 21
+// (a raid's frame samples the ground thousands of times: 9% of a phone's frame, November 4).
+// The admitted precision profile keeps each selected cell's width positive, including both
+// boundary cells.
 GroundAxis :: struct { i: int; fraction: f64; width: f64; clamped: bool; }
 ground_axis :: (origin: f32, cell: f32, n: int, coordinate: f32) -> GroundAxis {
   at := coordinate; clamped := false;
   last := origin + f32(n) * cell;
   if at < origin { at = origin; clamped = true; }
   else if at > last { at = last; clamped = true; }
-  low := 0; high := n;
-  while high - low > 1 {
-    middle := (low + high) / 2;
-    if at < origin + f32(middle) * cell { high = middle; } else { low = middle; }
-  }
+  guess := floor((at - origin) / cell);
+  low := ifx guess >= f32(n - 1) then n - 1 else ifx guess > 0 then cast(int) guess else 0;
+  while low > 0 && at < origin + f32(low) * cell { low -= 1; }
+  while low < n - 1 && !(at < origin + f32(low + 1) * cell) { low += 1; }
+  high := low + 1;
   a := origin + f32(low) * cell; b := origin + f32(high) * cell;
   width := f64(b) - f64(a);
   return GroundAxis.{i = low, fraction = (f64(at) - f64(a)) / width, width = width, clamped = clamped};
