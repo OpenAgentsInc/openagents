@@ -1,0 +1,127 @@
+// What the room server counts about its own work for the admins' room view (#12791; research
+// docs/research/mmo.md section 15): the parts of the action path the Coax side sees. The host
+// (room-host.c with room-stats.h) times the tick, counts the bytes, the queues and the join bursts,
+// and asks these for the rest:
+//   - admission refusals by reason (rl_join: ST_* below), and reconnects: a join whose request says
+//     re=1 (the page's own rejoin after it lost the room, everglade-net.coax) and whether it sat;
+//   - input to acknowledgement: when each seat's newest acknowledged input was heard (rm_st_ack);
+//   - relevant entities: what a seat's page is told about, by the wire's own rule (players always,
+//     creatures, zones and townsfolk within EG_VIEW), counted when asked (once a second);
+//   - the signature over the host's report (rm_st_sign), with the seat-ticket key, as room-vitals is.
+// Every counter here is a total since the start; the host takes differences for its window.
+
+ST_REASONS :: 6;
+ST_NO_ROOM :: 0;     // no such room, or no free simulation for a new one
+ST_TICKET :: 1;      // a seat ticket missing, forged or expired
+ST_KICKED :: 2;      // the player is kicked (room-control.coax)
+ST_SHARD :: 3;       // the ticket or the path is another shard's
+ST_FULL :: 4;        // every seat taken
+ST_VERSION :: 5;     // a page on another wire (#12788)
+ST_REASON_NAMES :: [6] string.["no room", "ticket", "kicked", "shard", "full", "version"];
+
+RmStats :: struct {
+  refused: [ST_REASONS] int;
+  re_tries: int; re_ok: int;      // joins with re=1, and those seated
+}
+
+st_refuse :: (v: [] RmServer, why: int) -> int {
+  if why >= 0 && why < ST_REASONS { v[0].st.refused[why] += 1; }
+  return -1;
+}
+rm_st_refused :: (v: [] RmServer, why: int) -> int #export_c { return ifx why >= 0 && why < ST_REASONS then v[0].st.refused[why] else 0; }
+rm_st_reasons :: () -> int #export_c { return ST_REASONS; }
+rm_st_reason :: (why: int) -> string #export_c { return ifx why >= 0 && why < ST_REASONS then ST_REASON_NAMES[why] else ""; }
+rm_st_refuse_more :: (v: [] RmServer, why: int) #export_c { _ := st_refuse(v, why); }   // the host's own (no free connection)
+rm_st_re_tries :: (v: [] RmServer) -> int #export_c { return v[0].st.re_tries; }
+rm_st_re_ok :: (v: [] RmServer) -> int #export_c { return v[0].st.re_ok; }
+
+// The everglade room and seat on connection conn into out (k, s), or false.
+rm_st_conn :: (v: [] RmServer, conn: int, out: [] int) -> bool #export_c {
+  if conn < 0 || conn >= CONNS || out.count < 2 || !v[0].conns[conn].live || v[0].conns[conn].relay < 0 { return false; }
+  k := eg_room_at(v, v[0].conns[conn].relay);
+  s := v[0].conns[conn].seat;
+  if k < 0 || s < 0 || s >= EG_SEATS || !v[0].eg[k].seat[s].live || v[0].eg[k].seat[s].conn != conn { return false; }
+  out[0] = k; out[1] = s;
+  return true;
+}
+// Everglade room k's code (its relay's), "" none.
+rm_st_code :: (v: [] RmServer, k: int) -> string #export_c {
+  if !rm_eg_live(v, k) || v[0].eg[k].relay < 0 { return ""; }
+  r := v[0].eg[k].relay;
+  return cast(string) v[0].relays[r].code[0..<v[0].relays[r].code_n];
+}
+
+// When seat s's newest acknowledged input was heard (mono ms), once each time it moves on; -1 none since.
+rm_st_ack :: (v: [] RmServer, k: int, s: int) -> int #export_c {
+  if !rm_eg_seat_live(v, k, s) { return -1; }
+  st := v[0].eg[k].seat[s..<s + 1];
+  if st[0].ack <= st[0].ack_told || st[0].ack_at <= 0 { return -1; }
+  st[0].ack_told = st[0].ack;
+  return st[0].ack_at;
+}
+
+// What seat s's page is told about now: every other player, and the creatures, zones and townsfolk
+// within EG_VIEW of it.
+rm_st_relevant :: (v: [] RmServer, k: int, s: int) -> int #export_c {
+  if !rm_eg_seat_live(v, k, s) || !v[0].eg[k].seat[s].placed { return 0; }
+  me := v[0].eg[k].seat[s].pose;
+  n := 0;
+  for q: 0..<EG_SEATS { if q != s && v[0].eg[k].seat[q].live && v[0].eg[k].seat[q].placed { n += 1; } }
+  zf: [E5RR_ZONE_FLOATS] f32;
+  for q: 0..<E5RR_ZONES { if e5rr_zone(v[0].eg[k].rules[..], q, zf[..]) > 0 && eg_near(me, zf[2], zf[3]) { n += 1; } }
+  bf: [E5RR_BEAST_FLOATS] f32;
+  for q: 0..<E5RR_BEASTS { if e5rr_beast(v[0].eg[k].rules[..], q, bf[..]) > 0 && eg_near(me, bf[0], bf[2]) { n += 1; } }
+  if v[0].eg[k].folk_on {
+    for i: 0..<E5R_FOLK {
+      fo := i * EG_FOLK_FLOATS;
+      if v[0].eg[k].folk[fo + 6] > 0.5 && eg_near(me, v[0].eg[k].folk[fo], v[0].eg[k].folk[fo + 1]) { n += 1; }
+    }
+  }
+  return n;
+}
+
+// The X-Room-Mac of body (64 hex into out), with the seat-ticket key; false without one.
+rm_st_sign :: (v: [] RmServer, body: string, out: [] u8) -> bool #export_c {
+  if v[0].tkey_n == 0 || out.count < 64 { return false; }
+  key: [TICKET_KEY] u8;
+  for i: 0..<v[0].tkey_n { key[i] = v[0].tkey[i]; }
+  b: [ST_BODY] u8;
+  if body.count > ST_BODY { return false; }
+  for i: 0..<body.count { b[i] = body[i]; }
+  mac: [32] u8;
+  if hmac_sha256_checked(key[0..<v[0].tkey_n], b[0..<body.count], mac[..], false) != SHA_OK { return false; }
+  for i: 0..<32 { out[i * 2] = tk_hex(cast(int) (mac[i] >> 4)); out[i * 2 + 1] = tk_hex(cast(int) (mac[i] & 15)); }
+  return true;
+}
+ST_BODY :: 14000;   // the host's report at most (its poster's config holds 16 KB)
+
+#test "stats: a refused join is counted by its reason, a rejoin by whether it sat (#12791)" {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  rm_clock(v[..], 0, 1762190000000);
+  #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-st HTTP/1.1\r\n\r\n") == 0;
+  #assert rm_join(v[..], 1, "GET /api/room/relay/everglade/pair-st?re=1 HTTP/1.1\r\n\r\n") == 1;
+  #assert rm_st_re_tries(v[..]) == 1 && rm_st_re_ok(v[..]) == 1;
+  for c: 2..<16 { #assert rm_join(v[..], c, "GET /api/room/relay/everglade/pair-st HTTP/1.1\r\n\r\n") == c; }
+  #assert rm_join(v[..], 16, "GET /api/room/relay/everglade/pair-st?re=1 HTTP/1.1\r\n\r\n") == -1;
+  #assert rm_st_refused(v[..], ST_FULL) == 1 && rm_st_re_tries(v[..]) == 2 && rm_st_re_ok(v[..]) == 1;
+  #assert rm_join(v[..], 17, "GET /api/room/s7/relay/everglade/pair-st HTTP/1.1\r\n\r\n") == -1 && rm_st_refused(v[..], ST_SHARD) == 1;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  out: [2] int;
+  #assert rm_st_conn(v[..], 3, out[..]) && out[0] == k && out[1] == 3 && rm_st_code(v[..], k) == "pair-st";
+}
+#test "stats: the acknowledged input's heard time, once a step; every other player is relevant (#12791)" #steps 2000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  rm_clock(v[..], 0, 1762190000000);
+  ev := "GET /api/room/relay/everglade/pair-ack HTTP/1.1\r\n\r\n";
+  #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  eg_test_tick(v[..], k);
+  rm_clock(v[..], 500, 1762190000500);
+  eg_test_input(v[..], 1);
+  rm_clock(v[..], 520, 1762190000520);
+  eg_test_tick(v[..], k);
+  #assert rm_st_ack(v[..], k, 0) == 500 && rm_st_ack(v[..], k, 0) == -1;
+  #assert rm_st_relevant(v[..], k, 0) >= 1;
+}

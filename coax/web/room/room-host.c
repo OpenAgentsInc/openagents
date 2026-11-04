@@ -42,12 +42,14 @@
 typedef struct {
   int fd; bool ws; size_t n; uint8_t in[IN_CAP]; int64_t heard;
   uint8_t *out; size_t on, ocap;   // bytes waiting to go out (sent as the socket takes them)
+  int64_t since;                   // when out last went from empty to waiting (ms), 0 empty
   bool doomed;                     // to close once the frame being sent is out to everyone
 } conn;
 static conn conns[CONNS];
 static coax_t_RmServer *server;
 static int64_t slow_closed, out_peak;
 static coax_v_t_RmServer view(void) { return (coax_v_t_RmServer){server, 1}; }
+#include "room-stats.h"   /* the vitals for the admins' room view (#12791) */
 /* --dev DIR: the local stand-in for the API (local.sh). The world document is read once from DIR and
    is the one both the room and the page use. */
 static const char *dev_dir;
@@ -89,10 +91,11 @@ static int64_t fan_at(const int64_t *h, int q, int64_t *count) {
 static int64_t tick_now[FAN_BUCKETS], tick_last[FAN_BUCKETS];
 /* Where the everglade tick's time goes (#12717): microseconds summed over the report's minute for the
    movement steps, the hotbar abilities, the town (watch and folk), the spells' pieces, the people for the rules and the pages,
-   rm_eg_end (the rules' step and every seat's D) and the frames sent (relay_flush, pump_all), printed with the tick line. */
-enum { PART_MOVE, PART_ABILITIES, PART_TOWN, PART_SPELLS, PART_PEOPLE, PART_END, PART_SEND, PARTS };
+   rm_eg_rules (the rules' step, the raid's), rm_eg_send (every seat's D written) and the frames sent (relay_flush,
+   pump_all), printed with the tick line; each tick's are the room view's workloads too (room-stats.h). */
+enum { PART_MOVE, PART_ABILITIES, PART_TOWN, PART_SPELLS, PART_PEOPLE, PART_RULES, PART_WRITE, PART_SEND, PARTS };
 static int64_t part_us[PARTS];
-static const char *part_name[PARTS] = {"move", "abilities", "town", "spells", "people", "end", "send"};
+static const char *part_name[PARTS] = {"move", "abilities", "town", "spells", "people", "rules", "write", "send"};
 static void tick_add(int64_t us) { int64_t b = us / 100; tick_now[b < 0 ? 0 : b >= FAN_BUCKETS ? FAN_BUCKETS - 1 : b]++; }
 static int64_t now_ms(void) {
   struct timespec t;
@@ -118,6 +121,7 @@ static bool pump(int i) {
     done += (size_t)w;
   }
   if (done) { memmove(c->out, c->out + done, c->on - done); c->on -= done; }
+  if (!c->on) { c->since = 0; if (st_c[i].burst == 2) st_drained(i, now_us()); }
   return true;
 }
 // n bytes onto i's output, sent as far as the socket takes them now. Past OUT_MAX, or on a failed
@@ -133,6 +137,8 @@ static void put_out(int i, const void *p, size_t n) {
     if (!grown) { c->doomed = true; return; }
     c->out = grown; c->ocap = cap;
   }
+  if (!c->on) c->since = now_ms();
+  st_put(i, n);
   memcpy(c->out + c->on, p, n); c->on += n;
   if ((int64_t)c->on > out_peak) out_peak = (int64_t)c->on;
   if (!pump_held && !pump(i)) c->doomed = true;
@@ -151,7 +157,13 @@ static void relay_flush(void) {
   while ((len = rm_relay_next(view())) > 0) {
     size_t k = ws_build(out, sizeof out, WS_TEXT, server->rout.e, (size_t)len, false);
     if (!k) continue;
-    for (int j = 0; j < CONNS; j++) if (conns[j].fd >= 0 && conns[j].ws && rm_relay_to(view(), j)) put_out(j, out, k);
+    int to = 0, last = -1;
+    for (int j = 0; j < CONNS; j++) if (conns[j].fd >= 0 && conns[j].ws && rm_relay_to(view(), j)) { put_out(j, out, k); to++; last = j; }
+    /* counted by type (room-stats.h); a D frame (one seat's) with no more parts ends a joiner's first snapshot */
+    int64_t t0 = now_us();
+    int f = st_frame_out(server->rout.e, (size_t)len, to, k);
+    if (f >= 0 && !(f & 2) && to == 1 && st_c[last].burst == 1) { st_c[last].burst = 2; if (!conns[last].on) st_drained(last, now_us()); }
+    st_cost_us += now_us() - t0;
   }
 }
 // The everglade rooms' tick (room-everglade.coax, 30 Hz: every other host tick): each seat at the
@@ -216,6 +228,7 @@ static void everglade_abilities(int k) {
 static void everglade_tick(void) {
   int64_t in[WORLD_IN]; float pose[WORLD_POSE];
   coax_v_s64 inv = {in, WORLD_IN};
+  int64_t was[PARTS]; memcpy(was, part_us, sizeof was);
   pump_held = true;
   for (int k = 0; k < WORLD_ROOMS; k++) {
     if (!rm_eg_begin(view(), k)) continue;
@@ -244,15 +257,41 @@ static void everglade_tick(void) {
     float sg[6]; coax_v_f32 sgv = {sg, 6};
     int64_t sn = rm_eg_sights(view(), k);
     for (int64_t q = 0; q < sn; q++) if (rm_eg_sight(view(), k, q, sgv)) rm_eg_sight_is(view(), k, q, world_sight(k, sg, sg + 3));
-    rm_eg_end(view(), k);
-    part_us[PART_END] += now_us() - te;
+    rm_eg_rules(view(), k);
+    int64_t tw = now_us(); part_us[PART_RULES] += tw - te;
+    rm_eg_send(view(), k);
+    part_us[PART_WRITE] += now_us() - tw;
     int64_t tf = now_us();
     relay_flush();
     part_us[PART_SEND] += now_us() - tf;
+    /* each seat's input that this tick's D acknowledges: heard to sent, plus its socket's round trip */
+    int64_t tk = now_us(), ms = now_ms();
+    for (int s = 0; s < WORLD_SEATS; s++) {
+      int64_t at = rm_st_ack(view(), k, s);
+      int c = at >= 0 ? (int)server->eg.e[k].seat.e[s].conn : -1;
+      if (c >= 0 && c < CONNS) st_ack_add(c, ms - at + (st_c[c].rtt_ms > 0 ? st_c[c].rtt_ms : 0));
+    }
+    st_cost_us += now_us() - tk;
   }
   int64_t tp = now_us();
   pump_all();
   part_us[PART_SEND] += now_us() - tp;
+  /* the tick's workloads, and every socket's queue now (room-stats.h) */
+  int64_t ts = now_us(), d[PARTS];
+  for (int q = 0; q < PARTS; q++) d[q] = part_us[q] - was[q];
+  st_hist_add(&st_work[STW_PLAYERS], d[PART_MOVE]);
+  st_hist_add(&st_work[STW_RAIDERS], d[PART_RULES]);
+  st_hist_add(&st_work[STW_EFFECTS], d[PART_ABILITIES] + d[PART_SPELLS]);
+  st_hist_add(&st_work[STW_FOLK], d[PART_TOWN] + d[PART_PEOPLE]);
+  st_hist_add(&st_work[STW_WRITE], d[PART_WRITE]);
+  st_hist_add(&st_work[STW_SEND], d[PART_SEND]);
+  int64_t ms = now_ms();
+  for (int j = 0; j < CONNS; j++) {
+    if (conns[j].fd < 0 || !conns[j].on) continue;
+    if ((int64_t)conns[j].on > st_c[j].q_bytes) st_c[j].q_bytes = (int64_t)conns[j].on;
+    if (conns[j].since && ms - conns[j].since > st_c[j].q_ms) st_c[j].q_ms = ms - conns[j].since;
+  }
+  st_cost_us += now_us() - ts;
 }
 static void reap(void);
 static void shut(int i) {
@@ -310,6 +349,14 @@ static void opening(int i) {
     while (*p >= '0' && *p <= '9' && digits < 3) { p++; digits++; }
     shard_health = digits > 0 && !strncmp(p, "/health ", 8);
   }
+  /* the last window's vitals (room-stats.h): GET /api/room/vitals, or a shard's through the load balancer */
+  bool shard_vitals = false;
+  if (!strncmp((char *)c->in, "GET /api/room/s", 15)) {
+    const char *p = (const char *)c->in + 15; int digits = 0;
+    while (*p >= '0' && *p <= '9' && digits < 3) { p++; digits++; }
+    shard_vitals = digits > 0 && !strncmp(p, "/vitals ", 8);
+  }
+  if (shard_vitals || !strncmp((char *)c->in, "GET /api/room/vitals ", 21)) { http(i, "200 OK", "text/plain", st_last[0] ? st_last : "no window yet\n"); return; }
   if (shard_health || !strncmp((char *)c->in, "GET /health ", 12) || !strncmp((char *)c->in, "GET /api/room/health ", 21)) {
     // the fan-out time: this window's, else the last full minute's
     int64_t n = 0, p95 = fan_at(fan_now, 950, &n), p50, m;
@@ -345,6 +392,7 @@ static void opening(int i) {
   int64_t seat = rm_join(view(), i, req);
   if (seat < 0) { http(i, "404 Not Found", "text/plain", "No such room, or it is full.\n"); return; }
   c->ws = true;
+  st_joined(i, now_us());
   put_out(i, out, hn);
   memmove(c->in, end, c->n - len); c->n -= len;
   relay_flush();
@@ -357,6 +405,7 @@ static void frames(int i) {
     if (r == 0) return;
     if (r < 0) { c->doomed = true; return; }
     if (f.opcode == WS_TEXT) {
+      st_frame_in(f.payload, f.length);
       rm_heard(view(), i, (coax_string){(const char *)f.payload, (int64_t)f.length});
       relay_flush();
       if (rm_relay_kicked(view(), i)) { c->doomed = true; return; }
@@ -528,6 +577,37 @@ static void directory_post(void) {
   post_signed(api_url("OA_ROOM_DIRECTORY_URL", "/api/playtest/room-directory", buf, sizeof buf), server->dir.mac.e, server->dir.out.e, n);
 }
 
+/* Once a second, off the tick: each seat's relevant entities, and its socket's round trip (room-stats.h). */
+static void stats_sample(void) {
+  int64_t t0 = now_us(), ks[2];
+  for (int i = 0; i < CONNS; i++) {
+    if (conns[i].fd < 0 || !conns[i].ws || !rm_st_conn(view(), i, (coax_v_s64){ks, 2})) continue;
+    st_c[i].relevant = (int)rm_st_relevant(view(), ks[0], ks[1]);
+    st_c[i].rtt_ms = st_rtt(conns[i].fd);
+  }
+  st_cost_us += now_us() - t0;
+}
+/* Each window: its report kept for GET /api/room/vitals, a line in the log, and the signed post the
+   admins' room view reads (POST /api/playtest/room-stats, coax/web/api/rooms.c; never under --dev). */
+static void stats_window(double secs) {
+  static char body[ST_BODY_CAP];
+  st_buf o = {body, 0, sizeof body};
+  body[0] = 0;
+  st_line(&o, "t %lld", (long long)wall_ms());
+  size_t head = o.n;
+  double cost = st_tick_us > 0 ? 100.0 * (double)st_cost_us / (double)st_tick_us : 0;
+  int64_t p95 = st_hist_at(&st_work[STW_ALL], 950), ack95 = st_ack_q(NULL, st_ack_all, st_ack_all_n, 950);
+  st_report(&o, view(), rm_players(view()), server->shard, secs, true);
+  memcpy(st_last, body + head, o.n - head + 1);
+  if (rm_players(view()) > 0)
+    printf("room: vitals: tick p95 %.2f ms, input to ack p95 %lld ms, measuring %.2f%% of the tick\n", p95 / 1000.0, (long long)ack95, cost);
+  if (dev_dir || poster_fd < 0) return;
+  static uint8_t mac[65];
+  if (!rm_st_sign(view(), (coax_string){body, (int64_t)o.n}, (coax_v_u8){mac, 64})) return;
+  char buf[512];
+  post_signed(api_url("OA_ROOM_STATS_URL", "/api/playtest/room-stats", buf, sizeof buf), mac, (const uint8_t *)body, (int64_t)o.n);
+}
+
 /* The server's memory with every field at its declared default (coax_default_t_RmServer), then rm_init
    (room.coax): never the zeros calloc gives, which would read the level cap as 0 (#12774). */
 static coax_t_RmServer *server_new(void) {
@@ -593,7 +673,7 @@ int main(int argc, char **argv) {
   printf("room: listening on %s:%d\n", address, port);
   const double tick = 1000.0 / 60.0;
   double next = (double)now_ms();
-  int64_t ticks = 0, last_report = now_ms(), last_vitals = now_ms();
+  int64_t ticks = 0, last_report = now_ms(), last_vitals = now_ms(), last_stats = now_ms();
   for (;;) {
     struct pollfd fds[CONNS + 1]; int map[CONNS + 1], n = 0;
     fds[n] = (struct pollfd){lfd, POLLIN, 0}; map[n++] = -1;
@@ -611,7 +691,7 @@ int main(int argc, char **argv) {
           if (fd < 0) break;
           int slot = -1;
           for (int i = 0; i < CONNS; i++) if (conns[i].fd < 0) { slot = i; break; }
-          if (slot < 0) { close(fd); continue; }
+          if (slot < 0) { close(fd); rm_st_refuse_more(view(), 0); continue; }
           fcntl(fd, F_SETFL, O_NONBLOCK); fcntl(fd, F_SETFD, FD_CLOEXEC);   /* never a vitals curl's */
           setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
           conns[slot] = (conn){.fd = fd, .heard = now};
@@ -637,7 +717,7 @@ int main(int argc, char **argv) {
       clock_in();
       int64_t t_tick = now_us();
       rm_tick(view());
-      if (ticks % 2 == 0) { everglade_tick(); tick_add(now_us() - t_tick); }
+      if (ticks % 2 == 0) { everglade_tick(); int64_t dt = now_us() - t_tick; tick_add(dt); st_hist_add(&st_work[STW_ALL], dt); st_ticks++; st_tick_us += dt; }
       for (int i = 0; i < CONNS; i++) {
         if (conns[i].fd < 0 || !conns[i].ws) continue;
         int64_t len = rm_state(view(), i);
@@ -652,7 +732,8 @@ int main(int argc, char **argv) {
         rm_eg_owe(view(), (int64_t)(((double)now - next) / tick / 2.0));
         next = (double)now + tick;
       }
-      if (now - last_vitals >= 1000) { last_vitals = now; vitals_post(); directory_post(); }
+      if (now - last_vitals >= 1000) { last_vitals = now; vitals_post(); directory_post(); stats_sample(); }
+      if (now - last_stats >= ST_WINDOW_MS) { stats_window((now - last_stats) / 1000.0); last_stats = now; }
       control_ask(); control_hear();
       if (now - last_report >= 60000) { printf("room: %lld ticks in %.1f s, %lld players, %lld frames over the rate limits, %lld queue full, %lld slow sockets closed, %lld bytes the most waiting\n", (long long)ticks, (now - last_report) / 1000.0, (long long)rm_players(view()), (long long)rm_relay_dropped(view()), (long long)rm_relay_queue_full(view()), (long long)slow_closed, (long long)out_peak);
         printf("room: everglade tick parts over the minute (ms):"); for (int q = 0; q < PARTS; q++) { printf(" %s %lld", part_name[q], (long long)(part_us[q] / 1000)); part_us[q] = 0; }

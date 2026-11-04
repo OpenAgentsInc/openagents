@@ -61,7 +61,7 @@ EG_REBUILD_QUIET :: 10; EG_REBUILD_EVERY :: 30;   // s: R stands the town up onc
 EG_PIECES :: 6000;              // the town's pieces at most: verse/demolish.coax DEMO_PIECES, which wave 1 raised (the bridge's are past 4000)
 EG_ENT :: 192;                  // bytes of one cached entry (eg_cache) at most
 
-EgIn :: struct { seq: int; kx: int; ky: int; px: int; py: int; theta: int; b: int; }
+EgIn :: struct { seq: int; kx: int; ky: int; px: int; py: int; theta: int; b: int; at: int; }   // at: mono ms it was heard (room-stats.coax)
 EgPose :: struct { x: f32; y: f32; z: f32; yaw: f32; vx: f32; vy: f32; vz: f32; g: int; clip: int; carry: int; }
 EgSeat :: struct {
   live: bool; conn: int = -1;
@@ -79,6 +79,7 @@ EgSeat :: struct {
   full: bool;                                         // its next D is a snapshot
   fresh: bool;                                        // just sat: the world's watch meets a new player
   wcond: int;                                         // the world's conditions on it (WC_*), with the rules' in p's COND
+  step_at: int; ack_at: int; ack_told: int;           // when the input stepped last and the one ACK names were heard (room-stats.coax rm_st_ack)
 }
 // A cast from its hearing to its strike (room-casts.coax, #12790): its phase (RC_*), the ticks it was
 // heard, started, is released and strikes at, the order it was heard in, and its line of sight's
@@ -305,7 +306,7 @@ eg_heard_input :: (v: [] RmServer, k: int, seat: int, text: string) {
   }
   st[0].q[n] = EgIn.{seq = seq, kx = eg_clamp(w.kx, -100, 100), ky = eg_clamp(w.ky, -100, 100),
                      px = eg_clamp(w.px, -100, 100), py = eg_clamp(w.py, -100, 100),
-                     theta = eg_clamp(eg_round(w.theta * 100.0), -100000, 100000), b = eg_clamp(w.b, 0, 31)};
+                     theta = eg_clamp(eg_round(w.theta * 100.0), -100000, 100000), b = eg_clamp(w.b, 0, 31), at = v[0].mono_ms};
   st[0].q_n = n + 1;
 }
 // book:end intent-queue
@@ -397,6 +398,7 @@ rm_eg_input :: (v: [] RmServer, k: int, s: int, out: [] int) -> bool #export_c {
   i := st[0].q[0];
   for q: 1..<st[0].q_n { st[0].q[q - 1] = st[0].q[q]; }
   st[0].q_n -= 1; st[0].bank -= 1; st[0].took += 1;
+  st[0].step_at = i.at;
   out[0] = i.seq; out[1] = i.kx; out[2] = i.ky; out[3] = i.px; out[4] = i.py; out[5] = i.theta; out[6] = i.b;
   return true;
 }
@@ -405,7 +407,7 @@ rm_eg_moved :: (v: [] RmServer, k: int, s: int, seq: int, x: f32, y: f32, z: f32
   if k < 0 || k >= EG_ROOMS || s < 0 || s >= EG_SEATS || !v[0].eg[k].live || !v[0].eg[k].seat[s].live { return; }
   st := v[0].eg[k].seat[s..<s + 1];
   st[0].pose = EgPose.{x = x, y = y, z = z, yaw = yaw, vx = vx, vy = vy, vz = vz, g = g, clip = clip, carry = carry};
-  if seq > st[0].ack { st[0].ack = seq; }
+  if seq > st[0].ack { st[0].ack = seq; st[0].ack_at = st[0].step_at; }
   st[0].placed = true;
   e5rr_place(v[0].eg[k].rules[..], s, x, z);
 }
@@ -431,8 +433,10 @@ rm_eg_beast_at :: (v: [] RmServer, k: int, q: int, out: [] f32) -> bool #export_
 rm_eg_beast_ground :: (v: [] RmServer, k: int, q: int, y: f32) #export_c { if rm_eg_live(v, k) { e5rr_beast_ground(v[0].eg[k].rules[..], q, y); } }
 
 // Room k's tick ends: the casts that strike now are rolled, the engine's clock moves on, its events
-// are heard, and every EG_SEND ticks (each tick) each seat gets its state.
-rm_eg_end :: (v: [] RmServer, k: int) #export_c {
+// are heard (rm_eg_rules), and every EG_SEND ticks (each tick) each seat gets its state (rm_eg_send).
+// The host calls the two apart, to time the rules and the writing of the frames (room-stats.h).
+rm_eg_end :: (v: [] RmServer, k: int) #export_c { rm_eg_rules(v, k); rm_eg_send(v, k); }
+rm_eg_rules :: (v: [] RmServer, k: int) #export_c {
   if k < 0 || k >= EG_ROOMS || !v[0].eg[k].live { return; }
   t := v[0].eg[k].tick;
   // the casts in the tick's order (room-casts.coax): starts, heals, the world's harm; the rules' step
@@ -443,7 +447,9 @@ rm_eg_end :: (v: [] RmServer, k: int) #export_c {
   eg_engine_events(v, k);
   eg_sky_tick(v, k);   // the weather turned: everyone hears it (room-sky.coax)
   ev_tick(v, k);       // its world event (room-events.coax)
-  if t % EG_SEND != 0 { return; }
+}
+rm_eg_send :: (v: [] RmServer, k: int) #export_c {
+  if k < 0 || k >= EG_ROOMS || !v[0].eg[k].live || v[0].eg[k].tick % EG_SEND != 0 { return; }
   for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live && v[0].eg[k].seat[s].placed { eg_send(v, k, s); } }
   v[0].eg[k].ev_n = 0; v[0].eg[k].ev_bytes = 0;
 }

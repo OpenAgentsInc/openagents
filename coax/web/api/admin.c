@@ -16,6 +16,8 @@
 //                                              the reports, for admin.coax (our team's own testing,
 //                                              auto = 'team', left out unless team=1); a cookie or an
 //                                              Authorization: Nostr header for this exact URL
+//   GET /api/admin/rooms                       the rooms' vitals (/admin/rooms): each shard's numbers
+//                                              over the last 10 minutes and its seats (#12791)
 //   GET /api/admin/reports, POST .../<kind>/<ref>/hide|keep|restore
 //                                              Hecate's Cemetery's review queue (/admin/reports)
 //
@@ -511,6 +513,48 @@ static void review(const request *q, PGconn *db, const char *who) {
   PQclear(r);
 }
 
+// The rooms' vitals (/admin/rooms, admin.coax; #12791): each shard that reported in the last 10
+// minutes (migrations/0123_room_stats.sql), its numbers now and over the 10 minutes (flag "k": the
+// last value is the series, drawn as a sparkline), in three groups, then its seats from its last report.
+#define ROOM_LINES \
+  "WITH p AS (SELECT at, body FROM verse.room_stats WHERE shard = $1::int AND at > now() - interval '10 minutes'), " \
+  "l AS (SELECT p.at, x.line, x.ord FROM p, regexp_split_to_table(p.body, E'\\n') WITH ORDINALITY AS x(line, ord) WHERE x.line LIKE '%=%'), " \
+  "m AS (SELECT at, ord, split_part(line, '=', 1) AS name, split_part(line, '=', 2) AS v FROM l), " \
+  "g AS (SELECT name, min(ord) AS ord, (array_agg(v ORDER BY at DESC))[1] AS now, string_agg(v, ',' ORDER BY at) AS series FROM m GROUP BY name) " \
+  "SELECT name, now, series FROM g WHERE name ~ $2 ORDER BY ord"
+static void rooms(const request *q, PGconn *db) {
+  if (strcmp(q->method, "GET")) { api_json(q->fd, 405, "{\"error\":\"GET\"}"); return; }
+  out_buf o = {0};
+  PGresult *r = PQexec(db, "SELECT DISTINCT shard FROM verse.room_stats WHERE at > now() - interval '10 minutes' ORDER BY shard");
+  int n = PQresultStatus(r) == PGRES_TUPLES_OK ? PQntuples(r) : 0;
+  if (PQresultStatus(r) != PGRES_TUPLES_OK) api_log("rooms: %s", PQerrorMessage(db));
+  if (n == 0) puts_(&o, "#ROOMS||NUMBER|NOW\n");
+  static const struct { const char *group, *match; } groups[] = {
+    {"TICK", "^(ticks a second|tick |players p|raiders |effects |folk |writing |sending |measuring)"},
+    {"PLAYERS", "^(players$|queue |relevant |input to ack|join|rejoins |refused )"},
+    {"BYTES", "^(out|in) "},
+  };
+  for (int i = 0; i < n && i < 8; i++) {
+    const char *shard = PQgetvalue(r, i, 0);
+    char title[48];
+    for (size_t g = 0; g < sizeof groups / sizeof groups[0]; g++) {
+      snprintf(title, sizeof title, "SHARD %s %s", shard, groups[g].group);
+      const char *v[2] = {shard, groups[g].match};
+      section(&o, db, title, "k", "NUMBER|NOW|LAST 10 MINUTES", ROOM_LINES, 2, v);
+    }
+    snprintf(title, sizeof title, "SHARD %s SEATS", shard);
+    const char *v[1] = {shard};
+    section(&o, db, title, "w", "ROOM|SEAT|QUEUE BYTES|QUEUE MS|RELEVANT|ACK P50 MS|ACK P95 MS|ROUND TRIP MS",
+      "WITH b AS (SELECT body FROM verse.room_stats WHERE shard = $1::int ORDER BY at DESC LIMIT 1) "
+      "SELECT split_part(x, '|', 2), split_part(x, '|', 3), split_part(x, '|', 4), split_part(x, '|', 5), split_part(x, '|', 6), "
+      "  split_part(x, '|', 7), split_part(x, '|', 8), split_part(x, '|', 9) "
+      "FROM b, regexp_split_to_table(b.body, E'\\n') AS x WHERE x LIKE 'seat|%'", 1, v);
+  }
+  PQclear(r);
+  api_respond(q->fd, 200, "text/plain; charset=utf-8", "Cache-Control: no-store\r\n", o.p ? o.p : "", o.n);
+  free(o.p);
+}
+
 bool admin_route(const request *q) {
   if (strncmp(q->path, "/api/admin/", 11)) return false;
   PGconn *db = api_db();
@@ -518,11 +562,13 @@ bool admin_route(const request *q) {
   if (!strcmp(q->path, "/api/admin/login")) { login(q, db); return true; }
   if (!strcmp(q->path, "/api/admin/logout")) { logout(q, db); return true; }
   bool queue = !strncmp(q->path, "/api/admin/reports", 18) && (q->path[18] == 0 || q->path[18] == '/');
-  if (strcmp(q->path, "/api/admin/analytics") && !queue) { api_json(q->fd, 404, "{\"error\":\"not found\"}"); return true; }
+  bool room_view = !strcmp(q->path, "/api/admin/rooms");
+  if (strcmp(q->path, "/api/admin/analytics") && !queue && !room_view) { api_json(q->fd, 404, "{\"error\":\"not found\"}"); return true; }
   char who[65];
   int status = site_who(q, db, who);
   if (status) { refuse(q->fd, status); return true; }
-  if (queue) review(q, db, who);
+  if (room_view) rooms(q, db);
+  else if (queue) review(q, db, who);
   else reports(q, db);
   return true;
 }

@@ -529,6 +529,48 @@ UPDATE verse.room_shards SET rooms_cap = 2 WHERE shard BETWEEN 1 AND 6 AND rooms
 Instances already open on a third slot stay open until they empty. New ones
 go to the next shard with room.
 
+## During a raid: the room vitals to watch (#12791)
+
+Each shard reports its vitals every 10 seconds. Open
+[openagents.com/admin/rooms](https://openagents.com/admin/rooms) (the admin
+login). It shows each shard's numbers now, with a sparkline of the last 10
+minutes, and a table of its seats. The same numbers for the last window are at
+`curl -s https://openagents.com/api/room/s1/vitals` (shard 1), and the room's
+log prints `room: vitals:` with the tick p95, input to ack p95 and the cost of
+measuring once a window.
+
+Watch these during a raid, in this order. A number past its alarm for two
+windows in a row (20 seconds) is a real alarm.
+
+| Number on /admin/rooms | Normal (16-player local raid) | Alarm | What to do |
+| --- | --- | --- | --- |
+| `ticks a second` | 30 | Under 28 | The shard is falling behind. Check `tick p99 ms` and which workload grew. Stop new instances on that shard (step 4's rollback). |
+| `tick p95 ms` | 1.5 | Over 5 (spec acceptance 7) | Find the workload: `players`, `raiders`, `effects`, `folk`, `writing` or `sending` p95. |
+| `tick p99 ms` | 1.7 (6.4 at the worst window) | Over 15 | A spike that players feel as a hitch. The workload's p99 names its cause. |
+| `raiders p95 ms` | 0.15 | Over 2 | The raid's rules step. Lower the raid's size dial for the next raid. |
+| `effects p95 ms` | 0.9 (1.9 at the worst window) | Over 2 | Spells and zones. Look at the `out D` entry lines. |
+| `writing p95 ms` | 0.14 | Over 1.5 | Serialization. Compare `out bytes a second`. |
+| `queue age ms most` | 0 | Over 500 | A socket isn't keeping up. Its row in the seats table has the queue. At 3000 ms (or 256 KB) the server closes it. |
+| `queue bytes most` | 0 | Over 65536 | As above. |
+| `input to ack p95 ms` | 34 before the fight, 294 to 528 during it (see below) | Over 250 (spec acceptance 1) | Check the seats table: one seat's round trip is the network; every seat's is the server. |
+| `join burst ms most` | 70 | Over 2000 | A join's first whole snapshot took too long to reach the page. |
+| `join burst bytes most` | 2691 | Over 131072 | The snapshot grew (many broken pieces or entities). |
+| `rejoins seated` against `rejoins tried` | Equal | Seated under 90% of tried | Rejoins are failing. Check `refused` by reason. |
+| `refused ticket`, `refused shard` | 0 | Any, for two windows | The directory or the ticket key disagrees with the shard. |
+| `refused full`, `refused no room` | 0 | Rising | Rooms are full. Expected at capacity; check step 4. |
+| `refused version` | 0 | Rising after the page release | Old pages are joining (#12788). They reload themselves. |
+| `out bytes a second` divided by `players` | About 33000 | Over 65536 | Each player is sent too much. The `out D ... bytes a second` lines, one for each entry letter, name what. |
+| `relevant entities most` | 70 | Over 150 | One seat sees too much. |
+| `measuring % of tick` | 0.35 to 1.1 | Over 2 | The vitals cost too much. Report it on #12791. |
+
+The normal column is from a 16-player local raid (`raid-proof.sh` with
+`RAID_MODE=fight RAID_CLASS=mix`, 120 seconds, on an M-series Mac). In that
+raid `input to ack p95 ms` climbs about 100 ms every 10 seconds once the fight
+starts and stops near 528 ms. The bots send inputs slightly faster than the
+30 Hz tick, so each seat's input queue fills, and the server applies one input
+a tick. A real player whose page sends faster than the tick sees the same
+delay. If every seat shows it, the input queue is full, not the network.
+
 ## Owner-only steps
 
 These are in `NEEDS_OWNER.md` at the workspace root. Only the first two

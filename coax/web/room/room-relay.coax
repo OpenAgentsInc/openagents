@@ -125,12 +125,15 @@ rl_head :: (buf: [] u8, kind: u8, seat: int, space: bool) -> string {
 rl_join :: (v: [] RmServer, conn: int, request: string) -> int {
   game: [RELAY_NAME] u8; code: [RELAY_NAME] u8; ns: [2] int;
   if !rl_path(request, game[..], code[..], ns[..]) { return -1; }
+  // a page's own rejoin after it lost the room says re=1 (everglade-net.coax): counted, and whether it sat (room-stats.coax)
+  re := rl_query(request, "re") == "1";
+  if re && cast(string) game[0..<ns[0]] == EVERGLADE { v[0].st.re_tries += 1; }
   r := rl_find(v, cast(string) game[0..<ns[0]], cast(string) code[0..<ns[1]]);
-  if r < 0 { return -1; }
+  if r < 0 { return st_refuse(v, ST_NO_ROOM); }
   // an everglade room needs one of the server's simulations (room-everglade.coax EG_ROOMS)
   if v[0].relays[r].limited && eg_room_of(v, r) < 0 {
     if rl_people(v, r) == 0 { v[0].relays[r].live = false; }
-    return -1;
+    return st_refuse(v, ST_NO_ROOM);
   }
   // a seat ticket for this room, when the server has a key (room-ticket.coax): forged, expired or another room's, no seat
   tk := Ticket.{};
@@ -140,7 +143,7 @@ rl_join :: (v: [] RmServer, conn: int, request: string) -> int {
     // and for this shard (#12717): the directory put the room here, and nowhere else
     if !tk.ok || rc_kicked(v, cast(string) tk.pid[0..<tk.pid_n]) || tk.shard != v[0].shard {
       if rl_people(v, r) == 0 { v[0].relays[r].live = false; }
-      return -1;
+      return st_refuse(v, ifx !tk.ok then ST_TICKET else ifx tk.shard != v[0].shard then ST_SHARD else ST_KICKED);
     }
   }
   // the same player's other socket here, silent for RL_STALE_MS (a phone that changed networks, a tab
@@ -151,8 +154,9 @@ rl_join :: (v: [] RmServer, conn: int, request: string) -> int {
   if seat < 0 {
     // full: a room nobody is in yet stays closed
     if rl_people(v, r) == 0 { v[0].relays[r].live = false; }
-    return -1;
+    return st_refuse(v, ST_FULL);
   }
+  if re && v[0].relays[r].limited { v[0].st.re_ok += 1; }
   now := v[0].mono_ms;
   v[0].conns[conn] = RmConn.{live = true, relay = r, seat = seat, ftok = RL_BURST * 1000, btok = RL_BYTES * 1000, refill_at = now, ticket = tk};
   h: [16] u8;

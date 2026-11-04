@@ -31,6 +31,7 @@
 #load "room-directory.coax";
 #load "room-events.coax";
 #load "room-dev.coax";
+#load "room-stats.coax";   // what the server counts of its own work, for the admins' room view (#12791)
 
 ROOMS :: 8;
 CONNS :: 512;
@@ -78,6 +79,7 @@ RmServer :: struct {
   evc: RmEvents;                         // the realm's world-event dials (room-events.coax)
   ev: [EG_ROOMS] EvRoom;                 // each everglade room's event, XP and levels (room-events.coax)
   dev: RmDev;                            // --dev: the API's stand-in for local development (room-dev.coax)
+  st: RmStats;                           // refusals and rejoins, for the room view (room-stats.coax)
 }
 
 // book:begin server-start
@@ -208,7 +210,7 @@ rm_join :: (v: [] RmServer, conn: int, request: string) -> int #export_c {
   // /api/room/sN/...: shard N's (room-directory.coax); any other shard's is not this server's
   shard := rm_path_shard(request);
   if shard != 0 {
-    if shard != v[0].shard { return -1; }
+    if shard != v[0].shard { return st_refuse(v, ST_SHARD); }
     line: [1024] u8;
     n := rm_path_unshard(request, line[..]);
     if n < 0 { return -1; }

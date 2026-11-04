@@ -813,8 +813,9 @@ net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: 
   if n[0].want && (n[0].state == NET_OFF || (n[0].state == NET_DOWN && mono >= n[0].retry)) && jn_ready(n) {
     // each open takes a fresh seat ticket (the room refuses a join without one): asked for, then used
     if n[0].ticket_n > 0 {
-      u: [NET_URL + NET_TICKET + 4] u8;
+      u: [NET_URL + NET_TICKET + 9] u8;
       k := wire_put(u[..], 0, cast(string) n[0].url[0..<n[0].url_n]); k = wire_put(u[..], k, "?t="); k = wire_put(u[..], k, cast(string) n[0].ticket[0..<n[0].ticket_n]);
+      if n[0].lost { k = wire_put(u[..], k, "&re=1"); }   // a rejoin after the room was lost: the room counts it (room-stats.coax)
       if pipe_open(n[0].pipe[..], cast(string) u[0..<k]) { n[0].state = NET_OPENING; n[0].sock = -1; n[0].ticket_n = 0; }
     } else if !n[0].ticket_asked {
       // the path (?realm=: the directory places you, #12717), then a line, then the body: the name a guest asks for (everglade-join.coax)

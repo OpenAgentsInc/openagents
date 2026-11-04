@@ -26,6 +26,10 @@
 // the picked uses and days and shows its link once with COPY LINK, REVOKE ends a live invite,
 // APPROVE and DECLINE answer a waiting request, GRANDFATHER makes every realm's maker a creator.
 // Each press POSTs and the lines are asked again.
+//
+// And /admin/rooms (data-page 3): the rooms' vitals (GET /api/admin/rooms, coax/web/api/admin.c; #12791),
+// asked again every AD_ROOMS_EVERY seconds. FLAGS "k": a row's last value is its numbers over the last
+// 10 minutes, comma apart, drawn as a sparkline.
 
 #load "projects.coax";
 
@@ -33,7 +37,7 @@ AD_MAX_VERTICES :: 240000;
 AD_INBOX :: 1048576;       // the host's messages: an answer is "STATUS\n" then the rows
 AD_DATA :: 1048576;        // the last answer's rows (AdminHost holds both; AdminState sees them)
 AD_ROWS :: 4096;
-AD_SECTIONS :: 16;
+AD_SECTIONS :: 32;
 AD_COLS :: 12;
 AD_ASK :: 512;
 AD_ROW :: 17.0;            // CSS pixels a row
@@ -42,12 +46,12 @@ AD_NAVIGATE :: 1;
 AD_COPY :: 2;              // host.js: the outbox's text to the clipboard
 
 AD_OVERVIEW :: 0; AD_SESSIONS :: 1; AD_SESSION :: 2;
-AD_CHIPS :: 26;
-AD_CHIP_LABELS :: [26] string.["OVERVIEW", "SESSIONS", "1 DAY", "7 DAYS", "30 DAYS", "ALL TIME", "ALL", "WEB", "KIKI", "DEV",
+AD_CHIPS :: 27;
+AD_CHIP_LABELS :: [27] string.["OVERVIEW", "SESSIONS", "1 DAY", "7 DAYS", "30 DAYS", "ALL TIME", "ALL", "WEB", "KIKI", "DEV",
                               "AUTOMATED", "BACK", "LOG OUT", "REPORTS", "ANALYTICS", "OUR TEAM",
-                              "1 USE", "10 USES", "100 USES", "7 DAYS", "30 DAYS", "90 DAYS", "NEW INVITE", "GRANDFATHER", "COPY LINK", "ACCESS"];
+                              "1 USE", "10 USES", "100 USES", "7 DAYS", "30 DAYS", "90 DAYS", "NEW INVITE", "GRANDFATHER", "COPY LINK", "ACCESS", "ROOMS"];
 // OUR TEAM sits beside AUTOMATED; COPY LINK (24) has its own line under the chips
-AD_CHIP_ORDER :: [26] int.[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 11, 16, 17, 18, 19, 20, 21, 22, 23, 12, 13, 14, 25, 24];
+AD_CHIP_ORDER :: [27] int.[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 11, 16, 17, 18, 19, 20, 21, 22, 23, 12, 13, 14, 25, 26, 24];
 AD_USES :: [3] string.["1", "10", "100"];
 AD_INVITE_DAYS :: [3] string.["7", "30", "90"];
 AD_DAYS :: [4] string.["1", "7", "30", "0"];
@@ -60,7 +64,8 @@ AD_TURN_ON :: 3; AD_TURN_OFF :: 4; AD_REVOKE :: 5; AD_APPROVE :: 6; AD_DECLINE :
 AD_P_NEW :: 20; AD_P_GRAND :: 21;   // posting: an access button's 10 + action, or these
 AD_ACT_WORDS :: [3] string.["hide", "keep", "restore"];
 AD_ACT_DONE :: [3] string.["HIDDEN", "KEPT", "RESTORED"];
-AD_ANALYTICS :: 0; AD_REPORTS :: 1; AD_ACCESS :: 2;   // the page (data-page)
+AD_ANALYTICS :: 0; AD_REPORTS :: 1; AD_ACCESS :: 2; AD_ROOMS :: 3;   // the page (data-page)
+AD_ROOMS_EVERY :: 10.0;    // s: the rooms' vitals asked again (a shard reports every 10 s)
 
 AdminState :: struct {
   time: f32; ready: bool;
@@ -80,6 +85,7 @@ AdminState :: struct {
   uses_pick: int; days_pick: int;   // NEW INVITE's uses and days: AD_USES, AD_INVITE_DAYS
   acc_link: [160] u8; acc_link_n: int;   // the new invite's link: shown once, here only
   anote: [48] u8; anote_n: int;     // what the last access press did
+  asked_at: f32;                    // when the rooms' vitals were last asked (time)
   data: [] u8; data_n: int;   // AdminHost's (a #test's own short buffer)
   sec_n: int;
   sec_head: [AD_SECTIONS] int; sec_end: [AD_SECTIONS] int;   // the "#" line
@@ -174,6 +180,7 @@ ad_ask :: (s: [] AdminState) {
   s[0].pbody_n = 0;
   if s[0].page == AD_REPORTS { s[0].ask_n = ad_put(s, 0, "/api/admin/reports"); ad_waiting(s); return; }
   if s[0].page == AD_ACCESS { s[0].ask_n = ad_put(s, 0, "/api/admin/access"); ad_waiting(s); return; }
+  if s[0].page == AD_ROOMS { s[0].ask_n = ad_put(s, 0, "/api/admin/rooms"); s[0].asked_at = s[0].time; ad_waiting(s); return; }
   n := ad_put(s, 0, "/api/admin/analytics?view=");
   if s[0].view == AD_SESSION {
     n = ad_put(s, n, "session&sid=");
@@ -398,7 +405,9 @@ ad_layout :: (s: [] AdminState) -> AdLayout {
   x := x0; y := (m + 76) * d;
   for o: 0..<AD_CHIPS {
     i := AD_CHIP_ORDER[o];
-    l.shown[i] = ifx s[0].page == AD_REPORTS then i == 12 || i == 14 || i == 25
+    l.shown[i] = ifx i == 26 then s[0].page != AD_ROOMS && s[0].view != AD_SESSION
+                 else ifx s[0].page == AD_ROOMS then i == 12 || i == 13 || i == 14 || i == 25
+                 else ifx s[0].page == AD_REPORTS then i == 12 || i == 14 || i == 25
                  else ifx s[0].page == AD_ACCESS then i == 12 || i == 13 || i == 14 || (i >= 16 && i <= 23)
                  else (i < 16 && i != 14 && (i != 11 || s[0].view == AD_SESSION) && (s[0].view != AD_SESSION || i < 2 || (i > 10 && i != 15)))
                       || (i == 25 && s[0].view != AD_SESSION);
@@ -463,7 +472,7 @@ ad_header :: (out: [] f32, at: int, s: [] AdminState, l: AdLayout, p: Pen) -> in
   v := put(out, at, "OPENAGENTS", x, b.y0 + 22 * d, 7 * d, dim);
   crumb := x + ink_width("OPENAGENTS", 7 * d, GAP, SPACE, dim) + SPACE * 7 * d;  // dim ink is the sans: measure it as drawn
   v = put(out, v, "/ ADMIN", crumb, b.y0 + 22 * d, 7 * d, dim);
-  title := ifx s[0].page == AD_REPORTS then "REPORTS" else ifx s[0].page == AD_ACCESS then "ACCESS" else "ANALYTICS";
+  title := ifx s[0].page == AD_REPORTS then "REPORTS" else ifx s[0].page == AD_ACCESS then "ACCESS" else ifx s[0].page == AD_ROOMS then "ROOMS" else "ANALYTICS";
   v = put(out, v, title, x, b.y0 + 54 * d, 22 * d, white);
   note := ifx s[0].status == 0 || s[0].status == 1 then "LOADING" else ifx s[0].view == AD_SESSION then "ONE SESSION"
           else ifx s[0].page == AD_REPORTS && s[0].said > 0 then AD_ACT_DONE[s[0].said - 1]
@@ -519,8 +528,10 @@ ad_section :: (out: [] f32, at: int, s: [] AdminState, k: int, b: Box, top: f32,
     if y0 > s[0].height { break; }
     i := s[0].sec_first[k] + r;
     lit_up := opens && s[0].hot == i;
+    spark := ad_flag(s, k, 'k');
     for c: 0..<cols {
       text := ad_cell(s, s[0].row_at[i], s[0].row_end[i], c);
+      if spark && c == cols - 1 { v = ad_spark(out, v, text, Box.{x0 = xs[c], y0 = y0 + 3 * d, x1 = xs[c + 1] - 8 * d, y1 = y0 + 14 * d}, accent, p); continue; }
       ik := ifx lit_up then accent else ifx c == 0 && opens then ink(p, INK_PALE) else ifx c == 0 then white else dim;
       v = put_fit(out, v, text, xs[c], y0 + 12 * d, 7 * d, ik, xs[c + 1] - xs[c] - 8 * d);
     }
@@ -534,6 +545,48 @@ ad_section :: (out: [] f32, at: int, s: [] AdminState, k: int, b: Box, top: f32,
     }
   }
   if b.y0 >= top && b.y1 <= s[0].height + 40 * d { v = frame(out, v, b, 10 * d, p); }
+  return v;
+}
+
+// A number's value ("12", "-3.25"; 0 when it isn't one).
+ad_num :: (t: string) -> f32 {
+  v := 0.0f32; neg := false; frac := 0.0f32; i := 0;
+  if t.count > 0 && t[0] == '-' { neg = true; i = 1; }
+  while i < t.count {
+    c := t[i];
+    if c == '.' && frac == 0 { frac = 1; }
+    else if c >= '0' && c <= '9' { if frac > 0 { frac *= 0.1; v += frac * cast(f32) (c - '0'); } else { v = v * 10 + cast(f32) (c - '0'); } }
+    else { break; }
+    i += 1;
+  }
+  return ifx neg then -v else v;
+}
+AD_SPARK :: 120;           // points a sparkline draws at most (the newest)
+ad_spark_y :: (x: f32, least: f32, span: f32, b: Box) -> f32 { return ifx span <= 0 then (b.y0 + b.y1) * 0.5 else b.y1 - (x - least) / span * (b.y1 - b.y0); }
+// A sparkline of series ("v,v,v", oldest first) in b: its lowest at the bottom, its highest at the top
+// (a flat one along the middle), the newest point marked.
+ad_spark :: (out: [] f32, at: int, series: string, b: Box, k: Ink, p: Pen) -> int {
+  vals: [AD_SPARK] f32; n := 0; from := 0;
+  // the newest AD_SPARK of them
+  commas := 0;
+  for c: series { if c == ',' { commas += 1; } }
+  skip := commas + 1 - AD_SPARK; if skip < 0 { skip = 0; } i := 0;
+  while i <= series.count && n < AD_SPARK {
+    if i == series.count || series[i] == ',' {
+      if skip > 0 { skip -= 1; } else { vals[n] = ad_num(series[from..<i]); n += 1; }
+      from = i + 1;
+    }
+    i += 1;
+  }
+  if n == 0 || box_w(b) <= 0 { return at; }
+  least := vals[0]; most := vals[0];
+  for q: 1..<n { least = lo(least, vals[q]); most = hi(most, vals[q]); }
+  span := most - least;
+  step := ifx n > 1 then box_w(b) / cast(f32) (n - 1) else 0;
+  v := at;
+  for q: 1..<n { v = rule(out, v, b.x0 + step * cast(f32) (q - 1), ad_spark_y(vals[q - 1], least, span, b), b.x0 + step * cast(f32) q, ad_spark_y(vals[q], least, span, b), k, p.fade); }
+  ex := b.x0 + step * cast(f32) (n - 1); ey := ad_spark_y(vals[n - 1], least, span, b);
+  v = rule(out, v, ex - 1.5 * p.d, ey, ex + 1.5 * p.d, ey, k, p.fade);
   return v;
 }
 
@@ -584,6 +637,7 @@ coaxial_admin_frame :: (s: [] AdminState, out: [] f32, uniforms: [] f32, width: 
   if !s[0].ready { s[0].ready = true; s[0].hot = -1; s[0].press = -1; s[0].days = 1; s[0].status = -1; }
   if s[0].status == -1 { ad_ask(s); }
   s[0].time += clamp(dt, 0, 0.1);
+  if s[0].page == AD_ROOMS && s[0].status == 200 && s[0].ask_n == 0 && s[0].time - s[0].asked_at >= AD_ROOMS_EVERY { ad_ask(s); }
   time := ifx still then 20.0f32 else s[0].time;
   d := hi(dpr, 1);
   s[0].width = width; s[0].height = height; s[0].d = d;
@@ -680,8 +734,8 @@ ad_act :: (s: [] AdminState, target: int) {
     s[0].out_n = s[0].acc_link_n; s[0].action = AD_COPY; ad_say(s, "COPIED");
     return;
   }
-  else if i == 13 || i == 14 || i == 12 || i == 25 {
-    url := ifx i == 13 then "/admin/reports" else ifx i == 14 then "/admin/analytics" else ifx i == 25 then "/admin/access" else "/api/admin/logout";
+  else if i == 13 || i == 14 || i == 12 || i == 25 || i == 26 {
+    url := ifx i == 13 then "/admin/reports" else ifx i == 14 then "/admin/analytics" else ifx i == 25 then "/admin/access" else ifx i == 26 then "/admin/rooms" else "/api/admin/logout";
     for c: 0..<url.count { s[0].outbox[c] = url[c]; }
     s[0].out_n = url.count; s[0].action = AD_NAVIGATE;
     return;
@@ -739,7 +793,7 @@ coaxial_admin_cursor :: (s: [] AdminState) -> int #export_c { if s.count < 1 { r
 coaxial_admin_action :: (s: [] AdminState) -> int #export_c { if s.count < 1 { return 0; } return s[0].action; }
 coaxial_admin_action_done :: (s: [] AdminState) #export_c { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
 coaxial_admin_inbox_cap :: () -> int #export_c { return AD_INBOX; }
-coaxial_admin_page :: (s: [] AdminState, page: int) #export_c { if s.count > 0 { s[0].page = ifx page == 1 then AD_REPORTS else ifx page == 2 then AD_ACCESS else AD_ANALYTICS; } }
+coaxial_admin_page :: (s: [] AdminState, page: int) #export_c { if s.count > 0 { s[0].page = ifx page == 1 then AD_REPORTS else ifx page == 2 then AD_ACCESS else ifx page == 3 then AD_ROOMS else AD_ANALYTICS; } }
 coaxial_admin_max_vertices :: () -> int #export_c { return AD_MAX_VERTICES; }
 
 // ---- checks
@@ -968,4 +1022,32 @@ AD_ACCESS_LINES :: "200\nF|realm_invites|1\nF|auth_v2|0\nI|12|10|3|1790000000000
   coaxial_admin_page(s[..], 1);
   ad_act(s[..], AD_CHIP + 25);
   #assert s[0].action == AD_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/admin/access";
+}
+
+AD_ROOMS_LINES :: "200\n#SHARD 1 TICK|k|NUMBER|NOW|LAST 10 MINUTES\ntick p95 ms|1.80|1.20,1.50,1.80\nraiders p95 ms|0.40|0.40,0.40,0.40\n#SHARD 1 SEATS|w|ROOM|SEAT|QUEUE BYTES|QUEUE MS|RELEVANT|ACK P50 MS|ACK P95 MS|ROUND TRIP MS\neverglade-1|0|0|0|41|36|52|3\n";
+
+#test "/admin/rooms asks for the rooms' vitals, draws each series as a sparkline, and asks again every 10 seconds (#12791)" {
+  s: [1] AdminState; data: [AD_TEST_DATA] u8; s[0].data = data[..];
+  out: [AD_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  coaxial_admin_page(s[..], 3);
+  _ := coaxial_admin_frame(s[..], out[..], u[..], 1440, 900, 2, 0.016, true);
+  #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/api/admin/rooms";
+  coaxial_admin_asked(s[..]);
+  ad_answer(s[..], AD_ROOMS_LINES);
+  #assert s[0].status == 200 && s[0].sec_n == 2 && s[0].sec_rows[0] == 2 && s[0].sec_rows[1] == 1 && ad_flag(s[..], 0, 'k');
+  plain := coaxial_admin_frame(s[..], out[..], u[..], 1440, 900, 2, 0.016, true);
+  // the series is lines, not its text: a flat one and a rising one, two segments and the newest's mark each
+  #assert ad_num("1.80") > 1.79 && ad_num("1.80") < 1.81 && ad_num("-3") == -3 && ad_num("x") == 0;
+  b := Box.{x0 = 0, y0 = 0, x1 = 100, y1 = 10};
+  #assert ad_spark(out[..], 0, "1,2,3", b, ink(Pen.{d = 1, fade = 1, time = 0}, INK_LIT), Pen.{d = 1, fade = 1, time = 0}) == 3 * 6;
+  #assert ad_spark_y(3, 1, 2, b) == 0 && ad_spark_y(1, 1, 2, b) == 10 && ad_spark_y(5, 5, 0, b) == 5;
+  #assert plain > 0 && s[0].ask_n == 0;
+  // ten seconds on, the next ask
+  s[0].time += 9.95;
+  _ = coaxial_admin_frame(s[..], out[..], u[..], 1440, 900, 2, 0.1, false);
+  #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/api/admin/rooms";
+  // ROOMS is on every other page's row, and leads here
+  coaxial_admin_page(s[..], 0);
+  ad_act(s[..], AD_CHIP + 26);
+  #assert s[0].action == AD_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/admin/rooms";
 }
