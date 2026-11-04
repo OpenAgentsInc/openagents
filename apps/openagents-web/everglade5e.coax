@@ -392,6 +392,7 @@ e5_finish :: (s: [] Everglade, v: [] E5, out: [] f32, u: [] f32, at: int) -> int
   n := at;
   // EDIT: Aethyrforge's panels alone, as on Everglade (everglade-forge.coax)
   if !s[0].started || at <= 0 || u.count < UNIFORM_FLOATS || forge_on(s) { return n; }
+  if rp_hud_off(s) { u[5] = f32(s[0].plate_n); return n; }   // the raid preview's flight (everglade-raid-preview.coax)
   if sp_on(s) && !s[0].above && v[0].hero_ok { n = e5_play_hud(s, v, out, u, n); }
   n = e5_fps_draw(s, v, out, n);
   u[5] = f32(s[0].plate_n);

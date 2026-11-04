@@ -1,0 +1,234 @@
+// The Cultist Raid, a preview offline (?raid=preview): Darian Odiodei's cult outside the South Gate,
+// casting at the town and then charging it, while you stand ready on the road by the commons. The
+// raiders are the page's own SRD 5e battle's (everglade5e-raid.coax: the Siege's armies and how they
+// fight); this file is the page's side, the same for the room server's raid when it lands (#12740):
+//   - what it is told: each raider where it stands (everglade_raider) and each cast it makes
+//     (everglade_raid_cast), played with the Warlock's real spells (everglade-warlock.coax wl_shoot:
+//     Eldritch Blast's beams break, Fireball breaks and burns, the SRD's object damage);
+//   - how they look: robed and hooded, a Cultist's robe red, a Fanatic's black, a Warlock's violet
+//     with its casting hand alight, and Darian taller, in black and gold, horned;
+//   - &cine=1, a flight for a film: behind Darian over his swarm, the volleys, the charge, then on
+//     over the gate to the commons, where it settles into your own camera behind you and the HUD
+//     comes back. Without it the camera is yours from the start.
+//   coax/bin/coax test apps/openagents-web/everglade5e.coax --only "raid preview"
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+
+RP_RAIDERS :: 51;          // everglade5e-raid.coax E5R_RAIDERS
+// npcs.coax RS_NPC_*: the kinds the raid sends
+RP_CULTIST :: 7; RP_FANATIC :: 8; RP_WARLOCK :: 9; RP_ARCH :: 10;
+// where it happens: the leader 50 m out on the road in, the South Gate (plan.coax EG_GATE), where the
+// swarm runs once through, and you by the commons, facing the gate
+RP_LEAD :: [2] f32.[0, -106];
+RP_IN :: [2] f32.[0, -38];
+RP_YOU :: [2] f32.[0, -16];
+// the flight (s from the raid's start): eye and look at each key, then into your camera
+RP_KEYS :: 7;
+RP_KEY_T :: [7] f32.[0, 5, 12, 15, 19, 23, 26];
+RP_KEY_EYE :: [21] f32.[2.2, 3.4, -114.5,   1.4, 4.6, -112,   -3.5, 7, -106,   -3, 7, -102,   0, 9, -84,   0, 12, -44,   -6, 5.5, -9];
+RP_KEY_AT :: [21] f32.[0, 2.4, -70,   0, 3.2, -64,   0, 3.5, -58,   0, 1.5, -72,   0, 2, -50,   0, 1, -14,   0, 1.4, -18];
+RP_SETTLE :: 2.5;          // s from the last key into your own camera
+RP_HUD_AT :: 27.6;         // s: the HUD back
+
+RpRaider :: struct { npc: int; x: f32; z: f32; yaw: f32; moving: bool; walk: f32; level: int; lit: f32; }
+RaidPreview :: struct {
+  on: bool; cine: bool;
+  ready: bool;               // the town can break: the raid has begun
+  t: f32;                    // s since it began
+  who: [RP_RAIDERS] RpRaider;
+}
+
+// ?raid=preview (and &cine=1): you by the commons facing the South Gate, the raid to come.
+rp_facts :: (s: [] Everglade, url: string) {
+  if !eg_query_is(url, "raid", "preview") { return; }
+  s[0].rp.on = true;
+  s[0].rp.cine = eg_query_is(url, "cine", "1");
+  s[0].spawn = v3(RP_YOU[0], 0, RP_YOU[1]); s[0].spawn_face = yaw_of(0, -1);
+  s[0].feet = v3(RP_YOU[0], ground_at(s, RP_YOU[0], RP_YOU[1]), RP_YOU[1]);
+  s[0].orbit = verse_orbit_start(s[0].feet, s[0].spawn_face);
+  s[0].warp = true; s[0].above = false; s[0].lift = 0;
+}
+rp_on :: (s: [] Everglade) -> bool { return s[0].rp.on && !net_live(s); }
+everglade_raid_on :: (s: [] Everglade) -> bool #export_c { return rp_on(s); }
+// Once the town can break, where the raid stands (into out: the leader's x, z, the gate's, where the
+// swarm runs once in): 6, else 0 while it waits.
+everglade_raid_spot :: (s: [] Everglade, out: [] f32) -> int #export_c {
+  if !rp_on(s) || !s[0].pack_ready || !sp_on(s) || out.count < 6 { return 0; }
+  s[0].rp.ready = true;
+  out[0] = RP_LEAD[0]; out[1] = RP_LEAD[1]; out[2] = EG_GATE[0]; out[3] = EG_GATE[1]; out[4] = RP_IN[0]; out[5] = RP_IN[1];
+  return 6;
+}
+// Raider q as the battle has it: its kind (0 gone), where it stands, its facing, whether it moves,
+// its level and the share of its cast's look left.
+everglade_raider :: (s: [] Everglade, q: int, npc: int, x: f32, z: f32, yaw: f32, moving: bool, level: int, lit: f32) #export_c {
+  if q < 0 || q >= RP_RAIDERS { return; }
+  o := s[0].rp.who[q..<q + 1];
+  if npc == 0 { o[0].npc = 0; return; }
+  if o[0].npc == 0 { o[0].x = x; o[0].z = z; }
+  dx := x - o[0].x; dz := z - o[0].z;
+  o[0].walk += sqrt(dx * dx + dz * dz);
+  o[0].npc = npc; o[0].x = x; o[0].z = z; o[0].yaw = yaw; o[0].moving = moving; o[0].level = level; o[0].lit = lit;
+}
+// A raider's cast (0 Eldritch Blast, 1 Fireball) from (fx, fz) at (ax, az): aimed at the town's piece
+// nearest that point, as a player points at a building, and played as the Warlock's own.
+everglade_raid_cast :: (s: [] Everglade, k: int, fx: f32, fz: f32, ax: f32, az: f32, seed: int, beams: int) #export_c {
+  if !rp_on(s) || !sp_on(s) { return; }
+  from := v3(fx, ground_at(s, fx, fz) + 1.5, fz);
+  at := rp_target(s, ax, az);
+  wl_shoot_n(s, ifx k == 1 then WL_FIREBALL else WL_BLAST, from, at, seed, beams);
+}
+// The middle of the standing piece of the town nearest (x, z), within 10 m; else the ground there.
+rp_target :: (s: [] Everglade, x: f32, z: f32) -> Point {
+  w := sp_dm(s);
+  best := -1; gap: f32 = 100;
+  for i: 0..<w[0].n {
+    p := w[0].pieces[i];
+    if p.state != DP_STANDING { continue; }
+    dx := p.cx - x; dz := p.cz - z;
+    d := dx * dx + dz * dz;
+    if d < gap { gap = d; best = i; }
+  }
+  if best < 0 { return v3(x, ground_at(s, x, z) + 0.3, z); }
+  p := w[0].pieces[best];
+  return v3(p.cx, p.cy, p.cz);
+}
+
+// Each frame: the raid's clock. The watch takes what the raid breaks and burns for the raid's, not
+// yours: nobody hunts you for it.
+rp_frame :: (s: [] Everglade, dt: f32) {
+  if !rp_on(s) || !s[0].rp.ready { return; }
+  s[0].rp.t += dt;
+  w := watch_w(s);
+  y := watch_you(w);
+  y[0].wanted = false; y[0].heat = 0; y[0].level = 0;
+  for i: 0..<WATCH_ACTORS {
+    m := w[0].actors[i].mode;
+    if (m == WM_CHASE || m == WM_FIGHT) && w[0].actors[i].foe == w[0].me { w[0].actors[i].mode = WM_BACK; }
+  }
+}
+// Whether the HUD is off: through the flight, till it settles behind you.
+rp_hud_off :: (s: [] Everglade) -> bool { return s[0].rp.on && s[0].rp.cine && s[0].rp.t < f32(RP_HUD_AT); }
+
+// ---- the flight
+
+rp_key :: (k: [21] f32, i: int) -> Point { j := clamp_i(i, 0, RP_KEYS - 1) * 3; return v3(k[j], k[j + 1], k[j + 2]); }
+// Catmull-Rom through p1 to p2 at u.
+rp_spline :: (p0: Point, p1: Point, p2: Point, p3: Point, u: f32) -> Point {
+  u2 := u * u; u3 := u2 * u;
+  a := times(p1, 2);
+  b := times(sub(p2, p0), u);
+  c := times(add(sub(times(p0, 2), times(p1, 5)), sub(times(p2, 4), p3)), u2);
+  d := times(add(sub(p3, p0), times(sub(p1, p2), 3)), u3);
+  return times(add(add(a, b), add(c, d)), 0.5);
+}
+rp_path :: (k: [21] f32, t: f32) -> Point {
+  i := 0;
+  while i < RP_KEYS - 2 && t >= RP_KEY_T[i + 1] { i += 1; }
+  u := clamp((t - RP_KEY_T[i]) / (RP_KEY_T[i + 1] - RP_KEY_T[i]), 0, 1);
+  return rp_spline(rp_key(k, i - 1), rp_key(k, i), rp_key(k, i + 1), rp_key(k, i + 2), u);
+}
+// The camera: with &cine=1 the flight, then your own (`follow`) from its last key; else yours.
+rp_shot :: (s: [] Everglade, follow: Shot) -> Shot {
+  if !s[0].rp.on || !s[0].rp.cine { return follow; }
+  t := s[0].rp.t;
+  last := RP_KEY_T[RP_KEYS - 1];
+  path := Shot.{eye = rp_path(RP_KEY_EYE, lo(t, last)), at = rp_path(RP_KEY_AT, lo(t, last))};
+  if t <= last { return path; }
+  k := ease((t - last) / f32(RP_SETTLE));
+  return Shot.{eye = mix(path.eye, follow.eye, k), at = mix(path.at, follow.at, k)};
+}
+
+// ---- the raiders drawn
+
+RP_ROBE :: [12] f32.[0.42, 0.07, 0.07,   0.07, 0.06, 0.08,   0.22, 0.08, 0.32,   0.05, 0.04, 0.06];
+RP_TRIM :: [12] f32.[0.16, 0.03, 0.03,   0.42, 0.05, 0.05,   0.10, 0.04, 0.16,   0.78, 0.6, 0.22];
+RP_VIOLET :: Point.{x = 0.75, y = 0.35, z = 1.0};
+rp_draw :: (s: [] Everglade) {
+  if !rp_on(s) { return; }
+  for q: 0..<RP_RAIDERS {
+    o := s[0].rp.who[q];
+    if o.npc == 0 { continue; }
+    rp_raider_at(s, o.npc, o.x, o.z, o.yaw, o.moving, o.walk, o.level, o.lit, q);
+  }
+}
+// A raider of kind `npc` (RS_NPC_*) at (x, z) facing `yaw`, `walk` metres walked, its cast's look
+// `lit` (0 to 1) and q its number among them: the preview's raiders and the room's (everglade-net.coax).
+rp_raider_at :: (s: [] Everglade, npc: int, x: f32, z: f32, yaw: f32, moving: bool, walk: f32, level: int, lit: f32, q: int) {
+  o := RpRaider.{npc = npc, x = x, z = z, yaw = yaw, moving = moving, walk = walk, level = level, lit = lit};
+  look := ifx o.npc == RP_FANATIC then 1 else ifx o.npc == RP_WARLOCK then 2 else ifx o.npc == RP_ARCH then 3 else 0;
+  big := ifx o.npc == RP_ARCH then 1.22f32 else 0.94f32 + 0.04 * f32(q % 4);
+  g := ground_at(s, o.x, o.z);
+  f := v3(sin(o.yaw), 0, cos(o.yaw)); r := v3(f.z, 0, -f.x);
+  move := ifx o.moving then 1.0f32 else 0.0f32;
+  ph := o.walk / 1.1 * f32(TAU) + f32(q) * 0.7;
+  bob := abs(sin(ph)) * 0.06 * move;
+  lean := 0.12 * move;
+  robe := v3(RP_ROBE[look * 3], RP_ROBE[look * 3 + 1], RP_ROBE[look * 3 + 2]);
+  trim := v3(RP_TRIM[look * 3], RP_TRIM[look * 3 + 1], RP_TRIM[look * 3 + 2]);
+  feet := v3(o.x, g, o.z);
+  // the robe: a long cone from the ground to the chest, flaring as it runs
+  flare := 1 + 0.12 * move * sin(ph * 2);
+  shape(s, SHAPE_CONE, LOOK_MATTE, add(feet, v3(0, 0.78 * big + bob, 0)), o.yaw, lean, 0.78 * big * flare, 1.56 * big, 0.7 * big * flare, robe.x, robe.y, robe.z);
+  // the chest and shoulders, a hem of its trim, the hood and the dark under it
+  chest := add(feet, add(times(f, lean * 1.1 * big), v3(0, 1.28 * big + bob, 0)));
+  shape(s, SHAPE_BOX, LOOK_MATTE, chest, o.yaw, lean, 0.5 * big, 0.36 * big, 0.28 * big, robe.x, robe.y, robe.z);
+  shape(s, SHAPE_BOX, LOOK_MATTE, add(feet, v3(0, 0.08, 0)), o.yaw, 0, 0.66 * big, 0.12, 0.6 * big, trim.x, trim.y, trim.z);
+  head := add(chest, add(times(f, 0.05), v3(0, 0.36 * big, 0)));
+  shape(s, SHAPE_CONE, LOOK_MATTE, add(head, v3(0, 0.08 * big, 0)), o.yaw, lean - 0.15, 0.36 * big, 0.62 * big, 0.38 * big, robe.x * 0.85, robe.y * 0.85, robe.z * 0.85);
+  shape(s, SHAPE_BOX, LOOK_MATTE, add(head, add(times(f, 0.13 * big), v3(0, -0.04, 0))), o.yaw, 0, 0.17 * big, 0.17 * big, 0.04, 0.02, 0.015, 0.02);
+  // eyes: a cultist's dim red, a caster's its fire
+  ecol := ifx look == 2 || look == 3 then RP_VIOLET else v3(1, 0.25, 0.1);
+  sp_glow(s, add(head, add(times(f, 0.16 * big), v3(0, -0.02, 0))), 0.05 * big, times(ecol, 0.5));
+  // arms: swinging as it runs, a sickle or blade in hand; a caster's casting hand thrown out
+  for e: 0..<2 {
+    sd := ifx e == 0 then 1.0f32 else -1.0f32;
+    sh := add(chest, add(times(r, sd * 0.27 * big), v3(0, 0.12 * big, 0)));
+    swing := sin(ph + f32(e) * f32(PI)) * 0.35 * move;
+    hand := add(sh, add(times(f, 0.18 + swing), add(times(r, sd * 0.06), v3(0, -0.52 * big, 0))));
+    casting := (look == 2 || look == 3) && e == 0 && o.lit > 0;
+    if casting { hand = add(sh, add(times(f, 0.62 * big), v3(0, 0.08, 0))); }
+    if look == 3 && e == 1 { hand = add(sh, add(times(f, 0.3), v3(0, -0.2, 0))); }
+    ci_limb(s, sh, hand, 0.07 * big, robe, false, 1);
+    if casting || (look == 3 && e == 1) {
+      sp_glow(s, hand, (0.16 + 0.22 * o.lit) * big, times(RP_VIOLET, 0.6 + 0.8 * o.lit));
+    } else if look < 2 {
+      // a Cultist's Ritual Sickle, a Fanatic's Pact Blade
+      tip := add(hand, add(times(f, 0.22), v3(0, ifx look == 1 then 0.5f32 else 0.28f32, 0)));
+      ci_limb(s, hand, tip, 0.025, v3(0.62, 0.62, 0.66), false, 1);
+    }
+  }
+  if look == 3 {
+    // Darian: horns from the hood, a gold collar, and the fiend's light about him
+    for e: 0..<2 {
+      sd := ifx e == 0 then 1.0f32 else -1.0f32;
+      base := add(head, add(times(r, sd * 0.13 * big), v3(0, 0.12 * big, 0)));
+      ci_limb(s, base, add(base, add(times(r, sd * 0.14), add(times(f, -0.06), v3(0, 0.32, 0)))), 0.05, v3(0.85, 0.78, 0.6), false, 1);
+    }
+    shape(s, SHAPE_BOX, LOOK_MATTE, add(chest, v3(0, 0.2 * big, 0)), o.yaw, 0, 0.56 * big, 0.08, 0.34 * big, trim.x, trim.y, trim.z);
+    sp_glow(s, add(feet, v3(0, 1.0, 0)), 1.4, times(RP_VIOLET, 0.18 + 0.1 * sin(s[0].rp.t * 3)));
+  }
+}
+
+#test "raid preview: the flight starts behind Darian, ends in your camera, and the HUD is off till then" {
+  g: [1] Everglade;
+  rp_facts(g[..], "/worlds/everglade?raid=preview&cine=1");
+  #assert g[0].rp.on && g[0].rp.cine && g[0].warp && g[0].spawn.z == RP_YOU[1];
+  follow := Shot.{eye = v3(0, 2.5, -11), at = v3(0, 1.5, -20)};
+  g[0].rp.t = 0;
+  a := rp_shot(g[..], follow);
+  #assert a.eye.z < RP_LEAD[1] && a.at.z > a.eye.z && rp_hud_off(g[..]);
+  g[0].rp.t = 40;
+  b := rp_shot(g[..], follow);
+  #assert length(sub(b.eye, follow.eye)) < 0.01 && !rp_hud_off(g[..]);
+  // without &cine=1 the camera is yours
+  h: [1] Everglade;
+  rp_facts(h[..], "/worlds/everglade?raid=preview");
+  #assert h[0].rp.on && !h[0].rp.cine && !rp_hud_off(h[..]);
+  // a raider walks where the battle says
+  everglade_raider(g[..], 3, RP_CULTIST, 1, -90, 0, true, 0, 0);
+  everglade_raider(g[..], 3, RP_CULTIST, 1, -89, 0, true, 0, 0);
+  #assert g[0].rp.who[3].z == -89 && g[0].rp.who[3].walk > 0.9;
+}

@@ -88,6 +88,7 @@
 #load "everglade-track.coax";   // what players do, for analytics.coax
 #load "everglade-quality.coax";   // the graphics quality: tier, governor, knobs (aethyr/quality.coax)
 #load "everglade-warlock.coax";   // the Warlock's bar, spells and Zombies (CHARACTER: WARLOCK)
+#load "everglade-raid-preview.coax";   // the Cultist Raid offline, a preview (?raid=preview, &cine=1 its flight)
 #load "../../verse/style-preset.coax";
 #load "../../aethyr/budget.coax";
 
@@ -472,6 +473,7 @@ Everglade :: struct {
   doors: Doors;                            // every door you open and close with E (everglade-doors.coax)
   sp: Spells;                              // the spell bar and what breaks (everglade-spells.coax), with the ruleset srd5
   wl: Warlock;                             // the Warlock's bar and its spells' looks (everglade-warlock.coax)
+  rp: RaidPreview;                         // the Cultist Raid offline, a preview (everglade-raid-preview.coax)
   wt: [1] Watch; wv: WatchView;            // the town watch and what the town does about a crime (everglade-watch.coax)
   fk: [] EgFork;                           // FORK, and a fork's rules: the face holds it (everglade-fork.coax everglade_attach_fork)
   fg: EgForge;                             // Aethyrforge's panels in edit mode (everglade-forge.coax)
@@ -1059,6 +1061,7 @@ everglade_message :: (s: [] Everglade, kind: int, text: string) #export_c {
     weather_facts(s, text);
     forge_facts(s, fact(text, "url"));   // ?forge on a local server (everglade-forge.coax)
     eg_stage(s, fact(text, "url"));   // ?stage=roof (everglade-stand.coax)
+    rp_facts(s, fact(text, "url"));   // ?raid=preview (everglade-raid-preview.coax)
     s[0].day = verse_style_clock(fact(text, "clock"), fact(text, "now"), fact(text, "day"));
     s[0].day_from = s[0].time; s[0].clock = s[0].day.at;
     ms := sp_number(fact(text, "now"));
@@ -3889,6 +3892,7 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   w := s[0].width; h := s[0].height;
   s[0].q_box = Box.{};
   st_blind_plate(s, u);   // Blinded: the world dark under the HUD (everglade-storm.coax)
+  if rp_hud_off(s) { s[0].map_button = Box.{}; return 0; }   // the raid preview's flight: the film clean (everglade-raid-preview.coax)
   if forge_on(s) { s[0].map_button = Box.{}; return forge_hud(s, out, u, 0); }   // EDIT: Aethyrforge's panels alone (everglade-forge.coax)
   md_plates_clear(s);
   n := ifx s[0].paint_only || eg_pane_open(s) then 0 else labels(s, out, u, 0, you);   // the feature list's pane open: no place names over it
@@ -4011,7 +4015,8 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   if s[0].water >= WATER_SWIMMING { shown.y = s[0].swim_feet; }
   else if s[0].water == WATER_WADING { shown = feet_in_world(feet, s[0].swim_feet); }
 
-  shot := camera_frame(s, shown, vx, vz, t);
+  rp_frame(s, t);
+  shot := rp_shot(s, camera_frame(s, shown, vx, vz, t));   // the raid preview's flight, else yours (everglade-raid-preview.coax)
   shot = spells_camera(s, shot, t);   // a blast shakes it; nothing turns it
 
   for k: 0..<5 { s[0].counts[k] = 0; }
@@ -4025,6 +4030,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   figure(s, u, ifx s[0].water == WATER_BOAT then sub(shown, v3(0, 0.42, 0)) else shown, face, speed, act == 3, t, still);
   if s[0].flock && redit_row_on(s[0].ev.ed[..], "flock") { flock_frame(s[0].birds[..], shown, face, t); birds(s); }
   people(s, u, shown, t, still);
+  rp_draw(s);   // the raid preview's raiders (everglade-raid-preview.coax)
   room_frame(s, t); room_draw(s, u, shown, t);   // the others in the realm's room (everglade-room.coax)
   s[0].answered += t;
   s[0].smoke_still = still;

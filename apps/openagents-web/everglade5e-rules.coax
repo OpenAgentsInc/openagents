@@ -21,6 +21,7 @@
 #load "../../aethyr/rules/srd/battle.coax";
 #load "fivebar.coax";
 #load "everglade5e-beasts.coax";   // what a spell summons, the room's rules too: Finger of Death's Zombies
+#load "everglade5e-raid.coax";     // the Cultist Raid offline, a preview (?raid=preview): the Siege's armies
 
 E5R_BEAT :: 1.5; E5R_RECHARGE :: 9.0;
 E5R_FOLK :: 38;            // Everglade's people who can be hurt (verse/everglade/watch.coax WATCH_ACTORS)
@@ -68,6 +69,7 @@ E5r :: struct {
   next_id: int;
   started: bool;
   seen: int;                 // the log's events read so far
+  raid: [1] E5rRaid;         // the Cultist Raid offline (everglade5e-raid.coax), off till the page asks
 }
 
 e5r_sq :: (m: f32) -> int { return cast(int) floor((m - f32(E5R_X0)) / f32(E5R_SQ)); }
@@ -230,6 +232,7 @@ e5r_step :: (r: [] E5r, clock: f32) #export_c {
   e5b_step(b, r[0].beasts[..], E5R_BEAST0, 1, r[0].folk_x[..], r[0].folk_z[..], dt);
   _ := fb_zones_round(r[0].zones[..], b);
   e5r_beasts_check(r);
+  e5r_raid_step(r, dt);   // the raid preview's raiders, when the page started one (everglade5e-raid.coax)
 }
 
 // ---- what each slot can do now
