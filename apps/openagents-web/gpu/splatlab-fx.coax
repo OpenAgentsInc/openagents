@@ -1,0 +1,593 @@
+// Splat Lab's Gaussian splats (splatlab.coax): build.sh writes apps/openagents-web/splatlab-fx.wgsl
+// from this with coax/web/wgsl-module.coax (splatlab-fx.module and splatlab-fx.bindings beside it).
+// coax/web/host.js draws it as the page's particles, after the meshes, depth-tested against them,
+// and sorts it first ("Sorting" there):
+//   1. key_fs writes each splat's sort key (minus its distance along the view, so the farthest
+//      comes first) and its index into a float texture, one texel a splat.
+//   2. sort_fs runs once per bitonic step (k, j), each pass reading the last one's texture: a GPU
+//      bitonic sort of every splat, back to front, in fragment passes (the Coax WGSL backend has no
+//      compute stage yet).
+//   3. particle_over_vs reads the n-th texel of the sorted texture, projects that splat's 3D
+//      covariance to a 2D ellipse (the EWA splatting of Zwicker et al., as 3D Gaussian Splatting
+//      draws it) and draws a quad over three standard deviations; particle_over_fs weighs it by the
+//      Gaussian and blends it premultiplied over what lies behind.
+//   4. particle_vs/fs add the glowing splats' bloom share (fire, embers, the blast) on top.
+// A splat is either one of the static ones (a loaded .splat or .ply, or the authored ritual site:
+// splatlab.coax packs them, three vec4s each) or made here from its index and the time by one of
+// the uniforms' emitters: fire, smoke, embers, a fireball, an eldritch blast, ritual flame and
+// motes, or the bench's field. Nothing animates on the CPU; it only says where the emitters are.
+#load "../../../verse/gpu/wgsl.coax";
+#load "splatlab-view.coax";
+
+// A static splat (splatlab.coax sl_pack): (centre xyz, opacity), (covariance xx, xy, xz, yy),
+// (covariance yz, zz, colour r + 256 g + 65536 b in bytes, glow).
+SlStatic :: struct {a:V4; b:V4; c:V4;}
+// A splat to draw: its centre, its opacity (how much it hides), its covariance's six numbers, its
+// colour already times its opacity (premultiplied, so a flame's can be brighter than it hides),
+// and its share of the bloom.
+SlSplat :: struct {pos:V3; alpha:f32; c0:V3; c1:V3; colour:V3; glow:f32;}
+// What the quad's corners carry: where the pixel is in standard deviations along the ellipse's
+// axes, the colour and opacity, and the bloom share.
+SlP :: struct {pos:V4; corner:V2; colour:V4; glow:f32 #flat;}
+
+SL_FIRE :: 1.0f32; SL_SMOKE :: 2.0f32; SL_EMBER :: 3.0f32; SL_FIREBALL :: 4.0f32; SL_BLAST :: 5.0f32;
+SL_RITUAL :: 6.0f32; SL_MOTES :: 7.0f32; SL_FIELD :: 8.0f32;
+SL_TAU :: 6.28318531f32;
+SL_REACH :: 3.0f32;      // standard deviations a quad covers
+SL_FAR_KEY :: 1.0e30f32; // behind the eye: sorted after every splat in front of it
+SL_PAD_KEY :: 3.0e38f32; // a texel past the last splat
+
+// A number in [0, 1) from a splat's index and a channel (PCG's output function).
+sl_hash :: (i:u32,k:u32)->f32 {
+  s:u32=add_wrap(mul_wrap(add_wrap(i,mul_wrap(k,2654435769)),747796405),2891336453);
+  w:u32=mul_wrap((s>>((s>>28)+4))^s,277803737);
+  r:u32=(w>>22)^w;
+  return cast(f32)(r>>8)/16777216.0f32;
+}
+sl_none :: ()->SlSplat {
+  s:SlSplat;
+  s.pos=v3(0.0f32,-1000.0f32,0.0f32); s.alpha=0.0f32;
+  s.c0=v3(0.0001f32,0.0f32,0.0f32); s.c1=v3(0.0001f32,0.0f32,0.0001f32);
+  s.colour=v3(0.0f32,0.0f32,0.0f32); s.glow=0.0f32;
+  return s;
+}
+// A covariance stretched along d: `along` metres there (one standard deviation), `across` round it.
+sl_stretch :: (s:SlSplat,d:V3,along:f32,across:f32)->SlSplat {
+  o:SlSplat=s;
+  a2:f32=across*across;
+  e:f32=(along*along)-a2;
+  o.c0=v3(a2+(e*d.x*d.x),e*d.x*d.y,e*d.x*d.z);
+  o.c1=v3(a2+(e*d.y*d.y),e*d.y*d.z,a2+(e*d.z*d.z));
+  return o;
+}
+// A random direction on the sphere from two numbers in [0, 1).
+sl_sphere :: (a:f32,b:f32)->V3 {
+  z:f32=(2.0f32*a)-1.0f32;
+  r:f32=sqrt(fmax(1.0f32-(z*z),0.0f32));
+  t:f32=SL_TAU*b;
+  return v3(r*cos(t),z,r*sin(t));
+}
+sl_unit :: (v:V3)->V3 {
+  l:f32=length3(v);
+  if (l<0.000001f32) { return v3(0.0f32,1.0f32,0.0f32); }
+  return scale3(v,1.0f32/l);
+}
+
+// One of the static splats: its colour bytes unpacked and taken to linear light, times its opacity.
+sl_static :: (st:SlStatic)->SlSplat {
+  s:SlSplat;
+  s.pos=v3(st.a.x,st.a.y,st.a.z); s.alpha=st.a.w;
+  s.c0=v3(st.b.x,st.b.y,st.b.z); s.c1=v3(st.b.w,st.c.x,st.c.y);
+  p:f32=st.c.z;
+  bb:f32=floor(p/65536.0f32);
+  gg:f32=floor((p-(bb*65536.0f32))/256.0f32);
+  rr:f32=(p-(bb*65536.0f32))-(gg*256.0f32);
+  lin:V3=v3(pow(rr/255.0f32,2.2f32),pow(gg/255.0f32,2.2f32),pow(bb/255.0f32,2.2f32));
+  s.colour=scale3(lin,st.a.w);
+  s.glow=st.c.w;
+  return s;
+}
+
+// Flames: tongues that rise from a disc of radius `size` to `height`, narrowing as they go, each
+// a Gaussian stretched upward, white-yellow low, orange, then a dim red as it dies. `cool` and
+// `hot` are the colour at the tip and at the root (ritual flame is violet and green).
+SL_TONGUES :: 22.0f32;   // a fire's tongues
+sl_flame :: (i:u32,base:V3,size:f32,height:f32,t:f32,cool:V3,hot:V3,bright:f32)->SlSplat {
+  // Its splats gather into tongues, each its own place, height and beat, so the fire licks
+  // instead of glowing as one egg: a tongue is a column of splats rising and narrowing, swaying
+  // as it climbs, and a few splats stray between them.
+  s:SlSplat=sl_none();
+  h0:f32=sl_hash(i,1); h1:f32=sl_hash(i,2); h2:f32=sl_hash(i,3); h3:f32=sl_hash(i,4); h4:f32=sl_hash(i,5); h5:f32=sl_hash(i,6);
+  tongue:u32=cast(u32)(floor(h0*SL_TONGUES));
+  g0:f32=sl_hash(tongue,11); g1:f32=sl_hash(tongue,12); g2:f32=sl_hash(tongue,13); g3:f32=sl_hash(tongue,14);
+  tr:f32=size*0.8f32*sqrt(g0);
+  ta:f32=SL_TAU*g1;
+  tall:f32=height*(0.35f32+(0.65f32*g2))*(1.0f32-(0.45f32*(tr/fmax(size,0.001f32))));
+  // the tongue's beat: it grows and drops
+  beat:f32=0.75f32+(0.25f32*sin((t*(3.0f32+(2.0f32*g3)))+(g1*SL_TAU)));
+  period:f32=0.45f32+(0.5f32*h1);
+  ph:f32=fract((t/period)+h2);
+  y:f32=tall*beat*pow(ph,0.9f32);
+  narrow:f32=1.0f32-(0.85f32*ph);
+  jit:f32=size*0.12f32*narrow;
+  sway:f32=sin(((t*2.3f32)+(g3*SL_TAU))+(y*2.2f32))*0.3f32*size*ph;
+  lick:f32=cos(((t*3.7f32)+(g0*SL_TAU))+(y*2.9f32))*0.22f32*size*ph;
+  ja:f32=SL_TAU*h3;
+  jr:f32=jit*sqrt(h4);
+  cx:f32=base.x+(cos(ta)*tr*narrow)+(cos(ja)*jr)+sway;
+  cz:f32=base.z+(sin(ta)*tr*narrow)+(sin(ja)*jr)+lick;
+  s.pos=v3(cx,base.y+y,cz);
+  across:f32=(size*(0.075f32-(0.04f32*ph)))+0.008f32;
+  along:f32=across*(2.2f32+(2.0f32*h5));
+  d:V3=sl_unit(v3(sway*1.4f32,1.0f32,lick*1.4f32));
+  s=sl_stretch(s,d,along,across);
+  heat:f32=(1.0f32-ph)*(1.0f32-(0.4f32*(tr/fmax(size,0.001f32))));
+  c:V3=mix3(cool,hot,smoothstep(0.3f32,0.95f32,heat));
+  c=mix3(c,v3(1.0f32,0.93f32,0.78f32),smoothstep(0.85f32,1.0f32,heat)*0.6f32);
+  fade:f32=smoothstep(0.0f32,0.08f32,ph)*(1.0f32-smoothstep(0.45f32,1.0f32,ph));
+  k:f32=bright*fade*(0.3f32+(0.7f32*heat));
+  s.colour=scale3(c,k);
+  s.alpha=0.08f32*fade;
+  s.glow=0.12f32*fade*heat;
+  return s;
+}
+// Smoke: rising from `base`, spreading as it climbs and leaning with the wind, dark and lit warm
+// low down by the fire under it; it hides what is behind it.
+sl_smoke :: (i:u32,base:V3,size:f32,height:f32,wind:V3,t:f32,dark:f32)->SlSplat {
+  s:SlSplat=sl_none();
+  h0:f32=sl_hash(i,1); h1:f32=sl_hash(i,2); h2:f32=sl_hash(i,3); h3:f32=sl_hash(i,4); h4:f32=sl_hash(i,5); h5:f32=sl_hash(i,6);
+  period:f32=5.0f32+(3.5f32*h0);
+  ph:f32=fract((t/period)+h1);
+  y:f32=height*ph*(0.8f32+(0.4f32*h5));
+  spread:f32=size*(0.4f32+(2.2f32*ph));
+  r:f32=spread*sqrt(h3);
+  curl:f32=sin(((t*0.6f32)+(h4*SL_TAU))+(y*0.45f32))*0.5f32*ph*size;
+  drift:f32=ph*ph*height*0.45f32;
+  s.pos=v3(((base.x+(cos(SL_TAU*h2)*r))+(wind.x*drift))+curl,base.y+y,((base.z+(sin(SL_TAU*h2)*r))+(wind.z*drift))-(curl*0.6f32));
+  sig:f32=size*(0.45f32+(1.9f32*ph))*(0.7f32+(0.6f32*h4));
+  s=sl_stretch(s,v3(0.0f32,1.0f32,0.0f32),sig*0.8f32,sig);
+  dens:f32=smoothstep(0.0f32,0.12f32,ph)*(1.0f32-smoothstep(0.45f32,1.0f32,ph))*0.2f32*dark;
+  grey:f32=0.025f32+(0.045f32*h4);
+  warm:f32=(1.0f32-smoothstep(0.0f32,0.3f32,ph))*0.5f32;
+  c:V3=add3(v3(grey,grey*1.02f32,grey*1.08f32),scale3(v3(0.9f32,0.35f32,0.1f32),warm));
+  s.colour=scale3(c,dens);
+  s.alpha=dens;
+  return s;
+}
+// Embers: tiny bright sparks flung up and round, streaked along their flight; only light, no cover.
+sl_ember :: (i:u32,base:V3,size:f32,height:f32,t:f32,hot:V3)->SlSplat {
+  s:SlSplat=sl_none();
+  h0:f32=sl_hash(i,1); h1:f32=sl_hash(i,2); h2:f32=sl_hash(i,3); h3:f32=sl_hash(i,4); h4:f32=sl_hash(i,5);
+  period:f32=1.4f32+(1.8f32*h0);
+  ph:f32=fract((t/period)+h1);
+  a:f32=(SL_TAU*h2)+(t*(0.6f32+h4));
+  r:f32=size*(0.3f32+(1.2f32*ph))*sqrt(h3);
+  s.pos=v3(base.x+(cos(a)*r),(base.y+(height*1.5f32*ph))+(sin((t*7.0f32)+(h4*20.0f32))*0.05f32),base.z+(sin(a)*r));
+  d:V3=sl_unit(v3(-sin(a)*0.6f32,1.0f32,cos(a)*0.6f32));
+  s=sl_stretch(s,d,0.045f32,0.009f32);
+  fade:f32=(1.0f32-ph)*smoothstep(0.0f32,0.05f32,ph)*step_on(fract((t*3.0f32)+(h4*7.0f32)),0.15f32);
+  s.colour=scale3(hot,4.0f32*fade);
+  s.alpha=0.0f32;
+  s.glow=fade;
+  return s;
+}
+// 1 most of the time, `low` for a short flicker.
+step_on :: (x:f32,low:f32)->f32 {
+  if (x<0.08f32) { return low; }
+  return 1.0f32;
+}
+// A fireball, round every `period` seconds: a bead of fire flies from the caster to the target,
+// bursts into a ball of flame `size` metres across that cools from white to red, and its smoke
+// rolls up into a mushroom and thins.
+sl_fireball :: (i:u32,from:V3,to:V3,size:f32,period:f32,t:f32)->SlSplat {
+  s:SlSplat=sl_none();
+  h0:f32=sl_hash(i,1); h1:f32=sl_hash(i,2); h2:f32=sl_hash(i,3); h3:f32=sl_hash(i,4); h4:f32=sl_hash(i,5);
+  cyc:f32=fract(t/period);
+  fly:f32=0.16f32;
+  if (cyc<fly) {
+    if (h0>0.2f32) { return s; }
+    k:f32=cyc/fly;
+    back:f32=h3*0.35f32;   // the trail behind the bead
+    at:f32=fmax(k-back,0.0f32);
+    p:V3=mix3(from,to,at);
+    p.y=p.y+(sin(at*3.14159265f32)*1.2f32);
+    jit:V3=scale3(sl_sphere(h1,h2),0.12f32*(1.0f32+(back*3.0f32)));
+    s.pos=add3(p,jit);
+    s=sl_stretch(s,sl_unit(sub3(to,from)),0.12f32,0.06f32);
+    w:f32=1.0f32-(back*2.5f32);
+    s.colour=scale3(v3(1.0f32,0.7f32,0.3f32),0.8f32*fmax(w,0.0f32));
+    s.alpha=0.05f32;
+    s.glow=0.3f32*fmax(w,0.0f32);
+    return s;
+  }
+  e:f32=(cyc-fly)/(1.0f32-fly);
+  dir:V3=sl_sphere(h1,h2);
+  if (h0<0.62f32) {
+    // the flame shell: out fast, then slowing; it rises a little as it cools
+    r:f32=size*(1.0f32-exp(-7.0f32*e))*(0.45f32+(0.55f32*h3));
+    lift:f32=e*e*size*0.6f32;
+    s.pos=add3(add3(to,scale3(dir,r)),v3(0.0f32,lift,0.0f32));
+    turb:f32=sin((h4*30.0f32)+(e*9.0f32))*0.15f32*size*e;
+    s.pos=add3(s.pos,scale3(sl_sphere(h4,h3),turb));
+    sig:f32=size*(0.09f32+(0.12f32*e))*(0.6f32+(0.8f32*h4));
+    s=sl_stretch(s,dir,sig*(1.6f32-e),sig);
+    heat:f32=exp(-3.2f32*e);
+    c:V3=mix3(v3(0.7f32,0.12f32,0.03f32),v3(1.0f32,0.55f32,0.12f32),smoothstep(0.15f32,0.6f32,heat));
+    c=mix3(c,v3(1.0f32,0.95f32,0.8f32),smoothstep(0.75f32,1.0f32,heat));
+    fade:f32=1.0f32-smoothstep(0.35f32,0.75f32,e);
+    s.colour=scale3(c,0.42f32*heat*fade);
+    s.alpha=0.12f32*fade;
+    s.glow=0.2f32*heat*fade;
+    return s;
+  }
+  // the smoke: it comes as the flame cools, rolls up and spreads
+  show:f32=smoothstep(0.12f32,0.3f32,e)*(1.0f32-smoothstep(0.7f32,1.0f32,e));
+  r:f32=size*(0.4f32+(0.7f32*e))*(0.4f32+(0.6f32*h3));
+  up:f32=e*size*1.6f32;
+  s.pos=add3(add3(to,scale3(v3(dir.x,dir.y*0.5f32,dir.z),r)),v3(0.0f32,up,0.0f32));
+  sig:f32=size*(0.16f32+(0.3f32*e))*(0.7f32+(0.6f32*h4));
+  s=sl_stretch(s,v3(0.0f32,1.0f32,0.0f32),sig*0.85f32,sig);
+  g:f32=0.03f32+(0.04f32*h4);
+  warm:f32=(1.0f32-smoothstep(0.15f32,0.45f32,e))*0.6f32;
+  dens:f32=0.5f32*show;
+  s.colour=scale3(add3(v3(g,g,g*1.05f32),scale3(v3(1.0f32,0.4f32,0.1f32),warm)),dens);
+  s.alpha=dens;
+  return s;
+}
+// Eldritch Blast: a crackling beam of violet light wound with black, from the caster's hand to the
+// target, three bolts each `period` seconds; each bolt runs out to the target in a tenth of a second,
+// burns, and bursts on the target.
+sl_blast :: (i:u32,from:V3,to:V3,size:f32,period:f32,t:f32)->SlSplat {
+  s:SlSplat=sl_none();
+  h0:f32=sl_hash(i,1); h1:f32=sl_hash(i,2); h2:f32=sl_hash(i,3); h3:f32=sl_hash(i,4); h4:f32=sl_hash(i,5); h5:f32=sl_hash(i,6);
+  bolt:f32=fract((t/period)*3.0f32);
+  head:f32=smoothstep(0.0f32,0.18f32,bolt);
+  fade:f32=1.0f32-smoothstep(0.35f32,0.6f32,bolt);
+  if (fade<=0.0f32) { return s; }
+  d:V3=sub3(to,from);
+  span:f32=length3(d);
+  ax:V3=sl_unit(d);
+  e1:V3=sl_unit(cross3(ax,v3(0.0f32,1.0f32,0.0f32)));
+  e2:V3=cross3(e1,ax);
+  flick:f32=sl_hash(i,cast(u32)(floor(t*24.0f32))+7);
+  if (h0>0.9f32) {
+    // the burst on the target
+    r:f32=size*(0.6f32+(2.2f32*h3))*smoothstep(0.1f32,0.3f32,bolt);
+    s.pos=add3(to,scale3(sl_sphere(h1,h2),r));
+    s=sl_stretch(s,sl_sphere(h1,h2),size*0.5f32,size*0.18f32);
+    k:f32=fade*smoothstep(0.12f32,0.2f32,bolt)*(0.5f32+flick);
+    s.colour=scale3(v3(0.55f32,0.25f32,1.0f32),0.7f32*k);
+    s.alpha=0.05f32*k;
+    s.glow=k;
+    return s;
+  }
+  along:f32=h1;
+  if (along>head) { return s; }
+  ang:f32=(along*span*9.0f32)+(t*22.0f32)+(ifx h2<0.5f32 then 0.0f32 else 3.14159265f32);
+  wob:f32=size*(0.35f32+(0.65f32*sin(along*3.14159265f32)))*sqrt(h3);
+  crack:f32=(flick-0.5f32)*size*0.8f32;
+  side:V3=add3(scale3(e1,(cos(ang)*wob)+crack),scale3(e2,sin(ang)*wob));
+  s.pos=add3(add3(from,scale3(d,along)),side);
+  s=sl_stretch(s,ax,size*(0.6f32+h4),size*0.12f32);
+  if (h5<0.28f32) {
+    // the dark wound round it: it hides, it doesn't shine
+    s.colour=scale3(v3(0.03f32,0.0f32,0.05f32),0.6f32*fade);
+    s.alpha=0.6f32*fade;
+    return s;
+  }
+  core:f32=1.0f32-smoothstep(0.0f32,0.6f32,wob/fmax(size,0.001f32));
+  c:V3=mix3(v3(0.42f32,0.12f32,0.95f32),v3(0.92f32,0.8f32,1.0f32),core);
+  k:f32=fade*(0.6f32+(0.8f32*flick));
+  s.colour=scale3(c,1.1f32*k);
+  s.alpha=0.06f32*k;
+  s.glow=0.4f32*k*(0.5f32+core);
+  return s;
+}
+// Motes: slow sparks circling the ritual's ring, rising and falling.
+sl_motes :: (i:u32,base:V3,size:f32,height:f32,t:f32)->SlSplat {
+  s:SlSplat=sl_none();
+  h0:f32=sl_hash(i,1); h1:f32=sl_hash(i,2); h2:f32=sl_hash(i,3); h3:f32=sl_hash(i,4); h4:f32=sl_hash(i,5);
+  a:f32=(SL_TAU*h0)+(t*(0.15f32+(0.25f32*h1)));
+  r:f32=size*(0.75f32+(0.5f32*h2));
+  y:f32=(height*h3)+(sin((t*0.9f32)+(h4*SL_TAU))*0.4f32);
+  s.pos=v3(base.x+(cos(a)*r),base.y+y,base.z+(sin(a)*r));
+  s=sl_stretch(s,sl_unit(v3(-sin(a),0.2f32,cos(a))),0.06f32,0.018f32);
+  tw:f32=0.5f32+(0.5f32*sin((t*3.0f32)+(h4*40.0f32)));
+  s.colour=scale3(mix3(v3(0.35f32,0.15f32,1.0f32),v3(0.5f32,1.0f32,0.6f32),h1),0.9f32*tw);
+  s.alpha=0.0f32;
+  s.glow=0.5f32*tw;
+  return s;
+}
+// The bench's field: a rolling meadow `size` metres each way, as a capture of it would be: flat
+// splats lying on the ground, and tufts of grass and flowers standing on it. It never moves.
+sl_field_y :: (x:f32,z:f32)->f32 {
+  return ((1.4f32*sin(x*0.13f32)*cos(z*0.11f32))+(0.5f32*sin((x*0.41f32)+(z*0.29f32))))+(0.2f32*sin((x*1.3f32)-(z*0.9f32)));
+}
+sl_field :: (i:u32,base:V3,size:f32,count:f32)->SlSplat {
+  s:SlSplat=sl_none();
+  h0:f32=sl_hash(i,1); h1:f32=sl_hash(i,2); h2:f32=sl_hash(i,3); h3:f32=sl_hash(i,4); h4:f32=sl_hash(i,5);
+  x:f32=((2.0f32*h0)-1.0f32)*size;
+  z:f32=((2.0f32*h1)-1.0f32)*size;
+  y:f32=sl_field_y(x,z);
+  gap:f32=(2.0f32*size)/sqrt(fmax(count,1.0f32));
+  if (h2<0.72f32) {
+    // the ground: a disc lying on it, its normal from the slope
+    dx:f32=sl_field_y(x+0.1f32,z)-y; dz:f32=sl_field_y(x,z+0.1f32)-y;
+    n:V3=sl_unit(v3(-dx*10.0f32,1.0f32,-dz*10.0f32));
+    s.pos=v3(base.x+x,base.y+y,base.z+z);
+    s=sl_stretch(s,n,0.02f32,gap*1.1f32);
+    m:f32=0.5f32+(0.5f32*sin((x*0.37f32)+(z*0.23f32)));
+    c:V3=mix3(v3(0.05f32,0.12f32,0.02f32),v3(0.16f32,0.22f32,0.05f32),m*h3);
+    c=mix3(c,v3(0.18f32,0.13f32,0.08f32),smoothstep(0.85f32,1.0f32,h4));
+    s.colour=scale3(c,0.95f32);
+    s.alpha=0.95f32;
+    return s;
+  }
+  // a tuft or a flower above it
+  tall:f32=0.15f32+(0.5f32*h3);
+  s.pos=v3(base.x+x,(base.y+y)+(tall*0.5f32),base.z+z);
+  s=sl_stretch(s,v3(0.0f32,1.0f32,0.0f32),tall*0.45f32,gap*0.6f32);
+  c:V3=mix3(v3(0.04f32,0.1f32,0.02f32),v3(0.1f32,0.2f32,0.04f32),h4);
+  if (h3>0.93f32) { c=mix3(v3(0.6f32,0.5f32,0.08f32),v3(0.5f32,0.12f32,0.3f32),h4); }
+  s.colour=scale3(c,0.9f32);
+  s.alpha=0.9f32;
+  return s;
+}
+
+// Splat i of all the page draws: a static one, or the emitter's whose range holds it.
+sl_get :: (i:u32,u:[]f32,splats:[]SlStatic)->SlSplat {
+  fi:f32=cast(f32)(i);
+  if (fi<u[5]) { return sl_static(splats[cast(int)i]); }
+  t:f32=u[2];
+  for e:0..<SL_EMITTERS {
+    o:int=SL_U_EMIT+(e*12);
+    kind:f32=u[o+3];
+    first:f32=u[o+4];
+    if ((kind>0.0f32)&&(fi>=first)&&(fi<(first+u[o+5]))) {
+      at:V3=v3(u[o],u[o+1],u[o+2]);
+      size:f32=u[o+6];
+      j:u32=add_wrap(i,cast(u32)(u[o+7]));   // the seed: two emitters alike don't move alike
+      to:V3=v3(u[o+8],u[o+9],u[o+10]);
+      p:f32=u[o+11];
+      if (kind==SL_FIRE) { return sl_flame(j,at,size,p,t,v3(0.55f32,0.06f32,0.01f32),v3(1.0f32,0.5f32,0.08f32),0.32f32); }
+      if (kind==SL_RITUAL) { return sl_flame(j,at,size,p,t*0.8f32,v3(0.22f32,0.04f32,0.55f32),v3(0.45f32,1.0f32,0.55f32),0.4f32); }
+      if (kind==SL_SMOKE) { return sl_smoke(j,at,size,p,to,t,1.0f32); }
+      if (kind==SL_EMBER) { return sl_ember(j,at,size,p,t,v3(1.0f32,0.55f32,0.15f32)); }
+      if (kind==SL_FIREBALL) { return sl_fireball(j,at,to,size,p,t); }
+      if (kind==SL_BLAST) { return sl_blast(j,at,to,size,p,t); }
+      if (kind==SL_MOTES) { return sl_motes(j,at,size,p,t); }
+      if (kind==SL_FIELD) { return sl_field(j,at,size,u[o+5]); }
+      return sl_none();
+    }
+  }
+  return sl_none();
+}
+// Whether splat i glows (its bloom share draws in the added pass): a static splat by its glow, an
+// emitter's by its kind, without making the splat.
+sl_glows :: (i:u32,u:[]f32,splats:[]SlStatic)->bool {
+  fi:f32=cast(f32)(i);
+  if (fi<u[5]) { return splats[cast(int)i].c.w>0.0f32; }
+  for e:0..<SL_EMITTERS {
+    o:int=SL_U_EMIT+(e*12);
+    kind:f32=u[o+3];
+    if ((kind>0.0f32)&&(fi>=u[o+4])&&(fi<(u[o+4]+u[o+5]))) {
+      return (kind!=SL_SMOKE)&&(kind!=SL_FIELD);
+    }
+  }
+  return false;
+}
+
+// ---- the sort: one texel a splat, W wide (sp: k, j, W, the splats' count)
+
+sl_sort_vs :: (i:u32,_iid:u32)->V4 {
+  p:[3]V2=[3]V2.[v2(-1.0f32,-3.0f32),v2(-1.0f32,1.0f32),v2(3.0f32,1.0f32)];
+  return v4(p[cast(int)i].x,p[cast(int)i].y,0.0f32,1.0f32);
+}
+// The key of texel (x, y): minus the splat's distance along the view (the farthest first), its
+// index beside it; behind the eye and past the last splat, keys that sort after the rest.
+sl_key_fs :: (pos:V4,u:[]f32,splats:[]SlStatic,sp:[]f32)->V4 {
+  w:u32=cast(u32)(sp[2]);
+  i:u32=(cast(u32)(pos.y)*w)+cast(u32)(pos.x);
+  if (cast(f32)(i)>=sp[3]) { return v4(SL_PAD_KEY,cast(f32)(i),0.0f32,0.0f32); }
+  s:SlSplat=sl_get(i,u,splats);
+  rel:V3=sub3(s.pos,v3(u[16],u[17],u[18]));
+  z:f32=dot3(rel,v3(u[20],u[21],u[22]));
+  if ((z<=u[9])||(s.alpha<=0.0f32 && s.glow<=0.0f32 && length3(s.colour)<=0.0f32)) { return v4(SL_FAR_KEY,cast(f32)(i),0.0f32,0.0f32); }
+  return v4(-z,cast(f32)(i),0.0f32,0.0f32);
+}
+// Whether key a comes before key b: by the key, then by the index, so no two texels tie.
+sl_before :: (a:V4,b:V4)->bool {
+  return (a.x<b.x)||((a.x==b.x)&&(a.y<b.y));
+}
+// One bitonic step (k, j): each texel compares itself with the one j away and keeps the smaller
+// or the larger, as its place in a k-long run that rises or falls says.
+sl_sort_fs :: (pos:V4,sp:[]f32,prev:Tex2D)->V4 {
+  w:u32=cast(u32)(sp[2]);
+  x:u32=cast(u32)(pos.x);
+  y:u32=cast(u32)(pos.y);
+  i:u32=(y*w)+x;
+  k:u32=cast(u32)(sp[0]);
+  j:u32=cast(u32)(sp[1]);
+  l:u32=i^j;
+  me:V4=gpu_load(prev,cast(s32)(x),cast(s32)(y),0);
+  them:V4=gpu_load(prev,cast(s32)(l%w),cast(s32)(l/w),0);
+  rising:bool=(i&k)==0;
+  first:bool=l>i;
+  smaller:bool=sl_before(them,me);
+  if (first==rising) {
+    if (smaller) { return them; }
+    return me;
+  }
+  if (smaller) { return me; }
+  return them;
+}
+
+// ---- drawing the splats
+
+sl_gone :: ()->SlP {
+  o:SlP;
+  o.pos=v4(0.0f32,0.0f32,2.0f32,1.0f32);
+  return o;
+}
+// The splat the n-th quad draws: the sorted texture's n-th texel's index.
+sl_nth :: (n:u32,u:[]f32,order:Tex2D)->u32 {
+  w:u32=cast(u32)(u[7]);
+  t:V4=gpu_load(order,cast(s32)(n%w),cast(s32)(n/w),0);
+  return cast(u32)(t.y);
+}
+// The splat's ellipse on the screen and corner v of its quad. The covariance seen from the eye is
+// J W S W^T J^T: W turns the world into the camera's (right, up, forward) and J is the pinhole's
+// Jacobian at the centre (focal / depth, less the centre's slope times focal / depth^2), both in
+// device px; 0.3 px^2 more on the diagonal keeps a far splat at least a pixel wide. The quad's
+// corners sit SL_REACH standard deviations out along the 2D covariance's eigenvectors.
+sl_place :: (v:u32,s:SlSplat,u:[]f32)->SlP {
+  o:SlP;
+  eye:V3=v3(u[16],u[17],u[18]);
+  fwd:V3=v3(u[20],u[21],u[22]); right:V3=v3(u[24],u[25],u[26]); up:V3=v3(u[28],u[29],u[30]);
+  rel:V3=sub3(s.pos,eye);
+  z:f32=dot3(rel,fwd);
+  if (z<=u[9]) { return sl_gone(); }
+  r:f32=dot3(rel,right); q:f32=dot3(rel,up);
+  f:f32=u[19];
+  t0:V3=sub3(scale3(right,f/z),scale3(fwd,(f*r)/(z*z)));
+  t1:V3=sub3(scale3(up,f/z),scale3(fwd,(f*q)/(z*z)));
+  // S t for each row (the covariance is symmetric: c0 = xx xy xz, c1 = yy yz zz)
+  st0:V3=v3((s.c0.x*t0.x)+(s.c0.y*t0.y)+(s.c0.z*t0.z),(s.c0.y*t0.x)+(s.c1.x*t0.y)+(s.c1.y*t0.z),(s.c0.z*t0.x)+(s.c1.y*t0.y)+(s.c1.z*t0.z));
+  st1:V3=v3((s.c0.x*t1.x)+(s.c0.y*t1.y)+(s.c0.z*t1.z),(s.c0.y*t1.x)+(s.c1.x*t1.y)+(s.c1.y*t1.z),(s.c0.z*t1.x)+(s.c1.y*t1.y)+(s.c1.z*t1.z));
+  a:f32=dot3(t0,st0)+0.3f32;
+  b:f32=dot3(t0,st1);
+  c:f32=dot3(t1,st1)+0.3f32;
+  mid:f32=0.5f32*(a+c);
+  rad:f32=sqrt(fmax((0.25f32*(a-c)*(a-c))+(b*b),0.0f32));
+  l1:f32=mid+rad;
+  l2:f32=fmax(mid-rad,0.1f32);
+  e1:V2=v2(1.0f32,0.0f32);
+  if (abs(b)>0.000001f32) { e1=sl_norm2(v2(b,l1-a)); } else if (c>a) { e1=v2(0.0f32,1.0f32); }
+  e2:V2=v2(-e1.y,e1.x);
+  r1:f32=fmin(SL_REACH*sqrt(l1),2048.0f32);
+  r2:f32=fmin(SL_REACH*sqrt(l2),2048.0f32);
+  quad:[6]V2=[6]V2.[v2(-1.0f32,-1.0f32),v2(1.0f32,-1.0f32),v2(-1.0f32,1.0f32),v2(-1.0f32,1.0f32),v2(1.0f32,-1.0f32),v2(1.0f32,1.0f32)];
+  k:V2=quad[cast(int)v];
+  // px, y up, then into clip space at the centre's depth
+  off:V2=add2(scale2(e1,k.x*r1),scale2(e2,k.y*r2));
+  centre:V4=sl_clip(s.pos,u);
+  o.pos=v4(centre.x+(((2.0f32*off.x)/fmax(u[0],1.0f32))*centre.w),centre.y+(((2.0f32*off.y)/fmax(u[1],1.0f32))*centre.w),centre.z,centre.w);
+  o.corner=scale2(k,SL_REACH);
+  o.colour=v4(s.colour.x,s.colour.y,s.colour.z,s.alpha);
+  o.glow=s.glow;
+  return o;
+}
+sl_norm2 :: (a:V2)->V2 {
+  l:f32=length2(a);
+  if (l<0.0000001f32) { return v2(1.0f32,0.0f32); }
+  return scale2(a,1.0f32/l);
+}
+sl_particle_over_vs :: (v:u32,n:u32,u:[]f32,splats:[]SlStatic,order:Tex2D)->SlP {
+  if (cast(f32)(n)>=u[6]) { return sl_gone(); }
+  s:SlSplat=sl_get(sl_nth(n,u,order),u,splats);
+  if ((s.alpha<=0.0f32)&&(length3(s.colour)<=0.0f32)) { return sl_gone(); }
+  return sl_place(v,s,u);
+}
+// The Gaussian's weight at this pixel; past three standard deviations, or too faint to show, none.
+sl_weight :: (p:SlP)->f32 {
+  d2:f32=dot2(p.corner,p.corner);
+  if (d2>(SL_REACH*SL_REACH)) { return 0.0f32; }
+  return exp(-0.5f32*d2);
+}
+// Premultiplied over what is behind: its colour (already times its opacity) and its opacity, each
+// times the weight. The light target's alpha is the bloom share: the host's over blend keeps
+// (1 - alpha) of what is behind it.
+sl_particle_over_fs :: (p:SlP,u:[]f32)->V4 {
+  g:f32=sl_weight(p);
+  a:f32=fmin(p.colour.w*g,0.99f32);
+  if ((a<0.002f32)&&((g*(p.colour.x+p.colour.y+p.colour.z))<0.002f32)) { gpu_demote_helper(); }
+  return v4(p.colour.x*g,p.colour.y*g,p.colour.z*g,a);
+}
+// The added pass: only glowing splats, only their bloom share (no colour: that went over).
+sl_particle_vs :: (v:u32,n:u32,u:[]f32,splats:[]SlStatic,order:Tex2D)->SlP {
+  if (cast(f32)(n)>=u[6]) { return sl_gone(); }
+  i:u32=sl_nth(n,u,order);
+  if (!sl_glows(i,u,splats)) { return sl_gone(); }
+  s:SlSplat=sl_get(i,u,splats);
+  if (s.glow<=0.0f32) { return sl_gone(); }
+  return sl_place(v,s,u);
+}
+sl_particle_fs :: (p:SlP,u:[]f32)->V4 {
+  g:f32=sl_weight(p);
+  if ((g*p.glow)<0.003f32) { gpu_demote_helper(); }
+  return v4(0.0f32,0.0f32,0.0f32,fmin(g*p.glow*0.5f32,1.0f32));
+}
+
+// ---- checks: the CPU and the GPU agree
+
+sl_test_camera :: (u:[]f32) {
+  for i:0..<u.count { u[i]=0.0f32; }
+  u[0]=1600.0f32; u[1]=1000.0f32; u[2]=3.0f32; u[9]=0.1f32;
+  u[16]=0.0f32; u[17]=2.0f32; u[18]=10.0f32; u[19]=1100.0f32;
+  fw:V3=normalize3(v3(0.0f32,-2.0f32,-10.0f32));
+  rt:V3=normalize3(cross3(fw,v3(0.0f32,1.0f32,0.0f32)));
+  up:V3=cross3(rt,fw);
+  u[20]=fw.x; u[21]=fw.y; u[22]=fw.z; u[23]=800.0f32;
+  u[24]=rt.x; u[25]=rt.y; u[26]=rt.z; u[27]=500.0f32;
+  u[28]=up.x; u[29]=up.y; u[30]=up.z;
+}
+#test "the hash spreads over [0, 1) and differs by channel" {
+  lo_:f32=1.0f32; hi_:f32=0.0f32; sum:f32=0.0f32;
+  for i:0..<4096 { h:=sl_hash(cast(u32)i,1); lo_=fmin(lo_,h); hi_=fmax(hi_,h); sum+=h; }
+  #assert lo_>=0.0f32 && lo_<0.01f32 && hi_<1.0f32 && hi_>0.99f32;
+  #assert abs((sum/4096.0f32)-0.5f32)<0.02f32;
+  #assert sl_hash(5,1)!=sl_hash(5,2);
+}
+#test "a round splat seen head on is a circle as wide as its depth says" {
+  u:[256]f32; sl_test_camera(u[..]);
+  s:SlSplat=sl_none();
+  s.pos=v3(0.0f32,0.0f32,0.0f32); s.alpha=1.0f32; s.colour=v3(1.0f32,1.0f32,1.0f32);
+  s=sl_stretch(s,v3(0.0f32,1.0f32,0.0f32),0.1f32,0.1f32);
+  // 0.1 m at about 10.2 m with a 1100 px focal: about 10.8 px a standard deviation
+  z:f32=length3(v3(0.0f32,-2.0f32,-10.0f32));
+  want:f32=SL_REACH*sqrt(((0.1f32*1100.0f32/z)*(0.1f32*1100.0f32/z))+0.3f32);
+  o0:=sl_place(0,s,u[..]); o5:=sl_place(5,s,u[..]);
+  px0:f32=((o0.pos.x/o0.pos.w)+1.0f32)*800.0f32; px5:f32=((o5.pos.x/o5.pos.w)+1.0f32)*800.0f32;
+  #assert abs(abs(px5-px0)-(2.0f32*want))<0.5f32;
+  // the centre lands where the camera puts it: the image centre
+  c:=sl_clip(s.pos,u[..]);
+  #assert abs(c.x/c.w)<0.001f32 && abs(c.y/c.w)<0.001f32 && c.z/c.w>0.0f32 && c.z/c.w<1.0f32;
+}
+#test "a splat stretched along x is wide across the screen and thin up it" {
+  u:[256]f32; sl_test_camera(u[..]);
+  s:SlSplat=sl_none();
+  s.pos=v3(0.0f32,0.0f32,0.0f32); s.alpha=1.0f32;
+  s=sl_stretch(s,v3(1.0f32,0.0f32,0.0f32),0.5f32,0.02f32);
+  a:=sl_place(1,s,u[..]); b:=sl_place(0,s,u[..]); c:=sl_place(2,s,u[..]);
+  wide:f32=abs((a.pos.x/a.pos.w)-(b.pos.x/b.pos.w))*800.0f32;
+  tall:f32=abs((c.pos.y/c.pos.w)-(b.pos.y/b.pos.w))*500.0f32;
+  #assert wide>100.0f32 && tall<20.0f32;
+}
+#test "behind the eye a splat draws nothing and sorts last" {
+  u:[256]f32; sl_test_camera(u[..]);
+  s:SlSplat=sl_none(); s.pos=v3(0.0f32,2.0f32,20.0f32); s.alpha=1.0f32;
+  #assert sl_place(0,s,u[..]).pos.z==2.0f32;
+}
+#test "a bitonic step keeps the smaller of a pair in a rising run, the larger in a falling one" {
+  a:=v4(1.0f32,3.0f32,0.0f32,0.0f32); b:=v4(2.0f32,1.0f32,0.0f32,0.0f32);
+  #assert sl_before(a,b) && !sl_before(b,a);
+  // a tie on the key: the index decides, so both of a pair never keep the same texel
+  c:=v4(1.0f32,4.0f32,0.0f32,0.0f32);
+  #assert sl_before(a,c) && !sl_before(c,a);
+}
+#test "flames rise and burn hot low; smoke hides and climbs higher; a field never moves" {
+  u:[256]f32; sl_test_camera(u[..]);
+  low:f32=0.0f32; high:f32=0.0f32; nl:f32=0.0f32; nh:f32=0.0f32;
+  for i:0..<2000 {
+    f:=sl_flame(cast(u32)i,v3(0.0f32,0.0f32,0.0f32),0.5f32,1.6f32,1.3f32,v3(0.55f32,0.06f32,0.01f32),v3(1.0f32,0.5f32,0.08f32),2.4f32);
+    #assert f.pos.y>=0.0f32 && f.pos.y<=1.7f32;
+    if f.pos.y<0.5f32 { low+=f.colour.y; nl+=1.0f32; } else { high+=f.colour.y; nh+=1.0f32; }
+    m:=sl_smoke(cast(u32)i,v3(0.0f32,1.5f32,0.0f32),0.4f32,7.0f32,v3(1.0f32,0.0f32,0.0f32),1.3f32,1.0f32);
+    #assert m.pos.y>=1.5f32 && m.alpha<=0.5f32 && m.glow==0.0f32;
+  }
+  #assert nl>0.0f32 && nh>0.0f32 && (low/nl)>(high/nh);
+  a:=sl_field(7,v3(0.0f32,0.0f32,0.0f32),20.0f32,10000.0f32);
+  u[2]=99.0f32;
+  b:=sl_field(7,v3(0.0f32,0.0f32,0.0f32),20.0f32,10000.0f32);
+  #assert a.pos.x==b.pos.x && a.pos.y==b.pos.y && a.alpha>0.5f32;
+}

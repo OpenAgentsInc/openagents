@@ -1,0 +1,1139 @@
+// Splat Lab, openagents.com/worlds/splat-lab (unlisted): a bench for 3D Gaussian splats in the
+// Verse's own WebGPU renderer, and what they could do for Everglade and the raid that burns it
+// (docs/verse/2026-11-03-splat-lab.md has the findings).
+//
+// Five scenes, each a key or a button:
+//   1 FIRE    a pyre: flames, smoke and embers made of thirty thousand animated Gaussians.
+//   2 SPELLS  a Fireball's flight, burst and mushroom of smoke, and an Eldritch Blast's beam.
+//   3 TOWN    the raid: cottages (ordinary meshes) burning, splat fire and smoke round them, sharing
+//             the depth buffer, so a wall hides the flames behind it and smoke drifts in front.
+//   4 SHRINE  Darian's ritual site: an authored splat scene (standing stones, an altar, a dead
+//             tree, a chalk circle), violet ritual flame, and on a local address the CC BY 4.0
+//             Babylon.js skull capture (a .splat file) on the altar.
+//   5 BENCH   a captured-looking meadow of 16k to 1M splats, for splat count against frame rate.
+//
+// What runs where. This file decides everything: the scene, the camera, the emitters (where each
+// effect is, how many splats it has), the static splats (the authored site, packed three vec4s
+// each; a loaded .splat or .ply parsed and packed here), the meshes, and the GPU sort's plan. The
+// GPU makes each animated splat from its index and the time (gpu/splatlab-fx.coax), sorts every
+// splat back to front with a bitonic sort in fragment passes (coax/web/host.js "Sorting"), and draws
+// each as its projected 2D Gaussian, blended over the meshes (gpu/splatlab.coax) and their depth.
+//   coax/bin/coax test apps/openagents-web/splatlab.coax
+
+#load "font.coax";
+#load "../../aethyr/loop.coax";
+#load "../../aethyr/points.coax";
+
+VERTEX_FLOATS :: 16;
+MAX_VERTICES :: 30000;
+UNIFORM_FLOATS :: 320;
+// The static splats (splatlab-face.c holds them): three vec4s each, as gpu/splatlab-fx.coax's SlStatic.
+SPLAT_FLOATS :: 12;
+SPLAT_CAP :: 393216;
+// The meshes' vertices (the store, gpu/splatlab.coax SlS): two vec4s each.
+MESH_FLOATS :: 8;
+MESH_CAP :: 24000;
+// The emitters in the uniforms (gpu/splatlab-view.coax): sixteen, twelve floats each, from U_EMIT.
+U_EMIT :: 64;
+EMITTERS :: 16;
+EMIT_FIRE :: 1; EMIT_SMOKE :: 2; EMIT_EMBER :: 3; EMIT_FIREBALL :: 4; EMIT_BLAST :: 5;
+EMIT_RITUAL :: 6; EMIT_MOTES :: 7; EMIT_FIELD :: 8;
+// The sort: one texel a splat, SORT_W wide; the splats padded to a power of two.
+SORT_W :: 1024;
+SORT_MAX_LOG :: 20;            // 1,048,576 splats at most
+SORT_PASSES_MAX :: 1 + (SORT_MAX_LOG * (SORT_MAX_LOG + 1)) / 2;
+SORT_FLOATS :: 4 + 4 * SORT_PASSES_MAX;
+// The bench's counts: 2^14 to 2^20 splats.
+BENCH_LEVELS :: 4;
+
+SC_FIRE :: 0; SC_SPELLS :: 1; SC_TOWN :: 2; SC_SHRINE :: 3; SC_BENCH :: 4;
+SCENES :: 5;
+SCENE_NAME :: [SCENES] string.["FIRE", "SPELLS", "TOWN", "SHRINE", "BENCH"];
+SCENE_HASH :: [SCENES] string.["fire", "spells", "town", "shrine", "bench"];
+
+STEP :: 0.0166666667;
+LAB_STEP_NS :: 16666667;
+LAB_FRAME_NS :: 100000000;
+OUTBOX_CAP :: 64;
+ACT_NAVIGATE :: 1; ACT_HASH :: 3;
+KEY_SHIFT :: -13; KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7;
+MSG_TIMING :: 610;
+ZOOM_NEAR :: 0.6; ZOOM_FAR :: 140.0;
+PITCH_LOW :: -0.05; PITCH_HIGH :: 1.45;
+FLY_RATE :: 9.0;
+FLY_HOLD :: 6;
+
+Rect :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
+Col :: struct { r: f32; g: f32; b: f32; }
+WHITE :: Col.{r = 0.9, g = 0.92, b = 0.96};
+DIM :: Col.{r = 0.55, g = 0.58, b = 0.63};
+GOLD :: Col.{r = 1.0, g = 0.72, b = 0.3};
+VIOLET :: Col.{r = 0.7, g = 0.55, b = 1.0};
+
+Lab :: struct {
+  started: bool;
+  scene: int = SC_FIRE;
+  built: int = -1;               // the scene the static splats and meshes were made for
+  bench: int = 2;                // the bench's count: 2^(14 + 2 bench)
+  bench_built: int = -1;
+  n_static: int; n_total: int; npad: int;
+  splat_version: int; mesh_version: int; mesh_n: int;
+  // the loaded capture (a .splat or .ply, splatlab-face.c's asset 0): 0 none, 1 in, -1 refused;
+  // its splats, kind (1 .splat, 2 .ply) and how many the shrine took
+  capture: int; capture_kind: int; capture_n: int; capture_used: int;
+  emit: [EMITTERS * 12] f32;
+  sort: [SORT_FLOATS] f32;
+  draws: [4] u32;
+  clock: f32; pace: FrameClock; paused: bool;
+  fps: f32; fps_t: f32; fps_n: int;
+  sort_us: f32; draw_us: f32; timed: bool;
+  golden: bool; golden_ran: bool;
+  width: f32; height: f32; dpr: f32; portrait: bool; strip: f32; foot: f32;
+  scene_b: [SCENES] Rect; back: Rect; less_b: Rect; more_b: Rect;
+  pressing: int;   // 1 back, 10 + i a scene, 20 less, 21 more
+  // the camera: an orbit round a pivot
+  yaw: f32 = 0.6; pitch: f32 = 0.2; dist: f32 = 8;
+  px: f32; py: f32 = 1.5; pz: f32;
+  vx: f32; vy: f32; vz: f32;
+  held: [FLY_HOLD] bool;
+  dragging: bool; drag_x: f32; drag_y: f32;
+  panning: bool; shift: bool;
+  fingers: int; fing_id: [2] int; fing_x: [2] f32; fing_y: [2] f32;
+  eye: Point; fwd: Point; right: Point; up: Point; focal: f32; cx: f32; cy: f32;
+  outbox: [OUTBOX_CAP] u8; out_n: int; action: int;
+}
+
+// ---- small things
+
+GAP :: 0.5; SPACE :: 1.2;
+text_width :: (text: string, cap: f32) -> f32 { return measure(text, GAP, SPACE, false) * cap; }
+in_rect :: (b: Rect, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
+put :: (buf: [] u8, at: int, text: string) -> int {
+  n := at;
+  for i: 0..<text.count { if n < buf.count { buf[n] = text[i]; n += 1; } }
+  return n;
+}
+put_int :: (buf: [] u8, at: int, v: int) -> int {
+  if v < 0 { return put_int(buf, put(buf, at, "-"), -v); }
+  n := at;
+  if v >= 10 { n = put_int(buf, n, v / 10); }
+  if n < buf.count { buf[n] = cast(u8) ('0' + v % 10); n += 1; }
+  return n;
+}
+// A count with commas: 1,048,576.
+put_count :: (buf: [] u8, at: int, v: int) -> int {
+  if v < 1000 { return put_int(buf, at, v); }
+  n := put_count(buf, at, v / 1000);
+  n = put(buf, n, ",");
+  r := v % 1000;
+  if r < 100 { n = put(buf, n, "0"); }
+  if r < 10 { n = put(buf, n, "0"); }
+  return put_int(buf, n, r);
+}
+// v with one decimal: 12.3.
+put_dec :: (buf: [] u8, at: int, v: f32) -> int {
+  t := cast(int) (v * 10 + 0.5);
+  n := put_int(buf, at, t / 10);
+  n = put(buf, n, ".");
+  return put_int(buf, n, t % 10);
+}
+leave_to :: (s: [] Lab, url: string) {
+  if s[0].action != 0 { return; }
+  s[0].out_n = put(s[0].outbox[..], 0, url);
+  s[0].action = ACT_NAVIGATE;
+}
+
+// A number in [0, 1) from a seed and a channel (the CPU's own; the GPU's is gpu/splatlab-fx.coax's).
+rnd :: (i: int, k: int) -> f32 {
+  x := add_wrap(mul_wrap(cast(u32) (i & 0x7fffffff), 2654435761), mul_wrap(cast(u32) (k & 0xffff), 40503));
+  x = mul_wrap(x ^ (x >> 15), 2246822519);
+  x = mul_wrap(x ^ (x >> 13), 3266489917);
+  x = x ^ (x >> 16);
+  return cast(f32) (x >> 8) / 16777216.0;
+}
+// A smooth value noise in [0, 1] over the plane (the authored site's moss, lichen and stains).
+noise2 :: (x: f32, z: f32, seed: int) -> f32 {
+  ix := cast(int) floor(x); iz := cast(int) floor(z);
+  fx := x - floor(x); fz := z - floor(z);
+  ux := fx * fx * (3 - 2 * fx); uz := fz * fz * (3 - 2 * fz);
+  a := rnd(ix * 7919 + iz * 104729, seed); b := rnd((ix + 1) * 7919 + iz * 104729, seed);
+  c := rnd(ix * 7919 + (iz + 1) * 104729, seed); d := rnd((ix + 1) * 7919 + (iz + 1) * 104729, seed);
+  return (a + (b - a) * ux) + ((c + (d - c) * ux) - (a + (b - a) * ux)) * uz;
+}
+
+smoothstep :: (a: f32, b: f32, x: f32) -> f32 { t := clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t); }
+
+// ---- static splats: three vec4s each (gpu/splatlab-fx.coax SlStatic)
+
+Cov :: struct { m11: f32; m12: f32; m13: f32; m22: f32; m23: f32; m33: f32; }
+// A covariance of a flat disc on the plane with normal n: `a` across it, `t` through it.
+cov_disc :: (n: Point, a: f32, t: f32) -> Cov {
+  a2 := a * a; e := t * t - a2;
+  return Cov.{m11 = a2 + e * n.x * n.x, m12 = e * n.x * n.y, m13 = e * n.x * n.z, m22 = a2 + e * n.y * n.y, m23 = e * n.y * n.z, m33 = a2 + e * n.z * n.z};
+}
+// Stretched along d: `along` there, `across` round it.
+cov_rod :: (d: Point, along: f32, across: f32) -> Cov {
+  a2 := across * across; e := along * along - a2;
+  return Cov.{m11 = a2 + e * d.x * d.x, m12 = e * d.x * d.y, m13 = e * d.x * d.z, m22 = a2 + e * d.y * d.y, m23 = e * d.y * d.z, m33 = a2 + e * d.z * d.z};
+}
+// R diag(s^2) R^T for the unit quaternion (w, x, y, z) and scales s: 3D Gaussian Splatting's own.
+cov_of :: (w: f32, x: f32, y: f32, z: f32, sx: f32, sy: f32, sz: f32) -> Cov {
+  r00 := 1 - 2 * (y * y + z * z); r01 := 2 * (x * y - w * z); r02 := 2 * (x * z + w * y);
+  r10 := 2 * (x * y + w * z); r11 := 1 - 2 * (x * x + z * z); r12 := 2 * (y * z - w * x);
+  r20 := 2 * (x * z - w * y); r21 := 2 * (y * z + w * x); r22 := 1 - 2 * (x * x + y * y);
+  a := sx * sx; b := sy * sy; c := sz * sz;
+  return Cov.{m11 = r00 * r00 * a + r01 * r01 * b + r02 * r02 * c, m12 = r00 * r10 * a + r01 * r11 * b + r02 * r12 * c,
+              m13 = r00 * r20 * a + r01 * r21 * b + r02 * r22 * c, m22 = r10 * r10 * a + r11 * r11 * b + r12 * r12 * c,
+              m23 = r10 * r20 * a + r11 * r21 * b + r12 * r22 * c, m33 = r20 * r20 * a + r21 * r21 * b + r22 * r22 * c};
+}
+byte_of :: (x: f32) -> int { return cast(int) (clamp01(x) * 255 + 0.5); }
+// Splat k: its centre, opacity, covariance, colour (sRGB, 0 to 1) and bloom share; false when full.
+pack :: (out: [] f32, k: int, p: Point, alpha: f32, c: Cov, r: f32, g: f32, b: f32, glow: f32) -> bool {
+  o := k * SPLAT_FLOATS;
+  if k < 0 || o + SPLAT_FLOATS > out.count { return false; }
+  out[o] = p.x; out[o + 1] = p.y; out[o + 2] = p.z; out[o + 3] = clamp01(alpha);
+  out[o + 4] = c.m11; out[o + 5] = c.m12; out[o + 6] = c.m13; out[o + 7] = c.m22;
+  out[o + 8] = c.m23; out[o + 9] = c.m33;
+  out[o + 10] = cast(f32) (byte_of(r) + 256 * byte_of(g) + 65536 * byte_of(b));
+  out[o + 11] = glow;
+  return true;
+}
+
+// ---- loading a capture: a .splat (antimatter15's: 32 bytes a splat) or a 3DGS .ply
+
+le_u32 :: (b: string, at: int) -> u32 {
+  return cast(u32) b[at] | (cast(u32) b[at + 1] << 8) | (cast(u32) b[at + 2] << 16) | (cast(u32) b[at + 3] << 24);
+}
+le_f32 :: (b: string, at: int) -> f32 { return f32_from_bits(le_u32(b, at)); }
+// A capture's placement: centred on its middle, scaled so it is `tall` metres high, turned half
+// round x (captures stand y down), its foot on `at`.
+Place :: struct { cx: f32; cy: f32; cz: f32; k: f32; at: Point; flip: bool; }
+// What a capture is: 1 a .splat, 2 a .ply, 0 neither; its splat count in n[0], and for a .ply
+// where its data starts and each property's float in n[1..]: data, stride, x, y, z, dc0, dc1, dc2,
+// opacity, scale0..2, rot0..3 (-1 for one it lacks).
+PLY_FIELDS :: 18;
+capture_kind :: (b: string, n: [] int) -> int {
+  if b.count >= 4 && b[0] == 'p' && b[1] == 'l' && b[2] == 'y' && b[3] == '\n' { return ply_header(b, n); }
+  if b.count >= 32 && b.count % 32 == 0 { n[0] = b.count / 32; return 1; }
+  return 0;
+}
+ply_header :: (b: string, n: [] int) -> int {
+  for i: 0..<n.count { n[i] = -1; }
+  i := 0; props := 0; count := -1; in_vertex := false; little := false;
+  while i < b.count && i < 65536 {
+    e := i; while e < b.count && b[e] != '\n' { e += 1; }
+    line := b[i..<e];
+    if line.count > 15 && line[0..<15] == "element vertex " {
+      in_vertex = true; v := 0;
+      for k: 15..<line.count { if line[k] >= '0' && line[k] <= '9' { v = v * 10 + cast(int) (line[k] - '0'); } }
+      count = v;
+    } else if line.count > 8 && line[0..<8] == "element " { in_vertex = false; }
+    else if line.count > 6 && line[0..<6] == "format" { little = line.count >= 27 && line[7..<27] == "binary_little_endian"; }
+    else if in_vertex && line.count > 15 && line[0..<15] == "property float " {
+      name := line[15..<line.count];
+      f := ply_field(name);
+      if f >= 0 { n[f] = props; }
+      props += 1;
+    } else if in_vertex && line.count > 9 && line[0..<9] == "property " { return 0; }   // only float properties
+    else if line == "end_header" {
+      if !little || count <= 0 || n[2] < 0 || n[3] < 0 || n[4] < 0 { return 0; }
+      n[0] = count; n[1] = e + 1; n[PLY_FIELDS - 1] = props * 4;
+      if n[1] + count * props * 4 > b.count { n[0] = (b.count - n[1]) / (props * 4); }
+      return 2;
+    }
+    i = e + 1;
+  }
+  return 0;
+}
+// Where each property's place goes in ply_header's n (2..16), or -1.
+ply_field :: (name: string) -> int {
+  names := [15] string.["x", "y", "z", "f_dc_0", "f_dc_1", "f_dc_2", "opacity", "scale_0", "scale_1", "scale_2", "rot_0", "rot_1", "rot_2", "rot_3", ""];
+  for k: 0..<14 { if name == names[k] { return k + 2; } }
+  return -1;
+}
+// The i-th splat of a capture, raw: centre, scales, quaternion (w x y z, unit), colour, opacity.
+Raw :: struct { p: Point; sx: f32; sy: f32; sz: f32; qw: f32; qx: f32; qy: f32; qz: f32; r: f32; g: f32; b: f32; a: f32; }
+raw_at :: (b: string, kind: int, n: [] int, i: int) -> Raw {
+  r: Raw;
+  if kind == 1 {
+    o := i * 32;
+    r.p = v3(le_f32(b, o), le_f32(b, o + 4), le_f32(b, o + 8));
+    r.sx = le_f32(b, o + 12); r.sy = le_f32(b, o + 16); r.sz = le_f32(b, o + 20);
+    r.r = cast(f32) b[o + 24] / 255; r.g = cast(f32) b[o + 25] / 255; r.b = cast(f32) b[o + 26] / 255; r.a = cast(f32) b[o + 27] / 255;
+    r.qw = (cast(f32) b[o + 28] - 128) / 128; r.qx = (cast(f32) b[o + 29] - 128) / 128;
+    r.qy = (cast(f32) b[o + 30] - 128) / 128; r.qz = (cast(f32) b[o + 31] - 128) / 128;
+  } else {
+    o := n[1] + i * n[PLY_FIELDS - 1];
+    r.p = v3(le_f32(b, o + 4 * n[2]), le_f32(b, o + 4 * n[3]), le_f32(b, o + 4 * n[4]));
+    sh := 0.28209479f32;   // the zeroth spherical harmonic's constant
+    r.r = ifx n[5] >= 0 then 0.5 + sh * le_f32(b, o + 4 * n[5]) else 0.5;
+    r.g = ifx n[6] >= 0 then 0.5 + sh * le_f32(b, o + 4 * n[6]) else 0.5;
+    r.b = ifx n[7] >= 0 then 0.5 + sh * le_f32(b, o + 4 * n[7]) else 0.5;
+    r.a = ifx n[8] >= 0 then 1 / (1 + exp(-le_f32(b, o + 4 * n[8]))) else 1;
+    r.sx = ifx n[9] >= 0 then exp(le_f32(b, o + 4 * n[9])) else 0.01;
+    r.sy = ifx n[10] >= 0 then exp(le_f32(b, o + 4 * n[10])) else 0.01;
+    r.sz = ifx n[11] >= 0 then exp(le_f32(b, o + 4 * n[11])) else 0.01;
+    r.qw = ifx n[12] >= 0 then le_f32(b, o + 4 * n[12]) else 1;
+    r.qx = ifx n[13] >= 0 then le_f32(b, o + 4 * n[13]) else 0;
+    r.qy = ifx n[14] >= 0 then le_f32(b, o + 4 * n[14]) else 0;
+    r.qz = ifx n[15] >= 0 then le_f32(b, o + 4 * n[15]) else 0;
+  }
+  q := sqrt(r.qw * r.qw + r.qx * r.qx + r.qy * r.qy + r.qz * r.qz);
+  if !(q > 0.000001) { r.qw = 1; r.qx = 0; r.qy = 0; r.qz = 0; }
+  else { r.qw /= q; r.qx /= q; r.qy /= q; r.qz /= q; }
+  return r;
+}
+// A capture's splats packed from k on, placed by `place`; how many it packed (faint ones skipped).
+pack_capture :: (out: [] f32, k: int, b: string, tall: f32, at: Point) -> int {
+  n: [PLY_FIELDS] int;
+  kind := capture_kind(b, n[..]);
+  if kind == 0 || n[0] <= 0 { return 0; }
+  count := n[0];
+  // its bounds, from every splat's centre
+  lo3 := v3(1000000, 1000000, 1000000); hi3 := v3(-1000000, -1000000, -1000000);
+  for i: 0..<count {
+    r := raw_at(b, kind, n[..], i);
+    if !finite3(r.p) { continue; }
+    lo3 = v3(lo(lo3.x, r.p.x), lo(lo3.y, r.p.y), lo(lo3.z, r.p.z));
+    hi3 = v3(hi(hi3.x, r.p.x), hi(hi3.y, r.p.y), hi(hi3.z, r.p.z));
+  }
+  h := hi3.y - lo3.y;
+  if !(h > 0.000001) { return 0; }
+  sc := tall / h;
+  cxm := (lo3.x + hi3.x) / 2; czm := (lo3.z + hi3.z) / 2;
+  m := 0;
+  for i: 0..<count {
+    r := raw_at(b, kind, n[..], i);
+    if r.a < 0.02 || !finite3(r.p) { continue; }
+    // turned half round x: y and z change sign; the covariance's m12 and m13 with them
+    p := v3(at.x + (r.p.x - cxm) * sc, at.y + (hi3.y - r.p.y) * sc, at.z - (r.p.z - czm) * sc);
+    c := cov_of(r.qw, r.qx, r.qy, r.qz, r.sx * sc, r.sy * sc, r.sz * sc);
+    c.m12 = -c.m12; c.m13 = -c.m13;
+    if !pack(out, k + m, p, r.a, c, r.r, r.g, r.b, 0) { break; }
+    m += 1;
+  }
+  return m;
+}
+
+// ---- the authored ritual site (SHRINE): Darian's, as a capture of it might look
+
+// A splat on a stone's surface: a box of half sizes h, turned by yaw and leant by tilt about its
+// own x, standing on the ground at (x, z); grey with lichen, darker at its foot.
+STONES :: 7;
+stone_splat :: (out: [] f32, k: int, seed: int, x: f32, z: f32, hx: f32, hy: f32, hz: f32, yaw: f32, tilt: f32, dark: f32) -> bool {
+  // a face by its area, a point on it
+  ax := hy * hz; ay := hx * hz; az := hx * hy;
+  pick := rnd(seed, 1) * (ax + ay + az);
+  u := rnd(seed, 2) * 2 - 1; v := rnd(seed, 3) * 2 - 1;
+  sgn := ifx rnd(seed, 4) < 0.5 then -1.0f32 else 1.0f32;
+  lp: Point; ln: Point;
+  if pick < ax { lp = v3(sgn * hx, u * hy, v * hz); ln = v3(sgn, 0, 0); }
+  else if pick < ax + ay { lp = v3(u * hx, sgn * hy, v * hz); ln = v3(0, sgn, 0); }
+  else { lp = v3(u * hx, v * hy, sgn * hz); ln = v3(0, 0, sgn); }
+  // weathered: the corners rounded off, the faces pitted
+  bump := (noise2(lp.x * 4 + lp.z * 3, lp.y * 4, seed / 4096 + 11) - 0.5) * 0.08;
+  lp = add(lp, times(ln, bump));
+  lp = v3(lp.x * (1 - 0.12 * abs(v)), lp.y, lp.z * (1 - 0.12 * abs(u)));
+  if ln.y < 0.5 && lp.y + hy < 0.02 { return true; }   // nothing under it
+  // stood up from its foot, leant, turned
+  ly := lp.y + hy;
+  ct := cos(tilt); st := sin(tilt);
+  p1 := v3(lp.x, ly * ct - lp.z * st, ly * st + lp.z * ct);
+  n1 := v3(ln.x, ln.y * ct - ln.z * st, ln.y * st + ln.z * ct);
+  cy := cos(yaw); sy := sin(yaw);
+  p := v3(x + p1.x * cy + p1.z * sy, p1.y, z - p1.x * sy + p1.z * cy);
+  nn := v3(n1.x * cy + n1.z * sy, n1.y, -n1.x * sy + n1.z * cy);
+  lich := smoothstep(0.55, 0.75, noise2(p.x * 2.5 + 3, p.y * 2.5 + p.z * 2.5, 21));
+  g := 0.3 + 0.12 * noise2(p.x * 9, p.y * 9 + p.z * 9, 5) - dark;
+  r := g; gg := g; b := g * 0.95;
+  r = r + (0.27 - r) * lich * 0.5; gg = gg + (0.3 - gg) * lich * 0.5; b = b + (0.22 - b) * lich * 0.5;
+  foot := 1 - smoothstep(0.0, 0.5, p.y);
+  r *= 1 - 0.4 * foot; gg *= 1 - 0.4 * foot; b *= 1 - 0.45 * foot;
+  return pack(out, k, p, 0.97, cov_disc(nn, 0.038 + 0.014 * rnd(seed, 5), 0.01), r, gg, b, 0);
+}
+// A splat of the ground round the circle: earth, moss and ash, the chalk circle and its spokes.
+ground_splat :: (out: [] f32, k: int, seed: int, radius: f32) -> bool {
+  rr := radius * sqrt(rnd(seed, 1)); a := 6.2831853 * rnd(seed, 2);
+  x := cos(a) * rr; z := sin(a) * rr;
+  m := noise2(x * 0.7, z * 0.7, 3);
+  r := 0.13 + 0.05 * m; g := 0.11 + 0.06 * m; b := 0.08 + 0.03 * m;
+  moss := smoothstep(0.55, 0.8, noise2(x * 1.6 + 9, z * 1.6, 8)) * smoothstep(2.5, 6, rr);
+  r = r + (0.08 - r) * moss; g = g + (0.11 - g) * moss; b = b + (0.05 - b) * moss;
+  ash := 1 - smoothstep(0.8, 2.6, rr);
+  r = r + (0.2 - r) * ash; g = g + (0.19 - g) * ash; b = b + (0.18 - b) * ash;
+  // the chalk ring at 3.4 m, and seven spokes from it out to the stones
+  ring := 1 - smoothstep(0.03, 0.09, abs(rr - 3.4));
+  spoke := 0.0f32;
+  sa := a * f32(STONES) / 6.2831853 - 0.3 * f32(STONES) / 6.2831853;
+  sd := abs(sa - floor(sa + 0.5)) * 6.2831853 / f32(STONES) * rr;
+  if rr > 3.4 && rr < 4.7 { spoke = 1 - smoothstep(0.02, 0.07, sd); }
+  chalk := hi(ring, spoke) * (0.75 + 0.25 * rnd(seed, 3));
+  r = r + (0.62 - r) * chalk; g = g + (0.6 - g) * chalk; b = b + (0.66 - b) * chalk;
+  y := 0.01 + 0.04 * (noise2(x * 2, z * 2, 4) - 0.5);
+  return pack(out, k, v3(x, y, z), 0.98, cov_disc(v3(0, 1, 0), 0.085, 0.01), r, g, b, chalk * 0.25);
+}
+// A splat of the dead tree: its trunk and three bare limbs, bark along each.
+tree_splat :: (out: [] f32, k: int, seed: int, base: Point) -> bool {
+  part := cast(int) (rnd(seed, 1) * 4);
+  t := rnd(seed, 2);
+  a: Point; b: Point; r0: f32; r1: f32;
+  if part == 0 { a = base; b = add(base, v3(0.3, 4.4, 0.2)); r0 = 0.34; r1 = 0.16; }
+  else if part == 1 { a = add(base, v3(0.15, 2.4, 0.1)); b = add(base, v3(1.8, 3.9, 0.9)); r0 = 0.14; r1 = 0.04; }
+  else if part == 2 { a = add(base, v3(0.22, 3.1, 0.15)); b = add(base, v3(-1.4, 4.8, -0.6)); r0 = 0.11; r1 = 0.03; }
+  else { a = add(base, v3(0.27, 3.8, 0.18)); b = add(base, v3(0.9, 5.6, -1.2)); r0 = 0.09; r1 = 0.025; }
+  d := unit_or(sub(b, a), v3(0, 1, 0));
+  side := unit_or(cross(d, v3(0.3, 0, 1)), v3(1, 0, 0));
+  side2 := cross(d, side);
+  ang := 6.2831853 * rnd(seed, 3);
+  rad := r0 + (r1 - r0) * t;
+  off := add(times(side, cos(ang) * rad), times(side2, sin(ang) * rad));
+  p := add(add(a, times(sub(b, a), t)), off);
+  bark := 0.07 + 0.05 * noise2(t * 30, ang * 3, 13);
+  return pack(out, k, p, 0.97, cov_rod(d, 0.09, 0.03), bark * 1.1, bark * 0.95, bark * 0.8, 0);
+}
+
+// ---- meshes: two vec4s a vertex (gpu/splatlab.coax SlS)
+
+colour :: (r: f32, g: f32, b: f32) -> f32 { return cast(f32) (byte_of(r) + 256 * byte_of(g) + 65536 * byte_of(b)); }
+vert :: (m: [] f32, k: int, p: Point, n: Point, c: f32, mat: f32) -> int {
+  o := k * MESH_FLOATS;
+  if k < 0 || o + MESH_FLOATS > m.count { return k; }
+  m[o] = p.x; m[o + 1] = p.y; m[o + 2] = p.z; m[o + 3] = c;
+  m[o + 4] = n.x; m[o + 5] = n.y; m[o + 6] = n.z; m[o + 7] = mat;
+  return k + 1;
+}
+// A quad a b c d (in order round it), two triangles.
+quad :: (m: [] f32, k: int, a: Point, b: Point, c: Point, d: Point, col: f32, mat: f32) -> int {
+  n := unit_or(cross(sub(b, a), sub(d, a)), v3(0, 1, 0));
+  j := vert(m, k, a, n, col, mat); j = vert(m, j, b, n, col, mat); j = vert(m, j, c, n, col, mat);
+  j = vert(m, j, a, n, col, mat); j = vert(m, j, c, n, col, mat); j = vert(m, j, d, n, col, mat);
+  return j;
+}
+tri :: (m: [] f32, k: int, a: Point, b: Point, c: Point, col: f32) -> int {
+  n := unit_or(cross(sub(b, a), sub(c, a)), v3(0, 1, 0));
+  j := vert(m, k, a, n, col, 0); j = vert(m, j, b, n, col, 0); return vert(m, j, c, n, col, 0);
+}
+// A point in a building's own frame (x along its front, z toward the street) put in the world.
+Frame :: struct { o: Point; yaw: f32; }
+at_frame :: (f: Frame, x: f32, y: f32, z: f32) -> Point {
+  c := cos(f.yaw); s := sin(f.yaw);
+  return v3(f.o.x + x * c + z * s, f.o.y + y, f.o.z - x * s + z * c);
+}
+// A box from (x0, y0, z0) to (x1, y1, z1) in frame f: its four sides and top.
+box :: (m: [] f32, k: int, f: Frame, x0: f32, y0: f32, z0: f32, x1: f32, y1: f32, z1: f32, col: f32) -> int {
+  a := at_frame(f, x0, y0, z1); b := at_frame(f, x1, y0, z1); c := at_frame(f, x1, y1, z1); d := at_frame(f, x0, y1, z1);
+  e := at_frame(f, x0, y0, z0); g := at_frame(f, x1, y0, z0); h := at_frame(f, x1, y1, z0); i := at_frame(f, x0, y1, z0);
+  j := quad(m, k, a, b, c, d, col, 0);       // front
+  j = quad(m, j, g, e, i, h, col, 0);        // back
+  j = quad(m, j, b, g, h, c, col, 0);        // right
+  j = quad(m, j, e, a, d, i, col, 0);        // left
+  j = quad(m, j, d, c, h, i, col, 0);        // top
+  return j;
+}
+// A cottage at frame f: daub walls on a stone plinth, a steep thatched roof with its gables, a
+// chimney, a door and two lit windows on its front (+z).
+cottage :: (m: [] f32, k: int, f: Frame, w: f32, d: f32, burnt: bool) -> int {
+  hw := w / 2; hd := d / 2; wall := 2.8f32; ridge := 5.0f32;
+  daub := ifx burnt then colour(0.35, 0.3, 0.26) else colour(0.62, 0.55, 0.44);
+  stone := colour(0.32, 0.31, 0.3);
+  thatch := ifx burnt then colour(0.16, 0.12, 0.08) else colour(0.42, 0.32, 0.17);
+  j := box(m, k, f, -hw - 0.08, 0, -hd - 0.08, hw + 0.08, 0.5, hd + 0.08, stone);
+  j = box(m, j, f, -hw, 0.5, -hd, hw, wall, hd, daub);
+  // the roof: two slopes past the walls, and the gables' triangles
+  o := 0.45f32;
+  ra := at_frame(f, -hw - o, wall - 0.25, hd + o); rb := at_frame(f, hw + o, wall - 0.25, hd + o);
+  rc := at_frame(f, hw + o, ridge, 0); rd := at_frame(f, -hw - o, ridge, 0);
+  re := at_frame(f, -hw - o, wall - 0.25, -hd - o); rf := at_frame(f, hw + o, wall - 0.25, -hd - o);
+  j = quad(m, j, ra, rb, rc, rd, thatch, 0);
+  j = quad(m, j, rf, re, rd, rc, thatch, 0);
+  j = tri(m, j, at_frame(f, hw, wall, hd), at_frame(f, hw, wall, -hd), at_frame(f, hw, ridge - 0.3, 0), daub);
+  j = tri(m, j, at_frame(f, -hw, wall, -hd), at_frame(f, -hw, wall, hd), at_frame(f, -hw, ridge - 0.3, 0), daub);
+  // the chimney
+  j = box(m, j, f, hw * 0.45, 3.0, -0.4, hw * 0.45 + 0.6, ridge + 0.9, 0.2, stone);
+  // the door and two windows, a hair out from the front
+  z := hd + 0.02;
+  wood := colour(0.2, 0.13, 0.08);
+  j = quad(m, j, at_frame(f, -0.45, 0.5, z), at_frame(f, 0.45, 0.5, z), at_frame(f, 0.45, 2.2, z), at_frame(f, -0.45, 2.2, z), wood, 0);
+  glow := ifx burnt then 0.0f32 else 1.0f32;
+  lamp := colour(0.9, 0.6, 0.3);
+  for side: 0..<2 {
+    sx := ifx side == 0 then -hw * 0.6 else hw * 0.6;
+    j = quad(m, j, at_frame(f, sx - 0.4, 1.3, z), at_frame(f, sx + 0.4, 1.3, z), at_frame(f, sx + 0.4, 2.1, z), at_frame(f, sx - 0.4, 2.1, z),
+             ifx burnt then colour(0.05, 0.03, 0.02) else lamp, glow);
+  }
+  return j;
+}
+// The ground: a square of earth `half` metres each way at height y.
+ground :: (m: [] f32, k: int, half: f32, y: f32, col: f32) -> int {
+  return quad(m, k, v3(-half, y, half), v3(half, y, half), v3(half, y, -half), v3(-half, y, -half), col, 2);
+}
+
+// ---- the scenes: their emitters, static splats and meshes
+
+// Emitter e: kind, place, its splats (first and how many), size, seed, target and parameter.
+set_emit :: (s: [] Lab, e: int, kind: int, at: Point, first: int, count: int, size: f32, seed: f32, to: Point, p: f32) -> int {
+  if e < 0 || e >= EMITTERS { return first; }
+  o := e * 12;
+  s[0].emit[o] = at.x; s[0].emit[o + 1] = at.y; s[0].emit[o + 2] = at.z; s[0].emit[o + 3] = f32(kind);
+  s[0].emit[o + 4] = f32(first); s[0].emit[o + 5] = f32(count); s[0].emit[o + 6] = size; s[0].emit[o + 7] = seed;
+  s[0].emit[o + 8] = to.x; s[0].emit[o + 9] = to.y; s[0].emit[o + 10] = to.z; s[0].emit[o + 11] = p;
+  return first + count;
+}
+// A fire with its smoke and embers: three emitters from e, splats from first on; the next free.
+fire_set :: (s: [] Lab, e: int, first: int, at: Point, size: f32, tall: f32, flames: int, smoke: int, embers: int, seed: f32) -> int {
+  wind := v3(0.7, 0, 0.25);
+  n := set_emit(s, e, EMIT_FIRE, at, first, flames, size, seed, v3(0, 0, 0), tall);
+  n = set_emit(s, e + 1, EMIT_SMOKE, add(at, v3(0, tall * 0.8, 0)), n, smoke, size * 0.8, seed + 1000, wind, tall * 5);
+  return set_emit(s, e + 2, EMIT_EMBER, add(at, v3(0, 0.2, 0)), n, embers, size, seed + 2000, v3(0, 0, 0), tall * 1.6);
+}
+bench_count :: (level: int) -> int { return 1 << (14 + 2 * level); }
+// The scene's static splats, meshes and emitters, made again when the scene (or the bench's
+// count, or a capture's arrival) changes it.
+build :: (s: [] Lab, splats: [] f32, mesh: [] f32, capture: string) {
+  for i: 0..<EMITTERS * 12 { s[0].emit[i] = 0; }
+  sc := s[0].scene;
+  k := 0;      // static splats
+  v := 0;      // mesh vertices
+  s[0].capture_used = 0;
+  if sc == SC_SHRINE {
+    for i: 0..<60000 { if ground_splat(splats, k, 1000000 + i, 10.5) { k += 1; } }
+    for st: 0..<STONES {
+      a := 6.2831853 * f32(st) / f32(STONES) + 0.3;
+      x := cos(a) * 5.4; z := sin(a) * 5.4;
+      tall := 1.1 + 0.5 * rnd(st, 9);
+      fallen := st == 4;
+      tilt := ifx fallen then 1.45 else (rnd(st, 10) - 0.5) * 0.22;
+      for i: 0..<5200 {
+        if stone_splat(splats, k, 2000000 + st * 10000 + i, x, z, 0.42, tall, 0.28, -a + 1.5707963, tilt, 0) { k += 1; }
+      }
+    }
+    // the altar: a low slab, stained dark on top where the rites are done
+    for i: 0..<5200 { if stone_splat(splats, k, 3000000 + i, 0, 0, 0.95, 0.4, 0.55, 0.2, 0, 0.06) { k += 1; } }
+    for i: 0..<7000 { if tree_splat(splats, k, 4000000 + i, v3(-7.2, 0, -5.5)) { k += 1; } }
+    if s[0].capture == 1 {
+      // the skull capture on the altar, as tall as a skull
+      m := pack_capture(splats[k * SPLAT_FLOATS..<splats.count], 0, capture, 0.55, v3(0, 0.8, 0.35));
+      k += m; s[0].capture_used = m;
+    }
+    n := 0;   // the emitters' splats from 0: build moves them after the static ones
+    n = set_emit(s, 0, EMIT_RITUAL, v3(0.55, 0.82, 0.2), n, 6144, 0.16, 7, v3(0, 0, 0), 1.1);
+    n = set_emit(s, 1, EMIT_RITUAL, v3(-0.6, 0.82, -0.25), n, 4096, 0.12, 19, v3(0, 0, 0), 0.8);
+    n = set_emit(s, 2, EMIT_MOTES, v3(0, 0.4, 0), n, 640, 3.4, 3, v3(0, 0, 0), 2.6);
+    n = set_emit(s, 3, EMIT_SMOKE, v3(0, 1.8, 0), n, 1024, 0.25, 5, v3(0.3, 0, 0.1), 5.5);
+    s[0].n_total = n;
+    v = ground(mesh, v, 60, -0.03, colour(0.06, 0.05, 0.04));
+  } else if sc == SC_FIRE {
+    // the pyre: logs crossed on a ring of stones
+    n := fire_set(s, 0, 0, v3(0, 0.25, 0), 0.62, 1.9, 12288, 8192, 2048, 1);
+    s[0].n_total = n;
+    v = ground(mesh, v, 60, 0, colour(0.14, 0.12, 0.1));
+    wood := colour(0.16, 0.1, 0.06);
+    for i: 0..<6 {
+      f := Frame.{o = v3(0, 0, 0), yaw = f32(i) * 1.0471976};
+      v = box(mesh, v, f, -0.9, 0.05 + 0.12 * f32(i % 3), -0.09, 0.9, 0.22 + 0.12 * f32(i % 3), 0.09, wood);
+    }
+    for i: 0..<12 {
+      a := f32(i) * 0.5235988;
+      f := Frame.{o = v3(cos(a) * 1.25, 0, sin(a) * 1.25), yaw = -a};
+      v = box(mesh, v, f, -0.2, 0, -0.16, 0.2, 0.22 + 0.06 * rnd(i, 3), 0.16, colour(0.28, 0.27, 0.26));
+    }
+  } else if sc == SC_SPELLS {
+    n := set_emit(s, 0, EMIT_FIREBALL, v3(-6, 1.6, -1.5), 0, 24576, 2.6, 3, v3(5, 0.9, -2.5), 4.5);
+    n = set_emit(s, 1, EMIT_BLAST, v3(-5, 1.5, 3.2), n, 8192, 0.13, 11, v3(6, 1.4, 3.2), 2.4);
+    s[0].n_total = n;
+    v = ground(mesh, v, 60, 0, colour(0.16, 0.15, 0.12));
+    rock := colour(0.3, 0.29, 0.28);
+    // the casters' plinths and the targets: a stone at each end
+    v = box(mesh, v, Frame.{o = v3(-6.6, 0, -1.5), yaw = 0}, -0.4, 0, -0.4, 0.4, 1.1, 0.4, rock);
+    v = box(mesh, v, Frame.{o = v3(-5.6, 0, 3.2), yaw = 0}, -0.35, 0, -0.35, 0.35, 1.0, 0.35, rock);
+    v = box(mesh, v, Frame.{o = v3(6.6, 0, 3.2), yaw = 0.3}, -0.5, 0, -0.5, 0.5, 2.4, 0.5, rock);
+    v = box(mesh, v, Frame.{o = v3(7.8, 0, -3.5), yaw = 0.5}, -0.8, 0, -0.6, 0.8, 3.2, 0.6, rock);
+  } else if sc == SC_TOWN {
+    // a street along x, cottages each side; two roofs and a cart burning
+    v = ground(mesh, v, 80, 0, colour(0.17, 0.15, 0.12));
+    v = quad(mesh, v, v3(-30, 0.01, 2.2), v3(30, 0.01, 2.2), v3(30, 0.01, -2.2), v3(-30, 0.01, -2.2), colour(0.24, 0.22, 0.2), 2);
+    xs := [5] f32.[-15, -7.5, 0, 7.5, 15];
+    for i: 0..<5 {
+      side := ifx i % 2 == 0 then 1.0f32 else -1.0f32;
+      f := Frame.{o = v3(xs[i], 0, -side * 6.2), yaw = ifx side > 0 then 0.0f32 else 3.14159265};
+      v = cottage(mesh, v, f, 5.2 + rnd(i, 4), 4.0, i == 1 || i == 3);
+    }
+    // the cart in the street
+    v = box(mesh, v, Frame.{o = v3(3.5, 0, 0.6), yaw = 0.4}, -1.0, 0.45, -0.6, 1.0, 0.85, 0.6, colour(0.22, 0.14, 0.08));
+    n := fire_set(s, 0, 0, v3(-7.5, 4.3, 6.2), 1.5, 3.2, 8192, 6144, 1024, 1);
+    n = fire_set(s, 3, n, v3(7.5, 4.3, 6.2), 1.4, 3.0, 8192, 6144, 1024, 41);
+    n = fire_set(s, 6, n, v3(3.5, 0.9, 0.6), 0.75, 1.5, 4096, 3072, 768, 77);
+    // a window of the burning cottage, flames licking out of it
+    n = set_emit(s, 9, EMIT_FIRE, v3(-9.0, 1.4, 4.0), n, 2048, 0.45, 91, v3(0, 0, 0), 1.6);
+    s[0].n_total = n;
+  } else {
+    count := bench_count(s[0].bench);
+    s[0].n_total = set_emit(s, 0, EMIT_FIELD, v3(0, 0, 0), 0, count, 30, 1, v3(0, 0, 0), 0);
+    v = ground(mesh, v, 80, -1.6, colour(0.04, 0.06, 0.03));
+    s[0].bench_built = s[0].bench;
+  }
+  s[0].n_static = k;
+  // the emitters' splats follow the static ones
+  if k > 0 {
+    for e: 0..<EMITTERS { if s[0].emit[e * 12 + 3] > 0 { s[0].emit[e * 12 + 4] += f32(k); } }
+    s[0].n_total += k;
+  }
+  s[0].mesh_n = v;
+  s[0].built = sc;
+  s[0].splat_version += 1; s[0].mesh_version += 1;
+  s[0].draws[0] = 0; s[0].draws[1] = cast(u32) v; s[0].draws[2] = 0x80000000; s[0].draws[3] = 1;
+  plan_sort(s);
+}
+// The sort's plan (coax/web/host.js "Sorting"): the texture's size, the key pass, then every
+// bitonic step (k, j) for the splats padded to a power of two.
+plan_sort :: (s: [] Lab) {
+  n := s[0].n_total;
+  pad := 1; lg := 0;
+  while pad < n && lg < SORT_MAX_LOG { pad *= 2; lg += 1; }
+  s[0].npad = pad;
+  w := ifx pad < SORT_W then pad else SORT_W;
+  passes := 1;
+  o := 4;
+  s[0].sort[o] = 0; s[0].sort[o + 1] = 0; s[0].sort[o + 2] = f32(w); s[0].sort[o + 3] = f32(n);
+  o += 4;
+  k := 2;
+  while k <= pad {
+    j := k / 2;
+    while j >= 1 {
+      if o + 4 <= SORT_FLOATS {
+        s[0].sort[o] = f32(k); s[0].sort[o + 1] = f32(j); s[0].sort[o + 2] = f32(w); s[0].sort[o + 3] = f32(n);
+        o += 4; passes += 1;
+      }
+      j /= 2;
+    }
+    k *= 2;
+  }
+  s[0].sort[0] = f32(w); s[0].sort[1] = f32(pad / w); s[0].sort[2] = f32(passes); s[0].sort[3] = 1;
+}
+
+// ---- the camera
+
+scene_view :: (s: [] Lab) {
+  sc := s[0].scene;
+  s[0].vx = 0; s[0].vy = 0; s[0].vz = 0;
+  if sc == SC_FIRE { s[0].px = 0; s[0].py = 1.5; s[0].pz = 0; s[0].dist = 7.5; s[0].pitch = 0.16; s[0].yaw = 0.5; }
+  else if sc == SC_SPELLS { s[0].px = 0; s[0].py = 1.8; s[0].pz = 0.5; s[0].dist = 17; s[0].pitch = 0.24; s[0].yaw = 0.15; }
+  else if sc == SC_TOWN { s[0].px = 0; s[0].py = 3.5; s[0].pz = 0; s[0].dist = 30; s[0].pitch = 0.3; s[0].yaw = 0.35; }
+  else if sc == SC_SHRINE { s[0].px = 0; s[0].py = 0.9; s[0].pz = 0; s[0].dist = 9.5; s[0].pitch = 0.34; s[0].yaw = 0.25; }
+  else { s[0].px = 0; s[0].py = 0; s[0].pz = 0; s[0].dist = 46; s[0].pitch = 0.42; s[0].yaw = 0.6; }
+}
+// The eye on its orbit round the pivot, and the view's axes and focal length.
+camera :: (s: [] Lab) {
+  cp := cos(s[0].pitch);
+  pivot := v3(s[0].px, s[0].py, s[0].pz);
+  s[0].eye = add(pivot, times(v3(sin(s[0].yaw) * cp, sin(s[0].pitch), cos(s[0].yaw) * cp), s[0].dist));
+  s[0].fwd = unit_or(sub(pivot, s[0].eye), v3(0, 0, -1));
+  s[0].right = unit_or(cross(s[0].fwd, v3(0, 1, 0)), v3(1, 0, 0));
+  s[0].up = cross(s[0].right, s[0].fwd);
+}
+cam_zoom :: (s: [] Lab, by: f32) { s[0].dist = lo(f32(ZOOM_FAR), hi(f32(ZOOM_NEAR), s[0].dist * by)); }
+cam_pan :: (s: [] Lab, dx: f32, dy: f32) {
+  m := s[0].dist / hi(s[0].focal, 1);
+  s[0].px = clamp(s[0].px - s[0].right.x * dx * m + s[0].up.x * dy * m, -60, 60);
+  s[0].py = clamp(s[0].py - s[0].right.y * dx * m + s[0].up.y * dy * m, -2, 30);
+  s[0].pz = clamp(s[0].pz - s[0].right.z * dx * m + s[0].up.z * dy * m, -60, 60);
+}
+// Held W A S D Q E fly the pivot, easing to and from their speed.
+fly :: (s: [] Lab, dt: f32) {
+  f := unit_or(v3(s[0].fwd.x, 0, s[0].fwd.z), v3(0, 0, -1));
+  r := unit_or(v3(s[0].right.x, 0, s[0].right.z), v3(1, 0, 0));
+  speed := hi(4, s[0].dist * 0.6);
+  want := v3(0, 0, 0);
+  if s[0].held[0] { want = add(want, f); }
+  if s[0].held[2] { want = sub(want, f); }
+  if s[0].held[3] { want = add(want, r); }
+  if s[0].held[1] { want = sub(want, r); }
+  if s[0].held[5] { want = add(want, v3(0, 1, 0)); }
+  if s[0].held[4] { want = sub(want, v3(0, 1, 0)); }
+  want = times(want, speed);
+  e := clamp01(dt * f32(FLY_RATE));
+  s[0].vx += (want.x - s[0].vx) * e; s[0].vy += (want.y - s[0].vy) * e; s[0].vz += (want.z - s[0].vz) * e;
+  s[0].px = clamp(s[0].px + s[0].vx * dt, -60, 60);
+  s[0].py = clamp(s[0].py + s[0].vy * dt, -2, 30);
+  s[0].pz = clamp(s[0].pz + s[0].vz * dt, -60, 60);
+}
+
+lab_start :: (s: [] Lab) {
+  if s[0].started { return; }
+  s[0].started = true;
+  s[0].pace = loop_clock(LAB_STEP_NS);
+  scene_view(s);
+}
+lab_step :: (s: [] Lab, dt: f32) { fly(s, dt); }
+lab_run :: (s: [] Lab, dt: f32) {
+  c := s[0].pace;
+  c.step_ns = LAB_STEP_NS; c.max_frame_ns = LAB_FRAME_NS;
+  c = loop_accept(c, cast(f64) dt);
+  if !s[0].paused { s[0].clock += cast(f32) loop_counted(c); }
+  for k: 0..<loop_due(c) { lab_step(s, f32(STEP)); }
+  s[0].pace = loop_ran(c);
+}
+
+// ---- drawing the HUD (font.coax's strokes)
+
+lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,
+        red: f32, green: f32, blue: f32, mode: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count { return false; }
+  dx := bx - ax; dy := by - ay;
+  size := sqrt(dx * dx + dy * dy);
+  if size <= 0 { size = 0.01; dx = 0.01; dy = 0; }
+  ux := dx / size; uy := dy / size;
+  nx := -uy; ny := ux;
+  r := glow + core;
+  a := [6] f32.[-r, size + r, size + r, -r, size + r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = ax + ux * a[v] + nx * c[v];
+    out[o + 1] = ay + uy * a[v] + ny * c[v];
+    out[o + 2] = a[v]; out[o + 3] = c[v];
+    out[o + 4] = size; out[o + 5] = core; out[o + 6] = light; out[o + 7] = glow;
+    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = mode;
+    for e: 12..<16 { out[o + e] = 0; }
+  }
+  return true;
+}
+seg :: (out: [] f32, n: int, ax: f32, ay: f32, bx: f32, by: f32, w: f32, light: f32, c: Col) -> int {
+  if lit(out, n, ax, ay, bx, by, w * 0.55, light, w * 1.8, c.r, c.g, c.b, 0) { return n + 6; }
+  return n;
+}
+box_lines :: (out: [] f32, at: int, r: Rect, w: f32, light: f32, c: Col) -> int {
+  n := seg(out, at, r.x0, r.y0, r.x1, r.y0, w, light, c);
+  n = seg(out, n, r.x1, r.y0, r.x1, r.y1, w, light, c);
+  n = seg(out, n, r.x1, r.y1, r.x0, r.y1, w, light, c);
+  return seg(out, n, r.x0, r.y1, r.x0, r.y0, w, light, c);
+}
+ink :: (k: f32, light: f32, c: Col) -> Ink {
+  i: Ink;
+  i.core = 0.6 * k; i.light = light; i.glow = 1.2 * k; i.red = c.r; i.green = c.g; i.blue = c.b; i.mode = 0; i.scale = k;
+  return i;
+}
+say_at :: (out: [] f32, n: int, t: string, x: f32, base: f32, cap_h: f32, k: Ink) -> int {
+  return draw_text(out, n, t, x, base, cap_h, GAP, SPACE, k, false, false);
+}
+say_mid :: (out: [] f32, n: int, t: string, x: f32, base: f32, cap_h: f32, k: Ink) -> int {
+  return say_at(out, n, t, x - text_width(t, cap_h) / 2, base, cap_h, k);
+}
+button :: (out: [] f32, at: int, b: Rect, t: string, on: bool, pressed: bool, k: f32) -> int {
+  n := box_lines(out, at, b, 0.8 * k, ifx pressed || on then 0.9 else 0.45, ifx on then GOLD else DIM);
+  cap := lo(9 * k, (b.y1 - b.y0) * 0.36);
+  return say_mid(out, n, t, (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2 + cap / 2, cap, ink(k, 0.8, ifx on then GOLD else WHITE));
+}
+
+// Where the HUD's parts go: a title and the WORLDS button along the top, the scenes' buttons under
+// them (a row of their own on a phone), the readout, and the keys along the bottom.
+layout :: (s: [] Lab, w: f32, h: f32, k: f32) {
+  s[0].portrait = w < 700 * k || h > w * 1.1;
+  pad := 16 * k; gap := 6 * k; bh := 28 * k;
+  x1 := w - pad;
+  bw := 84 * k;
+  s[0].back = Rect.{x0 = x1 - bw, y0 = 14 * k, x1 = x1, y1 = 14 * k + bh};
+  row := ifx s[0].portrait then 52 * k else 14 * k;
+  sw := ifx s[0].portrait then (w - pad * 2 - gap * f32(SCENES - 1)) / f32(SCENES) else 76 * k;
+  sx := ifx s[0].portrait then pad else s[0].back.x0 - gap * 3 - (sw + gap) * f32(SCENES);
+  for i: 0..<SCENES {
+    x := sx + f32(i) * (sw + gap);
+    s[0].scene_b[i] = Rect.{x0 = x, y0 = row, x1 = x + sw, y1 = row + bh};
+  }
+  // the bench's - and +, under its button
+  by := row + bh + gap;
+  bb := s[0].scene_b[SC_BENCH];
+  half := (bb.x1 - bb.x0 - gap) / 2;
+  s[0].less_b = Rect.{x0 = bb.x0, y0 = by, x1 = bb.x0 + half, y1 = by + bh};
+  s[0].more_b = Rect.{x0 = bb.x1 - half, y0 = by, x1 = bb.x1, y1 = by + bh};
+  if s[0].portrait {
+    // a phone: on the title row, left of WORLDS, clear of the readout
+    sq := bh;
+    s[0].more_b = Rect.{x0 = s[0].back.x0 - gap * 2 - sq, y0 = s[0].back.y0, x1 = s[0].back.x0 - gap * 2, y1 = s[0].back.y1};
+    s[0].less_b = Rect.{x0 = s[0].more_b.x0 - gap - sq, y0 = s[0].back.y0, x1 = s[0].more_b.x0 - gap, y1 = s[0].back.y1};
+  }
+  if s[0].scene != SC_BENCH { s[0].less_b = Rect.{}; s[0].more_b = Rect.{}; }
+  s[0].strip = ifx s[0].portrait then row + bh + 34 * k else 84 * k;
+  s[0].foot = ifx s[0].portrait then 26 * k else 30 * k;
+  s[0].cx = w / 2; s[0].cy = (s[0].strip + h - s[0].foot) / 2;
+  s[0].focal = lo((h - s[0].strip - s[0].foot) * 1.1, w * (ifx s[0].portrait then 0.85f32 else 1.25f32));
+}
+readout :: (s: [] Lab, l: [] u8) -> int {
+  m := put(l, 0, "FPS "); m = put_int(l, m, cast(int) (s[0].fps + 0.5));
+  m = put(l, m, "   SPLATS "); m = put_count(l, m, s[0].n_total);
+  m = put(l, m, "   SORT ");
+  if s[0].timed { m = put_dec(l, m, s[0].sort_us / 1000); m = put(l, m, " MS"); } else { m = put(l, m, "-"); }
+  m = put(l, m, "   DRAW ");
+  if s[0].timed { m = put_dec(l, m, s[0].draw_us / 1000); m = put(l, m, " MS"); } else { m = put(l, m, "-"); }
+  return m;
+}
+// What the scene is, a line.
+caption :: (s: [] Lab, l: [] u8) -> int {
+  sc := s[0].scene;
+  if sc == SC_FIRE { return put(l, 0, "A PYRE: FLAMES, SMOKE AND EMBERS, EVERY ONE AN ANIMATED GAUSSIAN"); }
+  if sc == SC_SPELLS { return put(l, 0, "FIREBALL: FLIGHT, BURST AND SMOKE   ELDRITCH BLAST: A WOUND BEAM"); }
+  if sc == SC_TOWN { return put(l, 0, "THE RAID: MESH COTTAGES BURNING, SPLAT FIRE AND SMOKE IN THEIR DEPTH"); }
+  if sc == SC_SHRINE {
+    m := put(l, 0, "DARIAN'S RITUAL SITE, AUTHORED IN SPLATS");
+    if s[0].capture_used > 0 { m = put(l, m, "   SKULL: CC BY 4.0 BABYLON.JS CAPTURE, "); m = put_count(l, m, s[0].capture_used); m = put(l, m, " SPLATS"); }
+    return m;
+  }
+  m := put(l, 0, "A MEADOW OF "); m = put_count(l, m, bench_count(s[0].bench)); m = put(l, m, " SPLATS, SORTED EVERY FRAME");
+  return m;
+}
+draw_hud :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
+  n := at; pad := 16 * k;
+  title := 18 * k;
+  n = say_at(out, n, "SPLAT LAB", pad, 34 * k, ifx s[0].portrait then 16 * k else title, ink(k, 0.95, WHITE));
+  l: [192] u8;
+  m := readout(s, l[..]);
+  ry := ifx s[0].portrait then s[0].strip - 12 * k else 64 * k;
+  n = say_at(out, n, cast(string) l[0..<m], pad, ry, ifx s[0].portrait then 6.5 * k else 10 * k, ink(k, 0.85, GOLD));
+  if !s[0].portrait {
+    c := caption(s, l[..]);
+    cap := 8 * k;
+    n = say_at(out, n, cast(string) l[0..<c], pad, s[0].strip + 20 * k, cap, ink(k, 0.6, DIM));
+  }
+  keys := ifx s[0].portrait then "DRAG ORBIT   PINCH ZOOM   TWO FINGERS PAN"
+          else "1-5 SCENE   DRAG ORBIT   SHIFT+DRAG PAN   WHEEL ZOOM   WASD FLY   Q E DOWN UP   [ ] BENCH COUNT   SPACE PAUSE   C RESET";
+  n = say_at(out, n, keys, pad, s[0].height - 10 * k, ifx s[0].portrait then 7 * k else 8 * k, ink(k, 0.55, DIM));
+  for i: 0..<SCENES {
+    num: [12] u8;
+    q := put_int(num[..], 0, i + 1); q = put(num[..], q, " "); q = put(num[..], q, SCENE_NAME[i]);
+    label := ifx s[0].portrait then SCENE_NAME[i] else cast(string) num[0..<q];
+    n = button(out, n, s[0].scene_b[i], label, s[0].scene == i, s[0].pressing == 10 + i, k);
+  }
+  if s[0].scene == SC_BENCH {
+    n = button(out, n, s[0].less_b, "-", false, s[0].pressing == 20, k);
+    n = button(out, n, s[0].more_b, "+", false, s[0].pressing == 21, k);
+  }
+  n = button(out, n, s[0].back, "WORLDS", false, s[0].pressing == 1, k);
+  return n;
+}
+
+// ---- the frame
+
+lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, splats: [] f32, mesh: [] f32, capture: string,
+              width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+  lab_start(s);
+  if u.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  s[0].width = width; s[0].height = height; s[0].dpr = dpr;
+  k := hi(dpr, 0.5);
+  if s[0].golden && !s[0].golden_ran { s[0].golden_ran = true; s[0].clock = 2.4; }
+  step_dt := ifx s[0].golden || still then 0.0f32 else dt;
+  lab_run(s, step_dt);
+  if s[0].built != s[0].scene || (s[0].scene == SC_BENCH && s[0].bench_built != s[0].bench) { build(s, splats, mesh, capture); }
+  // the frame rate over the last half second
+  if dt > 0 && dt < 1 { s[0].fps_t += dt; s[0].fps_n += 1; }
+  if s[0].fps_t >= 0.5 { s[0].fps = f32(s[0].fps_n) / s[0].fps_t; s[0].fps_t = 0; s[0].fps_n = 0; }
+  layout(s, width, height, k);
+  camera(s);
+  n := draw_hud(s, out, 0, k);
+  for i: 0..<u.count { u[i] = 0; }
+  u[0] = width; u[1] = height; u[2] = s[0].clock; u[3] = 1;
+  u[4] = f32(s[0].scene); u[5] = f32(s[0].n_static); u[6] = f32(s[0].n_total); u[7] = s[0].sort[0];
+  u[8] = ifx s[0].scene == SC_BENCH then 1.6 else 1.0;
+  u[9] = 0.05;
+  u[11] = ifx s[0].scene == SC_BENCH then 0.0f32 else ifx s[0].scene == SC_SPELLS then 0.4f32 else 1.0f32;
+  u[16] = s[0].eye.x; u[17] = s[0].eye.y; u[18] = s[0].eye.z; u[19] = s[0].focal;
+  u[20] = s[0].fwd.x; u[21] = s[0].fwd.y; u[22] = s[0].fwd.z; u[23] = s[0].cx;
+  u[24] = s[0].right.x; u[25] = s[0].right.y; u[26] = s[0].right.z; u[27] = s[0].cy;
+  u[28] = s[0].up.x; u[29] = s[0].up.y; u[30] = s[0].up.z;
+  moon := unit_or(v3(-0.4, 0.55, -0.7), v3(0, 1, 0));
+  u[32] = moon.x; u[33] = moon.y; u[34] = moon.z; u[35] = ifx s[0].scene == SC_BENCH then 3.0f32 else 1.0f32;
+  u[36] = s[0].strip; u[37] = s[0].foot;
+  for i: 0..<EMITTERS * 12 { u[U_EMIT + i] = s[0].emit[i]; }
+  // sorted every frame: the effects move, and the bench measures the worst case
+  s[0].sort[3] = 1;
+  return n;
+}
+
+// ---- input
+
+pick_scene :: (s: [] Lab, i: int) {
+  if i < 0 || i >= SCENES { return; }
+  if s[0].scene != i { s[0].scene = i; scene_view(s); }
+  if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, SCENE_HASH[i]); s[0].action = ACT_HASH; }
+}
+bench_step :: (s: [] Lab, by: int) {
+  if s[0].scene != SC_BENCH { pick_scene(s, SC_BENCH); }
+  s[0].bench = cast(int) clamp(f32(s[0].bench + by), 0, f32(BENCH_LEVELS - 1));
+}
+held_of :: (key: int) -> int {
+  if key == 'w' || key == 'W' { return 0; }
+  if key == 'a' || key == 'A' { return 1; }
+  if key == 's' || key == 'S' { return 2; }
+  if key == 'd' || key == 'D' { return 3; }
+  if key == 'q' || key == 'Q' { return 4; }
+  if key == 'e' || key == 'E' { return 5; }
+  return -1;
+}
+lab_key :: (s: [] Lab, key: int, mods: int) -> bool #export_c {
+  lab_start(s);
+  if key == KEY_ESCAPE { leave_to(s, "/worlds"); return true; }
+  if key >= '1' && key <= '5' { pick_scene(s, key - '1'); return true; }
+  if key == ' ' || key == KEY_ENTER { s[0].paused = !s[0].paused; return true; }
+  if key == '[' { bench_step(s, -1); return true; }
+  if key == ']' { bench_step(s, 1); return true; }
+  if key == 'c' || key == 'C' { scene_view(s); return true; }
+  h := held_of(key);
+  if h >= 0 { s[0].held[h] = true; return true; }
+  if key == KEY_LEFT { s[0].yaw -= 0.12; return true; }
+  if key == KEY_RIGHT { s[0].yaw += 0.12; return true; }
+  if key == KEY_UP { s[0].pitch = lo(f32(PITCH_HIGH), s[0].pitch + 0.06); return true; }
+  if key == KEY_DOWN { s[0].pitch = hi(f32(PITCH_LOW), s[0].pitch - 0.06); return true; }
+  if key == '=' || key == '+' { cam_zoom(s, 0.9); return true; }
+  if key == '-' || key == '_' { cam_zoom(s, 1 / 0.9); return true; }
+  if key == KEY_SHIFT { s[0].shift = true; return false; }
+  return false;
+}
+lab_key_up :: (s: [] Lab, key: int, mods: int) -> bool #export_c {
+  if key == KEY_SHIFT { s[0].shift = false; }
+  h := held_of(key);
+  if h >= 0 { s[0].held[h] = false; return true; }
+  return false;
+}
+lab_blur :: (s: [] Lab) #export_c {
+  s[0].pressing = 0; s[0].dragging = false; s[0].shift = false; s[0].fingers = 0;
+  for i: 0..<FLY_HOLD { s[0].held[i] = false; }
+}
+lab_wheel :: (s: [] Lab, dy: f32) -> bool #export_c {
+  lab_start(s);
+  cam_zoom(s, 1 + clamp(dy, -200, 200) * 0.0012);
+  return true;
+}
+// What the pointer is over: 1 back, 10 + i a scene, 20 and 21 the bench's - and +, 0 nothing.
+hit :: (s: [] Lab, x: f32, y: f32) -> int {
+  if in_rect(s[0].back, x, y) { return 1; }
+  for i: 0..<SCENES { if in_rect(s[0].scene_b[i], x, y) { return 10 + i; } }
+  if in_rect(s[0].less_b, x, y) { return 20; }
+  if in_rect(s[0].more_b, x, y) { return 21; }
+  return 0;
+}
+press :: (s: [] Lab, what: int) {
+  if what == 1 { leave_to(s, "/worlds"); }
+  if what >= 10 && what < 10 + SCENES { pick_scene(s, what - 10); }
+  if what == 20 { bench_step(s, -1); }
+  if what == 21 { bench_step(s, 1); }
+}
+lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+  lab_start(s);
+  if phase == 0 {
+    h := hit(s, x, y);
+    if h > 0 { s[0].pressing = h; return true; }
+    if kind == 1 && s[0].fingers == 1 && s[0].fing_id[0] != id {
+      s[0].fingers = 2; s[0].fing_id[1] = id; s[0].fing_x[1] = x; s[0].fing_y[1] = y; return true;
+    }
+    if kind == 1 { s[0].fingers = 1; s[0].fing_id[0] = id; s[0].fing_x[0] = x; s[0].fing_y[0] = y; }
+    s[0].dragging = true; s[0].panning = s[0].shift; s[0].drag_x = x; s[0].drag_y = y; return true;
+  }
+  if phase == 1 {
+    if kind == 1 && s[0].fingers == 2 {
+      f := ifx s[0].fing_id[0] == id then 0 else ifx s[0].fing_id[1] == id then 1 else -1;
+      if f < 0 { return false; }
+      gx := s[0].fing_x[0] - s[0].fing_x[1]; gy := s[0].fing_y[0] - s[0].fing_y[1];
+      gap0 := sqrt(gx * gx + gy * gy);
+      mx0 := (s[0].fing_x[0] + s[0].fing_x[1]) / 2; my0 := (s[0].fing_y[0] + s[0].fing_y[1]) / 2;
+      s[0].fing_x[f] = x; s[0].fing_y[f] = y;
+      gx = s[0].fing_x[0] - s[0].fing_x[1]; gy = s[0].fing_y[0] - s[0].fing_y[1];
+      gap1 := sqrt(gx * gx + gy * gy);
+      if gap0 > 1 && gap1 > 1 { cam_zoom(s, gap0 / gap1); }
+      cam_pan(s, (s[0].fing_x[0] + s[0].fing_x[1]) / 2 - mx0, (s[0].fing_y[0] + s[0].fing_y[1]) / 2 - my0);
+      return true;
+    }
+    if !s[0].dragging { return false; }
+    if s[0].panning { cam_pan(s, x - s[0].drag_x, y - s[0].drag_y); }
+    else {
+      k := hi(s[0].dpr, 0.5);
+      s[0].yaw -= (x - s[0].drag_x) * 0.005 / k;
+      s[0].pitch = clamp(s[0].pitch + (y - s[0].drag_y) * 0.004 / k, f32(PITCH_LOW), f32(PITCH_HIGH));
+    }
+    s[0].drag_x = x; s[0].drag_y = y;
+    return true;
+  }
+  if kind == 1 && s[0].fingers > 0 {
+    if s[0].fingers == 2 {
+      left := ifx s[0].fing_id[0] == id then 1 else 0;
+      s[0].fing_id[0] = s[0].fing_id[left]; s[0].fing_x[0] = s[0].fing_x[left]; s[0].fing_y[0] = s[0].fing_y[left];
+      s[0].fingers = 1; s[0].drag_x = s[0].fing_x[0]; s[0].drag_y = s[0].fing_y[0];
+      return true;
+    }
+    s[0].fingers = 0;
+  }
+  s[0].dragging = false; s[0].panning = false;
+  held := s[0].pressing; s[0].pressing = 0;
+  if held > 0 { if phase == 2 && hit(s, x, y) == held { press(s, held); } return true; }
+  return false;
+}
+lab_cursor :: (s: [] Lab) -> int #export_c { return 0; }
+// The page's messages: the GPU's timings (610, "SORT_US DRAW_US").
+lab_message :: (s: [] Lab, kind: int, t: string) #export_c {
+  lab_start(s);
+  if kind != MSG_TIMING { return; }
+  at := 0; a := 0; b := 0;
+  while at < t.count && t[at] >= '0' && t[at] <= '9' { a = a * 10 + cast(int) (t[at] - '0'); at += 1; }
+  at += 1;
+  while at < t.count && t[at] >= '0' && t[at] <= '9' { b = b * 10 + cast(int) (t[at] - '0'); at += 1; }
+  // smoothed: the readout steadies
+  e := ifx s[0].timed then 0.15f32 else 1.0f32;
+  s[0].sort_us += (f32(a) - s[0].sort_us) * e; s[0].draw_us += (f32(b) - s[0].draw_us) * e;
+  s[0].timed = true;
+}
+// The location's hash names a scene (#fire ... #bench, #bench-0 to #bench-3 its count).
+lab_hash :: (s: [] Lab, t: string) #export_c {
+  lab_start(s);
+  for i: 0..<SCENES {
+    name := SCENE_HASH[i];
+    if t.count >= name.count && t[0..<name.count] == name {
+      if s[0].scene != i { s[0].scene = i; scene_view(s); }
+      if i == SC_BENCH && t.count == name.count + 2 && t[name.count] == '-' && t[name.count + 1] >= '0' && t[name.count + 1] <= '3' {
+        s[0].bench = cast(int) (t[name.count + 1] - '0');
+      }
+    }
+  }
+}
+lab_golden :: (s: [] Lab, on: bool) #export_c { lab_start(s); s[0].golden = on; }
+lab_action :: (s: [] Lab) -> int #export_c { a := s[0].action; s[0].action = 0; return a; }
+lab_action_done :: (s: [] Lab) #export_c { s[0].out_n = 0; }
+// A capture arrived (bytes > 0, a .splat or .ply the shrine can use) or didn't.
+lab_capture :: (s: [] Lab, b: string) #export_c {
+  n: [PLY_FIELDS] int;
+  kind := capture_kind(b, n[..]);
+  s[0].capture = ifx kind > 0 && n[0] > 0 then 1 else -1;
+  s[0].capture_kind = kind; s[0].capture_n = ifx kind > 0 then n[0] else 0;
+  if s[0].scene == SC_SHRINE { s[0].built = -1; }
+}
+lab_static :: (s: [] Lab) -> int #export_c { return s[0].n_static; }
+lab_total :: (s: [] Lab) -> int #export_c { return s[0].n_total; }
+lab_splat_version :: (s: [] Lab) -> int #export_c { return s[0].splat_version; }
+lab_mesh_n :: (s: [] Lab) -> int #export_c { return s[0].mesh_n; }
+lab_mesh_version :: (s: [] Lab) -> int #export_c { return s[0].mesh_version; }
+coaxial_lab_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
+coaxial_lab_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
+coaxial_lab_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+coaxial_lab_splat_cap :: () -> int #export_c { return SPLAT_CAP; }
+coaxial_lab_splat_floats :: () -> int #export_c { return SPLAT_FLOATS; }
+coaxial_lab_mesh_cap :: () -> int #export_c { return MESH_CAP; }
+coaxial_lab_mesh_floats :: () -> int #export_c { return MESH_FLOATS; }
+coaxial_lab_sort_floats :: () -> int #export_c { return SORT_FLOATS; }
+
+// ---- tests
+
+put_f32 :: (b: [] u8, at: int, v: f32) {
+  w := f32_bits(v);
+  b[at] = cast(u8) (w & 255); b[at + 1] = cast(u8) ((w >> 8) & 255);
+  b[at + 2] = cast(u8) ((w >> 16) & 255); b[at + 3] = cast(u8) ((w >> 24) & 255);
+}
+#test "the sort's plan: the splats padded to a power of two, one key pass and every bitonic step" {
+  s: [1] Lab;
+  s[0].n_total = 30720;
+  plan_sort(s[..]);
+  #assert s[0].npad == 32768 && s[0].sort[0] == 1024 && s[0].sort[1] == 32;
+  // log2(32768) = 15: 15 * 16 / 2 steps and the key pass
+  #assert s[0].sort[2] == 121 && s[0].sort[3] == 1;
+  #assert s[0].sort[4] == 0 && s[0].sort[7] == 30720;                 // the key pass
+  #assert s[0].sort[8] == 2 && s[0].sort[9] == 1;                     // (k 2, j 1) first
+  last := 4 + 4 * 120;
+  #assert s[0].sort[last] == 32768 && s[0].sort[last + 1] == 1;       // (k N, j 1) last
+  s[0].n_total = 1 << 20;
+  plan_sort(s[..]);
+  #assert s[0].sort[2] == f32(SORT_PASSES_MAX) && s[0].sort[1] == 1024;
+}
+#test "a splat's covariance is R S S R^T: axis-aligned without a turn, swapped by a quarter turn" {
+  c := cov_of(1, 0, 0, 0, 2, 3, 4);
+  #assert abs(c.m11 - 4) < 0.0001 && abs(c.m22 - 9) < 0.0001 && abs(c.m33 - 16) < 0.0001 && abs(c.m12) < 0.0001;
+  h := 0.70710678f32;
+  d := cov_of(h, 0, 0, h, 2, 3, 4);   // a quarter turn about z: x and y trade places
+  #assert abs(d.m11 - 9) < 0.001 && abs(d.m22 - 4) < 0.001 && abs(d.m33 - 16) < 0.001;
+}
+#test "a .splat file's splats: centre, scales, colour, opacity and turn read back, and placed" {
+  b: [64] u8;
+  for i: 0..<2 {
+    o := i * 32;
+    put_f32(b[..], o, f32(i)); put_f32(b[..], o + 4, f32(i) * 2); put_f32(b[..], o + 8, 0);
+    put_f32(b[..], o + 12, 0.1); put_f32(b[..], o + 16, 0.2); put_f32(b[..], o + 20, 0.3);
+    b[o + 24] = 255; b[o + 25] = 128; b[o + 26] = 0; b[o + 27] = 200;
+    b[o + 28] = 255; b[o + 29] = 128; b[o + 30] = 128; b[o + 31] = 128;
+  }
+  t := cast(string) b[..];
+  n: [PLY_FIELDS] int;
+  #assert capture_kind(t, n[..]) == 1 && n[0] == 2;
+  r := raw_at(t, 1, n[..], 1);
+  #assert r.p.x == 1 && r.p.y == 2 && abs(r.sy - 0.2) < 0.0001 && r.r == 1 && abs(r.a - 200.0 / 255) < 0.001 && abs(r.qw - 1) < 0.0001;
+  out: [2 * SPLAT_FLOATS] f32;
+  #assert pack_capture(out[..], 0, t, 1, v3(5, 0, 0)) == 2;
+  // two metres apart in y become one, turned over: the higher one lands at the foot
+  #assert abs(out[1] - 1) < 0.0001 && abs(out[SPLAT_FLOATS + 1]) < 0.0001 && abs(out[0] - 4.75) < 0.0001;
+}
+#test "a 3DGS .ply file: its header's properties found, exp scales, sigmoid opacity and SH colour" {
+  head := "ply\nformat binary_little_endian 1.0\nelement vertex 1\nproperty float x\nproperty float y\nproperty float z\nproperty float f_dc_0\nproperty float f_dc_1\nproperty float f_dc_2\nproperty float opacity\nproperty float scale_0\nproperty float scale_1\nproperty float scale_2\nproperty float rot_0\nproperty float rot_1\nproperty float rot_2\nproperty float rot_3\nend_header\n";
+  b: [512] u8;
+  for i: 0..<head.count { b[i] = head[i]; }
+  vals := [14] f32.[1, 2, 3, 0, 1, -1, 0, 0, -1, -2, 2, 0, 0, 0];
+  for k: 0..<14 { put_f32(b[..], head.count + 4 * k, vals[k]); }
+  t := cast(string) b[0..<head.count + 56];
+  n: [PLY_FIELDS] int;
+  #assert capture_kind(t, n[..]) == 2 && n[0] == 1 && n[1] == head.count && n[PLY_FIELDS - 1] == 56;
+  r := raw_at(t, 2, n[..], 0);
+  #assert r.p.z == 3 && abs(r.r - 0.5) < 0.0001 && abs(r.g - 0.78209479) < 0.0001 && abs(r.a - 0.5) < 0.0001;
+  #assert abs(r.sx - 1) < 0.0001 && abs(r.sy - 0.36787944) < 0.0001 && abs(r.qw - 1) < 0.0001;
+  #assert capture_kind("ply\nformat ascii 1.0\nend_header\n", n[..]) == 0;
+}
+#test "the town: mesh cottages and splat fires that light them, on a desktop and a 390 px phone" #steps 2000000000 {
+  s: [1] Lab;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  splats: [SPLAT_FLOATS] f32;
+  mesh: [MESH_CAP * MESH_FLOATS] f32;
+  lab_hash(s[..], "town");
+  n := lab_frame(s[..], out[..], u[..], splats[..], mesh[..], "", 1280, 800, 1, 0.016, false);
+  #assert s[0].scene == SC_TOWN && n > 300 && n < MAX_VERTICES;
+  #assert s[0].n_static == 0 && s[0].n_total == 40704 && s[0].mesh_n > 600 && s[0].mesh_n < MESH_CAP;
+  #assert s[0].draws[1] == cast(u32) s[0].mesh_n && s[0].draws[2] == 0x80000000;
+  #assert u[6] == 40704 && u[U_EMIT + 3] == EMIT_FIRE && u[U_EMIT + 12 + 3] == EMIT_SMOKE && u[U_EMIT + 9 * 12 + 3] == EMIT_FIRE;
+  // each emitter's splats follow the one before it
+  #assert u[U_EMIT + 12 + 4] == u[U_EMIT + 4] + u[U_EMIT + 5];
+  // the camera looks at the street from above it
+  #assert s[0].eye.y > 8 && s[0].fwd.y < -0.1;
+  n2 := lab_frame(s[..], out[..], u[..], splats[..], mesh[..], "", 390, 844, 3, 0.016, false);
+  #assert s[0].portrait && n2 > 300;
+  for i: 0..<SCENES {
+    b := s[0].scene_b[i];
+    #assert b.x0 >= 0 && b.x1 <= 390 * 3 && b.y0 > s[0].back.y1;
+    if i > 0 { #assert b.x0 > s[0].scene_b[i - 1].x1; }
+  }
+}
+#test "the shrine: an authored site of standing stones, an altar and a tree, and its ritual flame" #steps 4000000000 {
+  s: [1] Lab;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  splats: [120000 * SPLAT_FLOATS] f32;
+  mesh: [64 * MESH_FLOATS] f32;
+  #assert lab_key(s[..], '4', 0);
+  n := lab_frame(s[..], out[..], u[..], splats[..], mesh[..], "", 1280, 800, 1, 0.016, false);
+  #assert n > 300 && s[0].scene == SC_SHRINE && s[0].n_static > 90000 && s[0].n_static <= 120000;
+  #assert s[0].n_total == s[0].n_static + 6144 + 4096 + 640 + 1024;
+  #assert u[U_EMIT + 3] == EMIT_RITUAL && u[U_EMIT + 4] == f32(s[0].n_static);
+  // the chalk ring glows a little; a stone stands at 5.4 m
+  far := 0;
+  for k: 0..<s[0].n_static {
+    o := k * SPLAT_FLOATS;
+    if splats[o + 1] > 1.0 && sqrt(splats[o] * splats[o] + splats[o + 2] * splats[o + 2]) > 4.8 { far += 1; }
+  }
+  #assert far > 1000;
+}
+#test "keys pick scenes and the bench's count; the GPU's timings reach the readout" {
+  s: [1] Lab;
+  #assert lab_key(s[..], '5', 0);
+  #assert s[0].scene == SC_BENCH && s[0].action == ACT_HASH;
+  #assert lab_action(s[..]) == ACT_HASH;
+  #assert lab_key(s[..], ']', 0) && lab_key(s[..], ']', 0);
+  #assert s[0].bench == BENCH_LEVELS - 1 && bench_count(s[0].bench) == 1048576;
+  lab_message(s[..], MSG_TIMING, "4210 1890");
+  #assert s[0].timed && s[0].sort_us == 4210 && s[0].draw_us == 1890;
+  l: [192] u8;
+  m := readout(s[..], l[..]);
+  #assert cast(string) l[0..<m] == "FPS 0   SPLATS 0   SORT 4.2 MS   DRAW 1.9 MS";
+  lab_hash(s[..], "bench-0");
+  #assert s[0].bench == 0;
+}

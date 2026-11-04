@@ -1,0 +1,3 @@
+--vertices sl_sort_vs,sl_particle_over_vs,sl_particle_vs
+--fragments sl_key_fs,sl_sort_fs,sl_particle_over_fs,sl_particle_fs
+--bindings apps/openagents-web/gpu/splatlab-fx.bindings --strip sl_

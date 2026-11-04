@@ -1,0 +1,3 @@
+--vertices sl_bg_vs,sl_scene_vs,sl_fx_vs
+--fragments sl_bg_fs,sl_scene_fs,sl_bloom_fs,sl_post_fs,sl_fx_fs
+--bindings apps/openagents-web/gpu/splatlab.bindings --strip sl_

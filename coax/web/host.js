@@ -124,6 +124,9 @@
 //                 Not asked for, absent, refused or broken, its parts fail quietly (bytes 0, no error,
 //                 the world loads on), so the page draws what it has without it.
 //   message 608     a claimed realm's maker's display name (oa-api /api/playtest/makers/<realm>), to draw "Made by <name>" and TIP
+//   local:URL     data that only a local address loads: a lab's big licensed capture, kept in a cache
+//                 outside the repo (coax/web/serve.c's /private/, Splat Lab's skull). Anywhere else,
+//                 or absent, it arrives empty (bytes 0) and the page loads on without it.
 //   mesh:URL      a traced page's mesh (Orbit League's roadster, verse/tools/mesh-bvh.coax): its bytes as
 //                 a read-only storage buffer at group 0 binding 1, for a WGSL that declares
 //                 `var<storage, read> mesh` there; until it arrives the shader reads 16 zero bytes
@@ -170,6 +173,19 @@
 //   coaxial_particle_cap(), coaxial_particles(state), coaxial_particle_bytes(state)
 //                             the emitters' memory, copied each frame to that storage buffer
 //   coaxial_particle_instances(state)  quads to draw (6 vertices each)
+//   coaxial_particle_version(state)  optional: the emitters are copied only when this number changes
+// Sorting, optionally (Splat Lab's Gaussian splats, docs/verse/2026-11-03-splat-lab.md): a particles
+// module with sort_vs, key_fs and sort_fs, on a page whose app exports coaxial_sort, gets its quads
+// in an order the GPU sorts before they draw. coaxial_sort(state) points at f32s: the sort texture's
+// width and height (texels: one a particle, a power of two in all), how many passes, whether to run
+// them this frame (0: keep the last order), then four floats a pass, its step uniform. Pass 0 draws
+// key_fs into the texture (each texel's key and index, rg32float); each pass after it draws sort_fs
+// from the texture the pass before wrote into the other (ping-pong: one bitonic step each). Their
+// groups: 0 the uniforms, 1 the emitters (binding 0), 2 the pass's step (binding 0, a vec4f) and the
+// texture before it (binding 1). The particles' own group 1 then holds the sorted texture at binding
+// 1, which particle_over_vs and particle_vs read to know which particle the n-th quad draws.
+// A page with data-timing (realms.json "timing") asks for the GPU's timestamps, when it has them,
+// and hears message 610, "SORT_US DRAW_US": the sort's passes and the main pass, in microseconds.
 // A traced page (no scene: bg_fs draws its world, 5E Lab's glade) with a particles: module draws them
 // too, right after bg_fs (and its grass and surface), the same two passes, not depth-tested: a page
 // with no depth buffer gets pipelines without one, and its shader hides puffs itself from what its
@@ -762,7 +778,9 @@ async function openDevice(made = () => {}) {
   if (!navigator.gpu) return null;
   const adapter = await navigator.gpu.requestAdapter();
   if (!adapter) return null;
-  const device = await adapter.requestDevice();
+  // a page with data-timing asks for the GPU's timestamps (message 610), when the adapter has them
+  const timing = !!script?.dataset.timing && adapter.features.has("timestamp-query");
+  const device = await adapter.requestDevice(timing ? { requiredFeatures: ["timestamp-query"] } : undefined);
   device.lost.then((info) => deviceLost(device, info));
   made(device);
   if (dev) device.addEventListener("uncapturederror", (event) => { console.error("RENDER DEVICE",event.error?.message); });
@@ -780,7 +798,7 @@ async function openDevice(made = () => {}) {
     }
     return measuredTexture;
   } } : context;
-  return { adapter, device, context: renderContext, format: measuredFormat || format };   // the adapter held: a collected one can drop its device
+  return { adapter, device, context: renderContext, format: measuredFormat || format, timing };   // the adapter held: a collected one can drop its device
 }
 
 // ---- a lost GPU device (aethyr/book ch084). The engine and every byte of its state are in
@@ -1142,7 +1160,7 @@ function waterCopyLayout() {
 // The particles' own module and pipeline; a page without one, or one that doesn't compile, draws none.
 async function particlePipeline(post, depth) {
   const a = assets.find((s) => s.kind === "particles"), x = engine?.exports;
-  gpu.particlesOver = null; gpu.particleDepth = false;
+  gpu.particlesOver = null; gpu.particleDepth = false; gpu.sort = null;
   if (!a || !x?.coaxial_particles) return null;
   const { device, format } = gpu;
   try {
@@ -1150,9 +1168,15 @@ async function particlePipeline(post, depth) {
     const module = device.createShaderModule({ code });
     const errors = (await module.getCompilationInfo()).messages.filter((m) => m.type === "error");
     if (errors.length) { say(errors.map((m) => `particles.wgsl:${m.lineNum}:${m.linePos}: ${m.message}`).join("\n"), true); return null; }
-    const group = device.createBindGroupLayout({ entries: [{ binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: "read-only-storage" } }] });
+    // sorting (the header's "Sorting"): the particles' group also holds the sorted texture
+    const sorting = !!x.coaxial_sort && /fn\s+sort_vs\b/.test(code) && /fn\s+key_fs\b/.test(code) && /fn\s+sort_fs\b/.test(code);
+    const both = GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT;
+    const group = device.createBindGroupLayout({ entries: [{ binding: 0, visibility: sorting ? both : GPUShaderStage.VERTEX, buffer: { type: "read-only-storage" } },
+      ...(sorting ? [{ binding: 1, visibility: both, texture: { sampleType: "unfilterable-float" } }] : [])] });
     gpu.particleBuffer ||= device.createBuffer({ size: align(Math.max(x.coaxial_particle_cap(), 16), 16), usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
-    gpu.particleGroup = device.createBindGroup({ layout: group, entries: [{ binding: 0, resource: { buffer: gpu.particleBuffer } }] });
+    gpu.particleVersion = undefined;
+    gpu.sort = sorting ? await sortPipelines(module, group) : null;
+    gpu.particleGroup = sorting ? null : device.createBindGroup({ layout: group, entries: [{ binding: 0, resource: { buffer: gpu.particleBuffer } }] });
     const add = { operation: "add", srcFactor: "one", dstFactor: "one" };
     const over = { operation: "add", srcFactor: "one", dstFactor: "one-minus-src-alpha" };
     const under = { operation: "add", srcFactor: "zero", dstFactor: "one-minus-src-alpha" };
@@ -1174,6 +1198,90 @@ async function particlePipeline(post, depth) {
     gpu.particlesOver = shade;
     return lit;
   } catch (e) { say(`${app}: particles: ${e.message}`, true); return null; }
+}
+
+// Sorting's pipelines and the layouts its passes share (the header's "Sorting"): key_fs and sort_fs
+// draw a full-screen triangle (sort_vs) into an rg32float texture, reading the uniforms (group 0),
+// the emitters (group 1) and the pass's step and the texture before it (group 2).
+async function sortPipelines(module, particleLayout) {
+  const { device } = gpu, f = GPUShaderStage.FRAGMENT;
+  const emitters = device.createBindGroupLayout({ entries: [{ binding: 0, visibility: f, buffer: { type: "read-only-storage" } }] });
+  const step = device.createBindGroupLayout({ entries: [
+    { binding: 0, visibility: f, buffer: { type: "uniform", hasDynamicOffset: true, minBindingSize: 16 } },
+    { binding: 1, visibility: f, texture: { sampleType: "unfilterable-float" } }] });
+  const layout = device.createPipelineLayout({ bindGroupLayouts: [gpu.layout, emitters, step] });
+  const [key, sort] = await Promise.all(["key_fs", "sort_fs"].map((entryPoint) => device.createRenderPipelineAsync({
+    layout, vertex: { module, entryPoint: "sort_vs" }, fragment: { module, entryPoint, targets: [{ format: "rg32float" }] } })));
+  return { key, sort, particleLayout, step, w: 0, h: 0, textures: null, views: null, orders: null, reads: null, steps: null, final: 0, ran: false,
+    emitterGroup: device.createBindGroup({ layout: emitters, entries: [{ binding: 0, resource: { buffer: gpu.particleBuffer } }] }) };
+}
+// This frame's sort, encoded before the main pass; false when the app's header asks for none.
+function sortFrame(encoder, x) {
+  const s = gpu.sort, { device } = gpu, at = x.coaxial_sort(arena.state);
+  const head = new Float32Array(memory.buffer, at, 4);
+  const w = head[0] | 0, h = head[1] | 0, passes = head[2] | 0, due = head[3] > 0;
+  if (w < 1 || h < 1 || passes < 1 || w > device.limits.maxTextureDimension2D || h > device.limits.maxTextureDimension2D) return false;
+  if (s.w !== w || s.h !== h) {
+    for (const t of s.textures || []) t.destroy();
+    s.textures = [0, 1].map(() => device.createTexture({ size: [w, h], format: "rg32float", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING }));
+    s.views = s.textures.map((t) => t.createView());
+    s.orders = s.views.map((view) => device.createBindGroup({ layout: s.particleLayout, entries: [
+      { binding: 0, resource: { buffer: gpu.particleBuffer } }, { binding: 1, resource: view }] }));
+    s.w = w; s.h = h; s.ran = false; s.reads = null;
+  }
+  // each pass's step at its own 256-byte offset (a dynamic offset into one buffer)
+  if (!s.steps || s.steps.size < passes * 256) {
+    s.steps?.destroy();
+    s.steps = device.createBuffer({ size: Math.max(passes, 64) * 256, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    s.reads = null;
+  }
+  s.reads ||= s.views.map((view) => device.createBindGroup({ layout: s.step, entries: [
+    { binding: 0, resource: { buffer: s.steps, size: 16 } }, { binding: 1, resource: view }] }));
+  if (!due && s.ran) return false;
+  const params = new Float32Array(memory.buffer, at + 16, passes * 4), staged = new Float32Array(passes * 64);
+  for (let p = 0; p < passes; p++) staged.set(params.subarray(p * 4, p * 4 + 4), p * 64);
+  device.queue.writeBuffer(s.steps, 0, staged);
+  const timer = gpu.timing ? gpuTimer() : null;
+  for (let p = 0; p < passes; p++) {
+    const into = p % 2, stamps = {};
+    if (timer && p === 0) stamps.beginningOfPassWriteIndex = 0;
+    if (timer && p === passes - 1) stamps.endOfPassWriteIndex = 1;
+    const pass = encoder.beginRenderPass({ colorAttachments: [{ view: s.views[into], loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 0 } }],
+      ...(timer && (p === 0 || p === passes - 1) ? { timestampWrites: { querySet: timer.set, ...stamps } } : {}) });
+    pass.setPipeline(p === 0 ? s.key : s.sort);
+    pass.setBindGroup(0, gpu.bindGroup); pass.setBindGroup(1, s.emitterGroup);
+    pass.setBindGroup(2, s.reads[1 - into], [p * 256]);   // the texture the pass before wrote (pass 0 reads nothing)
+    pass.draw(3); pass.end();
+  }
+  s.final = (passes - 1) % 2; s.ran = true;
+  return true;
+}
+// The group the particles draw with: with sorting, the one holding the latest order (none yet: none).
+function particleGroupNow() {
+  if (!gpu.sort) return gpu.particleGroup;
+  return gpu.sort.ran ? gpu.sort.orders[gpu.sort.final] : null;
+}
+// GPU timestamps (data-timing): 0 and 1 round the sort's passes, 2 and 3 round the main pass.
+const TIMING_KIND = 610;
+function gpuTimer() {
+  if (!gpu.timer) {
+    const { device } = gpu;
+    gpu.timer = { set: device.createQuerySet({ type: "timestamp", count: 4 }), busy: false,
+      resolve: device.createBuffer({ size: 32, usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC }),
+      read: device.createBuffer({ size: 32, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST }) };
+  }
+  return gpu.timer;
+}
+// After the frame's submit: the four stamps read back, then told to the app (once at a time).
+function timingRead(timer) {
+  timer.busy = true;
+  const at = gpu;
+  timer.read.mapAsync(GPUMapMode.READ).then(() => {
+    const t = new BigUint64Array(timer.read.getMappedRange().slice(0));
+    timer.read.unmap(); timer.busy = false;
+    if (gpu !== at || t[1] < t[0] || t[3] < t[2]) return;
+    send(TIMING_KIND, `${Math.round(Number(t[1] - t[0]) / 1000)} ${Math.round(Number(t[3] - t[2]) / 1000)}`);
+  }, () => { timer.busy = false; });
 }
 
 // ---- the scene's assets and group 1
@@ -1200,6 +1308,7 @@ function parseAssets(text) {
         away: pick === null || !/^[a-z0-9-]{1,58}$/.test(name) };
       for (const part of PACK_PARTS) list.push({ i: list.length, kind: part, pack });
     }
+    else if (kind === "local") list.push({ i, kind: "data", url: rest, urls: [rest], quiet: true, away: !dev || golden });
     else list.push({ i, kind, url: rest, urls: rest.split("|") });
   }
   return list;
@@ -1325,6 +1434,7 @@ async function loadAsset(a) {
       a.texture = await layerTexture(images);if (renderUrl) await renderReload;if (!currentAsset(a)) return;
       if (gpu.renderer) gpu.renderer.layerTexture = a.texture;a.size = images.length;
     } else {
+      if (a.away) throw new Error("local only");
       const bytes = await fetchedOnce(a.url);
       if (renderUrl) await renderReload;if (!currentAsset(a)) return;
       a.size = bytes.length;
@@ -1337,13 +1447,13 @@ async function loadAsset(a) {
         device.queue.writeBuffer(a.buffer, 0, whole);
       }
     }
-  } catch (e) { a.failed = true; say(`${app}: ${e.message}`, true); }
+  } catch (e) { a.failed = true; if (!a.quiet) say(`${app}: ${e.message}`, true); }
   a.fetching = false;if (!currentAsset(a)) return;
   a.done = true;
   deliver(a);
   if (a.kind === "mesh") bindMesh();
   bindScene();
-  loading.assetDone(a.failed && `ASSET FAILED TO LOAD: ${(a.url || "").split("/").pop()}`);
+  loading.assetDone(a.failed && !a.quiet && `ASSET FAILED TO LOAD: ${(a.url || "").split("/").pop()}`);
 }
 // An asset's bytes, fetched once however many of the page's assets name the same URL (the Grid's
 // Cast.bin is both data, for its clips, and storage, for its vertices).
@@ -1864,7 +1974,7 @@ function draw(now) {
     else pass.drawIndexed(count, instances, first, 0, base);
   };
   const drawScene = (pass) => {
-    pass.setBindGroup(1, gpu.sceneGroup); pass.setIndexBuffer(gpu.index, "uint32");
+    pass.setBindGroup(1, gpu.sceneGroup); if (gpu.index) pass.setIndexBuffer(gpu.index, "uint32");   // none: in-order draws only
     for (let i = 0; i < draws - wet; i++) drawOne(pass, i);
   };
   const cast = gpu.caster && x.coaxial_caster_instances ? [x.coaxial_caster_vertices(arena.state), x.coaxial_caster_instances(arena.state)] : [0, 0];
@@ -1877,10 +1987,14 @@ function draw(now) {
     if (cast[0] && cast[1]) { shade.setPipeline(gpu.caster); shade.draw(cast[0], cast[1]); }
     shade.end();
   }
+  // the particles' sort (the header's "Sorting"), before the pass that draws them; timed when asked
+  const sorted = gpu.sort && gpu.particles && draws ? sortFrame(encoder, x) : false;
+  const timed = sorted && gpu.timing && !gpu.timer.busy;
   const target = (view) => ({ view, loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 1 } });
   const screen = () => target(context.getCurrentTexture().createView());
   let pass = encoder.beginRenderPass({ colorAttachments: post ? [target(gpu.light.createView()), target(gpu.aux.createView())] : [screen()],
-    ...(gpu.scene || gpu.surface ? { depthStencilAttachment: { view: gpu.depth.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: post ? "store" : "discard" } } : {}) });
+    ...(gpu.scene || gpu.surface ? { depthStencilAttachment: { view: gpu.depth.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: post ? "store" : "discard" } } : {}),
+    ...(timed ? { timestampWrites: { querySet: gpu.timer.set, beginningOfPassWriteIndex: 2, endOfPassWriteIndex: 3 } } : {}) });
   pass.setBindGroup(0, gpu.bindGroup);
   if (gpu.caster) { pass.setBindGroup(1, gpu.emptyGroup); pass.setBindGroup(2, gpu.shadowGroup); }
   pass.setPipeline(gpu.bg); pass.draw(3);
@@ -1914,10 +2028,14 @@ function draw(now) {
       pass.setPipeline(gpu.waterTransmit); drawOne(pass, i);
       pass.setPipeline(gpu.waterEmit); drawOne(pass, i);
     }
-    const bytes = sparks && (!gpu.particleDepth || gpu.waterCopyGroup) ? Math.min(x.coaxial_particle_bytes(arena.state), gpu.particleBuffer.size) & ~3 : 0;
+    const sparkGroup = sparks ? particleGroupNow() : null;
+    const bytes = sparkGroup && (!gpu.particleDepth || gpu.waterCopyGroup) ? Math.min(x.coaxial_particle_bytes(arena.state), gpu.particleBuffer.size) & ~3 : 0;
     if (bytes) {
-      device.queue.writeBuffer(gpu.particleBuffer, 0, memory.buffer, x.coaxial_particles(arena.state), bytes);
-      pass.setBindGroup(1, gpu.particleGroup);
+      const version = x.coaxial_particle_version?.(arena.state);
+      if (version === undefined || version !== gpu.particleVersion) {
+        device.queue.writeBuffer(gpu.particleBuffer, 0, memory.buffer, x.coaxial_particles(arena.state), bytes); gpu.particleVersion = version;
+      }
+      pass.setBindGroup(1, sparkGroup);
       if (gpu.particleDepth) { pass.setBindGroup(2, (emptyLayout(), gpu.emptyGroup)); pass.setBindGroup(3, gpu.waterCopyGroup); }
       if (gpu.particlesOver) { pass.setPipeline(gpu.particlesOver); pass.draw(6, sparks); }
       pass.setPipeline(gpu.particles); pass.draw(6, sparks);
@@ -1926,10 +2044,11 @@ function draw(now) {
   const puffs = !gpu.scene && gpu.particles ? x.coaxial_particle_instances(arena.state) : 0;
   if (puffs) {
     // a traced page's particles, over what bg_fs drew
-    const bytes = Math.min(x.coaxial_particle_bytes(arena.state), gpu.particleBuffer.size) & ~3;
+    const puffGroup = particleGroupNow();
+    const bytes = puffGroup ? Math.min(x.coaxial_particle_bytes(arena.state), gpu.particleBuffer.size) & ~3 : 0;
     if (bytes) {
       device.queue.writeBuffer(gpu.particleBuffer, 0, memory.buffer, x.coaxial_particles(arena.state), bytes);
-      pass.setBindGroup(1, gpu.particleGroup);
+      pass.setBindGroup(1, puffGroup);
       if (gpu.particlesOver) { pass.setPipeline(gpu.particlesOver); pass.draw(6, puffs); }
       pass.setPipeline(gpu.particles); pass.draw(6, puffs);
     }
@@ -1947,9 +2066,14 @@ function draw(now) {
   if (n) { pass.setPipeline(gpu.fx); pass.setVertexBuffer(0, gpu.vertexBuffer); pass.draw(n); }
   if (x.coaxial_media) drawMedia(x, pass, w, h, !!(gpu.scene || gpu.surface) && !post, true);
   pass.end();
+  if (timed) {
+    encoder.resolveQuerySet(gpu.timer.set, 0, 4, gpu.timer.resolve, 0);
+    encoder.copyBufferToBuffer(gpu.timer.resolve, 0, gpu.timer.read, 0, 32);
+  }
   const texture = context.getCurrentTexture();
   const readback = probe && ++frames >= 1 && !gpu.probed ? readBack(encoder, texture) : null;
   device.queue.submit([encoder.finish()]);
+  if (timed) timingRead(gpu.timer);
   if (gpu.snap) { const take = gpu.snap; gpu.snap = null; take(); }   // card.js: this frame, before it is shown
   if (draws && shaderLoads === 0 && installedGeneration === wanted && !globalThis.coaxial.sceneReady && pendingSceneEpoch !== sceneEpoch) {
     let nonempty = false;

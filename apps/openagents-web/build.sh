@@ -146,6 +146,9 @@ fivelab=$!
 # /worlds/metahuman-lab (unlisted): one figure on the CC0 people rig's skeleton and clips (docs/verse/metahuman-support.md).
 "$here/../../coax/web/wasm.sh" "$here/metahumanlab.coax" "$here/metahumanlab-face.c" "$here/build/metahumanlab.wasm" &
 metahumanlab=$!
+# /worlds/splat-lab (unlisted): 3D Gaussian splats, GPU-sorted (docs/verse/2026-11-03-splat-lab.md).
+"$here/../../coax/web/wasm.sh" "$here/splatlab.coax" "$here/splatlab-face.c" "$here/build/splatlab.wasm" &
+splatlab=$!
 # /worlds/one-shot: the campaign creator's Table (oneshot.coax on oneshot-table.coax and the SRD engine).
 "$here/../../coax/web/wasm.sh" "$here/oneshot.coax" "$here/oneshot-face.c" "$here/build/oneshot.wasm" &
 oneshot=$!
@@ -269,6 +272,7 @@ wait "$stair"
 wait "$watchtower"
 wait "$fivelab"
 wait "$metahumanlab"
+wait "$splatlab"
 wait "$oneshot"
 wait "$gridcrowd"
 wait "$speedrunhud"

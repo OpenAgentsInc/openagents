@@ -1,0 +1,13 @@
+# Splat Lab's bindings for coax/web/wgsl-module.coax (NAME GROUP BINDING [uniform VEC4FS]), as
+# coax/web/host.js lays them out: group 0 the frame's uniforms (splatlab.coax's 320 floats); group 1
+# the scene (the meshes' store). The post pass: bloom_fs's source, sampler and step, and post_fs's
+# light, bloom quarter and eighth and sampler (group 1 again: their own pipelines).
+u 0 0 uniform 80
+mesh 1 0
+bloom_src 1 0
+bloom_lin 1 1
+bloom_step 1 2 uniform 1
+post_light 1 0
+post_quarter 1 1
+post_eighth 1 2
+post_lin 1 5

@@ -1,0 +1,31 @@
+// Splat Lab's camera on the GPU (splatlab.coax writes it): the one projection both of the lab's
+// modules use, so the meshes (gpu/splatlab.coax scene_vs) and the splats (gpu/splatlab-fx.coax)
+// write and test the same depth, and a splat sits in the scene in front of what is behind it and
+// behind what is in front of it.
+// SlU, the uniform block, from a []f32 (floats):
+//   0: width, height, time (s), 1
+//   4: scene, static splats, all splats, the sort's texture width
+//   8: exposure, near plane (m), the ground's height, how much fire lights the scene
+//   16: eye xyz, focal length (px); 20: forward xyz, image centre x (px)
+//   24: right xyz, image centre y (px); 28: up xyz, 0
+//   32: toward the moon xyz, the moon's strength; 36: the HUD strip's height, the key line's (px)
+//   64: sixteen emitters, three vec4s each (gpu/splatlab-fx.coax): (place xyz, kind), (first splat,
+//       how many, size, seed), (target xyz, a parameter)
+SL_U_EMIT :: 64;
+SL_EMITTERS :: 16;
+
+// The clip position of world point w: x and y as the pinhole puts them (device px, y down, the
+// centre at u[23], u[27]), w its distance along forward, and depth 1 - near / distance, so the
+// depth buffer (cleared to 1, less passes) orders everything in front of the eye.
+sl_clip :: (w:V3,u:[]f32)->V4 {
+  rel:V3=v3(w.x-u[16],w.y-u[17],w.z-u[18]);
+  z:f32=(rel.x*u[20])+(rel.y*u[21])+(rel.z*u[22]);
+  r:f32=(rel.x*u[24])+(rel.y*u[25])+(rel.z*u[26]);
+  q:f32=(rel.x*u[28])+(rel.y*u[29])+(rel.z*u[30]);
+  wd:f32=fmax(u[0],1.0f32);
+  ht:f32=fmax(u[1],1.0f32);
+  f:f32=u[19];
+  x:f32=((((2.0f32*u[23])/wd)-1.0f32)*z)+(((2.0f32*f)/wd)*r);
+  y:f32=((1.0f32-((2.0f32*u[27])/ht))*z)+(((2.0f32*f)/ht)*q);
+  return v4(x,y,z-u[9],z);
+}

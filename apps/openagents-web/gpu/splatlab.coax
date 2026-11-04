@@ -1,0 +1,181 @@
+// Splat Lab's shaders (splatlab.coax): build.sh writes apps/openagents-web/splatlab.wgsl from this with
+// coax/web/wgsl-module.coax (splatlab.module and splatlab.bindings beside it). The splats themselves
+// are gpu/splatlab-fx.coax's, drawn by the host as the page's particles after the meshes here.
+//   bg_fs: the night sky over the scene (the raid burns the town by night).
+//   scene_vs/fs: the meshes splatlab.coax builds (the town's cottages, the ritual site's ground),
+//     from the store: lit by the moon, the sky and every fire the uniforms name, flickering. They
+//     write the depth buffer the splats test against (gpu/splatlab-view.coax's projection).
+//   fx_vs/fs: the HUD's strokes (font.coax).
+//   bloom_fs and post_fs: the fire's glow (the light target's alpha is each pixel's bloom share),
+//     ACES tone and the sRGB curve, and the HUD strips' dark glass.
+#load "../../../verse/gpu/wgsl.coax";
+#load "splatlab-view.coax";
+
+SlBg :: struct {light:V4; aux:V4; }
+SlLit :: struct {light:V4; aux:V4; }
+// A mesh vertex in the store: two vec4s, (position xyz, colour r + 256 g + 65536 b in bytes) and
+// (normal xyz, material: 0 matt, 1 a window's glow, 2 the ground).
+SlS :: struct {pos:V4; world:V3; normal:V3; colour:V3; mat:f32 #flat; }
+
+sl_bg_vs :: (i:u32,_iid1:u32)->V4 {
+  p:[3]V2=[3]V2.[v2(-1.0f32,-3.0f32),v2(-1.0f32,1.0f32),v2(3.0f32,1.0f32)];
+  return v4(p[cast(int)i].x,p[cast(int)i].y,0.0f32,1.0f32);
+}
+sl_ray :: (p:V2,u:[]f32)->V3 {
+  f:f32=fmax(u[19],1.0f32);
+  return normalize3(add3(v3(u[20],u[21],u[22]),add3(scale3(v3(u[24],u[25],u[26]),(p.x-u[23])/f),scale3(v3(u[28],u[29],u[30]),(u[27]-p.y)/f))));
+}
+// The sky along rd: a deep blue overhead, a smoky ember glow low over the burning town, the moon.
+sl_sky :: (rd:V3,u:[]f32)->V3 {
+  y:f32=rd.y;
+  top:V3=v3(0.006f32,0.009f32,0.025f32);
+  low:V3=v3(0.05f32,0.03f32,0.04f32);
+  c:V3=mix3(low,top,smoothstep(-0.05f32,0.55f32,y));
+  glow:f32=exp(-fmax(y,0.0f32)*7.0f32)*u[11];
+  c=add3(c,scale3(v3(0.09f32,0.035f32,0.012f32),glow));
+  moon:V3=v3(u[32],u[33],u[34]);
+  m:f32=dot3(rd,moon);
+  c=add3(c,scale3(v3(0.55f32,0.6f32,0.7f32),smoothstep(0.9993f32,0.9996f32,m)*u[35]*3.0f32));
+  c=add3(c,scale3(v3(0.05f32,0.06f32,0.09f32),pow(fmax(m,0.0f32),60.0f32)*u[35]));
+  if (y<0.0f32) { c=mix3(c,v3(0.01f32,0.008f32,0.008f32),smoothstep(0.0f32,-0.12f32,y)); }
+  return c;
+}
+sl_bg_fs :: (pos:V4,u:[]f32)->SlBg {
+  rd:V3=sl_ray(v2(pos.x,pos.y),u);
+  c:V3=sl_sky(rd,u);
+  return SlBg.{light=v4(c.x,c.y,c.z,0.0f32),aux=v4(0.0f32,0.0f32,0.0f32,0.0f32)};
+}
+
+// ---- the meshes
+sl_unpack :: (p:f32)->V3 {
+  bb:f32=floor(p/65536.0f32);
+  gg:f32=floor((p-(bb*65536.0f32))/256.0f32);
+  rr:f32=(p-(bb*65536.0f32))-(gg*256.0f32);
+  return v3(pow(rr/255.0f32,2.2f32),pow(gg/255.0f32,2.2f32),pow(bb/255.0f32,2.2f32));
+}
+sl_scene_vs :: (id:u32,instance:u32,u:[]f32,mesh:[]V4)->SlS {
+  o:SlS;
+  a:V4=mesh[cast(int)(id*2)];
+  b:V4=mesh[cast(int)((id*2)+1)];
+  o.world=v3(a.x,a.y,a.z);
+  o.pos=sl_clip(o.world,u);
+  o.normal=v3(b.x,b.y,b.z);
+  o.colour=sl_unpack(a.w);
+  o.mat=b.w;
+  return o;
+}
+// The light the fires the uniforms name throw on a point with normal n: warm, flickering, falling
+// off with distance (the town's cottages glow orange on the side that faces the flames).
+sl_firelight :: (w:V3,n:V3,u:[]f32)->V3 {
+  c:V3=v3(0.0f32,0.0f32,0.0f32);
+  t:f32=u[2];
+  for e:0..<SL_EMITTERS {
+    o:int=SL_U_EMIT+(e*12);
+    kind:f32=u[o+3];
+    if ((kind==1.0f32)||(kind==6.0f32)) {
+      size:f32=u[o+6];
+      at:V3=v3(u[o],u[o+1]+(u[o+11]*0.3f32),u[o+2]);
+      d:V3=sub3(at,w);
+      r2:f32=dot3(d,d);
+      l:V3=scale3(d,1.0f32/sqrt(fmax(r2,0.0001f32)));
+      ph:f32=u[o+7]*0.37f32;
+      flick:f32=0.82f32+(0.1f32*sin((t*11.0f32)+ph))+(0.08f32*sin((t*17.3f32)+(ph*2.0f32)));
+      k:f32=(fmax(dot3(n,l),0.0f32)*0.85f32)+0.15f32;
+      hue:V3=ifx kind==1.0f32 then v3(1.0f32,0.42f32,0.12f32) else v3(0.45f32,0.3f32,1.0f32);
+      c=add3(c,scale3(hue,(k*flick*size*size*6.0f32*u[11])/(1.0f32+r2)));
+    }
+  }
+  return c;
+}
+sl_scene_fs :: (s:SlS,front:bool,u:[]f32)->SlLit {
+  n:V3=normalize3(s.normal);
+  if (!front) { n=scale3(n,-1.0f32); }
+  moon:V3=v3(u[32],u[33],u[34]);
+  sky:f32=0.5f32+(0.5f32*n.y);
+  amb:V3=add3(scale3(v3(0.02f32,0.025f32,0.045f32),sky),scale3(v3(0.03f32,0.012f32,0.006f32),(1.0f32-sky)*u[11]));
+  dif:V3=scale3(v3(0.16f32,0.18f32,0.24f32),fmax(dot3(n,moon),0.0f32)*u[35]);
+  fire:V3=sl_firelight(s.world,n,u);
+  c:V3=mul3(s.colour,add3(add3(amb,dif),fire));
+  share:f32=0.0f32;
+  if (s.mat>0.5f32 && s.mat<1.5f32) {
+    // a window: the hearth inside, flickering
+    fl:f32=0.85f32+(0.15f32*sin((u[2]*9.0f32)+(s.world.x*3.0f32)));
+    c=add3(c,scale3(v3(1.0f32,0.55f32,0.2f32),1.4f32*fl));
+    share=0.6f32;
+  }
+  // haze: far things sink into the smoky night
+  d:f32=length3(sub3(s.world,v3(u[16],u[17],u[18])));
+  c=mix3(c,v3(0.02f32,0.015f32,0.02f32),1.0f32-exp(-d*0.012f32));
+  return SlLit.{light=v4(c.x,c.y,c.z,share),aux=v4(0.0f32,0.0f32,0.0f32,0.0f32)};
+}
+
+// ---- the post pass: bloom from each pixel's share, then tone, then the HUD's glass
+sl_bloom_fs :: (pos:V4,bloom_src:Tex2D,bloom_lin:Sampler,bloom_step:[]f32)->V4 {
+  dims:V2=v2(cast(f32)(gpu_width(bloom_src)),cast(f32)(gpu_height(bloom_src)));
+  texel:V2=v2(1.0f32/dims.x,1.0f32/dims.y);
+  uv:V2=v2(pos.x*bloom_step[3]*texel.x,pos.y*bloom_step[3]*texel.y);
+  if (bloom_step[2]<0.5f32) {
+    // the bright parts: four taps round the texel, each its light times its share
+    c:V3=v3(0.0f32,0.0f32,0.0f32);
+    for k:0..<4 {
+      ox:f32=(cast(f32)(k%2)*2.0f32)-1.0f32;
+      oy:f32=(cast(f32)(k/2)*2.0f32)-1.0f32;
+      t:V4=gpu_sample_level(bloom_src,bloom_lin,v2(uv.x+(ox*texel.x),uv.y+(oy*texel.y)),0.0f32);
+      c=add3(c,scale3(v3(t.x,t.y,t.z),clampf(t.w,0.0f32,1.0f32)));
+    }
+    return v4(c.x*0.25f32,c.y*0.25f32,c.z*0.25f32,1.0f32);
+  }
+  // a blur along the step: five taps, linear-sampled
+  d:V2=v2(bloom_step[0]*texel.x,bloom_step[1]*texel.y);
+  m:V4=gpu_sample_level(bloom_src,bloom_lin,uv,0.0f32);
+  c:V3=scale3(v3(m.x,m.y,m.z),0.227f32);
+  a1:V4=gpu_sample_level(bloom_src,bloom_lin,v2(uv.x+(d.x*1.385f32),uv.y+(d.y*1.385f32)),0.0f32);
+  b1:V4=gpu_sample_level(bloom_src,bloom_lin,v2(uv.x-(d.x*1.385f32),uv.y-(d.y*1.385f32)),0.0f32);
+  a2:V4=gpu_sample_level(bloom_src,bloom_lin,v2(uv.x+(d.x*3.231f32),uv.y+(d.y*3.231f32)),0.0f32);
+  b2:V4=gpu_sample_level(bloom_src,bloom_lin,v2(uv.x-(d.x*3.231f32),uv.y-(d.y*3.231f32)),0.0f32);
+  c=add3(c,scale3(add3(v3(a1.x,a1.y,a1.z),v3(b1.x,b1.y,b1.z)),0.316f32));
+  c=add3(c,scale3(add3(v3(a2.x,a2.y,a2.z),v3(b2.x,b2.y,b2.z)),0.07f32));
+  return v4(c.x,c.y,c.z,1.0f32);
+}
+sl_aces :: (x:f32)->f32 {
+  return clampf((x*((2.51f32*x)+0.03f32))/((x*((2.43f32*x)+0.59f32))+0.14f32),0.0f32,1.0f32);
+}
+sl_srgb :: (x:f32)->f32 {
+  if (x<=0.0031308f32) { return x*12.92f32; }
+  return (1.055f32*pow(x,1.0f32/2.4f32))-0.055f32;
+}
+sl_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_eighth:Tex2D,post_lin:Sampler)->V4 {
+  l:V4=gpu_load(post_light,cast(s32)(pos.x),cast(s32)(pos.y),0);
+  uv:V2=v2(pos.x/fmax(u[0],1.0f32),pos.y/fmax(u[1],1.0f32));
+  q:V4=gpu_sample_level(post_quarter,post_lin,uv,0.0f32);
+  e:V4=gpu_sample_level(post_eighth,post_lin,uv,0.0f32);
+  b:V3=add3(scale3(v3(q.x,q.y,q.z),0.7f32),scale3(v3(e.x,e.y,e.z),0.9f32));
+  k:f32=u[8];
+  c:V3=v3(sl_srgb(sl_aces((l.x+b.x)*k)),sl_srgb(sl_aces((l.y+b.y)*k)),sl_srgb(sl_aces((l.z+b.z)*k)));
+  if ((pos.y<u[36])||(pos.y>(u[1]-u[37]))) { c=add3(scale3(c,0.25f32),v3(0.008f32,0.01f32,0.014f32)); }
+  return v4(c.x,c.y,c.z,1.0f32);
+}
+
+// ---- the HUD's strokes (font.coax), as MetaHuman Lab's
+SlV :: struct {pos:V4; place:V2; shape:V4; tint:V4; bar:V4; }
+sl_fx_vs_in :: struct {a:V4; b:V4; c:V4; d:V4; }
+sl_fx_vs :: (_vid2:u32,_iid3:u32,in_:sl_fx_vs_in,u:[]f32)->SlV {
+  a:V4=in_.a;
+  o:SlV;
+  o.pos=v4(((a.x/u[0])*2.0f32)-1.0f32,1.0f32-((a.y/u[1])*2.0f32),0.0f32,1.0f32);
+  o.place=v2(a.z,a.w);
+  o.shape=in_.b;
+  o.tint=in_.c;
+  o.bar=in_.d;
+  return o;
+}
+// A capsule stroke: shape.x its length, y its core's half width, z its light, w its glow's reach.
+sl_fx_fs :: (v:SlV,u:[]f32)->V4 {
+  along:f32=fmax(fmax(-v.place.x,v.place.x-v.shape.x),0.0f32);
+  d:f32=length2(v2(along,v.place.y));
+  core:f32=1.0f32-smoothstep(v.shape.y-0.5f32,v.shape.y+0.6f32,d);
+  g:f32=d/fmax(v.shape.w,1.0f32);
+  halo:f32=exp(((-5.0f32)*g)*g)*0.28f32;
+  k:f32=(core+halo)*v.shape.z*u[3];
+  return v4(v.tint.x*k,v.tint.y*k,v.tint.z*k,1.0f32);
+}

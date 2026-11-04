@@ -1,0 +1,10 @@
+# Splat Lab's splats' bindings for `coax wgsl apps/openagents-web/gpu/splatlab-fx.coax` (coax/web/wgsl-module.coax):
+# NAME GROUP BINDING, and `uniform COUNT` for a []f32 read as a uniform block of COUNT vec4fs.
+# They are coax/web/host.js's particle layouts with sorting: group 0 splatlab.wgsl's uniforms, read
+# up to the emitters' end (256 floats, 64 vec4fs); group 1 the static splats and the sorted order;
+# group 2 a sort pass's step (k, j, width, count) and the texture the step before it wrote.
+u 0 0 uniform 64
+splats 1 0
+order 1 1
+sp 2 0 uniform 1
+prev 2 1

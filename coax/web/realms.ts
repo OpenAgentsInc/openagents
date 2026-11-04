@@ -66,7 +66,7 @@ export const RULESETS = ["srd5"]
 export type Zone = { id: string; style?: Style; variant?: AnimeVariant }
 // share: the line a link preview shows (at most 200 characters; else the description, shortened).
 // page: the module's data-page (coaxial_page), when one module draws several pages: the Grid is the homepage's (newland, page 1).
-export type Realm = { slug: string; title: string; description: string; share?: string; alt: string; module: string; page?: number; slot: string; slot_was?: string; voice?: string; ruleset?: string; uploads?: string; card?: string; added?: string; line?: string; style: Style; variant?: AnimeVariant; style_views?: string[]; zones?: Zone[]; clock: string; assets: string[]; golden: Golden }
+export type Realm = { slug: string; title: string; description: string; share?: string; alt: string; module: string; page?: number; slot: string; slot_was?: string; voice?: string; ruleset?: string; uploads?: string; timing?: boolean; card?: string; added?: string; line?: string; style: Style; variant?: AnimeVariant; style_views?: string[]; zones?: Zone[]; clock: string; assets: string[]; golden: Golden }
 export type World = { id: string; name: string; kind: keyof typeof KINDS; listed?: boolean; orbit: { r: number; a: number; size: number }; realm?: Realm }
 
 const ID = /^[a-z0-9][a-z0-9-]{0,47}$/
@@ -277,6 +277,7 @@ export function page(r: Realm): string {
     + (r.ruleset ? ` data-ruleset="${r.ruleset}"` : "")
     + (hasMaker(r.slug) ? ` data-maker="1"` : "")
     + (r.uploads ? ` data-uploads="${esc(r.uploads)}"` : "")
+    + (r.timing ? ` data-timing="1"` : "")   // GPU timestamps for its HUD (coax/web/host.js, message 610)
     + ` data-style="${r.style}"` + (r.style === "anime" ? ` data-variant="${r.variant ?? "pastoral"}"` : "") + ` data-clock="${r.clock}"`
     + (r.zones?.length ? ` data-zones="${r.zones.map(zoneFact(r)).join(" ")}"` : "")
   const assets = r.assets.length ? ` data-assets="\n${r.assets.map((a) => `  ${a}`).join("\n")}"` : ""

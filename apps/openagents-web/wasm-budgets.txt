@@ -47,6 +47,7 @@ realm 510000
 realmlist 70000
 speedrunhud 120000
 splash 90000
+splatlab 120000
 stair 290000
 verse 210000
 villa 520000

@@ -436,6 +436,21 @@
         "slot": "metahuman-lab",
         "golden": { "lit": 0.2, "settle": 3000, "blocks": 6 },
         "assets": ["private:human"]
+      } },
+    { "id": "splatlab", "name": "SPLAT LAB", "kind": "open", "listed": false, "orbit": { "r": 0.41, "a": 3.3, "size": 0.02 },
+      "realm": {
+        "slug": "splat-lab",
+        "style": "lowpoly",
+        "clock": "fixed:0.0",
+        "title": "Splat Lab",
+        "description": "Splat Lab, a Verse world in the browser: 3D Gaussian splats in WebGPU, sorted on the GPU, as fire, smoke, spells, a burning street and a ritual site.",
+        "share": "3D Gaussian splats in the Verse's WebGPU renderer: fire, smoke, Fireball, Eldritch Blast, a burning street and a ritual site.",
+        "alt": "Splat Lab: a pyre of splat flames and smoke at night",
+        "module": "splatlab",
+        "slot": "splat-lab",
+        "timing": true,
+        "golden": { "lit": 0.05, "settle": 3000, "blocks": 6 },
+        "assets": ["particles:/splatlab-fx.wgsl", "local:/private/splats/skull.splat"]
       } }
   ]
 }
