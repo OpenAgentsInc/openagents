@@ -110,6 +110,24 @@ e5_staged :: (s: [] Everglade, v: [] E5) {
   if (f & E5_FORCE_SLOW) != 0 && watch_you(w[..])[0].slow_t < 1 { watch_you(w[..])[0].slow_t = 6; }
   if (f & E5_FORCE_COOL) != 0 && v[0].pend_n == 0 && v[0].bar_ok { e5_pend(v, SP_METEOR, -100, -100); }
 }
+// In a room your death is the server's too (your p's DEAD bit): you fall and lie, the view darkens
+// and says YOU DIED, and it holds until the server stands you up where you fell (room-events.coax
+// EV_RISE_S); then the view comes back where you lie. Never the page's own respawn at the Road In,
+// which the hold keeps short of (watch.coax: DEATH_FADE + DEATH_HOLD).
+E5_DEATH_HOLD :: 0.5;   // s short of the page's own respawn the room's death waits at
+e5_room_death :: (s: [] Everglade, w: [] Watch) {
+  dead := net_self_dead(s);
+  y := watch_you(w[..]);
+  if dead == 1 {
+    if !y[0].dead { y[0].dead = true; y[0].dead_t = 0; y[0].you_fall = 0; y[0].you_body.on = false; y[0].you_body.settle = -1; }
+    y[0].hp = 0; y[0].temp = 0; y[0].respawn = false;
+    hold := f32(DEATH_FADE) + f32(DEATH_HOLD) - f32(E5_DEATH_HOLD);
+    if y[0].dead_t > hold { y[0].dead_t = hold; }
+  } else if dead == 0 && y[0].dead {
+    y[0].dead = false; y[0].dead_t = -f32(RISE_FADE); y[0].hurt_t = 100; y[0].respawn = false;
+    y[0].you_body.on = false; y[0].you_body.settle = -1; y[0].you_fall = 0;
+  }
+}
 e5_before :: (s: [] Everglade, v: [] E5, bar: [] f32, bar_n: int, hero: [] f32, hero_n: int, now: f32) #export_c {
   v[0].now = now;
   if bar_n == E5_SLOTS { for q: 0..<E5_SLOTS * E5_SLOT_FLOATS { v[0].bar[q] = bar[q]; } v[0].bar_ok = true; }
@@ -127,6 +145,7 @@ e5_before :: (s: [] Everglade, v: [] E5, bar: [] f32, bar_n: int, hero: [] f32, 
   // in a room your Hit Points are the server's (everglade-net.coax): its player entity for you
   hp := net_self_hp(s); most := net_self_max(s);
   if hp >= 0 && most > 0 { watch_you(w[..])[0].max = most; watch_you(w[..])[0].hp = lo_int(hp, most); watch_you(w[..])[0].temp = 0; }
+  e5_room_death(s, w);
   for i: 0..<WATCH_ACTORS {
     a := w[0].actors[i];
     v[0].hp0[i] = a.hp; v[0].temp0[i] = a.temp; v[0].mode0[i] = a.mode; v[0].t0[i] = a.t; v[0].after0[i] = a.after; v[0].body0[i] = a.body;
@@ -427,12 +446,16 @@ e5_play_hud :: (s: [] Everglade, v: [] E5, out: [] f32, u: [] f32, at: int) -> i
       n = e5_conds(out, n, v[0].cond[1 + i], sc.x - 30 * k, sc.y, cap * 0.85, k);
     }
   }
-  // the other players' Hit Points over their heads, as the room's server has them
+  // the other players' Hit Points, as the room's server has them: a line just over their nameplate
+  // (everglade-rangers.coax remote_plate_for), as near as it shows, none for a player you block
   for i: 0..<net_count(s, WK_PLAYER) {
     o := net_view(s, WK_PLAYER, i);
-    if !o.ok || o.max <= 0 { continue; }
-    sc := on_screen(u, v3(o.x, o.y + 2.7, o.z), wd, ht);
+    if !o.ok || o.max <= 0 || net_blocks(s, net_view_id(s, WK_PLAYER, i)) { continue; }
+    hp_at := e5_hp_at(s, o);
+    if flat_gap(hp_at, ab_you(s)) > f32(REMOTE_PLATE_NEAR) { continue; }
+    sc := on_screen(u, hp_at, wd, ht);
     if !sc.ok || sc.w > 60 { continue; }
+    sc.y -= cap * 1.7;
     ln = put_digits(line[..], 0, hi_int(o.hp, 0));
     ln = e5_put(line[..], ln, " / ");
     ln = put_digits(line[..], ln, o.max);
@@ -442,6 +465,8 @@ e5_play_hud :: (s: [] Everglade, v: [] E5, out: [] f32, u: [] f32, at: int) -> i
   }
   return n;
 }
+// Where another player's Hit Points go: at their nameplate (the line itself is drawn just over it).
+e5_hp_at :: (s: [] Everglade, o: NetView) -> Point { return remote_plate_for(s, o.eid, v3(o.x, o.y, o.z)); }
 // The names of conditions in bits `c`, in a row.
 e5_conds :: (out: [] f32, at: int, c: int, x: f32, y: f32, cap: f32, k: f32) -> int {
   n := at; cx := x;
@@ -647,4 +672,68 @@ e5_fps_draw :: (s: [] Everglade, v: [] E5, out: [] f32, at: int) -> int {
   everglade_message(s[..], MSG_VIEWER, "A|1\n");
   #assert everglade_key(s[..], 'b', 0) && forge_on(s[..]);
   #assert e5_finish(s[..], v[..], out[..], u[..], 6) == 6;
+}
+#test "Everglade 5E: in a room you die when the server says so, lie past the page's own respawn, and stand where you fell when it says" {
+  a: [1] Everglade; na: [1] EgNet;
+  #assert net_test_page(a[..], na[..], 0, "pa", 100) && net_test_hear(a[..], 0, "y 0 1 5000100");
+  room: [1] NetTestRoom;
+  net_test_world(room[..], 0);
+  #assert net_test_hear(a[..], 0, net_test_frame(room[..]));
+  w := watch_w(a[..]);
+  you := watch_you(w[..]);
+  you[0].hp = 9; you[0].max = 9;
+  // the server's word: alive, then dead
+  net_test_tick(room[..], 1, 0);
+  net_test_p(room[..], WireP.{ss = 0, x = 3, z = -70, g = WG_GROUND, hp = 9, max = 9});
+  #assert net_test_hear(a[..], 0, net_test_frame(room[..]));
+  e5_room_death(a[..], w);
+  #assert !you[0].dead;
+  net_test_tick(room[..], 2, 0);
+  net_test_p(room[..], WireP.{ss = 0, x = 3, z = -70, g = WG_GROUND | WG_DEAD, hp = 0, max = 9});
+  #assert net_test_hear(a[..], 0, net_test_frame(room[..]));
+  e5_room_death(a[..], w);
+  #assert you[0].dead && you[0].dead_t == 0 && you[0].hp == 0 && !you[0].you_body.on;
+  // 8 s on, still dead on the server: held short of the page's own respawn
+  you[0].dead_t = 8;
+  e5_room_death(a[..], w);
+  #assert you[0].dead && you[0].dead_t < f32(DEATH_FADE) + f32(DEATH_HOLD) - 0.25 && !you[0].respawn;
+  // the room's frame runs the fall and the dark: a second on, you have fallen further and it is darker
+  you[0].dead_t = 0.2; you[0].you_fall = 0;
+  f0 := watch_you_fall(w); d0 := watch_dark(w);
+  for q: 0..<60 { watch_net_you(w, 1.0 / 60.0); }
+  #assert watch_you_fall(w) != f0;
+  #assert watch_dark(w) > d0 && you[0].dead_t > 1.1;
+  // the server stands you up: the view comes back, no respawn at the Road In
+  net_test_tick(room[..], 3, 0);
+  net_test_p(room[..], WireP.{ss = 0, x = 3, z = -70, g = WG_GROUND, hp = 9, max = 9});
+  #assert net_test_hear(a[..], 0, net_test_frame(room[..]));
+  e5_room_death(a[..], w);
+  #assert !you[0].dead && you[0].dead_t < 0 && !you[0].respawn;
+  for q: 0..<60 { watch_net_you(w, 1.0 / 60.0); }
+  #assert you[0].dead_t == 0 && watch_dark(w) == 0;
+}
+#test "Everglade 5E: another player's Hit Points sit at their nameplate, not half a metre over it" {
+  s: [1] Everglade;
+  s[0].rangers[0].plates = 0;
+  plate_put(s[0].rangers[..], 4, v3(1, 3.1, 2), 1);
+  o := NetView.{ok = true, eid = 4, x = 1, y = 1, z = 2, max = 9, hp = 9};
+  #assert e5_hp_at(s[..], o).y == 3.1;   // the posed body's plate (a lying body's sits low: there too)
+  o.eid = 7;
+  #assert e5_hp_at(s[..], o).y == 3.2;   // no body posed: where its name would be, 2.2 m over its feet
+}
+#test "Everglade 5E: no place name is drawn over the raid's banner" #steps 900000000 {
+  g: [1] Everglade; nn: [1] EgNet;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  everglade_start(g[..]);
+  everglade_catalog(g[..], CATALOG);
+  everglade_attach_net(g[..], nn[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -84, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  you := v3(0, 0, -84);
+  clear := labels(g[..], out[..], u[..], 0, you);
+  #assert clear > 0;   // the South Gate and the rest, ahead
+  ege_of(g[..])[0].banner_box = Box.{x0 = 0, y0 = 0, x1 = 1280, y1 = 800};
+  #assert labels(g[..], out[..], u[..], 0, you) == 0;   // a banner over all of it: none
+  ege_of(g[..])[0].banner_box = Box.{};
+  #assert labels(g[..], out[..], u[..], 0, you) == clear;
 }

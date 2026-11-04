@@ -518,6 +518,12 @@ remote_plate_at :: (s: [] Everglade, e: RemoteBody) -> Point {
   for k: 0..<g[0].plates { if g[0].plate_seat[k] == e.seat { return g[0].plate_at[k]; } }
   return v3(e.p.x, e.p.y + 2.2, e.p.z);
 }
+// Where seat's nameplate is this frame, by its seat alone (feet `p`: over their head if no body of
+// theirs was posed), for what goes with the name (everglade5e.coax: their Hit Points, just over it).
+remote_plate_for :: (s: [] Everglade, seat: int, p: Point) -> Point {
+  e := RemoteBody.{seat = seat, p = p};
+  return remote_plate_at(s, e);
+}
 remote_plate_shown :: (s: [] Everglade, e: RemoteBody) -> f32 {
   g := s[0].rangers[..];
   for k: 0..<g[0].plates { if g[0].plate_seat[k] == e.seat { return g[0].plate_shown[k]; } }

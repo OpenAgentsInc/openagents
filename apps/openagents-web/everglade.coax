@@ -3593,8 +3593,11 @@ labels :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, you: Point) -> int {
     }
   }
   if !overview { c = room_labels(s, ls[..], c, you, k); }   // the others' names (everglade-room.coax)
-  boxes: [LABELS_MAX * 4] f32;
+  boxes: [(LABELS_MAX + 1) * 4] f32;
   placed := 0;
+  // the raid's banner (everglade-events.coax) is the first box: no name is drawn over it
+  bb := ege_banner_at(s);
+  if bb.x1 > bb.x0 { boxes[0] = bb.x0; boxes[1] = bb.y0; boxes[2] = bb.x1; boxes[3] = bb.y1; placed = 1; }
   m := n;
   for r: 0..<c {
     best := -1;

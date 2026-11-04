@@ -72,11 +72,14 @@ EgEvents :: struct {
   on: bool; lv_on: bool; leader: bool = true; harm: bool = true; gates_mask: int = 31;
   dial: [EGE_DIALS] int;
   button: Box; pane: Box;
+  banner_box: Box;   // where the banner was drawn last frame (none: empty), for the names over the world to keep clear of
   minus: [EGE_DIALS] Box; plus: [EGE_DIALS] Box; boxes: [EGE_BUTTONS] Box;
   press: int = -1; finger: int = -1;
 }
 
 ege_of :: (s: [] Everglade) -> [] EgEvents { return net_of(s)[0].evp[..]; }
+// The banner's box as last drawn (empty: none), which the names over the world keep clear of.
+ege_banner_at :: (s: [] Everglade) -> Box { return ifx net_on(s) then ege_of(s)[0].banner_box else Box.{}; }
 ege_live :: (s: [] Everglade) -> bool { return net_live(s); }
 ege_demo :: (s: [] Everglade) -> bool { return net_on(s) && ege_of(s)[0].demo && s[0].ev.admin; }
 // Your character's kit is the server's (a level's), not the whole bar.
@@ -393,6 +396,7 @@ ege_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, top: f32, under_ti
   // the banner, centred under the right column's plates
   t1: [160] u8; t2: [200] u8;
   lines := ege_banner(s, t1[..], t2[..]);
+  e[0].banner_box = Box.{};
   if lines[0] > 0 {
     cap := 9 * k; small := 7 * k;
     l1 := cast(string) t1[0..<lines[0]]; l2 := cast(string) t2[0..<lines[1]];
@@ -406,6 +410,7 @@ ege_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, top: f32, under_ti
     b := Box.{x0 = (w - bw) / 2, y0 = y0, x1 = (w + bw) / 2, y1 = y0 + bh};
     hot := e[0].phase == EGE_WAVE || e[0].phase == EGE_CLIMAX;
     plate(s, u, b, 0.85, ifx hot then 2.0f32 else 1.0f32);
+    e[0].banner_box = b;
     n = draw_text(out, n, l1, b.x0 + 12 * k, y0 + 10 * k + s1, s1, GAP, SPACE, ink(k, 0.95, ifx hot then WATCH_RED_R else GOLD_R, ifx hot then WATCH_RED_G else GOLD_G, ifx hot then WATCH_RED_B else GOLD_B), false, false);
     if lines[1] > 0 { n = draw_text(out, n, l2, b.x0 + 12 * k, y0 + 18 * k + s1 + s2, s2, GAP, SPACE, ink(k, 0.85, PARCH_R, PARCH_G, PARCH_B), false, false); }
   }

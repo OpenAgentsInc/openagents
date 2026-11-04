@@ -126,7 +126,7 @@ watch_frame :: (s: [] Everglade, you: Point, dt: f32, c: FolkClock) {
   if !w[0].on { return; }
   watch_pops_frame(s, dt);
   s[0].wv.net = net_town(s);
-  if s[0].wv.net { watch_net_frame(s); return; }
+  if s[0].wv.net { watch_net_you(w, dt); watch_net_frame(s); return; }
   watch_you(w[..])[0].face = s[0].face;
   // the realm's switches (realm_rights rows): guards who give chase, and its owner's own invincibility
   e := s[0].ev.ed[..];
@@ -961,6 +961,14 @@ everglade_room_wanted :: (s: [] Everglade, p: int) -> int #export_c {
 // where the server has them (f), in its mode, clip and Hit Points; on their day a spot's person walks
 // where it says and one not heard is indoors (or too far to draw); your WANTED level is the server's.
 // The page's own watch does not step: no blows, crimes or waves of its own.
+// In a room your death is the server's (everglade5e.coax e5_room_death sets it and ends it); the watch's
+// own tick doesn't run there, so your fall, the view's dark and its coming back run here.
+watch_net_you :: (w: [] Watch, dt: f32) {
+  t := ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32;
+  y := watch_you(w[..]);
+  if y[0].dead { y[0].you_fall += t; y[0].dead_t += t; }
+  else if y[0].dead_t < 0 { y[0].dead_t = lo(y[0].dead_t + t, 0); }
+}
 watch_net_frame :: (s: [] Everglade) {
   w := watch_w(s);
   for i: 0..<WATCH_ACTORS {
