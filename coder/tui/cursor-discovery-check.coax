@@ -1,0 +1,21 @@
+// Native regression for the installer's >512-byte shim. No foreign code runs.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/agent/cursor/cursor.coax";
+
+tool_main :: ()->int #export_c {
+  root_buf:[4096]u8; root:=fs_temp("coder-cursor-discovery-",root_buf[..]);
+  if root.count==0 {return 1;}
+  path_buf:[4096]u8; path:=fs_join(root,"cursor-agent",path_buf[..]);
+  text:[1024]u8; for i:0..<600 {text[i]=' ';} n:=600;
+  for c:"Error: No Cursor IDE installation found" {text[n]=c;n+=1;}
+  if !fs_write(path,cast(string)text[0..<n]) {return 1;}
+  dir_buf:[4096]u8; dir:=fs_join(root,".local/share/cursor-agent/versions/2026.10.14-test",dir_buf[..]);
+  if !fs_mkdir(dir) {return 1;}
+  image_buf:[4096]u8; image:=fs_join(dir,"cursor-agent-sea",image_buf[..]);
+  if !fs_write(image,"not executed") {return 1;}
+  out:[4096]u8; got:=cu_find(root,root,out[..]); ok:=got==image;
+  removed:=fs_remove(root);
+  if !ok {tool_errln("Cursor discovery chose the IDE shim instead of the agent.");return 1;}
+  print("Cursor long-shim discovery passed.\n");return 0;
+}

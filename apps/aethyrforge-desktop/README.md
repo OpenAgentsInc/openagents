@@ -36,6 +36,28 @@ Refresh repeats discovery; only pressing Verify voice model hashes the pinned
 complete weight/tokenizer files. No model is loaded
 and no microphone or agent session starts during setup.
 
+The Coder HUD uses `aethyr/ui/draw.coax` frames and shared layout, a native Metal
+overlay and AppKit text/IME. Enter sends; Shift-Enter inserts a line. Agent,
+model, effort and working folder sit directly above the bottom input. Cmd+L
+focuses input, Shift-Tab changes agent and Esc/Stop cancels. The left transcript
+shows replies, tools, results, file-change paths and errors. Tool consent is
+Allow once / Deny. New chat, agent changes and folder changes start fresh.
+Slash commands, history browsing and attachment to a running PID are future work.
+
+The UI calls shared `~/.openagents/bin/openagents coder run|fork --json --ask`,
+the same Coder as the TUI. Follow-ups carry the previous durable session's
+context. Prebuilt Coder/Microcoder are bundled; messages do not build tools or
+need a checkout. Provider CLIs use their existing logins. Codex choices come
+from `openagents coder models --json` (its live app-server catalog); Claude has
+its CLI aliases. Custom model IDs pass through; unsupported choices report the
+agent's error. Microcoder/Psionic use their gateway/local-server configuration.
+Optional agent chats use the selected provider's normal connection, separate
+from the local voice/edit pipeline.
+
+`chat.json` stores agent/model/folder choices under `~/.openagents/aethyrforge/`;
+the initial folder is `workspace/` there. Complete histories stay under shared
+`~/.openagents/coder/sessions/`. The view is bounded; reopening starts fresh.
+
 The app's files live in `~/.openagents/aethyrforge/`. `setup.json` keeps the
 preferred engine and audio-model selection. The local world is `everglade/`:
 
@@ -63,7 +85,7 @@ the final words to Everglade's existing voice UI, without the public voice host.
 Release closes capture; setup, focus loss, hiding and quit cancel it. A permission
 request that finishes after cancellation cannot reopen capture or a voice socket.
 
-Local gpt-oss interpretation, full voice-edit acceptance, typed instructions,
+Local gpt-oss interpretation, full voice-edit acceptance, typed world edits,
 remote publish/revert, bots and raid controls are future milestones in the
 [desktop spec](../../docs/verse/2026-11-04-aethyrforge-desktop.md).
 
@@ -109,6 +131,18 @@ apps/aethyrforge-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge --setu
 Reports include the first-frame time and child PIDs; matching PNGs show the frame.
 Use a fresh directory for a new edit test. This is milestone one's shell/save
 check, not the future voice acceptance suite.
+
+The chat smoke uses the native composer and real packaged/shared CLI without
+opening a window or starting the world. It checks two replies and context.
+`FORGE_CHAT_SMOKE_ENGINE` selects the agent (default Echo). Optional actions
+check approval of a file write in the isolated workspace and cancellation:
+
+```sh
+mkdir -p /tmp/aethyrforge-chat
+FORGE_CHAT_SMOKE_ENGINE=codex FORGE_CHAT_SMOKE_ACTIONS=1 \
+  ~/.openagents/aethyrforge/Aethyrforge.app/Contents/MacOS/Aethyrforge \
+  --chat-smoke /tmp/aethyrforge-chat/result.json
+```
 
 The hidden voice check plays the committed fixture through a synthetic media
 stream, the actual WKWebView AudioWorklet and voice Wasm, the loopback voice

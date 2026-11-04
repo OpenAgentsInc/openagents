@@ -143,10 +143,10 @@ final class ForgeSetupPane: NSView {
 }
 
 struct ForgeCLI {
-    static func run(_ executable: URL, _ arguments: [String], timeout: TimeInterval = 15) async throws -> Data {
+    static func run(_ executable: URL, _ arguments: [String], timeout: TimeInterval = 15, environment: [String: String]? = nil) async throws -> Data {
         try await Task.detached(priority: .userInitiated) {
             let process = Process(); process.executableURL = executable; process.arguments = arguments
-            var env = ProcessInfo.processInfo.environment
+            var env = environment ?? ProcessInfo.processInfo.environment
             let shared = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/bin").path
             env["PATH"] = shared + ":" + (env["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin")
             process.environment = env

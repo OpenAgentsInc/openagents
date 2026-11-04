@@ -39,6 +39,7 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "diff.coax";
 #load "codex.coax";
+#load "models.coax";
 #load "cursor.coax";
 #load "microcoder.coax";
 #load "session.coax";
@@ -2461,6 +2462,7 @@ tool_main :: () -> int #export_c {
   }
   if verb == "apple-fm" { return cd_cmd_apple_fm(cd_positional(args, 1)); }
   if verb == "usage" { return cd_cmd_usage(json); }
+  if verb == "models" { return cd_models(); }
   if verb == "host" { tool_errln("coder host is a tool of its own: coder/tui/coder.sh host ... (coder/tui/host.coax)"); return 2; }
   if verb == "stop" { return cd_cmd_stop(cd_positional(args, 1), json); }
   if verb == "mcp" { hp := args_value(args, "--http", ""); if hp.count > 0 { return cd_cmd_mcp_http(cd_atoi(hp)); } return cd_cmd_mcp(); }

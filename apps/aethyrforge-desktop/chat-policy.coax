@@ -1,0 +1,37 @@
+// Admission of a draft and one outstanding Coder approval. The CLI remains
+// the authority for effects; the HUD never grants a remembered approval.
+#authority;
+
+#test "a prompt needs an idle turn, nonblank text and Coder's input bound" {
+  #assert fc_can_send(false, " hello \n") && fc_can_send(false, "x");
+  #assert !fc_can_send(true, "hello") && !fc_can_send(false, "") && !fc_can_send(false, " \n\t\r");
+  b: [16385] u8; for i: 0..<b.count { b[i]='x'; }
+  #assert fc_can_send(false, cast(string)b[0..<16384]);
+  #assert !fc_can_send(false, cast(string)b[..]);
+}
+#test "approval files are only for the active owned session, once" {
+  for busy: [2]bool.[false,true] { for pending: [2]bool.[false,true] {
+    #assert fc_can_answer(busy,pending,"20261104-abc_123") == (busy && pending);
+    #assert !fc_can_answer(busy,pending,"");
+  } }
+  for bad: [5]string.["../other","a/b","a.b","a\nb","a b"] { #assert !fc_can_answer(true,true,bad); }
+  b: [129] u8; for i: 0..<b.count { b[i]='x'; }
+  #assert fc_can_answer(true,true,cast(string)b[0..<128]);
+  #assert !fc_can_answer(true,true,cast(string)b[..]);
+  #assert fc_can_answer(true,true,"AZaz09-_");
+}
+#forall "session IDs admit exactly the ASCII filename alphabet" c:0..<128 {
+  b: [1]u8; b[0]=cast(u8)c;
+  expected := (c>=48 && c<=57) || (c>=65 && c<=90) || (c>=97 && c<=122) || c==45 || c==95;
+  #assert fc_can_answer(true,true,cast(string)b[..])==expected;
+}
+fc_can_send :: (busy:bool,text:string)->bool #export_c {
+  if busy || text.count>16384 {return false;}
+  for c:text {if c!=' ' && c!=10 && c!=13 && c!=9 {return true;}}
+  return false;
+}
+fc_can_answer :: (busy:bool,pending:bool,id:string)->bool #export_c {
+  if !busy || !pending || id.count==0 || id.count>128 {return false;}
+  for c:id {if !((c>='0' && c<='9') || (c>='a' && c<='z') || (c>='A' && c<='Z') || c=='-' || c=='_') {return false;}}
+  return true;
+}

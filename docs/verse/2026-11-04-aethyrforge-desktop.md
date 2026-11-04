@@ -1,14 +1,15 @@
 # Aethyrforge for Mac: local editing by voice (experimental spec)
 
-Status: experimental desktop shell and local setup implemented, 2026-11-04.
+Status: experimental desktop shell, local setup and basic Coder HUD implemented, 2026-11-04.
 The local Everglade editor, shared storage, CLI inventory, microphone capture
 and local Parakeet transcription work; the local edit model below remains planned. Nothing
 here ships to customers or TestFlight until the owner asks.
 
 Aethyrforge for Mac is a desktop app that opens your Everglade on your own Mac and
 lets you change it by talking. Speech recognition, the model that turns words into
-edits, the room and the world document all run locally. Nothing leaves the Mac
-until you press PUBLISH.
+edits, the room and the world document all run locally. Optional Coder chat uses
+the selected agent's normal provider connection and existing CLI login. World
+publication remains a separate explicit action.
 
 It builds on the web Aethyrforge (docs/verse/aethyrforge.md), the local room
 (`coax/web/room/local.sh`, `room-dev.coax`), local Parakeet (#12667, #12669), and
@@ -78,9 +79,22 @@ page server, the voice Wasm and a local Parakeet voice host. This is the same
   stays on this Mac; the public voice service is not used.
 - Audio output remains muted through a live zero-gain graph so the microphone's
   AudioWorklet can process samples. The existing page displays final words.
-  The dedicated transcript bar, Space binding, instruction entry,
-  model download, typed model edits, durable undo log,
-  remote PUBLISH/REVERT, bots or raid controls are wired into this shell yet.
+  The dedicated voice transcript bar, Space binding, model download, typed model
+  edits, durable undo log, remote PUBLISH/REVERT, bots and raid controls are not
+  wired into this shell yet.
+- Basic coding-agent chat uses the same `openagents coder` as the TUI. Aethyr
+  HUD frames surround the view. The left transcript shows replies/tools, and
+  agent/model/effort/folder controls sit above the bottom input. Enter sends,
+  Shift-Enter inserts a line, Shift-Tab changes agent, Cmd+L focuses input and
+  Esc/Stop cancels. Tools require Allow once / Deny. Follow-ups use Coder's
+  durable fork/context path. New chat and agent/folder changes start fresh.
+  Complete histories stay in `~/.openagents/coder/sessions/`; UI settings and
+  workspace are under `~/.openagents/aethyrforge/`. Codex model/effort options
+  come from `openagents coder models --json`, its live catalog. Custom model
+  IDs pass through to the provider CLI. Prebuilt Coder/Microcoder are bundled,
+  so messages do not compile tools or need a checkout. This creates an owned
+  Coder conversation; discovered PIDs remain unattached. Slash commands and
+  turning chat into typed world edits remain planned.
 - Requires Apple Silicon and macOS 26+ for this initial WKWebView/WebGPU build.
   The app is ad-hoc signed, experimental and outside `/Applications`.
 
@@ -292,7 +306,18 @@ Each step lands on `main` working end to end.
    document; a second launch verifies the saved bytes survive reopening.
    **Setup (implemented):** the front pane, shared `~/.openagents/` storage,
    CLI/agent/model inventories, pinned Parakeet verification and saved choices.
-   Voice/model residency and agent attachment remain later integration work.
+   **Coder HUD (implemented):** basic chat, live Codex model selection, CLI
+   follow-up context, tool consent and Stop. Native checks exercised real Codex,
+   Claude Code and Microcoder two-turn conversations, a Codex approved file
+   write, cancellation and the visible Enter/send/reply path. Cursor discovery
+   now rejects the full installer shim; this Mac's installed agent executables
+   exit 137 even for `--version`, so chat reports their runtime failure.
+   Gates: 107 HUD/parser checks, 54 admission mutants killed with zero survivors,
+   417 Coder checks, 36 Cursor checks and a native long-shim regression. Unchanged
+   world/voice assets reuse their earlier verification. Tools-check still reports
+   the same 21 unrelated missing-reason files. Agent attachment and the conductor's
+   worktree/integration lane remain planned; compiler build-load work is owned
+   separately.
 2. **Voice to text:** hold to talk, resident Parakeet, and the transcript bar.
 3. **Text to edits:** gpt-oss-20b under the edit grammar, the resolver for places
    and things, the edit applied and saved, undo and redo.

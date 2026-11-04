@@ -138,8 +138,18 @@ tool_main :: () -> int #export_c {
   bridge := af_path(p[..], work, "setup-face.o");
   bc := [10] string.["/usr/bin/clang", "-std=c11", "-O2", "-c", af_path(p[..], here, "setup-face.c"), "-I", work, "-o", bridge, "-Wno-unused-function"];
   if af_run(bc[..], out[..], deadline) < 0 { return 1; }
-  sw := [19] string.["xcrun", "swiftc", "-O", "-target", "arm64-apple-macos26.0", "-import-objc-header", af_path(p[..], here, "face.h"),
-    af_path(p[..], here, "Sources/main.swift"), af_path(p[..], here, "Sources/Setup.swift"), object, bridge, "-framework", "AppKit", "-framework", "WebKit", "-framework", "AVFoundation", "-o", af_path(p[..], mac, "Aethyrforge")];
+  chat_h := af_path(p[..], work, "chat.h"); chat_c := af_path(p[..], work, "chat.c"); chat_o := af_path(p[..], work, "chat.o");
+  cg := [6]string.[coax,"c",af_path(p[..],here,"chat.coax"),"--library","--header",chat_h];
+  cn := af_run(cg[..],out[..],deadline); if cn<0 || !fs_write(chat_c,cast(string)out[0..<cn]) {return 1;}
+  ccc := [8]string.["/usr/bin/clang","-std=c11","-O2","-c",chat_c,"-o",chat_o,"-Wno-unused-function"];
+  if af_run(ccc[..],out[..],deadline)<0 {return 1;}
+  chat_face := af_path(p[..],work,"chat-face.o");
+  cbc := [10]string.["/usr/bin/clang","-std=c11","-O2","-c",af_path(p[..],here,"chat-face.c"),"-I",work,"-o",chat_face,"-Wno-unused-function"];
+  if af_run(cbc[..],out[..],deadline)<0 {return 1;}
+  hud_copy := [3]string.["ditto",af_path(p[..],here,"HUD.metal"),af_path(p[..],res,"HUD.metal")];
+  if af_run(hud_copy[..],out[..],deadline)<0 {return 1;}
+  sw := [24] string.["xcrun", "swiftc", "-O", "-target", "arm64-apple-macos26.0", "-import-objc-header", af_path(p[..], here, "face.h"),
+    af_path(p[..], here, "Sources/main.swift"), af_path(p[..], here, "Sources/Setup.swift"), af_path(p[..],here,"Sources/Chat.swift"), object, bridge,chat_o,chat_face,"-framework","MetalKit", "-framework", "AppKit", "-framework", "WebKit", "-framework", "AVFoundation", "-o", af_path(p[..], mac, "Aethyrforge")];
   if af_run(sw[..], out[..], deadline) < 0 { return 1; }
   // Keep a compact self-contained page tree: the exact engine, shaders and pack
   // the website uses, plus all generic browser host modules.
@@ -180,6 +190,25 @@ tool_main :: () -> int #export_c {
     cp := [3] string.["ditto", af_path(p[..], af_path(p[..], cli_dir, "build"), name), af_path(p[..], res, name)];
     if af_run(cp[..], out[..], deadline) < 0 { return 1; }
   }
+  // Build the same Coder and Microcoder used by the TUI once, then package
+  // their images. A chat message never compiles or needs a source checkout.
+  hash_cmd := [4]string.["shasum","-a","256",coax];
+  if af_run(hash_cmd[..],out[..],deadline)<64 {return 1;}
+  hash_buf:[64]u8; for i:0..<64 {hash_buf[i]=out[i];} hash:=cast(string)hash_buf[..];
+  for name:[2]string.["coder","mcworker"] {
+    src_buf:[128]u8; sn:=0;
+    for c:"coder/tui/" {src_buf[sn]=c;sn+=1;} for c:name {src_buf[sn]=c;sn+=1;}
+    for c:".coax" {src_buf[sn]=c;sn+=1;}
+    cmd:=[3]string.[af_path(p[..],root,"coax/web/tool.sh"),af_path(p[..],root,cast(string)src_buf[0..<sn]),"--version"];
+    child:=af_start(cmd[..]); if child<0 {return 1;} closed:=proc_close_stdin(child);
+    if !af_finish(child,deadline) {return 1;}
+    cache_buf:[256]u8; k:=0;
+    for c:"coax/web/build/tools/" {cache_buf[k]=c;k+=1;}
+    for c:name {cache_buf[k]=c;k+=1;} cache_buf[k]='-';k+=1;
+    for c:hash {cache_buf[k]=c;k+=1;}
+    cp:=[3]string.["ditto",af_path(p[..],root,cast(string)cache_buf[0..<k]),af_path(p[..],res,name)];
+    if af_run(cp[..],out[..],deadline)<0 {return 1;}
+  }
   pk := [3] string.["ditto", pk_image, af_path(p[..], res, "psionic-parakeet")];
   if af_run(pk[..], out[..], deadline) < 0 { return 1; }
   voice_build := [3] string.[af_path(p[..], root, "coax/web/tool.sh"), af_path(p[..], here, "voice-build.coax"), root];
@@ -200,13 +229,15 @@ tool_main :: () -> int #export_c {
     shared := af_path(p[..], home, ".openagents");
     installed := af_path(p[..], shared, "aethyrforge/Aethyrforge.app");
     cp := [3] string.["ditto", app, installed]; if af_run(cp[..], out[..], deadline) < 0 { return 1; }
-    bins := af_path(p[..], shared, "bin"); version := af_path(p[..], shared, "versions/aethyrforge-cli-2026-11-04");
+    bins := af_path(p[..], shared, "bin"); version := af_path(p[..], shared, "versions/aethyrforge-cli-coder-2026-11-04");
     if !fs_mkdir(bins) || !fs_mkdir(version) { return 1; }
-    for name: [3] string.["openagents", "openagents-dictate", "psionic-parakeet"] {
+    for name: [5] string.["openagents", "openagents-dictate", "psionic-parakeet", "coder", "mcworker"] {
       target := af_path(p[..], version, name);
       copy := [3] string.["ditto", af_path(p[..], res, name), target]; if af_run(copy[..], out[..], deadline) < 0 { return 1; }
-      link := [4] string.["ln", "-sfn", target, af_path(p[..], bins, name)];
-      if af_run(link[..], out[..], deadline) < 0 { return 1; }
+      if name != "coder" && name != "mcworker" {
+        link := [4] string.["ln", "-sfn", target, af_path(p[..], bins, name)];
+        if af_run(link[..], out[..], deadline) < 0 { return 1; }
+      }
     }
     launch := [2] string.["open", installed]; if af_run(launch[..], out[..], deadline) < 0 { return 1; }
     print("Opened %\n", installed);

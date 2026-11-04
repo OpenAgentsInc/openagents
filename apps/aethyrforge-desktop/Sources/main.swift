@@ -47,6 +47,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     var framePump: Task<Void, Never>?
     var inventoryTask: Task<Void, Never>?
     var setupPane: ForgeSetupPane!
+    var chatPane: ForgeChatPane!
     var sceneReady = false
     var dataURL: URL!
     var pageURL: URL!
@@ -56,16 +57,17 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     var firstFrameSeconds = 0.0
     let setupSmoke = CommandLine.arguments.contains("--setup-smoke")
     let voiceSmoke = CommandLine.arguments.contains("--voice-smoke")
-    var smoke: Bool { setupSmoke || voiceSmoke || CommandLine.arguments.contains("--smoke-test") }
+    let chatSmoke = CommandLine.arguments.contains("--chat-smoke")
+    var smoke: Bool { chatSmoke || setupSmoke || voiceSmoke || CommandLine.arguments.contains("--smoke-test") }
     var report: URL? {
-        guard let i = CommandLine.arguments.firstIndex(of: voiceSmoke ? "--voice-smoke" : setupSmoke ? "--setup-smoke" : "--smoke-test"), i + 1 < CommandLine.arguments.count else { return nil }
+        guard let i = CommandLine.arguments.firstIndex(of: chatSmoke ? "--chat-smoke" : voiceSmoke ? "--voice-smoke" : setupSmoke ? "--setup-smoke" : "--smoke-test"), i + 1 < CommandLine.arguments.count else { return nil }
         return URL(fileURLWithPath: CommandLine.arguments[i + 1])
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(smoke ? .prohibited : .regular)
         makeWindow()
-        startup = Task { await start() }
+        startup = Task { if chatSmoke { await chatSmokeCheck() } else { await start() } }
     }
 
     func makeWindow() {
@@ -82,6 +84,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         let view = NSMenu(title: "View"); viewItem.submenu = view
         let reload = view.addItem(withTitle: "Reload Everglade", action: #selector(reloadWorld), keyEquivalent: "r"); reload.target = self
         let setup = view.addItem(withTitle: "Setup…", action: #selector(showSetup), keyEquivalent: ","); setup.target = self
+        let chat = view.addItem(withTitle: "Message Coding Agent", action: #selector(focusChat), keyEquivalent: "l"); chat.target = self
         let folder = view.addItem(withTitle: "Open Local World Folder", action: #selector(openWorldFolder), keyEquivalent: "o"); folder.target = self
         folder.keyEquivalentModifierMask = [.command, .shift]
         NSApp.mainMenu = menu
@@ -113,6 +116,10 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         notice.alignment = .center; notice.frame = NSRect(x: 0, y: 0, width: 1280, height: 28)
         notice.autoresizingMask = [.width, .maxYMargin]
         content.addSubview(notice)
+        chatPane = ForgeChatPane(frame: content.bounds)
+        chatPane.autoresizingMask = [.width, .height]
+        chatPane.onActivity = { [weak self] in self?.cancelVoice() }
+        content.addSubview(chatPane)
         fgs_reset()
         setupPane = ForgeSetupPane(frame: content.bounds)
         setupPane.autoresizingMask = [.width, .height]
@@ -351,10 +358,79 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         for i in 0..<512 { let c = fgs_settings_byte(Int64(i)); if c < 0 { break }; bytes.append(UInt8(c)) }
         do {
             try Data(bytes).write(to: settingsURL, options: .atomic)
-            setupPane.isHidden = true; window.makeFirstResponder(web)
+            setupPane.isHidden = true; window.makeFirstResponder(chatPane.input)
         } catch { setupPane.errorMessage = "Could not save setup: \(error.localizedDescription)"; setupPane.update() }
     }
     @objc func showSetup() { cancelVoice(); setupPane.isHidden = false; setupPane.sceneReady = sceneReady; setupPane.update() }
+    @objc func focusChat() { guard setupPane.isHidden else { return }; window.makeFirstResponder(chatPane.input) }
+
+    // Native input, layout and real CLI round trip, isolated from the live world.
+    func chatSmokeCheck() async {
+        do {
+            guard let report else { throw ShellError.failed("--chat-smoke needs a report path.") }
+            setupPane.isHidden = true; notice.isHidden = true
+            let root = report.deletingLastPathComponent()
+            chatPane.home = root
+            chatPane.cliOverride = Bundle.main.resourceURL!.appendingPathComponent("openagents")
+            chatPane.cwd = root.appendingPathComponent("workspace")
+            try fm.createDirectory(at: chatPane.cwd, withIntermediateDirectories: true)
+            try fm.createDirectory(at: root.appendingPathComponent(".openagents/aethyrforge"), withIntermediateDirectories: true)
+            let engine = ProcessInfo.processInfo.environment["FORGE_CHAT_SMOKE_ENGINE"] ?? "echo"
+            guard let i = (0..<6).first(where: { chatPane.catalog($0, label: false) == engine }) else { throw ShellError.failed("Unknown smoke engine.") }
+            chatPane.agent.selectItem(at: i); chatPane.changeAgent(); chatPane.model.stringValue = ""
+            if engine == "codex" {
+                await chatPane.catalogTask?.value
+                if !chatPane.catalogLoaded { chatPane.loadModels(); await chatPane.catalogTask?.value }
+                guard chatPane.catalogLoaded else { throw ShellError.failed("Codex model choices did not load through Coder.") }
+                chatPane.model.stringValue = chatPane.modelID(0); chatPane.updateEfforts()
+                if chatPane.effort.numberOfItems > 1 { chatPane.effort.selectItem(at: 1) }
+            }
+            window.contentView?.layoutSubtreeIfNeeded()
+            guard chatPane.hud.pipeline != nil else { throw ShellError.failed("Aethyr HUD Metal pipeline did not load.") }
+            chatPane.input.string = "Remember the token FORGE_CODER_HELIOTROPE. Reply exactly FORGE_CODER_OK. Do not run tools or change files."
+            chatPane.submit(); let firstDeadline = Date().addingTimeInterval(120)
+            while chatPane.busy && Date() < firstDeadline { try await Task.sleep(for: .milliseconds(50)) }
+            guard !chatPane.busy, chatPane.lastEnding.hasPrefix("finished"), chatPane.transcript.string.contains("FORGE_CODER_OK"), !chatPane.session.isEmpty else { throw ShellError.failed("First Coder turn failed: \(chatPane.transcript.string.suffix(1200))") }
+            let first = chatPane.session
+            func replies(_ id: String) throws -> String {
+                let log = try String(contentsOf: chatPane.sessions.appendingPathComponent(id + ".jsonl"), encoding: .utf8)
+                return log.split(separator: "\n").compactMap { line -> String? in
+                    guard let record = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any], record["kind"] as? String == "reply" else { return nil }
+                    return record["text"] as? String
+                }.joined(separator: "\n")
+            }
+            guard try replies(first).contains("FORGE_CODER_OK") else { throw ShellError.failed("The provider did not reply to the first turn.") }
+            chatPane.input.string = "What token did I ask you to remember? Reply with only that token. Do not run tools."
+            chatPane.submit(); let secondDeadline = Date().addingTimeInterval(120)
+            while chatPane.busy && Date() < secondDeadline { try await Task.sleep(for: .milliseconds(50)) }
+            guard !chatPane.busy, chatPane.lastEnding.hasPrefix("finished"), chatPane.session != first else { throw ShellError.failed("Follow-up Coder turn failed.") }
+            let log = try String(contentsOf: chatPane.sessions.appendingPathComponent(chatPane.session + ".jsonl"), encoding: .utf8)
+            guard log.contains("\"parent\":\"\(first)\""), try replies(chatPane.session).contains("FORGE_CODER_HELIOTROPE") else { throw ShellError.failed("Coder did not carry the previous turn.") }
+            let followup = chatPane.session
+            var approved = false
+            var stopped = false
+            if ProcessInfo.processInfo.environment["FORGE_CHAT_SMOKE_ACTIONS"] == "1" {
+                chatPane.input.string = "Use a shell command to write exactly HUD_APPROVED to hud-approved.txt in the working directory. Do not write any other file."
+                chatPane.submit(); let end = Date().addingTimeInterval(120)
+                while chatPane.busy && Date() < end {
+                    if chatPane.pending { chatPane.approve(); approved = true }
+                    try await Task.sleep(for: .milliseconds(50))
+                }
+                guard !chatPane.busy, approved, (try? String(contentsOf: chatPane.cwd.appendingPathComponent("hud-approved.txt"), encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) == "HUD_APPROVED" else { throw ShellError.failed("Coder approval/write flow failed: \(chatPane.transcript.string.suffix(1200))") }
+                chatPane.input.string = "Run the shell command sleep 60, then reply DONE."
+                chatPane.submit(); let stopEnd = Date().addingTimeInterval(30)
+                while chatPane.busy && chatPane.session.isEmpty && Date() < stopEnd { try await Task.sleep(for: .milliseconds(50)) }
+                chatPane.stopTurn()
+                while chatPane.busy && Date() < stopEnd { try await Task.sleep(for: .milliseconds(50)) }
+                stopped = !chatPane.busy && chatPane.lastEnding.hasPrefix("stopped")
+                guard stopped else { throw ShellError.failed("Coder did not stop the active turn.") }
+            }
+            let result: [String: Any] = ["ok": true, "engine": engine, "model": chatPane.model.stringValue, "effort": chatPane.effort.titleOfSelectedItem ?? "", "first": first, "followup": followup, "ending": chatPane.lastEnding, "approval": approved, "stop": stopped, "hud": "aethyr/ui/draw.coax", "cli": chatPane.cli.path]
+            try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]).write(to: report)
+            print("Coder HUD smoke passed: \(engine)")
+        } catch { if let report { try? Data(error.localizedDescription.utf8).write(to: report.appendingPathExtension("error")) }; print(error.localizedDescription) }
+        chatPane.shutdown(); NSApp.terminate(nil)
+    }
 
     func ensureVoiceHost() async throws {
         if let voiceStartup { try await voiceStartup.value; return }
@@ -468,6 +544,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     func applicationWillTerminate(_ notification: Notification) { startup?.cancel(); stopChildren() }
     func stopChildren() {
         stopping = true
+        chatPane?.shutdown()
         framePump?.cancel()
         inventoryTask?.cancel()
         voiceStartup?.cancel()

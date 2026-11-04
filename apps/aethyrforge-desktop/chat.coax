@@ -1,0 +1,115 @@
+// Coder's existing JSONL is the desktop's message transport. Coax owns the
+// catalog, event interpretation and layout; AppKit provides text/IME effects.
+#import "Basic";
+#load "chat-policy.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../aethyr/ui/draw.coax";
+
+FC_ENGINES :: [6]string.["codex","claude","cursor","microcoder","psionic","echo"];
+FC_LABELS :: [6]string.["Codex","Claude Code","Cursor","Microcoder","Psionic (local)","Echo (offline)"];
+ForgeChatEvent :: struct {kind:int=0; session:[128]u8; sn:int; text:[262144]u8; tn:int;}
+ForgeChatModels :: struct {n:int=0; ids:[64][128]u8; levels:[64][8][16]u8; counts:[64]int;}
+
+#test "desktop model choices use visible IDs and their reported effort levels" {
+  m:[1]ForgeChatModels;
+  #assert fc_models(m[..],"{\"data\":[{\"model\":\"test-model\",\"supportedReasoningEfforts\":[{\"reasoningEffort\":\"high\"}]},{\"id\":\"private\",\"hidden\":true}]}");
+  #assert m[0].n==1 && fc_model(m[..],0,-1)=="test-model" && fc_model(m[..],0,0)=="high";
+  #assert fc_model(m[..],0,1)=="" && fc_model(m[..],-1,0)=="";
+  #assert !fc_models(m[..],"not json") && m[0].n==1;
+}
+fc_cstr :: (b:[]u8)->string {n:=0;while n<b.count && b[n]!=0 {n+=1;}return cast(string)b[0..<n];}
+fc_model :: (m:[]ForgeChatModels,i:int,effort:int)->string #export_c {
+  if i<0 || i>=m[0].n {return "";}
+  if effort<0 {return fc_cstr(m[0].ids[i][..]);}
+  if effort>=m[0].counts[i] {return "";}
+  return fc_cstr(m[0].levels[i][effort][..]);
+}
+fc_models :: (m:[]ForgeChatModels,line:string)->bool #export_c {
+  nodes:[4096]JvNode; d:[1]Jv;
+  if !jv_parse(d[..],line,nodes[..]) {return false;}
+  v:=d[0]; data:=jv_get(v,0,"data"); if jv_kind(v,data)!=JV_ARRAY {return false;}
+  for i:0..<jv_len(v,data) {
+    row:=jv_at(v,data,i); if jv_bool(v,jv_get(v,row,"hidden")) || m[0].n>=64 {continue;}
+    k:=m[0].n; id:[128]u8; n:=jv_str(v,jv_get(v,row,"model"),id[0..<127]);
+    if n<=0 {n=jv_str(v,jv_get(v,row,"id"),id[0..<127]);} if n<=0 {continue;}
+    exists:=false; for j:0..<k {if fc_model(m,j,-1)==cast(string)id[0..<n] {exists=true;}}
+    if exists {continue;}
+    for j:0..<n {m[0].ids[k][j]=id[j];} m[0].ids[k][n]=0;
+    levels:=jv_get(v,row,"supportedReasoningEfforts");
+    for j:0..<jv_len(v,levels) {
+      if m[0].counts[k]>=8 {break;} l:=m[0].counts[k]; x:=jv_at(v,levels,j);
+      value:=ifx jv_kind(v,x)==JV_STRING then x else jv_get(v,x,"reasoningEffort");
+      n=jv_str(v,value,m[0].levels[k][l][0..<15]);
+      if n>0 {m[0].levels[k][l][n]=0;m[0].counts[k]+=1;}
+    }
+    m[0].n+=1;
+  }
+  return true;
+}
+
+#test "chat consumes Coder events without confusing tool results with replies" {
+  s:[1]ForgeChatEvent;
+  #assert fc_read(s[..],"{\"kind\":\"session\",\"id\":\"20261104-123\"}")==1 && s[0].sn==12;
+  #assert fc_read(s[..],"{\"kind\":\"reply\",\"text\":\"Hello\\nworld\"}")==3 && s[0].tn==11 && s[0].text[5]==10;
+  #assert fc_read(s[..],"{\"kind\":\"tool\",\"label\":\"Read(file)\"}")==4;
+  #assert fc_read(s[..],"{\"kind\":\"ask\",\"text\":\"Run command?\"}")==6;
+  #assert fc_read(s[..],"{\"kind\":\"end\",\"ending\":\"failed\",\"text\":\"login needed\"}")==7 && s[0].tn==20;
+  #assert fc_read(s[..],"{\"kind\":\"request\",\"text\":\"hidden metadata\"}")==0;
+  #assert fc_read(s[..],"{\"kind\":\"session\",\"id\":\"../bad\"}")==0 && s[0].sn==12;
+  #assert fc_read(s[..],"invalid")==0;
+  #assert fc_read(s[..],"{\"kind\":\"model\",\"model\":\"chosen-model\",\"effort\":\"high\"}")==9 && s[0].tn==12;
+  #assert fc_engine(0)=="codex" && fc_engine(5)=="echo" && fc_engine(6)=="" && fc_label(-1)=="";
+}
+#test "HUD keeps the composer at the bottom and the settings beside each other" {
+  for w:[3]f32.[900,1280,1920] {
+    b:=fc_box(0,w,800); t:=fc_box(1,w,800); i:=fc_box(2,w,800);
+    #assert b.x==24 && b.y+b.height==776 && b.width==w-48;
+    #assert t.y+t.height<b.y && i.y>b.y && i.x+i.width<b.x+b.width;
+    #assert fc_box(3,w,800).y==fc_box(4,w,800).y;
+  }
+  out:[24000]f32; n:=fc_draw(out[..],900,800,1,false);
+  #assert n>0 && n<=2000 && n%6==0;
+}
+fc_engine :: (index:int)->string #export_c {return ifx index>=0 && index<6 then FC_ENGINES[index] else "";}
+fc_label :: (index:int)->string #export_c {return ifx index>=0 && index<6 then FC_LABELS[index] else "";}
+fc_read :: (s:[]ForgeChatEvent,line:string)->int #export_c {
+  s[0].kind=0; s[0].tn=0; nodes:[128]JvNode; d:[1]Jv;
+  if !jv_parse(d[..],line,nodes[..]) {return 0;}
+  v:=d[0]; k:=jv_raw(v,jv_get(v,0,"kind")); field:="text";
+  if k=="session" {
+    b:[128]u8; n:=jv_str(v,jv_get(v,0,"id"),b[..]);
+    if n<=0 || !fc_can_answer(true,true,cast(string)b[0..<n]) {return 0;}
+    s[0].sn=n; for i:0..<n {s[0].session[i]=b[i];} s[0].kind=1; return 1;
+  }
+  if k=="user" {s[0].kind=2;} else if k=="reply" {s[0].kind=3;}
+  else if k=="tool" {s[0].kind=4;field="label";} else if k=="result" {s[0].kind=5;}
+  else if k=="ask" {s[0].kind=6;} else if k=="end" {s[0].kind=7;}
+  else if k=="diff" {s[0].kind=8;field="path";} else if k=="model" {s[0].kind=9;field="model";} else {return 0;}
+  if k=="end" {
+    n:=jv_str(v,jv_get(v,0,"ending"),s[0].text[..]); if n<0 {return 0;}
+    s[0].tn=n;
+    detail:[65536]u8; dn:=jv_str(v,jv_get(v,0,"text"),detail[..]);
+    if dn>0 {s[0].text[n]=':';s[0].text[n+1]=' '; for i:0..<dn {s[0].text[n+2+i]=detail[i];} s[0].tn=n+2+dn;}
+  } else {n:=jv_str(v,jv_get(v,0,field),s[0].text[..]); if n<0 {return 0;} s[0].tn=n;}
+  return s[0].kind;
+}
+// Shared point-space boxes: native text controls and the GPU frames use these.
+fc_box :: (kind:int,w:f32,h:f32)->HudBox #export_c {
+  if kind==0 {return HudBox.{x=24,y=h-174,width=w-48,height=150};}
+  if kind==1 {return HudBox.{x=24,y=h-508,width=620,height=318};}
+  if kind==2 {return HudBox.{x=40,y=h-112,width=w-220,height=58};}
+  if kind==3 {return HudBox.{x=40,y=h-150,width=156,height=26};}
+  if kind==4 {return HudBox.{x=206,y=h-150,width=200,height=26};}
+  if kind==5 {return HudBox.{x=416,y=h-150,width=140,height=26};}
+  if kind==6 {return HudBox.{x=566,y=h-150,width=w-606,height=26};}
+  if kind==7 {return HudBox.{x=w-160,y=h-112,width=120,height=36};}
+  return HudBox.{};
+}
+fc_draw :: (out:[]f32,w:f32,h:f32,d:f32,busy:bool)->int #export_c {
+  p:=HdPen.{d=d,cyan=true,top=0,bottom=h,sans=false}; n:=0;
+  n=hd_panel(out,n,HudBox.{x=12,y=12,width=w-24,height=h-24},p,false);
+  n=hd_panel(out,n,fc_box(0,w,h),p,true); n=hd_panel(out,n,fc_box(1,w,h),p,busy);
+  n=hd_panel(out,n,fc_box(2,w,h),p,false);
+  n=hd_text_fit(out,n,"CODER",w*0.5-36,30,12,100,p,2);
+  return n;
+}

@@ -1,0 +1,22 @@
+// Read-only desktop/editor counterpart of the TUI's /model catalog. It starts
+// no thread and makes no model request. The result is Codex's own model/list.
+cd_models :: () -> int {
+  c:[1]CxClient; p:[1]ClProcess; line:[262144]u8; arena:[262144]u8; out:[262144]u8;
+  p[0].handle=-1; cx_init(c[..],line[..],arena[..],out[..]);
+  why:=cx_start(c[..],p[..],CxLaunch.{});
+  if why.count>0 {tool_errln(why);return 1;}
+  r:=cx_initialize(c[..],"openagents-coder","Coder",CODER_VERSION);
+  deadline:=cxproc_now_ms()+15000;
+  while cxproc_now_ms()<deadline {
+    ev:=cx_poll(c[..],p[..],100);
+    if ev.kind==CxEventKind.initialized {r=cx_model_list(c[..],"");}
+    if ev.kind==CxEventKind.answered && ev.of==CX_MODEL_LIST {
+      print("%\n",ev.result);
+      cursor:=cl_str(c[0].ar[..],ev.result,"nextCursor");
+      if cursor.count==0 {cx_close_process(p[..]);return 0;}
+      r=cx_model_list(c[..],cursor);
+    }
+    if ev.kind==CxEventKind.failed || ev.kind==CxEventKind.end {tool_errln(cx_error(c[..]));break;}
+  }
+  cx_close_process(p[..]);tool_errln("Codex model catalog unavailable or timed out.");return 1;
+}

@@ -15,13 +15,15 @@ CD_MC_WORKER :: "/coder/tui/mcworker.coax";
 // Starts the worker on the first message; later messages go to the same one.
 cd_micro_send :: (a: [] App, msg: string) {
   if a[0].mc_h < 0 {
+    image: [4096] u8; worker := cl_getenv("CODER_MICRO_WORKER", image[..]);
     rb: [4096] u8; repo := cl_getenv("CODER_REPO", rb[..]);
-    if repo.count == 0 { cd_finish(a, END_FAILED, "CODER_REPO is not set: start Coder with coder/tui/coder.sh."); return; }
+    if worker.count == 0 && repo.count == 0 { cd_finish(a, END_FAILED, "CODER_REPO is not set: start Coder with coder/tui/coder.sh."); return; }
     tb: [4200] u8; tn := cd_cat(tb[..], cd_cat(tb[..], 0, repo), CD_MC_TOOL);
     wb: [4200] u8; wn := cd_cat(wb[..], cd_cat(wb[..], 0, repo), CD_MC_WORKER);
     h := cxproc_new();
     if h < 0 { cd_finish(a, END_FAILED, "No process slot is free."); return; }
-    ok := cl_push(h, CL_FIELD_ARG, cast(string) tb[0..<tn]) && cl_push(h, CL_FIELD_ARG, cast(string) wb[0..<wn]);
+    ok := cl_push(h, CL_FIELD_ARG, ifx worker.count > 0 then worker else cast(string) tb[0..<tn]);
+    if worker.count == 0 { ok = ok && cl_push(h, CL_FIELD_ARG, cast(string) wb[0..<wn]); }
     if a[0].cwd.count > 0 { ok = ok && cl_push(h, CL_FIELD_CWD, a[0].cwd); }
     if !ok || cxproc_spawn(h) != 0 { r := cxproc_release(h); cd_finish(a, END_FAILED, "Microcoder's worker did not start."); return; }
     a[0].mc_h = h;

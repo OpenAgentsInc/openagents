@@ -1,5 +1,15 @@
 # Owner actions
 
+## Aethyrforge Coder HUD / Cursor installation (2026-11-04)
+
+- Basic chat is ready in the reopened app: Enter sends; agent/model/effort and
+  working folder sit above the bottom input. Codex, Claude Code and Microcoder
+  passed real two-turn checks; tool consent and Stop passed with Codex.
+- [ ] Optional, to use Cursor: repair the installed Cursor agent. Its
+  `cursor-agent-sea --version` exits 137 in both installed October versions;
+  the installer shims also require the IDE. No credentials or third-party
+  binaries were changed. The app reports the existing CLI failure in chat.
+
 ## Aethyrforge microphone (2026-11-04)
 
 - [x] Owner approved the macOS microphone prompt and confirmed it in chat.

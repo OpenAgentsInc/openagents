@@ -33,6 +33,7 @@ coder_usage :: () {
   print("%\n", "  coder acp [--engine E]             Coder as an agent for editors, such as Zed (Agent Client Protocol on stdio)");
   print("%\n", "  coder ls                           sessions, newest first");
   print("%\n", "  coder agents [--json]              running local agent processes; read-only discovery");
+  print("%\n", "  coder models --json                live Codex model/list pages, without starting a conversation");
   print("%\n", "  coder status ID                    one session's state (ID may be a prefix)");
   print("%\n", "  coder log ID                       one session's log");
   print("%\n", "");
@@ -57,13 +58,37 @@ coder_root :: (out: [] u8) -> string {
 
 coder_main :: (a: [] Args, r: [] Rep) -> int {
   if positional(a, 1) == "agents" { return la_command(r[0].json); }
+  // Packaged native clients use the same prebuilt Coder, without rebuilding a
+  // checkout at every message. Source invocation keeps its existing behavior.
+  image: [4096] u8;
+  binary := proc_getenv("OPENAGENTS_CODER_BIN", image[..]);
+  exe: [4096] u8;
+  if binary.count == 0 {
+    en := cxcli_exe_path(exe[..]);
+    if en > 0 {
+      sibling := fs_join(fs_dir(cast(string)exe[0..<en]), "coder", image[..]);
+      if fs_kind(sibling) == FS_FILE { binary = sibling; }
+    }
+  }
   src: [1024] u8;
-  root := coder_root(src[..]);
-  if root.count == 0 { return fail(r, EXIT_NOT_FOUND, "no OpenAgents checkout with coder/tui/coder.sh: set OPENAGENTS_SOURCE"); }
   sb: [1100] u8;
-  script := fs_join(root, "coder/tui/coder.sh", sb[..]);
+  script := binary;
+  if binary.count == 0 {
+    root := coder_root(src[..]);
+    if root.count == 0 { return fail(r, EXIT_NOT_FOUND, "no OpenAgents checkout with coder/tui/coder.sh: set OPENAGENTS_SOURCE"); }
+    script = fs_join(root, "coder/tui/coder.sh", sb[..]);
+  }
   h := proc_new();
   ok := proc_arg(h, script);
+  worker_buf: [4096] u8; env_buf: [4200] u8;
+  if binary.count > 0 {
+    worker := fs_join(fs_dir(binary), "mcworker", worker_buf[..]);
+    if fs_kind(worker) == FS_FILE {
+      n := 0; for c: "CODER_MICRO_WORKER=" { env_buf[n]=c;n+=1; }
+      for c: worker { env_buf[n]=c;n+=1; }
+      ok = ok && proc_env(h, cast(string)env_buf[0..<n]);
+    }
+  }
   // Everything after the domain, without the CLI's own --profile.
   past := false; i := 0;
   while i < args_count(a) {
@@ -75,5 +100,5 @@ coder_main :: (a: [] Args, r: [] Rep) -> int {
   }
   if !ok { return fail(r, EXIT_USAGE, "arguments too long"); }
   e := cxproc_exec(h);
-  return fail(r, EXIT_MISSING, "could not run coder/tui/coder.sh");
+  return fail(r, EXIT_MISSING, "could not run Coder");
 }

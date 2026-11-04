@@ -79,7 +79,9 @@ cu_on_path :: (path_env: string, name: string, out: [] u8) -> string {
 // when its text names Cursor, else the newest
 // ~/.local/share/cursor-agent/versions/*/cursor-agent-sea. "" when none.
 cu_find :: (path_env: string, home: string, out: [] u8) -> string {
-  head: [512] u8;
+  // Current installer shims put the rejection after their PATH search (>512
+  // bytes). Read the whole small shim before deciding it is an agent image.
+  head: [4096] u8;
   found := cu_on_path(path_env, "cursor-agent", out);
   if found.count > 0 && !cu_reject_text(cu_head(found, head[..])) { return found; }
   agent := cu_on_path(path_env, "agent", out);
