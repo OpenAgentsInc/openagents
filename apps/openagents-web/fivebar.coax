@@ -160,9 +160,11 @@ fb_everglade :: (out: [] FbAb) -> int {
 // A level 17 Fiend Warlock's bar, in slot order; on the wire its slots are FB_WL0 + k (everglade-warlock.coax).
 // Pact Magic's four 5th-level slots cast Fireball (a Fiend Spell), Blight and Dimension Door at 5th
 // level; the Mystic Arcanum casts Circle of Death (6th) and Finger of Death (7th). `delay`: seconds
-// from the press to the strike, as the page draws it (everglade-warlock.coax).
+// from the press to the strike, as the page draws it (everglade-warlock.coax). After the rebuild, the
+// SRD 5.2.1 Warlock's level 1 spells for a character's first kit (coax/web/room/room-events.coax ev_kit):
+// the cantrip Chill Touch and Hex (a Bonus Action, a 1st-level slot or the lowest free one).
 FB_WL0 :: 64;
-FB_WL_SLOTS :: 7;
+FB_WL_SLOTS :: 9;
 fb_warlock_bar :: (out: [] FbAb) -> int {
   out[0] = fb_spell(SP_ELDRITCH_BLAST, 0, FB_FOE); out[0].delay = 0.35;
   out[1] = fb_spell(SP_FIREBALL, 5, FB_POINT); out[1].delay = 0.9;
@@ -171,12 +173,15 @@ fb_warlock_bar :: (out: [] FbAb) -> int {
   out[4] = fb_spell(SP_FINGER_OF_DEATH, 7, FB_FOE); out[4].delay = 0.5;
   out[5] = fb_spell(SP_DIMENSION_DOOR, 5, FB_POINT); out[5].delay = 0.4;
   out[6] = fb_feature(FB_WORLD, "Rebuild", "rebuild");
+  out[7] = fb_spell(SP_CHILL_TOUCH, 0, FB_FOE); out[7].delay = 0.4;
+  out[8] = fb_spell(SP_HEX, 1, FB_FOE); out[8].delay = 0.3;
   return FB_WL_SLOTS;
 }
 // The SRD 5.2.1 Warlock at level 17 (aethyr/rules/srd/engine.coax rs_warlock): the Fiend Patron, Agonizing
-// and Repelling Blast on Eldritch Blast, Armor of Shadows (AC 13 + Dex).
+// and Repelling Blast on Eldritch Blast, Armor of Shadows (AC 13 + Dex), and Hellish Rebuke prepared
+// (its Reaction to damage, rs_hellish_rebuke).
 FB_WL_LEVEL :: 17;
-fb_warlock_hero :: (name: string, team: int) -> RsCreature { return rs_warlock(name, team, FB_WL_LEVEL, SP_ELDRITCH_BLAST); }
+fb_warlock_hero :: (name: string, team: int) -> RsCreature { c := rs_warlock(name, team, FB_WL_LEVEL, SP_ELDRITCH_BLAST); c.rebuke = true; return c; }
 
 // Everglade's caster (its realm's tier, everglade-grove.coax: DC 15, +7, a 9th-level druid with
 // Wisdom +3; cantrips at two dice): the SRD 5.2.1 Druid at level 9, standard array, Wisdom first

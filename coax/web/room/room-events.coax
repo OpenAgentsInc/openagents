@@ -153,21 +153,20 @@ ev_level :: (v: [] RmServer, xp: int) -> int { return ev_level_of(xp, v[0].evc.d
 // one Eldritch Invocation, Armor of Shadows (the engine's rs_warlock: AC 13 + Dex); level 2 two more
 // invocations, Agonizing Blast and Repelling Blast on Eldritch Blast, Magical Cunning and two slots;
 // level 3 the Fiend Patron's Dark One's Blessing and 2nd-level slots.
-//   cantrips: Eldritch Blast, and Chill Touch once the Warlock's bar has it (EV_WL_KIT_WANT, #12734)
-//   prepared: Hex and Hellish Rebuke, the same
+//   cantrips: Eldritch Blast and Chill Touch; prepared: Hex, and Hellish Rebuke (a Reaction to
+//   damage: the engine casts it, rs_hellish_rebuke, so it has no bar slot)
 // The rebuild and NEXT ROW are the realm's, not a class's: every kit has them.
 EV_DRUID_CANTRIPS :: [3] int.[21, 22, 43];
 EV_DRUID_L1 :: [4] int.[28, 9, 26, 13];
 EV_DRUID_L2 :: 27; EV_DRUID_L3 :: 20;
 EV_REALM_SLOTS :: [2] int.[47, 48];
-EV_WL_BLAST :: 0; EV_WL_REBUILD :: 6;          // fivebar.coax fb_warlock_bar's order
+EV_WL_BLAST :: 0; EV_WL_REBUILD :: 6; EV_WL_CHILL :: 7; EV_WL_HEX :: 8;   // fivebar.coax fb_warlock_bar's order
 // The bar slots a character has at `level` (0: Everglade's own, the whole bar): LO the druid's, HI the Warlock's.
 EvKit :: struct { lo: int; hi: int; }
 ev_kit :: (warlock: bool, level: int) -> EvKit {
   if level <= 0 { return EvKit.{}; }
   if warlock {
-    // the Warlock's level 1 and 2 spells past Eldritch Blast join here as its bar gets them (#12734)
-    return EvKit.{hi = (1 << EV_WL_BLAST) | (1 << EV_WL_REBUILD)};
+    return EvKit.{hi = (1 << EV_WL_BLAST) | (1 << EV_WL_REBUILD) | (1 << EV_WL_CHILL) | (1 << EV_WL_HEX)};
   }
   lo := 0;
   for q: EV_DRUID_CANTRIPS { lo = lo | (1 << q); }
@@ -194,7 +193,7 @@ ev_build :: (v: [] RmServer, k: int, s: int) {
   wl := v[0].eg[k].rules[0].klass[s] == 1;
   n: [1] RsCreature;
   if want == 0 { n[0] = ifx wl then fb_warlock_hero("Player", 0) else fb_everglade_hero("Player", 0); }
-  else if wl { n[0] = rs_warlock("Player", 0, want, SP_ELDRITCH_BLAST); }
+  else if wl { n[0] = rs_warlock("Player", 0, want, SP_ELDRITCH_BLAST); n[0].rebuke = true; }
   else { n[0] = rs_druid("Player", 0, want); }
   n[0].turn_at = c.turn_at; n[0].round_at = c.round_at; n[0].x = c.x; n[0].y = c.y;
   up := want > v[0].ev[k].level[s] && v[0].ev[k].level[s] > 0;
@@ -588,8 +587,13 @@ ev_test_second :: (v: [] RmServer, k: int) { while v[0].eg[k].tick % EG_HZ != EG
   rm_heard(v[..], 1, "H 1 ranger.0.0.0 warlock 0 -");
   #assert v[0].ev[k].level[1] == 1 && b[0].c[1].klass == RS_WARLOCK && b[0].c[1].level == 1 && b[0].c[1].hp_max == 9;
   rm_heard(v[..], 1, "C 5 65 300 0 0 -1");
+  ev_test_ticks(v[..], k, EG_CAST_GAP + 1);
+  rm_heard(v[..], 1, "C 6 71 300 0 0 -1");   // Chill Touch: in the level 1 kit
+  ev_test_ticks(v[..], k, EG_CAST_GAP + 1);
+  rm_heard(v[..], 1, "C 7 72 300 0 0 -1");   // Hex: the same
   eg_test_drain(v[..], box[..]);
-  #assert eg_test_has(eg_test_of(box[..], 1), "r 5 level");
+  #assert eg_test_has(eg_test_of(box[..], 1), "r 5 level") && !eg_test_has(eg_test_of(box[..], 1), "r 6 level") && !eg_test_has(eg_test_of(box[..], 1), "r 7 level");
+  #assert b[0].c[1].rebuke;   // Hellish Rebuke, prepared: the engine casts it as a Reaction
   // the demo character is an admin's only: a guest's FLAGS bit asks for nothing
   rm_heard(v[..], 1, "H 1 ranger.0.0.0 warlock 64 -");
   #assert v[0].ev[k].level[1] == 1;

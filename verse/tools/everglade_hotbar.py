@@ -414,6 +414,13 @@ WARLOCK = [
     ("wl-rebuild", "delapouite/house.svg", OIL, "R", "Rebuild and Long Rest",
      "Stands every broken building in the town back up whole, and you take a long rest. The watch still wants you if it did.",
      [("Key R", KEY)]),
+    # the SRD 5.2.1 Warlock's level 1 spells (a character's first kit, coax/web/room/room-events.coax ev_kit)
+    ("wl-chill-touch", "lorc/glowing-hands.svg", NECROTIC, "7", "Chill Touch",
+     "The chill of the grave in your hand: a melee spell attack against a creature within reach, 1d10 Necrotic on a hit, more dice at levels 5, 11 and 17, and it can't regain Hit Points until the end of your next turn.",
+     [("Key 7", KEY), FREE, ("Cantrip · Touch", RULE)]),
+    ("wl-hex", "lorc/pentagram-rose.svg", ELDRITCH, "8", "Hex",
+     "A Bonus Action: you curse a creature you can see within 90 feet. While you concentrate, your attacks that hit it deal 1d6 more Necrotic, and it has Disadvantage on checks with one ability you choose.",
+     [("Key 8", KEY), FREE, ("1st-level slot · 90 ft", RULE)]),
 ]
 
 # The keys' labels by place (row * 12 + column): the row's modifier and the column's key. A slot

@@ -184,6 +184,7 @@ md_say :: (s: [] Everglade, a: string, b: string) {
 // The API's answer to the last ask ("200\n{...}", anything else a refusal).
 net_moderated :: (s: [] Everglade, answer: string) #export_c {
   if !net_on(s) { return; }
+  if ege_answered(s, answer) { return; }   // the EVENTS pane's (everglade-events.coax)
   m := net_of(s)[0].mod[..];
   asked := m[0].asked; m[0].asked = 0;
   ok := answer.count > 4 && answer[0..<4] == "200\n";

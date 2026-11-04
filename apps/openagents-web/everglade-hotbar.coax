@@ -11,7 +11,7 @@ HB_CARD_H :: [147] f32.[151, 302, 453, 151, 302, 453, 171, 342, 513, 151, 302, 4
 HB_TAB_W :: [8] f32.[11, 17, 22, 30, 18, 28, 36, 49];
 HB_TAB_H :: [8] f32.[14, 21, 28, 37, 14, 21, 28, 37];
 // The Warlock's bar (everglade-warlock.coax): its slots' names and cards, as above.
-WL_HB_SLOTS :: 7;
-WL_HB_NAME :: [7] string.["wl-eldritch-blast", "wl-fireball", "wl-blight", "wl-circle-of-death", "wl-finger-of-death", "wl-dimension-door", "wl-rebuild"];
-WL_HB_CARD_W :: [21] f32.[351, 699, 1068, 360, 699, 1068, 342, 699, 1068, 360, 716, 1042, 360, 699, 1068, 333, 631, 964, 342, 716, 1068];
-WL_HB_CARD_H :: [21] f32.[191, 302, 453, 191, 342, 513, 151, 262, 393, 171, 302, 513, 191, 382, 573, 111, 222, 333, 111, 182, 333];
+WL_HB_SLOTS :: 9;
+WL_HB_NAME :: [9] string.["wl-eldritch-blast", "wl-fireball", "wl-blight", "wl-circle-of-death", "wl-finger-of-death", "wl-dimension-door", "wl-rebuild", "wl-chill-touch", "wl-hex"];
+WL_HB_CARD_W :: [27] f32.[351, 699, 1068, 360, 699, 1068, 342, 699, 1068, 360, 716, 1042, 360, 699, 1068, 333, 631, 964, 342, 716, 1068, 360, 716, 1042, 351, 716, 1068];
+WL_HB_CARD_H :: [27] f32.[191, 302, 453, 191, 342, 513, 151, 262, 393, 171, 302, 513, 191, 382, 573, 111, 222, 333, 111, 182, 333, 171, 342, 513, 191, 382, 573];

@@ -41,6 +41,7 @@ sp_place_default :: (b: int) -> int {
 }
 // Slot b's place on the bar, as its player arranged it.
 sp_place :: (s: [] Everglade, b: int) -> int {
+  if net_on(s) && ege_kit_on(s) { return ege_kit_place(s, b); }   // a level's kit: what the character has (everglade-events.coax)
   if b >= 0 && b < AR_SLOTS && s[0].sp.ar.on { return s[0].sp.ar.place[b]; }
   return sp_place_default(b);
 }

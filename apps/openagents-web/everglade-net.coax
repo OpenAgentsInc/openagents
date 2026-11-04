@@ -35,6 +35,7 @@
 #load "everglade-wire.coax";
 #load "everglade-join.coax";   // which instance, who you are in it, INVITE (#12716)
 #load "everglade-moderate.coax";   // BLOCK, REPORT and KICK from a nameplate (#12714)
+#load "everglade-events.coax";     // the raid's banner, your level and kit, the admin's EVENTS (#12737)
 
 NET_ENTS :: 256;
 NET_RING :: 8;            // a state's last few: 8 at 15 Hz hold 470 ms, past NET_HIGH
@@ -122,6 +123,7 @@ EgNet :: struct {
   feet_y: f32;                                // your feet's height as the face last gave it (net_step's fy)
   join: [1] EgJoin;                           // the instance, the CHARACTER picker and INVITE (everglade-join.coax)
   mod: [1] EgMod;                             // your blocks and the nameplate pane (everglade-moderate.coax)
+  evp: [1] EgEvents;                          // the room's event, your level and kit (everglade-events.coax)
 }
 
 everglade_attach_net :: (s: [] Everglade, n: [] EgNet) #export_c { s[0].net = n; }
@@ -541,6 +543,7 @@ net_entry :: (s: [] Everglade, n: [] EgNet, t: string, d: WireD) {
     if k >= 0 { n[0].ents[k].wanted = level; }   // another's (net_view)
     return;
   }
+  if ege_entry(s, n, t) { return; }   // g, v, e level, e xp (everglade-events.coax)
   if c != 'e' { return; }
   if wire_is(t, "e cast") {
     r[0] = wire_rd(t, 6);
@@ -811,7 +814,7 @@ net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: 
 net_hello :: (s: [] Everglade, n: [] EgNet) {
   n[0].hello_due = false;
   look := ifx n[0].look_n > 0 then cast(string) n[0].look[0..<n[0].look_n] else "ranger.0.0.0";
-  net_send(n, wire_put_hello(n[0].out[..], 0, WireHello.{look = look, kind = ifx wl_on(s) then "warlock" else "druid", flags = (ifx s[0].touch then 1 else 0) | (ifx n[0].account then 2 else 0), name = ""}));
+  net_send(n, wire_put_hello(n[0].out[..], 0, WireHello.{look = look, kind = ifx wl_on(s) then "warlock" else "druid", flags = (ifx s[0].touch then 1 else 0) | (ifx n[0].account then 2 else 0) | (ifx ege_demo(s) then EGE_DEMO_FLAG else 0), name = ""}));
 }
 // Your intents: a cast from bar slot b at the aim (target an entity, -1 none), the end of what slot b
 // holds up, the town rebuilt. False when there is no room to send them to.

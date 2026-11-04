@@ -28,13 +28,19 @@
 #load "../../aethyr/fx/puff.coax";
 
 WL_SLOT0 :: 64;            // fivebar.coax FB_WL0: slot k of the Warlock's bar is WL_SLOT0 + k on the wire
-WL_SLOTS :: 7;
+WL_SLOTS :: 9;
 WL_BLAST :: 0; WL_FIREBALL :: 1; WL_BLIGHT :: 2; WL_CIRCLE :: 3; WL_FINGER :: 4; WL_DOOR :: 5; WL_REBUILD :: 6;
+WL_CHILL :: 7; WL_HEX :: 8;   // the SRD Warlock's level 1 spells (a character's first kit), keys 7 and 8
 // each slot's seconds from press to strike (fivebar.coax fb_warlock_bar), and its range in metres
-WL_DELAY :: [7] f32.[0.35, 0.9, 0.6, 0.9, 0.5, 0.4, 0];
-WL_RANGE :: [7] f32.[36.6, 45.7, 9.1, 45.7, 18.3, 152.4, 0];
+// (Chill Touch's is Touch: within reach)
+WL_DELAY :: [9] f32.[0.35, 0.9, 0.6, 0.9, 0.5, 0.4, 0, 0.4, 0.3];
+WL_RANGE :: [9] f32.[36.6, 45.7, 9.1, 45.7, 18.3, 152.4, 0, 1.5, 27.4];
 // what it covers where it lands (m): a beam's strike, the 20-foot and 60-foot spheres
-WL_AREA :: [7] f32.[0.7, 6.1, 0.8, 18.3, 0.8, 0.9, 0];
+WL_AREA :: [9] f32.[0.7, 6.1, 0.8, 18.3, 0.8, 0.9, 0, 0.6, 0.8];
+// the bar's order, left to right: the spells, then the rebuild last
+WL_ORDER :: [9] int.[0, 1, 2, 3, 4, 5, 7, 8, 6];
+// Whether slot k is one of the Warlock's spells (the rebuild is the realm's).
+wl_spell :: (k: int) -> bool { return k >= 0 && k < WL_SLOTS && k != WL_REBUILD; }
 WL_BEAMS :: 4;             // Eldritch Blast at level 17
 WL_FORM_ZOMBIE :: 9;       // everglade5e-room-rules.coax E5RR_FORM_ZOMBIE
 WL_SHOTS :: 24;
@@ -96,12 +102,13 @@ wl_hand :: (s: [] Everglade) -> Point { f := ab_you(s); return v3(f.x + sin(s[0]
 
 // ---- keys and the pointer
 
-// Keys 1 to 6 pick a spell (again puts it away), R rebuilds, Esc puts it away; the druid's other keys
-// on the bar's rows do nothing for the Warlock.
+// Keys 1 to 8 pick a spell the character has (again puts it away), R rebuilds, Esc puts it away; the
+// druid's other keys on the bar's rows do nothing for the Warlock.
 wl_key :: (s: [] Everglade, key: int, mods: int) -> bool {
   if !wl_on(s) { return false; }
   p := sp_key_place(key, mods);
-  if p >= 0 && p < WL_REBUILD { wl_press(s, p); return true; }
+  q := ifx p >= 0 && p < WL_REBUILD then p else ifx p == 6 then WL_CHILL else ifx p == 7 then WL_HEX else -1;
+  if q >= 0 && wl_has(s, q) { wl_press(s, q); return true; }
   if p >= 0 { return true; }
   if key == 'r' || key == 'R' { wl_press(s, WL_REBUILD); return true; }
   if key == KEY_ESCAPE && s[0].wl.armed >= 0 { s[0].wl.armed = -1; return true; }
@@ -120,7 +127,7 @@ wl_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id: int) 
   k := hi(s[0].dpr, 0.5);
   if phase == 0 {
     for b: 0..<WL_SLOTS {
-      if in_box(w.boxes[b], x, y) {
+      if wl_has(s, b) && in_box(w.boxes[b], x, y) {
         s[0].wl.finger = id; s[0].wl.held = -1;
         wl_press(s, b);
         if kind != 0 { s[0].wl.held = b; s[0].wl.held_t = s[0].time; }
@@ -152,7 +159,7 @@ wl_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id: int) 
 // play it (everglade-net.coax); here the engine rolls it (everglade5e.coax) and this page plays it.
 wl_cast :: (s: [] Everglade) {
   k := s[0].wl.armed;
-  if k < 0 || k >= WL_REBUILD { return; }
+  if !wl_spell(k) { return; }
   if !s[0].sp.aim_ok { sp_say(s, "POINT AT THE GROUND OR A BUILDING", -1, ""); return; }
   at := s[0].sp.aim;
   if flat_gap(at, s[0].feet) > WL_RANGE[k] + 3 {
@@ -185,13 +192,13 @@ wl_shoot :: (s: [] Everglade, k: int, from: Point, at: Point, seed: int, remote:
 wl_seed :: (seed: int, i: int) -> f32 { return f32((seed * 7 + i * 131) % 9973) * 0.013 + 0.5; }
 // The room server's cast (e cast) of the Warlock's slot k by another page or yours: its look.
 wl_play :: (s: [] Everglade, k: int, from: Point, at: Point, seed: int, mine: bool) {
-  if k < 0 || k >= WL_REBUILD { return; }
+  if !wl_spell(k) { return; }
   wl_shoot(s, k, from, at, seed, true, mine);
   if mine && k == WL_DOOR { s[0].wl.at = at; }
 }
 // The server's world: a strike of the Warlock's slot k (everglade_room_strike), what it does to the town.
 wl_strike :: (s: [] Everglade, by: int, k: int, from: Point, at: Point, seed: int) {
-  if k < 0 || k >= WL_REBUILD { return; }
+  if !wl_spell(k) { return; }
   s[0].wv.room_hit = at; s[0].wv.room_by = by;
   wl_shoot(s, k, from, at, seed, false, false);
 }
@@ -223,6 +230,9 @@ wl_land :: (s: [] Everglade, c: WlShot) {
   if k == WL_BLIGHT { _ := fxp_start(p, FxCause.{recipe = FXR_BLIGHT, seed = wl_seed(c.seed, 0), t0 = now, from = from, to = to, col = FXW_NECRO, big = 1, reach = 1}, now); }
   if k == WL_CIRCLE { _ := fxp_start(p, FxCause.{recipe = FXR_NECRO_RING, seed = wl_seed(c.seed, 0), t0 = now, from = to, to = to, col = FXW_NECRO, big = 1, reach = WL_AREA[k]}, now); }
   if k == WL_FINGER { _ := fxp_start(p, FxCause.{recipe = FXR_SOULFIRE, seed = wl_seed(c.seed, 0), t0 = now, from = from, to = to, col = FXW_NECRO, big = 1, reach = 1}, now); }
+  // Chill Touch: the grave's cold off your hand onto what you touch; Hex: its mark over the cursed
+  if k == WL_CHILL { _ := fxp_start(p, FxCause.{recipe = FXR_HIT, seed = wl_seed(c.seed, 0), t0 = now, from = from, to = to, col = FXW_NECRO, big = 0.7, reach = 1}, now); }
+  if k == WL_HEX { _ := fxp_start(p, FxCause.{recipe = FXR_MARK, seed = wl_seed(c.seed, 0), t0 = now, from = from, to = to, col = FXW_VIOLET, big = 1, reach = 1}, now); }
   if k == WL_DOOR {
     feet := ifx c.mine then ab_you(s) else v3(c.from.x, c.from.y - 1.45, c.from.z);
     _ := fxp_start(p, FxCause.{recipe = FXR_PORTAL, seed = wl_seed(c.seed, 0), t0 = now, from = wl_v(feet), to = to, col = FXW_VIOLET, big = 1, reach = 1}, now);
@@ -370,9 +380,9 @@ wl_rise :: (s: [] Everglade, eid: int, feet: Point) {
 
 // ---- the bar
 
-// One row of the Warlock's seven slots over the bottom edge (a phone's thumbs, as the druid's row),
-// each its picture, a cast on its way swept over it, and the card of the one a finger holds or the
-// mouse rests on.
+// One row of the Warlock's slots over the bottom edge (a phone's thumbs, as the druid's row): the ones
+// its character has (wl_has: a level's kit, else all nine), each its picture, a cast on its way swept
+// over it, and the card of the one a finger holds or the mouse rests on.
 wl_bar :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> SpBarTop {
   k := hi(s[0].dpr, 0.5);
   w := s[0].width; h := s[0].height;
@@ -381,17 +391,24 @@ wl_bar :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> SpBarTop {
   icon := sp_round(f32(ifx ph then HB_ICON else HB_DESK_ICON * 1.4) * un);
   step := sp_round(f32(ifx ph then HB_STEP else HB_DESK_STEP * 1.4) * un);
   pad := sp_round(f32(ifx ph then HB_PAD else HB_DESK_PAD * 1.4) * un);
-  width := 2 * pad + step * f32(WL_SLOTS - 1) + icon;
+  shown := 0;
+  for b: 0..<WL_SLOTS { if wl_has(s, b) { shown += 1; } else { s[0].wl.boxes[b] = Box.{}; } }
+  gaps := hi_int(shown - 1, 1);
+  width := 2 * pad + step * f32(shown - 1) + icon;
   // as many as the width holds: a narrow phone's row steps closer
-  if width > w - 16 * k { step = sp_round((w - 16 * k - 2 * pad - icon) / f32(WL_SLOTS - 1)); width = 2 * pad + step * f32(WL_SLOTS - 1) + icon; }
+  if width > w - 16 * k { step = sp_round((w - 16 * k - 2 * pad - icon) / f32(gaps)); width = 2 * pad + step * f32(shown - 1) + icon; }
   left := sp_round((w - width) / 2);
   bottom := sp_round(h - sp_bar_bottom(s) - f32(HB_MARGIN) * un);
   top := bottom - (icon + 2 * pad);
   edge := sp_round(k);
   size := sp_icon_size(icon);
   sp_plate(s, u, Box.{x0 = left, y0 = top, x1 = left + width, y1 = bottom}, PLATE_TRAY, edge);
-  for b: 0..<WL_SLOTS {
-    x := sp_round(left + pad + step * f32(b)); y := top + pad;
+  place := 0;
+  for o: 0..<WL_SLOTS {
+    b := WL_ORDER[o];
+    if !wl_has(s, b) { continue; }
+    x := sp_round(left + pad + step * f32(place)); y := top + pad;
+    place += 1;
     bx := Box.{x0 = x, y0 = y, x1 = x + icon, y1 = y + icon};
     s[0].wl.boxes[b] = bx;
     on := s[0].wl.armed == b;
@@ -409,7 +426,7 @@ wl_bar :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> SpBarTop {
     if s[0].time - s[0].wl.held_t >= f64(HB_LONG) { tip = s[0].wl.held; }
   } else {
     over := -1;
-    if s[0].sp.mouse && s[0].sp.seen { for b: 0..<WL_SLOTS { if in_box(s[0].wl.boxes[b], s[0].sp.px, s[0].sp.py) { over = 200 + b; } } }
+    if s[0].sp.mouse && s[0].sp.seen { for b: 0..<WL_SLOTS { if wl_has(s, b) && in_box(s[0].wl.boxes[b], s[0].sp.px, s[0].sp.py) { over = 200 + b; } } }
     t := sp_dwell(s, over, s[0].time);
     tip = ifx t >= 200 then t - 200 else -1;
   }
