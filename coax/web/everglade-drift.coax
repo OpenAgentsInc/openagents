@@ -624,9 +624,9 @@ tool_main :: () -> int #export_c {
   _ := fs_mkdir("coax/web/build/everglade-drift"); _ = fs_mkdir(dir);
   // the room's --dev directory is DIR: dev/'s world, and its control lines (room-control.txt) this
   // program's to change, as the API's answer is (room-host.c --dev, room-dev.coax)
-  wb: [262144] u8; wn := fs_read("coax/web/room/dev/world-everglade-5e.json", wb[..]);
-  if wn <= 0 { tool_errln("everglade-drift: can't read coax/web/room/dev/world-everglade-5e.json"); return 2; }
-  wp: [1] Buf; bput(wp[..], dir); bput(wp[..], "/world-everglade-5e.json");
+  wb: [262144] u8; wn := fs_read("coax/web/room/dev/world-everglade.json", wb[..]);
+  if wn <= 0 { tool_errln("everglade-drift: can't read coax/web/room/dev/world-everglade.json"); return 2; }
+  wp: [1] Buf; bput(wp[..], dir); bput(wp[..], "/world-everglade.json");
   _ = fs_write(btext(wp[..]), cast(string) wb[0..<wn]);
   cb: [1] Buf; bput(cb[..], dir); bput(cb[..], "/room-control.txt");
   ctl := btext(cb[..]);

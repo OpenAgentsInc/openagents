@@ -43,7 +43,7 @@ static void seat_dry(int k, int s) {
 static coax_v_t_Everglade at(int k) { return (coax_v_t_Everglade){world[k], 1}; }
 
 /* Room k's world, made (and its city built) the first time; kept for the next room in that slot. */
-/* The realm's published world (an admin's placed things: GET /api/playtest/world/everglade-5e), laid over
+/* The realm's published world (an admin's placed things: GET /api/playtest/world/everglade), laid over
    every room's plan as each page lays it (everglade-voice.coax everglade_world). Without it a thing
    placed on a street stood in a page's way and not in the server's: the page's prediction stopped
    at it while the server walked on, and its next word snapped you past (#12731). */

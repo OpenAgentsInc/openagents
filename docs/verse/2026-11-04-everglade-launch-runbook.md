@@ -306,10 +306,18 @@ When steps 2 and 3 hold, post the evidence on #12733 and close it.
 Start a local room with `coax/web/room/local.sh` (#12773). It runs `bin/room
 --dev coax/web/room/dev` and the page server with `--api`, so the page's
 `/api/` requests go to the room. The room and the page then read the same world
-document, `coax/web/room/dev/world-everglade-5e.json`, but only if the page asks
-for `everglade-5e`. The Everglade page asks `/api/playtest/world/everglade`, which
-the stand-in doesn't answer (see the drift check below). In production the room
-reads the API's `/api/playtest/world/everglade-5e` (through `OA_ROOM_API`).
+document, `coax/web/room/dev/world-everglade.json`. In production both read
+the API's `/api/playtest/world/everglade` (the room through `OA_ROOM_API`), the
+realm the page plays since the swap (#12710). `everglade-5e` is the retired
+copy from before the swap; nothing reads it.
+
+Production step after the room that reads `everglade` is deployed (#12773):
+open `https://openagents.com/api/playtest/world/everglade` and note its
+`version` (22 when this was written). In the room's log, the world line says
+the same document's size. Then, as an admin, place one thing in Everglade with
+EDIT and press DONE: within a few seconds a second player in the same room
+stands against it, and the version is one higher. No data is copied; the
+published edits stay where they are.
 
 Since #12774 the room is also the API's stand-in (`coax/web/room/room-dev.coax`):
 it mints players, signs and checks seat tickets with names, reads levels, cap,
@@ -406,13 +414,13 @@ On 2026-11-04 (`79a9fa7e90`, local profile) these probes drift:
 | Corrections | none | 112 over 5 cm in 60 s, the largest 483 mm | #12783, #12777 |
 | Townsfolk walking in place | 8% of walking frames | 33% | #12783 |
 
-The position difference comes from the world source. The page asks
-`/api/playtest/world/everglade` (its realm is `everglade`), and the room reads
-`/api/playtest/world/everglade-5e`. Locally the `--dev` stand-in answers only
-`everglade-5e`, so an offline page plays without the published edits, the
-crate among them. In production both documents hold the same edits today
-(`everglade-5e` version 1 was copied from `everglade`), so the next publish to
-`everglade` leaves the rooms on the old world.
+The position difference came from the world source: the page asked
+`/api/playtest/world/everglade` and the room `/api/playtest/world/everglade-5e`.
+Since #12773 the room, its `--dev` stand-in and every local setup read
+`everglade` (`coax/web/room/dev/world-everglade.json`). The check's offline page
+still has its `/api/` sent nowhere, so it plays without the published edits
+(the crate among them) until the offline page's own host reads the world too
+(#12784).
 
 ### Rollback for step 3
 

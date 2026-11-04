@@ -5,7 +5,7 @@
    rm_tick 60 times a second and sends each player what rm_state writes.
      room [--listen 127.0.0.1] [--port 8830] [--dev DIR]     PORT in the environment wins (Cloud Run: 0.0.0.0)
    --dev DIR is local development (coax/web/room/local.sh): the room is also the API's stand-in. Its
-   world is DIR/world-everglade-5e.json, and it answers GET /api/playtest/world/everglade-5e with
+   world is DIR/world-everglade.json, and it answers GET /api/playtest/world/everglade with
    that same document, so a page served with `serve.sh --api` reads the world the room plays.
    Without --dev, the world comes from the API (OA_ROOM_API, default production's), as the page's does.
    OA_ROOM_SHARD names which shard of the everglade instance directory this is (room-directory.coax).
@@ -319,7 +319,7 @@ static void opening(int i) {
     http(i, "200 OK", "text/plain", body); return;
   }
   /* --dev: the API's stand-in (local.sh): the world document the room laid, byte for byte */
-  if (dev_dir && !strncmp((char *)c->in, "GET /api/playtest/world/everglade-5e", 36) && (c->in[36] == ' ' || c->in[36] == '?')) {
+  if (dev_dir && !strncmp((char *)c->in, "GET /api/playtest/world/everglade", 33) && (c->in[33] == ' ' || c->in[33] == '?')) {
     http(i, "200 OK", "application/json", dev_world ? dev_world : "{}"); return;
   }
   int64_t listed = rm_rooms(view(), req);
@@ -446,14 +446,14 @@ static const char *api_url(const char *env, const char *path, char *buf, size_t 
    It is the API's, the same URL the page asks (OA_ROOM_API's origin); under --dev, DIR's document. */
 static void world_ask(void) {
   if (dev_dir) {
-    free(dev_world); dev_world = dev_read("world-everglade-5e.json", &dev_world_n);
-    if (!dev_world || dev_world[0] != '{') { fprintf(stderr, "room: --dev %s has no world-everglade-5e.json\n", dev_dir); exit(1); }
+    free(dev_world); dev_world = dev_read("world-everglade.json", &dev_world_n);
+    if (!dev_world || dev_world[0] != '{') { fprintf(stderr, "room: --dev %s has no world-everglade.json\n", dev_dir); exit(1); }
     world_edits(dev_world, (int64_t)dev_world_n);
     printf("room: the local world (%zu bytes) laid over the rooms\n", dev_world_n);
     return;
   }
   char ub[512];
-  const char *url = api_url("OA_ROOM_WORLD_URL", "/api/playtest/world/everglade-5e", ub, sizeof ub);
+  const char *url = api_url("OA_ROOM_WORLD_URL", "/api/playtest/world/everglade", ub, sizeof ub);
   char cfg[512];
   int k = snprintf(cfg, sizeof cfg, "url = \"%s\"\nsilent\nshow-error\nfail\nmax-time = 10\n", url);
   if (k > 0 && k < (int)sizeof cfg) poster_send('G', cfg, (size_t)k);

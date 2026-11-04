@@ -2,7 +2,7 @@
 # A local Everglade room as production has it: the room server and the page server, with the room
 # as the API's stand-in (room-host.c --dev, coax/web/room/dev/). The page asks its usual /api/ paths,
 # which serve.sh --api sends to the room, so the page and the room read the same world document
-# (dev/world-everglade-5e.json) and the same seat tickets, names, levels and cap (dev/room-control.txt).
+# (dev/world-everglade.json) and the same seat tickets, names, levels and cap (dev/room-control.txt).
 #   coax/web/room/local.sh [--room PORT] [--page PORT] [--static] [--no-build] [--levels on|off]
 # Prints the page's URL (ROOM= and PAGE= lines for scripts), then runs until stopped; both servers stop with it.
 # --static serves the last build without watching (as the harnesses run it); --no-build skips the room build.
@@ -33,7 +33,7 @@ dev="$here/dev"
 if [[ -n "$levels" ]]; then
   # dev/'s world and control lines, with the levels switch as asked
   dev="$(mktemp -d "${TMPDIR:-/tmp}/everglade-local.XXXXXX")"
-  ln -s "$here/dev/world-everglade-5e.json" "$dev/world-everglade-5e.json"
+  ln -s "$here/dev/world-everglade.json" "$dev/world-everglade.json"
   sed "s/^levels [01] /levels $([[ "$levels" == off ]] && echo 0 || echo 1) /" "$here/dev/room-control.txt" > "$dev/room-control.txt"
 fi
 "$here/bin/room" --port "$room_port" --dev "$dev" & pids+=($!)

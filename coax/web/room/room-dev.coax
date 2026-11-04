@@ -8,7 +8,7 @@
 //   POST /api/playtest/room-ticket/ROOM       a seat ticket for ROOM, for the X-Verse-Player key
 //   POST /api/playtest/room-state             what you bring back (WANTED, look): taken, not kept
 //   GET  /api/playtest/rooms/SLUG             the instances (rm_rooms, room-relay.coax)
-//   GET  /api/playtest/world/everglade-5e     the world document (room-host.c)
+//   GET  /api/playtest/world/everglade     the world document (room-host.c)
 // Anything else under /api/ answers 404 {"error":"not in the local API"}.
 //   coax test --library coax/web/room/room.coax --steps 4000000000 --only "dev:"
 

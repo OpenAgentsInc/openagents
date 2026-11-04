@@ -14,7 +14,7 @@ root="$(cd "$here/../../.." && pwd -P)"
 bin="$1"; n="${2:-8}"; secs="${3:-160}"; port="${4:-8871}"
 dir="$(mktemp -d "${TMPDIR:-/tmp}/raid-proof.XXXXXX")"
 ctl="$dir/room-control.txt"
-cp "$here/dev/world-everglade-5e.json" "$dir/"
+cp "$here/dev/world-everglade.json" "$dir/"
 # the API's defaults: EVERY 0, 3 waves of 12 at 4 players (scaled to those here: everglade-raid-
 # scale.coax), 6 Cultists, 1 Fanatic, 3 Warlocks in parts by the last wave, levels up to 3, all gates,
 # the leader on at aggression 2, town damage on, 100% reward, 15 minutes; levels on, cap 2
