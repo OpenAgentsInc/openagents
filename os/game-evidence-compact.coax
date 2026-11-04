@@ -1,0 +1,45 @@
+// Evidence v3: full-resolution lossy WebP plus the original RGB sensor region.
+#load "game-evidence-v2.coax";
+#load "game-loot-observation.coax";
+#test "compact paths distinguish full scene and lossless sensor captures" {
+  out: [128] u8;
+  #assert ec_name(1,false,false,out[..])=="observe-1.webp";
+  #assert ec_name(1300,true,false,out[..])=="recheck-1300.webp";
+  #assert ec_name(1,false,true,out[..])=="observe-1.strip.ppm.zst";
+  #assert ec_name(1300,true,true,out[..])=="recheck-1300.strip.ppm.zst";
+}
+ec_name :: (sequence: int,recheck: bool,strip: bool,out: [] u8) -> string {
+  namebuf: [128] u8; name:=ev_name(sequence,recheck,namebuf[..]); o: [1] Jo; jo_start(o[..],out);
+  jo_put(o[..],name[0..<name.count-8]); jo_put(o[..],ifx strip then ".strip.ppm.zst" else ".webp"); return jo_text(o[..]);
+}
+ec_hash :: (path: string,out: [] u8) -> bool {
+  argv:=[3] string.["sha256sum","--",path]; body: [8192] u8; errors: [1024] u8; r:=proc_run(argv[..],5000,body[..],errors[..]);
+  if r.started!=0 || r.status!=0 || r.out_n<64 || out.count<64 { return false; }
+  for i:0..<64 { c:=body[i]; if !((c>='0' && c<='9') || (c>='a' && c<='f')) { return false; } out[i]=c; } return true;
+}
+ec_archive :: (image: string,dir: string,journal: string,sequence: int,recheck: bool,started: int) -> int {
+  header: [128] u8; n:=fs_read_at(image,0,header[..]); if n<=0 { return -1; } p:=nav_ppm(cast(string) header[0..<n]);
+  if p.width<64 || p.height<64 || fs_size(image)!=p.offset+p.width*p.height*3 { return -1; }
+  width:=ifx p.width>1024 then 1024 else p.width;
+  paths: [3] [4096] u8; names: [2] [128] u8; world_name:=ec_name(sequence,recheck,false,names[0][..]); strip_name:=ec_name(sequence,recheck,true,names[1][..]);
+  world:=fs_join(dir,world_name,paths[0][..]); strip:=fs_join(dir,strip_name,paths[1][..]); raw:=fs_join(dir,"sensor-working.ppm",paths[2][..]);
+  pixels: [196640] u8; o: [1] Jo; jo_start(o[..],pixels[..]); jo_put(o[..],"P6\n"); jo_int(o[..],width); jo_put(o[..]," 64\n255\n"); prefix:=jo_text(o[..]).count;
+  for y:0..<64 { if fs_read_at(image,p.offset+y*p.width*3,pixels[prefix+y*width*3..<prefix+(y+1)*width*3])!=width*3 { return -1; } }
+  if !fs_write(raw,cast(string) pixels[0..<prefix+width*64*3]) { return -1; }
+  // Never silently truncate a sensor at another UI scale: compare every decoded field.
+  a: [8192] u8; b: [8192] u8;
+  if ct_json(ct_read(image),a[..])!=ct_json(ct_read(raw),b[..]) || nav_json(nav_read(image),a[..])!=nav_json(nav_read(raw),b[..]) || lt_json(lt_read(image),a[..])!=lt_json(lt_read(raw),b[..]) { return -1; }
+  zip:=[8] string.["zstd","-q","-1","--check","-o",strip,"--",raw];
+  picture:=[18] string.["ffmpeg","-v","error","-nostdin","-i",image,"-frames:v","1","-c:v","libwebp","-quality","85","-compression_level","3","-threads","2","-y",world];
+  if !e2_process(zip[..]) || !e2_process(picture[..]) { return -1; }
+  world_bytes:=fs_size(world); strip_bytes:=fs_size(strip); if world_bytes<=0 || strip_bytes<=0 { return -1; }
+  world_hash: [64] u8; strip_hash: [64] u8; if !ec_hash(world,world_hash[..]) || !ec_hash(strip,strip_hash[..]) { return -1; }
+  row: [8192] u8; jo_start(o[..],row[..]); jo_obj(o[..]);
+  jo_key(o[..],"type"); jo_str(o[..],"image"); jo_key(o[..],"observation"); jo_int(o[..],sequence); jo_key(o[..],"phase"); jo_str(o[..],ifx recheck then "recheck" else "observe");
+  jo_key(o[..],"codec"); jo_str(o[..],"webp-sensor-v3"); jo_key(o[..],"path"); jo_str(o[..],world_name); jo_key(o[..],"sensor_path"); jo_str(o[..],strip_name);
+  jo_key(o[..],"world_bytes"); jo_int(o[..],world_bytes); jo_key(o[..],"sensor_bytes"); jo_int(o[..],strip_bytes); jo_key(o[..],"bytes"); jo_int(o[..],world_bytes+strip_bytes);
+  jo_key(o[..],"world_sha256"); jo_str(o[..],cast(string) world_hash[..]); jo_key(o[..],"sensor_sha256"); jo_str(o[..],cast(string) strip_hash[..]);
+  jo_key(o[..],"world_width"); jo_int(o[..],p.width); jo_key(o[..],"world_height"); jo_int(o[..],p.height); jo_key(o[..],"quality"); jo_int(o[..],85);
+  jo_key(o[..],"started_ms"); jo_int(o[..],started); jo_key(o[..],"ended_ms"); jo_int(o[..],proc_now_ms()); jo_end(o[..]);
+  line:=jo_text(o[..]); row[line.count]='\n'; return ifx fs_append_durable(journal,cast(string) row[0..<line.count+1]) then world_bytes+strip_bytes else -1;
+}

@@ -104,7 +104,7 @@ missed the terminal refusal while editing; by inspection HP had fallen to
 38. Three ordinary two-second retreat holds were insufficient and Foob died
 at (17586,50579), still 377/2800 XP. The lossless controller record correctly
 ends before this death; passive video retains the subsequent damage, failed
-retreat and death. This is one death in this pass, not a successful escape.
+retreat and death. This was the first death in this pass, not a successful escape.
 
 Added observation-only grace, at most 3 seconds and at least 35% HP, for
 combat without a selected target. The actual before/after public samples
@@ -112,3 +112,117 @@ form a regression check: wait at the first sample, then admit the ordinary
 defensive bolt once the eligible attacker is automatically selected.
 This does not remove other combat refusals or provide arbitrary emergency
 pathfinding. Hostile runs require close supervision until further qualified.
+
+## Installed host and continued qualification
+
+Pushed `3375218295` (loot/V4/evidence V2) and `a58f8bd79a` (SDK input ownership).
+Recovered the corpse through ordinary inputs, resurrected near (17636,50364),
+and verified 103 HP / 298 mana. A food attempt used the wrong lease field and
+was refused before input; natural regeneration restored resources. Cleanly
+quit WoW before restarting Verse. The old renderer failed to leave after
+close/TERM and needed a forced stop; no gameplay or encoder was killed.
+The newly running renderer's `/proc/PID/exe` hash matches the fixed binary.
+Holding Shift through panel close/reopen then acquiring/releasing a harmless
+desk lease passed without a stale physical-input refusal.
+
+The nested desktop intercepts Super+G: it launched Battle.net on outer
+DISPLAY :1, not inner :67. Closed that misplaced instance and launched with
+the inner display/socket explicitly. Battle.net's own maximize button fixed
+its initially small content rectangle; WoW reopened at native 2548×1428.
+The game remains on outer desk 2, inner session `1962342457979885`, handle 3
+revision 5. The earlier session's IDs must not be reused.
+
+| Run | XP kills / XP | Captures | Archive bytes | Result |
+| --- | --- | --- | --- | --- |
+| `native-01` | 1 / 42 | 143 | 369,884,526 | V4 native; coin loot succeeded, premature Escape opened menu |
+| `native-02` | 3 / 168 | 375 | 1,073,780,083 | Corrected loot waiting; all money receipts; capacity drain |
+| `native-rescue-01` | 1 / 42 | 39 | 114,805,778 | Defended against a respawn after the preceding batch had ended |
+| `efficient-01` | 1 / 56 | 158 | 64,014,175 | V5 timing / V3 compact scenes; exact lossless sensor audit |
+| `parking-01` | 1 / 56 | 189 | 83,158,166 | Kill/loot, then returned to (17667,50567) before completion |
+
+Each archive audit passed with zero sensor, wire and clock mismatches.
+`native-01` exposed an error in the initial loot timeout: its two-second
+Escape timeout counted from the kill, so a newly opened auto-loot window
+was closed immediately. It raced normal auto-close and opened Game Menu.
+The corrected policy waits for the receipt/close, within the full 12-second
+corpse deadline; Escape is only considered for an observed full-inventory
+window. The corrected policy again killed all 130 mutants. This failure
+was caught OOC at full HP without another death at that correction. `native-rescue-01`
+minimum HP was 37/103, ending at 56/103. After that fight the operator walked
+back to the clear patch and verified full resources; no additional death.
+
+The early attempt to enable advanced logging with a Lua command did not
+produce a log. Ordinary `/combatlog` was then verified by the client message
+and new `WoWCombatLog-110426_143545.txt`. Only the later native runs have
+that client-log coverage; it must not be attributed to earlier trials.
+
+## Storage and efficient-run protocol
+
+The three-kill lossless batch consumed 1 GiB in 191.957 s. At that time
+available space fell near 2.7 GiB; no existing record was removed. A codec
+experiment encoded 60 prior images losslessly as RGB H.264: all 60 RGB
+SHA-256 hashes matched and the final complete PPM was byte-identical. It
+used 103,667,699 bytes versus 213,559,861 bytes of the original Zstandard
+archives, but this still did not sufficiently reduce sustained scene motion.
+The offline probe remains a reproducible experiment, not the live recorder.
+
+Added explicit compact V3 evidence: full-resolution WebP85 for every scene,
+plus an original RGB sensor-region PPM.zst, capture-time hashes for both,
+all exact public samples/candidate sets/effects/wire and passive native video.
+A representative real capture used 533,525 bytes in 291 ms with every decoded
+sensor field preserved. Do not claim lossless full-scene replay in this mode.
+The independent nine-case fixture accepted a valid compact capture and refused
+truncated/missing/misbound/orphaned strips, missing/corrupt/orphaned scenes,
+and altered loot fields. Single-frame full-scene replay export was also tested.
+
+V5 uses 300 ms scans, cast waits capped at 1500 ms, OOC resource waits of
+2000 ms, and measured low-throughput area advice after three kills. It
+supports an explicit clear parking point; `parking-01` exercised the full
+kill/loot/park path. Filesystem availability is sampled every 16 observations;
+768 MiB remaining or an unreadable value requests drain/parking. V5 policy
+mutation at that milestone: 93/93; availability parser/reserve: 47/47. Controller: 185 checks.
+Updated analyzer: 114 checks. New descriptors compile and Nix evaluation passes.
+
+## Further qualification and second hostile transition
+
+| Run | XP kills / XP | Captures | Archive bytes | Result |
+| --- | --- | --- | --- | --- |
+| `efficient-02` | 3 / 154 | 279 | 119,325,932 | ASan/UBSan; minimum 76 HP, full resources at parking point (17661,50572) |
+| `leveling-01` | 3 / 126 | 455 | 212,480,855 | Unchanged OOC target and UI errors; stopped at full resources |
+| `leveling-02` | 2 / 84 | 87 | 32,319,466 | Failed-pull recovery worked, then loot refusal with a second attacker still active |
+
+All three archive audits pass with zero image/sample mismatches and clock
+errors. `leveling-02` first cleared the unchanged errored pull, stepped back
+and right, reacquired visually and killed that same previously blocked spawn
+7047920. This qualifies that recovery once, not general obstacle planning.
+
+At its second verified kill (spawn 7047845), combat remained active at
+76/103 HP. Loot admission refused that combat state and the controller
+stopped. The operator again missed the terminal stop while analyzing records;
+Foob died to the remaining attacker at (17771,51822). This is the second
+death in this pass. The controller audit ends at its refusal and must not be
+used as the final death-state record; passive video records the aftermath.
+Level is still 5, XP 1105/2800: 19 verified XP kills and +886 XP this pass.
+
+V5 now waits up to 1500 ms for a healthy kill tail, records `loot-deferred`
+instead of attempting loot during continued combat/casting or urgent low-HP
+recovery, and clears only a freshly rechecked selected own corpse to permit
+normal attacker selection. Deferred corpses are not queued for later and
+are not counted as looted. Low-health OOC recovery and defense against an
+eligible creature publicly targeting the player can continue below the old
+35% floor; new-pull health/mana thresholds and old profile behavior remain.
+Shared policy mutation: 365/365; V5 policy: 203/203; controller: 189 checks.
+No surviving mutants or equivalence exclusions. Live qualification of the
+new multi-attacker transition remains required.
+
+Recovered from the graveyard with ordinary bounded movement, using the
+resurrection dialog at (18017,51189), then retreated OOC and regenerated.
+The visible durability indicator shows broken equipment; the water slot is
+empty. Vendor maintenance is the next live task before another hostile run.
+
+Storage remains constrained by concurrent machine activity. Converted 37
+operator PPM originals to lossless PNG, decoded every PNG back to PPM and
+compared byte-for-byte before removing only the verified duplicate raw
+temporary files. Originals' SHA-256 and PNG hashes remain in
+`operator-originals-png/original-and-png.sha256`; no unique RGB evidence or
+previous run was deleted.

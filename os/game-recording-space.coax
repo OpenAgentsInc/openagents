@@ -1,0 +1,6 @@
+#load "game-recording-reserve.coax";
+#load "../coax/lib/sys/proc.coax";
+rr_read :: (dir: string) -> int {
+  argv:=[6] string.["stat","-f","-c","%a %S","--",dir]; out: [256] u8; err: [1024] u8; r:=proc_run(argv[..],2000,out[..],err[..]);
+  return ifx r.started==0 && r.status==0 && !r.cut then rr_bytes(cast(string) out[0..<r.out_n]) else -1;
+}

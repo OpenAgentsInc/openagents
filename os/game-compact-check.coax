@@ -1,0 +1,10 @@
+// Real native capture integration oracle; no game socket or input effects.
+#import "Basic";
+#load "game-evidence-compact.coax";
+#load "game-client.coax";
+tool_main :: () -> int #export_c {
+  a: [1] Args; if !args_load(a[..]) || args_count(a[..])!=2 { return 2; }
+  image:=args_at(a[..],0); dir:=args_at(a[..],1); if dir.count==0 || dir[0]!='/' || fs_exists(dir) || !fs_mkdir(dir) { return 2; }
+  path: [4096] u8; journal:=fs_join(dir,"journal.jsonl",path[..]); started:=proc_now_ms(); bytes:=ec_archive(image,dir,journal,1,false,started);
+  print("{\"total_bytes\":%,\"elapsed_ms\":%,\"all_sensor_fields_preserved\":%}\n",bytes,proc_now_ms()-started,bytes>0); return ifx bytes>0 then 0 else 1;
+}

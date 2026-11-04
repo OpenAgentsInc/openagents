@@ -1,0 +1,18 @@
+syntax = "proto3";
+package openagents.engine.combat.evidence.v3;
+// Full-resolution lossy scene and separately lossless original RGB sensor region.
+message Image {
+  uint64 observation = 1;
+  string phase = 2;
+  string path = 3;
+  string sensor_path = 4;
+  uint64 world_bytes = 5;
+  uint64 sensor_bytes = 6;
+  uint32 world_width = 7;
+  uint32 world_height = 8;
+  uint32 quality = 9;
+  uint64 started_ms = 10;
+  uint64 ended_ms = 11;
+  string world_sha256 = 12;
+  string sensor_sha256 = 13;
+}

@@ -21,6 +21,19 @@ World of Warcraft Classic / Classic Era and Play. Super+F on the focused
 game gives it the desk's full rectangle. F9 docks the desk beside the Grid;
 F8 places its screen in the world.
 
+In a nested Verse window, the outer desktop may intercept Super+G and launch
+Battle.net on the host display. Use `verse-battlenet` in the Verse terminal,
+or explicitly select the inner display/socket from another terminal:
+
+```sh
+DISPLAY=:67 CODER_DESK_SOCKET="$XDG_RUNTIME_DIR/verse-desk.sock" \
+  WAYLAND_DISPLAY=wayland-verse "$d/verse-battlenet"
+```
+
+Use the `display` returned by the inner desk's `info` request; `:67` is an
+example, not a stable display number. Close an accidentally launched host
+instance before retrying; the launcher refuses concurrent prefix use.
+
 Close a Battle.net/WoW instance on the old desktop before launching one on
 the new desk. The launcher refuses a competing instance rather than starting
 two Wine containers against one prefix. `verse-battlenet --check` checks the
@@ -177,6 +190,21 @@ circuit and displacement fence, and does not establish terrain safety.
 The level-6 option stops there; spell/rank support remains level 2–5.
 `--hostile-only` limits visual acquisition to red nameplates when a recorded
 scout establishes an appropriate hostile patch.
+
+For longer runs with limited space, `--compact` explicitly selects
+[evidence V3](../protocol/external-combat-evidence-v3.md): every full-resolution
+scene is stored as quality-85 WebP, with the original sensor region retained
+losslessly and all three decoded samples checked before input. Scene RGB is
+lossy; full-scene lossless V2 remains the default. Both artifacts receive
+capture-time SHA-256 hashes, and analysis checks both. Earlier recordings
+are never changed by selecting this mode.
+
+`--efficient` selects [control V5](../protocol/external-combat-control-v5.md),
+with shorter surveys and observation-only waits toward cast/resource ticks.
+Supply a scouted clear `--park-x X --park-y Y` within the fence so a completed
+batch returns there after combat/looting. This avoids ending a normal batch
+on a hostile spawn. A 768 MiB free-disk reserve requests drain and parking;
+never rely on this against another writer filling the disk concurrently.
 
 Each corpse records a receipt, empty result, full inventory, lost identity
 or timeout. Zero empty bag slots is separate from an actual inventory-full

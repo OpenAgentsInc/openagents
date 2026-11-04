@@ -119,9 +119,12 @@ cb_afterkill :: (s: CombatSample, age: int) -> bool {
   }
 }
 cb_recheck :: (before: CombatSample, after: CombatSample, action: int, engaged: bool) -> bool {
+  return cb_recheck_profile(before,after,action,engaged,false);
+}
+cb_recheck_profile :: (before: CombatSample, after: CombatSample, action: int, engaged: bool,carry: bool) -> bool {
   if !before.ok || !after.ok || !cb_action(action).ok || before.target_epoch != after.target_epoch || before.npc != after.npc || before.spawn != after.spawn { return false; }
   if action == CT_CLEAR { return (after.flags & 11) == 3 && (after.target_flags & 5) == 5; }
-  next := cb_choose(after, engaged); if !next.ok { return false; }
+  next := cb_choose_profile(after, engaged,carry); if !next.ok { return false; }
   if action == CT_SELECT { return !engaged && (after.flags & 4) == 0 && (after.target_flags & 1) == 0 && next.action == CT_TAB; }
   if action == CT_SKIP { return !engaged && (after.flags & 4) == 0 && (after.target_flags & 1) != 0; }
   if action == CT_BACK || action == CT_STRAFE { return !engaged && (after.flags & 4) == 0 && (next.action == CT_TAB || next.action == CT_FORWARD); }
@@ -212,10 +215,27 @@ cb_action :: (action: int) -> CombatDecision {
   t.slots[0].id = 0; #assert cb_choose(t, true).action == CT_WAIT;
 }
 cb_slot :: (a: CombatSlot, id: int) -> bool { return a.id == id && (a.flags & 7) == 3 && a.cooldown == 0; }
-cb_choose :: (s: CombatSample, engaged: bool) -> CombatDecision {
+#test "V5 recovery and already attacking creatures do not weaken the legacy health floor or admit new low-health pulls" {
+  s:=CombatSample.{ok=true,flags=7,class_id=9,level=5,health=1,health_max=100,mana=298,mana_max=298,skin=1,target_flags=67,target_level=3,target_health=71,target_max=71,npc=706,extra=2};
+  s.slots[1]=CombatSlot.{flags=27,id=686};
+  #assert !cb_choose(s,true).ok && cb_choose_profile(s,true,true).action==CT_BOLT;
+  #assert !cb_recheck(s,s,CT_BOLT,true) && cb_recheck_profile(s,s,CT_BOLT,true,true);
+  t:=s; t.extra=0; #assert !cb_choose_profile(t,true,true).ok;
+  t=s; t.extra=1; #assert !cb_choose_profile(t,true,true).ok;
+  t=s; t.flags=3; #assert cb_choose_profile(t,false,true).action==CT_WAIT;
+  #assert !cb_choose_profile(t,true,true).ok;
+  t.slots[11]=CombatSlot.{flags=3,id=4604,count=1}; #assert cb_choose_profile(t,false,true).action==CT_FOOD;
+  #assert cb_recheck_profile(t,t,CT_FOOD,false,true) && !cb_recheck(t,t,CT_FOOD,false);
+  t=s; t.health=0; #assert !cb_choose_profile(t,true,true).ok;
+  t=s; t.flags=15; #assert !cb_choose_profile(t,true,true).ok;
+  t=s; t.npc=0; #assert !cb_choose_profile(t,true,true).ok;
+}
+cb_choose :: (s: CombatSample, engaged: bool) -> CombatDecision { return cb_choose_profile(s,engaged,false); }
+cb_choose_profile :: (s: CombatSample, engaged: bool,carry: bool) -> CombatDecision {
   bad: CombatDecision;
   if !s.ok || (s.flags & 11) != 3 || s.class_id != 9 || s.level < 2 || s.level > 5 || s.health_max <= 0 || s.mana_max <= 0 { return bad; }
-  if s.health * 100 < s.health_max * 35 { return bad; }
+  if s.health<=0 { return bad; }
+  if s.health * 100 < s.health_max * 35 && !(carry && (((s.flags&4)==0 && !engaged) || ((s.flags&4)!=0 && (s.extra&2)!=0))) { return bad; }
   if (s.flags & 16) != 0 { return cb_action(CT_WAIT); }
   if !engaged && (s.flags & 4) == 0 {
     if s.health * 100 < s.health_max * 85 { return cb_action(ifx cb_slot(s.slots[11], 4604) && s.slots[11].count > 0 then CT_FOOD else CT_WAIT); }

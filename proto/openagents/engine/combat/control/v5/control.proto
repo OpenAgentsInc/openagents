@@ -1,0 +1,11 @@
+syntax = "proto3";
+package openagents.engine.combat.control.v5;
+import "openagents/engine/combat/control/v4/control.proto";
+message EfficientHuntProfile {
+  openagents.engine.combat.control.v4.HuntProfile hunt = 1;
+  uint32 scan_ms = 2;
+  uint32 maximum_cast_wait_ms = 3;
+  uint32 resource_tick_wait_ms = 4;
+  uint32 park_x_u16 = 5;
+  uint32 park_y_u16 = 6;
+}

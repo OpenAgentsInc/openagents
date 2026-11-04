@@ -6,7 +6,7 @@
 # transcendental math ahead of glibc's so a realm computes what its wasm computes) and installs the
 # tree to $out/share/verse-os, the directory verse-session runs (`--dir`). Nothing here is Coax: the
 # Coax compiler already ran, on the machine that shipped `src`.
-{ lib, stdenv, pkg-config, makeWrapper, libdrm, libglvnd, libgbm, vulkan-headers, vulkan-loader, wayland, wayland-scanner, wayland-protocols, openssl, musl, foot, ffmpeg, zstd, xwayland, src }:
+{ lib, stdenv, pkg-config, makeWrapper, libdrm, libglvnd, libgbm, vulkan-headers, vulkan-loader, wayland, wayland-scanner, wayland-protocols, openssl, musl, foot, ffmpeg, zstd, coreutils, xwayland, src }:
 
 stdenv.mkDerivation {
   pname = "verse-realms";
@@ -88,7 +88,7 @@ stdenv.mkDerivation {
     mv $out/share/verse-os/verse-game $out/share/verse-os/.verse-game-native
     makeWrapper $out/share/verse-os/.verse-game-native $out/share/verse-os/verse-game --prefix PATH : ${lib.makeBinPath [ ffmpeg ]}
     mv $out/share/verse-os/verse-combat $out/share/verse-os/.verse-combat-native
-    makeWrapper $out/share/verse-os/.verse-combat-native $out/share/verse-os/verse-combat --prefix PATH : ${lib.makeBinPath [ zstd ]}
+    makeWrapper $out/share/verse-os/.verse-combat-native $out/share/verse-os/verse-combat --prefix PATH : ${lib.makeBinPath [ zstd ffmpeg coreutils ]}
     mv $out/share/verse-os/verse-combat-analyze $out/share/verse-os/.verse-combat-analyze-native
     makeWrapper $out/share/verse-os/.verse-combat-analyze-native $out/share/verse-os/verse-combat-analyze --prefix PATH : ${lib.makeBinPath [ zstd ffmpeg ]}
     mv $out/share/verse-os/verse-game-video $out/share/verse-os/.verse-game-video-native
