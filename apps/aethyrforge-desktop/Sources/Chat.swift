@@ -33,6 +33,7 @@ final class ForgeHUD: MTKView, MTKViewDelegate {
     var pipeline: MTLRenderPipelineState?
     var queue: MTLCommandQueue?
     var busy = false
+    var feed = false
     var viewport = NSSize.zero
     var drawOrigin = NSPoint.zero
     override var isOpaque: Bool { false }
@@ -58,21 +59,53 @@ final class ForgeHUD: MTKView, MTKViewDelegate {
     }
     required init(coder: NSCoder) { fatalError() }
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) { needsDisplay = true }
+    func vertexStream(scale d: Float) -> ([Float], Int) {
+        var vertices = [Float](repeating: 0, count: feed ? 2_000_000 : 48000)
+        let n = vertices.withUnsafeMutableBufferPointer {
+            feed ? fgc_feed_draw($0.baseAddress, Int64($0.count), Float(viewport.width), Float(viewport.height), d)
+                 : fgc_draw($0.baseAddress, Int64($0.count), Float(viewport.width), Float(viewport.height), d, busy)
+        }
+        for i in 0..<Int(n) { vertices[i * 12] -= Float(drawOrigin.x) * d; vertices[i * 12 + 1] -= Float(drawOrigin.y) * d }
+        return (vertices, Int(n))
+    }
     func draw(in view: MTKView) {
         guard let device, let pipeline, let queue, let pass = currentRenderPassDescriptor,
               let drawable = currentDrawable, let cmd = queue.makeCommandBuffer() else { return }
-        var vertices = [Float](repeating: 0, count: 48000)
         let d = Float(drawableSize.width / max(bounds.width, 1))
-        let n = vertices.withUnsafeMutableBufferPointer { fgc_draw($0.baseAddress, Int64($0.count), Float(viewport.width), Float(viewport.height), d, busy) }
         // Coax's point-space layout is window-relative. The native Metal view
-        // covers only the composer, so WebKit can see the rest of its surface.
-        for i in 0..<Int(n) { vertices[i * 12] -= Float(drawOrigin.x) * d; vertices[i * 12 + 1] -= Float(drawOrigin.y) * d }
+        // covers only its HUD component, so WebKit can see the world around it.
+        var (vertices, n) = vertexStream(scale: d)
         guard let buffer = device.makeBuffer(bytes: &vertices, length: Int(n) * 48), let encoder = cmd.makeRenderCommandEncoder(descriptor: pass) else { return }
         var size = SIMD2<Float>(Float(drawableSize.width), Float(drawableSize.height))
         encoder.setRenderPipelineState(pipeline); encoder.setVertexBuffer(buffer, offset: 0, index: 0)
         encoder.setVertexBytes(&size, length: MemoryLayout.size(ofValue: size), index: 1)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: Int(n)); encoder.endEncoding()
         cmd.present(drawable); cmd.commit()
+    }
+    // Offscreen SDK acceptance uses the exact production stream and pipeline.
+    // The matte belongs to this PNG only; the live view clears to transparent.
+    func saveCheckFrame(_ url: URL) throws -> Int {
+        guard let device, let pipeline, let queue, let cmd = queue.makeCommandBuffer() else { throw ShellError.failed("HUD Metal unavailable.") }
+        let width = Int(bounds.width * 2), height = Int(bounds.height * 2)
+        let desc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
+        desc.usage = .renderTarget; desc.storageMode = .shared
+        guard let texture = device.makeTexture(descriptor: desc) else { throw ShellError.failed("HUD check texture unavailable.") }
+        let pass = MTLRenderPassDescriptor(); pass.colorAttachments[0].texture = texture
+        pass.colorAttachments[0].loadAction = .clear; pass.colorAttachments[0].storeAction = .store
+        pass.colorAttachments[0].clearColor = MTLClearColorMake(0.04, 0.06, 0.07, 1)
+        var (vertices, n) = vertexStream(scale: 2)
+        guard n > 0, let buffer = device.makeBuffer(bytes: &vertices, length: n * 48), let encoder = cmd.makeRenderCommandEncoder(descriptor: pass) else { throw ShellError.failed("HUD feed produced no vertices.") }
+        var size = SIMD2<Float>(Float(width), Float(height))
+        encoder.setRenderPipelineState(pipeline); encoder.setVertexBuffer(buffer, offset: 0, index: 0)
+        encoder.setVertexBytes(&size, length: MemoryLayout.size(ofValue: size), index: 1)
+        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: n); encoder.endEncoding()
+        cmd.commit(); cmd.waitUntilCompleted()
+        guard cmd.status == .completed, let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bitmapFormat: [], bytesPerRow: width * 4, bitsPerPixel: 32), let data = bitmap.bitmapData else { throw ShellError.failed("HUD frame readback failed.") }
+        texture.getBytes(data, bytesPerRow: width * 4, from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
+        // Metal's attachment is BGRA; the PNG bitmap accepts RGBA bytes.
+        for i in stride(from: 0, to: width * height * 4, by: 4) { let blue = data[i]; data[i] = data[i + 2]; data[i + 2] = blue }
+        guard let png = bitmap.representation(using: .png, properties: [:]) else { throw ShellError.failed("HUD PNG failed.") }
+        try png.write(to: url); return n
     }
 }
 
@@ -94,8 +127,7 @@ final class ForgeChatPane: NSView {
     let hud: ForgeHUD
     let transcript = NSTextView()
     let transcriptScroll = NSScrollView()
-    let messages = NSTextView()
-    let messagesScroll = NSScrollView()
+    let messageHUD: ForgeHUD
     let input = ForgeComposer()
     let inputScroll = NSScrollView()
     let router = NSTextField(labelWithString: "Automatic routing · Elephant")
@@ -108,14 +140,19 @@ final class ForgeChatPane: NSView {
     let status = NSTextField(labelWithString: "Enter sends · Shift-Enter adds a line · Esc closes")
     var process: Process?
     var task: Task<Void, Never>?
-    var messageHideTask: Task<Void, Never>?
-    var messagesFinishedAt: TimeInterval?
+    var clockTimer: Timer?
+    var renderedPresentation: Int64 = -1
     var busy = false
     var pending = false
     var composerOpen = false
     var presentation: Int64 {
-        let age = messagesFinishedAt.map { Int64((ProcessInfo.processInfo.systemUptime - $0) * 1000) } ?? -1
-        return fgc_chat_mode(composerOpen, busy, !messages.string.isEmpty, age)
+        fgc_chat_mode(composerOpen, busy, clockMilliseconds)
+    }
+    var clockMilliseconds: Int64 { Int64(ProcessInfo.processInfo.systemUptime * 1000) }
+    var messageText: String {
+        var bytes = [UInt8](repeating: 0, count: 32768)
+        let n = fgc_feed_copy(&bytes, Int64(bytes.count))
+        return String(decoding: bytes.prefix(max(0, Int(n))), as: UTF8.self)
     }
     var session = ""
     var parent = ""
@@ -135,22 +172,22 @@ final class ForgeChatPane: NSView {
     var onClose: (() -> Void)?
     override init(frame: NSRect) {
         hud = ForgeHUD(frame: .zero)
+        messageHUD = ForgeHUD(frame: .zero); messageHUD.feed = true
         cwd = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/aethyrforge/workspace")
         super.init(frame: frame)
         fgc_reset()
         appearance = NSAppearance(named: .darkAqua)
-        for view in [transcript, messages, input] { view.isRichText = false; view.font = .monospacedSystemFont(ofSize: 13, weight: .regular); view.textColor = NSColor(white: 0.9, alpha: 1); view.backgroundColor = .clear; view.drawsBackground = false; view.textContainerInset = NSSize(width: 4, height: 6); view.isAutomaticQuoteSubstitutionEnabled = false; view.isAutomaticDashSubstitutionEnabled = false }
+        for view in [transcript, input] { view.isRichText = false; view.font = .monospacedSystemFont(ofSize: 13, weight: .regular); view.textColor = NSColor(white: 0.9, alpha: 1); view.backgroundColor = .clear; view.drawsBackground = false; view.textContainerInset = NSSize(width: 4, height: 6); view.isAutomaticQuoteSubstitutionEnabled = false; view.isAutomaticDashSubstitutionEnabled = false }
         transcript.isEditable = false; transcript.isSelectable = true
-        messages.isEditable = false; messages.isSelectable = false
         input.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
         input.textContainerInset = NSSize(width: 4, height: 3)
-        for (scroll, text) in [(transcriptScroll, transcript), (messagesScroll, messages), (inputScroll, input)] {
+        for (scroll, text) in [(transcriptScroll, transcript), (inputScroll, input)] {
             scroll.documentView = text; scroll.hasVerticalScroller = true; scroll.drawsBackground = false
             text.isVerticallyResizable = true; text.isHorizontallyResizable = false
             text.autoresizingMask = [.width]; text.textContainer?.widthTracksTextView = true
             addSubview(scroll)
         }
-        messagesScroll.hasVerticalScroller = false
+        addSubview(messageHUD)
         router.setAccessibilityLabel("Automatic task routing")
         router.lineBreakMode = .byTruncatingTail
         folder.title = "Folder…"; folder.target = self; folder.action = #selector(chooseFolder)
@@ -198,16 +235,17 @@ final class ForgeChatPane: NSView {
         heading.frame = NSRect(x: t.minX + 8, y: t.minY + 4, width: t.width - 104, height: 16)
         fresh.frame = NSRect(x: t.maxX - 88, y: t.minY + 1, width: 80, height: 22)
         transcriptScroll.frame = NSRect(x: t.minX + 4, y: t.minY + 28, width: t.width - 8, height: t.height - (pending ? 64 : 32))
-        messagesScroll.frame = NSRect(x: t.minX + 4, y: t.minY, width: t.width - 8, height: t.height)
+        messageHUD.frame = t.insetBy(dx: -4, dy: -4)
+        messageHUD.viewport = bounds.size; messageHUD.drawOrigin = messageHUD.frame.origin
         allow.frame = NSRect(x: t.minX + 4, y: t.maxY - 30, width: 90, height: 24)
         deny.frame = NSRect(x: t.minX + 100, y: t.maxY - 30, width: 60, height: 24)
         router.frame = box(3); folder.frame = box(6)
         inputScroll.frame = box(2); send.frame = box(7)
         status.frame = NSRect(x: 28, y: bounds.height - 29, width: bounds.width - 56, height: 12)
-        for (scroll, text) in [(transcriptScroll, transcript), (messagesScroll, messages), (inputScroll, input)] {
+        for (scroll, text) in [(transcriptScroll, transcript), (inputScroll, input)] {
             text.setFrameSize(NSSize(width: scroll.contentSize.width, height: max(text.frame.height, scroll.contentSize.height)))
         }
-        hud.needsDisplay = true
+        hud.needsDisplay = true; messageHUD.needsDisplay = true
     }
     override func draw(_ dirtyRect: NSRect) {
         // Messages float directly over the world. Only the compact composer
@@ -233,13 +271,24 @@ final class ForgeChatPane: NSView {
     }
     func update() {
         let mode = presentation
+        renderedPresentation = mode
         for view in [hud as NSView, inputScroll, router, folder, send, fresh, heading, status, transcriptScroll] { view.isHidden = mode != 2 }
-        messagesScroll.isHidden = mode != 1
+        messageHUD.isHidden = mode != 1
+        // A platform clock only. Coax owns whether the feed is alive and when
+        // its lifetime ends; no deadline or delayed-hide state lives in Swift.
+        if mode == 1 && clockTimer == nil {
+            clockTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    if self.presentation != self.renderedPresentation { self.update() }
+                }
+            }
+        } else if mode != 1 { clockTimer?.invalidate(); clockTimer = nil }
         for control in [folder, fresh] { control.isEnabled = !busy }
         send.title = busy ? "Stop" : "Send ↵"; allow.isHidden = mode != 2 || !pending; deny.isHidden = mode != 2 || !pending
         heading.stringValue = pending ? "CODER / APPROVAL NEEDED" : busy ? "CODER / WORKING · \(selectedEngine)" : "CODER / MESSAGES"
         folder.title = "\(cwd.lastPathComponent) ▾"; folder.toolTip = cwd.path
-        hud.busy = busy; hud.needsDisplay = true; needsDisplay = true; needsLayout = true
+        hud.busy = busy; hud.needsDisplay = true; messageHUD.needsDisplay = true; needsDisplay = true; needsLayout = true
     }
     func openComposer() {
         composerOpen = true; onActivity?(); update(); window?.makeFirstResponder(input)
@@ -248,24 +297,16 @@ final class ForgeChatPane: NSView {
         composerOpen = false; update(); onClose?()
     }
     func appendMessage(_ text: String) {
-        messages.textStorage?.append(NSAttributedString(string: text, attributes: [.foregroundColor: NSColor(white: 0.95, alpha: 1), .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)]))
-        if messages.string.utf16.count > 200_000 { messages.textStorage?.deleteCharacters(in: NSRange(location: 0, length: 50_000)) }
-        update(); layoutSubtreeIfNeeded(); messages.scrollToEndOfDocument(nil)
+        let bytes = Array(text.utf8)
+        bytes.withUnsafeBufferPointer { fgc_feed_event(1, $0.baseAddress, Int64($0.count), clockMilliseconds) }
+        update(); layoutSubtreeIfNeeded()
     }
     func clearMessages() {
-        messageHideTask?.cancel(); messageHideTask = nil
-        messagesFinishedAt = nil; messages.string = ""
+        fgc_feed_event(0, nil, 0, clockMilliseconds)
     }
     func finishMessages() {
-        messageHideTask?.cancel()
-        messagesFinishedAt = ProcessInfo.processInfo.systemUptime
+        fgc_feed_event(2, nil, 0, clockMilliseconds)
         update()
-        messageHideTask = Task { [weak self] in
-            do { try await Task.sleep(for: .milliseconds(fc_chat_hold_ms())) }
-            catch { return }
-            guard let self, !Task.isCancelled else { return }
-            messagesFinishedAt = nil; update()
-        }
     }
     func save() {
         if let data = try? JSONSerialization.data(withJSONObject: ["routing": "auto", "cwd": cwd.path], options: [.sortedKeys]) { try? data.write(to: settings, options: .atomic) }
@@ -285,7 +326,7 @@ final class ForgeChatPane: NSView {
         env["PATH"] = ([realHome.appendingPathComponent(".openagents/bin").path, realHome.appendingPathComponent(".local/bin").path, "/opt/homebrew/bin", "/usr/local/bin", env["PATH"] ?? "/usr/bin:/bin"] + nodes).joined(separator: ":")
         env["OPENAGENTS_CODER_BIN"] = resources.appendingPathComponent("coder").path
         env["CODER_MICRO_WORKER"] = resources.appendingPathComponent("mcworker").path
-        env["CODER_ASK_FILE"] = "1"; env["CODER_REALM_TOOLS"] = "0"
+        env.removeValue(forKey: "CODER_ASK_FILE"); env["CODER_REALM_TOOLS"] = "0"
         env["BROWSER"] = "/usr/bin/true"; env["NO_OPEN_BROWSER"] = "1"
         if home != FileManager.default.homeDirectoryForCurrentUser { env["CODER_HOME"] = home.path }
         return env
@@ -306,7 +347,14 @@ final class ForgeChatPane: NSView {
         append("\n\(voice ? "VOICE" : "YOU")\n\(text)\n\n", color: .white)
         if voice { appendMessage("You: \(text)\n\n") }
         var args = ["coder"] + (parent.isEmpty ? ["run", text] : ["fork", parent, text])
-        args += ["--engine", engineOverride ?? "auto", "--cwd", cwd.path, "--stream-json", "--ask"]
+        args += ["--cwd", cwd.path]
+        for i in 0..<8 {
+            var bytes = [UInt8](repeating: 0, count: 128)
+            let n = fgc_launch_option(Int64(i), &bytes, Int64(bytes.count))
+            if n <= 0 { break }
+            let option = String(decoding: bytes.prefix(Int(n)), as: UTF8.self)
+            args.append(option == "auto" ? (engineOverride ?? option) : option)
+        }
         let p = Process(); p.executableURL = cli; p.arguments = args; p.currentDirectoryURL = cwd; p.environment = environment()
         let output = Pipe(); let errors = Pipe(); p.standardOutput = output; p.standardError = errors; p.standardInput = FileHandle.nullDevice
         selectedEngine = engineOverride ?? "auto"
@@ -355,7 +403,7 @@ final class ForgeChatPane: NSView {
         case 11, 12:
             if kind == 11 { append("\(selectedEngine.uppercased())\n") }
             append(text); appendMessage(text); liveChunks += 1
-            if busy && !composerOpen && hud.isHidden && inputScroll.isHidden && !messagesScroll.isHidden { streamedWithoutComposer = true }
+            if busy && !composerOpen && hud.isHidden && inputScroll.isHidden && !messageHUD.isHidden { streamedWithoutComposer = true }
         case 13: append("\n\n"); appendMessage("\n\n")
         default: break
         }
@@ -378,7 +426,7 @@ final class ForgeChatPane: NSView {
         } else { process?.terminate() }
     }
     func shutdown() {
-        messageHideTask?.cancel(); messageHideTask = nil; messagesFinishedAt = nil
+        clockTimer?.invalidate(); clockTimer = nil
         stopping = true; stopTurn()
         if let process {
             let end = Date().addingTimeInterval(2)

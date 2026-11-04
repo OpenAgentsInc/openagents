@@ -5,7 +5,8 @@
 static coax_t_ForgeChatEvent event;
 static coax_t_ForgeChatModels models;
 static coax_t_ForgeVoiceCoder voice;
-void fgc_reset(void) { coax_default_t_ForgeChatEvent(&event); coax_default_t_ForgeVoiceCoder(&voice); }
+static coax_t_HudFeed feed;
+void fgc_reset(void) { coax_default_t_ForgeChatEvent(&event); coax_default_t_ForgeVoiceCoder(&voice); coax_default_t_HudFeed(&feed); }
 int64_t fgv_arm(void) {return fv_arm((coax_v_t_ForgeVoiceCoder){&voice,1});}
 void fgv_cancel(void) {fv_cancel((coax_v_t_ForgeVoiceCoder){&voice,1},0);}
 int64_t fgv_message(const uint8_t *p,int64_t n,bool available,bool busy) {
@@ -27,7 +28,21 @@ int64_t fgc_router_default(uint8_t *out, int64_t cap) {
   coax_string s=fc_router_default(); if(s.count>cap) return -1;
   memcpy(out,s.data,(size_t)s.count);return s.count;
 }
-int64_t fgc_chat_mode(bool opened, bool busy, bool messages,int64_t age) { return fc_chat_mode(opened,busy,messages,age); }
+int64_t fgc_chat_mode(bool opened, bool busy,int64_t now) { return fc_chat_mode(opened,busy,(coax_v_t_HudFeed){&feed,1},now); }
+void fgc_feed_event(int64_t kind,const uint8_t *p,int64_t n,int64_t now) {
+  fc_feed_event((coax_v_t_HudFeed){&feed,1},kind,(coax_string){(const char *)p,n},now);
+}
+int64_t fgc_feed_copy(uint8_t *p,int64_t cap) {
+  coax_string s=fc_feed_text((coax_v_t_HudFeed){&feed,1});
+  if(s.count>cap)return -1;memcpy(p,s.data,(size_t)s.count);return s.count;
+}
+int64_t fgc_launch_option(int64_t i,uint8_t *out,int64_t cap) {
+  coax_string s=fc_launch_option(i);if(s.count>cap)return -1;
+  memcpy(out,s.data,(size_t)s.count);return s.count;
+}
+int64_t fgc_feed_draw(float *out,int64_t cap,float w,float h,float d) {
+  return fc_feed_draw((coax_v_f32){out,cap},(coax_v_t_HudFeed){&feed,1},w,h,d);
+}
 int64_t fgc_enter_route(bool ready, bool opened, int64_t key, bool down, bool repeated, bool modified, bool held) {
   return fc_enter_route(ready,opened,key,down,repeated,modified,held);
 }

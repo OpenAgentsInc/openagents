@@ -1,0 +1,34 @@
+// Shared text-only streaming feed, using Aethyr's existing font and stroke
+// components. Latest wrapped rows remain in view; no panel or background.
+#load "feed.coax";
+#load "draw.coax";
+
+#test "feed drawing uses shared text vertices and refuses an empty or short viewport" {
+  s:[1]HudFeed;out:[48000]f32;p:=HdPen.{d=1,top=0,bottom=300,sans=false};
+  b:=HudBox.{x=10,y=10,width=180,height=100};
+  #assert hd_feed(out[..],0,s[..],b,p)==0;
+  hf_append(s[..],"Hello Foreman\nSecond line\n\n");
+  n:=hd_feed(out[..],0,s[..],b,p);#assert n>0 && n<=out.count/12 && n%6==0;
+  #assert hd_feed(out[0..<12],0,s[..],b,p)==0;
+  #assert hd_feed(out[..],0,s[..],HudBox.{width=0,height=100},p)==0;
+  #assert hd_feed(out[..],0,s[..],HudBox.{width=100,height=0},p)==0;
+  for i:0..<n {#assert out[i*12+11]<3.5;#assert out[i*12+1]>=b.y-4 && out[i*12+1]<=b.y+b.height+4;}
+}
+hd_feed :: (out:[]f32,at:int,s:[]HudFeed,b:HudBox,p:HdPen)->int {
+  if b.width<=8 || b.height<18 || s[0].n==0 {return at;}
+  rows:=cast(int)(b.height/18);if rows>64 {rows=64;}
+  source:=hf_text(s);stop:=source.count;while stop>0 && (source[stop-1]=='\n' || source[stop-1]=='\r') {stop-=1;}
+  text:=source[0..<stop];starts:[64]int;ends:[64]int;count:=0;from:=0;
+  ink:=hd_ink(p,0);ink.sans=false;
+  while from<text.count {
+    next:[1]int;end:=wrap_ink(text,from,b.width-8,11,0.22,0.72,ink,next[..]);
+    starts[count%rows]=from;ends[count%rows]=end;count+=1;from=next[0];
+  }
+  first:=count-rows;if first<0 {first=0;}
+  n:=at;pen:=p;pen.sans=false;pen.top=b.y;pen.bottom=b.y+b.height;
+  for line:first..<count {
+    i:=line%rows;
+    n=hd_text(out,n,text[starts[i]..<ends[i]],b.x+4,b.y+13+cast(f32)(line-first)*18,11,pen,0);
+  }
+  return n;
+}

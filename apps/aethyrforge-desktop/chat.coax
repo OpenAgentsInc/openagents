@@ -3,11 +3,13 @@
 #import "Basic";
 #load "chat-policy.coax";
 #load "chat-presentation.coax";
+#load "chat-launch.coax";
 #load "voice-coder.coax";
 #load "microphone.coax";
 #load "../../coax/lib/json/json.coax";
 #load "../../coax/lib/nostr/json-f64.coax";
 #load "../../aethyr/ui/draw.coax";
+#load "../../aethyr/ui/feed-draw.coax";
 
 FC_ENGINES :: [6]string.["codex","claude","cursor","microcoder","psionic","echo"];
 FC_LABELS :: [6]string.["Codex","Claude Code","Cursor","Microcoder","Psionic (local)","Echo (offline)"];
@@ -177,4 +179,7 @@ fc_draw :: (out:[]f32,w:f32,h:f32,d:f32,busy:bool)->int #export_c {
   n=hd_panel(out,n,fc_box(0,w,h),p,busy);
   n=hd_panel(out,n,fc_box(2,w,h),p,false);
   return n;
+}
+fc_feed_draw :: (out:[]f32,feed:[]HudFeed,w:f32,h:f32,d:f32)->int #export_c {
+  return hd_feed(out,0,feed,fc_box(1,w,h),HdPen.{d=d,top=0,bottom=h,sans=false});
 }

@@ -36,15 +36,20 @@ Refresh repeats discovery; only pressing Verify voice model hashes the pinned
 complete weight/tokenizer files. No model is loaded
 and no microphone or agent session starts during setup.
 
-The Metal HUD view covers only the bottom composer; both native overlay views
-are explicitly transparent, so WebKit can keep rendering the world. Startup's
+The Metal HUD views cover only the bottom composer and the floating message
+component; both are explicitly transparent, so WebKit keeps rendering the world. Startup's
 60-second budget counts visible rendering time, pausing while the window or
 page is hidden. A genuine startup/server failure shows its error, stops the
 spinner and provides Retry startup. Retrying replaces only this app's local
 processes and preserves the saved world.
 
 The Coder HUD uses `aethyr/ui/draw.coax` for a compact, lightly tinted 88-point
-composer and shared layout, a native Metal overlay and AppKit text/IME. There
+composer and shared layout. Floating messages use `aethyr/ui/feed.coax` and
+`feed-draw.coax`: Coax owns the bounded UTF-8 ring, wrapping, newest visible rows
+and five-second completion lifetime; Aethyr's font/stroke components emit their
+Metal vertices. Swift supplies clock observations and submits those buffers.
+The floating messages have no AppKit text view or Swift deadline/hide task.
+AppKit still supplies editable input/IME and selectable conversation history. There
 is no frame or label around the whole window. Coder is hidden at rest. Enter
 or Cmd+L opens its composer and conversation; native Return/keypad Enter never
 opens the realm's region chat. Enter sends and closes the composer; Shift-Enter
@@ -56,11 +61,16 @@ only received reply text appears on the left during an active run, with no
 background, heading, controls or mouse interception. Replies remain visible
 for five seconds after the run ends, then hide; Enter restores the
 conversation, including tools, results, paths and errors.
-Pending tool requests show a message to press Enter for Allow once / Deny;
-closing the composer never grants approval. New chat and folder changes start fresh.
+Desktop turns use Coder's unattended provider mode, without `--ask`: Claude's
+`bypassPermissions` and Codex's `approvalPolicy=never` with `danger-full-access`.
+The Codex adapter uses the app-server equivalent of its
+[documented unattended mode](https://learn.chatgpt.com/docs/developer-commands?surface=cli).
+Microcoder uses its existing ungated tool path. Native Allow once / Deny controls
+remain available for an explicitly constrained backend, but normal desktop
+turns do not request tool approval. New chat and folder changes start fresh.
 Slash commands, history browsing and attachment to a running PID are future work.
 
-The UI calls shared `~/.openagents/bin/openagents coder run|fork --engine auto --stream-json --ask`,
+The UI calls shared `~/.openagents/bin/openagents coder run|fork --engine auto --stream-json`,
 the same Coder as the TUI. Every submitted turn routes, including follow-ups,
 which carry the previous durable session's
 context. Prebuilt Coder/Microcoder are bundled; messages do not build tools or
@@ -194,7 +204,7 @@ check, not the future voice acceptance suite.
 The chat smoke uses the native composer and real packaged/shared CLI without
 opening a window or starting the world. It checks two replies and context.
 `FORGE_CHAT_SMOKE_ENGINE` selects the agent (default Echo). Optional actions
-check approval of a file write in the isolated workspace and cancellation:
+check an unattended file write in the isolated workspace and cancellation:
 
 ```sh
 mkdir -p /tmp/aethyrforge-chat
@@ -244,8 +254,8 @@ Finalized Parakeet speech starts the same routed Coder turn directly. It keeps
 the Enter bar closed, preserves any typed draft and shows the recognized words
 and live reply chunks on the left. It does not also send those words to the
 realm's editor. Canceled captures, partials and duplicate finals never dispatch;
-if Coder is busy, a message says the new voice input was not sent. Tool consent
-still waits for Enter and Allow once / Deny. Speech recognition stays local;
+if Coder is busy, a message says the new voice input was not sent. Voice turns
+use the same unattended provider mode as typed turns. Speech recognition stays local;
 the finalized text goes to the coding provider selected by the router.
 
 `--stream-json` adds opt-in live stdout deltas; ordinary `--json` and durable
@@ -268,11 +278,19 @@ apps/aethyrforge-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge --voic
 
 Verified on 2026-11-04: the recorded “Hello Foreman…” final reached Elephant
 routing and Microcoder, then delivered live reply output with the bar closed.
-The fixture denied one unnecessary tool request; production tool consent stays
-manual. The typed draft survived and the duplicate final was ignored. 435 Coder
+That earlier fixture denied one unnecessary tool request; the current desktop
+uses unattended provider launches. The typed draft survived and the duplicate final was ignored. 435 Coder
 checks and 135 desktop checks passed; voice admission killed all 74 mutants,
 and live credential-prefix handling killed all 31. Repository tools-check
 reports 28 unrelated existing missing-header files at this base.
+
+HUD/unattended checkpoint, 2026-11-04: 142 desktop checks passed; the shared feed
+killed all 72 mutants, presentation killed all 33 and launch options killed all
+four. Native input exercised the Coax feed over the real realm, its five-second
+lifetime and a Metal offscreen frame. Real Claude and Codex each retained
+follow-up context, wrote the requested fixture file with zero approval requests
+and stopped an active turn. The repository tools check still reports the same
+28 unrelated missing headers.
 
 The Coax `voice-build.coax` packages the existing voice engine and a Parakeet-only
 native voice host using serial compilation. It adds no inference or protocol logic.

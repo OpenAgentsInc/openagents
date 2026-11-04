@@ -1,11 +1,23 @@
 // Desktop-only Coder presentation and ownership of Return's complete press.
 // 0 passes through, 1 consumes, 2 opens Coder, 3 delivers to native controls.
+#load "../../aethyr/ui/feed.coax";
+#test "desktop feed events own the buffer and expiry across new turns" {
+  s:[1]HudFeed;fc_feed_event(s[..],1,"first",10);
+  #assert fc_feed_text(s[..])=="first" && fc_chat_mode(false,true,s[..],10)==1;
+  fc_feed_event(s[..],2,"",10);
+  #assert fc_chat_mode(false,false,s[..],5009)==1 && fc_chat_mode(false,false,s[..],5010)==0;
+  #assert fc_chat_mode(true,false,s[..],5010)==2;
+  fc_feed_event(s[..],0,"",20);#assert fc_feed_text(s[..])=="";
+  fc_feed_event(s[..],1,"second",20);fc_feed_event(s[..],9,"ignored",30);
+  #assert fc_feed_text(s[..])=="second" && !hf_visible(s[..],false,30);
+}
 #test "closed Coder keeps completed messages for five seconds without showing controls" {
   #assert fc_chat_hold_ms()==5000;
   for opened:[2]bool.[false,true] {for busy:[2]bool.[false,true] {for messages:[2]bool.[false,true] {
     for age:[5]int.[-1,0,4999,5000,5001] {
       expected:=ifx opened then 2 else ifx messages && (busy || age==0 || age==4999) then 1 else 0;
-      #assert fc_chat_mode(opened,busy,messages,age)==expected;
+      s:[1]HudFeed;s[0].n=ifx messages then 1 else 0;hf_finish(s[..],0,5000);
+      #assert fc_chat_mode(opened,busy,s[..],age)==expected;
     }
   }}}
 }
@@ -25,10 +37,15 @@
   #assert fc_enter_route(true,false,53,true,false,false,true)==0;
 }
 fc_chat_hold_ms :: ()->int #export_c {return 5000;}
-fc_chat_mode :: (opened:bool,busy:bool,messages:bool,finished_age_ms:int)->int #export_c {
-  lingering:=finished_age_ms>=0 && finished_age_ms<fc_chat_hold_ms();
-  return ifx opened then 2 else ifx (busy || lingering) && messages then 1 else 0;
+fc_chat_mode :: (opened:bool,busy:bool,feed:[]HudFeed,now_ms:int)->int #export_c {
+  return ifx opened then 2 else ifx hf_visible(feed,busy,now_ms) then 1 else 0;
 }
+fc_feed_event :: (feed:[]HudFeed,kind:int,text:string,now_ms:int) #export_c {
+  if kind==0 {hf_clear(feed);}
+  if kind==1 {hf_append(feed,text);}
+  if kind==2 {hf_finish(feed,now_ms,fc_chat_hold_ms());}
+}
+fc_feed_text :: (feed:[]HudFeed)->string #export_c {return hf_text(feed);}
 fc_enter_route :: (ready:bool,opened:bool,key:int,down:bool,repeated:bool,modified:bool,held:bool)->int #export_c {
   if key!=36 && key!=76 {return 0;}
   if held {return 1;}

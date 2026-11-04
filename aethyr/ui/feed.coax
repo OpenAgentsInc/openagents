@@ -1,0 +1,63 @@
+// A bounded streaming HUD text feed. The realm supplies monotonic milliseconds;
+// Aethyr owns retention and completion lifetime. No platform timers or widgets.
+HUD_FEED_BYTES :: 32768;
+// Mirroring the ring makes its current tail one contiguous view, without
+// shifting the whole transcript on every arriving token.
+HudFeed :: struct {text:[HUD_FEED_BYTES*2]u8;head:int;n:int;finished_ms:int=-1;hold_ms:int;}
+
+#test "a feed stays visible while streaming and for its complete hold after finish" {
+  s:[1]HudFeed;
+  #assert !hf_visible(s[..],false,0) && !hf_visible(s[..],true,0);
+  hf_append(s[..],"hello");
+  #assert hf_visible(s[..],true,0) && !hf_visible(s[..],false,0);
+  hf_finish(s[..],100,5000);
+  #assert !hf_visible(s[..],false,99);
+  #assert hf_visible(s[..],false,100) && hf_visible(s[..],false,5099);
+  #assert !hf_visible(s[..],false,5100) && !hf_visible(s[..],false,5101);
+  #assert hf_visible(s[..],true,5101);
+  hf_clear(s[..]);#assert s[0].n==0 && s[0].finished_ms==-1 && s[0].hold_ms==0;
+  #assert !hf_visible(s[..],true,200);
+  hf_append(s[..],"new");#assert !hf_visible(s[..],false,200);
+  hf_finish(s[..],200,0);#assert !hf_visible(s[..],false,200);
+  hf_finish(s[..],200,-1);#assert !hf_visible(s[..],false,200);
+  hf_clear(s[..]);hf_append(s[..],"x");hf_finish(s[..],0,5000);
+  #assert hf_visible(s[..],false,0) && hf_visible(s[..],false,4999);
+  #assert !hf_visible(s[..],false,5000);
+}
+#test "stream chunks retain the newest bounded UTF8 text without a partial leading rune" {
+  s:[1]HudFeed;hf_append(s[..],"");#assert s[0].n==0;
+  hf_append(s[..],"aé");hf_append(s[..],"🙂z");
+  #assert hf_text(s[..])=="aé🙂z";
+  b:[HUD_FEED_BYTES+4]u8;for i:0..<b.count {b[i]='x';}
+  hf_append(s[..],cast(string)b[0..<HUD_FEED_BYTES-1]);
+  #assert hf_text(s[..]).count==HUD_FEED_BYTES && hf_text(s[..])[0]=='z';
+  hf_clear(s[..]);hf_append(s[..],"é");hf_append(s[..],cast(string)b[0..<HUD_FEED_BYTES-1]);
+  #assert hf_text(s[..]).count==HUD_FEED_BYTES-1 && hf_text(s[..])[0]=='x';
+  b[0]=0xC3;b[1]=0xA9;
+  hf_append(s[..],cast(string)b[0..<HUD_FEED_BYTES+1]);
+  #assert hf_text(s[..]).count==HUD_FEED_BYTES-1 && hf_text(s[..])[0]=='x';
+  hf_append(s[..],cast(string)b[0..<HUD_FEED_BYTES]);
+  #assert hf_text(s[..]).count==HUD_FEED_BYTES && hf_text(s[..])[0]==0xC3 && hf_text(s[..])[1]==0xA9;
+  hf_append(s[..],"xyz");#assert hf_text(s[..])[hf_text(s[..]).count-1]=='z';
+  hf_clear(s[..]);#assert s[0].head==0;
+}
+hf_clear :: (s:[]HudFeed) {
+  s[0].head=0;s[0].n=0;s[0].finished_ms=-1;s[0].hold_ms=0;
+}
+hf_append :: (s:[]HudFeed,text:string) {
+  for c:text {
+    at:=(s[0].head+s[0].n)%HUD_FEED_BYTES;
+    s[0].text[at]=c;s[0].text[at+HUD_FEED_BYTES]=c;
+    if s[0].n==HUD_FEED_BYTES {s[0].head=(s[0].head+1)%HUD_FEED_BYTES;}
+    else {s[0].n+=1;}
+  }
+}
+hf_text :: (s:[]HudFeed)->string {
+  text:=cast(string)s[0].text[s[0].head..<s[0].head+s[0].n];start:=0;
+  for c:text {if (c&0xC0)!=0x80 {break;}start+=1;}
+  return text[start..<text.count];
+}
+hf_finish :: (s:[]HudFeed,now_ms:int,hold_ms:int) {s[0].finished_ms=now_ms;s[0].hold_ms=hold_ms;}
+hf_visible :: (s:[]HudFeed,active:bool,now_ms:int)->bool {
+  return s[0].n>0 && (active || (s[0].finished_ms>=0 && now_ms>=s[0].finished_ms && now_ms-s[0].finished_ms<s[0].hold_ms));
+}

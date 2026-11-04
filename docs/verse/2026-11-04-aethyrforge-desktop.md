@@ -96,7 +96,9 @@ page server, the voice Wasm and a local Parakeet voice host. This is the same
   dispatch. Partials, canceled or duplicate finals and blank input do not run
   Coder; busy turns are retained and show that the new voice input was not sent.
   Coding-provider selection applies to finalized text; audio remains local.
-  Tool consent still requires the existing explicit Allow once / Deny action.
+  Typed and voice turns use Coder's unattended launch profile: Claude's
+  `bypassPermissions`, Codex's `approvalPolicy=never` / `danger-full-access`
+  and Microcoder's ungated tools. The desktop no longer forces `--ask`.
   New opt-in `--stream-json` emits `coder.reply-stream.v1` deltas as Coder receives
   them, with credential-prefix withholding and full-value redaction. Legacy JSON
   output and durable whole-reply histories are unchanged. The
@@ -106,7 +108,7 @@ page server, the voice Wasm and a local Parakeet voice host. This is the same
   loopback Parakeet on Metal, Elephant routing and Microcoder, delivering live
   reply output with the bar closed, preserving a draft and ignoring a duplicate
   final. Its unnecessary tool request was denied by the fixture; production
-  approvals remain manual. 435 Coder and 135 desktop checks passed; all 74 voice
+  that earlier checkpoint used manual approvals. 435 Coder and 135 desktop checks passed; all 74 voice
   admission mutants and all 31 credential-prefix mutants were killed. The
   repository tools check reports 28 existing unrelated missing-header files.
   The dedicated voice transcript bar, Space binding, model download, typed model
@@ -122,15 +124,21 @@ page server, the voice Wasm and a local Parakeet voice host. This is the same
   the composer, Shift-Enter inserts a line and Escape closes while
   retaining the draft and running agent; Stop cancels. With the composer closed,
   only reply text floats on the left while a run is active, without a background,
-  heading, controls or mouse interception. On completion it disappears; Enter
-  restores the conversation and its tool/results/error details. Pending tool
-  requests display a message to press Enter for Allow once / Deny; closing never
-  grants consent. Native input smoke checks both Enter keys over the real
+  heading, controls or mouse interception. Completed replies stay for five
+  seconds, then hide; Enter restores the full conversation. The floating feed
+  is an Aethyr component (`aethyr/ui/feed.coax`, `feed-draw.coax`): Coax owns
+  its buffer, UTF-8 retention, text wrapping and lifetime, and emits shared
+  font/stroke vertices for Metal. Swift observes time and submits buffers;
+  floating text has no AppKit text view or Swift deadline state. Input/IME
+  and selectable full history remain platform text effects. The unattended
+  launch options are Coax too. Real Claude and Codex checks wrote the requested
+  fixture file with zero approval prompts and verified context and Stop.
+  Native input smoke checks both Enter keys over the real
   packaged realm, no leaked region-chat events, presentation/approval transitions
-  and a real CLI round trip. Verification: 109 Coax checks passed; all 21
-  presentation/key-routing mutants were killed. The native input smoke passed
+  and a real CLI round trip. Verification: 142 Coax checks passed; all 72 feed,
+  33 presentation and four launch-option mutants were killed. Native input passed
   with zero realm Enter keydowns/keyups and no region-chat text field. The
-  repository tools check still reports its 21 pre-existing unrelated files
+  repository tools check still reports its 28 pre-existing unrelated files
   without Firm reason headers. Follow-ups use Coder's
   durable fork/context path. New chat and folder changes start fresh.
   Complete histories stay in `~/.openagents/coder/sessions/`; UI settings and

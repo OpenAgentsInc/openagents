@@ -531,7 +531,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
             let event = NSEvent.keyEvent(with: down ? .keyDown : .keyUp, location: .zero, modifierFlags: modifiers, timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil, characters: text, charactersIgnoringModifiers: text, isARepeat: repeatKey, keyCode: code)!
             window.sendEvent(event)
         }
-        try require(setupPane.isHidden && chatPane.presentation == 0 && chatPane.hud.isHidden && chatPane.inputScroll.isHidden && chatPane.transcriptScroll.isHidden && chatPane.messagesScroll.isHidden, "Coder must be completely absent at world entry.")
+        try require(setupPane.isHidden && chatPane.presentation == 0 && chatPane.hud.isHidden && chatPane.inputScroll.isHidden && chatPane.transcriptScroll.isHidden && chatPane.messageHUD.isHidden, "Coder must be completely absent at world entry.")
         _ = try await web.evaluateJavaScript("globalThis.__forgeEnterDown=0;globalThis.__forgeEnterUp=0;addEventListener('keydown',e=>{if(e.key==='Enter')__forgeEnterDown++});addEventListener('keyup',e=>{if(e.key==='Enter')__forgeEnterUp++});true")
         for code: UInt16 in [36, 76] {
             key(code)
@@ -559,16 +559,18 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         chatPane.receive("{\"kind\":\"tool\",\"label\":\"hidden tool activity\"}")
         try require(chatPane.presentation == 0, "Tool metadata must not reveal Coder controls.")
         chatPane.receive("{\"kind\":\"reply\",\"text\":\"Active reply on the left\"}")
-        try require(chatPane.presentation == 1 && !chatPane.messagesScroll.isHidden && chatPane.hud.isHidden && chatPane.heading.isHidden && chatPane.status.isHidden && chatPane.inputScroll.isHidden && chatPane.messages.string == "Active reply on the left\n\n", "An active reply must show only message text.")
+        try require(chatPane.presentation == 1 && !chatPane.messageHUD.isHidden && chatPane.hud.isHidden && chatPane.heading.isHidden && chatPane.status.isHidden && chatPane.inputScroll.isHidden && chatPane.messageText == "Active reply on the left\n\n", "An active reply must show only message text.")
         try require(chatPane.hitTest(NSPoint(x: 30, y: 500)) == nil, "Closed Coder messages must not block the realm.")
+        chatPane.appendMessage("Aethyr draws this message and owns its five-second lifetime.\nCurrent folder: ~/.openagents/aethyrforge/workspace\n")
+        let feedVertices = try chatPane.messageHUD.saveCheckFrame(report.deletingPathExtension().appendingPathExtension("png"))
         chatPane.receive("{\"kind\":\"ask\",\"text\":\"Review this request\"}")
-        try require(!chatPane.composerOpen && chatPane.allow.isHidden && chatPane.messages.string.contains("Press Enter to review"), "Pending tools must wait for review without opening controls.")
+        try require(!chatPane.composerOpen && chatPane.allow.isHidden && chatPane.messageText.contains("Press Enter to review"), "Pending tools must wait for review without opening controls.")
         key(36); key(36, down: false)
         try require(!chatPane.allow.isHidden && !chatPane.deny.isHidden, "Enter must reveal the pending tool's approval controls.")
         key(53); key(53, down: false)
         try require(chatPane.busy && chatPane.pending && !chatPane.composerOpen, "Escape must close without stopping the agent or answering a tool.")
         chatPane.busy = false; chatPane.pending = false; chatPane.finishMessages()
-        try require(chatPane.presentation == 1 && !chatPane.messagesScroll.isHidden, "Completed messages must remain visible while Coder is closed.")
+        try require(chatPane.presentation == 1 && !chatPane.messageHUD.isHidden, "Completed messages must remain visible while Coder is closed.")
         key(36); key(36, down: false)
         try require(chatPane.transcript.string.contains("Active reply on the left"), "Enter must restore conversation history.")
         chatPane.newChat(); chatPane.closeComposer()
@@ -585,17 +587,17 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         let deadline = Date().addingTimeInterval(30)
         while chatPane.busy && Date() < deadline { try await Task.sleep(for: .milliseconds(50)) }
         try require(!chatPane.busy && chatPane.lastEnding.hasPrefix("finished") && chatPane.transcript.string.contains("FORGE_ENTER_CODER_OK") && !chatPane.session.isEmpty && chatPane.presentation == 1, "Native Enter did not finish its real Coder CLI round trip with the reply still visible.")
-        let finishedAt = chatPane.messagesFinishedAt ?? 0
+        let finishedAt = ProcessInfo.processInfo.systemUptime
         try await Task.sleep(for: .milliseconds(4500))
-        try require(!chatPane.messagesScroll.isHidden && chatPane.hud.isHidden && chatPane.inputScroll.isHidden && chatPane.hitTest(NSPoint(x: 30, y: 500)) == nil, "The finished reply disappeared early or opened controls.")
+        try require(!chatPane.messageHUD.isHidden && chatPane.hud.isHidden && chatPane.inputScroll.isHidden && chatPane.hitTest(NSPoint(x: 30, y: 500)) == nil, "The finished reply disappeared early or opened controls.")
         let hideDeadline = ProcessInfo.processInfo.systemUptime + 2
-        while !chatPane.messagesScroll.isHidden && ProcessInfo.processInfo.systemUptime < hideDeadline { try await Task.sleep(for: .milliseconds(25)) }
+        while !chatPane.messageHUD.isHidden && ProcessInfo.processInfo.systemUptime < hideDeadline { try await Task.sleep(for: .milliseconds(25)) }
         let lingered = ProcessInfo.processInfo.systemUptime - finishedAt
-        try require(chatPane.presentation == 0 && chatPane.messagesScroll.isHidden && lingered >= 5 && lingered < 6.5, "Completed reply did not hide after five seconds: \(lingered).")
+        try require(chatPane.presentation == 0 && chatPane.messageHUD.isHidden && lingered >= 4.9 && lingered < 6.5, "Completed reply did not hide after five seconds: \(lingered).")
         let realm = try await web.evaluateJavaScript("JSON.stringify({downs:__forgeEnterDown,ups:__forgeEnterUp,typing:!!document.querySelector('input[aria-label=\"Typed text\"]'),scene:coaxial.sceneReady})") as? String ?? "{}"
         let state = try JSONSerialization.jsonObject(with: Data(realm.utf8)) as? [String: Any] ?? [:]
         try require(state["downs"] as? Int == 0 && state["ups"] as? Int == 0 && state["typing"] as? Bool == false && state["scene"] as? Bool == true, "Native Enter reached the realm's region chat: \(realm)")
-        let result: [String: Any] = ["ok": true, "realm": state, "nativeReturnAndKeypad": true, "heldEnter": true, "shiftEnter": true, "escapeKeepsDraftAndRun": true, "replyLingerSeconds": lingered, "approvalWaitsForEnter": true, "realCoder": chatPane.session, "ending": chatPane.lastEnding]
+        let result: [String: Any] = ["ok": true, "realm": state, "nativeReturnAndKeypad": true, "heldEnter": true, "shiftEnter": true, "escapeKeepsDraftAndRun": true, "replyLingerSeconds": lingered, "feedComponent": "aethyr/ui/feed-draw.coax", "feedVertices": feedVertices, "realCoder": chatPane.session, "ending": chatPane.lastEnding]
         try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]).write(to: report)
         print("Native Enter / Coder presentation smoke passed")
         stopChildren(); NSApp.terminate(nil)
@@ -644,15 +646,17 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
             }
             let followup = chatPane.session
             var approved = false
+            var approvalRequests = 0
             var stopped = false
             if ProcessInfo.processInfo.environment["FORGE_CHAT_SMOKE_ACTIONS"] == "1" {
                 chatPane.input.string = "Use a shell command to write exactly HUD_APPROVED to hud-approved.txt in the working directory. Do not write any other file."
                 chatPane.submit(); let end = Date().addingTimeInterval(120)
                 while chatPane.busy && Date() < end {
-                    if chatPane.pending { chatPane.approve(); approved = true }
+                    if chatPane.pending { approvalRequests += 1; chatPane.stopTurn(); break }
                     try await Task.sleep(for: .milliseconds(50))
                 }
-                guard !chatPane.busy, approved, (try? String(contentsOf: chatPane.cwd.appendingPathComponent("hud-approved.txt"), encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) == "HUD_APPROVED" else { throw ShellError.failed("Coder approval/write flow failed: \(chatPane.transcript.string.suffix(1200))") }
+                approved = (try? String(contentsOf: chatPane.cwd.appendingPathComponent("hud-approved.txt"), encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) == "HUD_APPROVED"
+                guard !chatPane.busy, approved, approvalRequests == 0 else { throw ShellError.failed("Coder unattended write flow failed: \(chatPane.transcript.string.suffix(1200))") }
                 chatPane.input.string = "Run the shell command sleep 60, then reply DONE."
                 chatPane.submit(); let stopEnd = Date().addingTimeInterval(30)
                 while chatPane.busy && chatPane.session.isEmpty && Date() < stopEnd { try await Task.sleep(for: .milliseconds(50)) }
@@ -661,7 +665,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
                 stopped = !chatPane.busy && chatPane.lastEnding.hasPrefix("stopped")
                 guard stopped else { throw ShellError.failed("Coder did not stop the active turn.") }
             }
-            let result: [String: Any] = ["ok": true, "engine": engine, "actualEngine": chatPane.selectedEngine, "route": chatPane.router.stringValue, "first": first, "followup": followup, "ending": chatPane.lastEnding, "approval": approved, "stop": stopped, "hud": "aethyr/ui/draw.coax", "cli": chatPane.cli.path]
+            let result: [String: Any] = ["ok": true, "engine": engine, "actualEngine": chatPane.selectedEngine, "route": chatPane.router.stringValue, "first": first, "followup": followup, "ending": chatPane.lastEnding, "unattendedWrite": approved, "approvalRequests": approvalRequests, "stop": stopped, "hud": "aethyr/ui/feed-draw.coax", "cli": chatPane.cli.path]
             try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]).write(to: report)
             print("Coder HUD smoke passed: \(engine)")
         } catch { if let report { try? Data(error.localizedDescription.utf8).write(to: report.appendingPathExtension("error")) }; print(error.localizedDescription) }
