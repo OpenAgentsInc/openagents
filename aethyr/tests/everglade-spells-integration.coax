@@ -121,12 +121,14 @@ aethyr_native_everglade_2 :: () #export_c {
   g: [1] Everglade;
   everglade_start(g[..]);
   everglade_catalog(g[..], CATALOG);
-  // The mossy boulder west of the road below the stables (the owner's screenshot, 2026-10-30): the
-  // undergrowth's Rock_Medium_1 at (-4.76, -75.37). Find it, and its girth.
+  // The mossy boulder east of the road south of the gate: the undergrowth's Rock_Medium_1 at
+  // (5.14, -148.64). (Until the world grew to 352 m (EG_BOUND 168), this check used the one west
+  // of the road below the stables, at (-4.76, -75.37), from the owner's screenshot, 2026-10-30.)
+  // Find it, and its girth.
   rock := -1;
   for t: 0..<g[0].small_n {
     o := t * TREE_FLOATS;
-    if abs(g[0].smalls[o] + 4.76) < 0.05 && abs(g[0].smalls[o + 1] + 75.37) < 0.05 { rock = t; }
+    if abs(g[0].smalls[o] - 5.14) < 0.05 && abs(g[0].smalls[o + 1] + 148.64) < 0.05 { rock = t; }
   }
   #assert rock >= 0;
   stone := tree_girth(g[..], g[0].smalls[..], rock);
@@ -135,18 +137,19 @@ aethyr_native_everglade_2 :: () #export_c {
   face := walk_toward(g[..], v3(0, 0, stone.z), v3(stone.x, 0, stone.z), 400);
   gap := sqrt((face.x - stone.x) * (face.x - stone.x) + (face.z - stone.z) * (face.z - stone.z));
   #assert gap > stone.r && gap < stone.r + f32(EG_RADIUS) + 0.05;
-  // From the spawn up the road, then round the pine on its north side (its trunk touches the
-  // rock) and on west and south into the woods behind it.
-  a := walk_toward(g[..], everglade_spawn(g[..]), v3(0, 0, -72), 2000);
-  #assert abs(a.x) < 0.01 && abs(a.z + 72) < 0.01;
-  b := walk_toward(g[..], a, v3(-5.2, 0, -72.2), 2000);
-  b = walk_toward(g[..], b, v3(-8, 0, -72.6), 2000);
-  #assert abs(b.x + 8) < 0.01 && abs(b.z + 72.6) < 0.01;
-  c := walk_toward(g[..], b, v3(-12, 0, -78), 2000);
-  #assert abs(c.x + 12) < 0.01 && abs(c.z + 78) < 0.01;
+  // From the spawn down the road to beside it, then round it on its north side and on east and
+  // south into the woods behind it.
+  a := walk_toward(g[..], everglade_spawn(g[..]), v3(0, 0, -146), 2000);
+  #assert abs(a.x) < 0.01 && abs(a.z + 146) < 0.01;
+  b := walk_toward(g[..], a, v3(2.5, 0, -145), 2000);
+  b = walk_toward(g[..], b, v3(8.5, 0, -145.5), 2000);
+  #assert abs(b.x - 8.5) < 0.01 && abs(b.z + 145.5) < 0.01;
+  c := walk_toward(g[..], b, v3(12, 0, -152), 2000);
+  #assert abs(c.x - 12) < 0.01 && abs(c.z + 152) < 0.01;
   // and on to the woods' far corner, the thicket at the edge
-  e := walk_toward(g[..], c, v3(-99.5, 0, -99.5), 30000);
-  #assert abs(e.x + 99.5) < 0.01 && abs(e.z + 99.5) < 0.01;
+  far := f32(EG_BOUND) - 0.5;
+  e := walk_toward(g[..], c, v3(far, 0, -far), 30000);
+  #assert abs(e.x - far) < 0.01 && abs(e.z + far) < 0.01;
 }
 
 // watch: a meteor on the inn is a crime the watch hear and hunt you for; R stands the fallen up
@@ -161,11 +164,11 @@ aethyr_native_everglade_3 :: () #export_c {
   #assert everglade_key(g[..], '1', 0) && g[0].sp.armed == SP_METEOR;
   _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0);
   w := watch_w(g[..]);
-  #assert w[0].on && !w[0].wanted && w[0].hp == SRD_RANGER_5.hp;
+  #assert w[0].on && !watch_you(w)[0].wanted && watch_you(w)[0].hp == SRD_RANGER_5.hp;
   g[0].sp.aim = v3(ix, ground_at(g[..], ix, EG_BUILDING[inn + 1]) + 2, EG_BUILDING[inn + 1]); g[0].sp.aim_ok = true; g[0].sp.far = false;
   sp_cast(g[..]);
   for f: 0..<50 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
-  #assert sp_broken(g[..]) && w[0].crimes > 0 && w[0].wanted;
+  #assert sp_broken(g[..]) && watch_you(w)[0].crimes > 0 && watch_you(w)[0].wanted;
   hunting := 0;
   for i: 0..<WATCH_ACTORS { if watch_is_guard(i) && w[0].actors[i].mode == WM_CHASE { hunting += 1; } }
   #assert hunting >= 2;
@@ -194,29 +197,29 @@ aethyr_native_everglade_4 :: () #export_c {
   x := 0.0f32; z := -30.0f32;
   _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, x, 0, z, 0, 0, 0, 0, false, 0, 0, 0, 0);
   w := watch_w(g[..]);
-  #assert w[0].on && w[0].hp == SRD_RANGER_5.hp;
+  #assert w[0].on && watch_you(w)[0].hp == SRD_RANGER_5.hp;
   #assert everglade_key(g[..], '2', 0) && g[0].sp.armed == SP_BOLT;
   g[0].sp.aim = v3(x, ground_at(g[..], x, z), z); g[0].sp.aim_ok = true; g[0].sp.far = false;
   sp_cast(g[..]);
   for f: 0..<30 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, x, 0, z, 0, 0, 0, 0, false, 0, 0, 0, 0); }
-  #assert w[0].hp < SRD_RANGER_5.hp || w[0].dead;
+  #assert watch_you(w)[0].hp < SRD_RANGER_5.hp || watch_you(w)[0].dead;
   k := everglade_knock(g[..]);
-  #assert w[0].dead || k.y > 0;
+  #assert watch_you(w)[0].dead || k.y > 0;
   // the meteors on you: 20d6 + 20d6, at least half of 40 even on a save, past your 44 HP
-  w[0].hp = w[0].max; w[0].dead = false;
+  watch_you(w)[0].hp = watch_you(w)[0].max; watch_you(w)[0].dead = false;
   #assert everglade_key(g[..], '1', 0) && g[0].sp.armed == SP_METEOR;
   g[0].sp.aim = v3(x, ground_at(g[..], x, z), z); g[0].sp.aim_ok = true; g[0].sp.far = false;
   sp_cast(g[..]);
   dead_at := -1;
   for f: 0..<40 {
     _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, x, 0, z, 0, 0, 0, 0, false, 0, 0, 0, 0);
-    if w[0].dead && dead_at < 0 { dead_at = f; }
+    if watch_you(w)[0].dead && dead_at < 0 { dead_at = f; }
     if dead_at >= 0 && f >= dead_at + 20 { break; }
   }
   #assert dead_at >= 0;
   // your body is down, not standing: its up (the rows' second column) lies over
   o := RANGER_AT * OBJECT_FLOATS;
-  #assert w[0].dead && abs(g[0].objects[o + 5]) < 0.5;
+  #assert watch_you(w)[0].dead && abs(g[0].objects[o + 5]) < 0.5;
 }
 
 // no C line, no Ranger: nothing drawn for it, the rest draws
@@ -346,10 +349,13 @@ aethyr_native_everglade_10 :: () #export_c {
   f[0].took = true; f[0].decided_thing_n = redit_copy(f[0].decided_thing[..], "barrel"); f[0].decided_x = 6; f[0].decided_z = -12;
   edit_layer(a[..]);
   #assert a[0].ev.edits.n == 1 && a[0].ev.edits.things[0].kind == 1 && a[0].ev.edits.things[0].x == 6 && a[0].ev.due > 0;
-  // DONE on the layer closes edit mode too
+  // in edit mode Aethyrforge's panels stand in for the layer's (everglade-forge.coax): its DONE closes edit mode, and the layer's pane with it
   n = everglade_edit_hud(a[..], out[..], u[..], 0, 840);
-  b = f[0].boxes[RB_EDIT];
-  #assert everglade_voice_pointer(a[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 0, 1) && everglade_voice_pointer(a[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 2, 1);
+  #assert forge_on(a[..]) && !f[0].shown[RB_EDIT];
+  a[0].plate_n = 0;
+  n = forge_hud(a[..], out[..], u[..], 0);
+  d := a[0].ev.boxes[EB_DONE];
+  #assert n > 0 && d.x1 > d.x0 && everglade_pointer(a[..], (d.x0 + d.x1) / 2, (d.y0 + d.y1) / 2, 0, 0, 1);
   edit_layer(a[..]);
   #assert !a[0].ev.editing && !redit_open(f);
 }
@@ -582,13 +588,13 @@ aethyr_native_everglade_17 :: () #export_c {
   #assert abs(800 - b0.y1 - (4 + 8) * un) < 1.5;               // the slot's padding and the tray's margin
   #assert abs((b0.x0 + g[0].sp.boxes[SP_SLOTS + AB_WALLFIRE].x1) / 2 - 640) < 2;   // centred: from 1 on the left block to Wall of Fire's Ctrl+= on the right
   media := cast(string) g[0].sp.media[0..<g[0].sp.media_n];
-  #assert contains(media, "image /realms/everglade/hotbar/meteor-swarm-48.jpg ") && contains(media, "water-orb-48.jpg") && contains(media, "rebuild-48.jpg") && !contains(media, "over ");   // Rebuild and Long Rest always there
+  #assert contains(media, "image /worlds/everglade/hotbar/meteor-swarm-48.jpg ") && contains(media, "water-orb-48.jpg") && contains(media, "rebuild-48.jpg") && !contains(media, "over ");   // Rebuild and Long Rest always there
   // the mouse resting on Thunderbolt's slot shows its card after 0.35 s
   if everglade_pointer(g[..], (b1.x0 + b1.x1) / 2, (b1.y0 + b1.y1) / 2, 1, 0, 1) {}
   for f: 0..<12 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
   #assert !contains(cast(string) g[0].sp.media[0..<g[0].sp.media_n], "over ");
   for f: 0..<12 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
-  #assert contains(cast(string) g[0].sp.media[0..<g[0].sp.media_n], "over /realms/everglade/hotbar/thunderbolt-card-1x.jpg ") && g[0].sp.tip_on;
+  #assert contains(cast(string) g[0].sp.media[0..<g[0].sp.media_n], "over /worlds/everglade/hotbar/thunderbolt-card-1x.jpg ") && g[0].sp.tip_on;
   // a phone: the tray stands over the sticks, 136 points up, at 2 pixels a point
   g[0].touch = true; g[0].sp.px = 0; g[0].sp.py = 0;
   _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
@@ -600,7 +606,7 @@ aethyr_native_everglade_17 :: () #export_c {
   // a finger held on the slot picks it and shows the card (at 2x) until it lifts
   #assert everglade_pointer(g[..], (p1.x0 + p1.x1) / 2, (p1.y0 + p1.y1) / 2, 0, 1, 7);
   for f: 0..<32 { _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
-  #assert contains(cast(string) g[0].sp.media[0..<g[0].sp.media_n], "over /realms/everglade/hotbar/thunderbolt-card-2x.jpg ");
+  #assert contains(cast(string) g[0].sp.media[0..<g[0].sp.media_n], "over /worlds/everglade/hotbar/thunderbolt-card-2x.jpg ");
   #assert everglade_pointer(g[..], (p1.x0 + p1.x1) / 2, (p1.y0 + p1.y1) / 2, 2, 1, 7) && g[0].sp.armed == SP_BOLT && g[0].sp.slot_held == -1;
   // picked, its frame is the gold one, two pixels, over the icon's edge: the icon draws a pixel in
   _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
@@ -727,7 +733,7 @@ aethyr_native_everglade_21 :: () #export_c {
   #assert everglade_pointer(g[..], a.x0 + 5, a.y0 + 5, 0, 0, 1) && g[0].sp.armed == -1 && !g[0].drag_on;
   #assert everglade_pointer(g[..], b.x0 + 5, b.y0 + 5, 1, 0, 1) && ar_target(g[..]) == SP_ORB;
   _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
-  #assert contains(cast(string) g[0].sp.media[0..<g[0].sp.media_n], "over /realms/everglade/hotbar/meteor-swarm-bare-");
+  #assert contains(cast(string) g[0].sp.media[0..<g[0].sp.media_n], "over /worlds/everglade/hotbar/meteor-swarm-bare-");
   #assert everglade_pointer(g[..], b.x0 + 5, b.y0 + 5, 2, 0, 1) && sp_place(g[..], SP_ORB) == 0 && sp_place(g[..], SP_METEOR) == 3 && g[0].sp.armed == -1;
   _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
   m := cast(string) g[0].sp.media[0..<g[0].sp.media_n];
@@ -781,7 +787,7 @@ aethyr_native_everglade_22 :: () #export_c {
     if a[0].bt_held[who] { caught = true; break; }
   }
   ww := watch_w(g[..]);
-  #assert caught && ww[0].actors[who].hp < ww[0].actors[who].max && ww[0].actors[who].mode == WM_DOWN && ww[0].crimes > 0;
+  #assert caught && ww[0].actors[who].hp < ww[0].actors[who].max && ww[0].actors[who].mode == WM_DOWN && watch_you(ww)[0].crimes > 0;
   for k: 0..<20 { ab_frame(g[..], 0.1); }
   #assert ab_bt_holder(a, who) >= 0 && near(ww[0].actors[who].x, a[0].bt_x[who], 0.001);
   // the tentacles stand their length from the root, the tips within reach
@@ -818,7 +824,7 @@ aethyr_native_everglade_23 :: () #export_c {
   i := EG_SPOTS;   // the first of the new watch
   #assert watch_is_guard(i);
   you := ab_you(g[..]);
-  w[0].wanted = true;
+  watch_you(w)[0].wanted = true;
   a := w[0].actors[i..<i + 1];
   a[0].mode = WM_CHASE; a[0].t = 0; a[0].x = 0.4; a[0].z = -21; a[0].swing = -1;
   caught := false;
@@ -854,7 +860,7 @@ aethyr_native_everglade_24 :: () #export_c {
   sp_cast(g[..]);
   #assert f[0].storm_on;
   for k: 0..<30 { ab_frame(g[..], 1.0 / 30); }
-  #assert f[0].storm_hit && w[0].hp < w[0].max;
+  #assert f[0].storm_hit && watch_you(w)[0].hp < watch_you(w)[0].max;
   hail := 0;
   for k: 0..<FR_SHARDS { if f[0].shards[k].live && f[0].shards[k].hail { hail += 1; } }
   #assert hail > 40;
@@ -867,7 +873,7 @@ aethyr_native_everglade_24 :: () #export_c {
   #assert fr_wet(g[..], px, pz);
   g[0].sp.aim = v3(px, water_at(g[..], px, pz), pz); g[0].sp.aim_ok = true;
   g[0].feet = v3(px - 20, 0, pz);
-  w[0].hp = w[0].max;
+  watch_you(w)[0].hp = watch_you(w)[0].max;
   #assert spells_key(g[..], '%', 1) && g[0].sp.armed == SP_SLOTS + AB_STORM;
   sp_cast(g[..]);
   #assert f[0].storm_on;
@@ -919,7 +925,7 @@ aethyr_native_everglade_25 :: () #export_c {
     ab_frame(g[..], 0.5);
     if ww[0].actors[who].mode == WM_DOWN { fell = true; break; }
   }
-  #assert fell && ww[0].crimes > 0;
+  #assert fell && watch_you(ww)[0].crimes > 0;
   // its ground slows you and takes your grip; a line through it is hidden
   c := f[0].sleet_at;
   foot := everglade_footing(g[..], c.x, c.z, 0);
@@ -1007,10 +1013,10 @@ aethyr_native_everglade_27 :: () #export_c {
   flow := everglade_tide_flow(g[..], rx + 3, rz, WATER_SWIMMING);
   #assert flow.x < 0;
   w := watch_w(g[..]);
-  hp := w[0].hp;
+  hp := watch_you(w)[0].hp;
   g[0].feet = v3(rx + 2, 0, rz); g[0].water = WATER_SWIMMING;
   ab_frame(g[..], 0.1);
-  #assert w[0].hp < hp && d[0].whirl_in;
+  #assert watch_you(w)[0].hp < hp && d[0].whirl_in;
   g[0].water = WATER_GROUND;
   #assert spells_key(g[..], '*', 1) && !d[0].on;
 }
@@ -1036,16 +1042,16 @@ aethyr_native_everglade_28 :: () #export_c {
   sp_cast(g[..]);
   #assert v[0].mb_on && ab_active(g[..], AB_MOON);
   ab_frame(g[..], 1.0 / 30);
-  #assert w[0].crimes > 0 && v[0].mb_in[who];
+  #assert watch_you(w)[0].crimes > 0 && v[0].mb_in[who];
   // moved onto you: you take it
-  hp := w[0].hp;
+  hp := watch_you(w)[0].hp;
   #assert spells_key(g[..], '_', 1) && g[0].sp.armed == SP_SLOTS + AB_MOON;
   up1 := spells_key_up(g[..], '_', 1);
   g[0].sp.aim = ab_you(g[..]); g[0].sp.aim_ok = true;
   sp_cast(g[..]);
   #assert v[0].mb_on && flat_gap(v[0].mb_at, ab_you(g[..])) < 0.1;
   ab_frame(g[..], 1.0 / 30);
-  #assert w[0].hp < hp;
+  #assert watch_you(w)[0].hp < hp;
   // picked while it shines, again: it ends
   #assert spells_key(g[..], '_', 1);
   up2 := spells_key_up(g[..], '_', 1);
@@ -1080,14 +1086,14 @@ aethyr_native_everglade_29 :: () #export_c {
   for i: 0..<SP_SCORCHES { if g[0].sp.scorches[i].live && flat_gap(g[0].sp.scorches[i].at, at) < 0.1 { scorched = true; } }
   #assert scorched && v[0].pf_on;
   // at a person: a crime, and with a few throws a hit
-  crimes := w[0].crimes;
+  crimes := watch_you(w)[0].crimes;
   hp := w[0].actors[who].hp;
   for k: 0..<6 {
     if w[0].actors[who].hp < hp || !ab_person_ok(g[..], who) { break; }
     gv_bolt_at(g[..], GV_BOLT_FLAME, who, -1, ab_person_at(g[..], who));
     for q: 0..<40 { ab_frame(g[..], 1.0 / 30); }
   }
-  #assert w[0].crimes > crimes && w[0].actors[who].hp < hp;
+  #assert watch_you(w)[0].crimes > crimes && w[0].actors[who].hp < hp;
   // Ctrl+1 with it picked puts it out
   #assert spells_key(g[..], '1', 2) && g[0].sp.armed == SP_SLOTS + AB_FLAME;
   ku = spells_key_up(g[..], '1', 2);
@@ -1141,7 +1147,7 @@ aethyr_native_everglade_30 :: () #export_c {
     for q: 0..<20 { gv_frame(g[..], 1.0 / 30); }
     #assert v[0].sh_swing < 0;
   }
-  #assert w[0].actors[who].hp < hp && hp - w[0].actors[who].hp <= 23 && w[0].crimes > 0;
+  #assert w[0].actors[who].hp < hp && hp - w[0].actors[who].hp <= 23 && watch_you(w)[0].crimes > 0;
   #assert spells_key(g[..], '3', 2) && g[0].sp.armed == SP_SLOTS + AB_SHILLELAGH;
   ku = spells_key_up(g[..], '3', 2);
   #assert spells_key(g[..], '3', 2) && !v[0].sh_on;
@@ -1197,7 +1203,7 @@ aethyr_native_everglade_31 :: () #export_c {
   ku := spells_key_up(g[..], '7', 2);
   pl := person_place(g[..], who);
   for k: 0..<16 { if v[0].lit[who] { break; } wd_ff_at(g[..], v3(pl.x, ground_at(g[..], pl.x, pl.z), pl.z)); }
-  #assert v[0].lit[who] && v[0].ff_on && ab_active(g[..], AB_FAERIE) && w[0].crimes > 0;
+  #assert v[0].lit[who] && v[0].ff_on && ab_active(g[..], AB_FAERIE) && watch_you(w)[0].crimes > 0;
   sum := 0;
   for k: 0..<400 { sum += wd_d20(g[..], who); }
   #assert sum > 400 * 12;   // the higher of two d20s: 13.8 on average, one alone 10.5
@@ -1206,9 +1212,9 @@ aethyr_native_everglade_31 :: () #export_c {
   you := ab_you(g[..]);
   for k: 0..<16 { if v[0].you_lit { break; } wd_ff_at(g[..], you); }
   #assert v[0].you_lit;
-  w[0].marked = false;
+  watch_you(w)[0].marked = false;
   gv_frame(g[..], 1.0 / 30);
-  #assert w[0].marked;
+  #assert watch_you(w)[0].marked;
   // Ctrl+7 with it picked ends it
   g[0].sp.armed = -1;
   #assert spells_key(g[..], '7', 2) && g[0].sp.armed == SP_SLOTS + AB_FAERIE;
@@ -1216,14 +1222,14 @@ aethyr_native_everglade_31 :: () #export_c {
   #assert spells_key(g[..], '7', 2) && !v[0].ff_on && !v[0].lit[who] && !v[0].you_lit;
   ku = spells_key_up(g[..], '7', 2);
   // Healing Word: a hurt one is whole again (a commoner's 4 Hit Points, 2d4 + 3 at least 5)
-  crimes := w[0].crimes;
+  crimes := watch_you(w)[0].crimes;
   watch_harm(w, who, 2, ab_you(g[..]));
   #assert w[0].actors[who].hp < w[0].actors[who].max;
   wd_hw_on(g[..], who);
-  #assert w[0].actors[who].hp == w[0].actors[who].max && w[0].crimes == crimes && v[0].hw_t == 0;
-  w[0].hp = w[0].max - 6;
+  #assert w[0].actors[who].hp == w[0].actors[who].max && watch_you(w)[0].crimes == crimes && v[0].hw_t == 0;
+  watch_you(w)[0].hp = watch_you(w)[0].max - 6;
   wd_hw_on(g[..], -1);
-  #assert w[0].hp == w[0].max;
+  #assert watch_you(w)[0].hp == watch_you(w)[0].max;
   other := wd_test_one(g[..], who);
   #assert other >= 0;
   watch_harm(w, other, 100, ab_you(g[..]));
@@ -1250,17 +1256,17 @@ aethyr_native_everglade_32 :: () #export_c {
   #assert everglade_footing(g[..], x + 3, z, 0).pace < 1;
   hp := w[0].actors[who].hp;
   for k: 0..<3 { wd_test_put(g[..], who, x + f32(k), z); wd_sg_frame(g[..], 1.0 / 30); }
-  #assert w[0].actors[who].hp < hp && w[0].crimes > 0;
+  #assert w[0].actors[who].hp < hp && watch_you(w)[0].crimes > 0;
   // you, walking through
   g[0].feet = v3(x - 4, 0, z + 1);
   wd_sg_frame(g[..], 1.0 / 30);
-  hp = w[0].hp;
+  hp = watch_you(w)[0].hp;
   for k: 1..<4 { g[0].feet = v3(x - 4 + f32(k), 0, z + 1); wd_sg_frame(g[..], 1.0 / 30); }
-  #assert w[0].hp < hp;
+  #assert watch_you(w)[0].hp < hp;
   // standing still in it is no harm
-  hp = w[0].hp;
+  hp = watch_you(w)[0].hp;
   for k: 0..<30 { wd_sg_frame(g[..], 1.0 / 30); }
-  #assert w[0].hp == hp;
+  #assert watch_you(w)[0].hp == hp;
   // Call Lightning: picked, a click under the cloud calls the bolt
   other := wd_test_one(g[..], who);
   #assert other >= 0;
@@ -1270,15 +1276,15 @@ aethyr_native_everglade_32 :: () #export_c {
   ku := spells_key_up(g[..], '0', 2);
   g[0].sp.aim = wd_feet(g[..], other); g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true;
   hp = w[0].actors[other].hp;
-  crimes := w[0].crimes;
+  crimes := watch_you(w)[0].crimes;
   sp_cast(g[..]);
   #assert v[0].cl_on && g[0].sp.bolt.live && g[0].sp.bolt.call && v[0].cl_at.y > ab_you(g[..]).y + 25;
   for k: 0..<12 { ku2 := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
-  #assert w[0].actors[other].hp < hp && w[0].crimes > crimes;
+  #assert w[0].actors[other].hp < hp && watch_you(w)[0].crimes > crimes;
   // under it, on you
-  hp = w[0].hp;
+  hp = watch_you(w)[0].hp;
   wd_cl_strike(g[..], ab_you(g[..]));
-  #assert w[0].hp < hp;
+  #assert watch_you(w)[0].hp < hp;
   // too far from the cloud
   g[0].sp.aim = add(v[0].cl_at, v3(40, 0, 0)); g[0].sp.aim.y = 0;
   g[0].sp.armed = SP_SLOTS + AB_CALL;
@@ -1307,15 +1313,15 @@ aethyr_native_everglade_33 :: () #export_c {
   g[0].feet = v3(pl.x, 0, pl.z - 8);
   hp := w[0].actors[who].hp;
   wd_wf_at(g[..], at, v3(0, 0, 1));
-  #assert v[0].wf_on && ab_active(g[..], AB_WALLFIRE) && w[0].actors[who].hp < hp && w[0].crimes > 0;
+  #assert v[0].wf_on && ab_active(g[..], AB_WALLFIRE) && w[0].actors[who].hp < hp && watch_you(w)[0].crimes > 0;
   #assert wd_wf_where(g[..], at) == 1 && wd_wf_where(g[..], add(at, v3(0, 0, 2))) == 2 && wd_wf_where(g[..], sub(at, v3(0, 0, 2))) == 0;
   ab_frame(g[..], 1.0 / 30);
   #assert w[0].fence_n >= 1;
   // you by its burning side as a round ends
   g[0].feet = v3(pl.x + 3, 0, pl.z + 2);
-  hp = w[0].hp;
+  hp = watch_you(w)[0].hp;
   for k: 0..<70 { wd_wf_frame(g[..], 0.1); v[0].time += 0.1; }
-  #assert w[0].hp < hp;
+  #assert watch_you(w)[0].hp < hp;
   g[0].sp.armed = -1;
   #assert spells_key(g[..], '=', 2) && g[0].sp.armed == SP_SLOTS + AB_WALLFIRE;
   ku := spells_key_up(g[..], '=', 2);
@@ -1338,11 +1344,11 @@ aethyr_native_everglade_33 :: () #export_c {
   // you in it burn
   g[0].feet = v3(spot.x, 0, spot.z);
   v[0].you_fire_next = 0;
-  hp = w[0].hp;
+  hp = watch_you(w)[0].hp;
   stood := false;
   for q: 0..<WD_FIRES { if !stood && v[0].fires[q].live { g[0].feet = v3(v[0].fires[q].at.x, 0, v[0].fires[q].at.z); stood = true; } }
   wd_fires_frame(g[..], 1.0 / 30);
-  #assert w[0].hp < hp;
+  #assert watch_you(w)[0].hp < hp;
   // water: out, and black where it burnt, which does not catch again
   #assert wd_douse(g[..], spot, 40) >= 2 && v[0].burnt_n >= 2;
   n = 0;
@@ -1606,12 +1612,12 @@ aethyr_native_everglade_39 :: () #export_c {
     ci_ca_at(g[..], v3(pl.x + 2, 0, pl.z));
     ci_ca_frame(g[..], 1.0 / 30);
   }
-  #assert v[0].ca_on && ab_active(g[..], AB_CONJURE) && w[0].actors[who].hp < hp && w[0].crimes > 0;
+  #assert v[0].ca_on && ab_active(g[..], AB_CONJURE) && w[0].actors[who].hp < hp && watch_you(w)[0].crimes > 0;
   // you, beside it
   you := ab_you(g[..]);
-  hp = w[0].hp;
-  for k: 0..<20 { if w[0].hp < hp { break; } v[0].you_ca_next = 0; ci_ca_at(g[..], add(you, v3(1, 0, 0))); ci_ca_frame(g[..], 1.0 / 30); }
-  #assert w[0].hp < hp;
+  hp = watch_you(w)[0].hp;
+  for k: 0..<20 { if watch_you(w)[0].hp < hp { break; } v[0].you_ca_next = 0; ci_ca_at(g[..], add(you, v3(1, 0, 0))); ci_ca_frame(g[..], 1.0 / 30); }
+  #assert watch_you(w)[0].hp < hp;
   // it runs where it is sent, 30 feet at most
   g[0].sp.armed = SP_SLOTS + AB_CONJURE;
   g[0].sp.aim = add(v[0].ca_at, v3(6, 0, 0)); g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true;
@@ -1634,23 +1640,23 @@ aethyr_native_everglade_39 :: () #export_c {
   #assert !v[0].pm_on && ci_person_shown(g[..], other);
   // on you: a bear, 22 Temporary Hit Points spent first, no spells but its bite
   ci_pm_on(g[..], -1);
-  #assert v[0].form == CI_FORM_BEAR && w[0].temp == 22 && !ci_you_shown(g[..]) && ci_pace(g[..]) > 1;
-  hp = w[0].hp;
+  #assert v[0].form == CI_FORM_BEAR && watch_you(w)[0].temp == 22 && !ci_you_shown(g[..]) && ci_pace(g[..]) > 1;
+  hp = watch_you(w)[0].hp;
   watch_hurt_you(w, 5);
-  #assert w[0].hp == hp && w[0].temp == 17;
+  #assert watch_you(w)[0].hp == hp && watch_you(w)[0].temp == 17;
   g[0].sp.armed = -1;
   #assert spells_key(g[..], '1', 0) && g[0].sp.armed == -1;   // Meteor Swarm: a bear casts no spells
   watch_hurt_you(w, 20);
-  #assert w[0].hp == hp - 3;
+  #assert watch_you(w)[0].hp == hp - 3;
   ci_form_frame(g[..], 1.0 / 30);
   #assert v[0].form == CI_FORM_NONE && ci_you_shown(g[..]) && !v[0].pm_on;
   // Mass Cure Wounds: them and you
   watch_harm(w, other, 2, ab_you(g[..]));
-  w[0].hp = w[0].max - 8;
+  watch_you(w)[0].hp = watch_you(w)[0].max - 8;
   op := wd_feet(g[..], other);
   g[0].feet = v3(op.x + 2, 0, op.z);
   ci_mc_at(g[..], op);
-  #assert w[0].actors[other].hp == w[0].actors[other].max && w[0].hp == w[0].max && v[0].mc_n >= 2 && v[0].mc_n <= 6;
+  #assert w[0].actors[other].hp == w[0].actors[other].max && watch_you(w)[0].hp == watch_you(w)[0].max && v[0].mc_n >= 2 && v[0].mc_n <= 6;
 }
 
 // circle: Sunbeam blinds or burns down its line (Blinded, their blows at you have Disadvantage), Wall of Thorns tears who is in it (you too) and the town walks round it, Fire Storm's ten cubes burn and catch the grass
@@ -1675,7 +1681,7 @@ aethyr_native_everglade_40 :: () #export_c {
     v[0].sb_cool = 0;
     ci_sb_line(g[..], add(ab_you(g[..]), v3(0, 1.2, 0)), add(wd_feet(g[..], who), v3(0, 1, 0)));
   }
-  #assert blinded && w[0].crimes > 0;
+  #assert blinded && watch_you(w)[0].crimes > 0;
   ci_sb_frame(g[..], 1.0 / 30);
   #assert w[0].actors[who].blind;
   // Disadvantage: the lower of two d20s, about 7.2 to hit against one's 10.5
@@ -1694,10 +1700,10 @@ aethyr_native_everglade_40 :: () #export_c {
   ab_frame(g[..], 1.0 / 30);
   #assert w[0].fence_n >= 1;
   g[0].feet = v3(at.x + 3, 0, at.z);
-  hp = w[0].hp;
+  hp = watch_you(w)[0].hp;
   v[0].you_wt_next = 0;
   ci_wt_frame(g[..], 1.0 / 30);
-  #assert w[0].hp < hp;
+  #assert watch_you(w)[0].hp < hp;
   g[0].sp.armed = -1;
   #assert spells_key(g[..], 0xA2, 0) && g[0].sp.armed == SP_SLOTS + AB_THORNS;
   ku := spells_key_up(g[..], 0xA2, 0);
@@ -1709,10 +1715,10 @@ aethyr_native_everglade_40 :: () #export_c {
   w[0].actors[other].hp = w[0].actors[other].max; w[0].actors[other].mode = WM_CALM;
   op := wd_feet(g[..], other);
   g[0].feet = v3(op.x + f32(CI_FS_CUBE), 0, op.z);
-  hp = w[0].hp;
+  hp = watch_you(w)[0].hp;
   ohp := w[0].actors[other].hp;
   ci_fs_at(g[..], op, v3(0, 0, 1));
-  #assert w[0].actors[other].hp < ohp && w[0].hp < hp && ab_active(g[..], AB_FIRESTORM);
+  #assert w[0].actors[other].hp < ohp && watch_you(w)[0].hp < hp && ab_active(g[..], AB_FIRESTORM);
   #assert flat_gap(ci_fs_cube(op, v3(0, 0, 1), 0), ci_fs_cube(op, v3(0, 0, 1), 4)) > 12 && flat_gap(ci_fs_cube(op, v3(0, 0, 1), 0), ci_fs_cube(op, v3(0, 0, 1), 5)) < 3.1;
 }
 
@@ -1737,10 +1743,10 @@ aethyr_native_everglade_41 :: () #export_c {
   blinded := false;
   for k: 0..<30 {
     if c[0].blind[who] > 0 && v[0].you_blind > 0 { blinded = true; break; }
-    w[0].actors[who].hp = 500; w[0].actors[who].mode = WM_CALM; w[0].hp = 500; w[0].dead = false;
+    w[0].actors[who].hp = 500; w[0].actors[who].mode = WM_CALM; watch_you(w)[0].hp = 500; watch_you(w)[0].dead = false;
     st_su_at(g[..], at);
   }
-  #assert blinded && w[0].crimes > 0 && v[0].su_save[who] && st_you_blind(g[..]);
+  #assert blinded && watch_you(w)[0].crimes > 0 && v[0].su_save[who] && st_you_blind(g[..]);
   // your attack at them: the lower of two d20s
   sum := 0;
   for k: 0..<400 { sum += wd_d20(g[..], who); }
@@ -1749,12 +1755,12 @@ aethyr_native_everglade_41 :: () #export_c {
   for k: 0..<200 { st_frame(g[..], 0.5); ci_sb_frame(g[..], 0.5); }
   #assert c[0].blind[who] <= 0 && !st_you_blind(g[..]);
   // Storm of Vengeance over you both: the thunder, the acid, the bolts, the hail, the freezing rain
-  w[0].actors[who].hp = 500; w[0].hp = 500;
-  hp := w[0].actors[who].hp; mine := w[0].hp;
+  w[0].actors[who].hp = 500; watch_you(w)[0].hp = 500;
+  hp := w[0].actors[who].hp; mine := watch_you(w)[0].hp;
   st_sv_at(g[..], at);
   #assert v[0].sv_on && v[0].sv_round == 1 && ab_active(g[..], AB_VENGEANCE);
   for k: 0..<285 { st_frame(g[..], 0.2); }   // 57 s: the tenth round at 54
-  #assert v[0].sv_round == 10 && w[0].actors[who].hp < hp && w[0].hp < mine;
+  #assert v[0].sv_round == 10 && w[0].actors[who].hp < hp && watch_you(w)[0].hp < mine;
   #assert st_rough(g[..], at.x + 3, at.z) && st_hides(g[..], add(at, v3(-5, 1.6, 0)), add(at, v3(5, 1.6, 0)));
   for k: 0..<20 { st_frame(g[..], 0.5); }
   #assert !v[0].sv_on && !st_rough(g[..], at.x + 3, at.z);
@@ -1773,21 +1779,21 @@ aethyr_native_everglade_42 :: () #export_c {
   w := watch_w(g[..]);
   g[0].sp.armed = SP_SLOTS + AB_SHAPECHANGE;
   st_cast(g[..], AB_SHAPECHANGE);
-  #assert v[0].sc_on && c[0].form == CI_FORM_MAMMOTH && w[0].temp == 126 && ci_pace(g[..]) > 1.6 && g[0].sp.armed == SP_SLOTS + AB_SHAPECHANGE;
+  #assert v[0].sc_on && c[0].form == CI_FORM_MAMMOTH && watch_you(w)[0].temp == 126 && ci_pace(g[..]) > 1.6 && g[0].sp.armed == SP_SLOTS + AB_SHAPECHANGE;
   #assert ci_no_casting(g[..], SP_METEOR) && !ci_no_casting(g[..], SP_SLOTS + AB_SHAPECHANGE);
   // its Temporary Hit Points spent, the shape holds (it is not Polymorph)
   watch_hurt_you(w, 130);
   ci_form_frame(g[..], 1.0 / 30);
-  #assert c[0].form == CI_FORM_MAMMOTH && w[0].temp == 0;
+  #assert c[0].form == CI_FORM_MAMMOTH && watch_you(w)[0].temp == 0;
   st_press(g[..], AB_SHAPECHANGE);
-  #assert c[0].form == CI_FORM_BEAR && w[0].temp == 0;
+  #assert c[0].form == CI_FORM_BEAR && watch_you(w)[0].temp == 0;
   st_press(g[..], AB_SHAPECHANGE);
   #assert c[0].form == CI_FORM_WOLF;
   st_press(g[..], AB_SHAPECHANGE);
   #assert c[0].form == CI_FORM_NONE && !v[0].sc_on;
   // Wild Resurgence: a wolf, 9 Temporary Hit Points
   st_press(g[..], AB_RESURGENCE);
-  #assert c[0].form == CI_FORM_WOLF && c[0].form_by == AB_RESURGENCE && w[0].temp == ST_DRUID && ab_active(g[..], AB_RESURGENCE);
+  #assert c[0].form == CI_FORM_WOLF && c[0].form_by == AB_RESURGENCE && watch_you(w)[0].temp == ST_DRUID && ab_active(g[..], AB_RESURGENCE);
   st_press(g[..], AB_RESURGENCE);
   #assert c[0].form == CI_FORM_NONE;
   // Speak with Animals
@@ -1795,11 +1801,11 @@ aethyr_native_everglade_42 :: () #export_c {
   #assert v[0].sa_on;
   st_press(g[..], AB_SPEAK);
   #assert !v[0].sa_on;
-  // R: a Long Rest with the Rebuild, the heat untouched
-  w[0].hp = 3; w[0].slow_t = 2; w[0].marked = true; v[0].you_blind = 30; w[0].heat = 7;
+  // R: a Long Rest with the Rebuild, and the watch stands down: no longer WANTED, the heat gone
+  watch_you(w)[0].hp = 3; watch_you(w)[0].slow_t = 2; watch_you(w)[0].marked = true; v[0].you_blind = 30; watch_you(w)[0].wanted = true; watch_you(w)[0].heat = 7;
   st_press(g[..], AB_RESURGENCE);
   #assert everglade_key(g[..], 'r', 0);
-  #assert w[0].hp == w[0].max && w[0].slow_t == 0 && !w[0].marked && !st_you_blind(g[..]) && c[0].form == CI_FORM_NONE && w[0].temp == 0 && w[0].heat == 7;
+  #assert watch_you(w)[0].hp == watch_you(w)[0].max && watch_you(w)[0].slow_t == 0 && !watch_you(w)[0].marked && !st_you_blind(g[..]) && c[0].form == CI_FORM_NONE && watch_you(w)[0].temp == 0 && !watch_you(w)[0].wanted && watch_you(w)[0].heat == 0;
 }
 
 // polar: Ray of Frost hits for 2d8 and slows, Fog Cloud hides who is in it, Hold Person paralyzes (your blows at Advantage) until a save, Cone of Cold freezes the 60-foot cone and never you
@@ -1826,7 +1832,7 @@ aethyr_native_everglade_43 :: () #export_c {
     w[0].actors[who].hp = 500; w[0].actors[who].mode = WM_CALM;
     po_rf_at(g[..], who);
   }
-  #assert v[0].slow[who] > 0 && w[0].actors[who].hp < 500 && w[0].crimes > 0;
+  #assert v[0].slow[who] > 0 && w[0].actors[who].hp < 500 && watch_you(w)[0].crimes > 0;
   x0 := w[0].actors[who].x;
   w[0].actors[who].x = x0 + 3;
   po_frame(g[..], 1.0 / 30);
@@ -1851,10 +1857,10 @@ aethyr_native_everglade_43 :: () #export_c {
   #assert !v[0].held[who] && !v[0].hp_on;
   // Cone of Cold: them in it, you never
   w[0].actors[who].hp = 500; w[0].actors[who].mode = WM_CALM;
-  hp := w[0].actors[who].hp; mine := w[0].hp;
+  hp := w[0].actors[who].hp; mine := watch_you(w)[0].hp;
   you := ab_you(g[..]);
   po_cc_at(g[..], you, sub(wd_feet(g[..], who), you));
-  #assert w[0].actors[who].hp < hp && w[0].hp == mine && ab_active(g[..], AB_CONE);
+  #assert w[0].actors[who].hp < hp && watch_you(w)[0].hp == mine && ab_active(g[..], AB_CONE);
   #assert !po_in_cone(you, v3(1, 0, 0), add(you, v3(-5, 0, 0))) && po_in_cone(you, v3(1, 0, 0), add(you, v3(10, 0, 3)));
 }
 
@@ -1892,9 +1898,9 @@ aethyr_native_everglade_44 :: () #export_c {
   rv := rb_of(g[..]);
   for q: 0..<RB_BLOCKS { rv[0].blocks[q].vel.x = 0; rv[0].blocks[q].vel.z = 0; }
   g[0].feet = v3(mid.x, 0, mid.z);
-  you := ww[0].hp;
+  you := watch_you(ww)[0].hp;
   for q: 0..<60 { rb_frame(g[..], 1.0 / 60); }
-  #assert ww[0].hp == you;
+  #assert watch_you(ww)[0].hp == you;
 }
 
 // audit: Meteor Swarm, the Thunderbolt and the Mega Thunderbolt blast the guard they strike; the Water Orb's splash too
@@ -2267,13 +2273,13 @@ aethyr_native_everglade_60 :: () #export_c {
   a[0].lev_up = false; a[0].lev_hold = walk_at(g[..], x, z) + 10;
   w := watch_w(g[..]);
   watch_hurt_you(w, 999);
-  #assert w[0].dead;
+  #assert watch_you(w)[0].dead;
   for f: 0..<8 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, x, 10, z, 0, 0, 0, 0, false, 0, 0, 0, 0); }
   // toppled, lying: not standing
   o := RANGER_AT * OBJECT_FLOATS;
   #assert abs(g[0].objects[o + 5]) < 0.3;
   for f: 0..<40 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, x, 10, z, 0, 0, 0, 0, false, 0, 0, 0, 0); }
-  #assert !w[0].dead && !a[0].lev_on && !a[0].ff_on && !a[0].rg_on;
+  #assert !watch_you(w)[0].dead && !a[0].lev_on && !a[0].ff_on && !a[0].rg_on;
   #assert everglade_warp(g[..]);
   sp := everglade_spawn(g[..]);
   #assert sp.y == 0 && sp.x == f32(EG_SPAWN_X) && sp.z == f32(EG_SPAWN_Z);
@@ -2294,21 +2300,21 @@ aethyr_native_everglade_61 :: () #export_c {
   w := watch_w(g[..]);
   nob: [6] f32;
   _ = watch_crime(w, v3(yx, 0, yz), 100, v3(yx, 0, yz), nob[..], 0, g[0].heights[..]);
-  w[0].heat = 60; w[0].hp = 100000; w[0].max = 100000;
+  watch_you(w)[0].heat = 60; watch_you(w)[0].hp = 100000; watch_you(w)[0].max = 100000;
   // walking south (the camera turns to follow, looking at the South Gate)
   for f: 0..<14 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, yx, 0, yz, f32(PI), 0, 0, -3, false, 0, 0, 0, 0); }
-  #assert w[0].level == 5 && watch_hunters(w) <= HUNTERS_MAX;
+  #assert watch_you(w)[0].level == 5 && watch_hunters(w) <= HUNTERS_MAX;
   shown := 0; caster := -1;
   for k: 0..<g[0].shown_n { if watch_is_rein(g[0].shown[k]) { shown += 1; if watch_caster(w, g[0].shown[k]) { caster = g[0].shown[k]; } } }
   #assert shown >= 2;
   // the casters cast at you: their spells are in the air or have caught you
   for i: WATCH_FIRST_REIN..<WATCH_ACTORS { w[0].actors[i].cast_cool = 0; }
   for f: 0..<50 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, yx, 0, yz, f32(PI), 0, 0, 0, false, 0, 0, 0, 0); }
-  #assert w[0].spell_hits + w[0].spell_misses > 0;
+  #assert watch_you(w)[0].spell_hits + watch_you(w)[0].spell_misses > 0;
   // Ray of Frost on you: the face slows you
-  w[0].slow_t = 3;
+  watch_you(w)[0].slow_t = 3;
   #assert everglade_slow(g[..]) < 1;
-  w[0].held_t = 2;
+  watch_you(w)[0].held_t = 2;
   #assert everglade_held(g[..]);
 }
 

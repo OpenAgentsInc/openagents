@@ -1408,7 +1408,9 @@ in_box :: (b: Box, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && 
 everglade_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
   if !s[0].started { everglade_start(s); }
   // a slot's card shows only while a finger holds the slot (a long press): any finger lifted, or a
-  // new one down, closes it first, whichever handler then takes the touch
+  // new one down, closes it first, whichever handler then takes the touch; the slot finger's own
+  // lift is still the bar's, as its press was
+  slot_lift := kind != 0 && phase >= 2 && s[0].sp.slot_finger >= 0 && id == s[0].sp.slot_finger;
   if kind != 0 && (phase >= 2 || phase == 0) && s[0].sp.slot_held >= 0 && (phase == 0 || id == s[0].sp.slot_finger || s[0].sp.slot_finger < 0) {
     s[0].sp.slot_held = -1; s[0].sp.slot_finger = -1;
   }
@@ -1427,6 +1429,7 @@ everglade_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id
   if everglade_voice_pointer(s, x, y, phase, id) { return true; }
   if !forge && everglade_guide_pointer(s, x, y, phase, id) { return true; }
   if !forge && spells_pointer(s, x, y, phase, kind, id) { if phase == 0 || phase == 2 { everglade_guard_invalidate(s); } return true; }
+  if slot_lift { return true; }
   if kind != 0 {
     s[0].touch = true;
     if phase == 0 && in_box(s[0].map_button, x, y) { s[0].map_finger = id; return true; }
@@ -4999,7 +5002,7 @@ contains :: (text: string, part: string) -> bool {
   #assert n > 0 && s[0].objects[o + 7] == 0.75;
 }
 
-EVERGLADE_BUDGET :: FrameBudget.{steps = 8, vertices = 6000, draws = DRAWS, bytes = 4325376};
+EVERGLADE_BUDGET :: FrameBudget.{steps = 8, vertices = 6000, draws = DRAWS, bytes = 7471104};   // 6,775,448 measured after wave 1 and the 16-seat watch, x 1.1, to 64 KiB
 
 // A walk from the gate: three frames at each budget screen, the last one 0.1 s long. Book
 // chapter 16 gives the peaks of 120 frames at each screen, measured natively.

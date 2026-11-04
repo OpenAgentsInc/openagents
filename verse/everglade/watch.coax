@@ -612,7 +612,8 @@ watch_way :: (w: [] Watch, x: f32, z: f32, gx: f32, gz: f32) -> f32 {
       oz := ifx end == 0 then f[1] - uz * out else f[3] + uz * out;
       ax := ox + nx * sa; az := oz + nz * sa;
       bx := ox + nx * sg; bz := oz + nz * sg;
-      if !watch_open(w, ax, az) || !watch_open(w, bx, bz) { continue; }
+      // the end itself open too: where another fence meets this one (a Wall of Stone's two panels) is no way round
+      if !watch_open(w, ox, oz) || !watch_open(w, ax, az) || !watch_open(w, bx, bz) { continue; }
       way := flat_gap(v3(x, 0, z), v3(ax, 0, az)) + flat_gap(v3(ax, 0, az), v3(bx, 0, bz)) + flat_gap(v3(bx, 0, bz), v3(gx, 0, gz));
       if best >= 0 && way >= best { continue; }
       best = way;

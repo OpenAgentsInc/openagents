@@ -27,7 +27,7 @@
 //                   feet, its bite at whoever you click in reach. Alt+0 with it picked ends it.
 //
 // Rebuild on R is a Long Rest as well (st_long_rest): your Hit Points all back, your conditions gone,
-// your shape your own; what the watch thinks of you stays.
+// your shape your own; and the Rebuild stands the watch down (watch_rebuilt): no longer WANTED.
 //
 // Every save or blow on a person is a crime the watch answers.
 
@@ -379,7 +379,7 @@ st_wild_shape :: (s: [] Everglade) {
 // ---- Long Rest (on R, with the Rebuild)
 
 // Your Hit Points all back, your conditions gone, your own shape again (its Temporary Hit Points with
-// it). WANTED stays as it is. Nothing for the fallen: their rest is the town's standing again.
+// it). WANTED is the Rebuild's to clear (watch_rebuilt), not this. Nothing for the fallen: their rest is the town's standing again.
 st_long_rest :: (s: [] Everglade) -> bool {
   if !watch_on(s) { return false; }
   w := watch_w(s);
