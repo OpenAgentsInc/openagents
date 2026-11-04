@@ -1,0 +1,105 @@
+// Combat you can read, on another page (#12862): a headless page sits in a local room while a bot
+// (coax/web/room/guard-check.coax, room pair-guard-N) strikes a townsperson and the watch comes for it.
+// Once the room downs the bot (its row's COND has Unconscious), this page must draw DOWN over the bot's
+// head, frame after frame (net_probe 91: the words drawn over others' heads); a word for whatever held
+// it before is reported. A picture of each, with --shots PREFIX.
+//   coax/web/tool.sh coax/web/everglade-combat.coax PAGE_URL [--shots PREFIX] [--seconds S]
+// PAGE_URL is the local room's page with ?relay= and &room=pair-guard-N (coax/web/room/local.sh).
+// Prints a line per check, one JSON line, then holds or fails. Nothing opens on screen.
+#import "Basic";
+#load "../lib/net/cdp.coax";
+
+EC_SHOT :: 25165824;
+EC_UNCONSCIOUS :: 16384;
+EC_HOLDS :: 8392960;          // Paralyzed 256 | Restrained 4096 | Stunned 8192 | Bound 8388608
+EC_WORD_DOWN :: 1;            // 1 << POP_DOWN (apps/openagents-web/everglade-watch.coax)
+EC_WORD_HOLDS :: 30;          // 1 << POP_HELD | ROOTED | RESTRAINED | STUNNED
+
+EcBuf :: struct { b: [8192] u8; n: int; }
+ec_put :: (o: [] EcBuf, s: string) { for k: 0..<s.count { if o[0].n < o[0].b.count { o[0].b[o[0].n] = s[k]; o[0].n += 1; } } }
+ec_text :: (o: [] EcBuf) -> string { return cast(string) o[0].b[0..<o[0].n]; }
+
+ec_int :: (c: [] Cdp, js: string, fallback: int) -> int {
+  v := cdp_evaluate(c, js);
+  return ifx v >= 0 then jv_int(cdp_doc(c), v, fallback) else fallback;
+}
+ec_key :: (c: [] Cdp, down: bool, key: string, code: string, vk: int) {
+  q: [1] EcBuf;
+  ec_put(q[..], "dispatchEvent(new KeyboardEvent('"); ec_put(q[..], ifx down then "keydown" else "keyup");
+  ec_put(q[..], "', {key: '"); ec_put(q[..], key); ec_put(q[..], "', code: '"); ec_put(q[..], code); ec_put(q[..], "', keyCode: ");
+  ec_put(q[..], ifx vk == 13 then "13" else "27"); ec_put(q[..], ", bubbles: true})); 1");
+  _ := ec_int(c, ec_text(q[..]), 0);
+}
+ec_shot :: (c: [] Cdp, prefix: string, name: string) {
+  if prefix.count == 0 { return; }
+  png: [EC_SHOT] u8;
+  p: [1] EcBuf; ec_put(p[..], prefix); ec_put(p[..], "-"); ec_put(p[..], name); ec_put(p[..], ".png");
+  n := cdp_screenshot(c, png[..]);
+  if n > 0 && fs_write(ec_text(p[..]), cast(string) png[0..<n]) { print("  %\n", ec_text(p[..])); }
+}
+ec_check :: (ok: bool, what: string) -> bool { print("% %\n", ifx ok then "ok  " else "FAIL", what); return ok; }
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  ok := args_load(a[..]);
+  url := args_at(a[..], 0);
+  shots := args_value(a[..], "--shots", "");
+  secs := args_number(args_value(a[..], "--seconds", "120"));
+  if !ok || url.count == 0 || url[0] == '-' || !secs.ok {
+    tool_errln("usage: coax/web/tool.sh coax/web/everglade-combat.coax PAGE_URL [--shots PREFIX] [--seconds S]"); return 2;
+  }
+  js: [65536] u8;
+  jn := fs_read("coax/web/everglade-pair.js", js[..]);   // the pair check's in-page half: __eg.probe
+  if jn <= 0 { tool_errln("everglade-combat: can't read coax/web/everglade-pair.js (run it from the repository's root)"); return 2; }
+  c: [1] Cdp;
+  if !cdp_launch(c[..], 1440, 900, "coax-egcombat-") { tool_err("everglade-combat: "); tool_errln(cdp_error(c[..])); return 1; }
+  params: [131072] u8; o: [1] Jo;
+  _ := cdp_call(c[..], "Page.enable", "", CDP_CALL_MS);
+  _ = cdp_call(c[..], "Emulation.setFocusEmulationEnabled", "{\"enabled\":true}", CDP_CALL_MS);
+  jo_start(o[..], params[..]); jo_obj(o[..]); jo_key(o[..], "source"); jo_str(o[..], cast(string) js[0..<jn]); jo_end(o[..]);
+  _ = cdp_call(c[..], "Page.addScriptToEvaluateOnNewDocument", jo_text(o[..]), CDP_CALL_MS);
+  jo_start(o[..], params[..]); jo_obj(o[..]); jo_key(o[..], "url"); jo_str(o[..], url); jo_end(o[..]);
+  if cdp_call(c[..], "Page.navigate", jo_text(o[..]), CDP_CALL_MS) < 0 { tool_errln("everglade-combat: can't open the page"); cdp_close(c[..]); print("fails\n"); return 1; }
+  live := false;
+  deadline := proc_now_ms() + 90000;
+  while !live && proc_now_ms() < deadline {
+    proc_sleep(500);
+    live = ec_int(c[..], "__eg.live()", 0) == 1;
+    if !live { ec_key(c[..], true, "Enter", "Enter", 13); ec_key(c[..], false, "Enter", "Enter", 13); }
+  }
+  all := ec_check(live, "the page joined the room");
+  if live { proc_sleep(1500); ec_key(c[..], true, "Escape", "Escape", 27); ec_key(c[..], false, "Escape", "Escape", 27); }
+  // watch: what holds the bot, its head's word, and DOWN
+  bot_hp_least := 1000000;   // the least Hit Points of seat 1's row this page heard
+  held_ms := -1; word_hold := false; down_ms := -1; word_down := false; seen := false; conds := 0; words := 0;
+  t0 := proc_now_ms();
+  shot_hold := false; down_frames := 0;
+  while live && proc_now_ms() - t0 < cast(int) secs.value * 1000 && down_frames < 12 {
+    proc_sleep(120);
+    if ec_int(c[..], "__eg.probe(2)", 0) >= 1 { seen = true; }
+    cd := ec_int(c[..], "__eg.probe(90)", 0);
+    w := ec_int(c[..], "__eg.probe(91)", 0);
+    bh := ec_int(c[..], "(() => { const h = __eg.rows[1]; if (!h || !h.length) return -1; return h[h.length - 1][1][10]; })()", -1);
+    if bh >= 0 && bh < bot_hp_least { bot_hp_least = bh; }
+    conds |= cd; words |= w;
+    if (cd & EC_HOLDS) != 0 && held_ms < 0 { held_ms = proc_now_ms() - t0; }
+    if (w & EC_WORD_HOLDS) != 0 { word_hold = true; if !shot_hold { shot_hold = true; ec_shot(c[..], shots, "held"); } }
+    if (cd & EC_UNCONSCIOUS) != 0 {
+      if down_ms < 0 { down_ms = proc_now_ms() - t0; }
+      if (w & EC_WORD_DOWN) != 0 { word_down = true; down_frames += 1; if down_frames == 8 { ec_shot(c[..], shots, "down"); } }
+    }
+  }
+  all = ec_check(seen, "the page draws the bot") && all;
+  // what its socket heard of the others' rows (everglade-pair.js): rows, and rows with WG_DEAD (8)
+  rows_heard := ec_int(c[..], "(() => { let n = 0; for (const k of Object.keys(__eg.others)) n += __eg.others[k].length; return n; })()", -1);
+  dead_rows := ec_int(c[..], "(() => { let n = 0; for (const k of Object.keys(__eg.others)) for (const r of __eg.others[k]) if (r[4] & 8) n++; return n; })()", -1);
+  print("  the others' rows heard %, of them fallen (WG_DEAD) %\n", rows_heard, dead_rows);
+  all = ec_check(down_ms >= 0, "the bot is downed, and this page has it so (its row's COND: Unconscious)") && all;
+  all = ec_check(word_down, "DOWN over the downed bot's head, frame after frame") && all;
+  print("  held by the watch first: % (a word over its head: %)\n", ifx held_ms >= 0 then "yes" else "no", ifx word_hold then "yes" else "no");
+  print("  seat 1's least Hit Points heard here %\n", bot_hp_least);
+  print("{\"down_ms\":%,\"held_ms\":%,\"conds\":%,\"words\":%}\n", down_ms, held_ms, conds, words);
+  cdp_close(c[..]);
+  print("%\n", ifx all then "holds" else "fails");
+  return ifx all then 0 else 1;
+}

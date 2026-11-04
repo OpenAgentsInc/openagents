@@ -4,7 +4,9 @@
 // drop below where they started, and it is downed (0) within SECONDS (default 45). The guards' blows are rolled on the server against the player's AC
 // (verse/everglade/watch.coax watch_roll_at_you) and dealt by the room's rules (room-host.c
 // everglade_town rm_eg_hurt, room-casts.coax rc_tick_first).
-//   coax/web/tool.sh coax/web/room/guard-check.coax ws://127.0.0.1:PORT [SECONDS]
+//   coax/web/tool.sh coax/web/room/guard-check.coax ws://127.0.0.1:PORT [SECONDS] [ROOM N] [HOLD]
+// ROOM N plays in room pair-guard-N (a page opened with ?room=pair-guard-N watches it: the combat
+// check, coax/web/everglade-combat.coax, #12862); HOLD stays that many seconds once downed.
 // Run it against a local room (local.sh, or room --dev with its stand-in key as OA_ROOM_TICKET_KEY).
 // Prints one JSON line, then "hurts" and exits 0, or "fails" and 1.
 #load "room-socket.coax";
@@ -16,10 +18,15 @@ GcHeard :: struct {
   wanted: int; wanted_most: int;
   trace: [24] int; trace_n: int;   // the first HP values heard, each change      // e hit entries whose target is my seat (1000 + SS)
   bad: int;
+  refused: [256] u8; refused_n: int;   // the first refusals heard (r SEQ WHY), for a check that fails
+  seat: int;                           // its own seat (y)
+  hits: int; casts: int;               // e hit entries this seat dealt, e cast entries of its own
   m: [1] WireMirror;
 }
 gc_entry :: (h: [] GcHeard, me: int, t: string) {
   k := rs_field(t, 0);
+  if k == "e" && rs_field(t, 1) == "hit" && rs_num(rs_field(t, 3)) == 1000 + me { h[0].hits += 1; return; }
+  if k == "e" && rs_field(t, 1) == "cast" && rs_num(rs_field(t, 2)) == me { h[0].casts += 1; return; }
   if k == "s" {
     w := wire_mirror_of(h[0].m[..], rs_num(rs_field(t, 1)));
     if w.id < 0 { h[0].bad += 1; return; }
@@ -46,6 +53,8 @@ gc_entry :: (h: [] GcHeard, me: int, t: string) {
 }
 gc_hear :: (h: [] GcHeard, me: int, t: string) {
   if rs_starts(t, "W ") { h[0].w = true; return; }
+  if rs_starts(t, "y ") { h[0].seat = rs_num(rs_field(t, 1)); return; }   // its seat: 0 alone, another when a page sat first
+  if rs_starts(t, "r ") { for ch: t { if h[0].refused_n < 255 { h[0].refused[h[0].refused_n] = ch; h[0].refused_n += 1; } } if h[0].refused_n < 255 { h[0].refused[h[0].refused_n] = '|'; h[0].refused_n += 1; } return; }
   if !rs_starts(t, "D ") { return; }
   h[0].d += 1;
   _ := wire_mirror_frame(h[0].m[..], t);
@@ -70,7 +79,7 @@ gc_steps :: (c: [] RelayConn, h: [] GcHeard, seq: [] int, ms: int) -> bool {
     if !relay_conn_send(c, cast(string) m[0..<k]) { ok = false; }
     n += 1;
     while rs_now() - t0 < n * 1000 / 30 {
-      while relay_conn_poll(c, 0) == RC_TEXT { gc_hear(h, 0, cast(string) c[0].text[0..<c[0].text_n]); }
+      while relay_conn_poll(c, 0) == RC_TEXT { gc_hear(h, h[0].seat, cast(string) c[0].text[0..<c[0].text_n]); }
       proc_sleep(2);
     }
   }
@@ -84,7 +93,9 @@ tool_main :: () -> int #export_c {
   base := rs_base(ifx args_count(a[..]) > 0 then args_at(a[..], 0) else "ws://localhost:8841", b[..]);
   secs := ifx args_count(a[..]) > 1 then rs_num(args_at(a[..], 1)) else 45;
   u: [1024] u8;
-  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-guard-", rs_stamp());
+  stamp := ifx args_count(a[..]) > 2 then rs_num(args_at(a[..], 2)) else rs_stamp();
+  hold := ifx args_count(a[..]) > 3 then rs_num(args_at(a[..], 3)) else 0;
+  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-guard-", stamp);
   c: [1] RelayConn; h: [1] GcHeard; seq: [1] int;
   ut: [1024] u8;
   url_t := rs_ticketed(ut[..], url, "p-guardcheck-a", "Guard Check");
@@ -111,6 +122,7 @@ tool_main :: () -> int #export_c {
     sent = gc_steps(c[..], h[..], seq[..], 500) && sent;
   }
   hurt_ms := rs_now() - t0;   // until downed, or SECONDS
+  if hold > 0 { sent = gc_steps(c[..], h[..], seq[..], hold * 1000) && sent; }
   ok := sent && h[0].w && h[0].me_seen && h[0].wanted_most >= 1 && hp_wanted > 0 && h[0].hp_min < hp_wanted && h[0].bad == 0;
   out: [1024] u8; o: [1] Jo;
   jo_start(o[..], out[..]);
@@ -123,6 +135,11 @@ tool_main :: () -> int #export_c {
   jo_key(o[..], "downed"); jo_bool(o[..], h[0].hp_min == 0);
   jo_key(o[..], "ms_to_down"); jo_int(o[..], hurt_ms);
   jo_key(o[..], "bad_rows"); jo_int(o[..], h[0].bad);
+  jo_key(o[..], "near_townsperson"); jo_int(o[..], h[0].near_i);
+  jo_key(o[..], "seat"); jo_int(o[..], h[0].seat);
+  jo_key(o[..], "casts_heard"); jo_int(o[..], h[0].casts);
+  jo_key(o[..], "hits_dealt"); jo_int(o[..], h[0].hits);
+  jo_key(o[..], "refused"); jo_str(o[..], cast(string) h[0].refused[0..<h[0].refused_n]);
   jo_key(o[..], "hp_heard"); jo_arr(o[..]); for q: 0..<h[0].trace_n { jo_int(o[..], h[0].trace[q]); } jo_end(o[..]);
   jo_end(o[..]);
   print("%\n", jo_text(o[..]));

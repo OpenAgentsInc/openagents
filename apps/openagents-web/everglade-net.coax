@@ -77,6 +77,7 @@ NetEnt :: struct {
   live: bool; eid: int; kind: int; owner: int = -1;   // eid: a seat, NET_FOLK_ID + its index, NET_MADE_ID + the server's EID
   ring: [NET_RING] NetState; ring_n: int;   // oldest first, server times
   hp: int; max: int; p1: int; p2: int; form: int;
+  cond: int;                 // its row's COND: the conditions on it (a townsperson's; a player's is P1 too)
   wanted: int;               // a player's WANTED level (w)
   born: int;                 // server ms it was first seen
   seen: int;                 // the last tick it was in
@@ -717,7 +718,7 @@ net_row :: (s: [] Everglade, n: [] EgNet, w: WireS, d: WireD) {
   if en[0].ring_n > 0 && w.life != en[0].life { en[0].ring_n = 0; en[0].born = n[0].tick_t; }
   else if en[0].ring_n > 0 && w.warp != en[0].warp { en[0].ring_n = 0; }
   en[0].life = w.life; en[0].warp = w.warp; en[0].t0 = w.t0; en[0].dur = w.dur;
-  en[0].kind = w.kind; en[0].owner = w.owner; en[0].hp = w.hp; en[0].max = w.max; en[0].seen = d.tick;
+  en[0].kind = w.kind; en[0].owner = w.owner; en[0].hp = w.hp; en[0].max = w.max; en[0].seen = d.tick; en[0].cond = w.cond;
   st := NetState.{t = n[0].tick_t, x = w.x, y = w.y, z = w.z, yaw = w.yaw, vx = w.vx, vy = w.vy, vz = w.vz, f = w.g, a = w.clip};
   if w.kind == WK_PLAYER {
     // a player's P1 is its conditions, P2 its temporary Hit Points (net_view)
@@ -766,14 +767,14 @@ net_push_row :: (en: [] NetEnt, p: NetState, hz: int) {
 }
 // Watch actor i (a townsperson or guard) as the server has them now (f), interpolated; ok false while
 // none is heard (indoors, out of view, or no room).
-NetFolk :: struct { ok: bool; x: f32; z: f32; yaw: f32; mode: int; clip: int; hp: int; }
+NetFolk :: struct { ok: bool; x: f32; z: f32; yaw: f32; mode: int; clip: int; hp: int; cond: int; }
 net_folk :: (s: [] Everglade, i: int) -> NetFolk {
   if !net_live(s) { return NetFolk.{}; }
   n := net_of(s);
   k := net_ent(n, NET_FOLK_ID + i, false);
   if k < 0 { return NetFolk.{}; }
   p := n[0].ents[k].shown;
-  return NetFolk.{ok = true, x = p.x, z = p.z, yaw = p.yaw, mode = p.f, clip = p.a, hp = n[0].ents[k].hp};
+  return NetFolk.{ok = true, x = p.x, z = p.z, yaw = p.yaw, mode = p.f, clip = p.a, hp = n[0].ents[k].hp, cond = n[0].ents[k].cond};
 }
 // In a room whose server runs the town (it has said your WANTED level, w): its townsfolk and guards
 // are the ones drawn, and the page's own watch is still (everglade-watch.coax watch_net_frame).
@@ -1625,6 +1626,10 @@ net_probe :: (s: [] Everglade, field: int) -> int #export_c {
     return b;
   }
   if field == 53 { return net_cond(s); }
+  // the combat check's (coax/web/everglade-combat.coax, #12862): 90 the conditions on every other
+  // player as this page has them (bits OR'd; Unconscious for one down at 0 Hit Points), 91 the words drawn over others' heads (1 << POP_*)
+  if field == 90 { c := 0; for j: 1..<ST_WHOS { c |= st_cond(s, st_who_of(j)) | (ifx st_down(s, st_who_of(j)) then WC_UNCONSCIOUS else 0); } return c; }
+  if field == 91 { return s[0].st_words; }
   // 59: offline, hold you as a Watch Mage's Hold Person does (3 s, saving each round): 1 when it held
   // you (the drift check's held step; in a room another player's cast holds you)
   if field == 59 {

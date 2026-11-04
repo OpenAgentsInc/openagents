@@ -369,6 +369,7 @@ Everglade :: struct {
   touch: bool;
   orbit: Orbit;
   status: [1] EgStatus;   // what holds or marks each body this frame (everglade-status.coax st_fill)
+  st_words: int;          // the words drawn over others' heads last frame (1 << POP_*), for the combat check
   intent_x: f32; intent_z: f32;   // the motion your controls ask for (everglade_intent): the follow camera's heading
   held: int;
   drag_on: bool; drag_id: int; drag_x: f32; drag_y: f32;
@@ -4006,7 +4007,7 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   n = eg_quality_hud(s, out, u, n);   // the graphics tier, bottom right, clear of the bar (everglade-quality.coax)
   n = egs_hud(s, out, u, n);   // SOUND over it, and its volume and MUTE (everglade-sound.coax)
   // the damage numbers over who was hit (everglade-watch.coax), their shades from the plates the bar left
-  if sp_on(s) && !s[0].above && s[0].wv.started { n = watch_pops_draw(s, out, u, n); }
+  if sp_on(s) && !s[0].above && s[0].wv.started { n = watch_pops_draw(s, out, u, n); n = st_tags_draw(s, out, u, n); }
   y1 -= s[0].sp.lift;
   // An admin's EDIT and edit mode (everglade-edit.coax) and TALK TO EDIT (everglade-voice.coax), over the hint; whoever is near is asked above it.
   lift := 0.0f32;
@@ -4048,6 +4049,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   if !finite3(feet) { feet = s[0].feet; }
   s[0].feet = feet; s[0].face = face; s[0].act = act;
   st_fill(s);   // every body's conditions, from the room's state or the page's own (everglade-status.coax)
+  s[0].st_words = 0;   // the words over heads, drawn this frame (st_tags_draw, everglade5e.coax e5_play_hud)
   speed := sqrt(vx * vx + vz * vz);
   // afloat, you are where the river holds you; else on the ground or the deck
   shown := feet_in_world(feet, walk_at(s, feet.x, feet.z));

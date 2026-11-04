@@ -798,15 +798,17 @@ eg_table :: (v: [] RmServer, k: int) {
                                     flags = other.flags, name = ifx other.name_n > 0 then cast(string) other.name[0..<other.name_n] else "-"});
     rm[0].cn_n[q] = n; rm[0].cn_h[q] = eg_hash(cast(string) rm[0].cn[a..<a + n]);
   }
-  // the townsfolk outdoors: G their mode, CLIP their clip, P1 who, Y how high the world's abilities
+  // the townsfolk outdoors: G their mode, CLIP their clip, P1 who, COND what holds them, Y how high the world's abilities
   // hold them over their feet (Reverse Gravity)
   if rm[0].folk_on {
     for i: 0..<E5R_FOLK {
       fo := i * EG_FOLK_FLOATS;
       fl := rm[0].folk[fo..<fo + EG_FOLK_FLOATS];
       if fl[6] < 0.5 { continue; }
+      fo4: [E5RR_OUT_FLOATS] f32;
+      e5rr_folk_out(rm[0].rules[..], i, fo4[..]);   // COND: the conditions the rules have on them (their head's word, #12862)
       wire_hist_put(h, EG_SLOT_FOLK + i, WireS.{id = WIRE_ID_FOLK + i, kind = WK_FOLK, x = fl[0], y = f32(v[0].ab[k].air[i]) / 100, z = fl[1], yaw = fl[2],
-                                                 clip = cast(int) fl[3], g = cast(int) fl[4], hp = cast(int) fl[5], p1 = i}, wire_rel(WK_FOLK), false, true);
+                                                 clip = cast(int) fl[3], g = cast(int) fl[4], hp = cast(int) fl[5], p1 = i, cond = cast(int) fo4[3]}, wire_rel(WK_FOLK), false, true);
     }
   }
   // summoned creatures (raiders among them) once their ground is known: G 1 while it runs (a raider's

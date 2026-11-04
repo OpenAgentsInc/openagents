@@ -30,6 +30,21 @@ NewGuard :: struct { x: f32; z: f32; yaw: f32; walking: bool; placed: bool; }
 // A damage number (watch_pop): the hit points lost, red over the head that lost them, rising as it fades.
 WATCH_POPS :: 40; POP_LIFE :: 1.1; POP_RISE :: 0.8;
 WatchPop :: struct { live: bool; at: Point; t: f32; amount: int; dx: f32; big: bool; }
+// The words for conditions over heads (everglade-status.coax st_head_word) and their colours.
+POP_DOWN :: 0; POP_HELD :: 1; POP_ROOTED :: 2; POP_RESTRAINED :: 3; POP_STUNNED :: 4; POP_PRONE :: 5;
+POP_FRIGHTENED :: 6; POP_SLOWED :: 7;
+POP_WORDS :: [8] string.["DOWN", "HELD", "ROOTED", "RESTRAINED", "STUNNED", "PRONE", "FRIGHTENED", "SLOWED"];
+// A word's colour: red down, gold held, yellow stunned, green rooted, earth restrained, frost slowed,
+// violet the rest.
+watch_pop_rgb :: (word: int) -> Point {
+  if word == POP_HELD { return v3(1.0, 0.82, 0.35); }
+  if word == POP_ROOTED { return v3(0.4, 0.95, 0.35); }
+  if word == POP_RESTRAINED { return v3(0.95, 0.68, 0.3); }
+  if word == POP_STUNNED { return v3(1.0, 0.95, 0.4); }
+  if word == POP_SLOWED { return v3(0.65, 0.85, 1.0); }
+  if word == POP_DOWN { return v3(1.0, 0.3, 0.25); }
+  return v3(0.8, 0.55, 1.0);
+}
 // What each one had last frame (hit points and temporary ones), so any blow shows its number.
 WatchSeen :: struct { life: int; on: bool; }
 // What the page keeps of the watch for drawing it.

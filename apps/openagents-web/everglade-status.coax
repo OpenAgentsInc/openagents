@@ -136,6 +136,58 @@ st_tone :: (cond: int) -> int {
   return 3;
 }
 
+// ---- over the heads: one word while a condition lasts (#12862)
+
+ST_WHOS :: 17;           // you, then each seat
+// The body slot j is: you, then seat j - 1 (a TGT code 1000 + SS).
+st_who_of :: (j: int) -> int { return ifx j == 0 then ST_YOU else 1000 + j - 1; }
+// The strongest of what holds a body, in this order, is the one word over its head.
+ST_WORD_BITS :: [7] int.[WC_UNCONSCIOUS, WC_PARALYZED, WC_STUNNED, WC_BOUND, WC_RESTRAINED, WC_PRONE, 16];
+ST_WORD_POP :: [7] int.[POP_DOWN, POP_HELD, POP_STUNNED, POP_ROOTED, POP_RESTRAINED, POP_PRONE, POP_FRIGHTENED];
+// The word (POP_*) for bits `c`, -1 none.
+st_head_word :: (c: int) -> int {
+  for q: 0..<7 { if (c & ST_WORD_BITS[q]) != 0 { return ST_WORD_POP[q]; } }
+  return -1;
+}
+// The word over your head and every player's near enough for a nameplate, just over the nameplate,
+// in the game's font and the word's colour, for as long as the condition lasts (the rules' COND as
+// st_fill has it: the room's rows in a room). The townsfolk's are everglade5e.coax e5_play_hud's.
+// Whether a player is down in a room: at 0 Hit Points, or the room has them fallen (WG_DEAD), as
+// their row says. Offline, and for you offline, the conditions say it (Unconscious).
+st_down :: (s: [] Everglade, who: int) -> bool {
+  if !net_live(s) { return false; }
+  n := net_of(s);
+  seat := ifx who == ST_YOU then n[0].seat else who - 1000;
+  k := net_ent(n, seat, false);
+  if k < 0 || n[0].ents[k].kind != WK_PLAYER { return false; }
+  return (n[0].ents[k].shown.f & WG_DEAD) != 0 || (n[0].ents[k].max > 0 && n[0].ents[k].hp <= 0);
+}
+st_tags_draw :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
+  n := at;
+  k := hi(s[0].dpr, 0.5);
+  cap := 11.0 * k;
+  for j: 0..<ST_WHOS {
+    who := st_who_of(j);
+    word := st_head_word(st_cond(s, who) | (ifx st_down(s, who) then WC_UNCONSCIOUS else 0));
+    if word < 0 { continue; }
+    w := st_where(s, who);
+    if !w.ok || (who != ST_YOU && flat_gap(w.at, ab_you(s)) > f32(REMOTE_PLATE_NEAR)) { continue; }
+    // over your head; over another's nameplate and the Hit Points line on it (everglade5e.coax e5_play_hud)
+    top := ifx who == ST_YOU then add(w.at, v3(0, 2.3, 0)) else remote_plate_for(s, who - 1000, w.at);
+    sc := on_screen(u, top, s[0].width, s[0].height);
+    if !sc.ok || sc.w > 60 { continue; }
+    if who != ST_YOU { sc.y -= 26 * k; }
+    t := POP_WORDS[word];
+    tw := text_width(t, cap);
+    x := sc.x - tw / 2;
+    if s[0].plate_n < PLATES - 6 { plate(s, u, Box.{x0 = x - 6 * k, y0 = sc.y - cap - 6 * k, x1 = x + tw + 6 * k, y1 = sc.y + 5 * k}, 0.78, PLATE_SHADE); }
+    rgb := watch_pop_rgb(word);
+    if who != ST_YOU { s[0].st_words |= 1 << word; }
+    n = draw_text(out, n, t, x, sc.y, cap, GAP, SPACE, Ink.{core = 1.0 * k, light = 1, glow = 0.7 * k, red = rgb.x, green = rgb.y, blue = rgb.z, mode = 0, scale = k}, false, false);
+  }
+  return n;
+}
+
 // ---- on the bodies
 
 // Where `who` is drawn (world feet), ok false when it isn't.
@@ -223,4 +275,14 @@ st_draw_on :: (s: [] Everglade, you: Point, c: int) {
   #assert cast(string) b[0..<st_line(s[..], 2, b[..])] == "BOUND · EARTHBIND";
   // the wire's causes (#12783) name the same spells; the watch's arrest names none
   #assert st_cause(WE_HOLD_PERSON) == ST_HOLD_PERSON && st_cause(WE_EARTHBIND) == ST_EARTHBIND && st_cause(WE_RAY_OF_FROST) == ST_RAY_OF_FROST && st_cause(WE_WATCH) == -1;
+}
+
+#test "status: one word over a head while a condition lasts, the strongest: DOWN, HELD, STUNNED, ROOTED, RESTRAINED, PRONE, FRIGHTENED (#12862)" {
+  #assert st_head_word(WC_PRONE | WC_UNCONSCIOUS) == POP_DOWN && st_head_word(WC_PARALYZED | WC_STUNNED | WC_BOUND) == POP_HELD;
+  #assert st_head_word(WC_STUNNED | WC_BOUND) == POP_STUNNED && st_head_word(WC_BOUND | WC_RESTRAINED | WC_PRONE) == POP_ROOTED;
+  #assert st_head_word(WC_RESTRAINED | WC_PRONE) == POP_RESTRAINED && st_head_word(WC_PRONE | 16) == POP_PRONE && st_head_word(16) == POP_FRIGHTENED;
+  #assert st_head_word(0) == -1 && st_who_of(0) == ST_YOU && st_who_of(3) == 1002;
+  #assert POP_WORDS[POP_DOWN] == "DOWN" && POP_WORDS[POP_ROOTED] == "ROOTED";
+  d := watch_pop_rgb(POP_DOWN); r := watch_pop_rgb(POP_ROOTED);
+  #assert d.x > 0.9 && d.y < 0.4 && r.y > 0.9 && r.x < 0.5;   // red DOWN, green ROOTED
 }
