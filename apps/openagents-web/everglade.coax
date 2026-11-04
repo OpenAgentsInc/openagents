@@ -3938,9 +3938,9 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   if fk_has(s) && s[0].fk[0].boxes[FB_OPEN].x1 > left { left = s[0].fk[0].boxes[FB_OPEN].x1; }
   n = join_hud(s, out, u, n, mb, left);
   join_arrive(s, u);   // from the Grid's gate: the veil lifting
-  n = md_draw(s, out, u, n, mb.y1 + 10 * k + join_drop(s));   // a tapped nameplate's BLOCK, REPORT, KICK (everglade-moderate.coax)
   if !eg_pane_open(s) { n = watch_hud(s, out, u, n, mb.y1 + 10 * k + join_drop(s)); }   // your HP, WANTED and the watch's shouts (everglade-watch.coax)
   if !eg_pane_open(s) { n = ege_hud(s, out, u, n, mb.y1 + 10 * k + join_drop(s), title_box.y1, title_box.x1); }   // the raid, your level, EVENTS (everglade-events.coax)
+  n = md_draw(s, out, u, n, md_top(s, mb.y1 + 10 * k + join_drop(s)));   // a tapped nameplate's BLOCK, REPORT, KICK (everglade-moderate.coax), over the rest
   n = net_bars(s, out, u, n);   // the room's summoned creatures' Hit Points (everglade-net.coax)
   n = st_hud(s, out, u, n);   // Blinded, Deafened; what the beasts say (everglade-storm.coax Speak with Animals)
   s[0].guide.button=Box.{};s[0].guide.drawn=0;

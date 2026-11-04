@@ -93,6 +93,17 @@ md_open :: (s: [] Everglade, p: int) {
 }
 md_admin :: (s: [] Everglade) -> bool { return s[0].ev.admin; }
 
+// Where the pane's top goes: under the top row; on a phone, whose top row is full width, under your
+// HP, LEVEL and the chat line too (phone QA, November 4: the pane ran under the HP bar and the LEVEL
+// plate and the name was lost behind them).
+md_top :: (s: [] Everglade, top: f32) -> f32 {
+  if !phone(s) { return top; }
+  k := hi(s[0].dpr, 0.5);
+  t := top;
+  c := s[0].chat.box; if c.y1 > c.y0 { t = hi(t, c.y1 + 8 * k); }
+  if net_on(s) { l := ege_of(s)[0].level_box; if l.y1 > l.y0 { t = hi(t, l.y1 + 8 * k); } }
+  return t;
+}
 // The pane, under the top row in the middle: the name, then BLOCK, REPORT, KICK (an admin) and CLOSE.
 md_draw :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, top: f32) -> int {
   if !net_on(s) { return at; }
@@ -283,4 +294,15 @@ md_probe :: (s: [] Everglade, field: int) -> int {
   #assert md_pointer(g[..], 300, 300, 0, 3) && !n[0].mod[0].open && md_pointer(g[..], 300, 300, 2, 3);
   net_moderated(g[..], "403\n{\"error\":\"admins only\"}");
   #assert n[0].mod[0].asked == 0;
+}
+
+#test "moderate: on a phone the pane opens under your LEVEL plate and the chat line, never under them" {
+  g: [1] Everglade; nn: [1] EgNet;
+  everglade_attach_net(g[..], nn[..]);
+  g[0].width = 1170; g[0].height = 2532; g[0].dpr = 3; g[0].touch = true;
+  ege_of(g[..])[0].level_box = Box.{x0 = 48, y0 = 220, x1 = 520, y1 = 300};
+  g[0].chat.box = Box.{x0 = 48, y0 = 320, x1 = 200, y1 = 380};
+  #assert md_top(g[..], 180) == 380 + 24;
+  g[0].touch = false; g[0].width = 1600; g[0].dpr = 1;
+  #assert md_top(g[..], 180) == 180;   // a desktop's top row leaves the middle free
 }
