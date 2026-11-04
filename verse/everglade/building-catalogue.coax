@@ -1,0 +1,97 @@
+// Shared authored building identities and footprints, with no renderer dependency.
+EG_BUILDINGS :: 16;
+EG_BUILDING :: [80] f32.[
+  -22, -44, -6, -30, 9,       22, 10, 34, 20, 7,        44, 8, 56, 18, 6,         44, -18, 54, -8, 7,
+  -44, 6, -30, 18, 8,         -44, -18, -30, -6, 7,     -32, 36, -22, 46, 14,     -9, 34, 9, 52, 12,
+  24, 40, 32, 48, 18,         8, -76, 20, -64, 6,       -22, -24, -12, -16, 7,    8, -26, 18, -16, 7,
+  8, -46, 18, -36, 7,         -50, 30, -40, 40, 7,      50, -40, 58, -30, 6,      -52, -40, -42, -30, 6
+];
+EG_DOOR :: [32] f32.[
+  -5, -37,   28, 9,   50, 7,   49, -7,
+  -37, 5,    -37, -5, -27, 35, 0, 33,
+  28, 39,    7, -70,  -11, -20, 7, -21,
+  7, -41,    -45, 29, 49, -35, -47, -29
+];
+EG_BUILDING_NAME :: [16] string.[
+  "THE INN", "GENERAL STORE", "SMITHY", "ALCHEMIST",
+  "FIGHTERS' HALL", "RANGERS' LODGE", "MAGES' TOWER", "TEMPLE",
+  "OBSERVATORY", "STABLES", "HOUSE", "HOUSE",
+  "HOUSE", "HOUSE", "HOUSE", "HOUSE"
+];
+// The buildings you walk into (eg-buildings, eg-interiors): every one, the inn, the three shops,
+// the two guild halls, the mages' tower, the temple, the observatory, the stables and the six houses.
+// Their walls stand 0.4 m thick inside the footprint, with a doorway in the wall that faces the door spot.
+EG_INTERIOR :: [16] bool.[true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true];
+EG_INTERIORS :: 16;
+// The hash that starts you inside one (#in-inn): "" for those you can't enter.
+EG_ROOM_ID :: [16] string.["in-inn", "in-store", "in-smithy", "in-alchemist", "in-fighters", "in-rangers", "in-mages", "in-temple",
+  "in-observatory", "in-stables", "in-house-1", "in-house-2", "in-house-3", "in-house-4", "in-house-5", "in-house-6"];
+EG_WALL :: 0.4;         // a wall's thickness
+EG_MODULE :: 2.0;       // the kit's walls are 2 m modules
+EG_DOORWAY :: 1.9;      // the gap a doorway leaves in a wall
+EG_INN :: 0; EG_STORE :: 1; EG_SMITHY :: 2; EG_ALCHEMIST :: 3; EG_FIGHTERS :: 4; EG_RANGERS :: 5;
+EG_MAGES :: 6; EG_TEMPLE :: 7; EG_OBSERVATORY :: 8; EG_STABLES :: 9; EG_HOUSES :: 10;
+
+// ---- wave 1's districts past the old town (docs/verse/everglade.md, "The districts"): the map's
+// landmarks and the houses and shops on their streets, built from the same kit as the old town's.
+// Each is a box, the spot just outside its door on the street, its name ("" for a plain house or
+// workshop) and whether its walls are stone. They are shut: their doors open (everglade-doors.coax)
+// on a dark hall you don't go into yet, as the crypt's does, so each stands in the way as one box.
+EG_DHOUSES :: 44;
+EG_DHOUSE :: [220] f32.[
+  // Main Street, north from the north roundabout: shops on its east side, the Market Hall on its west
+  31, 86, 41, 94, 9,     31, 96, 41, 104, 6,    31, 106, 41, 114, 9,   31, 116, 41, 124, 6,   31, 126, 41, 134, 9,
+  47, 84, 63, 98, 11,
+  // Stoop Lane, west off Main Street: houses either side
+  48, 100, 56, 108, 6,   58, 100, 66, 108, 9,   68, 100, 76, 108, 6,
+  48, 112, 56, 120, 9,   58, 112, 66, 120, 6,   68, 112, 76, 120, 9,
+  // the Foundry on Foundry Road, east from the east roundabout: the Foundry Barn and the workshops
+  -96, 8, -86, 18, 6,    -108, 8, -100, 18, 9,  -130, 8, -112, 22, 10,
+  -96, -10, -86, 0, 6,   -108, -10, -100, 0, 6, -120, -10, -112, 0, 9,  -132, -10, -124, 0, 6,
+  // the Makers' Quarter on Studio Road: the Makers' Hall, the Boardwalk, the studios
+  -106, 60, -90, 72, 10, -122, 60, -110, 70, 6,
+  -96, 42, -88, 52, 9,   -108, 42, -100, 52, 6, -120, 42, -112, 52, 9,  -132, 42, -124, 52, 6,
+  // the Scholars' Quarter on Library Way: the Stacks, the Old College, the scholars' houses
+  -110, -72, -96, -60, 11,   -132, -72, -116, -56, 10,
+  -96, -90, -88, -80, 9, -106, -90, -98, -80, 6, -116, -90, -108, -80, 9, -126, -90, -118, -80, 6,
+  // the Lantern Quarter across the river, on Lantern Road: the Music Hall, the meeting hall, the inns
+  108, -10, 124, 6, 11,  108, -26, 116, -18, 9, 108, -38, 116, -30, 6,  108, 10, 116, 18, 9,  108, 22, 116, 30, 6,
+  120, 12, 132, 26, 10,
+  // Brownstone Row, west off Lantern Road: brownstones on its north side, row houses on its south
+  108, -86, 116, -76, 9, 118, -86, 126, -76, 9, 128, -86, 136, -76, 9,
+  108, -104, 116, -94, 6, 118, -104, 126, -94, 6, 128, -104, 136, -94, 6,
+  // the boathouse on Lantern Pond's north bank, on the great lawn
+  38, -92, 48, -84, 6
+];
+EG_DHOUSE_DOOR :: [88] f32.[
+  42, 90,   42, 100,   42, 110,   42, 120,   42, 130,
+  46, 91,
+  52, 109,   62, 109,   72, 109,   52, 111,   62, 111,   72, 111,
+  -91, 7,   -104, 7,   -121, 7,   -91, 1,   -104, 1,   -116, 1,   -128, 1,
+  -98, 59,   -116, 59,   -92, 53,   -104, 53,   -116, 53,   -128, 53,
+  -103, -73,   -124, -73,   -92, -79,   -102, -79,   -112, -79,   -122, -79,
+  107, -2,   107, -22,   107, -34,   107, 14,   107, 26,   119, 19,
+  112, -87,   122, -87,   132, -87,   112, -93,   122, -93,   132, -93,
+  43, -83
+];
+EG_DHOUSE_NAME :: [44] string.[
+  "BAKERY", "BOOKSHOP", "GROCER", "TAILOR", "CHANDLER",
+  "MARKET HALL",
+  "", "", "", "", "", "",
+  "", "", "FOUNDRY BARN", "", "", "", "",
+  "MAKERS' HALL", "THE BOARDWALK", "", "", "", "",
+  "THE STACKS", "OLD COLLEGE", "", "", "", "",
+  "MUSIC HALL", "THE FIDDLE", "THE SNUG", "THE LAMPLIGHTER", "", "MEETING HALL",
+  "", "", "", "", "", "",
+  "BOATHOUSE"
+];
+EG_DHOUSE_STONE :: [44] bool.[
+  false, false, false, false, false,  true,
+  false, false, false, false, false, false,
+  false, false, true, false, false, false, false,
+  false, false, false, false, false, false,
+  true, true, false, false, false, false,
+  true, false, false, false, false, false,
+  true, true, true, false, false, false,
+  false
+];

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagents.com/proto/aethyrforge/npc-command-v1.schema.json",
+  "title": "Local Aethyrforge NPC command v1",
+  "type": "object",
+  "required": ["op", "base"],
+  "properties": {
+    "op": {"enum": ["spawn", "order", "remove"]},
+    "base": {"type": "integer", "minimum": 0, "maximum": 1000000},
+    "kind": {"enum": ["cultist", "villager", "guard"]},
+    "count": {"type": "integer", "minimum": 1, "maximum": 8},
+    "npc": {"type": "integer", "minimum": 1, "maximum": 1000000},
+    "group": {"type": "integer", "minimum": 1, "maximum": 1000000},
+    "action": {"enum": ["attack", "move", "stop"]},
+    "target_kind": {"enum": ["npc", "person", "player", "creature", "building"]},
+    "target_id": {"type": "integer", "minimum": 0, "maximum": 1000000},
+    "x_cm": {"type": "integer", "minimum": -16000, "maximum": 16000},
+    "z_cm": {"type": "integer", "minimum": -16000, "maximum": 16000}
+  },
+  "additionalProperties": false,
+  "dependentRequired": {"x_cm": ["z_cm"], "z_cm": ["x_cm"]},
+  "oneOf": [
+    {"properties": {"op": {"const": "spawn"}}, "required": ["kind"], "not": {"anyOf": [{"required": ["npc"]}, {"required": ["group"]}, {"required": ["action"]}, {"required": ["target_kind"]}, {"required": ["target_id"]}]}},
+    {"properties": {"op": {"const": "order"}}, "required": ["action"], "oneOf": [{"required": ["npc"]}, {"required": ["group"]}], "not": {"anyOf": [{"required": ["kind"]}, {"required": ["count"]}]}},
+    {"properties": {"op": {"const": "remove"}}, "oneOf": [{"required": ["npc"]}, {"required": ["group"]}], "not": {"anyOf": [{"required": ["kind"]}, {"required": ["count"]}, {"required": ["action"]}, {"required": ["target_kind"]}, {"required": ["target_id"]}, {"required": ["x_cm"]}, {"required": ["z_cm"]}]}}
+  ],
+  "allOf": [
+    {"if": {"properties": {"op": {"const": "order"}, "action": {"const": "attack"}}, "required": ["action"]}, "then": {"required": ["target_kind", "target_id"], "not": {"anyOf": [{"required": ["x_cm"]}, {"required": ["z_cm"]}]}}},
+    {"if": {"properties": {"op": {"const": "order"}, "action": {"const": "move"}}, "required": ["action"]}, "then": {"required": ["x_cm", "z_cm"], "not": {"anyOf": [{"required": ["target_kind"]}, {"required": ["target_id"]}]}}},
+    {"if": {"properties": {"op": {"const": "order"}, "action": {"const": "stop"}}, "required": ["action"]}, "then": {"not": {"anyOf": [{"required": ["x_cm"]}, {"required": ["z_cm"]}, {"required": ["target_kind"]}, {"required": ["target_id"]}]}}}
+  ]
+}

@@ -1,0 +1,112 @@
+// Admission for the local NPC command contract. Simulation stays in the realm.
+#authority;
+#load "../../coax/lib/json/json.coax";
+FNP_MAX :: 32;
+FNP_NAMES :: [11]string.["op","base","kind","count","npc","group","action","target_kind","target_id","x_cm","z_cm"];
+FNP_KINDS :: [3]string.["cultist","villager","guard"];
+FnpCommand :: struct {op:int;base:int;kind:int=-1;count:int=1;npc:int;group:int;action:int=-1;target_kind:int;target:int;located:bool;x:int;z:int;}
+FNP_SPAWN :: 1;FNP_ORDER :: 2;FNP_REMOVE :: 3;
+FNP_STOP :: 0;FNP_ATTACK :: 1;FNP_MOVE :: 2;
+FNP_NPC :: 1;FNP_PERSON :: 2;FNP_PLAYER :: 3;FNP_CREATURE :: 4;FNP_BUILDING :: 5;
+
+#test "NPC admission checks permissions capacity and each target range exactly" {
+  #assert fnp_access(true,true) && !fnp_access(false,true) && !fnp_access(true,false) && !fnp_access(false,false);
+  #assert fnp_capacity(0,1,1) && fnp_capacity(24,8,8) && fnp_capacity(31,1,1);
+  #assert !fnp_capacity(32,1,1) && !fnp_capacity(25,8,8) && !fnp_capacity(0,8,7) && !fnp_capacity(0,0,8) && !fnp_capacity(0,9,9);
+  for k:1..<6 {#assert fnp_target(k,1) && !fnp_target(k,-1);}
+  #assert !fnp_target(0,1) && !fnp_target(6,1) && !fnp_target(FNP_NPC,0) && !fnp_target(FNP_CREATURE,0);
+  #assert fnp_target(FNP_NPC,1000000) && !fnp_target(FNP_NPC,1000001) && fnp_target(FNP_CREATURE,1000000) && !fnp_target(FNP_CREATURE,1000001);
+  #assert fnp_target(FNP_PERSON,0) && fnp_target(FNP_PERSON,46) && !fnp_target(FNP_PERSON,47);
+  #assert fnp_target(FNP_PLAYER,0) && fnp_target(FNP_PLAYER,15) && !fnp_target(FNP_PLAYER,16);
+  #assert fnp_target(FNP_BUILDING,0) && fnp_target(FNP_BUILDING,59) && !fnp_target(FNP_BUILDING,60);
+}
+#test "NPC commands select one actor or a group with typed bounded fields" {
+  c:[1]FnpCommand;
+  #assert fnp_parse("{\"op\":\"spawn\",\"base\":0,\"kind\":\"cultist\"}",c[..]) && c[0].op==1 && c[0].base==0 && c[0].kind==0 && c[0].count==1 && !c[0].located && c[0].x==0 && c[0].z==0;
+  #assert fnp_parse("{\"op\":\"spawn\",\"base\":1000000,\"kind\":\"villager\",\"count\":8,\"x_cm\":-16000,\"z_cm\":16000}",c[..]) && c[0].kind==1 && c[0].count==8 && c[0].located && c[0].x== -16000 && c[0].z==16000;
+  #assert fnp_parse("{\"op\":\"spawn\",\"base\":1,\"kind\":\"guard\",\"x_cm\":16000,\"z_cm\":-16000}",c[..]) && c[0].kind==2;
+  #assert fnp_parse("{\"op\":\"order\",\"base\":1,\"group\":1000000,\"action\":\"attack\",\"target_kind\":\"building\",\"target_id\":9}",c[..]) && c[0].op==2 && c[0].group==1000000 && c[0].npc==0 && c[0].action==1 && c[0].target_kind==5 && c[0].target==9;
+  #assert fnp_parse("{\"op\":\"order\",\"base\":1,\"npc\":1,\"action\":\"move\",\"x_cm\":100,\"z_cm\":-100}",c[..]) && c[0].npc==1 && c[0].action==2 && c[0].target_kind==0;
+  #assert fnp_parse("{\"op\":\"order\",\"base\":1,\"npc\":1000000,\"action\":\"stop\"}",c[..]) && c[0].action==0;
+  #assert fnp_parse("{\"op\":\"remove\",\"base\":1,\"group\":1}",c[..]) && c[0].op==3;
+  for kind:[4]string.["npc","person","player","creature"] {
+    b:[256]u8;j:[1]Jo;jo_start(j[..],b[..]);jo_obj(j[..]);jo_key(j[..],"op");jo_str(j[..],"order");jo_key(j[..],"base");jo_int(j[..],0);jo_key(j[..],"npc");jo_int(j[..],1);jo_key(j[..],"action");jo_str(j[..],"attack");jo_key(j[..],"target_kind");jo_str(j[..],kind);jo_key(j[..],"target_id");jo_int(j[..],1);jo_end(j[..]);#assert fnp_parse(jo_text(j[..]),c[..]);
+  }
+  for bad:[25]string.["{}","[]","oops","{\"op\":\"spawn\",\"kind\":\"cultist\"}","{\"op\":\"spawn\",\"base\":-1,\"kind\":\"cultist\"}","{\"op\":\"spawn\",\"base\":1000001,\"kind\":\"cultist\"}","{\"op\":\"fly\",\"base\":0}","{\"op\":\"spawn\",\"base\":0,\"kind\":\"dragon\"}","{\"op\":\"spawn\",\"base\":0,\"kind\":\"cultist\",\"count\":0}","{\"op\":\"spawn\",\"base\":0,\"kind\":\"cultist\",\"count\":9}","{\"op\":\"spawn\",\"base\":0,\"kind\":\"cultist\",\"count\":true}","{\"op\":\"spawn\",\"base\":0,\"kind\":\"cultist\",\"x_cm\":0}","{\"op\":\"spawn\",\"base\":0,\"kind\":\"cultist\",\"z_cm\":0}","{\"op\":\"spawn\",\"base\":0,\"kind\":\"cultist\",\"x_cm\":-16001,\"z_cm\":0}","{\"op\":\"spawn\",\"base\":0,\"kind\":\"cultist\",\"x_cm\":0,\"z_cm\":16001}","{\"op\":\"remove\",\"base\":0}","{\"op\":\"remove\",\"base\":0,\"npc\":1,\"group\":1}","{\"op\":\"remove\",\"base\":0,\"npc\":0}","{\"op\":\"remove\",\"base\":0,\"group\":1000001}","{\"op\":\"order\",\"base\":0,\"npc\":1,\"action\":\"dance\"}","{\"op\":\"order\",\"base\":0,\"npc\":1,\"action\":\"move\"}","{\"op\":\"order\",\"base\":0,\"npc\":1,\"action\":\"attack\",\"target_kind\":\"dragon\",\"target_id\":1}","{\"extra\":1,\"op\":\"spawn\",\"base\":0,\"kind\":\"cultist\"}","{\"op\":\"spawn\",\"base\":0,\"base\":1,\"kind\":\"cultist\"}","{\"op\":\"remove\",\"base\":0,\"npc\":1,\"kind\":\"cultist\"}"] {#assert !fnp_parse(bad,c[..]);}
+}
+#test "NPC saved records have bounded identities kinds coordinates and action-specific targets" {
+  #assert fnp_record(1,1,0,0,0,0,0,0) && fnp_record(1000000,1000000,2,2,16000,-16000,0,0) && fnp_record(1,1,1,1,-16000,16000,5,59);
+  #assert !fnp_record(0,1,0,0,0,0,0,0) && !fnp_record(1000001,1,0,0,0,0,0,0);
+  #assert !fnp_record(1,0,0,0,0,0,0,0) && !fnp_record(1,1000001,0,0,0,0,0,0);
+  #assert !fnp_record(1,1,-1,0,0,0,0,0) && !fnp_record(1,1,3,0,0,0,0,0);
+  #assert !fnp_record(1,1,0,-1,0,0,0,0) && !fnp_record(1,1,0,3,0,0,0,0);
+  #assert !fnp_record(1,1,0,0,-16001,0,0,0) && !fnp_record(1,1,0,0,16001,0,0,0) && !fnp_record(1,1,0,0,0,-16001,0,0) && !fnp_record(1,1,0,0,0,16001,0,0);
+  #assert !fnp_record(1,1,0,0,0,0,1,0) && !fnp_record(1,1,0,0,0,0,0,1) && !fnp_record(1,1,0,1,0,0,0,0);
+  c:[1]FnpCommand;
+  #assert !fnp_parse("{\"op\":\"remove\",\"base\":0,\"npc\":1,\"group\":0}",c[..]) && !fnp_parse("{\"op\":\"remove\",\"base\":0,\"npc\":0,\"group\":1}",c[..]);
+}
+#test "NPC commands reject wrong string types forbidden operation fields and incomplete attacks" {
+  c:[1]FnpCommand;
+  #assert fnp_parse("{\"op\":\"remove\",\"base\":0,\"npc\":1}",c[..]) && c[0].group==0;
+  for bad:[12]string.["{\"op\":1}","{\"op\":\"spawn\",\"base\":0,\"kind\":null}","{\"op\":\"spawn\",\"base\":0,\"kind\":\"cultist\",\"group\":1}","{\"op\":\"order\",\"base\":0,\"npc\":1,\"action\":\"stop\",\"kind\":\"cultist\"}","{\"op\":\"order\",\"base\":0,\"npc\":1,\"action\":\"attack\",\"target_kind\":\"building\"}","{\"op\":\"order\",\"base\":0,\"npc\":1,\"action\":\"attack\",\"target_kind\":\"building\",\"target_id\":0,\"x_cm\":0,\"z_cm\":0}","{\"op\":\"remove\",\"base\":0,\"npc\":1000001}","{\"op\":\"spawn\",\"base\":0,\"kind\":\"cultist\",\"x_cm\":16001,\"z_cm\":0}","{\"op\":\"spawn\",\"base\":0,\"kind\":\"cultist\",\"x_cm\":0,\"z_cm\":-16001}","{\"op\":\"order\",\"base\":0,\"npc\":1,\"action\":\"stop\",\"target_id\":0}","{\"op\":\"order\",\"base\":0,\"npc\":1,\"action\":\"stop\",\"target_kind\":\"building\"}","{\"op\":\"order\",\"base\":0,\"npc\":1,\"action\":\"stop\",\"x_cm\":0,\"z_cm\":0}"] {#assert !fnp_parse(bad,c[..]);}
+}
+fnp_access :: (dev:bool,admin:bool)->bool {return dev && admin;}
+#test "NPC writes and live-order admission refuse stale exhausted dead and self observations" {
+  #assert fnp_write(0,0) && fnp_write(999999,999999) && !fnp_write(0,1) && !fnp_write(1000000,1000000) && !fnp_write(-1,-1);
+  #assert fnp_spawn(31,1,1,999999,999999) && !fnp_spawn(31,1,1,1000000,999999) && !fnp_spawn(31,1,1,999999,1000000) && !fnp_spawn(32,1,1,0,0);
+  #assert fnp_orderable(0,true,false) && !fnp_orderable(-1,true,false) && !fnp_orderable(0,false,false) && !fnp_orderable(0,true,true);
+  #assert fnp_quarry(false,false,-1) && fnp_quarry(true,true,-1) && fnp_quarry(true,false,0) && !fnp_quarry(true,false,-1);
+}
+fnp_write :: (base:int,version:int)->bool {return base==version && version>=0 && version<1000000;}
+fnp_spawn :: (n:int,count:int,free:int,serial:int,groups:int)->bool {return fnp_capacity(n,count,free) && serial+count<=1000000 && groups<1000000;}
+fnp_orderable :: (slot:int,alive:bool,self:bool)->bool {return slot>=0 && alive && !self;}
+fnp_quarry :: (attack:bool,building:bool,foe:int)->bool {return !attack || building || foe>=0;}
+fnp_record :: (id:int,group:int,kind:int,action:int,x:int,z:int,tk:int,target:int)->bool {
+  return id>=1 && id<=1000000 && group>=1 && group<=1000000 && kind>=0 && kind<FNP_KINDS.count && action>=FNP_STOP && action<=FNP_MOVE &&
+    x>= -16000 && x<=16000 && z>= -16000 && z<=16000 && (ifx action==FNP_ATTACK then fnp_target(tk,target) else tk==0 && target==0);
+}
+fnp_capacity :: (n:int,count:int,free:int)->bool {return count>=1 && count<=8 && n+count<=FNP_MAX && free>=count;}
+fnp_target :: (kind:int,id:int)->bool {
+  if kind==FNP_NPC || kind==FNP_CREATURE {return id>=1 && id<=1000000;}
+  if kind==FNP_PERSON {return id>=0 && id<47;}
+  if kind==FNP_PLAYER {return id>=0 && id<16;}
+  if kind==FNP_BUILDING {return id>=0 && id<60;}
+  return false;
+}
+fnp_field :: (key:string)->int {for i:0..<FNP_NAMES.count {if FNP_NAMES[i]==key {return i;}}return FNP_NAMES.count;}
+fnp_parse :: (text:string,out:[]FnpCommand)->bool {
+  nodes:[32]JvNode;d:[1]Jv;if !jv_parse(d[..],text,nodes[..]) {return false;}
+  v:=d[0];seen:u32=0;
+  for i:1..<v.count {
+    f:=fnp_field(jv_key(v,i));if f==FNP_NAMES.count || (seen & (cast(u32)1 << cast(u32)f))!=0 {return false;}
+    seen|=cast(u32)1 << cast(u32)f;
+    if f==0 || f==2 || f==6 || f==7 {if jv_kind(v,i)!=JV_STRING {return false;}}
+    else {if jv_int(v,i,9223372036854775807)==9223372036854775807 {return false;}}
+  }
+  c:FnpCommand;c.base=jv_int(v,jv_get(v,0,"base"),-1);if c.base<0 || c.base>1000000 {return false;}
+  op:=jv_raw(v,jv_get(v,0,"op"));
+  if op=="spawn" {c.op=FNP_SPAWN;}else if op=="order" {c.op=FNP_ORDER;}else if op=="remove" {c.op=FNP_REMOVE;}else{return false;}
+  c.x=jv_int(v,jv_get(v,0,"x_cm"),0);c.z=jv_int(v,jv_get(v,0,"z_cm"),0);
+  c.located=jv_get(v,0,"x_cm")!= -1;if c.located!=(jv_get(v,0,"z_cm")!= -1) || c.x < -16000 || c.x>16000 || c.z < -16000 || c.z>16000 {return false;}
+  if c.op==FNP_SPAWN {
+    if (seen & cast(u32)1551)!=seen {return false;}
+    name:=jv_raw(v,jv_get(v,0,"kind"));for i:0..<FNP_KINDS.count {if name==FNP_KINDS[i] {c.kind=i;}}
+    c.count=jv_int(v,jv_get(v,0,"count"),1);if c.kind<0 || c.count<1 || c.count>8 {return false;}
+  }else{
+    c.npc=jv_int(v,jv_get(v,0,"npc"),0);c.group=jv_int(v,jv_get(v,0,"group"),0);
+    selector:=seen & cast(u32)48;if selector!=16 && selector!=32 {return false;}
+    if selector==16 {if c.npc<1 || c.npc>1000000 {return false;}}else{if c.group<1 || c.group>1000000 {return false;}}
+    if c.op==FNP_REMOVE {if (seen & cast(u32)51)!=seen {return false;}}
+    else {
+      if (seen & cast(u32)2035)!=seen {return false;}
+      action:=jv_raw(v,jv_get(v,0,"action"));
+      if action=="attack" {c.action=FNP_ATTACK;}else if action=="move" {c.action=FNP_MOVE;}else if action=="stop" {c.action=FNP_STOP;}else{return false;}
+      if c.action==FNP_ATTACK {
+        if c.located {return false;}
+        tk:=jv_raw(v,jv_get(v,0,"target_kind"));types:=[5]string.["npc","person","player","creature","building"];for i:0..<types.count {if types[i]==tk {c.target_kind=i+1;}}
+        c.target=jv_int(v,jv_get(v,0,"target_id"),-1);if !fnp_target(c.target_kind,c.target) {return false;}
+      }else{if (seen & cast(u32)384)!=0 || c.located!=(c.action==FNP_MOVE) {return false;}}
+    }
+  }
+  out[0]=c;return true;
+}

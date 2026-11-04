@@ -348,6 +348,31 @@ static void opening(int i) {
       if ((p == c->in || p[-1] == '\n') && !strncasecmp((char *)p, "Content-Length:", 15)) want = (size_t)strtoul((char *)p + 15, NULL, 10);
     if (len + want > c->n && len + want < IN_CAP) return;   /* the rest of the body is still coming */
     coax_string whole = {(const char *)c->in, (int64_t)(len + want <= c->n ? len + want : c->n)};
+    /* Coax proposes the floor probes and consumes the actual world's answers. */
+    int64_t probes = rm_forge_probe(view(), whole);
+    if (probes > 0) { float xy[2]; int k = (int)rm_forge_probe_at(view(), 0, (coax_v_f32){xy, 2}); world_forge_prepare(k); }
+    for (int64_t p = 0; p < probes; p++) {
+      float xy[2]; int k = (int)rm_forge_probe_at(view(), p, (coax_v_f32){xy, 2});
+      rm_forge_probe_open(view(), p, world_forge_open(k, xy[0], xy[1]));
+    }
+    int fs = (int)rm_forge_api(view(), whole);
+    if (fs > 0) {
+      if (fs == 200 && server->forge.pending) {
+        int64_t nn = rm_forge_save(view());
+        char path[1024], tmp[1100];
+        snprintf(path, sizeof path, "%s/forge-npcs.json", dev_dir); snprintf(tmp, sizeof tmp, "%s.new", path);
+        FILE *f = nn > 0 ? fopen(tmp, "wb") : NULL;
+        bool saved = f && fwrite(server->forge.out.e, 1, (size_t)nn, f) == (size_t)nn;
+        if (f) { saved = fflush(f) == 0 && saved; saved = fsync(fileno(f)) == 0 && saved; saved = fclose(f) == 0 && saved; }
+        if (saved) saved = rename(tmp, path) == 0;
+        if (!saved) { unlink(tmp); rm_forge_abort(view()); http(i, "500 Internal Server Error", "application/json", "{\"ok\":false,\"error\":\"NPC document was not saved.\"}"); return; }
+        rm_forge_commit(view());
+      }
+      static char body[32769]; size_t nn = (size_t)server->forge.n;
+      if (nn >= sizeof body) { http(i, "500 Internal Server Error", "application/json", "{\"ok\":false}"); return; }
+      memcpy(body, server->forge.out.e, nn); body[nn] = 0;
+      http(i, fs == 200 ? "200 OK" : fs == 409 ? "409 Conflict" : fs == 403 ? "403 Forbidden" : "400 Bad Request", "application/json", body); return;
+    }
     int64_t an = rm_dev_api(view(), whole);
     if (an < 0) {
       static char pub[256];
@@ -753,6 +778,11 @@ int main(int argc, char **argv) {
   signal(SIGTERM, on_term);
   if (dev_dir) { rm_dev_start(view()); const char *da = getenv("OA_ROOM_DEV_ADMIN"); if (da && !strcmp(da, "0")) rm_dev_admin(view(), false); printf("room: --dev %s: the API's stand-in (seat tickets checked and required)\n", dev_dir); }
   world_ask();   /* the realm's published world, for every room's plan (room-world.c world_edits) */
+  if (dev_dir) {
+    size_t nn = 0; char *doc = dev_read("forge-npcs.json", &nn);
+    if (doc && !rm_forge_load(view(), (coax_string){doc, (int64_t)nn})) { fprintf(stderr, "room: invalid saved forge-npcs.json; retained for recovery\n"); free(doc); return 1; }
+    free(doc);
+  }
   /* the seat-ticket key (Secret Manager oa-room-ticket-key): set, an everglade join needs a ticket (room-ticket.coax) */
   const char *tkey = getenv("OA_ROOM_TICKET_KEY");
   const char *must = getenv("OA_ROOM_TICKET_REQUIRED");   /* "0": a join without a ticket sits with no id (while pages roll out) */

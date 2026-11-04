@@ -38,6 +38,8 @@ E5rBeast :: struct {
   x: f32; y: f32; z: f32; yaw: f32; moving: bool; grounded: bool;
   goal_x: f32; goal_z: f32; foe: int = -1;
   bite_at: f32;
+  forge_id: int; forge_action: int; forge_building: bool;
+  forge_hit: int; forge_swing: f32 = -100;
 }
 
 // Whether slot a heals or helps (and so reaches other players), else it only harms.

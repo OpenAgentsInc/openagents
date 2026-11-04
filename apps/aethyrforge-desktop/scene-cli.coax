@@ -25,17 +25,41 @@ scene_show :: (e:EgEdits,version:int,s:ForgeSceneSession,out:[]u8)->string {
   for i:0..<e.n {t:=e.things[i];jo_obj(j[..]);jo_key(j[..],"index");jo_int(j[..],i);jo_key(j[..],"group");jo_int(j[..],t.group);jo_key(j[..],"item");jo_str(j[..],EG_EDIT_NAME[t.kind]);jo_key(j[..],"x_cm");jo_int(j[..],eg_round(t.x*100));jo_key(j[..],"z_cm");jo_int(j[..],eg_round(t.z*100));jo_key(j[..],"lift_cm");jo_int(j[..],eg_round(t.lift*100));jo_key(j[..],"size_percent");jo_int(j[..],eg_round(t.size*100));jo_end(j[..]);}
   jo_end(j[..]);jo_end(j[..]);return jo_text(j[..]);
 }
+scene_npcs :: (api:string,verb:string,json:string)->int {
+  url:[256]u8;n:=raw_put(url[..],0,api);n=raw_put(url[..],n,"/api/playtest/forge/npcs");
+  w:[1]HttpWork;headers:=[1]string.["Content-Type: application/json"];data:[65536]u8;
+  r:=http_do(w[..],"GET",cast(string)url[0..<n],headers[..],"",10000,0,data[..]);
+  if r.error!=HTTP_OK || r.code!=200 {return scene_error("The local NPC scene is unavailable. Wait for the desktop to enter its room.");}
+  nodes:[2048]JvNode;j:[1]Jv;if !jv_parse(j[..],cast(string)data[0..<r.n],nodes[..]) {return scene_error("Invalid NPC inventory.");}
+  base:=jv_int(j[0],jv_get(j[0],0,"version"),-1);
+  if verb=="npcs" {
+    if json=="" {print("{\"ok\":true,\"version\":%,\"kinds\":%,\"npcs\":%}\n",base,jv_raw(j[0],jv_get(j[0],0,"kinds")),jv_raw(j[0],jv_get(j[0],0,"npcs")));return 0;}
+    if json!="people" && json!="buildings" {return scene_error("Use npcs, npcs people, or npcs buildings.");}
+    list:=jv_get(j[0],0,"targets");out:[32768]u8;tn:=raw_put(out[..],0,"{\"ok\":true,\"targets\":[");any:=false;
+    for i:0..<jv_len(j[0],list) {o:=jv_at(j[0],list,i);building:=jv_raw(j[0],jv_get(j[0],o,"kind"))=="building";if building!=(json=="buildings") {continue;}if any {tn=raw_put(out[..],tn,",");}tn=raw_put(out[..],tn,jv_raw(j[0],o));any=true;}
+    tn=raw_put(out[..],tn,"]}");print("%\n",cast(string)out[0..<tn]);return 0;
+  }
+  if base<0 || json.count<2 || json[json.count-1]!='}' {return scene_error("NPC command must be a JSON object.");}
+  body:[16384]u8;bn:=raw_put(body[..],0,json[0..<json.count-1]);bn=raw_put(body[..],bn,",\"base\":");bn=eg_put_int(body[..],bn,base);bn=raw_put(body[..],bn,"}");
+  r=http_do(w[..],"POST",cast(string)url[0..<n],headers[..],cast(string)body[0..<bn],10000,0,data[..]);
+  if r.error!=HTTP_OK {return scene_error("NPC save outcome unknown. Read npcs before another command; do not repeat a spawn blindly.");}
+  if r.code!=200 {print("%\n",cast(string)data[0..<r.n]);return 1;}
+  r=http_do(w[..],"GET",cast(string)url[0..<n],headers[..],"",10000,0,data[..]);
+  if r.error!=HTTP_OK || r.code!=200 || !jv_parse(j[..],cast(string)data[0..<r.n],nodes[..]) || jv_int(j[0],jv_get(j[0],0,"version"),-1)!=base+1 {return scene_error("NPC save accepted but readback changed or failed. Read npcs; do not repeat a spawn.");}
+  print("{\"ok\":true,\"version\":%,\"npcs\":%}\n",base+1,jv_raw(j[0],jv_get(j[0],0,"npcs")));return 0;
+}
 tool_main :: ()->int #export_c {
   a:[1]Args;if !args_load(a[..]) {return scene_error("Arguments are too large.");}
   verb:=args_at(a[..],0);
-  if verb=="--help" {print("usage: aethyrforge-scene show | apply 'JSON' [--session FILE]\n");return 0;}
-  if verb!="show" && verb!="apply" {tool_errln("usage: aethyrforge-scene show | apply 'JSON' [--session FILE]");return 2;}
+  if verb=="--help" {print("usage: aethyrforge-scene show | apply 'JSON' | npcs | npc 'JSON' [--session FILE]\n");return 0;}
+  if verb!="show" && verb!="apply" && verb!="npcs" && verb!="npc" {tool_errln("usage: aethyrforge-scene show | apply 'JSON' | npcs | npc 'JSON' [--session FILE]");return 2;}
   env:[4096]u8;path:[4096]u8;session:=args_value(a[..],"--session","");
   if session=="" {session=proc_getenv("AETHYRFORGE_SCENE_SESSION",env[..]);}
   if session=="" {home:[4096]u8;session=fs_join(proc_getenv("HOME",home[..]),".openagents/aethyrforge/scene-session.json",path[..]);}
   data:[65536]u8;n:=fs_read(session,data[..]);s:[1]ForgeSceneSession;
   if n<0 || !fs_session(cast(string)data[0..<n],proc_now_ms(),s[..]) {return scene_error("No fresh local Aethyrforge scene session. Open the desktop app.");}
-  api:=cast(string)s[0].api[0..<s[0].n];r:=scene_request(api,"GET","",data[..]);
+  api:=cast(string)s[0].api[0..<s[0].n];if verb=="npcs" || verb=="npc" {extra:=args_at(a[..],1);if verb=="npcs" && extra=="--session" {extra="";}return scene_npcs(api,verb,extra);}
+  r:=scene_request(api,"GET","",data[..]);
   if r.error!=HTTP_OK || r.code!=200 {return scene_error("The local scene could not be read.");}
   answer:[65540]u8;an:=raw_put(answer[..],0,"200\n");an=raw_put(answer[..],an,cast(string)data[0..<r.n]);
   e:[1]EgEdits;version:=eg_edits_answer(cast(string)answer[0..<an],e[..]);

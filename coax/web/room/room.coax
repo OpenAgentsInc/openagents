@@ -32,6 +32,7 @@
 #load "room-directory.coax";
 #load "room-events.coax";
 #load "room-dev.coax";
+#load "room-forge.coax";
 #load "room-stats.coax";   // what the server counts of its own work, for the admins' room view (#12791)
 
 ROOMS :: 8;
@@ -58,6 +59,7 @@ RmRoom :: struct {
   cars: [ROOM_PLAYERS] RigidBody;
 }
 RmServer :: struct {
+  forge:RmForge;
   quick_n: int;      // quick matches made: each gets its own room name
   conns: [CONNS] RmConn;
   rooms: [ROOMS] RmRoom;

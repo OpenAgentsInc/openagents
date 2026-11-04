@@ -18,6 +18,9 @@ bool world_place_at(int k, int s, float x, float y, float z, float yaw, float ou
 bool world_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE]);
 /* The ground's height at (x, z) in room k's world. */
 float world_ground(int k, float x, float z);
+bool world_forge_open(int k, float x, float z);
+void world_forge_prepare(int k);
+void world_forge_step(int k, const float in[6], float out[5]);
 /* The town (everglade-watch.coax everglade_room_town, GitHub #12713). */
 #define WORLD_FOLK 47          /* watch.coax WATCH_ACTORS, everglade5e-rules.coax E5R_FOLK */
 #define WORLD_SEAT_TOWN 7      /* a seat for the town: X Y Z LIVE HP MAX COND */

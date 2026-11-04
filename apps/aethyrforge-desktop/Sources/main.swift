@@ -82,6 +82,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     let chatSmoke = CommandLine.arguments.contains("--chat-smoke")
     let inputSmoke = CommandLine.arguments.contains("--input-smoke")
     let sceneSmoke = CommandLine.arguments.contains("--scene-smoke")
+    let npcSmoke = CommandLine.arguments.contains("--npc-smoke")
     var microphoneReport: URL? {
         guard let i = CommandLine.arguments.firstIndex(of: "--microphone-check"), i + 1 < CommandLine.arguments.count else { return nil }
         return URL(fileURLWithPath: CommandLine.arguments[i + 1])
@@ -90,9 +91,9 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         guard let i = CommandLine.arguments.firstIndex(of: "--launch-check"), i + 1 < CommandLine.arguments.count else { return nil }
         return URL(fileURLWithPath: CommandLine.arguments[i + 1])
     }
-    var smoke: Bool { sceneSmoke || inputSmoke || chatSmoke || setupSmoke || voiceSmoke || CommandLine.arguments.contains("--smoke-test") }
+    var smoke: Bool { npcSmoke || sceneSmoke || inputSmoke || chatSmoke || setupSmoke || voiceSmoke || CommandLine.arguments.contains("--smoke-test") }
     var report: URL? {
-        guard let i = CommandLine.arguments.firstIndex(of: sceneSmoke ? "--scene-smoke" : inputSmoke ? "--input-smoke" : chatSmoke ? "--chat-smoke" : voiceSmoke ? "--voice-smoke" : setupSmoke ? "--setup-smoke" : "--smoke-test"), i + 1 < CommandLine.arguments.count else { return nil }
+        guard let i = CommandLine.arguments.firstIndex(of: npcSmoke ? "--npc-smoke" : sceneSmoke ? "--scene-smoke" : inputSmoke ? "--input-smoke" : chatSmoke ? "--chat-smoke" : voiceSmoke ? "--voice-smoke" : setupSmoke ? "--setup-smoke" : "--smoke-test"), i + 1 < CommandLine.arguments.count else { return nil }
         return URL(fileURLWithPath: CommandLine.arguments[i + 1])
     }
 
@@ -310,6 +311,9 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
             if microphoneReport != nil {
                 await inventoryTask?.value
                 try await microphoneCheck()
+            } else if npcSmoke {
+                await inventoryTask?.value
+                try await npcSmokeCheck(resources)
             } else if sceneSmoke {
                 await inventoryTask?.value
                 try await sceneSmokeCheck(resources)
@@ -435,6 +439,87 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         let result: [String: Any] = ["ok": true, "programmaticRow": true, "programmaticStack": true, "groupMoveRemove": true,
             "blockedRefused": refused, "naturalLanguageSessions": sessions, "pageFetchedChanges": true,
             "totalObjects": objects(state).count, "version": state["version"] ?? 0, "engine": chatPane.selectedEngine]
+        try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]).write(to: report)
+        stopChildren(); NSApp.terminate(nil)
+    }
+
+    func npcSmokeCheck(_ resources: URL) async throws {
+        guard let report, let session = chatPane.sceneSessionURL else { throw ShellError.failed("NPC check has no scene session.") }
+        enterWorld()
+        let tool = resources.appendingPathComponent("aethyrforge-scene")
+        func command(_ json: String? = nil) async throws -> [String: Any] {
+            let args = json.map { ["npc", $0] } ?? ["npcs"]
+            let data = try await ForgeCLI.run(tool, args + ["--session", session.path], timeout: 30)
+            let state = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+            guard state["ok"] as? Bool == true else { throw ShellError.failed("NPC tool: \(state["error"] ?? "unknown failure")") }
+            return state
+        }
+        func people(_ state: [String: Any]) -> [[String: Any]] { state["npcs"] as? [[String: Any]] ?? [] }
+        func probe(_ field: Int) async throws -> Int { try await web.evaluateJavaScript("coaxial.netProbe(\(field))") as? Int ?? -1 }
+        if CommandLine.arguments.contains("--npc-reopen") {
+            let state = try await command()
+            guard people(state).count == 8 else { throw ShellError.failed("Authored NPCs did not survive reopening.") }
+            try JSONSerialization.data(withJSONObject: ["ok": true, "reopened": true, "npcs": 8]).write(to: report)
+            stopChildren(); NSApp.terminate(nil); return
+        }
+        _ = try await command("{\"op\":\"spawn\",\"kind\":\"cultist\",\"count\":2,\"x_cm\":600,\"z_cm\":-1200}")
+        _ = try await command("{\"op\":\"spawn\",\"kind\":\"villager\",\"x_cm\":600,\"z_cm\":-1000}")
+        let beforeBad = try await command()
+        var refused = false
+        do { _ = try await command("{\"op\":\"spawn\",\"kind\":\"cultist\",\"x_cm\":0,\"z_cm\":0}") } catch { refused = true }
+        let afterBad = try await command()
+        guard refused, beforeBad["version"] as? Int == afterBad["version"] as? Int else { throw ShellError.failed("Blocked NPC spawn changed the document.") }
+        var crateRefused = false
+        do { _ = try await command("{\"op\":\"spawn\",\"kind\":\"villager\",\"x_cm\":0,\"z_cm\":-8251}") } catch { crateRefused = true }
+        guard crateRefused else { throw ShellError.failed("NPC spawn ignored the existing crate footprint.") }
+        let root = report.deletingLastPathComponent()
+        chatPane.home = root; chatPane.cwd = root.appendingPathComponent("workspace"); chatPane.cliOverride = resources.appendingPathComponent("openagents")
+        try fm.createDirectory(at: chatPane.cwd, withIntermediateDirectories: true)
+        try fm.createDirectory(at: root.appendingPathComponent(".openagents/aethyrforge"), withIntermediateDirectories: true)
+        let router = root.appendingPathComponent(".openagents/coder/router.json")
+        try fm.createDirectory(at: router.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if !fm.fileExists(atPath: router.path) { try fm.copyItem(at: fm.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/coder/router.json"), to: router) }
+        var sessions: [String] = []
+        func turn(_ prompt: String) async throws {
+            chatPane.startTurn(prompt, voice: true)
+            let end = Date().addingTimeInterval(120)
+            while chatPane.busy && Date() < end {
+                if chatPane.pending { throw ShellError.failed("NPC Coder requested an approval.") }
+                try await Task.sleep(for: .milliseconds(100))
+            }
+            guard !chatPane.busy, chatPane.lastEnding.hasPrefix("finished") else { throw ShellError.failed("NPC Coder failed: \(chatPane.transcript.string.suffix(1600))") }
+            sessions.append(chatPane.session)
+        }
+        try await turn("Have the cultists in group 1 attack villager NPC 3.")
+        var state = try await command()
+        guard people(state).prefix(2).allSatisfy({ $0["action"] as? String == "attack" && $0["target_id"] as? Int == 3 }) else { throw ShellError.failed("Coder did not set the group attack order.") }
+        let hurtEnd = Date().addingTimeInterval(45)
+        while Date() < hurtEnd {
+            state = try await command()
+            if let victim = people(state).first(where: { $0["id"] as? Int == 3 }), (victim["hp"] as? Int ?? 4) < 4 { break }
+            try await Task.sleep(for: .milliseconds(300))
+        }
+        guard let victim = people(state).first(where: { $0["id"] as? Int == 3 }), (victim["hp"] as? Int ?? 4) < 4 else { throw ShellError.failed("The directed attack did not deal real damage.") }
+        try await turn("Add three villagers nearby.")
+        state = try await command()
+        guard people(state).count == 6 else { throw ShellError.failed("Coder did not spawn exactly three villagers.") }
+        let breaksBefore = try await probe(26)
+        try await turn("Stop the cultists in group 1. Add two new cultists centred at x=6 metres, z=-70 metres, then order that new group to attack the stables.")
+        state = try await command()
+        guard people(state).count == 8, people(state).suffix(2).allSatisfy({ $0["action"] as? String == "attack" && $0["target_id"] as? Int == 9 }) else { throw ShellError.failed("Coder did not direct the new cultists at the actual stables.") }
+        let breakEnd = Date().addingTimeInterval(90)
+        while Date() < breakEnd {
+            if try await probe(26) > breaksBefore { break }
+            try await Task.sleep(for: .milliseconds(300))
+        }
+        let breaksAfter = try await probe(26)
+        guard breaksAfter > breaksBefore else { throw ShellError.failed("The building attack did not break real replicated pieces.") }
+        _ = try await command("{\"op\":\"order\",\"group\":4,\"action\":\"stop\"}")
+        try await Task.sleep(for: .seconds(1))
+        let visible = try await probe(16)
+        guard visible >= 7 else { throw ShellError.failed("Spawned NPCs did not reach the rendered page: \(visible).") }
+        try await captureCanvas(report)
+        let result: [String: Any] = ["ok": true, "npcs": 8, "routedSessions": sessions, "npcDamage": true, "buildingBreaks": breaksAfter - breaksBefore, "visibleCreatures": visible, "blockedSpawnRefused": refused, "crateSpawnRefused": crateRefused]
         try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]).write(to: report)
         stopChildren(); NSApp.terminate(nil)
     }

@@ -1146,6 +1146,11 @@ eg_room_known :: (s: [] Everglade) {
 // The room hands it over when the caster's cast bar is done (coax/web/room/room-casts.coax rc_release:
 // a bar stopped before then never strikes, #12790), so it falls at the next step (eg_ra_later).
 everglade_room_strike :: (s: [] Everglade, by: int, slot: int, fx: f32, fy: f32, fz: f32, ax: f32, ay: f32, az: f32, seed: int) #export_c {
+  // Internal editor NPC melee: the same breakable pieces and replicated events.
+  if sp_on(s) && slot==500 {
+    at:=v3(ax,ay,az);s[0].wv.net=true;s[0].wv.room_hit=at;s[0].wv.room_by=by;
+    wl_break(s,at,1.5,SrdDamage.{amount=seed,kind=DMG_BLUDGEONING},false);return;
+  }
   // the Warlock's (everglade-warlock.coax): Eldritch Blast's beams, Fireball
   if sp_on(s) && slot >= WL_SLOT0 && slot < WL_SLOT0 + WL_LOOKS { s[0].wv.net = true; wl_strike(s, by, slot - WL_SLOT0, v3(fx, fy, fz), v3(ax, ay, az), seed); return; }
   if sp_on(s) && cr_repair(slot) {

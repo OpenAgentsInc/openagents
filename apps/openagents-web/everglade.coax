@@ -71,6 +71,7 @@
 #load "everglade-place.coax";
 #load "everglade-spells.coax";
 #load "everglade-watch.coax";
+#load "everglade-forge-npcs.coax";
 #load "everglade-guard-ai.coax";
 #load "everglade-guide.coax";
 #load "everglade-items.coax";

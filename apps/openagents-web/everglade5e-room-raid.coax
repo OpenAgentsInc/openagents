@@ -143,9 +143,9 @@ e5rd_house_falls :: (r: [] E5rRoom) -> bool {
 E5RD_WATCH_THROW :: 20;   // feet: a Guard's Spear thrown (its normal range, SRD 5.2.1 Weapons)
 E5RD_WATCH_LOOK :: 120;   // feet: how far the watch looks for a raider to shoot at
 
-e5rd_is :: (bt: E5rBeast) -> bool { return bt.id != 0 && bt.form >= E5RR_FORM_RAID; }
+e5rd_is :: (bt: E5rBeast) -> bool { return bt.id != 0 && bt.form >= E5RR_FORM_RAID && bt.forge_id==0; }
 // One of the watch in the standing siege (e5rd_defender): a raid creature of the town's side.
-e5rd_town :: (bt: E5rBeast) -> bool { return bt.id != 0 && bt.form > E5RR_FORM_RAID && bt.form <= E5RR_FORM_RAID + RS_NPC_SCOUT; }
+e5rd_town :: (bt: E5rBeast) -> bool { return bt.id != 0 && bt.form > E5RR_FORM_RAID && bt.form <= E5RR_FORM_RAID + RS_NPC_SCOUT && bt.forge_id==0; }
 // One of the cult's: a raider, a ward stone or Darian.
 e5rd_cult :: (bt: E5rBeast) -> bool { return e5rd_is(bt) && !e5rd_town(bt); }
 e5rd_npc :: (form: int) -> int { return ifx form == E5RR_FORM_WARD then 0 else form - E5RR_FORM_RAID; }

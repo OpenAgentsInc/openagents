@@ -34,6 +34,12 @@
 RP_PEOPLE :: 63;           // everglade5e-raid.coax E5R_RAID_PEOPLE: the raiders, then the watch
 // npcs.coax RS_NPC_*: the kinds a raid fields
 RP_GUARD :: 1; RP_VETERAN :: 2; RP_KNIGHT :: 3; RP_SCOUT :: 4;
+RP_VILLAGER :: 12; // the editor's additional commoner appearance
+RP_VILLAGER_LOOK :: [6]int.[2,3,5,7,8,9]; // humanoids; cats have no humanoid parts
+#test "editor villager appearances always have human character parts" {
+  parts:[FOLK_PARTS_MAX]int;
+  for look:RP_VILLAGER_LOOK {#assert !EG_SPOT_CAT[look] && folk_parts(look,parts[..])>0;}
+}
 RP_CULTIST :: 7; RP_FANATIC :: 8; RP_WARLOCK :: 9; RP_ARCH :: 10; RP_PRIEST :: 11;   // RS_NPC_*: a Cult Priest (#12771)
 // where it happens: the leader 50 m out on the road in, the South Gate (plan.coax EG_GATE), where the
 // swarm runs once through, and you by the commons, facing the gate
@@ -391,10 +397,11 @@ rp_person_at :: (s: [] Everglade, q: int, npc: int, x: f32, z: f32, yaw: f32, sp
   if q < 0 || q >= RAID_SHOWN { return; }
   if dead_t >= f32(RP_LIE + RP_SINK) { return; }   // sunk away
   town := npc >= RP_GUARD && npc <= RP_SCOUT;
+  villager:=npc==RP_VILLAGER;
   caster := npc == RP_WARLOCK || npc == RP_ARCH;
   shooter := npc == RP_VETERAN || npc == RP_SCOUT;
-  look := (q - 1) % 6;   // a watch look (everglade-watch.coax WATCH_NEW)
-  female := town && WATCH_FEMALE[clamp_i(look, 0, 5)];   // the robes are on the male body
+  look := ifx villager then RP_VILLAGER_LOOK[q%6] else (q - 1) % 6;   // a watch or villager look
+  female := ifx villager then FOLK_FEMALE[look] else town && WATCH_FEMALE[clamp_i(look, 0, 5)];
   rig := people_rig(s[0].people_rig[..], female);
   sk := s[0].rp.skins[q..<q + 1];
   sk[0].fade = 0.22;
@@ -423,23 +430,23 @@ rp_person_at :: (s: [] Everglade, q: int, npc: int, x: f32, z: f32, yaw: f32, sp
     skin_palette(rig, sk, pal);
   }
   h := at + PEOPLE_JOINTS * 12;
-  tone := ifx town then WATCH_SKIN[clamp_i(look, 0, 5)] else (q * 7) % 5;
+  tone := ifx villager then FOLK_SKIN[look] else ifx town then WATCH_SKIN[clamp_i(look, 0, 5)] else (q * 7) % 5;
   if npc == RP_ARCH { tone = 4; }
   for c: 0..<3 {
-    s[0].palette[h + c] = SKIN_TONE[tone * 3 + c] * (ifx town then 1.0f32 else 0.8f32);
-    s[0].palette[h + 4 + c] = ifx town then WATCH_HAIR_RGB[clamp_i(look, 0, 5) * 3 + c] else 0.04f32;
+    s[0].palette[h + c] = SKIN_TONE[tone * 3 + c] * (ifx town || villager then 1.0f32 else 0.8f32);
+    s[0].palette[h + 4 + c] = ifx villager then FOLK_HAIR_RGB[look*3+c] else ifx town then WATCH_HAIR_RGB[clamp_i(look, 0, 5) * 3 + c] else 0.04f32;
   }
   kind := ifx npc == RP_FANATIC then 1 else ifx npc == RP_WARLOCK then 2 else ifx npc == RP_ARCH then 3 else ifx npc == RP_PRIEST then 4 else 0;
-  s[0].palette[h + 3] = f32(ifx town then WATCH_VARIANT[clamp_i(look, 0, 5)] else RP_GOLD[kind]);
+  s[0].palette[h + 3] = f32(ifx villager then FOLK_VARIANT[look] else ifx town then WATCH_VARIANT[clamp_i(look, 0, 5)] else RP_GOLD[kind]);
   s[0].palette[h + 7] = 0;
-  for c: 0..<4 { s[0].palette[h + 8 + c] = ifx town then (ifx npc == RP_GUARD then WATCH_DYE[c] else RANK_DYE[(ifx npc == RP_KNIGHT then 3 else ifx npc == RP_SCOUT then 6 else 1) * 4 + c]) else RP_DYE[kind * 4 + c]; }
+  for c: 0..<4 { s[0].palette[h + 8 + c] = ifx villager then FOLK_DYE[look*4+c] else ifx town then (ifx npc == RP_GUARD then WATCH_DYE[c] else RANK_DYE[(ifx npc == RP_KNIGHT then 3 else ifx npc == RP_SCOUT then 6 else 1) * 4 + c]) else RP_DYE[kind * 4 + c]; }
   // where it stands: sinking once it has lain its while
   big := ifx npc == RP_ARCH then 1.14f32 else 1.0f32;
   y := folk_feet(s, x, z) - (ifx dead_t > f32(RP_LIE) then 1.3 * (dead_t - f32(RP_LIE)) / f32(RP_SINK) else 0.0f32);
   c := cos(yaw); sn := sin(yaw);
   rows := [12] f32.[c * big, 0, sn * big, x,   0, big, 0, y,   -sn * big, 0, c * big, z];
   parts: [FOLK_PARTS_MAX] int;
-  n := ifx town then watch_parts(clamp_i(look, 0, 5), parts[..]) else rp_parts(npc, flat_gap(v3(x, 0, z), s[0].feet) > f32(RP_FAR), parts[..]);
+  n := ifx villager then folk_parts(look,parts[..]) else ifx town then watch_parts(clamp_i(look, 0, 5), parts[..]) else rp_parts(npc, flat_gap(v3(x, 0, z), s[0].feet) > f32(RP_FAR), parts[..]);
   for p: 0..<n {
     part := parts[p];
     if s[0].part_count[part] <= 0 || s[0].rp.used[part] >= RAID_SHOWN { continue; }
@@ -462,6 +469,7 @@ rp_person_at :: (s: [] Everglade, q: int, npc: int, x: f32, z: f32, yaw: f32, sp
     s[0].rp.arch_on = true; s[0].rp.arch_name = add(hd, v3(0, f32(RP_NAME_OVER) * big, 0));
     s[0].rp.arch_feet = v3(x, y, z); s[0].rp.arch_left = times(right, -1);
   }
+  if villager {return;}
   if town && !shooter { watch_arm_guard(s, rig, sk, x, y, z, yaw, true); return; }
   if shooter {
     // a bow or a crossbow in the left hand

@@ -114,6 +114,15 @@ static bool everglade_room_tick(int k) {
   everglade_abilities(k);
   part_us[PART_ABILITIES] += now_us() - ta;
   everglade_town(k);
+  if (rm_forge_active(view())) {
+    world_forge_prepare(k);
+    float ask[6], moved[5];
+    for (int q = 0; q < rm_eg_beasts(); q++)
+      if (rm_forge_motion(view(), k, q, (coax_v_f32){ask, 6})) {
+        world_forge_step(k, ask, moved);
+        rm_forge_moved(view(), k, q, (coax_v_f32){moved, 5});
+      }
+  }
   int64_t te = now_us();
   /* the casts starting or released this tick: does each caster see where it lands (room-casts.coax, #12790) */
   float sg[6]; coax_v_f32 sgv = {sg, 6};

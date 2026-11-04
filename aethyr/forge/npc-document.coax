@@ -1,0 +1,68 @@
+// Authored NPCs, separate from transient combat state and object documents.
+#authority;
+#load "npc-command.coax";
+ForgeNpc :: struct {id:int;group:int;kind:int;action:int;x:int;z:int;target_kind:int;target:int;}
+ForgeNpcs :: struct {version:int;serial:int;groups:int;n:int;npcs:[FNP_MAX]ForgeNpc;}
+#test "NPC documents round trip stable identities groups coordinates and explicit orders" {
+  d:ForgeNpcs;d.version=4;d.serial=7;d.groups=2;d.n=2;
+  d.npcs[0]=ForgeNpc.{id=1,group=1,kind=0,x=600,z=-1200,action=FNP_ATTACK,target_kind=FNP_BUILDING,target=9};
+  d.npcs[1]=ForgeNpc.{id=7,group=2,kind=1,x=-600,z=1200};
+  b:[16384]u8;n:=fnd_write(d,b[..]);out:[1]ForgeNpcs;
+  #assert n>0 && fnd_read(cast(string)b[0..<n],out[..]);
+  #assert out[0].version==4 && out[0].serial==7 && out[0].groups==2 && out[0].n==2 && out[0].npcs[0].target==9 && out[0].npcs[1].x== -600;
+  exact:[16384]u8;ne:=fnd_write(out[0],exact[..]);#assert cast(string)b[0..<n]==cast(string)exact[0..<ne];
+  #assert !fnd_read("{}",out[..]) && !fnd_read("oops",out[..]);
+  d.npcs[1].id=1;n=fnd_write(d,b[..]);#assert !fnd_read(cast(string)b[0..<n],out[..]);
+  d.npcs[1].id=8;n=fnd_write(d,b[..]);#assert !fnd_read(cast(string)b[0..<n],out[..]);
+  d.npcs[1].id=7;d.npcs[1].kind=3;n=fnd_write(d,b[..]);#assert !fnd_read(cast(string)b[0..<n],out[..]);
+}
+#test "NPC document metadata required fields and the exact population boundary are checked" {
+  out:[1]ForgeNpcs;b:[16384]u8;d:ForgeNpcs;
+  n:=fnd_write(d,b[..]);#assert fnd_read(cast(string)b[0..<n],out[..]) && out[0].n==0;
+  for field:0..<3 {for value:[4]int.[-1,0,1000000,1000001] {
+    d=ForgeNpcs.{};if field==0 {d.version=value;}else if field==1 {d.serial=value;}else{d.groups=value;}
+    n=fnd_write(d,b[..]);#assert fnd_read(cast(string)b[0..<n],out[..])==(value>=0 && value<=1000000);
+  }}
+  for bad:[4]string.["{\"schema\":\"aethyrforge.npcs.v1\",\"serial\":0,\"groups\":0,\"npcs\":[]}","{\"schema\":\"aethyrforge.npcs.v1\",\"version\":0,\"groups\":0,\"npcs\":[]}","{\"schema\":\"aethyrforge.npcs.v1\",\"version\":0,\"serial\":0,\"npcs\":[]}","{\"schema\":\"aethyrforge.npcs.v1\",\"version\":0,\"serial\":0,\"groups\":0}"] {#assert !fnd_read(bad,out[..]);}
+  d=ForgeNpcs.{serial=32,groups=1,n=32};for k:0..<32 {d.npcs[k]=ForgeNpc.{id=k+1,group=1,kind=k%3,x=16000,z=-16000,action=FNP_MOVE};}
+  n=fnd_write(d,b[..]);#assert fnd_read(cast(string)b[0..<n],out[..]) && out[0].n==32;
+  d.n=1;d.npcs[0].group=2;n=fnd_write(d,b[..]);#assert !fnd_read(cast(string)b[0..<n],out[..]);
+  // Every required scalar missing on its own must refuse, including zero-valued fields.
+  names:=[8]string.["id","group","kind","action","x_cm","z_cm","target_kind","target_id"];
+  values:=[8]int.[1,1,0,0,0,0,0,0];
+  for missing:0..<8 {
+    j:[1]Jo;jo_start(j[..],b[..]);jo_obj(j[..]);jo_key(j[..],"schema");jo_str(j[..],"aethyrforge.npcs.v1");jo_key(j[..],"version");jo_int(j[..],0);jo_key(j[..],"serial");jo_int(j[..],1);jo_key(j[..],"groups");jo_int(j[..],1);jo_key(j[..],"npcs");jo_arr(j[..]);jo_obj(j[..]);
+    for k:0..<8 {if k!=missing {jo_key(j[..],names[k]);jo_int(j[..],values[k]);}}
+    jo_end(j[..]);jo_end(j[..]);jo_end(j[..]);#assert !fnd_read(jo_text(j[..]),out[..]);
+  }
+  // A 33rd unique record is refused before writing the fixed-capacity array.
+  j:[1]Jo;jo_start(j[..],b[..]);jo_obj(j[..]);jo_key(j[..],"schema");jo_str(j[..],"aethyrforge.npcs.v1");jo_key(j[..],"version");jo_int(j[..],0);jo_key(j[..],"serial");jo_int(j[..],33);jo_key(j[..],"groups");jo_int(j[..],1);jo_key(j[..],"npcs");jo_arr(j[..]);
+  for row:0..<33 {jo_obj(j[..]);for k:0..<8 {jo_key(j[..],names[k]);jo_int(j[..],ifx k==0 then row+1 else values[k]);}jo_end(j[..]);}
+  jo_end(j[..]);jo_end(j[..]);#assert !fnd_read(jo_text(j[..]),out[..]);
+}
+fnd_write :: (d:ForgeNpcs,out:[]u8)->int {
+  j:[1]Jo;jo_start(j[..],out);jo_obj(j[..]);jo_key(j[..],"schema");jo_str(j[..],"aethyrforge.npcs.v1");
+  jo_key(j[..],"version");jo_int(j[..],d.version);jo_key(j[..],"serial");jo_int(j[..],d.serial);jo_key(j[..],"groups");jo_int(j[..],d.groups);
+  jo_key(j[..],"npcs");jo_arr(j[..]);
+  for i:0..<d.n {p:=d.npcs[i];jo_obj(j[..]);
+    jo_key(j[..],"id");jo_int(j[..],p.id);jo_key(j[..],"group");jo_int(j[..],p.group);jo_key(j[..],"kind");jo_int(j[..],p.kind);jo_key(j[..],"action");jo_int(j[..],p.action);
+    jo_key(j[..],"x_cm");jo_int(j[..],p.x);jo_key(j[..],"z_cm");jo_int(j[..],p.z);jo_key(j[..],"target_kind");jo_int(j[..],p.target_kind);jo_key(j[..],"target_id");jo_int(j[..],p.target);jo_end(j[..]);
+  }
+  jo_end(j[..]);jo_end(j[..]);return jo_text(j[..]).count;
+}
+fnd_read :: (text:string,out:[]ForgeNpcs)->bool {
+  nodes:[512]JvNode;j:[1]Jv;if !jv_parse(j[..],text,nodes[..]) {return false;}v:=j[0];
+  if jv_raw(v,jv_get(v,0,"schema"))!="aethyrforge.npcs.v1" {return false;}
+  d:ForgeNpcs;d.version=jv_int(v,jv_get(v,0,"version"),-1);d.serial=jv_int(v,jv_get(v,0,"serial"),-1);d.groups=jv_int(v,jv_get(v,0,"groups"),-1);
+  if d.version<0 || d.version>1000000 || d.serial<0 || d.serial>1000000 || d.groups<0 || d.groups>1000000 {return false;}
+  a:=jv_get(v,0,"npcs");if jv_kind(v,a)!=JV_ARRAY || jv_len(v,a)>FNP_MAX {return false;}
+  for k:0..<jv_len(v,a) {
+    o:=jv_at(v,a,k);p:ForgeNpc;
+    p.id=jv_int(v,jv_get(v,o,"id"),0);p.group=jv_int(v,jv_get(v,o,"group"),0);p.kind=jv_int(v,jv_get(v,o,"kind"),-1);p.action=jv_int(v,jv_get(v,o,"action"),-1);
+    p.x=jv_int(v,jv_get(v,o,"x_cm"),-16001);p.z=jv_int(v,jv_get(v,o,"z_cm"),-16001);p.target_kind=jv_int(v,jv_get(v,o,"target_kind"),-1);p.target=jv_int(v,jv_get(v,o,"target_id"),-1);
+    if !fnp_record(p.id,p.group,p.kind,p.action,p.x,p.z,p.target_kind,p.target) || p.id>d.serial || p.group>d.groups {return false;}
+    for i:0..<d.n {if d.npcs[i].id==p.id {return false;}}
+    d.npcs[d.n]=p;d.n+=1;
+  }
+  out[0]=d;return true;
+}

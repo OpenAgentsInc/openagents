@@ -779,6 +779,7 @@ ev_raid_cast :: (v: [] RmServer, k: int, c: E5rdCast) {
 ev_beast_f :: (v: [] RmServer, k: int, q: int) -> int {
   bt := v[0].eg[k].rules[0].beasts[q];
   if bt.form < E5RR_FORM_RAID { return 0; }
+  if bt.forge_id>0 {return 256+(ifx v[0].eg[k].rules[0].b[0].clock-bt.forge_swing<0.5 then 4 else 0);}
   return v[0].eg[k].rules[0].raid[0].slot[q].level << 8;
 }
 

@@ -244,6 +244,7 @@ ege_raider_draw :: (s: [] Everglade, n: [] EgNet, en: NetEnt, age: f32) {
   if en.p1 == EGE_FORM_WARD { ege_ward_draw(s, n, p.x, p.z, age); return; }
   lit: f32 = 0;
   if en.cast_slot >= WL_SLOT0 { lit = clamp01(1 - (f32(s[0].time * 1000) - f32(en.cast_at)) / f32(EGE_LIT_MS)); }
+  if (p.f & 4)!=0 {lit=1;}
   q := ege_body(s, en.eid);
   if q < 0 { return; }
   e := ege_of(s);

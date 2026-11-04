@@ -24,6 +24,8 @@
 #load "everglade5e-rules.coax";
 #load "everglade5e-room-raid.coax";   // the Cultist Raid's raiders, ward stones and leader (#12740)
 #load "everglade-raid-scale.coax";   // the raid's waves for the players present (room-events.coax, the EVENTS pane)
+#load "../../aethyr/forge/npc-document.coax";
+#load "everglade5e-forge.coax";
 
 E5RR_SEATS :: 16;
 E5RR_SEAT :: 0;                              // seat s is creature s
@@ -215,7 +217,8 @@ e5rr_step :: (r: [] E5rRoom, clock: f32) #export_c {
     i := E5RR_BEAST0 + q;
     if r[0].beasts[q].id == 0 || b[0].c[i].dead || b[0].c[i].turn_at > b[0].clock { continue; }
     b[0].who = i; rs_start_turn(b, i);
-    if r[0].beasts[q].form >= E5RR_FORM_RAID { e5rd_turn(r, q); }   // a raider's (everglade5e-room-raid.coax)
+    if r[0].beasts[q].forge_id>0 {e5rf_turn(r,q);}
+    else if r[0].beasts[q].form >= E5RR_FORM_RAID { e5rd_turn(r, q); }   // a raider's (everglade5e-room-raid.coax)
     rs_end_turn(b, i); b[0].who = -1;
   }
   e5rr_rise(r);
@@ -450,7 +453,7 @@ e5rr_beasts_check :: (r: [] E5rRoom) {
     me := E5RR_SEAT + rs_max(bt.by, 0);
     held := raid || b[0].c[me].conc == bt.spell || (bt.form == E5RR_FORM_ZOMBIE && r[0].live[bt.by]);
     if b[0].c[i].dead || b[0].c[i].hp <= 0 || !held {
-      if raid { e5rd_down(r, q); }
+      if raid && bt.forge_id==0 { e5rd_down(r, q); }
       e5b_gone(b, r[0].beasts[..], E5RR_BEAST0, q);
     }
   }

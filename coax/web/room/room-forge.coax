@@ -1,0 +1,192 @@
+// Local desktop authoring. Coax stages a complete document; the host saves it
+// atomically before rm_forge_commit changes any live creature or order.
+#load "../../../verse/everglade/building-catalogue.coax";
+#load "../../../verse/everglade/person-names.coax";
+RmForge :: struct {doc:ForgeNpcs;staged:ForgeNpcs;pending:bool;out:[32768]u8;n:int;probe_n:int;probe_xy:[1024]f32;probe_open:[512]bool;}
+#test "forge API stages atomic groups requires the local admin and never overwrites a stale version" #steps 500000000 {
+  v:[1]RmServer;rm_init(v[..]);
+  get:="GET /api/playtest/forge/npcs HTTP/1.1\r\n\r\n";
+  #assert rm_forge_api(v[..],get)==403;
+  v[0].dev.on=true;v[0].dev.admin=true;
+  #assert rm_forge_api(v[..],get)==409;
+  rm_clock(v[..],0,1762190000000);#assert rm_join(v[..],0,"GET /api/room/relay/everglade/pair-forge HTTP/1.1\r\n\r\n")==0;
+  k:=eg_room_at(v[..],v[0].conns[0].relay);#assert k>=0;rm_heard(v[..],0,"H 4 ranger.0.0.0 druid 0 Editor");
+  v[0].eg[k].seat[0].pose.z= -84;
+  spawn:="POST /api/playtest/forge/npcs HTTP/1.1\r\n\r\n{\"op\":\"spawn\",\"base\":0,\"kind\":\"cultist\",\"count\":3,\"x_cm\":600,\"z_cm\":-1200}";
+  #assert rm_forge_probe(v[..],spawn)==3;
+  for p:0..<3 {rm_forge_probe_open(v[..],p,true);}
+  #assert rm_forge_api(v[..],spawn)==200 && v[0].forge.pending && v[0].forge.doc.n==0;
+  b:[16384]u8;n:=rm_forge_save(v[..]);#assert n>0;
+  for i:0..<n {b[i]=v[0].forge.out[i];}
+  rm_forge_abort(v[..]);#assert v[0].forge.doc.n==0;
+  #assert rm_forge_api(v[..],spawn)==200;rm_forge_commit(v[..]);
+  #assert v[0].forge.doc.n==3 && v[0].forge.doc.version==1 && rm_forge_api(v[..],spawn)==409;
+  #assert fg_slot(v[0].eg[k].rules[..],1)>=0;
+  self:="POST /api/playtest/forge/npcs HTTP/1.1\r\n\r\n{\"op\":\"order\",\"base\":1,\"group\":1,\"action\":\"attack\",\"target_kind\":\"npc\",\"target_id\":1}";
+  #assert rm_forge_api(v[..],self)==400 && v[0].forge.doc.version==1;
+  order:="POST /api/playtest/forge/npcs HTTP/1.1\r\n\r\n{\"op\":\"order\",\"base\":1,\"group\":1,\"action\":\"attack\",\"target_kind\":\"building\",\"target_id\":9}";
+  #assert rm_forge_api(v[..],order)==200;rm_forge_commit(v[..]);
+  for i:0..<3 {#assert v[0].forge.doc.npcs[i].action==FNP_ATTACK && v[0].forge.doc.npcs[i].target==9;}
+  #assert rm_forge_load(v[..],cast(string)b[0..<n]) && v[0].forge.doc.n==3 && v[0].forge.doc.version==1;
+  v[0].dev.admin=false;#assert rm_forge_api(v[..],order)==403;v[0].dev.admin=true;
+  removal:="POST /api/playtest/forge/npcs HTTP/1.1\r\n\r\n{\"op\":\"remove\",\"base\":1,\"group\":1}";
+  #assert rm_forge_api(v[..],removal)==200;rm_forge_commit(v[..]);#assert v[0].forge.doc.n==0 && fg_slot(v[0].eg[k].rules[..],1)== -1;
+}
+fg_answer :: (v:[]RmServer,ok:bool,error:string)->int {
+  j:[1]Jo;jo_start(j[..],v[0].forge.out[..]);jo_obj(j[..]);jo_key(j[..],"ok");jo_bool(j[..],ok);jo_key(j[..],"error");jo_str(j[..],error);jo_end(j[..]);v[0].forge.n=jo_text(j[..]).count;return v[0].forge.n;
+}
+fg_room :: (v:[]RmServer)->int {
+  found:=-1;for k:0..<EG_ROOMS {if v[0].eg[k].live {if found!= -1 {return -1;}found=k;}}return found;
+}
+fg_slot :: (r:[]E5rRoom,id:int)->int {for q:0..<E5RR_BEASTS {if r[0].beasts[q].forge_id==id {return q;}}return -1;}
+fg_building_box :: (id:int)->[5]f32 {b:[5]f32;for i:0..<5 {b[i]=ifx id<EG_BUILDINGS then EG_BUILDING[id*5+i] else EG_DHOUSE[(id-EG_BUILDINGS)*5+i];}return b;}
+fg_building_name :: (id:int)->string {return ifx id<EG_BUILDINGS then EG_BUILDING_NAME[id] else EG_DHOUSE_NAME[id-EG_BUILDINGS];}
+fg_building_at :: (id:int,x:f32,z:f32,out:[]f32) {
+  b:=fg_building_box(id);px:=clamp(x,b[0],b[2]);pz:=clamp(z,b[1],b[3]);
+  if px==x && pz==z {px=b[0];}
+  out[0]=px;out[1]=pz;
+}
+fg_sync :: (v:[]RmServer,k:int) {
+  if !v[0].dev.on || v[0].eg[k].forge_version==v[0].forge.doc.version {return;}
+  d:=v[0].forge.doc;r:=v[0].eg[k].rules[..];
+  for q:0..<E5RR_BEASTS {
+    id:=r[0].beasts[q].forge_id;if id==0 {continue;}keep:=false;
+    for i:0..<d.n {if d.npcs[i].id==id {keep=true;}}
+    if !keep {e5b_gone(r[0].b[..],r[0].beasts[..],E5RR_BEAST0,q);r[0].beasts[q]=E5rBeast.{};}
+  }
+  for i:0..<d.n {if fg_slot(r,d.npcs[i].id)<0 {_:=e5rf_spawn(r,d.npcs[i]);}}
+  for i:0..<d.n {
+    p:=d.npcs[i];q:=fg_slot(r,p.id);if q<0 {continue;}bt:=r[0].beasts[q..<q+1];
+    bt[0].forge_action=p.action;bt[0].goal_x=f32(p.x)/100;bt[0].goal_z=f32(p.z)/100;bt[0].forge_building=p.target_kind==FNP_BUILDING;
+    bt[0].foe= -1;
+    if p.action==FNP_ATTACK {
+      if bt[0].forge_building {at:[2]f32;fg_building_at(p.target,bt[0].x,bt[0].z,at[..]);bt[0].goal_x=at[0];bt[0].goal_z=at[1];}
+      else {bt[0].foe=e5rf_target(r,p.target_kind,p.target);}
+    }
+    if p.action==FNP_STOP {bt[0].goal_x=bt[0].x;bt[0].goal_z=bt[0].z;bt[0].moving=false;}
+  }
+  v[0].eg[k].forge_version=d.version;
+}
+fg_show :: (v:[]RmServer,k:int)->int {
+  fg_sync(v,k);d:=v[0].forge.doc;r:=v[0].eg[k].rules[..];j:[1]Jo;jo_start(j[..],v[0].forge.out[..]);jo_obj(j[..]);
+  jo_key(j[..],"ok");jo_bool(j[..],true);jo_key(j[..],"version");jo_int(j[..],d.version);
+  jo_key(j[..],"kinds");jo_arr(j[..]);for name:FNP_KINDS {jo_str(j[..],name);}jo_end(j[..]);
+  jo_key(j[..],"npcs");jo_arr(j[..]);
+  for n:0..<d.n {
+    p:=d.npcs[n];q:=fg_slot(r,p.id);jo_obj(j[..]);jo_key(j[..],"id");jo_int(j[..],p.id);jo_key(j[..],"group");jo_int(j[..],p.group);jo_key(j[..],"kind");jo_str(j[..],FNP_KINDS[p.kind]);
+    if q>=0 {bt:=r[0].beasts[q];c:=r[0].b[0].c[E5RR_BEAST0+q];jo_key(j[..],"creature_id");jo_int(j[..],bt.tag);jo_key(j[..],"x_cm");jo_int(j[..],eg_round(bt.x*100));jo_key(j[..],"z_cm");jo_int(j[..],eg_round(bt.z*100));jo_key(j[..],"hp");jo_int(j[..],c.hp);jo_key(j[..],"alive");jo_bool(j[..],bt.id>0 && !c.dead && c.hp>0);jo_key(j[..],"moving");jo_bool(j[..],bt.moving);}
+    jo_key(j[..],"action");jo_str(j[..],ifx p.action==FNP_ATTACK then "attack" else ifx p.action==FNP_MOVE then "move" else "stop");
+    jo_key(j[..],"target_kind");jo_int(j[..],p.target_kind);jo_key(j[..],"target_id");jo_int(j[..],p.target);jo_end(j[..]);
+  }
+  jo_end(j[..]);jo_key(j[..],"targets");jo_arr(j[..]);
+  for id:0..<EG_BUILDINGS+EG_DHOUSES {jo_obj(j[..]);jo_key(j[..],"kind");jo_str(j[..],"building");jo_key(j[..],"id");jo_int(j[..],id);jo_key(j[..],"name");jo_str(j[..],fg_building_name(id));b:=fg_building_box(id);jo_key(j[..],"x_cm");jo_int(j[..],eg_round((b[0]+b[2])*50));jo_key(j[..],"z_cm");jo_int(j[..],eg_round((b[1]+b[3])*50));jo_end(j[..]);}
+  for i:0..<E5RR_BEAST0+E5RR_BEASTS {
+    c:=r[0].b[0].c[i];if c.dead || c.hp<=0 || c.x==E5R_AWAY {continue;}
+    kind:="person";id:=i-E5RR_FOLK0;name:=cast(string)c.name[0..<c.name_n];
+    if i<E5RR_FOLK0 {if !r[0].live[i] {continue;}kind="player";id=i;name=cast(string)v[0].eg[k].seat[i].name[0..<v[0].eg[k].seat[i].name_n];}
+    else if i>=E5RR_BEAST0 {bt:=r[0].beasts[i-E5RR_BEAST0];if bt.id==0 {continue;}kind=ifx bt.forge_id>0 then "npc" else "creature";id=ifx bt.forge_id>0 then bt.forge_id else bt.id;}
+    else {if id<EG_SPOT_NAME.count {name=EG_SPOT_NAME[id];}else{name="Town guard";}}
+    jo_obj(j[..]);jo_key(j[..],"kind");jo_str(j[..],kind);jo_key(j[..],"id");jo_int(j[..],id);jo_key(j[..],"name");jo_str(j[..],name);jo_key(j[..],"hp");jo_int(j[..],c.hp);jo_end(j[..]);
+  }
+  jo_end(j[..]);jo_end(j[..]);v[0].forge.n=jo_text(j[..]).count;return v[0].forge.n;
+}
+fg_plan :: (v:[]RmServer,k:int,c:FnpCommand)->bool {
+  d:=v[0].forge.doc;r:=v[0].eg[k].rules[..];
+  if c.op==FNP_SPAWN {
+    free:=0;for q:0..<E5RR_BEASTS {if r[0].beasts[q].id==0 && r[0].beasts[q].forge_id==0 {free+=1;}}
+    if !fnp_spawn(d.n,c.count,free,d.serial,d.groups) {return false;}
+    px:=0;pz:= -8400;for s:0..<EG_SEATS {if v[0].eg[k].seat[s].live {px=eg_round(v[0].eg[k].seat[s].pose.x*100);pz=eg_round(v[0].eg[k].seat[s].pose.z*100);break;}}
+    chosen:=-1;tries:=ifx c.located then 1 else 64;
+    for attempt:0..<tries {
+      good:=true;
+      for n:0..<c.count {
+        p:=attempt*c.count+n;x:=v[0].forge.probe_xy[p*2];z:=v[0].forge.probe_xy[p*2+1];
+        if !fnp_record(1,1,c.kind,FNP_STOP,eg_round(x*100),eg_round(z*100),0,0) {good=false;}
+        if !v[0].forge.probe_open[p] || (x-f32(px)/100)*(x-f32(px)/100)+(z-f32(pz)/100)*(z-f32(pz)/100)<1 {good=false;}
+        for q:0..<E5RR_BEASTS {bt:=r[0].beasts[q];if bt.id>0 && (bt.x-x)*(bt.x-x)+(bt.z-z)*(bt.z-z)<1.5 {good=false;}}
+      }
+      if good {chosen=attempt;break;}
+    }
+    if chosen<0 {return false;}d.groups+=1;
+    for n:0..<c.count {d.serial+=1;p:=(chosen*c.count+n)*2;d.npcs[d.n]=ForgeNpc.{id=d.serial,group=d.groups,kind=c.kind,x=eg_round(v[0].forge.probe_xy[p]*100),z=eg_round(v[0].forge.probe_xy[p+1]*100)};d.n+=1;}
+  }else{
+    found:=0;after:ForgeNpcs;after=d;after.n=0;
+    foe:=-1;if c.action==FNP_ATTACK && c.target_kind!=FNP_BUILDING {foe=e5rf_target(r,c.target_kind,c.target);}
+    if !fnp_quarry(c.action==FNP_ATTACK,c.target_kind==FNP_BUILDING,foe) {return false;}
+    for n:0..<d.n {
+      p:=d.npcs[n];match:=ifx c.npc>0 then p.id==c.npc else p.group==c.group;
+      if match {
+        found+=1;q:=fg_slot(r,p.id);
+        if c.op==FNP_REMOVE {continue;}
+        alive:=q>=0 && r[0].beasts[q].id>0 && !r[0].b[0].c[E5RR_BEAST0+q].dead;
+        if !fnp_orderable(q,alive,foe==E5RR_BEAST0+q) {return false;}
+        p.action=c.action;p.target_kind=c.target_kind;p.target=c.target;
+        if c.action==FNP_MOVE {if !v[0].forge.probe_open[0] {return false;}p.x=c.x;p.z=c.z;}
+      }
+      after.npcs[after.n]=p;after.n+=1;
+    }
+    if found==0 {return false;}d=after;
+  }
+  d.version+=1;v[0].forge.staged=d;v[0].forge.pending=true;return true;
+}
+// 0 not this route; otherwise an HTTP status and a JSON body in forge.out.
+rm_forge_api :: (v:[]RmServer,req:string)->int #export_c {
+  get:=dv_path(req,"GET","/api/playtest/forge/npcs ");post:=dv_path(req,"POST","/api/playtest/forge/npcs ");
+  if !get && !post {return 0;}
+  if !fnp_access(v[0].dev.on,v[0].dev.admin) {_:=fg_answer(v,false,"Local admin access is required.");return 403;}
+  k:=fg_room(v);if k<0 {_:=fg_answer(v,false,"Exactly one active local Everglade room is required.");return 409;}
+  if get {_:=fg_show(v,k);return 200;}
+  c:[1]FnpCommand;if !fnp_parse(dv_body(req),c[..]) {_:=fg_answer(v,false,"Invalid NPC command.");return 400;}
+  if !fnp_write(c[0].base,v[0].forge.doc.version) {_:=fg_answer(v,false,"NPC document changed concurrently or its revision limit was reached. Read npcs again.");return 409;}
+  fg_sync(v,k);if !fg_plan(v,k,c[0]) {_:=fg_answer(v,false,"NPC batch refused: blocked floor, capacity, missing/dead/self target, or unknown selection. Nothing changed.");return 400;}
+  return 200;
+}
+rm_forge_save :: (v:[]RmServer)->int #export_c {v[0].forge.n=fnd_write(v[0].forge.staged,v[0].forge.out[..]);return v[0].forge.n;}
+rm_forge_commit :: (v:[]RmServer) #export_c {
+  if !v[0].forge.pending {return;}v[0].forge.doc=v[0].forge.staged;v[0].forge.pending=false;k:=fg_room(v);if k>=0 {_:=fg_show(v,k);}
+}
+rm_forge_abort :: (v:[]RmServer) #export_c {v[0].forge.pending=false;}
+rm_forge_active :: (v:[]RmServer)->bool #export_c {return v[0].dev.on && v[0].forge.doc.n>0;}
+rm_forge_load :: (v:[]RmServer,text:string)->bool #export_c {d:[1]ForgeNpcs;if !fnd_read(text,d[..]) {return false;}v[0].forge.doc=d[0];return true;}
+// Collision observations come from the actual Coax world, through its C SDK.
+rm_forge_probe :: (v:[]RmServer,req:string)->int #export_c {
+  v[0].forge.probe_n=0;
+  if !fnp_access(v[0].dev.on,v[0].dev.admin) || !dv_path(req,"POST","/api/playtest/forge/npcs ") {return 0;}
+  k:=fg_room(v);c:[1]FnpCommand;if k<0 || !fnp_parse(dv_body(req),c[..]) {return 0;}
+  if c[0].action==FNP_MOVE {v[0].forge.probe_xy[0]=f32(c[0].x)/100;v[0].forge.probe_xy[1]=f32(c[0].z)/100;v[0].forge.probe_n=1;v[0].forge.probe_open[0]=false;return 1;}
+  if c[0].op!=FNP_SPAWN {return 0;}
+  px:=0.0f32;pz:= -84.0f32;for s:0..<EG_SEATS {if v[0].eg[k].seat[s].live {px=v[0].eg[k].seat[s].pose.x;pz=v[0].eg[k].seat[s].pose.z;break;}}
+  tries:=ifx c[0].located then 1 else 64;
+  for a:0..<tries {xs:=[8]f32.[0,2,-2,4,-4,6,-6,8];x:=ifx c[0].located then f32(c[0].x)/100 else px+xs[a%8];z:=ifx c[0].located then f32(c[0].z)/100 else pz+2+f32(a/8)*2;
+    for n:0..<c[0].count {p:=v[0].forge.probe_n;v[0].forge.probe_xy[p*2]=x+(f32(n)-f32(c[0].count-1)/2)*2;v[0].forge.probe_xy[p*2+1]=z;v[0].forge.probe_open[p]=false;v[0].forge.probe_n+=1;}
+  }
+  return v[0].forge.probe_n;
+}
+rm_forge_probe_at :: (v:[]RmServer,p:int,out:[]f32)->int #export_c {out[0]=v[0].forge.probe_xy[p*2];out[1]=v[0].forge.probe_xy[p*2+1];return fg_room(v);}
+rm_forge_probe_open :: (v:[]RmServer,p:int,open:bool) #export_c {v[0].forge.probe_open[p]=open;}
+// Desired motion is Coax; the host asks the actual world's collision controller
+// for the next position and carries those numbers back to the battle.
+rm_forge_motion :: (v:[]RmServer,k:int,q:int,out:[]f32)->bool #export_c {
+  if !v[0].dev.on || !rm_eg_live(v,k) {return false;}fg_sync(v,k);r:=v[0].eg[k].rules[..];bt:=r[0].beasts[q];
+  if bt.id==0 || bt.forge_id==0 {return false;}c:=r[0].b[0].c[E5RR_BEAST0+q];r[0].beasts[q].moving=false;
+  if c.dead {return false;}
+  out[0]=bt.x;out[1]=bt.z;out[2]=bt.yaw;out[3]=bt.x;out[4]=bt.z;out[5]=0;
+  if !rs_can_move(c) || bt.forge_action==FNP_STOP {return true;}
+  tx:=bt.goal_x;tz:=bt.goal_z;stop:=0.15f32;
+  if bt.forge_action==FNP_ATTACK {
+    stop=1.0;
+    if !bt.forge_building {foe:=bt.foe;if foe<0 || r[0].b[0].c[foe].dead {return true;}tx=e5rd_mx(r,foe);tz=e5rd_mz(r,foe);}
+  }
+  dx:=tx-bt.x;dz:=tz-bt.z;distance:=sqrt(dx*dx+dz*dz);if distance<=stop {return true;}
+  out[0]=bt.x;out[1]=bt.z;out[2]=bt.yaw;out[3]=tx;out[4]=tz;out[5]=lo(3.0*f32(c.speed)/30.0/f32(EG_HZ),distance-stop);return true;
+}
+rm_forge_moved :: (v:[]RmServer,k:int,q:int,out:[]f32) #export_c {
+  bt:=v[0].eg[k].rules[0].beasts[q..<q+1];bt[0].x=out[0];bt[0].z=out[1];bt[0].yaw=out[2];bt[0].y=out[3];bt[0].grounded=true;bt[0].moving=out[4]>0.5;
+  i:=E5RR_BEAST0+q;v[0].eg[k].rules[0].b[0].c[i].x=e5r_sq(bt[0].x);v[0].eg[k].rules[0].b[0].c[i].y=e5r_sq(bt[0].z);
+}
+fg_hits :: (v:[]RmServer,k:int) {
+  r:=v[0].eg[k].rules[..];
+  for q:0..<E5RR_BEASTS {bt:=r[0].beasts[q..<q+1];if bt[0].forge_hit<=0 || v[0].eg[k].strike_n>=EG_CASTS {continue;}
+    v[0].eg[k].strikes[v[0].eg[k].strike_n]=EgStrike.{by=-1,slot=E5RF_HIT_SLOT,fx=bt[0].x,fy=bt[0].y+1,fz=bt[0].z,ax=bt[0].goal_x,ay=bt[0].y+1,az=bt[0].goal_z,seed=bt[0].forge_hit};v[0].eg[k].strike_n+=1;bt[0].forge_hit=0;
+  }
+}

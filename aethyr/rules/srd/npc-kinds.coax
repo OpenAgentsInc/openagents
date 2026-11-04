@@ -1,0 +1,5 @@
+// Stable stat-block identities, also used by movement and appearance libraries.
+RS_NPC_NONE :: 0; RS_NPC_GUARD :: 1; RS_NPC_VETERAN :: 2; RS_NPC_KNIGHT :: 3; RS_NPC_SCOUT :: 4;
+RS_NPC_PRIEST :: 5; RS_NPC_MAGE :: 6; RS_NPC_CULTIST :: 7; RS_NPC_FANATIC :: 8;
+RS_NPC_WARLOCK :: 9; RS_NPC_ARCH :: 10;
+RS_NPC_CULT_PRIEST :: 11;

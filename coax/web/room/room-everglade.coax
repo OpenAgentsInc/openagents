@@ -115,6 +115,7 @@ EgCast :: struct {
   hp0: int; mx: f32; mz: f32;   // a Repair's: its caster's HP and feet at its start (hurt or moved, it stops)
 }
 EgRoom :: struct {
+  forge_version:int=-1;
   stale_n: int;        // hellos refused for another WIRE_VERSION (#12788)
   old_n: int;          // seats on the old wire, its window open (room-oldwire.coax)
   behind_n: int;       // seat ticks whose rows waited, its socket behind
@@ -545,7 +546,9 @@ rm_eg_rules :: (v: [] RmServer, k: int) #export_c {
   // the casts in the tick's order (room-casts.coax): starts, heals, the world's harm; the rules' step
   // (the creatures' turns); then stops, releases and harm
   rc_tick_first(v, k);
+  fg_sync(v,k);
   e5rr_step(v[0].eg[k].rules[..], f32(t) / f32(EG_HZ));
+  fg_hits(v,k);
   rc_tick_last(v, k);
   eg_engine_events(v, k);
   eg_sky_tick(v, k);   // the weather turned: everyone hears it (room-sky.coax)

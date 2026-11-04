@@ -1,6 +1,6 @@
 # Aethyrforge for Mac: local editing by voice (experimental spec)
 
-Status: experimental desktop shell, local setup, routed Coder HUD and local scene tools implemented, 2026-11-04.
+Status: experimental desktop shell, local setup, routed Coder HUD, object and NPC scene tools implemented, 2026-11-04.
 The local Everglade editor, shared storage, CLI inventory, microphone capture
 and local Parakeet transcription work; the local edit model below remains planned. Nothing
 here ships to customers or TestFlight until the owner asks.
@@ -202,6 +202,29 @@ page server, the voice Wasm and a local Parakeet voice host. This is the same
   210 checks. The native room startup, WebGPU bundle and real routed Coder
   row/stack, group edits, atomic refusal and reopen persistence checks pass.
   The tools audit retains 28 unrelated missing-reason headers.
+
+- NPC authoring uses the same automatically routed Coder turns, through the
+  Coax scene tool's `npcs`/`npc` commands. It can spawn cultists, villagers and
+  guards, direct one actor or a group to attack a named townsperson, player,
+  NPC/creature or building, move them, stop them or remove them. The local room
+  owns combat turns and real HP/deaths; melee strikes damage the existing
+  breakable building pieces and the page hears its normal break events.
+  Explicit NPCs keep their orders independently of the automatic siege.
+  Humanoid models reuse the existing character parts. Spawn floors and motion
+  use the actual world and current crate fences; an object placed under a
+  stopped NPC pushes it clear. Definitions/orders persist in the separate
+  `forge-npcs.json`, with atomic save before application and optimistic versions.
+  Reopening starts a fresh playtest, without preserving transient HP/movement.
+  Batches are 1–8, with 32 authored NPCs. Admission and saved-document units
+  kill all 311 and 109 mutants respectively, with zero survivors. See
+  [the NPC command contract](../protocol/aethyrforge-npcs-v1.md).
+  The hidden native check exercised three real routed Codex turns: order a
+  cultist group to attack a villager, spawn three villagers, then stop the first
+  group and spawn/order another against the stables. It observed real NPC HP
+  loss, two replicated building breaks and seven live rendered creatures; all
+  eight authored definitions survived reopening. Fountain/crate spawn refusal,
+  dynamic crate detours, stopped-NPC eviction and human villager parts pass.
+  The tools audit reports 29 unrelated missing-reason headers.
 
 The remaining sections describe the target behavior. They do not imply every voice
 acceptance criteria already pass. Build and native smoke-check instructions are

@@ -217,6 +217,31 @@ The same tool works programmatically while the app is running:
 ~/.openagents/bin/aethyrforge-scene apply '{"op":"place","item":"crate","count":5,"arrangement":"stack"}'
 ```
 
+NPCs use the same typed/voice Coder conversation. For example: “add three
+cultists”, “add two villagers”, “have those cultists attack the stables”, or
+“stop that group”. The tool supports cultists, villagers and guards, individual
+or group attack/move/stop orders, and removal. Named townspeople, live players,
+other NPCs/creatures and all 60 authored buildings are targetable. The room
+simulates real movement, damage, deaths and building pieces breaking. Nearby
+placement checks the actual world, including newly placed crates.
+
+```sh
+~/.openagents/bin/aethyrforge-scene npcs
+~/.openagents/bin/aethyrforge-scene npcs people
+~/.openagents/bin/aethyrforge-scene npcs buildings
+~/.openagents/bin/aethyrforge-scene npc '{"op":"spawn","kind":"cultist","count":3}'
+~/.openagents/bin/aethyrforge-scene npc '{"op":"order","group":1,"action":"attack","target_kind":"building","target_id":9}'
+~/.openagents/bin/aethyrforge-scene npc '{"op":"order","group":1,"action":"stop"}'
+```
+
+NPC definitions and orders are saved separately in the local world's
+`forge-npcs.json`; reopening starts a fresh playtest of that setup. Transient
+HP and movement are not a saved combat session. A batch is 1–8 NPCs, with 32
+authored NPCs total. See [NPC command v1](../../docs/protocol/aethyrforge-npcs-v1.md).
+The hidden `--npc-smoke REPORT.json` check exercises real routed Coder spawning,
+group attacks, damage, replicated building breaks, rendered creatures and
+blocked spawns. `--npc-reopen` checks persistence in the same report directory.
+
 The hidden scene check exercises programmatic placement, group move/removal,
 atomic refusal, two real automatically routed Coder requests with the composer
 closed, the page's world refresh, and persistence on a second launch. It uses

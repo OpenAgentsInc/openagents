@@ -83,6 +83,14 @@ static bool world_of(int k) {
   }
   return true;
 }
+bool world_forge_open(int k, float x, float z) {
+  return world_of(k) && everglade_forge_open(at(k), x, z);
+}
+void world_forge_prepare(int k) { if (world_of(k)) everglade_forge_prepare(at(k)); }
+void world_forge_step(int k, const float in[6], float out[5]) {
+  if (!world_of(k)) return;
+  everglade_forge_step(at(k), (coax_v_f32){(float *)in, 6}, (coax_v_f32){out, 5});
+}
 
 /* The walls within WALL_NEAR m of (x, z), in their order, into near (6 floats each): how many. A wall
    acts only within the controller's radius (0.3 m) of the feet, and a step's three controller steps
