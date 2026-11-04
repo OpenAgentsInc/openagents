@@ -485,7 +485,7 @@ gv_el_at :: (s: [] Everglade, mode: int, at: Point) {
     for q: 0..<5 { gv_add_mist(s, add(mid, times(sp_spray(s, 0.2), 0.3)), v3(0, 0.5, 0), 0.4, 2.5 + sp_rand(s), hue, 0.4); }
     snuffed := 0; catch := -1;
     box: [1] DemoBox;
-    for b: 0..<DEMO_BODIES {
+    for b: 0..<w[0].body_hi {
       if w[0].meta[b].kind == 0 || !demo_chunk_box(w, b, box[..]) || !gv_in_cube(c, box[0].at) { continue; }
       if s[0].sp.burn[b] > 0 { s[0].sp.burn[b] = 0; snuffed += 1; } else if catch < 0 { catch = b; }
     }

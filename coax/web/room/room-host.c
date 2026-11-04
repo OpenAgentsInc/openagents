@@ -65,10 +65,10 @@ static int64_t fan_at(const int64_t *h, int q, int64_t *count) {
 static int64_t tick_now[FAN_BUCKETS], tick_last[FAN_BUCKETS];
 /* Where the everglade tick's time goes (#12717): microseconds summed over the report's minute for the
    movement steps, the hotbar abilities, the town (watch and folk), the spells' pieces, the people for the rules and the pages,
-   and rm_eg_end (the rules' step and every seat's D), printed with the tick line. */
-enum { PART_MOVE, PART_ABILITIES, PART_TOWN, PART_SPELLS, PART_PEOPLE, PART_END, PARTS };
+   rm_eg_end (the rules' step and every seat's D) and the frames sent (relay_flush, pump_all), printed with the tick line. */
+enum { PART_MOVE, PART_ABILITIES, PART_TOWN, PART_SPELLS, PART_PEOPLE, PART_END, PART_SEND, PARTS };
 static int64_t part_us[PARTS];
-static const char *part_name[PARTS] = {"move", "abilities", "town", "spells", "people", "end"};
+static const char *part_name[PARTS] = {"move", "abilities", "town", "spells", "people", "end", "send"};
 static void tick_add(int64_t us) { int64_t b = us / 100; tick_now[b < 0 ? 0 : b >= FAN_BUCKETS ? FAN_BUCKETS - 1 : b]++; }
 static int64_t now_ms(void) {
   struct timespec t;
@@ -82,6 +82,7 @@ static int64_t wall_ms(void) {
 }
 static void clock_in(void) { rm_clock(view(), now_ms(), wall_ms()); }
 // As much of the waiting bytes as the socket takes now; false when the socket failed.
+static bool pump_held;
 static bool pump(int i) {
   conn *c = &conns[i];
   size_t done = 0;
@@ -110,7 +111,14 @@ static void put_out(int i, const void *p, size_t n) {
   }
   memcpy(c->out + c->on, p, n); c->on += n;
   if ((int64_t)c->on > out_peak) out_peak = (int64_t)c->on;
-  if (!pump(i)) c->doomed = true;
+  if (!pump_held && !pump(i)) c->doomed = true;
+}
+/* Every connection's held output sent: the everglade tick holds its frames (pump_held) and sends each
+   socket's once at its end, one send a socket a tick and not one a frame (a send under Cloud Run's
+   gVisor costs tens of us; #12717). */
+static void pump_all(void) {
+  pump_held = false;
+  for (int j = 0; j < CONNS; j++) if (conns[j].fd >= 0 && !conns[j].doomed && conns[j].on && !pump(j)) conns[j].doomed = true;
 }
 // The relay's frames (room-relay.coax), each onto the output of the connections it names.
 static void relay_flush(void) {
@@ -184,6 +192,7 @@ static void everglade_abilities(int k) {
 static void everglade_tick(void) {
   int64_t in[WORLD_IN]; float pose[WORLD_POSE];
   coax_v_s64 inv = {in, WORLD_IN};
+  pump_held = true;
   for (int k = 0; k < WORLD_ROOMS; k++) {
     if (!rm_eg_begin(view(), k)) continue;
     int64_t tm = now_us();
@@ -207,8 +216,13 @@ static void everglade_tick(void) {
     int64_t te = now_us();
     rm_eg_end(view(), k);
     part_us[PART_END] += now_us() - te;
+    int64_t tf = now_us();
     relay_flush();
+    part_us[PART_SEND] += now_us() - tf;
   }
+  int64_t tp = now_us();
+  pump_all();
+  part_us[PART_SEND] += now_us() - tp;
 }
 static void reap(void);
 static void shut(int i) {

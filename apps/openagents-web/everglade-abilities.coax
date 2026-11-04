@@ -529,7 +529,7 @@ ab_after_step :: (s: [] Everglade) {
     if !a[0].stones[q2 / 2].live { continue; }
     st := ab_panel(a[0].stones[q2 / 2], q2 % 2);
     if !st.live { continue; }
-    for b: 0..<DEMO_BODIES {
+    for b: 0..<w[0].body_hi {
       if w[0].meta[b].kind == 0 { continue; }
       k := b * DB_FLOATS;
       x := f32(w[0].state[k + 4]); y := f32(w[0].state[k + 5]); z := f32(w[0].state[k + 6]);
@@ -657,7 +657,7 @@ ab_tk_pick :: (s: [] Everglade) -> AbPick {
     if !h.ok || h.t <= 0.3 || h.t >= pick.t { continue; }
     pick = AbPick.{kind = ifx ab_prop(p.mesh) then 3 else 0, idx = i, t = h.t};
   }
-  for b: 0..<DEMO_BODIES {
+  for b: 0..<w[0].body_hi {
     if w[0].meta[b].kind == 0 { continue; }
     c := pd3(demo_body(w, b).pos);
     along := dot(sub(c, r.from), r.dir);
@@ -911,7 +911,7 @@ ab_bt_frame :: (s: [] Everglade, dt: f32) {
       j := ab_bt_free_near(s, v3(a[0].bt_x[i], 0, a[0].bt_z[i]));
       if j >= 0 { a[0].bt_hold[j] = i; }
     }
-    for b: 0..<DEMO_BODIES {
+    for b: 0..<w[0].body_hi {
       if w[0].meta[b].kind == 0 || ab_bt_holder(a, AB_BT_BODY + b) >= 0 || (a[0].tk_kind == AB_TK_BODY && a[0].tk_body == b) { continue; }
       p := pd3(demo_body(w, b).pos);
       if !ab_in_square(a, p.x, p.z) || p.y > a[0].bt_at.y + f32(AB_BT_REACH) { continue; }
@@ -1201,7 +1201,7 @@ ab_thunder :: (s: [] Everglade) {
   }
   if loosened > 0 { s[0].sp.walls_dirty = true; }
   moved := 0;
-  for b: 0..<DEMO_BODIES {
+  for b: 0..<w[0].body_hi {
     if w[0].meta[b].kind == 0 { continue; }
     body := demo_body(w, b);
     bp := pd3(body.pos);

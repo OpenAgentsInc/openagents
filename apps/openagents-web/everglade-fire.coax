@@ -182,7 +182,7 @@ fi_blast :: (s: [] Everglade, at: Point, radius: f32, kind: int, mega: bool) {
 // Piece i, breaking (by fire or by what fell): its new chunks charred, some burning on.
 fi_char_chunks :: (s: [] Everglade, burning: bool) {
   w := sp_dm(s);
-  for b: 0..<DEMO_BODIES {
+  for b: 0..<w[0].body_hi {
     if w[0].meta[b].kind == 0 || w[0].meta[b].born != w[0].clock { continue; }
     k := 0.25 + 0.2 * sp_rand(s);
     w[0].meta[b].cr *= k; w[0].meta[b].cg *= k * 0.92; w[0].meta[b].cb *= k * 0.85;
@@ -399,7 +399,7 @@ fi_dome_frame :: (s: [] Everglade, dt: f32) {
     v[0].dome_cool = hi(v[0].dome_cool - dt, 0);
     if v[0].dome_cool <= 0 {
       c := fi_dome_centre(s);
-      for b: 0..<DEMO_BODIES {
+      for b: 0..<w[0].body_hi {
         if w[0].meta[b].kind == 0 || demo_asleep(w, b) { continue; }
         k := b * DB_FLOATS;
         at := v3(cast(f32) w[0].state[k + 4], cast(f32) w[0].state[k + 5], cast(f32) w[0].state[k + 6]);

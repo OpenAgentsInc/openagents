@@ -53,6 +53,7 @@ WatchView :: struct {
   net: bool;
   // the room server's pieces: what stood and what burnt when the pages last heard, and what they hear
   room_stood: [DEMO_PIECES] bool; room_burnt: [DEMO_PIECES] bool; room_known: bool;
+  room_fell: int; room_any_burnt: bool;   // the town's DemoWorld.fell when last read, and whether a piece was burning
   room_ev: [EG_ROOM_EVENTS * EG_ROOM_EV_FLOATS] f32; room_ev_n: int;
   room_hit: Point; room_by: int;
   server: bool;                    // this is the room server's world (everglade_room_town)
@@ -1008,6 +1009,7 @@ eg_room_known :: (s: [] Everglade) {
   if s[0].sp.dm.count < 1 { return; }
   w := sp_dm(s);
   for i: 0..<DEMO_PIECES { s[0].wv.room_stood[i] = i < w[0].n && w[0].pieces[i].state == DP_STANDING; s[0].wv.room_burnt[i] = false; }
+  s[0].wv.room_fell = -1;   // the next tick reads every piece
   v := fi_of(s);
   for k: 0..<v[0].n { s[0].wv.room_burnt[v[0].burn[k].piece] = true; }
   s[0].wv.room_known = true;
@@ -1049,8 +1051,11 @@ everglade_room_spells :: (s: [] Everglade, dt: f32) -> int #export_c {
   now: [DEMO_PIECES] bool;
   v := fi_of(s);
   for k: 0..<v[0].n { now[v[0].burn[k].piece] = true; }
+  // the pieces read only when one has fallen or burns (or stopped burning) since: most ticks none has (#12717)
+  scan := w[0].fell != s[0].wv.room_fell || v[0].n > 0 || s[0].wv.room_any_burnt;
+  s[0].wv.room_fell = w[0].fell; s[0].wv.room_any_burnt = v[0].n > 0;
   // each piece read in place (a copy of each of the 4000 pieces every tick was most of this step: #12717)
-  for i: 0..<w[0].n {
+  for i: 0..<(ifx scan then w[0].n else 0) {
     standing := w[0].pieces[i].state == DP_STANDING;
     if s[0].wv.room_stood[i] && !standing {
       c := v3(w[0].pieces[i].cx, w[0].pieces[i].cy, w[0].pieces[i].cz);

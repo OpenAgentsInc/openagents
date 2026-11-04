@@ -154,10 +154,10 @@ door_bodies :: (s: [] Everglade, out: [] f32, at: int, x: f32, z: f32) -> int {
   n := 0; doors := 0;
   for i: 0..<EG_DOORS {
     if doors >= DOOR_NEAR_BODIES || (at + n + 2) * 7 > out.count { break; }
-    if !door_up(s, i) { continue; }
+    // how far first, read in place: a copy of every door, every step, was most of this (#12717)
+    dx := s[0].doors.d[i].mx - x; dz := s[0].doors.d[i].mz - z;
+    if dx * dx + dz * dz > f32(DOOR_BODY_REACH) * f32(DOOR_BODY_REACH) || !door_up(s, i) { continue; }
     d := s[0].doors.d[i];
-    dx := d.mx - x; dz := d.mz - z;
-    if dx * dx + dz * dz > f32(DOOR_BODY_REACH) * f32(DOOR_BODY_REACH) { continue; }
     e := door_leaf_dir(d);
     tx := d.hx + e.x * f32(DOOR_LEAF); tz := d.hz + e.z * f32(DOOR_LEAF);
     for h: 0..<2 {
