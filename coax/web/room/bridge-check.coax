@@ -84,6 +84,13 @@ bc_walk :: (c: [] RelayConn, h: [] BcHeard, seq: [] int, gx: f32, gz: f32, ms: i
     n += 1;
     while rs_now() - t0 < n * 33 { bc_drain(c, h); proc_sleep(2); }
   }
+  // say where they stopped short, so a wall or a placed thing in the way shows
+  m: [160] u8;
+  k := rs_put(m[..], 0, "bridge-check: short of "); k = rs_int(m[..], k, cast(int) gx); k = rs_put(m[..], k, " ");
+  k = rs_int(m[..], k, cast(int) gz); k = rs_put(m[..], k, ": A at "); k = rs_int(m[..], k, cast(int) h[0].ax);
+  k = rs_put(m[..], k, " "); k = rs_int(m[..], k, cast(int) h[0].az); k = rs_put(m[..], k, ", B at ");
+  k = rs_int(m[..], k, cast(int) h[1].bx); k = rs_put(m[..], k, " "); k = rs_int(m[..], k, cast(int) h[1].bz);
+  tool_errln(cast(string) m[0..<k]);
   return false;
 }
 // Both stand for ms, hearing what comes.
@@ -101,8 +108,10 @@ bc_idle :: (c: [] RelayConn, h: [] BcHeard, seq: [] int, ms: int, sent: [] bool)
     while rs_now() - t0 < n * 33 { bc_drain(c, h); proc_sleep(2); }
   }
 }
-// A's way from the spawn to the East Gate road: the streets (plan.coax EG_NODE_XZ 9, 8, 2, 5, 1, 13, 14).
-BC_WAY :: [14] f32.[0, -56,   0, -34,   0, -12,   8, -8,   12, 0,   44, 0,   64, 0];
+// A's way from the spawn to the East Gate road: a step east, clear of the crate the realm's published
+// world puts on the road about 1.5 m north of the spawn (the room server lays it since 29a442405b),
+// then the streets (plan.coax EG_NODE_XZ 9, 8, 2, 5, 1, 13, 14).
+BC_WAY :: [16] f32.[2.5, -56,   2.5, -50,   0, -34,   0, -12,   8, -8,   12, 0,   44, 0,   64, 0];
 
 tool_main :: () -> int #export_c {
   a: [1] Args;
@@ -119,7 +128,7 @@ tool_main :: () -> int #export_c {
   t0 := rs_now();
   // both to the East Gate road, 24 m from the deck: out of the meteors' way
   at_road := true;
-  for q: 0..<7 { at_road = bc_walk(c[..], h[..], seq[..], BC_WAY[q * 2], BC_WAY[q * 2 + 1], 12000, true, sent[..]) && at_road; }
+  for q: 0..<8 { at_road = bc_walk(c[..], h[..], seq[..], BC_WAY[q * 2], BC_WAY[q * 2 + 1], 12000, true, sent[..]) && at_road; }
   // B calls Meteor Swarm (slot 0) down on the middle of the deck from there
   m: [128] u8;
   k := rs_int(m[..], rs_put(m[..], 0, "C "), seq[1] + 1);
