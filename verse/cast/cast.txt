@@ -8,14 +8,17 @@
 #     pack      PACK-ID
 #     voice     PROVIDER VOICE      google (Cloud Text-to-Speech) is wired; elevenlabs is the spec's other
 #     framing   head-shoulders      the speaking stage's one framing so far
+#     camera    DIST DROP           this character's portrait camera: metres back from the head joint
+#                                   and how far below it the camera looks (default 0.68 0.05)
 #     backdrop  town-hall-night     the speaking stage's one backdrop so far
 #     say       WORD = PHONEMES     ARPAbet, for names and made-up words
 
 character mayor
   name      "Mayor Tobin Hale"                # placeholder; the owner names him
-  pack      everglade-mayor                   # placeholder: MetaHuman Lab's pack until the owner designs the mayor
+  pack      everglade-mayor                   # his own MetaHuman, in his mayoral outfit
   voice     google en-US-Chirp3-HD-Charon     # for lines without a supplied take (Chirp 3 HD takes no pitch)
   framing   head-shoulders
+  camera    0.62 -0.17                        # his head centred: eyes 40% down, chin 65%, collar at the foot
   backdrop  town-hall-night
   say       Odiodei = OW D IY OW D EY       # said "Odeodei": oh-dee-oh-day
   say       Everglade = EH V ER G L EY D

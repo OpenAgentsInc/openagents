@@ -6,7 +6,10 @@ Fantasy (CC0; the clothes Everglade's people and 5E Lab's classes wear), fitted 
 
 Outfits (OUTFITS): fantasy (the ranger's tunic, trousers, boots, belt and bracers), hooded (the
 same with the hood, its hair clipped inside it, and a pauldron on each shoulder) and robe (the peasant's shirt,
-corset and shoes under a long wool skirt, robe_skirt(), which hides the legs).
+corset and shoes under a long wool skirt, robe_skirt(), which hides the legs) and mayoral (a man's:
+the male peasant's tunic dyed a wine waistcoat with its collar, the ranger's long sleeves and
+the long tails of a navy wool coat to mid-calf, its trousers and boots, and a gold chain of office, chain(),
+modelled here, across the chest with a medallion).
 
 The clothes were made on the Universal Base Characters' superhero female (the outfits' own
 skeleton; their arms lie 4 mm off it), in its T pose. The target is any body in the people rig's
@@ -38,6 +41,8 @@ import people
 
 OUTFITS_DIR = "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits"
 BASE = "~/Downloads/Universal Base Characters[Standard]/Base Characters/Godot - UE/Superhero_Female_FullBody.gltf"
+# a male outfit's source: its own skeleton (the male outfits') and body
+MALE = {"skeleton": "Male_Peasant", "base": BASE.replace("Superhero_Female", "Superhero_Male"), "skin": "MI_Superhero_Male"}
 SKIN = ("MI_Regular_Female", "MI_Regular_Male")
 HAND = ("hand", "index", "middle", "ring", "pinky", "thumb")      # the outfits' bare hands and necks: the target's own skin shows
 RANGER = ["Female_Ranger_Body", "Female_Ranger_Arms", "Female_Ranger_Arms_Bracer", "Female_Ranger_Body_Belt_1",
@@ -60,6 +65,28 @@ OUTFITS = {
              # a long skirt (robe_skirt): from just under the bodice's lower edge to a hand above
              # the ankle, close round the hips and an A-line below them
              "robe": {"top": 102.0, "hem": 6.0, "slope": 0.09}},
+    # Everglade's mayor: the male peasant's tunic dyed a deep wine (a waistcoat, its collar and
+    # buttons kept), the male ranger's long sleeves and gloves a navy coat's (to the wrist); the coat's tails a navy wool skirt from the belt to
+    # mid-calf, open over the trousers and boots (robe_skirt with "legs": the legs stay drawn); a
+    # gold chain of office over the chest (chain())
+    "mayoral": {"sex": "male", "hair": True,
+              "parts": [("Male_Peasant", ["Male_Peasant_Body", "Male_Peasant_Legs", "Male_Peasant_Feet"]),
+                        ("Male_Ranger", ["Male_Ranger_Arms"])],
+              "tint": {"Male_Ranger_Arms": (0.07, 0.08, 0.2), "Male_Peasant_Legs": (0.45, 0.42, 0.42)},
+              # the tunic cut three ways where it lies: its collar a shirt's (cream), the front
+              # between the coat's open edges a waistcoat (wine), the rest the coat (navy)
+              # the tunic's image in grey (its ochre yoke and khaki alike), so each part's tint is its colour
+              "grey": ["Male_Peasant_Body"],
+              "split": ("Male_Peasant_Body", {
+                  "Shirt_Collar": ((1.15, 1.12, 1.05), lambda c, nk: c[1] > nk[1] - 4.0 and math.hypot(c[0] - nk[0], c[2] - nk[2]) < 9.0),
+                  "Waistcoat": ((0.42, 0.1, 0.12), lambda c, nk: c[2] > nk[2] and abs(c[0] - nk[0]) < 8.0 and c[1] < nk[1] - 4.0),
+                  "Coat": ((0.05, 0.06, 0.16), None)}),
+              # the trunk's skin from this far (cm) under the neck's base down is the coat's
+              # (metahuman.fitted): a man's chest stands out of the tunic in the bind pose
+              "trunk_covered": 7.0,
+              "head_under": "Shirt_Collar",
+              "robe": {"top": 101.0, "hem": 26.0, "slope": 0.12, "wool": (30, 34, 52), "trim": (176, 132, 58)},
+              "chain": True},
 }
 LICENCE = "Quaternius Modular Character Outfits - Fantasy|CC0 1.0"
 GAP_MIN = 0.3        # cm: the least cloth stands off the skin
@@ -170,7 +197,8 @@ def source(outfit, sex="female"):
     (base, normal, rough), vertices {x, n, uv, ws (rig joint, weight)} and triangles; and the
     source body's surface (points, normals, weights) and joints."""
     spec = OUTFITS[outfit]
-    sk = people.Skeleton(people.load(f"{OUTFITS_DIR}/Female_Ranger.gltf"))
+    male = spec.get("sex") == "male"
+    sk = people.Skeleton(people.load(f"{OUTFITS_DIR}/{MALE['skeleton'] if male else 'Female_Ranger'}.gltf"))
     lower = [n.lower() for n in sk.names]
     skel = {"female": sk}
     def verts(pr):
@@ -205,7 +233,8 @@ def source(outfit, sex="female"):
                 pc = {"name": name, "material": pr["material"],
                       "rgb": spec.get("tint", {}).get(name, tuple(pbr.get("baseColorFactor", (1, 1, 1, 1))[:3])),
                       "rough": pbr.get("roughnessFactor", 1.0),
-                      "images": (img(pbr.get("baseColorTexture")), img(m.get("normalTexture")), img(pbr.get("metallicRoughnessTexture"))),
+                      "images": (grey(img(pbr.get("baseColorTexture"))) if name in spec.get("grey", ()) else img(pbr.get("baseColorTexture")),
+                                 img(m.get("normalTexture")), img(pbr.get("metallicRoughnessTexture"))),
                       "verts": verts(pr), "tris": pr["tris"], "own_weights": False}
                 if not any(k in name for k in SNUG_SKIP + SUBDIVIDE_SKIP):
                     while len(pc["tris"]) < SUBDIVIDE_TRIS:
@@ -213,11 +242,11 @@ def source(outfit, sex="female"):
                 pieces.append(pc)
                 if name in spec.get("mirror", ()):
                     pieces.append(mirrored(pc, lower))
-    body = [v for pr in people.part_file({"name": "base", "body": "female"}, BASE, None, skel)
-            if pr["material"].startswith("MI_Superhero") for v in verts(pr)]
+    body = [v for pr in people.part_file({"name": "base", "body": "female"}, MALE["base"] if male else BASE, None, skel)
+            if pr["material"].startswith(MALE["skin"] if male else "MI_Superhero") for v in verts(pr)]
     if "robe" in spec:
         verts_, tris = robe_skirt(spec["robe"], [b["x"] for b in body], joints, lower)
-        base, normal = robe_cloth()
+        base, normal = robe_cloth(wool=spec["robe"].get("wool", ROBE_WOOL), trim=spec["robe"].get("trim", ROBE_TRIM))
         pieces.append({"name": "Robe", "material": "MI_Peasant", "rgb": (1.0, 1.0, 1.0), "rough": 0.92,
                        "images": (base, normal, None), "verts": verts_, "tris": tris, "own_weights": True})
     return pieces, body, joints, sk.parent, lower
@@ -461,7 +490,114 @@ def fit(outfit, target, log=print):
     for pc in pieces:
         if pc["own_weights"]:
             renormal(pc)
+    split = OUTFITS[outfit].get("split")
+    if split:
+        cut = [pc for pc in pieces if pc["name"] == split[0]]
+        pieces = [pc for pc in pieces if pc["name"] != split[0]] + \
+            [q for pc in cut for q in split_piece(pc, split[1], target["joints"], lower)]
+    if OUTFITS[outfit].get("chain"):
+        pieces.insert(0, chain(pieces, target["joints"], lower))
     return pieces
+
+
+CHAIN_BEAD_CM = 0.55     # a link's radius
+CHAIN_STEP_CM = 0.95     # links along the chain (they touch)
+CHAIN_MEDAL_CM = 2.8     # the medallion's radius
+CHAIN_OFF_CM = 0.9       # how far it rides off the cloth (it moves as one; the cloth under it bends)
+CHAIN_GOLD = (0.62, 0.4, 0.09)   # the tint over that patch
+CHAIN_UV = (0.262, 0.895)  # a plain pale patch of T_Peasant_BaseColor (its texels at u, v down the image)
+
+
+def chain(pieces, J, lower):
+    """A gold chain of office (modelled here): links along a U over the chest, from either side of
+    the neck's base down to a medallion at the breastbone, each on the cloth's front (the frontmost
+    cloth near it, plus its radius), the whole chain moving as one with the cloth under it."""
+    neck = J[lower.index("neck_01")]; chest = J[lower.index("spine_03")]
+    top, drop, half = neck[1] - 2.0, max(14.0, 0.75 * (neck[1] - chest[1])), 8.5
+    front = [(v["x"], v["ws"]) for pc in pieces if not pc["own_weights"] for v in pc["verts"] if v["n"][2] > 0.2]
+    grid = Near([(x[0], x[1], 0.0) for x, _ in front], cell=1.5)
+    def on_cloth(x, y, r):
+        near = grid.within((x, y, 0.0), 1.5) or grid.nearest((x, y, 0.0), 1.5, 12.0)
+        i = max(near, key=lambda di: front[di[1]][0][2])[1]
+        return (x, y, front[i][0][2] + r + CHAIN_OFF_CM), front[i][1]
+    path = []
+    for k in range(400):
+        s = -1.0 + 2.0 * k / 399
+        path.append((half * s, top - drop * (1.0 - s * s)))
+    beads, at, acc = [], 0.0, {}
+    last = path[0]
+    for p in path:
+        at += math.dist(p, last); last = p
+        if at >= CHAIN_STEP_CM or not beads:
+            at = 0.0
+            if abs(p[0]) < CHAIN_MEDAL_CM * 0.9:
+                continue
+            c, ws = on_cloth(p[0], p[1], CHAIN_BEAD_CM)
+            beads.append((c, CHAIN_BEAD_CM, 1.0))
+            for j, w in ws:
+                acc[j] = acc.get(j, 0.0) + w
+    mc, ws = on_cloth(0.0, top - drop - CHAIN_MEDAL_CM * 0.8, 0.6)
+    for j, w in ws:
+        acc[j] = acc.get(j, 0.0) + w
+    beads.append((mc, CHAIN_MEDAL_CM, 0.25))   # the medallion: a flattened bead
+    t = sum(acc.values()) or 1.0
+    ws = sorted(((j, w / t) for j, w in acc.items()), key=lambda jw: -jw[1])[:4]
+    tw = sum(w for _, w in ws); ws = [(j, w / tw) for j, w in ws]
+    verts, tris = [], []
+    R, S = 6, 10
+    for c, r, flat in beads:
+        b = len(verts)
+        for i in range(R + 1):
+            th = math.pi * i / R
+            for k in range(S):
+                ph = 2 * math.pi * k / S
+                n = (math.sin(th) * math.cos(ph), math.cos(th), math.sin(th) * math.sin(ph) * flat)
+                verts.append({"x": (c[0] + r * n[0], c[1] + r * n[1], c[2] + r * n[2]), "n": unit((n[0], n[1], n[2] / (flat * flat))),
+                              # uv round each link (a small patch, so its tangents are real: a constant uv has none)
+                              "uv": (CHAIN_UV[0] + 0.02 * k / S, CHAIN_UV[1] + 0.02 * i / R), "ws": list(ws)})
+        for i in range(R):
+            for k in range(S):
+                a, bb = b + i * S + k, b + i * S + (k + 1) % S
+                c2, d = a + S, bb + S
+                tris += [(a, bb, c2), (bb, d, c2)]   # counter-clockwise from outside
+    # its gold is the material's tint over a plain light patch of the outfits' own (grey) image
+    return {"name": "Chain_Of_Office", "material": "MI_Gold", "rgb": CHAIN_GOLD, "rough": 0.5,
+            "images": (grey(Path(OUTFITS_DIR).expanduser() / "T_Peasant_BaseColor.png"), None,
+                       Path(OUTFITS_DIR).expanduser() / "T_Peasant_ORM.png"),   # (no roughness layer reads as a mirror)
+            "verts": verts, "tris": tris, "own_weights": False, "trim": True}
+
+
+def garment_names(outfit):
+    """The pieces an outfit packs: its parts' meshes (a split one as its parts), the robe's skirt
+    and the chain of office."""
+    spec = OUTFITS[outfit]
+    split = spec.get("split")
+    names = {n for _, ms in spec["parts"] for n in (ms or [])}
+    if split:
+        names = (names - {split[0]}) | set(split[1])
+    return names | ({"Robe"} if "robe" in spec else set()) | ({"Chain_Of_Office"} if spec.get("chain") else set())
+
+
+def split_piece(pc, parts, J, lower):
+    """A fitted piece cut into named parts by where its triangles lie (T pose, cm): parts maps a
+    new name to (tint, test(centroid, neck)); the first test a triangle passes names it, the last
+    part takes the rest. Each part keeps the piece's images and only its own vertices."""
+    neck = J[lower.index("neck_01")]
+    names = list(parts)
+    own = {n: [] for n in names}
+    for t in pc["tris"]:
+        c = scale(add(add(pc["verts"][t[0]]["x"], pc["verts"][t[1]]["x"]), pc["verts"][t[2]]["x"]), 1.0 / 3)
+        n = next((n for n in names[:-1] if parts[n][1](c, neck)), names[-1])
+        own[n].append(t)
+    out = []
+    for n in names:
+        tris = own[n]
+        if not tris:
+            continue
+        used = sorted({i for t in tris for i in t}); renum = {i: k for k, i in enumerate(used)}
+        out.append({**pc, "name": n, "rgb": parts[n][0], "verts": [pc["verts"][i] for i in used],
+                    "tris": [tuple(renum[i] for i in t) for t in tris]})
+    return out
 
 
 def snug(pieces, target, tnear, lower, log=print):
@@ -613,13 +749,14 @@ def renormal(pc):
         v["n"] = unit(acc.get(k, (0.0, 0.0, 1.0)))
 
 
-def robe_cloth(size=2048):
+def robe_cloth(size=2048, wool=ROBE_WOOL, trim=ROBE_TRIM):
     """The skirt's wool (generated, CC0): a twill weave over a slow mottle, with an ochre braid
     along the hem; and its normal map (green up) from the weave's height. Cached under
     ~/.openagents/verse/build/cloth."""
     from PIL import Image, ImageFilter
     out = Path.home() / ".openagents/verse/build/cloth"
-    base, normal = out / f"robe-wool-{size}.png", out / f"robe-wool-{size}-normal.png"
+    tag = "" if (wool, trim) == (ROBE_WOOL, ROBE_TRIM) else "-%02x%02x%02x" % tuple(wool)
+    base, normal = out / f"robe-wool{tag}-{size}.png", out / f"robe-wool{tag}-{size}-normal.png"
     if base.exists() and normal.exists():
         return base, normal
     out.mkdir(parents=True, exist_ok=True)
@@ -649,7 +786,8 @@ def robe_cloth(size=2048):
             nm.paste(tile_n, (x, y)); shade.paste(tile_b, (x, y))
     mottle = Image.effect_noise((size // 32, size // 32), 40).resize((size, size), Image.BICUBIC).filter(ImageFilter.GaussianBlur(6))
     grain = Image.effect_noise((size, size), 18).filter(ImageFilter.GaussianBlur(0.6))
-    wool = Image.new("RGB", (size, size), ROBE_WOOL)
+    colour = wool
+    wool = Image.new("RGB", (size, size), colour)
     px, sh, mo, gr = wool.load(), shade.load(), mottle.load(), grain.load()
     trim0, trim1 = int(size * 0.955), int(size * 0.985)    # the braid, near the hem (v runs down)
     for y in range(size):
@@ -660,9 +798,9 @@ def robe_cloth(size=2048):
                 # a diamond chain on the braid
                 u = (x % 64) / 64.0; v = (y - trim0) / (trim1 - trim0)
                 on = abs(u - 0.5) + abs(v - 0.5) < 0.42
-                c = ROBE_TRIM if on else tuple(int(q * 0.55) for q in ROBE_TRIM)
+                c = trim if on else tuple(int(q * 0.55) for q in trim)
             else:
-                c = ROBE_WOOL
+                c = colour
             px[x, y] = tuple(min(255, int(q * f)) for q in c)
     wool.save(base); nm.save(normal)
     return base, normal
@@ -802,7 +940,8 @@ def under(body_x, body_w, skip, pieces, lower, force=()):
     body points."""
     from PIL import Image
     open_j = {k for k, n in enumerate(lower) if n.split("_")[0] in OPEN}
-    gx = [(k, v) for k, pc in enumerate(pieces) for v in pc["verts"]]
+    # (a trim, the chain of office, lies on the cloth: no skin is its)
+    gx = [(k, v) for k, pc in enumerate(pieces) if not pc.get("trim") for v in pc["verts"]]
     near = Near([v["x"] for _, v in gx], cell=UNDER_CM)
     images = {}
     groups = {}
@@ -864,6 +1003,17 @@ def pack_under(pack, groups, verts, tris, materials, prefix="under"):
         inset = [{**verts[i], "p": tuple(p - n * depth / 100.0 for p, n in zip(verts[i]["p"], verts[i]["n"]))} for i in used]
         pack.piece(f"{prefix}/{name}", inset, [tuple(renum[i] for i in t) for t in ts],
                    materials[key], solid(rgb))
+
+
+def grey(path):
+    """An image in grey at the same lightness (its luminance), cached beside the cloth images."""
+    from PIL import Image
+    out = Path.home() / ".openagents/verse/build/cloth"
+    out.mkdir(parents=True, exist_ok=True)
+    dst = out / (Path(path).stem + "-grey.png")
+    if not dst.exists():
+        Image.open(path).convert("L").convert("RGB").save(dst)
+    return dst
 
 
 def solid(rgb):

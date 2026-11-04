@@ -167,8 +167,7 @@ def main(argv):
     if worn and worn not in ("student", "bare"):
         sys.path.insert(0, str(Path(__file__).resolve().parent)); sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
         import outfits
-        spec = outfits.OUTFITS[worn]
-        want = {m for _, ms in spec["parts"] for m in (ms or [])} | ({"Robe"} if "robe" in spec else set())
+        want = outfits.garment_names(worn)
         have = {m.group(1) for m in re.finditer(r"^P (\S+) ", cat, re.M)}
         print(f"garments: {worn}: {len(want & have)} of {len(want)} named garments packed; missing {sorted(want - have)}")
         if want - have:

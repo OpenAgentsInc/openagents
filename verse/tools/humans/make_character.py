@@ -23,6 +23,9 @@ environment:
                        autorig   the cloud face rig, joints and blend shapes (blocking)
                        textures  the cloud texture sources, highest resolution (blocking)
                        export    head and body DNA, the DCC bundle (maps), to CHARACTER_EXPORT
+                       cards     each chosen groom's hair cards (LOD 0, OBJ) and cards atlas (TGA),
+                                 to CHARACTER_EXPORT/grooms/NAME (they sit on the archetype
+                                 head; pack_human.py carries them onto the DNA head)
   CHARACTER_RENDER   where shots go (PNG)
   CHARACTER_EXPORT   where exports go
 
@@ -207,6 +210,36 @@ def export(c, name):
     return (a, b)
 
 
+CARDS_ROOT = "/MetaHumanCharacter/Optional/Grooms/GroomAssets"
+CARDS_SLOTS = ("Hair", "Eyebrows", "Beard", "Mustache")   # lashes and peach fuzz stay the DNA's or none
+
+
+def save_as(obj, path):
+    t = unreal.AssetExportTask()
+    t.object, t.filename, t.automated, t.prompt, t.replace_identical = obj, path, True, False, True
+    return unreal.Exporter.run_asset_export_task(t)
+
+
+def cards(recipe):
+    """Per chosen groom its cards and atlas, as the engine ships them (they sit on the archetype head)."""
+    reg = unreal.AssetRegistryHelpers.get_asset_registry()
+    done = []
+    for slot, (item, _) in (recipe.get("grooms") or {}).items():
+        if item is None or slot not in CARDS_SLOTS:
+            continue
+        groom = item[len("WI_"):] if item.startswith("WI_") else item
+        out = os.path.join(EXPORT, "grooms", groom)
+        os.makedirs(out, exist_ok=True)
+        for a in reg.get_assets_by_path(f"{CARDS_ROOT}/{GROOM_DIRS.get(slot, slot)}/{groom}", recursive=True):
+            n, cls = str(a.asset_name), str(a.asset_class_path.asset_name)
+            if cls == "StaticMesh" and n.endswith("_LOD0"):
+                log(f"cards {n}: {save_as(a.get_asset(), os.path.join(out, n + '.obj'))}")
+            elif cls == "Texture2D" and "CardsAtlas_Attribute" in n:
+                log(f"atlas {n}: {save_as(a.get_asset(), os.path.join(out, n + '.tga'))}")
+        done.append(groom)
+    return done
+
+
 def render(c, sub, name):
     """Spawns the preview, lights it as a portrait and shoots it once shaders and textures settle."""
     os.makedirs(RENDER, exist_ok=True)
@@ -320,6 +353,8 @@ def main():
         if "export" in STEPS:
             os.makedirs(EXPORT, exist_ok=True)
             step("export", lambda: export(c, name))
+        if "cards" in STEPS:
+            step("cards", lambda: cards(recipe))
         if "render" in STEPS:
             if step("render", lambda: render(c, sub, name) or "waiting for shaders") is not None:
                 return

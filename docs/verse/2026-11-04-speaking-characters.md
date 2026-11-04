@@ -223,18 +223,30 @@ recipe `verse/tools/humans/characters/everglade-mayor.json`, in git: names and n
    `request_texture_sources` use the editor's stored Epic sign-in (a persistent login). Neither
    needs a person. The head and body DNA and the DCC maps go to
    `~/work/film-out/everglade-mayor/metahuman/export/`.
-4. **Pack.** `python3 verse/tools/humans/pack_human.py metahuman EXPORT_DIR OUT.pack --phone` builds
-   the pack with its face rig (`DNA_DUMP` names OpenRigLogic's `dna_dump`). `pack_checks.py` checks
+4. **Hair cards.** The `cards` step exports each chosen groom's cards (LOD 0, OBJ) and cards atlas
+   (TGA) to `EXPORT/grooms/`. The cards sit on the engine's archetype face. The packer carries each
+   card point by its nearest archetype points' moves onto the mayor's head (the same topology) and
+   colours the strands his greys. The beard, moustache and brow cards also ride the face rig with
+   their nearest head points, so the beard opens with the jaw; the scalp's hair follows the head
+   joint, since the lab's face rig holds at most 65,536 vertices. The pack fails if the brows sit
+   more than 0.6 cm off the archetype skin, which means the cards' frame is wrong.
+5. **Outfit.** `outfits.py`'s `mayoral` outfit is made from Quaternius CC0 parts and parts we
+   modelled, never MetaHuman garments, fitted to the male body. The male peasant's tunic is cut
+   three ways: a cream shirt collar, a wine waistcoat between the coat's open edges, and the navy
+   coat. The coat's sleeves are the male ranger's, which reach the wrist. Its tails are a navy wool
+   skirt to mid-calf, and `chain()` models a gold chain of office with a medallion. The head
+   mesh's skin below the collar and the trunk's skin under the coat are left out, so his chest
+   never shows through.
+6. **Pack.** `python3 verse/tools/humans/pack_human.py metahuman EXPORT_DIR OUT.pack --outfit mayoral --phone`
+   builds the pack with its face rig (`DNA_DUMP` names OpenRigLogic's `dna_dump`). `pack_checks.py` checks
    that the mouth moves: each viseme must move the lips by at least 0.3 cm, and `mbp` must close
    them. The pack is `~/.openagents/verse/private-build/web/everglade-mayor.pack`, and the
    owner-local `speak/packs.txt` maps `everglade-mayor` to it.
-5. **Upload.** `upload_packs.sh` puts it in the private bucket. This step is on hold while
+7. **Framing.** The cast file's `camera 0.62 -0.17` frames his head and shoulders. The tool passes
+   it to the lab as `&cam=`. His eyes sit about 40% from the top, his chin about 65%, and his collar
+   at the bottom edge. Other characters keep the default camera.
+8. **Upload.** `upload_packs.sh` puts it in the private bucket. This step is on hold while
    production deploys are paused.
-6. **Hair and outfit.** The pack has no hair, beard or clothes yet. Unreal's export library writes
-   no grooms, and the packer takes hair cards only from Draconia's portrait. The mayor's hair and
-   beard cards need the groom-card step back (`groom_export.py` at `853417f290`). His coat, chain of
-   office and hat go in `outfits.py`, made from CC0 parts or modelled for us, never from MetaHuman
-   garments.
 
 ## Face rig work this needs
 

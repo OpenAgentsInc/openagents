@@ -8,7 +8,7 @@ one VPK1 file (verse/tools/pack_realm.py has the container) that the lab's page 
 
 --phone also writes NAME-phone.pack beside it (write(): smaller layers, the body and clothes from
 their first lower level of detail, a lean face rig), the one host.js asks for on a phone.
---outfit dresses the body in a Quaternius fantasy outfit (outfits.py: fantasy, hooded, robe)
+--outfit dresses the body in a Quaternius fantasy outfit (outfits.py: fantasy, hooded, robe, mayoral)
 instead of the portrait's clothes (a MetaHuman) or none (the stand-in). OUT.pack defaults to
 ~/.openagents/verse/private-build/web/NAME.pack (standin.pack or human.pack, or with the
 outfit's name after a dash: human-fantasy.pack), the directory coax/web/serve.c serves as /private/ on a local address. Nothing
@@ -381,6 +381,7 @@ class Pack:
 # layers stay as they are; the face rig keeps only what the lab's expressions reach
 # (face_rig.pack lean). host.js asks for it on a phone.
 PHONE_SIZE = 1024
+FACE_VERTICES_MAX = 65536   # the lab's face range (metahumanlab.coax FACE_VERTICES): a pack past it draws no face rig
 
 
 def phone_keeps(p):
@@ -456,6 +457,8 @@ def write(pack, out, size, phone=False):
     if pack.face and face_first is not None:
         faces = [p for p in order if "face" in p]
         n = sum(len(p["verts"]) for p in faces)
+        if n > FACE_VERTICES_MAX:
+            raise SystemExit(f"pack_human: {n} face rig vertices, past the lab's {FACE_VERTICES_MAX} (metahumanlab.coax FACE_VERTICES)")
         block = pack.face(faces, phone)
         # the face rig: its vertices' range and its block's length (the block follows the text, after a NUL)
         lines.append(f"F {face_first} {n} {len(block)}")
@@ -579,7 +582,8 @@ def main(argv):
         import metahuman
         if len(argv) < 2:
             raise SystemExit("pack_human: metahuman EXPORT_DIR [OUT.pack]")
-        pack = Pack("metahuman", "male", "MetaHuman (private; never committed, never used to train AI models)")
+        pack = Pack("metahuman", "male", "MetaHuman (private; never committed, never used to train AI models)" +
+                    (f"; {outfits.LICENCE}" if outfit else ""))
         export = Path(os.path.expanduser(argv[1]))
         out = Path(argv[2]) if len(argv) > 2 else OUT_DIR / f"human{suffix}.pack"
         # the portrait's clothes (the student's) only where the export has a portrait; the base is

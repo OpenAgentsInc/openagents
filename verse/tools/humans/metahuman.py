@@ -410,6 +410,15 @@ def build(pack, export, outfit=None):
     if skin and any(pc["material"] == pack_human.MATERIALS["hair"] for pc in pack.pieces):
         hb, hn, hr = skin["head_lod0_mesh"]
         skin["head_lod0_mesh"] = (scalp(hb, head / "head_lod0_mesh.obj", pack, flip_v), hn, hr)
+    # the head mesh reaches down over the collarbones: under a closed collar (an outfit's
+    # "head_under": its piece) the head's skin below the collar's foot is the cloth's
+    head_hide = None
+    under_name = outfit and outfits.OUTFITS[outfit].get("head_under")
+    if under_name:
+        foot = min(v["p"][1] for pc in pack.pieces if pc["name"] == under_name for v in pc["verts"]) * 100.0
+        hv = obj(head / "head_lod0_mesh.obj")[0]
+        head_hide = {i for i, x in enumerate(hv) if x[1] < foot}
+        print(f"head under the collar: {len(head_hide)} of {len(hv)} head positions hidden")
     for name, (material, base, normal, rough) in MESHES.items():
         src = body if name.startswith("body") else head
         J = JB if src is body else JH
@@ -418,7 +427,8 @@ def build(pack, export, outfit=None):
             continue
         under = src is body and getattr(pack, "under", None)
         verts, tris = mesh(path, skin_file(src / f"{name}.skin.txt"), J, flip_v,
-                           hide=covered if src is body and not under else None,
+                           hide=(covered if src is body and not under else None) if src is body else
+                           (head_hide if name == "head_lod0_mesh" else None),
                            posed=(down["x"], down["vn"]) if src is body else None)
         if under:
             # the skin meant to be covered as the cloth under the outfit (outfits.under), the rest
@@ -433,6 +443,9 @@ def build(pack, export, outfit=None):
         pack.piece(name.replace("_lod0_mesh", ""), verts, tris, material, *layers)
         if src is head and name in face_rig.FACE_MESHES:
             pack.pieces[-1]["face"] = name
+    # no portrait (whose grooms ride the head already): the export's own hair cards
+    if (export / "grooms").is_dir() and not portrait.exists():
+        cards(pack, export / "grooms", head)
     face(pack, head)
     pack.binds = binds(M, W, p)
     pack.tints.update({"skin": (1.0, 1.0, 1.0, 1.0), "eye": (1.0, 1.0, 1.0, 0.25), "teeth": (1.0, 1.0, 1.0, 0.5),
@@ -441,6 +454,114 @@ def build(pack, export, outfit=None):
     pack.tints.update(pack_human.EYE_TINTS)
     pack.body = "female" if female else "male"
     return {"flip_v": flip_v}
+
+
+# ---- hair cards (make_character.py's cards step): the grooms' cards carried onto the DNA head
+
+# The engine's archetype face, the head the shipped cards were groomed on (its DNA, dumped).
+ARCHETYPE_FACE = "/Users/Shared/Epic Games/UE_5.8/Engine/Plugins/MetaHuman/MetaHumanCoreTechLib/Content/ArchetypeDNA/SKM_Face.dna"
+# The cards' export frame from the archetype's DNA frame (cm): measured once, by the brows' fit
+# (their median distance to the archetype skin 0.24 cm with it), and checked every pack.
+CARDS_OFFSET = (0.0, -14.0, -2.5)
+CARDS_FIT_CM = 0.6        # the brows' median distance to the archetype skin past which the frame is wrong
+CARDS_NEAR = 4            # archetype points a card point follows
+CARDS_ON_RIG = ("Beard", "Mustache", "Eyebrows")   # grooms that move with the face rig (the jaw, the brows)
+# each groom's colour (sRGB): the mayor's greys, as his look recipe's (Melanin 0.55, high Whiteness)
+CARDS_RGB = {"Hair": (150, 147, 141), "Beard": (166, 163, 158), "Mustache": (160, 157, 152), "Eyebrows": (112, 107, 101)}
+
+
+def card_obj(path, flip_v):
+    """A cards OBJ (the engine's exporter: positions, uvs, normals, triangles) as one vertex per
+    distinct corner: [(position, uv, normal)], triangles."""
+    vs, vts, vns, faces = obj(path)
+    corner, verts, tris = {}, [], []
+    for f in faces:
+        ids = []
+        for c in f:
+            u, v = vts[c[1]] if len(c) > 1 and c[1] >= 0 else (0.0, 0.0)
+            # (the exporter writes every corner apart: welded by position and uv, a card is one piece)
+            key = (tuple(round(q * 1000) for q in vs[c[0]]), round(u * 1e5), round(v * 1e5))
+            if key not in corner:
+                corner[key] = len(verts)
+                verts.append((vs[c[0]], (u, 1.0 - v if flip_v else v), vns[c[2]] if len(c) > 2 and c[2] >= 0 else (0.0, 0.0, 1.0)))
+            ids.append(corner[key])
+        for k in range(1, len(ids) - 1):
+            tris.append((ids[0], ids[k], ids[k + 1]))
+    return verts, tris
+
+
+def card_atlas(tga, rgb, out):
+    """The cards atlas's coverage (its attribute map's red) as the strands' alpha over one colour."""
+    from PIL import Image
+    a = Image.open(tga).convert("RGB").getchannel("R")
+    if a.size[0] > 2048:
+        a = a.resize((2048, 2048))
+    img = Image.merge("RGBA", (*Image.new("RGB", a.size, rgb).split(), a))
+    img.save(out)
+    return out
+
+
+def cards(pack, gdir, head):
+    """Each groom under gdir (NAME/NAME_CardsMesh_Group0_LOD0.obj and its CardsAtlas_Attribute.tga)
+    as hair or brow cards on the head: a card point follows its nearest archetype points' moves
+    to this head (same topology), takes the head's weights there and rides the face rig with its
+    nearest head point (the beard, moustache and brows: CARDS_ON_RIG), so the beard opens with
+    the jaw and the brows lift with them."""
+    from PIL import Image
+    arch = obj(dump(Path(os.environ.get("ARCHETYPE_FACE", ARCHETYPE_FACE)), DUMP_DIR / "archetype-face") / "head_lod0_mesh.obj")[0]
+    mine = obj(head / "head_lod0_mesh.obj")[0]
+    if len(arch) != len(mine):
+        raise SystemExit(f"metahuman: the archetype face has {len(arch)} points, this head {len(mine)}")
+    near = outfits.Near(arch, cell=2.0)
+    hp = next(pc for pc in pack.pieces if pc.get("face") == "head_lod0_mesh")
+    weights = {}
+    for v in hp["verts"]:
+        weights.setdefault(v["pt"], (v["j"], v["w"]))
+    out = DUMP_DIR / "grooms"; out.mkdir(parents=True, exist_ok=True)
+    for g in sorted(q for q in gdir.iterdir() if q.is_dir()):
+        mesh_path = g / f"{g.name}_CardsMesh_Group0_LOD0.obj"; tga = g / f"{g.name}_CardsAtlas_Attribute.tga"
+        if not mesh_path.exists() or not tga.exists():
+            continue
+        kind = g.name.split("_")[0]
+        brow = kind == "Eyebrows"
+        alpha = Image.open(tga).convert("RGB").getchannel("R").resize((1024, 1024))
+        # the uv's orientation: the one whose cards land on strands
+        best = None
+        for flip in (True, False):
+            vs, tris = card_obj(mesh_path, flip)
+            kept, thin, n = sparse_cards(tris, [u for _, u, _ in vs], alpha)
+            if best is None or len(kept) > len(best[1]):
+                best = (vs, kept, thin, n, flip)
+        vs, tris, thin, n, flip = best
+        used = sorted({i for t in tris for i in t}); renum = {i: k for k, i in enumerate(used)}
+        vs = [vs[i] for i in used]; tris = [tuple(renum[i] for i in t) for t in tris]
+        moved, dist = [], []
+        for x, uv, nn in vs:
+            q = add(x, CARDS_OFFSET)
+            found = near.nearest(q, 2.0, 64.0)[:CARDS_NEAR]
+            dist.append(found[0][0])
+            acc, tot = (0.0, 0.0, 0.0), 0.0
+            for d, i in found:
+                f = 1.0 / (d + 0.3)
+                acc = add(acc, tuple(f * (a - b) for a, b in zip(mine[i], arch[i]))); tot += f
+            moved.append((add(q, tuple(c / tot for c in acc)), uv, nn, found[0][1]))
+        ds = sorted(dist)
+        print(f"cards {g.name}: {len(tris)} triangles ({thin} of {n} cards nearly empty left out, uv flipped {flip}); "
+              f"cm to the archetype skin 50/95% {ds[len(ds) // 2]:.2f} {ds[int(len(ds) * 0.95)]:.2f}")
+        if brow and ds[len(ds) // 2] > CARDS_FIT_CM:
+            raise SystemExit(f"metahuman: the cards don't sit on the archetype face ({g.name} {ds[len(ds) // 2]:.2f} cm off)")
+        verts = []
+        for x, uv, nn, k in moved:
+            j, w = weights.get(k, ([LOWER.index("head"), 0, 0, 0], [255, 0, 0, 0]))
+            verts.append({"p": tuple(c / 100.0 for c in x), "n": unit(nn), "uv": uv, "pt": k, "j": list(j), "w": list(w)})
+        base = card_atlas(tga, CARDS_RGB.get(kind, CARDS_RGB["Hair"]), out / f"{g.name}.png")
+        if not brow:
+            base = hair_atlas(base)
+        pack.piece(g.name, verts, tris, "brow" if brow else "hair", base, None, None)
+        # the face's grooms ride the face rig (the lab's face range holds FACE_VERTICES, 65536);
+        # the scalp's hair follows the head joint
+        if kind in CARDS_ON_RIG:
+            pack.pieces[-1]["face"] = "head_lod0_mesh"
 
 
 # ---- the face rig (face_rig.py): the DNA's controls, joints and blend shapes for the lab
@@ -594,6 +715,7 @@ HAIR_GROW, HAIR_LIFT, HAIR_SPARSE = 5, 0.55, 0.035
 def hair_atlas(path):
     from PIL import Image, ImageChops, ImageFilter
     out = DUMP_DIR / "portrait" / (Path(path).stem + "_thick.png")
+    out.parent.mkdir(parents=True, exist_ok=True)
     im = Image.open(path).convert("RGBA")
     r, g, b, a = im.split()
     grown = a.filter(ImageFilter.MaxFilter(HAIR_GROW)).point(lambda v: int(v * 0.8))
@@ -1215,13 +1337,23 @@ def fitted(pack, outfit, down, head, M, W, p, P, body_tris):
         raise SystemExit(f"metahuman: torn cloth (edge outliers) in {bad}")
     materials = {}
     names = outfits.packed(pack, pieces, materials)
-    want = sorted({n for stem, ms in outfits.OUTFITS[outfit]["parts"] for n in (ms or [])} |
-                  ({"Robe"} if "robe" in outfits.OUTFITS[outfit] else set()))
+    want = sorted(outfits.garment_names(outfit))
     missing = [n for n in want if n not in names]
     if missing:
         raise SystemExit(f"metahuman: garments not packed: {missing}")
     leg = outfits.legs(outfit, wb, LOWER)
     hide = outfits.covered(vd, nd, wb, pieces) | leg
+    # a coat closed over the trunk: all of the trunk's skin from the collar down is the cloth's (a
+    # man's chest stands further out of it in the bind than the fit's T pose shows)
+    if outfits.OUTFITS[outfit].get("trunk_covered"):
+        trunk = {LOWER.index(n) for n in ("pelvis", "spine_01", "spine_02", "spine_03", "clavicle_l", "clavicle_r")}
+        collar = c[LOWER.index("neck_01")][1] - outfits.OUTFITS[outfit]["trunk_covered"]
+        arm = {k for k, n in enumerate(LOWER) if n.split("_")[0] in ARM + HAND}
+        hips = c[LOWER.index("pelvis")][1]
+        more = {i for i, (x, w) in enumerate(zip(vd, wb)) if hips < x[1] < collar and
+                (abs(x[0]) < 13.0 or sum(v for k, v in w.items() if k in arm) < 0.3)}
+        print(f"trunk under the coat: {len(more - hide)} more body positions hidden")
+        hide |= more
     # the ranger's gloves cover the palm, the fingers' roots and the thumb: the fingertips show
     tips = [i for i, w in enumerate(wb) if sum(v for k, v in w.items() if LOWER[k].split("_")[0] in HAND[1:5]
                                                and LOWER[k].split("_")[1] == "03") > 0.5]
