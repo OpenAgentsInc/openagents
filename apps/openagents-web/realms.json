@@ -104,7 +104,7 @@
         "slot": "everglade",
         "slot_was": "everglade-5e",
         "golden": { "lit": 0.03, "settle": 3000, "blocks": 6 },
-        "assets": ["pack:/realms/everglade/assets/everglade.pack", "particles:/everglade-fx.wgsl"]
+        "assets": ["pack:/realms/everglade/assets/everglade.pack", "particles:/everglade-fx.wgsl", "sounds:/realms/everglade/sfx/"]
       } },
     { "id": "fairy", "name": "FAIRY FOREST", "kind": "open", "listed": false, "orbit": { "r": 0.3, "a": 0.9, "size": 0.028 },
       "realm": {
@@ -438,6 +438,21 @@
         "golden": { "lit": 0.2, "settle": 3000, "blocks": 6 },
         "assets": ["private:human"]
       } },
+    { "id": "audiolab", "name": "AUDIO LAB", "kind": "open", "listed": false, "orbit": { "r": 0.42, "a": 4.1, "size": 0.02 },
+      "realm": {
+        "slug": "audio-lab",
+        "style": "lowpoly",
+        "clock": "fixed:0.0",
+        "title": "Audio Lab",
+        "description": "Audio Lab: every Everglade sound by name, each candidate for it with its waveform, loudness and length, and a 20 second raid played through the game's mixer.",
+        "share": "Every Everglade sound, its candidates side by side, and a raid played through the game's mixer.",
+        "alt": "Audio Lab: rows of Everglade's sounds, each with its waveform and candidates",
+        "module": "audiolab",
+        "slot": "audio-lab",
+        "golden": { "lit": 0.02, "settle": 2000, "blocks": 6 },
+        "assets": ["sounds:/realms/everglade/sfx/"]
+      }
+    },
     { "id": "splatlab", "name": "SPLAT LAB", "kind": "open", "listed": false, "orbit": { "r": 0.41, "a": 3.3, "size": 0.02 },
       "realm": {
         "slug": "splat-lab",

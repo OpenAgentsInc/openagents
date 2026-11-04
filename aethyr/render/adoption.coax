@@ -75,6 +75,12 @@ RenderAdoption :: struct { shared: bool; tracked_legacy: bool; profile: int = -1
   #assert !render_adoption("bitcoin-lab","newland").tracked_legacy;
   #assert !render_adoption("bitcoin-la","bitcoin-lab").tracked_legacy;
 }
+// Audio Lab (Everglade's sounds, #12832) draws the projects list's HUD passes: no 3D, no catalog profile.
+#test "Audio Lab is a tracked legacy consumer" {
+  route := render_adoption("audio-lab", "audiolab");
+  #assert !route.shared && route.tracked_legacy && route.profile == -1;
+  #assert !render_adoption("audio-lab", "fivelab").tracked_legacy;
+}
 #test "unknown page identities cannot gain a fallback renderer" {
   for slug: [5] string.["", "future-realm", "anime-la", "anime-lab/", "../anime-lab"] {
     route := render_adoption(slug, "animelab");
@@ -97,5 +103,6 @@ render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c {
   if slug == "metahuman-lab" && app == "metahumanlab" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "splat-lab" && app == "splatlab" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "one-shot" && app == "oneshot" { return RenderAdoption.{tracked_legacy = true}; }
+  if slug == "audio-lab" && app == "audiolab" { return RenderAdoption.{tracked_legacy = true}; }
   return RenderAdoption.{};
 }

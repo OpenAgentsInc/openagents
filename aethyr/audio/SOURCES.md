@@ -8,8 +8,9 @@ Add a line when you add a sound.
 Everglade plays these by default. Each of its 47 sounds has 3 to 5 candidates in
 [`apps/openagents-web/realms/everglade/sfx/`](../../apps/openagents-web/realms/everglade/sfx/),
 named `NAME-CAND.ogg`, and 1 to 4 of them are its picks, the variants the page plays
-([`everglade-bank.coax`](everglade-bank.coax) `SFXB_PICK`). Hear and compare them at
-[`/realms/audio-lab`](https://openagents.com/realms/audio-lab).
+([`everglade-bank.coax`](everglade-bank.coax) `SFXB_PICK`; their measures, for Audio Lab, are
+in [`everglade-bank-lab.coax`](everglade-bank-lab.coax)). Hear and compare them at
+[`/worlds/audio-lab`](https://openagents.com/worlds/audio-lab).
 
 - Each file is trimmed, faded, normalized and encoded as 48 kHz Opus in Ogg. The loudest
   400 ms of an effect is -16 LUFS and its peak is at most -1 dBFS; the bed is -24 LUFS

@@ -757,9 +757,9 @@ EXPORT("coaxial_store_version") uint32_t coaxial_store_version(uint32_t state, i
 // and the effects themselves, rendered by Aethyr's synthesizer once the host starts audio (aethyr/audio/sfx.coax)
 EXPORT("coaxial_sounds") uint32_t coaxial_sounds(uint32_t state) { return (uint32_t)(uintptr_t)city(state)->snd.e[0].lines.e; }
 EXPORT("coaxial_sounds_len") uint32_t coaxial_sounds_len(uint32_t state) { (void)state; uint32_t n = sound_n; sound_n = 0; return n; }
-#define SOUND_BANK (2u << 20)   /* the effects' WAV bytes: everglade_sound_bytes() is under this (a check, everglade-sound.coax) */
+#define SOUND_BANK (3u << 20)   /* the effects' WAV bytes and the room's: everglade_sound_bytes() is under this (a check, everglade-sound.coax) */
 static uint8_t sound_bank[SOUND_BANK];
-static int64_t sound_mix[200000];   /* one effect's samples at a time: SFX_MAX_FRAMES */
+static int64_t sound_mix[300000];   /* one effect's samples at a time, or the room's (everglade_sound_scratch) */
 static char sound_list[4096];
 static uint32_t sound_list_n;
 EXPORT("coaxial_sound_bank_len") uint32_t coaxial_sound_bank_len(uint32_t state) {

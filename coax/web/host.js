@@ -110,6 +110,8 @@
 //   index:URL     the scene's index buffer (u32)
 //   layers:URL|URL|...  a 2D-array texture, an image a layer, sRGB, mipmapped
 //   sound:NAME=URL a sound the app plays by name;  loop:URL  one that loops from the first touch or key
+//   sounds:/DIR/  a directory of sounds the app plays by name, DIR/NAME.ogg each, fetched when first
+//                 named (aethyr/audio/mix.coax's lines; NAME lowercase letters, digits and dashes)
 //   pack:URL      a realm's asset pack (verse/tools/pack_realm.py, docs/verse/realm-host.md): one file,
 //                 streamed, that stands for four assets in its place, its catalog (data), vertices
 //                 (storage), indices (index) and texture layers (layers), and adds its sounds by name.
@@ -146,7 +148,8 @@
 //   coaxial_store_version(state, k)  has store k copied only when that number changes (a
 //                             generation: bump it when the store is rewritten)
 //   coaxial_sounds(state), coaxial_sounds_len(state)  sounds to play now, a line each: NAME GAIN PAN
-//                             [DELAY], or ~NAME GAIN PAN for a looping bed (playSoundText)
+//                             [DELAY], or ~NAME GAIN PAN for a looping bed, or a mixed voice and the
+//                             bus's lines (aethyr/audio/mix.coax; playSoundText)
 //   coaxial_sound_bank(state), coaxial_sound_bank_len(state)  sounds the realm rendered itself,
 //                             a line each: NAME AT BYTES, WAV bytes in its memory (soundBank)
 //   coaxial_water_draws(state)  how many of the last draws are water (water_vs, waterPipelines)
@@ -261,6 +264,7 @@ let gpu = null;      // { device, context, format, bindGroup, uniformBuffer, ver
 let wanted = 0;      // the newest requested engine; an older finished build never replaces it
 const PACK_PARTS = ["data", "storage", "index", "layers"], PACK_KIND = 605;
 const PACK_CATALOG = 1, PACK_VERTICES = 2, PACK_INDICES = 3, PACK_LAYER = 4, PACK_SOUND = 5;
+let soundDir = "";   // a sounds:/DIR/ asset: sounds played by name from DIR/NAME.ogg
 const assets = parseAssets((script && script.dataset.assets) || "");
 // What main() loads once the GPU is up (sounds wait to be played; fonts and icons are gpui.js's).
 const LATER = ["sound", "loop", "particles", "font", "icons", "licence"];
@@ -1294,6 +1298,7 @@ function parseAssets(text) {
   for (const entry of text.split(/\s+/).filter(Boolean)) {
     const k = entry.indexOf(":"), kind = entry.slice(0, k), rest = entry.slice(k + 1), i = list.length;
     if (kind === "sound") { const e = rest.indexOf("="); list.push({ i, kind, name: rest.slice(0, e), url: rest.slice(e + 1) }); }
+    else if (kind === "sounds") { if (/^\/[a-z0-9/_-]+\/$/.test(rest)) soundDir = rest; }
     else if (kind === "pack") { const pack = { url: rest }; for (const part of PACK_PARTS) list.push({ i: list.length, kind: part, pack }); }
     else if (kind === "private") {
       // ?pack&outfit=NAME: the pack's NAME outfit (pack_human.py --outfit), its own pack, BASE-NAME.
@@ -1738,7 +1743,7 @@ function startAudio() {
   if (audio) return;
   if (clipping && !globalThis.coaxialClipAudio) return;   // a clip is silent unless it records its sound
   soundBank();
-  if (!assets.some((a) => a.kind === "sound" || a.kind === "loop")) return;
+  if (!soundDir && !assets.some((a) => a.kind === "sound" || a.kind === "loop")) return;
   try { audio = new AudioContext(); } catch { return; }
   // checks (aethyr/tests/live-audio.coax): the live graph ends in the check's tap, which
   // records the samples on the audio thread and passes them on to the (muted) speakers
@@ -1769,7 +1774,49 @@ function soundVoice(ctx, b, gain, pan, out, lowpass) {
   g.connect(p).connect(out);
   return s;
 }
-let playing = 0;
+// A sound by name: the page's, or DIR/NAME.ogg of its sounds:/DIR/, added when first named.
+function soundAsset(name) {
+  const a = assets.find((s) => s.kind === "sound" && s.name === name);
+  if (a || !soundDir || !/^[a-z0-9-]{1,48}$/.test(name)) return a;
+  const b = { i: assets.length, kind: "sound", name, url: `${soundDir}${name}.ogg` };
+  assets.push(b);
+  return b;
+}
+// The mixed voices' bus (aethyr/audio/mix.coax): the voices and the room's return into a gain the
+// realm sets (!bus, its limiter at control rate), then a gentle compressor and a brick-wall limiter
+// at -1 dBFS, into the output. The room is a convolver with the realm's impulse (!room NAME).
+let bus = null;
+function soundBus(ctx, out) {
+  const input = ctx.createGain(), level = ctx.createGain(), comp = ctx.createDynamicsCompressor(), wall = ctx.createDynamicsCompressor();
+  comp.threshold.value = -18; comp.knee.value = 12; comp.ratio.value = 3; comp.attack.value = 0.01; comp.release.value = 0.25;
+  wall.threshold.value = -1; wall.knee.value = 0; wall.ratio.value = 20; wall.attack.value = 0.001; wall.release.value = 0.08;
+  input.connect(level).connect(comp).connect(wall).connect(out);
+  const room = ctx.createConvolver(); room.normalize = true; room.connect(input);
+  return { input, level, room, roomed: false, voices: new Map() };
+}
+// One mixed voice: NAME GAIN PAN DELAY LOWPASS RATE WET ID, into the bus and WET of it to the room.
+function busVoice(ctx, b, f, buffer, at) {
+  const [, gain, pan, , lowpass, rate, wet] = f;
+  const s = soundVoice(ctx, buffer, gain, pan, b.input, lowpass);
+  s.playbackRate.value = Math.max(0.5, Math.min(2, Number(rate) || 1));
+  const w = Math.max(0, Math.min(1, Number(wet) || 0));
+  if (w > 0 && b.roomed) { const g = ctx.createGain(); g.gain.value = (Number(gain) || 0) * w; s.connect(g).connect(b.room); }
+  s.start(at);
+  return s;
+}
+// A bus line: !bus GAIN, !room NAME, !fetch NAME, or -ID (that voice fades out now).
+function busLine(ctx, b, line, at, decode) {
+  const [word, arg] = line.split(" ");
+  if (word === "!bus") b.level.gain.setTargetAtTime(Math.max(0, Math.min(1, Number(arg) || 0)), at, 0.03);
+  else if (word === "!room" || word === "!fetch") {
+    const a = soundAsset(arg);
+    if (a) decode(a).then((buffer) => { if (word === "!room" && !b.roomed) { b.room.buffer = buffer; b.roomed = true; } }).catch(() => {});
+  } else if (word[0] === "-") {
+    const v = b.voices.get(word.slice(1));
+    if (v) { b.voices.delete(word.slice(1)); try { v.fade.gain.setTargetAtTime(0, at, 0.015); v.s.stop(at + 0.08); } catch {} }
+  }
+}
+let playing = 0, mixed = 0;
 function playSounds(x) {
   const n = x.coaxial_sounds_len(arena.state);
   if (!n || !audio) return;
@@ -1783,10 +1830,29 @@ function playSounds(x) {
 // to each new gain and pan (gain 0 keeps it silent), outside the 16.
 const beds = new Map();   // name -> { gain, pan } nodes of a looping sound
 const heard = [];         // on this machine only: the last lines played, for the checks
+// A mixed voice's line, NAME GAIN PAN DELAY LOWPASS RATE WET ID (aethyr/audio/mix.coax), goes to the
+// bus with its rate and room send, and at most 48 at once (the realm keeps far fewer); a line that
+// starts ! or - is the bus's (busLine).
 function playSoundText(text) {
   for (const line of text.split("\n")) {
     if (clipping) { clipHear(line); continue; }
     if (line[0] === "~") { bedLine(line.slice(1)); continue; }
+    if (line[0] === "!" || line[0] === "-") { if (audio) { bus ??= soundBus(audio, audioOut); busLine(audio, bus, line, audio.currentTime, decoded); } continue; }
+    const f = line.split(" ");
+    if (f.length === 8) {
+      const a = soundAsset(f[0]);
+      if (!a || !audio || mixed >= 48) continue;
+      bus ??= soundBus(audio, audioOut);
+      mixed++;
+      if (dev) { heard.push(line); if (heard.length > 512) heard.shift(); }
+      decoded(a).then((b) => {
+        const fade = audio.createGain(); fade.connect(bus.input);
+        const s = busVoice(audio, { ...bus, input: fade }, f, b, audio.currentTime + Math.max(0, Math.min(2, Number(f[3]) || 0)));
+        bus.voices.set(f[7], { s, fade });
+        s.onended = () => { mixed--; bus.voices.delete(f[7]); };
+      }).catch(() => mixed--);
+      continue;
+    }
     const [name, gain, pan, delay, lowpass] = line.split(" ");
     const a = assets.find((s) => s.kind === "sound" && s.name === name);
     if (!a || playing >= 16) continue;
@@ -1808,10 +1874,11 @@ const clipVoices = [];  // when each counted voice ends, ms
 let clipMark = 0;       // the game time the recording starts at, ms
 function clipHear(line) {
   if (!line) return;
-  if (line[0] === "~") { clipHeard.push([clipNow, line]); return; }
-  const [name, , , delay] = line.split(" ");
-  const a = assets.find((s) => s.kind === "sound" && s.name === name);
+  if (line[0] === "~" || line[0] === "!" || line[0] === "-") { clipHeard.push([clipNow, line]); return; }
+  const f = line.split(" "), [name, , , delay] = f;
+  const a = soundAsset(name);
   if (!a) return;
+  if (f.length === 8) { clipHeard.push([clipNow, line]); return; }   // a mixed voice: the realm limits them
   for (let i = clipVoices.length - 1; i >= 0; i--) if (clipVoices[i] <= clipNow) clipVoices.splice(i, 1);
   if (clipVoices.length >= 16) return;
   clipVoices.push(clipNow + 1000 * (Math.max(0, Math.min(2, Number(delay) || 0)) + wavSeconds(a)));
@@ -1834,12 +1901,18 @@ if (globalThis.coaxialClip === true) {
     if (!audio) return "";
     const n = Math.round(seconds * rate), o = new OfflineAudioContext(2, n, rate), zero = clipMark + 1000 / fps;
     const out = o.createGain(); out.connect(o.destination);
-    const bedsAt = new Map();
+    const bedsAt = new Map(), cb = soundBus(o, out);
     for (const [ms, line] of clipHeard) {
       const at = (ms - zero) / 1000;
+      if (line[0] === "!" || line[0] === "-") {
+        const [word, arg] = line.split(" ");
+        if (word === "!room" && !cb.roomed) { const a = soundAsset(arg); if (a) { try { cb.room.buffer = await decoded(a); cb.roomed = true; } catch {} } }
+        else if (word !== "!room" && word !== "!fetch") busLine(o, cb, line, Math.max(0, at), decoded);
+        continue;
+      }
       if (line[0] === "~") {
         const [name, gain, pan] = line.slice(1).split(" ");
-        const a = assets.find((s) => s.kind === "sound" && s.name === name);
+        const a = soundAsset(name);
         if (!a) continue;
         let b = bedsAt.get(name);
         const g = Math.max(0, Math.min(1, Number(gain) || 0)), p = Math.max(-1, Math.min(1, Number(pan) || 0));
@@ -1854,10 +1927,17 @@ if (globalThis.coaxialClip === true) {
         continue;
       }
       const [name, gain, pan, delay, lowpass] = line.split(" ");
-      const a = assets.find((s) => s.kind === "sound" && s.name === name);
+      const a = soundAsset(name);
       if (!a) continue;
       const b = await decoded(a), start = at + Math.max(0, Math.min(2, Number(delay) || 0));
       if (start + b.duration <= 0 || start >= seconds) continue;
+      const f = line.split(" ");
+      if (f.length === 8) {
+        if (start < 0) continue;
+        const fade = o.createGain(); fade.connect(cb.input);
+        cb.voices.set(f[7], { s: busVoice(o, { ...cb, input: fade }, f, b, start), fade });
+        continue;
+      }
       const s = soundVoice(o, b, gain, pan, out, lowpass);
       if (start >= 0) s.start(start); else s.start(0, -start);
     }
@@ -1884,7 +1964,7 @@ function bedLine(line) {
   const g = Math.max(0, Math.min(1, Number(gain) || 0)), p = Math.max(-1, Math.min(1, Number(pan) || 0));
   const bed = beds.get(name);
   if (bed) { bed.gain.gain.setTargetAtTime(g, audio.currentTime, 0.25); bed.pan.pan.setTargetAtTime(p, audio.currentTime, 0.25); return; }
-  const a = assets.find((s) => s.kind === "sound" && s.name === name);
+  const a = soundAsset(name);
   if (!a) return;
   const nodes = { gain: audio.createGain(), pan: audio.createStereoPanner() };
   nodes.gain.gain.value = 0; nodes.pan.pan.value = p;
@@ -2390,7 +2470,7 @@ if (dev) {
   globalThis.coaxial.audio = { add: (name, bytes) => { assets.push({ i: assets.length, kind: "sound", name, bytes, done: true }); },
     start: () => { startAudio(); return audio; }, play: (text) => playSoundText(text), playing: () => playing,
     heard: () => heard.slice(), probe: (slot, right, ahead, up) => engine?.exports.coaxial_sound_probe?.(arena.state, slot, right, ahead, up) ?? -1, beds: () => [...beds].map(([name, b]) => `${name} ${b.gain.gain.value.toFixed(3)} ${b.pan.pan.value.toFixed(3)}`),
-    decode: (name) => decoded(assets.find((a) => a.kind === "sound" && a.name === name)), voice: soundVoice };
+    decode: (name) => decoded(soundAsset(name)), voice: soundVoice, mixed: () => mixed };
   globalThis.coaxial.renderLedger = () => gpu?.renderer?.ready ? gpu.renderer.ledger() : null;
   globalThis.coaxial.renderLedgerLive = (slot, generation) => engine?.exports.coaxial_render_live?.(slot, generation) ?? -1;
   globalThis.coaxial.renderLedgerRelease = (slot, generation) => engine?.exports.coaxial_render_release?.(slot, generation) ?? -1;

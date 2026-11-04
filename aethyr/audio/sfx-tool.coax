@@ -45,6 +45,7 @@ ST_MANIFEST :: "aethyr/audio/everglade-sfx.manifest";
 ST_SCORES :: "aethyr/audio/everglade-sfx.scores";
 ST_PICKS :: "aethyr/audio/everglade-sfx.picks";
 ST_BANK :: "aethyr/audio/everglade-bank.coax";
+ST_BANK_LAB :: "aethyr/audio/everglade-bank-lab.coax";
 ST_OUT :: "apps/openagents-web/realms/everglade/sfx";
 ST_TARGET :: -16.0;          // LUFS: each effect's loudest 400 ms (the game's levels set them against each other)
 ST_TARGET_BED :: -24.0;      // the town's bed, integrated
@@ -452,24 +453,33 @@ st_build_all :: (kenney: string) -> int {
     }
   }
   r := fs_remove(tmp);
-  // the bank: every candidate's measures, and each sound's variants
+  // the bank: every candidate and each sound's variants (the page's), and their measures (Audio Lab's)
   ob: [1048576] u8; o: [1] Sb; o[0].b = ob[..];
+  lb: [1048576] u8; l: [1] Sb; l[0].b = lb[..];
   sb(o[..], "// Written by aethyr/audio/sfx-tool.coax build (#12832): do not edit. Each candidate of each Everglade\n");
-  sb(o[..], "// sound (aethyr/audio/SOURCES.md): its source, length, channels, peak and loudness (hundredths of a\n");
-  sb(o[..], "// dB and LUFS), the judge's score (-1 none) and its outline (48 bins, hex); and each sound's variants.\n");
-  sb(o[..], "// The page plays NAME-CAND from /realms/everglade/sfx/ (the synthesized s it renders itself).\n");
+  sb(o[..], "// sound (aethyr/audio/SOURCES.md): its source and length; and each sound's variants. Their measures,\n");
+  sb(o[..], "// for Audio Lab, are in everglade-bank-lab.coax. The page plays NAME-CAND from /realms/everglade/sfx/\n");
+  sb(o[..], "// (the synthesized s it renders itself).\n");
   sb(o[..], "SFXB_SYNTH :: 0; SFXB_ELEVENLABS :: 1; SFXB_KENNEY :: 2;\n");
-  sb(o[..], "SfxbCand :: struct { sound: int; cand: string; source: int; ms: int; channels: int; peak: int; lufs: int; loudest: int; score: int; outline: string; }\n");
+  sb(o[..], "SfxbCand :: struct { sound: int; cand: string; source: int; ms: int; }\n");
   sb(o[..], "SFXB_N :: "); sb_int(o[..], n); sb(o[..], ";\nSFXB :: [SFXB_N] SfxbCand.[\n");
+  sb(l[..], "// Written by aethyr/audio/sfx-tool.coax build (#12832): do not edit. Each candidate's measures, as\n");
+  sb(l[..], "// everglade-bank.coax's SFXB lists them: channels, peak and loudness (hundredths of a dB and LUFS), the\n");
+  sb(l[..], "// judge's score (-1 none) and its outline (48 bins, hex). Audio Lab shows them.\n");
+  sb(l[..], "#load \"everglade-bank.coax\";\n");
+  sb(l[..], "SfxbMeasure :: struct { channels: int; peak: int; lufs: int; loudest: int; score: int; outline: string; }\n");
+  sb(l[..], "SFXB_MEASURE :: [SFXB_N] SfxbMeasure.[\n");
   for j: 0..<n {
     c := cs[j];
     sb(o[..], "  SfxbCand.{sound = "); sb_int(o[..], c.sound); sb(o[..], ", cand = \""); sb(o[..], cast(string) c.cand[0..<c.cand_n]);
-    sb(o[..], "\", source = "); sb(o[..], ST_SOURCES[c.source]); sb(o[..], ", ms = "); sb_int(o[..], c.ms); sb(o[..], ", channels = "); sb_int(o[..], c.channels);
-    sb(o[..], ", peak = "); sb_int(o[..], c.peak); sb(o[..], ", lufs = "); sb_int(o[..], c.lufs); sb(o[..], ", loudest = "); sb_int(o[..], c.loudest);
-    sb(o[..], ", score = "); sb_int(o[..], c.score); sb(o[..], ", outline = \""); st_hex(o[..], c.outline[..]); sb(o[..], "\"}");
+    sb(o[..], "\", source = "); sb(o[..], ST_SOURCES[c.source]); sb(o[..], ", ms = "); sb_int(o[..], c.ms); sb(o[..], "}");
     sb(o[..], ifx j + 1 < n then ",\n" else "];\n");
+    sb(l[..], "  SfxbMeasure.{channels = "); sb_int(l[..], c.channels);
+    sb(l[..], ", peak = "); sb_int(l[..], c.peak); sb(l[..], ", lufs = "); sb_int(l[..], c.lufs); sb(l[..], ", loudest = "); sb_int(l[..], c.loudest);
+    sb(l[..], ", score = "); sb_int(l[..], c.score); sb(l[..], ", outline = \""); st_hex(l[..], c.outline[..]); sb(l[..], "\"}");
+    sb(l[..], ifx j + 1 < n then ",\n" else "];\n");
   }
-  sb(o[..], "SFXB_VARIANTS :: 4;\n// Each sound's variants, played round-robin: indexes into SFXB, -1 none.\nSFXB_PICK :: [SFX_COUNT * SFXB_VARIANTS] int.[\n");
+  sb(o[..], "SFXB_VARIANTS :: 4;\n// Each sound's variants, played in turn (mix.coax): indexes into SFXB, -1 none.\nSFXB_PICK :: [SFX_COUNT * SFXB_VARIANTS] int.[\n");
   for id: 0..<SFX_COUNT {
     v: [4] int;
     k := st_choose(id, cs[..], n, picks, v[..]);
@@ -478,7 +488,7 @@ st_build_all :: (kenney: string) -> int {
     sb(o[..], "  // "); sb(o[..], SFX_NAMES[id]); sb(o[..], "\n");
   }
   sb(o[..], "];\n");
-  if o[0].bad || !fs_write(ST_BANK, sb_text(o[..])) { tool_errln("sfx-tool: the bank did not fit"); return 1; }
+  if o[0].bad || !fs_write(ST_BANK, sb_text(o[..])) || l[0].bad || !fs_write(ST_BANK_LAB, sb_text(l[..])) { tool_errln("sfx-tool: the bank did not fit"); return 1; }
   print("sfx-tool: % candidates, % with no file\n", n, bad);
   return ifx bad > 0 then 1 else 0;
 }

@@ -95,6 +95,7 @@ static const char *content_type(const char *path) {
   if (ends_with(path, ".png")) return "image/png";
   if (ends_with(path, ".jpg")) return "image/jpeg";
   if (ends_with(path, ".bin")) return "application/octet-stream";
+  if (ends_with(path, ".ogg")) return "audio/ogg";
   return "text/plain; charset=utf-8";
 }
 

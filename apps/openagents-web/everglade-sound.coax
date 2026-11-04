@@ -26,6 +26,7 @@
 //   coax/bin/coax test apps/openagents-web/everglade.coax --only "sound:"
 #load "../../aethyr/audio/sfx.coax";
 #load "../../aethyr/audio/space.coax";
+#load "../../aethyr/audio/everglade-mix.coax";
 
 ACT_SOUND :: 13;            // host.js: keep "VOLUME MUTED" in verse.sound
 EGS_CUES :: 64;
@@ -130,8 +131,10 @@ EgSound :: struct {
   ear: Shot; ear_ok: bool;        // the camera, the listener
   lines: [EGS_LINES] u8; line_n: int;
   volume: int = EGS_VOLUME; muted: bool; tell: bool;
-  synth: bool;                    // play the synthesized effects (?sfx=synth): off by default (#12832),
-                                  // they sound cheap; Audio Lab's replacements take their place
+  synth: bool;                    // play the synthesized effects (?sfx=synth) instead of the bank's (#12832)
+  mix: [1] Mixer;                 // the bank's voices (aethyr/audio/mix.coax)
+  mix_at: f64 = -1;               // the time of the last mixed frame
+  roomed: bool; fetched: int;     // !room sent; how many variants asked for ahead (!fetch)
   bed: f32 = -1; bed_at: f64;     // the bed's gain last sent, and when (sent again every 2 s: the host
                                   // drops lines until audio starts)
   walked: f32; feet: Point; feet_ok: bool;
@@ -342,7 +345,7 @@ everglade_sound_lines :: (s: [] Everglade) -> int #export_c {
   out := d[0].lines[..];
   k := 0;
   master := egs_master(d);
-  if !d[0].synth { d[0].cue_n = 0; d[0].line_n = 0; return 0; }   // the synthesized set is off (#12832)
+  if !d[0].synth { k = egs_mixed(s, out, master); d[0].cue_n = 0; d[0].line_n = k; return k; }
   if d[0].page && d[0].ear_ok {
     bed := EGS_BED * master;
     if abs(bed - d[0].bed) > 0.002 || abs(s[0].time - d[0].bed_at) > 2 {
@@ -369,20 +372,61 @@ everglade_sound_lines :: (s: [] Everglade) -> int #export_c {
   return k;
 }
 
+// ---- the bank's sounds through the mixer (#12832, aethyr/audio/everglade-mix.coax)
+
+EGS_FETCH :: 12;             // variants asked for ahead a frame
+
+// The frame's lines through the mixer: the room once, a few variants asked for ahead (so the first
+// of each plays at once), each cue a voice, the bus's level and the bed under it.
+egs_mixed :: (s: [] Everglade, out: [] u8, master: f32) -> int {
+  d := egs_of(s);
+  k := 0;
+  if !d[0].page || !d[0].ear_ok { return 0; }
+  now := s[0].time;
+  dt := ifx d[0].mix_at < 0 then 0.016f32 else clamp(cast(f32) (now - d[0].mix_at), 0, 0.25);
+  d[0].mix_at = now;
+  m := d[0].mix[..];
+  pk := SFXB_PICK; picks := pk[..];
+  if !d[0].roomed { j := egs_put(out, k, "!room room\n"); if j > 0 { k = j; d[0].roomed = true; } }
+  sent := 0;
+  while d[0].fetched < SFX_COUNT * SFXB_VARIANTS && sent < EGS_FETCH {
+    f := d[0].fetched; d[0].fetched += 1;
+    if f / SFXB_VARIANTS == SFX_AMBIENT { continue; }
+    j := egs_put(out, k, "!fetch "); j = egm_variant(out, j, f / SFXB_VARIANTS, f % SFXB_VARIANTS, picks); j = egs_put(out, j, "\n");
+    if j < 0 { continue; }
+    k = j; sent += 1;
+  }
+  for c: 0..<d[0].cue_n {
+    q := d[0].cues[c];
+    p := EgmPlace.{};
+    if !q.here { a := au_place(EGS_ROOM, d[0].ear, q.at); p = EgmPlace.{gain = a.gain, pan = a.pan, delay = a.delay, lowpass = a.lowpass, distance = a.distance}; }
+    k = egm_cue(m, out, k, q.id, picks, p, q.wait, q.gain, now, master);
+  }
+  was: [1] f32; was[0] = d[0].bed;
+  k = egm_end(m, out, k, picks, now, dt, master, was[..], abs(now - d[0].bed_at) > 2);
+  if was[0] != d[0].bed { d[0].bed = was[0]; d[0].bed_at = now; }
+  return k;
+}
+
 // The raid preview's start (the face, ?raid=preview): its horn.
 everglade_sound_horn :: (s: [] Everglade) #export_c { egs_here(s, SFX_HORN, 0.85); }
 
 // ---- the sounds themselves, rendered once when the host starts audio (the face's coaxial_sound_bank)
 
-everglade_sound_count :: () -> int #export_c { return SFX_COUNT; }
-everglade_sound_name :: (i: int, out: [] u8) -> int #export_c { return ifx i >= 0 && i < SFX_COUNT then egs_put(out, 0, SFX_NAMES[i]) else -1; }
+// The last is the room's impulse (aethyr/audio/mix.coax mix_room), "room", for the bank's voices.
+everglade_sound_count :: () -> int #export_c { return SFX_COUNT + 1; }
+everglade_sound_name :: (i: int, out: [] u8) -> int #export_c {
+  if i == SFX_COUNT { return egs_put(out, 0, "room"); }
+  return ifx i >= 0 && i < SFX_COUNT then egs_put(out, 0, SFX_NAMES[i]) else -1;
+}
 everglade_sound_render :: (i: int, mix: [] int, out: [] u8) -> int #export_c {
+  if i == SFX_COUNT { h := mix.count / 2; return ifx h >= 2 * MIX_ROOM_MS * MIX_ROOM_RATE / 1000 then mix_room(mix[0..<h], mix[h..<mix.count], out) else -1; }
   r := sfx_render(i, SFX_RATE, mix, out);
   return ifx r.ok then r.bytes else -1;
 }
-everglade_sound_scratch :: () -> int #export_c { return SFX_MAX_FRAMES; }
+everglade_sound_scratch :: () -> int #export_c { return hi_int(SFX_MAX_FRAMES, 4 * MIX_ROOM_MS * MIX_ROOM_RATE / 1000); }
 everglade_sound_bytes :: () -> int #export_c {
-  n := 0;
+  n := mix_room_bytes();
   for i: 0..<SFX_COUNT { s := sfx_recipe(i); n += WAV_HEADER + 2 * (s.ms * SFX_RATE / 1000); }
   return n;
 }
@@ -632,18 +676,63 @@ egs_heard :: (g: [] Everglade, i: int) -> EgsHeard {
   #assert p0 && p1 && p2 && g[0].snd[0].tell;
 }
 
-#test "sound: the synthesized effects are off unless the page asks for them (#12832)" {
-  g: [1] Everglade;
+// The frame's lines that start with `prefix`, counted.
+egs_test_count :: (g: [] Everglade, prefix: string) -> int {
+  t := cast(string) g[0].snd[0].lines[0..<g[0].snd[0].line_n];
+  n := 0; a := 0;
+  for j: 0..<t.count {
+    if t[j] != '\n' { continue; }
+    l := t[a..<j];
+    if l.count >= prefix.count && l[0..<prefix.count] == prefix { n += 1; }
+    a = j + 1;
+  }
+  return n;
+}
+egs_test_bank_page :: (g: [] Everglade) {
   g[0].snd[0].page = true; g[0].snd[0].ear = Shot.{eye = v3(0, 1.6, 0), at = v3(0, 1.6, 10)}; g[0].snd[0].ear_ok = true;
-  egs_cue(g[..], SFX_HORN, v3(0, 1.6, 5), 0, 1);
-  #assert everglade_sound_lines(g[..]) == 0 && g[0].snd[0].cue_n == 0;
-  egs_facts(g[..], "url=/realms/everglade/?sfx=synth\n");
-  egs_cue(g[..], SFX_HORN, v3(0, 1.6, 5), 0, 1);
-  #assert everglade_sound_lines(g[..]) > 0;
 }
 
-#test "sound: every effect fits the face's bank, 2 MiB" {
-  #assert everglade_sound_bytes() < 2 * 1048576 && everglade_sound_scratch() <= 200000;
+#test "sound: by default the bank plays through the mixer; ?sfx=synth plays the synthesized set (#12832)" {
+  g: [1] Everglade;
+  egs_test_bank_page(g[..]);
+  egs_cue(g[..], SFX_HORN, v3(0, 1.6, 5), 0, 1);
+  #assert everglade_sound_lines(g[..]) > 0 && g[0].snd[0].cue_n == 0;
+  // the room once, variants asked for ahead, the horn as a mixed voice (eight fields), the bed
+  #assert egs_test_count(g[..], "!room room") == 1 && egs_test_count(g[..], "!fetch ") == EGS_FETCH;
+  #assert egs_test_count(g[..], "horn-") == 1 && egs_test_count(g[..], "~ambient-") == 1;
+  _ := everglade_sound_lines(g[..]);
+  #assert egs_test_count(g[..], "!room") == 0;
+  h: [1] Everglade;
+  egs_test_bank_page(h[..]);
+  egs_facts(h[..], "url=/realms/everglade/?sfx=synth\n");
+  egs_cue(h[..], SFX_HORN, v3(0, 1.6, 5), 0, 1);
+  _ = everglade_sound_lines(h[..]);
+  #assert egs_test_count(h[..], "horn ") == 1 && egs_test_count(h[..], "!") == 0;
+}
+
+#test "sound: sixty raiders casting at once play a few voices, and your own cast is never the one dropped" {
+  g: [1] Everglade;
+  egs_test_bank_page(g[..]);
+  _ := everglade_sound_lines(g[..]);
+  // sixty Fire Bolt casts 20 to 50 m off, and yours, 1 m off, last
+  for i: 0..<60 { egs_cue(g[..], SFX_FIRE_CAST, v3(f32(i % 10) * 3 - 15, 1.6, 20 + f32(i / 10) * 5), 0, 1); }
+  egs_cue(g[..], SFX_FIRE_CAST, v3(0, 1.6, 1), 0, 1);
+  _ = everglade_sound_lines(g[..]);
+  limit := EGM_LIMIT[SFX_FIRE_CAST];
+  // a few play (a nearer one taking a farther one's place, which stops): four sound at the end
+  plays := egs_test_count(g[..], "fire-cast-"); stops := egs_test_count(g[..], "-");
+  #assert plays - stops == limit && plays < 16 && stops >= 1;
+  m := g[0].snd[0].mix[..];
+  #assert mix_count(m, SFX_FIRE_CAST) == limit;
+  yours := false;
+  for i: 0..<MIX_VOICES { v := m[0].voices[i]; if v.on && v.weight > f32(EGM_LEVEL[SFX_FIRE_CAST]) / 1000 * 0.5 { yours = true; } }
+  #assert yours;
+  // and the bus is told its level
+  #assert egs_test_count(g[..], "!bus ") <= 1;
+}
+
+#test "sound: every effect and the room fit the face's bank, 3 MiB" {
+  #assert everglade_sound_bytes() < 3 * 1048576 && everglade_sound_scratch() <= 300000;
 }
 
 #test "sound: the room server's world keeps no cues, and the raid's horn plays at the listener" {
@@ -753,4 +842,14 @@ egs_test_town :: (out: [] DemoPiece) {
   #assert cast(string) out[0..<n] == "hit 0.500 0.000 0.000 4000\n";
   n = egs_line(out[..], 0, "thunder", 0.1, 1, 0.117, 1000.4);
   #assert cast(string) out[0..<n] == "thunder 0.100 1.000 0.117 1000\n";
+}
+
+#test "sound: the lab's flat field places a sound as the page's camera does (au_place)" {
+  ear := Shot.{eye = v3(0, 1.6, 0), at = v3(0, 1.6, 10)};
+  for i: 0..<6 {
+    x := f32(i) * 7 - 20; z := f32(i) * 11 + 2;
+    a := au_place(EGS_ROOM, ear, v3(x, 1.6, z)); f := egm_flat(x, z);
+    #assert abs(a.gain - f.gain) < 0.001 && abs(a.delay - f.delay) < 0.001 && abs(a.lowpass - f.lowpass) < 1;
+    #assert abs(abs(a.pan) - abs(f.pan)) < 0.001;
+  }
 }

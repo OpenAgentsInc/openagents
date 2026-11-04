@@ -1,0 +1,3 @@
+--vertices audiolab_bg_vs,audiolab_fx_vs
+--fragments audiolab_bg_fs,audiolab_fx_fs
+--bindings apps/openagents-web/gpu/audiolab.bindings --strip audiolab_

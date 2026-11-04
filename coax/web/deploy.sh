@@ -84,6 +84,14 @@ for f in pages:
         def asset(u):
             if u.group(1): return u.group(0)
             stem = u.group(3)[1:]
+            # A sounds:/DIR/ asset: the page names its files at run time (DIR/NAME.ogg), so they
+            # keep their names, under the site at the same path (aethyr/audio/SOURCES.md).
+            if stem.endswith("/"):
+                for f in sorted(os.listdir(os.path.join(app, stem))):
+                    if f.endswith(".ogg"):
+                        os.makedirs(os.path.join(site, stem), exist_ok=True)
+                        shutil.copy(os.path.join(app, stem, f), os.path.join(site, stem, f))
+                return u.group(0)
             return u.group(2) + put(os.path.join(app, stem), "build/" + stem)
         rest = re.sub(r'data-assets="[^"]*"', lambda a: re.sub(r'(\blocal)?([:|=])(/[^\s|"]+)', asset, a.group(0)), rest)
         # A page that talks (data-voice): the voice engine (coax/web/voice/build.sh), named by its content too.

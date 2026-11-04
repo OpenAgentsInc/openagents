@@ -1,0 +1,108 @@
+// Audio Lab's sound in the browser (#12832): its raid mix as the host plays it, in headless, muted
+// Chrome, never to speakers.
+//   1. A gesture starts audio, and the page's bank (the synthesized set and the room) decodes.
+//   2. RAID MIX, pressed as a person presses it, plays mixed voices: lines of eight fields
+//      (NAME GAIN PAN DELAY LOWPASS RATE WET ID), dozens of them over 8 s, of many sounds, each a
+//      file of /realms/everglade/sfx/ that decodes; and the bus's level and the room.
+//   3. The host never holds more than its 48 mixed voices, and the output carries sound that is
+//      never over full scale (the bus's limiter).
+//   4. STOP ends it: no voice is left a second later.
+//   COAX=... coax/web/tool.sh aethyr/tests/audiolab-sound.coax http://127.0.0.1:PORT/realms/audio-lab/
+#import "Basic";
+#load "../../coax/lib/net/cdp.coax";
+
+AL_WAIT_MS :: 120000;
+// The tap: a gain at the end of the host's graph, into the muted speakers and an AudioWorklet that
+// sums each channel's energy and keeps the largest sample while armed.
+AL_SETUP :: "globalThis.coaxialAudioTap=(ctx)=>{const bus=ctx.createGain();bus.connect(ctx.destination);const t=globalThis.alTap={e:0,peak:0,n:0,on:false};const src=`registerProcessor('al-tap',class extends AudioWorkletProcessor{process(i){const x=i[0];if(x&&x.length){let e=0,p=0;for(const c of x)for(let k=0;k<c.length;k++){e+=c[k]*c[k];const a=Math.abs(c[k]);if(a>p)p=a;}this.port.postMessage([e,p]);}return true;}})`;t.ready=ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([src],{type:'text/javascript'}))).then(()=>{const n=new AudioWorkletNode(ctx,'al-tap',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[2]});bus.connect(n);n.connect(ctx.destination);n.port.onmessage=(e)=>{if(t.on){t.e+=e.data[0];t.n++;if(e.data[1]>t.peak)t.peak=e.data[1];}};});return bus;};";
+AL_START :: "(async()=>{const a=coaxial.audio.start();if(!a)return 'none';await alTap.ready;await a.resume();let ok=0;for(const k of ['hit','horn','ambient','room']){try{const b=await coaxial.audio.decode(k);if(b&&b.length>0)ok++;}catch{}}return a.state+' '+ok})()";
+// 8 s of the raid: its mixed lines, their names, how many decode, the most voices at once, the tap's energy and peak.
+AL_RAID :: "(async()=>{const h0=coaxial.audio.heard().length;const t=alTap;t.e=0;t.peak=0;t.n=0;t.on=true;let most=0;for(let i=0;i<80;i++){await new Promise((d)=>setTimeout(d,100));most=Math.max(most,coaxial.audio.mixed());}t.on=false;const lines=coaxial.audio.heard().slice(h0).filter((l)=>l.split(' ').length===8);const names=[...new Set(lines.map((l)=>l.split(' ')[0]))];let ok=0;for(const n of names){try{const b=await coaxial.audio.decode(n);if(b&&b.length>0)ok++;}catch{}}return [lines.length,names.length,ok,most,t.e.toFixed(1),t.peak.toFixed(3)].join(' ')})()";
+AL_STOPPED :: "(async()=>{await new Promise((d)=>setTimeout(d,1200));return String(coaxial.audio.mixed())})()";
+
+al_param :: (c: [] Cdp, method: string, key: string, value: string) -> bool {
+  buf: [CDP_REQ] u8; o: [1] Jo;
+  jo_start(o[..], buf[..]); jo_obj(o[..]); jo_key(o[..], key); jo_str(o[..], value); jo_end(o[..]);
+  return !o[0].bad && cdp_call(c, method, jo_text(o[..]), 30000) >= 0;
+}
+// A press as a person's: the mouse down and up at CSS pixels (x, y).
+al_click :: (c: [] Cdp, x: int, y: int) -> bool {
+  for kind: [2] string.["mousePressed", "mouseReleased"] {
+    buf: [512] u8; o: [1] Jo;
+    jo_start(o[..], buf[..]); jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], kind);
+    jo_key(o[..], "x"); jo_int(o[..], x); jo_key(o[..], "y"); jo_int(o[..], y);
+    jo_key(o[..], "button"); jo_str(o[..], "left"); jo_key(o[..], "clickCount"); jo_int(o[..], 1); jo_end(o[..]);
+    if o[0].bad || cdp_call(c, "Input.dispatchMouseEvent", jo_text(o[..]), 30000) < 0 { return false; }
+  }
+  return true;
+}
+// Runtime.evaluate, awaited, as a user gesture or not: the value's text without its quotes, into out.
+al_eval :: (c: [] Cdp, expression: string, gesture: bool, out: [] u8) -> string {
+  buf: [CDP_REQ] u8; o: [1] Jo;
+  jo_start(o[..], buf[..]); jo_obj(o[..]); jo_key(o[..], "expression"); jo_str(o[..], expression);
+  jo_key(o[..], "awaitPromise"); jo_bool(o[..], true); jo_key(o[..], "returnByValue"); jo_bool(o[..], true);
+  jo_key(o[..], "userGesture"); jo_bool(o[..], gesture); jo_end(o[..]);
+  if o[0].bad { return ""; }
+  r := cdp_call(c, "Runtime.evaluate", jo_text(o[..]), 60000);
+  if r < 0 { return ""; }
+  at := jv_path(c[0].doc[0], r, "result.value");
+  raw := ifx at >= 0 then jv_raw(c[0].doc[0], at) else "";
+  a := 0; b := raw.count;
+  if b >= 2 && raw[0] == '"' && raw[b - 1] == '"' { a = 1; b -= 1; }
+  n := 0;
+  for i: a..<b { if n < out.count { out[n] = raw[i]; n += 1; } }
+  return cast(string) out[0..<n];
+}
+// The i'th space-separated field of t as a number.
+al_field :: (t: string, i: int) -> f64 {
+  k := 0; a := 0;
+  for j: 0..<t.count + 1 {
+    if j < t.count && t[j] != ' ' { continue; }
+    if k == i { n := args_number(t[a..<j]); return ifx n.ok then n.value else -1; }
+    k += 1; a = j + 1;
+  }
+  return -1;
+}
+#test "a field of a reply reads back as a number" {
+  #assert al_field("62 19 19 30 41.2 0.871", 0) == 62 && al_field("62 19 19 30 41.2 0.871", 5) == 0.871 && al_field("1 2", 4) == -1;
+}
+al_local :: (url: string) -> bool { return url.count > 17 && (url[0..<17] == "http://127.0.0.1:" || url[0..<17] == "http://localhost:"); }
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  ok := args_load(a[..]);
+  url := args_at(a[..], 0);
+  if !ok || !al_local(url) { tool_errln("usage: coax/web/tool.sh aethyr/tests/audiolab-sound.coax http://127.0.0.1:PORT/realms/audio-lab/"); return 2; }
+  c: [1] Cdp;
+  if !cdp_launch(c[..], 800, 600, "coax-audiolab-sound-") { tool_err("audiolab-sound: "); tool_errln(cdp_error(c[..])); return 1; }
+  defer cdp_close(c[..]);
+  if cdp_call(c[..], "Page.enable", "", 30000) < 0 || cdp_call(c[..], "Runtime.enable", "", 30000) < 0 ||
+     !al_param(c[..], "Page.addScriptToEvaluateOnNewDocument", "source", AL_SETUP) || !al_param(c[..], "Page.navigate", "url", url) {
+    tool_err("audiolab-sound: the page did not open: "); tool_errln(cdp_error(c[..])); return 1;
+  }
+  print("audiolab-sound: open %\n", url);
+  txt: [4096] u8;
+  until := proc_now_ms() + AL_WAIT_MS;
+  while proc_now_ms() < until && al_eval(c[..], "String(globalThis.coaxial?.ready===true&&!!globalThis.coaxial.audio)", false, txt[..]) != "true" { proc_sleep(100); }
+  proc_sleep(1500);
+  // 1. audio on a gesture, the bank decoding
+  started := al_eval(c[..], AL_START, true, txt[..]);
+  print("audiolab-sound: audio and the bank: %\n", started);
+  good := started == "running 4";
+  // 2. and 3. RAID MIX (audiolab.coax lab_layout at 800 px: its chip's middle), then 8 s of it
+  if !al_click(c[..], 60, 96) { tool_errln("audiolab-sound: the press did not go through"); return 1; }
+  raid := al_eval(c[..], AL_RAID, false, txt[..]);
+  print("audiolab-sound: raid: lines, sounds, decoded, most voices, energy, peak: %\n", raid);
+  lines := al_field(raid, 0); names := al_field(raid, 1); decoded := al_field(raid, 2); most := al_field(raid, 3);
+  energy := al_field(raid, 4); peak := al_field(raid, 5);
+  raid_ok := lines >= 60 && names >= 12 && decoded == names && most >= 8 && most <= 48 && energy > 1 && peak > 0.05 && peak <= 1.0;
+  // 4. STOP (the next chip along)
+  stop_ok := false;
+  if al_click(c[..], 140, 96) {
+    left := al_eval(c[..], AL_STOPPED, false, txt[..]);
+    print("audiolab-sound: voices a second after STOP: %\n", left);
+    stop_ok = left == "0";
+  }
+  print("audiolab-sound: start % raid % stop %\n", ifx good then "ok" else "FAILED", ifx raid_ok then "ok" else "FAILED", ifx stop_ok then "ok" else "FAILED");
+  return ifx good && raid_ok && stop_ok then 0 else 1;
+}

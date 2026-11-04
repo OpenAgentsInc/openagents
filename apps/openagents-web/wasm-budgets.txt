@@ -12,6 +12,7 @@
 # One module a line:
 #   NAME BYTES
 admin 60000
+audiolab 140000
 animelab 190000
 belt 320000
 builder 100000
