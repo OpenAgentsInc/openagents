@@ -1,10 +1,12 @@
 # 68. Sound in the world: playback, space and reaction
 
-> **Status: unimplemented — design draft.** Today
+> **Status: partly implemented.** Today
 > [`coax/web/host.js`](../../coax/web/host.js) plays a realm's sounds and its
-> one music loop from decoded audio files: a realm returns lines of
-> `name gain pan`, and the host plays at most 16 at once through Web Audio
-> gain and stereo-panner nodes. Nothing in it uses Aethyr's synthesizer on
+> looping beds from decoded audio files: a realm returns lines of
+> `name gain pan [delay]`, and the host plays at most 16 at once through Web
+> Audio gain and stereo-panner nodes. Sound in space has its first part:
+> [`aethyr/audio/space.coax`](../audio/space.coax) gives a source's gain, pan
+> and delay from the camera, and Everglade places every effect with it. Nothing in it uses Aethyr's synthesizer on
 > the audio clock. One thing is qualified: a score rendered offline by
 > chapter 67, played through the host's graph, reaches the live output
 > within 2^-20 of the samples (see "What exists today"). This chapter plans
@@ -120,8 +122,24 @@ music replays with the session.
   the frame the context reported at the play call, the browser reported
   42.7 ms of base and output latency, and a burst of 20 lines held 16 voices.
   Other rates, compressed files and other browsers are outside this profile.
-- A realm chooses a sound's gain and pan itself, with no shared distance
-  model.
+- [`aethyr/audio/space.coax`](../audio/space.coax) gives a source's gain
+  (`1 / max(1, d / d_ref)`, faded to zero over the last fifth before a
+  cutoff), its pan (the sine of its bearing in the view's x–z plane) and its
+  delay (`d / 343` s, which the host adds to the voice's start). Its checks
+  are this chapter's: the reference distance has gain 1 and doubling the
+  distance halves it, the right axis pans fully right, and 343 m is heard 1 s
+  later. The one-pole lowpass by distance is not built.
+- [`aethyr/audio/sfx.coax`](../audio/sfx.coax) renders a game's effects
+  from recipes of layers (an oscillator or noise, a pitch sweep, an envelope
+  and sweeping filters) to 16-bit WAV bytes, in integers, once, when the
+  page's audio starts. Everglade renders 46 that way and hands them to the
+  host as `coaxial_sound_bank` (sources: [`SOURCES.md`](../audio/SOURCES.md)).
+- Everglade (`apps/openagents-web/everglade-sound.coax`) plays its spells,
+  fights, raid and town from the events every page receives, so another
+  player's cast plays where it happens. A headless check,
+  [`aethyr/tests/everglade-sound.coax`](../tests/everglade-sound.coax), plays
+  each spell kind in the page and checks its sounds, the gain at 5, 10 and
+  20 m, the pan to each side, and the host's output in each channel.
 - `verse/voice.coax` resamples, levels, and gates microphone audio for voice
   chat. It is a separate path from game sound.
 - Aethyr's synthesizer renders whole scores offline only

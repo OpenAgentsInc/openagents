@@ -113,6 +113,7 @@ ege_entry :: (s: [] Everglade, n: [] EgNet, t: string) -> bool {
     f: [15] int;
     for i: 0..<15 { f[i] = wire_num(t, r[..]); }
     if !r[0].ok { return true; }
+    if e[0].heard { egs_raid(s, e[0].phase, f[1], f[11]); }   // the horn, the end (everglade-sound.coax)
     e[0].heard = true; e[0].kind = f[0]; e[0].phase = f[1]; e[0].wave = f[2]; e[0].waves = f[3]; e[0].secs = f[4]; e[0].left = f[5];
     e[0].standing = f[6]; e[0].slain = f[7]; e[0].square = f[8]; e[0].wards = f[9]; e[0].arch = f[10]; e[0].outcome = f[11]; e[0].folk = f[12];
     e[0].levels = f[13] == 1; e[0].cap = f[14]; e[0].at = n[0].mono;
@@ -211,6 +212,7 @@ ege_gone :: (s: [] Everglade, n: [] EgNet, k: int) {
   en := n[0].ents[k];
   if !en.live || en.kind != WK_BEAST || en.p1 < EGE_FORM_RAID || en.p1 == EGE_FORM_WARD { return; }
   e := ege_of(s);
+  egs_cue(s, SFX_DEATH, v3(en.shown.x, en.shown.y + 1.2, en.shown.z), 0, 1);   // the raider falls (everglade-sound.coax)
   for q: 0..<EGE_BODIES { if e[0].body_id[q] == en.eid && e[0].body_fell[q] < 0 { e[0].body_fell[q] = s[0].time; } }
 }
 // Each frame: the fallen lie, then sink and go; a standing raider out of view is let go.

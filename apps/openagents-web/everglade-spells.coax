@@ -683,6 +683,7 @@ sp_release :: (s: [] Everglade, slot: int) {
   shape_dice[0] = srd_dice(s[0].sp.cast_seed);
   dice := shape_dice[..];
   if s[0].sp.cast_seed == 0 { dice = s[0].sp.dice[..]; }
+  egs_cast(s, egs_sp_look(slot), you, to, ifx slot == SP_METEOR then f32(SP_FALL) else 0.5f32);   // its cast and flight (everglade-sound.coax)
   if slot == SP_METEOR {
     first := ifx s[0].sp.remote then SP_METEORS else 0;
     along := sp_across(n); up_it := cross(n, along);   // across a wall's face
@@ -844,6 +845,7 @@ sp_orb_hit :: (s: [] Everglade, i: int, at: Point, c: Point, share: f32) {
 sp_blast :: (s: [] Everglade, at: Point, slot: int) {
   w := sp_dm(s);
   radius := SP_BLAST[slot];
+  egs_hit(s, egs_sp_look(slot), at, 0);   // its impact (everglade-sound.coax)
   // the room server's (everglade-net.coax net_play): its look alone. What it harms, breaks, sets alight
   // or fells is the server's, and comes back as its entities and hits.
   if s[0].sp.remote { sp_blast_look(s, at, slot, radius); return; }

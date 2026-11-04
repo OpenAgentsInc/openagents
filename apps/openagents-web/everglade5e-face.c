@@ -86,6 +86,7 @@ static bool world_asked;
 static void edit_out(uint32_t state);
 static void bar_frame(uint32_t state);
 static bool facts_seen, has_player, mint_tried;
+static uint32_t sound_n;   /* this frame's sound lines (everglade-sound.coax everglade_sound_lines) */
 static void ask_out(uint32_t state);
 static void guard_out(uint32_t state);
 static void guide_out(uint32_t state);
@@ -482,6 +483,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     net_step(at(state), (int64_t)guard_now_ms(), feet.x, feet.y, feet.z, verse_player_face(player), show_vx, show_vz,
              !player.on_ground, swim.medium, river.aboard >= 0, verse_player_act(player));
     net_drain(state);
+    sound_n = (uint32_t)everglade_sound_lines(at(state));   /* the cues of the page's frame and the room's events (everglade-sound.coax) */
     ticket_out();
     rooms_out();
     mod_out();
@@ -556,7 +558,7 @@ static void e5_frame(uint32_t state) {
      the page draws them and plays their casts (everglade-raid-preview.coax) */
   if (everglade_raid_on(g)) {
     static float rb[10];
-    if (!e5r_raid_started(e5r()) && everglade_raid_spot(g, (coax_v_f32){rb, 10}) == 6) e5r_raid_start(e5r(), rb[0], rb[1], rb[2], rb[3], rb[4], rb[5]);
+    if (!e5r_raid_started(e5r()) && everglade_raid_spot(g, (coax_v_f32){rb, 10}) == 6) { e5r_raid_start(e5r(), rb[0], rb[1], rb[2], rb[3], rb[4], rb[5]); everglade_sound_horn(g); }
     if (e5r_raid_started(e5r())) {
       everglade_raid_clock(g, e5r_raid_t(e5r()));
       if (everglade_raid_you(g, (coax_v_f32){rb, 10}) == 2) e5r_raid_you(e5r(), rb[0], rb[1]);
@@ -729,6 +731,44 @@ EXPORT("coaxial_store_version") uint32_t coaxial_store_version(uint32_t state, i
   return k == 0 ? (uint32_t)city(state)->ground_gen : k == 3 ? river_gen : frames;
 }
 // The last draw is the river's (everglade.coax WATER_DRAW): the host draws it after the rest, in two halves.
+// ---- sound (everglade-sound.coax): this frame's lines for the host (NAME GAIN PAN [DELAY], ~ the bed),
+// and the effects themselves, rendered by Aethyr's synthesizer once the host starts audio (aethyr/audio/sfx.coax)
+EXPORT("coaxial_sounds") uint32_t coaxial_sounds(uint32_t state) { return (uint32_t)(uintptr_t)city(state)->snd.e[0].lines.e; }
+EXPORT("coaxial_sounds_len") uint32_t coaxial_sounds_len(uint32_t state) { (void)state; uint32_t n = sound_n; sound_n = 0; return n; }
+#define SOUND_BANK (2u << 20)   /* the effects' WAV bytes: everglade_sound_bytes() is under this (a check, everglade-sound.coax) */
+static uint8_t sound_bank[SOUND_BANK];
+static int64_t sound_mix[200000];   /* one effect's samples at a time: SFX_MAX_FRAMES */
+static char sound_list[4096];
+static uint32_t sound_list_n;
+EXPORT("coaxial_sound_bank_len") uint32_t coaxial_sound_bank_len(uint32_t state) {
+  (void)state;
+  if (sound_list_n || everglade_sound_scratch() > (int64_t)(sizeof sound_mix / sizeof sound_mix[0])) return sound_list_n;
+  uint32_t at = 0, n = 0;
+  for (int64_t i = 0; i < everglade_sound_count(); i++) {
+    uint8_t name[32];
+    int64_t nn = everglade_sound_name(i, (coax_v_u8){name, sizeof name});
+    int64_t b = everglade_sound_render(i, (coax_v_s64){sound_mix, sizeof sound_mix / sizeof sound_mix[0]}, (coax_v_u8){sound_bank + at, SOUND_BANK - at});
+    if (nn <= 0 || b <= 0 || n + nn + 24 > sizeof sound_list) continue;
+    memcpy(sound_list + n, name, (size_t)nn); n += (uint32_t)nn;
+    uint32_t parts[2] = { (uint32_t)(uintptr_t)(sound_bank + at), (uint32_t)b };
+    for (int p = 0; p < 2; p++) {
+      char d[12]; int dn = 0; uint32_t v = parts[p];
+      do { d[dn++] = (char)('0' + v % 10); v /= 10; } while (v);
+      sound_list[n++] = ' ';
+      while (dn) sound_list[n++] = d[--dn];
+    }
+    sound_list[n++] = '\n';
+    at += (uint32_t)b;
+  }
+  sound_list_n = n;
+  return n;
+}
+EXPORT("coaxial_sound_bank") uint32_t coaxial_sound_bank(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)sound_list; }
+// A check's cue (aethyr/tests/everglade-sound.coax, through host.js coaxial.audio.probe on this machine).
+EXPORT("coaxial_sound_probe") int32_t coaxial_sound_probe(uint32_t state, int32_t slot, float right, float ahead, float up) {
+  return (int32_t)everglade_sound_probe(at(state), slot, right, ahead, up);
+}
+
 EXPORT("coaxial_water_draws") uint32_t coaxial_water_draws(uint32_t state) { (void)state; return 1; }
 
 EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t mods) {

@@ -89,6 +89,7 @@
 #load "everglade-quality.coax";   // the graphics quality: tier, governor, knobs (aethyr/quality.coax)
 #load "everglade-warlock.coax";   // the Warlock's bar, spells and Zombies (CHARACTER: WARLOCK)
 #load "everglade-raid-preview.coax";   // the Cultist Raid offline, a preview (?raid=preview, &cine=1 its flight)
+#load "everglade-sound.coax";   // the spells', the fight's, the raid's and the town's sound (#12751)
 #load "../../verse/style-preset.coax";
 #load "../../aethyr/budget.coax";
 
@@ -485,6 +486,7 @@ Everglade :: struct {
   fk: [] EgFork;                           // FORK, and a fork's rules: the face holds it (everglade-fork.coax everglade_attach_fork)
   fg: EgForge;                             // Aethyrforge's panels in edit mode (everglade-forge.coax)
   floors: [EG_STAND_NEAR * STAND_FLOATS] f32;   // the floors round you for the controller (everglade-stand.coax)
+  snd: [1] EgSound;                        // what the page plays, and SOUND's volume and MUTE (everglade-sound.coax)
 }
 
 // ---- small things
@@ -1064,6 +1066,7 @@ everglade_message :: (s: [] Everglade, kind: int, text: string) #export_c {
     take_visit(s, text); take_player(s, text);
     spells_facts(s, text);
     eg_quality_facts(s, text);
+    egs_facts(s, text);   // the volume and MUTE this browser kept (everglade-sound.coax)
     fork_facts(s, text);
     weather_facts(s, text);
     forge_facts(s, fact(text, "url"));   // ?forge on a local server (everglade-forge.coax)
@@ -1413,6 +1416,7 @@ everglade_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id
   if join_pointer(s, x, y, phase, id) { return true; }   // INVITE, CHARACTER and its picker (everglade-join.coax)
   if md_pointer(s, x, y, phase, id) { return true; }   // a player's nameplate and its pane (everglade-moderate.coax)
   if ege_pointer(s, x, y, phase, id) { return true; }   // an admin's EVENTS and its pane (everglade-events.coax)
+  if egs_pointer(s, x, y, phase, id) { return true; }   // SOUND, its slider and MUTE (everglade-sound.coax)
   if eg_quality_pointer(s, x, y, phase, id) { return true; }   // the graphics tier, bottom right
   // Aethyrforge's panels in edit mode: only they and edit mode's own presses (everglade-forge.coax)
   forge := forge_on(s);
@@ -3981,6 +3985,7 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   // the spell bar (everglade-spells.coax), with the ruleset: over the hint
   n = spells_hud(s, out, u, n, y1 - hs - 28 * k);
   n = eg_quality_hud(s, out, u, n);   // the graphics tier, bottom right, clear of the bar (everglade-quality.coax)
+  n = egs_hud(s, out, u, n);   // SOUND over it, and its volume and MUTE (everglade-sound.coax)
   // the damage numbers over who was hit (everglade-watch.coax), their shades from the plates the bar left
   if sp_on(s) && !s[0].above && s[0].wv.started { n = watch_pops_draw(s, out, u, n); }
   y1 -= s[0].sp.lift;
@@ -4042,6 +4047,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   view(shot, width, height, u, U_VIEW);
   // in a rowboat you sit on its thwart: your legs go down under it, out of sight
   figure(s, u, ifx s[0].water == WATER_BOAT then sub(shown, v3(0, 0.42, 0)) else shown, face, speed, act == 3, t, still);
+  egs_frame(s, shot, shown, speed, act == 3 || s[0].water == WATER_BOAT, t, still);   // the listener, your footfalls, who falls (everglade-sound.coax)
   if s[0].flock && redit_row_on(s[0].ev.ed[..], "flock") { flock_frame(s[0].birds[..], shown, face, t); birds(s); }
   people(s, u, shown, t, still);
   rp_draw(s, t);   // the raid preview's raiders (everglade-raid-preview.coax)

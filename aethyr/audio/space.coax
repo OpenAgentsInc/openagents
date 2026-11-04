@@ -1,0 +1,83 @@
+// Sound in space (aethyr/book/ch068-sound-in-the-world.md, "Sound in space"): a source's
+// gain, pan and delay from where the listener stands and looks. The listener is the
+// camera's shot (aethyr/points.coax: eye and the point it looks at, +Y up, and facing +Z
+// your right is -X). This is drawing-side arithmetic, not simulation state, so it may use
+// sqrt; a replay never reads it.
+//   coax/bin/coax test aethyr/audio/space.coax --library
+#load "../points.coax";
+
+AU_SPEED_OF_SOUND :: 343.0;   // metres a second, in air at 20 °C
+
+// How a world sounds: the distance a source keeps its full gain to, and the distance it
+// falls silent at. The last fifth before the cutoff fades to zero, so a source walking
+// out of range doesn't stop with a click.
+AuRoom :: struct { reference: f32 = 4; cutoff: f32 = 90; }
+
+// Where a sound plays: its gain (0..1), its pan (-1 left .. 1 right) and how many seconds
+// after its event it reaches the listener.
+AuPlace :: struct { gain: f32; pan: f32; delay: f32; distance: f32; }
+
+au_place :: (room: AuRoom, shot: Shot, at: Point) -> AuPlace {
+  v := sub(at, shot.eye);
+  d := length(v);
+  out := AuPlace.{distance = d};
+  if !finite(d) || d >= room.cutoff { return out; }
+  ref := hi(room.reference, 0.01);
+  out.gain = 1.0 / hi(1.0, d / ref);
+  fade := room.cutoff * 0.8;
+  if d > fade { out.gain *= (room.cutoff - d) / (room.cutoff - fade); }
+  // The angle in the view's x–z plane: the sine of the source's bearing from straight
+  // ahead, so a source on the right axis pans fully right and one ahead or behind is
+  // centred. A source at the listener has no bearing and plays centred.
+  forward := unit_or(sub(shot.at, shot.eye), v3(0, 0, 1));
+  right := unit_or(cross(forward, v3(0, 1, 0)), v3(-1, 0, 0));
+  x := dot(v, right);
+  z := dot(v, unit_or(v3(forward.x, 0, forward.z), v3(0, 0, 1)));
+  flat := sqrt(x * x + z * z);
+  if flat > 0.25 { out.pan = clamp(x / flat, -1, 1); }
+  out.delay = d / f32(AU_SPEED_OF_SOUND);
+  return out;
+}
+
+// ---- Checks ----
+
+au_near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0001; }
+
+#test "a source at the reference distance has gain 1, and the gain halves when the distance doubles" {
+  room := AuRoom.{reference = 4, cutoff = 90};
+  shot := Shot.{eye = v3(0, 0, 0), at = v3(0, 0, 1)};
+  #assert au_near(au_place(room, shot, v3(0, 0, 4)).gain, 1);
+  #assert au_near(au_place(room, shot, v3(0, 0, 2)).gain, 1);   // nearer than the reference stays at 1
+  #assert au_near(au_place(room, shot, v3(0, 0, 8)).gain, 0.5);
+  #assert au_near(au_place(room, shot, v3(0, 0, 16)).gain, 0.25);
+  #assert au_place(room, shot, v3(0, 0, 90)).gain == 0 && au_place(room, shot, v3(0, 0, 400)).gain == 0;
+  // the fade before the cutoff: halfway through the last fifth is half of 1/d
+  #assert au_near(au_place(room, shot, v3(0, 0, 81)).gain, 4.0 / 81.0 * 0.5);
+}
+
+#test "a source on the view's right axis pans fully right, on its left fully left, ahead centred" {
+  room := AuRoom.{};
+  // facing +Z your right is -X
+  shot := Shot.{eye = v3(0, 1.6, 0), at = v3(0, 1.6, 5)};
+  #assert au_near(au_place(room, shot, v3(-6, 1.6, 0)).pan, 1);
+  #assert au_near(au_place(room, shot, v3(6, 1.6, 0)).pan, -1);
+  #assert au_near(au_place(room, shot, v3(0, 1.6, 6)).pan, 0);
+  #assert au_near(au_place(room, shot, v3(0, 1.6, -6)).pan, 0);   // behind: centred
+  q := au_place(room, shot, v3(-6, 1.6, 6));
+  #assert au_near(q.pan, 0.70710678);
+  // turned to face +X, the same source on -X is behind you
+  turned := Shot.{eye = v3(0, 1.6, 0), at = v3(5, 1.6, 0)};
+  #assert au_near(au_place(room, turned, v3(0, 1.6, 6)).pan, 1);   // +Z is now on your right
+  // the camera looking down at a slant keeps the bearing in the level plane
+  down := Shot.{eye = v3(0, 10, -10), at = v3(0, 0, 0)};
+  #assert au_near(au_place(room, down, v3(-10, 10, -10)).pan, 1);
+  // a source at the eye plays centred
+  #assert au_place(room, shot, v3(0, 1.6, 0)).pan == 0;
+}
+
+#test "a source 343 m away is heard a second after its event" {
+  room := AuRoom.{cutoff = 1000};
+  shot := Shot.{eye = v3(0, 0, 0), at = v3(0, 0, 1)};
+  #assert au_near(au_place(room, shot, v3(0, 0, 343)).delay, 1);
+  #assert au_near(au_place(room, shot, v3(0, 0, 0)).delay, 0);
+}

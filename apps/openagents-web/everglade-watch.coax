@@ -582,6 +582,7 @@ watch_pop :: (s: [] Everglade, at: Point, amount: int, big: bool) {
     if s[0].wv.pops[q].t > oldest { oldest = s[0].wv.pops[q].t; k = q; }
   }
   s[0].wv.pops[k] = WatchPop.{live = true, at = at, t = 0, amount = amount, dx = sp_rand(s) * 2 - 1, big = big};
+  egs_blow(s, add(at, v3(0, -0.9, 0)), big);   // the blow's sound (everglade-sound.coax)
   // the blow lands: a spray of red sparks off them
   for q: 0..<(ifx big then 10 else 6) {
     sp_add_spark(s, add(at, v3(0, -0.6, 0)), times(sp_spray(s, 0), 2.5 + 2 * sp_rand(s)), 0.35, 0.06, v3(1.0, 0.22, 0.12), 4);

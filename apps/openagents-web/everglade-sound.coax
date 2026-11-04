@@ -1,0 +1,562 @@
+// Everglade's sound (GitHub #12751; aethyr/book/ch068-sound-in-the-world.md): a cast, a flight and
+// an impact for every spell the bars and the Cultist Raid cast, the blows and swings of a fight, who
+// falls and who stands back up, the raid's horn, its wall and tower hits and its end, your footsteps
+// and the others', and the town's quiet bed. Every sound is rendered on the page by Aethyr's
+// synthesizer (aethyr/audio/sfx.coax), so none is downloaded and all are CC0 (aethyr/audio/SOURCES.md).
+//
+// The sounds come from the events every page already plays: the server's casts (e cast, e rc) and
+// your own offline land in the Warlock's and the druid's looks (everglade-warlock.coax wl_shoot and
+// wl_land, everglade-spells.coax sp_release and sp_blast), the blows in watch_pop and e hit, the town's
+// breaks in e break, the raid's phases in g (everglade-events.coax). So another player's cast or a
+// raider's plays where it happens, on every page alike. Each is a cue (a sound, a world point and a
+// wait); once a frame the cues become the host's lines (coax/web/host.js playSoundText) placed from the
+// camera (aethyr/audio/space.coax): gain by distance, pan by bearing, a delay at the speed of sound.
+//
+// The room server runs the same looks headless; its world never drains cues, so egs_cue keeps none
+// until a page's frame has said it is a page (snd.page).
+//
+// SOUND at the bottom right, over the graphics tier, opens the volume slider and MUTE; this browser
+// keeps them (host.js verse.sound, back in the facts as sound=). Audio starts on the first click,
+// tap or key, which the host waits for; nothing is shown about it.
+//   coax/bin/coax test apps/openagents-web/everglade.coax --only "sound:"
+#load "../../aethyr/audio/sfx.coax";
+#load "../../aethyr/audio/space.coax";
+
+ACT_SOUND :: 13;            // host.js: keep "VOLUME MUTED" in verse.sound
+EGS_CUES :: 64;
+EGS_LINES :: 4096;
+EGS_SEATS :: 16;
+EGS_ROOM :: AuRoom.{reference = 5, cutoff = 85};
+EGS_QUIET :: 0.004;         // a line below this gain isn't sent
+EGS_BED :: 0.2;             // the town's bed at full volume
+EGS_STRIDE :: 0.8;          // metres a footfall walking
+EGS_STRIDE_RUN :: 1.25;     // and running (aethyr/skin.coax: a run starts at 5 m/s)
+EGS_VOLUME :: 70;           // percent, until this browser keeps another
+// a weapon's damage on the wire (e hit KIND: the SRD engine's, aethyr/rules/srd/engine.coax RS_*)
+EGS_RS_BLUDGEONING :: 2; EGS_RS_PIERCING :: 8; EGS_RS_SLASHING :: 12;
+
+// Each sound's level when it plays (thousandths), set by ear against the others: every effect leaves
+// the synthesizer normalised to one peak (sfx_render).
+EGS_LEVEL :: [SFX_COUNT] int.[
+  550, 400, 650, 950,         // fire: cast, travel, hit, the Fireball's burst
+  450, 350, 600,              // frost
+  500, 400, 650,              // eldritch
+  500, 380, 600,              // necrotic
+  500, 450, 900,              // lightning: cast, the stroke, thunder
+  700, 500, 550, 650, 650,    // Burning Hands, Hex, Hold Person, Hellish Rebuke, Blight
+  550, 450, 500, 750,         // teleport, shield, heal, Thunderwave
+  400, 450, 550, 500,         // missile, arcane cast and hit, radiant
+  350, 550, 750, 600, 450,    // swing, hit, heavy hit, death, standing up
+  900, 750, 950, 800, 800,    // the raid: horn, wall, tower, won, lost
+  220, 220, 220, 1000, 450,   // footsteps, the bed (its own level, EGS_BED), Levitate
+  550, 450];                  // splash, ice
+
+// What a spell sounds like: its cast (from the caster), its flight (between them) and its impact
+// (where it lands); -1 none.
+EgsLook :: struct { start: int = -1; travel: int = -1; hit: int = -1; }
+egs_look :: (start: int, travel: int, hit: int) -> EgsLook { return EgsLook.{start = start, travel = travel, hit = hit}; }
+
+// The Warlock's bar and the raid's looks (everglade-warlock.coax WL_*; everglade-raid-spells.coax RT_K_*).
+egs_wl_look :: (k: int) -> EgsLook {
+  if k == WL_BLAST { return egs_look(SFX_ELDRITCH_CAST, SFX_ELDRITCH_TRAVEL, SFX_ELDRITCH_HIT); }
+  if k == WL_FIREBALL { return egs_look(SFX_FIRE_CAST, SFX_FIRE_TRAVEL, SFX_FIREBALL); }
+  if k == WL_BLIGHT { return egs_look(SFX_NECRO_CAST, -1, SFX_BLIGHT); }
+  if k == WL_CIRCLE { return egs_look(SFX_NECRO_CAST, -1, SFX_NECRO_HIT); }
+  if k == WL_FINGER { return egs_look(SFX_NECRO_CAST, SFX_NECRO_TRAVEL, SFX_NECRO_HIT); }
+  if k == WL_DOOR { return egs_look(SFX_TELEPORT, -1, SFX_TELEPORT); }
+  if k == WL_CHILL { return egs_look(SFX_NECRO_CAST, SFX_NECRO_TRAVEL, SFX_NECRO_HIT); }
+  if k == WL_HEX { return egs_look(SFX_ARCANE_CAST, -1, SFX_HEX); }
+  if k == WL_FIRE_BOLT { return egs_look(SFX_FIRE_CAST, SFX_FIRE_TRAVEL, SFX_FIRE_HIT); }
+  if k == WL_FROST { return egs_look(SFX_FROST_CAST, SFX_FROST_TRAVEL, SFX_FROST_HIT); }
+  if k == WL_BURNING { return egs_look(SFX_FIRE_CAST, -1, SFX_CONE); }
+  if k == WL_LIGHTNING { return egs_look(SFX_BOLT_CAST, SFX_BOLT_TRAVEL, SFX_THUNDER); }
+  if k == WL_REBUKE { return egs_look(-1, -1, SFX_REBUKE); }
+  if k == WL_HOLD { return egs_look(SFX_ARCANE_CAST, -1, SFX_HOLD); }
+  return EgsLook.{};
+}
+// The druid's four aimed spells (everglade-spells.coax SP_*): Meteor Swarm, the bolts, the Water Orb.
+egs_sp_look :: (slot: int) -> EgsLook {
+  if slot == SP_METEOR { return egs_look(SFX_FIRE_CAST, SFX_FIRE_TRAVEL, SFX_FIREBALL); }
+  if slot == SP_BOLT || slot == SP_MEGA { return egs_look(SFX_BOLT_CAST, SFX_BOLT_TRAVEL, SFX_THUNDER); }
+  if slot == SP_ORB { return egs_look(SFX_ARCANE_CAST, SFX_FROST_TRAVEL, SFX_SPLASH); }
+  return EgsLook.{};
+}
+// The druid's abilities (everglade-abilities.coax AB_*, the kits' spells among them), by what they are.
+egs_ab_look :: (k: int) -> EgsLook {
+  if k == AB_FLAME || k == AB_WALLFIRE || k == AB_FIRESTORM { return egs_look(SFX_FIRE_CAST, -1, SFX_FIRE_HIT); }
+  if k == AB_RAYFROST { return egs_look(SFX_FROST_CAST, SFX_FROST_TRAVEL, SFX_FROST_HIT); }
+  if k == AB_KNIFE || k == AB_STORM || k == AB_SLEET || k == AB_CONE { return egs_look(SFX_FROST_CAST, -1, SFX_ICE); }
+  if k == AB_FOG { return egs_look(SFX_FROST_CAST, -1, -1); }
+  if k == AB_THUNDER { return egs_look(-1, -1, SFX_THUNDERWAVE); }
+  if k == AB_CALL || k == AB_VENGEANCE { return egs_look(SFX_BOLT_CAST, SFX_BOLT_TRAVEL, SFX_THUNDER); }
+  if k == AB_HEALING || k == AB_MASSCURE || k == AB_RESURGENCE { return egs_look(-1, -1, SFX_HEAL); }
+  if k == AB_SUNBEAM || k == AB_SUNBURST || k == AB_MOON { return egs_look(SFX_ARCANE_CAST, -1, SFX_RADIANT); }
+  if k == AB_HOLD { return egs_look(SFX_ARCANE_CAST, -1, SFX_HOLD); }
+  if k == AB_LEVITATE || k == AB_FEATHER || k == AB_REVERSE { return egs_look(-1, -1, SFX_LEVITATE); }
+  if k == AB_WIND || k == AB_GUST { return egs_look(-1, -1, SFX_SWING); }
+  if k == AB_STONE || k == AB_SPIKE { return egs_look(SFX_ARCANE_CAST, -1, SFX_WALL_HIT); }
+  if k == AB_CONTROL || k == AB_CREATE || k == AB_BREATH || k == AB_WWALK { return egs_look(SFX_ARCANE_CAST, -1, SFX_SPLASH); }
+  if k == AB_POISON || k == AB_TENTACLES { return egs_look(SFX_NECRO_CAST, -1, SFX_NECRO_HIT); }
+  if k == AB_FAERIE || k == AB_WISP { return egs_look(SFX_ARCANE_CAST, -1, SFX_RADIANT); }
+  return egs_look(SFX_ARCANE_CAST, -1, SFX_ARCANE_HIT);
+}
+// A slot as the wire carries it (e cast SLOT): the druid's spells, then the abilities, then the Warlock's.
+egs_slot_look :: (slot: int) -> EgsLook {
+  if slot >= WL_SLOT0 { return egs_wl_look(slot - WL_SLOT0); }
+  if slot >= SP_SLOTS { return egs_ab_look(slot - SP_SLOTS); }
+  return egs_sp_look(slot);
+}
+
+EgsCue :: struct { id: int; at: Point; wait: f32; gain: f32; here: bool; }   // here: at the listener (the raid's horn)
+EgsSeat :: struct { seat: int = -1; alive: bool; p: Point; walked: f32; }
+EgSound :: struct {
+  page: bool;                     // a page's frame drains the cues (the room server's world never does)
+  cues: [EGS_CUES] EgsCue; cue_n: int;
+  ear: Shot; ear_ok: bool;        // the camera, the listener
+  lines: [EGS_LINES] u8; line_n: int;
+  volume: int = EGS_VOLUME; muted: bool; tell: bool;
+  bed: f32 = -1; bed_at: f64;     // the bed's gain last sent, and when (sent again every 2 s: the host
+                                  // drops lines until audio starts)
+  walked: f32; feet: Point; feet_ok: bool;
+  modes: [WATCH_ACTORS] int; swings: [WATCH_ACTORS] f32; modes_ok: bool;
+  seats: [EGS_SEATS] EgsSeat;
+  you_dead: bool;
+  // SOUND and its pane: the label, the pane, the slider's track, MUTE; the finger on them (-1 none)
+  open: bool; label: Box; pane: Box; track: Box; mute: Box; finger: int = -1; what: int;
+  cued: int;                      // cues taken, for the checks
+}
+
+egs_of :: (s: [] Everglade) -> [] EgSound { return s[0].snd[..]; }
+
+// A cue: sound `id` at `at`, `wait` seconds from now, `gain` times its level.
+egs_cue :: (s: [] Everglade, id: int, at: Point, wait: f32, gain: f32) {
+  d := egs_of(s);
+  if !d[0].page || id < 0 || id >= SFX_COUNT || !finite3(at) || d[0].cue_n >= EGS_CUES { return; }
+  d[0].cues[d[0].cue_n] = EgsCue.{id = id, at = at, wait = hi(wait, 0), gain = gain};
+  d[0].cue_n += 1; d[0].cued += 1;
+}
+egs_here :: (s: [] Everglade, id: int, gain: f32) {
+  d := egs_of(s);
+  if !d[0].page || id < 0 || d[0].cue_n >= EGS_CUES { return; }
+  d[0].cues[d[0].cue_n] = EgsCue.{id = id, wait = 0, gain = gain, here = true};
+  d[0].cue_n += 1; d[0].cued += 1;
+}
+// A spell goes off: its cast at the hand and, `flight` seconds on its way to `at`, its flight
+// between (the impact is its landing's, egs_hit).
+egs_cast :: (s: [] Everglade, l: EgsLook, from: Point, at: Point, flight: f32) {
+  egs_cue(s, l.start, from, 0, 1);
+  if l.travel >= 0 { egs_cue(s, l.travel, mix(from, at, 0.5), hi(flight, 0) * 0.35, 1); }
+}
+egs_hit :: (s: [] Everglade, l: EgsLook, at: Point, wait: f32) { egs_cue(s, l.hit, at, wait, 1); }
+
+// A blow lands on someone over whose head `at` is (watch_pop): a hit, a heavy one for a big blow.
+egs_blow :: (s: [] Everglade, at: Point, big: bool) { egs_cue(s, ifx big then SFX_HIT_HEAVY else SFX_HIT, at, 0, 1); }
+// The room's hit of kind `kind` by someone at `by`: a weapon's is swung first.
+egs_swung :: (s: [] Everglade, by: Point, kind: int) {
+  if kind == EGS_RS_SLASHING || kind == EGS_RS_PIERCING || kind == EGS_RS_BLUDGEONING { egs_cue(s, SFX_SWING, by, 0, 1); }
+}
+// A piece of the town broken (e break): a tower's stone or a wall's.
+egs_break :: (s: [] Everglade, p: DemoPiece) {
+  tall := p.hy * 2 > 5 || p.y1 - p.y0 > 5;
+  egs_cue(s, ifx tall then SFX_TOWER_HIT else SFX_WALL_HIT, demo_centre(p), 0, 1);
+}
+// The raid's phase from `was` to `now` (g): the horn as it starts and at its climax, its end held or fallen.
+egs_raid :: (s: [] Everglade, was: int, now: int, outcome: int) {
+  if was == now { return; }
+  if now == EGE_ANNOUNCE || (now == EGE_WAVE && was == EGE_IDLE) || now == EGE_CLIMAX { egs_here(s, SFX_HORN, ifx now == EGE_CLIMAX then 1.0f32 else 0.85f32); }
+  if now == EGE_END { egs_here(s, ifx outcome == EGE_FELL then SFX_RAID_LOST else SFX_RAID_WON, 1); }
+}
+
+// ---- each frame (everglade.coax everglade_frame, after your figure): the listener, and what the
+// page's own state says happened (footfalls, falls, getting up, swings)
+
+egs_frame :: (s: [] Everglade, shot: Shot, feet: Point, speed: f32, airborne: bool, dt: f32, still: bool) {
+  d := egs_of(s);
+  d[0].page = true;
+  d[0].ear = shot; d[0].ear_ok = finite3(shot.eye) && finite3(shot.at);
+  if still { d[0].cue_n = 0; return; }   // a golden frame is silent
+  // your footfalls, on the ground and walking
+  if d[0].feet_ok && !airborne && s[0].water < WATER_SWIMMING {
+    step := flat_length(sub(feet, d[0].feet));
+    if step < 3 { d[0].walked += step; }   // a warp is no walk
+    stride := ifx speed >= 5 then f32(EGS_STRIDE_RUN) else f32(EGS_STRIDE);
+    if d[0].walked >= stride {
+      d[0].walked -= stride; if d[0].walked > stride { d[0].walked = 0; }
+      egs_cue(s, SFX_STEP_1 + (cast(int) (s[0].time * 7.0)) % 3, feet, 0, ifx speed >= 5 then 1.2f32 else 0.9f32);
+    }
+  } else { d[0].walked = 0; }
+  d[0].feet = feet; d[0].feet_ok = finite3(feet);
+  // you fell, or got up
+  if s[0].wv.started {
+    dead := watch_you(s[0].wt[..])[0].dead;
+    if dead != d[0].you_dead { egs_cue(s, ifx dead then SFX_DEATH else SFX_STAND, feet, 0, 1); }
+    d[0].you_dead = dead;
+  }
+  egs_watch(s);
+  egs_others(s);
+}
+// The watch and the town's people: who falls, who gets up, who swings.
+egs_watch :: (s: [] Everglade) {
+  d := egs_of(s);
+  w := watch_w(s);
+  if !w[0].on { d[0].modes_ok = false; return; }
+  for i: 0..<WATCH_ACTORS {
+    a := w[0].actors[i];
+    if d[0].modes_ok {
+      at := v3(a.x, ground_at(s, a.x, a.z) + 1.2, a.z);
+      was := d[0].modes[i];
+      down := a.mode == WM_DEAD || a.mode == WM_DOWN;
+      if down && was != WM_DEAD && was != WM_DOWN { egs_cue(s, SFX_DEATH, at, 0, ifx a.mode == WM_DEAD then 1.0f32 else 0.7f32); }
+      if !down && was == WM_DOWN { egs_cue(s, SFX_STAND, at, 0, 0.8); }
+      if a.swing >= 0 && d[0].swings[i] < 0 { egs_cue(s, SFX_SWING, at, 0, 1); }
+    }
+    d[0].modes[i] = a.mode; d[0].swings[i] = a.swing;
+  }
+  d[0].modes_ok = true;
+}
+// The room's other players: their footfalls, their falls and getting up.
+egs_others :: (s: [] Everglade) {
+  d := egs_of(s);
+  if !net_live(s) { return; }
+  bodies: [EGS_SEATS] RemoteBody;
+  n := remote_bodies(s, bodies[..]);
+  seen: [EGS_SEATS] bool;
+  for b: 0..<n {
+    e := bodies[b];
+    q := -1;
+    for k: 0..<EGS_SEATS { if d[0].seats[k].seat == e.seat { q = k; break; } }
+    if q < 0 { for k: 0..<EGS_SEATS { if d[0].seats[k].seat < 0 { q = k; d[0].seats[k] = EgsSeat.{seat = e.seat, alive = e.alive, p = e.p}; break; } } }
+    if q < 0 { continue; }
+    seen[q] = true;
+    c := d[0].seats[q..<q + 1];
+    if e.alive != c[0].alive { egs_cue(s, ifx e.alive then SFX_STAND else SFX_DEATH, add(e.p, v3(0, 1.2, 0)), 0, 1); }
+    step := flat_length(sub(e.p, c[0].p));
+    if e.alive && !e.air && !e.swim && step < 3 {
+      c[0].walked += step;
+      stride := ifx flat_length(e.v) >= 5 then f32(EGS_STRIDE_RUN) else f32(EGS_STRIDE);
+      if c[0].walked >= stride { c[0].walked = 0; egs_cue(s, SFX_STEP_1 + (e.seat + cast(int) (s[0].time * 5.0)) % 3, e.p, 0, 0.8); }
+    }
+    c[0].alive = e.alive; c[0].p = e.p;
+  }
+  for k: 0..<EGS_SEATS { if !seen[k] { d[0].seats[k] = EgsSeat.{}; } }
+}
+
+// ---- the host's lines (the face's coaxial_sounds, after the room's events this frame)
+
+egs_put :: (out: [] u8, at: int, text: string) -> int {
+  if at < 0 || at + text.count > out.count { return -1; }
+  for i: 0..<text.count { out[at + i] = text[i]; }
+  return at + text.count;
+}
+// v to three places: "-0.250".
+egs_num :: (out: [] u8, at: int, v: f32) -> int {
+  k := at;
+  m := cast(int) floor(abs(v) * 1000 + 0.5);
+  if v < 0 && m > 0 { k = egs_put(out, k, "-"); }
+  if k < 0 || k + 8 > out.count { return -1; }
+  whole := m / 1000; part := m % 1000;
+  digits: [12] u8; dn := 0;
+  if whole == 0 { digits[0] = '0'; dn = 1; }
+  while whole > 0 && dn < 12 { digits[dn] = cast,trunc(u8) ('0' + whole % 10); whole /= 10; dn += 1; }
+  for i: 0..<dn { out[k] = digits[dn - 1 - i]; k += 1; }
+  out[k] = '.'; out[k + 1] = cast,trunc(u8) ('0' + part / 100); out[k + 2] = cast,trunc(u8) ('0' + part / 10 % 10); out[k + 3] = cast,trunc(u8) ('0' + part % 10);
+  return k + 4;
+}
+egs_line :: (out: [] u8, at: int, name: string, gain: f32, pan: f32, delay: f32) -> int {
+  k := egs_put(out, at, name);
+  k = egs_put(out, k, " "); k = egs_num(out, k, gain);
+  k = egs_put(out, k, " "); k = egs_num(out, k, pan);
+  if delay > 0.0005 { k = egs_put(out, k, " "); k = egs_num(out, k, delay); }
+  return egs_put(out, k, "\n");
+}
+// The volume as a gain, 0..1.
+egs_master :: (d: [] EgSound) -> f32 { return ifx d[0].muted then 0.0f32 else clamp01(f32(d[0].volume) / 100); }
+
+// The cues as lines, NAME GAIN PAN [DELAY], placed from the camera, and the bed's line when its gain
+// changes: the bytes written (the face's coaxial_sounds_len). The cues are spent.
+everglade_sound_lines :: (s: [] Everglade) -> int #export_c {
+  d := egs_of(s);
+  out := d[0].lines[..];
+  k := 0;
+  master := egs_master(d);
+  if d[0].page && d[0].ear_ok {
+    bed := EGS_BED * master;
+    if abs(bed - d[0].bed) > 0.002 || abs(s[0].time - d[0].bed_at) > 2 {
+      j := egs_put(out, k, "~"); j = egs_line(out, j, SFX_NAMES[SFX_AMBIENT], bed, 0, 0);
+      if j > 0 { k = j; d[0].bed = bed; d[0].bed_at = s[0].time; }
+    }
+  }
+  for c: 0..<d[0].cue_n {
+    q := d[0].cues[c];
+    g := q.gain * f32(EGS_LEVEL[q.id]) / 1000 * master;
+    pan := 0.0f32; delay := q.wait;
+    if !q.here {
+      if !d[0].ear_ok { continue; }
+      p := au_place(EGS_ROOM, d[0].ear, q.at);
+      g *= p.gain; pan = p.pan; delay += p.delay;
+    }
+    if g < f32(EGS_QUIET) { continue; }
+    j := egs_line(out, k, SFX_NAMES[q.id], lo(g, 1), pan, lo(delay, 2));
+    if j < 0 { break; }
+    k = j;
+  }
+  d[0].cue_n = 0;
+  d[0].line_n = k;
+  return k;
+}
+
+// The raid preview's start (the face, ?raid=preview): its horn.
+everglade_sound_horn :: (s: [] Everglade) #export_c { egs_here(s, SFX_HORN, 0.85); }
+
+// ---- the sounds themselves, rendered once when the host starts audio (the face's coaxial_sound_bank)
+
+everglade_sound_count :: () -> int #export_c { return SFX_COUNT; }
+everglade_sound_name :: (i: int, out: [] u8) -> int #export_c { return ifx i >= 0 && i < SFX_COUNT then egs_put(out, 0, SFX_NAMES[i]) else -1; }
+everglade_sound_render :: (i: int, mix: [] int, out: [] u8) -> int #export_c {
+  r := sfx_render(i, SFX_RATE, mix, out);
+  return ifx r.ok then r.bytes else -1;
+}
+everglade_sound_scratch :: () -> int #export_c { return SFX_MAX_FRAMES; }
+everglade_sound_bytes :: () -> int #export_c {
+  n := 0;
+  for i: 0..<SFX_COUNT { s := sfx_recipe(i); n += WAV_HEADER + 2 * (s.ms * SFX_RATE / 1000); }
+  return n;
+}
+
+// A check's cue (the face's coaxial_sound_probe, on this machine only): the look of wire slot `slot`
+// cast `right` metres to the listener's right, `ahead` ahead and `up` up, its cast and impact there
+// (a slot of -1 - id plays effect id there).
+everglade_sound_probe :: (s: [] Everglade, slot: int, right: f32, ahead: f32, up: f32) -> int #export_c {
+  d := egs_of(s);
+  if !d[0].ear_ok { return 0; }
+  e := d[0].ear;
+  fwd := unit_or(v3(e.at.x - e.eye.x, 0, e.at.z - e.eye.z), v3(0, 0, 1));
+  rgt := unit_or(cross(fwd, v3(0, 1, 0)), v3(-1, 0, 0));
+  at := add(e.eye, add(times(rgt, right), add(times(fwd, ahead), v3(0, up, 0))));
+  if slot < 0 { egs_cue(s, -1 - slot, at, 0, 1); return d[0].cue_n; }
+  l := egs_slot_look(slot);
+  egs_cue(s, l.start, at, 0, 1); egs_cue(s, l.hit, at, 0, 1);
+  return d[0].cue_n;
+}
+
+// ---- SOUND: the volume and MUTE
+
+egs_facts :: (s: [] Everglade, text: string) {
+  d := egs_of(s);
+  t := fact(text, "sound");
+  if t.count == 0 { return; }
+  v := 0; i := 0; got := false;
+  while i < t.count && t[i] >= '0' && t[i] <= '9' { v = v * 10 + cast(int) (t[i] - '0'); i += 1; got = true; }
+  if got { d[0].volume = clamp_i(v, 0, 100); }
+  while i < t.count && t[i] == ' ' { i += 1; }
+  d[0].muted = i < t.count && t[i] == '1';
+}
+// This browser keeps the settings (action ACT_SOUND), when no other action is waiting.
+egs_keep :: (s: [] Everglade) {
+  d := egs_of(s);
+  if !d[0].tell || s[0].action != 0 { return; }
+  b: [16] u8; m := 0; v := d[0].volume;
+  if v >= 100 { b[0] = '1'; b[1] = '0'; b[2] = '0'; m = 3; } else if v >= 10 { b[0] = cast,trunc(u8) ('0' + v / 10); b[1] = cast,trunc(u8) ('0' + v % 10); m = 2; } else { b[0] = cast,trunc(u8) ('0' + v); m = 1; }
+  b[m] = ' '; b[m + 1] = ifx d[0].muted then '1' else '0'; m += 2;
+  n := egs_put(s[0].outbox[..], 0, cast(string) b[0..<m]);
+  if n < 0 { return; }
+  s[0].out_n = n; s[0].action = ACT_SOUND; d[0].tell = false;
+}
+egs_label :: (d: [] EgSound, out: [] u8) -> string {
+  if d[0].muted { return "SOUND OFF"; }
+  n := egs_put(out, 0, "SOUND ");
+  v := d[0].volume;
+  if v >= 100 { n = egs_put(out, n, "100"); }
+  else { if v >= 10 { out[n] = cast,trunc(u8) ('0' + v / 10); n += 1; } out[n] = cast,trunc(u8) ('0' + v % 10); n += 1; }
+  n = egs_put(out, n, "%");
+  return cast(string) out[0..<n];
+}
+
+// SOUND over the graphics tier (everglade-quality.coax eg_quality_hud, which sets q_box), and its pane
+// over that when open: VOLUME and its value, the slider at that value, MUTE (UNMUTE while muted).
+egs_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
+  d := egs_of(s);
+  d[0].label = Box.{}; d[0].pane = Box.{}; d[0].track = Box.{}; d[0].mute = Box.{};
+  egs_keep(s);
+  q := s[0].q_box;
+  if s[0].guide.golden || s[0].paint_only || q.x1 <= q.x0 { return at; }
+  k := hi(s[0].dpr, 0.5);
+  cap := 7 * k;
+  l: [32] u8;
+  t := egs_label(d, l[..]);
+  tw := text_width(t, cap);
+  x0 := q.x1 - 8 * k - tw; y := q.y0 - 8 * k;
+  d[0].label = Box.{x0 = x0 - 8 * k, y0 = y - cap - 8 * k, x1 = q.x1, y1 = y + 6 * k};
+  n := draw_text(out, at, t, x0, y, cap, GAP, SPACE, ink(k, ifx d[0].open || d[0].finger >= 0 then 1.0f32 else 0.75f32, PARCH_R, PARCH_G, PARCH_B), false, false);
+  if !d[0].open { return n; }
+  pw := 220 * k; ph := 84 * k;
+  pane := Box.{x0 = q.x1 - pw, y0 = d[0].label.y0 - 6 * k - ph, x1 = q.x1, y1 = d[0].label.y0 - 6 * k};
+  d[0].pane = pane;
+  plate(s, u, pane, 0.9, 0);
+  x := pane.x0 + 12 * k;
+  n = draw_text(out, n, "VOLUME", x, pane.y0 + 20 * k, cap, GAP, SPACE, ink(k, 0.9, PARCH_R, PARCH_G, PARCH_B), false, false);
+  vb: [8] u8; vn := 0; v := d[0].volume;
+  if v >= 100 { vn = egs_put(vb[..], 0, "100"); } else { if v >= 10 { vb[vn] = cast,trunc(u8) ('0' + v / 10); vn += 1; } vb[vn] = cast,trunc(u8) ('0' + v % 10); vn += 1; }
+  vb[vn] = '%'; vn += 1;
+  vt := cast(string) vb[0..<vn];
+  n = draw_text(out, n, vt, pane.x1 - 12 * k - text_width(vt, cap), pane.y0 + 20 * k, cap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  // the slider: its track the pane's width, filled to the volume, with a knob there
+  track := Box.{x0 = x, y0 = pane.y0 + 30 * k, x1 = pane.x1 - 12 * k, y1 = pane.y0 + 46 * k};
+  d[0].track = track;
+  plate(s, u, Box.{x0 = track.x0, y0 = track.y0 + 6 * k, x1 = track.x1, y1 = track.y1 - 6 * k}, 0.7, 1);
+  fx := track.x0 + (track.x1 - track.x0) * f32(v) / 100;
+  if fx > track.x0 + k { plate(s, u, Box.{x0 = track.x0, y0 = track.y0 + 6 * k, x1 = fx, y1 = track.y1 - 6 * k}, 0.95, 2); }
+  plate(s, u, Box.{x0 = fx - 4 * k, y0 = track.y0, x1 = fx + 4 * k, y1 = track.y1}, 1, 2);
+  word := ifx d[0].muted then "UNMUTE" else "MUTE";
+  mw := text_width(word, cap) + 24 * k;
+  mb := Box.{x0 = x, y0 = pane.y1 - 32 * k, x1 = x + mw, y1 = pane.y1 - 8 * k};
+  d[0].mute = mb;
+  plate(s, u, mb, 0.85, ifx d[0].muted || d[0].what == 2 then 2.0f32 else 1.0f32);
+  return draw_text(out, n, word, mb.x0 + 12 * k, mb.y1 - 8 * k, cap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+}
+egs_slide :: (s: [] Everglade, x: f32) {
+  d := egs_of(s);
+  t := d[0].track;
+  if t.x1 <= t.x0 { return; }
+  v := clamp_i(cast(int) floor((x - t.x0) / (t.x1 - t.x0) * 100 + 0.5), 0, 100);
+  if v != d[0].volume { d[0].volume = v; }
+  d[0].muted = false;
+}
+// A press on SOUND opens or shuts its pane; on the slider it sets the volume as it drags; on MUTE it
+// turns the sound off or back on. What changes, this browser keeps.
+egs_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
+  d := egs_of(s);
+  if phase == 0 {
+    w := 0;
+    if in_box(d[0].label, x, y) { w = 1; }
+    else if in_box(d[0].mute, x, y) { w = 2; }
+    else if in_box(d[0].track, x, y) { w = 3; egs_slide(s, x); }
+    else if in_box(d[0].pane, x, y) { w = 4; }
+    if w == 0 { return false; }
+    d[0].what = w; d[0].finger = id;
+    return true;
+  }
+  if d[0].finger < 0 || id != d[0].finger { return false; }
+  if d[0].what == 3 { egs_slide(s, x); }
+  if phase >= 2 {
+    w := d[0].what; d[0].what = 0; d[0].finger = -1;
+    if phase == 2 && w == 1 && in_box(d[0].label, x, y) { d[0].open = !d[0].open; }
+    if phase == 2 && w == 2 && in_box(d[0].mute, x, y) { d[0].muted = !d[0].muted; d[0].tell = true; }
+    if w == 3 { d[0].tell = true; }
+  }
+  return true;
+}
+
+// ---- Checks ----
+
+egs_test_page :: (g: [] Everglade) {
+  g[0].snd[0].page = true;
+  g[0].snd[0].ear = Shot.{eye = v3(0, 1.6, 0), at = v3(0, 1.6, 10)};   // facing +Z: your right is -X
+  g[0].snd[0].ear_ok = true;
+  g[0].snd[0].bed = EGS_BED * egs_master(g[0].snd[..]);   // the bed's line is its own check
+}
+// The lines' fields: name, gain, pan of line i.
+EgsHeard :: struct { name: string; gain: f32; pan: f32; delay: f32; ok: bool; }
+egs_heard :: (g: [] Everglade, i: int) -> EgsHeard {
+  t := cast(string) g[0].snd[0].lines[0..<g[0].snd[0].line_n];
+  line := 0; a := 0;
+  for j: 0..<t.count + 1 {
+    if j < t.count && t[j] != '\n' { continue; }
+    if line == i {
+      f: [4] string; fn := 0; b := a;
+      for c: a..<j + 1 { if c == j || t[c] == ' ' { if fn < 4 { f[fn] = t[b..<c]; fn += 1; } b = c + 1; } }
+      out := EgsHeard.{name = f[0], ok = fn >= 3};
+      if fn >= 3 { out.gain = cast(f32) sp_decimal(f[1]); out.pan = cast(f32) sp_decimal(f[2]); }
+      if fn >= 4 { out.delay = cast(f32) sp_decimal(f[3]); }
+      return out;
+    }
+    line += 1; a = j + 1;
+  }
+  return EgsHeard.{};
+}
+
+#test "sound: each spell kind plays its own cast, flight and impact" {
+  // the issue's spells: the raid's and the Warlock's (WL_*), the druid's (SP_*), the kits' (AB_*)
+  #assert egs_wl_look(WL_FIRE_BOLT).start == SFX_FIRE_CAST && egs_wl_look(WL_FIRE_BOLT).travel == SFX_FIRE_TRAVEL && egs_wl_look(WL_FIRE_BOLT).hit == SFX_FIRE_HIT;
+  #assert egs_wl_look(WL_BLAST).hit == SFX_ELDRITCH_HIT && egs_wl_look(WL_FROST).hit == SFX_FROST_HIT && egs_wl_look(WL_CHILL).travel == SFX_NECRO_TRAVEL;
+  #assert egs_wl_look(WL_BURNING).hit == SFX_CONE && egs_wl_look(WL_HEX).hit == SFX_HEX && egs_wl_look(WL_REBUKE).hit == SFX_REBUKE;
+  #assert egs_wl_look(WL_HOLD).hit == SFX_HOLD && egs_wl_look(WL_FIREBALL).hit == SFX_FIREBALL && egs_wl_look(WL_LIGHTNING).hit == SFX_THUNDER;
+  #assert egs_wl_look(WL_BLIGHT).hit == SFX_BLIGHT && egs_wl_look(WL_DOOR).start == SFX_TELEPORT && egs_wl_look(WL_DOOR).hit == SFX_TELEPORT;
+  #assert egs_slot_look(WL_SLOT0 + WL_LIGHTNING).travel == SFX_BOLT_TRAVEL && egs_slot_look(SP_METEOR).hit == SFX_FIREBALL;
+  #assert egs_slot_look(SP_SLOTS + AB_RAYFROST).hit == SFX_FROST_HIT && egs_slot_look(SP_SLOTS + AB_HOLD).hit == SFX_HOLD && egs_slot_look(SP_SLOTS + AB_THUNDER).hit == SFX_THUNDERWAVE;
+  #assert egs_slot_look(SP_SLOTS + AB_HEALING).hit == SFX_HEAL && egs_slot_look(SP_ORB).hit == SFX_SPLASH;
+  // every look the pages play has an impact, and every sound it names exists
+  for k: 0..<WL_LOOKS { if wl_look(k) { l := egs_wl_look(k); #assert l.hit >= 0 && l.hit < SFX_COUNT && l.start < SFX_COUNT && l.travel < SFX_COUNT; } }
+  for k: 0..<AB_N { l := egs_ab_look(k); #assert l.start < SFX_COUNT && l.travel < SFX_COUNT && l.hit < SFX_COUNT && (l.start >= 0 || l.hit >= 0); }
+  for k: 0..<SP_SLOTS { #assert egs_sp_look(k).hit >= 0; }
+}
+
+#test "sound: a cast plays where it is, louder near, panned by its bearing, later far" {
+  g: [1] Everglade;
+  egs_test_page(g[..]);
+  l := egs_wl_look(WL_FIRE_BOLT);
+  // one on your right 5 m off, one ahead 20 m off, one on your left 40 m off
+  egs_hit(g[..], l, v3(-5, 1.6, 0), 0);
+  egs_hit(g[..], l, v3(0, 1.6, 20), 0);
+  egs_hit(g[..], l, v3(40, 1.6, 0), 0);
+  #assert everglade_sound_lines(g[..]) > 0;
+  a := egs_heard(g[..], 0); b := egs_heard(g[..], 1); c := egs_heard(g[..], 2);
+  #assert a.ok && b.ok && c.ok && a.name == "fire-hit" && b.name == "fire-hit" && c.name == "fire-hit";
+  full := f32(EGS_LEVEL[SFX_FIRE_HIT]) / 1000 * f32(EGS_VOLUME) / 100;
+  #assert abs(a.gain - full) < 0.002 && abs(a.pan - 1) < 0.002;               // the reference distance: full gain, fully right
+  #assert abs(b.gain - full / 4) < 0.002 && abs(b.pan) < 0.002;               // four times as far: a quarter, centred
+  #assert abs(c.gain - full / 8) < 0.002 && abs(c.pan + 1) < 0.002;           // eight times: an eighth, fully left
+  #assert abs(c.delay - 40.0 / 343.0) < 0.002 && b.delay > a.delay;            // and heard later
+  // past the cutoff it isn't sent; muted nothing is
+  egs_hit(g[..], l, v3(0, 1.6, 200), 0);
+  #assert everglade_sound_lines(g[..]) == 0;
+  g[0].snd[0].muted = true;
+  egs_hit(g[..], l, v3(-5, 1.6, 0), 0);
+  n := everglade_sound_lines(g[..]);
+  #assert !egs_heard(g[..], 0).ok || egs_heard(g[..], 0).name[0] == '~';
+  #assert n > 0 && g[0].snd[0].lines[0] == '~';   // the bed goes silent with it
+}
+
+#test "sound: the volume scales every line, and this browser keeps it" {
+  g: [1] Everglade;
+  egs_test_page(g[..]);
+  g[0].snd[0].volume = 35;
+  g[0].snd[0].bed = EGS_BED * egs_master(g[0].snd[..]);
+  egs_cue(g[..], SFX_HORN, v3(0, 1.6, 5), 0, 1);
+  _ := everglade_sound_lines(g[..]);
+  h := egs_heard(g[..], 0);
+  #assert h.name == "horn" && abs(h.gain - f32(EGS_LEVEL[SFX_HORN]) / 1000 * 0.35) < 0.002;
+  egs_facts(g[..], "sound=80 1\n");
+  #assert g[0].snd[0].volume == 80 && g[0].snd[0].muted;
+  egs_facts(g[..], "sound=7 0\n");
+  #assert g[0].snd[0].volume == 7 && !g[0].snd[0].muted;
+  g[0].snd[0].tell = true;
+  egs_keep(g[..]);
+  #assert g[0].action == ACT_SOUND && cast(string) g[0].outbox[0..<g[0].out_n] == "7 0";
+  // the slider: a press at its middle is 50%, at its end 100%
+  g[0].snd[0].track = Box.{x0 = 100, y0 = 10, x1 = 300, y1 = 30};
+  p0 := egs_pointer(g[..], 200, 20, 0, 1);
+  #assert g[0].snd[0].volume == 50;
+  p1 := egs_pointer(g[..], 320, 20, 1, 1);
+  #assert g[0].snd[0].volume == 100;
+  p2 := egs_pointer(g[..], 320, 20, 2, 1);
+  #assert p0 && p1 && p2 && g[0].snd[0].tell;
+}
+
+#test "sound: every effect fits the face's bank, 2 MiB" {
+  #assert everglade_sound_bytes() < 2 * 1048576 && everglade_sound_scratch() <= 200000;
+}
+
+#test "sound: the room server's world keeps no cues, and the raid's horn plays at the listener" {
+  g: [1] Everglade;
+  egs_cue(g[..], SFX_HIT, v3(0, 0, 0), 0, 1);
+  #assert g[0].snd[0].cue_n == 0;
+  egs_test_page(g[..]);
+  egs_raid(g[..], EGE_IDLE, EGE_ANNOUNCE, 0);
+  egs_raid(g[..], EGE_CLIMAX, EGE_END, EGE_HELD);
+  _ := everglade_sound_lines(g[..]);
+  #assert egs_heard(g[..], 0).name == "horn" && egs_heard(g[..], 0).pan == 0 && egs_heard(g[..], 1).name == "raid-won";
+  egs_raid(g[..], EGE_CLIMAX, EGE_END, EGE_FELL);
+  _ = everglade_sound_lines(g[..]);
+  #assert egs_heard(g[..], 0).name == "raid-lost";
+}

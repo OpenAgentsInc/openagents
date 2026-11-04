@@ -599,7 +599,10 @@ net_entry :: (s: [] Everglade, n: [] EgNet, t: string, d: WireD) {
     if !r[0].ok { return; }
     n[0].hits += 1;
     if h.who >= 2000 { n[0].creature_hits += 1; }
-    if h.amt <= 0 || !s[0].started || ege_hit(s, n, h.who) { return; }   // WARDED (everglade-events.coax)
+    if h.amt <= 0 || !s[0].started { return; }
+    by := net_where(s, n, net_who(h.by));
+    if by.ok { egs_swung(s, v3(by.x, by.y + 1.2, by.z), h.kind); }   // a weapon's swing (everglade-sound.coax); the blow is watch_pop's
+    if ege_hit(s, n, h.who) { return; }   // WARDED (everglade-events.coax)
     at := net_where(s, n, net_who(h.who));
     if at.ok { watch_pop(s, v3(at.x, at.y + 2.1, at.z), h.amt, h.amt >= 25); }
     return;
@@ -610,6 +613,7 @@ net_entry :: (s: [] Everglade, n: [] EgNet, t: string, d: WireD) {
     if !r[0].ok || !sp_on(s) || pc < 0 || pc >= sp_dm(s)[0].n { return; }
     // the piece breaks here as the server says, thrown by its impulse (the debris is this page's)
     c0 := demo_centre(sp_dm(s)[0].pieces[pc]);
+    if sp_dm(s)[0].pieces[pc].state != DP_BROKEN { egs_break(s, sp_dm(s)[0].pieces[pc]); }   // a wall's or a tower's stone (everglade-sound.coax)
     m := sqrt(ix * ix + iy * iy + iz * iz);
     from := ifx m > 0.01 then sub(c0, v3(ix / m, iy / m, iz / m)) else sub(c0, v3(0, 1, 0));
     demo_break(sp_dm(s), pc, from, hi(m, 2));
@@ -1013,6 +1017,7 @@ net_flash :: (s: [] Everglade, k: int, at: Point) {
   if !sp_on(s) || !finite(at.x) || !finite(at.z) { return; }
   c := net_tint(k);
   g := v3(at.x, hi(at.y, ground_at(s, at.x, at.z)) + 0.1, at.z);
+  egs_hit(s, egs_ab_look(k), g, 0);   // everglade-sound.coax
   sp_burst(s, add(g, v3(0, 0.5, 0)), v3(0, 1, 0), ifx phone(s) then 14 else 26, 5, 0.9, 0.04, c, times(c, 0.5), -0.6);
   sp_add_shock(s, g, 4.0, 0.6, c);
 }

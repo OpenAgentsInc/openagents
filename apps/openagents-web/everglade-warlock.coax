@@ -214,6 +214,7 @@ wl_shoot :: (s: [] Everglade, k: int, from: Point, at: Point, seed: int, remote:
   q := 0;
   for i: 0..<WL_SHOTS { if !s[0].wl.shots[i].live { q = i; break; } if s[0].wl.shots[i].t > s[0].wl.shots[q].t { q = i; } }
   s[0].wl.shots[q] = WlShot.{live = true, k = k, from = from, at = at, t = -WL_DELAY[k], seed = seed, remote = remote, mine = mine};
+  egs_cast(s, egs_wl_look(k), from, at, WL_DELAY[k]);   // its cast and flight (everglade-sound.coax)
   // the fireball's bead is on its way from the hand already
   if k == WL_FIREBALL {
     c := FxCause.{recipe = FXR_FIREBALL, seed = wl_seed(seed, 0), t0 = s[0].wl.clock + hi(WL_DELAY[k] - fxp_flight(FxCause.{from = wl_v(from), to = wl_v(at)}, 16, 0.3, 1.0), 0),
@@ -256,6 +257,9 @@ wl_land :: (s: [] Everglade, c: WlShot) {
   now := s[0].wl.clock;
   k := c.k;
   from := wl_v(c.from); to := wl_v(c.at);
+  // its impact: each of Eldritch Blast's beams where and when it strikes (everglade-sound.coax)
+  if k == WL_BLAST { for b: 0..<(ifx c.beams > 0 then c.beams else WL_BEAMS) { egs_hit(s, egs_wl_look(k), wl_beam_at(c, b), f32(b) * 0.13); } }
+  else { egs_hit(s, egs_wl_look(k), c.at, 0); }
   if k == WL_BLAST {
     // four beams, each its own attack: at the point, a little apart, a moment apart
     for b: 0..<(ifx c.beams > 0 then c.beams else WL_BEAMS) {

@@ -1,0 +1,385 @@
+// A game's sound effects from numbers: each effect is a recipe of a few layers (an
+// oscillator or seeded noise, a pitch sweep, an envelope, a one-pole lowpass and highpass
+// that can sweep), rendered once to 16-bit mono WAV bytes with Aethyr's synthesizer
+// (synth.coax). Nothing is recorded or downloaded: a page renders its effects when its
+// audio starts, so the sounds cost no download and are ours to license (CC0, see
+// aethyr/audio/SOURCES.md). Integers only, so an effect renders the same bytes on every
+// build and target (aethyr/book/ch068-sound-in-the-world.md).
+//   coax/bin/coax test aethyr/audio/sfx.coax --library
+#load "synth.coax";
+#load "wav.coax";
+
+SFX_RATE :: 22050;          // a rate every browser resamples cleanly; effects carry little above 10 kHz
+SFX_LAYERS :: 6;
+
+// Waves.
+SFX_SINE :: 0; SFX_SAW :: 1; SFX_SQUARE :: 2; SFX_NOISE :: 3;
+SFX_CRACKLE :: 4;           // sparse random clicks, f0 of them a second: fire, ice, rubble, sparks
+
+// One layer. Times in milliseconds, pitches and filter corners in hertz (a corner of 0 is
+// open), gain in thousandths. The pitch eases from f0 to f1 (fast at first), the lowpass
+// moves linearly from lp0 to lp1. curve shapes the fall after the attack: 0 holds full
+// level (a bed), 1 falls linearly, 2 and 3 fall faster at first.
+SfxLayer :: struct {
+  wave: int; at: int; ms: int; att: int = 5;
+  f0: int; f1: int; lp0: int; lp1: int; hp: int;
+  gain: int = 1000; curve: int = 2; vib: int; vhz: int;
+}
+// An effect: its layers and its length; a loop renders `loop` ms more and folds them over
+// its start, so its end runs into its start without a click.
+Sfx :: struct { layers: [SFX_LAYERS] SfxLayer; n: int; ms: int; loop: int; }
+
+// The effects, by id: the name a page plays it by is SFX_NAMES[id].
+SFX_FIRE_CAST :: 0; SFX_FIRE_TRAVEL :: 1; SFX_FIRE_HIT :: 2; SFX_FIREBALL :: 3;
+SFX_FROST_CAST :: 4; SFX_FROST_TRAVEL :: 5; SFX_FROST_HIT :: 6;
+SFX_ELDRITCH_CAST :: 7; SFX_ELDRITCH_TRAVEL :: 8; SFX_ELDRITCH_HIT :: 9;
+SFX_NECRO_CAST :: 10; SFX_NECRO_TRAVEL :: 11; SFX_NECRO_HIT :: 12;
+SFX_BOLT_CAST :: 13; SFX_BOLT_TRAVEL :: 14; SFX_THUNDER :: 15;
+SFX_CONE :: 16; SFX_HEX :: 17; SFX_HOLD :: 18; SFX_REBUKE :: 19; SFX_BLIGHT :: 20;
+SFX_TELEPORT :: 21; SFX_SHIELD :: 22; SFX_HEAL :: 23; SFX_THUNDERWAVE :: 24;
+SFX_MISSILE :: 25; SFX_ARCANE_CAST :: 26; SFX_ARCANE_HIT :: 27; SFX_RADIANT :: 28;
+SFX_SWING :: 29; SFX_HIT :: 30; SFX_HIT_HEAVY :: 31; SFX_DEATH :: 32; SFX_STAND :: 33;
+SFX_HORN :: 34; SFX_WALL_HIT :: 35; SFX_TOWER_HIT :: 36; SFX_RAID_WON :: 37; SFX_RAID_LOST :: 38;
+SFX_STEP_1 :: 39; SFX_STEP_2 :: 40; SFX_STEP_3 :: 41; SFX_AMBIENT :: 42; SFX_LEVITATE :: 43;
+SFX_SPLASH :: 44; SFX_ICE :: 45;
+SFX_COUNT :: 46;
+
+SFX_NAMES :: [SFX_COUNT] string.[
+  "fire-cast", "fire-travel", "fire-hit", "fireball",
+  "frost-cast", "frost-travel", "frost-hit",
+  "eldritch-cast", "eldritch-travel", "eldritch-hit",
+  "necro-cast", "necro-travel", "necro-hit",
+  "bolt-cast", "bolt-travel", "thunder",
+  "cone", "hex", "hold", "rebuke", "blight",
+  "teleport", "shield", "heal", "thunderwave",
+  "missile", "arcane-cast", "arcane-hit", "radiant",
+  "swing", "hit", "hit-heavy", "death", "stand",
+  "horn", "wall-hit", "tower-hit", "raid-won", "raid-lost",
+  "step-1", "step-2", "step-3", "ambient", "levitate",
+  "splash", "ice"];
+
+sfx_id :: (name: string) -> int {
+  for i: 0..<SFX_COUNT { if SFX_NAMES[i] == name { return i; } }
+  return -1;
+}
+
+// A layer: wave, start, length, attack, pitch from and to, lowpass from and to, highpass, gain.
+sl :: (wave: int, at: int, ms: int, att: int, f0: int, f1: int, lp0: int, lp1: int, hp: int, gain: int) -> SfxLayer {
+  return SfxLayer.{wave = wave, at = at, ms = ms, att = att, f0 = f0, f1 = f1, lp0 = lp0, lp1 = lp1, hp = hp, gain = gain};
+}
+sl_curve :: (l: SfxLayer, curve: int) -> SfxLayer { o := l; o.curve = curve; return o; }
+sl_vib :: (l: SfxLayer, depth: int, hz: int) -> SfxLayer { o := l; o.vib = depth; o.vhz = hz; return o; }
+sfx_add :: (s: Sfx, l: SfxLayer) -> Sfx {
+  o := s;
+  if o.n >= SFX_LAYERS { return o; }
+  o.layers[o.n] = l; o.n += 1;
+  if l.at + l.ms > o.ms { o.ms = l.at + l.ms; }
+  return o;
+}
+
+// book:begin recipes
+sfx_recipe :: (id: int) -> Sfx {
+  s := Sfx.{};
+  if id == SFX_FIRE_CAST {           // a breath of flame drawn up into the hand
+    s = sfx_add(s, sl(SFX_NOISE, 0, 320, 140, 0, 0, 700, 3200, 250, 900));
+    s = sfx_add(s, sl(SFX_SINE, 0, 280, 120, 160, 320, 0, 0, 0, 450));
+  } else if id == SFX_FIRE_TRAVEL {  // a roaring streak with sparks in it
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 420, 40, 0, 0, 1400, 900, 150, 800), 1));
+    s = sfx_add(s, sl(SFX_CRACKLE, 0, 420, 10, 140, 140, 5000, 3000, 600, 500));
+  } else if id == SFX_FIRE_HIT {     // a burst and a low thump
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 420, 4, 0, 0, 3600, 350, 60, 1000), 3));
+    s = sfx_add(s, sl(SFX_SINE, 0, 320, 4, 130, 50, 0, 0, 0, 800));
+    s = sfx_add(s, sl(SFX_CRACKLE, 20, 500, 10, 90, 30, 6000, 2500, 800, 450));
+  } else if id == SFX_FIREBALL {     // the explosion: a long roar, a deep body, falling embers
+    s = sfx_add(s, sl(SFX_NOISE, 0, 1500, 6, 0, 0, 2400, 140, 30, 1000));
+    s = sfx_add(s, sl(SFX_SINE, 0, 1200, 6, 75, 30, 0, 0, 0, 900));
+    s = sfx_add(s, sl(SFX_CRACKLE, 60, 1300, 30, 70, 20, 5000, 2000, 700, 500));
+  } else if id == SFX_FROST_CAST {   // a shimmer of high partials
+    s = sfx_add(s, sl_vib(sl(SFX_SINE, 0, 420, 80, 1800, 2400, 0, 0, 0, 500), 8, 9));
+    s = sfx_add(s, sl_vib(sl(SFX_SINE, 30, 400, 80, 2700, 3600, 0, 0, 0, 350), 8, 11));
+    s = sfx_add(s, sl(SFX_NOISE, 0, 380, 120, 0, 0, 9000, 7000, 4000, 300));
+  } else if id == SFX_FROST_TRAVEL { // a cold hiss
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 360, 30, 0, 0, 8000, 6000, 2500, 700), 1));
+    s = sfx_add(s, sl_vib(sl(SFX_SINE, 0, 360, 30, 3100, 2900, 0, 0, 0, 300), 10, 14));
+  } else if id == SFX_FROST_HIT {    // ice cracking, then a glassy ring
+    s = sfx_add(s, sl(SFX_CRACKLE, 0, 220, 2, 900, 400, 9000, 6000, 2000, 900));
+    s = sfx_add(s, sl_curve(sl(SFX_SINE, 0, 520, 2, 2200, 1500, 0, 0, 0, 500), 3));
+    s = sfx_add(s, sl_curve(sl(SFX_SINE, 0, 460, 2, 3300, 2200, 0, 0, 0, 350), 3));
+  } else if id == SFX_ELDRITCH_CAST { // a detuned rising buzz
+    s = sfx_add(s, sl_vib(sl(SFX_SAW, 0, 320, 60, 110, 220, 900, 2600, 0, 600), 30, 6));
+    s = sfx_add(s, sl_vib(sl(SFX_SAW, 0, 320, 60, 113, 226, 900, 2600, 0, 500), 30, 7));
+  } else if id == SFX_ELDRITCH_TRAVEL { // a crackling beam
+    s = sfx_add(s, sl_vib(sl(SFX_SAW, 0, 260, 10, 440, 300, 3200, 1500, 80, 600), 40, 23));
+    s = sfx_add(s, sl(SFX_SQUARE, 0, 220, 10, 220, 160, 1400, 800, 0, 300));
+  } else if id == SFX_ELDRITCH_HIT {  // a force slam
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 260, 3, 0, 0, 2800, 300, 60, 900), 3));
+    s = sfx_add(s, sl(SFX_SAW, 0, 320, 3, 170, 55, 1300, 300, 0, 700));
+  } else if id == SFX_NECRO_CAST {    // a falling moan and a breath
+    s = sfx_add(s, sl_vib(sl(SFX_SINE, 0, 620, 120, 320, 120, 0, 0, 0, 700), 40, 5));
+    s = sfx_add(s, sl(SFX_NOISE, 0, 600, 200, 0, 0, 700, 500, 120, 500));
+  } else if id == SFX_NECRO_TRAVEL {
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 420, 100, 0, 0, 550, 450, 120, 800), 1));
+    s = sfx_add(s, sl_vib(sl(SFX_SINE, 0, 420, 100, 95, 85, 0, 0, 0, 500), 30, 4));
+  } else if id == SFX_NECRO_HIT {     // a hollow drain
+    s = sfx_add(s, sl(SFX_SAW, 0, 520, 6, 150, 60, 900, 200, 0, 700));
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 320, 6, 0, 0, 1000, 300, 80, 600), 3));
+  } else if id == SFX_BOLT_CAST {     // charge: a hum and gathering sparks
+    s = sfx_add(s, sl_curve(sl(SFX_CRACKLE, 0, 340, 220, 450, 1200, 9000, 9000, 1500, 700), 1));
+    s = sfx_add(s, sl_vib(sl(SFX_SAW, 0, 340, 200, 60, 70, 320, 600, 0, 500), 20, 30));
+  } else if id == SFX_BOLT_TRAVEL {   // the bolt's snap down its line
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 200, 1, 0, 0, 10000, 6000, 1500, 900), 3));
+    s = sfx_add(s, sl(SFX_CRACKLE, 0, 260, 1, 2200, 800, 10000, 8000, 1000, 800));
+    s = sfx_add(s, sl(SFX_SQUARE, 0, 160, 1, 95, 60, 2000, 600, 0, 300));
+  } else if id == SFX_THUNDER {       // a crack and a long rolling rumble
+    s = sfx_add(s, sl(SFX_CRACKLE, 0, 140, 1, 3000, 1500, 10000, 6000, 500, 1000));
+    s = sfx_add(s, sl(SFX_NOISE, 20, 1600, 40, 0, 0, 1600, 100, 25, 1000));
+    s = sfx_add(s, sl(SFX_SINE, 0, 900, 10, 55, 35, 0, 0, 0, 700));
+  } else if id == SFX_CONE {          // Burning Hands: a fan of flame, roaring open
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 720, 60, 0, 0, 600, 2600, 150, 1000), 1));
+    s = sfx_add(s, sl(SFX_CRACKLE, 40, 700, 30, 320, 120, 6000, 3000, 600, 500));
+    s = sfx_add(s, sl(SFX_SINE, 0, 500, 60, 90, 60, 0, 0, 0, 400));
+  } else if id == SFX_HEX {           // a dissonant pulse
+    s = sfx_add(s, sl_vib(sl(SFX_SQUARE, 0, 640, 80, 220, 210, 1500, 900, 0, 450), 60, 8));
+    s = sfx_add(s, sl_vib(sl(SFX_SQUARE, 0, 640, 80, 233, 222, 1500, 900, 0, 450), 60, 9));
+    s = sfx_add(s, sl(SFX_SINE, 0, 640, 80, 110, 105, 0, 0, 0, 500));
+  } else if id == SFX_HOLD {          // a rising chime that freezes in place
+    s = sfx_add(s, sl_curve(sl(SFX_SINE, 0, 760, 30, 660, 990, 0, 0, 0, 600), 3));
+    s = sfx_add(s, sl_curve(sl(SFX_SINE, 40, 720, 30, 990, 1485, 0, 0, 0, 450), 3));
+    s = sfx_add(s, sl(SFX_NOISE, 0, 300, 20, 0, 0, 10000, 9000, 6000, 200));
+  } else if id == SFX_REBUKE {        // Hellish Rebuke: flames burst up around the attacker
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 520, 8, 0, 0, 4200, 600, 80, 1000), 3));
+    s = sfx_add(s, sl(SFX_SINE, 0, 420, 8, 210, 70, 0, 0, 0, 700));
+    s = sfx_add(s, sl(SFX_CRACKLE, 0, 520, 8, 420, 120, 7000, 3000, 700, 500));
+  } else if id == SFX_BLIGHT {        // a withering exhale
+    s = sfx_add(s, sl(SFX_NOISE, 0, 950, 220, 0, 0, 420, 150, 40, 900));
+    s = sfx_add(s, sl(SFX_SAW, 0, 900, 200, 82, 45, 420, 200, 0, 600));
+    s = sfx_add(s, sl_vib(sl(SFX_SINE, 0, 900, 200, 220, 110, 0, 0, 0, 350), 50, 4));
+  } else if id == SFX_TELEPORT {      // a rising draw, a pop, and the fall where you land
+    s = sfx_add(s, sl_curve(sl(SFX_SINE, 0, 230, 210, 300, 1800, 0, 0, 0, 600), 0));
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 230, 140, 2, 0, 0, 3200, 800, 200, 900), 3));
+    s = sfx_add(s, sl(SFX_SINE, 240, 260, 2, 1800, 400, 0, 0, 0, 500));
+  } else if id == SFX_SHIELD {        // a bright ward ping
+    s = sfx_add(s, sl_curve(sl(SFX_SINE, 0, 460, 3, 1320, 1320, 0, 0, 0, 600), 3));
+    s = sfx_add(s, sl_curve(sl(SFX_SINE, 0, 420, 3, 1980, 1980, 0, 0, 0, 400), 3));
+    s = sfx_add(s, sl(SFX_SQUARE, 0, 120, 3, 660, 660, 1500, 900, 0, 250));
+  } else if id == SFX_HEAL {          // a warm major arpeggio
+    s = sfx_add(s, sl_vib(sl(SFX_SINE, 0, 900, 40, 523, 523, 0, 0, 0, 500), 4, 5));
+    s = sfx_add(s, sl_vib(sl(SFX_SINE, 90, 820, 40, 659, 659, 0, 0, 0, 450), 4, 5));
+    s = sfx_add(s, sl_vib(sl(SFX_SINE, 180, 740, 40, 784, 784, 0, 0, 0, 400), 4, 5));
+    s = sfx_add(s, sl(SFX_NOISE, 0, 600, 200, 0, 0, 10000, 9000, 5000, 120));
+  } else if id == SFX_THUNDERWAVE {   // a thunderclap pushing out
+    s = sfx_add(s, sl(SFX_NOISE, 0, 900, 4, 0, 0, 1900, 120, 30, 1000));
+    s = sfx_add(s, sl(SFX_SINE, 0, 700, 4, 85, 38, 0, 0, 0, 900));
+  } else if id == SFX_MISSILE {       // a bright dart
+    s = sfx_add(s, sl_curve(sl(SFX_SINE, 0, 180, 10, 900, 1600, 0, 0, 0, 700), 1));
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 180, 10, 0, 0, 8000, 5000, 3000, 400), 1));
+  } else if id == SFX_ARCANE_CAST {   // a two-note rising shimmer
+    s = sfx_add(s, sl_vib(sl(SFX_SINE, 0, 320, 60, 440, 880, 0, 0, 0, 600), 6, 8));
+    s = sfx_add(s, sl_vib(sl(SFX_SINE, 20, 300, 60, 660, 1320, 0, 0, 0, 400), 6, 9));
+  } else if id == SFX_ARCANE_HIT {
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 240, 3, 0, 0, 3200, 500, 100, 800), 3));
+    s = sfx_add(s, sl(SFX_SINE, 0, 260, 3, 620, 300, 0, 0, 0, 600));
+  } else if id == SFX_RADIANT {       // a bright bell
+    s = sfx_add(s, sl_curve(sl(SFX_SINE, 0, 640, 3, 1046, 1046, 0, 0, 0, 600), 3));
+    s = sfx_add(s, sl_curve(sl(SFX_SINE, 0, 560, 3, 1568, 1568, 0, 0, 0, 400), 3));
+    s = sfx_add(s, sl(SFX_NOISE, 0, 120, 3, 0, 0, 10000, 8000, 5000, 250));
+  } else if id == SFX_SWING {         // a blade through the air
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 210, 120, 0, 0, 1100, 3600, 400, 1000), 2));
+  } else if id == SFX_HIT {           // a body blow
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 150, 2, 0, 0, 1300, 300, 50, 1000), 3));
+    s = sfx_add(s, sl(SFX_SINE, 0, 130, 2, 150, 70, 0, 0, 0, 800));
+  } else if id == SFX_HIT_HEAVY {
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 260, 2, 0, 0, 1900, 200, 40, 1000), 3));
+    s = sfx_add(s, sl(SFX_SINE, 0, 260, 2, 110, 45, 0, 0, 0, 900));
+    s = sfx_add(s, sl(SFX_CRACKLE, 0, 200, 2, 400, 100, 5000, 2000, 500, 400));
+  } else if id == SFX_DEATH {         // a falling groan and the fall itself
+    s = sfx_add(s, sl_vib(sl(SFX_SAW, 0, 900, 40, 220, 70, 1200, 300, 0, 600), 50, 5));
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 600, 320, 2, 0, 0, 600, 150, 30, 900), 3));
+    s = sfx_add(s, sl(SFX_SINE, 600, 300, 2, 80, 40, 0, 0, 0, 700));
+  } else if id == SFX_STAND {         // standing back up: a rising triad
+    s = sfx_add(s, sl(SFX_SINE, 0, 520, 20, 392, 392, 0, 0, 0, 500));
+    s = sfx_add(s, sl(SFX_SINE, 110, 520, 20, 494, 494, 0, 0, 0, 450));
+    s = sfx_add(s, sl(SFX_SINE, 220, 620, 20, 587, 587, 0, 0, 0, 450));
+  } else if id == SFX_HORN {          // the raid's war horn: a low saw with its fifth, swelling
+    s = sfx_add(s, sl_vib(sl_curve(sl(SFX_SAW, 0, 2400, 600, 110, 108, 300, 1400, 0, 700), 1), 8, 5));
+    s = sfx_add(s, sl_vib(sl_curve(sl(SFX_SAW, 0, 2400, 650, 111, 109, 300, 1300, 0, 600), 1), 8, 4));
+    s = sfx_add(s, sl_vib(sl_curve(sl(SFX_SAW, 150, 2250, 650, 165, 162, 300, 1100, 0, 350), 1), 8, 5));
+    s = sfx_add(s, sl_curve(sl(SFX_SINE, 0, 2400, 600, 55, 54, 0, 0, 0, 500), 1));
+  } else if id == SFX_WALL_HIT {      // stone cracks and rubble falls
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 420, 2, 0, 0, 2600, 250, 50, 1000), 3));
+    s = sfx_add(s, sl(SFX_CRACKLE, 10, 420, 5, 1600, 300, 5000, 2500, 400, 600));
+    s = sfx_add(s, sl(SFX_SINE, 0, 300, 2, 95, 50, 0, 0, 0, 700));
+  } else if id == SFX_TOWER_HIT {     // a tower's stone giving way
+    s = sfx_add(s, sl(SFX_NOISE, 0, 1400, 4, 0, 0, 2000, 120, 30, 1000));
+    s = sfx_add(s, sl(SFX_CRACKLE, 40, 1300, 20, 900, 150, 4500, 1800, 300, 600));
+    s = sfx_add(s, sl(SFX_SINE, 0, 1000, 4, 62, 30, 0, 0, 0, 800));
+  } else if id == SFX_RAID_WON {      // the raid's end, the town standing: a rising fanfare
+    s = sfx_add(s, sl_curve(sl(SFX_SAW, 0, 380, 15, 262, 262, 1800, 1500, 0, 450), 1));
+    s = sfx_add(s, sl_curve(sl(SFX_SAW, 200, 380, 15, 330, 330, 1800, 1500, 0, 450), 1));
+    s = sfx_add(s, sl_curve(sl(SFX_SAW, 400, 380, 15, 392, 392, 1800, 1500, 0, 450), 1));
+    s = sfx_add(s, sl_vib(sl(SFX_SAW, 600, 1300, 20, 523, 523, 2400, 900, 0, 550), 6, 5));
+    s = sfx_add(s, sl_vib(sl(SFX_SAW, 600, 1300, 20, 392, 392, 2000, 800, 0, 350), 6, 5));
+  } else if id == SFX_RAID_LOST {     // the raid's end, the town fallen: a falling call
+    s = sfx_add(s, sl_curve(sl(SFX_SAW, 0, 600, 30, 220, 220, 1200, 900, 0, 500), 1));
+    s = sfx_add(s, sl_curve(sl(SFX_SAW, 450, 600, 30, 196, 196, 1100, 800, 0, 500), 1));
+    s = sfx_add(s, sl_vib(sl(SFX_SAW, 900, 1400, 30, 165, 160, 1000, 300, 0, 550), 10, 4));
+    s = sfx_add(s, sl(SFX_SINE, 900, 1400, 30, 82, 80, 0, 0, 0, 500));
+  } else if id == SFX_STEP_1 || id == SFX_STEP_2 || id == SFX_STEP_3 {   // a footfall on packed earth
+    k := id - SFX_STEP_1;
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 70 + 10 * k, 2, 0, 0, 900 - 150 * k, 300, 90, 1000), 3));
+    s = sfx_add(s, sl(SFX_SINE, 0, 60, 2, 95 - 8 * k, 55, 0, 0, 0, 700));
+    s = sfx_add(s, sl(SFX_CRACKLE, 5, 80, 2, 300, 300, 4000, 3000, 800, 250));
+  } else if id == SFX_AMBIENT {       // the town's bed: wind in leaves, a far rustle, two birds
+    s.loop = 800;
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 8800, 1, 0, 0, 380, 380, 50, 1000), 0));
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 8800, 1, 0, 0, 2600, 2600, 1300, 220), 0));
+    s = sfx_add(s, sl_vib(sl(SFX_SINE, 1500, 110, 15, 2900, 3700, 0, 0, 0, 140), 30, 40));
+    s = sfx_add(s, sl_vib(sl(SFX_SINE, 1660, 120, 15, 3000, 3800, 0, 0, 0, 120), 30, 40));
+    s = sfx_add(s, sl_vib(sl(SFX_SINE, 5200, 160, 20, 3300, 2600, 0, 0, 0, 120), 20, 30));
+    s.ms = 8000;
+  } else if id == SFX_LEVITATE {      // a soft lift
+    s = sfx_add(s, sl_vib(sl(SFX_SINE, 0, 820, 300, 200, 600, 0, 0, 0, 600), 10, 5));
+    s = sfx_add(s, sl(SFX_NOISE, 0, 800, 300, 0, 0, 5000, 4000, 2000, 250));
+  } else if id == SFX_SPLASH {        // water thrown and landing
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 420, 4, 0, 0, 5000, 900, 300, 1000), 3));
+    s = sfx_add(s, sl(SFX_SINE, 0, 140, 4, 700, 1300, 0, 0, 0, 350));
+  } else if id == SFX_ICE {           // ice forming: crystal clicks over a hiss
+    s = sfx_add(s, sl(SFX_CRACKLE, 0, 500, 40, 700, 200, 9000, 6000, 2500, 900));
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 500, 60, 0, 0, 9000, 5000, 3000, 400), 1));
+  }
+  return s;
+}
+// book:end recipes
+
+// The samples an effect needs at `rate`, its loop's fold included.
+sfx_frames :: (id: int, rate: int) -> int {
+  s := sfx_recipe(id);
+  return (s.ms + s.loop) * rate / 1000;
+}
+SFX_MAX_MS :: 8800;
+SFX_MAX_FRAMES :: SFX_MAX_MS * SFX_RATE / 1000;
+
+// A lowpass corner in hertz as the one-pole's Q16 coefficient (2 pi f / rate, at most 1);
+// 0 is open.
+sfx_pole :: (hz: int, rate: int) -> int {
+  if hz <= 0 { return AU_ONE; }
+  return au_min(AU_ONE, hz * 411775 / rate);
+}
+
+// The level `i` samples into a layer of n samples with an attack of a.
+sfx_env :: (l: SfxLayer, i: int, n: int, a: int) -> int {
+  if i < a { return i * AU_ONE / au_max(1, a); }
+  if l.curve == 0 { return AU_ONE; }
+  r := (n - i) * AU_ONE / au_max(1, n - a);
+  e := r;
+  for k: 1..<l.curve { e = e * r / AU_ONE; }
+  return e;
+}
+
+// One layer added into mix.
+sfx_layer :: (l: SfxLayer, seed: int, rate: int, mix: [] int) {
+  start := l.at * rate / 1000; n := l.ms * rate / 1000; a := au_min(n, l.att * rate / 1000);
+  if n <= 0 { return; }
+  z := au_noise(seed);
+  p := au_noise_phase(au_noise_next(z)); vp := 0; lp := 0; hpy := 0; click := 0;
+  vinc := au_inc_mhz(l.vhz * 1000, rate);
+  chp := ifx l.hp > 0 then sfx_pole(l.hp, rate) else 0;
+  for i: 0..<n {
+    at := start + i;
+    if at >= mix.count { break; }
+    k := i * AU_ONE / n;               // 0..1 through the layer
+    ease := (AU_ONE - k) * (AU_ONE - k) / AU_ONE;
+    hz := l.f1 * 1000 + (l.f0 - l.f1) * 1000 * ease / AU_ONE;   // milli-hertz
+    if l.vib != 0 { vp = au_phase(vp, vinc); hz += hz * l.vib / 1000 * au_sine(vp) / AU_ONE; }
+    x := 0;
+    if l.wave == SFX_NOISE {
+      z = au_noise_next(z); x = au_noise_value(z);
+    } else if l.wave == SFX_CRACKLE {
+      z = au_noise_next(z);
+      if (z.state % rate) < l.f0 + (l.f1 - l.f0) * k / AU_ONE {
+        click = ifx (z.state & 65536) != 0 then AU_ONE else -AU_ONE;
+      }
+      x = click; click = click * 3 / 5;
+    } else {
+      p = au_phase(p, au_inc_mhz(hz, rate));
+      x = ifx l.wave == SFX_SAW then au_saw(p) else ifx l.wave == SFX_SQUARE then au_square(p) / 2 else au_sine(p);
+    }
+    if l.lp0 > 0 || l.lp1 > 0 {
+      corner := l.lp0 + (l.lp1 - l.lp0) * k / AU_ONE;
+      lp = au_pole(lp, x, sfx_pole(corner, rate)); x = lp;
+    }
+    if chp > 0 { hpy = au_pole(hpy, x, chp); x -= hpy; }
+    mix[at] += au_gain(x, sfx_env(l, i, n, a)) * l.gain / 1000;
+  }
+}
+
+// What a render made.
+SfxRender :: struct { ok: bool; frames: int; peak: int; bytes: int; }
+
+// Effect `id` rendered at `rate` into mix (scratch, at least sfx_frames samples), then as
+// WAV bytes into out: peaks normalised to 0.8 of full scale through a soft saturation,
+// so every effect leaves the synthesizer at one level and a page sets each one's gain.
+sfx_render :: (id: int, rate: int, mix: [] int, out: [] u8) -> SfxRender {
+  r := SfxRender.{};
+  if id < 0 || id >= SFX_COUNT || rate < 8000 { return r; }
+  s := sfx_recipe(id);
+  total := (s.ms + s.loop) * rate / 1000;
+  n := s.ms * rate / 1000;
+  if total > mix.count || n < 1 || out.count < WAV_HEADER + 2 * n { return r; }
+  m := mix[0..<total];
+  for i: 0..<total { m[i] = 0; }
+  for j: 0..<s.n { sfx_layer(s.layers[j], id * 977 + j * 131 + 7, rate, m); }
+  if s.loop > 0 {
+    // fold the tail over the start: the last sample runs into the first
+    x := total - n;
+    for i: 0..<x { m[i] = (m[i] * i + m[n + i] * (x - i)) / x; }
+  }
+  peak := 0;
+  for i: 0..<n { peak = au_max(peak, au_abs(m[i])); }
+  if peak > 0 {
+    for i: 0..<n {
+      v := au_saturate(m[i] * (AU_ONE * 9 / 10) / peak, 78643);   // drive 1.2
+      m[i] = au_clamp(v * 4 / 5 / 2, -32768, 32767);              // Q16 to a 16-bit step, at 0.8
+    }
+  }
+  b := wav_write(m[0..<n], 1, rate, out);
+  if b < 0 { return r; }
+  return SfxRender.{ok = true, frames = n, peak = peak, bytes = b};
+}
+
+// ---- Checks ----
+
+#test "every effect has a name, a recipe and fits the scratch" {
+  for i: 0..<SFX_COUNT {
+    #assert sfx_id(SFX_NAMES[i]) == i;
+    s := sfx_recipe(i);
+    #assert s.n > 0 && s.ms > 0 && s.ms + s.loop <= SFX_MAX_MS;
+  }
+  #assert sfx_id("nothing") == -1;
+}
+
+#test "an effect renders to WAV bytes that sound, the same bytes each time" #steps 400000000 {
+  mix: [SFX_MAX_FRAMES] int; a: [WAV_HEADER + 2 * SFX_MAX_FRAMES] u8; b: [WAV_HEADER + 2 * SFX_MAX_FRAMES] u8;
+  for id: [3] int.[SFX_FIRE_HIT, SFX_FROST_CAST, SFX_HORN] {
+    r := sfx_render(id, 8000, mix[..], a[..]);
+    #assert r.ok && r.peak > 0 && r.bytes == WAV_HEADER + 2 * r.frames;
+    #assert a[0] == 'R' && a[8] == 'W' && a[22] == 1;
+    loud := 0;
+    for i: 0..<r.frames { v := (cast(int) a[WAV_HEADER + 2 * i] | (cast(int) a[WAV_HEADER + 2 * i + 1] << 8)); if v >= 32768 { v -= 65536; } loud = au_max(loud, au_abs(v)); }
+    #assert loud > 20000 && loud <= 32767;
+    q := sfx_render(id, 8000, mix[..], b[..]);
+    #assert q.bytes == r.bytes;
+    same := true;
+    for i: 0..<r.bytes { if a[i] != b[i] { same = false; } }
+    #assert same;
+  }
+  #assert !sfx_render(SFX_COUNT, SFX_RATE, mix[..], a[..]).ok && !sfx_render(0, SFX_RATE, mix[0..<10], a[..]).ok;
+}
+
+#test "a loop's end runs into its start" #steps 400000000 {
+  mix: [SFX_MAX_FRAMES] int; out: [WAV_HEADER + 2 * SFX_MAX_FRAMES] u8;
+  r := sfx_render(SFX_AMBIENT, 8000, mix[..], out[..]);
+  #assert r.ok && r.frames == 8000 * 8000 / 1000;
+  // the last sample and the first are as close as two neighbours inside the bed
+  #assert au_abs(mix[r.frames - 1] - mix[0]) < 2000;
+}

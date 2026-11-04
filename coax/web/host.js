@@ -146,6 +146,9 @@
 //   coaxial_store_version(state, k)  has store k copied only when that number changes (a
 //                             generation: bump it when the store is rewritten)
 //   coaxial_sounds(state), coaxial_sounds_len(state)  sounds to play now, a line each: NAME GAIN PAN
+//                             [DELAY], or ~NAME GAIN PAN for a looping bed (playSoundText)
+//   coaxial_sound_bank(state), coaxial_sound_bank_len(state)  sounds the realm rendered itself,
+//                             a line each: NAME AT BYTES, WAV bytes in its memory (soundBank)
 //   coaxial_water_draws(state)  how many of the last draws are water (water_vs, waterPipelines)
 //                               (a WGSL with water_scene gets the scene's colour and depth copied
 //                               before them, at @group(3): waterCopyLayout)
@@ -750,6 +753,7 @@ function pageFacts() {
     vw: innerWidth, vh: innerHeight, dpr: devicePixelRatio || 1, coarse: matchMedia("(pointer: coarse)").matches ? 1 : 0,
     touch: navigator.maxTouchPoints || 0, gpu: navigator.gpu ? 1 : 0, hidden: document.hidden ? 1 : 0,
     cores: navigator.hardwareConcurrency || 0, memory: navigator.deviceMemory || 0, quality: storedQuality(),
+    sound: (() => { try { return localStorage.getItem("verse.sound") || ""; } catch { return ""; } })(),
     focused: document.hasFocus() ? 1 : 0,
     clip: globalThis.coaxialClip === true ? 1 : 0,
     webdriver: navigator.webdriver ? 1 : 0, fcp: fcp ? Math.round(fcp.startTime) : 0, dcl: nav ? Math.round(nav.domContentLoadedEventEnd) : 0,
@@ -1714,8 +1718,26 @@ function drawMedia(x, pass, w, h, depth, over = false) {
 // ---- sounds: Web Audio, started by the first touch or key (browsers wait for one)
 let audio = null, audioOut = null;
 const sounds = new Map();   // name -> a decoding or decoded buffer
+// A realm that renders its own sounds (aethyr/audio/sfx.coax) lists them once, when audio
+// starts: coaxial_sound_bank(state) and coaxial_sound_bank_len(state), a line each, NAME
+// AT BYTES, a WAV file's place in the wasm's memory. They join the sounds played by name.
+let banked = false;
+function soundBank() {
+  const x = engine?.exports;
+  if (banked || !x?.coaxial_sound_bank_len) return;
+  banked = true;
+  const n = x.coaxial_sound_bank_len(arena.state);
+  const text = n ? new TextDecoder().decode(new Uint8Array(memory.buffer, x.coaxial_sound_bank(arena.state), n).slice()) : "";
+  for (const line of text.split("\n")) {
+    const [name, at, bytes] = line.split(" ");
+    if (!name || !(+bytes > 0)) continue;
+    assets.push({ i: assets.length, kind: "sound", name, bytes: new Uint8Array(memory.buffer, +at, +bytes).slice(), done: true });
+  }
+}
 function startAudio() {
-  if (audio || !assets.some((a) => a.kind === "sound" || a.kind === "loop")) return;
+  if (audio) return;
+  soundBank();
+  if (!assets.some((a) => a.kind === "sound" || a.kind === "loop")) return;
   try { audio = new AudioContext(); } catch { return; }
   // checks (aethyr/tests/live-audio.coax): the live graph ends in the check's tap, which
   // records the samples on the audio thread and passes them on to the (muted) speakers
@@ -1745,19 +1767,40 @@ function playSounds(x) {
   if (!n || !audio) return;
   playSoundText(new TextDecoder().decode(new Uint8Array(memory.buffer, x.coaxial_sounds(arena.state), n).slice()));
 }
-// The realm's lines, NAME GAIN PAN each: at most 16 voices at once. A voice holds its
-// place from its line, while its sound still decodes, so a burst can't pass 16.
+// The realm's lines, NAME GAIN PAN each, and an optional DELAY in seconds (a far sound is
+// heard after it is seen, aethyr/audio/space.coax): at most 16 voices at once. A voice
+// holds its place from its line, while its sound still decodes, so a burst can't pass 16.
+// A line ~NAME GAIN PAN sets a looping bed instead: started on its first line, then eased
+// to each new gain and pan (gain 0 keeps it silent), outside the 16.
+const beds = new Map();   // name -> { gain, pan } nodes of a looping sound
+const heard = [];         // on this machine only: the last lines played, for the checks
 function playSoundText(text) {
   for (const line of text.split("\n")) {
-    const [name, gain, pan] = line.split(" ");
+    if (line[0] === "~") { bedLine(line.slice(1)); continue; }
+    const [name, gain, pan, delay] = line.split(" ");
     const a = assets.find((s) => s.kind === "sound" && s.name === name);
     if (!a || playing >= 16) continue;
     playing++;
+    if (dev) { heard.push(line); if (heard.length > 512) heard.shift(); }
     decoded(a).then((b) => {
       const s = soundVoice(audio, b, gain, pan, audioOut);
-      s.onended = () => playing--; s.start();
+      s.onended = () => playing--; s.start(audio.currentTime + Math.max(0, Math.min(2, Number(delay) || 0)));
     }).catch(() => playing--);
   }
+}
+function bedLine(line) {
+  const [name, gain, pan] = line.split(" ");
+  const g = Math.max(0, Math.min(1, Number(gain) || 0)), p = Math.max(-1, Math.min(1, Number(pan) || 0));
+  const bed = beds.get(name);
+  if (bed) { bed.gain.gain.setTargetAtTime(g, audio.currentTime, 0.25); bed.pan.pan.setTargetAtTime(p, audio.currentTime, 0.25); return; }
+  const a = assets.find((s) => s.kind === "sound" && s.name === name);
+  if (!a) return;
+  const nodes = { gain: audio.createGain(), pan: audio.createStereoPanner() };
+  nodes.gain.gain.value = 0; nodes.pan.pan.value = p;
+  beds.set(name, nodes);
+  nodes.gain.connect(nodes.pan).connect(audioOut);
+  nodes.gain.gain.setTargetAtTime(g, audio.currentTime, 0.5);
+  decoded(a).then((b) => { const s = audio.createBufferSource(); s.buffer = b; s.loop = true; s.connect(nodes.gain); s.start(); }).catch(() => {});
 }
 
 // ---- the canvas's size in device pixels: exactly its CSS box times the
@@ -2251,6 +2294,7 @@ if (dev) {
   // lines played through the host's path, and the voice graph for an offline render.
   globalThis.coaxial.audio = { add: (name, bytes) => { assets.push({ i: assets.length, kind: "sound", name, bytes, done: true }); },
     start: () => { startAudio(); return audio; }, play: (text) => playSoundText(text), playing: () => playing,
+    heard: () => heard.slice(), probe: (slot, right, ahead, up) => engine?.exports.coaxial_sound_probe?.(arena.state, slot, right, ahead, up) ?? -1, beds: () => [...beds].map(([name, b]) => `${name} ${b.gain.gain.value.toFixed(3)} ${b.pan.pan.value.toFixed(3)}`),
     decode: (name) => decoded(assets.find((a) => a.kind === "sound" && a.name === name)), voice: soundVoice };
   globalThis.coaxial.renderLedger = () => gpu?.renderer?.ready ? gpu.renderer.ledger() : null;
   globalThis.coaxial.renderLedgerLive = (slot, generation) => engine?.exports.coaxial_render_live?.(slot, generation) ?? -1;
@@ -2364,6 +2408,8 @@ function after(gesture, tap = false) {
     else if (code === PLACE_KIND) { if (!golden) try { localStorage.setItem(placeKey, text); } catch {} }
     else if (code === BAR_KIND) { if (!golden) try { localStorage.setItem(barKey, text); } catch {} }
     else if (code === 6) setQuality(text);
+    // a realm's sound settings, "VOLUME MUTED" (0..100, 0 or 1), back in its facts as sound=
+    else if (code === 13) { if (!golden) try { localStorage.setItem("verse.sound", text.slice(0, 16)); } catch {} }
     else if (code === ACT_VOICE && voice) voice.toggle(text === "end" ? "end" : text === "on");
     else if (code === ACT_VOICE_TO && voice) voice.face(text);
     else if (code === ACT_VOICE_SAY && voice) voice.say(text);

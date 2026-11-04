@@ -221,6 +221,7 @@ ab_press :: (s: [] Everglade, k: int) {
   }
   if ab_aimed(k) { s[0].sp.armed = ifx s[0].sp.armed == b then -1 else b; return; }
   s[0].sp.armed = -1;
+  egs_hit(s, egs_ab_look(k), add(ab_you(s), v3(0, 1, 0)), 0);   // it goes off round you (everglade-sound.coax)
   if k == AB_REVERSE { ab_reverse(s); return; }
   if k == AB_WIND { ab_wind(s); return; }
   if k == AB_LEVITATE { ab_levitate(s); net_mirror(s, k, a[0].lev_on); return; }
@@ -274,6 +275,7 @@ ab_counts :: (s: [] Everglade, out: [] f32, at: int) -> int {
 }
 // A click or a tap with ability k picked, where the pointer points (everglade-spells.coax sp_cast).
 ab_cast :: (s: [] Everglade, k: int) {
+  egs_cast(s, egs_ab_look(k), add(ab_you(s), v3(0, 1.5, 0)), s[0].sp.aim, 0.3); egs_hit(s, egs_ab_look(k), s[0].sp.aim, 0.3);   // everglade-sound.coax
   if k == AB_TK { ab_tk_click(s); return; }
   if k == AB_TENTACLES { ab_bt_cast(s); return; }
   if k == AB_KNIFE { fr_knife_cast(s); return; }
