@@ -469,7 +469,7 @@
         },
         {
           "path": "verse/everglade/gpu.bindings",
-          "sha256": "6d8dbfed3d1dfd5e6b0afbafca5423dbf85005ed69bf1d98bda42cf07f6f1530"
+          "sha256": "cb8d7d2a9236e5eb52b620848f0b9a06b06089a5cf15fdb7ce3092f05b7e8940"
         },
         {
           "path": "verse/everglade/gpu-fx.module",
