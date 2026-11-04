@@ -5,6 +5,11 @@
 # b_call, b_player and builder_fake come from them).
 
 
+# Slugs whose rights stay on the server though realms.json no longer lists them: /worlds/everglade-5e
+# answers 301 to Everglade since the swap (0113), and its row is kept, as 0112 left it.
+RETIRED_RIGHTS = {"everglade-5e"}
+
+
 def realm_rights_checks():
     here = os.path.dirname(os.path.abspath(__file__))
     realms = json.load(open(os.path.join(here, "..", "..", "..", "apps", "openagents-web", "realms.json")))
@@ -19,7 +24,7 @@ def realm_rights_checks():
     want = {s: [e["owner"], ",".join(e.get("admins", [])), ",".join(e.get("tools", [])), ",".join(e.get("things", [])),
                 ",".join(r["id"] for r in e["rows"])] for s, e in hand.items()}
     check("every hand-built realm in realms.json has its owner, admins, tools, things and rows on the server, the same",
-          seeded == want and {"everglade", "the-grid", "hecates-cemetery", "fairy-forest", "dead-gears", "ice-cream-man", "haunted-house"} <= set(seeded),
+          {s: seeded.get(s) for s in want} == want and set(seeded) - set(want) <= RETIRED_RIGHTS and {"everglade", "the-grid", "hecates-cemetery", "fairy-forest", "dead-gears", "ice-cream-man", "haunted-house"} <= set(seeded),
           (seeded, want))
 
     # a hand-built realm of the test's own: its owner joins by email, an admin account, a site admin

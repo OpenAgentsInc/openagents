@@ -177,7 +177,7 @@ if named:   # the page's names, in the contract's order
 else:       # until the page's names land: its first five labels
     coax_items = re.findall(r'"([^"]*)"', re.search(r'EG_EDIT_LABEL :: \[5\] string\.\[([^\]]*)\]', edits_coax).group(1))
     check("voice edit: the server's things are the page's (verse/everglade/edits.coax)", [x.lower() for x in coax_items] == props["item"]["enum"][:5], coax_items)
-coax_people = re.findall(r'"([^"]*)"', re.search(r'EG_PERSON :: \[22\] string\.\[([^\]]*)\]', open(os.path.join(here, "../../../verse/everglade/people.coax")).read()).group(1))
+coax_people = re.findall(r'"([^"]*)"', re.search(r'EG_PERSON :: \[\d+\] string\.\[([^\]]*)\]', open(os.path.join(here, "../../../verse/everglade/people.coax")).read()).group(1))
 check("voice edit: the server's people are the page's (verse/everglade/people.coax), after nobody", props["who"]["enum"] == ["nobody"] + coax_people, coax_people)
 order = ["edit", "item", "name", "count", "arrange", "onto", "colour", "size", "direction", "metres", "turn", "all", "who", "building", "row", "on", "panel", "reply"]
 check("voice edit: every field is answered, edit and item first, then name", schema["required"] == order and schema["propertyOrdering"] == order, schema)

@@ -33,7 +33,7 @@ status, made = course_call("POST", CO + "abcd1234", {"realm": "fairy-forest", "h
 check("course: a new id is the maker's", status == 200 and made["mine"] is True and made["realm"] == "fairy-forest"
       and len(made["hoops"]) == 4 and made["hoops"][1][0] == 10.12 and made["times"] == [] and made["best"] is None, made)
 status, seen = course_call("GET", CO + "abcd1234", key=friend["key"])
-check("course: a friend opens it by its link", status == 200 and seen["mine"] is False and seen["by"] == "Guest " + maker["id"][2:6].upper()
+check("course: a friend opens it by its link", status == 200 and seen["mine"] is False and seen["by"] == sql(f"select verse.player_name('{maker['id']}')")
       and seen["hoops"] == made["hoops"], seen)
 check("course: and can't change it", course_call("POST", CO + "abcd1234", {"hoops": hoops[:3]}, friend["key"])[0] == 403)
 

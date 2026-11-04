@@ -193,3 +193,6 @@ check("the stopped turn says who stopped it", f"\nU|{t3}|ask|stopped|" in b and 
 log = open(os.environ["API_LOG"], "rb").read()
 for secret in ("Mark the deck as doing", "Send it to the team", "Done: the deck", ada, cy):
     check(f"the log never holds {secret[:8]}...", secret.encode() not in log)
+
+# test_room.py's hosted seats put their own stand-in on WAKE_PORT: free it.
+runner_http.shutdown(); runner_http.server_close()

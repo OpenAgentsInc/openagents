@@ -51,9 +51,15 @@ $cc -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,u
   ${secp:+-I"$secp/include"} -I"$(brew --prefix openssl@3)/include" -o "$work/sign" "$here/sign.c" \
   ${secp:+-L"$secp/lib"} -lsecp256k1 -L"$(brew --prefix openssl@3)/lib" -lcrypto
 # The project agent's runner (coax/web/agent/runner.c), run by test_private_runner.py with a stand-in engine.
+# It links runner-sign.coax's C, compiled here as deploy.sh compiles it. The generated
+# signer sets a value it never reads (schnorr_sign.coax's ss_write result), so that
+# warning stays a warning for that file only.
+"$cli_coax" c "$here/../agent/runner-sign.coax" --library --run-steps 250000000 --header "$work/runner-sign.h" > "$work/runner-sign.c"
+$cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-error=unused-but-set-variable -D_DEFAULT_SOURCE -fsanitize=address,undefined \
+  -c -o "$work/runner-sign.o" "$work/runner-sign.c"
 $cc -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,undefined \
-  ${secp:+-I"$secp/include"} -I"$(brew --prefix openssl@3)/include" -o "$work/oa-agent" "$here/../agent/runner.c" \
-  ${secp:+-L"$secp/lib"} -lsecp256k1 -L"$(brew --prefix openssl@3)/lib" -lcrypto -lcurl
+  -I"$work" ${secp:+-I"$secp/include"} -I"$(brew --prefix openssl@3)/include" -o "$work/oa-agent" "$here/../agent/runner.c" "$work/runner-sign.o" \
+  ${secp:+-L"$secp/lib"} -lsecp256k1 -L"$(brew --prefix openssl@3)/lib" -lcrypto -lcurl -lm
 export RUNNER_BIN="$work/oa-agent" RUNNER_BIN_SRC="$here/../agent/runner.c"
 export SIGN="$work/sign" ADMIN_KEY="$work/admin.key" OTHER_KEY="$work/other.key"
 export OA_ADMIN_PUBKEYS="$("$SIGN" --new "$ADMIN_KEY")"

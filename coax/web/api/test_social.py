@@ -40,7 +40,7 @@ status, sent = soc("POST", "/api/playtest/inbox", {"to": moss["id"], "text": "  
 check("social: a message to someone you have met", status == 200 and sent["id"] > 0, sent)
 status, mb = soc("GET", "/api/playtest/inbox", key=moss["key"])
 check("social: it waits in their inbox, unread, with who sent it", status == 200 and mb["unread"] == 1 and mb["messages"][-1]["text"] == "meet me at the pond"
-      and mb["messages"][-1]["from"] == wren["id"] and mb["messages"][-1]["name"] == "Guest " + wren["id"][2:6].upper()
+      and mb["messages"][-1]["from"] == wren["id"] and mb["messages"][-1]["name"] == sql(f"select verse.player_name('{wren['id']}')")
       and mb["messages"][-1]["mine"] is False and mb["messages"][-1]["read"] is False, mb)
 check("social: and the sender sees it as theirs", soc("GET", "/api/playtest/inbox", key=wren["key"])[1]["messages"][-1]["mine"] is True)
 check("social: reading another's leaves theirs unread", soc("POST", "/api/playtest/inbox/read", {"upto": sent["id"], "from": fern["id"]}, moss["key"])[1]["unread"] == 1)

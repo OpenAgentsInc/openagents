@@ -19,6 +19,12 @@ def realm_fork_checks():
     model = http.server.ThreadingHTTPServer(("127.0.0.1", int(os.environ["BUILDER_PORT"])), FakeBuilderModel)
     threading.Thread(target=model.serve_forever, daemon=True).start()
     site = bucket["site"]
+    # The made-realm engine's page as the site serves it, which a publish pins (0107): the page
+    # tests/realm_engine_pin.sql pins. Without it a publish with a site bucket is refused (503).
+    bucket["objects"]["realms/built/index.html"] = (
+        b'<!doctype html>\n<html><body>\n<canvas id="coaxial"></canvas>\n'
+        b'<script type="module" src="/coaxial/host.9ca333f3d8b0.js" data-app="myrealm" data-realm="built" data-slot="built" '
+        b'data-wasm="/build/myrealm.0e7b9526d8a2.wasm" data-wgsl="/build/myrealm.224131021ece.wgsl"></script>\n</body>\n</html>\n')
     R = "/api/playtest/realms/"
 
     def lines(raw):
@@ -131,7 +137,7 @@ def realm_fork_checks():
     sent = builder_seen[-1] if builder_seen else {}
     enum = sent.get("generationConfig", {}).get("responseSchema", {}).get("properties", {}).get("features", {}).get("items", {}).get("properties", {}).get("id", {}).get("enum", [])
     check("the model is asked under a schema of the fork's row ids, told what each does",
-          set(enum) == {"flock", "floats", "undergrowth", "daycycle", "guards", "invincible", "night", "waves", "nodestroy", "lowgrav"}
+          set(enum) == {"flock", "floats", "undergrowth", "daycycle", "guards", "invincible", "pvp", "night", "waves", "nodestroy", "lowgrav"}
           and "gravity is a third of normal" in sent["systemInstruction"]["parts"][0]["text"], (enum, sent.get("systemInstruction")))
     m = line_map(b_call("GET", R + "doomglade/fork")[1])
     check("its answer is the fork now: low gravity on, night off; a row it hasn't is ignored",

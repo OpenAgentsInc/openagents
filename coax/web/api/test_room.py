@@ -19,7 +19,7 @@ ann, bo = mint(), mint()
 R = "/api/playtest/presence/haunted-house"
 status, a = room_call("POST", R, {"x": 1.5, "y": 0, "z": -2, "yaw": 0.5, "after": 0}, ann["key"])
 check("a player comes into a room and is alone there", status == 200 and a["others"] == [] and a["you"]["id"] == ann["id"]
-      and a["you"]["name"] == "Guest " + ann["id"][2:6].upper(), a)
+      and a["you"]["name"] == sql(f"select verse.player_name('{ann['id']}')"), a)
 status, b = room_call("POST", R, {"x": 3, "z": 4, "yaw": 1, "after": 0}, bo["key"])
 check("the next one sees the first, where they are", status == 200 and len(b["others"]) == 1 and b["others"][0]["id"] == ann["id"]
       and b["others"][0]["x"] == 1.5 and b["others"][0]["z"] == -2 and b["others"][0]["yaw"] == 0.5, b)
@@ -37,7 +37,7 @@ check("a line said in the room", status == 200 and s["n"] >= 1, s)
 first = s["n"]
 status, m = room_call("GET", C + "?after=%d" % (first - 1))
 check("everyone reads it, with who said it", status == 200 and m["messages"][0]["text"] == "hello there"
-      and m["messages"][0]["name"] == "Guest " + ann["id"][2:6].upper() and m["last"] == first, m)
+      and m["messages"][0]["name"] == sql(f"select verse.player_name('{ann['id']}')") and m["last"] == first, m)
 status, p = room_call("POST", R, {"after": first - 1}, bo["key"])
 check("presence brings the lines after the last one seen, marked whose", status == 200 and [x["text"] for x in p["messages"]] == ["hello there"]
       and p["messages"][0]["mine"] is False and p["last"] == first, p)
@@ -123,21 +123,21 @@ def seat_post(room, body, keyfile=None, headers=None):
     return status, json.loads(out)
 
 
-owner, visitor, page = mint(), mint(), mint()
+owner, visitor, seat_page = mint(), mint(), mint()   # seat_page: test_private.py's page() stays for test_zchat.py
 for slug, vis in (("seat-green", "unlisted"), ("seat-secret", "private")):
     sql(f"insert into verse.worlds (id, owner_player, created_ms) values ('made-{slug}', '{owner['id']}', verse.now_ms())")
     sql(f"insert into verse.made_realms (slug, world, name, style, ground, time, features, tools, made_ms, visibility) "
         f"values ('{slug}', 'made-{slug}', 'S', 'lowpoly', 'meadow', 'day', '{{}}', '{{}}', verse.now_ms(), '{vis}')")
 GR = "made-seat-green"
 room_call("POST", "/api/playtest/presence/" + GR, {"x": 1, "z": 2}, visitor["key"])
-status, seat = seat_post(GR, {"x": 5, "z": 6, "yaw": 1.5, "page": page["id"]}, os.environ["OTHER_KEY"])
+status, seat = seat_post(GR, {"x": 5, "z": 6, "yaw": 1.5, "page": seat_page["id"]}, os.environ["OTHER_KEY"])
 check("a signed presence is an agent's seat, under its account", status == 200 and seat["you"]["agent"] is True
       and [o["id"] for o in seat["others"]] == [visitor["id"]], seat)
 status, v = room_call("POST", "/api/playtest/presence/" + GR, {"x": 1, "z": 2}, visitor["key"])
 agents = [o for o in v["others"] if o.get("agent")]
 check("a person in the realm sees the seat, flagged agent, where it stands", status == 200 and len(agents) == 1
       and agents[0]["id"] == seat["you"]["id"] and agents[0]["name"] == seat["you"]["name"] and agents[0]["x"] == 5, v)
-status, raw, _ = call("POST", "/api/playtest/presence/" + GR, b"{}", {"Content-Type": "application/json", "X-Verse-Player": page["key"], "X-Verse-Automation": "realm-seat"})
+status, raw, _ = call("POST", "/api/playtest/presence/" + GR, b"{}", {"Content-Type": "application/json", "X-Verse-Player": seat_page["key"], "X-Verse-Automation": "realm-seat"})
 check("the seat's own page sees the people, not its own agent", status == 200 and [o["id"] for o in json.loads(raw)["others"]] == [visitor["id"]], raw)
 check("the homepage counts the seat", seat["you"]["id"] in [o["id"] for o in room_call("GET", "/api/playtest/presence/" + GR)[1]["others"]])
 forged = mint()
@@ -297,7 +297,8 @@ if os.environ.get("WAKE_PORT"):
     check("the session on another site's page is refused", page_call(SEATS, {"slug": "seat-green", "hosted": True}, {**on_page, "Origin": "https://elsewhere.example"})[0] == 403)
     check("a POST without this site's Origin isn't the session's", page_call(SEATS, {"slug": "seat-green", "hosted": True}, {"Content-Type": "application/json", "Cookie": "oa_session=" + tok})[0] == 401)
     check("the player key is no account here", page_call(SEATS, {"slug": "seat-green", "hosted": True}, {"Content-Type": "application/json", "Origin": API, "X-Verse-Player": visitor["key"]})[0] == 401)
-    check("an unknown session is no account", page_call(SEATS, {"slug": "seat-green", "hosted": True}, {**on_page, "Cookie": "oa_session=" + "e" * 64})[0] == 401)
+    unknown = page_call(SEATS, {"slug": "seat-green", "hosted": True}, {**on_page, "Cookie": "oa_session=" + os.urandom(32).hex()})
+    check("an unknown session is no account", unknown[0] == 401, unknown)
     check("the page closes its seat", page_call(f"{SEATS}/{h3['id']}/close", {}) == (200, {"closed": True})
           and [b for p, b, _ in runner_seen if p == "/seat/close"][-1] == {"id": h3["id"]})
     fake.shutdown(); fake.server_close()
@@ -354,14 +355,13 @@ if os.environ.get("RUNNER_BIN") and os.environ.get("RUN_KEY_FILE"):
     check("at most 8 at once", rpost("/seat/open", seat_of(9))[0] == 429)
     check("a closed seat is gone and frees its place", rpost("/seat/close", {"id": 2}) == (200, {"closed": True})
           and rpost("/seat/act", {"id": 2, "action": {"op": "look"}})[0] == 404 and rpost("/seat/open", seat_of(9))[0] == 200)
-    time.sleep(2.0)
-    rpost("/seat/act", {"id": 1, "action": {"op": "look"}})   # seat 1 kept; the rest idle
-    time.sleep(1.3)
-    for _ in range(60):   # the runner looks between requests, at least every 30 s
-        if rpost("/seat/act", {"id": 3, "action": {"op": "look"}})[0] == 404:
-            break
+    # Seat 1 is acted in every half second; the rest sit idle past the 3 s limit. The runner looks
+    # between requests (at least every 30 s), so each act on seat 1 is also a look. (Seat 3 isn't
+    # asked until the end: an act on a seat still open would keep it.)
+    for _ in range(9):
+        rpost("/seat/act", {"id": 1, "action": {"op": "look"}})
         time.sleep(0.5)
-    check("a seat idle past its limit is closed; one acted in stays", rpost("/seat/act", {"id": 3, "action": {"op": "look"}})[0] == 404
-          and rpost("/seat/act", {"id": 1, "action": {"op": "look"}})[0] == 200)
+    idle, kept = rpost("/seat/act", {"id": 3, "action": {"op": "look"}}), rpost("/seat/act", {"id": 1, "action": {"op": "look"}})
+    check("a seat idle past its limit is closed; one acted in stays", idle[0] == 404 and kept[0] == 200, (idle, kept))
     rproc.terminate(); rproc.wait()
     check("no seat's key reaches the runner's log", "seatkey" not in open(rlog).read())
