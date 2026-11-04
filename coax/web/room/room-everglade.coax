@@ -96,6 +96,7 @@ EgSeat :: struct {
   full: bool; full_t: int; pieces: bool;
   old: bool;                                          // a page from before wire 3: its state on the old wire (room-oldwire.coax)
   fresh: bool;                                        // just sat: the world's watch meets a new player
+  want_seed: int;                                     // the WANTED level it comes back with, for the world's town (rv_join; 0 none)
   wcond: int;                                         // the world's conditions on it (WC_*), with the rules' in p's COND
   fx_left: [WE_WATCH] f32; fx_t0: [WE_WATCH] int; fx_dur: [WE_WATCH] int;   // its watch effects (WE_*): seconds left, start tick, ticks
   step_at: int; ack_at: int; ack_told: int;           // when the input stepped last and the one ACK names were heard (room-stats.coax rm_st_ack)
@@ -243,6 +244,7 @@ eg_left :: (v: [] RmServer, r: int, seat: int) {
   k := eg_room_at(v, r);
   if k < 0 || seat < 0 || seat >= EG_SEATS { return; }
   rv_note_seat(v, k, seat);   // its HP kept for its player (room-vitals.coax, #12715)
+  v[0].vit.flush = true;      // and posted at the host's next second; the note stays until a receipt covers it (#12793)
   v[0].eg[k].seat[seat].live = false;
   e5rr_leave(v[0].eg[k].rules[..], seat);
   rc_left(v, k, seat);   // its casts on their bars stop where everyone hears (room-casts.coax)
@@ -652,6 +654,14 @@ rm_eg_cond_left :: (v: [] RmServer, k: int, s: int, cause: int, left: f32) #expo
   st[0].fx_left[cause] = ifx left > 0 then left else 0;
 }
 rm_eg_wanted :: (v: [] RmServer, k: int, s: int, level: int) #export_c { if rm_eg_seat_live(v, k, s) { v[0].eg[k].wanted[s] = level; } }
+// The WANTED level seat s comes back with (rv_join, #12794), once: the host lays it on the world's town
+// when the town first steps the seat. 0 none.
+rm_eg_want_take :: (v: [] RmServer, k: int, s: int) -> int #export_c {
+  if !rm_eg_seat_live(v, k, s) { return 0; }
+  w := v[0].eg[k].seat[s].want_seed;
+  v[0].eg[k].seat[s].want_seed = 0;
+  return w;
+}
 
 // ---- what a seat hears
 

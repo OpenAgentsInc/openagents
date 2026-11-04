@@ -48,7 +48,7 @@ NET_MINE :: 8;             // your casts sent, kept to read a refusal of them by
 NET_ID :: 24; NET_NAME :: 40; NET_LOOK :: 32; NET_CODE :: 24; NET_URL :: 200;
 NET_TICKET :: 256;   // a seat ticket's most bytes (coax/web/room/room-ticket.coax)
 NET_PIPE_STATE :: 5;    // the pipe's save of what you bring back into a room: its bytes the JSON to POST to /api/playtest/room-state (#12715)
-NET_STATE_EVERY :: 2000;   // ms: a changed WANTED or look is saved at most this often
+NET_STATE_EVERY :: 2000;   // ms: a changed look is saved at most this often (WANTED is the room's to save, #12794)
 NET_PIPE_TICKET :: 4;   // the pipe's ask for a seat ticket: its bytes the API path to POST, a newline, the body (the face carries it)
 NET_BASE :: 0; NET_LOW :: 100; NET_HIGH :: 300;   // ms: the jitter buffer's delay (NET_BASE over the states' lateness, spread and interval, NET_LOW at least)
 NET_AHEAD :: 150;          // ms past its newest state an entity goes on by its velocity
@@ -105,8 +105,8 @@ EgNet :: struct {
   // local_relay: a room server on this machine (?relay=ws://localhost:PORT, coax/web/room/local.sh),
   // which keeps its own address; its tickets come from the API's local stand-in, as production's do
   ticket: [NET_TICKET] u8; ticket_n: int; ticket_asked: bool; local_relay: bool;
-  // what you bring back into a room (#12715): the WANTED level and look last saved, and when
-  saved_wanted: int; saved_look: [NET_LOOK] u8; saved_look_n: int; saved_at: int; restored: bool;
+  // what you bring back into a room (#12715): the look last saved, and when
+  saved_look: [NET_LOOK] u8; saved_look_n: int; saved_at: int; restored: bool;
   edit_due: bool;            // the server said "e edit": the world and the board are asked for again (#12714)
   pid: [NET_ID] u8; pid_n: int; account: bool;
   look: [NET_LOOK] u8; look_n: int;
@@ -307,15 +307,15 @@ net_placed :: (n: [] EgNet, room: string, shard: int) {
   m = wire_put(n[0].url[..], m, room);
   n[0].url_n = m;
 }
-// What the ticket's answer brings back (#12715), once a page: your WANTED level (kept 5 minutes; the
-// watch takes it as a "+wantedN" start) and your look (the hello sends it). The HP is the server's.
+// What the ticket's answer brings back (#12715), once a page: your WANTED level (the one the room saved
+// in the last 5 minutes, #12794; the watch takes it as a "+wantedN" start) and your look (the hello
+// sends it). The HP and WANTED are the server's.
 net_restore :: (s: [] Everglade, n: [] EgNet, answer: string) {
   if n[0].restored { return; }
   n[0].restored = true;
   w := net_json_field(answer, "wanted");
   level := net_number(w);
   if level > 0 && level <= 5 { s[0].wv.want = level; }
-  n[0].saved_wanted = ifx level > 0 && level <= 5 then level else 0;
   look := net_json_field(answer, "look");
   if look.count > 0 && look.count <= NET_LOOK && look[0] != '"' {
     n[0].look_n = net_copy(n[0].look[..], look);
@@ -335,20 +335,17 @@ net_json_field :: (t: string, name: string) -> string {
   }
   return "";
 }
-// While you play in a room: a WANTED level or look that changed is saved (at most every NET_STATE_EVERY).
+// While you play in a room: a look that changed is saved (at most every NET_STATE_EVERY). Your WANTED
+// level is not the page's to save: the room reports it signed with your HP and XP, and the API refuses
+// it from a page (coax/web/room/room-vitals.coax, coax/web/api/player.c room_state, #12794).
 net_save_state :: (s: [] Everglade, n: [] EgNet) {
   if !net_open(s) || n[0].mono - n[0].saved_at < NET_STATE_EVERY { return; }
-  you := watch_you(s[0].wt[..]);
-  level := ifx you[0].wanted then you[0].level else 0;
-  if level < 0 { level = 0; }
-  if level > 5 { level = 5; }
   look := cast(string) n[0].look[0..<n[0].look_n];
-  if level == n[0].saved_wanted && look == cast(string) n[0].saved_look[0..<n[0].saved_look_n] { return; }
+  if look == cast(string) n[0].saved_look[0..<n[0].saved_look_n] { return; }
   b: [128] u8;
-  k := wire_put(b[..], 0, "{\"wanted\":"); k = wire_put(b[..], k, ifx level == 0 then "0" else ifx level == 1 then "1" else ifx level == 2 then "2" else ifx level == 3 then "3" else ifx level == 4 then "4" else "5");
-  k = wire_put(b[..], k, ",\"look\":\""); k = wire_put(b[..], k, look); k = wire_put(b[..], k, "\",\"class\":\"druid\"}");
+  k := wire_put(b[..], 0, "{\"look\":\""); k = wire_put(b[..], k, look); k = wire_put(b[..], k, "\",\"class\":\"druid\"}");
   if pipe_put(n[0].pipe[..], NET_PIPE_STATE, -1, cast(string) b[0..<k]) {
-    n[0].saved_wanted = level; n[0].saved_look_n = net_copy(n[0].saved_look[..], look); n[0].saved_at = n[0].mono;
+    n[0].saved_look_n = net_copy(n[0].saved_look[..], look); n[0].saved_at = n[0].mono;
   }
 }
 // Whether the server said the world changed since the face last asked (the face asks for it again).
@@ -1703,7 +1700,7 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   net_placed(nb[..], "everglade-3", 2);
   #assert cast(string) nb[0].url[0..<nb[0].url_n] == cast(string) was[0..<wn] && cast(string) was[0..<20] == "ws://localhost:8830/";
 }
-#test "net: the ticket's answer brings back your WANTED and look; a changed WANTED is saved while you play" {
+#test "net: the ticket's answer brings back your WANTED and look; a changed look is saved while you play, a WANTED level never (#12794)" {
   a: [1] Everglade; na: [1] EgNet;
   everglade_attach_net(a[..], na[..]);
   net_facts(a[..], "url=https://openagents.com/worlds/everglade?room=pair-a\nplayer=pa\nnow=5000000\nnav=0\n", "everglade", false);
@@ -1713,16 +1710,17 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   pipe_drained(na[0].pipe[..]);
   net_opened(a[..], 0);
   #assert net_event(a[..], SOCKET_KIND + SOCKET_OPENED, "") && net_test_hear(a[..], 0, "y 0 1 5000100") && net_live(a[..]);
-  // the same as saved: nothing goes; a new level does, once
-  watch_you(a[0].wt[..])[0].wanted = true; watch_you(a[0].wt[..])[0].level = 3;
+  // the same look as saved: nothing goes, and a new WANTED level is the room's, so nothing goes either
+  watch_you(a[0].wt[..])[0].wanted = true; watch_you(a[0].wt[..])[0].level = 4;
   net_step(a[..], 3000, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
   for k: 0..<na[0].pipe[0].n { #assert na[0].pipe[0].op[k] != NET_PIPE_STATE; }
   pipe_drained(na[0].pipe[..]);
-  watch_you(a[0].wt[..])[0].level = 4;
+  // a new look goes, once, with no WANTED in it
+  na[0].look_n = net_copy(na[0].look[..], "ranger.3.1.0");
   net_step(a[..], 6000, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
   got := "";
   for k: 0..<na[0].pipe[0].n { if na[0].pipe[0].op[k] == NET_PIPE_STATE { got = pipe_bytes(na[0].pipe[..], k); } }
-  #assert got == "{\"wanted\":4,\"look\":\"ranger.2.1.0\",\"class\":\"druid\"}";
+  #assert got == "{\"look\":\"ranger.3.1.0\",\"class\":\"druid\"}";
   pipe_drained(na[0].pipe[..]);
   net_step(a[..], 9000, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
   for k: 0..<na[0].pipe[0].n { #assert na[0].pipe[0].op[k] != NET_PIPE_STATE; }

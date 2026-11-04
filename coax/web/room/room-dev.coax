@@ -1,12 +1,12 @@
 // The API's stand-in for local development (room-host.c --dev, coax/web/room/local.sh; #12774).
 // A local room then behaves as production's: seat tickets signed with a key and checked, players
 // named, the control's levels, cap, PvP and event dials read from dev/room-control.txt every two
-// seconds as the API's answer is, and HP and XP brought back between visits from the room's own
+// seconds as the API's answer is, and HP, XP and WANTED brought back between visits from the room's own
 // vitals (room-vitals.coax), as the API keeps them. The page asks its usual /api/ paths, which
 // serve.sh --api sends here:
 //   POST /api/playtest/player                 a new player: {"key":KEY,"id":PID} (player.c)
 //   POST /api/playtest/room-ticket/ROOM       a seat ticket for ROOM, for the X-Verse-Player key
-//   POST /api/playtest/room-state             what you bring back (WANTED, look): taken, not kept
+//   POST /api/playtest/room-state             what you bring back (look, class): taken, not kept; WANTED is the room's
 //   GET  /api/playtest/rooms/SLUG             the instances (rm_rooms, room-relay.coax)
 //   GET  /api/playtest/world/everglade     the world document (room-host.c)
 //   POST /api/playtest/world/everglade     publish {doc, summary}: the world document written, the next
@@ -123,16 +123,17 @@ rm_dev_api :: (v: [] RmServer, req: string) -> int #export_c {
     nb: [32] u8; nn := dv_name(pid, nb[..]);
     name := cast(string) nb[0..<nn];
     // HP for 10 minutes and the XP, from the room's own vitals (the API's verse.room_vitals)
-    hp := -1; xp := 0;
+    hp := -1; xp := 0; wanted := 0;
     i := rv_find(v, pid);
     if i >= 0 {
       e2 := v[0].vit.v[i];
       xp = e2.xp;
       if e2.hp < e2.max && v[0].wall_ms - e2.at < 600000 { hp = e2.hp; }
+      if v[0].wall_ms - e2.at < VITALS_WANTED_MS { wanted = e2.wanted; }   // and WANTED for 5 (#12794)
     }
     expires := v[0].wall_ms + TICKET_LIFE_MS;
     tb: [TICKET_TEXT] u8;
-    tn := tk_sign_xp(DEV_KEY, pid, false, name, room, 0, expires, hp, ifx xp > 0 then xp else -1, tb[..]);
+    tn := tk_sign_wanted(DEV_KEY, pid, false, name, room, 0, expires, hp, ifx xp > 0 then xp else -1, wanted, tb[..]);
     if tn == 0 { return dv_answer(v, "500", "{\"error\":\"no ticket\"}"); }
     b: [640] u8;
     n := dv_put(b[..], 0, "{\"ticket\":\""); n = dv_put(b[..], n, cast(string) tb[0..<tn]);

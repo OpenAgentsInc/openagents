@@ -902,6 +902,18 @@ everglade_room_view :: (s: [] Everglade, i: int, out: [] f32) -> bool #export_c 
   out[6] = ifx shown then 1.0f32 else 0.0f32;
   return true;
 }
+// Seat p comes back WANTED at `level` (1 to 5): the level the room saved for its player (coax/web/room/
+// room-vitals.coax rv_join, #12794), laid on once the town has met the seat.
+everglade_room_seed_wanted :: (s: [] Everglade, p: int, level: int) #export_c {
+  if !s[0].wv.started || p < 0 || p >= WATCH_YOUS || !s[0].wv.room_live[p] || level <= 0 { return; }
+  w := watch_w(s);
+  me := w[0].me;
+  w[0].me = p;
+  l := clamp_w(level, 1, WANTED_LEVELS);
+  y := watch_you(w[..]);
+  y[0].wanted = true; y[0].unseen = 0; y[0].heat = hi_w(y[0].heat, HEAT_AT[l]); y[0].level = hi_w(y[0].level, l);
+  w[0].me = me;
+}
 // Seat p's WANTED level (0 not wanted).
 everglade_room_wanted :: (s: [] Everglade, p: int) -> int #export_c {
   if !s[0].wv.started || p < 0 || p >= WATCH_YOUS { return 0; }

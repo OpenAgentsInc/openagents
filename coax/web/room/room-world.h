@@ -35,6 +35,7 @@ int world_people(int k, float out[WORLD_FOLK * WORLD_PEOPLE]);
 /* Person i for the pages; seat s's WANTED level. */
 bool world_view(int k, int i, float out[WORLD_VIEW]);
 int world_wanted(int k, int s);
+void world_seed_wanted(int k, int s, int level);   /* a seat back WANTED at its saved level (#12794) */
 /* Seat s's conditions from the watch (wire WC_*: Hold Person's hold, Ray of Frost's slow). */
 int world_cond(int k, int s);
 float world_cond_left(int k, int s, int cause);   /* seconds left of seat s's watch effect by cause (WE_*), 0 none */

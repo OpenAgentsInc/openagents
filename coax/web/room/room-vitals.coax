@@ -6,7 +6,7 @@
 // room_vitals), which keeps it by the player's account when logged in (so another device gets it).
 // A ticket brings it back for 10 minutes (its HP field); this server's own note, newer than any
 // post, wins when the same player sits again here.
-VITALS :: 64;
+VITALS :: 128;
 VITALS_KEEP_MS :: 600000;
 // Where the player stood is kept too, by the room's code, so a socket that dropped (a phone between
 // networks, a tab that slept past the server's silence check) or a reload puts them back where they
@@ -14,21 +14,47 @@ VITALS_KEEP_MS :: 600000;
 VITALS_PLACE_MS :: 120000;
 VITALS_EVERY_MS :: 10000;
 VITALS_BODY :: 4096;
+// The outbox (#12793). A note that changed is a new revision. The API applies each report once by its
+// operation ID (this shard, this process's generation, the player, the revision) and answers with a
+// receipt that names each line's outcome; only a receipt marks a revision saved (acked). Until then
+// the note stays in this table and is sent again: one post in flight at a time, at most VITALS_BATCH
+// players a post, with backoff and jitter after a failure, and given up after VITALS_OUTBOX_MS.
+// A crash loses what no receipt covered: at most the last VITALS_EVERY_MS of HP, XP and WANTED for a
+// seat that plays, more while the API is down (the launch runbook, "What a crash may lose").
+VITALS_BATCH :: 40;               // players a post (a line is at most ~100 bytes of VITALS_BODY)
+VITALS_RECEIPT_MS :: 15000;       // a post with no answer by then failed (its curl gives up at 5 s)
+VITALS_BACKOFF_MS :: 1000;        // the first retry's wait; it doubles each failure
+VITALS_BACKOFF_MAX_MS :: 30000;
+VITALS_OUTBOX_MS :: 900000;       // an unsaved revision older than this is given up (and counted)
+VITALS_WANTED_MS :: 300000;       // a WANTED level comes back within 5 minutes (as the API's ticket brings it)
 
 RoomVital :: struct {
   live: bool;
   pid: [TICKET_PID] u8; pid_n: int;
   hp: int; max: int;
   xp: int;          // the XP it has (room-events.coax)
+  wanted: int;      // its WANTED level, the room's (room-everglade.coax wanted; 0 none, #12794)
   at: int;          // wall ms it was noted
-  sent: bool;       // the API has this one
+  rev: int;         // these values' revision (RmVitals.rev when they changed)
+  rev_at: int;      // wall ms they changed: the report's AT, which orders HP at the API
+  acked: int;       // the newest revision a receipt covers: rev > acked is in the outbox
   // where it stood, in which room's code, and when (wall ms; 0 none)
   room: [RELAY_NAME] u8; room_n: int; x: f32; y: f32; z: f32; yaw: f32; placed_at: int;
 }
 RmVitals :: struct {
   v: [VITALS] RoomVital;
   last: int;        // wall ms the seats were last noted
-  out: [VITALS_BODY] u8; out_n: int;   // the post rm_vitals_due made: "t MS\nPID HP MAX XP\n..."
+  gen: int;         // this process's generation (rm_vitals_gen: its start, wall ms), part of every operation ID
+  rev: int;         // the last revision given out
+  batch: int;       // the last post's number (its receipt names it)
+  // the post in flight: which entries, at which revisions
+  fly: bool; fly_at: int; fly_n: int; fly_i: [VITALS_BATCH] int; fly_rev: [VITALS_BATCH] int;
+  tries: int;       // failures in a row
+  retry_at: int;    // wall ms the next post may go (backoff)
+  flush: bool;      // note every seat and post at the next call, not at VITALS_EVERY_MS
+  // counted since start, for the minute log (rm_vitals_stat)
+  posts: int; retried: int; failed: int; applied: int; dup: int; stale: int; refused: int; late: int; gave_up: int; evicted: int;
+  out: [VITALS_BODY] u8; out_n: int;   // the post rm_vitals_due made: "t MS\no SHARD GEN BATCH\nPID HP MAX XP WANTED REV AT\n..."
   mac: [64] u8;                        // its X-Room-Mac
 }
 
@@ -39,24 +65,37 @@ rv_find :: (v: [] RmServer, pid: string) -> int {
   }
   return -1;
 }
-// The player's HP now (from the seat of ticket pid).
-rv_note :: (v: [] RmServer, pid: string, hp: int, max: int, xp: int) {
+// The player's HP, XP and WANTED now (from the seat of ticket pid). A change is a new revision, in
+// the outbox until a receipt covers it.
+rv_note :: (v: [] RmServer, pid: string, hp: int, max: int, xp: int, wanted: int) {
   if pid.count == 0 || pid.count > TICKET_PID || max <= 0 { return; }
   i := rv_find(v, pid);
   if i < 0 {
-    // a free entry, else the oldest
-    old := v[0].wall_ms + 1;
-    for j: 0..<VITALS {
-      if !v[0].vit.v[j].live { i = j; break; }
-      if v[0].vit.v[j].at < old { old = v[0].vit.v[j].at; i = j; }
-    }
+    i = rv_slot(v);
     v[0].vit.v[i] = RoomVital.{live = true, pid_n = pid.count};
     for c: 0..<pid.count { v[0].vit.v[i].pid[c] = pid[c]; }
-  } else if v[0].vit.v[i].hp == hp && v[0].vit.v[i].max == max && v[0].vit.v[i].xp == xp {
+  } else if v[0].vit.v[i].hp == hp && v[0].vit.v[i].max == max && v[0].vit.v[i].xp == xp && v[0].vit.v[i].wanted == wanted {
     v[0].vit.v[i].at = v[0].wall_ms;
     return;
   }
-  v[0].vit.v[i].hp = hp; v[0].vit.v[i].max = max; v[0].vit.v[i].xp = xp; v[0].vit.v[i].at = v[0].wall_ms; v[0].vit.v[i].sent = false;
+  e := v[0].vit.v[i..<i + 1];
+  e[0].hp = hp; e[0].max = max; e[0].xp = xp; e[0].wanted = wanted; e[0].at = v[0].wall_ms;
+  v[0].vit.rev += 1;
+  e[0].rev = v[0].vit.rev; e[0].rev_at = v[0].wall_ms;
+}
+// An entry for a new player: a free one, else the one longest saved; an unsaved one only when every
+// entry is unsaved (counted: what it held is lost).
+rv_slot :: (v: [] RmServer) -> int {
+  best := -1; old := 0; lost := -1; lost_at := 0;
+  for j: 0..<VITALS {
+    e := v[0].vit.v[j];
+    if !e.live { return j; }
+    if e.rev <= e.acked { if best < 0 || e.at < old { best = j; old = e.at; } }
+    else if lost < 0 || e.rev_at < lost_at { lost = j; lost_at = e.rev_at; }
+  }
+  if best >= 0 { return best; }
+  v[0].vit.evicted += 1;
+  return lost;
 }
 // Seat s of everglade room k: its HP noted, and where it stands, when its ticket names a player.
 rv_note_seat :: (v: [] RmServer, k: int, s: int) {
@@ -64,7 +103,7 @@ rv_note_seat :: (v: [] RmServer, k: int, s: int) {
   if !tk.ok { return; }
   c := v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + s];
   pid := cast(string) tk.pid[0..<tk.pid_n];
-  rv_note(v, pid, c.hp, c.hp_max, ev_xp_of(v, k, s));
+  rv_note(v, pid, c.hp, c.hp_max, ev_xp_of(v, k, s), v[0].eg[k].wanted[s]);
   i := rv_find(v, pid);
   st := v[0].eg[k].seat[s];
   r := v[0].eg[k].relay;
@@ -107,40 +146,174 @@ rv_join :: (v: [] RmServer, k: int, s: int) {
   hp := tk.hp;
   i := rv_find(v, cast(string) tk.pid[0..<tk.pid_n]);
   if i >= 0 && v[0].wall_ms - v[0].vit.v[i].at <= VITALS_KEEP_MS { hp = v[0].vit.v[i].hp; }
+  // its WANTED level (#12794): this server's note from the last 5 minutes, else the ticket's (the
+  // API's, which only a room's signed report writes); the host lays it on the town (rm_eg_want_take)
+  want := tk.wanted;
+  if i >= 0 && v[0].wall_ms - v[0].vit.v[i].at <= VITALS_WANTED_MS { want = v[0].vit.v[i].wanted; }
+  if want > 0 && want <= 5 { v[0].eg[k].seat[s].want_seed = want; v[0].eg[k].wanted[s] = want; }
   if hp <= 0 { return; }
   b := v[0].eg[k].rules[0].b[..];
   ci := E5RR_SEAT + s;
   b[0].c[ci].hp = least(hp, b[0].c[ci].hp_max);
 }
 
-// Called by the host once a second: every VITALS_EVERY_MS the playing seats are noted, and what
-// the API doesn't have yet is written into vit.out with its MAC. Its count (0 nothing to post).
+// Called by the host once a second: every VITALS_EVERY_MS the playing seats are noted, and the
+// outbox's next post is written into vit.out with its MAC, unless one is in flight or backing off.
+// Its count (0 nothing to post now). The body:
+//   t MS                          when it was signed (the API takes it within two minutes)
+//   o SHARD GEN BATCH             who reports: this shard, this process's generation, the post's number
+//   PID HP MAX XP WANTED REV AT   a player's values at revision REV, changed at AT (wall ms)
+// The operation ID of a line is (SHARD, GEN, PID, REV). GEN lets the API refuse a replaced process's
+// reports once the directory fences owners (#12797).
 rm_vitals_due :: (v: [] RmServer) -> int #export_c {
   v[0].vit.out_n = 0;
   if v[0].tkey_n == 0 { return 0; }
-  if v[0].wall_ms - v[0].vit.last >= VITALS_EVERY_MS {
+  if v[0].vit.gen == 0 { v[0].vit.gen = v[0].wall_ms; }
+  if v[0].vit.flush || v[0].wall_ms - v[0].vit.last >= VITALS_EVERY_MS {
     v[0].vit.last = v[0].wall_ms;
     for k: 0..<EG_ROOMS {
       if !v[0].eg[k].live { continue; }
       for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live { rv_note_seat(v, k, s); } }
     }
   }
-  o := v[0].vit.out[..];
-  n := tk_add(o, 0, "t "); n = rv_int(o, n, v[0].wall_ms); n = tk_add(o, n, "\n");
-  head := n; marked: [VITALS] bool;
+  // a revision unsaved for VITALS_OUTBOX_MS is given up
   for i: 0..<VITALS {
     e := v[0].vit.v[i];
-    if !e.live || e.sent { continue; }
-    if n + e.pid_n + 32 > o.count { break; }
-    n = tk_add(o, n, cast(string) e.pid[0..<e.pid_n]); n = tk_add(o, n, " "); n = rv_int(o, n, e.hp);
-    n = tk_add(o, n, " "); n = rv_int(o, n, e.max); n = tk_add(o, n, " "); n = rv_int(o, n, e.xp); n = tk_add(o, n, "\n");
-    marked[i] = true;
+    if e.live && e.rev > e.acked && v[0].wall_ms - e.rev_at > VITALS_OUTBOX_MS { v[0].vit.v[i].acked = e.rev; v[0].vit.gave_up += 1; }
   }
-  if n == head { return 0; }
+  if v[0].vit.fly {
+    if v[0].wall_ms - v[0].vit.fly_at < VITALS_RECEIPT_MS { return 0; }
+    rv_failed(v);   // no answer: the request, or its answer, was lost
+  }
+  if v[0].wall_ms < v[0].vit.retry_at { return 0; }
+  v[0].vit.flush = false;
+  o := v[0].vit.out[..];
+  batch := v[0].vit.batch + 1;
+  n := tk_add(o, 0, "t "); n = rv_int(o, n, v[0].wall_ms);
+  n = tk_add(o, n, "\no "); n = rv_int(o, n, v[0].shard); n = tk_add(o, n, " "); n = rv_int(o, n, v[0].vit.gen);
+  n = tk_add(o, n, " "); n = rv_int(o, n, batch); n = tk_add(o, n, "\n");
+  m := 0;
+  for i: 0..<VITALS {
+    e := v[0].vit.v[i];
+    if !e.live || e.rev <= e.acked { continue; }
+    if m >= VITALS_BATCH || n + e.pid_n + 100 > o.count { break; }
+    n = tk_add(o, n, cast(string) e.pid[0..<e.pid_n]); n = tk_add(o, n, " "); n = rv_int(o, n, e.hp);
+    n = tk_add(o, n, " "); n = rv_int(o, n, e.max); n = tk_add(o, n, " "); n = rv_int(o, n, e.xp);
+    n = tk_add(o, n, " "); n = rv_int(o, n, e.wanted); n = tk_add(o, n, " "); n = rv_int(o, n, e.rev);
+    n = tk_add(o, n, " "); n = rv_int(o, n, e.rev_at); n = tk_add(o, n, "\n");
+    v[0].vit.fly_i[m] = i; v[0].vit.fly_rev[m] = e.rev; m += 1;
+  }
+  if m == 0 { return 0; }
   if !tk_mac(cast(string) v[0].tkey[0..<v[0].tkey_n], cast(string) o[0..<n], v[0].vit.mac[..]) { return 0; }
-  for i: 0..<VITALS { if marked[i] { v[0].vit.v[i].sent = true; } }
+  v[0].vit.batch = batch;
+  v[0].vit.fly = true; v[0].vit.fly_at = v[0].wall_ms; v[0].vit.fly_n = m;
+  v[0].vit.posts += 1;
+  if v[0].vit.tries > 0 { v[0].vit.retried += 1; }
   v[0].vit.out_n = n;
   return n;
+}
+// The post in flight failed (a 5xx, a timeout, a dropped request): the next waits VITALS_BACKOFF_MS,
+// doubled for each failure in a row up to VITALS_BACKOFF_MAX_MS, and then between half of it and all
+// of it, so shards that failed together don't retry together.
+rv_failed :: (v: [] RmServer) {
+  v[0].vit.fly = false;
+  v[0].vit.failed += 1;
+  v[0].vit.tries += 1;
+  d := VITALS_BACKOFF_MS;
+  for t: 1..<v[0].vit.tries { if d < VITALS_BACKOFF_MAX_MS { d *= 2; } }
+  if d > VITALS_BACKOFF_MAX_MS { d = VITALS_BACKOFF_MAX_MS; }
+  h := (v[0].vit.gen % 2147483647) * 31 + v[0].vit.batch * 7919 + v[0].vit.tries * 104729 + v[0].shard * 15485863;
+  h = (h % 2147483648 * 1103515245 + 12345) % 2147483648;
+  v[0].vit.retry_at = v[0].wall_ms + d / 2 + (h / 65536) % (d / 2 + 1);
+}
+// The API's answer to post BATCH (the host's: STATUS the HTTP status, 0 none in time or dropped, and
+// its body). A 2xx "receipt GEN BATCH CODES" has one code a line, in the post's order:
+//   a applied   d already applied (a retry of one the API kept)   s stale (a newer revision is kept)
+//   u no such player   x a line it couldn't read   f fenced (another process owns the room, #12797)
+// Each of these is final, and marks that line's revision saved; a line with no code stays in the
+// outbox. Anything else (an older API's {"kept":N} aside) is a failure, and the post is sent again.
+rm_vitals_answer :: (v: [] RmServer, batch: int, status: int, body: string) #export_c {
+  if !v[0].vit.fly || batch != v[0].vit.batch { v[0].vit.late += 1; return; }
+  if status >= 200 && status < 300 {
+    if body.count > 8 && body[0..<8] == "receipt " {
+      f: [4] string; fn := 0; at := 8; j := 8;
+      while j <= body.count && fn < 4 {
+        if j == body.count || body[j] == ' ' || body[j] == '\n' { f[fn] = body[at..<j]; fn += 1; at = j + 1; if j < body.count && body[j] == '\n' { break; } }
+        j += 1;
+      }
+      if fn >= 2 && rv_num(f[0]) == v[0].vit.gen && rv_num(f[1]) == batch {
+        codes := ifx fn >= 3 then f[2] else "";
+        for q: 0..<v[0].vit.fly_n {
+          if q >= codes.count { break; }
+          c := codes[q];
+          if c == 'a' { v[0].vit.applied += 1; }
+          else if c == 'd' { v[0].vit.dup += 1; }
+          else if c == 's' { v[0].vit.stale += 1; }
+          else if c == 'u' || c == 'x' || c == 'f' { v[0].vit.refused += 1; }
+          else { continue; }
+          i := v[0].vit.fly_i[q];
+          if v[0].vit.fly_rev[q] > v[0].vit.v[i].acked { v[0].vit.v[i].acked = v[0].vit.fly_rev[q]; }
+        }
+        v[0].vit.fly = false; v[0].vit.tries = 0; v[0].vit.retry_at = 0;
+        return;
+      }
+    } else if body.count > 8 && body[0..<8] == "{\"kept\":" {
+      // an API from before receipts (#12793) kept every line it could: its merge is safe to repeat
+      for q: 0..<v[0].vit.fly_n {
+        i := v[0].vit.fly_i[q];
+        if v[0].vit.fly_rev[q] > v[0].vit.v[i].acked { v[0].vit.v[i].acked = v[0].vit.fly_rev[q]; }
+        v[0].vit.applied += 1;
+      }
+      v[0].vit.fly = false; v[0].vit.tries = 0; v[0].vit.retry_at = 0;
+      return;
+    }
+  }
+  rv_failed(v);
+}
+// --dev with no vitals URL: the stand-in keeps the room's own notes (room-dev.coax), so the post in
+// flight is applied at once.
+rm_vitals_local :: (v: [] RmServer) #export_c {
+  if !v[0].vit.fly { return; }
+  b: [128] u8;
+  n := tk_add(b[..], 0, "receipt "); n = rv_int(b[..], n, v[0].vit.gen); n = tk_add(b[..], n, " "); n = rv_int(b[..], n, v[0].vit.batch); n = tk_add(b[..], n, " ");
+  for q: 0..<v[0].vit.fly_n { n = tk_add(b[..], n, "a"); }
+  rm_vitals_answer(v, v[0].vit.batch, 200, cast(string) b[0..<n]);
+}
+// The room is draining (SIGTERM; #12797): every seat noted now and the outbox posted at the next call,
+// without waiting out a backoff.
+rm_vitals_flush :: (v: [] RmServer) #export_c {
+  v[0].vit.flush = true; v[0].vit.retry_at = 0;
+}
+// Entries whose newest revision no receipt covers yet.
+rm_vitals_pending :: (v: [] RmServer) -> int #export_c {
+  n := 0;
+  for i: 0..<VITALS { if v[0].vit.v[i].live && v[0].vit.v[i].rev > v[0].vit.v[i].acked { n += 1; } }
+  return n;
+}
+// The counts for the minute log: 0 posts, 1 retried, 2 failed, 3 applied, 4 already applied, 5 stale,
+// 6 refused, 7 late answers, 8 given up, 9 evicted unsaved, 10 pending now.
+rm_vitals_stat :: (v: [] RmServer, which: int) -> int #export_c {
+  t := v[0].vit;
+  if which == 0 { return t.posts; }
+  if which == 1 { return t.retried; }
+  if which == 2 { return t.failed; }
+  if which == 3 { return t.applied; }
+  if which == 4 { return t.dup; }
+  if which == 5 { return t.stale; }
+  if which == 6 { return t.refused; }
+  if which == 7 { return t.late; }
+  if which == 8 { return t.gave_up; }
+  if which == 9 { return t.evicted; }
+  if which == 10 { return rm_vitals_pending(v); }
+  return 0;
+}
+// This process's generation (the host's start, wall ms): a later process's is larger.
+rm_vitals_gen :: (v: [] RmServer, gen: int) #export_c { if gen > 0 { v[0].vit.gen = gen; } }
+rv_num :: (t: string) -> int {
+  if t.count == 0 || t.count > 18 { return -1; }
+  x := 0;
+  for c: t { if c < '0' || c > '9' { return -1; } x = x * 10 + cast(int) (c - '0'); }
+  return x;
 }
 rv_int :: (b: [] u8, at: int, x: int) -> int {
   d: [20] u8; dn := 0; e := ifx x < 0 then 0 else x;
@@ -148,4 +321,132 @@ rv_int :: (b: [] u8, at: int, x: int) -> int {
   n := at;
   for j: 0..<dn { if n < b.count { b[n] = d[dn - 1 - j]; n += 1; } }
   return n;
+}
+
+rv_test_receipt :: (b: [] u8, gen: int, batch: int, codes: string) -> string {
+  n := tk_add(b, 0, "receipt "); n = rv_int(b, n, gen); n = tk_add(b, n, " "); n = rv_int(b, n, batch);
+  n = tk_add(b, n, " "); n = tk_add(b, n, codes); n = tk_add(b, n, "\n");
+  return cast(string) b[0..<n];
+}
+#test "vitals outbox (#12793): a note is saved only by its receipt; a failure is sent again after a backoff with jitter; a change in flight waits for its own receipt" #steps 2000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  now := 1762190000000;
+  rm_clock(v[..], 0, now);
+  rm_ticket_key(v[..], "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", true);
+  rm_vitals_gen(v[..], now - 5000);
+  gen := now - 5000;
+  rv_note(v[..], "p-0011223344556677", 7, 10, 300, 2);
+  #assert rm_vitals_due(v[..]) > 0;
+  body := cast(string) v[0].vit.out[0..<v[0].vit.out_n];
+  #assert eg_test_has(body, "\no 1 1762189995000 1\n") && eg_test_has(body, "\np-0011223344556677 7 10 300 2 1 1762190000000\n");
+  #assert rm_vitals_due(v[..]) == 0;   // one post in flight at a time
+  // a 500: not saved, and sent again after half to all of VITALS_BACKOFF_MS
+  rm_vitals_answer(v[..], 1, 500, "{\"error\":\"down\"}");
+  #assert rm_vitals_pending(v[..]) == 1 && v[0].vit.failed == 1 && !v[0].vit.fly;
+  wait := v[0].vit.retry_at - now;
+  #assert wait >= VITALS_BACKOFF_MS / 2 && wait <= VITALS_BACKOFF_MS;
+  #assert rm_vitals_due(v[..]) == 0;
+  rm_clock(v[..], 0, v[0].vit.retry_at);
+  #assert rm_vitals_due(v[..]) > 0 && v[0].vit.batch == 2 && v[0].vit.retried == 1;
+  // no answer within VITALS_RECEIPT_MS (a timeout, a lost answer): failed, and the wait doubles
+  rm_clock(v[..], 0, v[0].wall_ms + VITALS_RECEIPT_MS);
+  #assert rm_vitals_due(v[..]) == 0 && v[0].vit.failed == 2;
+  w2 := v[0].vit.retry_at - v[0].wall_ms;
+  #assert w2 >= VITALS_BACKOFF_MS && w2 <= 2 * VITALS_BACKOFF_MS;
+  rm_clock(v[..], 0, v[0].vit.retry_at);
+  #assert rm_vitals_due(v[..]) > 0 && v[0].vit.batch == 3;
+  // the XP changes while post 3 is in flight; post 2's answer comes late and changes nothing
+  rv_note(v[..], "p-0011223344556677", 7, 10, 350, 2);
+  b: [128] u8;
+  rm_vitals_answer(v[..], 2, 200, rv_test_receipt(b[..], gen, 2, "a"));
+  #assert v[0].vit.late == 1 && v[0].vit.fly;
+  // post 3's receipt saves revision 1, not revision 2
+  rm_vitals_answer(v[..], 3, 200, rv_test_receipt(b[..], gen, 3, "a"));
+  #assert v[0].vit.applied == 1 && rm_vitals_pending(v[..]) == 1 && v[0].vit.tries == 0 && v[0].vit.retry_at == 0;
+  #assert rm_vitals_due(v[..]) > 0 && eg_test_has(cast(string) v[0].vit.out[0..<v[0].vit.out_n], " 7 10 350 2 2 ");
+  // a receipt naming another generation (a replaced process's) is not this post's: a failure
+  rm_vitals_answer(v[..], 4, 200, rv_test_receipt(b[..], gen + 1, 4, "a"));
+  #assert rm_vitals_pending(v[..]) == 1 && v[0].vit.failed == 3;
+  rm_clock(v[..], 0, v[0].vit.retry_at);
+  #assert rm_vitals_due(v[..]) > 0 && v[0].vit.batch == 5;
+  // the API kept post 4 before its answer was lost: post 5 is "already applied", and saved
+  rm_vitals_answer(v[..], 5, 200, rv_test_receipt(b[..], gen, 5, "d"));
+  #assert rm_vitals_pending(v[..]) == 0 && v[0].vit.dup == 1;
+  #assert rm_vitals_due(v[..]) == 0;   // nothing left to post
+  // a stale revision (the API holds a newer one for this process) is final too
+  rv_note(v[..], "p-0011223344556677", 6, 10, 350, 2);
+  #assert rm_vitals_due(v[..]) > 0;
+  rm_vitals_answer(v[..], 6, 200, rv_test_receipt(b[..], gen, 6, "s"));
+  #assert rm_vitals_pending(v[..]) == 0 && v[0].vit.stale == 1;
+  // an API from before receipts answers {"kept":N}: its merge is safe to repeat, so that saves it
+  rv_note(v[..], "p-0011223344556677", 5, 10, 350, 2);
+  #assert rm_vitals_due(v[..]) > 0;
+  rm_vitals_answer(v[..], 7, 200, "{\"kept\":1}");
+  #assert rm_vitals_pending(v[..]) == 0;
+}
+#test "vitals outbox (#12793): bounded: an unsaved note is evicted only when every entry is unsaved, and given up after VITALS_OUTBOX_MS" #steps 4000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  now := 1762190000000;
+  rm_clock(v[..], 0, now);
+  rm_ticket_key(v[..], "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", true);
+  p: [32] u8;
+  for i: 0..<VITALS {
+    n := rv_int(p[..], tk_add(p[..], 0, "p-test"), 1000 + i);
+    rv_note(v[..], cast(string) p[0..<n], 5, 10, i, 0);
+  }
+  #assert rm_vitals_pending(v[..]) == VITALS && v[0].vit.evicted == 0;
+  // full of unsaved notes: a new player's takes the oldest, and that is counted
+  rm_clock(v[..], 0, now + 1000);
+  rv_note(v[..], "p-test-new-1", 5, 10, 1, 0);
+  #assert v[0].vit.evicted == 1 && rm_vitals_pending(v[..]) == VITALS && rv_find(v[..], "p-test1000") < 0;
+  // one saved: the next new player takes it, and nothing unsaved is lost
+  j := rv_find(v[..], "p-test1001");
+  v[0].vit.v[j].acked = v[0].vit.v[j].rev;
+  rv_note(v[..], "p-test-new-2", 5, 10, 1, 0);
+  #assert v[0].vit.evicted == 1 && rv_find(v[..], "p-test1001") < 0 && rv_find(v[..], "p-test-new-2") >= 0;
+  // the API down for longer than VITALS_OUTBOX_MS: the outbox gives the old revisions up
+  rm_clock(v[..], 0, now + 1000 + VITALS_OUTBOX_MS + 1);
+  #assert rm_vitals_due(v[..]) == 0;   // given up, so nothing to post
+  #assert v[0].vit.gave_up == VITALS && rm_vitals_pending(v[..]) == 0;
+}
+#test "vitals (#12794): the room reports each seat's WANTED; a ticket's w brings it back, and this server's note within 5 minutes wins" #steps 2000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  now := 1762190000000;
+  rm_clock(v[..], 0, now);
+  key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  rm_ticket_key(v[..], key, true);
+  t: [256] u8; r: [512] u8;
+  // a ticket with w3: the seat sits WANTED 3, and the host lays it on the town once
+  n := tk_sign_wanted(key, "p-0011223344556677", false, "", "pair-tk", 0, now + 60000, -1, 40, 3, t[..]);
+  #assert eg_test_has(cast(string) t[0..<n], ".-x40w3.") && tk_check(key, cast(string) t[0..<n], "pair-tk", now).wanted == 3;
+  #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], n)) == 0;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  #assert v[0].eg[k].wanted[0] == 3 && rm_eg_want_take(v[..], k, 0) == 3 && rm_eg_want_take(v[..], k, 0) == 0;
+  // the town makes it 4; the seat leaves, and its note goes at once (a flush), WANTED with it
+  #assert rm_vitals_due(v[..]) > 0;
+  rm_vitals_local(v[..]);
+  v[0].eg[k].wanted[0] = 4;
+  rm_left(v[..], 0);
+  #assert rm_vitals_due(v[..]) > 0 && eg_test_has(cast(string) v[0].vit.out[0..<v[0].vit.out_n], " 40 4 ");
+  // back within 5 minutes with a ticket that has none: this server's note
+  rm_clock(v[..], 0, now + 60000);
+  n = tk_sign_xp(key, "p-0011223344556677", false, "", "pair-tk", 0, now + 120000, -1, 40, t[..]);
+  #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], n)) == 0;
+  k = eg_room_at(v[..], v[0].conns[0].relay);
+  #assert v[0].eg[k].wanted[0] == 4 && v[0].eg[k].seat[0].want_seed == 4;
+  // a WANTED level out of range is refused, even signed
+  x: [256] u8;
+  m := tk_add(x[..], 0, "v2.p-0011223344556677.0.-.pair-tk."); m = rv_int(x[..], m, now + 120000); m = tk_add(x[..], m, ".-x40w9");
+  mac: [64] u8;
+  #assert tk_mac(key, cast(string) x[0..<m], mac[..]);
+  m = tk_add(x[..], m, "."); m = tk_add(x[..], m, cast(string) mac[..]);
+  #assert !tk_check(key, cast(string) x[0..<m], "pair-tk", now + 60000).ok;
+  // and the same text with w2 checks
+  m = tk_add(x[..], 0, "v2.p-0011223344556677.0.-.pair-tk."); m = rv_int(x[..], m, now + 120000); m = tk_add(x[..], m, ".-x40w2");
+  #assert tk_mac(key, cast(string) x[0..<m], mac[..]);
+  m = tk_add(x[..], m, "."); m = tk_add(x[..], m, cast(string) mac[..]);
+  #assert tk_check(key, cast(string) x[0..<m], "pair-tk", now + 60000).wanted == 2;
 }

@@ -83,6 +83,17 @@ Write the revisions down. They are your rollback targets.
   a new page against the old API never sees one. Deploy the API first so the
   kick holds in chat from the first new page.
 
+- **API and oa-room, added 2026-11-04 (#12793, #12794):** room vitals count
+  as saved only when the API sends a receipt, and WANTED is the room
+  server's. Migration 0124 (`0124_room_vital_receipts.sql`) adds the
+  operation table and `room_vitals.wanted_by`. The migrations to run are
+  0119, 0121, 0122, 0123 and 0124. Ship oa-room (step 2) as soon after the
+  API as you can: an API with 0124 signs `w1` to `w5` into the ticket of a
+  player whom a new room saved as WANTED, and an old room refuses that
+  ticket. Until step 2 lands no room writes WANTED, so no ticket carries it.
+  A new room against an old API is safe: it takes the old `{"kept":N}`
+  answer as saved. See [What a crash may lose](#what-a-crash-may-lose).
+
 ## Step 1: API
 
 ### Check what would ship
@@ -128,6 +139,10 @@ The grep flags one line in 0121, and it is expected: `ALTER FUNCTION
 verse.room(...) RENAME TO room_0110` wraps the 10-argument `verse.room` the
 same way, guarded so that a second run skips it. 0121 adds functions only and
 changes no table.
+
+0124 adds a table, a nullable column and a function. The grep flags nothing.
+Page-written WANTED rows stay in the table; a ticket ignores them because
+their `wanted_by` is empty.
 
 ### Deploy
 
@@ -178,6 +193,20 @@ image, and runs production's smoke. It stops on the first failure.
    The first save from revision 0 is kept (`200`), and the second, still from
    0, is a `409`. If the second also answers `200`, the API is still on the
    old rule: roll back the page release too, and check the deploy.
+
+5. **Vitals receipts and WANTED (#12793, #12794):** a page can't save
+   WANTED. This prints `403`:
+
+   ```sh
+   K=$(curl -s -X POST https://openagents.com/api/playtest/player -H 'Content-Type: application/json' -H 'X-Verse-Automation: launch-check' -d '{}' | sed 's/.*"key": *"\([^"]*\)".*/\1/')
+   curl -s -o /dev/null -w '%{http_code}\n' -X POST https://openagents.com/api/playtest/room-state -H "X-Verse-Player: $K" \
+     -H 'Content-Type: application/json' -d '{"wanted":0}'
+   ```
+
+   After step 2, each shard's minute log has a `room: vitals posts` line.
+   `failed` and `retried` rise while the API is down, and `players unsaved
+   now` returns to 0 once it is back. `given up` and `evicted unsaved` stay
+   at 0; anything above 0 is lost progress.
 
 ### Rollback for step 1
 
@@ -667,6 +696,31 @@ matter for launch.
    - Check the Everglade link preview in iMessage and Slack.
    - Check the phone tier's look and speed (#10908).
    - Play Everglade natively on the 4080's screen.
+
+## What a crash may lose
+
+Room vitals (HP, XP and WANTED) are saved through an outbox in each room
+process (`coax/web/room/room-vitals.coax`, #12793):
+
+- A room notes every seat every 10 s, when a seat leaves, and when the
+  process gets SIGTERM. A changed note is a new revision with the operation
+  ID (shard, process generation, player, revision).
+- The API applies each revision once and answers with a receipt. Only a
+  receipt marks a note saved. The room keeps an unsaved note in memory and
+  sends it again after 0.5 to 30 s of backoff with jitter. It holds at most
+  128 players and gives a revision up after 15 minutes.
+- On SIGTERM the room flushes the outbox and waits up to 8 s for receipts,
+  then logs `room: exit after N ms, M players' vitals with no receipt`.
+
+So:
+
+- **A crash or SIGKILL while the API is up** loses at most the last 10 s of a
+  seat's HP, XP and WANTED, plus a post in flight (5 s more).
+- **A crash while the API is down** loses everything since the API last
+  answered, up to 15 minutes.
+- **A deploy (SIGTERM) loses nothing** when the API answers within 8 s.
+- **Not saved at all:** the raid in progress, the town's broken pieces and
+  where each player stood are in the room's memory only (#12797).
 
 ## Known gaps at launch
 

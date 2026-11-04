@@ -1096,7 +1096,7 @@ ev_test_count :: (v: [] RmServer, k: int, form: int) -> int {
   ev_award(v[..], k, 0, 30);
   rm_left(v[..], 0);
   #assert rm_vitals_due(v[..]) > 0;
-  #assert eg_test_has(cast(string) v[0].vit.out[0..<v[0].vit.out_n], " 450\n");
+  #assert eg_test_has(cast(string) v[0].vit.out[0..<v[0].vit.out_n], " 450 0 ");   // PID HP MAX XP WANTED REV AT
 }
 
 #test "events: the stables' fall brings the rest down in the server's town once, and a rebuild stands them up (#12769)" #steps 8000000000 {

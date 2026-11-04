@@ -9,7 +9,8 @@
 // the display name in unpadded base64url ("-" none), ROOM the relay code,
 // EXPIRES wall-clock milliseconds, HP the hit points the player left with in the last 10 minutes
 // ("-" none: full; #12715, room-vitals.coax), optionally followed by "x" and the XP the player has
-// (#12739, room-events.coax: "14x320", "-x320"; none, 0 XP), and MAC the lowercase hex HMAC-SHA256 of
+// (#12739, room-events.coax: "14x320", "-x320"; none, 0 XP), then optionally "w" and the WANTED level
+// the room saved in the last 5 minutes (#12794, room-vitals.coax: "14x320w3"; none, 0), and MAC the lowercase hex HMAC-SHA256 of
 // everything before ".MAC" under OA_ROOM_TICKET_KEY (Secret Manager
 // oa-room-ticket-key). A room joins only with a ticket for itself that has not
 // expired and whose MAC checks; the seat then carries the ticket's id, name and
@@ -36,6 +37,7 @@ Ticket :: struct {
   hp: int = -1;           // the HP it brings back (-1 none)
   shard: int = 1;         // the oa-room shard it was signed for (v2: 1)
   xp: int;                // the XP it brings back (room-events.coax)
+  wanted: int;            // the WANTED level it brings back (1 to 5; 0 none; #12794)
 }
 // book:end seat-ticket
 
@@ -145,12 +147,20 @@ tk_check :: (key: string, ticket: string, room: string, now: int) -> Ticket {
   for c: f[5] { if c < '0' || c > '9' { return t; } ends = ends * 10 + cast(int) (c - '0'); }
   if now > ends || ends - now > TICKET_LIFE_MS + TICKET_SKEW_MS { return t; }
   // the HP it brings back
-  hp := -1; xp := 0;
-  hf := f[6];
-  for i: 0..<f[6].count {
-    if f[6][i] != 'x' { continue; }
-    hf = f[6][0..<i];
-    xs := f[6][i + 1..<f[6].count];
+  hp := -1; xp := 0; wanted := 0;
+  hx := f[6];
+  for i: 0..<hx.count {
+    if hx[i] != 'w' { continue; }
+    if i + 2 != hx.count || hx[i + 1] < '1' || hx[i + 1] > '5' { return t; }
+    wanted = cast(int) (hx[i + 1] - '0');
+    hx = hx[0..<i];
+    break;
+  }
+  hf := hx;
+  for i: 0..<hx.count {
+    if hx[i] != 'x' { continue; }
+    hf = hx[0..<i];
+    xs := hx[i + 1..<hx.count];
     if xs.count == 0 || xs.count > 7 { return t; }
     for c: xs { if c < '0' || c > '9' { return t; } xp = xp * 10 + cast(int) (c - '0'); }
     break;
@@ -173,6 +183,7 @@ tk_check :: (key: string, ticket: string, room: string, now: int) -> Ticket {
   t.expires = ends;
   t.hp = hp;
   t.xp = xp;
+  t.wanted = wanted;
   t.shard = shard;
   t.ok = true;
   return t;
@@ -211,6 +222,10 @@ tk_sign_admin_on :: (key: string, pid: string, name: string, room: string, shard
 }
 // The same with the XP it brings back (xp < 0: none, as the API signs for a player with none).
 tk_sign_xp :: (key: string, pid: string, account: bool, name: string, room: string, shard: int, expires: int, hp: int, xp: int, out: [] u8) -> int {
+  return tk_sign_wanted(key, pid, account, name, room, shard, expires, hp, xp, 0, out);
+}
+// The same with the WANTED level it brings back (1 to 5; 0 none, as the API signs for a player not wanted).
+tk_sign_wanted :: (key: string, pid: string, account: bool, name: string, room: string, shard: int, expires: int, hp: int, xp: int, wanted: int, out: [] u8) -> int {
   a := "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
   b: [TICKET_TEXT] u8; n := 0;
   if shard < 0 || shard > 99 { return 0; }
@@ -250,6 +265,7 @@ tk_sign_xp :: (key: string, pid: string, account: bool, name: string, room: stri
     while e > 0 || dn == 0 { d[dn] = cast(u8) ('0' + e % 10); dn += 1; e = e / 10; }
     for j: 0..<dn { if n < b.count { b[n] = d[dn - 1 - j]; n += 1; } }
   }
+  if wanted >= 1 && wanted <= 5 { n = tk_add(b[..], n, "w"); if n < b.count { b[n] = cast(u8) ('0' + wanted); n += 1; } }
   if n + 65 > b.count || n + 65 > out.count { return 0; }
   mac: [64] u8;
   if !tk_mac(key, cast(string) b[0..<n], mac[..]) { return 0; }

@@ -273,10 +273,11 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
   }
   if (!key || !key[0]) { api_json(q->fd, 401, "{\"error\":\"a player key\"}"); return; }
   const char *v[1] = {key};
-  // the saved state (verse.room_vitals, #12715): HP for 10 minutes, WANTED for 5, the look and class always
+  // the saved state (verse.room_vitals, #12715): HP for 10 minutes, WANTED for 5 (only a room's: 0124,
+  // #12794), the look and class always
   PGresult *r = PQexecParams(db, "SELECT p.id, p.account IS NOT NULL, verse.player_name(p.id), "
                                  "CASE WHEN rv.hp_at > extract(epoch FROM clock_timestamp()) * 1000 - 600000 THEN rv.hp END, "
-                                 "CASE WHEN rv.wanted_at > extract(epoch FROM clock_timestamp()) * 1000 - 300000 THEN rv.wanted END, rv.look, rv.class, "
+                                 "CASE WHEN rv.wanted_by IS NOT NULL AND rv.wanted_at > extract(epoch FROM clock_timestamp()) * 1000 - 300000 THEN rv.wanted END, rv.look, rv.class, "
                                  "EXISTS (SELECT 1 FROM verse.room_kicks k WHERE k.player = p.id AND k.until_ms > extract(epoch FROM clock_timestamp()) * 1000), "
                                  "(SELECT string_agg(b.blocked, ',' ORDER BY b.at_ms DESC) FROM (SELECT * FROM verse.player_blocks WHERE player = p.id ORDER BY at_ms DESC LIMIT 32) b), "
                                  "coalesce(rv.xp, 0) "
@@ -330,6 +331,8 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
   char text[256];
   char hps[24]; if (hp >= 0 && hp < 100000) snprintf(hps, sizeof hps, "%d", hp); else strcpy(hps, "-");
   if (xp > 0) snprintf(hps + strlen(hps), sizeof hps - strlen(hps), "x%d", xp);
+  /* the WANTED level the room saved, "w1" to "w5" (#12794; room-ticket.coax): the room seats it wanted */
+  if (wanted >= 1 && wanted <= 5) { if (xp <= 0) snprintf(hps + strlen(hps), sizeof hps - strlen(hps), "x0"); snprintf(hps + strlen(hps), sizeof hps - strlen(hps), "w%d", wanted); }
   /* ACCT 2: an account who is one of Everglade's admins, who may play its demo character (#12739) */
   int acct = account ? 1 : 0;
   if (account) {
@@ -359,8 +362,10 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
   api_json(q->fd, 200, out);
 }
 
-// The page's part of what a player brings back into a room (#12715): {"wanted":N,"look":"...","class":"..."},
-// any of them, kept by the account when logged in, else the player.
+// The page's part of what a player brings back into a room (#12715): {"look":"...","class":"..."},
+// either, kept by the account when logged in, else the player. WANTED is not the page's (#12794): the
+// room reports it signed (room_vitals). A body that names "wanted" keeps the rest and says
+// "refused":"wanted"; one with only "wanted" is a 403.
 static void room_state(const request *q, PGconn *db, const char *key, const char *body) {
   if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST the state\"}"); return; }
   if (!key || !key[0]) { api_json(q->fd, 401, "{\"error\":\"a player key\"}"); return; }
@@ -368,19 +373,16 @@ static void room_state(const request *q, PGconn *db, const char *key, const char
   PGresult *r = PQexecParams(db,
     "WITH b AS (SELECT $2::jsonb AS j), p AS (SELECT coalesce(account, id) AS who FROM verse.players "
     "  WHERE key_sha256 = encode(sha256(convert_to($1, 'UTF8')), 'hex')), "
-    "s AS (SELECT CASE WHEN jsonb_typeof(j->'wanted') = 'number' AND (j->>'wanted')::numeric BETWEEN 0 AND 5 THEN (j->>'wanted')::int END AS wanted, "
-    "  CASE WHEN j->>'look' ~ '^[a-z0-9.]{1,32}$' THEN j->>'look' END AS look, "
-    "  CASE WHEN j->>'class' ~ '^[a-z]{1,16}$' THEN j->>'class' END AS klass, "
-    "  (extract(epoch FROM clock_timestamp()) * 1000)::bigint AS now FROM b) "
-    "INSERT INTO verse.room_vitals (who, wanted, wanted_at, look, class, at) "
-    "SELECT p.who, s.wanted, CASE WHEN s.wanted IS NOT NULL THEN s.now END, s.look, s.klass, s.now FROM p, s "
-    "ON CONFLICT (who) DO UPDATE SET wanted = coalesce(EXCLUDED.wanted, verse.room_vitals.wanted), "
-    "  wanted_at = coalesce(EXCLUDED.wanted_at, verse.room_vitals.wanted_at), look = coalesce(EXCLUDED.look, verse.room_vitals.look), "
-    "  class = coalesce(EXCLUDED.class, verse.room_vitals.class), at = EXCLUDED.at RETURNING who",
+    "s AS (SELECT CASE WHEN j->>'look' ~ '^[a-z0-9.]{1,32}$' THEN j->>'look' END AS look, "
+    "  CASE WHEN j->>'class' ~ '^[a-z]{1,16}$' THEN j->>'class' END AS klass, j ? 'wanted' AS asked_wanted, "
+    "  (extract(epoch FROM clock_timestamp()) * 1000)::bigint AS now FROM b), "
+    "ins AS (INSERT INTO verse.room_vitals (who, look, class, at) "
+    "  SELECT p.who, s.look, s.klass, s.now FROM p, s WHERE s.look IS NOT NULL OR s.klass IS NOT NULL "
+    "  ON CONFLICT (who) DO UPDATE SET look = coalesce(EXCLUDED.look, verse.room_vitals.look), "
+    "  class = coalesce(EXCLUDED.class, verse.room_vitals.class), at = EXCLUDED.at RETURNING who) "
+    "SELECT EXISTS (SELECT 1 FROM p), (SELECT count(*) FROM ins), (SELECT asked_wanted FROM s)",
     2, NULL, v, NULL, NULL, 0);
-  ExecStatusType st = PQresultStatus(r);
-  int n = st == PGRES_TUPLES_OK ? PQntuples(r) : -1;
-  if (n < 0) {
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
     const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);
     bool theirs = state && !strncmp(state, "22", 2);
     if (!theirs) api_log("room-state: %s", PQerrorMessage(db));
@@ -388,9 +390,54 @@ static void room_state(const request *q, PGconn *db, const char *key, const char
     api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not kept\"}");
     return;
   }
+  bool known = PQgetvalue(r, 0, 0)[0] == 't', wanted = PQgetvalue(r, 0, 2)[0] == 't';
+  int kept = atoi(PQgetvalue(r, 0, 1));
   PQclear(r);
-  if (n != 1) { api_json(q->fd, 403, "{\"error\":\"unknown player key\"}"); return; }
-  api_json(q->fd, 200, "{\"kept\":true}");
+  if (!known) { api_json(q->fd, 403, "{\"error\":\"unknown player key\"}"); return; }
+  if (!kept && wanted) { api_json(q->fd, 403, "{\"error\":\"WANTED is the room server's\",\"refused\":\"wanted\"}"); return; }
+  api_json(q->fd, 200, wanted ? "{\"kept\":true,\"refused\":\"wanted\"}" : "{\"kept\":true}");
+}
+// A vitals post with operation IDs (#12793; room-vitals.coax rm_vitals_due, migrations/0124): each line
+// "PID HP MAX XP WANTED REV AT" applied once by (SHARD, GEN, PID, REV) in verse.room_vital_apply, its
+// own statement, so a line kept stays kept whatever happens to the next. The answer, text/plain:
+//   receipt GEN BATCH CODES      one letter a line, in order: a d s u (0124), x a line it couldn't read
+// A database failure is a 500 with no receipt: the room sends the post again, and the lines already
+// applied answer d. AT is when the room changed the values; it orders HP and WANTED, and is taken
+// within the outbox's 15 minutes before the post's time.
+static void room_vitals_receipt(const request *q, PGconn *db, const char *o, int shard, long long gen, long long batch, long long at) {
+  char codes[128]; size_t cn = 0;
+  if (shard < 1 || shard > 99 || gen <= 0) { api_json(q->fd, 400, "{\"error\":\"bad owner\"}"); return; }
+  char *line = strchr(o + 1, '\n');
+  while (line && *++line && cn + 1 < sizeof codes) {
+    char *next = strchr(line, '\n');
+    char one[160]; size_t ol = next ? (size_t)(next - line) : strlen(line);
+    if (ol >= sizeof one) ol = sizeof one - 1;
+    memcpy(one, line, ol); one[ol] = 0;
+    char pid[48]; int hp, max, xp, wanted; long long rev, when;
+    char code = 'x';
+    if (sscanf(one, "%47s %d %d %d %d %lld %lld", pid, &hp, &max, &xp, &wanted, &rev, &when) == 7 && hp >= 0 && max > 0 && hp <= max && max < 100000 &&
+        xp >= 0 && xp <= 9999999 && wanted >= 0 && wanted <= 5 && rev > 0 && when <= at && when >= at - 900000) {
+      char ss[8], gs[24], hs[16], ms[16], xs[16], ws[8], rs[24], as[24];
+      snprintf(ss, sizeof ss, "%d", shard); snprintf(gs, sizeof gs, "%lld", gen); snprintf(hs, sizeof hs, "%d", hp); snprintf(ms, sizeof ms, "%d", max);
+      snprintf(xs, sizeof xs, "%d", xp); snprintf(ws, sizeof ws, "%d", wanted); snprintf(rs, sizeof rs, "%lld", rev); snprintf(as, sizeof as, "%lld", when);
+      const char *v[9] = {ss, gs, pid, hs, ms, xs, ws, rs, as};
+      PGresult *r = PQexecParams(db, "SELECT verse.room_vital_apply($1::int, $2::bigint, $3, $4::int, $5::int, $6::int, $7::int, $8::bigint, $9::bigint)", 9, NULL, v, NULL, NULL, 0);
+      if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
+        api_log("room-vitals: %s", PQerrorMessage(db));
+        PQclear(r);
+        api_json(q->fd, 500, "{\"error\":\"not kept\"}");
+        return;
+      }
+      code = PQgetvalue(r, 0, 0)[0];
+      PQclear(r);
+    }
+    codes[cn++] = code;
+    line = next;
+  }
+  codes[cn] = 0;
+  char out[192];
+  int n = snprintf(out, sizeof out, "receipt %lld %lld %s\n", gen, batch, codes);
+  api_respond(q->fd, 200, "text/plain", NULL, out, (size_t)n);
 }
 // oa-room's part (#12715): "t MS\nPID HP MAX XP\n..." (XP since #12739; a line without it keeps the XP) signed with the seat-ticket key (X-Room-Mac: the
 // hex HMAC-SHA256 of the body), within two minutes of now. Each seat's HP is kept by who the
@@ -413,6 +460,14 @@ static void room_vitals(const request *q, PGconn *db) {
   struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts);
   long long now = (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
   if (sscanf(b, "t %lld", &at) != 1 || at < now - 120000 || at > now + 120000) { free(b); api_json(q->fd, 400, "{\"error\":\"stale\"}"); return; }
+  /* "o SHARD GEN BATCH" (#12793): every line has an operation ID, and the answer is a receipt */
+  char *o = strchr(b, '\n');
+  int oshard = 0; long long ogen = 0, obatch = 0;
+  if (o && sscanf(o + 1, "o %d %lld %lld", &oshard, &ogen, &obatch) == 3) {
+    room_vitals_receipt(q, db, o, oshard, ogen, obatch, at);
+    free(b);
+    return;
+  }
   int kept = 0;
   char *line = strchr(b, '\n');
   while (line && *++line) {
