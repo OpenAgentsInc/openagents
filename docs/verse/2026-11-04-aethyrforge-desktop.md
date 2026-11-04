@@ -41,10 +41,11 @@ page server. This is the same `/worlds/everglade` engine players use.
   survive reopening. It does not yet fetch the current published world. The
   editor's existing “publish” request only writes this local room's document.
 - Opens setup in a front pane over Everglade. It shows the shared OpenAgents CLI,
-  Parakeet's installed/verified status and location, gpt-oss's installed status,
+  Parakeet's installed status and location, gpt-oss's installed status,
   and the running local agent engines with a preferred-engine choice. Open
   Everglade saves the choices to `~/.openagents/aethyrforge/setup.json`; View →
-  Setup… reopens the pane. Refresh scans again; Verify voice model checks the
+  Setup… reopens the pane. Launch and Refresh only list installed files; they
+  never hash model contents. The explicit Verify voice model button checks the
   pinned complete Parakeet weights and tokenizer SHA-256. Missing voice weights
   do not prevent manual editing. Models remain unloaded during setup.
 - Uses `~/.openagents/` for app-owned files across OpenAgents apps. The app bundle
@@ -91,6 +92,13 @@ through Metal using the shared checkpoint and helper, without a checkout or
 microphone: “Hello Foreman. What are we building today?” New inventory schema
 generation and protocol compatibility/conformance checks passed. The final
 tools audit retained the same 20 unrelated baseline findings.
+
+Startup follow-up (2026-11-04): removed automatic model hashing from launch.
+Only the explicit Verify button runs the full-file check. The rebuilt native
+shell's setup smoke passed with installed voice weights, `voiceVerified:false`,
+9 local agents, saved settings and a WebGPU frame in 0.93 s. It reused the
+installed engine/room assets. The tools audit reported 21 existing unrelated
+missing-reason headers at this later main revision.
 
 ## What you do
 
@@ -180,8 +188,9 @@ resident in one GPU buffer.
   with a progress bar and size shown ("13.8 GB"). It checks every file's hash
   before use.
 - Parakeet downloads the same way to `~/.openagents/models/parakeet/`.
-- This Mac already has both, migrated without copying the weights. Setup verifies
-  Parakeet; full gpt-oss verification and automatic downloads remain planned.
+- This Mac already has both, migrated without copying the weights. Parakeet
+  verification is manual only; full gpt-oss verification and automatic downloads
+  remain planned.
 - Weights never go in Git.
 
 ## Saving, undo and publish

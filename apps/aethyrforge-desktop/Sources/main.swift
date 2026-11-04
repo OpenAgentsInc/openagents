@@ -183,7 +183,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKU
             try await waitForHTTP(URL(string: "http://127.0.0.1:\(p.1)/worlds/everglade")!)
             try Data((url.absoluteString + "\n").utf8).write(to: dataURL.appendingPathComponent("local-url.txt"), options: .atomic)
             notice.stringValue = "Loading Everglade…"
-            refreshSetup(verify: true)
+            refreshSetup(verify: false)
             web.load(URLRequest(url: url))
             if smoke {
                 framePump = Task {
@@ -344,12 +344,12 @@ final class ForgeApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKU
     @objc func showSetup() { setupPane.isHidden = false; setupPane.sceneReady = sceneReady; setupPane.update() }
 
     func setupSmokeCheck() async throws {
-        guard let report, fgs_can_enter(sceneReady), fgs_status(1) == 2 else { throw ShellError.failed("Setup did not discover the CLI and verified shared voice model.") }
+        guard let report, fgs_can_enter(sceneReady), fgs_status(1) == 1 else { throw ShellError.failed("Setup did not discover the CLI and installed shared voice model without hashing.") }
         guard !setupPane.isHidden, setupPane.enter.isEnabled else { throw ShellError.failed("Setup did not appear over the running world.") }
         enterWorld()
         guard setupPane.isHidden, fm.fileExists(atPath: settingsURL.path) else { throw ShellError.failed("Setup could not enter the world and keep its choices.") }
         showSetup()
-        let result: [String: Any] = ["ready": sceneReady, "cli": fgs_status(0) == 1, "voiceVerified": fgs_status(1) == 2,
+        let result: [String: Any] = ["ready": sceneReady, "cli": fgs_status(0) == 1, "voiceInstalled": fgs_status(1) > 0, "voiceVerified": fgs_status(1) == 2,
             "localAgents": fgs_count(-1), "selectedAgent": fgs_selected(), "voicePath": setupText(6),
             "setupVisible": !setupPane.isHidden, "settingsSaved": true, "firstFrameSeconds": firstFrameSeconds,
             "roomPID": room!.processIdentifier, "pagePID": page!.processIdentifier]

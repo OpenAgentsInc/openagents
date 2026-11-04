@@ -29,10 +29,11 @@ free to serve saves.
 
 Every launch shows setup over the running Everglade scene. It checks the shared
 CLI, lists running local agent engines and lets you keep a preferred engine,
-shows the installed voice/edit models, and verifies Parakeet's pinned complete
-weight/tokenizer hashes. Running processes are observations, not attached agents;
+shows the installed voice/edit models without hashing their contents. Running
+processes are observations, not attached agents;
 selecting one saves a preference. View → Setup… (Cmd+,) opens the pane again.
-Refresh repeats discovery; Verify voice model repeats hashing. No model is loaded
+Refresh repeats discovery; only pressing Verify voice model hashes the pinned
+complete weight/tokenizer files. No model is loaded
 and no microphone or agent session starts during setup.
 
 The app's files live in `~/.openagents/aethyrforge/`. `setup.json` keeps the
@@ -85,7 +86,7 @@ apps/aethyrforge-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge --smok
 ```
 
 The setup smoke check exercises the real bundled CLI, process inventory and
-shared-model hash verification, then enters the world, saves settings and reopens
+shared-model presence without hash verification, then enters the world, saves settings and reopens
 setup over WebGPU. It uses an isolated world beside its report:
 
 ```sh
