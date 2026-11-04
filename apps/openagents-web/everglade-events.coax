@@ -73,6 +73,7 @@ EgEvents :: struct {
   dial: [EGE_DIALS] int;
   button: Box; pane: Box;
   banner_box: Box;   // where the banner was drawn last frame (none: empty), for the names over the world to keep clear of
+  level_box: Box;            // your LEVEL plate as last drawn (a phone's chat line keeps under it)
   minus: [EGE_DIALS] Box; plus: [EGE_DIALS] Box; boxes: [EGE_BUTTONS] Box;
   press: int = -1; finger: int = -1;
 }
@@ -293,7 +294,9 @@ ege_banner :: (s: [] Everglade, top: [] u8, sub: [] u8) -> [2] int {
     if e[0].phase == EGE_AFTER { t = ege_clock(top, ege_put(top, t, " · THE TOWN STANDS AGAIN IN "), secs); }
   }
   if e[0].phase >= EGE_ANNOUNCE && e[0].phase <= EGE_CLIMAX {
-    u = ege_put(sub, 0, "TOWNSFOLK STANDING "); u = ege_int(sub, u, e[0].standing); u = ege_put(sub, u, " OF "); u = ege_int(sub, u, e[0].folk);
+    // STANDING is the raiders standing (with those still to come), FOLK the townsfolk standing
+    u = ege_put(sub, 0, "TOWNSFOLK STANDING "); u = ege_int(sub, u, e[0].folk);
+    u = ege_put(sub, u, " · RAIDERS STANDING "); u = ege_int(sub, u, e[0].standing);
     u = ege_put(sub, u, " · RAIDERS SLAIN "); u = ege_int(sub, u, e[0].slain);
     if e[0].square > 0 { u = ege_int(sub, ege_put(sub, u, " · RAIDERS HOLD THE SQUARE "), e[0].square); u = ege_put(sub, u, " S OF 60"); }
     if e[0].arch == EGE_WARDED { u = ege_int(sub, ege_put(sub, ege_put(sub, ege_put(sub, u, " · "), EGE_LEADER), ": "), e[0].wards); u = ege_put(sub, u, " WARDS, CAN'T BE KILLED"); }
@@ -373,12 +376,35 @@ ege_world_words :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
   }
   return n;
 }
-ege_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, top: f32, under_title: f32) -> int {
+// The banner's second line in lines that fit `room` at `size`: it breaks only at " · ", so a phone
+// keeps its words readable instead of shrinking one long line (phone QA, November 4: at 390 CSS px
+// the line was 3 px tall). ends[i] is where line i ends; how many lines (EGE_SUB_LINES at most; a
+// part wider than room alone is a line of its own).
+EGE_SUB_LINES :: 5;
+ege_sub_wrap :: (t: string, size: f32, room: f32, ends: [] int) -> int {
+  n := 0; start := 0; last := -1;   // last: the end of the last part that fits on this line
+  i := 0;
+  while i <= t.count {
+    sep := i + 4 <= t.count && t[i] == ' ' && t[i + 1] == 0xC2 && t[i + 2] == 0xB7 && t[i + 3] == ' ';
+    if sep || i == t.count {
+      if last >= 0 && text_width(t[start..<i], size) > room && n < ends.count - 1 {
+        ends[n] = last; n += 1; start = last + 4;
+      }
+      last = i;
+    }
+    i += ifx sep then 4 else 1;
+  }
+  ends[n] = t.count;
+  return n + 1;
+}
+ege_sub_start :: (t: string, ends: [] int, line: int) -> int { return ifx line == 0 then 0 else lo_i(ends[line - 1] + 4, t.count); }
+ege_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, top: f32, under_title: f32, title_x1: f32) -> int {
   if !net_on(s) { return at; }
   e := ege_of(s);
   e[0].button = Box.{}; e[0].pane = Box.{};
   for b: 0..<EGE_BUTTONS { e[0].boxes[b] = Box.{}; }
   for d: 0..<EGE_DIALS { e[0].minus[d] = Box.{}; e[0].plus[d] = Box.{}; }
+  e[0].level_box = Box.{};
   if !ege_live(s) || s[0].above { return at; }
   n := at;
   k := hi(s[0].dpr, 0.5);
@@ -391,7 +417,10 @@ ege_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, top: f32, under_ti
     tw := text_width(cast(string) lw[0..<ln], cap) + 24 * k;
     x1 := w - gutter - 168 * k - 8 * k;
     b := Box.{x0 = x1 - tw, y0 = top, x1 = x1, y1 = top + 28 * k};
+    // over the title (a phone's narrow top row): under the title, on the left
+    if b.x0 < title_x1 + 8 * k && b.y0 < under_title { b = Box.{x0 = gutter, y0 = under_title + 6 * k, x1 = gutter + tw, y1 = under_title + 34 * k}; }
     if b.x0 < gutter { b = Box.{x0 = w - gutter - tw, y0 = top + 36 * k, x1 = w - gutter, y1 = top + 64 * k}; }
+    e[0].level_box = b;
     plate(s, u, b, 0.82, 0);
     n = draw_text(out, n, cast(string) lw[0..<ln], b.x0 + 12 * k, b.y1 - 10 * k, cap, GAP, SPACE, ink(k, 0.92, GOLD_R, GOLD_G, GOLD_B), false, false);
   }
@@ -405,16 +434,29 @@ ege_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, top: f32, under_ti
     s1 := cap; s2 := small;
     room := w - 2 * gutter - 24 * k;
     if text_width(l1, s1) > room { s1 = s1 * room / text_width(l1, s1); }
-    if lines[1] > 0 && text_width(l2, s2) > room { s2 = s2 * room / text_width(l2, s2); }
-    bw := hi(text_width(l1, s1), ifx lines[1] > 0 then text_width(l2, s2) else 0.0f32) + 24 * k;
+    ends: [EGE_SUB_LINES] int; subs := 0;
+    if lines[1] > 0 {
+      subs = ege_sub_wrap(l2, s2, room, ends[..]);
+      for q: 0..<subs { part := l2[ege_sub_start(l2, ends[..], q)..<ends[q]]; if text_width(part, s2) > room { s2 = s2 * room / text_width(part, s2); } }
+    }
+    bw := text_width(l1, s1);
+    for q: 0..<subs { bw = hi(bw, text_width(l2[ege_sub_start(l2, ends[..], q)..<ends[q]], s2)); }
+    bw += 24 * k;
     y0 := top + 76 * k;
-    bh := ifx lines[1] > 0 then s1 + s2 + 30 * k else s1 + 20 * k;
+    // a phone's chat line, or the LEVEL plate under the title, keeps the banner under it
+    if phone(s) && s[0].chat.box.y1 > s[0].chat.box.y0 { y0 = hi(y0, s[0].chat.box.y1 + 8 * k); }
+    if e[0].level_box.x0 < w / 2 && e[0].level_box.y1 > top { y0 = hi(y0, e[0].level_box.y1 + 8 * k); }
+    lead := s2 + 8 * k;
+    bh := ifx subs > 0 then s1 + s2 + 30 * k + f32(subs - 1) * lead else s1 + 20 * k;
     b := Box.{x0 = (w - bw) / 2, y0 = y0, x1 = (w + bw) / 2, y1 = y0 + bh};
     hot := e[0].phase == EGE_WAVE || e[0].phase == EGE_CLIMAX;
     plate(s, u, b, 0.85, ifx hot then 2.0f32 else 1.0f32);
     e[0].banner_box = b;
     n = draw_text(out, n, l1, b.x0 + 12 * k, y0 + 10 * k + s1, s1, GAP, SPACE, ink(k, 0.95, ifx hot then WATCH_RED_R else GOLD_R, ifx hot then WATCH_RED_G else GOLD_G, ifx hot then WATCH_RED_B else GOLD_B), false, false);
-    if lines[1] > 0 { n = draw_text(out, n, l2, b.x0 + 12 * k, y0 + 18 * k + s1 + s2, s2, GAP, SPACE, ink(k, 0.85, PARCH_R, PARCH_G, PARCH_B), false, false); }
+    for q: 0..<subs {
+      part := l2[ege_sub_start(l2, ends[..], q)..<ends[q]];
+      n = draw_text(out, n, part, b.x0 + 12 * k, y0 + 18 * k + s1 + s2 + f32(q) * lead, s2, GAP, SPACE, ink(k, 0.85, PARCH_R, PARCH_G, PARCH_B), false, false);
+    }
   }
   // the level-up notice: big, in the upper middle, fading; nothing to press
   age := cast(f32) (s[0].time - e[0].up_t);
@@ -433,7 +475,8 @@ ege_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, top: f32, under_ti
   if !s[0].ev.admin { return n; }
   // EVENTS, under the title
   bw := text_width("EVENTS", 9 * k) + 32 * k;
-  eb := Box.{x0 = gutter, y0 = under_title + 10 * k, x1 = gutter + bw, y1 = under_title + 10 * k + 38 * k};
+  ey := ifx e[0].level_box.x0 < w / 2 && e[0].level_box.y1 > under_title then e[0].level_box.y1 else under_title;   // under the LEVEL plate when it is under the title
+  eb := Box.{x0 = gutter, y0 = ey + 10 * k, x1 = gutter + bw, y1 = ey + 10 * k + 38 * k};
   e[0].button = eb;
   n = jn_button(s, out, u, n, eb, "EVENTS", e[0].open);
   if e[0].open { n = ege_pane(s, out, u, n, eb.y1 + 8 * k); }
@@ -659,6 +702,43 @@ ege_answered :: (s: [] Everglade, answer: string) -> bool {
   return true;
 }
 
+#test "events: on a 390 px phone your LEVEL plate keeps off the title, CHAT opens the room's line, and the banner's long line breaks at its dots, readable" {
+  g: [1] Everglade; nn: [1] EgNet;
+  everglade_attach_net(g[..], nn[..]);
+  n := net_of(g[..]);
+  n[0].seat = 2; n[0].state = NET_OPEN; n[0].mono = 1000;
+  g[0].touch = true; g[0].dpr = 3; g[0].width = 1170; g[0].height = 2532; g[0].talk = -1;
+  #assert ege_entry(g[..], n, "g 1 2 2 3 45 600 30 12 12 3 1 0 38 1 2");
+  #assert ege_entry(g[..], n, "v 2 1 120 2 0 0");
+  #assert ege_live(g[..]);
+  out: [40000] f32; u: [8000] f32;
+  // the title plate as hud draws it: 16 to 169 CSS px across, down to 68; the top row's plates from 64
+  k := 3.0f32;
+  _ := ege_hud(g[..], out[..], u[..], 0, 64 * k, 68 * k, 169 * k);
+  b := ege_of(g[..])[0].level_box;
+  #assert b.x1 > b.x0;
+  #assert b.y0 >= 68 * k || b.x0 >= 169 * k;   // never over the title
+  #assert b.x1 <= 1170 - 16 * k;
+  // the room quiet: CHAT under the plate opens the line (a phone has no Enter)
+  _ = room_chat_draw(g[..], out[..], u[..], 0);
+  c := g[0].chat.box;
+  #assert c.x1 > c.x0 && c.y0 >= b.y1;
+  #assert chat_pointer(g[..], (c.x0 + c.x1) / 2, (c.y0 + c.y1) / 2, 0, 4) && chat_pointer(g[..], (c.x0 + c.x1) / 2, (c.y0 + c.y1) / 2, 2, 4);
+  #assert g[0].chat.typing;
+  // the banner's second line: in lines that each fit at the banner's own size (7 CSS px)
+  t1: [160] u8; t2: [200] u8;
+  l := ege_banner(g[..], t1[..], t2[..]);
+  l2 := cast(string) t2[0..<l[1]];
+  room := 1170 - 2 * 16 * k - 24 * k;
+  ends: [EGE_SUB_LINES] int;
+  lines := ege_sub_wrap(l2, 7 * k, room, ends[..]);
+  #assert lines >= 2 && lines <= EGE_SUB_LINES && ends[lines - 1] == l2.count;
+  for q: 0..<lines { #assert text_width(l2[ege_sub_start(l2, ends[..], q)..<ends[q]], 7 * k) <= room; }
+  #assert l2[ege_sub_start(l2, ends[..], 1)..<ege_sub_start(l2, ends[..], 1) + 7] == "RAIDERS";   // a break is a dot's, never in a word
+  // a wide screen keeps the one line
+  #assert ege_sub_wrap(l2, 7, 5000, ends[..]) == 1 && ends[0] == l2.count;
+}
+
 #test "events: g and v draw the raid's banner and your level; a level's kit is your bar" {
   g: [1] Everglade; nn: [1] EgNet;
   everglade_attach_net(g[..], nn[..]);
@@ -668,7 +748,7 @@ ege_answered :: (s: [] Everglade, answer: string) -> bool {
   t1: [160] u8; t2: [200] u8;
   l := ege_banner(g[..], t1[..], t2[..]);
   #assert cast(string) t1[0..<l[0]] == "CULTIST RAID · WAVE 2 OF 3 · 0:45";
-  #assert cast(string) t2[0..<l[1]] == "TOWNSFOLK STANDING 30 OF 38 · RAIDERS SLAIN 12 · RAIDERS HOLD THE SQUARE 12 S OF 60 · DARIAN ODIODEI: 3 WARDS, CAN'T BE KILLED · ENDS IN 10:00";
+  #assert cast(string) t2[0..<l[1]] == "TOWNSFOLK STANDING 38 · RAIDERS STANDING 30 · RAIDERS SLAIN 12 · RAIDERS HOLD THE SQUARE 12 S OF 60 · DARIAN ODIODEI: 3 WARDS, CAN'T BE KILLED · ENDS IN 10:00";
   // another seat's v is theirs; yours sets your kit
   #assert ege_entry(g[..], n, "v 1 2 300 2 0 0") && !n[0].evp[0].mine;
   lo := (1 << 21) | (1 << 22) | (1 << 43) | (1 << 28) | (1 << 9) | (1 << 26) | (1 << 13) | (1 << 47) | (1 << 48);

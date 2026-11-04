@@ -86,8 +86,19 @@ room_chat_draw :: (s: [] Everglade, out: [] f32, u: [] f32, n0: int) -> int {
   // so it never runs under them (everglade-watch.coax watch_hud: HP to 92, WANTED to 129).
   hp_on := sp_on(s) && !s[0].above && s[0].wv.started;
   phone_y := (ifx !hp_on then 86 * k else ifx watch_you(watch_w(s))[0].wanted then 151 * k else 114 * k) + join_drop(s);   // under INVITE's row too (everglade-join.coax)
+  // and under your LEVEL plate when it sits under the title (everglade-events.coax ege_hud)
+  if small && net_on(s) { lb := ege_of(s)[0].level_box; if lb.y1 > lb.y0 && lb.x0 < s[0].width / 2 { phone_y = hi(phone_y, lb.y1 + cap + 12 * k); } }
   y := ifx small then phone_y else s[0].height - 150 * k - f32(shown) * lead;
   s[0].chat.box = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
+  // A phone has no Enter: in a room, with no line on screen, CHAT under the title is what opens the
+  // line (phone QA, November 4: with the room quiet for 30 s nothing on a phone could)
+  if small && shown == 0 && !s[0].chat.typing && net_on(s) && !s[0].above {
+    cw := text_width("CHAT", cap) + 24 * k;
+    b := Box.{x0 = x, y0 = y - cap - 6 * k, x1 = x + cw, y1 = y + 8 * k};
+    plate(s, u, b, 0.6, 1);
+    s[0].chat.box = b;
+    n = draw_text(out, n, "CHAT", x + 12 * k, y, cap, GAP, SPACE, ink(k, 0.85, PARCH_R, PARCH_G, PARCH_B), false, false);
+  }
   if shown > 0 {
     b := Box.{x0 = x, y0 = y - cap - 6 * k, x1 = x + w, y1 = y + f32(shown - 1) * lead + 8 * k};
     plate(s, u, b, 0.6, 1);
