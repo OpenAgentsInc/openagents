@@ -1241,7 +1241,8 @@ net_self_max :: (s: [] Everglade) -> int {
 // people drawn off their day, 26 breaks heard (e break), 27 fires heard (e burn), 28 the pieces down,
 // 29 your act as this frame drew you, 30 the clip your body plays.
 // 200 + SLOT casts bar slot SLOT (net_cast, as a click does) at the nearest
-// summoned creature, else 3 m ahead of you: 1 when it went out.
+// summoned creature, else 3 m ahead of you (an ability you don't point with: 2 m ahead, as its press
+// does): 1 when it went out.
 net_probe :: (s: [] Everglade, field: int) -> int #export_c {
   if !net_on(s) { return -1; }
   n := net_of(s);
@@ -1287,6 +1288,9 @@ net_probe :: (s: [] Everglade, field: int) -> int #export_c {
   if field >= 200 && field < 200 + SP_SLOTS + AB_N {
     you := ab_you(s);
     at := add(you, times(ab_forward(s), 3));
+    // an ability you don't point with goes where you stand, as its press sends it (net_press)
+    k := field - 200 - SP_SLOTS;
+    if k >= 0 && !ab_aimed(k) { return ifx net_cast(s, field - 200, add(you, times(ab_forward(s), 2)), -1) then 1 else 0; }
     bd := 1000000.0f32;
     for e: 0..<NET_ENTS {
       en := n[0].ents[e];

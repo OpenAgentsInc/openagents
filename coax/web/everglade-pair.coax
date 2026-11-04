@@ -310,7 +310,8 @@ ep_run :: (ca: [] Cdp, cb: [] Cdp, url: string, origin: string, mark: string, wh
   ep_mark(ca, cb, "reverse_gravity");
   y0 := ep_int(ca, "__eg.probe(20)", -999999);
   tr := ep_int(cb, "Math.round(__eg.now())", -1);
-  rg_went := ep_int(ca, "__eg.cast(4)", 0);
+  // its key (5: the bar's place 4), as a player presses it: the page casts it where A stands
+  rg_went := ifx ep_press(ca, true, "5", "Digit5", 53) && ep_press(ca, false, "5", "Digit5", 53) then 1 else 0;
   rg_both := false; top_a := -999999; top_b := -999999;
   deadline = proc_now_ms() + 6000;
   qr: [1] Buf; bput(qr[..], "__eg.topSince("); bint(qr[..], tr); bput(qr[..], ", "); bint(qr[..], sa); bput(qr[..], ")");
@@ -323,7 +324,7 @@ ep_run :: (ca: [] Cdp, cb: [] Cdp, url: string, origin: string, mark: string, wh
   all = ep_check(rg_went == 1 && rg_both, "A's Reverse Gravity: its cylinder is the server's entity on both pages") && all;
   all = ep_check(top_a > y0 + 300 && top_b > y0 + 300, "Reverse Gravity lifts A on the server: A's own word and B's have A over 3 m up") && all;
   print("  A's y before % cm, highest: A's word % cm, B's % cm\n", y0, top_a, top_b);
-  rg_off := ep_int(ca, "__eg.cast(4)", 0);
+  rg_off := ifx ep_press(ca, true, "5", "Digit5", 53) && ep_press(ca, false, "5", "Digit5", 53) then 1 else 0;
   gone := false;
   deadline = proc_now_ms() + 6000;
   while !gone && proc_now_ms() < deadline { proc_sleep(200); gone = ep_int(ca, "__eg.madeFrom(900000)", 1) == 0 && ep_int(cb, "__eg.madeFrom(900000)", 1) == 0; }
