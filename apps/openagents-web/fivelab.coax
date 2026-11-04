@@ -169,6 +169,7 @@ Lab :: struct {
   asked: [3] int;   // a number asked past a slider's most (the address or a key), shown in red; 0 none
   ms: f32;   // the frame's time, milliseconds, averaged with the frames a second
   unlabelled: int;   // labels this frame left off for want of room in the strokes (SCENE_VERTS)
+  cam_siege: bool;   // the Siege's camera is the home one (cam_home)
   blk_up: [BLK_MAX * TEAMS] int; blk_w: int; blk_h: int;   // the standing by block and side (blk_count)
   due_t: [DUE_MAX] f32; due_i: [DUE_MAX] int; due_n: int;   // whose turn comes next (lab_due's heap)
   shown_n: int;   // the creatures the figures showed last frame (the slots past them are clear)
@@ -628,7 +629,7 @@ size_grid :: (s: [] Lab) {
   while 2 * r * r < area && r < ROWS_MAX { r += 1; }
   was := s[0].cols;
   s[0].rows = r; s[0].cols = 2 * r;
-  if s[0].cols != was { cam_home(s); }   // a grid of another size: the camera backs off to see it all
+  if s[0].cols != was || s[0].siege != s[0].cam_siege { cam_home(s); }   // a grid of another size or the Siege: the camera backs off to see it all
 }
 // The ring d squares in from the grid's edge: its squares, and its n-th square (y * cols + x),
 // clockwise from its top-left corner.
@@ -2383,8 +2384,6 @@ draw_labels3 :: (s: [] Lab, out: [] f32, at: int, k: f32, t: f32) -> int {
     col := ifx cr[0].dead then FAINT else ifx cr[0].hp == 0 then DIM else team_col(s, cr[0].team);
     if cr[0].klass == RS_MONSTER && cr[0].dead { continue; }
     if n + LABEL_VERTS > SCENE_VERTS { s[0].unlabelled += 1; continue; }
-    nm := cast(string) cr[0].name[0..<cr[0].name_n];
-    if (cr[0].klass != RS_MONSTER || siege_named(cr[0])) && (s[0].heroes <= NAMES_ALL || p.z < 16) { n = say_mid(out, n, nm, p.x, p.y - 8 * k, 10 * k, ink(k, 0.95, col)); }
     if cr[0].dead { continue; }
     bw := ifx cr[0].klass == RS_MONSTER then 26 * k else 46 * k; by := p.y;
     share := f32(cr[0].hp) / f32(rs_max(cr[0].hp_max, 1));
@@ -2403,6 +2402,61 @@ draw_labels3 :: (s: [] Lab, out: [] f32, at: int, k: f32, t: f32) -> int {
       fl := spell_col(SP_PRODUCE_FLAME);
       q := proj(s, x + 0.42, 2.0, z + 0.08);
       if q.z > 0 { n = seg(out, n, q.x, q.y + 3 * k, q.x + sin(t * 9) * 1.5 * k, q.y - 7 * k, 4 * k, 1.0, fl); }
+    }
+  }
+  return n;
+}
+// The glade's nameplates, where they don't pile up: first the ones always shown (a siege's
+// leader, the hero you play, your target), then the rest nearest the camera first, each only
+// where no nameplate stands yet on the screen. One that's covered adds to the count on the one
+// over it ("WARLOCK 4 +3"); the HP bars stay on every figure (draw_labels3).
+NP_GW :: 64; NP_GH :: 40; NP_MAX :: 160;
+np_named :: (s: [] Lab, c: RsCreature) -> bool { return !c.dead && (c.klass != RS_MONSTER || siege_named(c)); }
+np_first :: (s: [] Lab, i: int) -> bool { return s[0].battle[0].c[i].npc == RS_NPC_ARCH || i == s[0].me || i == s[0].target; }
+draw_names3 :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
+  n := at; b := bt(s);
+  if s[0].width < 1 || s[0].height < 1 { return n; }
+  owner: [NP_GW * NP_GH] int; for c: 0..<NP_GW * NP_GH { owner[c] = -1; }
+  pi: [NP_MAX] int; px: [NP_MAX] f32; py: [NP_MAX] f32; pw: [NP_MAX] f32; more: [NP_MAX] int; np := 0;
+  cw := s[0].width / f32(NP_GW); ch := s[0].height / f32(NP_GH);
+  cap := 10 * k;
+  // the passes: the ones always shown, then by distance (metres): under 12, 20, 32, and past
+  for pass: 0..<5 {
+    for i: 0..<b[0].n {
+      if np >= NP_MAX { break; }
+      if !np_named(s, b[0].c[i]) || np_first(s, i) != (pass == 0) { continue; }
+      cr := b[0].c[i..<i + 1];
+      lift: f32 = ifx cr[0].hp == 0 then 0.75 else 2.2;
+      p := proj(s, wx(s, s[0].dx[i]), lift, wz(s, s[0].dy[i]));
+      if p.z <= 0 || p.x < 0 || p.x > s[0].width || p.y < 0 || p.y > s[0].height { continue; }
+      if !s[0].portrait && p.x > s[0].panel.x0 - 8 * k { continue; }
+      if pass > 0 {
+        lo_z := ifx pass == 1 then 0.0f32 else ifx pass == 2 then 12.0f32 else ifx pass == 3 then 20.0f32 else 32.0f32;
+        hi_z := ifx pass == 1 then 12.0f32 else ifx pass == 2 then 20.0f32 else ifx pass == 3 then 32.0f32 else 100000.0f32;
+        if p.z < lo_z || p.z >= hi_z { continue; }
+      }
+      w := text_width(cast(string) cr[0].name[0..<cr[0].name_n], cap);
+      y := p.y - 8 * k;
+      c0 := rs_max(0, int((p.x - w / 2 - 2 * k) / cw)); c1 := rs_min(NP_GW - 1, int((p.x + w / 2 + 2 * k) / cw));
+      r0 := rs_max(0, int((y - cap - 1 * k) / ch)); r1 := rs_min(NP_GH - 1, int((y + 2 * k) / ch));
+      over := -1;
+      if pass > 0 {
+        for r: r0..<r1 + 1 { for c: c0..<c1 + 1 { if over < 0 && owner[r * NP_GW + c] >= 0 { over = owner[r * NP_GW + c]; } } }
+      }
+      if over >= 0 { more[over] += 1; continue; }
+      for r: r0..<r1 + 1 { for c: c0..<c1 + 1 { if owner[r * NP_GW + c] < 0 { owner[r * NP_GW + c] = np; } } }
+      pi[np] = i; px[np] = p.x; py[np] = y; pw[np] = w; more[np] = 0; np += 1;
+    }
+  }
+  l: [16] u8;
+  for q: 0..<np {
+    if n + LABEL_VERTS > SCENE_VERTS { s[0].unlabelled += 1; continue; }
+    cr := b[0].c[pi[q]..<pi[q] + 1];
+    col := ifx cr[0].hp == 0 then DIM else team_col(s, cr[0].team);
+    n = say_mid(out, n, cast(string) cr[0].name[0..<cr[0].name_n], px[q], py[q], cap, ink(k, 0.95, col));
+    if more[q] > 0 {
+      m := put(l[..], 0, "+"); m = put_int(l[..], m, more[q]);
+      n = say_at(out, n, cast(string) l[0..<m], px[q] + pw[q] / 2 + 3 * k, py[q], 7 * k, ink(k, 0.75, col));
     }
   }
   return n;
@@ -2716,20 +2770,46 @@ draw_top :: (s: [] Lab, out: [] f32, at: int, w: f32, k: f32, t: f32) -> int {
   n = say_at(out, n, "5E LAB", pad, 38 * k, 18 * k, ink(k, 0.95, WHITE));
   l: [2 * LINE_CAP] u8;   // the key line runs long
   m := put(l[..], 0, "BATTLE "); m = put_int(l[..], m, s[0].round);
-  m = put(l[..], m, "   "); m = put(l[..], m, team_name(s, 0)); m = put(l[..], m, " "); m = put_int(l[..], m, s[0].wins[0]);
-  if !s[0].horde || s[0].siege { m = put(l[..], m, "  "); m = put(l[..], m, team_name(s, 1)); m = put(l[..], m, " "); m = put_int(l[..], m, s[0].wins[1]); }
-  if !s[0].siege { m = put(l[..], m, "  DEAD "); m = put_int(l[..], m, s[0].wins[2]); }
+  if s[0].siege {
+    // the Siege: each side's standing, of all it fielded
+    for team: 0..<2 {
+      all := 0; for i: 0..<bt(s)[0].n { if bt(s)[0].c[i].team == team { all += 1; } }
+      // a phone's short form: "WATCH 13/50"
+      m = put(l[..], m, "   ");
+      if s[0].portrait { m = put(l[..], m, ifx team == 0 then "WATCH " else "CULT "); m = put_int(l[..], m, rs_team_up(bt(s), team)); m = put(l[..], m, "/"); m = put_int(l[..], m, all); m = put(l[..], m, " STANDING"); }
+      else { m = put(l[..], m, team_name(s, team)); m = put(l[..], m, " "); m = put_int(l[..], m, rs_team_up(bt(s), team)); m = put(l[..], m, " OF "); m = put_int(l[..], m, all); m = put(l[..], m, " STANDING"); }
+    }
+  } else {
+    // the other battles: each side's wins
+    m = put(l[..], m, "   WINS: "); m = put(l[..], m, team_name(s, 0)); m = put(l[..], m, " "); m = put_int(l[..], m, s[0].wins[0]);
+    if !s[0].horde { m = put(l[..], m, "  "); m = put(l[..], m, team_name(s, 1)); m = put(l[..], m, " "); m = put_int(l[..], m, s[0].wins[1]); }
+    m = put(l[..], m, "  DEAD "); m = put_int(l[..], m, s[0].wins[2]);
+  }
   sx0 := ifx s[0].portrait then pad else pad + text_width("5E LAB", 18 * k) + 28 * k;
   sy0 := ifx s[0].portrait then 62 * k else 34 * k;
-  n = say_at(out, n, cast(string) l[0..<m], sx0, sy0, ifx s[0].portrait then 8.5 * k else 10 * k, ink(k, 0.7, DIM));
+  // fitted to the room before the buttons (a phone's whole width under them)
+  room := ifx s[0].portrait then s[0].width - pad - sx0 else lo(s[0].sbtn.x0, s[0].pbtn.x0) - 16 * k - sx0;
+  sc := ifx s[0].portrait then 8.5 * k else 10 * k;
+  sw := text_width(cast(string) l[0..<m], sc);
+  if sw > room && room > 0 { sc = sc * room / sw; }
+  n = say_at(out, n, cast(string) l[0..<m], sx0, sy0, sc, ink(k, 0.7, DIM));
+  // the keys: in Player mode under the top line (the play keys are under the hotbar); watching,
+  // along the scene's foot left of the frame rate, two lines; a phone has no keys to show
   m = put(l[..], 0, "ESC "); m = put(l[..], m, ifx s[0].paused then "RESUME" else "PAUSE");
-  if s[0].player { m = put(l[..], m, "   P SPECTATE   V 2D/3D"); }   // the play keys are under the hotbar
-  else {
+  if s[0].player { m = put(l[..], m, "   P SPECTATE   V 2D/3D"); n = say_at(out, n, cast(string) l[0..<m], sx0, sy0 + 16 * k, ifx s[0].portrait then 7 * k else 8 * k, ink(k, 0.45, FAINT)); }
+  else if !s[0].portrait {
     m = put(l[..], m, "   F "); m = put(l[..], m, ifx s[0].fast then "NORMAL SPEED" else "FAST");
     m = put(l[..], m, "   R NEW BATTLE   H HORDE/ARMIES/SIEGE   P PLAY   V 2D/3D   M MODE");
-    if s[0].view == VIEW_GLADE { m = put(l[..], m, "   DRAG ORBIT   SHIFT+DRAG PAN   WHEEL ZOOM"); }
+    hroom := s[0].panel.x0 - 16 * k - 260 * k - pad;   // the figures' count and the FPS on the right
+    hc := 8 * k; hw := text_width(cast(string) l[0..<m], hc);
+    if hw > hroom && hroom > 0 { hc = hc * hroom / hw; }
+    hy := s[0].height - 20 * k;
+    if s[0].view == VIEW_GLADE {
+      n = say_at(out, n, "DRAG ORBIT   SHIFT+DRAG PAN   WASD FLY   WHEEL ZOOM   C RESET CAMERA", pad, hy, hc, ink(k, 0.85, WHITE));
+      hy -= 14 * k;
+    }
+    n = say_at(out, n, cast(string) l[0..<m], pad, hy, hc, ink(k, 0.85, WHITE));
   }
-  n = say_at(out, n, cast(string) l[0..<m], sx0, sy0 + 16 * k, ifx s[0].portrait then 7 * k else 8 * k, ink(k, 0.45, FAINT));
   // frames a second and the frame's milliseconds, in the scene's bottom-right corner, and over
   // them the figures on the field (not in the golden, which has no clock)
   if !s[0].golden {
@@ -2795,6 +2875,7 @@ lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f
   n := 0; s[0].unlabelled = 0;
   if s[0].view == VIEW_GLADE {
     n = draw_labels3(s, out, n, k, t);
+    n = draw_names3(s, out, n, k);
     n = draw_fx3(s, out, n, k);
   } else {
     n = draw_zones(s, out, n, k, t);
@@ -2957,10 +3038,12 @@ draw_sliders :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
     n = seg(out, n, t.x0, y, px, y, 1.8 * k, 0.9, ifx r == SL_HEROES then TEAM_COL[0] else ifx s[0].siege then team_col(s, 1) else TEAM_COL[2]);
     n = ring(out, n, px, y, 6 * k, 1.8 * k, ifx on then 1 else 0.8, ifx on then GOLD else WHITE);
     l: [16] u8; m := put_int(l[..], 0, v);
-    n = say_at(out, n, cast(string) l[0..<m], t.x1 + 12 * k, y + 4.5 * k, 10 * k, ink(k, 0.95, ifx on then GOLD else WHITE));
-    // the scale's ends: the least and the most it can field
-    e: [16] u8; em := put_int(e[..], 0, sl_most(s, r));
-    n = say_right(out, n, cast(string) e[0..<em], t.x1, y + 12 * k, 6.5 * k, ink(k, 0.7, WHITE));
+    // the number, then the most it can field ("50 / 1024"), kept inside the screen
+    e: [24] u8; em := put(e[..], 0, "/ "); em = put_int(e[..], em, sl_most(s, r));
+    vw := text_width(cast(string) l[0..<m], 10 * k); mw := text_width(cast(string) e[0..<em], 7.5 * k);
+    vx := lo(t.x1 + 12 * k, s[0].width - 8 * k - mw - 8 * k - vw);
+    n = say_at(out, n, cast(string) l[0..<m], vx, y + 4.5 * k, 10 * k, ink(k, 0.95, ifx on then GOLD else WHITE));
+    n = say_at(out, n, cast(string) e[0..<em], vx + vw + 8 * k, y + 4.5 * k, 7.5 * k, ink(k, 0.8, WHITE));
     if s[0].asked[r] > 0 {
       a: [64] u8; am := put_int(a[..], 0, s[0].asked[r]); am = put(a[..], am, " ASKED, ");
       am = put_int(a[..], am, sl_most(s, r)); am = put(a[..], am, " IS THE MOST");
@@ -2974,7 +3057,6 @@ draw_sliders :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
     n = say_at(out, n, hint, t0.x0, hy, 7 * k, ink(k, 0.45, FAINT));
     // the labels' own limits, said: past them the far ones go unlabelled
     if bt(s)[0].n > LABELS_ALL && s[0].view == VIEW_GLADE { n = say_at(out, n, "PAST 400 FIGURES: BARS ONLY WITHIN 24 M", t0.x0, hy + 11 * k, 7 * k, ink(k, 0.8, GOLD)); hy += 11 * k; }
-    if s[0].heroes > NAMES_ALL && s[0].view == VIEW_GLADE { n = say_at(out, n, "PAST 96 HEROES: NAMES ONLY WITHIN 16 M", t0.x0, hy + 11 * k, 7 * k, ink(k, 0.8, GOLD)); hy += 11 * k; }
     if s[0].view == VIEW_FLAT && s[0].cell < f32(TOKEN_MARKS_PX) * k { n = say_at(out, n, "SQUARES UNDER 12 PX: TOKENS WITHOUT NAMES OR BARS", t0.x0, hy + 11 * k, 7 * k, ink(k, 0.8, GOLD)); hy += 11 * k; }
     if s[0].unlabelled > 0 {
       a: [64] u8; am := put_int(a[..], 0, s[0].unlabelled); am = put(a[..], am, " LABELS LEFT OFF: TOO MANY TO DRAW AT ONCE");
@@ -3140,7 +3222,14 @@ cam_zoom :: (s: [] Lab, by: f32) { s[0].dist = lo(ZOOM_FAR * grid_scale(s), hi(Z
 // How much bigger the grid is than the lab's 40 by 20: the camera's orbit backs off by as much.
 grid_scale :: (s: [] Lab) -> f32 { return f32(s[0].cols) / f32(COLS); }
 // The camera's default orbit, the whole grid in view.
-cam_home :: (s: [] Lab) { s[0].yaw = 0; s[0].pitch = 0.6; s[0].dist = DIST * grid_scale(s); s[0].px = 0; s[0].pz = PIVOT_Z; s[0].vx = 0; s[0].vz = 0; }
+cam_home :: (s: [] Lab) {
+  s[0].yaw = 0; s[0].pitch = 0.6; s[0].dist = DIST * grid_scale(s); s[0].px = 0; s[0].pz = PIVOT_Z; s[0].vx = 0; s[0].vz = 0;
+  s[0].cam_siege = s[0].siege;
+  // the Siege: from behind the watch's line, looking out at the cult (its leader at the back),
+  // near enough that the figures read; the wheel backs off from there
+  if s[0].siege { s[0].yaw = SIEGE_YAW; s[0].pitch = 0.42; s[0].dist = 0.55 * DIST * grid_scale(s); s[0].px = wx(s, f32(s[0].cols) * 0.36); s[0].pz = PIVOT_Z; }
+}
+SIEGE_YAW :: -1.5707963;
 // A pan: the ground follows the pointer, dx right and dy down (device px), so the pivot moves the
 // other way along the camera's level right and forward. It stays over the grid.
 cam_pan :: (s: [] Lab, dx: f32, dy: f32) {
