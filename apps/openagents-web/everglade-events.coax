@@ -92,9 +92,26 @@ ege_live :: (s: [] Everglade) -> bool { return net_live(s); }
 ege_demo :: (s: [] Everglade) -> bool { return net_on(s) && ege_of(s)[0].demo && s[0].ev.admin; }
 // Your character's kit is the server's (a level's), not the whole bar.
 ege_kit_on :: (s: [] Everglade) -> bool { if !ege_live(s) { return false; } e := ege_of(s); return e[0].mine && e[0].level > 0 && (e[0].lo != 0 || e[0].hi != 0); }
+// In a room whose levels decide your bar, before it has said your kit (the socket waits for ENTER,
+// or your v is on its way): the bar shows nothing rather than a whole bar the room then takes away.
+// Levels off (its g said so) or the demo character: the whole bar, as offline.
+ege_kit_wait :: (s: [] Everglade) -> bool {
+  if !net_on(s) || !net_of(s)[0].want { return false; }
+  e := ege_of(s);
+  if e[0].mine || ege_demo(s) { return false; }
+  return !(e[0].heard && !e[0].levels);
+}
+// The level your Warlock plays at, as the picker says it: 17 offline, with levels off or as the demo
+// character; 0 in a room whose levels decide it (the LEVEL plate says which).
+ege_wl_level :: (s: [] Everglade) -> int {
+  if !net_on(s) || !net_of(s)[0].want || ege_demo(s) { return 17; }
+  e := ege_of(s);
+  return ifx e[0].heard && !e[0].levels then 17 else 0;
+}
 // Whether your Warlock's bar has slot k (everglade-warlock.coax): a level's kit, else all of it.
 wl_has :: (s: [] Everglade, k: int) -> bool {
   if k < 0 || k >= WL_SLOTS { return false; }
+  if ege_kit_wait(s) { return false; }
   if !net_on(s) || !ege_kit_on(s) { return true; }
   return (ege_of(s)[0].hi & (1 << k)) != 0;
 }
@@ -932,4 +949,28 @@ ege_answered :: (s: [] Everglade, answer: string) -> bool {
   #assert pipe_bytes(n[0].pipe[..], 3) == "/api/playtest/room-event\n{\"dials\":{\"on\":true},\"start\":true}";
   ege_act(g[..], EGE_B_DEMO);
   #assert ege_demo(g[..]) && n[0].hello_due;
+}
+
+#test "events: in a room with levels, the bar waits for your kit and the picker's Warlock has no level 17 (#12718)" {
+  g: [1] Everglade; nn: [1] EgNet;
+  everglade_attach_net(g[..], nn[..]);
+  n := net_of(g[..]);
+  n[0].want = true; n[0].seat = 2; n[0].state = NET_OPEN; n[0].mono = 1000;
+  // nothing heard yet: no bar, and no level 17 promised
+  #assert ege_kit_wait(g[..]) && !wl_has(g[..], 0) && sp_place(g[..], 21) == -1 && ege_wl_level(g[..]) == 0;
+  // levels on: still waiting until your v
+  #assert ege_entry(g[..], n, "g 1 0 0 0 0 0 0 0 0 0 0 0 0 1 2") && ege_kit_wait(g[..]) && ege_wl_level(g[..]) == 0;
+  // your v: the level 1 Warlock's kit (Eldritch Blast, Repair, Chill Touch, Hex)
+  hi := (1 << 0) | (1 << 6) | (1 << 7) | (1 << 8);
+  v: [64] u8; vn := wire_int(v[..], wire_int(v[..], wire_put(v[..], 0, "v 2 1 0 2 0"), hi), 0);
+  #assert ege_entry(g[..], n, cast(string) v[0..<vn]);
+  #assert !ege_kit_wait(g[..]) && wl_has(g[..], 0) && wl_has(g[..], 8) && !wl_has(g[..], 4);
+  // levels off: the whole bar at level 17, before any v
+  g2: [1] Everglade; n2: [1] EgNet;
+  everglade_attach_net(g2[..], n2[..]);
+  m := net_of(g2[..]); m[0].want = true; m[0].seat = 1; m[0].state = NET_OPEN;
+  #assert ege_entry(g2[..], m, "g 1 0 0 0 0 0 0 0 0 0 0 0 0 0 2") && !ege_kit_wait(g2[..]) && wl_has(g2[..], 4) && ege_wl_level(g2[..]) == 17;
+  // offline: level 17, the whole bar
+  g3: [1] Everglade;
+  #assert !ege_kit_wait(g3[..]) && ege_wl_level(g3[..]) == 17;
 }

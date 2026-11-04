@@ -17,8 +17,9 @@
 // the server makes from the player id, the same every time (coax/web/api/migrations/0116). The look is the CHARACTER picker's: a skin tone and the
 // Ranger's cloak and trim dyes ("ranger.SKIN.DYE.TRIM", everglade-rangers.coax look_parse). On a first
 // visit (no look comes back with the ticket, #12715) the picker opens before you join and the socket
-// waits for ENTER; after that CHARACTER opens it again. The class is the druid or the level 17
-// Warlock (everglade-warlock.coax): the room hears it with the hello.
+// waits for ENTER; after that CHARACTER opens it again. The class is the druid or the Warlock
+// (everglade-warlock.coax): the room hears it with the hello. Offline, with levels off or as the demo
+// character the Warlock is level 17; in a room whose levels decide it, the room's level (ege_wl_level).
 //
 // INVITE copies the link to your instance (the page's own address with ?room=CODE). ?from=grid (the
 // Grid's gate) plays a short arrival as the page opens; the server's spawn is the road in at the South
@@ -297,7 +298,7 @@ join_pick_draw :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
   v = draw_text(out, v, name, tx + 90 * k, y, 8 * k, GAP, SPACE, gold, false, false);
   y += 24 * k;
   v = draw_text(out, v, "CLASS", tx, y, 7 * k, GAP, SPACE, pale, false, false);
-  words := [2] string.["DRUID", "WARLOCK · LEVEL 17"];
+  words := [2] string.["DRUID", ifx ege_wl_level(s) == 17 then "WARLOCK · LEVEL 17" else "WARLOCK"];   // a room's levels: the LEVEL plate says yours
   qx := tx + 90 * k;
   for c: 0..<2 {
     cw := text_width(words[c], 7 * k) + 18 * k;
