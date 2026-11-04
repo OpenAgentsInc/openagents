@@ -37,7 +37,7 @@ newland 1150000
 nip01 90000
 nip-guide 130000
 og 50000
-oneshot 230000
+oneshot 250000
 orbitleague 290000
 private 280000
 project 2400000
