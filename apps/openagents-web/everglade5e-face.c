@@ -545,6 +545,13 @@ static void e5_frame(uint32_t state) {
       e5_used(e5v(), slot, (coax_string){(const char *)e5_card_buf, cn});
     }
   }
+  /* your Zombies (Finger of Death's dead, the room's rules: everglade5e-beasts.coax): R or a room ends them; the page draws them */
+  if (everglade_rebuilt_take(g) || net_live(g)) e5r_zombies_clear(e5r());
+  for (int64_t q = 0; q < 8; q++) {
+    static float zb[6];
+    int64_t id = e5r_beast(e5r(), q, (coax_v_f32){zb, 6});
+    everglade_zombie(g, q, id, zb[0], zb[1], zb[2], id > 0 && zb[5] > 0.5f);
+  }
   int64_t outn = e5r_out(e5r(), (coax_v_f32){e5_out_buf, 48 * 4});
   int64_t ln = e5r_lines(e5r(), (coax_v_u8){e5_lines_buf, sizeof e5_lines_buf});
   e5_take(g, e5v(), (coax_v_f32){e5_out_buf, 48 * 4}, outn, (coax_v_u8){e5_lines_buf, sizeof e5_lines_buf}, ln);

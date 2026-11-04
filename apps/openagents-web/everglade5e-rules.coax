@@ -20,10 +20,12 @@
 
 #load "../../aethyr/rules/srd/battle.coax";
 #load "fivebar.coax";
+#load "everglade5e-beasts.coax";   // what a spell summons, the room's rules too: Finger of Death's Zombies
 
 E5R_BEAT :: 1.5; E5R_RECHARGE :: 9.0;
 E5R_FOLK :: 38;            // Everglade's people who can be hurt (verse/everglade/watch.coax WATCH_ACTORS)
 E5R_OTHERS :: 15;          // the others in the room (room.coax ROOM_OTHERS)
+E5R_BEASTS :: 8;           // your Zombies at once (everglade5e-beasts.coax), creatures after the others
 E5R_ME :: 0;
 E5R_SQ :: 1.524;           // a 5-foot square, in metres
 E5R_X0 :: -110.0;          // the grid's corner (square 0, 0), in Everglade's metres
@@ -58,6 +60,12 @@ E5r :: struct {
   wbar: [FB_WL_SLOTS] FbAb;  // the Warlock's bar (fivebar.coax fb_warlock_bar): slots FB_WL0 + k
   warlock: bool;             // you play the Warlock (the CHARACTER picker): creature 0 is fb_warlock_hero
   block: [E5R_FOLK] int;     // the stat block each of the people was made from (-1 not yet)
+  folk_x: [E5R_FOLK] f32; folk_z: [E5R_FOLK] f32;   // where each person stands (metres)
+  // Finger of Death's dead, risen as your Zombies (everglade5e-beasts.coax, as the room's): creature
+  // e5r_beast_at(q); they go for whom you last aimed harm at
+  beasts: [E5R_BEASTS] E5rBeast;
+  last_foe: int;
+  next_id: int;
   started: bool;
   seen: int;                 // the log's events read so far
 }
@@ -65,6 +73,8 @@ E5r :: struct {
 e5r_sq :: (m: f32) -> int { return cast(int) floor((m - f32(E5R_X0)) / f32(E5R_SQ)); }
 e5r_folk_at :: (j: int) -> int { return 1 + j; }
 e5r_other_at :: (j: int) -> int { return 1 + E5R_FOLK + j; }
+E5R_BEAST0 :: 1 + E5R_FOLK + E5R_OTHERS;
+e5r_beast_at :: (q: int) -> int { return E5R_BEAST0 + q; }
 
 e5r_start :: (r: [] E5r, seed: int) #export_c {
   b := r[0].b[..];
@@ -82,6 +92,13 @@ e5r_start :: (r: [] E5r, seed: int) #export_c {
     o.hp = 0; o.dead = true;
     _ = rs_add(b, o, E5R_AWAY, E5R_AWAY);
   }
+  for q: 0..<E5R_BEASTS {
+    o := rs_zombie("Zombie", E5RR_BEAST_TEAM);
+    o.hp = 0; o.dead = true;
+    _ = rs_add(b, o, E5R_AWAY, E5R_AWAY);
+    r[0].beasts[q] = E5rBeast.{};
+  }
+  r[0].last_foe = -1; r[0].next_id = 1;
   rs_begin(b);
   r[0].seat[0] = FbSeat.{me = E5R_ME};
   b[0].clock = b[0].c[E5R_ME].turn_at;
@@ -99,6 +116,7 @@ e5r_class :: (r: [] E5r, klass: int) #export_c {
   if !r[0].started || (klass == 1) == r[0].warlock { return; }
   b := r[0].b[..];
   r[0].warlock = klass == 1;
+  e5r_zombies_clear(r);   // as a room seat's, its Zombies go with the class it had
   c := b[0].c[E5R_ME];
   b[0].c[E5R_ME] = ifx r[0].warlock then fb_warlock_hero("Your warlock", 0) else fb_everglade_hero("Your druid", 0);
   b[0].c[E5R_ME].x = c.x; b[0].c[E5R_ME].y = c.y; b[0].c[E5R_ME].turn_at = c.turn_at; b[0].c[E5R_ME].round_at = c.round_at;
@@ -106,19 +124,41 @@ e5r_class :: (r: [] E5r, klass: int) #export_c {
 // Bar slot k's entry: Everglade's bar (0 to FB_EG_SLOTS - 1), the Warlock's (FB_WL0 on); ok false for none.
 e5r_has :: (k: int) -> bool { return (k >= 0 && k < FB_EG_SLOTS) || (k >= FB_WL0 && k < FB_WL0 + FB_WL_SLOTS); }
 e5r_entry :: (r: [] E5r, k: int) -> FbAb { return ifx k >= FB_WL0 then r[0].wbar[k - FB_WL0] else r[0].bar[k]; }
-// The Humanoids Finger of Death killed that rise now, at the start of your next turn: their index
-// among Everglade's people (each once), into out; how many.
-e5r_risen :: (r: [] E5r, out: [] f32) -> int #export_c {
-  if !r[0].started { return 0; }
+// The Humanoids Finger of Death killed rise at the start of your next turn as your Zombies, where
+// they fell (everglade5e-beasts.coax e5b_raise, as the room's e5rr_rise).
+e5r_rise :: (r: [] E5r) {
   b := r[0].b[..];
-  n := 0;
   for j: 0..<E5R_FOLK {
     i := e5r_folk_at(j);
-    if b[0].c[i].rise_by != E5R_ME || b[0].c[i].rise_at > b[0].clock || n >= out.count { continue; }
+    if b[0].c[i].rise_by != E5R_ME || b[0].c[i].rise_at > b[0].clock { continue; }
     b[0].c[i].rise_by = -1;
-    out[n] = f32(j); n += 1;
+    if e5b_raise(b, r[0].beasts[..], E5R_BEAST0, i, r[0].folk_x[j], r[0].folk_z[j], E5R_ME, 0, r[0].last_foe, r[0].next_id) >= 0 { r[0].next_id += 1; }
   }
-  return n;
+}
+// A Zombie at 0 Hit Points is gone.
+e5r_beasts_check :: (r: [] E5r) {
+  b := r[0].b[..];
+  for q: 0..<E5R_BEASTS {
+    if r[0].beasts[q].id == 0 { continue; }
+    i := e5r_beast_at(q);
+    if b[0].c[i].dead || b[0].c[i].hp <= 0 { e5b_gone(b, r[0].beasts[..], E5R_BEAST0, q); }
+  }
+}
+// The rebuild (R), or the room taking over: every Zombie falls.
+e5r_zombies_clear :: (r: [] E5r) #export_c {
+  if !r[0].started { return; }
+  for q: 0..<E5R_BEASTS { if r[0].beasts[q].id != 0 { e5b_gone(r[0].b[..], r[0].beasts[..], E5R_BEAST0, q); } }
+}
+// Your Zombie q (0 to E5R_BEASTS): its id (0 when off), then into out: x, z (metres), yaw, hp, max,
+// 1 while it moves.
+E5R_BEAST_FLOATS :: 6;
+e5r_beast :: (r: [] E5r, q: int, out: [] f32) -> int #export_c {
+  if !r[0].started || q < 0 || q >= E5R_BEASTS || r[0].beasts[q].id == 0 || out.count < E5R_BEAST_FLOATS { return 0; }
+  bt := r[0].beasts[q];
+  c := r[0].b[0].c[e5r_beast_at(q)];
+  out[0] = bt.x; out[1] = bt.z; out[2] = bt.yaw; out[3] = f32(c.hp); out[4] = f32(c.hp_max);
+  out[5] = ifx bt.moving then 1.0f32 else 0.0f32;
+  return bt.id;
 }
 
 // Where everyone stands and their Hit Points, from the page: you (x, z, hp, temp, dead), Everglade's
@@ -146,6 +186,7 @@ e5r_sync :: (r: [] E5r, me: [] f32, folk: [] f32, folk_n: int, others: [] f32, o
       b[0].c[i].turn_at = t; b[0].c[i].round_at = ro;
     }
     b[0].c[i].x = e5r_sq(folk[f + 1]); b[0].c[i].y = e5r_sq(folk[f + 2]);
+    r[0].folk_x[j] = folk[f + 1]; r[0].folk_z[j] = folk[f + 2];
     fhp := cast(int) folk[f + 3];
     if fhp > 0 && b[0].c[i].dead { b[0].c[i].dead = false; b[0].c[i].cond = 0; b[0].c[i].conc = -1; }
     b[0].c[i].hp = rs_max(fhp, 0); b[0].c[i].temp = rs_max(cast(int) folk[f + 4], 0);
@@ -178,7 +219,17 @@ e5r_step :: (r: [] E5r, clock: f32) #export_c {
     if c.dead || c.x == E5R_AWAY || c.turn_at > b[0].clock { continue; }
     b[0].who = i; rs_start_turn(b, i); rs_end_turn(b, i); b[0].who = -1;
   }
+  // your Zombies: their turns, the risen, their shamble and slams (as the room's e5rr_step)
+  for q: 0..<E5R_BEASTS {
+    i := e5r_beast_at(q);
+    c := b[0].c[i];
+    if r[0].beasts[q].id == 0 || c.dead || c.turn_at > b[0].clock { continue; }
+    b[0].who = i; rs_start_turn(b, i); rs_end_turn(b, i); b[0].who = -1;
+  }
+  e5r_rise(r);
+  e5b_step(b, r[0].beasts[..], E5R_BEAST0, 1, r[0].folk_x[..], r[0].folk_z[..], dt);
   _ := fb_zones_round(r[0].zones[..], b);
+  e5r_beasts_check(r);
 }
 
 // ---- what each slot can do now
@@ -313,6 +364,8 @@ e5r_use :: (r: [] E5r, k: int, x: f32, z: f32) -> bool #export_c {
   before: [10] int;
   for l: 0..<10 { before[l] = b[0].c[E5R_ME].slots[l]; }
   ok := fb_seat_use(b, r[0].seat[..], a, foe, tx, ty, ally);
+  // harm aimed at a person sends your Zombies at them (the room's e5rr_send)
+  if ok && !e5rr_helps(a) && foe >= e5r_folk_at(0) && foe < e5r_folk_at(E5R_FOLK) { r[0].last_foe = foe; e5b_send(r[0].beasts[..], 0, foe, x, z); }
   if ok && a.again >= 0 {
     spent := 0;
     for l: 1..<10 { if b[0].c[E5R_ME].slots[l] < before[l] { spent = l; } }
@@ -486,7 +539,7 @@ e5r_test_world :: (r: [] E5r) {
   n := e5r_describe(r[..], 2, line[..]);
   #assert n > 20 && line[n - 1] == 'e';   // "... house rule"
 }
-#test "Everglade 5E: the Warlock razes with SRD spells, and Finger of Death raises a Zombie" #steps 400000000 {
+#test "Everglade 5E: the Warlock razes with SRD spells, and Finger of Death raises a Zombie that fights for you" #steps 2000000000 {
   r: [1] E5r;
   e5r_test_world(r[..]);
   #assert !e5r_use(r[..], FB_WL0 + 3, 3, 0);   // the druid has no Circle of Death
@@ -502,13 +555,32 @@ e5r_test_world :: (r: [] E5r) {
   _ := e5r_out(r[..], out[..]);
   #assert out[3 * E5R_OUT_FLOATS] == 4;   // the commoner 30 metres off is outside 60 feet
   // Finger of Death (60 feet) on the commoner, come closer: 7d8 + 30 kills, and the commoner rises at your next turn
-  b[0].c[e5r_folk_at(2)].x = e5r_sq(9); b[0].c[e5r_folk_at(2)].y = e5r_sq(0);
+  b[0].c[e5r_folk_at(2)].x = e5r_sq(9); b[0].c[e5r_folk_at(2)].y = e5r_sq(0); r[0].folk_x[2] = 9;
   #assert e5r_use(r[..], FB_WL0 + 4, 9, 0);
   #assert b[0].c[e5r_folk_at(2)].dead && b[0].c[e5r_folk_at(2)].rise_by == E5R_ME;
-  risen: [8] f32;
-  e5r_step(r[..], b[0].clock + 20);
-  #assert e5r_risen(r[..], risen[..]) == 1 && risen[0] == 2;
-  #assert e5r_risen(r[..], risen[..]) == 0;
+  // offline as in a room (everglade5e-beasts.coax): the commoner rises where they fell as your SRD Zombie
+  bf: [E5R_BEAST_FLOATS] f32;
+  t := b[0].clock;
+  wait := b[0].c[e5r_folk_at(2)].rise_at - t;
+  #assert wait > 0 && wait < 20;
+  for k: 0..<600 { t += 1.0 / 30.0; e5r_step(r[..], t); }
+  zq := -1;
+  for q: 0..<E5R_BEASTS { if e5r_beast(r[..], q, bf[..]) > 0 { zq = q; } }
+  #assert zq >= 0 && bf[3] == 15 && bf[4] == 15 && abs(bf[0] - 9) < 1.5;
+  #assert b[0].c[e5r_beast_at(zq)].team == E5RR_BEAST_TEAM && b[0].c[e5r_folk_at(2)].rise_by < 0;
+  // harm aimed at a guard sends it at them: it shambles there and slams
+  g := e5r_folk_at(0);
+  b[0].c[g].hp_max = 300; b[0].c[g].hp = 300; b[0].c[g].dead = false; b[0].c[g].cond = 0;   // (the Circle of Death felled them)
+  #assert e5r_use(r[..], FB_WL0, 3, 0);   // Eldritch Blast at guard 0
+  struck := b[0].c[g].hp;
+  #assert struck > 0;
+  #assert r[0].beasts[zq].foe == g;
+  for k: 0..<900 { t += 1.0 / 30.0; e5r_step(r[..], t); }
+  #assert b[0].c[g].hp < struck;
+  #assert e5r_beast(r[..], zq, bf[..]) > 0 && abs(bf[0] - 3) < 2;
+  // the rebuild ends it
+  e5r_zombies_clear(r[..]);
+  #assert e5r_beast(r[..], zq, bf[..]) == 0;
   line: [300] u8;
   n := e5r_describe(r[..], FB_WL0 + 4, line[..]);
   #assert n > 30;

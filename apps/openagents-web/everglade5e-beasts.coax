@@ -1,0 +1,167 @@
+// Everglade 5E's summoned creatures, one rule set for both battles: the page's own (everglade5e-rules.coax,
+// offline) and the room server's (everglade5e-room-rules.coax). A creature a spell brings is a creature
+// of the battle with its SRD stat block, kept in a list of E5rBeast beside it: Conjure Animals' Wolves
+// and Finger of Death's Zombies. Each battle says where its beasts and Everglade's people sit among its
+// creatures (beast0, folk0) and where each person stands, and these steps run them the same way in
+// both: they run to their quarry or to where they were sent, bite or slam once a beat, and a Humanoid
+// Finger of Death killed rises as a Zombie set on whom its caster last aimed harm at.
+//   coax test --library apps/openagents-web/everglade5e-room-rules.coax
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+
+E5RR_PACK :: 4;                              // Conjure Animals' wolves (everglade-circle.coax CI_WOLVES)
+E5RR_FORM_WOLF :: 1;                         // its form, as everglade-circle.coax CI_FORM_WOLF
+E5RR_FORM_ZOMBIE :: 9;                       // a Humanoid Finger of Death killed, risen (everglade-warlock.coax WL_FORM_ZOMBIE)
+E5RR_BEAST_TEAM :: 2;                        // neither the players' (0) nor the town's (1): all can hurt it
+E5RR_RUN :: 9.0;                             // m/s a beast runs (everglade-circle.coax CI_CA_SPEED)
+E5RR_REACH :: 1.8;                           // m: a bite's 5 feet, from middle to middle
+E5RR_CHASE :: 30.0;                          // m: past it a beast lets its quarry go
+// Wolf (SRD 5.2.1): Medium Beast, AC 12, HP 11 (2d8 + 2), Speed 40 ft., Str 14 Dex 15 Con 12 Int 3
+// Wis 12 Cha 6, Pack Tactics (Advantage on an attack roll at a creature with an ally of the wolf
+// within 5 feet of it); Bite: +4, reach 5 ft., 5 (1d6 + 2) Piercing, and a Large or smaller target
+// has the Prone condition.
+E5RR_WOLF_AC :: 12; E5RR_WOLF_HP :: 11; E5RR_WOLF_HIT :: 4; E5RR_WOLF_SIDES :: 6; E5RR_WOLF_PLUS :: 2;
+E5RR_WOLF_SCORES :: [6] int.[14, 15, 12, 3, 12, 6];
+// Zombie (SRD 5.2.1 p. 343): Slam +3, reach 5 ft., 5 (1d8 + 1) Bludgeoning.
+E5RR_ZOMBIE_HIT :: 3; E5RR_ZOMBIE_PLUS :: 1;
+
+// A summoned creature: its id while on (0 off; the zones' ids, so 2000 + id names it), the seat that
+// summoned it, the spell, its form, where it is (metres; y the ground's, the host's), where it is
+// sent and whom it is set on (a creature, -1 none), and when it may bite again.
+E5rBeast :: struct {
+  id: int; tag: int;                         // tag: its last id, kept after it goes for the events that tell of it
+  by: int; spell: int; form: int;
+  x: f32; y: f32; z: f32; yaw: f32; moving: bool; grounded: bool;
+  goal_x: f32; goal_z: f32; foe: int = -1;
+  bite_at: f32;
+}
+
+// Whether slot a heals or helps (and so reaches other players), else it only harms.
+e5rr_helps :: (a: FbAb) -> bool {
+  if a.tg == FB_ALLY || a.tg == FB_ALLIES || a.tg == FB_SELF { return true; }
+  if a.kind != FB_SPELL { return false; }
+  s := rs_spell(a.sp);
+  for q: 0..<s.step_n { if s.steps[q].kind == RS_S_HEAL { return true; } }
+  return false;
+}
+// The way (dx, dz) points, in radians as atan2(dx, dz) (within a few thousandths: a beast's facing).
+e5rr_heading :: (dx: f32, dz: f32) -> f32 {
+  ax := abs(dx); az := abs(dz);
+  if ax + az < 0.000001 { return 0; }
+  t := ifx ax < az then ax / az else az / ax;
+  a := t * (0.7853982 + 0.273 * (1 - t));       // atan(t) for t in [0, 1]
+  if ax > az { a = 1.5707963 - a; }
+  if dz < 0 { a = 3.1415927 - a; }
+  return ifx dx < 0 then -a else a;
+}
+
+// Person i (a creature; Everglade's people from folk0), killed by Finger of Death, rises as a Zombie
+// on the first free beast (creature beast0 + q) where they fell, at (x, z) in metres: id `id`, the
+// summoning seat `seat`, set on `foe` (a creature, -1 none). Its line names who rose. The beast's
+// index, or -1 with none free.
+e5b_raise :: (b: [] RsBattle, beasts: [] E5rBeast, beast0: int, i: int, x: f32, z: f32, by: int, seat: int, foe: int, id: int) -> int {
+  q := -1;
+  for o: 0..<beasts.count { if q < 0 && beasts[o].id == 0 { q = o; } }
+  if q < 0 { return -1; }
+  k := beast0 + q;
+  t := b[0].c[k].turn_at; ro := b[0].c[k].round_at;
+  b[0].c[k] = rs_zombie("Zombie", E5RR_BEAST_TEAM);
+  b[0].c[k].turn_at = hi_r(t, b[0].clock); b[0].c[k].round_at = ro;
+  b[0].c[k].x = b[0].c[i].x; b[0].c[k].y = b[0].c[i].y;
+  f := foe;
+  if f >= 0 && (b[0].c[f].dead || b[0].c[f].x == E5R_AWAY) { f = -1; }
+  beasts[q] = E5rBeast.{id = id, tag = id, by = seat, spell = SP_FINGER_OF_DEATH, form = E5RR_FORM_ZOMBIE,
+                        x = x, z = z, goal_x = x, goal_z = z, foe = f, bite_at = b[0].clock + rs_beat(b)};
+  l: [1] RsLine;
+  rs_add_text(l[..], "  "); rs_add_name(l[..], b, i); rs_add_text(l[..], " rises as a Zombie");
+  rs_tell(b, RS_EV_PUSH, SP_FINGER_OF_DEATH, by, k, 0, 0, l[..]);
+  return q;
+}
+// Seat s's Zombies go for the person foe (a creature), last seen at (x, z).
+e5b_send :: (beasts: [] E5rBeast, s: int, foe: int, x: f32, z: f32) {
+  for q: 0..<beasts.count {
+    if beasts[q].id == 0 || beasts[q].by != s || beasts[q].form != E5RR_FORM_ZOMBIE { continue; }
+    beasts[q].foe = foe; beasts[q].goal_x = x; beasts[q].goal_z = z;
+  }
+}
+// Beast q is gone: off the list, its creature dead and away.
+e5b_gone :: (b: [] RsBattle, beasts: [] E5rBeast, beast0: int, q: int) {
+  beasts[q].id = 0;
+  i := beast0 + q;
+  b[0].c[i].dead = true; b[0].c[i].hp = 0; b[0].c[i].x = E5R_AWAY; b[0].c[i].y = E5R_AWAY;
+}
+// Each summoned creature's dt seconds: it runs to its quarry, or to where it was sent, and bites
+// its quarry when in reach and its bite is due (once a beat, the battle's turn). Person j (creature
+// folk0 + j) stands at (folk_x[j], folk_z[j]).
+e5b_step :: (b: [] RsBattle, beasts: [] E5rBeast, beast0: int, folk0: int, folk_x: [] f32, folk_z: [] f32, dt: f32) {
+  for q: 0..<beasts.count {
+    if beasts[q].id == 0 { continue; }
+    i := beast0 + q;
+    if b[0].c[i].dead { continue; }
+    bt := beasts[q..<q + 1];
+    foe := bt[0].foe;
+    if foe >= 0 && (b[0].c[foe].dead || b[0].c[foe].x == E5R_AWAY) { foe = -1; }
+    tx := bt[0].goal_x; tz := bt[0].goal_z; stop: f32 = 0.9;
+    if foe >= 0 {
+      j := foe - folk0;
+      tx = folk_x[j]; tz = folk_z[j]; stop = E5RR_REACH * 0.8;
+      if (tx - bt[0].x) * (tx - bt[0].x) + (tz - bt[0].z) * (tz - bt[0].z) > E5RR_CHASE * E5RR_CHASE { foe = -1; }
+    }
+    // a pack with no quarry waits where it was sent: it sets on a person only when its caster sends it
+    // at one, so the town's harm is always the caster's own doing
+    bt[0].foe = foe;
+    // each to its own place about the point, so the pack stands round it rather than in one spot
+    if foe < 0 { a := 6.2831853 * f32(q % E5RR_PACK) / f32(E5RR_PACK) + 0.4; tx += cos(a); tz += sin(a); stop = 0.2; }
+    dx := tx - bt[0].x; dz := tz - bt[0].z;
+    d := sqrt(dx * dx + dz * dz);
+    bt[0].moving = false;
+    if d > stop {
+      step := f32(E5RR_RUN) * dt * f32(b[0].c[i].speed) / 40.0;   // a Wolf's 40 feet, a Zombie's 20
+      if step > d - stop { step = d - stop; }
+      bt[0].x += dx / d * step; bt[0].z += dz / d * step;
+      bt[0].moving = step > 0.001;
+    }
+    if d > 0.01 { bt[0].yaw = e5rr_heading(dx, dz); }
+    b[0].c[i].x = e5r_sq(bt[0].x); b[0].c[i].y = e5r_sq(bt[0].z);
+    if foe >= 0 && d <= E5RR_REACH && b[0].clock >= bt[0].bite_at && rs_can_act(b[0].c[i]) {
+      bt[0].bite_at = b[0].clock + rs_beat(b);
+      if bt[0].form == E5RR_FORM_ZOMBIE { e5b_slam(b, beast0, q, foe); } else { e5b_bite(b, beasts, beast0, q, foe); }
+    }
+  }
+}
+// Wolf q bites creature j: +4, 1d6 + 2 Piercing (the dice twice on a Critical Hit), Prone on a hit;
+// Advantage with another of the battle's beasts within 5 feet of j (Pack Tactics).
+e5b_bite :: (b: [] RsBattle, beasts: [] E5rBeast, beast0: int, q: int, j: int) {
+  i := beast0 + q;
+  pack := false;
+  for o: 0..<beasts.count {
+    k := beast0 + o;
+    if o != q && beasts[o].id != 0 && !b[0].c[k].dead && rs_feet_to(b, k, j) <= 5 { pack = true; }
+  }
+  edge := rs_attack_edge(b, i, j, true, true);
+  edge = rs_edge((ifx edge > 0 then 1 else 0) + (ifx pack then 1 else 0), ifx edge < 0 then 1 else 0);
+  roll := rs_roll_attack(b, i, j, edge, E5RR_WOLF_HIT, 20, false);
+  l: [1] RsLine;
+  rs_add_name(l[..], b, i); rs_add_text(l[..], " bites "); rs_add_name(l[..], b, j); rs_add_text(l[..], ": "); rs_add_roll(l[..], roll, E5RR_WOLF_HIT);
+  if !roll.hit { rs_add_text(l[..], ": miss"); rs_tell(b, RS_EV_MISS, -1, i, j, 0, 0, l[..]); return; }
+  amount := rs_roll(b[0].dice[..], E5RR_WOLF_SIDES) + (ifx roll.crit then rs_roll(b[0].dice[..], E5RR_WOLF_SIDES) else 0) + E5RR_WOLF_PLUS;
+  rs_add_text(l[..], ifx roll.crit then ": critical hit, " else ": hit, "); rs_add_int(l[..], amount); rs_add_text(l[..], " Piercing");
+  rs_tell(b, RS_EV_DAMAGE, -1, i, j, amount, RS_PIERCING, l[..]);
+  rs_damage(b, i, j, amount, RS_PIERCING, roll.crit, -1);
+  if !b[0].c[j].dead { b[0].c[j].cond = b[0].c[j].cond | RS_PRONE; }
+}
+// Zombie q slams creature j: +3, 1d8 + 1 Bludgeoning (the dice twice on a Critical Hit).
+e5b_slam :: (b: [] RsBattle, beast0: int, q: int, j: int) {
+  i := beast0 + q;
+  roll := rs_roll_attack(b, i, j, rs_attack_edge(b, i, j, true, true), E5RR_ZOMBIE_HIT, 20, false);
+  l: [1] RsLine;
+  rs_add_name(l[..], b, i); rs_add_text(l[..], " slams "); rs_add_name(l[..], b, j); rs_add_text(l[..], ": "); rs_add_roll(l[..], roll, E5RR_ZOMBIE_HIT);
+  if !roll.hit { rs_add_text(l[..], ": miss"); rs_tell(b, RS_EV_MISS, -1, i, j, 0, 0, l[..]); return; }
+  amount := rs_roll(b[0].dice[..], 8) + (ifx roll.crit then rs_roll(b[0].dice[..], 8) else 0) + E5RR_ZOMBIE_PLUS;
+  rs_add_text(l[..], ifx roll.crit then ": critical hit, " else ": hit, "); rs_add_int(l[..], amount); rs_add_text(l[..], " Bludgeoning");
+  rs_tell(b, RS_EV_DAMAGE, -1, i, j, amount, RS_BLUDGEONING, l[..]);
+  rs_damage(b, i, j, amount, RS_BLUDGEONING, roll.crit, -1);
+}

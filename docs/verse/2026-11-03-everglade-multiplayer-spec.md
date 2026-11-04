@@ -672,8 +672,10 @@ owners who want it. A duel invitation is a later phase.
 - The server decides every break (`e break` with the piece id and the
   impulse) and every fire (`e burn`). Every page runs the debris physics
   itself from that event; where a piece lands is cosmetic and need not match.
-- **Rebuild:** the 60 s regrow rule stays (a broken building stands again
-  60 s after its last damage, once no player is within 30 m). **R** sends
+- **Rebuild:** nothing grows back by itself. Offline Everglade dropped its
+  old 60 s regrow (c3b1242596, after #10941: a destroyed town snapping back
+  read as an unwanted reset), so a room has none either: a broken building
+  stays broken until R. **R** sends
   `R`: the server rebuilds the whole town if no spell struck it in the last
   10 s, at most once every 30 s a room, and sends `e rebuild` to everyone
   (else `r SEQ breaking` or `r SEQ cooldown`). What a fire burns through and

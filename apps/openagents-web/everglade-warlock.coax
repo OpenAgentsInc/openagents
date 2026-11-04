@@ -14,8 +14,9 @@
 //   - the looks: the shared Warlock recipes (aethyr/fx/warlock.coax, through aethyr/fx/puff.coax),
 //     which the 5E Lab plays too, drawn as Everglade's own puffs (everglade-spells.coax sp_fx) and
 //     thinned by the graphics quality as they are;
-//   - its Zombies: Finger of Death's dead, risen, the room's creatures (form WL_FORM_ZOMBIE), drawn
-//     here.
+//   - its Zombies: Finger of Death's dead, risen, the room's creatures (form WL_FORM_ZOMBIE) in a
+//     room and the page's own rules' offline (everglade5e-rules.coax, the same rules: the face hands
+//     them over each frame, everglade_zombie), drawn here.
 // Hunger of Hadar is not in the SRD 5.2.1 and Create Undead takes a minute to cast, so neither is on
 // the bar: Finger of Death's Zombies are the Warlock's minions.
 //
@@ -37,6 +38,12 @@ WL_AREA :: [7] f32.[0.7, 6.1, 0.8, 18.3, 0.8, 0.9, 0];
 WL_BEAMS :: 4;             // Eldritch Blast at level 17
 WL_FORM_ZOMBIE :: 9;       // everglade5e-room-rules.coax E5RR_FORM_ZOMBIE
 WL_SHOTS :: 24;
+WL_OWN :: 8;               // your Zombies offline (everglade5e-rules.coax E5R_BEASTS)
+WL_OWN_EID :: 100000;      // their ids for the rising's looks, apart from the room's
+
+// One of your Zombies offline, as the face last handed it over: its id (0 none), where it stands, its
+// facing, whether it moves, how far it has walked (its gait) and when it rose.
+WlOwn :: struct { id: int; x: f32; z: f32; yaw: f32; moving: bool; walk: f32; born: f32; }
 
 WlShot :: struct { live: bool; k: int; from: Point; at: Point; t: f32; seed: int; remote: bool; mine: bool; }
 Warlock :: struct {
@@ -54,6 +61,8 @@ Warlock :: struct {
   // Dimension Door puts you at a spawn of its own for the face's next frame (everglade_warp), then
   // the realm's spawn is back
   door_on: bool; kept_spawn: Point; kept_face: f32;
+  own: [WL_OWN] WlOwn;          // your Zombies offline (everglade_zombie)
+  rebuilt: bool;                // R stood the town up offline: your Zombies fall (everglade_rebuilt_take)
 }
 
 wl_on :: (s: [] Everglade) -> bool { return s[0].wl.on; }
@@ -66,6 +75,22 @@ wl_set :: (s: [] Everglade, warlock: bool) {
 }
 everglade_class :: (s: [] Everglade) -> int #export_c { return ifx s[0].wl.on then 1 else 0; }
 everglade_set_class :: (s: [] Everglade, klass: int) #export_c { wl_set(s, klass == 1); }
+// Your Zombie q offline, from the page's rules (everglade5e-face.c): id 0 when there is none.
+everglade_zombie :: (s: [] Everglade, q: int, id: int, x: f32, z: f32, yaw: f32, moving: bool) #export_c {
+  if q < 0 || q >= WL_OWN { return; }
+  o := s[0].wl.own[q..<q + 1];
+  if id == 0 { o[0].id = 0; return; }
+  if o[0].id != id { o[0] = WlOwn.{id = id, x = x, z = z, born = s[0].wl.clock}; }
+  dx := x - o[0].x; dz := z - o[0].z;
+  o[0].walk += sqrt(dx * dx + dz * dz);
+  o[0].x = x; o[0].z = z; o[0].yaw = yaw; o[0].moving = moving;
+}
+// Whether R stood the town up offline since the face last asked (your Zombies fall with it).
+everglade_rebuilt_take :: (s: [] Everglade) -> bool #export_c {
+  r := s[0].wl.rebuilt;
+  s[0].wl.rebuilt = false;
+  return r;
+}
 wl_v :: (p: Point) -> FxV { return fxp_v(p.x, p.y, p.z); }
 wl_hand :: (s: [] Everglade) -> Point { f := ab_you(s); return v3(f.x + sin(s[0].face) * 0.4, f.y + 1.45, f.z + cos(s[0].face) * 0.4); }
 
@@ -286,6 +311,14 @@ wl_draw :: (s: [] Everglade) {
             p[0].out[o + 7], v3(p[0].out[o + 8], p[0].out[o + 9], p[0].out[o + 10]), (f - floor(f)) * 2);
     }
   }
+  // your Zombies offline (in a room they are the server's: net_draw)
+  if !net_live(s) {
+    for q: 0..<WL_OWN {
+      o := s[0].wl.own[q];
+      if o.id == 0 { continue; }
+      wl_zombie(s, WL_OWN_EID + o.id, v3(o.x, ground_at(s, o.x, o.z), o.z), o.yaw, o.walk, ifx o.moving then 1.0f32 else 0.0f32, clamp((s[0].wl.clock - o.born) / 1.2, 0, 1));
+    }
+  }
   k := s[0].wl.armed;
   if wl_on(s) && k >= 0 && s[0].sp.aim_ok {
     at := s[0].sp.aim;
@@ -443,4 +476,21 @@ wl_sweep :: (s: [] Everglade, b: int, size: string, ib: Box, f: f32) {
   _ := everglade_warp(g[..]);
   wl_frame(g[..], 1.0 / 30);
   #assert !g[0].wl.door_on && !near(g[0].spawn.y, 4, 0.01);
+}
+#test "warlock: offline your Zombies come from the page's rules and walk where they say; R ends them" #steps 2000000000 {
+  g: [1] Everglade;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  wl_set(g[..], true);
+  everglade_zombie(g[..], 2, 7, 4, -80, 0.5, true);
+  #assert g[0].wl.own[2].id == 7 && g[0].wl.own[2].walk == 0;
+  everglade_zombie(g[..], 2, 7, 5, -80, 0.5, true);
+  #assert abs(g[0].wl.own[2].walk - 1) < 0.001 && g[0].wl.own[2].x == 5;
+  wl_draw(g[..]);   // drawn offline, rising (its soul-fire played once)
+  #assert g[0].wl.risen_n == 1 && g[0].wl.risen[0] == WL_OWN_EID + 7;
+  #assert !everglade_rebuilt_take(g[..]);
+  sp_rebuild(g[..]);
+  #assert everglade_rebuilt_take(g[..]) && !everglade_rebuilt_take(g[..]);
+  everglade_zombie(g[..], 2, 0, 0, 0, 0, false);
+  #assert g[0].wl.own[2].id == 0;
 }

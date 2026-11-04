@@ -70,7 +70,7 @@ Pick WARLOCK · LEVEL 17 in CHARACTER, or open `/worlds/everglade?class=warlock`
 | 2 | Fireball | The Fiend's spell from a 5th-level Pact slot: Dexterity save for half, 10d6 Fire in a 20-foot sphere; 150 feet. It sets the buildings it hits burning. |
 | 3 | Blight | From a 5th-level Pact slot: Constitution save for half, 9d8 Necrotic (8d8, and 1d8 for the slot above 4th); 30 feet. Dark motes drawn out of the target, and ash. |
 | 4 | Circle of Death | Your 6th-level Mystic Arcanum: Constitution save for half, 8d8 Necrotic to each creature in a 60-foot sphere; 150 feet. A necrotic ring runs out over the ground and ash falls. |
-| 5 | Finger of Death | Your 7th-level Mystic Arcanum: Constitution save for half, 7d8 + 30 Necrotic; 60 feet. A Humanoid it kills rises at the start of your next turn as an SRD Zombie that follows you and attacks the townsfolk and the guards you strike. Zombies rise in a room (the room server raises them); offline, Finger of Death kills but nobody rises. Green soul-fire burns off the target, and climbs out of the body as it rises. |
+| 5 | Finger of Death | Your 7th-level Mystic Arcanum: Constitution save for half, 7d8 + 30 Necrotic; 60 feet. A Humanoid it kills rises at the start of your next turn as an SRD Zombie that follows you and attacks the townsfolk and the guards you strike. Green soul-fire burns off the target, and climbs out of the body as it rises. |
 | 6 | Dimension Door | From a 5th-level Pact slot: you teleport to the point, up to 500 feet away. A violet tear opens where you stood, and violet smoke puffs where you land. |
 | R | Rebuild | The town stands again, your Zombies fall, and you take a long rest. |
 
