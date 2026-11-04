@@ -31,16 +31,29 @@ WL_SLOT0 :: 64;            // fivebar.coax FB_WL0: slot k of the Warlock's bar i
 WL_SLOTS :: 9;
 WL_BLAST :: 0; WL_FIREBALL :: 1; WL_BLIGHT :: 2; WL_CIRCLE :: 3; WL_FINGER :: 4; WL_DOOR :: 5; WL_REBUILD :: 6;
 WL_CHILL :: 7; WL_HEX :: 8;   // the SRD Warlock's level 1 spells (a character's first kit), keys 7 and 8
+// the Cultist Raid's other spells, looks only a raider casts (everglade-raid-spells.coax RT_K_*): the
+// room sends them as these numbers (e rc) and the preview plays them the same
+WL_FIRE_BOLT :: 9; WL_FROST :: 10; WL_BURNING :: 11; WL_LIGHTNING :: 12; WL_REBUKE :: 13; WL_HOLD :: 14;
+WL_LOOKS :: 15;
 // each slot's seconds from press to strike (fivebar.coax fb_warlock_bar), and its range in metres
-// (Chill Touch's is Touch: within reach)
-WL_DELAY :: [9] f32.[0.35, 0.9, 0.6, 0.9, 0.5, 0.4, 0, 0.4, 0.3];
-WL_RANGE :: [9] f32.[36.6, 45.7, 9.1, 45.7, 18.3, 152.4, 0, 1.5, 27.4];
-// what it covers where it lands (m): a beam's strike, the 20-foot and 60-foot spheres
-WL_AREA :: [9] f32.[0.7, 6.1, 0.8, 18.3, 0.8, 0.9, 0, 0.6, 0.8];
+// (Chill Touch's is Touch: within reach); the raid's looks after
+WL_DELAY :: [15] f32.[0.35, 0.9, 0.6, 0.9, 0.5, 0.4, 0, 0.4, 0.3,   0.45, 0.3, 0.25, 0.5, 0.1, 0.4];
+WL_RANGE :: [15] f32.[36.6, 45.7, 9.1, 45.7, 18.3, 152.4, 0, 1.5, 27.4,   36.6, 18.3, 4.6, 30.5, 18.3, 18.3];
+// what it covers where it lands (m): a beam's strike, the 20-foot and 60-foot spheres, a Fire
+// Bolt's strike, Burning Hands' 15 feet, where a Lightning Bolt ends
+WL_AREA :: [15] f32.[0.7, 6.1, 0.8, 18.3, 0.8, 0.9, 0, 0.6, 0.8,   0.7, 0.6, 4.6, 1.2, 0.8, 0.8];
+// the raid looks' colours
+WL_FIRE :: FxV.{x = 1.0, y = 0.6, z = 0.2};
+WL_ICE :: FxV.{x = 0.6, y = 0.88, z = 1.0};
+WL_SPARK :: FxV.{x = 0.8, y = 0.88, z = 1.0};
+WL_GREEN_FIRE :: FxV.{x = 0.35, y = 1.0, z = 0.4};
+WL_GOLD :: FxV.{x = 1.0, y = 0.85, z = 0.4};
 // the bar's order, left to right: the spells, then the rebuild last
 WL_ORDER :: [9] int.[0, 1, 2, 3, 4, 5, 7, 8, 6];
 // Whether slot k is one of the Warlock's spells (the rebuild is the realm's).
 wl_spell :: (k: int) -> bool { return k >= 0 && k < WL_SLOTS && k != WL_REBUILD; }
+// Whether k is a look a page plays: one of the bar's spells or the raid's.
+wl_look :: (k: int) -> bool { return wl_spell(k) || (k >= WL_FIRE_BOLT && k < WL_LOOKS); }
 WL_BEAMS :: 4;             // Eldritch Blast at level 17
 WL_FORM_ZOMBIE :: 9;       // everglade5e-room-rules.coax E5RR_FORM_ZOMBIE
 WL_SHOTS :: 24;
@@ -182,7 +195,8 @@ wl_cast :: (s: [] Everglade) {
 // A Fireball whose bead has flown already (the raid's arc, everglade-raid-preview.coax), beams < 0:
 // it lands now, its burst `big` times the hand's. Eldritch Blast's beams are drawn `big` too, to read
 // from far off.
-wl_shoot_n :: (s: [] Everglade, k: int, from: Point, at: Point, seed: int, beams: int, big: f32) {
+// `harm` false: the look alone (a cast at a creature leaves the town be).
+wl_shoot_n :: (s: [] Everglade, k: int, from: Point, at: Point, seed: int, beams: int, big: f32, harm: bool) {
   if k == WL_FIREBALL && beams < 0 {
     q := 0;
     for i: 0..<WL_SHOTS { if !s[0].wl.shots[i].live { q = i; break; } if s[0].wl.shots[i].t > s[0].wl.shots[q].t { q = i; } }
@@ -193,7 +207,7 @@ wl_shoot_n :: (s: [] Everglade, k: int, from: Point, at: Point, seed: int, beams
     _ := fxp_start(s[0].wl.fx[..], c, now);
     return;
   }
-  wl_shoot(s, k, from, at, seed, false, false);
+  wl_shoot(s, k, from, at, seed, !harm, false);
   for i: 0..<WL_SHOTS { w := s[0].wl.shots[i]; if w.live && w.seed == seed && w.k == k { s[0].wl.shots[i].beams = beams; s[0].wl.shots[i].big = big; } }
 }
 wl_shoot :: (s: [] Everglade, k: int, from: Point, at: Point, seed: int, remote: bool, mine: bool) {
@@ -206,17 +220,23 @@ wl_shoot :: (s: [] Everglade, k: int, from: Point, at: Point, seed: int, remote:
                   from = wl_v(from), to = wl_v(at), col = fxp_v(1, 0.6, 0.2), big = 1.4, reach = WL_AREA[k]};
     _ := fxp_start(s[0].wl.fx[..], c, s[0].wl.clock);
   }
+  // a Fire Bolt's mote flies from the hand to land on time, too
+  if k == WL_FIRE_BOLT {
+    c := FxCause.{recipe = FXR_FIREBOLT, seed = wl_seed(seed, 0), from = wl_v(from), to = wl_v(at), col = WL_FIRE, big = 1.3, reach = 1};
+    c.t0 = s[0].wl.clock + hi(WL_DELAY[k] - fxp_flight(c, 22, 0.15, 0.8), 0);
+    _ := fxp_start(s[0].wl.fx[..], c, s[0].wl.clock);
+  }
 }
 wl_seed :: (seed: int, i: int) -> f32 { return f32((seed * 7 + i * 131) % 9973) * 0.013 + 0.5; }
 // The room server's cast (e cast) of the Warlock's slot k by another page or yours: its look.
 wl_play :: (s: [] Everglade, k: int, from: Point, at: Point, seed: int, mine: bool) {
-  if !wl_spell(k) { return; }
+  if !wl_look(k) { return; }
   wl_shoot(s, k, from, at, seed, true, mine);
   if mine && k == WL_DOOR { s[0].wl.at = at; }
 }
 // The server's world: a strike of the Warlock's slot k (everglade_room_strike), what it does to the town.
 wl_strike :: (s: [] Everglade, by: int, k: int, from: Point, at: Point, seed: int) {
-  if !wl_spell(k) { return; }
+  if !wl_look(k) { return; }
   s[0].wv.room_hit = at; s[0].wv.room_by = by;
   wl_shoot(s, k, from, at, seed, false, false);
 }
@@ -251,6 +271,7 @@ wl_land :: (s: [] Everglade, c: WlShot) {
   // Chill Touch: the grave's cold off your hand onto what you touch; Hex: its mark over the cursed
   if k == WL_CHILL { _ := fxp_start(p, FxCause.{recipe = FXR_HIT, seed = wl_seed(c.seed, 0), t0 = now, from = from, to = to, col = FXW_NECRO, big = 0.7, reach = 1}, now); }
   if k == WL_HEX { _ := fxp_start(p, FxCause.{recipe = FXR_MARK, seed = wl_seed(c.seed, 0), t0 = now, from = from, to = to, col = FXW_VIOLET, big = 1, reach = 1}, now); }
+  wl_land_raid(s, c, from, to);
   if k == WL_DOOR {
     feet := ifx c.mine then ab_you(s) else v3(c.from.x, c.from.y - 1.45, c.from.z);
     _ := fxp_start(p, FxCause.{recipe = FXR_PORTAL, seed = wl_seed(c.seed, 0), t0 = now, from = wl_v(feet), to = to, col = FXW_VIOLET, big = 1, reach = 1}, now);
@@ -262,6 +283,56 @@ wl_land :: (s: [] Everglade, c: WlShot) {
     w := watch_w(s);
     if w[0].on { _ := watch_crime(w, c.at, ifx k == WL_FIREBALL then 85.0f32 else 50.0f32, ab_you(s), s[0].boxes[..], s[0].box_n, s[0].heights[..]); }
   }
+}
+// The raid's looks (WL_FIRE_BOLT and up), and what those that strike objects do to the town.
+wl_land_raid :: (s: [] Everglade, c: WlShot, from: FxV, to: FxV) {
+  p := s[0].wl.fx[..];
+  now := s[0].wl.clock;
+  k := c.k;
+  big := ifx c.big > 0 then c.big else 1.0f32;
+  // Fire Bolt: its mote has flown (wl_shoot); 1d10 Fire to what it strikes
+  if k == WL_FIRE_BOLT && !c.remote { wl_break(s, c.at, WL_AREA[k], wl_bolt_damage(c.seed), false); }
+  // Ray of Frost: a pale blue ray, frost thrown off where it strikes
+  if k == WL_FROST {
+    _ := fxp_start(p, FxCause.{recipe = FXR_STREAK, seed = wl_seed(c.seed, 0), t0 = now, from = from, to = to, col = WL_ICE, big = 1.1 * big, reach = 1}, now);
+    _ = fxp_start(p, FxCause.{recipe = FXR_HIT, seed = wl_seed(c.seed, 1), t0 = now + 0.1, from = from, to = to, col = WL_ICE, big = 0.8, reach = 1}, now);
+  }
+  // Burning Hands: a fan of flame out of the hand, 15 feet across the way to the aim
+  if k == WL_BURNING {
+    d := fxp_sub(to, from); d.y = 0;
+    l := fxp_len(d);
+    if l < 0.01 { d = fxp_v(1, 0, 0); l = 1; }
+    ya := atan2(d.z / l, d.x / l);
+    for j: 0..<5 {
+      a := ya + (f32(j) - 2) * 0.24;
+      end := fxp_v(from.x + cos(a) * WL_AREA[k], hi(from.y - 0.7, 0.4), from.z + sin(a) * WL_AREA[k]);
+      _ := fxp_start(p, FxCause.{recipe = FXR_FIREBOLT, seed = wl_seed(c.seed, j), t0 = now + f32(j % 2) * 0.04, from = from, to = end, col = WL_FIRE, big = 0.9, reach = 1}, now);
+    }
+  }
+  // Lightning Bolt: a blinding stroke down its Line, crackling and a shock where it ends; 8d6
+  // Lightning (10d6 from Darian's 5th-level slot) to what it strikes
+  if k == WL_LIGHTNING {
+    for j: 0..<3 {
+      off := fxp_v(0, f32(j) * 0.12, 0);
+      _ := fxp_start(p, FxCause.{recipe = FXR_STREAK, seed = wl_seed(c.seed, j), t0 = now + f32(j) * 0.05, from = fxp_add(from, off), to = fxp_add(to, off), col = WL_SPARK,
+                                 big = (ifx j == 0 then 2.4f32 else 1.5f32) * big, reach = 1}, now);
+    }
+    _ := fxp_start(p, FxCause.{recipe = FXR_ARCANE, seed = wl_seed(c.seed, 4), t0 = now, from = to, to = to, col = WL_SPARK, big = 1, reach = 1}, now);
+    _ = fxp_start(p, FxCause.{recipe = FXR_SHOCK, seed = wl_seed(c.seed, 5), t0 = now, from = to, to = to, col = WL_SPARK, big = 1, reach = 2}, now);
+    if !c.remote { wl_break(s, c.at, WL_AREA[k], wl_lightning_damage(c.seed), false); }
+  }
+  // Hellish Rebuke: green flames round the one that hurt the Warlock
+  if k == WL_REBUKE { _ := fxp_start(p, FxCause.{recipe = FXR_FIEND, seed = wl_seed(c.seed, 0), t0 = now, from = from, to = to, col = WL_GREEN_FIRE, big = 1, reach = 1}, now); }
+  // Hold Person: spectral bands closing round the one held
+  if k == WL_HOLD { _ := fxp_start(p, FxCause.{recipe = FXR_BIND, seed = wl_seed(c.seed, 0), t0 = now, from = from, to = to, col = WL_GOLD, big = 1, reach = 1}, now); }
+}
+wl_bolt_damage :: (seed: int) -> SrdDamage {
+  d: [1] SrdDice; d[0] = srd_dice(cast(u64) (seed * 13 + 5));
+  return SrdDamage.{amount = srd_roll(d[..], 10), kind = DMG_FIRE};
+}
+wl_lightning_damage :: (seed: int) -> SrdDamage {
+  d: [1] SrdDice; d[0] = srd_dice(cast(u64) (seed * 19 + 7));
+  return SrdDamage.{amount = srd_sum(d[..], 10, 6), kind = DMG_LIGHTNING};
 }
 // Beam b's point: within a beam's reach of the aim, by the cast's seed.
 wl_beam_at :: (c: WlShot, b: int) -> Point {
@@ -528,4 +599,29 @@ wl_sweep :: (s: [] Everglade, b: int, size: string, ib: Box, f: f32) {
   #assert everglade_rebuilt_take(g[..]) && !everglade_rebuilt_take(g[..]);
   everglade_zombie(g[..], 2, 0, 0, 0, 0, false);
   #assert g[0].wl.own[2].id == 0;
+}
+#test "warlock: each of the raid's spells has its own look; Fire Bolt and Lightning Bolt wear down what they strike, the rest leave the town be" #steps 2000000000 {
+  g: [1] Everglade;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  w := sp_dm(g[..]);
+  pick := -1;
+  for i: 0..<w[0].n { p := w[0].pieces[i]; if pick < 0 && p.state == DP_STANDING && sp_object(p.mesh).material == MAT_WOOD && p.y1 - p.y0 > 1.5 { pick = i; } }
+  #assert pick >= 0;
+  p := w[0].pieces[pick];
+  at := v3((p.x0 + p.x1) / 2, (p.y0 + p.y1) / 2, (p.z0 + p.z1) / 2);
+  // each look starts causes of its own, from a page that only plays it (e rc)
+  for k: WL_FIRE_BOLT..<WL_LOOKS {
+    #assert wl_look(k) && !wl_spell(k);
+    was := g[0].wl.fx[0].started;
+    wl_play(g[..], k, add(at, v3(10, 0, 0)), at, 100 + k, false);
+    for f: 0..<30 { wl_step(g[..], 1.0 / 30); }
+    #assert g[0].wl.fx[0].started > was;
+  }
+  #assert !wl_look(WL_REBUILD) && !wl_look(WL_LOOKS);
+  // the server's world: a Lightning Bolt breaks what it ends on
+  before := w[0].pieces[pick].hp;
+  wl_strike(g[..], -1, WL_LIGHTNING, add(at, v3(20, 0, 0)), at, 5);
+  for f: 0..<30 { wl_step(g[..], 1.0 / 30); }
+  #assert w[0].pieces[pick].hp < before || w[0].pieces[pick].state != DP_STANDING;
 }

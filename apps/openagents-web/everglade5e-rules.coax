@@ -22,6 +22,7 @@
 #load "fivebar.coax";
 #load "everglade5e-beasts.coax";   // what a spell summons, the room's rules too: Finger of Death's Zombies
 #load "everglade-raid-tactics.coax";   // how the cult fights a siege: the room's raid and the preview share it
+#load "everglade-raid-spells.coax";    // what the cult casts: the room's raid and the preview share it (#12747)
 #load "everglade5e-raid.coax";     // the Cultist Raid offline, a preview (?raid=preview): the Siege's armies
 
 E5R_BEAT :: 1.5; E5R_RECHARGE :: 9.0;

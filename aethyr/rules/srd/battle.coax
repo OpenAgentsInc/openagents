@@ -21,7 +21,8 @@ RS_MAX :: 216;
 // grid larger than the room scans its creatures.
 RS_SQUARES :: 8192;
 RS_ZONES :: 8;
-RsZone :: struct { on: bool; spell: int; by: int; x0: int; y0: int; x1: int; y1: int; until: f32; difficult: bool; round: bool; cx: int; cy: int; r_ft: int; }
+RsZone :: struct { on: bool; spell: int; by: int; x0: int; y0: int; x1: int; y1: int; until: f32; difficult: bool; round: bool; cx: int; cy: int; r_ft: int;
+                  line: bool; dx: f32; dy: f32; }   // a Line: from (cx, cy) along (dx, dy), a unit, r_ft long
 // A turn's economy and what has happened in it: moved (Steady Aim needs none), aimed (Steady Aim's
 // Advantage waiting) and anchored (its Speed 0 after), last_hit (1 + whom its last melee weapon
 // attack hit, 0 none: Divine Smite follows it) and last_crit, the once-a-turn Sneak Attack and
@@ -130,7 +131,18 @@ rs_reset :: (b: [] RsBattle) {
   b[0].turn = RsTurn.{}; b[0].beat = 0; b[0].recharge = 0;
   for q: 0..<b[0].occ.count { b[0].occ[q] = 0; }
 }
-rs_inside :: (z: RsZone, x: int, y: int) -> bool { return z.on && x >= z.x0 && x <= z.x1 && y >= z.y0 && y <= z.y1 && (!z.round || rs_feet(x, y, z.cx, z.cy) <= z.r_ft); }
+rs_inside :: (z: RsZone, x: int, y: int) -> bool {
+  if !z.on || x < z.x0 || x > z.x1 || y < z.y0 || y > z.y1 { return false; }
+  if z.line {
+    // a square ahead whose middle is within 2.5 feet (half a square) of the Line, within its length
+    // as the grid counts it (rs_feet)
+    px := f32(x - z.cx); py := f32(y - z.cy);
+    along := px * z.dx + py * z.dy;
+    across := px * z.dy - py * z.dx;
+    return along > 0 && rs_feet(x, y, z.cx, z.cy) <= z.r_ft && across <= 0.5 && across >= -0.5;
+  }
+  return !z.round || rs_feet(x, y, z.cx, z.cy) <= z.r_ft;
+}
 rs_difficult :: (b: [] RsBattle, x: int, y: int) -> bool {
   for k: 0..<RS_ZONES { if b[0].zone[k].difficult && rs_inside(b[0].zone[k], x, y) { return true; } }
   return false;
@@ -171,6 +183,17 @@ rs_area :: (b: [] RsBattle, i: int, sp: RsSpell, tx: int, ty: int) -> RsZone {
     if ox_ == 0 && oy_ == 0 { ox_ = 1; }
     z.x0 = ifx ox_ > 0 then cx + 1 else ifx ox_ < 0 then cx - k else cx - k / 2;
     z.y0 = ifx oy_ > 0 then cy + 1 else ifx oy_ < 0 then cy - k else cy - k / 2;
+  } else if sp.area == RS_A_LINE {
+    // a Line from you toward the point (straight ahead when it is your own square)
+    ddx := f32(tx - cx); ddy := f32(ty - cy);
+    dl := sqrt(ddx * ddx + ddy * ddy);
+    if dl < 0.01 { ddx = 1; ddy = 0; dl = 1; }
+    z.line = true; z.cx = cx; z.cy = cy; z.r_ft = sp.area_ft; z.dx = ddx / dl; z.dy = ddy / dl;
+    // its far end, the length out along the longer axis
+    n := f32(sp.area_ft) / f32(RS_SQUARE) / (ifx abs(z.dx) > abs(z.dy) then abs(z.dx) else abs(z.dy));
+    ex := cx + cast(int) floor(z.dx * n + 0.5); ey := cy + cast(int) floor(z.dy * n + 0.5);
+    z.x0 = rs_min(cx, ex) - 1; z.y0 = rs_min(cy, ey) - 1; z.x1 = rs_max(cx, ex) + 1; z.y1 = rs_max(cy, ey) + 1;
+    return z;
   } else if sp.area == RS_A_SPHERE {
     // a sphere: every square whose centre is within its radius of the point's
     z.round = true; z.cx = tx; z.cy = ty; z.r_ft = sp.area_ft;
@@ -458,7 +481,7 @@ rs_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, tar
     if s.range_ft > 0 && rs_feet_to(b, i, target) > s.range_ft { return false; }
     // Divine Smite: right after a melee weapon hit on this target
     if smite && b[0].turn.last_hit != target + 1 { return false; }
-  } else if s.area != RS_A_CUBE_SELF {
+  } else if s.area != RS_A_CUBE_SELF && s.area != RS_A_LINE {
     if rs_feet(me.x, me.y, tx, ty) > s.range_ft { return false; }
   }
   // spend
@@ -2842,6 +2865,27 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   #assert b[0].c[f].hp == b[0].c[f].hp_max;   // Sculpt Spells
   #assert b[0].c[inner].hp < 200 && b[0].c[edge].hp < 200 && b[0].c[out].hp == 200;
   #assert 200 - b[0].c[inner].hp >= 4 && 200 - b[0].c[inner].hp <= 48;
+}
+
+#test "Lightning Bolt: a 100-foot Line 5 feet wide from you, Dex save, 8d6 Lightning or half; Burning Hands: 3d6 Fire in 15 feet" {
+  b: [1] RsBattle; b[0].w = 40; b[0].h = 30; b[0].dice[0].state = 29;
+  w := rs_add(b[..], rs_wizard("Vesk", 1, 5), 2, 2);
+  on := rs_add(b[..], rs_skeleton("Skeleton", 2), 10, 10);     // on the diagonal: in the Line
+  far := rs_add(b[..], rs_skeleton("Skeleton", 2), 21, 21);    // 95 feet along it: in
+  past := rs_add(b[..], rs_skeleton("Skeleton", 2), 24, 24);   // 110 feet: past its end
+  side := rs_add(b[..], rs_skeleton("Skeleton", 2), 11, 10);   // beside it: out
+  for k: 1..<5 { b[0].c[k].hp = 200; b[0].c[k].hp_max = 200; }
+  rs_fresh(b[..], w);
+  #assert rs_cast(b[..], w, SP_LIGHTNING_BOLT, 3, 30, 30, -1) && b[0].c[w].slots[3] == 1;
+  #assert b[0].c[on].hp < 200 && b[0].c[far].hp < 200 && b[0].c[past].hp == 200 && b[0].c[side].hp == 200;
+  #assert 200 - b[0].c[on].hp >= 4 && 200 - b[0].c[on].hp <= 48 && b[0].c[w].hp == b[0].c[w].hp_max;
+  // Burning Hands, from a 2nd-level slot: 4d6 to the one beside, none to the one 20 feet off
+  near := rs_add(b[..], rs_skeleton("Skeleton", 2), 3, 2);
+  off := rs_add(b[..], rs_skeleton("Skeleton", 2), 7, 2);
+  b[0].c[near].hp = 200; b[0].c[near].hp_max = 200; b[0].c[off].hp = 200; b[0].c[off].hp_max = 200;
+  rs_fresh(b[..], w);
+  #assert rs_cast(b[..], w, SP_BURNING_HANDS, 2, 3, 2, -1);
+  #assert b[0].c[near].hp < 200 && 200 - b[0].c[near].hp <= 24 && b[0].c[off].hp == 200;
 }
 
 #test "Spirit Guardians: foes ending their turn within 15 feet save or take 3d8 Radiant, once a turn, at half Speed" {

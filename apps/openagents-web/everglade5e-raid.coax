@@ -10,13 +10,19 @@
 //     half at the squad's breach in the wall, till its volleys are done (RT_SIEGE_VOLLEYS);
 //   - then they go in, by the gate or their breach, each to its own place in the town (rt_ring),
 //     round the ground kept clear about you (rt_route, RT_SPAWN_R), never in one another (rt_separate);
-//   - Darian holds RT_BACK behind his lines and commands from there (rt_command), casting Fireball
-//     at the watch from his Pact slots, and Dimension Door takes him back if one comes near (rt_door).
+//   - Darian holds RT_BACK behind his lines and commands from there (rt_command), casting from his
+//     Pact slots: Fireball at a gate tower and Lightning Bolt at the other's top in the siege, then
+//     Blight, Lightning Bolt and Fireball at the watch; Dimension Door takes him back if one comes
+//     near (rt_door);
+//   - what each caster casts is the room raid's choice too (everglade-raid-spells.coax): the
+//     Cultists' Fire Bolt, Ray of Frost and Chill Touch, the Warlocks' Hex, Burning Hands, Eldritch
+//     Blast and their Hellish Rebuke when the watch hurts one, a Fanatic's Hold Person, each rolled
+//     by the engine in the caster's own turn.
 // The watch holds the gate: the Guards and the Knight in a line meet whoever reaches them, the
 // Veterans and Scouts on its flanks shoot their Heavy Crossbows and Longbows at the nearest.
 // Whoever drops to 0 Hit Points is dead and stays where it fell (the page plays the fall and the body).
-// The page plays each cast with the Warlock's real spells (everglade-warlock.coax wl_shoot_n) and each
-// shot as an arrow or bolt, and draws everyone on the town's own rig.
+// The page plays each cast as its own look (everglade-warlock.coax WL_*) and each shot as an arrow or
+// bolt, and draws everyone on the town's own rig.
 //   coax/bin/coax test --library apps/openagents-web/everglade5e-rules.coax --only "raid"
 //
 // This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
@@ -39,8 +45,11 @@ E5R_RAID_PLACE :: 3.0;      // m from its siege place: near enough to cast on th
 E5R_RAID_BOLT_FT :: 120;    // Eldritch Blast's and Fire Bolt's 120 feet
 E5R_RAID_FIREBALL_FT :: 150;
 E5R_RAID_IN_MIN :: 5.0; E5R_RAID_IN_MAX :: 17.0;   // m: the cult's places in the town about where it runs to
-// what the page plays: the Warlock's spells (everglade-warlock.coax WL_BLAST, WL_FIREBALL), a shot
-E5R_RAID_K_BLAST :: 0; E5R_RAID_K_FIREBALL :: 1; E5R_RAID_K_ARROW :: 2; E5R_RAID_K_BOLT :: 3;
+// what the page plays (everglade-raid-preview.coax RP_*): a spell's look (everglade-raid-spells.coax
+// RT_K_*), an arrow or a bolt, plus E5R_RAID_AT_ONE when it is aimed at a creature
+E5R_RAID_K_BLAST :: RT_K_BLAST; E5R_RAID_K_FIREBALL :: RT_K_FIREBALL; E5R_RAID_K_ARROW :: 20; E5R_RAID_K_BOLT :: 21;
+E5R_RAID_AT_ONE :: 32;
+E5R_RAID_BLIGHT_FT :: 30;   // Blight's range
 E5R_RAIDER_FLOATS :: 10;    // x, z, yaw, speed, level, hp, max, cast's look, dead (1), s since death
 
 E5rRaider :: struct {
@@ -65,6 +74,8 @@ E5rRaid :: struct {
   in_x: f32; in_z: f32;       // about where the cult's places in the town are
   you_x: f32; you_z: f32;     // the page's player
   call: int;                  // the calls so far
+  arch_calls: int;            // the calls Darian has cast on
+  seq: int;                   // the engine's log read so far (the Warlocks' Hellish Rebukes)
   sq_v: [E5R_RAID_SQUADS] int;   // each squad's volleys at the wall
   n: int;
   who: [E5R_RAID_PEOPLE] E5rRaider;
@@ -206,19 +217,96 @@ e5r_raid_foe :: (w: [] E5rRaid, b: [] RsBattle, q: int, reach: f32, taken: [] in
 e5r_raid_done :: (w: [] E5rRaid, s: int) -> bool {
   return w[0].sq_v[s % E5R_RAID_SQUADS] >= RT_SIEGE_VOLLEYS || w[0].t >= f32(E5R_RAID_CALL) + f32(RT_SIEGE_S);
 }
-// Raider q casts at the battle's creature of person o: Eldritch Blast for a Warlock, Fire Bolt for a
-// Cultist (the engine's attack roll and damage, in a turn of its own), played as a Blast at them.
-e5r_raid_bolt :: (w: [] E5rRaid, b: [] RsBattle, q: int, o: int) {
+// Raider q casts at the battle's creature of person o on call `call`, in a turn of its own: Hex first
+// (its Bonus Action), then what everglade-raid-spells.coax picks (the engine's attack roll or save
+// and damage), each played at them.
+e5r_raid_bolt :: (w: [] E5rRaid, b: [] RsBattle, q: int, o: int, call: int) {
   a := w[0].who[q..<q + 1]; e := w[0].who[o];
-  sp := ifx a[0].npc == RS_NPC_WARLOCK then SP_ELDRITCH_BLAST else SP_FIRE_BOLT;
-  b[0].who = a[0].i; rs_start_turn(b, a[0].i);
-  ok := rs_cast(b, a[0].i, sp, 0, 0, 0, e.i);
-  rs_end_turn(b, a[0].i); b[0].who = -1;
+  i := a[0].i;
+  b[0].who = i; rs_start_turn(b, i);
+  feet := rs_feet_to(b, i, e.i);
+  hexed := rt_hex(b[0].c[i], feet) && rs_cast(b, i, SP_HEX, rt_pact(b[0].c[i]), 0, 0, e.i);
+  sp := rt_spell(b[0].c[i], a[0].k, call, feet);
+  ok := false;
+  if sp >= 0 && rs_spell(sp).area == RS_A_NONE { ok = rs_cast(b, i, sp, rt_slot(b[0].c[i], sp), 0, 0, e.i); }
+  else if sp >= 0 { ok = rs_cast(b, i, sp, rt_slot(b[0].c[i], sp), b[0].c[e.i].x, b[0].c[e.i].y, -1); }
+  level := b[0].c[i].level;
+  rs_end_turn(b, i); b[0].who = -1;
+  if hexed { e5r_raid_look(w, b, q, RT_K_HEX, e.x, e.z, true, 1); }
   if !ok { return; }
   a[0].cast_t = w[0].t;
   a[0].yaw = e5rr_heading(e.x - a[0].x, e.z - a[0].z);
-  e5r_raid_put(w, E5rRaidCast.{k = E5R_RAID_K_BLAST, fx = a[0].x, fz = a[0].z, ax = e.x, az = e.z, seed = rs_roll(b[0].dice[..], 1000000) * 2 + 1,
-                               beams = ifx a[0].npc == RS_NPC_WARLOCK then e5r_raid_beams(b[0].c[a[0].i].level) else 1});
+  e5r_raid_look(w, b, q, rt_look(sp), e.x, e.z, true, ifx sp == SP_ELDRITCH_BLAST then e5r_raid_beams(level) else 1);
+}
+// Person q's look k at (ax, az) for the page (`one`: aimed at a creature).
+e5r_raid_look :: (w: [] E5rRaid, b: [] RsBattle, q: int, k: int, ax: f32, az: f32, one: bool, beams: int) {
+  if k < 0 { return; }
+  a := w[0].who[q];
+  e5r_raid_put(w, E5rRaidCast.{k = k + (ifx one then E5R_RAID_AT_ONE else 0), fx = a.x, fz = a.z, ax = ax, az = az,
+                               seed = rs_roll(b[0].dice[..], 1000000) * 2 + 1, beams = beams});
+}
+// The person of the raid who is creature i (-1 none).
+e5r_raid_of :: (w: [] E5rRaid, i: int) -> int {
+  for q: 0..<w[0].n { if w[0].who[q].i == i { return q; } }
+  return -1;
+}
+// The Hellish Rebukes the Warlocks cast since the last step (the engine's, as their Reaction): each
+// played on whom it burned.
+e5r_raid_rebukes :: (w: [] E5rRaid, b: [] RsBattle) {
+  by: [8] int; to: [8] int;
+  n := rt_rebukes(b, w[0].seq, by[..], to[..]);
+  w[0].seq = b[0].book[0].seq;
+  for k: 0..<n {
+    q := e5r_raid_of(w, by[k]); o := e5r_raid_of(w, to[k]);
+    if q < 0 || o < 0 { continue; }
+    e5r_raid_look(w, b, q, RT_K_REBUKE, w[0].who[o].x, w[0].who[o].z, true, 1);
+  }
+}
+// Darian on a call, in a turn of his own, from his Pact slots (one kept for Dimension Door): in the
+// siege, Fireball at one gate tower and Lightning Bolt at the other's top, over his lines' heads; then
+// at the watch, Blight on one within 30 feet, Lightning Bolt down a Line of two or more with none of
+// his own, Fireball; Eldritch Blast when no slot is left to spend.
+e5r_raid_arch :: (w: [] E5rRaid, b: [] RsBattle, q: int, foe: int, siege: bool) {
+  a := w[0].who[q..<q + 1];
+  i := a[0].i;
+  g := w[0].gate;
+  n := w[0].arch_calls; w[0].arch_calls += 1;
+  spend := b[0].c[i].slots[5] > 1;
+  beams := e5r_raid_beams(b[0].c[i].level);
+  a[0].cast_t = w[0].t;
+  p: [2] f32;
+  b[0].who = i; rs_start_turn(b, i);
+  if siege {
+    rt_at(g, (ifx n % 2 == 0 then -1.0f32 else 1.0f32) * g.w * f32(RT_TOWER_AT), 0, p[..]);
+    a[0].yaw = e5rr_heading(p[0] - a[0].x, p[1] - a[0].z);
+    if spend && n % 4 == 0 && rs_cast(b, i, SP_FIREBALL, 5, e5r_sq(p[0]), e5r_sq(p[1]), -1) {
+      // Fireball on the tower: the engine's at its square, on whoever stands there
+      e5r_raid_look(w, b, q, RT_K_FIREBALL, p[0], p[1], false, 0);
+    } else if spend && n % 4 == 2 {
+      // Lightning Bolt at the tower's top: no creature stands in its Line up there
+      b[0].c[i].slots[5] -= 1;
+      e5r_raid_look(w, b, q, RT_K_LIGHTNING, p[0], p[1], false, 0);
+    } else {
+      e5r_raid_look(w, b, q, RT_K_BLAST, p[0], p[1], false, beams);
+    }
+    rs_end_turn(b, i); b[0].who = -1;
+    return;
+  }
+  if foe >= 0 {
+    e := w[0].who[foe];
+    a[0].yaw = e5rr_heading(e.x - a[0].x, e.z - a[0].z);
+    feet := rs_feet_to(b, i, e.i);
+    ln: [2] int;
+    rt_line(b, i, b[0].c[e.i].x, b[0].c[e.i].y, ln[..]);
+    if spend && feet <= E5R_RAID_BLIGHT_FT && rs_cast(b, i, SP_BLIGHT, 5, 0, 0, e.i) { e5r_raid_look(w, b, q, RT_K_BLIGHT, e.x, e.z, true, 1); }
+    else if spend && feet <= 100 && ln[0] >= 2 && ln[1] == 0 && rs_cast(b, i, SP_LIGHTNING_BOLT, 5, b[0].c[e.i].x, b[0].c[e.i].y, -1) {
+      rt_line_end(a[0].x, a[0].z, e.x, e.z, f32(RT_LINE_M), p[..]);
+      e5r_raid_look(w, b, q, RT_K_LIGHTNING, p[0], p[1], true, 1);
+    }
+    else if spend && rs_cast(b, i, SP_FIREBALL, 5, b[0].c[e.i].x, b[0].c[e.i].y, -1) { e5r_raid_look(w, b, q, RT_K_FIREBALL, e.x, e.z, true, 0); }
+    else if rs_cast(b, i, SP_ELDRITCH_BLAST, 0, 0, 0, e.i) { e5r_raid_look(w, b, q, RT_K_BLAST, e.x, e.z, true, beams); }
+  }
+  rs_end_turn(b, i); b[0].who = -1;
 }
 
 // Person q strikes person o with weapon `wp` (the engine's attack, its roll and damage); a shot goes
@@ -347,25 +435,16 @@ e5r_raid_step :: (r: [] E5r, dt: f32) {
     // the call: every caster of the cult fires on it
     if a[0].role == RT_LEAD {
       if !calling { continue; }
-      // Darian: Fireball from his Pact slots at the watch, Eldritch Blast at a tower when none is left
-      reach := f32(E5R_RAID_FIREBALL_FT) * 0.3048;
-      foe = e5r_raid_foe(w, b, q, reach, taken[..]);
-      l := e5r_raid_slot(b[0].c[i]);
-      a[0].cast_t = t;
-      if foe >= 0 && l > 0 && l < 5 {
-        b[0].c[i].slots[l] -= 1;
-        e5r_raid_put(w, E5rRaidCast.{k = E5R_RAID_K_FIREBALL, fx = a[0].x, fz = a[0].z, ax = w[0].who[foe].x, az = w[0].who[foe].z, seed = rs_roll(b[0].dice[..], 1000000) * 2 + 1, beams = 0});
-        a[0].yaw = e5rr_heading(w[0].who[foe].x - a[0].x, w[0].who[foe].z - a[0].z);
-      } else {
-        rt_at(g, (ifx call % 2 == 0 then -1.0f32 else 1.0f32) * g.w * f32(RT_TOWER_AT), 0, p[..]);
-        e5r_raid_put(w, E5rRaidCast.{k = E5R_RAID_K_BLAST, fx = a[0].x, fz = a[0].z, ax = p[0], az = p[1], seed = rs_roll(b[0].dice[..], 1000000) * 2 + 1, beams = e5r_raid_beams(b[0].c[i].level)});
-        a[0].yaw = e5rr_heading(p[0] - a[0].x, p[1] - a[0].z);
-      }
+      // the siege while any squad is at the wall; then the watch within Fireball's 150 feet
+      siege := false;
+      for sq: 0..<E5R_RAID_SQUADS { if !e5r_raid_done(w, sq) { siege = true; } }
+      foe = e5r_raid_foe(w, b, q, f32(E5R_RAID_FIREBALL_FT) * 0.3048, taken[..]);
+      e5r_raid_arch(w, b, q, foe, siege);
       continue;
     }
     if a[0].role == RT_CASTER {
       if !calling { continue; }
-      if foe >= 0 { e5r_raid_bolt(w, b, q, foe); continue; }
+      if foe >= 0 { e5r_raid_bolt(w, b, q, foe, call); continue; }
       if done || aim == RT_AIM_FOES { continue; }
       // the siege: this call's volley at its tower or its breach, once at its place
       rt_order(g, a[0].squad, a[0].k, a[0].role, w[0].sq_v[s], false, a[0].x, a[0].z, a[0].post_x, a[0].post_z, p[..]);
@@ -373,8 +452,7 @@ e5r_raid_step :: (r: [] E5r, dt: f32) {
       fired[s] = true;
       a[0].cast_t = t;
       a[0].yaw = e5rr_heading(ax - a[0].x, az - a[0].z);
-      e5r_raid_put(w, E5rRaidCast.{k = E5R_RAID_K_BLAST, fx = a[0].x, fz = a[0].z, ax = ax, az = az, seed = rs_roll(b[0].dice[..], 1000000) * 2 + 1,
-                                   beams = ifx npc == RS_NPC_WARLOCK then e5r_raid_beams(b[0].c[i].level) else 1});
+      e5r_raid_look(w, b, q, rt_siege_look(npc), ax, az, false, ifx npc == RS_NPC_WARLOCK then e5r_raid_beams(b[0].c[i].level) else 1);
       continue;
     }
     if b[0].clock < a[0].act_at || foe < 0 || !rs_can_act(b[0].c[i]) { continue; }
@@ -383,6 +461,13 @@ e5r_raid_step :: (r: [] E5r, dt: f32) {
       a[0].act_at = b[0].clock + rs_beat(b);
       if gap <= f32(E5R_RAID_REACH) { e5r_raid_strike(w, b, q, foe, b[0].c[i].weapon, -1); }
       else { e5r_raid_strike(w, b, q, foe, b[0].c[i].ranged, ifx npc == RS_NPC_VETERAN then E5R_RAID_K_BOLT else E5R_RAID_K_ARROW); }
+    } else if npc == RS_NPC_FANATIC && gap > f32(E5R_RAID_REACH) && gap <= 18.3 && b[0].c[i].slots[2] > 0 && b[0].c[w[0].who[foe].i].humanoid {
+      // a Fanatic: Hold Person (its 1/Day) on one of the watch it closes on
+      a[0].act_at = b[0].clock + rs_beat(b);
+      b[0].who = i; rs_start_turn(b, i);
+      held := rs_cast(b, i, SP_HOLD_PERSON, 2, 0, 0, w[0].who[foe].i);
+      rs_end_turn(b, i); b[0].who = -1;
+      if held { a[0].cast_t = t; e5r_raid_look(w, b, q, RT_K_HOLD, w[0].who[foe].x, w[0].who[foe].z, true, 1); }
     } else if gap <= f32(E5R_RAID_REACH) {
       a[0].act_at = b[0].clock + rs_beat(b);
       e5r_raid_strike(w, b, q, foe, b[0].c[i].weapon, -1);
@@ -391,6 +476,7 @@ e5r_raid_step :: (r: [] E5r, dt: f32) {
     }
   }
   for s: 0..<E5R_RAID_SQUADS { if fired[s] { w[0].sq_v[s] += 1; } }
+  e5r_raid_rebukes(w, b);
 }
 
 #test "raid: the shared tactics' squads besiege the towers and the wall in big volleys, Darian at the back, then in apart and clear of you" #steps 2000000000 {
@@ -414,12 +500,27 @@ e5r_raid_step :: (r: [] E5r, dt: f32) {
   while e5r_raid_cast(r[..], c[..]) { }
   for f: 0..<10 { e5r_step(r[..], r[0].b[0].clock + 0.04); }
   spells := 0; walls := 0;
-  while e5r_raid_cast(r[..], c[..]) { if c[0] <= 1 { spells += 1; } if c[0] == 0 && c[4] > -57 && c[4] < -55 && (c[3] > 10 || c[3] < -10) { walls += 1; } }
+  kinds := 0;
+  while e5r_raid_cast(r[..], c[..]) {
+    k := int(c[0]) % E5R_RAID_AT_ONE;
+    if k < E5R_RAID_K_ARROW { spells += 1; kinds = kinds | (1 << k); }
+    if (k == RT_K_BLAST || k == RT_K_FIRE_BOLT) && c[4] > -57 && c[4] < -55 && (c[3] > 10 || c[3] < -10) { walls += 1; }
+  }
   #assert spells * 2 >= casters && walls > 0;
+  // the volley mixes the Cultists' Fire Bolts with the Warlocks' Eldritch Blasts
+  #assert (kinds & (1 << RT_K_BLAST)) != 0 && (kinds & (1 << RT_K_FIRE_BOLT)) != 0;
   // Darian holds behind his lines
   #assert e5r_raider(r[..], 0, out[..]) == RS_NPC_ARCH && out[1] < -70;
   // later: some fall, the cult is in, apart and clear of you, and Darian still at the back
-  for f: 0..<700 { e5r_step(r[..], r[0].b[0].clock + 0.04); }
+  for f: 0..<700 {
+    e5r_step(r[..], r[0].b[0].clock + 0.04);
+    while e5r_raid_cast(r[..], c[..]) { k := int(c[0]) % E5R_RAID_AT_ONE; if k < E5R_RAID_K_ARROW { kinds = kinds | (1 << k); } }
+  }
+  // Darian's Fireball and Lightning Bolt, and the casters' other spells at the watch
+  #assert (kinds & (1 << RT_K_FIREBALL)) != 0 && (kinds & (1 << RT_K_LIGHTNING)) != 0;
+  others := 0;
+  for k: [6] int.[RT_K_FROST, RT_K_CHILL, RT_K_HEX, RT_K_BURNING, RT_K_REBUKE, RT_K_HOLD] { if (kinds & (1 << k)) != 0 { others += 1; } }
+  #assert others >= 2;
   dead := 0; inside := 0;
   for q: 1..<E5R_RAIDERS {
     _ := e5r_raider(r[..], q, out[..]);

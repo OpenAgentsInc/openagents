@@ -29,7 +29,9 @@ SP_WATER_BREATHING :: 65; SP_METEOR_SWARM :: 66;
 SP_BLIGHT :: 67; SP_CIRCLE_OF_DEATH :: 68; SP_FINGER_OF_DEATH :: 69; SP_DIMENSION_DOOR :: 70;
 // a Warlock's Reaction (battle.coax rs_hellish_rebuke runs it: a Reaction isn't cast on a turn)
 SP_HELLISH_REBUKE :: 71;
-RS_MORE_END :: 72;
+// the Cultist Raid's (apps/openagents-web/everglade-raid-tactics.coax rt_spell)
+SP_BURNING_HANDS :: 72; SP_LIGHTNING_BOLT :: 73;
+RS_MORE_END :: 74;
 
 // A record's fields, the steps after.
 rs_more :: (id: string, name: string, level: int, school: string, classes: string, time: int, range_ft: int,
@@ -184,6 +186,17 @@ rs_more_spell :: (i: int) -> RsSpell {
     s.components = "V, S"; s.page = 140;
     s.text = "The creature that damaged you is momentarily surrounded by green flames. It makes a Dexterity saving throw, taking 2d10 Fire damage on a failed save or half as much damage on a successful one. Using a Higher-Level Spell Slot. The damage increases by 1d10 for each spell slot level above 1.";
     s.steps[0] = rs_step(RS_S_SAVE, RS_DEX, RS_ON_SAVE_HALF, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 2, 10, RS_FIRE, 1); s.step_n = 2;
+  } else if i == SP_BURNING_HANDS {
+    // its 15-foot Cone as the 15-foot cube against your side toward the point (Cone of Cold's rule)
+    s = rs_more("burning-hands", "Burning Hands", 1, "Evocation", "Sorcerer, Wizard", RS_T_ACTION, 0, "Instantaneous", 0, false, RS_A_CUBE_SELF, 15);
+    s.components = "V, S";
+    s.text = "A thin sheet of flames shoots forth from you. Each creature in a 15-foot Cone makes a Dexterity saving throw, taking 3d6 Fire damage on a failed save or half as much damage on a successful one. Flammable objects in the Cone that aren't being worn or carried start burning. Using a Higher-Level Spell Slot. The damage increases by 1d6 for each spell slot level above 1.";
+    s.steps[0] = rs_step(RS_S_SAVE, RS_DEX, RS_ON_SAVE_HALF, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 3, 6, RS_FIRE, 1); s.step_n = 2;
+  } else if i == SP_LIGHTNING_BOLT {
+    s = rs_more("lightning-bolt", "Lightning Bolt", 3, "Evocation", "Sorcerer, Wizard", RS_T_ACTION, 0, "Instantaneous", 0, false, RS_A_LINE, 100);
+    s.components = "V, S, M (a bit of fur and a crystal rod)";
+    s.text = "A stroke of lightning forming a 100-foot-long, 5-foot-wide Line blasts out from you in a direction you choose. Each creature in the Line makes a Dexterity saving throw, taking 8d6 Lightning damage on a failed save or half as much damage on a successful one. Using a Higher-Level Spell Slot. The damage increases by 1d6 for each spell slot level above 3.";
+    s.steps[0] = rs_step(RS_S_SAVE, RS_DEX, RS_ON_SAVE_HALF, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 8, 6, RS_LIGHTNING, 1); s.step_n = 2;
   } else if i == SP_DIMENSION_DOOR {
     // You alone: the willing creature it can bring along isn't offered here.
     s = rs_more("dimension-door", "Dimension Door", 4, "Conjuration", "Bard, Sorcerer, Warlock, Wizard", RS_T_ACTION, 500, "Instantaneous", 0, false, RS_A_NONE, 0);
@@ -204,4 +217,6 @@ rs_more_spell :: (i: int) -> RsSpell {
   sb := rs_spell(SP_SUNBURST); #assert sb.level == 8 && sb.steps[1].a == 12 && sb.steps[2].a == RS_BLINDED && sb.steps[2].c == RS_CON;
   #assert rs_spell(SP_FEATHER_FALL).cast_time == RS_T_REACTION && rs_spell(SP_ICE_KNIFE_BURST).part_of == SP_ICE_KNIFE;
   #assert rs_spell(SP_THUNDERWAVE).srd && rs_spell(SP_THUNDERWAVE).id == "thunderwave";
+  bh := rs_spell(SP_BURNING_HANDS); #assert bh.level == 1 && bh.area_ft == 15 && bh.steps[0].a == RS_DEX && bh.steps[1].a == 3 && bh.steps[1].b == 6 && bh.steps[1].c == RS_FIRE && bh.steps[1].d == 1;
+  lb := rs_spell(SP_LIGHTNING_BOLT); #assert lb.level == 3 && lb.area == RS_A_LINE && lb.area_ft == 100 && lb.steps[1].a == 8 && lb.steps[1].b == 6 && lb.steps[1].c == RS_LIGHTNING;
 }

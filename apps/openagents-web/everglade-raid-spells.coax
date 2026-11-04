@@ -1,0 +1,148 @@
+// What the cult casts in a raid (#12747): the one choice of spell the room server's raid
+// (everglade5e-room-raid.coax) and the page's offline preview (everglade5e-raid.coax) both make,
+// and the look each page plays for it (everglade-warlock.coax WL_*, the same numbers on the wire).
+// The engine casts the spell (aethyr/rules/srd: its range, attack roll or save and damage are the
+// SRD 5.2.1's); this file only picks it, by what the raider is and how far its foe stands:
+//   - a Cultist who casts: Chill Touch on a foe within reach (5 feet), else Ray of Frost (60 feet)
+//     and Fire Bolt (120 feet) by turns, so a squad's volley mixes them;
+//   - a Warlock: Hex as its Bonus Action on its first foe (a Pact slot, Concentration), then
+//     Burning Hands on a foe within 15 feet at level 3 and up (the Fiend's spell, a Pact slot), Chill
+//     Touch on one within reach, else Eldritch Blast; Hellish Rebuke is its Reaction to being hurt
+//     (battle.coax rs_hellish_rebuke), and the raid plays it from the engine's log (rt_rebukes);
+//   - a siege volley at the wall (no creature in it): a Cultist's Fire Bolt, a Warlock's Eldritch
+//     Blast, the two the SRD lets strike an object;
+//   - Darian Odiodei: Fireball at three or more together, Lightning Bolt down a Line with foes in it
+//     and none of his own (rt_line), Blight on a foe within 30 feet, Dimension Door away from one at
+//     hand (the room's raid, by its aggression dial); in a siege he casts Fireball at one gate tower
+//     and Lightning Bolt at the other's top, over his own lines' heads.
+//   coax test --library apps/openagents-web/everglade5e-rules.coax --only "raid spells"
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+
+// the looks (everglade-warlock.coax WL_*): the Warlock's bar, then the raid's own
+RT_K_BLAST :: 0; RT_K_FIREBALL :: 1; RT_K_BLIGHT :: 2; RT_K_CIRCLE :: 3; RT_K_FINGER :: 4; RT_K_DOOR :: 5;
+RT_K_CHILL :: 7; RT_K_HEX :: 8;
+RT_K_FIRE_BOLT :: 9; RT_K_FROST :: 10; RT_K_BURNING :: 11; RT_K_LIGHTNING :: 12; RT_K_REBUKE :: 13; RT_K_HOLD :: 14;
+RT_K_LOOKS :: 15;
+RT_LINE_M :: 30.5;          // Lightning Bolt's 100-foot Line, in metres
+
+// The look a page plays for spell sp (-1 none).
+rt_look :: (sp: int) -> int {
+  if sp == SP_ELDRITCH_BLAST { return RT_K_BLAST; }
+  if sp == SP_FIREBALL { return RT_K_FIREBALL; }
+  if sp == SP_BLIGHT { return RT_K_BLIGHT; }
+  if sp == SP_CIRCLE_OF_DEATH { return RT_K_CIRCLE; }
+  if sp == SP_FINGER_OF_DEATH { return RT_K_FINGER; }
+  if sp == SP_DIMENSION_DOOR { return RT_K_DOOR; }
+  if sp == SP_CHILL_TOUCH { return RT_K_CHILL; }
+  if sp == SP_HEX { return RT_K_HEX; }
+  if sp == SP_FIRE_BOLT { return RT_K_FIRE_BOLT; }
+  if sp == SP_RAY_OF_FROST { return RT_K_FROST; }
+  if sp == SP_BURNING_HANDS { return RT_K_BURNING; }
+  if sp == SP_LIGHTNING_BOLT { return RT_K_LIGHTNING; }
+  if sp == SP_HELLISH_REBUKE { return RT_K_REBUKE; }
+  if sp == SP_HOLD_PERSON { return RT_K_HOLD; }
+  return -1;
+}
+
+// The Pact slot a Warlock casts with: its highest level with one left, to 5th (0 none).
+rt_pact :: (c: RsCreature) -> int {
+  for d: 0..<5 { l := 5 - d; if c.slots[l] > 0 { return l; } }
+  return 0;
+}
+
+// The action spell caster c (RS_NPC_*, `number` among its kind) casts on its turn at a foe `feet`
+// away, on call `call`: -1 when it has none for that foe.
+rt_spell :: (c: RsCreature, number: int, call: int, feet: int) -> int {
+  if c.npc == RS_NPC_CULTIST {
+    if feet <= 5 { return SP_CHILL_TOUCH; }
+    if feet <= 60 && (number + call) % 2 == 1 { return SP_RAY_OF_FROST; }
+    if feet <= 120 { return SP_FIRE_BOLT; }
+    return -1;
+  }
+  if c.npc == RS_NPC_WARLOCK {
+    if feet <= 15 && c.level >= 3 && rt_pact(c) > 0 { return SP_BURNING_HANDS; }
+    if feet <= 5 { return SP_CHILL_TOUCH; }
+    if feet <= 120 { return SP_ELDRITCH_BLAST; }
+  }
+  return -1;
+}
+// The slot rt_spell's spell takes from c (0 a cantrip).
+rt_slot :: (c: RsCreature, sp: int) -> int { return ifx rs_spell(sp).level > 0 then rt_pact(c) else 0; }
+// Whether a Warlock casts Hex first, its Bonus Action, on a foe `feet` away: a Pact slot left (and
+// one more at level 3 and up, kept for Burning Hands) and no Concentration held.
+rt_hex :: (c: RsCreature, feet: int) -> bool {
+  if c.npc != RS_NPC_WARLOCK || c.conc >= 0 || feet > 90 { return false; }
+  l := rt_pact(c);
+  return l > 0 && c.slots[l] >= (ifx c.level >= 3 then 2 else 1);
+}
+// A siege volley's look at the wall: a Cultist's Fire Bolt, a Warlock's Eldritch Blast.
+rt_siege_look :: (npc: int) -> int { return ifx npc == RS_NPC_WARLOCK then RT_K_BLAST else RT_K_FIRE_BOLT; }
+
+// Lightning Bolt from creature i toward square (tx, ty): its foes in the Line into n[0], its own into
+// n[1] (the engine's Line, battle.coax rs_area).
+rt_line :: (b: [] RsBattle, i: int, tx: int, ty: int, n: [] int) {
+  z := rs_area(b, i, rs_spell(SP_LIGHTNING_BOLT), tx, ty);
+  n[0] = 0; n[1] = 0;
+  for j: 0..<b[0].n {
+    c := b[0].c[j];
+    if j == i || c.dead || c.hp <= 0 || !rs_inside(z, c.x, c.y) { continue; }
+    if c.team == b[0].c[i].team { n[1] += 1; } else { n[0] += 1; }
+  }
+}
+// The far end of a Line of `m` metres from (x, z) toward (ax, az): into o.
+rt_line_end :: (x: f32, z: f32, ax: f32, az: f32, m: f32, o: [] f32) {
+  dx := ax - x; dz := az - z; d := sqrt(dx * dx + dz * dz);
+  if d < 0.01 { o[0] = ax; o[1] = az; return; }
+  o[0] = x + dx / d * m; o[1] = z + dz / d * m;
+}
+
+// The Hellish Rebukes in the engine's log since `seq` (its count then): for each, its caster and
+// whom it struck, into by and to; how many (at most by.count).
+rt_rebukes :: (b: [] RsBattle, seq: int, by: [] int, to: [] int) -> int {
+  n := 0;
+  for e: 0..<rs_min(b[0].book[0].seq - seq, RS_EVENTS) {
+    ev := rs_recent_at(b[0].book[..], e);
+    if ev.kind != RS_EV_CAST || ev.spell != SP_HELLISH_REBUKE || n >= by.count || n >= to.count { continue; }
+    by[n] = ev.by; to[n] = ev.to; n += 1;
+  }
+  return n;
+}
+
+#test "raid spells: Cultists and Warlocks cast a mix by range, Hex first, a Line counts its foes and allies, Rebukes from the log" {
+  cu := rs_cultist("Cultist 2", 3); cu.npc = RS_NPC_CULTIST; cu.spell_ability = RS_WIS;
+  #assert rt_spell(cu, 1, 0, 5) == SP_CHILL_TOUCH && rt_spell(cu, 1, 0, 40) == SP_RAY_OF_FROST && rt_spell(cu, 1, 1, 40) == SP_FIRE_BOLT;
+  #assert rt_spell(cu, 1, 0, 90) == SP_FIRE_BOLT && rt_spell(cu, 1, 0, 130) == -1;
+  // a volley mixes them: half the squad's Cultists on Ray of Frost, half on Fire Bolt
+  frost := 0; for k: 0..<8 { if rt_spell(cu, k, 3, 40) == SP_RAY_OF_FROST { frost += 1; } }
+  #assert frost == 4;
+  wl := rs_warlock("Warlock 1", 3, 3, SP_ELDRITCH_BLAST); wl.npc = RS_NPC_WARLOCK;
+  #assert rt_pact(wl) == 2 && rt_hex(wl, 60) && !rt_hex(wl, 100);
+  #assert rt_spell(wl, 0, 0, 10) == SP_BURNING_HANDS && rt_spell(wl, 0, 0, 60) == SP_ELDRITCH_BLAST && rt_slot(wl, SP_BURNING_HANDS) == 2;
+  low := rs_warlock("Warlock 2", 3, 1, SP_ELDRITCH_BLAST); low.npc = RS_NPC_WARLOCK;
+  #assert rt_spell(low, 0, 0, 5) == SP_CHILL_TOUCH && rt_spell(low, 0, 0, 10) == SP_ELDRITCH_BLAST && rt_hex(low, 30);
+  wl.conc = SP_HEX; #assert !rt_hex(wl, 30);
+  #assert rt_siege_look(RS_NPC_WARLOCK) == RT_K_BLAST && rt_siege_look(RS_NPC_CULTIST) == RT_K_FIRE_BOLT;
+  for sp: 0..<RS_MORE_END { k := rt_look(sp); #assert k < RT_K_LOOKS && k != 6; }
+  #assert rt_look(SP_LIGHTNING_BOLT) == RT_K_LIGHTNING && rt_look(SP_HELLISH_REBUKE) == RT_K_REBUKE;
+  // the Line: two foes down it and none of his own; one of his own in it
+  b: [1] RsBattle; b[0].w = 40; b[0].h = 10; b[0].dice[0].state = 5;
+  d := rs_add(b[..], rs_siege_arch(RS_ARCH_NAME, 3, SP_ELDRITCH_BLAST), 2, 5);
+  f1 := rs_add(b[..], rs_guard("Guard 1", 1), 10, 5); f2 := rs_add(b[..], rs_guard("Guard 2", 1), 18, 5);
+  n: [2] int;
+  rt_line(b[..], d, 20, 5, n[..]); #assert n[0] == 2 && n[1] == 0;
+  own := rs_add(b[..], rs_cultist("Cultist 1", 3), 6, 5);
+  rt_line(b[..], d, 20, 5, n[..]); #assert n[0] == 2 && n[1] == 1;
+  rt_line(b[..], d, 20, 9, n[..]); #assert n[0] < 2;
+  o: [2] f32; rt_line_end(0, 0, 3, 4, 10, o[..]); #assert abs(o[0] - 6) < 0.01 && abs(o[1] - 8) < 0.01;
+  // Hellish Rebuke: a Guard hurts a Warlock, and the log tells who rebuked whom
+  w2 := rs_add(b[..], rs_warlock("Warlock 3", 3, 3, SP_ELDRITCH_BLAST), 10, 7);
+  b[0].c[w2].rebuke = true;
+  seq := b[0].book[0].seq;
+  rs_damage(b[..], f1, w2, 2, RS_PIERCING, false, -1);
+  by: [4] int; to: [4] int;
+  #assert rt_rebukes(b[..], seq, by[..], to[..]) == 1 && by[0] == w2 && to[0] == f1;
+}

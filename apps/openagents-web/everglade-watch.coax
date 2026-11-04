@@ -1019,7 +1019,7 @@ eg_room_known :: (s: [] Everglade) {
 // held until then (everglade-room-abilities.coax eg_ra_later).
 everglade_room_strike :: (s: [] Everglade, by: int, slot: int, fx: f32, fy: f32, fz: f32, ax: f32, ay: f32, az: f32, seed: int) #export_c {
   // the Warlock's (everglade-warlock.coax): Eldritch Blast's beams, Fireball
-  if sp_on(s) && slot >= WL_SLOT0 && slot < WL_SLOT0 + WL_SLOTS { s[0].wv.net = true; wl_strike(s, by, slot - WL_SLOT0, v3(fx, fy, fz), v3(ax, ay, az), seed); return; }
+  if sp_on(s) && slot >= WL_SLOT0 && slot < WL_SLOT0 + WL_LOOKS { s[0].wv.net = true; wl_strike(s, by, slot - WL_SLOT0, v3(fx, fy, fz), v3(ax, ay, az), seed); return; }
   if !sp_on(s) || slot < 0 || slot >= SP_SLOTS { return; }
   eg_ra_later(s, EgRaStrike.{by = by, slot = slot, from = v3(fx, fy, fz), at = v3(ax, ay, az), seed = seed, t = srd_spell(SP_SPELL[slot]).bar});
 }

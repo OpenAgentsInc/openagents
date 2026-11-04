@@ -6,9 +6,12 @@
 //   - what it is told: each person of the raid where they stand, how fast they go, whether they are
 //     casting or striking and whether they have fallen (everglade_raider), and each cast or shot
 //     (everglade_raid_cast);
-//   - the casts are the Warlock's real spells (everglade-warlock.coax wl_shoot_n): Eldritch Blast's
-//     beams break what they strike; a Fireball arcs over from the hand and breaks and burns where it
-//     lands. The watch's bolts and arrows fly at whom they shoot;
+//   - the casts are the SRD 5.2.1 spells the cult casts (everglade-raid-spells.coax), played as the
+//     Warlock's looks (everglade-warlock.coax wl_shoot_n): Eldritch Blast's beams and Fire Bolts break
+//     what they strike at the wall; a Fireball arcs over from the hand and breaks and burns where it
+//     lands; Lightning Bolt, Ray of Frost, Burning Hands, Chill Touch, Hex, Hellish Rebuke and Hold
+//     Person each their own look. A cast at a creature is aimed at it and leaves the town be. The
+//     watch's bolts and arrows fly at whom they shoot;
 //   - everyone is a body on the town's own rig and clips (verse/everglade/people-rig.coax): idle,
 //     walk, run, spell, slash, and the fall (PEOPLE_DIE) when they die, held where they fell, then
 //     sinking away. The cult hooded and robed by kind: a Cultist's robe blood red, a Fanatic's black,
@@ -106,28 +109,37 @@ everglade_raider :: (s: [] Everglade, q: int, npc: int, x: f32, z: f32, yaw: f32
   o[0].walk += sqrt(dx * dx + dz * dz);
   o[0] = RpPerson.{npc = npc, x = x, z = z, yaw = yaw, speed = speed, walk = o[0].walk, lit = lit, dead_t = dead_t, level = level};
 }
-// A cast or shot of the raid's (0 Eldritch Blast, 1 Fireball, 2 an arrow, 3 a bolt) from (fx, fz) at
-// (ax, az). A spell is aimed at the town's piece nearest that point, as a player points at a building;
-// a shot at whom it was loosed at.
-everglade_raid_cast :: (s: [] Everglade, k: int, fx: f32, fz: f32, ax: f32, az: f32, seed: int, beams: int) #export_c {
+// what a cast or shot of the raid's is (everglade5e-raid.coax E5R_RAID_K_*): a look (WL_*), an arrow
+// or a bolt, plus RP_AT_ONE when it is aimed at a creature
+RP_ARROW :: 20; RP_BOLT :: 21; RP_AT_ONE :: 32;
+// A cast or shot of the raid's from (fx, fz) at (ax, az). A spell at the wall is aimed at the town's
+// piece nearest that point, as a player points at a building; one at a creature at its chest, and
+// leaves the town be; a shot at whom it was loosed at.
+everglade_raid_cast :: (s: [] Everglade, kk: int, fx: f32, fz: f32, ax: f32, az: f32, seed: int, beams: int) #export_c {
   if !sp_on(s) { return; }
+  one := kk >= RP_AT_ONE;
+  k := ifx one then kk - RP_AT_ONE else kk;
   from := v3(fx, ground_at(s, fx, fz) + 1.5, fz);
-  if k >= 2 {
+  if k == RP_ARROW || k == RP_BOLT {
     q := 0;
     for i: 0..<RP_SHOTS { if !s[0].rp.shots[i].live { q = i; break; } if s[0].rp.shots[i].t > s[0].rp.shots[q].t { q = i; } }
     to := v3(ax, ground_at(s, ax, az) + (ifx beams > 0 then 1.2f32 else 0.2f32), az);
     if beams <= 0 { to = add(to, v3(f32(seed % 7 - 3) * 0.4, 0, f32(seed % 5 - 2) * 0.5)); }   // a miss goes by
-    s[0].rp.shots[q] = RpShot.{live = true, from = from, to = to, bolt = k == 3};
+    s[0].rp.shots[q] = RpShot.{live = true, from = from, to = to, bolt = k == RP_BOLT};
     return;
   }
-  at := rp_target(s, ax, az);
-  if k == 1 {
+  if !wl_look(k) { return; }
+  at := ifx one then v3(ax, ground_at(s, ax, az) + 1.1, az) else rp_target(s, ax, az);
+  // a Lightning Bolt at a tower goes for its top, over the cult's heads
+  if k == WL_LIGHTNING && !one { at = add(at, v3(0, 2.5, 0)); }
+  if k == WL_FIREBALL {
     q := 0;
     for i: 0..<RP_ARCS { if !s[0].rp.arcs[i].live { q = i; break; } if s[0].rp.arcs[i].t > s[0].rp.arcs[q].t { q = i; } }
     s[0].rp.arcs[q] = RpArc.{live = true, from = add(from, v3(0, 0.6, 0)), to = at, seed = seed};
     return;
   }
-  wl_shoot_n(s, WL_BLAST, from, at, seed, beams, f32(RP_BEAM_BIG));
+  big := ifx k == WL_BLAST then f32(RP_BEAM_BIG) else ifx k == WL_LIGHTNING then 1.3f32 else 1.0f32;
+  wl_shoot_n(s, k, from, at, seed, beams, big, !one);
 }
 // The middle of the standing piece of the town nearest (x, z), within 10 m; else the ground there.
 rp_target :: (s: [] Everglade, x: f32, z: f32) -> Point {
@@ -164,7 +176,7 @@ rp_frame :: (s: [] Everglade, dt: f32) {
     s[0].rp.arcs[i].t += dt;
     if s[0].rp.arcs[i].t >= f32(RP_ARC_T) {
       s[0].rp.arcs[i].live = false;
-      wl_shoot_n(s, WL_FIREBALL, a.from, a.to, a.seed, -1, f32(RP_FIRE_BIG));
+      wl_shoot_n(s, WL_FIREBALL, a.from, a.to, a.seed, -1, f32(RP_FIRE_BIG), true);
     }
   }
 }

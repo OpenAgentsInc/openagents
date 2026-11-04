@@ -642,8 +642,9 @@ ev_raid_step :: (v: [] RmServer, k: int) {
   for c: 0..<w[0].cast_n { ev_raid_cast(v, k, w[0].casts[c]); }
   w[0].cast_n = 0;
 }
-// A raid creature's cast: `e rc ID K AX AY AZ SEED` to the pages near it (K the Warlock's bar slot
-// the page plays it as), and an Eldritch Blast's or a Fireball's strike on the server's town.
+// A raid creature's cast: `e rc ID K AX AY AZ SEED` to the pages near it (K the look the page plays,
+// everglade-raid-spells.coax RT_K_*), and the strike on the server's town of a spell that harms
+// objects: Eldritch Blast, Fire Bolt, Fireball, Lightning Bolt.
 ev_raid_cast :: (v: [] RmServer, k: int, c: E5rdCast) {
   q := ev_slot_of(v, k, c.id);
   if q < 0 { return; }
@@ -659,7 +660,7 @@ ev_raid_cast :: (v: [] RmServer, k: int, c: E5rdCast) {
   n = wire_m(b[..], n, c.ax); n = wire_m(b[..], n, ay); n = wire_m(b[..], n, c.az);
   n = wire_int(b[..], n, c.seed);
   eg_event(v, k, cast(string) b[0..<n], bt.x, bt.z, false);
-  if v[0].evc.d.harm && (c.k == E5RD_K_BLAST || c.k == E5RD_K_FIREBALL) && v[0].eg[k].strike_n < EG_CASTS {
+  if v[0].evc.d.harm && (c.k == RT_K_BLAST || c.k == RT_K_FIREBALL || c.k == RT_K_FIRE_BOLT || c.k == RT_K_LIGHTNING) && v[0].eg[k].strike_n < EG_CASTS {
     v[0].eg[k].strikes[v[0].eg[k].strike_n] = EgStrike.{by = -1, slot = EG_WL_BLAST + c.k, fx = bt.x, fy = bt.y + 1.5, fz = bt.z, ax = c.ax, ay = ay, az = c.az, seed = c.seed};
     v[0].eg[k].strike_n += 1;
   }

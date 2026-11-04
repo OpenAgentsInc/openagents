@@ -6,7 +6,9 @@
 // room's world event (coax/web/room/room-events.coax) says when and where they come; this file is
 // how they fight:
 //   - the raiders fight a siege by the shared tactics (everglade-raid-tactics.coax): in squads, each
-//     member at its own place; the casters (the Warlocks, and two Cultists in three, with Fire Bolt)
+//     member at its own place; the casters (the Warlocks, and two Cultists in three) cast the mix of
+//     SRD 5.2.1 spells everglade-raid-spells.coax picks (Fire Bolt, Ray of Frost, Chill Touch, Hex,
+//     Burning Hands, Eldritch Blast, Hellish Rebuke as a Warlock's Reaction), and
 //     fire their squad's volleys together on its call, first at a gate tower and a breach in the wall
 //     (the room breaks and burns the town's pieces when its damage dial is on), then the squad goes
 //     in by the gate or the breach to its places about the square, the casters on the defenders and
@@ -21,8 +23,8 @@
 //     Points, and the room withdraws him when he reaches it, so he never drops;
 //   - Darian stays RT_BACK behind his lines, and casts Dimension Door away from a foe at hand while he
 //     has a Pact slot; he fights by the aggression dial: 0 watches, 1 Eldritch Blast
-//     and Blight, 2 also Fireball at three or more together, 3 also Circle of Death and Finger of
-//     Death, and twice a turn.
+//     and Blight, 2 also Fireball at three or more together and Lightning Bolt down a Line of two or
+//     more foes with none of his own in it, 3 also Circle of Death and Finger of Death, and twice a turn.
 // What the pages play (a raider's cast) and who fell (for the XP) wait in queues the room drains.
 // The raiders take the summoned creatures' places from the top, so a raid always leaves the players'
 // summons E5RR_BEASTS - E5RD_MAX places.
@@ -46,8 +48,10 @@ E5RD_HOME :: 2.0;                            // m: a raider that fled this near 
 E5RD_IN :: 0; E5RD_FLEE :: 2;
 // the players' spawn (verse/everglade/plan.coax EG_SPAWN_X, EG_SPAWN_Z): kept clear (RT_SPAWN_R)
 E5RD_SPAWN_X :: 0.0; E5RD_SPAWN_Z :: -84.0;
-// what a page plays for a cast (everglade-warlock.coax WL_*): the Warlock's bar slot
-E5RD_K_BLAST :: 0; E5RD_K_FIREBALL :: 1; E5RD_K_BLIGHT :: 2; E5RD_K_CIRCLE :: 3; E5RD_K_FINGER :: 4; E5RD_K_DOOR :: 5;
+// what a page plays for a cast (everglade-warlock.coax WL_*, everglade-raid-spells.coax RT_K_*)
+E5RD_K_BLAST :: RT_K_BLAST; E5RD_K_FIREBALL :: RT_K_FIREBALL; E5RD_K_BLIGHT :: RT_K_BLIGHT; E5RD_K_CIRCLE :: RT_K_CIRCLE;
+E5RD_K_FINGER :: RT_K_FINGER; E5RD_K_DOOR :: RT_K_DOOR;
+E5RD_REBUKES :: 8;                           // Hellish Rebukes the raid plays from one step's log, at most
 // Ward stone: a dark obelisk the cult raises at a gate. AC 15, 60 Hit Points; an object: no saves to
 // fail or conditions to suffer, no poison or psychic harm.
 E5RD_WARD_AC :: 15; E5RD_WARD_HP :: 60;
@@ -62,7 +66,7 @@ E5rdSlot :: struct {
   hx: f32; hz: f32;                          // where it came from (the way out)
   held: bool;                                // a Fanatic's Hold Person is spent
 }
-// A raider's cast for the pages: the creature (its beast id), the Warlock's bar slot k, the creature
+// A raider's cast for the pages: the creature (its beast id), the look k (RT_K_*), the creature
 // it aimed at (-1 the town), where, and the seed the pages play it from.
 E5rdCast :: struct { id: int; k: int; to: int; ax: f32; az: f32; seed: int; }
 // One that fell: its place among the beasts, its last id, stat block (0 a ward stone), level, where.
@@ -72,6 +76,7 @@ E5rdRaid :: struct {
   casts: [E5RD_CASTS] E5rdCast; cast_n: int;
   downs: [E5RD_DOWNS] E5rdDown; down_n: int;
   aggr: int = 2; harm: bool = true;
+  seq: int;                                  // the engine's log read so far (its Hellish Rebukes)
   arch: int = -1;                            // Darian's place among the beasts (-1 away)
   up: int;                                   // raid creatures standing, as the last step counted (the watch fights while any do)
   // the squads (squad % RT_SQUADS): which squad holds the place (+1), its calls' first, when it came,
@@ -144,7 +149,7 @@ e5rd_join :: (r: [] E5rRoom, c: RsCreature, form: int, x0: f32, z0: f32, g: RtGa
 }
 // The raider of stat block npc (RS_NPC_CULTIST, _FANATIC or _WARLOCK, at `level`), the number-th of
 // its kind, at (x, z), in by way g, member k of squad `squad`, its place in the town (sx, sz): its
-// beast id, 0 with no place. A Cultist who casts (rt_role) has Fire Bolt, by Wisdom.
+// beast id, 0 with no place. A Cultist who casts (rt_role) casts by Wisdom (everglade-raid-spells.coax).
 e5rd_raider :: (r: [] E5rRoom, npc: int, level: int, number: int, x: f32, z: f32, g: RtGate, squad: int, k: int, sx: f32, sz: f32) -> int {
   nm: [RS_NAME] u8; nn := rs_npc_named(nm[..], npc, number);
   name := cast(string) nm[0..<nn];
@@ -353,12 +358,11 @@ e5rd_turn :: (r: [] E5rRoom, q: int) {
       o: [2] f32;
       if rt_siege_aim(sl[0].g, sl[0].squad, sl[0].k, w[0].sq_v[s] - 1, o[..]) != RT_AIM_FOES && w[0].harm {
         bt[0].yaw = e5rr_heading(o[0] - bt[0].x, o[1] - bt[0].z);
-        e5rd_cast(r, q, E5RD_K_BLAST, -1, o[0], o[1]);
+        e5rd_cast(r, q, rt_siege_look(npc), -1, o[0], o[1]);
       }
       return;
     }
-    sp := ifx npc == RS_NPC_WARLOCK then SP_ELDRITCH_BLAST else SP_FIRE_BOLT;
-    if rs_cast(b, i, sp, 0, 0, 0, foe) { e5rd_cast(r, q, E5RD_K_BLAST, foe, e5rd_mx(r, foe), e5rd_mz(r, foe)); }
+    e5rd_spell(r, q, v);
     return;
   }
   foe := e5rd_foe(r, q, f32(E5RD_REACH_MELEE));
@@ -366,9 +370,39 @@ e5rd_turn :: (r: [] E5rRoom, q: int) {
   if foe < 0 { return; }
   // a Fanatic: Hold Person (its 1/Day) on a player within 60 feet when none is at hand
   if npc == RS_NPC_FANATIC && !sl[0].held && b[0].c[i].slots[2] > 0 && foe < E5RR_FOLK0 && rs_feet_to(b, i, foe) > 5 && rs_feet_to(b, i, foe) <= 60 {
-    if rs_cast(b, i, SP_HOLD_PERSON, 2, 0, 0, foe) { sl[0].held = true; return; }
+    if rs_cast(b, i, SP_HOLD_PERSON, 2, 0, 0, foe) { sl[0].held = true; e5rd_cast(r, q, RT_K_HOLD, foe, e5rd_mx(r, foe), e5rd_mz(r, foe)); return; }
   }
   if rs_feet_to(b, i, foe) <= 5 { _ := rs_attack(b, i, foe, false, -1); }
+}
+// Caster q's spells at its foe on its squad's call v (everglade-raid-spells.coax): Hex first, its Bonus
+// Action, then the action spell rt_spell picks, each played for the pages.
+e5rd_spell :: (r: [] E5rRoom, q: int, v: int) {
+  b := r[0].b[..];
+  i := E5RR_BEAST0 + q;
+  foe := r[0].beasts[q].foe;
+  if foe < 0 { return; }
+  feet := rs_feet_to(b, i, foe);
+  if rt_hex(b[0].c[i], feet) && rs_cast(b, i, SP_HEX, rt_pact(b[0].c[i]), 0, 0, foe) { e5rd_cast(r, q, RT_K_HEX, foe, e5rd_mx(r, foe), e5rd_mz(r, foe)); }
+  sp := rt_spell(b[0].c[i], r[0].raid[0].slot[q].k, v, feet);
+  if sp < 0 || b[0].c[foe].dead { return; }
+  ok := false;
+  if rs_spell(sp).area == RS_A_NONE { ok = rs_cast(b, i, sp, rt_slot(b[0].c[i], sp), 0, 0, foe); }
+  else { ok = rs_cast(b, i, sp, rt_slot(b[0].c[i], sp), b[0].c[foe].x, b[0].c[foe].y, -1); }
+  if ok { e5rd_cast(r, q, rt_look(sp), foe, e5rd_mx(r, foe), e5rd_mz(r, foe)); }
+}
+// The Hellish Rebukes the raid's Warlocks cast since the last step (the engine casts them as their
+// Reaction, battle.coax rs_hellish_rebuke): each played for the pages, on whom it burned.
+e5rd_rebukes :: (r: [] E5rRoom) {
+  b := r[0].b[..];
+  w := r[0].raid[..];
+  by: [E5RD_REBUKES] int; to: [E5RD_REBUKES] int;
+  n := rt_rebukes(b, w[0].seq, by[..], to[..]);
+  w[0].seq = b[0].book[0].seq;
+  for k: 0..<n {
+    q := by[k] - E5RR_BEAST0;
+    if q < 0 || q >= E5RR_BEASTS || !e5rd_is(r[0].beasts[q]) || to[k] < 0 { continue; }
+    e5rd_cast(r, q, RT_K_REBUKE, to[k], e5rd_mx(r, to[k]), e5rd_mz(r, to[k]));
+  }
 }
 // The town watch's arms (everglade5e-room-rules.coax e5rr_people): a Guard's Spear, a Warrior
 // Veteran's and a Knight's Greatsword and Heavy Crossbow, as their stat blocks have them. The town's
@@ -461,6 +495,19 @@ e5rd_arch_act :: (r: [] E5rRoom, q: int, aggr: int) {
   if aggr >= 3 && c.slots[7] > 0 && rs_feet_to(b, i, foe) <= 60 {
     if rs_cast(b, i, SP_FINGER_OF_DEATH, 7, 0, 0, foe) { e5rd_cast(r, q, E5RD_K_FINGER, foe, e5rd_mx(r, foe), e5rd_mz(r, foe)); return; }
   }
+  // Lightning Bolt (a 5th-level Pact slot: 10d6) down a Line at the foe with two or more foes in it
+  // and none of his own, when it holds at least as many as a Fireball would
+  if aggr >= 2 && c.slots[5] > 0 && rs_feet_to(b, i, foe) <= 100 {
+    ln: [2] int;
+    rt_line(b, i, b[0].c[foe].x, b[0].c[foe].y, ln[..]);
+    m := e5rd_burst(r, i, n[..]);
+    if ln[0] >= 2 && ln[1] == 0 && ln[0] + 1 >= n[0] && rs_cast(b, i, SP_LIGHTNING_BOLT, 5, b[0].c[foe].x, b[0].c[foe].y, -1) {
+      o: [2] f32;
+      rt_line_end(r[0].beasts[q].x, r[0].beasts[q].z, e5rd_mx(r, foe), e5rd_mz(r, foe), f32(RT_LINE_M), o[..]);
+      e5rd_cast(r, q, RT_K_LIGHTNING, -1, o[0], o[1]);
+      return;
+    }
+  }
   // Fireball (a 5th-level Pact slot) at three or more together
   if aggr >= 2 && c.slots[5] > 0 {
     m := e5rd_burst(r, i, n[..]);
@@ -482,6 +529,7 @@ e5rd_step :: (r: [] E5rRoom, dt: f32) {
   b := r[0].b[..];
   w := r[0].raid[..];
   w[0].up = e5rd_standing(r) + (ifx w[0].arch >= 0 then 1 else 0);
+  e5rd_rebukes(r);
   // where everyone stands, and the middle of the lines
   lx: f32 = 0; lz: f32 = 0; ln := 0;
   for q: 0..<E5RR_BEASTS {
@@ -603,9 +651,12 @@ e5rd_test_room :: (r: [] E5rRoom) {
   #assert r[0].beasts[w].foe == E5RR_SEAT;
   #assert d > 15;
   #assert d < 25;
-  blasts := 0;
-  for c: 0..<r[0].raid[0].cast_n { if r[0].raid[0].casts[c].k == E5RD_K_BLAST && r[0].raid[0].casts[c].to == E5RR_SEAT { blasts += 1; } }
-  #assert blasts > 0;
+  blasts := 0; hexes := 0;
+  for c: 0..<r[0].raid[0].cast_n {
+    if r[0].raid[0].casts[c].k == E5RD_K_BLAST && r[0].raid[0].casts[c].to == E5RR_SEAT { blasts += 1; }
+    if r[0].raid[0].casts[c].k == RT_K_HEX && r[0].raid[0].casts[c].to == E5RR_SEAT { hexes += 1; }
+  }
+  #assert blasts > 0 && hexes == 1;   // Hex once (its Concentration holds), then Eldritch Blast
   e5rd_clear(r[..]);
   #assert e5rd_standing(r[..]) == 0;
   // the leader behind a stone: a hit of 500 does nothing
@@ -657,6 +708,20 @@ e5rd_test_room :: (r: [] E5rRoom) {
   #assert r[0].raid[0].up >= 0;
 }
 
+#test "room raid: a squad's casters mix their spells: Fire Bolt and Ray of Frost from the Cultists, each the engine's" #steps 4000000000 {
+  r: [1] E5rRoom;
+  e5rd_test_room(r[..]);
+  e5rr_join(r[..], 0, 0, -40);
+  for k: 0..<8 { #assert e5rd_raider(r[..], RS_NPC_CULTIST, 1, k + 1, (f32(k) - 3.5) * 2, -62, rt_open(0, -55, 0, -1), 0, k, 0, 0) > 0; }
+  t: f32 = 0; kinds := 0; at_you := 0;
+  for f: 0..<200 {
+    t += 0.05; e5rr_step(r[..], t);
+    for c: 0..<r[0].raid[0].cast_n { cs := r[0].raid[0].casts[c]; if cs.to == E5RR_SEAT { kinds = kinds | (1 << cs.k); at_you += 1; } }
+    r[0].raid[0].cast_n = 0;
+  }
+  #assert at_you > 4 && (kinds & (1 << RT_K_FIRE_BOLT)) != 0 && (kinds & (1 << RT_K_FROST)) != 0 && (kinds & (1 << RT_K_BLAST)) == 0;
+}
+
 #test "room raid: a squad lays siege by the shared tactics: volleys at a tower and a breach, then in, spread, clear of the spawn; Darian stays back and doors away" #steps 16000000000 {
   r: [1] E5rRoom;
   e5rd_test_room(r[..]);
@@ -667,14 +732,14 @@ e5rd_test_room :: (r: [] E5rRoom) {
     #assert e5rd_raider(r[..], RS_NPC_CULTIST, 1, k + 1, (f32(k) - 3.5) * 1.5, -100, south, 0, k, p[0], p[1]) > 0;
   }
   t: f32 = 0;
-  towers := 0; walls := 0; together := 0; most_on_spawn: f32 = 1000;
+  towers := 0; walls := 0; together := 0; most_on_spawn: f32 = 1000; kinds := 0;
   for f: 0..<900 {
     t += 0.05; e5rr_step(r[..], t);
     // the casts this tick: at the wall (to -1), a tower's middle (x 4.5 off) or the breach (x 12 to 17 off)
     n := r[0].raid[0].cast_n;
     for c: 0..<n {
       cs := r[0].raid[0].casts[c];
-      if cs.to >= 0 { continue; }   // in the town, at the watch
+      if cs.to >= 0 { kinds = kinds | (1 << cs.k); continue; }   // in the town, at the watch
       #assert abs(cs.az + 56) < 0.01;
       if abs(abs(cs.ax) - 4.5) < 0.01 { towers += 1; } else { #assert abs(cs.ax) > 12 && abs(cs.ax) < 17; walls += 1; }
     }

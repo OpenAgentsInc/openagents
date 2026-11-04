@@ -20,6 +20,7 @@ RS_T_ACTION :: 0; RS_T_BONUS :: 1; RS_T_REACTION :: 2;
 RS_TIME :: [3] string.["Action", "Bonus Action", "Reaction"];
 // areas, in grid squares from the point (or from the caster, for a cube that originates there)
 RS_A_NONE :: 0; RS_A_CUBE_SELF :: 1; RS_A_SQUARE :: 2; RS_A_CUBE :: 3; RS_A_SPHERE :: 4;   // a sphere: area_ft its radius
+RS_A_LINE :: 5;             // a Line from you, 5 feet wide: area_ft its length (Lightning Bolt)
 
 // The effect steps. A step after ATTACK applies only on a hit; after SAVE, DAMAGE is halved on a
 // success when the save says so, and CONDITION and PUSH apply only on a failure.
