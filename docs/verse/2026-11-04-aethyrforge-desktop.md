@@ -89,7 +89,8 @@ page server, the voice Wasm and a local Parakeet voice host. This is the same
   AudioWorklet can process samples. A final Parakeet transcript now starts the
   same automatically routed Coder run/fork as typed input, while the Enter bar
   stays closed and typed drafts remain intact. Recognized words and live reply
-  chunks float on the left; the words are consumed by the native bridge and
+  chunks float on the left and remain for five seconds after the turn finishes;
+  the words are consumed by the native bridge and
   cannot also trigger an Everglade edit. A native microphone-grant ticket,
   local top-frame origin and current foreground/world readiness gate one final
   dispatch. Partials, canceled or duplicate finals and blank input do not run

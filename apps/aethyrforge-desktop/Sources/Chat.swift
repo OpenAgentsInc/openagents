@@ -108,10 +108,15 @@ final class ForgeChatPane: NSView {
     let status = NSTextField(labelWithString: "Enter sends · Shift-Enter adds a line · Esc closes")
     var process: Process?
     var task: Task<Void, Never>?
+    var messageHideTask: Task<Void, Never>?
+    var messagesFinishedAt: TimeInterval?
     var busy = false
     var pending = false
     var composerOpen = false
-    var presentation: Int64 { fgc_chat_mode(composerOpen, busy, !messages.string.isEmpty) }
+    var presentation: Int64 {
+        let age = messagesFinishedAt.map { Int64((ProcessInfo.processInfo.systemUptime - $0) * 1000) } ?? -1
+        return fgc_chat_mode(composerOpen, busy, !messages.string.isEmpty, age)
+    }
     var session = ""
     var parent = ""
     var lastEnding = ""
@@ -247,10 +252,25 @@ final class ForgeChatPane: NSView {
         if messages.string.utf16.count > 200_000 { messages.textStorage?.deleteCharacters(in: NSRange(location: 0, length: 50_000)) }
         update(); layoutSubtreeIfNeeded(); messages.scrollToEndOfDocument(nil)
     }
+    func clearMessages() {
+        messageHideTask?.cancel(); messageHideTask = nil
+        messagesFinishedAt = nil; messages.string = ""
+    }
+    func finishMessages() {
+        messageHideTask?.cancel()
+        messagesFinishedAt = ProcessInfo.processInfo.systemUptime
+        update()
+        messageHideTask = Task { [weak self] in
+            do { try await Task.sleep(for: .milliseconds(fc_chat_hold_ms())) }
+            catch { return }
+            guard let self, !Task.isCancelled else { return }
+            messagesFinishedAt = nil; update()
+        }
+    }
     func save() {
         if let data = try? JSONSerialization.data(withJSONObject: ["routing": "auto", "cwd": cwd.path], options: [.sortedKeys]) { try? data.write(to: settings, options: .atomic) }
     }
-    @objc func newChat() { guard !busy else { return }; parent = ""; session = ""; transcript.string = ""; update(); window?.makeFirstResponder(input) }
+    @objc func newChat() { guard !busy else { return }; parent = ""; session = ""; transcript.string = ""; clearMessages(); update(); window?.makeFirstResponder(input) }
     @objc func chooseFolder() {
         let panel = NSOpenPanel(); panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.allowsMultipleSelection = false; panel.directoryURL = cwd
         if panel.runModal() == .OK, let url = panel.url { cwd = url; parent = ""; session = ""; save(); append("\nWorking folder: \(url.path)\n", color: .systemTeal); update() }
@@ -280,7 +300,7 @@ final class ForgeChatPane: NSView {
         let bytes = Array(text.utf8)
         guard bytes.withUnsafeBufferPointer({ fgc_send(busy, $0.baseAddress, Int64($0.count)) }) else { status.stringValue = "Enter a message of at most 16 KiB."; return }
         save(); onActivity?(); if !voice { input.string = "" }
-        messages.string = ""; busy = true; pending = false; session = ""; lastEnding = ""
+        clearMessages(); busy = true; pending = false; session = ""; lastEnding = ""
         liveChunks = 0; streamedWithoutComposer = false
         closeComposer()
         append("\n\(voice ? "VOICE" : "YOU")\n\(text)\n\n", color: .white)
@@ -311,7 +331,7 @@ final class ForgeChatPane: NSView {
                 append("\nCoder: \(error.localizedDescription)\n", color: .systemOrange); lastEnding = "failed"
             }
             if !session.isEmpty { parent = session }
-            busy = false; pending = false; process = nil; update()
+            busy = false; pending = false; process = nil; finishMessages()
             status.stringValue = "\(lastEnding) · \(selectedEngine) · \(session.isEmpty ? cwd.path : session)"
         }
     }
@@ -358,6 +378,7 @@ final class ForgeChatPane: NSView {
         } else { process?.terminate() }
     }
     func shutdown() {
+        messageHideTask?.cancel(); messageHideTask = nil; messagesFinishedAt = nil
         stopping = true; stopTurn()
         if let process {
             let end = Date().addingTimeInterval(2)

@@ -53,8 +53,9 @@ agent. Automatic routing status and the working folder sit above the bottom
 input; there are no agent/model/effort dropdowns, including in setup. Stop
 cancels a run. When closed,
 only received reply text appears on the left during an active run, with no
-background, heading, controls or mouse interception. It disappears when the run
-ends; Enter restores the conversation, including tools, results, paths and errors.
+background, heading, controls or mouse interception. Replies remain visible
+for five seconds after the run ends, then hide; Enter restores the
+conversation, including tools, results, paths and errors.
 Pending tool requests show a message to press Enter for Allow once / Deny;
 closing the composer never grants approval. New chat and folder changes start fresh.
 Slash commands, history browsing and attachment to a running PID are future work.
@@ -214,7 +215,9 @@ this change.
 The input smoke sends AppKit Return/keypad Enter through the actual window over
 the packaged WebKit realm. It checks held-key repeats, Shift-Enter, draft retention,
 approval review, active-message visibility, zero Enter events in region chat and
-an Enter-submitted offline Coder CLI round trip:
+an Enter-submitted offline Coder CLI round trip. It also checks that completed
+replies stay visible for five seconds with the composer closed (measured 5.03
+seconds on 2026-11-04). All 27 presentation mutants were killed:
 
 ```sh
 mkdir -p /tmp/aethyrforge-input

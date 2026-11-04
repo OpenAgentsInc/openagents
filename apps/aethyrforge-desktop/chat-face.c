@@ -27,7 +27,7 @@ int64_t fgc_router_default(uint8_t *out, int64_t cap) {
   coax_string s=fc_router_default(); if(s.count>cap) return -1;
   memcpy(out,s.data,(size_t)s.count);return s.count;
 }
-int64_t fgc_chat_mode(bool opened, bool busy, bool messages) { return fc_chat_mode(opened,busy,messages); }
+int64_t fgc_chat_mode(bool opened, bool busy, bool messages,int64_t age) { return fc_chat_mode(opened,busy,messages,age); }
 int64_t fgc_enter_route(bool ready, bool opened, int64_t key, bool down, bool repeated, bool modified, bool held) {
   return fc_enter_route(ready,opened,key,down,repeated,modified,held);
 }

@@ -567,8 +567,8 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         try require(!chatPane.allow.isHidden && !chatPane.deny.isHidden, "Enter must reveal the pending tool's approval controls.")
         key(53); key(53, down: false)
         try require(chatPane.busy && chatPane.pending && !chatPane.composerOpen, "Escape must close without stopping the agent or answering a tool.")
-        chatPane.busy = false; chatPane.pending = false; chatPane.update()
-        try require(chatPane.presentation == 0 && chatPane.messagesScroll.isHidden, "Completed messages must disappear while Coder is closed.")
+        chatPane.busy = false; chatPane.pending = false; chatPane.finishMessages()
+        try require(chatPane.presentation == 1 && !chatPane.messagesScroll.isHidden, "Completed messages must remain visible while Coder is closed.")
         key(36); key(36, down: false)
         try require(chatPane.transcript.string.contains("Active reply on the left"), "Enter must restore conversation history.")
         chatPane.newChat(); chatPane.closeComposer()
@@ -584,11 +584,18 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         try require(chatPane.busy && !chatPane.composerOpen && chatPane.inputScroll.isHidden, "Send must collapse the composer and leave the run active.")
         let deadline = Date().addingTimeInterval(30)
         while chatPane.busy && Date() < deadline { try await Task.sleep(for: .milliseconds(50)) }
-        try require(!chatPane.busy && chatPane.lastEnding.hasPrefix("finished") && chatPane.transcript.string.contains("FORGE_ENTER_CODER_OK") && !chatPane.session.isEmpty && chatPane.presentation == 0, "Native Enter did not finish its real Coder CLI round trip.")
+        try require(!chatPane.busy && chatPane.lastEnding.hasPrefix("finished") && chatPane.transcript.string.contains("FORGE_ENTER_CODER_OK") && !chatPane.session.isEmpty && chatPane.presentation == 1, "Native Enter did not finish its real Coder CLI round trip with the reply still visible.")
+        let finishedAt = chatPane.messagesFinishedAt ?? 0
+        try await Task.sleep(for: .milliseconds(4500))
+        try require(!chatPane.messagesScroll.isHidden && chatPane.hud.isHidden && chatPane.inputScroll.isHidden && chatPane.hitTest(NSPoint(x: 30, y: 500)) == nil, "The finished reply disappeared early or opened controls.")
+        let hideDeadline = ProcessInfo.processInfo.systemUptime + 2
+        while !chatPane.messagesScroll.isHidden && ProcessInfo.processInfo.systemUptime < hideDeadline { try await Task.sleep(for: .milliseconds(25)) }
+        let lingered = ProcessInfo.processInfo.systemUptime - finishedAt
+        try require(chatPane.presentation == 0 && chatPane.messagesScroll.isHidden && lingered >= 5 && lingered < 6.5, "Completed reply did not hide after five seconds: \(lingered).")
         let realm = try await web.evaluateJavaScript("JSON.stringify({downs:__forgeEnterDown,ups:__forgeEnterUp,typing:!!document.querySelector('input[aria-label=\"Typed text\"]'),scene:coaxial.sceneReady})") as? String ?? "{}"
         let state = try JSONSerialization.jsonObject(with: Data(realm.utf8)) as? [String: Any] ?? [:]
         try require(state["downs"] as? Int == 0 && state["ups"] as? Int == 0 && state["typing"] as? Bool == false && state["scene"] as? Bool == true, "Native Enter reached the realm's region chat: \(realm)")
-        let result: [String: Any] = ["ok": true, "realm": state, "nativeReturnAndKeypad": true, "heldEnter": true, "shiftEnter": true, "escapeKeepsDraftAndRun": true, "messagesOnlyWhileActive": true, "approvalWaitsForEnter": true, "realCoder": chatPane.session, "ending": chatPane.lastEnding]
+        let result: [String: Any] = ["ok": true, "realm": state, "nativeReturnAndKeypad": true, "heldEnter": true, "shiftEnter": true, "escapeKeepsDraftAndRun": true, "replyLingerSeconds": lingered, "approvalWaitsForEnter": true, "realCoder": chatPane.session, "ending": chatPane.lastEnding]
         try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]).write(to: report)
         print("Native Enter / Coder presentation smoke passed")
         stopChildren(); NSApp.terminate(nil)
