@@ -57,8 +57,11 @@ Nix flake evaluation and native bundle installation passed at the first
 milestone; the updated controller is installed atomically into that bundle.
 ASan/UBSan/leak detection instrument the controller/host adapter, not the
 external game or graphics driver. [tools-check](tools-check.txt) reports
-12 unrelated existing/concurrent header violations; no new non-Coax tool
-was introduced by this change.
+12 unrelated existing/concurrent header violations before rebase. The
+[final rebased tree](tools-check-rebased.txt) reports 15, including three
+more concurrent files outside this work. No new non-Coax tool was
+introduced by this change. The controller import closure and native host
+sources were unchanged by the rebase, so their passing checks were retained.
 
 [Observation v1](../../protocol/external-combat-v1.md) ·
 [Control v2](../../protocol/external-combat-control-v2.md) ·
