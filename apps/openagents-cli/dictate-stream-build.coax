@@ -1,0 +1,42 @@
+// Build the explicit Linux streaming helper; no model download or capture.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/args.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+DsbPaths :: struct {b:[32768]u8;n:int;}
+dsb_path :: (p:[]DsbPaths,a:string,b:string)->string {at:=p[0].n;for c:a {p[0].b[p[0].n]=c;p[0].n+=1;}p[0].b[p[0].n]='/';p[0].n+=1;for c:b {p[0].b[p[0].n]=c;p[0].n+=1;}return cast(string)p[0].b[at..<p[0].n];}
+dsb_run :: (args:[]string,out:[]u8,deadline:int)->int {
+ left:=deadline-proc_now_ms();if left<=0 {tool_errln("streaming build exceeded fourteen minutes");return -1;}
+ err:[65536]u8;r:=proc_run(args,ifx left<180000 then left else 180000,out,err[..]);
+ if r.started!=0 || r.status!=0 || r.timed_out || r.cut {tool_errln(cast(string)err[0..<r.err_n]);tool_errln(cast(string)out[0..<r.out_n]);return -1;}return r.out_n;
+}
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])>2 {return 2;}
+ if tool_os()!=TOOL_LINUX {tool_errln("streaming dictation is Linux CUDA only");return 2;}
+ dir:=ifx args_count(a[..])>0 then args_at(a[..],0) else "apps/openagents-cli/build";
+ sanitize:=args_count(a[..])==2 && args_at(a[..],1)=="--sanitize";
+ if dir.count<1 || dir.count>512 || (args_count(a[..])==2 && !sanitize) {return 2;}
+ p:[1]DsbPaths;env:[4096]u8;coax:=proc_getenv("COAX",env[..]);if coax=="" {coax="coax/bin/coax";}
+ out:[16777216]u8;deadline:=proc_now_ms()+840000;mk:=[3]string.["mkdir","-p",dir];if dsb_run(mk[..],out[..],deadline)<0 {return 1;}
+ engine:=ifx sanitize then "psionic/build/incremental-sanitized" else "psionic/build/incremental";
+ build:=[5]string.["coax/web/tool.sh","psionic/platform/incremental-build.coax",engine,"--sanitize",""];
+ if dsb_run(build[0..<ifx sanitize then 4 else 3],out[..],deadline)<0 {return 1;}
+ units:=[3]string.["apps/openagents-cli/dictate-stream-host.coax","apps/shared/dictation-stream.coax","coax/lib/crypto/entropy.coax"];
+ names:=[3]string.["dictate-stream-host.c","dictation.c","entropy.c"];headers:=[3]string.["dictate-stream-host.h","dictation.h","entropy-policy.h"];sources:[3]string;
+ for i:0..<3 {
+  sources[i]=dsb_path(p[..],dir,names[i]);header:=dsb_path(p[..],dir,headers[i]);
+  args:=[6]string.[coax,"c",units[i],"--library","--header",header];n:=dsb_run(args[..],out[..],deadline);
+  if n<0 || !fs_write(sources[i],cast(string)out[0..<n]) {return 1;}
+ }
+ command:[48]string;n:=0;
+ flags:=[13]string.["cc","-std=c11","-O2","-g","-D_DEFAULT_SOURCE","-DOPENAGENTS_DICTATE_STREAM","-I",dir,"-Icoax/platform","-Ipsionic/platform","-fno-omit-frame-pointer","-ffp-contract=off","-fno-fast-math"];
+ for f:flags {command[n]=f;n+=1;}
+ if sanitize {command[n]="-fsanitize=address,undefined";command[n+1]="-fno-sanitize-recover=all";command[n+2]="-O1";n+=3;}
+ for src:sources {command[n]=src;n+=1;}
+ effects:=[9]string.["apps/openagents-cli/cli-native.c","apps/openagents-cli/dictate-native.c","apps/openagents-cli/dictate-stream-native.c","coax/platform/tool-native.c","coax/platform/process-native.c","coax/platform/store-file-native.c","coax/platform/entropy-native.c","coax/platform/entropy-foreign.c","-lpthread"];
+ for src:effects {command[n]=src;n+=1;}
+ command[n]=dsb_path(p[..],engine,"libpsionic-incremental.a");command[n+1]="-ldl";command[n+2]="-lm";command[n+3]="-o";
+ binary:=dsb_path(p[..],dir,"openagents-dictate-stream");command[n+4]=binary;n+=5;
+ if dsb_run(command[0..<n],out[..],deadline)<0 {return 1;}print("%\n",binary);return 0;
+}

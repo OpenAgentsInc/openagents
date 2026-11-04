@@ -1,0 +1,1 @@
+openagents: --stream uses the pinned English RNNT model; use --model-dir for its original files

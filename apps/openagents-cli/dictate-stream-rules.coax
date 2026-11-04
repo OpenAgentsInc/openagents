@@ -1,0 +1,61 @@
+// Linux streaming CLI admission and one in-flight model call (#12745).
+#authority;
+DS_BATCH :: 2560;
+DS_MAX :: 960000;
+DsFlow :: struct {ticket:int;phase:int;sequence:int;sent:int;busy:bool;}
+
+#test "streaming options explicitly select Linux GPU plain text or events" {
+ #assert ds_options(false,1,false,false,0,false) && ds_options(false,1,true,false,0,false);
+ #assert !ds_options(true,1,false,false,0,false) && !ds_options(false,0,false,false,0,false);
+ #assert !ds_options(false,1,false,true,0,false) && !ds_options(false,1,true,true,0,false);
+ #assert !ds_options(false,1,false,false,1,false) && !ds_options(false,1,false,false,0,true);
+}
+#test "streaming lifecycle owns exact tickets counts and an immutable final" {
+ s:=ds_begin(7);#assert s.ticket==7 && s.phase==1 && s.sequence==0 && s.sent==0 && !s.busy;
+ #assert ds_begin(0).phase==0 && ds_begin(-1).phase==0;
+ #assert ds_can_submit(s,7,1,false) && ds_can_submit(s,7,2560,false) && ds_can_submit(s,7,0,true);
+ #assert !ds_can_submit(s,6,1,false) && !ds_can_submit(s,8,1,false);
+ #assert !ds_can_submit(s,7,0,false) && !ds_can_submit(s,7,-1,false) && !ds_can_submit(s,7,2561,false);
+ #assert !ds_can_submit(s,7,1,true);
+ s=ds_submitted(s,2560,false);#assert s.sent==2560 && s.sequence==1 && s.busy && s.phase==1;
+ #assert !ds_can_submit(s,7,1,false) && !ds_publish(s,7,false);
+ #assert ds_completed(s,6,true).busy;
+ s=ds_completed(s,7,true);#assert !s.busy && ds_publish(s,7,false) && !ds_publish(s,7,true);
+ s.sent=959999;#assert ds_can_submit(s,7,1,false) && !ds_can_submit(s,7,2,false);
+ s.sent=960000;#assert !ds_can_submit(s,7,1,false) && ds_can_submit(s,7,0,true);
+ s.sequence=9223372036854775807;#assert !ds_can_submit(s,7,0,true);s.sequence=9223372036854775806;#assert ds_can_submit(s,7,0,true);
+ s=ds_submitted(s,0,true);#assert s.phase==2 && s.busy && s.sent==960000 && s.sequence==9223372036854775807;
+ #assert !ds_publish(s,7,true);s=ds_completed(s,7,true);#assert s.phase==3 && !s.busy && ds_publish(s,7,true) && !ds_publish(s,7,false);
+ #assert !ds_can_submit(s,7,0,true) && !ds_publish(s,6,true) && !ds_publish(s,8,true);
+ s=ds_revoke(s);#assert s.phase==4 && !ds_publish(s,7,true);
+}
+#forall "only a current completed call can publish partials or a final" phase:0..<5,busy:0..<2,same:0..<2,final:0..<2 {
+ s:=DsFlow.{ticket=7,phase=phase,busy=busy==1};t:=ifx same==1 then 7 else 6;
+ #assert ds_publish(s,t,final==1)==(same==1 && busy==0 && phase==(ifx final==1 then 3 else 1));
+ #assert ds_can_submit(s,t,320,false)==(same==1 && busy==0 && phase==1);
+}
+#test "backend failure and cancellation revoke pending replies" {
+ s:=ds_submitted(ds_begin(1),320,false);s=ds_completed(s,1,false);
+ #assert s.phase==4 && !s.busy && !ds_publish(s,1,false);
+ s=ds_revoke(ds_submitted(ds_begin(2),0,true));#assert s.phase==4 && !s.busy;
+ #assert ds_completed(s,2,true).phase==4;
+ s=ds_begin(3);#assert ds_completed(s,3,true).phase==1 && !ds_completed(s,3,true).busy;
+}
+#test "output retries have a quarter-second bound and partial display ends with the capture" {
+ #assert ds_output_wait(100,100) && ds_output_wait(349,100) && !ds_output_wait(350,100) && !ds_output_wait(99,100);
+ for phase:0..<6 {#assert ds_partial_phase(phase)==(phase>=2 && phase<=4);}
+}
+ds_output_wait :: (now:int,start:int)->bool {return now>=start && now-start<250;}
+ds_partial_phase :: (phase:int)->bool {return phase>=2 && phase<=4;}
+ds_options :: (mac:bool,gpu:int,events:bool,json:bool,format:int,terms:bool)->bool {return !mac && gpu==1 && !json && format==0 && !terms;}
+ds_begin :: (ticket:int)->DsFlow {if ticket<=0 {return DsFlow.{};}return DsFlow.{ticket=ticket,phase=1};}
+ds_can_submit :: (s:DsFlow,ticket:int,count:int,final:bool)->bool {
+ return s.phase==1 && !s.busy && ticket==s.ticket && s.sequence<9223372036854775807 && count>=0 && count<=DS_BATCH && count<=DS_MAX-s.sent && (ifx final then count==0 else count>0);
+}
+// Called only after ds_can_submit and the native owned-buffer handoff succeed.
+ds_submitted :: (s0:DsFlow,count:int,final:bool)->DsFlow {s:=s0;s.busy=true;s.sent+=count;s.sequence+=1;if final {s.phase=2;}return s;}
+ds_completed :: (s0:DsFlow,ticket:int,ok:bool)->DsFlow {
+ s:=s0;if !s.busy || ticket!=s.ticket {return s;}s.busy=false;if !ok {s.phase=4;}else if s.phase==2 {s.phase=3;}return s;
+}
+ds_revoke :: (s0:DsFlow)->DsFlow {s:=s0;s.phase=4;s.busy=false;return s;}
+ds_publish :: (s:DsFlow,ticket:int,final:bool)->bool {return ticket==s.ticket && !s.busy && s.phase==(ifx final then 3 else 1);}

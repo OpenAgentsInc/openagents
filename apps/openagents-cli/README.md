@@ -371,6 +371,8 @@ openagents dictate                       # listen now; Enter stops, Esc or Ctrl-
 openagents dictate --seconds 10 --json   # stop by itself after 10 s; one JSON result
 openagents dictate --wait-for-enter      # load and open first, then Enter starts and Enter stops
 openagents dictate --events              # JSON lines: status events, then one result
+openagents dictate --stream              # Linux CUDA, English RNNT: partials on stderr, final text on stdout
+openagents dictate --stream --events     # the separate versioned streaming JSONL contract
 openagents dictate --device cpu --capture alsa --input hw:1   # Linux: name the recognizer device, recorder and input
 ```
 
@@ -406,7 +408,7 @@ openagents dictate --device cpu --capture alsa --input hw:1   # Linux: name the 
   `exit`, `recognizer`, `model`, `revision`, `device` and `capture`.
   `--events` prints `"type":"status"` lines first (`loading_model`,
   `opening_input`, `ready`, `listening`, `finishing`, `recognizing`): they
-  carry a state, never words. There are no partial transcripts yet; the one
+  carry a state, never words. This default mode has no partial transcripts; the one
   `final` is the whole clip's text.
 - Exit codes: 0 text, 9 no speech, 130 cancelled, 4 microphone permission
   denied, 6 model or input not found, 8 recorder program missing, 1 any other
@@ -423,6 +425,36 @@ openagents dictate --device cpu --capture alsa --input hw:1   # Linux: name the 
   fixture` with `OPENAGENTS_DICTATE_FIXTURE=FILE.wav`), never your microphone:
   `coax/web/tool.sh apps/openagents-cli/tests/dictate-check.coax [MODEL_DIR]`.
   [Record](../../docs/verification/dictate-cli-2026-11-02/README.md).
+
+`--stream` selects the separate original-weight English RNNT profile
+`psionic-nemotron-streaming-en-v1` on Linux CUDA. Install the authenticated
+original files from the [manifest](../../psionic/fixtures/parakeet-streaming/manifest.json)
+under `~/.cache/openagents/models/parakeet/nemotron-streaming-en-0.6b-ebe59e5a`,
+or name that model with `--model-dir DIR` / `OPENAGENTS_STREAMING_MODEL`.
+The offline `OPENAGENTS_PARAKEET_MODEL` setting does not select this model.
+
+The helper streams the shared controller's admitted 16 kHz audio into one
+resident encoder/RNNT state while capture and control polling continue. It
+shows complete provisional text snapshots on stderr, or `partial` events
+with `--events`. Stop flushes the same stream and admits one final through
+the existing current-ticket/speech gate. Escape, Ctrl-C/SIGINT and SIGTERM
+cancel without publishing a final; already displayed partials stay provisional.
+Audio stays in memory. The capture cap, pre-roll, minimum hold and tail are
+unchanged. A busy GPU can leave a bounded backlog to drain after stop.
+
+Streaming refuses CPU, macOS, `--json`, `--terms` and `--format code` before
+capture. Plain text and `--events` are supported; structured output uses the
+new [openagents.dictation.stream.v1 contract](../../docs/protocol/dictation-stream-v1.md),
+with model/profile identity, ticket, sequence and sample counts. The existing
+`openagents.dictation.v1`, multilingual default and terminal-composer helper
+remain unchanged. A stopped output reader cannot grow an output queue or
+block indefinitely: retries poll cancellation and fail after 250 ms; an
+incomplete last event must be discarded.
+
+The Linux build also creates `build/openagents-dictate-stream`. Focused checks
+and recorded-capture reproduction are in the
+[streaming CLI qualification](../../docs/verification/dictate-stream-2026-11-03/README.md).
+Physical microphone acceptance remains in `NEEDS_OWNER.md`.
 
 ## Labs
 

@@ -146,6 +146,19 @@ most there. On the Mac, run:
 
 Both should pass unchanged. If either fails, comment on #12698.
 
+## Linux streaming dictation: physical input acceptance (#12745, 2026-11-03)
+
+Software checks use recorded input through both the fixture backend and a Coax
+stand-in for the Linux recorder subprocess; no microphone was opened. See
+`docs/verification/dictate-stream-2026-11-03/README.md` for the tested binaries.
+
+- [ ] On Linux with the pinned streaming model installed, run
+      `openagents dictate --stream --seconds 10`. Speak and confirm that partials
+      appear on stderr while listening and one final appears on stdout after
+      stop. This explicit model is English RNNT; the default remains multilingual.
+- [ ] Run it again and cancel with Escape or Ctrl-C after a partial. Confirm
+      the microphone closes and no final is printed. Nothing is pasted or sent.
+
 ## Dictation vocabulary and code text in Coder for Mac (#12670, 2026-11-03)
 
 `openagents dictate --terms FILE --format code` works on Linux. Its record

@@ -1,0 +1,24 @@
+syntax = "proto3";
+package openagents.cli.dictation.v1;
+
+// Local JSONL projection: docs/protocol/dictation-stream-v1.md.
+// Existing openagents.dictation.v1 final-only output retains its identity.
+message StreamEvent {
+  string schema = 1; // openagents.dictation.stream.v1
+  string type = 2; // status, partial, final, no_speech, cancelled, error
+  uint64 event = 3; // monotonically increasing publication index
+  uint64 ticket = 4; // current local capture ticket, zero before capture
+  uint64 sequence = 5; // number of model pushes submitted
+  uint64 samples = 6; // model samples submitted so far, mono 16 kHz
+  string profile = 7;
+  string model = 8;
+  string revision = 9;
+  string capture = 10;
+  optional string state = 11;
+  optional string text = 12;
+  optional int32 exit = 13;
+  optional string reason = 14;
+  optional string error = 15;
+  optional string message = 16;
+  optional bool limited = 17;
+}

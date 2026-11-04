@@ -1,0 +1,164 @@
+// Current capture -> incremental RNNT worker -> provisional snapshots ->
+// one controller-admitted final. The existing offline host is unchanged.
+#load "dictate.coax";
+#load "dictate-stream-rules.coax";
+cxdict_dct_live :: (ticket:int,offset:int,out:[]f32)->int #foreign;
+cxdict_stream_open :: (directory:[]u8,error:[]u8)->int #foreign;
+cxdict_stream_reset :: (ticket:int)->int #foreign;
+cxdict_stream_submit :: (ticket:int,sequence:int,audio:[]f32,final:int)->int #foreign;
+cxdict_stream_poll :: (out:[]u8)->int #foreign;
+cxdict_stream_close :: ()->int #foreign;
+cxdict_stream_write :: (fd:int,bytes:[]u8)->int #foreign;
+DsCli :: struct {flow:DsFlow;event:int;last:[8000]u8;last_n:int;cancelled:bool;output_bad:bool;pending:int;}
+
+ds_control :: (d:[]Dict,f:[]DictFixture,s:[]DsCli,wait:int) {
+ k:=dc_key(cxdict_control_poll(wait),s[0].flow.ticket>0);
+ if k==DC_KEY_CANCEL {s[0].cancelled=true;s[0].flow=ds_revoke(s[0].flow);q:=cxdict_dct_abort();}
+ else if k!=DC_KEY_NONE {s[0].pending=k;}
+}
+// Never accumulate an unbounded output queue or wait indefinitely for a
+// consumer. A failed last line is explicitly incomplete, never a final.
+ds_write :: (d:[]Dict,f:[]DictFixture,s:[]DsCli,fd:int,text:string,watch:bool)->bool {
+ if s[0].output_bad {return false;}bytes:[REP_BYTES]u8;if copy(text,bytes[..])<0 {s[0].output_bad=true;return false;}at:=0;start:=cxdict_now_ms();
+ while at<text.count {
+  if watch {ds_control(d,f,s,0);if s[0].cancelled {s[0].output_bad=true;return false;}}
+  n:=cxdict_stream_write(fd,bytes[at..<text.count]);
+  if n<0 || !ds_output_wait(cxdict_now_ms(),start) {s[0].output_bad=true;return false;}
+  at+=n;if n==0 {if watch {ds_control(d,f,s,1);}else {q:=cxdict_control_poll(1);}}
+ }return true;
+}
+ds_event :: (d:[]Dict,f:[]DictFixture,s:[]DsCli,kind:string,value:string)->bool {
+ watch:=kind=="status" || kind=="partial" || kind=="final";
+ if d[0].out!=DC_OUT_EVENTS {
+  r:[1]Rep;
+  if kind=="partial" {rep_put(r[..],"partial: ");rep_put(r[..],value);rep_byte(r[..],'\n');return ds_write(d,f,s,2,cast(string)r[0].buf[0..<r[0].n],watch);}
+  if kind=="final" {rep_put(r[..],value);rep_byte(r[..],'\n');return ds_write(d,f,s,1,cast(string)r[0].buf[0..<r[0].n],watch);}
+  if kind=="status" && !d[0].tty {return true;}
+  rep_put(r[..],"openagents: ");rep_put(r[..],kind);if value!="" {rep_put(r[..],": ");rep_put(r[..],value);}rep_byte(r[..],'\n');
+  return ds_write(d,f,s,2,cast(string)r[0].buf[0..<r[0].n],watch);
+ }
+ r:[1]Rep;rep_put(r[..],"{\"schema\":\"openagents.dictation.stream.v1\",\"type\":");rep_quoted(r[..],kind);
+ dict_json_int(r[..],"event",s[0].event);dict_json_int(r[..],"ticket",s[0].flow.ticket);dict_json_int(r[..],"sequence",s[0].flow.sequence);dict_json_int(r[..],"samples",s[0].flow.sent);
+ dict_json_str(r[..],"profile","psionic-nemotron-streaming-en-v1");dict_json_str(r[..],"model","nemotron-speech-streaming-en-0.6b");dict_json_str(r[..],"revision","ebe59e5a817142986528bbbee5dba8db7b38ed50");dict_json_str(r[..],"capture",dc_capture_name(d[0].capture));
+ if kind=="status" {dict_json_str(r[..],"state",value);}
+ if kind=="partial" || kind=="final" {dict_json_str(r[..],"text",value);}
+ if kind=="final" {dict_json_int(r[..],"exit",0);dict_json_bool(r[..],"limited",d[0].limited);}
+ if kind=="cancelled" {dict_json_int(r[..],"exit",130);}
+ if kind=="no_speech" {dict_json_int(r[..],"exit",9);dict_json_str(r[..],"reason",value);}
+ if kind=="error" {dict_json_int(r[..],"exit",dc_exit(DC_ERROR,d[0].error));dict_json_str(r[..],"error",dc_error_name(d[0].error));dict_json_str(r[..],"message",value);}
+ rep_put(r[..],"}\n");if r[0].bad {s[0].output_bad=true;return false;}
+ if !ds_write(d,f,s,1,cast(string)r[0].buf[0..<r[0].n],watch) {return false;}s[0].event+=1;return true;
+}
+ds_status :: (d:[]Dict,f:[]DictFixture,s:[]DsCli,state:string)->bool {return ds_event(d,f,s,"status",state);}
+ds_finish :: (d:[]Dict,f:[]DictFixture,s:[]DsCli,result:int,text:string)->int {
+ kind:=ifx result==DC_FINAL then "final" else ifx result==DC_CANCELLED then "cancelled" else ifx result==DC_NO_SPEECH then "no_speech" else "error";
+ value:=ifx result==DC_NO_SPEECH then d[0].reason else ifx result==DC_ERROR then cast(string)d[0].message[0..<d[0].message_n] else text;
+ wrote:=ds_event(d,f,s,kind,value);if !wrote && result!=DC_CANCELLED {return ifx s[0].cancelled then 130 else 1;}return dc_exit(result,d[0].error);
+}
+ds_model_dir :: (out:[]u8)->string {
+ env:[1200]u8;v:=proc_getenv("OPENAGENTS_STREAMING_MODEL",env[..]);if v!="" {n:=copy(v,out);return ifx n<0 then "" else cast(string)out[0..<n];}
+ h:[1024]u8;return fs_join(home(h[..]),".cache/openagents/models/parakeet/nemotron-streaming-en-0.6b-ebe59e5a",out);
+}
+
+ds_capture :: (d:[]Dict,f:[]DictFixture,s:[]DsCli,words:[]u8)->int {
+ pcm:[16384]f32;batch:[DS_BATCH]f32;reply:[8000]u8;fired:[3]bool;release:= -1;frozen:=false;
+ now:=dict_now(d,f);d[0].opened=now;
+ if d[0].wait && !ds_status(d,f,s,"ready") {return DC_ERROR;}
+ while true {
+  now=dict_now(d,f);key:=s[0].pending;s[0].pending=0;
+  if key==DC_KEY_NONE {key=dict_key(d,f,s[0].flow.ticket>0,fired[..]);}
+  if key==DC_KEY_CANCEL || s[0].cancelled {s[0].cancelled=true;s[0].flow=ds_revoke(s[0].flow);q:=cxdict_dct_abort();return DC_CANCELLED;}
+  if s[0].flow.ticket==0 && (!d[0].wait || key==DC_KEY_START) {
+   t:=cxdict_dct_start(now);if t<=0 || cxdict_stream_reset(t)!=1 {return dict_set_error(d,DC_E_RECOGNITION,"stream could not start");}
+   s[0].flow=ds_begin(t);release=now+d[0].seconds*1000;if !ds_status(d,f,s,"listening") {return DC_ERROR;}
+  }else if key==DC_KEY_STOP && cxdict_dct_phase()==DCT_HELD {
+   q:=cxdict_dct_end(now);if !ds_status(d,f,s,"finishing") {return DC_ERROR;}
+  }
+  if !frozen {
+   n:=dict_read(d,f,pcm[..]);if n<0 {q:=cxdict_dct_failed(3);return dict_set_error(d,DC_E_CAPTURE,"the input stopped delivering audio");}
+   if n>0 {dict_feed(d,f,pcm[0..<n],now);for i:0..<n {pcm[i]=0;}}
+   else if dc_input_stalled(now,d[0].opened,d[0].last_audio,d[0].any) {q:=cxdict_dct_failed(3);return dict_set_error(d,DC_E_CAPTURE,"the input stalled");}
+   if s[0].flow.ticket>0 && cxdict_dct_phase()==DCT_HELD && now>=release {q:=cxdict_dct_end(now);if !ds_status(d,f,s,"finishing") {return DC_ERROR;}}
+   if s[0].flow.ticket>0 {q:=cxdict_dct_clock(dict_now(d,f));}
+   phase:=cxdict_dct_phase();outcome:=cxdict_dct_outcome();
+   if outcome==DCT_ERROR {return dict_set_error(d,cxdict_dct_fault(),"the input's format, clock or capture failed");}
+   if s[0].flow.ticket>0 && phase==DCT_CLIP {frozen=true;d[0].limited=outcome==DCT_LIMIT;d[0].samples=cxdict_dct_samples();q:=cxdict_capture_close();if !ds_status(d,f,s,"recognizing") {return DC_ERROR;}}
+   else if s[0].flow.ticket>0 && phase!=DCT_HELD && phase!=DCT_TAIL {d[0].reason=dc_no_speech_reason(outcome);return DC_NO_SPEECH;}
+  }
+  if s[0].flow.busy {
+   n:=cxdict_stream_poll(reply[..]);
+   if n!= -1 {
+    final:=s[0].flow.phase==2;s[0].flow=ds_completed(s[0].flow,s[0].flow.ticket,n>=0);
+    // Observe queued cancellation before a completed worker can publish.
+    ds_control(d,f,s,0);if s[0].cancelled {return DC_CANCELLED;}
+    if n<0 {return dict_set_error(d,DC_E_RECOGNITION,ifx n< -2 then cast(string)reply[0..<-n-2] else "incremental recognition failed");}
+    if final {
+     t:=s[0].flow.ticket;if !ds_publish(s[0].flow,t,true) || cxdict_dct_add(t,reply[0..<n])!=1 {return dict_set_error(d,DC_E_RECOGNITION,"final ticket was revoked");}
+     if cxdict_dct_complete(t,1)!=1 {d[0].reason="silence";return DC_NO_SPEECH;}
+     if cxdict_dct_words(words)!=n {return dict_set_error(d,DC_E_RECOGNITION,"final could not be copied");}return DC_FINAL;
+    }
+    text:=cast(string)reply[0..<n];
+    if n>0 && text!=cast(string)s[0].last[0..<s[0].last_n] && ds_publish(s[0].flow,s[0].flow.ticket,false) && ds_partial_phase(cxdict_dct_phase()) {
+     if !ds_event(d,f,s,"partial",text) {return DC_ERROR;}for i:0..<n {s[0].last[i]=reply[i];}s[0].last_n=n;
+    }
+    for i:0..<reply.count {reply[i]=0;}
+   }
+  }
+  if s[0].flow.phase==1 && !s[0].flow.busy {
+   t:=s[0].flow.ticket;if t==0 {continue;}
+   n:=cxdict_dct_live(t,s[0].flow.sent,batch[..]);if n<0 {return dict_set_error(d,DC_E_RECOGNITION,"capture ticket was revoked");}
+   final:=frozen && n==0;
+   if n==DS_BATCH || frozen {
+    if !ds_can_submit(s[0].flow,t,n,final) {return dict_set_error(d,DC_E_RECOGNITION,"stream extent or sequence refused");}
+    if final && cxdict_dct_decode(t)!=1 {return dict_set_error(d,DC_E_RECOGNITION,"finalization ticket was revoked");}
+    if cxdict_stream_submit(t,s[0].flow.sequence,batch[0..<n],ifx final then 1 else 0)!=0 {return dict_set_error(d,DC_E_RECOGNITION,"stream worker refused the push");}
+    s[0].flow=ds_submitted(s[0].flow,n,final);for i:0..<n {batch[i]=0;}
+   }
+  }
+  // Unpaced recorded capture still lets its real worker run. Real capture
+  // polls at 10 ms; the frozen tail needs no capture, only controls/results.
+  if frozen || d[0].capture==DC_FIXTURE {ds_control(d,f,s,1);}
+ }
+ return DC_ERROR;
+}
+
+dictate_stream_main :: (a:[]Args,r:[]Rep)->int {
+ d:[1]Dict;f:[1]DictFixture;s:[1]DsCli;
+ if !args_has(a,"--stream") || positional(a,0)!="" {return fail(r,EXIT_USAGE,"dictate --stream listens to one microphone; it takes no file");}
+ events:=args_has(a,"--events");d[0].out=ifx events then DC_OUT_EVENTS else DC_OUT_TEXT;d[0].tty=cxcli_isatty(2)==1;
+ d[0].gpu=dc_device(args_value(a,"--device",""));d[0].format=dc_format(args_value(a,"--format",""));
+ if !ds_options(tool_os()!=TOOL_LINUX,d[0].gpu,events,args_has(a,"--json"),d[0].format,args_has(a,"--terms")) {return fail(r,EXIT_USAGE,"--stream requires Linux CUDA, plain text or --events; --json, --terms, --format code and CPU are unsupported");}
+ for flag:[4]string.["--words","--prompt","--language","--model"] {if args_has(a,flag) {return fail(r,EXIT_USAGE,"--stream uses the pinned English RNNT model; use --model-dir for its original files");}}
+ d[0].seconds=dc_seconds(args_value(a,"--seconds",""));d[0].wait=args_has(a,"--wait-for-enter");d[0].input=args_value(a,"--input","");
+ if d[0].seconds<0 || !dc_input(d[0].input) {return fail(r,EXIT_USAGE,"invalid --seconds or --input");}
+ fx:[1024]u8;fixture:=dict_env("OPENAGENTS_DICTATE_FIXTURE",fx[..]);d[0].capture=dc_capture(args_value(a,"--capture",""),false,fixture!="");
+ if d[0].capture<1 || (d[0].capture==DC_FIXTURE && d[0].input!="") {return fail(r,EXIT_USAGE,"invalid Linux capture backend or fixture input");}
+ fc:[512]u8;ff:[64]u8;ft:[8200]u8;fp:[8]u8;
+ if d[0].capture==DC_FIXTURE {
+  if !dict_fixture_load(fixture,f[..]) {return fail(r,EXIT_USAGE,"fixture must be a 16-bit PCM WAV file");}
+  f[0].control=dict_env("OPENAGENTS_DICTATE_FIXTURE_CONTROL",fc[..]);f[0].fault=dict_env("OPENAGENTS_DICTATE_FIXTURE_FAULT",ff[..]);f[0].text=dict_env("OPENAGENTS_DICTATE_FIXTURE_TEXT",ft[..]);f[0].paced=dict_env("OPENAGENTS_DICTATE_FIXTURE_PACE",fp[..])=="1";
+  if f[0].text!="" || f[0].fault=="recognition" {return fail(r,EXIT_USAGE,"--stream qualification requires the real model, not fixture transcripts");}
+ }
+ // Controls are active during model loading; capture still waits for model readiness.
+ if cxdict_control_open()<0 {return 1;}
+ defer {q:=cxdict_capture_close();q=cxdict_control_close();q=cxdict_dct_clear();q=cxdict_stream_close();}
+ if !ds_status(d[..],f[..],s[..],"loading_model") {return ifx s[0].cancelled then 130 else 1;}
+ mb:[1200]u8;model:=args_value(a,"--model-dir","");if model=="" {model=ds_model_dir(mb[..]);}
+ a1:[1400]u8;a2:[1400]u8;
+ if fs_kind(model)!=FS_DIR || fs_kind(fs_join(model,"model.safetensors",a1[..]))!=FS_FILE || fs_kind(fs_join(model,"tokenizer.json",a2[..]))!=FS_FILE {
+  q:=dict_set_error(d[..],DC_E_MODEL_MISSING,"the original streaming model is not installed: see psionic/docs/parakeet.md");return ds_finish(d[..],f[..],s[..],DC_ERROR,"");
+ }
+ db:[1400]u8;dn:=copy(model,db[..]);err:[512]u8;opened:=ifx dn>0 then cxdict_stream_open(db[0..<dn],err[..]) else -1;
+ ds_control(d[..],f[..],s[..],0);if s[0].cancelled {return ds_finish(d[..],f[..],s[..],DC_CANCELLED,"");}
+ if opened!=0 {q:=dict_set_error(d[..],DC_E_MODEL,ifx opened< -1 then cast(string)err[0..<-opened-1] else "streaming model could not open");return ds_finish(d[..],f[..],s[..],DC_ERROR,"");}
+ if !ds_status(d[..],f[..],s[..],"opening_input") {return ifx s[0].cancelled then 130 else 1;}
+ if dict_open_input(d[..],f[..])!=0 {return ds_finish(d[..],f[..],s[..],DC_ERROR,"");}
+ if cxdict_dct_reset()!=0 {q:=dict_set_error(d[..],DC_E_CAPTURE,"capture storage could not open");return ds_finish(d[..],f[..],s[..],DC_ERROR,"");}
+ words:[8000]u8;result:=ds_capture(d[..],f[..],s[..],words[..]);
+ capture_closed:=cxdict_capture_close();
+ if result==DC_ERROR && s[0].cancelled {result=DC_CANCELLED;}
+ if result!=DC_FINAL {s[0].flow=ds_revoke(s[0].flow);q:=cxdict_dct_abort();}
+ n:=ifx result==DC_FINAL then cxdict_dct_text_n() else 0;
+ code:=ds_finish(d[..],f[..],s[..],result,cast(string)words[0..<n]);
+ for i:0..<words.count {words[i]=0;}for i:0..<s[0].last.count {s[0].last[i]=0;}return code;
+}

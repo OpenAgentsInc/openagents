@@ -1,0 +1,3 @@
+ok   #test output retries have a quarter-second bound and partial display ends with the capture (1 case, 175 steps, 0 ms)
+1 of 5 checks (--only 'output retries'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

@@ -1,0 +1,7 @@
+FAIL recorder (exit 8, 8587 ms, 0 partials, 0 finals, control-to-exit 0 ms)
+{"schema":"openagents.dictation.stream.v1","type":"status","event":0,"ticket":0,"sequence":0,"samples":0,"profile":"psionic-nemotron-streaming-en-v1","model":"nemotron-speech-streaming-en-0.6b","revision":"ebe59e5a817142986528bbbee5dba8db7b38ed50","capture":"pipewire","state":"loading_model"}
+{"schema":"openagents.dictation.stream.v1","type":"status","event":1,"ticket":0,"sequence":0,"samples":0,"profile":"psionic-nemotron-streaming-en-v1","model":"nemotron-speech-streaming-en-0.6b","revision":"ebe59e5a817142986528bbbee5dba8db7b38ed50","capture":"pipewire","state":"opening_input"}
+{"schema":"openagents.dictation.stream.v1","type":"error","event":2,"ticket":0,"sequence":0,"samples":0,"profile":"psionic-nemotron-streaming-en-v1","model":"nemotron-speech-streaming-en-0.6b","revision":"ebe59e5a817142986528bbbee5dba8db7b38ed50","capture":"pipewire","exit":8,"error":"program","message":"pw-record"}
+
+
+0 passed, 1 failed; receipts: /tmp/dictate-stream-12745/extended

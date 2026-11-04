@@ -3442,7 +3442,7 @@ WebSocket binary message, encoded and decoded only by the generated Coax codec
   opt-in: running it is the consent for one dictation. Its microphone opens
   only after the local model is ready and closes once the clip is captured;
   Enter, Escape, Ctrl-C, `--seconds` or the 60-second cap end it. It prints
-  the final text (or one JSON result) and never pastes, types, sends or writes
+  the final text (or one JSON result) by default and never pastes, types, sends or writes
   audio. A named input or recognition device never falls back to another.
   Coder's terminal composer is a fourth, default-off path (`--dictation`,
   `CODER_DICTATION=1` or `/dictation on`): its gesture (Ctrl+Space unless
@@ -3573,6 +3573,39 @@ Transformers mask-representation adapter, finite quality, latency, fixed-memory
 observations and remaining platform/UI adoption are recorded in
 `docs/verification/incremental-asr-2026-11-03/README.md`. Chapter 153's offline
 profile/evidence remains unchanged.
+
+## Streaming CLI capture publishes provisional snapshots and one guarded final
+
+`openagents dictate --stream` is explicit Linux CUDA English RNNT adoption.
+The default multilingual offline mode and `openagents.dictation.v1` retain
+their identities. CPU, macOS, `--json`, terms and code formatting refuse before
+capture. A separate helper avoids generated-C symbol collisions; native effects
+copy one bounded model job into owned worker storage. The worker never prints
+and never borrows the capture controller or caller stack.
+
+`apps/shared/dictation-stream.coax` (`#authority`) copies only a current-ticket,
+consented/active/ready held, trailing or frozen clip, at a bounded offset.
+`dictate-stream-rules.coax` (`#authority`) owns one in-flight call, exact model
+sequence, 2,560-sample batches, the 960,000-sample cap, current-ticket partial
+and final eligibility, revocation and the 250 ms output-retry bound. Capture,
+resampling/VAD, pre-roll/tail and final speech/ticket admission remain the
+unchanged shared controller's. Backlog stays in its fixed clip buffer.
+
+Stop drains that same model state and finalizes once. Partials are display-only;
+the existing controller must admit the final before stdout publication.
+Cancellation closes capture, revokes publication and ends the process without
+waiting on a pending GPU job; its detached worker owns all its buffers and
+cannot print a late reply. Output retries poll controls and are bounded; an
+interrupted last line may be incomplete. Already published text cannot be
+retracted. The new JSONL projection starts in
+`proto/openagents/cli/dictation/v1/stream.proto` and
+`docs/protocol/dictation-stream-v1.md`.
+
+Checks: 78/78 flow/output and 25/25 live-copy mutants killed; actual CLI recorded
+capture/recorder, controls, input/model refusals, no speech and undrained-output
+checks; host ASan/UBSan speech and in-flight cancellation; existing offline CLI
+regressions and protocol compatibility. Physical microphone/UI acceptance is
+separate. Evidence: `docs/verification/dictate-stream-2026-11-03/README.md`.
 
 ## File transcription defaults to bounded local Parakeet
 

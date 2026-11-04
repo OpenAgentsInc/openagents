@@ -1,0 +1,2 @@
+coax: note[E0221]: parser nesting: 122 of 128 used (95%), above three quarters of the limit; more than 128 fails with E0221
+/home/christopherdavid/oa-dictate-stream/apps/openagents-cli/build/openagents

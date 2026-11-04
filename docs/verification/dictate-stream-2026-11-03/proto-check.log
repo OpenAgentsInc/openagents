@@ -1,0 +1,15 @@
+..............................
+----------------------------------------------------------------------
+Ran 30 tests in 0.044s
+
+OK
+Nostr source pins/hashes: 21 alpha packages checked
+owned: compiled 28 schemas
+lnd: compiled 17 schemas
+taproot-assets: compiled 11 schemas
+loop: compiled 3 schemas
+lightning-terminal: compiled 6 schemas
+space: compiled 1 schemas
+nostr: compiled 16 schemas
+Nostr source pins/hashes: 21 alpha packages checked
+Published compatibility, migration, module and consumer-profile checks passed

@@ -1,0 +1,5 @@
+ok   #test streaming options explicitly select Linux GPU plain text or events (1 case, 186 steps, 0 ms)
+ok   #test streaming lifecycle owns exact tickets counts and an immutable final (1 case, 1135 steps, 0 ms)
+ok   #forall only a current completed call can publish partials or a final (40 cases, 2830 steps, 0 ms)
+ok   #test backend failure and cancellation revoke pending replies (1 case, 231 steps, 0 ms)
+4 checks, 4 passed, 0 failed

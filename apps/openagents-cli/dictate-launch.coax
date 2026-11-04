@@ -12,15 +12,20 @@ dictate_usage :: () {
   print("%\n", "                                     FILE: TERM<TAB>SOUNDS|LIKE lines, rescored by Parakeet (JSON keeps raw_text)");
   print("%\n", "                                     Enter stops, Esc or Ctrl-C cancels; at most 60 s; pinned local Parakeet v3");
   print("%\n", "                                     prints the final text; nothing is pasted, typed, sent or saved");
+  print("%\n", "  dictate --stream [--events] [--seconds N] [--capture pipewire|pulse|alsa] [--model-dir DIR]");
+  print("%\n", "                                     Linux CUDA, separate English streaming model; partials on stderr or JSONL");
+  print("%\n", "                                     --stream refuses --json, --terms, --format code and CPU; see psionic/docs/parakeet.md");
   print("%\n", "                                     exit 0 text, 9 no speech, 130 cancelled, 4 microphone permission denied,");
   print("%\n", "                                     6 model or input not found, 8 recorder program missing, 1 failed");
 }
 
 dictate_launch :: (a: [] Args, r: [] Rep) -> int {
+  streaming := args_has(a, "--stream");
+  if streaming && tool_os() != TOOL_LINUX { return fail(r, EXIT_USAGE, "--stream is qualified for Linux CUDA only"); }
   exe: [4096] u8; en := cxcli_exe_path(exe[..]);
   if en <= 0 { return fail(r, EXIT_NOT_FOUND, "cannot find this program's own path"); }
   cut := en; while cut > 0 && exe[cut - 1] != '/' { cut -= 1; }
-  hb: [4200] u8; host := fs_join(cast(string) exe[0..<cut], "openagents-dictate", hb[..]);
+  hb: [4200] u8; host := fs_join(cast(string) exe[0..<cut], ifx streaming then "openagents-dictate-stream" else "openagents-dictate", hb[..]);
   if fs_kind(host) != FS_FILE { return fail(r, EXIT_NOT_FOUND, "openagents-dictate is not beside openagents: build both with apps/openagents-cli/build.sh"); }
   h := proc_new();
   ok := proc_arg(h, host);

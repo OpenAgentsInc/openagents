@@ -1,0 +1,5 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+apps/shared/dictation-stream.coax:23:23: mutant survived: '>' became '>='
+   n:=s[0].n-offset;if n>out.count {n=out.count;}for i:0..<n {out[i]=s[0].clip[offset+i];}return n;
+                        ^
+26 mutants, 25 killed, 1 survived

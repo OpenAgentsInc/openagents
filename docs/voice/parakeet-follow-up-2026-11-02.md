@@ -91,5 +91,11 @@ reset/cancel/order refusal. The explicit file-backed Coax consumer admits only
 one final through Aethyr's existing media/turn gate. Thirteen original-weight
 cases and the bounded native API are recorded in the
 [incremental qualification](../verification/incremental-asr-2026-11-03/README.md).
-Mac/Metal streaming and live microphone/UI adoption remain engineering work;
-this changes neither the default dictation provider nor chapter 153's profile.
+The Linux CLI now adopts it explicitly with `openagents dictate --stream`
+(#12745): partials while capture continues, one guarded final on stop and
+responsive cancellation. The actual launcher, recorded capture and recorder
+subprocess are checked in the
+[consumer record](../verification/dictate-stream-2026-11-03/README.md).
+Mac/Metal streaming and composer/Verse partial UI adoption remain engineering
+work. Physical Linux input acceptance is in NEEDS_OWNER.md. The default
+dictation provider and chapter 153's numerical profile remain unchanged.

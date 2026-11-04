@@ -1,0 +1,226 @@
+{
+  "schema": "openagents.dictate-stream.qualification.v1",
+  "issue": 12745,
+  "date": "2026-11-03",
+  "base_commit": "f696d556cbf6ab275d87b893dfd8c82916c7bf35",
+  "platform": "Linux-6.18.49-x86_64-with-glibc2.42",
+  "hardware": "coderos-4080, NVIDIA RTX 4080, shared GPU; bounded original-weight transfer branch available",
+  "profile": "psionic-nemotron-streaming-en-v1",
+  "source_sha256": {
+    "apps/openagents-cli/build.sh": "79400dae3089639f0c37c96caabd917f4c7cc0b7db68b79ab3efb79f620e4ab6",
+    "apps/openagents-cli/dictate-launch.coax": "bce99a51af49d7304f3b25a537b5e39000c5de274e8349d6f16420192aaf9477",
+    "apps/openagents-cli/dictate-native.c": "fe30c85d3cd2690f9ee4176cd01057f75f29b613dc398dca8f117df0fb60ec99",
+    "apps/openagents-cli/dictate-stream-build.coax": "bf9bfcfea1b5adb7e93106def63b74200a87855a61376422243e280efc0b0efe",
+    "apps/openagents-cli/dictate-stream-host.coax": "c11636238d2cfda9a4c07cd58081790f01a0e596e868a5cd6e74afc22c0cbcc1",
+    "apps/openagents-cli/dictate-stream-native.c": "8f001b6c574cbe26a01828483cc2136719bfb0ef6d98fe6e6a9ff7f9ebf6f6f8",
+    "apps/openagents-cli/dictate-stream-rules.coax": "ae25f303690f180085c9fb7329dfcf7e9a0380787e961d9261545d0b9a9cb9ed",
+    "apps/openagents-cli/dictate-stream.coax": "617c1718f7b341707145c678863f2c60042b6c7147488d6dbb73f1111aad8f24",
+    "apps/openagents-cli/tests/dictate-stream-check.coax": "58044c9cad5bd137cfac142f58efe9e570a9b429a7523aace2326120f9aed1fb",
+    "apps/openagents-cli/tests/dictate-stream-recorder.coax": "1d686279b8a2214aad786110519cb42dbae4c300563e832bdda501f9e651fe14",
+    "apps/shared/dictation-policy.coax": "5f1522683d3963b7d2e808ba15302e7853d7e535a1129ea2b3a9d3c3b8baa700",
+    "apps/shared/dictation-stream.coax": "c7c3732d41f7ddedc82715c7b27bcd3a4d91d1b0f0c30d8eaa40df8c2bcfe806",
+    "apps/shared/dictation.coax": "6aaf03458c08ea377be040e42fa7478e4a841ee8ca14d4f0fad29794cbddaeee",
+    "proto/openagents/cli/dictation/v1/stream.proto": "172cedc5a50790e85bfc145c3e45918b190789732191f2722fe5b5790fc36b7f",
+    "psionic/lib/incremental/front.coax": "454d2838489b225408b8799e7d027f756b06406a300e97d8e470d65f78c70ba8",
+    "psionic/lib/incremental/kernels.coax": "86e49d3f84fa7d47b736f42d70b68f93f4ae5fc786726a649bb71c4cd808c714",
+    "psionic/lib/incremental/model.coax": "320f71b9b2172d24dc1e7029f41da1235299d511c3055d98368eec3d49411650",
+    "psionic/lib/incremental/policy.coax": "c97783a640147dd197571fc62cc43a966cd7559523d4569988699c9d1d61be40",
+    "psionic/lib/incremental/runtime.coax": "41990b3f00e73b89d39d3037f9332fc573f1fc7ba5af236bf1fa1d1805e730c1",
+    "psionic/lib/incremental/schedule.coax": "491d1a428b16d4289996b458d3cc0c1f8b0d49592b41eade3fca428ccb3cacb7",
+    "psionic/lib/incremental/voice.coax": "1bc36b9cb4e0b7382583cd2ddd3e8b59907b57a03e374d1542db0178718131b5",
+    "psionic/platform/cuda-host.c": "212c2b82e55715704e06333ce3e9d1741324216051221fac273883872ac2aa3e",
+    "psionic/platform/incremental-native.c": "38f7a3b195921590a88d4329fb685d094d6338d2ff8881f37a29a601e82e22ba"
+  },
+  "input_sha256": {
+    "verse/voice-host/fixtures/wait-stop.wav": "996bc6d34f436298a9123e2aacf6b936b4fedfddb25423165d68943d8cec2b7d",
+    "psionic/fixtures/parakeet/6930-75918-0011.pcm": "caded890c7f34459729f8597df2d9fe575f199b465894b3dae852e9262b41a62"
+  },
+  "artifact_sha256": {
+    "apps/openagents-cli/build/openagents": "6f53ad6457fb7f375ab3cfbf63cfa664ec9a75923a9537922d55c0d746698ecc",
+    "apps/openagents-cli/build/openagents-dictate": "1797ef4e8cc87e24f9669fbae664e6913750eb8182f8556b97973130ce1ba008",
+    "apps/openagents-cli/build/openagents-dictate-stream": "6aeca95f5b8c3bf47b89b6ed728bf6388ca1554e21d0ec4d437d59e25bf3a365",
+    "apps/openagents-cli/build/stream-sanitized/openagents-dictate-stream": "5e0f419340c89b0210483dab4becd3b506b68674c2ff1db9df0be0febbc099d3"
+  },
+  "compiler_sha256": "54308753598854075405f995a04eb94f64eeb85f231ee6840a42e77afe6d2e80",
+  "cc": "GCC 15.2.0",
+  "protocol_toolchain": {
+    "protoc": "29.3",
+    "protoc_sha256": "5ae94ad986e83f0b52bd8139e036cbf94ddbba3ad348be8e4baf44447d7e19a4",
+    "python_protobuf": "5.29.3",
+    "wheel_sha256": "0a18ed4a24198528f2333802eb075e59dea9d679ab7a6c5efb017a59004d849f"
+  },
+  "checks": {
+    "integration_current": {
+      "passed": 14,
+      "failed": 0,
+      "receipt": "current-check.log"
+    },
+    "offline_cli_regression": {
+      "passed": 25,
+      "failed": 0,
+      "receipt": "offline-regression.log"
+    },
+    "flow_mutants": {
+      "killed": 78,
+      "survived": 0
+    },
+    "live_copy_mutants": {
+      "killed": 25,
+      "survived": 0
+    },
+    "host_sanitizers": {
+      "speech": "exit 0, empty stderr, actual CUDA inference",
+      "cancel_finalizing": "exit 130, no final, empty stderr; 85 ms after SIGTERM",
+      "options": "ASAN_OPTIONS=detect_leaks=0:protect_shadow_gap=0 UBSAN_OPTIONS=halt_on_error=1",
+      "library_path": "$HOME/cuda-13.2/lib:/run/opengl-driver/lib",
+      "scope": "checked generated Coax CPU code and C effects; no leak or CUDA device-memory sanitizer claim"
+    },
+    "protocol": "protoc 29.3 / protobuf 5.29.3: modules, frozen compatibility, migration, consumer profiles and 30 conformance tests pass",
+    "book": "global book checker blocked on pre-existing stale coax.wgsl.current binding for verse/everglade/gpu.bindings; no unrelated evidence hash refreshed",
+    "prior_engine_qualification": "9c280f5f8b, docs/verification/incremental-asr-2026-11-03/README.md; numerical model/kernel sources unchanged; passing original corpora reused",
+    "registry": "Psionic status/profile/adoption/dependency registry passes independently; full book gate remains blocked on unrelated Everglade evidence",
+    "tools": "tools-check.log: 1759 tracked tool files, 12 pre-existing unrelated missing Firm reason headers; no new tool lacks a reason"
+  },
+  "observations": {
+    "escape_control_to_exit_ms": 109,
+    "sigint_control_to_exit_ms": 92,
+    "sigterm_finalizing_control_to_exit_ms": 75,
+    "enter_stop_to_exit_ms": 597,
+    "backpressure_process_ms": 45054,
+    "output_retry_ms": 250,
+    "measured_latency_scope": "finite recorded capture and process/GPU teardown, not physical mic/key/UI latency"
+  },
+  "stdout_summaries": {
+    "backpressure": {
+      "complete_events": 117,
+      "partial_events": 113,
+      "final_events": 0,
+      "last_line_not_json": false,
+      "final_text": []
+    },
+    "bad-model": {
+      "complete_events": 2,
+      "partial_events": 0,
+      "final_events": 0,
+      "last_line_not_json": false,
+      "final_text": []
+    },
+    "cancel-escape": {
+      "complete_events": 5,
+      "partial_events": 1,
+      "final_events": 0,
+      "last_line_not_json": false,
+      "final_text": []
+    },
+    "cancel-finalizing": {
+      "complete_events": 6,
+      "partial_events": 0,
+      "final_events": 0,
+      "last_line_not_json": false,
+      "final_text": []
+    },
+    "cancel-signal": {
+      "complete_events": 5,
+      "partial_events": 1,
+      "final_events": 0,
+      "last_line_not_json": false,
+      "final_text": []
+    },
+    "capture-format": {
+      "complete_events": 4,
+      "partial_events": 0,
+      "final_events": 0,
+      "last_line_not_json": false,
+      "final_text": []
+    },
+    "enter-stop": {
+      "complete_events": 9,
+      "partial_events": 3,
+      "final_events": 1,
+      "last_line_not_json": false,
+      "final_text": [
+        "Wait, stop"
+      ]
+    },
+    "missing-model": {
+      "complete_events": 2,
+      "partial_events": 0,
+      "final_events": 0,
+      "last_line_not_json": false,
+      "final_text": []
+    },
+    "plain": {
+      "complete_events": 0,
+      "partial_events": 0,
+      "final_events": 0,
+      "last_line_not_json": true,
+      "final_text": [],
+      "json_lines_expected": false
+    },
+    "recorder": {
+      "complete_events": 16,
+      "partial_events": 10,
+      "final_events": 1,
+      "last_line_not_json": false,
+      "final_text": [
+        "I am convinced of what I say, said the Count"
+      ]
+    },
+    "silence": {
+      "complete_events": 5,
+      "partial_events": 0,
+      "final_events": 0,
+      "last_line_not_json": false,
+      "final_text": []
+    },
+    "speech": {
+      "complete_events": 9,
+      "partial_events": 3,
+      "final_events": 1,
+      "last_line_not_json": false,
+      "final_text": [
+        "Wait, stop"
+      ]
+    },
+    "usage": {
+      "complete_events": 0,
+      "partial_events": 0,
+      "final_events": 0,
+      "last_line_not_json": false,
+      "final_text": []
+    },
+    "wait": {
+      "complete_events": 9,
+      "partial_events": 2,
+      "final_events": 1,
+      "last_line_not_json": false,
+      "final_text": [
+        "Wait, stop"
+      ]
+    }
+  },
+  "limits": [
+    "Linux CUDA English model only, explicit --stream",
+    "no physical microphone or live composer/Verse partial UI acceptance",
+    "no new population-accuracy, full compiler-bootstrap or hard-real-time claim",
+    "no default multilingual, vocabulary, formatting or final-only event identity change"
+  ],
+  "prior_engine_source_continuity": {
+    "psionic/lib/incremental/front.coax": true,
+    "psionic/lib/incremental/kernels.coax": true,
+    "psionic/lib/incremental/model.coax": true,
+    "psionic/lib/incremental/policy.coax": true,
+    "psionic/lib/incremental/runtime.coax": true,
+    "psionic/lib/incremental/schedule.coax": true,
+    "psionic/lib/incremental/voice.coax": true,
+    "psionic/platform/cuda-host.c": true,
+    "psionic/platform/incremental-native.c": true
+  },
+  "rebase": {
+    "upstream": "a499f74a5f29cf46b377fb4777d021f1d7f5bff6",
+    "tested_source_hashes_unchanged": true,
+    "owned_descriptor_regenerated": "includes this CLI message plus upstream combat schema additions; proto-check-rebased.log passes all 29 owned schemas and published compatibility",
+    "owned_descriptor_sha256": "202a49d01a21f3bcdca5de0135c21384174142a20bd8f6cd64c4765563209c1e",
+    "global_gates": "book-rebased.log: unrelated stale Everglade binding; tools-check-rebased.log: 12 unrelated missing headers"
+  }
+}

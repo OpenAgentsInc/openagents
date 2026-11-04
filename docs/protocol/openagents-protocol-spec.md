@@ -25,6 +25,12 @@ bounded caller-buffer codecs since 0.4.0; [the importer contract](../../coax/pro
 records supported shapes, strict duplicate semantics and native/protoc tests.
 Product adapters, domain validation and live admission remain separate gates.
 
+The [local streaming dictation contract](dictation-stream-v1.md) adds
+`openagents.dictation.stream.v1`, defined in
+`proto/openagents/cli/dictation/v1/stream.proto`, for the explicit Linux CLI
+streaming mode. Partial text is provisional display; only a current-ticket
+final can complete dictation. The published final-only CLI identity is unchanged.
+
 The [Bitcoin explorer HTTP v1 contract](bitcoin-explorer-v1.md) adds a new
 `openagents.bitcoin.explorer.v1alpha1` projection for read-only block,
 transaction and address queries. Its JSON objects identify one committed

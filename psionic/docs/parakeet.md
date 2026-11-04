@@ -255,6 +255,20 @@ consumer opens no microphone. Mac/TUI dictation and the default Verse voice
 host retain their final-only paths; live microphone/UI partials and Metal
 streaming effects require explicit adoption and qualification.
 
+The explicit Linux CLI now adopts this API with `openagents dictate --stream`
+(#12745): the shared controller resamples/adopts capture as it arrives, a
+worker processes bounded batches and the main loop continues capture, controls
+and provisional display. Plain mode keeps final text alone on stdout; partials
+go to stderr. `--events` uses its own
+[versioned stream contract](../../docs/protocol/dictation-stream-v1.md).
+`--json`, vocabulary/code formatting, CPU and macOS streaming refuse before
+capture. `OPENAGENTS_STREAMING_MODEL` or `--model-dir` names the separate original
+model; the ordinary multilingual path is unchanged. The
+[consumer qualification](../../docs/verification/dictate-stream-2026-11-03/README.md)
+checks the actual CLI and recorder subprocess with recorded input, including
+partials before stop, final/speech admission, cancellation and backpressure.
+Physical microphone and composer/Verse partial adoption remain separate.
+
 [Qualification and reproduction](../../docs/verification/incremental-asr-2026-11-03/README.md)
 retain thirteen original-weight cases, exact reference tokens/text/positions,
 per-chunk partials and tolerance-checked features/encoder/cache snapshots,

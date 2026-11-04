@@ -1,0 +1,24 @@
+// Read-only streaming view of the existing admitted/resampled capture. The
+// ordinary frozen-clip API retains its existing contract (#12745).
+#authority;
+#load "dictation.coax";
+
+#forall "live capture copying requires the current ticket consent and a live or frozen clip" phase:0..<6,bits:0..<8,same:0..<2 {
+ clip:=[3]f32.[0.125,-0.25,0.5];s:[1]DctState;s[0].clip=clip[..];s[0].n=3;
+ s[0].gate=DctGate.{ticket=7,phase=phase,enabled=(bits&1)!=0,active=(bits&2)!=0,ready=(bits&4)!=0};
+ out:=[4]f32.[9,9,9,9];n:=dcs_copy(s[..],ifx same==1 then 7 else 6,1,out[..]);
+ valid:=same==1 && bits==7 && phase>=2 && phase<=4;
+ #assert n==(ifx valid then 2 else -1) && out[0]==f32(ifx valid then -0.25 else 9);
+ #assert out[1]==f32(ifx valid then 0.5 else 9) && out[2]==9 && out[3]==9;
+}
+#test "live capture snapshots copy bounded prefixes without skipping or writing past output" {
+ clip:=[5]f32.[1,2,3,4,5];s:[1]DctState;s[0].clip=clip[..];s[0].n=5;s[0].gate=DctGate.{ticket=1,phase=2,enabled=true,active=true,ready=true};
+ out:=[5]f32.[9,9,9,9,9];#assert dcs_copy(s[..],1,0,out[0..<2])==2 && out[0]==1 && out[1]==2 && out[2]==9;
+ #assert dcs_copy(s[..],1,2,out[..])==3 && out[0]==3 && out[1]==4 && out[2]==5 && out[3]==9;
+ #assert dcs_copy(s[..],1,5,out[..])==0 && dcs_copy(s[..],1,6,out[..])== -1 && dcs_copy(s[..],1,-1,out[..])== -1;
+ #assert dcs_copy(s[..],1,0,out[0..<0])==0;
+}
+dcs_copy :: (s:[]DctState,ticket:u64,offset:int,out:[]f32)->int #export_c {
+ g:=s[0].gate;if !dgp_capture(g) || ticket!=g.ticket || g.phase<DCT_HELD || g.phase>DCT_CLIP || offset<0 || offset>s[0].n {return -1;}
+ for i:0..<out.count {if offset+i>=s[0].n {return i;}out[i]=s[0].clip[offset+i];}return out.count;
+}

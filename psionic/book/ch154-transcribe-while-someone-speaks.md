@@ -8,7 +8,8 @@
 > cancellation. It is qualified on recorded public speech against the pinned
 > independent reference. See [the original-weight section](#original-weight-streaming-on-linux)
 > and [the evidence](../../docs/verification/incremental-asr-2026-11-03/README.md).
-> Mac/Metal streaming effects and live microphone/UI adoption are future work.
+> Linux CLI adoption (`dictate --stream`) is checked with recorded capture.
+> Mac/Metal streaming and composer/Verse partial UI adoption remain future work.
 
 [Chapter 152](ch152-a-speech-encoder.md) encodes a whole utterance at once.
 Every frame attends to every other frame, and every depthwise convolution
@@ -723,6 +724,29 @@ adapter the initial chunk is nonfinite, or an attention-only adaptation
 zeros convolution input and emits all blanks. The adapter, failed observations
 and actual tensor/token/cache comparisons are recorded in the evidence; no
 reference numerical weights or attention permissions were changed.
+
+## Linux CLI adoption
+
+`openagents dictate --stream` uses the same original-weight C API through its
+own native helper. The shared dictation controller retains capture consent,
+resampling/VAD, pre-roll/tail and the 60-second cap. A read-only current-ticket
+view feeds at most 2,560 samples per worker handoff. Only one call is in flight;
+capture and control polling continue while it runs. The existing bounded clip
+holds any backlog, without independent model windows or state resets.
+
+Partials are provisional snapshots on stderr, or the separate
+[`openagents.dictation.stream.v1`](../../docs/protocol/dictation-stream-v1.md)
+events. One final needs capture's speech admission, all admitted samples,
+explicit model finalization and the unchanged controller's current ticket.
+Cancel/revoked replies cannot publish a final. Output retries are bounded and
+keep polling cancellation. The default multilingual engine and its final-only
+event identity remain unchanged. This mode refuses CPU, macOS, `--json`,
+vocabulary rescoring and code formatting before capture.
+
+The [consumer record](../../docs/verification/dictate-stream-2026-11-03/README.md)
+retains the actual CLI's recorded-capture, recorder subprocess, control,
+backpressure, mutation and host-sanitizer checks. It does not establish a
+physical microphone, Mac/Metal backend or composer/Verse partial UI claim.
 
 ## Further adoption
 

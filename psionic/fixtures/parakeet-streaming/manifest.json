@@ -71,7 +71,8 @@
     "linux-cuda-rtx4080"
   ],
   "adopted_by": [
-    "psionic/platform/incremental-cli.c"
+    "psionic/platform/incremental-cli.c",
+    "apps/openagents-cli/dictate-stream.coax"
   ],
   "operating_profile": {
     "language": "English",
@@ -100,7 +101,9 @@
   "evidence": "docs/verification/incremental-asr-2026-11-03/README.md",
   "further_adoption": [
     "Mac/Metal backend qualification",
-    "live microphone/UI partials and default voice-host wiring",
+    "composer and default Verse voice-host partial UI adoption",
+    "physical Linux microphone acceptance",
     "separate multilingual, vocabulary or changed-lookahead profile"
-  ]
+  ],
+  "consumer_qualification": "docs/verification/dictate-stream-2026-11-03/README.md"
 }

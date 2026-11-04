@@ -1,0 +1,19 @@
+// A recorder stand-in for the real Linux subprocess/capture path. It emits
+// the public PCM at 48 kHz as F32 in paced 20 ms frames; no device is opened.
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/proc.coax";
+cxterm_write :: (bytes:[]u8)->int #foreign;
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..]) {return 2;}if !args_has(a[..],"--raw") {return 0;}
+ raw:[102240]u8;n:=fs_read("psionic/fixtures/parakeet/6930-75918-0011.pcm",raw[..]);if n!=102240 {return 2;}
+ bytes:[3840]u8;frame:=0;
+ while true {
+  for j:0..<960 {
+   at:=(frame*960+j)/3;v:=0;if 2*at+1<n {v=cast(int)raw[2*at] | (cast(int)raw[2*at+1]<<8);if v>=32768 {v-=65536;}}
+   word:=f32_bits(f32(v)/32768);for k:0..<4 {bytes[4*j+k]=cast,trunc(u8)(word>>cast(u32)(8*k));}
+  }
+  if cxterm_write(bytes[..])!=0 {return 1;}frame+=1;proc_sleep(20);
+ }return 0;
+}

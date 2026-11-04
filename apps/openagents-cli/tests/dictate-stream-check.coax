@@ -1,0 +1,147 @@
+// Original-weight streaming through the actual CLI launcher (#12745).
+// No microphone, playback, visible window or transcript stand-in is used.
+// coax/web/tool.sh apps/openagents-cli/tests/dictate-stream-check.coax MODEL [CASE]
+// OPENAGENTS_DICTATE_TEST_CLI optionally selects a copied/sanitized real CLI;
+// OPENAGENTS_DICTATE_TEST_OUT retains stdout/stderr receipts outside Git.
+// The recorder case requires OPENAGENTS_DICTATE_TEST_RECORDER_DIR containing
+// the built Coax stand-in as pw-record and .coax-recorder's exact marker.
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/proc.coax";
+#load "../../../coax/lib/json/json.coax";
+#load "../../../aethyr/audio/wav.coax";
+
+DstRun :: struct {out:[524288]u8;n:int;err:[16384]u8;en:int;status:int;ms:int;partials:int;finals:int;no_speech:int;cancelled:int;errors:int;valid:bool=true;before_stop:bool;stopping:bool;event:int;samples:int;sequence:int;ticket:int;final:[8000]u8;fn:int;acted:bool;action_at:int;cancel_ms:int;group_alive:bool;deadline:int;}
+cxproc_group_alive :: (pgid:int)->int #foreign;
+DstScore :: struct {pass:int;fail:int;}
+dst_join :: (a:string,b:string,out:[]u8)->string {if a.count+b.count>out.count {return "";}for i:0..<a.count {out[i]=a[i];}for i:0..<b.count {out[a.count+i]=b[i];}return cast(string)out[0..<a.count+b.count];}
+dst_has :: (a:string,b:string)->bool {for i:0..<a.count-b.count+1 {if a[i..<i+b.count]==b {return true;}}return false;}
+dst_args :: (h:int,items:string,env:bool)->bool {at:=0;while at<items.count {end:=at;while end<items.count && items[end]!='|' {end+=1;}s:=items[at..<end];if !(ifx env then proc_env(h,s) else proc_arg(h,s)) {return false;}at=end+1;}return true;}
+dst_event :: (r:[]DstRun,text:string)->string {
+ nodes:[128]JvNode;j:[1]Jv;
+ if !jv_parse(j[..],text,nodes[..]) {r[0].valid=false;return "";}
+ d:=j[0];kind:=jv_raw(d,jv_get(d,0,"type"));
+ if jv_raw(d,jv_get(d,0,"schema"))!="openagents.dictation.stream.v1" || jv_raw(d,jv_get(d,0,"profile"))!="psionic-nemotron-streaming-en-v1" || jv_raw(d,jv_get(d,0,"revision"))!="ebe59e5a817142986528bbbee5dba8db7b38ed50" {r[0].valid=false;}
+ if jv_int(d,jv_get(d,0,"event"),-1)!=r[0].event {r[0].valid=false;}r[0].event+=1;
+ samples:=jv_int(d,jv_get(d,0,"samples"),-1);sequence:=jv_int(d,jv_get(d,0,"sequence"),-1);ticket:=jv_int(d,jv_get(d,0,"ticket"),-1);
+ if samples<r[0].samples || samples>960000 || sequence<r[0].sequence || ticket<r[0].ticket || ticket>1 {r[0].valid=false;}
+ r[0].samples=samples;r[0].sequence=sequence;r[0].ticket=ticket;
+ if kind=="partial" {r[0].partials+=1;if !r[0].stopping {r[0].before_stop=true;}if ticket!=1 || samples<1 || jv_kind(d,jv_get(d,0,"text"))!=JV_STRING {r[0].valid=false;}}
+ if kind=="final" {r[0].finals+=1;r[0].fn=jv_str(d,jv_get(d,0,"text"),r[0].final[..]);if ticket!=1 || jv_int(d,jv_get(d,0,"exit"),-1)!=0 {r[0].valid=false;}}
+ else if kind=="no_speech" {r[0].no_speech+=1;}
+ else if kind=="cancelled" {r[0].cancelled+=1;}
+ else if kind=="error" {r[0].errors+=1;}
+ else if kind!="status" && kind!="partial" {r[0].valid=false;}
+ if kind!="final" && kind!="partial" && jv_get(d,0,"text")>=0 {r[0].valid=false;}
+ if kind=="status" {state:=jv_raw(d,jv_get(d,0,"state"));if state=="finishing" || state=="recognizing" {r[0].stopping=true;}return state;}
+ return kind;
+}
+// action: 1 Esc after first partial; 2 Enter after first partial; 3 SIGINT
+// after first partial; 4 SIGTERM while draining/finalizing a frozen clip.
+dst_run :: (cli:string,model:string,wav:string,args:string,env:string,action:int,events:bool,r:[]DstRun)->bool {
+ deadline:=r[0].deadline;r[0]=DstRun.{};r[0].deadline=deadline;if proc_now_ms()>=deadline {return false;}h:=proc_new();ok:=proc_arg(h,cli) && proc_arg(h,"dictate") && proc_arg(h,"--stream") && proc_arg(h,"--model-dir") && proc_arg(h,model);
+ ok=ok && dst_args(h,args,false);
+ unset:=proc_unset(h,"OPENAGENTS_DICTATE_FIXTURE_TEXT");unset=proc_unset(h,"OPENAGENTS_DICTATE_FIXTURE_FAULT");unset=proc_unset(h,"OPENAGENTS_DICTATE_FIXTURE_CONTROL");unset=proc_unset(h,"OPENAGENTS_DICTATE_FIXTURE_PACE");
+ eb:[4096]u8;ok=ok && proc_env(h,dst_join("OPENAGENTS_DICTATE_FIXTURE=",wav,eb[..])) && dst_args(h,env,true);
+ if !ok || proc_start(h)!=0 {q:=proc_release(h);return false;}pid:=proc_pid(h);
+ start:=proc_now_ms();if deadline>start+300000 {deadline=start+300000;}line:[65536]u8;
+ while true {
+  left:=deadline-proc_now_ms();if left<=0 {r[0].valid=false;break;}
+  n:=proc_line(h,left,line[..]);if n==PROC_EOF {break;}if n<0 {r[0].valid=false;k:=proc_kill(h,9);break;}
+  if r[0].n+n+1>r[0].out.count {r[0].valid=false;break;}
+  for i:0..<n {r[0].out[r[0].n]=line[i];r[0].n+=1;}r[0].out[r[0].n]='\n';r[0].n+=1;
+  state:="";if events {state=dst_event(r,cast(string)line[0..<n]);}
+  trigger:=!r[0].acted && ((action>=1 && action<=3 && state=="partial") || (action==4 && state=="recognizing"));
+  if trigger {r[0].acted=true;r[0].action_at=proc_now_ms();if action==1 {esc:=[1]u8.[27];ok=proc_send(h,cast(string)esc[..]);}else if action==2 {ok=proc_send(h,"\n");}else {ok=proc_kill(h,ifx action==3 then 2 else 15);}if !ok {r[0].valid=false;}}
+ }
+ r[0].status=proc_wait(h,5000);r[0].en=proc_stderr(h,r[0].err[..]).count;r[0].ms=proc_now_ms()-start;
+ if r[0].acted {r[0].cancel_ms=proc_now_ms()-r[0].action_at;}
+ r[0].group_alive=cxproc_group_alive(pid)==1;q:=proc_release(h);return true;
+}
+dst_pressure :: (cli:string,model:string,wav:string,r:[]DstRun)->bool {
+ deadline:=r[0].deadline;r[0]=DstRun.{};r[0].deadline=deadline;if proc_now_ms()>=deadline {return false;}h:=proc_new();ok:=proc_arg(h,cli) && dst_args(h,"dictate|--stream|--events|--capture|fixture|--model-dir",false) && proc_arg(h,model);
+ eb:[4096]u8;ok=ok && proc_env(h,dst_join("OPENAGENTS_DICTATE_FIXTURE=",wav,eb[..]));
+ for name:[4]string.["OPENAGENTS_DICTATE_FIXTURE_CONTROL","OPENAGENTS_DICTATE_FIXTURE_PACE","OPENAGENTS_DICTATE_FIXTURE_TEXT","OPENAGENTS_DICTATE_FIXTURE_FAULT"] {unset:=proc_unset(h,name);}
+ if !ok || proc_start(h)!=0 {q:=proc_release(h);return false;}
+ start:=proc_now_ms();left:=deadline-start;r[0].status=proc_wait(h,ifx left<90000 then left else 90000);if r[0].status==PROC_RUNNING {k:=proc_kill(h,9);r[0].status=proc_wait(h,2000);}r[0].ms=proc_now_ms()-start;
+ // Only now drain stdout: the consumer really did stop reading while the
+ // child was alive, rather than a test loop buffering its partials.
+ line:[65536]u8;
+ while true {n:=proc_line(h,1000,line[..]);if n<0 {break;}if r[0].n+n+1>r[0].out.count {break;}for i:0..<n {r[0].out[r[0].n]=line[i];r[0].n+=1;}r[0].out[r[0].n]='\n';r[0].n+=1;}
+ r[0].en=proc_stderr(h,r[0].err[..]).count;q:=proc_release(h);return true;
+}
+dst_check :: (score:[]DstScore,name:string,ok:bool,r:[]DstRun,out:string) {
+ print("% % (exit %, % ms, % partials, % finals, control-to-exit % ms)\n",ifx ok then "ok  " else "FAIL",name,r[0].status,r[0].ms,r[0].partials,r[0].finals,r[0].cancel_ms);
+ if ok {score[0].pass+=1;}else {score[0].fail+=1;print("%\n%\n",cast(string)r[0].out[0..<r[0].n],cast(string)r[0].err[0..<r[0].en]);}
+ path:[2048]u8;path2:[2048]u8;suffix:[128]u8;
+ wrote:=fs_write(fs_join(out,dst_join(name,".stdout",suffix[..]),path[..]),cast(string)r[0].out[0..<r[0].n]);wrote=fs_write(fs_join(out,dst_join(name,".stderr",suffix[..]),path2[..]),cast(string)r[0].err[0..<r[0].en]);
+}
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])<1 || args_count(a[..])>2 {return 2;}
+ model:=args_at(a[..],0);only:=ifx args_count(a[..])==2 then args_at(a[..],1) else "";
+ cb:[2048]u8;cli:=proc_getenv("OPENAGENTS_DICTATE_TEST_CLI",cb[..]);if cli=="" {cli="apps/openagents-cli/build/openagents";}
+ ob:[2048]u8;out:=proc_getenv("OPENAGENTS_DICTATE_TEST_OUT",ob[..]);temp:[1024]u8;if out=="" {out=fs_temp("dictate-stream-check",temp[..]);}
+ if out=="" {return 2;}made:=fs_mkdir(out);
+ // Digital silence as a real input WAV, never as a transcript stand-in.
+ pcm:[24000]int;bytes:[48100]u8;n:=wav_write(pcm[..],1,16000,bytes[..]);sb:[2048]u8;silence:=fs_join(out,"silence.wav",sb[..]);if n<0 || !fs_write(silence,cast(string)bytes[0..<n]) {return 2;}
+ r:[1]DstRun;r[0].deadline=proc_now_ms()+840000;score:[1]DstScore;wav:="verse/voice-host/fixtures/wait-stop.wav";
+ if only=="" || dst_has("usage",only) {
+  options:=[5]string.["--json","--device|cpu","--format|code","--terms|missing.tsv","--language|en"];
+  good:=true;for option:options {ok:=dst_run(cli,"/no-streaming-model",wav,option,"",0,false,r[..]);good=good && ok && r[0].status==2 && !dst_has(cast(string)r[0].out[0..<r[0].n],"loading_model");}
+  dst_check(score[..],"usage",good,r[..],out);
+ }
+ if only=="" || dst_has("missing-model",only) {
+  ok:=dst_run(cli,"/no-streaming-model",wav,"--events|--capture|fixture","",0,true,r[..]);dst_check(score[..],"missing-model",ok && r[0].valid && r[0].status==6 && r[0].errors==1 && r[0].finals==0 && !dst_has(cast(string)r[0].out[0..<r[0].n],"opening_input"),r[..],out);
+ }
+ if only=="" || dst_has("speech",only) {
+  ok:=dst_run(cli,model,wav,"--events|--capture|fixture","OPENAGENTS_DICTATE_FIXTURE_CONTROL=stop@2600|OPENAGENTS_DICTATE_FIXTURE_PACE=1",0,true,r[..]);dst_check(score[..],"speech",ok && r[0].valid && r[0].status==0 && r[0].before_stop && r[0].partials>=2 && r[0].finals==1 && r[0].samples==44800 && cast(string)r[0].final[0..<r[0].fn]=="Wait, stop",r[..],out);
+ }
+ if only=="" || dst_has("plain",only) {
+  ok:=dst_run(cli,model,wav,"--capture|fixture","OPENAGENTS_DICTATE_FIXTURE_CONTROL=stop@2600",0,false,r[..]);dst_check(score[..],"plain",ok && r[0].status==0 && cast(string)r[0].out[0..<r[0].n]=="Wait, stop\n" && dst_has(cast(string)r[0].err[0..<r[0].en],"partial: Wait"),r[..],out);
+ }
+ if only=="" || dst_has("silence",only) {
+  ok:=dst_run(cli,model,silence,"--events|--capture|fixture","OPENAGENTS_DICTATE_FIXTURE_CONTROL=stop@1500",0,true,r[..]);dst_check(score[..],"silence",ok && r[0].valid && r[0].status==9 && r[0].no_speech==1 && r[0].finals==0 && r[0].partials==0,r[..],out);
+ }
+ if only=="" || dst_has("enter-stop",only) {
+  ok:=dst_run(cli,model,wav,"--events|--capture|fixture","OPENAGENTS_DICTATE_FIXTURE_PACE=1",2,true,r[..]);dst_check(score[..],"enter-stop",ok && r[0].valid && r[0].acted && r[0].status==0 && r[0].finals==1 && r[0].samples<44800 && r[0].fn>0,r[..],out);
+ }
+ if only=="" || dst_has("cancel-escape",only) {
+  ok:=dst_run(cli,model,wav,"--events|--capture|fixture","OPENAGENTS_DICTATE_FIXTURE_PACE=1",1,true,r[..]);dst_check(score[..],"cancel-escape",ok && r[0].valid && r[0].acted && r[0].status==130 && r[0].cancelled==1 && r[0].finals==0 && r[0].cancel_ms<1500,r[..],out);
+ }
+ if only=="" || dst_has("cancel-signal",only) {
+  ok:=dst_run(cli,model,wav,"--events|--capture|fixture","OPENAGENTS_DICTATE_FIXTURE_PACE=1",3,true,r[..]);dst_check(score[..],"cancel-signal",ok && r[0].valid && r[0].acted && r[0].status==130 && r[0].cancelled==1 && r[0].finals==0 && r[0].cancel_ms<1500,r[..],out);
+ }
+ if only=="" || dst_has("cancel-finalizing",only) {
+  ok:=dst_run(cli,model,wav,"--events|--capture|fixture","OPENAGENTS_DICTATE_FIXTURE_CONTROL=stop@2600",4,true,r[..]);dst_check(score[..],"cancel-finalizing",ok && r[0].valid && r[0].acted && r[0].status==130 && r[0].cancelled==1 && r[0].finals==0 && r[0].cancel_ms<1500,r[..],out);
+ }
+ if only=="" || dst_has("capture-format",only) {
+  ok:=dst_run(cli,model,wav,"--events|--capture|fixture","OPENAGENTS_DICTATE_FIXTURE_FAULT=format",0,true,r[..]);dst_check(score[..],"capture-format",ok && r[0].valid && r[0].status==1 && r[0].errors==1 && r[0].finals==0,r[..],out);
+ }
+ if only=="" || dst_has("wait",only) {
+  ok:=dst_run(cli,model,wav,"--events|--capture|fixture|--wait-for-enter","OPENAGENTS_DICTATE_FIXTURE_CONTROL=start@500,stop@3100|OPENAGENTS_DICTATE_FIXTURE_PACE=1",0,true,r[..]);dst_check(score[..],"wait",ok && r[0].valid && r[0].status==0 && r[0].before_stop && r[0].finals==1 && r[0].samples==52000 && dst_has(cast(string)r[0].final[0..<r[0].fn],"Wait, stop"),r[..],out);
+ }
+ if only=="" || dst_has("bad-model",only) {
+  bd:[2048]u8;bad:=fs_join(out,"bad-model",bd[..]);mk:=fs_mkdir(bad);p1:[2048]u8;p2:[2048]u8;wrote:=fs_write(fs_join(bad,"model.safetensors",p1[..]),"x");wrote=fs_write(fs_join(bad,"tokenizer.json",p2[..]),"x");
+  ok:=dst_run(cli,bad,wav,"--events|--capture|fixture","",0,true,r[..]);dst_check(score[..],"bad-model",ok && r[0].valid && r[0].status==1 && r[0].errors==1 && r[0].finals==0 && !dst_has(cast(string)r[0].out[0..<r[0].n],"opening_input"),r[..],out);
+ }
+ if only=="" || dst_has("recorder",only) {
+  rb:[2048]u8;recorder:=proc_getenv("OPENAGENTS_DICTATE_TEST_RECORDER_DIR",rb[..]);mp:[2048]u8;marker:[64]u8;
+  mn:=fs_read(fs_join(recorder,".coax-recorder",mp[..]),marker[..]);
+  if recorder=="" && only=="" {print("SKIP recorder: needs the explicit Coax stand-in directory\n");}
+  else if recorder=="" || mn!=26 || cast(string)marker[0..<mn]!="dictate-stream-recorder-v1" {tool_errln("recorder checks require the explicit Coax stand-in and marker; hardware is never used");return 2;}
+  else {
+   path_env:[4096]u8;ok:=dst_run(cli,model,wav,"--events|--capture|pipewire|--seconds|4",dst_join("PATH=",recorder,path_env[..]),0,true,r[..]);dst_check(score[..],"recorder",ok && r[0].valid && r[0].status==0 && r[0].before_stop && r[0].finals==1 && !r[0].group_alive && dst_has(cast(string)r[0].final[0..<r[0].fn],"I am convinced") && dst_has(cast(string)r[0].final[0..<r[0].fn],"said the Count"),r[..],out);
+  }
+ }
+ if only=="" || dst_has("backpressure",only) {
+  // Sixty seconds of repeated public PCM supplies enough real partials to
+  // fill a normal Linux pipe even when its capacity is 64 KiB.
+  raw:[102240]u8;rn:=fs_read("psionic/fixtures/parakeet/6930-75918-0011.pcm",raw[..]);long:[1920044]u8;empty:[1]int;
+  size:=wav_write(empty[0..<0],1,16000,long[..]);if rn!=102240 || size!=44 {return 2;}
+  wav_u32(long[..],4,1920036);wav_u32(long[..],40,1920000);for i:0..<1920000 {long[44+i]=raw[i%rn];}
+  lb:[2048]u8;long_wav:=fs_join(out,"repeated.wav",lb[..]);if !fs_write(long_wav,cast(string)long[..]) {return 2;}
+  ok:=dst_pressure(cli,model,long_wav,r[..]);dst_check(score[..],"backpressure",ok && r[0].status==1 && r[0].n>0 && !dst_has(cast(string)r[0].out[0..<r[0].n],"\"type\":\"final\""),r[..],out);
+ }
+ print("% passed, % failed; receipts: %\n",score[0].pass,score[0].fail,out);return ifx score[0].fail==0 then 0 else 1;
+}
