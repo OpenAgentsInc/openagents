@@ -91,6 +91,9 @@ fivemmo=$!
 "$here/../../coax/web/wasm.sh" "$here/everglade5e.coax" "$here/everglade5e-face.c" "$here/build/everglade5e.wasm" \
   "$here/everglade-step.coax" "$m/grid.coax" "$m/everglade/river.coax" "$m/everglade/guard-guide-policy.coax" "$here/everglade5e-rules.coax" &
 everglade5e=$!
+# Everglade's offline room (#12784): the room server's simulation, built to wasm for the local host (coax/web/room-worker.js).
+"$here/../../coax/web/room/worker.sh" "$here/build/everglade-room.wasm" &
+everglade_room=$!
 # /worlds/fairy-forest: the park (verse/fairy-forest/forest.coax), with the player, thumbs and its stream (verse/fairy-forest/stream.coax).
 "$here/../../coax/web/wasm.sh" "$here/fairy.coax" "$here/fairy-face.c" "$here/build/fairy.wasm" \
   "$a/player.coax" "$m/grid.coax" "$m/fairy-forest/stream.coax" "$here/../../coax/lib/qr/qr-memory.coax" &
@@ -289,6 +292,7 @@ wait "$orbitleague"
 wait "$everglade"
 wait "$fivemmo"
 wait "$everglade5e"
+wait "$everglade_room"
 wait "$fairy"
 wait "$villa"
 wait "$animelab"

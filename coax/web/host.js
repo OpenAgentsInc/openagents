@@ -52,7 +52,8 @@
 //                             answer with coaxial.send(kind, text)
 // and, optionally, sockets: a WebSocket byte pipe, text frames only, at most 4 open. The app (its C face)
 // imports from "env":
-//   coaxial_socket_open(url, url_len) -> id   0..3, or -1 when 4 are open or the URL is refused
+//   coaxial_socket_open(url, url_len) -> id   0..3, or -1 when 4 are open or the URL is refused; a URL
+//                             local:PATH opens the room server's local host instead (room-worker.js)
 //   coaxial_socket_send(id, ptr, len)         one text frame (UTF-8); dropped unless that socket is open
 //   coaxial_socket_close(id)
 // and hears back through the inbox: coaxial_message(state, 256 + 4 * id + event, length), event
@@ -214,6 +215,7 @@ import { startUploads } from "./uploads.js";
 import { startDocs } from "./docs.js";
 import { startCard } from "./card.js";
 import { startVoice, ACT_VOICE, ACT_VOICE_TO, ACT_VOICE_SAY } from "./voice.js";
+import { localRoomSocket } from "./room-worker.js";
 import { startGpui } from "./gpui.js";
 import { startLoading, readBytes } from "./loader.js";
 import { makeHttpRequests } from "./http-requests.js";
@@ -502,7 +504,9 @@ const socketImports = {
     const id = sockets.indexOf(null);
     if (id < 0) return -1;
     let ws;
-    try { ws = new WebSocket(utf8(ptr, len)); } catch { return -1; }
+    // local:PATH is the room server's local host, a loopback over postMessage (room-worker.js, #12784)
+    const url = utf8(ptr, len);
+    try { ws = url.startsWith("local:") ? localRoomSocket(url, script?.dataset.roomWasm || "/build/everglade-room.wasm") : new WebSocket(url); } catch { return -1; }
     sockets[id] = ws;
     const mine = () => sockets[id] === ws;   // a closed socket says nothing more
     ws.onopen = () => mine() && socketQueued(ws, id, SOCKET_OPENED);
@@ -513,7 +517,7 @@ const socketImports = {
   },
   coaxial_socket_send(id, ptr, len) {
     const ws = sockets[id];
-    if (ws && ws.readyState === WebSocket.OPEN) ws.send(utf8(ptr, len));
+    if (ws && ws.readyState === 1) ws.send(utf8(ptr, len));   // WebSocket.OPEN, or a local socket's
   },
   coaxial_socket_close(id) {
     const ws = sockets[id];

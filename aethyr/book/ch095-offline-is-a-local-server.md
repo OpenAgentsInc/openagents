@@ -1,12 +1,14 @@
 # 95. Offline is a local server
 
-> **Status: unimplemented — design draft.** Today offline Everglade is a
-> second game: the page runs its own watch, townsfolk, spells and rules,
-> and in a room it switches to the server's state, with about 65 branches on
-> room state across 8 files. #12784 builds the room's simulation to Wasm and
-> runs it in a Web Worker as the offline host; none of its files
-> (`coax/web/room/room-worker.c`, `room-tick.c`,
-> `apps/openagents-web/everglade-host.coax`) are on main yet.
+> **Status: partly implemented.** The local host runs behind a switch,
+> `?offline=worker` (#12784): `coax/web/room/worker.sh` builds the room
+> server's units to `build/everglade-room.wasm` with
+> [room-worker.c](../../coax/web/room/room-worker.c) in place of
+> `room-host.c`, both hosts include one tick
+> ([room-tick.c](../../coax/web/room/room-tick.c)), and
+> [room-worker.js](../../coax/web/room-worker.js) runs it in a Web Worker
+> behind a `local:` socket. The page's own offline simulation is not yet
+> deleted, and the switch is not yet the default.
 
 Every feature of a game that has an offline mode and an online mode is
 written twice, unless the offline mode is the online mode. This chapter adds
@@ -41,7 +43,9 @@ other.
   over `postMessage`.
 
 **The page is always a client.** Offline, the page joins
-`local:/api/room/relay/everglade/local-1`. `net_live` is true. The page sends
+`local:/api/room/relay/everglade/local-1`. The page's host (`host.js`) opens
+a `local:` URL as a loopback to the worker instead of a WebSocket, with the
+same text frames, so the page's Coax can't tell the two apart. `net_live` is true. The page sends
 intents and draws state exactly as in a room; the `?raid=preview` cinematic
 runs as a room event in the local host. Then the page's own offline
 simulation is deleted, not kept as a fallback.
@@ -57,8 +61,10 @@ next to the 60 FPS rule of chapter 83.
 
 ## What it builds
 
-- `apps/openagents-web/everglade-host.coax` and
-  `coax/web/room/room-worker.c`: the local host.
+- `coax/web/room/room-worker.c` and `coax/web/room-worker.js`: the local
+  host. The worker fetches the same world document the page reads, keeps
+  the 30 Hz beat, and stands in for the API's control lines
+  (`?levels=off`, and `?raid=preview` as a room event).
 - `coax/web/room/room-tick.c`: the tick both hosts include.
 - Deletion of the page's offline-only simulation paths, with the count of
   room branches before and after.

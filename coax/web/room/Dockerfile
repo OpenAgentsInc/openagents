@@ -1,6 +1,6 @@
 # The room server on Cloud Run (coax/web/room/deploy.sh stages src/: the Coax units already turned
 # into C, room.c and the everglade world's (everglade.c, everglade-step.c, grid.c, river.c,
-# guard-guide-policy.c), with room-host.c, room-world.c and verse/voice-host/ws.c).
+# guard-guide-policy.c), with room-host.c (and the room-tick.c it includes), room-world.c and verse/voice-host/ws.c).
 FROM debian:bookworm-slim AS build
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev binutils && rm -rf /var/lib/apt/lists/*
 COPY src/ /src/

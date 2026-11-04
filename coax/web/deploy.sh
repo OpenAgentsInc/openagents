@@ -96,6 +96,8 @@ for f in pages:
         rest = re.sub(r'data-assets="[^"]*"', lambda a: re.sub(r'(\blocal)?([:|=])(/[^\s|"]+)', asset, a.group(0)), rest)
         # A page that talks (data-voice): the voice engine (coax/web/voice/build.sh), named by its content too.
         if "data-voice=" in rest: rest += f' data-voice-wasm="{put(os.path.join(app, "build", "voice.wasm"), "build/voice.wasm")}"'
+        # Everglade's offline room (#12784): the room server's simulation for the local host (coax/web/room/worker.sh).
+        if name == "everglade5e": rest += f' data-room-wasm="{put(os.path.join(app, "build", "everglade-room.wasm"), "build/everglade-room.wasm")}"'
         # The engine is the page's biggest file and host.js asks for it only once it has run:
         # preloaded, it downloads beside the script (crossorigin: the same request host.js's fetch makes).
         return f'<link rel="preload" href="{wasm}" as="fetch" crossorigin><script type="module" src="{host_url}" data-app="{name}"{rest} data-wasm="{wasm}" data-wgsl="{wgsl}">'

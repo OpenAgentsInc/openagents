@@ -106,6 +106,10 @@ EgNet :: struct {
   // local_relay: a room server on this machine (?relay=ws://localhost:PORT, coax/web/room/local.sh),
   // which keeps its own address; its tickets come from the API's local stand-in, as production's do
   ticket: [NET_TICKET] u8; ticket_n: int; ticket_asked: bool; local_relay: bool;
+  // local_host: offline play's room, the room server's own simulation in this browser (?offline=worker:
+  // coax/web/room-worker.js runs coax/web/room/room-worker.c, #12784). The socket is local:PATH, a
+  // loopback to it that speaks the same frames; it seats without a ticket and has no list or shard
+  local_host: bool;
   // what you bring back into a room (#12715): the look last saved, and when
   saved_look: [NET_LOOK] u8; saved_look_n: int; saved_at: int; restored: bool;
   edit_due: bool;            // the server said "e edit": the world and the board are asked for again (#12714)
@@ -233,6 +237,8 @@ net_facts :: (s: [] Everglade, facts: string, room: string, golden: bool) #expor
   n[0].url_n = m;
   jn_facts(s, n, url, room, golden);   // the instance: named, listed or a local server's (everglade-join.coax)
   n[0].want = !golden && start < k && (n[0].code_n > 0 || n[0].join[0].list_due);
+  n[0].local_host = !golden && net_query(url, "offline") == "worker" && !n[0].local_relay && n[0].join[0].list_due;
+  if n[0].local_host { net_local_host(n); }
   pid := fact(facts, "player");
   if pid.count > 0 { n[0].pid_n = net_copy(n[0].pid[..], pid); }
   n[0].account = fact(facts, "account").count > 0;
@@ -241,6 +247,20 @@ net_facts :: (s: [] Everglade, facts: string, room: string, golden: bool) #expor
   if wall > 0 && nav >= 0 && n[0].synced == 0 { n[0].offset = wall - nav; }
   if n[0].look_n == 0 { n[0].look_n = net_copy(n[0].look[..], "ranger.0.0.0"); }
   if net_query(url, "class") == "warlock" { wl_set(s, true); }   // ?class=warlock: the Warlock (everglade-warlock.coax)
+}
+// Offline play as a one-seat room (#12784): the local host's loopback socket, local:/api/room/relay/
+// everglade/local-1, opened at once (no ticket, no list), the same frames as a room's.
+NET_LOCAL :: "local:";
+net_local_host :: (n: [] EgNet) {
+  m := wire_put(n[0].url[..], 0, NET_LOCAL);
+  m = wire_put(n[0].url[..], m, "/api/room/relay/"); m = wire_put(n[0].url[..], m, NET_GAME); m = wire_put(n[0].url[..], m, "/");
+  n[0].host_n = 0; n[0].join[0].base_n = m;
+  jn_code(n, "local-1");
+  j := n[0].join[..];
+  j[0].list_due = false; j[0].named = true; j[0].test = true;
+  n[0].local_relay = true;
+  jn_url(n);
+  n[0].want = true;
 }
 // A minted player (POST /api/playtest/player answered {"key":...,"id":"...",...}): its id for the hello.
 net_player :: (s: [] Everglade, record: string) #export_c {
@@ -916,10 +936,11 @@ net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: 
   jn_step(s, n);   // no instance yet: the list asked for (everglade-join.coax)
   if n[0].want && (n[0].state == NET_OFF || (n[0].state == NET_DOWN && mono >= n[0].retry)) && jn_ready(n) {
     // each open takes a fresh seat ticket (the room refuses a join without one): asked for, then used
-    if n[0].ticket_n > 0 {
+    if n[0].ticket_n > 0 || n[0].local_host {
       u: [NET_URL + NET_TICKET + 9] u8;
-      k := wire_put(u[..], 0, cast(string) n[0].url[0..<n[0].url_n]); k = wire_put(u[..], k, "?t="); k = wire_put(u[..], k, cast(string) n[0].ticket[0..<n[0].ticket_n]);
-      if n[0].lost { k = wire_put(u[..], k, "&re=1"); }   // a rejoin after the room was lost: the room counts it (room-stats.coax)
+      k := wire_put(u[..], 0, cast(string) n[0].url[0..<n[0].url_n]);
+      if !n[0].local_host { k = wire_put(u[..], k, "?t="); k = wire_put(u[..], k, cast(string) n[0].ticket[0..<n[0].ticket_n]); }
+      if n[0].lost { k = wire_put(u[..], k, ifx n[0].local_host then "?re=1" else "&re=1"); }   // a rejoin after the room was lost: the room counts it (room-stats.coax)
       if pipe_open(n[0].pipe[..], cast(string) u[0..<k]) { n[0].state = NET_OPENING; n[0].sock = -1; n[0].ticket_n = 0; }
     } else if !n[0].ticket_asked {
       // the path (?realm=: the directory places you, #12717), then a line, then the body: the name a guest asks for (everglade-join.coax)
