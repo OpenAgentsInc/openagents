@@ -639,7 +639,7 @@ e5r_raid_step :: (r: [] E5r, dt: f32) {
 
 #test "raid: with no help the siege holds before the palisade: the cult at its posts south of the line, the watch north of it, both losing fighters and mustering more (#12860)" #steps 12000000000 {
   r: [1] E5r;
-  e5r_start(r[..], 7);
+  e5r_start(r[..], 8);   // the dice: 7's run (with the town's 47 people) has no Cultist fall in the 40 s
   e5r_raid_start(r[..], 0, -106, 0, -56, 0, -25);
   e5r_raid_you(r[..], 0, -16);
   w := r[0].raid[..];

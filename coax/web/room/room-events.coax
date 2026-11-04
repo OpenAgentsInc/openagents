@@ -1214,3 +1214,64 @@ ev_test_count :: (v: [] RmServer, k: int, form: int) -> int {
   ev_rebuild(v[..], k);
   #assert e5rd_house_stage(r) == RT_HOUSE_WHOLE && r[0].raid[0].house == 0;
 }
+
+// The owner's "NPCs should not die in 1 hit from a level 1": ten Eldritch Blasts (1d10 Force, the
+// Warlock's Fire Bolt) from a level 1 Warlock at the raid's Cultists, through the real cast path (C,
+// its checks, its flight, the rules' roll). Each hit is one 1d10 (20 at most, a critical's), and a
+// Cultist (AC 12, 9 HP) mostly takes more than one hit. (The siege's watch fights the other Cultists
+// meanwhile, so only the target's Hit Points are read.)
+#test "events: a level 1 Warlock's 1d10 cantrip takes a Cultist (AC 12, 9 HP) down in a plausible number of hits; the raid's stat blocks are the SRD's" #steps 40000000000 {
+  v: [1] RmServer;
+  box: [1] EgInbox;
+  k := ev_test_server(v[..]);
+  rm_control(v[..], "event 1 0 2 24 6 1 3 3 31 1 2 1 100 15 0 0\nlevels 1 1\n");
+  rm_control(v[..], "event 1 0 2 24 6 1 3 3 31 1 2 1 100 15 1 0\n");
+  rm_heard(v[..], 1, "H 4 ranger.0.0.0 warlock 0 -");
+  ev_test_skip(v[..], k);
+  #assert v[0].ev[k].phase == EV_SIEGE && v[0].ev[k].level[1] == 1;
+  ev_test_ticks(v[..], k, EG_HZ);   // past the muster's first turns
+  r := v[0].eg[k].rules[..];
+  b := r[0].b[..];
+  #assert b[0].c[E5RR_SEAT + 1].klass == RS_WARLOCK && b[0].c[E5RR_SEAT + 1].level == 1 && b[0].c[E5RR_SEAT + 1].agonizing < 0;
+  // every raider is its own stat block, the SRD's numbers, each its own Hit Points
+  for q: 0..<E5RR_BEASTS {
+    c := b[0].c[E5RR_BEAST0 + q];
+    if r[0].beasts[q].form == E5RR_FORM_RAID + RS_NPC_CULTIST && e5rd_is(r[0].beasts[q]) { #assert c.ac == 12 && c.hp_max == 9; }
+    if r[0].beasts[q].form == E5RR_FORM_RAID + RS_NPC_FANATIC && e5rd_is(r[0].beasts[q]) { #assert c.ac == 13 && c.hp_max == 44; }
+  }
+  // the seat stands it out; the Cultists come one by one to 6 m in front of it
+  b[0].c[E5RR_SEAT + 1].hp_max = 100000; b[0].c[E5RR_SEAT + 1].hp = 100000;
+  hits := 0; kills := 0; on := 0; one_hit := 0; most := 0; seq := 10;
+  for n: 0..<10 {
+    q := -1;
+    for j: 0..<E5RR_BEASTS { if q < 0 && r[0].beasts[j].form == E5RR_FORM_RAID + RS_NPC_CULTIST && e5rd_is(r[0].beasts[j]) && !b[0].c[E5RR_BEAST0 + j].dead && b[0].c[E5RR_BEAST0 + j].hp > 0 { q = j; } }
+    #assert q >= 0;
+    if on == 0 { b[0].c[E5RR_BEAST0 + q].hp = b[0].c[E5RR_BEAST0 + q].hp_max; }
+    hp_all: [E5RR_BEASTS] int;
+    for j: 0..<E5RR_BEASTS { hp_all[j] = b[0].c[E5RR_BEAST0 + j].hp; }
+    p := v[0].eg[k].seat[1].pose;
+    r[0].beasts[q].x = p.x + 6; r[0].beasts[q].z = p.z;
+    b[0].c[E5RR_BEAST0 + q].x = e5r_sq(p.x + 6); b[0].c[E5RR_BEAST0 + q].y = e5r_sq(p.z);
+    l: [96] u8;
+    m := wire_put(l[..], 0, "C"); m = wire_int(l[..], m, seq); m = wire_int(l[..], m, FB_WL0);
+    m = wire_m(l[..], m, p.x + 6); m = wire_m(l[..], m, p.y + 1); m = wire_m(l[..], m, p.z);
+    m = wire_int(l[..], m, E5RR_TGT_BEAST + r[0].beasts[q].id);
+    seq += 1;
+    rm_heard(v[..], 1, cast(string) l[0..<m]);
+    // the cast's checks, its flight and its roll, no other raider's turn in between to matter
+    for t: 0..<EG_CAST_GAP + 6 {
+      r[0].beasts[q].x = p.x + 6; r[0].beasts[q].z = p.z;
+      eg_test_tick(v[..], k);
+    }
+    eg_test_drain(v[..], box[..]);
+    c := b[0].c[E5RR_BEAST0 + q];
+    lost := hp_all[q] - c.hp;
+    on += 1;
+    if lost > 0 { hits += 1; most = rs_max(most, lost); }
+    #assert lost <= 20;   // one 1d10, a critical's 2d10 at most: no wave factor, no second roll
+    if c.dead || c.hp <= 0 { kills += 1; if on == 1 { one_hit += 1; } on = 0; }
+  }
+  // a 1d10 against AC 12 at +5 hits about 70% of the time; 9 HP falls to one hit only on a 9 or 10
+  #assert hits >= 4 && most <= 20;
+  #assert kills >= 1 && kills <= 5 && one_hit * 2 <= kills;
+}

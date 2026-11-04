@@ -208,6 +208,51 @@ door_bodies :: (s: [] Everglade, out: [] f32, at: int, x: f32, z: f32) -> int {
   return n;
 }
 
+// ---- the town's gates (#12794): shut while anyone in town is WANTED GATES_AT or more (verse/everglade/
+// watch.coax LADDER). In a room the room says so (its doors row's FORM, net_gates); offline your own
+// level does (watch_frame). Shut, a gate's gap is three capsules across it at knee, chest and head
+// height, in your way as a door's leaf is (everglade_bodies_near), and a leaf of timber stands in it.
+GATE_BODIES :: 6;               // two gates near you at most, three capsules each
+GATE_REACH :: 8.0;              // m from a gate's middle that its capsules count
+GATE_THICK :: 0.2;              // m: a capsule's radius
+GATE_LEAF_H :: 3.6;             // m: the shut leaf's height
+
+// The shut gates near (x, z) as capsules in your way (7 numbers each, as the page's bodies), from slot
+// `at` of out. How many: none while the gates stand open.
+gate_bodies :: (s: [] Everglade, out: [] f32, at: int, x: f32, z: f32) -> int {
+  if !s[0].gates_shut { return 0; }
+  n := 0;
+  for g: 0..<EG_GATES {
+    if n + 3 > GATE_BODIES || (at + n + 3) * 7 > out.count { break; }
+    gx := EG_GATE[g * 4]; gz := EG_GATE[g * 4 + 1]; half := EG_GATE[g * 4 + 2] * 0.5;
+    dx := gx - x; dz := gz - z;
+    if dx * dx + dz * dz > f32(GATE_REACH) * f32(GATE_REACH) { continue; }
+    along_z := EG_GATE[g * 4 + 3] > 0.5;
+    ax := ifx along_z then gx else gx - half; az := ifx along_z then gz - half else gz;
+    bx := ifx along_z then gx else gx + half; bz := ifx along_z then gz + half else gz;
+    y0 := ground_at(s, gx, gz);
+    for h: 0..<3 {
+      y := y0 + 0.5 + 0.9 * f32(h);
+      put7(out, at + n, ax, y, az, bx, y, bz, f32(GATE_THICK));
+      n += 1;
+    }
+  }
+  return n;
+}
+// Each frame the gates are shut: a timber leaf across each gate's gap, two iron bands across it.
+gates_draw :: (s: [] Everglade) {
+  if !s[0].gates_shut { return; }
+  for g: 0..<EG_GATES {
+    gx := EG_GATE[g * 4]; gz := EG_GATE[g * 4 + 1]; wide := EG_GATE[g * 4 + 2];
+    yaw := ifx EG_GATE[g * 4 + 3] > 0.5 then f32(PI) * 0.5 else 0.0f32;
+    y0 := ground_at(s, gx, gz);
+    shape(s, SHAPE_BOX, LOOK_WOOD, v3(gx, y0 + f32(GATE_LEAF_H) * 0.5, gz), yaw, 0, wide, f32(GATE_LEAF_H), 0.16, 0.4, 0.28, 0.16);
+    for b: 0..<2 {
+      shape(s, SHAPE_BOX, LOOK_MATTE, v3(gx, y0 + 0.9 + 1.8 * f32(b), gz), yaw, 0, wide, 0.14, 0.22, 0.12, 0.12, 0.13);
+    }
+  }
+}
+
 // #door-inn, #door-store, ... (a room's id without its "in-"), #door-crypt: start a metre and a half
 // out from that door, facing it. False for any other hash.
 door_hash :: (s: [] Everglade, hash: string) -> bool {
@@ -357,4 +402,34 @@ door_spot :: (s: [] Everglade, i: int) -> DoorSpot {
   c: [1] Everglade; everglade_start(c[..]);
   door_use(c[..], i);
   #assert c[0].doors.d[i].open && c[0].doors.d[i].pred == 0;
+}
+
+#test "gates: shut, each gate's gap is in your way at knee, chest and head height, near it only; the room's doors row says when (#12794)" #steps 2000000000 {
+  g: [1] Everglade;
+  everglade_start(g[..]);
+  sx := EG_GATE[0]; sz := EG_GATE[1];   // the South Gate
+  out: [GATE_BODIES * 7] f32;
+  #assert !g[0].gates_shut && gate_bodies(g[..], out[..], 0, sx, sz) == 0;
+  open_n := everglade_bodies_near(g[..], false, sx, sz);
+  g[0].gates_shut = true;
+  #assert gate_bodies(g[..], out[..], 0, sx, sz) == 3 && gate_bodies(g[..], out[..], 0, sx, sz + 30) == 0;
+  #assert everglade_bodies_near(g[..], false, sx, sz) == open_n + 3;
+  // across the gap from tower to tower, at its ground
+  y0 := ground_at(g[..], sx, sz);
+  #assert out[0] == sx - EG_GATE[2] * 0.5 && out[3] == sx + EG_GATE[2] * 0.5 && out[2] == sz && out[5] == sz;
+  #assert abs(out[1] - (y0 + 0.5)) < 0.001 && abs(out[2 * 7 + 1] - (y0 + 2.3)) < 0.001 && out[6] == f32(GATE_THICK);
+  // the West and East Gates' gaps run along z
+  wx := EG_GATE[8]; wz := EG_GATE[9];
+  #assert gate_bodies(g[..], out[..], 0, wx, wz) == 3 && out[0] == wx && out[3] == wx && out[2] == wz - EG_GATE[10] * 0.5;
+  // in a room: the doors row's FORM
+  a: [1] Everglade; na: [1] EgNet; b: [1] Everglade; nb: [1] EgNet; room: [1] NetTestRoom;
+  #assert net_test_pair(a[..], na[..], b[..], nb[..], room[..]);
+  everglade_start(a[..]);
+  #assert net_gates(a[..]) == -1;
+  net_test_tick(room[..], 2, 0);
+  net_test_s(room[..], WireS.{id = NET_MADE_ID + 960000, kind = WK_DOORS, g = 1, form = 1});
+  #assert net_test_hear(a[..], 0, net_test_frame(room[..])) && net_gates(a[..]) == 1;
+  net_test_tick(room[..], 3, 0);
+  net_test_s(room[..], WireS.{id = NET_MADE_ID + 960000, kind = WK_DOORS, g = 1, form = 0});
+  #assert net_test_hear(a[..], 0, net_test_frame(room[..])) && net_gates(a[..]) == 0;
 }

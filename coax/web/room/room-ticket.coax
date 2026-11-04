@@ -209,7 +209,11 @@ tk_sign_admin :: (key: string, pid: string, room: string, expires: int, out: [] 
 // The same with a name and a shard: the checks sit as an admin, who may play Everglade's own
 // character (the hello's EV_DEMO_FLAG, room-events.coax) whatever the levels switch says.
 tk_sign_admin_on :: (key: string, pid: string, name: string, room: string, shard: int, expires: int, out: [] u8) -> int {
-  n := tk_sign_xp(key, pid, true, name, room, shard, expires, -1, -1, out);
+  return tk_sign_admin_wanted(key, pid, name, room, shard, expires, 0, out);
+}
+// The same bringing back WANTED `wanted` (1 to 5; 0 none): a player who left WANTED (#12872).
+tk_sign_admin_wanted :: (key: string, pid: string, name: string, room: string, shard: int, expires: int, wanted: int, out: [] u8) -> int {
+  n := tk_sign_wanted(key, pid, true, name, room, shard, expires, -1, -1, wanted, out);
   if n < 65 { return 0; }
   b: [TICKET_TEXT] u8;
   for i: 0..<n - 65 { b[i] = out[i]; }

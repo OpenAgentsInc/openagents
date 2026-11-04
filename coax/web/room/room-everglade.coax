@@ -60,7 +60,7 @@ EG_SLOT_STONE :: 10; EG_SLOT_TENTACLES :: 12; EG_SLOT_CONJURE :: 32; EG_SLOT_THO
 EG_SP_SLOTS :: 4;
 // the Warlock's slots that the world plays (fivebar.coax FB_WL0 + k): Eldritch Blast, Fireball, Dimension Door
 EG_WL_BLAST :: 64; EG_WL_FIREBALL :: 65; EG_WL_DOOR :: 69;
-EG_FOLK_FLOATS :: 10;           // a townsperson as the world hands them (everglade-watch.coax EG_ROOM_VIEW_FLOATS)
+EG_FOLK_FLOATS :: 12;           // a townsperson as the world hands them (everglade-watch.coax EG_ROOM_VIEW_FLOATS)
 EG_CRIMES :: 16;
 EG_REBUILD_QUIET :: 10; EG_REBUILD_EVERY :: 30;   // s: R stands the town up once no spell struck it for 10 s, once in 30 s at most
 EG_PIECES :: 6000;              // the town's pieces at most: verse/demolish.coax DEMO_PIECES, which wave 1 raised (the bridge's are past 4000)
@@ -131,7 +131,7 @@ EgRoom :: struct {
   ev_at: [EG_EVENTS] int; ev_len: [EG_EVENTS] int; ev_x: [EG_EVENTS] f32; ev_z: [EG_EVENTS] f32; ev_all: [EG_EVENTS] bool;
   ev_who: [EG_EVENTS] int;       // the seats an event also tells of beyond its own fields, one bit each (room-blocks.coax eg_im_event)
   // the town, as the host's world steps it (everglade-watch.coax everglade_room_town): each person as a
-  // page hears them (EG_FOLK_FLOATS: X Z YAW CLIP MODE HP SHOWN CASTING KIND FOE), each seat's WANTED level
+  // page hears them (EG_FOLK_FLOATS: X Z YAW CLIP MODE HP SHOWN CASTING KIND FOE RANK MAX), each seat's WANTED level
   folk: [E5R_FOLK * EG_FOLK_FLOATS] f32; folk_on: bool;
   // the tick each person's mode began (their row's T0: a page that sees them again, or late, shows a
   // fall where it is, not from its start), and the tick a caster's spell began (DUR)
@@ -141,6 +141,7 @@ EgRoom :: struct {
   crimes: [EG_CRIMES] EgCrime; crime_n: int;
   use_ask: [EG_USE_ASKS] int; use_ask_n: int;   // the seats' doors and talks since the world last heard (eg_use_code)
   doors: [WIRE_DOOR_WORDS] int;                    // the doors the world has open (rm_eg_doors), for the WK_DOORS row
+  gates: int;                                      // 1 while the world has the town's gates shut (rm_eg_gates, WANTED 4: #12794), the row's FORM
   folk_by: [E5R_FOLK] int;
   // the town's pieces: Everglade's four spells' strikes for the world (it breaks and burns the pieces),
   // the rebuild asked for, and what is broken and burning now (a seat's snapshot names them)
@@ -643,6 +644,7 @@ rm_eg_use_ask :: (v: [] RmServer, k: int, q: int) -> int #export_c {
 }
 rm_eg_use_asks_heard :: (v: [] RmServer, k: int) #export_c { if rm_eg_live(v, k) { v[0].eg[k].use_ask_n = 0; } }
 rm_eg_doors :: (v: [] RmServer, k: int, w: int, bits: int) #export_c { if rm_eg_live(v, k) && w >= 0 && w < WIRE_DOOR_WORDS { v[0].eg[k].doors[w] = bits; } }
+rm_eg_gates :: (v: [] RmServer, k: int, shut: int) #export_c { if rm_eg_live(v, k) { v[0].eg[k].gates = ifx shut > 0 then 1 else 0; } }
 // The strikes since the world last heard: q's BY SLOT FX FY FZ AX AY AZ SEED.
 rm_eg_strikes :: (v: [] RmServer, k: int) -> int #export_c { return ifx rm_eg_live(v, k) then v[0].eg[k].strike_n else 0; }
 rm_eg_strike :: (v: [] RmServer, k: int, q: int, out: [] f32) #export_c {
@@ -830,7 +832,8 @@ eg_table :: (v: [] RmServer, k: int) {
     rm[0].cn_n[q] = n; rm[0].cn_h[q] = eg_hash(cast(string) rm[0].cn[a..<a + n]);
   }
   // the townsfolk outdoors: G their mode, CLIP their clip, P1 who, COND what holds them, Y how high the world's abilities
-  // hold them over their feet (Reverse Gravity)
+  // hold them over their feet (Reverse Gravity), FORM a responder's rank + 1 (0 the town's own), MAX
+  // their most Hit Points
   if rm[0].folk_on {
     for i: 0..<E5R_FOLK {
       fo := i * EG_FOLK_FLOATS;
@@ -845,7 +848,8 @@ eg_table :: (v: [] RmServer, k: int) {
                                                  clip = cast(int) fl[3], g = cast(int) fl[4], hp = cast(int) fl[5], p1 = i,
                                                  t0 = ifx cast(int) fl[4] == 0 then 0 else rm[0].folk_since[i],
                                                  p2 = ifx casting then cast(int) fl[8] + 1 else 0, dur = ifx casting then rm[0].folk_cast[i] else 0,
-                                                 owner = ifx casting && foe >= 0 then WIRE_TGT_SEAT + foe else -1, cond = cast(int) fo4[3]}, wire_rel(WK_FOLK), false, true);
+                                                 owner = ifx casting && foe >= 0 then WIRE_TGT_SEAT + foe else -1, cond = cast(int) fo4[3],
+                                                 form = cast(int) fl[10], max = cast(int) fl[11]}, wire_rel(WK_FOLK), false, true);
     }
   }
   // summoned creatures (raiders among them) once their ground is known: G 1 while it runs (a raider's
@@ -894,7 +898,7 @@ eg_table :: (v: [] RmServer, k: int) {
   }
   ra_table(v, k);   // what the world's abilities hold up (room-abilities.coax)
   // the town's doors as the world has them, every seat's however far (late joiners' snapshots have them open)
-  wire_hist_put(h, EG_SLOT_DOORS, WireS.{id = WIRE_ID_MADE + EG_DOORS_ID, kind = WK_DOORS, g = 1, p1 = rm[0].doors[0], p2 = rm[0].doors[1]}, wire_rel(WK_DOORS), true, false);
+  wire_hist_put(h, EG_SLOT_DOORS, WireS.{id = WIRE_ID_MADE + EG_DOORS_ID, kind = WK_DOORS, g = 1, p1 = rm[0].doors[0], p2 = rm[0].doors[1], form = rm[0].gates}, wire_rel(WK_DOORS), true, false);
   eg_im_table(v, k);   // and the table into the interest grid (room-blocks.coax, #12789)
 }
 
@@ -1365,10 +1369,18 @@ eg_test_input :: (v: [] RmServer, seq: int) {
   #assert rm_join(v[..], 2, ev) == 2;
   rm_heard(v[..], 2, "H 3 ranger.0.0.0 druid 0 C");
   eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
-  #assert eg_test_ent(box[..], 2, doors).p1 == 32;
+  #assert eg_test_ent(box[..], 2, doors).p1 == 32 && eg_test_ent(box[..], 2, doors).form == 0;   // the gates open
   // a door past the doors there are is dropped
   rm_heard(v[..], 1, "E 3 2 99");
   #assert rm_eg_use_asks(v[..], k) == 0;
+  #assert E5R_FOLK == 47;   // the town's people, its responders too: watch.coax WATCH_ACTORS (everglade5e.coax checks it)
+  // the world shuts the town's gates (someone WANTED 4, #12794): every seat's row says so, its doors kept
+  rm_eg_gates(v[..], k, 1);
+  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
+  for q: 0..<3 { #assert eg_test_ent(box[..], q, doors).form == 1 && eg_test_ent(box[..], q, doors).p1 == 32; }
+  rm_eg_gates(v[..], k, 0);
+  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
+  #assert eg_test_ent(box[..], 0, doors).form == 0;
 }
 
 // #12862: a townsperson's row carries when their mode began (T0), so a page that sees a fall again, or

@@ -408,8 +408,9 @@ Everglade :: struct {
   lathe_n: int;
   draws: [DRAWS * 4] u32;
   walls: [WALLS * 6] f32; wall_n: int;   // and after wall_n the bridge's two rails
-  bodies: [(BODIES + AB_STONES * 2 * AB_ST_BODIES + DOOR_BODIES + FOREST_BODIES + TF_BODIES) * 7] f32;   // and the Walls of Stone standing (everglade-abilities.coax), the doors' leaves near you (everglade-doors.coax), then the trunks and rocks round you, and the trunks lying (everglade-forest.coax)
+  bodies: [(BODIES + AB_STONES * 2 * AB_ST_BODIES + DOOR_BODIES + GATE_BODIES + FOREST_BODIES + TF_BODIES) * 7] f32;   // and the Walls of Stone standing (everglade-abilities.coax), the doors' leaves and the gates shut near you (everglade-doors.coax), then the trunks and rocks round you, and the trunks lying (everglade-forest.coax)
   boxes: [BOXES * 6] f32; box_n: int;
+  gates_shut: bool;   // the town's gates shut: someone in town is WANTED GATES_AT or more (everglade-doors.coax gate_bodies)
   trees: [TREES * TREE_FLOATS] f32; tree_n: int;
   smalls: [SMALLS * TREE_FLOATS] f32; small_n: int;
   fg_start: [FG_N * FG_N + 1] int; fg_ent: [FG_ENTS] int; fg_built: bool; fg_ok: bool;   // forest_bodies' grid
@@ -1221,6 +1222,7 @@ everglade_bodies_near :: (s: [] Everglade, deck: bool, x: f32, z: f32) -> int #e
   n := everglade_bodies_on(s, deck);
   if deck { return n; }
   n += door_bodies(s, s[0].bodies[..], n, x, z);   // the doors' leaves near you (everglade-doors.coax)
+  n += gate_bodies(s, s[0].bodies[..], n, x, z);   // the gates near you, while they are shut
   return n + forest_bodies(s, s[0].bodies[..], n, x, z);
 }
 everglade_spawn :: (s: [] Everglade) -> Point #export_c { if !s[0].started { everglade_start(s); } return s[0].spawn; }
@@ -2873,6 +2875,7 @@ people :: (s: [] Everglade, u: [] f32, you: Point, dt: f32, still: bool) {
   watch_frame(s, you, dt, c);
   watch_spears_draw(s);
   watch_missiles_draw(s);
+  gates_draw(s);
   for i: 0..<WATCH_ACTORS {
     if i < EG_SPOTS && eg_gone(s[0].ev.edits, i) { continue; }   // an admin took them away
     if watch_is_rein(i) && !s[0].wt[0].actors[i].homed { continue; }   // a reinforcement not called in

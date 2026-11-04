@@ -45,6 +45,7 @@ static void everglade_town(int k) {
     rm_eg_cond(view(), k, s, world_cond(k, s));
     for (int c = 0; c < 3; c++) rm_eg_cond_left(view(), k, s, c, world_cond_left(k, s, c));
   }
+  rm_eg_gates(view(), k, world_gates(k));   /* the gates shut at WANTED 4 (#12794): the doors row's FORM */
   /* the town's pieces: the rebuild, the strikes cast since, then what broke and caught for every page */
   if (rm_eg_rebuild(view(), k)) world_rebuild(k);
   float sk[9], ev[WORLD_EVENT]; coax_v_f32 skv = {sk, 9};

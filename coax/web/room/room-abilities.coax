@@ -166,7 +166,7 @@ ra_table :: (v: [] RmServer, k: int) {
   rm_ra_live(v[..], k, 1, RA_REVERSE, true, 3, 0, 0, 0, 1);
   rm_ra_live(v[..], k, 1, 1, true, 0, 0, 0, 1.5, 1);
   rm_ra_air(v[..], k, 3, 2.5);
-  person := [7] f32.[2, 0, 0, 0, 0, 9, 1];   // townsperson 3 outdoors, 2 m off
+  person := [12] f32.[2, 0, 0, 0, 0, 9, 1, -1, 0, -1, 0, 9];   // townsperson 3 outdoors, 2 m off (the town's own, 9 HP at most)
   rm_eg_folk(v[..], k, 3, person[..]);
   eg_test_tick(v[..], k); eg_test_tick(v[..], k);
   eg_test_drain(v[..], box[..]);

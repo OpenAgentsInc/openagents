@@ -40,6 +40,9 @@ SRD_PRIEST :: SrdCreature.{name = "Priest", ac = 13, hp = 38, dex = 0, attack = 
 SRD_ARCHMAGE :: SrdCreature.{name = "Archmage", ac = 17, hp = 170, dex = 2, attack = 9, dice = 4, sides = 10, bonus = 4, kind = DMG_FORCE};
 // Gladiator: AC 16, 112 HP, Dex +2; Multiattack, three Spear, +7 for 2d6 + 4.
 SRD_GLADIATOR :: SrdCreature.{name = "Gladiator", ac = 16, hp = 112, dex = 2, attack = 7, dice = 2, sides = 6, bonus = 4, kind = DMG_PIERCING};
+// Scout: AC 13 (leather), 16 HP (3d8 + 3), Dex +2; Multiattack, two attacks: Shortsword +4 for 1d6 + 2
+// piercing, or Longbow +4 (range 150/600 ft.) for 1d8 + 2 piercing (the watch's shots: watch.coax MS_ARROW).
+SRD_SCOUT :: SrdCreature.{name = "Scout", ac = 13, hp = 16, dex = 2, attack = 4, dice = 1, sides = 6, bonus = 2, kind = DMG_PIERCING};
 // The player, a 5th-level Ranger (SRD 5.2.1: d10 hit dice, Con +2: 10 + 2 + 4 x (6 + 2) = 44 HP;
 // studded leather, Dex +3: AC 15).
 SRD_RANGER_5 :: SrdCreature.{name = "Ranger", ac = 15, hp = 44, dex = 3, attack = 6, dice = 1, sides = 8, bonus = 3, kind = DMG_PIERCING};

@@ -662,6 +662,10 @@ e5_fps_draw :: (s: [] Everglade, v: [] E5, out: [] f32, at: int) -> int {
   rgb := ifx v[0].fps >= 50 then E5_GREEN else ifx v[0].fps >= 30 then E5_GOLD else E5_RED;
   return e5_text(out, at, t, x0, y, cap, k, 0.9, rgb);
 }
+#test "Everglade 5E: the rules hold every one of the town's people the watch can call in, its responders too (#12794)" {
+  // the rules' unit is apart: its E5R_FOLK (everglade5e-rules.coax) and the room's WORLD_FOLK are 47
+  #assert WATCH_ACTORS == 47 && WATCH_ACTORS == EG_SPOTS + WATCH_NEW + WATCH_REIN && WATCH_REIN >= ladder_size(WANTED_LEVELS);
+}
 #test "Everglade 5E: a cast on its way dims the top of its icon, shrinking to its strike" {
   v: [1] E5;
   v[0].bar[0 * E5_SLOT_FLOATS + 4] = 3.6;                     // Meteor Swarm strikes 3.6 s on

@@ -53,6 +53,7 @@ WatchView :: struct {
   seen: [WATCH_ACTORS] WatchSeen; seen_you: WatchSeen;
   // the room server's town (everglade_room_town): where each seat stands, whether it sat and lay dead last tick
   room_at: [WATCH_YOUS] Point; room_live: [WATCH_YOUS] bool; room_dead: [WATCH_YOUS] bool;
+  room_born: [WATCH_ACTORS] int;   // each person's watch_revive count the room's rules last heard (everglade_room_people)
   room_talk: [WATCH_YOUS] int;     // the townsperson each seat talks to (spot), -1 none: they stop and face that seat (everglade_room_talk)
   // a page in a room: the server's townsfolk (net_folk), drawn instead of the page's own watch; and
   // the server, whose town takes no blast of its own (the rules do: everglade5e-room-rules.coax)
@@ -139,6 +140,11 @@ watch_frame :: (s: [] Everglade, you: Point, dt: f32, c: FolkClock) {
   if !w[0].on { return; }
   watch_pops_frame(s, dt);
   s[0].wv.net = net_town(s);
+  // the gates: shut at WANTED GATES_AT, the room's word in a room (its doors row), else your own level
+  was := s[0].gates_shut;
+  if s[0].wv.net { s[0].gates_shut = net_gates(s) > 0; }
+  else { s[0].gates_shut = watch_you(w[..])[0].wanted && watch_you(w[..])[0].level >= GATES_AT && !watch_you(w[..])[0].dead; }
+  if s[0].gates_shut != was { sp_say(s, ifx s[0].gates_shut then "THE GATES ARE SHUT" else "THE GATES OPEN", -1, ""); }
   if s[0].wv.net { watch_net_you(w, dt); watch_net_frame(s); return; }
   watch_you(w[..])[0].face = s[0].face;
   // the realm's switches (realm_rights rows): guards who give chase, and its owner's own invincibility
@@ -435,6 +441,11 @@ watch_missiles_draw :: (s: [] Everglade) {
     flying := m.t < m.flight;
     burst := !flying && !m.shown;
     if burst { w[0].missiles[k].shown = true; }
+    if m.kind == MS_ARROW {
+      // a Scout's arrow: a thin dark shaft along its flight
+      if flying { d := sub(b, a); shape(s, SHAPE_BOX, LOOK_MATTE, p, atan2(d.x, d.z), 0, 0.02, 0.02, 0.7, 0.3, 0.22, 0.12); }
+      continue;
+    }
     if m.kind == MS_FIRE_BOLT || m.kind == MS_FIREBALL || m.kind == MS_GUIDING {
       hot := ifx m.kind == MS_GUIDING then v3(1, 0.95, 0.65) else v3(1, 0.7, 0.25);
       cool := ifx m.kind == MS_GUIDING then v3(0.95, 0.75, 0.3) else v3(0.9, 0.25, 0.06);
@@ -695,6 +706,14 @@ watch_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, top: f32) -> int
                ifx on then 0.98f32 else 0.6f32, ifx on then 0.78f32 else 0.55f32, ifx on then 0.3f32 else 0.5f32, 0) { n += 6; }
       }
     }
+    // five stars: the bounty on your head, in gold under the stars
+    if watch_you(w[..])[0].level >= WANTED_LEVELS {
+      bcap := 8 * k;
+      tw := text_width(BOUNTY_LINE, bcap);
+      pb := Box.{x0 = wb.x1 - tw - 24 * k, y0 = wb.y1 + 6 * k, x1 = wb.x1, y1 = wb.y1 + 6 * k + bcap + 14 * k};
+      plate(s, u, pb, 0.82, 1);
+      n = draw_text(out, n, BOUNTY_LINE, pb.x0 + 12 * k, pb.y1 - 7 * k, bcap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+    }
   }
   // the shouts: one that would cross a shout already drawn goes above it, so none overlap
   placed: [WATCH_ACTORS] Box; placed_n := 0;
@@ -813,7 +832,7 @@ watch_overlay :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
 // people's; this town takes them back each tick, and hands the rules where the people are and the
 // damage its guards deal the seats.
 EG_ROOM_SEAT_FLOATS :: 7;      // a seat as the host hands it: X Y Z LIVE HP MAX COND (LIVE 2 just sat; HP 0: dead; COND WC_*)
-EG_ROOM_VIEW_FLOATS :: 10;     // a person as a page hears them (wire f): X Z YAW CLIP MODE HP SHOWN CASTING KIND FOE
+EG_ROOM_VIEW_FLOATS :: 12;     // a person as a page hears them (wire f): X Z YAW CLIP MODE HP SHOWN CASTING KIND FOE RANK MAX
 EG_ROOM_MISSILE_FLOATS :: 11;  // a spell in the air (everglade_room_missile): KIND CASTER FOE AX AY AZ BX BY BZ FLIGHT LIFE
 EG_ROOM_HEAR :: 60.0;          // m a crime carries (the bolt's: everglade-spells.coax WATCH_HEAR)
 
@@ -890,8 +909,14 @@ everglade_room_town :: (s: [] Everglade, dt: f32, world: f64, seats: [] f32, n: 
     }
     y[0].bound_said = 0;   // a throw stays for the seat's next step (everglade_knock)
   }
+  // the gates shut while any seat is WANTED GATES_AT or more (everglade-doors.coax gate_bodies)
+  shut := false;
+  for p: 0..<m { if live[p] && !s[0].wv.room_dead[p] && s[0].wt[0].yous[p].wanted && s[0].wt[0].yous[p].level >= GATES_AT { shut = true; } }
+  s[0].gates_shut = shut;
   w[0].me = me;
 }
+// Whether the town's gates are shut (1) or open (0), for the room's doors row (its FORM).
+everglade_room_gates :: (s: [] Everglade) -> int #export_c { return ifx s[0].gates_shut then 1 else 0; }
 // The live seat nearest (x, z), or -1.
 eg_room_nearest :: (s: [] Everglade, x: f32, z: f32, n: int) -> int {
   best := -1; bd := 1000000000.0f32;
@@ -913,6 +938,9 @@ everglade_room_people :: (s: [] Everglade, out: [] f32) -> int #export_c {
     o := n * 8;
     a := w[0].actors[i];
     out[o] = ifx watch_here(w, i) && !(a.mode == WM_CALM && a.home_in) then 1.0f32 else 0.0f32;
+    // stood up whole since the rules last heard (a responder called in, the fallen at dawn): HERE 2, a
+    // fresh face, so the rules' Hit Points for them start again from these, not their last fall
+    if out[o] > 0.5 && a.born != s[0].wv.room_born[i] { out[o] = 2; s[0].wv.room_born[i] = a.born; }
     pl := person_place(s, i);
     out[o + 1] = ifx a.body.on then a.body.x else pl.x; out[o + 2] = ifx a.body.on then a.body.z else pl.z;
     out[o + 3] = f32(a.hp); out[o + 4] = f32(a.temp); out[o + 5] = f32(a.max);
@@ -926,7 +954,7 @@ everglade_room_people :: (s: [] Everglade, out: [] f32) -> int #export_c {
 watch_block_of :: (name: string) -> int {
   if name == "Commoner" { return 0; } if name == "Guard" { return 1; } if name == "Warrior Veteran" { return 2; }
   if name == "Mage" { return 3; } if name == "Knight" { return 4; } if name == "Priest" { return 5; }
-  if name == "Archmage" { return 6; } if name == "Gladiator" { return 7; }
+  if name == "Archmage" { return 6; } if name == "Gladiator" { return 7; } if name == "Scout" { return 8; }
   return 1;
 }
 // Person i's Hit Points as the room's rules have them now: harm lands as the town's own does (knocked
@@ -962,7 +990,8 @@ everglade_room_crime :: (s: [] Everglade, by: int, x: f32, z: f32) -> int #expor
   return turned;
 }
 // Person i as a page hears them (wire f, EG_ROOM_VIEW_FLOATS): X Z YAW CLIP MODE HP SHOWN, then a caster's
-// spell as it winds up: CASTING its seconds into it (-1 none), KIND (MS_*), FOE the seat it is for. On
+// spell as it winds up: CASTING its seconds into it (-1 none), KIND (MS_*), FOE the seat it is for; then RANK (a responder's RANK_* + 1,
+// the stars' roster: verse/everglade/watch.coax LADDER; 0 the town's own) and MAX, their most Hit Points. On
 // their day CLIP is 1 walking, 0 standing; off it, the watch's clip. SHOWN 0: indoors, taken away or not called in.
 everglade_room_view :: (s: [] Everglade, i: int, out: [] f32) -> bool #export_c {
   if !s[0].wv.started || i < 0 || i >= WATCH_ACTORS || out.count < EG_ROOM_VIEW_FLOATS { return false; }
@@ -977,6 +1006,8 @@ everglade_room_view :: (s: [] Everglade, i: int, out: [] f32) -> bool #export_c 
   out[6] = ifx shown then 1.0f32 else 0.0f32;
   casting := a.ready && a.casting >= 0 && a.mode != WM_DEAD && a.mode != WM_DOWN;
   out[7] = ifx casting then a.casting else -1.0f32; out[8] = f32(a.cast_kind); out[9] = f32(a.foe);
+  out[10] = ifx watch_is_rein(i) then f32(watch_rank(w, i) + 1) else 0.0f32;
+  out[11] = f32(a.max);
   return true;
 }
 // Seat p comes back WANTED at `level` (1 to 5): the level the room saved for its player (coax/web/room/
@@ -988,7 +1019,8 @@ everglade_room_seed_wanted :: (s: [] Everglade, p: int, level: int) #export_c {
   w[0].me = p;
   l := clamp_w(level, 1, WANTED_LEVELS);
   y := watch_you(w[..]);
-  y[0].wanted = true; y[0].unseen = 0; y[0].heat = hi_w(y[0].heat, HEAT_AT[l]); y[0].level = hi_w(y[0].level, l);
+  // the heat its level needs: the town's next step raises the level to it, each star's roster coming in
+  y[0].wanted = true; y[0].unseen = 0; y[0].heat = hi_w(y[0].heat, HEAT_AT[l]);
   w[0].me = me;
 }
 // The next spell of the watch's that left its caster's hands since the last asked (EG_ROOM_MISSILE_FLOATS
@@ -1011,7 +1043,8 @@ everglade_room_missile :: (s: [] Everglade, out: [] f32) -> bool #export_c {
 everglade_room_wanted :: (s: [] Everglade, p: int) -> int #export_c {
   if !s[0].wv.started || p < 0 || p >= WATCH_YOUS { return 0; }
   y := s[0].wt[0].yous[p];
-  return ifx y.wanted then hi_w(y.level, 1) else 0;
+  // a level its heat has reached before the town's next step raises it (a seat just seeded) is its level
+  return ifx y.wanted then hi_w(y.level, watch_level_for(y.heat)) else 0;
 }
 
 // A page in a room whose server runs the town (everglade-net.coax net_town): everyone of the town is
@@ -1061,7 +1094,10 @@ watch_net_frame :: (s: [] Everglade) {
       else { a[0].mode = WM_CALM; }
       continue;
     }
+    // a responder of the stars' roster as the server says: its rank (its look and stat block) and its most HP
+    if watch_is_rein(i) && f.rank > 0 && a[0].rank != f.rank - 1 { a[0].rank = clamp_w(f.rank - 1, 0, RANKS - 1); a[0].ready = false; }
     if !a[0].ready { watch_revive(w, i); }
+    if f.max > 0 { a[0].max = f.max; }
     a[0].homed = true;
     a[0].x = f.x; a[0].z = f.z; a[0].yaw = f.yaw; a[0].hp = f.hp;
     a[0].mode = f.mode; a[0].body.on = false;

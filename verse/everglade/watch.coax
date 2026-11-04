@@ -46,7 +46,7 @@
 #load "../../aethyr/stand.coax";
 
 WATCH_NEW :: 6;                        // the watch past the two gate guards
-WATCH_REIN :: 10;                      // the heat's reinforcements at most at once (WANTED levels 2 to 5)
+WATCH_REIN :: 13;                      // the heat's responders at most at once: WANTED 5's roster (LADDER)
 WATCH_FIRST_REIN :: EG_SPOTS + WATCH_NEW;
 WATCH_ACTORS :: EG_SPOTS + WATCH_NEW + WATCH_REIN;  // everyone who can be hurt: the spots' people, the new watch, the reinforcements
 WATCH_SIGHT :: 34.0;      // m a guard sees a crime or you
@@ -117,44 +117,60 @@ Tumble :: struct {
 }
 Spear :: struct { live: bool; ax: f32; ay: f32; az: f32; bx: f32; by: f32; bz: f32; t: f32; flight: f32; hit: bool; damage: int; foe: int; }
 
-// ---- the heat: WANTED levels 1 to 5 (SRD 5.2.1 stat blocks, verse/rules/srd5-combat.coax)
-//   1  the town watch
-//   2  more guards and Warrior Veterans
-//   3  Mages, who cast at you from range: Fire Bolt, Ray of Frost, Hold Person, Fireball
-//   4  Knights and a Priest, who heals the watch and casts Guiding Bolt and Spiritual Weapon
-//   5  an elite company: an Archmage (Lightning Bolt, Cone of Cold) and Gladiators
+// ---- the heat: WANTED levels 1 to 5 (SRD 5.2.1 stat blocks, verse/rules/srd5-combat.coax). Each
+// level has its roster of responders (LADDER), who come in from the two gates nearest you on top of
+// the town's own watch (#12794):
+//   1  2 Guards: the nearby watch engages
+//   2  4 Guards: a patrol converges on you
+//   3  6 Guards and 2 Scouts, who shoot their longbows from range
+//   4  a Warrior Veteran (the watch captain) leading 8 Guards and 2 Scouts; the town's gates shut
+//      (GATES_AT: no one walks in or out by them while anyone in town is WANTED 4 or more)
+//   5  and the Knight-commander and a Priest, who heals the watch; every LADDER_EVERY s the
+//      roster is filled again (the fallen replaced) until you are down, out of their sight or out
+//      of town; your HUD shows the bounty on you (BOUNTY_GP)
 // Heat comes from crimes (HEAT_CRIME each), and from hunters you knock down (HEAT_DOWN) or kill
-// (HEAT_KILL); a level reached sends its wave in from the gate nearest you, never past HUNTERS_MAX
-// hunting at once. Out of every hunter's sight for longer the higher it is (WANTED_LOSE, then half
-// again a level), or dead, and it clears: the reinforcements walk back out of their gate.
+// (HEAT_KILL); a level reached fills its roster. Out of every hunter's sight for longer the higher it
+// is (WANTED_LOSE, then half again a level), or dead, and it clears: the responders walk back out of
+// their gate.
 RANK_GUARD :: 0; RANK_VETERAN :: 1; RANK_MAGE :: 2; RANK_KNIGHT :: 3; RANK_PRIEST :: 4; RANK_ARCHMAGE :: 5; RANK_GLADIATOR :: 6;
-RANKS :: 7;
-RANK_NAME :: [7] string.["GUARD", "VETERAN", "MAGE", "KNIGHT", "PRIEST", "ARCHMAGE", "GLADIATOR"];
-RANK_ATTACKS :: [7] int.[1, 2, 1, 2, 1, 1, 3];     // Multiattack: the attack rolls in a swing
-RANK_CASTER :: [7] bool.[false, false, true, false, true, true, false];
-RANK_DC :: [7] int.[0, 0, 14, 0, 13, 17, 0];
+RANK_SCOUT :: 7;
+RANKS :: 8;
+RANK_NAME :: [8] string.["GUARD", "VETERAN", "MAGE", "KNIGHT", "PRIEST", "ARCHMAGE", "GLADIATOR", "SCOUT"];
+RANK_ATTACKS :: [8] int.[1, 2, 1, 2, 1, 1, 3, 2];     // Multiattack: the attack rolls in a swing
+RANK_CASTER :: [8] bool.[false, false, true, false, true, true, false, true];   // a Scout shoots (MS_ARROW) as a caster casts
+RANK_DC :: [8] int.[0, 0, 14, 0, 13, 17, 0, 0];
 HEAT_CRIME :: 1; HEAT_DOWN :: 2; HEAT_KILL :: 4;
 HEAT_AT :: [6] int.[0, 0, 8, 18, 32, 50];          // the heat a level needs (by level)
-HUNTERS_MAX :: 12;
+HUNTERS_MAX :: 12;         // hunting at once that a guard's call for help (watch_help) stops at; the stars' roster has no cap but its own
 WANTED_LEVELS :: 5;
-// Each level's wave: up to four ranks (-1 none).
-WAVE :: [24] int.[
-  -1, -1, -1, -1,   -1, -1, -1, -1,
-  RANK_GUARD, RANK_GUARD, RANK_VETERAN, RANK_VETERAN,
-  RANK_VETERAN, RANK_MAGE, RANK_MAGE, -1,
-  RANK_KNIGHT, RANK_KNIGHT, RANK_PRIEST, -1,
-  RANK_ARCHMAGE, RANK_GLADIATOR, RANK_GLADIATOR, RANK_GLADIATOR
+// Each level's roster of responders, how many of each rank (RANK_* order: Guard, Veteran, Mage, Knight,
+// Priest, Archmage, Gladiator, Scout). The stars say how many come: no other cap.
+LADDER :: [48] int.[
+  0, 0, 0, 0, 0, 0, 0, 0,
+  2, 0, 0, 0, 0, 0, 0, 0,
+  4, 0, 0, 0, 0, 0, 0, 0,
+  6, 0, 0, 0, 0, 0, 0, 2,
+  8, 1, 0, 0, 0, 0, 0, 2,
+  8, 1, 0, 1, 1, 0, 0, 2
 ];
+LADDER_EVERY :: 30.0;      // s between WANTED 5's waves
+GATES_AT :: 4;             // the WANTED level that shuts the town's gates (plan.coax EG_GATE)
+BOUNTY_GP :: 500;          // gp on your head at WANTED 5, shown on your HUD
+BOUNTY_LINE :: "BOUNTY 500 GP";   // BOUNTY_GP as the HUD says it
+// Whether (x, z) is in town: inside the palisade (plan.coax EG_PALISADE's walls).
+watch_in_town :: (x: f32, z: f32) -> bool { return x > -64.0 && x < 64.0 && z > -56.0 && z < 60.0; }
+ladder_size :: (l: int) -> int { n := 0; for r: 0..<RANKS { n += LADDER[clamp_w(l, 0, WANTED_LEVELS) * RANKS + r]; } return n; }
 // The gates a wave comes in by, just inside each: the South, West, East and North Gates.
 WATCH_GATE :: [8] f32.[0.0, -51.0,   -59.0, 0.0,   59.0, 0.0,   44.0, 55.0];
 // The casters' spells (SRD 5.2.1) as missiles in the air.
 MS_SPEAR :: 0; MS_FIRE_BOLT :: 1; MS_FROST :: 2; MS_HOLD :: 3; MS_FIREBALL :: 4; MS_GUIDING :: 5; MS_WEAPON :: 6;
 MS_LIGHTNING :: 7; MS_COLD :: 8; MS_HEAL :: 9; MS_MAGIC_MISSILE :: 10; MS_EARTHBIND :: 11;
+MS_ARROW :: 12;            // a Scout's longbow: +4, 1d8 + 2 piercing
 MISSILES :: 18;
 MS_SPEED :: 22.0;          // m/s a bolt flies (you can step out of its way)
 MS_DODGE :: 1.4;           // m from where it was aimed that it still finds you
 CAST_WIND :: 0.8;          // s a caster's hands glow before the spell leaves them
-CAST_EVERY :: [7] f32.[0, 0, 3.6, 0, 4.4, 3.2, 0];
+CAST_EVERY :: [8] f32.[0, 0, 3.6, 0, 4.4, 3.2, 0, 3.0];   // a Scout: its two longbow shots a 6 s round
 CAST_RANGE :: 34.0;        // m (their sight; the SRD's 120 ft)
 CAST_NEAR :: 8.0; CAST_FAR :: 15.0;   // m a caster keeps from you
 FIREBALL_R :: 6.096;       // 20 ft
@@ -187,13 +203,13 @@ YOU_STR_SAVE :: 4;
 AA_GAP :: 3.5;             // s between any two of these from the whole company, so a volley can be survived
 LEAD_MOST :: 12.0;         // m/s of your motion they lead at most
 // Their looks: which kit clothes them (folk.coax PART_*), dyed by rank.
-RANK_DYE :: [28] f32.[
+RANK_DYE :: [32] f32.[
   0.32, 0.03, 0.025, 1,   0.07, 0.075, 0.085, 1,   0.05, 0.07, 0.42, 1,   0.62, 0.62, 0.64, 1,
-  0.86, 0.76, 0.42, 1,    0.2, 0.03, 0.32, 1,      0.46, 0.25, 0.07, 1
+  0.86, 0.76, 0.42, 1,    0.2, 0.03, 0.32, 1,      0.46, 0.25, 0.07, 1,   0.16, 0.3, 0.12, 1
 ];
-RANK_HOOD :: [7] bool.[false, false, true, false, true, true, false];
-RANK_BARE :: [7] bool.[false, false, false, false, false, false, true];
-RANK_ROBE :: [7] bool.[false, false, false, false, true, true, false];   // the Priest and the Archmage wear robes over the leathers
+RANK_HOOD :: [8] bool.[false, false, true, false, true, true, false, true];
+RANK_BARE :: [8] bool.[false, false, false, false, false, false, true, false];
+RANK_ROBE :: [8] bool.[false, false, false, false, true, true, false, false];   // the Priest and the Archmage wear robes over the leathers
 Missile :: struct {
   live: bool; kind: int; caster: int;
   ax: f32; ay: f32; az: f32; bx: f32; by: f32; bz: f32;   // from and to
@@ -279,6 +295,7 @@ Actor :: struct {
   blind: bool;                    // Blinded (Sunbeam, Sunburst): their attack rolls at you have Disadvantage
   role: int; role_t: f32;         // the captain's plan for a hunting guard (ROLE_*, verse/everglade/captain.coax) and how long it holds
   foe: int;                       // the player (Watch.yous) they hunt, or last were alarmed by
+  born: int;                      // times they were stood up whole (watch_revive): a fresh face for the room's rules
 }
 
 // What the watch keeps of each player it answers (the page has one, yous[0]; the room server one
@@ -300,6 +317,7 @@ WatchYou :: struct {
   you_fall: f32;                  // s since you fell (your topple)
   // the heat
   level: int; heat: int;          // the WANTED level (0 none) and what has raised it
+  ladder_t: f32;                  // s at WANTED 5 since its last wave (LADDER_EVERY)
   held_t: f32; held_saves: int;   // Hold Person: how long more, the saves made
   slow_t: f32;                    // Ray of Frost
   marked: bool;                   // Guiding Bolt: the next attack at you has advantage
@@ -354,6 +372,7 @@ watch_is_rein :: (i: int) -> bool { return i >= WATCH_FIRST_REIN && i < WATCH_AC
 rank_block :: (r: int) -> SrdCreature {
   if r == RANK_VETERAN { return SRD_VETERAN; } if r == RANK_MAGE { return SRD_MAGE; } if r == RANK_KNIGHT { return SRD_KNIGHT; }
   if r == RANK_PRIEST { return SRD_PRIEST; } if r == RANK_ARCHMAGE { return SRD_ARCHMAGE; } if r == RANK_GLADIATOR { return SRD_GLADIATOR; }
+  if r == RANK_SCOUT { return SRD_SCOUT; }
   return SRD_GUARD;
 }
 watch_rank :: (w: [] Watch, i: int) -> int { return ifx watch_is_rein(i) then clamp_w(w[0].actors[i].rank, 0, RANKS - 1) else RANK_GUARD; }
@@ -394,7 +413,7 @@ watch_start_you :: (w: [] Watch) {
 }
 watch_revive :: (w: [] Watch, i: int) {
   a := w[0].actors[i..<i + 1];
-  a[0].mode = WM_CALM; a[0].t = 0; a[0].after = WM_CALM;
+  a[0].mode = WM_CALM; a[0].t = 0; a[0].after = WM_CALM; a[0].born += 1;
   a[0].max = watch_stats(w, i).hp; a[0].hp = a[0].max;
   a[0].swing = -1; a[0].struck = false; a[0].cool = 0; a[0].shout = -1; a[0].shout_t = 0;
   a[0].hold = false; a[0].clip = PEOPLE_IDLE; a[0].speed = 0; a[0].sees = false;
@@ -733,6 +752,7 @@ watch_choose :: (w: [] Watch, i: int, gap: f32, up: f32) -> int {
     if a[0].weapon_cool <= 0 { a[0].weapon_cool = 25; return MS_WEAPON; }
     return MS_GUIDING;
   }
+  if r == RANK_SCOUT { return MS_ARROW; }
   if r == RANK_ARCHMAGE {
     if gap <= f32(CONE_LONG) - 1 && srd_roll(w[0].dice[..], 2) == 1 { return MS_COLD; }
     if gap <= f32(LIGHTNING_LONG) - 1 { return MS_LIGHTNING; }
@@ -780,6 +800,12 @@ watch_cast :: (w: [] Watch, i: int, kind: int, feet: f32, you: Point, heights: [
         m.damage = srd_sum(w[0].dice[..], n, sides);
       }
     }
+  }
+  if kind == MS_ARROW {
+    m.flight = hi(far / (f32(MS_SPEED) * 1.6), 0.08);
+    roll := watch_roll_at_you(w, i, c.attack, c);
+    m.hit = roll.hit;
+    if roll.hit { m.damage = srd_sum(w[0].dice[..], ifx roll.crit then 2 else 1, 8) + 2; }
   }
   if kind == MS_FROST {
     roll := watch_roll_at_you(w, i, c.attack, c);
@@ -874,7 +900,7 @@ watch_arrive :: (w: [] Watch, k: int, you: Point, heights: [] f32) {
   if watch_you(w[..])[0].dead { return; }
   at := v3(m.bx, m.by, m.bz);
   from := v3(m.ax, m.ay, m.az);
-  if m.kind == MS_FIRE_BOLT || m.kind == MS_GUIDING || m.kind == MS_FROST {
+  if m.kind == MS_FIRE_BOLT || m.kind == MS_GUIDING || m.kind == MS_FROST || m.kind == MS_ARROW {
     if m.hit && watch_near_you(you, at, f32(MS_DODGE)) {
       watch_you(w[..])[0].spell_hits += 1;
       push := times(unit_or(v3(at.x - from.x, 0, at.z - from.z), v3(0, 0, 1)), 2.5);
@@ -1431,6 +1457,12 @@ watch_you_end :: (w: [] Watch, t: f32, seen: bool, you: Point) {
   if watch_you(w[..])[0].wanted && !watch_you(w[..])[0].dead {
     to := watch_level_for(watch_you(w[..])[0].heat);
     while watch_you(w[..])[0].level < to { watch_you(w[..])[0].level += 1; _ := watch_wave(w, watch_you(w[..])[0].level, you); }
+    // WANTED 5: its roster filled again every LADDER_EVERY s, the fallen replaced, until you are down,
+    // lost or out of town
+    if watch_you(w[..])[0].level >= WANTED_LEVELS && watch_in_town(you.x, you.z) {
+      watch_you(w[..])[0].ladder_t += t;
+      if watch_you(w[..])[0].ladder_t >= f32(LADDER_EVERY) { watch_you(w[..])[0].ladder_t = 0; _ := watch_wave(w, WANTED_LEVELS, you); }
+    } else { watch_you(w[..])[0].ladder_t = 0; }
   }
 }
 // The level `heat` reaches (at least 1: you are wanted).
@@ -1453,48 +1485,50 @@ watch_hunters :: (w: [] Watch) -> int {
   }
   return n;
 }
-// Level l's wave in at the gate nearest you, as many as the cap leaves room for. How many came.
+// Level l's roster (LADDER) filled: of each rank, as many more as are missing from those already on
+// their way or fighting, in from the two gates nearest you by turns, after you. How many came.
 watch_wave :: (w: [] Watch, l: int, you: Point) -> int {
-  if l < 2 || l > WANTED_LEVELS { return 0; }
-  gate := 0; best := 100000.0f32;
-  for g: 0..<4 {
-    d := flat_gap(v3(WATCH_GATE[g * 2], 0, WATCH_GATE[g * 2 + 1]), you);
-    if d < best { best = d; gate = g; }
-  }
-  gx := WATCH_GATE[gate * 2]; gz := WATCH_GATE[gate * 2 + 1];
-  came := 0;
-  for q: 0..<4 {
-    r := WAVE[l * 4 + q];
-    if r < 0 { continue; }
-    // at the cap, the lowest-ranked reinforcement below this one is sent back out to make room
-    if watch_hunters(w) >= HUNTERS_MAX {
-      low := -1;
-      for i: WATCH_FIRST_REIN..<WATCH_ACTORS {
-        b := w[0].actors[i];
-        if !b.homed || b.mode != WM_CHASE || b.rank >= r { continue; }
-        if low < 0 || b.rank < w[0].actors[low].rank { low = i; }
-      }
-      if low < 0 { continue; }
-      w[0].actors[low].mode = WM_BACK; w[0].actors[low].casting = -1;
+  if l < 1 || l > WANTED_LEVELS { return 0; }
+  near: [2] int; near[0] = -1; near[1] = -1;
+  for pass: 0..<2 {
+    best := 100000.0f32;
+    for g: 0..<4 {
+      if g == near[0] { continue; }
+      d := flat_gap(v3(WATCH_GATE[g * 2], 0, WATCH_GATE[g * 2 + 1]), you);
+      if d < best { best = d; near[pass] = g; }
     }
-    k := -1;
-    for i: WATCH_FIRST_REIN..<WATCH_ACTORS { if k < 0 && !w[0].actors[i].homed { k = i; } }
-    // no slot free: one walking back out takes the place
-    for i: WATCH_FIRST_REIN..<WATCH_ACTORS { if k < 0 && w[0].actors[i].mode == WM_BACK { k = i; } }
-    if k < 0 { break; }
-    a := w[0].actors[k..<k + 1];
-    // side by side across the gateway, facing in
-    side := (f32(q) - 1.5) * 1.3;
-    inx := ifx gate == 1 then 1.0f32 else ifx gate == 2 then -1.0f32 else 0.0f32;
-    inz := ifx gate == 0 then 1.0f32 else ifx gate == 3 then -1.0f32 else 0.0f32;
-    a[0].rank = r;
-    a[0].home_x = gx + inz * side; a[0].home_z = gz + inx * side; a[0].home_yaw = atan2(inx, inz); a[0].home_in = false;
-    watch_revive(w, k);
-    a[0].homed = true;
-    a[0].mode = WM_CHASE; a[0].t = 0; a[0].foe = w[0].me;
-    a[0].seen_x = you.x; a[0].seen_z = you.z;
-    a[0].shout = ifx q == 0 then 2 else -1; a[0].shout_t = 0;
-    came += 1; w[0].spawned += 1;
+  }
+  came := 0;
+  for r: 0..<RANKS {
+    have := 0;
+    for i: WATCH_FIRST_REIN..<WATCH_ACTORS {
+      b := w[0].actors[i];
+      if b.homed && b.rank == r && b.mode != WM_DEAD && b.mode != WM_BACK && !(b.mode == WM_DOWN && b.after == WM_BACK) { have += 1; }
+    }
+    for q: have..<LADDER[l * RANKS + r] {
+      k := -1;
+      for i: WATCH_FIRST_REIN..<WATCH_ACTORS { if k < 0 && !w[0].actors[i].homed { k = i; } }
+      // no place free: the fallen are carried off, then one walking back out turns round
+      for i: WATCH_FIRST_REIN..<WATCH_ACTORS { if k < 0 && w[0].actors[i].mode == WM_DEAD { k = i; } }
+      for i: WATCH_FIRST_REIN..<WATCH_ACTORS { if k < 0 && w[0].actors[i].mode == WM_BACK { k = i; } }
+      if k < 0 { break; }
+      gate := near[came % 2];
+      if gate < 0 { gate = near[0]; }
+      gx := WATCH_GATE[gate * 2]; gz := WATCH_GATE[gate * 2 + 1];
+      a := w[0].actors[k..<k + 1];
+      // side by side across the gateway, facing in
+      side := (f32((came / 2) % 6) - 2.5) * 1.1;
+      inx := ifx gate == 1 then 1.0f32 else ifx gate == 2 then -1.0f32 else 0.0f32;
+      inz := ifx gate == 0 then 1.0f32 else ifx gate == 3 then -1.0f32 else 0.0f32;
+      a[0].rank = r;
+      a[0].home_x = gx + inz * side; a[0].home_z = gz + inx * side; a[0].home_yaw = atan2(inx, inz); a[0].home_in = false;
+      watch_revive(w, k);
+      a[0].homed = true;
+      a[0].mode = WM_CHASE; a[0].t = 0; a[0].foe = w[0].me;
+      a[0].seen_x = you.x; a[0].seen_z = you.z;
+      a[0].shout = ifx came == 0 then 2 else -1; a[0].shout_t = 0;
+      came += 1; w[0].spawned += 1;
+    }
   }
   w[0].waves += 1;
   return came;
@@ -1503,7 +1537,7 @@ watch_wave :: (w: [] Watch, l: int, you: Point) -> int {
 watch_stand_down :: (w: [] Watch) {
   watch_you(w[..])[0].wanted = false; watch_you(w[..])[0].unseen = 0;
   // the heat clears: the reinforcements go back out of their gate, the fallen are carried off
-  watch_you(w[..])[0].level = 0; watch_you(w[..])[0].heat = 0; watch_you(w[..])[0].marked = false; watch_you(w[..])[0].bound_t = 0;
+  watch_you(w[..])[0].level = 0; watch_you(w[..])[0].heat = 0; watch_you(w[..])[0].ladder_t = 0; watch_you(w[..])[0].marked = false; watch_you(w[..])[0].bound_t = 0;
   for k: 0..<MISSILES { if w[0].missiles[k].kind == MS_WEAPON || w[0].missiles[k].kind == MS_MAGIC_MISSILE { w[0].missiles[k].live = false; } }
   for i: WATCH_FIRST_REIN..<WATCH_ACTORS {
     if w[0].actors[i].mode == WM_DEAD || w[0].actors[i].mode == WM_DOWN { w[0].actors[i].homed = false; }
@@ -1793,6 +1827,9 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
     p := watch_beat_at(w, k, 0, true);
     watch_home(w, EG_SPOTS + k, p.x, p.z, p.face, false);
   }
+  // the checks' town starts as if WANTED 1's two responders were already sent: most checks are of the
+  // town's own watch (the stars' rosters: "the heat" checks, which start from 0)
+  watch_you(w[..])[0].level = 1;
 }
 
 #test "the watch: eight guards, each beat on open ground, there and back on the shared clock" #steps 190000000 {
@@ -2237,17 +2274,20 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
   #assert watch_you(w2[..])[0].you_body.pitch == -f32(PI) * 0.5;
 }
 
-#test "the heat: crimes and fallen hunters raise WANTED 1 to 5; each level's wave comes in at the gate nearest you; never over 12 hunting" #steps 190000000 {
+#test "the heat: crimes and fallen hunters raise WANTED 1 to 5; each star's roster (LADDER) comes in from the two gates nearest you; WANTED 5 fills it again every 30 s" #steps 260000000 {
   heights: [EG_GROUND_POINTS] f32;
   watch_ground(heights[..]);
   w: [1] Watch;
   nob: [6] f32;
   watch_test_town(w[..], heights[..]);
+  watch_you(w[..])[0].level = 0;
   you := v3(EG_SPOT[0] + 6, 0, EG_SPOT[1] - 6);
   #assert watch_level_for(0) == 1 && watch_level_for(7) == 1 && watch_level_for(8) == 2 && watch_level_for(18) == 3 && watch_level_for(32) == 4 && watch_level_for(50) == 5 && watch_level_for(999) == 5;
+  #assert ladder_size(1) == 2 && ladder_size(2) == 4 && ladder_size(3) == 8 && ladder_size(4) == 11 && ladder_size(5) == 13 && ladder_size(5) <= WATCH_REIN;
   _ := watch_crime(w[..], v3(EG_SPOT[0], 0, EG_SPOT[1] - 20), WATCH_HEAR[1], you, nob[..], 0, heights[..]);
   watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]);
-  #assert watch_you(w[..])[0].wanted && watch_you(w[..])[0].level == 1 && watch_you(w[..])[0].heat == HEAT_CRIME && w[0].waves == 0;
+  // 1 star: two Guards come in after you
+  #assert watch_you(w[..])[0].wanted && watch_you(w[..])[0].level == 1 && watch_you(w[..])[0].heat == HEAT_CRIME && w[0].waves == 1 && w[0].spawned == 2;
   // you cut down a hunter: the heat rises by a kill; one a hunter's own spell fells adds nothing
   g := 0;
   watch_harm(w[..], g, 100, you);
@@ -2256,51 +2296,90 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
   #assert watch_you(w[..])[0].heat == HEAT_CRIME + HEAT_KILL;
   watch_harm(w[..], 1, 1, you);
   #assert watch_you(w[..])[0].heat == HEAT_CRIME + HEAT_KILL + HEAT_DOWN;
-  // 8: level 2, two guards and two Veterans in by the South Gate (nearest you)
+  // 8: level 2, a patrol of four Guards (two more), in by the two gates nearest you
   watch_you(w[..])[0].heat = 8;
   watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]);
-  #assert watch_you(w[..])[0].level == 2 && w[0].waves == 1 && w[0].spawned == 4;
-  vets := 0;
+  #assert watch_you(w[..])[0].level == 2 && w[0].waves == 2 && w[0].spawned == 4;
+  // 18: level 3, six Guards and two Scouts, whose stat block is the SRD's
+  watch_you(w[..])[0].heat = 18;
+  watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]);
+  n: [RANKS] int;
   for i: WATCH_FIRST_REIN..<WATCH_ACTORS {
     a := w[0].actors[i];
-    if !a.homed { continue; }
-    #assert a.mode == WM_CHASE && flat_gap(v3(a.x, 0, a.z), v3(WATCH_GATE[0], 0, WATCH_GATE[1])) < 3;
-    if a.rank == RANK_VETERAN { vets += 1; #assert a.hp == SRD_VETERAN.hp && watch_stats(w[..], i).ac == 17; }
+    if !a.homed || a.mode == WM_DEAD || a.mode == WM_BACK { continue; }
+    n[a.rank] += 1;
+    if a.rank == RANK_SCOUT { #assert a.hp == 16 && watch_stats(w[..], i).ac == 13 && watch_caster(w[..], i); }
   }
-  #assert vets == 2;
-  // all the way to 5: the Mages', Knights' and Priest's, and the Archmage's company, as far as the cap allows
+  #assert watch_you(w[..])[0].level == 3 && n[RANK_GUARD] == 6 && n[RANK_SCOUT] == 2;
+  // all the way to 5: the Veteran captain and eight Guards, then the Knight-commander and a Priest: all thirteen
   watch_you(w[..])[0].heat = 60;
   watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]);
-  #assert watch_you(w[..])[0].level == 5 && w[0].waves == 4 && watch_hunters(w[..]) <= HUNTERS_MAX && watch_hunters(w[..]) >= 10;
-  mages := 0; archmage := 0;
-  for i: WATCH_FIRST_REIN..<WATCH_ACTORS {
-    b := w[0].actors[i];
-    if b.homed && b.mode == WM_CHASE && b.rank == RANK_MAGE { mages += 1; }
-    if b.homed && b.mode == WM_CHASE && b.rank == RANK_ARCHMAGE { archmage += 1; }
-  }
-  #assert mages == 2 && archmage == 1;
-  // with every guard of the watch already after you, the higher ranks still come: the lowest go back out
-  w3: [1] Watch;
-  watch_test_town(w3[..], heights[..]);
-  _ = watch_crime(w3[..], you, 100, you, nob[..], 0, heights[..]);
-  for i: EG_SPOTS..<WATCH_FIRST_REIN { w3[0].actors[i].mode = WM_CHASE; }
-  for i: 0..<EG_SPOTS { if watch_is_guard(i) { w3[0].actors[i].mode = WM_CHASE; } }
-  watch_you(w3[..])[0].heat = 60;
-  watch_tick(w3[..], 0.1, you, 0.5, nob[..], 0, heights[..]);
-  top := 0;
-  for i: WATCH_FIRST_REIN..<WATCH_ACTORS { b := w3[0].actors[i]; if b.homed && b.mode == WM_CHASE && b.rank >= RANK_KNIGHT { top += 1; } }
-  #assert watch_you(w3[..])[0].level == 5 && watch_hunters(w3[..]) <= HUNTERS_MAX && top >= 3;
-  // and nearer the East Gate, a wave comes in there
+  m: [RANKS] int;
+  for i: WATCH_FIRST_REIN..<WATCH_ACTORS { b := w[0].actors[i]; if b.homed && b.mode == WM_CHASE { m[b.rank] += 1; } }
+  #assert watch_you(w[..])[0].level == 5 && m[RANK_GUARD] == 8 && m[RANK_SCOUT] == 2 && m[RANK_VETERAN] == 1 && m[RANK_KNIGHT] == 1 && m[RANK_PRIEST] == 1;
+  // two of them fall; 30 s on at WANTED 5 the roster is whole again (you a little inside the South Gate:
+  // the waves come while you are in town)
+  you = v3(EG_SPOT[0] + 6, 0, -48);
+  k0 := -1; k1 := -1;
+  for i: WATCH_FIRST_REIN..<WATCH_ACTORS { if w[0].actors[i].rank == RANK_GUARD && w[0].actors[i].homed { if k0 < 0 { k0 = i; } else if k1 < 0 { k1 = i; } } }
+  w[0].actors[k0].mode = WM_DEAD; w[0].actors[k1].mode = WM_DEAD;
+  before := w[0].spawned;
+  watch_you(w[..])[0].ladder_t = f32(LADDER_EVERY) - 0.05;
+  watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]);
+  #assert w[0].spawned == before + 2;
+  // and nearer the East Gate, the first star's two come in there and by the next gate nearest
   w2: [1] Watch;
   watch_test_town(w2[..], heights[..]);
+  watch_you(w2[..])[0].level = 0;
   east := v3(55, 0, 2);
   _ = watch_crime(w2[..], east, 100, east, nob[..], 0, heights[..]);
-  watch_you(w2[..])[0].heat = 8;
   watch_tick(w2[..], 0.1, east, 0.5, nob[..], 0, heights[..]);
-  #assert watch_you(w2[..])[0].level == 2 && flat_gap(v3(w2[0].actors[WATCH_FIRST_REIN].x, 0, w2[0].actors[WATCH_FIRST_REIN].z), v3(59, 0, 0)) < 3;
+  #assert watch_you(w2[..])[0].level >= 1 && flat_gap(v3(w2[0].actors[WATCH_FIRST_REIN].x, 0, w2[0].actors[WATCH_FIRST_REIN].z), v3(59, 0, 0)) < 4;
 }
 
-#test "the heat clears out of sight (longer the higher it is) or when you die; the reinforcements walk back out of their gate" #steps 280000000 {
+#test "a player who comes back WANTED 3 (the room's saved level, #12872) is hunted from its first tick: the third star's roster comes in after them and closes on them; another seat is left alone" #steps 900000000 {
+  heights: [EG_GROUND_POINTS] f32;
+  watch_ground(heights[..]);
+  w: [1] Watch;
+  nob: [6] f32;
+  watch_test_town(w[..], heights[..]);
+  at: [2] Point; live: [2] bool;
+  at[0] = v3(4, 0, -36); at[1] = v3(-30, 0, 30);
+  for p: 0..<2 { at[p].y = watch_feet_y(w[..], heights[..], at[p].x, at[p].z); live[p] = true; }
+  for p: 0..<2 { w[0].me = p; watch_start_you(w[..]); watch_you(w[..])[0].hp = 100000; watch_you(w[..])[0].max = 100000; }
+  // as everglade_room_seed_wanted lays it on seat 0: wanted, with the heat its level needs
+  w[0].me = 0;
+  watch_you(w[..])[0].wanted = true; watch_you(w[..])[0].unseen = 0; watch_you(w[..])[0].heat = HEAT_AT[3];
+  watch_tick_room(w[..], 0.1, 0.5, at[..], live[..], nob[..], 0, heights[..]);
+  w[0].me = 0;
+  #assert watch_you(w[..])[0].wanted && watch_you(w[..])[0].level == 3;
+  n := 0;
+  for i: WATCH_FIRST_REIN..<WATCH_ACTORS { a := w[0].actors[i]; if a.homed && a.mode == WM_CHASE { #assert a.foe == 0; n += 1; } }
+  #assert n == ladder_size(3);
+  // they come for it and close on it, and it stays wanted while they see it
+  best := 1000.0f32;
+  for f: 0..<450 {
+    watch_tick_room(w[..], 0.1, 0.5, at[..], live[..], nob[..], 0, heights[..]);
+    for i: WATCH_FIRST_REIN..<WATCH_ACTORS { a := w[0].actors[i]; if a.homed && a.foe == 0 { best = lo(best, flat_gap(v3(a.x, 0, a.z), at[0])); } }
+  }
+  w[0].me = 0;
+  #assert best < 3 && watch_you(w[..])[0].wanted && watch_you(w[..])[0].hp < 100000;
+  w[0].me = 1;
+  #assert !watch_you(w[..])[0].wanted && watch_you(w[..])[0].level == 0;
+  // out of town at five stars, no wave comes after you
+  w2: [1] Watch;
+  watch_test_town(w2[..], heights[..]);
+  out := v3(0, 0, -84);
+  watch_you(w2[..])[0].wanted = true; watch_you(w2[..])[0].heat = HEAT_AT[5];
+  watch_tick(w2[..], 0.1, out, 0.5, nob[..], 0, heights[..]);
+  #assert watch_you(w2[..])[0].level == 5 && !watch_in_town(out.x, out.z) && watch_in_town(0, 0);
+  before := w2[0].waves;
+  watch_you(w2[..])[0].ladder_t = f32(LADDER_EVERY) - 0.05;
+  watch_tick(w2[..], 0.1, out, 0.5, nob[..], 0, heights[..]);
+  #assert w2[0].waves == before;
+}
+
+#test "the heat clears out of sight (longer the higher it is) or when you die; the reinforcements walk back out of their gate" #steps 600000000 {
   heights: [EG_GROUND_POINTS] f32;
   watch_ground(heights[..]);
   w: [1] Watch;
@@ -2344,6 +2423,25 @@ watch_test_caster :: (w: [] Watch, heights: [] f32, r: int, you: Point) -> int {
   a[0].homed = true; a[0].mode = WM_CHASE; a[0].seen_x = you.x; a[0].seen_z = you.z;
   a[0].yaw = atan2(you.x - a[0].x, you.z - a[0].z);
   return i;
+}
+
+#test "a Scout stands off and shoots its longbow at you: +4, 1d8 + 2 piercing a hit" #steps 400000000 {
+  heights: [EG_GROUND_POINTS] f32;
+  watch_ground(heights[..]);
+  w: [1] Watch;
+  nob: [6] f32;
+  you := v3(0, 0, 9);
+  you.y = watch_feet_y(w[..], heights[..], you.x, you.z);
+  i := watch_test_caster(w[..], heights[..], RANK_SCOUT, you);
+  watch_you(w[..])[0].hp = 100000; watch_you(w[..])[0].max = 100000;
+  #assert watch_caster(w[..], i) && w[0].actors[i].hp == SRD_SCOUT.hp && watch_stats(w[..], i).ac == 13;
+  most := 0; last := watch_you(w[..])[0].hp;
+  for f: 0..<300 {
+    watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]);
+    most = hi_w(most, last - watch_you(w[..])[0].hp); last = watch_you(w[..])[0].hp;
+  }
+  #assert watch_you(w[..])[0].spell_hits >= 1 && watch_you(w[..])[0].spell_hits + watch_you(w[..])[0].spell_misses >= 4;
+  #assert most >= 3 && most <= 18;   // one arrow a tick at most: 1d8 + 2, a critical's 2d8 + 2
 }
 
 #test "the casters: a Mage's Fire Bolt and Ray of Frost, Hold Person, and a Fireball that throws you; dodged bolts miss" #steps 180000000 {

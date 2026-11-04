@@ -28,7 +28,7 @@
 #load "everglade5e-raid.coax";     // the Cultist Raid offline, a preview (?raid=preview): the Siege's armies
 
 E5R_BEAT :: 1.5; E5R_RECHARGE :: 9.0;
-E5R_FOLK :: 38;            // Everglade's people who can be hurt (verse/everglade/watch.coax WATCH_ACTORS)
+E5R_FOLK :: 47;            // Everglade's people who can be hurt (verse/everglade/watch.coax WATCH_ACTORS: 28 spots, 6 new watch, 13 responders)
 E5R_OTHERS :: 15;          // the others in the room (room.coax ROOM_OTHERS)
 E5R_BEASTS :: 8;           // your Zombies at once (everglade5e-beasts.coax), creatures after the others
 E5R_ME :: 0;
@@ -46,11 +46,12 @@ E5R_READY :: 0; E5R_NO_SLOT :: 1; E5R_SPENT :: 2; E5R_CANT :: 3;
 E5R_COST_NONE :: 0; E5R_COST_ACTION :: 1; E5R_COST_BONUS :: 2; E5R_COST_REACTION :: 3;
 
 // Everglade's stat blocks (verse/rules/srd5-combat.coax) and their SRD 5.2.1 ability scores
-E5R_BLOCKS :: 8;
-E5R_COMMONER :: 0; E5R_GUARD :: 1; E5R_VETERAN :: 2; E5R_MAGE :: 3; E5R_KNIGHT :: 4; E5R_PRIEST :: 5; E5R_ARCHMAGE :: 6; E5R_GLADIATOR :: 7;
-E5R_BLOCK_NAME :: [8] string.["Commoner", "Guard", "Warrior Veteran", "Mage", "Knight", "Priest", "Archmage", "Gladiator"];
-E5R_SCORES :: [48] int.[10, 10, 10, 10, 10, 10,  13, 12, 12, 10, 11, 10,  16, 13, 14, 10, 11, 10,  9, 14, 11, 17, 12, 11,
-                        16, 11, 14, 11, 11, 15,  10, 10, 12, 13, 16, 13,  10, 14, 12, 20, 15, 16,  18, 15, 16, 10, 12, 15];
+E5R_BLOCKS :: 9;
+E5R_COMMONER :: 0; E5R_GUARD :: 1; E5R_VETERAN :: 2; E5R_MAGE :: 3; E5R_KNIGHT :: 4; E5R_PRIEST :: 5; E5R_ARCHMAGE :: 6; E5R_GLADIATOR :: 7; E5R_SCOUT :: 8;
+E5R_BLOCK_NAME :: [9] string.["Commoner", "Guard", "Warrior Veteran", "Mage", "Knight", "Priest", "Archmage", "Gladiator", "Scout"];
+E5R_SCORES :: [54] int.[10, 10, 10, 10, 10, 10,  13, 12, 12, 10, 11, 10,  16, 13, 14, 10, 11, 10,  9, 14, 11, 17, 12, 11,
+                        16, 11, 14, 11, 11, 15,  10, 10, 12, 13, 16, 13,  10, 14, 12, 20, 15, 16,  18, 15, 16, 10, 12, 15,
+                        11, 14, 12, 11, 13, 11];
 e5r_scores :: (block: int) -> [6] int {
   o: [6] int;
   for q: 0..<6 { o[q] = E5R_SCORES[block * 6 + q]; }

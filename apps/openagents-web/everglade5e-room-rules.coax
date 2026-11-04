@@ -184,7 +184,8 @@ e5rr_people :: (r: [] E5rRoom, folk: [] f32, folk_n: int) #export_c {
     r[0].folk_x[j] = folk[f + 1]; r[0].folk_z[j] = folk[f + 2];
     block := clamp_r(cast(int) folk[f + 7], 0, E5R_BLOCKS - 1);
     folk_max := rs_max(cast(int) folk[f + 5], 1);
-    if r[0].block[j] != block || b[0].c[i].hp_max != folk_max {
+    // a new face here: a reinforcement of another rank, or one the town stood up whole again (HERE 2)
+    if r[0].block[j] != block || b[0].c[i].hp_max != folk_max || folk[f] > 1.5 {
       r[0].block[j] = block;
       t := b[0].c[i].turn_at; ro := b[0].c[i].round_at;
       b[0].c[i] = fb_folk(E5R_BLOCK_NAME[block], 1, cast(int) folk[f + 6], folk_max, e5r_scores(block));
@@ -346,7 +347,7 @@ e5rr_hurt :: (r: [] E5rRoom, who: int, amount: int, by: int) #export_c {
   i := ifx who > E5RR_TGT_BEAST then e5rr_beast_of_tgt(r, who) else e5rr_of_tgt(who);
   if i < 0 { return; }
   j := ifx by > E5RR_TGT_BEAST then e5rr_beast_of_tgt(r, by) else e5rr_of_tgt(by);
-  rs_damage(r[0].b[..], i, ifx j >= 0 then j else i, amount, RS_BLUDGEONING, false, -1);
+  rs_damage(r[0].b[..], ifx j >= 0 then j else i, i, amount, RS_BLUDGEONING, false, -1);   // (b, by, to): the blow lands on `who`
 }
 
 // ---- summoned creatures
@@ -609,6 +610,18 @@ e5rr_test_ring :: (r: [] E5rRoom, px: int, py: int) {
   }
   e5rr_people(r, folk[..], E5R_FOLK);
   e5rr_place(r, 0, e5rr_test_m(px - 2), e5rr_test_m(py));
+}
+#test "Everglade 5E room: the world's blow lands on whom it struck, not on the guard who dealt it (#12794)" #steps 2000000000 {
+  r: [1] E5rRoom;
+  e5rr_start(r[..], 7);
+  e5rr_test_people(r[..]);
+  e5rr_join(r[..], 1, 0, 0);
+  out: [E5RR_OUT_FLOATS] f32;
+  e5rr_folk_out(r[..], 0, out[..]); guard := out[0];
+  // person 0's sword (the watch's `took`, by 0) at seat 1: 7 Hit Points off the seat, none off person 0
+  e5rr_hurt(r[..], E5RR_TGT_SEAT + 1, 7, 0);
+  e5rr_seat_out(r[..], 1, out[..]); #assert out[0] == 50;
+  e5rr_folk_out(r[..], 0, out[..]); #assert out[0] == guard;
 }
 #test "Everglade 5E room: an area spell resolves against every person in its shape, one save each, and none outside it (#12718)" #steps 4000000000 {
   // Entangle: the three in its 20-foot square each make one Strength save; whoever fails is Restrained

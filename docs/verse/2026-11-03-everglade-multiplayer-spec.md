@@ -651,6 +651,21 @@ by the owner's decision.
   rules) keeps a crime level for each seat's player. Guards who see your
   crime chase you, and everyone sees them chase you. Another player is not
   chased for your crime, and the guards do not attack bystanders.
+- **Each star brings its responders** (#12794, `watch.coax` `LADDER`). They
+  are the server's, come in from the two gates nearest you, and every page
+  sees them:
+  - 1 star: 2 Guards.
+  - 2 stars: 4 Guards.
+  - 3 stars: 6 Guards and 2 Scouts, who shoot longbows from range.
+  - 4 stars: a Warrior Veteran leading 8 Guards and 2 Scouts. The town's
+    gates shut while anyone is WANTED 4 or more: no one walks through them.
+  - 5 stars: also a Knight and a Priest, who heals the watch. Every 30 s the
+    roster is filled again until you are down, out of sight or out of town.
+    Your HUD shows the bounty on you.
+  Responders walk back out when your WANTED clears.
+- **WANTED carries over** (#12872). A player who comes back within 5
+  minutes (section 7) has the same level from their first tick, and that
+  level's responders come for them as if they had just earned it.
 - The guard captain and guide decisions (`everglade-guard-ai.coax`,
   `everglade-guide.coax`) run on the server only, through the Decisions API,
   so one decision serves the room.

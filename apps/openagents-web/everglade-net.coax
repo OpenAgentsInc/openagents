@@ -744,7 +744,7 @@ net_row :: (s: [] Everglade, n: [] EgNet, w: WireS, d: WireD) {
     // a player's P1 is its conditions, P2 its temporary Hit Points (net_view)
     en[0].seat = w.id; en[0].p1 = w.cond; en[0].p2 = w.temp; en[0].form = w.form;
   } else if w.kind == WK_BEAST { en[0].p1 = w.p1; en[0].p2 = w.max; st.a = 0; }
-  else { en[0].p1 = w.p1; en[0].p2 = w.p2; if w.kind != WK_FOLK { st.a = 0; } }
+  else { en[0].p1 = w.p1; en[0].p2 = w.p2; if w.kind != WK_FOLK { st.a = 0; } if w.kind == WK_FOLK || w.kind == WK_DOORS { en[0].form = w.form; } }
   net_push_row(en, st, n[0].hz);
   if en[0].ring_n == 1 { en[0].shown = en[0].ring[0]; }
   if w.kind == WK_PLAYER && w.id == n[0].seat && d.ack > n[0].acked {
@@ -789,7 +789,7 @@ net_push_row :: (en: [] NetEnt, p: NetState, hz: int) {
 // none is heard (indoors, out of view, or no room).
 // since: seconds in their mode (from the row's T0: -1 not said); casting: seconds into a spell (-1
 // none), kind its MS_*, foe the seat it is for (-1 none)
-NetFolk :: struct { ok: bool; x: f32; z: f32; yaw: f32; mode: int; clip: int; hp: int; since: f32 = -1; casting: f32 = -1; kind: int; foe: int = -1; cond: int; }
+NetFolk :: struct { ok: bool; x: f32; z: f32; yaw: f32; mode: int; clip: int; hp: int; since: f32 = -1; casting: f32 = -1; kind: int; foe: int = -1; cond: int; rank: int; max: int; }   // rank: a responder's RANK_* + 1, 0 the town's
 net_folk :: (s: [] Everglade, i: int) -> NetFolk {
   if !net_live(s) { return NetFolk.{}; }
   n := net_of(s);
@@ -798,7 +798,7 @@ net_folk :: (s: [] Everglade, i: int) -> NetFolk {
   p := n[0].ents[k].shown;
   en := n[0].ents[k];
   hz := f32(hi_int(n[0].hz, 1)); now := n[0].mir[0].tick;
-  return NetFolk.{ok = true, x = p.x, z = p.z, yaw = p.yaw, mode = p.f, clip = p.a, hp = en.hp, cond = en.cond,
+  return NetFolk.{ok = true, x = p.x, z = p.z, yaw = p.yaw, mode = p.f, clip = p.a, hp = en.hp, cond = en.cond, rank = en.form, max = en.max,
                   since = ifx en.t0 > 0 then f32(hi_int(now - en.t0, 0)) / hz else -1.0f32,
                   casting = ifx en.p2 > 0 && en.dur > 0 then f32(hi_int(now - en.dur, 0)) / hz else -1.0f32, kind = en.p2 - 1,
                   foe = ifx en.owner >= WIRE_TGT_SEAT && en.owner < WIRE_TGT_SEAT + 1000 then en.owner - WIRE_TGT_SEAT else -1};
@@ -1078,6 +1078,17 @@ net_doors :: (s: [] Everglade, w: int) -> int {
   for e: 0..<NET_ENTS {
     en := n[0].ents[e];
     if en.live && en.kind == WK_DOORS { return ifx w == 0 then en.p1 else en.p2; }
+  }
+  return -1;
+}
+// Whether the room has the town's gates shut (its WK_DOORS row's FORM, #12794): 1 shut, 0 open, -1
+// while none is heard.
+net_gates :: (s: [] Everglade) -> int {
+  if !net_live(s) { return -1; }
+  n := net_of(s);
+  for e: 0..<NET_ENTS {
+    en := n[0].ents[e];
+    if en.live && en.kind == WK_DOORS { return en.form; }
   }
   return -1;
 }

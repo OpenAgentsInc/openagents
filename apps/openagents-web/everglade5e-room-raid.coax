@@ -631,6 +631,7 @@ e5rd_arm :: (c: [] RsCreature, block: int) {
   if block == E5R_GUARD { w[0] = rs_guard("Guard", 1); }
   else if block == E5R_VETERAN { w[0] = rs_veteran("Warrior Veteran", 1); }
   else if block == E5R_KNIGHT { w[0] = rs_knight("Knight", 1); }
+  else if block == E5R_SCOUT { w[0] = rs_scout("Scout", 1); }
   else { return; }
   c[0].weapon = w[0].weapon; c[0].ranged = w[0].ranged; c[0].extra_attack = w[0].extra_attack; c[0].parry = w[0].parry;
 }
