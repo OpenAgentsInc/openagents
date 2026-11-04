@@ -77,3 +77,16 @@ checks the completed cursor. Both release and checked ASan/UBSan profiles
 also notice a header feed replaced while import is paused, without another
 file update after the initial ready cursor. The forward batch limit is 64
 blocks; whole reorgs keep their independent 4,096-block workspace bound.
+
+Restart replay now advances one complete frame per bounded read and retains
+its private arena through continuation. The independent 1,220-file checked
+ASan/UBSan oracle still matches exact v1 snapshots. Native release and
+checked ASan/UBSan pass 105 HTTP comparisons each with forced replay pauses,
+503 until complete, continuation, missing interior segments and unavailable
+archive links, in addition to the existing recovery and reorg journey.
+
+The full signet run reached a synced height 326,651 before the VM's global
+OOM killer ended the process. Its durable journals remain intact. Closed
+journals are being moved to verified, read-only disk-backed archives, and
+the new bounded restart path will replay them. This is recovery progress;
+it does not yet qualify the frozen 329,338 Core/Electrs reference.

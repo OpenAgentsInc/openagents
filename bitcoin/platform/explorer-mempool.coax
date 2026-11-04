@@ -1,0 +1,53 @@
+// Rebuild ephemeral observations against the current committed own-node coins.
+#load "explorer-http.coax";
+#load "../../coax/lib/bitcoin/mempool.coax";
+#load "../../coax/lib/bitcoin/mempool-feed.coax";
+MpNative :: struct {
+  raw: [MP_FEED_BYTES] u8; table: [16777216] u8; batch: [1048576] u8;
+  coins: [4096] int; slices: [MP_FEED_COUNT] MpSlice;
+  results: [MP_FEED_COUNT] MpResult; done: [MP_FEED_COUNT] u8;
+  reply: [1048576] u8; have: bool; stamp: int; tip: LcTip;
+}
+mp_native_refresh :: (m: [] MpNative, api: [] ExplorerServer, state: string) {
+  if !api[0].loaded { api[0].mempool = ""; return; }
+  pathbuf: [4096] u8; o: [1] Jo; jo_start(o[..],pathbuf[..]); jo_put(o[..],state); jo_put(o[..],".mempool");
+  path := jo_text(o[..]); stamp := fs_mtime_ns(path); tip := api[0].tip;
+  if m[0].have && m[0].stamp == stamp && lc_same(m[0].tip.hash[..],tip.hash[..]) { return; }
+  api[0].mempool = ""; m[0].have = true; m[0].stamp = stamp; m[0].tip = tip;
+  size := fs_size(path);
+  if o[0].bad || !mp_feed_extent(size) || bf_read_at(path,0,m[0].raw[0..<size]) != size || fs_size(path) != size || fs_mtime_ns(path) != stamp { return; }
+  f := mp_feed(m[0].raw[0..<size],tip.chain,m[0].slices[..]); if !f.ok { return; }
+  used := 0; count := 0;
+  for i: 0..<f.count { m[0].done[i] = 0; }
+  w := MpWork.{ins=api[0].ins[..],outs=api[0].outs[..],items=api[0].items[..],coins=m[0].coins[..],batch=m[0].batch[..]};
+  // Bounded retries allow child-before-parent observations. Exhaustion is
+  // counted as omitted; the projection never claims a complete peer mempool.
+  for pass: 0..<32 {
+    before := count;
+    for i: 0..<f.count {
+      if m[0].done[i] != 0 { continue; } slice := m[0].slices[i]; raw := m[0].raw[slice.at..<slice.at+slice.n];
+      t := tx_read_vartime(raw,true,w.ins,w.outs,w.items); id: [32] u8;
+      if t.code != TX_OK || !tx_txid_vartime(raw,t,id[..]) { m[0].done[i] = 2; continue; }
+      confirmed := txi_find_vartime(api[0].table,api[0].used,id[..],true);
+      if confirmed.code == LC_OK { m[0].done[i] = 2; continue; }
+      if confirmed.code != TXI_MISS { return; }
+      r := mp_add_vartime(api[0].table,api[0].used,m[0].table[..],used,raw,tip.height+1,w);
+      if r.code == MP_MISSING { continue; }
+      m[0].done[i] = 2;
+      if r.code == MP_OK { used = r.used; m[0].results[count] = r; count += 1; m[0].done[i] = 1; }
+    }
+    if count == before { break; }
+  }
+  jo_start(o[..],m[0].reply[..]); jo_obj(o[..]); ex_json_snapshot(o[..],tip);
+  jo_key(o[..],"validation"); jo_str(o[..],"unvalidated"); jo_key(o[..],"complete"); jo_bool(o[..],false);
+  jo_key(o[..],"observed_at"); jo_int(o[..],f.time); jo_key(o[..],"received"); jo_int(o[..],f.count);
+  jo_key(o[..],"omitted"); jo_int(o[..],f.count-count); jo_key(o[..],"transactions"); jo_arr(o[..]);
+  text: [64] u8;
+  for i: 0..<count {
+    r := m[0].results[i]; jo_obj(o[..]); jo_key(o[..],"txid"); jo_str(o[..],api_hash_text(r.id[..],text[..]));
+    jo_key(o[..],"wtxid"); jo_str(o[..],api_hash_text(r.wid[..],text[..]));
+    jo_key(o[..],"fee_sat"); jo_int(o[..],r.fee); jo_key(o[..],"weight"); jo_int(o[..],r.weight);
+    jo_key(o[..],"vsize"); jo_int(o[..],r.vsize); jo_key(o[..],"rate_sat_kvb"); jo_int(o[..],fee_per_kvb_vartime(r.fee,r.vsize)); jo_end(o[..]);
+  }
+  jo_end(o[..]); jo_end(o[..]); if !o[0].bad { api[0].mempool = jo_text(o[..]); }
+}

@@ -1,0 +1,42 @@
+// Exact framing for an atomic snapshot of bounded local observations.
+#load "kvstore.coax";
+#authority;
+MP_FEED_BYTES :: 8388608; MP_FEED_COUNT :: 1024;
+MpSlice :: struct { at: int; n: int; }
+MpFeed :: struct { ok: bool; time: int; count: int; }
+#test "mempool feed: exact header, lengths, network, time and capacities" {
+  b: [32] u8; for i: 0..<4 { b[i] = "OMP1"[i]; } kv_put32(b[..],4,4); kv_put64(b[..],8,17);
+  rows: [2] MpSlice;
+  f := mp_feed(b[0..<16],4,rows[..]); #assert f.ok && f.time == 17 && f.count == 0;
+  kv_put32(b[..],16,1); b[20] = 9; kv_put32(b[..],21,2); b[25] = 8; b[26] = 7;
+  f = mp_feed(b[0..<27],4,rows[..]); #assert f.ok && f.count == 2 && rows[0].at == 20 && rows[0].n == 1 && rows[1].at == 25 && rows[1].n == 2;
+  #assert !mp_feed(b[0..<27],5,rows[..]).ok && !mp_feed(b[0..<27],4,rows[0..<1]).ok;
+  for n: 0..<27 { #assert mp_feed(b[0..<n],4,rows[..]).ok == (n == 16 || n == 21); }
+  for i: 0..<4 { b[i] ^= 1; #assert !mp_feed(b[0..<16],4,rows[..]).ok; b[i] ^= 1; }
+  kv_put64(b[..],8,0); #assert !mp_feed(b[0..<16],4,rows[..]).ok;
+  kv_put64(b[..],8,0x8000000000000000); #assert !mp_feed(b[0..<16],4,rows[..]).ok;
+  kv_put64(b[..],8,0x7fffffffffffffff); #assert mp_feed(b[0..<16],4,rows[..]).time == 9223372036854775807;
+  kv_put32(b[..],4,0); #assert !mp_feed(b[0..<16],0,rows[..]).ok;
+  kv_put32(b[..],4,6); #assert !mp_feed(b[0..<16],6,rows[..]).ok;
+  kv_put32(b[..],4,1); #assert mp_feed(b[0..<16],1,rows[..]).ok;
+  kv_put32(b[..],4,5); #assert mp_feed(b[0..<16],5,rows[..]).ok; kv_put32(b[..],4,1);
+  kv_put32(b[..],16,0); #assert !mp_feed(b[0..<21],1,rows[..]).ok;
+  #assert mp_feed_extent(16) && mp_feed_extent(MP_FEED_BYTES) && !mp_feed_extent(15) && !mp_feed_extent(MP_FEED_BYTES+1);
+  #assert mp_feed_record(1,1,0,1) && mp_feed_record(400000,400000,1023,1024);
+  #assert !mp_feed_record(0,1,0,1) && !mp_feed_record(400001,400001,0,1) && !mp_feed_record(2,1,0,1) && !mp_feed_record(1,1,1024,2048);
+}
+mp_feed_extent :: (n: int) -> bool { return n >= 16 && n <= MP_FEED_BYTES; }
+mp_feed_record :: (n: int, left: int, count: int, capacity: int) -> bool { return n > 0 && n <= 400000 && n <= left && count < MP_FEED_COUNT && count < capacity; }
+mp_feed :: (raw: [] u8, chain: int, rows: [] MpSlice) -> MpFeed {
+  bad: MpFeed;
+  if !mp_feed_extent(raw.count) || chain < 1 || chain > 5 || kv_get32(raw,4) != chain { return bad; }
+  for i: 0..<4 { if raw[i] != "OMP1"[i] { return bad; } }
+  time := kv_get64(raw,8); if time == 0 || time > 0x7fffffffffffffff { return bad; }
+  r := MpFeed.{ok=true,time=cast(int)time}; at := 16;
+  while at < raw.count {
+    if raw.count-at < 5 { return bad; } n := kv_get32(raw,at); at += 4;
+    if !mp_feed_record(n,raw.count-at,r.count,rows.count) { return bad; }
+    rows[r.count] = MpSlice.{at=at,n=n}; r.count += 1; at += n;
+  }
+  return r;
+}

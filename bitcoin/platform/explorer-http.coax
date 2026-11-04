@@ -21,7 +21,7 @@ ExplorerServer :: struct {
   ids: [2240000] u8; wids: [2240000] u8; work: [2240000] u8;
   states: [120000] ExOutput; address_outs: [16384] AxiOutput; history: [16384] AxiTx;
   answer: [33554432] u8; reply: [33555456] u8; request: [32768] u8; key: [140] u8; nodes: [128] JvNode;
-  genesis: [32] u8; tip: LcTip;
+  genesis: [32] u8; tip: LcTip; mempool: string;
 }
 api_reload :: (s: [] ExplorerServer, path: string, chain: int) -> bool {
   if s[0].external { return s[0].loaded && s[0].tip.chain == chain; }
@@ -156,6 +156,11 @@ api_connection :: (s: [] ExplorerServer, h: int, state: string, store: string, p
   o: [1] Jo; jo_start(o[..],s[0].answer[..]); status := request.status;
   rpc: ExRpc; is_rpc := false;
   if status == 200 {
+    if request.path == "/api/mempool/v1" {
+      status = ifx request.method != "GET" then 405 else (ifx request.body.count != 0 then 400 else (ifx !api_reload(s,state,p.chain) || s[0].mempool.count == 0 then 503 else 200));
+      if status == 200 { api_send(h,200,s[0].mempool); }
+      else { api_error(o[..],status); api_send(h,status,jo_text(o[..])); } return;
+    }
     asset := ex_asset(request.path);
     if web.count > 0 && asset.path.count > 0 && request.method == "GET" && request.body.count == 0 {
       basebuf: [4096] u8; pathbuf: [4096] u8; base := ifx asset.host then fs_join(web,"../../coax/web",basebuf[..]) else web;

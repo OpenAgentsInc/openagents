@@ -2,6 +2,16 @@
   "schema": 1,
   "examples": [
     {
+      "source": "bitcoin/examples/mempool-observations.coax",
+      "chapter": "bitcoin/book/ch082-mempool-acceptance-and-limits.md",
+      "stdout": "bitcoin/fixtures/mempool-observations.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "bitcoin/examples/explorer-api.coax",
       "chapter": "bitcoin/book/ch090-json-rpc-and-rest.md",
       "stdout": "bitcoin/fixtures/explorer-api.out",

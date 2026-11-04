@@ -1,0 +1,103 @@
+// Observe newly announced transactions over our P2P transport. This collector
+// does not relay or validate them. The native explorer derives their fees.
+// tool.sh: release
+#run_steps 250000000;
+#load "../../../coax/lib/bitcoin/p2p.coax";
+#load "../../../coax/lib/bitcoin/chainparams.coax";
+#load "../../../coax/lib/bitcoin/explorer-request.coax";
+#load "../../../coax/lib/bitcoin/mempool-feed.coax";
+#load "../../../coax/lib/bitcoin/lightstore.coax";
+#load "../../../coax/lib/json/json.coax";
+#load "../../../coax/lib/net/socket_foreign.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/tool.coax";
+cxtool_out_flush :: () -> int #foreign;
+MpPeer :: struct {
+  rx: [4065560] u8; n: int; frame: [65536] u8; message: [65512] u8;
+  inventory: [50000] P2pInv; requested: [32768] u8; received: [1024] u8; count: int;
+  feed: [MP_FEED_BYTES] u8; feed_n: int; feed_count: int;
+  ins: [4096] TxIn; outs: [4096] TxOut; items: [16384] TxItem;
+}
+#test "mempool observer version carries both complete socket addresses" {
+  src: [64] u8; out: [256] u8; agent := "/coax-book:82/"; for i: 0..<agent.count { src[16+i] = agent[i]; }
+  n := p2p_version_write_vartime(src[..],mp_peer_version(17,agent.count),out[..]);
+  v := p2p_version_read_vartime(out[0..<n]);
+  #assert n == 86+agent.count && v.code == P2P_OK && v.version == 70016 && v.relay && v.time == 17 && v.agent_n == agent.count;
+}
+mp_peer_version :: (now: int, agent_n: int) -> P2pVersion {
+  return P2pVersion.{version=70016,time=now,parts=4,nonce=0x8263616f78,agent=16,agent_n=agent_n,height=0,relay=true,recv=P2pAddress.{n=16},from=P2pAddress.{n=16}};
+}
+mp_peer_send :: (s: [] MpPeer, h: int, p: ChainParams, command: string, payload: [] u8) -> bool {
+  n := p2p_frame_write_vartime(p.magic,command,payload,s[0].frame[..]); if n < 0 { return false; }
+  for i: 0..<n { if cxsock_write(h,cast(int)s[0].frame[i]) < 0 { return false; } }
+  return cxsock_flush(h,10000) >= 0;
+}
+mp_peer_write :: (s: [] MpPeer, path: string, now: int) -> bool {
+  kv_put64(s[0].feed[..],8,cast(u64)now); temp: [4096] u8; o: [1] Jo; jo_start(o[..],temp[..]); jo_put(o[..],path); jo_put(o[..],".next");
+  return !o[0].bad && fs_write(jo_text(o[..]),cast(string)s[0].feed[0..<s[0].feed_n]) && fs_rename(jo_text(o[..]),path);
+}
+tool_main :: () -> int #export_c {
+  a: [1] Args; if !args_load(a[..]) || (args_count(a[..]) != 5 && args_count(a[..]) != 6) { tool_errln("usage: mempool-peer CHAIN HOST PORT NOW STATE.mempool [SECONDS]"); return 2; }
+  chain := 0; for i: 1..<6 { if args_at(a[..],0) == CHAIN_NAMES[i] { chain = i; } }
+  port := ex_decimal(args_at(a[..],2)); now := ex_decimal(args_at(a[..],3)); seconds := ifx args_count(a[..]) == 6 then ex_decimal(args_at(a[..],5)) else 660;
+  if chain == 0 || port < 1 || port > 65535 || now < 1 || seconds < 1 || seconds > 780 { return 2; }
+  p := chain_params(chain); s: [1] MpPeer; host := args_at(a[..],1); path := args_at(a[..],4);
+  for c: host { pushed := cxsock_host_push(cast(int)c); } h := cxsock_connect(port,10000); if h < 0 { return 1; }
+  src: [64] u8; agent := "/coax-book:82/"; for i: 0..<agent.count { src[16+i] = agent[i]; }
+  v := mp_peer_version(now,agent.count);
+  n := p2p_version_write_vartime(src[..],v,s[0].message[..]);
+  if n < 0 || !mp_peer_send(s[..],h,p,"version",s[0].message[0..<n]) { closed := cxsock_close(h); return 1; }
+  for i: 0..<4 { s[0].feed[i] = "OMP1"[i]; } kv_put32(s[0].feed[..],4,chain); s[0].feed_n = 16;
+  started := cxsock_now_ms(); version := false; ready := false; ok := true;
+  while cxsock_now_ms()-started < seconds*1000 && ok {
+    f := p2p_frame_read_vartime(s[0].rx[0..<s[0].n],p.magic);
+    if f.code == P2P_TRUNCATED {
+      got := cxsock_read(h,1000); if got == -2 { continue; }
+      if got <= 0 || got > s[0].rx.count-s[0].n { tool_errln("observer transport closed or exceeded capacity"); ok = false; break; }
+      for i: 0..<got { s[0].rx[s[0].n+i] = cast(u8)cxsock_byte(h,i); } s[0].n += got; continue;
+    }
+    if f.code != P2P_OK { tool_errln("observer refused a P2P frame"); ok = false; break; }
+    bytes := s[0].rx[0..<f.next]; payload := bytes[f.payload..<f.next];
+    if p2p_command_is(bytes,f,"version") {
+      peer := p2p_version_read_vartime(payload);
+      if version || peer.code != P2P_OK || peer.version < 70001 {
+        diagnostic: [128] u8; j: [1] Jo; jo_start(j[..],diagnostic[..]); jo_put(j[..],"observer refused peer version; code "); jo_int(j[..],peer.code); jo_put(j[..]," protocol "); jo_int(j[..],peer.version); tool_errln(jo_text(j[..])); ok = false; break;
+      }
+      version = true; ok = mp_peer_send(s[..],h,p,"verack",payload[0..<0]);
+    } else if p2p_command_is(bytes,f,"verack") {
+      if !version || ready || payload.count != 0 { ok = false; break; }
+      ready = true; ok = mp_peer_write(s[..],path,now+(cxsock_now_ms()-started)/1000);
+      tool_errln("mempool observer ready"); flushed := cxtool_out_flush();
+    } else if p2p_command_is(bytes,f,"ping") {
+      if payload.count != 8 { ok = false; break; } ok = mp_peer_send(s[..],h,p,"pong",payload);
+    } else if ready && p2p_command_is(bytes,f,"inv") {
+      inv := p2p_inv_read_vartime(payload,s[0].inventory[..]); if inv.code != P2P_OK { ok = false; break; }
+      request_n := 0; hashes: [32768] u8;
+      for i: 0..<inv.count {
+        item := s[0].inventory[i]; if item.type != 1 { continue; } found := false;
+        for k: 0..<s[0].count { if lc_same(payload[item.hash..<item.hash+32],s[0].requested[32*k..<32*k+32]) { found = true; break; } }
+        if found || s[0].count == MP_FEED_COUNT { continue; }
+        for k: 0..<32 { s[0].requested[32*s[0].count+k] = payload[item.hash+k]; hashes[32*request_n+k] = payload[item.hash+k]; }
+        s[0].count += 1; request_n += 1;
+      }
+      if request_n > 0 {
+        at := tx_compact_write_vartime(s[0].message[..],0,request_n);
+        for i: 0..<request_n { at = p2p_put_u32(s[0].message[..],at,0x40000001); for k: 0..<32 { s[0].message[at+k] = hashes[32*i+k]; } at += 32; }
+        ok = mp_peer_send(s[..],h,p,"getdata",s[0].message[0..<at]);
+      }
+    } else if ready && p2p_command_is(bytes,f,"tx") && payload.count <= 400000 {
+      t := tx_read_vartime(payload,true,s[0].ins[..],s[0].outs[..],s[0].items[..]); id: [32] u8;
+      if t.code == TX_OK && tx_txid_vartime(payload,t,id[..]) {
+        for i: 0..<s[0].count {
+          if s[0].received[i] != 0 || !lc_same(id[..],s[0].requested[32*i..<32*i+32]) { continue; }
+          if payload.count+4 > MP_FEED_BYTES-s[0].feed_n { tool_errln("mempool observation byte limit reached"); closed := cxsock_close(h); return 0; }
+          at := s[0].feed_n; kv_put32(s[0].feed[..],at,payload.count); at += 4;
+          for k: 0..<payload.count { s[0].feed[at+k] = payload[k]; } s[0].feed_n = at+payload.count; s[0].received[i] = 1; s[0].feed_count += 1;
+          ok = mp_peer_write(s[..],path,now+(cxsock_now_ms()-started)/1000); break;
+        }
+      }
+    }
+    rest := s[0].n-f.next; for i: 0..<rest { s[0].rx[i] = s[0].rx[f.next+i]; } s[0].n = rest;
+  }
+  closed := cxsock_close(h); tool_errln(ifx ok && ready then "bounded mempool observation finished" else "mempool observation refused"); return ifx ok && ready then 0 else 1;
+}

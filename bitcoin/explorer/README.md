@@ -44,8 +44,13 @@ becomes a repaired prefix. The node keeps its own `STATE.headers` archive.
 Port zero runs one import slice and exits. Each slice has a thirteen-minute
 budget. Port zero exits 75 at a synced checkpoint when more blocks remain.
 A listening service retains its arena and serves unavailable data while
-paused; update `STATE.continue` to resume the next slice without replaying
-the whole log. The optional budget is milliseconds from 1 to 780000.
+paused; update `STATE.continue` to resume the next slice. Restart replay also
+uses bounded slices, advancing at whole-frame boundaries without rebuilding
+the retained prefix. A port-zero restart can exit 75 during replay; use a
+listener for large journals so continuation retains that work. The optional
+budget is milliseconds from 1 to 780000. Segment names must form a contiguous
+inventory; an unavailable archive target refuses the restart. Each owned
+directory is bounded at 4,096 names.
 The node also notices a header-feed replacement made during initial import. No data pages are served before the admitted tip
 reaches the preferred known header. Once serving, the node watches atomic
 replacements of `HEADERS` and follows reorgs using its retained headers and
@@ -132,3 +137,30 @@ python3 coax/tests/bitcoin/explorer-reference.py --fixture bitcoin/fixtures/expl
 
 See [the reference record](../../docs/verification/bitcoin-explorer-reference-2026-11-03.md)
 for provenance, coverage and the current full-signet acceptance status.
+
+The MEMPOOL page shows bounded local unconfirmed observations, their exact
+fees and serialized virtual-size rates. It labels them unvalidated, reports
+received/omitted counts and refreshes every ten seconds. Confirmed balances
+remain confirmed-only. This is chapter 82's partial explorer profile;
+script execution and full acceptance/relay policy remain planned.
+
+The native service reads an atomically replaced `STATE.mempool` feed. The
+Coax collector records new P2P announcements during a bounded interval:
+
+```sh
+coax/web/tool.sh bitcoin/examples/live/mempool-peer.coax signet HOST PORT UNIX_SECONDS STATE.mempool 660
+```
+
+No feed means unavailable observations. The
+[separate protocol](../../docs/protocol/bitcoin-mempool-v1.md) documents
+parent resolution, conflicts, limits and the observation timestamp. The
+independent check uses Core's retained public fee references:
+
+```sh
+python3 coax/tests/bitcoin/mempool.py --fixture bitcoin/fixtures/explorer-core-reorg --node bitcoin/explorer/build/native-release/explorer-node --peer coax/web/build/tools/mempool-peer-COMPILER_SHA256
+```
+
+Build the collector once through `tool.sh`; its binary name includes the
+compiler's SHA-256. Use `--skip-peer` for the additional sanitized native
+profile after the unchanged wire collector has passed. See the
+[mempool verification record](../../docs/verification/bitcoin-explorer-mempool-2026-11-03.md).

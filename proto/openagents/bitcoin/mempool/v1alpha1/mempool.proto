@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package openagents.bitcoin.mempool.v1alpha1;
+
+import "openagents/bitcoin/explorer/v1alpha1/explorer.proto";
+
+// Read-only local observations, independent of the confirmed HTTP v1 contract.
+// This profile does not execute scripts or assert network-wide completeness.
+message Transaction {
+  string txid = 1;
+  string wtxid = 2;
+  uint64 fee_sat = 3;
+  uint32 weight = 4;
+  uint32 vsize = 5;
+  uint64 rate_sat_kvb = 6;
+}
+
+message Observations {
+  openagents.bitcoin.explorer.v1alpha1.Snapshot snapshot = 1;
+  string validation = 2; // "unvalidated"
+  bool complete = 3; // always false: these are local observations
+  uint64 observed_at = 4;
+  uint32 received = 5;
+  uint32 omitted = 6;
+  repeated Transaction transactions = 7;
+}

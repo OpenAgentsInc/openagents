@@ -3,7 +3,14 @@
 kvs_file_c :: (path: [] u8, table: [] u8, frame: [] u8, scratch: [] u8, fields: [] u64, snapshot: [] u8) -> int #export_c {
   seed: [16] u8; for i: 0..<16 { seed[i] = cast(u8)i; }
   initial := ks_init(table,seed[..]);
-  r := kvs_open_file(cast(string)path,table,initial,frame,scratch);
+  slice := kvs_open_file_slice(cast(string)path,table,initial,frame,scratch,0,false,0,1);
+  frames := slice.opened.frames;
+  while slice.paused {
+    previous := slice.opened;
+    slice = kvs_open_file_slice(cast(string)path,table,previous.used,frame,scratch,previous.seq,frames > 0,previous.keep,1);
+    frames += slice.opened.frames;
+  }
+  r := slice.opened; r.frames = frames;
   fields[0] = cast(u64)r.used; fields[1] = r.seq; fields[2] = cast(u64)r.frames;
   fields[3] = cast(u64)r.keep; fields[4] = r.mask; fields[5] = ifx r.cut then 1 else 0;
   if r.code != KV_OK { return r.code; }

@@ -1,0 +1,181 @@
+// Chapter 82's explorer observation profile. No script or relay acceptance.
+#run_steps 250000000;
+#load "lightpolicy.coax";
+#load "fees.coax";
+#authority;
+MpResult :: struct { code: int; used: int; fee: int; weight: int; vsize: int; id: [32] u8; wid: [32] u8; }
+MpWork :: struct { ins: [] TxIn; outs: [] TxOut; items: [] TxItem; coins: [] int; batch: [] u8; }
+MP_OK :: 0; MP_CONTEXT :: 1; MP_TRANSACTION :: 2; MP_DUPLICATE :: 3;
+MP_CONFLICT :: 4; MP_MISSING :: 5; MP_COIN :: 6; MP_CAPACITY :: 7;
+
+MpDemo :: struct {
+  chain: [8192] u8; pool: [8192] u8; raw: [512] u8;
+  ins: [8] TxIn; outs: [8] TxOut; items: [16] TxItem; coins: [8] int; batch: [8192] u8;
+  used: int; n: int;
+}
+mp_demo_work :: (d: [] MpDemo) -> MpWork { return MpWork.{ins=d[0].ins[..],outs=d[0].outs[..],items=d[0].items[..],coins=d[0].coins[..],batch=d[0].batch[..]}; }
+mp_demo_setup :: (d: [] MpDemo) {
+  b := tx_unhex(TX_MAINNET[3].tx,d[0].raw[..]); d[0].n = b.count;
+  t := tx_read_vartime(b,true,d[0].ins[..],d[0].outs[..],d[0].items[..]);
+  key: [37] u8; key[0] = 'C'; for k: 0..<36 { key[1+k] = b[d[0].ins[0].outpoint+k]; }
+  coin: [14] u8; kv_put64(coin[..],0,511884); kv_put32(coin[..],8,500); coin[13] = 0x51;
+  d[0].used = kv_set_vartime(d[0].chain[..],0,key[..],coin[..]); #assert t.code == TX_OK;
+}
+mp_demo_child :: (parent: [] u8, amount: int, raw: [] u8) -> int {
+  b := tx_unhex("020000000100000000000000000000000000000000000000000000000000000000000000000000000000ffffffff010000000000000000015100000000",raw);
+  for i: 0..<32 { b[5+i] = parent[i]; } kv_put64(b,47,cast(u64)amount); return b.count;
+}
+
+#test "mempool observations: exact fee, identifiers, parent coins and atomic refusals" {
+  d: [1] MpDemo; mp_demo_setup(d[..]); w := mp_demo_work(d[..]);
+  r := mp_add_vartime(d[0].chain[..],d[0].used,d[0].pool[..],0,d[0].raw[0..<d[0].n],600,w);
+  #assert r.code == MP_OK && r.fee == 5806 && r.weight == 442 && r.vsize == 111 && r.used > 0;
+  id: [32] u8; t := tx_read_vartime(d[0].raw[0..<d[0].n],true,w.ins,w.outs,w.items);
+  #assert tx_txid_vartime(d[0].raw[0..<d[0].n],t,id[..]) && lc_same(r.id[..],id[..]) && !lc_same(r.id[..],r.wid[..]);
+  want: [32] u8; reverse := tx_unhex(TX_MAINNET[3].wtxid,want[..]); for k: 0..<32 { #assert r.wid[k] == reverse[31-k]; }
+  tk: [33] u8; tk[0] = 'T'; for k: 0..<32 { tk[k+1] = id[k]; } #assert lc_value_vartime(d[0].pool[..],r.used,tk[..]).count == 1 && lc_value_vartime(d[0].pool[..],r.used,tk[..])[0] == 1;
+  ck: [37] u8; ck[0] = 'C'; for k: 0..<36 { ck[k+1] = d[0].raw[w.ins[0].outpoint+k]; }
+  source := lc_value_vartime(d[0].chain[..],d[0].used,ck[..]); #assert source.count == 14 && kv_get32(source,8) == 500 && source[13] == 0x51;
+  for k: 0..<32 { ck[k+1] = id[k]; } kv_put32(ck[..],33,0);
+  created := lc_value_vartime(d[0].pool[..],r.used,ck[..]); #assert created.count == 36 && kv_get32(created,8) == 600 && created[12] == 0 && lc_same(created[13..<36],d[0].raw[w.outs[0].script..<w.outs[0].script+23]);
+  saved := d[0].pool;
+  #assert mp_add_vartime(d[0].chain[..],d[0].used,d[0].pool[..],r.used,d[0].raw[0..<d[0].n],600,w).code == MP_DUPLICATE;
+  d[0].raw[w.outs[0].value] ^= 1;
+  #assert mp_add_vartime(d[0].chain[..],d[0].used,d[0].pool[..],r.used,d[0].raw[0..<d[0].n],600,w).code == MP_CONFLICT;
+  #assert lc_same(saved[..],d[0].pool[..]);
+  child: [128] u8; n := mp_demo_child(id[..],506000,child[..]);
+  c := mp_add_vartime(d[0].chain[..],d[0].used,d[0].pool[..],r.used,child[0..<n],600,w);
+  #assert c.code == MP_OK && c.fee == 78 && c.weight == 244 && c.vsize == 61 && c.used > r.used;
+  n = mp_demo_child(c.id[..],505999,child[..]);
+  #assert mp_add_vartime(d[0].chain[..],d[0].used,d[0].pool[..],c.used,child[0..<n],600,w).fee == 1;
+}
+#test "mempool observations: missing coins, maturity, malformed coins and money" {
+  d: [1] MpDemo; mp_demo_setup(d[..]); w := mp_demo_work(d[..]); key: [37] u8; key[0] = 'C';
+  for k: 0..<36 { key[1+k] = d[0].raw[w.ins[0].outpoint+k]; }
+  for which: 0..<10 {
+    coin: [14] u8; kv_put64(coin[..],0,ifx which == 5 then 506077 else (ifx which == 6 then 2100000000000001 else 511884));
+    kv_put32(coin[..],8,ifx which == 7 then 601 else 500); coin[12] = ifx which < 4 then 1 else (ifx which == 4 then 2 else 0);
+    d[0].used = kv_set_vartime(d[0].chain[..],d[0].used,key[..],coin[0..<ifx which == 8 then 12 else 14]);
+    r := mp_add_vartime(d[0].chain[..],ifx which == 9 then 0 else d[0].used,d[0].pool[..],0,d[0].raw[0..<d[0].n],ifx which == 0 then 599 else (ifx which == 2 then -1 else (ifx which == 3 then 2147483648 else 600)),w);
+    #assert r.code == ifx which == 1 then MP_OK else (ifx which == 2 || which == 3 then MP_CONTEXT else (ifx which == 9 then MP_MISSING else MP_COIN));
+  }
+}
+#test "mempool observations: shape, capacities and failure leave the pool untouched" {
+  d: [1] MpDemo; mp_demo_setup(d[..]); w := mp_demo_work(d[..]);
+  for which: 0..<7 {
+    work := w; if which == 0 { work.coins = d[0].coins[0..<0]; } if which == 1 { work.batch = d[0].batch[0..<12]; }
+    if which == 2 { work.ins = d[0].ins[0..<0]; }
+    r := mp_add_vartime(d[0].chain[..],d[0].used,ifx which == 3 then d[0].pool[0..<0] else d[0].pool[..],0,d[0].raw[0..<ifx which == 4 then d[0].n-1 else (ifx which == 5 then d[0].n+1 else d[0].n)],600,work);
+    #assert r.code == ifx which < 4 then MP_CAPACITY else (ifx which < 6 then MP_TRANSACTION else MP_OK);
+    if which < 6 { zero: [8192] u8; #assert lc_same(zero[..],d[0].pool[..]); }
+  }
+  #assert mp_weight_ok(1) && mp_weight_ok(400000) && !mp_weight_ok(0) && !mp_weight_ok(400001);
+}
+#test "mempool observations: duplicate, null, coinbase and empty transaction shapes" {
+  raw: [128] u8; parent: [32] u8; parent[0] = 1; n := mp_demo_child(parent[..],1,raw[..]);
+  ins: [4] TxIn; outs: [4] TxOut; items: [4] TxItem;
+  t := tx_read_vartime(raw[0..<n],true,ins[..],outs[..],items[..]); #assert mp_shape(raw[0..<n],t,ins[..]);
+  #assert !mp_shape(raw[0..<n],Tx.{},ins[..]) && !mp_shape(raw[0..<n],Tx.{nin=1},ins[..]);
+  #assert !mp_shape(raw[0..<n],Tx.{nin=0,nout=1,total=60,stripped=60},ins[..]) && !mp_shape(raw[0..<n],Tx.{nin=1,nout=0,total=60,stripped=60},ins[..]);
+  bad := t; bad.total = 400001; bad.stripped = 0; #assert !mp_shape(raw[0..<n],bad,ins[..]);
+  bad = t; bad.code = TX_TRAILING; #assert !mp_shape(raw[0..<n],bad,ins[..]);
+  kv_put32(raw[..],37,0xffffffff); #assert mp_shape(raw[0..<n],t,ins[..]);
+  for k: 0..<32 { raw[5+k] = 0; } raw[41] = 1;
+  #assert !mp_shape(raw[0..<n],t,ins[..]);
+  raw[41] = 0; kv_put32(raw[..],37,0); #assert mp_shape(raw[0..<n],t,ins[..]); kv_put32(raw[..],37,0xffffffff);
+  raw[4] = 2; for k: 0..<41 { raw[46+k] = raw[5+k]; }
+  raw[87] = 1; kv_put64(raw[..],88,1); raw[96] = 1; raw[97] = 0x51;
+  for k: 98..<102 { raw[k] = 0; }
+  t = tx_read_vartime(raw[0..<102],true,ins[..],outs[..],items[..]); #assert t.code == TX_OK && !mp_shape(raw[0..<102],t,ins[..]);
+  raw[5] = 1; raw[46] = 1; kv_put32(raw[..],37,0); kv_put32(raw[..],78,0);
+  #assert !mp_shape(raw[0..<102],t,ins[..]); raw[46] = 2; #assert mp_shape(raw[0..<102],t,ins[..]);
+}
+#test "mempool observations: exact table, coin and batch edges" #steps 100000000 {
+  d: [1] MpDemo; mp_demo_setup(d[..]); w := mp_demo_work(d[..]); w.coins = d[0].coins[0..<1];
+  raw := d[0].raw[0..<d[0].n]; key: [37] u8; key[0] = 'C'; for k: 0..<36 { key[k+1] = raw[w.ins[0].outpoint+k]; }
+  chain: [32768] u8; coin: [10014] u8; kv_put64(coin[..],0,511884);
+  for size: [3] int.[13,10013,10014] {
+    used := kv_set_vartime(chain[..],0,key[..],coin[0..<size]);
+    r := mp_add_vartime(chain[0..<used],used,d[0].pool[..],0,raw,0,w);
+    #assert r.code == ifx size == 10014 then MP_COIN else MP_OK;
+  }
+  for height: [2] int.[0,2147483647] {
+    used := kv_set_vartime(chain[..],0,key[..],coin[0..<13]);
+    #assert mp_add_vartime(chain[..],used,d[0].pool[..],0,raw,height,w).code == MP_OK;
+  }
+  for cap: [5] int.[0,12,53,98,177] {
+    work := w; work.batch = d[0].batch[0..<cap]; blank: [8192] u8;
+    #assert mp_add_vartime(d[0].chain[..],d[0].used,blank[..],0,raw,600,work).code == MP_CAPACITY;
+    zero: [8192] u8; #assert lc_same(blank[..],zero[..]);
+  }
+  #assert mp_add_vartime(chain[0..<0],0,d[0].pool[..],0,raw,600,w).code == MP_MISSING;
+  for which: 0..<4 {
+    #assert mp_add_vartime(chain[..],ifx which == 0 then -1 else (ifx which == 1 then chain.count+1 else 0),d[0].pool[..],ifx which == 2 then -1 else (ifx which == 3 then d[0].pool.count+1 else 0),raw,600,w).code == MP_CONTEXT;
+  }
+  raw[w.outs[0].script] = 0x6a;
+  r := mp_add_vartime(d[0].chain[..],d[0].used,d[0].pool[..],0,raw,600,w); #assert r.code == MP_OK;
+  for k: 0..<32 { key[1+k] = r.id[k]; } kv_put32(key[..],33,0); #assert lc_value_vartime(d[0].pool[..],r.used,key[..]).count == 0;
+}
+#test "mempool observations: every distinct input gets an exact spent marker" {
+  d: [1] MpDemo; b := tx_unhex(TX_MAINNET[5].tx,d[0].raw[..]); w := mp_demo_work(d[..]);
+  t := tx_read_vartime(b,true,w.ins,w.outs,w.items); #assert t.code == TX_OK && t.nin == 2;
+  b[w.ins[1].outpoint] ^= 1;
+  key: [37] u8; key[0] = 'C'; coin: [13] u8; kv_put64(coin[..],0,491750);
+  for i: 0..<2 { for k: 0..<36 { key[k+1] = b[w.ins[i].outpoint+k]; } d[0].used = kv_set_vartime(d[0].chain[..],d[0].used,key[..],coin[..]); }
+  r := mp_add_vartime(d[0].chain[..],d[0].used,d[0].pool[..],0,b,600,w); #assert r.code == MP_OK && r.fee == 18200;
+  key[0] = 'S';
+  for i: 0..<2 { for k: 0..<36 { key[k+1] = b[w.ins[i].outpoint+k]; } value := lc_value_vartime(d[0].pool[..],r.used,key[..]); #assert value.count == 1 && value[0] == 1; }
+}
+
+// The caller owns both tables and excludes already-confirmed transaction
+// IDs. A failed addition leaves the pool unchanged. Pool keys are private
+// observations: T+txid, C+outpoint and S+spent-outpoint. None is durable state.
+mp_weight_ok :: (weight: int) -> bool { return weight > 0 && weight <= 400000; }
+mp_shape :: (raw: [] u8, t: Tx, ins: [] TxIn) -> bool {
+  if t.code != TX_OK { return false; }
+  if t.nin < 1 || t.nout < 1 || !mp_weight_ok(tx_weight_vartime(t)) { return false; }
+  for i: 0..<t.nin {
+    at := ins[i].outpoint; zero := true; for k: 0..<32 { if raw[at+k] != 0 { zero = false; } }
+    if zero && tx_le_vartime(raw,at+32,4) == 0xffffffff { return false; }
+    for j: 0..<i { other := ins[j].outpoint; if lc_same(raw[at..<at+36],raw[other..<other+36]) { return false; } }
+  }
+  return true;
+}
+mp_add_vartime :: (chain: [] u8, used: int, pool: [] u8, pused: int, raw: [] u8, height: int, w: MpWork) -> MpResult #export_c {
+  if height < 0 || height > 2147483647 || used < 0 || used > chain.count || pused < 0 || pused > pool.count { return MpResult.{code=MP_CONTEXT}; }
+  t := tx_read_vartime(raw,true,w.ins,w.outs,w.items);
+  if t.code == TX_CAPACITY || t.nin > w.coins.count { return MpResult.{code=MP_CAPACITY}; }
+  if !mp_shape(raw,t,w.ins) { return MpResult.{code=MP_TRANSACTION}; }
+  r: MpResult; #assert tx_txid_vartime(raw,t,r.id[..]) && tx_wtxid_vartime(raw,t,r.wid[..]);
+  tk: [33] u8; tk[0] = 'T'; for k: 0..<32 { tk[1+k] = r.id[k]; }
+  if lc_value_vartime(pool,pused,tk[..]).count != 0 { return MpResult.{code=MP_DUPLICATE}; }
+  key: [37] u8;
+  for i: 0..<t.nin {
+    key[0] = 'S'; for k: 0..<36 { key[1+k] = raw[w.ins[i].outpoint+k]; }
+    if lc_value_vartime(pool,pused,key[..]).count != 0 { return MpResult.{code=MP_CONFLICT}; }
+    key[0] = 'C'; coin := lc_value_vartime(pool,pused,key[..]);
+    if coin.count == 0 { coin = lc_value_vartime(chain,used,key[..]); }
+    if coin.count == 0 { return MpResult.{code=MP_MISSING}; }
+    if coin.count < LC_COIN_HEAD || coin.count > LC_COIN_HEAD+LC_SCRIPT_MAX || coin[12] > 1 || kv_get32(coin,8) > height { return MpResult.{code=MP_COIN}; }
+    if coin[12] == 1 && height-kv_get32(coin,8) < 100 { return MpResult.{code=MP_COIN}; }
+    w.coins[i] = tx_le_vartime(coin,0,8);
+  }
+  funded := fee_vartime(raw,t,w.outs,w.coins[0..<t.nin]);
+  if !funded.ok { return MpResult.{code=MP_COIN}; }
+  at := kv_batch_new(w.batch); if lc_negative(at) { return MpResult.{code=MP_CAPACITY}; }
+  one := [1] u8.[1]; at = kv_batch_put_vartime(w.batch,at,tk[..],one[..]);
+  if lc_negative(at) { return MpResult.{code=MP_CAPACITY}; }
+  for i: 0..<t.nin {
+    key[0] = 'S'; for k: 0..<36 { key[1+k] = raw[w.ins[i].outpoint+k]; }
+    at = kv_batch_put_vartime(w.batch,at,key[..],one[..]); if lc_negative(at) { return MpResult.{code=MP_CAPACITY}; }
+  }
+  key[0] = 'C'; for k: 0..<32 { key[1+k] = r.id[k]; }
+  for i: 0..<t.nout {
+    out := w.outs[i]; script := raw[out.script..<out.script+out.script_n]; if lc_unspendable(script) { continue; }
+    coin: [LC_COIN_HEAD+LC_SCRIPT_MAX] u8; kv_put64(coin[..],0,cast(u64)tx_le_vartime(raw,out.value,8)); kv_put32(coin[..],8,height);
+    for k: 0..<script.count { coin[LC_COIN_HEAD+k] = script[k]; } kv_put32(key[..],33,i);
+    at = kv_batch_put_vartime(w.batch,at,key[..],coin[0..<LC_COIN_HEAD+script.count]); if lc_negative(at) { return MpResult.{code=MP_CAPACITY}; }
+  }
+  r.used = kv_apply_vartime(pool,pused,w.batch[0..<at],0); if lc_negative(r.used) { return MpResult.{code=MP_CAPACITY}; }
+  r.fee = funded.fee; r.weight = tx_weight_vartime(t); r.vsize = tx_vsize_vartime(t); return r;
+}

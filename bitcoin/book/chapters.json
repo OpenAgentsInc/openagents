@@ -1809,15 +1809,27 @@
   {
    "number": 82,
    "title": "Mempool acceptance and limits",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch082-mempool-acceptance-and-limits.md",
+   "status": "partly implemented",
+   "profile": "native C (unvalidated explorer observations)",
    "depends_on": [
     57,
     81
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/mempool.coax",
+    "coax/lib/bitcoin/mempool-feed.coax",
+    "bitcoin/platform/explorer-mempool.coax",
+    "bitcoin/examples/mempool-observations.coax",
+    "bitcoin/examples/live/mempool-peer.coax",
+    "bitcoin/explorer/mempool-check.coax",
+    "coax/tests/bitcoin/mempool.py",
+    "proto/openagents/bitcoin/mempool/v1alpha1/mempool.proto",
+    "docs/protocol/bitcoin-mempool-v1.md"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

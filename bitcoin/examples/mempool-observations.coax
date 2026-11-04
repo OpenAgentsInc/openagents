@@ -1,0 +1,14 @@
+#run_steps 250000000;
+#load "../../coax/lib/bitcoin/mempool.coax";
+#import "Basic";
+main :: () {
+  d: [1] MpDemo; mp_demo_setup(d[..]); w := mp_demo_work(d[..]);
+  r := mp_add_vartime(d[0].chain[..],d[0].used,d[0].pool[..],0,d[0].raw[0..<d[0].n],600,w); #assert r.code == MP_OK;
+  print("local observations; scripts not validated\n");
+  print("fee % sat / % vB / % sat/kvB\n",r.fee,r.vsize,fee_per_kvb_vartime(r.fee,r.vsize));
+  duplicate := mp_add_vartime(d[0].chain[..],d[0].used,d[0].pool[..],r.used,d[0].raw[0..<d[0].n],600,w);
+  print("duplicate: refused %\n",duplicate.code);
+  raw: [128] u8; n := mp_demo_child(r.id[..],506000,raw[..]);
+  child := mp_add_vartime(d[0].chain[..],d[0].used,d[0].pool[..],r.used,raw[0..<n],600,w); #assert child.code == MP_OK;
+  print("child fee % sat / % vB\n",child.fee,child.vsize);
+}

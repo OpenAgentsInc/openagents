@@ -51,6 +51,24 @@ bounded checkpoints and serves HTTP 503 until the preferred known chain is
 complete. Only a local continuation file resumes the next slice. A header
 feed changed during initial import must still be observed afterward.
 
+Restart replay has the same bounded continuation contract. It advances only
+at complete frame boundaries, retains its private table and sequence, and
+never serves that prefix as ready data. Journal names must form a contiguous
+inventory across owned directories; unavailable archive targets and missing
+interior segments refuse before a partial prefix can become the final state.
+
+## Unconfirmed observations preserve confirmed state and their validation label
+
+Chapter 82's explorer profile uses its own ephemeral table and separately
+versioned projection. Fees derive from own-node confirmed coins or earlier
+observed parents. Failed additions leave observations unchanged. Conflicts,
+missing/immature inputs, bad money and exhausted bounds omit candidates;
+they never change confirmed coins, balances or history. Confirmed IDs are
+excluded, and tip changes rebuild observations. The response always labels
+validation as unvalidated and completeness as false. A missing or malformed
+feed is unavailable data. Full script and relay acceptance remain planned.
+The 238 library and 57 feed mutants are all killed, with zero survivors.
+
 ## P2P frames honor the protocol limit independently of SHA workspace limits
 
 `coax/lib/bitcoin/p2p.coax` reads and writes full v1 messages through

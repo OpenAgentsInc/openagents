@@ -5,17 +5,19 @@
 #load "kvstream-file.coax";
 #load "../../coax/lib/bitcoin/addrindex-private.coax";
 #load "../../coax/lib/crypto/rand_foreign.coax";
+#load "explorer-mempool.coax";
 bf_unlock :: (handle: int) -> int #foreign;
 NODE_CAP :: 600000;
 NODE_BATCH :: 4096;
 NativeExplorer :: struct {
-  live: [] u8; api: [1] ExplorerServer;
+  live: [] u8; api: [1] ExplorerServer; mempool: [1] MpNative;
   tree: [1] BlockTree; links: [NODE_CAP] BiLink; entries: [NODE_CAP] BiEntry;
   slots: [2097152] int; chain: [NODE_CAP] int; files: [NODE_CAP] TxiLoc; sizes: [NODE_CAP] int;
   path: [NODE_CAP] int; raw: [134217728] u8;
   batch: [67108864] u8; frame: [67108872] u8; scratch: [1048576] u8;
   blocks: [NODE_BATCH] LcBlock; locations: [NODE_BATCH] TxiLoc;
   used: int; seq: u64; mask: u64; segment: int; segment_limit: int; overflow: string; budget_ms: int;
+  replay_started: bool; replay_seen: bool; replay_at: int; deadline: int; last_segment: int;
 }
 #test "native explorer resource numbers keep exact signed boundaries" {
   #assert node_number("") == -1 && node_number("-1") == -1 && node_number("1a") == -1;
@@ -44,6 +46,20 @@ node_segment_path :: (s: [] NativeExplorer, state: string, index: int, out: [] u
     if there == FS_FILE || (here == FS_NONE && bf_free_bytes(s[0].overflow) > bf_free_bytes(fs_dir(state))) { selected = other; }
   }
   if selected.count > out.count { return ""; } for i: 0..<selected.count { out[i] = selected[i]; } return cast(string)out[0..<selected.count];
+}
+node_last_segment :: (s: [] NativeExplorer, state: string) -> int {
+  names: [1] FsList; prefixbuf: [4096] u8; pathbuf: [4096] u8; o: [1] Jo;
+  jo_start(o[..],prefixbuf[..]); jo_put(o[..],fs_base(state)); jo_put(o[..],".segment-"); if o[0].bad { return -1; }
+  prefix := jo_text(o[..]); last := 0; count := 0;
+  for dir: [2] string.[fs_dir(state),s[0].overflow] {
+    if dir.count == 0 { continue; } n := fs_list(dir,names[..]); if n < 0 || names[0].full { return -1; }
+    for i: 0..<n {
+      name := fs_entry(names[..],i); if name.count < prefix.count || name[0..<prefix.count] != prefix { continue; }
+      index := node_number(name[prefix.count..<name.count]); if index < 1 || fs_kind(fs_join(dir,name,pathbuf[..])) != FS_FILE { return -1; }
+      count += 1; if index > last { last = index; }
+    }
+  }
+  return ifx count == last then last else -1;
 }
 node_headers :: (s: [] NativeExplorer, path: string, p: ChainParams, now: int, archive: string) -> bool {
   n := fs_size(path); stamp := fs_mtime_ns(path);
@@ -99,41 +115,47 @@ node_commit :: (s: [] NativeExplorer, path: string, result: LcResult) -> bool {
   if !bf_append_sync(target,s[0].frame[0..<8+result.n]) { return false; }
   s[0].used = result.used; s[0].seq += 1; return true;
 }
-node_init :: (s: [] NativeExplorer, path: string, p: ChainParams) -> bool {
-  seed: [16] u8; if cxrand_draw(seed[..],16) != 0 { return false; }
-  initial := ks_init(s[0].live,seed[..]); if initial != KS_HEAD { return false; }
-  if fs_size(path) == 0 {
-    small: [4096] u8; stage: [4096] u8; g := s[0].entries[0].hash;
-    r := axi_init_vartime(p.chain,g[..],small[..],0,stage[..],s[0].batch[..]);
-    if r.code != LC_OK { return false; }
-    used := kv_apply_vartime(s[0].live,initial,s[0].batch[0..<r.n],0); if used < 0 { return false; }
-    header: [20] u8; #assert kv_header_vartime(0,header[..]) == 20;
-    if !bf_append_sync(path,header[..]) { return false; } r.used = used;
-    return node_commit(s,path,r);
-  }
-  opened := kvs_open_file(path,s[0].live,initial,s[0].frame[..],s[0].scratch[..]);
-  while true {
-    if opened.code != KV_OK || opened.mask != 0 { print("state refused %\n",opened.code); return false; }
-    nextbuf: [4096] u8; nextpath := node_segment_path(s,path,s[0].segment+1,nextbuf[..]); if nextpath.count == 0 { return false; } has_next := fs_exists(nextpath);
-    currentbuf: [4096] u8; currentpath := node_segment_path(s,path,s[0].segment,currentbuf[..]);
-    if opened.cut {
-      if has_next || !fs_truncate(currentpath,opened.keep) { return false; }
+node_init :: (s: [] NativeExplorer, path: string, p: ChainParams) -> int {
+  if !s[0].replay_started {
+    s[0].last_segment = node_last_segment(s,path); if s[0].last_segment < 0 { return 1; }
+    seed: [16] u8; if cxrand_draw(seed[..],16) != 0 { return 1; }
+    initial := ks_init(s[0].live,seed[..]); if initial != KS_HEAD { return 1; }
+    s[0].used = initial; s[0].replay_started = true;
+    if fs_size(path) == 0 {
+      if s[0].last_segment != 0 { return 1; }
+      small: [4096] u8; stage: [4096] u8; g := s[0].entries[0].hash;
+      r := axi_init_vartime(p.chain,g[..],small[..],0,stage[..],s[0].batch[..]);
+      if r.code != LC_OK { return 1; }
+      used := kv_apply_vartime(s[0].live,initial,s[0].batch[0..<r.n],0); if used < 0 { return 1; }
+      header: [20] u8; #assert kv_header_vartime(0,header[..]) == 20;
+      if !bf_append_sync(path,header[..]) { return 1; } r.used = used;
+      return ifx node_commit(s,path,r) then 0 else 1;
     }
-    s[0].used = opened.used; s[0].seq = opened.seq;
-    if !has_next { break; }
+  }
+  while true {
+    currentbuf: [4096] u8; currentpath := node_segment_path(s,path,s[0].segment,currentbuf[..]); if currentpath.count == 0 { return 1; }
+    slice := kvs_open_file_slice(currentpath,s[0].live,s[0].used,s[0].frame[..],s[0].scratch[..],s[0].seq,s[0].replay_seen,s[0].replay_at,1); opened := slice.opened;
+    if opened.code != KV_OK || opened.mask != 0 { print("state refused %\n",opened.code); return 1; }
+    s[0].used = opened.used; s[0].seq = opened.seq; s[0].replay_at = opened.keep; s[0].replay_seen = s[0].replay_seen || opened.frames > 0;
+    if s[0].seq % 256 == 0 { print("replayed segment % sequence % arena %\n",s[0].segment,s[0].seq,s[0].used); flushed := cxtool_out_flush(); }
+    if slice.paused { if cxsock_now_ms() >= s[0].deadline { return 75; } continue; }
+    nextbuf: [4096] u8; nextpath := node_segment_path(s,path,s[0].segment+1,nextbuf[..]); if nextpath.count == 0 { return 1; } has_next := fs_exists(nextpath);
+    if opened.cut {
+      if has_next || !fs_truncate(currentpath,opened.keep) { return 1; }
+    }
+    if !has_next { if s[0].segment != s[0].last_segment { return 1; } break; }
     short := fs_size(nextpath);
     if short >= 0 && short < KV_HEADER {
       afterbuf: [4096] u8; after := node_segment_path(s,path,s[0].segment+2,afterbuf[..]); prefix: [20] u8;
-      if after.count == 0 || fs_exists(after) || bf_read_at(nextpath,0,prefix[0..<short]) != short || !kvs_header_prefix(prefix[0..<short],0) { return false; }
+      if after.count == 0 || fs_exists(after) || bf_read_at(nextpath,0,prefix[0..<short]) != short || !kvs_header_prefix(prefix[0..<short],0) { return 1; }
       #assert kv_header_vartime(0,prefix[..]) == 20;
-      if !fs_truncate(nextpath,0) || !bf_append_sync(nextpath,prefix[..]) { return false; }
+      if !fs_truncate(nextpath,0) || !bf_append_sync(nextpath,prefix[..]) { return 1; }
     }
-    s[0].segment += 1;
-    opened = kvs_open_file_after(nextpath,s[0].live,s[0].used,s[0].frame[..],s[0].scratch[..],s[0].seq,true);
+    s[0].segment += 1; s[0].replay_at = 0;
+    if cxsock_now_ms() >= s[0].deadline { return 75; }
   }
-  if axi_context_vartime(s[0].live,s[0].used) != LC_OK { return false; }
-  tip := lc_tip_vartime(s[0].live,s[0].used); if tip.chain != p.chain { return false; }
-  return true;
+  if axi_context_vartime(s[0].live,s[0].used) != LC_OK { return 1; }
+  tip := lc_tip_vartime(s[0].live,s[0].used); return ifx tip.chain == p.chain then 0 else 1;
 }
 node_import :: (s: [] NativeExplorer, state: string, store: string, deadline: int) -> int {
   best := s[0].tree[0].best_header; tip := lc_tip_vartime(s[0].live,s[0].used);
@@ -168,16 +190,27 @@ node_import :: (s: [] NativeExplorer, state: string, store: string, deadline: in
 // A listener-backed service retains its arena at a bounded checkpoint.
 // The local controller resumes it by updating STATE.continue. Data routes
 // remain unavailable until the preferred chain is completely imported.
+node_wait_continue :: (s: [] NativeExplorer, state: string, store: string, listener: int, p: ChainParams, web: string, control: string, phase: string) {
+  stamp := fs_mtime_ns(control);
+  print("% paused sequence %; update %.continue to resume\n",phase,s[0].seq,state); flushed := cxtool_out_flush();
+  while fs_mtime_ns(control) == stamp {
+    h := cxsock_accept(listener,1000);
+    if h >= 0 { api_connection(s[0].api[..],h,state,store,p,web); closed := cxsock_close(h); }
+  }
+  s[0].deadline = cxsock_now_ms()+s[0].budget_ms;
+}
+node_finish_replay :: (s: [] NativeExplorer, state: string, store: string, listener: int, p: ChainParams, web: string, control: string) -> int {
+  result := node_init(s,state,p);
+  while result == 75 && listener >= 0 {
+    node_wait_continue(s,state,store,listener,p,web,control,"replay"); result = node_init(s,state,p);
+  }
+  return result;
+}
 node_finish_import :: (s: [] NativeExplorer, state: string, store: string, deadline: int, listener: int, p: ChainParams, web: string, control: string) -> int {
   result := node_import(s,state,store,deadline);
   while result == 75 && listener >= 0 {
-    stamp := fs_mtime_ns(control);
-    print("import paused sequence %; update %.continue to resume\n",s[0].seq,state); flushed := cxtool_out_flush();
-    while fs_mtime_ns(control) == stamp {
-      h := cxsock_accept(listener,1000);
-      if h >= 0 { api_connection(s[0].api[..],h,state,store,p,web); closed := cxsock_close(h); }
-    }
-    result = node_import(s,state,store,cxsock_now_ms()+s[0].budget_ms);
+    node_wait_continue(s,state,store,listener,p,web,control,"import");
+    result = node_import(s,state,store,s[0].deadline);
   }
   return result;
 }
@@ -196,6 +229,7 @@ node_main :: (s: [] NativeExplorer) -> int #export_c {
   overflowbuf: [4096] u8;
   if s[0].overflow.count > 0 { overflow_lock := bf_lock(fs_join(s[0].overflow,".explorer-lock",overflowbuf[..])); if overflow_lock < 0 { tool_errln("overflow directory requires exclusive ownership"); return 1; } }
   p := chain_params(chain); state := args_at(a[..],1); store := args_at(a[..],2); started := cxsock_now_ms(); deadline := started+s[0].budget_ms;
+  s[0].deadline = deadline;
   lock := bf_lock(state); if lock < 0 { tool_errln("state requires exclusive ownership"); return 1; }
   archivebuf: [4096] u8; o: [1] Jo; jo_start(o[..],archivebuf[..]); jo_put(o[..],state); jo_put(o[..],".headers");
   archive := jo_text(o[..]); if o[0].bad { return 2; }
@@ -204,18 +238,19 @@ node_main :: (s: [] NativeExplorer) -> int #export_c {
   if !bi_init(s[0].tree[..],p,s[0].links[..],s[0].entries[..],s[0].slots[..],s[0].chain[..]) { return 1; }
   if fs_exists(archive) && !node_headers(s,archive,p,now,"") { return 1; }
   source := args_at(a[..],3); source_stamp := fs_mtime_ns(source);
-  if !node_headers(s,source,p,now,archive) || !node_catalog(s,store,p) || !node_init(s,state,p) { released := bf_unlock(lock); return 1; }
+  if !node_headers(s,source,p,now,archive) || !node_catalog(s,store,p) { released := bf_unlock(lock); return 1; }
   api := s[0].api[..]; api[0].table = s[0].live; api[0].external = true; api[0].mask = s[0].mask;
   #assert ex_id(p.genesis.hash,api[0].genesis[..]);
   listener := ifx port > 0 then cxsock_listen(port) else -1; if port > 0 && listener < 0 { return 1; }
-  result := node_finish_import(s,state,store,deadline,listener,p,args_at(a[..],6),control);
+  result := node_finish_replay(s,state,store,listener,p,args_at(a[..],6),control);
+  if result == 0 { result = node_finish_import(s,state,store,s[0].deadline,listener,p,args_at(a[..],6),control); }
   if result != 0 { released := bf_unlock(lock); return result; }
   api[0].used = s[0].used; api[0].tip = lc_tip_vartime(s[0].live,s[0].used); api[0].loaded = true;
   if port == 0 { released := bf_unlock(lock); return 0; }
   print("explorer-node ready height % on 127.0.0.1:% profile pow-only\n",api[0].tip.height,cxsock_port(listener)); flushed := cxtool_out_flush();
   stamp := source_stamp; checked := cxsock_now_ms();
   while true {
-    h := cxsock_accept(listener,1000); if h >= 0 { api_connection(api,h,state,store,p,args_at(a[..],6)); closed := cxsock_close(h); }
+    h := cxsock_accept(listener,1000); if h >= 0 { mp_native_refresh(s[0].mempool[..],api,state); api_connection(api,h,state,store,p,args_at(a[..],6)); closed := cxsock_close(h); }
     elapsed := cxsock_now_ms()-checked;
     if elapsed >= 10000 && fs_mtime_ns(source) != stamp {
       api[0].loaded = false;

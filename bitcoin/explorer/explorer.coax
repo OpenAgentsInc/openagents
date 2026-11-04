@@ -5,6 +5,7 @@
 cxexplorer_http :: (url: [] u8, timeout: int) -> int #foreign;
 cxexplorer_cancel :: (id: int) -> int #foreign;
 EX_UI_BYTES :: 16777216;
+EU_MEMPOOL :: 7;
 ExHit :: struct { box: Box; action: int; key: [160] u8; n: int; label: [180] u8; ln: int; }
 ExplorerUi :: struct {
   model: [1] UxModel; ui: [1] Ui;
@@ -19,7 +20,7 @@ ExplorerUi :: struct {
   balance: int; copied: bool; focused_hit: int = -1;
 }
 eu_route :: (s: [] ExplorerUi, kind: int, key: string) {
-  s[0].route_n = 0; s[0].route_n = put(s[0].route[..],0,ifx kind == EX_TIP then "" else (ifx kind == EX_BLOCK then "/block/" else (ifx kind == EX_TX then "/transaction/" else (ifx kind == EX_ADDRESS then "/address/" else "/search/"))));
+  s[0].route_n = 0; s[0].route_n = put(s[0].route[..],0,ifx kind == EX_TIP then "" else (ifx kind == EU_MEMPOOL then "/mempool" else (ifx kind == EX_BLOCK then "/block/" else (ifx kind == EX_TX then "/transaction/" else (ifx kind == EX_ADDRESS then "/address/" else "/search/")))));
   s[0].route_n = put(s[0].route[..],s[0].route_n,key); s[0].action = 3;
   // The shared host replaces browser history for action 3; replaceState
   // emits no hashchange. Apply the same navigation in Coax immediately.
@@ -33,6 +34,7 @@ eu_request :: (s: [] ExplorerUi, kind: int) {
   view := ifx kind == 0 then EX_TIP else s[0].view;
   n = put(buf[..],n,ifx view == EX_TIP then "tip" else (ifx view == EX_BLOCK then "block/" else (ifx view == EX_TX then "transaction/" else (ifx view == EX_ADDRESS then "address/" else "search/"))));
   if view != EX_TIP { n = put(buf[..],n,cast(string)s[0].key[0..<s[0].key_n]); }
+  if view == EU_MEMPOOL { n = put(buf[..],0,"/api/mempool/v1"); }
   id := cxexplorer_http(buf[0..<n],10000);
   if !ux_begin(s[0].model[..],kind,id) { s[0].model[0].ready = false; s[0].model[0].error = 503; }
   if kind == 1 { s[0].balance = 0; s[0].page = 0; }
@@ -40,7 +42,7 @@ eu_request :: (s: [] ExplorerUi, kind: int) {
 eu_hash :: (s: [] ExplorerUi, n: int) #export_c {
   if n < 0 || n > 160 { return; } text := cast(string)s[0].inbox[0..<n];
   path: [256] u8; k := put(path[..],0,"/api/v1"); k = put(path[..],k,text);
-  route := ifx n == 0 || text == "/" then ExRoute.{kind=EX_TIP} else ex_route("GET",cast(string)path[0..<k]);
+  route := ifx text == "/mempool" then ExRoute.{kind=EU_MEMPOOL} else (ifx n == 0 || text == "/" then ExRoute.{kind=EX_TIP} else ex_route("GET",cast(string)path[0..<k]));
   s[0].scroll = 0; s[0].page = 0; s[0].focus = false; s[0].copied = false;
   if route.status != 0 || route.kind == EX_RPC {
     old := s[0].model[0].pending[1].id; if old >= 0 { _ := cxexplorer_cancel(old); } s[0].model[0].pending[1].id = -1;
@@ -66,7 +68,7 @@ eu_receive :: (s: [] ExplorerUi, kind: int, n: int) #export_c {
   accepted := ux_receive(s[0].model[..],which,id,snapshot);
   if accepted == 0 { return; }
   if accepted < 0 { s[0].balance = 0; return; }
-  if which == 0 { if accepted == 2 || !s[0].model[0].ready { eu_request(s,1); } return; }
+  if which == 0 { if accepted == 2 || !s[0].model[0].ready || s[0].view == EU_MEMPOOL { eu_request(s,1); } return; }
   s[0].n = n-4; for i: 0..<s[0].n { s[0].body[i] = s[0].inbox[4+i]; }
   d: [1] Jv; #assert jv_parse(d[..],cast(string)s[0].body[0..<s[0].n],s[0].nodes[..]); s[0].node_n = d[0].count;
   if s[0].view == EX_SEARCH {
@@ -149,9 +151,10 @@ eu_frame :: (s: [] ExplorerUi, out: [] f32, u: [] f32, w: f32, h: f32, d: f32, d
   v = eu_text(s,out,v,ifx text.count == 0 then "Height, hash, txid or address" else text[first..<end],left+10,140,9,ifx text.count == 0 then 1 else 0);
   if s[0].focus { x := left+10+sans_width(text[first..<field[0].caret],sans_em(9)); v = eu_text(s,out,v,"|",lo(x,left+search_width-8),140,10,2); }
   v = eu_button(s,out,v,"SEARCH",left+search_width+8,140,80,11,"");
-  v = eu_text(s,out,v,"Confirmed chain data / refreshes every 10 seconds",left,188,8,1);
-  first_vertex := v; y := 238-s[0].scroll; title := ifx s[0].view == EX_TIP then "Latest blocks" else (ifx s[0].view == EX_BLOCK then "Block" else (ifx s[0].view == EX_TX then "Transaction" else (ifx s[0].view == EX_ADDRESS then "Address" else "Search")));
-  v = eu_text(s,out,v,title,left,y,20,0); y += 38;
+  v = eu_button(s,out,v,"MEMPOOL",left+room-102,34,102,EU_MEMPOOL,"");
+  v = eu_text(s,out,v,ifx s[0].view == EU_MEMPOOL then "Local observations / refreshes every 10 seconds" else "Confirmed chain data / refreshes every 10 seconds",left,188,8,1);
+  first_vertex := v; y := 238-s[0].scroll; title := ifx s[0].view == EX_TIP then "Latest blocks" else (ifx s[0].view == EU_MEMPOOL then "Unconfirmed transactions" else (ifx s[0].view == EX_BLOCK then "Block" else (ifx s[0].view == EX_TX then "Transaction" else (ifx s[0].view == EX_ADDRESS then "Address" else "Search"))));
+  title_size := lo(20,20*room/sans_width(title,sans_em(20))); v = eu_text(s,out,v,title,left,y,title_size,0); y += 38;
   if !s[0].model[0].ready {
     error := s[0].model[0].error; label := ifx error == 0 then "Loading current snapshot..." else (ifx error == 404 then "No matching object on this node." else (ifx error == 400 then "Enter a full height, hash, txid or network address." else (ifx error == 409 then "The node changed networks. Reload this page." else "Data unavailable. Retry or choose another query.")));
     v = eu_lines(s,out,v,label,left,y,room,1); y += eu_line_height(label,room)+18;
@@ -161,6 +164,23 @@ eu_frame :: (s: [] ExplorerUi, out: [] f32, u: [] f32, w: f32, h: f32, d: f32, d
     if s[0].view == EX_TIP {
       label := "Choose a block or search the complete indexed chain."; v = eu_lines(s,out,v,label,left,y,room,1); y += eu_line_height(label,room)+16;
       for i: 0..<10 { height := snap.height-i; if height < 0 { break; } key := eu_number(buf[..],height,""); v = eu_link(s,out,v,key,left,y,room,EX_BLOCK,key); y += 34; }
+    } else if s[0].view == EU_MEMPOOL {
+      note := "Local observations; scripts not validated. Conflicts and missing inputs are omitted.";
+      v = eu_lines(s,out,v,note,left,y,room,1); y += eu_line_height(note,room)+20;
+      n = put_int(buf[..],0,jv_int(doc,jv_get(doc,0,"received"),0)); n = put(buf[..],n," received / "); n = put_int(buf[..],n,jv_int(doc,jv_get(doc,0,"omitted"),0)); n = put(buf[..],n," omitted");
+      v = eu_text(s,out,v,cast(string)buf[0..<n],left,y,10,1); y += 30;
+      label := eu_number(buf[..],jv_int(doc,jv_get(doc,0,"observed_at"),0)," UNIX seconds / observed");
+      v = eu_lines(s,out,v,label,left,y,room,1); y += eu_line_height(label,room)+25;
+      rows := jv_get(doc,0,"transactions"); count := jv_len(doc,rows);
+      for i: s[0].page*20..<least(count,(s[0].page+1)*20) {
+        row := jv_at(doc,rows,i); id := eu_field(doc,row,"txid");
+        v = eu_lines(s,out,v,id,left,y,room,0); y += eu_line_height(id,room)+8;
+        n = put_int(buf[..],0,jv_int(doc,jv_get(doc,row,"fee_sat"),0)); n = put(buf[..],n," sat / "); n = put_int(buf[..],n,jv_int(doc,jv_get(doc,row,"vsize"),0)); n = put(buf[..],n," vB / "); n = put_int(buf[..],n,jv_int(doc,jv_get(doc,row,"rate_sat_kvb"),0)); n = put(buf[..],n," sat/kvB");
+        label = cast(string)buf[0..<n]; v = eu_lines(s,out,v,label,left,y,room,2); y += eu_line_height(label,room)+14;
+        v = eu_button(s,out,v,"COPY TXID",left,y,110,15,id); y += 55;
+      }
+      if count == 0 { v = eu_lines(s,out,v,"No eligible local observations in this snapshot.",left,y,room,1); y += 60; }
+      if count > 20 { if s[0].page > 0 { v = eu_button(s,out,v,"PREVIOUS",left,y,105,13,""); } if (s[0].page+1)*20 < count { v = eu_button(s,out,v,"NEXT",left+120,y,85,14,""); } y += 48; }
     } else {
       key := ifx s[0].view == EX_BLOCK then eu_field(doc,0,"hash") else (ifx s[0].view == EX_TX then eu_field(doc,jv_get(doc,0,"occurrence"),"txid") else eu_field(doc,0,"address"));
       v = eu_lines(s,out,v,key,left,y,room,0); y += eu_line_height(key,room)+6;
@@ -222,6 +242,10 @@ eu_a11y :: (s: [] ExplorerUi, buf: [] u8) -> int #export_c {
   n = put(buf,n,ifx s[0].model[0].ready then "Data ready. " else (ifx s[0].model[0].error == 0 then "Loading. " else "Data unavailable. "));
   snapshot := s[0].model[0].snapshot; if snapshot.chain != 0 { n = put(buf,n,UX_CHAINS[snapshot.chain]); n = put(buf,n," height "); n = put_int(buf,n,snapshot.height); }
   if s[0].model[0].ready && s[0].view == EX_ADDRESS { n = put(buf,n,". Confirmed balance "); n = put_int(buf,n,s[0].balance); n = put(buf,n," satoshis. Includes immature coinbase."); }
+  if s[0].model[0].ready && s[0].view == EU_MEMPOOL {
+    doc := Jv.{text=cast(string)s[0].body[0..<s[0].n],nodes=s[0].nodes[..],count=s[0].node_n,ok=true};
+    n = put(buf,n,". Local observations, scripts not validated. "); n = put_int(buf,n,jv_len(doc,jv_get(doc,0,"transactions"))); n = put(buf,n," unconfirmed transactions.");
+  }
   n = put(buf,n,"\n");
   for i: 0..<s[0].hit_n { n = put_int(buf,n,i); n = put(buf,n," button - "); n = put(buf,n,cast(string)s[0].hits[i].label[0..<s[0].hits[i].ln]); n = put(buf,n,"\n"); } return n;
 }

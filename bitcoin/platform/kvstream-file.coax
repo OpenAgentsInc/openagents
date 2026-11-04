@@ -33,11 +33,23 @@ kvs_open_file :: (path: string, table: [] u8, initial: int, frame: [] u8, scratc
   return kvs_open_file_after(path,table,initial,frame,scratch,0,false);
 }
 kvs_open_file_after :: (path: string, table: [] u8, initial: int, frame: [] u8, scratch: [] u8, previous: u64, seen: bool) -> KvOpen {
+  return kvs_open_file_slice(path,table,initial,frame,scratch,previous,seen,0,0).opened;
+}
+KvsFileSlice :: struct { opened: KvOpen; paused: bool; }
+// Resume only at keep from this reader with its corresponding private
+// table and sequence. A positive limit bounds whole frames per call.
+kvs_open_file_slice :: (path: string, table: [] u8, initial: int, frame: [] u8, scratch: [] u8, previous: u64, seen: bool, start: int, limit: int) -> KvsFileSlice {
+  r := kvs_read_file_slice(path,table,initial,frame,scratch,previous,seen,start,limit);
+  size := fs_size(path); return KvsFileSlice.{opened=r,paused=r.code == KV_OK && !r.cut && r.keep < size};
+}
+kvs_read_file_slice :: (path: string, table: [] u8, initial: int, frame: [] u8, scratch: [] u8, previous: u64, seen: bool, start: int, limit: int) -> KvOpen {
   size := fs_size(path); stamp := fs_mtime_ns(path); head: [20] u8;
+  if start < 0 || (start != 0 && start < KV_HEADER) || start > size || limit < 0 { return KvOpen.{code=KV_CORRUPT}; }
   if bf_read_at(path,0,head[..]) != KV_HEADER { return KvOpen.{code=KV_BAD_HEADER}; }
   empty: [1] u8; r := kv_open_vartime(head[..],empty[0..<0]);
-  if r.code != KV_OK { return r; } r.used = initial; r.seq = previous; at := KV_HEADER;
+  if r.code != KV_OK { return r; } r.used = initial; r.seq = previous; at := ifx start == 0 then KV_HEADER else start;
   while at < size {
+    if limit > 0 && r.frames >= limit { break; }
     take := ifx size-at < 8 then size-at else 8;
     if bf_read_at(path,at,frame[0..<take]) != take { return KvOpen.{code=KV_CORRUPT}; }
     extent := kvs_extent(frame[0..<take],size-at);

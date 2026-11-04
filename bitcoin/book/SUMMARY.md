@@ -115,6 +115,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 **XIII. The mempool and policy**
 
 - [81. Policy is not consensus: standardness](ch081-policy-is-not-consensus-standardness.md) — implemented
+- [82. Mempool acceptance and limits](ch082-mempool-acceptance-and-limits.md) — partly implemented
 
 **XIV. Operating the node**
 

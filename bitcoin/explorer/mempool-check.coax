@@ -1,0 +1,43 @@
+// One open headless page follows parent observations, mining and both reorgs.
+#load "browser-check.coax";
+mpb_phase :: (c: [] Cdp, dir: string, phase: int) -> bool {
+  name: [64] u8; pathbuf: [4096] u8; o: [1] Jo;
+  jo_start(o[..],name[..]); jo_put(o[..],"mempool-phase-"); jo_int(o[..],phase);
+  if !fs_write(fs_join(dir,jo_text(o[..]),pathbuf[..]),"ready") { return false; }
+  jo_start(o[..],name[..]); jo_put(o[..],"mempool-go-"); jo_int(o[..],phase);
+  path := fs_join(dir,jo_text(o[..]),pathbuf[..]); deadline := proc_now_ms()+60000;
+  while !fs_exists(path) { if proc_now_ms() >= deadline || !xb_eval(c,"new Promise(r=>setTimeout(()=>r(true),100))") { return false; } }
+  return true;
+}
+mpb_headers :: (dir: string, name: string) -> bool {
+  source: [4096] u8; target: [4096] u8; temp: [4096] u8; bytes: [65536] u8;
+  n := fs_read(fs_join(dir,name,source[..]),bytes[..]);
+  return n > 0 && fs_write(fs_join(dir,"headers.next",temp[..]),cast(string)bytes[0..<n]) && fs_rename(fs_join(dir,"headers.next",temp[..]),fs_join(dir,"headers",target[..]));
+}
+tool_main :: () -> int #export_c {
+  a: [1] Args; if !args_load(a[..]) || args_count(a[..]) != 2 { return 2; } dir := args_at(a[..],1);
+  c: [1] Cdp; if !cdp_launch(c[..],1440,1000,"bitcoin-mempool-") { tool_errln(cdp_error(c[..])); return 1; }
+  buffer: [4096] u8; o: [1] Jo; jo_start(o[..],buffer[..]); jo_obj(o[..]); jo_key(o[..],"url"); jo_str(o[..],args_at(a[..],0)); jo_end(o[..]);
+  ok := cdp_call(c[..],"Page.navigate",jo_text(o[..]),10000) >= 0 && xb_ready(c[..],1,100,"");
+  ok = ok && xb_eval(c[..],"(()=>{[...document.querySelectorAll('#coaxial-a11y button')].find(x=>x.textContent==='MEMPOOL').click();return true})()");
+  if !ok { tool_errln("mempool home/navigation failed"); }
+  for phase: 0..<4 {
+    label: [64] u8; jo_start(o[..],label[..]); jo_put(o[..],"mempool phase "); jo_int(o[..],phase); tool_errln(jo_text(o[..]));
+    if phase > 0 { ok = ok && mpb_headers(dir,ifx phase == 1 then "headers-a" else (ifx phase == 2 then "headers-b" else "headers-c")); }
+    ok = ok && xb_ready(c[..],7,ifx phase == 0 then 100 else 101+phase,"");
+    condition: [256] u8; jo_start(o[..],condition[..]); jo_put(o[..],"document.querySelector('#coaxial-a11y-status').textContent.includes('"); jo_int(o[..],ifx phase == 0 then 3 else (ifx phase == 2 then 0 else 1)); jo_put(o[..]," unconfirmed transactions')");
+    ok = ok && xb_wait(c[..],jo_text(o[..]));
+    if phase == 0 || phase == 3 {
+      ok = ok && xb_eval(c[..],"new Promise(r=>setTimeout(()=>r(true),500))");
+      if phase == 3 { ok = ok && cdp_call(c[..],"Emulation.setDeviceMetricsOverride","{\"width\":390,\"height\":844,\"deviceScaleFactor\":2,\"mobile\":true}",5000) >= 0 && xb_eval(c[..],"new Promise(r=>setTimeout(()=>r(true),500))"); }
+      png: [4194304] u8; path: [4096] u8; n := ifx ok then cdp_screenshot(c[..],png[..]) else 0;
+      ok = ok && n > 0 && fs_write(fs_join(dir,ifx phase == 0 then "mempool-desktop.png" else "mempool-mobile.png",path[..]),cast(string)png[0..<n]);
+    }
+    ok = ok && mpb_phase(c[..],dir,phase); if !ok { break; }
+  }
+  if !ok {
+    png: [4194304] u8; path: [4096] u8; n := cdp_screenshot(c[..],png[..]);
+    if n > 0 { saved := fs_write(fs_join(dir,"mempool-failed.png",path[..]),cast(string)png[0..<n]); } tool_errln(cdp_error(c[..]));
+  }
+  cdp_close(c[..]); tool_errln(ifx ok then "Mempool browser: native parent fees, mining, both reorgs, desktop and mobile pass on one open page." else "Mempool browser failed."); return ifx ok then 0 else 1;
+}

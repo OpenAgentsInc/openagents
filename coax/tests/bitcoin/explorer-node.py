@@ -30,7 +30,7 @@ def check(node,browser=False):
             plain = b"".join(bytes.fromhex("fabfb5da")+struct.pack("<I",len(b))+b for b in all_blocks[start:start+30])
             encoded = bytes(v ^ mask[i%8] for i,v in enumerate(plain))
             (root/f"blk{file:05}.dat").write_bytes(encoded+bytes(1231))
-        total = 0; balances = []; pauses=0
+        total = 0; balances = []; pauses=0; replay_pauses=0
         for known, active in ((all_blocks[:103], prefix[1:]+branches[:2]),
                               (all_blocks[:106], prefix[1:]+branches[2:5]),
                               (all_blocks, prefix[1:]+branches[:2]+branches[5:])):
@@ -46,11 +46,12 @@ def check(node,browser=False):
                         text=log.read_text();assert proc.poll() is None,text
                         assert time.monotonic()<deadline,text
                         for line in text.splitlines():
-                            if line.startswith("import paused") and line not in resumed:
+                            if line.startswith(("import paused","replay paused")) and line not in resumed:
                                 try: urllib.request.urlopen(f"http://127.0.0.1:{port}/api/v1/tip",timeout=5)
                                 except urllib.error.HTTPError as error: assert error.code==503
                                 else: raise AssertionError("partial import was exposed as ready")
                                 resumed.add(line);Path(str(state)+".continue").touch();pauses+=1
+                                if line.startswith("replay paused"):replay_pauses+=1
                         time.sleep(.02)
                     snap = dict(chain="regtest",height=len(active),hash=tx.digest(active[-1][:80])[::-1].hex(),profile="pow-only")
                     def request(path, status=200):
@@ -97,6 +98,7 @@ def check(node,browser=False):
                     assert "runtime error:" not in log.read_text() and "ERROR: AddressSanitizer" not in log.read_text(),log.read_text()
         assert balances==[1999998000,0,1999998000],balances
         assert pauses>0,"bounded import did not retain its arena across a pause"
+        assert replay_pauses>0,"bounded restart replay did not retain its arena across a pause"
         if browser:
             # A fresh native process follows both updates on one open page.
             headers.write_bytes(b"".join(b[:80] for b in all_blocks[:103]))
@@ -160,15 +162,27 @@ def check(node,browser=False):
         relocated=(root/"overflow" if first.parent==root else root)/first.name
         if last==first:last=relocated
         first.rename(relocated);first=relocated
+        # A missing segment (including an unavailable archive symlink) is
+        # never treated as the final durable prefix when later names remain.
+        probe=root/f'state.segment-{int(last.name.rsplit("-",1)[1])+1}'
+        probe.write_bytes(first.read_bytes()[:20])
+        hidden=first.with_name('hidden-journal')
+        first.rename(hidden)
+        refused=subprocess.run([str(node),"regtest",str(state),str(root),str(headers),"2000000000","0","","268435456",str(root/"overflow"),"65536","5000"],cwd=ROOT,capture_output=True,timeout=60)
+        assert refused.returncode==1,(refused.returncode,refused.stdout,refused.stderr)
+        first.symlink_to(root/'unavailable-archive')
+        refused=subprocess.run([str(node),"regtest",str(state),str(root),str(headers),"2000000000","0","","268435456",str(root/"overflow"),"65536","5000"],cwd=ROOT,capture_output=True,timeout=60)
+        assert refused.returncode==1
+        first.unlink();hidden.rename(first);probe.unlink()
         saved=first.read_bytes(); damaged=bytearray(saved); n=struct.unpack_from("<I",damaged,20)[0]
         struct.pack_into("<Q",damaged,28,struct.unpack_from("<Q",damaged,28)[0]+7)
         damaged[24:28]=tx.digest(damaged[28:28+n])[:4];first.write_bytes(damaged)
-        refused=subprocess.run([str(node),"regtest",str(state),str(root),str(headers),"2000000000","0","","268435456",str(root/"overflow"),"65536","1"],cwd=ROOT,capture_output=True,timeout=60)
-        assert refused.returncode==1 and first.read_bytes()==damaged
+        refused=subprocess.run([str(node),"regtest",str(state),str(root),str(headers),"2000000000","0","","268435456",str(root/"overflow"),"65536","5000"],cwd=ROOT,capture_output=True,timeout=60)
+        assert refused.returncode==1 and first.read_bytes()==damaged,(refused.returncode,refused.stdout,refused.stderr)
         first.write_bytes(saved)
         # A torn interior segment must never be trimmed past a later one.
         base_saved=state.read_bytes();state.write_bytes(base_saved[:-1])
-        refused=subprocess.run([str(node),"regtest",str(state),str(root),str(headers),"2000000000","0","","268435456",str(root/"overflow"),"65536","1"],cwd=ROOT,capture_output=True,timeout=60)
+        refused=subprocess.run([str(node),"regtest",str(state),str(root),str(headers),"2000000000","0","","268435456",str(root/"overflow"),"65536","5000"],cwd=ROOT,capture_output=True,timeout=60)
         assert refused.returncode==1 and state.read_bytes()==base_saved[:-1],(refused.returncode,refused.stdout,refused.stderr)
         state.write_bytes(base_saved)
         # Creation of the next segment can tear only its known v1 header.
@@ -177,14 +191,14 @@ def check(node,browser=False):
         plain_header=b"OAKV"+bytes([1,0,0,0])+bytes(8);plain_header+=tx.digest(plain_header)[:4]
         for cut in (0,1,4,19):
             extra.write_bytes(plain_header[:cut])
-            repaired=subprocess.run([str(node),"regtest",str(state),str(root),str(headers),"2000000000","0","","268435456",str(root/"overflow"),"65536","1"],cwd=ROOT,capture_output=True,timeout=60)
+            repaired=subprocess.run([str(node),"regtest",str(state),str(root),str(headers),"2000000000","0","","268435456",str(root/"overflow"),"65536","5000"],cwd=ROOT,capture_output=True,timeout=60)
             assert repaired.returncode==0,(cut,repaired.stdout,repaired.stderr)
             assert extra.read_bytes()==plain_header;extra.unlink()
         extra.write_bytes(b"BAD")
-        refused=subprocess.run([str(node),"regtest",str(state),str(root),str(headers),"2000000000","0","","268435456",str(root/"overflow"),"65536","1"],cwd=ROOT,capture_output=True,timeout=60)
+        refused=subprocess.run([str(node),"regtest",str(state),str(root),str(headers),"2000000000","0","","268435456",str(root/"overflow"),"65536","5000"],cwd=ROOT,capture_output=True,timeout=60)
         assert refused.returncode==1 and extra.read_bytes()==b"BAD";extra.unlink()
         original=last.read_bytes(); last.write_bytes(original[:-1])
-        recovered=subprocess.run([str(node),"regtest",str(state),str(root),str(headers),"2000000000","0","","268435456",str(root/"overflow"),"65536","1"],cwd=ROOT,capture_output=True,text=True,timeout=60)
+        recovered=subprocess.run([str(node),"regtest",str(state),str(root),str(headers),"2000000000","0","","268435456",str(root/"overflow"),"65536","5000"],cwd=ROOT,capture_output=True,text=True,timeout=60)
         assert recovered.returncode==0,(recovered.stdout,recovered.stderr)
         print(f"native explorer: {total} independent HTTP comparisons; XOR blocks, journal rollover, physical padding, both reorgs, exclusive writer, budget pause/503/continuation and torn-frame restart pass",flush=True)
 
