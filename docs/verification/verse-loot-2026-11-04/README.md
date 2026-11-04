@@ -331,3 +331,11 @@ Deduplicated only byte-identical completed SDK-fixture images with hardlinks
 to their immutable original frames after `cmp`; paths and bytes remain.
 More operator PPMs were round-trip-verified as lossless PNG. No unique
 evidence, inventory item or another task's data was removed.
+
+Follow-up review retained the unbound-target clear ahead of survey priority:
+an already selected eligible creature must still be cleared before any new
+visually bound pull, even during travel. The explicit acquisition gate tests
+all three candidate actions with/without selection and active travel. Final
+V5 policy: 227/227 mutants; controller: 191 checks. The boar audit contains no
+observed unbound new pull; the follow-up closes that code path before the
+next hostile trial.

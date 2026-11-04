@@ -206,8 +206,10 @@ cc_run :: (h: int, t: GameTarget, dir: string, steps: int, wanted: int,minimum: 
       d=ifx (s.target_flags&1)!=0 then cb_action(CT_SKIP) else c5_pull_recovery(pull_recovery); why="blocked-pull-recovery";
     }
     point: CreatureBar;
-    if !parking && pull_recovery==0 && !engaged && (s.flags & 4) == 0 && (ifx efficient then c5_visible(roaming,scans,d.action) else d.action == CT_TAB || d.action == CT_FORWARD || d.action == CT_BOLT) && !visual_bound {
-      if (s.target_flags & 1) != 0 { d = cb_action(CT_SKIP); why = "unbound-target"; }
+    if !parking && pull_recovery==0 && !engaged && (s.flags & 4) == 0 && (d.action == CT_TAB || d.action == CT_FORWARD || d.action == CT_BOLT) && !visual_bound {
+      acquisition:=ifx efficient then c5_acquire(roaming,scans,(s.target_flags&1)!=0,d.action) else ifx (s.target_flags&1)!=0 then CT_SKIP else CT_SELECT;
+      if acquisition==CT_SKIP { d = cb_action(CT_SKIP); why = "unbound-target"; }
+      else if acquisition==CT_TAB { d=cb_action(CT_TAB); why="survey-priority"; }
       else {
         point = cv_best(bars,dims.width); why = "visible-candidate";
         if point.rows >= 2 {

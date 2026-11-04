@@ -18,6 +18,20 @@ c5_scanned :: (count: int) -> bool { return count>=8; }
 c5_visible :: (roaming: bool,scans: int,action: int) -> bool {
   return !roaming && !c5_scanned(scans) && (action==CT_TAB || action==CT_FORWARD || action==CT_BOLT);
 }
+#test "survey priority preserves clearing of every unbound selected target before a new pull" {
+  for action:[3] int.[CT_TAB,CT_FORWARD,CT_BOLT] {
+    #assert c5_acquire(true,8,true,action)==CT_SKIP && c5_acquire(false,0,true,action)==CT_SKIP;
+    #assert c5_acquire(true,8,false,action)==CT_TAB && c5_acquire(false,8,false,action)==CT_TAB;
+    #assert c5_acquire(false,7,false,action)==CT_SELECT;
+  }
+  #assert c5_acquire(true,0,false,CT_TAB)==CT_TAB;
+  #assert c5_acquire(false,0,true,CT_WAIT)==CT_WAIT && c5_acquire(false,0,false,CT_FOOD)==CT_WAIT;
+}
+c5_acquire :: (roaming: bool,scans: int,selected: bool,action: int) -> int {
+  if action!=CT_TAB && action!=CT_FORWARD && action!=CT_BOLT { return CT_WAIT; }
+  if selected { return CT_SKIP; }
+  return ifx c5_visible(roaming,scans,action) then CT_SELECT else CT_TAB;
+}
 #test "observation-only waits use cast completion or resource ticks, subtracting work already done" {
   s:=CombatSample.{ok=true,flags=19,cast_left=1300,health=100,health_max=100,mana=100,mana_max=100};
   #assert c5_pause(s,CT_WAIT,0)==1300 && c5_pause(s,CT_WAIT,300)==1000;
