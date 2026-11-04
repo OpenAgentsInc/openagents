@@ -57,6 +57,10 @@ RS_S_TELEPORT :: 26;  // Dimension Door: the caster teleports to the point; a fi
 RS_S_GUARD :: 24;     // Spirit Guardians: an Emanation of area_ft round the caster; a creature it enters, or one that enters it
                       // or ends its turn there, makes a save of ability c once a turn, a dice of b sides Radiant, half on a
                       // success, d more a slot level above; Speed halved in it
+RS_S_BOON :: 27;      // effect a (EF_BLESS, EF_BANE, EF_FAITH) on the target for the spell's duration, while its caster
+                      // concentrates; after SAVE, only on a failure
+RS_S_HALT :: 29;      // Command's Halt: on a failed save, until the end of the target's next turn it doesn't move and takes
+                      // no action or Bonus Action
 RS_ON_SAVE_HALF :: 1; RS_ON_SAVE_NONE :: 0;
 
 RsStep :: struct { kind: int; a: int; b: int; c: int; d: int; }
@@ -75,6 +79,8 @@ RsSpell :: struct {
   humanoid_only: bool;        // its target must be a Humanoid
   burst: bool;                // an area that is there only as it's cast, though the spell lasts (Call Lightning)
   plus: int;                  // a flat number added to its damage roll (Finger of Death's 7d8 + 30)
+  targets: int;               // more than one target: up to this many (0 or 1: one), one more for each slot level above
+                              // the spell's (Bless, Bane, Command); battle.coax rs_cast_as picks the rest
   srd: bool = true;           // the SRD's; false: a house rule (house.coax), not SRD content
   page: int;                  // the SRD 5.2.1 page
   text: string;

@@ -26,7 +26,10 @@
 RT_K_BLAST :: 0; RT_K_FIREBALL :: 1; RT_K_BLIGHT :: 2; RT_K_CIRCLE :: 3; RT_K_FINGER :: 4; RT_K_DOOR :: 5;
 RT_K_CHILL :: 7; RT_K_HEX :: 8;
 RT_K_FIRE_BOLT :: 9; RT_K_FROST :: 10; RT_K_BURNING :: 11; RT_K_LIGHTNING :: 12; RT_K_REBUKE :: 13; RT_K_HOLD :: 14;
-RT_K_LOOKS :: 15;
+// the buffs and debuffs (#12771)
+RT_K_BLESS :: 15; RT_K_BANE :: 16; RT_K_FAITH :: 17; RT_K_FALSE_LIFE :: 18; RT_K_COMMAND :: 19; RT_K_ENFEEBLE :: 20;
+RT_K_SACRED :: 21;
+RT_K_LOOKS :: 22;           // everglade-warlock.coax WL_LOOKS; the raid's shots after (E5R_RAID_K_ARROW)
 RT_LINE_M :: 30.5;          // Lightning Bolt's 100-foot Line, in metres
 
 // The look a page plays for spell sp (-1 none).
@@ -45,6 +48,13 @@ rt_look :: (sp: int) -> int {
   if sp == SP_LIGHTNING_BOLT { return RT_K_LIGHTNING; }
   if sp == SP_HELLISH_REBUKE { return RT_K_REBUKE; }
   if sp == SP_HOLD_PERSON { return RT_K_HOLD; }
+  if sp == SP_BLESS { return RT_K_BLESS; }
+  if sp == SP_BANE { return RT_K_BANE; }
+  if sp == SP_SHIELD_OF_FAITH { return RT_K_FAITH; }
+  if sp == SP_FALSE_LIFE { return RT_K_FALSE_LIFE; }
+  if sp == SP_COMMAND { return RT_K_COMMAND; }
+  if sp == SP_RAY_OF_ENFEEBLEMENT { return RT_K_ENFEEBLE; }
+  if sp == SP_SACRED_FLAME { return RT_K_SACRED; }
   return -1;
 }
 
@@ -81,6 +91,94 @@ rt_hex :: (c: RsCreature, feet: int) -> bool {
 }
 // A siege volley's look at the wall: a Cultist's Fire Bolt, a Warlock's Eldritch Blast.
 rt_siege_look :: (npc: int) -> int { return ifx npc == RS_NPC_WARLOCK then RT_K_BLAST else RT_K_FIRE_BOLT; }
+
+// ---- the support's turn (#12771)
+//
+// A support raider on its turn, its foe `foe` (-1 none): what it casts, the engine's spell on its
+// creature. A Cult Priest (a Cleric) keeps a blessing up: Bless on three of the cult near it, or
+// Shield of Faith on one (its id picks which it holds to first), then puts Command on its foe, else
+// Sacred Flame. A Warlock keeps False Life up by Fiendish Vigor, holds Bane on its foe's side or Ray
+// of Enfeeblement on its foe, then Command (a Fiend's, from level 3), else Eldritch Blast. A Fanatic
+// commands, then holds a Humanoid with Hold Person. Each cast goes into o (its spell, then whom: the
+// cult's own for a buff), up to RT_CASTS_MAX a turn; how many.
+RT_CASTS_MAX :: 3;
+RT_BLESS_FT :: 30;          // Bless's and Bane's range
+// How many of creature i's side stand up within `feet` of it (it not counted), and the nearest into o[0].
+rt_near_allies :: (b: [] RsBattle, i: int, feet: int, o: [] int) -> int {
+  n := 0; best := 1000000; o[0] = -1;
+  for j: 0..<b[0].n {
+    if j == i || b[0].c[j].team != b[0].c[i].team || b[0].c[j].dead || b[0].c[j].hp <= 0 || b[0].c[j].speed <= 0 { continue; }
+    d := rs_feet_to(b, i, j);
+    if d > feet { continue; }
+    n += 1;
+    if d < best { best = d; o[0] = j; }
+  }
+  return n;
+}
+// The nearest of i's side within `feet` without effect `kind` (-1 none).
+rt_ally_without :: (b: [] RsBattle, i: int, feet: int, kind: int) -> int {
+  best := -1; bd := 1000000;
+  for j: 0..<b[0].n {
+    if j == i || b[0].c[j].team != b[0].c[i].team || b[0].c[j].dead || b[0].c[j].hp <= 0 || b[0].c[j].speed <= 0 || rt_has(b, j, kind) { continue; }
+    d := rs_feet_to(b, i, j);
+    if d <= feet && d < bd { bd = d; best = j; }
+  }
+  return best;
+}
+// Whether creature j has effect `kind` on it (read in place).
+rt_has :: (b: [] RsBattle, j: int, kind: int) -> bool { for k: 0..<RS_EFFECTS { if b[0].c[j].eff[k].kind == kind { return true; } } return false; }
+// The lowest slot of at least `level` creature i has left (0 none): a Warlock's Pact slot.
+rt_slot_of :: (c: RsCreature, level: int) -> int {
+  for l: level..<10 { if c.slots[l] > 0 { return l; } }
+  return 0;
+}
+rt_support :: (b: [] RsBattle, i: int, id: int, foe: int, o: [] RtCastDone) -> int {
+  n := 0;
+  c := b[0].c[i];
+  feet := ifx foe >= 0 then rs_feet_to(b, i, foe) else 100000;
+  near: [1] int;
+  if c.npc == RS_NPC_CULT_PRIEST {
+    if c.conc < 0 {
+      allies := rt_near_allies(b, i, RT_BLESS_FT, near[..]);
+      bless_first := rt_hash(id, 21) < 0.5;
+      sl := rt_slot_of(c, 1);
+      if sl > 0 && allies >= 2 && bless_first && rs_cast(b, i, SP_BLESS, sl, 0, 0, near[0]) {
+        o[n] = RtCastDone.{sp = SP_BLESS, to = near[0]}; n += 1;
+      } else if sl > 0 {
+        to := rt_ally_without(b, i, 60, EF_FAITH);
+        if to >= 0 && rs_cast(b, i, SP_SHIELD_OF_FAITH, sl, 0, 0, to) { o[n] = RtCastDone.{sp = SP_SHIELD_OF_FAITH, to = to}; n += 1; }
+      }
+    }
+    if foe >= 0 && !b[0].turn.action {
+      sl := rt_slot_of(b[0].c[i], 1);
+      if sl > 0 && sl <= 2 && b[0].c[i].slots[1] > 1 && feet <= 60 && !rt_has(b, foe, EF_HALT) && rs_cast(b, i, SP_COMMAND, sl, 0, 0, foe) { o[n] = RtCastDone.{sp = SP_COMMAND, to = foe}; n += 1; }
+      else if feet <= 60 && rs_cast(b, i, SP_SACRED_FLAME, 0, 0, 0, foe) { o[n] = RtCastDone.{sp = SP_SACRED_FLAME, to = foe}; n += 1; }
+    }
+    return n;
+  }
+  if c.npc == RS_NPC_WARLOCK || c.npc == RS_NPC_ARCH {
+    // False Life by Fiendish Vigor while nothing threatens it at hand
+    if c.vigor && c.temp <= 0 && feet > 30 && rs_cast(b, i, SP_FALSE_LIFE, 0, 0, 0, i) { o[n] = RtCastDone.{sp = SP_FALSE_LIFE, to = i}; n += 1; return n; }
+    if foe < 0 { return n; }
+    sl := rt_pact(c);
+    if c.conc < 0 && sl > 0 && c.npc == RS_NPC_WARLOCK {
+      if c.level >= 3 && sl >= 2 && feet <= 60 && !rt_has(b, foe, EF_ENFEEBLED) && rt_hash(id, 22) < 0.5 && rs_cast(b, i, SP_RAY_OF_ENFEEBLEMENT, sl, 0, 0, foe) { o[n] = RtCastDone.{sp = SP_RAY_OF_ENFEEBLEMENT, to = foe}; n += 1; return n; }
+      // Hex, its Bonus Action, on the foe (then its blast); else Bane on the foe's side
+      if rt_hash(id, 23) < 0.5 && rt_hex(c, feet) && rs_cast(b, i, SP_HEX, sl, 0, 0, foe) { o[n] = RtCastDone.{sp = SP_HEX, to = foe}; n += 1; }
+      else if feet <= RT_BLESS_FT && !rt_has(b, foe, EF_BANE) && rs_cast(b, i, SP_BANE, sl, 0, 0, foe) { o[n] = RtCastDone.{sp = SP_BANE, to = foe}; n += 1; return n; }
+    }
+    if c.level >= 3 && sl > 0 && feet <= 60 && !rt_has(b, foe, EF_HALT) && rs_cast(b, i, SP_COMMAND, sl, 0, 0, foe) { o[n] = RtCastDone.{sp = SP_COMMAND, to = foe}; n += 1; return n; }
+    if rs_hi_feet(feet, 120) && rs_cast(b, i, SP_ELDRITCH_BLAST, 0, 0, 0, foe) { o[n] = RtCastDone.{sp = SP_ELDRITCH_BLAST, to = foe}; n += 1; }
+    return n;
+  }
+  if c.npc == RS_NPC_FANATIC && foe >= 0 {
+    if c.slots[1] > 0 && feet <= 60 && !rt_has(b, foe, EF_HALT) && rs_cast(b, i, SP_COMMAND, 1, 0, 0, foe) { o[n] = RtCastDone.{sp = SP_COMMAND, to = foe}; n += 1; return n; }
+    if c.slots[2] > 0 && feet > 5 && feet <= 60 && b[0].c[foe].humanoid && rs_cast(b, i, SP_HOLD_PERSON, 2, 0, 0, foe) { o[n] = RtCastDone.{sp = SP_HOLD_PERSON, to = foe}; n += 1; return n; }
+  }
+  return n;
+}
+rs_hi_feet :: (feet: int, most: int) -> bool { return feet <= most; }
+RtCastDone :: struct { sp: int; to: int; }
 
 // Lightning Bolt from creature i toward square (tx, ty): its foes in the Line into n[0], its own into
 // n[1] (the engine's Line, battle.coax rs_area).

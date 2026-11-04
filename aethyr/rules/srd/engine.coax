@@ -126,6 +126,10 @@ EF_NONE :: 0; EF_COND :: 1; EF_ENFEEBLED :: 2; EF_WEAK :: 3; EF_NOHEAL :: 4; EF_
 EF_TURNED :: 6; EF_MARK :: 7; EF_EXPOSED :: 8; EF_VEX :: 9;
 // Hypnotic Pattern's stupor (EF_DAZED): Charmed and Incapacitated, Speed 0, ending when it takes damage
 EF_DAZED :: 10;
+// Bless (EF_BLESS: 1d4 more on its attack rolls and saving throws) and Bane (EF_BANE: 1d4 less), Shield
+// of Faith (EF_FAITH: +2 AC) and Command's Halt (EF_HALT: no move, action or Bonus Action until the
+// end of its next turn; here no Reaction either, as rs_can_act has it)
+EF_BLESS :: 11; EF_BANE :: 12; EF_FAITH :: 13; EF_HALT :: 15;
 
 // The classes a creature can be built as (-1 for a stat block).
 RS_DRUID :: 0; RS_WIZARD :: 1; RS_WARLOCK :: 2; RS_BARBARIAN :: 3; RS_MONK :: 4; RS_MONSTER :: 5;
@@ -265,6 +269,7 @@ RsCreature :: struct {
   npc: int;                 // the stat block it was built from (npcs.coax RS_NPC_*; 0: a class or another monster)
   parry: bool;              // Parry (the Knight's and the Warrior Veteran's Reaction): +2 AC against a melee hit
   rebuke: bool;             // it knows Hellish Rebuke (a Warlock's Reaction to damage)
+  vigor: bool;              // Fiendish Vigor (a Warlock's invocation, level 2+): False Life on itself with no slot, its die at its highest
 }
 rs_name :: (c: [] RsCreature) -> string { return cast(string) c[0].name[0..<c[0].name_n]; }
 rs_set_name :: (c: [] RsCreature, name: string) {
@@ -284,6 +289,7 @@ rs_clear :: (bits: int, bit: int) -> int { return bits - (bits & bit); }
 rs_up :: (c: RsCreature) -> bool { return !c.dead && c.hp > 0; }
 // Can take actions this turn (not Incapacitated, Paralyzed, Petrified, Stunned or Unconscious).
 rs_can_act :: (c: RsCreature) -> bool {
+  for k: 0..<RS_EFFECTS { if c.eff[k].kind == EF_HALT { return false; } }
   return rs_up(c) && (c.cond & (RS_INCAPACITATED | RS_PARALYZED | RS_PETRIFIED | RS_STUNNED | RS_UNCONSCIOUS)) == 0;
 }
 

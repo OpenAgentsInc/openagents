@@ -3868,7 +3868,7 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
     // the casters stand behind the line
     if c.team == 0 && !siege_front(c.npc) { #assert c.x < s[0].cols / 5 - 1; }
   }
-  #assert arch >= 0 && kinds == ((1 << RS_NPCS) - 2);   // every stat block and role, once or more
+  #assert arch >= 0 && kinds == ((1 << RS_NPC_CULT_PRIEST) - 2);   // every stat block and role, once or more (a raid's Cult Priests aren't the Lab's)
   // the sliders: the watch's and the cult's own numbers; the address sets them
   #assert sl_name(s[..], SL_HEROES) == "DEFENDERS" && sl_name(s[..], SL_SKELETONS) == "CULTISTS" && sl_most(s[..], SL_SKELETONS) == SIEGE_CULT_MAX;
   ok = set_slider(s[..], SL_SKELETONS, 20); #assert ok && s[0].cult == 20 && s[0].town == 50 && bt(s[..])[0].n == 71;

@@ -448,12 +448,52 @@ e5rr_beasts_check :: (r: [] E5rRoom) {
 
 // ---- what the engine says
 
-// Creature i (seat or person): hp, max, temp, conditions, dead (0 or 1), concentration's spell (-1).
-E5RR_OUT_FLOATS :: 6;
+// Creature i (seat or person): hp, max, temp, conditions (the engine's, and its effects' as
+// E5RR_C_* bits), dead (0 or 1), concentration's spell (-1), then the seconds left on what holds it
+// longest and that spell (SP_*, -1 none): a held or cursed player's status (#12771).
+E5RR_OUT_FLOATS :: 8;
+// The engine's effects as condition bits, after Everglade's WC_SLOWED (everglade-wire.coax WC_HALTED...):
+// the same numbers there.
+E5RR_C_HALTED :: 131072;     // Command's Halt: it doesn't move and takes no action
+E5RR_C_BANED :: 262144; E5RR_C_BLESSED :: 524288; E5RR_C_FAITH :: 1048576; E5RR_C_ENFEEBLED :: 2097152; E5RR_C_HEXED :: 4194304;
 e5rr_creature :: (r: [] E5rRoom, i: int, out: [] f32) {
   b := r[0].b[..];   // read in place: the host asks for every seat and person every tick
-  out[0] = f32(b[0].c[i].hp); out[1] = f32(b[0].c[i].hp_max); out[2] = f32(b[0].c[i].temp); out[3] = f32(b[0].c[i].cond);
+  out[0] = f32(b[0].c[i].hp); out[1] = f32(b[0].c[i].hp_max); out[2] = f32(b[0].c[i].temp); out[3] = f32(b[0].c[i].cond | e5rr_effect_bits(b, i));
   out[4] = ifx b[0].c[i].dead then 1.0f32 else 0.0f32; out[5] = f32(b[0].c[i].conc);
+  sp: [1] int;
+  out[6] = e5rr_hold_left(b, i, sp[..]); out[7] = f32(sp[0]);
+}
+// Creature i's effects as E5RR_C_* bits.
+e5rr_effect_bits :: (b: [] RsBattle, i: int) -> int {
+  n := 0;
+  for k: 0..<RS_EFFECTS {
+    e := b[0].c[i].eff[k].kind;
+    if e == EF_HALT { n = n | E5RR_C_HALTED; }
+    if e == EF_BANE { n = n | E5RR_C_BANED; }
+    if e == EF_BLESS { n = n | E5RR_C_BLESSED; }
+    if e == EF_FAITH { n = n | E5RR_C_FAITH; }
+    if e == EF_ENFEEBLED { n = n | E5RR_C_ENFEEBLED; }
+    if e == EF_HEX { n = n | E5RR_C_HEXED; }
+  }
+  return n;
+}
+// The seconds left on what holds creature i longest, its spell into sp[0] (-1, 0 s none): what
+// stops it first (Command's Halt, Hold Person's paralysis), else a curse (Bane, Ray of
+// Enfeeblement, Hex), else a blessing (Bless, Shield of Faith).
+e5rr_hold_left :: (b: [] RsBattle, i: int, sp: [] int) -> f32 {
+  sp[0] = -1;
+  best: f32 = 0; rank := 0;
+  for k: 0..<RS_EFFECTS {
+    e := b[0].c[i].eff[k];
+    if e.kind == EF_NONE || e.until <= b[0].clock { continue; }
+    stop := e.kind == EF_HALT || (e.kind == EF_COND && (e.cond & (RS_PARALYZED | RS_RESTRAINED | RS_STUNNED)) != 0);
+    curse := e.kind == EF_BANE || e.kind == EF_ENFEEBLED || e.kind == EF_HEX;
+    rk := ifx stop then 3 else ifx curse then 2 else ifx e.kind == EF_BLESS || e.kind == EF_FAITH then 1 else 0;
+    if rk == 0 { continue; }
+    left := e.until - b[0].clock;
+    if rk > rank || (rk == rank && left > best) { rank = rk; best = left; sp[0] = e.spell; }
+  }
+  return best;
 }
 e5rr_seat_out :: (r: [] E5rRoom, s: int, out: [] f32) #export_c { if s >= 0 && s < E5RR_SEATS && out.count >= E5RR_OUT_FLOATS { e5rr_creature(r, E5RR_SEAT + s, out); } }
 e5rr_folk_out :: (r: [] E5rRoom, j: int, out: [] f32) #export_c { if j >= 0 && j < E5R_FOLK && out.count >= E5RR_OUT_FLOATS { e5rr_creature(r, e5rr_folk(j), out); } }

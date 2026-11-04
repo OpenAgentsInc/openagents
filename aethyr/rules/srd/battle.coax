@@ -384,7 +384,7 @@ rs_damage :: (b: [] RsBattle, by: int, j: int, amount: int, kind: int, crit: boo
     return;
   }
   if r.conc_dc > 0 && b[0].c[j].conc >= 0 {
-    roll := rs_roll(b[0].dice[..], 20); total := roll + rs_save_in(b, j, RS_CON);
+    roll := rs_roll(b[0].dice[..], 20); total := roll + rs_save_in(b, j, RS_CON) + rs_boon_roll(b, j);
     if total < r.conc_dc {
       l: [1] RsLine;
       rs_add_text(l[..], " (Con save "); rs_add_int(l[..], total); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], r.conc_dc); rs_add_text(l[..], ")");
@@ -436,8 +436,17 @@ rs_is_smite :: (s: RsSpell) -> bool {
 }
 // A creature's spell save DC now: Innate Sorcery adds 1 while it lasts.
 rs_dc :: (b: [] RsBattle, i: int) -> int { return rs_spell_dc(b[0].c[i]) + (ifx b[0].c[i].innate_until > b[0].clock then 1 else 0); }
-// Armor Class now: Shield's +5 until the start of its next turn.
-rs_ac :: (b: [] RsBattle, j: int) -> int { return b[0].c[j].ac + (ifx b[0].c[j].shield_until > b[0].clock then 5 else 0); }
+// Armor Class now: Shield's +5 until the start of its next turn, Shield of Faith's +2.
+rs_ac :: (b: [] RsBattle, j: int) -> int { return b[0].c[j].ac + (ifx b[0].c[j].shield_until > b[0].clock then 5 else 0) + (ifx rs_effect(b[0].c[j], EF_FAITH) then 2 else 0); }
+// Bless and Bane on j's attack roll or saving throw: 1d4 more for Bless, 1d4 less for Bane (0 with neither).
+rs_boon_roll :: (b: [] RsBattle, j: int) -> int {
+  n := 0;
+  for k: 0..<RS_EFFECTS {   // read in place: every attack roll and save asks
+    if b[0].c[j].eff[k].kind == EF_BLESS { n += rs_roll(b[0].dice[..], 4); }
+    if b[0].c[j].eff[k].kind == EF_BANE { n -= rs_roll(b[0].dice[..], 4); }
+  }
+  return n;
+}
 // Whether creature i can cast spell sp with a slot of level `slot` now (0 for a cantrip, or for the
 // spell its feature casts without a slot: Paladin's Smite, Favored Enemy). `quick` casts an action
 // spell as a Bonus Action with Quickened Spell (2 Sorcery Points), not after a level 1+ spell this
@@ -458,7 +467,8 @@ rs_can_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, quick: bool) -> b
   if s.level > 0 {
     if b[0].turn.quickened { return false; }
     if slot == 0 {
-      if b[0].c[i].free_spell != sp || b[0].c[i].uses[RS_USE_FREE] <= 0 { return false; }
+      vigor := sp == SP_FALSE_LIFE && b[0].c[i].vigor;
+      if !vigor && (b[0].c[i].free_spell != sp || b[0].c[i].uses[RS_USE_FREE] <= 0) { return false; }
     } else if slot < s.level || slot > 9 || b[0].c[i].slots[slot] <= 0 || b[0].turn.slot_spent { return false; }
   }
   return true;
@@ -489,7 +499,8 @@ rs_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, tar
   if quick { b[0].c[i].uses[RS_USE_SORCERY] -= 2; b[0].turn.quickened = true; }
   if s.level > 0 {
     b[0].turn.leveled = true;
-    if slot > 0 { b[0].c[i].slots[slot] -= 1; b[0].turn.slot_spent = true; } else { b[0].c[i].uses[RS_USE_FREE] -= 1; }
+    if slot > 0 { b[0].c[i].slots[slot] -= 1; b[0].turn.slot_spent = true; }
+    else if !(sp == SP_FALSE_LIFE && b[0].c[i].vigor) { b[0].c[i].uses[RS_USE_FREE] -= 1; }
   }
   if smite { b[0].turn.last_hit = 0; }
   if s.concentration { rs_end_concentration(b, i, ""); b[0].c[i].conc = sp; b[0].c[i].conc_until = b[0].clock + s.duration_s; }
@@ -532,9 +543,14 @@ rs_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, tar
   // each creature it affects
   sculpted := 0;
   if sp == SP_SPIRIT_GUARDIANS { b[0].guards += 1; }
+  // more than one target (Bless, Bane, Command): the target, then the nearest to it of its side within range
+  more: [RS_TARGETS_MAX] int; more_n := 0;
+  if s.area == RS_A_NONE && s.targets > 1 { more_n = rs_more_targets(b, i, target, rs_min(s.targets + rs_max(slot - s.level, 0), RS_TARGETS_MAX) - 1, s.range_ft, more[..]); }
   for j: 0..<b[0].n {
     if s.area == RS_A_NONE {
-      if j != target { continue; }
+      also := false;
+      for m: 0..<more_n { if more[m] == j { also = true; } }
+      if j != target && !also { continue; }
     } else {
       if !rs_inside(area, b[0].c[j].x, b[0].c[j].y) || b[0].c[j].dead { continue; }
       if j == i { continue; }   // "each creature (other than you)"; a cube from you starts beside you
@@ -550,6 +566,29 @@ rs_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, tar
     if heals { got := rs_feature_heal(b, i, i, 2 + slot, "Blessed Healer", RS_FT_NONE); }
   }
   return true;
+}
+
+// The other targets of a spell with more than one (RsSpell.targets): up to n of the first target's
+// side but the caster, up and within range_ft of caster i, nearest the first target first, into o; how many.
+RS_TARGETS_MAX :: 8;
+rs_more_targets :: (b: [] RsBattle, i: int, target: int, n: int, range_ft: int, o: [] int) -> int {
+  got := 0;
+  team := b[0].c[target].team;
+  for pick: 0..<rs_min(n, o.count) {
+    best := -1; bd := 1000000;
+    for j: 0..<b[0].n {
+      c := b[0].c[j];
+      if j == target || j == i || c.team != team || !rs_up(c) || rs_feet_to(b, i, j) > range_ft { continue; }
+      taken := false;
+      for m: 0..<got { if o[m] == j { taken = true; } }
+      if taken { continue; }
+      d := rs_feet_to(b, target, j);
+      if d < bd { bd = d; best = j; }
+    }
+    if best < 0 { break; }
+    o[got] = best; got += 1;
+  }
+  return got;
 }
 
 // Dimension Door (p. 123): the caster teleports to the square (tx, ty), within range. Arriving in a
@@ -630,7 +669,7 @@ rs_inspired_roll :: (b: [] RsBattle, j: int, total: int, need: int) -> int {
 // One attack roll by i at j: the d20 with `edge`, `bonus`, a Critical Hit from `crit_min` up. A
 // missed spell attack can reroll with Seeking Spell (a Sorcery Point); a miss adds a held Bardic
 // Inspiration die; a hit can be cut by an enemy Bard's Cutting Words, or turned by Shield.
-RsAttackRoll :: struct { roll: int; edge: int; total: int; hit: bool; crit: bool; insp: int; seek: bool; cut: int; shield: bool; ac: int; parry: bool; }
+RsAttackRoll :: struct { roll: int; edge: int; total: int; hit: bool; crit: bool; insp: int; seek: bool; cut: int; shield: bool; ac: int; parry: bool; boon: int; }
 rs_roll_attack :: (b: [] RsBattle, i: int, j: int, edge: int, bonus: int, crit_min: int, spell: bool) -> RsAttackRoll {
   r: RsAttackRoll;
   d := rs_d20(b[0].dice[..], edge);
@@ -641,7 +680,9 @@ rs_roll_attack :: (b: [] RsBattle, i: int, j: int, edge: int, bonus: int, crit_m
     r.roll = rs_roll(b[0].dice[..], 20);
   }
   r.crit = r.roll >= crit_min;
-  r.total = r.roll + bonus;
+  // Bless's 1d4 more, Bane's 1d4 less
+  r.boon = rs_boon_roll(b, i);
+  r.total = r.roll + bonus + r.boon;
   r.hit = r.roll != 1 && (r.crit || r.total >= r.ac);
   if !r.hit && r.roll != 1 { r.insp = rs_inspired_roll(b, i, r.total, r.ac); r.total += r.insp; r.hit = r.total >= r.ac; }
   if r.hit && !r.crit { r.cut = rs_cutting_words(b, i, r.total - r.ac); r.total -= r.cut; r.hit = r.total >= r.ac; }
@@ -655,6 +696,8 @@ rs_add_roll :: (l: [] RsLine, r: RsAttackRoll, bonus: int) {
   if r.edge < 0 { rs_add_text(l, " (Disadvantage)"); }
   if r.seek { rs_add_text(l, " (Seeking Spell)"); }
   rs_add_text(l, " + "); rs_add_int(l, bonus);
+  if r.boon > 0 { rs_add_text(l, " + "); rs_add_int(l, r.boon); rs_add_text(l, " Bless"); }
+  if r.boon < 0 { rs_add_text(l, " - "); rs_add_int(l, -r.boon); rs_add_text(l, " Bane"); }
   if r.insp > 0 { rs_add_text(l, " + "); rs_add_int(l, r.insp); rs_add_text(l, " Inspiration"); }
   if r.cut > 0 { rs_add_text(l, " - "); rs_add_int(l, r.cut); rs_add_text(l, " Cutting Words"); }
   rs_add_text(l, " = "); rs_add_int(l, r.total);
@@ -753,7 +796,7 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
       dc := rs_dc(b, i);
       fails := rs_helpless(b[0].c[j]) && (st.a == RS_STR || st.a == RS_DEX);
       d := rs_d20(b[0].dice[..], rs_save_edge(b, j, st.a));
-      total := d.roll + rs_save_in(b, j, st.a);
+      total := d.roll + rs_save_in(b, j, st.a) + rs_boon_roll(b, j);
       insp := ifx fails then 0 else rs_inspired_roll(b, j, total, dc);
       total += insp;
       if !fails { total += rs_own_luck(b, j, total, dc); }
@@ -867,6 +910,8 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
       rs_tell(b, RS_EV_CONDITION, sp, i, j, 0, 0, l[..]);
     } else if st.kind == RS_S_TEMP {
       amount := rs_sum(b[0].dice[..], st.a, st.b) + st.c + st.d * rs_max(slot - s.level, 0);
+      // Fiendish Vigor: no slot, and the die at its highest
+      if sp == SP_FALSE_LIFE && slot == 0 && b[0].c[i].vigor { amount = st.a * st.b + st.c; }
       // Temporary Hit Points don't add up: keep the larger
       b[0].c[j].temp = rs_max(b[0].c[j].temp, amount);
       l: [1] RsLine;
@@ -935,6 +980,20 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
       b[0].c[i].guard_slot = slot;
       l: [1] RsLine; rs_add_text(l[..], "  spirits circle "); rs_add_name(l[..], b, i); rs_add_text(l[..], " 15 feet round");
       rs_tell(b, RS_EV_CONDITION, sp, i, i, 0, 0, l[..]);
+    } else if st.kind == RS_S_BOON {
+      if ran_save && saved { continue; }
+      // one of the caster's while it concentrates on the spell
+      rs_put_effect(b, j, RsEffect.{kind = st.a, by = i, spell = sp, until = ifx s.concentration then b[0].c[i].conc_until else b[0].clock + s.duration_s, save = -1, dc = 0});
+      l: [1] RsLine;
+      rs_add_text(l[..], "  "); rs_add_name(l[..], b, j);
+      rs_add_text(l[..], ifx st.a == EF_BLESS then " is blessed: 1d4 more on its attack rolls and saves" else ifx st.a == EF_BANE then " is baned: 1d4 less on its attack rolls and saves" else " has +2 AC");
+      rs_tell(b, RS_EV_CONDITION, sp, i, j, 0, 0, l[..]);
+    } else if st.kind == RS_S_HALT {
+      if ran_save && saved { continue; }
+      rs_put_effect(b, j, RsEffect.{kind = EF_HALT, by = i, spell = sp, until = rs_own_turn_end(b, j), save = -1, dc = 0});
+      l: [1] RsLine;
+      rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " is commanded to halt: no move, action or Bonus Action on its next turn");
+      rs_tell(b, RS_EV_CONDITION, sp, i, j, 0, 0, l[..]);
     } else if st.kind == RS_S_MARK {
       rs_put_effect(b, j, RsEffect.{kind = EF_MARK, by = i, spell = sp, until = b[0].c[i].conc_until, save = -1, dc = 0});
       b[0].c[i].hex_free = false;
@@ -1018,7 +1077,7 @@ rs_escape :: (b: [] RsBattle, i: int) -> bool {
 // Whether a creature can move: up, and not Paralyzed, Petrified, Stunned, Unconscious, Grappled or
 // Restrained (an Incapacitated creature, a turned Undead, still moves).
 rs_can_move :: (c: RsCreature) -> bool {
-  for k: 0..<RS_EFFECTS { if c.eff[k].kind == EF_DAZED { return false; } }
+  for k: 0..<RS_EFFECTS { if c.eff[k].kind == EF_DAZED || c.eff[k].kind == EF_HALT { return false; } }
   return rs_up(c) && (c.cond & (RS_PARALYZED | RS_PETRIFIED | RS_STUNNED | RS_UNCONSCIOUS | RS_GRAPPLED | RS_RESTRAINED)) == 0;
 }
 // One square of movement: 5 feet, 10 into Difficult Terrain; none while Restrained or at 0, or
@@ -1119,7 +1178,7 @@ rs_end_turn :: (b: [] RsBattle, i: int) {
     e := b[0].c[i].eff[k];
     if e.kind == EF_NONE || e.save < 0 || b[0].c[i].dead || !b[0].turn.new_round { continue; }
     d := rs_d20(b[0].dice[..], 0);
-    total := d.roll + rs_save_in(b, i, e.save);
+    total := d.roll + rs_save_in(b, i, e.save) + rs_boon_roll(b, i);
     total += rs_inspired_roll(b, i, total, e.dc);
     total += rs_own_luck(b, i, total, e.dc);
     ok := total >= e.dc;
@@ -3141,4 +3200,58 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   #assert !rs_shield(b[..], m) && b[0].c[m].slots[4] == 2;
   b[0].c[m].slots[1] = 3;
   #assert rs_shield(b[..], m) && b[0].c[m].slots[1] == 2;
+}
+
+#test "Bless and Bane: three targets each, 1d4 on attack rolls and saves; Shield of Faith +2 AC; False Life by Fiendish Vigor; Command halts (#12771)" {
+  b: [1] RsBattle; b[0].w = 24; b[0].h = 8; b[0].dice[0].state = 33;
+  p := rs_add(b[..], rs_cleric("Cult Priest 1", 1, 3), 2, 3);
+  a1 := rs_add(b[..], rs_cultist("Cultist 1", 1), 3, 3); a2 := rs_add(b[..], rs_cultist("Cultist 2", 1), 4, 3);
+  a3 := rs_add(b[..], rs_cultist("Cultist 3", 1), 3, 4); far := rs_add(b[..], rs_cultist("Cultist 4", 1), 22, 3);
+  g1 := rs_add(b[..], rs_guard("Guard 1", 0), 6, 3); g2 := rs_add(b[..], rs_guard("Guard 2", 0), 7, 3); g3 := rs_add(b[..], rs_guard("Guard 3", 0), 6, 4);
+  // Bless: the target and the two nearest of its side within 30 feet (not the one 100 feet off)
+  rs_start_turn(b[..], p);
+  #assert rs_cast(b[..], p, SP_BLESS, 1, 0, 0, a1);
+  rs_end_turn(b[..], p);
+  #assert rs_effect(b[0].c[a1], EF_BLESS) && rs_effect(b[0].c[a2], EF_BLESS) && rs_effect(b[0].c[a3], EF_BLESS) && !rs_effect(b[0].c[far], EF_BLESS);
+  #assert !rs_effect(b[0].c[p], EF_BLESS) && b[0].c[p].conc == SP_BLESS;
+  // its 1d4 is on the attack roll's line
+  seq := b[0].book[0].seq;
+  rs_start_turn(b[..], a1); s1 := rs_strike(b[..], a1, g1, W_RITUAL_SICKLE, false); rs_end_turn(b[..], a1);
+  told := false;
+  for e: 0..<(b[0].book[0].seq - seq) { ev := rs_recent(b[0].book[0], e); s := cast(string) ev.text[0..<ev.text_n]; for c: 0..<s.count - 5 { if s[c..<c + 6] == " Bless" { told = true; } } }
+  #assert told;
+  // Shield of Faith, a Bonus Action: +2 AC; it replaces Bless as the Priest's concentration
+  ac := rs_ac(b[..], a2);
+  rs_start_turn(b[..], p);
+  #assert rs_cast(b[..], p, SP_SHIELD_OF_FAITH, 1, 0, 0, a2);
+  rs_end_turn(b[..], p);
+  #assert rs_ac(b[..], a2) == ac + 2 && !rs_effect(b[0].c[a1], EF_BLESS);
+  // Bane: a Cha save each; on a failure 1d4 off; most of three Guards fail some of twenty tries
+  baned := 0;
+  for k: 0..<20 {
+    for j: [3] int.[g1, g2, g3] { for e: 0..<RS_EFFECTS { b[0].c[j].eff[e].kind = EF_NONE; } }
+    b[0].c[p].conc = -1; b[0].c[p].slots[1] = 4;
+    rs_start_turn(b[..], p); #assert rs_cast(b[..], p, SP_BANE, 1, 0, 0, g1); rs_end_turn(b[..], p);
+    for j: [3] int.[g1, g2, g3] { if rs_effect(b[0].c[j], EF_BANE) { baned += 1; } }
+  }
+  #assert baned > 10 && baned < 60;
+  // False Life through Fiendish Vigor: no slot spent, 2d4 + 4 at its highest (12)
+  w := rs_add(b[..], rs_warlock("Warlock 1", 1, 3, SP_ELDRITCH_BLAST), 5, 5);
+  b[0].c[w].vigor = true;
+  slots := b[0].c[w].slots[2];
+  rs_start_turn(b[..], w); #assert rs_cast(b[..], w, SP_FALSE_LIFE, 0, 0, 0, w); rs_end_turn(b[..], w);
+  #assert b[0].c[w].temp == 12 && b[0].c[w].slots[2] == slots;
+  b[0].c[w].vigor = false;
+  rs_start_turn(b[..], w); #assert !rs_cast(b[..], w, SP_FALSE_LIFE, 0, 0, 0, w); rs_end_turn(b[..], w);
+  // Command (Halt): on a failed Wis save no move, action or Bonus Action until the end of its next turn
+  halted := false;
+  for k: 0..<20 {
+    b[0].c[p].slots[1] = 4;
+    rs_start_turn(b[..], p); #assert rs_cast(b[..], p, SP_COMMAND, 1, 0, 0, g2); rs_end_turn(b[..], p);
+    if rs_effect(b[0].c[g2], EF_HALT) { halted = true; break; }
+  }
+  #assert halted && !rs_can_act(b[0].c[g2]) && !rs_can_move(b[0].c[g2]);
+  rs_start_turn(b[..], g2); #assert !rs_attack(b[..], g2, a2, false, -1); rs_end_turn(b[..], g2);
+  rs_tick(b[..], 0.2);
+  #assert !rs_effect(b[0].c[g2], EF_HALT) && rs_can_act(b[0].c[g2]);
 }

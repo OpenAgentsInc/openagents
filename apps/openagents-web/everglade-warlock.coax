@@ -34,20 +34,26 @@ WL_CHILL :: 7; WL_HEX :: 8;   // the SRD Warlock's level 1 spells (a character's
 // the Cultist Raid's other spells, looks only a raider casts (everglade-raid-spells.coax RT_K_*): the
 // room sends them as these numbers (e rc) and the preview plays them the same
 WL_FIRE_BOLT :: 9; WL_FROST :: 10; WL_BURNING :: 11; WL_LIGHTNING :: 12; WL_REBUKE :: 13; WL_HOLD :: 14;
-WL_LOOKS :: 15;
+// its buffs and debuffs (#12771)
+WL_BLESS :: 15; WL_BANE :: 16; WL_FAITH :: 17; WL_FALSE_LIFE :: 18; WL_COMMAND :: 19; WL_ENFEEBLE :: 20; WL_SACRED :: 21;
+WL_LOOKS :: 22;
 // each slot's seconds from press to strike (fivebar.coax fb_warlock_bar), and its range in metres
 // (Chill Touch's is Touch: within reach); the raid's looks after
-WL_DELAY :: [15] f32.[0.35, 0.9, 0.6, 0.9, 0.5, 0.4, 0, 0.4, 0.3,   0.45, 0.3, 0.25, 0.5, 0.1, 0.4];
-WL_RANGE :: [15] f32.[36.6, 45.7, 9.1, 45.7, 18.3, 152.4, 0, 1.5, 27.4,   36.6, 18.3, 4.6, 30.5, 18.3, 18.3];
+WL_DELAY :: [22] f32.[0.35, 0.9, 0.6, 0.9, 0.5, 0.4, 0, 0.4, 0.3,   0.45, 0.3, 0.25, 0.5, 0.1, 0.4,   0.4, 0.4, 0.3, 0.3, 0.2, 0.35, 0.4];
+WL_RANGE :: [22] f32.[36.6, 45.7, 9.1, 45.7, 18.3, 152.4, 0, 1.5, 27.4,   36.6, 18.3, 4.6, 30.5, 18.3, 18.3,   9.1, 9.1, 18.3, 0, 18.3, 18.3, 18.3];
 // what it covers where it lands (m): a beam's strike, the 20-foot and 60-foot spheres, a Fire
 // Bolt's strike, Burning Hands' 15 feet, where a Lightning Bolt ends
-WL_AREA :: [15] f32.[0.7, 6.1, 0.8, 18.3, 0.8, 0.9, 0, 0.6, 0.8,   0.7, 0.6, 4.6, 1.2, 0.8, 0.8];
+WL_AREA :: [22] f32.[0.7, 6.1, 0.8, 18.3, 0.8, 0.9, 0, 0.6, 0.8,   0.7, 0.6, 4.6, 1.2, 0.8, 0.8,   0.8, 0.8, 0.8, 0.8, 0.8, 0.6, 0.8];
 // the raid looks' colours
 WL_FIRE :: FxV.{x = 1.0, y = 0.6, z = 0.2};
 WL_ICE :: FxV.{x = 0.6, y = 0.88, z = 1.0};
 WL_SPARK :: FxV.{x = 0.8, y = 0.88, z = 1.0};
 WL_GREEN_FIRE :: FxV.{x = 0.35, y = 1.0, z = 0.4};
 WL_GOLD :: FxV.{x = 1.0, y = 0.85, z = 0.4};
+WL_HOLY :: FxV.{x = 1.0, y = 0.94, z = 0.66};      // Bless, Shield of Faith, Sacred Flame
+WL_BANE_COL :: FxV.{x = 0.55, y = 0.2, z = 0.62};  // Bane, Command
+WL_WITHER :: FxV.{x = 0.32, y = 0.3, z = 0.36};    // Ray of Enfeeblement
+WL_CRIMSON :: FxV.{x = 0.86, y = 0.16, z = 0.22};  // False Life
 // the bar's order, left to right: the spells, then the rebuild last
 WL_ORDER :: [9] int.[0, 1, 2, 3, 4, 5, 7, 8, 6];
 // Whether slot k is one of the Warlock's spells (the rebuild is the realm's).
@@ -331,6 +337,22 @@ wl_land_raid :: (s: [] Everglade, c: WlShot, from: FxV, to: FxV) {
   if k == WL_REBUKE { _ := fxp_start(p, FxCause.{recipe = FXR_FIEND, seed = wl_seed(c.seed, 0), t0 = now, from = from, to = to, col = WL_GREEN_FIRE, big = 1, reach = 1}, now); }
   // Hold Person: spectral bands closing round the one held
   if k == WL_HOLD { _ := fxp_start(p, FxCause.{recipe = FXR_BIND, seed = wl_seed(c.seed, 0), t0 = now, from = from, to = to, col = WL_GOLD, big = 1, reach = 1}, now); }
+  // the buffs and debuffs, at the one they fall on (what stays on it is the creature's own look)
+  // Bless: holy motes rising round the blessed; Shield of Faith: a shimmering field round its friend
+  if k == WL_BLESS { _ := fxp_start(p, FxCause.{recipe = FXR_HEAL, seed = wl_seed(c.seed, 0), t0 = now, from = from, to = to, col = WL_HOLY, big = 1, reach = 1}, now); }
+  if k == WL_FAITH { _ := fxp_start(p, FxCause.{recipe = FXR_BARRIER, seed = wl_seed(c.seed, 0), t0 = now, from = from, to = to, col = WL_HOLY, big = 1, reach = 1}, now); }
+  // Bane: a dark wreath on the head of the cursed; Command: violet rings, the word's force
+  if k == WL_BANE { _ := fxp_start(p, FxCause.{recipe = FXR_VEIL, seed = wl_seed(c.seed, 0), t0 = now, from = from, to = to, col = WL_BANE_COL, big = 1, reach = 1}, now); }
+  if k == WL_COMMAND { _ := fxp_start(p, FxCause.{recipe = FXR_STUN, seed = wl_seed(c.seed, 0), t0 = now, from = from, to = to, col = WL_BANE_COL, big = 1, reach = 1}, now); }
+  // False Life: a dark aura, crimson motes drawn into the Warlock
+  if k == WL_FALSE_LIFE { _ := fxp_start(p, FxCause.{recipe = FXR_DRAIN, seed = wl_seed(c.seed, 0), t0 = now, from = to, to = to, col = WL_CRIMSON, big = 1, reach = 1}, now); }
+  // Ray of Enfeeblement: a grey-black ray, the strength drawn off where it strikes
+  if k == WL_ENFEEBLE {
+    _ := fxp_start(p, FxCause.{recipe = FXR_STREAK, seed = wl_seed(c.seed, 0), t0 = now, from = from, to = to, col = WL_WITHER, big = 1.1 * big, reach = 1}, now);
+    _ = fxp_start(p, FxCause.{recipe = FXR_BLIGHT, seed = wl_seed(c.seed, 1), t0 = now + 0.1, from = from, to = to, col = WL_WITHER, big = 0.7, reach = 1}, now);
+  }
+  // Sacred Flame: a column of radiant flame falling on its foe
+  if k == WL_SACRED { _ := fxp_start(p, FxCause.{recipe = FXR_COLUMN, seed = wl_seed(c.seed, 0), t0 = now, from = to, to = to, col = WL_HOLY, big = 1, reach = 1}, now); }
 }
 wl_bolt_damage :: (seed: int) -> SrdDamage {
   d: [1] SrdDice; d[0] = srd_dice(cast(u64) (seed * 13 + 5));

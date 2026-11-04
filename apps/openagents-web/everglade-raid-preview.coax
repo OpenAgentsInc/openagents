@@ -34,7 +34,7 @@
 RP_PEOPLE :: 63;           // everglade5e-raid.coax E5R_RAID_PEOPLE: the raiders, then the watch
 // npcs.coax RS_NPC_*: the kinds a raid fields
 RP_GUARD :: 1; RP_VETERAN :: 2; RP_KNIGHT :: 3; RP_SCOUT :: 4;
-RP_CULTIST :: 7; RP_FANATIC :: 8; RP_WARLOCK :: 9; RP_ARCH :: 10;
+RP_CULTIST :: 7; RP_FANATIC :: 8; RP_WARLOCK :: 9; RP_ARCH :: 10; RP_PRIEST :: 11;   // RS_NPC_*: a Cult Priest (#12771)
 // where it happens: the leader 50 m out on the road in, the South Gate (plan.coax EG_GATE), where the
 // swarm runs once through, and you by the commons, facing the gate
 RP_LEAD :: [2] f32.[0, -106];
@@ -172,7 +172,7 @@ everglade_raider :: (s: [] Everglade, q: int, npc: int, x: f32, z: f32, yaw: f32
 }
 // what a cast or shot of the raid's is (everglade5e-raid.coax E5R_RAID_K_*): a look (WL_*), an arrow
 // or a bolt, plus RP_AT_ONE when it is aimed at a creature
-RP_ARROW :: 20; RP_BOLT :: 21; RP_AT_ONE :: 32;
+RP_ARROW :: 24; RP_BOLT :: 25; RP_AT_ONE :: 32;
 RP_STEPS :: 3;              // raiders' footfalls a frame at most: a charge is a crowd of feet, not fifty voices
 // A cast or shot of the raid's from (fx, fz) at (ax, az). A spell at the wall is aimed at the town's
 // piece nearest that point, as a player points at a building; one at a creature at its chest, and
@@ -287,7 +287,7 @@ rp_shot :: (s: [] Everglade, follow: Shot) -> Shot {
 
 // The robes' dyes by kind (colour, how much takes), as folk.coax FOLK_DYE: a Cultist's blood red, a
 // Fanatic's black, a Warlock's violet, Darian's black.
-RP_DYE :: [16] f32.[0.3, 0.03, 0.035, 1,   0.16, 0.014, 0.022, 1,   0.13, 0.035, 0.24, 1,   0.03, 0.025, 0.035, 1];
+RP_DYE :: [20] f32.[0.3, 0.03, 0.035, 1,   0.16, 0.014, 0.022, 1,   0.13, 0.035, 0.24, 1,   0.03, 0.025, 0.035, 1,   0.42, 0.36, 0.3, 1];   // the last a Cult Priest's ash-grey vestment
 // The robes' colourway (folk.coax PART_CULT_ROBE): 1 the gold trim and sigil, a Fanatic's and Darian's.
 RP_GOLD :: [4] int.[0, 1, 0, 1];
 RP_FAR :: 22.0;            // metres from you: past this a raider wears the robe's far copy
@@ -423,7 +423,7 @@ rp_person_at :: (s: [] Everglade, q: int, npc: int, x: f32, z: f32, yaw: f32, sp
     s[0].palette[h + c] = SKIN_TONE[tone * 3 + c] * (ifx town then 1.0f32 else 0.8f32);
     s[0].palette[h + 4 + c] = ifx town then WATCH_HAIR_RGB[clamp_i(look, 0, 5) * 3 + c] else 0.04f32;
   }
-  kind := ifx npc == RP_FANATIC then 1 else ifx npc == RP_WARLOCK then 2 else ifx npc == RP_ARCH then 3 else 0;
+  kind := ifx npc == RP_FANATIC then 1 else ifx npc == RP_WARLOCK then 2 else ifx npc == RP_ARCH then 3 else ifx npc == RP_PRIEST then 4 else 0;
   s[0].palette[h + 3] = f32(ifx town then WATCH_VARIANT[clamp_i(look, 0, 5)] else RP_GOLD[kind]);
   s[0].palette[h + 7] = 0;
   for c: 0..<4 { s[0].palette[h + 8 + c] = ifx town then (ifx npc == RP_GUARD then WATCH_DYE[c] else RANK_DYE[(ifx npc == RP_KNIGHT then 3 else ifx npc == RP_SCOUT then 6 else 1) * 4 + c]) else RP_DYE[kind * 4 + c]; }

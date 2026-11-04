@@ -82,6 +82,11 @@ egs_wl_look :: (k: int) -> EgsLook {
   if k == WL_LIGHTNING { return egs_look(SFX_BOLT_CAST, SFX_BOLT_TRAVEL, SFX_THUNDER); }
   if k == WL_REBUKE { return egs_look(-1, -1, SFX_REBUKE); }
   if k == WL_HOLD { return egs_look(SFX_ARCANE_CAST, -1, SFX_HOLD); }
+  if k == WL_BLESS || k == WL_FAITH { return egs_look(SFX_ARCANE_CAST, -1, SFX_SHIELD); }
+  if k == WL_SACRED { return egs_look(SFX_ARCANE_CAST, -1, SFX_RADIANT); }
+  if k == WL_BANE || k == WL_COMMAND { return egs_look(SFX_ARCANE_CAST, -1, SFX_HEX); }
+  if k == WL_FALSE_LIFE { return egs_look(SFX_NECRO_CAST, -1, SFX_HEAL); }
+  if k == WL_ENFEEBLE { return egs_look(SFX_NECRO_CAST, SFX_NECRO_TRAVEL, SFX_NECRO_HIT); }
   return EgsLook.{};
 }
 // The druid's four aimed spells (everglade-spells.coax SP_*): Meteor Swarm, the bolts, the Water Orb.

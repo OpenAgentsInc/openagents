@@ -68,7 +68,10 @@ WG_GROUND :: 1; WG_SWIM :: 2; WG_BOAT :: 4; WG_DEAD :: 8; WG_AWAY :: 16;   // AW
 WC_PARALYZED :: 256; WC_PETRIFIED :: 512; WC_PRONE :: 2048; WC_RESTRAINED :: 4096; WC_STUNNED :: 8192; WC_UNCONSCIOUS :: 16384;
 WC_SLOWED :: 65536;        // Ray of Frost's slow (the watch's casters)
 WC_BOUND :: 8388608;       // Earthbind's hold on the ground (the watch's casters): no rising, no flying
-WC_STOPPED :: WC_PARALYZED | WC_PETRIFIED | WC_RESTRAINED | WC_STUNNED | WC_UNCONSCIOUS;   // can't move
+// the SRD engine's effects on a creature, as the room sends them (everglade5e-room-rules.coax E5RR_C_*: #12771)
+WC_HALTED :: 131072;       // Command's Halt: it doesn't move and takes no action
+WC_BANED :: 262144; WC_BLESSED :: 524288; WC_FAITH :: 1048576; WC_ENFEEBLED :: 2097152; WC_HEXED :: 4194304;
+WC_STOPPED :: WC_PARALYZED | WC_PETRIFIED | WC_RESTRAINED | WC_STUNNED | WC_UNCONSCIOUS | WC_HALTED;   // can't move
 // an input's B bits
 WB_RUN :: 1; WB_JUMP :: 2; WB_DIVE :: 4; WB_RISE :: 8; WB_SINK :: 16;   // (rise, sink: Levitate's keys held)
 // an interaction's KIND

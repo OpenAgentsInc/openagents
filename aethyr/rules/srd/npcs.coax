@@ -10,8 +10,8 @@
 // stat block's Multiattack is Extra Attack here: the Attack action's further attacks. What a block
 // casts "N/Day" is that many spell slots of the spell's level (Priest: Spirit Guardians, and Healing
 // Word through Divine Aid; Mage: Fireball at level 4, Cone of Cold, and Shield through Protective
-// Magic; Cultist Fanatic: Hold Person). The blocks' other spells and actions aren't in the engine
-// yet, so nobody casts them: Light, Thaumaturgy, Command, Spiritual Weapon, Bless, Dispel Magic,
+// Magic; Cultist Fanatic: Command and Hold Person). The blocks' other spells and actions aren't in the engine
+// yet, so nobody casts them: Light, Thaumaturgy, Spiritual Weapon, Bless, Dispel Magic,
 // Lesser Restoration, Sanctuary, Detect Magic, Mage Hand, Prestidigitation, Invisibility, Fly,
 // Misty Step and Counterspell.
 //
@@ -25,9 +25,12 @@ RS_NPC_NONE :: 0; RS_NPC_GUARD :: 1; RS_NPC_VETERAN :: 2; RS_NPC_KNIGHT :: 3; RS
 RS_NPC_PRIEST :: 5; RS_NPC_MAGE :: 6; RS_NPC_CULTIST :: 7; RS_NPC_FANATIC :: 8;
 // the siege's warlocks are class levels, not stat blocks; their roles are counted here too
 RS_NPC_WARLOCK :: 9; RS_NPC_ARCH :: 10;
-RS_NPCS :: 11;
-RS_NPC_NAME :: [11] string.["", "Guard", "Warrior Veteran", "Knight", "Scout", "Priest", "Mage", "Cultist", "Cultist Fanatic",
-                            "Warlock", "Fiend Warlock"];
+// a raid's Cult Priests (apps/openagents-web/everglade-raid-tactics.coax, #12771): the SRD's Cleric at a level, not a
+// stat block, like the warlocks; the Lab's siege doesn't field them
+RS_NPC_CULT_PRIEST :: 11;
+RS_NPCS :: 12;
+RS_NPC_NAME :: [12] string.["", "Guard", "Warrior Veteran", "Knight", "Scout", "Priest", "Mage", "Cultist", "Cultist Fanatic",
+                            "Warlock", "Fiend Warlock", "Cult Priest"];
 
 // A stat block's attacks, as weapons (rs_weapon): the dice and the extra damage each block lists.
 rs_npc_weapon :: (w: int) -> RsWeapon {
@@ -161,13 +164,21 @@ rs_cultist :: (name: string, team: int) -> RsCreature {
 }
 // Cultist Fanatic (p. 278): AC 13 (Leather Armor), HP 44 (8d8 + 8), Str 11 Dex 14 Con 12 Int 10 Wis
 // 14 (save +4) Cha 13, CR 2 (PB +2). Pact Blade: +4, 1d8 + 2 Slashing plus 2d6 Necrotic.
-// Spellcasting (Wisdom, save DC 12, +4 to hit): Hold Person 1/Day.
+// Spellcasting (Wisdom, save DC 12, +4 to hit): Command 2/Day, Hold Person 1/Day.
 rs_fanatic :: (name: string, team: int) -> RsCreature {
   c: [1] RsCreature;
   c[0] = rs_npc(name, team, RS_NPC_FANATIC, 1, [6] int.[11, 14, 12, 10, 14, 13], 13, 44);
   c[0].save_prof[RS_WIS] = true;
   c[0].weapon = W_PACT_BLADE; c[0].spell_ability = RS_WIS;
-  rs_npc_slots(c[..], 2, 1);
+  rs_npc_slots(c[..], 2, 1); rs_npc_slots(c[..], 1, 2);
+  return c[0];
+}
+// A raid's Cult Priest (#12771): the SRD 5.2.1 Cleric at `level` (engine.coax rs_cleric), who casts
+// Bless and Shield of Faith on the cult and Bane and Command on its foes.
+rs_cult_priest :: (name: string, team: int, level: int) -> RsCreature {
+  c: [1] RsCreature;
+  c[0] = rs_cleric(name, team, level);
+  c[0].npc = RS_NPC_CULT_PRIEST;
   return c[0];
 }
 
