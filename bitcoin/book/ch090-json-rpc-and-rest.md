@@ -118,6 +118,12 @@ spends, genesis, RPC errors, torn state, corrupt block storage and a missing
 state file. The same journey runs with both processes under ASan/UBSan.
 See the [verification record](../../docs/verification/bitcoin-explorer-api-2026-11-03.md).
 
+The [native service](../explorer/README.md) removes the teaching adapter's
+whole-log limit with bounded replay and caller-owned indexed storage.
+[Core/Electrs reference checks](../../docs/verification/bitcoin-explorer-reference-2026-11-03.md)
+compare independent raw-block, output and address answers through both
+validated regtest reorgs. Full signet acceptance is recorded separately.
+
 ## Specifications
 
 The envelopes follow [JSON-RPC 2.0](https://www.jsonrpc.org/specification),

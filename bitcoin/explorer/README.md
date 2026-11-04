@@ -114,3 +114,21 @@ python3 coax/tests/bitcoin/kvstream.py --coax coax/bin/coax --mode sanitized
 coax/bin/coax mutate coax/lib/bitcoin/addrindex-private.coax --root-only --jobs 8
 coax/bin/coax mutate coax/lib/bitcoin/kvstream.coax --root-only --jobs 8
 ```
+
+The retained Core 32.1/Electrs 0.11.0 fixtures also check real validated
+regtest branches through the native node and one open browser:
+
+```sh
+python3 coax/tests/bitcoin/explorer-core-browser.py --node bitcoin/explorer/build/native-release/explorer-node --fixture bitcoin/fixtures/explorer-core-reorg
+```
+
+The oracle records Core and Electrs on the same frozen chain, then compares
+the own-node service without either reference running. The public signet
+record is `bitcoin/fixtures/explorer-signet-329338.json`:
+
+```sh
+python3 coax/tests/bitcoin/explorer-reference.py --fixture bitcoin/fixtures/explorer-signet-329338.json --api http://127.0.0.1:8822
+```
+
+See [the reference record](../../docs/verification/bitcoin-explorer-reference-2026-11-03.md)
+for provenance, coverage and the current full-signet acceptance status.

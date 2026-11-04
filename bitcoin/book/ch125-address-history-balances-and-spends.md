@@ -108,3 +108,8 @@ Every physical cut of the reorg's state frame must expose the previous or
 the complete new address snapshot. Coax checks cover exact workspace edges,
 stale cursors and malformed archive records. See the
 [verification record](../../docs/verification/bitcoin-address-index-2026-11-03.md).
+
+The native explorer also compares exact histories, balances and spend sets
+against independently recorded Core/Electrs answers through both validated
+regtest reorgs. See the [reference record](../../docs/verification/bitcoin-explorer-reference-2026-11-03.md)
+for retained fixtures and the separate full-signet acceptance gate.

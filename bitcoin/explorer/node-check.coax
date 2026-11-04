@@ -7,17 +7,20 @@ nb_headers :: (dir: string, name: string) -> bool {
   return n > 0 && fs_write(tmp,cast(string)bytes[0..<n]) && fs_rename(tmp,dst);
 }
 tool_main :: () -> int #export_c {
-  a: [1] Args; if !args_load(a[..]) || args_count(a[..]) != 5 { tool_errln("usage: node-check URL DIR ADDRESS TXID HASH"); return 2; }
+  a: [1] Args; if !args_load(a[..]) || (args_count(a[..]) != 5 && args_count(a[..]) != 8) { tool_errln("usage: node-check URL DIR ADDRESS TXID HASH [BALANCE_A BALANCE_B BALANCE_C]"); return 2; }
+  ba := ifx args_count(a[..]) == 8 then args_at(a[..],5) else "1999998000";
+  bb := ifx args_count(a[..]) == 8 then args_at(a[..],6) else "0";
+  bc := ifx args_count(a[..]) == 8 then args_at(a[..],7) else "1999998000";
   c: [1] Cdp; if !cdp_launch(c[..],1440,1000,"bitcoin-native-node-") { tool_errln(cdp_error(c[..])); return 1; }
   buffer: [4096] u8; o: [1] Jo; jo_start(o[..],buffer[..]); jo_obj(o[..]); jo_key(o[..],"url"); jo_str(o[..],args_at(a[..],0)); jo_end(o[..]);
   ok := cdp_call(c[..],"Page.navigate",jo_text(o[..]),10000) >= 0 && xb_ready(c[..],1,102,"");
   for key: [4] string.["101",args_at(a[..],4),args_at(a[..],3),args_at(a[..],2)] {
     route: [256] u8; jo_start(o[..],route[..]); jo_put(o[..],"/search/"); jo_put(o[..],key);
     view := ifx key == args_at(a[..],2) then 4 else (ifx key == args_at(a[..],3) then 3 else 2);
-    ok = ok && xb_hash(c[..],jo_text(o[..])) && xb_ready(c[..],view,102,ifx view == 4 then "1999998000" else "");
+    ok = ok && xb_hash(c[..],jo_text(o[..])) && xb_ready(c[..],view,102,ifx view == 4 then ba else "");
   }
-  ok = ok && nb_headers(args_at(a[..],1),"headers-b") && xb_ready(c[..],4,103,"0");
-  ok = ok && nb_headers(args_at(a[..],1),"headers-c") && xb_ready(c[..],4,104,"1999998000");
+  ok = ok && nb_headers(args_at(a[..],1),"headers-b") && xb_ready(c[..],4,103,bb);
+  ok = ok && nb_headers(args_at(a[..],1),"headers-c") && xb_ready(c[..],4,104,bc);
   if ok {
     png: [4194304] u8; n := cdp_screenshot(c[..],png[..]); path: [4096] u8;
     ok = n > 0 && fs_write(fs_join(args_at(a[..],1),"native-node.png",path[..]),cast(string)png[0..<n]);

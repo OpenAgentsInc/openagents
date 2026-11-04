@@ -1,0 +1,22 @@
+{
+ "chain": "regtest",
+ "heights": [
+  102,
+  103,
+  104
+ ],
+ "balances": [
+  2999998000,
+  1000000000,
+  2999998000
+ ],
+ "address": "2N4XUn8T63kdwxeDGq5Uxx6fFNNtvSNzMyC",
+ "txid": "e97304753dd67dc61b2f1ba8d782e19f0ae9b596729ed868428f076061267d35",
+ "hash": "291fb977943bf9cec15f2572c6b9ba204344a0d896b3adf85c570759ab6d9fdb",
+ "blocks": 108,
+ "core": "/Satoshi:32.1.0/",
+ "electrs": [
+  "electrs/0.11.0",
+  "1.4"
+ ]
+}

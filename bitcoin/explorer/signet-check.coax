@@ -1,0 +1,28 @@
+// Actual full-signet browser acceptance against the frozen reference tuple.
+#load "browser-check.coax";
+tool_main :: () -> int #export_c {
+  a: [1] Args; if !args_load(a[..]) || args_count(a[..]) != 7 { tool_errln("usage: signet-check URL HEIGHT HASH TXID ADDRESS BALANCE OUTPUT_DIR"); return 2; }
+  height := 0; for c: args_at(a[..],1) { if c < '0' || c > '9' { return 2; } height = height*10+cast(int)(c-'0'); }
+  c: [1] Cdp; if !cdp_launch(c[..],1440,1000,"bitcoin-signet-acceptance-") { tool_errln(cdp_error(c[..])); return 1; }
+  buffer: [4096] u8; o: [1] Jo; jo_start(o[..],buffer[..]); jo_obj(o[..]); jo_key(o[..],"url"); jo_str(o[..],args_at(a[..],0)); jo_end(o[..]);
+  ok := cdp_call(c[..],"Page.navigate",jo_text(o[..]),10000) >= 0 && xb_ready(c[..],1,height,"");
+  // Type the height through the real search control and keyboard path.
+  ok = ok && xb_wait(c[..],"document.querySelectorAll('#coaxial-a11y button').length>3");
+  ok = ok && xb_eval(c[..],"(()=>{document.querySelectorAll('#coaxial-a11y button')[1].click();return true})()");
+  jo_start(o[..],buffer[..]); jo_obj(o[..]); jo_key(o[..],"text"); jo_str(o[..],args_at(a[..],1)); jo_end(o[..]);
+  ok = ok && cdp_call(c[..],"Input.insertText",jo_text(o[..]),5000) >= 0;
+  ok = ok && cdp_call(c[..],"Input.dispatchKeyEvent","{\"type\":\"keyDown\",\"key\":\"Enter\",\"code\":\"Enter\",\"windowsVirtualKeyCode\":13}",5000) >= 0 && xb_ready(c[..],2,height,"");
+  for i: 2..<5 {
+    route: [256] u8; jo_start(o[..],route[..]); jo_put(o[..],"/search/"); jo_put(o[..],args_at(a[..],i));
+    view := i; ok = ok && xb_hash(c[..],jo_text(o[..])) && xb_ready(c[..],view,height,ifx view == 4 then args_at(a[..],5) else "");
+  }
+  if ok {
+    png: [4194304] u8; path: [4096] u8; n := cdp_screenshot(c[..],png[..]);
+    ok = n > 0 && fs_write(fs_join(args_at(a[..],6),"signet-desktop.png",path[..]),cast(string)png[0..<n]);
+    ok = ok && cdp_call(c[..],"Emulation.setDeviceMetricsOverride","{\"width\":390,\"height\":844,\"deviceScaleFactor\":2,\"mobile\":true}",5000) >= 0;
+    ok = ok && xb_eval(c[..],"new Promise(r=>setTimeout(()=>r(true),500))"); n = cdp_screenshot(c[..],png[..]);
+    ok = ok && n > 0 && fs_write(fs_join(args_at(a[..],6),"signet-mobile.png",path[..]),cast(string)png[0..<n]);
+  }
+  cdp_close(c[..]); tool_errln(ifx ok then "Full signet browser: typed height, hash, txid and address searches, frozen balance, desktop and mobile pass." else "Full signet browser acceptance failed.");
+  return ifx ok then 0 else 1;
+}

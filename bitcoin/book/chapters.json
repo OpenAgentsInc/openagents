@@ -1944,7 +1944,12 @@
     "bitcoin/platform/explorer-node.coax",
     "bitcoin/platform/explorer-native.c",
     "bitcoin/platform/explorer-files-native.c",
-    "coax/tests/bitcoin/explorer-node.py"
+    "coax/tests/bitcoin/explorer-node.py",
+    "coax/tests/bitcoin/explorer-reference.py",
+    "coax/tests/bitcoin/explorer-core-reorg.py",
+    "coax/tests/bitcoin/explorer-core-browser.py",
+    "bitcoin/explorer/node-check.coax",
+    "bitcoin/explorer/signet-check.coax"
    ],
    "qualified_targets": [
     "cpu"
