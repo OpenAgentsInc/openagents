@@ -339,6 +339,9 @@ everglade_room_abilities :: (s: [] Everglade, dt: f32) #export_c {
     eg_ra_hp_back(s, h, true, q);
     eg_ra_out(s, q, was);
   }
+  // the rules' saves are this step's: one no copy took (its person was outside the copy's shape) is
+  // not a later round's (everglade-abilities.coax ab_rules_save)
+  for i: 0..<WATCH_ACTORS { s[0].wv.rules_save[i] = 0; }
 }
 // Seat q's ability k: ON X Y Z YAW EPOCH (where its last cast was: the caster, or the aim). Whether it is up.
 everglade_room_life :: (s: [] Everglade, q: int, k: int, out: [] f32) -> bool #export_c {
@@ -638,6 +641,45 @@ eg_ra_drawn :: (s: [] Everglade, q: int, k: int) -> bool {
   #assert a[0].bt_on;
   for q: 0..<3 { #assert a[0].bt_held[who[q]]; }
   #assert !a[0].bt_held[who[3]] && !a[0].bt_held[who[4]];
+}
+
+#test "room abilities: Thunderwave and Gust push whom the rules' save failed, three people each, rolling no save of their own (#12874)" #steps 4000000000 {
+  ks := [2] int.[AB_THUNDER, AB_GUST];
+  // two patterns of the rules' saves each (1 a success): the pushed are exactly the failures
+  pats := [4] int.[0b010, 0b101, 0b001, 0b110];
+  for c: 0..<4 {
+    k := ks[c / 2];
+    s: [1] Everglade;
+    dm: [1] DemoWorld;
+    everglade_room_spells_start(s[..], dm[..], "");
+    seats: [EG_ROOM_SEAT_FLOATS * WATCH_YOUS] f32; took: [2 * WATCH_YOUS] f32;
+    everglade_room_town(s[..], 1.0 / 30, 100, seats[..], 0, took[..]);   // the server's town, on
+    #assert watch_on(s[..]);
+    w := watch_w(s[..]);
+    // three people of the town 2 m ahead of seat 2, a metre apart: in Thunderwave's cube and Gust's line
+    who: [3] int; n := 0;
+    for i: 0..<EG_SPOTS { if n < 3 && watch_here(w, i) && ab_person_ok(s[..], i) { who[n] = i; n += 1; } }
+    #assert n == 3;
+    for q: 0..<3 {
+      i := who[q];
+      x := f32(q - 1);
+      s[0].folk[i].x = x; s[0].folk[i].z = -28; s[0].folk[i].indoors = false;
+      w[0].actors[i].x = x; w[0].actors[i].z = -28; w[0].actors[i].body.on = false;
+      everglade_room_folk_save(s[..], i, k, 2, (pats[c] & (1 << q)) != 0);
+    }
+    g := walk_at(s[..], 0, -30);
+    everglade_room_ab_pose(s[..], 2, 0, g, -30, 0);
+    everglade_room_ability(s[..], 2, k, 0, g, -30, 0, true, 0, g, -24);
+    for q: 0..<3 {
+      thrown := w[0].actors[who[q]].body.on;
+      #assert thrown == ((pats[c] & (1 << q)) == 0);
+      #assert s[0].wv.rules_save[who[q]] == 0;   // taken
+    }
+    // a step on, the saves left untaken are gone (not a later round's)
+    everglade_room_folk_save(s[..], who[0], AB_TENTACLES, 2, false);
+    everglade_room_abilities(s[..], 1.0 / 30);
+    #assert s[0].wv.rules_save[who[0]] == 0;
+  }
 }
 
 #test "room abilities: Everglade's four strike the server's town at the step after the room hands them over (their cast bar done: room-casts.coax)" #steps 3000000000 {

@@ -190,6 +190,7 @@ void world_folk_hp(int k, int j, int hp, int temp, int by, int cond) {
   everglade_room_folk_hp(at(k), j, hp, temp, by);
   everglade_room_folk_cond(at(k), j, cond);
 }
+void world_folk_save(int k, int j, int ab, int seat, bool saved) { if (world_of(k)) everglade_room_folk_save(at(k), j, ab, seat, saved); }
 void world_crime(int k, int by, float x, float z) { if (world_of(k)) (void)everglade_room_crime(at(k), by, x, z); }
 void world_town(int k, float dt, double world_s, const float seats[WORLD_SEATS * WORLD_SEAT_TOWN], float took[2 * WORLD_SEATS]) {
   if (!world_of(k)) return;

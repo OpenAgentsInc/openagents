@@ -751,6 +751,24 @@ ab_rules_hold :: (s: [] Everglade, i: int, bit: int) -> int {
   if c < 0 { return -1; }
   return ifx (c & bit) != 0 then 1 else 0;
 }
+// Person i's save against ability k of the seat whose copy runs now, as the room's rules rolled it
+// this step: 1 a success, 0 a failure, -1 none (offline, a later round, or outside the rules' shape:
+// the ability rolls its own). Taken once, so the push follows the save the rules' damage did (#12874).
+ab_rules_save :: (s: [] Everglade, i: int, k: int) -> int {
+  q := s[0].sp.room_ab[0].in_copy - 1;
+  if q < 0 || i < 0 || i >= WATCH_ACTORS || s[0].wv.rules_save[i] == 0 { return -1; }
+  c := s[0].wv.rules_save[i] - 1;
+  if c / 2 != k * WATCH_YOUS + q { return -1; }
+  s[0].wv.rules_save[i] = 0;
+  return c % 2;
+}
+// Person i's save against ability k: the rules' where they rolled one (ab_rules_save), else a roll
+// (the guards' +1, the rest's +0) against the spells' DC. The save's `success`.
+ab_k_save :: (s: [] Everglade, i: int, k: int) -> bool {
+  r := ab_rules_save(s, i, k);
+  if r >= 0 { return r == 1; }
+  return srd_save(s[0].sp.dice[..], ifx watch_is_guard(i) then 1 else 0, AB_DC).success;
+}
 // A click with Telekinesis picked: take hold of what the pointer shows, or move what is held toward
 // where it points.
 ab_tk_click :: (s: [] Everglade) {
@@ -1229,8 +1247,7 @@ ab_gust_people :: (s: [] Everglade) -> int {
     if !inside { a[0].gust_in[i] = false; continue; }
     if a[0].gust_in[i] && a[0].gust_t < a[0].gust_next[i] { continue; }
     a[0].gust_in[i] = true; a[0].gust_next[i] = a[0].gust_t + f32(AB_GUST_ROUND);
-    save := srd_save(s[0].sp.dice[..], ifx watch_is_guard(i) then 1 else 0, AB_DC);
-    if save.success { continue; }
+    if ab_k_save(s, i, AB_GUST) { continue; }   // the rules' save as it is cast, where they rolled one
     ab_shove(s, i, pl.x, pl.z, a[0].gust_dir, f32(AB_GUST_PUSH), 0);
     n += 1;
   }
@@ -1299,8 +1316,7 @@ ab_thunder :: (s: [] Everglade) {
       if act.mode == WM_DEAD || (act.mode == WM_CALM && act.home_in) { continue; }
       pl := person_place(s, i);
       if !ab_in_cube(you, f, pl.x, pl.z, folk_feet(s, pl.x, pl.z) + ab_air(s, i) + 0.9) { continue; }
-      save := srd_save(s[0].sp.dice[..], ifx watch_is_guard(i) then 1 else 0, AB_DC);
-      if save.success { watch_harm(ww, i, dmg / 2, you); }
+      if ab_k_save(s, i, AB_THUNDER) { watch_harm(ww, i, dmg / 2, you); }   // the rules' save, where they rolled one
       else { ab_shove(s, i, pl.x, pl.z, unit_or(v3(pl.x - you.x, 0, pl.z - you.z), f), f32(AB_TW_PUSH), dmg); }
       hit += 1;
     }

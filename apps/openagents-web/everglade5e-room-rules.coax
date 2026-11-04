@@ -718,6 +718,48 @@ e5rr_test_ring :: (r: [] E5rRoom, px: int, py: int) {
   for j: 0..<3 { #assert bolts[j] >= 1; }
   #assert bolts[3] == 0;
 }
+#test "Everglade 5E room: Thunderwave and Gust of Wind push whom their one save failed, and a save says how it went (#12874)" #steps 4000000000 {
+  bar: [FB_EG_SLOTS] FbAb;
+  bn := fb_everglade(bar[..]);
+  sps := [2] int.[SP_THUNDERWAVE, SP_GUST_OF_WIND];
+  for w: 0..<2 {
+    k := -1;
+    for q: 0..<bn { if k < 0 && bar[q].kind == FB_SPELL && bar[q].sp == sps[w] { k = q; } }
+    #assert k >= 0;
+    sp := rs_spell(sps[w]);
+    fails := 0; succeeds := 0;
+    for seed: 1..<13 {
+      r: [1] E5rRoom;
+      e5rr_start(r[..], seed * 7 + w);
+      e5rr_join(r[..], 0, 0, 0);
+      e5rr_test_ring(r[..], 60, 60);   // three guards two squares east of seat 0, and one far off
+      ev: [256 * E5RR_EV_FLOATS] f32;
+      _ := e5rr_events(r[..], ev[..]);
+      zn := rs_area(r[0].b[..], E5RR_SEAT, sp, e5r_sq(e5rr_test_m(60)), e5r_sq(e5rr_test_m(60)));
+      was_in: [4] bool;
+      for j: 0..<4 { c := r[0].b[0].c[e5rr_folk(j)]; was_in[j] = rs_inside(zn, c.x, c.y); }
+      #assert was_in[0] && was_in[1] && was_in[2] && !was_in[3];
+      #assert e5rr_use(r[..], 0, k, e5rr_test_m(60), e5rr_test_m(60), -1);
+      n := e5rr_events(r[..], ev[..]);
+      saves: [4] int; saved: [4] int; pushed: [4] int;
+      for q: 0..<n {
+        o := q * E5RR_EV_FLOATS;
+        j := cast(int) ev[o + 3];
+        if j < 0 || j >= 4 || ev[o + 1] != f32(sps[w]) { continue; }
+        if ev[o] == f32(RS_EV_SAVE) { saves[j] += 1; saved[j] = cast(int) ev[o + 5]; }
+        if ev[o] == f32(RS_EV_PUSH) { pushed[j] += 1; }
+      }
+      // each of the three: one save, and pushed exactly when it failed; the far one neither
+      for j: 0..<3 {
+        #assert saves[j] == 1 && (saved[j] == 0 || saved[j] == 1);
+        #assert pushed[j] == 1 - saved[j];
+        if saved[j] == 1 { succeeds += 1; } else { fails += 1; }
+      }
+      #assert saves[3] == 0 && pushed[3] == 0;
+    }
+    #assert fails > 0 && succeeds > 0;   // the seeds give both
+  }
+}
 #test "Everglade 5E room: a lasting area is the room's, with an id; it outlasts its caster's leaving until its time is up" #steps 2000000000 {
   r: [1] E5rRoom;
   e5rr_start(r[..], 9);

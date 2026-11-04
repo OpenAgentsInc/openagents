@@ -809,7 +809,7 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
         rs_add_int(l[..], total); if insp > 0 { rs_add_text(l[..], " ("); rs_add_int(l[..], insp); rs_add_text(l[..], " Inspiration)"); }
         rs_add_text(l[..], " vs DC "); rs_add_int(l[..], dc); rs_add_text(l[..], ifx saved then ": success" else ": failure");
       }
-      rs_tell(b, RS_EV_SAVE, sp, i, j, total, 0, l[..]);
+      rs_tell(b, RS_EV_SAVE, sp, i, j, total, ifx saved then 1 else 0, l[..]);   // (its `damage`: 1 a success)
     } else if st.kind == RS_S_DAMAGE {
       count := st.a;
       if s.level == 0 && tier_dice && s.part_of != SP_CALL_LIGHTNING { count = st.a * rs_cantrip_tier(b[0].c[i].level); }

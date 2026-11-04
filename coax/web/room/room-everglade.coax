@@ -144,6 +144,9 @@ EgRoom :: struct {
   doors: [WIRE_DOOR_WORDS] int;                    // the doors the world has open (rm_eg_doors), for the WK_DOORS row
   gates: int;                                      // 1 while the world has the town's gates shut (rm_eg_gates, WANTED 4: #12794), the row's FORM
   folk_by: [E5R_FOLK] int;
+  // each person's save against a seat's ability the rules rolled this tick (eg_folk_saved: the world's
+  // copy of that ability follows it rather than rolling its own, #12874), 0 none
+  folk_save: [E5R_FOLK] int;
   // the town's pieces: Everglade's four spells' strikes for the world (it breaks and burns the pieces),
   // the rebuild asked for, and what is broken and burning now (a seat's snapshot names them)
   strikes: [EG_CASTS] EgStrike; strike_n: int;
@@ -224,7 +227,7 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
     v[0].eg[q].folk_on = false; v[0].eg[q].crime_n = 0; v[0].eg[q].use_ask_n = 0; for w: 0..<WIRE_DOOR_WORDS { v[0].eg[q].doors[w] = 0; } v[0].eg[q].strike_n = 0; v[0].eg[q].rebuild = false; v[0].eg[q].fresh = true;
     v[0].eg[q].broke_at = -100000; v[0].eg[q].rebuilt_at = -100000;
     for s: 0..<EG_SEATS { v[0].eg[q].wanted[s] = 0; }
-    for j: 0..<E5R_FOLK { v[0].eg[q].folk_by[j] = -1; }
+    for j: 0..<E5R_FOLK { v[0].eg[q].folk_by[j] = -1; v[0].eg[q].folk_save[j] = 0; }
     for c: 0..<EG_PIECES { v[0].eg[q].broken[c] = false; v[0].eg[q].burning[c] = false; }
     for c: 0..<CR_PLACED_MAX { v[0].eg[q].placed_burn[c] = false; v[0].eg[q].placed_gone[c] = false; }
     e5rr_start(v[0].eg[q].rules[..], v[0].eg[q].seed);
@@ -577,12 +580,37 @@ eg_engine_events :: (v: [] RmServer, k: int) {
     at := eg_where(v, k, who, ev[o + 6], ev[o + 7]);
     b: [96] u8; m := 0;
     if kind == RS_EV_DAMAGE { eg_crime(v, k, by, who, at.x, at.z); }
+    if kind == RS_EV_SAVE { eg_folk_saved(v, k, cast(int) ev[o + 1], by, who, ev[o + 5] > 0.5); }
     ev_engine(v, k, kind, by, who, cast(int) ev[o + 4]);   // a raider's harm, the XP's, the siege's help (room-events.coax)
     if kind == RS_EV_DAMAGE { m = wire_put_hit(b[..], 0, WireHit.{who = who, by = by, amt = cast(int) ev[o + 4], kind = cast(int) ev[o + 5]}); }
     else if kind == RS_EV_HEAL { m = wire_put_heal(b[..], 0, who, cast(int) ev[o + 4]); }
     else if kind == RS_EV_DEATH { m = wire_put_die(b[..], 0, who); }
     if m > 0 { eg_event(v, k, cast(string) b[0..<m], at.x, at.z, false); }
   }
+}
+
+// The rules rolled townsperson `who`'s save against spell `sp` of seat `by` (a TGT code): where it is
+// an ability the world runs too (Thunderwave's push, Gust of Wind's), the world's copy takes this save
+// (rm_eg_folk_save) rather than rolling a second one of its own (#12874).
+eg_folk_saved :: (v: [] RmServer, k: int, sp: int, by: int, who: int, saved: bool) {
+  if who < 0 || who >= E5R_FOLK || sp < 0 || by < EG_TGT_SEAT || by >= EG_TGT_SEAT + EG_SEATS { return; }
+  r := v[0].eg[k].rules[..];
+  for slot: EG_SP_SLOTS..<FB_EG_SLOTS {
+    if r[0].bar[slot].kind != FB_SPELL || r[0].bar[slot].sp != sp || !ra_world_slot(slot) { continue; }
+    v[0].eg[k].folk_save[who] = eg_save_code(slot - EG_SP_SLOTS, by - EG_TGT_SEAT, saved);
+    return;
+  }
+}
+// A save's code: 1 + (ability * EG_SEATS + seat) * 2 + 1 if it succeeded (0: none).
+eg_save_code :: (ab: int, seat: int, saved: bool) -> int { return 1 + (ab * EG_SEATS + seat) * 2 + (ifx saved then 1 else 0); }
+// Person j's save the rules rolled since the world last heard: its ABILITY SEAT SAVED (1 a success),
+// once (it is heard as it is read). Whether there was one.
+rm_eg_folk_save :: (v: [] RmServer, k: int, j: int, out: [] f32) -> bool #export_c {
+  if !rm_eg_live(v, k) || j < 0 || j >= E5R_FOLK || out.count < 3 || v[0].eg[k].folk_save[j] == 0 { return false; }
+  c := v[0].eg[k].folk_save[j] - 1;
+  v[0].eg[k].folk_save[j] = 0;
+  out[0] = f32(c / 2 / EG_SEATS); out[1] = f32(c / 2 % EG_SEATS); out[2] = f32(c % 2);
+  return true;
 }
 
 // Seat harm (by a seat, or a creature a seat summoned) to a townsperson `who` is a crime the world hears.
@@ -1047,6 +1075,43 @@ eg_test_has :: (t: string, part: string) -> bool {
   return false;
 }
 
+#test "everglade room: the rules' save against Thunderwave and Gust of Wind goes to the world once, as that seat's ability's, for each of three people (#12874)" #steps 2000000000 {
+  sps := [2] int.[SP_THUNDERWAVE, SP_GUST_OF_WIND];
+  for w: 0..<2 {
+    v: [1] RmServer;
+    rm_init(v[..]);
+    rm_control(v[..], "levels 0 2\n");
+    rm_clock(v[..], 0, 1762190000000);
+    #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/push-save HTTP/1.1\r\n\r\n") == 0;
+    k := eg_room_at(v[..], v[0].conns[0].relay);
+    eg_test_tick(v[..], k); eg_test_tick(v[..], k);
+    r := v[0].eg[k].rules[..];
+    e5rr_test_ring(r, 60, 60);   // three guards beside seat 0, one far off
+    slot := -1;
+    for q: EG_SP_SLOTS..<FB_EG_SLOTS { if slot < 0 && r[0].bar[q].sp == sps[w] { slot = q; } }
+    #assert slot >= 0;
+    ev: [256 * E5RR_EV_FLOATS] f32;
+    _ := e5rr_events(r, ev[..]);
+    #assert e5rr_use(r, 0, slot, e5rr_test_m(60), e5rr_test_m(60), -1);
+    // the saves as the rules told them, before the room reads its events
+    m := rs_min(r[0].b[0].book[0].seq - r[0].seen, RS_EVENTS);
+    saved: [4] int; for j: 0..<4 { saved[j] = -1; }
+    for q: 0..<m {
+      e := rs_recent_at(r[0].b[0].book[..], q);
+      j := e5rr_tgt_in(r, e.to);
+      if e.kind == RS_EV_SAVE && e.spell == sps[w] && j >= 0 && j < 4 { saved[j] = e.damage; }
+    }
+    eg_engine_events(v[..], k);
+    out: [3] f32;
+    for j: 0..<3 {
+      #assert saved[j] >= 0;
+      #assert rm_eg_folk_save(v[..], k, j, out[..]);
+      #assert out[0] == f32(slot - EG_SP_SLOTS) && out[1] == 0 && out[2] == f32(saved[j]);
+      #assert !rm_eg_folk_save(v[..], k, j, out[..]);   // once
+    }
+    #assert saved[3] < 0 && !rm_eg_folk_save(v[..], k, 3, out[..]);
+  }
+}
 #test "everglade room: a hello on another wire version is refused with its reason, and its socket is closed (#12788)" {
   v: [1] RmServer;
   rm_init(v[..]);

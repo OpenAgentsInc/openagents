@@ -29,6 +29,8 @@ void world_forge_step(int k, const float in[6], float out[5]);
 #define WORLD_MISSILE 11       /* a watch spell in the air: KIND CASTER FOE AX AY AZ BX BY BZ FLIGHT LIFE */
 /* Person j's Hit Points and conditions as the rules have them, harmed by seat `by` (-1 none). */
 void world_folk_hp(int k, int j, int hp, int temp, int by, int cond);
+/* Person j's save the rules rolled against seat `seat`'s ability `ab`: that ability's copy takes it (#12874). */
+void world_folk_save(int k, int j, int ab, int seat, bool saved);
 /* Seat `by` harmed someone of the town at (x, z): a crime. */
 void world_crime(int k, int by, float x, float z);
 /* One tick of room k's town at the shared clock `world_s` (s): took[s], what its guards took from seat s,

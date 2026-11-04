@@ -72,6 +72,9 @@ WatchView :: struct {
   // room server's, a page's from the server's rows, the page's own offline): the abilities' holds
   // follow them rather than rolling saves of their own (everglade-abilities.coax ab_rules_cond, #12718)
   rules_cond: [WATCH_ACTORS] int; rules_on: bool;   // where the last strike fell (a break is thrown out from it), and whose
+  // each person's save the room's rules rolled against a seat's ability this step (the room server's:
+  // everglade_room_folk_save), 0 none: that ability's copy takes it (ab_rules_save, #12874)
+  rules_save: [WATCH_ACTORS] int;
 }
 
 watch_cap :: (group: int) -> int {
@@ -978,6 +981,12 @@ everglade_room_folk_hp :: (s: [] Everglade, i: int, hp: int, temp: int, by: int)
 everglade_room_folk_cond :: (s: [] Everglade, i: int, cond: int) #export_c {
   if i < 0 || i >= WATCH_ACTORS { return; }
   s[0].wv.rules_on = true; s[0].wv.rules_cond[i] = cond;
+}
+// Person i's save as the room's rules rolled it against seat `seat`'s ability `ab` (AB_*), this step:
+// the push of that seat's copy of it follows the save rather than rolling one of its own (#12874).
+everglade_room_folk_save :: (s: [] Everglade, i: int, ab: int, seat: int, saved: bool) #export_c {
+  if i < 0 || i >= WATCH_ACTORS || ab < 0 || seat < 0 || seat >= WATCH_YOUS { return; }
+  s[0].wv.rules_save[i] = 1 + (ab * WATCH_YOUS + seat) * 2 + (ifx saved then 1 else 0);
 }
 // Seat `by` harmed someone of the town at (x, z): a crime, heard EG_ROOM_HEAR m. How many guards turned.
 everglade_room_crime :: (s: [] Everglade, by: int, x: f32, z: f32) -> int #export_c {
