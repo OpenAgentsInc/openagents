@@ -829,15 +829,17 @@ net_replay_input :: (s: [] Everglade, k: int) -> EgMoveIn #export_c {
   c := 0; first := n[0].fix.ack + 1; last := n[0].seq;
   for q: first..<last + 1 {
     if q <= last - NET_HIST || n[0].inputs[q % NET_HIST].seq != q { continue; }
-    if c == k { return net_as_sent(n[0].inputs[q % NET_HIST].input); }
+    if c == k { return net_as_sent(s, n[0].inputs[q % NET_HIST].input); }
     c += 1;
   }
   return EgMoveIn.{};
 }
-// An input as the wire carries it (whole hundredths), so the page steps what the server steps.
-net_as_sent :: (m: EgMoveIn) -> EgMoveIn #export_c {
+// An input as the wire carries it (sticks in whole hundredths, the heading in WIRE_FINE units), so the
+// page steps what the server steps; offline too, so a room walks where offline walks.
+net_as_sent :: (s: [] Everglade, m: EgMoveIn) -> EgMoveIn #export_c {
+  theta := f32(wire_fine(m.theta)) / f32(WIRE_FINE);
   return EgMoveIn.{key_x = f32(wire_axis(m.key_x)) / 100, key_y = f32(wire_axis(m.key_y)) / 100, pad_x = f32(wire_axis(m.pad_x)) / 100,
-                   pad_y = f32(wire_axis(m.pad_y)) / 100, run = m.run, jump = m.jump, theta = f32(wire_cm(m.theta)) / 100};
+                   pad_y = f32(wire_axis(m.pad_y)) / 100, run = m.run, jump = m.jump, theta = theta};
 }
 // book:begin ease-correction
 // The re-run is done: (dx, dy, dz) is where it puts you less where you were drawn. Small, it is eased

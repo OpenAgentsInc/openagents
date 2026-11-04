@@ -95,7 +95,7 @@ cc_send_input :: (c: [] RelayConn, b: [] CcBot, walk: bool, yaw: f32) {
   b[0].seq += 1;
   m: [128] u8;
   k := rs_put(m[..], rs_int(m[..], rs_put(m[..], 0, "I "), b[0].seq), " 0 ");
-  k = rs_int(m[..], k, ifx walk then 100 else 0); k = rs_put(m[..], k, " 0 0 "); k = rs_int(m[..], k, cast(int) (yaw * 100)); k = rs_put(m[..], k, " 0 ");
+  k = rs_int(m[..], k, ifx walk then 100 else 0); k = rs_put(m[..], k, " 0 0 "); k = rs_int(m[..], k, cast(int) (yaw * 10000)); k = rs_put(m[..], k, " 0 ");   // THETA in 0.1 mrad (WIRE_FINE)
   k = rs_int(m[..], k, b[0].m[0].heard);   // HEARD: the newest tick its rows came whole
   _ := relay_conn_send(c, cast(string) m[0..<k]);
 }

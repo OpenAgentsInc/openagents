@@ -400,7 +400,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     // held or busy (the map, a talk, a board, down) nothing of yours moves you here: none is sent,
     // so the server, which doesn't know you are busy, doesn't walk you on while the page stands
     if (busy) { input.key_x = 0; input.key_y = 0; input.pad_x = 0; input.pad_y = 0; input.jump = false; }
-    input = net_as_sent(input);
+    input = net_as_sent(at(state), input);
     step_jump = step_jump || input.jump;
     if (net_fix_due(at(state))) {
       // what the re-run moves you is measured where you are drawn from (the controller's feet at the
@@ -416,8 +416,11 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
       net_fixed(at(state), dx, dy, dz);
       probe_fix = dx * dx + dy * dy + dz * dz;
     }
-    step_acc += frame;
-    if (step_acc > 4 * STEP) step_acc = 4 * STEP;
+    /* the time the player's clock counted this frame (dt: a frame over 0.25 s counts as 0.25 s,
+       aethyr/loop.coax), as offline's step takes: a hitch costs a room the walk it costs offline. Its own
+       0.13 s cap here dropped up to 0.12 s more of every long frame, so a room walked short of offline
+       by the frames the page hitched on (#12718). */
+    step_acc += dt;
     while (step_acc >= STEP) {
       coax_t_EgMoveIn one = input;
       one.jump = step_jump; step_jump = false;

@@ -32,7 +32,11 @@ EG_HZ :: 30;
 EG_SEND :: 1;
 EG_INPUTS :: 16;                // inputs queued a seat; past it the oldest go
 EG_IN_FIELDS :: 7;              // SEQ KX KY PX PY THETA B: what rm_eg_input hands the host (HEARD is the wire's: wire_seat_ack)
-// A seat earns a step a tick and spends one an input. What it is owed is kept up to EG_BANK (half a
+// A seat earns a step for each 1/EG_HZ s of the server's clock since it sat (not a step a tick: a tick
+// that ran late or a beat the host started again cost the seat nothing, so its page's one input a
+// step is stepped as fast as it comes and no queue stands; a step a tick let a raid's slow ticks fall
+// behind the pages' 30 a second, the queue filled to its 16 and input-to-ACK stood at 528 ms, #12718)
+// and spends one an input. What it is owed is kept up to EG_BANK (half a
 // second), so a page that stalled (a busy browser runs 2 to 4 steps in one frame, then none) spends
 // the steps when they come, at most EG_TICK_STEPS a tick: a page can't move faster than the tick over
 // time, nor more than 4 steps at once. With the old bank of 4, every stall over 4 steps lost its time
@@ -67,11 +71,12 @@ EG_SLOT_FOLK :: EG_SEATS; EG_SLOT_BEAST :: EG_SLOT_FOLK + E5R_FOLK; EG_SLOT_ZONE
 EG_SLOT_AB :: EG_SLOT_ZONE + E5RR_ZONES; EG_SLOT_ABS :: WIRE_SLOTS - EG_SLOT_AB;
 EG_FX_ID :: 950000;              // a watch effect's id: WIRE_ID_MADE + EG_FX_ID + SS * WE_WATCH + cause
 
-EgIn :: struct { seq: int; kx: int; ky: int; px: int; py: int; theta: int; b: int; at: int; }   // at: mono ms it was heard (room-stats.coax)
+EgIn :: struct { seq: int; kx: int; ky: int; px: int; py: int; theta: int; b: int; at: int; }   // theta in WIRE_FINE units; at: mono ms it was heard (room-stats.coax)
 EgPose :: struct { x: f32; y: f32; z: f32; yaw: f32; vx: f32; vy: f32; vz: f32; g: int; clip: int; carry: int; }
 EgSeat :: struct {
   live: bool; conn: int = -1;
   q: [EG_INPUTS] EgIn; q_n: int; bank: int; took: int; ack: int;   // took: inputs stepped this tick
+  sat_ms: int = -1; earned: int;   // the server's clock when it sat (mono ms), and the steps of time earned since
   pose: EgPose; placed: bool;    // placed: the host has put it in the world (rm_eg_moved)
   back: bool; back_x: f32; back_y: f32; back_z: f32; back_yaw: f32;   // where its player stood in this room (rv_back)
   look: [EG_LOOK] u8; look_n: int; klass: [EG_NAME] u8; klass_n: int; flags: int; name: [EG_NAME] u8; name_n: int;
@@ -321,7 +326,7 @@ eg_seat_heard :: (v: [] RmServer, k: int, seat: int, heard: int) {
   }
 }
 // book:begin intent-queue
-// I SEQ KX KY PX PY THETA B HEARD: one step's input, queued for the tick; and the state tick its page
+// I SEQ KX KY PX PY THETA B HEARD: one step's input (THETA in WIRE_FINE units), queued for the tick; and the state tick its page
 // heard whole, which is now its page's (wire_seat_ack), and ends its snapshots once it is one of them.
 eg_heard_input :: (v: [] RmServer, k: int, seat: int, text: string) {
   r: [1] WireRd; r[0] = wire_rd(text, 1);
@@ -338,7 +343,7 @@ eg_heard_input :: (v: [] RmServer, k: int, seat: int, text: string) {
   }
   st[0].q[n] = EgIn.{seq = seq, kx = eg_clamp(w.kx, -100, 100), ky = eg_clamp(w.ky, -100, 100),
                      px = eg_clamp(w.px, -100, 100), py = eg_clamp(w.py, -100, 100),
-                     theta = eg_clamp(eg_round(w.theta * 100.0), -100000, 100000), b = eg_clamp(w.b, 0, 31), at = v[0].mono_ms};
+                     theta = eg_clamp(eg_round(w.theta * f32(WIRE_FINE)), -40000, 40000), b = eg_clamp(w.b, 0, 31), at = v[0].mono_ms};
   st[0].q_n = n + 1;
 }
 // book:end intent-queue
@@ -411,23 +416,22 @@ eg_heard_cast :: (v: [] RmServer, k: int, seat: int, text: string) {
 // rm_eg_unplaced (then rm_eg_moved with seq 0 at the gate) and while rm_eg_input, the shared
 // step and rm_eg_moved; then rm_eg_end, and the queue out.
 
-// Room k's tick begins: each seat is owed one more step (EG_BANK at most). False: no such room.
+// Room k's tick begins: each seat is owed the steps of time the server's clock has run since its last
+// tick (EG_BANK at most), however late this tick is. False: no such room.
 rm_eg_begin :: (v: [] RmServer, k: int) -> bool #export_c {
   if k < 0 || k >= EG_ROOMS || !v[0].eg[k].live { return false; }
   v[0].eg[k].tick += 1;
-  for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live { v[0].eg[k].seat[s].bank = least(v[0].eg[k].seat[s].bank + 1, EG_BANK); v[0].eg[k].seat[s].took = 0; } }
-  return true;
-}
-// The host stalled past its beat (a room's world being built, a slow minute) and skipped `steps` ticks:
-// every seat is owed them (EG_BANK at most), so the inputs its page sent meanwhile are stepped over the
-// next ticks instead of waiting in the queue for good, a tick behind each (+300 ms ACK after a 400 ms
-// stall, for as long as the seat stayed). Only time that passed is owed: no page runs ahead.
-rm_eg_owe :: (v: [] RmServer, steps: int) #export_c {
-  if steps <= 0 { return; }
-  for k: 0..<EG_ROOMS {
-    if !v[0].eg[k].live { continue; }
-    for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live { v[0].eg[k].seat[s].bank = least(v[0].eg[k].seat[s].bank + least(steps, EG_BANK), EG_BANK); } }
+  now := v[0].mono_ms;
+  for s: 0..<EG_SEATS {
+    st := v[0].eg[k].seat[s..<s + 1];
+    if !st[0].live { continue; }
+    st[0].took = 0;
+    // its first tick earns its first step; each 1/EG_HZ s of the clock after it, one more (to the nearest)
+    if st[0].sat_ms < 0 || now < st[0].sat_ms { st[0].sat_ms = now; st[0].earned = 0; st[0].bank = least(st[0].bank + 1, EG_BANK); }
+    due := ((now - st[0].sat_ms) * EG_HZ + 500) / 1000;
+    if due > st[0].earned { st[0].bank = least(st[0].bank + due - st[0].earned, EG_BANK); st[0].earned = due; }
   }
+  return true;
 }
 // Seat s's next input to step this tick, EG_IN_FIELDS into out (SEQ KX KY PX PY THETA B); false when
 // none is queued, none owed, or EG_TICK_STEPS were stepped this tick.
@@ -820,7 +824,11 @@ eg_send :: (v: [] RmServer, k: int, s: int) {
 
 // The host's part for a check: every seat at the gate, then each tick a flat world's step (each
 // input moves its seat PX/100 m along x and PY/100 m along z) instead of the shared one.
+// One tick, the server's clock a tick (1/EG_HZ s) on from the last.
 eg_test_tick :: (v: [] RmServer, k: int) {
+  if v[0].eg_test_ticks == 0 { v[0].eg_test_t0 = v[0].mono_ms; }
+  v[0].eg_test_ticks += 1;
+  rm_clock(v, v[0].eg_test_t0 + (v[0].eg_test_ticks * 1000 + EG_HZ - 1) / EG_HZ, v[0].wall_ms);
   if !rm_eg_begin(v, k) { return; }
   in: [EG_IN_FIELDS] int;
   for s: 0..<EG_SEATS {
@@ -1007,13 +1015,19 @@ eg_test_input :: (v: [] RmServer, seq: int) {
   // it stalls a long while: half a second is kept, no more (a page can't bank time to run ahead)
   for q: 0..<90 { eg_test_tick(v[..], k); }
   #assert v[0].eg[k].seat[0].bank == EG_BANK;
-  for q: 0..<40 { seq += 1; eg_test_input(v[..], seq); }
-  stepped := 0;
-  for q: 0..<10 { was := v[0].eg[k].seat[0].ack; eg_test_tick(v[..], k); stepped += v[0].eg[k].seat[0].ack - was; }
-  #assert stepped <= EG_BANK + 10;
+  // it sends 16 at once: 4 a tick, its bank covering them; then 16 more at once with the bank spent:
+  // only the time since steps them, a step a tick (no page runs ahead of the clock)
+  was := v[0].eg[k].seat[0].ack;
+  for q: 0..<16 { seq += 1; eg_test_input(v[..], seq); }
+  for q: 0..<4 { eg_test_tick(v[..], k); }
+  #assert v[0].eg[k].seat[0].ack == was + 16 && v[0].eg[k].seat[0].bank == EG_BANK - 16 + 3;   // (the first tick's step past a full bank is lost)
+  was = v[0].eg[k].seat[0].ack;
+  for q: 0..<16 { seq += 1; eg_test_input(v[..], seq); }
+  for q: 0..<4 { eg_test_tick(v[..], k); }
+  #assert v[0].eg[k].seat[0].ack == was + 2 + 4 && v[0].eg[k].seat[0].q_n == 16 - 6;
 }
 
-#test "everglade room: a host stall's skipped ticks are owed, so the inputs sent meanwhile don't wait in the queue for good" #steps 2000000000 {
+#test "everglade room: a seat earns its steps by the server's clock, so a late tick or a host stall leaves no queue standing (#12718)" #steps 2000000000 {
   v: [1] RmServer;
   rm_init(v[..]);
   rm_clock(v[..], 0, 1762190000000);
@@ -1025,18 +1039,16 @@ eg_test_input :: (v: [] RmServer, seq: int) {
   for q: 0..<30 { seq += 1; eg_test_input(v[..], seq); eg_test_tick(v[..], k); }
   #assert v[0].eg[k].seat[0].ack == seq;
   v[0].eg[k].seat[0].bank = 0;   // nothing owed (what it sat with spent)
-  // the host stalls 12 ticks (no tick ran); the page sent its 12 inputs meanwhile
+  // the host stalls 400 ms (no tick ran); the page sent its 12 inputs meanwhile
   for q: 0..<12 { seq += 1; eg_test_input(v[..], seq); }
-  rm_eg_owe(v[..], 12);
+  v[0].eg_test_ticks += 12;
   // then one a tick again: the 12 drain at 4 a tick, and nothing waits after
   for q: 0..<6 { seq += 1; eg_test_input(v[..], seq); eg_test_tick(v[..], k); }
   #assert v[0].eg[k].seat[0].ack == seq && v[0].eg[k].seat[0].q_n == 0;
-  // without what it is owed, the queue would have kept the 12
-  rm_eg_owe(v[..], 0);
-  v[0].eg[k].seat[0].bank = 0;
-  for q: 0..<12 { seq += 1; eg_test_input(v[..], seq); }
-  for q: 0..<6 { seq += 1; eg_test_input(v[..], seq); eg_test_tick(v[..], k); }
-  #assert v[0].eg[k].seat[0].ack < seq && v[0].eg[k].seat[0].q_n > 0;
+  // ticks that run late: a page's 30 a second over 21 ticks that came in 1 s still all step in that second
+  for q: 0..<30 { seq += 1; eg_test_input(v[..], seq); if q % 3 != 2 { eg_test_tick(v[..], k); } else { v[0].eg_test_ticks += 1; } }
+  for q: 0..<2 { eg_test_tick(v[..], k); }
+  #assert v[0].eg[k].seat[0].ack == seq && v[0].eg[k].seat[0].q_n == 0;
 }
 
 #test "everglade room: a Warlock's seat casts the Warlock's bar and not the druid's; a druid's seat not the Warlock's; everyone hears the cast" #steps 2000000000 {

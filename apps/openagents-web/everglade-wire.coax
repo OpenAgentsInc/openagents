@@ -17,7 +17,7 @@
 //                                  (1 touch, 2 logged in), the name shown ("-" none)
 //   I SEQ KX KY PX PY THETA B HEARD  one step's input (everglade-move-types.coax EgMoveIn), every step at
 //                                  30 Hz, idle ones too: the keys and the stick (-100 to 100, along the
-//                                  camera), the camera's yaw, B bits (1 run, 2 jump, 4 dive); HEARD the
+//                                  camera), the camera's yaw in 0.1 mrad (WIRE_FINE), B bits (1 run, 2 jump, 4 dive); HEARD the
 //                                  last state tick the page heard whole (WireMirror), 0 none
 //   C SEQ SLOT AX AY AZ TGT        a cast: the bar slot, the aim, the target (-1 none; 0-999 a watch actor,
 //                                  1000 + SS a seat, 2000 + EID a creature)
@@ -66,6 +66,9 @@ WIRE_VERSION :: 3;
 WIRE_REFUSE_VERSION :: "version";   // r 0 version: the room speaks another WIRE_VERSION than the hello's (the page reloads)
 WIRE_FRAME :: 1024;        // a page's frame at most
 WIRE_SERVER_FRAME :: 3800; // a server's
+// A heading's units a radian on I's THETA (#12718): 0.1 mrad, where centiradians were 5 mrad
+// off at worst, which a walk keeps as a sideways drift of up to 5 mm a metre from where you face.
+WIRE_FINE :: 10000;
 WIRE_HZ :: 30; WIRE_AWAY_MS :: 3000;             // the tick, and a page's steps
 // the sky the server runs (#12709): its day, 48 minutes (verse/style-preset.coax STYLE_CYCLE_SECONDS),
 // and the weather's schedule seed (everglade.coax EG_WEATHER_SEED), on the temperate climate
@@ -101,7 +104,7 @@ WB_RUN :: 1; WB_JUMP :: 2; WB_DIVE :: 4; WB_RISE :: 8; WB_SINK :: 16;   // (rise
 // an interaction's KIND
 WE_TALK :: 1; WE_DOOR :: 2; WE_BOAT :: 3; WE_BOARD :: 4; WE_END :: 5;
 
-WireIn :: struct { seq: int; kx: int; ky: int; px: int; py: int; theta: f32; b: int; heard: int; }
+WireIn :: struct { seq: int; kx: int; ky: int; px: int; py: int; theta: f32; b: int; heard: int; }   // theta goes in WIRE_FINE units (0.1 mrad)
 WireCast :: struct { seq: int; slot: int; ax: f32; ay: f32; az: f32; tgt: int = -1; mode: int; }   // mode: the spell's (wire_mode), 0 sent as nothing
 WireUse :: struct { seq: int; kind: int; id: int; }
 WireHello :: struct { version: int = WIRE_VERSION; look: string; kind: string; flags: int; name: string; }
@@ -154,6 +157,12 @@ wire_cyaw :: (a: f32) -> int {
   return wire_cm(w);
 }
 wire_yaw :: (out: [] u8, at: int, a: f32) -> int { return wire_int(out, at, wire_cyaw(a)); }
+wire_wrap :: (a: f32) -> f32 {
+  if a == a && a < 1.0e6 && a > -1.0e6 { return a - 6.2831853 * floor((a + 3.14159265) / 6.2831853); }
+  return 0;
+}
+// A heading in WIRE_FINE units, wrapped to -pi..pi.
+wire_fine :: (a: f32) -> int { return cast(int) floor(wire_wrap(a) * f32(WIRE_FINE) + 0.5); }
 // A stick or key, -1 to 1, as -100 to 100; and back.
 wire_axis :: (v: f32) -> int { if !(v == v) { return 0; } return cast(int) floor(clamp_wire(v, -1, 1) * 100 + 0.5); }
 clamp_wire :: (v: f32, lo_: f32, hi_: f32) -> f32 { return ifx v < lo_ then lo_ else ifx v > hi_ then hi_ else v; }
@@ -166,7 +175,7 @@ wire_put_hello :: (out: [] u8, at: int, h: WireHello) -> int {
 wire_put_in :: (out: [] u8, at: int, i: WireIn) -> int {
   n := wire_put(out, at, "I");
   n = wire_int(out, n, i.seq); n = wire_int(out, n, i.kx); n = wire_int(out, n, i.ky); n = wire_int(out, n, i.px); n = wire_int(out, n, i.py);
-  n = wire_yaw(out, n, i.theta); n = wire_int(out, n, i.b); n = wire_int(out, n, i.heard);
+  n = wire_int(out, n, wire_fine(i.theta)); n = wire_int(out, n, i.b); n = wire_int(out, n, i.heard);   // the heading to 0.1 mrad: a room steps where its page did (#12718)
   return n;
 }
 wire_put_cast :: (out: [] u8, at: int, c: WireCast) -> int {
@@ -283,7 +292,7 @@ wire_read_hello :: (t: string, r: [] WireRd) -> WireHello {
 wire_read_in :: (t: string, r: [] WireRd) -> WireIn {
   i: WireIn;
   i.seq = wire_num(t, r); i.kx = wire_num(t, r); i.ky = wire_num(t, r); i.px = wire_num(t, r); i.py = wire_num(t, r);
-  i.theta = wire_f(t, r); i.b = wire_num(t, r); i.heard = wire_num(t, r);
+  i.theta = f32(wire_num(t, r)) / f32(WIRE_FINE); i.b = wire_num(t, r); i.heard = wire_num(t, r);
   return i;
 }
 wire_read_cast :: (t: string, r: [] WireRd) -> WireCast {
@@ -925,4 +934,16 @@ wire_test_row :: (h: [] WireHist, q: int, t: int) -> WireS {
   // a different id in the slot is its own entity, a life of its own
   wire_hist_begin(h[..], 6); wire_hist_put(h[..], 7, WireS.{id = WIRE_ID_MADE + 10, kind = WK_BEAST, x = 11.1}, 3, false, true);
   #assert wire_test_row(h[..], 7, 6).life == 3 && wire_test_row(h[..], 7, 6).warp == 0;
+}
+#test "wire: an input's heading goes to 0.1 mrad (#12718)" {
+  buf: [WIRE_FRAME] u8;
+  n := wire_put_in(buf[..], 0, WireIn.{seq = 3, ky = 100, theta = 1.23456, b = 0, heard = 7});
+  t := cast(string) buf[0..<n];
+  #assert t == "I 3 0 100 0 0 12346 0 7";
+  r: [1] WireRd; r[0] = wire_rd(t, 1);
+  i := wire_read_in(t, r[..]);
+  #assert r[0].ok && abs(i.theta - 1.2346) < 0.00002 && i.heard == 7;
+  // wrapped to -pi..pi
+  n = wire_put_in(buf[..], 0, WireIn.{seq = 4, theta = 6.2831853 + 0.5});
+  #assert cast(string) buf[0..<n] == "I 4 0 0 0 0 5000 0 0";
 }

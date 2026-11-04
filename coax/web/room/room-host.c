@@ -739,8 +739,7 @@ int main(int argc, char **argv) {
       reap();
       ticks++;
       next += tick;
-      if ((double)now - next > 250.0) {   // a stall: start the beat again, and owe every seat the everglade ticks it skipped
-        rm_eg_owe(view(), (int64_t)(((double)now - next) / tick / 2.0));
+      if ((double)now - next > 250.0) {   // a stall: start the beat again (each seat earns its steps by the clock: rm_eg_begin)
         next = (double)now + tick;
       }
       if (now - last_vitals >= 1000) { last_vitals = now; vitals_post(); directory_post(); stats_sample(); }

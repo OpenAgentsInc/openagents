@@ -135,9 +135,9 @@ bool world_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE])
   coax_t_Everglade *g = world[k];
   coax_t_Player p = seat_p[k][s];
   const float dt = 1.0f / WORLD_HZ, frame = dt;
-  /* in: SEQ KX KY PX PY THETA B (cm-scaled sticks, centiradians, bits 1 run 2 jump 4 dive 8 rise 16 sink) */
+  /* in: SEQ KX KY PX PY THETA B (sticks -100..100, the heading in WIRE_FINE units (0.1 mrad), bits 1 run 2 jump 4 dive 8 rise 16 sink) */
   coax_t_EgMoveIn input = {(float)in[1] / 100.0f, (float)in[2] / 100.0f, (float)in[3] / 100.0f, (float)in[4] / 100.0f,
-                           (in[6] & 1) != 0, (in[6] & 2) != 0, (float)in[5] / 100.0f};
+                           (in[6] & 1) != 0, (in[6] & 2) != 0, (float)in[5] / 10000.0f};
   everglade_room_seat(at(k), s);   /* its conditions, slow and throw are what the step reads */
   everglade_room_rise(at(k), s, (in[6] & 8) != 0, (in[6] & 16) != 0, p.pos.x, p.pos.z, p.pos.y);   /* its Levitate's keys */
   coax_t_Swim sw = seat_swim[k][s];

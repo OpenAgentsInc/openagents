@@ -327,7 +327,7 @@ eg_room :: (base: string, players: int, seconds: int, stamp: int, room: int, hz:
           // a walk that turns: ahead, with the camera's yaw going round once in 20 s
           p[i].seq += 1; p[i].sent[p[i].seq % EG_RING] = now;
           k := rs_put(msg[..], 0, "I "); k = rs_int(msg[..], k, p[i].seq);
-          k = rs_put(msg[..], k, " 0 100 0 0 "); k = rs_int(msg[..], k, ((now - t0) * 628 / 20000 + i * 40) % 628 - 314);
+          k = rs_put(msg[..], k, " 0 100 0 0 "); k = rs_int(msg[..], k, ((now - t0) * 62832 / 20000 + i * 4000) % 62832 - 31416);   // THETA in 0.1 mrad
           k = rs_put(msg[..], k, ifx p[i].seq % 90 < 45 then " 1 " else " 0 "); k = rs_int(msg[..], k, p[i].m[0].heard);
           if !relay_conn_send(c[i..<i + 1], cast(string) msg[0..<k]) { sends_failed += 1; }
           // on the page's clock: 30 a second exactly (33 ms a step ran 1% fast, so the server's queue

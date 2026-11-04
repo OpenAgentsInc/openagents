@@ -67,6 +67,7 @@ RmServer :: struct {
   rout: [RELAY_FRAME] u8;   // the frame rm_relay_next took off the queue
   rto: [CONNS] bool;        // who it goes to
   mono_ms: int; wall_ms: int;   // the host's clocks (rm_clock)
+  eg_test_ticks: int; eg_test_t0: int;   // the checks' ticks and their clock's start (room-everglade.coax eg_test_tick)
   dropped: int;             // frames the rate limits dropped
   jout: [RELAY_JSON] u8;    // rm_rooms' answer
   eg: [EG_ROOMS] EgRoom;    // the everglade rooms' simulations (room-everglade.coax)

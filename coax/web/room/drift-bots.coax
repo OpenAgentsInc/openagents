@@ -116,7 +116,7 @@ tool_main :: () -> int #export_c {
       seq[i] += 1;
       m: [128] u8;
       k := rs_put(m[..], rs_int(m[..], rs_put(m[..], 0, "I "), seq[i]), " 0 ");
-      k = rs_int(m[..], k, ahead); k = rs_put(m[..], k, " 0 0 "); k = rs_int(m[..], k, cast(int) (yaw * 100)); k = rs_put(m[..], k, " "); k = rs_int(m[..], k, run);
+      k = rs_int(m[..], k, ahead); k = rs_put(m[..], k, " 0 0 "); k = rs_int(m[..], k, cast(int) (yaw * 10000)); k = rs_put(m[..], k, " "); k = rs_int(m[..], k, run);   // THETA in 0.1 mrad (WIRE_FINE)
       _ := relay_conn_send(c[i..<i + 1], cast(string) m[0..<k]);
     }
     // Hold Person on the page's player, when the check asks
