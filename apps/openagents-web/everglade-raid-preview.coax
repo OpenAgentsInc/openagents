@@ -204,7 +204,10 @@ rp_shot :: (s: [] Everglade, follow: Shot) -> Shot {
 
 // The robes' dyes by kind (colour, how much takes), as folk.coax FOLK_DYE: a Cultist's blood red, a
 // Fanatic's black, a Warlock's violet, Darian's black.
-RP_DYE :: [16] f32.[0.2, 0.012, 0.018, 1,   0.025, 0.022, 0.028, 1,   0.11, 0.03, 0.24, 1,   0.012, 0.01, 0.016, 1];
+RP_DYE :: [16] f32.[0.42, 0.045, 0.05, 1,   0.2, 0.018, 0.028, 1,   0.13, 0.035, 0.24, 1,   0.03, 0.025, 0.035, 1];
+// The robes' colourway (folk.coax PART_CULT_ROBE): 1 the gold trim and sigil, a Fanatic's and Darian's.
+RP_GOLD :: [4] int.[0, 1, 0, 1];
+RP_FAR :: 22.0;            // metres from you: past this a raider wears the robe's far copy
 RP_VIOLET :: Point.{x = 0.75, y = 0.35, z = 1.0};
 rp_draw :: (s: [] Everglade, dt: f32) {
   for k: 0..<PEOPLE_PARTS { s[0].rp.used[k] = 0; }
@@ -237,17 +240,16 @@ rp_draw :: (s: [] Everglade, dt: f32) {
     }
   }
 }
-// What one of the cult wears on the Quaternius body (verse/everglade/folk.coax PART_*): the town's own
-// peasant cloth, head, hood and long robe, dyed by kind (RP_DYE). The Blender cult robes replace these
-// parts here, by kind, when they land (#12740).
-rp_parts :: (npc: int, female: bool, q: int, out: [] int) -> int {
+// What one of the cult wears on the Quaternius male body (verse/everglade/folk.coax PART_*): the Blender
+// robe (verse/tools/humans/cult_robe.py; Darian's his own), its far copy past RP_FAR, the hands and
+// the head; the robe dyed by kind (RP_DYE), gold-trimmed by RP_GOLD.
+rp_parts :: (npc: int, far: bool, out: [] int) -> int {
   if out.count < FOLK_PARTS_MAX { return 0; }
-  out[0] = ifx female then PART_FEMALE_PEASANT else PART_MALE_PEASANT;
-  out[1] = ifx female then PART_FEMALE_HEAD else PART_MALE_HEAD;
-  out[2] = ifx female then PART_FEMALE_HOOD else PART_MALE_HOOD;
-  out[3] = ifx female then PART_FEMALE_ROBE else PART_MALE_ROBE;
-  if !female && npc != RP_ARCH && q % 4 == 0 { out[4] = PART_BEARD; return 5; }
-  return 4;
+  arch := npc == RP_ARCH;
+  out[0] = ifx arch then (ifx far then PART_DARIAN_ROBE_FAR else PART_DARIAN_ROBE) else (ifx far then PART_CULT_ROBE_FAR else PART_CULT_ROBE);
+  out[1] = PART_MALE_HANDS;
+  out[2] = PART_MALE_HEAD;
+  return 3;
 }
 // Person q of a raid (its slot in the raid's draws: under RAID_SHOWN), of kind `npc` (RS_NPC_*), at
 // (x, z) facing `yaw` and going at `speed` m/s; `lit` the share of its cast's or blow's look left;
@@ -259,7 +261,7 @@ rp_person_at :: (s: [] Everglade, q: int, npc: int, x: f32, z: f32, yaw: f32, sp
   caster := npc == RP_WARLOCK || npc == RP_ARCH;
   shooter := npc == RP_VETERAN || npc == RP_SCOUT;
   look := (q - 1) % 6;   // a watch look (everglade-watch.coax WATCH_NEW)
-  female := ifx town then WATCH_FEMALE[clamp_i(look, 0, 5)] else npc != RP_ARCH && q % 3 == 1;
+  female := town && WATCH_FEMALE[clamp_i(look, 0, 5)];   // the robes are on the male body
   rig := people_rig(s[0].people_rig[..], female);
   sk := s[0].rp.skins[q..<q + 1];
   sk[0].fade = 0.22;
@@ -284,9 +286,9 @@ rp_person_at :: (s: [] Everglade, q: int, npc: int, x: f32, z: f32, yaw: f32, sp
     s[0].palette[h + c] = SKIN_TONE[tone * 3 + c] * (ifx town then 1.0f32 else 0.8f32);
     s[0].palette[h + 4 + c] = ifx town then WATCH_HAIR_RGB[clamp_i(look, 0, 5) * 3 + c] else 0.04f32;
   }
-  s[0].palette[h + 3] = f32(ifx town then WATCH_VARIANT[clamp_i(look, 0, 5)] else 1);
-  s[0].palette[h + 7] = 0;
   kind := ifx npc == RP_FANATIC then 1 else ifx npc == RP_WARLOCK then 2 else ifx npc == RP_ARCH then 3 else 0;
+  s[0].palette[h + 3] = f32(ifx town then WATCH_VARIANT[clamp_i(look, 0, 5)] else RP_GOLD[kind]);
+  s[0].palette[h + 7] = 0;
   for c: 0..<4 { s[0].palette[h + 8 + c] = ifx town then (ifx npc == RP_GUARD then WATCH_DYE[c] else RANK_DYE[(ifx npc == RP_KNIGHT then 3 else ifx npc == RP_SCOUT then 6 else 1) * 4 + c]) else RP_DYE[kind * 4 + c]; }
   // where it stands: sinking once it has lain its while
   big := ifx npc == RP_ARCH then 1.14f32 else 1.0f32;
@@ -294,7 +296,7 @@ rp_person_at :: (s: [] Everglade, q: int, npc: int, x: f32, z: f32, yaw: f32, sp
   c := cos(yaw); sn := sin(yaw);
   rows := [12] f32.[c * big, 0, sn * big, x,   0, big, 0, y,   -sn * big, 0, c * big, z];
   parts: [FOLK_PARTS_MAX] int;
-  n := ifx town then watch_parts(clamp_i(look, 0, 5), parts[..]) else rp_parts(npc, female, q, parts[..]);
+  n := ifx town then watch_parts(clamp_i(look, 0, 5), parts[..]) else rp_parts(npc, flat_gap(v3(x, 0, z), s[0].feet) > f32(RP_FAR), parts[..]);
   for p: 0..<n {
     part := parts[p];
     if s[0].part_count[part] <= 0 || s[0].rp.used[part] >= RAID_SHOWN { continue; }

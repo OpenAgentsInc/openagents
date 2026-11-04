@@ -4,7 +4,7 @@
   "style": "painterly",
   "paint": [2, 3, 19, 23, 32, 33, 35],
   "neutral": [0, 3, 4, 19, 22, 27, 28],
-  "budget": 9120000,
+  "budget": 9500000,
   "scene": "~/work/aethyr-cpp/build-native/native-root/assets/scene.bin",
   "layers": "~/work/aethyr-cpp/assets/layer{n}",
   "texture_size": 512,
@@ -36,7 +36,7 @@
       "url": "https://quaternius.com/"
     },
     "openagents-custom-models": {
-      "name": "OpenAgents' own low-poly models (pumpkin, rock, bush, cat, and the people's robes on the Quaternius peasant's cloth), made for the Verse",
+      "name": "OpenAgents' own low-poly models (pumpkin, rock, bush, cat, the people's robes on the Quaternius peasant's cloth, and the Cultist Raid's robes, verse/tools/humans/cult_robe.py), made for the Verse",
       "licence": "CC0 1.0 Universal",
       "url": "https://openagents.com/"
     }
@@ -259,11 +259,13 @@
       "MI_Superhero_Female": "skin",
       "MI_Hair_1": "hair",
       "MI_Hair_2": "hair",
-      "MI_Eyes": "plain"
+      "MI_Eyes": "plain",
+      "MI_Cult_Robe": "pale"
     },
     "variants": {
       "T_Peasant_BaseColor.png": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Textures/Peasant/T_Peasant_2_BaseColor.png",
-      "T_Ranger_BaseColor.png": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Textures/Ranger/T_Ranger_3_BaseColor.png"
+      "T_Ranger_BaseColor.png": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Textures/Ranger/T_Ranger_3_BaseColor.png",
+      "T_Cult_Robe_BaseColor.png": "assets/verse/cult-robe/T_Cult_Robe_2_BaseColor.png"
     },
     "parts": [
       {
@@ -426,6 +428,38 @@
           {"file": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Female_Peasant.gltf", "meshes": ["Female_Peasant_Body", "Female_Peasant_Legs", "Female_Peasant_Feet"]},
           {"file": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Female_Ranger.gltf", "meshes": ["Female_Ranger_Body", "Female_Ranger_Legs", "Female_Ranger_Body_Belt_1"]}
         ]}
+      },
+      {
+        "name": "cult-robe",
+        "body": "male",
+        "licence": "openagents-custom-models",
+        "file": "assets/verse/cult-robe/cult-robe.gltf"
+      },
+      {
+        "name": "cult-robe-far",
+        "body": "male",
+        "licence": "openagents-custom-models",
+        "file": "assets/verse/cult-robe/cult-robe-far.gltf"
+      },
+      {
+        "name": "darian-robe",
+        "body": "male",
+        "licence": "openagents-custom-models",
+        "file": "assets/verse/cult-robe/darian-robe.gltf"
+      },
+      {
+        "name": "darian-robe-far",
+        "body": "male",
+        "licence": "openagents-custom-models",
+        "file": "assets/verse/cult-robe/darian-robe-far.gltf"
+      },
+      {
+        "name": "male-hands",
+        "body": "male",
+        "file": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Male_Peasant.gltf",
+        "meshes": ["Male_Peasant_Arms"],
+        "cut": ["hand_l", "index_01_l", "index_02_l", "index_03_l", "middle_01_l", "middle_02_l", "middle_03_l", "ring_01_l", "ring_02_l", "ring_03_l", "pinky_01_l", "pinky_02_l", "pinky_03_l", "thumb_01_l", "thumb_02_l", "thumb_03_l", "hand_r", "index_01_r", "index_02_r", "index_03_r", "middle_01_r", "middle_02_r", "middle_03_r", "ring_01_r", "ring_02_r", "ring_03_r", "pinky_01_r", "pinky_02_r", "pinky_03_r", "thumb_01_r", "thumb_02_r", "thumb_03_r"],
+        "keep": 0.6
       }
     ],
     "clamp": [

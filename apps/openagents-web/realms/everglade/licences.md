@@ -1,6 +1,6 @@
 # Licences: the Everglade pack
 
-Every asset in `everglade.pack` (9,114,404 bytes of its 9,120,000-byte budget) and its licence. Written by `verse/tools/pack_realm.py` from `verse/packs/everglade.json`.
+Every asset in `everglade.pack` (9,463,680 bytes of its 9,500,000-byte budget) and its licence. Written by `verse/tools/pack_realm.py` from `verse/packs/everglade.json`.
 
 ## Sources
 
@@ -9,7 +9,7 @@ Every asset in `everglade.pack` (9,114,404 bytes of its 9,120,000-byte budget) a
 - Quaternius Fantasy Props MegaKit: CC0 1.0 Universal, https://quaternius.com/
 - Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library: CC0 1.0 Universal, https://quaternius.com/
 - Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard]: CC0 1.0 Universal (each pack's License_Standard.txt or License.txt), https://quaternius.com/
-- OpenAgents' own low-poly models (pumpkin, rock, bush, cat, and the people's robes on the Quaternius peasant's cloth), made for the Verse: CC0 1.0 Universal, https://openagents.com/
+- OpenAgents' own low-poly models (pumpkin, rock, bush, cat, the people's robes on the Quaternius peasant's cloth, and the Cultist Raid's robes, verse/tools/humans/cult_robe.py), made for the Verse: CC0 1.0 Universal, https://openagents.com/
 
 ## Assets
 
@@ -76,13 +76,13 @@ Every asset in `everglade.pack` (9,114,404 bytes of its 9,120,000-byte budget) a
 | Coin_Pile | mesh | Quaternius Fantasy Props MegaKit |
 | Flower_3_Single | mesh | Quaternius Stylized Nature MegaKit |
 | Plant_7 | mesh | Quaternius Stylized Nature MegaKit |
-| Custom_Pumpkin | mesh | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, and the people's robes on the Quaternius peasant's cloth), made for the Verse |
-| Custom_Rock | mesh | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, and the people's robes on the Quaternius peasant's cloth), made for the Verse |
-| Custom_Bush | mesh | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, and the people's robes on the Quaternius peasant's cloth), made for the Verse |
-| Custom_Cat | mesh | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, and the people's robes on the Quaternius peasant's cloth), made for the Verse |
+| Custom_Pumpkin | mesh | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, the people's robes on the Quaternius peasant's cloth, and the Cultist Raid's robes, verse/tools/humans/cult_robe.py), made for the Verse |
+| Custom_Rock | mesh | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, the people's robes on the Quaternius peasant's cloth, and the Cultist Raid's robes, verse/tools/humans/cult_robe.py), made for the Verse |
+| Custom_Bush | mesh | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, the people's robes on the Quaternius peasant's cloth, and the Cultist Raid's robes, verse/tools/humans/cult_robe.py), made for the Verse |
+| Custom_Cat | mesh | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, the people's robes on the Quaternius peasant's cloth, and the Cultist Raid's robes, verse/tools/humans/cult_robe.py), made for the Verse |
 | Bed_Twin1 | mesh | Quaternius Fantasy Props MegaKit |
 | Chest_Wood | mesh | Quaternius Fantasy Props MegaKit |
-| Custom_Rug | mesh | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, and the people's robes on the Quaternius peasant's cloth), made for the Verse |
+| Custom_Rug | mesh | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, the people's robes on the Quaternius peasant's cloth, and the Cultist Raid's robes, verse/tools/humans/cult_robe.py), made for the Verse |
 | Candle_1 | mesh | Quaternius Fantasy Props MegaKit |
 | Bookcase_2 | mesh | Quaternius Fantasy Props MegaKit |
 | BookGroup_Medium_1 | mesh | Quaternius Fantasy Props MegaKit |
@@ -91,13 +91,13 @@ Every asset in `everglade.pack` (9,114,404 bytes of its 9,120,000-byte budget) a
 | SmallBottles_1 | mesh | Quaternius Fantasy Props MegaKit |
 | Shelf_Simple | mesh | Quaternius Fantasy Props MegaKit |
 | Table_Plate | mesh | Quaternius Fantasy Props MegaKit |
-| Custom_Portrait | mesh | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, and the people's robes on the Quaternius peasant's cloth), made for the Verse |
-| Custom_Armchair | mesh | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, and the people's robes on the Quaternius peasant's cloth), made for the Verse |
+| Custom_Portrait | mesh | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, the people's robes on the Quaternius peasant's cloth, and the Cultist Raid's robes, verse/tools/humans/cult_robe.py), made for the Verse |
+| Custom_Armchair | mesh | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, the people's robes on the Quaternius peasant's cloth, and the Cultist Raid's robes, verse/tools/humans/cult_robe.py), made for the Verse |
 | Floor_WoodLight | mesh | Quaternius Medieval Village MegaKit |
 | Nightstand_Shelf | mesh | Quaternius Fantasy Props MegaKit |
-| Custom_Broom | mesh | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, and the people's robes on the Quaternius peasant's cloth), made for the Verse |
+| Custom_Broom | mesh | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, the people's robes on the Quaternius peasant's cloth, and the Cultist Raid's robes, verse/tools/humans/cult_robe.py), made for the Verse |
 | Prop_Crate | mesh | Quaternius Medieval Village MegaKit |
-| Custom_Moon | mesh | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, and the people's robes on the Quaternius peasant's cloth), made for the Verse |
+| Custom_Moon | mesh | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, the people's robes on the Quaternius peasant's cloth, and the Cultist Raid's robes, verse/tools/humans/cult_robe.py), made for the Verse |
 | player/male-ranger | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library |
 | player/male-ranger.lod | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library |
 | people/male-peasant | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
@@ -114,8 +114,13 @@ Every asset in `everglade.pack` (9,114,404 bytes of its 9,120,000-byte budget) a
 | people/hair-long | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
 | people/hair-buns | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
 | people/hair-buzzed-female | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
-| people/male-robe | character | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, and the people's robes on the Quaternius peasant's cloth), made for the Verse |
-| people/female-robe | character | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, and the people's robes on the Quaternius peasant's cloth), made for the Verse |
+| people/male-robe | character | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, the people's robes on the Quaternius peasant's cloth, and the Cultist Raid's robes, verse/tools/humans/cult_robe.py), made for the Verse |
+| people/female-robe | character | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, the people's robes on the Quaternius peasant's cloth, and the Cultist Raid's robes, verse/tools/humans/cult_robe.py), made for the Verse |
+| people/cult-robe | character | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, the people's robes on the Quaternius peasant's cloth, and the Cultist Raid's robes, verse/tools/humans/cult_robe.py), made for the Verse |
+| people/cult-robe-far | character | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, the people's robes on the Quaternius peasant's cloth, and the Cultist Raid's robes, verse/tools/humans/cult_robe.py), made for the Verse |
+| people/darian-robe | character | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, the people's robes on the Quaternius peasant's cloth, and the Cultist Raid's robes, verse/tools/humans/cult_robe.py), made for the Verse |
+| people/darian-robe-far | character | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, the people's robes on the Quaternius peasant's cloth, and the Cultist Raid's robes, verse/tools/humans/cult_robe.py), made for the Verse |
+| people/male-hands | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
 | texture 0 (layer29.jpg) | texture | Quaternius Stylized Nature MegaKit |
 | texture 1 (layer33.png) | texture | Quaternius Stylized Nature MegaKit |
 | texture 2 (layer32.png) | texture | Quaternius Stylized Nature MegaKit |
@@ -134,8 +139,8 @@ Every asset in `everglade.pack` (9,114,404 bytes of its 9,120,000-byte budget) a
 | texture 15 (layer3.jpg) | texture | Quaternius Fantasy Props MegaKit |
 | texture 16 (layer2.jpg) | texture | Quaternius Fantasy Props MegaKit |
 | texture 17 (layer4.jpg) | texture | Quaternius Fantasy Props MegaKit |
-| texture 18 (layer27.jpg) | texture | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, and the people's robes on the Quaternius peasant's cloth), made for the Verse |
-| texture 19 (layer28.jpg) | texture | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, and the people's robes on the Quaternius peasant's cloth), made for the Verse |
+| texture 18 (layer27.jpg) | texture | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, the people's robes on the Quaternius peasant's cloth, and the Cultist Raid's robes, verse/tools/humans/cult_robe.py), made for the Verse |
+| texture 19 (layer28.jpg) | texture | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, the people's robes on the Quaternius peasant's cloth, and the Cultist Raid's robes, verse/tools/humans/cult_robe.py), made for the Verse |
 | texture 20 (player/846ef2170b04ee58) | texture | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library |
 | texture 21 (player/b4dcc0f4139aab54) | texture | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library |
 | texture 22 (player/bc7aa863bd22ab0a) | texture | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library |
@@ -152,6 +157,8 @@ Every asset in `everglade.pack` (9,114,404 bytes of its 9,120,000-byte budget) a
 | texture 33 (T_Superhero_Male_Dark.png_(cut)) | texture | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
 | texture 34 (T_Hair_2_BaseColor.png) | texture | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
 | texture 35 (T_Superhero_Female_Dark_BaseColor.png_(cut)) | texture | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
+| texture 36 (T_Cult_Robe_BaseColor.png) | texture | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
+| texture 37 (T_Cult_Robe_2_BaseColor.png) | texture | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
 
 ## The HUD's icons
 
