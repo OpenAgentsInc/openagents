@@ -367,6 +367,38 @@ rs_damage :: (b: [] RsBattle, by: int, j: int, amount: int, kind: int, crit: boo
       rs_end_concentration(b, j, why);
     }
   }
+  if r.taken > 0 { ok := rs_hellish_rebuke(b, j, by); }
+}
+// Hellish Rebuke (p. 140): a Reaction to taking damage from a creature it can see within 60 feet;
+// that creature makes a Dex save, 2d10 Fire on a failure (1d10 more a slot level above 1), half on
+// a success. With its lowest free slot (a Warlock's are its Pact slots, never an Arcanum's).
+rs_hellish_rebuke :: (b: [] RsBattle, j: int, by: int) -> bool {
+  if by < 0 || by >= b[0].n || by == j { return false; }
+  c := b[0].c[j];
+  if !c.rebuke || c.reacted || !rs_can_act(c) || b[0].c[by].dead || b[0].c[by].team == c.team || rs_feet_to(b, j, by) > 60 { return false; }
+  slot := 0;
+  for k: 1..<6 { if slot == 0 && c.slots[k] > 0 { slot = k; } }
+  if slot == 0 { return false; }
+  b[0].c[j].slots[slot] -= 1; b[0].c[j].reacted = true;
+  dc := rs_dc(b, j);
+  sd := rs_d20(b[0].dice[..], rs_save_edge(b, by, RS_DEX));
+  st := sd.roll + rs_save_in(b, by, RS_DEX);
+  if rs_helpless(b[0].c[by]) { st = 0; }
+  n := 1 + slot;
+  dmg := rs_sum(b[0].dice[..], n, 10);
+  if st >= dc { dmg = dmg / 2; }
+  got := rs_resisted(b, by, dmg, RS_FIRE);
+  l: [1] RsLine;
+  rs_add_name(l[..], b, j); rs_add_text(l[..], " casts Hellish Rebuke ("); rs_add_text(l[..], RS_ORDINAL[slot]); rs_add_text(l[..], "-level slot) at ");
+  rs_add_name(l[..], b, by); rs_add_text(l[..], ": DEX save "); rs_add_int(l[..], st); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], dc);
+  rs_add_text(l[..], ifx st >= dc then ": success" else ": failure");
+  rs_tell(b, RS_EV_CAST, SP_HELLISH_REBUKE, j, by, slot, 0, l[..]);
+  dl: [1] RsLine;
+  rs_add_text(dl[..], "  "); rs_add_name(dl[..], b, by); rs_add_text(dl[..], " takes "); rs_add_int(dl[..], got); rs_add_text(dl[..], " Fire (");
+  rs_add_int(dl[..], n); rs_add_text(dl[..], "d10"); if st >= dc { rs_add_text(dl[..], ", halved"); } rs_add_text(dl[..], ")");
+  rs_tell(b, RS_EV_DAMAGE, SP_HELLISH_REBUKE, j, by, got, RS_FIRE, dl[..]);
+  rs_damage(b, j, by, got, RS_FIRE, false, SP_HELLISH_REBUKE);
+  return true;
 }
 
 // ---- casting
@@ -523,6 +555,8 @@ rs_shield :: (b: [] RsBattle, j: int) -> bool {
   if !c.shield_spell || c.reacted || !rs_can_act(c) || c.raging { return false; }
   slot := 0;
   for k: 1..<10 { if slot == 0 && c.slots[k] > 0 { slot = k; } }
+  // a stat block casts it with Protective Magic's own uses (npcs.coax: its 1st-level slots), never a Fireball's
+  if c.npc != RS_NPC_NONE && slot != 1 { return false; }
   if slot == 0 { return false; }
   b[0].c[j].slots[slot] -= 1; b[0].c[j].reacted = true;
   b[0].c[j].shield_until = ifx b[0].who == j then c.turn_at + rs_beat(b) else c.turn_at;
@@ -571,7 +605,7 @@ rs_inspired_roll :: (b: [] RsBattle, j: int, total: int, need: int) -> int {
 // One attack roll by i at j: the d20 with `edge`, `bonus`, a Critical Hit from `crit_min` up. A
 // missed spell attack can reroll with Seeking Spell (a Sorcery Point); a miss adds a held Bardic
 // Inspiration die; a hit can be cut by an enemy Bard's Cutting Words, or turned by Shield.
-RsAttackRoll :: struct { roll: int; edge: int; total: int; hit: bool; crit: bool; insp: int; seek: bool; cut: int; shield: bool; ac: int; }
+RsAttackRoll :: struct { roll: int; edge: int; total: int; hit: bool; crit: bool; insp: int; seek: bool; cut: int; shield: bool; ac: int; parry: bool; }
 rs_roll_attack :: (b: [] RsBattle, i: int, j: int, edge: int, bonus: int, crit_min: int, spell: bool) -> RsAttackRoll {
   r: RsAttackRoll;
   d := rs_d20(b[0].dice[..], edge);
@@ -601,6 +635,7 @@ rs_add_roll :: (l: [] RsLine, r: RsAttackRoll, bonus: int) {
   rs_add_text(l, " = "); rs_add_int(l, r.total);
   rs_add_text(l, " vs AC "); rs_add_int(l, r.ac);
   if r.shield { rs_add_text(l, " (Shield)"); }
+  if r.parry { rs_add_text(l, " (Parry)"); }
 }
 
 // Advantage (1), Disadvantage (-1) or neither on i's attack roll against j: every source the SRD
@@ -1199,7 +1234,7 @@ rs_strike :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool) -> bool {
   ab := rs_attack_ability(me, w);
   strength := ab == RS_STR;
   b[0].turn.struck = true;
-  melee := wp.range_ft <= 5;
+  melee := wp.range_ft <= 5 || (wp.both && rs_feet_to(b, i, j) <= 5);   // Arcane Burst: melee from 5 feet
   far := 0;
   if !melee && rs_feet_to(b, i, j) > wp.range_ft { far = -1; }   // long range: Disadvantage
   edge := rs_attack_edge(b, i, j, melee, strength);
@@ -1210,6 +1245,10 @@ rs_strike :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool) -> bool {
   if sacred { bonus += rs_max(rs_mod(me.score[RS_CHA]), 1); }
   // Improved Critical: weapons and Unarmed Strikes score a Critical Hit on 20 - crit_range or higher
   r := rs_roll_attack(b, i, j, edge, bonus, 20 - me.crit_range, false);
+  // Parry (a Knight's or a Warrior Veteran's Reaction, holding a weapon): +2 AC against a melee hit
+  if r.hit && !r.crit && melee && b[0].c[j].parry && !b[0].c[j].reacted && rs_can_act(b[0].c[j]) && r.total < r.ac + 2 {
+    b[0].c[j].reacted = true; r.hit = false; r.ac += 2; r.parry = true;
+  }
   crit := r.crit;
   hit := r.hit;
   if hit && melee && (rs_has(b[0].c[j], RS_PARALYZED) || rs_has(b[0].c[j], RS_UNCONSCIOUS)) { crit = true; }
@@ -1242,7 +1281,8 @@ rs_strike :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool) -> bool {
   rolled := ifx ndice > 0 then rs_sum(b[0].dice[..], ndice * mult, sides) else 1;
   mod := rs_mod(me.score[ab]);
   amount := rolled;
-  if !bare || mod < 0 { amount += mod; }
+  nomod := bare || wp.bare;   // Radiant Flame adds no modifier
+  if !nomod || mod < 0 { amount += mod; }
   rage := 0;
   if me.raging && strength { rage = me.rage_bonus; amount += rage; }
   frenzy := 0;
@@ -1296,7 +1336,7 @@ rs_strike :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool) -> bool {
   if tg.uncanny && !b[0].c[j].reacted && rs_can_act(tg) && dealt > 0 && rs_up(b[0].c[i]) { b[0].c[j].reacted = true; dealt = dealt / 2; dodged = true; }
   rs_add_int(dl[..], dealt); rs_add_text(dl[..], " "); rs_add_text(dl[..], RS_DAMAGE[kind]); rs_add_text(dl[..], " (");
   if ndice > 0 { rs_add_int(dl[..], ndice * mult); rs_add_text(dl[..], "d"); rs_add_int(dl[..], sides); } else { rs_add_text(dl[..], "1"); }
-  if !bare || mod < 0 { rs_add_text(dl[..], " + "); rs_add_int(dl[..], mod); }
+  if !nomod || mod < 0 { rs_add_text(dl[..], " + "); rs_add_int(dl[..], mod); }
   if rage > 0 { rs_add_text(dl[..], " + "); rs_add_int(dl[..], rage); rs_add_text(dl[..], " Rage"); }
   if frenzy > 0 { rs_add_text(dl[..], " + "); rs_add_int(dl[..], frenzy); rs_add_text(dl[..], " Frenzy"); }
   if sneak > 0 { rs_add_text(dl[..], " + "); rs_add_int(dl[..], sneak); rs_add_text(dl[..], " Sneak Attack"); }
@@ -1308,6 +1348,19 @@ rs_strike :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool) -> bool {
   rs_add_text(dl[..], ")");
   rs_tell_ft(b, RS_EV_DAMAGE, -1, i, j, dealt, kind, ifx sneak > 0 then RS_FT_SNEAK_ATTACK else RS_FT_NONE, dl[..]);
   rs_damage(b, i, j, dealt, kind, crit, -1);
+  // a stat block's extra damage of a second type on a hit (a Knight's Radiant, a Fanatic's Necrotic)
+  if (wp.plus_dice > 0 || wp.plus_flat > 0) && !b[0].c[j].dead {
+    extra := wp.plus_flat + ifx wp.plus_dice > 0 then rs_sum(b[0].dice[..], wp.plus_dice * mult, wp.plus_sides) else 0;
+    got := rs_resisted(b, j, extra, wp.plus_kind);
+    pl: [1] RsLine;
+    rs_add_text(pl[..], "  "); rs_add_name(pl[..], b, j); rs_add_text(pl[..], " takes "); rs_add_int(pl[..], got); rs_add_text(pl[..], " "); rs_add_text(pl[..], RS_DAMAGE[wp.plus_kind]);
+    rs_add_text(pl[..], " (");
+    if wp.plus_dice > 0 { rs_add_int(pl[..], wp.plus_dice * mult); rs_add_text(pl[..], "d"); rs_add_int(pl[..], wp.plus_sides); } else { rs_add_int(pl[..], wp.plus_flat); }
+    if got != extra { rs_add_text(pl[..], ifx got == 0 then ", immune" else ifx got > extra then ", vulnerable" else ", resisted"); }
+    rs_add_text(pl[..], ")");
+    rs_tell(b, RS_EV_DAMAGE, -1, i, j, got, wp.plus_kind, pl[..]);
+    rs_damage(b, i, j, got, wp.plus_kind, crit, -1);
+  }
   // Hex and Hunter's Mark hold for any attack roll their caster hits with
   rs_curse_damage(b, i, j, crit);
   if plan != CS_NONE { rs_cunning_effect(b, i, j, plan); }
@@ -2997,4 +3050,49 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   hp := b[0].c[a].hp;
   #assert rs_cast(b[..], a, SP_DIMENSION_DOOR, 5, 40, 3, a);
   #assert b[0].c[a].x == 90 && b[0].c[a].hp < hp && b[0].c[a].hp >= hp - 24;
+}
+
+#test "a siege's stat blocks fight on the rules: extra damage on a hit, Multiattack, Parry, and Hellish Rebuke" {
+  b: [1] RsBattle; b[0].w = 12; b[0].h = 8; b[0].dice[0].state = 23;
+  kn := rs_add(b[..], rs_knight("Knight 1", 0), 2, 2);
+  cu := rs_add(b[..], rs_fanatic("Cultist Fanatic 1", 1), 3, 2);
+  // the Knight's Greatsword: two attacks (Multiattack), each hit 2d6 + 3 Slashing then 1d8 Radiant
+  radiant := false; parried := false; seq := b[0].book[0].seq;
+  for k: 0..<60 {
+    b[0].c[cu].hp = b[0].c[cu].hp_max; b[0].c[cu].dead = false; b[0].c[cu].cond = 0;
+    b[0].c[kn].hp = b[0].c[kn].hp_max; b[0].c[kn].reacted = false;
+    rs_fresh(b[..], kn);
+    #assert rs_attack(b[..], kn, cu, false, -1);
+    b[0].c[cu].hp = b[0].c[cu].hp_max; b[0].c[cu].dead = false; b[0].c[cu].cond = 0;
+    rs_fresh(b[..], cu);
+    #assert rs_attack(b[..], cu, kn, false, -1);
+  }
+  #assert rs_saw(b[..], seq, " Radiant (1d8") || rs_saw(b[..], seq, " Radiant (2d8");
+  #assert rs_saw(b[..], seq, " Necrotic (2d6") || rs_saw(b[..], seq, " Necrotic (4d6");
+  #assert rs_saw(b[..], seq, "(Parry)");
+  // Hellish Rebuke: a Warlock hurt by a creature within 60 feet answers with its Reaction and a slot
+  w := rs_add(b[..], rs_siege_attacker(2, 1, SP_ELDRITCH_BLAST), 6, 5);
+  g := rs_add(b[..], rs_guard("Guard 1", 0), 7, 5);
+  #assert b[0].c[w].klass == RS_WARLOCK && b[0].c[w].rebuke && b[0].c[w].slots[1] == 1;
+  hit := false;
+  for k: 0..<40 {
+    if hit { break; }
+    b[0].c[w].hp = b[0].c[w].hp_max; b[0].c[w].reacted = false; b[0].c[w].slots[1] = 1;
+    b[0].c[g].hp = b[0].c[g].hp_max; b[0].c[g].dead = false;
+    seq = b[0].book[0].seq;
+    rs_fresh(b[..], g);
+    #assert rs_attack(b[..], g, w, false, -1);
+    if b[0].c[w].hp < b[0].c[w].hp_max {
+      hit = true;
+      #assert rs_saw(b[..], seq, "casts Hellish Rebuke (1st-level slot) at Guard 1: DEX save") && b[0].c[w].slots[1] == 0 && b[0].c[w].reacted;
+      #assert rs_saw(b[..], seq, " Fire (2d10");
+    }
+  }
+  #assert hit;
+  // a Mage's Shield is Protective Magic: its 1st-level uses, never a Fireball's slot
+  m := rs_add(b[..], rs_mage("Mage 1", 0), 1, 7);
+  b[0].c[m].slots[1] = 0;
+  #assert !rs_shield(b[..], m) && b[0].c[m].slots[4] == 2;
+  b[0].c[m].slots[1] = 3;
+  #assert rs_shield(b[..], m) && b[0].c[m].slots[1] == 2;
 }

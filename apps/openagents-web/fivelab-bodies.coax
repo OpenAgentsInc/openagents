@@ -69,7 +69,8 @@ BdLook :: struct {
 }
 
 // The looks (fivelab.coax look_of: 0 druid, 1 warlock, 2 barbarian, 3 monk, 4 skeleton, 5 wizard,
-// 6 bard, 7 cleric, 8 fighter, 9 paladin, 10 ranger, 11 rogue, 12 sorcerer), v 0 or 1 the two of a
+// 6 bard, 7 cleric, 8 fighter, 9 paladin, 10 ranger, 11 rogue, 12 sorcerer; fivelab-siege.coax
+// siege_look: 13 town watch, 14 cultist, 15 cultist fanatic, 16 the cult's leader), v 0 or 1 the two of a
 // class, so the second of each looks a little different (often the other body).
 bd_look :: (kind: int, v: int) -> BdLook {
   l: BdLook;
@@ -118,6 +119,19 @@ bd_look :: (kind: int, v: int) -> BdLook {
   } else if kind == 11 {  // a rogue: black leathers, hooded
     fem = v == 0;
     l.outfit = BP_MALE_RANGER; l.hair = -1; l.extra = BP_MALE_HOOD; l.dye = [4] f32.[0.035, 0.035, 0.045, 1];
+  } else if kind == 13 {  // the Siege's town watch (Guards, Veterans): steel-blue tabards, cropped hair
+    fem = v == 1;
+    l.outfit = BP_MALE_RANGER; l.variant = 1; l.hair = ifx fem then BP_HAIR_BUZZED_FEMALE else BP_HAIR_BUZZED; l.extra = ifx fem then -1 else BP_BEARD;
+    l.dye = [4] f32.[0.12, 0.2, 0.42, 1]; l.hair_rgb = [3] f32.[0.25, 0.14, 0.06];
+  } else if kind == 14 {  // a Cultist: a rough brown robe under a hood
+    fem = v == 1;
+    l.robe = BP_MALE_ROBE; l.hair = -1; l.extra = BP_MALE_HOOD; l.dye = [4] f32.[0.22, 0.14, 0.08, 1];
+  } else if kind == 15 {  // a Cultist Fanatic: black and crimson, the peasant's other cloth, hooded
+    fem = v == 0;
+    l.variant = 1; l.hair = -1; l.extra = BP_MALE_HOOD; l.dye = [4] f32.[0.42, 0.02, 0.04, 1];
+  } else if kind == 16 {  // the cult's leader, a level 17 Fiend Warlock: a black robe, bare-headed, a beard
+    l.robe = BP_MALE_ROBE; l.hair = BP_HAIR_PARTED; l.extra = BP_BEARD;
+    l.dye = [4] f32.[0.03, 0.02, 0.03, 1]; l.hair_rgb = [3] f32.[0.85, 0.85, 0.88]; l.skin = [3] f32.[0.82, 0.78, 0.76];
   } else {                // a draconic sorcerer: copper, red hair
     fem = v == 0;
     l.robe = BP_MALE_ROBE; l.hair = ifx fem then BP_HAIR_LONG else BP_HAIR_PARTED; l.dye = [4] f32.[0.55, 0.18, 0.04, 1];
@@ -508,7 +522,7 @@ BD_CAM :: BdCam.{ex = 0, ey = 10, ez = -15, fx = 0, fy = -0.3162278, fz = 0.9486
 }
 
 #test "every look wears its body's parts: an outfit, a head, and no two of a kind" {
-  for kind: 0..<13 {
+  for kind: 0..<17 {
     for v: 0..<2 {
       l := bd_look(kind, v);
       parts: [BD_PARTS_MAX] int;

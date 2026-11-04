@@ -27,7 +27,9 @@ SP_TELEKINESIS :: 60; SP_BLACK_TENTACLES :: 61; SP_WATER_WALK :: 62; SP_CONTROL_
 SP_WATER_BREATHING :: 65; SP_METEOR_SWARM :: 66;
 // the Warlock's (a level 17 Fiend Warlock's bar: apps/openagents-web/fivebar.coax fb_warlock_bar)
 SP_BLIGHT :: 67; SP_CIRCLE_OF_DEATH :: 68; SP_FINGER_OF_DEATH :: 69; SP_DIMENSION_DOOR :: 70;
-RS_MORE_END :: 71;
+// a Warlock's Reaction (battle.coax rs_hellish_rebuke runs it: a Reaction isn't cast on a turn)
+SP_HELLISH_REBUKE :: 71;
+RS_MORE_END :: 72;
 
 // A record's fields, the steps after.
 rs_more :: (id: string, name: string, level: int, school: string, classes: string, time: int, range_ft: int,
@@ -177,6 +179,11 @@ rs_more_spell :: (i: int) -> RsSpell {
     s.text = "You unleash negative energy toward a creature you can see within range. The target makes a Constitution saving throw, taking 7d8 + 30 Necrotic damage on a failed save or half as much damage on a successful one. A Humanoid killed by this spell rises at the start of your next turn as a Zombie (see \"Monsters\") that follows your verbal orders.";
     s.steps[0] = rs_step(RS_S_SAVE, RS_CON, RS_ON_SAVE_HALF, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 7, 8, RS_NECROTIC, 0);
     s.steps[2] = rs_step(RS_S_RISE, 0, 0, 0, 0); s.step_n = 3;
+  } else if i == SP_HELLISH_REBUKE {
+    s = rs_more("hellish-rebuke", "Hellish Rebuke", 1, "Evocation", "Warlock", RS_T_REACTION, 60, "Instantaneous", 0, false, RS_A_NONE, 0);
+    s.components = "V, S"; s.page = 140;
+    s.text = "The creature that damaged you is momentarily surrounded by green flames. It makes a Dexterity saving throw, taking 2d10 Fire damage on a failed save or half as much damage on a successful one. Using a Higher-Level Spell Slot. The damage increases by 1d10 for each spell slot level above 1.";
+    s.steps[0] = rs_step(RS_S_SAVE, RS_DEX, RS_ON_SAVE_HALF, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 2, 10, RS_FIRE, 1); s.step_n = 2;
   } else if i == SP_DIMENSION_DOOR {
     // You alone: the willing creature it can bring along isn't offered here.
     s = rs_more("dimension-door", "Dimension Door", 4, "Conjuration", "Bard, Sorcerer, Warlock, Wizard", RS_T_ACTION, 500, "Instantaneous", 0, false, RS_A_NONE, 0);

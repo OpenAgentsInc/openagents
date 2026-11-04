@@ -1,0 +1,442 @@
+// The Siege in the 5E Lab (fivelab.coax loads this file): a cult marches on a town. The cult is a
+// level 17 Fiend Warlock and its swarm of Cultists, Cultist Fanatics and Warlocks of levels 1 to 5;
+// the town watch is Guards, Warrior Veterans, Knights, Scouts, Priests and Mages. Every stat block
+// and both armies' mix are the engine's (aethyr/rules/srd/npcs.coax rs_siege_defender,
+// rs_siege_attacker, rs_siege_arch), so a world that runs the siege on its own server builds the
+// same armies. This file is where they stand and how each decides; the rules and every roll are
+// the engine's, and each roll goes to the log.
+//
+// How they fight:
+//   the watch holds its line: Guards, Warrior Veterans and Knights stand in three files at the
+//     town's edge, meet whoever reaches the line and step back to it, and the Veterans and Knights
+//     shoot their Heavy Crossbows while nobody is at hand. Scouts and Mages stand behind the line
+//     and shoot the cult's casters first (its Warlock leader, then its Warlocks and Fanatics); a
+//     Mage drops Fireball where it catches four of the cult, each of the watch in it counting as
+//     three less, and Cone of Cold when the cult is in its face. Priests heal the worst hurt with
+//     Healing Word, call Spirit Guardians when the cult reaches them, and strike with Radiant Flame.
+//   the cult swarms: Cultists run at the nearest of the watch (Dash when they are out of reach) and
+//     cut; Fanatics open with Hold Person on a Knight, a Veteran or a Priest, then close with the
+//     Pact Blade; the Warlocks play as the Lab's other Warlocks (pact_turn), with Hellish Rebuke.
+//   the leader, Darian Odiodei, stays back: 120 to 150 feet off until the swarm reaches the town,
+//     then 60 to 90 feet. It casts the big spells: Circle of Death where the 60-foot sphere takes
+//     the most of the watch (each of its own side caught costs three of the watch), Finger of Death
+//     on the watch's strongest within 60 feet (it steps in to 60 feet for it), Fireball the same
+//     way as Circle of Death, Blight on one that comes close, then Hex and Eldritch Blast at the
+//     casters. Dimension Door takes it out when the watch reaches it. A Humanoid that Finger of
+//     Death kills rises as a Zombie on its side (fivelab-warlock.coax lw_rise).
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+
+SIEGE_TOWN :: 50; SIEGE_CULT :: 50;   // the default armies: 50 of the watch, 50 of the cult and its leader
+SIEGE_CULT_MAX :: 16383;               // SKELETONS_MAX less the leader: the room the lab gives its battle (LAB_MAX)
+SIEGE_TEAM_NAME :: [3] string.["THE TOWN WATCH", "THE CULT", ""];
+SIEGE_ARCH_NAME :: RS_ARCH_NAME;   // Darian Odiodei (aethyr/rules/srd/npcs.coax)
+// Player mode's picker in the Siege: who you can play, by stat block or role.
+SIEGE_PICKS :: 10;
+SIEGE_PICK :: [10] int.[RS_NPC_ARCH, RS_NPC_WARLOCK, RS_NPC_FANATIC, RS_NPC_CULTIST,
+                        RS_NPC_GUARD, RS_NPC_VETERAN, RS_NPC_KNIGHT, RS_NPC_SCOUT, RS_NPC_PRIEST, RS_NPC_MAGE];
+SIEGE_PICK_NAME :: [10] string.["LEADER", "WARLOCK", "FANATIC", "CULTIST", "GUARD", "VETERAN", "KNIGHT", "SCOUT", "PRIEST", "MAGE"];
+
+// ---- the armies on the field
+
+// The watch's line: three files deep at the town's edge (a fifth of the way in), the Scouts, Priests
+// and Mages two squares behind; the cult's swarm 60 feet off the line, its leader on the far edge.
+// Each of the watch remembers its square on the line (its post).
+siege_battle :: (s: [] Lab) {
+  b := bt(s);
+  town := rs_min(s[0].town, HEROES_MAX); cult := rs_min(s[0].cult, SIEGE_CULT_MAX);
+  rows := s[0].rows; cols := s[0].cols;
+  depth := rs_max(4, rows - 4);
+  y0 := (rows - depth) / 2;
+  line := rs_max(4, cols / 5);
+  front := 0; for k: 0..<town { if siege_front(rs_town_role(k)) { front += 1; } }
+  files := (front + depth - 1) / depth;
+  fi := 0; bi := 0;
+  for k: 0..<town {
+    c := rs_siege_defender(k, 0);
+    q := 0; x := 0; in_file := depth; total := 0;
+    if siege_front(c.npc) { q = fi; fi += 1; x = line - q / depth; total = front; }
+    else { q = bi; bi += 1; x = line - files - 1 - q / depth; total = town - front; }
+    // a file not full stands in the middle of the line
+    left := total - (q / depth) * depth;
+    in_file = rs_min(depth, left);
+    y := y0 + (depth - in_file) / 2 + q % depth;
+    i := place_on(s, c, x, y);
+    if i >= 0 && i < HEROES_MAX { s[0].post[i] = b[0].c[i].y * cols + b[0].c[i].x; }
+  }
+  // the leader, then the swarm in files from the far edge
+  a := place_on(s, rs_siege_arch(SIEGE_ARCH_NAME, 1, SP_ELDRITCH_BLAST), cols - 1, rows / 2);
+  // the swarm's front 60 feet from the line (a Cultist's Dash), loose: every other square, each
+  // file staggered from the one before, so no Fireball takes a block of them
+  cd := rs_max(2, (rows - 1) / 2);
+  fx := rs_min(line + 12, cols - 4);
+  for k: 0..<cult {
+    c := rs_siege_attacker(k, 1, SP_ELDRITCH_BLAST);
+    f := k / cd;
+    x := rs_min(fx + f, cols - 3); y := (k % cd) * 2 + f % 2;
+    j := place_on(s, c, x, y);
+  }
+  s[0].posts = town; s[0].stormed = false;
+}
+// The watch's line: Guards, Warrior Veterans and Knights.
+siege_front :: (npc: int) -> bool { return npc == RS_NPC_GUARD || npc == RS_NPC_VETERAN || npc == RS_NPC_KNIGHT; }
+// The first line of the log for a new siege.
+siege_title :: (s: [] Lab, l: [] u8, at: int) -> int {
+  n := put(l, at, ": the Siege. ");
+  n = put_int(l, n, s[0].town); n = put(l, n, " of the town watch hold the line, and ");
+  n = put_int(l, n, s[0].cult); n = put(l, n, " cultists and warlocks march on them behind ");
+  n = put(l, n, SIEGE_ARCH_NAME); n = put(l, n, ", a level 17 Fiend Warlock.");
+  return n;
+}
+
+// ---- who is worth a shot
+
+// How much a foe is worth to the other side's archers and casters: the cult's leader, then any
+// caster (its Warlocks and Fanatics; the watch's Priests and Mages), then Knights and Veterans.
+siege_rank :: (c: RsCreature) -> int {
+  if c.npc == RS_NPC_ARCH { return 4; }
+  if c.npc == RS_NPC_PRIEST || c.npc == RS_NPC_MAGE { return 3; }
+  if c.npc == RS_NPC_WARLOCK || c.npc == RS_NPC_FANATIC { return 2; }
+  if c.npc == RS_NPC_KNIGHT || c.npc == RS_NPC_VETERAN { return 1; }
+  return 0;
+}
+// The foe within `feet` of i ranked highest (siege_rank, at least `least`), the nearest of those;
+// -1 none.
+siege_mark :: (s: [] Lab, i: int, feet: int, least: int) -> int {
+  b := bt(s);
+  best := -1; br := least - 1; bd := 100000;
+  ids: [NEAR_MAX] int; m := near_ids(s, b[0].c[i].x, b[0].c[i].y, feet, ids[..]);
+  for q: 0..<m {
+    j := ids[q];
+    if b[0].c[j].team == b[0].c[i].team || !rs_up(b[0].c[j]) { continue; }
+    d := rs_feet_to(b, i, j);
+    if d > feet { continue; }
+    r := siege_rank(b[0].c[j]);
+    if r > br || (r == br && d < bd) { br = r; bd = d; best = j; }
+  }
+  return best;
+}
+// Finger of Death's mark within `feet` of i: the highest ranked (siege_rank) of the watch with 30
+// Hit Points or more to take it; -1 none.
+siege_strong :: (s: [] Lab, i: int, feet: int) -> int {
+  b := bt(s);
+  best := -1; br := -1; bd := 100000;
+  ids: [NEAR_MAX] int; m := near_ids(s, b[0].c[i].x, b[0].c[i].y, feet, ids[..]);
+  for q: 0..<m {
+    j := ids[q];
+    if b[0].c[j].team == b[0].c[i].team || !rs_up(b[0].c[j]) || b[0].c[j].hp < 30 { continue; }
+    d := rs_feet_to(b, i, j);
+    if d > feet { continue; }
+    r := siege_rank(b[0].c[j]);
+    if r > br || (r == br && d < bd) { br = r; bd = d; best = j; }
+  }
+  return best;
+}
+// Walk toward square (x, y) a square at a time, as far as the turn's movement goes.
+walk_sq :: (s: [] Lab, i: int, tx: int, ty: int) {
+  b := bt(s);
+  guard := 0;
+  while b[0].turn.move_left > 0 && guard < 12 {
+    guard += 1;
+    x := b[0].c[i].x; y := b[0].c[i].y;
+    if x == tx && y == ty { return; }
+    bx := -1; by := -1; bs := rs_feet(x, y, tx, ty);
+    for oy: -1..<2 { for ox: -1..<2 {
+      if ox == 0 && oy == 0 { continue; }
+      nx := x + ox; ny := y + oy;
+      if nx < 0 || ny < 0 || nx >= s[0].cols || ny >= s[0].rows || rs_at(b, nx, ny) >= 0 { continue; }
+      d := rs_feet(nx, ny, tx, ty) + ifx rs_difficult(b, nx, ny) then 4 else 0;
+      if d < bs { bs = d; bx = nx; by = ny; }
+    } }
+    if bx < 0 || !rs_step_to(b, i, bx, by) { return; }
+  }
+}
+// Whether any of the cult (not its leader) stands within 5 feet of the watch: the swarm has
+// reached the town.
+siege_engaged :: (s: [] Lab) -> bool {
+  b := bt(s);
+  for i: 0..<b[0].n {
+    c := b[0].c[i..<i + 1];
+    if c[0].team != 1 || !rs_up(c[0]) || c[0].npc == RS_NPC_ARCH { continue; }
+    ids: [NEAR_5] int; m := near_ids(s, c[0].x, c[0].y, 5, ids[..]);
+    for q: 0..<m { j := ids[q]; if b[0].c[j].team == 0 && rs_up(b[0].c[j]) && rs_feet_to(b, i, j) <= 5 { return true; } }
+  }
+  return false;
+}
+// The leader's burst: the foe whose square makes the best centre for a sphere of `radius` feet
+// within `range`: the foes it takes, less three for each of its own side in it (itself, never:
+// -100); -1 when the best takes fewer than `least`.
+arch_burst :: (s: [] Lab, i: int, range: int, radius: int, least: int) -> int {
+  b := bt(s);
+  best := -1; bv := least - 1; looked := 0;
+  ids: [NEAR_MAX] int; m := near_ids(s, b[0].c[i].x, b[0].c[i].y, range, ids[..]);
+  for q: 0..<m {
+    j := ids[q];
+    if b[0].c[j].team == b[0].c[i].team || !rs_up(b[0].c[j]) || rs_feet_to(b, i, j) > range || looked >= 40 { continue; }
+    looked += 1;
+    cx := b[0].c[j].x; cy := b[0].c[j].y;
+    v := 0;
+    inn: [NEAR_MAX] int; mi := near_ids(s, cx, cy, radius, inn[..]);
+    for qi: 0..<mi {
+      k := inn[qi];
+      if b[0].c[k].dead || rs_feet(cx, cy, b[0].c[k].x, b[0].c[k].y) > radius { continue; }
+      if k == i { v -= 100; continue; }
+      if b[0].c[k].team != b[0].c[i].team { if rs_up(b[0].c[k]) { v += 1; } }
+      else if rs_up(b[0].c[k]) { v -= 3; }
+    }
+    if v > bv { bv = v; best = j; }
+  }
+  return best;
+}
+
+// ---- how each decides
+
+// A creature built from a siege's stat block or role takes its turn here (fivelab.coax class_turn).
+siege_turn :: (s: [] Lab, i: int) {
+  b := bt(s);
+  if rs_has(b[0].c[i], RS_RESTRAINED) && rs_unit(dice(s)) < 0.5 { ok := rs_escape(b, i); }
+  npc := b[0].c[i].npc;
+  if npc == RS_NPC_ARCH { arch_turn(s, i); }
+  else if npc == RS_NPC_WARLOCK { pact_turn(s, i); }
+  else if npc == RS_NPC_CULTIST { cultist_turn(s, i); }
+  else if npc == RS_NPC_FANATIC { fanatic_turn(s, i); }
+  else if npc == RS_NPC_SCOUT { scout_turn(s, i); }
+  else if npc == RS_NPC_PRIEST { priest_turn(s, i); }
+  else if npc == RS_NPC_MAGE { mage_turn(s, i); }
+  else { line_turn(s, i); }
+}
+// A Guard, Warrior Veteran or Knight holds the line: the foe at hand first; else one that reached
+// the line (within 10 feet of its post) is met; else back to its post, and a crossbow shot (the
+// Veteran's and the Knight's) at the nearest foe in range.
+line_turn :: (s: [] Lab, i: int) {
+  b := bt(s);
+  j := foe_at_hand(s, i, -1);
+  if j >= 0 { ok := rs_attack(b, i, j, false, -1); return; }
+  foe := nearest_foe(s, i);
+  if foe < 0 { return; }
+  ps := siege_post(s, i); px := ps % s[0].cols; py := ps / s[0].cols;
+  if rs_feet(px, py, b[0].c[foe].x, b[0].c[foe].y) <= 10 && !rs_has(b[0].c[i], RS_RESTRAINED) {
+    walk(s, i, foe, 0, 5);
+    j = foe_at_hand(s, i, -1);
+    if j >= 0 { ok := rs_attack(b, i, j, false, -1); return; }
+  } else if !rs_has(b[0].c[i], RS_RESTRAINED) { walk_sq(s, i, px, py); }
+  if b[0].c[i].ranged >= 0 {
+    foe = nearest_foe(s, i);
+    if foe >= 0 && rs_feet_to(b, i, foe) <= rs_weapon(b[0].c[i].ranged).range_ft { ok := rs_shoot(b, i, foe); }
+  }
+}
+// i's post: its square on the line (the square it started on), or where it stands; y * cols + x.
+siege_post :: (s: [] Lab, i: int) -> int {
+  b := bt(s);
+  if i >= HEROES_MAX || i >= s[0].posts { return b[0].c[i].y * s[0].cols + b[0].c[i].x; }
+  return s[0].post[i];
+}
+// A Scout: its Shortsword at a foe beside it; else back to its post and two Longbow shots at the
+// cult's casters first, the nearest foe if none is in range.
+scout_turn :: (s: [] Lab, i: int) {
+  b := bt(s);
+  j := foe_at_hand(s, i, -1);
+  if j >= 0 { ok := rs_attack(b, i, j, false, -1); return; }
+  ps := siege_post(s, i); px := ps % s[0].cols; py := ps / s[0].cols;
+  if !rs_has(b[0].c[i], RS_RESTRAINED) { walk_sq(s, i, px, py); }
+  foe := siege_mark(s, i, 150, 2);
+  if foe < 0 { foe = nearest_foe(s, i); }
+  if foe >= 0 { ok := rs_shoot(b, i, foe); }
+}
+// A Priest: Spirit Guardians when two of the cult are within 15 feet; else Healing Word (Divine Aid,
+// a Bonus Action) on the worst hurt within 60 feet under half its Hit Points; then two attacks: the
+// Mace at a foe beside it, else Radiant Flame at the cult's casters first.
+priest_turn :: (s: [] Lab, i: int) {
+  b := bt(s);
+  if b[0].c[i].conc < 0 && b[0].c[i].slots[3] > 0 && foes_near(s, i, b[0].c[i].x, b[0].c[i].y, 15) >= 2 {
+    ok := rs_cast(b, i, SP_SPIRIT_GUARDIANS, 3, 0, 0, i);
+  }
+  if !b[0].turn.slot_spent && b[0].c[i].slots[1] > 0 {
+    w := most_hurt(s, i, 60, 0.5);
+    if w >= 0 { ok := rs_cast(b, i, SP_HEALING_WORD, 1, 0, 0, w); }
+  }
+  if b[0].turn.action { return; }
+  j := foe_at_hand(s, i, -1);
+  if j >= 0 { ok := rs_attack(b, i, j, false, -1); return; }
+  ps := siege_post(s, i); px := ps % s[0].cols; py := ps / s[0].cols;
+  if !rs_has(b[0].c[i], RS_RESTRAINED) { walk_sq(s, i, px, py); }
+  foe := siege_mark(s, i, 60, 2);
+  if foe < 0 { foe = nearest_foe(s, i); }
+  if foe >= 0 && rs_feet_to(b, i, foe) <= 60 { ok := rs_shoot(b, i, foe); }
+}
+// A Mage: Cone of Cold when three of the cult are within 15 feet and none of the watch but itself;
+// else Fireball (its level 4 version) where it catches four of the cult, less three for each of the
+// watch in it (burst_at); else
+// three Arcane Bursts at the cult's casters first (beside it, as a melee attack).
+mage_turn :: (s: [] Lab, i: int) {
+  b := bt(s);
+  j := foe_at_hand(s, i, -1);
+  x := b[0].c[i].x; y := b[0].c[i].y;
+  if b[0].c[i].slots[5] > 0 && foes_near(s, i, x, y, 15) >= 3 && friends_near(s, i, x, y, 30) <= 1 {
+    foe := nearest_foe(s, i);
+    if foe >= 0 { ok := rs_cast(b, i, SP_CONE_OF_COLD, 5, b[0].c[foe].x, b[0].c[foe].y, -1); }
+  }
+  if !b[0].turn.action && b[0].c[i].slots[4] > 0 {
+    fb := burst_at(s, i, 150, 20, false, 4);
+    if fb >= 0 { ok := rs_cast(b, i, SP_FIREBALL, 4, b[0].c[fb].x, b[0].c[fb].y, -1); }
+  }
+  if b[0].turn.action { return; }
+  if j >= 0 { ok := rs_attack(b, i, j, false, -1); return; }
+  ps := siege_post(s, i); px := ps % s[0].cols; py := ps / s[0].cols;
+  if !rs_has(b[0].c[i], RS_RESTRAINED) { walk_sq(s, i, px, py); }
+  foe := siege_mark(s, i, 120, 2);
+  if foe < 0 { foe = nearest_foe(s, i); }
+  if foe >= 0 && rs_feet_to(b, i, foe) <= 120 { ok := rs_shoot(b, i, foe); }
+}
+// A Cultist swarms: the Ritual Sickle at a foe beside it; else at the nearest of the watch, with a
+// Dash when the walk falls short.
+cultist_turn :: (s: [] Lab, i: int) {
+  b := bt(s);
+  j := foe_at_hand(s, i, -1);
+  if j >= 0 { ok := rs_attack(b, i, j, false, -1); return; }
+  foe := nearest_foe(s, i);
+  if foe < 0 { return; }
+  close_in(s, i, foe);
+  j = foe_at_hand(s, i, -1);
+  if j >= 0 && !b[0].turn.action { ok := rs_attack(b, i, j, false, -1); }
+}
+// A Cultist Fanatic: Hold Person (its 1/Day) on a Knight, a Veteran or a Priest within 60 feet when
+// none is at hand; then the Pact Blade, closing in as a Cultist does.
+fanatic_turn :: (s: [] Lab, i: int) {
+  b := bt(s);
+  if b[0].c[i].conc < 0 && b[0].c[i].slots[2] > 0 && foe_at_hand(s, i, -1) < 0 {
+    t := siege_mark(s, i, 60, 1);
+    if t >= 0 && b[0].c[t].humanoid && !rs_has(b[0].c[t], RS_PARALYZED) && siege_rank(b[0].c[t]) != 2 {
+      ok := rs_cast(b, i, SP_HOLD_PERSON, 2, 0, 0, t);
+      if ok { walk(s, i, t, 0, 5); return; }
+    }
+  }
+  cultist_turn(s, i);
+}
+// The cult's leader stays back: until the swarm reaches the town it marches behind it, out of
+// the watch's reach, blasting what comes in range; then the big spells (siege's head comment).
+arch_turn :: (s: [] Lab, i: int) {
+  b := bt(s);
+  foe := nearest_foe(s, i);
+  if foe < 0 { return; }
+  d := rs_feet_to(b, i, foe);
+  // the watch at hand: Dimension Door back to the cult's edge
+  if d <= 5 && b[0].c[i].slots[5] > 0 && !b[0].turn.slot_spent {
+    e := free_near(s, s[0].cols - 2, b[0].c[i].y);
+    if rs_cast(b, i, SP_DIMENSION_DOOR, 5, e % s[0].cols, e / s[0].cols, i) { return; }
+  }
+  if !s[0].stormed { s[0].stormed = siege_engaged(s); }
+  engaged := s[0].stormed;
+  // at the back: 120 to 150 feet off (Circle of Death's and Fireball's reach) until the swarm
+  // strikes; after, 60 to 90 feet, or 60 feet from a Finger of Death's mark while its 7th-level
+  // Arcanum is unspent
+  if !rs_has(b[0].c[i], RS_RESTRAINED) {
+    fod := ifx engaged && b[0].c[i].slots[7] > 0 then siege_strong(s, i, 120) else -1;
+    if fod >= 0 { walk(s, i, fod, 45, 60); }
+    else { walk(s, i, foe, ifx engaged then 60 else 120, ifx engaged then 90 else 150); }
+  }
+  if !b[0].turn.slot_spent {
+    // Circle of Death (the 6th-level Arcanum) where it takes eight of the watch, or a third of
+    // those still standing when fewer than 24 stand
+    if b[0].c[i].slots[6] > 0 {
+      c := arch_burst(s, i, 150, 60, rs_max(3, rs_min(8, rs_team_up(b, 0) / 3)));
+      if c >= 0 { ok := rs_cast(b, i, SP_CIRCLE_OF_DEATH, 6, b[0].c[c].x, b[0].c[c].y, -1); }
+    }
+    // Finger of Death (the 7th) on the strongest within 60 feet with Hit Points to take it
+    if engaged && !b[0].turn.slot_spent && b[0].c[i].slots[7] > 0 {
+      t := siege_strong(s, i, 60);
+      if t >= 0 { ok := rs_cast(b, i, SP_FINGER_OF_DEATH, 7, 0, 0, t); }
+    }
+    // Fireball (a 5th-level Pact slot) where it takes four of the watch
+    if !b[0].turn.slot_spent && b[0].c[i].slots[5] > 0 {
+      fb := arch_burst(s, i, 150, 20, 4);
+      if fb >= 0 { ok := rs_cast(b, i, SP_FIREBALL, 5, b[0].c[fb].x, b[0].c[fb].y, -1); }
+    }
+    // Blight on the strongest that came within 30 feet
+    if engaged && !b[0].turn.slot_spent && b[0].c[i].slots[5] > 0 {
+      t := siege_mark(s, i, 30, 0);
+      if t >= 0 { ok := rs_cast(b, i, SP_BLIGHT, 5, 0, 0, t); }
+    }
+  }
+  if b[0].turn.action { return; }
+  // Hex (a Bonus Action) on its mark when a slot is spare, then Eldritch Blast's four beams
+  t := siege_mark(s, i, 120, 0);
+  if t < 0 { return; }
+  if b[0].c[i].conc < 0 && !b[0].turn.slot_spent && b[0].c[i].slots[5] >= 2 { ok := rs_cast(b, i, SP_HEX, 5, 0, 0, t); }
+  else if b[0].c[i].conc == SP_HEX && b[0].c[i].hex_free { ok := rs_hex_move(b, i, t); }
+  ok := rs_cast(b, i, SP_ELDRITCH_BLAST, 0, 0, 0, t);
+}
+
+// ---- Player mode in the Siege
+
+// The hotbar for a siege's figure (fivelab.coax hero_abilities): its stat block's attacks and the
+// spells it casts; the leader's is the level 17 Warlock's (fivelab-warlock.coax).
+siege_abilities :: (c: RsCreature, out: [] Ab) -> int {
+  npc := c.npc;
+  if npc == RS_NPC_ARCH { return lw_abilities(out); }
+  if npc == RS_NPC_WARLOCK {
+    out[0] = spell_ab(SP_ELDRITCH_BLAST, 0, TG_FOE); out[1] = spell_ab(SP_HEX, 1, TG_FOE); out[2] = spell_ab(SP_HOLD_PERSON, 2, TG_FOE);
+    out[3] = spell_ab(SP_SCORCHING_RAY, 2, TG_FOE); out[4] = spell_ab(SP_FIREBALL, 3, TG_POINT); out[5] = spell_ab(SP_CHILL_TOUCH, 0, TG_FOE);
+    out[6] = mk_ab(AB_DASH, "DASH"); return 7;
+  }
+  out[0] = mk_ab(AB_ATTACK, "ATTACK");
+  if npc == RS_NPC_PRIEST { out[1] = spell_ab(SP_HEALING_WORD, 1, TG_ALLY); out[2] = spell_ab(SP_SPIRIT_GUARDIANS, 3, TG_SELF); out[3] = mk_ab(AB_DASH, "DASH"); return 4; }
+  if npc == RS_NPC_MAGE { out[1] = spell_ab(SP_FIREBALL, 4, TG_POINT); out[2] = spell_ab(SP_CONE_OF_COLD, 5, TG_POINT); out[3] = mk_ab(AB_DASH, "DASH"); return 4; }
+  if npc == RS_NPC_FANATIC { out[1] = spell_ab(SP_HOLD_PERSON, 2, TG_FOE); out[2] = mk_ab(AB_DASH, "DASH"); return 3; }
+  out[1] = mk_ab(AB_DASH, "DASH");
+  return 2;
+}
+// The figure you play in the Siege: the first of the picked kind still up, on either side.
+siege_pick_hero :: (s: [] Lab) {
+  b := bt(s);
+  s[0].me = -1; s[0].target = -1;
+  want := SIEGE_PICK[rs_min(s[0].pick, SIEGE_PICKS - 1)];
+  for i: 0..<b[0].n { if b[0].c[i].npc == want && rs_up(b[0].c[i]) { s[0].me = i; return; } }
+}
+// Its kind, for the line over the hotbar: the stat block's name, or the Warlock and its level.
+siege_kind :: (c: RsCreature, l: [] u8, at: int) -> int {
+  n := at;
+  if c.npc == RS_NPC_ARCH || c.npc == RS_NPC_WARLOCK { n = put(l, n, "Fiend Warlock "); return put_int(l, n, c.level); }
+  return put(l, n, RS_NPC_NAME[c.npc]);
+}
+
+// ---- the Siege's looks (fivelab-bodies.coax bd_look 13 to 16) and effects
+
+// A siege figure's look: the watch in its blue tabards (Guards, Veterans), Knights as paladins,
+// Scouts as rangers, Priests as clerics, Mages as Evokers; Cultists in rough brown robes and
+// hoods, Fanatics in black and crimson, the Warlocks as the Lab's, and their leader in black.
+siege_look :: (npc: int) -> int {
+  if npc == RS_NPC_GUARD || npc == RS_NPC_VETERAN { return 13; }
+  if npc == RS_NPC_KNIGHT { return 9; }
+  if npc == RS_NPC_SCOUT { return 10; }
+  if npc == RS_NPC_PRIEST { return 7; }
+  if npc == RS_NPC_MAGE { return 5; }
+  if npc == RS_NPC_CULTIST { return 14; }
+  if npc == RS_NPC_FANATIC { return 15; }
+  if npc == RS_NPC_ARCH { return 16; }
+  return 1;
+}
+// Whose name shows over its head: the leader's, and the watch's Knights, Priests and Mages.
+siege_named :: (c: RsCreature) -> bool {
+  return c.npc == RS_NPC_ARCH || c.npc == RS_NPC_KNIGHT || c.npc == RS_NPC_PRIEST || c.npc == RS_NPC_MAGE;
+}
+// A siege event's effect, when it has its own (fivelab.coax fx_event): Hellish Rebuke's green
+// flames, a Mage's Arcane Burst and a Priest's Radiant Flame as bolts of their light. True when
+// it drew one.
+siege_fx :: (s: [] Lab, e: RsEvent, seed: f32, t0: f32) -> bool {
+  b := bt(s);
+  if e.by < 0 || e.by >= b[0].n || e.to < 0 || e.to >= b[0].n || e.to == e.by { return false; }
+  hand := fx_spot(s, e.by, 1.5); hand.x += 0.3;
+  if e.kind == RS_EV_CAST && e.spell == SP_HELLISH_REBUKE { fx_cause(s, FXR_COLUMN, seed, t0, hand, fx_spot(s, e.to, 1.1), fxp_v(0.35, 1.0, 0.3), 1, 1); return true; }
+  if (e.kind == RS_EV_ATTACK || e.kind == RS_EV_MISS) && e.spell < 0 && rs_feet_to(b, e.by, e.to) > 5 {
+    npc := b[0].c[e.by].npc;
+    at := fx_spot(s, e.to, 1.1);
+    if e.kind == RS_EV_MISS { at.x += fxp_sym(seed, 0, 0) * 0.9; at.z += fxp_sym(seed, 0, 1) * 0.9; at.y = 0.6; }
+    if npc == RS_NPC_MAGE { fx_cause(s, FXR_STREAK, seed, t0, hand, at, fxp_v(0.55, 0.7, 1.0), 1.1, 1); return true; }
+    if npc == RS_NPC_PRIEST { fx_cause(s, FXR_STREAK, seed, t0, hand, at, fxp_v(1.0, 0.9, 0.55), 1, 1); return true; }
+  }
+  return false;
+}

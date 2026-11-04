@@ -14,6 +14,8 @@
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 //   coax/bin/coax test --library aethyr/rules/srd/engine.coax
 
+#load "npcs.coax";   // the townsfolk's and the cultists' stat blocks, and a siege's two armies
+
 RS_ROUND :: 6.0;        // seconds in a round
 RS_FOOT :: 0.3048;      // metres in a foot
 RS_SQUARE :: 5;         // feet in a grid square
@@ -141,10 +143,18 @@ RS_USES :: 11;
 
 // Weapons a creature attacks with: the SRD's weapon table (p. 90) and Unarmed Strike. A Monk's
 // Unarmed Strike rolls its Martial Arts die in place of the 1 + Strength of anyone else's.
-RsWeapon :: struct { id: string; name: string; dice: int; sides: int; damage: int; finesse: bool; mastery: int; range_ft: int; long_ft: int; }
+// A stat block's attack (npcs.coax) can also name its own ability (`ability`, -1: the weapon's
+// rule), leave the modifier off its damage (`bare`), add damage of a second type on a hit (`plus_*`:
+// dice and a flat part, doubled dice on a Critical Hit), and be a melee or a ranged attack as it is
+// made (`both`: no Disadvantage from 5 feet).
+RsWeapon :: struct { id: string; name: string; dice: int; sides: int; damage: int; finesse: bool; mastery: int; range_ft: int; long_ft: int;
+                     ability: int = -1; bare: bool; plus_dice: int; plus_sides: int; plus_flat: int; plus_kind: int; both: bool; }
 W_UNARMED :: 0; W_GREATAXE :: 1; W_SHORTSWORD :: 2; W_SHORTBOW :: 3;
 W_GREATSWORD :: 4; W_LONGSWORD :: 5; W_MACE :: 6; W_LONGBOW :: 7; W_DAGGER :: 8;
 W_SLAM :: 9;   // the Zombie's Slam (a stat block's own: Str, 1d8 Bludgeoning)
+// the town watch's and the cult's stat-block attacks (npcs.coax), with the dice their stat blocks give
+W_SPEAR :: 10; W_RITUAL_SICKLE :: 11; W_PACT_BLADE :: 12; W_HEAVY_CROSSBOW :: 13; W_KNIGHT_GREATSWORD :: 14;
+W_KNIGHT_CROSSBOW :: 15; W_PRIEST_MACE :: 16; W_RADIANT_FLAME :: 17; W_ARCANE_BURST :: 18;
 // mastery properties (p. 90-91)
 M_NONE :: 0; M_CLEAVE :: 1; M_GRAZE :: 2; M_SAP :: 3; M_VEX :: 4; M_SLOW :: 5; M_NICK :: 6;
 RS_EFFECTS :: 6;
@@ -251,6 +261,9 @@ RsCreature :: struct {
   // next turn (rise_by the caster, -1 none; rise_at that turn's start). The world raises it.
   rise_by: int = -1; rise_at: f32;
   fortitude: bool;          // Undead Fortitude (the Zombie's): a Con save to drop to 1 Hit Point instead of 0
+  npc: int;                 // the stat block it was built from (npcs.coax RS_NPC_*; 0: a class or another monster)
+  parry: bool;              // Parry (the Knight's and the Warrior Veteran's Reaction): +2 AC against a melee hit
+  rebuke: bool;             // it knows Hellish Rebuke (a Warlock's Reaction to damage)
 }
 rs_name :: (c: [] RsCreature) -> string { return cast(string) c[0].name[0..<c[0].name_n]; }
 rs_set_name :: (c: [] RsCreature, name: string) {
@@ -506,6 +519,7 @@ rs_zombie :: (name: string, team: int) -> RsCreature {
 }
 
 rs_weapon :: (w: int) -> RsWeapon {
+  if w >= W_SPEAR { return rs_npc_weapon(w); }
   if w == W_SLAM { return RsWeapon.{id = "slam", name = "Slam", dice = 1, sides = 8, damage = RS_BLUDGEONING, finesse = false, mastery = M_NONE, range_ft = 5, long_ft = 5}; }
   if w == W_GREATAXE { return RsWeapon.{id = "greataxe", name = "Greataxe", dice = 1, sides = 12, damage = RS_SLASHING, finesse = false, mastery = M_CLEAVE, range_ft = 5, long_ft = 5}; }
   if w == W_SHORTSWORD { return RsWeapon.{id = "shortsword", name = "Shortsword", dice = 1, sides = 6, damage = RS_PIERCING, finesse = true, mastery = M_VEX, range_ft = 5, long_ft = 5}; }
@@ -521,6 +535,7 @@ rs_weapon :: (w: int) -> RsWeapon {
 // Martial Arts when it is the higher.
 rs_attack_ability :: (c: RsCreature, w: int) -> int {
   wp := rs_weapon(w);
+  if wp.ability >= 0 { return wp.ability; }   // a stat block's attack names its own
   if wp.range_ft > 5 { return RS_DEX; }   // a ranged weapon
   dex_ok := wp.finesse || (c.klass == RS_MONK && (w == W_UNARMED || wp.dice > 0));
   if dex_ok && c.score[RS_DEX] > c.score[RS_STR] { return RS_DEX; }

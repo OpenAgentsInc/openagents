@@ -10,6 +10,7 @@ A Verse world at https://openagents.com/worlds/5e-lab, not listed on the worlds 
 - Escape pauses and resumes.
 - F switches between normal speed and four times as fast.
 - R starts a new battle.
+- H, or the HORDE / ARMIES / SIEGE button beside SPECTATOR, moves to the next battle: the Horde, the two armies, then the Siege. On a phone the button sits above the mode switch. The address picks the Siege too: `?siege=1`, with `&town=N&cult=M` for its sizes.
 - WORLDS at the top right goes to the [worlds list](https://openagents.com/worlds).
 
 ## What you are watching
@@ -47,7 +48,17 @@ This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1
 
 ## The Horde
 
-The Horde is the default battle. All 48 heroes fight as one company, the Living, in the middle of the glade: the casting classes inside an 8 by 6 block and the rest round its rim. 160 Skeletons start on the grid's two outer rings and run at them, taking the Dash action until they're within reach. When one falls, a fresh Skeleton runs in from a free square on the edge a second later, until the Horde has sent 1,000. The Living win if they outlast all 1,000. Press H to switch between the Horde and the two armies.
+The Horde is the default battle. All 48 heroes fight as one company, the Living, in the middle of the glade: the casting classes inside an 8 by 6 block and the rest round its rim. 160 Skeletons start on the grid's two outer rings and run at them, taking the Dash action until they're within reach. When one falls, a fresh Skeleton runs in from a free square on the edge a second later, until the Horde has sent 1,000. The Living win if they outlast all 1,000. Press H to switch to the two armies, and again for the Siege.
+
+## The Siege
+
+The Siege is a cult's attack on a town. Darian Odiodei, a level 17 Fiend Warlock with a Mystic Arcanum of each level from 6 to 9, leads 50 of the cult: Cultists, Cultist Fanatics and Warlocks of levels 1 to 5, 6, 2 and 2 in each 10. The town watch holds against them with 50 of its own: Guards, Warrior Veterans, Knights, Scouts, Priests and Mages, 15, 3, 2, 3, 1 and 1 in each 25. Each is its SRD 5.2.1 stat block, with its Armor Class, Hit Points, attacks and spells, and each roll shows in the log.
+
+The watch stands in a line three files deep a fifth of the way into the field, with its Scouts, Priests and Mages behind. Each of the watch keeps to its square on the line. It fights whoever reaches the line, then steps back to its square. Veterans and Knights shoot their Heavy Crossbows while nobody is at hand, and Veterans and Knights Parry. Scouts and Mages shoot the cult's casters first: Darian Odiodei, then its Warlocks and Fanatics. A Mage casts Fireball where it catches at least four of the cult and few of the watch, and Cone of Cold when the cult is in its face. Priests cast Healing Word on the worst hurt, call Spirit Guardians when the cult reaches them, and strike with Radiant Flame.
+
+The cult's swarm starts 60 feet off the line, spread over every other square. Cultists run at the nearest of the watch, taking the Dash action when they're out of reach. Fanatics cast Hold Person on a Knight, a Veteran or a Priest, then close in. The Warlocks fight as the Lab's other Warlocks do, and answer a blow with Hellish Rebuke. Darian Odiodei stays at the back, 120 to 150 feet off, and opens with Circle of Death on the watch's line. Once the swarm reaches the town he comes to 60 to 90 feet and casts Finger of Death on the watch's strongest, then Fireball, Blight, Hex and Eldritch Blast. Dimension Door takes him away when the watch reaches him. A Humanoid that Finger of Death kills rises as a Zombie on his side.
+
+The DEFENDERS and CULTISTS sliders set the two sides' sizes, from 1 to 1,024 of the watch and from 0 to 16,383 of the cult. Darian Odiodei comes on top of the cult's number. The Siege runs in SRD rounds and in action combat. In Player mode you can play any kind on either side: pick LEADER, WARLOCK, FANATIC, CULTIST, GUARD, VETERAN, KNIGHT, SCOUT, PRIEST or MAGE on the bar, or with [ and ]. Each has its stat block's attacks and spells on its hotbar. LEADER is Darian Odiodei, with the level 17 Warlock's hotbar.
 
 ## Playing a hero
 

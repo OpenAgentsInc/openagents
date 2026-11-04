@@ -1,0 +1,285 @@
+// The SRD 5.2.1's townsfolk and cultists as stat blocks (Monsters, "Guards", "Knight", "Mages",
+// "Priests", "Scout", "Warrior Veteran", "Cultists"), and the two armies of a siege made of them: a
+// town watch, and a cult with its warlocks and one level 17 Fiend Warlock. The 5E Lab fields them
+// (apps/openagents-web/fivelab-siege.coax); a world that runs the siege on its own server builds the
+// same armies with rs_siege_defender and rs_siege_attacker. engine.coax loads this file.
+//
+// Each stat block's numbers are the SRD's: Armor Class, Hit Points, Speed, the six scores and their
+// saves, the Challenge Rating's Proficiency Bonus (a level with the same bonus: 1 for +2, 5 for +3),
+// and its attacks with the dice and bonuses the block lists (the weapons below, W_SPEAR and on). A
+// stat block's Multiattack is Extra Attack here: the Attack action's further attacks. What a block
+// casts "N/Day" is that many spell slots of the spell's level (Priest: Spirit Guardians, and Healing
+// Word through Divine Aid; Mage: Fireball at level 4, Cone of Cold, and Shield through Protective
+// Magic; Cultist Fanatic: Hold Person). The blocks' other spells and actions aren't in the engine
+// yet, so nobody casts them: Light, Thaumaturgy, Command, Spiritual Weapon, Bless, Dispel Magic,
+// Lesser Restoration, Sanctuary, Detect Magic, Mage Hand, Prestidigitation, Invisibility, Fly,
+// Misty Step and Counterspell.
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+//   coax/bin/coax test --library aethyr/rules/srd/engine.coax --only "stat block"
+
+RS_NPC_NONE :: 0; RS_NPC_GUARD :: 1; RS_NPC_VETERAN :: 2; RS_NPC_KNIGHT :: 3; RS_NPC_SCOUT :: 4;
+RS_NPC_PRIEST :: 5; RS_NPC_MAGE :: 6; RS_NPC_CULTIST :: 7; RS_NPC_FANATIC :: 8;
+// the siege's warlocks are class levels, not stat blocks; their roles are counted here too
+RS_NPC_WARLOCK :: 9; RS_NPC_ARCH :: 10;
+RS_NPCS :: 11;
+RS_NPC_NAME :: [11] string.["", "Guard", "Warrior Veteran", "Knight", "Scout", "Priest", "Mage", "Cultist", "Cultist Fanatic",
+                            "Warlock", "Fiend Warlock"];
+
+// A stat block's attacks, as weapons (rs_weapon): the dice and the extra damage each block lists.
+rs_npc_weapon :: (w: int) -> RsWeapon {
+  // Guard: Spear, +3, 1d6 + 1 Piercing (Str)
+  if w == W_SPEAR { return RsWeapon.{id = "spear", name = "Spear", dice = 1, sides = 6, damage = RS_PIERCING, range_ft = 5, long_ft = 5}; }
+  // Cultist: Ritual Sickle, +3, 1d4 + 1 Slashing plus 1 Necrotic (Dex)
+  if w == W_RITUAL_SICKLE {
+    return RsWeapon.{id = "ritual-sickle", name = "Ritual Sickle", dice = 1, sides = 4, damage = RS_SLASHING, range_ft = 5, long_ft = 5,
+                     ability = RS_DEX, plus_flat = 1, plus_kind = RS_NECROTIC};
+  }
+  // Cultist Fanatic: Pact Blade, +4, 1d8 + 2 Slashing plus 2d6 Necrotic (Dex)
+  if w == W_PACT_BLADE {
+    return RsWeapon.{id = "pact-blade", name = "Pact Blade", dice = 1, sides = 8, damage = RS_SLASHING, range_ft = 5, long_ft = 5,
+                     ability = RS_DEX, plus_dice = 2, plus_sides = 6, plus_kind = RS_NECROTIC};
+  }
+  // Warrior Veteran: Heavy Crossbow, +3, range 100/400 ft., 2d10 + 1 Piercing (Dex)
+  if w == W_HEAVY_CROSSBOW { return RsWeapon.{id = "heavy-crossbow", name = "Heavy Crossbow", dice = 2, sides = 10, damage = RS_PIERCING, range_ft = 100, long_ft = 400}; }
+  // Knight: Greatsword, +5, 2d6 + 3 Slashing plus 1d8 Radiant (Str)
+  if w == W_KNIGHT_GREATSWORD {
+    return RsWeapon.{id = "greatsword", name = "Greatsword", dice = 2, sides = 6, damage = RS_SLASHING, range_ft = 5, long_ft = 5,
+                     plus_dice = 1, plus_sides = 8, plus_kind = RS_RADIANT};
+  }
+  // Knight: Heavy Crossbow, +2, range 100/400 ft., 2d10 Piercing plus 1d8 Radiant (Dex)
+  if w == W_KNIGHT_CROSSBOW {
+    return RsWeapon.{id = "heavy-crossbow", name = "Heavy Crossbow", dice = 2, sides = 10, damage = RS_PIERCING, range_ft = 100, long_ft = 400,
+                     plus_dice = 1, plus_sides = 8, plus_kind = RS_RADIANT};
+  }
+  // Priest: Mace, +5, 1d6 + 3 Bludgeoning plus 2d4 Radiant (Str)
+  if w == W_PRIEST_MACE {
+    return RsWeapon.{id = "mace", name = "Mace", dice = 1, sides = 6, damage = RS_BLUDGEONING, range_ft = 5, long_ft = 5,
+                     plus_dice = 2, plus_sides = 4, plus_kind = RS_RADIANT};
+  }
+  // Priest: Radiant Flame, +5, range 60 ft., 2d10 Radiant (Wis, no modifier to the damage)
+  if w == W_RADIANT_FLAME {
+    return RsWeapon.{id = "radiant-flame", name = "Radiant Flame", dice = 2, sides = 10, damage = RS_RADIANT, range_ft = 60, long_ft = 60,
+                     ability = RS_WIS, bare = true};
+  }
+  // Mage: Arcane Burst, melee or ranged, +6, reach 5 ft. or range 120 ft., 3d8 + 3 Force (Int)
+  if w == W_ARCANE_BURST {
+    return RsWeapon.{id = "arcane-burst", name = "Arcane Burst", dice = 3, sides = 8, damage = RS_FORCE, range_ft = 120, long_ft = 120,
+                     ability = RS_INT, both = true};
+  }
+  return RsWeapon.{id = "unarmed-strike", name = "Unarmed Strike", dice = 0, sides = 0, damage = RS_BLUDGEONING, range_ft = 5, long_ft = 5};
+}
+
+// The common part of a stat block: a Medium or Small Humanoid, Speed 30 ft., its scores and its
+// Proficiency Bonus's level.
+rs_npc :: (name: string, team: int, npc: int, level: int, score: [6] int, ac: int, hp: int) -> RsCreature {
+  c: [1] RsCreature;
+  rs_set_name(c[..], name);
+  c[0].team = team; c[0].level = level; c[0].klass = RS_MONSTER; c[0].npc = npc; c[0].humanoid = true;
+  c[0].score = score;
+  c[0].ac = ac; c[0].hp_max = hp; c[0].hp = hp; c[0].speed = 30;
+  c[0].spell_ability = -1; c[0].ranged = -1;
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
+  return c[0];
+}
+rs_npc_slots :: (c: [] RsCreature, level: int, n: int) { c[0].slots_max[level] = n; c[0].slots[level] = n; }
+
+// Guard (p. 296): AC 16 (Chain Shirt, Shield), HP 11 (2d8 + 2), Str 13 Dex 12 Con 12 Int 10 Wis 11
+// Cha 10, CR 1/8 (PB +2). Spear: +3, 1d6 + 1 Piercing.
+rs_guard :: (name: string, team: int) -> RsCreature {
+  c: [1] RsCreature;
+  c[0] = rs_npc(name, team, RS_NPC_GUARD, 1, [6] int.[13, 12, 12, 10, 11, 10], 16, 11);
+  c[0].weapon = W_SPEAR;
+  return c[0];
+}
+// Warrior Veteran (p. 337): AC 17 (Splint Armor), HP 65 (10d8 + 20), Str 16 Dex 13 Con 14 Int 10
+// Wis 11 Cha 10, CR 3 (PB +2). Multiattack: two Greatsword (+5, 2d6 + 3 Slashing) or Heavy
+// Crossbow (+3, range 100/400 ft., 2d10 + 1 Piercing) attacks. Parry.
+rs_veteran :: (name: string, team: int) -> RsCreature {
+  c: [1] RsCreature;
+  c[0] = rs_npc(name, team, RS_NPC_VETERAN, 1, [6] int.[16, 13, 14, 10, 11, 10], 17, 65);
+  c[0].weapon = W_GREATSWORD; c[0].ranged = W_HEAVY_CROSSBOW; c[0].extra_attack = 1; c[0].parry = true;
+  return c[0];
+}
+// Knight (p. 302): AC 18 (Plate Armor), HP 52 (8d8 + 16), Str 16 Dex 11 Con 14 (save +4) Int 11
+// Wis 11 (save +2) Cha 15, Immunity to Frightened, CR 3 (PB +2). Multiattack: two Greatsword (+5,
+// 2d6 + 3 Slashing plus 1d8 Radiant) or Heavy Crossbow (+2, 2d10 Piercing plus 1d8 Radiant)
+// attacks. Parry.
+rs_knight :: (name: string, team: int) -> RsCreature {
+  c: [1] RsCreature;
+  c[0] = rs_npc(name, team, RS_NPC_KNIGHT, 1, [6] int.[16, 11, 14, 11, 11, 15], 18, 52);
+  c[0].save_prof[RS_CON] = true; c[0].save_prof[RS_WIS] = true;
+  c[0].immune_cond = RS_FRIGHTENED;
+  c[0].weapon = W_KNIGHT_GREATSWORD; c[0].ranged = W_KNIGHT_CROSSBOW; c[0].extra_attack = 1; c[0].parry = true;
+  return c[0];
+}
+// Scout (p. 322): AC 13 (Leather Armor), HP 16 (3d8 + 3), Str 11 Dex 14 Con 12 Int 11 Wis 13 Cha 11,
+// CR 1/2 (PB +2). Multiattack: two attacks, Shortsword (+4, 1d6 + 2 Piercing) or Longbow (+4, range
+// 150/600 ft., 1d8 + 2 Piercing).
+rs_scout :: (name: string, team: int) -> RsCreature {
+  c: [1] RsCreature;
+  c[0] = rs_npc(name, team, RS_NPC_SCOUT, 1, [6] int.[11, 14, 12, 11, 13, 11], 13, 16);
+  c[0].weapon = W_SHORTSWORD; c[0].ranged = W_LONGBOW; c[0].extra_attack = 1;
+  return c[0];
+}
+// Priest (p. 316): AC 13 (Chain Shirt), HP 38 (7d8 + 7), Str 16 Dex 10 Con 12 Int 13 Wis 16 Cha 13,
+// CR 2 (PB +2). Multiattack: two attacks, Mace (+5, 1d6 + 3 Bludgeoning plus 2d4 Radiant) or Radiant
+// Flame (+5, range 60 ft., 2d10 Radiant). Spellcasting (Wisdom, save DC 13): Spirit Guardians 1/Day.
+// Divine Aid (3/Day, a Bonus Action): Healing Word.
+rs_priest :: (name: string, team: int) -> RsCreature {
+  c: [1] RsCreature;
+  c[0] = rs_npc(name, team, RS_NPC_PRIEST, 1, [6] int.[16, 10, 12, 13, 16, 13], 13, 38);
+  c[0].weapon = W_PRIEST_MACE; c[0].ranged = W_RADIANT_FLAME; c[0].extra_attack = 1;
+  c[0].spell_ability = RS_WIS;
+  rs_npc_slots(c[..], 3, 1); rs_npc_slots(c[..], 1, 3);
+  return c[0];
+}
+// Mage (p. 305): AC 15 (Mage Armor), HP 81 (18d8), Str 9 Dex 14 Con 11 Int 17 (save +6) Wis 12 (save
+// +4) Cha 11, CR 6 (PB +3). Multiattack: three Arcane Burst attacks (+6, reach 5 ft. or range 120
+// ft., 3d8 + 3 Force). Spellcasting (Intelligence, save DC 14): Fireball (level 4 version) 2/Day,
+// Cone of Cold 1/Day. Protective Magic (3/Day, a Reaction): Shield.
+rs_mage :: (name: string, team: int) -> RsCreature {
+  c: [1] RsCreature;
+  c[0] = rs_npc(name, team, RS_NPC_MAGE, 5, [6] int.[9, 14, 11, 17, 12, 11], 15, 81);
+  c[0].save_prof[RS_INT] = true; c[0].save_prof[RS_WIS] = true;
+  c[0].weapon = W_ARCANE_BURST; c[0].ranged = W_ARCANE_BURST; c[0].extra_attack = 2;
+  c[0].spell_ability = RS_INT; c[0].shield_spell = true;
+  rs_npc_slots(c[..], 4, 2); rs_npc_slots(c[..], 5, 1); rs_npc_slots(c[..], 1, 3);
+  return c[0];
+}
+// Cultist (p. 278): AC 12 (Leather Armor), HP 9 (2d8), Str 11 Dex 12 Con 10 Int 10 Wis 11 (save +2)
+// Cha 10, CR 1/8 (PB +2). Ritual Sickle: +3, 1d4 + 1 Slashing plus 1 Necrotic.
+rs_cultist :: (name: string, team: int) -> RsCreature {
+  c: [1] RsCreature;
+  c[0] = rs_npc(name, team, RS_NPC_CULTIST, 1, [6] int.[11, 12, 10, 10, 11, 10], 12, 9);
+  c[0].save_prof[RS_WIS] = true;
+  c[0].weapon = W_RITUAL_SICKLE;
+  return c[0];
+}
+// Cultist Fanatic (p. 278): AC 13 (Leather Armor), HP 44 (8d8 + 8), Str 11 Dex 14 Con 12 Int 10 Wis
+// 14 (save +4) Cha 13, CR 2 (PB +2). Pact Blade: +4, 1d8 + 2 Slashing plus 2d6 Necrotic.
+// Spellcasting (Wisdom, save DC 12, +4 to hit): Hold Person 1/Day.
+rs_fanatic :: (name: string, team: int) -> RsCreature {
+  c: [1] RsCreature;
+  c[0] = rs_npc(name, team, RS_NPC_FANATIC, 1, [6] int.[11, 14, 12, 10, 14, 13], 13, 44);
+  c[0].save_prof[RS_WIS] = true;
+  c[0].weapon = W_PACT_BLADE; c[0].spell_ability = RS_WIS;
+  rs_npc_slots(c[..], 2, 1);
+  return c[0];
+}
+
+// ---- the siege's armies: the k-th of each, any size, the same mix at every size
+
+// The town watch, 25 at a time: 15 Guards, 3 Warrior Veterans, 2 Knights, 3 Scouts, a Priest and a
+// Mage, spread through the 25 so a small watch has some of each kind.
+RS_TOWN_MIX :: [25] int.[RS_NPC_GUARD, RS_NPC_GUARD, RS_NPC_SCOUT, RS_NPC_VETERAN, RS_NPC_GUARD, RS_NPC_PRIEST, RS_NPC_GUARD, RS_NPC_KNIGHT,
+                         RS_NPC_GUARD, RS_NPC_MAGE, RS_NPC_GUARD, RS_NPC_SCOUT, RS_NPC_GUARD, RS_NPC_VETERAN, RS_NPC_GUARD, RS_NPC_GUARD,
+                         RS_NPC_KNIGHT, RS_NPC_GUARD, RS_NPC_SCOUT, RS_NPC_GUARD, RS_NPC_GUARD, RS_NPC_VETERAN, RS_NPC_GUARD, RS_NPC_GUARD, RS_NPC_GUARD];
+// The cult, 10 at a time: 6 Cultists, 2 Cultist Fanatics and 2 Warlocks (levels 1 to 5 in turn);
+// the level 17 Fiend Warlock leads it, one whatever its size.
+RS_CULT_MIX :: [10] int.[RS_NPC_CULTIST, RS_NPC_CULTIST, RS_NPC_WARLOCK, RS_NPC_CULTIST, RS_NPC_FANATIC,
+                         RS_NPC_CULTIST, RS_NPC_CULTIST, RS_NPC_WARLOCK, RS_NPC_CULTIST, RS_NPC_FANATIC];
+RS_ARCH_LEVEL :: 17;
+// The cult's leader: Darian Odiodei, a level 17 Fiend Warlock (the Lab's Siege and Everglade share him).
+RS_ARCH_NAME :: "Darian Odiodei";
+rs_town_role :: (k: int) -> int { return RS_TOWN_MIX[k % 25]; }
+rs_cult_role :: (k: int) -> int { return RS_CULT_MIX[k % 10]; }
+// The k-th warlock of the cult's level: 1, 2, 3, 4, 5, 1, ...
+rs_cult_warlock_level :: (k: int) -> int { w := (k / 10) * 2 + ifx k % 10 > 2 then 1 else 0; return 1 + w % 5; }
+
+// The name "Guard 7": the stat block's name and its number among its kind.
+rs_npc_named :: (out: [] u8, npc: int, number: int) -> int {
+  n := 0;
+  for ch: RS_NPC_NAME[npc] { if n < out.count { out[n] = ch; n += 1; } }
+  if n < out.count { out[n] = ' '; n += 1; }
+  n = rs_put_int(out, n, number);
+  return n;
+}
+// The k-th of the town watch on `team`, numbered among its kind.
+rs_siege_defender :: (k: int, team: int) -> RsCreature {
+  npc := rs_town_role(k);
+  number := 1; for q: 0..<(k % 25) { if RS_TOWN_MIX[q] == npc { number += 1; } }
+  per := 0; for q: 0..<25 { if RS_TOWN_MIX[q] == npc { per += 1; } }
+  number += (k / 25) * per;
+  nm: [RS_NAME] u8; nn := rs_npc_named(nm[..], npc, number);
+  name := cast(string) nm[0..<nn];
+  if npc == RS_NPC_VETERAN { return rs_veteran(name, team); }
+  if npc == RS_NPC_KNIGHT { return rs_knight(name, team); }
+  if npc == RS_NPC_SCOUT { return rs_scout(name, team); }
+  if npc == RS_NPC_PRIEST { return rs_priest(name, team); }
+  if npc == RS_NPC_MAGE { return rs_mage(name, team); }
+  return rs_guard(name, team);
+}
+// The k-th of the cult on `team` (its leader is rs_siege_arch): Cultists, Cultist Fanatics, and
+// Fiend Warlocks of levels 1 to 5 who know Hellish Rebuke.
+rs_siege_attacker :: (k: int, team: int, blast: int) -> RsCreature {
+  npc := rs_cult_role(k);
+  number := 1; for q: 0..<(k % 10) { if RS_CULT_MIX[q] == npc { number += 1; } }
+  per := 0; for q: 0..<10 { if RS_CULT_MIX[q] == npc { per += 1; } }
+  number += (k / 10) * per;
+  nm: [RS_NAME] u8; nn := rs_npc_named(nm[..], npc, number);
+  name := cast(string) nm[0..<nn];
+  if npc == RS_NPC_FANATIC { return rs_fanatic(name, team); }
+  if npc == RS_NPC_WARLOCK {
+    c: [1] RsCreature;
+    c[0] = rs_warlock(name, team, rs_cult_warlock_level(k), blast);
+    c[0].npc = RS_NPC_WARLOCK; c[0].rebuke = true;
+    return c[0];
+  }
+  return rs_cultist(name, team);
+}
+// The cult's leader: the SRD 5.2.1 Fiend Warlock at level 17 (rs_warlock: four 5th-level Pact
+// slots, a Mystic Arcanum of each level 6 to 9), who knows Hellish Rebuke.
+rs_siege_arch :: (name: string, team: int, blast: int) -> RsCreature {
+  c: [1] RsCreature;
+  c[0] = rs_warlock(name, team, RS_ARCH_LEVEL, blast);
+  c[0].npc = RS_NPC_ARCH; c[0].rebuke = true;
+  return c[0];
+}
+
+#test "the town watch's stat blocks hold the SRD's numbers" {
+  g := rs_guard("Guard 1", 0);
+  #assert g.ac == 16 && g.hp_max == 11 && rs_weapon_attack(g, g.weapon) == 3 && rs_mod(g.score[rs_attack_ability(g, g.weapon)]) == 1 && g.humanoid && g.klass == RS_MONSTER;
+  v := rs_veteran("Warrior Veteran 1", 0);
+  #assert v.ac == 17 && v.hp_max == 65 && rs_weapon_attack(v, v.weapon) == 5 && rs_weapon_attack(v, v.ranged) == 3 && v.extra_attack == 1 && v.parry;
+  #assert rs_weapon(v.ranged).dice == 2 && rs_weapon(v.ranged).sides == 10 && rs_weapon(v.ranged).range_ft == 100;
+  kn := rs_knight("Knight 1", 0);
+  #assert kn.ac == 18 && kn.hp_max == 52 && rs_weapon_attack(kn, kn.weapon) == 5 && rs_weapon_attack(kn, kn.ranged) == 2;
+  #assert rs_save_bonus(kn, RS_CON) == 4 && rs_save_bonus(kn, RS_WIS) == 2 && (kn.immune_cond & RS_FRIGHTENED) != 0;
+  #assert rs_weapon(kn.weapon).plus_dice == 1 && rs_weapon(kn.weapon).plus_sides == 8 && rs_weapon(kn.weapon).plus_kind == RS_RADIANT;
+  sc := rs_scout("Scout 1", 0);
+  #assert sc.ac == 13 && sc.hp_max == 16 && rs_weapon_attack(sc, sc.weapon) == 4 && rs_weapon_attack(sc, sc.ranged) == 4 && rs_weapon(sc.ranged).range_ft == 150;
+  pr := rs_priest("Priest 1", 0);
+  #assert pr.ac == 13 && pr.hp_max == 38 && rs_weapon_attack(pr, pr.weapon) == 5 && rs_weapon_attack(pr, pr.ranged) == 5 && rs_weapon(pr.ranged).bare;
+  #assert rs_spell_dc(pr) == 13 && pr.slots[3] == 1 && pr.slots[1] == 3;
+  mg := rs_mage("Mage 1", 0);
+  #assert mg.ac == 15 && mg.hp_max == 81 && rs_proficiency(mg.level) == 3 && rs_weapon_attack(mg, mg.weapon) == 6 && mg.extra_attack == 2;
+  #assert rs_spell_dc(mg) == 14 && rs_save_bonus(mg, RS_INT) == 6 && rs_save_bonus(mg, RS_WIS) == 4 && mg.slots[4] == 2 && mg.slots[5] == 1 && mg.shield_spell;
+}
+#test "the cult's stat blocks hold the SRD's numbers, and its warlocks are levels 1 to 5" {
+  cu := rs_cultist("Cultist 1", 1);
+  #assert cu.ac == 12 && cu.hp_max == 9 && rs_weapon_attack(cu, cu.weapon) == 3 && rs_weapon(cu.weapon).plus_flat == 1 && rs_save_bonus(cu, RS_WIS) == 2;
+  fa := rs_fanatic("Cultist Fanatic 1", 1);
+  #assert fa.ac == 13 && fa.hp_max == 44 && rs_weapon_attack(fa, fa.weapon) == 4 && rs_weapon(fa.weapon).plus_dice == 2;
+  #assert rs_spell_dc(fa) == 12 && rs_spell_attack(fa) == 4 && fa.slots[2] == 1 && rs_save_bonus(fa, RS_WIS) == 4;
+  // 50 a side: 30 Guards, 6 Warrior Veterans, 4 Knights, 6 Scouts, 2 Priests and 2 Mages; 30
+  // Cultists, 10 Fanatics and 10 Warlocks, two of each level 1 to 5
+  town: [RS_NPCS] int; cult: [RS_NPCS] int; lv: [6] int;
+  for k: 0..<50 {
+    town[rs_siege_defender(k, 0).npc] += 1;
+    a := rs_siege_attacker(k, 1, 14);
+    cult[a.npc] += 1;
+    if a.npc == RS_NPC_WARLOCK { lv[a.level] += 1; #assert a.klass == RS_WARLOCK && a.rebuke; }
+  }
+  #assert town[RS_NPC_GUARD] == 30 && town[RS_NPC_VETERAN] == 6 && town[RS_NPC_KNIGHT] == 4 && town[RS_NPC_SCOUT] == 6 && town[RS_NPC_PRIEST] == 2 && town[RS_NPC_MAGE] == 2;
+  #assert cult[RS_NPC_CULTIST] == 30 && cult[RS_NPC_FANATIC] == 10 && cult[RS_NPC_WARLOCK] == 10;
+  for l: 1..<6 { #assert lv[l] == 2; }
+  ar := rs_siege_arch(RS_ARCH_NAME, 1, 14);
+  #assert ar.level == 17 && ar.npc == RS_NPC_ARCH && ar.slots[5] == 4 && ar.slots[6] == 1 && ar.slots[7] == 1 && ar.rebuke;
+  #assert cast(string) ar.name[0..<ar.name_n] == "Darian Odiodei";
+  g := rs_siege_defender(25, 0);
+  #assert g.npc == RS_NPC_GUARD && g.name_n == 8 && g.name[6] == '1' && g.name[7] == '6';   // the 16th Guard
+}
