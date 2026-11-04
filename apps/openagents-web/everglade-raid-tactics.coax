@@ -152,6 +152,12 @@ rt_role_of :: (npc: int, id: int, mix: RtMix) -> int {
   if npc == RS_NPC_CULTIST && m == RT_SUPPORT { return RT_CASTER; }
   return m;
 }
+// The line a role keeps in the siege: a support with the casters, a guard with the skirmishers.
+rt_line_role :: (role: int) -> int {
+  if role == RT_SUPPORT { return RT_CASTER; }
+  if role == RT_GUARD { return RT_MELEE; }
+  return role;
+}
 // Whether role casts from range (a caster, a support): it keeps RT_KEEP from its foe, as a caster does.
 rt_ranged :: (role: int) -> bool { return role == RT_CASTER || role == RT_SUPPORT; }
 
@@ -218,7 +224,8 @@ rt_guard_pos :: (id: int, x: f32, z: f32, o: [] f32) {
 // Squad s's middle along its wall: the squads at one gate side by side.
 rt_squad_along :: (s: int) -> f32 { return [5] f32.[0, -12, 12, -22, 22][s % 5]; }
 // Member k of squad s (role) in the siege: the casters' line, the screen before it, each its own place.
-rt_siege_pos :: (g: RtGate, s: int, k: int, role: int, o: [] f32) {
+rt_siege_pos :: (g: RtGate, s: int, k: int, role0: int, o: [] f32) {
+  role := rt_line_role(role0);
   along := rt_squad_along(s) + (f32(k % RT_SQUAD) - 3.5) * f32(RT_GAP);
   along = rt_hi(rt_lo(along, g.hi - 2), g.lo + 2);
   out := ifx role == RT_CASTER then f32(RT_CAST_LINE) else f32(RT_SCREEN_LINE);
@@ -279,7 +286,8 @@ rt_ring :: (n: int, cx: f32, cz: f32, rmin: f32, rmax: f32, o: [] f32) {
 // Where member k of squad s (role) at (x, z) goes now, and what it aims at: into o the goal x, z,
 // then the aim (RT_AIM_*) and its x, z. `v` is the squad's volleys so far, `inside` (ix, iz) its own
 // place in the town (rt_ring), `done` whether the squad's siege is over.
-rt_order :: (g: RtGate, s: int, k: int, role: int, v: int, done: bool, x: f32, z: f32, ix: f32, iz: f32, o: [] f32) {
+rt_order :: (g: RtGate, s: int, k: int, role0: int, v: int, done: bool, x: f32, z: f32, ix: f32, iz: f32, o: [] f32) {
+  role := rt_line_role(role0);
   p: [2] f32;
   o[2] = f32(RT_AIM_FOES); o[3] = 0; o[4] = 0;
   if !g.wall { o[0] = ix; o[1] = iz; return; }

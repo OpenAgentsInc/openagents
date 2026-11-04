@@ -93,7 +93,7 @@ rc_entry :: (h: [] RcHeard, me: int, t: string) {
     h[0].ids[q] = id; h[0].forms[q] = form;
     h[0].xs[q] = f32(rs_num(rs_field(t, 3))) / 100; h[0].zs[q] = f32(rs_num(rs_field(t, 5))) / 100;
     h[0].kinds = h[0].kinds | (1 << (form - 20));
-    if form != 40 && (form < 27 || form > 30) { h[0].bad += 1; }
+    if form != 40 && (form < 27 || form > 31) { h[0].bad += 1; }   // 27 to 31: Cultist, Fanatic, Warlock, Darian, Cult Priest (#12771)
     return;
   }
   if k == "x" && rs_field(t, 1) == "c" {

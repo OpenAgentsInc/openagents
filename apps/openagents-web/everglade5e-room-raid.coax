@@ -699,14 +699,14 @@ e5rd_step :: (r: [] E5rRoom, dt: f32) {
       stop = ifx rt_ranged(sl[0].role) || sl[0].npc == RS_NPC_WARLOCK then f32(RT_KEEP) else f32(E5RR_REACH) * 0.6;
     } else {
       s := sl[0].squad % RT_SQUADS;
-      rt_order(sl[0].g, sl[0].squad, sl[0].k, ifx sl[0].role == RT_SUPPORT then RT_CASTER else ifx sl[0].role == RT_GUARD then RT_MELEE else sl[0].role, w[0].sq_v[s], e5rd_going(r, q), bt[0].x, bt[0].z, sl[0].sx, sl[0].sz, o[..]);
+      rt_order(sl[0].g, sl[0].squad, sl[0].k, sl[0].role, w[0].sq_v[s], e5rd_going(r, q), bt[0].x, bt[0].z, sl[0].sx, sl[0].sz, o[..]);
       tx = o[0]; tz = o[1];
     }
     // its bounds (#12771): it holds between them (to cast, buff or strike) and moves in them; at its
     // goal a bound takes it a step or two about, so a line holding its ground still stirs
     bound: [1] f32;
     gx := tx - bt[0].x; gz := tz - bt[0].z;
-    near_goal := gx * gx + gz * gz < 36;
+    near_goal := gx * gx + gz * gz < 3.6 * 3.6;   // at its goal (its bounds' steps about it): it holds there, by bounds
     // on its way with nothing to cast at nor strike, it keeps going: it holds where there is
     hold_here := foe >= 0 || near_goal || (sl[0].role == RT_SKIRM && e5rd_going(r, q));
     rolling := sl[0].stage == E5RD_FLEE || arch || !hold_here || rt_bound(bt[0].id, sl[0].role, b[0].clock, bound[..]);
@@ -732,8 +732,7 @@ e5rd_step :: (r: [] E5rRoom, dt: f32) {
       tx = tx + vx * rr; tz = tz + vz * rr; stop = 0.3;
     }
     else if !arch && sl[0].stage != E5RD_FLEE && foe < 0 && sl[0].role != RT_GUARD {
-      gdx := tx - bt[0].x; gdz := tz - bt[0].z;
-      if gdx * gdx + gdz * gdz < 1.0 { rt_shuffle(bt[0].id, bound[0], tx, tz, o[..]); tx = o[0]; tz = o[1]; }
+      if near_goal { rt_shuffle(bt[0].id, bound[0], tx, tz, o[..]); tx = o[0]; tz = o[1]; }
     }
     // round the spawn (one fleeing goes home by the way it came)
     if sl[0].stage != E5RD_FLEE { rt_around(sl[0].g, bt[0].x, bt[0].z, tx, tz, f32(E5RD_SPAWN_X), f32(E5RD_SPAWN_Z), f32(RT_SPAWN_R), o[..]); tx = o[0]; tz = o[1]; }

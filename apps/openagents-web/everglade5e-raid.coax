@@ -508,10 +508,10 @@ e5r_raid_step :: (r: [] E5r, dt: f32) {
       bound: [1] f32;
       at_hand := foe >= 0 && (a[0].role == RT_MELEE || a[0].role == RT_GUARD) && run;
       // on its way with nothing to cast at nor strike, it keeps going: it holds where there is
-      near_goal := (tx - a[0].x) * (tx - a[0].x) + (tz - a[0].z) * (tz - a[0].z) < f32(E5R_RAID_PLACE) * f32(E5R_RAID_PLACE) * 4;
+      near_goal := (tx - a[0].x) * (tx - a[0].x) + (tz - a[0].z) * (tz - a[0].z) < 3.6 * 3.6;   // at its goal (its bounds' steps about it): it holds there, by bounds
       hold_here := foe >= 0 || near_goal || (a[0].role == RT_MELEE && going);
       if hold_here && !rt_bound(q + 1, a[0].role, t, bound[..]) && !at_hand { tx = a[0].x; tz = a[0].z; }
-      else if foe < 0 && a[0].role != RT_GUARD && near_goal && (tx - a[0].x) * (tx - a[0].x) + (tz - a[0].z) * (tz - a[0].z) < 1.0 {
+      else if foe < 0 && a[0].role != RT_GUARD && near_goal {
         rt_shuffle(q + 1, bound[0], tx, tz, p[..]); tx = p[0]; tz = p[1];
       }
       // round the ground kept clear about you

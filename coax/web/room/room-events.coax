@@ -620,6 +620,7 @@ ev_engine :: (v: [] RmServer, k: int, kind: int, by: int, who: int) {
 ev_xp_for :: (npc: int, level: int) -> int {
   if npc == RS_NPC_CULTIST { return EV_XP_SRD_X * EV_XP_CULTIST; }
   if npc == RS_NPC_FANATIC { return EV_XP_SRD_X * EV_XP_FANATIC; }
+  if npc == RS_NPC_CULT_PRIEST { return EV_XP_SRD_X * EV_XP_FANATIC; }   // a level 3 Cleric among the cult (#12771): a Fanatic's
   if npc == RS_NPC_WARLOCK { return EV_XP_SRD_X * EV_XP_WARLOCK[ev_clamp(level, 1, 3) - 1]; }
   return EV_XP_SRD_X * EV_XP_WARD;
 }
@@ -846,7 +847,8 @@ ev_test_count :: (v: [] RmServer, k: int, form: int) -> int {
   pt: [3] int; ct: [3] int;
   raid_wave_parts(6, 1, 3, 1, 2, pt[..]); raid_wave_counts(m, pt[..], ct[..]);
   #assert v[0].ev[k].mix[RS_NPC_CULTIST] == ct[0] && v[0].ev[k].mix[RS_NPC_FANATIC] == 0 && v[0].ev[k].mix[RS_NPC_WARLOCK] == ct[2] && ct[2] >= 1;
-  lv := 0; for q: 0..<E5RR_BEASTS { if e5rd_is(v[0].eg[k].rules[0].beasts[q]) && v[0].eg[k].rules[0].raid[0].slot[q].level > lv { lv = v[0].eg[k].rules[0].raid[0].slot[q].level; } }
+  // (a Cult Priest is a level 3 Cleric whatever the wave: #12771)
+  lv := 0; for q: 0..<E5RR_BEASTS { if e5rd_is(v[0].eg[k].rules[0].beasts[q]) && v[0].eg[k].rules[0].raid[0].slot[q].npc != RS_NPC_CULT_PRIEST && v[0].eg[k].rules[0].raid[0].slot[q].level > lv { lv = v[0].eg[k].rules[0].raid[0].slot[q].level; } }
   #assert lv == 1;
   // each outside a gate, a long way from the square
   r := v[0].eg[k].rules[..];
