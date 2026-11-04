@@ -35,12 +35,12 @@ RP_LEAD :: [2] f32.[0, -106];
 RP_IN :: [2] f32.[0, -25];
 RP_YOU :: [2] f32.[0, -16];
 // the flight (s from the raid's start): eye and look at each key, then into your camera
-RP_KEYS :: 8;
-RP_KEY_T :: [8] f32.[0, 2.6, 6.5, 11, 15, 19.5, 23.5, 27];
-RP_KEY_EYE :: [24] f32.[2.2, 3.4, -114.5,   1.6, 4.2, -112.5,   -3.5, 6.5, -104,   -2.5, 6, -96,   1.5, 6.5, -74,   0, 9, -60,   0, 11, -40,   -5, 4.5, -9];
-RP_KEY_AT :: [24] f32.[0, 2.4, -70,   0, 4, -56,   0, 3.5, -56,   0, 1.5, -70,   0, 1.4, -56,   0, 1.2, -44,   0, 1, -16,   0, 1.4, -19];
+RP_KEYS :: 9;
+RP_KEY_T :: [9] f32.[0, 2.8, 6.5, 11, 14.5, 18, 21, 24.5, 28];
+RP_KEY_EYE :: [27] f32.[2.7, 2.2, -106.6,   1.8, 3.8, -108,   -3.5, 6.5, -104,   -2.5, 6, -96,   2, 4.5, -72,   5, 4.5, -67,   0, 7.5, -58,   0, 10, -36,   -5, 4.5, -9];
+RP_KEY_AT :: [27] f32.[-0.6, 1.95, -105.4,   0, 3.2, -62,   0, 3.5, -56,   0, 1.5, -70,   0, 1.2, -57,   0, 0.5, -58,   0, 0.5, -49,   0, 1, -16,   0, 1.4, -19];
 RP_SETTLE :: 2.5;          // s from the last key into your own camera
-RP_HUD_AT :: 28.6;         // s: the HUD back
+RP_HUD_AT :: 29.6;         // s: the HUD back
 RP_LIE :: 7.0;             // s a body lies where it fell before it sinks
 RP_SINK :: 2.5;            // s it takes to sink away
 RP_SHOTS :: 24; RP_SHOT_T :: 0.45;   // the watch's bolts and arrows in flight, and how long one flies
@@ -173,7 +173,7 @@ rp_hud_off :: (s: [] Everglade) -> bool { return s[0].rp.on && s[0].rp.cine && s
 
 // ---- the flight
 
-rp_key :: (k: [24] f32, i: int) -> Point { j := clamp_i(i, 0, RP_KEYS - 1) * 3; return v3(k[j], k[j + 1], k[j + 2]); }
+rp_key :: (k: [27] f32, i: int) -> Point { j := clamp_i(i, 0, RP_KEYS - 1) * 3; return v3(k[j], k[j + 1], k[j + 2]); }
 // Catmull-Rom through p1 to p2 at u.
 rp_spline :: (p0: Point, p1: Point, p2: Point, p3: Point, u: f32) -> Point {
   u2 := u * u; u3 := u2 * u;
@@ -183,7 +183,7 @@ rp_spline :: (p0: Point, p1: Point, p2: Point, p3: Point, u: f32) -> Point {
   d := times(add(sub(p3, p0), times(sub(p1, p2), 3)), u3);
   return times(add(add(a, b), add(c, d)), 0.5);
 }
-rp_path :: (k: [24] f32, t: f32) -> Point {
+rp_path :: (k: [27] f32, t: f32) -> Point {
   i := 0;
   while i < RP_KEYS - 2 && t >= RP_KEY_T[i + 1] { i += 1; }
   u := clamp((t - RP_KEY_T[i]) / (RP_KEY_T[i + 1] - RP_KEY_T[i]), 0, 1);
