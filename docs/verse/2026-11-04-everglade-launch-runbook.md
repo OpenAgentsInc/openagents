@@ -418,9 +418,9 @@ The position difference came from the world source: the page asked
 `/api/playtest/world/everglade` and the room `/api/playtest/world/everglade-5e`.
 Since #12773 the room, its `--dev` stand-in and every local setup read
 `everglade` (`coax/web/room/dev/world-everglade.json`). The check's offline page
-still has its `/api/` sent nowhere, so it plays without the published edits
-(the crate among them) until the offline page's own host reads the world too
-(#12784).
+sends its `/api/` to a second stand-in started with `--no-rooms`: it serves the
+same world and player API and answers the rooms list and joins with 503, as
+when the rooms can't be reached, so the offline page has the crate too.
 
 ### Rollback for step 3
 

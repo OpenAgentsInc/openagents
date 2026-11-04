@@ -1373,12 +1373,10 @@ net_probe :: (s: [] Everglade, field: int) -> int #export_c {
   if field >= 400 && field < 448 { return sp_at_place(s, field - 400); }
   if field == 52 {
     b := ifx everglade_held(s) then 1 else 0;
-    if s[0].wv.started {
-      w := watch_w(s);
-      if watch_held(w) { b |= 2; }
-      if watch_bound(w) { b |= 4; }
-      if watch_you(w[..])[0].slow_t > 0 { b |= 8; }
-    }
+    c := st_cond(s, ST_YOU);   // as drawn: the status state (everglade-status.coax)
+    if (c & WC_PARALYZED) != 0 { b |= 2; }
+    if (c & WC_BOUND) != 0 { b |= 4; }
+    if (c & WC_SLOWED) != 0 { b |= 8; }
     if everglade_slow(s) < 0.999 { b |= 16; }
     return b;
   }

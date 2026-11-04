@@ -3,10 +3,12 @@
    room decision is room.coax's: the host hands it each new socket's request
    (rm_join), each text frame (rm_heard) and each close (rm_left), calls
    rm_tick 60 times a second and sends each player what rm_state writes.
-     room [--listen 127.0.0.1] [--port 8830] [--dev DIR]     PORT in the environment wins (Cloud Run: 0.0.0.0)
+     room [--listen 127.0.0.1] [--port 8830] [--dev DIR [--no-rooms]]     PORT in the environment wins (Cloud Run: 0.0.0.0)
    --dev DIR is local development (coax/web/room/local.sh): the room is also the API's stand-in. Its
    world is DIR/world-everglade.json, and it answers GET /api/playtest/world/everglade with
    that same document, so a page served with `serve.sh --api` reads the world the room plays.
+   --no-rooms keeps the stand-in's API (players, tickets, the world) and answers the rooms list and every
+   join 503, as when the rooms can't be reached: an offline page's API (the drift check).
    Without --dev, the world comes from the API (OA_ROOM_API, default production's), as the page's does.
    OA_ROOM_SHARD names which shard of the everglade instance directory this is (room-directory.coax).
    GET /health answers 200 "ok" with the number of players; GET /api/playtest/rooms/SLUG
@@ -49,6 +51,7 @@ static coax_v_t_RmServer view(void) { return (coax_v_t_RmServer){server, 1}; }
 /* --dev DIR: the local stand-in for the API (local.sh). The world document is read once from DIR and
    is the one both the room and the page use. */
 static const char *dev_dir;
+static bool no_rooms;   /* --no-rooms (with --dev): the rooms list and joins answer 503, the rooms down */
 static void world_ask(void);
 static char *dev_world; static size_t dev_world_n;
 static char *dev_read(const char *name, size_t *n) {
@@ -322,6 +325,10 @@ static void opening(int i) {
   if (dev_dir && !strncmp((char *)c->in, "GET /api/playtest/world/everglade", 33) && (c->in[33] == ' ' || c->in[33] == '?')) {
     http(i, "200 OK", "application/json", dev_world ? dev_world : "{}"); return;
   }
+  /* --dev --no-rooms: the API's stand-in with the rooms down (an offline page's API, the drift check) */
+  if (no_rooms && (!strncmp((char *)c->in, "GET /api/playtest/rooms/", 24) || !strncmp((char *)c->in, "GET /api/room/", 14))) {
+    http(i, "503 Service Unavailable", "text/plain", "The rooms can't be reached (--no-rooms).\n"); return;
+  }
   int64_t listed = rm_rooms(view(), req);
   if (listed >= 0) {
     char body[8200]; size_t n = (size_t)listed < sizeof body - 1 ? (size_t)listed : sizeof body - 1;
@@ -547,6 +554,7 @@ int main(int argc, char **argv) {
     if (!strcmp(argv[i], "--listen") && i + 1 < argc) address = argv[++i];
     else if (!strcmp(argv[i], "--port") && i + 1 < argc) port = atoi(argv[++i]);
     else if (!strcmp(argv[i], "--dev") && i + 1 < argc) dev_dir = argv[++i];
+    else if (!strcmp(argv[i], "--no-rooms")) no_rooms = true;
     else if (!strcmp(argv[i], "--start-check")) return start_check();
   }
   const char *env = getenv("PORT");

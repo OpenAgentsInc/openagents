@@ -603,7 +603,7 @@ tool_main :: () -> int #export_c {
   profiles := args_value(a[..], "--profiles", "local,100,250");
   bots := args_whole(args_value(a[..], "--bots", "3"));
   port := args_whole(args_value(a[..], "--port", "8960"));
-  near := (port <= 8830 && port + 3 >= 8830) || (port <= 8872 && port + 3 >= 8872);   // the owner's servers
+  near := (port <= 8830 && port + 4 >= 8830) || (port <= 8872 && port + 4 >= 8872);   // the owner's servers (it takes PORT to PORT + 4)
   if !ok || bots < 1 || port < 1024 || near {
     tool_errln("usage: coax/web/tool.sh everglade-drift [--profiles local,100,250] [--bots 3] [--port 8960] [--no-raid] [--out DIR] (not on 8830 or 8872)"); return 2;
   }
@@ -638,10 +638,14 @@ tool_main :: () -> int #export_c {
   q[0].n = 0;
   bput(q[..], "exec coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:"); bint(q[..], port + 1); bput(q[..], " --api "); bint(q[..], port); bput(q[..], " --static --cache 0 > "); bput(q[..], dir); bput(q[..], "/serve.log 2>&1");
   hs := dr_spawn(btext(q[..]));
-  // the offline page's server: the same files, its /api/ sent nowhere (port 9), so the page finds no
-  // room to join and plays offline, as it does when the rooms can't be reached
+  // the offline page's server: the same files, its /api/ sent to a second stand-in with no rooms
+  // (room-host.c --no-rooms), so the page reads the same world and players' API but finds no room to
+  // join and plays offline, as it does when the rooms can't be reached
   q[0].n = 0;
-  bput(q[..], "exec coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:"); bint(q[..], port + 3); bput(q[..], " --api 9 --static --cache 0 > "); bput(q[..], dir); bput(q[..], "/serve-offline.log 2>&1");
+  bput(q[..], "exec coax/web/room/bin/room --port "); bint(q[..], port + 4); bput(q[..], " --dev "); bput(q[..], dir); bput(q[..], " --no-rooms > "); bput(q[..], dir); bput(q[..], "/room-offline.log 2>&1");
+  hn := dr_spawn(btext(q[..]));
+  q[0].n = 0;
+  bput(q[..], "exec coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:"); bint(q[..], port + 3); bput(q[..], " --api "); bint(q[..], port + 4); bput(q[..], " --static --cache 0 > "); bput(q[..], dir); bput(q[..], "/serve-offline.log 2>&1");
   ho := dr_spawn(btext(q[..]));
   // the bots sign their seat tickets with the room's key
   run := DrRun.{port = port, bots = bots, stamp = stamp, dir = dir, ctl = ctl, script = cast(string) js[0..<jn], key = DR_DEV_KEY};
@@ -691,7 +695,7 @@ tool_main :: () -> int #export_c {
       print("\n");
     }
   }
-  dr_stop(ho); dr_stop(hs); dr_stop(hr);
+  dr_stop(ho); dr_stop(hn); dr_stop(hs); dr_stop(hr);
   print("%\n", ifx all then "holds" else "fails");
   return ifx all then 0 else 1;
 }
