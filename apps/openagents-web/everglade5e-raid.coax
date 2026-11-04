@@ -114,7 +114,8 @@ e5r_raid_start :: (r: [] E5r, lead_x: f32, lead_z: f32, gate_x: f32, gate_z: f32
       squad = (q - 1) / RT_SQUAD; k = (q - 1) % RT_SQUAD;
       // it marches from E5R_RAID_MARCH farther out than its place in the siege line
       rt_siege_pos(g, squad, k, role, p[..]);
-      x = p[0] + ox * f32(E5R_RAID_MARCH); z = p[1] + oz * f32(E5R_RAID_MARCH);
+      rt_free(g, p[0] + ox * f32(E5R_RAID_MARCH), p[1] + oz * f32(E5R_RAID_MARCH), p[..]);   // on open ground
+      x = p[0]; z = p[1];
       rt_ring(q - 1, in_x, in_z, f32(E5R_RAID_IN_MIN), f32(E5R_RAID_IN_MAX), p[..]);
       px = p[0]; pz = p[1];
     } else {
@@ -286,6 +287,7 @@ e5r_raid_step :: (r: [] E5r, dt: f32) {
       foe = e5r_raid_foe(w, b, q, f32(RT_THREAT), taken[..]);
       if foe >= 0 && b[0].c[i].slots[5] > 0 {
         rt_door(a[0].x, a[0].z, w[0].who[foe].x, w[0].who[foe].z, w[0].lead_x, w[0].lead_z, p[..]);
+        rt_free(g, p[0], p[1], p[..]);   // onto open ground, not into a wall or a building
         b[0].c[i].slots[5] -= 1;
         a[0].x = p[0]; a[0].z = p[1]; tx = p[0]; tz = p[1];
       }
@@ -303,28 +305,39 @@ e5r_raid_step :: (r: [] E5r, dt: f32) {
         if foe >= 0 && e5r_raid_gap(w[0].who[foe], a[0].x, a[0].z) < f32(RT_KEEP) && !done { tx = a[0].x; tz = a[0].z; }
       }
       // round the ground kept clear about you
-      rt_route(a[0].x, a[0].z, tx, tz, w[0].you_x, w[0].you_z, f32(RT_SPAWN_R), p[..]); tx = p[0]; tz = p[1];
+      rt_around(g, a[0].x, a[0].z, tx, tz, w[0].you_x, w[0].you_z, f32(RT_SPAWN_R), p[..]); tx = p[0]; tz = p[1];
     }
     dx := tx - a[0].x; dz := tz - a[0].z;
     d := sqrt(dx * dx + dz * dz);
-    if d > stop {
+    // the cult goes round the town's walls and buildings, in by the gate or a breach (rt_way): it
+    // stops `stop` short of its goal, not of a corner on the way, and slides along what it meets
+    wx := dx; wz := dz; wd := d; direct := true;
+    if !a[0].town {
+      rt_way(g, a[0].x, a[0].z, tx, tz, w[0].you_x, w[0].you_z, f32(RT_SPAWN_R), p[..]);
+      wx = p[0] - a[0].x; wz = p[1] - a[0].z; wd = sqrt(wx * wx + wz * wz); direct = p[2] > 0.5;
+    }
+    left := ifx direct then wd - stop else wd;
+    if d > stop && left > 0 && wd > 0.0001 {
       speed := f32(E5R_RAID_RUN) * f32(b[0].c[i].speed) / 40.0 * (ifx run then f32(E5R_RAID_DASH) else 0.55f32);
-      st := lo_r(speed * dt, d - stop);
-      mx := dx / d * st; mz := dz / d * st;
+      st := lo_r(speed * dt, left);
+      mx := wx / wd * st; mz := wz / wd * st;
       if !a[0].town {
         rt_separate(a[0].x, a[0].z, q, xs[..], zs[..], up[..], w[0].n, p[..]);
         mx += p[0] * speed * dt * 0.6; mz += p[1] * speed * dt * 0.6;
         ml := sqrt(mx * mx + mz * mz);
         lim := speed * dt;
         if ml > lim && ml > 0 { mx = mx / ml * lim; mz = mz / ml * lim; }
+        rt_slide(g, a[0].x, a[0].z, mx, mz, p[..]);
+        mx = p[0] - a[0].x; mz = p[1] - a[0].z;
       }
       a[0].x += mx; a[0].z += mz;
       a[0].speed = sqrt(mx * mx + mz * mz) / hi_r(dt, 0.0001);
-      a[0].yaw = e5rr_heading(dx, dz);
+      a[0].yaw = e5rr_heading(wx, wz);
     } else {
       if !a[0].town && q > 0 {
         rt_separate(a[0].x, a[0].z, q, xs[..], zs[..], up[..], w[0].n, p[..]);
-        a[0].x += p[0] * dt * 1.2; a[0].z += p[1] * dt * 1.2;
+        rt_slide(g, a[0].x, a[0].z, p[0] * dt * 1.2, p[1] * dt * 1.2, p[..]);
+        a[0].x = p[0]; a[0].z = p[1];
       }
       if foe >= 0 { a[0].yaw = e5rr_heading(w[0].who[foe].x - a[0].x, w[0].who[foe].z - a[0].z); }
       else if a[0].town { a[0].yaw = e5rr_heading(g.ox, g.oz); }
@@ -420,4 +433,25 @@ e5r_raid_step :: (r: [] E5r, dt: f32) {
   #assert inside > 5;
   _ := e5r_raider(r[..], 0, out[..]);
   #assert out[1] < -56;
+}
+
+#test "raid: the cult goes round the stables, the houses, the walls and the towers, in only by the gate or a breach (#12747)" #steps 4000000000 {
+  r: [1] E5r;
+  e5r_start(r[..], 7);
+  e5r_raid_start(r[..], 0, -106, 0, -56, 0, -25);
+  e5r_raid_you(r[..], 0, -16);
+  g := r[0].raid[0].gate;
+  clips := 0; through := 0;
+  for f: 0..<1500 {
+    e5r_step(r[..], r[0].b[0].clock + 0.04);
+    for q: 0..<E5R_RAIDERS {
+      a := r[0].raid[0].who[q];
+      if a.died_t >= 0 { continue; }
+      if rt_test_clips(g, a.x, a.z) { clips += 1; }
+    }
+  }
+  #assert clips == 0;
+  // and they got in
+  for q: 1..<E5R_RAIDERS { a := r[0].raid[0].who[q]; if a.died_t < 0 && rt_inside(a.x, a.z) { through += 1; } }
+  #assert through > 5;
 }

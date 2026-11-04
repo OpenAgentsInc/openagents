@@ -1,0 +1,35 @@
+// The raid's footprints are the town's (#12747): everglade-raid-tactics.coax keeps its own copy of
+// what stands in the way (RT_BOX), as the room server doesn't load the plan; this check holds it
+// to verse/everglade/plan.coax.
+//   coax test apps/openagents-web/everglade-raid-town.coax
+#load "../../verse/everglade/plan.coax";
+#load "everglade5e-rules.coax";
+
+// Whether RT_BOX's n-th footprint is box i of the plan's src (min x, min z, max x, max z).
+rp_same_box :: (src: [] f32, i: int, n: int) -> bool {
+  for c: 0..<4 { if RT_BOX[n * 4 + c] != src[i * EG_BOX + c] { return false; } }
+  return true;
+}
+#test "raid paths: the footprints are the plan's: the palisade, the buildings whole, the solid props, the districts' houses, the gates" {
+  // RT_BOX (everglade-raid-tactics.coax: the room server doesn't load the plan) against plan.coax
+  n := 0;
+  pal := EG_PALISADE; bld := EG_BUILDING; prp := EG_PROP; dh := EG_DHOUSE;
+  #assert RT_WALLS == EG_PALISADE_N;
+  for i: 0..<EG_PALISADE_N { #assert rp_same_box(pal[..], i, n); n += 1; }
+  for i: 0..<EG_BUILDINGS { #assert rp_same_box(bld[..], i, n); n += 1; }
+  for i: 0..<EG_RIVER { #assert rp_same_box(prp[..], i, n); n += 1; }
+  for i: 0..<EG_DHOUSES { #assert rp_same_box(dh[..], i, n); n += 1; }
+  #assert n == RT_BOXES && RT_TOWN_GATES == EG_GATES;
+  for k: 0..<EG_GATES * 4 { #assert RT_TOWN_GATE[k] == EG_GATE[k]; }
+  // every solid of the plan's but the world's edges lies in one of them
+  solids: [EG_SOLIDS * EG_BOX] f32;
+  m := everglade_solids(solids[..]);
+  for i: 0..<m - 4 {
+    k := i * EG_BOX;
+    held := false;
+    for b: 0..<RT_BOXES {
+      if solids[k] >= RT_BOX[b * 4] && solids[k + 1] >= RT_BOX[b * 4 + 1] && solids[k + 2] <= RT_BOX[b * 4 + 2] && solids[k + 3] <= RT_BOX[b * 4 + 3] { held = true; }
+    }
+    #assert held;
+  }
+}

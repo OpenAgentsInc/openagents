@@ -114,8 +114,11 @@ e5rd_free :: (r: [] E5rRoom) -> int {
 }
 // Creature c joins the raid at (x, z) as form `form`, by its gate (gx, gz) to (sx, sz) in the square:
 // its beast id, 0 with no place.
-e5rd_join :: (r: [] E5rRoom, c: RsCreature, form: int, x: f32, z: f32, g: RtGate, squad: int, k: int, role: int, sx: f32, sz: f32) -> int {
+e5rd_join :: (r: [] E5rRoom, c: RsCreature, form: int, x0: f32, z0: f32, g: RtGate, squad: int, k: int, role: int, sx: f32, sz: f32) -> int {
   if !r[0].started { return 0; }
+  // on open ground: never in a wall or a building (rt_free)
+  at: [2] f32; rt_free(g, x0, z0, at[..]);
+  x := at[0]; z := at[1];
   q := e5rd_free(r);
   if q < 0 { return 0; }
   b := r[0].b[..];
@@ -280,8 +283,7 @@ e5rd_done :: (r: [] E5rRoom, q: int) -> bool {
   sl := r[0].raid[0].slot[q];
   if !sl.g.wall { return true; }
   s := sl.squad % RT_SQUADS;
-  w := r[0].raid[0];
-  return w.sq_v[s] >= RT_SIEGE_VOLLEYS || r[0].b[0].clock - w.sq_at[s] >= f32(RT_SIEGE_S);
+  return r[0].raid[0].sq_v[s] >= RT_SIEGE_VOLLEYS || r[0].b[0].clock - r[0].raid[0].sq_at[s] >= f32(RT_SIEGE_S);
 }
 
 // The foe for raid creature q within reach metres: the nearest player, else the nearest townsperson
@@ -433,6 +435,7 @@ e5rd_door :: (r: [] E5rRoom, q: int) -> bool {
   o: [2] f32;
   rt_door(bt[0].x, bt[0].z, e5rd_mx(r, foe), e5rd_mz(r, foe), sl.hx, sl.hz, o[..]);
   rt_clear(o[0], o[1], f32(E5RD_SPAWN_X), f32(E5RD_SPAWN_Z), f32(RT_SPAWN_R), o[..]);
+  rt_free(sl.g, o[0], o[1], o[..]);   // onto open ground, not into a wall or a building
   b[0].c[i].slots[5] -= 1; b[0].turn.action = true;
   l: [1] RsLine;
   rs_add_name(l[..], b, i); rs_add_text(l[..], " casts Dimension Door");
@@ -516,17 +519,25 @@ e5rd_step :: (r: [] E5rRoom, dt: f32) {
       tx = o[0]; tz = o[1];
     }
     // round the spawn (one fleeing goes home by the way it came)
-    if sl[0].stage != E5RD_FLEE { rt_route(bt[0].x, bt[0].z, tx, tz, f32(E5RD_SPAWN_X), f32(E5RD_SPAWN_Z), f32(RT_SPAWN_R), o[..]); tx = o[0]; tz = o[1]; }
+    if sl[0].stage != E5RD_FLEE { rt_around(sl[0].g, bt[0].x, bt[0].z, tx, tz, f32(E5RD_SPAWN_X), f32(E5RD_SPAWN_Z), f32(RT_SPAWN_R), o[..]); tx = o[0]; tz = o[1]; }
+    // round the town's walls and buildings, in by a gate or a breach (rt_way): it stops `stop`
+    // short of its goal, not of a corner on the way
     dx := tx - bt[0].x; dz := tz - bt[0].z;
     d := sqrt(dx * dx + dz * dz);
+    rt_way(sl[0].g, bt[0].x, bt[0].z, tx, tz, f32(E5RD_SPAWN_X), f32(E5RD_SPAWN_Z), f32(RT_SPAWN_R), o[..]);
+    wx := o[0] - bt[0].x; wz := o[1] - bt[0].z;
+    wd := sqrt(wx * wx + wz * wz);
     step := f32(E5RR_RUN) * dt * f32(b[0].c[i].speed) / 40.0;
     mx: f32 = 0; mz: f32 = 0;
-    if d > stop { m := rt_lo(step, d - stop); mx = dx / d * m; mz = dz / d * m; }
+    left := ifx o[2] > 0.5 then wd - stop else wd;   // to the goal, `stop` short; to a corner, all the way
+    if d > stop && left > 0 && wd > 0.001 { m := rt_lo(step, left); mx = wx / wd * m; mz = wz / wd * m; }
     rt_separate(bt[0].x, bt[0].z, q, w[0].xs[..], w[0].zs[..], w[0].on[..], E5RR_BEASTS, o[..]);
     mx += o[0] * step * f32(E5RD_PUSH); mz += o[1] * step * f32(E5RD_PUSH);
     mm := sqrt(mx * mx + mz * mz);
     if mm > step { mx = mx / mm * step; mz = mz / mm * step; mm = step; }
-    bt[0].x += mx; bt[0].z += mz;
+    rt_slide(sl[0].g, bt[0].x, bt[0].z, mx, mz, o[..]);
+    mx = o[0] - bt[0].x; mz = o[1] - bt[0].z; mm = sqrt(mx * mx + mz * mz);
+    bt[0].x = o[0]; bt[0].z = o[1];
     bt[0].moving = mm > 0.001;
     if mm > 0.01 { bt[0].yaw = e5rr_heading(mx, mz); }
     // one at its foe faces it
@@ -714,4 +725,61 @@ e5rd_test_room :: (r: [] E5rRoom) {
     }
   }
   #assert doors >= 1 && dx * dx + dz * dz > 20 * 20;
+}
+
+#test "room raid: squads at every gate and the bridge go round the walls, towers and buildings, in only by a gate or a breach, and home again (#12747)" #steps 30000000000 {
+  r: [1] E5rRoom;
+  e5rd_test_room(r[..]);
+  // a squad of 8 Cultists 20 m out of each way in (room-events.coax ev_way, ev_gate): an even squad
+  // goes in by its gate, an odd one by its breach, the bridge's straight on
+  ways: [5] RtGate;
+  ways[0] = rt_gate(0, -56, 6, false, -64, 64, 0, 0);
+  ways[1] = rt_gate(44, 60, 5, false, -64, 64, 0, 0);
+  ways[2] = rt_gate(-64, 0, 5, true, -56, 60, 0, 0);
+  ways[3] = rt_gate(64, 0, 5, true, -56, 60, 0, 0);
+  ways[4] = rt_open(84, -18, 0.524, 0.852);
+  from := [10] f32.[0, -76,   55.8, 76.1,   -84, 0,   84, 0,   98.3, 5.2];
+  for s: 0..<5 {
+    for k: 0..<8 {
+      p: [2] f32; rt_ring(s * 8 + k, 0, 0, 3, 15, p[..]);
+      g := ways[s];
+      side := f32(k) - 3.5;
+      #assert e5rd_raider(r[..], RS_NPC_CULTIST, 1, s * 8 + k + 1, from[s * 2] + g.ax * side * 1.4, from[s * 2 + 1] + g.az * side * 1.4, g, s, k, p[0], p[1]) > 0;
+    }
+  }
+  // Darian behind the south squad, by the South Gate
+  #assert e5rd_arch(r[..], 30, -76, 0, -56, 0, -46) > 0;
+  t: f32 = 0;
+  clips := 0;
+  for f: 0..<1400 {
+    t += 0.05; e5rr_step(r[..], t);
+    for q: 0..<E5RR_BEASTS {
+      bt := r[0].beasts[q];
+      if !e5rd_is(bt) || bt.form == E5RR_FORM_WARD { continue; }
+      if rt_test_clips(r[0].raid[0].slot[q].g, bt.x, bt.z) { clips += 1; }
+    }
+  }
+  #assert clips == 0;
+  // the squads got in: most of those standing are inside the palisade
+  in := 0; on := 0;
+  for q: 0..<E5RR_BEASTS {
+    bt := r[0].beasts[q];
+    if !e5rd_is(bt) || r[0].raid[0].slot[q].role == RT_LEAD || r[0].b[0].c[E5RR_BEAST0 + q].dead { continue; }
+    on += 1;
+    if rt_inside(bt.x, bt.z) { in += 1; }
+  }
+  #assert on > 0 && in * 10 >= on * 8;
+  // they flee home the way they came, by a gate or a breach, and are gone
+  e5rd_flee(r[..]);
+  for f: 0..<1200 {
+    t += 0.05; e5rr_step(r[..], t);
+    for q: 0..<E5RR_BEASTS {
+      bt := r[0].beasts[q];
+      if e5rd_is(bt) && rt_test_clips(r[0].raid[0].slot[q].g, bt.x, bt.z) { clips += 1; }
+    }
+  }
+  #assert clips == 0;
+  left := 0;
+  for q: 0..<E5RR_BEASTS { if e5rd_is(r[0].beasts[q]) { left += 1; } }
+  #assert left == 0;
 }

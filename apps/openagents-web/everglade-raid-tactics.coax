@@ -17,7 +17,11 @@
 //     from there; when a foe comes within RT_THREAT he casts Dimension Door RT_DOOR away, back from
 //     the threat (rt_command, rt_door);
 //   - the players' spawn is no one's: nobody stands within RT_SPAWN_R of it, and a raider's way
-//     goes round it (rt_route, rt_clear).
+//     goes round it (rt_route, rt_clear);
+//   - the town stands in the way as it does for the players (#12747): a raider goes round the
+//     houses, the walls and the gate towers by their corners, crosses the palisade only by a gate
+//     or its squad's gate's breaches (rt_way), and slides along whatever it meets (rt_slide), so it
+//     never stands in a footprint (RT_BOX) but in a breach.
 //   coax test --library apps/openagents-web/everglade5e-rules.coax --only "raid tactics"
 //
 // This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
@@ -205,6 +209,311 @@ rt_route :: (x: f32, z: f32, tx: f32, tz: f32, cx: f32, cz: f32, r: f32, o: [] f
   o[0] = cx + nx / nd * (r + 1.5); o[1] = cz + nz / nd * (r + 1.5);
 }
 
+// ---- the town in the way (#12747)
+
+// Every footprint a raider can't pass, as the players can't (verse/everglade/plan.coax
+// everglade_solids, which the room server doesn't load: everglade-raid-town.coax's check holds
+// them alike): min x, min z, max x, max z. The
+// palisade's walls and gate towers first (RT_WALLS: a breach opens them), then the buildings whole
+// (a raider doesn't go in), the solid props (EG_PROP but the river's banks) and the districts' houses.
+RT_WALLS :: 16;
+RT_BOXES :: 89;
+RT_BOX :: [356] f32.[
+  -64.4, -56.4, -6, -55.6,   6, -56.4, 64.4, -55.6,   -6, -57.5, -3, -54.5,   3, -57.5, 6, -54.5,
+  -64.4, 59.6, 39, 60.4,   49, 59.6, 64.4, 60.4,   39, 58.75, 41.5, 61.25,   46.5, 58.75, 49, 61.25,
+  -64.4, -55.6, -63.6, -5,   -64.4, 5, -63.6, 59.6,   -65.25, -5, -62.75, -2.5,   -65.25, 2.5, -62.75, 5,
+  63.6, -55.6, 64.4, -5,   63.6, 5, 64.4, 59.6,   62.75, -5, 65.25, -2.5,   62.75, 2.5, 65.25, 5,
+  -22, -44, -6, -30,   22, 10, 34, 20,   44, 8, 56, 18,   44, -18, 54, -8,
+  -44, 6, -30, 18,   -44, -18, -30, -6,   -32, 36, -22, 46,   -9, 34, 9, 52,
+  24, 40, 32, 48,   8, -76, 20, -64,   -22, -24, -12, -16,   8, -26, 18, -16,
+  8, -46, 18, -36,   -50, 30, -40, 40,   50, -40, 58, -30,   -52, -40, -42, -30,
+  -3, -3, 3, 3,   5, -5.3, 7.4, -4.7,   24.5, 5, 27.5, 7,   30.5, 5, 33.5, 7,
+  36.5, 5, 39.5, 7,   24.5, -7, 27.5, -5,   30.5, -7, 33.5, -5,   36.5, -7, 39.5, -5,
+  -148.3, 21.6, -147.5, 22.4,   13.5, 152.5, 14.5, 153.5,   29.5, 153.5, 30.5, 154.5,   19.5, 155.5, 20.5, 156.5,
+  62, 149, 70, 155,
+  31, 86, 41, 94,   31, 96, 41, 104,   31, 106, 41, 114,   31, 116, 41, 124,
+  31, 126, 41, 134,   47, 84, 63, 98,   48, 100, 56, 108,   58, 100, 66, 108,
+  68, 100, 76, 108,   48, 112, 56, 120,   58, 112, 66, 120,   68, 112, 76, 120,
+  -96, 8, -86, 18,   -108, 8, -100, 18,   -130, 8, -112, 22,   -96, -10, -86, 0,
+  -108, -10, -100, 0,   -120, -10, -112, 0,   -132, -10, -124, 0,   -106, 60, -90, 72,
+  -122, 60, -110, 70,   -96, 42, -88, 52,   -108, 42, -100, 52,   -120, 42, -112, 52,
+  -132, 42, -124, 52,   -110, -72, -96, -60,   -132, -72, -116, -56,   -96, -90, -88, -80,
+  -106, -90, -98, -80,   -116, -90, -108, -80,   -126, -90, -118, -80,   108, -10, 124, 6,
+  108, -26, 116, -18,   108, -38, 116, -30,   108, 10, 116, 18,   108, 22, 116, 30,
+  120, 12, 132, 26,   108, -86, 116, -76,   118, -86, 126, -76,   128, -86, 136, -76,
+  108, -104, 116, -94,   118, -104, 126, -94,   128, -104, 136, -94,   38, -92, 48, -84
+];
+// The footprints in groups that stand together, for a quick look past those far off: first,
+// past the last, and the box about them all (the check "raid paths: the footprints in their
+// groups" holds it to RT_BOX).
+RT_GROUPS :: 14;
+RT_GROUP :: [84] f32.[
+  0, 4, -64.4, -57.5, 64.4, -54.5,
+  4, 8, -64.4, 58.75, 64.4, 61.25,
+  8, 12, -65.25, -55.6, -62.75, 59.6,
+  12, 16, 62.75, -55.6, 65.25, 59.6,
+  16, 24, -44, -44, 56, 52,
+  24, 32, -52, -76, 58, 48,
+  32, 40, -3, -7, 39.5, 7,
+  40, 45, -148.3, 21.6, 70, 156.5,
+  45, 57, 31, 84, 76, 134,
+  57, 64, -132, -10, -86, 22,
+  64, 70, -132, 42, -88, 72,
+  70, 76, -132, -90, -88, -56,
+  76, 88, 108, -104, 136, 30,
+  88, 89, 38, -92, 48, -84
+];
+// The palisade's gates (plan.coax EG_GATE: x, z, width, 1 when the wall runs along z) and the
+// inside of its walls.
+RT_TOWN_GATES :: 4;
+RT_TOWN_GATE :: [16] f32.[0, -56, 6, 0,   44, 60, 5, 0,   -64, 0, 5, 1,   64, 0, 5, 1];
+RT_IN_X0 :: -64.0; RT_IN_X1 :: 64.0; RT_IN_Z0 :: -56.0; RT_IN_Z1 :: 60.0;
+RT_BODY :: 0.45;            // m a raider's middle keeps from a footprint (its capsule's 0.3, and a little)
+RT_PAD :: 1.2;              // m out from a footprint's corner that a way round it goes
+RT_HOLE :: 2.0;             // m either side of a breach's middle that its wall is open
+RT_PORTAL :: 2.5;           // m either side of a wall that a way through a gate or a breach starts and ends
+
+// Town gate n as a way in (rt_gate), its outside away from the fountain.
+rt_town_gate :: (n: int) -> RtGate {
+  along_z := RT_TOWN_GATE[n * 4 + 3] > 0.5;
+  return rt_gate(RT_TOWN_GATE[n * 4], RT_TOWN_GATE[n * 4 + 1], RT_TOWN_GATE[n * 4 + 2], along_z,
+                 ifx along_z then -56.0f32 else -64.0f32, ifx along_z then 60.0f32 else 64.0f32, 0, 0);
+}
+// Whether (x, z) is in a breach of gate g's wall (the sections of RT_BREACH its squads open).
+rt_hole :: (g: RtGate, x: f32, z: f32) -> bool {
+  if !g.wall { return false; }
+  out := (x - g.x) * g.ox + (z - g.z) * g.oz;
+  if abs(out) > 3 { return false; }
+  along := (x - g.x) * g.ax + (z - g.z) * g.az;
+  for n: 0..<RT_BREACHES {
+    a := RT_BREACH[n];
+    if a > g.lo + 3 && a < g.hi - 3 && abs(along - a) < f32(RT_HOLE) { return true; }
+  }
+  return false;
+}
+// The footprint that (x, z) stands in, grown by r m, for a raider in by gate g (its breaches open
+// the wall): its number, -1 none.
+rt_blocked :: (g: RtGate, x: f32, z: f32, r: f32) -> int {
+  for n: 0..<RT_GROUPS {
+    m := n * 6;
+    if x <= RT_GROUP[m + 2] - r || x >= RT_GROUP[m + 4] + r || z <= RT_GROUP[m + 3] - r || z >= RT_GROUP[m + 5] + r { continue; }
+    b := rt_blocked_in(g, int(RT_GROUP[m]), int(RT_GROUP[m + 1]), x, z, r);
+    if b >= 0 { return b; }
+  }
+  return -1;
+}
+rt_blocked_in :: (g: RtGate, from: int, to: int, x: f32, z: f32, r: f32) -> int {
+  for b: from..<to {
+    k := b * 4;
+    if x <= RT_BOX[k] - r || x >= RT_BOX[k + 2] + r || z <= RT_BOX[k + 1] - r || z >= RT_BOX[k + 3] + r { continue; }
+    if b < RT_WALLS && rt_hole(g, x, z) { continue; }
+    return b;
+  }
+  return -1;
+}
+// (x, z), or the nearest open ground to it when a footprint holds it: into o.
+rt_free :: (g: RtGate, x: f32, z: f32, o: [] f32) {
+  px := x; pz := z;
+  r := f32(RT_BODY) + 0.05;
+  for n: 0..<6 {
+    b := rt_blocked(g, px, pz, f32(RT_BODY));
+    if b < 0 { o[0] = px; o[1] = pz; return; }
+    k := b * 4;
+    // out by its nearest side
+    w := px - (RT_BOX[k] - r); e := (RT_BOX[k + 2] + r) - px; sd := pz - (RT_BOX[k + 1] - r); nd := (RT_BOX[k + 3] + r) - pz;
+    m := rt_lo(rt_lo(w, e), rt_lo(sd, nd));
+    if m == w { px = RT_BOX[k] - r; } else if m == e { px = RT_BOX[k + 2] + r; } else if m == sd { pz = RT_BOX[k + 1] - r; } else { pz = RT_BOX[k + 3] + r; }
+  }
+  // boxed in: the nearest open spot on rings about it
+  for ring: 1..<24 {
+    rr := f32(ring) * 0.5;
+    for a: 0..<16 {
+      cx := x + cos(f32(a) * 0.3926991) * rr; cz := z + sin(f32(a) * 0.3926991) * rr;
+      if rt_blocked(g, cx, cz, f32(RT_BODY)) < 0 { o[0] = cx; o[1] = cz; return; }
+    }
+  }
+  o[0] = px; o[1] = pz;
+}
+// How far along the way from (x0, z0) to (x1, z1) it enters footprint b grown by r: 0 to 1, or 2
+// when it doesn't.
+rt_enters :: (b: int, x0: f32, z0: f32, x1: f32, z1: f32, r: f32) -> f32 {
+  k := b * 4;
+  bx0 := RT_BOX[k] - r; bz0 := RT_BOX[k + 1] - r; bx1 := RT_BOX[k + 2] + r; bz1 := RT_BOX[k + 3] + r;
+  if rt_hi(x0, x1) <= bx0 || rt_lo(x0, x1) >= bx1 || rt_hi(z0, z1) <= bz0 || rt_lo(z0, z1) >= bz1 { return 2; }
+  t0: f32 = 0; t1: f32 = 1;
+  dx := x1 - x0; dz := z1 - z0;
+  if abs(dx) < 0.00001 { if x0 <= bx0 || x0 >= bx1 { return 2; } }
+  else {
+    a := (bx0 - x0) / dx; c := (bx1 - x0) / dx;
+    t0 = rt_hi(t0, rt_lo(a, c)); t1 = rt_lo(t1, rt_hi(a, c));
+  }
+  if abs(dz) < 0.00001 { if z0 <= bz0 || z0 >= bz1 { return 2; } }
+  else {
+    a := (bz0 - z0) / dz; c := (bz1 - z0) / dz;
+    t0 = rt_hi(t0, rt_lo(a, c)); t1 = rt_lo(t1, rt_hi(a, c));
+  }
+  if t0 >= t1 { return 2; }
+  return t0;
+}
+// The first footprint the way from (x0, z0) to (x1, z1) runs into, -1 none: for a raider in by gate
+// g, the palisade's walls not from one of its breaches.
+rt_first :: (g: RtGate, x0: f32, z0: f32, x1: f32, z1: f32) -> int {
+  best := -1; bt: f32 = 2;
+  r := f32(RT_BODY) * 0.9;
+  hole := rt_hole(g, x0, z0);
+  lx := rt_lo(x0, x1) - r; hx := rt_hi(x0, x1) + r; lz := rt_lo(z0, z1) - r; hz := rt_hi(z0, z1) + r;
+  for n: 0..<RT_GROUPS {
+    m := n * 6;
+    if hx <= RT_GROUP[m + 2] || lx >= RT_GROUP[m + 4] || hz <= RT_GROUP[m + 3] || lz >= RT_GROUP[m + 5] { continue; }
+    for b: int(RT_GROUP[m])..<int(RT_GROUP[m + 1]) {
+      if b < RT_WALLS && hole { continue; }
+      t := rt_enters(b, x0, z0, x1, z1, r);
+      if t < bt { bt = t; best = b; }
+    }
+  }
+  return best;
+}
+// Corner c (0 to 3, round the footprint) of footprint b, RT_PAD out: into o.
+rt_corner :: (b: int, c: int, o: [] f32) {
+  k := b * 4; p := f32(RT_PAD);
+  cc := (c % 4 + 4) % 4;
+  o[0] = ifx cc == 0 || cc == 3 then RT_BOX[k] - p else RT_BOX[k + 2] + p;
+  o[1] = ifx cc < 2 then RT_BOX[k + 1] - p else RT_BOX[k + 3] + p;
+}
+// The way round footprint b from (x, z) to (tx, tz): into o the corner to go for first, on the
+// side that is the shorter way round. A corner in another footprint, or in the disc of cr m about
+// (cx, cz) (the players' spawn: rt_route), is no way.
+rt_round :: (g: RtGate, b: int, x: f32, z: f32, tx: f32, tz: f32, cx: f32, cz: f32, cr: f32, o: [] f32) {
+  r := f32(RT_BODY) * 0.9;
+  best: f32 = 1000000; o[0] = tx; o[1] = tz;
+  p: [2] f32;
+  for c: 0..<4 {
+    rt_corner(b, c, p[..]);
+    if !rt_corner_ok(b, c, p[0], p[1], cx, cz, cr) || rt_enters(b, x, z, p[0], p[1], r) <= 1 { continue; }
+    d0 := sqrt((p[0] - x) * (p[0] - x) + (p[1] - z) * (p[1] - z));
+    for dir: 0..<2 {
+      step := ifx dir == 0 then 1 else -1;
+      cost := d0; j := c;
+      qx := p[0]; qz := p[1];
+      // the first corner on the way that isn't where it stands
+      has := d0 > 0.5; fx := qx; fz := qz;
+      for n: 0..<4 {
+        if rt_enters(b, qx, qz, tx, tz, r) > 1 {
+          total := cost + sqrt((tx - qx) * (tx - qx) + (tz - qz) * (tz - qz));
+          if !has { fx = tx; fz = tz; }
+          if total < best { best = total; o[0] = fx; o[1] = fz; }
+          break;
+        }
+        j += step;
+        q: [2] f32;
+        rt_corner(b, j, q[..]);
+        if !rt_corner_ok(b, j, q[0], q[1], cx, cz, cr) { break; }
+        cost += abs(q[0] - qx) + abs(q[1] - qz);
+        qx = q[0]; qz = q[1];
+        if !has { has = true; fx = qx; fz = qz; }
+      }
+    }
+  }
+}
+// Whether a way round footprint b may go by its corner c at (x, z): not in another footprint
+// (RT_CORNER_OPEN), nor in the disc of cr m about (cx, cz).
+rt_corner_ok :: (b: int, c: int, x: f32, z: f32, cx: f32, cz: f32, cr: f32) -> bool {
+  if (x - cx) * (x - cx) + (z - cz) * (z - cz) < cr * cr { return false; }
+  return (RT_CORNER_OPEN[b] & (1 << ((c % 4 + 4) % 4))) != 0;
+}
+// Each footprint's corners (rt_corner) that no other footprint holds (bit c of footprint b's);
+// the check "raid paths: a footprint's corner is open unless another holds it" works them out.
+RT_CORNER_OPEN :: [89] int.[
+  9, 6, 15, 15, 9, 6, 15, 15, 1, 8, 15, 15, 2, 4, 15, 15,
+  15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15,
+  15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15
+];
+rt_corners_open :: (b: int) -> int {
+  none := rt_open(0, 0, 0, 1);
+  p: [2] f32; bits := 0;
+  for c: 0..<4 { rt_corner(b, c, p[..]); if rt_blocked(none, p[0], p[1], f32(RT_BODY)) < 0 { bits = bits | (1 << c); } }
+  return bits;
+}
+// Whether (x, z) is inside the palisade.
+rt_inside :: (x: f32, z: f32) -> bool { return x > f32(RT_IN_X0) && x < f32(RT_IN_X1) && z > f32(RT_IN_Z0) && z < f32(RT_IN_Z1); }
+// The way from (x, z) to (tx, tz) for a raider in by gate g, round the town's footprints (and not by
+// a corner in the disc of cr m about (cx, cz): the players' spawn): into o
+// the point to go for now, then o[2] 1 when that is the goal itself (0 a corner or a gate on the
+// way; o holds 3). A goal in a footprint moves out of it. A way across the palisade goes
+// by a gate or one of g's breaches, the one that makes it shortest: to its near side, then
+// straight through. Round a footprint in the way it goes by the corner on the shorter side.
+rt_way :: (g: RtGate, x: f32, z: f32, tx: f32, tz: f32, cx: f32, cz: f32, cr: f32, o: [] f32) {
+  rt_free(g, tx, tz, o);
+  gx := o[0]; gz := o[1];
+  sx := gx; sz := gz;
+  if rt_inside(x, z) != rt_inside(gx, gz) {
+    sg := ifx rt_inside(x, z) then -1.0f32 else 1.0f32;   // which way out is this side
+    best: f32 = 1000000; mx: f32 = 0; mz: f32 = 0; fx: f32 = 0; fz: f32 = 0; thru := false;
+    nb := ifx g.wall then RT_BREACHES else 0;
+    for n: 0..<RT_TOWN_GATES + nb {
+      w := ifx n < RT_TOWN_GATES then rt_town_gate(n) else g;
+      along: f32 = 0; half := w.w / 2 - 0.6;
+      if n >= RT_TOWN_GATES {
+        along = RT_BREACH[n - RT_TOWN_GATES];
+        if along <= g.lo + 3 || along >= g.hi - 3 { continue; }
+        half = f32(RT_HOLE) - 0.4;
+      }
+      px := w.x + w.ax * along; pz := w.z + w.az * along;
+      ax := px + w.ox * sg * f32(RT_PORTAL); az := pz + w.oz * sg * f32(RT_PORTAL);
+      bx := px - w.ox * sg * f32(RT_PORTAL); bz := pz - w.oz * sg * f32(RT_PORTAL);
+      cost := sqrt((ax - x) * (ax - x) + (az - z) * (az - z)) + sqrt((gx - bx) * (gx - bx) + (gz - bz) * (gz - bz));
+      if cost >= best { continue; }
+      best = cost; mx = ax; mz = az; fx = bx; fz = bz;
+      // in the way through already: straight on
+      ra := (x - px) * w.ax + (z - pz) * w.az; ro := (x - px) * w.ox + (z - pz) * w.oz;
+      thru = abs(ra) < half && abs(ro) < f32(RT_PORTAL) + 0.3;
+    }
+    if best < 1000000 {
+      if thru { o[0] = fx; o[1] = fz; o[2] = 0; return; }
+      sx = mx; sz = mz;
+    }
+  }
+  // round what stands in the way, a few footprints deep
+  for n: 0..<4 {
+    b := rt_first(g, x, z, sx, sz);
+    if b < 0 { break; }
+    p: [2] f32;
+    rt_round(g, b, x, z, sx, sz, cx, cz, cr, p[..]);
+    if abs(p[0] - sx) < 0.001 && abs(p[1] - sz) < 0.001 { break; }
+    sx = p[0]; sz = p[1];
+  }
+  o[0] = sx; o[1] = sz;
+  o[2] = ifx sx == gx && sz == gz then 1.0f32 else 0.0f32;
+}
+// The step (mx, mz) from (x, z) for a raider in by gate g, slid along whatever it would run into:
+// into o where it ends. Nothing but a breach takes it into a footprint.
+rt_slide :: (g: RtGate, x: f32, z: f32, mx: f32, mz: f32, o: [] f32) {
+  r := f32(RT_BODY);
+  if rt_blocked(g, x, z, r) >= 0 { rt_free(g, x, z, o); return; }
+  o[0] = x; o[1] = z;
+  if rt_blocked(g, x + mx, z + mz, r) < 0 { o[0] = x + mx; o[1] = z + mz; return; }
+  if abs(mx) > 0.0001 && rt_blocked(g, x + mx, z, r) < 0 { o[0] = x + mx; return; }
+  if abs(mz) > 0.0001 && rt_blocked(g, x, z + mz, r) < 0 { o[1] = z + mz; }
+}
+
+// rt_route for a raider in by gate g: a way round the spawn's near side that a footprint holds goes
+// round its far side; one in the spawn's ground that a footprint keeps from leaving by the nearest
+// way leaves toward its goal.
+rt_around :: (g: RtGate, x: f32, z: f32, tx: f32, tz: f32, cx: f32, cz: f32, r: f32, o: [] f32) {
+  rt_clear(tx, tz, cx, cz, r, o);
+  gx := o[0]; gz := o[1];
+  rt_route(x, z, tx, tz, cx, cz, r, o);
+  dx := x - cx; dz := z - cz;
+  if o[0] == gx && o[1] == gz { return; }
+  if dx * dx + dz * dz < r * r {
+    if rt_blocked(g, o[0], o[1], f32(RT_BODY)) >= 0 { o[0] = gx; o[1] = gz; }
+    return;
+  }
+  if rt_blocked(g, o[0], o[1], f32(RT_PAD)) < 0 { return; }
+  fx := 2 * cx - o[0]; fz := 2 * cz - o[1];
+  if rt_blocked(g, fx, fz, f32(RT_PAD)) < 0 { o[0] = fx; o[1] = fz; }
+}
+
 // ---- the leader
 
 // Where the leader holds: RT_BACK behind (lx, lz), the middle of his lines, toward (hx, hz) where he
@@ -224,6 +533,21 @@ rt_door :: (x: f32, z: f32, fx: f32, fz: f32, hx: f32, hz: f32, o: [] f32) {
   dx := ax / ad + bx / bd; dz := az / ad + bz / bd; d := sqrt(dx * dx + dz * dz);
   if d < 0.01 { dx = ax / ad; dz = az / ad; d = 1; }
   o[0] = x + dx / d * f32(RT_DOOR); o[1] = z + dz / d * f32(RT_DOOR);
+}
+
+// Whether (x, z) stands in one of the town's footprints (RT_BOX, the plan's: the page's check holds
+// them alike), but for a breach in the wall of gate g (RT_HOLE either side of an RT_BREACH section).
+rt_test_clips :: (g: RtGate, x: f32, z: f32) -> bool {
+  for b: 0..<RT_BOXES {
+    k := b * 4;
+    if x <= RT_BOX[k] || x >= RT_BOX[k + 2] || z <= RT_BOX[k + 1] || z >= RT_BOX[k + 3] { continue; }
+    if b >= RT_WALLS || !g.wall { return true; }
+    along := (x - g.x) * g.ax + (z - g.z) * g.az;
+    breach := false;
+    for n: 0..<RT_BREACHES { a := RT_BREACH[n]; if a > g.lo + 3 && a < g.hi - 3 && abs(along - a) < f32(RT_HOLE) { breach = true; } }
+    if !breach { return true; }
+  }
+  return false;
 }
 
 #test "raid tactics: squads stand spread, casters fire at the towers and a breach, then go in round the spawn" {
@@ -279,4 +603,60 @@ rt_door :: (x: f32, z: f32, fx: f32, fz: f32, hx: f32, hz: f32, o: [] f32) {
   rt_command(0, -40, 10, 0, -100, p[..]); #assert p[0] == 0 && p[1] == -40 - f32(RT_BACK);
   rt_command(0, -90, 10, 0, -100, p[..]); #assert p[1] == -100;
   rt_door(0, -60, 0, -55, 0, -100, p[..]); #assert p[1] == -60 - f32(RT_DOOR);
+}
+
+// A raider's walk from (x, z) to (tx, tz) by rt_way and rt_slide, 0.25 m a step, at most n steps:
+// into o where it ends, then the least |x| it had while it crossed the line z = cz (1000 none), then
+// 1 if it ever stood in a footprint (rt_test_clips).
+rt_test_walk :: (g: RtGate, x: f32, z: f32, tx: f32, tz: f32, n: int, cz: f32, o: [] f32) {
+  px := x; pz := z; cross: f32 = 1000; clip: f32 = 0;
+  p: [3] f32;
+  for k: 0..<n {
+    rt_way(g, px, pz, tx, tz, 0, -84, f32(RT_SPAWN_R), p[..]);
+    dx := p[0] - px; dz := p[1] - pz; d := sqrt(dx * dx + dz * dz);
+    if d < 0.05 { break; }
+    m := rt_lo(0.25, d);
+    rt_slide(g, px, pz, dx / d * m, dz / d * m, p[..]);
+    if (pz - cz) * (p[1] - cz) <= 0 { cross = rt_lo(cross, abs(p[0])); }
+    px = p[0]; pz = p[1];
+    if rt_test_clips(g, px, pz) { clip = 1; }
+  }
+  o[0] = px; o[1] = pz; o[2] = cross; o[3] = clip;
+}
+
+#test "raid paths: the footprints in their groups, the corners open unless another footprint holds them" {
+  for n: 0..<RT_GROUPS {
+    m := n * 6;
+    for b: int(RT_GROUP[m])..<int(RT_GROUP[m + 1]) {
+      k := b * 4;
+      #assert RT_BOX[k] >= RT_GROUP[m + 2] && RT_BOX[k + 1] >= RT_GROUP[m + 3] && RT_BOX[k + 2] <= RT_GROUP[m + 4] && RT_BOX[k + 3] <= RT_GROUP[m + 5];
+    }
+    #assert n == 0 || RT_GROUP[m] == RT_GROUP[m - 5];
+  }
+  #assert RT_GROUP[0] == 0 && RT_GROUP[(RT_GROUPS - 1) * 6 + 1] == f32(RT_BOXES);
+  for b: 0..<RT_BOXES { #assert RT_CORNER_OPEN[b] == rt_corners_open(b); }
+}
+
+#test "raid paths: round the stables, through a breach or the gate, never in a wall or a building (#12747)" #steps 400000000 {
+  south := rt_gate(0, -56, 6, false, -64, 64, 0, 0);
+  o: [4] f32;
+  // a goal in the stables moves out of them; a point in them is blocked, one in a breach isn't
+  rt_free(south, 14, -70, o[..]);
+  #assert rt_blocked(south, o[0], o[1], f32(RT_BODY)) < 0 && rt_blocked(south, 14, -70, 0) == RT_WALLS + 9;
+  #assert rt_blocked(south, 14, -56, 0) < 0 && rt_blocked(south, 18, -56, 0) == 1;
+  // the stables stand between: the way goes by a corner, and the walk gets there clear of them
+  rt_way(south, 14, -90, 14, -60, 0, -84, f32(RT_SPAWN_R), o[..]);
+  #assert o[2] < 0.5 && (o[0] < 8 || o[0] > 20);
+  rt_test_walk(south, 14, -90, 14, -60, 400, -1000, o[..]);
+  #assert abs(o[0] - 14) < 0.1 && abs(o[1] + 60) < 0.1 && o[3] == 0;
+  // into the town from outside the wall: through the breach at 34 m, the nearest way in
+  rt_test_walk(south, 34, -70, 34, -45, 400, -56, o[..]);
+  #assert abs(o[0] - 34) < 0.1 && abs(o[1] + 45) < 0.1 && o[3] == 0 && abs(o[2] - 34) < f32(RT_HOLE);
+  // a way in with no breaches (the bridge's): by the gate, round the houses inside
+  open := rt_open(84, -18, 0.524, 0.852);
+  rt_test_walk(open, 30, -70, 13, -31, 800, -56, o[..]);
+  #assert abs(o[0] - 13) < 0.1 && abs(o[1] + 31) < 0.1 && o[3] == 0 && o[2] < 3;
+  // and out again from the square by the gate
+  rt_test_walk(open, 20, 0, 30, -80, 800, -56, o[..]);
+  #assert abs(o[0] - 30) < 0.1 && abs(o[1] + 80) < 0.1 && o[3] == 0 && o[2] < 3;
 }
