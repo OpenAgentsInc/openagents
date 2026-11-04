@@ -1,0 +1,1 @@
+bitcoin book structure: 105 programs, 0 native libraries, 865 source-linked listings, local links pass
