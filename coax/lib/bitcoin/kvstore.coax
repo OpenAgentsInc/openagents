@@ -350,6 +350,9 @@ kv_open_arena_vartime :: (file: [] u8, table: [] u8, initial: int) -> KvOpen #ex
   for level: 0..<KS_LEVELS { if ks_link(table,0,level) != 0 { return KvOpen.{code=KV_CORRUPT}; } }
   return kv_open_start_vartime(file,table,initial);
 }
+kv_sequence_ok :: (previous: u64, seq: u64, seen: bool) -> bool {
+  return seq != 0 && (!seen || (previous != 0xffffffffffffffff && seq == previous+1));
+}
 kv_open_start_vartime :: (file: [] u8, table: [] u8, initial: int) -> KvOpen {
   if file.count < KV_HEADER || file[0] != 'O' || file[1] != 'A' || file[2] != 'K' || file[3] != 'V' { return KvOpen.{code = KV_BAD_HEADER}; }
   if file[4] != KV_VERSION || !kv_checksum_ok(file[0..<16], file[16..<20]) { return KvOpen.{code = KV_BAD_HEADER}; }
@@ -370,7 +373,7 @@ kv_open_start_vartime :: (file: [] u8, table: [] u8, initial: int) -> KvOpen {
       return KvOpen.{code = KV_CORRUPT, keep = at};
     }
     b := kv_batch_check_vartime(body);
-    if b.code != KV_OK || b.seq == 0 || (r.frames > 0 && b.seq != r.seq + 1) { return KvOpen.{code = KV_CORRUPT, keep = at}; }
+    if b.code != KV_OK || !kv_sequence_ok(r.seq,b.seq,r.frames > 0) { return KvOpen.{code = KV_CORRUPT, keep = at}; }
     u := kv_apply_vartime(table, r.used, body, r.mask);
     if u < 0 { return KvOpen.{code = -u, keep = at}; }
     r.used = u; r.seq = b.seq; r.frames += 1;

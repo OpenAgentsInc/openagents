@@ -1,0 +1,22 @@
+// Emit a native Coax tool and link only the existing platform effects.
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/tool.coax";
+cxproc_read_bytes :: (h: int, timeout_ms: int, out: [] u8) -> int #foreign;
+bn_emit :: (source: string, output: string, header: string) -> bool { return bn_emit_mode(source,output,header,true); }
+bn_emit_mode :: (source: string, output: string, header: string, release: bool) -> bool {
+  h := proc_new(); if h < 0 { return false; }
+  ok := proc_arg(h,"coax/bin/coax") && proc_arg(h,"c") && proc_arg(h,source) && proc_arg(h,"--library") && (!release || proc_arg(h,"--release")) && proc_arg(h,"--run-steps") && proc_arg(h,"250000000") && proc_arg(h,"--header") && proc_arg(h,header);
+  if !ok || !fs_write(output,"") || proc_start(h) != 0 { done := proc_release(h); return false; }
+  buffer: [1048576] u8; deadline := proc_now_ms()+840000;
+  while ok {
+    n := cxproc_read_bytes(h,proc_left(deadline,proc_now_ms()),buffer[..]);
+    if n == PROC_EOF { break; }
+    if n < 0 { ok = false; break; }
+    ok = fs_append(output,cast(string)buffer[0..<n]);
+  }
+  if !ok { killed := proc_kill(h,9); }
+  status := proc_wait(h,proc_left(deadline,proc_now_ms()));
+  if status != 0 { err: [65536] u8; tool_errln(proc_stderr(h,err[..])); }
+  done := proc_release(h); return ok && status == 0;
+}

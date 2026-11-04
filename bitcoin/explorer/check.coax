@@ -1,22 +1,4 @@
-// Headless end-to-end journey. Independent fixture replay supplies expected
-// balances; this drives the real node, browser input and durable reorg writer.
-#load "../../coax/lib/net/cdp.coax";
-xb_eval :: (c: [] Cdp, expression: string) -> bool {
-  at := cdp_evaluate(c,expression); return at >= 0 && jv_bool(cdp_doc(c),at);
-}
-xb_wait :: (c: [] Cdp, condition: string) -> bool {
-  b: [8192] u8; n := 0; prefix := "(async()=>{for(let i=0;i<120;i++){if("; suffix := ")return true;await new Promise(r=>setTimeout(r,250));}return false})()";
-  for x: prefix { b[n] = x; n += 1; } for x: condition { b[n] = x; n += 1; } for x: suffix { b[n] = x; n += 1; }
-  return xb_eval(c,cast(string)b[0..<n]);
-}
-xb_hash :: (c: [] Cdp, path: string) -> bool {
-  b: [1024] u8; o: [1] Jo; jo_start(o[..],b[..]); jo_put(o[..],"location.hash="); jo_str(o[..],path); jo_put(o[..],";true"); return xb_eval(c,jo_text(o[..]));
-}
-xb_ready :: (c: [] Cdp, view: int, height: int, balance: string) -> bool {
-  b: [512] u8; o: [1] Jo; jo_start(o[..],b[..]); jo_put(o[..],"globalThis.coaxial?.ready&&coaxial.fieldProbe(0)===1&&coaxial.fieldProbe(1)==="); jo_int(o[..],height); jo_put(o[..],"&&coaxial.fieldProbe(2)==="); jo_int(o[..],view);
-  if balance.count > 0 { jo_put(o[..],"&&coaxial.fieldProbe(4)==="); jo_put(o[..],balance); } return xb_wait(c,jo_text(o[..]));
-}
-xb_write :: (argv: [] string) -> bool { out: [4096] u8; err: [4096] u8; r := proc_run(argv,120000,out[..],err[..]); if r.status != 0 { tool_err(cast(string)err[0..<r.err_n]); } return r.status == 0; }
+#load "browser-check.coax";
 xb_journey :: (c: [] Cdp, a: [] Args) -> bool {
   base := args_at(a,0); dir := args_at(a,1); index := args_at(a,2); address := args_at(a,3); txid := args_at(a,4); hash := args_at(a,5);
   pbuf: [4096] u8; o: [1] Jo; jo_start(o[..],pbuf[..]); jo_obj(o[..]); jo_key(o[..],"url"); jo_str(o[..],base); jo_end(o[..]);

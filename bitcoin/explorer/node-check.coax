@@ -1,0 +1,27 @@
+// The same open page follows atomic header updates through our native node.
+#load "browser-check.coax";
+nb_headers :: (dir: string, name: string) -> bool {
+  srcbuf: [4096] u8; dstbuf: [4096] u8; tmpbuf: [4096] u8; bytes: [65536] u8;
+  src := fs_join(dir,name,srcbuf[..]); n := fs_read(src,bytes[..]);
+  dst := fs_join(dir,"headers",dstbuf[..]); tmp := fs_join(dir,"headers.next",tmpbuf[..]);
+  return n > 0 && fs_write(tmp,cast(string)bytes[0..<n]) && fs_rename(tmp,dst);
+}
+tool_main :: () -> int #export_c {
+  a: [1] Args; if !args_load(a[..]) || args_count(a[..]) != 5 { tool_errln("usage: node-check URL DIR ADDRESS TXID HASH"); return 2; }
+  c: [1] Cdp; if !cdp_launch(c[..],1440,1000,"bitcoin-native-node-") { tool_errln(cdp_error(c[..])); return 1; }
+  buffer: [4096] u8; o: [1] Jo; jo_start(o[..],buffer[..]); jo_obj(o[..]); jo_key(o[..],"url"); jo_str(o[..],args_at(a[..],0)); jo_end(o[..]);
+  ok := cdp_call(c[..],"Page.navigate",jo_text(o[..]),10000) >= 0 && xb_ready(c[..],1,102,"");
+  for key: [4] string.["101",args_at(a[..],4),args_at(a[..],3),args_at(a[..],2)] {
+    route: [256] u8; jo_start(o[..],route[..]); jo_put(o[..],"/search/"); jo_put(o[..],key);
+    view := ifx key == args_at(a[..],2) then 4 else (ifx key == args_at(a[..],3) then 3 else 2);
+    ok = ok && xb_hash(c[..],jo_text(o[..])) && xb_ready(c[..],view,102,ifx view == 4 then "1999998000" else "");
+  }
+  ok = ok && nb_headers(args_at(a[..],1),"headers-b") && xb_ready(c[..],4,103,"0");
+  ok = ok && nb_headers(args_at(a[..],1),"headers-c") && xb_ready(c[..],4,104,"1999998000");
+  if ok {
+    png: [4194304] u8; n := cdp_screenshot(c[..],png[..]); path: [4096] u8;
+    ok = n > 0 && fs_write(fs_join(args_at(a[..],1),"native-node.png",path[..]),cast(string)png[0..<n]);
+  }
+  cdp_close(c[..]); tool_errln(ifx ok then "Native node browser: height/hash/txid/address search and both balance-changing reorgs pass on one open page and one writer process." else "Native node browser journey failed.");
+  return ifx ok then 0 else 1;
+}

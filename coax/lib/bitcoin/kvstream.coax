@@ -1,0 +1,85 @@
+// Bounded replay of the unchanged KV v1 log. The caller owns a private
+// table until the complete file and its application cursor are admitted.
+#load "kvstore.coax";
+#authority;
+KvsExtent :: struct { code: int; n: int; cut: bool; zero_from: int = -1; }
+KvsFrame :: struct { code: int; used: int; seq: u64; cut: bool; }
+#test "stream segment creation: only a strict canonical header prefix can tear" #steps 100000000 {
+  header: [21] u8;
+  for mask: [2] u64.[0,0x0123456789abcdef] {
+    #assert kv_header_vartime(mask,header[..]) == 20;
+    for n: 0..<20 {
+      #assert kvs_header_prefix(header[0..<n],mask);
+      for i: 0..<n { header[i] ^= 1; #assert !kvs_header_prefix(header[0..<n],mask); header[i] ^= 1; }
+    }
+    #assert !kvs_header_prefix(header[0..<20],mask) && !kvs_header_prefix(header[..],mask);
+  }
+}
+kvs_header_prefix :: (prefix: [] u8, mask: u64) -> bool {
+  if prefix.count >= KV_HEADER { return false; }
+  expected: [20] u8; n := kv_header_vartime(mask,expected[..]);
+  for i: 0..<prefix.count { if prefix[i] != expected[i] { return false; } }
+  return true;
+}
+#test "stream replay: exact framing and recovery boundaries" {
+  h: [8] u8;
+  #assert kvs_extent(h[..],7).cut;
+  #assert kvs_extent(h[0..<7],8).code == KV_CORRUPT;
+  #assert kvs_extent(h[..],8).zero_from == 4;
+  for n: [4] int.[11,12,KV_FRAME_MAX,KV_FRAME_MAX+1] {
+    kv_put32(h[..],0,n); r := kvs_extent(h[..],8+n);
+    if n == 11 || n > KV_FRAME_MAX { #assert r.zero_from == 4 && r.n == 0; }
+    else { #assert r.code == KV_OK && r.n == n && !r.cut && r.zero_from == -1; }
+  }
+  kv_put32(h[..],0,12); #assert kvs_extent(h[..],19).cut;
+  #assert kvs_extent(h[..],20).n == 12;
+}
+#test "stream replay: sequence, checksum, capacity and private publication" {
+  batch: [128] u8; frame: [136] u8; table: [128] u8; key := [1] u8.[7]; value := [1] u8.[8];
+  n := kv_batch_new(batch[..]); n = kv_batch_put_vartime(batch[..],n,key[..],value[..]);
+  for i: 0..<n { frame[8+i] = batch[i]; } kv_seal_vartime(frame[..],n,9,17);
+  for first: [2] bool.[true,false] {
+    r := kvs_frame(frame[0..<8+n],17,8,!first,table[..],0,false);
+    #assert r.code == KV_OK && r.seq == 9 && r.used == 8 && !r.cut;
+    out: [1] u8; #assert kv_get_vartime(table[..],r.used,key[..],out[..]).n == 1 && out[0] == 8;
+  }
+  #assert kvs_frame(frame[0..<8+n],17,7,true,table[..],0,true).code == KV_CORRUPT;
+  #assert kvs_frame(frame[0..<8+n],17,8,true,table[0..<7],0,true).code == KV_FULL;
+  #assert kvs_frame(frame[0..<7],17,8,true,table[..],0,true).code == KV_CORRUPT;
+  #assert kvs_frame(frame[0..<7+n],17,8,true,table[..],0,true).code == KV_CORRUPT;
+  frame[4] ^= 1;
+  r := kvs_frame(frame[0..<8+n],17,8,true,table[..],0,true); #assert r.cut && r.code == KV_OK;
+  #assert kvs_frame(frame[0..<8+n],17,8,true,table[..],0,false).code == KV_CORRUPT;
+  frame[4] ^= 1;
+  #assert kv_batch_new(frame[8..<20]) == 12; kv_seal_vartime(frame[..],12,17,0);
+  empty := kvs_frame(frame[0..<20],0,16,true,table[..],0,false);
+  #assert empty.code == KV_OK && empty.seq == 17 && empty.used == 0;
+  #assert kvs_frame(frame[0..<21],0,16,true,table[..],0,false).code == KV_CORRUPT;
+  for i: 0..<n { frame[8+i] = batch[i]; } kv_seal_vartime(frame[..],n,0,0);
+  #assert kvs_frame(frame[0..<8+n],0,0,false,table[..],0,true).code == KV_CORRUPT;
+  frame[8+8] = 255; kv_checksum(frame[8..<8+n],frame[4..<8]);
+  #assert kvs_frame(frame[0..<8+n],0,0,false,table[..],0,true).code == KV_CORRUPT;
+  kv_put32(frame[..],0,11); #assert kvs_frame(frame[0..<19],0,0,false,table[..],0,true).code == KV_CORRUPT;
+}
+kvs_extent :: (head: [] u8, remaining: int) -> KvsExtent #export_c {
+  if remaining < KV_FRAME_HEAD { return KvsExtent.{cut=true}; }
+  if head.count != KV_FRAME_HEAD { return KvsExtent.{code=KV_CORRUPT}; }
+  n := kv_get32(head,0);
+  if kv_frame_size_ok(n) {
+    if n > remaining-KV_FRAME_HEAD { return KvsExtent.{cut=true}; }
+    return KvsExtent.{n=n};
+  }
+  return KvsExtent.{zero_from=4};
+}
+kvs_frame :: (frame: [] u8, mask: u64, previous: u64, seen: bool, table: [] u8, used: int, tail_zero: bool) -> KvsFrame #export_c {
+  if !kv_frame_size_ok(frame.count-KV_FRAME_HEAD) { return KvsFrame.{code=KV_CORRUPT}; }
+  n := kv_get32(frame,0);
+  if n != frame.count-KV_FRAME_HEAD { return KvsFrame.{code=KV_CORRUPT}; }
+  body := frame[KV_FRAME_HEAD..<frame.count];
+  if !kv_checksum_ok(body,frame[4..<8]) { return ifx tail_zero then KvsFrame.{cut=true} else KvsFrame.{code=KV_CORRUPT}; }
+  b := kv_batch_check_vartime(body);
+  if b.code != KV_OK || !kv_sequence_ok(previous,b.seq,seen) { return KvsFrame.{code=KV_CORRUPT}; }
+  next := kv_apply_vartime(table,used,body,mask);
+  if next < 0 { return KvsFrame.{code=-next}; }
+  return KvsFrame.{used=next,seq=b.seq};
+}

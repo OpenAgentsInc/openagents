@@ -1,0 +1,29 @@
+// Build the complete native node with Coax and the platform C compiler.
+#load "../platform/native-build.coax";
+tool_main :: () -> int #export_c {
+  a: [1] Args; if !args_load(a[..]) || args_count(a[..]) > 1 { return 2; }
+  option := ifx args_count(a[..]) == 1 then args_at(a[..],0) else "";
+  if option != "" && option != "--checked" && option != "--sanitize" && option != "--emit-only" { return 2; }
+  checked := option == "--checked" || option == "--sanitize";
+  dir := ifx option == "--sanitize" then "bitcoin/explorer/build/native-sanitized" else (ifx checked then "bitcoin/explorer/build/native-checked" else "bitcoin/explorer/build/native-release");
+  if !fs_mkdir(dir) { return 1; }
+  cb: [4096] u8; hb: [4096] u8; eb: [4096] u8; ehb: [4096] u8; bb: [4096] u8;
+  source := fs_join(dir,"explorer-node.c",cb[..]); header := fs_join(dir,"explorer-node.h",hb[..]);
+  entropy := fs_join(dir,"entropy-policy.c",eb[..]); entropy_h := fs_join(dir,"entropy-policy.h",ehb[..]); binary := fs_join(dir,"explorer-node",bb[..]);
+  tool_errln("Emitting native explorer and entropy policy.");
+  if !bn_emit_mode("bitcoin/platform/explorer-node.coax",source,header,!checked) || !bn_emit_mode("coax/lib/crypto/entropy.coax",entropy,entropy_h,!checked) { return 1; }
+  if option == "--emit-only" { tool_errln(dir); return 0; }
+  argv: [32] string; n := 0; argv[n] = "cc"; n += 1; argv[n] = "-std=c11"; n += 1;
+  if option == "--sanitize" { for flag: [4] string.["-O1","-g","-fsanitize=address,undefined","-fno-omit-frame-pointer"] { argv[n] = flag; n += 1; } }
+  else { argv[n] = "-O2"; n += 1; }
+  mac := tool_os() == 1; argv[n] = ifx mac then "-D_DARWIN_C_SOURCE" else "-D_GNU_SOURCE"; n += 1;
+  argv[n] = "-I"; n += 1; argv[n] = dir; n += 1; argv[n] = "-Icoax/platform"; n += 1;
+  argv[n] = source; n += 1; argv[n] = entropy; n += 1;
+  for path: [8] string.["bitcoin/platform/explorer-native.c","bitcoin/platform/explorer-files-native.c","coax/platform/tool-native.c","coax/platform/store-file-native.c","coax/platform/socket-native.c","coax/platform/entropy-native.c","coax/platform/entropy-foreign.c","coax/platform/process-native.c"] { argv[n] = path; n += 1; }
+  if mac { argv[n] = "-framework"; n += 1; argv[n] = "Security"; n += 1; }
+  else { argv[n] = "-pthread"; n += 1; }
+  for flag: [2] string.["-lm","-o"] { argv[n] = flag; n += 1; } argv[n] = binary; n += 1;
+  out: [65536] u8; err: [65536] u8; tool_errln("Linking native explorer."); r := proc_run(argv[0..<n],840000,out[..],err[..]);
+  if r.status != 0 || r.timed_out || r.cut { tool_err(cast(string)err[0..<r.err_n]); return 1; }
+  tool_errln(binary); return 0;
+}

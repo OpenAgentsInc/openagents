@@ -1,0 +1,118 @@
+// Native node's exclusive, private preparation. Unlike axi_reorg_vartime,
+// this mutates its input workspace. A refusal poisons that workspace: the
+// caller must discard/reopen it, and must not serve or append its batch.
+// Success is publishable only after the complete state frame is synced.
+#run_steps 250000000;
+#load "addrindex.coax";
+#authority;
+#test "private address preparation matches staged forward and both fork transitions" #steps 1000000000 {
+  d: [1] LcDemo; lc_demo_tree(d[..]); g := d[0].entries[0].hash;
+  lc_demo_publish(d[..],axi_init_vartime(5,g[..],d[0].live[..],0,d[0].stage[..],d[0].batch[..]));
+  private: [65536] u8; batch: [131072] u8; used := d[0].used;
+  for i: 0..<used { private[i] = d[0].live[i]; }
+  prefix: [100] LcRaw;
+  for i: 0..<100 { prefix[i].n = tx_unhex(LC_PREFIX[i+1],prefix[i].bytes[..]).count; }
+  for route: 0..<4 {
+    blocks: [103] LcBlock; locs: [103] TxiLoc; count := 0; target := 0;
+    if route == 0 {
+      for i: 1..<101 { raw := prefix[i-1].bytes[0..<prefix[i-1].n]; blocks[i-1] = LcBlock.{index=i,bytes=raw}; }
+      count = 100; target = 100;
+    } else {
+      start := ifx route == 2 then 2 else 0; count = ifx route == 2 then 3 else 2;
+      lc_demo_branch(d[..],start,count,blocks[0..<count]); target = blocks[count-1].index;
+      if route == 3 {
+        // Equal work does not supersede the selected three-block branch.
+        r := axi_private_reorg_vartime(d[0].tree[..],private[..],used,target,blocks[0..<count],locs[0..<count],batch[..],lc_demo_work(d[..]));
+        #assert r.code == LC_NOT_BETTER; break;
+      }
+    }
+    for i: 0..<count { locs[i].pos = 8+1000*blocks[i].index; }
+    expected := axi_reorg_vartime(d[0].tree[..],d[0].live[..],d[0].used,target,blocks[0..<count],locs[0..<count],d[0].stage[..],d[0].batch[..],lc_demo_work(d[..]));
+    exact := lc_demo_work(d[..]); exact.path = exact.path[0..<count];
+    got := axi_private_reorg_vartime(d[0].tree[..],private[..],used,target,blocks[0..<count],locs[0..<count],batch[..],exact);
+    #assert expected.code == LC_OK && got.code == LC_OK && got.used == expected.used && got.n == expected.n;
+    #assert got.connected == count && got.disconnected == expected.disconnected;
+    #assert lc_same(private[0..<got.used],d[0].stage[0..<expected.used]);
+    #assert lc_same(batch[0..<got.n],d[0].batch[0..<expected.n]);
+    used = got.used; lc_demo_publish(d[..],expected);
+  }
+}
+#test "private address preparation refuses context, path, body and every stage capacity" #steps 1000000000 {
+  for fault: 0..<15 {
+    d: [1] LcDemo; lc_demo_minimal(d[..]); g := d[0].entries[0].hash;
+    lc_demo_publish(d[..],axi_init_vartime(5,g[..],d[0].live[..],0,d[0].stage[..],d[0].batch[..]));
+    raw: [1024] u8; body := tx_unhex(LC_PREFIX[1],raw[..]);
+    blocks := [1] LcBlock.[LcBlock.{index=1,bytes=body}]; locs := [1] TxiLoc.[TxiLoc.{pos=8}];
+    w := lc_demo_work(d[..]); target := 1; used := d[0].used; trees := d[0].tree[..]; locations := locs[..]; children := blocks[..]; cap := d[0].batch.count;
+    if fault == 0 { used = 0; }
+    if fault == 1 { trees = trees[0..<0]; }
+    if fault == 2 { locations = locations[0..<0]; }
+    if fault == 3 { d[0].tree[0].p.chain = 4; }
+    if fault == 4 { target = -1; }
+    if fault == 5 { target = 2; }
+    if fault == 6 { d[0].entries[0].hash[0] ^= 1; }
+    if fault == 7 { d[0].links[0].height = 1; }
+    if fault == 8 { d[0].entries[1].status |= BLOCK_FAILED_VALID; }
+    if fault == 9 { children = children[0..<0]; locations = locations[0..<0]; }
+    if fault == 10 { w.path = w.path[0..<0]; }
+    if fault == 11 { blocks[0].index = 0; }
+    if fault == 12 { cap = 11; }
+    if fault == 13 { raw[0] ^= 1; }
+    if fault == 14 { locs[0].pos = 7; }
+    r := axi_private_reorg_vartime(trees,d[0].live[..],used,target,children,locations,d[0].batch[0..<cap],w);
+    #assert r.code == (ifx fault == 10 || fault == 12 then LC_CAPACITY else (ifx fault == 13 then LC_BLOCK else (ifx fault == 14 then TXI_LOCATION else LC_CONTEXT)));
+    #assert r.n == 0 && r.used == 0 && r.connected == 0 && r.disconnected == 0;
+  }
+  // Every partial-write capacity failure discards this private table.
+  for cap: [17] int.[12,60,100,150,188,250,308,340,390,450,510,570,620,675,700,732,733] {
+    d: [1] LcDemo; lc_demo_minimal(d[..]); g := d[0].entries[0].hash;
+    lc_demo_publish(d[..],axi_init_vartime(5,g[..],d[0].live[..],0,d[0].stage[..],d[0].batch[..]));
+    raw: [1024] u8; b := tx_unhex(LC_PREFIX[1],raw[..]); blocks := [1] LcBlock.[LcBlock.{index=1,bytes=b}]; locs := [1] TxiLoc.[TxiLoc.{pos=8}];
+    expected := axi_reorg_vartime(d[0].tree[..],d[0].live[..],d[0].used,1,blocks[..],locs[..],d[0].stage[..],d[0].batch[0..<cap],lc_demo_work(d[..]));
+    got := axi_private_reorg_vartime(d[0].tree[..],d[0].live[..],d[0].used,1,blocks[..],locs[..],d[0].batch[0..<cap],lc_demo_work(d[..]));
+    #assert expected.code == got.code;
+    if got.code == LC_OK { #assert lc_same(d[0].live[0..<got.used],d[0].stage[0..<expected.used]); }
+  }
+}
+#test "private preparation rejects a different valid first child before changing branches" #steps 1000000000 {
+  d: [1] LcDemo; lc_demo_setup(d[..]); g := d[0].entries[0].hash;
+  // Rebuild the prefix with the indexed wrapper.
+  lc_demo_publish(d[..],axi_init_vartime(5,g[..],d[0].live[..],0,d[0].stage[..],d[0].batch[..]));
+  prefix: [100] LcRaw; blocks: [100] LcBlock; locs: [100] TxiLoc;
+  for i: 0..<100 { prefix[i].n = tx_unhex(LC_PREFIX[i+1],prefix[i].bytes[..]).count; blocks[i] = LcBlock.{index=i+1,bytes=prefix[i].bytes[0..<prefix[i].n]}; locs[i].pos = 8; }
+  r := axi_private_reorg_vartime(d[0].tree[..],d[0].live[..],d[0].used,100,blocks[..],locs[..],d[0].batch[..],lc_demo_work(d[..]));
+  #assert r.code == LC_OK; d[0].used = r.used;
+  children: [2] LcBlock; lc_demo_branch(d[..],0,2,children[..]);
+  children[0] = LcBlock.{index=103,bytes=d[0].raw[2].bytes[0..<d[0].raw[2].n]};
+  #assert axi_private_reorg_vartime(d[0].tree[..],d[0].live[..],d[0].used,102,children[..],locs[0..<2],d[0].batch[..],lc_demo_work(d[..])).code == LC_CONTEXT;
+}
+axi_private_reorg_vartime :: (tree: [] BlockTree, table: [] u8, used: int, target: int, blocks: [] LcBlock, locs: [] TxiLoc, batch: [] u8, w: LcWork) -> LcResult #export_c {
+  if axi_context_vartime(table,used) != LC_OK || tree.count != 1 || locs.count != blocks.count { return LcResult.{code=LC_CONTEXT}; }
+  tip := lc_tip_vartime(table,used);
+  if tip.chain != tree[0].p.chain || !lc_index_extent(target,tree[0].count) { return LcResult.{code=LC_CONTEXT}; }
+  current := bi_find(tree,tip.hash[..]);
+  if current < 0 || tree[0].l[current].height != tip.height || !bi_is_valid(tree[0].e[target].status,BLOCK_VALID_TREE) { return LcResult.{code=LC_CONTEXT}; }
+  if !bi_worse(tree[0].e,current,target) { return LcResult.{code=LC_NOT_BETTER}; }
+  fork := bi_last_common_ancestor(tree[0].l,current,target); count := tree[0].l[target].height-tree[0].l[fork].height;
+  if count != blocks.count { return LcResult.{code=LC_CONTEXT}; }
+  if count > w.path.count { return LcResult.{code=LC_CAPACITY}; }
+  at := target;
+  for i: 0..<count { w.path[count-1-i] = at; at = tree[0].l[at].prev; }
+  for i: 0..<count { if blocks[i].index != w.path[i] { return LcResult.{code=LC_CONTEXT}; } }
+  n := kv_batch_new(batch); if kv_is_error(n) { return LcResult.{code=LC_CAPACITY}; }
+  c := [1] LcCursor.[LcCursor.{used=used,n=n}]; meta := txi_context_vartime(table,used);
+  disconnected := tip.height-tree[0].l[fork].height;
+  for i: 0..<disconnected { code := lc_disconnect_stage_vartime(table,c[..],batch); if code != LC_OK { return LcResult.{code=code}; } }
+  for block: blocks { code := lc_connect_stage_vartime(tree,table,c[..],batch,block,w); if code != LC_OK { return LcResult.{code=code}; } }
+  for i: 0..<count {
+    meta = txi_stage_block_vartime(tree,table,c[..],batch,blocks[i],locs[i],meta.next,w); if meta.code != LC_OK { return LcResult.{code=meta.code}; }
+  }
+  if !txi_sync_vartime(table,c[..],batch,meta.next) { return LcResult.{code=LC_CAPACITY}; }
+  for block: blocks {
+    hash := tree[0].e[block.index].hash;
+    code := axi_stage_block_vartime(table,c[..],batch,block.bytes,hash[..],tree[0].l[block.index].height,w.ins,w.outs,w.items);
+    if code != LC_OK { return LcResult.{code=code}; }
+  }
+  if !axi_sync_vartime(table,c[..],batch) { return LcResult.{code=LC_CAPACITY}; }
+  return LcResult.{used=c[0].used,n=c[0].n,connected=count,disconnected=disconnected};
+}

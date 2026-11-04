@@ -1426,7 +1426,11 @@
     "coax/tests/bitcoin/kvskip_store_checks.coax",
     "coax/tests/bitcoin/kv_bounds_checks.coax",
     "coax/tests/bitcoin/kvskip.py",
-    "coax/tests/bitcoin/kvskip-store.py"
+    "coax/tests/bitcoin/kvskip-store.py",
+    "coax/lib/bitcoin/kvstream.coax",
+    "bitcoin/platform/kvstream-file.coax",
+    "coax/tests/bitcoin/kvstream-native.coax",
+    "coax/tests/bitcoin/kvstream.py"
    ],
    "qualified_targets": [
     "cpu"
@@ -1935,7 +1939,12 @@
     "coax/lib/bitcoin/explorer-json.coax",
     "bitcoin/examples/explorer-api.coax",
     "bitcoin/examples/live/explorer-api.coax",
-    "coax/tests/bitcoin/explorer.py"
+    "coax/tests/bitcoin/explorer.py",
+    "bitcoin/platform/explorer-http.coax",
+    "bitcoin/platform/explorer-node.coax",
+    "bitcoin/platform/explorer-native.c",
+    "bitcoin/platform/explorer-files-native.c",
+    "coax/tests/bitcoin/explorer-node.py"
    ],
    "qualified_targets": [
     "cpu"
@@ -2672,7 +2681,8 @@
     "bitcoin/examples/address-index.coax",
     "bitcoin/examples/live/address-index.coax",
     "coax/tests/bitcoin/addrindex-native.coax",
-    "coax/tests/bitcoin/addrindex.py"
+    "coax/tests/bitcoin/addrindex.py",
+    "coax/lib/bitcoin/addrindex-private.coax"
    ],
    "qualified_targets": [
     "cpu"

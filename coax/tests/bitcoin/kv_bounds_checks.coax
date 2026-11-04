@@ -87,3 +87,12 @@
   used = kv_set_vartime(table[..],0,input[0..<2],value[..]); #assert used == 11;
   #assert kv_entry_c(table[..],used,0,fields[0..<5]) == 0 && fields[0] == 11 && fields[1] == 6 && fields[2] == 2 && fields[3] == 8 && fields[4] == 3;
 }
+
+#test "KV sequence: the last uint64 sequence admits once and cannot wrap" {
+  #assert !kv_sequence_ok(0,0,false) && kv_sequence_ok(0,1,false);
+  #assert kv_sequence_ok(0xffffffffffffffff,1,false);
+  #assert kv_sequence_ok(0,1,true) && !kv_sequence_ok(0,2,true) && !kv_sequence_ok(2,1,true);
+  #assert kv_sequence_ok(0xfffffffffffffffe,0xffffffffffffffff,true);
+  #assert !kv_sequence_ok(0xffffffffffffffff,1,true) && !kv_sequence_ok(0xffffffffffffffff,0,true);
+  #assert !kv_sequence_ok(0xffffffffffffffff,0xffffffffffffffff,true);
+}

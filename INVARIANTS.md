@@ -12,7 +12,7 @@ and continues only with returned offsets. C offsets identify actual keys
 and values, including the zero-cursor case. Every batch preflights all record
 and tower growth before applying any operation; deletion allocates nothing.
 
-The store and arena root gates kill 730 and 260 mutants respectively, with
+The store and arena root gates kill 733 and 260 mutants respectively, with
 zero survivors. `kvskip.py` checks an independent ordered dictionary and
 64-bit offsets; `kvskip-store.py` checks exact durable bytes and recovery in
 debug/release and under ASan/UBSan. The chapter-125 oracle's `--arena` journey
@@ -20,6 +20,33 @@ checks address history, balances and both reorgs on this representation,
 including every cut of the state frame. The full signet node must use
 bounded incremental file reads rather than treating the small example's
 whole-file buffers as a full-chain storage design.
+
+## The native explorer publishes only a complete durable cursor
+
+`addrindex-private.coax` prepares an exclusive workspace without copying its
+whole arena. A refusal poisons that workspace: discard and reopen it; never
+serve it or append its batch. Successful preparation becomes queryable only
+after the complete state frame is appended and synced. The public staged
+transition's disjoint-workspace contract remains unchanged. All 76 private
+transition mutants are killed, with no equivalents marked.
+
+`kvstream.coax` and `bitcoin/platform/kvstream-file.coax` replay bounded
+frames rather than a whole file. Sequence exhaustion refuses without
+wrapping. Native journal segments retain KV v1 headers/frames and enforce
+continuity between files. Only the final segment can have a recoverable
+tail. A partial new segment header can be rebuilt only when it is an exact
+canonical prefix and no later segment exists. A reader never repairs a
+writer file. The exclusive node owns recovery and the optional overflow
+directory; duplicate segment names across directories refuse. Placement of
+new segments follows available storage, while existing segment names locate
+stable bytes. Segment targets may be exceeded by one atomic frame.
+
+The API binds the admitted in-memory cursor and authenticates raw blocks
+including positional XOR. Header updates retain the node's own admitted
+archive, so a competing feed cannot erase the old branch. The native
+fixture journey covers both reorgs, cross-directory journal recovery and
+one open headless browser; the full signet reference comparison is a
+separate acceptance gate.
 
 ## P2P frames honor the protocol limit independently of SHA workspace limits
 

@@ -1,0 +1,61 @@
+// File effects around the checked bounded v1 replay. A caller may publish
+// this private table only after code==KV_OK and application context checks.
+#load "../../coax/lib/bitcoin/kvstream.coax";
+#load "../../coax/lib/sys/fs.coax";
+bf_native_read_at :: (path: [] u8, offset: int, out: [] u8) -> int #foreign;
+bf_native_lock :: (path: [] u8) -> int #foreign;
+bf_native_append_sync :: (path: [] u8, data: [] u8) -> bool #foreign;
+bf_native_free_bytes :: (path: [] u8) -> int #foreign;
+bf_path :: (path: string, out: [] u8) -> int {
+  if !fs_path_ok(path) { return -1; } for i: 0..<path.count { out[i] = path[i]; } return path.count;
+}
+bf_read_at :: (path: string, offset: int, out: [] u8) -> int {
+  buffer: [4096] u8; n := bf_path(path,buffer[..]); if n < 0 { return -1; } return bf_native_read_at(buffer[0..<n],offset,out);
+}
+bf_lock :: (path: string) -> int {
+  buffer: [4096] u8; n := bf_path(path,buffer[..]); if n < 0 { return -1; } return bf_native_lock(buffer[0..<n]);
+}
+bf_append_sync :: (path: string, data: [] u8) -> bool {
+  buffer: [4096] u8; n := bf_path(path,buffer[..]); return n >= 0 && bf_native_append_sync(buffer[0..<n],data);
+}
+bf_free_bytes :: (path: string) -> int {
+  buffer: [4096] u8; n := bf_path(path,buffer[..]); if n < 0 { return -1; } return bf_native_free_bytes(buffer[0..<n]);
+}
+bf_zero_tail :: (path: string, at: int, end: int, buffer: [] u8) -> bool {
+  pos := at;
+  while pos < end {
+    n := ifx end-pos < buffer.count then end-pos else buffer.count;
+    if bf_read_at(path,pos,buffer[0..<n]) != n || !kv_zero_from(buffer[0..<n],0) { return false; } pos += n;
+  }
+  return true;
+}
+kvs_open_file :: (path: string, table: [] u8, initial: int, frame: [] u8, scratch: [] u8) -> KvOpen {
+  return kvs_open_file_after(path,table,initial,frame,scratch,0,false);
+}
+kvs_open_file_after :: (path: string, table: [] u8, initial: int, frame: [] u8, scratch: [] u8, previous: u64, seen: bool) -> KvOpen {
+  size := fs_size(path); stamp := fs_mtime_ns(path); head: [20] u8;
+  if bf_read_at(path,0,head[..]) != KV_HEADER { return KvOpen.{code=KV_BAD_HEADER}; }
+  empty: [1] u8; r := kv_open_vartime(head[..],empty[0..<0]);
+  if r.code != KV_OK { return r; } r.used = initial; r.seq = previous; at := KV_HEADER;
+  while at < size {
+    take := ifx size-at < 8 then size-at else 8;
+    if bf_read_at(path,at,frame[0..<take]) != take { return KvOpen.{code=KV_CORRUPT}; }
+    extent := kvs_extent(frame[0..<take],size-at);
+    if extent.code != KV_OK { return KvOpen.{code=extent.code,keep=at}; }
+    if extent.cut { r.cut = true; break; }
+    if extent.zero_from >= 0 {
+      if !bf_zero_tail(path,at+extent.zero_from,size,scratch) { return KvOpen.{code=KV_CORRUPT,keep=at}; }
+      r.cut = true; break;
+    }
+    n := extent.n; if n+8 > frame.count { return KvOpen.{code=KV_FULL,keep=at}; }
+    if bf_read_at(path,at+8,frame[8..<8+n]) != n { return KvOpen.{code=KV_CORRUPT,keep=at}; }
+    zero := false;
+    if !kv_checksum_ok(frame[8..<8+n],frame[4..<8]) { zero = bf_zero_tail(path,at+8+n,size,scratch); }
+    f := kvs_frame(frame[0..<8+n],r.mask,r.seq,seen || r.frames>0,table,r.used,zero);
+    if f.code != KV_OK { return KvOpen.{code=f.code,keep=at}; }
+    if f.cut { r.cut = true; break; }
+    r.used = f.used; r.seq = f.seq; r.frames += 1; at += 8+n;
+  }
+  if fs_size(path) != size || fs_mtime_ns(path) != stamp { return KvOpen.{code=KV_CORRUPT}; }
+  r.keep = at; return r;
+}

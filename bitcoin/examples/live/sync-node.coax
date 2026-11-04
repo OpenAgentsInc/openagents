@@ -4,7 +4,7 @@
 // window, each checked against its header and appended to a file.
 //   COAX=coax/bin/coax coax/web/tool.sh bitcoin/examples/live/sync-node.coax \
 //     --chain regtest|signet --now UNIX_SECONDS --peer HOST:PORT [--peer HOST:PORT ...] \
-//     [--min-work N] [--blocks N] [--out FILE] [--seconds N]
+//     [--min-work N] [--blocks N] [--out FILE] [--headers-out FILE] [--seconds N]
 // --min-work replaces the chain's minimum chain work (Core's
 // -minimumchainwork) with N; --blocks N downloads only the last N blocks
 // below the best header, taking the ones under them as stored (the way an
@@ -139,6 +139,36 @@ headers_in :: (node: [] Node, payload: [] u8) -> int {
   return r.count;
 }
 
+#test "stored headers serialize their complete original identity" {
+  e := BiEntry.{version=-2147483648,time=17,bits=0x207fffff,nonce=99}; e.merkle_root[2] = 7;
+  parent: [32] u8; parent[3] = 11; raw: [80] u8;
+  #assert sync_header(e,parent[..],raw[..]); h := pow_header_read_vartime(raw[..]);
+  #assert h.version == e.version && h.time == e.time && h.bits == e.bits && h.nonce == e.nonce;
+  #assert lc_bytes_same(h.prev[..],parent[..]) && h.merkle_root[2] == 7;
+}
+lc_bytes_same :: (a: [] u8, b: [] u8) -> bool {
+  if a.count != b.count { return false; } for i: 0..<a.count { if a[i] != b[i] { return false; } } return true;
+}
+sync_header :: (e: BiEntry, parent: [] u8, raw: [] u8) -> bool {
+  h := BlockHeader.{version=e.version,time=e.time,bits=e.bits,nonce=e.nonce,merkle_root=e.merkle_root};
+  for i: 0..<32 { h.prev[i] = parent[i]; } return pow_header_write_vartime(h,raw);
+}
+sync_headers_write :: (node: [] Node, path: string) -> bool {
+  if !fs_write(path,"") { return false; } bytes: [655360] u8; n := 0; zero: [32] u8;
+  for i: 0..<node[0].t[0].count {
+    prev := node[0].l[i].prev; parent := ifx prev < 0 then zero else node[0].e[prev].hash;
+    if !sync_header(node[0].e[i],parent[..],bytes[n..<n+80]) { return false; } n += 80;
+    if n == bytes.count { if !fs_append(path,cast(string)bytes[..]) { return false; } n = 0; }
+  }
+  return fs_append_durable(path,cast(string)bytes[0..<n]);
+}
+sync_headers_out :: (node: [] Node, path: string) -> bool {
+  buffer: [4096] u8; if path.count+5 > buffer.count { return false; }
+  for i: 0..<path.count { buffer[i] = path[i]; }
+  suffix := ".next"; for i: 0..<5 { buffer[path.count+i] = suffix[i]; }
+  temporary := cast(string)buffer[0..<path.count+5];
+  return sync_headers_write(node,temporary) && fs_rename(temporary,path);
+}
 tool_main :: () -> int #export_c {
   a: [1] Args;
   ok := args_load(a[..]);
@@ -148,7 +178,7 @@ tool_main :: () -> int #export_c {
   last_n := number(args_value(a[..], "--blocks", "0"));
   seconds := number(args_value(a[..], "--seconds", "1800"));
   if !ok || now <= 0 || last_n < 0 || seconds <= 0 || (chain_name != "regtest" && chain_name != "signet") {
-    tool_errln("usage: sync-node --chain regtest|signet --now UNIX_SECONDS --peer HOST:PORT ... [--min-work N] [--blocks N] [--out FILE] [--seconds N]");
+    tool_errln("usage: sync-node --chain regtest|signet --now UNIX_SECONDS --peer HOST:PORT ... [--min-work N] [--blocks N] [--out FILE] [--headers-out FILE] [--seconds N]");
     return 2;
   }
   node: [1] Node;
@@ -267,6 +297,9 @@ tool_main :: () -> int #export_c {
   show(t[0].e[best].hash[..], 64); print(")\n");
   if first < 0 { print("  no peer answered getheaders\n"); return 3; }
   if refused || best == 0 { print("  the peer's chain has too little work: nothing stored, no blocks to fetch\n"); return 3; }
+
+  headers_out := args_value(a[..], "--headers-out", "");
+  if headers_out.count > 0 && !sync_headers_out(node[..],headers_out) { return 1; }
 
   // The other peers: getheaders from the best header's parent, so each
   // sends at least that header back (Core does the same once the best
