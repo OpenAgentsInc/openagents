@@ -5,15 +5,22 @@
 // it sends a Wolf, every player can aim at it, and its hits, saves and deaths are the engine's. The
 // room's world event (coax/web/room/room-events.coax) says when and where they come; this file is
 // how they fight:
-//   - a raider sets on whatever is nearest within reach, a player before a townsperson (12 m for a
-//     Cultist or a Fanatic, 30 m for a Warlock); with none it marches in by its gate to the square;
-//   - a Cultist and a Fanatic run in and strike in melee; a Fanatic casts Hold Person once, at a
-//     player; a Warlock stops 15 to 25 m off and casts Eldritch Blast, and with nobody in reach it
-//     blasts the town (the room breaks and burns the town's pieces when its damage dial is on);
+//   - the raiders fight a siege by the shared tactics (everglade-raid-tactics.coax): in squads, each
+//     member at its own place; the casters (the Warlocks, and two Cultists in three, with Fire Bolt)
+//     fire their squad's volleys together on its call, first at a gate tower and a breach in the wall
+//     (the room breaks and burns the town's pieces when its damage dial is on), then the squad goes
+//     in by the gate or the breach to its places about the square, the casters on the defenders and
+//     the players. Raiders keep apart, and clear of the players' spawn;
+//   - a raider sets on whatever is nearest within reach, a player before a townsperson (12 m for one
+//     in melee, 30 m for a caster, 12 m for a caster still at the wall); none sets on a player in the
+//     spawn's clear ground;
+//   - a Fanatic and the other Cultists run in and strike in melee; a Fanatic casts Hold Person once, at
+//     a player; a caster keeps 18 m off;
 //   - the ward stones (AC 15, 60 Hit Points) stand still; while one stands, nothing hurts Darian
 //     Odiodei (RsCreature.floor at his whole Hit Points); with all broken his floor is half his Hit
 //     Points, and the room withdraws him when he reaches it, so he never drops;
-//   - Darian stays at the square's edge and fights by the aggression dial: 0 watches, 1 Eldritch Blast
+//   - Darian stays RT_BACK behind his lines, and casts Dimension Door away from a foe at hand while he
+//     has a Pact slot; he fights by the aggression dial: 0 watches, 1 Eldritch Blast
 //     and Blight, 2 also Fireball at three or more together, 3 also Circle of Death and Finger of
 //     Death, and twice a turn.
 // What the pages play (a raider's cast) and who fell (for the XP) wait in queues the room drains.
@@ -36,7 +43,9 @@ E5RD_KEEP :: 20.0;                           // m a Warlock keeps from its foe (
 E5RD_SEAT_FIRST :: 6.0;                      // m: a player this much farther than a townsperson still comes first
 E5RD_HOME :: 2.0;                            // m: a raider that fled this near where it came from is gone
 // the stages of its march
-E5RD_IN :: 0; E5RD_SQUARE :: 1; E5RD_FLEE :: 2;
+E5RD_IN :: 0; E5RD_FLEE :: 2;
+// the players' spawn (verse/everglade/plan.coax EG_SPAWN_X, EG_SPAWN_Z): kept clear (RT_SPAWN_R)
+E5RD_SPAWN_X :: 0.0; E5RD_SPAWN_Z :: -84.0;
 // what a page plays for a cast (everglade-warlock.coax WL_*): the Warlock's bar slot
 E5RD_K_BLAST :: 0; E5RD_K_FIREBALL :: 1; E5RD_K_BLIGHT :: 2; E5RD_K_CIRCLE :: 3; E5RD_K_FINGER :: 4; E5RD_K_DOOR :: 5;
 // Ward stone: a dark obelisk the cult raises at a gate. AC 15, 60 Hit Points; an object: no saves to
@@ -45,8 +54,11 @@ E5RD_WARD_AC :: 15; E5RD_WARD_HP :: 60;
 
 E5rdSlot :: struct {
   npc: int; level: int; stage: int;
+  role: int;                                 // RT_MELEE, RT_CASTER, RT_LEAD (everglade-raid-tactics.coax)
+  squad: int; k: int;                        // its squad (the room's 8 to a gate) and its place in it
+  g: RtGate;                                 // its way in
   gx: f32; gz: f32;                          // its gate (the way in)
-  sx: f32; sz: f32;                          // where it goes in the square
+  sx: f32; sz: f32;                          // its place in the town (the leader's: where he holds with no lines)
   hx: f32; hz: f32;                          // where it came from (the way out)
   held: bool;                                // a Fanatic's Hold Person is spent
 }
@@ -62,6 +74,10 @@ E5rdRaid :: struct {
   aggr: int = 2; harm: bool = true;
   arch: int = -1;                            // Darian's place among the beasts (-1 away)
   up: int;                                   // raid creatures standing, as the last step counted (the watch fights while any do)
+  // the squads (squad % RT_SQUADS): which squad holds the place (+1), its calls' first, when it came,
+  // its volleys at the wall so far and the call it last fired on
+  sq_id: [RT_SQUADS] int; sq_anchor: [RT_SQUADS] f32; sq_at: [RT_SQUADS] f32; sq_v: [RT_SQUADS] int; sq_last: [RT_SQUADS] int;
+  xs: [E5RR_BEASTS] f32; zs: [E5RR_BEASTS] f32; on: [E5RR_BEASTS] bool;   // where each raid creature stands, this step
 }
 E5RD_WATCH_THROW :: 20;   // feet: a Guard's Spear thrown (its normal range, SRD 5.2.1 Weapons)
 E5RD_WATCH_LOOK :: 120;   // feet: how far the watch looks for a raider to shoot at
@@ -98,7 +114,7 @@ e5rd_free :: (r: [] E5rRoom) -> int {
 }
 // Creature c joins the raid at (x, z) as form `form`, by its gate (gx, gz) to (sx, sz) in the square:
 // its beast id, 0 with no place.
-e5rd_join :: (r: [] E5rRoom, c: RsCreature, form: int, x: f32, z: f32, gx: f32, gz: f32, sx: f32, sz: f32) -> int {
+e5rd_join :: (r: [] E5rRoom, c: RsCreature, form: int, x: f32, z: f32, g: RtGate, squad: int, k: int, role: int, sx: f32, sz: f32) -> int {
   if !r[0].started { return 0; }
   q := e5rd_free(r);
   if q < 0 { return 0; }
@@ -109,15 +125,24 @@ e5rd_join :: (r: [] E5rRoom, c: RsCreature, form: int, x: f32, z: f32, gx: f32, 
   b[0].c[i].team = E5RD_TEAM;
   b[0].c[i].turn_at = hi_r(t, b[0].clock) + 0.05 * f32(q % 17); b[0].c[i].round_at = ro;
   b[0].c[i].x = e5r_sq(x); b[0].c[i].y = e5r_sq(z);
+  // its squad: a new one takes the place, its calls from now; a caster takes its turns on them
+  w := r[0].raid[..];
+  s := squad % RT_SQUADS;
+  if w[0].sq_id[s] != squad + 1 {
+    w[0].sq_id[s] = squad + 1; w[0].sq_anchor[s] = b[0].c[i].turn_at; w[0].sq_at[s] = b[0].clock; w[0].sq_v[s] = 0; w[0].sq_last[s] = -1;
+  }
+  if role == RT_CASTER { b[0].c[i].turn_at = rt_align(b[0].c[i].turn_at, w[0].sq_anchor[s], rs_beat(b)); }
   id := r[0].next_id; r[0].next_id += 1;
-  r[0].beasts[q] = E5rBeast.{id = id, tag = id, by = -1, spell = -1, form = form, x = x, z = z, goal_x = gx, goal_z = gz,
-                            yaw = e5rr_heading(gx - x, gz - z)};
-  r[0].raid[0].slot[q] = E5rdSlot.{npc = e5rd_npc(form), level = c.level, stage = E5RD_IN, gx = gx, gz = gz, sx = sx, sz = sz, hx = x, hz = z};
+  r[0].beasts[q] = E5rBeast.{id = id, tag = id, by = -1, spell = -1, form = form, x = x, z = z, goal_x = g.x, goal_z = g.z,
+                            yaw = e5rr_heading(g.x - x, g.z - z)};
+  w[0].slot[q] = E5rdSlot.{npc = e5rd_npc(form), level = c.level, stage = E5RD_IN, role = role, squad = squad, k = k, g = g,
+                           gx = g.x, gz = g.z, sx = sx, sz = sz, hx = x, hz = z};
   return id;
 }
 // The raider of stat block npc (RS_NPC_CULTIST, _FANATIC or _WARLOCK, at `level`), the number-th of
-// its kind, at (x, z): its beast id, 0 with no place.
-e5rd_raider :: (r: [] E5rRoom, npc: int, level: int, number: int, x: f32, z: f32, gx: f32, gz: f32, sx: f32, sz: f32) -> int {
+// its kind, at (x, z), in by way g, member k of squad `squad`, its place in the town (sx, sz): its
+// beast id, 0 with no place. A Cultist who casts (rt_role) has Fire Bolt, by Wisdom.
+e5rd_raider :: (r: [] E5rRoom, npc: int, level: int, number: int, x: f32, z: f32, g: RtGate, squad: int, k: int, sx: f32, sz: f32) -> int {
   nm: [RS_NAME] u8; nn := rs_npc_named(nm[..], npc, number);
   name := cast(string) nm[0..<nn];
   c: [1] RsCreature;
@@ -126,8 +151,8 @@ e5rd_raider :: (r: [] E5rRoom, npc: int, level: int, number: int, x: f32, z: f32
     c[0] = rs_warlock(name, E5RD_TEAM, rs_max(level, 1), SP_ELDRITCH_BLAST);
     c[0].npc = RS_NPC_WARLOCK; c[0].rebuke = true;
     c[0].repelling = -1;   // no Repelling Blast: a player's place is theirs and the world's, not the rules' to push
-  } else { c[0] = rs_cultist(name, E5RD_TEAM); }
-  return e5rd_join(r, c[0], E5RR_FORM_RAID + c[0].npc, x, z, gx, gz, sx, sz);
+  } else { c[0] = rs_cultist(name, E5RD_TEAM); c[0].spell_ability = RS_WIS; }
+  return e5rd_join(r, c[0], E5RR_FORM_RAID + c[0].npc, x, z, g, squad, k, rt_role(npc, number), sx, sz);
 }
 // A ward stone at (x, z): its beast id.
 e5rd_ward :: (r: [] E5rRoom, x: f32, z: f32) -> int {
@@ -135,17 +160,18 @@ e5rd_ward :: (r: [] E5rRoom, x: f32, z: f32) -> int {
   c[0] = fb_folk("Ward Stone", E5RD_TEAM, E5RD_WARD_AC, E5RD_WARD_HP, [6] int.[10, 1, 10, 1, 1, 1]);
   c[0].humanoid = false; c[0].speed = 0;
   c[0].immune = (1 << RS_POISON) | (1 << RS_PSYCHIC); c[0].immune_cond = -1;
-  return e5rd_join(r, c[0], E5RR_FORM_WARD, x, z, x, z, x, z);
+  return e5rd_join(r, c[0], E5RR_FORM_WARD, x, z, rt_open(x, z, 0, 1), RT_SQUADS * 1000, 0, RT_MELEE, x, z);
 }
 // Darian Odiodei (npcs.coax rs_siege_arch: the SRD's Fiend Warlock at level 17) at (x, z), by the gate
-// (gx, gz) to (sx, sz), the square's edge; warded until wards_down. His beast id.
+// (gx, gz); (sx, sz) where he holds with none of his lines standing. Warded until the stones fall.
+// His beast id.
 e5rd_arch :: (r: [] E5rRoom, x: f32, z: f32, gx: f32, gz: f32, sx: f32, sz: f32) -> int {
   c: [1] RsCreature;
   c[0] = rs_siege_arch(RS_ARCH_NAME, E5RD_TEAM, SP_ELDRITCH_BLAST);
   c[0].repelling = -1;
   c[0].immune_cond = -1;   // nothing holds him: he can be hurt (once the wards are down) but not stopped
   c[0].floor = c[0].hp_max + 1;
-  id := e5rd_join(r, c[0], E5RR_FORM_RAID + RS_NPC_ARCH, x, z, gx, gz, sx, sz);
+  id := e5rd_join(r, c[0], E5RR_FORM_RAID + RS_NPC_ARCH, x, z, rt_open(gx, gz, 0, 1), RT_SQUADS * 1000 + 1, 0, RT_LEAD, sx, sz);
   if id > 0 { for q: 0..<E5RR_BEASTS { if r[0].beasts[q].id == id { r[0].raid[0].arch = q; } } }
   return id;
 }
@@ -243,6 +269,21 @@ e5rd_down :: (r: [] E5rRoom, q: int) {
 
 // ---- how they fight
 
+// Whether player i stands in the spawn's clear ground (RT_SPAWN_R): no raider sets on them there.
+e5rd_safe :: (r: [] E5rRoom, i: int) -> bool {
+  dx := e5rd_mx(r, i) - f32(E5RD_SPAWN_X); dz := e5rd_mz(r, i) - f32(E5RD_SPAWN_Z);
+  return dx * dx + dz * dz < f32(RT_SPAWN_R) * f32(RT_SPAWN_R);
+}
+// Whether raid creature q's squad is through with its siege: its volleys at the wall fired, or it has
+// been at it RT_SIEGE_S, or its way has no wall.
+e5rd_done :: (r: [] E5rRoom, q: int) -> bool {
+  sl := r[0].raid[0].slot[q];
+  if !sl.g.wall { return true; }
+  s := sl.squad % RT_SQUADS;
+  w := r[0].raid[0];
+  return w.sq_v[s] >= RT_SIEGE_VOLLEYS || r[0].b[0].clock - w.sq_at[s] >= f32(RT_SIEGE_S);
+}
+
 // The foe for raid creature q within reach metres: the nearest player, else the nearest townsperson
 // (a player up to E5RD_SEAT_FIRST farther still comes first). -1 none.
 e5rd_foe :: (r: [] E5rRoom, q: int, reach: f32) -> int {
@@ -250,7 +291,7 @@ e5rd_foe :: (r: [] E5rRoom, q: int, reach: f32) -> int {
   best := -1; bd := reach + E5RD_SEAT_FIRST;
   for s: 0..<E5RR_SEATS {
     i := E5RR_SEAT + s;
-    if !e5rd_up(r, i) { continue; }
+    if !e5rd_up(r, i) || e5rd_safe(r, i) { continue; }
     dx := e5rd_mx(r, i) - bt.x; dz := e5rd_mz(r, i) - bt.z;
     d := sqrt(dx * dx + dz * dz);
     if d <= reach && d - E5RD_SEAT_FIRST < bd { bd = d - E5RD_SEAT_FIRST; best = i; }
@@ -291,24 +332,36 @@ e5rd_turn :: (r: [] E5rRoom, q: int) {
   i := E5RR_BEAST0 + q;
   bt := r[0].beasts[q..<q + 1];
   sl := r[0].raid[0].slot[q..<q + 1];
+  w := r[0].raid[..];
   if bt[0].form == E5RR_FORM_WARD || sl[0].stage == E5RD_FLEE || !rs_can_act(b[0].c[i]) { return; }
   npc := sl[0].npc;
   if npc == RS_NPC_ARCH { e5rd_arch_turn(r, q); return; }
-  caster := npc == RS_NPC_WARLOCK;
-  foe := e5rd_foe(r, q, ifx caster then f32(E5RD_REACH_CAST) else f32(E5RD_REACH_MELEE));
-  bt[0].foe = foe;
-  if foe < 0 {
-    // nobody in reach: a Warlock in the town blasts the town (every other turn), when it may
-    if caster && r[0].raid[0].harm && sl[0].stage == E5RD_SQUARE && rs_roll(b[0].dice[..], 2) == 1 {
-      a := rs_roll(b[0].dice[..], 628) / 100;
-      e5rd_cast(r, q, E5RD_K_BLAST, -1, bt[0].x + cos(f32(a)) * 12, bt[0].z + sin(f32(a)) * 12);
+  done := e5rd_done(r, q);
+  if sl[0].role == RT_CASTER {
+    // its squad's call, or it holds its spell for it
+    s := sl[0].squad % RT_SQUADS;
+    v := rt_volley(b[0].clock, w[0].sq_anchor[s], rs_beat(b));
+    if v < 0 { return; }
+    foe := e5rd_foe(r, q, ifx done then f32(E5RD_REACH_CAST) else f32(RT_SELF));
+    bt[0].foe = foe;
+    if foe < 0 {
+      if done { return; }
+      // the siege: this call's volley at the wall (the squad's volleys count once a call)
+      if w[0].sq_last[s] != v { w[0].sq_last[s] = v; w[0].sq_v[s] += 1; }
+      o: [2] f32;
+      if rt_siege_aim(sl[0].g, sl[0].squad, sl[0].k, w[0].sq_v[s] - 1, o[..]) != RT_AIM_FOES && w[0].harm {
+        bt[0].yaw = e5rr_heading(o[0] - bt[0].x, o[1] - bt[0].z);
+        e5rd_cast(r, q, E5RD_K_BLAST, -1, o[0], o[1]);
+      }
+      return;
     }
+    sp := ifx npc == RS_NPC_WARLOCK then SP_ELDRITCH_BLAST else SP_FIRE_BOLT;
+    if rs_cast(b, i, sp, 0, 0, 0, foe) { e5rd_cast(r, q, E5RD_K_BLAST, foe, e5rd_mx(r, foe), e5rd_mz(r, foe)); }
     return;
   }
-  if caster {
-    if rs_cast(b, i, SP_ELDRITCH_BLAST, 0, 0, 0, foe) { e5rd_cast(r, q, E5RD_K_BLAST, foe, e5rd_mx(r, foe), e5rd_mz(r, foe)); }
-    return;
-  }
+  foe := e5rd_foe(r, q, f32(E5RD_REACH_MELEE));
+  bt[0].foe = foe;
+  if foe < 0 { return; }
   // a Fanatic: Hold Person (its 1/Day) on a player within 60 feet when none is at hand
   if npc == RS_NPC_FANATIC && !sl[0].held && b[0].c[i].slots[2] > 0 && foe < E5RR_FOLK0 && rs_feet_to(b, i, foe) > 5 && rs_feet_to(b, i, foe) <= 60 {
     if rs_cast(b, i, SP_HOLD_PERSON, 2, 0, 0, foe) { sl[0].held = true; return; }
@@ -357,6 +410,7 @@ e5rd_folk_turn :: (r: [] E5rRoom, j: int) {
 }
 // Darian's turn, by the aggression dial (spec 5.3).
 e5rd_arch_turn :: (r: [] E5rRoom, q: int) {
+  if e5rd_door(r, q) { return; }
   aggr := r[0].raid[0].aggr;
   if aggr <= 0 { return; }
   e5rd_arch_act(r, q, aggr);
@@ -365,6 +419,28 @@ e5rd_arch_turn :: (r: [] E5rRoom, q: int) {
     r[0].b[0].turn.action = false; r[0].b[0].turn.slot_spent = false; r[0].b[0].turn.bonus = false;
     e5rd_arch_act(r, q, aggr);
   }
+}
+// A foe within RT_THREAT of Darian, and a Pact slot left: he casts Dimension Door (SRD 5.2.1: 500 feet;
+// a 5th-level Pact slot) RT_DOOR back from it, clear of the spawn. Whether he did.
+e5rd_door :: (r: [] E5rRoom, q: int) -> bool {
+  b := r[0].b[..];
+  i := E5RR_BEAST0 + q;
+  if b[0].c[i].slots[5] <= 0 || b[0].turn.action { return false; }
+  foe := e5rd_foe(r, q, f32(RT_THREAT));
+  if foe < 0 { return false; }
+  bt := r[0].beasts[q..<q + 1];
+  sl := r[0].raid[0].slot[q];
+  o: [2] f32;
+  rt_door(bt[0].x, bt[0].z, e5rd_mx(r, foe), e5rd_mz(r, foe), sl.hx, sl.hz, o[..]);
+  rt_clear(o[0], o[1], f32(E5RD_SPAWN_X), f32(E5RD_SPAWN_Z), f32(RT_SPAWN_R), o[..]);
+  b[0].c[i].slots[5] -= 1; b[0].turn.action = true;
+  l: [1] RsLine;
+  rs_add_name(l[..], b, i); rs_add_text(l[..], " casts Dimension Door");
+  rs_tell(b, RS_EV_END, SP_DIMENSION_DOOR, i, i, 0, 0, l[..]);
+  e5rd_cast(r, q, E5RD_K_DOOR, -1, o[0], o[1]);
+  bt[0].x = o[0]; bt[0].z = o[1];
+  b[0].c[i].x = e5r_sq(o[0]); b[0].c[i].y = e5r_sq(o[1]);
+  return true;
 }
 e5rd_arch_act :: (r: [] E5rRoom, q: int, aggr: int) {
   b := r[0].b[..];
@@ -395,48 +471,68 @@ e5rd_arch_act :: (r: [] E5rRoom, q: int, aggr: int) {
 }
 
 // Each dt seconds: every raid creature moves (everglade5e-room-rules.coax e5rr_step), the way
-// e5b_step moves a Wolf: to its foe, else on its march.
+// e5b_step moves a Wolf: to its foe, else where its squad's orders put it (rt_order), the leader
+// behind his lines (rt_command); each the way round the spawn (rt_route), pushed off its neighbours
+// (rt_separate).
+E5RD_PUSH :: 0.6;   // how hard neighbours push, against a step's length
 e5rd_step :: (r: [] E5rRoom, dt: f32) {
   b := r[0].b[..];
-  r[0].raid[0].up = e5rd_standing(r) + (ifx r[0].raid[0].arch >= 0 then 1 else 0);
+  w := r[0].raid[..];
+  w[0].up = e5rd_standing(r) + (ifx w[0].arch >= 0 then 1 else 0);
+  // where everyone stands, and the middle of the lines
+  lx: f32 = 0; lz: f32 = 0; ln := 0;
+  for q: 0..<E5RR_BEASTS {
+    bt := r[0].beasts[q];
+    on := e5rd_is(bt) && !b[0].c[E5RR_BEAST0 + q].dead;
+    w[0].on[q] = on; w[0].xs[q] = bt.x; w[0].zs[q] = bt.z;
+    if on && bt.form != E5RR_FORM_WARD && w[0].slot[q].role != RT_LEAD && w[0].slot[q].stage != E5RD_FLEE { lx += bt.x; lz += bt.z; ln += 1; }
+  }
+  if ln > 0 { lx /= f32(ln); lz /= f32(ln); }
+  o: [5] f32;
   for q: 0..<E5RR_BEASTS {
     if !e5rd_is(r[0].beasts[q]) { continue; }
     bt := r[0].beasts[q..<q + 1];
-    sl := r[0].raid[0].slot[q..<q + 1];
+    sl := w[0].slot[q..<q + 1];
     i := E5RR_BEAST0 + q;
     bt[0].moving = false;
     if bt[0].form == E5RR_FORM_WARD || b[0].c[i].dead { continue; }
     foe := bt[0].foe;
     if foe >= 0 && !e5rd_up(r, foe) { foe = -1; bt[0].foe = -1; }
     tx := bt[0].x; tz := bt[0].z; stop: f32 = 0.3;
-    arch := sl[0].npc == RS_NPC_ARCH;
+    arch := sl[0].role == RT_LEAD;
     if sl[0].stage == E5RD_FLEE {
       tx = sl[0].hx; tz = sl[0].hz;
       ddx := tx - bt[0].x; ddz := tz - bt[0].z;
       if ddx * ddx + ddz * ddz <= E5RD_HOME * E5RD_HOME { e5b_gone(b, r[0].beasts[..], E5RR_BEAST0, q); continue; }
-    } else if foe >= 0 && !arch {
+    } else if arch {
+      if ln > 0 { rt_command(lx, lz, ln, sl[0].hx, sl[0].hz, o[..]); tx = o[0]; tz = o[1]; } else { tx = sl[0].sx; tz = sl[0].sz; }
+      stop = 1.0;
+    } else if foe >= 0 {
       tx = e5rd_mx(r, foe); tz = e5rd_mz(r, foe);
-      stop = ifx sl[0].npc == RS_NPC_WARLOCK then f32(E5RD_KEEP) else f32(E5RR_REACH) * 0.6;
+      stop = ifx sl[0].role == RT_CASTER then f32(RT_KEEP) else f32(E5RR_REACH) * 0.6;
     } else {
-      if sl[0].stage == E5RD_IN {
-        tx = sl[0].gx; tz = sl[0].gz;
-        ddx := tx - bt[0].x; ddz := tz - bt[0].z;
-        if ddx * ddx + ddz * ddz <= 6.25 { sl[0].stage = E5RD_SQUARE; }
-      }
-      if sl[0].stage == E5RD_SQUARE { tx = sl[0].sx; tz = sl[0].sz; }
+      s := sl[0].squad % RT_SQUADS;
+      rt_order(sl[0].g, sl[0].squad, sl[0].k, sl[0].role, w[0].sq_v[s], e5rd_done(r, q), bt[0].x, bt[0].z, sl[0].sx, sl[0].sz, o[..]);
+      tx = o[0]; tz = o[1];
     }
+    // round the spawn (one fleeing goes home by the way it came)
+    if sl[0].stage != E5RD_FLEE { rt_route(bt[0].x, bt[0].z, tx, tz, f32(E5RD_SPAWN_X), f32(E5RD_SPAWN_Z), f32(RT_SPAWN_R), o[..]); tx = o[0]; tz = o[1]; }
     dx := tx - bt[0].x; dz := tz - bt[0].z;
     d := sqrt(dx * dx + dz * dz);
-    if d > stop {
-      step := f32(E5RR_RUN) * dt * f32(b[0].c[i].speed) / 40.0;
-      if step > d - stop { step = d - stop; }
-      bt[0].x += dx / d * step; bt[0].z += dz / d * step;
-      bt[0].moving = step > 0.001;
-    }
-    if d > 0.01 { bt[0].yaw = e5rr_heading(dx, dz); }
-    // a caster at its foe faces it
-    if foe >= 0 && (arch || sl[0].npc == RS_NPC_WARLOCK) { bt[0].yaw = e5rr_heading(e5rd_mx(r, foe) - bt[0].x, e5rd_mz(r, foe) - bt[0].z); }
+    step := f32(E5RR_RUN) * dt * f32(b[0].c[i].speed) / 40.0;
+    mx: f32 = 0; mz: f32 = 0;
+    if d > stop { m := rt_lo(step, d - stop); mx = dx / d * m; mz = dz / d * m; }
+    rt_separate(bt[0].x, bt[0].z, q, w[0].xs[..], w[0].zs[..], w[0].on[..], E5RR_BEASTS, o[..]);
+    mx += o[0] * step * f32(E5RD_PUSH); mz += o[1] * step * f32(E5RD_PUSH);
+    mm := sqrt(mx * mx + mz * mz);
+    if mm > step { mx = mx / mm * step; mz = mz / mm * step; mm = step; }
+    bt[0].x += mx; bt[0].z += mz;
+    bt[0].moving = mm > 0.001;
+    if mm > 0.01 { bt[0].yaw = e5rr_heading(mx, mz); }
+    // one at its foe faces it
+    if foe >= 0 { bt[0].yaw = e5rr_heading(e5rd_mx(r, foe) - bt[0].x, e5rd_mz(r, foe) - bt[0].z); }
     b[0].c[i].x = e5r_sq(bt[0].x); b[0].c[i].y = e5r_sq(bt[0].z);
+    w[0].xs[q] = bt[0].x; w[0].zs[q] = bt[0].z;
   }
 }
 
@@ -451,8 +547,9 @@ e5rd_test_room :: (r: [] E5rRoom) {
   r: [1] E5rRoom;
   e5rd_test_room(r[..]);
   e5rr_join(r[..], 0, 0, -30);
-  // three Cultists 20 m south of the player, by a gate 5 m on, to the square
-  for n: 0..<3 { #assert e5rd_raider(r[..], RS_NPC_CULTIST, 1, n + 1, f32(n) - 1, -50, 0, -45, 0, 0) > 0; }
+  // three of the Cultists who screen (each third: rt_role), 20 m south of the player, by an open way
+  // 5 m on, to the square
+  for n: 0..<3 { #assert e5rd_raider(r[..], RS_NPC_CULTIST, 1, 3 * (n + 1), f32(n) * 2.5 - 2.5, -50, rt_open(0, -45, 0, -1), 0, n, 0, 0) > 0; }
   #assert e5rd_standing(r[..]) == 3 && e5rd_wards(r[..]) == 0;
   // they take the places from the top
   #assert e5rd_is(r[0].beasts[E5RR_BEASTS - 1]) && !e5rd_is(r[0].beasts[0]);
@@ -484,7 +581,7 @@ e5rd_test_room :: (r: [] E5rRoom) {
   r: [1] E5rRoom;
   e5rd_test_room(r[..]);
   e5rr_join(r[..], 0, 0, -30);
-  #assert e5rd_raider(r[..], RS_NPC_WARLOCK, 2, 1, 0, -60, 0, -55, 0, 0) > 0;
+  #assert e5rd_raider(r[..], RS_NPC_WARLOCK, 2, 1, 0, -60, rt_open(0, -55, 0, -1), 0, 0, 0, 0) > 0;
   t: f32 = 0;
   for f: 0..<160 { t += 0.05; e5rr_step(r[..], t); }
 
@@ -533,8 +630,8 @@ e5rd_test_room :: (r: [] E5rRoom) {
   t: f32 = 0;
   for f: 0..<60 { t += 0.05; e5rr_step(r[..], t); }
   // two Cultists come at them from 10 m off (nobody else to set on); one stands back 5 m off, in a throw's reach
-  #assert e5rd_raider(r[..], RS_NPC_CULTIST, 1, 1, 13, 0, 10, 0, 10, 0) > 0;
-  far := e5rd_raider(r[..], RS_NPC_CULTIST, 1, 2, 9, 1.6, 9, 1.6, 9, 1.6);
+  #assert e5rd_raider(r[..], RS_NPC_CULTIST, 1, 3, 13, 0, rt_open(10, 0, 1, 0), 0, 0, 10, 0) > 0;
+  far := e5rd_raider(r[..], RS_NPC_CULTIST, 1, 6, 9, 1.6, rt_open(9, 1.6, 1, 0), 0, 1, 9, 1.6);
   #assert far > 0;
   hurt := 0;
   for f: 0..<400 {
@@ -547,4 +644,74 @@ e5rd_test_room :: (r: [] E5rRoom) {
   }
   #assert (hurt & 3) != 0;
   #assert r[0].raid[0].up >= 0;
+}
+
+#test "room raid: a squad lays siege by the shared tactics: volleys at a tower and a breach, then in, spread, clear of the spawn; Darian stays back and doors away" #steps 16000000000 {
+  r: [1] E5rRoom;
+  e5rd_test_room(r[..]);
+  south := rt_gate(0, -56, 6, false, -64, 64, 0, 0);
+  // a squad of 8 Cultists 40 m out (numbers 1 to 8: two in three cast)
+  for k: 0..<8 {
+    p: [2] f32; rt_ring(k, 0, 0, 3, 12, p[..]);
+    #assert e5rd_raider(r[..], RS_NPC_CULTIST, 1, k + 1, (f32(k) - 3.5) * 1.5, -100, south, 0, k, p[0], p[1]) > 0;
+  }
+  t: f32 = 0;
+  towers := 0; walls := 0; together := 0; most_on_spawn: f32 = 1000;
+  for f: 0..<900 {
+    t += 0.05; e5rr_step(r[..], t);
+    // the casts this tick: at the wall (to -1), a tower's middle (x 4.5 off) or the breach (x 12 to 17 off)
+    n := r[0].raid[0].cast_n;
+    for c: 0..<n {
+      cs := r[0].raid[0].casts[c];
+      if cs.to >= 0 { continue; }   // in the town, at the watch
+      #assert abs(cs.az + 56) < 0.01;
+      if abs(abs(cs.ax) - 4.5) < 0.01 { towers += 1; } else { #assert abs(cs.ax) > 12 && abs(cs.ax) < 17; walls += 1; }
+    }
+    if n >= 2 { together += 1; }
+    r[0].raid[0].cast_n = 0;
+    for q: 0..<E5RR_BEASTS {
+      bt := r[0].beasts[q];
+      if !e5rd_is(bt) { continue; }
+      dx := bt.x - f32(E5RD_SPAWN_X); dz := bt.z - f32(E5RD_SPAWN_Z);
+      most_on_spawn = lo_r(most_on_spawn, sqrt(dx * dx + dz * dz));
+    }
+  }
+  // the casters fired together, at both the tower and the breach, and the squad's siege is done
+  #assert towers > 0 && walls > 0 && together > 0 && r[0].raid[0].sq_v[0] >= RT_SIEGE_VOLLEYS;
+  // all of them in the town now, none on another, and none ever came near the spawn
+  #assert most_on_spawn >= f32(RT_SPAWN_R) - 0.5;
+  for a: 0..<E5RR_BEASTS {
+    if !e5rd_is(r[0].beasts[a]) { continue; }
+    #assert r[0].beasts[a].z > -56;
+    for b: a + 1..<E5RR_BEASTS {
+      if !e5rd_is(r[0].beasts[b]) { continue; }
+      dx := r[0].beasts[a].x - r[0].beasts[b].x; dz := r[0].beasts[a].z - r[0].beasts[b].z;
+      #assert dx * dx + dz * dz > 0.6 * 0.6;
+    }
+  }
+  // Darian comes by the gate and holds behind his lines; a player at his side, he doors away
+  #assert e5rd_arch(r[..], 30, -76, 0, -56, 0, -46) > 0;
+  for f: 0..<200 { t += 0.05; e5rr_step(r[..], t); }
+  q := r[0].raid[0].arch;
+  ax := r[0].beasts[q].x; az := r[0].beasts[q].z;
+  // RT_BACK behind the middle of his lines (or where he came from, if that is nearer)
+  lx: f32 = 0; lz: f32 = 0; ln := 0;
+  for a: 0..<E5RR_BEASTS { bt := r[0].beasts[a]; if e5rd_is(bt) && a != q { lx += bt.x; lz += bt.z; ln += 1; } }
+  #assert ln > 0;
+  lx /= f32(ln); lz /= f32(ln);
+  back := sqrt((ax - lx) * (ax - lx) + (az - lz) * (az - lz));
+  #assert back > f32(RT_BACK) - 3;
+  #assert az < lz;
+  e5rr_join(r[..], 0, ax + 3, az);
+  doors := 0; dx: f32 = 0; dz: f32 = 0;
+  for f: 0..<80 {
+    r[0].raid[0].cast_n = 0;
+    t += 0.05; e5rr_step(r[..], t);
+    for c: 0..<r[0].raid[0].cast_n {
+      if r[0].raid[0].casts[c].k != E5RD_K_DOOR { continue; }
+      if doors == 0 { dx = r[0].beasts[q].x - ax; dz = r[0].beasts[q].z - az; }
+      doors += 1;
+    }
+  }
+  #assert doors >= 1 && dx * dx + dz * dz > 20 * 20;
 }

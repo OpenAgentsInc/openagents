@@ -446,6 +446,16 @@ ev_gate :: (g: int, out: [] f32) {
   d := sqrt(gx * gx + gz * gz);
   out[0] = gx; out[1] = gz; out[2] = gx + gx / d * f32(EV_OUT_M); out[3] = gz + gz / d * f32(EV_OUT_M);
 }
+// Gate g's way in for the raid's tactics (everglade-raid-tactics.coax): a gate in the palisade
+// (plan.coax EG_PALISADE: the south and north walls run x -64 to 64, the east and west z -56 to 60), or
+// the bridge, with no wall.
+ev_way :: (g: int) -> RtGate {
+  p: [4] f32;
+  ev_gate(g, p[..]);
+  if g >= 4 { dx := p[2] - p[0]; dz := p[3] - p[1]; d := sqrt(dx * dx + dz * dz); return rt_open(p[0], p[1], dx / d, dz / d); }
+  along_z := EV_GATE[g * 4 + 3] > 0.5;
+  return rt_gate(p[0], p[1], EV_GATE[g * 4 + 2], along_z, ifx along_z then -56.0f32 else -64.0f32, ifx along_z then 60.0f32 else 64.0f32, EV_SQUARE[0], EV_SQUARE[1]);
+}
 // The n-th gate of those the dial picked (any of them, in turn).
 ev_gate_of :: (v: [] RmServer, n: int) -> int {
   bits := v[0].evc.d.gates;
@@ -483,16 +493,20 @@ ev_raid_one :: (v: [] RmServer, k: int) -> bool {
   level := 1;
   if npc == RS_NPC_WARLOCK { level = 1 + e[0].number[RS_NPC_WARLOCK] % wlmax; }
   g: [4] f32;
-  ev_gate(ev_gate_of(v, e[0].sent / 8), g[..]);
-  // across the road from it, two deep
+  gate := ev_gate_of(v, e[0].sent / 8);
+  ev_gate(gate, g[..]);
+  // across the road from it, two deep, clear of the players' spawn
   ox := g[2] - g[0]; oz := g[3] - g[1]; od := sqrt(ox * ox + oz * oz); ox /= od; oz /= od;
   side := f32(e[0].sent % 8) - 3.5;
-  x := g[2] + oz * side * 1.4 + ox * f32((e[0].sent % 8) / 4) * 1.6 + ev_jitter(v, k, 0.4);
-  z := g[3] - ox * side * 1.4 + oz * f32((e[0].sent % 8) / 4) * 1.6 + ev_jitter(v, k, 0.4);
-  // its place in the square: anywhere in its middle 10 m
-  a := ev_jitter(v, k, 3.1416); rr := 4 + abs(ev_jitter(v, k, 6));
-  sx := EV_SQUARE[0] + cos(a) * rr; sz := EV_SQUARE[1] + sin(a) * rr;
-  id := e5rd_raider(ev_rules(v, k), npc, level, e[0].number[npc] + 1, x, z, g[0] + ev_jitter(v, k, 1.5), g[1] + ev_jitter(v, k, 1.5), sx, sz);
+  p: [2] f32;
+  rt_clear(g[2] + oz * side * 1.4 + ox * f32((e[0].sent % 8) / 4) * 1.6 + ev_jitter(v, k, 0.4),
+           g[3] - ox * side * 1.4 + oz * f32((e[0].sent % 8) / 4) * 1.6 + ev_jitter(v, k, 0.4),
+           f32(E5RD_SPAWN_X), f32(E5RD_SPAWN_Z), f32(RT_SPAWN_R) + 2, p[..]);
+  x := p[0]; z := p[1];
+  // its way in (a gate in the wall, or the bridge: no wall), its squad, and its own place about the square
+  way := ev_way(gate);
+  rt_ring(e[0].sent, EV_SQUARE[0], EV_SQUARE[1], 3, f32(EV_SQUARE_R) - 3, p[..]);
+  id := e5rd_raider(ev_rules(v, k), npc, level, e[0].number[npc] + 1, x, z, way, e[0].sent / RT_SQUAD, e[0].sent % RT_SQUAD, p[0], p[1]);
   if id <= 0 { return false; }
   q := ev_slot_of(v, k, id);
   if q >= 0 { e[0].hurt[q] = 0; }
@@ -514,7 +528,7 @@ ev_raid_wave :: (v: [] RmServer, k: int) {
   ev_raid_spawn(v, k);
 }
 // The climax: three ward stones raised just inside three of the gates, and Darian Odiodei at the
-// first, coming in to the square's edge.
+// first, holding behind his lines.
 ev_raid_arch :: (v: [] RmServer, k: int) {
   e := v[0].ev[k..<k + 1];
   r := ev_rules(v, k);
@@ -525,10 +539,12 @@ ev_raid_arch :: (v: [] RmServer, k: int) {
     ix := -g[0]; iz := -g[1]; d := sqrt(ix * ix + iz * iz);
     if e5rd_ward(r, g[0] + ix / d * 6 + f32(n) * 0.01, g[1] + iz / d * 6) > 0 { wards += 1; }
   }
+  // Darian at the first gate, coming from outside it; with none of his lines left he holds 10 m inside it
   ev_gate(ev_gate_of(v, 0), g[..]);
   ex := g[0] - EV_SQUARE[0]; ez := g[1] - EV_SQUARE[1]; ed := sqrt(ex * ex + ez * ez);
-  edge := f32(EV_SQUARE_R) + 4;
-  id := e5rd_arch(r, g[2], g[3], g[0], g[1], EV_SQUARE[0] + ex / ed * edge, EV_SQUARE[1] + ez / ed * edge);
+  p: [2] f32;
+  rt_clear(g[2], g[3], f32(E5RD_SPAWN_X), f32(E5RD_SPAWN_Z), f32(RT_SPAWN_R) + 2, p[..]);
+  id := e5rd_arch(r, p[0], p[1], g[0], g[1], g[0] - ex / ed * 10, g[1] - ez / ed * 10);
   e[0].wards = wards;
   e[0].arch = ifx id <= 0 then EV_ARCH_GONE else (ifx wards > 0 then EV_ARCH_WARDED else EV_ARCH_EXPOSED);
   if id > 0 && wards == 0 { e5rd_expose(r); }
@@ -804,10 +820,20 @@ ev_test_count :: (v: [] RmServer, k: int, form: int) -> int {
   was: [E5RR_BEASTS] f32;
   for q: 0..<E5RR_BEASTS { bt := r[0].beasts[q]; was[q] = sqrt(bt.x * bt.x + bt.z * bt.z); if e5rd_is(bt) && was[q] > 60 { far += 1; } }
   #assert far == m;
-  // they march: in a few seconds every one is 10 m nearer the square
-  ev_test_ticks(v[..], k, 3 * EG_HZ);
+  // they march to their own places in their squads' siege lines outside the wall
+  // (everglade-raid-tactics.coax): in a few seconds every one is there, none in the spawn's clear ground
+  ev_test_ticks(v[..], k, 4 * EG_HZ);
   near := 0;
-  for q: 0..<E5RR_BEASTS { bt := r[0].beasts[q]; if e5rd_is(bt) && sqrt(bt.x * bt.x + bt.z * bt.z) < was[q] - 10 { near += 1; } }
+  for q: 0..<E5RR_BEASTS {
+    bt := r[0].beasts[q];
+    if !e5rd_is(bt) { continue; }
+    sl := r[0].raid[0].slot[q];
+    o: [2] f32;
+    rt_siege_pos(sl.g, sl.squad, sl.k, sl.role, o[..]);
+    if (bt.x - o[0]) * (bt.x - o[0]) + (bt.z - o[1]) * (bt.z - o[1]) < 4 * 4 { near += 1; }
+    sx := bt.x - f32(E5RD_SPAWN_X); sz := bt.z - f32(E5RD_SPAWN_Z);
+    #assert sx * sx + sz * sz >= f32(RT_SPAWN_R) * f32(RT_SPAWN_R);
+  }
   #assert near == m;
   // a raider the page sees: a beast entry with its look (P1 27 a Cultist) and its level in F
   q0 := -1;

@@ -22,8 +22,8 @@
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 
 #load "everglade5e-rules.coax";
-#load "everglade5e-room-raid.coax";
-#load "everglade-raid-scale.coax";   // the raid's waves for the players present (room-events.coax, the EVENTS pane)   // the Cultist Raid's raiders, ward stones and leader (#12740)
+#load "everglade5e-room-raid.coax";   // the Cultist Raid's raiders, ward stones and leader (#12740)
+#load "everglade-raid-scale.coax";   // the raid's waves for the players present (room-events.coax, the EVENTS pane)
 
 E5RR_SEATS :: 16;
 E5RR_SEAT :: 0;                              // seat s is creature s

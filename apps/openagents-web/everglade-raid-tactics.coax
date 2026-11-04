@@ -1,0 +1,281 @@
+// How the cult fights a siege (spec docs/verse/2026-11-03-everglade-world-events.md, section 4.3;
+// #12740): the one set of tactics the room server's raid (everglade5e-room-raid.coax) and the page's
+// offline preview (everglade5e-raid.coax) both follow. Pure functions of where things are, in metres:
+//   - squads: the raiders come in squads of RT_SQUAD, and each member has its own place in its
+//     squad's line (rt_siege_pos) and its own place in the town (rt_ring), so no two stand on one spot;
+//     raiders closer than RT_SEP push apart (rt_separate);
+//   - roles: a Fanatic and one Cultist in RT_SCREEN_EVERY fight in melee and screen the casters; the
+//     other Cultists cast Fire Bolt, the Warlocks Eldritch Blast (rt_role);
+//   - volleys: a squad's casters fire together, on a call every RT_VOLLEY_BEATS of the battle's beats
+//     (rt_align, rt_volley);
+//   - the siege: outside the wall, the casters' line stands RT_CAST_LINE out and the screen before it.
+//     Half of each squad's casters focus their volleys on one of the gate's towers, where the watch's
+//     archers stand, then on the other; the other half, in parallel, open a breach in a wall section
+//     of their own (RT_BREACH). After RT_SIEGE_VOLLEYS volleys the squad goes in, by the gate or its
+//     breach, and the casters turn on the defenders and the players (rt_siege_aim, rt_order);
+//   - the leader stays at the back: RT_BACK behind his lines, toward where he came from, and casts
+//     from there; when a foe comes within RT_THREAT he casts Dimension Door RT_DOOR away, back from
+//     the threat (rt_command, rt_door);
+//   - the players' spawn is no one's: nobody stands within RT_SPAWN_R of it, and a raider's way
+//     goes round it (rt_route, rt_clear).
+//   coax test --library apps/openagents-web/everglade5e-rules.coax --only "raid tactics"
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+
+RT_SQUAD :: 8;              // raiders in a squad (the room sends 8 to a gate at a time)
+RT_SQUADS :: 16;            // squads a raid keeps track of at once (squad number % RT_SQUADS)
+RT_GAP :: 2.6;              // m between squadmates in a line
+RT_SEP :: 1.8;              // m: raiders closer than this push apart
+RT_CAST_LINE :: 14.0;       // m outside the wall: the casters' line in a siege
+RT_SCREEN_LINE :: 8.0;      // m outside the wall: the screen, before the casters
+RT_SIEGE_VOLLEYS :: 4;      // a squad's volleys at the wall before it goes in
+RT_SIEGE_S :: 24.0;         // s: a squad goes in after this long at most (a squad with no casters too)
+RT_VOLLEY_BEATS :: 2;       // the battle's beats between a squad's calls
+RT_TOWER_AT :: 0.75;        // a gate tower's middle, in gate widths from the gate's middle
+RT_BREACHES :: 6;
+RT_BREACH :: [6] f32.[-14, 14, -24, 24, -34, 34];   // m along the wall from its gate: the sections to breach
+RT_SPAWN_R :: 12.0;         // m about the players' spawn that the cult keeps clear of
+RT_BACK :: 18.0;            // m the leader keeps behind his lines
+RT_THREAT :: 8.0;           // m: a foe this near the leader threatens him
+RT_DOOR :: 28.0;            // m Dimension Door takes him back
+RT_SCREEN_EVERY :: 3;       // one Cultist in three screens in melee; the others cast
+RT_KEEP :: 18.0;            // m a caster keeps from its foe
+RT_SELF :: 12.0;            // m: a foe this near a caster in a siege is shot first
+RT_MELEE :: 0; RT_CASTER :: 1; RT_LEAD :: 2;
+RT_AIM_TOWER :: 0; RT_AIM_WALL :: 1; RT_AIM_FOES :: 2;
+
+// A gate in a wall: its middle, width, the wall's way (along) and the way out of the town, and how
+// far the wall runs either side of the gate (lo < 0 < hi, m along).
+// A way in with no wall (wall false: a bridge, an open road) has no siege: its raiders go straight in.
+RtGate :: struct { x: f32; z: f32; w: f32; ax: f32; az: f32; ox: f32; oz: f32; lo: f32; hi: f32; wall: bool = true; }
+
+rt_hi :: (a: f32, b: f32) -> f32 { return ifx a > b then a else b; }
+rt_lo :: (a: f32, b: f32) -> f32 { return ifx a < b then a else b; }
+// The gate at (x, z), w wide, in a wall that runs along z (else along x), from `from` to `to` (along
+// that axis), in a town whose middle is (cx, cz).
+rt_gate :: (x: f32, z: f32, w: f32, along_z: bool, from: f32, to: f32, cx: f32, cz: f32) -> RtGate {
+  g := RtGate.{x = x, z = z, w = w};
+  if along_z { g.az = 1; g.ox = ifx x >= cx then 1.0f32 else -1.0f32; g.lo = from - z; g.hi = to - z; }
+  else { g.ax = 1; g.oz = ifx z >= cz then 1.0f32 else -1.0f32; g.lo = from - x; g.hi = to - x; }
+  return g;
+}
+// A way in with no wall at (x, z), its outside toward (ox, oz) (a unit): no siege; straight in.
+rt_open :: (x: f32, z: f32, ox: f32, oz: f32) -> RtGate { return RtGate.{x = x, z = z, w = 4, ax = -oz, az = ox, ox = ox, oz = oz, lo = -1, hi = 1, wall = false}; }
+// The point `along` m along gate g's wall and `out` m out of the town from it.
+rt_at :: (g: RtGate, along: f32, out: f32, o: [] f32) { o[0] = g.x + g.ax * along + g.ox * out; o[1] = g.z + g.az * along + g.oz * out; }
+// What a raider does (RT_MELEE, RT_CASTER, RT_LEAD) by its stat block (RS_NPC_*) and its number
+// among its kind.
+rt_role :: (npc: int, number: int) -> int {
+  if npc == RS_NPC_ARCH { return RT_LEAD; }
+  if npc == RS_NPC_WARLOCK { return RT_CASTER; }
+  if npc == RS_NPC_CULTIST && number % RT_SCREEN_EVERY != 0 { return RT_CASTER; }
+  return RT_MELEE;
+}
+
+// ---- the squad's places
+
+// Squad s's middle along its wall: the squads at one gate side by side.
+rt_squad_along :: (s: int) -> f32 { return [5] f32.[0, -12, 12, -22, 22][s % 5]; }
+// Member k of squad s (role) in the siege: the casters' line, the screen before it, each its own place.
+rt_siege_pos :: (g: RtGate, s: int, k: int, role: int, o: [] f32) {
+  along := rt_squad_along(s) + (f32(k % RT_SQUAD) - 3.5) * f32(RT_GAP);
+  along = rt_hi(rt_lo(along, g.hi - 2), g.lo + 2);
+  out := ifx role == RT_CASTER then f32(RT_CAST_LINE) else f32(RT_SCREEN_LINE);
+  out += f32((s / 5) % 2) * 2.5;
+  rt_at(g, along, out, o);
+}
+// The breach squad s opens: its place along the wall (m from the gate), the first of RT_BREACH in the wall.
+rt_breach_along :: (g: RtGate, s: int) -> f32 {
+  for n: 0..<RT_BREACHES {
+    a := RT_BREACH[(s + n) % RT_BREACHES];
+    if a > g.lo + 3 && a < g.hi - 3 { return a; }
+  }
+  return 0;
+}
+// What caster k of squad s aims at in its squad's volley v (RT_AIM_*), and where (into o: x, z).
+// The first RT_SIEGE_VOLLEYS: half on a gate tower, two volleys on one then two on the other; half on
+// the squad's breach, a little across it each time so it opens wide. Then the foes (o untouched).
+rt_siege_aim :: (g: RtGate, s: int, k: int, v: int, o: [] f32) -> int {
+  if v >= RT_SIEGE_VOLLEYS { return RT_AIM_FOES; }
+  if k % 2 == 0 {
+    side := ifx (s + v / 2) % 2 == 0 then -1.0f32 else 1.0f32;
+    rt_at(g, side * g.w * f32(RT_TOWER_AT), 0, o);
+    return RT_AIM_TOWER;
+  }
+  rt_at(g, rt_breach_along(g, s) + f32(v % 3 - 1) * 1.5, 0, o);
+  return RT_AIM_WALL;
+}
+// The way in for squad s once its siege is done: an even squad by the gate, an odd one by its breach.
+rt_entry_along :: (g: RtGate, s: int) -> f32 { return ifx s % 2 == 0 then 0.0f32 else rt_breach_along(g, s); }
+// The n-th of a raid's places spread over a disc about (cx, cz), from rmin to rmax m out: a sunflower,
+// so neighbours in n stand apart and no two share a spot.
+rt_ring :: (n: int, cx: f32, cz: f32, rmin: f32, rmax: f32, o: [] f32) {
+  a := f32(n) * 2.3999632;
+  u := f32(n % 32) / 31.0;
+  rr := rmin + (rmax - rmin) * sqrt(u);
+  o[0] = cx + cos(a) * rr; o[1] = cz + sin(a) * rr;
+}
+// Where member k of squad s (role) at (x, z) goes now, and what it aims at: into o the goal x, z,
+// then the aim (RT_AIM_*) and its x, z. `v` is the squad's volleys so far, `inside` (ix, iz) its own
+// place in the town (rt_ring), `done` whether the squad's siege is over.
+rt_order :: (g: RtGate, s: int, k: int, role: int, v: int, done: bool, x: f32, z: f32, ix: f32, iz: f32, o: [] f32) {
+  p: [2] f32;
+  o[2] = f32(RT_AIM_FOES); o[3] = 0; o[4] = 0;
+  if !g.wall { o[0] = ix; o[1] = iz; return; }
+  if !done {
+    rt_siege_pos(g, s, k, role, p[..]);
+    o[0] = p[0]; o[1] = p[1];
+    if role == RT_CASTER { o[2] = f32(rt_siege_aim(g, s, k, v, p[..])); o[3] = p[0]; o[4] = p[1]; }
+    return;
+  }
+  // out of the town still: to the way in, a little apart; inside: to its place
+  out := (x - g.x) * g.ox + (z - g.z) * g.oz;
+  if out > -1.5 {
+    rt_at(g, rt_entry_along(g, s) + (f32(k % 4) - 1.5) * 0.9, -2.5, p[..]);
+    o[0] = p[0]; o[1] = p[1];
+    return;
+  }
+  o[0] = ix; o[1] = iz;
+}
+
+// ---- the call
+
+// The first of squad s's calls at or after `clock`, its calls RT_VOLLEY_BEATS beats apart from
+// `anchor`: a caster joining takes its turns on it, so its squad's casters fire together.
+rt_align :: (clock: f32, anchor: f32, beat: f32) -> f32 {
+  p := beat * f32(RT_VOLLEY_BEATS);
+  if clock <= anchor { return anchor; }
+  n := int((clock - anchor) / p + 0.999);
+  return anchor + f32(n) * p;
+}
+// The squad's call that a turn at `clock` is on (0 the first), -1 when the turn falls between calls.
+rt_volley :: (clock: f32, anchor: f32, beat: f32) -> int {
+  if clock < anchor - 0.01 { return -1; }
+  n := int((clock - anchor) / beat + 0.5);
+  if n % RT_VOLLEY_BEATS != 0 { return -1; }
+  return n / RT_VOLLEY_BEATS;
+}
+
+// ---- keeping apart, and clear of the spawn
+
+// The push on the raider at (x, z) (it is number `me` of n) from those of the n (xs, zs) within RT_SEP:
+// into o, x and z, the more the closer. `up[j]` false for one that doesn't count.
+rt_separate :: (x: f32, z: f32, me: int, xs: [] f32, zs: [] f32, up: [] bool, n: int, o: [] f32) {
+  px: f32 = 0; pz: f32 = 0;
+  for j: 0..<n {
+    if j == me || !up[j] { continue; }
+    dx := x - xs[j]; dz := z - zs[j];
+    if abs(dx) >= f32(RT_SEP) || abs(dz) >= f32(RT_SEP) { continue; }
+    d := sqrt(dx * dx + dz * dz);
+    if d >= f32(RT_SEP) { continue; }
+    if d < 0.01 { dx = f32(me % 7) - 3.0; dz = f32(j % 5) - 2.0; d = sqrt(dx * dx + dz * dz) + 0.01; }
+    k := (f32(RT_SEP) - d) / f32(RT_SEP);
+    px += dx / d * k; pz += dz / d * k;
+  }
+  o[0] = px; o[1] = pz;
+}
+// (x, z), or the nearest point to it r m from (cx, cz) when it is nearer: into o.
+rt_clear :: (x: f32, z: f32, cx: f32, cz: f32, r: f32, o: [] f32) {
+  dx := x - cx; dz := z - cz; d := sqrt(dx * dx + dz * dz);
+  o[0] = x; o[1] = z;
+  if d >= r { return; }
+  if d < 0.01 { dx = 0; dz = 1; d = 1; }
+  o[0] = cx + dx / d * r; o[1] = cz + dz / d * r;
+}
+// The way from (x, z) to (tx, tz) round the disc of r m about (cx, cz): into o the point to go for
+// now. The goal moves out of the disc; a way through it goes by its edge on the near side first; one
+// inside it leaves by the nearest way.
+rt_route :: (x: f32, z: f32, tx: f32, tz: f32, cx: f32, cz: f32, r: f32, o: [] f32) {
+  rt_clear(tx, tz, cx, cz, r, o);
+  gx := o[0]; gz := o[1];
+  dx := x - cx; dz := z - cz;
+  if dx * dx + dz * dz < r * r { rt_clear(x, z, cx, cz, r + 0.5, o); return; }
+  // the nearest the way comes to the middle
+  sx := gx - x; sz := gz - z; ll := sx * sx + sz * sz;
+  if ll < 0.0001 { return; }
+  u := rt_hi(rt_lo(((cx - x) * sx + (cz - z) * sz) / ll, 1), 0);
+  nx := x + sx * u - cx; nz := z + sz * u - cz;
+  nd := sqrt(nx * nx + nz * nz);
+  if nd >= r || u <= 0 || u >= 1 { return; }
+  // round its near side: the edge past the nearest point
+  if nd < 0.01 { nx = -sz; nz = sx; nd = sqrt(ll); }
+  o[0] = cx + nx / nd * (r + 1.5); o[1] = cz + nz / nd * (r + 1.5);
+}
+
+// ---- the leader
+
+// Where the leader holds: RT_BACK behind (lx, lz), the middle of his lines, toward (hx, hz) where he
+// came from (there itself when nearer); with none of his lines left (n 0), there.
+rt_command :: (lx: f32, lz: f32, n: int, hx: f32, hz: f32, o: [] f32) {
+  o[0] = hx; o[1] = hz;
+  if n <= 0 { return; }
+  dx := hx - lx; dz := hz - lz; d := sqrt(dx * dx + dz * dz);
+  if d <= f32(RT_BACK) { return; }
+  o[0] = lx + dx / d * f32(RT_BACK); o[1] = lz + dz / d * f32(RT_BACK);
+}
+// Where Dimension Door takes the leader at (x, z) from a foe at (fx, fz): RT_DOOR away, back from it
+// and toward (hx, hz).
+rt_door :: (x: f32, z: f32, fx: f32, fz: f32, hx: f32, hz: f32, o: [] f32) {
+  ax := x - fx; az := z - fz; ad := rt_hi(sqrt(ax * ax + az * az), 0.01);
+  bx := hx - x; bz := hz - z; bd := rt_hi(sqrt(bx * bx + bz * bz), 0.01);
+  dx := ax / ad + bx / bd; dz := az / ad + bz / bd; d := sqrt(dx * dx + dz * dz);
+  if d < 0.01 { dx = ax / ad; dz = az / ad; d = 1; }
+  o[0] = x + dx / d * f32(RT_DOOR); o[1] = z + dz / d * f32(RT_DOOR);
+}
+
+#test "raid tactics: squads stand spread, casters fire at the towers and a breach, then go in round the spawn" {
+  south := rt_gate(0, -56, 6, false, -64, 64, 0, 0);
+  #assert south.oz == -1 && south.ax == 1 && south.lo == -64 && south.hi == 64;
+  east := rt_gate(64, 0, 5, true, -56, 60, 0, 0);
+  #assert east.ox == 1 && east.az == 1;
+  // roles: one Cultist in three screens; Fanatics fight in melee; Warlocks cast
+  #assert rt_role(RS_NPC_CULTIST, 0) == RT_MELEE && rt_role(RS_NPC_CULTIST, 1) == RT_CASTER && rt_role(RS_NPC_CULTIST, 2) == RT_CASTER;
+  #assert rt_role(RS_NPC_FANATIC, 1) == RT_MELEE && rt_role(RS_NPC_WARLOCK, 0) == RT_CASTER && rt_role(RS_NPC_ARCH, 0) == RT_LEAD;
+  // a squad's places: no two within RT_GAP - 0.1, the casters behind the screen, all out of the town
+  xs: [16] f32; zs: [16] f32;
+  p: [2] f32;
+  for k: 0..<8 { rt_siege_pos(south, 0, k, RT_CASTER, p[..]); xs[k] = p[0]; zs[k] = p[1]; #assert p[1] == -56 - f32(RT_CAST_LINE); }
+  for k: 0..<8 { rt_siege_pos(south, 1, k, RT_MELEE, p[..]); xs[8 + k] = p[0]; zs[8 + k] = p[1]; #assert p[1] == -56 - f32(RT_SCREEN_LINE); }
+  for a: 0..<16 { for b: a + 1..<16 { dx := xs[a] - xs[b]; dz := zs[a] - zs[b]; #assert dx * dx + dz * dz > (f32(RT_GAP) - 0.1) * (f32(RT_GAP) - 0.1); } }
+  // the aims: half the casters on one tower for two volleys, then the other; half on a breach
+  t0 := rt_siege_aim(south, 0, 0, 0, p[..]);
+  #assert t0 == RT_AIM_TOWER && p[0] == -4.5 && p[1] == -56;
+  t1 := rt_siege_aim(south, 0, 0, 1, p[..]); #assert t1 == RT_AIM_TOWER && p[0] == -4.5;
+  t2 := rt_siege_aim(south, 0, 0, 2, p[..]); #assert t2 == RT_AIM_TOWER && p[0] == 4.5;
+  #assert rt_siege_aim(south, 0, 1, 0, p[..]) == RT_AIM_WALL && abs(p[0] + 15.5) < 0.01 && p[1] == -56;
+  t3 := rt_siege_aim(south, 1, 1, 0, p[..]); #assert t3 == RT_AIM_WALL && abs(p[0] - 12.5) < 0.01;
+  #assert rt_siege_aim(south, 0, 1, RT_SIEGE_VOLLEYS, p[..]) == RT_AIM_FOES;
+  // the north gate is near a corner: a breach stays in the wall
+  north := rt_gate(44, 60, 5, false, -64, 64, 0, 0);
+  for s: 0..<6 { a := rt_breach_along(north, s); #assert 44 + a < 61 && 44 + a > -61; }
+  // the squad goes in: an odd squad by its breach, then to its own place inside
+  o: [5] f32;
+  rt_order(south, 1, 3, RT_MELEE, 5, true, 12, -66, 3, 4, o[..]);
+  #assert abs(o[0] - 15.35) < 0.01 && o[1] == -56 + 2.5;
+  rt_order(south, 1, 3, RT_MELEE, 5, true, 12, -50, 3, 4, o[..]);
+  #assert o[0] == 3 && o[1] == 4;
+  rt_order(south, 0, 2, RT_CASTER, 1, false, 0, -90, 3, 4, o[..]);
+  #assert int(o[2]) == RT_AIM_TOWER && o[1] == -56 - f32(RT_CAST_LINE);
+  // the places inside: spread, none on another
+  for a: 0..<40 { rt_ring(a, 0, 0, 3, 12, p[..]); ax := p[0]; az := p[1]; for b: a + 1..<40 { rt_ring(b, 0, 0, 3, 12, p[..]); #assert (ax - p[0]) * (ax - p[0]) + (az - p[1]) * (az - p[1]) > 0.25; } }
+  // the call: casters joining at different times share their squad's calls
+  #assert rt_align(10.2, 10, 1.5) == 13 && rt_align(9, 10, 1.5) == 10;
+  #assert rt_volley(13, 10, 1.5) == 1 && rt_volley(11.5, 10, 1.5) == -1 && rt_volley(10, 10, 1.5) == 0;
+  // keeping apart: two on one spot push opposite ways
+  up := [3] bool.[true, true, true];
+  ax := [3] f32.[0, 0.5, 9]; az := [3] f32.[0, 0, 0];
+  rt_separate(0, 0, 0, ax[..], az[..], up[..], 3, p[..]); #assert p[0] < 0;
+  rt_separate(0.5, 0, 1, ax[..], az[..], up[..], 3, p[..]); #assert p[0] > 0;
+  // the spawn: a goal in it moves out; a way through it goes round; one in it leaves
+  rt_route(0, -100, 0, -84, 0, -84, 12, p[..]); dy := p[1] + 84; #assert p[0] * p[0] + dy * dy >= 11.9 * 11.9;
+  rt_route(-20, -84, 20, -84, 0, -84, 12, p[..]); #assert abs(p[1] + 84) > 12;
+  rt_route(0, -82, 0, -50, 0, -84, 12, p[..]); dz := p[1] + 84; #assert p[0] * p[0] + dz * dz >= 12 * 12;
+  rt_route(30, -60, 0, -50, 0, -84, 12, p[..]); #assert p[0] == 0 && p[1] == -50;
+  // the leader: behind his lines, toward where he came from; Dimension Door away from a foe
+  rt_command(0, -40, 10, 0, -100, p[..]); #assert p[0] == 0 && p[1] == -40 - f32(RT_BACK);
+  rt_command(0, -90, 10, 0, -100, p[..]); #assert p[1] == -100;
+  rt_door(0, -60, 0, -55, 0, -100, p[..]); #assert p[1] == -60 - f32(RT_DOOR);
+}

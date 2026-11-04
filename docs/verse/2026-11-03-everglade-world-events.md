@@ -182,21 +182,45 @@ Heavy Crossbow out to 120 ft. Raiders set on the watch as they set on townsfolk.
 - Each wave spawns at the gates the admin picked: north road, east road, south road, the west
   wood and the river bridge. Raiders of a wave spawn in groups of up to 8, spread over those
   gates.
-- Raiders march on the square by the town's roads. On the way, each attacks whatever is
-  nearest within 12 m: a player, then a guard, then a townsperson.
-- Cultists and Fanatics run in and strike in melee. Warlocks stop at 15 to 25 m and cast
-  Eldritch Blast. A Fanatic casts Hold Person at the strongest player in reach once a raid.
-- When the town's damage dial is on, the warlocks' blasts break and burn the town's pieces the
-  way a player's do (spec 6.6). When it is off, the raid harms only creatures.
+- Raiders lay siege to the wall, then take the square (section 4.3). Each attacks whatever is
+  nearest within reach: a player, then a guard, then a townsperson.
+- Fanatics and one Cultist in three run in and strike in melee, and screen the casters. The other
+  Cultists cast Fire Bolt, and the Warlocks cast Eldritch Blast, from 18 m off. A Fanatic casts
+  Hold Person at the strongest player in reach once a raid.
+- When the town's damage dial is on, the casters' volleys at the wall break and burn the town's
+  pieces the way a player's do (spec 6.6). When it is off, the raid harms only creatures.
 - A wave is beaten when all its raiders are down. The next wave starts after a 15 s lull, or
   at once if the 90 s wave timer runs out first; a wave still up then stays and fights.
 
 ### 4.3 How raiders decide
 
 Raiders run the room server's own cheap routine (section 9.3), not the Lab's full planner. The
-choices are the Siege's: who to attack first, when to cast, and when to fall back. The rolls are
-the SRD engine's (`rs_roll_attack`, `rs_damage`, saving throws), and every roll goes to the
-room's log, as a player's does.
+rolls are the SRD engine's (`rs_roll_attack`, `rs_damage`, saving throws), and every roll goes to
+the room's log, as a player's does.
+
+The tactics are one shared file, `apps/openagents-web/everglade-raid-tactics.coax`. The room's raid
+and the page's offline preview (`?raid=preview`) both follow it:
+
+- **Squads.** The raiders come in squads of 8, a squad to a gate. Each member has its own place in
+  its squad's line, and its own place about the square once inside, spread over the square from
+  3 m to 15 m out. Raiders within 1.8 m of each other push apart.
+- **Roles.** Fanatics and one Cultist in three fight in melee and screen the casters. The other
+  Cultists cast Fire Bolt, and the Warlocks cast Eldritch Blast. Fire Bolt for the Cultists is a
+  house rule: the SRD's Cultist has no spells.
+- **Volleys.** A squad's casters fire together, on a call every 2 of the battle's beats (3 s).
+  Between calls, a caster holds its spell.
+- **The siege.** Outside the wall, the casters stand in a line 14 m out, with the screen 8 m out
+  in front of them. Half of each squad's casters focus their volleys on one of the gate's
+  towers, where the watch's archers stand: two volleys on one tower, then two on the other. The
+  other half breach a wall section of their own, in parallel, 14 m to 34 m along the wall from
+  the gate. After 4 volleys, or 24 s at most, the squad goes in: an even squad by the gate, an
+  odd one by its breach. Inside, the casters turn on the defenders and the players. A foe within
+  12 m of a caster at the wall is shot first.
+- **The players' spawn is clear ground.** No raider comes within 12 m of the players' spawn, a
+  raider's way goes round it, and no raider sets on a player standing in it.
+- **Darian stays at the back.** He holds 18 m behind the middle of his lines, toward where he
+  came from, and casts from there (section 5.3). When a foe comes within 8 m, he casts Dimension
+  Door 28 m back from it with a 5th-level Pact slot, while he has one.
 
 ## 5. The warlock who can't be killed
 
@@ -240,7 +264,7 @@ The admin's aggression dial sets how Darian Odiodei fights:
 
 | Value | What Darian Odiodei does |
 | --- | --- |
-| 0, watches | Stays at the square's edge and casts nothing. The wards still hold. |
+| 0, watches | Stays behind his lines and casts nothing. The wards still hold. |
 | 1, harries | Casts Eldritch Blast and Blight. |
 | 2, attacks | Also Fireball, at groups of three or more. The default. |
 | 3, razes | Also Circle of Death and Finger of Death, and casts twice as often. |
