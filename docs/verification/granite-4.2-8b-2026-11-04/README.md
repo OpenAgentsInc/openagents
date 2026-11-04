@@ -11,7 +11,7 @@ llama.cpp is the reference only; Psionic does not link it.
   against `SHA256SUMS` in `~/models/psionic/granite-4.2-8b-a7042144125c/`.
 - **Reference:** Homebrew llama.cpp b10330 (`687e77892`), Metal backend, all
   layers on the GPU.
-- **Reproduce:** `PSIONIC_GRANITE_PARITY=1 psionic/tests/check_granite.sh`.
+- **Reproduce:** `psionic/check.sh --only granite` (parity runs when `llama.h` is under `LLAMA_PREFIX`, default `/opt/homebrew`).
 
 ## Parity
 

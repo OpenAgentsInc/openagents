@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Granite 4.2 8B (issue #12870): binding, tokenizer and chat template on the
 # CPU; the dense decoder on Metal against its CPU repeat; parity with the
-# packaged llama.cpp when PSIONIC_GRANITE_PARITY=1. The pinned files live
+# packaged llama.cpp (LLAMA_PREFIX, default /opt/homebrew) unless
+# PSIONIC_GRANITE_PARITY=0. The pinned files live
 # in PSIONIC_GRANITE_DIR (default ~/models/psionic/granite-4.2-8b-a7042144125c);
 # without them only the owned tiny model runs. Nothing is downloaded.
 #   psionic/tests/check_granite.sh [--mutate] [--jobs N]
@@ -58,8 +59,9 @@ done
 # Step 5: parity with the packaged llama.cpp (a reference, never a runtime
 # dependency): token ids, every layer's residual stream, full logits and a
 # greedy continuation, with the prompt fed a token at a time.
-if [[ ${PSIONIC_GRANITE_PARITY:-0} == 1 && ${#ggufs[@]} -gt 0 ]];then
- llama=${LLAMA_PREFIX:-/opt/homebrew}
+llama=${LLAMA_PREFIX:-/opt/homebrew}
+if [[ ${#ggufs[@]} -gt 0 && ${PSIONIC_GRANITE_PARITY:-1} == 1 && ! -f $llama/include/llama.h ]];then echo "SKIP: parity: no llama.h in $llama (set LLAMA_PREFIX)";fi
+if [[ ${#ggufs[@]} -gt 0 && ${PSIONIC_GRANITE_PARITY:-1} == 1 && -f $llama/include/llama.h ]];then
  "$cc" -std=c11 -O2 -Wall -Wextra -I"$llama/include" psionic/tests/granite_llama.c -L"$llama/lib" -lllama -lggml -lggml-base -Wl,-rpath,"$llama/lib" -o "$out/granite-llama"
  for f in "${ggufs[@]}";do
   q=$(basename "$f" .gguf)

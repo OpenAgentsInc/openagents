@@ -24,5 +24,5 @@ gr_rope_table :: (base:f32,positions:int,out:[]f32)->bool #export_c {
     #assert t[128]==f32(cos(1.0)) && t[129]==f32(sin(1.0)) && t[3*128+1]==f32(sin(3.0));
     #assert t[128+2*63]==f32(cos(pow(10000000.0,-126.0/128))) && t[128+2*63+1]==f32(sin(pow(10000000.0,-126.0/128)));
     #assert t[2*128+2*32]==f32(cos(2*pow(10000000.0,-64.0/128)));
-    #assert !gr_rope_table(10000000,5,t[..]) && !gr_rope_table(10000000,0,t[..]) && !gr_rope_table(1,4,t[..]) && gr_rope_table(2,4,t[..]);
+    #assert !gr_rope_table(10000000,5,t[..]) && !gr_rope_table(10000000,0,t[..]) && !gr_rope_table(1,4,t[..]) && gr_rope_table(2,4,t[..]) && gr_rope_table(2,1,t[0..<128]);
 }

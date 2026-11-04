@@ -154,6 +154,12 @@ Without them the gate runs only the owned tiny model.
   (worst relative RMS 6.4e-4). Decode runs at 0.5–0.7x llama.cpp's speed,
   and prefill is much slower. See
   `docs/verification/granite-4.2-8b-2026-11-04/README.md`.
+- **The gate passes steps 1–5.** `psionic/check.sh --only granite` runs
+  the checks above, parity when Homebrew's `llama.h` is present, and
+  mutation of the binding, tokenizer, chat and host units (every mutant
+  killed).
+- **Step 6 is open.** No typed-edit set exists yet to run against
+  gpt-oss-20b.
 
 ## License notes
 
