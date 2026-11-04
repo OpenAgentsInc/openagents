@@ -60,6 +60,8 @@ verse_player_at :: (p: walk.Player) -> walk.Vec3 #export_c { return walk.walk_at
 verse_player_eye :: (p: walk.Player) -> walk.Vec3 #export_c { return walk.walk_eye(p); }
 
 verse_player_act :: (p: walk.Player) -> int #export_c { return walk.walk_act(p); }
+// The motion the controls ask for (walk_asked): what a follow camera turns toward.
+verse_player_asked :: (p: walk.Player) -> walk.Vec3 #export_c { return walk.walk_asked(p); }
 
 verse_player_view :: (p: walk.Player, mode: int) -> CameraShot { return walk.walk_view(p, mode); }
 

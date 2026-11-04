@@ -363,6 +363,26 @@ wish :: (p: Player) -> Wish {
   return w;
 }
 
+// The motion your controls ask for, m/s on the flat: the wish at the pace you walk or run. A follow
+// camera turns toward this, not toward the velocity, which a wall, a push or a room server's
+// correction changes without you asking (#12777).
+walk_asked :: (p: Player) -> Vec3 {
+  w := wish(p);
+  if !w.on { return Vec3.{}; }
+  pace := ifx p.run then f32(RUN) else f32(WALK);
+  return Vec3.{x = w.x * pace, y = 0, z = w.z * pace};
+}
+
+#test "walk: the intent is the controls' wish at the pace, whatever the velocity a wall or a correction left (#12777)" {
+  p := walk_place(0, 0, 0, 0);
+  p = walk_input(p, 0, 1, 0, 0, false, false, 0, 0);   // W
+  p.vel = Vec3.{x = 4, y = 0, z = 0};                  // a correction's sideways velocity
+  w := wish(p); i := walk_asked(p);
+  #assert near(i.x, w.x * f32(WALK), 0.0001) && near(i.z, w.z * f32(WALK), 0.0001);
+  q := walk_input(p, 0, 0, 0, 0, false, false, 0, 0);
+  #assert walk_asked(q).x == 0 && walk_asked(q).z == 0;
+}
+
 // The library's spring: a critically damped follow of dest, per axis. It
 // returns the new position in x and the new velocity in y.
 spring_axis :: (cur: f32, vel: f32, dest: f32, dt: f32) -> Vec3 {

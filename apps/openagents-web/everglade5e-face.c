@@ -468,6 +468,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   probe_feet[0] = feet.x; probe_feet[1] = feet.y; probe_feet[2] = feet.z; probe_speed = show_vx * show_vx + show_vz * show_vz;
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_everglade_max_vertices() * coaxial_everglade_vertex_floats()};
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_everglade_uniform_floats()};
+  { coax_t_Vec3 want = verse_player_asked(player); everglade_intent(at(state), want.x, want.z); }   /* the camera's heading (#12777) */
   everglade_guide_begin(at(state), golden);
   if (!e5_rules.started) e5r_start(e5r(), 20261103);
   e5_before(at(state), e5v(), (coax_v_f32){e5_bar_buf, 49 * 6}, e5_bar_n, (coax_v_f32){e5_hero_buf, 32}, e5_hero_n, (float)now);

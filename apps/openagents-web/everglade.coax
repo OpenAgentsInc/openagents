@@ -367,6 +367,7 @@ Everglade :: struct {
   width: f32; height: f32; dpr: f32;
   touch: bool;
   orbit: Orbit;
+  intent_x: f32; intent_z: f32;   // the motion your controls ask for (everglade_intent): the follow camera's heading
   held: int;
   drag_on: bool; drag_id: int; drag_x: f32; drag_y: f32;
   look_yaw: f32; look_pitch: f32;
@@ -3378,6 +3379,10 @@ weather_frame :: (s: [] Everglade, u: [] f32, still: bool) {
 everglade_rise :: (s: [] Everglade) -> f32 #export_c { return s[0].rise; }
 everglade_flow_gain :: (s: [] Everglade) -> f32 #export_c { return ifx s[0].flow_gain > 0 then s[0].flow_gain else 1.0f32; }
 
+// The motion your controls ask for this frame (verse_player_asked), from the face before the frame:
+// the follow camera turns toward it, never toward a velocity a collider or a room's correction set (#12777).
+everglade_intent :: (s: [] Everglade, x: f32, z: f32) #export_c { s[0].intent_x = x; s[0].intent_z = z; }
+
 camera_frame :: (s: [] Everglade, feet: Point, vx: f32, vz: f32, dt: f32) -> Shot {
   speed := sqrt(vx * vx + vz * vz);
   o := verse_orbit_follow(s[0].orbit, feet, yaw_of(vx, vz), finite(speed) && speed > 0.6, dt);
@@ -4039,7 +4044,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   else if s[0].water == WATER_WADING { shown = feet_in_world(feet, s[0].swim_feet); }
 
   rp_frame(s, t);
-  shot := rp_shot(s, camera_frame(s, shown, vx, vz, t));   // the raid preview's flight, else yours (everglade-raid-preview.coax)
+  shot := rp_shot(s, camera_frame(s, shown, s[0].intent_x, s[0].intent_z, t));   // heading: your controls' (everglade_intent)   // the raid preview's flight, else yours (everglade-raid-preview.coax)
   shot = spells_camera(s, shot, t);   // a blast shakes it; nothing turns it
 
   for k: 0..<5 { s[0].counts[k] = 0; }
