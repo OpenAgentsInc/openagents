@@ -45,13 +45,18 @@ processes and preserves the saved world.
 
 The Coder HUD uses `aethyr/ui/draw.coax` for a compact, lightly tinted 88-point
 composer and shared layout, a native Metal overlay and AppKit text/IME. There
-is no frame or label around the whole window. Messages float over the world
-with no panel background or border; empty message space passes clicks through.
-Enter sends; Shift-Enter inserts a line. Agent,
-model, effort and working folder sit directly above the bottom input. Cmd+L
-focuses input, Shift-Tab changes agent and Esc/Stop cancels. The left transcript
-shows replies, tools, results, file-change paths and errors. Tool consent is
-Allow once / Deny. New chat, agent changes and folder changes start fresh.
+is no frame or label around the whole window. Coder is hidden at rest. Enter
+or Cmd+L opens its composer and conversation; native Return/keypad Enter never
+opens the realm's region chat. Enter sends and closes the composer; Shift-Enter
+inserts a line. Escape closes it while retaining the draft and any running
+agent. Agent, model, effort and working folder sit directly above the bottom
+input; Shift-Tab changes agent and the Stop button cancels a run. When closed,
+only received reply text appears on the left during an active run, with no
+background, heading, controls or mouse interception. It disappears when the run
+ends; Enter restores the conversation, including tools, results, paths and errors.
+Pending tool requests show a message to press Enter for Allow once / Deny;
+closing the composer never grants approval. New chat, agent changes and folder
+changes start fresh.
 Slash commands, history browsing and attachment to a running PID are future work.
 
 The UI calls shared `~/.openagents/bin/openagents coder run|fork --json --ask`,
@@ -152,6 +157,17 @@ mkdir -p /tmp/aethyrforge-chat
 FORGE_CHAT_SMOKE_ENGINE=codex FORGE_CHAT_SMOKE_ACTIONS=1 \
   ~/.openagents/aethyrforge/Aethyrforge.app/Contents/MacOS/Aethyrforge \
   --chat-smoke /tmp/aethyrforge-chat/result.json
+```
+
+The input smoke sends AppKit Return/keypad Enter through the actual window over
+the packaged WebKit realm. It checks held-key repeats, Shift-Enter, draft retention,
+approval review, active-message visibility, zero Enter events in region chat and
+an Enter-submitted offline Coder CLI round trip:
+
+```sh
+mkdir -p /tmp/aethyrforge-input
+apps/aethyrforge-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge \
+  --input-smoke /tmp/aethyrforge-input/result.json
 ```
 
 To check the real visible launch, without the hidden smoke's frame pump:

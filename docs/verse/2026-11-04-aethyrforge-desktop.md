@@ -84,11 +84,23 @@ page server, the voice Wasm and a local Parakeet voice host. This is the same
   wired into this shell yet.
 - Basic coding-agent chat uses the same `openagents coder` as the TUI. The
   compact Aethyr composer is 88 points high with a faint tint; there is no
-  full-window frame or label. The left transcript floats without a background
-  or border, showing replies/tools, and
-  agent/model/effort/folder controls sit above the bottom input. Enter sends,
-  Shift-Enter inserts a line, Shift-Tab changes agent, Cmd+L focuses input and
-  Esc/Stop cancels. Tools require Allow once / Deny. Follow-ups use Coder's
+  full-window frame or label. Coder is hidden until Enter or Cmd+L opens it.
+  Native Return/keypad Enter replaces region chat and consumes the complete
+  press, including held-key repeats and release. Agent/model/effort/folder
+  controls sit above the bottom input. Enter sends and closes the composer,
+  Shift-Enter inserts a line, Shift-Tab changes agent and Escape closes while
+  retaining the draft and running agent; Stop cancels. With the composer closed,
+  only reply text floats on the left while a run is active, without a background,
+  heading, controls or mouse interception. On completion it disappears; Enter
+  restores the conversation and its tool/results/error details. Pending tool
+  requests display a message to press Enter for Allow once / Deny; closing never
+  grants consent. Native input smoke checks both Enter keys over the real
+  packaged realm, no leaked region-chat events, presentation/approval transitions
+  and a real CLI round trip. Verification: 109 Coax checks passed; all 21
+  presentation/key-routing mutants were killed. The native input smoke passed
+  with zero realm Enter keydowns/keyups and no region-chat text field. The
+  repository tools check still reports its 21 pre-existing unrelated files
+  without Firm reason headers. Follow-ups use Coder's
   durable fork/context path. New chat and agent/folder changes start fresh.
   Complete histories stay in `~/.openagents/coder/sessions/`; UI settings and
   workspace are under `~/.openagents/aethyrforge/`. Codex model/effort options

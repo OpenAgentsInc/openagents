@@ -79,11 +79,11 @@ final class ForgeHUD: MTKView, MTKViewDelegate {
 @MainActor
 final class ForgeComposer: NSTextView {
     var send: (() -> Void)?
-    var stop: (() -> Void)?
+    var dismiss: (() -> Void)?
     var nextAgent: (() -> Void)?
     override func keyDown(with event: NSEvent) {
-        if event.keyCode == 36 && !event.modifierFlags.contains(.shift) { send?(); return }
-        if event.keyCode == 53 { stop?(); return }
+        if (event.keyCode == 36 || event.keyCode == 76) && !event.modifierFlags.contains(.shift) && !hasMarkedText() { send?(); return }
+        if event.keyCode == 53 && !hasMarkedText() { dismiss?(); return }
         if event.keyCode == 48 && event.modifierFlags.contains(.shift) { nextAgent?(); return }
         super.keyDown(with: event)
     }
@@ -96,6 +96,8 @@ final class ForgeChatPane: NSView, NSComboBoxDelegate {
     let hud: ForgeHUD
     let transcript = NSTextView()
     let transcriptScroll = NSScrollView()
+    let messages = NSTextView()
+    let messagesScroll = NSScrollView()
     let input = ForgeComposer()
     let inputScroll = NSScrollView()
     let agent = NSPopUpButton()
@@ -107,11 +109,13 @@ final class ForgeChatPane: NSView, NSComboBoxDelegate {
     let allow = NSButton()
     let deny = NSButton()
     let heading = NSTextField(labelWithString: "CODER / MESSAGES")
-    let status = NSTextField(labelWithString: "Enter sends · Shift-Enter adds a line · Shift-Tab switches agent · Esc stops")
+    let status = NSTextField(labelWithString: "Enter sends · Shift-Enter adds a line · Shift-Tab switches agent · Esc closes")
     var process: Process?
     var task: Task<Void, Never>?
     var busy = false
     var pending = false
+    var composerOpen = false
+    var presentation: Int64 { fgc_chat_mode(composerOpen, busy, !messages.string.isEmpty) }
     var session = ""
     var parent = ""
     var lastEnding = ""
@@ -126,6 +130,7 @@ final class ForgeChatPane: NSView, NSComboBoxDelegate {
     var cli: URL { cliOverride ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/bin/openagents") }
     var stopping = false
     var onActivity: (() -> Void)?
+    var onClose: (() -> Void)?
     var selectedEngine: String { catalog(agent.indexOfSelectedItem, label: false) }
     func catalog(_ i: Int, label: Bool) -> String {
         var b = [UInt8](repeating: 0, count: 128)
@@ -138,16 +143,18 @@ final class ForgeChatPane: NSView, NSComboBoxDelegate {
         super.init(frame: frame)
         fgc_reset()
         appearance = NSAppearance(named: .darkAqua)
-        for view in [transcript, input] { view.isRichText = false; view.font = .monospacedSystemFont(ofSize: 13, weight: .regular); view.textColor = NSColor(white: 0.9, alpha: 1); view.backgroundColor = .clear; view.drawsBackground = false; view.textContainerInset = NSSize(width: 4, height: 6); view.isAutomaticQuoteSubstitutionEnabled = false; view.isAutomaticDashSubstitutionEnabled = false }
+        for view in [transcript, messages, input] { view.isRichText = false; view.font = .monospacedSystemFont(ofSize: 13, weight: .regular); view.textColor = NSColor(white: 0.9, alpha: 1); view.backgroundColor = .clear; view.drawsBackground = false; view.textContainerInset = NSSize(width: 4, height: 6); view.isAutomaticQuoteSubstitutionEnabled = false; view.isAutomaticDashSubstitutionEnabled = false }
         transcript.isEditable = false; transcript.isSelectable = true
+        messages.isEditable = false; messages.isSelectable = false
         input.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
         input.textContainerInset = NSSize(width: 4, height: 3)
-        for (scroll, text) in [(transcriptScroll, transcript), (inputScroll, input)] {
+        for (scroll, text) in [(transcriptScroll, transcript), (messagesScroll, messages), (inputScroll, input)] {
             scroll.documentView = text; scroll.hasVerticalScroller = true; scroll.drawsBackground = false
             text.isVerticallyResizable = true; text.isHorizontallyResizable = false
             text.autoresizingMask = [.width]; text.textContainer?.widthTracksTextView = true
             addSubview(scroll)
         }
+        messagesScroll.hasVerticalScroller = false
         for i in 0..<6 { agent.addItem(withTitle: catalog(i, label: true)) }
         agent.target = self; agent.action = #selector(changeAgent)
         agent.setAccessibilityLabel("Coding agent")
@@ -170,7 +177,8 @@ final class ForgeChatPane: NSView, NSComboBoxDelegate {
         status.font = .monospacedSystemFont(ofSize: 10, weight: .medium)
         status.lineBreakMode = .byTruncatingTail
         input.setAccessibilityLabel("Message to coding agent")
-        input.send = { [weak self] in self?.submit() }; input.stop = { [weak self] in self?.stopTurn() }
+        input.send = { [weak self] in guard let self, !busy else { return }; submit() }
+        input.dismiss = { [weak self] in self?.closeComposer() }
         input.nextAgent = { [weak self] in guard let self, !busy else { return }; agent.selectItem(at: (agent.indexOfSelectedItem + 1) % 6); changeAgent() }
         addSubview(hud)
         try? FileManager.default.createDirectory(at: cwd, withIntermediateDirectories: true)
@@ -194,12 +202,13 @@ final class ForgeChatPane: NSView, NSComboBoxDelegate {
         heading.frame = NSRect(x: t.minX + 8, y: t.minY + 4, width: t.width - 104, height: 16)
         fresh.frame = NSRect(x: t.maxX - 88, y: t.minY + 1, width: 80, height: 22)
         transcriptScroll.frame = NSRect(x: t.minX + 4, y: t.minY + 28, width: t.width - 8, height: t.height - (pending ? 64 : 32))
+        messagesScroll.frame = NSRect(x: t.minX + 4, y: t.minY, width: t.width - 8, height: t.height)
         allow.frame = NSRect(x: t.minX + 4, y: t.maxY - 30, width: 90, height: 24)
         deny.frame = NSRect(x: t.minX + 100, y: t.maxY - 30, width: 60, height: 24)
         agent.frame = box(3); model.frame = box(4); effort.frame = box(5); folder.frame = box(6)
         inputScroll.frame = box(2); send.frame = box(7)
         status.frame = NSRect(x: 28, y: bounds.height - 29, width: bounds.width - 56, height: 12)
-        for (scroll, text) in [(transcriptScroll, transcript), (inputScroll, input)] {
+        for (scroll, text) in [(transcriptScroll, transcript), (messagesScroll, messages), (inputScroll, input)] {
             text.setFrameSize(NSSize(width: scroll.contentSize.width, height: max(text.frame.height, scroll.contentSize.height)))
         }
         hud.needsDisplay = true
@@ -207,11 +216,13 @@ final class ForgeChatPane: NSView, NSComboBoxDelegate {
     override func draw(_ dirtyRect: NSRect) {
         // Messages float directly over the world. Only the compact composer
         // gets a faint tint, so the game stays visible through it too.
+        guard presentation == 2 else { return }
         NSColor(calibratedWhite: 0.08, alpha: 0.22).setFill()
         NSBezierPath(roundedRect: box(0), xRadius: 6, yRadius: 6).fill()
     }
     // Only the HUD panels own hits. The center/right world stays interactive.
     override func hitTest(_ point: NSPoint) -> NSView? {
+        guard presentation == 2 else { return nil }
         let p = convert(point, from: superview)
         let messages = box(1).contains(p) && (!transcript.string.isEmpty || pending)
         guard box(0).contains(p) || messages || fresh.frame.contains(p) else { return nil }
@@ -225,13 +236,27 @@ final class ForgeChatPane: NSView, NSComboBoxDelegate {
         if nearBottom { transcript.scrollToEndOfDocument(nil) }
     }
     func update() {
+        let mode = presentation
+        for view in [hud as NSView, inputScroll, agent, model, effort, folder, send, fresh, heading, status, transcriptScroll] { view.isHidden = mode != 2 }
+        messagesScroll.isHidden = mode != 1
         for control in [agent as NSControl, model, effort, folder, fresh] { control.isEnabled = !busy }
         let configurable = ["codex", "claude", "cursor"].contains(selectedEngine)
         model.isEnabled = !busy && configurable; effort.isEnabled = !busy && configurable
-        send.title = busy ? "Stop ⎋" : "Send ↵"; allow.isHidden = !pending; deny.isHidden = !pending
+        send.title = busy ? "Stop" : "Send ↵"; allow.isHidden = mode != 2 || !pending; deny.isHidden = mode != 2 || !pending
         heading.stringValue = pending ? "CODER / APPROVAL NEEDED" : busy ? "CODER / WORKING · \(selectedEngine)" : "CODER / MESSAGES"
         folder.title = "\(cwd.lastPathComponent) ▾"; folder.toolTip = cwd.path
         hud.busy = busy; hud.needsDisplay = true; needsDisplay = true; needsLayout = true
+    }
+    func openComposer() {
+        composerOpen = true; onActivity?(); update(); window?.makeFirstResponder(input)
+    }
+    func closeComposer() {
+        composerOpen = false; update(); onClose?()
+    }
+    func appendMessage(_ text: String) {
+        messages.textStorage?.append(NSAttributedString(string: text, attributes: [.foregroundColor: NSColor(white: 0.95, alpha: 1), .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)]))
+        if messages.string.utf16.count > 200_000 { messages.textStorage?.deleteCharacters(in: NSRange(location: 0, length: 50_000)) }
+        update(); layoutSubtreeIfNeeded(); messages.scrollToEndOfDocument(nil)
     }
     func loadModels() {
         model.removeAllItems()
@@ -311,7 +336,8 @@ final class ForgeChatPane: NSView, NSComboBoxDelegate {
         let text = input.string.trimmingCharacters(in: .whitespacesAndNewlines)
         let bytes = Array(text.utf8)
         guard bytes.withUnsafeBufferPointer({ fgc_send(busy, $0.baseAddress, Int64($0.count)) }) else { status.stringValue = "Enter a message of at most 16 KiB."; return }
-        save(); onActivity?(); input.string = ""; busy = true; pending = false; session = ""; lastEnding = ""
+        save(); onActivity?(); input.string = ""; messages.string = ""; busy = true; pending = false; session = ""; lastEnding = ""
+        closeComposer()
         append("\nYOU\n\(text)\n\n", color: .white)
         var args = ["coder"] + (parent.isEmpty ? ["run", text] : ["fork", parent, text])
         args += ["--engine", selectedEngine, "--cwd", cwd.path, "--json", "--ask"]
@@ -352,10 +378,10 @@ final class ForgeChatPane: NSView, NSComboBoxDelegate {
         if kind == 1 { session = readField(0); return }
         let text = readField(1)
         switch kind {
-        case 3: append("\(selectedEngine.uppercased())\n\(text)\n\n")
+        case 3: append("\(selectedEngine.uppercased())\n\(text)\n\n"); appendMessage(text + "\n\n")
         case 4: append("› \(text)\n", color: .systemTeal); status.stringValue = text
         case 5: append("\(text)\n", color: .secondaryLabelColor)
-        case 6: pending = true; append("\nAPPROVAL NEEDED\n\(text)\n", color: .systemOrange); status.stringValue = "Review the tool request, then Allow once or Deny."; update()
+        case 6: pending = true; append("\nAPPROVAL NEEDED\n\(text)\n", color: .systemOrange); appendMessage(text + "\nPress Enter to review this tool request.\n\n"); status.stringValue = "Review the tool request, then Allow once or Deny."; update()
         case 7: lastEnding = text; append("\n[\(text)]\n", color: text.hasPrefix("finished") ? .systemTeal : .systemOrange)
         case 8: append("Edited: \(text)\n", color: .systemTeal)
         case 9: append("Model: \(text)\n", color: .systemTeal)

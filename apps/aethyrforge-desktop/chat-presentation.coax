@@ -1,0 +1,33 @@
+// Desktop-only Coder presentation and ownership of Return's complete press.
+// 0 passes through, 1 consumes, 2 opens Coder, 3 delivers to native controls.
+#test "Coder is absent at rest and only active messages float when closed" {
+  for opened:[2]bool.[false,true] {for busy:[2]bool.[false,true] {for messages:[2]bool.[false,true] {
+    expected:=ifx opened then 2 else ifx busy && messages then 1 else 0;
+    #assert fc_chat_mode(opened,busy,messages)==expected;
+  }}}
+}
+#test "Return and keypad Enter open Coder and keep their release out of the realm" {
+  for key:[2]int.[36,76] {
+    #assert fc_enter_route(true,false,key,true,false,false,false)==2;
+    #assert fc_enter_route(true,true,key,true,false,false,false)==3;
+    #assert fc_enter_route(true,false,key,true,true,false,false)==1;
+    #assert fc_enter_route(true,false,key,false,false,false,false)==0;
+    #assert fc_enter_route(false,false,key,true,false,false,false)==0;
+    #assert fc_enter_route(true,false,key,true,false,true,false)==0;
+    #assert fc_enter_route(true,true,key,true,false,true,false)==0;
+    #assert fc_enter_route(false,false,key,false,false,true,true)==1;
+    #assert fc_enter_route(true,true,key,true,true,false,true)==1;
+  }
+  #assert fc_enter_route(true,false,0,true,false,false,false)==0;
+  #assert fc_enter_route(true,false,53,true,false,false,true)==0;
+}
+fc_chat_mode :: (opened:bool,busy:bool,messages:bool)->int #export_c {
+  return ifx opened then 2 else ifx busy && messages then 1 else 0;
+}
+fc_enter_route :: (ready:bool,opened:bool,key:int,down:bool,repeated:bool,modified:bool,held:bool)->int #export_c {
+  if key!=36 && key!=76 {return 0;}
+  if held {return 1;}
+  if !down || !ready || modified {return 0;}
+  if repeated {return 1;}
+  return ifx opened then 3 else 2;
+}

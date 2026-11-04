@@ -31,9 +31,19 @@ func reservePort() throws -> (Int32, Int) {
 }
 
 @MainActor
+final class ForgeWindow: NSWindow {
+    var coderKey: ((NSEvent) -> Bool)?
+    override func sendEvent(_ event: NSEvent) {
+        if coderKey?(event) == true { return }
+        super.sendEvent(event)
+    }
+}
+
+@MainActor
 final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     let fm = FileManager.default
-    var window: NSWindow!
+    var window: ForgeWindow!
+    var coderHeldKeys: Set<UInt16> = []
     var web: WKWebView!
     var notice: NSTextField!
     var room: Process?
@@ -63,13 +73,14 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     let setupSmoke = CommandLine.arguments.contains("--setup-smoke")
     let voiceSmoke = CommandLine.arguments.contains("--voice-smoke")
     let chatSmoke = CommandLine.arguments.contains("--chat-smoke")
+    let inputSmoke = CommandLine.arguments.contains("--input-smoke")
     var launchReport: URL? {
         guard let i = CommandLine.arguments.firstIndex(of: "--launch-check"), i + 1 < CommandLine.arguments.count else { return nil }
         return URL(fileURLWithPath: CommandLine.arguments[i + 1])
     }
-    var smoke: Bool { chatSmoke || setupSmoke || voiceSmoke || CommandLine.arguments.contains("--smoke-test") }
+    var smoke: Bool { inputSmoke || chatSmoke || setupSmoke || voiceSmoke || CommandLine.arguments.contains("--smoke-test") }
     var report: URL? {
-        guard let i = CommandLine.arguments.firstIndex(of: chatSmoke ? "--chat-smoke" : voiceSmoke ? "--voice-smoke" : setupSmoke ? "--setup-smoke" : "--smoke-test"), i + 1 < CommandLine.arguments.count else { return nil }
+        guard let i = CommandLine.arguments.firstIndex(of: inputSmoke ? "--input-smoke" : chatSmoke ? "--chat-smoke" : voiceSmoke ? "--voice-smoke" : setupSmoke ? "--setup-smoke" : "--smoke-test"), i + 1 < CommandLine.arguments.count else { return nil }
         return URL(fileURLWithPath: CommandLine.arguments[i + 1])
     }
 
@@ -129,7 +140,8 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         web = WKWebView(frame: NSRect(x: 0, y: 0, width: 1280, height: 800), configuration: config)
         web.navigationDelegate = self; web.uiDelegate = self
         web.autoresizingMask = [.width, .height]
-        window = NSWindow(contentRect: web.frame, styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+        window = ForgeWindow(contentRect: web.frame, styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+        window.coderKey = { [weak self] in self?.routeCoderKey($0) ?? false }
         window.delegate = self
         window.title = "Aethyrforge"
         window.subtitle = "Everglade · Local edits · Experimental"
@@ -144,6 +156,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         chatPane = ForgeChatPane(frame: content.bounds)
         chatPane.autoresizingMask = [.width, .height]
         chatPane.onActivity = { [weak self] in self?.cancelVoice() }
+        chatPane.onClose = { [weak self] in guard let self else { return }; window.makeFirstResponder(web) }
         content.addSubview(chatPane)
         fgs_reset()
         setupPane = ForgeSetupPane(frame: content.bounds)
@@ -266,7 +279,10 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
                     }
                 }
             }
-            if voiceSmoke {
+            if inputSmoke {
+                await inventoryTask?.value
+                try await inputSmokeCheck()
+            } else if voiceSmoke {
                 await inventoryTask?.value
                 try await voiceSmokeCheck(resources)
             } else if setupSmoke {
@@ -455,11 +471,99 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         for i in 0..<512 { let c = fgs_settings_byte(Int64(i)); if c < 0 { break }; bytes.append(UInt8(c)) }
         do {
             try Data(bytes).write(to: settingsURL, options: .atomic)
-            setupPane.isHidden = true; window.makeFirstResponder(chatPane.input)
+            setupPane.isHidden = true; window.makeFirstResponder(web)
         } catch { setupPane.errorMessage = "Could not save setup: \(error.localizedDescription)"; setupPane.update() }
     }
-    @objc func showSetup() { cancelVoice(); setupPane.isHidden = false; setupPane.sceneReady = sceneReady; setupPane.update() }
-    @objc func focusChat() { guard setupPane.isHidden else { return }; window.makeFirstResponder(chatPane.input) }
+    @objc func showSetup() { cancelVoice(); chatPane.closeComposer(); setupPane.isHidden = false; setupPane.sceneReady = sceneReady; setupPane.update() }
+    @objc func focusChat() { guard setupPane.isHidden else { return }; chatPane.openComposer() }
+    func routeCoderKey(_ event: NSEvent) -> Bool {
+        guard event.type == .keyDown || event.type == .keyUp else { return false }
+        let down = event.type == .keyDown
+        let modified = !event.modifierFlags.intersection([.command, .control, .option]).isEmpty
+        let ready = sceneReady && setupPane.isHidden && NSApp.modalWindow == nil && window.attachedSheet == nil
+        let realmFocused = (window.firstResponder as? NSView)?.isDescendant(of: web) == true
+        let route = fgc_enter_route(ready, chatPane.composerOpen && !realmFocused, Int64(event.keyCode), down, event.isARepeat, modified, coderHeldKeys.contains(event.keyCode))
+        if route != 0 {
+            if down { coderHeldKeys.insert(event.keyCode) } else { coderHeldKeys.remove(event.keyCode) }
+        }
+        if route == 2 { focusChat() }
+        return route == 1 || route == 2
+    }
+
+    // Real AppKit key dispatch over the packaged realm, with no visible window.
+    // The staged events separately exercise presentation while the CLI waits.
+    func inputSmokeCheck() async throws {
+        guard let report else { throw ShellError.failed("--input-smoke needs a report path.") }
+        enterWorld()
+        func require(_ ok: Bool, _ message: String) throws { if !ok { throw ShellError.failed(message) } }
+        func key(_ code: UInt16, down: Bool = true, repeatKey: Bool = false, modifiers: NSEvent.ModifierFlags = []) {
+            let text = code == 53 ? "\u{1b}" : "\r"
+            let event = NSEvent.keyEvent(with: down ? .keyDown : .keyUp, location: .zero, modifierFlags: modifiers, timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil, characters: text, charactersIgnoringModifiers: text, isARepeat: repeatKey, keyCode: code)!
+            window.sendEvent(event)
+        }
+        try require(setupPane.isHidden && chatPane.presentation == 0 && chatPane.hud.isHidden && chatPane.inputScroll.isHidden && chatPane.transcriptScroll.isHidden && chatPane.messagesScroll.isHidden, "Coder must be completely absent at world entry.")
+        _ = try await web.evaluateJavaScript("globalThis.__forgeEnterDown=0;globalThis.__forgeEnterUp=0;addEventListener('keydown',e=>{if(e.key==='Enter')__forgeEnterDown++});addEventListener('keyup',e=>{if(e.key==='Enter')__forgeEnterUp++});true")
+        for code: UInt16 in [36, 76] {
+            key(code)
+            try require(chatPane.composerOpen && window.firstResponder === chatPane.input && !chatPane.inputScroll.isHidden && !chatPane.hud.isHidden, "Enter did not open and focus Coder.")
+            key(code, repeatKey: true)
+            try require(!chatPane.busy, "Holding the opening Enter must not submit a message.")
+            key(code, down: false)
+            chatPane.input.string = "Retained draft"
+            key(53); key(53, down: false)
+            try require(!chatPane.composerOpen && chatPane.presentation == 0 && chatPane.input.string == "Retained draft", "Escape must hide Coder and preserve the draft.")
+            key(code); key(code, down: false)
+            try require(chatPane.input.string == "Retained draft", "Opening Coder lost its draft.")
+            // Clicking the world while Coder is open must not give Enter back
+            // to region chat; the next press focuses the composer again.
+            window.makeFirstResponder(web); key(code); key(code, down: false)
+            try require(window.firstResponder === chatPane.input, "Enter leaked after the world regained focus.")
+            chatPane.closeComposer()
+        }
+        chatPane.openComposer(); chatPane.input.string = "line"; chatPane.input.setSelectedRange(NSRange(location: 4, length: 0))
+        key(36, modifiers: .shift); key(36, down: false, modifiers: .shift)
+        try require(chatPane.input.string == "line\n" && !chatPane.busy, "Shift-Enter must insert a line without submitting.")
+        chatPane.input.string = ""; key(36); key(36, down: false)
+        try require(chatPane.composerOpen && !chatPane.busy, "An empty draft must stay open.")
+        chatPane.busy = true; chatPane.closeComposer()
+        chatPane.receive("{\"kind\":\"tool\",\"label\":\"hidden tool activity\"}")
+        try require(chatPane.presentation == 0, "Tool metadata must not reveal Coder controls.")
+        chatPane.receive("{\"kind\":\"reply\",\"text\":\"Active reply on the left\"}")
+        try require(chatPane.presentation == 1 && !chatPane.messagesScroll.isHidden && chatPane.hud.isHidden && chatPane.heading.isHidden && chatPane.status.isHidden && chatPane.inputScroll.isHidden && chatPane.messages.string == "Active reply on the left\n\n", "An active reply must show only message text.")
+        try require(chatPane.hitTest(NSPoint(x: 30, y: 500)) == nil, "Closed Coder messages must not block the realm.")
+        chatPane.receive("{\"kind\":\"ask\",\"text\":\"Review this request\"}")
+        try require(!chatPane.composerOpen && chatPane.allow.isHidden && chatPane.messages.string.contains("Press Enter to review"), "Pending tools must wait for review without opening controls.")
+        key(36); key(36, down: false)
+        try require(!chatPane.allow.isHidden && !chatPane.deny.isHidden, "Enter must reveal the pending tool's approval controls.")
+        key(53); key(53, down: false)
+        try require(chatPane.busy && chatPane.pending && !chatPane.composerOpen, "Escape must close without stopping the agent or answering a tool.")
+        chatPane.busy = false; chatPane.pending = false; chatPane.update()
+        try require(chatPane.presentation == 0 && chatPane.messagesScroll.isHidden, "Completed messages must disappear while Coder is closed.")
+        key(36); key(36, down: false)
+        try require(chatPane.transcript.string.contains("Active reply on the left"), "Enter must restore conversation history.")
+        chatPane.newChat(); chatPane.closeComposer()
+        await chatPane.catalogTask?.value
+        let root = report.deletingLastPathComponent()
+        chatPane.home = root; chatPane.cliOverride = Bundle.main.resourceURL!.appendingPathComponent("openagents")
+        chatPane.cwd = root.appendingPathComponent("workspace")
+        try fm.createDirectory(at: chatPane.cwd, withIntermediateDirectories: true)
+        try fm.createDirectory(at: root.appendingPathComponent(".openagents/aethyrforge"), withIntermediateDirectories: true)
+        chatPane.agent.selectItem(at: 5); chatPane.changeAgent(); chatPane.model.stringValue = ""
+        key(36); key(36, down: false)
+        chatPane.input.string = "FORGE_ENTER_CODER_OK"
+        key(36); key(36, repeatKey: true); key(36, down: false)
+        try require(chatPane.busy && !chatPane.composerOpen && chatPane.inputScroll.isHidden, "Send must collapse the composer and leave the run active.")
+        let deadline = Date().addingTimeInterval(30)
+        while chatPane.busy && Date() < deadline { try await Task.sleep(for: .milliseconds(50)) }
+        try require(!chatPane.busy && chatPane.lastEnding.hasPrefix("finished") && chatPane.transcript.string.contains("FORGE_ENTER_CODER_OK") && !chatPane.session.isEmpty && chatPane.presentation == 0, "Native Enter did not finish its real Coder CLI round trip.")
+        let realm = try await web.evaluateJavaScript("JSON.stringify({downs:__forgeEnterDown,ups:__forgeEnterUp,typing:!!document.querySelector('input[aria-label=\"Typed text\"]'),scene:coaxial.sceneReady})") as? String ?? "{}"
+        let state = try JSONSerialization.jsonObject(with: Data(realm.utf8)) as? [String: Any] ?? [:]
+        try require(state["downs"] as? Int == 0 && state["ups"] as? Int == 0 && state["typing"] as? Bool == false && state["scene"] as? Bool == true, "Native Enter reached the realm's region chat: \(realm)")
+        let result: [String: Any] = ["ok": true, "realm": state, "nativeReturnAndKeypad": true, "heldEnter": true, "shiftEnter": true, "escapeKeepsDraftAndRun": true, "messagesOnlyWhileActive": true, "approvalWaitsForEnter": true, "realCoder": chatPane.session, "ending": chatPane.lastEnding]
+        try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]).write(to: report)
+        print("Native Enter / Coder presentation smoke passed")
+        stopChildren(); NSApp.terminate(nil)
+    }
 
     // Native input, layout and real CLI round trip, isolated from the live world.
     func chatSmokeCheck() async {
@@ -544,7 +648,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     }
     func cancelVoice() { _ = web?.evaluateJavaScript("globalThis.coaxialVoiceCancel?.(); true") }
     func applicationDidResignActive(_ notification: Notification) { cancelVoice() }
-    func windowDidResignKey(_ notification: Notification) { cancelVoice() }
+    func windowDidResignKey(_ notification: Notification) { coderHeldKeys.removeAll(); cancelVoice() }
     func windowDidMiniaturize(_ notification: Notification) { cancelVoice() }
     func traceVoice(_ line: String) {
         guard let dataURL, line.utf8.count <= 1024 else { return }

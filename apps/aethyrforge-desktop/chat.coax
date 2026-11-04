@@ -2,6 +2,7 @@
 // catalog, event interpretation and layout; AppKit provides text/IME effects.
 #import "Basic";
 #load "chat-policy.coax";
+#load "chat-presentation.coax";
 #load "../../coax/lib/json/json.coax";
 #load "../../aethyr/ui/draw.coax";
 

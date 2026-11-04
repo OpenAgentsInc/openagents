@@ -14,6 +14,10 @@ int64_t fgc_copy(int64_t field, uint8_t *p, int64_t cap) {
   memcpy(p, field == 0 ? event.session.e : event.text.e, (size_t)n); return n;
 }
 bool fgc_send(bool busy, const uint8_t *p, int64_t n) { return fc_can_send(busy,(coax_string){(const char *)p,n}); }
+int64_t fgc_chat_mode(bool opened, bool busy, bool messages) { return fc_chat_mode(opened,busy,messages); }
+int64_t fgc_enter_route(bool ready, bool opened, int64_t key, bool down, bool repeated, bool modified, bool held) {
+  return fc_enter_route(ready,opened,key,down,repeated,modified,held);
+}
 bool fgc_answer(bool busy, bool pending, const uint8_t *p, int64_t n) { return fc_can_answer(busy,pending,(coax_string){(const char *)p,n}); }
 int64_t fgc_catalog(int64_t i, bool label, uint8_t *out, int64_t cap) {
   coax_string s = label ? fc_label(i) : fc_engine(i);

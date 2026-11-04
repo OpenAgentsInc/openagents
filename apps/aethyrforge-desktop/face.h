@@ -18,6 +18,8 @@ void fgc_reset(void);
 int64_t fgc_read(const uint8_t *p, int64_t n);
 int64_t fgc_copy(int64_t field, uint8_t *p, int64_t cap);
 bool fgc_send(bool busy, const uint8_t *p, int64_t n);
+int64_t fgc_chat_mode(bool opened, bool busy, bool messages);
+int64_t fgc_enter_route(bool ready, bool opened, int64_t key, bool down, bool repeated, bool modified, bool held);
 bool fgc_answer(bool busy, bool pending, const uint8_t *p, int64_t n);
 int64_t fgc_catalog(int64_t i, bool label, uint8_t *out, int64_t cap);
 void fgc_models_reset(void);
