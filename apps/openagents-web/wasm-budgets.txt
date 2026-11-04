@@ -22,7 +22,7 @@ connect-pylon 80000
 deadgears 450000
 droprealm 180000
 everglade 1770000
-everglade5e 1830000
+everglade5e 1840000
 fairy 660000
 fivelab 590000
 fivemmo 1430000
