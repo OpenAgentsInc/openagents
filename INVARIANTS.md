@@ -172,8 +172,31 @@ exclusive file ownership and immutable inputs, and truncates only a KV
 reader's reported torn tail. `kvhash.coax` streams large-frame SHA-256d
 without changing the existing KV format. This is explicitly proof-of-work-only
 tracking, never full consensus validation or authority for money. Evidence:
-chapters 58/60's partial profiles, mutation checks, and `lightchain.py`'s
+chapters 58/60's explorer profiles, mutation checks, and `lightchain.py`'s
 independent native UTXO/MuHash, physical-cut and real Coax file-tool journeys.
+
+## Validated Bitcoin state commits coins, undo and one tip
+
+`coax/lib/bitcoin/chainstate.coax`, `chainstate-store.coax` and `blockundo.coax`
+own validated schema 1. `V` initializes only from the empty set at the actual
+network genesis and refuses `L` metadata. The complete block validator runs
+before replay constructs coins, full input metadata and ordered inverses.
+`O` chunks retain exact Core CBlockUndo bytes; `H` binds their size and
+parent-bound checksum plus every inverse. Coins, chunks, inverses and tip
+share one KV batch. A refusal poisons private scratch and has no publishable
+batch. Disconnect verifies the complete receipt and every afterimage before
+restoring old bytes, including BIP30-overwritten coinbases. Legacy undo
+metadata is not guessed or imported. All input views are immutable/disjoint.
+
+The caller publishes only after durable append. The teaching file tool owns
+its file exclusively and commits each block separately; later failures retain
+already committed earlier blocks. It repairs only a checked torn tail. The
+connector does not move the header-index tip or raise validity flags, migrate
+light snapshots, implement reorganization/cache policy or grant money
+admission. Evidence: chapter 58, its authority mutation receipts and the
+independent live Core, historical, exact-undo, crash-cut, native file and
+sanitizer comparisons. Historical mainnet fixtures supply an archival parent
+and touched coins, not a global mainnet UTXO snapshot or a sync from genesis.
 
 ## Bitcoin block validation changes only private coins
 
@@ -216,8 +239,10 @@ physical truncation or entirely zero preallocation, never authenticates block
 contents or undo bodies, and refuses malformed nonzero framing without
 authorizing truncation. The Coax file tool publishes an append position only
 after storage sync and truncates only a reported recoverable tail. It assumes
-no concurrent writer, rename, unlink or key change. Chapter 57 validates block bodies against an admitted header and the exact
-parent coins. Undo construction and chainstate commit order remain chapter 58. Evidence:
+no concurrent writer, rename, unlink or key change. Chapter 57 validates
+block bodies against admitted headers and exact parent coins. Chapter 58
+constructs undo and commits it with coins and tip; this framing layer grants
+none of that validity itself. Evidence:
 chapter 61, its mutation checks and `coax/tests/bitcoin/blockfiles.py` against
 Python, captured Core records and real files under ASan/UBSan.
 

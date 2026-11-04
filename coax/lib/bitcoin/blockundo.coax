@@ -1,0 +1,151 @@
+// Bitcoin chapter 58: Core's TxInUndoFormatter. Vector counts are CompactSize;
+// each coin is VARINT(height*2+coinbase), a legacy dummy VARINT when height>0,
+// then TxOutCompression. The dummy is not part of Coin::Serialize.
+#load "coins.coax";
+#authority;
+
+#test "block undo: independent bytes, full metadata and legacy version dummy" {
+  out: [10040] u8; back: [10000] u8; script := [1] u8.[0x51];
+  c := Coin.{value=5000000000, height=1, coinbase=true};
+  n := undo_coin_write_vartime(c, script[..], out[..]);
+  #assert n == 5 && cn_hex_is(out[0..<n], "0300320751");
+  r := undo_coin_read_vartime(out[0..<n], back[..]);
+  #assert r.code == COIN_OK && r.next == n && r.coin.value == c.value;
+  #assert r.coin.height == 1 && r.coin.coinbase && r.script_n == 1 && back[0] == 0x51;
+  old: [16] u8;
+  r = undo_coin_read_vartime(cn_unhex("038100320751", old[..]), back[..]);
+  #assert r.code == COIN_OK && r.next == 6 && r.coin.height == 1 && r.coin.coinbase && r.coin.value == c.value;
+  c.height = 0; c.coinbase = false; c.value = 0;
+  n = undo_coin_write_vartime(c, script[0..<0], out[..]);
+  #assert n == 3 && cn_hex_is(out[0..<n], "000006");
+  r = undo_coin_read_vartime(out[0..<n], back[..]);
+  #assert r.code == COIN_OK && r.next == n && r.coin.height == 0 && !r.coin.coinbase && r.coin.value == 0 && r.script_n == 0;
+  c.coinbase = true;
+  n = undo_coin_write_vartime(c, script[0..<0], out[..]);
+  #assert n == 3 && cn_hex_is(out[0..<n], "010006");
+  r = undo_coin_read_vartime(out[0..<n], back[..]);
+  #assert r.code == COIN_OK && r.next == n && r.coin.height == 0 && r.coin.coinbase;
+  c.height = 64; c.value = 5000000000;
+  n = undo_coin_write_vartime(c, script[..], out[..]);
+  #assert n == 6 && cn_hex_is(out[0..<n], "800100320751");
+  r = undo_coin_read_vartime(out[0..<n], back[..]);
+  #assert r.code == COIN_OK && r.coin.height == 64 && r.coin.coinbase && r.next == n;
+  c.height = 1; c.coinbase = false; c.value = 0;
+  n = undo_coin_write_vartime(c, script[..], out[..]);
+  r = undo_coin_read_vartime(out[0..<n], back[..]);
+  #assert r.code == COIN_OK && r.next == n && r.coin.height == 1 && !r.coin.coinbase && r.coin.value == 0;
+  c.height = 8256;
+  n = undo_coin_write_vartime(c, script[..], out[..]);
+  #assert cn_hex_is(out[0..<n], "80800000000751");
+  r = undo_coin_read_vartime(out[0..<n], back[..]);
+  #assert r.code == COIN_OK && r.next == n && r.coin.height == 8256;
+}
+#test "block undo: writer refusal preserves output and reads refuse every cut" {
+  out: [10040] u8; back: [10000] u8; script := [1] u8.[0x51];
+  c := Coin.{value=5000000000, height=1, coinbase=true};
+  for cap: 0..<5 {
+    for i: 0..<out.count { out[i] = 0xa5; }
+    #assert undo_coin_write_vartime(c, script[..], out[0..<cap]) == -COIN_CAPACITY;
+    #assert out[0] == 0xa5 && out[4] == 0xa5;
+  }
+  n := undo_coin_write_vartime(c, script[..], out[..]);
+  #assert undo_coin_write_vartime(c, script[..], out[0..<n]) == n;
+  for cut: 0..<n { #assert undo_coin_read_vartime(out[0..<cut], back[..]).code == COIN_TRUNCATED; }
+  #assert undo_coin_read_vartime(out[0..<n], back[0..<0]).code == COIN_CAPACITY;
+  c.height = -1; #assert undo_coin_write_vartime(c, script[..], out[..]) == -COIN_BAD_HEIGHT;
+  c.height = 2147483648; #assert undo_coin_write_vartime(c, script[..], out[..]) == -COIN_BAD_HEIGHT;
+  c.height = 1; c.value = COIN_MAX_MONEY+1;
+  #assert undo_coin_write_vartime(c, script[..], out[..]) == -COIN_BAD_AMOUNT;
+  bad: [20] u8;
+  #assert undo_coin_read_vartime(cn_unhex("8efefeff00", bad[..]), back[..]).code == COIN_VARINT_LARGE;
+  #assert undo_coin_read_vartime(cn_unhex("038efefeff00", bad[..]), back[..]).code == COIN_VARINT_LARGE;
+  large: [10041] u8;
+  #assert undo_coin_write_vartime(Coin.{}, large[..], out[0..<0]) == -COIN_CAPACITY;
+}
+#test "block undo: maximum stored script and height retain the last byte" {
+  out: [10040] u8; script: [10000] u8; back: [10000] u8;
+  script[0] = 0x51; script[9999] = 0x52;
+  c := Coin.{value=COIN_MAX_MONEY, height=2147483647, coinbase=false};
+  n := undo_coin_write_vartime(c, script[..], out[..]);
+  #assert n > 10000;
+  r := undo_coin_read_vartime(out[0..<n], back[..]);
+  #assert r.code == COIN_OK && r.next == n && r.coin.value == c.value && r.coin.height == c.height && !r.coin.coinbase;
+  #assert r.script_n == 10000 && back[0] == 0x51 && back[9999] == 0x52;
+}
+#test "block undo: compressed scripts, invalid keys and oversized legacy scripts" #steps 100000000 {
+  raw: [10040] u8; script: [10001] u8; out: [10001] u8;
+  pkh := cn_unhex("76a914751e76e8199196d454941c45d1b3a323f1433bd688ac", script[..]);
+  n := undo_coin_write_vartime(Coin.{value=1, height=100, coinbase=true}, pkh, raw[..]);
+  r := undo_coin_read_vartime(raw[0..<n], out[..]);
+  #assert r.code == COIN_OK && !r.bad_key && r.next == n && r.script_n == 25 && cn_hex_is(out[0..<25], "76a914751e76e8199196d454941c45d1b3a323f1433bd688ac");
+  #assert undo_coin_read_vartime(raw[0..<n], out[0..<66]).code == COIN_CAPACITY;
+  #assert undo_coin_read_vartime(raw[0..<n], out[0..<67]).code == COIN_OK;
+  for cut: 0..<n { #assert undo_coin_read_vartime(raw[0..<cut], out[..]).code == COIN_TRUNCATED; }
+  // Height zero, amount zero, uncompressed pubkey kind 4 with an invalid x.
+  for k: 0..<raw.count { raw[k] = 0; } raw[2] = 4;
+  r = undo_coin_read_vartime(raw[0..<35], out[..]);
+  #assert r.code == COIN_OK && r.bad_key && r.script_n == 0 && r.next == 35;
+  // Core decodes scripts above MAX_SCRIPT_SIZE as OP_RETURN while skipping
+  // their full serialized extent. This is a codec case, not a stored v1 coin.
+  at := coin_varint_write_vartime(raw[..], 2, 10007); raw[at] = 0x51;
+  r = undo_coin_read_vartime(raw[0..<at+10001], out[..]);
+  #assert r.code == COIN_OK && r.next == at+10001 && r.script_n == 1 && out[0] == 0x6a;
+  #assert undo_coin_read_vartime(raw[0..<at+10001], out[0..<0]).code == COIN_CAPACITY;
+  b := cn_unhex("0080fefefefefefefefe7f06", raw[..]);
+  r = undo_coin_read_vartime(b, out[..]);
+  #assert r.code == COIN_OK && r.coin.value == 0x1c71c71c71c72520 && r.next == b.count;
+  #assert undo_coin_read_vartime(cn_unhex("0080fefefefefefefefeff", raw[..]), out[..]).code == COIN_VARINT_LARGE;
+  #assert undo_coin_read_vartime(cn_unhex("00008efefeff00", raw[..]), out[..]).code == COIN_VARINT_LARGE;
+}
+
+// The caller's output is untouched on refusal. Coin compression is chapter 56.
+undo_coin_write_vartime :: (c: Coin, script: [] u8, out: [] u8) -> int #export_c {
+  record: [10040] u8;
+  n := coin_write_vartime(c, script, record[..]);
+  if n == -COIN_CAPACITY || n == -COIN_BAD_AMOUNT || n == -COIN_BAD_HEIGHT { return n; }
+  dummy := ifx c.height > 0 then 1 else 0;
+  if n + dummy > out.count { return -COIN_CAPACITY; }
+  code_n := 1;
+  while (record[code_n-1] & 0x80) != 0 { code_n += 1; }
+  for i: 0..<code_n { out[i] = record[i]; }
+  if dummy == 1 { out[code_n] = 0; }
+  for i: code_n..<n { out[i+dummy] = record[i]; }
+  return n + dummy;
+}
+// Accept Core's historical uint32 dummy, including multi-byte VARINTs. A zero
+// height remains zero: importing old incomplete metadata needs Core's alternate
+// output lookup and is outside the validated v1 state writer's contract.
+undo_coin_read_vartime :: (b: [] u8, script: [] u8) -> CoinRead #export_c {
+  code := coin_varint_read_vartime(b, 0, 0xffffffff);
+  if code.code != COIN_OK { return CoinRead.{code=code.code}; }
+  at := code.next;
+  if code.value > 1 {
+    dummy := coin_varint_read_vartime(b, at, 0xffffffff);
+    if dummy.code != COIN_OK { return CoinRead.{code=dummy.code}; }
+    at = dummy.next;
+  }
+  amount := coin_varint_read_vartime(b, at, 0xffffffffffffffff);
+  if amount.code != COIN_OK { return CoinRead.{code=amount.code}; }
+  size := coin_varint_read_vartime(b, amount.next, 0xffffffff);
+  if size.code != COIN_OK { return CoinRead.{code=size.code}; }
+  r := CoinRead.{coin=Coin.{value=coin_decompress_amount(amount.value), height=cast(int) (code.value >> 1), coinbase=(code.value & 1) == 1}};
+  if size.value < cast(u64) COIN_SPECIAL {
+    kind := cast(int) size.value; need := coin_special_size(kind);
+    if need > b.count-size.next { r.code = COIN_TRUNCATED; return r; }
+    if script.count < 67 { r.code = COIN_CAPACITY; return r; }
+    r.script_n = coin_decompress_script_vartime(kind, b[size.next..<size.next+need], script);
+    r.bad_key = r.script_n == 0; r.next = size.next+need; return r;
+  }
+  n := cast(int) (size.value-cast(u64) COIN_SPECIAL);
+  if n > b.count-size.next { r.code = COIN_TRUNCATED; return r; }
+  if n > COIN_MAX_SCRIPT {
+    if script.count == 0 { r.code = COIN_CAPACITY; return r; }
+    script[0] = 0x6a; r.script_n = 1;
+  } else {
+    if n > script.count { r.code = COIN_CAPACITY; return r; }
+    for i: 0..<n { script[i] = b[size.next+i]; }
+    r.script_n = n;
+  }
+  r.next = size.next+n;
+  return r;
+}

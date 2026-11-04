@@ -1,0 +1,45 @@
+// Thin ABI for independent chapter 58 oracles, with caller-owned buffers.
+#run_steps 250000000;
+#load "validation-native.coax";
+#load "../../lib/bitcoin/chainstate.coax";
+cs_native_connect :: (d: [] ValidationNative, i: int, block: [] u8, table: [] u8, used: int, stage: [] u8, batch: [] u8, undo: [] u8) -> CsResult #export_c {
+  w := ValidationWork.{ins=d[0].ins[..], outs=d[0].outs[..], items=d[0].items[..], ids=d[0].ids[..], wids=d[0].wids[..], merkle=d[0].merkle[..], coins=d[0].coins[..], spent=d[0].spent[..], sigops=d[0].ops[..], heights=d[0].heights[..], times=d[0].times[..], scripts=d[0].scripts[..], script=d[0].sw[..], signet_ids=d[0].signet_ids[..], signet_scratch=d[0].signet_scratch[..]};
+  return cs_connect_vartime(d[0].tree[..], i, block, table, used, stage, batch, w, undo);
+}
+// Only for independently admitted sparse archival pre-states. Production
+// initializes EMPTY via cs_init_vartime; this is no migration or sync loader.
+cs_native_fixture_tip :: (table: [] u8, used: int, chain: int, height: int, hash: [] u8) -> int #export_c {
+  key := CS_META; v: [44] u8; kv_put32(v[..], 0, CS_VERSION);
+  kv_put32(v[..], 4, chain); kv_put32(v[..], 8, height);
+  for k: 0..<32 { v[12+k] = hash[k]; }
+  return kv_set_vartime(table, used, key[..], v[..]);
+}
+cs_native_undo :: (table: [] u8, used: int, out: [] u8) -> int #export_c {
+  tip := cs_tip_vartime(table, used); hk: [33] u8; hk[0] = 'H';
+  for k: 0..<32 { hk[k+1] = tip.hash[k]; }
+  h := lc_value_vartime(table, used, hk[..]);
+  if tip.code != CS_OK || h.count != 116 { return -1; }
+  return cs_undo_load_vartime(table, used, tip.hash[..], kv_get32(h, 80), out);
+}
+cs_native_frame :: (batch: [] u8, sequence: u64, out: [] u8) -> int #export_c {
+  if out.count < batch.count+8 || kv_batch_check_vartime(batch).code != KV_OK { return -1; }
+  for i: 0..<batch.count { out[8+i] = batch[i]; }
+  kv_seal_vartime(out, batch.count, sequence, 0); return batch.count+8;
+}
+cs_native_open :: (file: [] u8, table: [] u8) -> KvOpen #export_c { return kv_open_vartime(file, table); }
+cs_native_muhash :: (table: [] u8, used: int, out: [] u8) -> int #export_c {
+  m := muhash_new(); at := 0; record: [10100] u8;
+  while at != used {
+    e := kv_entry_vartime(table, used, at);
+    if e.code == KV_NOT_FOUND { break; }
+    if e.code != KV_OK { return -1; }
+    at = e.next;
+    if e.key[0] != 'C' { continue; }
+    if e.key.count != 37 || e.value.count < 13 { return -1; }
+    c := Coin.{value=kv_get64(e.value, 0), height=kv_get32(e.value, 8), coinbase=e.value[12] == 1};
+    n := coin_txout_ser_vartime(e.key[1..<33], kv_get32(e.key, 33), c, e.value[13..<e.value.count], record[..]);
+    if n < 0 { return -1; }
+    m = muhash_insert_vartime(m, record[0..<n]);
+  }
+  return muhash_finalize_vartime(m, out);
+}

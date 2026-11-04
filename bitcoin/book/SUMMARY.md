@@ -89,7 +89,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 - [55. Script flags by height and their exceptions](ch055-script-flags-by-height-and-their-exceptions.md) — implemented
 - [56. The UTXO set and MuHash3072](ch056-the-utxo-set-and-muhash3072.md) — implemented
 - [57. Validate a block: every consensus rule](ch057-validate-a-block-every-consensus-rule.md) — implemented
-- [58. Connect and disconnect a block](ch058-connect-and-disconnect-a-block.md) — partly implemented
+- [58. Connect and disconnect a block](ch058-connect-and-disconnect-a-block.md) — implemented
 - [59. The block index and the most-work chain](ch059-the-block-index-and-the-most-work-chain.md) — implemented
 - [60. Reorganizations and invalid chains](ch060-reorganizations-and-invalid-chains.md) — partly implemented
 - [61. Block files and undo files](ch061-block-files-and-undo-files.md) — implemented

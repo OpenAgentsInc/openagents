@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/Users/christopherdavid/work/oa-bitcoin-book/psionic/tests/book.py", line 416, in <module>
+    main()
+    ~~~~^^
+  File "/Users/christopherdavid/work/oa-bitcoin-book/psionic/tests/book.py", line 410, in main
+    examples = check(args.book)
+  File "/Users/christopherdavid/work/oa-bitcoin-book/psionic/tests/book.py", line 111, in check
+    assert not errors, "reviewed capability claims: " + "; ".join(errors)
+           ^^^^^^^^^^
+AssertionError: reviewed capability claims: coax.wgsl.current: evidence changed; review verse/everglade/gpu.bindings

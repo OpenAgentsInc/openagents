@@ -1,0 +1,2 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+shard 1/1: 115 of 115 mutants, 115 killed, 0 survived

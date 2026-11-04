@@ -1,0 +1,6 @@
+validated-v1: height 0
+connect: height 1
+coinbase: 5000000000 sats, height 1, coinbase 1
+Core undo: 00
+disconnect: height 0
+profiles: distinct

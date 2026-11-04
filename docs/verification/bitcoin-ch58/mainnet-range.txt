@@ -1,0 +1,5 @@
+mainnet 170060: validated, 23 transactions, 1816 Core undo bytes
+mainnet 170061: validated, 6 transactions, 415 Core undo bytes
+mainnet 170062: validated, 9 transactions, 391 Core undo bytes
+mainnet 170063: validated, 12 transactions, 576 Core undo bytes
+historical range: exact original state and MuHash restored after 4 disconnects; independent archival parent boundary

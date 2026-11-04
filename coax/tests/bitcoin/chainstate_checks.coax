@@ -1,0 +1,296 @@
+// Bounded transition models. Native tests separately use actual admitted
+// headers, mature regtest spends and independent archival mainnet contexts.
+#load "lightchain_vectors.coax";
+CsDemo :: struct {
+  live: [131072] u8; stage: [131072] u8; batch: [262144] u8; undo: [131072] u8; used: int;
+  tree: [1] BlockTree; links: [128] BiLink; entries: [128] BiEntry; slots: [256] int; chain: [128] int;
+  raw: [4096] u8; n: int;
+  ins: [16] TxIn; outs: [16] TxOut; items: [16] TxItem;
+  ids: [256] u8; wids: [256] u8; merkle: [256] u8;
+  coins: [16] TxcCoin; spent: [16] ScriptSpent; ops: [16] SigopSpent;
+  heights: [16] int; times: [16] int; scripts: [1024] u8; sw: [1] ScriptWork;
+  signet_ids: [384] u8; signet_scratch: [4096] u8;
+}
+cs_demo_work :: (d: [] CsDemo) -> ValidationWork {
+  return ValidationWork.{ins=d[0].ins[..], outs=d[0].outs[..], items=d[0].items[..], ids=d[0].ids[..], wids=d[0].wids[..], merkle=d[0].merkle[..], coins=d[0].coins[..], spent=d[0].spent[..], sigops=d[0].ops[..], heights=d[0].heights[..], times=d[0].times[..], scripts=d[0].scripts[..], script=d[0].sw[..], signet_ids=d[0].signet_ids[..], signet_scratch=d[0].signet_scratch[..]};
+}
+cs_demo_publish :: (d: [] CsDemo, r: CsResult) {
+  #assert r.code == CS_OK;
+  for k: 0..<r.used { d[0].live[k] = d[0].stage[k]; } d[0].used = r.used;
+}
+cs_demo_init :: (d: [] CsDemo) {
+  #assert bi_init(d[0].tree[..], CHAIN_REGTEST_PARAMS, d[0].links[..], d[0].entries[..], d[0].slots[..], d[0].chain[..]);
+  for i: 0..<2 {
+    b := tx_unhex(LC_PREFIX[i], d[0].raw[..]);
+    #assert bi_accept_header_vartime(d[0].tree[..], b[0..<80], 2000000000).code == BI_OK;
+  }
+  d[0].n = LC_PREFIX[1].count/2;
+  cs_demo_publish(d, cs_init_vartime(5, d[0].live[..], 0, d[0].stage[..], d[0].batch[..]));
+}
+// This is a pre-state MODEL, not a production snapshot loader. Its noncoinbase
+// initial coin permits tiny checks of full script execution and intra-block undo.
+cs_demo_spends :: (d: [] CsDemo, false_script: bool) {
+  cs_demo_init(d); id: [32] u8; id[0] = 42; empty: [] string;
+  sig := [2] u8.[OP_1, 0]; spk := [1] u8.[OP_1];
+  at := sg_block_head(d[0].raw[..], 3);
+  for k: 0..<32 { d[0].raw[4+k] = d[0].entries[0].hash[k]; }
+  at = sg_tx(d[0].raw[..], at, true, id[..], 0, sig[..], empty, 1, 5000000002, spk[..]);
+  first := at;
+  at = sg_tx(d[0].raw[..], at, false, id[..], 0, sig[0..<0], empty, 1, 999, spk[..]);
+  child: [32] u8; sg_txid(d[0].raw[..], first, at, child[..]);
+  at = sg_tx(d[0].raw[..], at, false, child[..], 0, sig[0..<0], empty, 1, 998, spk[..]);
+  b := d[0].raw[0..<at]; d[0].n = at;
+  sg_fix_root(b, d[0].ins[..], d[0].outs[..], d[0].items[..], d[0].ids[..], d[0].wids[..], d[0].merkle[..]);
+  #assert pow_block_hash_vartime(b[0..<80], d[0].entries[1].hash[..]) == POW_OK;
+  key: [37] u8; validation_key(key[..], id[..], 0); v: [14] u8;
+  kv_put64(v[..], 0, 1000); v[13] = ifx false_script then 0 else OP_1;
+  d[0].used = kv_set_vartime(d[0].live[..], d[0].used, key[..], v[..]);
+}
+cs_demo_connect :: (d: [] CsDemo, cap: int) -> CsResult {
+  return cs_connect_vartime(d[0].tree[..], 1, d[0].raw[0..<d[0].n], d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[0..<cap], cs_demo_work(d), d[0].undo[..]);
+}
+#test "validated state: separate profile, genesis identity and malformed metadata" {
+  d: [1] CsDemo; cs_demo_init(d[..]);
+  tip := cs_tip_vartime(d[0].live[..], d[0].used);
+  #assert tip.code == CS_OK && tip.chain == 5 && tip.height == 0;
+  #assert lc_same(tip.hash[..], d[0].entries[0].hash[..]);
+  #assert lc_tip_vartime(d[0].live[..], d[0].used).code == LC_CONTEXT;
+  for network: 1..<6 {
+    r := cs_init_vartime(network, d[0].live[..], 0, d[0].stage[..], d[0].batch[..]);
+    t := cs_tip_vartime(d[0].stage[..], r.used);
+    #assert r.code == CS_OK && t.code == CS_OK && t.chain == network && t.height == 0;
+    #assert chain_hash_is_vartime(t.hash[..], chain_params(network).genesis.hash);
+  }
+  #assert cs_tip_vartime(d[0].live[..], -1).code == CS_CONTEXT;
+  #assert cs_tip_vartime(d[0].live[..], d[0].live.count+1).code == CS_CONTEXT;
+  for network: [2] int.[0,6] { #assert cs_init_vartime(network, d[0].live[..], 0, d[0].stage[..], d[0].batch[..]).code == CS_CONTEXT; }
+  #assert cs_init_vartime(5, d[0].live[..], 1, d[0].stage[..], d[0].batch[..]).code == CS_CONTEXT;
+  #assert cs_init_vartime(5, d[0].live[..], 0, d[0].stage[0..<50], d[0].batch[..]).code == CS_CAPACITY;
+  #assert cs_init_vartime(5, d[0].live[..], 0, d[0].stage[..], d[0].batch[0..<11]).code == CS_CAPACITY;
+  key := CS_META; f := kv_find_vartime(d[0].live[..], d[0].used, key[..]); at := f.at+7;
+  for version: [2] int.[0,2] {
+    kv_put32(d[0].live[..], at, version); #assert cs_tip_vartime(d[0].live[..], d[0].used).code == CS_CONTEXT;
+  }
+  kv_put32(d[0].live[..], at, CS_VERSION);
+  for chain: [2] int.[0,6] {
+    kv_put32(d[0].live[..], at+4, chain); #assert cs_tip_vartime(d[0].live[..], d[0].used).code == CS_CONTEXT;
+  }
+  kv_put32(d[0].live[..], at+4, 5); kv_put32(d[0].live[..], at+8, 2147483648);
+  #assert cs_tip_vartime(d[0].live[..], d[0].used).code == CS_CONTEXT;
+  kv_put32(d[0].live[..], at+8, 2147483647);
+  #assert cs_tip_vartime(d[0].live[..], d[0].used).height == 2147483647;
+  light := LC_META; val: [1] u8;
+  d[0].used = kv_set_vartime(d[0].live[..], d[0].used, light[..], val[0..<0]);
+  #assert cs_tip_vartime(d[0].live[..], d[0].used).code == CS_CONTEXT;
+}
+#test "validated state: admitted block connects and disconnects exactly" #steps 100000000 {
+  d: [1] CsDemo; cs_demo_init(d[..]); before: [51] u8;
+  for k: 0..<51 { before[k] = d[0].live[k]; }
+  r := cs_demo_connect(d[..], d[0].batch.count);
+  #assert r.code == CS_OK && r.n > 12 && r.undo_n == 1 && d[0].undo[0] == 0;
+  #assert lc_same(before[..], d[0].live[0..<51]);
+  cs_demo_publish(d[..], r);
+  hk: [33] u8; hk[0] = 'H'; for k: 0..<32 { hk[1+k] = d[0].entries[1].hash[k]; }
+  h := lc_value_vartime(d[0].live[..], d[0].used, hk[..]);
+  #assert h.count == 116 && kv_get32(h, 76) == 4*d[0].n && kv_get32(h, 80) == r.undo_n;
+  tip := cs_tip_vartime(d[0].live[..], d[0].used);
+  #assert tip.height == 1 && lc_same(tip.hash[..], d[0].entries[1].hash[..]);
+  key: [37] u8; validation_key(key[..], d[0].ids[..], 0);
+  v := lc_value_vartime(d[0].live[..], d[0].used, key[..]);
+  #assert v.count == 14 && kv_get64(v, 0) == 5000000000 && kv_get32(v, 8) == 1 && v[12] == 1 && v[13] == OP_1;
+  #assert d[0].entries[1].status == BLOCK_VALID_TREE && d[0].tree[0].height == -1;
+  r = cs_disconnect_vartime(d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[..], d[0].undo[..]);
+  #assert r.code == CS_OK && r.used == 51 && lc_same(d[0].stage[0..<51], before[..]);
+}
+#test "validated state: full scripts, same-block child and Core undo order" #steps 100000000 {
+  d: [1] CsDemo; cs_demo_spends(d[..], false); before: [256] u8; old := d[0].used;
+  for k: 0..<old { before[k] = d[0].live[k]; }
+  r := cs_demo_connect(d[..], d[0].batch.count);
+  #assert r.code == CS_OK && r.undo_n > 10 && d[0].undo[0] == 2 && d[0].undo[1] == 1;
+  script: [10000] u8; a := undo_coin_read_vartime(d[0].undo[2..<r.undo_n], script[..]);
+  #assert a.code == COIN_OK && a.coin.value == 1000 && a.coin.height == 0 && !a.coin.coinbase && a.script_n == 1 && script[0] == OP_1;
+  #assert d[0].undo[2+a.next] == 1;
+  b := undo_coin_read_vartime(d[0].undo[3+a.next..<r.undo_n], script[..]);
+  #assert b.code == COIN_OK && b.coin.value == 999 && b.coin.height == 1 && !b.coin.coinbase && b.script_n == 1;
+  #assert 3+a.next+b.next == r.undo_n;
+  cs_demo_publish(d[..], r);
+  key: [37] u8; id: [32] u8; id[0] = 42; validation_key(key[..], id[..], 0);
+  #assert !kv_find_vartime(d[0].live[..], d[0].used, key[..]).found;
+  validation_key(key[..], d[0].ids[32..<64], 0);
+  #assert !kv_find_vartime(d[0].live[..], d[0].used, key[..]).found;
+  validation_key(key[..], d[0].ids[64..<96], 0);
+  v := lc_value_vartime(d[0].live[..], d[0].used, key[..]);
+  #assert v.count == 14 && kv_get64(v, 0) == 998 && kv_get32(v, 8) == 1 && v[12] == 0 && v[13] == OP_1;
+  validation_key(key[..], d[0].ids[0..<32], 0);
+  v = lc_value_vartime(d[0].live[..], d[0].used, key[..]);
+  #assert v.count == 14 && kv_get64(v, 0) == 5000000002 && v[12] == 1;
+  r = cs_disconnect_vartime(d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[..], d[0].undo[..]);
+  #assert r.code == CS_OK && r.used == old && lc_same(d[0].stage[0..<old], before[0..<old]);
+  cs_demo_spends(d[..], true);
+  r = cs_demo_connect(d[..], d[0].batch.count);
+  #assert r.code == CS_CONSENSUS && r.vcode == VALIDATE_SCRIPT && r.tx == 1 && r.input == 0 && r.n == 0;
+}
+#test "validated state: undo chunk boundaries and missing or altered extents" #steps 200000000 {
+  table: [300000] u8; batch: [300000] u8; data: [131073] u8; out: [131074] u8;
+  hash: [32] u8; hash[0] = 3; hash[31] = 9; data[0] = 5; data[65535] = 6; data[65536] = 7; data[131072] = 8;
+  key_check: [37] u8; cs_undo_key(hash[..], 0x12345678, key_check[..]);
+  #assert key_check[0] == 'O' && key_check[1] == 3 && key_check[32] == 9 && kv_get32(key_check[..], 33) == 0x12345678;
+  for n: [4] int.[65535,65536,65537,131073] {
+    c: [1] LcCursor; c[0].n = kv_batch_new(batch[..]);
+    #assert cs_undo_save_vartime(table[..], c[..], batch[..], hash[..], data[0..<n]);
+    out[n] = 0xa5;
+    #assert cs_undo_load_vartime(table[..], c[0].used, hash[..], n, out[0..<n]) == n && lc_same(data[0..<n], out[0..<n]) && out[n] == 0xa5;
+    #assert cs_undo_load_vartime(table[..], c[0].used, hash[..], n, out[0..<n-1]) == -CS_CAPACITY;
+    key: [37] u8; cs_undo_key(hash[..], 0, key[..]);
+    c[0].used = kv_delete_vartime(table[..], c[0].used, key[..]);
+    #assert cs_undo_load_vartime(table[..], c[0].used, hash[..], n, out[..]) == -CS_UNDO;
+  }
+  #assert cs_undo_load_vartime(table[..], 0, hash[..], 0, out[..]) == -CS_UNDO;
+  #assert cs_undo_load_vartime(table[..], 0, hash[..], KV_FRAME_MAX+1, out[..]) == -CS_UNDO;
+  #assert cs_undo_load_vartime(table[..], 0, hash[..], KV_FRAME_MAX, out[..]) == -CS_CAPACITY;
+  c: [1] LcCursor; c[0].n = kv_batch_new(batch[..]);
+  #assert !cs_undo_save_vartime(table[..], c[..], batch[0..<11], hash[..], data[0..<1]);
+}
+#test "validated state: context and capacity failures never publish a batch" #steps 200000000 {
+  d: [1] CsDemo; cs_demo_init(d[..]); w := cs_demo_work(d[..]); b := d[0].raw[0..<d[0].n];
+  for index: [3] int.[-1,0,2] { #assert cs_connect_vartime(d[0].tree[..], index, b, d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[..], w, d[0].undo[..]).code == CS_CONTEXT; }
+  #assert cs_connect_vartime(d[0].tree[0..<0], 1, b, d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[..], w, d[0].undo[..]).code == CS_CONTEXT;
+  for cap: [5] int.[0,11,100,200,300] {
+    r := cs_demo_connect(d[..], cap); #assert r.code == CS_CAPACITY && r.n == 0;
+  }
+  #assert cs_connect_vartime(d[0].tree[..], 1, b, d[0].live[..], d[0].used, d[0].stage[0..<0], d[0].batch[..], w, d[0].undo[..]).code == CS_CAPACITY;
+  w.ids = d[0].ids[0..<0];
+  r := cs_connect_vartime(d[0].tree[..], 1, b, d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[..], w, d[0].undo[..]);
+  #assert r.code == CS_CAPACITY && r.vcode == VALIDATE_CAPACITY && r.n == 0;
+  w = cs_demo_work(d[..]);
+  #assert cs_connect_vartime(d[0].tree[..], 1, b, d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[..], w, d[0].undo[0..<1]).code == CS_OK;
+  #assert cs_connect_vartime(d[0].tree[..], 1, b, d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[..], w, d[0].undo[0..<0]).code == CS_CAPACITY;
+  d[0].entries[1].status |= BLOCK_FAILED_VALID;
+  r = cs_demo_connect(d[..], d[0].batch.count); #assert r.code == CS_CONTEXT && r.vcode == VALIDATE_CONTEXT;
+  d[0].entries[1].status = BLOCK_VALID_TREE;
+  hk: [33] u8; hk[0] = 'H'; for k: 0..<32 { hk[1+k] = d[0].entries[1].hash[k]; }
+  bogus := [1] u8.[1]; d[0].used = kv_set_vartime(d[0].live[..], d[0].used, hk[..], bogus[..]);
+  #assert cs_demo_connect(d[..], d[0].batch.count).code == CS_CONTEXT;
+  d[0].used = kv_delete_vartime(d[0].live[..], d[0].used, hk[..]);
+  d[0].entries[0].hash[0] ^= 1; #assert cs_demo_connect(d[..], d[0].batch.count).code == CS_CONTEXT; d[0].entries[0].hash[0] ^= 1;
+  d[0].links[1].prev = -1; #assert cs_demo_connect(d[..], d[0].batch.count).code == CS_CONTEXT; d[0].links[1].prev = 0;
+  d[0].links[1].height = 2; #assert cs_demo_connect(d[..], d[0].batch.count).code == CS_CONTEXT; d[0].links[1].height = 1;
+  d[0].tree[0].p.chain = 1; #assert cs_demo_connect(d[..], d[0].batch.count).code == CS_CONTEXT; d[0].tree[0].p.chain = 5;
+  #assert cs_disconnect_vartime(d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[..], d[0].undo[..]).code == CS_CONTEXT;
+  cs_demo_publish(d[..], cs_demo_connect(d[..], d[0].batch.count));
+  #assert cs_demo_connect(d[..], d[0].batch.count).code == CS_CONTEXT;
+  #assert cs_disconnect_vartime(d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[..], d[0].undo[0..<0]).code == CS_CAPACITY;
+  #assert cs_disconnect_vartime(d[0].live[..], d[0].used, d[0].stage[0..<0], d[0].batch[..], d[0].undo[..]).code == CS_CAPACITY;
+  #assert cs_disconnect_vartime(d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[0..<12], d[0].undo[..]).code == CS_CAPACITY;
+}
+#test "validated state: Core undo vector counts have canonical CompactSize bounds" {
+  out: [20] u8;
+  for value: [5] int.[0,252,253,65535,65536] {
+    size := tx_compact_size_vartime(value);
+    #assert cs_undo_count_vartime(out[0..<size], 0, value) == size;
+    r := tx_compact_read_vartime(out[0..<size], 0);
+    #assert r.code == TX_OK && r.value == value && r.next == size;
+    #assert cs_undo_count_vartime(out[0..<size-1], 0, value) == -CS_CAPACITY;
+    #assert cs_undo_count_vartime(out[0..<size+3], 3, value) == size+3;
+    #assert cs_undo_count_vartime(out[0..<size+2], 3, value) == -CS_CAPACITY;
+  }
+  d: [1] CsDemo; cs_demo_spends(d[..], false);
+  r := cs_demo_connect(d[..], 250); #assert r.code == CS_CAPACITY && r.n == 0;
+  #assert cs_connect_vartime(d[0].tree[..], 1, d[0].raw[0..<d[0].n], d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[..], cs_demo_work(d[..]), d[0].undo[0..<1]).code == CS_CAPACITY;
+  #assert cs_connect_vartime(d[0].tree[..], 1, d[0].raw[0..<d[0].n], d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[..], cs_demo_work(d[..]), d[0].undo[0..<3]).code == CS_CAPACITY;
+}
+#test "validated state: mature coinbase metadata matches actual Core undo bytes" #steps 2000000000 {
+  d: [1] CsDemo; cs_demo_init(d[..]);
+  for h: 2..<LC_PREFIX.count {
+    b := tx_unhex(LC_PREFIX[h], d[0].raw[..]);
+    #assert bi_accept_header_vartime(d[0].tree[..], b[0..<80], 2000000000).code == BI_OK;
+  }
+  b := tx_unhex(LC_BRANCH[0], d[0].raw[..]);
+  #assert bi_accept_header_vartime(d[0].tree[..], b[0..<80], 2000000000).code == BI_OK;
+  for h: 1..<LC_PREFIX.count {
+    raw := tx_unhex(LC_PREFIX[h], d[0].raw[..]);
+    r := cs_connect_vartime(d[0].tree[..], h, raw, d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[..], cs_demo_work(d[..]), d[0].undo[..]);
+    cs_demo_publish(d[..], r);
+  }
+  raw := tx_unhex(LC_BRANCH[0], d[0].raw[..]);
+  r := cs_connect_vartime(d[0].tree[..], 101, raw, d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[..], cs_demo_work(d[..]), d[0].undo[..]);
+  #assert r.code == CS_OK && r.undo_n == 14 && cn_hex_is(d[0].undo[0..<r.undo_n], "0201030032075101804a001e0751");
+}
+#test "validated state: empty and exact-maximum output scripts enter coins" #steps 200000000 {
+  for which: 0..<4 {
+    d: [1] CsDemo; cs_demo_init(d[..]); raw: [16384] u8; spk: [10001] u8;
+    spk[0] = ifx which == 3 then OP_RETURN else OP_1;
+    size := ifx which == 0 then 0 else ifx which == 1 then 10000 else ifx which == 2 then 10001 else 1;
+    sig := [2] u8.[OP_1,0]; id: [32] u8; empty: [] string;
+    at := sg_block_head(raw[..], 1);
+    at = sg_tx(raw[..], at, true, id[..], 0, sig[..], empty, 1, 1, spk[0..<size]);
+    for k: 0..<32 { raw[4+k] = d[0].entries[0].hash[k]; }
+    kv_put32(raw[..], 68, cast(int) d[0].entries[1].time);
+    b := raw[0..<at]; sg_fix_root(b, d[0].ins[..], d[0].outs[..], d[0].items[..], d[0].ids[..], d[0].wids[..], d[0].merkle[..]);
+    #assert pow_block_hash_vartime(b[0..<80], d[0].entries[1].hash[..]) == POW_OK;
+    r := cs_connect_vartime(d[0].tree[..], 1, b, d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[..], cs_demo_work(d[..]), d[0].undo[..]);
+    #assert r.code == CS_OK;
+    key: [37] u8; validation_key(key[..], d[0].ids[..], 0);
+    v := lc_value_vartime(d[0].stage[..], r.used, key[..]);
+    if which < 2 { #assert v.count == 13+size && kv_get64(v, 0) == 1; }
+    else { #assert v.count == 0; }
+  }
+}
+#test "validated state: a spent coin can have an empty scriptPubKey" #steps 100000000 {
+  d: [1] CsDemo; cs_demo_init(d[..]); id: [32] u8; id[0] = 42;
+  sig := [2] u8.[OP_1,0]; spk := [1] u8.[OP_1]; empty: [] string;
+  at := sg_block_head(d[0].raw[..], 2);
+  at = sg_tx(d[0].raw[..], at, true, id[..], 0, sig[..], empty, 1, 5000000001, spk[..]);
+  at = sg_tx(d[0].raw[..], at, false, id[..], 0, sig[0..<1], empty, 1, 999, spk[..]);
+  for k: 0..<32 { d[0].raw[4+k] = d[0].entries[0].hash[k]; }
+  kv_put32(d[0].raw[..], 68, cast(int) d[0].entries[1].time);
+  b := d[0].raw[0..<at]; sg_fix_root(b, d[0].ins[..], d[0].outs[..], d[0].items[..], d[0].ids[..], d[0].wids[..], d[0].merkle[..]);
+  #assert pow_block_hash_vartime(b[0..<80], d[0].entries[1].hash[..]) == POW_OK;
+  key: [37] u8; validation_key(key[..], id[..], 0); v: [13] u8; kv_put64(v[..], 0, 1000);
+  d[0].used = kv_set_vartime(d[0].live[..], d[0].used, key[..], v[..]);
+  r := cs_connect_vartime(d[0].tree[..], 1, b, d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[..], cs_demo_work(d[..]), d[0].undo[..]);
+  #assert r.code == CS_OK && r.undo_n == 5 && cn_hex_is(d[0].undo[0..<r.undo_n], "0101000406");
+}
+#test "validated state: pinned signet witness block decodes through replay" #steps 1000000000 {
+  d: [1] CsDemo; p := CHAIN_SIGNET_PARAMS;
+  #assert bi_init(d[0].tree[..], p, d[0].links[..], d[0].entries[..], d[0].slots[..], d[0].chain[..]);
+  n := chain_genesis_block_vartime(p.genesis, d[0].raw[..]);
+  #assert n > 80 && bi_accept_header_vartime(d[0].tree[..], d[0].raw[0..<80], 2000000000).code == BI_OK;
+  n = cp_unhex(SIGNET_BLOCK_1, d[0].raw[..]);
+  #assert n > 80 && bi_accept_header_vartime(d[0].tree[..], d[0].raw[0..<80], 2000000000).code == BI_OK;
+  cs_demo_publish(d[..], cs_init_vartime(4, d[0].live[..], 0, d[0].stage[..], d[0].batch[..]));
+  b := d[0].raw[0..<n];
+  r := cs_connect_vartime(d[0].tree[..], 1, b, d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[..], cs_demo_work(d[..]), d[0].undo[..]);
+  #assert r.code == CS_OK && r.undo_n == 1 && d[0].undo[0] == 0;
+  t := tx_parse_vartime(b[81..<n], true, d[0].ins[..], d[0].outs[..], d[0].items[..]);
+  #assert t.segwit && t.nout > 0;
+  key: [37] u8; validation_key(key[..], d[0].ids[..], 0);
+  v := lc_value_vartime(d[0].stage[..], r.used, key[..]);
+  #assert v.count == 13+d[0].outs[0].script_n && kv_get64(v, 0) == 5000000000 && kv_get32(v, 8) == 1 && v[12] == 1;
+  cs_demo_publish(d[..], r);
+  r = cs_disconnect_vartime(d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[..], d[0].undo[..]);
+  #assert r.code == CS_OK && r.used == 51 && cs_tip_vartime(d[0].stage[..], r.used).height == 0;
+}
+#test "validated state: receipt, Core undo and inverse damage each refuse" #steps 300000000 {
+  for which: 0..<10 {
+    d: [1] CsDemo; cs_demo_init(d[..]); cs_demo_publish(d[..], cs_demo_connect(d[..], d[0].batch.count));
+    hash := d[0].entries[1].hash; hk: [33] u8; hk[0] = 'H'; for k: 0..<32 { hk[1+k] = hash[k]; }
+    f := kv_find_vartime(d[0].live[..], d[0].used, hk[..]); at := f.at+39;
+    if which == 0 { d[0].live[at] ^= 1; }
+    if which == 1 { d[0].live[at+4] ^= 1; }
+    if which == 2 { d[0].live[at+8] ^= 1; }
+    if which == 3 { d[0].live[at+44] ^= 1; }
+    if which == 4 { d[0].live[at+84] ^= 1; }
+    if which == 5 { d[0].used = kv_delete_vartime(d[0].live[..], d[0].used, hk[..]); }
+    if which == 6 || which == 7 {
+      key: [37] u8; cs_undo_key(hash[..], 0, key[..]); g := kv_find_vartime(d[0].live[..], d[0].used, key[..]);
+      if which == 6 { d[0].live[g.at+43] ^= 1; } else { d[0].used = kv_delete_vartime(d[0].live[..], d[0].used, key[..]); }
+    }
+    if which == 8 {
+      key: [37] u8; validation_key(key[..], d[0].ids[..], 0); g := kv_find_vartime(d[0].live[..], d[0].used, key[..]); d[0].live[g.at+43] ^= 1;
+    }
+    if which == 9 { kv_put32(d[0].live[..], at+40, 2); }
+    r := cs_disconnect_vartime(d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[..], d[0].undo[..]);
+    #assert r.code == CS_UNDO && r.n == 0;
+  }
+}

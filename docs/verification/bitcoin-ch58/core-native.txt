@@ -1,0 +1,2 @@
+atomic frame: all 1335 physical cuts retain one complete snapshot
+regtest: 102 Core undo bodies match byte for byte; full UTXO/MuHash agrees through both disconnects

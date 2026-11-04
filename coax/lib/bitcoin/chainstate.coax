@@ -1,0 +1,106 @@
+// Bitcoin chapter 58. Every connect starts with the complete block validator.
+// Header and block inputs are immutable; all views disjoint. A refusal poisons
+// scratch and returns no publishable batch. Publish only after durable append.
+#run_steps 250000000;
+#load "validation.coax";
+#load "chainstate-store.coax";
+#load "lightpolicy.coax";
+#authority;
+#load "../../tests/bitcoin/chainstate_checks.coax";
+
+// Production initialization accepts only an empty table at the actual genesis.
+cs_init_vartime :: (network: int, table: [] u8, used: int, stage: [] u8, batch: [] u8) -> CsResult #export_c {
+  if network < 1 || network > 5 || used != 0 { return CsResult.{code=CS_CONTEXT}; }
+  c: [1] LcCursor;
+  if !lc_begin_vartime(table, used, stage, batch, c[..]) { return CsResult.{code=CS_CAPACITY}; }
+  hash: [32] u8; p := chain_params(network);
+  #assert cp_unhex(p.genesis.hash, hash[..]) == 32;
+  #assert bitcoin_reverse32(hash[..], hash[..]) == SHA_OK;
+  if !cs_tip_set_vartime(stage, c[..], batch, network, 0, hash[..]) { return CsResult.{code=CS_CAPACITY}; }
+  return CsResult.{used=c[0].used, n=c[0].n};
+}
+// CompactSize vector counts, with capacity checked before chapter 34 writes.
+// The admitted caller supplies a nonnegative count and an offset within out.
+cs_undo_count_vartime :: (out: [] u8, at: int, count: int) -> int {
+  if tx_compact_size_vartime(count) > out.count-at { return -CS_CAPACITY; }
+  return tx_compact_write_vartime(out, at, count);
+}
+// Replay only a body just accepted by validation_block_vartime. It constructs
+// inverses and Core undo from the ORIGINAL view, in transaction/input order.
+// No status, tip or batch can be published until the entire caller succeeds.
+cs_changes_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, b: [] u8, height: int, hash: [] u8, w: ValidationWork, undo: [] u8) -> CsResult {
+  count := tx_compact_read_vartime(b, 80); at := count.next; ordinal := 0;
+  un := cs_undo_count_vartime(undo, 0, count.value-1);
+  if un == -CS_CAPACITY { return CsResult.{code=CS_CAPACITY}; }
+  weight := 4 * at;
+  for n: 0..<count.value {
+    raw := b[at..<b.count]; t := tx_parse_vartime(raw, true, w.ins, w.outs, w.items);
+    weight += tx_weight_vartime(t); key: [37] u8; key[0] = 'C';
+    if n != 0 {
+      un = cs_undo_count_vartime(undo, un, t.nin);
+      if un == -CS_CAPACITY { return CsResult.{code=CS_CAPACITY}; }
+      for j: 0..<t.nin {
+        for k: 0..<36 { key[1+k] = raw[w.ins[j].outpoint+k]; }
+        v := lc_value_vartime(table, c[0].used, key[..]);
+        // The immutable accepted body and exact replay guarantee this coin.
+        #assert v.count >= VALIDATION_COIN_HEAD;
+        coin := Coin.{value=kv_get64(v, 0), height=kv_get32(v, 8), coinbase=v[12] == 1};
+        size := undo_coin_write_vartime(coin, v[13..<v.count], undo[un..<undo.count]);
+        // The validator admitted all fields; only serialization capacity fails.
+        if size == -COIN_CAPACITY { return CsResult.{code=CS_CAPACITY}; }
+        un += size; absent: [] u8;
+        code := lc_change_vartime(table, c, batch, hash, ordinal, key[..], absent, false);
+        if code != LC_OK { return CsResult.{code=CS_CAPACITY}; }
+        ordinal += 1;
+      }
+    }
+    for j: 0..<t.nout {
+      o := w.outs[j]; spk := raw[o.script..<o.script+o.script_n];
+      if spk.count > SCRIPT_MAX_SIZE || (spk.count > 0 && spk[0] == OP_RETURN) { continue; }
+      validation_key(key[..], w.ids[32*n..<w.ids.count], j);
+      value: [10013] u8; kv_put64(value[..], 0, cast(u64) tx_le_vartime(raw, o.value, 8));
+      kv_put32(value[..], 8, height); value[12] = ifx n == 0 then 1 else 0;
+      for k: 0..<spk.count { value[13+k] = spk[k]; }
+      code := lc_change_vartime(table, c, batch, hash, ordinal, key[..], value[0..<13+spk.count], true);
+      if code != LC_OK { return CsResult.{code=CS_CAPACITY}; }
+      ordinal += 1;
+    }
+    at += t.total;
+  }
+  return CsResult.{detail=ordinal, used=weight, undo_n=un};
+}
+// One validated child of the published tip. Capacity failures are local and
+// carry no consensus-invalid conclusion. Index validity is unchanged here.
+cs_connect_vartime :: (tree: [] BlockTree, i: int, b: [] u8, table: [] u8, used: int, stage: [] u8, batch: [] u8, w: ValidationWork, undo: [] u8) -> CsResult #export_c {
+  tip := cs_tip_vartime(table, used);
+  if tip.code != CS_OK || tree.count != 1 { return CsResult.{code=CS_CONTEXT}; }
+  if tip.chain != tree[0].p.chain || !lc_index_extent(i, tree[0].count) { return CsResult.{code=CS_CONTEXT}; }
+  l := tree[0].l; e := tree[0].e; parent := l[i].prev;
+  if parent < 0 || l[i].height != tip.height+1 { return CsResult.{code=CS_CONTEXT}; }
+  if !lc_same(tip.hash[..], e[parent].hash[..]) { return CsResult.{code=CS_CONTEXT}; }
+  hash := e[i].hash; hk: [33] u8; hk[0] = 'H'; for k: 0..<32 { hk[1+k] = hash[k]; }
+  if kv_find_vartime(table, used, hk[..]).found { return CsResult.{code=CS_CONTEXT}; }
+  c: [1] LcCursor;
+  if !lc_begin_vartime(table, used, stage, batch, c[..]) { return CsResult.{code=CS_CAPACITY}; }
+  checked := validation_block_vartime(tree, i, b, stage, used, w);
+  if checked.code != VALIDATE_OK {
+    code := ifx checked.code == VALIDATE_CAPACITY then CS_CAPACITY else ifx checked.code == VALIDATE_CONTEXT then CS_CONTEXT else CS_CONSENSUS;
+    return CsResult.{code=code, vcode=checked.code, detail=checked.detail, tx=checked.tx, input=checked.input};
+  }
+  // Validation's private table is discarded, then rebuilt as one journalled
+  // transition. This preserves input coins for Core's serialized undo.
+  #assert lc_begin_vartime(table, used, stage, batch, c[..]);
+  changes := cs_changes_vartime(stage, c[..], batch, b, l[i].height, hash[..], w, undo);
+  if changes.code != CS_OK { return changes; }
+  if !cs_undo_save_vartime(stage, c[..], batch, hash[..], undo[0..<changes.undo_n]) { return CsResult.{code=CS_CAPACITY}; }
+  h: [116] u8; sum: [32] u8;
+  kv_put32(h[..], 0, CS_VERSION); kv_put32(h[..], 4, l[i].height);
+  for k: 0..<32 { h[8+k] = tip.hash[k]; }
+  kv_put32(h[..], 40, changes.detail); kv_put32(h[..], 76, changes.used); kv_put32(h[..], 80, changes.undo_n);
+  #assert lc_undo_digest_vartime(stage, c[0].used, hash[..], tip.hash[..], changes.detail, sum[..]);
+  for k: 0..<32 { h[44+k] = sum[k]; }
+  cs_undo_checksum(undo[0..<changes.undo_n], tip.hash[..], sum[..]);
+  for k: 0..<32 { h[84+k] = sum[k]; }
+  if !lc_put_vartime(stage, c[..], batch, hk[..], h[..]) || !cs_tip_set_vartime(stage, c[..], batch, tip.chain, l[i].height, hash[..]) { return CsResult.{code=CS_CAPACITY}; }
+  return CsResult.{used=c[0].used, n=c[0].n, undo_n=changes.undo_n};
+}

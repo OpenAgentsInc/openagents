@@ -1,0 +1,123 @@
+// Storage-only models. They supply an already accepted transition, not a
+// production block/snapshot loader. The pipeline checks actual block validity.
+CsStoreDemo :: struct { live: [32768] u8; stage: [32768] u8; batch: [65536] u8; undo: [1024] u8; used: int; before: [256] u8; old: int; }
+cs_store_fixture :: (d: [] CsStoreDemo) {
+  c: [1] LcCursor; c[0].n = kv_batch_new(d[0].batch[..]); parent: [32] u8; hash: [32] u8;
+  parent[0] = 7; parent[31] = 19; hash[0] = 8; hash[31] = 20;
+  #assert cs_tip_set_vartime(d[0].live[..], c[..], d[0].batch[..], 5, 100, parent[..]);
+  key: [37] u8; key[0] = 'C'; key[1] = 42;
+  v: [14] u8; kv_put64(v[..], 0, 1000); kv_put32(v[..], 8, 1); v[12] = 1; v[13] = 0x51;
+  c[0].used = kv_set_vartime(d[0].live[..], c[0].used, key[..], v[..]);
+  other := [1] u8.['Z']; unrelated := [1] u8.[0x88];
+  c[0].used = kv_set_vartime(d[0].live[..], c[0].used, other[..], unrelated[..]);
+  d[0].old = c[0].used; for k: 0..<d[0].old { d[0].before[k] = d[0].live[k]; }
+  c[0].n = kv_batch_new(d[0].batch[..]); absent: [] u8;
+  #assert lc_change_vartime(d[0].live[..], c[..], d[0].batch[..], hash[..], 0, key[..], absent, false) == LC_OK;
+  key[1] = 43; kv_put64(v[..], 0, 999); kv_put32(v[..], 8, 101); v[12] = 0;
+  #assert lc_change_vartime(d[0].live[..], c[..], d[0].batch[..], hash[..], 1, key[..], v[..], true) == LC_OK;
+  undo := [7] u8.[1,1,3,0,4,7,0x51];
+  #assert cs_undo_save_vartime(d[0].live[..], c[..], d[0].batch[..], hash[..], undo[..]);
+  h: [116] u8; sum: [32] u8; hk: [33] u8; hk[0] = 'H';
+  for k: 0..<32 { h[8+k] = parent[k]; hk[1+k] = hash[k]; }
+  kv_put32(h[..], 0, 1); kv_put32(h[..], 4, 101); kv_put32(h[..], 40, 2); kv_put32(h[..], 76, 412); kv_put32(h[..], 80, undo.count);
+  #assert lc_undo_digest_vartime(d[0].live[..], c[0].used, hash[..], parent[..], 2, sum[..]);
+  for k: 0..<32 { h[44+k] = sum[k]; }
+  bf_digest(undo[..], parent[..], 0, 0, sum[..]); for k: 0..<32 { h[84+k] = sum[k]; }
+  #assert lc_put_vartime(d[0].live[..], c[..], d[0].batch[..], hk[..], h[..]);
+  #assert cs_tip_set_vartime(d[0].live[..], c[..], d[0].batch[..], 5, 101, hash[..]);
+  d[0].used = c[0].used;
+}
+#test "validated store: profile fields, extents and light exclusion" {
+  table: [1024] u8; stage: [1024] u8; batch: [1024] u8; undo: [1024] u8; hash: [32] u8; hash[0] = 9; hash[31] = 17; c: [1] LcCursor;
+  #assert cs_tip_vartime(table[..], 0).code == CS_CONTEXT;
+  #assert cs_tip_vartime(table[..], -1).code == CS_CONTEXT && cs_tip_vartime(table[..], 1025).code == CS_CONTEXT;
+  for chain: 0..<7 {
+    for height: [2] int.[2147483647,2147483648] {
+      c[0].n = kv_batch_new(batch[..]);
+      #assert cs_tip_set_vartime(table[..], c[..], batch[..], chain, height, hash[..]);
+      t := cs_tip_vartime(table[..], c[0].used);
+      #assert (t.code == CS_OK) == (chain >= 1 && chain <= 5 && height == 2147483647);
+      if t.code == CS_OK { #assert t.chain == chain && t.height == height && lc_same(t.hash[..], hash[..]); }
+    }
+  }
+  c[0].n = kv_batch_new(batch[..]); #assert cs_tip_set_vartime(table[..], c[..], batch[..], 5, 0, hash[..]);
+  #assert cs_tip_vartime(table[..], c[0].used).height == 0;
+  #assert cs_disconnect_vartime(table[..], c[0].used, stage[..], batch[..], undo[..]).code == CS_CONTEXT;
+  key := CS_META; f := kv_find_vartime(table[..], c[0].used, key[..]); table[f.at+7] = 2;
+  #assert cs_tip_vartime(table[..], c[0].used).code == CS_CONTEXT;
+  v: [45] u8; c[0].used = kv_set_vartime(table[..], c[0].used, key[..], v[..]);
+  #assert cs_tip_vartime(table[..], c[0].used).code == CS_CONTEXT;
+  c[0].n = kv_batch_new(batch[..]); #assert cs_tip_set_vartime(table[..], c[..], batch[..], 5, 0, hash[..]);
+  light := LC_META; c[0].used = kv_set_vartime(table[..], c[0].used, light[..], v[0..<0]);
+  #assert cs_tip_vartime(table[..], c[0].used).code == CS_CONTEXT;
+  c[0].n = kv_batch_new(batch[..]); #assert !cs_tip_set_vartime(table[..], c[..], batch[0..<12], 5, 0, hash[..]);
+}
+#test "validated store: disconnect restores full old bytes and preserves publication" #steps 100000000 {
+  d: [1] CsStoreDemo; cs_store_fixture(d[..]); snapshot: [32768] u8;
+  for k: 0..<d[0].used { snapshot[k] = d[0].live[k]; }
+  r := cs_disconnect_vartime(d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[..], d[0].undo[..]);
+  #assert r.code == CS_OK && r.n == 318 && r.undo_n == 7 && r.used == d[0].old;
+  #assert lc_same(d[0].stage[0..<r.used], d[0].before[0..<r.used]);
+  #assert lc_same(d[0].live[0..<d[0].used], snapshot[0..<d[0].used]);
+  #assert cs_disconnect_vartime(d[0].stage[..], r.used, snapshot[..], d[0].batch[..], d[0].undo[..]).code == CS_UNDO;
+}
+#test "validated store: every receipt and inverse corruption refuses" #steps 200000000 {
+  for which: 0..<12 {
+    d: [1] CsStoreDemo; cs_store_fixture(d[..]); hash: [32] u8; hash[0] = 8; hash[31] = 20;
+    hk: [33] u8; hk[0] = 'H'; for k: 0..<32 { hk[1+k] = hash[k]; }
+    f := kv_find_vartime(d[0].live[..], d[0].used, hk[..]); at := f.at+39;
+    if which < 5 { offset := [5] int.[0,4,8,44,84]; d[0].live[at+offset[which]] ^= 1; }
+    if which == 5 { d[0].used = kv_delete_vartime(d[0].live[..], d[0].used, hk[..]); }
+    if which == 6 || which == 7 {
+      key: [37] u8; cs_undo_key(hash[..], 0, key[..]); g := kv_find_vartime(d[0].live[..], d[0].used, key[..]);
+      if which == 6 { d[0].live[g.at+43] ^= 1; } else { d[0].used = kv_delete_vartime(d[0].live[..], d[0].used, key[..]); }
+    }
+    if which == 8 { key: [37] u8; key[0] = 'C'; key[1] = 43; g := kv_find_vartime(d[0].live[..], d[0].used, key[..]); d[0].live[g.at+43] ^= 1; }
+    if which == 9 { kv_put32(d[0].live[..], at+40, 3); }
+    if which == 10 { kv_put32(d[0].live[..], at+80, 0); }
+    if which == 11 { kv_put32(d[0].live[..], at+80, KV_FRAME_MAX+1); }
+    r := cs_disconnect_vartime(d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[..], d[0].undo[..]);
+    #assert r.code == CS_UNDO && r.n == 0;
+  }
+}
+#test "validated store: disconnect capacity and empty genesis contexts" #steps 100000000 {
+  d: [1] CsStoreDemo; cs_store_fixture(d[..]);
+  #assert cs_disconnect_vartime(d[0].live[..], 0, d[0].stage[..], d[0].batch[..], d[0].undo[..]).code == CS_CONTEXT;
+  #assert cs_disconnect_vartime(d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[..], d[0].undo[0..<6]).code == CS_CAPACITY;
+  #assert cs_disconnect_vartime(d[0].live[..], d[0].used, d[0].stage[0..<0], d[0].batch[..], d[0].undo[..]).code == CS_CAPACITY;
+  for cap: [7] int.[11,12,100,200,265,266,317] {
+    r := cs_disconnect_vartime(d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[0..<cap], d[0].undo[..]);
+    #assert r.code == CS_CAPACITY && r.n == 0;
+  }
+}
+#test "validated store: exact chunk boundaries, key bytes and local bounds" #steps 200000000 {
+  table: [300000] u8; batch: [300000] u8; data: [131073] u8; out: [131074] u8;
+  hash: [32] u8; hash[0] = 3; hash[31] = 9; data[0] = 5; data[65535] = 6; data[65536] = 7; data[131072] = 8;
+  key: [37] u8; cs_undo_key(hash[..], 0x12345678, key[..]);
+  #assert key[0] == 'O' && key[1] == 3 && key[32] == 9 && kv_get32(key[..], 33) == 0x12345678;
+  #assert cs_undo_chunks(1) == 1 && cs_undo_chunks(65535) == 1 && cs_undo_chunks(65536) == 1;
+  #assert cs_undo_chunks(65537) == 2 && cs_undo_chunks(131073) == 3;
+  for n: [5] int.[1,65535,65536,65537,131073] {
+    c: [1] LcCursor; c[0].n = kv_batch_new(batch[..]);
+    #assert cs_undo_save_vartime(table[..], c[..], batch[..], hash[..], data[0..<n]); out[n] = 0xa5;
+    #assert cs_undo_load_vartime(table[..], c[0].used, hash[..], n, out[0..<n]) == n && lc_same(data[0..<n], out[0..<n]) && out[n] == 0xa5;
+    #assert cs_undo_load_vartime(table[..], c[0].used, hash[..], n, out[0..<n-1]) == -CS_CAPACITY;
+    cs_undo_key(hash[..], 0, key[..]); c[0].used = kv_delete_vartime(table[..], c[0].used, key[..]);
+    #assert cs_undo_load_vartime(table[..], c[0].used, hash[..], n, out[..]) == -CS_UNDO;
+  }
+  #assert cs_undo_load_vartime(table[..], 0, hash[..], 0, out[..]) == -CS_UNDO;
+  #assert cs_undo_load_vartime(table[..], 0, hash[..], KV_FRAME_MAX+1, out[..]) == -CS_UNDO;
+  #assert cs_undo_load_vartime(table[..], 0, hash[..], KV_FRAME_MAX, out[..]) == -CS_CAPACITY;
+  c: [1] LcCursor; c[0].n = kv_batch_new(batch[..]);
+  #assert !cs_undo_save_vartime(table[..], c[..], batch[0..<11], hash[..], data[0..<1]);
+}
+#test "validated store: Core undo checksum matches hashlib across SHA chunks" #steps 2000000000 {
+  parent: [32] u8; body: [1048577] u8; out: [32] u8;
+  for k: 0..<32 { parent[k] = cast(u8) k; }
+  cs_undo_checksum(body[0..<0], parent[..], out[..]);
+  #assert bh_hex_equal(out[..], "2f287b4d3d4910f6cada9e1bd1b4648099e8c52c81aa4a6aebfa6fc86f19834e");
+  abc := [3] u8.[97,98,99]; cs_undo_checksum(abc[..], parent[..], out[..]);
+  #assert bh_hex_equal(out[..], "e094cad289208dbe4e8d97fed3b562735c5195a8f20f870e9164d0784af90847");
+  cs_undo_checksum(body[..], parent[..], out[..]);
+  #assert bh_hex_equal(out[..], "b2f27ba96af38ea13366773f3c570a4f5c16b8014f15d8c04cbebbbbb87e9628");
+}

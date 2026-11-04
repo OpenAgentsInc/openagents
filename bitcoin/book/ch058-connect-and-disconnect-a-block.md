@@ -1,16 +1,157 @@
 # 58. Connect and disconnect a block
 
-> **Status: partly implemented.** The explorer light profile is runnable on
-native CPU. It tracks outputs and undo on an admitted proof-of-work header
-tree, with atomic storage batches. It does not execute scripts, check every
-consensus rule or replace chapter 57's block validator. Its state is explicitly
-the light profile, never `BLOCK_VALID_CHAIN` or `BLOCK_VALID_SCRIPTS`.
+Chapter 57 decides whether a block obeys consensus against its parent's
+coins. This chapter makes that decision durable and reversible. The
+implementation is [chainstate.coax](../../coax/lib/bitcoin/chainstate.coax),
+with [chainstate-store.coax](../../coax/lib/bitcoin/chainstate-store.coax) for
+the profile, chunked undo and disconnects, and [blockundo.coax](../../coax/lib/bitcoin/blockundo.coax) for Core's undo
+coin serialization. It uses chapter 59's admitted header tree and chapter
+62's atomic store. Chapter 63 adds a cache; no cache is needed to understand
+or run this connector.
 
-Chapter 59 supplies the header tree. Chapter 61 keeps downloaded block bytes.
-Chapter 62 supplies ordered storage and atomic batches. This chapter builds
-the first light connection path for [the explorer epic](https://github.com/OpenAgentsInc/openagents/issues/12704).
-Chapter 60 uses it to switch branches. The full validated path still needs
-chapter 57 and the later coins-cache integration in chapter 63.
+## Validate, prepare, then publish
+
+`cs_init_vartime` accepts an empty table and initializes the actual genesis
+of the selected network. Its metadata key is `V`, version 1. It cannot
+import coins, adopt a later tip or migrate an explorer light snapshot.
+`cs_tip_vartime` refuses any table containing the light profile's `L` key,
+even an empty value. The production path starts from genesis and applies
+each block through `cs_connect_vartime`.
+
+A connect requires exactly the validated tip's child in the admitted header
+tree. It copies the published table to disjoint scratch and runs chapter
+57's complete validator, including every script. A refusal returns no
+publishable batch; the original table is unchanged. Capacity and local
+context failures do not assert consensus invalidity.
+
+After validation passes, the connector discards the first scratch view and
+replays the accepted immutable body against the original coins. This replay
+records each input's full coin **before** spending it, adds spendable outputs
+in transaction order, and records every inverse. It builds the Core undo,
+its chunks, the inverse receipt and the final tip in one KV batch. The caller
+appends and syncs the complete frame before publishing scratch. The function
+never moves the header tree's active tip or raises its validity flags.
+
+<!-- source: coax/lib/bitcoin/chainstate-store.coax types -->
+```jai
+CS_OK :: 0; CS_CONTEXT :: 1; CS_CAPACITY :: 2; CS_CONSENSUS :: 3; CS_UNDO :: 4;
+CS_META :: [1] u8.['V']; CS_VERSION :: 1; CS_UNDO_CHUNK :: 65536;
+CsResult :: struct {
+  code: int; vcode: int; detail: int; tx: int; input: int;
+  used: int; n: int; undo_n: int;
+}
+// V: version/network/height/hash (44 bytes). C: chapter 57 coin memory format.
+// U: complete ordered inverses, including BIP30 overwritten coinbases.
+// H: version/height/parent/inverse count/digest/weight/undo size/checksum (116).
+// O || blockhash || LE32(chunk): exact serialized CBlockUndo, in 64KiB chunks.
+// All these keys share ONE atomic KV batch. L is never accepted or upgraded.
+```
+
+The `C` records are chapter 57's coin memory format. `U` keeps chapter 58's
+complete inverse representation described below. The validated `H` receipt
+extends the light receipt with the serialized undo length and Core's
+`SHA256d(parent_hash || undo)` checksum. `O` stores the exact Core undo bytes
+in 65,536-byte chunks, so undo larger than a KV value still shares the atomic
+commit. A resource refusal leaves no batch to publish.
+
+`cs_disconnect_vartime` first checks the validated tip, receipt version and
+height, every undo chunk's exact extent, the parent-bound Core checksum, and
+the digest of the entire ordered inverse set. It then reverses the changes,
+checking every current coin's expected afterimage before restoring its old
+bytes. Finally it removes the detached block's receipt, chunks and inverses
+and sets the parent's tip in the same batch. Damage refuses without changing
+the published snapshot. These hashes detect damage, not an attacker who can
+replace the complete store and recompute its hashes.
+
+## Core's undo bytes
+
+The pinned [Core undo formatter](https://github.com/bitcoin/bitcoin/blob/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/undo.h)
+serializes a block's non-coinbase undo vector with CompactSize. Each
+transaction's input vector also begins with CompactSize. Each input stores
+`VARINT(height * 2 + coinbase)`, then a legacy zero byte when height is
+nonzero, then chapter 56's compressed amount and script. That dummy is the
+difference from `Coin::Serialize`. The reader accepts historical nonzero
+VARINT version dummies too.
+
+A mature height-1 coinbase worth 5,000,000,000 satoshis with script `OP_1`
+serializes as `03 00 32 07 51`: metadata 3, the dummy 0, compressed amount
+0x32, raw-script code 7, then 0x51. A block with only its coinbase has no
+transaction undo entries, so its entire `CBlockUndo` body is `00`.
+
+The writer always retains full height and coinbase metadata. Reading an old
+height-zero undo coin does not recover missing metadata: importing such a
+legacy record would require Core's alternate-output lookup. This state
+version consumes its own complete records and does not import arbitrary
+Core chainstate or old undo files. Chapter 61 can frame these exact bodies
+in Core's block/undo file format; the teaching state stores them atomically
+as KV chunks.
+
+Core's undo contains inputs, not overwritten BIP-30 coinbases. Our separate
+complete inverses preserve those old coins too. They restore the exact
+pre-block snapshot at both historical repeat exceptions. That is stronger
+than claiming a clean Core disconnect across the old overwrite bug; the
+live Core disconnect comparison below uses ordinary regtest blocks.
+
+## Run the smallest durable transition
+
+The [worked example](../examples/validated-chain.coax) admits regtest's
+genesis and first mined block through the header loader. It initializes
+`validated-v1`, connects the block, prints its 5,000,000,000-satoshi coinbase
+and `00` undo, then disconnects to the exact genesis state. Its checked
+transcript is [validated-chain.out](../fixtures/validated-chain.out).
+
+```shell
+coax/bin/coax run bitcoin/examples/validated-chain.coax
+coax/bin/coax run bitcoin/examples/validated-chain.coax --release
+coax/web/tool.sh bitcoin/examples/live/validated-chain.coax init regtest /tmp/validated.kv
+```
+
+The [file tool](../examples/live/validated-chain.coax) supports `init`, `tip`,
+`recover`, `disconnect`, and `apply CHAIN STATE HEADERS NOW BLOCK...`.
+Headers are immutable concatenated 80-byte headers beginning at genesis.
+Each block is a separate durable commit; a later refusal preserves any
+earlier commits from that command. Keep one exclusive owner of the state
+file through replay, preparation and append. A torn tail requires explicit
+recovery; malformed committed frames refuse without truncation. The tool
+has explicit teaching limits: 4,096 headers, 16 MiB tables and batches,
+64 MiB log input, a four-million-byte block and 16 MiB undo. The library
+accepts caller-sized views; chapter 63 owns cache/flush policy, and chapter
+80 owns full sync.
+
+## Independent qualification
+
+[chainstate.py](../../coax/tests/bitcoin/chainstate.py) builds the mature
+regtest journey below independently. A live, isolated Core 32.1 has no wallet
+or peers. Both nodes start at genesis and connect 102 blocks. At heights
+100, 101 and 102, their entire UTXO set's MuHash matches. Both disconnect
+102 and 101 and match again. Core's actual XOR-masked `rev` file yields 102
+undo bodies, each byte-for-byte identical to the Coax serializer. Both packed
+and indexed in-memory tables run this journey. Every one of the 1,335 cuts
+of the mature-spend frame exposes exactly the old or complete new snapshot.
+The real Coax file tool independently repeats the coin journey, refuses an
+invalid child without appending, disconnects twice and recovers a torn tail.
+
+The pinned mainnet range 170,060–170,063 contains 50 transactions. It connects
+with every script checked, then disconnects in reverse order to the exact
+original table and MuHash. The archival parent context supplies the exact
+coins the range touches; untouched global mainnet coins are outside this
+fixture. This is not a claim to a global mainnet UTXO hash or sync from
+genesis. The codec and inverse model preserve metadata and unrelated records;
+chapter 80 still owes the full mainnet journey.
+
+ASan/UBSan checks cover all 35 recorded Core block verdicts and 16 historical
+blocks, including both BIP-30 repeats, activation and hash exceptions,
+testnet4 and signet. Successful cases compare exact post-block coins, Core
+undo bytes and exact disconnects. The [verification record](../../docs/verification/bitcoin-ch58-2026-11-04.md)
+records mutation qualification and commands. The full node's money admission
+still waits for chapters 80, 93 and 118.
+
+## The existing explorer light path
+
+The original `lightchain.coax` path below remains explicitly proof-of-work-only.
+It does not execute scripts, check every consensus rule or receive a profile
+upgrade from the new connector. The light and validated metadata and receipts
+are distinct. Its earlier qualification remains evidence for unchanged code.
 
 ## What connecting changes
 
@@ -185,10 +326,9 @@ physical cut of the reorg's frame. You get the whole earlier tip or the
 whole new tip, never a coin prefix with the wrong tip. The file-tool journey
 checks extension, reorg, refused branches, recovery and large frames.
 
-Full chapter-58 promotion still requires chapter 57's consensus validation,
-the Core-compatible undo body for the validated node, historical validation
-cases, and the complete validated connect/disconnect qualification. The
-explorer's light state remains separate throughout that work.
+This earlier explorer qualification applies to the unchanged light profile.
+The validated path above supplies complete consensus and Core undo without
+upgrading those snapshots.
 
 Next: [59. The block index and the most-work chain](ch059-the-block-index-and-the-most-work-chain.md),
 then [60. Reorganizations and invalid chains](ch060-reorganizations-and-invalid-chains.md).

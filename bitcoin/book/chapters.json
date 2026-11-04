@@ -1320,12 +1320,13 @@
    "number": 58,
    "title": "Connect and disconnect a block",
    "file": "ch058-connect-and-disconnect-a-block.md",
-   "status": "partly implemented",
-   "profile": "native C (explorer light)",
+   "status": "implemented",
+   "profile": "native C (validated and explorer light)",
    "depends_on": [
     34,
     49,
     56,
+    57,
     59,
     62
    ],
@@ -1339,7 +1340,17 @@
     "coax/tests/bitcoin/lightchain_cases.coax",
     "coax/tests/bitcoin/lightchain_vectors.coax",
     "coax/tests/bitcoin/lightchain-native.coax",
-    "coax/tests/bitcoin/lightchain.py"
+    "coax/tests/bitcoin/lightchain.py",
+    "coax/lib/bitcoin/chainstate.coax",
+    "coax/lib/bitcoin/chainstate-store.coax",
+    "coax/lib/bitcoin/blockundo.coax",
+    "coax/tests/bitcoin/chainstate_checks.coax",
+    "coax/tests/bitcoin/chainstate_store_checks.coax",
+    "coax/tests/bitcoin/chainstate-native.coax",
+    "coax/tests/bitcoin/chainstate.py",
+    "coax/tests/bitcoin/chainstate_sanitized.c",
+    "bitcoin/examples/validated-chain.coax",
+    "bitcoin/examples/live/validated-chain.coax"
    ],
    "qualified_targets": [
     "cpu"

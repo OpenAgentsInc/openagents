@@ -1,0 +1,21 @@
+#run_steps 250000000;
+#load "../../coax/lib/bitcoin/chainstate.coax";
+#import "Basic";
+
+main :: () {
+  d: [1] CsDemo; cs_demo_init(d[..]);
+  print("validated-v1: height %\n", cs_tip_vartime(d[0].live[..], d[0].used).height);
+  r := cs_demo_connect(d[..], d[0].batch.count); #assert r.code == CS_OK;
+  cs_demo_publish(d[..], r);
+  print("connect: height %\n", cs_tip_vartime(d[0].live[..], d[0].used).height);
+  key: [37] u8; validation_key(key[..], d[0].ids[..], 0);
+  v := lc_value_vartime(d[0].live[..], d[0].used, key[..]);
+  print("coinbase: % sats, height %, coinbase %\n", kv_get64(v, 0), kv_get32(v, 8), cast(int) v[12]);
+  #assert r.undo_n == 1 && d[0].undo[0] == 0;
+  print("Core undo: 00\n");
+  r = cs_disconnect_vartime(d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[..], d[0].undo[..]);
+  cs_demo_publish(d[..], r);
+  print("disconnect: height %\n", cs_tip_vartime(d[0].live[..], d[0].used).height);
+  #assert lc_tip_vartime(d[0].live[..], d[0].used).code == LC_CONTEXT;
+  print("profiles: distinct\n");
+}

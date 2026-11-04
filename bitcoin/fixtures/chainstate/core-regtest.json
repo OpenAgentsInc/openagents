@@ -1,0 +1,26 @@
+{
+ "schema": 1,
+ "version": "/Satoshi:32.1.0/",
+ "states": [
+  {
+   "height": 100,
+   "hash": "31e6de06d18e5077033a5a3d28d90ccb1d26f38e1f8da85cff45f9fa409164b7",
+   "muhash": "17017854d9aded03d641b700431cf2888cde418ac63fc01a41bd39ece3f87934",
+   "undo_sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"
+  },
+  {
+   "height": 101,
+   "hash": "38785fc0f364a00f0803b2116f249baa885ac21157655d6d90d68690bab91b9a",
+   "muhash": "5ca374204682518a95869f635fd07ced6d26c99598393e22fc573be491a70e1e",
+   "undo_sha256": "bc25a7292d306e930b01a07d151258c1db4f12d712a538b21bd4f3e8454a0177"
+  },
+  {
+   "height": 102,
+   "hash": "2d289b40201c58dad1f19754fc6299aebd7000f3a512c828492254b716ab5e36",
+   "muhash": "750ba8d8990d5e5b14951087241be1ca2c0b6830ddd1225d70e9a67b4fdc4912",
+   "undo_sha256": "052758e5d2d321d1bc44832ed61a29d955c8233be4bfcd56464cbc5180ab6610"
+  }
+ ],
+ "undo_records": 102,
+ "disconnects": 2
+}

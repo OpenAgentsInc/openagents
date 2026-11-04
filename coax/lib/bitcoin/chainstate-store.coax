@@ -1,0 +1,116 @@
+// Validated v1 storage, independent of block/script traversal. The caller
+// publishes only an accepted complete batch after storage sync. Scratch is
+// disjoint and private; discard it after every refusal. Never mix the L profile.
+#run_steps 250000000;
+#load "lightstore.coax";
+#load "blockundo.coax";
+#load "blockfiles.coax";
+#authority;
+
+// book:begin types
+CS_OK :: 0; CS_CONTEXT :: 1; CS_CAPACITY :: 2; CS_CONSENSUS :: 3; CS_UNDO :: 4;
+CS_META :: [1] u8.['V']; CS_VERSION :: 1; CS_UNDO_CHUNK :: 65536;
+CsResult :: struct {
+  code: int; vcode: int; detail: int; tx: int; input: int;
+  used: int; n: int; undo_n: int;
+}
+// V: version/network/height/hash (44 bytes). C: chapter 57 coin memory format.
+// U: complete ordered inverses, including BIP30 overwritten coinbases.
+// H: version/height/parent/inverse count/digest/weight/undo size/checksum (116).
+// O || blockhash || LE32(chunk): exact serialized CBlockUndo, in 64KiB chunks.
+// All these keys share ONE atomic KV batch. L is never accepted or upgraded.
+// book:end types
+
+#load "../../tests/bitcoin/chainstate_store_checks.coax";
+
+cs_tip_vartime :: (table: [] u8, used: int) -> LcTip #export_c {
+  r := LcTip.{code=CS_CONTEXT};
+  if !lc_extent(table, used) { return r; }
+  light := LC_META;
+  if kv_find_vartime(table, used, light[..]).found { return r; }
+  key := CS_META; v := lc_value_vartime(table, used, key[..]);
+  if v.count != 44 { return r; }
+  if kv_get32(v, 0) != CS_VERSION { return r; }
+  r.chain = kv_get32(v, 4); r.height = kv_get32(v, 8);
+  if r.chain < 1 || r.chain > 5 || r.height > 2147483647 { return r; }
+  for k: 0..<32 { r.hash[k] = v[12+k]; }
+  r.code = CS_OK; return r;
+}
+cs_tip_set_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, chain: int, height: int, hash: [] u8) -> bool {
+  value: [44] u8; key := CS_META;
+  kv_put32(value[..], 0, CS_VERSION); kv_put32(value[..], 4, chain); kv_put32(value[..], 8, height);
+  for k: 0..<32 { value[12+k] = hash[k]; }
+  return lc_put_vartime(table, c, batch, key[..], value[..]);
+}
+cs_undo_key :: (hash: [] u8, chunk: int, out: [] u8) {
+  out[0] = 'O'; for k: 0..<32 { out[1+k] = hash[k]; } kv_put32(out, 33, chunk);
+}
+cs_undo_chunks :: (n: int) -> int { return (n + CS_UNDO_CHUNK - 1) / CS_UNDO_CHUNK; }
+// Core's SHA256d(parent || serialized undo), without file XOR/offset arguments.
+// All views are admitted and disjoint. Reuse the already checked SHA stride.
+cs_undo_checksum :: (body: [] u8, parent: [] u8, out: [] u8) {
+  state: [SHA_STATE_BYTES] u8; first: [32] u8;
+  #assert sha256_init(state[..]) == SHA_OK;
+  #assert sha256_update_checked(state[..], parent, false) == SHA_OK;
+  stride := kv_checksum_stride(); chunks := body.count/stride;
+  for i: 0..<chunks {
+    #assert sha256_update_checked(state[..], body[i*stride..<(i+1)*stride], false) == SHA_OK;
+  }
+  #assert sha256_update_checked(state[..], body[chunks*stride..<body.count], false) == SHA_OK;
+  #assert sha256_final_checked(state[..], first[..], false) == SHA_OK;
+  #assert sha256_hash_checked(first[..], out, false) == SHA_OK;
+}
+cs_undo_save_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, hash: [] u8, undo: [] u8) -> bool {
+  key: [37] u8; at := 0;
+  for i: 0..<cs_undo_chunks(undo.count) {
+    n := ifx i < undo.count/CS_UNDO_CHUNK then CS_UNDO_CHUNK else undo.count%CS_UNDO_CHUNK; cs_undo_key(hash, i, key[..]);
+    if !lc_put_vartime(table, c, batch, key[..], undo[at..<at+n]) { return false; }
+    at += n;
+  }
+  return true;
+}
+cs_undo_load_vartime :: (table: [] u8, used: int, hash: [] u8, n: int, undo: [] u8) -> int #export_c {
+  if n < 1 || n > KV_FRAME_MAX { return -CS_UNDO; }
+  if n > undo.count { return -CS_CAPACITY; }
+  key: [37] u8; at := 0;
+  for i: 0..<cs_undo_chunks(n) {
+    take := ifx i < n/CS_UNDO_CHUNK then CS_UNDO_CHUNK else n%CS_UNDO_CHUNK; cs_undo_key(hash, i, key[..]);
+    v := lc_value_vartime(table, used, key[..]);
+    if v.count != take { return -CS_UNDO; }
+    for k: 0..<take { undo[at+k] = v[k]; }
+    at += take;
+  }
+  return n;
+}
+
+cs_disconnect_vartime :: (table: [] u8, used: int, stage: [] u8, batch: [] u8, undo: [] u8) -> CsResult #export_c {
+  tip := cs_tip_vartime(table, used);
+  if tip.code != CS_OK || tip.height == 0 { return CsResult.{code=CS_CONTEXT}; }
+  hk: [33] u8; hk[0] = 'H'; for k: 0..<32 { hk[1+k] = tip.hash[k]; }
+  v := lc_value_vartime(table, used, hk[..]);
+  if v.count != 116 { return CsResult.{code=CS_UNDO}; }
+  h: [116] u8; for k: 0..<116 { h[k] = v[k]; }
+  if kv_get32(h[..], 0) != CS_VERSION || kv_get32(h[..], 4) != tip.height { return CsResult.{code=CS_UNDO}; }
+  un := cs_undo_load_vartime(table, used, tip.hash[..], kv_get32(h[..], 80), undo);
+  if un == -CS_UNDO || un == -CS_CAPACITY { return CsResult.{code= -un}; }
+  parent := h[8..<40]; sum: [32] u8;
+  cs_undo_checksum(undo[0..<un], parent, sum[..]);
+  if !lc_same(sum[..], h[84..<116]) { return CsResult.{code=CS_UNDO}; }
+  count := kv_get32(h[..], 40);
+  if !lc_undo_digest_vartime(table, used, tip.hash[..], parent, count, sum[..]) || !lc_same(sum[..], h[44..<76]) { return CsResult.{code=CS_UNDO}; }
+  c: [1] LcCursor;
+  if !lc_begin_vartime(table, used, stage, batch, c[..]) { return CsResult.{code=CS_CAPACITY}; }
+  ordinal := count;
+  while ordinal > 0 {
+    ordinal -= 1;
+    code := lc_reverse_vartime(stage, c[..], batch, tip.hash[..], ordinal);
+    if code != LC_OK { return CsResult.{code=ifx code == LC_UNDO then CS_UNDO else CS_CAPACITY}; }
+  }
+  key: [37] u8;
+  for i: 0..<cs_undo_chunks(un) {
+    cs_undo_key(tip.hash[..], i, key[..]);
+    if !lc_delete_vartime(stage, c[..], batch, key[..]) { return CsResult.{code=CS_CAPACITY}; }
+  }
+  if !lc_delete_vartime(stage, c[..], batch, hk[..]) || !cs_tip_set_vartime(stage, c[..], batch, tip.chain, tip.height-1, parent) { return CsResult.{code=CS_CAPACITY}; }
+  return CsResult.{used=c[0].used, n=c[0].n, undo_n=un};
+}
