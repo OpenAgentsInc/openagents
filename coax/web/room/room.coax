@@ -500,3 +500,34 @@ tk_test_ask :: (r: [] u8, t: [] u8, n: int) -> string {
   n = tk_sign(key, "p-0011223344556677", false, "", "pair-tk", now + 60000, -1, t[..]);
   #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], n)) < 0;
 }
+#test "relay: a player's own silent socket gives way to their new one (no twin in the town); one still talking stays" #steps 2000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  now := 1762190000000;
+  rm_clock(v[..], 0, now);
+  key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  rm_ticket_key(v[..], key, true);
+  t: [256] u8; r: [512] u8;
+  n := tk_sign(key, "p-0011223344556677", false, "", "pair-tk", now + 600000, -1, t[..]);
+  #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], n)) == 0;
+  // a second tab while the first still talks: both stay
+  rm_clock(v[..], 1000, now + 1000);
+  rm_heard(v[..], 0, "I 1 0 0 0 0 0 0");
+  n = tk_sign(key, "p-0011223344556677", false, "", "pair-tk", now + 600000, -1, t[..]);
+  #assert rm_join(v[..], 1, tk_test_ask(r[..], t[..], n)) == 1;
+  #assert !rm_relay_kicked(v[..], 0) && !rm_relay_kicked(v[..], 1);
+  // the first goes silent (its phone changed networks); the player's new socket takes its place
+  rm_clock(v[..], 6000, now + 6000);
+  rm_heard(v[..], 1, "I 1 0 0 0 0 0 0");
+  n = tk_sign(key, "p-0011223344556677", false, "", "pair-tk", now + 600000, -1, t[..]);
+  #assert rm_join(v[..], 2, tk_test_ask(r[..], t[..], n)) == 2;
+  #assert rm_relay_kicked(v[..], 0) && !rm_relay_kicked(v[..], 1) && !rm_relay_kicked(v[..], 2);
+  // another player's silent socket is theirs: it stays
+  n = tk_sign(key, "p-8899aabbccddeeff", false, "", "pair-tk", now + 600000, -1, t[..]);
+  #assert rm_join(v[..], 3, tk_test_ask(r[..], t[..], n)) == 3;
+  rm_clock(v[..], 12000, now + 12000);
+  rm_heard(v[..], 1, "I 2 0 0 0 0 0 0"); rm_heard(v[..], 2, "I 1 0 0 0 0 0 0");
+  n = tk_sign(key, "p-0011223344556677", false, "", "pair-tk", now + 600000, -1, t[..]);
+  #assert rm_join(v[..], 4, tk_test_ask(r[..], t[..], n)) == 4;
+  #assert !rm_relay_kicked(v[..], 3) && !rm_relay_kicked(v[..], 1) && !rm_relay_kicked(v[..], 2);
+}

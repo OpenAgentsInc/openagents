@@ -143,6 +143,10 @@ rl_join :: (v: [] RmServer, conn: int, request: string) -> int {
       return -1;
     }
   }
+  // the same player's other socket here, silent for RL_STALE_MS (a phone that changed networks, a tab
+  // that slept): this join takes its place, so no twin of them stands in the town. A socket of theirs
+  // still talking (another tab) stays.
+  if v[0].relays[r].limited && tk.ok && tk.pid_n > 0 { rl_replace_stale(v, r, cast(string) tk.pid[0..<tk.pid_n]); }
   seat := rl_seat(v, r);
   if seat < 0 {
     // full: a room nobody is in yet stays closed
@@ -159,6 +163,17 @@ rl_join :: (v: [] RmServer, conn: int, request: string) -> int {
   rl_queue(v, r, -1, conn, rl_head(h[..], 'j', seat, false), "");
   if v[0].relays[r].limited { eg_join(v, r, conn, seat); }
   return seat;
+}
+RL_STALE_MS :: 3000;      // a socket of a joiner's own silent this long is theirs no longer (WIRE_AWAY_MS)
+rl_replace_stale :: (v: [] RmServer, r: int, pid: string) {
+  k := eg_room_of(v, r);
+  if k < 0 { return; }
+  for i: 0..<CONNS {
+    c := v[0].conns[i];
+    if !c.live || c.relay != r || c.kicked || !c.ticket.ok || cast(string) c.ticket.pid[0..<c.ticket.pid_n] != pid { continue; }
+    if c.seat < 0 || c.seat >= EG_SEATS || v[0].mono_ms - v[0].eg[k].seat[c.seat].heard_ms < RL_STALE_MS { continue; }
+    v[0].conns[i].kicked = true;   // the host closes it (rm_relay_kicked) and its seat goes
+  }
 }
 // Whether an everglade socket may send a frame of bytes now (a token bucket for frames and one
 // for bytes, in thousandths). A refused frame is counted; refusing for RL_OVER_MS marks it kicked.
