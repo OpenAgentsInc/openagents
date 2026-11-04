@@ -962,6 +962,7 @@ ev_test_count :: (v: [] RmServer, k: int, form: int) -> int {
   ev_test_second(v[..], k); ev_test_second(v[..], k);
   #assert v[0].ev[k].phase == EV_END && v[0].ev[k].outcome == EV_OUT_HELD && v[0].ev[k].xp[0] == had + EV_XP_HELD;
   #assert cast(string) v[0].ev[k].g[0..<6] == "g 1 5 ";   // what every seat hears next
+  eg_test_drain(v[..], box[..]);   // the frames of the fight (the inbox holds 16 KB a seat): what follows is the rebuild's
   ev_test_skip(v[..], k);
   #assert v[0].ev[k].phase == EV_AFTER;
   ev_test_skip(v[..], k);
