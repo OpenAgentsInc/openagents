@@ -459,6 +459,9 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         if CommandLine.arguments.contains("--npc-reopen") {
             let state = try await command()
             guard people(state).count == 8 else { throw ShellError.failed("Authored NPCs did not survive reopening.") }
+            let raidData = try await ForgeCLI.run(tool, ["raid", "--session", session.path], timeout: 30)
+            let raid = try JSONSerialization.jsonObject(with: raidData) as? [String: Any] ?? [:]
+            guard raid["active"] as? Bool == false, raid["cult_alive"] as? Int == 0 else { throw ShellError.failed("A transient raid replayed on reopening.") }
             try JSONSerialization.data(withJSONObject: ["ok": true, "reopened": true, "npcs": 8]).write(to: report)
             stopChildren(); NSApp.terminate(nil); return
         }
@@ -518,8 +521,37 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         try await Task.sleep(for: .seconds(1))
         let visible = try await probe(16)
         guard visible >= 7 else { throw ShellError.failed("Spawned NPCs did not reach the rendered page: \(visible).") }
+        func raid(_ json: String? = nil) async throws -> [String: Any] {
+            let args = json.map { ["raid", $0] } ?? ["raid"]
+            let data = try await ForgeCLI.run(tool, args + ["--session", session.path], timeout: 30)
+            let state = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+            guard state["ok"] as? Bool == true else { throw ShellError.failed("Raid tool: \(state["error"] ?? "unknown failure")") }
+            return state
+        }
+        try await turn("Trigger the planned cultist raid world event now.")
+        var event = try await raid()
+        guard event["active"] as? Bool == true, event["cult_target"] as? Int == 30,
+              event["watch_target"] as? Int == 24, event["wards"] as? Int == 3 else { throw ShellError.failed("Coder did not start the planned siege with its watch and wards: \(event)") }
+        try await turn("Double the cultist army in the event. Keep the town watch the same size.")
+        event = try await raid()
+        guard event["cult_target"] as? Int == 60, (event["sent"] as? Int ?? 0) >= 60,
+              event["watch_target"] as? Int == 24 else { throw ShellError.failed("Coder did not double the real cult army: \(event)") }
+        let armyVisible = try await probe(16)
+        guard armyVisible >= 60 else { throw ShellError.failed("The event army did not reach the rendered page: \(armyVisible)") }
+        let priorVersion = event["version"] as? Int
+        var overflowRefused = false
+        do { _ = try await raid("{\"op\":\"double\"}") } catch { overflowRefused = true }
+        event = try await raid()
+        guard overflowRefused, event["version"] as? Int == priorVersion, event["cult_target"] as? Int == 60 else { throw ShellError.failed("Overflow changed the event army.") }
         try await captureCanvas(report)
-        let result: [String: Any] = ["ok": true, "npcs": 8, "routedSessions": sessions, "npcDamage": true, "buildingBreaks": breaksAfter - breaksBefore, "visibleCreatures": visible, "blockedSpawnRefused": refused, "crateSpawnRefused": crateRefused]
+        try await turn("Set the event cultist army to 10 fighters, then add another wave of five cult fighters.")
+        event = try await raid()
+        guard event["cult_target"] as? Int == 15 else { throw ShellError.failed("Coder did not add the requested event wave: \(event)") }
+        _ = try await raid("{\"op\":\"stop\"}")
+        event = try await raid();state = try await command()
+        guard event["active"] as? Bool == false, event["cult_alive"] as? Int == 0,
+              event["watch_alive"] as? Int == 0, people(state).count == 8 else { throw ShellError.failed("Stopping the event failed or removed authored NPCs.") }
+        let result: [String: Any] = ["ok": true, "npcs": 8, "routedSessions": sessions, "npcDamage": true, "buildingBreaks": breaksAfter - breaksBefore, "visibleCreatures": visible, "blockedSpawnRefused": refused, "crateSpawnRefused": crateRefused, "eventDoubledTo": 60, "eventVisibleCreatures": armyVisible, "eventWaveTarget": 15, "eventOverflowRefused": overflowRefused, "eventStopped": true]
         try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]).write(to: report)
         stopChildren(); NSApp.terminate(nil)
     }

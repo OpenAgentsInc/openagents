@@ -2,7 +2,8 @@
 // atomically before rm_forge_commit changes any live creature or order.
 #load "../../../verse/everglade/building-catalogue.coax";
 #load "../../../verse/everglade/person-names.coax";
-RmForge :: struct {doc:ForgeNpcs;staged:ForgeNpcs;pending:bool;out:[32768]u8;n:int;probe_n:int;probe_xy:[1024]f32;probe_open:[512]bool;}
+#load "../../../aethyr/forge/raid-command.coax";
+RmForge :: struct {doc:ForgeNpcs;staged:ForgeNpcs;pending:bool;out:[32768]u8;n:int;probe_n:int;probe_xy:[1024]f32;probe_open:[512]bool;raid_local:bool;raid_version:int;raid_cult:int=30;}
 #test "forge API stages atomic groups requires the local admin and never overwrites a stale version" #steps 500000000 {
   v:[1]RmServer;rm_init(v[..]);
   get:="GET /api/playtest/forge/npcs HTTP/1.1\r\n\r\n";
@@ -131,6 +132,7 @@ fg_plan :: (v:[]RmServer,k:int,c:FnpCommand)->bool {
 }
 // 0 not this route; otherwise an HTTP status and a JSON body in forge.out.
 rm_forge_api :: (v:[]RmServer,req:string)->int #export_c {
+  raid:=fg_raid_api(v,req);if raid>0 {return raid;}
   get:=dv_path(req,"GET","/api/playtest/forge/npcs ");post:=dv_path(req,"POST","/api/playtest/forge/npcs ");
   if !get && !post {return 0;}
   if !fnp_access(v[0].dev.on,v[0].dev.admin) {_:=fg_answer(v,false,"Local admin access is required.");return 403;}

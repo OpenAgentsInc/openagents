@@ -1,6 +1,6 @@
 # Aethyrforge for Mac: local editing by voice (experimental spec)
 
-Status: experimental desktop shell, local setup, routed Coder HUD, object and NPC scene tools implemented, 2026-11-04.
+Status: experimental desktop shell, local setup, routed Coder HUD, object/NPC scene tools and cultist event controls implemented, 2026-11-04.
 The local Everglade editor, shared storage, CLI inventory, microphone capture
 and local Parakeet transcription work; the local edit model below remains planned. Nothing
 here ships to customers or TestFlight until the owner asks.
@@ -218,13 +218,25 @@ page server, the voice Wasm and a local Parakeet voice host. This is the same
   Batches are 1–8, with 32 authored NPCs. Admission and saved-document units
   kill all 311 and 109 mutants respectively, with zero survivors. See
   [the NPC command contract](../protocol/aethyrforge-npcs-v1.md).
-  The hidden native check exercised three real routed Codex turns: order a
+  The hidden native check exercised six real routed Coder turns: order a
   cultist group to attack a villager, spawn three villagers, then stop the first
   group and spawn/order another against the stables. It observed real NPC HP
-  loss, two replicated building breaks and seven live rendered creatures; all
+  loss, four replicated building breaks and seven live rendered creatures; all
   eight authored definitions survived reopening. Fountain/crate spawn refusal,
   dynamic crate detours, stopped-NPC eviction and human villager parts pass.
   The tools audit reports 29 unrelated missing-reason headers.
+- The planned cultist event is available through Coder and `aethyrforge-scene
+  raid`: immediate start, double the cult army, add a wave, set its fighter
+  target and stop. It uses the existing siege simulation, leader, wards, watch
+  and replicated HUD. The default cult target is 30; doubling makes it 60,
+  while the watch target stays 24. Complete batches must fit the shared 96
+  creature slots, preserving authored NPCs and summons, including reserved dead
+  NPC definitions. The local control poll cannot overwrite a requested army.
+  Event state is transient on reopening. The 106 local event admission mutants
+  and all 12 existing event regression checks pass. The same native check
+  routed event start/double/set/wave through Coder, verified a cult target of
+  60 and 86 replicated creatures on the page, then checked atomic overflow
+  refusal and stopping without deleting the eight authored NPC definitions.
 
 The remaining sections describe the target behavior. They do not imply every voice
 acceptance criteria already pass. Build and native smoke-check instructions are
@@ -387,7 +399,15 @@ Because it is a real local room, you can test edits as players do:
 
 - **ADD BOTS** starts N local bot players (`coax/web/room/raid-check.coax`) in the
   same room.
-- **START RAID** starts the siege in the local room.
+- **START RAID (implemented through Coder and the scene CLI)** starts the planned
+  standing siege immediately: cult fighters, 24 watch, Darian and three wards.
+  “Double the cultist army” doubles the cult target; “add a wave of five” raises
+  it by five and musters immediately. Set and stop are also available.
+  Cult targets are 1–60, within the room's 96 shared creature places; overflow
+  refuses atomically. Public room limits remain unchanged. The event runs real
+  combat and the existing replicated siege HUD. Event state resets on reopening,
+  while authored NPC definitions/orders persist. See the
+  [local event command contract](../protocol/aethyrforge-raid-v1.md).
 - The app never touches openagents.com's rooms.
 
 ## Build and run
@@ -455,7 +475,10 @@ Each step lands on `main` working end to end.
    base elevation. Named-place resolution, arbitrary assets and undo/redo remain
    planned. No dedicated gpt-oss interpreter is needed for this initial path.
 4. **Publish and revert,** with the change summary.
-5. **Bots and raid** for play-testing, and the headless end-to-end test.
+5. **Raid controls (implemented),** bots for play-testing, and the broader
+   recorded-voice end-to-end acceptance. Local event command admission kills
+   all 106 root mutants. Native NPC/event acceptance also exercises real routed
+   Coder, the local room and the WKWebView scene.
 
 ## Not in this version
 

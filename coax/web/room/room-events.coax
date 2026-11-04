@@ -134,6 +134,7 @@ ev_control_line :: (v: [] RmServer, line: string) {
     return;
   }
   if line.count < 7 || line[0..<6] != "event " { return; }
+  if v[0].dev.on && v[0].forge.raid_local { return; }
   f: [16] int; n := 0; at := 6;
   while at < line.count && n < 16 {
     w := rc_word(line, at);
@@ -499,7 +500,7 @@ ev_siege_begin :: (v: [] RmServer, k: int) {
   d := v[0].evc.d;
   e[0].front[0] = rf_fresh();
   r[0].raid[0].siege = true; r[0].raid[0].stand = false; r[0].raid[0].front_z = e[0].front[0].z;
-  raid_siege_caps(d.size, e[0].caps[..]);
+  ev_siege_caps(v, k);
   e[0].outcome = EV_OUT_NONE; e[0].arch = EV_ARCH_AWAY; e[0].quiet = 0;
   for n: 0..<RS_NPCS { e[0].mix[n] = 0; }
   ev_phase(v, k, EV_SIEGE, EV_LONG_S);
@@ -568,7 +569,7 @@ ev_siege_second :: (v: [] RmServer, k: int) {
   r := ev_rules(v, k);
   w := r[0].raid[..];
   d := v[0].evc.d;
-  raid_siege_caps(d.size, e[0].caps[..]);
+  ev_siege_caps(v, k);
   n_cult := e5rd_standing(r); n_town := e5rd_town_standing(r);
   e[0].standing = n_cult; e[0].town = n_town;
   // each seat's help fades; what is left is its worth on the line

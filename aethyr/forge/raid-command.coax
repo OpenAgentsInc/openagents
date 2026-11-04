@@ -1,0 +1,48 @@
+// Admission for local event control. No public realm policy changes.
+#authority;
+#load "npc-command.coax";
+FrCommand :: struct {op:string;base:int;count:int;}
+#test "local raid commands have exact fields types defaults and bounds" {
+  c:[1]FrCommand;
+  #assert fr_parse("{\"op\":\"start\",\"base\":0}",c[..]) && c[0].op=="start" && c[0].count==30 && c[0].base==0;
+  #assert fr_parse("{\"op\":\"wave\",\"base\":1000000}",c[..]) && c[0].op=="wave" && c[0].count==12 && c[0].base==1000000;
+  #assert fr_parse("{\"op\":\"set\",\"base\":1,\"count\":1}",c[..]) && c[0].count==1;
+  #assert fr_parse("{\"op\":\"start\",\"base\":1,\"count\":60}",c[..]) && c[0].count==60;
+  #assert fr_parse("{\"op\":\"stop\",\"base\":1}",c[..]) && fr_parse("{\"op\":\"double\",\"base\":1}",c[..]);
+  #assert !fr_parse("oops",c[..]) && !fr_parse("{\"evil\":0,\"op\":\"start\",\"base\":0}",c[..]);
+  for bad:[18]string.["[]","{}","{\"op\":\"set\",\"base\":0}","{\"op\":\"start\"}","{\"op\":\"fly\",\"base\":0}","{\"op\":1,\"base\":0}","{\"op\":\"start\",\"base\":true}","{\"op\":\"start\",\"base\":-1}","{\"op\":\"start\",\"base\":1000001}","{\"op\":\"start\",\"base\":0,\"base\":1}","{\"op\":\"start\",\"base\":0,\"foo\":1}","{\"op\":\"stop\",\"base\":0,\"count\":1}","{\"op\":\"double\",\"base\":0,\"count\":1}","{\"op\":\"wave\",\"base\":0,\"count\":0}","{\"op\":\"wave\",\"base\":0,\"count\":61}","{\"op\":\"wave\",\"base\":0,\"count\":1.5}","{\"op\":\"wave\",\"base\":0,\"count\":true}","{\"op\":\"wave\",\"base\":0,\"count\":{}}"] {#assert !fr_parse(bad,c[..]);}
+}
+#test "local raid admission never clamps armies or starts over an event" {
+  #assert fr_fit(1,67) && fr_fit(60,8) && !fr_fit(0,0) && !fr_fit(61,0) && !fr_fit(60,9);
+  #assert fr_phase("start",0) && fr_phase("start",5) && fr_phase("start",6) && !fr_phase("start",1) && !fr_phase("start",7) && !fr_phase("start",8);
+  #assert fr_phase("stop",0) && fr_phase("stop",8);
+  for op:[3]string.["double","wave","set"] {#assert fr_phase(op,7) && !fr_phase(op,0) && !fr_phase(op,8);}
+  #assert fr_target("double",30,0)==60 && fr_target("wave",30,12)==42 && fr_target("set",30,1)==1 && fr_target("start",0,30)==30;
+}
+fr_fit :: (cult:int,other:int)->bool {return cult>=1 && cult<=60 && cult+24+4+other<=96;}
+fr_phase :: (op:string,phase:int)->bool {
+  if op=="stop" {return true;}
+  if op=="start" {return phase==0 || phase==5 || phase==6;}
+  return phase==7;
+}
+fr_target :: (op:string,current:int,count:int)->int {return ifx op=="double" then current*2 else ifx op=="wave" then current+count else count;}
+fr_parse :: (text:string,out:[]FrCommand)->bool {
+  nodes:[16]JvNode;d:[1]Jv;if !jv_parse(d[..],text,nodes[..]) {return false;}
+  v:=d[0];seen:u32=0;
+  for i:1..<v.count {
+    key:=jv_key(v,i);f:=ifx key=="op" then 0 else ifx key=="base" then 1 else ifx key=="count" then 2 else 3;
+    if f==3 || (seen & (cast(u32)1 << cast(u32)f))!=0 {return false;}seen|=cast(u32)1 << cast(u32)f;
+    if f==0 {if jv_kind(v,i)!=JV_STRING {return false;}}else{if jv_int(v,i,-1)<0 {return false;}}
+  }
+  c:FrCommand;c.op=jv_raw(v,jv_get(v,0,"op"));c.base=jv_int(v,jv_get(v,0,"base"),-1);
+  if c.base<0 || c.base>1000000 {return false;}
+  if c.op!="start" && c.op!="stop" && c.op!="double" && c.op!="wave" && c.op!="set" {return false;}
+  has:=(seen & cast(u32)4)!=0;
+  if c.op=="stop" || c.op=="double" {if has {return false;}}
+  else {
+    if c.op=="set" && !has {return false;}
+    c.count=jv_int(v,jv_get(v,0,"count"),ifx c.op=="wave" then 12 else 30);
+    if c.count<1 || c.count>60 {return false;}
+  }
+  out[0]=c;return true;
+}

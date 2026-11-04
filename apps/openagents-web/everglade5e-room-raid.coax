@@ -90,6 +90,7 @@ E5rdCast :: struct { id: int; k: int; to: int; ax: f32; az: f32; seed: int; }
 // One that fell: its place among the beasts, its last id, stat block (0 a ward stone), level, where.
 E5rdDown :: struct { q: int; tag: int; npc: int; level: int; x: f32; z: f32; }
 E5rdRaid :: struct {
+  limit: int = E5RD_MAX;                     // local authoring may borrow otherwise free summon slots
   slot: [E5RR_BEASTS] E5rdSlot;
   casts: [E5RD_CASTS] E5rdCast; cast_n: int;
   downs: [E5RD_DOWNS] E5rdDown; down_n: int;
@@ -175,9 +176,9 @@ e5rd_up :: (r: [] E5rRoom, i: int) -> bool {
 e5rd_free :: (r: [] E5rRoom) -> int {
   on := 0;
   for q: 0..<E5RR_BEASTS { if e5rd_is(r[0].beasts[q]) { on += 1; } }
-  if on >= E5RD_MAX { return -1; }
+  if on >= r[0].raid[0].limit { return -1; }
   q := E5RR_BEASTS - 1;
-  while q >= 0 { if r[0].beasts[q].id == 0 { return q; } q -= 1; }
+  while q >= 0 { if r[0].beasts[q].id == 0 && r[0].beasts[q].forge_id == 0 { return q; } q -= 1; }
   return -1;
 }
 // Creature c joins the raid at (x, z) as form `form`, by its gate (gx, gz) to (sx, sz) in the square:

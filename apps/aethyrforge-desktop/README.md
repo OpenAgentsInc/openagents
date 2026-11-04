@@ -155,7 +155,7 @@ closed. The [capture IPC contract](../../docs/protocol/aethyrforge-microphone-ca
 records the permission/preparation boundary.
 
 Local gpt-oss interpretation, full voice-edit acceptance, typed world edits,
-remote publish/revert, bots and raid controls are future milestones in the
+remote publish/revert and bots are future milestones in the
 [desktop spec](../../docs/verse/2026-11-04-aethyrforge-desktop.md).
 
 On this Mac, the original world directory is moved from Application Support on
@@ -240,7 +240,29 @@ HP and movement are not a saved combat session. A batch is 1–8 NPCs, with 32
 authored NPCs total. See [NPC command v1](../../docs/protocol/aethyrforge-npcs-v1.md).
 The hidden `--npc-smoke REPORT.json` check exercises real routed Coder spawning,
 group attacks, damage, replicated building breaks, rendered creatures and
-blocked spawns. `--npc-reopen` checks persistence in the same report directory.
+blocked spawns. It also routes event start/double/set/wave through real Coder,
+checks the rendered army, atomic overflow refusal and event stop.
+`--npc-reopen` checks NPC persistence and that transient events stay stopped.
+
+The planned Cultist Raid is controllable through the same conversation: “start
+the cultist raid”, “double the cultist army”, “add another wave of five”, or
+“stop the raid”. It starts the real standing siege immediately, with Darian,
+three ward stones and the watch. Doubling changes only the cult fighter target.
+
+```sh
+~/.openagents/bin/aethyrforge-scene raid
+~/.openagents/bin/aethyrforge-scene raid '{"op":"start"}'
+~/.openagents/bin/aethyrforge-scene raid '{"op":"double"}'
+~/.openagents/bin/aethyrforge-scene raid '{"op":"set","count":10}'
+~/.openagents/bin/aethyrforge-scene raid '{"op":"wave","count":5}'
+~/.openagents/bin/aethyrforge-scene raid '{"op":"stop"}'
+```
+
+Cult fighter targets are 1–60, the watch stays at 24, and the complete target
+must fit alongside existing NPCs/summons in the room's 96 slots. Overflow
+refuses without changing the army. Army edits require the siege phase, before
+the camp stand. Events are transient; reopening keeps authored NPC definitions
+and starts with no event. See [event control v1](../../docs/protocol/aethyrforge-raid-v1.md).
 
 The hidden scene check exercises programmatic placement, group move/removal,
 atomic refusal, two real automatically routed Coder requests with the composer

@@ -48,17 +48,36 @@ scene_npcs :: (api:string,verb:string,json:string)->int {
   if r.error!=HTTP_OK || r.code!=200 || !jv_parse(j[..],cast(string)data[0..<r.n],nodes[..]) || jv_int(j[0],jv_get(j[0],0,"version"),-1)!=base+1 {return scene_error("NPC save accepted but readback changed or failed. Read npcs; do not repeat a spawn.");}
   print("{\"ok\":true,\"version\":%,\"npcs\":%}\n",base+1,jv_raw(j[0],jv_get(j[0],0,"npcs")));return 0;
 }
+scene_raid :: (api:string,json:string)->int {
+  url:[256]u8;n:=raw_put(url[..],0,api);n=raw_put(url[..],n,"/api/playtest/forge/raid");
+  w:[1]HttpWork;headers:=[1]string.["Content-Type: application/json"];data:[4096]u8;
+  r:=http_do(w[..],"GET",cast(string)url[0..<n],headers[..],"",10000,0,data[..]);
+  if r.error!=HTTP_OK || r.code!=200 {return scene_error("The local raid is unavailable. Enter the desktop world first.");}
+  if json=="" {print("%\n",cast(string)data[0..<r.n]);return 0;}
+  nodes:[64]JvNode;j:[1]Jv;if !jv_parse(j[..],cast(string)data[0..<r.n],nodes[..]) {return scene_error("Invalid raid inventory.");}
+  base:=jv_int(j[0],jv_get(j[0],0,"version"),-1);
+  if base<0 || json.count<2 || json.count>1024 || json[json.count-1]!='}' {return scene_error("Raid command must be a JSON object.");}
+  body:[2048]u8;bn:=raw_put(body[..],0,json[0..<json.count-1]);bn=raw_put(body[..],bn,",\"base\":");bn=eg_put_int(body[..],bn,base);bn=raw_put(body[..],bn,"}");
+  r=http_do(w[..],"POST",cast(string)url[0..<n],headers[..],cast(string)body[0..<bn],10000,0,data[..]);
+  if r.error!=HTTP_OK {return scene_error("Raid command outcome unknown. Read raid again before another command; do not repeat a wave or double blindly.");}
+  if r.code!=200 {print("%\n",cast(string)data[0..<r.n]);return 1;}
+  r=http_do(w[..],"GET",cast(string)url[0..<n],headers[..],"",10000,0,data[..]);
+  if r.error!=HTTP_OK || r.code!=200 || !jv_parse(j[..],cast(string)data[0..<r.n],nodes[..]) || jv_int(j[0],jv_get(j[0],0,"version"),-1)!=base+1 {return scene_error("Raid changed during readback. Read raid before another command.");}
+  print("%\n",cast(string)data[0..<r.n]);return 0;
+}
 tool_main :: ()->int #export_c {
   a:[1]Args;if !args_load(a[..]) {return scene_error("Arguments are too large.");}
   verb:=args_at(a[..],0);
-  if verb=="--help" {print("usage: aethyrforge-scene show | apply 'JSON' | npcs | npc 'JSON' [--session FILE]\n");return 0;}
-  if verb!="show" && verb!="apply" && verb!="npcs" && verb!="npc" {tool_errln("usage: aethyrforge-scene show | apply 'JSON' | npcs | npc 'JSON' [--session FILE]");return 2;}
+  if verb=="--help" {print("usage: aethyrforge-scene show | apply 'JSON' | npcs [people|buildings] | npc 'JSON' | raid ['JSON'] [--session FILE]\n");return 0;}
+  if verb!="show" && verb!="apply" && verb!="npcs" && verb!="npc" && verb!="raid" {tool_errln("usage: aethyrforge-scene show | apply 'JSON' | npcs | npc 'JSON' | raid ['JSON'] [--session FILE]");return 2;}
   env:[4096]u8;path:[4096]u8;session:=args_value(a[..],"--session","");
   if session=="" {session=proc_getenv("AETHYRFORGE_SCENE_SESSION",env[..]);}
   if session=="" {home:[4096]u8;session=fs_join(proc_getenv("HOME",home[..]),".openagents/aethyrforge/scene-session.json",path[..]);}
   data:[65536]u8;n:=fs_read(session,data[..]);s:[1]ForgeSceneSession;
   if n<0 || !fs_session(cast(string)data[0..<n],proc_now_ms(),s[..]) {return scene_error("No fresh local Aethyrforge scene session. Open the desktop app.");}
-  api:=cast(string)s[0].api[0..<s[0].n];if verb=="npcs" || verb=="npc" {extra:=args_at(a[..],1);if verb=="npcs" && extra=="--session" {extra="";}return scene_npcs(api,verb,extra);}
+  api:=cast(string)s[0].api[0..<s[0].n];extra:=args_at(a[..],1);if extra=="--session" {extra="";}
+  if verb=="raid" {return scene_raid(api,extra);}
+  if verb=="npcs" || verb=="npc" {return scene_npcs(api,verb,extra);}
   r:=scene_request(api,"GET","",data[..]);
   if r.error!=HTTP_OK || r.code!=200 {return scene_error("The local scene could not be read.");}
   answer:[65540]u8;an:=raw_put(answer[..],0,"200\n");an=raw_put(answer[..],an,cast(string)data[0..<r.n]);

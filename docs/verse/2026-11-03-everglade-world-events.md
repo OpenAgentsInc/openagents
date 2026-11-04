@@ -19,6 +19,12 @@ killable, level one to three, but the super high level warlock should not be kil
 
 Related reading:
 
+- [Local Aethyrforge event control](../protocol/aethyrforge-raid-v1.md): the desktop
+  can trigger this siege immediately, double only the cult army, add a wave,
+  set its fighter target or stop it. This local playtest profile uses up to 96
+  shared creature places when available; the public event's 64-place limit and
+  dials below are unchanged. Event state is transient on desktop reopening.
+
 - [The Everglade multiplayer spec](2026-11-03-everglade-multiplayer-spec.md): the room server
   (section 3), persistence (section 7) and admin edits (section 6.8).
 - The playable level 17 Warlock (#12734), whose spells the raid's leader casts.
