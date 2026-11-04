@@ -1,0 +1,24 @@
+// New evidence identity: lossless Zstandard deltas with bounded dependency chains.
+#load "game-combat-evidence.coax";
+#load "game-evidence-v2-policy.coax";
+e2_process :: (argv: [] string) -> bool {
+  output: [64] u8; errors: [1024] u8; r:=proc_run(argv,5000,output[..],errors[..]);
+  if r.started!=0 || r.status!=0 { tool_errln(cast(string) errors[0..<r.err_n]); return false; } return true;
+}
+e2_archive :: (image: string,dir: string,journal: string,sequence: int,recheck: bool,started: int) -> int {
+  namebuf: [128] u8; pathbuf: [4096] u8; basebuf: [4096] u8; refbuf: [4096] u8;
+  name:=ev_name(sequence,recheck,namebuf[..]); path:=fs_join(dir,name,pathbuf[..]); base:=e2_base(sequence,recheck);
+  reference:=fs_join(dir,ifx recheck then "frame.ppm" else "previous-observe.ppm",basebuf[..]);
+  o: [1] Jo; jo_start(o[..],refbuf[..]); jo_put(o[..],"--patch-from="); jo_put(o[..],reference); patch:=jo_text(o[..]);
+  plain:=[8] string.["zstd","-q","-1","--check","-o",path,"--",image];
+  delta:=[9] string.["zstd","-q","-1","--check",patch,"-o",path,"--",image];
+  if !(ifx base==0 then e2_process(plain[..]) else e2_process(delta[..])) { return -1; }
+  size:=fs_size(path); if size<=0 { return -1; }
+  if !recheck { copy:=[3] string.["cp",image,reference]; if !e2_process(copy[..]) { return -1; } }
+  row: [8192] u8; jo_start(o[..],row[..]); jo_obj(o[..]);
+  jo_key(o[..],"type"); jo_str(o[..],"image"); jo_key(o[..],"observation"); jo_int(o[..],sequence);
+  jo_key(o[..],"phase"); jo_str(o[..],ifx recheck then "recheck" else "observe"); jo_key(o[..],"path"); jo_str(o[..],name);
+  jo_key(o[..],"codec"); jo_str(o[..],"zstd-delta-v2"); jo_key(o[..],"base_observation"); jo_int(o[..],base);
+  jo_key(o[..],"bytes"); jo_int(o[..],size); jo_key(o[..],"started_ms"); jo_int(o[..],started); jo_key(o[..],"ended_ms"); jo_int(o[..],proc_now_ms()); jo_end(o[..]);
+  line:=jo_text(o[..]); row[line.count]='\n'; return ifx fs_append_durable(journal,cast(string) row[0..<line.count+1]) then size else -1;
+}

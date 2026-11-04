@@ -151,3 +151,93 @@ combatFrame:SetScript("OnUpdate", function(self, dt)
     if not ok then sensorError:SetText("Verse combat sensor: " .. tostring(result))
     elseif result then sensorError:SetText("") end
 end)
+
+-- external-loot-v1: public inventory/loot facts only, never interaction effects.
+local lootFrame = CreateFrame("Frame", "VerseLootSensor", UIParent)
+lootFrame:SetFrameStrata("TOOLTIP")
+lootFrame:SetScale(1 / UIParent:GetEffectiveScale())
+lootFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, -24)
+lootFrame:SetSize(192, 8)
+local lootCells = {}
+for i = 1, 24 do
+    local cell = lootFrame:CreateTexture(nil, "OVERLAY")
+    cell:SetPoint("TOPLEFT", lootFrame, "TOPLEFT", (i - 1) * 8, 0)
+    cell:SetSize(8, 8); lootCells[i] = cell
+end
+local lo = {opened=0, closed=0, items=0, full=0, errors=0, errorType=0, npc=0, spawn=0, quantity=0, item=0,
+    bags=0, range=0, other=0, slots=0, free=0, time=0, before=0, active=false, source=0}
+local freeAPI = C_Container and C_Container.GetContainerNumFreeSlots or GetContainerNumFreeSlots
+local slotsAPI = C_Container and C_Container.GetContainerNumSlots or GetContainerNumSlots
+local function inventory()
+    if not freeAPI or not slotsAPI then return nil end
+    local free, total = 0, 0
+    for bag = 0, 4 do
+        local available, family = freeAPI(bag)
+        total = total + (slotsAPI(bag) or 0)
+        if family == 0 then free = free + (available or 0) end
+    end
+    return free, total
+end
+local function lootSource()
+    if not GetLootSourceInfo then return end
+    for slot = 1, GetNumLootItems() do
+        local sources = {GetLootSourceInfo(slot)}
+        for i = 1, #sources, 2 do
+            local npc, spawn = (sources[i] or ""):match("^Creature%-[^-]+%-[^-]+%-[^-]+%-[^-]+%-(%d+)%-([%x]+)$")
+            if npc then lo.npc=tonumber(npc); lo.spawn=tonumber(spawn:sub(-8),16); lo.source=1; return end
+        end
+    end
+end
+for _, event in ipairs({"LOOT_READY","LOOT_OPENED","LOOT_CLOSED","CHAT_MSG_LOOT","BAG_UPDATE_DELAYED","UI_ERROR_MESSAGE"}) do lootFrame:RegisterEvent(event) end
+lootFrame:SetScript("OnEvent", function(_, event, value, text)
+    if event == "LOOT_READY" or event == "LOOT_OPENED" then
+        if not lo.active then
+            lo.npc=0; lo.spawn=0; lo.source=0; lo.slots=GetNumLootItems(); lo.free=inventory() or 0; lo.before=GetMoney();
+            if UnitIsDeadOrGhost("target") then
+                local npc, spawn = (UnitGUID("target") or ""):match("^Creature%-[^-]+%-[^-]+%-[^-]+%-[^-]+%-(%d+)%-([%x]+)$")
+                if npc then lo.npc=tonumber(npc); lo.spawn=tonumber(spawn:sub(-8),16); lo.source=2 end
+            end
+        end
+        lo.active=true; pcall(lootSource)
+        if event == "LOOT_OPENED" then lo.opened=(lo.opened+1)%65536; lo.time=GetTime()*1000 end
+    elseif event == "LOOT_CLOSED" then lo.active=false; lo.closed=(lo.closed+1)%65536
+    elseif event == "CHAT_MSG_LOOT" then
+        lo.items=(lo.items+1)%65536; lo.item=tonumber((value or ""):match("item:(%d+)")) or 0
+        lo.quantity=tonumber((value or ""):match("x(%d+)")) or 1
+    elseif event == "BAG_UPDATE_DELAYED" then lo.bags=(lo.bags+1)%65536
+    elseif event == "UI_ERROR_MESSAGE" then
+        lo.errors=(lo.errors+1)%65536; lo.errorType=value or 0
+        if (LE_GAME_ERR_INV_FULL and value == LE_GAME_ERR_INV_FULL) or (text and text == ERR_INV_FULL) then lo.full=(lo.full+1)%65536 end
+        if text and (text == ERR_LOOT_TOO_FAR or text == ERR_TOO_FAR_TO_INTERACT) then lo.range=(lo.range+1)%65536 end
+    end
+end)
+local lootElapsed, lootSerial = 0, 0
+local lootError = lootFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+lootError:SetPoint("TOPLEFT", lootFrame, "BOTTOMLEFT", 0, -2)
+local function lootUpdate(_, dt)
+    lootElapsed=lootElapsed+dt; if lootElapsed < 0.1 then return end
+    lootElapsed=0; lootSerial=(lootSerial+1)%65536
+    local free, total=inventory(); local exists=UnitExists("target"); local dead=UnitIsDeadOrGhost("target")
+    local known, lootable=false, false
+    if exists and dead and CanLootUnit then known,lootable=pcall(CanLootUnit,UnitGUID("target")) end
+    local b={}; for i=1,72 do b[i]=0 end
+    b[1],b[2],b[3]=86,76,1; put(b,3,lootSerial,2)
+    b[6]=(free and UnitExists("player") and 1 or 0)+(lo.active and 2 or 0)+(GetCVar("autoLootDefault")=="1" and 4 or 0)+(dead and 8 or 0)+(exists and 16 or 0)+(known and 32 or 0)+(lootable and 64 or 0)+(ClassTrainerFrame and ClassTrainerFrame:IsShown() and 128 or 0)
+    put(b,6,free,2); put(b,8,total,2); put(b,10,GetNumLootItems(),2)
+    put(b,12,lo.opened,2); put(b,14,lo.closed,2); put(b,16,lo.items,2); put(b,18,lo.full,2); put(b,20,GetMoney(),4)
+    put(b,24,lo.errors,2); put(b,26,lo.errorType,2); put(b,28,lo.npc,4); put(b,32,lo.spawn,4)
+    put(b,36,lo.quantity,2); put(b,38,lo.item,4); put(b,42,lo.bags,2); put(b,44,lo.range,2); put(b,46,lo.other,2)
+    put(b,48,lo.slots,2); put(b,50,lo.free,2); put(b,52,targetEpoch,2)
+    b[55]=(GetBindingAction("F6")=="INTERACTTARGET" and 1 or 0)+(GetBindingAction("F7")=="TARGETLASTTARGET" and 2 or 0)+(GetCVar("autoInteract")=="1" and 4 or 0)+(GameMenuFrame and GameMenuFrame:IsShown() and 8 or 0)+(ChatEdit_GetActiveWindow() and 16 or 0)+(SettingsPanel and SettingsPanel:IsShown() and 32 or 0)+(MerchantFrame and MerchantFrame:IsShown() and 64 or 0)+(UnitIsDeadOrGhost("player") and 128 or 0)
+    b[56]=lo.source; put(b,56,lo.time,4); put(b,60,lo.before,4)
+    local spells=0; for i,id in ipairs({172,348,1454,688}) do if IsSpellKnown and IsSpellKnown(id) then spells=spells+2^(i-1) end end; put(b,64,spells,4)
+    local crc=0xffffffff
+    for i=1,68 do crc=bit.bxor(crc,b[i]); for _=1,8 do if bit.band(crc,1)~=0 then crc=bit.bxor(bit.rshift(crc,1),0xedb88320) else crc=bit.rshift(crc,1) end end end
+    put(b,68,bit.bxor(crc,0xffffffff)%4294967296,4)
+    for i=1,24 do lootCells[i]:SetColorTexture(b[3*i-2]/255,b[3*i-1]/255,b[3*i]/255,1) end
+    return true
+end
+lootFrame:SetScript("OnUpdate", function(self,dt)
+    local ok,result=pcall(lootUpdate,self,dt)
+    if not ok then lootError:SetText("Verse loot sensor: "..tostring(result)) elseif result then lootError:SetText("") end
+end)

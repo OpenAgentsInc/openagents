@@ -154,12 +154,35 @@ eligibility, cast/range feedback and resources before fighting. Kills count
 only with a matched player kill event and actual XP gain. Between pulls it
 eats/drinks or waits for natural regeneration. It does not do quests.
 
-The current control profile is [V3](../protocol/external-combat-control-v3.md).
-It records every observation and pre-input recheck losslessly as PPM.zst,
+The current control profile is [V4](../protocol/external-combat-control-v4.md).
+It adds observed corpse looting, bag capacity/full-error receipts, hostile red
+nameplate candidates and measured XP-quality notes. The read-only addon has
+a third strip; `verse-loot-sense CAPTURE.ppm` decodes it. Autoloot must be on,
+F6 bound to Interact With Target, F7 to Target Last Target, and click-to-move
+(`autoInteract`) off. Bind through WoW's normal settings; the addon never
+invokes actions. The controller refuses an incompatible configuration.
+
+It records every observation and pre-input recheck losslessly as PPM.zst deltas,
 plus `wire.jsonl` with exact requests/replies and timing. Zstandard must be
-on PATH (the Nix package wrapper supplies it). The eight-GiB archive budget
-drains the current fight before ending a run. Keep runs in persistent local
-storage; no previous recording is automatically deleted.
+on PATH (the Nix package wrapper supplies it). The one-GiB archive budget
+drains the current fight and pending corpse before ending a run. The analyzer
+reconstructs the bounded delta chains and compares all three sensor samples.
+Keep new runs under `~/.openagents/verse-os/combat/`; no previous recording is
+automatically deleted. Do not decode a delta without its declared base.
+
+`--min-level 3` skips lower-level creatures; `--until-level 6` ends after the
+observed level-up and looting. `--home-x X --home-y Y` declares a different
+local survey anchor after a recorded scout. It preserves the same small
+circuit and displacement fence, and does not establish terrain safety.
+The level-6 option stops there; spell/rank support remains level 2–5.
+`--hostile-only` limits visual acquisition to red nameplates when a recorded
+scout establishes an appropriate hostile patch.
+
+Each corpse records a receipt, empty result, full inventory, lost identity
+or timeout. Zero empty bag slots is separate from an actual inventory-full
+error, since stacks and coins may still fit. No inventory is deleted or sold.
+Kills giving ≤20 XP are flagged; three uniformly low-XP kills suggest another
+area. These heuristics and the short easy-kill flag are retained for analysis.
 
 For a second, passive video stream, start this in another terminal before
 the hunt, using a new directory:

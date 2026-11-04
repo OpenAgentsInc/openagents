@@ -8,6 +8,11 @@
 #load "game-policy.coax";
 #load "game-combat-evidence.coax";
 #load "game-evidence-policy.coax";
+#load "game-evidence-v2.coax";
+#load "game-loot-observation.coax";
+#load "game-loot-policy.coax";
+#load "game-xp-policy.coax";
+#load "game-combat-v4-policy.coax";
 CC_NAMES :: [15] string.["wait","target-next","turn-left","turn-right","approach","shadow-bolt","melee","demon-skin","food","water","clear-target","select-visible-creature","skip-target","back-away","sidestep-right"];
 cc_num :: (n: int, out: [] u8) -> string { o: [1] Jo; jo_start(o[..], out); jo_int(o[..], n); return jo_text(o[..]); }
 cc_record :: (path: string, line: string) -> bool {
@@ -44,48 +49,69 @@ cc_select :: (h: int, t: GameTarget, point: CreatureBar, reply: [] u8, trace: st
   if gc_exchange_logged(h,t,"button",272,false,0,0,0,"",reply,"done",trace) < 0 { return false; }
   return gc_exchange_logged(h,t,"stop",0,false,0,0,0,"",reply,"done",trace) > 0;
 }
-cc_run :: (h: int, t: GameTarget, dir: string, steps: int, wanted: int) -> int {
+cc_loot_key :: (h: int,t: GameTarget,action: int,reply: [] u8,trace: string) -> bool {
+  if action==LT_WAIT { return true; } key:=lt_key(action); duration:=lt_duration(action);
+  if key==0 || duration==0 { return false; }
+  if gc_exchange_logged(h,t,"acquire",0,false,1000,0,0,"",reply,"done",trace)<0 { return false; }
+  began:=proc_now_ms();
+  if gc_exchange_logged(h,t,"key",key,true,0,0,0,"",reply,"done",trace)<0 { return false; }
+  proc_sleep(ev_sleep_for(duration,proc_now_ms()-began));
+  if gc_exchange_logged(h,t,"key",key,false,0,0,0,"",reply,"done",trace)<0 { return false; }
+  return gc_exchange_logged(h,t,"stop",0,false,0,0,0,"",reply,"done",trace)>0;
+}
+cc_run :: (h: int, t: GameTarget, dir: string, steps: int, wanted: int,minimum: int,goal_level: int,home: NavGoal,hostile_only: bool) -> int {
   paths: [6] [4096] u8;
   image := fs_join(dir, "frame.ppm", paths[0][..]); journal := fs_join(dir, "journal.jsonl", paths[1][..]); stop := fs_join(dir, "stop", paths[2][..]);
   finish := fs_join(dir, "finish", paths[3][..]);
   recheck := fs_join(dir, "recheck.ppm", paths[4][..]);
   trace := fs_join(dir,"wire.jsonl",paths[5][..]); archive_bytes := 0;
-  reply: [262144] u8; out: [16384] u8; sensor: [8192] u8; navtext: [1024] u8;
-  previous: CombatSample; fight: CombatSample; home := hunt_home();
+  reply: [262144] u8; out: [16384] u8; sensor: [8192] u8; navtext: [1024] u8; loottext: [2048] u8;
+  previous: CombatSample; fight: CombatSample;
   engaged := false; fight_started := 0; last_progress := 0; scans := 0; kills := 0; total_xp := 0; rest_until := 0; killed_at := 0;
   roaming := false; leg := 0; travel_ticks := 0; stalled := 0; last_action := CT_WAIT; previous_nav: NavSample;
   pending_visual := false; visual_bound := false; visual_target: CombatSample; began := proc_now_ms();
   tracked_leg := -1; survey_best: f32; survey_progress := 0; recovery := 0;
-  initial := cc_record(journal, "{\"type\":\"start\",\"schema\":\"external-combat-v1\",\"policy\":\"starter-warlock-v3\",\"evidence\":\"external-combat-evidence-v1\",\"images\":\"all observations and rechecks, lossless checksummed PPM.zst\",\"archive_budget\":8589934592}"); if !initial { return 1; }
+  pending_loot:=false; loot_context: LootContext; loot_origin: NavSample; loot_started:=0; loot_attempts:=0; loot_restored:=false; low_kills:=0; rejected:=false;
+  ambient_since:=0;
+  initial := cc_record(journal, "{\"type\":\"start\",\"schema\":\"external-combat-v1\",\"policy\":\"starter-warlock-v4\",\"loot\":\"external-loot-v1\",\"evidence\":\"external-combat-evidence-v2\",\"images\":\"all observations and rechecks, lossless checksummed PPM.zst deltas\",\"archive_budget\":1073741824}"); if !initial { return 1; }
+  config: [1] Jo; jo_start(config[..],out[..]); jo_obj(config[..]); jo_key(config[..],"type"); jo_str(config[..],"configuration");
+  jo_key(config[..],"steps"); jo_int(config[..],steps); jo_key(config[..],"kills"); jo_int(config[..],wanted); jo_key(config[..],"minimum_target_level"); jo_int(config[..],minimum); jo_key(config[..],"stop_at_player_level"); jo_int(config[..],goal_level);
+  jo_key(config[..],"hostile_only_candidates"); jo_bool(config[..],hostile_only);
+  jo_key(config[..],"home_x_u16"); jo_int(config[..],home.x); jo_key(config[..],"home_y_u16"); jo_int(config[..],home.y); jo_end(config[..]); if !cc_record(journal,jo_text(config[..])) { return 1; }
   for i: 0..<steps + 100 {
     if fs_exists(stop) { return cc_stop(journal, "stop-file"); }
     current := cc_target(h, reply[..],trace);
     if current.session != t.session || current.handle != t.handle || current.revision != t.revision { return cc_stop(journal, "window-changed"); }
     capture_started := proc_now_ms();
     n := gc_exchange_logged(h, t, "shot", 0, false, 0, 0, 0, image, reply[..], "shot",trace); if n < 0 { return 1; }
-    s := ct_read(image); nav := nav_read(image); now := proc_now_ms();
-    saved_bytes := ev_archive(image,dir,journal,i + 1,false,capture_started); if saved_bytes < 0 { return cc_stop(journal,"recording-failed"); } archive_bytes += saved_bytes;
+    s := ct_read(image); nav := nav_read(image); loot:=lt_read(image); now := proc_now_ms();
+    saved_bytes := e2_archive(image,dir,journal,i + 1,false,capture_started); if saved_bytes < 0 { return cc_stop(journal,"recording-failed"); } archive_bytes += saved_bytes;
     o: [1] Jo; jo_start(o[..], out[..]); jo_obj(o[..]);
     jo_key(o[..], "type"); jo_str(o[..], "observation"); jo_key(o[..], "sequence"); jo_int(o[..], i + 1); jo_key(o[..], "monotonic_ms"); jo_int(o[..], now);
     jo_key(o[..], "capture"); jo_raw(o[..], cast(string) reply[0..<n]); jo_key(o[..], "sensor"); jo_raw(o[..], ct_json(s, sensor[..]));
     jo_key(o[..], "combat_sensor_valid"); jo_bool(o[..], s.ok); jo_key(o[..], "navigation_sensor_valid"); jo_bool(o[..], nav.ok);
-    jo_key(o[..], "navigation"); jo_raw(o[..], nav_json(nav, navtext[..])); jo_end(o[..]);
+    jo_key(o[..], "navigation"); jo_raw(o[..], nav_json(nav, navtext[..])); jo_key(o[..],"loot"); jo_raw(o[..],lt_json(loot,loottext[..])); jo_end(o[..]);
     if !cc_record(journal, jo_text(o[..])) { return 1; }
     if !s.ok || !nav.ok || !nav.alive || nav.blocked || nav.map != 1426 { return cc_stop(journal, "unavailable-dead-menu-or-map"); }
     // A development pause drains the current encounter; immediate stop remains immediate.
-    endrequest := ev_endrequest(archive_bytes,8589934592,cb_endrequest(kills,wanted,fs_exists(finish)));
-    drain := cb_drain(engaged,(s.flags & 4) != 0,endrequest != 0,i,steps,now - began);
+    endrequest := ev_endrequest(archive_bytes,1073741824,cb_endrequest(kills,wanted,fs_exists(finish) || xp_goal(s.level,goal_level)));
+    drain := cb_drain(engaged || pending_loot,(s.flags & 4) != 0,endrequest != 0,i,steps,now - began);
     if drain == 1 {
-      ending := ifx endrequest == 1 then "{\"type\":\"finished\",\"reason\":\"finish-file\"}" else ifx endrequest == 2 then "{\"type\":\"finished\",\"reason\":\"kill-target\"}" else "{\"type\":\"finished\",\"reason\":\"archive-budget\"}";
+      ending := ifx xp_goal(s.level,goal_level) then "{\"type\":\"finished\",\"reason\":\"level-goal\"}" else ifx endrequest == 1 then "{\"type\":\"finished\",\"reason\":\"finish-file\"}" else ifx endrequest == 2 then "{\"type\":\"finished\",\"reason\":\"kill-target\"}" else "{\"type\":\"finished\",\"reason\":\"archive-budget\"}";
       return ifx cc_record(journal,ending) then 0 else 1;
     }
     if drain == 2 { return cc_stop(journal,"observation-or-time-budget-drained"); }
     if pending_visual { pending_visual = false; visual_bound = cb_eligible(s); visual_target = s; }
     if visual_target.target_epoch != s.target_epoch || visual_target.npc != s.npc || visual_target.spawn != s.spawn || !cb_eligible(s) { visual_bound = false; }
     if i > 0 && s.serial == previous.serial { return cc_stop(journal, "stale-sensor"); }
+    if !loot.ok || loot.controls!=3 || (loot.flags&133)!=5 { return cc_stop(journal,"loot-sensor-or-bindings-unavailable"); }
     if abs(cast(f32) (nav.x - home.x)) + abs(cast(f32) (nav.y - home.y)) > 1800 { return cc_stop(journal, "survey-radius"); }
     d := cb_choose(s, engaged); baseline := d; why := "combat-policy";
-    bars := cv_candidates(image); dims := cv_frame(image);
+    if !engaged && (s.flags&4)!=0 && (s.target_flags&1)==0 {
+      if ambient_since==0 { ambient_since=now; }
+      if c4_ambient(s,now-ambient_since) { d=cb_action(CT_WAIT); why="await-ambient-combat-target"; }
+    } else { ambient_since=0; }
+    bars := cv_candidates_kind(image,hostile_only); dims := cv_frame(image);
     jo_start(o[..],out[..]); jo_obj(o[..]); jo_key(o[..],"type"); jo_str(o[..],"vision"); jo_key(o[..],"observation"); jo_int(o[..],i + 1);
     jo_key(o[..],"width"); jo_int(o[..],dims.width); jo_key(o[..],"height"); jo_int(o[..],dims.height);
     jo_key(o[..],"capacity_reached"); jo_bool(o[..],bars.count == 32); jo_key(o[..],"candidates"); jo_arr(o[..]);
@@ -99,14 +125,52 @@ cc_run :: (h: int, t: GameTarget, dir: string, steps: int, wanted: int) -> int {
         jo_key(o[..], "npc"); jo_int(o[..], fight.npc); jo_key(o[..], "spawn"); jo_int(o[..], fight.spawn); jo_key(o[..], "gained_xp"); jo_int(o[..], gained);
         jo_key(o[..], "kills"); jo_int(o[..], kills); jo_key(o[..], "total_xp"); jo_int(o[..], total_xp); jo_key(o[..], "fight_ms"); jo_int(o[..], now - fight_started); jo_end(o[..]);
         if !cc_record(journal, jo_text(o[..])) { return 1; } print("%\n", jo_text(o[..])); engaged = false; scans = 0; roaming = false; killed_at = now; why = "verified-kill";
-        d = cb_action(ifx (s.target_flags & 1) != 0 then CT_CLEAR else CT_WAIT);
+        low_kills+=ifx xp_low(gained) then 1 else 0;
+        jo_start(o[..],out[..]); jo_obj(o[..]); jo_key(o[..],"type"); jo_str(o[..],"xp-quality"); jo_key(o[..],"gained_xp"); jo_int(o[..],gained);
+        jo_key(o[..],"low_xp"); jo_bool(o[..],xp_low(gained)); jo_key(o[..],"too_easy"); jo_bool(o[..],xp_easy(fight.level,fight.target_level,now-fight_started,fight.health-s.health));
+        jo_key(o[..],"consider_new_area"); jo_bool(o[..],xp_area(low_kills,kills)); jo_key(o[..],"free_bag_slots"); jo_int(o[..],loot.free); jo_end(o[..]);
+        if !cc_record(journal,jo_text(o[..])) { return 1; }
+        pending_loot=true; loot_context=LootContext.{npc=fight.npc,spawn=fight.spawn,opened=loot.opened,closed=loot.closed,items=loot.items,full=loot.full,copper=loot.copper};
+        loot_origin=nav; loot_started=now; loot_attempts=0; loot_restored=false; d=cb_action(CT_WAIT);
       } else if cb_fight_expired(now - fight_started,now - last_progress) { return cc_stop(journal, "fight-or-damage-deadline"); }
       else if s.kill_serial != fight.kill_serial && s.kill_npc == fight.npc && s.kill_spawn == fight.spawn { d = cb_action(CT_WAIT); }
       else if s.target_epoch != fight.target_epoch || s.npc != fight.npc || s.spawn != fight.spawn { return cc_stop(journal, "engaged-target-changed"); }
       else if (s.target_flags & 4) != 0 { d = cb_action(CT_WAIT); }
     }
+    if pending_loot {
+      distance:=cast(int) (abs(cast(f32) (nav.x-loot_origin.x))+abs(cast(f32) (nav.y-loot_origin.y)));
+      la:=ifx cb_afterkill(s,now-loot_started) then LT_WAIT else lt_choose(s,loot,loot_context,loot_attempts,loot_restored,now-loot_started,distance);
+      if la>=LT_RECEIPT {
+        jo_start(o[..],out[..]); jo_obj(o[..]); jo_key(o[..],"type"); jo_str(o[..],"loot-outcome"); jo_key(o[..],"observation"); jo_int(o[..],i+1);
+        jo_key(o[..],"result"); jo_int(o[..],la); jo_key(o[..],"npc"); jo_int(o[..],loot_context.npc); jo_key(o[..],"spawn"); jo_int(o[..],loot_context.spawn);
+        jo_key(o[..],"item_events"); jo_int(o[..],(loot.items-loot_context.items+65536)%65536); jo_key(o[..],"copper_delta"); jo_int(o[..],loot.copper-loot_context.copper);
+        jo_key(o[..],"free_bag_slots"); jo_int(o[..],loot.free); jo_key(o[..],"inventory_full"); jo_bool(o[..],la==LT_FULL); jo_key(o[..],"zero_free_slots"); jo_bool(o[..],loot.free==0); jo_end(o[..]);
+        if !cc_record(journal,jo_text(o[..])) { return 1; } print("%\n",jo_text(o[..])); pending_loot=false;
+        if la==LT_REFUSE { return cc_stop(journal,"loot-policy-refused"); }
+        previous=s; previous_nav=nav; last_action=CT_WAIT; proc_sleep(500); continue;
+      }
+      if la!=LT_WAIT {
+        checked_at:=proc_now_ms(); checked:=gc_exchange_logged(h,t,"shot",0,false,0,0,0,recheck,reply[..],"shot",trace); if checked<0 { return cc_stop(journal,"loot-recheck-capture"); }
+        latest:=ct_read(recheck); fresh_loot:=lt_read(recheck); fresh_nav:=nav_read(recheck);
+        bytes:=e2_archive(recheck,dir,journal,i+1,true,checked_at); if bytes<0 { return cc_stop(journal,"recording-failed"); } archive_bytes+=bytes;
+        fresh_distance:=cast(int) (abs(cast(f32) (fresh_nav.x-loot_origin.x))+abs(cast(f32) (fresh_nav.y-loot_origin.y)));
+        admitted:=fresh_nav.ok && fresh_nav.alive && !fresh_nav.blocked && fresh_nav.map==1426 && latest.target_epoch==s.target_epoch && lt_choose(latest,fresh_loot,loot_context,loot_attempts,loot_restored,proc_now_ms()-loot_started,fresh_distance)==la;
+        jo_start(o[..],out[..]); jo_obj(o[..]); jo_key(o[..],"type"); jo_str(o[..],"loot-recheck"); jo_key(o[..],"observation"); jo_int(o[..],i+1);
+        jo_key(o[..],"admitted"); jo_bool(o[..],admitted); jo_key(o[..],"sensor"); jo_raw(o[..],ct_json(latest,sensor[..])); jo_key(o[..],"navigation"); jo_raw(o[..],nav_json(fresh_nav,navtext[..])); jo_key(o[..],"loot"); jo_raw(o[..],lt_json(fresh_loot,loottext[..])); jo_end(o[..]);
+        if !cc_record(journal,jo_text(o[..])) { return 1; }
+        if !admitted { previous=s; previous_nav=nav; last_action=CT_WAIT; proc_sleep(500); continue; }
+      }
+      jo_start(o[..],out[..]); jo_obj(o[..]); jo_key(o[..],"type"); jo_str(o[..],"loot-action"); jo_key(o[..],"observation"); jo_int(o[..],i+1); jo_key(o[..],"action"); jo_int(o[..],la); jo_key(o[..],"attempt"); jo_int(o[..],loot_attempts); jo_key(o[..],"milliseconds"); jo_int(o[..],lt_duration(la)); jo_end(o[..]);
+      if !cc_record(journal,jo_text(o[..])) { return 1; } applied_at:=proc_now_ms(); applied:=cc_loot_key(h,t,la,reply[..],trace);
+      jo_start(o[..],out[..]); jo_obj(o[..]); jo_key(o[..],"type"); jo_str(o[..],"loot-effect"); jo_key(o[..],"observation"); jo_int(o[..],i+1); jo_key(o[..],"applied"); jo_bool(o[..],applied); jo_key(o[..],"started_ms"); jo_int(o[..],applied_at); jo_key(o[..],"ended_ms"); jo_int(o[..],proc_now_ms()); jo_end(o[..]);
+      if !cc_record(journal,jo_text(o[..])) { return 1; } if !applied { return cc_stop(journal,"loot-input-interrupted"); }
+      if la==LT_RESTORE { loot_restored=true; } else if la!=LT_WAIT { loot_attempts+=1; }
+      previous=s; previous_nav=nav; last_action=CT_WAIT; proc_sleep(500); continue;
+    }
     if !d.ok && !engaged && killed_at > 0 && cb_afterkill(s, now - killed_at) { d = cb_action(CT_WAIT); }
     if !d.ok { return cc_stop(journal, "combat-policy-refused"); }
+    if !engaged && (s.flags&4)==0 && (s.target_flags&1)!=0 && (s.target_flags&4)==0 && s.target_level<minimum { d=cb_action(CT_SKIP); why="below-requested-xp-tier"; rejected=true; }
+    else if rejected && !engaged && (s.target_flags&1)==0 && (s.flags&4)==0 { d=hunt_scan_action(true,NavRoute.{}); why="rotate-from-low-xp-target"; rejected=false; }
     if now < rest_until && (d.action == CT_FOOD || d.action == CT_WATER || d.action == CT_WAIT) { d = cb_action(CT_WAIT); why = "rest-settle"; }
     point: CreatureBar;
     if !engaged && (s.flags & 4) == 0 && (d.action == CT_TAB || d.action == CT_FORWARD || d.action == CT_BOLT) && !visual_bound {
@@ -168,11 +232,11 @@ cc_run :: (h: int, t: GameTarget, dir: string, steps: int, wanted: int) -> int {
       recheck_started := proc_now_ms();
       checked := gc_exchange_logged(h, t, "shot", 0, false, 0, 0, 0, recheck, reply[..], "shot",trace); if checked < 0 { return cc_stop(journal, "recheck-capture"); }
       latest := ct_read(recheck);
-      recheck_bytes := ev_archive(recheck,dir,journal,i + 1,true,recheck_started); if recheck_bytes < 0 { return cc_stop(journal,"recording-failed"); } archive_bytes += recheck_bytes;
+      recheck_bytes := e2_archive(recheck,dir,journal,i + 1,true,recheck_started); if recheck_bytes < 0 { return cc_stop(journal,"recording-failed"); } archive_bytes += recheck_bytes;
       admitted := cb_recheck(s, latest, d.action, engaged);
       jo_start(o[..],out[..]); jo_obj(o[..]); jo_key(o[..],"type"); jo_str(o[..],"recheck"); jo_key(o[..],"observation"); jo_int(o[..],i + 1);
       jo_key(o[..],"admitted"); jo_bool(o[..],admitted); jo_key(o[..],"sensor"); jo_raw(o[..],ct_json(latest,sensor[..]));
-      jo_key(o[..],"navigation"); jo_raw(o[..],nav_json(nav_read(recheck),navtext[..])); jo_end(o[..]); if !cc_record(journal,jo_text(o[..])) { return 1; }
+      jo_key(o[..],"navigation"); jo_raw(o[..],nav_json(nav_read(recheck),navtext[..])); jo_key(o[..],"loot"); jo_raw(o[..],lt_json(lt_read(recheck),loottext[..])); jo_end(o[..]); if !cc_record(journal,jo_text(o[..])) { return 1; }
       if !admitted {
         if new_fight { engaged = false; }
         saved := cc_record(journal, "{\"type\":\"action-discarded\",\"reason\":\"context-changed-before-input\"}");
@@ -207,10 +271,13 @@ tool_main :: () -> int #export_c {
   runtime: [4096] u8; default_socket: [4096] u8;
   socket := args_value(a[..], "--socket", fs_join(proc_getenv("XDG_RUNTIME_DIR", runtime[..]), "verse-desk.sock", default_socket[..]));
   dir := args_value(a[..], "--out", ""); steps := game_integer(args_value(a[..], "--steps", "360")); wanted := game_integer(args_value(a[..], "--kills", "3"));
-  if dir.count == 0 || dir[0] != '/' || fs_exists(dir) || !steps.ok || steps.value < 1 || steps.value > 1200 || !wanted.ok || wanted.value < 1 || wanted.value > 20 { tool_errln("usage: verse-combat --out NEW_ABSOLUTE_DIR [--socket PATH] [--steps 1..1200] [--kills 1..20]"); return 2; }
+  minimum:=game_integer(args_value(a[..],"--min-level","1")); goal:=game_integer(args_value(a[..],"--until-level","0"));
+  hx:=game_integer(args_value(a[..],"--home-x","20300")); hy:=game_integer(args_value(a[..],"--home-y","45900"));
+  if !minimum.ok || minimum.value<1 || minimum.value>5 || !goal.ok || (goal.value!=0 && goal.value!=6) || !hx.ok || !hy.ok || hx.value<0 || hy.value<0 || hx.value>64935 || hy.value>64935 { return 2; }
+  if dir.count == 0 || dir[0] != '/' || fs_exists(dir) || !steps.ok || steps.value < 1 || steps.value > 1200 || !wanted.ok || wanted.value < 1 || wanted.value > 20 { tool_errln("usage: verse-combat --out NEW_ABSOLUTE_DIR [--socket PATH] [--steps 1..1200] [--kills 1..20] [--min-level 1..5] [--until-level 6] [--home-x X --home-y Y]"); return 2; }
   if !fs_mkdir(dir) { return 1; } h := dc_open(socket); if h < 0 { return 1; }
   tracebuf: [4096] u8; trace := fs_join(dir,"wire.jsonl",tracebuf[..]);
-  reply: [262144] u8; target := cc_target(h, reply[..],trace); result := ifx target.handle > 0 then cc_run(h, target, dir, steps.value, wanted.value) else 1;
+  reply: [262144] u8; target := cc_target(h, reply[..],trace); home:=NavGoal.{map=1426,x=hx.value,y=hy.value,radius=24,aspect_milli=1500}; result := ifx target.handle > 0 then cc_run(h, target, dir, steps.value, wanted.value,minimum.value,goal.value,home,args_has(a[..],"--hostile-only")) else 1;
   closed := cxsock_close(h); path: [4096] u8;
   after := dc_open(socket);
   if after >= 0 { info := gc_exchange_logged(after,GameTarget.{},"info",0,false,0,0,0,"",reply[..],"info",trace); closed_after := cxsock_close(after); }

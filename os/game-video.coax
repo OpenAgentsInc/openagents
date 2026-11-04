@@ -2,6 +2,7 @@
 #import "Basic";
 #load "game-client.coax";
 #load "game-combat-observation.coax";
+#load "game-loot-observation.coax";
 #load "game-policy.coax";
 gv_run :: (dir: string, seconds: int, socket: string) -> int {
   paths: [5] [4096] u8; image := fs_join(dir,"frame.ppm",paths[0][..]); movie := fs_join(dir,"video.mp4",paths[1][..]);
@@ -13,7 +14,7 @@ gv_run :: (dir: string, seconds: int, socket: string) -> int {
   encoder := proc_new(); if encoder < 0 { c := cxsock_close(h); return 1; }
   ok := true; for arg: argv { ok = ok && proc_arg(encoder,arg); }
   if !ok || proc_start(encoder) != 0 { freed := proc_release(encoder); c := cxsock_close(h); return 1; }
-  started := proc_now_ms(); frames := 0; late := 0; row: [32768] u8; sensor: [8192] u8; navigation: [1024] u8; chunk: [65536] u8;
+  started := proc_now_ms(); frames := 0; late := 0; row: [32768] u8; sensor: [8192] u8; navigation: [1024] u8; loot: [2048] u8; chunk: [65536] u8;
   while proc_now_ms() - started < seconds * 1000 && !fs_exists(stop) {
     begin := proc_now_ms();
     n = gc_exchange_logged(h,t,"shot",0,false,0,0,0,image,reply[..],"shot",trace); if n < 0 { ok = false; break; }
@@ -32,7 +33,7 @@ gv_run :: (dir: string, seconds: int, socket: string) -> int {
     s := ct_read(image); nav := nav_read(image); o: [1] Jo; jo_start(o[..],row[..]); jo_obj(o[..]);
     jo_key(o[..],"type"); jo_str(o[..],"video-frame"); jo_key(o[..],"index"); jo_int(o[..],frames);
     jo_key(o[..],"started_ms"); jo_int(o[..],begin); jo_key(o[..],"ended_ms"); jo_int(o[..],proc_now_ms());
-    jo_key(o[..],"capture"); jo_raw(o[..],cast(string) reply[0..<n]); jo_key(o[..],"sensor"); jo_raw(o[..],ct_json(s,sensor[..])); jo_key(o[..],"navigation"); jo_raw(o[..],nav_json(nav,navigation[..])); jo_end(o[..]);
+    jo_key(o[..],"capture"); jo_raw(o[..],cast(string) reply[0..<n]); jo_key(o[..],"sensor"); jo_raw(o[..],ct_json(s,sensor[..])); jo_key(o[..],"navigation"); jo_raw(o[..],nav_json(nav,navigation[..])); jo_key(o[..],"loot"); jo_raw(o[..],lt_json(lt_read(image),loot[..])); jo_end(o[..]);
     text := jo_text(o[..]); row[text.count] = '\n'; if !fs_append(journal,cast(string) row[0..<text.count + 1]) { ok = false; break; }
     frames += 1; deadline := started + frames * 250; remaining := deadline - proc_now_ms(); if remaining > 0 { proc_sleep(remaining); } else { late += 1; }
   }

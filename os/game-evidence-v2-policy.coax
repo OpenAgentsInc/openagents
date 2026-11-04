@@ -1,0 +1,10 @@
+#authority;
+#test "delta references are deterministic, backward-only, with a keyframe every thirty observations" {
+  #assert e2_base(1,false)==0 && e2_base(2,false)==1 && e2_base(30,false)==29;
+  #assert e2_base(31,false)==0 && e2_base(32,false)==31;
+  #assert e2_base(1,true)==1 && e2_base(31,true)==31 && e2_base(1300,true)==1300;
+}
+e2_base :: (sequence: int,recheck: bool) -> int {
+  if recheck { return sequence; }
+  return ifx (sequence-1)%30==0 then 0 else sequence-1;
+}

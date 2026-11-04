@@ -1,4 +1,4 @@
-// Visible neutral creature bars are selection candidates, never permission to attack.
+// Visible neutral/hostile bars are selection candidates, never permission to attack.
 #authority;
 #load "../aethyr/points.coax";
 CreatureBar :: struct { x: int; y: int; width: int; rows: int; }
@@ -11,6 +11,22 @@ CreatureBars :: struct { count: int; bars: [32] CreatureBar; }
   #assert !cv_yellow(255,255,255) && !cv_yellow(100,80,0);
 }
 cv_yellow :: (r: int, g: int, b: int) -> bool { return r >= 170 && g >= 130 && b <= 70 && r + 40 >= g && g + 100 >= r; }
+#test "hostile red candidates retain exact channel bounds and repeated row requirements" {
+  #assert cv_red(170,70,70) && cv_red(255,0,0);
+  #assert !cv_red(169,70,70) && !cv_red(170,71,70) && !cv_red(170,70,71);
+  row: [1920] u8; out: [1] CreatureBars;
+  for x:0..<640 { row[x*3]=250; row[x*3+1]=250; row[x*3+2]=250; }
+  for x:100..<160 { row[x*3]=200; row[x*3+1]=20; row[x*3+2]=30; }
+  cv_row(row[..],200,out[..]); #assert out[0].count==1 && out[0].bars[0].rows==1 && cv_best(out[0],640).rows==0;
+  cv_row(row[..],202,out[..]); #assert cv_best(out[0],640).x==130 && cv_best(out[0],640).rows==2;
+  for x:100..<160 { row[x*3+1]=71; }
+  failed: [1] CreatureBars; cv_row(row[..],200,failed[..]); #assert failed[0].count==0;
+  for x:100..<160 { row[x*3+1]=20; row[x*3+2]=71; }
+  cv_row(row[..],200,failed[..]); #assert failed[0].count==0;
+  for x:100..<160 { row[x*3]=169; row[x*3+2]=30; }
+  cv_row(row[..],200,failed[..]); #assert failed[0].count==0;
+}
+cv_red :: (r: int,g: int,b: int) -> bool { return r>=170 && g<=70 && b<=70; }
 #test "rows merge a repeated bar, distinguish separate bars and retain a bounded set" {
   b: [1] CreatureBars;
   cv_add(b[..], 100,200,80); cv_add(b[..],108,212,80);
@@ -63,11 +79,21 @@ cv_close :: (out: [] CreatureBars, begin: int, end: int, y: int) {
   length := end - begin; if length >= 60 && length <= 300 { cv_add(out, begin + length / 2, y, length); }
 }
 cv_row :: (row: [] u8, y: int, out: [] CreatureBars) {
+  cv_row_kind(row,y,out,false);
+}
+#test "hostile-only search excludes yellow bars while preserving red candidates" {
+  row: [1920] u8; out: [1] CreatureBars;
+  for x:100..<160 { row[x*3]=200; row[x*3+1]=150; }
+  for x:200..<260 { row[x*3]=200; }
+  cv_row_kind(row[..],200,out[..],true); #assert out[0].count==1 && out[0].bars[0].x==230;
+  both: [1] CreatureBars; cv_row_kind(row[..],200,both[..],false); #assert both[0].count==2;
+}
+cv_row_kind :: (row: [] u8, y: int, out: [] CreatureBars,hostile_only: bool) {
   if row.count % 3 != 0 { return; }
   width := row.count / 3; right := width - ifx width >= 1200 then 420 else 80; begin: int; in_run: bool;
   left := ifx y < 160 && width >= 1200 then 760 else 16;
   for x: left..<right {
-    yellow := cv_yellow(cast(int) row[x * 3], cast(int) row[x * 3 + 1], cast(int) row[x * 3 + 2]);
+    yellow := (!hostile_only && cv_yellow(cast(int) row[x * 3], cast(int) row[x * 3 + 1], cast(int) row[x * 3 + 2])) || cv_red(cast(int) row[x*3],cast(int) row[x*3+1],cast(int) row[x*3+2]);
     if yellow && !in_run { begin = x; in_run = true; }
     if !yellow && in_run { cv_close(out,begin,x,y); in_run = false; }
   }

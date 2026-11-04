@@ -170,6 +170,7 @@ coax="${COAX:-$root/coax/bin/coax}"
 (cd "$root" && "$coax" c os/game-sense.coax --library) > "$work/ship/net-src/verse-sense.c"
 (cd "$root" && "$coax" c os/game-combat.coax --library) > "$work/ship/net-src/verse-combat.c"
 (cd "$root" && "$coax" c os/game-combat-sense.coax --library) > "$work/ship/net-src/verse-combat-sense.c"
+(cd "$root" && "$coax" c os/game-loot-sense.coax --library) > "$work/ship/net-src/verse-loot-sense.c"
 (cd "$root" && "$coax" c os/game-combat-analyze.coax --library) > "$work/ship/net-src/verse-combat-analyze.c"
 (cd "$root" && "$coax" c os/game-video.coax --library) > "$work/ship/net-src/verse-game-video.c"
 mkdir -p "$work/ship/wow"
@@ -219,6 +220,7 @@ nix-shell -p gcc pkg-config libdrm libglvnd libgbm vulkan-headers vulkan-loader 
    gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-sense.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-sense
    gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-combat.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-combat
    gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-combat-sense.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-combat-sense
+   gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-loot-sense.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-loot-sense
    gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-combat-analyze.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-combat-analyze
    gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-game-video.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-game-video
    gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-battlenet.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c \

@@ -1,0 +1,12 @@
+syntax = "proto3";
+package openagents.engine.combat.control.v4;
+// Composes combat observation v1, loot v1 and evidence v2.
+message HuntProfile {
+  uint32 minimum_target_level = 1;
+  uint32 stop_at_player_level = 2;
+  uint32 survey_home_x_u16 = 3;
+  uint32 survey_home_y_u16 = 4;
+  uint32 maximum_loot_ms = 5;
+  uint32 maximum_loot_displacement_u16 = 6;
+  bool hostile_only_candidates = 7;
+}

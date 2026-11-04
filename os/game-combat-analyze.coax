@@ -3,6 +3,8 @@
 #load "game-combat-analysis.coax";
 #load "game-combat-evidence.coax";
 #load "game-combat-observation.coax";
+#load "game-loot-observation.coax";
+#load "game-evidence-v2-policy.coax";
 an_int :: (d: Jv, key: string) -> int { return jv_int(d,jv_get(d,0,key),0); }
 an_append :: (path: string, body: string) -> bool {
   out: [65536] u8; if body.count >= out.count { return false; }
@@ -78,15 +80,16 @@ an_wire :: (path: string) -> WireAudit {
   return s[0];
 }
 an_run :: (dir: string, destination: string, video: bool) -> int {
-  paths: [8] [4096] u8;
+  paths: [9] [4096] u8;
   journal := fs_join(dir,"journal.jsonl",paths[0][..]); scratch := fs_join(destination,"verify.ppm",paths[1][..]);
   manifest := fs_join(destination,"images.sha256",paths[2][..]); report := fs_join(destination,"report.json",paths[3][..]);
   replay := fs_join(destination,"replay",paths[4][..]); concat := fs_join(replay,"frames.ffconcat",paths[5][..]);
+  previous_image:=fs_join(destination,"previous-observe.ppm",paths[8][..]);
   if video && (!fs_mkdir(replay) || !fs_write(concat,"ffconcat version 1.0\n")) { return 1; }
   row: [65536] u8; nodes: [4096] JvNode; parsed: [1] Jv; buf: [16384] u8; navbuf: [1024] u8;
   state: [1] CombatAnalysis; offset := 0; images := 0; compressed := 0; rechecks := 0; bad := 0; kills := 0; xp := 0; fight_ms := 0;
   actions := 0; effects := 0; failed := 0; discarded := 0; turns := 0; tabs := 0; casts := 0; selections := 0;
-  observed: [1301] bool; checked: [1301] bool; decoded: CombatSample; navigation: NavSample; last_image := 0; last_recheck := false;
+  observed: [1301] bool; checked: [1301] bool; decoded: CombatSample; navigation: NavSample; loot: LootSample; lootbuf: [2048] u8; last_image := 0; last_recheck := false; previous_observation:=0;
   last_time := -1; last_sequence := 0; terminal := false; completed := false;
   size := fs_size(journal); if size < 0 { return 1; }
   while offset < size {
@@ -98,9 +101,13 @@ an_run :: (dir: string, destination: string, video: bool) -> int {
       if jv_str(d,jv_get(d,0,"path"),actual[..]) != name.count || cast(string) actual[0..<name.count] != name { return 1; }
       archivebuf: [4096] u8; archive := fs_join(dir,name,archivebuf[..]);
       if fs_size(archive) != an_int(d,"bytes") || (ifx is_recheck then checked[sequence] else observed[sequence]) { return 1; }
+      codec:=jv_raw(d,jv_get(d,0,"codec")); base:=an_int(d,"base_observation"); patchbuf: [8192] u8; po: [1] Jo; jo_start(po[..],patchbuf[..]); jo_put(po[..],"--patch-from="); jo_put(po[..],previous_image);
       unpack := [8] string.["zstd","-q","-d","-f","-o",scratch,"--",archive];
-      if !an_process(unpack[..],5000) { return 1; }
-      decoded = ct_read(scratch); navigation = nav_read(scratch); last_image = sequence; last_recheck = is_recheck;
+      delta := [9] string.["zstd","-q","-d","-f",jo_text(po[..]),"-o",scratch,"--",archive];
+      if codec.count>0 && (codec!="zstd-delta-v2" || base!=e2_base(sequence,is_recheck) || (base>0 && base!=previous_observation)) { return 1; }
+      if !(ifx codec.count>0 && base>0 then an_process(delta[..],5000) else an_process(unpack[..],5000)) { return 1; }
+      if !is_recheck { copy:=[3] string.["cp",scratch,previous_image]; if !an_process(copy[..],5000) { return 1; } previous_observation=sequence; }
+      decoded = ct_read(scratch); navigation = nav_read(scratch); loot=lt_read(scratch); last_image = sequence; last_recheck = is_recheck;
       if is_recheck { checked[sequence] = true; } else { observed[sequence] = true; }
       hashargs := [3] string.["sha256sum","--",archive]; hash: [8192] u8; err: [1024] u8; h := proc_run(hashargs[..],5000,hash[..],err[..]);
       if h.started != 0 || h.status != 0 || h.out_n < 64 { return 1; }
@@ -113,9 +120,10 @@ an_run :: (dir: string, destination: string, video: bool) -> int {
       }
       if images % 100 == 0 { print("verified % images\n",images); }
     }
-    if kind == "observation" || kind == "recheck" {
-      is_recheck := kind == "recheck"; sequence := an_int(d,ifx is_recheck then "observation" else "sequence");
+    if kind == "observation" || kind == "recheck" || kind=="loot-recheck" {
+      is_recheck := kind != "observation"; sequence := an_int(d,ifx is_recheck then "observation" else "sequence");
       if last_image != sequence || last_recheck != is_recheck || jv_raw(d,jv_get(d,0,"sensor")) != ct_json(decoded,buf[..]) || jv_raw(d,jv_get(d,0,"navigation")) != nav_json(navigation,navbuf[..]) { bad += 1; }
+      if jv_raw(d,jv_get(d,0,"loot")).count>0 && jv_raw(d,jv_get(d,0,"loot"))!=lt_json(loot,lootbuf[..]) { bad+=1; }
       if is_recheck { rechecks += 1; }
       else {
         if sequence != state[0].observations + 1 || !observed[sequence] { bad += 1; }
@@ -129,12 +137,13 @@ an_run :: (dir: string, destination: string, video: bool) -> int {
       }
     }
     if kind == "verified-kill" { kills += 1; xp += an_int(d,"gained_xp"); fight_ms += an_int(d,"fight_ms"); }
+    if kind=="loot-action" { actions+=1; }
     if kind == "action" {
       actions += 1; name := jv_raw(d,jv_get(d,0,"name"));
       if name == "turn-left" || name == "turn-right" { turns += 1; }
       if name == "target-next" { tabs += 1; } if name == "shadow-bolt" { casts += 1; } if name == "select-visible-creature" { selections += 1; }
     }
-    if kind == "effect" { effects += 1; if !jv_bool(d,jv_get(d,0,"applied")) { failed += 1; } }
+    if kind == "effect" || kind=="loot-effect" { effects += 1; if !jv_bool(d,jv_get(d,0,"applied")) { failed += 1; } }
     if kind == "action-discarded" { discarded += 1; }
     if kind == "outcome" { terminal = true; completed = jv_raw(d,jv_get(d,0,"status")) == "completed"; }
   }
@@ -142,6 +151,7 @@ an_run :: (dir: string, destination: string, video: bool) -> int {
   for i: 0..<count { name := fs_entry(list[..],i); if name.count >= 8 && name[name.count - 8..<name.count] == ".ppm.zst" { archive_count += 1; } }
   if count < 0 || list[0].full || archive_count != images || images != state[0].observations + rechecks || actions != effects || !terminal { bad += 1; }
   removed := fs_remove(scratch); video_ok := !video;
+  removed_previous:=fs_remove(previous_image);
   if video && last_sequence > 0 {
     number: [32] u8; o: [1] Jo; jo_start(o[..],buf[..]); jo_put(o[..],"duration 0.500\nfile frame-"); jo_put(o[..],ev_number(last_sequence,number[..])); jo_put(o[..],".ppm"); saved := an_append(concat,jo_text(o[..]));
     moviebuf: [4096] u8; movie := fs_join(destination,"replay.mp4",moviebuf[..]);
