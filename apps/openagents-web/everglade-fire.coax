@@ -107,7 +107,7 @@ fi_catch :: (s: [] Everglade, at: Point, r: f32, how: int) -> int {
   if s[0].sp.dm.count < 1 || !s[0].sp.ready { return trees; }
   w := sp_dm(s);
   odds := FI_ODDS[clamp_i(how, 0, 4)] * (1 - 0.6 * clamp(cast(f32) s[0].sky.rain, 0, 1));
-  n := 0;
+  n := pf_catch(s, at, r, odds);   // an admin's placed wooden things (everglade-placed-fire.coax)
   for i: 0..<w[0].n {
     p := w[0].pieces[i];
     if p.state != DP_STANDING || p.y1 < at.y - 1.5 || p.y0 > at.y + 4.5 { continue; }
@@ -128,7 +128,7 @@ fi_catch :: (s: [] Everglade, at: Point, r: f32, how: int) -> int {
 
 // Water or cold over `at`, `r` round: what burns there goes out in a hiss of steam. How many.
 fi_douse :: (s: [] Everglade, at: Point, r: f32) -> int {
-  trees := tf_douse(s, at, r, 0);   // the trees burning there too (everglade-forest.coax)
+  trees := tf_douse(s, at, r, 0) + pf_douse(s, at, r);   // the trees and placed things burning there too
   if s[0].sp.dm.count < 1 { return trees; }
   w := sp_dm(s);
   v := fi_of(s);
@@ -211,6 +211,7 @@ fi_spread_from :: (s: [] Everglade, i: int) {
     if sp_rand(s) * f32(seen) < 1 { pick = j; }
   }
   if pick >= 0 && sp_rand(s) < f32(FI_CATCH) * fi_fuel(w[0].pieces[pick]) { _ := fi_ignite(s, pick); }
+  pf_from_piece(s, p);   // and the placed things against it (everglade-placed-fire.coax)
   g := ground_at(s, p.cx, p.cz);
   if p.y0 < g + 0.6 && sp_rand(s) < f32(FI_TO_GRASS) {
     a := f32(TAU) * sp_rand(s);
@@ -281,6 +282,7 @@ fi_frame :: (s: [] Everglade, dt: f32) {
       _ := fi_catch(s, box[0].at, 0.5, FI_EMBER);
     }
   }
+  pf_frame(s, dt);   // the placed things burning (everglade-placed-fire.coax)
   fi_people(s);
   fi_dome_frame(s, dt);
 }
@@ -288,7 +290,7 @@ fi_frame :: (s: [] Everglade, dt: f32) {
 // Whoever stands in or against a burning piece burns, once a round.
 fi_people :: (s: [] Everglade) {
   v := fi_of(s);
-  if (v[0].n == 0 && tf_count(s) == 0) || !watch_on(s) { return; }
+  if (v[0].n == 0 && tf_count(s) == 0 && !pf_of(s)[0].any) || !watch_on(s) { return; }
   w := watch_w(s);
   d := s[0].sp.dice[..];
   you := ab_you(s);
@@ -304,7 +306,7 @@ fi_people :: (s: [] Everglade) {
   }
 }
 fi_by_fire :: (s: [] Everglade, at: Point) -> bool {
-  if tf_by_fire(s, at) { return true; }   // a burning tree (everglade-forest.coax)
+  if tf_by_fire(s, at) || pf_by_fire(s, at) { return true; }   // a burning tree or placed thing
   w := sp_dm(s);
   v := fi_of(s);
   for k: 0..<v[0].n {
@@ -482,27 +484,9 @@ fi_draw :: (s: [] Everglade) {
     k := (kk + first) % v[0].n;
     e := v[0].burn[k];
     p := w[0].pieces[e.piece];
-    on := clamp(e.t / 1.2, 0, 1);
-    size := clamp(sqrt((p.x1 - p.x0) * (p.x1 - p.x0) + (p.z1 - p.z0) * (p.z1 - p.z0) + (p.y1 - p.y0) * (p.y1 - p.y0)) * 0.5, 0.4, 4);
-    licks := ifx few then 1 else clamp_i(cast(int) (size * 1.2), 1, 4);
-    for q: 0..<licks {
-      hx := sp_noise(f32(e.piece) * 0.37 + f32(q), 1.3); hz := sp_noise(f32(e.piece) * 0.53 + f32(q), 7.1);
-      hy := 0.35 + 0.65 * sp_noise(f32(e.piece) * 0.71 + f32(q), 3.9);
-      at := v3(mix_f(p.x0, p.x1, hx), mix_f(p.y0, p.y1, hy), mix_f(p.z0, p.z1, hz));
-      fl := fi_flick(t, f32(e.piece * 3 + q));
-      sp_fx_keyed(s, sp_fx_id(f32(e.piece), f32(q)), FX_FIRE, at, (0.45 + 0.2 * size) * on * fl, v3(1.5, 0.85, 0.32), 0.6, v3(0.9, 0, 0), t * 2.6 + f32(e.piece + q) * 0.37);
-    }
-    sp_fx_keyed(s, sp_fx_id(f32(e.piece), 99), FX_GLOW, v3(p.cx, mix_f(p.y0, p.y1, 0.6), p.cz), (1.0 + 0.6 * size) * on * fi_flick(t, f32(e.piece)), v3(0.45, 0.17, 0.04), 0, v3(0, 0, 0), 0);
-    if budget > 0 && sp_rand(s) < 0.3 + 0.15 * size {
-      budget -= 1;
-      at := v3(mix_f(p.x0, p.x1, sp_rand(s)), mix_f(p.y0, p.y1, 0.3 + 0.7 * sp_rand(s)), mix_f(p.z0, p.z1, sp_rand(s)));
-      sp_add_flame(s, at, v3((sp_rand(s) - 0.5) * 0.4, 0.8 + 0.6 * sp_rand(s), (sp_rand(s) - 0.5) * 0.4), (0.3 + 0.12 * size) * (0.8 + 0.4 * sp_rand(s)), 1.9, 0.45 + 0.3 * sp_rand(s), 3.0, ifx sp_rand(s) < 0.35 then 1.0f32 else 0.0f32);
-    }
-    if budget > 0 && sp_rand(s) < (ifx few then 0.03f32 else 0.06f32) * size {
-      budget -= 1;
-      sp_add_smoke(s, v3(p.cx, p.y1 + 0.3, p.cz), v3((sp_rand(s) - 0.5) * 0.5, 1.0 + 0.5 * sp_rand(s), (sp_rand(s) - 0.5) * 0.5), 0.6 + 0.3 * size, 3.5, 0.18, 0.6, 0.6, 0.3);
-    }
+    budget = fi_flames(s, e.piece, p.x0, p.y0, p.z0, p.x1, p.y1, p.z1, e.t, budget);
   }
+  budget = pf_draw(s, budget);   // the placed things alight, in the same fire (everglade-placed-fire.coax)
   // the dome's slabs
   if v[0].dome_gone {
     for q: 0..<FI_SHARDS {
@@ -514,6 +498,35 @@ fi_draw :: (s: [] Everglade) {
   tf_draw_fire(s);   // the burning trees (everglade-forest.coax)
 }
 mix_f :: (a: f32, b: f32, t: f32) -> f32 { return a + (b - a) * t; }
+// A burning box's fire (key: its piece, or a placed thing's past the pieces), alight for `on_t` s: a few
+// licks on its faces every frame, its glow, billows and smoke from the frame's budget. What is left of it.
+fi_flames :: (s: [] Everglade, key: int, x0: f32, y0: f32, z0: f32, x1: f32, y1: f32, z1: f32, on_t: f32, budget_in: int) -> int {
+  budget := budget_in;
+  few := phone(s);
+  t := fi_of(s)[0].time;
+  cx := (x0 + x1) / 2; cz := (z0 + z1) / 2;
+  on := clamp(on_t / 1.2, 0, 1);
+  size := clamp(sqrt((x1 - x0) * (x1 - x0) + (z1 - z0) * (z1 - z0) + (y1 - y0) * (y1 - y0)) * 0.5, 0.4, 4);
+  licks := ifx few then 1 else clamp_i(cast(int) (size * 1.2), 1, 4);
+  for q: 0..<licks {
+    hx := sp_noise(f32(key) * 0.37 + f32(q), 1.3); hz := sp_noise(f32(key) * 0.53 + f32(q), 7.1);
+    hy := 0.35 + 0.65 * sp_noise(f32(key) * 0.71 + f32(q), 3.9);
+    at := v3(mix_f(x0, x1, hx), mix_f(y0, y1, hy), mix_f(z0, z1, hz));
+    fl := fi_flick(t, f32(key * 3 + q));
+    sp_fx_keyed(s, sp_fx_id(f32(key), f32(q)), FX_FIRE, at, (0.45 + 0.2 * size) * on * fl, v3(1.5, 0.85, 0.32), 0.6, v3(0.9, 0, 0), t * 2.6 + f32(key + q) * 0.37);
+  }
+  sp_fx_keyed(s, sp_fx_id(f32(key), 99), FX_GLOW, v3(cx, mix_f(y0, y1, 0.6), cz), (1.0 + 0.6 * size) * on * fi_flick(t, f32(key)), v3(0.45, 0.17, 0.04), 0, v3(0, 0, 0), 0);
+  if budget > 0 && sp_rand(s) < 0.3 + 0.15 * size {
+    budget -= 1;
+    at := v3(mix_f(x0, x1, sp_rand(s)), mix_f(y0, y1, 0.3 + 0.7 * sp_rand(s)), mix_f(z0, z1, sp_rand(s)));
+    sp_add_flame(s, at, v3((sp_rand(s) - 0.5) * 0.4, 0.8 + 0.6 * sp_rand(s), (sp_rand(s) - 0.5) * 0.4), (0.3 + 0.12 * size) * (0.8 + 0.4 * sp_rand(s)), 1.9, 0.45 + 0.3 * sp_rand(s), 3.0, ifx sp_rand(s) < 0.35 then 1.0f32 else 0.0f32);
+  }
+  if budget > 0 && sp_rand(s) < (ifx few then 0.03f32 else 0.06f32) * size {
+    budget -= 1;
+    sp_add_smoke(s, v3(cx, y1 + 0.3, cz), v3((sp_rand(s) - 0.5) * 0.5, 1.0 + 0.5 * sp_rand(s), (sp_rand(s) - 0.5) * 0.5), 0.6 + 0.3 * size, 3.5, 0.18, 0.6, 0.6, 0.3);
+  }
+  return budget;
+}
 // The fires' light on the town: the three biggest, flickering.
 fi_lamps :: (s: [] Everglade, u: [] f32, k: int, most: int) -> int {
   if s[0].sp.dm.count < 1 { return k; }

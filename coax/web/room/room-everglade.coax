@@ -83,6 +83,7 @@ EgSeat :: struct {
   back: bool; back_x: f32; back_y: f32; back_z: f32; back_yaw: f32;   // where its player stood in this room (rv_back)
   look: [EG_LOOK] u8; look_n: int; klass: [EG_NAME] u8; klass_n: int; flags: int; name: [EG_NAME] u8; name_n: int;
   last_cast: int = -1000;
+  repaired: int = -100000;       // the tick of its last Repair (CR_REPAIR_EVERY from one to the next)
   heard_ms: int;                 // when its page last sent a frame (G's AWAY bit after WIRE_AWAY_MS)
   heard_n: [EG_SEATS] int;                            // a hash of who it last heard each seat is (0 nothing)
   heard_w: [EG_SEATS] int;                            // the WANTED level it last heard of each seat, plus 1 (0 nothing)
@@ -108,6 +109,7 @@ EgCast :: struct {
   on: bool; seat: int; slot: int; x: f32; y: f32; z: f32; tgt: int; due: int;
   seq: int; mode: int; phase: int; heard: int; start: int; release: int; order: int; helps: bool; seed: int;
   ask: int = -1; sight: int;
+  hp0: int; mx: f32; mz: f32;   // a Repair's: its caster's HP and feet at its start (hurt or moved, it stops)
 }
 EgRoom :: struct {
   stale_n: int;        // hellos refused for another WIRE_VERSION (#12788)
@@ -138,6 +140,8 @@ EgRoom :: struct {
   broke_at: int = -100000; rebuilt_at: int = -100000;   // the ticks of the last spell on the town and the last rebuild (R's rules)
   fresh: bool;                   // a new room in this slot: the world's town starts whole
   broken: [EG_PIECES] bool; burning: [EG_PIECES] bool;
+  // an admin's placed things (verse/everglade/edits.coax, by their index): alight, burnt and broken apart
+  placed_burn: [CR_PLACED_MAX] bool; placed_gone: [CR_PLACED_MAX] bool;
   // every entity's state this tick, filled once (eg_table) for every seat's rows to be cut from, and
   // each player's n entry with its hash
   cache_tick: int = -1;
@@ -211,6 +215,7 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
     for s: 0..<EG_SEATS { v[0].eg[q].wanted[s] = 0; }
     for j: 0..<E5R_FOLK { v[0].eg[q].folk_by[j] = -1; }
     for c: 0..<EG_PIECES { v[0].eg[q].broken[c] = false; v[0].eg[q].burning[c] = false; }
+    for c: 0..<CR_PLACED_MAX { v[0].eg[q].placed_burn[c] = false; v[0].eg[q].placed_gone[c] = false; }
     e5rr_start(v[0].eg[q].rules[..], v[0].eg[q].seed);
     ra_fresh(v, q);   // its abilities (room-abilities.coax)
     ev_fresh(v, q);   // its world event, XP and levels (room-events.coax)
@@ -311,6 +316,7 @@ eg_heard :: (v: [] RmServer, r: int, seat: int, text: string) {
     e5rr_zombies_clear(v[0].eg[k].rules[..]);   // the Warlock's Zombies fall with it
     e5rd_wall_whole(v[0].eg[k].rules[..]);      // the palisade whole: the raid's breaches shut
     for q: 0..<EG_PIECES { v[0].eg[k].broken[q] = false; v[0].eg[k].burning[q] = false; }
+    for q: 0..<CR_PLACED_MAX { v[0].eg[k].placed_burn[q] = false; v[0].eg[k].placed_gone[q] = false; }
     p := v[0].eg[k].seat[seat].pose;
     b: [32] u8;
     eg_event(v, k, cast(string) b[0..<wire_put_rebuilt(b[..], 0)], p.x, p.z, true);
@@ -415,7 +421,7 @@ eg_heard_cast :: (v: [] RmServer, k: int, seat: int, text: string) {
   wl := v[0].eg[k].rules[0].klass[seat] == 1;
   if !e5r_has(slot) || (slot >= FB_WL0) != wl { eg_refuse(v, k, seat, seq, "slot"); return; }
   a := e5rr_entry(v[0].eg[k].rules[..], slot);
-  if a.kind == FB_WORLD { eg_refuse(v, k, seat, seq, "slot"); return; }
+  if a.kind == FB_WORLD && !cr_repair(slot) { eg_refuse(v, k, seat, seq, "slot"); return; }   // R is Repair (everglade-repair.coax)
   if !ev_may_cast(v, k, seat, slot, a) { eg_refuse(v, k, seat, seq, "level"); return; }   // levels 1 to 3 (room-events.coax)
   if !(wc.ax == wc.ax) || !(wc.az == wc.az) || !(wc.ay == wc.ay) { eg_refuse(v, k, seat, seq, cr_word(CR_AIM)); return; }
   if !rc_hear(v, k, seat, seq, slot, wc.ax, wc.ay, wc.az, wc.tgt, mode) { eg_refuse(v, k, seat, seq, "busy"); }
@@ -608,9 +614,27 @@ rm_eg_rebuild :: (v: [] RmServer, k: int) -> bool #export_c {
 }
 // Piece `piece` broke (KIND 1, thrown at A B C m/s) or caught or went out (KIND 2, A 1 alight) in the
 // world, standing at (x, z): every page hears it, near or far, for every page's town is the same.
+// KIND 3: a Repair stood structure `piece` up (everglade-repair.coax RP_*: a group, or a placed thing
+// past CR_REPAIR_PLACED0), its pieces whole (rm_eg_piece_up, from the host first). KIND 4 and 5: placed thing
+// `piece` caught or went out (A 1 alight), or burnt through and broke apart (everglade-placed-fire.coax).
 rm_eg_piece :: (v: [] RmServer, k: int, kind: int, piece: int, a: f32, b: f32, c: f32, x: f32, z: f32) #export_c {
-  if !rm_eg_live(v, k) || piece < 0 || piece >= EG_PIECES { return; }
+  if !rm_eg_live(v, k) || piece < 0 { return; }
   e: [96] u8; n := 0;
+  if kind == 3 {
+    q := piece - CR_REPAIR_PLACED0;
+    if q >= 0 && q < CR_PLACED_MAX { v[0].eg[k].placed_burn[q] = false; v[0].eg[k].placed_gone[q] = false; }
+    n = wire_int(e[..], wire_put(e[..], 0, "e mend"), piece);
+    eg_event(v, k, cast(string) e[0..<n], x, z, true);
+    return;
+  }
+  if kind == 4 || kind == 5 {
+    if piece >= CR_PLACED_MAX { return; }
+    if kind == 4 { v[0].eg[k].placed_burn[piece] = a > 0.5; } else { v[0].eg[k].placed_gone[piece] = true; v[0].eg[k].placed_burn[piece] = false; }
+    n = eg_put_placed(e[..], kind, piece, a > 0.5);
+    eg_event(v, k, cast(string) e[0..<n], x, z, true);
+    return;
+  }
+  if piece >= EG_PIECES { return; }
   if kind == 1 {
     v[0].eg[k].broken[piece] = true; v[0].eg[k].burning[piece] = false;
     e5rd_wall_broke(v[0].eg[k].rules[..], x, z);   // a palisade post down opens a raid's breach (#12747)
@@ -620,6 +644,20 @@ rm_eg_piece :: (v: [] RmServer, k: int, kind: int, piece: int, a: f32, b: f32, c
     n = eg_put_burn(e[..], piece, a > 0.5);
   }
   eg_event(v, k, cast(string) e[0..<n], x, z, true);
+}
+// Piece i stands whole again (a Repair): late pages hear nothing of it.
+rm_eg_piece_up :: (v: [] RmServer, k: int, i: int) #export_c {
+  if !rm_eg_live(v, k) || i < 0 || i >= EG_PIECES { return; }
+  v[0].eg[k].broken[i] = false; v[0].eg[k].burning[i] = false;
+}
+// The realm's placed things changed (the host laid a new world): what burnt of the old list is forgotten.
+rm_eg_placed_reset :: (v: [] RmServer) #export_c {
+  for k: 0..<EG_ROOMS { for q: 0..<CR_PLACED_MAX { v[0].eg[k].placed_burn[q] = false; v[0].eg[k].placed_gone[q] = false; } }
+}
+// e pburn I ON, or e pgone I: placed thing I alight or out, or burnt through.
+eg_put_placed :: (e: [] u8, kind: int, i: int, on: bool) -> int {
+  if kind == 5 { return wire_int(e, wire_put(e, 0, "e pgone"), i); }
+  return wire_int(e, wire_int(e, wire_put(e, 0, "e pburn"), i), ifx on then 1 else 0);
 }
 eg_put_break :: (e: [] u8, piece: int, a: f32, b: f32, c: f32) -> int {
   n := wire_put(e, 0, "e break"); n = wire_int(e, n, piece); n = wire_m(e, n, a); n = wire_m(e, n, b); n = wire_m(e, n, c);
@@ -800,6 +838,10 @@ eg_send :: (v: [] RmServer, k: int, s: int) {
     for q: 0..<EG_PIECES {
       if v[0].eg[k].broken[q] { n := eg_put_break(e[..], q, 0, 0, 0); eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<n]); }
       else if v[0].eg[k].burning[q] { n := eg_put_burn(e[..], q, true); eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<n]); }
+    }
+    for q: 0..<CR_PLACED_MAX {
+      if v[0].eg[k].placed_gone[q] { n := eg_put_placed(e[..], 5, q, false); eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<n]); }
+      else if v[0].eg[k].placed_burn[q] { n := eg_put_placed(e[..], 4, q, true); eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<n]); }
     }
   }
   eg_table(v, k);

@@ -103,6 +103,7 @@
       else if (f[0] === "e" && f[1] === "hit") E.hits.push([t, f[2], f[3], Number(f[4])]);
       else if (f[0] === "e" && f[1] === "die") E.deaths.push([t, f[2]]);
       else if (f[0] === "e" && f[1] === "edit") E.edits.push([t, Number(f[2])]);
+      else if (f[0] === "e" && (f[1] === "stop" || f[1] === "mend" || f[1] === "pburn" || f[1] === "pgone")) (E.town ||= []).push([t, f.slice(1).join(" ")]);
     }
     if (E.d.length < 20000) E.d.push([t, tick, mine ? mine[0] : null, mine ? mine[1] : null, mine ? mine[2] : -1, mine ? mine[3] : -1, ack, mine ? mine[4] : -1]);
   };

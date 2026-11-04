@@ -207,6 +207,8 @@ bool world_event(int k, int q, float out[WORLD_EVENT]) { return world_of(k) && e
 bool world_sight(int k, const float from[3], const float to[3]) { return !world_of(k) || everglade_room_sight(at(k), from[0], from[1], from[2], to[0], to[1], to[2]); }
 void world_fresh(int k) { if (world_of(k)) everglade_room_fresh(at(k)); }
 void world_rebuild(int k) { if (world_of(k)) everglade_room_rebuild(at(k)); }
+int world_pieces(int k) { return world_of(k) ? (int)everglade_room_pieces(at(k)) : 0; }
+bool world_piece_up(int k, int i) { return world_of(k) && everglade_room_piece_up(at(k), i); }
 
 void world_ability(int k, const float c[WORLD_CAST]) {
   if (world_of(k)) everglade_room_ability_mode(at(k), (int)c[0], (int)c[1], c[2], c[3], c[4], c[5], c[6] > 0.5f, c[7], c[8], c[9], (int)c[10]);

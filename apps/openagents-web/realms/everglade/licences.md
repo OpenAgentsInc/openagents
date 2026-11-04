@@ -170,4 +170,4 @@ The spell bar's icons (verse/tools/everglade_hotbar.py), served beside the pack 
 | Thunderbolt | `lorc/lightning-frequency.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
 | Mega Thunderbolt | `lorc/lightning-frequency.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
 | Water Orb | `lorc/frozen-orb.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
-| Rebuild | `delapouite/house.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |
+| Repair | `lorc/claw-hammer.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |

@@ -150,7 +150,7 @@ fb_everglade :: (out: [] FbAb) -> int {
   out[44] = fb_art_spell(SP_FOG_CLOUD, FB_POINT, "fog-cloud");
   out[45] = fb_art_spell(SP_HOLD_PERSON, FB_FOE, "hold-person");
   out[46] = fb_art_spell(SP_CONE_OF_COLD, FB_POINT, "cone-of-cold");
-  out[47] = fb_feature(FB_WORLD, "Rebuild", "rebuild");
+  out[47] = fb_feature(FB_WORLD, "Repair", "rebuild");
   out[48] = fb_feature(FB_WORLD, "Next row", "next-row");
   return FB_EG_SLOTS;
 }
@@ -172,7 +172,7 @@ fb_warlock_bar :: (out: [] FbAb) -> int {
   out[3] = fb_spell(SP_CIRCLE_OF_DEATH, 6, FB_POINT); out[3].delay = 0.9;
   out[4] = fb_spell(SP_FINGER_OF_DEATH, 7, FB_FOE); out[4].delay = 0.5;
   out[5] = fb_spell(SP_DIMENSION_DOOR, 5, FB_POINT); out[5].delay = 0.4;
-  out[6] = fb_feature(FB_WORLD, "Rebuild", "rebuild");
+  out[6] = fb_feature(FB_WORLD, "Repair", "rebuild");
   out[7] = fb_spell(SP_CHILL_TOUCH, 0, FB_FOE); out[7].delay = 0.4;
   out[8] = fb_spell(SP_HEX, 1, FB_FOE); out[8].delay = 0.3;
   return FB_WL_SLOTS;

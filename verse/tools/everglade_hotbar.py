@@ -225,9 +225,10 @@ SLOTS = [
     ("cone-of-cold", "lorc/icicles-aura.svg", ICE, "S=", "Cone of Cold",
      "A 60-foot cone of frost from you the way you click: 8d8 cold to each creature in it, half on a Constitution save.",
      [("Shift+=", KEY), FREE, ("60 ft cone", RULE)]),
-    ("rebuild", "delapouite/house.svg", OIL, "R", "Rebuild and Long Rest",
-     "Stands every broken building in the town back up whole, and you take a long rest: all your hit points back, every condition gone, your own shape again. The watch still wants you if it did.",
-     [("Key R", KEY)]),
+    # R is Repair (everglade-repair.coax); the file keeps its old name, "rebuild"
+    ("rebuild", "lorc/claw-hammer.svg", OIL, "R", "Repair",
+     "Face something broken or burning within 60 feet: a building, a house, a stretch of the palisade, a tree, a placed crate. After a moment's work it stands whole again, for everyone. Moving or getting hurt stops it.",
+     [("Key R", KEY), ("60 ft range", RULE), ("1.5 s · again after 8 s", TIME)]),
     # a phone's row switcher (the old Grove's Compact layout, its rise-icon)
     ("next-row", "delapouite/plain-arrow.svg^", TRANSMUTATION, "", "Next row",
      "Shows the bar's next row of spells.",
@@ -411,9 +412,9 @@ WARLOCK = [
     ("wl-dimension-door", "lorc/vortex.svg", ELDRITCH, "6", "Dimension Door",
      "You teleport to the spot you choose within 500 feet, a rooftop too.",
      [("Key 6", KEY), FREE, ("5th-level slot · 500 ft", RULE)]),
-    ("wl-rebuild", "delapouite/house.svg", OIL, "R", "Rebuild and Long Rest",
-     "Stands every broken building in the town back up whole, and you take a long rest. The watch still wants you if it did.",
-     [("Key R", KEY)]),
+    ("wl-rebuild", "lorc/claw-hammer.svg", OIL, "R", "Repair",
+     "Face something broken or burning within 60 feet: a building, a house, a stretch of the palisade, a tree, a placed crate. After a moment's work it stands whole again, for everyone. Moving or getting hurt stops it.",
+     [("Key R", KEY), ("60 ft range", RULE), ("1.5 s · again after 8 s", TIME)]),
     # the SRD 5.2.1 Warlock's level 1 spells (a character's first kit, coax/web/room/room-events.coax ev_kit)
     ("wl-chill-touch", "lorc/glowing-hands.svg", NECROTIC, "7", "Chill Touch",
      "The chill of the grave in your hand: a melee spell attack against a creature within reach, 1d10 Necrotic on a hit, more dice at levels 5, 11 and 17, and it can't regain Hit Points until the end of your next turn.",

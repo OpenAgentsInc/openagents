@@ -54,8 +54,11 @@ WatchView :: struct {
   // the room server's pieces: what stood and what burnt when the pages last heard, and what they hear
   room_stood: [DEMO_PIECES] bool; room_burnt: [DEMO_PIECES] bool; room_known: bool;
   room_fell: int; room_any_burnt: bool;   // the town's DemoWorld.fell when last read, and whether a piece was burning
+  room_pburn: [CR_PLACED_MAX] bool; room_pgone: [CR_PLACED_MAX] bool;   // the placed things alight and burnt through, as the pages heard
   room_ev: [EG_ROOM_EVENTS * EG_ROOM_EV_FLOATS] f32; room_ev_n: int;
   room_hit: Point; room_by: int;
+  room_any_placed: bool;   // a placed thing was alight, sooty or gone when last read
+  mend_from: [8] Point; mend_at: [8] Point; mend_n: int;   // Repairs handed over since the last step (their events go with its)
   server: bool;                    // this is the room server's world (everglade_room_town)
   room_cond: [WATCH_YOUS] int;     // each seat's conditions in the rules (WC_*)   // where the last strike fell (a break is thrown out from it), and whose
 }
@@ -992,8 +995,32 @@ eg_room_known :: (s: [] Everglade) {
 everglade_room_strike :: (s: [] Everglade, by: int, slot: int, fx: f32, fy: f32, fz: f32, ax: f32, ay: f32, az: f32, seed: int) #export_c {
   // the Warlock's (everglade-warlock.coax): Eldritch Blast's beams, Fireball
   if sp_on(s) && slot >= WL_SLOT0 && slot < WL_SLOT0 + WL_LOOKS { s[0].wv.net = true; wl_strike(s, by, slot - WL_SLOT0, v3(fx, fy, fz), v3(ax, ay, az), seed); return; }
+  if sp_on(s) && cr_repair(slot) {
+    // stood up at the next step, whose events every page hears (everglade_room_spells starts them afresh)
+    q := s[0].wv.mend_n;
+    if q < 8 { s[0].wv.mend_from[q] = v3(fx, fy, fz); s[0].wv.mend_at[q] = v3(ax, ay, az); s[0].wv.mend_n = q + 1; }
+    return;
+  }
   if !sp_on(s) || slot < 0 || slot >= SP_SLOTS { return; }
   eg_ra_later(s, EgRaStrike.{by = by, slot = slot, from = v3(fx, fy, fz), at = v3(ax, ay, az), seed = seed, t = 0});
+}
+// A Repair whose bar is done (coax/web/room/room-casts.coax): the broken thing nearest where it was cast,
+// within reach of its caster, whole again; every page hears what (e mend) and does the same.
+eg_room_repair :: (s: [] Everglade, from: Point, at: Point) {
+  code := mend_find(s, from, at);
+  if code < 0 { return; }
+  c := mend_centre(s, code);
+  if !mend_up(s, code) { return; }
+  q := code - CR_REPAIR_PLACED0;
+  if q >= 0 && q < CR_PLACED_MAX { s[0].wv.room_pburn[q] = false; s[0].wv.room_pgone[q] = false; }
+  eg_room_known(s);   // its pieces stand: what breaks of them next is news again
+  eg_room_put(s, 3, code, c.x, c.y, c.z);
+}
+// The town's pieces, and whether piece i stands whole and not alight (a Repair's, for the host).
+everglade_room_pieces :: (s: [] Everglade) -> int #export_c { return ifx sp_on(s) then sp_dm(s)[0].n else 0; }
+everglade_room_piece_up :: (s: [] Everglade, i: int) -> bool #export_c {
+  if !sp_on(s) || i < 0 || i >= sp_dm(s)[0].n { return false; }
+  return sp_dm(s)[0].pieces[i].state == DP_STANDING && !fi_burning(s, i);
 }
 eg_room_release :: (s: [] Everglade, by: int, slot: int, fx: f32, fy: f32, fz: f32, ax: f32, ay: f32, az: f32, seed: int) {
   s[0].wv.net = true;
@@ -1010,6 +1037,8 @@ everglade_room_spells :: (s: [] Everglade, dt: f32) -> int #export_c {
   s[0].wv.room_ev_n = 0;
   if !sp_on(s) { return 0; }
   if !s[0].wv.room_known { eg_room_known(s); }
+  for q: 0..<s[0].wv.mend_n { eg_room_repair(s, s[0].wv.mend_from[q], s[0].wv.mend_at[q]); }
+  s[0].wv.mend_n = 0;
   // what the strikes and fire do to the town is the last caster's doing (its crimes are theirs)
   wt := watch_w(s); me := wt[0].me;
   eg_ra_strikes_due(s, dt);   // the strikes whose cast bars are done fall now
@@ -1041,6 +1070,21 @@ everglade_room_spells :: (s: [] Everglade, dt: f32) -> int #export_c {
       s[0].wv.room_burnt[i] = now[i];
     }
   }
+  // the placed things: alight, out, burnt through (everglade-placed-fire.coax)
+  if pf_of(s)[0].any || s[0].wv.room_any_placed {
+    s[0].wv.room_any_placed = pf_of(s)[0].any;
+    for i: 0..<lo_i(s[0].ev.edits.n, CR_PLACED_MAX) {
+      c := s[0].ev.edits.things[i];
+      if pf_gone(s, i) != s[0].wv.room_pgone[i] {
+        s[0].wv.room_pgone[i] = pf_gone(s, i);
+        if s[0].wv.room_pgone[i] { eg_room_put(s, 5, i, 0, c.x, c.z); s[0].wv.room_pburn[i] = false; }
+      }
+      if pf_burning(s, i) != s[0].wv.room_pburn[i] {
+        s[0].wv.room_pburn[i] = pf_burning(s, i);
+        eg_room_put(s, 4, i, ifx s[0].wv.room_pburn[i] then 1.0f32 else 0.0f32, c.x, c.z);
+      }
+    }
+  }
   // breaking the town's pieces is a crime, as on a page (watch_spell): the last caster's
   if s[0].wv.room_ev_n > 0 && s[0].wv.room_ev[0] == 1 {
     p := w[0].pieces[cast(int) s[0].wv.room_ev[1]];
@@ -1059,6 +1103,9 @@ eg_room_put :: (s: [] Everglade, kind: int, i: int, a: f32, b: f32, c: f32) {
 everglade_room_event :: (s: [] Everglade, q: int, out: [] f32) -> bool #export_c {
   if q < 0 || q >= s[0].wv.room_ev_n || out.count < EG_ROOM_EV_FLOATS + 2 { return false; }
   for k: 0..<EG_ROOM_EV_FLOATS { out[k] = s[0].wv.room_ev[q * EG_ROOM_EV_FLOATS + k]; }
+  // a Repair's (3: at A B C), a placed thing's (4, 5: at B C), else a piece's
+  if out[0] == 3 { out[5] = out[2]; out[6] = out[4]; return true; }
+  if out[0] == 4 || out[0] == 5 { out[5] = out[3]; out[6] = out[4]; return true; }
   p := sp_dm(s)[0].pieces[cast(int) out[1]];
   out[5] = p.cx; out[6] = p.cz;
   return true;

@@ -140,6 +140,12 @@ rc_start :: (v: [] RmServer, k: int, q: int) {
     at := rc_landing(v, k, EgCast.{x = ax, y = ay, z = az, tgt = tgt});
     if rc_ranged(a) && !cr_in_reach(at.x - me.x, at.z - me.z, rc_range(slot, a), false) { why = CR_RANGE; }
     else if c.sight == 2 { why = CR_SIGHT; }
+    // Repair: within its reach, and not again until CR_REPAIR_EVERY after the last
+    if why == CR_OK && cr_repair(slot) {
+      // (a third of a second's grace: the page counts from its own bar's end, a little before the release here)
+      if t - st[0].repaired < cast(int) (f32(CR_REPAIR_EVERY) * f32(EG_HZ)) - EG_HZ / 3 { why = CR_COOLDOWN; }
+      else if !cr_in_reach(at.x - me.x, at.z - me.z, f32(CR_REPAIR_REACH), false) { why = CR_RANGE; }
+    }
   }
   if why != CR_OK { v[0].eg[k].casts[q].on = false; eg_refuse(v, k, seat, seq, cr_word(why)); return; }
   mode := c.mode;
@@ -160,6 +166,7 @@ rc_start :: (v: [] RmServer, k: int, q: int) {
   cs[0].start = t; cs[0].release = t + bar; cs[0].due = t + hi_i(eg_round(a.delay * f32(EG_HZ)), bar);
   cs[0].phase = ifx bar > 0 then RC_BAR else RC_FLIGHT;
   cs[0].helps = e5rr_helps(a);
+  cs[0].hp0 = v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + seat].hp; cs[0].mx = me.x; cs[0].mz = me.z;
   cs[0].seed = 1 + (v[0].eg[k].seed + t * 31 + seat * 977 + slot * 7) % 999983;
   b: [128] u8;
   n := wire_put_cast_e(b[..], 0, WireCastE.{ss = seat, slot = slot, ax = ax, ay = ay, az = az, seed = cs[0].seed, mode = mode});
@@ -198,10 +205,14 @@ rc_release :: (v: [] RmServer, k: int, q: int) {
   at := rc_landing(v, k, c);
   if rc_ranged(a) && !cr_in_reach(at.x - me.x, at.z - me.z, rc_range(c.slot, a), true) { rc_stop(v, k, q, CR_RANGE); return; }
   if c.sight == 2 { rc_stop(v, k, q, CR_SIGHT); return; }
+  if cr_repair(c.slot) {
+    if !cr_in_reach(at.x - me.x, at.z - me.z, f32(CR_REPAIR_REACH), true) { rc_stop(v, k, q, CR_RANGE); return; }
+    v[0].eg[k].seat[c.seat].repaired = v[0].eg[k].tick;
+  }
   cs := v[0].eg[k].casts[q..<q + 1];
   cs[0].phase = RC_FLIGHT;
   if tt.named { cs[0].x = at.x; cs[0].y = at.y; cs[0].z = at.z; }   // where it goes if its target falls in flight
-  if c.slot < EG_SP_SLOTS { rc_world_strike(v, k, cs[0]); }
+  if c.slot < EG_SP_SLOTS || cr_repair(c.slot) { rc_world_strike(v, k, cs[0]); }   // a Repair: the world stands it up
 }
 // Cast q's strike: rolled by the rules at its target if it still stands, else where it was.
 rc_strike :: (v: [] RmServer, k: int, q: int) {
@@ -269,6 +280,12 @@ rc_tick_last :: (v: [] RmServer, k: int) {
     e5rr_seat_out(v[0].eg[k].rules[..], c.seat, o[..]);
     if o[4] > 0.5 { rc_stop(v, k, q, CR_DEAD); continue; }
     if cr_halted(cast(int) o[3] | v[0].eg[k].seat[c.seat].wcond) { rc_stop(v, k, q, CR_HELD); continue; }
+    if cr_repair(c.slot) {
+      // a Repair stops when its caster is hurt or moves (the hammer needs both hands and a steady footing)
+      p := v[0].eg[k].seat[c.seat].pose;
+      dx := p.x - c.mx; dz := p.z - c.mz;
+      if v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + c.seat].hp < c.hp0 || dx * dx + dz * dz > f32(CR_REPAIR_MOVE) * f32(CR_REPAIR_MOVE) { rc_stop(v, k, q, CR_NO); continue; }
+    }
     if t >= c.release { rc_release(v, k, q); }
   }
   rc_strikes(v, k, false);
@@ -517,4 +534,33 @@ rc_test_at :: (t: string, part: string) -> int {
   die := rc_test_at(a, cast(string) t[0..<put_int(t[..], put(t[..], 0, "e die "), E5RR_TGT_BEAST + w)]);
   #assert hit1 >= 0 && die > hit1 && hit0 < 0;
   #assert !eg_test_has(a, "e stop");
+}
+
+#test "casts: a Repair (R) runs its 1.5 s bar and goes to the world; again before 8 s it waits; out of its 60 feet it doesn't start; moving on its bar stops it" #steps 3000000000 {
+  v: [1] RmServer; box: [1] EgInbox;
+  k := rc_test_room(v[..], "pair-cast-repair", 2, false);
+  #assert cr_bar_ticks(47, EG_HZ) == 45 && cr_repair(47) && cr_repair(70) && !cr_repair(48);
+  rm_heard(v[..], 0, "C 1 47 500 0 0 -1");
+  for q: 0..<cr_bar_ticks(47, EG_HZ) + 2 { rc_test_tick(v[..], k, true); }
+  eg_test_drain(v[..], box[..]);
+  #assert !eg_test_has(eg_test_of(box[..], 0), "e stop");
+  #assert v[0].eg[k].strike_n == 1 && v[0].eg[k].strikes[0].slot == 47 && v[0].eg[k].strikes[0].ax == 5;
+  // again at once: it waits
+  rm_heard(v[..], 0, "C 2 47 500 0 0 -1");
+  for q: 0..<3 { rc_test_tick(v[..], k, true); }
+  eg_test_drain(v[..], box[..]);
+  #assert eg_test_has(eg_test_of(box[..], 0), "cooldown") && v[0].eg[k].strike_n == 1;
+  v[0].eg[k].seat[0].repaired -= cast(int) (f32(CR_REPAIR_EVERY) * f32(EG_HZ));   // its wait over (ticks are dear in a check)
+  // too far
+  rm_heard(v[..], 0, "C 3 47 3000 0 0 -1");
+  for q: 0..<3 { rc_test_tick(v[..], k, true); }
+  eg_test_drain(v[..], box[..]);
+  #assert eg_test_has(eg_test_of(box[..], 0), "range");
+  // moved on its bar
+  rm_heard(v[..], 0, "C 4 47 500 0 0 -1");
+  for q: 0..<5 { rc_test_tick(v[..], k, true); }
+  v[0].eg[k].seat[0].pose.x = 2;
+  for q: 0..<3 { rc_test_tick(v[..], k, true); }
+  eg_test_drain(v[..], box[..]);
+  #assert eg_test_has(eg_test_of(box[..], 1), "e stop 0 47 no") && v[0].eg[k].strike_n == 1;
 }

@@ -58,6 +58,8 @@
 #load "everglade-wild.coax";
 #load "everglade-fire.coax";
 #load "everglade-forest.coax";
+#load "everglade-placed-fire.coax";
+#load "everglade-repair.coax";
 #load "everglade-circle.coax";
 #load "everglade-marks.coax";
 #load "everglade-storm.coax";
@@ -230,6 +232,8 @@ Spells :: struct {
   st: [1] Storm;               // and after those: Sunburst, Storm of Vengeance, Shapechange, Speak with Animals, Wild Resurgence (everglade-storm.coax)
   ci: [1] Circle;              // the circle spells after it: Conjure Animals, Polymorph, Mass Cure Wounds, Sunbeam, Wall of Thorns, Fire Storm (everglade-circle.coax)
   fi: [1] Fire;                // fire on the town's pieces and the dome's breaking (everglade-fire.coax)
+  pf: [1] PlacedFire;          // fire on an admin's placed things (everglade-placed-fire.coax)
+  mend: [1] Repair;              // R: a Repair on its bar (everglade-repair.coax)
   tf: [1] Timber;              // the trees outside the city: felled, burnt, rimed (everglade-forest.coax)
   wd: [1] Wild;                // the rest of its third row: Faerie Fire, Healing Word, Spike Growth, Call Lightning, Wall of Fire, and fire on the grass (everglade-wild.coax)
   gv: [1] Grove;               // the old Grove's druid spells: Moonbeam, Produce Flame, Starry Wisp, Shillelagh, Poison Spray, Elementalism, Entangle (everglade-grove.coax)
@@ -485,7 +489,7 @@ spells_key :: (s: [] Everglade, key: int, mods: int) -> bool {
   if b >= SP_SLOTS && b < SP_REBUILD { ab_key(s, b - SP_SLOTS); return true; }
   if ab_key_other(s, key) { return true; }
   if key == KEY_ESCAPE && (s[0].sp.armed >= 0 || s[0].sp.casting >= 0) { ab_cancel(s); s[0].sp.armed = -1; s[0].sp.casting = -1; return true; }
-  if key == 'r' || key == 'R' { sp_rebuild(s); return true; }
+  if key == 'r' || key == 'R' { mend_press(s, SP_REBUILD); return true; }
   return false;
 }
 // A key let go: an ability's in its column is up (whatever row it was pressed in), Levitate stops
@@ -498,7 +502,7 @@ spells_key_up :: (s: [] Everglade, key: int, mods: int) -> bool {
 sp_press :: (s: [] Everglade, slot: int) {
   if slot == SP_SWITCH { s[0].sp.open = !s[0].sp.open; return; }
   s[0].sp.open = false;   // a slot picked from the open tray shuts it: the view is clear to aim
-  if slot == SP_REBUILD { sp_rebuild(s); return; }
+  if slot == SP_REBUILD { mend_press(s, SP_REBUILD); return; }   // R: Repair (everglade-repair.coax)
   if slot >= SP_SLOTS { ab_press(s, slot - SP_SLOTS); return; }
   if ci_no_casting(s, slot) { return; }   // a beast casts no spells (everglade-circle.coax)
   ab_cancel(s);
@@ -1320,6 +1324,7 @@ spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
   s[0].sp.fy = clamp(aspect * 1.25, 0.95, 1.9); s[0].sp.fx = s[0].sp.fy / aspect;
   if s[0].sp.on && s[0].sp.armed >= 0 && (s[0].sp.seen || phone(s)) { sp_aim(s); }
   wl_frame(s, dt);   // the Warlock's aim and casts on their way (everglade-warlock.coax)
+  mend_frame(s, dt);   // a Repair on its bar (everglade-repair.coax)
   // the cast bar
   if s[0].sp.casting >= 0 {
     slot := s[0].sp.casting;
@@ -2030,7 +2035,8 @@ spells_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom: f32) ->
   n = ab_counts(s, out, n);   // Wind Wall's and Wall of Stone's up of their most, on their icons
   phone_ := phone(s);
   y := top.top;
-  if s[0].sp.casting >= 0 { n = sp_cast_bar(s, out, u, n, top.top); }
+  if mend_on(s) { n = mend_bar(s, out, u, n, top.top); }   // a Repair's (everglade-repair.coax)
+  else if s[0].sp.casting >= 0 { n = sp_cast_bar(s, out, u, n, top.top); }
   else if s[0].sp.no_t > 0 { n = cr_no_bar(s, out, u, n, top.top); }   // a refused cast: its reason's icon (#12790)
   // one line over the tray: how to cast the picked spell, what is casting, or what the last cast did
   // (the old engine's help line, in its green)

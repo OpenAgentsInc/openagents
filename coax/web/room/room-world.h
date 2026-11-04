@@ -46,6 +46,8 @@ float world_cond_left(int k, int s, int cause);   /* seconds left of seat s's wa
 void world_strike(int k, int by, int slot, const float from[3], const float to[3], int seed);
 int world_spells(int k, float dt);
 bool world_event(int k, int q, float out[WORLD_EVENT]);
+int world_pieces(int k);              /* the town's pieces, and whether piece i stands whole (a Repair's) */
+bool world_piece_up(int k, int i);
 void world_rebuild(int k);
 /* The hotbar abilities the world runs (apps/openagents-web/everglade-room-abilities.coax, #12718, #12733),
    each seat its own copy: a cast or an end, BY AB X Y Z YAW ON AX AY AZ (room-abilities.coax rm_ra_cast);

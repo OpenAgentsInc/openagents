@@ -1,0 +1,243 @@
+// Fire on an admin's placed things (verse/everglade/edits.coax EgThing; drawn by everglade-items.coax),
+// loaded by everglade-spells.coax after everglade-fire.coax. What is wood or cloth burns, as the town's
+// own pieces do (everglade-fire.coax fi_fuel): crates, barrels, benches, fences, stalls, carts, tables,
+// chairs, stools, the dummy, banners, bags and the rest of the kit's wooden things. Stone, iron and
+// what grows don't.
+//
+// What lights one is what lights the town's pieces (fi_catch: a fire spell's flame, the grass fire, a
+// burning piece or burning debris against it, lightning sometimes), and a burning thing lights what
+// touches it, a piece or another thing. It flames and smokes with the houses' fire (fi_flames), goes
+// black, and after PF_BURN s (more for a bigger one) it breaks apart into charred splinters and is
+// gone. Water and cold put it out. A Repair stands it up again (everglade-repair.coax).
+//
+// In a room it is the server's: its world burns them (everglade-watch.coax everglade_room_spells says
+// what caught, went out and broke apart: e pburn, e pgone), and each page lights and breaks the same.
+// The state is the list's, by index: a thing moved or a new list starts it fresh (pf_sync).
+
+PF_BURN :: 9.0;            // s a size-1 thing burns before it breaks apart
+PF_SPLINTERS :: 14;        // charred bits thrown when it does
+
+PlacedFire :: struct {
+  kind: [CR_PLACED_MAX] int; x: [CR_PLACED_MAX] f32; z: [CR_PLACED_MAX] f32;   // the thing each state is for
+  t: [CR_PLACED_MAX] f32;          // s alight (-1 not)
+  spread: [CR_PLACED_MAX] f32;     // its next try at what touches it
+  soot: [CR_PLACED_MAX] f32;       // 0 to 1, how black it has burnt
+  gone: [CR_PLACED_MAX] bool;      // burnt through and broken apart
+  any: bool;                       // one burns or is sooty or gone (so most frames skip it all)
+  ready: bool;                     // the states are for the list (pf_sync)
+  pend: [CR_PLACED_MAX] int;       // the server's word on a thing not in the list yet: 1 alight, 2 gone, 3 out
+  dark: f32 = 1;                   // the darkening of the thing being drawn now (everglade-items.coax ed_piece)
+}
+pf_of :: (s: [] Everglade) -> [] PlacedFire { return s[0].sp.pf[..]; }
+
+// Whether thing t burns: the placed kinds of wood, cloth and straw (verse/everglade/edits.coax
+// EG_EDIT_LABEL's order): crate, barrel, bench, fence, stall, sack, apple crate, bucket, cart, table,
+// chair, stool, training dummy, weapon rack, banner, sign, hay pile, house and shed. Not the pumpkin,
+// the carrots, a pot, the lantern, a vase, the anvil, the cauldron, the coins, what grows, stone.
+PF_FUEL :: [34] f32.[1, 1, 1, 1, 1, 0, 1, 1, 0, 0,   1, 0, 1, 0, 1, 1, 1, 0, 0, 1,   1, 1, 0, 1, 0, 0, 0, 0, 1, 0,   0, 1, 1, 0];
+pf_fuel :: (t: EgThing) -> f32 { return PF_FUEL[eg_edit_kind(t.kind)]; }
+// Its box: X0 Z0 X1 Z1 on the ground under it, and its top.
+PfBox :: struct { x0: f32; y0: f32; z0: f32; x1: f32; y1: f32; z1: f32; }
+pf_box :: (s: [] Everglade, t: EgThing) -> PfBox {
+  b: [EG_BOX] f32;
+  eg_edit_box(t, b[..]);
+  g := ground_at(s, t.x, t.z) + t.lift;
+  return PfBox.{x0 = b[0], y0 = g, z0 = b[1], x1 = b[2], y1 = g + hi(b[4], 0.3), z1 = b[3]};
+}
+pf_centre :: (s: [] Everglade, i: int) -> Point {
+  t := s[0].ev.edits.things[i];
+  b := pf_box(s, t);
+  return v3(t.x, (b.y0 + b.y1) / 2, t.z);
+}
+// The list as it is now: a state for another thing than its index had starts fresh.
+pf_sync :: (s: [] Everglade) {
+  v := pf_of(s);
+  if !v[0].ready { v[0].ready = true; for i: 0..<CR_PLACED_MAX { v[0].kind[i] = -1; v[0].t[i] = -1; } }
+  for i: 0..<CR_PLACED_MAX {
+    if i < s[0].ev.edits.n {
+      t := s[0].ev.edits.things[i];
+      if v[0].kind[i] == t.kind && v[0].x[i] == t.x && v[0].z[i] == t.z { continue; }
+      v[0].kind[i] = t.kind; v[0].x[i] = t.x; v[0].z[i] = t.z;
+    } else if v[0].kind[i] == -1 { continue; } else { v[0].kind[i] = -1; }
+    v[0].t[i] = -1; v[0].soot[i] = 0; v[0].gone[i] = false;
+    // what the server said of it before its page had the list (a late joiner's snapshot)
+    if i < s[0].ev.edits.n && v[0].pend[i] != 0 { w := v[0].pend[i]; v[0].pend[i] = 0; pf_apply(s, i, w); }
+  }
+}
+// The server's word on thing i (e pburn, e pgone): 1 alight, 0 or 3 out, 2 burnt through.
+pf_heard :: (s: [] Everglade, i: int, what: int) {
+  if i < 0 || i >= CR_PLACED_MAX { return; }
+  pf_sync(s);
+  if i >= s[0].ev.edits.n { pf_of(s)[0].pend[i] = ifx what == 0 then 3 else what; return; }
+  pf_apply(s, i, what);
+}
+pf_apply :: (s: [] Everglade, i: int, what: int) {
+  if what == 1 { _ := pf_ignite(s, i); }
+  else if what == 2 { pf_break(s, i); }
+  else { pf_out(s, i); }
+}
+pf_burning :: (s: [] Everglade, i: int) -> bool { return i >= 0 && i < CR_PLACED_MAX && pf_of(s)[0].ready && pf_of(s)[0].t[i] >= 0; }
+pf_gone :: (s: [] Everglade, i: int) -> bool { return i >= 0 && i < CR_PLACED_MAX && pf_of(s)[0].gone[i]; }
+// Thing i catches, if it can: standing, wood, not burning yet.
+pf_ignite :: (s: [] Everglade, i: int) -> bool {
+  pf_sync(s);
+  v := pf_of(s);
+  if i < 0 || i >= s[0].ev.edits.n || v[0].gone[i] || v[0].t[i] >= 0 || pf_fuel(s[0].ev.edits.things[i]) <= 0 { return false; }
+  v[0].t[i] = 0; v[0].spread[i] = f32(FI_SPREAD) * (0.6 + 0.8 * sp_rand(s)); v[0].any = true;
+  return true;
+}
+pf_out :: (s: [] Everglade, i: int) { if i >= 0 && i < CR_PLACED_MAX { pf_of(s)[0].t[i] = -1; } }
+
+// Flame reaches `at`, r round it (as fi_catch): the wooden things there may catch at those odds. How many.
+pf_catch :: (s: [] Everglade, at: Point, r: f32, odds: f32) -> int {
+  if net_town(s) { return 0; }   // in a room the server's world lights them (e pburn)
+  n := 0;
+  for i: 0..<s[0].ev.edits.n {
+    t := s[0].ev.edits.things[i];
+    b := pf_box(s, t);
+    if b.y1 < at.y - 1.5 || b.y0 > at.y + 4.5 { continue; }
+    dx := clamp(at.x, b.x0, b.x1) - at.x; dz := clamp(at.z, b.z0, b.z1) - at.z;
+    if dx * dx + dz * dz > r * r || pf_fuel(t) <= 0 || pf_burning(s, i) || pf_gone(s, i) || sp_rand(s) >= odds { continue; }
+    if pf_ignite(s, i) { n += 1; }
+  }
+  return n;
+}
+// A burning town piece's box (everglade-fire.coax fi_spread_from) against the things touching it.
+pf_from_piece :: (s: [] Everglade, p: DemoPiece) {
+  if s[0].ev.edits.n == 0 || net_town(s) { return; }
+  for i: 0..<s[0].ev.edits.n {
+    b := pf_box(s, s[0].ev.edits.things[i]);
+    gx := hi(hi(b.x0 - p.x1, p.x0 - b.x1), 0); gz := hi(hi(b.z0 - p.z1, p.z0 - b.z1), 0); gy := hi(hi(b.y0 - p.y1, p.y0 - b.y1), 0);
+    if gx * gx + gy * gy + gz * gz > f32(FI_NEAR) * f32(FI_NEAR) || sp_rand(s) >= f32(FI_CATCH) { continue; }
+    _ := pf_ignite(s, i);
+  }
+}
+// Water or cold over `at`, r round: what burns there goes out.
+pf_douse :: (s: [] Everglade, at: Point, r: f32) -> int {
+  n := 0;
+  for i: 0..<s[0].ev.edits.n {
+    if !pf_burning(s, i) { continue; }
+    b := pf_box(s, s[0].ev.edits.things[i]);
+    dx := clamp(at.x, b.x0, b.x1) - at.x; dz := clamp(at.z, b.z0, b.z1) - at.z;
+    if dx * dx + dz * dz > r * r { continue; }
+    if net_town(s) { continue; }
+    c := pf_centre(s, i);
+    sp_add_puff(s, v3(c.x, b.y1, c.z), v3(0, 1.0, 0), 0.7, 1.8, 0.88);
+    pf_out(s, i); n += 1;
+  }
+  return n;
+}
+
+// Thing i burnt through: it breaks apart into charred splinters, and is gone until a Repair.
+pf_break :: (s: [] Everglade, i: int) {
+  pf_sync(s);
+  v := pf_of(s);
+  if i < 0 || i >= s[0].ev.edits.n || v[0].gone[i] { return; }
+  v[0].gone[i] = true; v[0].t[i] = -1; v[0].any = true;
+  b := pf_box(s, s[0].ev.edits.things[i]);
+  c := v3((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, (b.z0 + b.z1) / 2);
+  for q: 0..<PF_SPLINTERS {
+    a := f32(TAU) * sp_rand(s);
+    sp_add_spark(s, v3(mix_f(b.x0, b.x1, sp_rand(s)), mix_f(b.y0, b.y1, sp_rand(s)), mix_f(b.z0, b.z1, sp_rand(s))),
+                 v3(cos(a) * (1 + 2 * sp_rand(s)), 2 + 2 * sp_rand(s), sin(a) * (1 + 2 * sp_rand(s))), 1.4 + sp_rand(s), 0.09 + 0.06 * sp_rand(s),
+                 ifx q % 3 == 0 then v3(1.2, 0.45, 0.12) else v3(0.09, 0.07, 0.05), 1);
+  }
+  sp_add_smoke(s, v3(c.x, b.y1, c.z), v3(0, 1.2, 0), 0.9, 3.0, 0.2, 0.6, 0.7, 0.3);
+  edit_walls_put(s);   // it stands in nobody's way now (everglade-voice.coax)
+}
+// A Repair: thing i whole again, out, clean.
+pf_restore :: (s: [] Everglade, i: int) -> bool {
+  pf_sync(s);
+  v := pf_of(s);
+  if i < 0 || i >= s[0].ev.edits.n { return false; }
+  was := v[0].gone[i] || v[0].t[i] >= 0 || v[0].soot[i] > 0;
+  v[0].gone[i] = false; v[0].t[i] = -1; v[0].soot[i] = 0;
+  edit_walls_put(s);
+  return was;
+}
+// Whether a Repair has something to do on thing i.
+pf_hurt :: (s: [] Everglade, i: int) -> bool { return pf_gone(s, i) || pf_burning(s, i); }
+
+// Each frame (everglade-fire.coax fi_frame): they burn black, try what touches them, and break apart.
+pf_frame :: (s: [] Everglade, dt: f32) {
+  pf_sync(s);
+  v := pf_of(s);
+  if !v[0].any { return; }
+  any := false;
+  rain := clamp(cast(f32) s[0].sky.rain, 0, 1);
+  for i: 0..<s[0].ev.edits.n {
+    if v[0].gone[i] || v[0].soot[i] > 0 { any = true; }
+    if v[0].t[i] < 0 { continue; }
+    any = true;
+    t := s[0].ev.edits.things[i];
+    v[0].t[i] += dt;
+    v[0].soot[i] = lo(v[0].soot[i] + dt / f32(FI_SOOT) * 1.6, 1);
+    if net_town(s) { continue; }   // in a room the server's world spreads it and breaks it apart (e pgone)
+    if v[0].t[i] >= f32(PF_BURN) * hi(t.size, 0.5) { pf_break(s, i); continue; }
+    if v[0].t[i] >= v[0].spread[i] {
+      v[0].spread[i] += f32(FI_SPREAD) * (0.6 + 0.8 * sp_rand(s)) * (1 + 3 * rain);
+      b := pf_box(s, t);
+      // what touches it: the town's pieces and the other things (fi_catch lights both), the grass at its foot
+      _ := fi_catch(s, v3(t.x, b.y0 + 0.3, t.z), hi(b.x1 - b.x0, b.z1 - b.z0) * 0.5 + f32(FI_NEAR), FI_EMBER);
+      if sp_rand(s) < f32(FI_TO_GRASS) { wd_light(s, v3(t.x + (sp_rand(s) - 0.5) * 1.4, b.y0, t.z + (sp_rand(s) - 0.5) * 1.4), WD_GEN - 3); }
+    }
+    if rain > 0.05 && sp_rand(s) < 0.002 * rain { pf_out(s, i); }
+  }
+  v[0].any = any;
+}
+// Whoever stands against a burning thing burns (everglade-fire.coax fi_by_fire).
+pf_by_fire :: (s: [] Everglade, at: Point) -> bool {
+  v := pf_of(s);
+  if !v[0].any { return false; }
+  for i: 0..<s[0].ev.edits.n {
+    if v[0].t[i] < 1 { continue; }
+    b := pf_box(s, s[0].ev.edits.things[i]);
+    if at.y + f32(BODY_TALL) < b.y0 - 0.2 || at.y > b.y1 + 0.2 { continue; }
+    dx := clamp(at.x, b.x0, b.x1) - at.x; dz := clamp(at.z, b.z0, b.z1) - at.z;
+    if dx * dx + dz * dz <= (f32(EG_RADIUS) + 0.5) * (f32(EG_RADIUS) + 0.5) { return true; }
+  }
+  return false;
+}
+// Drawn with the houses' fire (everglade-fire.coax fi_draw): the same licks, glow, billows and smoke.
+pf_draw :: (s: [] Everglade, budget: int) -> int {
+  v := pf_of(s);
+  if !v[0].any { return budget; }
+  left := budget;
+  for i: 0..<s[0].ev.edits.n {
+    if v[0].t[i] < 0 || v[0].gone[i] { continue; }
+    b := pf_box(s, s[0].ev.edits.things[i]);
+    left = fi_flames(s, DEMO_PIECES + i, b.x0, b.y0, b.z0, b.x1, b.y1, b.z1, v[0].t[i], left);
+  }
+  return left;
+}
+// How dark thing i is drawn (1 its own colours), and whether it is drawn at all.
+pf_shade :: (s: [] Everglade, i: int) -> f32 {
+  v := pf_of(s);
+  if !v[0].any || i < 0 || i >= CR_PLACED_MAX { return 1; }
+  if v[0].gone[i] { return -1; }
+  return 1 - 0.82 * v[0].soot[i];
+}
+
+#test "placed fire: a placed crate catches from a fire spell's flame, burns black, breaks apart and stands in nobody's way; a Repair stands it again; stone doesn't burn" #steps 2000000000 {
+  s: [1] Everglade;
+  everglade_start(s[..]);
+  #assert CR_PLACED_MAX == EG_EDIT_MAX;
+  s[0].ev.edits.n = 2;
+  s[0].ev.edits.things[0] = EgThing.{kind = 0, x = 4, z = -12, size = 1};    // a crate
+  s[0].ev.edits.things[1] = EgThing.{kind = 26, x = 9, z = -12, size = 1};   // a stone
+  #assert pf_fuel(s[0].ev.edits.things[0]) > 0 && pf_fuel(s[0].ev.edits.things[1]) == 0;
+  edit_walls_put(s[..]);
+  walls := s[0].wall_n;
+  g := ground_at(s[..], 4, -12);
+  #assert pf_catch(s[..], v3(4, g + 0.5, -12), 1.5, 1) == 1 && pf_burning(s[..], 0);
+  #assert pf_catch(s[..], v3(9, g + 0.5, -12), 1.5, 1) == 0;
+  for q: 0..<cast(int) (f32(PF_BURN) * 30) + 2 { pf_frame(s[..], 1.0 / 30.0); }
+  #assert pf_gone(s[..], 0) && !pf_burning(s[..], 0) && pf_shade(s[..], 0) < 0;
+  #assert s[0].wall_n == walls - 1;
+  #assert pf_restore(s[..], 0) && !pf_gone(s[..], 0) && pf_shade(s[..], 0) == 1 && s[0].wall_n == walls;
+  // another list: what burnt of the old one is forgotten
+  _ := pf_ignite(s[..], 0);
+  s[0].ev.edits.things[0].x = 5;
+  pf_sync(s[..]);
+  #assert !pf_burning(s[..], 0);
+}

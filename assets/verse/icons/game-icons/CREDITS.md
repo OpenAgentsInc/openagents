@@ -18,6 +18,7 @@ unmodified.
 Icons made by Lorc (<http://lorcblog.blogspot.com>):
 
 - `lorc/meteor-impact.svg` (Meteor Swarm)
+- `lorc/claw-hammer.svg` (Repair)
 - `lorc/lightning-frequency.svg` (Thunderbolt, in white-gold, and Mega
   Thunderbolt, in electric violet)
 - `lorc/frozen-orb.svg` (Water Orb)
@@ -85,7 +86,6 @@ Icons made by Lorc (<http://lorcblog.blogspot.com>):
 
 Icons made by Delapouite (<https://delapouite.com>):
 
-- `delapouite/house.svg` (Rebuild)
 - `delapouite/gravitation.svg` (Reverse Gravity, drawn upside down)
 - `delapouite/body-height.svg` (Levitate)
 - `delapouite/stone-wall.svg` (Wall of Stone)

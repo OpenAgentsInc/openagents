@@ -314,7 +314,11 @@ static void everglade_town(int k) {
   int64_t t2 = now_us();
   int en = world_spells(k, 1.0f / WORLD_HZ);
   for (int q = 0; q < en; q++)
-    if (world_event(k, q, ev)) rm_eg_piece(view(), k, (int64_t)ev[0], (int64_t)ev[1], ev[2], ev[3], ev[4], ev[5], ev[6]);
+    if (world_event(k, q, ev)) {
+      /* a Repair (KIND 3): the pieces it stood up are whole for the pages that join later too */
+      if ((int)ev[0] == 3) { int pn2 = world_pieces(k); for (int i = 0; i < pn2; i++) if (world_piece_up(k, i)) rm_eg_piece_up(view(), k, i); }
+      rm_eg_piece(view(), k, (int64_t)ev[0], (int64_t)ev[1], ev[2], ev[3], ev[4], ev[5], ev[6]);
+    }
   int64_t t3 = now_us(); part_us[PART_SPELLS] += t3 - t2;
   int pn = world_people(k, people);
   rm_eg_people(view(), k, (coax_v_f32){people, WORLD_FOLK * WORLD_PEOPLE}, pn);
@@ -671,7 +675,7 @@ static void world_ask(void) {
   if (dev_dir) {
     free(dev_world); dev_world = dev_read("world-everglade.json", &dev_world_n);
     if (!dev_world || dev_world[0] != '{') { fprintf(stderr, "room: --dev %s has no world-everglade.json\n", dev_dir); exit(1); }
-    world_edits(dev_world, (int64_t)dev_world_n);
+    world_edits(dev_world, (int64_t)dev_world_n); rm_eg_placed_reset(view());
     printf("room: the local world (%zu bytes) laid over the rooms\n", dev_world_n);
     return;
   }
@@ -693,7 +697,7 @@ static void control_hear(void) {
     size_t len = (size_t)strtoul(buf, NULL, 10), head = (size_t)(nl - buf) + 1;
     if (have < head + len) break;
     /* the world's answer is JSON ({"doc": ...}); the control's is lines */
-    if (len > 0 && buf[head] == '{') { world_edits(buf + head, (int64_t)len); printf("room: the realm's world (%zu bytes) laid over the rooms\n", len); }
+    if (len > 0 && buf[head] == '{') { world_edits(buf + head, (int64_t)len); rm_eg_placed_reset(view()); printf("room: the realm's world (%zu bytes) laid over the rooms\n", len); }
     else {
       rm_control(view(), (coax_string){buf + head, (int64_t)len});
       if (server->ctl.edit_known && server->ctl.edit != edit_asked) { edit_asked = server->ctl.edit; world_ask(); }

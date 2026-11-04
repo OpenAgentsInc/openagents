@@ -244,7 +244,11 @@ ar_icon :: (s: [] Everglade, b: int, icon: f32, box: Box) {
   size := sp_icon_size(icon);
   if s[0].sp.ar.held && s[0].sp.ar.moving && b == s[0].sp.ar.from { return; }
   p := sp_place(s, b);
-  if !ar_moves(b) || p == sp_place_default(b) { sp_media(s, "image", HB_NAME[b], size, box); return; }
+  if !ar_moves(b) || p == sp_place_default(b) {
+    sp_media(s, "image", HB_NAME[b], size, box);
+    if b == SP_REBUILD && mend_wait(s) > 0.002 { sp_sweep(s, HB_NAME[b], size, box, mend_wait(s)); }   // Repair's wait (everglade-repair.coax)
+    return;
+  }
   tail: [24] u8;
   n := sp_put(tail[..], 0, "-bare"); n = sp_put(tail[..], n, size);
   sp_media(s, "image", HB_NAME[b], cast(string) tail[0..<n], box);

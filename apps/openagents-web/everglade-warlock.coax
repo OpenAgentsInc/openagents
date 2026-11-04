@@ -135,7 +135,7 @@ wl_key :: (s: [] Everglade, key: int, mods: int) -> bool {
 }
 wl_press :: (s: [] Everglade, k: int) {
   s[0].sp.open = false;
-  if k == WL_REBUILD { sp_rebuild(s); return; }
+  if k == WL_REBUILD { mend_press(s, WL_SLOT0 + WL_REBUILD); return; }   // R: Repair (everglade-repair.coax)
   s[0].wl.armed = ifx s[0].wl.armed == k then -1 else k;
 }
 // A press on a slot acts at once (a finger held on it shows its card till it lifts); with a spell
@@ -543,6 +543,7 @@ wl_bar :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> SpBarTop {
     // a cast on its way: the icon's top part dimmed over it, shrinking to nothing at its strike
     left_f := ifx WL_DELAY[b] > 0 then clamp((WL_DELAY[b] - (s[0].wl.clock - s[0].wl.cast_t[b])) / WL_DELAY[b], 0, 1) else 0.0f32;
     if left_f > 0.002 && s[0].wl.cast_t[b] > 0 { wl_sweep(s, b, size, ib, left_f); }
+    if b == WL_REBUILD && mend_wait(s) > 0.002 { wl_sweep(s, b, size, ib, mend_wait(s)); }   // Repair's wait (everglade-repair.coax)
   }
   // the card: a finger held long enough on a slot, or the mouse resting on one
   tip := -1;
@@ -569,12 +570,13 @@ wl_bar :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> SpBarTop {
   return SpBarTop.{n = at, top = top};
 }
 // The host's "over" line for a sweep (coax/web/host.js): the icon again over its top `f`, dimmed.
-wl_sweep :: (s: [] Everglade, b: int, size: string, ib: Box, f: f32) {
+wl_sweep :: (s: [] Everglade, b: int, size: string, ib: Box, f: f32) { sp_sweep(s, WL_HB_NAME[b], size, ib, f); }
+sp_sweep :: (s: [] Everglade, name: string, size: string, ib: Box, f: f32) {
   m := ifx s[0].sp.media_big.count > 0 then s[0].sp.media_big else s[0].sp.media[..];
   n := s[0].sp.media_n;
   if n + 160 > m.count { return; }
   if n > 0 { m[n] = 10; n += 1; }
-  n = sp_put(m, n, "over "); n = sp_put(m, n, HB_URL); n = sp_put(m, n, WL_HB_NAME[b]); n = sp_put(m, n, size);
+  n = sp_put(m, n, "over "); n = sp_put(m, n, HB_URL); n = sp_put(m, n, name); n = sp_put(m, n, size);
   y1 := ib.y0 + floor((ib.y1 - ib.y0) * f + 0.5);
   e := [4] f32.[ib.x0, ib.y0, ib.x1, y1];
   for i: 0..<4 { n = sp_put(m, n, " "); if e[i] < 0 { n = sp_put(m, n, "-"); } n = put_digits(m, n, cast(int) abs(sp_round(e[i]))); }

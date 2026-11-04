@@ -22,6 +22,17 @@ CR_SHOW :: 0.9;           // s a refused cast's bar shows its reason icon
 // Everglade's own four's cast bars (verse/rules/srd5.coax srd_spell bar: Meteor Swarm, Thunderbolt,
 // Mega Thunderbolt, Water Orb). Every other cast has none: it is released as it starts.
 CR_BAR :: [4] f32.[2.5, 1.2, 0.5, 0.6];
+// Repair (R; everglade-repair.coax): a broken structure within reach stands again whole after its bar,
+// unless you move or are hurt first; then it waits a while. Its slots: the druid's and the Warlock's R.
+CR_REPAIR_SLOTS :: [2] int.[47, 70];
+CR_REPAIR_BAR :: 1.5;      // s
+CR_REPAIR_EVERY :: 8.0;    // s from one repair to the next
+CR_REPAIR_REACH :: 18.3;   // m (60 feet) from you to what you repair
+CR_REPAIR_MOVE :: 0.6;     // m you may shift on its bar
+// What a Repair names: a group of the town's pieces (a building, a house, a 16 m cell of the palisade or
+// the streets: everglade-spells.coax sp_group), or an admin's placed thing i as CR_REPAIR_PLACED0 + i.
+CR_REPAIR_PLACED0 :: 100000;
+CR_PLACED_MAX :: 64;       // an admin's placed things at most (verse/everglade/edits.coax EG_EDIT_MAX)
 // book:end cast-rules
 
 // ---- why a cast didn't go (the wire's r SEQ WHY and e stop SS SLOT WHY)
@@ -59,7 +70,9 @@ cr_in_reach :: (dx: f32, dz: f32, range_m: f32, end: bool) -> bool {
   return dx == dx && dz == dz && dx * dx + dz * dz <= r * r;
 }
 // Ticks of cast bar for bar slot `slot` at `hz`: Everglade's four's (slots 0 to 3), else 0.
+cr_repair :: (slot: int) -> bool { return slot == CR_REPAIR_SLOTS[0] || slot == CR_REPAIR_SLOTS[1]; }
 cr_bar_ticks :: (slot: int, hz: int) -> int {
+  if cr_repair(slot) { return cast(int) floor(f32(CR_REPAIR_BAR) * f32(hz) + 0.5); }
   if slot < 0 || slot >= CR_BAR.count { return 0; }
   return cast(int) floor(CR_BAR[slot] * f32(hz) + 0.5);
 }

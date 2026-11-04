@@ -55,6 +55,12 @@ ed_piece :: (s: [] Everglade, t: EgThing, m: int, u: f32, v: f32, y: f32, yaw: f
   before := s[0].kit_used[group];
   piece(s, m, p.x, g + y * t.size, p.z, t.yaw + yaw, sx * t.size, sy * t.size, sx * t.size);
   if t.tint > 0 && s[0].kit_used[group] > before { ed_tint(s, group, t.tint); }
+  // burnt black (everglade-placed-fire.coax)
+  dark := s[0].sp.pf[0].dark;
+  if dark < 1 && s[0].kit_used[group] > before {
+    o := (s[0].group_at[group] + s[0].kit_used[group] - 1) * OBJECT_FLOATS;
+    for k: 0..<3 { s[0].objects[o + 12 + k] *= dark; }
+  }
 }
 // The colour of the group's last instance.
 ed_tint :: (s: [] Everglade, group: int, tint: int) {
@@ -67,7 +73,8 @@ ed_tint :: (s: [] Everglade, group: int, tint: int) {
 ed_shape :: (s: [] Everglade, t: EgThing, kind: int, look: int, u: f32, v: f32, y: f32, sx: f32, sy: f32, sz: f32, r: f32, gr: f32, b: f32) {
   p := ed_local(t, u * t.size, v * t.size);
   g := ground_at(s, t.x, t.z) + t.lift;
-  shape(s, kind, look, v3(p.x, g + y * t.size, p.z), t.yaw, 0, sx * t.size, sy * t.size, sz * t.size, r, gr, b);
+  dark := s[0].sp.pf[0].dark;
+  shape(s, kind, look, v3(p.x, g + y * t.size, p.z), t.yaw, 0, sx * t.size, sy * t.size, sz * t.size, r * dark, gr * dark, b * dark);
 }
 
 WOOD_R :: 0.42; WOOD_G :: 0.3; WOOD_B :: 0.19;
@@ -268,7 +275,15 @@ edit_spots_draw :: (s: [] Everglade) {
 // Each frame: the town's pieces as laid, then the placed things and the patches' plants.
 edit_draw :: (s: [] Everglade) {
   for g: KIT_FOREST..<KIT_GROUPS { s[0].kit_used[g] = s[0].ev.town_used[g]; }
-  for i: 0..<s[0].ev.edits.n { edit_thing(s, s[0].ev.edits.things[i]); }
+  // a burnt thing is drawn blacker; one burnt through is gone until a Repair (everglade-placed-fire.coax)
+  pf_sync(s);
+  for i: 0..<s[0].ev.edits.n {
+    shade := pf_shade(s, i);
+    if shade < 0 { continue; }
+    s[0].sp.pf[0].dark = shade;
+    edit_thing(s, s[0].ev.edits.things[i]);
+  }
+  s[0].sp.pf[0].dark = 1;
   edit_spots_draw(s);
 }
 // At the start, once the town is laid: what the town uses of each group.
