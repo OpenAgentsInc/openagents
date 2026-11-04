@@ -243,6 +243,26 @@ Then check by hand in one headless pair, or on two of your own devices:
 
 When steps 2 and 3 hold, post the evidence on #12733 and close it.
 
+### What a local `everglade-pair` run can and can't show
+
+A local run (a local page server plus a local `bin/room`, joined with
+`?relay=ws://localhost:PORT`) has no API. So it has no seat tickets, no names,
+no player ids, no directory and no blocks. Since `820b53996e`, the pair
+check skips the steps that need the API on a local relay instead of failing
+them:
+
+| Local failure (2026-11-03) | Real? | Why |
+| --- | --- | --- |
+| Nameplate names are `-` | No, local only | The room takes a name only from the API's seat ticket and never from the page's hello, so on a local relay everyone is `-`. Now skipped on `?relay=`. Production still checks it. |
+| INVITE link doesn't seat C | No, harness only | The harness built C's link without `?relay=`, so C looked for the API and never joined. The link now keeps `?relay=`, and C sits in A's instance locally. |
+| BLOCK doesn't hide A | No, local only | A nameplate opens the pane on a player id, and only a seat ticket gives one. Now skipped on `?relay=`. |
+| Reverse Gravity has no cylinder and doesn't lift A | No | A fresh build of `main` passes it locally on desktop (A lifted to 317 cm) and on phone (462 cm), and production passed it on `978ef4f4c1`. The failing run served page builds it didn't rebuild (`--build true`) and added its own delay in the harness script. |
+| Move latency misses the later trials | Yes, harness bug | The published world puts a crate about 1.5 m ahead of the spawn. Since `29a442405b` the room server lays it too, so walking into it stops the player on both sides, and later trials moved nobody. On production this starts the moment step 2 ships. Both pages now step right off the spawn before the trials. |
+
+So after step 2, use the pair check from `main` (the harness runs from this
+checkout, not from the release). An older harness reports false move-latency
+misses.
+
 ### Rollback for step 3
 
 ```sh
