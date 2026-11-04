@@ -131,7 +131,7 @@ tool_main :: () -> int #export_c {
     ui := rs_ticketed(ub[..], url, cast(string) pid[0..<pn], cast(string) nm[0..<mn]);
     if ui.count == 0 || !relay_conn_open(c[i..<i + 1], ui) { tool_err("cast-check: can't open "); tool_errln(url); print("casts fail\n"); return 1; }
     hm: [96] u8;
-    hn := rs_put(hm[..], rs_put(hm[..], 0, ifx i == 0 then "H 3 ranger.0.0.0 warlock 0 " else "H 3 ranger.0.0.0 druid 0 "), cast(string) nm[0..<mn]);
+    hn := rs_put(hm[..], rs_put(hm[..], 0, ifx i == 0 then "H 4 ranger.0.0.0 warlock 0 " else "H 4 ranger.0.0.0 druid 0 "), cast(string) nm[0..<mn]);
     _ := relay_conn_send(c[i..<i + 1], cast(string) hm[0..<hn]);
   }
   print("cast-check: % players in %, % rounds\n", CC_BOTS, url, rounds);
@@ -149,7 +149,7 @@ tool_main :: () -> int #export_c {
     // bot 0 walks back and forth along z (the camera at yaw 0 or pi: ahead is -z or +z), turning each round
     yaw = ifx walk_sign > 0 then 3.14159265f32 else 0.0f32;   // ahead +z, then -z
     for i: 0..<CC_BOTS { cc_send_input(c[i..<i + 1], b[i..<i + 1], i == 0 && at >= 0 && round < rounds, yaw); }
-    if at < 0 || round >= rounds || !b[0].seen { while rs_now() - t0 < tick * 33 { proc_sleep(2); } continue; }
+    if at < 0 || round >= rounds || !b[0].seen { while rs_now() - t0 < tick * 1000 / 30 { proc_sleep(2); } continue; }
     if in == 119 { walk_sign = -walk_sign; }
     // Eldritch Blast (slot 64, 120 feet: 36.6 m) behind bot 0 as it walks: 2 m inside, then 8 m past
     // (60 m up: range is measured across the ground, and nothing of the town stands in the way up there)
@@ -161,7 +161,7 @@ tool_main :: () -> int #export_c {
     // bot 2's Thunderbolt at a wolf, bot 3's Mega Thunderbolt at it 150 ms later
     if in == 60 && b[2].wolf > 0 { cc_send_cast(c[2..<3], b[2..<3], 1, b[2].wolf_x, 0, b[2].wolf_z, 2000 + b[2].wolf, 0, now); }
     if in == 65 && b[2].n > 0 && b[2].casts[b[2].n - 1].sent > now - 400 { cc_send_cast(c[3..<4], b[3..<4], 2, b[2].wolf_x, 0, b[2].wolf_z, 2000 + b[2].wolf, 0, now); }
-    while rs_now() - t0 < tick * 33 { proc_sleep(2); }
+    while rs_now() - t0 < tick * 1000 / 30 { proc_sleep(2); }
   }
   // the verdict
   ok := true;

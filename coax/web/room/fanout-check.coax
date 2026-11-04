@@ -99,7 +99,7 @@ fc_group :: (site: string, bots: int, seconds: int, realm: string, group: int) -
       if relay_conn_poll(c[i..<i + 1], 50) == RC_TEXT && rs_starts(cast(string) c[i].text[0..<c[i].text_n], "y ") { sat = true; }
     }
     if sat {
-      hb: [64] u8; hn := rs_int(hb[..], rs_put(hb[..], 0, "H 3 ranger.0.0.0 druid 0 Fan "), id);
+      hb: [64] u8; hn := rs_int(hb[..], rs_put(hb[..], 0, "H 4 ranger.0.0.0 druid 0 Fan "), id);
       r := relay_conn_send(c[i..<i + 1], cast(string) hb[0..<hn]);
       print("sat % % % %\n", id, cast(string) rb[0..<rn], cast(string) sb[0..<sn], cast(string) pb[0..<pn]);
     }

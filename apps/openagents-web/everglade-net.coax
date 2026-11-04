@@ -1479,6 +1479,9 @@ net_probe :: (s: [] Everglade, field: int) -> int #export_c {
   // Person on you, 400 + P the bar
   // slot at place P (-1 none), 600 + 3 I + 0, 1, 2 townsperson I's drawn x and z (cm) and clip
   if field == 60 { return cast(int) (s[0].orbit.yaw * 1000); }
+  // 63 your body's facing as drawn and 64 the server's for you in its last word (mrad; -999999 none yet)
+  if field == 63 { return cast(int) (wrap_angle(s[0].face) * 1000); }
+  if field == 64 { return ifx n[0].fix.ok then cast(int) (wrap_angle(n[0].fix.yaw) * 1000) else -999999; }
   if field == 61 { return s[0].sp.sprite_n; }
   if field == 62 { return s[0].sp.fx_seen; }
   // 63 you play in a room (its kit, level and rules), 64 rejoining a room that dropped, 65 the level's kit on the bar, 66 your level

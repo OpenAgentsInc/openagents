@@ -463,8 +463,8 @@ tk_test_ask_in :: (r: [] u8, t: [] u8, n: int, room: string) -> string {
   eg_test_drain(v[..], box[..]);
   k := eg_room_at(v[..], v[0].conns[0].relay);
   #assert k >= 0;
-  rm_heard(v[..], 0, "H 3 ranger.2.1.0 druid 0 Someone Else");
-  rm_heard(v[..], 1, "H 3 ranger.0.0.0 druid 3 Guest");
+  rm_heard(v[..], 0, "H 4 ranger.2.1.0 druid 0 Someone Else");
+  rm_heard(v[..], 1, "H 4 ranger.0.0.0 druid 3 Guest");
   eg_test_tick(v[..], k); eg_test_tick(v[..], k);
   eg_test_drain(v[..], box[..]);
   a := eg_test_of(box[..], 1);

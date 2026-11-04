@@ -311,7 +311,7 @@ rc_test_room :: (v: [] RmServer, code: string, n: int, warlock: bool) -> int {
   ev: [96] u8; m := put(ev[..], 0, "GET /api/room/relay/everglade/"); m = put(ev[..], m, code); m = put(ev[..], m, " HTTP/1.1\r\n\r\n");
   for c: 0..<n { _ := rm_join(v, c, cast(string) ev[0..<m]); }
   k := eg_room_at(v, v[0].conns[0].relay);
-  for c: 0..<n { rm_heard(v, c, ifx warlock then "H 3 ranger.0.0.0 warlock 0 -" else "H 3 ranger.0.0.0 druid 0 -"); }
+  for c: 0..<n { rm_heard(v, c, ifx warlock then "H 4 ranger.0.0.0 warlock 0 -" else "H 4 ranger.0.0.0 druid 0 -"); }
   rc_test_tick(v, k, true); rc_test_tick(v, k, true);
   return k;
 }

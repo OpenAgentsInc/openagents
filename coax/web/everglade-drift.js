@@ -7,11 +7,13 @@
 // (__dr.mark(NAME)) and reads the rows back in parts (__dr.rows(FROM, N)).
 (() => {
   const now = () => performance.timeOrigin + performance.now();
-  const D = (window.__dr = { x: null, state: 0, rows: null, fr: [], marks: [], texts: [], bars: [], pageT: 0, folk: null });
+  const D = (window.__dr = { x: null, state: 0, rows: null, fr: [], marks: [], texts: [], bars: [], pageT: 0, folk: null, look: 0 });
+  // a pointer move this frame (1): the camera may turn only then (the drift check's camera probe)
+  addEventListener("pointermove", (e) => { if (e.buttons || document.pointerLockElement) D.look = 1; }, true);
   // a row's columns, in order (the driver reads them by these names)
   D.cols = ["t", "page_ms", "feet_x_mm", "feet_y_mm", "feet_z_mm", "yaw_mrad", "lift_cm", "reruns", "fix_mm",
     "sprites", "fx_rg", "fx_ww", "fx_wos", "fx_spells", "bar", "cond_you", "cond_server", "cond_others", "cond_folk",
-    "cond_engine", "stables_down", "stables_all", "act", "clip", "net", "folk_walking", "folk_stalled", "folk_moved_mm"];
+    "cond_engine", "stables_down", "stables_all", "act", "clip", "net", "folk_walking", "folk_stalled", "folk_moved_mm", "face_mrad", "server_yaw_mrad", "look"];
   const FOLK = 28;   // EG_SPOTS
   D.mark = (name) => { D.marks.push([name, D.fr.length, Math.round(now())]); return 1; };
   let mem = null;
@@ -56,7 +58,8 @@
         D.folk = folk;
         D.fr.push([t, Math.round(D.pageT), fp(0), fp(1), fp(2), np(60), np(21) - np(22), np(14), Math.round(Math.sqrt(Math.max(0, fp(7)))),
           np(61), np(45), np(46), np(47), np(48), np(49), held(np(52)), np(53), np(55), fp(8),
-          fp(9), np(57), np(58), np(29), np(30), np(0), walking, stalled, Math.round(moved)]);
+          fp(9), np(57), np(58), np(29), np(30), np(0), walking, stalled, Math.round(moved), np(63), np(64), D.look]);
+        D.look = 0;
         const p = text(ex, state, 0), s = text(ex, state, 1), b = np(49);
         if (p !== plate) { plate = p; D.texts.push([t, 0, p]); }
         if (s !== status) { status = s; D.texts.push([t, 1, s]); }

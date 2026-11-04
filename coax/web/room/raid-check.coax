@@ -158,7 +158,7 @@ tool_main :: () -> int #export_c {
     if ui.count == 0 || !relay_conn_open(c[i..<i + 1], ui) { tool_err("raid-check: can't open "); tool_errln(url); print("fails\n"); return 1; }
     hm: [96] u8;
     h[i].wl = klass == "warlock" || (klass == "mix" && i % 2 == 1);
-    hn := rs_put(hm[..], rs_put(hm[..], 0, ifx h[i].wl then "H 3 ranger.0.0.0 warlock 0 " else "H 3 ranger.0.0.0 druid 0 "), cast(string) nm[0..<mn]);
+    hn := rs_put(hm[..], rs_put(hm[..], 0, ifx h[i].wl then "H 4 ranger.0.0.0 warlock 0 " else "H 4 ranger.0.0.0 druid 0 "), cast(string) nm[0..<mn]);
     _ := relay_conn_send(c[i..<i + 1], cast(string) hm[0..<hn]);
     t1 := rs_now();
     while rs_now() - t1 < 300 { rc_drain(c[..], h[..], i + 1); proc_sleep(5); }
@@ -215,7 +215,7 @@ tool_main :: () -> int #export_c {
       _ = relay_conn_send(c[i..<i + 1], cast(string) m[0..<k]);
       sent_casts += 1;
     }
-    while rs_now() - t0 < tick * 33 { rc_drain(c[..], h[..], n); proc_sleep(2); }
+    while rs_now() - t0 < tick * 1000 / 30 { rc_drain(c[..], h[..], n); proc_sleep(2); }
   }
   // what all heard
   waves := 1000; climax := 0; seen := 1000; casts := 1000; hits := 1000; breaks := 0; earned := 0; bad := 0; xp := 0; lv2 := 0; d := 1000000; bytes := 0;

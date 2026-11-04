@@ -31,7 +31,7 @@
 // both ways within a window: a frame of one page fails when no frame of the other within WINDOW ms
 // (250 plus the round trip) has the same value, within the probe's tolerance. A probe drifts when
 // DR_RUN frames fail in a row. Some are judged on each page alone: the camera's turn in one frame
-// (DR_YAW_JUMP), the room's corrections (re-runs that moved you more than 5 cm: at most DR_FIX_RATE a
+// (DR_YAW_JUMP) and in DR_TURN_MS with no look (DR_TURN), the room's corrections (re-runs that moved you more than 5 cm: at most DR_FIX_RATE a
 // second, none over 0.5 m), and the town's people (walking in place: a walking clip drawn where it
 // was the frame before, on no more than DR_STALL more of the frames than offline).
 // Output: one line per probe and profile, a table, and holds or fails (exit 0 or 1). The rows, both
@@ -40,13 +40,15 @@
 #import "Basic";
 #load "../lib/net/cdp.coax";
 
-DR_JS_COLS :: 28;         // everglade-drift.js D.cols
-DR_COLS :: 30;            // those, then C_LX and C_LZ (dr_local)
+DR_JS_COLS :: 31;         // everglade-drift.js D.cols
+DR_COLS :: 33;            // those, then C_LX and C_LZ (dr_local)
 DR_ROWS :: 20000;         // frames kept a page (5 minutes at 60 a second)
 DR_PART :: 300;           // rows read back at once
 // book:begin drift-bounds
 DR_RUN :: 6;              // frames failing in a row that make a drift
 DR_YAW_JUMP :: 300;       // mrad the camera may turn in one frame
+DR_TURN :: 524;           // mrad (30 degrees) the camera may turn in DR_TURN_MS with no look (a pointer move)
+DR_TURN_MS :: 250;        // (its swing in behind you is 1.3 a second of the gap: at most 0.8 rad a second)
 DR_FIX_RATE :: 1;         // corrections over 5 cm a second, at most
 DR_STALL :: 15;           // percent more frames of the town's people walking in place than offline
 // book:end drift-bounds
@@ -57,7 +59,7 @@ DR_PROFILES :: 6;
 C_T :: 0; C_X :: 2; C_Y :: 3; C_Z :: 4; C_YAW :: 5; C_LIFT :: 6; C_RERUNS :: 7; C_FIX :: 8; C_SPRITES :: 9;
 C_RG :: 10; C_WW :: 11; C_WOS :: 12; C_SPELLS :: 13; C_BAR :: 14; C_COND :: 15; C_SCOND :: 16; C_OCOND :: 17;
 C_FCOND :: 18; C_ECOND :: 19; C_SDOWN :: 20; C_SALL :: 21; C_ACT :: 22; C_CLIP :: 23; C_NET :: 24;
-C_WALK :: 25; C_STALL :: 26; C_MOVED :: 27; C_LX :: 28; C_LZ :: 29;
+C_WALK :: 25; C_STALL :: 26; C_MOVED :: 27; C_FACE :: 28; C_SYAW :: 29; C_LOOK :: 30; C_LX :: 31; C_LZ :: 32;
 
 Buf :: struct { b: [16384] u8; n: int; bad: bool; }
 bput :: (o: [] Buf, s: string) {
@@ -403,6 +405,27 @@ dr_compare :: (a: [] DrPage, b: [] DrPage, rtt: int, rep: [] DrReport) {
     }
     if side == 0 || !v[0].drifted { dr_add(rep, ifx side == 0 then "camera jump, offline" else "camera jump, room", v[0]); }
     else { dr_add(rep, "camera jump, room", v[0]); }
+  }
+  // each page alone: the camera turned more than DR_TURN in DR_TURN_MS with no look (no pointer move,
+  // everglade-drift.js "look"): nothing but your look may turn it, however it turns (#12718)
+  for side: 0..<2 {
+    p := ifx side == 0 then a else b;
+    v: [1] DrVerdict;
+    j := 0; looked := -1;
+    for r: 0..<p[0].n {
+      t := dr_at(p, r, C_T);
+      if dr_at(p, r, C_LOOK) != 0 { looked = r; }
+      while j < r && t - dr_at(p, j, C_T) > DR_TURN_MS { j += 1; }
+      if t < t0 || t > t1 || v[0].drifted || looked >= j { continue; }
+      d := dr_diff(DR_ANGLE, dr_at(p, r, C_YAW), dr_at(p, j, C_YAW), 0, 0);
+      if d > DR_TURN {
+        v[0].drifted = true; v[0].t = t; v[0].step = dr_step_at(p, t); v[0].mine = d; v[0].by = d - DR_TURN;
+        q: [1] Buf; bput(q[..], ifx side == 0 then "offline" else "room"); bput(q[..], " camera turned "); bint(q[..], d);
+        bput(q[..], " mrad in "); bint(q[..], t - dr_at(p, j, C_T)); bput(q[..], " ms with no look");
+        for i: 0..<q[0].n { v[0].note[i] = q[0].b[i]; } v[0].note_n = q[0].n;
+      }
+    }
+    dr_add(rep, ifx side == 0 then "camera turn with no look, offline" else "camera turn with no look, room", v[0]);
   }
   {
     v: [1] DrVerdict; fixes := 0; worst := 0; first := -1;

@@ -907,8 +907,8 @@ eg_test_has :: (t: string, part: string) -> bool {
   #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
   eg_test_drain(v[..], box[..]);
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 2 ranger.0.0.0 druid 0 Old");   // a page from before this release
-  rm_heard(v[..], 1, "H 3 ranger.0.0.0 druid 0 New");
+  rm_heard(v[..], 0, "H 3 ranger.0.0.0 druid 0 Old");   // a page from before this release
+  rm_heard(v[..], 1, "H 4 ranger.0.0.0 druid 0 New");
   eg_test_drain(v[..], box[..]);
   #assert eg_test_has(eg_test_of(box[..], 0), "r 0 version") && rm_relay_kicked(v[..], 0);
   #assert !eg_test_has(eg_test_of(box[..], 1), "r 0 version") && !rm_relay_kicked(v[..], 1);
@@ -926,8 +926,8 @@ eg_test_has :: (t: string, part: string) -> bool {
   #assert eg_test_has(eg_test_of(box[..], 0), "y 0 0 1762190000000|W 0 30 ");
   k := eg_room_at(v[..], v[0].conns[0].relay);
   #assert k >= 0;
-  rm_heard(v[..], 0, "H 3 ranger.2.1.0 druid 1 Ash Vale");
-  rm_heard(v[..], 1, "H 3 ranger.0.0.0 druid 0 -");
+  rm_heard(v[..], 0, "H 4 ranger.2.1.0 druid 1 Ash Vale");
+  rm_heard(v[..], 1, "H 4 ranger.0.0.0 druid 0 -");
   // seat 0 queues 8 inputs at once: 4 are stepped this tick (its bank), the rest on the next ticks
   for q: 1..<9 {
     t: [64] u8; n := put(t[..], 0, "I"); n = eg_n(t[..], n, q); n = put(t[..], n, " 0 0 0 50 0 1 0");
@@ -973,7 +973,7 @@ eg_test_input :: (v: [] RmServer, seq: int) {
   box: [1] EgInbox;
   #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 3 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 3 ranger.0.0.0 druid 0 -");
+  rm_heard(v[..], 0, "H 4 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 4 ranger.0.0.0 druid 0 -");
   for t: 0..<3 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
   // seat 0 walks; seat 1's socket has 10 KB waiting: its frame holds its own row, not seat 0's
   rm_conn_waiting(v[..], 1, 10000);
@@ -994,7 +994,7 @@ eg_test_input :: (v: [] RmServer, seq: int) {
   box: [1] EgInbox;
   #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 3 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 3 ranger.0.0.0 druid 0 -");
+  rm_heard(v[..], 0, "H 4 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 4 ranger.0.0.0 druid 0 -");
   for t: 0..<3 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
   id := WIRE_ID_MADE + EG_FX_ID + 1 * WE_WATCH + WE_HOLD_PERSON;
   // the world holds seat 1 for 3 s: a row on both pages
@@ -1085,8 +1085,8 @@ eg_test_input :: (v: [] RmServer, seq: int) {
   box: [1] EgInbox;
   #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 3 ranger.0.0.0 warlock 0 -");
-  rm_heard(v[..], 1, "H 3 ranger.0.0.0 druid 0 -");
+  rm_heard(v[..], 0, "H 4 ranger.0.0.0 warlock 0 -");
+  rm_heard(v[..], 1, "H 4 ranger.0.0.0 druid 0 -");
   #assert v[0].eg[k].rules[0].klass[0] == 1 && v[0].eg[k].rules[0].klass[1] == 0;
   eg_test_tick(v[..], k); eg_test_tick(v[..], k);
   eg_test_drain(v[..], box[..]);
