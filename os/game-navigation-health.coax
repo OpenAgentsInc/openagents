@@ -1,0 +1,56 @@
+#authority;
+#load "game-navigation-policy.coax";
+#load "game-combat-policy.coax";
+#test "health guard binds the same living calm captured frame and initial resources" {
+  n:=NavSample.{ok=true,alive=true,map=1426,serial=1}; c:=CombatSample.{ok=true,flags=3,serial=1,health=85,health_max=100};
+  #assert nh_bound(n,c) && nh_start(n,c);
+  c.health=84; #assert nh_bound(n,c) && !nh_start(n,c);
+  c.health=8480; c.health_max=10000; #assert !nh_start(n,c);
+  c.health=1; c.health_max=1; #assert nh_start(n,c);
+  c.health=0; #assert !nh_bound(n,c);
+  c.health=2; #assert !nh_bound(n,c);
+  c.health=1; c.health_max=0; #assert !nh_bound(n,c);
+  c.health_max=100; c.serial=2; #assert !nh_bound(n,c);
+  c.serial=1; c.ok=false; #assert !nh_bound(n,c); c.ok=true;
+  for flags:[4] int.[1,7,11,19] { c.flags=flags; #assert !nh_bound(n,c); } c.flags=3;
+  t:=n; t.ok=false; #assert !nh_bound(t,c);
+  t=n; t.alive=false; #assert !nh_bound(t,c);
+  t=n; t.combat=true; #assert !nh_bound(t,c);
+  t=n; t.blocked=true; #assert !nh_bound(t,c);
+}
+nh_bound :: (n: NavSample,c: CombatSample) -> bool {
+  return n.ok && n.alive && !n.combat && !n.blocked && c.ok && (c.flags&31)==3 && c.serial==n.serial && c.health>0 && c.health<=c.health_max;
+}
+nh_start :: (n: NavSample,c: CombatSample) -> bool { return nh_bound(n,c) && c.health*100>=c.health_max*85; }
+#test "health loss is a same-maximum decrease, not regeneration or a changed resource scale" {
+  a:=CombatSample.{health=103,health_max=103}; b:=a; b.health=88;
+  #assert nh_loss(a,b) && !nh_loss(a,a) && !nh_loss(b,a);
+  b.health_max=104; #assert !nh_loss(a,b);
+}
+nh_loss :: (before: CombatSample,after: CombatSample) -> bool { return before.health_max==after.health_max && after.health<before.health; }
+#test "recorded fire damage cancels forward travel and reverses only its unchanged bounded heading" {
+  before:=NavSample.{ok=true,alive=true,map=1426,serial=2252,x=18681,y=44644,heading=27820}; after:=before;
+  after.serial=2262; after.x=18683; after.y=44670;
+  c:=CombatSample.{ok=true,flags=3,serial=2262,health=88,health_max=103};
+  #assert nh_reverse(before,after,c,true,PILOT_FORWARD,300)==500;
+  #assert nh_reverse(before,after,c,true,PILOT_FORWARD,40)==500;
+  #assert nh_reverse(before,after,c,true,PILOT_FORWARD,39)==0 && nh_reverse(before,after,c,true,PILOT_FORWARD,301)==0;
+  #assert nh_reverse(before,after,c,false,PILOT_FORWARD,300)==0;
+  for action:[4] int.[PILOT_STOP,PILOT_LEFT,PILOT_RIGHT,PILOT_BACK] { #assert nh_reverse(before,after,c,true,action,300)==0; }
+  t:=after; t.heading=27821; #assert nh_reverse(before,t,c,true,PILOT_FORWARD,300)==0;
+  t=after; t.map=1; #assert nh_reverse(before,t,c,true,PILOT_FORWARD,300)==0;
+  t=after; t.x=before.x+128; t.y=before.y; #assert nh_reverse(before,t,c,true,PILOT_FORWARD,300)==500;
+  t.x=before.x+129; #assert nh_reverse(before,t,c,true,PILOT_FORWARD,300)==0;
+  t.x=before.x; t.y=before.y-128; #assert nh_reverse(before,t,c,true,PILOT_FORWARD,300)==500;
+  t.y=before.y-129; #assert nh_reverse(before,t,c,true,PILOT_FORWARD,300)==0;
+  b:=before; b.ok=false; #assert nh_reverse(b,after,c,true,PILOT_FORWARD,300)==0;
+  b=before; b.alive=false; #assert nh_reverse(b,after,c,true,PILOT_FORWARD,300)==0;
+  b=before; b.combat=true; #assert nh_reverse(b,after,c,true,PILOT_FORWARD,300)==0;
+  b=before; b.blocked=true; #assert nh_reverse(b,after,c,true,PILOT_FORWARD,300)==0;
+  c.health=0; #assert nh_reverse(before,after,c,true,PILOT_FORWARD,300)==0;
+}
+nh_reverse :: (before: NavSample,after: NavSample,c: CombatSample,loss: bool,action: int,ms: int) -> int {
+  if !loss || !before.ok || !before.alive || before.combat || before.blocked || !nh_bound(after,c) || before.map!=after.map || before.heading!=after.heading || action!=PILOT_FORWARD || ms<40 || ms>300 { return 0; }
+  distance:=abs(cast(f32) (before.x-after.x))+abs(cast(f32) (before.y-after.y));
+  return ifx distance<=128 then 500 else 0;
+}

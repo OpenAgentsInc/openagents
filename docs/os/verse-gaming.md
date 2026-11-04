@@ -112,7 +112,7 @@ normalized integers from 0 to 65535. Select a nearby unobstructed waypoint
 after inspecting a capture, then supply its coordinates:
 
 ```sh
-"$d/verse-navigate" --mode elephant --map 1426 \
+"$d/verse-navigate" --mode elephant --health-guard --map 1426 \
   --x 19670 --y 46120 --radius 12 --steps 40 --out /tmp/wow-route-01
 ```
 
@@ -123,6 +123,15 @@ on `http://127.0.0.1:8790/v1/systemone` with the original pinned Elephant
 identity in `os/game-navigate.coax`. On coderos-4080, the existing GPU switch
 at port 8791 loads it with `POST /use/elephant`; check `/status` until ready.
 No CPU whole-model run, remote service or toy fallback is used.
+
+`--health-guard` selects waypoint V2: it binds the combat strip's health to
+the same frame, requires at least 85% health initially, retains each pre-input
+recheck, and logs broker wire and received model answers. Observed OOC health
+loss cancels travel; when the preceding forward heading still matches a fresh
+sample, it attempts one bounded 500 ms reverse and exits 3 with the result.
+This covers a recorded brazier failure that the alive/combat-only V1 missed.
+It does not recognize hazards visually or guarantee escape. Inspect a stopped
+controller promptly. V1 remains available without the flag.
 
 Stop a running controller and release held input with:
 

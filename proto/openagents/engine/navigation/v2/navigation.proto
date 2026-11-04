@@ -1,0 +1,15 @@
+syntax = "proto3";
+package openagents.engine.navigation.v2;
+import "openagents/engine/navigation/v1/navigation.proto";
+message HealthObservation {
+  openagents.engine.navigation.v1.Observation navigation = 1;
+  uint32 health = 2;
+  uint32 maximum_health = 3;
+  uint32 sensor_serial = 4;
+}
+message HealthRetreat {
+  uint64 observation = 1;
+  uint32 milliseconds = 2;
+  string reason = 3;
+  bool applied = 4;
+}

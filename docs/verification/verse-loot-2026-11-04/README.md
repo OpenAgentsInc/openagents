@@ -255,3 +255,48 @@ encoder status 0. The client combat log has now flushed 98,563 bytes; a raw
 snapshot is retained locally. Additional completed-run scratch PPMs were
 losslessly PNG-encoded, decoded and compared byte-exact before duplicate raw
 removal; their manifest is in `scratch-originals-png/`.
+
+## Environmental failure and guarded navigation V2
+
+Pushed direct tracing as `05054aa4ce`. The latest full-checkout tools-check
+at that commit reported 28 existing missing reason headers after upstream
+changes (earlier count 21); this milestone introduced no non-Coax tool.
+Narrowed only this disposable worktree with sparse checkout to release about
+1.3 GiB of unrelated docs/fixtures; the main checkout and evidence are intact.
+
+Original pinned Elephant remained ready on CUDA. `maintenance-exit-01`
+used V1 to approach an indoor waypoint. It stopped for no progress after 21
+actions at (18676,44688), beside a brazier. The navigation strip still said
+alive/OOC, but original full RGB observation 18 has 103/103 HP and 19 has
+88/103 HP. V1 did not consume health. The operator missed the later damage;
+Foob died from the environmental hazard. This is the third death in this
+pass, with XP unchanged at 1105. Passive `vendor-03.video` covers the damage
+and death; V1's final observation (22) still has 97 HP and is not the death
+record. The client log snapshot and images preserve the distinction.
+
+Recovered through ordinary movement and the resurrection dialog outside the
+building at (18724,45408), then backed clear and regenerated to 103/103 HP
+and 298 mana. The repaired gear remains equipped. No spirit-healer recovery,
+quest turn-in, item sale or deletion was used.
+
+Added explicit `--health-guard`, profile `wow-coldridge-waypoint-v2`, preserving
+V1. It binds combat/nav serials on the same frame, requires 85% initial HP,
+retains every pre-input recheck and received model answer, and records broker
+wire. OOC health loss cancels travel; after a fresh same-heading/life/UI/map
+check, a preceding bounded forward move can be followed by one 500 ms reverse
+and an exit-3 outcome with the final captured health. It does not recognize
+fire, guarantee a safe reverse path, or provide combat escape.
+
+The authority policy kills all 51 mutants. Navigator/dependency checks:
+170/170. The independent Unix-socket SDK peer under ASan/UBSan replays the
+actual original frames 18/19/20 against the emitted native controller. It
+requires precisely one forward key pair, one fresh health-loss recheck, one
+500 ms reverse key pair, both stops, a final capture and exit 3. It passes;
+JSONL has one terminal outcome and the observed trigger is retained. This
+is a controlled replay of recorded inputs, not a successful live fire escape.
+Protobuf V2 descriptors compile.
+
+Installed V2 and tested `health-live-01` on clear ground with original local
+Elephant: three admitted forward decisions, arrived at (18717,45627), still
+103 HP, alive/OOC. This qualifies the ordinary V2 path, not the hazard escape.
+The third death's recovery and this trial are retained in passive recordings.
