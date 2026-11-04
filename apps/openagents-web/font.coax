@@ -1,47 +1,47 @@
-// Filament, the stroke font (coax/font.md), stages 1, 2 and the symbols the
-// HUD and decks need: capitals, digits and punctuation. Lowercase letters
-// draw as capitals until stage 3. A glyph is one or a few polylines on a
+// Filament, the stroke font (coax/font.md), stages 1, 2, 6 and the symbols the
+// HUD and decks need: capitals, digits, punctuation and the Latin-1 and
+// Latin Extended-A letters, most of them a base letter and a mark. Lowercase
+// letters draw as capitals until stage 3. Common emoji draw as small pixel
+// pictures in colour, and any other character as a tofu box (U+25A1), never
+// '?'. A glyph is one or a few polylines on a
 // 4 wide, 6 high grid, y up, the baseline at 0, corners clipped at 45°.
 // Points are kept in half units with the baseline at 2 (x * 2, y * 2 + 2),
 // so the half units the rules allow (dots, the slash's foot) and the
 // descenders of , ; _ fit in a u8; FONT_BREAK lifts the pen.
 // The table is sorted by code point: font_find is a binary search.
-// Glyphs: ! " # $ % & ' ( ) * + , - . / 0 1 2 3 4 5 6 7 8 9 : ; < = > ? @ A B C D E F G H I J K L M N O P Q R S T U V W X Y Z [ \ ] ^ _ ` | ~ U+00B7 U+2013 U+2014 U+2018 U+2019 U+201C U+201D U+2022 U+2026 U+20BF U+2192
+// Glyphs: ! " # $ % & ' ( ) * + , - . / 0 1 2 3 4 5 6 7 8 9 : ; < = > ? @ A B C D E F G H I J K L M N O P Q R S T U V W X Y Z [ \ ] ^ _ ` | ~ U+00A1 U+00AB U+00B0 U+00B7 U+00BB U+00BF U+00C6 U+00D7 U+00DE U+00DF U+00F7 U+0132 U+014A U+0152 U+2013 U+2014 U+2018 U+2019 U+201C U+201D U+2022 U+2026 U+20BF U+2192 U+25A1
 
 #load "../../aethyr/render/sans-profile.coax";
 
 FONT_BREAK :: 255;
-FONT_GLYPHS :: 77;
+FONT_GLYPHS :: 91;
 FONT_MAX_POINTS :: 18;   // the most points (breaks included) one glyph has
-FONT_CODES :: [77] u32.[
+FONT_CODES :: [91] u16.[
   33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44,
   45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56,
   57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68,
   69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80,
   81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92,
-  93, 94, 95, 96, 124, 126, 183, 8211, 8212, 8216, 8217, 8220,
-  8221, 8226, 8230, 8383, 8594
+  93, 94, 95, 96, 124, 126, 161, 171, 176, 183, 187, 191,
+  198, 215, 222, 223, 247, 306, 330, 338, 8211, 8212, 8216, 8217,
+  8220, 8221, 8226, 8230, 8383, 8594, 9633
 ];
-FONT_FIRST :: [77] u16.[
+// Glyph k's points are FONT_FIRST[k] up to FONT_FIRST[k + 1].
+FONT_FIRST :: [92] u16.[
   0, 5, 10, 21, 36, 50, 60, 62, 66, 70, 74, 79, 82, 84, 86, 88,
   97, 100, 107, 116, 120, 129, 140, 143, 159, 170, 175, 181, 184, 189, 192, 202,
   215, 223, 235, 243, 250, 257, 263, 273, 281, 283, 288, 296, 299, 304, 308, 317,
   324, 336, 345, 357, 361, 367, 372, 377, 382, 390, 394, 398, 400, 404, 407, 409,
-  411, 413, 417, 419, 421, 423, 425, 427, 432, 437, 439, 447, 465
+  411, 413, 417, 422, 429, 438, 440, 447, 457, 468, 473, 482, 493, 501, 509, 516,
+  528, 530, 532, 534, 536, 541, 546, 548, 556, 574, 579, 584
 ];
-FONT_COUNT :: [77] u8.[
-  5, 5, 11, 15, 14, 10, 2, 4, 4, 4, 5, 3, 2, 2, 2, 9, 3, 7, 9, 4, 9, 11, 3, 16,
-  11, 5, 6, 3, 5, 3, 10, 13, 8, 12, 8, 7, 7, 6, 10, 8, 2, 5, 8, 3, 5, 4, 9, 7,
-  12, 9, 12, 4, 6, 5, 5, 5, 8, 4, 4, 2, 4, 3, 2, 2, 2, 4, 2, 2, 2, 2, 2, 5,
-  5, 2, 8, 18, 5
-];
-FONT_WIDTH :: [77] u8.[
+FONT_WIDTH :: [91] u8.[
   2, 3, 8, 8, 8, 8, 2, 2, 2, 6, 8, 2, 6, 2, 4, 8, 4, 8, 8, 8, 8, 8, 8, 8,
   8, 2, 2, 4, 8, 4, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 0, 8, 8, 8, 8, 8, 8, 8,
-  8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 4, 4, 4, 4, 8, 2, 0, 8, 2, 8, 12, 2, 2, 3,
-  3, 2, 8, 8, 8
+  8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 4, 4, 4, 4, 8, 2, 0, 8, 2, 7, 4, 2, 7, 8,
+  12, 8, 8, 8, 8, 10, 8, 12, 8, 12, 2, 2, 3, 3, 2, 8, 8, 8, 6
 ];   // in half units
-FONT_POINTS :: [940] u8.[
+FONT_POINTS :: [1168] u8.[
   1, 14, 1, 6, 255, 255, 1, 2, 1, 3, 0, 14, 0, 11, 255, 255, 3, 14, 3, 11, 2, 4, 2, 12,
   255, 255, 6, 4, 6, 12, 255, 255, 0, 6, 8, 6, 255, 255, 0, 10, 8, 10, 8, 12, 6, 14, 2, 14,
   0, 12, 0, 10, 2, 8, 6, 8, 8, 6, 8, 4, 6, 2, 2, 2, 0, 4, 255, 255, 4, 15, 4, 1,
@@ -76,20 +76,140 @@ FONT_POINTS :: [940] u8.[
   0, 14, 0, 2, 4, 8, 8, 2, 8, 14, 0, 14, 8, 2, 255, 255, 8, 14, 0, 2, 0, 14, 0, 12,
   4, 8, 4, 2, 255, 255, 8, 14, 8, 12, 4, 8, 0, 14, 8, 14, 0, 2, 8, 2, 4, 14, 0, 14,
   0, 2, 4, 2, 0, 14, 4, 2, 0, 14, 4, 14, 4, 2, 0, 2, 0, 10, 2, 12, 4, 10, 0, 0,
-  8, 0, 0, 14, 2, 12, 0, 15, 0, 1, 0, 8, 2, 10, 6, 6, 8, 8, 1, 8, 1, 9, 0, 8,
-  8, 8, 0, 8, 12, 8, 1, 14, 1, 11, 1, 14, 1, 11, 0, 14, 0, 11, 255, 255, 3, 14, 3, 11,
-  0, 14, 0, 11, 255, 255, 3, 14, 3, 11, 1, 7, 1, 9, 0, 2, 0, 3, 255, 255, 4, 2, 4, 3,
-  255, 255, 8, 2, 8, 3, 0, 2, 0, 14, 6, 14, 8, 12, 8, 10, 6, 8, 0, 8, 6, 8, 8, 6,
-  8, 4, 6, 2, 0, 2, 255, 255, 3, 14, 3, 16, 255, 255, 3, 2, 3, 0, 0, 8, 8, 8, 6, 10,
-  8, 8, 6, 6
+  8, 0, 0, 14, 2, 12, 0, 15, 0, 1, 0, 8, 2, 10, 6, 6, 8, 8, 1, 12, 1, 13, 255, 255,
+  1, 10, 1, 2, 3, 11, 0, 8, 3, 5, 255, 255, 7, 11, 4, 8, 7, 5, 1, 14, 3, 14, 4, 13,
+  4, 11, 3, 10, 1, 10, 0, 11, 0, 13, 1, 14, 1, 8, 1, 9, 0, 11, 3, 8, 0, 5, 255, 255,
+  4, 11, 7, 8, 4, 5, 8, 4, 6, 2, 2, 2, 0, 4, 0, 6, 4, 10, 4, 11, 255, 255, 4, 14,
+  4, 13, 0, 2, 0, 12, 2, 14, 12, 14, 255, 255, 6, 14, 6, 2, 12, 2, 255, 255, 0, 8, 10, 8,
+  1, 11, 7, 5, 255, 255, 1, 5, 7, 11, 0, 14, 0, 2, 255, 255, 0, 11, 6, 11, 8, 9, 8, 7,
+  6, 5, 0, 5, 0, 2, 0, 12, 2, 14, 6, 14, 8, 12, 8, 10, 6, 8, 8, 6, 8, 4, 6, 2,
+  4, 2, 0, 8, 8, 8, 255, 255, 4, 11, 4, 12, 255, 255, 4, 4, 4, 5, 0, 14, 0, 2, 255, 255,
+  10, 14, 10, 4, 8, 2, 4, 2, 2, 4, 0, 2, 0, 14, 6, 14, 8, 12, 8, 2, 6, 0, 4, 0,
+  12, 14, 2, 14, 0, 12, 0, 4, 2, 2, 12, 2, 255, 255, 6, 14, 6, 2, 255, 255, 6, 8, 10, 8,
+  0, 8, 8, 8, 0, 8, 12, 8, 1, 14, 1, 11, 1, 14, 1, 11, 0, 14, 0, 11, 255, 255, 3, 14,
+  3, 11, 0, 14, 0, 11, 255, 255, 3, 14, 3, 11, 1, 7, 1, 9, 0, 2, 0, 3, 255, 255, 4, 2,
+  4, 3, 255, 255, 8, 2, 8, 3, 0, 2, 0, 14, 6, 14, 8, 12, 8, 10, 6, 8, 0, 8, 6, 8,
+  8, 6, 8, 4, 6, 2, 0, 2, 255, 255, 3, 14, 3, 16, 255, 255, 3, 2, 3, 0, 0, 8, 8, 8,
+  6, 10, 8, 8, 6, 6, 0, 2, 6, 2, 6, 14, 0, 14, 0, 2
+];
+// Latin-1 Supplement and Latin Extended-A letters (U+00C0 to U+017F): the
+// glyph each draws as (a capital A to Z; 1 its own glyph; 2 the glyph 32 below
+// it, its capital in Latin-1; 3 the glyph 1 below it, its capital in
+// Extended-A) and the mark drawn with it (0 none, or a row of FONT_MARK_*).
+FONT_ACCENT_FIRST :: 0xC0;
+FONT_ACCENTS :: 192;
+FONT_ACCENT_BASE :: [192] u8.[
+  65, 65, 65, 65, 65, 65, 1, 67, 69, 69, 69, 69, 73, 73, 73, 73,
+  68, 78, 79, 79, 79, 79, 79, 1, 79, 85, 85, 85, 85, 89, 1, 1,
+  65, 65, 65, 65, 65, 65, 2, 67, 69, 69, 69, 69, 73, 73, 73, 73,
+  68, 78, 79, 79, 79, 79, 79, 1, 79, 85, 85, 85, 85, 89, 2, 89,
+  65, 65, 65, 65, 65, 65, 67, 67, 67, 67, 67, 67, 67, 67, 68, 68,
+  68, 68, 69, 69, 69, 69, 69, 69, 69, 69, 69, 69, 71, 71, 71, 71,
+  71, 71, 71, 71, 72, 72, 72, 72, 73, 73, 73, 73, 73, 73, 73, 73,
+  73, 73, 1, 3, 74, 74, 75, 75, 75, 76, 76, 76, 76, 76, 76, 76,
+  76, 76, 76, 78, 78, 78, 78, 78, 78, 78, 1, 3, 79, 79, 79, 79,
+  79, 79, 1, 3, 82, 82, 82, 82, 82, 82, 83, 83, 83, 83, 83, 83,
+  83, 83, 84, 84, 84, 84, 84, 84, 85, 85, 85, 85, 85, 85, 85, 85,
+  85, 85, 85, 85, 87, 87, 89, 89, 89, 90, 90, 90, 90, 90, 90, 83
+];
+FONT_ACCENT_MARK :: [192] u8.[
+  1, 2, 3, 4, 8, 9, 0, 12, 1, 2, 3, 8, 1, 2, 3, 8, 14, 4, 1, 2, 3, 4, 8, 0,
+  17, 1, 2, 3, 8, 2, 0, 0, 1, 2, 3, 4, 8, 9, 0, 12, 1, 2, 3, 8, 1, 2, 3, 8,
+  14, 4, 1, 2, 3, 4, 8, 0, 17, 1, 2, 3, 8, 2, 0, 8, 5, 5, 6, 6, 13, 13, 2, 2,
+  3, 3, 7, 7, 11, 11, 11, 11, 14, 14, 5, 5, 6, 6, 7, 7, 13, 13, 11, 11, 3, 3, 6, 6,
+  7, 7, 12, 12, 3, 3, 15, 15, 4, 4, 5, 5, 6, 6, 13, 13, 7, 0, 0, 0, 3, 3, 12, 12,
+  0, 2, 2, 12, 12, 11, 11, 18, 18, 16, 16, 2, 2, 12, 12, 11, 11, 20, 0, 0, 5, 5, 6, 6,
+  10, 10, 0, 0, 2, 2, 12, 12, 11, 11, 2, 2, 3, 3, 12, 12, 11, 11, 12, 12, 11, 11, 19, 19,
+  4, 4, 5, 5, 6, 6, 9, 9, 10, 10, 13, 13, 3, 3, 3, 3, 8, 2, 2, 7, 7, 11, 11, 0
+];
+// Marks: grave, acute, circumflex, tilde, macron, breve, dot above,
+// diaeresis, ring, double acute, caron, cedilla, ogonek, a bar across a left
+// stem, a bar across the top, a stroke, a slash, a middle dot, a bar across a
+// centre stem, an apostrophe. Points as the glyphs', x + 8 from the anchor:
+// 0 the glyph's centre, 1 its left edge, 2 its right edge.
+FONT_MARKS :: 20;
+FONT_MARK_MAX_POINTS :: 5;
+FONT_MARK_FIRST :: [20] u8.[0, 2, 4, 7, 11, 13, 17, 19, 24, 29, 34, 37, 41, 45, 47, 49, 51, 53, 55, 57];
+FONT_MARK_COUNT :: [20] u8.[2, 2, 3, 4, 2, 4, 2, 5, 5, 5, 3, 4, 4, 2, 2, 2, 2, 2, 2, 2];
+FONT_MARK_ANCHOR :: [20] u8.[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 1, 1, 1, 1, 0, 1];
+FONT_MARK_POINTS :: [118] u8.[
+  7, 17, 9, 15, 7, 15, 9, 17, 6, 15, 8, 17, 10, 15, 5, 15, 7, 17, 9, 15, 11, 17, 6, 16,
+  10, 16, 6, 17, 7, 15, 9, 15, 10, 17, 8, 16, 8, 17, 6, 16, 6, 17, 255, 255, 10, 16, 10, 17,
+  8, 15, 9, 16, 8, 17, 7, 16, 8, 15, 6, 15, 7, 17, 255, 255, 9, 15, 10, 17, 6, 17, 8, 15,
+  10, 17, 8, 2, 9, 1, 8, 0, 7, 0, 8, 2, 7, 1, 8, 0, 9, 0, 6, 8, 12, 8, 6, 11,
+  18, 11, 6, 6, 10, 10, 8, 2, 16, 14, 12, 8, 12, 9, 6, 8, 10, 8, 7, 17, 6, 15
+];
+// Emoji: 62 pictures, 8 by 8 pixels in up to three colours, 72 code
+// points. A code point is kept as its low 16 bits (U+1F600 as 0xF600: the ones
+// from U+1F000 up are all in that plane, and the rest are under U+3000).
+EMOJI_COUNT :: 72;
+EMOJI_ART :: 62;
+EMOJI_SYMMETRIC :: 37;   // pictures 0 to 36 are their own mirror image
+EMOJI_WIDTH :: 14;   // half units, as FONT_WIDTH
+EMOJI_CODES :: [72] u16.[
+  9728, 9760, 9786, 9829, 9876, 9889, 9989, 9995, 9996, 10004, 10006, 10024,
+  10060, 10084, 11088, 62239, 62258, 62330, 62345, 62406, 62473, 62528, 62539, 62541,
+  62542, 62545, 62587, 62592, 62606, 62612, 62613, 62617, 62618, 62619, 62620, 62629,
+  62633, 62639, 62640, 62757, 62864, 62945, 62976, 62977, 62978, 62979, 62980, 62981,
+  62982, 62983, 62984, 62985, 62986, 62989, 62990, 63000, 63003, 63008, 63009, 63010,
+  63021, 63022, 63025, 63028, 63042, 63055, 63201, 63764, 63766, 63779, 63866, 63969
+];
+EMOJI_PICTURE :: [72] u8.[
+  35, 17, 6, 21, 28, 57, 56, 49, 50, 56, 31, 54, 31, 21, 30, 30, 34, 59, 53, 36, 60, 20, 49, 47,
+  48, 33, 18, 16, 32, 45, 46, 22, 23, 24, 25, 61, 44, 55, 58, 51, 49, 52, 0, 1, 2, 3, 3, 37,
+  3, 4, 5, 38, 6, 7, 8, 39, 9, 10, 10, 40, 11, 12, 13, 41, 14, 27, 29, 42, 19, 15, 43, 26
+];
+// The colours a picture names (1 to 14), red, green and blue.
+EMOJI_PALETTE :: [42] u8.[
+  255, 204, 51, 255, 128, 26, 242, 46, 38, 255, 128, 178, 76, 148, 255, 140, 217, 255, 76, 209, 76, 26, 128, 56,
+  173, 102, 255, 255, 255, 255, 168, 178, 194, 158, 97, 46, 76, 43, 15, 217, 148, 26
+];
+// A picture: two bytes naming its colours 1, 2 and 3 (4 bits each, colour 1 in
+// the low bits), then its rows top down, 2 bits a pixel (0 clear), the left
+// pixel in the low bits: 8 bytes for a symmetric picture (columns 0 to 3),
+// then 16 for each other one.
+EMOJI_PIXELS :: [820] u8.[
+  161, 13, 80, 84, 117, 117, 85, 173, 244, 80, 161, 13, 80, 116, 221, 85, 253, 173, 244, 80, 97, 13, 80, 84, 125, 90, 254, 253, 244, 80,
+  49, 13, 80, 116, 221, 85, 253, 173, 244, 80, 97, 13, 168, 80, 84, 117, 85, 93, 244, 80, 217, 0, 81, 85, 89, 101, 85, 89, 164, 80,
+  65, 13, 80, 84, 125, 85, 90, 93, 244, 80, 49, 13, 80, 84, 102, 106, 89, 253, 244, 80, 209, 0, 80, 84, 170, 105, 85, 89, 164, 80,
+  49, 13, 80, 84, 117, 117, 85, 253, 148, 128, 211, 0, 80, 84, 89, 101, 85, 165, 100, 80, 97, 13, 80, 84, 125, 89, 249, 121, 248, 80,
+  209, 0, 80, 84, 101, 101, 85, 149, 148, 80, 97, 13, 160, 168, 117, 117, 85, 213, 213, 84, 209, 0, 80, 84, 101, 101, 85, 89, 164, 80,
+  97, 13, 82, 86, 125, 85, 253, 253, 244, 80, 218, 0, 80, 84, 105, 105, 149, 84, 100, 80, 218, 0, 80, 100, 84, 144, 1, 20, 64, 21,
+  218, 0, 80, 84, 101, 101, 85, 149, 85, 69, 181, 0, 64, 128, 170, 150, 170, 90, 170, 8, 218, 0, 0, 20, 85, 105, 105, 85, 20, 0,
+  3, 0, 0, 20, 85, 85, 85, 84, 80, 64, 5, 0, 0, 20, 85, 85, 85, 84, 80, 64, 7, 0, 0, 20, 85, 85, 85, 84, 80, 64,
+  1, 0, 0, 20, 85, 85, 85, 84, 80, 64, 9, 0, 0, 20, 85, 85, 85, 84, 80, 64, 2, 0, 0, 20, 85, 85, 85, 84, 80, 64,
+  81, 0, 64, 80, 80, 84, 84, 85, 90, 10, 203, 14, 1, 4, 16, 64, 16, 60, 8, 2, 165, 11, 255, 87, 151, 167, 151, 92, 112, 192,
+  1, 0, 64, 64, 85, 84, 80, 84, 20, 5, 3, 0, 5, 21, 84, 80, 80, 84, 21, 5, 101, 10, 0, 184, 170, 169, 164, 144, 64, 0,
+  49, 14, 0, 65, 69, 85, 89, 85, 255, 0, 135, 12, 64, 80, 88, 80, 88, 85, 192, 192, 33, 0, 130, 8, 80, 86, 86, 80, 8, 130,
+  225, 0, 84, 85, 81, 84, 80, 64, 80, 168, 97, 13, 80, 37, 84, 165, 117, 93, 117, 93, 85, 85, 253, 127, 244, 31, 80, 5, 209, 0,
+  80, 5, 84, 21, 101, 85, 101, 90, 85, 85, 89, 101, 164, 26, 80, 5, 49, 13, 80, 5, 84, 21, 117, 125, 117, 85, 213, 153, 85, 171,
+  212, 37, 80, 5, 97, 13, 80, 5, 84, 21, 125, 125, 85, 101, 85, 101, 245, 95, 92, 53, 80, 5, 161, 13, 80, 169, 84, 37, 85, 169,
+  125, 95, 85, 85, 213, 87, 212, 23, 80, 5, 209, 14, 80, 5, 100, 25, 85, 85, 101, 89, 85, 85, 149, 90, 124, 21, 255, 5, 161, 13,
+  80, 5, 92, 53, 121, 121, 125, 125, 85, 85, 213, 87, 84, 21, 80, 5, 202, 13, 128, 0, 160, 2, 168, 10, 152, 38, 186, 174, 170, 170,
+  250, 175, 168, 42, 3, 0, 0, 0, 20, 20, 85, 84, 21, 85, 85, 84, 20, 21, 80, 4, 64, 0, 4, 0, 69, 1, 85, 1, 84, 0,
+  16, 0, 0, 17, 0, 21, 0, 4, 0, 0, 81, 14, 64, 1, 64, 1, 80, 1, 90, 85, 90, 245, 90, 85, 90, 245, 74, 21, 81, 14,
+  74, 21, 90, 245, 90, 85, 90, 245, 90, 85, 80, 1, 64, 1, 64, 1, 1, 0, 16, 1, 17, 17, 81, 21, 85, 21, 85, 21, 84, 21,
+  80, 5, 80, 5, 1, 0, 1, 4, 5, 5, 20, 1, 84, 1, 85, 5, 85, 5, 84, 1, 84, 1, 33, 3, 0, 3, 192, 3, 240, 51,
+  188, 62, 172, 62, 111, 249, 108, 57, 240, 15, 203, 14, 0, 64, 0, 16, 0, 4, 0, 1, 76, 0, 48, 0, 200, 0, 2, 0, 33, 4,
+  16, 76, 12, 1, 0, 49, 64, 14, 160, 1, 152, 50, 168, 0, 2, 0, 161, 0, 64, 0, 80, 33, 85, 169, 80, 33, 64, 0, 0, 16,
+  8, 84, 0, 16, 3, 0, 0, 0, 81, 85, 17, 69, 17, 69, 81, 85, 0, 0, 85, 85, 84, 21, 167, 0, 84, 21, 85, 101, 85, 105,
+  89, 90, 169, 86, 165, 85, 85, 85, 84, 21, 1, 0, 0, 21, 64, 5, 80, 1, 84, 21, 64, 5, 80, 1, 84, 0, 4, 0, 202, 14,
+  32, 8, 128, 2, 240, 15, 124, 61, 223, 255, 127, 253, 255, 247, 124, 61, 33, 10, 252, 3, 255, 15, 86, 169, 86, 137, 86, 137, 86, 169,
+  86, 9, 168, 2, 135, 13, 0, 20, 0, 117, 0, 85, 65, 5, 85, 5, 84, 21, 80, 86, 16, 16, 33, 3, 131, 48, 140, 12, 96, 2,
+  90, 41, 96, 2, 140, 12, 131, 48, 0, 0
 ];
 
 // A code point and how many bytes of UTF-8 it took.
 Rune :: struct { code: u32; len: int; }
 
-// The code point at byte i of UTF-8 text. A malformed byte reads as one '?'.
+FONT_BAD :: 0xFFFD;    // what a malformed byte reads as
+FONT_TOFU :: 0x25A1;   // the box a character with no glyph draws as
+
+// The code point at byte i of UTF-8 text. A malformed byte (a stray
+// continuation byte, a cut-off sequence, an overlong form, a surrogate or a
+// code past U+10FFFF) reads as one U+FFFD.
 decode :: (text: string, i: int) -> Rune {
-  bad := Rune.{code = '?', len = 1};
+  bad := Rune.{code = FONT_BAD, len = 1};
   if i < 0 || i >= text.count { return bad; }
   b := cast(u32) text[i];
   if b < 0x80 { return Rune.{code = b, len = 1}; }
@@ -104,6 +224,8 @@ decode :: (text: string, i: int) -> Rune {
     if (x & 0xC0) != 0x80 { return bad; }
     c = (c << 6) | (x & 63);
   }
+  if (n == 2 && c < 0x80) || (n == 3 && c < 0x800) || (n == 4 && c < 0x10000) { return bad; }
+  if c > 0x10FFFF || (c >= 0xD800 && c <= 0xDFFF) { return bad; }
   return Rune.{code = c, len = n};
 }
 
@@ -119,41 +241,131 @@ encode :: (c: u32, out: [] u8, at: int) -> int {
   return n;
 }
 
+// Whether code point c draws nothing and takes no room: the zero-width
+// space, joiners and direction marks, the word joiner, the byte order mark,
+// variation selectors, tags and combining marks.
+font_invisible :: (c: u32) -> bool {
+  if c < 0x300 { return false; }
+  return (c >= 0x200B && c <= 0x200F) || c == 0x2060 || c == 0xFEFF || (c >= 0xFE00 && c <= 0xFE0F) ||
+         (c >= 0xE0000 && c <= 0xE007F) || (c >= 0x300 && c <= 0x36F);
+}
+
+// Whether code point c goes with the character before it: a variation
+// selector, a skin tone, a combining mark, the keycap or a tag.
+font_rider :: (c: u32) -> bool {
+  return (c >= 0xFE00 && c <= 0xFE0F) || (c >= 0x1F3FB && c <= 0x1F3FF) || (c >= 0x300 && c <= 0x36F) ||
+         c == 0x20E3 || (c >= 0xE0020 && c <= 0xE007F);
+}
+
+// The character at byte i as one glyph draws it: its first code point, and
+// the bytes of it and all that goes with it. A ZWJ sequence (a family, a
+// profession) is its first emoji, a skin tone, a variation selector, a
+// keycap or a combining mark goes with the character before it, and two
+// regional indicators (a flag) are one character.
+cluster :: (text: string, i: int) -> Rune {
+  // ASCII with ASCII after it, most text: nothing goes with it
+  if i >= 0 && i < text.count && text[i] < 0x80 && (i + 1 >= text.count || text[i + 1] < 0x80) {
+    return Rune.{code = cast(u32) text[i], len = 1};
+  }
+  // one decode, so one copy of it: the first code point, then each one that may go with it
+  at := i; base: u32 = 0; join := false; flag := false;
+  while at < text.count {
+    r := decode(text, at);
+    if at == i {
+      if r.code == FONT_BAD { return r; }
+      base = r.code; flag = base >= 0x1F1E6 && base <= 0x1F1FF;
+    } else if join {
+      if r.code == FONT_BAD || r.code <= 32 { break; }   // a joiner joins the code point after it
+      join = false;
+    } else if flag && r.code >= 0x1F1E6 && r.code <= 0x1F1FF {
+      flag = false;
+    } else if r.code == 0x200D {
+      join = true; flag = false;
+    } else if font_rider(r.code) {
+      flag = false;
+    } else { break; }
+    at += r.len;
+  }
+  if at == i { return decode(text, i); }
+  return Rune.{code = base, len = at - i};
+}
+
 // The larger and the smaller of two, kept here so that font.coax needs only
 // lit from the program that loads it.
 font_hi :: (a: f32, b: f32) -> f32 { return ifx a > b then a else b; }
 font_lo :: (a: f32, b: f32) -> f32 { return ifx a < b then a else b; }
 
-// The glyph a code point draws as: lowercase as capitals (until stage 3),
-// Latin-1 accented letters as their base letter, a no-break space as a space.
+// The glyph a code point draws as: lowercase as capitals (until stage 3), a
+// Latin-1 or Latin Extended-A letter as its base letter (font_mark gives the
+// mark that goes on it) or its own glyph, a no-break space as a space, and a
+// malformed byte as the tofu box.
 font_fold :: (code: u32) -> u32 {
   c := code;
   if c >= 'a' && c <= 'z' { return c - 32; }
-  if c >= 0xE0 && c <= 0xFE && c != 0xF7 { c -= 32; }
-  if c >= 0xC0 && c <= 0xC5 { return 'A'; }
-  if c == 0xC7 { return 'C'; }
-  if c >= 0xC8 && c <= 0xCB { return 'E'; }
-  if c >= 0xCC && c <= 0xCF { return 'I'; }
-  if c == 0xD1 { return 'N'; }
-  if (c >= 0xD2 && c <= 0xD6) || c == 0xD8 { return 'O'; }
-  if c >= 0xD9 && c <= 0xDC { return 'U'; }
-  if c == 0xDD { return 'Y'; }
   if c == 0xA0 || c == '\t' { return ' '; }
+  if c >= FONT_ACCENT_FIRST && c < FONT_ACCENT_FIRST + FONT_ACCENTS {
+    b := cast(u32) FONT_ACCENT_BASE[cast(int) (c - FONT_ACCENT_FIRST)];
+    if b == 1 { return c; }
+    if b == 2 { return c - 32; }
+    if b == 3 { return c - 1; }
+    return b;
+  }
+  if c == FONT_BAD { return FONT_TOFU; }
   return c;
 }
 
-// The table row for code point c (folded), or the row for '?' when the
+// The mark drawn on code point c's base letter: 0 for none, else its row in
+// FONT_MARK_* plus 1.
+font_mark :: (code: u32) -> int {
+  if code < FONT_ACCENT_FIRST || code >= FONT_ACCENT_FIRST + FONT_ACCENTS { return 0; }
+  return cast(int) FONT_ACCENT_MARK[cast(int) (code - FONT_ACCENT_FIRST)];
+}
+
+// The table row for code point c (folded), or the tofu box's row when the
 // font has no such glyph.
 font_find :: (code: u32) -> int {
   c := font_fold(code);
   low := 0; high := FONT_GLYPHS - 1;
   while low <= high {
     mid := (low + high) / 2;
-    if FONT_CODES[mid] == c { return mid; }
-    if FONT_CODES[mid] < c { low = mid + 1; } else { high = mid - 1; }
+    k := cast(u32) FONT_CODES[mid];
+    if k == c { return mid; }
+    if k < c { low = mid + 1; } else { high = mid - 1; }
   }
-  if c == '?' { return -1; }
-  return font_find('?');
+  if c == FONT_TOFU { return -1; }
+  return font_find(FONT_TOFU);
+}
+
+// The emoji picture code point c draws as, or -1.
+emoji_find :: (code: u32) -> int {
+  key: u32 = 0;
+  if code >= 0x1F000 && code < 0x20000 { key = code - 0x10000; }
+  else if code >= 0x2000 && code < 0x3000 { key = code; }
+  else { return -1; }
+  low := 0; high := EMOJI_COUNT - 1;
+  while low <= high {
+    mid := (low + high) / 2;
+    k := cast(u32) EMOJI_CODES[mid];
+    if k == key { return cast(int) EMOJI_PICTURE[mid]; }
+    if k < key { low = mid + 1; } else { high = mid - 1; }
+  }
+  return -1;
+}
+
+// Pixel (row r, column c) of emoji picture e: 0 clear, else its palette colour plus 1.
+emoji_pixel :: (e: int, r: int, c: int) -> int {
+  at := 0; v := 0;
+  if e < EMOJI_SYMMETRIC {
+    at = e * 10;
+    m := ifx c < 4 then c else 7 - c;
+    v = (cast(int) EMOJI_PIXELS[at + 2 + r] >> (m * 2)) & 3;
+  } else {
+    at = EMOJI_SYMMETRIC * 10 + (e - EMOJI_SYMMETRIC) * 18;
+    v = (cast(int) EMOJI_PIXELS[at + 2 + r * 2 + c / 4] >> ((c & 3) * 2)) & 3;
+  }
+  if v == 0 { return 0; }
+  names := cast(int) EMOJI_PIXELS[at] | (cast(int) EMOJI_PIXELS[at + 1] << 8);
+  return (names >> ((v - 1) * 4)) & 15;
 }
 
 // A glyph's points: x * 2, y * 2 + 2, FONT_BREAK between strokes. Writes
@@ -161,13 +373,18 @@ font_find :: (code: u32) -> int {
 glyph :: (code: u32, out: [] u8) -> int {
   k := font_find(code);
   if k < 0 || out.count < FONT_MAX_POINTS * 2 { return 0; }
-  first := cast(int) FONT_FIRST[k]; n := cast(int) FONT_COUNT[k];
+  first := cast(int) FONT_FIRST[k]; n := cast(int) FONT_FIRST[k + 1] - first;
   for p: 0..<n * 2 { out[p] = FONT_POINTS[first * 2 + p]; }
   return n;
 }
 
-// A glyph's width in cap heights (I is a single line: 0).
+// A glyph's width in cap heights (I is a single line: 0; an emoji is wider
+// than a letter; a character that draws nothing is 0).
 glyph_width :: (code: u32) -> f32 {
+  if code >= 0x300 {
+    if emoji_find(code) >= 0 { return cast(f32) EMOJI_WIDTH / 12; }
+    if font_invisible(code) { return 0; }
+  }
   k := font_find(code);
   if k < 0 { return 0; }
   return cast(f32) FONT_WIDTH[k] / 12;
@@ -193,10 +410,10 @@ measure :: (text: string, gap: f32, space: f32, rich: bool) -> f32 {
   w := 0.0f32; i := 0; after := false;
   while i < text.count {
     if rich && bold_mark(text, i) { i += 2; continue; }
-    d := decode(text, i); i += d.len;
+    d := cluster(text, i); i += d.len;
     c := font_fold(d.code);
     if c == ' ' { w += space; after = false; continue; }
-    if c < 32 { continue; }
+    if c < 32 || font_invisible(c) { continue; }
     if after { w += gap; }
     w += glyph_width(c);
     after = true;
@@ -216,44 +433,105 @@ SMALL_TEXT :: 12.0;
 // A device-pixel centre: where a small stroke's end goes.
 pixel_centre :: (x: f32) -> f32 { return floor(x) + 0.5; }
 
+// A glyph's or a mark's n points (pts, as FONT_POINTS keeps them) as strokes,
+// dx half units right of pen on baseline base, unit device pixels a half
+// unit, in ink k (its core, light, glow and colour as drawn), from vertex at.
+// Small text's ends land on device-pixel centres. Returns the vertex count.
+font_strokes :: (out: [] f32, at: int, pts: [] u8, n: int, pen: f32, dx: f32, base: f32, unit: f32, small: bool, k: Ink) -> int {
+  v := at;
+  for p: 1..<n {
+    if pts[(p - 1) * 2] == FONT_BREAK || pts[p * 2] == FONT_BREAK { continue; }
+    ax := pen + (cast(f32) pts[(p - 1) * 2] + dx) * unit;
+    ay := base - (cast(f32) pts[(p - 1) * 2 + 1] - 2) * unit;
+    bx := pen + (cast(f32) pts[p * 2] + dx) * unit;
+    by := base - (cast(f32) pts[p * 2 + 1] - 2) * unit;
+    if small {
+      ax = pixel_centre(ax); ay = pixel_centre(ay); bx = pixel_centre(bx); by = pixel_centre(by);
+      // a dot (. : ! ; ·) shorter than a pixel would snap to nothing: keep it a pixel tall
+      if ax == bx && ay == by { by = ay - 1; }
+    }
+    if lit(out, v, ax, ay, bx, by, k.core, k.light, k.glow, k.red, k.green, k.blue, k.mode) { v += 6; }
+  }
+  return v;
+}
+
+// Draws emoji picture e in its box, the box's left end at x on baseline base,
+// beside capitals cap pixels tall, from vertex at. A pixel is h device pixels
+// square (h whole, about an eighth of 1.1 caps), and each run of one colour in
+// a row is one stroke whose edges lie on device-pixel edges, so no colour
+// bleeds into the next pixel. The ink gives its brightness and shader mode,
+// not its colour. Returns the vertex count.
+draw_emoji :: (out: [] f32, at: int, e: int, x: f32, base: f32, cap: f32, k: Ink) -> int {
+  h := floor(cap * 1.1 / 8 + 0.5);
+  if h < 1 { h = 1; }
+  side := 8 * h;
+  x0 := floor(x + (cap * cast(f32) EMOJI_WIDTH / 12 - side) / 2 + 0.5);
+  y0 := floor(base - cap * 0.5 - side / 2 + 0.5);
+  core := h / 2 - 0.05;
+  light := font_lo(k.light, 1) * 0.78;   // the stroke shader adds a halo of about 0.28 at a stroke's centre
+  v := at;
+  for r: 0..<8 {
+    y := y0 + cast(f32) r * h + h / 2;
+    c := 0;
+    while c < 8 {
+      p := emoji_pixel(e, r, c);
+      if p == 0 { c += 1; continue; }
+      s := c;
+      while c < 8 && emoji_pixel(e, r, c) == p { c += 1; }
+      ax := x0 + cast(f32) s * h + h / 2;
+      bx := x0 + cast(f32) c * h - h / 2;
+      if bx <= ax { bx = ax + 0.01; }
+      o := (p - 1) * 3;
+      red := cast(f32) EMOJI_PALETTE[o] / 255; green := cast(f32) EMOJI_PALETTE[o + 1] / 255; blue := cast(f32) EMOJI_PALETTE[o + 2] / 255;
+      if lit(out, v, ax, y, bx, y, core, light, 0, red, green, blue, k.mode) { v += 6; }
+    }
+  }
+  return v;
+}
+
 // Draws text with the left end of its baseline at x, base (device pixels,
 // y down) and capitals cap pixels tall, from vertex at. Rich text draws
 // "**"-marked runs bold (brighter, thicker, white), starting bold if bold.
+// An accented letter draws its base letter and its mark, an emoji its
+// picture in colour, and a character the font lacks the tofu box.
 // Returns the new vertex count; text that runs out of room stops drawing.
 draw_text :: (out: [] f32, at: int, text: string, x: f32, base: f32, cap: f32, gap: f32, space: f32,
               k: Ink, rich: bool, bold: bool) -> int {
   if uses_sans(k, cap) { return draw_sans(out, at, text, x, base, cap, k); }
   points: [FONT_MAX_POINTS * 2] u8;
   unit := cap / 12;              // device pixels per half unit
+  small := k.scale > 0 && cap < SMALL_TEXT * k.scale;
   vertices := at; i := 0; after := false; strong := bold; pen := x;
   while i < text.count {
     if rich && bold_mark(text, i) { strong = !strong; i += 2; continue; }
-    d := decode(text, i); i += d.len;
+    d := cluster(text, i); i += d.len;
     c := font_fold(d.code);
     if c == ' ' { pen += space * cap; after = false; continue; }
-    if c < 32 { continue; }
+    if c < 32 || font_invisible(c) { continue; }
     if after { pen += gap * cap; }
+    e := emoji_find(c);
+    if e >= 0 {
+      vertices = draw_emoji(out, vertices, e, pen, base, cap, k);
+      pen += glyph_width(c) * cap;
+      after = true;
+      continue;
+    }
     n := glyph(c, points[..]);
-    small := k.scale > 0 && cap < SMALL_TEXT * k.scale;
-    core := ifx strong then k.core * 1.5 else k.core;
-    glow := k.glow;
-    light := ifx strong then font_hi(k.light, font_lo(1, k.light * 1.35)) else k.light;
-    if small { core = ifx strong then 0.85f32 else 0.6f32; glow = 1; light = font_lo(1, light * 1.2); }
-    red := ifx strong then 1.0f32 else k.red;
-    green := ifx strong then 1.0f32 else k.green;
-    blue := ifx strong then 1.0f32 else k.blue;
-    for p: 1..<n {
-      if points[(p - 1) * 2] == FONT_BREAK || points[p * 2] == FONT_BREAK { continue; }
-      ax := pen + cast(f32) points[(p - 1) * 2] * unit;
-      ay := base - (cast(f32) points[(p - 1) * 2 + 1] - 2) * unit;
-      bx := pen + cast(f32) points[p * 2] * unit;
-      by := base - (cast(f32) points[p * 2 + 1] - 2) * unit;
-      if small {
-        ax = pixel_centre(ax); ay = pixel_centre(ay); bx = pixel_centre(bx); by = pixel_centre(by);
-        // a dot (. : ! ; ·) shorter than a pixel would snap to nothing: keep it a pixel tall
-        if ax == bx && ay == by { by = ay - 1; }
-      }
-      if lit(out, vertices, ax, ay, bx, by, core, light, glow, red, green, blue, k.mode) { vertices += 6; }
+    d_ink := k;
+    d_ink.core = ifx strong then k.core * 1.5 else k.core;
+    d_ink.light = ifx strong then font_hi(k.light, font_lo(1, k.light * 1.35)) else k.light;
+    if small { d_ink.core = ifx strong then 0.85f32 else 0.6f32; d_ink.glow = 1; d_ink.light = font_lo(1, d_ink.light * 1.2); }
+    if strong { d_ink.red = 1; d_ink.green = 1; d_ink.blue = 1; }
+    vertices = font_strokes(out, vertices, points[..], n, pen, 0, base, unit, small, d_ink);
+    m := font_mark(d.code) - 1;
+    if m >= 0 {
+      // the mark's anchor in half units: the glyph's centre, left edge or right edge
+      w := cast(f32) FONT_WIDTH[font_find(c)];
+      anchor := FONT_MARK_ANCHOR[m];
+      ox := (ifx anchor == 0 then w / 2 else ifx anchor == 1 then 0.0f32 else w) - 8;
+      first := cast(int) FONT_MARK_FIRST[m]; mn := cast(int) FONT_MARK_COUNT[m];
+      for q: 0..<mn * 2 { points[q] = FONT_MARK_POINTS[first * 2 + q]; }   // FONT_MAX_POINTS > FONT_MARK_MAX_POINTS
+      vertices = font_strokes(out, vertices, points[..], mn, pen, ox, base, unit, small, d_ink);
     }
     pen += glyph_width(c) * cap;
     after = true;
@@ -280,7 +558,7 @@ wrap :: (text: string, from: int, width: f32, gap: f32, space: f32, rich: bool, 
       // one long word: as many letters as fit
       k := i; fit := k;
       while k < j {
-        d := decode(text, k);
+        d := cluster(text, k);
         if measure(text[i..<k + d.len], gap, space, rich) > width && fit > i { break; }
         k += d.len; fit = k;
       }
@@ -296,7 +574,7 @@ wrap :: (text: string, from: int, width: f32, gap: f32, space: f32, rich: bool, 
 #test "every glyph is on the grid, inside its width, and the table is sorted" {
   for k: 0..<FONT_GLYPHS {
     if k > 0 { #assert FONT_CODES[k - 1] < FONT_CODES[k]; }
-    first := cast(int) FONT_FIRST[k]; n := cast(int) FONT_COUNT[k];
+    first := cast(int) FONT_FIRST[k]; n := cast(int) FONT_FIRST[k + 1] - first;
     #assert n >= 2 && n <= FONT_MAX_POINTS;
     #assert FONT_POINTS[first * 2] != FONT_BREAK && FONT_POINTS[(first + n - 1) * 2] != FONT_BREAK;
     for p: 0..<n {
@@ -318,22 +596,154 @@ wrap :: (text: string, from: int, width: f32, gap: f32, space: f32, rich: bool, 
   while i < need.count {
     d := decode(need[..], i); i += d.len;
     k := font_find(d.code);
-    #assert k >= 0 && FONT_CODES[k] == d.code;
+    #assert k >= 0 && cast(u32) FONT_CODES[k] == d.code;
   }
   #assert FONT_CODES[font_find('q')] == 'Q' && FONT_CODES[font_find(0xE9)] == 'E';
-  #assert FONT_CODES[font_find(0x4E2D)] == '?';
+  #assert FONT_CODES[font_find(0x4E2D)] == FONT_TOFU && FONT_CODES[font_find(0x1F680)] == FONT_TOFU;
 }
 
-#test "UTF-8 goes both ways, and bad bytes read as '?'" {
+#test "UTF-8 goes both ways, and bad bytes read as U+FFFD" {
   buf: [8] u8;
-  for c: [5] u32.[65, 0xB7, 0x2026, 0x1F600, 0x7FF] {
+  for c: [6] u32.[65, 0xB7, 0xE9, 0x2026, 0x1F600, 0x7FF] {
     n := encode(c, buf[..], 0);
     d := decode(cast(string) buf[0..<n], 0);
     #assert d.code == c && d.len == n;
   }
-  bad := [2] u8.[0xE2, 0x41];
-  #assert decode(cast(string) bad[..], 0).code == '?' && decode(cast(string) bad[..], 0).len == 1;
   #assert encode(0x2026, buf[..], 6) == 0;
+  // a lead byte without its continuation, a stray continuation, a cut-off emoji, overlong forms,
+  // a surrogate, a code past U+10FFFF and a byte no UTF-8 uses
+  bad := [24] u8.[0xE2, 0x41, 0x80, 0xF0, 0x9F, 0x98, 0xC0, 0x80, 0xE0, 0x80, 0x80, 0xED, 0xA0, 0x80,
+                  0xF4, 0x90, 0x80, 0x80, 0xFF, 0xF8, 0x88, 0x80, 0x80, 0x80];
+  text := cast(string) bad[..];
+  for at: [9] int.[0, 2, 3, 6, 8, 11, 14, 18, 19] {
+    d := decode(text, at);
+    #assert d.code == FONT_BAD && d.len == 1;
+  }
+  #assert decode(text, 1).code == 'A';
+  // a bad byte draws the tofu box, never '?'
+  #assert FONT_CODES[font_find(decode(text, 0).code)] == FONT_TOFU;
+}
+
+#test "a character is its first code point and what goes with it" {
+  // a thumbs up with a skin tone: the thumbs up, 8 bytes
+  d := cluster("👍🏽!", 0);
+  #assert d.code == 0x1F44D && d.len == 8;
+  // a heart with its emoji selector
+  d = cluster("❤️", 0);
+  #assert d.code == 0x2764 && d.len == 6;
+  // a family: man, ZWJ, woman, ZWJ, girl
+  family := "👨‍👩‍👧";
+  d = cluster(family, 0);
+  #assert d.code == 0x1F468 && d.len == family.count && family.count == 18;
+  // a woman with a skin tone, ZWJ, a sword (a dark-skinned swordswoman reads as her first emoji)
+  d = cluster("👩🏿‍⚔️x", 0);
+  #assert d.code == 0x1F469 && d.len == 17;
+  // a flag is two regional indicators
+  d = cluster("🇺🇸", 0);
+  #assert d.code == 0x1F1FA && d.len == 8;
+  // a keycap and a combining accent ride on their letter
+  d = cluster("1️⃣", 0);
+  #assert d.code == '1' && d.len == 7;
+  d = cluster("é", 0);
+  #assert d.code == 'e' && d.len == 3;
+  // a joiner at the end, and plain text
+  d = cluster("🔥‍", 0);
+  #assert d.code == 0x1F525 && d.len == 7;
+  #assert cluster("AB", 0).len == 1 && cluster("été", 0).len == 2;
+  // a malformed byte is one character of its own
+  cut := [3] u8.[0xF0, 0x9F, 0x98];
+  #assert cluster(cast(string) cut[..], 0).len == 1;
+  // the extras take no room: a family measures as one emoji, a toned thumb as a plain one
+  #assert measure(family, 0.5, 1, false) == measure("👨", 0.5, 1, false);
+  #assert measure("👍🏽", 0.5, 1, false) == glyph_width(0x1F44D);
+}
+
+#test "Latin-1 and Latin Extended-A letters draw as a base letter and a mark" {
+  #assert font_fold(0xE9) == 'E' && font_mark(0xE9) == 2;       // é: E, acute
+  #assert font_fold(0xF1) == 'N' && font_mark(0xF1) == 4;       // ñ: N, tilde
+  #assert font_fold(0xFC) == 'U' && font_mark(0xFC) == 8;       // ü: U, diaeresis
+  #assert font_fold(0xE7) == 'C' && font_mark(0xE7) == 12;      // ç: C, cedilla
+  #assert font_fold(0xF8) == 'O' && font_mark(0xF8) == 17;      // ø: O, slash
+  #assert font_fold(0xC5) == 'A' && font_mark(0xC5) == 9;       // Å: A, ring
+  #assert font_fold(0x161) == 'S' && font_mark(0x161) == 11;    // š: S, caron
+  #assert font_fold(0x105) == 'A' && font_mark(0x105) == 13;    // ą: A, ogonek
+  #assert font_fold(0x142) == 'L' && font_mark(0x142) == 16;    // ł: L, stroke
+  #assert font_fold(0x151) == 'O' && font_mark(0x151) == 10;    // ő: O, double acute
+  #assert font_fold(0x131) == 'I' && font_mark(0x131) == 0;     // ı: I
+  // the ones with their own glyph: ß, Æ æ, Þ þ, Œ œ, Ĳ ĳ, Ŋ ŋ
+  for c: [11] u32.[0xDF, 0xC6, 0xE6, 0xDE, 0xFE, 0x152, 0x153, 0x132, 0x133, 0x14A, 0x14B] {
+    #assert FONT_CODES[font_find(c)] != FONT_TOFU && font_mark(c) == 0;
+  }
+  #assert FONT_CODES[font_find(0xE6)] == 0xC6 && FONT_CODES[font_find(0x153)] == 0x152;
+  // every letter in both blocks has a glyph, and every mark is a real one
+  for c: 0xC0..<0x180 {
+    #assert FONT_CODES[font_find(cast(u32) c)] != FONT_TOFU;
+    #assert font_mark(cast(u32) c) >= 0 && font_mark(cast(u32) c) <= FONT_MARKS;
+  }
+  #assert FONT_MARK_MAX_POINTS <= FONT_MAX_POINTS;   // draw_text copies a mark into a glyph's buffer
+  for m: 0..<FONT_MARKS {
+    first := cast(int) FONT_MARK_FIRST[m]; n := cast(int) FONT_MARK_COUNT[m];
+    #assert n >= 2 && n <= FONT_MARK_MAX_POINTS && FONT_MARK_ANCHOR[m] <= 2;
+    #assert FONT_MARK_POINTS[first * 2] != FONT_BREAK && FONT_MARK_POINTS[(first + n - 1) * 2] != FONT_BREAK;
+  }
+  // an accented letter is as wide as its letter, and draws its letter's strokes and its mark's
+  out: [600 * VERTEX_FLOATS] f32;
+  k := Ink.{core = 1, light = 0.8, glow = 1, red = 1, green = 1, blue = 1, mode = 0};
+  #assert measure("é", 0.5, 1, false) == measure("E", 0.5, 1, false);
+  #assert draw_text(out[..], 0, "é", 10, 40, 24, 0.5, 1, k, false, false) == draw_text(out[..], 0, "E", 10, 40, 24, 0.5, 1, k, false, false) + 6;
+  #assert draw_text(out[..], 0, "ü", 10, 40, 24, 0.5, 1, k, false, false) == draw_text(out[..], 0, "U", 10, 40, 24, 0.5, 1, k, false, false) + 12;
+  // the acute sits above the capital, over the letter's middle
+  e := draw_text(out[..], 0, "E", 10, 40, 24, 0.5, 1, k, false, false);
+  #assert draw_text(out[..], 0, "é", 10, 40, 24, 0.5, 1, k, false, false) == e + 6;
+  #assert out[e * VERTEX_FLOATS + 1] < 40 - 24;   // its stroke starts above the cap line (y down)
+}
+
+#test "common emoji draw in colour, and anything else as the tofu box" {
+  for q: 0..<EMOJI_COUNT {
+    if q > 0 { #assert EMOJI_CODES[q - 1] < EMOJI_CODES[q]; }
+    #assert cast(int) EMOJI_PICTURE[q] < EMOJI_ART;
+  }
+  for e: 0..<EMOJI_ART {
+    any := false;
+    for r: 0..<8 { for c: 0..<8 { p := emoji_pixel(e, r, c); #assert p * 3 <= EMOJI_PALETTE.count; if p > 0 { any = true; } } }
+    #assert any;
+  }
+  // faces, hearts, thumbs, fire, swords, skulls, party
+  for c: [12] u32.[0x1F600, 0x1F602, 0x1F60D, 0x2764, 0x1F499, 0x1F44D, 0x1F44E, 0x1F525, 0x2694, 0x1F480, 0x2620, 0x1F389] {
+    #assert emoji_find(c) >= 0 && glyph_width(c) == cast(f32) EMOJI_WIDTH / 12;
+  }
+  #assert emoji_find(0x1F680) < 0 && emoji_find(0x2013) < 0 && emoji_find('A') < 0 && emoji_find(0xF600) < 0;
+  #assert emoji_find(0x2665) == emoji_find(0x2764);   // a suit heart is the red heart
+  out: [2000 * VERTEX_FLOATS] f32;
+  k := Ink.{core = 0.55, light = 0.85, glow = 1.2, red = 1, green = 0.9, blue = 0.7, mode = 0, scale = 1};
+  // a thumbs up draws runs of colour, not the ink's: some yellow and the blue cuff
+  n := draw_text(out[..], 0, "👍", 10, 40, 8, 0.5, 1, k, false, false);
+  #assert n > 6 * 8;
+  yellow := false; blue := false;
+  for v: 0..<n / 6 {
+    o := v * 6 * VERTEX_FLOATS;
+    #assert out[o + 7] == 0;   // no glow
+    if out[o + 8] == 1 && out[o + 10] < 0.5 { yellow = true; }
+    if out[o + 10] == 1 && out[o + 8] < 0.5 { blue = true; }
+  }
+  #assert yellow && blue;
+  // with a skin tone, a ZWJ or its selector it draws the same picture
+  #assert draw_text(out[..], 0, "👍🏽", 10, 40, 8, 0.5, 1, k, false, false) == n;
+  #assert draw_text(out[..], 0, "❤️", 10, 40, 8, 0.5, 1, k, false, false) == draw_text(out[..], 0, "❤", 10, 40, 8, 0.5, 1, k, false, false);
+  // an emoji the set lacks (a rocket), a letter no table has (中) and a bad byte draw the tofu box, never '?'
+  box := draw_text(out[..], 0, "□", 10, 40, 8, 0.5, 1, k, false, false);
+  ask := draw_text(out[..], 0, "?", 10, 40, 8, 0.5, 1, k, false, false);
+  #assert box == 24 && ask != box;
+  #assert draw_text(out[..], 0, "🚀", 10, 40, 8, 0.5, 1, k, false, false) == box;
+  #assert draw_text(out[..], 0, "中", 10, 40, 8, 0.5, 1, k, false, false) == box;
+  ff := [1] u8.[0xFF];
+  #assert draw_text(out[..], 0, cast(string) ff[..], 10, 40, 8, 0.5, 1, k, false, false) == box;
+  // at 2 device pixels a pixel, the strokes' ends and rows sit on whole pixels
+  m := draw_text(out[..], 0, "😀", 10.3, 40.6, 15, 0.5, 1, k, false, false);
+  for v: 0..<m / 6 {
+    o := v * 6 * VERTEX_FLOATS;
+    #assert out[o + 5] == 0.95;   // core: half of 2 pixels, less 0.05
+  }
 }
 
 #test "measure and wrap" {
@@ -492,7 +902,7 @@ wrap_ink :: (text: string, from: int, width: f32, cap: f32, gap: f32, space: f32
     if end == from && word > width {
       q := i; fit := q;
       while q < j {
-        d := decode(text, q);
+        d := cluster(text, q);
         if ink_width(text[i..<q + d.len], cap, gap, space, k) > width && fit > i { break; }
         q += d.len; fit = q;
       }

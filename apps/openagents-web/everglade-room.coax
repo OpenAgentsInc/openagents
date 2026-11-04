@@ -123,7 +123,7 @@ chat_wrap :: (t: string, cap: f32, first: f32, w: f32, starts: [] int, ends: [] 
     room := ifx rows == 0 then first else w;
     x := 0.0f32; after := false; j := i; brk := -1;
     while j < t.count {
-      d := decode(t, j); c := font_fold(d.code);
+      d := cluster(t, j); c := font_fold(d.code);
       add := 0.0f32;
       if c == ' ' { add = SPACE; } else if c >= 32 { add = glyph_width(c); if after { add += GAP; } }
       if (x + add) * cap > room && j > i { break; }

@@ -11,7 +11,7 @@
 # and newland carry baked Nostr data that grows, so they have about 15%.
 # One module a line:
 #   NAME BYTES
-admin 50000
+admin 60000
 animelab 190000
 belt 320000
 builder 100000
@@ -36,7 +36,7 @@ myrealm 660000
 newland 1150000
 nip01 90000
 nip-guide 130000
-og 50000
+og 60000
 oneshot 250000
 orbitleague 290000
 private 280000
