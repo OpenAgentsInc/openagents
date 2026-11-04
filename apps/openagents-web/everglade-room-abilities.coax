@@ -290,6 +290,17 @@ everglade_room_rise :: (s: [] Everglade, q: int, up: bool, sink: bool, x: f32, z
   if sink && !was_sink { a[0].lev_sink = true; a[0].lev_up = false; }
   if !sink && was_sink && a[0].lev_sink { a[0].lev_sink = false; a[0].lev_hold = walk_at(s, x, z) + y; }
 }
+// A new room in this world's slot (everglade-watch.coax everglade_room_fresh): no seat's copy runs
+// on from the room before, and no strike of its falls here. A copy left running (a moonbeam, a fire, a
+// wall up for EG_RA_REST s) burnt the next room's town and its players.
+eg_ra_fresh :: (s: [] Everglade) {
+  r := s[0].sp.room_ab[..];
+  r[0].later_n = 0; r[0].hurts = 0;
+  for q: 0..<EG_RA_SEATS {
+    r[0].seat[q].used = false; r[0].seat[q].quiet = 0; r[0].seat[q].armed = -1; r[0].seat[q].posed = false;
+    for k: 0..<AB_N { r[0].seat[q].live[k] = false; }
+  }
+}
 // Whether seat q's copy still runs: something up, someone off their feet, or a cast in the last EG_RA_REST s.
 eg_ra_busy :: (c: [] EgRaSeat) -> bool {
   if !c[0].used { return false; }

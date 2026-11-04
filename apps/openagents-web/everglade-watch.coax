@@ -1104,6 +1104,7 @@ everglade_room_fresh :: (s: [] Everglade) #export_c {
   if sp_on(s) {
     for q: 0..<SP_METEORS * 2 { s[0].sp.meteors[q].live = false; }
     s[0].sp.bolt.live = false; s[0].sp.orb_live = false;
+    eg_ra_fresh(s);   // the room before's abilities stop here (everglade-room-abilities.coax)
     _ := sp_restore(s, -1); eg_room_known(s);
   }
 }
