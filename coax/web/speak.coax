@@ -2,7 +2,8 @@
 // video in, the video out with each line voiced and a talking portrait panel over it.
 //   coax/web/tool.sh speak CUES OUT.mp4 [--video FILE] [--cast FILE] [--server URL]
 //       [--allow-fallback] [--revoice N] [--no-open]
-// Run from the repository root. For each cue line:
+// Run from the repository root. Cue sheet header lines: "video FILE", "subtitles off", and
+// "video-audio off" (the voice only: the video's own sound is silenced, not ducked). For each cue line:
 //   1. voice   Google Cloud Text-to-Speech (the cast's Chirp 3 HD voice), through curl with a token
 //              from the gcloud automation account; then Google Speech-to-Text with word time
 //              offsets, and the tool stops if the transcript isn't the line. A take is kept by its
@@ -437,7 +438,7 @@ tool_main :: () -> int #export_c {
   if n <= 0 { say_err("no cue sheet at ", cues_path); return 1; }
   cues := str(text[..], n);
   vb: [4200] u8; video := args_value(a[..], "--video", "");
-  subtitles := true;
+  subtitles := true; game := true;
   count := 0;
   i := 0;
   while i < cues.count {
@@ -446,6 +447,7 @@ tool_main :: () -> int #export_c {
     if line.count == 0 || line[0] == '#' { continue; }
     if starts(line, "video ") && video.count == 0 { video = fs_join(fs_dir(cues_path), trim(line[6..<line.count]), vb[..]); continue; }
     if line == "subtitles off" { subtitles = false; continue; }
+    if line == "video-audio off" { game = false; continue; }
     if count < CUES_MAX && spk_cue(line, st[0].lines[count].cue[..]) { count += 1; }
   }
   if count == 0 { say_err("no cue lines in ", cues_path); return 1; }
@@ -471,13 +473,13 @@ tool_main :: () -> int #export_c {
     for k: 0..<100 { proc_sleep(200); if answers(str(ub[..], un)) { up = true; break; } }
     if !up { done := proc_release(srv); say_err("the dev server never answered at ", server); return 1; }
   }
-  code := speak_all(st[..], a[..], cues_path, out_path, video, str(ct[..], cn), packs, cache, server, fallback, revoice, subtitles, count);
+  code := speak_all(st[..], a[..], cues_path, out_path, video, str(ct[..], cn), packs, cache, server, fallback, revoice, subtitles, game, count);
   if srv >= 0 { k := proc_kill(srv, PROC_SIGTERM); w := proc_wait(srv, 3000); done := proc_release(srv); }
   return code;
 }
 
 speak_all :: (st: [] Run, a: [] Args, cues_path: string, out_path: string, video: string, cast_text: string, packs: string, cache: string,
-              server: string, fallback: bool, revoice: int, subtitles: bool, count: int) -> int {
+              server: string, fallback: bool, revoice: int, subtitles: bool, game: bool, count: int) -> int {
   who: [1] Who;
   why: [4096] u8;
   for c: 0..<count {
@@ -552,7 +554,7 @@ speak_all :: (st: [] Run, a: [] Args, cues_path: string, out_path: string, video
       mark(pdir);
     }
   }
-  return composite(st, out_path, video, count, subtitles, cast_text, fallback, args_has(a, "--no-open"));
+  return composite(st, out_path, video, count, subtitles, game, cast_text, fallback, args_has(a, "--no-open"));
 }
 
 // ---- 5. composite
@@ -576,7 +578,7 @@ keep :: (st: [] Run, s: string) -> string {
 }
 keep_fixed :: (st: [] Run, v: f32) -> string { b: [32] u8; n := spk_put_fixed(b[..], 0, v); return keep(st, str(b[..], n)); }
 
-composite :: (st: [] Run, out_path: string, video: string, count: int, subtitles: bool, cast_text: string, fallback: bool, no_open: bool) -> int {
+composite :: (st: [] Run, out_path: string, video: string, count: int, subtitles: bool, game: bool, cast_text: string, fallback: bool, no_open: bool) -> int {
   od := fs_dir(out_path);
   if od.count > 0 { ok := mkdirs(od); mark(od); }
   who: [1] Who;
@@ -684,7 +686,9 @@ composite :: (st: [] Run, out_path: string, video: string, count: int, subtitles
   }
   jn = put(js[..], jn, "\n]}\n");
   g = put(graph[..], g, "[v"); g = spk_put_int(graph[..], g, vlast); g = put(graph[..], g, "]format=yuv420p[vout];");
-  g = put(graph[..], g, "[0:a]volume='"); g = put(graph[..], g, str(duck[..], dn)); g = put(graph[..], g, "':eval=frame[bg];[bg]");
+  // the video's sound ducked under the lines, or (video-audio off) silent: only its length is kept
+  if game { g = put(graph[..], g, "[0:a]volume='"); g = put(graph[..], g, str(duck[..], dn)); g = put(graph[..], g, "':eval=frame[bg];[bg]"); }
+  else { g = put(graph[..], g, "[0:a]volume=0[bg];[bg]"); }
   for c: 0..<count { g = put(graph[..], g, "[a"); g = spk_put_int(graph[..], g, c); g = put(graph[..], g, "]"); }
   g = put(graph[..], g, "amix=inputs="); g = spk_put_int(graph[..], g, count + 1); g = put(graph[..], g, ":normalize=0:duration=first[aout]");
   gp: [4200] u8; graph_path := fs_join(fs_dir(cast(string) st[0].lines[0].dir[0..<st[0].lines[0].dir_n]), "graph.txt", gp[..]);

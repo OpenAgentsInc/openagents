@@ -171,6 +171,8 @@ The track is a list of controls per frame. Step 4 reads it, and a test reads it 
 - **Subtitles.** Burned-in subtitles are on by default, because promo videos mostly autoplay muted.
   They show word by word from step 1's times. You switch them off with `subtitles off` in the
   header.
+- **Video sound.** `video-audio off` in the header drops the video's own sound, so the output
+  carries only the voices. The raid promo uses it.
 - **Output.** The output is H.264 at 1080p for review, per the film-review rule, and 4K only once you
   approve the cut. The tool also writes an SRT and a JSON of every line's start and end.
 - **Overlaps.** Two lines that overlap get two panels side by side. The tool warns if a line starts
