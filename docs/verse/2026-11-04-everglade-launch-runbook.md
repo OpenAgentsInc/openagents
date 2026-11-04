@@ -303,8 +303,14 @@ When steps 2 and 3 hold, post the evidence on #12733 and close it.
 
 ### What a local `everglade-pair` run can and can't show
 
-A local run (a local page server plus a local `bin/room`, joined with
-`?relay=ws://localhost:PORT`) has no API. So it has no seat tickets, no names,
+Start a local room with `coax/web/room/local.sh` (#12773). It runs `bin/room
+--dev coax/web/room/dev` and the page server with `--api`, so the page's
+`/api/` requests go to the room. The room and the page then read the same world
+document, `coax/web/room/dev/world-everglade-5e.json`. In production both read
+the API's `/api/playtest/world/everglade-5e` (the room through `OA_ROOM_API`).
+
+Before #12773, a local run (a local page server plus a local `bin/room`, joined with
+`?relay=ws://localhost:PORT`) had no API. So it has no seat tickets, no names,
 no player ids, no directory and no blocks. Since `2cfde0ca03`, the pair
 check skips the steps that need the API on a local relay instead of failing
 them:

@@ -3,7 +3,11 @@
    room decision is room.coax's: the host hands it each new socket's request
    (rm_join), each text frame (rm_heard) and each close (rm_left), calls
    rm_tick 60 times a second and sends each player what rm_state writes.
-     room [--listen 127.0.0.1] [--port 8830]     PORT in the environment wins (Cloud Run: 0.0.0.0)
+     room [--listen 127.0.0.1] [--port 8830] [--dev DIR]     PORT in the environment wins (Cloud Run: 0.0.0.0)
+   --dev DIR is local development (coax/web/room/local.sh): the room is also the API's stand-in. Its
+   world is DIR/world-everglade-5e.json, and it answers GET /api/playtest/world/everglade-5e with
+   that same document, so a page served with `serve.sh --api` reads the world the room plays.
+   Without --dev, the world comes from the API (OA_ROOM_API, default production's), as the page's does.
    OA_ROOM_SHARD names which shard of the everglade instance directory this is (room-directory.coax).
    GET /health answers 200 "ok" with the number of players; GET /api/playtest/rooms/SLUG
    answers rm_rooms' JSON (an everglade realm's instances and which to join).
@@ -41,6 +45,21 @@ static conn conns[CONNS];
 static coax_t_RmServer *server;
 static int64_t slow_closed, out_peak;
 static coax_v_t_RmServer view(void) { return (coax_v_t_RmServer){server, 1}; }
+/* --dev DIR: the local stand-in for the API (local.sh). The world document is read once from DIR and
+   is the one both the room and the page use. */
+static const char *dev_dir;
+static char *dev_world; static size_t dev_world_n;
+static char *dev_read(const char *name, size_t *n) {
+  char path[1024]; snprintf(path, sizeof path, "%s/%s", dev_dir, name);
+  FILE *f = fopen(path, "rb");
+  if (!f) return NULL;
+  static char tmp[1 << 16];
+  size_t k = fread(tmp, 1, sizeof tmp - 1, f); fclose(f);
+  char *out = malloc(k + 1);
+  if (!out) return NULL;
+  memcpy(out, tmp, k); out[k] = 0; *n = k;
+  return out;
+}
 
 // How long the server takes over one socket's bytes (its frames read and every frame they make put
 // onto every recipient's output): 0.1 ms buckets, this window's and the last full window's.
@@ -245,7 +264,7 @@ static void reap(void) {
 }
 // A short answer on a fresh socket (its send buffer is empty), then the close.
 static void http(int i, const char *status, const char *type, const char *body) {
-  char out[9216];
+  static char out[1 << 17];
   int n = snprintf(out, sizeof out, "HTTP/1.1 %s\r\nContent-Type: %s\r\nCache-Control: no-store\r\nContent-Length: %zu\r\nConnection: close\r\n\r\n%s", status, type, strlen(body), body);
   if (n > 0 && (size_t)n < sizeof out) { ssize_t w = send(conns[i].fd, out, (size_t)n, MSG_NOSIGNAL); (void)w; }
   shut(i);
@@ -279,6 +298,10 @@ static void opening(int i) {
                              (long long)rm_players(view()), (long long)p50, (long long)p95, (long long)n, (long long)rm_relay_dropped(view()), (long long)slow_closed,
                              (long long)server->shard, (long long)tp50, (long long)tp95, (long long)tn);
     http(i, "200 OK", "text/plain", body); return;
+  }
+  /* --dev: the API's stand-in (local.sh): the world document the room laid, byte for byte */
+  if (dev_dir && !strncmp((char *)c->in, "GET /api/playtest/world/everglade-5e", 36) && (c->in[36] == ' ' || c->in[36] == '?')) {
+    http(i, "200 OK", "application/json", dev_world ? dev_world : "{}"); return;
   }
   int64_t listed = rm_rooms(view(), req);
   if (listed >= 0) {
@@ -389,11 +412,20 @@ static void control_ask(void) {
                    url, (const char *)server->ctl.mac.e, (int)(server->ctl.ask_n - 2), (const char *)server->ctl.ask.e + 2);
   if (k > 0 && k < (int)sizeof cfg) poster_send('G', cfg, (size_t)k);
 }
+static const char *api_url(const char *env, const char *path, char *buf, size_t cap);
 /* The realm's published world, asked for at the start and again each time the control says it
-   changed (its edit stamp): the answer is laid over every room (room-world.c world_edits, #12731). */
+   changed (its edit stamp): the answer is laid over every room (room-world.c world_edits, #12731).
+   It is the API's, the same URL the page asks (OA_ROOM_API's origin); under --dev, DIR's document. */
 static void world_ask(void) {
-  const char *url = getenv("OA_ROOM_WORLD_URL");
-  if (!url || !*url) url = "https://openagents.com/api/playtest/world/everglade-5e";
+  if (dev_dir) {
+    free(dev_world); dev_world = dev_read("world-everglade-5e.json", &dev_world_n);
+    if (!dev_world || dev_world[0] != '{') { fprintf(stderr, "room: --dev %s has no world-everglade-5e.json\n", dev_dir); exit(1); }
+    world_edits(dev_world, (int64_t)dev_world_n);
+    printf("room: the local world (%zu bytes) laid over the rooms\n", dev_world_n);
+    return;
+  }
+  char ub[512];
+  const char *url = api_url("OA_ROOM_WORLD_URL", "/api/playtest/world/everglade-5e", ub, sizeof ub);
   char cfg[512];
   int k = snprintf(cfg, sizeof cfg, "url = \"%s\"\nsilent\nshow-error\nfail\nmax-time = 10\n", url);
   if (k > 0 && k < (int)sizeof cfg) poster_send('G', cfg, (size_t)k);
@@ -462,6 +494,7 @@ int main(int argc, char **argv) {
   for (int i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "--listen") && i + 1 < argc) address = argv[++i];
     else if (!strcmp(argv[i], "--port") && i + 1 < argc) port = atoi(argv[++i]);
+    else if (!strcmp(argv[i], "--dev") && i + 1 < argc) dev_dir = argv[++i];
   }
   const char *env = getenv("PORT");
   if (env && *env) { port = atoi(env); address = "0.0.0.0"; }

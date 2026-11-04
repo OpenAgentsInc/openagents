@@ -9,9 +9,13 @@
 // A failed build sends "error" with the compiler's output; the tab keeps
 // running the last good engine.
 //
-//   serve APP_DIR [--listen HOST:PORT] [--build CMD] [--host-dir DIR] [--static] [--cache SECONDS]
+//   serve APP_DIR [--listen HOST:PORT] [--build CMD] [--host-dir DIR] [--static] [--cache SECONDS] [--api PORT]
 // Defaults: 127.0.0.1:8800, build command APP_DIR/build.sh, the host files
 // next to this binary's directory (coax/web/).
+//
+// --api PORT sends every /api/ request to 127.0.0.1:PORT and its answer back, as the load balancer
+// sends /api/ to the API: a local room's stand-in for the API (coax/web/room/local.sh), so a page
+// asks the same paths it asks in production.
 //
 // --static is production: no building, no watching, no live channel; files
 // are served as they are, cacheable for five minutes (--cache SECONDS; 0
@@ -31,6 +35,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/time.h>
@@ -54,6 +59,7 @@ static int file_count;
 static char app_dir[PATH_MAX], host_dir[PATH_MAX], build_cmd[PATH_MAX + 64];
 static bool static_mode;
 static char cache_control[64] = "public, max-age=300";
+static int api_port;   // --api: /api/ requests go to 127.0.0.1:api_port
 
 #ifdef __APPLE__
 #define MTIME(st) ((st).st_mtimespec)
@@ -185,9 +191,36 @@ static void broadcast(const char *json) {
   (void)sent;
 }
 
-// A request is complete: a WebSocket upgrade to /coaxial/live, or a file.
+// An /api/ request, its body whole, to the --api stand-in and the answer back to the page.
+static void proxy_api(client *c) {
+  int fd = socket(AF_INET, SOCK_STREAM, 0);
+  struct sockaddr_in a = {0};
+  a.sin_family = AF_INET; a.sin_port = htons((uint16_t)api_port);
+  inet_pton(AF_INET, "127.0.0.1", &a.sin_addr);
+  if (fd < 0 || connect(fd, (struct sockaddr *)&a, sizeof a)) {
+    if (fd >= 0) close(fd);
+    respond(c->fd, 502, "Bad Gateway", "application/json", "{\"error\":\"the local API is not running\"}", 40); drop(c); return;
+  }
+  send_all(fd, c->buf, c->n);
+  char tmp[16384]; ssize_t k;
+  while ((k = recv(fd, tmp, sizeof tmp, 0)) > 0) send_all(c->fd, tmp, (size_t)k);
+  close(fd);
+  drop(c);
+}
+// Whether the request's body (Content-Length) is all in.
+static bool body_in(const client *c) {
+  const char *end = strstr(c->buf, "\r\n\r\n");
+  if (!end) return false;
+  size_t head = (size_t)(end - c->buf) + 4, want = 0;
+  for (const char *p = c->buf; p < end; p++)
+    if ((p == c->buf || p[-1] == '\n') && !strncasecmp(p, "Content-Length:", 15)) want = (size_t)strtoul(p + 15, NULL, 10);
+  return c->n >= head + want || head + want >= sizeof c->buf - 1;
+}
+
+// A request is complete: a WebSocket upgrade to /coaxial/live, an /api/ request (--api), or a file.
 static void handle_request(client *c) {
   char method[8] = {0}, url[1024] = {0};
+  if (api_port && sscanf(c->buf, "%7s %1023s", method, url) == 2 && !strncmp(url, "/api/", 5)) { proxy_api(c); return; }
   if (sscanf(c->buf, "%7s %1023s", method, url) != 2 || strcmp(method, "GET")) {
     respond(c->fd, 405, "Method Not Allowed", "text/plain", "GET only\n", 9); drop(c); return;
   }
@@ -215,7 +248,7 @@ static void on_readable(client *c) {
   ssize_t k = recv(c->fd, c->buf + c->n, sizeof c->buf - 1 - c->n, 0);
   if (k <= 0) { drop(c); return; }
   c->n += (size_t)k; c->buf[c->n] = 0;
-  if (strstr(c->buf, "\r\n\r\n")) handle_request(c);
+  if (strstr(c->buf, "\r\n\r\n") && (!api_port || body_in(c))) handle_request(c);
   else if (c->n >= sizeof c->buf - 1) drop(c);
 }
 
@@ -300,7 +333,19 @@ static void check_changes(void) {
     else page = true;
     logf_("changed %s", strrchr(p, '/') + 1);
   }
-  if (engine) rebuild_and_tell();
+  if (engine) {
+    rebuild_and_tell();
+    // What changed while the build ran is the build's own output (apps/openagents-web/build.sh rewrites
+    // newland-data.coax and the project tables): taken as the new baseline, not as an edit, or every
+    // build would start the next one.
+    for (int i = 0; i < file_count; i++) {
+      struct stat st;
+      if (stat(files[i].path, &st)) continue;
+      if (MTIME(st).tv_sec == files[i].mtime.tv_sec && MTIME(st).tv_nsec == files[i].mtime.tv_nsec) continue;
+      files[i].mtime = MTIME(st);
+      logf_("written by the build: %s", strrchr(files[i].path, '/') + 1);
+    }
+  }
   if (shaders) broadcast("{\"kind\":\"wgsl\"}");
   if (page) broadcast("{\"kind\":\"page\"}");
 }
@@ -320,6 +365,7 @@ int main(int argc, char **argv) {
       else snprintf(cache_control, sizeof cache_control, "no-cache");
     }
     else if (!strcmp(argv[i], "--build") && i + 1 < argc) cmd = argv[++i];
+    else if (!strcmp(argv[i], "--api") && i + 1 < argc) api_port = atoi(argv[++i]);
     else if (!app) app = argv[i];
     else { fprintf(stderr, "usage: serve APP_DIR [--listen HOST:PORT] [--build CMD]\n"); return 2; }
   }
