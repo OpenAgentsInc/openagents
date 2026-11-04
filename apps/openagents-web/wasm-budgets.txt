@@ -31,7 +31,7 @@ garden 270000
 gridcrowd 60000
 icecream 500000
 memorial 60000
-metahumanlab 230000
+metahumanlab 250000
 myrealm 660000
 newland 1150000
 nip01 90000
