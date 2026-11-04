@@ -8,6 +8,7 @@ void fgs_reset(void);
 int64_t fgs_input_byte(int64_t index, int64_t value);
 int64_t fgs_accept(int64_t kind, int64_t length);
 bool fgs_can_enter(bool scene);
+bool fgs_completed(void);
 void fgs_choose(int64_t kind);
 int64_t fgs_count(int64_t kind);
 int64_t fgs_selected(void);

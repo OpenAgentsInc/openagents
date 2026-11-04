@@ -14,6 +14,7 @@ int64_t fgs_accept(int64_t kind, int64_t n) {
   return fsu_read(view(), kind, (coax_string){(const char *)input, n}) ? 1 : 0;
 }
 bool fgs_can_enter(bool scene) { return fsu_can_enter(view(), scene); }
+bool fgs_completed(void) { return fsu_completed(view()); }
 void fgs_choose(int64_t kind) { fsu_choose(view(), kind); }
 int64_t fgs_count(int64_t kind) { return fsu_count(view(), kind); }
 int64_t fgs_selected(void) { return fsu_selected(view()); }

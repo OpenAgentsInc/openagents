@@ -47,7 +47,9 @@ page server, the voice Wasm and a local Parakeet voice host. This is the same
   `~/.openagents/aethyrforge/everglade/world-everglade.json` and
   survive reopening. It does not yet fetch the current published world. The
   editor's existing “publish” request only writes this local room's document.
-- Opens setup in a front pane over Everglade. It shows the shared OpenAgents CLI,
+- Shows setup in a front pane over Everglade until setup has been saved. Later
+  launches open directly into Everglade; existing valid saved setup counts too.
+  Tool/model inventory refreshes in the background. The pane shows the shared OpenAgents CLI,
   Parakeet's installed status and location, gpt-oss's installed status,
   and the running local agent engines with a preferred-engine choice. Open
   Everglade saves the choices to `~/.openagents/aethyrforge/setup.json`; View →

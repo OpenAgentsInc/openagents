@@ -3,6 +3,7 @@
 #load "../../coax/lib/json/json.coax";
 
 ForgeSetup :: struct {
+  completed: bool;
   cli: bool; agents: bool; models: bool; voice: bool; verified: bool; text_model: bool;
   counts: [4] int; total: int; selected: int = -1;
   version: [64] u8; version_n: int;
@@ -11,6 +12,18 @@ ForgeSetup :: struct {
 }
 FSU_NAMES :: [4] string.["Claude Code", "Codex", "Coder", "Cursor"];
 FSU_IDS :: [4] string.["claude", "codex", "coder", "cursor"];
+
+#test "setup completion comes from the saved entry receipt and survives background discovery" {
+  s:[1]ForgeSetup;fsu_reset(s[..]);#assert !fsu_completed(s[..]);
+  #assert fsu_read(s[..],3,"{\"schema\":\"openagents.aethyrforge.setup.v1\",\"audio_model\":\"parakeet\",\"agent_engine\":\"codex\"}") && fsu_completed(s[..]);
+  #assert fsu_read(s[..],0,"{\"ok\":true,\"openagents\":\"1.0\"}") && fsu_completed(s[..]);
+  fsu_reset(s[..]);#assert !fsu_completed(s[..]);
+  #assert !fsu_read(s[..],3,"oops") && !fsu_completed(s[..]);
+  #assert !fsu_read(s[..],3,"{\"schema\":\"unknown\",\"audio_model\":\"parakeet\"}") && !fsu_completed(s[..]);
+  #assert fsu_read(s[..],3,"{\"schema\":\"openagents.aethyrforge.setup.v1\"}") && !fsu_completed(s[..]);
+  #assert fsu_read(s[..],3,"{\"schema\":\"openagents.aethyrforge.setup.v1\",\"audio_model\":\"other\"}") && !fsu_completed(s[..]);
+  b:[512]u8;#assert fsu_read(s[..],3,fsu_settings(s[..],b[..])) && fsu_completed(s[..]);
+}
 
 #test "setup uses actual CLI, running-agent and local model reports" {
   s: [1] ForgeSetup; fsu_reset(s[..]);
@@ -45,6 +58,7 @@ fsu_read :: (s: [] ForgeSetup, kind: int, text: string) -> bool #export_c {
   v := d[0];
   if kind == 3 {
     if jv_raw(v, jv_get(v, 0, "schema")) != "openagents.aethyrforge.setup.v1" { return false; }
+    s[0].completed = jv_raw(v, jv_get(v, 0, "audio_model")) == "parakeet";
     engine := jv_raw(v, jv_get(v, 0, "agent_engine"));
     s[0].selected = -1;
     for i: 0..<4 { if engine == FSU_IDS[i] && s[0].counts[i] > 0 { s[0].selected = i; } }
@@ -93,6 +107,7 @@ fsu_read :: (s: [] ForgeSetup, kind: int, text: string) -> bool #export_c {
   return false;
 }
 fsu_can_enter :: (s: [] ForgeSetup, scene: bool) -> bool #export_c { return scene && s[0].cli && s[0].agents && s[0].models; }
+fsu_completed :: (s: [] ForgeSetup) -> bool #export_c { return s[0].completed; }
 fsu_choose :: (s: [] ForgeSetup, kind: int) #export_c { if kind == -1 || (kind >= 0 && kind < 4 && s[0].counts[kind] > 0) { s[0].selected = kind; } }
 fsu_count :: (s: [] ForgeSetup, kind: int) -> int #export_c { return ifx kind >= 0 && kind < 4 then s[0].counts[kind] else s[0].total; }
 fsu_selected :: (s: [] ForgeSetup) -> int #export_c { return s[0].selected; }

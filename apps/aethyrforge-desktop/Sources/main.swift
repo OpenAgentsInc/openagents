@@ -187,7 +187,9 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         chatPane.onClose = { [weak self] in guard let self else { return }; window.makeFirstResponder(web) }
         content.addSubview(chatPane)
         fgs_reset()
+        if let saved = try? Data(contentsOf: settingsURL) { try? acceptSetup(saved, kind: 3) }
         setupPane = ForgeSetupPane(frame: content.bounds)
+        setupPane.isHidden = fgs_completed()
         setupPane.autoresizingMask = [.width, .height]
         setupPane.enterAction = { [weak self] in self?.enterWorld() }
         setupPane.refreshAction = { [weak self] in
@@ -287,6 +289,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
             firstFrameSeconds = Date().timeIntervalSince(startedAt)
             notice.isHidden = true
             sceneReady = true; setupPane.sceneReady = true; setupPane.update()
+            if setupPane.isHidden { window.makeFirstResponder(web) }
             try await startSceneControls()
             if let launchReport {
                 await inventoryTask?.value
@@ -682,7 +685,10 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         startup = Task { await start() }
     }
 
-    var settingsURL: URL { dataURL.deletingLastPathComponent().appendingPathComponent("setup.json") }
+    var settingsURL: URL {
+        if let isolated = (smoke ? report : microphoneReport)?.deletingLastPathComponent() { return isolated.appendingPathComponent("setup.json") }
+        return fm.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/aethyrforge/setup.json")
+    }
     var localCLI: URL {
         if let explicit = ProcessInfo.processInfo.environment["OPENAGENTS_CLI"], !explicit.isEmpty { return URL(fileURLWithPath: explicit) }
         if smoke { return Bundle.main.resourceURL!.appendingPathComponent("openagents") }
@@ -724,7 +730,9 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         var bytes: [UInt8] = []
         for i in 0..<512 { let c = fgs_settings_byte(Int64(i)); if c < 0 { break }; bytes.append(UInt8(c)) }
         do {
-            try Data(bytes).write(to: settingsURL, options: .atomic)
+            let saved = Data(bytes)
+            try saved.write(to: settingsURL, options: .atomic)
+            try acceptSetup(saved, kind: 3)
             setupPane.isHidden = true; window.makeFirstResponder(web)
         } catch { setupPane.errorMessage = "Could not save setup: \(error.localizedDescription)"; setupPane.update() }
     }
@@ -1160,13 +1168,16 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
 
     func setupSmokeCheck() async throws {
         guard let report, fgs_can_enter(sceneReady), fgs_status(1) == 1 else { throw ShellError.failed("Setup did not discover the CLI and installed shared voice model without hashing.") }
-        guard !setupPane.isHidden, setupPane.enter.isEnabled else { throw ShellError.failed("Setup did not appear over the running world.") }
+        let skipped = setupPane.isHidden
+        guard skipped == fgs_completed(), setupPane.enter.isEnabled else { throw ShellError.failed("Launch did not respect the saved setup completion.") }
         enterWorld()
-        guard setupPane.isHidden, fm.fileExists(atPath: settingsURL.path) else { throw ShellError.failed("Setup could not enter the world and keep its choices.") }
+        guard setupPane.isHidden, fgs_completed(), fm.fileExists(atPath: settingsURL.path) else { throw ShellError.failed("Setup could not enter the world and keep its choices.") }
         showSetup()
+        refreshSetup(verify: false); await inventoryTask?.value
+        guard !setupPane.isHidden else { throw ShellError.failed("Manually opened setup disappeared after refresh.") }
         let result: [String: Any] = ["ready": sceneReady, "cli": fgs_status(0) == 1, "voiceInstalled": fgs_status(1) > 0, "voiceVerified": fgs_status(1) == 2,
             "localAgents": fgs_count(-1), "selectedAgent": fgs_selected(), "voicePath": setupText(6),
-            "setupVisible": !setupPane.isHidden, "settingsSaved": true, "firstFrameSeconds": firstFrameSeconds,
+            "setupVisible": !setupPane.isHidden, "setupSkippedOnLaunch": skipped, "settingsSaved": true, "firstFrameSeconds": firstFrameSeconds,
             "roomPID": room!.processIdentifier, "pagePID": page!.processIdentifier]
         try await captureCanvas(report)
         try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]).write(to: report, options: .atomic)

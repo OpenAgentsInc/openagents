@@ -27,7 +27,10 @@ The relay uses `localhost`, the existing room client's required local override,
 so the WebSocket connects straight to the room and leaves the HTTP page proxy
 free to serve saves.
 
-Every launch shows setup over the Everglade scene. It checks the shared
+The first launch shows setup over the Everglade scene. After Open Everglade
+saves setup, later launches go directly into the world, including installations
+with an existing valid setup file. Tool/model discovery runs in the background.
+Setup checks the shared
 CLI, lists running local agent engines and lets you keep a preferred engine,
 shows the installed voice/edit models without hashing their contents. Running
 processes are observations, not attached agents;
@@ -189,12 +192,15 @@ apps/aethyrforge-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge --smok
 ```
 
 The setup smoke check exercises the real bundled CLI, process inventory and
-shared-model presence without hash verification, then enters the world, saves settings and reopens
-setup over WebGPU. It uses an isolated world beside its report:
+shared-model presence without hash verification, then enters the world, saves
+settings and opens setup manually over WebGPU. A second launch in the same
+directory checks direct entry (`setupSkippedOnLaunch:true`) and manual setup
+refresh. It uses an isolated world beside its report:
 
 ```sh
 mkdir -p /tmp/aethyrforge-setup
-apps/aethyrforge-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge --setup-smoke /tmp/aethyrforge-setup/setup.json
+apps/aethyrforge-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge --setup-smoke /tmp/aethyrforge-setup/first.json
+apps/aethyrforge-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge --setup-smoke /tmp/aethyrforge-setup/reopened.json
 ```
 
 Reports include the first-frame time and child PIDs; matching PNGs show the frame.
