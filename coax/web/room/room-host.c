@@ -240,6 +240,10 @@ static void everglade_tick(void) {
     part_us[PART_ABILITIES] += now_us() - ta;
     everglade_town(k);
     int64_t te = now_us();
+    /* the casts starting or released this tick: does each caster see where it lands (room-casts.coax, #12790) */
+    float sg[6]; coax_v_f32 sgv = {sg, 6};
+    int64_t sn = rm_eg_sights(view(), k);
+    for (int64_t q = 0; q < sn; q++) if (rm_eg_sight(view(), k, q, sgv)) rm_eg_sight_is(view(), k, q, world_sight(k, sg, sg + 3));
     rm_eg_end(view(), k);
     part_us[PART_END] += now_us() - te;
     int64_t tf = now_us();

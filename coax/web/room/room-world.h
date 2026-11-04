@@ -58,6 +58,9 @@ bool world_life(int k, int s, int ab, float out[WORLD_LIFE]);
 float world_air(int k, int i);
 int world_hurts(int k);
 bool world_hurt(int k, int q, float out[3]);
+/* Whether a caster with feet at `from` sees `to` in room k's world: its standing pieces and ground
+   (apps/openagents-web/everglade-cast-sight.coax, GitHub #12790). */
+bool world_sight(int k, const float from[3], const float to[3]);
 /* A new room in slot k: its town whole and nobody known. */
 void world_fresh(int k);
 #endif

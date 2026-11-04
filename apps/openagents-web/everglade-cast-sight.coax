@@ -1,0 +1,161 @@
+// A cast's line of sight in Everglade (GitHub #12790; spec docs/verse/2026-11-04-everglade-cast-rules.md
+// section 2): from the caster's eyes to just short of the aim, the town's standing pieces and the ground
+// in the way. The room server asks it of its world (coax/web/room/room-world.c world_sight) at a cast's
+// start and its release; the page asks it of its own before it sends a cast, so a cast it can see is
+// blocked never leaves (everglade-net.coax net_cast). The numbers are everglade-cast-rules.coax's.
+
+#load "everglade-cast-rules.coax";
+
+// Whether a caster with feet at `feet` (the world's, y the ground's) sees the aim `aim`. Pieces lower
+// than CR_LOW don't block (crates, fences, benches), nor does the piece the aim is on: the line ends
+// CR_SHORT short of it, CR_AIM_UP over it. An aim within CR_NEAR is always seen.
+cr_sight :: (s: [] Everglade, feet: Point, aim: Point) -> bool {
+  if !finite3(feet) || !finite3(aim) { return true; }
+  eye := add(feet, v3(0, f32(CR_EYE), 0));
+  to := add(aim, v3(0, f32(CR_AIM_UP), 0));
+  d := sub(to, eye);
+  span := length(d);
+  if flat_gap(feet, aim) <= f32(CR_NEAR) || span <= f32(CR_SHORT) + 0.01 { return true; }
+  dir := times(d, 1 / span);
+  far := span - f32(CR_SHORT);
+  // the ground (a hill between)
+  if s[0].heights.count > 0 && verse_terrain_ray(everglade_ground(), s[0].heights[..], eye, dir, far) < far - 0.05 { return false; }
+  if !sp_on(s) { return true; }
+  w := sp_dm(s);
+  for i: 0..<w[0].n {
+    p := w[0].pieces[i];
+    if p.state != DP_STANDING || p.y1 - p.y0 < f32(CR_LOW) { continue; }
+    h := sp_ray_box(eye, dir, p);
+    if h.ok && h.t > 0.05 && h.t < far { return false; }
+  }
+  return true;
+}
+// The same for the room server's world (room-world.c world_sight).
+everglade_room_sight :: (s: [] Everglade, fx: f32, fy: f32, fz: f32, ax: f32, ay: f32, az: f32) -> bool #export_c {
+  return cr_sight(s, v3(fx, fy, fz), v3(ax, ay, az));
+}
+
+#test "cast sight: a house between blocks it, the wall you aim at doesn't, nor does a crate; near aims always see" #steps 3000000000 {
+  g: [1] Everglade;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  // the house at x -22 to -6, z -44 to -30 (verse/everglade/plan.coax EG_BUILDING 0)
+  z := -37.0f32;
+  west := v3(-30, ground_at(g[..], -30, z), z);
+  east := v3(2, ground_at(g[..], 2, z), z);
+  #assert !cr_sight(g[..], west, east) && !cr_sight(g[..], east, west);
+  // aimed at the house's own west wall, at head height: seen
+  wall := v3(-22.05, ground_at(g[..], -22.05, z) + 1.5, z);
+  #assert cr_sight(g[..], west, wall);
+  // along the street south of it: nothing in the way
+  a := v3(-30, ground_at(g[..], -30, -26), -26); b := v3(-2, ground_at(g[..], -2, -26), -26);
+  #assert cr_sight(g[..], a, b);
+  // a low piece: none stands as tall as CR_LOW, so none blocks
+  w := sp_dm(g[..]);
+  low := 0;
+  for i: 0..<w[0].n {
+    p := w[0].pieces[i];
+    if p.state != DP_STANDING || p.y1 - p.y0 >= f32(CR_LOW) || p.y1 - p.y0 < 0.3 { continue; }
+    mx := (p.x0 + p.x1) / 2; mz := (p.z0 + p.z1) / 2;
+    f := v3(mx - 6, ground_at(g[..], mx - 6, mz), mz); t := v3(mx + 6, ground_at(g[..], mx + 6, mz), mz);
+    if !cr_sight(g[..], f, t) { continue; }   // (something taller nearby)
+    low += 1;
+    if low > 3 { break; }
+  }
+  #assert low > 0;
+  // within CR_NEAR: seen, even into the house
+  #assert cr_sight(g[..], west, add(west, v3(1.5, 0, 0)));
+  #assert everglade_room_sight(g[..], west.x, west.y, west.z, east.x, east.y, east.z) == false;
+}
+
+// ---- a refused cast on your page (spec section 6): its bar cancels and shows a short reason icon for
+// CR_SHOW s, never a line of text. The page's own prediction of it goes: the cast bar (Everglade's
+// four), the Warlock slot's sweep.
+cr_refused :: (s: [] Everglade, slot: int, why: int) {
+  if eg_ra_copying(s) || why == CR_OK { return; }   // (a seat's copy in a room says nothing on your page)
+  if s[0].sp.casting == slot && slot >= 0 {
+    s[0].sp.casting = -1;
+    if slot == SP_ORB && !s[0].sp.orb_remote { s[0].sp.orb_live = false; }
+  }
+  if slot >= WL_SLOT0 && slot < WL_SLOT0 + WL_SLOTS { s[0].wl.cast_t[slot - WL_SLOT0] = 0; }
+  s[0].sp.no_why = why; s[0].sp.no_t = f32(CR_SHOW); s[0].sp.no_slot = slot;
+}
+// The refused bar where the cast bar is drawn: empty, fading, its reason's icon in the middle.
+cr_no_bar :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, tray: f32) -> int {
+  k := hi(s[0].dpr, 0.5);
+  w := s[0].width; h := s[0].height;
+  un := sp_unit(s);
+  cw := sp_round(240 * un); ch := sp_round(14 * un);
+  x := sp_round((w - cw) / 2);
+  y := sp_round(lo(h * 0.80, tray - 40 * k - ch));
+  sp_plate(s, u, Box.{x0 = x, y0 = y, x1 = x + cw, y1 = y + ch}, PLATE_METER, sp_round(un));
+  fade := clamp(s[0].sp.no_t / f32(CR_SHOW), 0, 1);
+  return cr_icon_draw(out, at, cr_icon(s[0].sp.no_why), w / 2, y - 12 * un, 9 * un, k, 0.95 * hi(fade, 0.35));
+}
+cr_seg :: (out: [] f32, n: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32, cr: f32, cg: f32, cb: f32) -> int {
+  return ifx lit(out, n, ax, ay, bx, by, core, light, glow, cr, cg, cb, 0) then n + 6 else n;
+}
+// Icon `icon` (CR_ICON_*) centred at (cx, cy), r its half size: a few strokes, the refusal's red.
+cr_icon_draw :: (out: [] f32, at: int, icon: int, cx: f32, cy: f32, r: f32, k: f32, light: f32) -> int {
+  n := at;
+  core := 1.6 * k; glow := 4 * k;
+  cr := 1.0f32; cg := 0.38f32; cb := 0.28f32;
+  if icon == CR_ICON_RANGE {
+    // an arrow both ways: farther than it reaches
+    n = cr_seg(out, n, cx - r, cy, cx + r, cy, core, light, glow, cr, cg, cb);
+    n = cr_seg(out, n, cx - r, cy, cx - r * 0.5, cy - r * 0.45, core, light, glow, cr, cg, cb);
+    n = cr_seg(out, n, cx - r, cy, cx - r * 0.5, cy + r * 0.45, core, light, glow, cr, cg, cb);
+    n = cr_seg(out, n, cx + r, cy, cx + r * 0.5, cy - r * 0.45, core, light, glow, cr, cg, cb);
+    n = cr_seg(out, n, cx + r, cy, cx + r * 0.5, cy + r * 0.45, core, light, glow, cr, cg, cb);
+  } else if icon == CR_ICON_SIGHT {
+    // an eye, struck through: something is in the way
+    n = cr_seg(out, n, cx - r, cy, cx, cy - r * 0.55, core, light, glow, cr, cg, cb);
+    n = cr_seg(out, n, cx, cy - r * 0.55, cx + r, cy, core, light, glow, cr, cg, cb);
+    n = cr_seg(out, n, cx + r, cy, cx, cy + r * 0.55, core, light, glow, cr, cg, cb);
+    n = cr_seg(out, n, cx, cy + r * 0.55, cx - r, cy, core, light, glow, cr, cg, cb);
+    n = cr_seg(out, n, cx - r * 0.7, cy + r * 0.8, cx + r * 0.7, cy - r * 0.8, core, light, glow, cr, cg, cb);
+  } else if icon == CR_ICON_GONE {
+    // a cross: the target is gone
+    n = cr_seg(out, n, cx - r * 0.7, cy - r * 0.7, cx + r * 0.7, cy + r * 0.7, core, light, glow, cr, cg, cb);
+    n = cr_seg(out, n, cx - r * 0.7, cy + r * 0.7, cx + r * 0.7, cy - r * 0.7, core, light, glow, cr, cg, cb);
+  } else if icon == CR_ICON_WAIT {
+    // an hourglass: too soon, or no room for it
+    n = cr_seg(out, n, cx - r * 0.6, cy - r, cx + r * 0.6, cy - r, core, light, glow, cr, cg, cb);
+    n = cr_seg(out, n, cx - r * 0.6, cy + r, cx + r * 0.6, cy + r, core, light, glow, cr, cg, cb);
+    n = cr_seg(out, n, cx - r * 0.6, cy - r, cx + r * 0.6, cy + r, core, light, glow, cr, cg, cb);
+    n = cr_seg(out, n, cx + r * 0.6, cy - r, cx - r * 0.6, cy + r, core, light, glow, cr, cg, cb);
+  } else if icon == CR_ICON_HELD {
+    // two bars: the cast was stopped (held, or you fell)
+    n = cr_seg(out, n, cx - r * 0.35, cy - r * 0.8, cx - r * 0.35, cy + r * 0.8, core * 1.4, light, glow, cr, cg, cb);
+    n = cr_seg(out, n, cx + r * 0.35, cy - r * 0.8, cx + r * 0.35, cy + r * 0.8, core * 1.4, light, glow, cr, cg, cb);
+  } else {
+    // a ring, struck through: it can't be cast
+    for q: 0..<10 {
+      a0 := f32(q) * 0.6283185; a1 := f32(q + 1) * 0.6283185;
+      n = cr_seg(out, n, cx + cos(a0) * r * 0.8, cy + sin(a0) * r * 0.8, cx + cos(a1) * r * 0.8, cy + sin(a1) * r * 0.8, core, light, glow, cr, cg, cb);
+    }
+    n = cr_seg(out, n, cx - r * 0.56, cy + r * 0.56, cx + r * 0.56, cy - r * 0.56, core, light, glow, cr, cg, cb);
+  }
+  return n;
+}
+
+#test "cast sight: the room's bars are the four's cast bars" {
+  for k: 0..<SP_SLOTS { #assert near(CR_BAR[k], srd_spell(SP_SPELL[k]).bar, 0.0001); }
+}
+#test "cast sight: a refused cast cancels its bar and the Warlock's sweep, and shows its reason, not a line of text" {
+  s: [1] Everglade;
+  s[0].sp.casting = SP_BOLT; s[0].sp.cast_t = 0.4;
+  s[0].sp.news_n = 0; s[0].sp.news_t = 0;
+  cr_refused(s[..], SP_BOLT, CR_RANGE);
+  #assert s[0].sp.casting == -1 && s[0].sp.no_why == CR_RANGE && near(s[0].sp.no_t, f32(CR_SHOW), 0.001) && s[0].sp.news_t == 0;
+  s[0].wl.cast_t[1] = 5;
+  cr_refused(s[..], WL_SLOT0 + 1, CR_SIGHT);
+  #assert s[0].wl.cast_t[1] == 0 && s[0].sp.no_why == CR_SIGHT && s[0].sp.no_slot == WL_SLOT0 + 1;
+  // another slot's refusal leaves a bar going
+  s[0].sp.casting = SP_METEOR;
+  cr_refused(s[..], SP_SLOTS + 3, CR_COOLDOWN);
+  #assert s[0].sp.casting == SP_METEOR;
+  // every icon draws strokes
+  out: [2048 * VERTEX_FLOATS] f32;
+  for i: 0..<6 { #assert cr_icon_draw(out[..], 0, i, 100, 100, 9, 1, 1) >= 12; }
+}

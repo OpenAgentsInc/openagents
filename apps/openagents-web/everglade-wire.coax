@@ -42,8 +42,10 @@
 //     e cast SS SLOT AX AY AZ SEED a cast the server took: every page plays it from SEED
 //     e hit WHO BY AMT KIND        damage (WHO and BY as TGT codes)
 //     e heal WHO AMT | e die WHO | e break PIECE IX IY IZ | e burn PIECE ON | e rebuild | e edit VERSION
+//     e stop SS SLOT WHY          a cast the server took ended before its strike (WHY: range, sight, gone,
+//                                  held, dead, left: everglade-cast-rules.coax, #12790); pages drop its strike
 //     w SS LEVEL                   a seat's WANTED level
-//   r SEQ REASON                   an intent of yours refused (range, sight, dead, cooldown, slot; R: breaking)
+//   r SEQ REASON                   an intent of yours refused (a cast: everglade-cast-rules.coax CR_WORDS; R: breaking)
 
 WIRE_VERSION :: 2;
 WIRE_FRAME :: 1024;        // a page's frame at most
@@ -220,6 +222,7 @@ wire_put_hit :: (out: [] u8, at: int, h: WireHit) -> int {
 }
 wire_put_heal :: (out: [] u8, at: int, who: int, amt: int) -> int { return wire_int(out, wire_int(out, wire_put(out, at, "e heal"), who), amt); }
 wire_put_die :: (out: [] u8, at: int, who: int) -> int { return wire_int(out, wire_put(out, at, "e die"), who); }
+wire_put_stop :: (out: [] u8, at: int, ss: int, slot: int, why: string) -> int { return wire_text(out, wire_int(out, wire_int(out, wire_put(out, at, "e stop"), ss), slot), why); }
 wire_put_break :: (out: [] u8, at: int, pc: int, ix: f32, iy: f32, iz: f32) -> int {
   n := wire_int(out, wire_put(out, at, "e break"), pc);
   return wire_m(out, wire_m(out, wire_m(out, n, ix), iy), iz);

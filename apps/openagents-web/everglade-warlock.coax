@@ -179,12 +179,9 @@ wl_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id: int) 
 wl_cast :: (s: [] Everglade) {
   k := s[0].wl.armed;
   if !wl_spell(k) { return; }
-  if !s[0].sp.aim_ok { sp_say(s, "POINT AT THE GROUND OR A BUILDING", -1, ""); return; }
+  if !s[0].sp.aim_ok { cr_refused(s, WL_SLOT0 + k, CR_AIM); return; }
   at := s[0].sp.aim;
-  if flat_gap(at, s[0].feet) > WL_RANGE[k] + 3 {
-    sp_say(s, "TOO FAR", cast(int) WL_RANGE[k], "M AT MOST");
-    return;
-  }
+  if flat_gap(at, s[0].feet) > WL_RANGE[k] + f32(CR_SLACK) { cr_refused(s, WL_SLOT0 + k, CR_RANGE); return; }
   s[0].wl.cast_t[k] = s[0].wl.clock;
   s[0].wl.at = at;
   rangers_you_cast(s);

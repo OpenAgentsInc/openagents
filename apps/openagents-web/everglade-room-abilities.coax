@@ -596,16 +596,16 @@ eg_ra_drawn :: (s: [] Everglade, q: int, k: int) -> bool {
   for j: 0..<6 { everglade_room_ability(s[..], j, ks[j], 0, 0, 0, 0, false, 0, 0, 0); #assert !everglade_room_life(s[..], j, ks[j], st[..]); }
 }
 
-#test "room abilities: Everglade's four strike the server's town when the cast bar is done, not at the press" #steps 3000000000 {
+#test "room abilities: Everglade's four strike the server's town at the step after the room hands them over (their cast bar done: room-casts.coax)" #steps 3000000000 {
   s: [1] Everglade;
   dm: [1] DemoWorld;
   everglade_room_spells_start(s[..], dm[..], "");
-  everglade_room_strike(s[..], 0, SP_METEOR, 0, 2, 0, 10, 0, 10, 7);
   live := false;
-  for k: 0..<74 { _ := everglade_room_spells(s[..], 1.0 / 30); }   // 2.47 s: still casting
   for m: 0..<SP_METEORS * 2 { if s[0].sp.meteors[m].live { live = true; } }
-  #assert !live && s[0].sp.room_ab[0].later_n == 1;
-  for k: 0..<2 { _ := everglade_room_spells(s[..], 1.0 / 30); }    // 2.53 s: the meteors fall
+  #assert !live;
+  everglade_room_strike(s[..], 0, SP_METEOR, 0, 2, 0, 10, 0, 10, 7);
+  #assert s[0].sp.room_ab[0].later_n == 1;
+  _ := everglade_room_spells(s[..], 1.0 / 30);   // the meteors fall
   for m: 0..<SP_METEORS * 2 { if s[0].sp.meteors[m].live { live = true; } }
   #assert live && s[0].sp.room_ab[0].later_n == 0;
 }

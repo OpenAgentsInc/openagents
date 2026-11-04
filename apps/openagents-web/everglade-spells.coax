@@ -51,6 +51,7 @@
 #load "everglade-arrange.coax";
 #load "everglade-abilities.coax";
 #load "everglade-room-abilities.coax";
+#load "everglade-cast-sight.coax";   // a cast's line of sight, the room's and the page's (#12790)
 #load "everglade-frost.coax";
 #load "everglade-tide.coax";
 #load "everglade-grove.coax";
@@ -220,6 +221,7 @@ Spells :: struct {
   broke: int;                // pieces this cast broke
   pushed: int;               // pieces the orb's water shoved loose
   news: [120] u8; news_n: int; news_t: f32;
+  no_why: int; no_t: f32; no_slot: int = -1;   // the last refused cast: why (CR_*), its icon's time left, its slot (everglade-cast-sight.coax)
   boxes: [SP_BAR + 1] Box;   // and the row switcher's
   row: int;                  // (unused since the phone's bar became one row and a tray: open)
   open: bool;                // a phone's tray is open: every slot, in rows over the one row it keeps
@@ -654,15 +656,15 @@ sp_cast :: (s: [] Everglade) {
   if slot < 0 || s[0].sp.casting >= 0 { return; }
   if slot >= SP_SLOTS && net_shared(s, slot - SP_SLOTS) {
     // the room's server casts it where you point (everglade-net.coax); what it makes comes back
-    if !s[0].sp.aim_ok { sp_say(s, "POINT AT THE GROUND OR A BUILDING", -1, ""); return; }
+    if !s[0].sp.aim_ok { cr_refused(s, slot, CR_AIM); return; }
     egt_note(s, slot, false);
     rangers_you_cast(s);
     _ := net_cast(s, slot, s[0].sp.aim, -1);
     return;
   }
   if slot >= SP_SLOTS { egt_note(s, slot, false); rangers_you_cast(s); ab_cast(s, slot - SP_SLOTS); return; }
-  if !s[0].sp.aim_ok { sp_say(s, "POINT AT THE GROUND OR A BUILDING", -1, ""); return; }
-  if s[0].sp.far { sp_say(s, "TOO FAR · 140 M AT MOST", -1, ""); return; }
+  if !s[0].sp.aim_ok { cr_refused(s, slot, CR_AIM); return; }
+  if s[0].sp.far { cr_refused(s, slot, CR_RANGE); return; }
   s[0].sp.cast_seed = (srd_next(s[0].sp.dice[..]) >> 34) | 1;   // under 2^30: it goes out as a whole number
   egt_note(s, slot, false);
   s[0].sp.casting = slot; s[0].sp.cast_t = 0; s[0].sp.cast_at = s[0].sp.aim; s[0].sp.cast_n = s[0].sp.aim_n;
@@ -1384,6 +1386,7 @@ spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
   s[0].sp.fx_by[3] += s[0].sp.stage_n - fx0;
   sp_fx_close(s);
   if s[0].sp.news_t > 0 { s[0].sp.news_t = hi(s[0].sp.news_t - dt, 0); }
+  if s[0].sp.no_t > 0 { s[0].sp.no_t = hi(s[0].sp.no_t - dt, 0); }
   s[0].sp.flash = hi(s[0].sp.flash - dt * 4, 0);
   s[0].sp.white = hi(s[0].sp.white - dt * 10, 0);
 }
@@ -2028,6 +2031,7 @@ spells_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom: f32) ->
   phone_ := phone(s);
   y := top.top;
   if s[0].sp.casting >= 0 { n = sp_cast_bar(s, out, u, n, top.top); }
+  else if s[0].sp.no_t > 0 { n = cr_no_bar(s, out, u, n, top.top); }   // a refused cast: its reason's icon (#12790)
   // one line over the tray: how to cast the picked spell, what is casting, or what the last cast did
   // (the old engine's help line, in its green)
   line := "";

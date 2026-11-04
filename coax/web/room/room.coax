@@ -19,6 +19,8 @@
 #load "../../../apps/openagents-web/everglade5e-room-rules.coax";
 #load "../../../apps/openagents-web/everglade-wire.coax";
 #load "room-everglade.coax";
+#load "room-casts.coax";   // casts under latency: their phases and a tick's order (#12790)
+#load "../../../apps/openagents-web/everglade-cast-rules.coax";
 #load "room-abilities.coax";
 #load "room-sky.coax";
 #load "room-ticket.coax";

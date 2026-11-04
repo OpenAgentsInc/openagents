@@ -1,0 +1,184 @@
+// The cast rules under a bad network (GitHub #12790; spec docs/verse/2026-11-04-everglade-cast-rules.md):
+// four players in one Everglade room, each through the network cast-proof.sh puts between them and
+// the room (net-proxy.coax: 250 ms round trip, 30 ms of jitter, 2% of reads lost and sent again).
+//   bot 0, a Warlock, walks and casts Eldritch Blast (120 feet) at a point behind it as it goes: one
+//     2 m inside its range from where it last heard itself (the slack takes the lag: taken), one 8 m
+//     past it (refused: r SEQ range);
+//   bot 1, a druid, conjures wolves near the others;
+//   bot 2, a druid, casts Thunderbolt (a 1.2 s bar) at a wolf by its TGT, and bot 3, a druid, Mega
+//     Thunderbolt (a 0.5 s bar) at the same wolf 150 ms later: the wolf falls to bot 3's in bot 2's
+//     bar, so bot 2's stops (e stop SS 1 gone) and never strikes.
+// Every cast must be answered (taken: e cast; refused: r) within CC_ANSWER_MS, whatever the network
+// held or lost. Prints a line for each part and "casts hold" (exit 0), or "casts fail" (exit 1).
+//   coax/web/tool.sh coax/web/room/cast-check.coax ws://127.0.0.1:PORT [ROOM] [ROUNDS]
+#load "room-socket.coax";
+
+CC_BOTS :: 4;
+CC_CASTS :: 64;
+CC_ANSWER_MS :: 2000;
+CcCast :: struct { seq: int; slot: int; sent: int; answer: int; why: [12] u8; why_n: int; taken: bool; want: int; }   // want: 1 taken, 2 refused, 0 either
+CcBot :: struct {
+  seat: int = -1; x: f32; z: f32; seen: bool; seq: int; d: int;
+  casts: [CC_CASTS] CcCast; n: int;
+  stops: int; stop_gone: int; stops_other: int;
+  wolf: int; wolf_x: f32; wolf_z: f32;   // a wolf it sees (its EID, 0 none)
+}
+
+cc_word :: (t: string, k: int) -> string { return rs_field(t, k); }
+// One frame a bot heard.
+cc_hear :: (b: [] CcBot, t: string, now: int) {
+  if rs_starts(t, "y ") { b[0].seat = rs_num(rs_field(t, 1)); return; }
+  if rs_starts(t, "r ") {
+    seq := rs_num(rs_field(t, 1)); why := rs_field(t, 2);
+    for q: 0..<b[0].n {
+      c := b[0].casts[q..<q + 1];
+      if c[0].seq != seq || c[0].answer > 0 { continue; }
+      c[0].answer = now; c[0].taken = false;
+      c[0].why_n = 0; for ch: why { if c[0].why_n < 12 { c[0].why[c[0].why_n] = ch; c[0].why_n += 1; } }
+    }
+    return;
+  }
+  if !rs_starts(t, "D ") { return; }
+  b[0].d += 1;
+  at := 0; sp := 0;
+  while at < t.count && sp < 4 { if t[at] == ' ' { sp += 1; } at += 1; }
+  while at < t.count {
+    e := at;
+    while e < t.count && t[e] != ';' { e += 1; }
+    en := t[at..<e];
+    at = e + 1;
+    k := rs_field(en, 0);
+    if k == "p" && rs_num(rs_field(en, 1)) == b[0].seat { b[0].x = f32(rs_num(rs_field(en, 2))) / 100; b[0].z = f32(rs_num(rs_field(en, 4))) / 100; b[0].seen = true; continue; }
+    if k == "c" && rs_num(rs_field(en, 2)) == 12 && rs_num(rs_field(en, 7)) > 0 {   // a beast, alive
+      b[0].wolf = rs_num(rs_field(en, 1)); b[0].wolf_x = f32(rs_num(rs_field(en, 3))) / 100; b[0].wolf_z = f32(rs_num(rs_field(en, 5))) / 100;
+      continue;
+    }
+    if k == "x" && rs_field(en, 1) == "c" && rs_num(rs_field(en, 2)) == b[0].wolf { b[0].wolf = 0; continue; }
+    if k != "e" { continue; }
+    w := rs_field(en, 1);
+    if w == "cast" && rs_num(rs_field(en, 2)) == b[0].seat {
+      slot := rs_num(rs_field(en, 3));
+      for q: 0..<b[0].n {   // the oldest unanswered cast of that slot
+        c := b[0].casts[q..<q + 1];
+        if c[0].slot != slot || c[0].answer > 0 { continue; }
+        c[0].answer = now; c[0].taken = true;
+        break;
+      }
+      continue;
+    }
+    if w == "stop" && rs_num(rs_field(en, 2)) == b[0].seat {
+      b[0].stops += 1;
+      if rs_field(en, 4) == "gone" { b[0].stop_gone += 1; } else { b[0].stops_other += 1; }
+    }
+  }
+}
+cc_send_cast :: (c: [] RelayConn, b: [] CcBot, slot: int, x: f32, y: f32, z: f32, tgt: int, want: int, now: int) {
+  b[0].seq += 1;
+  m: [128] u8;
+  k := rs_int(m[..], rs_put(m[..], 0, "C "), b[0].seq);
+  k = rs_put(m[..], k, " "); k = rs_int(m[..], k, slot); k = rs_put(m[..], k, " "); k = rs_int(m[..], k, cast(int) (x * 100));
+  k = rs_put(m[..], k, " "); k = rs_int(m[..], k, cast(int) (y * 100)); k = rs_put(m[..], k, " "); k = rs_int(m[..], k, cast(int) (z * 100)); k = rs_put(m[..], k, " "); k = rs_int(m[..], k, tgt);
+  _ := relay_conn_send(c, cast(string) m[0..<k]);
+  if b[0].n < CC_CASTS { b[0].casts[b[0].n] = CcCast.{seq = b[0].seq, slot = slot, sent = now, want = want}; b[0].n += 1; }
+}
+// One step's input: walking ahead (yaw the camera's, so ahead is -(sin, cos) of it) or standing.
+cc_send_input :: (c: [] RelayConn, b: [] CcBot, walk: bool, yaw: f32) {
+  b[0].seq += 1;
+  m: [128] u8;
+  k := rs_put(m[..], rs_int(m[..], rs_put(m[..], 0, "I "), b[0].seq), " 0 ");
+  k = rs_int(m[..], k, ifx walk then 100 else 0); k = rs_put(m[..], k, " 0 0 "); k = rs_int(m[..], k, cast(int) (yaw * 100)); k = rs_put(m[..], k, " 0");
+  _ := relay_conn_send(c, cast(string) m[0..<k]);
+}
+
+#test "cast check: a bot reads its seat, place, casts taken, refusals and stops" {
+  b: [1] CcBot;
+  cc_hear(b[..], "y 2 3 1700000000000", 0);
+  b[0].casts[0] = CcCast.{seq = 5, slot = 64}; b[0].casts[1] = CcCast.{seq = 6, slot = 64}; b[0].n = 2;
+  cc_hear(b[..], "D 10 3 0 p 2 500 0 -800 0 0 0 0 1 0 0;e cast 2 64 0 0 0 7;e stop 2 1 gone;c 9 12 100 0 200 0 11 1 1 1 11", 40);
+  cc_hear(b[..], "r 6 range", 50);
+  #assert b[0].seat == 2 && b[0].seen && b[0].x == 5 && b[0].z == -8 && b[0].casts[0].taken && b[0].casts[0].answer == 40;
+  #assert !b[0].casts[1].taken && b[0].casts[1].answer == 50 && cast(string) b[0].casts[1].why[0..<b[0].casts[1].why_n] == "range";
+  #assert b[0].stop_gone == 1 && b[0].wolf == 9 && b[0].wolf_x == 1 && b[0].wolf_z == 2;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: coax/web/tool.sh coax/web/room/cast-check.coax ws://127.0.0.1:PORT [ROOM] [ROUNDS]"); return 2; }
+  bb: [512] u8;
+  base := rs_base(args_at(a[..], 0), bb[..]);
+  room := ifx args_count(a[..]) > 1 then rs_num(args_at(a[..], 1)) else rs_stamp();
+  rounds := ifx args_count(a[..]) > 2 then rs_num(args_at(a[..], 2)) else 6;
+  if rounds < 1 { rounds = 1; }
+  u: [1024] u8;
+  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-cast-", room);
+  c: [CC_BOTS] RelayConn; b: [CC_BOTS] CcBot;
+  for i: 0..<CC_BOTS {
+    ub: [1024] u8; pid: [32] u8; nm: [32] u8;
+    pn := rs_int(pid[..], rs_put(pid[..], 0, "p-cast-"), i);
+    mn := rs_int(nm[..], rs_put(nm[..], 0, "Cast "), i);
+    ui := rs_ticketed(ub[..], url, cast(string) pid[0..<pn], cast(string) nm[0..<mn]);
+    if ui.count == 0 || !relay_conn_open(c[i..<i + 1], ui) { tool_err("cast-check: can't open "); tool_errln(url); print("casts fail\n"); return 1; }
+    hm: [96] u8;
+    hn := rs_put(hm[..], rs_put(hm[..], 0, ifx i == 0 then "H 1 ranger.0.0.0 warlock 0 " else "H 1 ranger.0.0.0 druid 0 "), cast(string) nm[0..<mn]);
+    _ := relay_conn_send(c[i..<i + 1], cast(string) hm[0..<hn]);
+  }
+  print("cast-check: % players in %, % rounds\n", CC_BOTS, url, rounds);
+  // the timeline, in 33 ms ticks: 3 s to settle; then each round 3 s: bot 0's two Eldritch Blasts
+  // while it walks; bot 1's wolves; bots 2's and 3's casts at one wolf
+  t0 := rs_now(); tick := 0;
+  end := 90 + rounds * 120 + 90;
+  yaw := 0.0f32; walk_sign := 1.0f32;
+  while tick < end {
+    tick += 1;
+    now := rs_now();
+    for i: 0..<CC_BOTS { while relay_conn_poll(c[i..<i + 1], 0) == RC_TEXT { cc_hear(b[i..<i + 1], cast(string) c[i].text[0..<c[i].text_n], now); } }
+    at := tick - 90;
+    round := at / 120; in := at % 120;
+    // bot 0 walks back and forth along z (the camera at yaw 0 or pi: ahead is -z or +z), turning each round
+    yaw = ifx walk_sign > 0 then 3.14159265f32 else 0.0f32;   // ahead +z, then -z
+    for i: 0..<CC_BOTS { cc_send_input(c[i..<i + 1], b[i..<i + 1], i == 0 && at >= 0 && round < rounds, yaw); }
+    if at < 0 || round >= rounds || !b[0].seen { while rs_now() - t0 < tick * 33 { proc_sleep(2); } continue; }
+    if in == 119 { walk_sign = -walk_sign; }
+    // Eldritch Blast (slot 64, 120 feet: 36.6 m) behind bot 0 as it walks: 2 m inside, then 8 m past
+    // (60 m up: range is measured across the ground, and nothing of the town stands in the way up there)
+    behind := -walk_sign;
+    if in == 20 { cc_send_cast(c[0..<1], b[0..<1], 64, b[0].x, 60, b[0].z + behind * 34.6, -1, 1, now); }
+    if in == 50 { cc_send_cast(c[0..<1], b[0..<1], 64, b[0].x, 60, b[0].z + behind * 44.6, -1, 2, now); }
+    // wolves 6 m off bot 1, at Conjure Animals (slot 32); again each round (it moves the pack, or brings a new one)
+    if in == 10 && b[1].seen { cc_send_cast(c[1..<2], b[1..<2], 32, b[1].x + 4, 0, b[1].z + 4, -1, 0, now); }
+    // bot 2's Thunderbolt at a wolf, bot 3's Mega Thunderbolt at it 150 ms later
+    if in == 60 && b[2].wolf > 0 { cc_send_cast(c[2..<3], b[2..<3], 1, b[2].wolf_x, 0, b[2].wolf_z, 2000 + b[2].wolf, 0, now); }
+    if in == 65 && b[2].n > 0 && b[2].casts[b[2].n - 1].sent > now - 400 { cc_send_cast(c[3..<4], b[3..<4], 2, b[2].wolf_x, 0, b[2].wolf_z, 2000 + b[2].wolf, 0, now); }
+    while rs_now() - t0 < tick * 33 { proc_sleep(2); }
+  }
+  // the verdict
+  ok := true;
+  sent := 0; answered := 0; late := 0; worst := 0; wrong := 0; taken := 0; refused := 0;
+  for i: 0..<CC_BOTS {
+    for q: 0..<b[i].n {
+      cs := b[i].casts[q];
+      sent += 1;
+      if cs.answer == 0 { continue; }
+      answered += 1;
+      ms := cs.answer - cs.sent;
+      if ms > worst { worst = ms; }
+      if ms > CC_ANSWER_MS { late += 1; }
+      if cs.taken { taken += 1; } else { refused += 1; }
+      if (cs.want == 1 && !cs.taken) || (cs.want == 2 && (cs.taken || cast(string) cs.why[0..<cs.why_n] != "range")) {
+        wrong += 1;
+        print("cast-check: bot % cast % (slot %): %\n", i, cs.seq, cs.slot, ifx cs.taken then "taken" else cast(string) cs.why[0..<cs.why_n]);
+      }
+    }
+  }
+  print("cast-check: % casts sent, % answered (% taken, % refused), the slowest answer % ms, % past % ms\n", sent, answered, taken, refused, worst, late, CC_ANSWER_MS);
+  if answered < sent || late > 0 { ok = false; print("cast-check: unanswered or late casts\n"); }
+  if wrong > 0 { ok = false; print("cast-check: % casts went the wrong way for the range rule\n", wrong); }
+  // bot 2's Thunderbolts whose wolf fell to bot 3's Mega Thunderbolt in its bar stop as gone
+  print("cast-check: bot 2's casts stopped: % gone, % for another reason; bot 3 sent %\n", b[2].stop_gone, b[2].stops_other, b[3].n);
+  if b[3].n == 0 || b[2].stop_gone == 0 { ok = false; print("cast-check: no cast stopped for a target that fell in its bar\n"); }
+  d := 0; for i: 0..<CC_BOTS { d += b[i].d; }
+  print("cast-check: % D frames heard\n", d);
+  for i: 0..<CC_BOTS { _ := relay_conn_close(c[i..<i + 1], 1000); }
+  if ok { print("casts hold\n"); } else { print("casts fail\n"); }
+  return ifx ok then 0 else 1;
+}

@@ -167,6 +167,7 @@ ra_send :: (v: [] RmServer, k: int, s: int, full: bool, o: [] EgOut) {
   eg_test_drain(v[..], box[..]);
   // seat 0 casts Reverse Gravity (slot 4): the world is handed it with its aim, the rules roll nothing
   rm_heard(v[..], 0, "C 1 4 0 0 200 -1");
+  eg_test_tick(v[..], k);   // (it starts at the tick: room-casts.coax)
   #assert rm_ra_casts(v[..], k) == 1;
   c: [RA_CAST_FLOATS] f32;
   rm_ra_cast(v[..], k, 0, c[..]);
@@ -175,6 +176,7 @@ ra_send :: (v: [] RmServer, k: int, s: int, full: bool, o: [] EgOut) {
   #assert !any;
   // seat 1 casts Wind Wall (slot 5): the rules roll it and the world runs it too
   rm_heard(v[..], 1, "C 1 5 0 0 200 -1");
+  eg_test_tick(v[..], k);   // (it starts at the tick: room-casts.coax)
   #assert rm_ra_casts(v[..], k) == 2;
   rm_ra_cast(v[..], k, 1, c[..]);
   #assert c[0] == 1 && c[1] == 1 && c[6] == 1;
@@ -229,12 +231,14 @@ ra_send :: (v: [] RmServer, k: int, s: int, full: bool, o: [] EgOut) {
   c: [RA_CAST_FLOATS] f32;
   // seat 0's Levitate (slot 6): the world runs it in seat 0's copy
   rm_heard(v[..], 0, "C 1 6 0 0 0 -1");
+  eg_test_tick(v[..], k);   // (it starts at the tick: room-casts.coax)
   #assert rm_ra_casts(v[..], k) == 1;
   rm_ra_cast(v[..], k, 0, c[..]);
   #assert c[0] == 0 && c[1] == 2 && c[6] == 1 && c[10] == 0;
   rm_ra_heard(v[..], k);
   // seat 1's Destroy Water (slot 18, mode 2): the world, the e cast and the entity carry it
   rm_heard(v[..], 1, "C 1 18 1 0 200 -1 2");
+  eg_test_tick(v[..], k);   // (it starts at the tick: room-casts.coax)
   #assert rm_ra_casts(v[..], k) == 1;
   rm_ra_cast(v[..], k, 0, c[..]);
   #assert c[0] == 1 && c[1] == 14 && c[10] == 2;
