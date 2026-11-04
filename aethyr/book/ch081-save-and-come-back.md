@@ -10,10 +10,12 @@
 > schema 0. The Garden, the Haunted House, Everglade's arranging view and
 > every walkable realm's place use it. A made realm's document is saved by
 > revision and a stale save is refused with `409`
-> ([chapter 52](ch052-edit-a-realm-in-place.md)). The example below runs
+> ([chapter 52](ch052-edit-a-realm-in-place.md)), and so is a player's
+> progress (#12719): the server keeps a progress save only from the revision
+> there now, and no decision reads a device's clock. The example below runs
 > natively in debug and release. Not built yet: the layer as
-> `aethyr/save.coax`, declared save fields, and conflicts by revision for a
-> player's progress, which the server still decides by save time. See
+> `aethyr/save.coax`, declared save fields, retries that are applied once,
+> and a merge or a conflict copy in place of taking the server's save. See
 > [Still to do](#still-to-do).
 
 A save keeps what a player made or reached, so that a reload or a later
@@ -246,44 +248,69 @@ save, and a schema newer than the build, which a newer build opens.
 
 ## Conflicts are found by revision
 
-> **Design.** A made realm's document already works this way: a save names
-> the revision it was read at and a stale one gets `409` with the revision
-> there now ([chapter 52](ch052-edit-a-realm-in-place.md)). A player's
-> progress does not yet. Today `POST /api/playtest/progress` answers 409 when
-> a later save, by its time, is already there, and both `save.coax` and
-> `place.coax` let the newer copy win. A device whose clock runs ahead wins,
-> and an offline edit can overwrite progress made on another device.
+A made realm's document works this way: a save names the revision it was read
+at, and a stale one gets `409` with the revision there now
+([chapter 52](ch052-edit-a-realm-in-place.md)). A player's progress works the
+same way. The rule is
+[coax/web/api/progress-policy.coax](../../coax/web/api/progress-policy.coax),
+an `#authority` unit that `coax mutate` leaves with no surviving mutant. The
+API's `player.c` reads the slot under a lock, asks the policy, and SQL
+([0119_progress_revisions.sql](../../coax/web/api/migrations/0119_progress_revisions.sql))
+does what it decides.
 
-The design never orders saves by clock time. A save's time is shown to the
-player and isn't used for any decision.
+No decision orders saves by clock time. The server keeps a save's time from
+its own clock, to show, and reads the device's time for nothing.
 
-Each slot on the server has a `revision`, a `u64` that starts at 0 and that
-only the server increments. Every save the client sends carries
-`base_revision` (the server revision it last loaded or had confirmed), a
-`session` ID chosen when the page starts, and a `sequence` counter of that
-session's saves. The server accepts a save only when `base_revision` equals
-its current `revision`, then stores it, increments `revision` and returns the
-new value. Otherwise it answers 409 with its current save and revision and
-changes nothing. A save repeated with the same `session` and `sequence` gets
-the first attempt's answer, so a retry after a lost reply is never applied
-twice.
+Each slot has a revision, starting at 0. `GET` answers `{rev, current,
+previous}`. A save sends `{bytes, rev}`, where `rev` is the revision it was
+made from. The server keeps it only when `rev` is the revision there now, as
+revision `rev + 1`. Otherwise it answers 409 with the revision and the saves
+there now, and changes nothing. A `rev` that isn't a whole number is a 400.
+A change made without naming a revision, such as a sign-in that moves a
+guest's saves into an account or an erase, gets a revision no device has
+read, so a device still on the old one gets a 409.
 
-On a 409, a client with no changes since `base_revision` adopts the server's
-save and revision. If both sides changed, a realm that declares a merge for
-its saved fields (a set of found things merges by union) merges them and
-sends the result on the server's revision. A realm without a merge keeps the
-server copy current and the local one as a conflict copy in a separate slot,
-and the player chooses. Nothing is discarded without the player's choice.
+A page built before revisions names none. The transition rule keeps such a
+save only while no page with revisions has saved the slot, and then the save
+that arrives last is kept. Once a page with revisions saves a slot, a save
+without a revision gets a 409 there. Existing saves become revision 1, and a
+save time that a fast clock put in the future is brought back to now.
 
-The three cases this must handle:
+On the page, [save.coax](../../apps/openagents-web/save.coax)'s `SaveSync`
+keeps the revision the server last answered and sends one save at a time; a
+save made while one is in flight waits for its answer. What a 409 does
+depends on what the slot holds:
 
-- **Skewed clocks.** Device A's clock is an hour ahead of B's. B saves
-  revision 5 → 6. A, which loaded 5, saves on `base_revision` 5 and gets 409.
-- **Offline edits.** A device loads revision 5, goes offline and saves three
-  times locally, each on `base_revision` 5. Another device saves 6. On
-  reconnect the first send gets 409 and the client handles the conflict.
-- **Two sessions at once.** Two tabs load 7. The first is accepted as 8; the
-  second, on 7, gets 409 and adopts 8, merges, or keeps a conflict copy.
+- **Progress** (the Haunted House, Fairy Forest) takes the server's save and
+  its revision: it is newer by revision. The change made on this device since
+  is dropped, and the page says so.
+- **Where you are and the spell bar** ([place.coax](../../apps/openagents-web/place.coax),
+  Everglade's arranging view) send this device's copy again from the server's
+  revision, because what you just did on the device you play is what you
+  meant last.
+
+At load, a server with revisions has the account's copy: the page opens it
+unless it is the save this browser already has. A server from before
+revisions answers none, and the page falls back to the newer copy by time.
+
+The three cases this handles, each checked in `progress-policy.coax` and
+against the running API in `coax/web/api/test_player.py`:
+
+- **Skewed clocks.** Device A's clock is a day ahead of B's. B saves
+  revision 7 → 8. A, which loaded 7, saves from 7 and gets 409, whatever its
+  clock says. A device a day behind that saves from the revision there now is
+  kept.
+- **Two sessions at once.** Two tabs load 3. The first is kept as 4; the
+  second, from 3, gets 409 with the first's save.
+- **Old pages.** A page without revisions keeps working on a slot that only
+  such pages saved, and can't overwrite one that a page with revisions saved.
+
+Room-server state is not a progress save. Everglade's XP (#12739) and HP
+live in `verse.room_vitals`. Only `oa-room` writes them, signed with the
+seat-ticket key (`POST /api/playtest/room-vitals`), and XP only rises
+(`greatest`), so no stale page's save can lower it. When a guest joins with an
+email or signs in, that row moves to the account with them, and the larger
+XP stays.
 
 ## Still to do
 
@@ -295,9 +322,19 @@ The three cases this must handle:
   derives the payload from them in a fixed order, with a layout fingerprint
   per schema; entities in a save by chapter 6's durable IDs. Today each realm
   writes its payload by hand.
-- **Revisions for progress.** The server's progress slots get `revision`,
-  `base_revision`, `session` and `sequence` as above, and the client the
-  adopt, merge or conflict-copy rule.
+- **Retries applied once.** A save carries a `session` ID and a `sequence`
+  number, and the server answers a repeat with the first attempt's answer.
+  Today a lost reply leaves the page on the old revision; its next save gets
+  a 409 and takes the server's save, which is its own.
+- **Merge or conflict copy.** On a 409 a realm that declares a merge for its
+  saved fields (a set of found things merges by union) merges them and sends
+  the result from the server's revision. A realm without one keeps the local
+  save as a conflict copy in a separate slot, and the player chooses. Today
+  progress takes the server's save and drops the local change, with a
+  message.
+- **The browser's revision.** The record this browser keeps doesn't carry
+  the revision it was based on. A save that never reached the server
+  (offline) gives way to the server's on the next load.
 
 ### Acceptance checks still open
 
@@ -309,13 +346,9 @@ The three cases this must handle:
 - `place-reload.ts` passes for every walkable realm through the new layer.
 - A save and its restore give the same digest of the saved fields, natively
   and in the browser.
-- With a device clock an hour ahead, its stale save is refused with 409. An
-  offline device's queued saves produce exactly one conflict on reconnect,
-  and the other device's progress is still there. Two sessions saving from
-  one revision give one accepted save and one 409, and the refused changes
-  end up merged or in a conflict copy. A resent save increments the revision
-  once. A client with no local changes adopts the server's save after a 409
-  without asking. No decision depends on a save's clock time.
+- An offline device's queued saves produce exactly one conflict on reconnect,
+  and the other device's progress is still there. The refused changes end up
+  merged or in a conflict copy. A resent save increments the revision once.
 
 ## Dependencies
 

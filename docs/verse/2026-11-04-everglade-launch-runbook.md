@@ -67,6 +67,13 @@ Write the revisions down. They are your rollback targets.
 - **API:** nothing since `978ef4f4c1` at the time of writing. Migration 0118
   is already live. Step 1 is a no-op unless the check below finds new API
   commits or you take the capacity change (step 4).
+- **API, added 2026-11-04 (#12719):** progress saves by revision, with
+  migration 0119 (`0119_progress_revisions.sql`) and the new Coax policy
+  `progress-policy.coax`, which `deploy.sh` compiles with the others. Step 1
+  is no longer a no-op: deploy the API before the page release (step 3). The
+  order is safe both ways (an old page names no revision and keeps working; a
+  new page against the old API falls back to the old rule), but API first
+  means the new pages save by revision from their first load.
 
 ## Step 1: API
 
@@ -95,6 +102,19 @@ Additive means it only adds tables, columns (`ADD COLUMN IF NOT EXISTS`, with
 no `NOT NULL` lacking a default), indexes, or `CREATE OR REPLACE FUNCTION`.
 Stop and ask the owner before you deploy anything that drops, renames,
 truncates or deletes.
+
+The grep flags two lines in 0119, and both are expected:
+
+- `ALTER FUNCTION verse.api(...) RENAME TO api_0057` renames a function, not
+  data. Every migration that adds routes wraps `verse.api` this way (0010,
+  0011, 0015, 0057).
+- `rev bigint NOT NULL DEFAULT 0` and `marked boolean NOT NULL DEFAULT false`
+  have defaults.
+
+0119 keeps every save's bytes. It sets existing saves to revision 1 and
+brings any save time later than now back to now. `DROP TRIGGER IF EXISTS
+progress_count` drops only the trigger that the same file creates on the
+next line.
 
 ### Deploy
 
@@ -127,6 +147,25 @@ image, and runs production's smoke. It stops on the first failure.
    list shows each instance on the shard its bots reached, and the list is
    empty once the bots leave.
 
+4. **Progress by revision (#12719):** this prints `200 0` and then `409`:
+
+   ```sh
+   K=$(curl -s -X POST https://openagents.com/api/playtest/player -H 'Content-Type: application/json' -H 'X-Verse-Automation: launch-check' -d '{}' | sed 's/.*"key": *"\([^"]*\)".*/\1/')
+   curl -s -X POST https://openagents.com/api/playtest/join -H "X-Verse-Player: $K" -H 'X-Verse-Automation: launch-check' \
+     -H 'Content-Type: application/json' -d '{"email":"launch-check@example.com","how":"email"}' > /dev/null
+   curl -s -o /dev/null -w '%{http_code} ' https://openagents.com/api/playtest/progress/launch-check/main -H "X-Verse-Player: $K"
+   curl -s https://openagents.com/api/playtest/progress/launch-check/main -H "X-Verse-Player: $K" | grep -o '"rev": *[0-9]*' | grep -o '[0-9]*$'
+   B=$(python3 -c 'import base64,zlib; h=b"AESV\x02\x02launch-check"; print(base64.b64encode(h+zlib.crc32(h).to_bytes(4,"little")).decode())')
+   curl -s -o /dev/null -w '%{http_code}\n' -X POST https://openagents.com/api/playtest/progress/launch-check/main -H "X-Verse-Player: $K" \
+     -H 'Content-Type: application/json' -d "{\"bytes\":\"$B\",\"rev\":0}"
+   curl -s -o /dev/null -w '%{http_code}\n' -X POST https://openagents.com/api/playtest/progress/launch-check/main -H "X-Verse-Player: $K" \
+     -H 'Content-Type: application/json' -d "{\"bytes\":\"$B\",\"rev\":0}"
+   ```
+
+   The first save from revision 0 is kept (`200`), and the second, still from
+   0, is a `409`. If the second also answers `200`, the API is still on the
+   old rule: roll back the page release too, and check the deploy.
+
 ### Rollback for step 1
 
 ```sh
@@ -137,6 +176,11 @@ gcloud run services update-traffic oa-api --region us-central1 --project openage
 Use the revision you wrote down. An additive migration stays in the database
 after a rollback, and the old API ignores what it doesn't use. Don't write a
 reverse migration under time pressure.
+
+After 0119, a rolled-back API still saves progress: 0119 sends a save from an
+older binary to the rule before 0119 (later by time wins), and the trigger
+still gives it a new revision. While rolled back, a device's fast clock can
+win again, as before #12719.
 
 ## Step 2: oa-room on all six shards
 

@@ -330,17 +330,20 @@ static uint8_t bar_text[400], bar_url[128], bar_body[1024];
 static uint32_t bar_text_n;
 static bool bar_out_now;
 static int32_t bar_ask_id = -1;
+static int32_t bar_post_id = -1;   // the send in flight, whose answer everglade-arrange.coax reads (#12719)
 static void bar_frame(uint32_t state) {
   if (golden || !facts_seen) return;
   if (everglade_bar_ask(at(state))) {
     int64_t un = everglade_bar_url(at(state), (coax_v_u8){bar_url, sizeof bar_url});
     if (un > 0) bar_ask_id = coaxial_http((uint32_t)(uintptr_t)bar_url, (uint32_t)un, 0, 0, 4 | 8);
+    if (bar_ask_id < 0) everglade_bar_server(at(state), (coax_string){"0\n", 2});   /* no copy coming: send without one */
   }
   if (!bar_text_n) { int64_t n = everglade_bar_keep(at(state), (coax_v_u8){bar_text, sizeof bar_text}); if (n > 0) bar_text_n = (uint32_t)n; }
   int64_t bn = everglade_bar_send(at(state), (coax_v_u8){bar_body, sizeof bar_body});
   if (bn > 0) {
     int64_t un = everglade_bar_url(at(state), (coax_v_u8){bar_url, sizeof bar_url});
-    if (un > 0) coaxial_http((uint32_t)(uintptr_t)bar_url, (uint32_t)un, (uint32_t)(uintptr_t)bar_body, (uint32_t)bn, 1 | 8);
+    bar_post_id = un > 0 ? coaxial_http((uint32_t)(uintptr_t)bar_url, (uint32_t)un, (uint32_t)(uintptr_t)bar_body, (uint32_t)bn, 1 | 4 | 8) : -1;
+    if (bar_post_id < 0) everglade_bar_unsent(at(state));
   }
 }
 
@@ -518,6 +521,7 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
   if (place_message(state, kind, inbox, length)) return;
   if (kind == BAR_ACTION) { if (!golden) everglade_bar_kept(at(state), (coax_string){(const char *)inbox, length}); return; }
   if (bar_ask_id >= 0 && kind == 512 + bar_ask_id) { bar_ask_id = -1; everglade_bar_server(at(state), (coax_string){(const char *)inbox, length}); return; }
+  if (bar_post_id >= 0 && kind == 512 + bar_post_id) { bar_post_id = -1; everglade_bar_heard(at(state), (coax_string){(const char *)inbox, length}); return; }
   if (kind == 600) { facts_seen = true; if (has_line(length, "player=")) has_player = true; }
   if (mint_id >= 0 && kind == 512 + mint_id) {
     mint_id = -1;

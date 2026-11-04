@@ -138,6 +138,11 @@ static double loaded_at;           // when the save that opened was made (ms), 0
 static bool has_account;           // the player joined with an email: saves go to the server too
 static bool has_player, facts_seen; // the facts named a player key (the host sends it), and came
 static int32_t progress_ask = -1;  // the server's save, asked for
+static int32_t progress_post = -1; // the save in flight, whose answer save.coax reads (#12719)
+static int64_t post_cn;            // the container (container[]) the next save sends
+static double post_at;             // and its time (an old server reads it)
+static coax_t_SaveSync house_sync; // the server's revision (save.coax SaveSync)
+static coax_v_t_SaveSync hsync(void) { return (coax_v_t_SaveSync){&house_sync, 1}; }
 static char post[SNAP * 2];
 static char feedback[512];         // the survey's answer, kept with the house
 static char placed[1024][16];      // ids of what you placed: "placed-N"
@@ -278,27 +283,63 @@ static void restore_kept(void) {
   loaded_at = time;
   if (fell_back) { toast("Your last save didn't open; the one before it is back"); house.dirty = true; }
 }
-// The server's save (its answer to progress_ask): opens when it is newer
-// than what this browser opened, and is kept here as the current save.
+// The server's save (its answer to progress_ask): from a server with
+// revisions (#12719) it is the account's, and opens unless it is the save
+// this browser opened, whatever the clocks say; from one before revisions it
+// opens when it is newer than what this browser opened. Either way it is
+// kept here as the current save.
 // It may come before the house opens: read now, opened with the house.
 static coax_t_SaveSlots server_slots;
 static bool server_waiting;
-static void apply_server(void) {
-  if (!server_waiting || !opened) return;
+static bool apply_server(void) {   // true: the server's house opened
+  if (!server_waiting || !opened) return false;
   server_waiting = false;
-  if (world_holds()) return;
+  if (world_holds()) return false;
   coax_t_SavePick k = save_pick((coax_v_u8){server_bytes, sizeof server_bytes}, server_slots, text(SAVE_WORLD), SAVE_SCHEMA, 1);
-  if (k.which == 0 || k.time <= loaded_at) return;
+  if (k.which == 0) return false;
+  if (save_sync_revised(hsync()) ? save_same((coax_v_u8){server_bytes, sizeof server_bytes}, server_slots, (coax_v_u8){slot_bytes, sizeof slot_bytes}, slots)
+                                 : k.time <= loaded_at) return false;
+  bool fell_back = false; double time = 0;
+  if (!open_save(server_bytes, sizeof server_bytes, server_slots, &fell_back, &time)) return false;
+  loaded_at = time;
+  house.dirty = true;
+  toast("Your saved house is back");
+  return true;
+}
+// Sends the last house kept (container[]) from the server's revision; after the answer in flight
+// when there is one (save.coax SaveSync).
+static void post_now(void) {
+  if (post_cn <= 0) return;
+  int64_t base = save_sync_send(hsync(), false);
+  if (base == -2) return;   // SAVE_WAIT
+  int64_t pn = save_post_rev((coax_v_u8){container, post_cn}, post_cn, post_at, base, (coax_v_u8){(uint8_t *)post, sizeof post});
+  progress_post = pn > 0 ? coaxial_http((uint32_t)(uintptr_t)PROGRESS_URL, sizeof PROGRESS_URL - 1, (uint32_t)(uintptr_t)post, (uint32_t)pn, HTTP_ANSWER_PLAYER | 1) : -1;
+  if (progress_post < 0) save_sync_unsent(hsync());
+}
+static void take_server(uint32_t length) {
+  coax_string answer = {(const char *)inbox, length};
+  server_slots = save_from_server(answer, (coax_v_u8){server_bytes, sizeof server_bytes});
+  int64_t then = save_sync_read(hsync(), answer);
+  server_waiting = true;
+  // SAVE_MINE: a save waited for the copy; it goes unless the server's house replaced it
+  if (!apply_server() && then == 2) post_now();
+}
+// The answer to the save in flight. A 409: another device saved since, and the
+// house on the server is newer by revision, so it opens here (the change made
+// here since is dropped, and says so). A save made while it was in flight goes now.
+static void heard_post(uint32_t length) {
+  coax_string answer = {(const char *)inbox, length};
+  int64_t then = save_sync_heard(hsync(), answer, 1);   // SAVE_THEIRS
+  if (then == 2) { post_now(); return; }               // SAVE_MINE
+  if (then != 1) return;
+  server_slots = save_from_conflict(answer, (coax_v_u8){server_bytes, sizeof server_bytes});
+  coax_t_SavePick k = save_pick((coax_v_u8){server_bytes, sizeof server_bytes}, server_slots, text(SAVE_WORLD), SAVE_SCHEMA, 1);
+  if (k.which == 0 || world_holds()) return;
   bool fell_back = false; double time = 0;
   if (!open_save(server_bytes, sizeof server_bytes, server_slots, &fell_back, &time)) return;
   loaded_at = time;
   house.dirty = true;
-  toast("Your saved house is back");
-}
-static void take_server(uint32_t length) {
-  server_slots = save_from_server((coax_string){(const char *)inbox, length}, (coax_v_u8){server_bytes, sizeof server_bytes});
-  server_waiting = true;
-  apply_server();
+  toast("Your house was saved on another device since: that one is back");
 }
 
 // Saves the house when it changed (at most every 1.5 s, unless now): the
@@ -321,8 +362,9 @@ static void keep(bool at_once) {
   kept_at = now;
   loaded_at = at;
   if (has_account) {
-    int64_t pn = save_post_body((coax_v_u8){container, cn}, cn, at, (coax_v_u8){(uint8_t *)post, sizeof post});
-    if (pn > 0) coaxial_http((uint32_t)(uintptr_t)PROGRESS_URL, sizeof PROGRESS_URL - 1, (uint32_t)(uintptr_t)post, (uint32_t)pn, 1 | 8);
+    // the revision goes in when it is sent (post_now), so a save that waits names the one it waits for
+    post_cn = cn; post_at = at;
+    post_now();
   }
 }
 
@@ -1140,10 +1182,14 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
   if (kind == 600) {   // the facts: a player with an email has a save on the server too
     read_account(length);
     facts_seen = true;
-    if (has_account && progress_ask < 0)
+    if (has_account && progress_ask < 0) {
+      save_sync_ask(hsync());   // saves wait for the server's copy and its revision
       progress_ask = coaxial_http((uint32_t)(uintptr_t)PROGRESS_URL, sizeof PROGRESS_URL - 1, 0, 0, HTTP_ANSWER_PLAYER);
+      if (progress_ask < 0) save_sync_read(hsync(), (coax_string){"0\n", 2});
+    }
   }
   if (progress_ask >= 0 && kind == 512 + progress_ask) { progress_ask = -2; take_server(length); return; }
+  if (progress_post >= 0 && kind == 512 + progress_post) { progress_post = -1; heard_post(length); return; }
   if (npc_ask >= 0 && kind == 512 + npc_ask) { take_answer(length); return; }
   if (piece_ask >= 0 && kind == 512 + piece_ask) { take_piece(length); return; }
   if (world_message(kind, length)) return;

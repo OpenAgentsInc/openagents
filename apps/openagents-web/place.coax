@@ -14,8 +14,12 @@
 //   - the server, for a player with an account (logged in or joined): an
 //     AESV container (save.coax) of the same text at
 //     /api/playtest/progress/<slot>/place, asked for once the facts say
-//     there is an account, and put in force only when it is newer than what
-//     this browser gave back and you haven't moved since.
+//     there is an account, and put in force when you haven't moved since:
+//     from a server with revisions (#12719) whatever the clocks say, else
+//     only when it is newer than what this browser gave back. Each send
+//     names the revision it was made from (save.coax SaveSync); a 409 means
+//     another device saved since, and this one sends again from that
+//     revision, since where you are on the device you play is where you are.
 // Precedence: a place the location's hash names (#commons, #in-inn ...) wins
 // over a kept one, until you walk off it: then the face drops the hash
 // (place-face.h, action 3), so a reload keeps where you went rather than
@@ -66,6 +70,8 @@ PlaceKeeper :: struct {
   browser: Place; browser_t: f64;    // the last kept in this browser, and the page's clock then
   server: Place; server_t: f64;      // the last sent to the server
   newest: f64;                   // the at of the place in force
+  sync: [1] SaveSync;            // the server's revision, and the send in flight
+  resend: bool;                  // send where you are again (a 409, or a send that waited)
 }
 
 verse_place :: (px: f32, py: f32, pz: f32, pface: f32, pyaw: f32, ppitch: f32, pzoom: f32, pview: int, proom: int, pat: f64) -> Place #export_c {
@@ -230,13 +236,13 @@ verse_place_due :: (k: [] PlaceKeeper, here: Place, t: f64, leaving: bool) -> in
   if !k[0].moved { return 0; }
   due := 0;
   if verse_place_differs(here, k[0].browser) && (leaving || t - k[0].browser_t >= PLACE_BROWSER_EVERY) { due |= PLACE_KEEP; }
-  if k[0].account && verse_place_differs(here, k[0].server) && (leaving || t - k[0].server_t >= PLACE_SERVER_EVERY) { due |= PLACE_SEND; }
+  if k[0].account && (k[0].resend || (verse_place_differs(here, k[0].server) && (leaving || t - k[0].server_t >= PLACE_SERVER_EVERY))) { due |= PLACE_SEND; }
   return due;
 }
 // It was kept (what: the bits done).
 verse_place_kept :: (k: [] PlaceKeeper, here: Place, t: f64, what: int) #export_c {
   if what & PLACE_KEEP != 0 { k[0].browser = here; k[0].browser_t = t; }
-  if what & PLACE_SEND != 0 { k[0].server = here; k[0].server_t = t; }
+  if what & PLACE_SEND != 0 { k[0].server = here; k[0].server_t = t; k[0].resend = false; }
   if what != 0 && here.at > k[0].newest { k[0].newest = here.at; }
 }
 
@@ -269,14 +275,37 @@ verse_place_body :: (k: [] PlaceKeeper, here: Place, out: [] u8) -> int #export_
   b := save_post_body(c[..], cn, here.at, out);
   return ifx b > 0 then b else 0;
 }
-// The server's answer ("STATUS\n" then {current, previous}) as a place; ok false when it has none.
+// The body that sends a place to the server from the revision this page has; 0 when it is to wait
+// (a send in flight, or the server's copy not come yet: verse_place_heard asks for it again).
+verse_place_send :: (k: [] PlaceKeeper, here: Place, leaving: bool, out: [] u8) -> int #export_c {
+  base := save_sync_send(k[0].sync[..], leaving);
+  if base == SAVE_WAIT { return 0; }
+  text: [PLACE_TEXT] u8;
+  n := verse_place_text(here, verse_place_slot(k), text[..]);
+  c: [PLACE_TEXT + 96] u8;
+  cn := ifx n > 0 then save_pack(PLACE_WORLD, PLACE_SCHEMA, text[..], n, c[..]) else 0;
+  b := ifx cn > 0 then save_post_rev(c[..], cn, here.at, base, out) else 0;
+  if b <= 0 && !leaving { save_sync_unsent(k[0].sync[..]); }
+  return ifx b > 0 then b else 0;
+}
+// The answer to a send; a 409 or a send that waited: send again.
+verse_place_heard :: (k: [] PlaceKeeper, answer: string) #export_c {
+  if save_sync_heard(k[0].sync[..], answer, SAVE_MINE) == SAVE_MINE { k[0].resend = true; }
+}
+// A send the host never made.
+verse_place_unsent :: (k: [] PlaceKeeper) #export_c { save_sync_unsent(k[0].sync[..]); }
+// The server's answer ("STATUS\n" then {rev, current, previous}) as a place; ok false when it has
+// none. From a server with revisions it is newer than any place this browser kept.
 verse_place_server :: (k: [] PlaceKeeper, answer: string) -> Place #export_c {
   none: Place;
+  if save_sync_read(k[0].sync[..], answer) == SAVE_MINE { k[0].resend = true; }
   bytes: [2048] u8;
   s := save_from_server(answer, bytes[..]);
   pick := save_pick(bytes[..], s, PLACE_WORLD, PLACE_SCHEMA, 1);
   if pick.which == 0 { return none; }
-  return verse_place_read(cast(string) bytes[pick.at..<pick.at + pick.count], verse_place_slot(k));
+  p := verse_place_read(cast(string) bytes[pick.at..<pick.at + pick.count], verse_place_slot(k));
+  if p.ok && save_sync_revised(k[0].sync[..]) && p.at <= k[0].newest { p.at = k[0].newest + 1; }
+  return p;
 }
 
 // ---- open ground near a kept place
@@ -454,6 +483,63 @@ facts_for :: (k: [] PlaceKeeper, account: bool) {
   // no slot yet: no URL
   e: [1] PlaceKeeper;
   #assert verse_place_url(e[..], url[..]) == 0;
+}
+
+#test "by revision (#12719): the server's copy wins whatever the clocks, and a 409 sends yours again" {
+  k: [1] PlaceKeeper;
+  facts_for(k[..], true);
+  spawn := verse_place(0, 0, 0, 0, 0, 0, 5, 0, -1, 0);
+  verse_place_open(k[..], spawn);
+  // this browser's copy, from a clock a day fast
+  #assert verse_place_take(k[..], verse_place(10, 0, 5, 1, 1, 0.3, 4, 0, -1, 1793222723475 + 86400000));
+  here := verse_place(-12.5, 1.25, 40, 3, 2, 0.5, 6, 0, 4, 1793222723475);
+  body: [1024] u8;
+  bn := verse_place_body(k[..], here, body[..]);
+  b := cast(string) body[0..<bn];
+  bs := save_find(b, 0, "\"bytes\":\"");
+  be := bs;
+  while be < bn && b[be] != 34 { be += 1; }
+  answer: [1400] u8; an := 0;
+  pre := "200\n{\"rev\": 7, \"current\": {\"at\": 5, \"bytes\": \"";
+  for i: 0..<pre.count { answer[an] = pre[i]; an += 1; }
+  for i: bs..<be { answer[an] = body[i]; an += 1; }
+  post := "\"}, \"previous\": null}";
+  for i: 0..<post.count { answer[an] = post[i]; an += 1; }
+  older: [1400] u8; on := 0;
+  pre2 := "200\n{\"current\": {\"at\": 5, \"bytes\": \"";
+  for i: 0..<pre2.count { older[on] = pre2[i]; on += 1; }
+  for i: bs..<be { older[on] = body[i]; on += 1; }
+  for i: 0..<post.count { older[on] = post[i]; on += 1; }
+  back := verse_place_server(k[..], cast(string) answer[0..<an]);
+  // the server's, older by every clock, is put in force: it is the account's
+  #assert back.ok && back.room == 4 && !k[0].resend && verse_place_take(k[..], back) && k[0].sync[0].rev == 7;
+  // you walk: it goes from revision 7, one at a time
+  walk := verse_place(-11, 1.25, 40, 3, 2, 0.5, 6, 0, 4, 1793222724000);
+  #assert verse_place_due(k[..], walk, 20.0, false) & PLACE_SEND != 0;
+  sn := verse_place_send(k[..], walk, false, body[..]);
+  #assert sn > 0 && cast(string) body[sn - 9..<sn] == ",\"rev\":7}";
+  verse_place_kept(k[..], walk, 20.0, PLACE_SEND);
+  #assert !k[0].resend && verse_place_send(k[..], walk, false, body[..]) == 0;
+  // left meanwhile: sent at once, from the revision the one in flight makes
+  ln := verse_place_send(k[..], walk, true, body[..]);
+  #assert ln > 0 && cast(string) body[ln - 9..<ln] == ",\"rev\":8}";
+  // another device saved since: a 409, and this one sends again from its revision
+  verse_place_heard(k[..], "409\n{\"rev\": 12, \"error\": \"changed since\"}");
+  #assert k[0].resend && verse_place_due(k[..], walk, 20.5, false) & PLACE_SEND != 0;
+  sn = verse_place_send(k[..], walk, false, body[..]);
+  #assert sn > 0 && cast(string) body[sn - 10..<sn] == ",\"rev\":12}";
+  verse_place_kept(k[..], walk, 20.5, PLACE_SEND);
+  verse_place_heard(k[..], "200\n{\"rev\": 13}");
+  #assert !k[0].resend && k[0].sync[0].rev == 13 && !k[0].sync[0].busy;
+  verse_place_unsent(k[..]);
+  #assert k[0].sync[0].again;
+  // a server from before revisions: the newer by time, as before
+  o: [1] PlaceKeeper;
+  facts_for(o[..], true);
+  verse_place_open(o[..], spawn);
+  #assert verse_place_take(o[..], verse_place(10, 0, 5, 1, 1, 0.3, 4, 0, -1, 1793222723475 + 86400000));
+  old := verse_place_server(o[..], cast(string) older[0..<on]);
+  #assert old.ok && !verse_place_take(o[..], old) && !o[0].sync[0].has && o[0].sync[0].known;
 }
 
 #test "the spots tried round a place: itself first, then rings out to about 20 m, and walls that block" {

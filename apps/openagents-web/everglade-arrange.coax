@@ -7,8 +7,11 @@
 //
 // Kept as your place is (place.coax): in this browser by the host's action 12 (localStorage
 // coaxial.<slot>.bar, given back as message 12 at load) and, for a player with an account, as an
-// AESV container of the same text at /api/playtest/progress/<slot>/hotbar (everglade-face.c); the
-// newer wins. Golden mode keeps and restores nothing. The text, a line each:
+// AESV container of the same text at /api/playtest/progress/<slot>/hotbar (everglade-face.c). From a
+// server with revisions (#12719) the server's copy wins whatever the clocks say; each send names the
+// revision it was made from, and a 409 (another device saved since) sends this bar again from that
+// revision, since the bar you just arranged is the one you meant. A server from before revisions:
+// the newer by time wins. Golden mode keeps and restores nothing. The text, a line each:
 //   eg-bar 1 / at=MS / places=P,P,... (each slot's place, row * 12 + column, in the bar's order)
 
 AR_HEAD :: "eg-bar 1\n";
@@ -30,6 +33,7 @@ Arrange :: struct {
   moving: bool;                // its icon follows the pointer
   x: f32; y: f32; x0: f32; y0: f32;
   eat: bool; eat_id: int;      // the rest of a pointer whose press was the bar's
+  sync: [1] SaveSync;          // the server's revision, and the send in flight (save.coax)
 }
 
 // Slot b's place when nobody moved it: row * 12 + column.
@@ -140,24 +144,36 @@ everglade_bar_ask :: (s: [] Everglade) -> bool #export_c {
   return true;
 }
 // The body that keeps the arrangement on the server since the last change ({"bytes", "at"}); 0 none.
+// It names the revision this page has, one at a time: while one is in flight it waits, and
+// everglade_bar_heard sends it then.
 everglade_bar_send :: (s: [] Everglade, out: [] u8) -> int #export_c {
   if !s[0].sp.ar.send { return 0; }
+  base := save_sync_send(s[0].sp.ar.sync[..], false);
+  if base == SAVE_WAIT { return 0; }
   s[0].sp.ar.send = false;
   text: [AR_TEXT] u8;
   n := ar_text(s, text[..]);
-  if n <= 0 { return 0; }
   c: [AR_TEXT + 96] u8;
-  cn := save_pack(AR_WORLD, AR_SCHEMA, text[..], n, c[..]);
-  if cn <= 0 { return 0; }
-  b := save_post_body(c[..], cn, s[0].sp.ar.at, out);
+  cn := ifx n > 0 then save_pack(AR_WORLD, AR_SCHEMA, text[..], n, c[..]) else 0;
+  b := ifx cn > 0 then save_post_rev(c[..], cn, s[0].sp.ar.at, base, out) else 0;
+  if b <= 0 { save_sync_unsent(s[0].sp.ar.sync[..]); }
   return ifx b > 0 then b else 0;
 }
-// The server's answer ("STATUS\n" then {current, previous}).
+// The answer to a send: a 409, or a change made while it was in flight, sends the bar again.
+everglade_bar_heard :: (s: [] Everglade, answer: string) #export_c {
+  if save_sync_heard(s[0].sp.ar.sync[..], answer, SAVE_MINE) == SAVE_MINE { s[0].sp.ar.send = true; }
+}
+// A send the host never made: it goes again.
+everglade_bar_unsent :: (s: [] Everglade) #export_c { save_sync_unsent(s[0].sp.ar.sync[..]); s[0].sp.ar.send = true; }
+// The server's answer ("STATUS\n" then {rev, current, previous}).
 everglade_bar_server :: (s: [] Everglade, answer: string) #export_c {
+  if save_sync_read(s[0].sp.ar.sync[..], answer) == SAVE_MINE { s[0].sp.ar.send = true; }
   bytes: [2048] u8;
   got := save_from_server(answer, bytes[..]);
   pick := save_pick(bytes[..], got, AR_WORLD, AR_SCHEMA, 1);
   if pick.which == 0 { return; }
+  // by revision the server's is newer than this browser's, unless you moved a slot meanwhile
+  if save_sync_revised(s[0].sp.ar.sync[..]) && !s[0].sp.ar.send { s[0].sp.ar.at = 0; }
   _ := ar_take(s, cast(string) bytes[pick.at..<pick.at + pick.count]);
 }
 

@@ -125,6 +125,12 @@ static int64_t kept_count = -1;    // fairy_progress_count when last kept (or ad
 static double kept_t = -10;
 static bool keep_soon;             // the server's save was added back: keep it here too
 static int32_t progress_ask = -1;  // the server's save, asked for
+static int32_t progress_post = -1; // the save in flight, whose answer save.coax reads (#12719)
+static int64_t post_cn;            // the container (container[]) the next save sends, and its time
+static double post_at;
+static coax_t_SaveSync forest_sync; // the server's revision (save.coax SaveSync)
+static coax_v_t_SaveSync forest_rev(void) { return (coax_v_t_SaveSync){&forest_sync, 1}; }
+static void post_now(void);
 static double wall_ms(void) { return track_state.epoch > 0 ? track_state.epoch + track_state.t * 1000.0 : 0; }
 
 // Adds back the current save of these slots, else the last good one; true when one opened.
@@ -158,9 +164,19 @@ static void keep_progress(uint32_t state, bool now_) {
   keep_n = (uint32_t)rn;
   kept_count = c; kept_t = now; loaded_at = when; keep_soon = false;
   if (place_keeper.account) {
-    int64_t pn = save_post_body((coax_v_u8){container, cn}, cn, when, (coax_v_u8){(uint8_t *)post, sizeof post});
-    if (pn > 0) coaxial_http((uint32_t)(uintptr_t)PROGRESS_URL, sizeof PROGRESS_URL - 1, (uint32_t)(uintptr_t)post, (uint32_t)pn, 1 | 8);
+    post_cn = cn; post_at = when;
+    post_now();
   }
+}
+// Sends the last progress kept (container[]) from the server's revision; after the answer in
+// flight when there is one (save.coax SaveSync).
+static void post_now(void) {
+  if (post_cn <= 0) return;
+  int64_t base = save_sync_send(forest_rev(), false);
+  if (base == -2) return;   // SAVE_WAIT
+  int64_t pn = save_post_rev((coax_v_u8){container, post_cn}, post_cn, post_at, base, (coax_v_u8){(uint8_t *)post, sizeof post});
+  progress_post = pn > 0 ? coaxial_http((uint32_t)(uintptr_t)PROGRESS_URL, sizeof PROGRESS_URL - 1, (uint32_t)(uintptr_t)post, (uint32_t)pn, 1 | 4 | 8) : -1;
+  if (progress_post < 0) save_sync_unsent(forest_rev());
 }
 // The kept record (message 4), the facts (600: an account asks the server
 // for its save), the server's answer, and leaving (601, 603: kept at once).
@@ -172,12 +188,35 @@ static bool progress_message(uint32_t state, int32_t kind, uint32_t length) {
     open_slots(state, slot_bytes, sizeof slot_bytes, slots, 0);
     return true;
   }
-  if (kind == 600 && place_keeper.account && progress_ask < 0)
+  if (kind == 600 && place_keeper.account && progress_ask < 0) {
+    save_sync_ask(forest_rev());   // saves wait for the server's copy and its revision
     progress_ask = coaxial_http((uint32_t)(uintptr_t)PROGRESS_URL, sizeof PROGRESS_URL - 1, 0, 0, 4 | 8);
+    if (progress_ask < 0) save_sync_read(forest_rev(), (coax_string){"0\n", 2});
+  }
   if (progress_ask >= 0 && kind == 512 + progress_ask) {
     progress_ask = -2;
-    server_slots = save_from_server((coax_string){(const char *)inbox, length}, (coax_v_u8){server_bytes, sizeof server_bytes});
-    if (open_slots(state, server_bytes, sizeof server_bytes, server_slots, loaded_at)) keep_soon = true;
+    coax_string answer = {(const char *)inbox, length};
+    server_slots = save_from_server(answer, (coax_v_u8){server_bytes, sizeof server_bytes});
+    int64_t then = save_sync_read(forest_rev(), answer);
+    // from a server with revisions (#12719) its copy is the account's: it opens unless it is the
+    // one this browser added back, whatever the clocks say; from one before, when it is newer
+    bool revised = save_sync_revised(forest_rev());
+    bool same = revised && save_same((coax_v_u8){server_bytes, sizeof server_bytes}, server_slots, (coax_v_u8){slot_bytes, sizeof slot_bytes}, slots);
+    if (!same && open_slots(state, server_bytes, sizeof server_bytes, server_slots, revised ? -1 : loaded_at)) keep_soon = true;
+    else if (then == 2) post_now();   // SAVE_MINE: a save waited for the copy, and still stands
+    return true;
+  }
+  // The answer to the save in flight. A 409: another device saved since, and the forest on the
+  // server is newer by revision, so it is added back here. A save made meanwhile goes now.
+  if (progress_post >= 0 && kind == 512 + progress_post) {
+    progress_post = -1;
+    coax_string answer = {(const char *)inbox, length};
+    int64_t then = save_sync_heard(forest_rev(), answer, 1);   // SAVE_THEIRS
+    if (then == 2) post_now();                            // SAVE_MINE
+    if (then == 1) {
+      server_slots = save_from_conflict(answer, (coax_v_u8){server_bytes, sizeof server_bytes});
+      if (open_slots(state, server_bytes, sizeof server_bytes, server_slots, -1)) keep_soon = true;
+    }
     return true;
   }
   if (kind == 601 || kind == 603) keep_progress(state, true);

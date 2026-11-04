@@ -5,7 +5,11 @@
 // The page keeps the record in this browser (IndexedDB, through the host's
 // action 4), and a player who joined with an email also on the server
 // (/api/playtest/progress, coax/web/api/player.c), which checks the same
-// container; the newer of the two wins.
+// container. The server keeps a save only from the revision there now
+// (coax/web/api/progress-policy.coax, #12719), so a page names the revision
+// it saved from (SaveSync below) and no device's clock decides which save
+// wins. A server from before revisions answers none: then the newer of the
+// two by time wins, as before.
 //
 // The container (docs/save.md "The binary format"):
 //   "AESV", container version (2), layer (2: player progress), 2 reserved,
@@ -328,7 +332,16 @@ save_server_part :: (text: string, key: string, bytes: [] u8, at: int, time: [] 
 save_from_server :: (answer: string, bytes: [] u8) -> SaveSlots #export_c {
   s: SaveSlots;
   if answer.count < 4 || answer[0..<4] != "200\n" { return s; }
-  body := answer[4..<answer.count];
+  return save_slots_of(answer[4..<answer.count], bytes);
+}
+// A 409's saves (what is on the server now), as slots; none when it isn't a 409.
+save_from_conflict :: (answer: string, bytes: [] u8) -> SaveSlots #export_c {
+  s: SaveSlots;
+  if answer.count < 4 || answer[0..<4] != "409\n" { return s; }
+  return save_slots_of(answer[4..<answer.count], bytes);
+}
+save_slots_of :: (body: string, bytes: [] u8) -> SaveSlots {
+  s: SaveSlots;
   t: [1] f64;
   s.cur_n = save_server_part(body, "\"current\": ", bytes, 0, t[..]);
   if s.cur_n == 0 { s.cur_n = save_server_part(body, "\"current\":", bytes, 0, t[..]); }
@@ -352,6 +365,102 @@ save_post_body :: (c: [] u8, n: int, at: f64, out: [] u8) -> int #export_c {
   o = save_put_number(out, o + tail.count, at);
   if o < 0 { return -1; }
   out[o - 1] = 125;   // the number's line end becomes the closing brace
+  return o;
+}
+
+// ---- revisions (#12719): the revision a page saves from, and what it does with the answer
+//
+// rev is the slot's revision as the server last answered it (has: it answered one; a server from
+// before revisions never does). All zero is a SaveSync's start, so a C face's static one is ready. One save is in flight at a time: a save asked for meanwhile waits for its answer
+// (again). A page of progress also waits for the server's copy it asked for (asked, known), so it
+// never sends from no revision; a page of SAVE_MINE needn't (its 409 sends it again). A page being left
+// sends at once, from the revision the save in flight makes. A 409 carries the revision and the
+// saves there now: a page of progress takes the server's (SAVE_THEIRS: it is newer by revision);
+// a page of where you are or your spell bar sends its own again from that revision (SAVE_MINE:
+// what you just did on this device is what you meant last).
+SAVE_DONE :: 0;
+SAVE_THEIRS :: 1;   // open the server's save: it is newer by revision
+SAVE_MINE :: 2;     // send this device's again, now
+SAVE_WAIT :: -2;    // save_sync_send: not now; SAVE_MINE comes when it may go
+SaveSync :: struct {
+  rev: int;
+  has: bool;      // rev is the server's
+  asked: bool;    // the server's copy was asked for (save_sync_ask)
+  known: bool;    // and it (or its failure) has come
+  busy: bool;     // a save is in flight
+  again: bool;    // one was asked for while it was
+}
+// The answer's status: the number before its first line end (0 none).
+save_status :: (answer: string) -> int {
+  v := 0; i := 0;
+  while i < answer.count && i < 4 && answer[i] >= 48 && answer[i] <= 57 { v = v * 10 + cast(int) answer[i] - 48; i += 1; }
+  return ifx i > 0 && i < answer.count && answer[i] == 10 then v else 0;
+}
+// The revision in a 200 or 409 answer's body ("rev": N); -1 when it names none.
+save_rev :: (answer: string) -> int #export_c {
+  st := save_status(answer);
+  if st != 200 && st != 409 { return -1; }
+  k := save_find(answer, 4, "\"rev\": ");
+  if k < 0 { k = save_find(answer, 4, "\"rev\":"); }
+  if k < 0 || k >= answer.count || answer[k] < 48 || answer[k] > 57 { return -1; }
+  v := 0;
+  while k < answer.count && answer[k] >= 48 && answer[k] <= 57 && v < 1000000000000000 { v = v * 10 + cast(int) answer[k] - 48; k += 1; }
+  return v;
+}
+// The server's copy was asked for: saves wait for it.
+save_sync_ask :: (s: [] SaveSync) #export_c { s[0].asked = true; }
+// The server's copy came (its answer, any status). SAVE_MINE when a save waited for it.
+save_sync_read :: (s: [] SaveSync, answer: string) -> int #export_c {
+  r := save_rev(answer);
+  if !s[0].has && r >= 0 { s[0].rev = r; s[0].has = true; }
+  s[0].known = true;
+  if s[0].again && !s[0].busy { s[0].again = false; return SAVE_MINE; }
+  return SAVE_DONE;
+}
+// A save is to go: the revision to name (-1 none), or SAVE_WAIT. leaving: the page is being left
+// (sent at once, nothing comes back).
+save_sync_send :: (s: [] SaveSync, leaving: bool) -> int #export_c {
+  if leaving { return ifx !s[0].has then -1 else ifx s[0].busy then s[0].rev + 1 else s[0].rev; }
+  if s[0].busy || (s[0].asked && !s[0].known) { s[0].again = true; return SAVE_WAIT; }
+  s[0].busy = true;
+  return ifx s[0].has then s[0].rev else -1;
+}
+// The save in flight was never sent (the host had no room for it).
+save_sync_unsent :: (s: [] SaveSync) #export_c { s[0].busy = false; s[0].again = true; }
+// The answer to the save in flight. mine: what a 409 means for this page (SAVE_THEIRS, SAVE_MINE).
+// SAVE_DONE, SAVE_THEIRS (open the 409's saves) or SAVE_MINE (send again now).
+save_sync_heard :: (s: [] SaveSync, answer: string, mine: int) -> int #export_c {
+  s[0].busy = false;
+  r := save_rev(answer);
+  if r >= 0 { s[0].rev = r; s[0].has = true; }
+  if save_status(answer) == 409 && r >= 0 {
+    s[0].again = false;
+    return ifx mine == SAVE_THEIRS then SAVE_THEIRS else SAVE_MINE;
+  }
+  if s[0].again { s[0].again = false; return SAVE_MINE; }
+  return SAVE_DONE;
+}
+// Whether the server answered with revisions: then its copy is the account's, newer than this
+// browser's whatever the clocks say.
+save_sync_revised :: (s: [] SaveSync) -> bool #export_c { return s[0].has; }
+// Whether two slots' current saves are the same bytes (the server's copy is what this browser has).
+save_same :: (a: [] u8, sa: SaveSlots, b: [] u8, sb: SaveSlots) -> bool #export_c {
+  if sa.cur_n == 0 || sa.cur_n != sb.cur_n { return false; }
+  for i: 0..<sa.cur_n { if a[sa.cur + i] != b[sb.cur + i] { return false; } }
+  return true;
+}
+// The body that saves a container on the server from revision rev: {"bytes", "at", "rev"} ("rev"
+// left out when rev < 0: an old server reads "at", a new one the revision).
+save_post_rev :: (c: [] u8, n: int, at: f64, rev: int, out: [] u8) -> int #export_c {
+  o := save_post_body(c, n, at, out);
+  if o < 0 || rev < 0 { return o; }
+  tail := ",\"rev\":";
+  if o + tail.count + 24 > out.count { return -1; }
+  o -= 1;   // the closing brace
+  for k: 0..<tail.count { out[o + k] = tail[k]; }
+  o = save_put_number(out, o + tail.count, cast(f64) rev);
+  if o < 0 { return -1; }
+  out[o - 1] = 125;
   return o;
 }
 
@@ -440,4 +549,85 @@ save_post_body :: (c: [] u8, n: int, at: f64, out: [] u8) -> int #export_c {
   #assert save_from_server("403\n{\"error\":\"join\"}", bytes[..]).cur_n == 0;
   out: [8] u8;
   #assert save_unb64("Zm9vYg==", out[..], 0) == 4 && out[3] == 98 && save_unb64("Zm9=", out[..], 0) == 2 && save_unb64("Z===", out[..], 0) == -1;
+}
+
+#test "revisions: one save in flight, the revision named, and what a 409 does (#12719)" {
+  s: [1] SaveSync;
+  save_sync_ask(s[..]);
+  #assert !s[0].has && save_sync_send(s[..], false) == SAVE_WAIT && s[0].again;   // before the copy it asked for
+  #assert save_sync_read(s[..], "200\n{\"rev\": 4, \"current\": null, \"previous\": null}") == SAVE_MINE && s[0].rev == 4 && s[0].known;
+  #assert save_sync_send(s[..], false) == 4 && s[0].busy;
+  #assert save_sync_send(s[..], false) == SAVE_WAIT && s[0].again;                      // one in flight
+  #assert save_sync_send(s[..], true) == 5;                                             // left: from the revision it makes
+  #assert save_sync_heard(s[..], "200\n{\"rev\":5}", SAVE_THEIRS) == SAVE_MINE && s[0].rev == 5 && !s[0].busy && !s[0].again;
+  #assert save_sync_send(s[..], false) == 5;
+  #assert save_sync_heard(s[..], "200\n{\"rev\": 6}", SAVE_THEIRS) == SAVE_DONE && s[0].rev == 6;
+  #assert save_sync_send(s[..], true) == 6;                                             // left, nothing in flight
+  // a 409: the revision there now, and the page's choice
+  #assert save_sync_send(s[..], false) == 6;
+  #assert save_sync_heard(s[..], "409\n{\"rev\": 9, \"error\": \"changed since\"}", SAVE_THEIRS) == SAVE_THEIRS && s[0].rev == 9;
+  #assert save_sync_send(s[..], false) == 9;
+  _ := save_sync_send(s[..], false);                                                    // waits
+  #assert save_sync_heard(s[..], "409\n{\"rev\": 11}", SAVE_MINE) == SAVE_MINE && s[0].rev == 11 && !s[0].again;
+  // a server from before revisions: its 409 has none, and changes nothing here
+  #assert save_sync_send(s[..], false) == 11;
+  #assert save_sync_heard(s[..], "409\n{\"current\": null}", SAVE_THEIRS) == SAVE_DONE && s[0].rev == 11;
+  // no answer, or one the host never sent
+  #assert save_sync_send(s[..], false) == 11;
+  #assert save_sync_heard(s[..], "0\n", SAVE_THEIRS) == SAVE_DONE && !s[0].busy && s[0].rev == 11;
+  #assert save_sync_send(s[..], false) == 11;
+  save_sync_unsent(s[..]);
+  #assert !s[0].busy && s[0].again;
+  #assert save_sync_heard(s[..], "200\n{}", SAVE_THEIRS) == SAVE_MINE && s[0].rev == 11;
+  // an old server: no revision, so the page names none and the clocks decide as before
+  o: [1] SaveSync;
+  #assert save_sync_read(o[..], "200\n{\"current\": null, \"previous\": null}") == SAVE_DONE && !save_sync_revised(o[..]);
+  #assert save_sync_send(o[..], false) == -1 && save_sync_send(o[..], true) == -1;
+  // a page that never asks (SAVE_MINE) sends at once, from no revision until it hears one
+  m: [1] SaveSync;
+  #assert save_sync_send(m[..], false) == -1 && m[0].busy && !m[0].again;
+  #assert save_sync_heard(m[..], "409\n{\"rev\": 4}", SAVE_MINE) == SAVE_MINE && save_sync_send(m[..], false) == 4;
+  #assert save_sync_read(s[..], "200\n{\"rev\": 2}") == SAVE_DONE && s[0].rev == 11;  // a late copy never moves it back
+  // the answer's parts
+  #assert save_rev("200\n{\"rev\": 1793222723475}") == 1793222723475 && save_rev("409\n{\"rev\":0}") == 0;
+  #assert save_rev("403\n{\"rev\": 3}") == -1 && save_rev("200\n{\"rev\": x}") == -1 && save_rev("200\n{}") == -1 && save_rev("") == -1;
+  #assert save_rev("200\n{\"rev\": ") == -1 && save_rev("200") == -1 && save_rev("20x\n{\"rev\": 3}") == -1;
+  #assert save_status("409\n") == 409 && save_status("0\n") == 0 && save_status("200") == 0 && save_status("12345\n") == 0;
+}
+
+#test "a 409's saves, the same bytes, and the body that names the revision" {
+  p: [8] u8; c: [64] u8;
+  p[0] = 7; p[1] = 8;
+  cn := save_pack("haunted-house", 1, p[..], 2, c[..]);
+  body: [256] u8;
+  bn := save_post_rev(c[..], cn, 1793222723475, 12, body[..]);
+  text := cast(string) body[0..<bn];
+  #assert text[bn - 30..<bn] == "\",\"at\":1793222723475,\"rev\":12}";
+  #assert save_post_rev(c[..], cn, 5, -1, body[..]) == save_post_body(c[..], cn, 5, body[..]);
+  #assert save_post_rev(c[..], cn, 5, 0, body[..]) > 0 && cast(string) body[0..<4] == "{\"by";
+  small: [90] u8;
+  #assert save_post_body(c[..], cn, 5, small[..]) > 0 && save_post_rev(c[..], cn, 5, 3, small[..]) == -1;
+  b64 := text[10..<bn - 30];
+  answer: [512] u8; an := 0;
+  pre := "409\n{\"rev\": 3, \"error\": \"changed since\", \"current\": {\"at\": 9, \"bytes\": \"";
+  for k: 0..<pre.count { answer[an] = pre[k]; an += 1; }
+  for k: 0..<b64.count { answer[an] = b64[k]; an += 1; }
+  post := "\"}, \"previous\": null}";
+  for k: 0..<post.count { answer[an] = post[k]; an += 1; }
+  a := cast(string) answer[0..<an];
+  bytes: [128] u8;
+  s := save_from_conflict(a, bytes[..]);
+  #assert s.cur_n == cn && s.cur_at == 9 && save_from_server(a, bytes[..]).cur_n == 0;
+  #assert save_from_conflict("200\n{}", bytes[..]).cur_n == 0 && save_rev(a) == 3;
+  mine: [64] u8;
+  for k: 0..<cn { mine[k] = c[k]; }
+  m: SaveSlots; m.cur_n = cn;
+  s = save_from_conflict(a, bytes[..]);
+  #assert save_same(bytes[..], s, mine[..], m) && save_same(mine[..], m, bytes[..], s);
+  mine[cn - 1] = mine[cn - 1] ^ 1;
+  #assert !save_same(bytes[..], s, mine[..], m);
+  m.cur_n = cn - 1;
+  #assert !save_same(bytes[..], s, mine[..], m);
+  none: SaveSlots;
+  #assert !save_same(bytes[..], none, mine[..], none);
 }

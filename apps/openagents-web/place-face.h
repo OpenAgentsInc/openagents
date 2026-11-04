@@ -5,7 +5,8 @@
 // once the facts say the player has an account (GET
 // /api/playtest/progress/<slot>/place, the player's key) and sends it there
 // every PLACE_SERVER_EVERY seconds while you move and when the page is
-// hidden or left (a keepalive POST). place.coax decides when and which copy
+// hidden or left (a keepalive POST), naming the server's revision; it reads
+// each send's answer but a leaving one's. place.coax decides when and which copy
 // wins; this file decides nothing.
 //
 // The face includes its page's header (which #loads place.coax) and
@@ -40,6 +41,7 @@ static int32_t place_out_code;      // the action the place's outbox is for
 static uint8_t place_url[128];
 static uint8_t place_body[1024];
 static int32_t place_ask_id = -1;
+static int32_t place_post_id = -1;  // the send in flight, whose answer place.coax reads (#12719)
 static coax_v_t_PlaceKeeper place_k(void) { return (coax_v_t_PlaceKeeper){&place_keeper, 1}; }
 static double place_wall_ms(void) { return track_state.epoch > 0 ? track_state.epoch + track_state.t * 1000.0 : 0; }
 
@@ -59,8 +61,10 @@ static void place_keep(uint32_t state, bool leaving) {
   }
   if (due & 2) {
     int64_t un = verse_place_url(place_k(), (coax_v_u8){place_url, sizeof place_url});
-    int64_t bn = verse_place_body(place_k(), here, (coax_v_u8){place_body, sizeof place_body});
-    if (un > 0 && bn > 0 && coaxial_http((uint32_t)(uintptr_t)place_url, (uint32_t)un, (uint32_t)(uintptr_t)place_body, (uint32_t)bn, 1 | 8) >= 0) done |= 2;
+    int64_t bn = un > 0 ? verse_place_send(place_k(), here, leaving, (coax_v_u8){place_body, sizeof place_body}) : 0;
+    int32_t id = bn > 0 ? coaxial_http((uint32_t)(uintptr_t)place_url, (uint32_t)un, (uint32_t)(uintptr_t)place_body, (uint32_t)bn, leaving ? 1 | 8 : 1 | 4 | 8) : -1;
+    if (id >= 0) { done |= 2; if (!leaving) place_post_id = id; }
+    else if (bn > 0 && !leaving) verse_place_unsent(place_k());
   }
   verse_place_kept(place_k(), here, track_state.t, done);
 }
@@ -76,6 +80,7 @@ static bool place_message(uint32_t state, int32_t kind, const uint8_t *inbox, ui
     if (verse_place_ask(place_k())) {
       int64_t un = verse_place_url(place_k(), (coax_v_u8){place_url, sizeof place_url});
       if (un > 0) place_ask_id = coaxial_http((uint32_t)(uintptr_t)place_url, (uint32_t)un, 0, 0, 4 | 8);
+      if (place_ask_id < 0) verse_place_server(place_k(), (coax_string){"0\n", 2});   // no copy coming: send without one
     }
     return false;
   }
@@ -83,6 +88,11 @@ static bool place_message(uint32_t state, int32_t kind, const uint8_t *inbox, ui
   if (kind == PLACE_MESSAGE) {
     coax_t_Place p = verse_place_read(text, verse_place_slot(place_k()));
     if (verse_place_take(place_k(), p)) place_put(state, p);
+    return true;
+  }
+  if (place_post_id >= 0 && kind == 512 + place_post_id) {
+    place_post_id = -1;
+    verse_place_heard(place_k(), text);
     return true;
   }
   if (place_ask_id >= 0 && kind == 512 + place_ask_id) {
