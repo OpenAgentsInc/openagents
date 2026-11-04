@@ -418,7 +418,8 @@ ev_next :: (v: [] RmServer, k: int) {
     if e[0].standing == 0 { ev_end(v, k, EV_OUT_HELD); } else { e[0].until = v[0].eg[k].tick + EG_HZ; }
     return;
   }
-  if p == EV_CLIMAX { ev_raid_withdraw(v, k); ev_end(v, k, ifx e[0].square > 0 then EV_OUT_FELL else EV_OUT_HELD); return; }
+  // the climax's time up: Darian Odiodei withdraws, and the town held (the square, lost, already ended it: ev_second)
+  if p == EV_CLIMAX { ev_raid_withdraw(v, k); ev_end(v, k, EV_OUT_HELD); return; }
   if p == EV_END { ev_raid_flee(v, k); ev_phase(v, k, EV_AFTER, EV_AFTER_S); return; }
   if p == EV_AFTER {
     ev_raid_clear(v, k);
@@ -779,7 +780,7 @@ ev_test_count :: (v: [] RmServer, k: int, form: int) -> int {
   v: [1] RmServer;
   box: [1] EgInbox;
   k := ev_test_server(v[..]);
-  // two waves of 24 at 4 players (12 for these 2): 6 Cultists, 1 Fanatic, 3 Warlocks in parts by the
+  // two waves of 24 at 5 players (10 for these 2): 6 Cultists, 1 Fanatic, 3 Warlocks in parts by the
   // last wave, levels 1 to 3; all gates; the leader on
   rm_control(v[..], "event 1 0 2 24 6 1 3 3 31 1 2 1 100 15 0 0\n");
   rm_control(v[..], "event 1 0 2 24 6 1 3 3 31 1 2 1 100 15 1 0\n");
@@ -789,10 +790,11 @@ ev_test_count :: (v: [] RmServer, k: int, form: int) -> int {
   #assert eg_test_has(eg_test_of(box[..], 0), ";g 1 1 0 2 30 900 ") && eg_test_has(eg_test_of(box[..], 1), ";g 1 1 0 2 ");
   ev_test_skip(v[..], k);
   #assert v[0].ev[k].phase == EV_WAVE && v[0].ev[k].wave == 1;
-  #assert ev_raid_standing(v[..], k) == 12 && ev_test_count(v[..], k, -1) == 12;
+  m := raid_wave_size(24, 2);
+  #assert m == 10 && ev_raid_standing(v[..], k) == m && ev_test_count(v[..], k, -1) == m;
   // the first wave: no Fanatic yet, one Warlock part in 7, all at level 1 (everglade-raid-scale.coax)
   pt: [3] int; ct: [3] int;
-  raid_wave_parts(6, 1, 3, 1, 2, pt[..]); raid_wave_counts(12, pt[..], ct[..]);
+  raid_wave_parts(6, 1, 3, 1, 2, pt[..]); raid_wave_counts(m, pt[..], ct[..]);
   #assert v[0].ev[k].mix[RS_NPC_CULTIST] == ct[0] && v[0].ev[k].mix[RS_NPC_FANATIC] == 0 && v[0].ev[k].mix[RS_NPC_WARLOCK] == ct[2] && ct[2] >= 1;
   lv := 0; for q: 0..<E5RR_BEASTS { if e5rd_is(v[0].eg[k].rules[0].beasts[q]) && v[0].eg[k].rules[0].raid[0].slot[q].level > lv { lv = v[0].eg[k].rules[0].raid[0].slot[q].level; } }
   #assert lv == 1;
@@ -801,12 +803,12 @@ ev_test_count :: (v: [] RmServer, k: int, form: int) -> int {
   far := 0;
   was: [E5RR_BEASTS] f32;
   for q: 0..<E5RR_BEASTS { bt := r[0].beasts[q]; was[q] = sqrt(bt.x * bt.x + bt.z * bt.z); if e5rd_is(bt) && was[q] > 60 { far += 1; } }
-  #assert far == 12;
+  #assert far == m;
   // they march: in a few seconds every one is 10 m nearer the square
   ev_test_ticks(v[..], k, 3 * EG_HZ);
   near := 0;
   for q: 0..<E5RR_BEASTS { bt := r[0].beasts[q]; if e5rd_is(bt) && sqrt(bt.x * bt.x + bt.z * bt.z) < was[q] - 10 { near += 1; } }
-  #assert near == 12;
+  #assert near == m;
   // a raider the page sees: a beast entry with its look (P1 27 a Cultist) and its level in F
   q0 := -1;
   for q: 0..<E5RR_BEASTS { if q0 < 0 && r[0].beasts[q].form == E5RR_FORM_RAID + RS_NPC_CULTIST { q0 = q; } }
@@ -822,19 +824,19 @@ ev_test_count :: (v: [] RmServer, k: int, form: int) -> int {
   for q: 0..<E5RR_BEASTS { bt := r[0].beasts[q]; if e5rd_is(bt) { want += ev_xp_for(r[0].raid[0].slot[q].npc, r[0].raid[0].slot[q].level); } }
   ev_test_rout(v[..], k, 0);
   eg_test_tick(v[..], k);
-  #assert v[0].ev[k].slain == 12 && v[0].ev[k].xp[0] == want && v[0].ev[k].xp[1] == 0;
+  #assert v[0].ev[k].slain == m && v[0].ev[k].xp[0] == want && v[0].ev[k].xp[1] == 0;
   eg_test_drain(v[..], box[..]);
   #assert eg_test_has(eg_test_of(box[..], 0), "e xp 0 25");
   ev_test_second(v[..], k); eg_test_tick(v[..], k);   // the wave is down: the lull comes at once
   #assert v[0].ev[k].phase == EV_LULL && v[0].ev[k].until > v[0].eg[k].tick + ev_secs(EV_LULL_S) - 3;
   ev_test_skip(v[..], k);
-  #assert v[0].ev[k].phase == EV_WAVE && v[0].ev[k].wave == 2 && ev_raid_standing(v[..], k) == 12;
+  #assert v[0].ev[k].phase == EV_WAVE && v[0].ev[k].wave == 2 && ev_raid_standing(v[..], k) == m;
   // both seats share this wave: each hit by both, so each gets half
   had0 := v[0].ev[k].xp[0]; had1 := v[0].ev[k].xp[1];
   for q: 0..<E5RR_BEASTS { if e5rd_is(r[0].beasts[q]) { ev_test_strike(v[..], k, 1, q, 1); } }
   ev_test_rout(v[..], k, 0);
   eg_test_tick(v[..], k);
-  #assert v[0].ev[k].slain == 24 && v[0].ev[k].xp[0] - had0 == v[0].ev[k].xp[1] - had1 && v[0].ev[k].xp[1] > had1;
+  #assert v[0].ev[k].slain == 2 * m && v[0].ev[k].xp[0] - had0 == v[0].ev[k].xp[1] - had1 && v[0].ev[k].xp[1] > had1;
   ev_test_second(v[..], k); eg_test_tick(v[..], k);
   // the climax: three ward stones and Darian Odiodei, warded
   #assert v[0].ev[k].phase == EV_CLIMAX && v[0].ev[k].arch == EV_ARCH_WARDED && v[0].ev[k].wards == 3;
@@ -854,7 +856,7 @@ ev_test_count :: (v: [] RmServer, k: int, form: int) -> int {
   ev_test_strike(v[..], k, 0, da, 400);
   #assert e5rd_arch_hp(r, hp[..]) && hp[0] == hp[1] / 2;
   ev_test_second(v[..], k);
-  #assert v[0].ev[k].arch == EV_ARCH_GONE && ev_test_count(v[..], k, E5RR_FORM_RAID + RS_NPC_ARCH) == 0 && v[0].ev[k].slain == 24;
+  #assert v[0].ev[k].arch == EV_ARCH_GONE && ev_test_count(v[..], k, E5RR_FORM_RAID + RS_NPC_ARCH) == 0 && v[0].ev[k].slain == 2 * m;
   eg_test_drain(v[..], box[..]);
   #assert eg_test_has(eg_test_of(box[..], 0), "e rc ");   // his Dimension Door, for the pages
   had0 = v[0].ev[k].xp[0];

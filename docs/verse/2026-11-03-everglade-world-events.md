@@ -158,16 +158,16 @@ SRD's XP for those ratings. The raid caps the cult's warlocks at level 3 (the Si
 **A wave's size and mix follow the players present** (`apps/openagents-web/everglade-raid-scale.coax`,
 shared by the room server and the admin pane, so the pane shows exactly what comes):
 
-- The **Wave size** dial is the wave for 4 players. Each player in the instance brings a quarter
-  of it, so the default 12 is 3 raiders a player: 3 for one player, 12 for four, 24 for eight.
-  A wave has at least 3. At 24 it is 6 a player, for a brutal raid.
+- The **Wave size** dial is the wave for 5 players. Each player in the instance brings a fifth
+  of it, so the default 12 is about 2.4 raiders a player: 3 for one player, 10 for four, 19 for
+  eight. A wave has at least 3. At 24 it is about 5 a player, for a brutal raid.
 - **Fanatics and Warlocks grow wave by wave.** Wave w of W has w/W of the Fanatic and Warlock
   parts, rounded down, and always one Warlock part when the dial has any. The last wave has
   the dials' whole mix, and Cultists are the rest.
 - **Warlock levels grow the same way**, from level 1 in the first wave to the dial's in the
   last.
-- With the defaults and 4 players, wave 1 is 10 Cultists and 2 level 1 Warlocks. The last wave
-  is 7 Cultists, a Fanatic and 4 Warlocks of levels 1 to 3.
+- With the defaults and 4 players, wave 1 is 9 Cultists and a level 1 Warlock. The last wave is
+  6 Cultists, a Fanatic and 3 Warlocks of levels 1 to 3.
 
 **The fallen stand again.** A player who falls in a room (0 Hit Points, dying or dead) stands
 again where they fell, with all their Hit Points, 10 s later, as a page on its own stands you up
@@ -225,8 +225,8 @@ Darian Odiodei's HP never reaches 0:
 - When Darian Odiodei drops to half its Hit Points or below, it casts Dimension Door (a 5th-level Pact
   slot; the SRD's 500-foot teleport) out of the town, and the raid ends with
   `DARIAN ODIODEI WITHDRAWS`. The town held.
-- When the climax's 3 minutes run out, Darian Odiodei withdraws the same way, unhurt. The town held
-  if the square was held.
+- When the climax's 3 minutes run out, Darian Odiodei withdraws the same way, unhurt. The town held:
+  only the square's own rule (the cult holds it for 60 seconds, section 3.3) ends a raid as fallen.
 - Damage that would take Darian Odiodei below half its Hit Points takes it to half, then it
   withdraws. The page shows the hit's real number, then `DIMENSION DOOR`.
 
@@ -363,7 +363,7 @@ value outside one is set to the nearest end and shown as set.
 | Event | on, off | off | Whether events start, on a schedule or by START NOW. |
 | Every | off, 15 to 240 minutes | off | The schedule's period. |
 | Waves | 1 to 8 | 3 | How many waves before the climax. |
-| Wave size | 4 to 24 raiders | 12 | The wave for 4 players; it scales with the players present (section 4.2). |
+| Wave size | 4 to 24 raiders | 12 | The wave for 5 players; it scales with the players present (section 4.2). |
 | Cultists, Fanatics, Warlocks | 0 to 10 parts each | 6, 1, 3 | The last wave's mix, in parts; earlier waves have fewer Fanatics and Warlocks (section 4.2). |
 | Warlock levels | 1 to 3 | 3 | The last wave's warlocks are levels 1 up to this; earlier waves' go less high. |
 | Gates | any of 5 | all 5 | Where waves spawn. |
@@ -376,7 +376,7 @@ value outside one is set to the nearest end and shown as set.
 | Level cap | 1 to 3 | 2 | The highest level a character reaches. |
 
 The pane shows what the dials give for the players in your instance, the first wave's and the
-last's, for example `FOR 4 PLAYERS, WAVE 1: 12 RAIDERS · 10 CULTISTS, 2 WARLOCKS UP TO LEVEL 1`.
+last's, for example `FOR 4 PLAYERS, WAVE 1: 10 RAIDERS · 9 CULTISTS, 1 WARLOCK UP TO LEVEL 1`.
 At most 60 raiders stand in an instance at once, waves together, with Darian Odiodei and his 3 ward stones the raid's 64 places. A wave that would go past it spawns the rest as others
 fall.
 
