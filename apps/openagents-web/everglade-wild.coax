@@ -631,7 +631,7 @@ wd_draw :: (s: [] Everglade) {
     if !f.live { continue; }
     on := wd_fire_on(f);
     fl := wd_flick(t, f32(q));
-    sp_fx(s, FX_FIRE, add(f.at, v3(0, 0.25 * on, 0)), 0.45 * on * fl, v3(1.5, 0.9, 0.35), 0.6, v3(0.9, 0, 0), t * 2.7 + f32(q) * 0.31);
+    sp_fx_keyed(s, sp_fx_id(f32(q) + 0.25, 0), FX_FIRE, add(f.at, v3(0, 0.25 * on, 0)), 0.45 * on * fl, v3(1.5, 0.9, 0.35), 0.6, v3(0.9, 0, 0), t * 2.7 + f32(q) * 0.31);
     sp_glow(s, add(f.at, v3(0, 0.2, 0)), 1.4 * on * fl, v3(0.45, 0.18, 0.04));
     every := ifx few then 4 else 8;
     if cast(int) (f.t * f32(every)) != cast(int) ((f.t - 1.0 / 60) * f32(every)) {
@@ -729,11 +729,11 @@ wd_wf_draw :: (s: [] Everglade, few: bool) {
       // big soft tongues overlapping one another, so the sheet reads as one fire, not separate puffs
       size := lerp(1.35, 0.85, k) * (0.9 + 0.1 * sin(t * 9 + f32(q * 3 + r)));
       sway := 0.15 * k * sin(t * 4.3 + f32(q) * 2.1 + f32(r));
-      sp_fx(s, FX_FIRE, add(base, add(times(v[0].wf_n, sway), v3(0, tall * k * 0.92, 0))), size, sp_flame_rgb(0.12 + 0.5 * k), lerp(0.32, 0.08, k), v3(lerp(0.8, 0.62, k), 0, 0), t * 2.3 + f32(q * 7 + r) * 0.37);
+      sp_fx_keyed(s, sp_fx_id(f32(q) + 0.75, f32(r)), FX_FIRE, add(base, add(times(v[0].wf_n, sway), v3(0, tall * k * 0.92, 0))), size, sp_flame_rgb(0.12 + 0.5 * k), lerp(0.32, 0.08, k), v3(lerp(0.8, 0.62, k), 0, 0), t * 2.3 + f32(q * 7 + r) * 0.37);
       // the crest: a second tongue between each two, so its top is a run of flame, not a row of balls
       if r >= rows - 2 && q + 1 < cols {
         mid := mix(v[0].wf_a, v[0].wf_b, (f32(q) + 1) / f32(cols)); mid.y = ground_at(s, mid.x, mid.z);
-        sp_fx(s, FX_FIRE, add(mid, v3(0, tall * k * 0.88, 0)), size * 0.9, sp_flame_rgb(0.12 + 0.5 * k), 0.1, v3(0.6, 0, 0), t * 2.9 + f32(q * 5 + r) * 0.53);
+        sp_fx_keyed(s, sp_fx_id(f32(q) + 0.75, f32(r) + 50), FX_FIRE, add(mid, v3(0, tall * k * 0.88, 0)), size * 0.9, sp_flame_rgb(0.12 + 0.5 * k), 0.1, v3(0.6, 0, 0), t * 2.9 + f32(q * 5 + r) * 0.53);
       }
     }
     if q % 4 == 0 { sp_glow(s, add(base, v3(0, 0.6, 0)), 1.8 * on, v3(0.35, 0.13, 0.03)); }

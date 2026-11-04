@@ -876,7 +876,7 @@ tf_draw_fire :: (s: [] Everglade) {
       spread := ifx crown then cr * 1.2 else 0.5;
       at := add(add(foot, times(up, L * up_k)), v3(hx * spread, 0, hz * spread));
       fl := fi_flick(t0, f32(t * 3 + q));
-      sp_fx(s, FX_FIRE, at, (ifx crown then 0.9f32 else 0.5f32) * on * fl * (0.7 + 0.3 * tf_size(s, t)), v3(1.5, 0.85, 0.32), 0.6, v3(0.9, 0, 0), t0 * 2.6 + f32(t + q) * 0.37);
+      sp_fx_keyed(s, sp_fx_id(f32(t) + 0.5, f32(q)), FX_FIRE, at, (ifx crown then 0.9f32 else 0.5f32) * on * fl * (0.7 + 0.3 * tf_size(s, t)), v3(1.5, 0.85, 0.32), 0.6, v3(0.9, 0, 0), t0 * 2.6 + f32(t + q) * 0.37);
     }
     sp_glow(s, add(foot, times(up, L * 0.55)), (2.2 + 1.2 * (1 - bare)) * on * fi_flick(t0, f32(t)), v3(0.45, 0.17, 0.04));
     if budget > 0 && sp_rand(s) < 0.45 {

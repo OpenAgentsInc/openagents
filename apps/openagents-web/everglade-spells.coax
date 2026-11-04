@@ -91,8 +91,12 @@ SP_BOLT_BRANCHES :: 5; SP_BRANCH_POINTS :: 6;
 SP_BLASTS :: 12;
 SP_SCORCHES :: 18;        // the old engine's most scorch marks
 SP_SCORCH_LIFE :: 16.0;
-SP_PUFFS :: 200;          // smoke and dust: a meteor's column lingers for seconds
-SP_FLAMES :: 320;         // billows of fire: a fireball's, a meteor's trail, what burns
+SP_PUFFS :: 320;          // smoke and dust: a meteor's column lingers for seconds
+SP_FLAMES :: 480;         // billows of fire: a fireball's, a meteor's trail, what burns
+// With every slot taken, a new puff or billow takes the one furthest through its life only when that
+// one is past this much of it (nearly gone); else the new one is not started. Taking one still
+// bright made it vanish mid-air, and a burning town under a raid did that every frame (#12740).
+SP_STEAL :: 0.85;
 SP_SPARKS :: 220;         // sparks, embers and arcs: glowing streaks along their flight
 SP_SHOCKS :: 8;           // shockwave rings racing out along the ground
 SP_BLAST_LIFE :: 1.5;     // s a fireball burns
@@ -134,6 +138,9 @@ LOOK_FIRE :: 17; LOOK_SMOKE :: 18; LOOK_RING :: 19;
 // added to the light and blooming, so nothing that burns is a hard ball. SP_FX_FLOATS numbers each
 // (sp_fx), SP_FX of them a frame, written into `sprites` with no allocation.
 SP_FX :: 1400;
+// A frame may write more than that: past SP_FX the quality's thinning (sp_fx_thin) takes it down
+// to SP_FX, the same steady way as on a low tier, not the last ones cut off (#12740).
+SP_FX_STAGE :: 4096;
 SP_FX_FLOATS :: 12;
 SP_FX_BUCKETS :: 48;      // the smoke and fire sorted far to near in these (sp_fx_close), 2 m each
 FX_FIRE :: 0; FX_SMOKE :: 1; FX_GLOW :: 2; FX_RING :: 3;
@@ -185,8 +192,12 @@ Spells :: struct {
   flames: [SP_FLAMES] SpFlame;
   burn: [DEMO_BODIES] f32;   // s each piece of debris has left to burn (fire breaks some alight)
   sprites: [SP_FX * SP_FX_FLOATS] f32; sprite_n: int;   // this frame's puffs, for everglade-fx.wgsl (everglade-face.c coaxial_particles)
-  stage: [SP_FX * SP_FX_FLOATS] f32; stage_n: int;   // while drawing; sp_fx_close sorts them into `sprites`
-  fx_far: [SP_FX] f32; bucket: [SP_FX_BUCKETS + 1] int;
+  stage: [SP_FX_STAGE * SP_FX_FLOATS] f32; stage_n: int;   // while drawing; sp_fx_close sorts them into `sprites`
+  fx_far: [SP_FX_STAGE] f32; bucket: [SP_FX_BUCKETS + 1] int;
+  fx_key: [SP_FX_STAGE] f32;   // each puff's own number in [0, 1) for the thinning (sp_fx_thin), -1 always kept
+  fx_share: f32;               // the thinning's share, eased frame to frame (0: not yet set)
+  fx_seen: int;                // the last frame's puffs before thinning (everglade_quality_probe 9)
+  fx_ord: int;                 // the frame's glows with no seed so far (sp_fx)
   wave_at: Point; wave_t: f32; wave_r: f32;
   dusk: f32;                 // how far the day has gone to night (everglade.coax lamp_glow): smoke darkens with it   // the last orb's splash on land, flattening the plants it reaches (spells_plant)
   drops: [SP_DROPS] SpDrop;
@@ -1052,31 +1063,51 @@ sp_add_puff :: (s: [] Everglade, at: Point, vel: Point, size: f32, life: f32, da
 sp_add_smoke :: (s: [] Everglade, at: Point, vel: Point, size: f32, life: f32, dark: f32, rise: f32, thick: f32, warm: f32) {
   k := 0;
   for i: 0..<SP_PUFFS { if !s[0].sp.puffs[i].live { k = i; break; } if s[0].sp.puffs[i].t / s[0].sp.puffs[i].life > s[0].sp.puffs[k].t / s[0].sp.puffs[k].life { k = i; } }
+  if s[0].sp.puffs[k].live && s[0].sp.puffs[k].t < f32(SP_STEAL) * s[0].sp.puffs[k].life { return; }
   s[0].sp.puffs[k] = SpPuff.{live = true, at = at, vel = vel, t = 0, life = life, size = size, dark = dark, rise = rise, thick = thick, warm = warm};
 }
 // A billow of fire at `at`, thrown at `vel`, `size` across at first and `grow` times that by its end.
 sp_add_flame :: (s: [] Everglade, at: Point, vel: Point, size: f32, grow: f32, life: f32, rise: f32, smoke: f32) {
   k := 0;
   for i: 0..<SP_FLAMES { if !s[0].sp.flames[i].live { k = i; break; } if s[0].sp.flames[i].t / s[0].sp.flames[i].life > s[0].sp.flames[k].t / s[0].sp.flames[k].life { k = i; } }
+  if s[0].sp.flames[k].live && s[0].sp.flames[k].t < f32(SP_STEAL) * s[0].sp.flames[k].life { return; }
   s[0].sp.flames[k] = SpFlame.{live = true, at = at, vel = vel, t = 0, life = hi(life, 0.05), size = size, grow = grow, rise = rise, seed = sp_rand(s), smoke = smoke};
 }
 // One puff for everglade-fx.wgsl: its kind (FX_*), place, radius, colour (linear light), heat (fire:
 // how white its heart; smoke: how opaque), a glow's streak, its half-length along its flight (zero
 // round; for fire, x is how opaque it is), seed.
 sp_fx :: (s: [] Everglade, kind: int, at: Point, size: f32, colour: Point, heat: f32, along: Point, seed: f32) {
+  key := sp_fx_key(kind, seed);
+  // a glow with no seed of its own (a lamp-like glow on someone or something): its place among
+  // those this frame, which holds while the same things glow
+  if kind == FX_GLOW && seed == 0 { key = sp_fx_id(f32(s[0].sp.fx_ord), 7.7); s[0].sp.fx_ord += 1; }
+  sp_fx_keyed(s, key, kind, at, size, colour, heat, along, seed);
+}
+// A puff's number for the thinning, from its seed: the same every frame for a puff whose seed is
+// its own (a billow's, a pool slot's). A ring is always kept (-1): there are few.
+// A puff whose seed runs with the clock (a lick's, to animate it) passes its own key (sp_fx_keyed).
+sp_fx_key :: (kind: int, seed: f32) -> f32 {
+  if kind == FX_RING { return -1; }
+  return sp_noise(seed * 7.31 + 0.17, f32(kind) + 0.5);
+}
+sp_fx_keyed :: (s: [] Everglade, key: f32, kind: int, at: Point, size: f32, colour: Point, heat: f32, along: Point, seed: f32) {
   n := s[0].sp.stage_n;
-  if n >= SP_FX || !(size > 0.005) || !(at.x == at.x) { return; }
+  if n >= SP_FX_STAGE || !(size > 0.005) || !(at.x == at.x) { return; }
   s[0].sp.stage_n = n + 1;
   o := n * SP_FX_FLOATS;
   s[0].sp.stage[o] = at.x; s[0].sp.stage[o + 1] = at.y; s[0].sp.stage[o + 2] = at.z; s[0].sp.stage[o + 3] = size;
   s[0].sp.stage[o + 4] = colour.x; s[0].sp.stage[o + 5] = colour.y; s[0].sp.stage[o + 6] = colour.z; s[0].sp.stage[o + 7] = heat;
   s[0].sp.stage[o + 8] = along.x; s[0].sp.stage[o + 9] = along.y; s[0].sp.stage[o + 10] = along.z;
   s[0].sp.stage[o + 11] = f32(kind) + 0.5 * (seed - floor(seed)) * 0.998;
+  s[0].sp.fx_key[n] = key;
   // smoke and fire are drawn over what is behind them, so far to near; glows add, in any order
   s[0].sp.fx_far[n] = ifx kind == FX_SMOKE || kind == FX_FIRE then length(sub(at, s[0].sp.shot.eye)) else -1.0f32;
 }
+// A steady key for puff q of thing k (a burning piece's lick, a fire's tongue).
+sp_fx_id :: (k: f32, q: f32) -> f32 { return sp_noise(k * 0.731 + 3.1, q * 1.37 + 0.29); }
 // The frame's puffs into `sprites`: the smoke and fire far to near (by 2 m buckets), then the glows.
 sp_fx_close :: (s: [] Everglade) {
+  s[0].sp.fx_seen = s[0].sp.stage_n;
   n := sp_fx_thin(s, s[0].sp.stage_n, quality_share(SP_FX, eg_knobs(s).fx, SP_FX_KEEP));
   for k: 0..<SP_FX_BUCKETS + 1 { s[0].sp.bucket[k] = 0; }
   for i: 0..<n { s[0].sp.bucket[sp_fx_bucket(s[0].sp.fx_far[i])] += 1; }
@@ -1089,28 +1120,54 @@ sp_fx_close :: (s: [] Everglade) {
     for q: 0..<SP_FX_FLOATS { s[0].sp.sprites[to + q] = s[0].sp.stage[from + q]; }
   }
   s[0].sp.sprite_n = n;
-  s[0].sp.stage_n = 0;
+  s[0].sp.stage_n = 0; s[0].sp.fx_ord = 0;
 }
 // The graphics quality's share of the frame's puffs (everglade-quality.coax): past `keep` of them,
-// every one in so many is dropped, evenly through the frame, and those kept are made denser (up to
-// SP_FX_GAIN), so a blast stays a blast at a fraction of the fill. Returns how many are left.
+// those whose own number (fx_key) is past the share are dropped, and those kept are made denser
+// (up to SP_FX_GAIN), so a blast stays a blast at a fraction of the fill. A puff keeps its number
+// from frame to frame, the share eases (fx_share) and the puffs at its edge fade over SP_FX_EDGE,
+// so the same puffs stay and none pops in or out as the count moves: with a raid casting at a
+// burning town, a choice by place in the frame changed every frame and the fire flickered (#12740).
+// Returns how many are left, at most SP_FX.
 SP_FX_KEEP :: 160;   // a frame with fewer puffs than this keeps them all
 SP_FX_GAIN :: 1.6;
-sp_fx_thin :: (s: [] Everglade, n: int, keep: int) -> int {
-  if n <= keep || keep <= 0 { return n; }
-  gain := lo(sqrt(f32(n) / f32(keep)), f32(SP_FX_GAIN));
+SP_FX_EDGE :: 0.08;  // of the share: the puffs at its edge fade over this much of their numbers
+SP_FX_EASE_DOWN :: 0.25; SP_FX_EASE_UP :: 0.06;   // of the way to a new share a frame
+sp_fx_thin :: (s: [] Everglade, n: int, share_of: int) -> int {
+  keep := lo_int(hi_int(share_of, 1), SP_FX);
+  always := 0;
+  for i: 0..<n { if s[0].sp.fx_key[i] < 0 { always += 1; } }
+  want: f32 = 1;
+  if n > keep {
+    want = clamp(f32(keep - always) / f32(hi_int(n - always, 1)) - f32(SP_FX_EDGE), 0.02, 1);
+  }
+  share := s[0].sp.fx_share;
+  if !(share > 0) { share = want; }
+  else if want < share { share += (want - share) * f32(SP_FX_EASE_DOWN); }
+  else { share += (want - share) * f32(SP_FX_EASE_UP); }
+  if want >= 1 && share > 0.999 { share = 1; }
+  s[0].sp.fx_share = share;
+  if share >= 1 { return lo_int(n, SP_FX); }
+  gain := lo(sqrt(1 / hi(share, 0.01)), f32(SP_FX_GAIN));
   j := 0;
   for i: 0..<n {
-    if (i + 1) * keep / n == i * keep / n { continue; }
+    key := s[0].sp.fx_key[i];
+    w: f32 = 1;
+    if key >= 0 { w = clamp((share + f32(SP_FX_EDGE) - key) / f32(SP_FX_EDGE), 0, 1); }
+    if w <= 0.001 { continue; }
+    if j >= SP_FX { break; }
     if j != i {
       for q: 0..<SP_FX_FLOATS { s[0].sp.stage[j * SP_FX_FLOATS + q] = s[0].sp.stage[i * SP_FX_FLOATS + q]; }
-      s[0].sp.fx_far[j] = s[0].sp.fx_far[i];
+      s[0].sp.fx_far[j] = s[0].sp.fx_far[i]; s[0].sp.fx_key[j] = key;
     }
-    o := j * SP_FX_FLOATS;
-    kind := cast(int) s[0].sp.stage[o + 11];
-    if kind == FX_FIRE { s[0].sp.stage[o + 8] = lo(s[0].sp.stage[o + 8] * gain, 1); }
-    else if kind == FX_SMOKE { s[0].sp.stage[o + 7] = lo(s[0].sp.stage[o + 7] * gain, 1); }
-    else { for c: 4..<7 { s[0].sp.stage[o + c] *= gain; } }
+    if key >= 0 {
+      o := j * SP_FX_FLOATS;
+      kind := cast(int) s[0].sp.stage[o + 11];
+      g := gain * w;
+      if kind == FX_FIRE { s[0].sp.stage[o + 8] = lo(s[0].sp.stage[o + 8] * g, 1); }
+      else if kind == FX_SMOKE { s[0].sp.stage[o + 7] = lo(s[0].sp.stage[o + 7] * g, 1); }
+      else { for c: 4..<7 { s[0].sp.stage[o + c] *= g; } }
+    }
     j += 1;
   }
   return j;
@@ -1245,7 +1302,7 @@ sp_strikes :: (s: [] Everglade, dt: f32) {
 }
 
 spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
-  s[0].sp.sprite_n = 0; s[0].sp.stage_n = 0;
+  s[0].sp.sprite_n = 0; s[0].sp.stage_n = 0; s[0].sp.fx_ord = 0;
   if !s[0].sp.ready || s[0].sp.dm.count < 1 { return; }
   w := sp_dm(s);
   kn := eg_knobs(s);
@@ -1535,7 +1592,7 @@ sp_draw :: (s: [] Everglade, dt: f32) {
     flick := 0.9 + 0.2 * sin(f32(s[0].time) * 41 + f32(m) * 2.3);
     sp_fx(s, FX_SMOKE, add(at, times(dir, 0.3)), 0.55, v3(0.05, 0.03, 0.02), 1.0, v3(0, 0, 0), f32(m) * 0.17);   // the rock, leading its fire
     sp_glow(s, at, 2.6 * flick, v3(0.8, 0.5, 0.2));
-    sp_fx(s, FX_FIRE, sub(at, times(dir, 0.2)), 1.0 * flick, v3(1.6, 1.15, 0.65), 1, v3(1, 0, 0), f32(s[0].time) * 3.1 + f32(m));
+    sp_fx_keyed(s, sp_fx_id(f32(m), 0.5), FX_FIRE, sub(at, times(dir, 0.2)), 1.0 * flick, v3(1.6, 1.15, 0.65), 1, v3(1, 0, 0), f32(s[0].time) * 3.1 + f32(m));
     l1 := lo(gone, 5.0); l2 := lo(gone, 14.0);
     sp_fx(s, FX_GLOW, sub(at, times(dir, l1 * 0.5 + 0.3)), 0.55, v3(1.2, 0.65, 0.2), 0.6, times(dir, l1 * 0.5), 0);
     sp_fx(s, FX_GLOW, sub(at, times(dir, l2 * 0.5 + 0.6)), 1.15, v3(0.35, 0.11, 0.025), 0, times(dir, l2 * 0.5), 0);
@@ -1761,7 +1818,7 @@ sp_draw :: (s: [] Everglade, dt: f32) {
     left := 1 - sk.t / sk.life;
     tail := hi(length(sk.vel) * 0.025, sk.size);
     d := unit_or(sk.vel, v3(0, 1, 0));
-    sp_fx(s, FX_GLOW, sub(sk.at, times(d, tail)), sk.size * (1.0 + 0.9 * left), times(sk.colour, 2.4 * (0.3 + 0.7 * left)), 0.35, times(d, tail), 0);
+    sp_fx_keyed(s, sp_fx_id(f32(i), 3.3), FX_GLOW, sub(sk.at, times(d, tail)), sk.size * (1.0 + 0.9 * left), times(sk.colour, 2.4 * (0.3 + 0.7 * left)), 0.35, times(d, tail), 0);
   }
 }
 // The thunder's light and the fire's: the key light flares with the flash.

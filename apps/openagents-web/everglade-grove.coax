@@ -635,7 +635,7 @@ gv_draw :: (s: [] Everglade) {
     b := v[0].bolts[q];
     if !b.live { continue; }
     at := mix(b.from, b.to, clamp(b.t / b.flight, 0, 1));
-    if b.kind == GV_BOLT_FLAME { sp_fx(s, FX_FIRE, at, 0.28, v3(1.5, 1.0, 0.45), 1, v3(1, 0, 0), v[0].time * 3.1 + f32(q)); sp_glow(s, at, 1.0, times(GV_FLAME_RGB, 0.5)); }
+    if b.kind == GV_BOLT_FLAME { sp_fx_keyed(s, sp_fx_id(f32(q) + 0.4, 0), FX_FIRE, at, 0.28, v3(1.5, 1.0, 0.45), 1, v3(1, 0, 0), v[0].time * 3.1 + f32(q)); sp_glow(s, at, 1.0, times(GV_FLAME_RGB, 0.5)); }
     else if b.kind == GV_BOLT_WISP { sp_glow(s, at, 0.55, v3(1.4, 1.25, 0.8)); sp_glow(s, at, 0.18, v3(2.0, 2.0, 1.8)); }
   }
   // the mist: soft coloured puffs, thinning as they spread

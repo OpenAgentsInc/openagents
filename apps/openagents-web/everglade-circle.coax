@@ -894,7 +894,7 @@ ci_fs_draw :: (s: [] Everglade, few: bool) {
       a := f32(TAU) * ab_h(97.0, q * 9 + r, 0) + t * 1.7;
       rr := e * 0.32 * ab_h(97.0, q * 9 + r, 1);
       p := add(c, v3(cos(a) * rr, e * k * on, sin(a) * rr));
-      sp_fx(s, FX_FIRE, p, (1.25 - 0.5 * k) * on, sp_flame_rgb(0.08 + 0.55 * k), lerp(0.7, 0.2, k), v3(0.9, 0, 0), t * 2.9 + f32(q * 11 + r) * 0.41);
+      sp_fx_keyed(s, sp_fx_id(f32(q) + 0.6, f32(r)), FX_FIRE, p, (1.25 - 0.5 * k) * on, sp_flame_rgb(0.08 + 0.55 * k), lerp(0.7, 0.2, k), v3(0.9, 0, 0), t * 2.9 + f32(q * 11 + r) * 0.41);
     }
     sp_glow(s, add(c, v3(0, 0.5, 0)), 3.2 * on, v3(0.4, 0.15, 0.03));
     if on > 0.4 && sp_rand(s) < (ifx few then 0.3f32 else 0.65f32) {

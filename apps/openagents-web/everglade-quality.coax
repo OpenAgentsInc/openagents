@@ -103,6 +103,11 @@ everglade_quality_probe :: (s: [] Everglade, field: int) -> int #export_c {
   if field == 1 { return s[0].q[0].mode; }
   if field == 2 { return s[0].sp.sprite_n; }
   if field == 8 { return ifx s[0].q[0].budget > 20 then 1 else 0; }
+  if field == 9 { return s[0].sp.fx_seen; }
+  if field == 10 { return cast(int) (s[0].sp.fx_share * 1000); }
+  if field == 11 { return s[0].wl.fx[0].refused; }
+  if field == 12 { return s[0].wl.fx[0].dropped; }
+  if field == 13 { return fxp_live(s[0].wl.fx[..]); }
   if !s[0].sp.ready || s[0].sp.dm.count < 1 { return 0; }
   w := sp_dm(s);
   if field == 3 { return demo_chunks(w); }
@@ -116,18 +121,41 @@ everglade_quality_probe :: (s: [] Everglade, field: int) -> int #export_c {
 #test "graphics quality: the puffs are thinned to the rung's share, evenly, the far first still" {
   g: [1] Everglade;
   quality_choose(g[0].q[..], QUALITY_LOW);
-  for i: 0..<1000 { g[0].sp.stage[i * SP_FX_FLOATS] = f32(i); g[0].sp.fx_far[i] = f32(i % 90); }
+  for i: 0..<1000 { g[0].sp.stage[i * SP_FX_FLOATS] = f32(i); g[0].sp.fx_far[i] = f32(i % 90); g[0].sp.fx_key[i] = sp_fx_key(FX_FIRE, f32(i) * 0.37); }
   keep := quality_share(SP_FX, eg_knobs(g[..]).fx, SP_FX_KEEP);
   #assert keep == 280;
   n := sp_fx_thin(g[..], 1000, keep);
-  #assert n == keep;
+  #assert n > keep * 9 / 10 && n < keep * 11 / 10;
   for i: 1..<n { #assert g[0].sp.stage[i * SP_FX_FLOATS] > g[0].sp.stage[(i - 1) * SP_FX_FLOATS]; }
+  #assert g[0].sp.stage[(n - 1) * SP_FX_FLOATS] >= 950;   // through the whole frame, not its first half
   // a glow kept is brighter for those dropped (stage 4..6 its colour, here 0 and the kind FX_GLOW)
   h: [1] Everglade;
-  for i: 0..<400 { o := i * SP_FX_FLOATS; h[0].sp.stage[o + 4] = 0.5; h[0].sp.stage[o + 11] = f32(FX_GLOW); h[0].sp.stage[o + 7] = 0.5; }
-  #assert sp_fx_thin(h[..], 400, 200) == 200 && h[0].sp.stage[4] > 0.7 && h[0].sp.stage[4] <= 0.5 * f32(SP_FX_GAIN) && h[0].sp.stage[7] == 0.5;
-  #assert g[0].sp.stage[(n - 1) * SP_FX_FLOATS] >= 990;   // through the whole frame, not its first half
-  #assert sp_fx_thin(g[..], 120, keep) == 120;
+  for i: 0..<400 { o := i * SP_FX_FLOATS; h[0].sp.stage[o + 4] = 0.5; h[0].sp.stage[o + 11] = f32(FX_GLOW); h[0].sp.stage[o + 7] = 0.5; h[0].sp.fx_key[i] = sp_fx_key(FX_GLOW, f32(i) * 0.37 + 0.1); }
+  m := sp_fx_thin(h[..], 400, 200);
+  #assert m > 170 && m < 230 && h[0].sp.stage[7] == 0.5;
+  bright := 0; for i: 0..<m { if h[0].sp.stage[i * SP_FX_FLOATS + 4] > 0.6 { bright += 1; } if h[0].sp.stage[i * SP_FX_FLOATS + 4] > 0.5 * f32(SP_FX_GAIN) + 0.001 { bright = -10000; } }
+  #assert bright > m / 2;
+  #assert sp_fx_thin(g[..], 120, keep) <= 120;
+}
+
+#test "graphics quality: thinning keeps the same puffs frame to frame as their count moves (#12740)" {
+  g: [1] Everglade;
+  // a frame of 900 puffs, then one with 60 more written ahead of them (a raid's casts): the same
+  // puffs stay, and the share eases rather than jumping
+  kept: [900] bool;
+  for frame: 0..<2 {
+    extra := ifx frame == 0 then 0 else 60;
+    for i: 0..<extra { g[0].sp.stage[i * SP_FX_FLOATS] = -1; g[0].sp.stage[i * SP_FX_FLOATS + 8] = 1; g[0].sp.fx_key[i] = sp_fx_key(FX_FIRE, 500 + f32(i) * 0.37); }
+    for i: 0..<900 { o := (i + extra) * SP_FX_FLOATS; g[0].sp.stage[o] = f32(i); g[0].sp.stage[o + 8] = 1; g[0].sp.stage[o + 11] = f32(FX_FIRE); g[0].sp.fx_key[i + extra] = sp_fx_key(FX_FIRE, f32(i) * 0.37); }
+    before := g[0].sp.fx_share;
+    n := sp_fx_thin(g[..], 900 + extra, 280);
+    if frame == 1 { #assert g[0].sp.fx_share < before && g[0].sp.fx_share > before - 0.05; }
+    same := 0; changed := 0;
+    seen: [900] bool;
+    for j: 0..<n { v := cast(int) g[0].sp.stage[j * SP_FX_FLOATS]; if v >= 0 { seen[v] = true; } }
+    for i: 0..<900 { if frame == 1 { if seen[i] == kept[i] { same += 1; } else { changed += 1; } } kept[i] = seen[i]; }
+    if frame == 1 { #assert changed < 30; }
+  }
 }
 
 #test "graphics quality: the facts start it; ?quality= wins over the kept tier; a tap picks the next and tells the host" {

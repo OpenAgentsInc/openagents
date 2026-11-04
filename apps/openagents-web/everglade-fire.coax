@@ -475,7 +475,11 @@ fi_draw :: (s: [] Everglade) {
   // the flames: a few licks on each burning piece's face every frame, billows thrown off it, a
   // column of smoke; the more the bigger it is. On a phone half as many.
   budget := ifx few then 6 else 14;    // billows a frame across all the fires
-  for k: 0..<v[0].n {
+  // the budget's turn starts at another fire each frame, so the first ones listed don't take it all
+  // and the last ones go without billows for seconds at a time (#12740)
+  first := ifx v[0].n > 0 then cast(int) (t * 60) % v[0].n else 0;
+  for kk: 0..<v[0].n {
+    k := (kk + first) % v[0].n;
     e := v[0].burn[k];
     p := w[0].pieces[e.piece];
     on := clamp(e.t / 1.2, 0, 1);
@@ -486,9 +490,9 @@ fi_draw :: (s: [] Everglade) {
       hy := 0.35 + 0.65 * sp_noise(f32(e.piece) * 0.71 + f32(q), 3.9);
       at := v3(mix_f(p.x0, p.x1, hx), mix_f(p.y0, p.y1, hy), mix_f(p.z0, p.z1, hz));
       fl := fi_flick(t, f32(e.piece * 3 + q));
-      sp_fx(s, FX_FIRE, at, (0.45 + 0.2 * size) * on * fl, v3(1.5, 0.85, 0.32), 0.6, v3(0.9, 0, 0), t * 2.6 + f32(e.piece + q) * 0.37);
+      sp_fx_keyed(s, sp_fx_id(f32(e.piece), f32(q)), FX_FIRE, at, (0.45 + 0.2 * size) * on * fl, v3(1.5, 0.85, 0.32), 0.6, v3(0.9, 0, 0), t * 2.6 + f32(e.piece + q) * 0.37);
     }
-    sp_glow(s, v3(p.cx, mix_f(p.y0, p.y1, 0.6), p.cz), (1.0 + 0.6 * size) * on * fi_flick(t, f32(e.piece)), v3(0.45, 0.17, 0.04));
+    sp_fx_keyed(s, sp_fx_id(f32(e.piece), 99), FX_GLOW, v3(p.cx, mix_f(p.y0, p.y1, 0.6), p.cz), (1.0 + 0.6 * size) * on * fi_flick(t, f32(e.piece)), v3(0.45, 0.17, 0.04), 0, v3(0, 0, 0), 0);
     if budget > 0 && sp_rand(s) < 0.3 + 0.15 * size {
       budget -= 1;
       at := v3(mix_f(p.x0, p.x1, sp_rand(s)), mix_f(p.y0, p.y1, 0.3 + 0.7 * sp_rand(s)), mix_f(p.z0, p.z1, sp_rand(s)));
