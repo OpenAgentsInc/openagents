@@ -46,8 +46,9 @@ EV_BONUS :: 100;                // XP to each seat that earned XP in a raid the 
 EV_XP_MAX :: 9999999;
 EV_G :: 160;                    // the g entry's bytes at most
 // the raid (spec 4 and 5): at most this many raiders stand at once, waves together
-EV_STANDING_MAX :: 48;
-EV_SQUARE_PLAYER :: 3;          // on the square a player counts as this many of the town
+EV_STANDING_MAX :: 60;          // (with Darian Odiodei and 3 ward stones, the raid's 64 places: E5RD_MAX)
+EV_SQUARE_PLAYER :: 3;
+EV_RISE_S :: 10;                // s a fallen player lies before standing again, whole, where they fell          // on the square a player counts as this many of the town
 EV_SQUARE_R :: 18.0;            // m: the square, about its well (plan.coax EG_SQUARE 0)
 EV_XP_SHARE_M :: 60.0;          // m: a seat this near where a raider fell shares its XP
 EV_XP_WARD :: 100;
@@ -89,6 +90,7 @@ EvRoom :: struct {
   number: [RS_NPCS] int;               // each stat block's count, for the names ("Cultist 12")
   mix: [RS_NPCS] int;                  // this wave's of each
   hurt: [E5RR_BEASTS] int;             // each raid creature: the seats (bit s) that hurt it
+  down: [EG_SEATS] int;                // each seat: the seconds it has lain dead (ev_rise)
 }
 
 // ---- the dials, from the API
@@ -358,12 +360,29 @@ ev_tick :: (v: [] RmServer, k: int) {
       for q: 0..<EG_ROOMS { if v[0].eg[q].live { ev_start(v, q); } }
     }
   }
+  if t % EG_HZ == 0 { ev_rise(v, k); }
   if e[0].phase != EV_IDLE {
     if t % EG_HZ == 0 { ev_second(v, k); }
     if t >= e[0].until { ev_next(v, k); }
   }
   ev_raid_step(v, k);
   ev_cache(v, k);
+}
+// Once a second: a player down (dead, or at 0 Hit Points) EV_RISE_S stands again where they fell, with all their Hit Points
+// (as a page on its own stands you up after YOU DIED). Without it a death in a room lasted until
+// the player left, and a raid's fallen were out of it for good.
+ev_rise :: (v: [] RmServer, k: int) {
+  e := v[0].ev[k..<k + 1];
+  b := v[0].eg[k].rules[0].b[..];
+  for s: 0..<EG_SEATS {
+    i := E5RR_SEAT + s;
+    if !v[0].eg[k].seat[s].live || !v[0].eg[k].rules[0].live[s] || (!b[0].c[i].dead && b[0].c[i].hp > 0) { e[0].down[s] = 0; continue; }
+    e[0].down[s] += 1;
+    if e[0].down[s] < EV_RISE_S { continue; }
+    e[0].down[s] = 0;
+    b[0].c[i].hp = b[0].c[i].hp_max; b[0].c[i].temp = 0; b[0].c[i].dead = false; b[0].c[i].cond = 0;
+    b[0].c[i].death_ok = 0; b[0].c[i].death_fail = 0; b[0].c[i].stable = false;
+  }
 }
 // Once a second while an event runs: what it counts, and the ends that come early.
 ev_second :: (v: [] RmServer, k: int) {
@@ -847,6 +866,18 @@ ev_test_count :: (v: [] RmServer, k: int, form: int) -> int {
   ev_test_skip(v[..], k);
   eg_test_drain(v[..], box[..]);
   #assert v[0].ev[k].phase == EV_IDLE && ev_test_count(v[..], k, -1) == 0 && eg_test_has(eg_test_of(box[..], 0), "e rebuild") && eg_test_has(eg_test_of(box[..], 1), ";g 0 0 ");
+}
+
+#test "events: a fallen player stands again whole after EV_RISE_S, where they fell" #steps 4000000000 {
+  v: [1] RmServer;
+  k := ev_test_server(v[..]);
+  b := v[0].eg[k].rules[0].b[..];
+  i := E5RR_SEAT;
+  b[0].c[i].hp = 0; b[0].c[i].dead = true; b[0].c[i].death_fail = 3;
+  for n: 0..<EV_RISE_S - 1 { ev_rise(v[..], k); }
+  #assert b[0].c[i].dead;
+  ev_rise(v[..], k);
+  #assert !b[0].c[i].dead && b[0].c[i].hp == b[0].c[i].hp_max && b[0].c[i].death_fail == 0;
 }
 
 #test "events: the time limit and STOP end a raid; STOP pays no bonus" #steps 8000000000 {

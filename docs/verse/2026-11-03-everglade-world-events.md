@@ -129,8 +129,9 @@ that is closest. For the Cultist Raid, the first of these to happen ends it:
 | The town's people are all down | The town fell | `TOWNSFOLK 6 OF 38 STANDING` |
 | An admin presses STOP | Called off | `CALLED OFF` |
 
-The square is the town's central square, a circle of 18 m about its well. It is held by
-whichever side has more creatures standing in it; players and the watch count for the town.
+The square is the town's central square, a circle of 18 m about its well. The cult holds it
+while more raiders stand in it than the town has there. Each player there counts as 3, and each
+of the watch and the townsfolk as 1.
 
 ## 4. The Cultist Raid
 
@@ -153,6 +154,30 @@ is a house rule: a level 1 warlock counts as CR 1/4, level 2 as CR 1/2 and level
 SRD's XP for those ratings. The raid caps the cult's warlocks at level 3 (the Siege's go to 5).
 
 ### 4.2 Waves
+
+**A wave's size and mix follow the players present** (`apps/openagents-web/everglade-raid-scale.coax`,
+shared by the room server and the admin pane, so the pane shows exactly what comes):
+
+- The **Wave size** dial is the wave for 4 players. Each player in the instance brings a quarter
+  of it, so the default 12 is 3 raiders a player: 3 for one player, 12 for four, 24 for eight.
+  A wave has at least 3. At 24 it is 6 a player, for a brutal raid.
+- **Fanatics and Warlocks grow wave by wave.** Wave w of W has w/W of the Fanatic and Warlock
+  parts, rounded down, and always one Warlock part when the dial has any. The last wave has
+  the dials' whole mix, and Cultists are the rest.
+- **Warlock levels grow the same way**, from level 1 in the first wave to the dial's in the
+  last.
+- With the defaults and 4 players, wave 1 is 10 Cultists and 2 level 1 Warlocks. The last wave
+  is 7 Cultists, a Fanatic and 4 Warlocks of levels 1 to 3.
+
+**The fallen stand again.** A player who falls in a room (0 Hit Points, dying or dead) stands
+again where they fell, with all their Hit Points, 10 s later, as a page on its own stands you up
+after `YOU DIED`. Before this, a death in a room lasted until the player left, so a raid's fallen
+were out of it for good.
+
+**The watch fights.** The town's Guards, Warrior Veterans and Knights fight raiders from where
+the watch stands, with their stat blocks' weapons. A Guard strikes with its Spear at hand, or
+throws it at a raider within 20 ft. A Veteran or a Knight uses its Greatsword at hand, or its
+Heavy Crossbow out to 120 ft. Raiders set on the watch as they set on townsfolk.
 
 - Each wave spawns at the gates the admin picked: north road, east road, south road, the west
   wood and the river bridge. Raiders of a wave spawn in groups of up to 8, spread over those
@@ -338,9 +363,9 @@ value outside one is set to the nearest end and shown as set.
 | Event | on, off | off | Whether events start, on a schedule or by START NOW. |
 | Every | off, 15 to 240 minutes | off | The schedule's period. |
 | Waves | 1 to 8 | 3 | How many waves before the climax. |
-| Wave size | 4 to 24 raiders | 12 | Raiders in each wave. |
-| Cultists, Fanatics, Warlocks | 0 to 10 parts each | 6, 1, 3 | The wave's mix, in parts. |
-| Warlock levels | 1 to 3 | 3 | The cult's warlocks are levels 1 up to this. |
+| Wave size | 4 to 24 raiders | 12 | The wave for 4 players; it scales with the players present (section 4.2). |
+| Cultists, Fanatics, Warlocks | 0 to 10 parts each | 6, 1, 3 | The last wave's mix, in parts; earlier waves have fewer Fanatics and Warlocks (section 4.2). |
+| Warlock levels | 1 to 3 | 3 | The last wave's warlocks are levels 1 up to this; earlier waves' go less high. |
 | Gates | any of 5 | all 5 | Where waves spawn. |
 | Leader | on, off | on | Whether Darian Odiodei comes in the climax. |
 | Aggression | 0 to 3 | 2 | How Darian Odiodei fights (section 5.3). |
@@ -350,8 +375,9 @@ value outside one is set to the nearest end and shown as set.
 | Levels | on, off | off | Characters at their level's SRD kit from their XP (section 6.1). |
 | Level cap | 1 to 3 | 2 | The highest level a character reaches. |
 
-At most 48 raiders stand in an instance at once, waves together, and the pane says so beside
-**Wave size**: `48 STANDING AT MOST`. A wave that would go past it spawns the rest as others
+The pane shows what the dials give for the players in your instance, the first wave's and the
+last's, for example `FOR 4 PLAYERS, WAVE 1: 12 RAIDERS · 10 CULTISTS, 2 WARLOCKS UP TO LEVEL 1`.
+At most 60 raiders stand in an instance at once, waves together, with Darian Odiodei and his 3 ward stones the raid's 64 places. A wave that would go past it spawns the rest as others
 fall.
 
 ### 8.3 The API
@@ -392,7 +418,7 @@ fall.
 
 New D entries, which pages that don't know them skip:
 
-- `g KIND PHASE WAVE WAVES SECS LEFT STANDING SLAIN SQUARE WARDS ARCH OUTCOME FOLK LEVELS CAP`: the event's state,
+- `g KIND PHASE WAVE WAVES SECS LEFT STANDING SLAIN SQUARE WARDS ARCH OUTCOME FOLK LEVELS CAP PLAYERS`: the event's state,
   heard by every seat on change. SECS is the phase's seconds left; SQUARE who holds the square
   and for how long; ARCH Darian Odiodei's state (away, warded, exposed, withdrawn).
 - `v SS LEVEL XP CAP LO HI`: a seat's level, XP, the cap, and the bar slots its character has
@@ -423,11 +449,11 @@ instance must add less than 0.5 ms to that instance's tick. The design keeps it 
   routes.
 - **Attacks through the engine** on the beat only.
 - **Heard a third as often.** A raider's `c` entry goes out as a summoned creature's does, on
-  change, but a raider's move waits for every third tick (staggered by its place), so 48
-  raiders cost a seat about a third of what 48 Wolves would. Its going goes out at once.
+  change, but a raider's move waits for every third tick (staggered by its place), so 60
+  raiders cost a seat about a third of what 60 Wolves would. Its going goes out at once.
   Raiders more than 120 m away aren't sent (`EG_VIEW`).
 
-`load.coax` (#12711) gets a raid case: 16 seats in one instance and 48 raiders fighting, which
+`load.coax` (#12711) gets a raid case: 16 seats in one instance and 60 raiders fighting, which
 reports the tick's p95 with and without the raid.
 
 ## 10. Persistence

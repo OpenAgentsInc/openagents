@@ -25,5 +25,11 @@ trap 'kill "$room" 2>/dev/null || true; cp "$dir/room.log" "${RAID_PROOF_LOG:-/d
 "$root/coax/web/tool.sh" "$root/coax/web/room/raid-check.coax" "ws://127.0.0.1:1" 1 10 > /dev/null 2>&1 || true
 sleep 3
 (sleep $((3 + n / 2)); printf '%s 1 0\nlevels 1 2\n' "$dials" > "$ctl") &
+# the server's own health every 5 s: the Everglade tick's p50 and 95th percentile (room-host.c GET /health)
+( while kill -0 "$room" 2>/dev/null; do curl -s --max-time 2 "http://127.0.0.1:$port/health" >> "$dir/health.log" || true; sleep 5; done ) &
 OA_ROOM_TICKET_KEY="$key" "$root/coax/web/tool.sh" "$root/coax/web/room/raid-check.coax" "ws://127.0.0.1:$port" "$n" "$secs" | tee "$dir/check.out"
+# the worst 95th percentile tick seen, and the minute reports (ticks, sends, events with no room)
+worst=$(sed -n 's/.*at the 95th \([0-9]*\) us.*/\1/p' "$dir/health.log" | sort -n | tail -1)
+echo "tick p95 at worst: ${worst:-?} us"
+grep -h "room: .*ticks in\|tick parts" "$dir/room.log" | tail -6 || true
 grep -qx raids "$dir/check.out"

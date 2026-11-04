@@ -81,6 +81,7 @@ EgCast :: struct { on: bool; seat: int; slot: int; x: f32; y: f32; z: f32; tgt: 
 EgRoom :: struct {
   live: bool; relay: int = -1;
   tick: int; seed: int;
+  ev_dropped: int;               // events a tick had no room for (EG_EVENTS, EG_EV_BYTES), since the host last asked
   sky: int;                      // the weather its seats last heard, as W has it (room-sky.coax)
   seat: [EG_SEATS] EgSeat;
   casts: [EG_CASTS] EgCast;
@@ -211,10 +212,16 @@ eg_refuse :: (v: [] RmServer, k: int, seat: int, seq: int, why: string) {
   n := wire_put_refused(b[..], 0, seq, why);
   rl_queue(v, v[0].eg[k].relay, v[0].eg[k].seat[seat].conn, -1, cast(string) b[0..<n], "");
 }
+// The events every room's ticks had no room for since the last ask (room-host.c's minute report), then 0.
+rm_eg_dropped :: (v: [] RmServer) -> int #export_c {
+  n := 0;
+  for k: 0..<EG_ROOMS { n += v[0].eg[k].ev_dropped; v[0].eg[k].ev_dropped = 0; }
+  return n;
+}
 // An event since the last D, heard within EG_VIEW of (x, z), or by everyone (all).
 eg_event :: (v: [] RmServer, k: int, text: string, x: f32, z: f32, all: bool) {
   e := v[0].eg[k].ev_n;
-  if e >= EG_EVENTS || v[0].eg[k].ev_bytes + text.count > EG_EV_BYTES { return; }
+  if e >= EG_EVENTS || v[0].eg[k].ev_bytes + text.count > EG_EV_BYTES { v[0].eg[k].ev_dropped += 1; return; }
   a := v[0].eg[k].ev_bytes;
   for i: 0..<text.count { v[0].eg[k].ev[a + i] = text[i]; }
   v[0].eg[k].ev_at[e] = a; v[0].eg[k].ev_len[e] = text.count; v[0].eg[k].ev_x[e] = x; v[0].eg[k].ev_z[e] = z; v[0].eg[k].ev_all[e] = all;

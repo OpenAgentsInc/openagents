@@ -552,7 +552,8 @@ int main(int argc, char **argv) {
       if (now - last_vitals >= 1000) { last_vitals = now; vitals_post(); directory_post(); }
       control_ask(); control_hear();
       if (now - last_report >= 60000) { printf("room: %lld ticks in %.1f s, %lld players, %lld frames over the rate limits, %lld queue full, %lld slow sockets closed, %lld bytes the most waiting\n", (long long)ticks, (now - last_report) / 1000.0, (long long)rm_players(view()), (long long)rm_relay_dropped(view()), (long long)rm_relay_queue_full(view()), (long long)slow_closed, (long long)out_peak);
-        printf("room: everglade tick parts over the minute (ms):"); for (int q = 0; q < PARTS; q++) { printf(" %s %lld", part_name[q], (long long)(part_us[q] / 1000)); part_us[q] = 0; } printf("\n");
+        printf("room: everglade tick parts over the minute (ms):"); for (int q = 0; q < PARTS; q++) { printf(" %s %lld", part_name[q], (long long)(part_us[q] / 1000)); part_us[q] = 0; }
+        printf(", %lld events with no room in their tick\n", (long long)rm_eg_dropped(view()));
         ticks = 0; last_report = now; memcpy(fan_last, fan_now, sizeof fan_now); memset(fan_now, 0, sizeof fan_now); memcpy(tick_last, tick_now, sizeof tick_now); memset(tick_now, 0, sizeof tick_now); }
     }
   }
