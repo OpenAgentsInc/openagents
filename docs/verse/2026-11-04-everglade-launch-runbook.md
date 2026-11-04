@@ -247,7 +247,7 @@ When steps 2 and 3 hold, post the evidence on #12733 and close it.
 
 A local run (a local page server plus a local `bin/room`, joined with
 `?relay=ws://localhost:PORT`) has no API. So it has no seat tickets, no names,
-no player ids, no directory and no blocks. Since `820b53996e`, the pair
+no player ids, no directory and no blocks. Since `2cfde0ca03`, the pair
 check skips the steps that need the API on a local relay instead of failing
 them:
 
