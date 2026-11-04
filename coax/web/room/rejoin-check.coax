@@ -5,6 +5,7 @@
 // 7 s on (the page's own quiet check, everglade-net.coax NET_SILENT_MS, is 6 s), A opens a new
 // socket with a fresh ticket for the same player. A's new seat's first word on itself is where A
 // stood, within 1 m, not the gate; B hears A's old seat go and A's new one where A was, and has one A.
+// Last, an old page (#12788): a socket whose hello says wire 2 hears "r 0 version" and is closed.
 // It needs the seat-ticket key (OA_ROOM_TICKET_KEY): run it as deploy.sh does, or against a local
 // room server started with the same key (raid-proof.sh's way).
 //   coax/web/tool.sh coax/web/room/rejoin-check.coax [ws://localhost:8830]
@@ -43,6 +44,12 @@ rj_input :: (c: [] RelayConn, h: [] RjHeard, seq: int, walk: bool) -> bool {
   k = rs_put(m[..], k, ifx walk then " 100 0 0 0 0 0 " else " 0 0 0 0 0 0 "); k = rs_int(m[..], k, h[0].m[0].heard);
   return relay_conn_send(c, cast(string) m[0..<k]);
 }
+// Whether text holds part.
+rj_has :: (text: string, part: string) -> bool {
+  if part.count > text.count { return false; }
+  for i: 0..<text.count - part.count + 1 { if text[i..<i + part.count] == part { return true; } }
+  return false;
+}
 // The players other than seat `me` this socket has now.
 rj_others :: (h: [] RjHeard, me: int) -> int { n := 0; for s: 0..<RJ_SEATS { if s != me && h[0].seen[s] { n += 1; } } return n; }
 
@@ -60,7 +67,7 @@ tool_main :: () -> int #export_c {
   ua: [1024] u8; ub: [1024] u8;
   url_a := rs_ticketed(ua[..], url, "p-rejoincheck-a", "Rejoin A"); url_b := rs_ticketed(ub[..], url, "p-rejoincheck-b", "Rejoin B");
   if url.count == 0 || url_a.count == 0 || url_b.count == 0 || !relay_conn_open(c[0..<1], url_a) || !relay_conn_open(c[1..<2], url_b) { tool_err("rejoin-check: can't open "); tool_errln(url); print("fails\n"); return 1; }
-  sent := relay_conn_send(c[0..<1], "H 1 ranger.2.1.0 druid 0 Rejoin A") && relay_conn_send(c[1..<2], "H 1 ranger.0.0.0 druid 0 Rejoin B");
+  sent := relay_conn_send(c[0..<1], "H 3 ranger.2.1.0 druid 0 Rejoin A") && relay_conn_send(c[1..<2], "H 3 ranger.0.0.0 druid 0 Rejoin B");
   seq_a := 0; seq_b := 0;
   // both stand 1 s, then A walks east 3 s
   t0 := rs_now(); n := 0;
@@ -85,7 +92,7 @@ tool_main :: () -> int #export_c {
   ua2: [1024] u8;
   url_a2 := rs_ticketed(ua2[..], url, "p-rejoincheck-a", "Rejoin A");
   opened := url_a2.count > 0 && relay_conn_open(c[2..<3], url_a2);
-  sent = opened && relay_conn_send(c[2..<3], "H 1 ranger.2.1.0 druid 0 Rejoin A") && sent;
+  sent = opened && relay_conn_send(c[2..<3], "H 3 ranger.2.1.0 druid 0 Rejoin A") && sent;
   t2 := rs_now(); n = 0;
   while opened && rs_now() - t2 < 3000 {
     seq_a += 1; seq_b += 1;
@@ -99,7 +106,19 @@ tool_main :: () -> int #export_c {
   where_b := ifx sa2 >= 0 && h[1].seen[sa2] then sqrt((h[1].x[sa2] - stood_x) * (h[1].x[sa2] - stood_x) + (h[1].z[sa2] - stood_z) * (h[1].z[sa2] - stood_z)) else -1;
   old_gone := sa >= 0 && sa != sa2 && !h[1].seen[sa];
   once := rj_others(h[1..<2], sb) == 1;
-  ok := sent && walked && opened && h[2].first_ok && back_m >= 0 && back_m < 1 && where_b >= 0 && where_b < 1 && old_gone && once;
+  // an old page (#12788): its hello says wire 2; the room says why (r 0 version) and closes the socket
+  old: [1] RelayConn; old[0].h = -1;
+  uo: [1024] u8; url_o := rs_ticketed(uo[..], url, "p-rejoincheck-old", "Rejoin Old");
+  refused := false; closed := false;
+  if url_o.count > 0 && relay_conn_open(old[..], url_o) && relay_conn_send(old[..], "H 2 ranger.0.0.0 druid 0 Old") {
+    t3 := rs_now();
+    while !closed && rs_now() - t3 < 5000 {
+      r := relay_conn_poll(old[..], 50);
+      if r == RC_TEXT && rj_has(cast(string) old[0].text[0..<old[0].text_n], "r 0 version") { refused = true; }
+      if r == RC_CLOSED || r == RC_FAIL { closed = true; }
+    }
+  }
+  ok := sent && walked && opened && h[2].first_ok && back_m >= 0 && back_m < 1 && where_b >= 0 && where_b < 1 && old_gone && once && refused && closed;
   out: [1024] u8; o: [1] Jo;
   jo_start(o[..], out[..]);
   jo_obj(o[..]);
@@ -113,6 +132,8 @@ tool_main :: () -> int #export_c {
   jo_key(o[..], "b_others"); jo_int(o[..], rj_others(h[1..<2], sb));
   jo_key(o[..], "walked"); jo_bool(o[..], walked);
   jo_key(o[..], "sent"); jo_bool(o[..], sent);
+  jo_key(o[..], "old_wire_refused"); jo_bool(o[..], refused);
+  jo_key(o[..], "old_wire_closed"); jo_bool(o[..], closed);
   jo_end(o[..]);
   print("%\n", jo_text(o[..]));
   print("%\n", ifx ok then "rejoins" else "fails");

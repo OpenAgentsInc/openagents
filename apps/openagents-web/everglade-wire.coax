@@ -13,7 +13,7 @@
 // at most 1024 bytes, a server's at most 3800.
 //
 // Page to server:
-//   H 1 LOOK CLASS FLAGS NAME      hello, after y: look ("ranger.SKIN.DYE.TRIM"), class ("druid"), FLAGS
+//   H 3 LOOK CLASS FLAGS NAME      hello, after y: look ("ranger.SKIN.DYE.TRIM"), class ("druid"), FLAGS
 //                                  (1 touch, 2 logged in), the name shown ("-" none)
 //   I SEQ KX KY PX PY THETA B HEARD  one step's input (everglade-move-types.coax EgMoveIn), every step at
 //                                  30 Hz, idle ones too: the keys and the stick (-100 to 100, along the
@@ -63,6 +63,7 @@
 // and draws every remote entity from one interpolation buffer (everglade-net.coax).
 
 WIRE_VERSION :: 3;
+WIRE_REFUSE_VERSION :: "version";   // r 0 version: the room speaks another WIRE_VERSION than the hello's (the page reloads)
 WIRE_FRAME :: 1024;        // a page's frame at most
 WIRE_SERVER_FRAME :: 3800; // a server's
 WIRE_HZ :: 30; WIRE_AWAY_MS :: 3000;             // the tick, and a page's steps
@@ -80,6 +81,10 @@ WK_THORNS :: 22;           // a Wall of Thorns: its middle, its way; P2 its leng
 WK_LINE :: 23;             // a wall of wind or fire: P1 the ability (AB_*), P2 its length
 WK_ZONE :: 24;             // a lingering zone (Moonbeam, Sleet Storm, Fog Cloud...): P1 the ability, P2 its radius
 WK_EFFECT :: 30;           // a condition, buff or hold that lasts: OWNER the TGT code it is on, P1 the slot or ability, P2 its WC_* bit, T0 and DUR
+// an effect's cause (WK_EFFECT's P1) for the watch's spells on a player (everglade-status.coax ST_*)
+WE_HOLD_PERSON :: 0; WE_EARTHBIND :: 1; WE_RAY_OF_FROST :: 2; WE_WATCH :: 3;
+WE_BIT :: [WE_WATCH] int.[WC_PARALYZED, WC_BOUND, WC_SLOWED];   // the WC_* bit each holds
+WIRE_TGT_SEAT :: 1000;     // an OWNER that is a seat's player: 1000 + SS
 // a player's G bits
 WG_GROUND :: 1; WG_SWIM :: 2; WG_BOAT :: 4; WG_DEAD :: 8; WG_AWAY :: 16;   // AWAY: nothing heard from that seat's page for WIRE_AWAY_MS
 // a player's COND bits: the SRD's conditions (aethyr/rules/srd/engine.coax RS_*: 256 Paralyzed is Hold
@@ -99,7 +104,7 @@ WE_TALK :: 1; WE_DOOR :: 2; WE_BOAT :: 3; WE_BOARD :: 4; WE_END :: 5;
 WireIn :: struct { seq: int; kx: int; ky: int; px: int; py: int; theta: f32; b: int; heard: int; }
 WireCast :: struct { seq: int; slot: int; ax: f32; ay: f32; az: f32; tgt: int = -1; mode: int; }   // mode: the spell's (wire_mode), 0 sent as nothing
 WireUse :: struct { seq: int; kind: int; id: int; }
-WireHello :: struct { look: string; kind: string; flags: int; name: string; }
+WireHello :: struct { version: int = WIRE_VERSION; look: string; kind: string; flags: int; name: string; }
 WireWorld :: struct { tick: int; hz: int = WIRE_HZ; seed: int; day: int; weather: int; budget: int = WIRE_BUDGET; }
 WireD :: struct { tick: int; ack: int; f: int; part: int; }
 WireN :: struct { ss: int; id: string; look: string; kind: string; flags: int; name: string; }
@@ -154,7 +159,7 @@ wire_axis :: (v: f32) -> int { if !(v == v) { return 0; } return cast(int) floor
 clamp_wire :: (v: f32, lo_: f32, hi_: f32) -> f32 { return ifx v < lo_ then lo_ else ifx v > hi_ then hi_ else v; }
 
 wire_put_hello :: (out: [] u8, at: int, h: WireHello) -> int {
-  n := wire_put(out, at, "H 1");
+  n := wire_int(out, wire_put(out, at, "H"), h.version);
   n = wire_text(out, n, h.look); n = wire_text(out, n, h.kind); n = wire_int(out, n, h.flags); n = wire_name(out, n, h.name);
   return n;
 }
@@ -271,7 +276,7 @@ wire_is :: (t: string, head: string) -> bool { return t.count > head.count && t[
 
 wire_read_hello :: (t: string, r: [] WireRd) -> WireHello {
   h: WireHello;
-  if wire_num(t, r) != 1 { r[0].ok = false; }
+  h.version = wire_num(t, r);
   h.look = wire_word(t, r); h.kind = wire_word(t, r); h.flags = wire_num(t, r); h.name = wire_rest(t, r);
   return h;
 }
@@ -343,10 +348,15 @@ wire_entry :: (t: string, from: int, k: int) -> string {
 
 // ---- the replication model (#12783): rows, their deltas, the page's mirror, a seat's sends
 
-WIRE_SF :: 21;                // a row's fields
+WIRE_SF :: 23;                // a row's fields
 WS_KIND :: 0; WS_X :: 1; WS_Y :: 2; WS_Z :: 3; WS_YAW :: 4; WS_VX :: 5; WS_VY :: 6; WS_VZ :: 7;
 WS_G :: 8; WS_CLIP :: 9; WS_HP :: 10; WS_MAX :: 11; WS_COND :: 12; WS_OWNER :: 13; WS_P1 :: 14; WS_P2 :: 15;
 WS_TEMP :: 16; WS_FORM :: 17; WS_CARRY :: 18; WS_T0 :: 19; WS_DUR :: 20;
+// LIFE: which life of its id this is (wire_hist_put counts them; an id gone a tick and back is a new
+// one, never drawn between the two). WARP: its jumps in this life (a teleport, a respawn), each drawn
+// where it lands, never between.
+WS_LIFE :: 21; WS_WARP :: 22;
+WIRE_WARP_M :: 3.0;           // m: a move this far in one tick is a jump (WARP), not a walk
 // entity ids: a seat SS, a townsperson WIRE_ID_FOLK + I, what the server made WIRE_ID_MADE + EID
 WIRE_ID_FOLK :: 100000; WIRE_ID_MADE :: 200000;
 WIRE_SLOTS :: 256;            // entities a room replicates at once
@@ -364,7 +374,7 @@ WIRE_ROW :: 320;              // a row's bytes at most
 // bits 8 and up), HP, OWNER the seat, P1 P2 as WK_* says. Effects (WK_EFFECT): OWNER, P1, P2, T0, DUR.
 WireS :: struct {
   id: int; kind: int; x: f32; y: f32; z: f32; yaw: f32; vx: f32; vy: f32; vz: f32;
-  g: int; clip: int; hp: int; max: int; cond: int; owner: int = -1; p1: int; p2: int; temp: int; form: int; carry: f32; t0: int; dur: int;
+  g: int; clip: int; hp: int; max: int; cond: int; owner: int = -1; p1: int; p2: int; temp: int; form: int; carry: f32; t0: int; dur: int; life: int; warp: int;
 }
 WireSHead :: struct { id: int; back: int; }
 
@@ -377,14 +387,14 @@ wire_s_pack :: (e: WireS, f: [] s32) {
   f[WS_G] = wire_s32(e.g); f[WS_CLIP] = wire_s32(e.clip); f[WS_HP] = wire_s32(e.hp); f[WS_MAX] = wire_s32(e.max); f[WS_COND] = wire_s32(e.cond);
   f[WS_OWNER] = wire_s32(e.owner); f[WS_P1] = wire_s32(e.p1); f[WS_P2] = wire_s32(e.p2); f[WS_TEMP] = wire_s32(e.temp); f[WS_FORM] = wire_s32(e.form);
   f[WS_CARRY] = wire_s32(ifx e.carry == e.carry && e.carry < 100 && e.carry > -100 then cast(int) floor(e.carry * 10000 + 0.5) else 0);
-  f[WS_T0] = wire_s32(e.t0); f[WS_DUR] = wire_s32(e.dur);
+  f[WS_T0] = wire_s32(e.t0); f[WS_DUR] = wire_s32(e.dur); f[WS_LIFE] = wire_s32(e.life); f[WS_WARP] = wire_s32(e.warp);
 }
 wire_s_unpack :: (id: int, f: [] s32) -> WireS {
   return WireS.{id = id, kind = cast(int) f[WS_KIND], x = f32(cast(int) f[WS_X]) / 100, y = f32(cast(int) f[WS_Y]) / 100, z = f32(cast(int) f[WS_Z]) / 100,
                 yaw = f32(cast(int) f[WS_YAW]) / 100, vx = f32(cast(int) f[WS_VX]) / 100, vy = f32(cast(int) f[WS_VY]) / 100, vz = f32(cast(int) f[WS_VZ]) / 100,
                 g = cast(int) f[WS_G], clip = cast(int) f[WS_CLIP], hp = cast(int) f[WS_HP], max = cast(int) f[WS_MAX], cond = cast(int) f[WS_COND],
                 owner = cast(int) f[WS_OWNER], p1 = cast(int) f[WS_P1], p2 = cast(int) f[WS_P2], temp = cast(int) f[WS_TEMP], form = cast(int) f[WS_FORM],
-                carry = f32(cast(int) f[WS_CARRY]) / 10000, t0 = cast(int) f[WS_T0], dur = cast(int) f[WS_DUR]};
+                carry = f32(cast(int) f[WS_CARRY]) / 10000, t0 = cast(int) f[WS_T0], dur = cast(int) f[WS_DUR], life = cast(int) f[WS_LIFE], warp = cast(int) f[WS_WARP]};
 }
 // "s ID BACK MASK V V ...": the row `now` as a delta against `base` (BACK ticks back; zeros with BACK 0).
 wire_put_s :: (out: [] u8, at: int, id: int, back: int, base: [] s32, now: [] s32) -> int {
@@ -513,6 +523,7 @@ WireHist :: struct {
   f: [WIRE_BASES * WIRE_SLOTS * WIRE_SF] s32;
   // now's: where each is (m), its weight, and whether every seat hears it however far (a player)
   x: [WIRE_SLOTS] f32; y: [WIRE_SLOTS] f32; z: [WIRE_SLOTS] f32; w: [WIRE_SLOTS] f32; all: [WIRE_SLOTS] bool;
+  life: [WIRE_SLOTS] s32; warp: [WIRE_SLOTS] s32;   // each slot's entity's LIFE and WARP now
   now: int;
 }
 // A new tick's table: empty until wire_hist_put fills it.
@@ -528,11 +539,16 @@ wire_hist_put :: (h: [] WireHist, q: int, e: WireS, w: f32, all: bool, moved: bo
   if q < 0 || q >= WIRE_SLOTS || e.id < 0 { return; }
   now := h[0].now; row := now % WIRE_BASES;
   m := e;
-  if moved && now > 0 {
-    was := (now - 1) % WIRE_BASES;
-    if h[0].tick[was] == now - 1 && cast(int) h[0].id[was * WIRE_SLOTS + q] == e.id + 1 {
-      m.vx = wire_tenth((e.x - h[0].x[q]) * f32(WIRE_HZ)); m.vy = wire_tenth((e.y - h[0].y[q]) * f32(WIRE_HZ)); m.vz = wire_tenth((e.z - h[0].z[q]) * f32(WIRE_HZ));
-    }
+  // the same entity as last tick, or a new life of its id; and in one tick a walk, or a jump
+  was := (now - 1 + WIRE_BASES) % WIRE_BASES;
+  same := now > 0 && h[0].tick[was] == now - 1 && cast(int) h[0].id[was * WIRE_SLOTS + q] == e.id + 1;
+  dx := e.x - h[0].x[q]; dy := e.y - h[0].y[q]; dz := e.z - h[0].z[q];
+  jump := same && dx * dx + dy * dy + dz * dz > WIRE_WARP_M * WIRE_WARP_M;
+  if !same { h[0].life[q] = cast(s32) ((cast(int) h[0].life[q] + 1) % 1000000); h[0].warp[q] = 0; }
+  else if jump { h[0].warp[q] = cast(s32) ((cast(int) h[0].warp[q] + 1) % 1000000); }
+  m.life = cast(int) h[0].life[q]; m.warp = cast(int) h[0].warp[q];
+  if moved && same && !jump {
+    m.vx = wire_tenth(dx * f32(WIRE_HZ)); m.vy = wire_tenth(dy * f32(WIRE_HZ)); m.vz = wire_tenth(dz * f32(WIRE_HZ));
   }
   a := (row * WIRE_SLOTS + q) * WIRE_SF;
   wire_s_pack(m, h[0].f[a..<a + WIRE_SF]);
@@ -702,7 +718,7 @@ wire_test_send :: (st: [] WireSeat, h: [] WireHist, m: [] WireMirror, me: int, b
   n := wire_seat_frame(st[..], h[..], -1, 0, 0, 120, WIRE_BUDGET, buf[..]);
   t := cast(string) buf[0..<n];
   // the wolf first: nearer and heavier; the townsperson's OWNER is WireS's -1
-  #assert t == "s 200007 0 27919 12 300 50 400 1 11 11 2 1;s 100004 0 26171 1 1234 -5678 150 120 1 9 -1 4";
+  #assert t == "s 200007 0 2125071 12 300 50 400 1 11 11 2 1 1;s 100004 0 2123323 1 1234 -5678 150 120 1 9 -1 4 1";
   d := WireD.{tick = 1};
   _ := wire_mirror_d(m[..], d);
   for k: 0..<wire_entries(t, 0) { _2 := wire_mirror_s(m[..], 1, wire_entry(t, 0, k)); }
@@ -731,7 +747,7 @@ wire_test_send :: (st: [] WireSeat, h: [] WireHist, m: [] WireMirror, me: int, b
   base: [WIRE_SF] s32; out: [WIRE_SF] s32;
   tt := "s 5 0 3 100"; r[0] = wire_rd(tt, 1); _4 := wire_read_s_head(tt, r[..]); wire_read_s_body(tt, r[..], base[..], out[..]);
   #assert !r[0].ok;
-  tt = "s 5 0 4194304 1"; r[0] = wire_rd(tt, 1); _5 := wire_read_s_head(tt, r[..]); wire_read_s_body(tt, r[..], base[..], out[..]);
+  tt = "s 5 0 8388608 1"; r[0] = wire_rd(tt, 1); _5 := wire_read_s_head(tt, r[..]); wire_read_s_body(tt, r[..], base[..], out[..]);
   #assert !r[0].ok;
   tt = "s 5 0 2 7 8"; r[0] = wire_rd(tt, 1); _6 := wire_read_s_head(tt, r[..]); wire_read_s_body(tt, r[..], base[..], out[..]);
   #assert !r[0].ok;
@@ -795,7 +811,7 @@ wire_test_send :: (st: [] WireSeat, h: [] WireHist, m: [] WireMirror, me: int, b
   wire_hist_begin(h[..], 2); wire_test_put(h[..], 0, WireS.{id = 0, kind = WK_PLAYER});
   buf: [1024] u8;
   n := wire_seat_frame(st[..], h[..], 0, 0, 0, 120, WIRE_BUDGET, buf[..]);
-  #assert cast(string) buf[0..<n] == "x 200003;s 0 0 8192 -1";   // nothing acknowledged: absolute (OWNER -1 past zeros)
+  #assert cast(string) buf[0..<n] == "x 200003;s 0 0 2105344 -1 1";   // nothing acknowledged: absolute (OWNER -1 past zeros)
   for t: 3..<12 { wire_hist_begin(h[..], t); wire_test_put(h[..], 0, WireS.{id = 0, kind = WK_PLAYER}); n = wire_seat_frame(st[..], h[..], 0, 0, 0, 120, WIRE_BUDGET, buf[..]); #assert buf[0] == 's'; }
   wire_hist_begin(h[..], 12); wire_test_put(h[..], 0, WireS.{id = 0, kind = WK_PLAYER});
   _2 := wire_test_send(st[..], h[..], m[..], 0, WIRE_BUDGET, false, false);
@@ -825,10 +841,10 @@ wire_test_send :: (st: [] WireSeat, h: [] WireHist, m: [] WireMirror, me: int, b
   #assert wire_axis(0.354) == 35 && wire_axis(-2) == -100;
   n = wire_put_hello(buf[..], 0, WireHello.{look = "ranger.2.1.0", kind = "druid", flags = 2, name = "Ash Wood;x"});
   t = cast(string) buf[0..<n];
-  #assert t == "H 1 ranger.2.1.0 druid 2 Ash Woodx";
+  #assert t == "H 3 ranger.2.1.0 druid 2 Ash Woodx";
   r[0] = wire_rd(t, 1);
   h := wire_read_hello(t, r[..]);
-  #assert r[0].ok && h.look == "ranger.2.1.0" && h.flags == 2 && h.name == "Ash Woodx";
+  #assert r[0].ok && h.version == WIRE_VERSION && h.look == "ranger.2.1.0" && h.flags == 2 && h.name == "Ash Woodx";
   n = wire_put_cast(buf[..], 0, WireCast.{seq = 13, slot = 32, ax = 5, ay = 0, az = 6}); t = cast(string) buf[0..<n];
   #assert t == "C 13 32 500 0 600 -1";
   // a spell's mode goes last, and only when it has one; the reader takes it, or 0 when none
@@ -888,4 +904,25 @@ wire_test_send :: (st: [] WireSeat, h: [] WireHist, m: [] WireMirror, me: int, b
   t = "I 1z";
   r[0] = wire_rd(t, 1); _3 := wire_num(t, r[..]);
   #assert !r[0].ok;
+}
+
+wire_test_row :: (h: [] WireHist, q: int, t: int) -> WireS {
+  a := ((t % WIRE_BASES) * WIRE_SLOTS + q) * WIRE_SF;
+  return wire_s_unpack(0, h[0].f[a..<a + WIRE_SF]);
+}
+#test "wire: an id gone a tick and back is a new LIFE; a jump of more than WIRE_WARP_M in a tick is a WARP, its velocity none" {
+  h: [1] WireHist;
+  wire_hist_begin(h[..], 1); wire_hist_put(h[..], 7, WireS.{id = WIRE_ID_MADE + 9, kind = WK_BEAST, x = 1}, 3, false, true);
+  wire_hist_begin(h[..], 2); wire_hist_put(h[..], 7, WireS.{id = WIRE_ID_MADE + 9, kind = WK_BEAST, x = 1.1}, 3, false, true);
+  #assert wire_test_row(h[..], 7, 1).life == 1 && wire_test_row(h[..], 7, 2).life == 1 && wire_test_row(h[..], 7, 2).warp == 0 && wire_test_row(h[..], 7, 2).vx == 3;
+  // tick 3: gone; tick 4: the same id again, a new life
+  wire_hist_begin(h[..], 3);
+  wire_hist_begin(h[..], 4); wire_hist_put(h[..], 7, WireS.{id = WIRE_ID_MADE + 9, kind = WK_BEAST, x = 1.1}, 3, false, true);
+  #assert wire_test_row(h[..], 7, 4).life == 2 && wire_test_row(h[..], 7, 4).warp == 0 && wire_test_row(h[..], 7, 4).vx == 0;
+  // tick 5: 10 m on in a tick: a jump, drawn where it lands
+  wire_hist_begin(h[..], 5); wire_hist_put(h[..], 7, WireS.{id = WIRE_ID_MADE + 9, kind = WK_BEAST, x = 11.1}, 3, false, true);
+  #assert wire_test_row(h[..], 7, 5).life == 2 && wire_test_row(h[..], 7, 5).warp == 1 && wire_test_row(h[..], 7, 5).vx == 0;
+  // a different id in the slot is its own entity, a life of its own
+  wire_hist_begin(h[..], 6); wire_hist_put(h[..], 7, WireS.{id = WIRE_ID_MADE + 10, kind = WK_BEAST, x = 11.1}, 3, false, true);
+  #assert wire_test_row(h[..], 7, 6).life == 3 && wire_test_row(h[..], 7, 6).warp == 0;
 }

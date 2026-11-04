@@ -310,7 +310,7 @@ rc_test_room :: (v: [] RmServer, code: string, n: int, warlock: bool) -> int {
   ev: [96] u8; m := put(ev[..], 0, "GET /api/room/relay/everglade/"); m = put(ev[..], m, code); m = put(ev[..], m, " HTTP/1.1\r\n\r\n");
   for c: 0..<n { _ := rm_join(v, c, cast(string) ev[0..<m]); }
   k := eg_room_at(v, v[0].conns[0].relay);
-  for c: 0..<n { rm_heard(v, c, ifx warlock then "H 1 ranger.0.0.0 warlock 0 -" else "H 1 ranger.0.0.0 druid 0 -"); }
+  for c: 0..<n { rm_heard(v, c, ifx warlock then "H 3 ranger.0.0.0 warlock 0 -" else "H 3 ranger.0.0.0 druid 0 -"); }
   rc_test_tick(v, k, true); rc_test_tick(v, k, true);
   return k;
 }
@@ -342,7 +342,7 @@ rc_test_at :: (t: string, part: string) -> int {
   // eight steps of 0.5 m north, then Blight (30 feet, 9.1 m, and CR_SLACK) 15 m north of the start:
   // out of reach from where the server has the seat now, in reach where the page pressed it
   seq := 0;
-  for q: 0..<8 { seq += 1; t: [64] u8; n := put(t[..], 0, "I"); n = eg_n(t[..], n, seq); n = put(t[..], n, " 0 0 0 50 0 1"); rm_heard(v[..], 0, cast(string) t[0..<n]); }
+  for q: 0..<8 { seq += 1; t: [64] u8; n := put(t[..], 0, "I"); n = eg_n(t[..], n, seq); n = put(t[..], n, " 0 0 0 50 0 1 0"); rm_heard(v[..], 0, cast(string) t[0..<n]); }
   v[0].eg[k].seat[0].bank = 3;   // (4 steps this tick, the tick's most)
   rm_heard(v[..], 0, "C 9 66 0 0 1500 -1");
   rc_test_tick(v[..], k, true);
@@ -355,7 +355,7 @@ rc_test_at :: (t: string, part: string) -> int {
   // a page whose inputs don't come: its cast starts after CR_WAIT ticks, from where the server has it
   for q: 0..<20 { rc_test_tick(v[..], k, true); }
   v[0].eg[k].seat[0].bank = 0;
-  for q: 0..<3 { seq += 1; t: [64] u8; n := put(t[..], 0, "I"); n = eg_n(t[..], n, seq); n = put(t[..], n, " 0 0 0 50 0 1"); rm_heard(v[..], 0, cast(string) t[0..<n]); }
+  for q: 0..<3 { seq += 1; t: [64] u8; n := put(t[..], 0, "I"); n = eg_n(t[..], n, seq); n = put(t[..], n, " 0 0 0 50 0 1 0"); rm_heard(v[..], 0, cast(string) t[0..<n]); }
   seq += 1;
   t: [64] u8; n := put(t[..], 0, "C"); n = eg_n(t[..], n, seq); n = put(t[..], n, " 66 0 0 1200 -1");
   rm_heard(v[..], 0, cast(string) t[0..<n]);

@@ -2856,6 +2856,7 @@ people :: (s: [] Everglade, u: [] f32, you: Point, dt: f32, still: bool) {
   for i: 0..<EG_SPOTS {
     if eg_gone(s[0].ev.edits, i) || EG_SPOT_CAT[i] { continue; }
     talking := s[0].talk == i;
+    s[0].folk[i].net = net_town(s);   // a room's server places them (watch_net_frame)
     folk_step(s[0].folk[i..<i + 1], i, dt, you, talking, ifx talking then s[0].answered else 1000.0f32, c, s[0].heights[..]);
     watch_home(watch_w(s), i, s[0].folk[i].x, s[0].folk[i].z, s[0].folk[i].yaw, s[0].folk[i].indoors);
   }

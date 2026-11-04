@@ -91,7 +91,7 @@ tool_main :: () -> int #export_c {
     ui := rs_ticketed(ub[..], url, cast(string) pid[0..<pn], cast(string) nm[0..<mn]);
     if ui.count == 0 || !relay_conn_open(c[i..<i + 1], ui) { tool_err("drift-bots: can't open "); tool_errln(url); return 1; }
     hm: [96] u8;
-    hn := rs_put(hm[..], rs_put(hm[..], 0, "H 1 ranger.0.0.0 druid 0 "), cast(string) nm[0..<mn]);
+    hn := rs_put(hm[..], rs_put(hm[..], 0, "H 3 ranger.0.0.0 druid 0 "), cast(string) nm[0..<mn]);
     _ := relay_conn_send(c[i..<i + 1], cast(string) hm[0..<hn]);
   }
   print("drift-bots: % in %\n", n, url);

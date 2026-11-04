@@ -45,6 +45,7 @@ RmConn :: struct {
   // whether it is over (since when, its last drop), frames dropped, and whether the host should close it
   ftok: int; btok: int; refill_at: int; over: bool; over_since: int; last_drop: int; dropped: int; kicked: bool;
   ticket: Ticket;      // who its seat ticket says it is (room-ticket.coax; ok false in a room that needs none)
+  waiting: int;        // bytes its socket still had waiting at the tick's start (the host's, rm_conn_waiting)
 }
 RmRoom :: struct {
   name: [ROOM_NAME] u8; name_n: int;
@@ -301,6 +302,8 @@ rm_state :: (v: [] RmServer, conn: int) -> int #export_c {
   }
   return room_state_echo(v[0].rooms[r].s[..], v[0].rooms[r].tick, v[0].conns[conn].seat, cars[..], seats[..], n, v[0].conns[conn].echo, v[0].out[..]);
 }
+// The host, each everglade tick: socket conn still has bytes waiting (everglade's rows wait while it does).
+rm_conn_waiting :: (v: [] RmServer, conn: int, bytes: int) #export_c { if conn >= 0 && conn < CONNS { v[0].conns[conn].waiting = bytes; } }
 rm_players :: (v: [] RmServer) -> int #export_c {
   n := 0;
   for i: 0..<CONNS { if v[0].conns[i].live { n += 1; } }
@@ -458,8 +461,8 @@ tk_test_ask_in :: (r: [] u8, t: [] u8, n: int, room: string) -> string {
   eg_test_drain(v[..], box[..]);
   k := eg_room_at(v[..], v[0].conns[0].relay);
   #assert k >= 0;
-  rm_heard(v[..], 0, "H 1 ranger.2.1.0 druid 0 Someone Else");
-  rm_heard(v[..], 1, "H 1 ranger.0.0.0 druid 3 Guest");
+  rm_heard(v[..], 0, "H 3 ranger.2.1.0 druid 0 Someone Else");
+  rm_heard(v[..], 1, "H 3 ranger.0.0.0 druid 3 Guest");
   eg_test_tick(v[..], k); eg_test_tick(v[..], k);
   eg_test_drain(v[..], box[..]);
   a := eg_test_of(box[..], 1);

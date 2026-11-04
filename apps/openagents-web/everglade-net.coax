@@ -55,6 +55,8 @@ NET_AHEAD :: 150;          // ms past its newest state an entity goes on by its 
 NET_SNAP :: 1.5;           // m: a re-run's difference this big is taken at once (a teleport, a throw)
 NET_SMOOTH :: 0.12;        // s a smaller one is eased out over (a start or stop the page and server stepped apart)
 NET_PINGS :: 8;
+NET_RELOAD_MS :: 1500;      // ms a new version's message shows before the page reloads
+NET_ACT_NAVIGATE :: 1;      // host.js: go to the outbox's path
 NET_SAY :: 4.0;            // s a refusal shows
 NET_GAME :: "everglade";
 NET_OFF :: 0; NET_OPENING :: 1; NET_OPEN :: 2; NET_DOWN :: 3;
@@ -78,6 +80,8 @@ NetEnt :: struct {
   wanted: int;               // a player's WANTED level (w)
   born: int;                 // server ms it was first seen
   seen: int;                 // the last tick it was in
+  life: int; warp: int;      // its row's LIFE and WARP: a new life or a jump starts its ring again
+  t0: int; dur: int;         // its row's T0 and DUR (ticks): an effect's start and length, DUR 0 held up
   // who a player is (n)
   seat: int = -1; id: [NET_ID] u8; id_n: int; look: [NET_LOOK] u8; look_n: int; name: [NET_NAME] u8; name_n: int;
   cls: [16] u8; cls_n: int; hello_flags: int;   // its class and its hello's FLAGS (1 touch, 2 an account)
@@ -128,6 +132,7 @@ EgNet :: struct {
   fx: [NET_FX] NetFx;
   mine_seq: [NET_MINE] int; mine_slot: [NET_MINE] int; mine_at: int;   // your last casts: each SEQ and slot
   said: [48] u8; said_n: int; said_t: f32;   // the last refusal's reason, or what became of the room
+  stale: bool; reload_at: int;   // the room speaks a newer wire (r 0 version): no more opens; reloaded once at reload_at
   lost: bool;                // the room's socket closed under you: said again when you're back
   quiet_frames: int; quiet_since: int; quiet_fresh: bool = true; stepped_at: int;   // the quiet socket's watch (NET_SILENT_MS)
   hello_due: bool;
@@ -408,6 +413,7 @@ net_event :: (s: [] Everglade, kind: int, text: string) -> bool #export_c {
   if ev.event == SOCKET_OPENED { n[0].state = NET_OPEN; n[0].tries = 0; n[0].ping_n = 0; n[0].ping_at = 0; n[0].quiet_fresh = true; return true; }
   if ev.event == SOCKET_ERROR && text.count > 0 && n[0].state == NET_OPEN { return true; }   // a frame over the inbox cap: dropped
   if ev.event == SOCKET_CLOSED || ev.event == SOCKET_ERROR {
+    if n[0].stale { net_down(n); return true; }   // a new version's: it says so, and reloads (net_stale)
     if n[0].seat < 0 { jn_refused(s, n); }   // closed before a seat: full, or gone (everglade-join.coax)
     else { n[0].lost = true; net_tell(s, n, "LOST THE ROOM · REJOINING"); }   // your network dropped, or the room went
     net_down(n); return true;
@@ -501,6 +507,7 @@ net_record :: (s: [] Everglade, n: [] EgNet, t: string) {
   if c == 'r' {
     seq := wire_num(t, r[..]);
     why := wire_word(t, r[..]);
+    if why == WIRE_REFUSE_VERSION { net_stale(s, n); return; }
     n[0].said_n = 0;
     for ch: "CAN'T · " { n[0].said[n[0].said_n] = ch; n[0].said_n += 1; }
     for ch: why { if n[0].said_n >= 48 { break; } n[0].said[n[0].said_n] = ifx ch >= 'a' && ch <= 'z' then ch - 32 else ch; n[0].said_n += 1; }
@@ -515,6 +522,35 @@ net_record :: (s: [] Everglade, n: [] EgNet, t: string) {
     if s[0].started { sp_say(s, cast(string) n[0].said[0..<n[0].said_n], -1, ""); }
     return;
   }
+}
+// The room refused this page's wire version (a release came out since it loaded): it says so, opens no
+// socket again, and reloads itself once, NET_RELOAD_MS on, with reload=1 so a reload that still has the
+// old page asks you to instead of reloading again.
+net_stale :: (s: [] Everglade, n: [] EgNet) {
+  if n[0].stale { return; }
+  n[0].stale = true; n[0].want = false;
+  again := net_query(cast(string) n[0].join[0].href[0..<n[0].join[0].href_n], "reload") == "1";
+  n[0].reload_at = ifx again then -1 else n[0].mono + NET_RELOAD_MS;
+  net_tell(s, n, ifx again then "A NEW VERSION IS OUT · RELOAD THE PAGE" else "A NEW VERSION IS OUT · RELOADING");
+}
+// The reload, when its time comes: this page's path and query with reload=1, to the host (action 1).
+net_reload :: (s: [] Everglade, n: [] EgNet) {
+  if !n[0].stale || n[0].reload_at < 0 || n[0].mono < n[0].reload_at || s[0].action != 0 { return; }
+  n[0].reload_at = -1;
+  href := cast(string) n[0].join[0].href[0..<n[0].join[0].href_n];
+  // from the path on: past "://" and the host
+  from := 0;
+  for i: 0..<href.count - 2 { if href[i] == ':' && href[i + 1] == '/' && href[i + 2] == '/' { from = i + 3; break; } }
+  if from > 0 { while from < href.count && href[from] != '/' { from += 1; } }
+  path := href[from..<href.count];
+  e := 0; while e < path.count && path[e] != '#' { e += 1; }
+  path = path[0..<e];
+  if path.count == 0 || path[0] != '/' { return; }
+  q := false; for ch: path { if ch == '?' { q = true; } }
+  m := 0;
+  for ch: path { if m < OUTBOX { s[0].outbox[m] = ch; m += 1; } }
+  for ch: ifx q then "&reload=1" else "?reload=1" { if m < OUTBOX { s[0].outbox[m] = ch; m += 1; } }
+  s[0].out_n = m; s[0].action = NET_ACT_NAVIGATE;
 }
 // One entry of a state (D).
 net_entry :: (s: [] Everglade, n: [] EgNet, t: string, d: WireD) {
@@ -647,6 +683,10 @@ net_row :: (s: [] Everglade, n: [] EgNet, w: WireS, d: WireD) {
   k := net_ent(n, w.id, true);
   if k < 0 { return; }
   en := n[0].ents[k..<k + 1];
+  // a new life of this id (born again) or a jump in this one: drawn from this row, never between
+  if en[0].ring_n > 0 && w.life != en[0].life { en[0].ring_n = 0; en[0].born = n[0].tick_t; }
+  else if en[0].ring_n > 0 && w.warp != en[0].warp { en[0].ring_n = 0; }
+  en[0].life = w.life; en[0].warp = w.warp; en[0].t0 = w.t0; en[0].dur = w.dur;
   en[0].kind = w.kind; en[0].owner = w.owner; en[0].hp = w.hp; en[0].max = w.max; en[0].seen = d.tick;
   st := NetState.{t = n[0].tick_t, x = w.x, y = w.y, z = w.z, yaw = w.yaw, vx = w.vx, vy = w.vy, vz = w.vz, f = w.g, a = w.clip};
   if w.kind == WK_PLAYER {
@@ -664,6 +704,22 @@ net_row :: (s: [] Everglade, n: [] EgNet, w: WireS, d: WireD) {
                        ground = (w.g & WG_GROUND) != 0, carry = w.carry, jump = held.seq == d.ack && held.input.jump};
     n[0].fix_due = true;
   }
+}
+// The effects the room says are on someone (WK_EFFECT rows) into out, as many as fit: who it is on
+// (OWNER: WIRE_TGT_SEAT + SS a player), its WC_* bit, its cause (WE_*), and its seconds left by the
+// newest tick heard (-1 held up until it goes). The count.
+NetEffect :: struct { who: int; cond: int; cause: int; left: f32; }
+net_effects :: (s: [] Everglade, out: [] NetEffect) -> int {
+  if !net_live(s) { return 0; }
+  n := net_of(s);
+  m := 0;
+  for e: 0..<NET_ENTS {
+    en := n[0].ents[e];
+    if !en.live || en.kind != WK_EFFECT || m >= out.count { continue; }
+    left := ifx en.dur <= 0 then -1.0 else f32(hi_int(0, en.t0 + en.dur - n[0].mir[0].tick)) / f32(hi_int(n[0].hz, 1));
+    out[m] = NetEffect.{who = en.owner, cond = en.p2, cause = en.p1, left = left}; m += 1;
+  }
+  return m;
 }
 // A state into the ring. After a gap of ticks with no row, an entity whose last row stood still
 // stood there those ticks (the server sends a row only when it changed, and a start changes its
@@ -816,6 +872,7 @@ net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: 
   n[0].feet_y = fy;
   y := fy + walk_at(s, x, z);
   net_quiet(s, n, mono);
+  net_reload(s, n);
   jn_step(s, n);   // no instance yet: the list asked for (everglade-join.coax)
   if n[0].want && (n[0].state == NET_OFF || (n[0].state == NET_DOWN && mono >= n[0].retry)) && jn_ready(n) {
     // each open takes a fresh seat ticket (the room refuses a join without one): asked for, then used
@@ -2037,10 +2094,11 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
 // A walker at 1.2 m/s as the server would send it to seat 0 (everglade-wire.coax's seat frames:
 // deltas against what this page said it heard), its ticks late by up to `jitter` ms and one in
 // `lose` lost: how many frames the page drew it walking, how many of those where the frame before had
-// it, and how far it was drawn from where it was at the time drawn, at most (cm).
+// it, and how far it was drawn from where it was at the time drawn, at most (cm). With `jump`, it
+// jumps 20 m on at tick 270 (a teleport): `between` counts the frames drawn more than 1 m off both sides.
 NET_TEST_WAY :: 16;
-NetTestWalk :: struct { walk: int; still: int; err_cm: int; held: bool; bad: int; }
-net_test_walk :: (jitter: int, lose: int) -> NetTestWalk {
+NetTestWalk :: struct { walk: int; still: int; err_cm: int; held: bool; bad: int; between: int; }
+net_test_walk :: (jitter: int, lose: int, jump: bool) -> NetTestWalk {
   a: [1] Everglade; na: [1] EgNet; room: [1] NetTestRoom;
   out := NetTestWalk.{};
   if !net_test_page(a[..], na[..], 0, "pa", 100) || !net_test_hear(a[..], 0, "y 0 1 5000100") { return out; }
@@ -2059,7 +2117,7 @@ net_test_walk :: (jitter: int, lose: int) -> NetTestWalk {
       wire_seat_ack(st[..], h[..], na[0].mir[0].heard);   // the page's I says what it heard
       wire_hist_begin(h[..], t);
       wire_hist_put(h[..], 0, WireS.{id = 0, kind = WK_PLAYER, owner = 0, g = WG_GROUND, hp = 10, max = 10}, wire_rel(WK_PLAYER), true, false);
-      wire_hist_put(h[..], 16, WireS.{id = NET_FOLK_ID, kind = WK_FOLK, x = 1.2 * f32(t) / 30, z = 4, yaw = 1.57, g = WM_CALM, clip = 1, hp = 4}, wire_rel(WK_FOLK), false, true);
+      wire_hist_put(h[..], 16, WireS.{id = NET_FOLK_ID, kind = WK_FOLK, x = 1.2 * f32(t) / 30 + (ifx jump && t >= 270 then 20.0 else 0.0), z = 4, yaw = 1.57, g = WM_CALM, clip = 1, hp = 4}, wire_rel(WK_FOLK), false, true);
       seed = (seed * 1103515245 + 12345) % 2147483648;
       if lose > 0 && (seed / 65536) % lose == 0 { continue; }   // the relay's queue had no room
       if way_len >= NET_TEST_WAY { continue; }
@@ -2085,7 +2143,9 @@ net_test_walk :: (jitter: int, lose: int) -> NetTestWalk {
         // where it was at the time drawn: the server's clock less the delay
         rt := net_now(na[..]) - na[0].delay;
         truth := 1.2 * f32(rt - 5000100) / 1000;
-        out.err_cm = hi_int(out.err_cm, cast(int) (abs(f.x - truth) * 100));
+        e := abs(f.x - truth);
+        if jump { e2 := abs(f.x - truth - 20); if e2 < e { e = e2; } if e > 1 { out.between += 1; } }
+        else { out.err_cm = hi_int(out.err_cm, cast(int) (e * 100)); }
       }
     }
   }
@@ -2098,12 +2158,38 @@ net_test_walk :: (jitter: int, lose: int) -> NetTestWalk {
 }
 #test "net: a walker drawn from the buffer moves every frame through late and lost ticks and stays near where it was; after a long gap it holds" #steps 4000000000 {
   // on time, every tick: moving every frame drawn, within a centimetre or two
-  w := net_test_walk(0, 0);
+  w := net_test_walk(0, 0, false);
   #assert w.walk > 400 && w.still == 0 && w.err_cm <= 3 && w.held && w.bad == 0;
   // up to 60 ms late and one tick in 8 lost: the buffer grows past the lateness; still never drawn standing
-  w = net_test_walk(60, 8);
+  w = net_test_walk(60, 8, false);
   #assert w.walk > 400 && w.still * 100 < w.walk * 5 && w.err_cm <= 20 && w.held && w.bad == 0;
   // one in 3 lost: the deltas still read (a base it acknowledged), and it moves on its velocity between
-  w = net_test_walk(30, 3);
+  w = net_test_walk(30, 3, false);
   #assert w.walk > 400 && w.still * 100 < w.walk * 5 && w.err_cm <= 30 && w.bad == 0;
+  // a teleport 20 m on (a WARP): drawn where it was, then where it landed, never a frame between
+  w = net_test_walk(30, 8, true);
+  #assert w.walk > 400 && w.between == 0 && w.bad == 0;
+}
+
+#test "net: a room on another wire version refuses the hello; the page says a new version is out, opens no socket again and reloads once" {
+  a: [1] Everglade; na: [1] EgNet;
+  #assert net_test_page(a[..], na[..], 0, "pa", 100);
+  // the hello says this page's WIRE_VERSION
+  net_step(a[..], 120, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  #assert net_test_hear(a[..], 0, "r 0 version") && na[0].stale;
+  #assert cast(string) na[0].said[0..<na[0].said_n] == "A NEW VERSION IS OUT · RELOADING";
+  #assert net_event(a[..], SOCKET_KIND + SOCKET_CLOSED, "") && !na[0].lost;
+  // no open again, however long; the reload after NET_RELOAD_MS: this page's path with reload=1
+  net_step(a[..], 1000, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  #assert a[0].action == 0;
+  for t: 0..<20 { net_step(a[..], 2000 + t * 5000, 0, 0, 0, 0, 0, 0, false, 0, false, 0); #assert na[0].pipe[0].n == 0 || na[0].pipe[0].op[0] != PIPE_OPEN; if t == 0 { #assert a[0].action == NET_ACT_NAVIGATE && cast(string) a[0].outbox[0..<a[0].out_n] == "/worlds/everglade?room=pair-a&reload=1"; a[0].action = 0; } }
+  #assert a[0].action == 0;   // once
+  // the reloaded page still old (reload=1 in its address): it asks you to reload, and doesn't
+  b: [1] Everglade; nb: [1] EgNet;
+  #assert net_test_page(b[..], nb[..], 0, "pa", 100);
+  nb[0].join[0].href_n = net_copy(nb[0].join[0].href[..], "https://openagents.com/worlds/everglade?room=pair-a&reload=1");
+  #assert net_test_hear(b[..], 0, "r 0 version");
+  #assert cast(string) nb[0].said[0..<nb[0].said_n] == "A NEW VERSION IS OUT · RELOAD THE PAGE";
+  net_step(b[..], 5000, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  #assert b[0].action == 0;
 }

@@ -215,6 +215,9 @@ Folk :: struct {
   // where their day has them (routines.coax): their feet, walking or not, indoors, how fast they go,
   // the seconds of their day they fell behind while held, and the walk they're on
   x: f32; z: f32; walking: bool; indoors: bool; pace: f32; lag: f32;
+  // in a room the server's day places them (everglade-watch.coax watch_net_frame sets x, z, yaw,
+  // walking and indoors): their clip and pace follow that, not this page's own day
+  net: bool;
   route: [1] Route;
   levels: [EG_PONDS] f32; levels_ok: bool;
 }
@@ -259,7 +262,10 @@ folk_step :: (f: [] Folk, i: int, dt: f32, you: Point, talking: bool, answered: 
   in_way := f[0].walking && ahead > 0 && flat_gap(you, v3(f[0].x, 0, f[0].z)) < f32(FOLK_IN_WAY);
   hurry := false;
   aim := f[0].yaw;
-  if clock.still || !folk_moves(i) {
+  if f[0].net {
+    aim = f[0].yaw;
+    f[0].lag = 0; f[0].pace = ifx f[0].walking then f32(FOLK_WALK) else 0;
+  } else if clock.still || !folk_moves(i) {
     f[0].x = EG_SPOT[i * 3]; f[0].z = EG_SPOT[i * 3 + 1];
     f[0].walking = false; f[0].indoors = false; f[0].lag = 0; f[0].pace = 0;
     aim = EG_SPOT[i * 3 + 2];
@@ -285,7 +291,9 @@ folk_step :: (f: [] Folk, i: int, dt: f32, you: Point, talking: bool, answered: 
   if !finite(gap) { gap = 1000; }
   toward := ifx gap > 0.01 then atan2(dx, dz) else f[0].yaw;
   // they turn to you when you come near, unless they are on their way
-  if (gap < f32(FOLK_FACE) && !f[0].walking) || talking { f[0].facing = true; }
+  // (in a room the server's way is theirs: they turn as it says, never on their own)
+  if f[0].net { f[0].facing = false; }
+  else if (gap < f32(FOLK_FACE) && !f[0].walking) || talking { f[0].facing = true; }
   else if gap > f32(FOLK_FACE_OFF) || f[0].walking { f[0].facing = false; }
   goal := ifx f[0].facing then toward else aim;
   left := folk_wrap(goal - f[0].yaw);
@@ -412,6 +420,22 @@ FOLK_AWAY :: Point.{x = 0, y = 0, z = 900};
   #assert f[0].facing;
   for k: 0..<180 { folk_step(f[..], i, 1.0 / 60.0, FOLK_AWAY, false, 1000, FOLK_HELD, ng[..]); }
   #assert !f[0].facing && near(f[0].yaw, folk_wrap(EG_SPOT[i * 3 + 2]), 0.01);
+}
+
+#test "in a room the server places them: they walk only when it says, where it says, and never step round on their own" {
+  ng: [1] f32;
+  f: [1] Folk;
+  i := 18;
+  folk_start(f[..], i);
+  x := EG_SPOT[i * 3]; z := EG_SPOT[i * 3 + 1];
+  // the server has them standing 10 m off their spot, facing east, you 3 m away (offline they'd turn)
+  f[0].net = true; f[0].x = x + 10; f[0].z = z; f[0].yaw = 1; f[0].walking = false;
+  for k: 0..<30 { folk_step(f[..], i, 1.0 / 60.0, v3(x + 13, 0, z), false, 1000, FOLK_HELD, ng[..]); #assert f[0].clip != PEOPLE_WALK; }
+  #assert f[0].x == x + 10 && f[0].yaw == 1 && !f[0].facing;
+  // it says they walk: the walk, where it has them
+  f[0].walking = true;
+  folk_step(f[..], i, 1.0 / 60.0, v3(x + 13, 0, z), false, 1000, FOLK_HELD, ng[..]);
+  #assert f[0].clip == PEOPLE_WALK && f[0].x == x + 10;
 }
 
 #test "they nod as a talk starts and talk with their hands while the answer is fresh" {

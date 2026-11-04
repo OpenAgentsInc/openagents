@@ -929,7 +929,7 @@ watch_net_frame :: (s: [] Everglade) {
     a := w[0].actors[i..<i + 1];
     if !f.ok {
       if watch_is_rein(i) { a[0].homed = false; }
-      else if i < EG_SPOTS { s[0].folk[i].indoors = true; a[0].mode = WM_CALM; }
+      else if i < EG_SPOTS { s[0].folk[i].indoors = true; s[0].folk[i].walking = false; a[0].mode = WM_CALM; }
       else { a[0].mode = WM_CALM; }
       continue;
     }
@@ -1072,6 +1072,14 @@ everglade_room_fresh :: (s: [] Everglade) #export_c {
 // the throw everglade_move_world reads are theirs.
 everglade_room_seat :: (s: [] Everglade, p: int) #export_c { s[0].wt[0].me = clamp_w(p, 0, WATCH_YOUS - 1); }
 // Seat p's conditions from the watch (WC_*): Hold Person's hold, Ray of Frost's slow.
+// Seat p's watch effect's seconds left, by its cause (everglade-wire.coax WE_*: Hold Person, Earthbind,
+// Ray of Frost); 0 when it holds none (the room's WK_EFFECT rows, room-everglade.coax).
+everglade_room_cond_left :: (s: [] Everglade, p: int, cause: int) -> f32 #export_c {
+  if !s[0].wv.started || p < 0 || p >= WATCH_YOUS { return 0; }
+  y := s[0].wt[0].yous[p];
+  if y.dead { return 0; }
+  return ifx cause == WE_HOLD_PERSON then y.held_t else ifx cause == WE_EARTHBIND then y.bound_t else ifx cause == WE_RAY_OF_FROST then y.slow_t else 0;
+}
 everglade_room_cond :: (s: [] Everglade, p: int) -> int #export_c {
   if !s[0].wv.started || p < 0 || p >= WATCH_YOUS { return 0; }
   y := s[0].wt[0].yous[p];

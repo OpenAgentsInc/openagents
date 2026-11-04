@@ -40,6 +40,7 @@ JB_N :: JB_CLASS + 2;
 EgJoin :: struct {
   base_n: int;               // the socket's URL up to the code (EgNet.url)
   page: [NET_URL] u8; page_n: int;     // this page's address without its query or hash (INVITE's link)
+  href: [NET_URL] u8; href_n: int;     // its whole address (a new version's reload, net_stale)
   realm: [NET_CODE] u8; realm_n: int;  // the instances' prefix
   named: bool;               // ?room= named the instance
   with: [NET_ID] u8; with_n: int;      // ?with=: join that player's instance
@@ -86,6 +87,7 @@ jn_facts :: (s: [] Everglade, n: [] EgNet, url: string, realm: string, golden: b
   e := 0;
   while e < url.count && url[e] != '?' && url[e] != '#' { e += 1; }
   j[0].page_n = net_copy(j[0].page[..], url[0..<e]);
+  j[0].href_n = net_copy(j[0].href[..], url);
   code := net_query(url, "room");
   with := net_query(url, "with");
   j[0].with_n = ifx net_code_ok(with) && with.count <= NET_ID then net_copy(j[0].with[..], with) else 0;

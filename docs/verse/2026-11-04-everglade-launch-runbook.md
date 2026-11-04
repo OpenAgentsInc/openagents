@@ -217,19 +217,29 @@ Every page connected to a shard reconnects when its revision changes. Since
 that message arrives only with step 3's page release. Deploy oa-room when few
 players are on.
 
-### Wire version 3: step 2 and step 3 ship back to back (#12783)
+### Wire version 3: step 2 and step 3 ship back to back (#12783, #12788)
 
 Since #12783 the room server and the page speak wire version 3
-(`apps/openagents-web/everglade-wire.coax`). Every entity is one `s` row,
-a delta against the last tick the page acknowledged, and the page adds that
-tick (HEARD) to the end of each `I`. The two versions don't mix:
+(`apps/openagents-web/everglade-wire.coax`, `WIRE_VERSION`). Every entity is
+one `s` row, a delta against the last tick the page acknowledged, and the page
+adds that tick (HEARD) to the end of each `I`. The versions don't mix, so the
+page says its version in its hello (`H 3 ...`) and the room checks it (#12788):
 
-- A page from before step 3 can't read a version 3 room's rows, so it draws
-  no other players, townsfolk or creatures, and the room drops its 8-field `I`
-  inputs, so its player can't move.
-- There is no transition layer. Run step 3 right after step 2 passes, with
-  few players on, and treat the time between them as downtime.
-- If you roll back either step, roll back both: shards and page together.
+- A hello with another version gets `r 0 version`, and the room closes that
+  socket. A page from this release on shows A NEW VERSION IS OUT · RELOADING,
+  opens no socket again, and reloads itself once (with `reload=1` in its
+  address). If the reload still gets an old page from a cache, it shows
+  A NEW VERSION IS OUT · RELOAD THE PAGE and stops.
+- A page from before this release (it says `H 1`) can't reload itself. It
+  shows CAN'T · VERSION and rejoins on its normal backoff until the player
+  reloads. Between step 2 and step 3, every player on the old page is in
+  that state, so run step 3 right after step 2 passes, with few players on.
+- `rejoin-check` (deploy.sh runs it in step 2) ends by joining with a
+  version 2 hello. It passes only when that socket hears `r 0 version` and is
+  closed (`"old_wire_refused":true,"old_wire_closed":true`).
+- If you roll back either step, roll back both: shards and page together. A
+  rolled-back room predates the check: it ignores the new page's hello rather
+  than refusing it, so the new page stays joined and draws no one.
 
 After step 3, the vitals next to FPS show `NET x OF y KB/S`: what
 the room sends you a second, against its byte budget (`WIRE_BUDGET`, 1000

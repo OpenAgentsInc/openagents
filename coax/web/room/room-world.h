@@ -37,6 +37,7 @@ bool world_view(int k, int i, float out[WORLD_VIEW]);
 int world_wanted(int k, int s);
 /* Seat s's conditions from the watch (wire WC_*: Hold Person's hold, Ray of Frost's slow). */
 int world_cond(int k, int s);
+float world_cond_left(int k, int s, int cause);   /* seconds left of seat s's watch effect by cause (WE_*), 0 none */
 /* The town's pieces: a strike of Everglade's four spells from seat `by`; dt of the strikes landing and
    fire, the count of its events; event q: KIND PIECE A B C X Z (KIND 1 a break thrown at A B C m/s, 2
    alight: A 1 on); the rebuild. */

@@ -22,6 +22,7 @@ CcBot :: struct {
   casts: [CC_CASTS] CcCast; n: int;
   stops: int; stop_gone: int; stops_other: int;
   wolf: int; wolf_x: f32; wolf_z: f32;   // a wolf it sees (its EID, 0 none)
+  m: [1] WireMirror;                       // the rows its D's left (everglade-wire.coax), as a page's
 }
 
 cc_word :: (t: string, k: int) -> string { return rs_field(t, k); }
@@ -40,20 +41,28 @@ cc_hear :: (b: [] CcBot, t: string, now: int) {
   }
   if !rs_starts(t, "D ") { return; }
   b[0].d += 1;
+  // the rows: its own player where the room has it, and a wolf (a beast alive): the one it had while
+  // it lives, else the first it holds
+  _ := wire_mirror_frame(b[0].m[..], t);
+  me := wire_mirror_of(b[0].m[..], b[0].seat);
+  if b[0].seat >= 0 && me.id == b[0].seat { b[0].x = me.x; b[0].z = me.z; b[0].seen = true; }
+  had := ifx b[0].wolf > 0 then wire_mirror_of(b[0].m[..], WIRE_ID_MADE + b[0].wolf) else WireS.{id = -1};
+  if had.id >= 0 && had.hp > 0 { b[0].wolf_x = had.x; b[0].wolf_z = had.z; }
+  else {
+    b[0].wolf = 0;
+    for e: 0..<WIRE_MIRROR {
+      w := wire_mirror_get(b[0].m[..], e);
+      if w.id >= WIRE_ID_MADE && w.kind == WK_BEAST && w.hp > 0 { b[0].wolf = w.id - WIRE_ID_MADE; b[0].wolf_x = w.x; b[0].wolf_z = w.z; break; }
+    }
+  }
   at := 0; sp := 0;
-  while at < t.count && sp < 4 { if t[at] == ' ' { sp += 1; } at += 1; }
+  while at < t.count && sp < 5 { if t[at] == ' ' { sp += 1; } at += 1; }
   while at < t.count {
     e := at;
     while e < t.count && t[e] != ';' { e += 1; }
     en := t[at..<e];
     at = e + 1;
     k := rs_field(en, 0);
-    if k == "p" && rs_num(rs_field(en, 1)) == b[0].seat { b[0].x = f32(rs_num(rs_field(en, 2))) / 100; b[0].z = f32(rs_num(rs_field(en, 4))) / 100; b[0].seen = true; continue; }
-    if k == "c" && rs_num(rs_field(en, 2)) == 12 && rs_num(rs_field(en, 7)) > 0 {   // a beast, alive
-      b[0].wolf = rs_num(rs_field(en, 1)); b[0].wolf_x = f32(rs_num(rs_field(en, 3))) / 100; b[0].wolf_z = f32(rs_num(rs_field(en, 5))) / 100;
-      continue;
-    }
-    if k == "x" && rs_field(en, 1) == "c" && rs_num(rs_field(en, 2)) == b[0].wolf { b[0].wolf = 0; continue; }
     if k != "e" { continue; }
     w := rs_field(en, 1);
     if w == "cast" && rs_num(rs_field(en, 2)) == b[0].seat {
@@ -86,7 +95,8 @@ cc_send_input :: (c: [] RelayConn, b: [] CcBot, walk: bool, yaw: f32) {
   b[0].seq += 1;
   m: [128] u8;
   k := rs_put(m[..], rs_int(m[..], rs_put(m[..], 0, "I "), b[0].seq), " 0 ");
-  k = rs_int(m[..], k, ifx walk then 100 else 0); k = rs_put(m[..], k, " 0 0 "); k = rs_int(m[..], k, cast(int) (yaw * 100)); k = rs_put(m[..], k, " 0");
+  k = rs_int(m[..], k, ifx walk then 100 else 0); k = rs_put(m[..], k, " 0 0 "); k = rs_int(m[..], k, cast(int) (yaw * 100)); k = rs_put(m[..], k, " 0 ");
+  k = rs_int(m[..], k, b[0].m[0].heard);   // HEARD: the newest tick its rows came whole
   _ := relay_conn_send(c, cast(string) m[0..<k]);
 }
 
@@ -94,7 +104,9 @@ cc_send_input :: (c: [] RelayConn, b: [] CcBot, walk: bool, yaw: f32) {
   b: [1] CcBot;
   cc_hear(b[..], "y 2 3 1700000000000", 0);
   b[0].casts[0] = CcCast.{seq = 5, slot = 64}; b[0].casts[1] = CcCast.{seq = 6, slot = 64}; b[0].n = 2;
-  cc_hear(b[..], "D 10 3 0 p 2 500 0 -800 0 0 0 0 1 0 0;e cast 2 64 0 0 0 7;e stop 2 1 gone;c 9 12 100 0 200 0 11 1 1 1 11", 40);
+  // its own row (seat 2 at 5, -8) and a wolf's (EID 9 at 1, 2 with 11 HP), absolute; masks of KIND X Z (11)
+  // and KIND X Z HP (1035)
+  cc_hear(b[..], "D 10 3 1 0 s 2 0 11 0 500 -800;e cast 2 64 0 0 0 7;e stop 2 1 gone;s 200009 0 1035 12 100 200 11", 40);
   cc_hear(b[..], "r 6 range", 50);
   #assert b[0].seat == 2 && b[0].seen && b[0].x == 5 && b[0].z == -8 && b[0].casts[0].taken && b[0].casts[0].answer == 40;
   #assert !b[0].casts[1].taken && b[0].casts[1].answer == 50 && cast(string) b[0].casts[1].why[0..<b[0].casts[1].why_n] == "range";
@@ -119,7 +131,7 @@ tool_main :: () -> int #export_c {
     ui := rs_ticketed(ub[..], url, cast(string) pid[0..<pn], cast(string) nm[0..<mn]);
     if ui.count == 0 || !relay_conn_open(c[i..<i + 1], ui) { tool_err("cast-check: can't open "); tool_errln(url); print("casts fail\n"); return 1; }
     hm: [96] u8;
-    hn := rs_put(hm[..], rs_put(hm[..], 0, ifx i == 0 then "H 1 ranger.0.0.0 warlock 0 " else "H 1 ranger.0.0.0 druid 0 "), cast(string) nm[0..<mn]);
+    hn := rs_put(hm[..], rs_put(hm[..], 0, ifx i == 0 then "H 3 ranger.0.0.0 warlock 0 " else "H 3 ranger.0.0.0 druid 0 "), cast(string) nm[0..<mn]);
     _ := relay_conn_send(c[i..<i + 1], cast(string) hm[0..<hn]);
   }
   print("cast-check: % players in %, % rounds\n", CC_BOTS, url, rounds);

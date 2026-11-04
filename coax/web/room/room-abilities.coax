@@ -115,6 +115,7 @@ ra_table :: (v: [] RmServer, k: int) {
   r := v[0].ab[k..<k + 1];
   rm := v[0].eg[k..<k + 1];
   used: [EG_SLOT_ABS] bool;
+  for q: 0..<EG_SEATS * WE_WATCH { if rm[0].fx_slot[q] > 0 { used[rm[0].fx_slot[q] - 1] = true; } }   // the watch effects' (eg_table)
   for q: 0..<EG_SEATS * RA_ABS {
     if !r[0].live[q].on { rm[0].ab_slot[q] = 0; continue; }
     if rm[0].ab_slot[q] > 0 { used[rm[0].ab_slot[q] - 1] = true; }

@@ -15,7 +15,10 @@
    answers rm_rooms' JSON (an everglade realm's instances and which to join).
    Every socket has its own output buffer: a frame for many goes onto each, sent as far as the
    socket takes it, the rest when poll says it can take more. No send waits on one slow socket;
-   one whose waiting bytes pass OUT_MAX is closed. */
+   one whose waiting bytes pass OUT_MAX, or whose oldest waiting byte is OUT_AGE_MS old, is closed.
+   Each everglade tick the room hears how much each socket still has waiting (rm_conn_waiting), and
+   a socket behind gets no new rows that tick: a row is superseded by the next, so it waits for the
+   page to catch up instead of queueing state already out of date (#12783). */
 #define _POSIX_C_SOURCE 200809L
 #include "room.h"
 #include "room-world.h"
@@ -39,6 +42,7 @@
 #define CONNS 512
 #define IN_CAP 16384
 #define OUT_MAX (256 * 1024)   // a connection whose unsent bytes pass this is closed (one slow socket never waits on the others)
+#define OUT_AGE_MS 3000        // nor one whose output hasn't emptied for this long
 typedef struct {
   int fd; bool ws; size_t n; uint8_t in[IN_CAP]; int64_t heard;
   uint8_t *out; size_t on, ocap;   // bytes waiting to go out (sent as the socket takes them)
@@ -148,7 +152,12 @@ static void put_out(int i, const void *p, size_t n) {
    gVisor costs tens of us; #12717). */
 static void pump_all(void) {
   pump_held = false;
-  for (int j = 0; j < CONNS; j++) if (conns[j].fd >= 0 && !conns[j].doomed && conns[j].on && !pump(j)) conns[j].doomed = true;
+  int64_t now = now_ms();
+  for (int j = 0; j < CONNS; j++) {
+    if (conns[j].fd < 0 || conns[j].doomed || !conns[j].on) continue;
+    if (!pump(j)) { conns[j].doomed = true; continue; }
+    if (conns[j].on && now - conns[j].since >= OUT_AGE_MS) { conns[j].doomed = true; slow_closed++; }
+  }
 }
 // The relay's frames (room-relay.coax), each onto the output of the connections it names.
 static void relay_flush(void) {
@@ -190,6 +199,7 @@ static void everglade_town(int k) {
     rm_eg_hurt(view(), k, s, (int64_t)took[s], (int64_t)took[WORLD_SEATS + s]);
     rm_eg_wanted(view(), k, s, world_wanted(k, s));
     rm_eg_cond(view(), k, s, world_cond(k, s));
+    for (int c = 0; c < 3; c++) rm_eg_cond_left(view(), k, s, c, world_cond_left(k, s, c));
   }
   /* the town's pieces: the rebuild, the strikes cast since, then what broke and caught for every page */
   if (rm_eg_rebuild(view(), k)) world_rebuild(k);
@@ -230,6 +240,7 @@ static void everglade_tick(void) {
   coax_v_s64 inv = {in, WORLD_IN};
   int64_t was[PARTS]; memcpy(was, part_us, sizeof was);
   pump_held = true;
+  for (int j = 0; j < CONNS; j++) if (conns[j].fd >= 0 && conns[j].ws) rm_conn_waiting(view(), j, (int64_t)conns[j].on);
   for (int k = 0; k < WORLD_ROOMS; k++) {
     if (!rm_eg_begin(view(), k)) continue;
     int64_t tm = now_us();
