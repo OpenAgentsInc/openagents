@@ -62,6 +62,7 @@ static bool world_of(int k) {
   if (!world[k]) {
     world[k] = calloc(1, sizeof *world[k]);
     if (!world[k]) return false;
+    coax_default_t_Everglade(world[k]);   /* every declared default, as the page's state starts (everglade-face.c coaxial_state_init) */
     (void)everglade_walls(at(k));   /* starts it: the ground, the town, the walls and bodies */
     /* its pieces, which break and burn as a page's (everglade-watch.coax everglade_room_spells_start) */
     river[k] = calloc(1, sizeof *river[k]);
@@ -75,6 +76,7 @@ static bool world_of(int k) {
       for (int s = 0; s < WORLD_SEATS; s++) { seat_dry(k, s); seat_w[k][s] = fresh; }
     }
     pieces[k] = calloc(1, sizeof *pieces[k]);
+    if (pieces[k]) coax_default_t_DemoWorld(pieces[k]);
     if (pieces[k])
       everglade_room_spells_start(at(k), (coax_v_t_DemoWorld){pieces[k], 1}, (coax_string){(const char *)room_catalog, room_catalog_n});
     if (edits_text) everglade_world(at(k), (coax_string){edits_text, edits_n});

@@ -29,6 +29,7 @@
 #include <stdlib.h>
 
 #include <string.h>
+#include <strings.h>
 #include <sys/socket.h>
 #include <time.h>
 #include <unistd.h>
@@ -48,6 +49,7 @@ static coax_v_t_RmServer view(void) { return (coax_v_t_RmServer){server, 1}; }
 /* --dev DIR: the local stand-in for the API (local.sh). The world document is read once from DIR and
    is the one both the room and the page use. */
 static const char *dev_dir;
+static void world_ask(void);
 static char *dev_world; static size_t dev_world_n;
 static char *dev_read(const char *name, size_t *n) {
   char path[1024]; snprintf(path, sizeof path, "%s/%s", dev_dir, name);
@@ -277,6 +279,23 @@ static void opening(int i) {
   if (!end) { if (c->n >= IN_CAP) http(i, "431 Request Header Fields Too Large", "text/plain", "too big"); return; }
   size_t len = (size_t)(end - c->in);
   coax_string req = {(const char *)c->in, (int64_t)len};
+  /* --dev: the API's stand-in answers the page's /api/playtest/ requests (room-dev.coax), the body whole */
+  if (dev_dir && (!strncmp((char *)c->in, "POST /api/", 10) || !strncmp((char *)c->in, "GET /api/playtest/", 18))) {
+    size_t want = 0;
+    for (uint8_t *p = c->in; p + 15 < end; p++)
+      if ((p == c->in || p[-1] == '\n') && !strncasecmp((char *)p, "Content-Length:", 15)) want = (size_t)strtoul((char *)p + 15, NULL, 10);
+    if (len + want > c->n && len + want < IN_CAP) return;   /* the rest of the body is still coming */
+    coax_string whole = {(const char *)c->in, (int64_t)(len + want <= c->n ? len + want : c->n)};
+    int64_t an = rm_dev_api(view(), whole);
+    if (an > 0) {
+      char status[8] = {0}; int64_t nl = 0;
+      while (nl < an && nl < 7 && server->dev.out.e[nl] != '\n') { status[nl] = (char)server->dev.out.e[nl]; nl++; }
+      static char body[1100]; int64_t bn = an - nl - 1; if (bn < 0) bn = 0; if (bn > (int64_t)sizeof body - 1) bn = sizeof body - 1;
+      memcpy(body, server->dev.out.e + nl + 1, (size_t)bn); body[bn] = 0;
+      const char *line = !strcmp(status, "200") ? "200 OK" : !strcmp(status, "401") ? "401 Unauthorized" : !strcmp(status, "404") ? "404 Not Found" : "500 Internal Server Error";
+      http(i, line, "application/json", body); return;
+    }
+  }
   /* a shard's own health through the load balancer: GET /api/room/sN/health (room-directory.coax) */
   bool shard_health = false;
   if (!strncmp((char *)c->in, "GET /api/room/s", 15)) {
@@ -405,6 +424,15 @@ static void poster_send(char kind, const char *cfg, size_t k) {
 /* The control ask, every two seconds while the server has a key, and its answers as they come. */
 static void control_ask(void) {
   if (!rm_control_due(view())) return;
+  if (dev_dir) {   /* --dev: DIR/room-control.txt is the API's answer, read as often as the API is asked */
+    size_t n = 0; char *t = dev_read("room-control.txt", &n);
+    if (!t) { fprintf(stderr, "room: --dev %s has no room-control.txt\n", dev_dir); exit(1); }
+    static int64_t edit_seen = -1;
+    rm_control(view(), (coax_string){t, (int64_t)n});
+    free(t);
+    if (server->ctl.edit_known && server->ctl.edit != edit_seen) { if (edit_seen >= 0) world_ask(); edit_seen = server->ctl.edit; }
+    return;
+  }
   const char *url = getenv("OA_ROOM_CONTROL_URL");
   if (!url || !*url) url = "https://openagents.com/api/playtest/room-control";
   char cfg[512];
@@ -476,7 +504,7 @@ static const char *api_url(const char *env, const char *path, char *buf, size_t 
 /* Players' HP between visits (room-vitals.coax, #12715). */
 static void vitals_post(void) {
   int64_t n = rm_vitals_due(view());
-  if (n <= 0) return;
+  if (n <= 0 || dev_dir) return;   /* --dev: the room's own vitals are the stand-in's (room-dev.coax) */
   char buf[512];
   post_signed(api_url("OA_ROOM_VITALS_URL", "/api/playtest/room-vitals", buf, sizeof buf), server->vit.mac.e, server->vit.out.e, n);
 }
@@ -484,9 +512,33 @@ static void vitals_post(void) {
    (room-directory.coax, coax/web/api/rooms.c, #12717). */
 static void directory_post(void) {
   int64_t n = rm_directory_due(view());
-  if (n <= 0) return;
+  if (n <= 0 || dev_dir) return;   /* --dev: the room's own list answers /api/playtest/rooms/ */
   char buf[512];
   post_signed(api_url("OA_ROOM_DIRECTORY_URL", "/api/playtest/room-directory", buf, sizeof buf), server->dir.mac.e, server->dir.out.e, n);
+}
+
+/* The server's memory with every field at its declared default (coax_default_t_RmServer), then rm_init
+   (room.coax): never the zeros calloc gives, which would read the level cap as 0 (#12774). */
+static coax_t_RmServer *server_new(void) {
+  coax_t_RmServer *s = malloc(sizeof *s);
+  if (!s) return NULL;
+  coax_default_t_RmServer(s);
+  rm_init((coax_v_t_RmServer){s, 1});
+  return s;
+}
+/* --start-check (build.sh): the started server holds every declared default (rm_start_check), and is
+   the same bytes however its memory was filled before. */
+static int start_check(void) {
+  coax_t_RmServer *a = server_new();
+  coax_t_RmServer *b = malloc(sizeof *b);
+  if (!a || !b) { fprintf(stderr, "room: out of memory\n"); return 1; }
+  memset(b, 0xa5, sizeof *b);
+  coax_default_t_RmServer(b);
+  rm_init((coax_v_t_RmServer){b, 1});
+  int64_t bad = rm_start_check((coax_v_t_RmServer){a, 1});
+  bool same = !memcmp(a, b, sizeof *a);
+  printf("room: start check: %lld fields off their defaults, %s\n", (long long)bad, same ? "the same from any memory" : "differs with the memory it started in");
+  return bad == 0 && same ? 0 : 1;
 }
 
 int main(int argc, char **argv) {
@@ -495,6 +547,7 @@ int main(int argc, char **argv) {
     if (!strcmp(argv[i], "--listen") && i + 1 < argc) address = argv[++i];
     else if (!strcmp(argv[i], "--port") && i + 1 < argc) port = atoi(argv[++i]);
     else if (!strcmp(argv[i], "--dev") && i + 1 < argc) dev_dir = argv[++i];
+    else if (!strcmp(argv[i], "--start-check")) return start_check();
   }
   const char *env = getenv("PORT");
   if (env && *env) { port = atoi(env); address = "0.0.0.0"; }
@@ -502,9 +555,9 @@ int main(int argc, char **argv) {
   signal(SIGCHLD, SIG_IGN);   /* vitals_post's curls reap themselves */
   setvbuf(stdout, NULL, _IOLBF, 0);
   poster_start();   /* before the server's memory (vitals_post) */
-  server = calloc(1, sizeof *server);
+  server = server_new();
   if (!server) { fprintf(stderr, "room: out of memory\n"); return 1; }
-  rm_init(view());
+  if (dev_dir) { rm_dev_start(view()); printf("room: --dev %s: the API's stand-in (seat tickets checked and required)\n", dev_dir); }
   world_ask();   /* the realm's published world, for every room's plan (room-world.c world_edits) */
   /* the seat-ticket key (Secret Manager oa-room-ticket-key): set, an everglade join needs a ticket (room-ticket.coax) */
   const char *tkey = getenv("OA_ROOM_TICKET_KEY");
@@ -514,7 +567,8 @@ int main(int argc, char **argv) {
   const char *shard = getenv("OA_ROOM_SHARD");
   if (shard && *shard) rm_shard(view(), atoi(shard));
   printf("room: shard %lld\n", (long long)server->shard);
-  if (tkey && strlen(tkey) >= 32) { rm_ticket_key(view(), (coax_string){tkey, (int64_t)strlen(tkey)}, required); printf("room: seat tickets checked%s\n", required ? ", required" : ""); }
+  if (dev_dir) {}
+  else if (tkey && strlen(tkey) >= 32) { rm_ticket_key(view(), (coax_string){tkey, (int64_t)strlen(tkey)}, required); printf("room: seat tickets checked%s\n", required ? ", required" : ""); }
   else printf("room: no OA_ROOM_TICKET_KEY, seat tickets not checked\n");
   int lfd = socket(AF_INET, SOCK_STREAM, 0);
   int one = 1; setsockopt(lfd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);

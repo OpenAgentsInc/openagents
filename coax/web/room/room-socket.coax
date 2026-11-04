@@ -102,7 +102,9 @@ rs_stamp :: () -> int { return (cxproc_wall_us() / 1000) % 100000; }
 
 // The URL of an everglade room with a seat ticket for player pid, signed with OA_ROOM_TICKET_KEY when
 // the environment has it (the deploy checks: room/deploy.sh hands them the key, room-ticket.coax), as
-// the API would sign it; without the key, the URL as it was (a server with no key checks none).
+// the API would sign it; without the key, the URL as it was (a server with no key checks none). The
+// ticket is an admin's (ACCT 2): a check that sends the hello's EV_DEMO_FLAG (64) plays Everglade's
+// own character, its whole bar, whether levels are on or off (#12774); one that doesn't plays its level.
 rs_ticketed :: (out: [] u8, url: string, pid: string, name: string) -> string { return rs_ticketed_on(out, url, pid, name, 0); }
 // The same for one oa-room shard (a v3 ticket; 0 a v2 ticket, which shard 1 takes).
 rs_ticketed_on :: (out: [] u8, url: string, pid: string, name: string, shard: int) -> string {
@@ -112,7 +114,7 @@ rs_ticketed_on :: (out: [] u8, url: string, pid: string, name: string, shard: in
   at := url.count;
   while at > 0 && url[at - 1] != '/' { at -= 1; }
   t: [TICKET_TEXT] u8;
-  n := tk_sign_on(key, pid, false, name, url[at..<url.count], shard, cxproc_wall_us() / 1000 + 300000, -1, t[..]);
+  n := tk_sign_admin_on(key, pid, name, url[at..<url.count], shard, cxproc_wall_us() / 1000 + 300000, t[..]);
   if n == 0 || url.count + 3 + n > out.count { return ""; }
   k := rs_put(out, 0, url); k = rs_put(out, k, "?t="); k = rs_put(out, k, cast(string) t[0..<n]);
   return ifx k < 0 then "" else cast(string) out[0..<k];

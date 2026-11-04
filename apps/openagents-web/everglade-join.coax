@@ -91,13 +91,11 @@ jn_facts :: (s: [] Everglade, n: [] EgNet, url: string, realm: string, golden: b
   j[0].with_n = ifx net_code_ok(with) && with.count <= NET_ID then net_copy(j[0].with[..], with) else 0;
   j[0].from_grid = net_query(url, "from") == "grid" && !golden;
   n[0].code_n = 0;
-  j[0].named = false; j[0].list_due = false; j[0].test = n[0].free;
+  j[0].named = false; j[0].list_due = false; j[0].test = false;
   if net_code_ok(code) {
     n[0].code_n = net_copy(n[0].code[..], code);
     j[0].named = true;
     j[0].test = j[0].test || (code.count > 5 && code[0..<5] == "pair-");
-  } else if n[0].free {
-    jn_code(n, jn_lowest(j, n[0].code[..]));   // a room server on this machine: its list isn't the page's
   } else {
     j[0].list_due = !golden;
   }
@@ -422,7 +420,7 @@ join_key :: (s: [] Everglade, key: int) -> bool {
   net_rooms(m[..], "200\n{\"join\":\"everglade-2\"}");
   #assert cast(string) mn[0].code[0..<mn[0].code_n] == "my-fork-1";
 }
-#test "join: ?room= is joined as named, a test's room as it was, a local room server at SLUG-1; a golden page asks nothing" {
+#test "join: ?room= is joined as named, a test's room as it was, a local room server's list asked as production's; a golden page asks nothing" {
   g: [1] Everglade; nn: [1] EgNet;
   everglade_attach_net(g[..], nn[..]);
   net_facts(g[..], "url=https://openagents.com/worlds/everglade?room=everglade-2#market\nplayer=p1\n", "everglade", false);
@@ -433,7 +431,8 @@ join_key :: (s: [] Everglade, key: int) -> bool {
   l: [1] Everglade; ln: [1] EgNet;
   everglade_attach_net(l[..], ln[..]);
   net_facts(l[..], "url=http://localhost:8787/worlds/everglade?relay=ws://localhost:8830\nplayer=p1\n", "everglade", false);
-  #assert cast(string) ln[0].url[0..<ln[0].url_n] == "ws://localhost:8830/api/room/relay/everglade/everglade-1" && ln[0].join[0].test;
+  // a local room server (local.sh) is asked for its list through the page's /api/, as the API is
+  #assert cast(string) ln[0].url[0..<ln[0].url_n] == "ws://localhost:8830/api/room/relay/everglade/" && ln[0].join[0].list_due && !ln[0].join[0].test;
   q: [1] Everglade; qn: [1] EgNet;
   everglade_attach_net(q[..], qn[..]);
   net_facts(q[..], "url=https://openagents.com/worlds/everglade?from=grid\n", "everglade", true);

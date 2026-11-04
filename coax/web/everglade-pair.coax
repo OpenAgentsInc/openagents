@@ -8,8 +8,9 @@
 // The in-page half, coax/web/everglade-pair.js, notes the page's frames and its socket's frames.
 // What it checks, in order (each a line, then one JSON line with every number, then holds/fails):
 //   1. both join (ENTER past the CHARACTER picker), each has the other's player (D's p) and who it is
-//      (D's n) and draws it (net_probe 2), and the name for its nameplate isn't "-" (skipped on a local
-//      ?relay=, which has no API to name anyone; so is 8b's BLOCK, and 8's link keeps the ?relay=);
+//      (D's n) and draws it (net_probe 2), and the name for its nameplate isn't "-" (a local room,
+//      coax/web/room/local.sh, names players as the API does; 8b's BLOCK is skipped there, for the
+//      local stand-in keeps no blocks, and 8's link keeps the ?relay=);
 //   2. by the spawn: A casts Conjure Animals (bar slot 32); both hear e cast from A's seat and have
 //      the pack;
 //   3. B casts Starry Wisp (slot 22) at the nearest creature until B's own hit kills one: both hear
@@ -224,10 +225,8 @@ ep_run :: (ca: [] Cdp, cb: [] Cdp, url: string, origin: string, mark: string, wh
   oa := ep_int(ca, "__eg.otherSeat()", -1); ob := ep_int(cb, "__eg.otherSeat()", -1);
   all = ep_check(seen && oa == sb && ob == sa, "each has the other's player and who it is (D's n) and draws its body") && all;
   named := "(() => { const n = __eg.names[__eg.otherSeat()]; return n && n !== '-' ? 1 : 0; })()";
-  // names come from the API's seat ticket (the server never takes a hello's); a page on a local relay
-  // (?relay=) has no API, so its players are "-" there, never on the site
-  if ep_param(url, "relay").count > 0 { print("skip the nameplate names (?relay=: a local room server without the API's seat tickets names nobody)\n"); }
-  else { all = ep_check(ep_int(ca, named, 0) == 1 && ep_int(cb, named, 0) == 1, "each has a name for the other's nameplate (not -)") && all; }
+  // names come from the seat ticket (the server never takes a hello's): the API's, or a local room's stand-in (local.sh)
+  all = ep_check(ep_int(ca, named, 0) == 1 && ep_int(cb, named, 0) == 1, "each has a name for the other's nameplate (not -)") && all;
   info: [4096] u8; info2: [4096] u8;
   print("  A seat % sees %, drawn %; B seat % sees %, drawn %; names A % B %\n", sa, oa, ep_int(ca, "__eg.probe(2)", -1), sb, ob, ep_int(cb, "__eg.probe(2)", -1),
     ep_str(ca, "JSON.stringify(__eg.names)", info[..]), ep_str(cb, "JSON.stringify(__eg.names)", info[..]));
@@ -386,14 +385,12 @@ ep_run :: (ca: [] Cdp, cb: [] Cdp, url: string, origin: string, mark: string, wh
   rejoined := false;
   deadline = proc_now_ms() + 8000;
   while back && !rejoined && proc_now_ms() < deadline { proc_sleep(250); rejoined = ep_int(cb, btext(qd[..]), 0) == 1 && ep_int(ca, "__eg.probe(2)", 0) >= 1; }
-  local := ep_param(url, "relay").count > 0;
-  once := local;
+  once := false;
   deadline = proc_now_ms() + 5000;
   while rejoined && !once && proc_now_ms() < deadline { proc_sleep(250); once = ep_int(cb, "__eg.probe(2)", 0) == 1; }
   print("  drop: A back after % ms on socket % in seat % (was %); B has A again %, B's players drawn %\n", back_ms, ep_int(ca, "__eg.sockets", -1), sa, sa_was, rejoined, ep_int(cb, "__eg.probe(2)", -1));
   all = ep_check(muted && back && back_ms <= 15000 && rejoined, "a silent network drop: A's page notices, rejoins within 15 s, and both have each other again") && all;
-  if local { print("skip no twin of A after the drop (?relay=: no player ids, the old seat stays until the server's 20 s silence check)\n"); }
-  else { all = ep_check(once, "after the drop B draws A once: the server gave A's silent seat to A's new socket") && all; }
+  all = ep_check(once, "after the drop B draws A once: the server gave A's silent seat to A's new socket") && all;
   // B walks 4 s, so A has a moving remote body too
   ep_mark(ca, cb, "walk_b");
   _ = ep_w(cb, true); proc_sleep(4000); _ = ep_w(cb, false);
@@ -429,9 +426,9 @@ ep_run :: (ca: [] Cdp, cb: [] Cdp, url: string, origin: string, mark: string, wh
   // goes from B's view at once while A stays in B's state, and after B reloads and joins again the
   // seat ticket's answer brings the block back
   if ep_param(url, "relay").count > 0 {
-    // a nameplate opens the pane on a player id, which only the API's seat ticket gives, and the blocks
-    // come back with the next ticket: neither exists on a local relay
-    print("skip BLOCK (?relay=: a local room server without the API has no player ids or blocks)\n");
+    // the blocks come back with the next ticket from the API's verse.player_blocks, which the local
+    // stand-in (room-dev.coax) doesn't keep
+    print("skip BLOCK (?relay=: the local stand-in keeps no blocks)\n");
   } else if ep_int(cb, "__eg.probe(37)", -1) < 0 {
     print("skip BLOCK (this page has no moderation probes yet: net_probe 31 to 38)\n");
   } else {

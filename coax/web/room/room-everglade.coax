@@ -841,6 +841,7 @@ eg_test_has :: (t: string, part: string) -> bool {
 #test "everglade room: the world's header on joining, each seat's inputs stepped no faster than the tick, everyone's players and names in D" #steps 2000000000 {
   v: [1] RmServer;
   rm_init(v[..]);
+  rm_control(v[..], "levels 0 2\n");   // the full Everglade character: levels off, as an admin can set
   rm_clock(v[..], 0, 1762190000000);
   ev := "GET /api/room/relay/everglade/pair-sim HTTP/1.1\r\n\r\n";
   box: [1] EgInbox;
@@ -940,6 +941,7 @@ eg_test_input :: (v: [] RmServer, seq: int) {
 #test "everglade room: a Warlock's seat casts the Warlock's bar and not the druid's; a druid's seat not the Warlock's; everyone hears the cast" #steps 2000000000 {
   v: [1] RmServer;
   rm_init(v[..]);
+  rm_control(v[..], "levels 0 2\n");   // the full Everglade character: levels off, as an admin can set
   rm_clock(v[..], 0, 1762190000000);
   ev := "GET /api/room/relay/everglade/pair-warlock HTTP/1.1\r\n\r\n";
   box: [1] EgInbox;
@@ -971,6 +973,7 @@ eg_test_input :: (v: [] RmServer, seq: int) {
 #test "everglade room: the wolves one seat conjures are in both seats' state and the other can kill one; a heal reaches the other; a joiner's snapshot has the pack; it outlasts its caster's leaving" #steps 4000000000 {
   v: [1] RmServer;
   rm_init(v[..]);
+  rm_control(v[..], "levels 0 2\n");   // the full Everglade character: levels off, as an admin can set
   rm_clock(v[..], 0, 1762190000000);
   ev := "GET /api/room/relay/everglade/pair-pack HTTP/1.1\r\n\r\n";
   box: [1] EgInbox;
@@ -1020,6 +1023,7 @@ eg_test_input :: (v: [] RmServer, seq: int) {
 #test "everglade room: what is over 120 m off isn't in a seat's state; seat 1 hears seat 0's Moonbeam once it walks up, and its end" #steps 2000000000 {
   v: [1] RmServer;
   rm_init(v[..]);
+  rm_control(v[..], "levels 0 2\n");   // the full Everglade character: levels off, as an admin can set
   rm_clock(v[..], 0, 1762190000000);
   ev := "GET /api/room/relay/everglade/pair-far HTTP/1.1\r\n\r\n";
   box: [1] EgInbox;

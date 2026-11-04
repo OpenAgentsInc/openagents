@@ -124,7 +124,7 @@ tool_main :: () -> int #export_c {
   ua: [1024] u8; ub: [1024] u8;
   url_a := rs_ticketed(ua[..], url, "p-bridgecheck-a", "Bridge A"); url_b := rs_ticketed(ub[..], url, "p-bridgecheck-b", "Bridge B");
   if url.count == 0 || url_a.count == 0 || url_b.count == 0 || !relay_conn_open(c[0..<1], url_a) || !relay_conn_open(c[1..<2], url_b) { tool_err("bridge-check: can't open "); tool_errln(url); print("falls\n"); return 1; }
-  sent := [1] bool.[relay_conn_send(c[0..<1], "H 1 ranger.2.1.0 druid 0 Bridge A") && relay_conn_send(c[1..<2], "H 1 ranger.0.0.0 druid 0 Bridge B")];
+  sent := [1] bool.[relay_conn_send(c[0..<1], "H 1 ranger.2.1.0 druid 64 Bridge A") && relay_conn_send(c[1..<2], "H 1 ranger.0.0.0 druid 64 Bridge B")];
   t0 := rs_now();
   // both to the East Gate road, 24 m from the deck: out of the meteors' way
   at_road := true;

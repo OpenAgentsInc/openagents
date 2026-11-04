@@ -191,7 +191,12 @@ tk_sign_on :: (key: string, pid: string, account: bool, name: string, room: stri
 }
 // An admin's ticket (ACCT 2), as the API signs one for the realm's admins, for the checks.
 tk_sign_admin :: (key: string, pid: string, room: string, expires: int, out: [] u8) -> int {
-  n := tk_sign_xp(key, pid, true, "", room, 0, expires, -1, -1, out);
+  return tk_sign_admin_on(key, pid, "", room, 0, expires, out);
+}
+// The same with a name and a shard: the checks sit as an admin, who may play Everglade's own
+// character (the hello's EV_DEMO_FLAG, room-events.coax) whatever the levels switch says.
+tk_sign_admin_on :: (key: string, pid: string, name: string, room: string, shard: int, expires: int, out: [] u8) -> int {
+  n := tk_sign_xp(key, pid, true, name, room, shard, expires, -1, -1, out);
   if n < 65 { return 0; }
   b: [TICKET_TEXT] u8;
   for i: 0..<n - 65 { b[i] = out[i]; }

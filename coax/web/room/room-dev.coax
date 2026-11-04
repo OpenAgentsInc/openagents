@@ -1,0 +1,182 @@
+// The API's stand-in for local development (room-host.c --dev, coax/web/room/local.sh; #12774).
+// A local room then behaves as production's: seat tickets signed with a key and checked, players
+// named, the control's levels, cap, PvP and event dials read from dev/room-control.txt every two
+// seconds as the API's answer is, and HP and XP brought back between visits from the room's own
+// vitals (room-vitals.coax), as the API keeps them. The page asks its usual /api/ paths, which
+// serve.sh --api sends here:
+//   POST /api/playtest/player                 a new player: {"key":KEY,"id":PID} (player.c)
+//   POST /api/playtest/room-ticket/ROOM       a seat ticket for ROOM, for the X-Verse-Player key
+//   POST /api/playtest/room-state             what you bring back (WANTED, look): taken, not kept
+//   GET  /api/playtest/rooms/SLUG             the instances (rm_rooms, room-relay.coax)
+//   GET  /api/playtest/world/everglade-5e     the world document (room-host.c)
+// Anything else under /api/ answers 404 {"error":"not in the local API"}.
+//   coax test --library coax/web/room/room.coax --steps 4000000000 --only "dev:"
+
+DEV_KEY :: "local-development-room-ticket-key-not-a-secret";   // the stand-in's ticket key (>= 32 bytes)
+DEV_OUT :: 1024;
+DEV_NAMES_A :: [8] string.["Mossy", "Quiet", "Amber", "Swift", "Cedar", "Misty", "Bright", "Rowan"];
+DEV_NAMES_B :: [8] string.["Heron", "Otter", "Wren", "Badger", "Lynx", "Finch", "Hare", "Newt"];
+
+RmDev :: struct {
+  on: bool;
+  minted: int;               // players made (each key's number)
+  out: [DEV_OUT] u8;         // the answer: "STATUS\n" then the JSON body
+}
+
+// --dev: the stand-in's key signs and checks every seat ticket, and a join needs one, as in production.
+rm_dev_start :: (v: [] RmServer) #export_c {
+  v[0].dev.on = true;
+  rm_ticket_key(v, DEV_KEY, true);
+}
+
+dv_put :: (o: [] u8, n: int, s: string) -> int { return tk_add(o, n, s); }
+dv_hex :: (o: [] u8, n: int, mac: [] u8, digits: int) -> int {
+  if n + digits > o.count { return o.count + 1; }
+  for i: 0..<digits { o[n + i] = mac[i]; }
+  return n + digits;
+}
+// The request's header value ("" none), its name in lower case.
+dv_header :: (req: string, name: string) -> string {
+  i := 0;
+  while i < req.count {
+    e := i;
+    while e < req.count && req[e] != '\n' { e += 1; }
+    line := req[i..<e];
+    if line.count > name.count + 1 && line[name.count] == ':' {
+      same := true;
+      for j: 0..<name.count {
+        c := line[j];
+        if c >= 'A' && c <= 'Z' { c += 32; }
+        if c != name[j] { same = false; break; }
+      }
+      if same {
+        a := name.count + 1;
+        while a < line.count && line[a] == ' ' { a += 1; }
+        z := line.count;
+        while z > a && (line[z - 1] == '\r' || line[z - 1] == ' ') { z -= 1; }
+        return line[a..<z];
+      }
+    }
+    i = e + 1;
+  }
+  return "";
+}
+// A player's id for its key: p- and 16 hex of the key's MAC, the same key the same id.
+dv_pid :: (key: string, out: [] u8) -> int {
+  mac: [64] u8;
+  if !tk_mac(DEV_KEY, key, mac[..]) { return 0; }
+  n := dv_put(out, 0, "p-");
+  return dv_hex(out, n, mac[..], 16);
+}
+// Its name, two words from the id.
+dv_name :: (pid: string, out: [] u8) -> int {
+  h := 0;
+  for c: pid { h = (h * 31 + cast(int) c) % 1000003; }
+  n := dv_put(out, 0, DEV_NAMES_A[h % 8]); n = dv_put(out, n, " "); n = dv_put(out, n, DEV_NAMES_B[(h / 8) % 8]);
+  return n;
+}
+dv_answer :: (v: [] RmServer, status: string, body: string) -> int {
+  n := dv_put(v[0].dev.out[..], 0, status); n = dv_put(v[0].dev.out[..], n, "\n"); n = dv_put(v[0].dev.out[..], n, body);
+  return ifx n > DEV_OUT then 0 else n;
+}
+dv_path :: (req: string, method: string, path: string) -> bool {
+  return req.count > method.count + 1 + path.count && req[0..<method.count] == method && req[method.count] == ' ' &&
+         req[method.count + 1..<method.count + 1 + path.count] == path;
+}
+
+// The answer to an /api/ request (dev.out: "STATUS\nBODY"), its count; -1 when it isn't the stand-in's
+// to answer (the host answers the world and the rooms list itself).
+rm_dev_api :: (v: [] RmServer, req: string) -> int #export_c {
+  if !v[0].dev.on { return -1; }
+  if dv_path(req, "POST", "/api/playtest/player ") || dv_path(req, "POST", "/api/playtest/player?") {
+    v[0].dev.minted += 1;
+    kb: [64] u8;
+    k := dv_put(kb[..], 0, "dev-"); k = rv_int(kb[..], k, v[0].wall_ms); k = dv_put(kb[..], k, "-"); k = rv_int(kb[..], k, v[0].dev.minted);
+    key := cast(string) kb[0..<k];
+    pb: [TICKET_PID] u8; pn := dv_pid(key, pb[..]);
+    b: [256] u8;
+    n := dv_put(b[..], 0, "{\"key\":\""); n = dv_put(b[..], n, key); n = dv_put(b[..], n, "\",\"id\":\""); n = dv_put(b[..], n, cast(string) pb[0..<pn]);
+    n = dv_put(b[..], n, "\",\"account\":false}");
+    return dv_answer(v, "200", cast(string) b[0..<n]);
+  }
+  if dv_path(req, "POST", "/api/playtest/room-ticket/") {
+    at := 5 + "/api/playtest/room-ticket/".count;
+    e := at;
+    while e < req.count && req[e] != ' ' && req[e] != '?' { e += 1; }
+    room := req[at..<e];
+    if room.count == 0 || room.count > 24 { return dv_answer(v, "404", "{\"error\":\"unknown\"}"); }
+    for c: room { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return dv_answer(v, "404", "{\"error\":\"unknown\"}"); } }
+    key := dv_header(req, "x-verse-player");
+    if key.count == 0 { return dv_answer(v, "401", "{\"error\":\"a player key\"}"); }
+    pb: [TICKET_PID] u8; pn := dv_pid(key, pb[..]);
+    pid := cast(string) pb[0..<pn];
+    nb: [32] u8; nn := dv_name(pid, nb[..]);
+    name := cast(string) nb[0..<nn];
+    // HP for 10 minutes and the XP, from the room's own vitals (the API's verse.room_vitals)
+    hp := -1; xp := 0;
+    i := rv_find(v, pid);
+    if i >= 0 {
+      e2 := v[0].vit.v[i];
+      xp = e2.xp;
+      if e2.hp < e2.max && v[0].wall_ms - e2.at < 600000 { hp = e2.hp; }
+    }
+    expires := v[0].wall_ms + TICKET_LIFE_MS;
+    tb: [TICKET_TEXT] u8;
+    tn := tk_sign_xp(DEV_KEY, pid, false, name, room, 0, expires, hp, ifx xp > 0 then xp else -1, tb[..]);
+    if tn == 0 { return dv_answer(v, "500", "{\"error\":\"no ticket\"}"); }
+    b: [640] u8;
+    n := dv_put(b[..], 0, "{\"ticket\":\""); n = dv_put(b[..], n, cast(string) tb[0..<tn]);
+    n = dv_put(b[..], n, "\",\"id\":\""); n = dv_put(b[..], n, pid);
+    n = dv_put(b[..], n, "\",\"account\":false,\"name\":\""); n = dv_put(b[..], n, name);
+    n = dv_put(b[..], n, "\",\"room\":\""); n = dv_put(b[..], n, room);
+    n = dv_put(b[..], n, "\",\"expires\":"); n = rv_int(b[..], n, expires); n = dv_put(b[..], n, "}");
+    return dv_answer(v, "200", cast(string) b[0..<n]);
+  }
+  if dv_path(req, "POST", "/api/playtest/room-state") { return dv_answer(v, "200", "{\"ok\":true}"); }
+  if dv_path(req, "GET", "/api/playtest/rooms/") || dv_path(req, "GET", "/api/playtest/world/") { return -1; }
+  if dv_path(req, "GET", "/api/") || dv_path(req, "POST", "/api/") { return dv_answer(v, "404", "{\"error\":\"not in the local API\"}"); }
+  return -1;
+}
+
+#test "dev: the stand-in mints a player, signs a ticket the room checks, and names it" {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  rm_clock(v[..], 100, 1800000000000);
+  #assert rm_dev_api(v[..], "POST /api/playtest/player HTTP/1.1\r\n\r\n") == -1;   // off without --dev
+  rm_dev_start(v[..]);
+  n := rm_dev_api(v[..], "POST /api/playtest/player HTTP/1.1\r\n\r\n{}");
+  a := cast(string) v[0].dev.out[0..<n];
+  #assert n > 4 && a[0..<4] == "200\n";
+  key := net_field_dev(a, "key");
+  #assert key.count > 4;
+  kb: [64] u8; for i: 0..<key.count { kb[i] = key[i]; }
+  rb: [256] u8;
+  m := dv_put(rb[..], 0, "POST /api/playtest/room-ticket/everglade-1?realm=everglade HTTP/1.1\r\nX-Verse-Player: ");
+  m = dv_put(rb[..], m, cast(string) kb[0..<key.count]); m = dv_put(rb[..], m, "\r\n\r\n{}");
+  t := rm_dev_api(v[..], cast(string) rb[0..<m]);
+  ans := cast(string) v[0].dev.out[0..<t];
+  #assert ans[0..<4] == "200\n";
+  ticket := net_field_dev(ans, "ticket");
+  tk := tk_check(DEV_KEY, ticket, "everglade-1", v[0].wall_ms);
+  #assert tk.ok && tk.name_n > 0 && net_field_dev(ans, "name").count > 0;
+  // the same key, the same player
+  t2 := rm_dev_api(v[..], cast(string) rb[0..<m]);
+  #assert net_field_dev(cast(string) v[0].dev.out[0..<t2], "id") == cast(string) tk.pid[0..<tk.pid_n];
+  // no key: refused, as the API does
+  #assert cast(string) v[0].dev.out[0..<rm_dev_api(v[..], "POST /api/playtest/room-ticket/everglade-1 HTTP/1.1\r\n\r\n")][0..<4] == "401\n";
+  #assert cast(string) v[0].dev.out[0..<rm_dev_api(v[..], "GET /api/playtest/npc/ask HTTP/1.1\r\n\r\n")][0..<4] == "404\n";
+  #assert v[0].tkey_n > 0 && v[0].tkey_must;
+}
+// A flat JSON field's text, for the checks.
+net_field_dev :: (t: string, name: string) -> string {
+  for i: 0..<t.count {
+    if t[i] != '"' || i + name.count + 3 > t.count || t[i + 1..<i + 1 + name.count] != name || t[i + 1 + name.count] != '"' || t[i + 2 + name.count] != ':' { continue; }
+    a := i + 3 + name.count;
+    q := a < t.count && t[a] == '"';
+    if q { a += 1; }
+    e := a;
+    while e < t.count && (ifx q then t[e] != '"' else (t[e] != ',' && t[e] != '}')) { e += 1; }
+    return t[a..<e];
+  }
+  return "";
+}

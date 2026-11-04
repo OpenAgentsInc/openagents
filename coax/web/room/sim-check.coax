@@ -132,7 +132,7 @@ tool_main :: () -> int #export_c {
   ua: [1024] u8; ub: [1024] u8;
   url_a := rs_ticketed(ua[..], url, "p-simcheck-a", "Sim A"); url_b := rs_ticketed(ub[..], url, "p-simcheck-b", "Sim B");
   if url.count == 0 || url_a.count == 0 || url_b.count == 0 || !relay_conn_open(c[0..<1], url_a) || !relay_conn_open(c[1..<2], url_b) { tool_err("sim-check: can't open "); tool_errln(url); print("fails\n"); return 1; }
-  sent := relay_conn_send(c[0..<1], "H 1 ranger.2.1.0 druid 0 Sim A") && relay_conn_send(c[1..<2], "H 1 ranger.0.0.0 druid 0 Sim B");
+  sent := relay_conn_send(c[0..<1], "H 1 ranger.2.1.0 druid 64 Sim A") && relay_conn_send(c[1..<2], "H 1 ranger.0.0.0 druid 64 Sim B");
   t0 := rs_now();
   sent = sc_steps(c[..], h[..], seq[..], 2000, true) && sent;
   walked := h[0].me_z - h[0].me_z0;
@@ -181,7 +181,7 @@ tool_main :: () -> int #export_c {
   uc: [1024] u8;
   url_c := rs_ticketed(uc[..], url, "p-simcheck-c", "Sim C");
   late_open := url_c.count > 0 && relay_conn_open(c[2..<3], url_c);
-  if late_open { sent = relay_conn_send(c[2..<3], "H 1 ranger.1.0.0 druid 0 Sim C") && sent; }
+  if late_open { sent = relay_conn_send(c[2..<3], "H 1 ranger.1.0.0 druid 64 Sim C") && sent; }
   b_breaks_at_join := h[1].breaks;
   late_t0 := rs_now();
   late_ms := -1;

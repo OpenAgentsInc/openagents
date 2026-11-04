@@ -6,7 +6,8 @@
 // (verse.room_events, coax/web/api/player.c room_event) and room-control.coax's poll hears them
 // every 2 s as two lines, which ev_control_line reads:
 //   event ON EVERY WAVES SIZE CULT FAN WL WLMAX GATES ARCH AGGR HARM REWARD MINUTES START STOP
-//   levels ON CAP      (CAP the highest level a character reaches: 1 to 3, 2 for now)
+//   levels ON CAP      (CAP the highest level a character reaches: 1 to 3, 2 for now). Until the API
+//                      says (no Everglade row in verse.room_events, or no key), levels are on at cap 2 (#12774).
 // START and STOP count an admin's presses: a shard acts on each new count once, in every live room.
 // EVERY (minutes, 0 off) starts a raid in every live room at each whole multiple of it on the wall
 // clock, so every shard and instance starts together.
@@ -74,14 +75,14 @@ EV_SQUARE :: [4] f32.[0, 0, 16, 0];                                             
 EvDials :: struct {
   on: bool; every: int; waves: int = 3; size: int = 12; cult: int = 6; fan: int = 1; wl: int = 3; wlmax: int = 3;
   gates: int = 31; arch: bool = true; aggr: int = 2; harm: bool = true; reward: int = 100; minutes: int = 15;
-  start: int; stop: int; levels: bool; cap: int = 2;
+  start: int; stop: int; levels: bool = true; cap: int = 2;   // levels on, cap 2, until the API says (spec 6)
 }
 RmEvents :: struct {
   d: EvDials;
   known: bool;                  // the API has answered once (until then, nothing starts)
   start_seen: int; stop_seen: int;
   slot: int = -1;               // the schedule's period last started (wall ms / EVERY minutes)
-  levels: bool;                 // the levels switch as the rooms last applied it
+  levels: bool = true;          // the levels switch as the rooms last applied it
   cap: int = 2;                 // and the cap
 }
 EvRoom :: struct {

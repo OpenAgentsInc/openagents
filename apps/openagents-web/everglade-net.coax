@@ -94,8 +94,9 @@ EgNet :: struct {
   // instance and its oa-room shard), and how much of url is the host (wss://HOST)
   realm: [NET_CODE] u8; realm_n: int; host_n: int;
   // the seat ticket the socket opens with (?t=, #12712): asked of the API before each open, used once;
-  // free: a local relay (?relay=ws://localhost:PORT), which joins without one
-  ticket: [NET_TICKET] u8; ticket_n: int; ticket_asked: bool; free: bool;
+  // local_relay: a room server on this machine (?relay=ws://localhost:PORT, coax/web/room/local.sh),
+  // which keeps its own address; its tickets come from the API's local stand-in, as production's do
+  ticket: [NET_TICKET] u8; ticket_n: int; ticket_asked: bool; local_relay: bool;
   // what you bring back into a room (#12715): the WANTED level and look last saved, and when
   saved_wanted: int; saved_look: [NET_LOOK] u8; saved_look_n: int; saved_at: int; restored: bool;
   edit_due: bool;            // the server said "e edit": the world and the board are asked for again (#12714)
@@ -188,7 +189,7 @@ net_facts :: (s: [] Everglade, facts: string, room: string, golden: bool) #expor
   if !net_on(s) { return; }
   n := net_of(s);
   url := fact(facts, "url");
-  n[0].free = false;
+  n[0].local_relay = false;
   sl := 0; k := 0;
   while k < url.count && sl < 3 { if url[k] == '/' { sl += 1; } if sl < 3 { k += 1; } }
   secure := url.count > 5 && url[0..<5] == "https";
@@ -199,7 +200,7 @@ net_facts :: (s: [] Everglade, facts: string, room: string, golden: bool) #expor
   if relay.count > 15 && relay.count < 40 && relay[0..<15] == "ws://localhost:" {
     ok := true;
     for c: relay[15..<relay.count] { if c < '0' || c > '9' { ok = false; } }
-    if ok { m = wire_put(n[0].url[..], 0, relay); n[0].free = true; }
+    if ok { m = wire_put(n[0].url[..], 0, relay); n[0].local_relay = true; }
   }
   // a page on this machine can sit in production's rooms (a two-browser check against the live server)
   local := url.count > 16 && (url[0..<17] == "http://localhost:" || (url.count > 17 && url[0..<17] == "http://127.0.0.1:"));
@@ -277,7 +278,7 @@ net_tell :: (s: [] Everglade, n: [] EgNet, text: string) {
 // balancer sends to shard K (a shard seats only its own tickets); the next open asks for the same
 // instance, so a reconnect sits where it was. A local relay keeps its own address.
 net_placed :: (n: [] EgNet, room: string, shard: int) {
-  if n[0].free || !net_code_ok(room) || shard < 1 || shard > 99 { return; }
+  if n[0].local_relay || !net_code_ok(room) || shard < 1 || shard > 99 { return; }
   n[0].code_n = net_copy(n[0].code[..], room);
   m := n[0].host_n;
   m = wire_put(n[0].url[..], m, "/api/room/s");
@@ -318,7 +319,7 @@ net_json_field :: (t: string, name: string) -> string {
 }
 // While you play in a room: a WANTED level or look that changed is saved (at most every NET_STATE_EVERY).
 net_save_state :: (s: [] Everglade, n: [] EgNet) {
-  if n[0].free || !net_live(s) || n[0].mono - n[0].saved_at < NET_STATE_EVERY { return; }
+  if !net_live(s) || n[0].mono - n[0].saved_at < NET_STATE_EVERY { return; }
   you := watch_you(s[0].wt[..]);
   level := ifx you[0].wanted then you[0].level else 0;
   if level < 0 { level = 0; }
@@ -785,9 +786,7 @@ net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: 
   jn_step(s, n);   // no instance yet: the list asked for (everglade-join.coax)
   if n[0].want && (n[0].state == NET_OFF || (n[0].state == NET_DOWN && mono >= n[0].retry)) && jn_ready(n) {
     // each open takes a fresh seat ticket (the room refuses a join without one): asked for, then used
-    if n[0].free {
-      if pipe_open(n[0].pipe[..], cast(string) n[0].url[0..<n[0].url_n]) { n[0].state = NET_OPENING; n[0].sock = -1; }
-    } else if n[0].ticket_n > 0 {
+    if n[0].ticket_n > 0 {
       u: [NET_URL + NET_TICKET + 4] u8;
       k := wire_put(u[..], 0, cast(string) n[0].url[0..<n[0].url_n]); k = wire_put(u[..], k, "?t="); k = wire_put(u[..], k, cast(string) n[0].ticket[0..<n[0].ticket_n]);
       if pipe_open(n[0].pipe[..], cast(string) u[0..<k]) { n[0].state = NET_OPENING; n[0].sock = -1; n[0].ticket_n = 0; }

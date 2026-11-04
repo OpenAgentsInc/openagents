@@ -47,4 +47,6 @@ python3 "$here/room-catalog.py" "$root/apps/openagents-web/realms/everglade/asse
 cc -std=c11 -O2 -w -c "$work/room-catalog.c" -o "$work/room-catalog.o"
 cc -std=c11 -O2 -Wall -Wextra -D_DEFAULT_SOURCE -I"$work" -I"$here" -I"$root/verse/voice-host" "$here/room-host.c" "$root/verse/voice-host/ws.c" \
   "$work/room-world.o" "$work/room-catalog.o" "${objs[@]}" -lm -o "$out"
+# the started server holds every declared default (room-host.c --start-check, room.coax rm_start_check)
+"$out" --start-check
 echo "built $out"

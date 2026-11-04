@@ -157,6 +157,7 @@ ra_send :: (v: [] RmServer, k: int, s: int, full: bool, o: [] EgOut) {
 #test "everglade room abilities: each seat's abilities go to the world and come back as their own entities, two seats' cylinders at once" #steps 2000000000 {
   v: [1] RmServer;
   rm_init(v[..]);
+  rm_control(v[..], "levels 0 2\n");   // the full Everglade character: levels off, as an admin can set
   rm_clock(v[..], 0, 1762190000000);
   ev := "GET /api/room/relay/everglade/pair-rg HTTP/1.1\r\n\r\n";
   box: [1] EgInbox;
@@ -217,6 +218,7 @@ ra_send :: (v: [] RmServer, k: int, s: int, full: bool, o: [] EgOut) {
 #test "everglade room abilities: Levitate goes to the world, a spell's mode goes with its cast to the world, every page and its entity, and Levitate's keys in the input" #steps 2000000000 {
   v: [1] RmServer;
   rm_init(v[..]);
+  rm_control(v[..], "levels 0 2\n");   // the full Everglade character: levels off, as an admin can set
   rm_clock(v[..], 0, 1762190000000);
   ev := "GET /api/room/relay/everglade/pair-mode HTTP/1.1\r\n\r\n";
   box: [1] EgInbox;

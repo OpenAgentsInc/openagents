@@ -317,7 +317,7 @@ eg_room :: (base: string, players: int, seconds: int, stamp: int, room: int, hz:
   msg0: [96] u8; hello_failed := 0;
   for i: 0..<players {
     p[i].next_i = t0 + (i * 7) % 33; p[i].next_c = t0 + 500 + (i * 211) % 5000; p[i].next_t = t0 + (i * 31) % (1000 / hz);
-    k := rs_put(msg0[..], 0, "H 1 ranger.0.0.0 druid 0 Load "); k = rs_int(msg0[..], k, i);
+    k := rs_put(msg0[..], 0, "H 1 ranger.0.0.0 druid 64 Load "); k = rs_int(msg0[..], k, i);
     if c[i].h >= 0 && !relay_conn_send(c[i..<i + 1], cast(string) msg0[0..<k]) { hello_failed += 1; }
   }
   msg: [256] u8;

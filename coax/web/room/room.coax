@@ -26,6 +26,7 @@
 #load "room-control.coax";
 #load "room-directory.coax";
 #load "room-events.coax";
+#load "room-dev.coax";
 
 ROOMS :: 8;
 CONNS :: 512;
@@ -72,17 +73,47 @@ RmServer :: struct {
   dir: RmDirectory;                      // what it last told the API's instance directory
   evc: RmEvents;                         // the realm's world-event dials (room-events.coax)
   ev: [EG_ROOMS] EvRoom;                 // each everglade room's event, XP and levels (room-events.coax)
+  dev: RmDev;                            // --dev: the API's stand-in for local development (room-dev.coax)
 }
 
-// Every field's default (seats -1, the game's own defaults): the host calls
-// this once on zeroed memory.
+// The server at its start. The host first gives every field its declared default
+// (coax_default_t_RmServer, room-host.c server_new: the C host's memory is otherwise zeros, and a
+// default such as the level cap's 2 would never hold), then calls this once. What it sets is what a
+// declared default can't say; rm_start_check holds the started server to the declarations (#12774).
 rm_init :: (v: [] RmServer) #export_c {
   for i: 0..<CONNS { v[0].conns[i] = RmConn.{}; }
   for r: 0..<RELAYS { v[0].relays[r].live = false; }
   for k: 0..<EG_ROOMS { v[0].eg[k].live = false; v[0].eg[k].relay = -1; }
   v[0].q_head = 0; v[0].q_n = 0;
-  v[0].shard = 1;
   for r: 0..<ROOMS { v[0].rooms[r].live = false; v[0].rooms[r].s[0] = OrbitLeague.{}; }
+}
+
+// The server as the host started it, against the declared defaults: how many differ (0 holds). The
+// host runs it under --start-check (build.sh), so a zero-filled field the game reads as its default
+// fails the build, not a room.
+rm_start_check :: (v: [] RmServer) -> int #export_c {
+  bad := 0;
+  d := EvDials.{}; e := RmEvents.{}; r := EvRoom.{}; c := RmConn.{}; t := Ticket.{};
+  if v[0].evc.d.cap != d.cap || v[0].evc.d.levels != d.levels || v[0].evc.d.waves != d.waves || v[0].evc.d.size != d.size { bad += 1; }
+  if v[0].evc.d.gates != d.gates || v[0].evc.d.arch != d.arch || v[0].evc.d.aggr != d.aggr || v[0].evc.d.harm != d.harm { bad += 1; }
+  if v[0].evc.d.reward != d.reward || v[0].evc.d.minutes != d.minutes || v[0].evc.d.wl != d.wl || v[0].evc.d.wlmax != d.wlmax { bad += 1; }
+  if v[0].evc.cap != e.cap || v[0].evc.levels != e.levels || v[0].evc.slot != e.slot { bad += 1; }
+  if v[0].shard != 1 { bad += 1; }
+  for k: 0..<EG_ROOMS {
+    if v[0].ev[k].g_tick != r.g_tick || v[0].eg[k].relay != -1 { bad += 1; }
+  }
+  for i: 0..<CONNS {
+    x := v[0].conns[i];
+    if x.room != c.room || x.seat != c.seat || x.echo != c.echo || x.relay != c.relay || x.ticket.hp != t.hp || x.ticket.shard != t.shard { bad += 1; }
+  }
+  return bad;
+}
+
+#test "start: rm_init keeps every declared default (cap 2, levels on, seats -1)" {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  #assert rm_start_check(v[..]) == 0;
+  #assert v[0].evc.d.cap == 2 && v[0].evc.d.levels && v[0].conns[3].seat == -1;
 }
 
 // The seat-ticket key (the host's OA_ROOM_TICKET_KEY): from then on an everglade join's ticket must

@@ -309,6 +309,26 @@ Start a local room with `coax/web/room/local.sh` (#12773). It runs `bin/room
 document, `coax/web/room/dev/world-everglade-5e.json`. In production both read
 the API's `/api/playtest/world/everglade-5e` (the room through `OA_ROOM_API`).
 
+Since #12774 the room is also the API's stand-in (`coax/web/room/room-dev.coax`):
+it mints players, signs and checks seat tickets with names, reads levels, cap,
+PvP and the event dials from `coax/web/room/dev/room-control.txt` every two
+seconds, and brings HP and XP back from its own vitals. A local room plays as
+production does, so the local skips in `everglade-pair` for names and the twin
+check are gone; only BLOCK is still skipped (the stand-in keeps no blocks).
+
+- Levels are on at cap 2 by default. `local.sh --levels off` plays Everglade's
+  own character with the whole bar; `everglade-pair` casts high-level spells,
+  so run it against `local.sh --levels off`.
+- The room harnesses (`sim-check`, `abilities-check`, `bridge-check`,
+  `rejoin-check`, `load.coax`) sign their own tickets: export the `KEY=` line
+  that `local.sh` prints as `OA_ROOM_TICKET_KEY`. They sit as an admin and send
+  the demo bit, so they cast the whole bar whatever the levels switch says.
+- `raid-proof.sh` runs the room with `--dev` too.
+- The server starts every field at its declared default
+  (`coax_default_t_RmServer`), and `build.sh` fails if `bin/room
+  --start-check` finds a field off its default. With no Everglade row in
+  `verse.room_events`, a production room plays levels on at cap 2.
+
 Before #12773, a local run (a local page server plus a local `bin/room`, joined with
 `?relay=ws://localhost:PORT`) had no API. So it has no seat tickets, no names,
 no player ids, no directory and no blocks. Since `2cfde0ca03`, the pair
