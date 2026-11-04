@@ -32,7 +32,7 @@ RcHeard :: struct {
   outcome: int;
   ids: [RC_SEEN] int; xs: [RC_SEEN] f32; zs: [RC_SEEN] f32; forms: [RC_SEEN] int; n: int;   // the raid creatures it sees now
   kinds: int;                      // bit (P1 - 20): the kinds it saw
-  raiders_seen: int; casts: int; hits_on: int; xp: int; level: int; levels_heard: int; v_level: int;
+  raiders_seen: int; casts: int; hits_on: int; breaks: int; xp: int; level: int; levels_heard: int; v_level: int;
   bad: int;
   refused: int; r_cool: int; r_range: int; r_level: int; r_other: int; r_dead: int; r_busy: int; r_slot: int;
   flip: f32; last_gap: f32 = -1; gap_at: int;   // the walk to the square: its yaw's sign, and the gap a second ago
@@ -106,6 +106,7 @@ rc_entry :: (h: [] RcHeard, me: int, t: string) {
     w := rs_field(t, 1);
     if w == "rc" { h[0].casts += 1; if rs_field(t, 7).count == 0 { h[0].bad += 1; } }
     if w == "hit" && rs_num(rs_field(t, 2)) > 2000 { h[0].hits_on += 1; }
+    if w == "break" { h[0].breaks += 1; }   // a piece of the town down, as the page hears it (the stables: #12769)
     if w == "xp" && rs_num(rs_field(t, 2)) == me { h[0].xp += rs_num(rs_field(t, 3)); if h[0].outcome != 0 { h[0].xp_end += rs_num(rs_field(t, 3)); } }
     if w == "level" && rs_num(rs_field(t, 2)) == me { h[0].level = rs_num(rs_field(t, 3)); h[0].levels_heard += 1; }
   }
@@ -217,11 +218,11 @@ tool_main :: () -> int #export_c {
     while rs_now() - t0 < tick * 33 { rc_drain(c[..], h[..], n); proc_sleep(2); }
   }
   // what all heard
-  waves := 1000; climax := 0; seen := 1000; casts := 1000; hits := 1000; earned := 0; bad := 0; xp := 0; lv2 := 0; d := 1000000; bytes := 0;
+  waves := 1000; climax := 0; seen := 1000; casts := 1000; hits := 1000; breaks := 0; earned := 0; bad := 0; xp := 0; lv2 := 0; d := 1000000; bytes := 0;
   for i: 0..<n {
     waves = rc_min(waves, h[i].wave_max);
     if (h[i].phase_seen & (1 << 4)) != 0 && (h[i].arch_seen & 2) != 0 { climax += 1; }
-    seen = rc_min(seen, h[i].raiders_seen); casts = rc_min(casts, h[i].casts); hits = rc_min(hits, h[i].hits_on);
+    seen = rc_min(seen, h[i].raiders_seen); casts = rc_min(casts, h[i].casts); hits = rc_min(hits, h[i].hits_on); breaks = rc_max(breaks, h[i].breaks);
     if h[i].xp > 0 { earned += 1; }
     if h[i].v_level >= 2 { lv2 += 1; }
     xp += h[i].xp; bad += h[i].bad; d = rc_min(d, h[i].d); bytes += h[i].bytes;
@@ -243,6 +244,7 @@ tool_main :: () -> int #export_c {
   jo_key(o[..], "kinds_seat0"); jo_int(o[..], h[0].kinds);
   jo_key(o[..], "least_raider_casts_heard"); jo_int(o[..], casts);
   jo_key(o[..], "least_hits_on_raiders_heard"); jo_int(o[..], hits);
+  jo_key(o[..], "most_breaks_heard"); jo_int(o[..], breaks);
   jo_key(o[..], "our_casts"); jo_int(o[..], sent_casts);
   jo_key(o[..], "seats_earned_xp"); jo_int(o[..], earned);
   jo_key(o[..], "xp_total"); jo_int(o[..], xp);

@@ -201,7 +201,9 @@ e5rd_raider :: (r: [] E5rRoom, npc0: int, level: int, number: int, x: f32, z: f3
   // its stat block and role by the raid's mix, from the id it will have (#12771)
   mix := r[0].raid[0].mix;
   id := r[0].next_id;
-  npc := rt_kind(npc0, id, mix);
+  // the stables' burner a caster of its own kind, whatever the mix (#12769)
+  burner := rt_house_burner(g, k) && npc0 != RS_NPC_FANATIC;
+  npc := ifx burner then npc0 else rt_kind(npc0, id, mix);
   nm: [RS_NAME] u8; nn := rs_npc_named(nm[..], npc, number);
   name := cast(string) nm[0..<nn];
   c: [1] RsCreature;
@@ -213,7 +215,7 @@ e5rd_raider :: (r: [] E5rRoom, npc0: int, level: int, number: int, x: f32, z: f3
     c[0].vigor = c[0].level >= 2;   // Fiendish Vigor, its invocation from level 2
     c[0].repelling = -1;   // no Repelling Blast: a player's place is theirs and the world's, not the rules' to push
   } else { c[0] = rs_cultist(name, E5RD_TEAM); c[0].spell_ability = RS_WIS; }
-  return e5rd_join(r, c[0], E5RR_FORM_RAID + c[0].npc, x, z, g, squad, k, rt_role_of(npc, id, mix), sx, sz);
+  return e5rd_join(r, c[0], E5RR_FORM_RAID + c[0].npc, x, z, g, squad, k, ifx burner then RT_CASTER else rt_role_of(npc, id, mix), sx, sz);
 }
 E5RD_PRIEST_LEVEL :: 3;   // a Cult Priest: a level 3 Cleric (Bless, Shield of Faith, Bane, Command)
 // A ward stone at (x, z): its beast id.
@@ -348,6 +350,7 @@ e5rd_done :: (r: [] E5rRoom, q: int) -> bool {
 // that come (rt_start), so the squad starts a raider at a time.
 e5rd_going :: (r: [] E5rRoom, q: int) -> bool {
   if !e5rd_done(r, q) { return false; }
+  if rt_house_burner(r[0].raid[0].slot[q].g, r[0].raid[0].slot[q].k) { return false; }   // at the stables till they fall
   w := r[0].raid[..];
   s := w[0].slot[q].squad % RT_SQUADS;
   if w[0].sq_go[s] < 0 { w[0].sq_go[s] = r[0].b[0].clock; }
@@ -410,7 +413,8 @@ e5rd_turn :: (r: [] E5rRoom, q: int) {
   if npc == RS_NPC_ARCH { e5rd_arch_turn(r, q); return; }
   done := e5rd_done(r, q);
   role := sl[0].role;
-  holding := !rt_moving(bt[0].id, role, b[0].clock);
+  burning := done && rt_house_burner(sl[0].g, sl[0].k);   // the stables' burner, at its siege place: no bounds
+  holding := burning || !rt_moving(bt[0].id, role, b[0].clock);
   if role == RT_SUPPORT {
     foe := e5rd_foe(r, q, f32(E5RD_REACH_CAST));
     bt[0].foe = foe;
@@ -431,10 +435,22 @@ e5rd_turn :: (r: [] E5rRoom, q: int) {
     // a volleyer on its squad's call; the rest on their own turns, holding
     v := rt_volley(b[0].clock, w[0].sq_anchor[s], rs_beat(b));
     call := ifx v >= 0 then v else int(b[0].clock / rs_beat(b));
-    foe := e5rd_foe(r, q, ifx done || role == RT_GUARD then f32(E5RD_REACH_CAST) else f32(RT_SELF));
+    // the stables' burner, while they stand, shoots only a foe at hand, as in the siege (the gate's watch
+    // is in a caster's reach from its place: #12769)
+    foe := e5rd_foe(r, q, ifx (done && !burning) || role == RT_GUARD then f32(E5RD_REACH_CAST) else f32(RT_SELF));
     bt[0].foe = foe;   // its foe, to keep its distance from, even in a bound
     if volleyer && v < 0 { return; }
     if !volleyer && !holding { return; }
+    if foe < 0 && burning {
+      // its siege done, the stables' burner keeps at them on its own turns till they fall (#12769)
+      if !w[0].harm { return; }
+      o: [2] f32; rt_house_mid(o[..]);
+      o[0] += f32(call % 3 - 1) * 3.0; o[1] += f32((call / 3) % 3 - 1) * 3.0;
+      bt[0].yaw = e5rr_heading(o[0] - bt[0].x, o[1] - bt[0].z);
+      e5rd_cast(r, q, rt_siege_look(npc), -1, o[0], o[1]);
+      w[0].house_y = bt[0].y; e5rd_house_hurt(r, rs_roll(b[0].dice[..], RT_HOUSE_BURN));
+      return;
+    }
     if foe < 0 {
       if done || role == RT_GUARD { return; }
       // the siege: a volley at the wall on the call (the squad's volleys count once a call), and the
@@ -587,12 +603,14 @@ e5rd_door :: (r: [] E5rRoom, q: int) -> bool {
 // Fireball on them while he has a Pact slot to spare (one kept for Dimension Door), else Eldritch
 // Blast's beams (#12769).
 E5RD_HOUSE_REACH :: 45.0;
+E5RD_ARCH_AT_HAND :: 40;   // ft: a foe this near Darian comes before the stables
 e5rd_arch_house :: (r: [] E5rRoom, q: int) {
   b := r[0].b[..];
   i := E5RR_BEAST0 + q;
   w := r[0].raid[..];
   bt := r[0].beasts[q..<q + 1];
-  if !w[0].harm || !rt_house_near(w[0].slot[q].g) || b[0].turn.action { return; }
+  // (his way in is an open gate, no wall: his reach is the test, not rt_house_near)
+  if !w[0].harm || rt_house_stage(w[0].house) == RT_HOUSE_FALLEN || b[0].turn.action { return; }
   o: [2] f32; rt_house_mid(o[..]);
   dx := o[0] - bt[0].x; dz := o[1] - bt[0].z;
   if dx * dx + dz * dz > f32(E5RD_HOUSE_REACH) * f32(E5RD_HOUSE_REACH) { return; }
@@ -617,6 +635,12 @@ e5rd_arch_act :: (r: [] E5rRoom, q: int, aggr: int) {
   // False Life on himself by Fiendish Vigor while none is at hand (#12771)
   if c.vigor && c.temp <= 0 && (foe < 0 || rs_feet_to(b, i, foe) > 30) && rs_cast(b, i, SP_FALSE_LIFE, 0, 0, 0, i) { e5rd_cast(r, q, RT_K_FALSE_LIFE, i, r[0].beasts[q].x, r[0].beasts[q].z); return; }
   if foe < 0 { e5rd_arch_house(r, q); return; }
+  // the stables standing in his reach and no foe at hand: he razes them first, whoever shoots at him
+  // from farther off (a room's watch and players are always somewhere near: #12769)
+  if rs_feet_to(b, i, foe) > E5RD_ARCH_AT_HAND {
+    e5rd_arch_house(r, q);
+    if b[0].turn.action { return; }
+  }
   n: [1] int;
   // Circle of Death (his 6th-level Arcanum) and Finger of Death (the 7th), razing
   if aggr >= 3 && c.slots[6] > 0 {
@@ -931,11 +955,13 @@ e5rd_test_room :: (r: [] E5rRoom) {
   #assert towers > 0 && walls > 0 && together > 0 && r[0].raid[0].sq_v[0] >= RT_SIEGE_VOLLEYS;
   // and one of them at the stables, which took it
   #assert house > 0 && r[0].raid[0].house > 0;
-  // all of them in the town now, none on another, and none ever came near the spawn
+  // all of them in the town now but the stables' burner while they stand, none on another, and none
+  // ever came near the spawn
   #assert most_on_spawn >= f32(RT_SPAWN_R) - 0.5;
   for a: 0..<E5RR_BEASTS {
     if !e5rd_is(r[0].beasts[a]) { continue; }
-    #assert r[0].beasts[a].z > -56;
+    burning := rt_house_burner(r[0].raid[0].slot[a].g, r[0].raid[0].slot[a].k);
+    #assert r[0].beasts[a].z > -56 || burning;
     for b: a + 1..<E5RR_BEASTS {
       if !e5rd_is(r[0].beasts[b]) { continue; }
       dx := r[0].beasts[a].x - r[0].beasts[b].x; dz := r[0].beasts[a].z - r[0].beasts[b].z;
@@ -1161,4 +1187,64 @@ e5rd_test_room :: (r: [] E5rRoom) {
   #assert low_move >= 5 && sum_move >= 15 * samples && low_hold >= 10;
   for k: 0..<10 { #assert bins[k] * 3 < casts; }
   #assert casts > 100 && worst * 20 < casts;
+}
+
+#test "room raid: a room's lone squad at the South Gate brings the stables down: its burner stays at them past the siege, then goes in (#12769)" #steps 16000000000 {
+  r: [1] E5rRoom;
+  e5rd_test_room(r[..]);
+  south := rt_gate(0, -56, 6, false, -64, 64, 0, 0);
+  // a mix with no casters: the burner is a caster all the same
+  r[0].raid[0].mix = RtMix.{skirm = 1, casters = 0, support = 0, guard = 0};
+  for k: 0..<8 {
+    p: [2] f32; rt_ring(k, 0, 0, 3, 12, p[..]);
+    #assert e5rd_raider(r[..], RS_NPC_CULTIST, 1, k + 1, (f32(k) - 3.5) * 1.5, -100, south, 0, k, p[0], p[1]) > 0;
+  }
+  // a player 20 m from the burner's place, in a caster's reach but not at hand: the stables come first
+  for q: 0..<E5RR_BEASTS {
+    if !e5rd_is(r[0].beasts[q]) || r[0].raid[0].slot[q].k != 3 { continue; }
+    sl := r[0].raid[0].slot[q]; o: [2] f32;
+    rt_siege_pos(sl.g, sl.squad, sl.k, sl.role, o[..]);
+    e5rr_join(r[..], 0, o[0], o[1] + 20);
+    r[0].b[0].c[E5RR_SEAT].hp_max = 100000; r[0].b[0].c[E5RR_SEAT].hp = 100000;
+  }
+  t: f32 = 0; fell_at: f32 = -1; falls := 0;
+  for f: 0..<1200 {
+    t += 0.05; e5rr_step(r[..], t);
+    r[0].raid[0].cast_n = 0;
+    if e5rd_house_falls(r[..]) { falls += 1; }
+    if fell_at < 0 && e5rd_house_stage(r[..]) == RT_HOUSE_FALLEN { fell_at = t; }
+  }
+  // down well inside a wave, owed to the room's town once
+  #assert fell_at > 0 && fell_at < 50 && falls == 1;
+  // and its burner, the stables down, is no longer held at them
+  for q: 0..<E5RR_BEASTS {
+    if !e5rd_is(r[0].beasts[q]) || r[0].raid[0].slot[q].k != 3 { continue; }
+    #assert r[0].raid[0].slot[q].role == RT_CASTER && !rt_house_burner(r[0].raid[0].slot[q].g, 3);
+  }
+}
+
+#test "room raid: Darian razes the stables in his reach while no foe is at hand, a player shooting from farther off or not; with one at hand he fights it (#12769)" #steps 16000000000 {
+  r: [1] E5rRoom;
+  e5rd_test_room(r[..]);
+  // Darian by the South Gate, the stables 20 m off; a player 20 m behind him
+  #assert e5rd_arch(r[..], 0, -76, 0, -56, 0, -46) > 0;
+  e5rr_join(r[..], 0, 0, -96);
+  r[0].b[0].c[E5RR_SEAT].hp_max = 100000; r[0].b[0].c[E5RR_SEAT].hp = 100000;
+  t: f32 = 0; at_house := 0;
+  for f: 0..<600 {
+    t += 0.05; e5rr_step(r[..], t);
+    for c: 0..<r[0].raid[0].cast_n { cs := r[0].raid[0].casts[c]; if cs.to < 0 && rt_house_has(cs.ax, cs.az) { at_house += 1; } }
+    r[0].raid[0].cast_n = 0;
+  }
+  #assert at_house > 0 && r[0].raid[0].house > 0;
+  // fallen, he turns on the player
+  for n: 0..<3 { e5rd_house_hurt(r[..], RT_HOUSE_HP); }
+  #assert e5rd_house_stage(r[..]) == RT_HOUSE_FALLEN;
+  before := r[0].raid[0].house; at_house = 0;
+  for f: 0..<300 {
+    t += 0.05; e5rr_step(r[..], t);
+    for c: 0..<r[0].raid[0].cast_n { cs := r[0].raid[0].casts[c]; if cs.to < 0 && rt_house_has(cs.ax, cs.az) { at_house += 1; } }
+    r[0].raid[0].cast_n = 0;
+  }
+  #assert at_house == 0 && r[0].raid[0].house == before;
 }

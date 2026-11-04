@@ -718,6 +718,7 @@ RT_HOUSE :: RT_WALLS + 9;
 RT_HOUSE_HP :: 100;
 RT_HOUSE_PIECE :: 2;        // what a piece of them broken in the town takes
 RT_HOUSE_BOLT :: 6;         // a bolt's or a beam's on them: 1 to this
+RT_HOUSE_BURN :: 12;        // the burner's past the siege, on stables it has set alight (Fire Bolt ignites them): 1 to this
 RT_HOUSE_REACH :: 40.0;     // m from a gate's middle: a siege there burns them
 RT_HOUSE_WHOLE :: 0; RT_HOUSE_SCORCHED :: 1; RT_HOUSE_ABLAZE :: 2; RT_HOUSE_FALLEN :: 3;
 RT_HOUSE_BLASTS :: 5;       // the blasts that bring the rest of them down as they fall
@@ -727,6 +728,9 @@ rt_house_mid :: (o: [] f32) {
   o[0] = (RT_BOX[k] + RT_BOX[k + 2]) / 2; o[1] = (RT_BOX[k + 1] + RT_BOX[k + 3]) / 2;
 }
 // Whether a siege at gate g burns them: they stand, near its wall.
+// Whether member k of a squad in by gate g is the one that burns the stables: it keeps at them from
+// its siege place, past the siege, till they fall, so a room's single squad brings them down (#12769).
+rt_house_burner :: (g: RtGate, k: int) -> bool { return k % RT_SQUAD == 3 && rt_house_near(g); }
 rt_house_near :: (g: RtGate) -> bool {
   if !g.wall || g.fallen { return false; }
   o: [2] f32; rt_house_mid(o[..]);
