@@ -1,6 +1,6 @@
 # Aethyrforge for Mac: local editing by voice (experimental spec)
 
-Status: experimental desktop shell, local setup and basic Coder HUD implemented, 2026-11-04.
+Status: experimental desktop shell, local setup, routed Coder HUD and local scene tools implemented, 2026-11-04.
 The local Everglade editor, shared storage, CLI inventory, microphone capture
 and local Parakeet transcription work; the local edit model below remains planned. Nothing
 here ships to customers or TestFlight until the owner asks.
@@ -185,7 +185,25 @@ page server, the voice Wasm and a local Parakeet voice host. This is the same
 - Requires Apple Silicon and macOS 26+ for this initial WKWebView/WebGPU build.
   The app is ad-hoc signed, experimental and outside `/Applications`.
 
-The remaining sections describe the target behavior. They do not imply the voice
+- Typed and finalized voice requests can now change the live local scene through
+  the same routed Coder conversation. The bundled Coax `aethyrforge-scene` tool
+  reads the catalogue and current document, then atomically places rows or
+  supported stacks, moves groups or removes groups. “Add three crates” and
+  “add a stack of five crates” were exercised through the real local Elephant
+  router and Codex; the composer stayed closed. There are no placement decisions
+  in Swift. The tool reuses Everglade's saved document, footprint admission,
+  room update events, player walls and NPC fences. Rows leave walkable gaps;
+  the shared NPC detour now rejects a corner whose final leg crosses the same
+  obstacle. Regression checks make an NPC walk around both generated layouts.
+  Concurrent edits use the existing base-version check, with readback before
+  success. See [the command contract](../protocol/aethyrforge-scene-v1.md).
+  Verification: the policy's 157-check baseline passes and all 354 root mutants
+  are killed, with zero survivors. The shared controller/scene suite passed
+  210 checks. The native room startup, WebGPU bundle and real routed Coder
+  row/stack, group edits, atomic refusal and reopen persistence checks pass.
+  The tools audit retains 28 unrelated missing-reason headers.
+
+The remaining sections describe the target behavior. They do not imply every voice
 acceptance criteria already pass. Build and native smoke-check instructions are
 in [the app README](../../apps/aethyrforge-desktop/README.md).
 
@@ -405,9 +423,14 @@ Each step lands on `main` working end to end.
    the same 21 unrelated missing-reason files. Agent attachment and the conductor's
    worktree/integration lane remain planned; compiler build-load work is owned
    separately.
-2. **Voice to text:** hold to talk, resident Parakeet, and the transcript bar.
-3. **Text to edits:** gpt-oss-20b under the edit grammar, the resolver for places
-   and things, the edit applied and saved, undo and redo.
+2. **Voice to text (implemented):** hold to talk, resident Parakeet, and the
+   finalized transcript sent directly to routed Coder with its replies in the HUD.
+3. **Text to edits (basic catalogue path implemented):** the routed coding agent
+   calls a typed Coax scene tool. Rows, supported stacks, group moves/removals,
+   local persistence and immediate player/NPC obstacles work. A batch is 1–16
+   items, within the existing 64-object document; stacks have at most 10 m of
+   base elevation. Named-place resolution, arbitrary assets and undo/redo remain
+   planned. No dedicated gpt-oss interpreter is needed for this initial path.
 4. **Publish and revert,** with the change summary.
 5. **Bots and raid** for play-testing, and the headless end-to-end test.
 

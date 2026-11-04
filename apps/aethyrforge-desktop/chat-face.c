@@ -40,6 +40,9 @@ int64_t fgc_launch_option(int64_t i,uint8_t *out,int64_t cap) {
   coax_string s=fc_launch_option(i);if(s.count>cap)return -1;
   memcpy(out,s.data,(size_t)s.count);return s.count;
 }
+int64_t fgc_scene_instructions(uint8_t *out,int64_t cap) {
+  coax_string s=fc_scene_context();if(s.count>cap)return -1;memcpy(out,s.data,(size_t)s.count);return s.count;
+}
 int64_t fgc_feed_draw(float *out,int64_t cap,float w,float h,float d) {
   return fc_feed_draw((coax_v_f32){out,cap},(coax_v_t_HudFeed){&feed,1},w,h,d);
 }

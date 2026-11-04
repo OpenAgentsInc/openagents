@@ -1,0 +1,211 @@
+// Typed local scene admission and atomic placement. The existing Everglade
+// document, catalogue, footprint checks and collision consumers stay shared.
+#authority;
+#load "../../verse/everglade/edits.coax";
+#load "../../coax/lib/json/json.coax";
+ForgeSceneCommand :: struct {op:int;item:int=-1;count:int=1;stack:bool;size:int=100;located:bool;x:int;z:int;group:int;dx:int;dz:int;}
+ForgeScenePlan :: struct {ok:bool;edits:EgEdits;group:int;count:int;searched:int;}
+ForgeSceneSession :: struct {api:[128]u8;n:int;x:int;z:int;}
+FS_PLACE :: 1;FS_MOVE :: 2;FS_REMOVE :: 3;
+FS_INVALID_INT :: 9223372036854775807;
+FS_FIELDS :: [10]string.["op","item","count","arrangement","size_percent","x_cm","z_cm","group","dx_cm","dz_cm"];
+
+#test "scene sessions bind a fresh exact loopback origin and bounded observed player position" {
+  s:[1]ForgeSceneSession;
+  good:="{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://127.0.0.1:1234\",\"x_cm\":0,\"z_cm\":-5000,\"observed_ms\":100}";
+  #assert fs_session(good,100,s[..]) && s[0].x==0 && s[0].z==-5000 && cast(string)s[0].api[0..<s[0].n]=="http://127.0.0.1:1234";
+  #assert fs_session(good,5100,s[..]) && !fs_session(good,5101,s[..]) && !fs_session(good,99,s[..]);
+  for bad:[5]string.["{}","[]","{\"schema\":\"wrong\"}","{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://example.com:1234\"}","{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://127.0.0.1:1234/x\"}"] {#assert !fs_session(bad,100,s[..]);}
+}
+
+#test "scene commands admit catalogue rows and stacks and reject ambiguous or malformed input" {
+  c:[1]ForgeSceneCommand;
+  #assert fs_command("{\"op\":\"place\",\"item\":\"crate\",\"count\":3}",c[..]);
+  #assert c[0].op==FS_PLACE && c[0].item==0 && c[0].count==3 && !c[0].stack && c[0].size==100 && !c[0].located;
+  #assert fs_command("{\"op\":\"place\",\"item\":\"barrel\",\"count\":5,\"arrangement\":\"stack\",\"size_percent\":25,\"x_cm\":600,\"z_cm\":-1200}",c[..]);
+  #assert c[0].item==1 && c[0].stack && c[0].located && c[0].x==600 && c[0].z==-1200 && c[0].size==25;
+  for text:[14]string.["{}","[]","oops","{\"op\":\"fly\"}","{\"op\":\"place\",\"item\":\"dragon\"}","{\"op\":\"place\",\"item\":\"crate\",\"count\":0}","{\"op\":\"place\",\"item\":\"crate\",\"count\":17}","{\"op\":\"place\",\"item\":\"crate\",\"count\":1.5}","{\"op\":\"place\",\"item\":\"crate\",\"count\":1,\"count\":2}","{\"op\":\"place\",\"item\":\"crate\",\"x_cm\":0}","{\"op\":\"place\",\"item\":\"crate\",\"extra\":1}","{\"op\":\"place\",\"item\":\"crate\",\"arrangement\":\"pyramid\"}","{\"op\":\"place\",\"item\":\"crate\",\"size_percent\":401}","{\"op\":\"place\",\"item\":\"crate\",\"size_percent\":24}"] {#assert !fs_command(text,c[..]);}
+}
+#test "three crates and five stacked crates are real grouped documents and failures are atomic" {
+  e:EgEdits;c:=ForgeSceneCommand.{op=FS_PLACE,item=0,count=3,located=true,x=600,z=-1200};
+  p:=fs_plan(e,c,0,0);#assert p.ok && p.count==3 && p.group==1 && p.edits.n==3;
+  #assert abs(p.edits.things[0].x-3.91)<0.0001 && abs(p.edits.things[2].x-8.09)<0.0001 && p.searched==1;
+  #assert p.edits.things[0].z==-12 && p.edits.things[0].lift==0;
+  c.count=5;c.stack=true;c.x=1200;
+  q:=fs_plan(p.edits,c,0,0);#assert q.ok && q.edits.n==8 && q.group==2;
+  #assert abs(q.edits.things[7].lift-3.72)<0.001 && q.edits.things[3].x==q.edits.things[7].x;
+  for i:3..<8 {#assert q.edits.things[i].group==2;}
+  c.x=0;c.z=0;#assert !fs_plan(e,c,0,0).ok && e.n==0;
+  c.item=3;#assert !fs_plan(e,c,0,0).ok;
+  c.item=0;c.count=16;c.size=400;#assert !fs_plan(e,c,0,0).ok;
+  e.n=63;c.count=2;c.stack=false;c.size=100;#assert !fs_plan(e,c,0,0).ok;
+}
+#test "a moved or removed group preserves the rest and unsupported groups refuse" {
+  e:EgEdits;e.n=2;e.things[0]=eg_thing(0,6,-12,0,1);e.things[0].group=1;e.things[1]=eg_thing(1,12,-12,0,1);e.things[1].group=2;
+  c:[1]ForgeSceneCommand;#assert fs_command("{\"op\":\"move\",\"group\":1,\"dx_cm\":100,\"dz_cm\":0}",c[..]);
+  p:=fs_plan(e,c[0],0,0);#assert p.ok && p.count==1 && p.edits.things[0].x==7 && p.edits.things[1].x==12;
+  #assert fs_command("{\"op\":\"remove\",\"group\":1}",c[..]);p=fs_plan(e,c[0],0,0);#assert p.ok && p.edits.n==1 && p.edits.things[0].kind==1;
+  c[0].group=3;#assert !fs_plan(e,c[0],0,0).ok;
+  #assert !fs_command("{\"op\":\"move\",\"group\":0}",c[..]);
+  c[0]=ForgeSceneCommand.{op=FS_PLACE,item=1,count=1};p=fs_plan(EgEdits.{},c[0],600,-1200);#assert p.ok && p.edits.things[0].z>-12;
+}
+#test "scene command boundaries are inclusive and every field has its declared type" {
+  c:[1]ForgeSceneCommand;
+  for item:0..<EG_EDIT_ITEMS {
+    b:[256]u8;n:=raw_put(b[..],0,"{\"op\":\"place\",\"item\":\"");n=raw_put(b[..],n,EG_EDIT_NAME[item]);n=raw_put(b[..],n,"\"}");
+    #assert fs_command(cast(string)b[0..<n],c[..]) && c[0].item==item;
+  }
+  #assert fs_command("{\"op\":\"place\",\"item\":\"crate\",\"count\":16,\"size_percent\":400,\"x_cm\":-16000,\"z_cm\":16000,\"arrangement\":\"row\"}",c[..]);
+  #assert c[0].count==16 && c[0].size==400 && c[0].x== -16000 && c[0].z==16000 && !c[0].stack;
+  #assert fs_command("{\"op\":\"place\",\"item\":\"crate\",\"count\":1,\"size_percent\":25,\"x_cm\":16000,\"z_cm\":-16000}",c[..]);
+  #assert fs_command("{\"op\":\"move\",\"group\":1000000,\"dx_cm\":-16000,\"dz_cm\":16000}",c[..]) && c[0].op==FS_MOVE && c[0].group==1000000 && c[0].dx== -16000 && c[0].dz==16000;
+  #assert fs_command("{\"op\":\"move\",\"group\":1,\"dx_cm\":16000,\"dz_cm\":-16000}",c[..]);
+  #assert !fs_command("{\"op\":\"place\",\"item\":\"crate\",\"arrangement\":\"\"}",c[..]);
+  invalid:=[29]string.["\"crate\"","{\"op\":1}","{\"op\":\"place\",\"item\":0}","{\"op\":\"place\",\"item\":\"crate\",\"count\":null}","{\"op\":\"place\",\"item\":\"crate\",\"size_percent\":true}","{\"op\":\"place\",\"item\":\"crate\",\"arrangement\":false}","{\"op\":\"place\",\"item\":\"crate\",\"z_cm\":0}","{\"op\":\"place\",\"item\":\"crate\",\"x_cm\":-16001,\"z_cm\":0}","{\"op\":\"place\",\"item\":\"crate\",\"x_cm\":16001,\"z_cm\":0}","{\"op\":\"place\",\"item\":\"crate\",\"x_cm\":0,\"z_cm\":-16001}","{\"op\":\"place\",\"item\":\"crate\",\"x_cm\":0,\"z_cm\":16001}","{\"op\":\"place\",\"item\":\"crate\",\"x_cm\":\"0\",\"z_cm\":0}","{\"op\":\"place\",\"item\":\"crate\",\"group\":1}","{\"op\":\"place\",\"item\":\"crate\",\"dx_cm\":1}","{\"op\":\"place\",\"item\":\"crate\",\"dz_cm\":1}","{\"op\":\"move\",\"group\":1000001}","{\"op\":\"move\",\"group\":1,\"dx_cm\":-16001}","{\"op\":\"move\",\"group\":1,\"dx_cm\":16001}","{\"op\":\"move\",\"group\":1,\"dz_cm\":-16001}","{\"op\":\"move\",\"group\":1,\"dz_cm\":16001}","{\"op\":\"move\",\"group\":1,\"item\":\"crate\"}","{\"op\":\"remove\",\"group\":1,\"count\":1}","{\"op\":\"remove\",\"group\":1,\"size_percent\":100}","{\"op\":\"move\",\"group\":1,\"arrangement\":\"row\"}","{\"op\":\"move\",\"group\":1,\"x_cm\":0}","{\"op\":\"move\",\"group\":1,\"z_cm\":0}","{\"op\":\"remove\"}","{\"op\":\"move\",\"group\":1.5}","{\"op\":\"place\",\"item\":\"crate\",\"count\":99999999}"];
+  for text:invalid {#assert !fs_command(text,c[..]);}
+}
+#test "scene session ports positions and age boundaries are enforced" {
+  s:[1]ForgeSceneSession;
+  for port:[2]string.["1","65535"] {
+    b:[512]u8;n:=raw_put(b[..],0,"{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://127.0.0.1:");n=raw_put(b[..],n,port);n=raw_put(b[..],n,"\",\"observed_ms\":0,\"x_cm\":-16000,\"z_cm\":16000}");
+    #assert fs_session(cast(string)b[0..<n],0,s[..]) && s[0].x== -16000 && s[0].z==16000;
+    #assert s[0].n==17+port.count && cast(string)s[0].api[17..<s[0].n]==port;
+  }
+  for port:[7]string.["","0","65536","123456","/","a","1/"] {
+    b:[512]u8;n:=raw_put(b[..],0,"{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://127.0.0.1:");n=raw_put(b[..],n,port);n=raw_put(b[..],n,"\",\"observed_ms\":0,\"x_cm\":0,\"z_cm\":0}");#assert !fs_session(cast(string)b[0..<n],0,s[..]);
+  }
+  for tail:[9]string.["\"x_cm\":0,\"z_cm\":0","\"observed_ms\":-1,\"x_cm\":0,\"z_cm\":0","\"observed_ms\":0,\"x_cm\":-16001,\"z_cm\":0","\"observed_ms\":0,\"x_cm\":16001,\"z_cm\":0","\"observed_ms\":0,\"x_cm\":0,\"z_cm\":-16001","\"observed_ms\":0,\"x_cm\":0,\"z_cm\":16001","\"observed_ms\":0,\"x_cm\":0","\"observed_ms\":0,\"z_cm\":0","\"observed_ms\":0,\"x_cm\":\"0\",\"z_cm\":0"] {
+    b:[512]u8;n:=raw_put(b[..],0,"{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://127.0.0.1:1\",");n=raw_put(b[..],n,tail);n=raw_put(b[..],n,"}");#assert !fs_session(cast(string)b[0..<n],0,s[..]);
+  }
+  #assert !fs_session("oops",0,s[..]);
+}
+#test "scene staging is bounded atomic and preserves document flags across group edits" {
+  c:=ForgeSceneCommand.{op=FS_PLACE,item=0,count=1};e:EgEdits;
+  p:=fs_plan(e,c,600,-1200);#assert p.ok && p.searched==1 && p.edits.things[0].x==6 && p.edits.things[0].z== -10;
+  p=fs_plan(e,c,16000,16000);#assert !p.ok && p.searched==64 && p.edits.n==0;
+  c.located=true;c.x=0;c.z=0;p=fs_plan(e,c,100,100);#assert !p.ok && p.searched==1;
+  c.x=600;c.z= -1200;p=fs_plan(e,c,600,-1200);#assert !p.ok && p.edits.n==0;
+  e.n=64;#assert !fs_plan(e,c,0,0).ok;e.n=63;
+  for i:0..<63 {e.things[i]=eg_thing(0,40,40,0,1);e.things[i].lift=1;e.things[i].group=9;}
+  p=fs_plan(e,c,0,0);#assert p.ok && p.edits.n==64 && p.group==10;
+  e=EgEdits.{};c.count=2;c.x=0;c.z=0;#assert !fs_plan(e,c,0,0).ok;
+  e.n=3;e.gone=3;e.hidden=5;
+  for i:0..<3 {e.things[i]=eg_thing(0,6+f32(i)*3,-12,0,1);e.things[i].group=ifx i==1 then 2 else 1;}
+  c=ForgeSceneCommand.{op=FS_MOVE,group=1,dx=100,dz=100};p=fs_plan(e,c,0,0);
+  #assert p.ok && p.group==1 && p.count==2 && p.edits.things[0].x==7 && p.edits.things[2].z== -11 && p.edits.gone==3 && p.edits.hidden==5;
+  c.dx= -600;c.dz=1200;p=fs_plan(e,c,0,0);#assert !p.ok && p.edits.things[0].x==6;
+  c.op=FS_REMOVE;p=fs_plan(e,c,0,0);#assert p.ok && p.count==2 && p.edits.n==1 && p.edits.things[0].group==2 && p.edits.gone==3 && p.edits.hidden==5;
+}
+#test "scene defaults exact support heights and nearby fallback lanes have executable boundaries" {
+  c:[1]ForgeSceneCommand;
+  #assert fs_command("{\"op\":\"place\",\"item\":\"crate\"}",c[..]) && c[0].count==1 && c[0].x==0 && c[0].z==0 && !c[0].located;
+  #assert fs_command("{\"op\":\"move\",\"group\":1}",c[..]) && c[0].dx==0 && c[0].dz==0;
+  #assert !fs_command("{\"extra\":1,\"op\":\"place\",\"item\":\"crate\"}",c[..]);
+  #assert !fs_command("{\"op\":\"place\",\"item\":\"crate\",\"extra\":\"yes\"}",c[..]);
+  e:EgEdits;cmd:=ForgeSceneCommand.{op=FS_PLACE,item=4,count=11,stack=true,located=true,x=600,z=-1200};
+  p:=fs_plan(e,cmd,0,0);#assert p.ok && p.edits.things[10].lift==10;
+  cmd.count=12;#assert !fs_plan(e,cmd,0,0).ok;
+  cmd.item=3;cmd.count=1;#assert !fs_plan(e,cmd,0,0).ok;
+  cmd.item=0;cmd.count=16;cmd.size=25;#assert fs_plan(e,cmd,0,0).ok;
+  cmd.item=2;cmd.count=3;cmd.size=100;cmd.stack=false;p=fs_plan(e,cmd,0,0);
+  #assert p.ok && abs(p.edits.things[0].x-1.97)<0.0001 && abs(p.edits.things[2].x-10.03)<0.0001;
+  cmd.item=0;cmd.count=1;cmd.x=600;cmd.z= -1200;p=fs_plan(e,cmd,600,-1300);#assert p.ok;
+  cmd.located=false;
+  for i:0..<16 {
+    p=fs_plan(e,cmd,600,-1200);#assert p.ok && p.searched==i+1;
+    expected:=[8]f32.[6,8,4,10,2,12,0,14];
+    #assert p.edits.things[e.n].x==expected[i%8] && p.edits.things[e.n].z==(ifx i<8 then -10.0f32 else -8.0f32);
+    e=p.edits;
+  }
+}
+#test "scene origin validation separates its prefix digit count numeric range and coordinate ends" {
+  s:[1]ForgeSceneSession;
+  for port:[3]string.["10","9","00001"] {
+    b:[512]u8;n:=raw_put(b[..],0,"{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://127.0.0.1:");n=raw_put(b[..],n,port);n=raw_put(b[..],n,"\",\"observed_ms\":0,\"x_cm\":16000,\"z_cm\":-16000}");
+    #assert fs_session(cast(string)b[0..<n],0,s[..]) && s[0].x==16000 && s[0].z== -16000;
+  }
+  for api:[5]string.["","x","http://127.0.0.2:1","http://127.0.0.1:000001","http://127.0.0.1::"] {
+    b:[512]u8;n:=raw_put(b[..],0,"{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"");n=raw_put(b[..],n,api);n=raw_put(b[..],n,"\",\"observed_ms\":0,\"x_cm\":0,\"z_cm\":0}");#assert !fs_session(cast(string)b[0..<n],0,s[..]);
+  }
+}
+fs_field :: (key:string)->int {for k:0..<FS_FIELDS.count {if key==FS_FIELDS[k] {return k;}}return FS_FIELDS.count;}
+fs_command :: (text:string,out:[]ForgeSceneCommand)->bool {
+  nodes:[32]JvNode;d:[1]Jv;if !jv_parse(d[..],text,nodes[..]) {return false;}
+  v:=d[0];seen:u32=0;
+  for i:1..<v.count {
+    field:=fs_field(jv_key(v,i));
+    if field==FS_FIELDS.count || (seen & (cast(u32)1 << cast(u32)field))!=0 {return false;}
+    seen|=cast(u32)1 << cast(u32)field;
+    if field==0 || field==1 || field==3 {if jv_kind(v,i)!=JV_STRING {return false;}}
+    else {if jv_int(v,i,FS_INVALID_INT)==FS_INVALID_INT {return false;}}
+  }
+  c:ForgeSceneCommand;op:=jv_raw(v,jv_get(v,0,"op"));
+  if op=="place" {c.op=FS_PLACE;}else if op=="move" {c.op=FS_MOVE;}else if op=="remove" {c.op=FS_REMOVE;}else{return false;}
+  c.group=jv_int(v,jv_get(v,0,"group"),0);c.dx=jv_int(v,jv_get(v,0,"dx_cm"),0);c.dz=jv_int(v,jv_get(v,0,"dz_cm"),0);
+  if c.op!=FS_PLACE {
+    if (seen & cast(u32)126)!=0 || c.group<1 || c.group>1000000 || c.dx < -16000 || c.dx>16000 || c.dz < -16000 || c.dz>16000 {return false;}
+    out[0]=c;return true;
+  }
+  if (seen & cast(u32)896)!=0 {return false;}
+  item:=jv_raw(v,jv_get(v,0,"item"));for i:0..<EG_EDIT_ITEMS {if item==EG_EDIT_NAME[i] {c.item=i;}}
+  if c.item<0 {return false;}
+  c.count=jv_int(v,jv_get(v,0,"count"),1);c.size=jv_int(v,jv_get(v,0,"size_percent"),100);
+  arr:=jv_raw(v,jv_get(v,0,"arrangement"));if arr!="row" && arr!="stack" && (seen & cast(u32)8)!=0 {return false;}c.stack=arr=="stack";
+  c.located=jv_get(v,0,"x_cm")!= -1;if c.located!=(jv_get(v,0,"z_cm")!= -1) {return false;}
+  c.x=jv_int(v,jv_get(v,0,"x_cm"),0);c.z=jv_int(v,jv_get(v,0,"z_cm"),0);
+  if c.count<1 || c.count>16 || c.size<25 || c.size>400 || c.x < -16000 || c.x>16000 || c.z < -16000 || c.z>16000 {return false;}
+  out[0]=c;return true;
+}
+fs_plan :: (before:EgEdits,c:ForgeSceneCommand,px:int,pz:int)->ForgeScenePlan {
+  p:ForgeScenePlan;p.edits=before;
+  if c.op!=FS_PLACE {
+    p.group=c.group;after:EgEdits;after.gone=before.gone;after.hidden=before.hidden;
+    for i:0..<before.n {
+      t:=before.things[i];match:=t.group==c.group;if match {p.count+=1;}
+      if match && c.op==FS_REMOVE {continue;}
+      if match {t.x+=f32(c.dx)/100;t.z+=f32(c.dz)/100;}
+      after.things[after.n]=t;after.n+=1;
+    }
+    if p.count==0 {return p;}
+    for i:0..<after.n {if eg_edit_fault(after,i)!=EG_FAULT_NONE {return p;}}
+    p.edits=after;p.ok=true;return p;
+  }
+  if before.n+c.count>EG_EDIT_MAX {return p;}
+  height:=EG_EDIT_TOP[c.item]*f32(c.size)/100;
+  if c.stack && (height==0 || height*f32(c.count-1)>10) {return p;}
+  group:=eg_new_group(before);scale:=f32(c.size)/100;
+  // Leave a walkable gap between a row's individual crates, rather than
+  // creating narrow pockets that a body's detour cannot enter.
+  spacing:=EG_EDIT_HALF[c.item*3]*scale*2+1.25;
+  tries:=ifx c.located then 1 else 64;
+  for attempt:0..<tries {
+    p.searched+=1;
+    after:=before;
+    offsets:=[8]int.[0,2,-2,4,-4,6,-6,8];
+    x:=ifx c.located then f32(c.x)/100 else f32(px)/100+f32(offsets[attempt%8]);
+    z:=ifx c.located then f32(c.z)/100 else f32(pz)/100+2+f32(attempt/8)*2;
+    valid:=true;
+    for k:0..<c.count {
+      t:=eg_thing(c.item,x,z,0,scale);t.group=group;
+      if c.stack {t.lift=height*f32(k);}else{t.x+=(f32(k)-f32(c.count-1)/2)*spacing;}
+      after.things[after.n]=t;after.n+=1;
+      if eg_edit_fault(after,after.n-1)!=EG_FAULT_NONE || eg_gap2(t.x,t.z,f32(px)/100,f32(pz)/100)<1 {valid=false;}
+    }
+    if valid {p.ok=true;p.edits=after;p.group=group;p.count=c.count;return p;}
+  }
+  return p;
+}
+fs_session :: (text:string,now:int,out:[]ForgeSceneSession)->bool {
+  nodes:[24]JvNode;d:[1]Jv;if !jv_parse(d[..],text,nodes[..]) {return false;}
+  v:=d[0];if jv_raw(v,jv_get(v,0,"schema"))!="aethyrforge.scene-session.v1" {return false;}
+  api:=jv_raw(v,jv_get(v,0,"api"));prefix:="http://127.0.0.1:";
+  if api[0..<lo_i(api.count,prefix.count)]!=prefix {return false;}
+  if api.count-prefix.count>5 {return false;}
+  port:=0;for i:prefix.count..<api.count {if api[i]<'0' || api[i]>'9' {return false;}port=port*10+cast(int)(api[i]-'0');}
+  if port<1 || port>65535 {return false;}
+  stamp:=jv_int(v,jv_get(v,0,"observed_ms"),-1);
+  // Missing or mistyped coordinates lie immediately below the valid interval.
+  x:=jv_int(v,jv_get(v,0,"x_cm"),-16001);z:=jv_int(v,jv_get(v,0,"z_cm"),-16001);
+  if stamp<0 || now<stamp || now-stamp>5000 || x < -16000 || x>16000 || z < -16000 || z>16000 {return false;}
+  out[0].n=api.count;for i:0..<api.count {out[0].api[i]=api[i];}out[0].x=x;out[0].z=z;return true;
+}

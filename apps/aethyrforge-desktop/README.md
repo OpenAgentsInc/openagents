@@ -27,7 +27,7 @@ The relay uses `localhost`, the existing room client's required local override,
 so the WebSocket connects straight to the room and leaves the HTTP page proxy
 free to serve saves.
 
-Every launch shows setup over the running Everglade scene. It checks the shared
+Every launch shows setup over the Everglade scene. It checks the shared
 CLI, lists running local agent engines and lets you keep a preferred engine,
 shows the installed voice/edit models without hashing their contents. Running
 processes are observations, not attached agents;
@@ -200,6 +200,36 @@ apps/aethyrforge-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge --setu
 Reports include the first-frame time and child PIDs; matching PNGs show the frame.
 Use a fresh directory for a new edit test. This is milestone one's shell/save
 check, not the future voice acceptance suite.
+
+The routed conversation also controls the live local scene. Say or type
+“add three crates” or “add a stack of five crates”; Coder uses the prebuilt Coax
+scene tool to create saved catalogue objects, including player collision and NPC
+avoidance. It can move or remove a whole group. Stacks include their base, and
+rows leave walkable gaps. Placement admission and planning live in
+`scene-policy.coax`; Swift observes player position and supplies the local
+session address. See [the command contract](../../docs/protocol/aethyrforge-scene-v1.md).
+
+The same tool works programmatically while the app is running:
+
+```sh
+~/.openagents/bin/aethyrforge-scene show
+~/.openagents/bin/aethyrforge-scene apply '{"op":"place","item":"crate","count":3}'
+~/.openagents/bin/aethyrforge-scene apply '{"op":"place","item":"crate","count":5,"arrangement":"stack"}'
+```
+
+The hidden scene check exercises programmatic placement, group move/removal,
+atomic refusal, two real automatically routed Coder requests with the composer
+closed, the page's world refresh, and persistence on a second launch. It uses
+the installed provider login and local Elephant router, with an isolated world
+and Coder history. The NPC regression walks around the exact planned footprints.
+
+```sh
+coax/bin/coax test apps/aethyrforge-desktop/scene-policy.coax
+coax/bin/coax test apps/aethyrforge-desktop/scene-collision-checks.coax
+mkdir -p /tmp/aethyrforge-scene
+apps/aethyrforge-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge --scene-smoke /tmp/aethyrforge-scene/result.json
+apps/aethyrforge-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge --scene-smoke /tmp/aethyrforge-scene/reopened.json --scene-reopen
+```
 
 The chat smoke uses the native composer and real packaged/shared CLI without
 opening a window or starting the world. It checks two replies and context.

@@ -62,6 +62,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     var startup: Task<Void, Never>?
     var framePump: Task<Void, Never>?
     var inventoryTask: Task<Void, Never>?
+    var sceneContextTask: Task<Void, Never>?
     var setupPane: ForgeSetupPane!
     var chatPane: ForgeChatPane!
     var sceneReady = false
@@ -80,6 +81,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     let voiceSmoke = CommandLine.arguments.contains("--voice-smoke")
     let chatSmoke = CommandLine.arguments.contains("--chat-smoke")
     let inputSmoke = CommandLine.arguments.contains("--input-smoke")
+    let sceneSmoke = CommandLine.arguments.contains("--scene-smoke")
     var microphoneReport: URL? {
         guard let i = CommandLine.arguments.firstIndex(of: "--microphone-check"), i + 1 < CommandLine.arguments.count else { return nil }
         return URL(fileURLWithPath: CommandLine.arguments[i + 1])
@@ -88,9 +90,9 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         guard let i = CommandLine.arguments.firstIndex(of: "--launch-check"), i + 1 < CommandLine.arguments.count else { return nil }
         return URL(fileURLWithPath: CommandLine.arguments[i + 1])
     }
-    var smoke: Bool { inputSmoke || chatSmoke || setupSmoke || voiceSmoke || CommandLine.arguments.contains("--smoke-test") }
+    var smoke: Bool { sceneSmoke || inputSmoke || chatSmoke || setupSmoke || voiceSmoke || CommandLine.arguments.contains("--smoke-test") }
     var report: URL? {
-        guard let i = CommandLine.arguments.firstIndex(of: inputSmoke ? "--input-smoke" : chatSmoke ? "--chat-smoke" : voiceSmoke ? "--voice-smoke" : setupSmoke ? "--setup-smoke" : "--smoke-test"), i + 1 < CommandLine.arguments.count else { return nil }
+        guard let i = CommandLine.arguments.firstIndex(of: sceneSmoke ? "--scene-smoke" : inputSmoke ? "--input-smoke" : chatSmoke ? "--chat-smoke" : voiceSmoke ? "--voice-smoke" : setupSmoke ? "--setup-smoke" : "--smoke-test"), i + 1 < CommandLine.arguments.count else { return nil }
         return URL(fileURLWithPath: CommandLine.arguments[i + 1])
     }
 
@@ -284,6 +286,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
             firstFrameSeconds = Date().timeIntervalSince(startedAt)
             notice.isHidden = true
             sceneReady = true; setupPane.sceneReady = true; setupPane.update()
+            try await startSceneControls()
             if let launchReport {
                 await inventoryTask?.value
                 enterWorld()
@@ -307,6 +310,9 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
             if microphoneReport != nil {
                 await inventoryTask?.value
                 try await microphoneCheck()
+            } else if sceneSmoke {
+                await inventoryTask?.value
+                try await sceneSmokeCheck(resources)
             } else if inputSmoke {
                 await inventoryTask?.value
                 try await inputSmokeCheck()
@@ -328,6 +334,109 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
             try await Task.sleep(for: .milliseconds(100))
         }
         throw ShellError.failed("Local server did not start. Check room.log and serve.log in the local world folder.")
+    }
+
+    // SDK effects only: observe the running Coax player's position and publish
+    // the local service address for the prebuilt Coax scene tool.
+    func startSceneControls() async throws {
+        let base = dataURL.deletingLastPathComponent()
+        let session = base.appendingPathComponent("scene-session.json")
+        let instructions = base.appendingPathComponent("scene-coder.txt")
+        var bytes = [UInt8](repeating: 0, count: 8192)
+        let n = fgc_scene_instructions(&bytes, Int64(bytes.count))
+        guard n > 0 else { throw ShellError.failed("Scene tool context is unavailable.") }
+        try Data(bytes.prefix(Int(n))).write(to: instructions, options: .atomic)
+        try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: instructions.path)
+        chatPane.sceneSessionURL = session; chatPane.sceneContextURL = instructions
+        try await updateSceneSession()
+        sceneContextTask = Task {
+            while !Task.isCancelled && !stopping {
+                try? await Task.sleep(for: .milliseconds(500))
+                if !Task.isCancelled && !stopping { try? await updateSceneSession() }
+            }
+        }
+    }
+    func updateSceneSession() async throws {
+        guard !stopping, sceneReady, let session = chatPane.sceneSessionURL, let pageURL else { return }
+        let value = try await web.evaluateJavaScript("JSON.stringify({x_cm:Math.round(coaxial.fieldProbe(0)/10),z_cm:Math.round(coaxial.fieldProbe(2)/10)})") as? String ?? "{}"
+        var data = try JSONSerialization.jsonObject(with: Data(value.utf8)) as? [String: Any] ?? [:]
+        data["schema"] = "aethyrforge.scene-session.v1"
+        data["api"] = "http://127.0.0.1:\(pageURL.port!)"
+        data["pid"] = ProcessInfo.processInfo.processIdentifier
+        var stamp = timespec(); clock_gettime(CLOCK_MONOTONIC, &stamp)
+        data["observed_ms"] = Int64(stamp.tv_sec) * 1000 + Int64(stamp.tv_nsec) / 1_000_000
+        guard !stopping else { return }
+        try JSONSerialization.data(withJSONObject: data, options: [.sortedKeys, .withoutEscapingSlashes]).write(to: session, options: .atomic)
+        try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: session.path)
+    }
+
+    func sceneSmokeCheck(_ resources: URL) async throws {
+        guard let report, let session = chatPane.sceneSessionURL else { throw ShellError.failed("Scene fixture has no local tool session.") }
+        enterWorld()
+        let tool = resources.appendingPathComponent("aethyrforge-scene")
+        func command(_ json: String? = nil) async throws -> [String: Any] {
+            let args = json.map { ["apply", $0] } ?? ["show"]
+            let data = try await ForgeCLI.run(tool, args + ["--session", session.path], timeout: 30)
+            let state = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+            guard state["ok"] as? Bool == true else { throw ShellError.failed("Scene tool: \(state["error"] ?? "unknown failure")") }
+            return state
+        }
+        func objects(_ state: [String: Any]) -> [[String: Any]] { state["objects"] as? [[String: Any]] ?? [] }
+        let original = try await command()
+        if CommandLine.arguments.contains("--scene-reopen") {
+            let prior = try JSONSerialization.jsonObject(with: Data(contentsOf: report.deletingLastPathComponent().appendingPathComponent("result.json"))) as? [String: Any] ?? [:]
+            guard objects(original).count == prior["totalObjects"] as? Int else { throw ShellError.failed("Scene objects did not survive reopening.") }
+            try JSONSerialization.data(withJSONObject: ["reopened": true, "totalObjects": objects(original).count]).write(to: report)
+            stopChildren(); NSApp.terminate(nil); return
+        }
+        let firstCount = objects(original).count
+        let getsBefore = try await web.evaluateJavaScript("__forgeRequests.filter(r=>r.method==='GET').length") as? Int ?? 0
+        let row = try await command("{\"op\":\"place\",\"item\":\"crate\",\"count\":3,\"x_cm\":600,\"z_cm\":-1200}")
+        let stack = try await command("{\"op\":\"place\",\"item\":\"crate\",\"count\":5,\"arrangement\":\"stack\",\"x_cm\":1200,\"z_cm\":-1200}")
+        guard let rowGroup = row["group"] as? Int, let stackGroup = stack["group"] as? Int else { throw ShellError.failed("Scene tool returned no groups.") }
+        var state = try await command()
+        let pile = objects(state).filter { $0["group"] as? Int == stackGroup }
+        guard objects(state).count == firstCount + 8, pile.count == 5,
+              pile.compactMap({ $0["lift_cm"] as? Int }).sorted() == [0,93,186,279,372] else { throw ShellError.failed("Programmatic row/stack did not produce real scene objects.") }
+        _ = try await command("{\"op\":\"move\",\"group\":\(rowGroup),\"dz_cm\":400}")
+        _ = try await command("{\"op\":\"remove\",\"group\":\(stackGroup)}")
+        let beforeBad = try await command()
+        var refused = false
+        do { _ = try await command("{\"op\":\"place\",\"item\":\"crate\",\"x_cm\":0,\"z_cm\":0}") } catch { refused = true }
+        state = try await command()
+        guard refused, state["version"] as? Int == beforeBad["version"] as? Int else { throw ShellError.failed("Blocked placement changed the scene.") }
+        let root = report.deletingLastPathComponent()
+        chatPane.home = root; chatPane.cwd = root.appendingPathComponent("workspace"); chatPane.cliOverride = resources.appendingPathComponent("openagents")
+        try fm.createDirectory(at: chatPane.cwd, withIntermediateDirectories: true)
+        try fm.createDirectory(at: root.appendingPathComponent(".openagents/aethyrforge"), withIntermediateDirectories: true)
+        let router = root.appendingPathComponent(".openagents/coder/router.json")
+        try fm.createDirectory(at: router.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if !fm.fileExists(atPath: router.path) { try fm.copyItem(at: fm.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/coder/router.json"), to: router) }
+        var sessions: [String] = []
+        for prompt in ["Add three crates to the scene.", "Add a stack of five crates to the scene."] {
+            let before = try await command()
+            chatPane.startTurn(prompt, voice: true)
+            let end = Date().addingTimeInterval(120)
+            while chatPane.busy && Date() < end {
+                if chatPane.pending { throw ShellError.failed("Scene Coder unexpectedly requested tool approval.") }
+                try await Task.sleep(for: .milliseconds(100))
+            }
+            guard !chatPane.busy, chatPane.lastEnding.hasPrefix("finished") else { throw ShellError.failed("Scene Coder failed: \(chatPane.transcript.string.suffix(2000))") }
+            state = try await command(); let added = objects(state).count - objects(before).count
+            guard added == (sessions.isEmpty ? 3 : 5) else { throw ShellError.failed("Coder said it edited the scene but added \(added) objects: \(chatPane.transcript.string.suffix(2000))") }
+            sessions.append(chatPane.session)
+        }
+        let latest = objects(state).suffix(5)
+        guard latest.compactMap({ $0["lift_cm"] as? Int }).sorted() == [0,93,186,279,372], Set(latest.compactMap({ $0["group"] as? Int })).count == 1 else { throw ShellError.failed("Natural-language stack was not stacked.") }
+        try await Task.sleep(for: .seconds(3))
+        let getsAfter = try await web.evaluateJavaScript("__forgeRequests.filter(r=>r.method==='GET' && r.status===200).length") as? Int ?? 0
+        guard getsAfter > getsBefore else { throw ShellError.failed("The page did not fetch the changed world.") }
+        try await captureCanvas(report)
+        let result: [String: Any] = ["ok": true, "programmaticRow": true, "programmaticStack": true, "groupMoveRemove": true,
+            "blockedRefused": refused, "naturalLanguageSessions": sessions, "pageFetchedChanges": true,
+            "totalObjects": objects(state).count, "version": state["version"] ?? 0, "engine": chatPane.selectedEngine]
+        try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]).write(to: report)
+        stopChildren(); NSApp.terminate(nil)
     }
 
     func waitForScene() async throws {
@@ -961,6 +1070,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         chatPane?.shutdown()
         framePump?.cancel()
         inventoryTask?.cancel()
+        sceneContextTask?.cancel()
         voiceStartup?.cancel()
         if let reservation = voiceReservation { close(reservation.0); voiceReservation = nil }
         for child in [page, room, voiceHost].compactMap({ $0 }) where child.isRunning { child.terminate() }

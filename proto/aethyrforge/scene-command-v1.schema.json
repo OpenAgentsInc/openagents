@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagents.com/proto/aethyrforge/scene-command-v1.schema.json",
+  "title": "Local Aethyrforge scene command v1",
+  "type": "object",
+  "required": ["op"],
+  "properties": {
+    "op": {"enum": ["place", "move", "remove"]},
+    "item": {"type": "string"},
+    "count": {"type": "integer", "minimum": 1, "maximum": 16},
+    "arrangement": {"enum": ["row", "stack"]},
+    "size_percent": {"type": "integer", "minimum": 25, "maximum": 400},
+    "x_cm": {"type": "integer", "minimum": -16000, "maximum": 16000},
+    "z_cm": {"type": "integer", "minimum": -16000, "maximum": 16000},
+    "group": {"type": "integer", "minimum": 1, "maximum": 1000000},
+    "dx_cm": {"type": "integer", "minimum": -16000, "maximum": 16000},
+    "dz_cm": {"type": "integer", "minimum": -16000, "maximum": 16000}
+  },
+  "additionalProperties": false,
+  "dependentRequired": {"x_cm": ["z_cm"], "z_cm": ["x_cm"]},
+  "oneOf": [
+    {
+      "properties": {"op": {"const": "place"}},
+      "required": ["item"],
+      "not": {"anyOf": [{"required": ["group"]}, {"required": ["dx_cm"]}, {"required": ["dz_cm"]}]}
+    },
+    {
+      "properties": {"op": {"enum": ["move", "remove"]}},
+      "required": ["group"],
+      "not": {"anyOf": [{"required": ["item"]}, {"required": ["count"]}, {"required": ["arrangement"]}, {"required": ["size_percent"]}, {"required": ["x_cm"]}, {"required": ["z_cm"]}]}
+    }
+  ]
+}

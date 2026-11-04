@@ -166,6 +166,8 @@ final class ForgeChatPane: NSView {
     var settings: URL { home.appendingPathComponent(".openagents/aethyrforge/chat.json") }
     var sessions: URL { home.appendingPathComponent(".openagents/coder/sessions") }
     var cliOverride: URL?
+    var sceneContextURL: URL?
+    var sceneSessionURL: URL?
     var cli: URL { cliOverride ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/bin/openagents") }
     var stopping = false
     var onActivity: (() -> Void)?
@@ -327,6 +329,10 @@ final class ForgeChatPane: NSView {
         env["OPENAGENTS_CODER_BIN"] = resources.appendingPathComponent("coder").path
         env["CODER_MICRO_WORKER"] = resources.appendingPathComponent("mcworker").path
         env.removeValue(forKey: "CODER_ASK_FILE"); env["CODER_REALM_TOOLS"] = "0"
+        if let sceneSessionURL {
+            env["AETHYRFORGE_SCENE_SESSION"] = sceneSessionURL.path
+            env["AETHYRFORGE_SCENE_TOOL"] = resources.appendingPathComponent("aethyrforge-scene").path
+        }
         env["BROWSER"] = "/usr/bin/true"; env["NO_OPEN_BROWSER"] = "1"
         if home != FileManager.default.homeDirectoryForCurrentUser { env["CODER_HOME"] = home.path }
         return env
@@ -348,6 +354,7 @@ final class ForgeChatPane: NSView {
         if voice { appendMessage("You: \(text)\n\n") }
         var args = ["coder"] + (parent.isEmpty ? ["run", text] : ["fork", parent, text])
         args += ["--cwd", cwd.path]
+        if let sceneContextURL { args += ["--context", sceneContextURL.path] }
         for i in 0..<8 {
             var bytes = [UInt8](repeating: 0, count: 128)
             let n = fgc_launch_option(Int64(i), &bytes, Int64(bytes.count))

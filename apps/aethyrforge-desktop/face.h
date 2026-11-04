@@ -30,6 +30,7 @@ int64_t fgc_chat_mode(bool opened, bool busy, int64_t now_ms);
 void fgc_feed_event(int64_t kind, const uint8_t *p, int64_t n, int64_t now_ms);
 int64_t fgc_feed_copy(uint8_t *p,int64_t cap);
 int64_t fgc_launch_option(int64_t i,uint8_t *out,int64_t cap);
+int64_t fgc_scene_instructions(uint8_t *out,int64_t cap);
 int64_t fgc_feed_draw(float *out,int64_t cap,float w,float h,float d);
 int64_t fgc_enter_route(bool ready, bool opened, int64_t key, bool down, bool repeated, bool modified, bool held);
 bool fgc_answer(bool busy, bool pending, const uint8_t *p, int64_t n);

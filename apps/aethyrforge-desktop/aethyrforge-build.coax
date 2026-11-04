@@ -195,18 +195,18 @@ tool_main :: () -> int #export_c {
   hash_cmd := [4]string.["shasum","-a","256",coax];
   if af_run(hash_cmd[..],out[..],deadline)<64 {return 1;}
   hash_buf:[64]u8; for i:0..<64 {hash_buf[i]=out[i];} hash:=cast(string)hash_buf[..];
-  for name:[2]string.["coder","mcworker"] {
+  for name:[3]string.["coder","mcworker","scene-cli"] {
     src_buf:[128]u8; sn:=0;
-    for c:"coder/tui/" {src_buf[sn]=c;sn+=1;} for c:name {src_buf[sn]=c;sn+=1;}
+    for c:(ifx name=="scene-cli" then "apps/aethyrforge-desktop/" else "coder/tui/") {src_buf[sn]=c;sn+=1;} for c:name {src_buf[sn]=c;sn+=1;}
     for c:".coax" {src_buf[sn]=c;sn+=1;}
-    cmd:=[3]string.[af_path(p[..],root,"coax/web/tool.sh"),af_path(p[..],root,cast(string)src_buf[0..<sn]),"--version"];
+    cmd:=[3]string.[af_path(p[..],root,"coax/web/tool.sh"),af_path(p[..],root,cast(string)src_buf[0..<sn]),ifx name=="scene-cli" then "--help" else "--version"];
     child:=af_start(cmd[..]); if child<0 {return 1;} closed:=proc_close_stdin(child);
     if !af_finish(child,deadline) {return 1;}
     cache_buf:[256]u8; k:=0;
     for c:"coax/web/build/tools/" {cache_buf[k]=c;k+=1;}
     for c:name {cache_buf[k]=c;k+=1;} cache_buf[k]='-';k+=1;
     for c:hash {cache_buf[k]=c;k+=1;}
-    cp:=[3]string.["ditto",af_path(p[..],root,cast(string)cache_buf[0..<k]),af_path(p[..],res,name)];
+    cp:=[3]string.["ditto",af_path(p[..],root,cast(string)cache_buf[0..<k]),af_path(p[..],res,ifx name=="scene-cli" then "aethyrforge-scene" else name)];
     if af_run(cp[..],out[..],deadline)<0 {return 1;}
   }
   pk := [3] string.["ditto", pk_image, af_path(p[..], res, "psionic-parakeet")];
@@ -231,7 +231,7 @@ tool_main :: () -> int #export_c {
     cp := [3] string.["ditto", app, installed]; if af_run(cp[..], out[..], deadline) < 0 { return 1; }
     bins := af_path(p[..], shared, "bin"); version := af_path(p[..], shared, "versions/aethyrforge-cli-coder-2026-11-04");
     if !fs_mkdir(bins) || !fs_mkdir(version) { return 1; }
-    for name: [5] string.["openagents", "openagents-dictate", "psionic-parakeet", "coder", "mcworker"] {
+    for name: [6] string.["openagents", "openagents-dictate", "psionic-parakeet", "coder", "mcworker", "aethyrforge-scene"] {
       target := af_path(p[..], version, name);
       copy := [3] string.["ditto", af_path(p[..], res, name), target]; if af_run(copy[..], out[..], deadline) < 0 { return 1; }
       if name != "coder" && name != "mcworker" {

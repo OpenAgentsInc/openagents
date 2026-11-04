@@ -1,0 +1,61 @@
+// Local scene effects for the desktop and any coding engine. All placement and
+// admission are Coax. The HTTP client uses the shared native socket/TLS effects.
+// tool.sh: tls
+#import "Basic";
+#load "scene-policy.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/net/http.coax";
+
+scene_error :: (message:string)->int {
+  out:[4096]u8;j:[1]Jo;jo_start(j[..],out[..]);jo_obj(j[..]);jo_key(j[..],"ok");jo_bool(j[..],false);jo_key(j[..],"error");jo_str(j[..],message);jo_end(j[..]);
+  print("%\n",jo_text(j[..]));return 1;
+}
+scene_request :: (api:string,method:string,body:string,out:[]u8)->HttpResult {
+  url:[256]u8;n:=raw_put(url[..],0,api);n=raw_put(url[..],n,"/api/playtest/world/everglade");
+  w:[1]HttpWork;headers:=[1]string.["Content-Type: application/json"];
+  return http_do(w[..],method,cast(string)url[0..<n],headers[..],body,10000,0,out);
+}
+scene_show :: (e:EgEdits,version:int,s:ForgeSceneSession,out:[]u8)->string {
+  j:[1]Jo;jo_start(j[..],out);jo_obj(j[..]);jo_key(j[..],"ok");jo_bool(j[..],true);jo_key(j[..],"version");jo_int(j[..],version);
+  jo_key(j[..],"player_x_cm");jo_int(j[..],s.x);jo_key(j[..],"player_z_cm");jo_int(j[..],s.z);
+  jo_key(j[..],"catalogue");jo_arr(j[..]);for name:EG_EDIT_NAME {jo_str(j[..],name);}jo_end(j[..]);
+  jo_key(j[..],"objects");jo_arr(j[..]);
+  for i:0..<e.n {t:=e.things[i];jo_obj(j[..]);jo_key(j[..],"index");jo_int(j[..],i);jo_key(j[..],"group");jo_int(j[..],t.group);jo_key(j[..],"item");jo_str(j[..],EG_EDIT_NAME[t.kind]);jo_key(j[..],"x_cm");jo_int(j[..],eg_round(t.x*100));jo_key(j[..],"z_cm");jo_int(j[..],eg_round(t.z*100));jo_key(j[..],"lift_cm");jo_int(j[..],eg_round(t.lift*100));jo_key(j[..],"size_percent");jo_int(j[..],eg_round(t.size*100));jo_end(j[..]);}
+  jo_end(j[..]);jo_end(j[..]);return jo_text(j[..]);
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return scene_error("Arguments are too large.");}
+  verb:=args_at(a[..],0);
+  if verb=="--help" {print("usage: aethyrforge-scene show | apply 'JSON' [--session FILE]\n");return 0;}
+  if verb!="show" && verb!="apply" {tool_errln("usage: aethyrforge-scene show | apply 'JSON' [--session FILE]");return 2;}
+  env:[4096]u8;path:[4096]u8;session:=args_value(a[..],"--session","");
+  if session=="" {session=proc_getenv("AETHYRFORGE_SCENE_SESSION",env[..]);}
+  if session=="" {home:[4096]u8;session=fs_join(proc_getenv("HOME",home[..]),".openagents/aethyrforge/scene-session.json",path[..]);}
+  data:[65536]u8;n:=fs_read(session,data[..]);s:[1]ForgeSceneSession;
+  if n<0 || !fs_session(cast(string)data[0..<n],proc_now_ms(),s[..]) {return scene_error("No fresh local Aethyrforge scene session. Open the desktop app.");}
+  api:=cast(string)s[0].api[0..<s[0].n];r:=scene_request(api,"GET","",data[..]);
+  if r.error!=HTTP_OK || r.code!=200 {return scene_error("The local scene could not be read.");}
+  answer:[65540]u8;an:=raw_put(answer[..],0,"200\n");an=raw_put(answer[..],an,cast(string)data[0..<r.n]);
+  e:[1]EgEdits;version:=eg_edits_answer(cast(string)answer[0..<an],e[..]);
+  if version<0 {return scene_error("The local world document is invalid.");}
+  shown:[65536]u8;if verb=="show" {print("%\n",scene_show(e[0],version,s[0],shown[..]));return 0;}
+  c:[1]ForgeSceneCommand;if !fs_command(args_at(a[..],1),c[..]) {return scene_error("Invalid scene command. Use place(item,count,arrangement,size_percent,x_cm,z_cm), move(group,dx_cm,dz_cm), or remove(group).");}
+  p:=fs_plan(e[0],c[0],s[0].x,s[0].z);
+  if !p.ok {return scene_error("No objects changed: the complete batch would collide, exceed capacity, use an unsupported stack, or name a missing group. Read show and choose another location or request.");}
+  body:[16384]u8;bn:=eg_edits_body(p.edits,"Aethyrforge scene command",body[..]);
+  if bn==0 {return scene_error("The world document is too large.");}
+  bn-=1;bn=raw_put(body[..],bn,",\"base\":");bn=eg_put_int(body[..],bn,version);bn=raw_put(body[..],bn,"}");
+  r=scene_request(api,"POST",cast(string)body[0..<bn],data[..]);
+  if r.error!=HTTP_OK {return scene_error("Save outcome unknown: read show before taking another action; do not retry this placement blindly.");}
+  if r.code==409 {return scene_error("Scene changed concurrently (409). Read show and reconsider the command.");}
+  if r.code!=200 {return scene_error("The local scene refused the save.");}
+  r=scene_request(api,"GET","",data[..]);
+  if r.error!=HTTP_OK || r.code!=200 {return scene_error("Save accepted but readback unavailable. Read show; do not repeat the placement.");}
+  an=raw_put(answer[..],0,"200\n");an=raw_put(answer[..],an,cast(string)data[0..<r.n]);
+  got:[1]EgEdits;next:=eg_edits_answer(cast(string)answer[0..<an],got[..]);
+  intended:[4096]u8;actual:[4096]u8;ni:=eg_edits_text(p.edits,intended[..]);ng:=eg_edits_text(got[0],actual[..]);
+  if next!=version+1 || cast(string)intended[0..<ni]!=cast(string)actual[0..<ng] {return scene_error("Scene changed during readback. Read show before any further edit.");}
+  print("{\"ok\":true,\"version\":%,\"group\":%,\"affected\":%,\"objects\":%}\n",next,p.group,p.count,p.edits.n);return 0;
+}

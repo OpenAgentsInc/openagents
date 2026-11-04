@@ -615,6 +615,10 @@ watch_way :: (w: [] Watch, x: f32, z: f32, gx: f32, gz: f32) -> f32 {
       bx := ox + nx * sg; bz := oz + nz * sg;
       // the end itself open too: where another fence meets this one (a Wall of Stone's two panels) is no way round
       if !watch_open(w, ox, oz) || !watch_open(w, ax, az) || !watch_open(w, bx, bz) { continue; }
+      // A corner is useful only if the final leg clears this fence. Along a
+      // crate's long axis the nearer end can otherwise point back through its
+      // body, leaving a walker circling that corner forever.
+      if watch_fence_cuts(w, k, bx, bz, gx, gz) { continue; }
       way := flat_gap(v3(x, 0, z), v3(ax, 0, az)) + flat_gap(v3(ax, 0, az), v3(bx, 0, bz)) + flat_gap(v3(bx, 0, bz), v3(gx, 0, gz));
       if best >= 0 && way >= best { continue; }
       best = way;
