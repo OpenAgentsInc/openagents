@@ -68,6 +68,7 @@ RaidPreview :: struct {
   arcs: [RP_ARCS] RpArc;
   wall_t: f32 = -1;          // the raid's clock when the palisade's posts were last looked at (everglade_raid_wall)
   wall_sig: int;             // and what was down then
+  steps: int;                // the raiders' footfalls played this frame (RP_STEPS at most)
 }
 
 // ?raid=preview (and &cine=1): you by the commons facing the South Gate, the raid to come.
@@ -142,12 +143,20 @@ everglade_raider :: (s: [] Everglade, q: int, npc: int, x: f32, z: f32, yaw: f32
   if npc == 0 { o[0].npc = 0; return; }
   if o[0].npc == 0 { o[0].x = x; o[0].z = z; }
   dx := x - o[0].x; dz := z - o[0].z;
+  was := o[0].walk; fell := dead_t >= 0 && o[0].dead_t < 0;
   o[0].walk += sqrt(dx * dx + dz * dz);
+  // their footfalls, a few a frame, and in the preview their fall (everglade-sound.coax)
+  stride := ifx speed >= 5 then f32(EGS_STRIDE_RUN) else f32(EGS_STRIDE);
+  if dead_t < 0 && floor(o[0].walk / stride) > floor(was / stride) && s[0].rp.steps < RP_STEPS {
+    egs_cue(s, SFX_STEP_1 + q % 3, v3(x, ground_at(s, x, z), z), 0, 0.7); s[0].rp.steps += 1;
+  }
+  if fell && s[0].rp.on { egs_cue(s, SFX_DEATH, v3(x, ground_at(s, x, z) + 1.2, z), 0, 0.8); }   // (a room's is e die's, everglade-events.coax)
   o[0] = RpPerson.{npc = npc, x = x, z = z, yaw = yaw, speed = speed, walk = o[0].walk, lit = lit, dead_t = dead_t, level = level};
 }
 // what a cast or shot of the raid's is (everglade5e-raid.coax E5R_RAID_K_*): a look (WL_*), an arrow
 // or a bolt, plus RP_AT_ONE when it is aimed at a creature
 RP_ARROW :: 20; RP_BOLT :: 21; RP_AT_ONE :: 32;
+RP_STEPS :: 3;              // raiders' footfalls a frame at most: a charge is a crowd of feet, not fifty voices
 // A cast or shot of the raid's from (fx, fz) at (ax, az). A spell at the wall is aimed at the town's
 // piece nearest that point, as a player points at a building; one at a creature at its chest, and
 // leaves the town be; a shot at whom it was loosed at.
@@ -198,6 +207,7 @@ rp_target :: (s: [] Everglade, x: f32, z: f32) -> Point {
 // Each frame: the raid's clock, the shots and the Fireballs on their way. The watch takes what the
 // raid breaks and burns for the raid's, not yours: nobody hunts you for it.
 rp_frame :: (s: [] Everglade, dt: f32) {
+  s[0].rp.steps = 0;
   if rp_on(s) && s[0].rp.ready {
     w := watch_w(s);
     y := watch_you(w);
@@ -458,4 +468,23 @@ rp_person_at :: (s: [] Everglade, q: int, npc: int, x: f32, z: f32, yaw: f32, sp
   #assert g[0].rp.who[3].npc == RP_CULTIST && g[0].rp.who[3].dead_t == 2.0;
   // the raid's draws are uploaded only while there is a raid to draw
   #assert !rp_drawn(g[..]) && everglade_store_used(g[..], 2) == RAID_PAL_AT * 4 && everglade_store_used(g[..], 1) == RAID_AT * OBJECT_FLOATS * 4;
+}
+
+#test "the preview's raiders are heard: footfalls as they run, a few a frame, and their fall" {
+  g: [1] Everglade;
+  rp_facts(g[..], "/worlds/everglade?raid=preview");
+  egs_test_page(g[..]);
+  g[0].snd[0].ear = Shot.{eye = v3(0, 1.6, -95), at = v3(0, 1.6, -85)};
+  for q: 0..<6 { everglade_raider(g[..], q, RP_CULTIST, f32(q), -90, 0, 6, 0, 0, -1); }
+  #assert g[0].snd[0].cue_n == 0;
+  // six run a stride and more at once: three are heard
+  for q: 0..<6 { everglade_raider(g[..], q, RP_CULTIST, f32(q), -88.6, 0, 6, 0, 0, -1); }
+  #assert g[0].snd[0].cue_n == RP_STEPS;
+  _ := everglade_sound_lines(g[..]);
+  #assert egs_heard(g[..], 0).name == "step-1" && egs_heard(g[..], 0).gain > 0;
+  // the next frame one falls
+  rp_frame(g[..], 0.016);
+  everglade_raider(g[..], 0, RP_CULTIST, 0, -88.6, 0, 0, 0, 0, 0.0);
+  _ = everglade_sound_lines(g[..]);
+  #assert egs_heard(g[..], 0).name == "death";
 }
