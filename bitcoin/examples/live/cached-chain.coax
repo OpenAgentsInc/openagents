@@ -1,0 +1,121 @@
+// Chapter 63 teaching adapter. One exclusive owner; state, headers and raw
+// bodies have no concurrent writer/rename. Input archives are immutable and
+// durable before this command. Private blocks publish only at a synced flush.
+// tool.sh: run-steps 250000000
+#run_steps 250000000;
+#load "../../../coax/lib/bitcoin/chainreorg.coax";
+#load "../../../coax/lib/bitcoin/coinscache.coax";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#import "Basic";
+
+CcFile :: struct {
+  used: int; sequence: u64; cache: [1] CoinsCache;
+  delta: [262144] u8; cache_scratch: [262144] u8; record: [65537] u8;
+  materialized: [16777216] u8; cache_body: [16777216] u8;
+  table: [16777216] u8; stage: [16777216] u8; batch: [16777216] u8;
+  frame: [16777244] u8; log: [67108864] u8; raw: [4000000] u8; undo: [16777216] u8;
+  tree: [1] BlockTree; links: [4096] BiLink; entries: [4096] BiEntry;
+  slots: [8192] int; chain: [4096] int;
+  ins: [32768] TxIn; outs: [131072] TxOut; items: [131072] TxItem;
+  ids: [2240000] u8; wids: [2240000] u8; merkle: [2240000] u8;
+  coins: [32768] TxcCoin; spent: [32768] ScriptSpent; ops: [32768] SigopSpent;
+  heights: [32768] int; times: [32768] int; scripts: [8000000] u8; sw: [1] ScriptWork;
+  signet_ids: [6720000] u8; signet_scratch: [4000200] u8;
+}
+cc_file_work :: (f: [] CcFile) -> ValidationWork {
+  return ValidationWork.{ins=f[0].ins[..], outs=f[0].outs[..], items=f[0].items[..], ids=f[0].ids[..], wids=f[0].wids[..], merkle=f[0].merkle[..], coins=f[0].coins[..], spent=f[0].spent[..], sigops=f[0].ops[..], heights=f[0].heights[..], times=f[0].times[..], scripts=f[0].scripts[..], script=f[0].sw[..], signet_ids=f[0].signet_ids[..], signet_scratch=f[0].signet_scratch[..]};
+}
+cc_file_chain :: (s: string) -> int {
+  for i: 1..<6 { if s == CHAIN_NAMES[i] { return i; } } return 0;
+}
+cc_file_now :: (s: string) -> int {
+  if s.count == 0 || s.count > 10 { return -1; }
+  n := 0; for ch: s { if ch < '0' || ch > '9' { return -1; } n = n*10+cast(int) (ch-'0'); } return n;
+}
+cc_file_show :: (tip: LcTip) {
+  print("profile validated-v1, height %, hash ", tip.height); digits := "0123456789abcdef";
+  for k: 0..<32 { v := tip.hash[31-k]; pair := [2] u8.[digits[v>>4], digits[v&15]]; print("%", cast(string) pair[..]); }
+  print("\n");
+}
+cc_file_append :: (f: [] CcFile, path: string, r: CsResult, sequence: u64, initial: bool) -> bool {
+  if r.code != CS_OK || sequence == 0xffffffffffffffff { return false; }
+  start := ifx initial then 20 else 0;
+  if initial { #assert kv_header_vartime(0, f[0].frame[..]) == 20; }
+  frame := f[0].frame[start..<f[0].frame.count];
+  for i: 0..<r.n { frame[8+i] = f[0].cache_body[i]; }
+  kv_seal_vartime(frame, r.n, sequence+1, 0);
+  return fs_append_durable(path, cast(string) f[0].frame[0..<start+8+r.n]);
+}
+
+cc_file_flush :: (f: [] CcFile, path: string) -> bool {
+  r := cc_flush_vartime(f[0].cache[..],f[0].table[..],f[0].used,f[0].delta[..],f[0].materialized[..],f[0].cache_body[..]);
+  if r.code != CS_OK { return false; }
+  if r.n == 0 { return true; }
+  frame := CsResult.{used=r.used,n=r.n};
+  if !cc_file_append(f,path,frame,f[0].sequence,false) { return false; }
+  for k: 0..<r.used { f[0].table[k] = f[0].materialized[k]; }
+  f[0].used = r.used; f[0].sequence += 1;
+  if !cc_ack_vartime(f[0].cache[..],r.generation,f[0].table[..],f[0].used) { return false; }
+  tip := cs_tip_vartime(f[0].table[..],f[0].used); i := bi_find(f[0].tree[..],tip.hash[..]);
+  return cr_publish_vartime(f[0].tree[..],f[0].table[..],f[0].used,i);
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 7 {
+    tool_errln("usage: cached-chain CHAIN STATE HEADERS NOW FLUSH_EVERY CACHE_LIMIT BLOCK..."); return 2;
+  }
+  network := cc_file_chain(args_at(a[..],0)); path := args_at(a[..],1); headers := args_at(a[..],2);
+  now := cc_file_now(args_at(a[..],3)); every := cc_file_now(args_at(a[..],4)); limit := cc_file_now(args_at(a[..],5));
+  if network == 0 || now < 0 || every < 1 || limit < 0 { return 2; }
+  f: [1] CcFile; n := fs_read(path,f[0].log[..]); if n < 0 { return 1; }
+  opened := kv_open_vartime(f[0].log[0..<n],f[0].table[..]);
+  if opened.code != KV_OK || opened.cut { tool_errln("recover the store before using the cache"); return 1; }
+  f[0].used = opened.used; f[0].sequence = opened.seq;
+  tip := cs_tip_vartime(f[0].table[..],f[0].used);
+  if tip.code != CS_OK || tip.chain != network { return 1; }
+  code := cc_init_vartime(f[0].cache[..],f[0].table[..],f[0].used,limit,f[0].delta[..],f[0].cache_scratch[..],f[0].record[..]);
+  if code != CS_OK { print("cache refused %\n",code); return 1; }
+  total := fs_size(headers); stamp := fs_mtime_ns(headers);
+  if total < 80 || total % 80 != 0 || total/80 > f[0].links.count { return 2; }
+  #assert bi_init(f[0].tree[..],chain_params(network),f[0].links[..],f[0].entries[..],f[0].slots[..],f[0].chain[..]);
+  header: [80] u8;
+  for i: 0..<total/80 {
+    if fs_read_at(headers,80*i,header[..]) != 80 { return 1; }
+    accepted := bi_accept_header_vartime(f[0].tree[..],header[..],now);
+    if accepted.code != BI_OK { print("header refused %\n",accepted.code); return 1; }
+  }
+  if fs_size(headers) != total || fs_mtime_ns(headers) != stamp { return 1; }
+  if !cr_publish_vartime(f[0].tree[..],f[0].table[..],f[0].used,bi_find(f[0].tree[..],tip.hash[..])) { return 1; }
+  count := 0; applied := 0;
+  for arg: 6..<args_count(a[..]) {
+    file := args_at(a[..],arg); size := fs_size(file);
+    if size < 81 || size > f[0].raw.count { return 2; }
+    raw := f[0].raw[0..<size]; if fs_read(file,raw) != size { return 1; }
+    hash: [32] u8; #assert pow_block_hash_vartime(raw[0..<80],hash[..]) == POW_OK;
+    i := bi_find(f[0].tree[..],hash[..]); if i < 0 { return 1; }
+    current := f[0].cache[0].tip; current_i := bi_find(f[0].tree[..],current.hash[..]);
+    if f[0].links[i].height <= current.height {
+      if bi_ancestor(f[0].links[..],current_i,f[0].links[i].height) != i { return 1; }
+      continue;
+    }
+    check := block_check_vartime(raw,f[0].ins[..],f[0].outs[..],f[0].items[..],f[0].ids[..],f[0].wids[..],f[0].merkle[..]);
+    if check.code != BLOCK_OK { print("block refused %\n",check.code); return 1; }
+    view := cc_view_vartime(f[0].cache[..],f[0].table[..],f[0].used,f[0].delta[..],f[0].materialized[..],f[0].cache_body[..]);
+    if view.code != CS_OK { return 1; }
+    r := cs_connect_vartime(f[0].tree[..],i,raw,f[0].materialized[..],view.used,f[0].stage[..],f[0].batch[..],cc_file_work(f[..]),f[0].undo[..]);
+    if r.code != CS_OK { print("refused %, validation %, detail %\n",r.code,r.vcode,r.detail); return 1; }
+    code = cc_accept_vartime(f[0].cache[..],f[0].table[..],f[0].used,f[0].delta[..],f[0].batch[0..<r.n],f[0].cache_scratch[..],f[0].record[..],f[0].materialized[..],f[0].cache_body[..]);
+    if code == CS_CAPACITY && f[0].cache[0].used > 0 {
+      if !cc_file_flush(f[..],path) { return 1; } count = 0;
+      code = cc_accept_vartime(f[0].cache[..],f[0].table[..],f[0].used,f[0].delta[..],f[0].batch[0..<r.n],f[0].cache_scratch[..],f[0].record[..],f[0].materialized[..],f[0].cache_body[..]);
+    }
+    if code != CS_OK { print("cache refused %\n",code); return 1; }
+    bi_received_block_vartime(f[0].tree[..],i,check.count); count += 1; applied += 1;
+    if count == every { if !cc_file_flush(f[..],path) { return 1; } count = 0; }
+  }
+  if !cc_file_flush(f[..],path) { return 1; }
+  print("cached blocks: %, configured bytes: %\n",applied,limit);
+  cc_file_show(cs_tip_vartime(f[0].table[..],f[0].used)); return 0;
+}

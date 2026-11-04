@@ -1,0 +1,38 @@
+{
+ "schema": 1,
+ "cases": [
+  {
+   "target": 102,
+   "digest": "2a63afe26afd74220dbb351a59cc7c742ef85ee081d4e91921532a0f2b1b799c",
+   "frame": "18080341cab56c91a7c4eed16be4f14b174e025e86d9ef59ed85bc9520380232",
+   "cuts": 1874,
+   "packed_equals_indexed": true
+  },
+  {
+   "target": 105,
+   "digest": "851c7503ab159a7d2e5d8ce956c820071431139e585d76638a37b18c62293394",
+   "frame": "9d803808ac2a101f9f0ddf2e6974981f761132c172e0bac6adffb53be9d0774f",
+   "cuts": 2452,
+   "packed_equals_indexed": true
+  },
+  {
+   "target": 109,
+   "digest": "35e6cc096d443747f8992f659b738352111ed0a7b8923037eb60e611f96b62a1",
+   "frame": "bb40ba8a968db215ec5d58e95beb746f0d77fcaed21ae187076638efdcf1c0ca",
+   "cuts": 3256,
+   "packed_equals_indexed": true
+  }
+ ],
+ "receipts": 24,
+ "cuts": 7582,
+ "sources": {
+  "coax/lib/bitcoin/kvwriteback.coax": "889a5f4e04da102764ae7dc6c6806a37527888c07edf6b0c5675442493f2219b",
+  "coax/lib/bitcoin/coinscache.coax": "fe8f24f23ab50287f7f3575857cde4b99d3e172e03f4f113b09ac3502bbcdc10",
+  "coax/tests/bitcoin/coinscache_checks.coax": "1530788d2883c9bf07b4f9e8bb0b70c57b074bafd3a838df614b129779a49896",
+  "coax/tests/bitcoin/coinscache-native.coax": "d2e7d160af55b7af6f3070a75de45f6eb8c108cb3f05aca0f2baac6d2b016436",
+  "coax/tests/bitcoin/coinscache.py": "acb4119e8e604af6d74a041f1898562347350bf936fa4ba551f0214d38a7fbb6",
+  "bitcoin/examples/live/cached-chain.coax": "76e67ef653e6e9eb551903bfae3ff4d444f88273bdbc646940c407c740fb3d17",
+  "coax/bin/coinscache-native.c": "baaea172ad86c7fd297dc0573c1a3446cd2a7571f529a185241049ed3b35b1db"
+ },
+ "runtime": "Linux x86_64; checked generated C compiled cc -std=c11 -O2 -fPIC -shared"
+}

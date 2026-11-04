@@ -1,0 +1,47 @@
+{
+ "schema": 1,
+ "version": "/Satoshi:32.1.0/",
+ "indexed": false,
+ "states": [
+  {
+   "index": 102,
+   "height": 102,
+   "hash": "2d289b40201c58dad1f19754fc6299aebd7000f3a512c828492254b716ab5e36",
+   "muhash": "750ba8d8990d5e5b14951087241be1ca2c0b6830ddd1225d70e9a67b4fdc4912"
+  },
+  {
+   "index": 105,
+   "height": 103,
+   "hash": "62a232ea8a9ad3c5e2d08f8f5b1c4e259f6c17c28c49329e35fbba45417be860",
+   "muhash": "f8bf3d0c6b623f7f1b10a11a25cc87896262c6e40babdf1cec23b5c662d47a19"
+  },
+  {
+   "index": 109,
+   "height": 104,
+   "hash": "49f911317d91c9a06b94cec4008c09478e5f60d1ce858c98bda4cfe324a7f1b3",
+   "muhash": "667e574c76d84f86a1db8f41979f4e2ed1bc502f2015ebcdff7aa8f925bbe6af"
+  }
+ ],
+ "flushes": 7,
+ "cache_bytes": 131217,
+ "delta_capacity": 32768,
+ "replayed_unflushed_blocks": 2,
+ "capacity_refused": true,
+ "cut_cases": [
+  {
+   "target": 102,
+   "cuts": 1874,
+   "case": "2a63afe26afd74220dbb351a59cc7c742ef85ee081d4e91921532a0f2b1b799c"
+  },
+  {
+   "target": 105,
+   "cuts": 2452,
+   "case": "851c7503ab159a7d2e5d8ce956c820071431139e585d76638a37b18c62293394"
+  },
+  {
+   "target": 109,
+   "cuts": 3256,
+   "case": "35e6cc096d443747f8992f659b738352111ed0a7b8923037eb60e611f96b62a1"
+  }
+ ]
+}

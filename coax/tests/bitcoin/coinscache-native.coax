@@ -1,0 +1,8 @@
+// Thin ABI for independent cache/connector/Core comparisons.
+#run_steps 250000000;
+#load "chainreorg-native.coax";
+#load "../../lib/bitcoin/coinscache.coax";
+cc_native_size :: () -> int #export_c { return size_of(CoinsCache); }
+cc_native_used :: (state: [] CoinsCache) -> int #export_c { return state[0].used; }
+cc_native_height :: (state: [] CoinsCache) -> int #export_c { return state[0].tip.height; }
+cc_native_pending :: (state: [] CoinsCache) -> bool #export_c { return state[0].pending; }

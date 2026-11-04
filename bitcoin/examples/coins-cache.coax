@@ -1,0 +1,26 @@
+#run_steps 250000000;
+#load "../../coax/lib/bitcoin/coinscache.coax";
+#import "Basic";
+
+main :: () {
+  // An already accepted storage transition, as in chapter 58's storage
+  // models. The live adapter and Core oracle exercise real block validation.
+  d: [1] CcDemo; cc_demo_init(d[..]); s := d[0].store[..];
+  #assert cc_memory_ok(cc_demo_budget(d[..]),d[0].delta.count,d[0].scratch.count,d[0].record.count);
+  print("fixture durable base: %\n",d[0].cache[0].base.height);
+  #assert cc_demo_accept(d[..]) == CS_OK;
+  print("private tip: %, durable base: %\n",d[0].cache[0].tip.height,d[0].cache[0].base.height);
+  r := cc_demo_flush(d[..]); #assert r.code == CS_OK && d[0].cache[0].pending;
+  #assert cc_demo_accept(d[..]) == CS_CONTEXT;
+  print("prepared flush: further edits wait\n");
+  #assert !cc_ack_vartime(d[0].cache[..],r.generation,s[0].before[..],s[0].old);
+  print("old cursor: acknowledgement refused\n");
+  // Model the durable adapter's accepted result. Actual append+sync is in
+  // bitcoin/examples/live/cached-chain.coax, not performed by this example.
+  durable: [65536] u8; for k: 0..<s[0].old { durable[k] = s[0].before[k]; }
+  used := kv_apply_vartime(durable[..],s[0].old,d[0].body[0..<r.n],0);
+  #assert used == r.used && lc_same(durable[0..<used],d[0].view[0..<r.used]);
+  #assert cc_ack_vartime(d[0].cache[..],r.generation,durable[..],used);
+  #assert d[0].cache[0].used == 0 && !d[0].cache[0].pending;
+  print("model acknowledgement: durable base %, cache empty\n",d[0].cache[0].base.height);
+}

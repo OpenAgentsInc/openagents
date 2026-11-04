@@ -1,0 +1,10 @@
+ok   #test coins cache: exact resident budget includes state and all three arenas (1 case, 458 steps, 0 ms)
+ok   #test coins cache: accepted coins, undo and tip stay private until sync ack (1 case, 1080242 steps, 231 ms)
+ok   #test coins cache: abort before append retains dirty state and changes epoch (1 case, 1116921 steps, 420 ms)
+ok   #test coins cache: initialize only one validated profile within its budget (1 case, 910911 steps, 243 ms)
+ok   #test coins cache: missing state, stale base and counter exhaustion never ack (1 case, 1120358 steps, 288 ms)
+ok   #test coins cache: all local refusals preserve the previous private cursor (1 case, 6515946 steps, 1572 ms)
+ok   #test coins cache: exact delta capacity, no-op transitions and damaged views (1 case, 3044570 steps, 908 ms)
+ok   #test coins cache: a transition cannot introduce light or foreign metadata (1 case, 2760125 steps, 770 ms)
+8 of 227 checks (--only 'coins cache:'), 8 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

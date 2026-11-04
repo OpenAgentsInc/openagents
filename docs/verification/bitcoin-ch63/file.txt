@@ -1,0 +1,1 @@
+cached file tool: budget refusal, four grouped prefix flushes, private failure rollback, earlier durable retention, idempotent resume, tail recovery and full coins/MuHash agree

@@ -1,0 +1,5 @@
+fixture durable base: 100
+private tip: 101, durable base: 100
+prepared flush: further edits wait
+old cursor: acknowledgement refused
+model acknowledgement: durable base 101, cache empty

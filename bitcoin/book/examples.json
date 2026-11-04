@@ -1154,6 +1154,18 @@
       ],
       "run_steps": 250000000,
       "timeout": 600
+    },
+    {
+      "source": "bitcoin/examples/coins-cache.coax",
+      "chapter": "bitcoin/book/ch063-the-coins-cache-and-crash-safe-flushes.md",
+      "stdout": "bitcoin/fixtures/coins-cache.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 600
     }
   ]
 }

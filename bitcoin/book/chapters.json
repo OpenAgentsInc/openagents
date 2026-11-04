@@ -1471,16 +1471,27 @@
   {
    "number": 63,
    "title": "The coins cache and crash-safe flushes",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch063-the-coins-cache-and-crash-safe-flushes.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     56,
     58,
+    60,
     62
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/kvwriteback.coax",
+    "coax/lib/bitcoin/coinscache.coax",
+    "coax/tests/bitcoin/coinscache_checks.coax",
+    "coax/tests/bitcoin/coinscache-native.coax",
+    "coax/tests/bitcoin/coinscache.py",
+    "bitcoin/examples/coins-cache.coax",
+    "bitcoin/examples/live/cached-chain.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

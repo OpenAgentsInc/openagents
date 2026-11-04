@@ -94,6 +94,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 - [60. Reorganizations and invalid chains](ch060-reorganizations-and-invalid-chains.md)
 - [61. Block files and undo files](ch061-block-files-and-undo-files.md) — implemented
 - [62. A key-value store for the chainstate](ch062-a-key-value-store-for-the-chainstate.md) — implemented
+- [63. The coins cache and crash-safe flushes](ch063-the-coins-cache-and-crash-safe-flushes.md) — implemented
 
 **XI. The network**
 

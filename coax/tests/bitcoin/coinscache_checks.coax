@@ -1,0 +1,149 @@
+// Storage models supply already accepted transitions. Full connector/Core
+// integration is checked independently by the native oracle.
+CcDemo :: struct {
+  store: [1] CsStoreDemo; cache: [1] CoinsCache;
+  delta: [65536] u8; scratch: [65536] u8; record: [65537] u8;
+  view: [65536] u8; body: [131072] u8;
+}
+cc_demo_budget :: (d: [] CcDemo) -> int { return size_of(CoinsCache)+d[0].delta.count+d[0].scratch.count+d[0].record.count; }
+cc_demo_init :: (d: [] CcDemo) {
+  cs_store_fixture(d[0].store[..]); s := d[0].store[..];
+  #assert cc_init_vartime(d[0].cache[..], s[0].before[..], s[0].old, cc_demo_budget(d), d[0].delta[..], d[0].scratch[..], d[0].record[..]) == CS_OK;
+}
+cc_demo_transition :: (d: [] CcDemo) -> [] u8 {
+  b := d[0].store[0].batch[..]; at := KV_BODY_HEAD;
+  for k: 0..<kv_get32(b, 8) { at = kv_op_vartime(b, at).next; } return b[0..<at];
+}
+cc_demo_accept :: (d: [] CcDemo) -> int {
+  s := d[0].store[..];
+  return cc_accept_vartime(d[0].cache[..], s[0].before[..], s[0].old, d[0].delta[..], cc_demo_transition(d), d[0].scratch[..], d[0].record[..], d[0].view[..], d[0].body[..]);
+}
+cc_demo_flush :: (d: [] CcDemo) -> CcResult {
+  s := d[0].store[..]; return cc_flush_vartime(d[0].cache[..], s[0].before[..], s[0].old, d[0].delta[..], d[0].view[..], d[0].body[..]);
+}
+
+#test "coins cache: exact resident budget includes state and all three arenas" {
+  head := size_of(CoinsCache);
+  #assert cc_memory_ok(head,0,0,0) && !cc_memory_ok(head-1,0,0,0);
+  #assert cc_memory_ok(head+6,1,2,3) && !cc_memory_ok(head+5,1,2,3);
+  #assert !cc_memory_ok(-1,0,0,0) && !cc_memory_ok(head,-1,0,0);
+  #assert !cc_memory_ok(head,0,-1,0) && !cc_memory_ok(head,0,0,-1);
+  #assert !cc_memory_ok(head,1,0,0) && !cc_memory_ok(head,0,1,0) && !cc_memory_ok(head,0,0,1);
+  #assert cc_memory_ok(9223372036854775807,9223372036854775807-head,0,0);
+  #assert !cc_memory_ok(9223372036854775807,9223372036854775807,1,1);
+}
+#test "coins cache: accepted coins, undo and tip stay private until sync ack" #steps 100000000 {
+  d: [1] CcDemo; cc_demo_init(d[..]); s := d[0].store[..];
+  #assert d[0].cache[0].ready && !d[0].cache[0].pending && d[0].cache[0].used == 0 && d[0].cache[0].generation == 0;
+  #assert d[0].cache[0].base.height == 100 && d[0].cache[0].tip.height == 100;
+  clean := cc_demo_flush(d[..]); #assert clean.code == CS_OK && clean.n == 0 && !d[0].cache[0].pending;
+  #assert cc_demo_accept(d[..]) == CS_OK && d[0].cache[0].tip.height == 101 && d[0].cache[0].base.height == 100;
+  r := cc_demo_flush(d[..]); #assert r.code == CS_OK && r.n > 12 && r.generation == 0 && d[0].cache[0].pending;
+  #assert r.used == s[0].used && lc_same(d[0].view[0..<r.used], s[0].live[0..<s[0].used]);
+  #assert cc_demo_accept(d[..]) == CS_CONTEXT && cc_demo_flush(d[..]).code == CS_CONTEXT;
+  #assert !cc_ack_vartime(d[0].cache[..], 1, s[0].live[..], s[0].used);
+  #assert !cc_ack_vartime(d[0].cache[..], 0, s[0].before[..], s[0].old);
+  #assert cc_ack_vartime(d[0].cache[..], 0, s[0].live[..], s[0].used);
+  #assert !d[0].cache[0].pending && d[0].cache[0].used == 0 && d[0].cache[0].generation == 1;
+  #assert d[0].cache[0].base.height == 101 && d[0].cache[0].tip.height == 101;
+  #assert !cc_ack_vartime(d[0].cache[..], 0, s[0].live[..], s[0].used);
+}
+#test "coins cache: abort before append retains dirty state and changes epoch" #steps 100000000 {
+  d: [1] CcDemo; cc_demo_init(d[..]); #assert cc_demo_accept(d[..]) == CS_OK;
+  used := d[0].cache[0].used; r := cc_demo_flush(d[..]); #assert r.code == CS_OK;
+  #assert !cc_abort_before_append(d[0].cache[..], 1);
+  #assert cc_abort_before_append(d[0].cache[..], r.generation);
+  #assert d[0].cache[0].used == used && !d[0].cache[0].pending && d[0].cache[0].generation == 1;
+  #assert !cc_abort_before_append(d[0].cache[..], 1);
+  next := cc_demo_flush(d[..]); #assert next.code == CS_OK && next.generation == 1 && next.n == r.n;
+  s := d[0].store[..]; #assert !cc_ack_vartime(d[0].cache[..], r.generation, s[0].live[..], s[0].used);
+  #assert cc_ack_vartime(d[0].cache[..], next.generation, s[0].live[..], s[0].used);
+}
+
+#test "coins cache: initialize only one validated profile within its budget" #steps 100000000 {
+  d: [1] CcDemo; cs_store_fixture(d[0].store[..]); s := d[0].store[..];
+  #assert cc_init_vartime(d[0].cache[0..<0], s[0].before[..], s[0].old, cc_demo_budget(d[..]), d[0].delta[..], d[0].scratch[..], d[0].record[..]) == CS_CONTEXT;
+  #assert cc_init_vartime(d[0].cache[..], s[0].before[..], 0, cc_demo_budget(d[..]), d[0].delta[..], d[0].scratch[..], d[0].record[..]) == CS_CONTEXT;
+  #assert cc_init_vartime(d[0].cache[..], s[0].before[..], s[0].old, cc_demo_budget(d[..])-1, d[0].delta[..], d[0].scratch[..], d[0].record[..]) == CS_CAPACITY;
+  #assert !d[0].cache[0].ready;
+  d[0].cache[0].pending = true; d[0].cache[0].used = 99; d[0].cache[0].generation = 7;
+  #assert cc_init_vartime(d[0].cache[..], s[0].before[..], s[0].old, cc_demo_budget(d[..]), d[0].delta[..], d[0].scratch[..], d[0].record[..]) == CS_OK;
+  #assert d[0].cache[0].used == 0 && !d[0].cache[0].pending && d[0].cache[0].generation == 0;
+  #assert cc_init_vartime(d[0].cache[..], s[0].before[..], s[0].old, cc_demo_budget(d[..]), d[0].delta[..], d[0].scratch[..], d[0].record[..]) == CS_CONTEXT;
+  a := d[0].cache[0].base; b := a; #assert cc_tip_equal(a,b);
+  a.code = CS_CONTEXT; #assert !cc_tip_equal(a,b); a = b;
+  b.code = CS_CONTEXT; #assert !cc_tip_equal(a,b); b = a;
+  b.chain = 1; #assert !cc_tip_equal(a,b); b = a;
+  b.height += 1; #assert !cc_tip_equal(a,b); b = a;
+  b.hash[0] ^= 1; #assert !cc_tip_equal(a,b);
+}
+
+#test "coins cache: missing state, stale base and counter exhaustion never ack" #steps 100000000 {
+  d: [1] CcDemo; cc_demo_init(d[..]); s := d[0].store[..];
+  empty := d[0].cache[0..<0]; unready: [1] CoinsCache;
+  #assert !cc_context(empty,s[0].before[..],s[0].old) && !cc_context(unready[..],s[0].before[..],s[0].old);
+  #assert !cc_ack_vartime(empty,0,s[0].before[..],s[0].old) && !cc_ack_vartime(unready[..],0,s[0].before[..],s[0].old);
+  #assert !cc_abort_before_append(empty,0) && !cc_abort_before_append(unready[..],0);
+  #assert !cc_context(d[0].cache[..],s[0].live[..],s[0].used);
+  #assert cc_view_vartime(empty,s[0].before[..],s[0].old,d[0].delta[..],d[0].view[..],d[0].body[..]).code == CS_CONTEXT;
+  #assert cc_accept_vartime(empty,s[0].before[..],s[0].old,d[0].delta[..],cc_demo_transition(d[..]),d[0].scratch[..],d[0].record[..],d[0].view[..],d[0].body[..]) == CS_CONTEXT;
+  #assert cc_flush_vartime(empty,s[0].before[..],s[0].old,d[0].delta[..],d[0].view[..],d[0].body[..]).code == CS_CONTEXT;
+  #assert cc_demo_accept(d[..]) == CS_OK;
+  d[0].cache[0].generation = 0xfffffffffffffffe;
+  r := cc_demo_flush(d[..]); #assert r.generation == 0xfffffffffffffffe;
+  #assert cc_abort_before_append(d[0].cache[..],r.generation) && d[0].cache[0].generation == 0xffffffffffffffff;
+  r = cc_demo_flush(d[..]); #assert r.code == CS_OK;
+  #assert !cc_abort_before_append(d[0].cache[..],r.generation) && !cc_ack_vartime(d[0].cache[..],r.generation,s[0].live[..],s[0].used);
+  d[0].cache[0].generation = 0xfffffffffffffffe;
+  #assert cc_ack_vartime(d[0].cache[..],0xfffffffffffffffe,s[0].live[..],s[0].used);
+  #assert d[0].cache[0].generation == 0xffffffffffffffff;
+}
+
+#test "coins cache: all local refusals preserve the previous private cursor" #steps 100000000 {
+  for which: 0..<7 {
+    d: [1] CcDemo; cc_demo_init(d[..]); s := d[0].store[..];
+    delta := d[0].delta[..]; scratch := d[0].scratch[..]; record := d[0].record[..]; stage := d[0].view[..]; body := d[0].body[..]; accepted := cc_demo_transition(d[..]);
+    expected := CS_CAPACITY;
+    if which == 0 { d[0].cache[0].limit -= 1; }
+    if which == 1 { scratch = scratch[0..<0]; }
+    if which == 2 { record = record[0..<0]; }
+    if which == 3 { stage = stage[0..<0]; }
+    if which == 4 { body = body[0..<11]; }
+    if which == 5 { delta = delta[0..<0]; }
+    if which == 6 { accepted = accepted[0..<11]; expected = CS_CONTEXT; }
+    #assert cc_accept_vartime(d[0].cache[..],s[0].before[..],s[0].old,delta,accepted,scratch,record,stage,body) == expected;
+    #assert d[0].cache[0].used == 0 && d[0].cache[0].tip.height == 100 && d[0].delta[0] == 0;
+  }
+  #assert cc_storage_code(KV_FULL) == CS_CAPACITY && cc_storage_code(KV_BAD_BATCH) == CS_CONTEXT;
+}
+
+#test "coins cache: exact delta capacity, no-op transitions and damaged views" #steps 100000000 {
+  d: [1] CcDemo; cc_demo_init(d[..]); #assert cc_demo_accept(d[..]) == CS_OK; needed := d[0].cache[0].used;
+  other: [1] CcDemo; cc_demo_init(other[..]); s := other[0].store[..];
+  #assert cc_accept_vartime(other[0].cache[..],s[0].before[..],s[0].old,other[0].delta[0..<needed],cc_demo_transition(other[..]),other[0].scratch[..],other[0].record[..],other[0].view[..],other[0].body[..]) == CS_OK;
+  #assert other[0].cache[0].used == needed;
+  other[0].cache[0].tip.hash[0] ^= 1;
+  #assert cc_view_vartime(other[0].cache[..],s[0].before[..],s[0].old,other[0].delta[..],other[0].view[..],other[0].body[..]).code == CS_CONTEXT;
+  #assert cc_demo_flush(other[..]).code == CS_CONTEXT && !other[0].cache[0].pending;
+  other[0].cache[0].tip.hash[0] ^= 1;
+  #assert cc_view_vartime(other[0].cache[..],s[0].before[..],s[0].old,other[0].delta[..],other[0].view[0..<0],other[0].body[..]).code == CS_CAPACITY;
+  clean: [1] CcDemo; cc_demo_init(clean[..]); z := clean[0].store[..]; n := kv_batch_new(clean[0].body[..]);
+  #assert cc_accept_vartime(clean[0].cache[..],z[0].before[..],z[0].old,clean[0].delta[..],clean[0].body[0..<n],clean[0].scratch[..],clean[0].record[..],clean[0].view[..],z[0].batch[..]) == CS_OK;
+  #assert clean[0].cache[0].used == 0 && clean[0].cache[0].tip.height == 100;
+}
+
+#test "coins cache: a transition cannot introduce light or foreign metadata" #steps 100000000 {
+  for which: 0..<3 {
+    d: [1] CcDemo; cc_demo_init(d[..]); s := d[0].store[..];
+    n := kv_batch_new(d[0].body[..]);
+    if which == 0 { key := LC_META; empty: [] u8; n = kv_batch_put_vartime(d[0].body[..],n,key[..],empty); }
+    else {
+      key := CS_META; v: [44] u8; source := lc_value_vartime(s[0].live[..],s[0].used,key[..]);
+      for k: 0..<44 { v[k] = source[k]; }
+      if which == 1 { kv_put32(v[..],0,2); } else { kv_put32(v[..],4,1); }
+      n = kv_batch_put_vartime(d[0].body[..],n,key[..],v[..]);
+    }
+    #assert cc_accept_vartime(d[0].cache[..],s[0].before[..],s[0].old,d[0].delta[..],d[0].body[0..<n],d[0].scratch[..],d[0].record[..],d[0].view[..],s[0].batch[..]) == CS_CONTEXT;
+    #assert d[0].cache[0].used == 0 && d[0].cache[0].tip.height == 100 && d[0].delta[0] == 0;
+  }
+}

@@ -1,0 +1,218 @@
+// Chapter 63's bounded write-back overlay. Base and published overlay are
+// immutable checked KV tables, disjoint from every private output workspace.
+// The overlay is reconstructed in memory, never loaded as untrusted raw bytes.
+// A refusal poisons private workspaces but changes neither published input.
+#load "kvstore.coax";
+#authority;
+
+WcValue :: struct { code: int; value: [] u8; }
+WcResult :: struct { code: int; used: int; n: int; }
+
+// Checks precede the implementation.
+#test "writeback: fresh create-spend disappears; old spend survives re-add" {
+  base: [1024] u8; delta: [1024] u8; scratch: [1024] u8; body: [1024] u8; record: [100] u8;
+  key := [1] u8.['a']; fresh := [1] u8.['b']; old := [1] u8.['1']; changed := [1] u8.['2'];
+  bu := kv_set_vartime(base[..], 0, key[..], old[..]); du := 0;
+  n := kv_batch_new(body[..]); n = kv_batch_put_vartime(body[..], n, fresh[..], changed[..]);
+  du = wc_apply_vartime(base[..], bu, delta[..], du, body[0..<n], scratch[..], record[..]);
+  #assert du == 9 && wc_read_vartime(base[..], bu, scratch[..], du, fresh[..]).value[0] == '2';
+  for k: 0..<du { delta[k] = scratch[k]; }
+  n = kv_batch_new(body[..]); n = kv_batch_delete_vartime(body[..], n, fresh[..]);
+  du = wc_apply_vartime(base[..], bu, delta[..], du, body[0..<n], scratch[..], record[..]); #assert du == 0;
+  n = kv_batch_new(body[..]); n = kv_batch_delete_vartime(body[..], n, key[..]);
+  n = kv_batch_put_vartime(body[..], n, key[..], changed[..]); n = kv_batch_delete_vartime(body[..], n, key[..]);
+  du = wc_apply_vartime(base[..], bu, delta[..], du, body[0..<n], scratch[..], record[..]);
+  #assert du == 8 && wc_read_vartime(base[..], bu, scratch[..], du, key[..]).code == KV_NOT_FOUND;
+  #assert scratch[7] == KV_DELETE;
+  for k: 0..<du { delta[k] = scratch[k]; }
+  n = kv_batch_new(body[..]); n = kv_batch_put_vartime(body[..], n, key[..], old[..]);
+  #assert wc_apply_vartime(base[..], bu, delta[..], du, body[0..<n], scratch[..], record[..]) == 0;
+  #assert base[7] == '1' && delta[7] == KV_DELETE;
+}
+
+#test "writeback: an empty value differs from an absent key" {
+  base: [100] u8; delta: [100] u8; scratch: [100] u8; body: [100] u8; record: [1] u8;
+  a := [1] u8.['a']; b := [1] u8.['b']; empty: [] u8;
+  bu := kv_set_vartime(base[..], 0, a[..], empty);
+  n := kv_batch_new(body[..]); n = kv_batch_put_vartime(body[..], n, a[..], empty); n = kv_batch_put_vartime(body[..], n, b[..], empty);
+  du := wc_apply_vartime(base[..], bu, delta[..], 0, body[0..<n], scratch[..], record[..]);
+  #assert du == 8 && wc_read_vartime(base[..], bu, scratch[..], du, b[..]).code == KV_OK;
+  #assert wc_read_vartime(base[..], bu, scratch[..], du, a[..]).code == KV_OK;
+  #assert wc_read_vartime(base[..], bu, scratch[..], du, b[..]).value.count == 0;
+  missing := [1] u8.['c']; #assert wc_read_vartime(base[..], bu, scratch[..], du, missing[..]).code == KV_NOT_FOUND;
+}
+
+#forall "writeback: coalesced batches equal ordered reference-map transitions" seed: 0..<16 #steps 100000000 {
+  base: [1024] u8; delta: [1024] u8; scratch: [1024] u8; reference: [1024] u8; stage: [1024] u8;
+  body: [1024] u8; flush: [1024] u8; record: [64] u8;
+  bu := kv_sets(base[..], 0, "a", "original"); ru := bu; du := 0;
+  for k: 0..<bu { reference[k] = base[k]; }
+  for step: 0..<24 {
+    key := [1] u8.[cast(u8) (97+(seed+step*3)%5)]; value := [2] u8.[cast(u8) step,cast(u8) seed];
+    n := kv_batch_new(body[..]);
+    if (seed+step)%3 == 0 { n = kv_batch_delete_vartime(body[..], n, key[..]); }
+    else { n = kv_batch_put_vartime(body[..], n, key[..], value[0..<step%3]); }
+    ru = kv_apply_vartime(reference[..], ru, body[0..<n], 0); #assert ru >= 0;
+    for k: 0..<scratch.count { scratch[k] = 0xa5; }
+    next := wc_apply_vartime(base[..], bu, delta[..], du, body[0..<n], scratch[..], record[..]); #assert next >= 0;
+    for k: 0..<next { delta[k] = scratch[k]; } du = next;
+    r := wc_materialize_vartime(base[..], bu, delta[..], du, stage[..], flush[..]);
+    #assert r.code == KV_OK && r.used == ru && wc_same(stage[0..<r.used], reference[0..<ru]);
+    for point: 0..<5 {
+      wanted := [1] u8.[cast(u8) (97+point)]; a := wc_read_vartime(base[..], bu, delta[..], du, wanted[..]); b := wc_value_vartime(reference[..], ru, wanted[..]);
+      #assert a.code == b.code && wc_same(a.value, b.value);
+    }
+  }
+}
+
+#test "writeback: payload and extent boundaries are exact" {
+  #assert wc_extent(0, 0) && wc_extent(5, 5) && !wc_extent(-1, 5) && !wc_extent(6, 5);
+  #assert wc_payload_ok(0, 1) && !wc_payload_ok(0, 0) && !wc_payload_ok(-1, 1);
+  #assert wc_payload_ok(KV_VALUE_MAX-1, KV_VALUE_MAX) && !wc_payload_ok(KV_VALUE_MAX, KV_VALUE_MAX+1);
+  #assert !wc_payload_ok(4, 4) && wc_payload_ok(4, 5);
+  a := [2] u8.[1,2]; b := [2] u8.[1,3];
+  #assert wc_same(a[..], a[..]) && !wc_same(a[..], b[..]) && !wc_same(a[..], b[0..<1]);
+  b[0] = 0; b[1] = 2; #assert !wc_same(a[..], b[..]);
+}
+
+#test "writeback: malformed or sealed bodies and capacity never alter inputs" {
+  base: [100] u8; delta: [100] u8; scratch: [100] u8; body: [100] u8; record: [3] u8;
+  bu := kv_sets(base[..], 0, "a", "old"); key := [1] u8.['a']; value := [2] u8.[7,8];
+  n := kv_batch_new(body[..]); n = kv_batch_put_vartime(body[..], n, key[..], value[..]);
+  #assert wc_apply_vartime(base[..], bu, delta[..], 0, body[0..<n], scratch[0..<8], record[..]) == -KV_FULL;
+  #assert wc_apply_vartime(base[..], bu, delta[..], 0, body[0..<n], scratch[..], record[0..<2]) == -KV_FULL;
+  kv_put64(body[..], 0, 1); #assert wc_apply_vartime(base[..], bu, delta[..], 0, body[0..<n], scratch[..], record[..]) == -KV_BAD_BATCH;
+  kv_put64(body[..], 0, 0); kv_put32(body[..], 8, 2);
+  #assert wc_apply_vartime(base[..], bu, delta[..], 0, body[0..<n], scratch[..], record[..]) == -KV_BAD_BATCH;
+  #assert kv_value_is(base[..], bu, "a", "old") && delta[0] == 0;
+}
+
+#test "writeback: corrupt tags and all refused extents remain private" {
+  base: [128] u8; delta: [128] u8; scratch: [128] u8; body: [128] u8; stage: [128] u8; record: [8] u8;
+  key := [1] u8.['a']; value := [2] u8.[7,8]; bu := kv_set_vartime(base[..], 0, key[..], value[..]);
+  for which: 0..<3 {
+    bad := [2] u8.[3,8]; n := 1;
+    if which == 0 { n = 0; }
+    if which == 2 { bad[0] = KV_DELETE; n = 2; }
+    du := kv_set_vartime(delta[..], 0, key[..], bad[0..<n]);
+    #assert wc_read_vartime(base[..], bu, delta[..], du, key[..]).code == KV_CORRUPT;
+    #assert wc_batch_vartime(delta[..], du, body[..]) == -KV_CORRUPT;
+    #assert wc_materialize_vartime(base[..], bu, delta[..], du, stage[..], body[..]).code == KV_CORRUPT;
+  }
+  for invalid: [2] int.[-1,129] {
+    #assert wc_read_vartime(base[..], invalid, delta[..], 0, key[..]).code == KV_CORRUPT;
+    #assert wc_read_vartime(base[..], bu, delta[..], invalid, key[..]).code == KV_CORRUPT;
+    #assert wc_batch_vartime(delta[..], invalid, body[..]) == -KV_CORRUPT;
+    #assert wc_materialize_vartime(base[..], invalid, delta[..], 0, stage[..], body[..]).code == KV_CORRUPT;
+    n := kv_batch_new(body[..]);
+    #assert wc_apply_vartime(base[..], invalid, delta[..], 0, body[0..<n], scratch[..], record[..]) == -KV_CORRUPT;
+    #assert wc_apply_vartime(base[..], bu, delta[..], invalid, body[0..<n], scratch[..], record[..]) == -KV_CORRUPT;
+  }
+  #assert wc_batch_vartime(delta[..], 0, body[0..<11]) == -KV_FULL;
+  #assert wc_materialize_vartime(base[..], bu, delta[..], 0, stage[..], body[0..<11]).code == KV_FULL;
+  r := wc_materialize_vartime(base[..], bu, delta[..], 0, stage[0..<bu], body[..]);
+  #assert r.code == KV_OK && r.n == 12 && r.used == bu && wc_same(stage[0..<bu], base[0..<bu]);
+  #assert wc_materialize_vartime(base[..], bu, delta[..], 0, stage[0..<bu-1], body[..]).code == KV_FULL;
+  n := kv_batch_new(body[..]); n = kv_batch_delete_vartime(body[..], n, key[..]);
+  #assert wc_apply_vartime(base[..], bu, delta[..], 0, body[0..<n], scratch[..], record[0..<0]) == -KV_FULL;
+  du := wc_apply_vartime(base[..], bu, delta[..], 0, body[0..<n], scratch[..], record[0..<1]); #assert du == 8;
+  for k: 0..<du { delta[k] = scratch[k]; }
+  n = kv_batch_new(body[..]);
+  scratch[0] = 0xa5;
+  #assert wc_apply_vartime(base[..], bu, delta[..], du, body[0..<n], scratch[0..<du], record[..]) == du;
+  #assert wc_same(delta[0..<du], scratch[0..<du]);
+  #assert wc_apply_vartime(base[..], bu, delta[..], du, body[0..<n], scratch[0..<du-1], record[..]) == -KV_FULL;
+  #assert wc_apply_vartime(base[..], bu, delta[..], 0, body[0..<11], scratch[..], record[..]) == -KV_BAD_BATCH;
+  n = kv_batch_put_vartime(body[..], n, key[..], value[..]);
+  du = wc_apply_vartime(base[..], 0, delta[..], 0, body[0..<n], scratch[..], record[..]); #assert du == 10;
+  for k: 0..<du { delta[k] = scratch[k]; }
+  #assert wc_batch_vartime(delta[..], du, body[0..<21]) == -KV_FULL;
+  #assert wc_materialize_vartime(base[..], 0, delta[..], du, stage[0..<8], body[..]).code == KV_FULL;
+  empty := wc_materialize_vartime(base[..], 0, delta[..], 0, stage[0..<0], body[..]);
+  #assert empty.code == KV_OK && empty.used == 0 && empty.n == 12;
+}
+
+#test "writeback: every edit in a multi-key accepted transition reaches the delta" {
+  base: [100] u8; delta: [100] u8; scratch: [100] u8; body: [100] u8; record: [8] u8;
+  a := [1] u8.['a']; b := [1] u8.['b']; one := [1] u8.[1]; two := [1] u8.[2];
+  n := kv_batch_new(body[..]); n = kv_batch_put_vartime(body[..], n, a[..], one[..]); n = kv_batch_put_vartime(body[..], n, b[..], two[..]);
+  du := wc_apply_vartime(base[..], 0, delta[..], 0, body[0..<n], scratch[..], record[..]);
+  #assert du == 18 && wc_read_vartime(base[..], 0, scratch[..], du, a[..]).value[0] == 1;
+  #assert wc_read_vartime(base[..], 0, scratch[..], du, b[..]).value[0] == 2;
+}
+
+wc_extent :: (n: int, capacity: int) -> bool { return n >= 0 && n <= capacity; }
+wc_payload_ok :: (n: int, capacity: int) -> bool { return n >= 0 && n < KV_VALUE_MAX && n < capacity; }
+wc_same :: (a: [] u8, b: [] u8) -> bool {
+  if a.count != b.count { return false; }
+  for k: 0..<a.count { if a[k] != b[k] { return false; } } return true;
+}
+// Checked KV tables only. Preserve the distinction between absent and empty.
+wc_value_vartime :: (table: [] u8, used: int, key: [] u8) -> WcValue {
+  f := kv_find_vartime(table, used, key);
+  if !f.found { return WcValue.{code=KV_NOT_FOUND}; }
+  e := kv_entry_vartime(table, used, f.at); return WcValue.{value=e.value};
+}
+wc_tag_ok :: (value: [] u8) -> bool {
+  if value.count < 1 { return false; }
+  return value[0] == KV_PUT || (value[0] == KV_DELETE && value.count == 1);
+}
+wc_read_vartime :: (base: [] u8, base_used: int, delta: [] u8, used: int, key: [] u8) -> WcValue #export_c {
+  if !wc_extent(base_used, base.count) || !wc_extent(used, delta.count) { return WcValue.{code=KV_CORRUPT}; }
+  cached := wc_value_vartime(delta, used, key);
+  if cached.code == KV_NOT_FOUND { return wc_value_vartime(base, base_used, key); }
+  if !wc_tag_ok(cached.value) { return WcValue.{code=KV_CORRUPT}; }
+  if cached.value[0] == KV_DELETE { return WcValue.{code=KV_NOT_FOUND}; }
+  return WcValue.{value=cached.value[1..<cached.value.count]};
+}
+// The delta keeps only differences from the immutable base. This derives
+// freshness from actual base absence: create/spend cancels, but an existing
+// base coin's spend/re-add/spend retains its deletion until the flush.
+wc_apply_vartime :: (base: [] u8, base_used: int, delta: [] u8, used: int, body: [] u8, scratch: [] u8, record: [] u8) -> int #export_c {
+  if !wc_extent(base_used, base.count) || !wc_extent(used, delta.count) { return -KV_CORRUPT; }
+  b := kv_batch_check_vartime(body);
+  if b.code != KV_OK || b.seq != 0 || !kv_frame_size_ok(body.count) { return -KV_BAD_BATCH; }
+  if used > scratch.count { return -KV_FULL; }
+  for k: 0..<used { scratch[k] = delta[k]; }
+  next := used; at := KV_BODY_HEAD;
+  for k: 0..<b.count {
+    op := kv_op_vartime(body, at); original := wc_value_vartime(base, base_used, op.key);
+    unchanged := ifx op.kind == KV_DELETE then original.code == KV_NOT_FOUND
+      else original.code == KV_OK && wc_same(original.value, op.value);
+    if unchanged { next = kv_delete_vartime(scratch, next, op.key); }
+    else {
+      n := 1;
+      if op.kind == KV_PUT {
+        if !wc_payload_ok(op.value.count, record.count) { return -KV_FULL; }
+        for j: 0..<op.value.count { record[1+j] = op.value[j]; } n += op.value.count;
+      } else { if record.count < 1 { return -KV_FULL; } }
+      record[0] = cast(u8) op.kind;
+      next = kv_set_vartime(scratch, next, op.key, record[0..<n]);
+      if kv_is_error(next) { return next; }
+    }
+    at = op.next;
+  }
+  return next;
+}
+wc_batch_vartime :: (delta: [] u8, used: int, body: [] u8) -> int #export_c {
+  if !wc_extent(used, delta.count) { return -KV_CORRUPT; }
+  n := kv_batch_new(body); if kv_is_error(n) { return n; } at := 0;
+  while at != used {
+    e := kv_entry_vartime(delta, used, at);
+    if e.code != KV_OK || !wc_tag_ok(e.value) { return -KV_CORRUPT; }
+    if e.value[0] == KV_DELETE { n = kv_batch_delete_vartime(body, n, e.key); }
+    else { n = kv_batch_put_vartime(body, n, e.key, e.value[1..<e.value.count]); }
+    if kv_is_error(n) { return n; } at = e.next;
+  }
+  return n;
+}
+wc_materialize_vartime :: (base: [] u8, base_used: int, delta: [] u8, used: int, stage: [] u8, body: [] u8) -> WcResult #export_c {
+  if !wc_extent(base_used, base.count) { return WcResult.{code=KV_CORRUPT}; }
+  n := wc_batch_vartime(delta, used, body);
+  if kv_is_error(n) { return WcResult.{code=-n}; }
+  if base_used > stage.count { return WcResult.{code=KV_FULL}; }
+  for k: 0..<base_used { stage[k] = base[k]; }
+  next := kv_apply_vartime(stage, base_used, body[0..<n], 0);
+  if kv_is_error(next) { return WcResult.{code=-next}; }
+  return WcResult.{used=next,n=n};
+}

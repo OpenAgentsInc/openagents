@@ -219,6 +219,31 @@ snapshot. Chapter 60's models, zero-survivor mutation receipts, native/Core
 full-set MuHash comparisons, fork reversals and exhaustive frame cuts qualify
 this boundary; they do not grant money admission or prove mainnet sync.
 
+## A Bitcoin write-back cache stays private until one synced flush
+
+`coax/lib/bitcoin/kvwriteback.coax` keeps only final differences from one
+immutable checked base. Actual base absence determines whether create/spend
+can disappear; spending, re-adding and spending an existing base coin retains
+its deletion. Empty values remain distinct from absence. All workspaces are
+disjoint, and failed staging changes neither published base nor delta.
+
+`coinscache.coax` accepts only complete successful validated connector/reorg
+bodies prepared against its exact private view. It binds the durable `V`
+cursor, refuses light/foreign profiles and accounts its state plus both delta
+arenas and tagged-record workspace against the configured cache limit.
+Database, validation and frame workspaces have separate explicit bounds.
+Dirty entries never evade the limit through eviction.
+
+A flush freezes edits, coalesces coins/inverses/undo/receipts/tip into one KV
+frame and returns a generation. Only append plus sync permits acknowledgement,
+base publication and active-index publication. A stale acknowledgement cannot
+clear a newer flush. Abort is allowed only before any append; ambiguous I/O
+requires closing and checked recovery. Unflushed private work is replayed from
+immutable durable block archives against the recovered cursor. Chapter 63's
+authority receipts, full Core coin/MuHash journeys, restart/replay, physical
+cuts and real Coax file adapter qualify this bounded native profile. They do
+not qualify a mainnet sync, snapshot import or money admission.
+
 ## Bitcoin block validation changes only private coins
 
 `coax/lib/bitcoin/validation.coax` requires chapter 59's admitted header tree
