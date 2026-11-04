@@ -81,6 +81,17 @@ realm, a feature being shown off, or a moment a player really had.
   coax/web/tool.sh clip "http://127.0.0.1:8800/demos/speedrun-hud?stage=hub" ~/Desktop/hud_hub.mp4 --size 1344x1080 --seconds 8.51
   ```
 
+- **Darian Odiodei** (`/worlds/everglade?stage=darian` or `?stage=darian-15`,
+  `apps/openagents-web/everglade-raid-preview.coax`): while the Cultist Raid's
+  leader is drawn, the camera stands 4 m (or 15 m) off his left side, looking
+  at him and his staff. It works in the offline preview (`&raid=preview`) and
+  in a room with the raid running (`&relay=...&room=...`). Until he is drawn,
+  the camera is yours.
+
+  ```shell
+  coax/web/tool.sh shot "http://127.0.0.1:8800/worlds/everglade?raid=preview&stage=darian" ~/Desktop/darian.png 1440x900 3000
+  ```
+
 ## Next
 
 - Inputs on a timeline in `clip.coax` (key and pointer events at frame

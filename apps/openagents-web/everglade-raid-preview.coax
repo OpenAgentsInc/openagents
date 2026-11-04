@@ -76,10 +76,15 @@ RaidPreview :: struct {
   // Darian Odiodei as drawn this frame, the preview's or the room's: where his nameplate goes, and
   // his staff's orb and how bright it burns (its light, rp_lamps)
   arch_on: bool; arch_name: Point; arch_orb: Point; arch_glow: f32;
+  arch_feet: Point; arch_left: Point;   // where he stands, and his left (his staff's side)
+  stage: f32;                // ?stage=darian (4 m) or darian-15: the camera this far off his left side, 0 none
 }
 
 // ?raid=preview (and &cine=1): you by the commons facing the South Gate, the raid to come.
 rp_facts :: (s: [] Everglade, url: string) {
+  // a staged shot of Darian and his staff (docs/verse/clips.md), in the preview or a room
+  if eg_query_is(url, "stage", "darian") { s[0].rp.stage = 4; }
+  if eg_query_is(url, "stage", "darian-15") { s[0].rp.stage = 15; }
   if !eg_query_is(url, "raid", "preview") { return; }
   s[0].rp.on = true;
   s[0].rp.cine = eg_query_is(url, "cine", "1");
@@ -263,6 +268,12 @@ rp_path :: (k: [27] f32, t: f32) -> Point {
 }
 // The camera: with &cine=1 the flight, then your own (`follow`) from its last key; else yours.
 rp_shot :: (s: [] Everglade, follow: Shot) -> Shot {
+  if s[0].rp.stage > 0 && s[0].rp.arch_on {
+    // ?stage=darian: from his left, a little above, looking at his chest and staff
+    d := s[0].rp.stage;
+    f := s[0].rp.arch_feet; l := s[0].rp.arch_left;
+    return Shot.{eye = add(f, add(times(l, d), v3(0, 1.5 + 0.06 * d, 0))), at = add(f, add(times(l, 0.3), v3(0, 1.55, 0)))};
+  }
   if !s[0].rp.on || !s[0].rp.cine { return follow; }
   t := s[0].rp.t;
   last := RP_KEY_T[RP_KEYS - 1];
@@ -441,7 +452,10 @@ rp_person_at :: (s: [] Everglade, q: int, npc: int, x: f32, z: f32, yaw: f32, sp
   head := watch_joint(rig, sk, PEOPLE_HEAD);
   hd := add(v3(x, y, z), times(watch_world(head.t, c, sn), big));
   fwd := v3(sn, 0, c); right := v3(c, 0, -sn);
-  if npc == RP_ARCH && dead_t < 0 { s[0].rp.arch_on = true; s[0].rp.arch_name = add(hd, v3(0, f32(RP_NAME_OVER) * big, 0)); }
+  if npc == RP_ARCH && dead_t < 0 {
+    s[0].rp.arch_on = true; s[0].rp.arch_name = add(hd, v3(0, f32(RP_NAME_OVER) * big, 0));
+    s[0].rp.arch_feet = v3(x, y, z); s[0].rp.arch_left = times(right, -1);
+  }
   if town && !shooter { watch_arm_guard(s, rig, sk, x, y, z, yaw, true); return; }
   if shooter {
     // a bow or a crossbow in the left hand
@@ -456,7 +470,7 @@ rp_person_at :: (s: [] Everglade, q: int, npc: int, x: f32, z: f32, yaw: f32, sp
     if npc == RP_ARCH {
       lh := watch_joint(rig, sk, PEOPLE_HAND_L_J);
       lw := add(v3(x, y, z), times(watch_world(lh.t, c, sn), big));
-      rp_darian_staff(s, lw, fwd, right, big, y, lit);
+      rp_darian_staff(s, lw, fwd, right, hd.y - y, y, lit);
       sp_glow(s, add(v3(x, y, z), v3(0, 1.0, 0)), 1.2, times(RP_VIOLET, 0.16 + 0.06 * sin(s[0].rp.t * 3)));
     }
     return;
@@ -470,98 +484,114 @@ rp_person_at :: (s: [] Everglade, q: int, npc: int, x: f32, z: f32, yaw: f32, sp
 
 // ---- Darian Odiodei's staff and his name
 
-// His staff (the druid's staff's make, everglade-rangers.coax druid_staff, his own): a black shaft,
-// crooked and knotted, with two strands of it twisting up round it, a bronze band under the head,
-// and four claws curling up out of the wood to cage an orange orb. The orb pulses, lights what is
-// round it (rp_lamps) and throws embers; it flares as he casts. Held in his left fist, standing,
-// tipped a little forward and out. Near the eye (RP_STAFF_NEAR) 37 boxes and cones, one ball;
-// farther, the shaft, the orb and its light, with a wider halo so it reads across the field.
-RP_STAFF_NEAR :: 22.0;     // m from the eye
-RP_STAFF_UP :: 0.95;       // m of shaft above his fist, and below it at most RP_STAFF_DOWN
-RP_STAFF_DOWN :: 0.9;
-RP_ORB_R :: 0.085;         // m: the orb's radius
+// His staff (the druid's staff's make, everglade-rangers.coax druid_staff, his own): taller than he is,
+// its orb at RP_STAFF_TALL of his head's height. A thick black shaft, crooked and knotted, two strands
+// twisting up round it, a bronze band, and four heavy claws curling up out of the wood to cage a big
+// orange-gold orb: a ball with a hot core and a slow swirl of light round it, a soft halo, embers,
+// and a lamp that lights him and the ground round him (rp_lamps). It flares as he casts. Its foot on
+// the ground by his left fist, the fist on the shaft, so it goes with him through every clip.
+// Within RP_STAFF_NEAR m of the eye all of it (about 45 shapes); farther, the shaft, the claws' four
+// first lengths, the orb and its light.
+RP_STAFF_NEAR :: 35.0;     // m from the eye
+RP_STAFF_TALL :: 1.3;      // the orb's middle at this many times his head's height
+RP_ORB_R :: 0.21;          // m: the orb's radius
 RP_NAME_OVER :: 0.72;      // m over his head's joint: his name, clear of his Hit Points bar
-RP_SHAFT_RGB :: Point.{x = 0.04, y = 0.028, z = 0.026};
-RP_STRAND_RGB :: Point.{x = 0.075, y = 0.045, z = 0.035};
-RP_CLAW_RGB :: Point.{x = 0.1, y = 0.06, z = 0.045};
-RP_BAND_RGB :: Point.{x = 0.42, y = 0.27, z = 0.1};
-RP_ORB_RGB :: Point.{x = 1.9, y = 0.72, z = 0.12};      // linear light, past white: the bloom's
-RP_ORB_GLOW :: Point.{x = 0.95, y = 0.38, z = 0.06};
-RP_EMBER_RGB :: Point.{x = 1.6, y = 0.55, z = 0.1};
-// The claws' points up the head from the band and out from its middle, as STAFF_ROOT_UP and _OUT.
-RP_CLAW_UP :: [5] f32.[0, 0.05, 0.13, 0.22, 0.27];
-RP_CLAW_OUT :: [5] f32.[0.03, 0.07, 0.1, 0.085, 0.03];
-rp_darian_staff :: (s: [] Everglade, fist: Point, fwd: Point, right: Point, big: f32, ground: f32, lit: f32) {
-  ax := unit_or(add(add(v3(0, 1, 0), times(fwd, 0.12)), times(right, -0.08)), v3(0, 1, 0));
+RP_SHAFT_RGB :: Point.{x = 0.045, y = 0.03, z = 0.028};
+RP_STRAND_RGB :: Point.{x = 0.085, y = 0.05, z = 0.038};
+RP_CLAW_RGB :: Point.{x = 0.12, y = 0.07, z = 0.05};
+RP_BAND_RGB :: Point.{x = 0.5, y = 0.32, z = 0.12};
+RP_ORB_RGB :: Point.{x = 1.55, y = 0.72, z = 0.11};      // orange-gold: bright, but short of white so it stays a coloured ball
+RP_CORE_RGB :: Point.{x = 2.6, y = 1.7, z = 0.6};       // its hot heart, yellow-white
+RP_ORB_GLOW :: Point.{x = 1.0, y = 0.45, z = 0.08};
+RP_EMBER_RGB :: Point.{x = 1.8, y = 0.7, z = 0.12};
+RP_SWIRL :: 3;             // motes of light circling in the orb
+// The claws' points from the band up past the orb's middle (in orb radii, from its middle) and out
+// from the staff's line, as STAFF_ROOT_UP and _OUT: out round its belly, then in over its crown.
+RP_CLAW_UP :: [5] f32.[-1.35, -0.85, -0.1, 0.6, 1.05];
+RP_CLAW_OUT :: [5] f32.[0.3, 0.95, 1.22, 1.05, 0.4];
+rp_darian_staff :: (s: [] Everglade, fist: Point, fwd: Point, right: Point, head: f32, ground: f32, lit: f32) {
+  ax := unit_or(add(add(v3(0, 1, 0), times(fwd, 0.06)), times(right, -0.05)), v3(0, 1, 0));
   side := unit_or(cross(ax, fwd), right); third := cross(side, ax);
-  down := lo(f32(RP_STAFF_DOWN) * big, hi((fist.y - ground - 0.02) / ax.y, 0.2));   // its foot on the ground, not in it
-  a := sub(fist, times(ax, down));
-  neck := add(fist, times(ax, f32(RP_STAFF_UP) * big));
-  orb := add(neck, times(ax, 0.14 * big));
+  rr := f32(RP_ORB_R);
+  tall := f32(RP_STAFF_TALL) * hi(head, 1.2);          // the orb's middle over the ground
+  a := add(fist, times(ax, -(fist.y - ground) / ax.y));   // the foot on the ground below the fist
+  orb := add(a, times(ax, tall / ax.y));
+  neck := sub(orb, times(ax, rr * 1.35));               // the band, where the claws split
   t := s[0].rp.t + f32(s[0].time);
   f := clamp01(lit);
-  pulse := 1 + 0.16 * sin(t * 2.3) + 0.05 * sin(t * 7.1);   // a slow breath, a faint flicker
-  glow := pulse * (1 + 1.4 * f);
+  pulse := 1 + 0.14 * sin(t * 2.1) + 0.04 * sin(t * 6.7);   // a slow breath, a faint flicker
+  glow := pulse * (1 + 1.2 * f);
   s[0].rp.arch_orb = orb; s[0].rp.arch_glow = glow;
-  near := length(sub(orb, s[0].sp.shot.eye)) < f32(RP_STAFF_NEAR);
-  if !near {
-    staff_post(s, LOOK_WOOD, a, neck, 0.034 * big, RP_SHAFT_RGB);
-  } else {
-    // the shaft: three crooked lengths, a knot at each bend
-    k1 := add(mix(a, neck, 0.36), times(side, 0.014));
-    k2 := add(mix(a, neck, 0.7), add(times(side, -0.012), times(third, 0.01)));
-    staff_post(s, LOOK_WOOD, a, k1, 0.026 * big, RP_SHAFT_RGB);
-    staff_post(s, LOOK_WOOD, k1, k2, 0.03 * big, RP_SHAFT_RGB);
-    staff_post(s, LOOK_WOOD, k2, neck, 0.034 * big, RP_SHAFT_RGB);
-    staff_knot(s, k1, ax, side, third, 0.05, RP_STRAND_RGB);
-    staff_knot(s, k2, ax, side, third, 0.056, RP_STRAND_RGB);
+  eye := s[0].sp.shot.eye;
+  near := length(sub(orb, eye)) < f32(RP_STAFF_NEAR);
+  if near {
+    // the shaft: three crooked lengths, thickening up, a knot at each bend
+    k1 := add(mix(a, neck, 0.34), times(side, 0.02));
+    k2 := add(mix(a, neck, 0.68), add(times(side, -0.018), times(third, 0.014)));
+    staff_post(s, LOOK_WOOD, a, k1, 0.04, RP_SHAFT_RGB);
+    staff_post(s, LOOK_WOOD, k1, k2, 0.046, RP_SHAFT_RGB);
+    staff_post(s, LOOK_WOOD, k2, neck, 0.052, RP_SHAFT_RGB);
+    staff_knot(s, k1, ax, side, third, 0.085, RP_STRAND_RGB);
+    staff_knot(s, k2, ax, side, third, 0.09, RP_STRAND_RGB);
     // two strands twisting up round its upper half into the head
     for j: 0..<2 {
-      last := mix(a, neck, 0.45);
+      from := mix(a, neck, 0.42);
+      last := from;
       for q: 1..<7 {
         u := f32(q) / 6;
         ang := u * 9.0 + f32(j) * 3.14159;
-        p := add(mix(mix(a, neck, 0.45), neck, u), times(add(times(side, cos(ang)), times(third, sin(ang))), 0.036 * big));
-        staff_root(s, last, p, 0.012, 1.4, RP_STRAND_RGB);
+        p := add(mix(from, neck, u), times(add(times(side, cos(ang)), times(third, sin(ang))), 0.056));
+        staff_root(s, last, p, 0.018, 1.4, RP_STRAND_RGB);
         last = p;
       }
     }
-    // the band under the head, the head flaring from it
-    staff_post(s, LOOK_MATTE, sub(neck, times(ax, 0.04)), neck, 0.046 * big, RP_BAND_RGB);
-    sp_shape(s, SHAPE_CONE, LOOK_WOOD, add(neck, times(ax, 0.03)), times(side, 0.075), times(ax, -0.09), times(third, 0.075), RP_CLAW_RGB);
-    // four claws curling up out round the orb and in over it
-    for r: 0..<4 {
-      last := add(neck, times(add(times(side, cos(f32(r) * 1.5708 + 0.4)), times(third, sin(f32(r) * 1.5708 + 0.4))), RP_CLAW_OUT[0]));
-      for q: 1..<5 {
-        u := f32(q) / 4;
-        ang := f32(r) * 1.5708 + 0.4 + u * 0.9;
-        out := times(add(times(side, cos(ang)), times(third, sin(ang))), RP_CLAW_OUT[q] * big);
-        p := add(add(neck, times(ax, RP_CLAW_UP[q] * big)), out);
-        staff_root(s, last, p, lerp(0.02, 0.007, u), ifx q < 4 then 1.6f32 else 1.1f32, times(RP_CLAW_RGB, 0.8 + 0.2 * f32(r % 2)));
-        last = p;
-      }
+  } else {
+    staff_post(s, LOOK_WOOD, a, neck, 0.05, RP_SHAFT_RGB);
+  }
+  // the bronze band, and the head flaring out of it
+  staff_post(s, LOOK_MATTE, sub(neck, times(ax, 0.07)), neck, 0.068, RP_BAND_RGB);
+  sp_shape(s, SHAPE_CONE, LOOK_WOOD, add(neck, times(ax, 0.05)), times(side, 0.12), times(ax, -0.13), times(third, 0.12), RP_CLAW_RGB);
+  // four heavy claws out round the orb's belly and in over its crown (far off, their first lengths)
+  steps := ifx near then 5 else 3;
+  for r: 0..<4 {
+    base := f32(r) * 1.5708 + 0.4;
+    last := add(neck, times(add(times(side, cos(base)), times(third, sin(base))), rr * RP_CLAW_OUT[0]));
+    for q: 1..<steps {
+      u := f32(q) / 4;
+      ang := base + u * 0.7;
+      out := times(add(times(side, cos(ang)), times(third, sin(ang))), rr * RP_CLAW_OUT[q]);
+      p := add(add(orb, times(ax, rr * RP_CLAW_UP[q])), out);
+      staff_root(s, last, p, lerp(0.06, 0.022, u), ifx q < 4 then 1.5f32 else 1.15f32, times(RP_CLAW_RGB, 0.8 + 0.2 * f32(r % 2)));
+      last = p;
     }
   }
-  // the orb, its hot heart and its halo; past the near eye a wider halo, so it reads at raid distance
-  rr := f32(RP_ORB_R) * big * (ifx near then 1.0f32 else 1.5f32);   // a little larger far off, to read
-  sp_shape(s, SHAPE_SPHERE, LOOK_GLOW, orb, times(side, rr), times(ax, rr), times(third, rr), times(RP_ORB_RGB, 0.8 + 0.25 * glow));
-  sp_glow(s, orb, (0.6 + 0.5 * f) * pulse, times(RP_ORB_GLOW, 1.6 * glow));
-  sp_glow(s, orb, 0.13, times(v3(1.4, 0.8, 0.3), 0.6 + 0.3 * glow));
-  if !near {
-    sp_glow(s, orb, 0.7 + 0.4 * f, times(RP_ORB_GLOW, 1.2 * glow));
-    sp_glow(s, orb, 1.8 + 0.8 * f, times(RP_ORB_GLOW, 0.45 * glow));
+  // the orb, its hot heart toward the eye, the swirl of light round it, and its halo
+  sp_shape(s, SHAPE_SPHERE, LOOK_GLOW, orb, times(side, rr), times(ax, rr), times(third, rr), times(RP_ORB_RGB, 0.75 + 0.3 * glow));
+  to_eye := unit_or(sub(eye, orb), fwd);
+  sp_glow(s, add(orb, times(to_eye, rr * 1.05)), rr * 0.55, times(RP_CORE_RGB, 0.3 + 0.15 * glow));
+  if near {
+    for m: 0..<RP_SWIRL {
+      ang := t * (0.9 + 0.25 * f32(m)) + f32(m) * 2.0944;
+      tilt := 0.5 * sin(t * 0.4 + f32(m) * 1.7);
+      p := add(orb, times(add(add(times(side, cos(ang)), times(third, sin(ang))), times(ax, tilt)), rr * 1.02));
+      mr := rr * 0.11;
+      sp_shape(s, SHAPE_BOX, LOOK_GLOW, p, times(side, mr), times(ax, mr), times(third, mr), times(RP_CORE_RGB, 0.9));
+      sp_glow(s, p, rr * 0.6, times(RP_ORB_GLOW, 0.9 * glow));
+    }
   }
-  // a few embers drifting up off it, more as he casts
-  if sp_rand(s) < (ifx near then 0.12f32 else 0.06f32) * (1 + 3 * f) {
+  sp_glow(s, orb, (0.75 + 0.6 * f) * pulse, times(RP_ORB_GLOW, 0.9 * glow));
+  sp_glow(s, orb, (2.2 + 1.0 * f) * pulse, times(RP_ORB_GLOW, 0.32 * glow));
+  // embers drifting up off it, more as he casts
+  if sp_rand(s) < 0.2 * (1 + 2.5 * f) {
     ang := 6.2832 * sp_rand(s);
-    at := add(orb, times(add(times(side, cos(ang)), times(third, sin(ang))), rr * 0.8));
-    sp_add_spark(s, at, v3(0.15 * cos(ang), 0.45 + 0.35 * sp_rand(s), 0.15 * sin(ang)), 0.9 + 0.6 * sp_rand(s), 0.018, RP_EMBER_RGB, -0.15);
+    at := add(orb, times(add(times(side, cos(ang)), times(third, sin(ang))), rr * 0.9));
+    sp_add_spark(s, at, v3(0.2 * cos(ang), 0.5 + 0.4 * sp_rand(s), 0.2 * sin(ang)), 1.0 + 0.7 * sp_rand(s), 0.024, RP_EMBER_RGB, -0.15);
   }
 }
-// The orb's light on what is round it, as the druid's fire (everglade-grove.coax gv_lamps).
+// The orb's light on him and the ground round him, as the druid's fire (everglade-grove.coax gv_lamps).
 rp_lamps :: (s: [] Everglade, u: [] f32, k: int, most: int) -> int {
   if !s[0].rp.arch_on || s[0].rp.arch_glow <= 0 { return k; }
-  return sp_lamp(u, k, most, s[0].rp.arch_orb, 5.5, v3(1.0, 0.5, 0.15), 0.9 * s[0].rp.arch_glow);
+  return sp_lamp(u, k, most, s[0].rp.arch_orb, 8, v3(1.0, 0.55, 0.18), 2.2 * s[0].rp.arch_glow);
 }
 // His name over his head, for labels() (everglade.coax), in the townsfolk's and players' plate:
 // from the body drawn for him, so the preview's Darian and the room's alike.
@@ -741,4 +771,13 @@ rp_test_bunched :: (g: [] Everglade, first: int, n: int, clip: int, gap: [] f32)
   #assert h[0].rp.arch_on && abs(h[0].rp.arch_name.x - 2) < 0.5 && abs(h[0].rp.arch_name.z + 45) < 0.5;
   #assert h[0].rp.arch_glow > 0.7 && abs(h[0].rp.arch_orb.x - 2) < 1.2 && abs(h[0].rp.arch_orb.z + 45) < 1.2;   // and his staff
   #assert rp_labels(h[..], ls[..], 0, ab_you(h[..]), 1) == 1 && ls[0].text == "DARIAN ODIODEI";
+  // the staff stands taller than he does: its orb over his name's height less a little, its foot on the ground
+  #assert h[0].rp.arch_orb.y - h[0].rp.arch_feet.y > 2.2;
+  // ?stage=darian: the camera 4 m off his staff's side, looking at him
+  rp_facts(h[..], "/worlds/everglade?stage=darian");
+  follow := Shot.{eye = v3(0, 2, -10), at = v3(0, 1, -20)};
+  sh := rp_shot(h[..], follow);
+  #assert abs(flat_gap(sh.eye, h[0].rp.arch_feet) - 4) < 0.05 && flat_gap(sh.at, h[0].rp.arch_feet) < 0.5;
+  rp_facts(h[..], "/worlds/everglade?stage=darian-15");
+  #assert abs(flat_gap(rp_shot(h[..], follow).eye, h[0].rp.arch_feet) - 15) < 0.05;
 }
