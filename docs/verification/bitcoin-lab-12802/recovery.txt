@@ -1,0 +1,7 @@
+gpu-recovery: open http://127.0.0.1:8832/worlds/bitcoin-lab
+gpu-recovery: WebGPU adapter: hardware nvidia lovelace
+gpu-recovery: lose the device
+gpu-recovery: recovered true in 96 ms, 0 writes waited and were delivered true, digest bdc67e8bcef24d8d606cc5631c3dd64b2a9bff318e8b25f3b5a19c46ce2e6dde -> bdc67e8bcef24d8d606cc5631c3dd64b2a9bff318e8b25f3b5a19c46ce2e6dde
+gpu-recovery: trap the engine
+gpu-recovery: saved true, put back bfccec05747f584b5818c06de745a63cc96d69764449e68fddaab445a1d1bbcd -> bfccec05747f584b5818c06de745a63cc96d69764449e68fddaab445a1d1bbcd
+pass device loss and engine trap keep the session (within 3000 ms, on a GPU)

@@ -1,0 +1,13 @@
+Bitcoin Lab: ready desktop, http://127.0.0.1:8832/worlds/bitcoin-lab
+Bitcoin Lab: WebGPU adapter: hardware nvidia lovelace
+Bitcoin Lab: spawn -> Chain -> spawn
+Bitcoin Lab: keyboard chapters and pointer station selection
+Bitcoin Lab: screenshot /tmp/bitcoin-lab-12802/desktop-walk.png
+Bitcoin Lab: exit to Worlds
+Bitcoin Lab: ready phone, http://127.0.0.1:8832/worlds/bitcoin-lab
+Bitcoin Lab: WebGPU adapter: hardware nvidia lovelace
+Bitcoin Lab: spawn -> Chain -> spawn
+Bitcoin Lab: phone thumb walks forward and back
+Bitcoin Lab: keyboard chapters and pointer station selection
+Bitcoin Lab: screenshot /tmp/bitcoin-lab-12802/phone-walk.png
+Bitcoin Lab: exit to Worlds

@@ -1,0 +1,2 @@
+Bitcoin Lab native: 10674 vertices, chapter 46, refusals 0
+PASS: 375 chapter/layout frames, peak 11616 vertices, state 134592 bytes, arena 3590944 bytes
