@@ -632,7 +632,8 @@ e5_fps_draw :: (s: [] Everglade, v: [] E5, out: [] f32, at: int) -> int {
   fm := put_digits(fl[..], 0, cast(int) (v[0].fps + 0.5)); fm = e5_put(fl[..], fm, " FPS  ");
   fm = put_digits(fl[..], fm, tenths / 10); fm = e5_put(fl[..], fm, "."); fm = put_digits(fl[..], fm, tenths % 10); fm = e5_put(fl[..], fm, " MS");
   // in a room: what the server sends you a second, and the most it sends (its byte budget, W)
-  if net_live(s) {
+  if net_rejoining(s) { fm = e5_put(fl[..], fm, "  NET · REJOINING"); }   // the room dropped: its kit and level stay while the page gets back in
+  else if net_live(s) {
     n := net_of(s);
     fm = e5_put(fl[..], fm, "  NET "); fm = put_digits(fl[..], fm, (n[0].rate + 512) / 1024);
     fm = e5_put(fl[..], fm, " OF "); fm = put_digits(fl[..], fm, (n[0].budget * n[0].hz + 512) / 1024); fm = e5_put(fl[..], fm, " KB/S");

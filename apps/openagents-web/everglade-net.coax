@@ -134,6 +134,7 @@ EgNet :: struct {
   said: [48] u8; said_n: int; said_t: f32;   // the last refusal's reason, or what became of the room
   stale: bool; reload_at: int;   // the room speaks a newer wire (r 0 version): no more opens; reloaded once at reload_at
   lost: bool;                // the room's socket closed under you: said again when you're back
+  sat: bool;                 // you sat in a room this load: the page plays in rooms from then (net_live)
   quiet_frames: int; quiet_since: int; quiet_fresh: bool = true; stepped_at: int;   // the quiet socket's watch (NET_SILENT_MS)
   hello_due: bool;
   pipe: [1] Pipe;
@@ -151,8 +152,14 @@ EgNet :: struct {
 everglade_attach_net :: (s: [] Everglade, n: [] EgNet) #export_c { s[0].net = n; }
 net_of :: (s: [] Everglade) -> [] EgNet { return s[0].net; }
 net_on :: (s: [] Everglade) -> bool { return s[0].net.count > 0; }
-// The socket is open and you sit in the room: the server's world is what this page shows.
-net_live :: (s: [] Everglade) -> bool #export_c { return net_on(s) && net_of(s)[0].state == NET_OPEN && net_of(s)[0].seat >= 0; }
+// You play in a room: you sat in one this load and the page still wants it. The room's kit, level,
+// rules and status stay while its socket is down and the page rejoins (net_rejoining); only a page
+// that never sat in a room plays offline. What goes to the room needs it open (net_open).
+net_live :: (s: [] Everglade) -> bool #export_c { return net_open(s) || net_rejoining(s); }
+// The socket is open and you sit in the room: what you do goes to it.
+net_open :: (s: [] Everglade) -> bool { return net_on(s) && net_of(s)[0].state == NET_OPEN && net_of(s)[0].seat >= 0; }
+// The room's socket dropped under you and the page is getting you back in (its backoff, net_down).
+net_rejoining :: (s: [] Everglade) -> bool #export_c { return net_on(s) && net_of(s)[0].sat && net_of(s)[0].want && !net_open(s); }
 net_now :: (n: [] EgNet) -> int { return n[0].mono + n[0].offset; }
 // The server clock in ms, -1 while none is known.
 net_clock :: (s: [] Everglade) -> int #export_c { if !net_on(s) || net_of(s)[0].mono == 0 { return -1; } return net_now(net_of(s)); }
@@ -330,7 +337,7 @@ net_json_field :: (t: string, name: string) -> string {
 }
 // While you play in a room: a WANTED level or look that changed is saved (at most every NET_STATE_EVERY).
 net_save_state :: (s: [] Everglade, n: [] EgNet) {
-  if !net_live(s) || n[0].mono - n[0].saved_at < NET_STATE_EVERY { return; }
+  if !net_open(s) || n[0].mono - n[0].saved_at < NET_STATE_EVERY { return; }
   you := watch_you(s[0].wt[..]);
   level := ifx you[0].wanted then you[0].level else 0;
   if level < 0 { level = 0; }
@@ -372,13 +379,16 @@ net_opened :: (s: [] Everglade, id: int) #export_c {
   net_of(s)[0].sock = id;
 }
 // Closed: the world goes with it (nothing is shown that the server isn't saying), and the socket is
-// tried again after a wait that doubles to a minute.
+// tried again after a wait that doubles to a minute, jittered. You stay in the room's game meanwhile (net_live).
 net_down :: (n: [] EgNet) {
   n[0].state = NET_DOWN; n[0].sock = -1; n[0].seat = -1; n[0].quiet_fresh = true;
   n[0].tries += 1;
   wait := 1000;
   for q: 0..<lo_int(n[0].tries - 1, 6) { wait *= 2; }
-  n[0].retry = n[0].mono + lo_int(wait, 60000);
+  // jitter, 75% to 125% of the wait, so the pages a restarted room dropped don't all come back at once
+  wait = lo_int(wait, 60000);
+  j := ((n[0].mono * 7919 + n[0].tries * 104729 + n[0].pid_n * 31) % 1000 + 1000) % 1000;
+  n[0].retry = n[0].mono + wait * 3 / 4 + wait * j / 2000;
   for e: 0..<NET_ENTS { n[0].ents[e].live = false; }
   for q: 0..<NET_FX { n[0].fx[q].live = false; }
   net_forget(n);
@@ -450,7 +460,7 @@ net_record :: (s: [] Everglade, n: [] EgNet, t: string) {
   if c == 'y' {
     seat := wire_num(t, r[..]); _ := wire_num(t, r[..]); clock := wire_num(t, r[..]);
     if seat < 0 { return; }
-    n[0].seat = seat; n[0].wanted = -1; jn_seated(n);
+    n[0].seat = seat; n[0].wanted = -1; n[0].sat = true; jn_seated(n);
     net_forget(n);
     if n[0].lost { n[0].lost = false; net_tell(s, n, "BACK IN THE ROOM"); }
     if r[0].ok && clock > 0 && n[0].synced < 2 { n[0].offset = clock - n[0].mono; n[0].synced = 1; }
@@ -798,7 +808,7 @@ net_state_at :: (en: [] NetEnt, rt: int) -> NetState {
 
 // One step's input: kept and sent (I). Its sequence number, 0 when there is no room to send it to.
 net_input :: (s: [] Everglade, input: EgMoveIn, dive: bool) -> int #export_c {
-  if !net_live(s) { return 0; }
+  if !net_open(s) { return 0; }
   n := net_of(s);
   n[0].seq += 1;
   n[0].inputs[n[0].seq % NET_HIST] = NetInput.{seq = n[0].seq, input = input};
@@ -812,7 +822,7 @@ net_input :: (s: [] Everglade, input: EgMoveIn, dive: bool) -> int #export_c {
 }
 // The server's word on you is new: where it has you after input fix.ack (the face sets you there and
 // re-runs the later inputs, net_replay_*, then says how far that moved you, net_fixed).
-net_fix_due :: (s: [] Everglade) -> bool #export_c { return net_live(s) && net_of(s)[0].fix_due && net_of(s)[0].fix.ok; }
+net_fix_due :: (s: [] Everglade) -> bool #export_c { return net_open(s) && net_of(s)[0].fix_due && net_of(s)[0].fix.ok; }
 net_fix :: (s: [] Everglade) -> NetFix #export_c { return net_of(s)[0].fix; }
 // The inputs after the server's, oldest first: how many, and the k-th (as the wire carried it, so the
 // re-run steps what the server steps). Only steps (I) count: a cast, an end or a rebuild takes a
@@ -895,7 +905,7 @@ net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: 
   net_save_state(s, n);
   if n[0].said_t > 0 { n[0].said_t -= 0.016; }
   now := net_now(n);
-  if net_live(s) {
+  if net_open(s) {
     if n[0].ping_at == 0 || mono - n[0].ping_at >= (ifx n[0].ping_n < 8 then 1000 else 10000) {
       m := wire_put(n[0].out[..], 0, "t"); m = wire_int(n[0].out[..], m, mono);
       net_send(n, m);
@@ -915,7 +925,7 @@ net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: 
     if en[0].kind == WK_FOLK && p.f == WM_CALM && p.a == 1 { n[0].folk_walk += 1; if dx * dx + dz * dz < 1.0e-8 { n[0].folk_still += 1; } }
     en[0].shown = p;
   }
-  if net_live(s) && sp_on(s) { net_follow(s, n, now); }
+  if net_open(s) && sp_on(s) { net_follow(s, n, now); }
   // the casts, each at its time
   for q: 0..<NET_FX {
     fx := n[0].fx[q];
@@ -958,7 +968,7 @@ net_hello :: (s: [] Everglade, n: [] EgNet) {
 // Your intents: a cast from bar slot b at the aim (target an entity, -1 none), the end of what slot b
 // holds up, the town rebuilt. False when there is no room to send them to.
 net_cast :: (s: [] Everglade, b: int, at: Point, target: int) -> bool #export_c {
-  if !net_live(s) { return false; }
+  if !net_open(s) { return false; }
   n := net_of(s);
   n[0].seq += 1;
   // aimed at (or by) a server creature, the cast names it: the server aims it where the creature is
@@ -985,14 +995,14 @@ net_creature_at :: (n: [] EgNet, at: Point, reach: f32) -> int {
   return best;
 }
 net_end :: (s: [] Everglade, b: int) -> bool {
-  if !net_live(s) { return false; }
+  if !net_open(s) { return false; }
   n := net_of(s);
   n[0].seq += 1;
   net_send(n, wire_put_use(n[0].out[..], 0, WireUse.{seq = n[0].seq, kind = WE_END, id = b}));
   return true;
 }
 net_rebuild :: (s: [] Everglade) -> bool {
-  if !net_live(s) { return false; }
+  if !net_open(s) { return false; }
   n := net_of(s);
   n[0].seq += 1;
   net_send(n, wire_put_rebuild(n[0].out[..], 0, n[0].seq));
@@ -1028,7 +1038,7 @@ net_stacks :: (k: int) -> bool { return k == AB_WIND || k == AB_STONE; }
 // the room's server runs them too, for where it has you (everglade-room-abilities.coax eg_ra_runs):
 // up goes as a cast where you stand, down as its end.
 net_mirror :: (s: [] Everglade, k: int, on: bool) {
-  if !net_live(s) || eg_ra_copying(s) { return; }
+  if !net_open(s) || eg_ra_copying(s) { return; }
   b := SP_SLOTS + k;
   if on { _ := net_cast(s, b, ab_you(s), -1); } else { _ := net_end(s, b); }
 }
@@ -1471,6 +1481,11 @@ net_probe :: (s: [] Everglade, field: int) -> int #export_c {
   if field == 60 { return cast(int) (s[0].orbit.yaw * 1000); }
   if field == 61 { return s[0].sp.sprite_n; }
   if field == 62 { return s[0].sp.fx_seen; }
+  // 63 you play in a room (its kit, level and rules), 64 rejoining a room that dropped, 65 the level's kit on the bar, 66 your level
+  if field == 63 { return ifx net_live(s) then 1 else 0; }
+  if field == 64 { return ifx net_rejoining(s) then 1 else 0; }
+  if field == 65 { return ifx ege_kit_on(s) then 1 else 0; }
+  if field == 66 { return ege_of(s)[0].level; }
   if field >= 45 && field <= 48 { return s[0].sp.fx_shown[field - 45]; }
   if field == 49 { h := 7; for p: 0..<48 { h = (h * 31 + sp_at_place(s, p) + 2) % 1000000007; } return h; }
   if field >= 400 && field < 448 { return sp_at_place(s, field - 400); }
@@ -2045,8 +2060,8 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   pins := ws[0].pin_n;
   net_sky_weather(a[..], ws[..], tick + 100);
   #assert ws[0].pin_n == pins;
-  // closed: the page's own sky again
-  #assert net_event(a[..], SOCKET_KIND + SOCKET_CLOSED, "") && net_sky_day(a[..]) < 0 && net_sky_ms(a[..]) < 0;
+  // closed under you: still the room's sky while the page rejoins (no jump to the page's own)
+  #assert net_event(a[..], SOCKET_KIND + SOCKET_CLOSED, "") && net_rejoining(a[..]) && net_sky_day(a[..]) >= 0;
   // and the wire's day is the page's 48-minute day, its seed the page's weather's
   #assert WIRE_DAY_MS == cast(int) (STYLE_CYCLE_SECONDS * 1000) && WIRE_WEATHER_SEED == EG_WEATHER_SEED;
 }
@@ -2065,7 +2080,7 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   #assert net_live(a[..]);
   // nothing heard past NET_SILENT_MS while drawing: closed, said, and opened again after the wait
   for k: 0..<20 { t += 100; net_step(a[..], t, 0, 0, 0, 0, 0, 0, false, 0, false, 0); }
-  #assert !net_live(a[..]) && na[0].state == NET_DOWN && na[0].lost && cast(string) na[0].said[0..<na[0].said_n] == "LOST THE ROOM · REJOINING";
+  #assert !net_open(a[..]) && net_rejoining(a[..]) && na[0].state == NET_DOWN && na[0].lost && cast(string) na[0].said[0..<na[0].said_n] == "LOST THE ROOM · REJOINING";
   closed := false;
   for k: 0..<na[0].pipe[0].n { if na[0].pipe[0].op[k] == PIPE_CLOSE && na[0].pipe[0].id[k] == 0 { closed = true; } }
   #assert closed;
@@ -2081,12 +2096,17 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   for k: 0..<101 { t += 100; net_step(a[..], t, 0, 0, 0, 0, 0, 0, false, 0, false, 0); }
   #assert na[0].state == NET_DOWN;
 }
-#test "net: a room lost under you is said, and so is getting back; a socket refused before a seat says no loss" {
+#test "net: a room lost under you is said, and so is getting back; you stay in the room's game meanwhile, and nothing goes out" {
   a: [1] Everglade; na: [1] EgNet;
   #assert net_test_page(a[..], na[..], 0, "pa", 100);
-  #assert net_test_hear(a[..], 0, "y 0 1 5000100") && net_live(a[..]);
+  #assert !net_live(a[..]);   // never sat: offline
+  #assert net_test_hear(a[..], 0, "y 0 1 5000100") && net_live(a[..]) && !net_rejoining(a[..]);
   #assert net_event(a[..], SOCKET_KIND + SOCKET_CLOSED, "");
-  #assert !net_live(a[..]) && na[0].lost && cast(string) na[0].said[0..<na[0].said_n] == "LOST THE ROOM · REJOINING";
+  #assert na[0].lost && cast(string) na[0].said[0..<na[0].said_n] == "LOST THE ROOM · REJOINING";
+  // still the room's game (its kit, level and rules), not the offline one; casts and steps wait for the socket
+  #assert net_live(a[..]) && net_rejoining(a[..]) && !net_open(a[..]) && !net_cast(a[..], 0, Point.{}, -1) && net_input(a[..], EgMoveIn.{key_y = 1}, false) == 0;
+  // tried again after a second, jittered a quarter either way
+  #assert na[0].retry - na[0].mono >= 750 && na[0].retry - na[0].mono <= 1250;
   // the socket opens again and the relay seats you: back
   na[0].state = NET_OPEN; na[0].sock = 0;
   #assert net_test_hear(a[..], 0, "y 3 1 5009000") && net_live(a[..]);
