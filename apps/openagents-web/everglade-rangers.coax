@@ -54,12 +54,23 @@ REMOTE_PLATE_FADE :: 15.0;     // fading out over the last this many
 REMOTE_AWAY_SHOWN :: 0.35;     // how much of a body shows while the server hasn't heard its page (WF_AWAY)
 REMOTE_FADE_RATE :: 2.0;       // of that a second, out and back
 RANGER_LOD_NAME :: "player/male-ranger.lod";   // the far mesh's catalog line (verse/tools/pack_realm.py far_mesh)
-// A class's gear: the druid carries a staff on their back, its head in leaves; the Warlock a black
-// rod with a violet orb. A class the page doesn't know is drawn as the druid.
+// A class's gear: the druid carries a staff on their back, roots clasping a glowing emerald at its head
+// (druid_staff); the Warlock a black rod with a violet orb. A class the page doesn't know is drawn as the druid.
 CLASS_DRUID :: 0; CLASS_WARLOCK :: 1;   // the Warlock: a black rod, a violet orb at its head (everglade-warlock.coax)
 CLASS_NAME :: [2] string.["druid", "warlock"];
 STAFF_RGB :: [3] f32.[0.20, 0.12, 0.06];
-STAFF_LEAF_RGB :: [3] f32.[0.16, 0.36, 0.12];
+STAFF_LEAF_RGB :: [3] f32.[0.22, 0.48, 0.14];
+STAFF_LEATHER_RGB :: Point.{x = 0.09, y = 0.05, z = 0.03};
+STAFF_CORD_RGB :: Point.{x = 0.42, y = 0.33, z = 0.2};
+STAFF_BARK_RGB :: Point.{x = 0.3, y = 0.19, z = 0.1};   // the head's roots, paler than the shaft
+STAFF_VINE_RGB :: Point.{x = 0.12, y = 0.28, z = 0.08};
+STAFF_GEM_RGB :: Point.{x = 0.12, y = 1.05, z = 0.36};        // linear light, past white: the bloom's
+STAFF_GEM_DEEP_RGB :: Point.{x = 0.02, y = 0.42, z = 0.16};
+STAFF_GLOW_RGB :: Point.{x = 0.12, y = 0.5, z = 0.18};
+STAFF_NEAR :: 18.0;                          // m: nearer, the whole staff; farther, shaft, stone and light
+// The roots' points up the head and out from its middle, from the split (0) to the curled tips (4).
+STAFF_ROOT_UP :: [5] f32.[0, 0.06, 0.16, 0.28, 0.35];
+STAFF_ROOT_OUT :: [5] f32.[0, 0.06, 0.092, 0.08, 0.026];
 // The Ranger's joints the gear hangs from (verse/everglade/ranger.coax RANGER_PARENT): the spine's
 // middle and its top, the chest, and the two clavicles (+x the left, facing +z).
 RANGER_SPINE :: 15; RANGER_CHEST :: 18; RANGER_NECK :: 21; RANGER_CLAVICLE_L :: 27; RANGER_CLAVICLE_R :: 28;
@@ -140,7 +151,7 @@ RemoteBody :: struct {
 }
 
 // A body's gear in its own space (before its turn and place), from its pose: the staff's foot and head.
-Gear :: struct { on: bool; foot: Point; head: Point; kind: int; }
+Gear :: struct { on: bool; foot: Point; head: Point; kind: int; flare: f32; }   // flare: 1 as a cast goes off, to 0
 
 Rangers :: struct {
   seat: [REMOTE_BODIES] int;     // the seat each body poses, -1 none
@@ -242,6 +253,8 @@ ranger_gear :: (rig: SkinRig, sk: [] Skin, kind: int) -> Gear {
   mid := add(chest, times(back, 0.14));
   return Gear.{on = true, foot = sub(mid, times(along, 0.78)), head = add(mid, times(along, 0.82)), kind = kind};
 }
+// How bright a staff's stone flares with `left` s of a cast's swing to go: up at once, down over it.
+gear_flare :: (left: f32) -> f32 { return ifx left > 0 then clamp01(left / RANGER_DURATION[SKIN_SWING]) else 0.0f32; }
 // A point of a body's own space in the world, by its object's rows.
 body_world :: (rows: [12] f32, p: Point) -> Point {
   return v3(rows[0] * p.x + rows[1] * p.y + rows[2] * p.z + rows[3],
@@ -266,8 +279,132 @@ gear_draw :: (s: [] Everglade, g: Gear, rows: [12] f32) {
     sp_glow(s, add(b, times(ax, 0.1)), 0.3, v3(0.2, 0.08, 0.35));
     return;
   }
-  sp_shape(s, SHAPE_BOX, LOOK_WOOD, times(add(a, b), 0.5), times(side, w), times(ax, l), times(third, w), v3(STAFF_RGB[0], STAFF_RGB[1], STAFF_RGB[2]));
-  sp_shape(s, SHAPE_SPHERE, LOOK_LEAVES, add(b, times(ax, 0.04)), times(side, 0.16), times(ax, 0.2), times(third, 0.16), v3(STAFF_LEAF_RGB[0], STAFF_LEAF_RGB[1], STAFF_LEAF_RGB[2]));
+  druid_staff(s, a, b, ax, side, third, g.flare);
+}
+
+// The druid's staff: a knotted shaft thickening toward its head, a leather grip, and at the head
+// four gnarled roots twisting up out of the wood to clasp an emerald crystal that glows, a vine and
+// leaves wound round its neck and green motes drifting up off the stone, flaring as a cast goes off.
+// Near, about 1,000 triangles (25 boxes, 21 cones); past STAFF_NEAR m a shaft, the stone and its light.
+druid_staff :: (s: [] Everglade, a: Point, b: Point, ax: Point, side: Point, third: Point, flare: f32) {
+  l := length(sub(b, a));
+  near := length(sub(b, s[0].sp.shot.eye)) < STAFF_NEAR;
+  wood := v3(STAFF_RGB[0], STAFF_RGB[1], STAFF_RGB[2]);
+  neck := sub(b, times(ax, 0.13));            // where the roots split from the shaft
+  gem := add(b, times(ax, 0.1));              // the crystal's middle
+  t := f32(s[0].time) + 7.0 * (b.x + b.z);   // each staff's motes on their own beat
+  f := clamp(flare, 0, 1);
+  if !near {
+    staff_post(s, LOOK_WOOD, a, neck, 0.03, wood);
+    staff_crystal(s, gem, ax, side, third, 1.0 + f);
+    sp_glow(s, gem, 0.32 + 0.3 * f, times(STAFF_GLOW_RGB, 0.5 + f));
+    return;
+  }
+  // the shaft: three lengths, a little crooked, a knot at each bend
+  k1 := add(mix(a, neck, 0.38), times(side, 0.012));
+  k2 := add(mix(a, neck, 0.72), add(times(side, -0.01), times(third, 0.008)));
+  staff_post(s, LOOK_WOOD, a, k1, 0.026, wood);
+  staff_post(s, LOOK_WOOD, k1, k2, 0.03, wood);
+  staff_post(s, LOOK_WOOD, k2, neck, 0.034, wood);
+  staff_knot(s, k1, ax, side, third, 0.05, times(wood, 0.8));
+  staff_knot(s, k2, ax, side, third, 0.056, times(wood, 0.8));
+  // the grip: dark leather wound round the middle, a pale cord at each end
+  g0 := mix(a, neck, 0.44); g1 := mix(a, neck, 0.62);
+  staff_post(s, LOOK_MATTE, g0, g1, 0.04, STAFF_LEATHER_RGB);
+  staff_post(s, LOOK_MATTE, sub(g0, times(ax, 0.012)), add(g0, times(ax, 0.012)), 0.046, STAFF_CORD_RGB);
+  staff_post(s, LOOK_MATTE, sub(g1, times(ax, 0.012)), add(g1, times(ax, 0.012)), 0.046, STAFF_CORD_RGB);
+  // the head flares from the shaft into the roots
+  flare_at := sub(neck, times(ax, 0.07));
+  sp_shape(s, SHAPE_CONE, LOOK_WOOD, add(flare_at, times(ax, 0.06)), times(side, 0.11), times(ax, -0.12), times(third, 0.11), STAFF_BARK_RGB);
+  // four roots, each twisting up and out round the stone and curling in over its point
+  for r: 0..<4 {
+    last := neck;
+    for q: 1..<5 {
+      u := f32(q) / 4;
+      ang := f32(r) * 1.5708 + 0.35 + u * 1.3;
+      out := times(add(times(side, cos(ang)), times(third, sin(ang))), STAFF_ROOT_OUT[q]);
+      p := add(add(neck, times(ax, STAFF_ROOT_UP[q])), out);
+      staff_root(s, last, p, lerp(0.024, 0.009, u), ifx q < 4 then 1.7f32 else 1.2f32, times(STAFF_BARK_RGB, 0.85 + 0.15 * f32(r % 2)));
+      last = p;
+    }
+  }
+  staff_crystal(s, gem, ax, side, third, 1.0 + f);
+  // a vine wound down the neck, and leaves off it
+  last := add(neck, times(side, 0.036));
+  for q: 1..<5 {
+    u := f32(q) / 4;
+    ang := u * 8.0;
+    p := add(sub(neck, times(ax, u * 0.3)), times(add(times(side, cos(ang)), times(third, sin(ang))), 0.036 - 0.006 * u));
+    staff_root(s, last, p, 0.008, 1.5, STAFF_VINE_RGB);
+    last = p;
+  }
+  for q: 0..<3 {
+    ang := 0.6 + f32(q) * 2.3;
+    rad := add(times(side, cos(ang)), times(third, sin(ang)));
+    tng := add(times(side, -sin(ang)), times(third, cos(ang)));
+    at := add(sub(neck, times(ax, 0.03 + 0.09 * f32(q))), times(rad, 0.03));
+    staff_leaf(s, at, unit_or(add(times(rad, 0.4), times(ax, 0.92)), rad), tng, 0.12 - 0.015 * f32(q), STAFF_LEAF_RGB[0], STAFF_LEAF_RGB[1], STAFF_LEAF_RGB[2]);
+  }
+  // its light: a soft halo, a hot heart, and motes drifting up round the stone
+  sp_glow(s, gem, 0.6 + 0.7 * f, times(STAFF_GLOW_RGB, 1.8 + 2.4 * f));
+  sp_glow(s, gem, 0.14 + 0.06 * f, times(v3(0.35, 1.3, 0.45), 0.5 + 0.8 * f));
+  motes := ifx phone(s) then 3 else 6;
+  if f > 0 { motes += 4; }
+  for m: 0..<motes {
+    h := t * (0.22 + 0.05 * f32(m % 3)) + f32(m) * 0.37;
+    up := h - floor(h);
+    ang := t * (0.9 + 0.2 * f32(m % 2)) + f32(m) * 2.4;
+    rr := 0.09 + 0.07 * up + 0.2 * f * up;
+    p := add(add(gem, times(ax, -0.06 + up * (0.36 + 0.4 * f))), add(times(side, cos(ang) * rr), times(third, sin(ang) * rr)));
+    fade := sin(up * 3.14159);
+    sp_glow(s, p, 0.05 + 0.03 * f, times(v3(0.8, 2.2, 0.55), fade * (1.5 + f)));
+    mr := (0.012 + 0.006 * f) * fade;   // its spark: a speck of light that shows by day too
+    sp_shape(s, SHAPE_BOX, LOOK_GLOW, p, times(side, mr), times(ax, mr), times(third, mr), v3(0.7, 1.6, 0.45));
+  }
+}
+// A length of the staff from p to q, r thick: eight-sided, two boxes a quarter-turn apart.
+staff_post :: (s: [] Everglade, look: int, p: Point, q: Point, r: f32, c: Point) {
+  d := sub(q, p); l := length(d);
+  if l < 0.002 { return; }
+  ax := times(d, 1.0 / l);
+  side := unit_or(cross(ax, v3(0, 1, 0.001)), v3(1, 0, 0)); third := cross(side, ax);
+  m := mix(p, q, 0.5);
+  sp_shape(s, SHAPE_BOX, look, m, times(side, r), times(ax, l + r * 0.3), times(third, r), c);
+  sp_shape(s, SHAPE_BOX, look, m, times(add(side, third), r * 0.7071), times(ax, l + r * 0.3), times(sub(third, side), r * 0.7071), c);
+}
+// A knot in the wood: a block stood on its corner, swelling the shaft.
+staff_knot :: (s: [] Everglade, at: Point, ax: Point, side: Point, third: Point, r: f32, c: Point) {
+  sp_shape(s, SHAPE_BOX, LOOK_WOOD, at, times(add(side, ax), r * 0.45), times(add(third, times(ax, 0.6)), r * 0.5), times(sub(side, third), r * 0.42), c);
+}
+// A root's length from p to q, r thick at p: a cone `reach` lengths long, on past q, so the next one's
+// base covers its point (as gv_vine).
+staff_root :: (s: [] Everglade, p: Point, q: Point, r: f32, reach: f32, c: Point) {
+  d := sub(q, p); l := length(d);
+  if l < 0.002 { return; }
+  up := times(d, 1.0 / l);
+  side := unit_or(cross(up, v3(0, 1, 0.001)), v3(1, 0, 0)); fwd := cross(side, up);
+  along := times(up, l * reach);
+  sp_shape(s, SHAPE_CONE, LOOK_WOOD, add(p, times(along, 0.5)), times(side, r * 2), along, times(fwd, r * 2), c);
+}
+// The emerald: two long rhombohedra (a block stood on its point, stretched) a sixth of a turn apart,
+// each its own green, so its faces catch two tones; `bright` its light (1 resting).
+staff_crystal :: (s: [] Everglade, at: Point, ax: Point, side: Point, third: Point, bright: f32) {
+  for k: 0..<2 {
+    e := [3] Point.[v3(0, 0, 0), v3(0, 0, 0), v3(0, 0, 0)];
+    for j: 0..<3 {
+      ang := f32(j) * 2.0944 + f32(k) * 1.0472;
+      e[j] = add(times(ax, 0.072), times(add(times(side, cos(ang)), times(third, sin(ang))), 0.062));
+    }
+    c := ifx k == 0 then STAFF_GEM_RGB else STAFF_GEM_DEEP_RGB;
+    sp_shape(s, SHAPE_BOX, LOOK_GLOW, at, e[0], e[1], e[2], times(c, bright));
+  }
+}
+// A leaf from `at` toward `dir`, `len` long, flat across `across`: a diamond (a thin block turned an
+// eighth about its face).
+staff_leaf :: (s: [] Everglade, at: Point, dir: Point, across: Point, size: f32, r: f32, g: f32, bl: f32) {
+  n := unit_or(cross(dir, across), v3(0, 1, 0));
+  m := add(at, times(dir, size * 0.5));
+  sp_shape(s, SHAPE_BOX, LOOK_MATTE, m, add(times(dir, size * 0.5), times(across, size * 0.2)), add(times(dir, size * 0.5), times(across, -size * 0.2)), times(n, 0.012), v3(r, g, bl));
 }
 
 plate_put :: (g: [] Rangers, seat: int, p: Point, shown: f32) {
@@ -342,6 +479,7 @@ rangers_draw :: (s: [] Everglade, u: [] f32, you: Point, dt: f32, rs: [] RemoteB
       skin_palette(rig, sk, s[0].palette[at..<at + REMOTE_BLOCK]);
       g[0].owed[b] = 0; g[0].posed += 1;
       g[0].gear[b] = ranger_gear(rig, sk, e.kind);
+      g[0].gear[b].flare = ifx clip == SKIN_SWING then gear_flare(RANGER_DURATION[SKIN_SWING] - e.swing) else 0.0f32;
       g[0].head_at[b] = skin_joint(rig, sk, ranger_head(g, rig, sk));
     }
     // its look: the skin tone and the outfit's layer; the cloak's and leather's dyes, and how shown
@@ -487,12 +625,19 @@ rangers_fixture :: (s: [] Everglade, out: [] RemoteBody, n: int) -> int {
   rs: [4] RemoteBody;
   n := rangers_fixture(g[..], rs[..], 3);
   rs[1].v = v3(0, 0, 1.3);   // the guest walks
-  for k: 0..<20 { rangers_draw(g[..], u[..], v3(0, 0, -84), 1.0 / 60.0, rs[0..<n]); }
+  // (each frame's shapes counted from the first frame's, as a frame starts from them)
+  for k: 0..<20 {
+    g[0].counts[SHAPE_CONE] = cones; g[0].counts[SHAPE_BOX] = boxes; g[0].counts[SHAPE_SPHERE] = balls;
+    rangers_draw(g[..], u[..], v3(0, 0, -84), 1.0 / 60.0, rs[0..<n]);
+  }
   r := g[0].rangers[..];
   #assert r[0].n == 3 && r[0].far_n == 0 && r[0].posed == 3 && r[0].plates == 3 && r[0].far_count > 0;
-  #assert g[0].counts[SHAPE_CONE] == cones;   // the old hooded figure is gone
-  // each carries the druid's staff on their back: its shaft and its leaves, 20 frames of them
-  #assert g[0].counts[SHAPE_BOX] - boxes == 3 * 20 && g[0].counts[SHAPE_SPHERE] - balls == 3 * 20;
+  // each carries the druid's staff on their back (druid_staff): no ball (the old hooded figure's cone
+  // and the staff's ball of leaves are gone), its blocks and its roots' and vine's cones
+  // (all three near the eye: 19 blocks, 6 motes and 21 cones each; or all past STAFF_NEAR: 4 blocks)
+  nb := g[0].counts[SHAPE_BOX] - boxes; nc := g[0].counts[SHAPE_CONE] - cones;
+  #assert g[0].counts[SHAPE_SPHERE] == balls;
+  #assert (nb == 3 * 25 && nc == 3 * 21) || (nb == 3 * 4 && nc == 0);
   for b: 0..<REMOTE_BODIES { if r[0].seat[b] >= 0 {
     gr := r[0].gear[b];
     #assert gr.on && gr.head.y > 1.5 && gr.head.y < 2.3 && gr.foot.y > 0.4 && gr.foot.y < 1.1 && gr.head.z < 0.1;

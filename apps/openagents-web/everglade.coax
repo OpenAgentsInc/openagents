@@ -3237,7 +3237,11 @@ figure :: (s: [] Everglade, u: [] f32, feet: Point, face: f32, speed: f32, airbo
   rangers_you_look(s, o);   // in the look you picked, as the others see you (everglade-rangers.coax)
   shadow(s, u, feet.x, feet.z, floor_under(s, feet.x, feet.z, feet.y), 0.45, 0.6);
   // your class's gear, as the others see on you (everglade-rangers.coax)
-  if ci_you_shown(s) && !you_inside(s) { gear_draw(s, ranger_gear(rig, s[0].skin[..], ifx wl_on(s) then CLASS_WARLOCK else CLASS_DRUID), rows); }
+  if ci_you_shown(s) && !you_inside(s) {
+    gear := ranger_gear(rig, s[0].skin[..], ifx wl_on(s) then CLASS_WARLOCK else CLASS_DRUID);
+    gear.flare = gear_flare(s[0].rangers[0].you_swing);   // the staff's stone flares as you cast
+    gear_draw(s, gear, rows);
+  }
 }
 
 NEAR :: 0.1; FAR :: 420.0;
