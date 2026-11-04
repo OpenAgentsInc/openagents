@@ -194,6 +194,8 @@ wire_put_use :: (out: [] u8, at: int, u: WireUse) -> int {
   return n;
 }
 wire_put_rebuild :: (out: [] u8, at: int, seq: int) -> int { return wire_int(out, wire_put(out, at, "R"), seq); }
+// L SEQ: a Long Rest, in a room only between raids and out of combat (coax/web/room/room-everglade.coax eg_heard_rest).
+wire_put_rest :: (out: [] u8, at: int, seq: int) -> int { return wire_int(out, wire_put(out, at, "L"), seq); }
 // K PID PID ...: the players you block, the whole list each time ("K -": none). The room never sends
 // you them (coax/web/room/room-interest.coax, #12789). Start with wire_put_blocks, then a wire_text per id.
 WIRE_BLOCKS :: 32;
@@ -238,6 +240,7 @@ wire_put_break :: (out: [] u8, at: int, pc: int, ix: f32, iy: f32, iz: f32) -> i
 }
 wire_put_burn :: (out: [] u8, at: int, pc: int, on: bool) -> int { return wire_int(out, wire_int(out, wire_put(out, at, "e burn"), pc), ifx on then 1 else 0); }
 wire_put_rebuilt :: (out: [] u8, at: int) -> int { return wire_put(out, at, "e rebuild"); }
+wire_put_rested :: (out: [] u8, at: int, seat: int) -> int { return wire_int(out, wire_put(out, at, "e rest"), seat); }
 wire_put_edit :: (out: [] u8, at: int, version: int) -> int { return wire_int(out, wire_put(out, at, "e edit"), version); }
 wire_put_wanted :: (out: [] u8, at: int, ss: int, level: int) -> int { return wire_int(out, wire_int(out, wire_put(out, at, "w"), ss), level); }
 wire_put_refused :: (out: [] u8, at: int, seq: int, reason: string) -> int { return wire_text(out, wire_int(out, wire_put(out, at, "r"), seq), reason); }

@@ -302,7 +302,10 @@ eg_heard :: (v: [] RmServer, r: int, seat: int, text: string) {
     if !e5rr_end(v[0].eg[k].rules[..], seat, u.id) && !world { eg_refuse(v, k, seat, u.seq, "nothing"); }
     return;
   }
+  if c == 'L' { eg_heard_rest(v, k, seat, text); return; }   // a Long Rest (room-events.coax ev_rest_ok)
   if c == 'R' {
+    // a room's town is rebuilt by the room (the aftermath's ev_rebuild) or by an admin, never a player's R (#12801)
+    if !eg_ticket(v, k, seat).admin { rr0: [1] WireRd; rr0[0] = wire_rd(text, 1); eg_refuse(v, k, seat, wire_num(text, rr0[..]), "admin"); return; }
     // the world stands its pieces and people up (rm_eg_rebuild), the rules the people, every page hears it:
     // if no spell struck the town in the last EG_REBUILD_QUIET s, and at most once every EG_REBUILD_EVERY s (spec 6.6)
     rr: [1] WireRd; rr[0] = wire_rd(text, 1);
@@ -424,7 +427,20 @@ eg_heard_cast :: (v: [] RmServer, k: int, seat: int, text: string) {
   if a.kind == FB_WORLD && !cr_repair(slot) { eg_refuse(v, k, seat, seq, "slot"); return; }   // R is Repair (everglade-repair.coax)
   if !ev_may_cast(v, k, seat, slot, a) { eg_refuse(v, k, seat, seq, "level"); return; }   // levels 1 to 3 (room-events.coax)
   if !(wc.ax == wc.ax) || !(wc.az == wc.az) || !(wc.ay == wc.ay) { eg_refuse(v, k, seat, seq, cr_word(CR_AIM)); return; }
-  if !rc_hear(v, k, seat, seq, slot, wc.ax, wc.ay, wc.az, wc.tgt, mode) { eg_refuse(v, k, seat, seq, "busy"); }
+  if !rc_hear(v, k, seat, seq, slot, wc.ax, wc.ay, wc.az, wc.tgt, mode) { eg_refuse(v, k, seat, seq, "busy"); return; }
+  if !cr_repair(slot) { ev_fought(v, k, seat); }   // casting is fighting (a Repair isn't): no Long Rest for EV_CALM_S
+}
+// L SEQ: a Long Rest. Between raids and out of combat only (room-events.coax ev_rest_ok); then the seat
+// is whole again and hears e rest SEAT, its page its own rest (everglade-rest.coax).
+eg_heard_rest :: (v: [] RmServer, k: int, seat: int, text: string) {
+  r: [1] WireRd; r[0] = wire_rd(text, 1);
+  seq := wire_num(text, r[..]);
+  if !r[0].ok { return; }
+  if !ev_rest_ok(v, k, seat) { eg_refuse(v, k, seat, seq, ifx v[0].ev[k].phase != EV_IDLE && v[0].ev[k].phase != EV_AFTER then "raid" else "combat"); return; }
+  ev_long_rest(v, k, seat);
+  b: [32] u8;
+  p := v[0].eg[k].seat[seat].pose;
+  eg_event(v, k, cast(string) b[0..<wire_put_rested(b[..], 0, seat)], p.x, p.z, false);
 }
 
 // ---- the tick. The host, EG_HZ times a second for each live room: rm_eg_begin; for each seat

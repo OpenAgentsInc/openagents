@@ -20,6 +20,7 @@ egt_slot_id :: (slot: int) -> string { if slot >= 0 && slot < HB_SLOTS { return 
 
 // A spell cast (aimed) or picked or used (an ability's key), for the face's tally.
 egt_note :: (s: [] Everglade, slot: int, used: bool) {
+  if !cr_repair(slot) { rest_fought(s); }   // a cast is fighting: no Long Rest for a while (everglade-rest.coax)
   if s[0].sp.note_n >= 8 { return; }
   s[0].sp.notes[s[0].sp.note_n] = slot * 2 + (ifx used then 1 else 0); s[0].sp.note_n += 1;
 }

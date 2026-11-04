@@ -1379,6 +1379,7 @@ everglade_key :: (s: [] Everglade, key: int, mods: int) -> bool #export_c {
   // E: a person first, then a door, then the quest board, then a rowboat (everglade-doors.coax)
   if (key == 'e' || key == 'E') && s[0].near >= 0 && !s[0].above { talk_to(s, s[0].near); return true; }
   if (key == 'e' || key == 'E') && door_prompt_on(s) { door_use(s, s[0].doors.near); return true; }
+  if (key == 'e' || key == 'E') && s[0].near < 0 && rest_on(s) { rest_take(s); return true; }
   if (key == 'e' || key == 'E') && s[0].near_board && !s[0].above { open_board(s); return true; }
   if (key == 'e' || key == 'E') && boat_prompt_on(s) { s[0].boat_ask = true; return true; }
   if key == '+' || key == '=' { s[0].orbit = verse_orbit_zoom(s[0].orbit, -0.8); return true; }
@@ -1765,6 +1766,7 @@ talk_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
     if s[0].talk >= 0 && in_box(s[0].bye_button, x, y) { end_talk(s); }
     else if s[0].talk < 0 && s[0].near >= 0 && in_box(s[0].talk_button, x, y) { talk_to(s, s[0].near); }
     else if door_prompt_on(s) && in_box(s[0].talk_button, x, y) { door_use(s, s[0].doors.near); }
+    else if s[0].near < 0 && rest_on(s) && in_box(s[0].talk_button, x, y) { rest_take(s); }
     else if s[0].talk < 0 && s[0].near_board && in_box(s[0].talk_button, x, y) { open_board(s); }
     else if boat_prompt_on(s) && in_box(s[0].talk_button, x, y) { s[0].boat_ask = true; }
   }
@@ -3699,6 +3701,7 @@ join_into :: (out: [] u8, a: string, b: string) -> int {
 }
 talk_prompt :: (s: [] Everglade) -> string {
   if s[0].near < 0 && door_prompt_on(s) { return door_prompt(s); }
+  if s[0].near < 0 && rest_on(s) { return rest_prompt(s); }   // by the inn's hearth (everglade-rest.coax)
   if s[0].near_board { return ifx phone(s) then "READ THE QUEST BOARD" else "E · READ THE QUEST BOARD"; }
   if s[0].near < 0 && boat_prompt_on(s) {
     if s[0].water == WATER_BOAT { return ifx phone(s) then "STEP ASHORE" else "E · STEP ASHORE"; }
@@ -4008,7 +4011,7 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   lift := 0.0f32;
   if s[0].ev.admin { n = everglade_voice_hud(s, out, u, n, y1 - hs - 28 * k); lift = ifx voice_on(s) && ev_text(s).count > 0 then 50 * k else 0.0f32; }
   // Someone near: E (or TALK, on a phone) talks to them.
-  if (s[0].near >= 0 || s[0].near_board || boat_prompt_on(s) || door_prompt_on(s)) && !s[0].above && !s[0].ev.editing {
+  if (s[0].near >= 0 || s[0].near_board || boat_prompt_on(s) || door_prompt_on(s) || rest_on(s)) && !s[0].above && !s[0].ev.editing {
     ask := talk_prompt(s);
     ts := 9 * k;
     aw := text_width(ask, ts) + 32 * k;

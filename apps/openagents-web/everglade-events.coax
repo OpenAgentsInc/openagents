@@ -65,6 +65,7 @@ EgEvents :: struct {
   parts: [3] int;                           // the raid's parts of Cultists, Fanatics and Warlocks (the API's dials)
   // you (your seat's v): level 0 Everglade's own character
   mine: bool; level: int; xp: int; lo: int; hi: int;
+  rest: bool;                               // the server lets you take a Long Rest now (between raids, out of combat)
   up_level: int; up_t: f64 = -100;          // the level-up notice: the level and when
   demo: bool;                               // DEMO CHARACTER (an admin's)
   // the admin pane
@@ -127,8 +128,16 @@ ege_entry :: (s: [] Everglade, n: [] EgNet, t: string) -> bool {
     ss := wire_num(t, r[..]); level := wire_num(t, r[..]); xp := wire_num(t, r[..]); cap := wire_num(t, r[..]); lo := wire_num(t, r[..]); hi := wire_num(t, r[..]);
     if !r[0].ok || ss != n[0].seat { return true; }
     e[0].mine = true; e[0].level = level; e[0].xp = xp; e[0].cap = cap; e[0].lo = lo; e[0].hi = hi;
+    e[0].rest = false;
+    if wire_more(t, r[..]) { rest := wire_num(t, r[..]); e[0].rest = r[0].ok && rest == 1; }   // REST (everglade-rest.coax)
     if wl_on(s) && e[0].level > 0 && !wl_has(s, s[0].wl.armed) { s[0].wl.armed = -1; }
     if !wl_on(s) && e[0].level > 0 && s[0].sp.armed >= 0 && ege_kit_on(s) && ege_kit_place(s, s[0].sp.armed) < 0 { s[0].sp.armed = -1; }
+    return true;
+  }
+  if wire_is(t, "e rest") {
+    r: [1] WireRd; r[0] = wire_rd(t, 6);
+    ss := wire_num(t, r[..]);
+    if r[0].ok && ss == n[0].seat { rest_taken(s); }   // the server granted it (everglade-rest.coax)
     return true;
   }
   if wire_is(t, "e level") {

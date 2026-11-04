@@ -1028,6 +1028,14 @@ net_rebuild :: (s: [] Everglade) -> bool {
   net_send(n, wire_put_rebuild(n[0].out[..], 0, n[0].seq));
   return true;
 }
+// A Long Rest, asked of the room (everglade-events.coax eg_r_mode): false offline.
+net_rest :: (s: [] Everglade) -> bool {
+  if !net_live(s) { return false; }
+  n := net_of(s);
+  n[0].seq += 1;
+  net_send(n, wire_put_rest(n[0].out[..], 0, n[0].seq));
+  return true;
+}
 // The ability (AB_*) a kind of entity of yours stands for, -1 none: what slot it holds up.
 net_ability_of :: (en: NetEnt) -> int {
   if en.kind == WK_PACK { return AB_CONJURE; }
@@ -1513,6 +1521,20 @@ net_probe :: (s: [] Everglade, field: int) -> int #export_c {
   if field == 70 { return n[0].mends_heard; }
   if field == 71 || field == 72 { k := 0; for i: 0..<s[0].ev.edits.n { if (field == 71 && pf_burning(s, i)) || (field == 72 && pf_gone(s, i)) { k += 1; } } return k; }
   if field == 73 { return ifx mend_on(s) then 1 else 0; }
+  // the Long Rest (everglade-rest.coax): 77 whether it is offered, 78 takes it, 79 (offline) stands you at its spot
+  if field == 77 { return ifx rest_on(s) then 1 else 0; }
+  if field == 78 { rest_take(s); return ifx watch_on(s) then watch_you(watch_w(s)[..])[0].hp else -1; }
+  // 80 the server's REST for you, 81 sends L as if by the hearth, 82 the rests taken
+  if field == 83 { return s[0].ev.edits.n; }   // the placed things this page lays
+  if field == 80 { return ifx ege_of(s)[0].rest then 1 else 0; }
+  if field == 81 { return ifx net_rest(s) then 1 else 0; }
+  if field == 82 { return rest_of(s)[0].taken; }
+  if field == 79 && !net_live(s) {
+    p := rest_spot(s);
+    s[0].spawn = p; s[0].feet = v3(p.x, ground_at(s, p.x, p.z), p.z); s[0].orbit = verse_orbit_start(s[0].feet, s[0].face);
+    s[0].warp = true; s[0].above = false; s[0].lift = 0;
+    return 1;
+  }
   // the checks' hands (coax/web/room: the two-page Repair check): 74 casts Thunderbolt at the nearest
   // standing wall or roof within 30 m, 75 Meteor Swarm at the nearest placed thing, 76 turns you to the
   // nearest broken thing within Repair's reach and presses R. The piece, the thing or the CODE; -1 none.

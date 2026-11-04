@@ -60,6 +60,7 @@
 #load "everglade-forest.coax";
 #load "everglade-placed-fire.coax";
 #load "everglade-repair.coax";
+#load "everglade-rest.coax";
 #load "everglade-circle.coax";
 #load "everglade-marks.coax";
 #load "everglade-storm.coax";
@@ -234,6 +235,7 @@ Spells :: struct {
   fi: [1] Fire;                // fire on the town's pieces and the dome's breaking (everglade-fire.coax)
   pf: [1] PlacedFire;          // fire on an admin's placed things (everglade-placed-fire.coax)
   mend: [1] Repair;              // R: a Repair on its bar (everglade-repair.coax)
+  rest: [1] Rest;                // the Long Rest by the inn's hearth (everglade-rest.coax)
   tf: [1] Timber;              // the trees outside the city: felled, burnt, rimed (everglade-forest.coax)
   wd: [1] Wild;                // the rest of its third row: Faerie Fire, Healing Word, Spike Growth, Call Lightning, Wall of Fire, and fire on the grass (everglade-wild.coax)
   gv: [1] Grove;               // the old Grove's druid spells: Moonbeam, Produce Flame, Starry Wisp, Shillelagh, Poison Spray, Elementalism, Entangle (everglade-grove.coax)
@@ -1325,6 +1327,7 @@ spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
   if s[0].sp.on && s[0].sp.armed >= 0 && (s[0].sp.seen || phone(s)) { sp_aim(s); }
   wl_frame(s, dt);   // the Warlock's aim and casts on their way (everglade-warlock.coax)
   mend_frame(s, dt);   // a Repair on its bar (everglade-repair.coax)
+  rest_frame(s, dt);   // fighting, for the Long Rest (everglade-rest.coax)
   // the cast bar
   if s[0].sp.casting >= 0 {
     slot := s[0].sp.casting;

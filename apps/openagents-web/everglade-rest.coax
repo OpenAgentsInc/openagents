@@ -1,0 +1,61 @@
+// The Long Rest (#12801; loaded by everglade-spells.coax): SRD 5.2.1's eight hours of no fighting,
+// taken by the inn's hearth. Standing there between raids and out of combat, E (on a phone, the
+// prompt) takes it: every Hit Point back, every condition gone, your own shape again. At any other
+// time and place the prompt isn't there at all.
+//
+// In a room the server decides (coax/web/room/room-events.coax ev_rest_ok): its v for you says
+// whether you may now (REST), the page sends L, and the server makes you whole and says e rest. Offline
+// the page counts it the same way: EV_CALM_S (REST_CALM here) since you last cast or lost Hit Points.
+
+REST_CALM :: 30.0;         // s out of combat first (room-events.coax EV_CALM_S)
+REST_NEAR :: 3.2;          // m from the rest spot by the hearth
+
+Rest :: struct { time: f32; fought: f32 = -1000; hp_was: int = -1; asked: f32 = -1000; taken: int; }
+rest_of :: (s: [] Everglade) -> [] Rest { return s[0].sp.rest[..]; }
+
+// The spot by the inn's hearth, between its two benches (everglade.coax EG_INN's room).
+rest_spot :: (s: [] Everglade) -> Point {
+  r := room_of(s, EG_INN);
+  D := r.depth - 1.0;
+  v := D - 1.4;
+  return v3(r.fx + r.vx * v, r.y, r.fz + r.vz * v);
+}
+// Each frame: losing Hit Points or casting is fighting.
+rest_frame :: (s: [] Everglade, dt: f32) {
+  v := rest_of(s);
+  v[0].time += dt;
+  if !watch_on(s) { return; }
+  hp := watch_you(watch_w(s)[..])[0].hp;
+  if v[0].hp_was >= 0 && hp < v[0].hp_was { v[0].fought = v[0].time; }
+  v[0].hp_was = hp;
+  if s[0].sp.casting >= 0 { v[0].fought = v[0].time; }
+}
+// You cast (everglade-spells.coax sp_cast, the abilities): fighting.
+rest_fought :: (s: [] Everglade) { rest_of(s)[0].fought = rest_of(s)[0].time; }
+// Whether the rest is yours to take here and now.
+rest_on :: (s: [] Everglade) -> bool {
+  if !sp_on(s) || !watch_on(s) || s[0].above || s[0].talk >= 0 || s[0].board || s[0].ev.editing { return false; }
+  if watch_you(watch_w(s)[..])[0].dead { return false; }
+  if flat_gap(ab_you(s), rest_spot(s)) > f32(REST_NEAR) { return false; }
+  v := rest_of(s);
+  if v[0].time - v[0].asked < 2 { return false; }   // asked: the answer is on its way
+  if net_live(s) { return ege_of(s)[0].rest; }
+  return v[0].time - v[0].fought >= f32(REST_CALM);
+}
+rest_prompt :: (s: [] Everglade) -> string { return ifx phone(s) then "TAKE A LONG REST" else "E · TAKE A LONG REST"; }
+// E or a tap on the prompt.
+rest_take :: (s: [] Everglade) {
+  if !rest_on(s) { return; }
+  v := rest_of(s);
+  v[0].asked = v[0].time;
+  if net_rest(s) { return; }   // the server makes you whole and says so (e rest)
+  rest_taken(s);
+}
+// It is done: whole again.
+rest_taken :: (s: [] Everglade) {
+  if !s[0].started { return; }
+  if st_long_rest(s) { sp_say(s, "LONG REST", -1, ""); }
+  v := rest_of(s);
+  v[0].asked = -1000; v[0].taken += 1;
+  if watch_on(s) { v[0].hp_was = watch_you(watch_w(s)[..])[0].hp; }
+}
