@@ -1,0 +1,147 @@
+// Build just the existing Everglade page, local room and native shell.
+// No web release, deployment, model download or production API is involved.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+
+AfPaths :: struct { b: [65536] u8; n: int; }
+af_path :: (p: [] AfPaths, root: string, name: string) -> string {
+  start := p[0].n;
+  for c: root { p[0].b[p[0].n] = c; p[0].n += 1; }
+  p[0].b[p[0].n] = '/'; p[0].n += 1;
+  for c: name { p[0].b[p[0].n] = c; p[0].n += 1; }
+  return cast(string) p[0].b[start..<p[0].n];
+}
+af_run :: (argv: [] string, out: [] u8, deadline: int) -> int {
+  left := deadline - proc_now_ms();
+  if left <= 0 { tool_errln("Aethyrforge build reached its fourteen-minute limit; resume the remaining build step."); return -1; }
+  err: [65536] u8;
+  r := proc_run(argv, left, out, err[..]);
+  if r.started != 0 || r.status != 0 || r.timed_out || r.cut {
+    tool_errln(cast(string) out[0..<r.out_n]); tool_errln(cast(string) err[0..<r.err_n]);
+    tool_errln("Aethyrforge build step failed or exceeded its time/output limit."); return -1;
+  }
+  return r.out_n;
+}
+af_start :: (argv: [] string) -> int {
+  h := proc_new(); if h < 0 { return -1; }
+  for arg: argv { if !proc_arg(h, arg) { released := proc_release(h); return -1; } }
+  if proc_start(h) != 0 { released := proc_release(h); return -1; }
+  return h;
+}
+af_finish :: (h: int, deadline: int) -> bool {
+  if h < 0 { return true; }
+  line: [65536] u8;
+  while proc_now_ms() < deadline {
+    n := proc_line(h, 500, line[..]);
+    if n >= 0 { print("%\n", cast(string) line[0..<n]); continue; }
+    if n == PROC_TIMEOUT { continue; }
+    if n == PROC_EOF { break; }
+    released := proc_release(h); return false;
+  }
+  status := proc_wait(h, proc_left(deadline, proc_now_ms())); ok := status == 0;
+  if !ok { tool_errln(proc_stderr(h, line[..])); tool_errln("Local-stack build failed or reached its fourteen-minute limit."); }
+  released := proc_release(h); return ok;
+}
+// Conservatively include the compiler, engine, hosts and page's complete source
+// trees. Ignored build outputs never make the next build stale.
+af_newest :: (dir: string) -> int {
+  l: [1] FsList; n := fs_list(dir, l[..]);
+  if n < 0 || l[0].full { return 9223372036854775807; }
+  latest := 0;
+  for i: 0..<n {
+    name := fs_entry(l[..], i);
+    if name.count == 0 || name[0] == '.' || name == "build" || name == "bin" || name == "node_modules" { continue; }
+    b: [4096] u8; path := fs_join(dir, name, b[..]);
+    stamp := ifx fs_kind(path) == FS_DIR then af_newest(path) else fs_mtime_ns(path);
+    if stamp > latest { latest = stamp; }
+  }
+  return latest;
+}
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 || args_count(a[..]) > 2 || (args_count(a[..]) == 2 && args_at(a[..], 1) != "--open") {
+    tool_errln("usage: apps/aethyrforge-desktop/build.sh [--open]"); return 2;
+  }
+  root := args_at(a[..], 0); p: [1] AfPaths;
+  here := af_path(p[..], root, "apps/aethyrforge-desktop");
+  work := af_path(p[..], here, "build"); app := af_path(p[..], work, "Aethyrforge.app");
+  res := af_path(p[..], app, "Contents/Resources"); mac := af_path(p[..], app, "Contents/MacOS");
+  if !fs_mkdir(res) || !fs_mkdir(mac) { return 1; }
+  deadline := proc_now_ms() + 840000;
+  out: [16777216] u8; env: [4096] u8;
+  coax := proc_getenv("COAX", env[..]); if coax == "" { coax = af_path(p[..], root, "coax/bin/coax"); }
+  print("Checking local stack sources…\n"); newest := 0;
+  for d: [4] string.["coax", "aethyr", "verse", "apps/openagents-web"] {
+    b: [4096] u8; stamp := af_newest(fs_join(root, d, b[..])); if stamp > newest { newest = stamp; }
+  }
+  room := af_path(p[..], root, "coax/web/room/bin/room");
+  room_job := -1; page_job := -1;
+  if fs_mtime_ns(room) < newest {
+    print("Building the local room…\n");
+    script := af_path(p[..], root, "coax/web/room/build.sh"); cmd := [2] string.["bash", script];
+    room_job = af_start(cmd[..]); if room_job < 0 { return 1; }
+  }
+  wasm := af_path(p[..], root, "apps/openagents-web/build/everglade5e.wasm");
+  if fs_mtime_ns(wasm) < newest {
+    print("Building Everglade's existing WebGPU engine…\n");
+    cmd := [10] string.["bash", af_path(p[..], root, "coax/web/wasm.sh"), af_path(p[..], root, "apps/openagents-web/everglade5e.coax"),
+      af_path(p[..], root, "apps/openagents-web/everglade5e-face.c"), wasm,
+      af_path(p[..], root, "apps/openagents-web/everglade-step.coax"), af_path(p[..], root, "verse/grid.coax"),
+      af_path(p[..], root, "verse/everglade/river.coax"), af_path(p[..], root, "verse/everglade/guard-guide-policy.coax"),
+      af_path(p[..], root, "apps/openagents-web/everglade5e-rules.coax")];
+    page_job = af_start(cmd[..]); if page_job < 0 { if room_job >= 0 { released := proc_release(room_job); } return 1; }
+  }
+  if !af_finish(room_job, deadline) { if page_job >= 0 { released := proc_release(page_job); } return 1; }
+  if !af_finish(page_job, deadline) { return 1; }
+  print("Building Aethyrforge's AppKit shell…\n");
+  serve := af_path(p[..], res, "serve");
+  sc := [12] string.["/usr/bin/clang", "-std=c11", "-O2", "-D_DARWIN_C_SOURCE", "-Wall", "-Wextra", "-o", serve,
+    af_path(p[..], root, "coax/web/serve.c"), af_path(p[..], root, "verse/voice-host/ws.c"), "-lm", "-Wno-unused-function"];
+  if af_run(sc[..], out[..], deadline) < 0 { return 1; }
+  header := af_path(p[..], work, "session.h"); code := af_path(p[..], work, "session.c"); object := af_path(p[..], work, "session.o");
+  gen := [6] string.[coax, "c", af_path(p[..], here, "session.coax"), "--library", "--header", header];
+  n := af_run(gen[..], out[..], deadline);
+  if n < 0 || !fs_write(code, cast(string) out[0..<n]) { return 1; }
+  cc := [8] string.["/usr/bin/clang", "-std=c11", "-O2", "-c", code, "-o", object, "-Wno-unused-function"];
+  if af_run(cc[..], out[..], deadline) < 0 { return 1; }
+  sw := [15] string.["xcrun", "swiftc", "-O", "-target", "arm64-apple-macos26.0", "-import-objc-header", header,
+    af_path(p[..], here, "Sources/main.swift"), object, "-framework", "AppKit", "-framework", "WebKit", "-o", af_path(p[..], mac, "Aethyrforge")];
+  if af_run(sw[..], out[..], deadline) < 0 { return 1; }
+  // Keep a compact self-contained page tree: the exact engine, shaders and pack
+  // the website uses, plus all generic browser host modules.
+  web := af_path(p[..], res, "web"); host := af_path(p[..], res, "host"); seed := af_path(p[..], res, "seed");
+  if !fs_mkdir(web) || !fs_mkdir(host) || !fs_mkdir(seed) { return 1; }
+  for name: [6] string.["everglade5e.wgsl", "everglade-fx.wgsl", "favicon.svg", "realms/everglade", "build/everglade5e.wasm", "render-shaders"] {
+    src := af_path(p[..], root, "apps/openagents-web"); from := af_path(p[..], src, name); to := af_path(p[..], web, name);
+    if fs_kind(from) == FS_NONE { if name == "render-shaders" { continue; } return 1; }
+    cmd := [3] string.["ditto", from, to]; if af_run(cmd[..], out[..], deadline) < 0 { return 1; }
+  }
+  hosts := af_path(p[..], root, "coax/web"); l: [1] FsList; count := fs_list(hosts, l[..]);
+  if count < 0 || l[0].full { return 1; }
+  for i: 0..<count {
+    name := fs_entry(l[..], i);
+    if name.count < 3 || name[name.count - 3..<name.count] != ".js" { continue; }
+    cmd := [3] string.["ditto", af_path(p[..], hosts, name), af_path(p[..], host, name)];
+    if af_run(cmd[..], out[..], deadline) < 0 { return 1; }
+  }
+  for name: [2] string.["world-everglade.json", "room-control.txt"] {
+    cmd := [3] string.["ditto", af_path(p[..], af_path(p[..], root, "coax/web/room/dev"), name), af_path(p[..], seed, name)];
+    if af_run(cmd[..], out[..], deadline) < 0 { return 1; }
+  }
+  copy_room := [3] string.["ditto", room, af_path(p[..], res, "room")];
+  if af_run(copy_room[..], out[..], deadline) < 0 { return 1; }
+  plist := [3] string.["ditto", af_path(p[..], here, "Info.plist"), af_path(p[..], app, "Contents/Info.plist")];
+  if af_run(plist[..], out[..], deadline) < 0 { return 1; }
+  sign := [5] string.["codesign", "--force", "--sign", "-", app]; if af_run(sign[..], out[..], deadline) < 0 { return 1; }
+  print("Built %\n", app);
+  if args_has(a[..], "--open") {
+    home_buf: [4096] u8; home := proc_getenv("HOME", home_buf[..]); if home == "" { return 1; }
+    installed := af_path(p[..], home, "Library/Caches/Aethyrforge/Aethyrforge.app");
+    cp := [3] string.["ditto", app, installed]; if af_run(cp[..], out[..], deadline) < 0 { return 1; }
+    launch := [2] string.["open", installed]; if af_run(launch[..], out[..], deadline) < 0 { return 1; }
+    print("Opened %\n", installed);
+  }
+  return 0;
+}

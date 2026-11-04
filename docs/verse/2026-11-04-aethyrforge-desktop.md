@@ -1,7 +1,8 @@
 # Aethyrforge for Mac: local editing by voice (experimental spec)
 
-Status: spec, 2026-11-04. Experimental. Nothing here ships to customers or
-TestFlight until the owner asks.
+Status: experimental desktop shell implemented, 2026-11-04. The local Everglade
+editor is the first milestone; voice and the model below remain planned. Nothing
+here ships to customers or TestFlight until the owner asks.
 
 Aethyrforge for Mac is a desktop app that opens your Everglade on your own Mac and
 lets you change it by talking. Speech recognition, the model that turns words into
@@ -11,6 +12,50 @@ until you press PUBLISH.
 It builds on the web Aethyrforge (docs/verse/aethyrforge.md), the local room
 (`coax/web/room/local.sh`, `room-dev.coax`), local Parakeet (#12667, #12669), and
 gpt-oss-20b on Metal (docs/verification/psionic-gptoss-metal-2026-10-29.md).
+
+## Current build
+
+`apps/aethyrforge-desktop/` now contains the AppKit/WKWebView shell, its Coax
+entry-point rules and Coax build tool. It bundles the website's existing
+`everglade5e.wasm`, shaders, pack and browser host, the native room and a static
+page server. This is the same `/worlds/everglade` engine players use.
+
+- Opens at the South Gate (`#gate`) with EDIT on (`?forge`). The native window
+  identifies this as local editing. The existing editor's placement, selection,
+  movement, rotation, resizing, deletion and in-session undo/redo are available.
+  The prototype uses the existing named playtest-room profile
+  (`room=pair-aethyrforge`) to enter with a default character: the normal
+  first-visit character picker otherwise consumes keys behind EDIT's panels.
+  Normal character selection remains future integration work.
+- Starts its own room in `--dev` mode and a static page server, on two free
+  loopback ports. The page's `/api/` requests go to that room. It stops both
+  servers on normal quit, window close or a child-server failure; a file lock
+  prevents two app instances writing the same local world.
+  The relay is `ws://localhost:PORT`, the room client's existing local override;
+  it connects directly to the room so a WebSocket cannot occupy the HTTP-only
+  page proxy and block subsequent saves.
+- Seeds the local world and controls from `coax/web/room/dev/` **only when absent**.
+  Hand edits save through the local room into
+  `~/Library/Application Support/Aethyrforge/everglade/world-everglade.json` and
+  survive reopening. It does not yet fetch the current published world. The
+  editor's existing “publish” request only writes this local room's document.
+- Audio is muted. No microphone capture, transcript bar, instruction entry,
+  Parakeet/model verification or download, typed model edits, durable undo log,
+  remote PUBLISH/REVERT, bots or raid controls are wired into this shell yet.
+- Requires Apple Silicon and macOS 26+ for this initial WKWebView/WebGPU build.
+  The app is ad-hoc signed, experimental and outside `/Applications`.
+
+The remaining sections describe the target behavior. They do not imply the voice
+acceptance criteria already pass. Build and native smoke-check instructions are
+in [the app README](../../apps/aethyrforge-desktop/README.md).
+
+Verified on this Mac: both native smoke launches drew a WebGPU scene in 4.92 s
+and 5.07 s. A keyboard placement followed by DONE saved local version 23; reopening
+kept the exact saved bytes. Both child servers exited after each check. The signed
+standalone app was opened and its EDIT view inspected. The session's two Coax
+checks, native room startup check, bundle signature and plist checks passed.
+`coax/web/tool.sh tools-check` was run and reported 20 pre-existing missing-reason
+headers outside this change; the new build wrapper has its required reason.
 
 ## What you do
 
@@ -133,9 +178,12 @@ Because it is a real local room, you can test edits as players do:
 apps/aethyrforge-desktop/build.sh --open
 ```
 
-It builds the page and room if their build is older than the source, builds the
-app, and opens it. The app picks free local ports for the room and page server on
-each start, and stops both when it quits.
+It builds the Everglade page and room when their source trees are newer, builds
+the app at `apps/aethyrforge-desktop/build/Aethyrforge.app`, and opens a complete
+copy at `~/Library/Caches/Aethyrforge/Aethyrforge.app`. That copy runs without the
+checkout. The app picks free local ports for the room and page server on each
+start, and stops both when it quits. The local world directory also contains
+`room.log`, `serve.log` and the current launch's `local-url.txt`.
 
 The app is experimental:
 
@@ -161,8 +209,11 @@ The app is experimental:
 
 Each step lands on `main` working end to end.
 
-1. **The shell and the local stack:** the app window, the local room and page
-   server, and Everglade with EDIT on. Saving by hand works.
+1. **The shell and the local stack (implemented):** the app window, the local room
+   and page server, and Everglade with EDIT on. Saving by hand uses the existing
+   editor and local room. Native smoke verification opens a hidden WKWebView,
+   waits for a WebGPU scene, places a thing by keyboard and checks its saved
+   document; a second launch verifies the saved bytes survive reopening.
 2. **Voice to text:** hold to talk, resident Parakeet, and the transcript bar.
 3. **Text to edits:** gpt-oss-20b under the edit grammar, the resolver for places
    and things, the edit applied and saved, undo and redo.
