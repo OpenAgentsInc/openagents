@@ -43,7 +43,7 @@ IM_PRIO_OWN :: 4.0; IM_PRIO_ROOM :: 2.0; IM_PRIO_PARTY :: 0.25;
 IM_WIRE_COND_INVISIBLE :: 128;  // COND's RS_INVISIBLE bit (aethyr/rules/srd/engine.coax)
 
 ImEnt :: struct {
-  on: bool; id: int; x: f32; z: f32; of: int = -1; flags: int;
+  on: bool; id: int; tag: int = -1; x: f32; z: f32; of: int = -1; flags: int;   // tag: the caller's, handed back in each pick
   put: int;                     // the tick it was last put
   cx: int; cz: int; cell: int = -1;       // its cell, and that cell's list
   cnext: int = -1; cprev: int = -1;       // its neighbours in the cell's list
@@ -51,7 +51,7 @@ ImEnt :: struct {
   onext: int = -1; oprev: int = -1;       // its neighbours in its seat's list (of >= 0)
   room_at: int = -1;                      // its place in the room-wide list (IM_ROOM)
 }
-ImPick :: struct { id: int; prio: f32; chan: int; }
+ImPick :: struct { id: int; tag: int; prio: f32; chan: int; }
 Interest :: struct {
   e: [IM_ENTS] ImEnt;
   used: int;                              // slots 0 to used - 1 have been handed out; the free ones are on free
@@ -138,7 +138,9 @@ im_room_remove :: (im: [] Interest, i: int) {
 
 // Entity id is at (x, z) this tick: of the seat it is or rides on (-1 none), flags IM_ROOM and IM_HIDDEN.
 // With IM_ENTS entities held already, a new one isn't (counted in over).
-im_put :: (im: [] Interest, tick: int, id: int, x: f32, z: f32, of: int, flags: int) {
+im_put :: (im: [] Interest, tick: int, id: int, x: f32, z: f32, of: int, flags: int) { im_put_at(im, tick, id, -1, x, z, of, flags); }
+// The same, with a tag of the caller's that each pick hands back (the send path's table slot).
+im_put_at :: (im: [] Interest, tick: int, id: int, tag: int, x: f32, z: f32, of: int, flags: int) {
   i := im_find(im, id);
   if i < 0 {
     if im[0].free_n > 0 { im[0].free_n -= 1; i = im[0].free[im[0].free_n]; }
@@ -152,7 +154,7 @@ im_put :: (im: [] Interest, tick: int, id: int, x: f32, z: f32, of: int, flags: 
   } else if im[0].e[i].of != of {
     im_own_unlink(im, i); im_own_link(im, i, of);
   }
-  im[0].e[i].x = x; im[0].e[i].z = z; im[0].e[i].put = tick;
+  im[0].e[i].x = x; im[0].e[i].z = z; im[0].e[i].put = tick; im[0].e[i].tag = tag;
   cx := im_coord(x); cz := im_coord(z);
   if im[0].e[i].cell < 0 || im[0].e[i].cx != cx || im[0].e[i].cz != cz { im_cell_unlink(im, i); im_cell_link(im, i, cx, cz); }
   if (flags & IM_ROOM) != 0 { im_room_add(im, i); } else { im_room_remove(im, i); }
@@ -206,7 +208,7 @@ im_withheld :: (im: [] Interest, s: int, i: int, tick: int) -> int {
 im_take :: (im: [] Interest, s: int, i: int, prio: f32, chan: int, out: [] ImPick, n: int) -> int {
   im[0].mark[i] = im[0].mark_n;
   if n >= out.count { return n; }
-  out[n] = ImPick.{id = im[0].e[i].id, prio = prio, chan = chan};
+  out[n] = ImPick.{id = im[0].e[i].id, tag = im[0].e[i].tag, prio = prio, chan = chan};
   if chan == IM_FULL { im[0].had[s * IM_ENTS + i] = im[0].serial[s]; im[0].n_full[s] += 1; } else { im[0].n_health[s] += 1; }
   return n + 1;
 }
