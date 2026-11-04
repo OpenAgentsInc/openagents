@@ -74,6 +74,14 @@ Write the revisions down. They are your rollback targets.
   order is safe both ways (an old page names no revision and keeps working; a
   new page against the old API falls back to the old rule), but API first
   means the new pages save by revision from their first load.
+- **API, added 2026-11-04 (#12762, #12763, #12764):** room chat moderation,
+  with migration 0121 (`0121_room_chat_moderation.sql`). A kicked player's
+  chat line is refused (403 `kicked`), blocked words in a chat line are masked
+  with asterisks, and checks of one `pair-` mark read each other's lines. Its
+  page half (the waiting-lines row, the KICKED note, wrapped lines) ships in
+  step 3. Either order is safe: an old page treats the 403 as a sent line, and
+  a new page against the old API never sees one. Deploy the API first so the
+  kick holds in chat from the first new page.
 
 ## Step 1: API
 
@@ -115,6 +123,11 @@ The grep flags two lines in 0119, and both are expected:
 brings any save time later than now back to now. `DROP TRIGGER IF EXISTS
 progress_count` drops only the trigger that the same file creates on the
 next line.
+
+The grep flags one line in 0121, and it is expected: `ALTER FUNCTION
+verse.room(...) RENAME TO room_0110` wraps the 10-argument `verse.room` the
+same way, guarded so that a second run skips it. 0121 adds functions only and
+changes no table.
 
 ### Deploy
 
