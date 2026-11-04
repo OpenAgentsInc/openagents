@@ -3,6 +3,8 @@
 This milestone advances #12803/#12804 after #12802. Both issues remain open
 for their full live-source and explorer criteria. The realm stays unlisted.
 
+Tested implementation: [`b04fbc603d`](https://github.com/OpenAgentsInc/openagents/commit/b04fbc603dcf6ed77cf4f978f2ebad240a6c7b50). The qualified owned sources were unchanged by rebasing on main.
+
 The source is the retained Core 32.1 / Electrs regtest recording, rebuilt
 from empty genesis through validated chainstate, indexed atomically and
 published only after CoinsCache flush + append/fsync + acknowledgement.
@@ -42,6 +44,8 @@ Bounds: 8 fixed steps, 70,000 total vertices, 3 draws, 5,000,000 arena bytes;
 physical HUD capacity 72,000 vertices and mesh capacity 4,096 vertices. State
 is 271,656 bytes, arena 3,728,008 bytes and release Wasm 267,525 bytes (budget
 270,000). The added immutable recording accounts for the larger Wasm budget.
+Release Wasm SHA-256: `74e79e170f4b62a39a7129b4483b6c5ada8c99e1611e5159d6d46903404b9ba2`.
+The visible preview uses those exact bytes and the qualified shared host.
 
 The shared host now binds store-only procedural meshes when pipelines are
 created, even with no fetched assets, and mirrors accessibility during
