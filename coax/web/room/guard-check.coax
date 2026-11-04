@@ -1,0 +1,133 @@
+// The town's watch fights back in a room (#12794): one socket strikes the nearest townsperson with the
+// bolt (slot 1) until the room says it is WANTED (w), then stands where it is. The server's watch
+// must come for it and land real blows: its own Hit Points, as the room replicates them (its s row),
+// drop below where they started, and it is downed (0) within SECONDS (default 45). The guards' blows are rolled on the server against the player's AC
+// (verse/everglade/watch.coax watch_roll_at_you) and dealt by the room's rules (room-host.c
+// everglade_town rm_eg_hurt, room-casts.coax rc_tick_first).
+//   coax/web/tool.sh coax/web/room/guard-check.coax ws://127.0.0.1:PORT [SECONDS]
+// Run it against a local room (local.sh, or room --dev with its stand-in key as OA_ROOM_TICKET_KEY).
+// Prints one JSON line, then "hurts" and exits 0, or "fails" and 1.
+#load "room-socket.coax";
+
+GcHeard :: struct {
+  w: bool; d: int;
+  me_x: f32; me_z: f32; me_seen: bool; hp: int = -1; hp0: int = -1; hp_min: int = 1000000;
+  near_i: int = -1; near_d: f32 = 1000000; near_x: f32; near_z: f32;
+  wanted: int; wanted_most: int;
+  trace: [24] int; trace_n: int;   // the first HP values heard, each change      // e hit entries whose target is my seat (1000 + SS)
+  bad: int;
+  m: [1] WireMirror;
+}
+gc_entry :: (h: [] GcHeard, me: int, t: string) {
+  k := rs_field(t, 0);
+  if k == "s" {
+    w := wire_mirror_of(h[0].m[..], rs_num(rs_field(t, 1)));
+    if w.id < 0 { h[0].bad += 1; return; }
+    if w.kind == WK_PLAYER && w.id == me {
+      h[0].me_x = w.x; h[0].me_z = w.z; h[0].me_seen = true;
+      if w.hp != h[0].hp && h[0].trace_n < 24 { h[0].trace[h[0].trace_n] = w.hp; h[0].trace_n += 1; }
+      h[0].hp = w.hp;
+      if h[0].hp0 < 0 { h[0].hp0 = w.hp; }
+      if w.hp < h[0].hp_min { h[0].hp_min = w.hp; }
+      return;
+    }
+    if w.kind == WK_FOLK {
+      i := w.id - WIRE_ID_FOLK;
+      d := (w.x - h[0].me_x) * (w.x - h[0].me_x) + (w.z - h[0].me_z) * (w.z - h[0].me_z);
+      if i == h[0].near_i || d < h[0].near_d { h[0].near_i = i; h[0].near_d = d; h[0].near_x = w.x; h[0].near_z = w.z; }
+    }
+    return;
+  }
+  if k == "w" && rs_num(rs_field(t, 1)) == me {
+    h[0].wanted = rs_num(rs_field(t, 2));
+    if h[0].wanted > h[0].wanted_most { h[0].wanted_most = h[0].wanted; }
+    return;
+  }
+}
+gc_hear :: (h: [] GcHeard, me: int, t: string) {
+  if rs_starts(t, "W ") { h[0].w = true; return; }
+  if !rs_starts(t, "D ") { return; }
+  h[0].d += 1;
+  _ := wire_mirror_frame(h[0].m[..], t);
+  at := 0; sp := 0;
+  while at < t.count && sp < 5 { if t[at] == ' ' { sp += 1; } at += 1; }
+  while at < t.count {
+    e := at;
+    while e < t.count && t[e] != ';' { e += 1; }
+    gc_entry(h, me, t[at..<e]);
+    at = e + 1;
+  }
+}
+// Stand still for ms, an input each 1/30 s, hearing everything.
+gc_steps :: (c: [] RelayConn, h: [] GcHeard, seq: [] int, ms: int) -> bool {
+  ok := true;
+  t0 := rs_now(); n := 0;
+  while rs_now() - t0 < ms {
+    seq[0] += 1;
+    m: [96] u8;
+    k := rs_int(m[..], rs_put(m[..], 0, "I "), seq[0]);
+    k = rs_put(m[..], k, " 0 0 0 0 0 0 "); k = rs_int(m[..], k, h[0].m[0].heard);
+    if !relay_conn_send(c, cast(string) m[0..<k]) { ok = false; }
+    n += 1;
+    while rs_now() - t0 < n * 33 {
+      while relay_conn_poll(c, 0) == RC_TEXT { gc_hear(h, 0, cast(string) c[0].text[0..<c[0].text_n]); }
+      proc_sleep(2);
+    }
+  }
+  return ok;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("guard-check: bad arguments"); return 2; }
+  b: [512] u8;
+  base := rs_base(ifx args_count(a[..]) > 0 then args_at(a[..], 0) else "ws://localhost:8841", b[..]);
+  secs := ifx args_count(a[..]) > 1 then rs_num(args_at(a[..], 1)) else 45;
+  u: [1024] u8;
+  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-guard-", rs_stamp());
+  c: [1] RelayConn; h: [1] GcHeard; seq: [1] int;
+  ut: [1024] u8;
+  url_t := rs_ticketed(ut[..], url, "p-guardcheck-a", "Guard Check");
+  if url.count == 0 || url_t.count == 0 || !relay_conn_open(c[..], url_t) { tool_err("guard-check: can't open "); tool_errln(url); print("fails\n"); return 1; }
+  sent := relay_conn_send(c[..], "H 3 ranger.1.0.0 druid 64 Guard Check");
+  sent = gc_steps(c[..], h[..], seq[..], 2000) && sent;
+  // the bolt at the nearest townsperson, until the room says WANTED
+  strikes := 0;
+  m: [128] u8;
+  while h[0].near_i >= 0 && strikes < 12 && h[0].wanted == 0 {
+    k := rs_int(m[..], rs_put(m[..], 0, "C "), seq[0] + 1);
+    seq[0] += 1;
+    k = rs_put(m[..], k, " 1 "); k = rs_int(m[..], k, cast(int) (h[0].near_x * 100));
+    k = rs_put(m[..], k, " 0 "); k = rs_int(m[..], k, cast(int) (h[0].near_z * 100)); k = rs_put(m[..], k, " ");
+    k = rs_int(m[..], k, h[0].near_i);
+    sent = relay_conn_send(c[..], cast(string) m[0..<k]) && sent;
+    sent = gc_steps(c[..], h[..], seq[..], 700) && sent;
+    strikes += 1;
+  }
+  hp_wanted := h[0].hp;
+  // then it stands: the watch comes, and its blows land on the server
+  t0 := rs_now();
+  while rs_now() - t0 < secs * 1000 && h[0].hp_min > 0 {
+    sent = gc_steps(c[..], h[..], seq[..], 500) && sent;
+  }
+  hurt_ms := rs_now() - t0;   // until downed, or SECONDS
+  ok := sent && h[0].w && h[0].me_seen && h[0].wanted_most >= 1 && hp_wanted > 0 && h[0].hp_min < hp_wanted && h[0].bad == 0;
+  out: [1024] u8; o: [1] Jo;
+  jo_start(o[..], out[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "strikes"); jo_int(o[..], strikes);
+  jo_key(o[..], "wanted_most"); jo_int(o[..], h[0].wanted_most);
+  jo_key(o[..], "hp_start"); jo_int(o[..], h[0].hp0);
+  jo_key(o[..], "hp_when_wanted"); jo_int(o[..], hp_wanted);
+  jo_key(o[..], "hp_least"); jo_int(o[..], h[0].hp_min);
+  jo_key(o[..], "downed"); jo_bool(o[..], h[0].hp_min == 0);
+  jo_key(o[..], "ms_to_down"); jo_int(o[..], hurt_ms);
+  jo_key(o[..], "bad_rows"); jo_int(o[..], h[0].bad);
+  jo_key(o[..], "hp_heard"); jo_arr(o[..]); for q: 0..<h[0].trace_n { jo_int(o[..], h[0].trace[q]); } jo_end(o[..]);
+  jo_end(o[..]);
+  print("%\n", jo_text(o[..]));
+  r := relay_conn_close(c[..], 1000);
+  _ := r;
+  print("%\n", ifx ok then "hurts" else "fails");
+  return ifx ok then 0 else 1;
+}
