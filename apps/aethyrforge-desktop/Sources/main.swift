@@ -393,7 +393,10 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         if CommandLine.arguments.contains("--scene-reopen") {
             let prior = try JSONSerialization.jsonObject(with: Data(contentsOf: report.deletingLastPathComponent().appendingPathComponent("result.json"))) as? [String: Any] ?? [:]
             guard objects(original).count == prior["totalObjects"] as? Int else { throw ShellError.failed("Scene objects did not survive reopening.") }
-            try JSONSerialization.data(withJSONObject: ["reopened": true, "totalObjects": objects(original).count]).write(to: report)
+            if let middle = prior["resizedIndex"] as? Int {
+                guard objects(original).first(where: { $0["index"] as? Int == middle })?["size_percent"] as? Int == 300 else { throw ShellError.failed("Individual crate resize did not survive reopening.") }
+            }
+            try JSONSerialization.data(withJSONObject: ["reopened": true, "totalObjects": objects(original).count, "resizePersisted": true]).write(to: report)
             stopChildren(); NSApp.terminate(nil); return
         }
         let firstCount = objects(original).count
@@ -405,6 +408,14 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         let pile = objects(state).filter { $0["group"] as? Int == stackGroup }
         guard objects(state).count == firstCount + 8, pile.count == 5,
               pile.compactMap({ $0["lift_cm"] as? Int }).sorted() == [0,93,186,279,372] else { throw ShellError.failed("Programmatic row/stack did not produce real scene objects.") }
+        guard let rowMiddle = objects(state).filter({ $0["group"] as? Int == rowGroup }).sorted(by: { ($0["x_cm"] as? Int ?? 0) < ($1["x_cm"] as? Int ?? 0) }).dropFirst().first?["index"] as? Int,
+              let resizeVersion = state["version"] as? Int else { throw ShellError.failed("Scene row had no middle object/version.") }
+        _ = try await command("{\"op\":\"resize\",\"index\":\(rowMiddle),\"version\":\(resizeVersion),\"scale_percent\":300}")
+        state = try await command()
+        guard objects(state).first(where: { $0["index"] as? Int == rowMiddle })?["size_percent"] as? Int == 300 else { throw ShellError.failed("Programmatic individual resize failed.") }
+        var staleRefused = false
+        do { _ = try await command("{\"op\":\"resize\",\"index\":\(rowMiddle),\"version\":\(resizeVersion),\"size_percent\":100}") } catch { staleRefused = true }
+        guard staleRefused else { throw ShellError.failed("An old version resized a selected object.") }
         _ = try await command("{\"op\":\"move\",\"group\":\(rowGroup),\"dz_cm\":400}")
         _ = try await command("{\"op\":\"remove\",\"group\":\(stackGroup)}")
         let beforeBad = try await command()
@@ -420,7 +431,8 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         try fm.createDirectory(at: router.deletingLastPathComponent(), withIntermediateDirectories: true)
         if !fm.fileExists(atPath: router.path) { try fm.copyItem(at: fm.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/coder/router.json"), to: router) }
         var sessions: [String] = []
-        for prompt in ["Add three crates to the scene.", "Add a stack of five crates to the scene."] {
+        var resizedIndex = -1
+        for (turn, prompt) in ["Add three crates to the scene.", "Make the middle crate of the three you just added 3x larger. Keep the other two crates unchanged.", "Add a stack of five crates to the scene."].enumerated() {
             let before = try await command()
             chatPane.startTurn(prompt, voice: true)
             let end = Date().addingTimeInterval(120)
@@ -430,7 +442,18 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
             }
             guard !chatPane.busy, chatPane.lastEnding.hasPrefix("finished") else { throw ShellError.failed("Scene Coder failed: \(chatPane.transcript.string.suffix(2000))") }
             state = try await command(); let added = objects(state).count - objects(before).count
-            guard added == (sessions.isEmpty ? 3 : 5) else { throw ShellError.failed("Coder said it edited the scene but added \(added) objects: \(chatPane.transcript.string.suffix(2000))") }
+            guard added == [3,0,5][turn] else { throw ShellError.failed("Coder said it edited the scene but added \(added) objects: \(chatPane.transcript.string.suffix(2000))") }
+            if turn == 1 {
+                let beforeObjects = objects(before)
+                let row = Array(beforeObjects.suffix(3)).sorted { ($0["x_cm"] as? Int ?? 0) < ($1["x_cm"] as? Int ?? 0) }
+                guard row.count == 3, let middle = row[1]["index"] as? Int else { throw ShellError.failed("Natural-language row has no middle crate.") }
+                resizedIndex = middle
+                for (old, new) in zip(beforeObjects, objects(state)) {
+                    var intended = old
+                    if old["index"] as? Int == middle { intended["size_percent"] = 300 }
+                    guard NSDictionary(dictionary: intended).isEqual(to: new) else { throw ShellError.failed("Coder resized or rebuilt the wrong objects: \(old) -> \(new)") }
+                }
+            }
             sessions.append(chatPane.session)
         }
         let latest = objects(state).suffix(5)
@@ -440,7 +463,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         guard getsAfter > getsBefore else { throw ShellError.failed("The page did not fetch the changed world.") }
         try await captureCanvas(report)
         let result: [String: Any] = ["ok": true, "programmaticRow": true, "programmaticStack": true, "groupMoveRemove": true,
-            "blockedRefused": refused, "naturalLanguageSessions": sessions, "pageFetchedChanges": true,
+            "blockedRefused": refused, "staleResizeRefused": staleRefused, "resizedIndex": resizedIndex, "middleSizePercent": 300, "neighboursUnchanged": true, "naturalLanguageSessions": sessions, "pageFetchedChanges": true,
             "totalObjects": objects(state).count, "version": state["version"] ?? 0, "engine": chatPane.selectedEngine]
         try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]).write(to: report)
         stopChildren(); NSApp.terminate(nil)

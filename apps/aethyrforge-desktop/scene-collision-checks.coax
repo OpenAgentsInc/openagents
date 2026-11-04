@@ -1,7 +1,22 @@
 // The actual Everglade NPC controller consumes the planner's objects through
 // the same fence builder used by the live page and authoritative room.
-#load "scene-policy.coax";
+#load "scene-resize.coax";
 #load "../../verse/everglade/watch.coax";
+
+#test "resizing the middle crate updates its real NPC fence and bodies stay outside the enlarged footprint" #steps 400000000 {
+  p:=fs_plan(EgEdits.{},ForgeSceneCommand.{op=FS_PLACE,item=0,count=3,located=true,x=600,z=-1050},0,0);#assert p.ok;
+  f:[WATCH_FENCES*5]f32;n:=eg_edit_fences(p.edits,f[..],0);
+  heights:[EG_GROUND_POINTS]f32;watch_ground(heights[..]);w:[1]Watch;watch_test_town(w[..],heights[..]);watch_fences(w[..],f[..],n);
+  #assert !watch_fenced(w[..],6,-12.2);
+  p=fsr_plan(p.edits,ForgeResize.{index=1,version=1,amount=300,relative=true},1);#assert p.ok;
+  n=eg_edit_fences(p.edits,f[..],0);watch_fences(w[..],f[..],n);#assert n==3 && watch_fenced(w[..],6,-12.2);
+  out:=watch_fence_out(w[..],1,6,-12.2,6,-12.2);#assert !watch_fenced(w[..],out.x,out.z);
+  g:=EG_SPOTS;watch_home(w[..],g,6,-14,0,false);a:=w[0].actors[g..<g+1];a[0].x=6;a[0].z=-7;
+  for frame:0..<60 {
+    heading:=watch_way(w[..],a[0].x,a[0].z,6,-14);_:=watch_stride(w[..],a,heading,0.05);
+    #assert !watch_fenced(w[..],a[0].x,a[0].z);
+  }
+}
 
 #test "scene tool rows and stacks immediately make NPCs walk around their actual footprints" #steps 400000000 {
   for stack:[2]bool.[false,true] {

@@ -205,6 +205,14 @@ page server, the voice Wasm and a local Parakeet voice host. This is the same
   row/stack, group edits, atomic refusal and reopen persistence checks pass.
   The tools audit retains 28 unrelated missing-reason headers.
 
+- Individual object resizing works through the same tool: “make the middle
+  crate 3× larger” multiplies only that crate's current size and preserves its
+  neighbours, transforms and group. The selector includes the index and exact
+  scene version, so reordering cannot silently resize another object. Absolute
+  and relative percentages share the 25–400% final bounds and existing geometry
+  checks; saves update the page, player walls and NPC fences. The native check
+  exercises real Coder resizing and persistence on reopen. The v2 admission
+  unit kills all 113 root mutants. See [scene commands v2](../protocol/aethyrforge-scene-v2.md).
 - NPC authoring uses the same automatically routed Coder turns, through the
   Coax scene tool's `npcs`/`npc` commands. It can spawn cultists, villagers and
   guards, direct one actor or a group to attack a named townsperson, player,

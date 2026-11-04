@@ -271,10 +271,23 @@ the camp stand. Events are transient; reopening keeps authored NPC definitions
 and starts with no event. See [event control v1](../../docs/protocol/aethyrforge-raid-v1.md).
 
 The hidden scene check exercises programmatic placement, group move/removal,
-atomic refusal, two real automatically routed Coder requests with the composer
+individual resizing, atomic refusal, three real automatically routed Coder requests with the composer
 closed, the page's world refresh, and persistence on a second launch. It uses
 the installed provider login and local Elephant router, with an isolated world
 and Coder history. The NPC regression walks around the exact planned footprints.
+
+Existing objects can be resized individually: “make the middle crate 3× larger”
+changes only its size. Read `show` for its current index and scene version, then:
+
+```sh
+~/.openagents/bin/aethyrforge-scene apply '{"op":"resize","index":13,"version":23,"scale_percent":300}'
+```
+
+Use the actual index/version from `show`. `scale_percent` multiplies the current
+size; `size_percent` sets the percentage of catalogue default instead. Supply
+one size field. The resulting size must be 25–400%. Stale selections, collisions
+and bounds refuse unchanged; neighbours and group membership stay intact.
+See [scene commands v2](../../docs/protocol/aethyrforge-scene-v2.md).
 
 ```sh
 coax/bin/coax test apps/aethyrforge-desktop/scene-policy.coax

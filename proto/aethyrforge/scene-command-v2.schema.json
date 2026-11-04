@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagents.com/proto/aethyrforge/scene-command-v2.schema.json",
+  "title": "Local Aethyrforge scene commands v2",
+  "oneOf": [
+    {"$ref": "scene-command-v1.schema.json"},
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "index", "version"],
+      "properties": {
+        "op": {"const": "resize"},
+        "index": {"type": "integer", "minimum": 0, "maximum": 63},
+        "version": {"type": "integer", "minimum": 0, "maximum": 1000000000},
+        "size_percent": {"type": "integer", "minimum": 25, "maximum": 400},
+        "scale_percent": {"type": "integer", "minimum": 1, "maximum": 1600}
+      },
+      "oneOf": [{"required": ["size_percent"]}, {"required": ["scale_percent"]}]
+    }
+  ]
+}
