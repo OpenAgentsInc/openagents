@@ -1,6 +1,25 @@
 # Speaking characters for videos
 
-Status: spec, 2026-11-04. Nothing in it is built yet.
+Status: MVP built, 2026-11-04 (#12798). `coax/web/tool.sh speak CUES OUT.mp4`
+(`coax/web/speak.coax`, with the alignment and performance in `aethyr/speak.coax`) runs every step
+below with these limits:
+
+- **Voice.** Only Google is wired, with Chirp 3 HD. Its voices take no `pitch`, so a mood sets only
+  `speakingRate`. ElevenLabs, `*emphasis*` and SSML marks aren't built. Word times come from
+  Speech-to-Text and the take's loudness: the tool splits the take into phrases by loudness and
+  spreads each word's phonemes by length.
+- **Face.** The 14 visemes and 6 moods are raw-control sets in `verse/tools/humans/face_rig.py`. The
+  lab mixes them by weight and clamps the sum. Blinks are seeded, and phrase breaks get an extra
+  blink. Saccades, head nods, breathing and the `talk` body clip aren't built.
+- **Stage.** `?stage=speak&track=...` takes the track inline in the URL. The stage plays no sound:
+  the tool adds each take to the video at the composite step. It has one backdrop, a dark warm glow,
+  and no outfit choice.
+- **Cast.** The mayor's pack is a placeholder, MetaHuman Lab's own pack, resolved by the owner-local
+  `~/.openagents/verse/private-build/speak/packs.txt`. Auditions, pickups (`--revoice N` voices one
+  cue again) and the `talk`-clip body aren't built.
+
+The first output is the Cultist Raid promo with the mayor's two lines, from
+`verse/cast/cues/raid-promo.cues`.
 
 This spec covers how you make a video in which a character speaks a scripted line. The character is a
 MetaHuman rendered by Verse, with its voice made by text-to-speech and its lips synced to that voice.
@@ -169,14 +188,13 @@ character mayor
   pack      everglade-mayor            # private pack ID, resolved owner-locally
   outfit    mayor-coat                 # verse/tools/humans/outfits.py
   voice     google en-US-Chirp3-HD-Charon   # placeholder until the audition
-  pitch     -2
   framing   head-shoulders
   backdrop  town-hall-night
-  say       Odiodei = OH-dee-OH-day
-  say       Everglade = EV-er-glayd
+  say       Odiodei = OW D IY OW D EY       # ARPAbet phonemes
+  say       Everglade = EH V ER G L EY D
 ```
 
-Characters can share a voice provider and differ only in voice, pitch and mood mapping, so a cast of
+Characters can share a voice provider and differ only in voice and mood mapping, so a cast of
 ten costs nothing extra.
 
 ## Making the mayor

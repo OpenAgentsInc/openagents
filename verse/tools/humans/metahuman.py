@@ -462,6 +462,16 @@ def face(pack, head):
         print(f"face rig: {name} moves the head's points up to {far:.2f} cm")
         if far < 0.5:
             raise SystemExit(f"metahuman: the face rig's {name} barely moves the face")
+    # each viseme but rest must move the mouth (aethyr/speak.coax mixes them for speech)
+    for name, e in face_rig.VISEMES.items():
+        if not e:
+            continue
+        raw = {bh.control(k): v for k, v in e.items()}
+        q = face_rig.skinned(bh, tg, raw, vs, sk, {index["head_lod0_mesh"]: 0})
+        far = max(math.dist(a, b) for a, b in zip(q, vs))
+        print(f"face rig: viseme {name} moves the head's points up to {far:.2f} cm")
+        if far < face_rig.VISEME_MOVE_MIN:
+            raise SystemExit(f"metahuman: the face rig's viseme {name} barely moves the mouth")
 
 
 # ---- the portrait's skin maps, groom and clothes

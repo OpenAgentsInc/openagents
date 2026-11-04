@@ -1,0 +1,21 @@
+# The cast of speaking characters (docs/verse/2026-11-04-speaking-characters.md): names, voices,
+# framing and look. A pack is named only by an ID; the owner-local
+# ~/.openagents/verse/private-build/speak/packs.txt resolves it ("ID PACK"), so no digest, path
+# or placement of a MetaHuman is in git. coax/web/tool.sh speak reads this file.
+#
+#   character ID
+#     name      "SHOWN NAME"
+#     pack      PACK-ID
+#     voice     PROVIDER VOICE      google (Cloud Text-to-Speech) is wired; elevenlabs is the spec's other
+#     framing   head-shoulders      the speaking stage's one framing so far
+#     backdrop  town-hall-night     the speaking stage's one backdrop so far
+#     say       WORD = PHONEMES     ARPAbet, for names and made-up words
+
+character mayor
+  name      "Mayor Tobin Hale"                # placeholder; the owner names him
+  pack      everglade-mayor                   # placeholder: MetaHuman Lab's pack until the owner designs the mayor
+  voice     google en-US-Chirp3-HD-Charon     # placeholder until the audition (Chirp 3 HD takes no pitch)
+  framing   head-shoulders
+  backdrop  town-hall-night
+  say       Odiodei = OW D IY OW D EY
+  say       Everglade = EH V ER G L EY D

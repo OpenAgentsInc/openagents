@@ -22,6 +22,7 @@
 #load "../../aethyr/shot.coax" as ash;   // the camera's orbit is Aethyr's (book chapter 10)
 #load "../../aethyr/space.coax" as asp;
 #load "../../aethyr/facerig.coax";   // the face rig: OpenRigLogic's evaluation, ported (MIT)
+#load "../../aethyr/speak.coax";     // speaking: viseme tracks and their performance (?stage=speak)
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 40000;
@@ -140,6 +141,9 @@ Lab :: struct {
   expr: int; expr_prev: int = -1; expr_w: f32 = 1; expr_ask: int; expr_name: [16] u8; expr_name_n: int;
   face_t: f32; blink_at: f32 = 2.0; blink_seed: u32 = 12345;
   face_key: [6] f32; face_version: int;
+  // the speaking stage (?stage=speak&track=...): head and shoulders against a dark warm backdrop,
+  // the track's mouth, mood and blinks on the face; its clock runs once the pack is in or refused
+  speak: bool; speak_t: f32; track: [1] SpkTrack;
   outbox: [OUTBOX_CAP] u8; out_n: int; action: int;
 }
 
@@ -610,18 +614,23 @@ lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f
     for i: 0..<90 { lab_step(s, f32(STEP)); }
   }
   step_dt := ifx s[0].golden || still then 0.0f32 else dt;
+  // the speaking stage's clock: whole frames once ready (a clip's loading steps are a microsecond)
+  if s[0].speak && speak_ready(s) > 0 && step_dt > 0.001 { s[0].speak_t += step_dt; }
   lab_run(s, step_dt);
+  if s[0].speak { speak_camera(s); }
   layout(s, width, height, k);
+  if s[0].speak { s[0].strip = 0; s[0].cy = height / 2; }
   n := 0;
   if s[0].bones { n = draw_bones(s, out, n, k); }
-  n = draw_top(s, out, n, k);
+  if !s[0].speak { n = draw_top(s, out, n, k); }
   for i: 0..<u.count { u[i] = 0; }
   u[0] = width; u[1] = height; u[2] = s[0].clock; u[3] = 1;
-  u[U_FLAGS] = ifx s[0].bones then 1 else 0; u[U_FLAGS + 2] = s[0].strip; u[U_FLAGS + 3] = 30 * k;
+  u[U_FLAGS] = ifx s[0].bones then 1 else 0; u[U_FLAGS + 2] = s[0].strip; u[U_FLAGS + 3] = ifx s[0].speak then 0.0f32 else 30 * k;
   u[U_EYE] = s[0].eye.x; u[U_EYE + 1] = s[0].eye.y; u[U_EYE + 2] = s[0].eye.z; u[U_EYE + 3] = s[0].focal;
   u[U_FWD] = s[0].fwd.x; u[U_FWD + 1] = s[0].fwd.y; u[U_FWD + 2] = s[0].fwd.z; u[U_FWD + 3] = s[0].cx;
   u[U_RIGHT] = s[0].right.x; u[U_RIGHT + 1] = s[0].right.y; u[U_RIGHT + 2] = s[0].right.z; u[U_RIGHT + 3] = s[0].cy;
   u[U_UP] = s[0].up.x; u[U_UP + 1] = s[0].up.y; u[U_UP + 2] = s[0].up.z;
+  u[U_UP + 3] = ifx s[0].speak then 1 else 0;   // the speaking stage's backdrop
   u[U_SUN] = 0.5; u[U_SUN + 1] = 0.72; u[U_SUN + 2] = 0.48;
   caps: [CAPS] Cap;
   count := body(s, caps[..]);
@@ -810,7 +819,42 @@ lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bo
   return false;
 }
 lab_cursor :: (s: [] Lab) -> int #export_c { return 0; }
-lab_message :: (s: [] Lab, kind: int, t: string) #export_c { lab_start(s); }
+lab_message :: (s: [] Lab, kind: int, t: string) #export_c {
+  lab_start(s);
+  if kind == 600 { speak_stage(s, t); }
+}
+// A query value (name=VALUE, after a '?' or '&') in the page facts' url= line, or "".
+query_value :: (facts: string, name: string) -> string {
+  for i: 1..<facts.count - name.count {
+    if (facts[i - 1] == '?' || facts[i - 1] == '&') && facts[i + name.count] == '=' && facts[i..<i + name.count] == name {
+      e := i + name.count + 1; while e < facts.count && facts[e] != '&' && facts[e] != '#' && facts[e] != '\n' { e += 1; }
+      return facts[i + name.count + 1..<e];
+    }
+  }
+  return "";
+}
+// ?stage=speak&track=TRACK (aethyr/speak.coax's URL form): the speaking stage, idle, its HUD gone.
+speak_stage :: (s: [] Lab, url: string) {
+  if query_value(url, "stage") != "speak" { return; }
+  if !spk_track_parse(query_value(url, "track"), s[0].track[..]) { s[0].track[0].n = 0; }
+  s[0].speak = true; s[0].speak_t = 0; s[0].clip = PEOPLE_IDLE; s[0].paused = false;
+  s[0].skin[0].time = 0;
+  speak_camera(s);
+}
+// Ready to speak: the pack's face is in, or the pack was refused (the capsules draw: a test's).
+speak_ready :: (s: [] Lab) -> int {
+  if mesh_on(s) && s[0].face_state >= 1 { return 2; }
+  if s[0].pack_failed || (mesh_on(s) && s[0].face_state < 0) { return 1; }
+  return 0;
+}
+lab_probe :: (s: [] Lab) -> int #export_c { return speak_ready(s); }
+// Head and shoulders: the camera level with the face, close, on the head as it moves.
+SPEAK_DIST :: 0.68; SPEAK_DROP :: 0.05;
+speak_camera :: (s: [] Lab) {
+  h := s[0].joint[MQ_HEAD];
+  s[0].yaw = 0; s[0].pitch = 0.03; s[0].dist = SPEAK_DIST;
+  s[0].px = h.x; s[0].py = h.y - SPEAK_DROP; s[0].pz = h.z; s[0].vx = 0; s[0].vy = 0; s[0].vz = 0;
+}
 lab_golden :: (s: [] Lab, on: bool) #export_c { lab_start(s); s[0].golden = on; }
 lab_action :: (s: [] Lab) -> int #export_c { a := s[0].action; s[0].action = 0; return a; }
 lab_action_done :: (s: [] Lab) #export_c { s[0].out_n = 0; }
@@ -1063,11 +1107,12 @@ lab_face :: (s: [] Lab, cat: string, work: [] f32, still: [] bool, rows: [] f32)
     for k: 0..<r[0].exprs {
       e = (e + 1) % r[0].exprs;
       n := frig_expr_name(r, blk, e);
-      if n != "blink" && n != "jaw" { break; }
+      if n != "blink" && n != "jaw" && spk_viseme(n) < 0 && spk_mood(n) < 0 { break; }
     }
     s[0].expr = e;
     face_name(s, blk);
   }
+  if s[0].speak { return speak_face(s, blk, work, still, rows); }
   talking := frig_expr_name(r, blk, s[0].expr) == "talk";
   jaw: f32 = 0;
   if talking {
@@ -1086,6 +1131,13 @@ lab_face :: (s: [] Lab, cat: string, work: [] f32, still: [] bool, rows: [] f32)
   frig_add_expr(r, blk, face_named(s, blk, "blink"), key[3], c);
   frig_add_expr(r, blk, face_named(s, blk, "jaw"), jaw, c);
   for i: 0..<r[0].raws { c[i] = clamp(c[i], 0, 1); }
+  face_eval(s, blk, work, still, rows);
+  return true;
+}
+// The rig on the controls in work's first FACE_CONTROLS floats, into the face's rows.
+face_eval :: (s: [] Lab, blk: string, work: [] f32, still: [] bool, rows: [] f32) {
+  r := s[0].face[..];
+  c := work[FACE_W_C..<FACE_W_ATTR];
   frig_psds(r, blk, c);
   frig_joint_deltas(r, blk, c, work[FACE_W_ATTR..<FACE_W_WORLD]);
   frig_worlds(r, blk, work[FACE_W_ATTR..<FACE_W_WORLD], work[FACE_W_WORLD..<FACE_W_INV]);
@@ -1093,9 +1145,35 @@ lab_face :: (s: [] Lab, cat: string, work: [] f32, still: [] bool, rows: [] f32)
               still, work[FACE_W_MORPH..<FACE_W_PTS], work[FACE_W_UNPACKED..<FACE_WORK], work[FACE_W_PTS..<FACE_W_UNPACKED]);
   frig_vertices(r, blk, work[FACE_W_PTS..<FACE_W_UNPACKED], rows);
   s[0].face_version += 1;
-  return true;
 }
 face_named :: (s: [] Lab, blk: string, name: string) -> int { return frig_expr(s[0].face[..], blk, name); }
+// The speaking face: the mood, the visemes and the blink at the stage's time, weighted and summed
+// into one control vector (clamped), then evaluated.
+speak_face :: (s: [] Lab, blk: string, work: [] f32, still: [] bool, rows: [] f32) -> bool {
+  r := s[0].face[..];
+  if s[0].face_key[0] == -2 && s[0].face_key[1] == s[0].speak_t { return false; }
+  s[0].face_key[0] = -2; s[0].face_key[1] = s[0].speak_t;
+  f := spk_perform(s[0].track[..], s[0].speak_t);
+  c := work[FACE_W_C..<FACE_W_ATTR];
+  speak_controls(r, blk, f, s[0].track[0].mood, c);
+  face_eval(s, blk, work, still, rows);
+  return true;
+}
+speak_controls :: (r: [] FaceRig, blk: string, f: SpkFace, mood: int, c: [] f32) {
+  names: [SPK_VISEMES + 1] string; w: [SPK_VISEMES + 1] f32;
+  names[0] = SPK_MOOD_NAME[clamp_i(mood, 0, SPK_MOODS - 1)]; w[0] = f.mood;
+  for v: 1..<SPK_VISEMES { names[v] = SPK_VISEME_NAME[v]; w[v] = f.vis[v]; }
+  names[SPK_VISEMES] = "blink"; w[SPK_VISEMES] = f.blink;
+  face_mix(r, blk, names[..], w[..], c);
+}
+// Weighted expressions (by name; a name the block lacks adds nothing) summed into the controls,
+// the raw ones clamped to 0..1, ready for the correctives.
+face_mix :: (r: [] FaceRig, blk: string, names: [] string, w: [] f32, c: [] f32) {
+  for i: 0..<r[0].controls { c[i] = 0; }
+  for k: 0..<names.count { frig_add_expr(r, blk, frig_expr(r, blk, names[k]), w[k], c); }
+  for i: 0..<r[0].raws { c[i] = clamp(c[i], 0, 1); }
+}
+clamp_i :: (x: int, a: int, b: int) -> int { return ifx x < a then a else ifx x > b then b else x; }
 face_name :: (s: [] Lab, blk: string) {
   n := frig_expr_name(s[0].face[..], blk, s[0].expr);
   s[0].expr_name_n = 0;
@@ -1560,4 +1638,51 @@ face_rig_in :: (s: [] Lab, text: [] u8) -> int {
     worst = hi(worst, length(sub(a, b)));
   }
   #assert worst < 0.001;
+}
+
+#test "the speaking stage: its URL starts it, its clock waits for the pack, then runs by whole frames without the HUD" #steps 2000000000 {
+  s: [1] Lab;
+  lab_message(s[..], 600, "tab=1\nurl=http://127.0.0.1:8800/worlds/metahuman-lab/?pack=x&stage=speak&track=speak,worried,7,0.300,2.000~0.400,0.460,mbp,1.000~0.460,0.700,aa,0.800&card=1\nvw=720");
+  #assert s[0].speak && s[0].track[0].n == 2 && s[0].track[0].mood == 1 && s[0].track[0].seed == 7;
+  #assert s[0].track[0].vis[0].v == SPK_MBP;
+  u: [UNIFORM_FLOATS] f32; out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  // no pack yet: the clock holds
+  n := lab_frame(s[..], out[..], u[..], 720, 720, 1, 1.0 / 60, false);
+  #assert s[0].speak_t == 0 && lab_probe(s[..]) == 0;
+  // the pack refused (any host but openagents.com): the capsules speak, by whole frames
+  lab_pack_part(s[..], 0, 0);
+  #assert lab_probe(s[..]) == 1;
+  for i: 0..<30 { n = lab_frame(s[..], out[..], u[..], 720, 720, 1, 1.0 / 60, false); }
+  #assert abs(s[0].speak_t - 0.5) < 0.0001;
+  // a clip's loading steps (a microsecond each) never move it
+  n = lab_frame(s[..], out[..], u[..], 720, 720, 1, 0.000001, false);
+  #assert abs(s[0].speak_t - 0.5) < 0.0001;
+  // no HUD, the backdrop on, and the camera close on the head, level with it
+  #assert n == 0 && s[0].strip == 0 && u[U_UP + 3] == 1;
+  h := s[0].joint[MQ_HEAD];
+  #assert abs(s[0].eye.y - (h.y - f32(SPEAK_DROP))) < 0.05 && length(sub(s[0].eye, h)) < 1.0;
+  p := proj(s[..], h);
+  #assert abs(p.x - 360) < 30 && p.y > 200 && p.y < 520;
+  // another page has no stage
+  t: [1] Lab;
+  lab_message(t[..], 600, "url=http://127.0.0.1:8800/worlds/metahuman-lab/?pack");
+  #assert !t[0].speak;
+}
+
+#test "the speaking face mixes expressions by weight, summed and clamped" #steps 2000000000 {
+  // facerig.coax's tiny block: "open" sets control 0, "both" controls 0 and 1
+  b: [1024] u8;
+  n := frig_test_block(b[..]);
+  blk := cast(string) b[0..<n];
+  r: [1] FaceRig;
+  #assert frig_open(r[..], blk, 8, 4, 4);
+  c: [8] f32;
+  names := [3] string.["open", "both", "mbp"];
+  w := [3] f32.[0.7, 0.6, 1];
+  face_mix(r[..], blk, names[..], w[..], c[..]);
+  // 0.7 + 0.6 clamps to 1; "both" alone sets 0.6; a name the block lacks adds nothing
+  #assert c[0] == 1 && abs(c[1] - 0.6) < 0.0001;
+  w[0] = 0.2; w[1] = 0.3;
+  face_mix(r[..], blk, names[..], w[..], c[..]);
+  #assert abs(c[0] - 0.5) < 0.0001 && abs(c[1] - 0.3) < 0.0001;
 }

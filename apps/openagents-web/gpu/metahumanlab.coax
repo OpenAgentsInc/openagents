@@ -16,7 +16,7 @@
 //   eye 16: the camera's eye xyz (m), its focal length (px)
 //   fwd 20: forward xyz, the image centre's x (px)
 //   right 24: right xyz, the image centre's y (px)
-//   up 28: up xyz, 0
+//   up 28: up xyz, the speaking stage's backdrop (1 on)
 //   sun 32: toward the sun xyz, 0
 //   bound 36: the figure's bounding sphere: centre xyz, radius
 //   head 40: the cranium's middle xyz, its radius; 44: the head's forward xyz; 48: its up xyz
@@ -230,6 +230,23 @@ mhlab_depth :: (z:f32)->f32 {
 // bg_fs and scene_fs draw linear light (the post pass's rgba16float; its alpha the share that
 // blooms, none) and aux (unused); post_fs tones it for the screen, smooths its edges (FXAA) and
 // lays the HUD's strips over it. A probe view's pixels are the probe's numbers, passed through.
+// The speaking stage's backdrop at q (the screen's x and y over its height; aspect its width over
+// its height), in linear light.
+mhlab_glow :: (q:V2,at:V2,r:f32,k:f32)->f32 {
+  d:V2=v2(q.x-at.x,q.y-at.y);
+  e:f32=((d.x*d.x)+(d.y*d.y))/(r*r);
+  return k*exp(-e);
+}
+mhlab_backdrop :: (q:V2,aspect:f32)->V3 {
+  mid:f32=aspect*0.5f32;
+  dx:f32=(q.x-mid)/fmax(aspect,0.1f32);
+  dy:f32=q.y-0.45f32;
+  vig:f32=fmax(0.0f32,1.0f32-(((dx*dx)*1.6f32)+((dy*dy)*1.3f32)));
+  g:f32=(mhlab_glow(q,v2(aspect*0.16f32,0.3f32),0.2f32,1.0f32)+mhlab_glow(q,v2(aspect*0.86f32,0.24f32),0.16f32,0.8f32))+
+    (mhlab_glow(q,v2(aspect*0.72f32,0.62f32),0.24f32,0.55f32)+mhlab_glow(q,v2(aspect*0.3f32,0.8f32),0.3f32,0.35f32));
+  base:V3=scale3(v3(0.016f32,0.009f32,0.006f32),0.3f32+(0.7f32*vig));
+  return add3(base,scale3(v3(0.07f32,0.028f32,0.008f32),g));
+}
 MhlabBg :: struct {light:V4; aux:V4; depth:f32 #depth; }
 MhlabLit :: struct {light:V4; aux:V4; }
 mhlab_bg_fs :: (pos:V4,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->MhlabBg {
@@ -252,6 +269,12 @@ mhlab_bg_fs :: (pos:V4,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->M
   if (mesh) { c=scale3(v3(pow(fmax(c.x,0.0f32),2.2f32),pow(fmax(c.y,0.0f32),2.2f32),pow(fmax(c.z,0.0f32),2.2f32)),0.95f32); }
   depth:f32=1.0f32;
   if (h.m>=0.0f32) { depth=mhlab_depth(h.t*dot3(rd,fwd)); }
+  // the speaking stage (u[31] 1): a dark, warm backdrop behind the figure, out of focus, with a
+  // few soft firelit glows, as a town hall at night behind a portrait
+  if ((u[31]>0.5f32)&&(h.m<0.5f32)) {
+    c=mhlab_backdrop(v2(p.x/fmax(u[1],1.0f32),p.y/fmax(u[1],1.0f32)),u[0]/fmax(u[1],1.0f32));
+    depth=1.0f32;
+  }
   if (probe>0.5f32) {
     // a probe view: black, and on 3 magenta wherever a capsule of the figure would be drawn
     c=v3(0.0f32,0.0f32,0.0f32);

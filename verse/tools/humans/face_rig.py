@@ -28,7 +28,8 @@ DELTA_MIN = 0.01        # cm: blend shape deltas below this (a tenth of a millim
 DELTA_UNIT = 0.001      # cm per step of a packed delta (i16)
 INFLUENCES = 6          # joints kept per point
 # Expressions: raw controls (CTRL_expressions.NAME) and their values. "talk" also opens and closes
-# the jaw over time in the lab; "blink" is the lab's blink, on top of any expression.
+# the jaw over time in the lab; "blink" is the lab's blink, on top of any expression. The visemes
+# (VISEMES, below) join them.
 EXPRESSIONS = {
     "neutral": {},
     "smile": {"mouthCornerPullL": 0.85, "mouthCornerPullR": 0.85, "eyeCheekRaiseL": 0.45, "eyeCheekRaiseR": 0.45,
@@ -41,6 +42,52 @@ EXPRESSIONS = {
     "blink": {"eyeBlinkL": 1.0, "eyeBlinkR": 1.0},
     "jaw": {"jawOpen": 1.0},
 }
+
+
+def both(names, v):
+    """The same value on each side (L R) or each quarter of the lips (UL UR DL DR)."""
+    out = {}
+    for n in names.split():
+        if n.endswith("*4"):
+            for q in ("UL", "UR", "DL", "DR"):
+                out[n[:-2] + q] = v
+        else:
+            out[n + "L"] = v; out[n + "R"] = v
+    return out
+
+
+# The visemes (docs/verse/2026-11-04-speaking-characters.md): the mouth's shapes for speech, as
+# raw controls. aethyr/speak.coax names them and mixes them, weighted, with a mood and the blink.
+VISEMES = {
+    "rest": {},
+    "mbp": {**both("mouthLipsTogether*4", 1.0), **both("mouthPress*4", 0.35), "jawOpen": 0.03},
+    "fv": {**both("mouthLowerLipBite", 0.55), **both("mouthLowerLipTowardsTeeth", 0.6), **both("mouthUpperLipRaise", 0.2),
+           "jawOpen": 0.08},
+    "th": {"jawOpen": 0.18, "tongueOut": 0.4, "tongueTipUp": 0.3, **both("mouthStretch", 0.1)},
+    "dtnl": {"jawOpen": 0.2, "tongueTipUp": 0.7, "tongueUp": 0.3, **both("mouthStretch", 0.12)},
+    "kg": {"jawOpen": 0.26, "tongueUp": 0.45, **both("mouthStretch", 0.15)},
+    "sz": {"jawOpen": 0.07, **both("mouthStretch", 0.35), **both("mouthUpperLipRaise", 0.18), **both("mouthLowerLipDepress", 0.18)},
+    "chj": {"jawOpen": 0.12, **both("mouthFunnel*4", 0.5), **both("mouthUpperLipRaise", 0.2), **both("mouthLowerLipDepress", 0.15)},
+    "r": {"jawOpen": 0.15, **both("mouthFunnel*4", 0.3), **both("mouthCornerNarrow", 0.3)},
+    "aa": {"jawOpen": 0.6, **both("mouthLowerLipDepress", 0.2), **both("mouthUpperLipRaise", 0.1)},
+    "ee": {"jawOpen": 0.15, **both("mouthStretch", 0.45), **both("mouthCornerWide", 0.35), **both("mouthCornerPull", 0.15)},
+    "ih": {"jawOpen": 0.28, **both("mouthStretch", 0.25)},
+    "oh": {"jawOpen": 0.4, **both("mouthFunnel*4", 0.55), **both("mouthLipsPurse*4", 0.15)},
+    "oo": {"jawOpen": 0.12, **both("mouthLipsPurse*4", 0.7), **both("mouthFunnel*4", 0.4), **both("mouthLipsTowards*4", 0.3)},
+}
+# The moods a speaking face holds under its mouth: brows, eyes and cheeks only, so they never fight
+# the visemes for the jaw or the lips.
+MOODS = {
+    "calm": {},
+    "worried": {**both("browRaiseIn", 0.75), **both("browLateral", 0.35), **both("eyeWiden", 0.15)},
+    "urgent": {**both("browRaiseIn", 0.6), **both("browRaiseOuter", 0.5), **both("eyeWiden", 0.45)},
+    "angry": {**both("browDown", 0.8), **both("browLateral", 0.5), **both("eyeSquintInner", 0.35), **both("noseWrinkle", 0.2)},
+    "cheerful": {**both("eyeCheekRaise", 0.4), **both("mouthCornerPull", 0.35)},
+    "grim": {**both("browDown", 0.45), **both("mouthCornerDepress", 0.3)},
+}
+VISEME_MOVE_MIN = 0.3   # cm: a viseme (all but rest) must move the head's points at least this far
+EXPRESSIONS.update(VISEMES)
+EXPRESSIONS.update(MOODS)
 
 
 def euler(rx, ry, rz):

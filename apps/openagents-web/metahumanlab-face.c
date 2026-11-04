@@ -78,6 +78,9 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
   lab_message(at(state), kind, (coax_string){(const char *)inbox, length});
 }
 
+// the speaking stage's readiness (coax/web/host.js coaxial.probe): 0 waiting for the pack, 1 the
+// capsules (no pack), 2 the pack's face
+EXPORT("coaxial_probe") int32_t coaxial_probe(uint32_t state) { return (int32_t)lab_probe(at(state)); }
 EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { return (int32_t)lab_action(at(state)); }
 EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { return (uint32_t)(uintptr_t)lab_at(state)->outbox.e; }
 EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { return (uint32_t)lab_at(state)->out_n; }

@@ -1,0 +1,751 @@
+// Speaking characters for videos (docs/verse/2026-11-04-speaking-characters.md): a cue sheet and a
+// video in, the video out with each line voiced and a talking portrait panel over it.
+//   coax/web/tool.sh speak CUES OUT.mp4 [--video FILE] [--cast FILE] [--server URL]
+//       [--allow-fallback] [--revoice N] [--no-open]
+// Run from the repository root. For each cue line:
+//   1. voice   Google Cloud Text-to-Speech (the cast's Chirp 3 HD voice), through curl with a token
+//              from the gcloud automation account; then Google Speech-to-Text with word time
+//              offsets, and the tool stops if the transcript isn't the line. A take is kept by its
+//              key (text, voice, mood, settings, this tool's version) and voiced again only with
+//              --revoice N (the Nth cue, from 1).
+//   2. align   aethyr/speak.coax: the words' times and the take's loudness into a viseme track.
+//   3. render  MetaHuman Lab's speaking stage (?stage=speak&track=...) recorded by
+//              `tool.sh clip --fps 60 --frames DIR`, headless, 720 px square, its pack the cast
+//              entry's (an ID the owner-local ~/.openagents/verse/private-build/speak/packs.txt
+//              names: "ID PACK", PACK served by coax/web/serve.c's /private/). A portrait the
+//              stage drew with the capsule fallback is refused unless --allow-fallback (tests).
+//   4. composite ffmpeg: a panel lower left at 30% of the height (a thin gold frame, the name
+//              under it in Filament, the game's stroke font, drawn here), sliding in 0.3 s before
+//              the line and out 0.5 s after; the video's sound ducked 8 dB under each line; the
+//              line's words burned in one by one. Also OUT.srt and OUT.json (each line's times).
+// Everything this makes holds MetaHuman renders: the cache (~/.openagents/verse/private-build/
+// speak/) and the output's folder get a NO-TRAINING.txt, and neither ever goes into git, a golden,
+// a dataset, an eval or a public trace (docs/verse/metahuman-support.md, binding rules).
+// curl, gcloud, ffmpeg and the dev server are programs this runs, as clip.coax runs Chrome; the
+// logic (requests, parsing, alignment, the filter graph, the text) is here.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/args.coax";
+#load "../lib/sys/proc.coax";
+#load "../lib/json/json.coax";
+#load "../lib/text/base64.coax";
+#load "../../aethyr/speak.coax";
+#load "../../apps/openagents-web/font.coax";
+
+SPEAK_VERSION :: "speak-1";
+SPEAK_SIZE :: 720;            // the portrait's side, px
+SPEAK_FPS :: 60;
+SPEAK_TAIL :: 0.85;           // s the portrait runs past its line: the stay and the slide out
+SPEAK_SERVER :: "http://127.0.0.1:8846";
+TTS_URL :: "https://texttospeech.googleapis.com/v1/text:synthesize";
+STT_URL :: "https://speech.googleapis.com/v1/speech:recognize";
+GCLOUD_CONFIG :: "/Users/christopherdavid/work/.secrets/gcloud-sa-config";
+GCP_PROJECT :: "openagentsgemini";
+NO_TRAINING :: "MetaHuman renders: never used to train or improve AI models, never in git, goldens, datasets, evals or public traces (docs/verse/metahuman-support.md, binding rules).\n";
+
+WAV_MAX :: 1 << 23;
+ENV_MAX :: 6000;              // 10 ms frames: a minute
+CUES_MAX :: 32;
+OUT_W :: 1920; OUT_H :: 1080;
+
+// ---- text and numbers
+
+put :: (buf: [] u8, at: int, text: string) -> int { return spk_put(buf, at, text); }
+str :: (buf: [] u8, n: int) -> string { return cast(string) buf[0..<n]; }
+trim :: (t: string) -> string {
+  a := 0; b := t.count;
+  while a < b && (t[a] == ' ' || t[a] == '\t' || t[a] == '\r') { a += 1; }
+  while b > a && (t[b - 1] == ' ' || t[b - 1] == '\t' || t[b - 1] == '\r') { b -= 1; }
+  return t[a..<b];
+}
+starts :: (t: string, p: string) -> bool { return t.count >= p.count && t[0..<p.count] == p; }
+HEX :: "0123456789abcdef";
+// Two FNV-1a hashes of text, as 16 hex digits.
+hash_hex :: (text: string, out: [] u8) -> string {
+  a: u32 = 2166136261; b: u32 = 3735928559;
+  for i: 0..<text.count {
+    c := cast(u32) text[i];
+    a = mul_wrap(a ^ c, 16777619);
+    b = mul_wrap(b ^ c ^ (a >> 7), 16777619);
+  }
+  for k: 0..<8 { out[k] = HEX[cast(int) ((a >> (28 - 4 * cast(u32) k)) & 15)]; out[8 + k] = HEX[cast(int) ((b >> (28 - 4 * cast(u32) k)) & 15)]; }
+  return cast(string) out[0..<16];
+}
+say_err :: (a: string, b: string) { tool_err("speak: "); tool_err(a); tool_errln(b); }
+
+// ---- the cast file (verse/cast/cast.txt)
+
+Who :: struct {
+  id: [24] u8; id_n: int; name: [48] u8; name_n: int; pack: [48] u8; pack_n: int;
+  provider: [16] u8; provider_n: int; voice: [64] u8; voice_n: int;
+  say: [1024] u8; say_n: int;
+}
+copy_to :: (dst: [] u8, src: string) -> int { n := 0; for i: 0..<src.count { if n < dst.count { dst[n] = src[i]; n += 1; } } return n; }
+// The character id's entry, from the cast text.
+cast_entry :: (text: string, id: string, w: [] Who) -> bool {
+  i := 0; inside := false; found := false;
+  w[0].say_n = 0; w[0].name_n = 0; w[0].pack_n = 0; w[0].voice_n = 0; w[0].provider_n = 0;
+  while i < text.count {
+    e := i; while e < text.count && text[e] != '\n' { e += 1; }
+    raw := text[i..<e]; i = e + 1;
+    // a comment from '#'
+    c := 0; q := false;
+    while c < raw.count && (q || raw[c] != '#') { if raw[c] == '"' { q = !q; } c += 1; }
+    line := trim(raw[0..<c]);
+    if line.count == 0 { continue; }
+    indented := raw[0] == ' ' || raw[0] == '\t';
+    if !indented {
+      inside = starts(line, "character ") && trim(line[10..<line.count]) == id;
+      if inside { found = true; w[0].id_n = copy_to(w[0].id[..], id); }
+      continue;
+    }
+    if !inside { continue; }
+    sp := 0; while sp < line.count && line[sp] != ' ' { sp += 1; }
+    key := line[0..<sp]; val := trim(line[sp..<line.count]);
+    if key == "name" {
+      if val.count >= 2 && val[0] == '"' { val = val[1..<val.count - 1]; }
+      w[0].name_n = copy_to(w[0].name[..], val);
+    } else if key == "pack" { w[0].pack_n = copy_to(w[0].pack[..], val); }
+    else if key == "voice" {
+      v := 0; while v < val.count && val[v] != ' ' { v += 1; }
+      w[0].provider_n = copy_to(w[0].provider[..], val[0..<v]);
+      w[0].voice_n = copy_to(w[0].voice[..], trim(val[v..<val.count]));
+    } else if key == "say" {
+      w[0].say_n = put(w[0].say[..], w[0].say_n, val);
+      w[0].say_n = put(w[0].say[..], w[0].say_n, "\n");
+    }
+  }
+  return found;
+}
+// The owner-local pack a pack ID names (packs.txt: "ID PACK" lines), or "".
+pack_of :: (table: string, id: string) -> string {
+  i := 0;
+  while i < table.count {
+    e := i; while e < table.count && table[e] != '\n' { e += 1; }
+    line := trim(table[i..<e]); i = e + 1;
+    sp := 0; while sp < line.count && line[sp] != ' ' { sp += 1; }
+    if line[0..<sp] == id { return trim(line[sp..<line.count]); }
+  }
+  return "";
+}
+
+// ---- programs
+
+run :: (argv: [] string, out: [] u8, err: [] u8, timeout_ms: int) -> ProcRun { return proc_run(argv, timeout_ms, out, err); }
+// A token for Google's APIs from the automation account (never printed).
+gcp_token :: (out: [] u8) -> string {
+  h := proc_new();
+  ok := proc_arg(h, "gcloud") && proc_arg(h, "auth") && proc_arg(h, "print-access-token");
+  e: [512] u8; ce := put(e[..], 0, "CLOUDSDK_CONFIG="); ce = put(e[..], ce, GCLOUD_CONFIG);
+  ok = ok && proc_env(h, str(e[..], ce));
+  if !ok || proc_start(h) != 0 { done := proc_release(h); return ""; }
+  n := proc_line(h, 60000, out);
+  st := proc_wait(h, 60000);
+  done := proc_release(h);
+  if n <= 0 || st != 0 { return ""; }
+  return trim(cast(string) out[0..<n]);
+}
+// POSTs the JSON body at body_path to url, the answer into resp_path: true on 200.
+post :: (url: string, token: string, body_path: string, resp_path: string, dir: string) -> bool {
+  hp: [4200] u8;
+  head := fs_join(dir, "headers.txt", hp[..]);
+  hb: [4096] u8;
+  n := put(hb[..], 0, "Authorization: Bearer "); n = put(hb[..], n, token);
+  n = put(hb[..], n, "\nx-goog-user-project: "); n = put(hb[..], n, GCP_PROJECT);
+  n = put(hb[..], n, "\nContent-Type: application/json\n");
+  if !fs_write(head, str(hb[..], n)) { return false; }
+  hh: [4300] u8; m := put(hh[..], 0, "@"); m = put(hh[..], m, head);
+  code: [64] u8; err: [4096] u8;
+  argv := [11] string.["curl", "-sS", "-H", str(hh[..], m), "--data-binary", "", "-o", resp_path, "-w", "%{http_code}", url];
+  bb: [4300] u8; b := put(bb[..], 0, "@"); b = put(bb[..], b, body_path); argv[5] = str(bb[..], b);
+  r := run(argv[..], code[..], err[..], 120000);
+  gone := fs_remove(head);
+  return r.started == 0 && r.status == 0 && trim(str(code[..], r.out_n)) == "200";
+}
+
+// ---- 1. voice
+
+SPEAK_RATE :: [6] string.["0.96", "1.0", "1.08", "1.04", "1.02", "0.94"];   // by mood: calm worried urgent angry cheerful grim
+
+Take :: struct { words: [SPK_WORDS_MAX] SpkWord; n: int; seconds: f32; rate: int; env: [ENV_MAX] f32; env_n: int; }
+
+// A WAV's 16-bit samples (the first channel) and its rate: where they start and how many.
+WavInfo :: struct { ok: bool; rate: int; channels: int; data: int; count: int; }
+wav_u32 :: (b: [] u8, at: int) -> int { return cast(int) b[at] | (cast(int) b[at + 1] << 8) | (cast(int) b[at + 2] << 16) | (cast(int) b[at + 3] << 24); }
+wav_u16 :: (b: [] u8, at: int) -> int { return cast(int) b[at] | (cast(int) b[at + 1] << 8); }
+wav_info :: (b: [] u8, n: int) -> WavInfo {
+  w: WavInfo;
+  if n < 44 || b[0] != 'R' || b[1] != 'I' || b[2] != 'F' || b[3] != 'F' { return w; }
+  at := 12;
+  while at + 8 <= n {
+    size := wav_u32(b, at + 4);
+    if b[at] == 'f' && b[at + 1] == 'm' && b[at + 2] == 't' { w.channels = wav_u16(b, at + 10); w.rate = wav_u32(b, at + 12); }
+    if b[at] == 'd' && b[at + 1] == 'a' && b[at + 2] == 't' && b[at + 3] == 'a' {
+      w.data = at + 8;
+      w.count = (spk_lo_i(size, n - w.data)) / (2 * spk_hi_i(w.channels, 1));
+      w.ok = w.rate > 0 && w.channels > 0;
+      return w;
+    }
+    at += 8 + size + (size & 1);
+  }
+  return w;
+}
+// The take's loudness per 10 ms (RMS over its peak, 0 to 1).
+loudness :: (b: [] u8, w: WavInfo, t: [] Take) {
+  per := w.rate / 100;
+  t[0].env_n = spk_lo_i(w.count / per, ENV_MAX);
+  peak: f32 = 0.000001;
+  for f: 0..<t[0].env_n {
+    s: f32 = 0;
+    for k: 0..<per {
+      at := w.data + 2 * w.channels * (f * per + k);
+      v := wav_u16(b, at); if v >= 32768 { v -= 65536; }
+      x := f32(v) / 32768; s += x * x;
+    }
+    t[0].env[f] = sqrt(s / f32(per));
+    peak = spk_hi(peak, t[0].env[f]);
+  }
+  for f: 0..<t[0].env_n { t[0].env[f] /= peak; }
+  t[0].seconds = f32(w.count) / f32(w.rate);
+  t[0].rate = w.rate;
+}
+// "1.700s" as seconds.
+seconds_of :: (raw: string) -> f32 { at: [1] int; at[0] = 0; v := spk_num(raw, at[..]); return ifx at[0] < 0 then 0.0f32 else v; }
+
+// Voices a line (or takes it from the cache) and checks it: the take at wav_path, its words with
+// speech-to-text's times in t. An error's text, or "".
+voice :: (who: [] Who, line: string, mood: int, dir: string, again: bool, t: [] Take, why: [] u8) -> string {
+  wp: [4200] u8; wav := fs_join(dir, "take.wav", wp[..]);
+  sp: [4200] u8; stt := fs_join(dir, "stt.json", sp[..]);
+  big: [WAV_MAX] u8;
+  if again || !fs_exists(wav) || !fs_exists(stt) {
+    if cast(string) who[0].provider[0..<who[0].provider_n] != "google" { return "only google voices are wired so far (ElevenLabs through Scenario is the spec's other provider)"; }
+    tok: [4096] u8;
+    token := gcp_token(tok[..]);
+    if token.count == 0 { return "no Google token from the automation account (gcloud auth print-access-token)"; }
+    body: [8192] u8; o: [1] Jo;
+    jo_start(o[..], body[..]);
+    jo_obj(o[..]);
+    jo_key(o[..], "input"); jo_obj(o[..]); jo_key(o[..], "text"); jo_str(o[..], line); jo_end(o[..]);
+    jo_key(o[..], "voice"); jo_obj(o[..]); jo_key(o[..], "languageCode"); jo_str(o[..], "en-US");
+    jo_key(o[..], "name"); jo_str(o[..], cast(string) who[0].voice[0..<who[0].voice_n]); jo_end(o[..]);
+    jo_key(o[..], "audioConfig"); jo_obj(o[..]); jo_key(o[..], "audioEncoding"); jo_str(o[..], "LINEAR16");
+    jo_key(o[..], "sampleRateHertz"); jo_int(o[..], 48000); jo_key(o[..], "speakingRate"); jo_raw(o[..], SPEAK_RATE[mood]);
+    jo_end(o[..]); jo_end(o[..]);
+    bp: [4200] u8; bodyp := fs_join(dir, "request.json", bp[..]);
+    rp: [4200] u8; resp := fs_join(dir, "response.json", rp[..]);
+    if !fs_write(bodyp, jo_text(o[..])) { return "could not write the request"; }
+    if !post(TTS_URL, token, bodyp, resp, dir) { return "text-to-speech failed (see response.json in the take's folder)"; }
+    // the answer's audioContent, base64
+    n := fs_read(resp, big[..]);
+    if n <= 0 { return "text-to-speech answered nothing"; }
+    txt := str(big[..], n);
+    key := "\"audioContent\": \"";
+    at := -1;
+    for i: 0..<txt.count - key.count { if txt[i..<i + key.count] == key { at = i + key.count; break; } }
+    if at < 0 { return "text-to-speech's answer has no audio"; }
+    e := at; while e < txt.count && txt[e] != '"' { e += 1; }
+    pcm: [WAV_MAX] u8;
+    m := b64_decode(txt[at..<e], pcm[..]);
+    if m < 44 || !fs_write(wav, str(pcm[..], m)) { return "could not keep the take"; }
+    // speech-to-text with word times
+    b64: [WAV_MAX * 2] u8;
+    k := b64_encode(str(pcm[..], m), b64[..]);
+    req: [WAV_MAX * 2 + 4096] u8;
+    q := put(req[..], 0, "{\"config\":{\"languageCode\":\"en-US\",\"enableWordTimeOffsets\":true,\"model\":\"latest_long\"},\"audio\":{\"content\":\"");
+    q = put(req[..], q, str(b64[..], k)); q = put(req[..], q, "\"}}");
+    if !fs_write(bodyp, str(req[..], q)) { return "could not write the request"; }
+    if !post(STT_URL, token, bodyp, stt, dir) { return "speech-to-text failed (see stt.json in the take's folder)"; }
+    gone := fs_remove(bodyp); gone = fs_remove(resp);
+  }
+  // the take
+  n := fs_read(wav, big[..]);
+  w := wav_info(big[..], n);
+  if !w.ok { return "the take is not a WAV"; }
+  loudness(big[..], w, t);
+  // the transcript, word by word
+  js: [262144] u8;
+  jn := fs_read(stt, js[..]);
+  if jn <= 0 { return "no transcript"; }
+  nodes: [16384] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], str(js[..], jn), nodes[..]) { return "the transcript is not JSON"; }
+  heard: [1024] u8; hn := 0;
+  t[0].n = 0;
+  results := jv_get(d[0], 0, "results");
+  for r: 0..<jv_len(d[0], results) {
+    ws := jv_path(d[0], jv_at(d[0], results, r), "alternatives[0].words");
+    for i: 0..<jv_len(d[0], ws) {
+      x := jv_at(d[0], ws, i);
+      wb: [64] u8; wn := jv_str(d[0], jv_get(d[0], x, "word"), wb[..]);
+      if wn <= 0 { continue; }
+      if hn > 0 { hn = put(heard[..], hn, " "); }
+      hn = put(heard[..], hn, str(wb[..], wn));
+      // the word (or its contraction's words) with its times
+      parts: [4] SpkWord;
+      pn := spk_words(str(wb[..], wn), parts[..]);
+      t0 := seconds_of(jv_raw(d[0], jv_get(d[0], x, "startTime")));
+      t1 := seconds_of(jv_raw(d[0], jv_get(d[0], x, "endTime")));
+      for p: 0..<pn {
+        if t[0].n >= SPK_WORDS_MAX { break; }
+        t[0].words[t[0].n] = parts[p];
+        t[0].words[t[0].n].t0 = t0 + (t1 - t0) * f32(p) / f32(pn);
+        t[0].words[t[0].n].t1 = t0 + (t1 - t0) * f32(p + 1) / f32(pn);
+        t[0].n += 1;
+      }
+    }
+  }
+  want: [SPK_WORDS_MAX] SpkWord;
+  wn := spk_words(line, want[..]);
+  if !spk_same_words(want[..], wn, t[0].words[..], t[0].n) {
+    m := put(why, 0, "the take doesn't say the line (voice it again with --revoice)\n  line:  ");
+    m = put(why, m, line); m = put(why, m, "\n  heard: "); m = put(why, m, str(heard[..], hn));
+    return cast(string) why[0..<m];
+  }
+  return "";
+}
+
+// ---- text images, in Filament (font.coax's strokes, rasterized here)
+
+SEG_MAX :: 8192;
+// font.coax draws into a page's vertex buffer through the page's stroke quad (lit); this is the
+// changelog page's (as coax/lib/media/media.coax keeps it). cover() reads each quad's segment back.
+VERTEX_FLOATS :: 12;
+lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,
+        red: f32, green: f32, blue: f32, mode: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count || light <= 0.002 { return false; }
+  dx := bx - ax; dy := by - ay; length := sqrt(dx * dx + dy * dy); if length <= 0 { return false; }
+  ux := dx / length; uy := dy / length; nx := -uy; ny := ux; r := glow + core;
+  a := [6] f32.[-r, length + r, length + r, -r, length + r, -r]; c := [6] f32.[-r, -r, r, -r, r, r];
+  for q: 0..<6 {
+    o := (at + q) * VERTEX_FLOATS;
+    out[o] = ax + ux * a[q] + nx * c[q]; out[o + 1] = ay + uy * a[q] + ny * c[q]; out[o + 2] = a[q]; out[o + 3] = c[q];
+    out[o + 4] = length; out[o + 5] = core; out[o + 6] = light; out[o + 7] = glow; out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = mode;
+  }
+  return true;
+}
+// Stroke k's segment from its quad: its ends and its half width.
+Seg :: struct { ax: f32; ay: f32; bx: f32; by: f32; core: f32; }
+seg_of :: (q: [] f32, k: int) -> Seg {
+  o := 6 * k * VERTEX_FLOATS; o1 := o + VERTEX_FLOATS;
+  length := q[o + 4]; core := q[o + 5]; r := q[o + 7] + core;
+  ux := (q[o1] - q[o]) / (length + 2 * r); uy := (q[o1 + 1] - q[o + 1]) / (length + 2 * r);
+  nx := -uy; ny := ux;
+  ax := q[o] + ux * r + nx * r; ay := q[o + 1] + uy * r + ny * r;
+  return Seg.{ax = ax, ay = ay, bx = ax + ux * length, by = ay + uy * length, core = core};
+}
+TEXT_GAP :: 0.5; TEXT_SPACE :: 1.2;   // the game's own spacing (builder.coax, belt.coax)
+text_width :: (text: string, cap: f32) -> f32 { return measure(text, TEXT_GAP, TEXT_SPACE, false) * cap; }
+// Coverage of the kept segments, widened by grow px, into cov (w x h).
+cover :: (sg: [] f32, nseg: int, cov: [] f32, w: int, h: int, grow: f32) {
+  for i: 0..<w * h { cov[i] = 0; }
+  for k: 0..<nseg {
+    e := seg_of(sg, k);
+    ax := e.ax; ay := e.ay; bx := e.bx; by := e.by;
+    r := e.core + grow;
+    x0 := spk_hi_i(0, cast(int) floor(spk_lo(ax, bx) - r - 1)); x1 := spk_lo_i(w - 1, cast(int) floor(spk_hi(ax, bx) + r + 1));
+    y0 := spk_hi_i(0, cast(int) floor(spk_lo(ay, by) - r - 1)); y1 := spk_lo_i(h - 1, cast(int) floor(spk_hi(ay, by) + r + 1));
+    dx := bx - ax; dy := by - ay; ll := dx * dx + dy * dy;
+    for y: y0..<y1 + 1 {
+      for x: x0..<x1 + 1 {
+        px := f32(x) + 0.5; py := f32(y) + 0.5;
+        tt: f32 = 0;
+        if ll > 0 { tt = spk_clamp(((px - ax) * dx + (py - ay) * dy) / ll, 0, 1); }
+        ex := px - (ax + tt * dx); ey := py - (ay + tt * dy);
+        c := spk_clamp(r + 0.5 - sqrt(ex * ex + ey * ey), 0, 1);
+        o := y * w + x;
+        if c > cov[o] { cov[o] = c; }
+      }
+    }
+  }
+}
+Rgb :: struct { r: f32; g: f32; b: f32; }
+// text drawn in rgb over a dark shadow (shadow_a its alpha) on a background (bg_a, 0 clear), as raw
+// RGBA at path, w x h px, the text's baseline at base and its left at x.
+text_image :: (path: string, text: string, w: int, h: int, x: f32, base: f32, cap: f32, rgb: Rgb, shadow_a: f32, bg: Rgb, bg_a: f32) -> bool {
+  k: Ink; k.core = cap * 0.07; k.light = 1; k.glow = 0; k.red = rgb.r; k.green = rgb.g; k.blue = rgb.b; k.mode = 0; k.scale = 0;
+  sg: [6 * VERTEX_FLOATS * SEG_MAX] f32;
+  v := draw_text(sg[..], 0, text, x, base, cap, TEXT_GAP, TEXT_SPACE, k, false, false);
+  fill: [1 << 22] f32; edge: [1 << 22] f32;
+  if w * h > fill.count { return false; }
+  cover(sg[..], v / 6, fill[..], w, h, 0);
+  cover(sg[..], v / 6, edge[..], w, h, cap * 0.09 + 2);
+  img: [1 << 24] u8;
+  for i: 0..<w * h {
+    a := fill[i]; s := edge[i] * shadow_a;
+    // the shadow over the background, then the text over both
+    ba := s + bg_a * (1 - s);
+    cr := ifx ba > 0 then (bg.r * bg_a * (1 - s)) / ba else 0.0f32;
+    cg := ifx ba > 0 then (bg.g * bg_a * (1 - s)) / ba else 0.0f32;
+    cb := ifx ba > 0 then (bg.b * bg_a * (1 - s)) / ba else 0.0f32;
+    oa := a + ba * (1 - a);
+    r := ifx oa > 0 then (rgb.r * a + cr * ba * (1 - a)) / oa else 0.0f32;
+    g := ifx oa > 0 then (rgb.g * a + cg * ba * (1 - a)) / oa else 0.0f32;
+    b := ifx oa > 0 then (rgb.b * a + cb * ba * (1 - a)) / oa else 0.0f32;
+    img[4 * i] = cast(u8) cast(int) floor(spk_clamp(r, 0, 1) * 255 + 0.5);
+    img[4 * i + 1] = cast(u8) cast(int) floor(spk_clamp(g, 0, 1) * 255 + 0.5);
+    img[4 * i + 2] = cast(u8) cast(int) floor(spk_clamp(b, 0, 1) * 255 + 0.5);
+    img[4 * i + 3] = cast(u8) cast(int) floor(spk_clamp(oa, 0, 1) * 255 + 0.5);
+  }
+  return fs_write(path, cast(string) img[0..<4 * w * h]);
+}
+
+// ---- the run
+
+Line :: struct {
+  cue: [1] SpkCue; at: f32; seconds: f32; dir: [4096] u8; dir_n: int; portrait: [4096] u8; portrait_n: int;
+  words: [SPK_WORDS_MAX] SpkWord; nw: int;
+}
+// The run's state (Coax has no globals): its lines, the take and track at hand, and an arena for
+// the strings ffmpeg's arguments keep.
+Run :: struct { lines: [CUES_MAX] Line; take: [1] Take; track: [1] SpkTrack; arena: [1 << 20] u8; arena_n: int; }
+
+mkdirs :: (path: string) -> bool { return fs_exists(path) || fs_mkdir(path); }
+mark :: (dir: string) {
+  p: [4200] u8; f := fs_join(dir, "NO-TRAINING.txt", p[..]);
+  if !fs_exists(f) { ok := fs_write(f, NO_TRAINING); }
+}
+// The dev server answers (any status but none).
+answers :: (url: string) -> bool {
+  out: [64] u8; err: [256] u8;
+  argv := [7] string.["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", url];
+  r := run(argv[..], out[..], err[..], 10000);
+  c := trim(str(out[..], r.out_n));
+  return r.status == 0 && c.count > 0 && c != "000";
+}
+
+tool_main :: () -> int #export_c {
+  st: [1] Run;
+  a: [1] Args;
+  ok := args_load(a[..]);
+  cues_path := args_at(a[..], 0); out_path := args_at(a[..], 1);
+  if !ok || cues_path.count == 0 || out_path.count == 0 || starts(cues_path, "--") {
+    tool_errln("usage: coax/web/tool.sh speak CUES OUT.mp4 [--video FILE] [--cast FILE] [--server URL] [--allow-fallback] [--revoice N] [--no-open]");
+    return 2;
+  }
+  fallback := args_has(a[..], "--allow-fallback");
+  revoice := args_whole(args_value(a[..], "--revoice", "0"));
+  server := args_value(a[..], "--server", SPEAK_SERVER);
+  hb: [1024] u8; home := proc_getenv("HOME", hb[..]);
+  cb: [4200] u8; cache := fs_join(home, ".openagents/verse/private-build/speak", cb[..]);
+  if !mkdirs(cache) { say_err("could not make ", cache); return 1; }
+  mark(cache);
+
+  // the cue sheet and the cast
+  text: [262144] u8;
+  n := fs_read(cues_path, text[..]);
+  if n <= 0 { say_err("no cue sheet at ", cues_path); return 1; }
+  cues := str(text[..], n);
+  vb: [4200] u8; video := args_value(a[..], "--video", "");
+  subtitles := true;
+  count := 0;
+  i := 0;
+  while i < cues.count {
+    e := i; while e < cues.count && cues[e] != '\n' { e += 1; }
+    line := trim(cues[i..<e]); i = e + 1;
+    if line.count == 0 || line[0] == '#' { continue; }
+    if starts(line, "video ") && video.count == 0 { video = fs_join(fs_dir(cues_path), trim(line[6..<line.count]), vb[..]); continue; }
+    if line == "subtitles off" { subtitles = false; continue; }
+    if count < CUES_MAX && spk_cue(line, st[0].lines[count].cue[..]) { count += 1; }
+  }
+  if count == 0 { say_err("no cue lines in ", cues_path); return 1; }
+  if video.count == 0 || !fs_exists(video) { say_err("no video at ", video); return 1; }
+  ct: [65536] u8;
+  cn := fs_read(args_value(a[..], "--cast", "verse/cast/cast.txt"), ct[..]);
+  if cn <= 0 { say_err("no cast file", ""); return 1; }
+  pt: [8192] u8;
+  pp: [4200] u8; pn := fs_read(fs_join(cache, "packs.txt", pp[..]), pt[..]);
+  packs := ifx pn > 0 then str(pt[..], pn) else "";
+
+  // the dev server for the stage: ours, started here when nothing answers
+  srv := -1;
+  ub: [1024] u8; un := put(ub[..], 0, server); un = put(ub[..], un, "/worlds/metahuman-lab/");
+  if !answers(str(ub[..], un)) {
+    port := server; for k: 0..<server.count { if server[k] == ':' { port = server[k + 1..<server.count]; } }
+    lb: [64] u8; ln := put(lb[..], 0, "127.0.0.1:"); ln = put(lb[..], ln, port);
+    srv = proc_new();
+    ok = proc_arg(srv, "coax/web/serve.sh") && proc_arg(srv, "apps/openagents-web") && proc_arg(srv, "--listen") && proc_arg(srv, str(lb[..], ln))
+      && proc_arg(srv, "--build") && proc_arg(srv, "true") && proc_quiet(srv);
+    if !ok || proc_start(srv) != 0 { say_err("could not start the dev server", ""); return 1; }
+    up := false;
+    for k: 0..<100 { proc_sleep(200); if answers(str(ub[..], un)) { up = true; break; } }
+    if !up { done := proc_release(srv); say_err("the dev server never answered at ", server); return 1; }
+  }
+  code := speak_all(st[..], a[..], cues_path, out_path, video, str(ct[..], cn), packs, cache, server, fallback, revoice, subtitles, count);
+  if srv >= 0 { k := proc_kill(srv, PROC_SIGTERM); w := proc_wait(srv, 3000); done := proc_release(srv); }
+  return code;
+}
+
+speak_all :: (st: [] Run, a: [] Args, cues_path: string, out_path: string, video: string, cast_text: string, packs: string, cache: string,
+              server: string, fallback: bool, revoice: int, subtitles: bool, count: int) -> int {
+  who: [1] Who;
+  why: [4096] u8;
+  for c: 0..<count {
+    l := st[0].lines[c].cue[0];
+    id := cast(string) st[0].lines[c].cue[0].who[0..<l.who_n];
+    if !cast_entry(cast_text, id, who[..]) { say_err("no cast entry for ", id); return 1; }
+    line := cast(string) st[0].lines[c].cue[0].line[0..<l.line_n];
+    // 1. the take, by its key
+    kb: [2048] u8;
+    k := put(kb[..], 0, SPEAK_VERSION); k = put(kb[..], k, "|"); k = put(kb[..], k, cast(string) who[0].provider[0..<who[0].provider_n]);
+    k = put(kb[..], k, "|"); k = put(kb[..], k, cast(string) who[0].voice[0..<who[0].voice_n]);
+    k = put(kb[..], k, "|"); k = put(kb[..], k, SPK_MOOD_NAME[l.mood]); k = put(kb[..], k, "|"); k = put(kb[..], k, SPEAK_RATE[l.mood]);
+    k = put(kb[..], k, "|"); k = put(kb[..], k, line);
+    hx: [16] u8; key := hash_hex(str(kb[..], k), hx[..]);
+    vd: [4200] u8; vdir := fs_join(cache, "voice", vd[..]); ok := mkdirs(vdir);
+    td: [4200] u8; tdir := fs_join(vdir, key, td[..]);
+    if !mkdirs(tdir) { say_err("could not make ", tdir); return 1; }
+    st[0].lines[c].dir_n = put(st[0].lines[c].dir[..], 0, tdir);
+    print("speak: % \"%\" (take %)\n", id, line, key);
+    bad := voice(who[..], line, l.mood, tdir, revoice == c + 1, st[0].take[..], why[..]);
+    if bad.count > 0 { say_err(bad, ""); return 1; }
+    // 2. align: the take's words in the portrait clip's time (the line starts after the slide in)
+    lead := f32(SPK_SLIDE);
+    st[0].lines[c].nw = st[0].take[0].n;
+    for w: 0..<st[0].take[0].n { st[0].lines[c].words[w] = st[0].take[0].words[w]; }
+    st[0].track[0].n = spk_align(st[0].lines[c].words[..], st[0].lines[c].nw, cast(string) who[0].say[0..<who[0].say_n], st[0].take[0].env[..], st[0].take[0].env_n, 0.01, lead, st[0].track[0].vis[..]);
+    st[0].track[0].mood = l.mood; st[0].track[0].lead = lead; st[0].track[0].length = lead + st[0].take[0].seconds + f32(SPEAK_TAIL);
+    sh: [16] u8; sk := hash_hex(line, sh[..]);
+    st[0].track[0].seed = cast(int) (cast(u32) sk[0] * 131 + cast(u32) sk[1] * 7 + cast(u32) sk[2]) + 1000 * c;
+    st[0].lines[c].at = l.at; st[0].lines[c].seconds = st[0].take[0].seconds;
+    tb: [16384] u8; tn := spk_track_text(st[0].track[..], false, tb[..]);
+    tp: [4200] u8; ok = fs_write(fs_join(tdir, "track.txt", tp[..]), str(tb[..], tn));
+    // 3. the portrait, by the track's key and the pack's
+    pack_id := cast(string) who[0].pack[0..<who[0].pack_n];
+    pack := pack_of(packs, pack_id);
+    if pack.count == 0 && !fallback {
+      say_err("no owner-local pack for ", pack_id);
+      tool_errln("  name it in ~/.openagents/verse/private-build/speak/packs.txt (\"ID PACK\", PACK.pack in private-build/web/), or pass --allow-fallback for a capsule test");
+      return 1;
+    }
+    ut: [16384] u8; un := spk_track_text(st[0].track[..], true, ut[..]);
+    url: [20000] u8;
+    m := put(url[..], 0, server); m = put(url[..], m, "/worlds/metahuman-lab/?pack=");
+    m = put(url[..], m, ifx pack.count > 0 then pack else "none");
+    m = put(url[..], m, "&stage=speak&track="); m = put(url[..], m, str(ut[..], un));
+    pk: [20100] u8; q := put(pk[..], 0, str(url[..], m)); q = put(pk[..], q, ifx fallback then "|fallback" else "|pack");
+    rh: [16] u8; rkey := hash_hex(str(pk[..], q), rh[..]);
+    rd: [4200] u8; rdir := fs_join(cache, "portrait", rd[..]); ok = mkdirs(rdir);
+    pd: [4200] u8; pdir := fs_join(rdir, rkey, pd[..]);
+    st[0].lines[c].portrait_n = put(st[0].lines[c].portrait[..], 0, pdir);
+    cp: [4200] u8; clip := fs_join(pdir, "portrait.mp4", cp[..]);
+    if !fs_exists(clip) {
+      if !mkdirs(pdir) { say_err("could not make ", pdir); return 1; }
+      sz: [32] u8; z := spk_put_int(sz[..], 0, SPEAK_SIZE); z = put(sz[..], z, "x"); z = spk_put_int(sz[..], z, SPEAK_SIZE);
+      se: [32] u8; e := spk_put_fixed(se[..], 0, st[0].track[0].length);
+      guard := ifx fallback then "new Promise(r => { const t0 = Date.now(); (function w() { const p = coaxial.probe(); if (p >= 1 || Date.now() - t0 > 120000) r(p >= 1); else setTimeout(w, 200); })(); })"
+               else "new Promise(r => { const t0 = Date.now(); (function w() { const p = coaxial.probe(); if (p >= 1 || Date.now() - t0 > 180000) r(p === 2); else setTimeout(w, 200); })(); })";
+      argv := [15] string.["coax/web/tool.sh", "clip", str(url[..], m), clip, "--size", str(sz[..], z), "--fps", "60", "--seconds", str(se[..], e),
+                           "--frames", pdir, "--require", guard, "--skip"];
+      // no lead-up: the stage's clock starts at the first recorded frame
+      argv2 := [16] string.["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "0"];
+      for x: 0..<15 { argv2[x] = argv[x]; }
+      out: [65536] u8; err: [16384] u8;
+      print("speak: rendering the portrait (% s at 60 fps)\n", str(se[..], e));
+      r := run(argv2[..], out[..], err[..], 3600000);
+      if r.status != 0 {
+        gone := fs_remove(pdir);
+        say_err("the portrait failed: ", str(err[..], r.err_n));
+        if !fallback { tool_errln("  (the stage drew the capsule fallback, or the pack never loaded: the tool refuses to composite it)"); }
+        return 1;
+      }
+      mark(pdir);
+    }
+  }
+  return composite(st, out_path, video, count, subtitles, cast_text, fallback, args_has(a, "--no-open"));
+}
+
+// ---- 5. composite
+
+PANEL :: 324;           // 30% of 1080
+NAME_H :: 46;
+PANEL_X :: 48; PANEL_BOTTOM :: 56;
+SUB_CAP :: 34.0;
+SUB_H :: 76;
+SUB_X0 :: 420;          // subtitles centre right of the panel
+NAME_GOLD :: Rgb.{r = 0.95, g = 0.78, b = 0.38};
+WHITE :: Rgb.{r = 1, g = 0.97, b = 0.9};
+DARK :: Rgb.{r = 0.055, g = 0.04, b = 0.03};
+
+argv_push :: (argv: [] string, n: int, s: string) -> int { if n < argv.count { argv[n] = s; } return n + 1; }
+// Strings that outlive the argument list's build, in the run's arena.
+keep :: (st: [] Run, s: string) -> string {
+  a := st[0].arena_n;
+  st[0].arena_n = put(st[0].arena[..], a, s);
+  return cast(string) st[0].arena[a..<st[0].arena_n];
+}
+keep_fixed :: (st: [] Run, v: f32) -> string { b: [32] u8; n := spk_put_fixed(b[..], 0, v); return keep(st, str(b[..], n)); }
+
+composite :: (st: [] Run, out_path: string, video: string, count: int, subtitles: bool, cast_text: string, fallback: bool, no_open: bool) -> int {
+  od := fs_dir(out_path);
+  if od.count > 0 { ok := mkdirs(od); mark(od); }
+  who: [1] Who;
+  argv: [512] string; n := 0;
+  n = argv_push(argv[..], n, "ffmpeg"); n = argv_push(argv[..], n, "-hide_banner"); n = argv_push(argv[..], n, "-loglevel"); n = argv_push(argv[..], n, "error");
+  n = argv_push(argv[..], n, "-y"); n = argv_push(argv[..], n, "-i"); n = argv_push(argv[..], n, video);
+  inputs := 1;
+  graph: [1 << 18] u8; g := 0;
+  g = put(graph[..], g, "[0:v]scale=1920:1080,setsar=1,format=rgba[v0];");
+  vlast := 0; vnext := 1;
+  duck: [1 << 15] u8; dn := put(duck[..], 0, "1");
+  srt: [1 << 16] u8; sn := 0;
+  js: [1 << 16] u8; jn := put(js[..], 0, "{\"lines\": [");
+  for c: 0..<count {
+    l := st[0].lines[c].cue[0];
+    id := cast(string) st[0].lines[c].cue[0].who[0..<l.who_n];
+    ok := cast_entry(cast_text, id, who[..]);
+    start := st[0].lines[c].at; end := start + st[0].lines[c].seconds;
+    // the portrait's frames, the take, the name
+    pdir := cast(string) st[0].lines[c].portrait[0..<st[0].lines[c].portrait_n];
+    fp: [4200] u8; frames := keep(st, fs_join(pdir, "f%05d.png", fp[..]));
+    n = argv_push(argv[..], n, "-framerate"); n = argv_push(argv[..], n, "60"); n = argv_push(argv[..], n, "-i"); n = argv_push(argv[..], n, frames);
+    pi := inputs; inputs += 1;
+    tdir := cast(string) st[0].lines[c].dir[0..<st[0].lines[c].dir_n];
+    wp: [4200] u8; n = argv_push(argv[..], n, "-i"); n = argv_push(argv[..], n, keep(st, fs_join(tdir, "take.wav", wp[..])));
+    ai := inputs; inputs += 1;
+    nb: [4200] u8; name_path := keep(st, fs_join(tdir, "name.rgba", nb[..]));
+    name := cast(string) who[0].name[0..<who[0].name_n];
+    cap := spk_lo(22, f32(PANEL - 28) / spk_hi(text_width(name, 1), 0.1));
+    nx := (f32(PANEL) - text_width(name, cap)) / 2;
+    if !text_image(name_path, name, PANEL, NAME_H, nx, f32(NAME_H) / 2 + cap / 2, cap, NAME_GOLD, 0.6, DARK, 0.88) { say_err("could not draw the name", ""); return 1; }
+    n = argv_push(argv[..], n, "-f"); n = argv_push(argv[..], n, "rawvideo"); n = argv_push(argv[..], n, "-pix_fmt"); n = argv_push(argv[..], n, "rgba");
+    sz: [32] u8; z := spk_put_int(sz[..], 0, PANEL); z = put(sz[..], z, "x"); z = spk_put_int(sz[..], z, NAME_H);
+    n = argv_push(argv[..], n, "-s"); n = argv_push(argv[..], n, keep(st, str(sz[..], z))); n = argv_push(argv[..], n, "-i"); n = argv_push(argv[..], n, name_path);
+    ni := inputs; inputs += 1;
+    // the panel: the portrait in a thin gold frame with the name under it, from the slide in
+    t0 := start - f32(SPK_SLIDE);
+    g = put(graph[..], g, "["); g = spk_put_int(graph[..], g, pi); g = put(graph[..], g, ":v]scale=");
+    g = spk_put_int(graph[..], g, PANEL); g = put(graph[..], g, ":"); g = spk_put_int(graph[..], g, PANEL);
+    g = put(graph[..], g, ",format=rgba,pad="); g = spk_put_int(graph[..], g, PANEL); g = put(graph[..], g, ":"); g = spk_put_int(graph[..], g, PANEL + NAME_H);
+    g = put(graph[..], g, ":0:0:color=0x0e0a07[pp"); g = spk_put_int(graph[..], g, c); g = put(graph[..], g, "];");
+    g = put(graph[..], g, "[pp"); g = spk_put_int(graph[..], g, c); g = put(graph[..], g, "]["); g = spk_put_int(graph[..], g, ni);
+    g = put(graph[..], g, ":v]overlay=0:"); g = spk_put_int(graph[..], g, PANEL);
+    g = put(graph[..], g, ",drawbox=x=0:y=0:w=iw:h=ih:color=0xd9b45a:t=3,drawbox=x=0:y="); g = spk_put_int(graph[..], g, PANEL - 1);
+    g = put(graph[..], g, ":w=iw:h=2:color=0xd9b45a:t=fill,setpts=PTS-STARTPTS+"); g = spk_put_fixed(graph[..], g, spk_hi(t0, 0));
+    g = put(graph[..], g, "/TB[pn"); g = spk_put_int(graph[..], g, c); g = put(graph[..], g, "];");
+    ex: [1024] u8; en := spk_panel_expr(start, end, f32(PANEL_X), -f32(PANEL + 24), ex[..]);
+    g = put(graph[..], g, "[v"); g = spk_put_int(graph[..], g, vlast); g = put(graph[..], g, "][pn"); g = spk_put_int(graph[..], g, c);
+    g = put(graph[..], g, "]overlay=x='"); g = put(graph[..], g, str(ex[..], en)); g = put(graph[..], g, "':y=");
+    g = spk_put_int(graph[..], g, OUT_H - PANEL - NAME_H - PANEL_BOTTOM); g = put(graph[..], g, ":eof_action=pass[v"); g = spk_put_int(graph[..], g, vnext); g = put(graph[..], g, "];");
+    vlast = vnext; vnext += 1;
+    // the take at its time, and the video ducked under it
+    ms := cast(int) floor(start * 1000 + 0.5);
+    g = put(graph[..], g, "["); g = spk_put_int(graph[..], g, ai); g = put(graph[..], g, ":a]aresample=48000,aformat=channel_layouts=stereo,adelay=");
+    g = spk_put_int(graph[..], g, ms); g = put(graph[..], g, "|"); g = spk_put_int(graph[..], g, ms); g = put(graph[..], g, "[a"); g = spk_put_int(graph[..], g, c); g = put(graph[..], g, "];");
+    dn = put(duck[..], dn, "*"); dn = spk_duck_expr(start, end, duck[..], dn);
+    // the words, one by one: each image shows the line's words so far, from its word's time
+    if subtitles {
+      line := cast(string) st[0].lines[c].cue[0].line[0..<l.line_n];
+      // the line's own words (with their punctuation) and which aligned word each starts at
+      wi := 0; p := 0;
+      while p < line.count {
+        while p < line.count && line[p] == ' ' { p += 1; }
+        q := p; while q < line.count && line[q] != ' ' { q += 1; }
+        if q == p { break; }
+        parts: [4] SpkWord; pn := spk_words(line[p..<q], parts[..]);
+        a0 := ifx wi < st[0].lines[c].nw then st[0].lines[c].words[wi].t0 - f32(SPK_SLIDE) + start else end;
+        wi += pn;
+        // until the next word, or the panel's stay after the last
+        rest := q; while rest < line.count && line[rest] == ' ' { rest += 1; }
+        a1 := ifx rest < line.count && wi < st[0].lines[c].nw then st[0].lines[c].words[wi].t0 - f32(SPK_SLIDE) + start else end + f32(SPK_AFTER);
+        shown := line[0..<q];
+        sb: [4200] u8; spath_b: [64] u8;
+        sname := spk_put(spath_b[..], 0, "sub-"); sname = spk_put_int(spath_b[..], sname, p); sname = spk_put(spath_b[..], sname, ".rgba");
+        spath := keep(st, fs_join(tdir, str(spath_b[..], sname), sb[..]));
+        full := text_width(line, SUB_CAP);
+        span := OUT_W - SUB_X0 - 40;
+        sw := spk_lo_i(span, cast(int) full + 40);
+        sw = sw + (sw & 1);
+        capk: f32 = ifx full + 40 > f32(span) then SUB_CAP * f32(span - 40) / full else SUB_CAP;
+        if !text_image(spath, shown, sw, SUB_H, 20, f32(SUB_H) / 2 + capk / 2, capk, WHITE, 0.85, DARK, 0) { say_err("could not draw a subtitle", ""); return 1; }
+        n = argv_push(argv[..], n, "-f"); n = argv_push(argv[..], n, "rawvideo"); n = argv_push(argv[..], n, "-pix_fmt"); n = argv_push(argv[..], n, "rgba");
+        s2: [32] u8; z2 := spk_put_int(s2[..], 0, sw); z2 = put(s2[..], z2, "x"); z2 = spk_put_int(s2[..], z2, SUB_H);
+        n = argv_push(argv[..], n, "-s"); n = argv_push(argv[..], n, keep(st, str(s2[..], z2))); n = argv_push(argv[..], n, "-i"); n = argv_push(argv[..], n, spath);
+        si := inputs; inputs += 1;
+        g = put(graph[..], g, "[v"); g = spk_put_int(graph[..], g, vlast); g = put(graph[..], g, "]["); g = spk_put_int(graph[..], g, si);
+        g = put(graph[..], g, ":v]overlay=x="); g = spk_put_int(graph[..], g, SUB_X0 + (span - sw) / 2);
+        g = put(graph[..], g, ":y="); g = spk_put_int(graph[..], g, OUT_H - SUB_H - 40);
+        g = put(graph[..], g, ":enable='between(t\\,"); g = spk_put_fixed(graph[..], g, a0); g = put(graph[..], g, "\\,"); g = spk_put_fixed(graph[..], g, a1 - 0.001);
+        g = put(graph[..], g, ")'[v"); g = spk_put_int(graph[..], g, vnext); g = put(graph[..], g, "];");
+        vlast = vnext; vnext += 1;
+        p = q;
+      }
+    }
+    // the SRT and the JSON
+    sn = spk_put_int(srt[..], sn, c + 1); sn = put(srt[..], sn, "\n");
+    sn = srt_time(srt[..], sn, start); sn = put(srt[..], sn, " --> "); sn = srt_time(srt[..], sn, end); sn = put(srt[..], sn, "\n");
+    sn = put(srt[..], sn, cast(string) st[0].lines[c].cue[0].line[0..<l.line_n]); sn = put(srt[..], sn, "\n\n");
+    if c > 0 { jn = put(js[..], jn, ","); }
+    o: [1] Jo; one: [2048] u8; jo_start(o[..], one[..]); jo_obj(o[..]);
+    jo_key(o[..], "who"); jo_str(o[..], id); jo_key(o[..], "line"); jo_str(o[..], cast(string) st[0].lines[c].cue[0].line[0..<l.line_n]);
+    jo_key(o[..], "start"); jo_raw(o[..], keep_fixed(st, start)); jo_key(o[..], "end"); jo_raw(o[..], keep_fixed(st, end));
+    jo_key(o[..], "mood"); jo_str(o[..], SPK_MOOD_NAME[l.mood]); jo_key(o[..], "fallback"); jo_bool(o[..], fallback); jo_end(o[..]);
+    jn = put(js[..], jn, "\n  "); jn = put(js[..], jn, jo_text(o[..]));
+  }
+  jn = put(js[..], jn, "\n]}\n");
+  g = put(graph[..], g, "[v"); g = spk_put_int(graph[..], g, vlast); g = put(graph[..], g, "]format=yuv420p[vout];");
+  g = put(graph[..], g, "[0:a]volume='"); g = put(graph[..], g, str(duck[..], dn)); g = put(graph[..], g, "':eval=frame[bg];[bg]");
+  for c: 0..<count { g = put(graph[..], g, "[a"); g = spk_put_int(graph[..], g, c); g = put(graph[..], g, "]"); }
+  g = put(graph[..], g, "amix=inputs="); g = spk_put_int(graph[..], g, count + 1); g = put(graph[..], g, ":normalize=0:duration=first[aout]");
+  gp: [4200] u8; graph_path := fs_join(fs_dir(cast(string) st[0].lines[0].dir[0..<st[0].lines[0].dir_n]), "graph.txt", gp[..]);
+  if !fs_write(graph_path, str(graph[..], g)) { say_err("could not write the filter graph", ""); return 1; }
+  n = argv_push(argv[..], n, "-/filter_complex"); n = argv_push(argv[..], n, graph_path);
+  n = argv_push(argv[..], n, "-map"); n = argv_push(argv[..], n, "[vout]"); n = argv_push(argv[..], n, "-map"); n = argv_push(argv[..], n, "[aout]");
+  n = argv_push(argv[..], n, "-c:v"); n = argv_push(argv[..], n, "libx264"); n = argv_push(argv[..], n, "-crf"); n = argv_push(argv[..], n, "18");
+  n = argv_push(argv[..], n, "-preset"); n = argv_push(argv[..], n, "medium"); n = argv_push(argv[..], n, "-r"); n = argv_push(argv[..], n, "60");
+  n = argv_push(argv[..], n, "-c:a"); n = argv_push(argv[..], n, "aac"); n = argv_push(argv[..], n, "-b:a"); n = argv_push(argv[..], n, "192k");
+  n = argv_push(argv[..], n, "-movflags"); n = argv_push(argv[..], n, "+faststart"); n = argv_push(argv[..], n, out_path);
+  if n > argv.count { say_err("too many inputs for ffmpeg", ""); return 1; }
+  out: [65536] u8; err: [65536] u8;
+  print("speak: compositing % line(s) into %\n", count, out_path);
+  r := run(argv[0..<n], out[..], err[..], 3600000);
+  if r.status != 0 { say_err("ffmpeg failed: ", str(err[..], r.err_n)); return 1; }
+  sp: [4200] u8; jp: [4200] u8;
+  base := out_path; if base.count > 4 && base[base.count - 4..<base.count] == ".mp4" { base = base[0..<base.count - 4]; }
+  bs: [4200] u8; b := put(bs[..], 0, base); b2 := put(bs[..], b, ".srt");
+  ok := fs_write(str(bs[..], b2), str(srt[..], sn));
+  b2 = put(bs[..], b, ".json"); ok = fs_write(str(bs[..], b2), str(js[..], jn));
+  print("%\n", out_path);
+  if !no_open {
+    oargv := [2] string.["open", out_path];
+    o2: [256] u8; e2: [256] u8; rr := run(oargv[..], o2[..], e2[..], 20000);
+  }
+  return 0;
+}
+srt_time :: (buf: [] u8, at: int, t: f32) -> int {
+  ms := cast(int) floor(spk_hi(t, 0) * 1000 + 0.5);
+  n := at;
+  h := ms / 3600000; m := (ms / 60000) % 60; s := (ms / 1000) % 60; f := ms % 1000;
+  if h < 10 { n = put(buf, n, "0"); } n = spk_put_int(buf, n, h); n = put(buf, n, ":");
+  if m < 10 { n = put(buf, n, "0"); } n = spk_put_int(buf, n, m); n = put(buf, n, ":");
+  if s < 10 { n = put(buf, n, "0"); } n = spk_put_int(buf, n, s); n = put(buf, n, ",");
+  if f < 100 { n = put(buf, n, "0"); } if f < 10 { n = put(buf, n, "0"); } n = spk_put_int(buf, n, f);
+  return n;
+}
+
+#test "the cast file: an entry's name, pack, voice and say lines; the owner-local pack" {
+  t := "# cast\ncharacter mayor\n  name      \"Mayor Tobin Hale\"   # placeholder\n  pack      everglade-mayor\n  voice     google en-US-Chirp3-HD-Charon\n  say       Odiodei = OW D IY OW D EY\ncharacter cook\n  name \"Cook\"\n";
+  w: [1] Who;
+  #assert cast_entry(t, "mayor", w[..]);
+  #assert cast(string) w[0].name[0..<w[0].name_n] == "Mayor Tobin Hale" && cast(string) w[0].pack[0..<w[0].pack_n] == "everglade-mayor";
+  #assert cast(string) w[0].provider[0..<w[0].provider_n] == "google" && cast(string) w[0].voice[0..<w[0].voice_n] == "en-US-Chirp3-HD-Charon";
+  #assert cast(string) w[0].say[0..<w[0].say_n] == "Odiodei = OW D IY OW D EY\n";
+  #assert cast_entry(t, "cook", w[..]) && w[0].say_n == 0 && !cast_entry(t, "nobody", w[..]);
+  #assert pack_of("everglade-mayor speak-human\nother x\n", "everglade-mayor") == "speak-human" && pack_of("", "everglade-mayor") == "";
+}
+
+#test "a WAV's samples and the SRT's times" {
+  b: [64] u8;
+  for i: 0..<64 { b[i] = 0; }
+  h := "RIFF\0\0\0\0WAVEfmt ";
+  for i: 0..<h.count { b[i] = h[i]; }
+  b[16] = 16; b[22] = 1; b[24] = 0x80; b[25] = 0xbb;   // mono, 48000
+  d := "data"; for i: 0..<4 { b[36 + i] = d[i]; }
+  b[40] = 20;
+  w := wav_info(b[..], 64);
+  #assert w.ok && w.rate == 48000 && w.channels == 1 && w.data == 44 && w.count == 10;
+  s: [32] u8; n := srt_time(s[..], 0, 71.5);
+  #assert cast(string) s[0..<n] == "00:01:11,500";
+  hx: [16] u8;
+  #assert hash_hex("a", hx[..]).count == 16;
+}

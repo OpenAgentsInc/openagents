@@ -41,7 +41,7 @@
 
 FRIG_GROUPS_MAX :: 256;
 FRIG_TARGETS_MAX :: 2048;
-FRIG_EXPRS_MAX :: 16;
+FRIG_EXPRS_MAX :: 32;
 FRIG_INFLUENCES :: 6;
 FRIG_POINT_BYTES :: 72;          // rest xyz, normal xyz, 6 x (joint u16, pad u16, weight f32)
 FRIG_POINT_FLOATS :: 18;         // a point unpacked (frig_unpack): rest xyz, normal xyz, 6 joints, 6 weights
