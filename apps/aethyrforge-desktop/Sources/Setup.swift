@@ -18,7 +18,7 @@ final class ForgeSetupPane: NSView {
     let modelPath = NSTextField(labelWithString: "~/.openagents/models")
     let editModel = NSTextField(labelWithString: "Checking edit model…")
     let agentStatus = NSTextField(labelWithString: "Looking for local agents…")
-    let agentChoice = NSPopUpButton(frame: .zero, pullsDown: false)
+    let routerStatus = NSTextField(labelWithString: "Automatic routing · agent, model and effort chosen per task")
     let verify = NSButton(title: "Verify voice model", target: nil, action: nil)
     let refresh = NSButton(title: "Refresh", target: nil, action: nil)
     let enter = NSButton(title: "Open Everglade", target: nil, action: nil)
@@ -78,9 +78,7 @@ final class ForgeSetupPane: NSView {
         let agents = NSStackView(); agents.orientation = .vertical; agents.alignment = .leading; agents.spacing = 7
         agents.addArrangedSubview(label("LOCAL AGENTS", size: 10, weight: .semibold, secondary: true))
         style(agentStatus, size: 13, secondary: true); agents.addArrangedSubview(agentStatus)
-        agentChoice.target = self; agentChoice.action = #selector(agentChanged)
-        agentChoice.widthAnchor.constraint(equalToConstant: 560).isActive = true
-        agents.addArrangedSubview(agentChoice)
+        style(routerStatus, size: 13, secondary: true); agents.addArrangedSubview(routerStatus)
         stack.addArrangedSubview(agents)
         stack.addArrangedSubview(rule())
 
@@ -122,13 +120,6 @@ final class ForgeSetupPane: NSView {
         modelPath.toolTip = modelPath.stringValue
         editModel.stringValue = setupText(5)
         agentStatus.stringValue = setupText(7)
-        agentChoice.removeAllItems(); agentChoice.addItem(withTitle: "No preferred agent"); agentChoice.lastItem?.tag = -1
-        for i in Int64(0)..<4 where fgs_count(i) > 0 {
-            agentChoice.addItem(withTitle: "\(setupText(10 + i)) · \(fgs_count(i)) running")
-            agentChoice.lastItem?.tag = Int(i)
-        }
-        agentChoice.selectItem(withTag: Int(fgs_selected()))
-        agentChoice.isEnabled = !checking && fgs_count(-1) > 0
         refresh.isEnabled = !checking && !verifying
         verify.isEnabled = !checking && !verifying && fgs_status(1) > 0
         enter.isEnabled = errorMessage == nil && !checking && !verifying && fgs_can_enter(sceneReady)
@@ -139,7 +130,6 @@ final class ForgeSetupPane: NSView {
     @objc private func refreshPressed() { refreshAction?() }
     @objc private func verifyPressed() { verifyAction?() }
     @objc private func folderPressed() { folderAction?() }
-    @objc private func agentChanged() { fgs_choose(Int64(agentChoice.selectedTag())) }
 }
 
 struct ForgeCLI {

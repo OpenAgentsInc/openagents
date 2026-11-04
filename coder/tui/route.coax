@@ -5,15 +5,16 @@
 // It is a decision, never a keyword rule. `coder run` asks when no --engine
 // is given; --engine always overrides it.
 //
-// The model is Baseten's mammoth-1 through coax/lib/systemone, the same
-// request shape as the desktop Lab's router. Its key comes from
-// ~/work/.secrets/baseten.env into curl's environment only.
+// A shared router.json selects local Elephant or an explicit Pylon System One
+// door. Without that configuration the legacy Baseten Mammoth path remains.
+// The desktop creates a local, keyless config and never falls back to Baseten.
 //
 // The labels split Claude Code and Codex by the job's size, not by whether
 // it mentions code, as the Lab's labels do; route-labels.tsv is the labelled
 // set and route_eval.py scores the held-out half.
 
 #load "../../coax/lib/systemone/systemone.coax";
+#load "route-policy.coax";
 
 CD_ROUTE_ENGINES :: [4] string.["claude", "codex", "micro", "psionic"];
 CD_ROUTE_ENGINE_LABELS :: [4] string.[
@@ -36,6 +37,45 @@ CdRoute :: struct {
   difficulty: int;               // 0 trivial to 4 very hard
   effort: [16] u8; neffort: int;
   why: [512] u8; nwhy: int;      // why there is no decision
+  source: [32]u8; nsource:int;   // nonempty selects the new coder.route.v2 projection
+  model: [128]u8; nmodel:int;
+  context: [256]u8; ncontext:int; // recent inert conversation text on automatic forks
+}
+
+#test "routing projections keep UTF8 intact and bound current and recent context" {
+  #assert cd_route_clip("abc",2,false)=="ab" && cd_route_clip("abc",2,true)=="bc";
+  #assert cd_route_clip("éx",1,false)=="" && cd_route_clip("xé",1,true)=="";
+  #assert cd_route_clip("éx",2,false)=="é" && cd_route_clip("xé",2,true)=="é";
+  #assert cd_route_clip("abc",0,false)=="" && cd_route_clip("abc",0,true)=="";
+  #assert cd_route_clip("abc",3,false)=="abc";
+}
+cd_route_clip :: (text:string,limit:int,tail:bool)->string {
+  if text.count<=limit {return text;}
+  if tail {at:=text.count-limit;while at<text.count && (text[at] & 0xc0)==0x80 {at+=1;}return cast(string)text[at..<text.count];}
+  end:=limit;while end>0 && (text[end] & 0xc0)==0x80 {end-=1;}return cast(string)text[0..<end];
+}
+
+// Compact questions fit the resident Elephant's per-question context budget.
+// Only eligible agents are options; the full prompt still goes to the worker.
+cd_elephant_body :: (b:[]SoBody,buf:[]u8,state:string,eligible:int) {
+  names:=CD_ROUTE_ENGINES;
+  descriptions:=[4]string.["Complex multi-file work, debugging, design or reviews", "Small contained edits, builds, tests or terminal commands", "Brief answers and small talk on the configured hosted model", "Local-only work on the configured local text model"];
+  keys:[4]string; labels:[4]string; n:=0;
+  for i:0..<4 {if (eligible & (1<<i))!=0 {keys[n]=names[i];labels[n]=descriptions[i];n+=1;}}
+  so_begin(b,buf,SO_PSIONIC_ELEPHANT,""); so_state_json(b,state);
+  so_choice(b,"engine","Choose the eligible agent best suited to the task's complexity.",keys[0..<n],labels[0..<n]);
+  levels:=CD_ROUTE_LEVELS; efforts:=CD_ROUTE_EFFORTS; effort_labels:=CD_ROUTE_EFFORT_LABELS;
+  so_score(b,"difficulty","How difficult is this task?",levels[..]);
+  so_choice(b,"effort","How much reasoning does this task need?",efforts[..],effort_labels[..]);
+}
+
+#test "Elephant routing asks typed complexity questions using only eligible agents" {
+  b:[1]SoBody; buf:[8192]u8;
+  cd_elephant_body(b[..],buf[..],"{\"message\":\"fix a typo\"}",3);
+  body:=so_body(b[..]);
+  #assert cl_raw(body,"model")=="\"elephant-1\"" && b[0].questions==3;
+  engines:=cl_raw(body,"questions.engine.criteria");
+  #assert cl_raw(engines,"claude").count>0 && cl_raw(engines,"codex").count>0 && cl_raw(engines,"micro").count==0;
 }
 
 // Whether name is a program in a PATH directory.
@@ -117,27 +157,57 @@ cd_route :: (task: string, local: bool, r: [] CdRoute) {
   allowed: [1] int; blocked: [1] int;
   r[0].eligible = ca_eligible(local, allowed[..], blocked[..]); r[0].allowed = allowed[0]; r[0].blocked = blocked[0];
   if r[0].eligible == 0 { cd_route_fail(r, "no eligible engine: allowlist, installation or provider cooldown"); return; }
-  state := cd_route_state(task, cd_on_path("claude"), cd_on_path("codex"), local, sb[..]);
+  // Shared config, optional env override, then the legacy hosted default.
+  // A configured local/Pylon failure never sends the task to Baseten.
+  cfg:[4096]u8; pathbuf:[1400]u8; hb:[1024]u8;
+  hn:=cd_cat(pathbuf[..],0,cd_state_home(hb[..])); hn=cd_cat(pathbuf[..],hn,"/.openagents/coder/router.json");
+  exists:=fs_exists(cast(string)pathbuf[0..<hn]);
+  cn:=fs_read(cast(string)pathbuf[0..<hn],cfg[..]);
+  if exists && cn<=0 {cd_route_fail(r,"router.json could not be read or is empty");return;}
+  if cn>=cfg.count {cd_route_fail(r,"router.json exceeds its 4096-byte limit");return;}
+  config:=cast(string)cfg[0..<ifx cn>0 then cn else 0];
+  if config.count>0 && !json_valid(config) {cd_route_fail(r,"router.json is not valid JSON");return;}
+  if config.count>0 && cl_raw(config,"schema")!="\"coder.router.v1\"" {cd_route_fail(r,"router.json needs schema coder.router.v1");return;}
+  if config.count>0 && cl_raw(config,"remote")!="true" && cl_raw(config,"remote")!="false" {cd_route_fail(r,"router.json remote must be a boolean");return;}
+  arbuf:[4096]u8; config_ar:[1]ClArena; config_ar[0]=ClArena.{buf=arbuf[..]};
+  ub:[2048]u8; url:=cl_getenv(SO_PSIONIC_URL_ENV,ub[..]);
+  if url.count==0 {url=cl_str(config_ar[..],config,"url");}
+  if exists && url.count==0 {cd_route_fail(r,"router.json needs a System One URL");return;}
+  remote:=cl_raw(config,"remote")=="true";
+  rb:[16]u8; if cl_getenv("CODER_ROUTE_REMOTE",rb[..])=="1" {remote=true;}
+  elephant:=url.count>0;
+  if elephant {
+    r[0].nsource=cd_cat(r[0].source[..],0,ifx remote then "pylon-elephant" else "local-elephant");
+    if !cr_endpoint(url,remote) {cd_route_fail(r,"router endpoint refused: use loopback locally, or an explicit remote HTTPS/Pylon door");return;}
+  }
+  cut:=task.count; if elephant {cut=cd_route_clip(task,768,false).count;}
+  state := cd_route_state(cast(string)task[0..<cut], cd_on_path("claude"), cd_on_path("codex"), local, sb[..]);
   if state.count == 0 { cd_route_fail(r, "the task is too long to route"); return; }
-  n := json_raw(sb[..], state.count - 1, ",\"eligible_engines\":["); comma := false;
+  n := json_raw(sb[..], state.count - 1, ",\"task_truncated\":"); n=json_raw(sb[..],n,ifx cut<task.count then "true" else "false");
+  if r[0].ncontext>0 {n=json_raw(sb[..],n,",\"recent_context\":");n=json_write_string(sb[..],n,cast(string)r[0].context[0..<r[0].ncontext]);}
+  n = json_raw(sb[..], n, ",\"eligible_engines\":["); comma := false;
   names := CD_ROUTE_ENGINES;
   for i: 0..<4 { if (r[0].eligible & (1 << i)) != 0 { if comma { n = json_raw(sb[..], n, ","); } n = json_write_string(sb[..], n, names[i]); comma = true; } }
   n = json_raw(sb[..], n, "]}");
   if n < 0 { cd_route_fail(r, "the task is too long to route"); return; }
   state = cast(string) sb[0..<n];
   cb: [1] SoClient; kb: [512] u8;
-  why := cd_so_keyed(cb[..], kb[..]);
+  why:="";
+  if elephant {cb[0]=SoClient.{url=url,key_env="",timeout_s=8};
+    keycheck:[1]u8; if cl_getenv(SO_PSIONIC_KEY_ENV,keycheck[..]).count>0 {cb[0].key_env=SO_PSIONIC_KEY_ENV;cb[0].scheme="Bearer";}
+  } else {why=cd_so_keyed(cb[..],kb[..]);}
   if why.count > 0 { cd_route_fail(r, why); return; }
   // the task leaves only under a grant (chapter 18)
   gn: [1] int;
-  if !gt_session_to_so(state, "the task", r[0].why[..], gn[..]) { for i: 0..<kb.count { kb[i] = 0; } r[0].ok = false; r[0].nwhy = gn[0]; return; }
+  if (!elephant || remote) && !gt_session_to_so(state, "the task", r[0].why[..], gn[..]) { for i: 0..<kb.count { kb[i] = 0; } r[0].ok = false; r[0].nwhy = gn[0]; return; }
   c := cb[0];
   buf: [16384] u8; b: [1] SoBody;
-  cd_route_body(b[..], buf[..], state);
+  if elephant {cd_elephant_body(b[..],buf[..],state,r[0].eligible);} else {cd_route_body(b[..], buf[..], state);}
   out: [65536] u8; err: [4096] u8;
   res := so_decide(c, b[..], out[..], err[..]);
   for i: 0..<kb.count { kb[i] = 0; }
   if res.problem.count > 0 { cd_route_fail(r, ifx res.stderr.count > 0 then res.stderr else res.problem); return; }
+  if elephant && cl_str(config_ar[..],res.body,"model")!="elephant-1" {cd_route_fail(r,"router returned another model identity");return;}
   ab: [8192] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
   e := so_choice_of(ar[..], res.body, "engine");
   if !e.ok { cd_route_fail(r, "System One's answer has no engine"); return; }
@@ -147,6 +217,7 @@ cd_route :: (task: string, local: bool, r: [] CdRoute) {
   r[0].difficulty = ifx d.ok then d.level else 2;
   f := so_choice_of(ar[..], res.body, "effort");
   r[0].neffort = cd_cat(r[0].effort[..], 0, ifx f.ok then f.choice else "medium");
+  if elephant {r[0].nmodel=cd_cat(r[0].model[..],0,cr_model(e.choice,r[0].difficulty));}
   chosen := ca_index(cd_route_engine(r));
   if chosen < 0 || (r[0].eligible & (1 << chosen)) == 0 { cd_route_fail(r, "System One selected an ineligible engine"); return; }
   r[0].ok = true;

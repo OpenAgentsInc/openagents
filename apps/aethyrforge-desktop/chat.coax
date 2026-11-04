@@ -4,12 +4,56 @@
 #load "chat-policy.coax";
 #load "chat-presentation.coax";
 #load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/nostr/json-f64.coax";
 #load "../../aethyr/ui/draw.coax";
 
 FC_ENGINES :: [6]string.["codex","claude","cursor","microcoder","psionic","echo"];
 FC_LABELS :: [6]string.["Codex","Claude Code","Cursor","Microcoder","Psionic (local)","Echo (offline)"];
 ForgeChatEvent :: struct {kind:int=0; session:[128]u8; sn:int; text:[262144]u8; tn:int;}
 ForgeChatModels :: struct {n:int=0; ids:[64][128]u8; levels:[64][8][16]u8; counts:[64]int;}
+FC_ROUTER_DEFAULT :: "{\"schema\":\"coder.router.v1\",\"url\":\"http://127.0.0.1:8793/v1/systemone\",\"remote\":false}\n";
+fc_router_default :: ()->string #export_c {return FC_ROUTER_DEFAULT;}
+
+#test "desktop routing reports the chosen engine and honest fallback without exposing controls" {
+  s:[1]ForgeChatEvent;
+  #assert fc_read(s[..],"{\"kind\":\"session\",\"id\":\"owned-session\",\"engine\":\"codex\"}")==1 && cast(string)s[0].text[0..<s[0].tn]=="codex";
+  #assert fc_read(s[..],"{\"kind\":\"route\",\"schema\":\"coder.route.v2\",\"ok\":true,\"source\":\"local-elephant\",\"ran\":\"claude\",\"difficulty\":3,\"effort\":\"high\",\"model\":\"opus\"}")==10;
+  #assert cast(string)s[0].text[0..<s[0].tn]=="local-elephant · claude · hard · high · opus";
+  #assert fc_read(s[..],"{\"kind\":\"route\",\"ok\":false,\"ran\":\"codex\",\"text\":\"router unavailable\"}")==10;
+  #assert cast(string)s[0].text[0..<s[0].tn]=="Fallback · codex · router unavailable";
+  #assert fc_read(s[..],"{\"kind\":\"route\",\"ok\":true,\"engine\":\"claude\",\"ran\":\"codex\",\"probability\":0.1,\"text\":\"low confidence\"}")==10;
+  #assert cast(string)s[0].text[0..<s[0].tn]=="Fallback · codex · low-confidence decision";
+}
+fc_cat :: (out:[]u8,n:int,text:string)->int {
+  if n<0 || n+text.count>out.count {return -1;}
+  for i:0..<text.count {out[n+i]=text[i];} return n+text.count;
+}
+fc_route_text :: (v:Jv,out:[]u8)->int {
+  b:[1024]u8; n:=0;
+  ok:=jv_bool(v,jv_get(v,0,"ok"));
+  // The route has an explicit selected engine even on a default/failure.
+  k:=jv_str(v,jv_get(v,0,"source"),b[..]);
+  if ok {n=fc_cat(out,n,ifx k>0 then cast(string)b[0..<k] else "Automatic");}
+  else {n=fc_cat(out,n,"Fallback");}
+  k=jv_str(v,jv_get(v,0,"ran"),b[..]);
+  if k>0 {n=fc_cat(out,n," · ");n=fc_cat(out,n,cast(string)b[0..<k]);}
+  if !ok {
+    k=jv_str(v,jv_get(v,0,"text"),b[..]);if k>0 {n=fc_cat(out,n," · ");n=fc_cat(out,n,cast(string)b[0..<k]);} return n;
+  }
+  // Low confidence is explicitly an eligible default, never a smart-pick claim.
+  at:=jv_get(v,0,"probability");
+  p:=json_f64(jv_raw(v,at));
+  if at>=0 && (!p.ok || p.value<0.5) {
+    n=fc_cat(out,0,"Fallback"); k=jv_str(v,jv_get(v,0,"ran"),b[..]);
+    if k>0 {n=fc_cat(out,n," · ");n=fc_cat(out,n,cast(string)b[0..<k]);}
+    return fc_cat(out,n," · low-confidence decision");
+  }
+  levels:=[5]string.["trivial","easy","moderate","hard","very hard"];
+  d:=jv_int(v,jv_get(v,0,"difficulty"),-1);
+  if d>=0 && d<5 {n=fc_cat(out,n," · ");n=fc_cat(out,n,levels[d]);}
+  for field:[2]string.["effort","model"] {k=jv_str(v,jv_get(v,0,field),b[..]);if k>0 {n=fc_cat(out,n," · ");n=fc_cat(out,n,cast(string)b[0..<k]);}}
+  return n;
+}
 
 #test "desktop model choices use visible IDs and their reported effort levels" {
   m:[1]ForgeChatModels;
@@ -66,7 +110,7 @@ fc_models :: (m:[]ForgeChatModels,line:string)->bool #export_c {
     b:=fc_box(0,w,800); t:=fc_box(1,w,800); i:=fc_box(2,w,800);
     #assert b.x==16 && b.y+b.height==788 && b.width==w-32 && b.height==88;
     #assert t.y+t.height<b.y && i.y>b.y && i.x+i.width<b.x+b.width;
-    #assert fc_box(3,w,800).y==fc_box(4,w,800).y;
+    #assert fc_box(3,w,800).x+fc_box(3,w,800).width<fc_box(6,w,800).x;
   }
   out:[24000]f32; n:=fc_draw(out[..],900,800,1,false);
   #assert n>0 && n<=2000 && n%6==0;
@@ -80,12 +124,15 @@ fc_read :: (s:[]ForgeChatEvent,line:string)->int #export_c {
   if k=="session" {
     b:[128]u8; n:=jv_str(v,jv_get(v,0,"id"),b[..]);
     if n<=0 || !fc_can_answer(true,true,cast(string)b[0..<n]) {return 0;}
-    s[0].sn=n; for i:0..<n {s[0].session[i]=b[i];} s[0].kind=1; return 1;
+    s[0].sn=n; for i:0..<n {s[0].session[i]=b[i];}
+    en:=jv_str(v,jv_get(v,0,"engine"),s[0].text[..]); if en>0 {s[0].tn=en;}
+    s[0].kind=1; return 1;
   }
   if k=="user" {s[0].kind=2;} else if k=="reply" {s[0].kind=3;}
   else if k=="tool" {s[0].kind=4;field="label";} else if k=="result" {s[0].kind=5;}
   else if k=="ask" {s[0].kind=6;} else if k=="end" {s[0].kind=7;}
-  else if k=="diff" {s[0].kind=8;field="path";} else if k=="model" {s[0].kind=9;field="model";} else {return 0;}
+  else if k=="diff" {s[0].kind=8;field="path";} else if k=="model" {s[0].kind=9;field="model";}
+  else if k=="route" {s[0].tn=fc_route_text(v,s[0].text[..]);s[0].kind=10;return 10;} else {return 0;}
   if k=="end" {
     n:=jv_str(v,jv_get(v,0,"ending"),s[0].text[..]); if n<0 {return 0;}
     s[0].tn=n;
@@ -99,10 +146,10 @@ fc_box :: (kind:int,w:f32,h:f32)->HudBox #export_c {
   if kind==0 {return HudBox.{x=16,y=h-100,width=w-32,height=88};}
   if kind==1 {return HudBox.{x=16,y=h-356,width=620,height=244};}
   if kind==2 {return HudBox.{x=28,y=h-68,width=w-152,height=30};}
-  if kind==3 {return HudBox.{x=28,y=h-94,width=132,height=22};}
+  if kind==3 {return HudBox.{x=28,y=h-91,width=w-324,height=18};}
   if kind==4 {return HudBox.{x=168,y=h-94,width=180,height=22};}
   if kind==5 {return HudBox.{x=356,y=h-94,width=120,height=22};}
-  if kind==6 {return HudBox.{x=484,y=h-94,width=240,height=22};}
+  if kind==6 {return HudBox.{x=w-268,y=h-94,width=240,height=22};}
   if kind==7 {return HudBox.{x=w-112,y=h-66,width=84,height=26};}
   return HudBox.{};
 }

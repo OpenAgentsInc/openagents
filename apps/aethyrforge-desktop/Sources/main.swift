@@ -496,6 +496,8 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         guard let report else { throw ShellError.failed("--input-smoke needs a report path.") }
         enterWorld()
         func require(_ ok: Bool, _ message: String) throws { if !ok { throw ShellError.failed(message) } }
+        func dropdowns(_ view: NSView) -> Int { (view is NSPopUpButton || view is NSComboBox ? 1 : 0) + view.subviews.reduce(0) { $0 + dropdowns($1) } }
+        try require(dropdowns(chatPane) == 0 && dropdowns(setupPane) == 0, "Agent and model dropdowns must be replaced by automatic routing.")
         func key(_ code: UInt16, down: Bool = true, repeatKey: Bool = false, modifiers: NSEvent.ModifierFlags = []) {
             let text = code == 53 ? "\u{1b}" : "\r"
             let event = NSEvent.keyEvent(with: down ? .keyDown : .keyUp, location: .zero, modifierFlags: modifiers, timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil, characters: text, charactersIgnoringModifiers: text, isARepeat: repeatKey, keyCode: code)!
@@ -542,13 +544,12 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         key(36); key(36, down: false)
         try require(chatPane.transcript.string.contains("Active reply on the left"), "Enter must restore conversation history.")
         chatPane.newChat(); chatPane.closeComposer()
-        await chatPane.catalogTask?.value
         let root = report.deletingLastPathComponent()
         chatPane.home = root; chatPane.cliOverride = Bundle.main.resourceURL!.appendingPathComponent("openagents")
         chatPane.cwd = root.appendingPathComponent("workspace")
         try fm.createDirectory(at: chatPane.cwd, withIntermediateDirectories: true)
         try fm.createDirectory(at: root.appendingPathComponent(".openagents/aethyrforge"), withIntermediateDirectories: true)
-        chatPane.agent.selectItem(at: 5); chatPane.changeAgent(); chatPane.model.stringValue = ""
+        chatPane.engineOverride = "echo"
         key(36); key(36, down: false)
         chatPane.input.string = "FORGE_ENTER_CODER_OK"
         key(36); key(36, repeatKey: true); key(36, down: false)
@@ -577,15 +578,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
             try fm.createDirectory(at: chatPane.cwd, withIntermediateDirectories: true)
             try fm.createDirectory(at: root.appendingPathComponent(".openagents/aethyrforge"), withIntermediateDirectories: true)
             let engine = ProcessInfo.processInfo.environment["FORGE_CHAT_SMOKE_ENGINE"] ?? "echo"
-            guard let i = (0..<6).first(where: { chatPane.catalog($0, label: false) == engine }) else { throw ShellError.failed("Unknown smoke engine.") }
-            chatPane.agent.selectItem(at: i); chatPane.changeAgent(); chatPane.model.stringValue = ""
-            if engine == "codex" {
-                await chatPane.catalogTask?.value
-                if !chatPane.catalogLoaded { chatPane.loadModels(); await chatPane.catalogTask?.value }
-                guard chatPane.catalogLoaded else { throw ShellError.failed("Codex model choices did not load through Coder.") }
-                chatPane.model.stringValue = chatPane.modelID(0); chatPane.updateEfforts()
-                if chatPane.effort.numberOfItems > 1 { chatPane.effort.selectItem(at: 1) }
-            }
+            chatPane.engineOverride = engine == "auto" ? nil : engine
             window.contentView?.layoutSubtreeIfNeeded()
             guard chatPane.hud.pipeline != nil else { throw ShellError.failed("Aethyr HUD Metal pipeline did not load.") }
             chatPane.input.string = "Remember the token FORGE_CODER_HELIOTROPE. Reply exactly FORGE_CODER_OK. Do not run tools or change files."
@@ -607,6 +600,13 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
             guard !chatPane.busy, chatPane.lastEnding.hasPrefix("finished"), chatPane.session != first else { throw ShellError.failed("Follow-up Coder turn failed.") }
             let log = try String(contentsOf: chatPane.sessions.appendingPathComponent(chatPane.session + ".jsonl"), encoding: .utf8)
             guard log.contains("\"parent\":\"\(first)\""), try replies(chatPane.session).contains("FORGE_CODER_HELIOTROPE") else { throw ShellError.failed("Coder did not carry the previous turn.") }
+            if engine == "auto" {
+                for id in [first, chatPane.session] {
+                    let turn = try String(contentsOf: chatPane.sessions.appendingPathComponent(id + ".jsonl"), encoding: .utf8)
+                    let records = turn.split(separator: "\n").compactMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String: Any] }
+                    guard records.contains(where: { $0["kind"] as? String == "route" && $0["schema"] as? String == "coder.route.v2" && $0["ok"] as? Bool == true }) else { throw ShellError.failed("Automatic first/follow-up turn did not receive an Elephant decision.") }
+                }
+            }
             let followup = chatPane.session
             var approved = false
             var stopped = false
@@ -626,7 +626,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
                 stopped = !chatPane.busy && chatPane.lastEnding.hasPrefix("stopped")
                 guard stopped else { throw ShellError.failed("Coder did not stop the active turn.") }
             }
-            let result: [String: Any] = ["ok": true, "engine": engine, "model": chatPane.model.stringValue, "effort": chatPane.effort.titleOfSelectedItem ?? "", "first": first, "followup": followup, "ending": chatPane.lastEnding, "approval": approved, "stop": stopped, "hud": "aethyr/ui/draw.coax", "cli": chatPane.cli.path]
+            let result: [String: Any] = ["ok": true, "engine": engine, "actualEngine": chatPane.selectedEngine, "route": chatPane.router.stringValue, "first": first, "followup": followup, "ending": chatPane.lastEnding, "approval": approved, "stop": stopped, "hud": "aethyr/ui/draw.coax", "cli": chatPane.cli.path]
             try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]).write(to: report)
             print("Coder HUD smoke passed: \(engine)")
         } catch { if let report { try? Data(error.localizedDescription.utf8).write(to: report.appendingPathExtension("error")) }; print(error.localizedDescription) }

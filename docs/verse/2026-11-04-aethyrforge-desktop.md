@@ -86,9 +86,10 @@ page server, the voice Wasm and a local Parakeet voice host. This is the same
   compact Aethyr composer is 88 points high with a faint tint; there is no
   full-window frame or label. Coder is hidden until Enter or Cmd+L opens it.
   Native Return/keypad Enter replaces region chat and consumes the complete
-  press, including held-key repeats and release. Agent/model/effort/folder
-  controls sit above the bottom input. Enter sends and closes the composer,
-  Shift-Enter inserts a line, Shift-Tab changes agent and Escape closes while
+  press, including held-key repeats and release. Automatic routing status and
+  the working folder sit above the bottom input. The setup agent dropdown and
+  composer agent/model/effort dropdowns have been removed. Enter sends and closes
+  the composer, Shift-Enter inserts a line and Escape closes while
   retaining the draft and running agent; Stop cancels. With the composer closed,
   only reply text floats on the left while a run is active, without a background,
   heading, controls or mouse interception. On completion it disappears; Enter
@@ -101,14 +102,36 @@ page server, the voice Wasm and a local Parakeet voice host. This is the same
   with zero realm Enter keydowns/keyups and no region-chat text field. The
   repository tools check still reports its 21 pre-existing unrelated files
   without Firm reason headers. Follow-ups use Coder's
-  durable fork/context path. New chat and agent/folder changes start fresh.
+  durable fork/context path. New chat and folder changes start fresh.
   Complete histories stay in `~/.openagents/coder/sessions/`; UI settings and
-  workspace are under `~/.openagents/aethyrforge/`. Codex model/effort options
-  come from `openagents coder models --json`, its live catalog. Custom model
-  IDs pass through to the provider CLI. Prebuilt Coder/Microcoder are bundled,
+  workspace are under `~/.openagents/aethyrforge/`. Prebuilt Coder/Microcoder are bundled,
   so messages do not compile tools or need a checkout. This creates an owned
   Coder conversation; discovered PIDs remain unattached. Slash commands and
   turning chat into typed world edits remain planned.
+- Automatic agent routing reuses Coder's typed System One decision router.
+  Every `run` and automatic `fork` asks for an eligible agent, task difficulty
+  and reasoning effort. Local Elephant at `127.0.0.1:8793` answered actual probes:
+  a typo chose Codex/low; a complex multi-service refactor chose Claude/high/Opus.
+  Claude's model profile is Haiku for trivial, Sonnet for easy/moderate and Opus
+  for hard/very hard; Codex uses its configured model and routed effort. These
+  finite probes are not a new routing-accuracy benchmark. Shared config lives in
+  `~/.openagents/coder/router.json` (`coder.router.v1`), created only if absent.
+  The resident local server is reused; no weights are downloaded, rehashed or
+  loaded by the desktop. A configured Pylon System One fleet/proxy uses the same
+  request format, marked remote and subject to Coder's existing session-consent
+  gate. CLI discovery currently advertised no Pylons; the enabled route is local.
+  Calls expire after eight seconds. The classifier sees a UTF-8-safe 768-byte
+  task projection and 256 bytes of recent conversation; the worker retains full
+  prompt/history. Failure/low confidence uses only an eligible default and logs
+  the reason, without a hosted-model substitution. New `coder.route.v2` records
+  have a [separate schema](../../proto/coder/route-v2.schema.json); legacy route
+  records and the System One network protocol remain unchanged. Native automatic
+  chat checks exercise two routed turns and retained context, both with Codex
+  candidates and with the full shared eligibility (which selected Microcoder
+  for brief chat). The focused router
+  policy killed all 88 mutants; 432 Coder and 131 desktop checks passed.
+  Router-disconnected, empty-config and missing-URL probes refused cleanly;
+  tools-check reports 27 existing unrelated missing-header files at this base.
 - Startup waits on real rendered-scene readiness, using a Coax budget that
   counts visible rendering time. WebKit's normal occlusion/background suspension
   no longer consumes the timeout. The native Metal view occupies only the

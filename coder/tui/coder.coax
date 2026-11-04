@@ -128,6 +128,7 @@ App :: struct {
   vt_out: [131072] u8;
   engine: int;
   model: string;
+  route_model: [128]u8;          // owned automatic model alias; never borrow a finished route's buffers
   model_engine: int;             // --model is for the engine it came with
   ask_first: bool;               // --ask: permission prompts instead of skipping them
   no_memory: bool;               // --no-memory: the first message goes without the facts from `coder remember`
@@ -2259,6 +2260,9 @@ cd_effort :: (a: [] App) -> string { return cast(string) a[0].effort_b[0..<a[0].
 cd_route_apply :: (a: [] App, r: [] CdRoute, effort_flag: bool) {
   a[0].engine = cd_route_pick(r); a[0].model_engine = a[0].engine;
   if !effort_flag && r[0].ok && r[0].probability >= CD_ROUTE_SURE { a[0].neffort = cd_cat(a[0].effort_b[..], 0, cast(string) r[0].effort[0..<r[0].neffort]); }
+  if a[0].model.count==0 && r[0].ok && r[0].probability>=CD_ROUTE_SURE {
+    n:=cd_cat(a[0].route_model[..],0,cast(string)r[0].model[0..<r[0].nmodel]); a[0].model=cast(string)a[0].route_model[0..<n];
+  }
 }
 
 // The engine to run for a decision: System One's pick when it is sure and the
@@ -2296,6 +2300,10 @@ cd_route_line :: (a: [] App, r: [] CdRoute, out: [] u8) -> string {
 
 cd_route_json :: (r: [] CdRoute, ran: string, out: [] u8) -> string {
   n := json_raw(out, 0, "{\"kind\":\"route\",\"ok\":"); n = json_raw(out, n, ifx r[0].ok then "true" else "false");
+  if r[0].nsource>0 {
+    n=json_raw(out,n,",\"schema\":\"coder.route.v2\",\"source\":"); n=json_write_string(out,n,cast(string)r[0].source[0..<r[0].nsource]);
+    n=json_raw(out,n,",\"model\":"); n=json_write_string(out,n,cast(string)r[0].model[0..<r[0].nmodel]);
+  }
   if r[0].ok {
     n = json_raw(out, n, ",\"engine\":"); n = json_write_string(out, n, cd_route_engine(r));
     pm := cast(int) (r[0].probability * 1000.0 + 0.5);       // as 0.962: three places are what the decision carries
@@ -2621,8 +2629,10 @@ tool_main :: () -> int #export_c {
     if task.count == 0 { tool_errln("coder run: needs a task: coder run \"TASK\""); return 2; }
     tui_ed_set(a[0].ed[..], task);
     // No --engine: System One chooses (chapter 13); the session's first lines say what and why.
-    rt: [1] CdRoute; routed := verb == "run" && (want.count == 0 || want == "auto");
-    if routed { cd_route(task, cl_getenv("PSIONIC_BASE_URL", cb[..]).count > 0, rt[..]); if cd_route_pick(rt[..]) < 0 {
+    rt: [1] CdRoute; routed := cr_auto(verb,want);
+    if routed {
+      rt[0].ncontext=cd_cat(rt[0].context[..],0,cd_route_clip(a[0].pre,256,true));
+      cd_route(task, cl_getenv("PSIONIC_BASE_URL", cb[..]).count > 0, rt[..]); if cd_route_pick(rt[..]) < 0 {
       cs_open(a); cs_user(a, task); o := a[0].log[0].line[..]; route_line := cd_route_json(rt[..], "", o); cs_put(a, route_line.count);
       a[0].ncause = cd_cat(a[0].cause[..], 0, "availability"); cs_end(a, "failed", 0, 0, "no eligible engine; check CODER_ROUTE_ENGINES and provider cooldowns, or retry explicitly with --engine");
       if !json { tool_errln("coder: no eligible engine; check CODER_ROUTE_ENGINES and provider cooldowns, or retry explicitly with --engine"); } return 1;

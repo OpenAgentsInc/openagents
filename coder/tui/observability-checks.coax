@@ -25,6 +25,30 @@ main :: () {}
   #assert cd_holds(cd_route_line(a[..], r[..], b[..]), "low-confidence decision");
 }
 
+#test "automatic profiles own their model bytes and preserve explicit model and effort overrides" {
+  a:[1]App; r:[1]CdRoute;
+  r[0].eligible=3;r[0].ok=true;r[0].probability=0.9;
+  r[0].nengine=cd_cat(r[0].engine[..],0,"claude");r[0].nmodel=cd_cat(r[0].model[..],0,"opus");
+  r[0].neffort=cd_cat(r[0].effort[..],0,"high");
+  cd_route_apply(a[..],r[..],false);
+  r[0].model[0]='x';
+  #assert a[0].engine==ENGINE_CLAUDE && a[0].model=="opus" && cd_effort(a[..])=="high";
+  a[0].model="explicit";a[0].neffort=cd_cat(a[0].effort_b[..],0,"low");
+  cd_route_apply(a[..],r[..],true);
+  #assert a[0].model=="explicit" && cd_effort(a[..])=="low";
+  a[0].model="";r[0].probability=0.1;cd_route_apply(a[..],r[..],false);
+  #assert a[0].model=="";
+}
+
+#test "Elephant route v2 is distinct from the unchanged legacy route record" {
+  r:[1]CdRoute; b:[2048]u8;
+  #assert !cd_holds(cd_route_json(r[..],"",b[..]),"schema");
+  r[0].nsource=cd_cat(r[0].source[..],0,"local-elephant");
+  r[0].nwhy=cd_cat(r[0].why[..],0,"unavailable");
+  line:=cd_route_json(r[..],"codex",b[..]);
+  #assert cd_holds(line,"\"schema\":\"coder.route.v2\"") && cd_holds(line,"\"ran\":\"codex\"") && cd_holds(line,"unavailable");
+}
+
 #test "an unfinished durable turn has unknown effects even after a tool result" {
   s: [1] CsSummary; ar: [1] ClArena; ab: [8192] u8; ar[0].buf = ab[..]; b: [4096] u8;
   cs_read("{\"kind\":\"session\",\"id\":\"x\"}\n{\"kind\":\"user\",\"text\":\"edit\"}\n{\"kind\":\"tool\",\"label\":\"Write(file)\"}\n{\"kind\":\"result\",\"text\":\"done\",\"error\":false}\n", s[..], ar[..]);

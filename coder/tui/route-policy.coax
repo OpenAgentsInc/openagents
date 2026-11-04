@@ -1,0 +1,81 @@
+// Automatic model profiles and admission of a configured Elephant decision door.
+#authority;
+#test "local routing is keyless loopback; remote routing needs an explicit remote door" {
+  #assert cr_endpoint("http://127.0.0.1:8793/v1/systemone",false);
+  #assert cr_endpoint("http://localhost:8798/v1/systemone",true);
+  #assert cr_endpoint("https://example.com/v1/systemone",true);
+  #assert !cr_endpoint("https://example.com/v1/systemone",false);
+  #assert !cr_endpoint("http://example.com/v1/systemone",true);
+  #assert !cr_endpoint("http://127.0.0.1.evil:8793/v1/systemone",false);
+  #assert !cr_endpoint("http://127.0.0.1:8793@evil/v1/systemone",false);
+  #assert !cr_endpoint("http://localhost:/v1/systemone",false);
+  #assert !cr_endpoint("http://localhost:0/v1/systemone",false);
+  #assert !cr_endpoint("http://localhost:65536/v1/systemone",false);
+  #assert cr_endpoint("http://localhost:1/v1/systemone",false);
+  #assert cr_endpoint("http://localhost:65535/v1/systemone",false);
+  #assert !cr_endpoint("http://localhost:8793/other",false);
+  #assert !cr_endpoint("https://a@b/v1/systemone",true);
+  #assert !cr_endpoint("https:///v1/systemone",true);
+  #assert !cr_endpoint("https://a\n/v1/systemone",true);
+  #assert !cr_endpoint("https://a/v1/systemone?key=secret",true);
+  #assert !cr_endpoint("",false);
+}
+#test "difficulty chooses only a supported Claude alias; other agents keep their configured model" {
+  #assert cr_model("claude",0)=="haiku";
+  #assert cr_model("claude",1)=="sonnet" && cr_model("claude",2)=="sonnet";
+  #assert cr_model("claude",3)=="opus" && cr_model("claude",4)=="opus";
+  #assert cr_model("claude",-1)=="" && cr_model("claude",5)=="";
+  #assert cr_model("codex",3)=="" && cr_model("micro",0)=="" && cr_model("psionic",4)=="";
+}
+#test "explicit automatic forks reroute each turn; ordinary forks retain their parent's engine" {
+  #assert cr_auto("run","") && cr_auto("run","auto") && cr_auto("fork","auto");
+  #assert !cr_auto("fork","") && !cr_auto("resume","auto") && !cr_auto("run","codex") && !cr_auto("fork","claude");
+}
+cr_auto :: (verb:string,engine:string)->bool {
+  return (verb=="run" && engine.count==0) || ((verb=="run" || verb=="fork") && engine=="auto");
+}
+#test "URL components preserve exact string and port boundaries" {
+  #assert cr_prefix("x","x") && cr_prefix("xy","x") && cr_prefix("","") && !cr_prefix("","x");
+  #assert cr_ends("x","x") && cr_ends("yx","x") && !cr_ends("","x");
+  #assert cr_port("10") && cr_port("9") && cr_port("00100");
+  #assert !cr_port("000001") && !cr_port("") && !cr_port("0") && !cr_port("/") && !cr_port(":");
+  #assert cr_host("a") && !cr_host("") && !cr_host("a/b") && !cr_host("/a");
+  #assert !cr_endpoint("https://a/b/v1/systemone",true);
+  #assert cr_endpoint("http://127.0.0.1:10/v1/systemone",false);
+}
+#forall "URL byte admission excludes controls credentials queries fragments and backslashes" value:0..<128 {
+  b:[1]u8; b[0]=cast(u8)value;
+  expected:=value>32 && value<127 && value!=64 && value!=63 && value!=35 && value!=92;
+  #assert cr_url_bytes(cast(string)b[..])==expected;
+}
+cr_prefix :: (s:string,p:string)->bool {return s.count>=p.count && cast(string)s[0..<p.count]==p;}
+cr_ends :: (s:string,p:string)->bool {return s.count>=p.count && cast(string)s[s.count-p.count..<s.count]==p;}
+cr_url_bytes :: (url:string)->bool {
+  for c:url {if c<=32 || c>=127 || c=='@' || c=='?' || c=='#' || c=='\\' {return false;}}
+  return true;
+}
+cr_host :: (host:string)->bool {
+  if host.count==0 {return false;}
+  for c:host {if c=='/' {return false;}}
+  return true;
+}
+cr_port :: (text:string)->bool {
+  if text.count==0 || text.count>5 {return false;}
+  port:=0;
+  for c:text {if c<'0' || c>'9' {return false;} port=port*10+cast(int)(c-'0');}
+  return port>0 && port<=65535;
+}
+cr_endpoint :: (url:string,remote:bool)->bool {
+  suffix:="/v1/systemone";
+  if !cr_url_bytes(url) || !cr_ends(url,suffix) {return false;}
+  base:=cast(string)url[0..<url.count-suffix.count];
+  loopback:="http://127.0.0.1:"; localhost:="http://localhost:"; secure:="https://";
+  if cr_prefix(base,loopback) {return cr_port(cast(string)base[loopback.count..<base.count]);}
+  if cr_prefix(base,localhost) {return cr_port(cast(string)base[localhost.count..<base.count]);}
+  if !remote || !cr_prefix(base,secure) {return false;}
+  return cr_host(cast(string)base[secure.count..<base.count]);
+}
+cr_model :: (engine:string,difficulty:int)->string {
+  if engine!="claude" || difficulty<0 || difficulty>4 {return "";}
+  return ifx difficulty==0 then "haiku" else ifx difficulty<3 then "sonnet" else "opus";
+}

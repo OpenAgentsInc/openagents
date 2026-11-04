@@ -80,17 +80,15 @@ final class ForgeHUD: MTKView, MTKViewDelegate {
 final class ForgeComposer: NSTextView {
     var send: (() -> Void)?
     var dismiss: (() -> Void)?
-    var nextAgent: (() -> Void)?
     override func keyDown(with event: NSEvent) {
         if (event.keyCode == 36 || event.keyCode == 76) && !event.modifierFlags.contains(.shift) && !hasMarkedText() { send?(); return }
         if event.keyCode == 53 && !hasMarkedText() { dismiss?(); return }
-        if event.keyCode == 48 && event.modifierFlags.contains(.shift) { nextAgent?(); return }
         super.keyDown(with: event)
     }
 }
 
 @MainActor
-final class ForgeChatPane: NSView, NSComboBoxDelegate {
+final class ForgeChatPane: NSView {
     override var isFlipped: Bool { true }
     override var isOpaque: Bool { false }
     let hud: ForgeHUD
@@ -100,16 +98,14 @@ final class ForgeChatPane: NSView, NSComboBoxDelegate {
     let messagesScroll = NSScrollView()
     let input = ForgeComposer()
     let inputScroll = NSScrollView()
-    let agent = NSPopUpButton()
-    let model = NSComboBox()
-    let effort = NSPopUpButton()
+    let router = NSTextField(labelWithString: "Automatic routing · Elephant")
     let folder = NSButton()
     let send = NSButton()
     let fresh = NSButton()
     let allow = NSButton()
     let deny = NSButton()
     let heading = NSTextField(labelWithString: "CODER / MESSAGES")
-    let status = NSTextField(labelWithString: "Enter sends · Shift-Enter adds a line · Shift-Tab switches agent · Esc closes")
+    let status = NSTextField(labelWithString: "Enter sends · Shift-Enter adds a line · Esc closes")
     var process: Process?
     var task: Task<Void, Never>?
     var busy = false
@@ -119,9 +115,8 @@ final class ForgeChatPane: NSView, NSComboBoxDelegate {
     var session = ""
     var parent = ""
     var lastEnding = ""
-    var models: [String: String] = [:]
-    var catalogLoaded = false
-    var catalogTask: Task<Void, Never>?
+    var selectedEngine = "auto"
+    var engineOverride: String? // native test fixture only; the product always routes
     var cwd: URL
     var home = FileManager.default.homeDirectoryForCurrentUser
     var settings: URL { home.appendingPathComponent(".openagents/aethyrforge/chat.json") }
@@ -131,12 +126,6 @@ final class ForgeChatPane: NSView, NSComboBoxDelegate {
     var stopping = false
     var onActivity: (() -> Void)?
     var onClose: (() -> Void)?
-    var selectedEngine: String { catalog(agent.indexOfSelectedItem, label: false) }
-    func catalog(_ i: Int, label: Bool) -> String {
-        var b = [UInt8](repeating: 0, count: 128)
-        let n = fgc_catalog(Int64(i), label, &b, Int64(b.count))
-        return String(decoding: b.prefix(max(0, Int(n))), as: UTF8.self)
-    }
     override init(frame: NSRect) {
         hud = ForgeHUD(frame: .zero)
         cwd = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/aethyrforge/workspace")
@@ -155,39 +144,39 @@ final class ForgeChatPane: NSView, NSComboBoxDelegate {
             addSubview(scroll)
         }
         messagesScroll.hasVerticalScroller = false
-        for i in 0..<6 { agent.addItem(withTitle: catalog(i, label: true)) }
-        agent.target = self; agent.action = #selector(changeAgent)
-        agent.setAccessibilityLabel("Coding agent")
-        model.isEditable = true; model.completes = false; model.placeholderString = "Model: provider default"; model.delegate = self
-        model.setAccessibilityLabel("Model; empty uses provider default")
-        effort.addItems(withTitles: ["Effort: default", "low", "medium", "high", "xhigh", "max", "ultra", "minimal", "none"])
-        effort.setAccessibilityLabel("Reasoning effort")
+        router.setAccessibilityLabel("Automatic task routing")
+        router.lineBreakMode = .byTruncatingTail
         folder.title = "Folder…"; folder.target = self; folder.action = #selector(chooseFolder)
         send.title = "Send ↵"; send.target = self; send.action = #selector(submit)
         fresh.title = "New chat"; fresh.target = self; fresh.action = #selector(newChat)
         allow.title = "Allow once"; allow.target = self; allow.action = #selector(approve)
         deny.title = "Deny"; deny.target = self; deny.action = #selector(reject)
-        for view in [agent, model, effort, folder, send, fresh, allow, deny, heading, status] { addSubview(view) }
-        for control in [agent as NSControl, model, effort, folder, send, fresh, allow, deny] {
+        for view in [router, folder, send, fresh, allow, deny, heading, status] { addSubview(view) }
+        for control in [folder, send, fresh, allow, deny] {
             control.controlSize = .small; control.font = .systemFont(ofSize: 11)
         }
         folder.isBordered = false; fresh.isBordered = false
-        for label in [heading, status] { label.textColor = NSColor(calibratedRed: 0.4, green: 0.9, blue: 0.9, alpha: 1); label.font = .monospacedSystemFont(ofSize: 11, weight: .medium) }
+        for label in [router, heading, status] { label.textColor = NSColor(calibratedRed: 0.4, green: 0.9, blue: 0.9, alpha: 1); label.font = .monospacedSystemFont(ofSize: 11, weight: .medium) }
         heading.lineBreakMode = .byTruncatingMiddle
         status.font = .monospacedSystemFont(ofSize: 10, weight: .medium)
         status.lineBreakMode = .byTruncatingTail
         input.setAccessibilityLabel("Message to coding agent")
         input.send = { [weak self] in guard let self, !busy else { return }; submit() }
         input.dismiss = { [weak self] in self?.closeComposer() }
-        input.nextAgent = { [weak self] in guard let self, !busy else { return }; agent.selectItem(at: (agent.indexOfSelectedItem + 1) % 6); changeAgent() }
         addSubview(hud)
         try? FileManager.default.createDirectory(at: cwd, withIntermediateDirectories: true)
         if let data = try? Data(contentsOf: settings), let saved = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            if let m = saved["models"] as? [String: String] { models = m }
             if let path = saved["cwd"] as? String, FileManager.default.fileExists(atPath: path) { cwd = URL(fileURLWithPath: path) }
-            if let e = saved["engine"] as? String, let i = (0..<6).first(where: { catalog($0, label: false) == e }) { agent.selectItem(at: i) }
         }
-        loadModels(); update()
+        // One shared decision-door config for Coder and every desktop client.
+        let config = home.appendingPathComponent(".openagents/coder/router.json")
+        if !FileManager.default.fileExists(atPath: config.path) {
+            try? FileManager.default.createDirectory(at: config.deletingLastPathComponent(), withIntermediateDirectories: true)
+            var bytes = [UInt8](repeating: 0, count: 512)
+            let n = fgc_router_default(&bytes, Int64(bytes.count))
+            if n > 0 { try? Data(bytes.prefix(Int(n))).write(to: config, options: .withoutOverwriting) }
+        }
+        update()
     }
     required init?(coder: NSCoder) { fatalError() }
     func box(_ kind: Int) -> NSRect {
@@ -205,7 +194,7 @@ final class ForgeChatPane: NSView, NSComboBoxDelegate {
         messagesScroll.frame = NSRect(x: t.minX + 4, y: t.minY, width: t.width - 8, height: t.height)
         allow.frame = NSRect(x: t.minX + 4, y: t.maxY - 30, width: 90, height: 24)
         deny.frame = NSRect(x: t.minX + 100, y: t.maxY - 30, width: 60, height: 24)
-        agent.frame = box(3); model.frame = box(4); effort.frame = box(5); folder.frame = box(6)
+        router.frame = box(3); folder.frame = box(6)
         inputScroll.frame = box(2); send.frame = box(7)
         status.frame = NSRect(x: 28, y: bounds.height - 29, width: bounds.width - 56, height: 12)
         for (scroll, text) in [(transcriptScroll, transcript), (messagesScroll, messages), (inputScroll, input)] {
@@ -237,11 +226,9 @@ final class ForgeChatPane: NSView, NSComboBoxDelegate {
     }
     func update() {
         let mode = presentation
-        for view in [hud as NSView, inputScroll, agent, model, effort, folder, send, fresh, heading, status, transcriptScroll] { view.isHidden = mode != 2 }
+        for view in [hud as NSView, inputScroll, router, folder, send, fresh, heading, status, transcriptScroll] { view.isHidden = mode != 2 }
         messagesScroll.isHidden = mode != 1
-        for control in [agent as NSControl, model, effort, folder, fresh] { control.isEnabled = !busy }
-        let configurable = ["codex", "claude", "cursor"].contains(selectedEngine)
-        model.isEnabled = !busy && configurable; effort.isEnabled = !busy && configurable
+        for control in [folder, fresh] { control.isEnabled = !busy }
         send.title = busy ? "Stop" : "Send ↵"; allow.isHidden = mode != 2 || !pending; deny.isHidden = mode != 2 || !pending
         heading.stringValue = pending ? "CODER / APPROVAL NEEDED" : busy ? "CODER / WORKING · \(selectedEngine)" : "CODER / MESSAGES"
         folder.title = "\(cwd.lastPathComponent) ▾"; folder.toolTip = cwd.path
@@ -258,59 +245,9 @@ final class ForgeChatPane: NSView, NSComboBoxDelegate {
         if messages.string.utf16.count > 200_000 { messages.textStorage?.deleteCharacters(in: NSRange(location: 0, length: 50_000)) }
         update(); layoutSubtreeIfNeeded(); messages.scrollToEndOfDocument(nil)
     }
-    func loadModels() {
-        model.removeAllItems()
-        if selectedEngine == "claude" { model.addItems(withObjectValues: ["sonnet", "opus", "haiku"]) }
-        if selectedEngine == "codex", catalogLoaded {
-            for i in 0..<64 { let id = modelID(i); if !id.isEmpty { model.addItem(withObjectValue: id) } }
-        }
-        model.stringValue = models[selectedEngine] ?? ""
-        model.toolTip = "A model ID accepted by the selected agent. Empty uses its configured default; Coder reports unsupported choices."
-        updateEfforts()
-        if selectedEngine == "codex", !catalogLoaded, catalogTask == nil {
-            catalogTask = Task { [weak self] in
-                guard let self else { return }
-                defer { catalogTask = nil }
-                do {
-                    let data = try await ForgeCLI.run(cli, ["coder", "models", "--json"], timeout: 18, environment: environment())
-                    guard !stopping else { return }
-                    fgc_models_reset()
-                    for line in String(decoding: data, as: UTF8.self).split(separator: "\n") {
-                        let b = Array(line.utf8); _ = b.withUnsafeBufferPointer { fgc_models($0.baseAddress, Int64($0.count)) }
-                    }
-                    catalogLoaded = !modelID(0).isEmpty
-                    if selectedEngine == "codex", catalogLoaded {
-                        let draft = model.stringValue
-                        model.removeAllItems()
-                        for i in 0..<64 { let id = modelID(i); if !id.isEmpty { model.addItem(withObjectValue: id) } }
-                        model.stringValue = draft; updateEfforts()
-                    }
-                    if !catalogLoaded { model.toolTip = "Codex catalog unavailable. Enter a model ID or leave empty for the configured default." }
-                } catch { model.toolTip = "Model catalog unavailable: \(error.localizedDescription). Empty uses the configured default." }
-            }
-        }
-    }
-    func modelID(_ i: Int, effort: Int = -1) -> String {
-        var b = [UInt8](repeating: 0, count: 128); let n = fgc_model(Int64(i), Int64(effort), &b, Int64(b.count))
-        return String(decoding: b.prefix(max(0, Int(n))), as: UTF8.self)
-    }
-    func updateEfforts() {
-        effort.removeAllItems(); effort.addItem(withTitle: "Effort: default")
-        if selectedEngine == "codex", let i = (0..<64).first(where: { modelID($0) == model.stringValue && !model.stringValue.isEmpty }) {
-            for j in 0..<8 { let value = modelID(i, effort: j); if !value.isEmpty { effort.addItem(withTitle: value) } }
-        } else if selectedEngine == "claude" || selectedEngine == "cursor" { effort.addItems(withTitles: ["low", "medium", "high"]) }
-        effort.selectItem(at: 0)
-    }
-    func comboBoxSelectionDidChange(_ notification: Notification) {
-        if let selected = model.objectValueOfSelectedItem as? String { model.stringValue = selected }
-        updateEfforts()
-    }
-    func controlTextDidEndEditing(_ obj: Notification) { updateEfforts() }
     func save() {
-        models[selectedEngine] = model.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let data = try? JSONSerialization.data(withJSONObject: ["engine": selectedEngine, "models": models, "cwd": cwd.path], options: [.sortedKeys]) { try? data.write(to: settings, options: .atomic) }
+        if let data = try? JSONSerialization.data(withJSONObject: ["routing": "auto", "cwd": cwd.path], options: [.sortedKeys]) { try? data.write(to: settings, options: .atomic) }
     }
-    @objc func changeAgent() { parent = ""; session = ""; effort.selectItem(at: 0); loadModels(); save(); append("\n— \(selectedEngine): new conversation —\n", color: .systemTeal); update() }
     @objc func newChat() { guard !busy else { return }; parent = ""; session = ""; transcript.string = ""; update(); window?.makeFirstResponder(input) }
     @objc func chooseFolder() {
         let panel = NSOpenPanel(); panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.allowsMultipleSelection = false; panel.directoryURL = cwd
@@ -340,12 +277,12 @@ final class ForgeChatPane: NSView, NSComboBoxDelegate {
         closeComposer()
         append("\nYOU\n\(text)\n\n", color: .white)
         var args = ["coder"] + (parent.isEmpty ? ["run", text] : ["fork", parent, text])
-        args += ["--engine", selectedEngine, "--cwd", cwd.path, "--json", "--ask"]
-        if !model.stringValue.isEmpty { args += ["--model", model.stringValue] }
-        if effort.indexOfSelectedItem > 0 { args += ["--effort", effort.titleOfSelectedItem!] }
+        args += ["--engine", engineOverride ?? "auto", "--cwd", cwd.path, "--json", "--ask"]
         let p = Process(); p.executableURL = cli; p.arguments = args; p.currentDirectoryURL = cwd; p.environment = environment()
         let output = Pipe(); let errors = Pipe(); p.standardOutput = output; p.standardError = errors; p.standardInput = FileHandle.nullDevice
-        process = p; status.stringValue = "Coder is starting \(selectedEngine)…"; update()
+        selectedEngine = engineOverride ?? "auto"
+        router.stringValue = "Automatic routing · deciding…"
+        process = p; status.stringValue = "Coder is routing this task…"; update()
         task = Task { [weak self] in
             guard let self else { return }
             do {
@@ -375,7 +312,7 @@ final class ForgeChatPane: NSView, NSComboBoxDelegate {
     }
     func receive(_ line: String) {
         let b = Array(line.utf8); let kind = b.withUnsafeBufferPointer { fgc_read($0.baseAddress, Int64($0.count)) }
-        if kind == 1 { session = readField(0); return }
+        if kind == 1 { session = readField(0); let engine = readField(1); if !engine.isEmpty { selectedEngine = engine }; update(); return }
         let text = readField(1)
         switch kind {
         case 3: append("\(selectedEngine.uppercased())\n\(text)\n\n"); appendMessage(text + "\n\n")
@@ -384,7 +321,8 @@ final class ForgeChatPane: NSView, NSComboBoxDelegate {
         case 6: pending = true; append("\nAPPROVAL NEEDED\n\(text)\n", color: .systemOrange); appendMessage(text + "\nPress Enter to review this tool request.\n\n"); status.stringValue = "Review the tool request, then Allow once or Deny."; update()
         case 7: lastEnding = text; append("\n[\(text)]\n", color: text.hasPrefix("finished") ? .systemTeal : .systemOrange)
         case 8: append("Edited: \(text)\n", color: .systemTeal)
-        case 9: append("Model: \(text)\n", color: .systemTeal)
+        case 9: append("Model: \(text)\n", color: .systemTeal); router.stringValue = text; router.toolTip = text
+        case 10: append("Router: \(text)\n", color: .systemTeal); router.stringValue = text; router.toolTip = text
         default: break
         }
     }
@@ -406,7 +344,7 @@ final class ForgeChatPane: NSView, NSComboBoxDelegate {
         } else { process?.terminate() }
     }
     func shutdown() {
-        stopping = true; catalogTask?.cancel(); stopTurn()
+        stopping = true; stopTurn()
         if let process {
             let end = Date().addingTimeInterval(2)
             while process.isRunning && Date() < end { usleep(10_000) }

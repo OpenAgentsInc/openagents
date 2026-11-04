@@ -141,6 +141,42 @@ is configurable, and the request body doesn't change.
 
 ## Checks
 
+### Local Elephant and desktop routing (2026-11-04)
+
+Aethyrforge now replaces its agent/model/effort dropdowns with this router.
+Shared `~/.openagents/coder/router.json`, with schema `coder.router.v1`, selects
+a System One `url` and explicit `remote` boolean. The desktop's default is
+keyless local Elephant at `http://127.0.0.1:8793/v1/systemone`; it reuses the
+already-resident server. `PSIONIC_SYSTEMONE_URL` overrides the URL. Remote
+Pylon fleet/proxy doors require `remote:true` (or `CODER_ROUTE_REMOTE=1`) and
+the existing `system-one` session grant. A remote HTTPS door may read
+`PSIONIC_SYSTEMONE_KEY` through curl's environment. The public NIP-98 endpoint
+is a distinct authenticated transport, not a bearer-HTTP drop-in.
+
+Without a config or override, the historical hosted Mammoth path above remains.
+A configured Elephant failure never falls through to it. The eligible default
+still works, and the route record says why a decision was unavailable or unsure.
+Configured Elephant uses compact typed questions, an eight-second timeout and
+UTF-8-safe projections: 768 current-task bytes and 256 recent-context bytes.
+The worker receives the complete task and fork history. `fork --engine auto`
+reroutes each follow-up; ordinary forks and TUI conversation routing retain their
+existing behavior. Explicit `--engine`, `--model` and `--effort` still override.
+
+The initial automatic Claude profile maps trivial to Haiku, easy/moderate to
+Sonnet, hard/very hard to Opus. Codex keeps its configured model and uses the
+decided effort. No absent or cooled-down engine can become eligible from a
+model answer. New local/Pylon routing records identify `coder.route.v2` and its
+source/model profile; the legacy record and System One wire are unchanged.
+See [the schema](../../proto/coder/route-v2.schema.json) and
+[desktop instructions](../../apps/aethyrforge-desktop/README.md).
+
+Finite live probes distinguished a typo (Codex/low) from a multi-service
+refactor (Claude/high/Opus). Native automatic first/follow-up chats preserved
+context. The router policy killed all 88 mutants with zero survivors; 432
+Coder checks passed. These probes do not replace the held-out Mammoth accuracy
+record below, and do not establish broad Elephant routing quality. No Pylons
+were advertised in the current CLI discovery; the desktop uses local Elephant.
+
 ```sh
 coax test coder/tui/coder.coax           # the request's state and questions, the decision's text
 python3 coder/tui/smoke.py               # offline: no key, so the default runs and the log says why;

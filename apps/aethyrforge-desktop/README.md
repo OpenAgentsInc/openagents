@@ -49,32 +49,58 @@ is no frame or label around the whole window. Coder is hidden at rest. Enter
 or Cmd+L opens its composer and conversation; native Return/keypad Enter never
 opens the realm's region chat. Enter sends and closes the composer; Shift-Enter
 inserts a line. Escape closes it while retaining the draft and any running
-agent. Agent, model, effort and working folder sit directly above the bottom
-input; Shift-Tab changes agent and the Stop button cancels a run. When closed,
+agent. Automatic routing status and the working folder sit above the bottom
+input; there are no agent/model/effort dropdowns, including in setup. Stop
+cancels a run. When closed,
 only received reply text appears on the left during an active run, with no
 background, heading, controls or mouse interception. It disappears when the run
 ends; Enter restores the conversation, including tools, results, paths and errors.
 Pending tool requests show a message to press Enter for Allow once / Deny;
-closing the composer never grants approval. New chat, agent changes and folder
-changes start fresh.
+closing the composer never grants approval. New chat and folder changes start fresh.
 Slash commands, history browsing and attachment to a running PID are future work.
 
-The UI calls shared `~/.openagents/bin/openagents coder run|fork --json --ask`,
-the same Coder as the TUI. Follow-ups carry the previous durable session's
+The UI calls shared `~/.openagents/bin/openagents coder run|fork --engine auto --json --ask`,
+the same Coder as the TUI. Every submitted turn routes, including follow-ups,
+which carry the previous durable session's
 context. Prebuilt Coder/Microcoder are bundled; messages do not build tools or
-need a checkout. Provider CLIs use their existing logins. Codex choices come
-from `openagents coder models --json` (its live app-server catalog); Claude has
-its CLI aliases. Custom model IDs pass through; unsupported choices report the
-agent's error. Microcoder/Psionic use their gateway/local-server configuration.
-Optional agent chats use the selected provider's normal connection, separate
-from the local voice/edit pipeline.
+need a checkout. Provider CLIs use their existing logins. Coder's existing typed
+System One router asks agent, difficulty and effort. Coder's own eligibility
+selects installed Claude Code/Codex, bundled Microcoder, and Psionic when a local
+text endpoint is configured; cooldowns and `CODER_ROUTE_ENGINES` constrain dispatch.
+Claude uses Haiku for trivial work, Sonnet for easy/moderate
+work and Opus for hard work; Codex retains its configured model with routed
+reasoning effort. The resolved model is reported by the agent. This is an initial
+profile, checked with finite probes rather than a new accuracy benchmark.
 
-`chat.json` stores agent/model/folder choices under `~/.openagents/aethyrforge/`;
+The app creates shared `~/.openagents/coder/router.json` only if absent:
+
+```json
+{"schema":"coder.router.v1","url":"http://127.0.0.1:8793/v1/systemone","remote":false}
+```
+
+This reuses the resident local Elephant on this Mac; the app neither downloads
+weights nor starts another inference process. `PSIONIC_SYSTEMONE_URL` overrides
+the door. A Pylon-backed System One fleet/proxy can be configured with `remote:true`
+(including a loopback relay proxy); remote HTTPS doors may use
+`PSIONIC_SYSTEMONE_KEY` from the environment. Remote requests retain Coder's
+`system-one` session-consent gate. The raw public NIP-98 endpoint is not a bearer
+HTTP substitute. No live Pylon was advertised in this session's CLI discovery;
+the shipped default uses the verified local server.
+
+Router calls have an eight-second deadline and receive at most 768 UTF-8 bytes
+of the current task plus 256 bytes of recent conversation. Workers receive the
+full prompt/history. Missing, malformed or uncertain decisions use Coder's
+eligible default, with the reason recorded visibly in the conversation; they
+never switch to hosted Mammoth behind the user's back. Selected agent/profile,
+complexity and effort are recorded as `coder.route.v2` JSONL, separately from
+the unchanged legacy route format and System One network protocol.
+
+`chat.json` stores automatic routing and the folder under `~/.openagents/aethyrforge/`;
 the initial folder is `workspace/` there. Complete histories stay under shared
 `~/.openagents/coder/sessions/`. The view is bounded; reopening starts fresh.
 
 The app's files live in `~/.openagents/aethyrforge/`. `setup.json` keeps the
-preferred engine and audio-model selection. The local world is `everglade/`:
+audio-model setup (old preferred-agent fields are ignored). The local world is `everglade/`:
 
 - `world-everglade.json`: edits saved by the room; retained across launches.
 - `room-control.txt`: the local room's existing development controls.
@@ -158,6 +184,15 @@ FORGE_CHAT_SMOKE_ENGINE=codex FORGE_CHAT_SMOKE_ACTIONS=1 \
   ~/.openagents/aethyrforge/Aethyrforge.app/Contents/MacOS/Aethyrforge \
   --chat-smoke /tmp/aethyrforge-chat/result.json
 ```
+
+Use `FORGE_CHAT_SMOKE_ENGINE=auto` for two actual routed turns; copy the shared
+`router.json` into `<report-directory>/.openagents/coder/` first. The check
+requires a successful Elephant route record on both turns as well as the reply
+and retained context. Native input smoke also checks that setup/composer contain
+no agent/model dropdowns. Verification: 131 desktop checks, 432 Coder checks,
+88/88 router-policy mutants killed, native input and automatic two-turn chats.
+The repository tools check reports 27 pre-existing missing-header files outside
+this change.
 
 The input smoke sends AppKit Return/keypad Enter through the actual window over
 the packaged WebKit realm. It checks held-key repeats, Shift-Enter, draft retention,
