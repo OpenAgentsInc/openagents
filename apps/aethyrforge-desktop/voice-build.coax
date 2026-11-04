@@ -1,0 +1,64 @@
+// Package the existing local Parakeet voice host and browser voice engine.
+// Compile serially; no model loading, downloads or microphone access.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+FvPaths :: struct { b: [65536] u8; n: int; }
+fv_path :: (p: [] FvPaths, root: string, leaf: string) -> string {
+  start := p[0].n;
+  for c: root { p[0].b[p[0].n] = c; p[0].n += 1; }
+  p[0].b[p[0].n] = '/'; p[0].n += 1;
+  for c: leaf { p[0].b[p[0].n] = c; p[0].n += 1; }
+  return cast(string) p[0].b[start..<p[0].n];
+}
+fv_run :: (argv: [] string, out: [] u8, deadline: int) -> int {
+  err: [65536] u8; left := deadline - proc_now_ms(); if left <= 0 { return -1; }
+  r := proc_run(argv, left, out, err[..]);
+  if r.started != 0 || r.status != 0 || r.timed_out || r.cut {
+    tool_errln(cast(string) err[0..<r.err_n]); return -1;
+  }
+  return r.out_n;
+}
+tool_main :: () -> int #export_c {
+  a: [1] Args; if !args_load(a[..]) || args_count(a[..]) != 1 { return 2; }
+  root := args_at(a[..], 0); p: [1] FvPaths;
+  work := fv_path(p[..], root, "apps/aethyrforge-desktop/build/voice");
+  if !fs_mkdir(work) { return 1; }
+  cb: [4096] u8; compiler := proc_getenv("COAX", cb[..]);
+  if compiler == "" { compiler = fv_path(p[..], root, "coax/bin/coax"); }
+  archive := fv_path(p[..], root, "psionic/build/parakeet/libpsionic-parakeet.a");
+  if fs_kind(archive) != FS_FILE { tool_errln("Build the shared CLI/Parakeet helper first."); return 1; }
+  deadline := proc_now_ms() + 840000; out: [16777216] u8;
+  sources := [6] string.["verse/voice.coax", "verse/voice-wire.coax", "verse/voice-floor.coax", "verse/voice-meter.coax", "verse/voice-asr.coax", "verse/voice-host/voice-reply.coax"];
+  names := [6] string.["VoiceEngine", "VoiceWire", "VoiceFloor", "VoiceMeter", "VoiceAsr", "VoiceReply"];
+  newest := fs_mtime_ns(compiler); stamp := fs_mtime_ns(archive); if stamp > newest { newest = stamp; }
+  for source: sources { b: [4096] u8; t := fs_mtime_ns(fs_join(root, source, b[..])); if t > newest { newest = t; } }
+  for source: [15] string.["verse/platform/voice.c", "verse/platform/voice.h", "verse/voice-host/host.c", "verse/voice-host/ws.c", "verse/voice-host/ws.h", "verse/voice-host/wav.c", "verse/voice-host/wav.h", "verse/voice-host/speech.c", "verse/voice-host/speech.h", "coax/web/voice/voice-web.c", "coax/web/voice/build.sh", "apps/aethyrforge-desktop/voice-build.coax", "verse/asr-cut.coax", "proto/descriptors/voice.pb", "psionic/platform/psionic-parakeet.h"] {
+    b: [4096] u8; t := fs_mtime_ns(fs_join(root, source, b[..])); if t > newest { newest = t; }
+  }
+  host := fv_path(p[..], work, "voice-host"); wasm := fv_path(p[..], work, "voice.wasm");
+  if fs_mtime_ns(host) < newest {
+    print("Building the local Parakeet voice host (serial compiler)…\n");
+    files: [6] string;
+    for i: 0..<6 {
+      hb: [128] u8; hn := 0; for c: names[i] { hb[hn] = c; hn += 1; } for c: ".h" { hb[hn] = c; hn += 1; }
+      header := fv_path(p[..], work, cast(string) hb[0..<hn]); hb[hn - 1] = 'c'; files[i] = fv_path(p[..], work, cast(string) hb[0..<hn]);
+      argv := [6] string.[compiler, "c", fv_path(p[..], root, sources[i]), "--library", "--header", header];
+      n := fv_run(argv[..], out[..], deadline); if n < 0 || !fs_write(files[i], cast(string) out[0..<n]) { return 1; }
+    }
+    args: [64] string; n := 0;
+    for arg: [13] string.["/usr/bin/clang", "-std=c11", "-O2", "-w", "-D_DARWIN_C_SOURCE", "-DOA_VOICE_NO_WHISPER", "-I", work, "-I", fv_path(p[..], root, "verse/platform"), "-I", fv_path(p[..], root, "psionic/platform"), "-o"] { args[n] = arg; n += 1; }
+    args[n] = host; n += 1;
+    for file: files { args[n] = file; n += 1; }
+    for source: [5] string.["verse/platform/voice.c", "verse/voice-host/host.c", "verse/voice-host/ws.c", "verse/voice-host/wav.c", "verse/voice-host/speech.c"] { args[n] = fv_path(p[..], root, source); n += 1; }
+    args[n] = archive; n += 1;
+    for arg: [7] string.["-framework", "Metal", "-framework", "Foundation", "-lcurl", "-lpthread", "-lm"] { args[n] = arg; n += 1; }
+    if fv_run(args[0..<n], out[..], deadline) < 0 { return 1; }
+  }
+  if fs_mtime_ns(wasm) < newest {
+    args := [3] string.["bash", fv_path(p[..], root, "coax/web/voice/build.sh"), wasm];
+    if fv_run(args[..], out[..], deadline) < 0 { return 1; }
+  }
+  print("Built % and %\n", host, wasm); return 0;
+}

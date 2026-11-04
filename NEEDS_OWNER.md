@@ -1,5 +1,13 @@
 # Owner actions
 
+## Aethyrforge microphone (2026-11-04)
+
+- [x] Owner approved the macOS microphone prompt and confirmed it in chat.
+      A subsequent live TALK/V hold reached listening on local Parakeet and
+      closed on release. Recognition of the committed recording also passed
+      through the bundled WKWebView voice path. Local edit-model integration
+      remains separate work in the [desktop spec](docs/verse/2026-11-04-aethyrforge-desktop.md).
+
 ## WoW recording run: input handover (#12799, 2026-11-04)
 
 - [x] Owner confirmed no key/button was held, clicked and released ground,

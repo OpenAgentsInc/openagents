@@ -63,7 +63,7 @@ const wasi = new Proxy({}, { get: (_, name) => name === "proc_exit" ? (c) => { t
 
 export function startVoice({ send, route, wasmUrl }) {
   const params = new URLSearchParams(location.search);
-  const host = params.get("voice") || DEFAULT_HOST;
+  const host = globalThis.coaxialVoiceHost || params.get("voice") || DEFAULT_HOST;
   let speaker = "";
   try { speaker = localStorage.getItem("verse.voice.speaker") || ""; } catch {}
   if (!/^web-[0-9a-f]{12}$/.test(speaker)) {
@@ -71,7 +71,7 @@ export function startVoice({ send, route, wasmUrl }) {
     try { localStorage.setItem("verse.voice.speaker", speaker); } catch {}
   }
   let x = null, mem = null, ctx = null, node = null, mic = null, ws = null, timer = 0;
-  let running = false, welcomed = false, frame = 320, pending = new Float32Array(0), backoff = 0.5;
+  let running = false, welcomed = false, frame = 320, pending = new Float32Array(0), backoff = 0.5, generation = 0;
   let turn = "", turns = 0, speaking = false, ended = false, utterance = "", replyTurn = "", sent = 0, played = 0, playedAtStart = 0;
   let phase = "off", caption = "";
   let facing = "", heardTurn = "", heardAt = 0, letGo = 0;
@@ -80,6 +80,7 @@ export function startVoice({ send, route, wasmUrl }) {
   const show = (p, c = caption) => {
     if (p === phase && c === caption) return;
     phase = p; caption = c; send(VOICE_KIND, `${p}|${c.replace(/[\r\n|]+/g, " ")}`);
+    if (globalThis.coaxialVoiceHost) globalThis.webkit?.messageHandlers?.forgeVoiceStatus?.postMessage(`phase:${p}`);
     // Let go (push to talk): once the turn is answered and spoken, voice is off.
     if (letGo && p === "listening") setTimeout(() => { if (letGo) off(); }, 0);
     // For checks and agents driving the page (coax/web/voice/browser-smoke.ts): what it says, in order.
@@ -102,25 +103,33 @@ export function startVoice({ send, route, wasmUrl }) {
   async function on() {
     if (letGo) { clearTimeout(letGo); letGo = 0; off(); }
     if (running) return;
+    const owner = ++generation;
     running = true;
     show("connecting", "");
     try {
       // Inside the tap: the browser lets the page start audio and ask for the microphone here.
-      ctx = new AudioContext();
-      const resumed = ctx.resume();
-      mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
+      const context = ctx = new AudioContext();
+      const resumed = context.resume();
+      resumed.catch(() => {}); // permission can outlive a cancelled/closed context
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
+      if (!running || owner !== generation) { stream.getTracks().forEach(t => t.stop()); return; }
+      mic = stream;
       await resumed;
+      if (!running || owner !== generation) return;
       await engine();
-      await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" })));
+      if (!running || owner !== generation) return;
+      await context.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" })));
+      if (!running || owner !== generation) return;
       node = new AudioWorkletNode(ctx, "oa-voice", { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });
       node.port.onmessage = (e) => { if (typeof e.data === "number") played = e.data; else take(e.data); };
       ctx.createMediaStreamSource(mic).connect(node);
-      node.connect(ctx.destination);
+      node.connect(typeof globalThis.coaxialAudioTap === "function" ? globalThis.coaxialAudioTap(ctx) : ctx.destination);
       frame = x.vw_start(Math.round(ctx.sampleRate));
       if (x.vw_rate() !== Math.round(ctx.sampleRate)) throw new Error(`no engine for ${ctx.sampleRate} Hz`);
     } catch (e) {
       console.warn("voice:", e);
-      off(e?.name === "NotAllowedError" ? "Voice needs the microphone. Allow it for this site and try again." : "Voice can't use the microphone here.");
+      if (globalThis.coaxialVoiceHost) globalThis.webkit?.messageHandlers?.forgeVoiceStatus?.postMessage(`error:${e?.name}:${e?.message}`);
+      if (owner === generation) off(e?.name === "NotAllowedError" ? "Voice needs the microphone. Allow it for this site and try again." : "Voice can't use the microphone here.");
       return;
     }
     connect();
@@ -128,6 +137,7 @@ export function startVoice({ send, route, wasmUrl }) {
   }
 
   function off(notice = "") {
+    generation++;
     if (letGo) { clearTimeout(letGo); letGo = 0; }
     if (!running) return;
     running = false;
@@ -139,6 +149,9 @@ export function startVoice({ send, route, wasmUrl }) {
     ctx?.close().catch(() => {}); ctx = null; node = null; pending = new Float32Array(0);
     show(notice ? "notice" : "off", notice);
   }
+  if (globalThis.coaxialVoiceHost) globalThis.coaxialVoiceCancel = () => off();
+  addEventListener("pagehide", () => off());
+  addEventListener("visibilitychange", () => { if (document.hidden) off(); });
 
   function connect() {
     if (!running) return;

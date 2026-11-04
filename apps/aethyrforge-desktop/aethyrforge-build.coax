@@ -138,8 +138,8 @@ tool_main :: () -> int #export_c {
   bridge := af_path(p[..], work, "setup-face.o");
   bc := [10] string.["/usr/bin/clang", "-std=c11", "-O2", "-c", af_path(p[..], here, "setup-face.c"), "-I", work, "-o", bridge, "-Wno-unused-function"];
   if af_run(bc[..], out[..], deadline) < 0 { return 1; }
-  sw := [17] string.["xcrun", "swiftc", "-O", "-target", "arm64-apple-macos26.0", "-import-objc-header", af_path(p[..], here, "face.h"),
-    af_path(p[..], here, "Sources/main.swift"), af_path(p[..], here, "Sources/Setup.swift"), object, bridge, "-framework", "AppKit", "-framework", "WebKit", "-o", af_path(p[..], mac, "Aethyrforge")];
+  sw := [19] string.["xcrun", "swiftc", "-O", "-target", "arm64-apple-macos26.0", "-import-objc-header", af_path(p[..], here, "face.h"),
+    af_path(p[..], here, "Sources/main.swift"), af_path(p[..], here, "Sources/Setup.swift"), object, bridge, "-framework", "AppKit", "-framework", "WebKit", "-framework", "AVFoundation", "-o", af_path(p[..], mac, "Aethyrforge")];
   if af_run(sw[..], out[..], deadline) < 0 { return 1; }
   // Keep a compact self-contained page tree: the exact engine, shaders and pack
   // the website uses, plus all generic browser host modules.
@@ -182,6 +182,15 @@ tool_main :: () -> int #export_c {
   }
   pk := [3] string.["ditto", pk_image, af_path(p[..], res, "psionic-parakeet")];
   if af_run(pk[..], out[..], deadline) < 0 { return 1; }
+  voice_build := [3] string.[af_path(p[..], root, "coax/web/tool.sh"), af_path(p[..], here, "voice-build.coax"), root];
+  if af_run(voice_build[..], out[..], deadline) < 0 { return 1; }
+  for name: [2] string.["voice-host", "voice.wasm"] {
+    destination := ifx name == "voice-host" then af_path(p[..], res, name) else af_path(p[..], web, "build/voice.wasm");
+    cp := [3] string.["ditto", af_path(p[..], af_path(p[..], work, "voice"), name), destination];
+    if af_run(cp[..], out[..], deadline) < 0 { return 1; }
+  }
+  fixture := [3] string.["ditto", af_path(p[..], root, "verse/voice-host/fixtures/hello-foreman.wav"), af_path(p[..], res, "hello-foreman.wav")];
+  if af_run(fixture[..], out[..], deadline) < 0 { return 1; }
   plist := [3] string.["ditto", af_path(p[..], here, "Info.plist"), af_path(p[..], app, "Contents/Info.plist")];
   if af_run(plist[..], out[..], deadline) < 0 { return 1; }
   sign := [5] string.["codesign", "--force", "--sign", "-", app]; if af_run(sign[..], out[..], deadline) < 0 { return 1; }

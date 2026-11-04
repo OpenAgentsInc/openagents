@@ -1,7 +1,7 @@
 # Aethyrforge for Mac (experimental)
 
 An AppKit shell around the website's Everglade 5e WebGPU engine in WKWebView,
-with its own local room and page server. Requires an Apple Silicon Mac running
+with its own local room, page server and local Parakeet voice service. Requires an Apple Silicon Mac running
 macOS 26 or later, Xcode and the existing Coax web build toolchain.
 
 ```sh
@@ -43,6 +43,8 @@ preferred engine and audio-model selection. The local world is `everglade/`:
 - `room-control.txt`: the local room's existing development controls.
 - `room.log`, `serve.log`: the current launch's server output.
 - `local-url.txt`: the current local page URL, for headless inspection.
+- `voice-host.log`, `voice-access.log`: local voice service output and permission/
+  phase diagnostics. The access log contains no transcripts or audio.
 
 On the first launch only, the app copies the repository's development world
 snapshot and controls there. Existing files are preserved. It does not fetch the
@@ -51,8 +53,18 @@ them, the arrows move, `R` rotates, `+`/`-` resize, Delete removes, and `Z`/`Y`
 undo/redo during the session. Saving settles through the local room; this path's
 word “publish” means the local document only. The undo stack is not durable yet.
 
-Audio is muted. Voice, transcription, model loading, typed instructions, remote
-publish/revert, bots and raid controls are future milestones in the
+Audio output is muted. Leave EDIT with DONE/B, then hold TALK/V while speaking.
+The first request asks for macOS microphone permission and starts the local
+Parakeet service on a reserved loopback port. If the permission dialog interrupted
+the hold, hold TALK again afterward. Recognition uses the shared checkpoint on
+Metal; the model stays resident until app quit. No model loads during setup.
+The bundled browser voice engine receives real microphone samples and returns
+the final words to Everglade's existing voice UI, without the public voice host.
+Release closes capture; setup, focus loss, hiding and quit cancel it. A permission
+request that finishes after cancellation cannot reopen capture or a voice socket.
+
+Local gpt-oss interpretation, full voice-edit acceptance, typed instructions,
+remote publish/revert, bots and raid controls are future milestones in the
 [desktop spec](../../docs/verse/2026-11-04-aethyrforge-desktop.md).
 
 On this Mac, the original world directory is moved from Application Support on
@@ -97,3 +109,17 @@ apps/aethyrforge-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge --setu
 Reports include the first-frame time and child PIDs; matching PNGs show the frame.
 Use a fresh directory for a new edit test. This is milestone one's shell/save
 check, not the future voice acceptance suite.
+
+The hidden voice check plays the committed fixture through a synthetic media
+stream, the actual WKWebView AudioWorklet and voice Wasm, the loopback voice
+socket and resident Parakeet on Metal. It requires the shared model, opens no
+physical microphone, keeps output muted, checks cancellation of a delayed capture
+request, and stops all three servers:
+
+```sh
+mkdir -p /tmp/aethyrforge-voice
+apps/aethyrforge-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge --voice-smoke /tmp/aethyrforge-voice/voice.json
+```
+
+The Coax `voice-build.coax` packages the existing voice engine and a Parakeet-only
+native voice host using serial compilation. It adds no inference or protocol logic.

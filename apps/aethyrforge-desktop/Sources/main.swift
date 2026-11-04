@@ -2,6 +2,7 @@
 // Coax; this host owns the window, bundled child processes, sockets and files.
 import AppKit
 import WebKit
+import AVFoundation
 import Darwin
 
 enum ShellError: LocalizedError {
@@ -30,13 +31,17 @@ func reservePort() throws -> (Int32, Int) {
 }
 
 @MainActor
-final class ForgeApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate {
+final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     let fm = FileManager.default
     var window: NSWindow!
     var web: WKWebView!
     var notice: NSTextField!
     var room: Process?
     var page: Process?
+    var voiceHost: Process?
+    var voiceStartup: Task<Void, Error>?
+    var voiceReservation: (Int32, Int)?
+    var voicePort = 0
     var logs: [FileHandle] = []
     var startup: Task<Void, Never>?
     var framePump: Task<Void, Never>?
@@ -50,9 +55,10 @@ final class ForgeApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKU
     let startedAt = Date()
     var firstFrameSeconds = 0.0
     let setupSmoke = CommandLine.arguments.contains("--setup-smoke")
-    var smoke: Bool { setupSmoke || CommandLine.arguments.contains("--smoke-test") }
+    let voiceSmoke = CommandLine.arguments.contains("--voice-smoke")
+    var smoke: Bool { setupSmoke || voiceSmoke || CommandLine.arguments.contains("--smoke-test") }
     var report: URL? {
-        guard let i = CommandLine.arguments.firstIndex(of: setupSmoke ? "--setup-smoke" : "--smoke-test"), i + 1 < CommandLine.arguments.count else { return nil }
+        guard let i = CommandLine.arguments.firstIndex(of: voiceSmoke ? "--voice-smoke" : setupSmoke ? "--setup-smoke" : "--smoke-test"), i + 1 < CommandLine.arguments.count else { return nil }
         return URL(fileURLWithPath: CommandLine.arguments[i + 1])
     }
 
@@ -81,11 +87,11 @@ final class ForgeApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKU
         NSApp.mainMenu = menu
 
         let config = WKWebViewConfiguration()
+        config.userContentController.add(self, name: "forgeVoiceStatus")
         config.websiteDataStore = .nonPersistent()
-        config.mediaTypesRequiringUserActionForPlayback = .all
-        // Use the existing host's audio output tap, disconnected from speakers.
-        // This first shell has no microphone or voice worker.
-        config.userContentController.addUserScript(WKUserScript(source: "globalThis.coaxialAudioTap = c => c.createGain();", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        config.mediaTypesRequiringUserActionForPlayback = []
+        // Keep the audio graph processing microphone samples while muting output.
+        config.userContentController.addUserScript(WKUserScript(source: "globalThis.coaxialAudioTap = c => {const g=c.createGain();g.gain.value=0;g.connect(c.destination);return g;};", injectionTime: .atDocumentStart, forMainFrameOnly: true))
         if smoke {
             // The native test pumps the callback: WebKit throttles both animation
             // callbacks and page timers in an unordered window.
@@ -94,9 +100,9 @@ final class ForgeApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKU
         }
         web = WKWebView(frame: NSRect(x: 0, y: 0, width: 1280, height: 800), configuration: config)
         web.navigationDelegate = self; web.uiDelegate = self
-        web.setAllMediaPlaybackSuspended(true)
         web.autoresizingMask = [.width, .height]
         window = NSWindow(contentRect: web.frame, styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+        window.delegate = self
         window.title = "Aethyrforge"
         window.subtitle = "Everglade · Local edits · Experimental"
         window.minSize = NSSize(width: 900, height: 740)
@@ -118,7 +124,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKU
         if !smoke { window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true) }
     }
 
-    func startChild(_ name: String, _ arguments: [String], resources: URL) throws -> Process {
+    func startChild(_ name: String, _ arguments: [String], resources: URL, fatal: Bool = true) throws -> Process {
         let p = Process()
         p.executableURL = resources.appendingPathComponent(name)
         p.arguments = arguments
@@ -133,7 +139,8 @@ final class ForgeApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKU
         p.terminationHandler = { [weak self] child in
             Task { @MainActor in
                 guard let self, !self.stopping else { return }
-                self.fail("\(name) stopped (\(child.terminationStatus)). See \(logURL.path).")
+                if fatal { self.fail("\(name) stopped (\(child.terminationStatus)). See \(logURL.path).") }
+                else { self.notice.stringValue = "Local voice stopped. See \(logURL.path)."; self.notice.isHidden = false }
             }
         }
         try p.run()
@@ -169,6 +176,9 @@ final class ForgeApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKU
             let r = try reservePort()
             let p: (Int32, Int)
             do { p = try reservePort() } catch { close(r.0); throw error }
+            do { voiceReservation = try reservePort(); voicePort = voiceReservation!.1 }
+            catch { close(r.0); close(p.0); throw error }
+            web.configuration.userContentController.addUserScript(WKUserScript(source: "globalThis.coaxialVoiceHost='ws://127.0.0.1:\(voicePort)';", injectionTime: .atDocumentStart, forMainFrameOnly: true))
             var bytes: [UInt8] = []
             for i in 0..<256 {
                 let c = forge_url_byte(Int64(p.1), Int64(r.1), Int64(i))
@@ -197,7 +207,10 @@ final class ForgeApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKU
             firstFrameSeconds = Date().timeIntervalSince(startedAt)
             notice.isHidden = true
             sceneReady = true; setupPane.sceneReady = true; setupPane.update()
-            if setupSmoke {
+            if voiceSmoke {
+                await inventoryTask?.value
+                try await voiceSmokeCheck(resources)
+            } else if setupSmoke {
                 await inventoryTask?.value
                 try await setupSmokeCheck()
             } else if smoke { await inventoryTask?.value; setupPane.isHidden = true; try await smokeCheck() }
@@ -341,7 +354,95 @@ final class ForgeApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKU
             setupPane.isHidden = true; window.makeFirstResponder(web)
         } catch { setupPane.errorMessage = "Could not save setup: \(error.localizedDescription)"; setupPane.update() }
     }
-    @objc func showSetup() { setupPane.isHidden = false; setupPane.sceneReady = sceneReady; setupPane.update() }
+    @objc func showSetup() { cancelVoice(); setupPane.isHidden = false; setupPane.sceneReady = sceneReady; setupPane.update() }
+
+    func ensureVoiceHost() async throws {
+        if let voiceStartup { try await voiceStartup.value; return }
+        if voiceHost?.isRunning == true { return }
+        let task = Task {
+            guard let resources = Bundle.main.resourceURL, !setupText(6).isEmpty else { throw ShellError.failed("The shared Parakeet model is unavailable.") }
+            if let reservation = voiceReservation { close(reservation.0); voiceReservation = nil }
+            voiceHost = try startChild("voice-host", ["--listen", "127.0.0.1:\(voicePort)", "--provider", "local", "--recognizer", "parakeet", "--synthesizer", "local", "--agent", "echo", "--parakeet-model", setupText(6), "--parakeet-device", "gpu"], resources: resources, fatal: false)
+            try await waitForHTTP(URL(string: "http://127.0.0.1:\(voicePort)/health")!)
+        }
+        voiceStartup = task
+        defer { voiceStartup = nil }
+        try await task.value
+    }
+    func cancelVoice() { _ = web?.evaluateJavaScript("globalThis.coaxialVoiceCancel?.(); true") }
+    func applicationDidResignActive(_ notification: Notification) { cancelVoice() }
+    func windowDidResignKey(_ notification: Notification) { cancelVoice() }
+    func windowDidMiniaturize(_ notification: Notification) { cancelVoice() }
+    func traceVoice(_ line: String) {
+        guard let dataURL, line.utf8.count <= 1024 else { return }
+        let path = dataURL.appendingPathComponent("voice-access.log")
+        if !fm.fileExists(atPath: path.path) { fm.createFile(atPath: path.path, contents: nil) }
+        if let file = try? FileHandle(forWritingTo: path) { defer { try? file.close() }; _ = try? file.seekToEnd(); try? file.write(contentsOf: Data((line + "\n").utf8)) }
+    }
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        if message.frameInfo.isMainFrame, let line = message.body as? String { traceVoice(line) }
+    }
+
+    func voiceSmokeCheck(_ resources: URL) async throws {
+        guard let report, voiceHost == nil else { throw ShellError.failed("Voice loaded before it was requested.") }
+        try await ensureVoiceHost()
+        let fixture = try Data(contentsOf: resources.appendingPathComponent("hello-foreman.wav")).base64EncodedString()
+        _ = try await web.evaluateJavaScript("""
+        globalThis.__voiceCheck = []; globalThis.__voiceError = ''; globalThis.__voiceSockets = 0;
+        globalThis.__voiceTest = (async () => {
+          const {startVoice} = await import('/coaxial/voice.js');
+          const W = WebSocket;
+          globalThis.WebSocket = class extends W { constructor(...a) { super(...a); if(String(a[0]) === coaxialVoiceHost) __voiceSockets++; } };
+          const md = navigator.mediaDevices, original = md.getUserMedia.bind(md);
+          const fixtureContext = new AudioContext(); await fixtureContext.resume();
+          globalThis.__voiceFixtureContext = fixtureContext;
+          const dest = fixtureContext.createMediaStreamDestination();
+          let deliver;
+          md.getUserMedia = () => new Promise(r => {deliver = r});
+          const cancelled = startVoice({send:()=>{},route:'everglade',wasmUrl:'/build/voice.wasm'});
+          const starting = cancelled.toggle('on'); cancelled.toggle(false); deliver(dest.stream);
+          await starting;
+          globalThis.__voiceCancelled = !cancelled.running() && dest.stream.getTracks().every(t=>t.readyState==='ended') && __voiceSockets===0;
+          globalThis.WebSocket = W;
+          const source = fixtureContext.createBufferSource();
+          const wav = Uint8Array.from(atob('\(fixture)'), c=>c.charCodeAt(0));
+          source.buffer = await fixtureContext.decodeAudioData(wav.buffer);
+          const capture = fixtureContext.createMediaStreamDestination(); source.connect(capture);
+          md.getUserMedia = async () => capture.stream;
+          globalThis.__voiceFixture = source;
+          globalThis.__voiceClient = startVoice({send:(k,t)=>__voiceCheck.push(t),route:'everglade',wasmUrl:'/build/voice.wasm'});
+          __voiceClient.face('Everglade builder'); await __voiceClient.toggle('on');
+          globalThis.__voiceRestore = () => {md.getUserMedia=original;};
+        })().catch(e=>{globalThis.__voiceError=String(e)}); true;
+        """)
+        let listenDeadline = Date().addingTimeInterval(15)
+        var listening = false
+        while Date() < listenDeadline {
+            if try await web.evaluateJavaScript("__voiceCheck.some(t=>t.startsWith('listening|'))") as? Bool == true { listening = true; break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        guard listening else { throw ShellError.failed("Browser voice did not listen: \(String(describing: try await web.evaluateJavaScript("__voiceError || JSON.stringify(__voiceCheck)")))") }
+        _ = try await web.evaluateJavaScript("__voiceFixture.start(); true")
+        try await Task.sleep(for: .seconds(4.2))
+        _ = try await web.evaluateJavaScript("__voiceClient.toggle('end'); true")
+        let finalDeadline = Date().addingTimeInterval(30)
+        var transcript = ""
+        while Date() < finalDeadline {
+            transcript = try await web.evaluateJavaScript("__voiceCheck.find(t=>t.startsWith('heard|'))?.slice(6) || ''") as? String ?? ""
+            if !transcript.isEmpty { break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        let cancelled = try await web.evaluateJavaScript("__voiceCancelled === true") as? Bool == true
+        _ = try await web.evaluateJavaScript("__voiceClient.toggle(false); __voiceRestore?.(); __voiceFixtureContext.close(); true")
+        guard cancelled, transcript.lowercased().contains("hello foreman"), transcript.lowercased().contains("building today") else {
+            throw ShellError.failed("The local browser voice fixture failed: \(transcript). Cancellation: \(cancelled).")
+        }
+        let result: [String: Any] = ["local": true, "transcript": transcript, "lateMicrophoneCancelled": cancelled,
+            "voicePID": voiceHost!.processIdentifier, "roomPID": room!.processIdentifier, "pagePID": page!.processIdentifier,
+            "startupModelLoaded": false]
+        try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]).write(to: report, options: .atomic)
+        stopChildren(); NSApp.terminate(nil)
+    }
 
     func setupSmokeCheck() async throws {
         guard let report, fgs_can_enter(sceneReady), fgs_status(1) == 1 else { throw ShellError.failed("Setup did not discover the CLI and installed shared voice model without hashing.") }
@@ -369,12 +470,14 @@ final class ForgeApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKU
         stopping = true
         framePump?.cancel()
         inventoryTask?.cancel()
-        for child in [page, room].compactMap({ $0 }) where child.isRunning { child.terminate() }
+        voiceStartup?.cancel()
+        if let reservation = voiceReservation { close(reservation.0); voiceReservation = nil }
+        for child in [page, room, voiceHost].compactMap({ $0 }) where child.isRunning { child.terminate() }
         // Bounded shutdown; reap before releasing the single-world lock.
         let end = Date().addingTimeInterval(2)
-        while [page, room].compactMap({ $0 }).contains(where: { $0.isRunning }) && Date() < end { usleep(10_000) }
-        for child in [page, room].compactMap({ $0 }) where child.isRunning { kill(child.processIdentifier, SIGKILL) }
-        for child in [page, room].compactMap({ $0 }) { child.waitUntilExit() }
+        while [page, room, voiceHost].compactMap({ $0 }).contains(where: { $0.isRunning }) && Date() < end { usleep(10_000) }
+        for child in [page, room, voiceHost].compactMap({ $0 }) where child.isRunning { kill(child.processIdentifier, SIGKILL) }
+        for child in [page, room, voiceHost].compactMap({ $0 }) { child.waitUntilExit() }
         for log in logs { try? log.close() }; logs.removeAll()
         if lockFD >= 0 { flock(lockFD, LOCK_UN); close(lockFD); lockFD = -1 }
     }
@@ -387,7 +490,18 @@ final class ForgeApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKU
         if !stopping && (error as NSError).code != NSURLErrorCancelled { fail(error.localizedDescription) }
     }
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { fail("The world view stopped. Quit and reopen Aethyrforge.") }
-    func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin, initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType, decisionHandler: @escaping (WKPermissionDecision) -> Void) { decisionHandler(.deny) }
+    func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin, initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType, decisionHandler: @escaping (WKPermissionDecision) -> Void) {
+        traceVoice("microphone request: main=\(frame.isMainFrame) local=\(origin.host == "127.0.0.1" && origin.port == pageURL?.port) key=\(window.isKeyWindow) setup=\(!setupPane.isHidden) authorization=\(AVCaptureDevice.authorizationStatus(for: .audio).rawValue)")
+        guard type == .microphone, frame.isMainFrame, origin.protocol == "http", origin.host == "127.0.0.1", origin.port == pageURL?.port,
+              !smoke, !stopping, setupPane.isHidden, window.isKeyWindow else { decisionHandler(.deny); return }
+        Task {
+            let allowed = await AVCaptureDevice.requestAccess(for: .audio)
+            traceVoice("microphone permission: \(allowed)")
+            guard allowed, !stopping else { decisionHandler(.deny); return }
+            do { try await ensureVoiceHost(); decisionHandler(.grant) }
+            catch { notice.stringValue = "Local voice: \(error.localizedDescription)"; notice.isHidden = false; decisionHandler(.deny) }
+        }
+    }
 }
 
 MainActor.assumeIsolated {

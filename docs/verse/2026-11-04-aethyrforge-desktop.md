@@ -1,8 +1,8 @@
 # Aethyrforge for Mac: local editing by voice (experimental spec)
 
 Status: experimental desktop shell and local setup implemented, 2026-11-04.
-The local Everglade editor, shared storage, CLI inventory and voice-model
-verification work; voice editing and the model below remain planned. Nothing
+The local Everglade editor, shared storage, CLI inventory, microphone capture
+and local Parakeet transcription work; the local edit model below remains planned. Nothing
 here ships to customers or TestFlight until the owner asks.
 
 Aethyrforge for Mac is a desktop app that opens your Everglade on your own Mac and
@@ -23,8 +23,9 @@ lands changes, and routes world edits, tuning and code changes.
 
 `apps/aethyrforge-desktop/` now contains the AppKit/WKWebView shell, its Coax
 entry-point rules and Coax build tool. It bundles the website's existing
-`everglade5e.wasm`, shaders, pack and browser host, the native room and a static
-page server. This is the same `/worlds/everglade` engine players use.
+`everglade5e.wasm`, shaders, pack and browser host, the native room, a static
+page server, the voice Wasm and a local Parakeet voice host. This is the same
+`/worlds/everglade` engine players use.
 
 - Opens at the South Gate (`#gate`) with EDIT on (`?forge`). The native window
   identifies this as local editing. The existing editor's placement, selection,
@@ -67,7 +68,17 @@ page server. This is the same `/worlds/everglade` engine players use.
   parakeet --json` verifies Parakeet; `models migrate --json` moves the legacy
   caches and leaves compatibility symlinks, refusing conflicting copies. The CLI,
   Coder dictation, Mac dictation and voice host use the shared model defaults.
-- Audio is muted. No microphone capture, transcript bar, instruction entry,
+- Microphone capture works through the page's TALK/V gesture after leaving
+  EDIT with DONE/B. The native shell declares its microphone usage and requests
+  macOS consent for audio from its own loopback main frame. First use starts a
+  reserved-loopback voice host with Parakeet on Metal and local-only providers;
+  the browser's voice runtime is bundled. Models stay unloaded during setup and
+  resident after first use. Capture closes on release, setup, focus loss, hiding
+  or quit. A canceled permission request cannot later reopen capture. Speech
+  stays on this Mac; the public voice service is not used.
+- Audio output remains muted through a live zero-gain graph so the microphone's
+  AudioWorklet can process samples. The existing page displays final words.
+  The dedicated transcript bar, Space binding, instruction entry,
   model download, typed model edits, durable undo log,
   remote PUBLISH/REVERT, bots or raid controls are wired into this shell yet.
 - Requires Apple Silicon and macOS 26+ for this initial WKWebView/WebGPU build.
@@ -104,6 +115,20 @@ shell's setup smoke passed with installed voice weights, `voiceVerified:false`,
 9 local agents, saved settings and a WebGPU frame in 0.93 s. It reused the
 installed engine/room assets. The tools audit reported 21 existing unrelated
 missing-reason headers at this later main revision.
+
+Microphone follow-up (2026-11-04): fixed the unconditional WebKit capture denial,
+missing usage description/voice Wasm, suspended audio graph and remote voice
+default. A hidden WKWebView fixture check passed through synthetic microphone,
+AudioWorklet, voice Wasm, loopback socket and Parakeet on Metal, returning “Hello
+Foreman, what are we building today?” It also proved that canceling a pending
+capture stops late tracks and opens no voice socket. All three child servers
+exited. The owner approved the microphone prompt; a subsequent real TALK hold
+reached `listening` and connected to the local Parakeet host, then closed on
+release. Permission/phase diagnostics contain no transcripts or audio. A separate
+hidden hardware-capture attempt could not open WebKit's physical microphone in
+an unordered window; the visible Talk path verified that platform boundary.
+Native compilation, voice packaging, signature/plist and diff checks passed.
+The tools audit retained 21 unrelated baseline findings.
 
 ## What you do
 
@@ -152,7 +177,7 @@ native Coax and C.
 
 - The app records 16 kHz mono while Space or the mic button is held, and sends the
   hold's audio to one resident Parakeet model when you let go. The model loads once
-  at app start and stays loaded.
+  on first explicit voice use and stays loaded until quit.
 - `aethyr/voice.coax` admits each hold's final transcript once, in its turn,
   through the replay gate, as the voice host does.
 - The transcript shows in the bar. You can click it to fix a word, then press
