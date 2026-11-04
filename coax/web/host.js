@@ -1736,6 +1736,7 @@ function soundBank() {
 }
 function startAudio() {
   if (audio) return;
+  if (clipping && !globalThis.coaxialClipAudio) return;   // a clip is silent unless it records its sound
   soundBank();
   if (!assets.some((a) => a.kind === "sound" || a.kind === "loop")) return;
   try { audio = new AudioContext(); } catch { return; }
@@ -1753,12 +1754,19 @@ function decoded(a) {
   if (!sounds.has(key)) sounds.set(key, (a.bytes ? Promise.resolve(a.bytes.slice().buffer) : fetch(a.url).then((r) => r.arrayBuffer())).then((b) => audio.decodeAudioData(b)));
   return sounds.get(key);
 }
-// One voice: the decoded buffer, its gain, a stereo pan clamped to -1..1, into out.
-// The live host and its offline check build the same graph with this.
-function soundVoice(ctx, b, gain, pan, out) {
+// One voice: the decoded buffer, its gain, a stereo pan clamped to -1..1, into out; with a
+// lowpass corner in hertz (a far sound, aethyr/audio/space.coax), first a one-pole lowpass,
+// y += c (x - y) with c = 1 - e^(-2 pi f / rate). The live host, a clip's mix and the
+// offline checks build the same graph with this.
+function soundVoice(ctx, b, gain, pan, out, lowpass) {
   const s = ctx.createBufferSource(), g = ctx.createGain(), p = ctx.createStereoPanner();
   s.buffer = b; g.gain.value = Number(gain) || 0; p.pan.value = Math.max(-1, Math.min(1, Number(pan) || 0));
-  s.connect(g).connect(p).connect(out);
+  const f = Number(lowpass) || 0;
+  if (f >= 1 && f < ctx.sampleRate / 2) {
+    const c = 1 - Math.exp(-2 * Math.PI * f / ctx.sampleRate);
+    s.connect(ctx.createIIRFilter([c], [1, c - 1])).connect(g);
+  } else s.connect(g);
+  g.connect(p).connect(out);
   return s;
 }
 let playing = 0;
@@ -1767,26 +1775,109 @@ function playSounds(x) {
   if (!n || !audio) return;
   playSoundText(new TextDecoder().decode(new Uint8Array(memory.buffer, x.coaxial_sounds(arena.state), n).slice()));
 }
-// The realm's lines, NAME GAIN PAN each, and an optional DELAY in seconds (a far sound is
-// heard after it is seen, aethyr/audio/space.coax): at most 16 voices at once. A voice
-// holds its place from its line, while its sound still decodes, so a burst can't pass 16.
+// The realm's lines, NAME GAIN PAN each, an optional DELAY in seconds (a far sound is
+// heard after it is seen, aethyr/audio/space.coax) and after it an optional LOWPASS corner
+// in hertz (a far sound is dull): at most 16 voices at once. A voice holds its place from
+// its line, while its sound still decodes, so a burst can't pass 16.
 // A line ~NAME GAIN PAN sets a looping bed instead: started on its first line, then eased
 // to each new gain and pan (gain 0 keeps it silent), outside the 16.
 const beds = new Map();   // name -> { gain, pan } nodes of a looping sound
 const heard = [];         // on this machine only: the last lines played, for the checks
 function playSoundText(text) {
   for (const line of text.split("\n")) {
+    if (clipping) { clipHear(line); continue; }
     if (line[0] === "~") { bedLine(line.slice(1)); continue; }
-    const [name, gain, pan, delay] = line.split(" ");
+    const [name, gain, pan, delay, lowpass] = line.split(" ");
     const a = assets.find((s) => s.kind === "sound" && s.name === name);
     if (!a || playing >= 16) continue;
     playing++;
     if (dev) { heard.push(line); if (heard.length > 512) heard.shift(); }
     decoded(a).then((b) => {
-      const s = soundVoice(audio, b, gain, pan, audioOut);
+      const s = soundVoice(audio, b, gain, pan, audioOut, lowpass);
       s.onended = () => playing--; s.start(audio.currentTime + Math.max(0, Math.min(2, Number(delay) || 0)));
     }).catch(() => playing--);
   }
+}
+// A clip's sound (clip.coax --audio sets coaxialClipAudio with coaxialClip): nothing plays
+// while the frames are drawn. Each line is kept with the game time of the frame that sent
+// it, the 16 voices counted in that time, and coaxialClipMix renders the clip's stretch of
+// them afterwards through soundVoice in an OfflineAudioContext, so the sound is in step
+// with the frames however slowly they were drawn.
+const clipHeard = [];   // [ms, line]
+const clipVoices = [];  // when each counted voice ends, ms
+let clipMark = 0;       // the game time the recording starts at, ms
+function clipHear(line) {
+  if (!line) return;
+  if (line[0] === "~") { clipHeard.push([clipNow, line]); return; }
+  const [name, , , delay] = line.split(" ");
+  const a = assets.find((s) => s.kind === "sound" && s.name === name);
+  if (!a) return;
+  for (let i = clipVoices.length - 1; i >= 0; i--) if (clipVoices[i] <= clipNow) clipVoices.splice(i, 1);
+  if (clipVoices.length >= 16) return;
+  clipVoices.push(clipNow + 1000 * (Math.max(0, Math.min(2, Number(delay) || 0)) + wavSeconds(a)));
+  clipHeard.push([clipNow, line]);
+}
+// A sound's seconds from its WAV header (a realm's own: 16-bit PCM), 2 for any other.
+function wavSeconds(a) {
+  const b = a.bytes;
+  if (!b || b.length < 44 || b[0] !== 82 || b[8] !== 87) return 2;
+  const v = new DataView(b.buffer, b.byteOffset, b.byteLength), rate = v.getUint32(24, true), frame = v.getUint16(32, true);
+  return rate > 0 && frame > 0 ? (b.length - 44) / frame / rate : 2;
+}
+if (globalThis.coaxialClip === true) {
+  // the recording starts after the frame drawn now: its first frame is the next step's
+  globalThis.coaxialClipMark = () => { clipMark = clipNow; return !!audio; };
+  // The clip's sound from its mark for `seconds`, `fps` frames a second (its first frame
+  // drawn one step after the mark), as a 16-bit stereo WAV at `rate`, base64; and the lines
+  // heard in it, their peak and RMS (dBFS) in clipAudioFacts.
+  globalThis.coaxialClipMix = async (seconds, fps, rate = 48000) => {
+    if (!audio) return "";
+    const n = Math.round(seconds * rate), o = new OfflineAudioContext(2, n, rate), zero = clipMark + 1000 / fps;
+    const out = o.createGain(); out.connect(o.destination);
+    const bedsAt = new Map();
+    for (const [ms, line] of clipHeard) {
+      const at = (ms - zero) / 1000;
+      if (line[0] === "~") {
+        const [name, gain, pan] = line.slice(1).split(" ");
+        const a = assets.find((s) => s.kind === "sound" && s.name === name);
+        if (!a) continue;
+        let b = bedsAt.get(name);
+        const g = Math.max(0, Math.min(1, Number(gain) || 0)), p = Math.max(-1, Math.min(1, Number(pan) || 0));
+        if (!b) {
+          b = { gain: o.createGain(), pan: o.createStereoPanner() }; bedsAt.set(name, b);
+          b.gain.gain.value = 0; b.pan.pan.value = p; b.gain.connect(b.pan).connect(out);
+          const s = o.createBufferSource(); s.buffer = await decoded(a); s.loop = true; s.connect(b.gain); s.start(0, Math.max(0, -at) % s.buffer.duration);
+        }
+        // as bedLine eases them: a first line over 0.5 s, the next over 0.25 s
+        const tc = b.started ? 0.25 : 0.5; b.started = true;
+        b.gain.gain.setTargetAtTime(g, Math.max(0, at), at < 0 ? 0.001 : tc); b.pan.pan.setTargetAtTime(p, Math.max(0, at), at < 0 ? 0.001 : 0.25);
+        continue;
+      }
+      const [name, gain, pan, delay, lowpass] = line.split(" ");
+      const a = assets.find((s) => s.kind === "sound" && s.name === name);
+      if (!a) continue;
+      const b = await decoded(a), start = at + Math.max(0, Math.min(2, Number(delay) || 0));
+      if (start + b.duration <= 0 || start >= seconds) continue;
+      const s = soundVoice(o, b, gain, pan, out, lowpass);
+      if (start >= 0) s.start(start); else s.start(0, -start);
+    }
+    const r = await o.startRendering(), l = r.getChannelData(0), ri = r.getChannelData(1);
+    let peak = 0, sum = 0;
+    const bytes = new Uint8Array(44 + n * 4), v = new DataView(bytes.buffer);
+    const tag = (at, t) => { for (let i = 0; i < 4; i++) v.setUint8(at + i, t.charCodeAt(i)); };
+    tag(0, "RIFF"); v.setUint32(4, 36 + n * 4, true); tag(8, "WAVE"); tag(12, "fmt "); v.setUint32(16, 16, true);
+    v.setUint16(20, 1, true); v.setUint16(22, 2, true); v.setUint32(24, rate, true); v.setUint32(28, rate * 4, true);
+    v.setUint16(32, 4, true); v.setUint16(34, 16, true); tag(36, "data"); v.setUint32(40, n * 4, true);
+    for (let i = 0; i < n; i++) for (const [c, x] of [[0, l[i]], [1, ri[i]]]) {
+      peak = Math.max(peak, Math.abs(x)); sum += x * x;
+      v.setInt16(44 + i * 4 + c * 2, Math.round(Math.max(-1, Math.min(1, x)) * 32767), true);
+    }
+    const db = (x) => x > 0 ? (20 * Math.log10(x)).toFixed(1) : "-inf";
+    globalThis.clipAudioFacts = `${clipHeard.filter(([ms]) => ms >= zero - 2000 && ms < zero + seconds * 1000).length} lines, peak ${db(peak)} dBFS, RMS ${db(Math.sqrt(sum / (2 * n)))} dBFS`;
+    let text = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(text);
+  };
 }
 function bedLine(line) {
   const [name, gain, pan] = line.split(" ");
@@ -1861,6 +1952,8 @@ const scale = () => (canvas.width && canvas.clientWidth ? canvas.width / canvas.
 const clipping = globalThis.coaxialClip === true;
 let clipNow = 0;
 if (clipping) globalThis.coaxialClipStep = async (frames = 1, fps = 30) => {
+  // a clip that records its sound starts the audio once the engine is up (no gesture needed: nothing plays)
+  if (globalThis.coaxialClipAudio && engine && !audio) startAudio();
   for (let k = 0; k < frames; k++) { clipNow += 1000 / fps; draw(clipNow); }
   if (gpu?.device) await gpu.device.queue.onSubmittedWorkDone();
   return engine && gpu?.bg ? 1 : 0;

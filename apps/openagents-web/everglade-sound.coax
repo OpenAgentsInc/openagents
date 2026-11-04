@@ -10,7 +10,12 @@
 // breaks in e break, the raid's phases in g (everglade-events.coax). So another player's cast or a
 // raider's plays where it happens, on every page alike. Each is a cue (a sound, a world point and a
 // wait); once a frame the cues become the host's lines (coax/web/host.js playSoundText) placed from the
-// camera (aethyr/audio/space.coax): gain by distance, pan by bearing, a delay at the speed of sound.
+// camera (aethyr/audio/space.coax): gain by distance, pan by bearing, a delay at the speed of sound,
+// and a lowpass whose corner falls with distance, so a far sound is dull.
+//
+// Offline, nothing says "e break": the page's own spells and the preview's raid break the town
+// (demo_damage, its supports giving way). So each frame egs_stones looks for pieces that left standing
+// and plays their stone, a few a frame; online the room's e break plays it instead.
 //
 // The room server runs the same looks headless; its world never drains cues, so egs_cue keeps none
 // until a page's frame has said it is a page (snd.page).
@@ -28,28 +33,32 @@ EGS_LINES :: 4096;
 EGS_SEATS :: 16;
 EGS_ROOM :: AuRoom.{reference = 5, cutoff = 85};
 EGS_QUIET :: 0.004;         // a line below this gain isn't sent
-EGS_BED :: 0.2;             // the town's bed at full volume
+EGS_BED :: 0.16;            // the town's bed at full volume, under your footsteps
 EGS_STRIDE :: 0.8;          // metres a footfall walking
 EGS_STRIDE_RUN :: 1.25;     // and running (aethyr/skin.coax: a run starts at 5 m/s)
 EGS_VOLUME :: 70;           // percent, until this browser keeps another
+EGS_STONES :: 3;            // stone sounds a frame plays at most (a collapse brings down many pieces at once)
 // a weapon's damage on the wire (e hit KIND: the SRD engine's, aethyr/rules/srd/engine.coax RS_*)
 EGS_RS_BLUDGEONING :: 2; EGS_RS_PIERCING :: 8; EGS_RS_SLASHING :: 12;
 
-// Each sound's level when it plays (thousandths), set by ear against the others: every effect leaves
-// the synthesizer normalised to one peak (sfx_render).
+// Each sound's level when it plays (thousandths): every effect leaves the synthesizer normalised to
+// one peak (sfx_render), so these set their loudness against each other. Measured as the loudest
+// 100 ms, K-weighted (LUFS-ish), at full volume: big events (the Fireball, the horn, a tower, the
+// raid's end) near -10, impacts -12 to -15, casts -14 to -17, flights near -19, footsteps -27 to
+// -29 over the bed's -28 RMS.
 EGS_LEVEL :: [SFX_COUNT] int.[
   550, 400, 650, 950,         // fire: cast, travel, hit, the Fireball's burst
-  450, 350, 600,              // frost
+  340, 350, 470,              // frost (its rings sit at 2-4 kHz, where the ear is most sensitive)
   500, 400, 650,              // eldritch
-  500, 380, 600,              // necrotic
-  500, 450, 900,              // lightning: cast, the stroke, thunder
+  420, 380, 600,              // necrotic
+  650, 450, 900,              // lightning: cast, the stroke, thunder
   700, 500, 550, 650, 650,    // Burning Hands, Hex, Hold Person, Hellish Rebuke, Blight
-  550, 450, 500, 750,         // teleport, shield, heal, Thunderwave
+  450, 450, 500, 750,         // teleport, shield, heal, Thunderwave
   400, 450, 550, 500,         // missile, arcane cast and hit, radiant
-  350, 550, 750, 600, 450,    // swing, hit, heavy hit, death, standing up
+  420, 750, 750, 600, 450,    // swing, hit, heavy hit, death, standing up
   900, 750, 950, 800, 800,    // the raid: horn, wall, tower, won, lost
-  220, 220, 220, 1000, 450,   // footsteps, the bed (its own level, EGS_BED), Levitate
-  550, 450];                  // splash, ice
+  300, 300, 300, 1000, 450,   // footsteps, the bed (its own level, EGS_BED), Levitate
+  550, 520];                  // splash, ice
 
 // What a spell sounds like: its cast (from the caster), its flight (between them) and its impact
 // (where it lands); -1 none.
@@ -121,6 +130,9 @@ EgSound :: struct {
   modes: [WATCH_ACTORS] int; swings: [WATCH_ACTORS] f32; modes_ok: bool;
   seats: [EGS_SEATS] EgsSeat;
   you_dead: bool;
+  // the town's pieces as last heard (egs_stones): each one's DP_* state, how many, and the town's
+  // DemoWorld.fell and broken_n then (-1: not yet read)
+  stone: [DEMO_PIECES] u8; stone_n: int = -1; stone_fell: int = -1; stone_broken: int = -1;
   // SOUND and its pane: the label, the pane, the slider's track, MUTE; the finger on them (-1 none)
   open: bool; label: Box; pane: Box; track: Box; mute: Box; finger: int = -1; what: int;
   cued: int;                      // cues taken, for the checks
@@ -194,6 +206,25 @@ egs_frame :: (s: [] Everglade, shot: Shot, feet: Point, speed: f32, airborne: bo
   }
   egs_watch(s);
   egs_others(s);
+  if sp_on(s) { w := sp_dm(s); egs_stones(s, w[0].pieces[..], w[0].n, w[0].fell, w[0].broken_n, !net_live(s)); }
+}
+// The town's pieces that left standing since the last look: a wall's stone or a tower's, at most
+// EGS_STONES a frame. `heard` false (in a room, where e break plays it) only learns the states, as the
+// first look and a town laid anew do. Looks again only when the town's counts change.
+egs_stones :: (s: [] Everglade, pieces: [] DemoPiece, n: int, fell: int, broken: int, heard: bool) {
+  d := egs_of(s);
+  m := n; if m > pieces.count { m = pieces.count; } if m > DEMO_PIECES { m = DEMO_PIECES; } if m < 0 { m = 0; }
+  if m == d[0].stone_n && fell == d[0].stone_fell && broken == d[0].stone_broken { return; }
+  fresh := m != d[0].stone_n;
+  played := 0;
+  for i: 0..<m {
+    st := pieces[i].state;
+    if heard && !fresh && st != DP_STANDING && cast(int) d[0].stone[i] == DP_STANDING && played < EGS_STONES {
+      egs_break(s, pieces[i]); played += 1;
+    }
+    d[0].stone[i] = cast,trunc(u8) st;
+  }
+  d[0].stone_n = m; d[0].stone_fell = fell; d[0].stone_broken = broken;
 }
 // The watch and the town's people: who falls, who gets up, who swings.
 egs_watch :: (s: [] Everglade) {
@@ -262,11 +293,24 @@ egs_num :: (out: [] u8, at: int, v: f32) -> int {
   out[k] = '.'; out[k + 1] = cast,trunc(u8) ('0' + part / 100); out[k + 2] = cast,trunc(u8) ('0' + part / 10 % 10); out[k + 3] = cast,trunc(u8) ('0' + part % 10);
   return k + 4;
 }
-egs_line :: (out: [] u8, at: int, name: string, gain: f32, pan: f32, delay: f32) -> int {
+// A whole number: "8000".
+egs_int :: (out: [] u8, at: int, v: int) -> int {
+  if at < 0 || at + 12 > out.count { return -1; }
+  digits: [12] u8; dn := 0; m := ifx v < 0 then 0 else v;
+  if m == 0 { digits[0] = '0'; dn = 1; }
+  while m > 0 && dn < 12 { digits[dn] = cast,trunc(u8) ('0' + m % 10); m /= 10; dn += 1; }
+  for i: 0..<dn { out[at + i] = digits[dn - 1 - i]; }
+  return at + dn;
+}
+// NAME GAIN PAN [DELAY [LOWPASS]]: the lowpass's corner in whole hertz, when there is one (the delay
+// is written then, 0.000 if none, so the fields keep their places).
+egs_line :: (out: [] u8, at: int, name: string, gain: f32, pan: f32, delay: f32, lowpass: f32) -> int {
   k := egs_put(out, at, name);
   k = egs_put(out, k, " "); k = egs_num(out, k, gain);
   k = egs_put(out, k, " "); k = egs_num(out, k, pan);
-  if delay > 0.0005 { k = egs_put(out, k, " "); k = egs_num(out, k, delay); }
+  dull := lowpass >= 1;
+  if delay > 0.0005 || dull { k = egs_put(out, k, " "); k = egs_num(out, k, hi(delay, 0)); }
+  if dull { k = egs_put(out, k, " "); k = egs_int(out, k, cast(int) floor(lowpass + 0.5)); }
   return egs_put(out, k, "\n");
 }
 // The volume as a gain, 0..1.
@@ -282,21 +326,21 @@ everglade_sound_lines :: (s: [] Everglade) -> int #export_c {
   if d[0].page && d[0].ear_ok {
     bed := EGS_BED * master;
     if abs(bed - d[0].bed) > 0.002 || abs(s[0].time - d[0].bed_at) > 2 {
-      j := egs_put(out, k, "~"); j = egs_line(out, j, SFX_NAMES[SFX_AMBIENT], bed, 0, 0);
+      j := egs_put(out, k, "~"); j = egs_line(out, j, SFX_NAMES[SFX_AMBIENT], bed, 0, 0, 0);
       if j > 0 { k = j; d[0].bed = bed; d[0].bed_at = s[0].time; }
     }
   }
   for c: 0..<d[0].cue_n {
     q := d[0].cues[c];
     g := q.gain * f32(EGS_LEVEL[q.id]) / 1000 * master;
-    pan := 0.0f32; delay := q.wait;
+    pan := 0.0f32; delay := q.wait; dull := 0.0f32;
     if !q.here {
       if !d[0].ear_ok { continue; }
       p := au_place(EGS_ROOM, d[0].ear, q.at);
-      g *= p.gain; pan = p.pan; delay += p.delay;
+      g *= p.gain; pan = p.pan; delay += p.delay; dull = p.lowpass;
     }
     if g < f32(EGS_QUIET) { continue; }
-    j := egs_line(out, k, SFX_NAMES[q.id], lo(g, 1), pan, lo(delay, 2));
+    j := egs_line(out, k, SFX_NAMES[q.id], lo(g, 1), pan, lo(delay, 2), dull);
     if j < 0 { break; }
     k = j;
   }
@@ -325,7 +369,9 @@ everglade_sound_bytes :: () -> int #export_c {
 
 // A check's cue (the face's coaxial_sound_probe, on this machine only): the look of wire slot `slot`
 // cast `right` metres to the listener's right, `ahead` ahead and `up` up, its cast and impact there
-// (a slot of -1 - id plays effect id there).
+// (a slot of -1 - id plays effect id there; EGS_PROBE_BREAK breaks the town's standing piece nearest
+// that point, as a spell would, so the next frame plays its stone).
+EGS_PROBE_BREAK :: -2000;
 everglade_sound_probe :: (s: [] Everglade, slot: int, right: f32, ahead: f32, up: f32) -> int #export_c {
   d := egs_of(s);
   if !d[0].ear_ok { return 0; }
@@ -333,10 +379,28 @@ everglade_sound_probe :: (s: [] Everglade, slot: int, right: f32, ahead: f32, up
   fwd := unit_or(v3(e.at.x - e.eye.x, 0, e.at.z - e.eye.z), v3(0, 0, 1));
   rgt := unit_or(cross(fwd, v3(0, 1, 0)), v3(-1, 0, 0));
   at := add(e.eye, add(times(rgt, right), add(times(fwd, ahead), v3(0, up, 0))));
+  if slot == EGS_PROBE_BREAK { return egs_probe_break(s, at); }
   if slot < 0 { egs_cue(s, -1 - slot, at, 0, 1); return d[0].cue_n; }
   l := egs_slot_look(slot);
   egs_cue(s, l.start, at, 0, 1); egs_cue(s, l.hit, at, 0, 1);
   return d[0].cue_n;
+}
+
+// The town's standing piece nearest `at`, within 60 m, broken: 1, or 0 for none.
+egs_probe_break :: (s: [] Everglade, at: Point) -> int {
+  if !sp_on(s) { return 0; }
+  w := sp_dm(s);
+  best := -1; near := 60.0f32;
+  for i: 0..<w[0].n {
+    p := w[0].pieces[i];
+    if p.state != DP_STANDING { continue; }
+    e := length(sub(demo_centre(p), at));
+    if e < near { near = e; best = i; }
+  }
+  if best < 0 { return 0; }
+  broke := demo_damage(w, best, 1000000, add(demo_centre(w[0].pieces[best]), v3(0, 1, 0)), 4);
+  s[0].sp.walls_dirty = true;
+  return ifx broke then 1 else 0;
 }
 
 // ---- SOUND: the volume and MUTE
@@ -456,18 +520,19 @@ egs_test_page :: (g: [] Everglade) {
   g[0].snd[0].bed = EGS_BED * egs_master(g[0].snd[..]);   // the bed's line is its own check
 }
 // The lines' fields: name, gain, pan of line i.
-EgsHeard :: struct { name: string; gain: f32; pan: f32; delay: f32; ok: bool; }
+EgsHeard :: struct { name: string; gain: f32; pan: f32; delay: f32; lowpass: f32; ok: bool; }
 egs_heard :: (g: [] Everglade, i: int) -> EgsHeard {
   t := cast(string) g[0].snd[0].lines[0..<g[0].snd[0].line_n];
   line := 0; a := 0;
   for j: 0..<t.count + 1 {
     if j < t.count && t[j] != '\n' { continue; }
     if line == i {
-      f: [4] string; fn := 0; b := a;
-      for c: a..<j + 1 { if c == j || t[c] == ' ' { if fn < 4 { f[fn] = t[b..<c]; fn += 1; } b = c + 1; } }
+      f: [5] string; fn := 0; b := a;
+      for c: a..<j + 1 { if c == j || t[c] == ' ' { if fn < 5 { f[fn] = t[b..<c]; fn += 1; } b = c + 1; } }
       out := EgsHeard.{name = f[0], ok = fn >= 3};
       if fn >= 3 { out.gain = cast(f32) sp_decimal(f[1]); out.pan = cast(f32) sp_decimal(f[2]); }
       if fn >= 4 { out.delay = cast(f32) sp_decimal(f[3]); }
+      if fn >= 5 { out.lowpass = cast(f32) sp_decimal(f[4]); }
       return out;
     }
     line += 1; a = j + 1;
@@ -507,6 +572,8 @@ egs_heard :: (g: [] Everglade, i: int) -> EgsHeard {
   #assert abs(b.gain - full / 4) < 0.002 && abs(b.pan) < 0.002;               // four times as far: a quarter, centred
   #assert abs(c.gain - full / 8) < 0.002 && abs(c.pan + 1) < 0.002;           // eight times: an eighth, fully left
   #assert abs(c.delay - 40.0 / 343.0) < 0.002 && b.delay > a.delay;            // and heard later
+  // and duller: no lowpass at the reference distance, its corner a quarter as far at four times it
+  #assert a.lowpass == 0 && abs(b.lowpass - f32(AU_BRIGHT) / 4) < 1 && abs(c.lowpass - f32(AU_BRIGHT) / 8) < 1;
   // past the cutoff it isn't sent; muted nothing is
   egs_hit(g[..], l, v3(0, 1.6, 200), 0);
   #assert everglade_sound_lines(g[..]) == 0;
@@ -559,4 +626,67 @@ egs_heard :: (g: [] Everglade, i: int) -> EgsHeard {
   egs_raid(g[..], EGE_CLIMAX, EGE_END, EGE_FELL);
   _ = everglade_sound_lines(g[..]);
   #assert egs_heard(g[..], 0).name == "raid-lost";
+}
+
+// Three pieces of a town: a low wall, a tall tower, another wall.
+egs_test_town :: (out: [] DemoPiece) {
+  out[0] = DemoPiece.{cx = 1, cy = 1, cz = 5, hx = 2, hy = 1, hz = 0.3, y0 = 0, y1 = 2};
+  out[1] = DemoPiece.{cx = -1, cy = 4, cz = 5, hx = 1.5, hy = 4, hz = 1.5, y0 = 0, y1 = 8};
+  out[2] = DemoPiece.{cx = 0, cy = 1, cz = 8, hx = 2, hy = 1, hz = 0.3, y0 = 0, y1 = 2};
+}
+
+#test "sound: offline, a wall that breaks cracks like stone and a tower falls like one; a town laid anew is silent" {
+  g: [1] Everglade;
+  egs_test_page(g[..]);
+  town: [3] DemoPiece;
+  egs_test_town(town[..]);
+  // the first look learns the town
+  egs_stones(g[..], town[..], 3, 0, 0, true);
+  #assert g[0].snd[0].cue_n == 0;
+  // the wall and the tower are broken by the page's own spell
+  town[0].state = DP_BROKEN; town[1].state = DP_LOOSE;
+  egs_stones(g[..], town[..], 3, 2, 1, true);
+  _ := everglade_sound_lines(g[..]);
+  #assert egs_heard(g[..], 0).name == "wall-hit" && egs_heard(g[..], 1).name == "tower-hit" && !egs_heard(g[..], 2).ok;
+  #assert egs_heard(g[..], 0).pan < 0;   // the wall stands a metre to the left of straight ahead
+  // the loose tower landing broken is the same fall, not another
+  town[1].state = DP_BROKEN;
+  egs_stones(g[..], town[..], 3, 2, 2, true);
+  #assert g[0].snd[0].cue_n == 0;
+  // restored, then laid again with a different count: learnt, never heard
+  for i: 0..<3 { town[i].state = DP_STANDING; }
+  egs_stones(g[..], town[..], 3, 2, 0, true);
+  town[2].state = DP_BROKEN;
+  egs_stones(g[..], town[..], 2, 3, 1, true);
+  #assert g[0].snd[0].cue_n == 0;
+}
+
+#test "sound: in a room the town's stones are the server's e break, so a look only learns them" {
+  g: [1] Everglade;
+  egs_test_page(g[..]);
+  town: [3] DemoPiece;
+  egs_test_town(town[..]);
+  egs_stones(g[..], town[..], 3, 0, 0, false);
+  town[0].state = DP_BROKEN;
+  egs_stones(g[..], town[..], 3, 1, 1, false);
+  #assert g[0].snd[0].cue_n == 0;
+  // a collapse offline plays a few stones, not one each
+  big: [12] DemoPiece;
+  for i: 0..<12 { big[i] = town[0]; big[i].state = DP_STANDING; }
+  h: [1] Everglade;
+  egs_test_page(h[..]);
+  egs_stones(h[..], big[..], 12, 0, 0, true);
+  for i: 0..<12 { big[i].state = DP_BROKEN; }
+  egs_stones(h[..], big[..], 12, 12, 12, true);
+  #assert h[0].snd[0].cue_n == EGS_STONES;
+}
+
+#test "sound: a far line carries its lowpass after its delay, a near one neither" {
+  out: [128] u8;
+  n := egs_line(out[..], 0, "hit", 0.5, -0.25, 0, 0);
+  #assert cast(string) out[0..<n] == "hit 0.500 -0.250\n";
+  n = egs_line(out[..], 0, "hit", 0.5, 0, 0, 4000);
+  #assert cast(string) out[0..<n] == "hit 0.500 0.000 0.000 4000\n";
+  n = egs_line(out[..], 0, "thunder", 0.1, 1, 0.117, 1000.4);
+  #assert cast(string) out[0..<n] == "thunder 0.100 1.000 0.117 1000\n";
 }

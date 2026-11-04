@@ -159,6 +159,7 @@ everglade_raid_cast :: (s: [] Everglade, kk: int, fx: f32, fz: f32, ax: f32, az:
     to := v3(ax, ground_at(s, ax, az) + (ifx beams > 0 then 1.2f32 else 0.2f32), az);
     if beams <= 0 { to = add(to, v3(f32(seed % 7 - 3) * 0.4, 0, f32(seed % 5 - 2) * 0.5)); }   // a miss goes by
     s[0].rp.shots[q] = RpShot.{live = true, from = from, to = to, bolt = k == RP_BOLT};
+    egs_cue(s, SFX_SWING, from, 0, 0.6);   // loosed: its whoosh (everglade-sound.coax)
     return;
   }
   if !wl_look(k) { return; }
@@ -169,6 +170,7 @@ everglade_raid_cast :: (s: [] Everglade, kk: int, fx: f32, fz: f32, ax: f32, az:
     q := 0;
     for i: 0..<RP_ARCS { if !s[0].rp.arcs[i].live { q = i; break; } if s[0].rp.arcs[i].t > s[0].rp.arcs[q].t { q = i; } }
     s[0].rp.arcs[q] = RpArc.{live = true, from = add(from, v3(0, 0.6, 0)), to = at, seed = seed};
+    egs_cast(s, egs_wl_look(WL_FIREBALL), from, at, f32(RP_ARC_T));   // its cast and flight; the burst is its landing's
     return;
   }
   big := ifx k == WL_BLAST then f32(RP_BEAM_BIG) else ifx k == WL_LIGHTNING then 1.5f32 else 1.0f32;

@@ -184,7 +184,7 @@ sfx_recipe :: (id: int) -> Sfx {
     s = sfx_add(s, sl_curve(sl(SFX_SINE, 0, 560, 3, 1568, 1568, 0, 0, 0, 400), 3));
     s = sfx_add(s, sl(SFX_NOISE, 0, 120, 3, 0, 0, 10000, 8000, 5000, 250));
   } else if id == SFX_SWING {         // a blade through the air
-    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 210, 120, 0, 0, 1100, 3600, 400, 1000), 2));
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 210, 120, 0, 0, 900, 2400, 300, 1000), 2));
   } else if id == SFX_HIT {           // a body blow
     s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 150, 2, 0, 0, 1300, 300, 50, 1000), 3));
     s = sfx_add(s, sl(SFX_SINE, 0, 130, 2, 150, 70, 0, 0, 0, 800));
@@ -241,11 +241,11 @@ sfx_recipe :: (id: int) -> Sfx {
     s = sfx_add(s, sl_vib(sl(SFX_SINE, 0, 820, 300, 200, 600, 0, 0, 0, 600), 10, 5));
     s = sfx_add(s, sl(SFX_NOISE, 0, 800, 300, 0, 0, 5000, 4000, 2000, 250));
   } else if id == SFX_SPLASH {        // water thrown and landing
-    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 420, 4, 0, 0, 5000, 900, 300, 1000), 3));
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 420, 4, 0, 0, 3000, 700, 200, 1000), 3));
     s = sfx_add(s, sl(SFX_SINE, 0, 140, 4, 700, 1300, 0, 0, 0, 350));
   } else if id == SFX_ICE {           // ice forming: crystal clicks over a hiss
-    s = sfx_add(s, sl(SFX_CRACKLE, 0, 500, 40, 700, 200, 9000, 6000, 2500, 900));
-    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 500, 60, 0, 0, 9000, 5000, 3000, 400), 1));
+    s = sfx_add(s, sl(SFX_CRACKLE, 0, 500, 40, 700, 200, 4500, 3000, 1200, 900));
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 500, 60, 0, 0, 4000, 2500, 1500, 400), 1));
   }
   return s;
 }

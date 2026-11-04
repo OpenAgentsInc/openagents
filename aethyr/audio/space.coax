@@ -10,12 +10,25 @@ AU_SPEED_OF_SOUND :: 343.0;   // metres a second, in air at 20 °C
 
 // How a world sounds: the distance a source keeps its full gain to, and the distance it
 // falls silent at. The last fifth before the cutoff fades to zero, so a source walking
-// out of range doesn't stop with a click.
-AuRoom :: struct { reference: f32 = 4; cutoff: f32 = 90; }
+// out of range doesn't stop with a click. `bright` is the corner of the one-pole lowpass
+// at the reference distance, in hertz: past it the corner falls as the distance grows
+// (bright / (d / reference)), so a far source sounds dull (0: no lowpass).
+AuRoom :: struct { reference: f32 = 4; cutoff: f32 = 90; bright: f32 = AU_BRIGHT; }
+AU_BRIGHT :: 16000.0;   // Hz: the corner at the reference distance, above what a voice carries
+AU_DULLEST :: 200.0;    // Hz: the lowest corner
 
-// Where a sound plays: its gain (0..1), its pan (-1 left .. 1 right) and how many seconds
-// after its event it reaches the listener.
-AuPlace :: struct { gain: f32; pan: f32; delay: f32; distance: f32; }
+// Where a sound plays: its gain (0..1), its pan (-1 left .. 1 right), how many seconds
+// after its event it reaches the listener, and its lowpass corner in hertz (0 at or
+// inside the reference distance: no filter).
+AuPlace :: struct { gain: f32; pan: f32; delay: f32; distance: f32; lowpass: f32; }
+
+// The one-pole lowpass's coefficient for a corner of `hz` at `rate` samples a second:
+// y += c * (x - y), c = 1 - e^(-2 pi hz / rate). It falls with the corner, so with the
+// distance. 1 (no filter) for a corner of 0.
+au_lowpass_coefficient :: (hz: f32, rate: f32) -> f32 {
+  if hz <= 0 || rate <= 0 { return 1; }
+  return 1 - exp(-2 * f32(PI) * hz / rate);
+}
 
 au_place :: (room: AuRoom, shot: Shot, at: Point) -> AuPlace {
   v := sub(at, shot.eye);
@@ -36,6 +49,7 @@ au_place :: (room: AuRoom, shot: Shot, at: Point) -> AuPlace {
   flat := sqrt(x * x + z * z);
   if flat > 0.25 { out.pan = clamp(x / flat, -1, 1); }
   out.delay = d / f32(AU_SPEED_OF_SOUND);
+  if room.bright > 0 && d > ref { out.lowpass = hi(room.bright * ref / d, f32(AU_DULLEST)); }
   return out;
 }
 
@@ -80,4 +94,18 @@ au_near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0001; }
   shot := Shot.{eye = v3(0, 0, 0), at = v3(0, 0, 1)};
   #assert au_near(au_place(room, shot, v3(0, 0, 343)).delay, 1);
   #assert au_near(au_place(room, shot, v3(0, 0, 0)).delay, 0);
+}
+
+#test "past the reference distance a far source is lowpassed, its corner halving as the distance doubles" {
+  room := AuRoom.{reference = 5, cutoff = 85};
+  shot := Shot.{eye = v3(0, 0, 0), at = v3(0, 0, 1)};
+  #assert au_place(room, shot, v3(0, 0, 5)).lowpass == 0 && au_place(room, shot, v3(0, 0, 2)).lowpass == 0;
+  #assert au_near(au_place(room, shot, v3(0, 0, 10)).lowpass, 8000) && au_near(au_place(room, shot, v3(0, 0, 20)).lowpass, 4000);
+  #assert au_near(au_place(room, shot, v3(0, 0, 80)).lowpass, 1000);
+  #assert au_place(AuRoom.{reference = 5, cutoff = 10000, bright = 16000}, shot, v3(0, 0, 5000)).lowpass == AU_DULLEST;
+  #assert au_place(AuRoom.{reference = 5, cutoff = 85, bright = 0}, shot, v3(0, 0, 40)).lowpass == 0;
+  // the coefficient falls with the corner: a far source passes less of each new sample
+  #assert au_lowpass_coefficient(0, 48000) == 1;
+  near := au_lowpass_coefficient(8000, 48000); far := au_lowpass_coefficient(1000, 48000);
+  #assert near > far && far > 0 && abs(far - (1 - exp(-2 * f32(PI) * 1000.0 / 48000.0))) < 0.000001;
 }

@@ -4,13 +4,16 @@
 //      (apps/openagents-web/everglade-sound.coax, aethyr/audio/sfx.coax), each one decoding.
 //   2. Each spell kind (the wire's slot: the druid's, the abilities', the Warlock's and the
 //      raid's) cast at a point plays its own cast and impact, by this file's own table.
-//   3. Distance: the same impact 5, 10 and 20 m ahead plays at 1, 1/2 and 1/4 the gain, and
-//      later the farther it is; 120 m off, past the cutoff, it isn't played.
+//   3. Distance: the same impact 5, 10 and 20 m ahead plays at 1, 1/2 and 1/4 the gain, later
+//      and duller the farther it is (no lowpass at 5 m, its corner 8 and then 4 kHz); 120 m off,
+//      past the cutoff, it isn't played. The host's one-pole lowpass at 1 kHz, offline, keeps
+//      a 100 Hz tone and passes a sixth of a 6 kHz one.
 //   4. Bearing: 5 m to the right it pans fully right, to the left fully left; and the host's
 //      output, recorded by an AudioWorklet tap at the end of its graph, carries a right-hand
 //      sound in the right channel alone (over the town's bed, which is centred), a left-hand
 //      one in the left alone, as loud.
 //   5. The town's quiet bed plays, looped, centred.
+//   6. Offline, a piece of the town broken (as a spell breaks it) plays a stone: a wall's or a tower's.
 //   COAX=... coax/web/tool.sh aethyr/tests/everglade-sound.coax http://127.0.0.1:PORT/realms/everglade/
 #import "Basic";
 #load "../../coax/lib/net/cdp.coax";
@@ -45,15 +48,16 @@ ES_SPELLS :: [20] EsSpell.[
   EsSpell.{name = "Levitate",          slot = ES_AB + 2,  start = "",              hit = "levitate"},
   EsSpell.{name = "Produce Flame",     slot = ES_AB + 17, start = "fire-cast",     hit = "fire-hit"}];
 
-// One host line, NAME GAIN PAN [DELAY].
-EsLine :: struct { name: string; gain: f64; pan: f64; delay: f64; ok: bool; }
+// One host line, NAME GAIN PAN [DELAY [LOWPASS]].
+EsLine :: struct { name: string; gain: f64; pan: f64; delay: f64; lowpass: f64; ok: bool; }
 es_line :: (t: string) -> EsLine {
-  f: [4] string; n := 0; a := 0;
-  for i: 0..<t.count + 1 { if i == t.count || t[i] == ' ' { if n < 4 && i > a { f[n] = t[a..<i]; n += 1; } a = i + 1; } }
+  f: [5] string; n := 0; a := 0;
+  for i: 0..<t.count + 1 { if i == t.count || t[i] == ' ' { if n < 5 && i > a { f[n] = t[a..<i]; n += 1; } a = i + 1; } }
   if n < 3 { return EsLine.{}; }
   g := args_number(f[1]); p := args_number(f[2]);
   out := EsLine.{name = f[0], gain = g.value, pan = p.value, ok = g.ok && p.ok};
-  if n == 4 { d := args_number(f[3]); out.delay = d.value; out.ok = out.ok && d.ok; }
+  if n >= 4 { d := args_number(f[3]); out.delay = d.value; out.ok = out.ok && d.ok; }
+  if n == 5 { l := args_number(f[4]); out.lowpass = l.value; out.ok = out.ok && l.ok; }
   return out;
 }
 // The line for `name` among "|"-separated lines, or none.
@@ -71,7 +75,9 @@ es_find :: (lines: string, name: string) -> EsLine {
   l := es_line("fire-hit 0.455 -1.000 0.015");
   #assert l.ok && l.name == "fire-hit" && l.gain == 0.455 && l.pan == -1.0 && l.delay == 0.015;
   m := es_line("horn 0.630 0.000");
-  #assert m.ok && m.delay == 0.0 && !es_line("horn 0.6").ok;
+  #assert m.ok && m.delay == 0.0 && m.lowpass == 0.0 && !es_line("horn 0.6").ok;
+  far := es_line("thunder 0.100 1.000 0.117 4000");
+  #assert far.ok && far.delay == 0.117 && far.lowpass == 4000.0;
   #assert es_find("step-1 0.1 0|hex 0.4 0.5", "hex").pan == 0.5 && !es_find("step-1 0.1 0", "hex").ok;
 }
 // What the check needs of one spell's lines: its cast and impact there, nothing else of its kind.
@@ -87,6 +93,16 @@ es_spell_ok :: (sp: EsSpell, lines: string) -> bool {
   #assert es_spell_ok(ES_SPELLS[6], "rebuke 0.4 0") && !es_spell_ok(s, "fire-hit 0.4 0");
 }
 es_near :: (a: f64, b: f64) -> bool { return abs(a - b) <= ES_TOL; }
+// A line is a stone's: a wall's or a tower's.
+es_stone :: (lines: string) -> bool { return es_find(lines, "wall-hit").ok || es_find(lines, "tower-hit").ok; }
+#test "a stone is a wall's or a tower's" {
+  #assert es_stone("step-1 0.1 0|wall-hit 0.3 0.2 0.04 9000") && es_stone("tower-hit 0.5 0") && !es_stone("hit 0.5 0");
+}
+ES_PROBE_BREAK :: -2000;   // apps/openagents-web/everglade-sound.coax EGS_PROBE_BREAK
+
+// The host's voice (coaxial.audio.voice) offline, a tone of `hz` with and without a 1 kHz lowpass:
+// "RATIO" of their RMS after its first tenth of a second, for 100 Hz and 6 kHz.
+ES_DULL :: "(async()=>{const r=48000;const run=async(hz,lp)=>{const o=new OfflineAudioContext(2,r,r);const b=o.createBuffer(1,r,r);const x=b.getChannelData(0);for(let i=0;i<r;i++)x[i]=0.5*Math.sin(2*Math.PI*hz*i/r);const s=coaxial.audio.voice(o,b,1,0,o.destination,lp);s.start(0);const y=(await o.startRendering()).getChannelData(0);let e=0;for(let i=r/10;i<r;i++)e+=y[i]*y[i];return Math.sqrt(e)};const lo=(await run(100,1000))/(await run(100,0));const hi=(await run(6000,1000))/(await run(6000,0));return lo.toFixed(4)+' '+hi.toFixed(4)})()";
 es_local :: (url: string) -> bool { return url.count > 17 && (url[0..<17] == "http://127.0.0.1:" || url[0..<17] == "http://localhost:"); }
 
 // ---- the page
@@ -194,6 +210,13 @@ tool_main :: () -> int #export_c {
   falloff := near[0].ok && near[1].ok && near[2].ok && !near[3].ok && near[0].gain > 0.05 &&
              abs(near[1].gain - near[0].gain / 2) <= ES_TOL * 2 && abs(near[2].gain - near[0].gain / 4) <= ES_TOL * 2 &&
              near[2].delay > near[1].delay && near[1].delay > near[0].delay && abs(near[2].delay - 20.0 / 343.0) <= ES_TOL * 2;
+  // duller as it goes: aethyr/audio/space.coax's corner, 16 kHz at the reference (5 m) over the distance's ratio
+  print("everglade-sound: lowpass at 5, 10, 20 m: % % % Hz\n", near[0].lowpass, near[1].lowpass, near[2].lowpass);
+  dull_lines := near[0].lowpass == 0 && abs(near[1].lowpass - 8000) <= 2 && abs(near[2].lowpass - 4000) <= 2;
+  dull_txt := es_text(c[..], es_gesture(c[..], ES_DULL, false), txt[..]);
+  dull := es_energy(dull_txt);
+  print("everglade-sound: the host's 1 kHz lowpass keeps of a 100 Hz tone and a 6 kHz one: %\n", dull_txt);
+  dulled := dull_lines && dull.ok && dull.l > 0.98 && dull.r > 0.13 && dull.r < 0.21;
 
   // 4. Bearing: 5 m right and left, in the lines and in what the host puts out.
   rl := es_find(es_text(c[..], es_gesture(c[..], es_probe_js(-1 - 2, "5", "0", js[..]), false), txt[..]), "fire-hit");
@@ -216,9 +239,14 @@ tool_main :: () -> int #export_c {
   bed := es_line(beds);
   bed_ok := bed.ok && bed.name == "ambient" && bed.gain > 0.05 && es_near(bed.pan, 0);
 
-  passed := bank_ok && kinds == ES_SPELLS.count && falloff && panned && heard && bed_ok;
-  print("everglade-sound: effects % spells %/% falloff % panning % output % bed %\n", bank_ok, kinds, ES_SPELLS.count, falloff, panned, heard, bed_ok);
-  print("% each spell kind plays its own sound, falling off with distance and panned by bearing\n", ifx passed then "pass" else "FAIL");
+  // 6. Offline, the town's piece nearest a point 8 m ahead broken: its stone.
+  stones := es_text(c[..], es_gesture(c[..], es_probe_js(ES_PROBE_BREAK, "0", "8", js[..]), false), txt[..]);
+  print("everglade-sound: a piece of the town broken offline: [%]\n", stones);
+  stone := es_stone(stones);
+
+  passed := bank_ok && kinds == ES_SPELLS.count && falloff && dulled && panned && heard && bed_ok && stone;
+  print("everglade-sound: effects % spells %/% falloff % lowpass % panning % output % bed % stone %\n", bank_ok, kinds, ES_SPELLS.count, falloff, dulled, panned, heard, bed_ok, stone);
+  print("% each spell kind plays its own sound, falling off and dulling with distance, panned by bearing; a broken wall sounds\n", ifx passed then "pass" else "FAIL");
   return ifx passed then 0 else 1;
 }
 

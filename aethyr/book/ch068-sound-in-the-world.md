@@ -3,10 +3,11 @@
 > **Status: partly implemented.** Today
 > [`coax/web/host.js`](../../coax/web/host.js) plays a realm's sounds and its
 > looping beds from decoded audio files: a realm returns lines of
-> `name gain pan [delay]`, and the host plays at most 16 at once through Web
-> Audio gain and stereo-panner nodes. Sound in space has its first part:
-> [`aethyr/audio/space.coax`](../audio/space.coax) gives a source's gain, pan
-> and delay from the camera, and Everglade places every effect with it. Nothing in it uses Aethyr's synthesizer on
+> `name gain pan [delay [lowpass]]`, and the host plays at most 16 at once
+> through Web Audio gain and stereo-panner nodes, after a one-pole lowpass for a
+> far source. Sound in space is built:
+> [`aethyr/audio/space.coax`](../audio/space.coax) gives a source's gain, pan,
+> delay and lowpass from the camera, and Everglade places every effect with it. Nothing in it uses Aethyr's synthesizer on
 > the audio clock. One thing is qualified: a score rendered offline by
 > chapter 67, played through the host's graph, reaches the live output
 > within 2^-20 of the samples (see "What exists today"). This chapter plans
@@ -128,7 +129,17 @@ music replays with the session.
   delay (`d / 343` s, which the host adds to the voice's start). Its checks
   are this chapter's: the reference distance has gain 1 and doubling the
   distance halves it, the right axis pans fully right, and 343 m is heard 1 s
-  later. The one-pole lowpass by distance is not built.
+  later.
+- The same module gives a far source its one-pole lowpass. Its corner is
+  `bright` (16 kHz) at the reference distance and falls as
+  `bright × d_ref / d` past it, never below 200 Hz, so the coefficient
+  `c = 1 − e^(−2π f / rate)` falls with distance. The host builds it as an
+  `IIRFilterNode` with feedforward `[c]` and feedback `[1, c − 1]` before the
+  voice's gain. In Everglade (`d_ref` 5 m) a sound 10 m off has its corner at
+  8 kHz, 20 m off at 4 kHz and 80 m off at 1 kHz. The browser check plays the
+  host's voice offline: at 1 kHz it keeps a 100 Hz tone and passes about a
+  sixth of a 6 kHz one, as the filter's response says (0.995 and 0.169 at
+  48 kHz).
 - [`aethyr/audio/sfx.coax`](../audio/sfx.coax) renders a game's effects
   from recipes of layers (an oscillator or noise, a pitch sweep, an envelope
   and sweeping filters) to 16-bit WAV bytes, in integers, once, when the
@@ -138,8 +149,16 @@ music replays with the session.
   fights, raid and town from the events every page receives, so another
   player's cast plays where it happens. A headless check,
   [`aethyr/tests/everglade-sound.coax`](../tests/everglade-sound.coax), plays
-  each spell kind in the page and checks its sounds, the gain at 5, 10 and
-  20 m, the pan to each side, and the host's output in each channel.
+  each spell kind in the page and checks its sounds, the gain and lowpass at 5,
+  10 and 20 m, the pan to each side, the host's output in each channel, and
+  that a piece of the town broken offline plays a stone. Offline, the page's
+  own spells and the raid preview break the town without the room's `e break`
+  event, so the page plays a stone for each piece that leaves standing, at
+  most three a frame.
+- A clip can carry this sound: `coax/web/tool.sh clip ... --audio` keeps each
+  line with the game time of the frame that sent it and renders the clip's
+  stretch of them afterwards in an `OfflineAudioContext` through the same
+  voices, so the sound track is in step with the frames.
 - `verse/voice.coax` resamples, levels, and gates microphone audio for voice
   chat. It is a separate path from game sound.
 - Aethyr's synthesizer renders whole scores offline only
