@@ -9,6 +9,7 @@ typedef struct RhAudioDevice RhAudioDevice;
 typedef struct RhAudioMemory RhAudioMemory;
 typedef struct RhAudioSamples RhAudioSamples;
 typedef struct RhAudioBank RhAudioBank;
+typedef RhAudioSamples *(*RhAudioResolve)(void *context,RhAudioMemory *memory,const uint8_t *name,size_t name_bytes);
 typedef struct {const uint8_t *name,*bytes;size_t name_bytes,byte_count;} RhAudioBankAsset;
 RhAudioBank *rhab_open(void);
 void rhab_close(RhAudioBank *);
@@ -31,6 +32,14 @@ int64_t rhas_ticket(RhAudioSamples *);
 RhAudio *rha_open(void);
 int64_t rha_add_wav(RhAudio *,const uint8_t *name,size_t name_bytes,const uint8_t *wav,size_t wav_bytes);
 int64_t rha_bank(RhAudio *,const uint8_t *listing,size_t listing_bytes,const uint8_t *storage,size_t storage_bytes);
+// Ordinary demand registers canonical bytes without allocating unused PCM.
+int64_t rha_bank_lazy(RhAudio *,const uint8_t *listing,size_t listing_bytes,const uint8_t *storage,size_t storage_bytes);
+// Explicit qualification/warmup only. Ordinary commands resolve one name.
+int64_t rha_warm_bank(RhAudio *);
+void rha_resolver(RhAudio *,RhAudioResolve,void *context,void (*release)(void *));
+RhAudioSamples *rha_resolve_keep(RhAudio *,const uint8_t *name,size_t name_bytes);
+RhAudioSamples *rha_cached_keep(RhAudio *,const uint8_t *name,size_t name_bytes);
+RhAudioMemory *rha_memory_keep(RhAudio *);
 int64_t rha_command(RhAudio *,const uint8_t *line,size_t bytes,bool started);
 // Product calls capture this owner's actual gesture/cover/retirement facts.
 bool rha_session_event(RhAudio *,int event);

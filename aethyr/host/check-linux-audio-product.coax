@@ -1,6 +1,6 @@
 // Actual product realm dispatcher, physical spans, draining packets and muted
 // device ownership. This is an SDK trace; the ordinary Vulkan window is separate.
-#import "Basic";
+#load "native-audio.coax";
 #load "audio-product-conformance.coax";
 #load "../render/tests/qualification-files.coax";
 #load "../../coax/lib/sys/args.coax";

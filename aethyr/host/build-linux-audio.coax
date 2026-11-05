@@ -4,20 +4,20 @@
 #load "../render/tests/qualification-files.coax";
 #load "../../coax/lib/sys/args.coax";
 tool_main :: ()->int #export_c {
- a:[1]Args;if !args_load(a[..])||args_count(a[..])<5||args_count(a[..])>7 {tool_errln("usage: build-linux-audio ROOT EMISSION NEW_OUT PIPEWIRE_DEV PIPEWIRE_LIB [--sanitize] [--memory|--product]");return 2;}
- for i:5..<args_count(a[..]) {if args_at(a[..],i)!="--sanitize"&&args_at(a[..],i)!="--memory"&&args_at(a[..],i)!="--product" {return 2;}}
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])<5||args_count(a[..])>8 {tool_errln("usage: build-linux-audio ROOT EMISSION NEW_OUT PIPEWIRE_DEV PIPEWIRE_LIB [--sanitize] [--memory|--product] [--combined]");return 2;}
+ for i:5..<args_count(a[..]) {if args_at(a[..],i)!="--sanitize"&&args_at(a[..],i)!="--memory"&&args_at(a[..],i)!="--product"&&args_at(a[..],i)!="--combined" {return 2;}}
  if cxtool_os()!=2 {tool_errln("Linux PipeWire SDK required");return 2;}
  root:=args_at(a[..],0);emission:=args_at(a[..],1);out:=args_at(a[..],2);dev:=args_at(a[..],3);lib:=args_at(a[..],4);sanitize:=args_has(a[..],"--sanitize");memory:=args_has(a[..],"--memory");
- product:=args_has(a[..],"--product");if product&&memory {return 2;}
+ product:=args_has(a[..],"--product");combined:=args_has(a[..],"--combined");if (product&&memory)||(combined&&!product) {return 2;}
  if !fs_mkdir(out) {return 1;}paths:[32][4096]u8;argv:[80]string;n:=0;
  for flag:[9]string.["nice","-n10","gcc","-std=gnu11",ifx sanitize then "-O1" else "-O2","-ffp-contract=off","-fno-fast-math","-Wno-unused-function","-Wno-unused-variable"] {argv[n]=flag;n+=1;}
  argv[n]="-I";argv[n+1]=emission;n+=2;argv[n]="-I";argv[n+1]=fs_join(root,"verse/native",paths[0][..]);n+=2;
  argv[n]="-I";argv[n+1]=fs_join(dev,"include/pipewire-0.3",paths[1][..]);n+=2;argv[n]="-I";argv[n+1]=fs_join(dev,"include/spa-0.2",paths[2][..]);n+=2;
  inputs:[1]RtqInputs;
  check_c:=ifx product then "ProductCheck.c" else ifx memory then "HamCheck.c" else "AudioCheck.c";
- for name,i:[2]string.["NativeAudio.c",check_c] {argv[n]=fs_join(emission,name,paths[3+i][..]);if !rtq_input_add(inputs[..],argv[n]) {return 1;}n+=1;}
+ for name,i:[2]string.["NativeAudio.c",check_c] {if i==1&&combined {continue;}argv[n]=fs_join(emission,name,paths[3+i][..]);if !rtq_input_add(inputs[..],argv[n]) {return 1;}n+=1;}
  for name,i:[7]string.["verse/native/audio-host.c","verse/native/audio-pipewire.c",ifx product then "aethyr/host/tests/linux-audio-product-effects.c" else ifx memory then "aethyr/host/tests/linux-audio-memory-effects.c" else "aethyr/host/tests/linux-audio-effects.c","coax/platform/tool-native.c","coax/platform/process-native.c","coax/platform/store-file-native.c","coax/platform/read-file-native.c"] {argv[n]=fs_join(root,name,paths[5+i][..]);if !rtq_input_add(inputs[..],argv[n]) {return 1;}n+=1;}
- for name:[4]string.["NativeAudio.h",ifx product then "ProductCheck.h" else ifx memory then "HamCheck.h" else "AudioCheck.h","profile.json",ifx product then "ProductCheck.profile.json" else ifx memory then "HamCheck.profile.json" else "AudioCheck.profile.json"] {if !rtq_input_add(inputs[..],fs_join(emission,name,paths[12][..])) {return 1;}}
+ for name,i:[4]string.["NativeAudio.h",ifx product then "ProductCheck.h" else ifx memory then "HamCheck.h" else "AudioCheck.h","profile.json",ifx product then "ProductCheck.profile.json" else ifx memory then "HamCheck.profile.json" else "AudioCheck.profile.json"] {if i==3&&combined {continue;}if !rtq_input_add(inputs[..],fs_join(emission,name,paths[12][..])) {return 1;}}
  if product {
   argv[n]="-no-pie";n+=1;
   argv[n]=fs_join(emission,"fixture.c",paths[15][..]);if !rtq_input_add(inputs[..],argv[n]) {return 1;}n+=1;

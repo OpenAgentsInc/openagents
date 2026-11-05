@@ -1,0 +1,11 @@
+// Observed callback progress and offer ownership while a real SDK decoder waits.
+#authority;
+#test "a held decoder cannot hold the mixer or acquire a later gesture" {
+ q:=[10]int.[1,1,1024,-2,0,1,-1,0,0,0];#assert had_accept(q[..]);
+ for i:0..<10 {original:=q[i];q[i]=original+1;#assert !had_accept(q[..]);q[i]=original;}
+ #assert !had_accept(q[0..<9]);
+}
+had_accept :: (q:[]int)->bool #export_c {
+ if q.count!=10 {return false;}
+ return q[0]==1&&q[1]==1&&q[2]==1024&&q[3]== -2&&q[4]==0&&q[5]==1&&q[6]== -1&&q[7]==0&&q[8]==0&&q[9]==0;
+}

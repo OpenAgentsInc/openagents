@@ -114,6 +114,18 @@ publish no prefix and reach no SDK decode. New read/finite root gates kill
 realm/device composition or graphics/default admission. Exact provenance and
 SDK scope are in `docs/verification/host-contract-2026-11-05/linux-opus.md`.
 
+Ordinary Linux audio registers canonical bank bytes lazily. Actual frozen
+startup-command replay retains all 122 requested assets/7,739,161 words;
+complete default rendering passes all 262,144 samples at unchanged 2^-20.
+Normal and instrumented runs preserve retained PCM through its last reference.
+Decoding holds the asset owner separately from the mixer lock; a held decode
+cannot acquire a later gesture or install after retirement. The threaded
+callback-renderer observer kills 43 root mutants. The changed realm dispatcher
+also passes the unchanged actual muted PipeWire product/session trace normally
+and instrumented. These component/device receipts do not replace ordinary
+Vulkan window, asset packaging or current realm/service integration. See
+`docs/verification/host-contract-2026-11-05/linux-audio-demand.md`.
+
 The Linux realm dispatcher admits physical bank metadata, WAV storage and
 draining sound packet spans before forming views. A refused asset does not
 silence later independently admitted assets. Its audio clock consumes the

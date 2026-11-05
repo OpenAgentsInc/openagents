@@ -35,9 +35,9 @@ int64_t rhab_insert(RhAudioBank *b,const uint8_t *line,size_t line_bytes,const u
  int64_t id=hab_insert(state,(coax_string){(const char*)line,(int64_t)line_bytes},(uint64_t)(uintptr_t)storage,storage_bytes);
  if(id>=0){coax_t_HostAudioBankSpan p=hab_source(state,id);*out=(RhAudioBankAsset){(const uint8_t*)p.name.data,(const uint8_t*)(uintptr_t)p.address,(size_t)p.name.count,(size_t)p.bytes};}return id;
 }
-typedef struct {uint8_t *wav;int64_t ticket,channels;bool ready;} RhAudioAsset;
+typedef struct {uint8_t *wav;size_t wav_bytes;int64_t ticket,channels;bool ready;} RhAudioAsset;
 struct RhAudio {
- pthread_mutex_t mutex;
+ pthread_mutex_t mutex,assets_mutex;
  coax_t_AudioPcmHost state;
  coax_t_HostAudioSession session;
  RhAudioBank *bank;
@@ -45,6 +45,8 @@ struct RhAudio {
  coax_t_AudioWavFilter filter;
  double *workspace,filter_workspace[20480];int64_t workspace_words;
  RhAudioAsset assets[128];RhAudioSamples *pcm[128];float block[2048];size_t cursor;bool invalid;
+ uint8_t names[128][48];size_t name_bytes[128];
+ RhAudioResolve resolve;void *resolve_context;void (*resolve_release)(void *);
 };
 static coax_v_t_AudioPcmHost pcm_state(RhAudio *a){return(coax_v_t_AudioPcmHost){&a->state,1};}
 static coax_v_t_HostAudioBank bank_state(RhAudio *a){return(coax_v_t_HostAudioBank){&a->bank->state,1};}
@@ -52,13 +54,15 @@ static coax_v_f64 work(RhAudio *a){return(coax_v_f64){a->workspace,a->workspace_
 RhAudio *rha_open(void){
  RhAudio *a=calloc(1,sizeof*a);if(!a)return NULL;
  if(pthread_mutex_init(&a->mutex,NULL)){free(a);return NULL;}
+ if(pthread_mutex_init(&a->assets_mutex,NULL)){pthread_mutex_destroy(&a->mutex);free(a);return NULL;}
  coax_default_t_AudioPcmHost(&a->state);a->session=has_open();a->bank=rhab_open();
  a->workspace_words=ac_words(1024,128);a->workspace=calloc((size_t)a->workspace_words,sizeof(double));a->cursor=1024;
  a->memory=rham_open();
  if(!a->bank||!a->memory||!a->workspace||!apw_coefficients((coax_v_t_AudioWavFilter){&a->filter,1},(coax_v_f64){a->filter_workspace,20480})){rha_close(a);return NULL;}return a;
 }
+static bool may_resolve(RhAudio *a){pthread_mutex_lock(&a->mutex);bool ok=!a->invalid&&!has_offer((coax_v_t_HostAudioSession){&a->session,1}).retired;pthread_mutex_unlock(&a->mutex);return ok;}
 static int64_t add_wav(RhAudio *a,const uint8_t *name,size_t name_bytes,const uint8_t *wav,size_t wav_bytes){
- if(a->invalid||name_bytes>INT64_MAX||wav_bytes>INT64_MAX)return -1;
+ if(!may_resolve(a)||name_bytes>INT64_MAX||wav_bytes>INT64_MAX)return -1;
  coax_string key={(const char*)name,(int64_t)name_bytes};
  if(!apv_asset_name(key)||hab_find(bank_state(a),key)>=0)return -1;
  coax_t_AudioWavPlan p=apw_plan((coax_v_u8){(uint8_t*)wav,(int64_t)wav_bytes});if(!p.valid)return -1;
@@ -69,44 +73,86 @@ static int64_t add_wav(RhAudio *a,const uint8_t *name,size_t name_bytes,const ui
  char line[128];int n=snprintf(line,sizeof line,"%.*s %llu %zu",(int)name_bytes,name,(unsigned long long)(uintptr_t)source,wav_bytes);
  RhAudioBankAsset admitted;int64_t id=rhab_insert(a->bank,(const uint8_t*)line,(size_t)n,source,wav_bytes,&admitted);
  if(id<0){free(source);rhas_close(samples);return -1;}
- a->pcm[ticket]=samples;RhAudioAsset *asset=&a->assets[id];*asset=(RhAudioAsset){source,ticket,p.channels,false};
+ a->pcm[ticket]=samples;RhAudioAsset *asset=&a->assets[id];*asset=(RhAudioAsset){.wav=source,.wav_bytes=wav_bytes,.ticket=ticket,.channels=p.channels};
  asset->ready=apw_decode((coax_v_t_AudioWavFilter){&a->filter,1},(coax_v_u8){source,(int64_t)wav_bytes},(coax_v_f64){a->filter_workspace,20480},(coax_v_f32){rhas_data(samples),rhas_count(samples)});
  return asset->ready?id:-1;
 }
 int64_t rha_add_wav(RhAudio *a,const uint8_t *name,size_t name_bytes,const uint8_t *wav,size_t wav_bytes){
  if(!a)return -1;
- pthread_mutex_lock(&a->mutex);int64_t id=add_wav(a,name,name_bytes,wav,wav_bytes);pthread_mutex_unlock(&a->mutex);return id;
+ pthread_mutex_lock(&a->assets_mutex);int64_t id=add_wav(a,name,name_bytes,wav,wav_bytes);pthread_mutex_unlock(&a->assets_mutex);return id;
 }
 int64_t rha_bank(RhAudio *a,const uint8_t *listing,size_t listing_bytes,const uint8_t *storage,size_t storage_bytes){
  if(!a||listing_bytes>INT64_MAX)return -1;
- pthread_mutex_lock(&a->mutex);int64_t added=0;size_t start=0;bool failed=false;
+ pthread_mutex_lock(&a->assets_mutex);int64_t added=0;size_t start=0;bool failed=false;
  for(size_t i=0;i<=listing_bytes;i++){if(i==listing_bytes||listing[i]=='\n'){
   if(i>start){coax_t_HostAudioBankSpan p=hab_span((coax_string){(const char*)listing+start,(int64_t)(i-start)},(uint64_t)(uintptr_t)storage,storage_bytes);
    if(!p.valid||add_wav(a,(const uint8_t*)p.name.data,(size_t)p.name.count,(const uint8_t*)(uintptr_t)p.address,(size_t)p.bytes)<0)failed=true;else added++;}start=i+1;
- }}pthread_mutex_unlock(&a->mutex);return failed?-1:added;
+ }}pthread_mutex_unlock(&a->assets_mutex);return failed?-1:added;
+}
+int64_t rha_bank_lazy(RhAudio *a,const uint8_t *listing,size_t listing_bytes,const uint8_t *storage,size_t storage_bytes){
+ if(!a||listing_bytes>INT64_MAX||(!listing&&listing_bytes)||(!storage&&storage_bytes))return -1;
+ pthread_mutex_lock(&a->assets_mutex);int64_t added=0;size_t start=0;bool failed=false;
+ for(size_t i=0;i<=listing_bytes;i++)if(i==listing_bytes||listing[i]=='\n'){
+  if(i>start){coax_string line={(const char*)listing+start,(int64_t)(i-start)};
+   RhAudioBank candidate=*a->bank;RhAudioBankAsset admitted;
+   int64_t id=rhab_insert(&candidate,(const uint8_t*)line.data,(size_t)line.count,storage,storage_bytes,&admitted);
+   if(id<0){failed=true;start=i+1;continue;}
+   coax_t_AudioWavPlan p=apw_plan((coax_v_u8){(uint8_t*)admitted.bytes,(int64_t)admitted.byte_count});
+   if(!p.valid){failed=true;start=i+1;continue;}
+   uint8_t *copy=malloc(admitted.byte_count);if(!copy){failed=true;start=i+1;continue;}memcpy(copy,admitted.bytes,admitted.byte_count);
+   char owned_line[128];int n=snprintf(owned_line,sizeof owned_line,"%.*s %llu %zu",(int)admitted.name_bytes,admitted.name,(unsigned long long)(uintptr_t)copy,admitted.byte_count);
+   RhAudioBankAsset owned;id=rhab_insert(a->bank,(const uint8_t*)owned_line,(size_t)n,copy,admitted.byte_count,&owned);
+   if(id<0){free(copy);failed=true;}else{a->assets[id]=(RhAudioAsset){.wav=copy,.wav_bytes=owned.byte_count,.ticket=-1,.channels=p.channels};added++;}
+  }start=i+1;
+ }pthread_mutex_unlock(&a->assets_mutex);return failed?-1:added;
+}
+static RhAudioSamples *resolve_name(RhAudio *a,coax_string name){
+ if(!may_resolve(a)||!apv_asset_name(name))return NULL;
+ int64_t id=hab_find(bank_state(a),name);
+ if(id>=0){RhAudioAsset *asset=&a->assets[id];if(asset->ready)return a->pcm[asset->ticket];
+  coax_t_AudioWavPlan p=apw_plan((coax_v_u8){asset->wav,(int64_t)asset->wav_bytes});if(!p.valid)return NULL;
+  RhAudioSamples *samples=rhas_open(a->memory,p.output_frames,p.channels);if(!samples)return NULL;
+  if(!apw_decode((coax_v_t_AudioWavFilter){&a->filter,1},(coax_v_u8){asset->wav,(int64_t)asset->wav_bytes},(coax_v_f64){a->filter_workspace,20480},(coax_v_f32){rhas_data(samples),rhas_count(samples)})){rhas_close(samples);return NULL;}
+  if(!may_resolve(a)){rhas_close(samples);return NULL;}
+  asset->ticket=rhas_ticket(samples);asset->ready=true;a->pcm[asset->ticket]=samples;return samples;
+ }
+ for(size_t i=0;i<128;i++)if(a->name_bytes[i]==(size_t)name.count&&!memcmp(a->names[i],name.data,(size_t)name.count))return a->pcm[i];
+ RhAudioSamples *samples=a->resolve?a->resolve(a->resolve_context,a->memory,(const uint8_t*)name.data,(size_t)name.count):NULL;
+ if(samples&&!may_resolve(a)){rhas_close(samples);return NULL;}
+ if(samples){int64_t ticket=rhas_ticket(samples);a->pcm[ticket]=samples;a->name_bytes[ticket]=(size_t)name.count;memcpy(a->names[ticket],name.data,(size_t)name.count);}return samples;
+}
+int64_t rha_warm_bank(RhAudio *a){if(!a)return -1;pthread_mutex_lock(&a->assets_mutex);int64_t warmed=0;for(int64_t i=0;i<rhab_count(a->bank);i++){coax_t_HostAudioBankSpan row=hab_source(bank_state(a),i);if(resolve_name(a,row.name))warmed++;}pthread_mutex_unlock(&a->assets_mutex);return warmed;}
+void rha_resolver(RhAudio *a,RhAudioResolve resolve,void *context,void (*release)(void *)){if(!a)return;pthread_mutex_lock(&a->assets_mutex);if(a->resolve_release)a->resolve_release(a->resolve_context);a->resolve=resolve;a->resolve_context=context;a->resolve_release=release;pthread_mutex_unlock(&a->assets_mutex);}
+RhAudioSamples *rha_resolve_keep(RhAudio *a,const uint8_t *name,size_t bytes){if(!a||bytes>INT64_MAX||(!name&&bytes))return NULL;pthread_mutex_lock(&a->assets_mutex);RhAudioSamples *samples=resolve_name(a,(coax_string){(const char*)name,(int64_t)bytes});rhas_retain(samples);pthread_mutex_unlock(&a->assets_mutex);return samples;}
+RhAudioMemory *rha_memory_keep(RhAudio *a){if(!a)return NULL;rham_retain(a->memory);return a->memory;}
+RhAudioSamples *rha_cached_keep(RhAudio *a,const uint8_t *name,size_t bytes){
+ if(!a||bytes>INT64_MAX||(!name&&bytes))return NULL;coax_string key={(const char*)name,(int64_t)bytes};if(!apv_asset_name(key))return NULL;pthread_mutex_lock(&a->assets_mutex);RhAudioSamples *samples=NULL;int64_t id=hab_find(bank_state(a),key);
+ if(id>=0){RhAudioAsset *asset=&a->assets[id];if(asset->ready)samples=a->pcm[asset->ticket];}
+ else for(size_t i=0;i<128;i++)if(a->name_bytes[i]==bytes&&!memcmp(a->names[i],name,bytes)){samples=a->pcm[i];break;}
+ rhas_retain(samples);pthread_mutex_unlock(&a->assets_mutex);return samples;
 }
 static int64_t command(RhAudio *a,const uint8_t *line,size_t bytes,bool started){
- int64_t result=-1;
- if(!a->invalid){coax_string text={(const char*)line,(int64_t)bytes};coax_t_AudioHostEffect effect=audio_host_parse(text);int64_t id=hab_find(bank_state(a),effect.name);coax_v_f32 samples={NULL,0};int64_t channels=0;
-  if(id>=0&&a->assets[id].ready){RhAudioAsset *asset=&a->assets[id];RhAudioSamples *owned=a->pcm[asset->ticket];samples=(coax_v_f32){rhas_data(owned),rhas_count(owned)};channels=asset->channels;}
+ coax_string text={(const char*)line,(int64_t)bytes};coax_t_AudioHostEffect effect=audio_host_parse(text);RhAudioSamples *owned=resolve_name(a,effect.name);int64_t result=-1;
+ pthread_mutex_lock(&a->mutex);
+ if(!a->invalid&&!has_offer((coax_v_t_HostAudioSession){&a->session,1}).retired){coax_v_f32 samples={rhas_data(owned),rhas_count(owned)};int64_t channels=rhas_channels(owned);
   result=ap_context_command(pcm_state(a),work(a),text,samples,channels,started);
- }return result;
+ }pthread_mutex_unlock(&a->mutex);return result;
 }
-int64_t rha_command(RhAudio *a,const uint8_t *line,size_t bytes,bool started){if(!a||bytes>INT64_MAX)return -1;pthread_mutex_lock(&a->mutex);int64_t result=command(a,line,bytes,started);pthread_mutex_unlock(&a->mutex);return result;}
+int64_t rha_command(RhAudio *a,const uint8_t *line,size_t bytes,bool started){if(!a||bytes>INT64_MAX||(!line&&bytes))return -1;pthread_mutex_lock(&a->assets_mutex);int64_t result=command(a,line,bytes,started);pthread_mutex_unlock(&a->assets_mutex);return result;}
 bool rha_session_event(RhAudio *a,int event){if(!a)return false;pthread_mutex_lock(&a->mutex);coax_t_HostAudioSessionOffer q=has_event((coax_v_t_HostAudioSession){&a->session,1},event);pthread_mutex_unlock(&a->mutex);return q.active;}
-int64_t rha_command_current(RhAudio *a,const uint8_t *line,size_t bytes){if(!a||bytes>INT64_MAX)return -1;pthread_mutex_lock(&a->mutex);coax_t_HostAudioSessionOffer q=has_offer((coax_v_t_HostAudioSession){&a->session,1});int64_t result=q.retired?-1:command(a,line,bytes,q.started);pthread_mutex_unlock(&a->mutex);return result;}
+int64_t rha_command_current(RhAudio *a,const uint8_t *line,size_t bytes){if(!a||bytes>INT64_MAX||(!line&&bytes))return -1;pthread_mutex_lock(&a->mutex);coax_t_HostAudioSessionOffer q=has_offer((coax_v_t_HostAudioSession){&a->session,1});pthread_mutex_unlock(&a->mutex);if(q.retired)return -1;pthread_mutex_lock(&a->assets_mutex);int64_t result=command(a,line,bytes,q.started);pthread_mutex_unlock(&a->assets_mutex);return result;}
 int64_t rha_pcm_load(RhAudio *a,const float *source,size_t samples,int64_t channels){
  if(!a||samples>INT64_MAX)return -1;
  // The Coax extent helper admits channels before this SDK unit conversion.
  if(!ham_extent(1,channels)||ham_extent((int64_t)samples/channels,channels)!=(int64_t)samples)return -1;
- pthread_mutex_lock(&a->mutex);RhAudioSamples *owned=rhas_copy(a->memory,source,(int64_t)samples/channels,channels);int64_t id=rhas_ticket(owned);if(id>=0)a->pcm[id]=owned;
- pthread_mutex_unlock(&a->mutex);return id;
+ pthread_mutex_lock(&a->assets_mutex);RhAudioSamples *owned=rhas_copy(a->memory,source,(int64_t)samples/channels,channels);int64_t id=rhas_ticket(owned);if(id>=0)a->pcm[id]=owned;
+ pthread_mutex_unlock(&a->assets_mutex);return id;
 }
 int64_t rha_command_asset(RhAudio *a,const uint8_t *line,size_t bytes,int64_t ticket,int64_t channels,bool started){
  if(!a||bytes>INT64_MAX)return -1;
- pthread_mutex_lock(&a->mutex);RhAudioSamples *owned=ticket>=0&&ticket<128?a->pcm[ticket]:NULL;int64_t result=-1;
+ pthread_mutex_lock(&a->assets_mutex);pthread_mutex_lock(&a->mutex);RhAudioSamples *owned=ticket>=0&&ticket<128?a->pcm[ticket]:NULL;int64_t result=-1;
  if(!a->invalid)result=ap_context_command(pcm_state(a),work(a),(coax_string){(const char*)line,(int64_t)bytes},(coax_v_f32){rhas_data(owned),rhas_count(owned)},channels,started);
- pthread_mutex_unlock(&a->mutex);return result;
+ pthread_mutex_unlock(&a->mutex);pthread_mutex_unlock(&a->assets_mutex);return result;
 }
 static bool next_block(RhAudio *a){if(a->invalid)return false;if(!ap_block(pcm_state(a),work(a),(coax_v_f32){a->block,2048})){a->invalid=true;return false;}return true;}
 bool rha_block(RhAudio *a,float output[2048]){if(!a)return false;pthread_mutex_lock(&a->mutex);bool ok=next_block(a);if(ok)memcpy(output,a->block,sizeof a->block);pthread_mutex_unlock(&a->mutex);return ok;}
@@ -118,14 +164,15 @@ bool rha_render(RhAudio *a,float *output,size_t frames,bool muted){
   if(muted)memset(output+2*at,0,2*n*sizeof(float));else memcpy(output+2*at,a->block+2*a->cursor,2*n*sizeof(float));a->cursor+=n;at+=n;
  }if(!ok)memset(output,0,2*frames*sizeof(float));pthread_mutex_unlock(&a->mutex);return ok;
 }
-int64_t rha_info(RhAudio *a,int field){if(!a)return -1;pthread_mutex_lock(&a->mutex);int64_t result=-1;switch(field){
+int64_t rha_info(RhAudio *a,int field){if(!a)return -1;pthread_mutex_lock(&a->assets_mutex);pthread_mutex_lock(&a->mutex);int64_t result=-1;switch(field){
  case 0:result=a->state.frames;break;case 1:result=a->state.accepted;break;case 2:result=a->state.refused;break;case 3:result=a->state.room.e[0].parts;break;case 4:result=rham_total(a->memory);break;case 5:result=rhab_count(a->bank);break;case 6:result=a->invalid;break;case 7:result=(int64_t)a->cursor;break;case 8:result=a->session.started;break;case 9:result=has_offer((coax_v_t_HostAudioSession){&a->session,1}).active;break;case 10:result=a->session.retired;break;
- }pthread_mutex_unlock(&a->mutex);return result;}
+ case 11:result=0;for(size_t i=0;i<128;i++)if(a->pcm[i])result++;break;
+ }pthread_mutex_unlock(&a->mutex);pthread_mutex_unlock(&a->assets_mutex);return result;}
 const float *rha_asset(RhAudio *a,int id,size_t *samples,int64_t *channels){
- *samples=0;*channels=0;if(!a)return NULL;pthread_mutex_lock(&a->mutex);const float *p=NULL;
+ *samples=0;*channels=0;if(!a)return NULL;pthread_mutex_lock(&a->assets_mutex);const float *p=NULL;
  coax_t_HostAudioBankSpan source=hab_source(bank_state(a),id);if(source.valid&&a->assets[id].ready){RhAudioAsset *asset=&a->assets[id];RhAudioSamples *owned=a->pcm[asset->ticket];*samples=(size_t)rhas_count(owned);*channels=asset->channels;p=rhas_data(owned);}
- pthread_mutex_unlock(&a->mutex);return p;
+ pthread_mutex_unlock(&a->assets_mutex);return p;
 }
 void rha_reset(RhAudio *a){if(!a)return;pthread_mutex_lock(&a->mutex);coax_default_t_AudioPcmHost(&a->state);memset(a->workspace,0,(size_t)a->workspace_words*sizeof(double));a->cursor=1024;a->invalid=false;pthread_mutex_unlock(&a->mutex);}
-RhAudioSamples *rha_asset_keep(RhAudio *a,int id){if(!a)return NULL;pthread_mutex_lock(&a->mutex);RhAudioSamples *owned=NULL;coax_t_HostAudioBankSpan source=hab_source(bank_state(a),id);if(source.valid&&a->assets[id].ready){owned=a->pcm[a->assets[id].ticket];rhas_retain(owned);}pthread_mutex_unlock(&a->mutex);return owned;}
-void rha_close(RhAudio *a){if(!a)return;for(size_t i=0;i<sizeof a->assets/sizeof a->assets[0];i++){free(a->assets[i].wav);rhas_close(a->pcm[i]);}rhab_close(a->bank);rham_close(a->memory);free(a->workspace);pthread_mutex_destroy(&a->mutex);free(a);}
+RhAudioSamples *rha_asset_keep(RhAudio *a,int id){if(!a)return NULL;pthread_mutex_lock(&a->assets_mutex);RhAudioSamples *owned=NULL;coax_t_HostAudioBankSpan source=hab_source(bank_state(a),id);if(source.valid&&a->assets[id].ready){owned=a->pcm[a->assets[id].ticket];rhas_retain(owned);}pthread_mutex_unlock(&a->assets_mutex);return owned;}
+void rha_close(RhAudio *a){if(!a)return;for(size_t i=0;i<sizeof a->assets/sizeof a->assets[0];i++){free(a->assets[i].wav);rhas_close(a->pcm[i]);}if(a->resolve_release)a->resolve_release(a->resolve_context);rhab_close(a->bank);rham_close(a->memory);free(a->workspace);pthread_mutex_destroy(&a->assets_mutex);pthread_mutex_destroy(&a->mutex);free(a);}

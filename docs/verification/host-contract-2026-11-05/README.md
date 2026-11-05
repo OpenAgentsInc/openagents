@@ -279,6 +279,9 @@ decode bit-identically, all eleven AudioWorklet/native rendered ranges pass
 the unchanged sample bound, and real muted callback pause/resume and engine
 retirement are observed. The Linux SDK now has separately recorded
 [canonical samples, real muted PipeWire output and allocator ownership](audio-linux.md).
+The [Linux lazy default-demand record](linux-audio-demand.md) separately
+qualifies the complete selected encoded workload, rendered timeline and
+held-decoder ownership, plus the changed muted product/session device trace.
 Ordinary Vulkan world/audio integration and version 1 clip rendering remain.
 
 The native Metal receipt/source record, shared lifecycle transitions and

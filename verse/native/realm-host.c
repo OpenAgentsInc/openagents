@@ -52,6 +52,8 @@ extern uint32_t coaxial_sounds_len(uint32_t) __attribute__((weak));
 extern uint32_t coaxial_sounds_capacity(uint32_t) __attribute__((weak));
 #pragma weak rha_open
 #pragma weak rha_bank
+#pragma weak rha_bank_lazy
+#pragma weak rhao_resources
 #pragma weak rha_session_event
 #pragma weak rha_command_current
 #pragma weak rha_info
@@ -61,6 +63,7 @@ extern uint32_t coaxial_sounds_capacity(uint32_t) __attribute__((weak));
 #pragma weak rhap_pause
 #pragma weak rhap_info
 #pragma weak rhap_close
+extern bool rhao_resources(RhAudio *,const char *) __attribute__((weak));
 
 // The face's offsets are 32 bits. Built without PIE, its static data is
 // below 2 GB; malloc stays on the brk heap (no mmap), which follows it; and
@@ -178,14 +181,15 @@ int rh_host_version(void){return coaxial_host_contract_version?(int)coaxial_host
 int rh_audio_enable(RealmHost *h,int muted){
   if(h->audio||h->audio_device)return -1;
   h->audio_status=-1;h->audio_command=-1;
-  if(rh_host_version()!=1||!coaxial_host_copy_span||!coaxial_sound_bank_len||!coaxial_sound_bank||!coaxial_sound_bank_capacity||!coaxial_sound_bank_storage||!coaxial_sound_bank_storage_bytes||!coaxial_sounds||!coaxial_sounds_len||!coaxial_sounds_capacity||!rha_open||!rha_bank||!rha_session_event||!rha_command_current||!rha_info||!rha_close||!rhap_open||!rhap_start||!rhap_pause||!rhap_info||!rhap_close)return -1;
+  if(rh_host_version()!=1||!coaxial_host_copy_span||!coaxial_sound_bank_len||!coaxial_sound_bank||!coaxial_sound_bank_capacity||!coaxial_sound_bank_storage||!coaxial_sound_bank_storage_bytes||!coaxial_sounds||!coaxial_sounds_len||!coaxial_sounds_capacity||!rha_open||!rha_bank_lazy||!rha_session_event||!rha_command_current||!rha_info||!rha_close||!rhap_open||!rhap_start||!rhap_pause||!rhap_info||!rhap_close)return -1;
   // Length generates the borrowed metadata. Admit its complete measured
   // allocation before forming either metadata or source-memory views.
   uint32_t n=coaxial_sound_bank_len(h->state),at=coaxial_sound_bank(h->state),cap=coaxial_sound_bank_capacity(h->state);
   uint32_t base=coaxial_sound_bank_storage(h->state),bytes=coaxial_sound_bank_storage_bytes(h->state);
   if(!coaxial_host_copy_span(at,cap,n,UINT64_C(1)<<32)||!coaxial_host_copy_span(base,bytes,bytes,UINT64_C(1)<<32))return -1;
   h->audio=rha_open();if(!h->audio)return -1;
-  h->audio_status=rha_bank(h->audio,rh_ptr(at),n,rh_ptr(base),bytes);
+  h->audio_status=rha_bank_lazy(h->audio,rh_ptr(at),n,rh_ptr(base),bytes);
+  if(rhao_resources&&!rhao_resources(h->audio,"render-assets")){rh_audio_close(h);return -1;}
   h->audio_device=rhap_open(h->audio,muted!=0);
   if(!h->audio_device){rh_audio_close(h);return -1;}
   return h->audio_status<0?-1:0;
@@ -194,7 +198,7 @@ void rh_audio_gesture(RealmHost *h){if(h->audio_device)(void)rhap_start(h->audio
 void rh_audio_pause(RealmHost *h,int paused){if(h->audio_device)(void)rhap_pause(h->audio_device,paused!=0);}
 void rh_audio_retire(RealmHost *h){if(h->audio){(void)rha_session_event(h->audio,4);if(h->audio_device){rhap_close(h->audio_device);h->audio_device=NULL;}}}
 void rh_audio_close(RealmHost *h){rh_audio_retire(h);if(h->audio){rha_close(h->audio);h->audio=NULL;}}
-int64_t rh_audio_info(RealmHost *h,int field){if(field>=0&&field<=10)return h->audio?rha_info(h->audio,field):0;if(field>=20&&field<=30)return h->audio_device?rhap_info(h->audio_device,field-20):0;switch(field){case 40:return h->audio_status;case 41:return h->audio_command;case 42:return h->audio_device==NULL;case 43:return h->audio==NULL;}return -1;}
+int64_t rh_audio_info(RealmHost *h,int field){if(field>=0&&field<=11)return h->audio?rha_info(h->audio,field):0;if(field>=20&&field<=30)return h->audio_device?rhap_info(h->audio_device,field-20):0;switch(field){case 40:return h->audio_status;case 41:return h->audio_command;case 42:return h->audio_device==NULL;case 43:return h->audio==NULL;}return -1;}
 static void audio_after(RealmHost *h){
   if(!h->audio)return;
   uint32_t n=coaxial_sounds_len(h->state);if(!n)return;

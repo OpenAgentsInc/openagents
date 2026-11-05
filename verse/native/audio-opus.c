@@ -2,6 +2,8 @@
 #include "audio-opus.h"
 #include "NativeAudio.h"
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 // The installed runtime has no development header output. These are the
 // documented libopusfile 0.12 opaque C ABI declarations, not a codec/parser.
@@ -45,3 +47,22 @@ done:
  if(file)op_free(file);rhas_close(probe);rhas_close(decoded);rhas_close(apc);rhas_close(encoded);
  observed->retained_words=rhas_count(result);return result;
 }
+static RhAudioSamples *read_encoded(RhAudioMemory *memory,const char *root,coax_string relative,bool companion,size_t *size){
+ *size=0;size_t n=strlen(root);if(relative.count<1||(uint64_t)relative.count>SIZE_MAX-n-1)return NULL;
+ char *path=malloc(n+(size_t)relative.count+1);if(!path)return NULL;memcpy(path,root,n);memcpy(path+n,relative.data,(size_t)relative.count);path[n+(size_t)relative.count]=0;
+ FILE *file=fopen(path,"rb");free(path);if(!file)return NULL;RhAudioSamples *result=NULL;
+ if(fseek(file,0,SEEK_END))goto done;long bytes=ftell(file);if(bytes<0||fseek(file,0,SEEK_SET))goto done;
+ int64_t words=hae_words((int64_t)bytes,companion);if(!words)goto done;result=rhas_open(memory,words,1);if(!result)goto done;
+ if(fread(rhas_data(result),1,(size_t)bytes,file)!=(size_t)bytes||fgetc(file)!=EOF||ferror(file)||fseek(file,0,SEEK_END)||ftell(file)!=bytes){rhas_close(result);result=NULL;goto done;}*size=(size_t)bytes;
+done:fclose(file);return result;
+}
+static RhAudioSamples *resolve_resource(void *context,RhAudioMemory *memory,const uint8_t *name,size_t name_bytes){
+ if(name_bytes>INT64_MAX)return NULL;coax_string key={(const char*)name,(int64_t)name_bytes};if(!apv_asset_name(key))return NULL;
+ coax_t_HostAudioAsset asset=hpc_everglade(key);char fallback[128];int length=snprintf(fallback,sizeof fallback,"/realms/everglade/sfx/%.*s.ogg",(int)name_bytes,name);
+ coax_string url=asset.valid?asset.source_url:(coax_string){fallback,length};size_t source_bytes=0,companion_bytes=0;
+ RhAudioSamples *source=read_encoded(memory,context,url,false,&source_bytes),*companion=NULL,*result=NULL;if(!source)return NULL;
+ if(asset.canonical){companion=read_encoded(memory,context,asset.companion_url,true,&companion_bytes);if(!companion)goto done;}
+ result=rhao_decode(memory,name,name_bytes,(const uint8_t*)rhas_data(source),source_bytes,(const uint8_t*)rhas_data(companion),companion_bytes,NULL);
+done:rhas_close(companion);rhas_close(source);return result;
+}
+bool rhao_resources(RhAudio *audio,const char *root){if(!audio||!root)return false;size_t n=strlen(root);char *copy=malloc(n+1);if(!copy)return false;memcpy(copy,root,n+1);rha_resolver(audio,resolve_resource,copy,free);return true;}
