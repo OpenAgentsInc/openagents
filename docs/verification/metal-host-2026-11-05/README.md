@@ -731,3 +731,54 @@ emission join is reused from `cbf057b592`; no compiler or GPU gate is repeated.
 `socket-tls-sdk/artifacts.sha256` joins both exact executables/libraries,
 sources and public fixture identities. This check opens no GPU or audio
 device and changes no host default or graphics admission.
+
+## Room371403 integration and visible-window precondition
+
+The [actual window receipt](room-371403-window.json) joins the existing
+frozen native producer/SDK with the separately qualified room at
+`3714032827`. Its binary SHA256 is
+`682c794700a6db58fc5be2414d22a80b4067baa8be05277b2dd80e98de8813ab`;
+the room's own six-unit manifest and explicit older `cdace` compiler profile
+are in [its source record](../room-deaths-2026-11-05/sources.txt).
+That room/compiler receipt is not renderer/compiler admission. Subsequent
+room/session changes on main are outside this integration pin.
+
+`room-371403-diagnostic-window/` observes a real visible, unhidden, active
+AppKit window on the active Space, with API/GPU validation enabled. The room
+connects as net2/seat0. Coverage holds renderer frames/completions at9/9 and
+audio at44,032 Coax frames/85 callbacks while messages increase34→64.
+Returning to play reaches16 renderer frames,134 audio callbacks and68,608
+audio frames. Device-buffer nonzero samples remain zero; terminal audio is
+retired/inactive and closed ledger objects/words are0/0. All owned children
+exit. `room-371403-sdk/artifacts.sha256` freezes shell sources, linked
+objects, executable, loaded libraries, room identity and actual plan/result.
+
+The preceding `room-371403-window/` and `room-371403-raised-window/` are
+unqualified observations: AppKit reported not-visible, and producer/audio
+correctly stayed paused. The test plan now explicitly raises/unhides its
+actual window and requires visibility. Additional raw observations split
+window visibility, occlusion, active Space and app activation. The final run
+observed all visibility facts true; no product visibility rule was bypassed,
+and no cause is assigned to the earlier external occlusion. The display was
+observed awake and the console session unlocked. This is a scoped room/
+device continuity check, not a new display-rate measurement or complete
+current-main packaging qualification.
+
+## Remaining complete-host gates
+
+Current producer/face packaging still needs a successful bounded emission
+under an admitted CPU compiler and an exact source/object join. Two sibling
+current5E attempts hit their840-second bound without C/header output;
+unchanged attempts are not repeated. The earlier137-input primary closure
+differs from the `b6e12743cd` snapshot in15 product files; its frozen image
+cannot be relabeled current.
+
+The quantized FP16 presentation matrix remains experimental under its exact
+frozen graphics iteration backend. No admitted current graphics compiler or
+replacement build/load receipt has been published here. Existing shader
+admission is preserved. Complete qualification needs the admitted product,
+matching producer/assets and real display-rate/per-pass evidence joined to
+one packaged snapshot. The passing frozen comparisons and earlier display
+timing remain separately scoped. Shared browser/Vulkan service work and
+HTTP redirect alignment continue under#12869; neither issue nor the desktop
+default is changed by these component checkpoints.

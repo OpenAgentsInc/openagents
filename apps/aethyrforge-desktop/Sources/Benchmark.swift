@@ -18,6 +18,7 @@ extension ForgeApp {
         for op in plan["operations"] as? [[String:Any]] ?? [] {
             switch op["op"] as? String {
             case "wait": try await Task.sleep(for:.milliseconds((op["ms"] as! NSNumber).intValue))
+            case "raise": NSApp.unhide(nil); window.deminiaturize(nil); window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps:true)
             case "reset": mf_measure_reset(host)
             case "audio": view.audio?.start()
             case "presentation":
@@ -36,7 +37,7 @@ extension ForgeApp {
                     let r = p[i]
                     return [r.frame,r.start_ns,r.submit_ns,r.complete_ns,r.gpu_ns,r.input_sequence,r.input_ns,r.x_mm,r.z_mm,r.width,r.height,r.scale]
                 } } ?? []
-                observations.append(["label":op["label"] as? String ?? "", "rows":rows,"dropped":dropped,"frames":mf_info(host,0),"completed":mf_info(host,10),"pending":mf_info(host,2),"net":mf_info(host,7),"seat":mf_info(host,8),"messages":view.network?.delivered ?? 0,"paused":view.paused,"setup":!setupPane.isHidden,"ledgerLive":mf_info(host,3),"recoveries":mf_info(host,12),"width":view.bounds.width,"height":view.bounds.height,"backingScale":window.backingScaleFactor,"audio":view.audio?.source.observations() ?? [:],"nativeFace":(0..<11).map { mf_observe(host,-2,Int64($0)) }])
+                observations.append(["label":op["label"] as? String ?? "", "rows":rows,"dropped":dropped,"frames":mf_info(host,0),"completed":mf_info(host,10),"pending":mf_info(host,2),"net":mf_info(host,7),"seat":mf_info(host,8),"messages":view.network?.delivered ?? 0,"paused":view.paused,"setup":!setupPane.isHidden,"ledgerLive":mf_info(host,3),"recoveries":mf_info(host,12),"width":view.bounds.width,"height":view.bounds.height,"backingScale":window.backingScaleFactor,"audio":view.audio?.source.observations() ?? [:],"nativeFace":(0..<11).map { mf_observe(host,-2,Int64($0)) },"windowVisible":window.isVisible,"occlusionVisible":window.occlusionState.contains(.visible),"onActiveSpace":window.isOnActiveSpace,"appHidden":NSApp.isHidden,"appActive":NSApp.isActive])
             default: throw ShellError.failed("Unknown native measurement effect.")
             }
         }
