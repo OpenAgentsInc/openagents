@@ -15,12 +15,12 @@ versions. [`STATUS.md`](STATUS.md) describes current support;
 
 ## 0.50.0 — Observable Secret Erasure — 2026-11-05
 
-Commit: [`3266aa2d5c9a14a43ab478a28be4c889a55415f7`](https://github.com/OpenAgentsInc/openagents/commit/3266aa2d5c9a14a43ab478a28be4c889a55415f7)
+Commit: [`3e0af6355a43588adcb0dd693abf038a436291c9`](https://github.com/OpenAgentsInc/openagents/commit/3e0af6355a43588adcb0dd693abf038a436291c9)
 
-- Add `secure_zero(view)` for borrowed numeric/bool storage. Emit volatile byte
+- Add `secure_zero(view)` for writable borrowed numeric/bool storage. Emit volatile byte
   stores on native C and Wasm, retaining cleanup even for dead local buffers;
   compile-time evaluation performs the same selected-view mutation.
-- Refuse strings, descriptors, aggregates and wrong arity. Count the operation
+- Refuse read-only views, strings, descriptors, aggregates and wrong arity. Count the operation
   as a borrowed write in effect inspection and reject it from device compute.
 - Use lexical `defer` to make explicit secret-buffer cleanup cover normal and
   refused returns. Hidden register/spill and operating-system copies remain

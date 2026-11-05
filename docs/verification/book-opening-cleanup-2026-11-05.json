@@ -191,5 +191,22 @@
   ],
   "native_primary": "metal-world.coax generated to native C and compiled at -O2 on Linux; actual Metal SDK runtime requires its separate macOS qualification",
   "retained_original_review": "Issue body records 35 selected Coax units, 56 debug/release runs across other books and 25 authored suites. Unchanged passing units were retained; changed examples and composed runtimes were tested as listed.",
-  "reconciled_main": "640adf8debe5917804a3221a36206681fdfbb1de"
+  "merged_compiler": {
+    "version": "0.50.0",
+    "preserves": "Read-only views 0.49.0, fixed math and current-main diagnostics",
+    "mutation": {
+      "checker/names.coax": {
+        "mutants": 362,
+        "killed": 362,
+        "survivors": 0
+      },
+      "checker/expressions.coax": {
+        "mutants": 1139,
+        "killed": 1139,
+        "survivors": 0
+      }
+    },
+    "readonly_erasure_refusal": "E0378; authored typed-graph case and real source fixture",
+    "bootstrap": "COAX_MUTATION=0 bootstrap checks and seed reproduction; changed checker units mutated separately. This is not a claim of a new full compiler mutation gate."
+  }
 }

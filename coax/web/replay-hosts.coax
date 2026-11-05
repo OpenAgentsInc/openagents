@@ -162,9 +162,10 @@ rh_crypto :: (c:[]Cdp)->bool {
   temp:[1024]u8;dir:=fs_temp("nip59-host-cleanup-",temp[..]);if dir.count==0 {return false;}
   defer {removed:=fs_remove(dir);}
   paths:[4][1200]u8;header:=fs_join(dir,"nip59-cleanup.h",paths[0][..]);source:=fs_join(dir,"cleanup.c",paths[1][..]);exe:=fs_join(dir,"cleanup",paths[2][..]);
-  out:[8388608]u8;
+  out:[8388608]u8;compiler_buffer:[4096]u8;compiler:=proc_getenv("COAX",compiler_buffer[..]);
+  if compiler.count==0 {compiler="coax/bin/coax";}
   for release:[2]bool.[false,true] {
-    argv:=[8]string.["coax/bin/coax","c","coax/tests/nostr/nip59-cleanup.coax","--library","--header",header,"--release",""];
+    argv:=[8]string.[compiler,"c","coax/tests/nostr/nip59-cleanup.coax","--library","--header",header,"--release",""];
     env:[]string;errors:[8192]u8;
     emitted:=proc_run_bytes(argv[0..<ifx release then 7 else 6],env,600000,out[..],errors[..]);
     if emitted.started!=0 || emitted.status!=0 || emitted.cut || emitted.timed_out {tool_errln(cast(string)errors[0..<emitted.err_n]);return false;}
