@@ -99,3 +99,75 @@ driver repair has not yet been persisted as a NixOS boot-module change.
 
 Local binaries, before/after hashes, SDK scenes, logs and captures are retained
 under `~/.openagents/verse-os/combat/2026-11-04-loot/input-repair/`.
+
+## Direct journal, navigation and background input
+
+The foreground native XTest trial opened the Map & Quest Log, read its four
+quests, then made bounded W/A/W inputs with releases. The recorded coordinate
+changes were 42.2,23.5 to 42.3,23.5 to 42.3,23.4. Its final image and released
+keys are retained in `direct-nav-01/`. Earlier uninstrumented movement and
+quest progress included owner activity and do not qualify autonomous control.
+
+The owner then requested Elemental Unrest: speak to Yala Windwatcher in
+Thendal Grove. The owner objected to taking keyboard focus. No desktop
+switch or foreground-activation API was used in the background experiments.
+All following paths are under the same local evidence root named above:
+
+- Two independent XInput2/XTEST experiments created an isolated master pair,
+  focused its keyboard on the exact WoW window/PID, sent L, restored client
+  pointers and removed the pair. Core focus stayed unchanged; neither
+  screenshot showed the journal opening. Normal runs passed ASan/UBSan and
+  leak detection. This is negative game-interop evidence, not a working seat.
+- An independent Win32 SDK peer ran inside the existing UMU mount/user/PID
+  namespace as the owner, attaching to the existing prefix/server. A second
+  UMU container was not started. Inherited loader/server-descriptor variables
+  were removed for the child. It identifies exactly one visible window by
+  title and executable basename before posting input.
+- Initial PostMessage L reported success but its first screenshot still
+  showed the world. A subsequent activation-notification experiment timed
+  out before sending its own key; the journal then appeared. Its effect
+  cannot be separated from the previously queued key. It is not proof that
+  activation notifications are required or sufficient.
+- Further addressed PostMessage L pairs visibly closed and reopened the
+  journal. Before/after captures of the outer desktop retained desk 1 and
+  the owner's foot window `0x3b`; Win32 foreground remained the same other
+  HWND (65568), not WoW (131430). The three-second observation delay matters:
+  API acceptance alone is not proof that the game consumed the event.
+- Addressed WM_MOUSEMOVE/left-button messages selected Elemental Unrest.
+  The screenshot reads “Speak to Yala Windwatcher in Thendal Grove,” shows
+  its question-mark map marker east and slightly north of the player, and
+  lists 25 XP. No journal abandonment or quest completion was attempted.
+- A posted W down/500 ms/up made the seated character stand and advance.
+  That individual trial lacks paired outer-focus snapshots, so it does not
+  establish background movement isolation. A subsequent four-step attempt
+  refused its first action because the owner had focused WoW (`0x53`).
+
+The SDK sources are `os/tests/native-background-input.c` and
+`os/tests/native-wine-input.c`. The Windows peer compiled with MinGW using
+`-Wall -Wextra -Werror`; it is an explicit qualification executable, not the
+production Coax controller. Windows SendInput was not exercised because
+WoW was not the Wine foreground window. No SetForegroundWindow, SetFocus,
+global cursor movement, injected DLL or game-memory patch was used there.
+The XInput2 peer is also an experiment; its assertion failure paths are not
+a qualified cleanup/ownership implementation.
+
+`direct-background-01/` retains native XWD/PNG observations, both device
+results, Win32 results, focused-window/desktop snapshots, the PE executable,
+and the instrumented movement attempt's action log. The initial click and
+read-only Wine attachment are preserved in the agent tool transcript rather
+than that JSONL; this is not a claim of complete continuous recording.
+`direct-yala-01/` retains earlier unsuccessful foreground-adapter attempts
+and a read-only all-released key snapshot. An attempted hands-off RPC was
+rejected as unknown; hands were not disabled.
+
+Yala has not been reached or spoken to. Background journal keys now have
+visible interop evidence; background movement, reliable mouse ownership,
+owner-precedence cancellation during a hold, timeouts/crash release, target
+lifetime and the native sensor/Elephant loop remain to be qualified under
+[#12889](https://github.com/OpenAgentsInc/openagents/issues/12889). The
+direct game-render path remains in place throughout these input experiments.
+
+The new source/record diff passes `git diff --check`. `tools-check` was run
+before this push and still fails on the same 29 pre-existing missing headers;
+both new SDK peers declare their reason. No production Coax implementation
+changed in this experiment, so the earlier passing policy gates were not rerun.
