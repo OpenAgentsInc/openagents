@@ -329,11 +329,37 @@ net_ticket :: (s: [] Everglade, answer: string) #export_c {
     }
   }
   n[0].ticket_n = 0;
-  // the directory has no seat anywhere (every shard's rooms full): said, and asked again after the wait
-  if answer.count > 4 && answer[0..<4] == "503\n" { net_tell(s, n, "EVERY ROOM IS FULL · TRYING AGAIN"); }
+  // the directory has no seat anywhere (every shard's rooms full): said with how many wait and the last
+  // wait (#12796), and asked again after the wait the API names
+  if answer.count > 4 && answer[0..<4] == "503\n" {
+    t: [64] u8;
+    k := wire_put(t[..], 0, "ALL ROOMS FULL");
+    w := net_json_field(answer, "waiting");
+    if w.count > 0 && w.count < 6 { k = wire_put(t[..], k, " · "); k = wire_put(t[..], k, w); k = wire_put(t[..], k, " WAITING"); }
+    l := net_number(net_json_field(answer, "last_wait_ms"));
+    if net_json_field(answer, "last_wait_ms").count > 0 && l < 36000000 {
+      k = wire_put(t[..], k, " · LAST WAIT ");
+      k = ifx l < 60000 then put_digits(t[..], k, ifx l < 1000 then 1 else l / 1000) else put_digits(t[..], k, l / 60000);
+      k = wire_put(t[..], k, ifx l < 60000 then "S" else " MIN");
+    }
+    net_tell(s, n, cast(string) t[0..<k]);
+  }
   // an admin's KICK or a report's HIDE (verse.room_kicks): out of the rooms and their chat for 24 hours, said
   if answer.count > 4 && answer[0..<4] == "403\n" && net_json_field(answer, "error") == "kicked" { net_tell(s, n, "KICKED · BACK IN 24 HOURS"); }
   net_down(n);
+  net_retry_after(n, answer);
+}
+// A refusal's retry time (429 asked too often, 503 every room full: "retry_ms", #12796) is honored: the
+// next ask waits at least that long, plus up to a quarter more of jitter so the pages refused together
+// come back apart. Capped at 5 minutes.
+net_retry_after :: (n: [] EgNet, answer: string) {
+  f := net_json_field(answer, "retry_ms");
+  if f.count == 0 || f.count > 7 { return; }
+  ms := lo_int(net_number(f), 300000);
+  if ms <= 0 { return; }
+  j := ((n[0].mono * 7919 + n[0].tries * 104729 + n[0].pid_n * 31 + int(n[0].pid[0]) * 13 + int(n[0].pid[lo_int(1, n[0].pid_n)]) * 29) % 1000 + 1000) % 1000;
+  at := n[0].mono + ms + ms * j / 4000;
+  if at > n[0].retry { n[0].retry = at; }
 }
 // What became of the room, said once over the hotbar (and kept for the probe).
 net_tell :: (s: [] Everglade, n: [] EgNet, text: string) {
@@ -2041,7 +2067,31 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   #assert na[0].pipe[0].n == 1 && na[0].pipe[0].op[0] == NET_PIPE_TICKET;
   // every room full: said, not silent
   net_ticket(a[..], "503\n{\"error\":\"every room is full: try again in a minute\"}");
-  #assert cast(string) na[0].said[0..<na[0].said_n] == "EVERY ROOM IS FULL · TRYING AGAIN" && net_probe(a[..], 0) == NET_DOWN;
+  #assert cast(string) na[0].said[0..<na[0].said_n] == "ALL ROOMS FULL" && net_probe(a[..], 0) == NET_DOWN;
+}
+#test "net: a refusal's retry time is honored, with jitter; a full answer says how many wait and the last wait (#12796)" {
+  a: [1] Everglade; na: [1] EgNet;
+  everglade_attach_net(a[..], na[..]);
+  net_facts(a[..], "url=https://openagents.com/worlds/everglade\nplayer=pa\nnow=5000000\nnav=0\n", "everglade", false);
+  net_step(a[..], 100000, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  pipe_drained(na[0].pipe[..]);
+  net_ticket(a[..], "503\n{\"error\":\"every room is full: try again in a minute\",\"waiting\":58,\"retry_ms\":16600,\"last_wait_ms\":42000}");
+  #assert cast(string) na[0].said[0..<na[0].said_n] == "ALL ROOMS FULL · 58 WAITING · LAST WAIT 42S";
+  #assert na[0].retry >= 100000 + 16600 && na[0].retry <= 100000 + 16600 + 16600 / 4;
+  net_step(a[..], 100000 + 16000, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  #assert na[0].pipe[0].n == 0;
+  // 429: the page waits the API's time, not its own first second
+  net_step(a[..], 200000, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  pipe_drained(na[0].pipe[..]);
+  net_ticket(a[..], "429\n{\"error\":\"slow down\",\"retry_ms\":30000}");
+  #assert na[0].retry >= 230000 && na[0].retry <= 237500;
+  // pages refused at the same moment come back apart
+  b: [1] Everglade; nb: [1] EgNet;
+  everglade_attach_net(b[..], nb[..]);
+  net_facts(b[..], "url=https://openagents.com/worlds/everglade\nplayer=qz\nnow=5000000\nnav=0\n", "everglade", false);
+  net_step(b[..], 200000, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  net_ticket(b[..], "429\n{\"error\":\"slow down\",\"retry_ms\":30000}");
+  #assert nb[0].retry != na[0].retry;
 }
 #test "net: the directory's instance and shard: the socket opens on the shard's path, and the next ticket asks for that instance (#12717)" {
   a: [1] Everglade; na: [1] EgNet;

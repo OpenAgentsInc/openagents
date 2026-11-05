@@ -525,6 +525,11 @@ static void review(const request *q, PGconn *db, const char *who) {
 static void rooms(const request *q, PGconn *db) {
   if (strcmp(q->method, "GET")) { api_json(q->fd, 405, "{\"error\":\"GET\"}"); return; }
   out_buf o = {0};
+  // admission (#12796, migrations/0126_room_admission.sql): refusals by reason since the start, and who waits
+  section(&o, db, "ADMISSION", "", "REASON|COUNT",
+    "SELECT reason, n::text FROM verse.room_admission "
+    "UNION ALL SELECT 'waiting now', count(*)::text FROM verse.room_waiting WHERE last_ms > verse.room_now() - 60000 "
+    "UNION ALL SELECT 'last wait s', round(wait_ms / 1000.0)::text FROM verse.room_wait_last", 0, NULL);
   PGresult *r = PQexec(db, "SELECT DISTINCT shard FROM verse.room_stats WHERE at > now() - interval '10 minutes' ORDER BY shard");
   int n = PQresultStatus(r) == PGRES_TUPLES_OK ? PQntuples(r) : 0;
   if (PQresultStatus(r) != PGRES_TUPLES_OK) api_log("rooms: %s", PQerrorMessage(db));

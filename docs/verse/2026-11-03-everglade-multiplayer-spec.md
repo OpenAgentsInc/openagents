@@ -326,6 +326,20 @@ things change from a plain relay room:
   seat, which may be one nobody is in yet. The page joins `join`, or the
   instance a link names (section 8). The relay's 16-seat cap is the hard
   limit: a full instance answers 404 to the socket and the page asks again.
+- Admission when every room is full (#12796,
+  `migrations/0126_room_admission.sql`). The seat-ticket ask is limited to
+  12 a minute per player key and 120 per address in each API process; over
+  that it answers 429 with `retry_ms` and `Retry-After`. When no shard has a
+  seat, it answers 503 with `waiting` (players whose ask found every room
+  full in the last 60 s), `last_wait_ms` (the last wait that ended in a seat)
+  and `retry_ms` = 5 s + 0.2 s a waiting player, capped at 5 minutes. W
+  waiting pages then ask W / (5 + 0.2 W) times a second, under 5 for up to
+  1,475 waiting. The page says `ALL ROOMS FULL · 58 WAITING · LAST WAIT 42S`
+  and waits `retry_ms` plus up to a quarter more of jitter. The API counts
+  refusals by reason (`full`, `rate`, `kicked`) and the asks seated after a
+  wait; `/admin/rooms` shows them as ADMISSION. `test_room_admission.py`
+  asks for 192 seats with 250 bots: 192 are seated, 58 wait and ask 3.5
+  times a second, and a reconnect storm of the 192 keeps every seat.
 - HTTP presence uses the instance's name as its room, so the roster and the
   socket agree.
 - Test rooms: an automation run uses code `pair-<hex>`, so it never meets

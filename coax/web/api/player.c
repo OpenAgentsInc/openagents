@@ -37,6 +37,8 @@
 //                                             answered as "room" and "shard" (#12717)
 //                                             ?with=P: the friend whose invite holds them a seat (#12795);
 //                                             a full asked room adds "asked" and the friend's name "by"
+//                                             at most 12 asks a minute a player key, 120 an address: 429
+//                                             {retry_ms}; every room full: 503 {waiting, last_wait_ms, retry_ms} (#12796)
 //   POST /api/playtest/room-invite/<room>     INVITE: a seat in your room held two minutes for a friend
 //                                             (rooms_invite, migrations/0125_room_invites.sql, #12795)
 //   POST /api/playtest/player/name            {name}: a guest's own name ({"name": ""} the generated one)
@@ -265,10 +267,68 @@ static void ticket_word(char *out, size_t cap, const char *in) {
   }
   out[m] = 0;
 }
+// Admission (#12796, migrations/0126_room_admission.sql): the ticket asks a player key and an address
+// may make in a minute, in this process. Over, the answer is 429 with the ms until the window ends
+// (and Retry-After); the 429s are counted as 'rate' with the next write (room_rate_n).
+#define ROOM_ASKS_KEY 12
+#define ROOM_ASKS_ADDR 120
+#define ROOM_LIMITS 512
+static struct { char key[96]; double since; int n; } room_limits[ROOM_LIMITS];
+static long long room_rate_n;
+// 0 when allowed, else the ms until who's window ends.
+static long long room_admit(const char *kind, const char *who, int per_minute) {
+  char key[96]; snprintf(key, sizeof key, "%s:%.80s", kind, who);
+  double now = api_now_ms();
+  int free_slot = -1, oldest = 0;
+  for (int i = 0; i < ROOM_LIMITS; i++) {
+    if (room_limits[i].key[0] && !strcmp(room_limits[i].key, key)) {
+      if (now - room_limits[i].since > 60000) { room_limits[i].since = now; room_limits[i].n = 0; }
+      if (++room_limits[i].n <= per_minute) return 0;
+      long long left = (long long)(room_limits[i].since + 60000 - now);
+      return left > 0 ? left : 1;
+    }
+    if (!room_limits[i].key[0] || now - room_limits[i].since > 60000) { if (free_slot < 0) free_slot = i; }
+    else if (room_limits[i].since < room_limits[oldest].since) oldest = i;
+  }
+  int k = free_slot >= 0 ? free_slot : oldest;
+  snprintf(room_limits[k].key, sizeof room_limits[k].key, "%s", key);
+  room_limits[k].since = now; room_limits[k].n = 1;
+  return 0;
+}
+// The visitor's address: the load balancer's next to last (as access.c's).
+static void room_visitor(const request *q, char ip[128]) {
+  char xff[512] = "";
+  api_header(q, "X-Forwarded-For", xff, sizeof xff);
+  char *parts[16]; int np = 0;
+  for (char *t = strtok(xff, ", "); t && np < 16; t = strtok(NULL, ", ")) parts[np++] = t;
+  snprintf(ip, 128, "%s", np ? parts[np >= 2 ? np - 2 : 0] : "local");
+}
+// A refusal counted by reason (and this process's 429s since the last write).
+static void room_count(PGconn *db, const char *reason) {
+  char n[24]; snprintf(n, sizeof n, "%lld", room_rate_n);
+  const char *v[2] = {reason, n};
+  PGresult *r = PQexecParams(db, "SELECT verse.room_admit_count($1, 1), verse.room_admit_count('rate', $2::bigint)", 2, NULL, v, NULL, NULL, 0);
+  if (PQresultStatus(r) == PGRES_TUPLES_OK) room_rate_n = 0;
+  PQclear(r);
+}
 static void room_ticket(const request *q, PGconn *db, const char *key, bool site, const char *room, const char *body) {
   if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a ticket\"}"); return; }
   const char *secret = getenv("OA_ROOM_TICKET_KEY");
   if (!secret || strlen(secret) < 32) { api_json(q->fd, 503, "{\"error\":\"no ticket key\"}"); return; }
+  {
+    char ip[128]; room_visitor(q, ip);
+    long long wait = room_admit("room-key", key && key[0] ? key : "-", ROOM_ASKS_KEY);
+    long long wait_ip = room_admit("room-ip", ip, ROOM_ASKS_ADDR);
+    if (wait_ip > wait) wait = wait_ip;
+    if (wait > 0) {
+      room_rate_n++;
+      char hdr[48], out[96];
+      snprintf(hdr, sizeof hdr, "Retry-After: %lld\r\n", (wait + 999) / 1000);
+      int on = snprintf(out, sizeof out, "{\"error\":\"slow down\",\"retry_ms\":%lld}", wait);
+      api_respond(q->fd, 429, "application/json", hdr, out, (size_t)on);
+      return;
+    }
+  }
   size_t rn = strlen(room);
   if (!rn || rn > 24) { api_json(q->fd, 404, "{\"error\":\"unknown\"}"); return; }
   for (size_t i = 0; i < rn; i++) {
@@ -302,7 +362,7 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
   snprintf(pid, sizeof pid, "%s", PQgetvalue(r, 0, 0));
   bool account = PQgetvalue(r, 0, 1)[0] == 't';
   size_t nn = ticket_name(name, sizeof name, PQgetvalue(r, 0, 2));
-  if (PQgetvalue(r, 0, 7)[0] == 't') { PQclear(r); api_json(q->fd, 403, "{\"error\":\"kicked\"}"); return; }   /* an admin's kick, 24 hours (#12714) */
+  if (PQgetvalue(r, 0, 7)[0] == 't') { PQclear(r); room_count(db, "kicked"); api_json(q->fd, 403, "{\"error\":\"kicked\"}"); return; }   /* an admin's kick, 24 hours (#12714) */
   int hp = PQgetisnull(r, 0, 3) ? -1 : atoi(PQgetvalue(r, 0, 3));
   int wanted = PQgetisnull(r, 0, 4) ? -1 : atoi(PQgetvalue(r, 0, 4));
   int xp = atoi(PQgetvalue(r, 0, 9));   /* XP, which only rises (#12739); the ticket's HP field carries it as HPxXP */
@@ -330,7 +390,31 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
   snprintf(asked, sizeof asked, "%s", room);
   if (!api_query(q, "with", via, sizeof via)) via[0] = 0;
   if (api_query(q, "realm", realm, sizeof realm) && realm[0]) {
-    if (!rooms_pick(db, realm, room, pid, via, placed, sizeof placed, &shard, &full)) { api_json(q->fd, 503, "{\"error\":\"every room is full: try again in a minute\"}"); return; }
+    char rn_s[24]; snprintf(rn_s, sizeof rn_s, "%lld", room_rate_n);
+    const char *wv[2] = {pid, rn_s};
+    if (!rooms_pick(db, realm, room, pid, via, placed, sizeof placed, &shard, &full)) {
+      // every room full: this player waits; the answer says how many wait, the last wait, and when to ask again
+      PGresult *w = PQexecParams(db, "SELECT waiting, last_wait_ms FROM verse.room_wait($1, $2::bigint)", 2, NULL, wv, NULL, NULL, 0);
+      long long waiting = 0, last = -1;
+      if (PQresultStatus(w) == PGRES_TUPLES_OK && PQntuples(w) == 1) {
+        room_rate_n = 0;
+        waiting = atoll(PQgetvalue(w, 0, 0));
+        if (!PQgetisnull(w, 0, 1)) last = atoll(PQgetvalue(w, 0, 1));
+      } else api_log("room-wait: %s", PQerrorMessage(db));
+      PQclear(w);
+      /* more waiting, longer apart: W waiting pages ask W / (5 + 0.2 W) times a second, under 5, up to 1475 waiting */
+      long long retry = 5000 + (waiting * 200 < 295000 ? waiting * 200 : 295000);
+      char out[192], hdr[48];
+      int on = snprintf(out, sizeof out, "{\"error\":\"every room is full: try again in a minute\",\"waiting\":%lld,\"retry_ms\":%lld%s", waiting, retry, last >= 0 ? ",\"last_wait_ms\":" : "");
+      if (last >= 0) on += snprintf(out + on, sizeof out - (size_t)on, "%lld", last);
+      on += snprintf(out + on, sizeof out - (size_t)on, "}");
+      snprintf(hdr, sizeof hdr, "Retry-After: %lld\r\n", (retry + 999) / 1000);
+      api_respond(q->fd, 503, "application/json", hdr, out, (size_t)on);
+      return;
+    }
+    PGresult *sr = PQexecParams(db, "SELECT verse.room_seated($1, $2::bigint)", 2, NULL, wv, NULL, NULL, 0);
+    if (PQresultStatus(sr) == PGRES_TUPLES_OK) room_rate_n = 0;
+    PQclear(sr);
     room = placed;
   }
   struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts);
