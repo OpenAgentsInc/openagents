@@ -1,0 +1,29 @@
+// Normalize complete GPU readback chunks to little-endian RGBA f32 using
+// the existing comparison decoder. This does not decide an image tolerance.
+#import "Basic";
+#load "../render/tests/compare-frames-policy.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/args.coax";
+#test "readback normalization retains half values signed zero and BGRA lanes" {
+  half:=[8]u8.[0,0x38,0,0x80,0,0x3c,0,0x40];out:[16]u8;hu_unpack(half[..],1,out[..]);
+  #assert cf_u32(out[..],0)==0x3f000000 && cf_u32(out[..],4)==0x80000000 && cf_u32(out[..],8)==0x3f800000 && cf_u32(out[..],12)==0x40000000;
+  bgra:=[4]u8.[0,255,0,255];hu_unpack(bgra[..],3,out[..]);#assert cf_u32(out[..],0)==0 && cf_u32(out[..],4)==0x3f800000 && cf_u32(out[..],12)==0x3f800000;
+}
+hu_unpack :: (source:[]u8,format:int,out:[]u8) {
+  for p:0..<source.count/cf_stride(format) {for c:0..<4 {
+    bits:=f32_bits(cast(f32)cf_value(source,format,p,c));at:=p*16+c*4;
+    for k:0..<4 {out[at+k]=cast,trunc(u8)(bits>>(8*k));}
+  }}
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=3 {tool_errln("usage: unpack-readback INPUT FORMAT NEW_RGBA32F");return 2;}
+  source:=args_at(a[..],0);format:=cf_format(args_at(a[..],1));out:=args_at(a[..],2);size:=fs_size(source);
+  if format<0 || size<1 || size%cf_stride(format)!=0 || fs_exists(out) || !fs_write(out,"") {return 2;}
+  input:[65536]u8;output:[65536]u8;at:=0;
+  while at<size {left:=(size-at)/cf_stride(format);pixels:=ifx left<4096 then left else 4096;n:=pixels*cf_stride(format);
+    if fs_read_at(source,at,input[0..<n])!=n {return 1;}hu_unpack(input[0..<n],format,output[..]);
+    if !fs_append(out,cast(string)output[0..<pixels*16]) {return 1;}at+=n;
+  }
+  return ifx fs_size(source)==size && fs_size(out)==(size/cf_stride(format))*16 then 0 else 1;
+}

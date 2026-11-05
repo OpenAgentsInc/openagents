@@ -101,6 +101,14 @@ to include the new SDK, and native `local:` room mapping remains an open
 integration exit. Loading the shared facade alone does not opt a legacy
 face into this transport contract.
 
+The complete frozen shared Everglade frame, all textures/media and actual
+browser/Vulkan readbacks are recorded in [shared-frame.md](shared-frame.md).
+That record preserves both the published G5 live comparison (53 values
+beyond tolerance, within its unchanged 2,000 allowance) and the supplemental
+zero-allowance comparison, which fails. The Metal owner reports the same
+frame through its production interpreter; its final source/executable join
+and interactive parity remain required.
+
 `browser-core.json`, `browser-transport.json` and
 `browser-replacement.json` retain the actual fixture event rows. Each row
 is `[kind,a,b,c,d,e,byteCount,FNV32]`, as defined by `fixture.coax`.
@@ -177,7 +185,7 @@ work, then closes its sockets/helpers and server on exit.
 ## Required exits still open
 
 The native Metal receipt/source record, shared lifecycle transitions and
-device-loss/replacement receipts, complete production render graph, and
+device-loss/replacement receipts, interactive producer/GPU parity, and
 muted/offline audio sample comparison remain to be recorded. Ordinary
 Vulkan SDK packaging, native-local socket mapping and audio execution are
 still required; the qualified transport observer does not substitute for
