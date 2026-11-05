@@ -1,0 +1,4 @@
+// One decoder/notice object, with additive cache/source admission exports.
+// Do not link it alongside a second native-texture object.
+#load "native-texture.coax";
+#load "host-image-cache.coax";
