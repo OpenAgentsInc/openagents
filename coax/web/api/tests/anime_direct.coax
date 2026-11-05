@@ -313,7 +313,7 @@ aid_invalid_tests :: (t: [] Aid, body: string) {
 
 aid_quota_seed :: (t: [] Aid, mode: string) -> bool {
   out: [256] u8;
-  if mode == "global-day" { return aid_sql(t,"INSERT INTO anime.calls(identity,started,lease_until,finished,status) SELECT 'anime-global-'||g,date_trunc('day',clock_timestamp())+interval '1 second',clock_timestamp()-interval '1 second',true,200 FROM generate_series(1,1200) g",out[..]) >= 0; }
+  if mode == "global-day" { return aid_sql(t,"INSERT INTO anime.calls(identity,started,lease_until,finished,status) SELECT 'anime-global-'||g,(date_trunc('day',clock_timestamp() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')+interval '1 second',clock_timestamp()-interval '1 second',true,200 FROM generate_series(1,1200) g",out[..]) >= 0; }
   if mode == "global-active" || mode == "global-three" {
     sql := ifx mode == "global-active" then "INSERT INTO anime.calls(identity,started,lease_until) SELECT 'anime-active-'||g,clock_timestamp()-interval '2 minutes',clock_timestamp()+interval '1 minute' FROM generate_series(1,4) g" else "INSERT INTO anime.calls(identity,started,lease_until) SELECT 'anime-active-'||g,clock_timestamp()-interval '2 minutes',clock_timestamp()+interval '1 minute' FROM generate_series(1,3) g";
     return aid_sql(t,sql,out[..]) >= 0;
@@ -323,7 +323,7 @@ aid_quota_seed :: (t: [] Aid, mode: string) -> bool {
   for c: actor { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
   b: [2048] u8; n := aid_put(b[..],0,"INSERT INTO anime.calls(identity,started,lease_until,finished,status) SELECT '");
   n = aid_put(b[..],n,actor); n = aid_put(b[..],n,"',");
-  tail := ifx mode == "minute" then "clock_timestamp(),clock_timestamp()-interval '1 second',true,200 FROM generate_series(1,12)" else ifx mode == "user-day" then "date_trunc('day',clock_timestamp())+interval '1 second',clock_timestamp()-interval '1 second',true,200 FROM generate_series(1,120)" else ifx mode == "user-active" then "clock_timestamp()-interval '2 minutes',clock_timestamp()+interval '1 minute',false,NULL" else "clock_timestamp()-interval '2 minutes',clock_timestamp()-interval '1 second',false,NULL";
+  tail := ifx mode == "minute" then "clock_timestamp(),clock_timestamp()-interval '1 second',true,200 FROM generate_series(1,12)" else ifx mode == "user-day" then "(date_trunc('day',clock_timestamp() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')+interval '1 second',clock_timestamp()-interval '1 second',true,200 FROM generate_series(1,120)" else ifx mode == "user-active" then "clock_timestamp()-interval '2 minutes',clock_timestamp()+interval '1 minute',false,NULL" else "clock_timestamp()-interval '2 minutes',clock_timestamp()-interval '1 second',false,NULL";
   n = aid_put(b[..],n,tail); return aid_sql(t,cast(string)b[0..<n],out[..]) >= 0;
 }
 aid_quota_tests :: (t: [] Aid, body: string) {
