@@ -34,7 +34,7 @@
 - [18. Rigid bodies and time steps](ch018-rigid-bodies-and-time-steps.md) — partly implemented
 - [19. Joints in generalized coordinates](ch019-joints-in-generalized-coordinates.md) — design draft
 - [20. Find the pairs that might touch](ch020-find-the-pairs-that-might-touch.md) — partly implemented
-- [21. Find where they touch](ch021-find-where-they-touch.md) — design draft
+- [21. Find where they touch](ch021-find-where-they-touch.md) — partly implemented
 - [22. Contact as an optimization](ch022-contact-as-an-optimization.md) — design draft
 - [23. Particles and their neighbors](ch023-particles-and-their-neighbors.md) — partly implemented
 - [24. Liquids from particles](ch024-liquids-from-particles.md) — partly implemented

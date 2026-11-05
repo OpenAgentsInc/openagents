@@ -1,0 +1,15 @@
+sphere / sphere, apart: 1 point(s), distance 0.5, normal (-1.0, 0.0, 0.0)
+capsule / capsule, crossed: 1 point(s), distance -0.2, normal (-1.0, 0.0, 0.0)
+sphere / box, by GJK: 1 point(s), distance 0.073684, normal (0.442105, 0.894737, 0.063158)
+sphere in a box, by EPA: 1 point(s), distance -0.8, normal (0.0, 1.0, 0.0)
+box / box, by SAT: 4 point(s), distance -0.2, normal (-0.442105, -0.894737, -0.063158)
+the same boxes as hulls, by EPA: 1 point(s), distance -0.199363, normal (-0.398726, -0.91707, 0.0)
+  SAT's deepest point -0.2 m, EPA's depth -0.199363 m
+GJK on 178 separated box pairs: within 1e-9 m of the closed form: yes, 2.870787 iterations on average
+resting box: 4 points
+  (0.5, -0.0005, 0.5) distance -0.001, feature 832
+  (0.5, -0.0005, -0.5) distance -0.001, feature 833
+  (-0.5, -0.0005, -0.5) distance -0.001, feature 834
+  (-0.5, -0.0005, 0.5) distance -0.001, feature 835
+tipped onto an edge: 2 points, distance -0.007107
+fast ball: first touches at 0.2835 of the step, 0.945 m along

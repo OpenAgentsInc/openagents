@@ -419,6 +419,16 @@
       ]
     },
     {
+      "source": "aethyr/examples/find-where-they-touch.coax",
+      "chapter": "aethyr/book/ch021-find-where-they-touch.md",
+      "stdout": "aethyr/fixtures/find-where-they-touch.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "aethyr/examples/particle-neighbors.coax",
       "chapter": "aethyr/book/ch023-particles-and-their-neighbors.md",
       "stdout": "aethyr/fixtures/particle-neighbors.out",
