@@ -21,6 +21,18 @@ cw_load_all :: (w: [] CellWorld, st: CellStep) {
   for k: 0..<st.asked_n { i := st.asked[k]; v := cell_complete(w, cell_answer(w[0].cells[i].request, 1, i, w[0].manifest[i].digest, false)); }
 }
 
+// Answers every load in flight.
+cw_answer_loading :: (w: [] CellWorld) {
+  for i: 0..<w[0].n { if w[0].cells[i].level == CELL_LOADING { v := cell_complete(w, cell_answer(w[0].cells[i].request, 1, i, w[0].manifest[i].digest, false)); } }
+}
+// Answers only the loads of cells with an even key: the odd ones are late.
+cw_late :: (w: [] CellWorld, st: CellStep) {
+  for k: 0..<st.asked_n {
+    i := st.asked[k];
+    if w[0].manifest[i].cx % 2 == 0 { v := cell_complete(w, cell_answer(w[0].cells[i].request, 1, i, w[0].manifest[i].digest, false)); }
+  }
+}
+
 // The loader: each asked load answers `delay` steps later (2 to 9 by request), every seventh fails,
 // every eleventh loads the wrong content.
 CwLoad :: struct { event: ReplayEvent; due: int; }

@@ -25,8 +25,15 @@
 // than a cell from it, so far positions keep millimetre precision.
 //
 // Deterministic scope: a replay with the same recorded completions steps bit for bit. Different
-// live load timings make different worlds (a cell wakes later); each is replayable. Navigation
-// across cell edges and native/browser frame budgets under real loads are not part of this file.
+// live load timings make different worlds (a cell wakes later); each is replayable.
+//
+// At a cell edge: a walker may step into a point only where the ground's cell simulates
+// (cell_may_enter), so nobody walks onto content that isn't there; it waits at the edge until the
+// cell's load is admitted. An awake entity whose step takes it into another cell belongs to that
+// cell from then on (cell_carry): it stays awake when that cell simulates and sleeps in its store
+// when it doesn't. A world's stores are saved and restored as words (cell_save, cell_restore):
+// the levels are not saved, so a restored world asks for its cells again. Native/browser frame
+// budgets under real loads are not part of this file.
 //   coax/bin/coax test aethyr/world/cells.coax --library
 //   coax/bin/coax mutate aethyr/world/cells.coax --library
 
@@ -221,6 +228,86 @@ cell_wake :: (w: [] CellWorld, i: int, out: [] CellBody) -> int {
 }
 // book:end cells-store
 
+// book:begin cells-edges
+// Whether a walker may step to (x, z): the point is in a listed cell whose entities step.
+cell_may_enter :: (w: [] CellWorld, x: f64, z: f64) -> bool { return cell_simulates(w, cell_of(w, x, z)); }
+
+CELL_STAYS :: 0;     // still in its cell
+CELL_MOVED :: 1;     // in a neighbour that simulates: awake there
+CELL_SLEPT :: 2;     // in a cell that doesn't simulate: asleep in its store
+CELL_HELD :: 3;      // off the manifest, or that cell's store is full: the realm keeps it where it was
+CellCarry :: struct { outcome: int; cell: int = -1; }
+// An awake entity b, which belonged to cell `from`, after its step: the cell it belongs to now,
+// and whether it is still awake.
+cell_carry :: (w: [] CellWorld, from: int, b: CellBody) -> CellCarry {
+  to := cell_of(w, b.x, b.z);
+  if to < 0 { return CellCarry.{outcome = CELL_HELD, cell = from}; }
+  if to == from { return CellCarry.{outcome = CELL_STAYS, cell = to}; }
+  if cell_simulates(w, to) { return CellCarry.{outcome = CELL_MOVED, cell = to}; }
+  if !cell_sleep(w, to, b) { return CellCarry.{outcome = CELL_HELD, cell = from}; }
+  return CellCarry.{outcome = CELL_SLEPT, cell = to};
+}
+// book:end cells-edges
+
+// book:begin cells-save
+// A world's stores as words: the version, the manifest's size, and per cell its key, digest and
+// bodies (id, the f64 bits of x, y and z as high and low halves, and the words). -1 when out is
+// too small.
+CELL_SAVE_VERSION :: 1;
+CELL_BODY_WORDS :: 11;   // 7 + CELL_WORDS
+cell_high :: (x: f64) -> int { return cast(int) (f64_bits(x) >> 32); }
+cell_low :: (x: f64) -> int { return cast(int) (f64_bits(x) & 4294967295); }
+cell_join :: (high: int, low: int) -> f64 { return f64_from_bits((cast(u64) high << 32) | cast(u64) low); }
+cell_save :: (w: [] CellWorld, out: [] int) -> int {
+  n := 2;
+  for i: 0..<w[0].n { n += 4 + w[0].cells[i].body_n * CELL_BODY_WORDS; }
+  if n > out.count { return -1; }
+  out[0] = CELL_SAVE_VERSION; out[1] = w[0].n;
+  k := 2;
+  for i: 0..<w[0].n {
+    out[k] = w[0].manifest[i].cx; out[k + 1] = w[0].manifest[i].cz; out[k + 2] = w[0].manifest[i].digest; out[k + 3] = w[0].cells[i].body_n;
+    k += 4;
+    for j: 0..<w[0].cells[i].body_n {
+      b := w[0].cells[i].bodies[j];
+      out[k] = b.id;
+      out[k + 1] = cell_high(b.x); out[k + 2] = cell_low(b.x); out[k + 3] = cell_high(b.y); out[k + 4] = cell_low(b.y);
+      out[k + 5] = cell_high(b.z); out[k + 6] = cell_low(b.z);
+      for q: 0..<CELL_WORDS { out[k + 7 + q] = b.words[q]; }
+      k += CELL_BODY_WORDS;
+    }
+  }
+  return n;
+}
+// Restores saved stores into w, whose manifest must be the saved one, key for key and digest for
+// digest. Every level starts absent. False, with w unchanged, for another version, another
+// manifest, a store over CELL_ENTITIES or words that run short or long.
+cell_restore :: (w: [] CellWorld, words: [] int) -> bool {
+  if words.count < 2 || words[0] != CELL_SAVE_VERSION || words[1] != w[0].n { return false; }
+  k := 2;
+  for i: 0..<w[0].n {
+    if k + 4 > words.count { return false; }
+    if words[k] != w[0].manifest[i].cx || words[k + 1] != w[0].manifest[i].cz || words[k + 2] != w[0].manifest[i].digest { return false; }
+    m := words[k + 3];
+    if m < 0 || m > CELL_ENTITIES { return false; }
+    k += 4 + m * CELL_BODY_WORDS;
+  }
+  if k != words.count { return false; }
+  k = 2;
+  for i: 0..<w[0].n {
+    m := words[k + 3]; k += 4;
+    w[0].cells[i] = CellState.{};
+    for j: 0..<m {
+      b := CellBody.{id = words[k], x = cell_join(words[k + 1], words[k + 2]), y = cell_join(words[k + 3], words[k + 4]), z = cell_join(words[k + 5], words[k + 6])};
+      for q: 0..<CELL_WORDS { b.words[q] = words[k + 7 + q]; }
+      w[0].cells[i].bodies[j] = b;
+      k += CELL_BODY_WORDS;
+    }
+    w[0].cells[i].body_n = m;
+  }
+  return true;
+}
+// book:end cells-save
+
 // book:begin cells-origin
 // The one floating origin: a cell corner in f64. Rendering, physics and queries all convert with
 // cell_local, so a point is the same f32 in each.
@@ -243,7 +330,9 @@ cell_digest :: (w: [] CellWorld) -> int {
     h = replay_mix(replay_mix(replay_mix(h, w[0].cells[i].level), w[0].cells[i].request), w[0].cells[i].body_n);
     for k: 0..<w[0].cells[i].body_n {
       b := w[0].cells[i].bodies[k];
-      h = replay_mix_wide(replay_mix_wide(replay_mix_wide(replay_mix(h, b.id), cast(int) f64_bits(b.x)), cast(int) f64_bits(b.y)), cast(int) f64_bits(b.z));
+      // each coordinate's bits as two halves: a negative one's top bit doesn't fit an int
+      h = replay_mix(replay_mix(replay_mix(h, b.id), cell_high(b.x)), cell_low(b.x));
+      h = replay_mix(replay_mix(replay_mix(replay_mix(h, cell_high(b.y)), cell_low(b.y)), cell_high(b.z)), cell_low(b.z));
       for q: 0..<CELL_WORDS { h = replay_mix(h, b.words[q]); }
     }
   }
@@ -504,4 +593,104 @@ cell_digest :: (w: [] CellWorld) -> int {
   #assert replay_copy(s, s2) && replay_play(s2, 3);
   while replay_tick(s2) < 200 { cw_step(again[..], s2); }
   #assert replay_matched(s2) && again[0].q_n == 0 && cell_digest(again[0].w[..]) == cell_digest(live[0].w[..]) && again[0].ok == live[0].ok;
+}
+
+// A walker crosses three cells east to a goal, one step a tick: it waits at each edge whose cell
+// isn't loaded yet, and walks on once it is.
+#test "cells: a walker waits at the edge of a cell that isn't loaded, then walks on" #steps 200000000 {
+  w: [1] CellWorld; cw_grid(w[..], -1, 8, 0, 0);
+  x := 32.0; z := 32.0; waited := 0; crossed := 0;
+  last := cell_of(w[..], x, z);
+  for t: 0..<400 {
+    st := cell_step(w[..], x, z);
+    if t % 6 == 0 { cw_answer_loading(w[..]); } else { cw_late(w[..], st); }
+    if x >= 32 + 3 * CELL_SIZE { break; }
+    nx := x + 1.5;
+    if !cell_may_enter(w[..], nx, z) { waited += 1; continue; }
+    #assert cell_simulates(w[..], cell_of(w[..], nx, z));
+    x = nx;
+    if cell_of(w[..], x, z) != last { crossed += 1; last = cell_of(w[..], x, z); }
+  }
+  #assert x >= 32 + 3 * CELL_SIZE && crossed == 3 && waited > 0;
+  #assert !cell_may_enter(w[..], -1000, z) && !cell_may_enter(w[..], x, 100);   // off the manifest
+}
+
+#test "cells: an entity that walks into a sleeping cell sleeps there, and wakes with its id and state" {
+  w: [1] CellWorld; cw_grid(w[..], -1, 8, 0, 0);
+  for t: 0..<8 { cw_load_all(w[..], cell_step(w[..], 32, 32)); }
+  home := cell_of(w[..], 32, 32); next := cell_of(w[..], 96, 32);
+  #assert cell_simulates(w[..], home) && cell_simulates(w[..], next);
+  b := CellBody.{id = 41, x = 63.75, z = 10};
+  b.words[1] = 12;
+  #assert cell_carry(w[..], home, b).outcome == CELL_STAYS;
+  b.x = 64.25;
+  c := cell_carry(w[..], home, b);
+  #assert c.outcome == CELL_MOVED && c.cell == next && w[0].cells[next].body_n == 0;
+  far := cell_find(w[..], 8, 0);
+  #assert !cell_simulates(w[..], far);
+  b.x = 8 * CELL_SIZE + 1;
+  c = cell_carry(w[..], next, b);
+  #assert c.outcome == CELL_SLEPT && c.cell == far && w[0].cells[far].body_n == 1;
+  out: [2] CellBody;
+  #assert cell_wake(w[..], far, out[..]) == 1 && out[0].id == 41 && out[0].x == b.x && out[0].words[1] == 12;
+  // off the manifest, or into a full store: held where it was
+  b.x = 20 * CELL_SIZE;
+  #assert cell_carry(w[..], next, b).outcome == CELL_HELD && cell_carry(w[..], next, b).cell == next;
+  for k: 0..<CELL_ENTITIES { #assert cell_sleep(w[..], far, CellBody.{id = k}); }
+  b.x = 8 * CELL_SIZE + 1;
+  c = cell_carry(w[..], next, b);
+  #assert c.outcome == CELL_HELD && c.cell == next && w[0].cells[far].body_n == CELL_ENTITIES;
+  // the first cell listed, like any other
+  first := cell_find(w[..], -1, 0);
+  #assert first == 0 && cell_simulates(w[..], 0);
+  b.x = -10;
+  #assert cell_carry(w[..], home, b).outcome == CELL_MOVED && cell_carry(w[..], home, b).cell == 0;
+  #assert cell_carry(w[..], 0, b).outcome == CELL_STAYS && cell_carry(w[..], 0, b).cell == 0;
+}
+
+#test "cells: saved stores come back bit for bit in a new world, which asks for its cells again" {
+  w: [1] CellWorld; cw_grid(w[..], -1, 2, -1, 0);
+  b := CellBody.{id = 9, x = 100.123456789012, y = -3.1, z = 1000000000.000001};
+  b.words[0] = -3; b.words[CELL_WORDS - 1] = 7;
+  #assert cell_sleep(w[..], 2, b) && cell_sleep(w[..], 2, CellBody.{id = 10}) && cell_sleep(w[..], 5, CellBody.{id = 11, x = -64});
+  w[0].cells[2].level = CELL_DRAW_LEVEL; w[0].cells[2].request = 3;
+  words: [128] int;
+  n := cell_save(w[..], words[..]);
+  #assert n == 2 + 8 * 4 + 3 * CELL_BODY_WORDS && words[0] == CELL_SAVE_VERSION;
+  small: [10] int;
+  #assert cell_save(w[..], small[..]) == -1;
+  r: [1] CellWorld; cw_grid(r[..], -1, 2, -1, 0);
+  r[0].cells[2].level = CELL_SIMULATE_LEVEL; r[0].cells[2].request = 8; r[0].cells[0].body_n = 1;
+  #assert cell_restore(r[..], words[0..<n]);
+  #assert r[0].cells[0].body_n == 0;
+  #assert r[0].cells[2].body_n == 2 && r[0].cells[2].level == CELL_ABSENT && r[0].cells[2].request == 0 && r[0].cells[5].bodies[0].id == 11;
+  got := r[0].cells[2].bodies[0];
+  #assert got.id == 9 && f64_bits(got.x) == f64_bits(b.x) && f64_bits(got.y) == f64_bits(b.y) && f64_bits(got.z) == f64_bits(b.z) && got.words[0] == -3 && got.words[CELL_WORDS - 1] == 7;
+  w[0].cells[2].level = CELL_ABSENT; w[0].cells[2].request = 0;
+  #assert cell_digest(r[..]) == cell_digest(w[..]);
+  // refusals leave the world as it was
+  d := cell_digest(r[..]);
+  bad: [128] int;
+  for k: 0..<n { bad[k] = words[k]; }
+  bad[0] = 2; #assert !cell_restore(r[..], bad[0..<n]); bad[0] = words[0];
+  bad[1] = 7; #assert !cell_restore(r[..], bad[0..<n]); bad[1] = words[1];
+  bad[2] = 5; #assert !cell_restore(r[..], bad[0..<n]); bad[2] = words[2];
+  bad[3] = 5; #assert !cell_restore(r[..], bad[0..<n]); bad[3] = words[3];
+  bad[4] = 5; #assert !cell_restore(r[..], bad[0..<n]); bad[4] = words[4];
+  bad[5] = CELL_ENTITIES + 1; #assert !cell_restore(r[..], bad[0..<n]); bad[5] = -1; #assert !cell_restore(r[..], bad[0..<n]); bad[5] = words[5];
+  #assert !cell_restore(r[..], bad[0..<n - 1]) && !cell_restore(r[..], bad[0..<n + 1]) && !cell_restore(r[..], bad[0..<1]) && !cell_restore(r[..], bad[0..<5]);
+  #assert cell_digest(r[..]) == d;
+  other: [1] CellWorld; cw_grid(other[..], 0, 3, -1, 0);
+  #assert !cell_restore(other[..], words[0..<n]);
+  // a full store saves and restores; one over CELL_ENTITIES is refused
+  full: [1] CellWorld; cw_grid(full[..], 0, 0, 0, 0);
+  for k: 0..<CELL_ENTITIES { #assert cell_sleep(full[..], 0, CellBody.{id = k, x = 1}); }
+  fw: [2 + 4 + CELL_ENTITIES * CELL_BODY_WORDS + CELL_BODY_WORDS] int;
+  fn := cell_save(full[..], fw[..]);
+  #assert fn == 6 + CELL_ENTITIES * CELL_BODY_WORDS && cell_restore(full[..], fw[0..<fn]) && full[0].cells[0].body_n == CELL_ENTITIES;
+  fw[5] = CELL_ENTITIES + 1;
+  #assert !cell_restore(full[..], fw[0..<fn + CELL_BODY_WORDS]);
+  // an empty world saves and restores
+  e: [1] CellWorld; ew: [2] int;
+  #assert cell_save(e[..], ew[..]) == 2 && cell_restore(e[..], ew[..]);
 }
