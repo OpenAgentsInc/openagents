@@ -48,6 +48,9 @@ bool mf_snapshot(void *host,const char *path);
 // Disabled-by-default full-graph FP16 to actual UNORM display experiment.
 bool mf_presentation_experiment(void *host);
 bool mf_snapshot_presented(void *host,const char *path);
+// Test-only source upload and one presentation pass; never calls the producer.
+// Quantized requires the separately linked private Coax v1 descriptor.
+bool mf_present_probe(void *host,const uint8_t *bytes,size_t count,int64_t width,int64_t height,int64_t format,bool quantized);
 const uint8_t *mf_frame_jpeg(void *host,size_t *count);
 int64_t mf_http_image(const uint8_t *body,size_t body_count,const uint8_t *image,size_t image_count,uint8_t *out,size_t out_count);
 void mf_network_config(void *host,const char *page_origin,const char *local_origin);

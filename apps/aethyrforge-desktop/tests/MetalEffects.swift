@@ -37,6 +37,10 @@ func runEffects() throws {
         switch op["op"] as? String {
         case "bgra8": guard mf_offscreen_bgra8(host) else { throw MetalEffectFailure.failed("offscreen format must precede rendering") }
         case "presentation": guard mf_presentation_experiment(host) else { throw MetalEffectFailure.failed("presentation experiment must precede rendering") }
+        case "present-probe":
+            let source = try Data(contentsOf:URL(fileURLWithPath:try required(op["file"] as? String,"presentation source")))
+            let accepted = source.withUnsafeBytes { mf_present_probe(host,$0.bindMemory(to:UInt8.self).baseAddress,$0.count,Int64(integer(op["width"])),Int64(integer(op["height"])),Int64(integer(op["format"])),op["quantized"] as? Bool ?? false) }
+            guard accepted else { throw MetalEffectFailure.failed(mf_error(host).map{String(cString:$0)} ?? "presentation probe refused") }
         case "presented":
             let path = try required(op["file"] as? String,"presented snapshot")
             guard mf_snapshot_presented(host,path) else { throw MetalEffectFailure.failed("actual UNORM presentation readback") }

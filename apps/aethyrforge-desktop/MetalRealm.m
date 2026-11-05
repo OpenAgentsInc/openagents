@@ -65,6 +65,7 @@ typedef struct {int64_t slot,generation;} MFHandle;
 - (BOOL)compileLibraries;
 - (BOOL)recoverGPU;
 - (BOOL)present:(id<MTLCommandBuffer>)command drawable:(id<CAMetalDrawable>)drawable width:(int64_t)width height:(int64_t)height;
+- (BOOL)present:(id<MTLCommandBuffer>)command drawable:(id<CAMetalDrawable>)drawable descriptor:(coax_t_RenderPresentation)p;
 @end
 static __weak MFRealm *activeRealm;
 static NSString *lastFailure;
@@ -221,6 +222,9 @@ static void blend(MTLRenderPipelineColorAttachmentDescriptor *a,coax_t_RenderBle
 }
 - (BOOL)present:(id<MTLCommandBuffer>)command drawable:(id<CAMetalDrawable>)drawable width:(int64_t)width height:(int64_t)height {
  coax_t_RenderPresentation p=render_presentation(2,width,height,COAX_RenderTextureFormat_bgra8,16384);
+ return [self present:command drawable:drawable descriptor:p];
+}
+- (BOOL)present:(id<MTLCommandBuffer>)command drawable:(id<CAMetalDrawable>)drawable descriptor:(coax_t_RenderPresentation)p {
  if(p.status!=COAX_RenderResourceStatus_ok)return [self fail:@"Coax refused experimental presentation"];
  id<MTLTexture> destination=drawable.texture;
  if(!destination){
@@ -391,6 +395,21 @@ void mf_observe_reset(void *host){MFRealm *r=(__bridge MFRealm*)host;void(*reset
 void mf_layer(void *host,void *raw){MFRealm *r=(__bridge MFRealm*)host;r->layer=(__bridge CAMetalLayer*)raw;if(r->layer){r->layer.device=r->device;r->layer.pixelFormat=MTLPixelFormatBGRA8Unorm;r->layer.framebufferOnly=NO;r->layer.displaySyncEnabled=YES;r->screenFormat=r->presentationExperiment?COAX_RenderTextureFormat_rgba16f:COAX_RenderTextureFormat_bgra8;}else r->screenFormat=COAX_RenderTextureFormat_rgba16f;}
 bool mf_offscreen_bgra8(void *host){MFRealm *r=(__bridge MFRealm*)host;if(r->frames||r->pending||r->layer)return false;r->screenFormat=COAX_RenderTextureFormat_bgra8;return true;}
 bool mf_presentation_experiment(void *host){MFRealm *r=(__bridge MFRealm*)host;if(r->frames||r->pending||r->fixture)return false;r->presentationExperiment=YES;r->screenFormat=COAX_RenderTextureFormat_rgba16f;return true;}
+bool mf_present_probe(void *host,const uint8_t *bytes,size_t count,int64_t width,int64_t height,int64_t format,bool quantized){
+ MFRealm *r=(__bridge MFRealm*)host;if(r->frames||r->pending||r->layer||r->fixture)return false;
+ // The optional private product supplies its own checked Coax descriptor.
+ // Its absence cannot silently fall back to the legacy quantization path.
+ typedef coax_t_RenderPresentation(*MFPresentationPolicy)(int64_t,int64_t,int64_t,int64_t,int64_t);
+ MFPresentationPolicy policy=quantized?(MFPresentationPolicy)dlsym(RTLD_DEFAULT,"render_presentation_quantized_v1"):render_presentation;
+ if(!policy)return [r fail:@"Private Coax presentation descriptor is absent"];
+ coax_t_RenderPresentation p=policy(2,width,height,format,16384);if(p.status!=COAX_RenderResourceStatus_ok)return [r fail:@"Coax refused presentation probe extent/format"];
+ int64_t size=aethyr_render_format_words(p.draw.format,p.draw.width,p.draw.height,1,1)*4;
+ if(size<=0||count!=(uint64_t)size||!htb_copy_span((uintptr_t)bytes,count,count,UINT64_MAX))return [r fail:@"Presentation probe allocation observation differs from its descriptor"];
+ r->screenFormat=p.draw.format;r->presentationExperiment=YES;if(![r ensureTarget:p.source width:p.draw.width height:p.draw.height]||!aethyr_render_registry_advance(ledger(r)))return false;
+ id<MTLTexture> source=r->targets[@(p.source)];[source replaceRegion:MTLRegionMake2D(0,0,p.draw.width,p.draw.height) mipmapLevel:0 withBytes:bytes bytesPerRow:(NSUInteger)(size/p.draw.height)];
+ id<MTLCommandBuffer> command=[r->queue commandBuffer];if(!command||![r present:command drawable:nil descriptor:p])return false;
+ [command commit];[command waitUntilCompleted];if(command.error)return [r fail:command.error.localizedDescription];r->completedFrames++;r->draws=1;return true;
+}
 bool mf_frame(void *host,float width,float height,float scale,float dt){return [(__bridge MFRealm*)host render:width height:height scale:scale dt:dt];}
 bool mf_frame_at(void *host,float width,float height,float scale,int64_t monotonic_us){MFRealm *r=(__bridge MFRealm*)host;r->frameTime=monotonic_us;r->clockedFrame=YES;BOOL ok=[r render:width height:height scale:scale dt:0];r->clockedFrame=NO;return ok;}
 void mf_shown(void *host,bool shown){MFRealm *r=(__bridge MFRealm*)host;coax_t_LifeActions a=htl_event((coax_v_t_HostLifecycle){&r->life,1},shown?5:4,htl_tick((int64_t)(nanoseconds()/1000)),0);if((a.does&1)&&r->face.blur)r->face.blur(r->state);}
