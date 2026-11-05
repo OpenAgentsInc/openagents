@@ -3591,11 +3591,18 @@ Aethyrforge for Mac preflights OS microphone authorization in visible foreground
 setup, or at foreground launch for an existing setup receipt. Its
 `apps/aethyrforge-desktop/microphone.coax` authority requests only an undetermined
 grant, never from automated background checks or while another request is pending.
-Setup opens no microphone stream or model. V/TALK checks the current OS grant
+Setup opens no microphone stream. After consent, `voice-ready.coax` separately
+admits resident Parakeet and local transport preparation for a visible local
+page, excluding ordinary diagnostic launches and duplicate preparations. Idle
+preparation sends HELLO/WELCOME, never microphone audio or a voice turn, and its
+worklet graph stays suspended without a microphone source. V/TALK checks the current OS grant
 again, sharing any pending authorization request; capture still requires the
 visible foreground world and a current native ticket. Denied/restricted permission
 offers Settings. Permission is never inferred from saved setup. The permission
 gate kills all 12 mutants; setup and native WebKit evidence is in the desktop README.
+The voice-readiness gate kills all six mutants. Native warm checks observe the
+real protocol and Parakeet with synthetic media, including repeat holds,
+cancellation, connection recovery and the unprepared path.
 
 Coder dictation's `apps/shared/dictation-policy.coax` is `#authority`: it gates
 readiness/consent, 450 ms pre-roll, 300 ms minimum hold, 200 ms tail, a 60-second

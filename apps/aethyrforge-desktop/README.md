@@ -36,15 +36,20 @@ shows the installed voice/edit models without hashing their contents. Running
 processes are observations, not attached agents;
 selecting one saves a preference. View → Setup… (Cmd+,) opens the pane again.
 Refresh repeats discovery; only pressing Verify voice model hashes the pinned
-complete weight/tokenizer files. No model is loaded
-and no microphone or agent session starts during setup.
+complete weight/tokenizer files. After microphone approval, startup prepares
+Parakeet and the local voice connection in the background. No microphone stream
+or coding-agent session starts during setup.
 
 Setup automatically requests macOS microphone permission while its window is
 visible and the app is active. Its microphone row shows Allowed, a pending
 request, or Open Settings after denial. Permission is read from macOS each time;
 it is not inferred from saved setup. Existing completed installations still
 skip the setup screen and preflight missing permission at foreground launch.
-This requests consent only: it never opens a microphone stream or loads Parakeet.
+The permission request opens no microphone stream. Once approved, the separate
+Coax voice-readiness gate admits resident preparation: the local Parakeet host,
+voice Wasm, a suspended AudioWorklet graph and an idle local HELLO/WELCOME socket.
+Setup shows Preparing local voice, then Voice ready. The same preparation runs
+at startup when setup is already saved. The microphone opens only on V/TALK.
 V/TALK rechecks the grant and shares an in-flight setup request if necessary.
 Automated setup tests use a fake permission transport and do not show a system
 sheet; the explicit microphone acceptance check exercises the real WebKit path.
@@ -203,14 +208,36 @@ peak of 0.312 with test output gain 0. No microphone was requested. Logs and
 before/after reports are retained in `/tmp/forge-audio/` (2026-11-04).
 
 Leave EDIT with DONE/B, then hold TALK/V while speaking.
-Permission should already be approved in setup. The first hold rechecks macOS
-permission and starts the local Parakeet service on a reserved loopback port;
-if permission is still undetermined, it requests it then as a fallback. Consent is checked
+Permission and the local voice connection should already be ready from startup.
+Each hold rechecks macOS permission and reuses the prepared worklet and connection;
+if permission or preparation is still missing, the hold retries them. Consent is checked
 separately from model startup; system dialogs taking key focus do not turn an
 existing grant into a cached WebKit denial. Every hold prepares its own native
 capture ticket, including when WebKit reuses its site grant. If the permission
 dialog interrupted the hold, hold TALK again afterward. Recognition uses the shared checkpoint on
-Metal; the model stays resident until app quit. No model loads during setup.
+Metal; the model stays resident until app quit. On release/cancel the microphone
+tracks stop and their source disconnects. After a completed/canceled capture,
+the client establishes a fresh idle connection and suspends its graph, ready
+for the next hold. Page exit closes the graph/socket. Ordinary web voice remains
+on demand; automatic preparation is restricted to the desktop's local host.
+
+The hidden `--voice-warm-smoke REPORT.json` check uses synthetic media and the
+real resident Parakeet host. It verifies no microphone request during warmup,
+an idle suspended graph, no startup audio frames, three prepared holds without
+new sockets or CONNECTING (including the actual V-key path), two consecutive
+recorded-fixture transcriptions, late-capture
+cancellation, recovery without a duplicate reconnect and the unprepared path.
+It never opens the physical microphone or calls a coding provider. Local check
+artifacts live under `/tmp/forge-voice-warm/`.
+The final clean-host check (`isolated2/result.json`, 2026-11-04) prepared in
+1.248 seconds before capture; V reached listening in 26.86 ms and the two direct
+repeat holds in 0.50/0.48 ms. No warmup microphone request or audio frames were
+sent. Both speech turns returned “Hello Foreman, what are we building today?”;
+recognition completed 392/198 ms after release. Cancellation, reconnect and the
+ordinary unprepared client passed. Earlier exploratory runs against the previous
+bundled host intermittently lacked a final transcript; the final acceptance uses
+a freshly built host and checks both turns. Synthetic media exercises the real
+worklet, wire and GPU recognizer; these timings exclude physical device acquisition.
 The bundled browser voice engine receives real microphone samples and returns
 the final words to Everglade's existing voice UI, without the public voice host.
 Release closes capture; setup, leaving the app, hiding and quit cancel it. A permission

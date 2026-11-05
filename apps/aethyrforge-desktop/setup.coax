@@ -5,6 +5,7 @@
 ForgeSetup :: struct {
   completed: bool;
   microphone:int;microphone_pending:bool;
+  voice_stage:int;
   cli: bool; agents: bool; models: bool; voice: bool; verified: bool; text_model: bool;
   counts: [4] int; total: int; selected: int = -1;
   version: [64] u8; version_n: int;
@@ -62,6 +63,15 @@ FSU_IDS :: [4] string.["claude", "codex", "coder", "cursor"];
   #assert !s[0].voice && !fsu_completed(s[..]);
   b:[512]u8;#assert fsu_read(s[..],3,fsu_settings(s[..],b[..]));
   fsu_microphone(s[..],0,false);#assert fsu_completed(s[..]) && fsu_status(s[..],3)==1;
+}
+
+#test "setup reports resident voice preparation independently of microphone capture" {
+  s:[1]ForgeSetup;
+  #assert fsu_text(s[..],16)=="Voice prepares automatically after approval";
+  fsu_voice_ready(s[..],1);#assert fsu_text(s[..],16)=="Preparing local voice…";
+  fsu_voice_ready(s[..],2);#assert fsu_text(s[..],16)=="Voice ready · Hold TALK / V";
+  fsu_voice_ready(s[..],3);#assert fsu_text(s[..],16)=="Voice not ready · TALK / V will retry";
+  fsu_voice_ready(s[..],99);#assert fsu_text(s[..],16)=="Voice prepares automatically after approval";
 }
 
 fsu_reset :: (s: [] ForgeSetup) #export_c { s[0] = ForgeSetup.{}; }
@@ -122,6 +132,7 @@ fsu_read :: (s: [] ForgeSetup, kind: int, text: string) -> bool #export_c {
 fsu_can_enter :: (s: [] ForgeSetup, scene: bool) -> bool #export_c { return scene && s[0].cli && s[0].agents && s[0].models; }
 fsu_completed :: (s: [] ForgeSetup) -> bool #export_c { return s[0].completed; }
 fsu_microphone :: (s:[]ForgeSetup,status:int,pending:bool) #export_c {s[0].microphone=status;s[0].microphone_pending=pending;}
+fsu_voice_ready :: (s:[]ForgeSetup,stage:int) #export_c {s[0].voice_stage=ifx stage>=0 && stage<=3 then stage else 0;}
 fsu_choose :: (s: [] ForgeSetup, kind: int) #export_c { if kind == -1 || (kind >= 0 && kind < 4 && s[0].counts[kind] > 0) { s[0].selected = kind; } }
 fsu_count :: (s: [] ForgeSetup, kind: int) -> int #export_c { return ifx kind >= 0 && kind < 4 then s[0].counts[kind] else s[0].total; }
 fsu_selected :: (s: [] ForgeSetup) -> int #export_c { return s[0].selected; }
@@ -136,6 +147,11 @@ fsu_status :: (s: [] ForgeSetup, kind: int) -> int #export_c {
   return ifx s[0].agents then 1 else 0;
 }
 fsu_text :: (s: [] ForgeSetup, field: int) -> string {
+  if field==16 {
+    if s[0].voice_stage==1 {return "Preparing local voice…";}
+    if s[0].voice_stage==2 {return "Voice ready · Hold TALK / V";}
+    return ifx s[0].voice_stage==3 then "Voice not ready · TALK / V will retry" else "Voice prepares automatically after approval";
+  }
   if field==14 {
     if s[0].microphone_pending {return "Waiting for macOS microphone permission…";}
     if s[0].microphone==0 {return "Microphone permission requested during setup";}

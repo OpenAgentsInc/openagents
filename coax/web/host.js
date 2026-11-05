@@ -2572,6 +2572,7 @@ if (script?.dataset.card) startCard({ url: script.dataset.card, key: () => playe
 // A page that talks (data-voice: the route its voice host answers as): voice.js, on the app's VOICE.
 const voice = script?.dataset.voice
   ? startVoice({ send, route: script.dataset.voice, wasmUrl: script.dataset.voiceWasm || "/build/voice.wasm" }) : null;
+globalThis.coaxial.voice = voice;
 
 // The location's hash, for an app that opens something by it (a link straight to it).
 // Action 1 to a same-page address that differs only after its # (/worlds/built#a to #b) reloads the

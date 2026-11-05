@@ -76,6 +76,8 @@ export function startVoice({ send, route, wasmUrl }) {
   let phase = "off", caption = "";
   let facing = "", heardTurn = "", heardAt = 0, letGo = 0;
   let nativeTicket = 0;
+  let source = null, engineLoading = null, audioLoading = null, audioOwner = null, warming = null, initialized = false;
+  let warmEnabled = false, disposed = false, warmResolve = null, warmReject = null;
   const enc = new TextEncoder(), dec = new TextDecoder();
 
   const show = (p, c = caption) => {
@@ -95,10 +97,68 @@ export function startVoice({ send, route, wasmUrl }) {
 
   async function engine() {
     if (x) return;
-    const r = await fetch(wasmUrl);
-    const { instance } = await WebAssembly.instantiate(await r.arrayBuffer(), { wasi_snapshot_preview1: wasi });
-    x = instance.exports; mem = x.memory;
-    x._initialize?.();
+    if (engineLoading) return engineLoading;
+    engineLoading = (async () => {
+      const r = await fetch(wasmUrl);
+      const { instance } = await WebAssembly.instantiate(await r.arrayBuffer(), { wasi_snapshot_preview1: wasi });
+      x = instance.exports; mem = x.memory; x._initialize?.();
+    })();
+    try { await engineLoading; } finally { engineLoading = null; }
+  }
+
+  // Local desktop preparation has no MediaStream and sends no audio or turn.
+  // The native Coax admission gate starts its resident host before calling this.
+  async function audioGraph(idle) {
+    while (audioLoading) {
+      const pending = audioLoading, owner = audioOwner;
+      try { await pending; } catch (e) { if (ctx === owner) throw e; }
+    }
+    if (ctx && node) return;
+    const context = ctx ||= new AudioContext();
+    const work = (async () => {
+      if (idle) await context.suspend();
+      const url = URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" }));
+      try { await context.audioWorklet.addModule(url); } finally { URL.revokeObjectURL(url); }
+      if (disposed || ctx !== context) return;
+      node = new AudioWorkletNode(context, "oa-voice", { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });
+      node.port.onmessage = e => { if (typeof e.data === "number") played = e.data; else if (running) take(e.data); };
+      node.connect(typeof globalThis.coaxialAudioTap === "function" ? globalThis.coaxialAudioTap(context) : context.destination);
+    })();
+    audioLoading = work; audioOwner = context;
+    try { await work; }
+    finally { if (audioLoading === work) { audioLoading = null; audioOwner = null; } }
+  }
+  function prepared() {
+    return { ready: !!(initialized && x && ctx && node && welcomed && ws?.readyState === 1), connected: !!welcomed,
+      running, microphone: !!mic, context: ctx?.state || "closed" };
+  }
+  function warm() {
+    if (!globalThis.coaxialVoiceHost || disposed) return Promise.reject(new Error("Local voice preparation is unavailable."));
+    warmEnabled = true;
+    if (warming) return warming;
+    if (prepared().ready) return Promise.resolve(true);
+    warming = (async () => {
+      await engine(); await audioGraph(!running);
+      if (disposed) throw new Error("Voice page closed.");
+      if (!initialized || !running) { frame = x.vw_start(Math.round(ctx.sampleRate)); initialized = true; }
+      if (prepared().ready) return true;
+      await new Promise((resolve, reject) => {
+        const deadline = setTimeout(() => {
+          warmResolve = warmReject = null;
+          const stale = ws; ws = null; welcomed = false; try { stale?.close(); } catch {}
+          reject(new Error("Local voice connection timed out."));
+        }, 8000);
+        warmResolve = () => { clearTimeout(deadline); warmResolve = warmReject = null; resolve(); };
+        warmReject = e => { clearTimeout(deadline); warmResolve = warmReject = null; reject(e); };
+        if (!ws || ws.readyState > 1) connect();
+      });
+      globalThis.webkit?.messageHandlers?.forgeVoiceStatus?.postMessage("warm:ready");
+      return true;
+    })().catch(e => {
+      if (!running && ctx && !node) { const failed = ctx; ctx = null; failed.close().catch(() => {}); }
+      throw e;
+    }).finally(() => { warming = null; });
+    return warming;
   }
 
   async function on() {
@@ -106,10 +166,10 @@ export function startVoice({ send, route, wasmUrl }) {
     if (running) return;
     const owner = ++generation;
     running = true;
-    show("connecting", "");
+    if (!prepared().ready) show("connecting", "");
     try {
       // Inside the tap: the browser lets the page start audio and ask for the microphone here.
-      const context = ctx = new AudioContext();
+      const context = ctx ||= new AudioContext();
       const resumed = context.resume();
       resumed.catch(() => {}); // permission can outlive a cancelled/closed context
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
@@ -126,13 +186,11 @@ export function startVoice({ send, route, wasmUrl }) {
       if (!running || owner !== generation) return;
       await engine();
       if (!running || owner !== generation) return;
-      await context.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" })));
+      await audioGraph(false);
       if (!running || owner !== generation) return;
-      node = new AudioWorkletNode(ctx, "oa-voice", { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });
-      node.port.onmessage = (e) => { if (typeof e.data === "number") played = e.data; else take(e.data); };
-      ctx.createMediaStreamSource(mic).connect(node);
-      node.connect(typeof globalThis.coaxialAudioTap === "function" ? globalThis.coaxialAudioTap(ctx) : ctx.destination);
+      source = ctx.createMediaStreamSource(mic); source.connect(node);
       frame = x.vw_start(Math.round(ctx.sampleRate));
+      initialized = true;
       if (x.vw_rate() !== Math.round(ctx.sampleRate)) throw new Error(`no engine for ${ctx.sampleRate} Hz`);
     } catch (e) {
       console.warn("voice:", e);
@@ -140,7 +198,11 @@ export function startVoice({ send, route, wasmUrl }) {
       if (owner === generation) off(e?.name === "NotAllowedError" ? (globalThis.coaxialVoiceHost ? "Microphone access was denied. Check macOS Settings → Privacy & Security → Microphone → Aethyrforge." : "Voice needs the microphone. Allow it for this site and try again.") : (globalThis.coaxialVoiceHost ? `Local voice: ${e?.message || "microphone unavailable"}` : "Voice can't use the microphone here."));
       return;
     }
-    connect();
+    if (warmEnabled) {
+      try { await warm(); } catch (e) { if (owner === generation) off(`Local voice: ${e.message}`); return; }
+      if (!running || owner !== generation) return;
+      show("listening", "");
+    } else connect();
     timer = setInterval(tick, 10);
   }
 
@@ -157,15 +219,26 @@ export function startVoice({ send, route, wasmUrl }) {
     try { ws?.close(); } catch {}
     ws = null; welcomed = false; turn = ""; speaking = false;
     mic?.getTracks().forEach((t) => t.stop()); mic = null;
-    ctx?.close().catch(() => {}); ctx = null; node = null; pending = new Float32Array(0);
+    source?.disconnect(); source = null; node?.port.postMessage("flush");
+    if (warmEnabled) ctx?.suspend().catch(() => {});
+    else { ctx?.close().catch(() => {}); ctx = null; node = null; }
+    pending = new Float32Array(0);
     show(notice ? "notice" : "off", notice);
+    warmReject?.(new Error("Voice capture stopped."));
+    if (warmEnabled) setTimeout(() => { if (!disposed) warm().catch(() => {}); }, 0);
   }
   if (globalThis.coaxialVoiceHost) globalThis.coaxialVoiceCancel = () => off();
-  addEventListener("pagehide", () => off());
+  addEventListener("pagehide", () => {
+    disposed = true; warmEnabled = false; off();
+    warmReject?.(new Error("Voice page closed."));
+    try { ws?.close(); } catch {} ws = null; welcomed = false;
+    ctx?.close().catch(() => {}); ctx = null; node = null;
+  });
   addEventListener("visibilitychange", () => { if (document.hidden) off(); });
 
   function connect() {
-    if (!running) return;
+    if ((!running && !warmEnabled) || disposed) return;
+    if (ws && ws.readyState <= 1) return;
     const s = new WebSocket(host);
     s.binaryType = "arraybuffer";
     ws = s;
@@ -175,10 +248,12 @@ export function startVoice({ send, route, wasmUrl }) {
       out(x.vw_hello(a, b, OUT_RATE));
       if (facing) { const [t] = strings(facing); out(x.vw_route(t)); }
     };
-    s.onmessage = (e) => { if (running && ws === s && e.data instanceof ArrayBuffer) receive(new Uint8Array(e.data)); };
+    s.onmessage = (e) => { if ((running || warmEnabled) && ws === s && e.data instanceof ArrayBuffer) receive(new Uint8Array(e.data)); };
     s.onclose = () => {
-      if (ws !== s || !running) return;
-      welcomed = false; turn = ""; cut();
+      if (ws !== s) return;
+      ws = null; welcomed = false; turn = ""; cut();
+      warmReject?.(new Error("Local voice connection closed."));
+      if (!running) { globalThis.webkit?.messageHandlers?.forgeVoiceStatus?.postMessage("warm:lost"); return; }
       show("connecting", "Voice needs a connection. Trying again…");
       setTimeout(connect, backoff * 1000); backoff = Math.min(backoff * 2, 10);
     };
@@ -188,6 +263,7 @@ export function startVoice({ send, route, wasmUrl }) {
   function release() {
     if (!running) return;
     mic?.getTracks().forEach((t) => t.stop()); mic = null; pending = new Float32Array(0);
+    source?.disconnect(); source = null;
     if (!turn && !heardTurn) { off(); return; }
     if (turn) { control(CONTROL.TURN_END, turn); turn = ""; show("thinking"); }
     letGo = setTimeout(() => { letGo = 0; off(); }, LET_GO_WAIT);
@@ -268,7 +344,8 @@ export function startVoice({ send, route, wasmUrl }) {
     if (bytes.length > 16384) return;
     u8(x.vw_frame(), bytes.length).set(bytes);
     const kind = x.vw_decode(bytes.length);
-    if (kind === MSG.WELCOME) { welcomed = true; show("listening", ""); }
+    if (!running && kind !== MSG.WELCOME && kind !== MSG.CONTROL && kind !== MSG.ERROR) return;
+    if (kind === MSG.WELCOME) { welcomed = true; warmResolve?.(); if (running && source) show("listening", ""); }
     else if (kind === MSG.TURN_EVENT) {
       const p = x.vw_field(0), text = string(0);
       if (p === PHASE.PARTIAL && !speaking) show("hearing", text);
@@ -324,5 +401,5 @@ export function startVoice({ send, route, wasmUrl }) {
     show("thinking", caption);
   }
 
-  return { toggle: (want) => (want === "end" ? release() : want ? on() : off()), running: () => running, face, say };
+  return { toggle: (want) => (want === "end" ? release() : want ? on() : off()), running: () => running, face, say, warm, prepared };
 }

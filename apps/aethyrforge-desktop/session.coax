@@ -44,3 +44,4 @@ forge_url_byte :: (page: int, room: int, index: int) -> int #export_c {
   return ifx index >= 0 && index < url.count then cast(int) url[index] else -1;
 }
 #load "frame-pacing.coax";
+#load "voice-ready.coax";

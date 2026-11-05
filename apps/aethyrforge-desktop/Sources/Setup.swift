@@ -18,6 +18,7 @@ final class ForgeSetupPane: NSView {
     let modelPath = NSTextField(labelWithString: "~/.openagents/models")
     let editModel = NSTextField(labelWithString: "Checking edit model…")
     let microphoneStatus = NSTextField(labelWithString: "")
+    let preparationStatus = NSTextField(labelWithString: "")
     let microphone = NSButton(title: "Allow microphone", target: nil, action: nil)
     let agentStatus = NSTextField(labelWithString: "Looking for local agents…")
     let routerStatus = NSTextField(labelWithString: "Automatic routing · agent, model and effort chosen per task")
@@ -45,7 +46,7 @@ final class ForgeSetupPane: NSView {
         panel.translatesAutoresizingMaskIntoConstraints = false; addSubview(panel)
         NSLayoutConstraint.activate([
             panel.centerXAnchor.constraint(equalTo: centerXAnchor), panel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            panel.widthAnchor.constraint(equalToConstant: 630), panel.heightAnchor.constraint(equalToConstant: 650)
+            panel.widthAnchor.constraint(equalToConstant: 630), panel.heightAnchor.constraint(equalToConstant: 680)
         ])
         let stack = NSStackView(); stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 12
         stack.translatesAutoresizingMaskIntoConstraints = false; panel.addSubview(stack)
@@ -81,6 +82,7 @@ final class ForgeSetupPane: NSView {
         microphone.bezelStyle = .rounded; microphone.controlSize = .small
         microphone.target = self; microphone.action = #selector(microphonePressed)
         permission.addArrangedSubview(microphone); voice.addArrangedSubview(permission)
+        style(preparationStatus, size: 12, secondary: true); voice.addArrangedSubview(preparationStatus)
         stack.addArrangedSubview(voice)
 
         let agents = NSStackView(); agents.orientation = .vertical; agents.alignment = .leading; agents.spacing = 7
@@ -129,6 +131,7 @@ final class ForgeSetupPane: NSView {
         editModel.stringValue = setupText(5)
         microphoneStatus.stringValue = setupText(14)
         microphone.title = setupText(15); microphone.isEnabled = fgs_status(3) != 0
+        preparationStatus.stringValue = setupText(16)
         agentStatus.stringValue = setupText(7)
         refresh.isEnabled = !checking && !verifying
         verify.isEnabled = !checking && !verifying && fgs_status(1) > 0

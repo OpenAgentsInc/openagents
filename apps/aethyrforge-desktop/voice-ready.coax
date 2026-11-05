@@ -1,0 +1,15 @@
+// Resident preparation is independent of a microphone stream or a voice turn.
+#authority;
+#test "voice prepares after consent and scene readiness, never from ordinary diagnostic launches" {
+  #assert forge_voice_warm(true,true,true,true,true,false,false);
+  #assert !forge_voice_warm(false,true,true,true,true,false,false);
+  #assert !forge_voice_warm(true,false,true,true,true,false,false);
+  #assert !forge_voice_warm(true,true,false,true,true,false,false);
+  #assert !forge_voice_warm(true,true,true,false,true,false,false);
+  #assert !forge_voice_warm(true,true,true,true,false,false,false);
+  #assert !forge_voice_warm(true,true,true,true,true,true,false);
+  #assert !forge_voice_warm(true,true,true,true,true,false,true);
+}
+forge_voice_warm :: (scene:bool,visible:bool,authorized:bool,installed:bool,interactive:bool,pending:bool,ready:bool)->bool #export_c {
+  return scene && visible && authorized && installed && interactive && !pending && !ready;
+}

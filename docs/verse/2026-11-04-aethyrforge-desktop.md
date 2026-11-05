@@ -66,11 +66,12 @@ page server, the voice Wasm and a local Parakeet voice host. This is the same
   Setup… reopens the pane. Launch and Refresh only list installed files; they
   never hash model contents. The explicit Verify voice model button checks the
   pinned complete Parakeet weights and tokenizer SHA-256. Missing voice weights
-  do not prevent manual editing. Models remain unloaded during setup.
+  do not prevent manual editing. After microphone approval, startup warms the
+  resident Parakeet model and the local voice transport; the edit model stays unloaded.
   Setup requests macOS microphone consent as soon as its window is visible and
   foreground, showing Allowed, pending or Open Settings. Existing completed
   installations keep skipping the pane and preflight missing consent at launch.
-  This opens no microphone stream or model. V/TALK rechecks the current grant,
+  Permission itself opens no microphone stream. V/TALK rechecks the current grant,
   sharing any pending setup request; it can ask as a fallback if still undecided.
   Denied/restricted grants offer Settings instead of repeating the system sheet.
   Verification: 78 setup/JSON checks, three permission checks, 12/12 permission
@@ -92,12 +93,22 @@ page server, the voice Wasm and a local Parakeet voice host. This is the same
   Coder dictation, Mac dictation and voice host use the shared model defaults.
 - Microphone capture works through the page's TALK/V gesture after leaving
   EDIT with DONE/B. The native shell declares its microphone usage and requests
-  macOS consent for audio from its own loopback main frame. First use starts a
-  reserved-loopback voice host with Parakeet on Metal and local-only providers;
-  the browser's voice runtime is bundled. Models stay unloaded during setup and
-  resident after first use. Capture closes on release, setup, leaving the app, hiding
+  macOS consent for audio from its own loopback main frame. Startup prepares a
+  reserved-loopback voice host with Parakeet on Metal and local-only providers,
+  the bundled voice Wasm/worklet and a local HELLO/WELCOME connection before
+  V/TALK. The idle graph is suspended and has no microphone source or active turn.
+  The model remains resident until quit. Setup shows voice preparation/readiness.
+  Capture closes on release, setup, leaving the app, hiding
   or quit. A canceled permission request cannot later reopen capture. Speech
   stays on this Mac; the public voice service is not used.
+  Local clients prepare a fresh idle connection after a capture; stale reconnect
+  timers cannot replace an already-open connection. Page exit closes the socket
+  and audio graph. The ordinary web client keeps its on-demand behavior.
+  Verification: 79 setup/JSON checks, six/six readiness mutants killed, and the
+  hidden native warm check. Idle preparation requested no microphone and sent
+  no audio. The actual V path reached listening in 26.86 ms, without CONNECTING;
+  two consecutive recorded speech turns transcribed correctly, and cancellation,
+  reconnect and the unprepared web path passed (synthetic input, real GPU ASR).
   Microphone permission is separate from model preparation: a permission sheet
   taking key focus no longer produces a WebKit denial, and model startup failure
   cannot poison the site's grant. Every hold obtains a fresh native ticket even
