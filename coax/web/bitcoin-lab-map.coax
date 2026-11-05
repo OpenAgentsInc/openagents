@@ -28,13 +28,13 @@ map_html :: (b:[]MapText,text:string) {
   }
 }
 map_recording :: (b:[]MapText,html:bool) {
-  map_add(b,ifx html then "<section><h2>Recorded regtest blocks</h2><p>Validated-v1 recording, not a live node. Observation time unknown. Equal slabs represent one block each. Exact outpoint links imply no wallet ownership.</p>" else "\n## Recorded regtest blocks\n\nValidated-v1 recording; observation time unknown. Full transaction inputs, outputs, scripts and spend occurrences are in the HTML fallback and compiled recording.\n");
+  map_add(b,ifx html then "<h2>Recorded regtest blocks</h2><p>Validated-v1 recording, not a live node. Observation time unknown. Equal slabs represent one block each. Exact outpoint links imply no wallet ownership.</p>" else "\n## Recorded regtest blocks\n\nValidated-v1 recording; observation time unknown. Full transaction inputs, outputs, scripts and spend occurrences are in the HTML fallback and compiled recording.\n");
   for phase:0..<3 {
-    snap:=LAB_SNAPSHOTS[phase];map_add(b,ifx html then "<details><summary>Snapshot " else "\n### Snapshot ");map_number(b,phase);map_add(b," — height ");map_number(b,snap.height);
-    map_add(b,ifx html then "</summary><p>Committed tip: <code>" else "\n\nCommitted tip: `");map_add(b,snap.hash);map_add(b,ifx html then "</code></p>" else "`\n\n| Height | State | Full block hash | Bytes | Weight | Transactions |\n| --- | --- | --- | --- | --- | --- |\n");
+    snap:=LAB_SNAPSHOTS[phase];map_add(b,ifx html then "<h2>Snapshot " else "\n### Snapshot ");map_number(b,phase);map_add(b," — height ");map_number(b,snap.height);
+    map_add(b,ifx html then "</h2><p>Committed tip: <code>" else "\n\nCommitted tip: `");map_add(b,snap.hash);map_add(b,ifx html then "</code></p>" else "`\n\n| Height | State | Full block hash | Bytes | Weight | Transactions |\n| --- | --- | --- | --- | --- | --- |\n");
     for index:snap.first..<snap.first+snap.count {
-      row:=LAB_BLOCKS[index];map_add(b,ifx html then "<details><summary>Block " else "| ");map_number(b,row.height);map_add(b,ifx html then " — " else " | ");map_add(b,ifx row.active then "active" else "stale");
-      map_add(b,ifx html then "</summary><p>Hash <code>" else " | ");map_add(b,row.hash);map_add(b,ifx html then "</code></p><p>Bytes " else " | ");map_number(b,row.size);map_add(b,ifx html then "; weight " else " | ");map_number(b,row.weight);map_add(b,ifx html then "; transactions " else " | ");map_number(b,row.count);
+      row:=LAB_BLOCKS[index];map_add(b,ifx html then "<p><strong>Block " else "| ");map_number(b,row.height);map_add(b,ifx html then " — " else " | ");map_add(b,ifx row.active then "active" else "stale");
+      map_add(b,ifx html then "</strong></p><p>Hash <code>" else " | ");map_add(b,row.hash);map_add(b,ifx html then "</code></p><p>Bytes " else " | ");map_number(b,row.size);map_add(b,ifx html then "; weight " else " | ");map_number(b,row.weight);map_add(b,ifx html then "; transactions " else " | ");map_number(b,row.count);
       if !html {map_add(b," |\n");continue;}
       map_add(b,"; header Unix time ");map_number(b,row.time);map_add(b,"</p><p>Previous <code>");map_add(b,row.previous);map_add(b,"</code>; chainwork <code>");map_add(b,row.chainwork);map_add(b,"</code></p><ul>");
       for t:row.tx..<row.tx+row.count {
@@ -48,9 +48,9 @@ map_recording :: (b:[]MapText,html:bool) {
           if output.spend!="" {map_add(b,"; spent by <code>");map_add(b,output.spend);map_add(b,"</code> in block <code>");map_add(b,output.spend_block);map_add(b,"</code> input ");map_number(b,output.vin);}
           map_add(b,"</li>");
         }map_add(b,"</ul></li>");
-      }map_add(b,"</ul></details>");
-    }if html {map_add(b,"</details>");}
-  }if html {map_add(b,"</section>\n");}
+      }map_add(b,"</ul>");
+    }
+  }if html {map_add(b,"\n");}
 }
 map_target :: (d:Jv,row:int,plan:string,out:[]u8)->string {
   file:=jv_get(d,row,"file");if jv_kind(d,file)==JV_STRING {return jv_raw(d,file);}
