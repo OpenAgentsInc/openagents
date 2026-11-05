@@ -895,3 +895,13 @@ locating that residual before AVAudioConverter. The original bytes, raw outputs
 and comparison remain under the sibling's `audio-default-first`. This memory fix
 does not qualify default codec parity, current packaging, graphics admission or a
 desktop-default change.
+
+The separate `worklet-memory-desktop-bundle/` resource fixture now pairs the
+64,095-byte audio reactor from `67af2f345f` (SHA256
+`c0e43dc678737b15b9a268a91351183563334b6fda996107674d34f6d1dbff7d`)
+with the unchanged 19,919-byte queued-services reactor. The desktop audio stamp's
+existing transitive load observation includes all 18 current audio sources,
+retained in `worklet-memory-desktop-deps.txt`; no manual dependency-list change
+is necessary. The copied bytes retain the sibling's original compiler/source
+admission and actual Worklet ownership/retirement scope. This resource fixture
+is not a runnable current application or default Ogg parity receipt.
