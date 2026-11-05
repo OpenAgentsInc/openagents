@@ -42,7 +42,21 @@ $cc -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,u
   ${secp:+-L"$secp/lib"} -lsecp256k1 -L"$(brew --prefix openssl@3)/lib" -lcrypto
 "$work/nip98_diff" "$here/nip98_corpus.tsv" 400
 "$pg/bin/initdb" -D "$work/db" -U postgres -A trust >/dev/null
-port=$((56000 + RANDOM % 1000)); api_port=$((57000 + RANDOM % 1000))
+# A free TCP port in [LOW, LOW + 1000) that this run hasn't taken. Agents run these checks side by
+# side, and a port another run's server holds would send this run's requests to that server.
+taken=" "
+free_port() {
+  local p
+  for _ in $(seq 200); do
+    p=$(($1 + RANDOM % 1000))
+    [[ "$taken" == *" $p "* ]] && continue
+    python3 -I -c "import socket; s = socket.socket(); s.bind(('127.0.0.1', $p)); s.close()" 2>/dev/null || continue
+    echo "$p"; return 0
+  done
+  echo "test.sh: no free port from $1" >&2; return 1
+}
+port=$((56000 + RANDOM % 1000))   # the database's: its socket is in $work, so no other run shares it
+api_port=$(free_port 57000); taken+="$api_port "
 "$pg/bin/pg_ctl" -D "$work/db" -o "-p $port -k $work -c listen_addresses=''" -l "$work/pg.log" -w start >/dev/null
 "$pg/bin/psql" -h "$work" -p $port -U postgres -q -c "CREATE ROLE oa_analytics LOGIN" -c "CREATE DATABASE oa_analytics OWNER oa_analytics"
 export OA_API_DATABASE="host=$work port=$port user=oa_analytics dbname=oa_analytics"
@@ -72,31 +86,31 @@ export OA_TEAM="player:p-7ea0000000000001,player:kiki-7ea0000000000002,email_sha
 export RUN_KEY_FILE="$work/runner.key" OA_AGENT_RUNNER_PUBKEYS="$("$SIGN" --new "$work/runner.key")"
 "$SIGN" --new "$OTHER_KEY" >/dev/null
 # Character chat asks a fake model (test_npc.py serves it) with a test token.
-export NPC_PORT=$((58000 + RANDOM % 1000))
+NPC_PORT=$(free_port 58000); taken+="$NPC_PORT "; export NPC_PORT
 # The Sandbox's set pieces ask their own fake model (test_sandbox_pieces.py serves it).
-export PIECE_PORT=$((53000 + RANDOM % 1000))
+PIECE_PORT=$(free_port 53000); taken+="$PIECE_PORT "; export PIECE_PORT
 # Build your own realm asks its own fake model (test_realm_builder.py serves it).
-export BUILDER_PORT=$((51000 + RANDOM % 1000))
+BUILDER_PORT=$(free_port 51000); taken+="$BUILDER_PORT "; export BUILDER_PORT
 # Drops go to a fake bucket (test_project_drops.py serves it).
-export GCS_PORT=$((55000 + RANDOM % 1000))
+GCS_PORT=$(free_port 55000); taken+="$GCS_PORT "; export GCS_PORT
 # Publishing a project from a drop (rc-publish): a fake relay (test_project_drops.py) and the fake bucket.
-export RELAY_PORT=$((52000 + RANDOM % 1000))
+RELAY_PORT=$(free_port 52000); taken+="$RELAY_PORT "; export RELAY_PORT
 # The project agent: only the fixture project "agent-proj" is approved; wakes go to test_private_agent.py's fake runner.
-export WAKE_PORT=$((59000 + RANDOM % 1000))
+WAKE_PORT=$(free_port 59000); taken+="$WAKE_PORT "; export WAKE_PORT
 # /api/v1/inference (test_inference.py): a fake Vertex on INFER_PORT, a key that may use the route, five requests a day.
-export INFER_PORT=$((50000 + RANDOM % 1000)) INFER_KEY="$work/infer.key"
+INFER_PORT=$(free_port 50000); taken+="$INFER_PORT "; export INFER_PORT INFER_KEY="$work/infer.key"
 export OA_INFERENCE_PUBKEYS="$("$SIGN" --new "$INFER_KEY")"
 # /api/v1/inference/credit (test_inference.py): a fake Spark wallet on SPARK_PORT.
-export SPARK_PORT=$((49000 + RANDOM % 1000))
+SPARK_PORT=$(free_port 49000); taken+="$SPARK_PORT "; export SPARK_PORT
 # Email (test_email.py): a fake Resend on RESEND_PORT; staging's allowlist is one address.
-export RESEND_PORT=$((48000 + RANDOM % 1000))
+RESEND_PORT=$(free_port 48000); taken+="$RESEND_PORT "; export RESEND_PORT
 # Scheduled jobs (test_jobs.py): a fake Google tokeninfo on TOKENINFO_PORT, and the scheduler's account.
-export TOKENINFO_PORT=$((47000 + RANDOM % 1000))
+TOKENINFO_PORT=$(free_port 47000); taken+="$TOKENINFO_PORT "; export TOKENINFO_PORT
 # /chat (test_zchat.py): its own runner on CHAT_PORT, a $1 daily cap.
-export CHAT_PORT=$((54000 + RANDOM % 1000))
+CHAT_PORT=$(free_port 54000); taken+="$CHAT_PORT "; export CHAT_PORT
 # Private human packs (tests/verse_packs.coax): a made-up pack, gzipped and stored under a key of its own
 # as upload_packs.coax does, served by a fake bucket on VERSE_GCS_PORT; three sessions an address an hour.
-export VERSE_GCS_PORT=$((45000 + RANDOM % 1000)) VERSE_PACK_DIR="$work/verse-pack"
+VERSE_GCS_PORT=$(free_port 45000); taken+="$VERSE_GCS_PORT "; export VERSE_GCS_PORT VERSE_PACK_DIR="$work/verse-pack"
 mkdir -p "$VERSE_PACK_DIR"; head -c 300000 /dev/urandom > "$VERSE_PACK_DIR/plain"
 gzip -9 -n -c "$VERSE_PACK_DIR/plain" > "$VERSE_PACK_DIR/plain.gz"
 vk="$(openssl rand -hex 32)" viv="$(openssl rand -hex 8)0000000000000000" vsha="$(shasum -a 256 "$VERSE_PACK_DIR/plain" | cut -c1-64)"
@@ -105,7 +119,7 @@ export OA_VERSE_PACKS="master $(openssl rand -hex 32)
 pack test-human $vsha $(wc -c < "$VERSE_PACK_DIR/plain" | tr -d ' ') $(wc -c < "$VERSE_PACK_DIR/object" | tr -d ' ') packs/$vsha $vk $viv"
 export OA_VERSE_PACKS_GCS="http://127.0.0.1:$VERSE_GCS_PORT" OA_VERSE_PACKS_BUCKET=verse-test OA_VERSE_PACK_PER_HOUR=3
 # Anime's checks own a separate Coax selector; it has no model credentials.
-export ANIME_PORT=$((46000 + RANDOM % 1000))
+ANIME_PORT=$(free_port 46000); taken+="$ANIME_PORT "; export ANIME_PORT
 OA_CHAT_RUNNER_URL="http://127.0.0.1:$CHAT_PORT" OA_CHAT_DAILY_USD=1 \
 OA_AGENT_PROJECTS=agent-proj OA_AGENT_WAKE_URL="http://127.0.0.1:$WAKE_PORT/wake" OA_AGENT_WAKE_TOKEN=test-wake \
 OA_PROJECT_KEK="$(openssl rand -hex 32)" OA_PUBLISH_RELAY="ws://127.0.0.1:$RELAY_PORT" OA_SITE_BUCKET=site-test \
@@ -120,6 +134,8 @@ OA_ANIME_URL="http://127.0.0.1:$ANIME_PORT/model" OA_ANIME_TIMEOUT_MS=500 \
   OA_BUILD_SHA=1111111111111111111111111111111111111111 OA_RELEASE_ID=123e4567-e89b-42d3-a456-426614174000 K_SERVICE=oa-api-staging K_REVISION=oa-api-staging-00002-new \
   OA_API_ORIGIN="http://127.0.0.1:$api_port" "$work/api" --listen 127.0.0.1:$api_port --migrations "$here/migrations" 2>"$work/api.log" & api_pid=$!
 for _ in $(seq 50); do curl -s "http://127.0.0.1:$api_port/api/playtest/health" >/dev/null && break; sleep 0.1; done
+# The answer came from this run's server, not from another run's that took the port first.
+kill -0 "$api_pid" 2>/dev/null || { echo "test.sh: the API didn't start" >&2; cat "$work/api.log"; exit 1; }
 API_LOG="$work/api.log" API="http://127.0.0.1:$api_port" PGURL="$OA_API_DATABASE" PSQL="$pg/bin/psql" python3 -I "$here/test.py" || { cat "$work/api.log"; exit 1; }
 # The CLI as a caller (NIP-98 callers, realms/mine, visibility, admin keys, device login), in Coax: tests/cli_auth.coax.
 # The CLI-caller checks are a Coax program: they need a compiler. A deploy's

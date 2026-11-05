@@ -2,7 +2,7 @@
 # docs/auth/2026-10-31-realm-invites-and-auth.md). Off (no flag rows), every route answers as before;
 # on, only approved creators and admins plan, make or fork a realm. test.py runs this file; it leaves
 # both flags off for the files after it.
-import tempfile, time
+import base64, tempfile, time
 
 AC_SIGN = os.environ["SIGN"]
 AC_ADMIN = os.environ["ADMIN_KEY"]
@@ -12,11 +12,12 @@ AC_SIGNED_AT = {}
 def ac_signed(keyfile, method, path, body=None):
     # NIP-98 events are signed to the second and a server takes each one once (replay): the same
     # request signed again within a second is the same event, refused as "log in as an admin".
-    # Wait for the next second instead of letting the check depend on timing.
+    # Wait until a second after the one the last such event was signed at. That second is the
+    # event's own created_at, not this clock's before signing: the signer can read its clock in
+    # the next second, and a busy machine makes that likelier.
     same = (keyfile, method, path, body)
-    while AC_SIGNED_AT.get(same) == int(time.time()):
+    while int(time.time()) <= AC_SIGNED_AT.get(same, -1):
         time.sleep(0.05)
-    AC_SIGNED_AT[same] = int(time.time())
     args = [AC_SIGN, "--key", keyfile, method, API + path]
     tmp = None
     if body is not None:
@@ -25,6 +26,7 @@ def ac_signed(keyfile, method, path, body=None):
         args.append(tmp.name)
     auth = subprocess.run(args, capture_output=True, text=True, check=True).stdout.strip()
     if tmp: os.unlink(tmp.name)
+    AC_SIGNED_AT[same] = json.loads(base64.b64decode(auth))["created_at"]
     return "Nostr " + auth
 
 
