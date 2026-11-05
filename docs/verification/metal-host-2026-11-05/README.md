@@ -782,3 +782,15 @@ one packaged snapshot. The passing frozen comparisons and earlier display
 timing remain separately scoped. Shared browser/Vulkan service work and
 HTTP redirect alignment continue under#12869; neither issue nor the desktop
 default is changed by these component checkpoints.
+
+The desktop builder also stamps the separate `services-carrier.coax` closure,
+`services-face.c`, `build-services.coax`, Wasm wrapper and compiler, then
+packages `build/host-services.wasm` beside the audio/layer/media reactors.
+The actual dependency observation is retained in `services-desktop-deps.txt`.
+The source-qualified18,883-byte reactor from `49d2173a9e` copies unchanged to
+the isolated resource path in `services-desktop-bundle/`; its SHA256 remains
+`f8d87f8a86f4deb7a71e1d122ac69f020323952fe55c25dba0722bac68bdb27d`.
+The sibling's original598/c224 receipt and12-input exact source join qualify
+that reactor. Coax checks the updated desktop build source. This leaf build/
+copy hook does not claim a successful complete current desktop build or
+repeat the already passing browser service observations.
