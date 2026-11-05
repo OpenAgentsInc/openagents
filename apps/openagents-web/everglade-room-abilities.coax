@@ -41,6 +41,9 @@ EgRaSeat :: struct {
 EgRoomAb :: struct {
   later: [EG_RA_LATER] EgRaStrike; later_n: int;   // Everglade's four's strikes, each its cast bar's time to go
   hurt_i: [EG_RA_HURTS] int; hurt_n_: [EG_RA_HURTS] int; hurt_by: [EG_RA_HURTS] int; hurts: int;
+  // the town's fire's burns since the abilities last stepped (everglade-fire.coax fi_people): the next
+  // step hands them to the rules with the falls' (everglade_room_hurt), their fire's starter the source
+  fire_i: [WATCH_ACTORS] int; fire_n_: [WATCH_ACTORS] int; fire_by: [WATCH_ACTORS] int; fires: int;
   seat: [EG_RA_SEATS] EgRaSeat;
   in_copy: int;            // the seat whose copy is in the Everglade now, + 1 (0 none: a host's zeroed Everglade is none)
   server: bool;            // the room server's world
@@ -282,6 +285,15 @@ eg_ra_hp_back :: (s: [] Everglade, h: EgRaHp, keep: bool, q: int) {
 
 // ---- the server
 
+// The town's fire burnt person i for `amount`, the fire seat `by` started (-1 the raid's): on the room
+// server the rules deal it too (everglade_room_hurt), so they hold the Hit Points and the death the
+// world does (#12934). A page's own fire is its own.
+eg_ra_fire_hurt :: (s: [] Everglade, i: int, amount: int, by: int) {
+  r := s[0].sp.room_ab[..];
+  if !r[0].server || i < 0 || i >= WATCH_ACTORS || amount <= 0 || r[0].fires >= WATCH_ACTORS { return; }
+  n := r[0].fires;
+  r[0].fire_i[n] = i; r[0].fire_n_[n] = amount; r[0].fire_by[n] = ifx by >= 0 && by < EG_RA_SEATS then by else -1; r[0].fires = n + 1;
+}
 // The server's world (everglade-watch.coax everglade_room_spells_start).
 eg_ra_server_start :: (s: [] Everglade) { s[0].sp.room_ab[0].server = true; }
 // Seat `by` stands at (x, y, z) facing yaw (world feet), each tick before everglade_room_abilities.
@@ -346,7 +358,7 @@ everglade_room_rise :: (s: [] Everglade, q: int, up: bool, sink: bool, x: f32, z
 eg_ra_fresh :: (s: [] Everglade) {
   eg_effects_fresh(s);
   r := s[0].sp.room_ab[..];
-  r[0].later_n = 0; r[0].hurts = 0;
+  r[0].later_n = 0; r[0].hurts = 0; r[0].fires = 0;
   for q: 0..<EG_RA_SEATS {
     r[0].seat[q].used = false; r[0].seat[q].quiet = 0; r[0].seat[q].armed = -1; r[0].seat[q].posed = false;
     for k: 0..<AB_N { r[0].seat[q].live[k] = false; }
@@ -364,6 +376,13 @@ everglade_room_abilities :: (s: [] Everglade, dt: f32) #export_c {
   if !sp_on(s) || !(dt > 0) { return; }
   r := s[0].sp.room_ab[..];
   r[0].hurts = 0;
+  // the town's fire's burns since the last step first (eg_ra_fire_hurt)
+  for q: 0..<r[0].fires {
+    if r[0].hurts >= EG_RA_HURTS { break; }
+    n := r[0].hurts;
+    r[0].hurt_i[n] = r[0].fire_i[q]; r[0].hurt_n_[n] = r[0].fire_n_[q]; r[0].hurt_by[n] = r[0].fire_by[q]; r[0].hurts = n + 1;
+  }
+  r[0].fires = 0;
   for q: 0..<EG_RA_SEATS {
     c := r[0].seat[q..<q + 1];
     if !eg_ra_busy(c) { continue; }

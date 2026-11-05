@@ -1637,3 +1637,62 @@ eg_fire_casters :: (casters: int, out: [] f32) {
   eg_fire_casters(0, a[..]); eg_fire_casters(3, c[..]);
   for q: 0..<5 { #assert a[q] == c[q]; }
 }
+// Seat 0's fire burns a guard who stands against it, the room's rules beside the world as the room server
+// runs them (coax/web/room/room-tick.c): each tick the abilities' step hands its harm to the rules
+// (everglade_room_hurt: rm_ra_hurt, e5rr_hurt), then the rules' Hit Points go to the world
+// (everglade_room_folk_hp) before the town and its fire step. Every burn reaches the rules as seat 0's,
+// and the rules and the world hold the same Hit Points, down to the guard's death (#12934).
+#test "room town: the town's fire burning a townsperson goes through the rules: they and the world agree on their Hit Points and death (#12934)" #steps 60000000000 {
+  g: [1] Everglade; dm: [1] DemoWorld;
+  walled := everglade_walls(g[..]);
+  everglade_room_spells_start(g[..], dm[..], "");
+  seats: [EG_ROOM_SEAT_FLOATS * 2] f32; took: [WATCH_YOUS * 2] f32;
+  everglade_room_town(g[..], 1.0 / 30.0, 1000.0, seats[..], 0, took[..]);
+  w := watch_w(g[..]);
+  d := sp_dm(g[..]);
+  at := v3(0, 0, 0); pc := -1;
+  for q: 0..<d[0].n { p := d[0].pieces[q]; if pc < 0 && p.state == DP_STANDING && fi_fuel(p) > 0.5 { at = v3(p.cx, p.y0 + 1, p.cz); pc = q; } }
+  i := -1;
+  for q: 0..<WATCH_ACTORS { if i < 0 && watch_is_guard(q) && watch_here(w, q) && w[0].actors[q].mode != WM_DEAD { i = q; } }
+  #assert walled >= 0 && pc >= 0 && i >= 0;
+  seats[0] = at.x + 15; seats[1] = ground_at(g[..], at.x + 15, at.z); seats[2] = at.z; seats[3] = 2; seats[4] = 100000; seats[5] = 100000;
+  seats[7] = at.x - 80; seats[8] = ground_at(g[..], at.x - 80, at.z); seats[9] = at.z; seats[10] = 2; seats[11] = 100000; seats[12] = 100000;
+  everglade_room_town(g[..], 1.0 / 30.0, 1000.1, seats[..], 2, took[..]);
+  everglade_room_strike(g[..], 0, WL_SLOT0 + WL_FIREBALL, at.x, at.y + 9, at.z - 2, at.x, at.y, at.z, 7);
+  for t: 0..<20 { _ := everglade_room_spells(g[..], 0.1); }
+  #assert fi_count(g[..]) > 0;
+  g[0].wv.room_by = 1;   // seat 1 casts after it: the step's last caster
+  // the rules' Hit Points for the guard (a stand-in for the room's: e5rr_hurt takes what is dealt)
+  w[0].actors[i].hp = 12; w[0].actors[i].temp = 0;
+  rules := 12; burns := 0; hurts := 0;
+  for t: 0..<90 {
+    // the abilities' step: its harm to the rules
+    everglade_room_abilities(g[..], 1.0);
+    h: [3] f32;
+    for q: 0..<everglade_room_hurts(g[..]) {
+      #assert everglade_room_hurt(g[..], q, h[..]);
+      if cast(int) h[0] != i { continue; }
+      #assert cast(int) h[2] == 0;   // seat 0's fire, though seat 1 cast last
+      if rules > 0 { rules = hi_w(rules - cast(int) h[1], 0); }
+      hurts += 1;
+    }
+    // the rules and the world agree before the rules' Hit Points go back to it
+    #assert w[0].actors[i].hp == rules;
+    #assert (w[0].actors[i].mode == WM_DEAD) == (rules == 0);
+    if rules > 0 { everglade_room_folk_hp(g[..], i, rules, 0, -1); }
+    // the guard stands against what still burns
+    v := fi_of(g[..]);
+    if v[0].n > 0 {
+      p := d[0].pieces[v[0].burn[0].piece];
+      if i < EG_SPOTS { g[0].folk[i].x = p.cx; g[0].folk[i].z = p.cz; g[0].folk[i].indoors = false; }
+      w[0].actors[i].x = p.cx; w[0].actors[i].z = p.cz;
+    }
+    before := w[0].actors[i].hp;
+    _ := everglade_room_spells(g[..], 1.0);
+    if w[0].actors[i].hp < before { burns += 1; }
+    // after the first burn (and the rules have it), they are left at 1 Hit Point in both, so the next kills
+    if burns == 1 && hurts == 1 && w[0].actors[i].hp == rules && rules > 1 { w[0].actors[i].hp = 1; rules = 1; }
+  }
+  #assert burns >= 2 && hurts == burns;
+  #assert rules == 0 && w[0].actors[i].mode == WM_DEAD;   // burnt to death, in the rules as in the world
+}

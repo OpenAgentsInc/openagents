@@ -341,8 +341,13 @@ fi_people :: (s: [] Everglade) {
       w[0].me = clamp_w(by, 0, WATCH_YOUS - 1);
       you = s[0].wv.room_at[w[0].me];
     }
-    watch_harm(w, i, srd_sum(d, FI_PEOPLE_DICE, FI_PEOPLE_SIDES), you);
+    took := srd_sum(d, FI_PEOPLE_DICE, FI_PEOPLE_SIDES);
+    alive := w[0].actors[i].mode != WM_DEAD;
+    watch_harm(w, i, took, you);
     w[0].me = me; w[0].enemy_fire = foe;
+    // the room server's: the burn goes to the room's rules too, the fire's starter its source (the raid's
+    // none), so the rules and the world agree on who is hurt and who is dead (#12934)
+    if alive { eg_ra_fire_hurt(s, i, took, by); }
   }
   you = ab_you(s);
   if !watch_you(w[..])[0].dead && v[0].time >= v[0].you_next && fi_by_fire(s, you) {
