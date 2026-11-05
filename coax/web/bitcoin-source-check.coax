@@ -1,0 +1,54 @@
+// Real muted browser effects against the allowlisted Lab adapter. Clip mode
+// controls the real renderer's clock; HTTP still uses actual bounded fetch.
+#import "Basic";
+#load "../lib/net/cdp.coax";
+bs_eval :: (c:[]Cdp,js:string)->bool {n:=cdp_evaluate(c,js);return n>=0 && jv_raw(c[0].doc[0],n)=="true";}
+bs_wait :: (c:[]Cdp,condition:string)->bool {
+  b:[8192]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_put(o[..],"(async()=>{if(!globalThis.coaxial?.ready)return false;await coaxialClipStep(1,60);return ");jo_put(o[..],condition);jo_put(o[..],"})()");until:=proc_now_ms()+45000;
+  while proc_now_ms()<until {if bs_eval(c,jo_text(o[..])) {return true;}proc_sleep(50);}tool_errln(condition);return false;
+}
+bs_click :: (c:[]Cdp,id:int)->bool {
+  b:[512]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_put(o[..],"(()=>{let b=document.querySelector('#coaxial-a11y [data-id=\"");jo_int(o[..],id);jo_put(o[..],"\"]');if(!b)return false;b.click();return true})()");return bs_eval(c,jo_text(o[..]));
+}
+bs_capture :: (c:[]Cdp,path:string)->bool {
+  if !bs_eval(c,"(async()=>{coaxial.renderCapture=null;coaxial.captureFrame();await coaxialClipStep(1,60);for(let i=0;i<100&&!coaxial.renderCapture;i++)await new Promise(r=>setTimeout(r,10));return coaxial.renderCapture?.format==='rgba8unorm'})()") {return false;}
+  n:=cdp_evaluate(c,"(async()=>{let r=coaxial.renderCapture,c=new OffscreenCanvas(r.width,r.height);c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(r.bytes),r.width,r.height),0,0);let b=new Uint8Array(await(await c.convertToBlob({type:'image/png'})).arrayBuffer()),s='';for(let i=0;i<b.length;i+=32768)s+=String.fromCharCode(...b.subarray(i,i+32768));return btoa(s)})()");
+  if n<0 {return false;}png:[16777216]u8;size:=b64_decode(jv_raw(c[0].doc[0],n),png[..]);return size>0 && fs_write(path,cast(string)png[0..<size]);
+}
+bs_until :: (c:[]Cdp,condition:string)->bool {until:=proc_now_ms()+45000;while proc_now_ms()<until {if bs_eval(c,condition) {return true;}proc_sleep(50);}tool_errln(condition);return false;}
+bs_recover :: (c:[]Cdp)->bool {
+  // Pause a real browser request, then save/reload with its effect id still
+  // pending. The new Wasm instance must discard it and fetch a coherent page.
+  paused:=cdp_call(c,"Fetch.enable","{\"patterns\":[{\"urlPattern\":\"*/api/lab/v1/window*\",\"requestStage\":\"Request\"}]}",30000);if paused<0 || !bs_click(c,226) {return false;}
+  if !bs_eval(c,"coaxialClipStep(60,60).then(()=>coaxial.guardProbe(21)===0)") || !bs_eval(c,"coaxial.trapNextFrame()") {return false;}
+  trapped:=cdp_evaluate(c,"coaxialClipStep(1,60)");if !bs_until(c,"globalThis.coaxial?.stopped?.saved===true") {return false;}
+  released:=cdp_call(c,"Fetch.disable","",30000);if released<0 || !bs_eval(c,"(setTimeout(()=>document.querySelector('#coaxial-load .la').click(),50),true)") {return false;}
+  if !bs_wait(c,"!!coaxial.rescued&&coaxial.guardProbe(21)===1&&coaxial.guardProbe(28)===2&&coaxial.guardProbe(24)===104") {return false;}
+  if !bs_eval(c,"coaxial.loseDevice()") || !bs_wait(c,"coaxial.gpuRecovery?.state==='recovered'&&coaxial.guardProbe(21)===1&&coaxial.guardProbe(28)===2") {return false;}
+  return bs_eval(c,"(()=>{let ok=labSourceErrors.every(s=>s.includes('GPU device lost'));labSourceErrors=[];return ok})()");
+}
+bs_run :: (c:[]Cdp,url:string,phone:bool)->bool {
+  enable:=cdp_call(c,"Page.enable","",30000);metrics:=cdp_call(c,"Emulation.setDeviceMetricsOverride",ifx phone then "{\"width\":390,\"height\":844,\"deviceScaleFactor\":1,\"mobile\":true}" else "{\"width\":1440,\"height\":900,\"deviceScaleFactor\":1,\"mobile\":false}",30000);
+  init:=cdp_call(c,"Page.addScriptToEvaluateOnNewDocument","{\"source\":\"globalThis.coaxialClip=true;globalThis.coaxialRenderCapture=true;globalThis.coaxialRenderCaptureFormat='rgba8unorm';globalThis.labSourceErrors=[];addEventListener('error',e=>labSourceErrors.push(e.message));let ce=console.error;console.error=(...a)=>{labSourceErrors.push(a.map(String).join(' '));ce(...a)}\"}",30000);
+  b:[4096]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],url);jo_end(o[..]);nav:=cdp_call(c,"Page.navigate",jo_text(o[..]),30000);
+  if !bs_wait(c,"coaxial.sceneReady===true") {return false;}
+  if !bs_wait(c,"!!document.querySelector('#coaxial-a11y [data-id=\"221\"]')") || !bs_click(c,221) {return false;}
+  if !bs_wait(c,"coaxial.guardProbe(21)===1&&coaxial.guardProbe(24)===102&&coaxial.guardProbe(25)===24") {return false;}
+  if !bs_wait(c,"!!document.querySelector('#coaxial-a11y [data-id=\"201\"]')") || !bs_click(c,201) || !bs_wait(c,"coaxial.guardProbe(21)===1&&coaxial.guardProbe(24)===103&&coaxial.guardProbe(29)===1") {return false;}
+  if !bs_click(c,225) || !bs_wait(c,"coaxial.guardProbe(21)===1&&document.querySelector('#coaxial-a11y-status').textContent.includes('fixture-1-')") {return false;}
+  if !bs_wait(c,"!!document.querySelector('#coaxial-a11y [data-id=\"1000\"]')") || !bs_click(c,1000) || !bs_wait(c,"coaxial.guardProbe(21)===1&&coaxial.guardProbe(22)===3&&coaxial.guardProbe(27)===0") {return false;}
+  // Source replacement clears the admitted amount view synchronously, before
+  // any callback. The configured journal is the acknowledged C snapshot.
+  if !bs_click(c,222) || !bs_eval(c,"coaxial.guardProbe(21)===0") || !bs_wait(c,"coaxial.guardProbe(21)===1&&coaxial.guardProbe(28)===2&&coaxial.guardProbe(24)===104") {return false;}
+  if !bs_wait(c,"!!document.querySelector('#coaxial-a11y [data-id=\"223\"]')") || !bs_click(c,223) || !bs_capture(c,ifx phone then "/tmp/bitcoin-lab-own-node-phone.png" else "/tmp/bitcoin-lab-own-node-desktop.png") {return false;}
+  if !bs_recover(c) {return false;}
+  if !bs_click(c,220) || !bs_wait(c,"coaxial.guardProbe(20)===0&&coaxial.guardProbe(7)===0&&labSourceErrors.length===0") {return false;}
+  print("PASS %: real fetch, fixture/node selection, reorg, page, transaction graph, synchronous invalidation, pending-request trap/rescue, device recovery, return to offline recording\n",ifx phone then "phone" else "desktop");return true;
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {return 2;}
+  for phone:0..<2 {c:[1]Cdp;if !cdp_launch_background(c[..],1440,900,"bitcoin-source-") {return 1;}ok:=bs_run(c[..],args_at(a[..],0),phone==1);
+    if !ok {n:=cdp_evaluate(c[..],"JSON.stringify({errors:globalThis.labSourceErrors,text:document.body.innerText.slice(0,300),ready:globalThis.coaxial?.ready,lost:globalThis.coaxial?.renderDeviceLost,status:document.querySelector('#coaxial-a11y-status')?.textContent?.slice(0,700),probe:Array.from({length:10},(_,i)=>globalThis.coaxial?.guardProbe?.(i+20))})");if n>=0 {print("%\n",jv_raw(c[0].doc[0],n));}}
+    cdp_close(c[..]);if !ok {return 1;}
+  }return 0;
+}

@@ -18,7 +18,7 @@ void coaxial_blur(uint32_t p){fgn_blur(view(p));}
 uint32_t coaxial_pointer(uint32_t p,float x,float y,int32_t phase,int32_t kind,int32_t id){return fgn_pointer(view(p),x,y,phase,kind,id);}
 void coaxial_hover(uint32_t p,float x,float y){fgn_hover(view(p),x,y);}
 uint32_t coaxial_inbox(uint32_t p){return (uint32_t)(uintptr_t)at(p)->inbox.e;}
-uint32_t coaxial_inbox_cap(void){return 262144;}
+uint32_t coaxial_inbox_cap(void){return 2097152;}
 void coaxial_message(uint32_t p,int32_t kind,uint32_t n){fgn_message(view(p),kind,n);}
 uint32_t coaxial_draws(uint32_t p){return (uint32_t)(uintptr_t)at(p)->lab.e[0].draws.e;}
 uint32_t coaxial_draw_count(uint32_t p){return at(p)->lab.e[0].mesh_n>0?1:0;}
@@ -34,4 +34,4 @@ void coaxial_action_done(uint32_t p){at(p)->lab.e[0].action=0;at(p)->lab.e[0].ou
 const char *coaxial_window_title(void){return "Aethyrforge · Bitcoin Lab";}
 const char *coaxial_window_app_id(void){return "com.openagents.aethyrforge";}
 int coaxial_should_close(uint32_t p){return at(p)->quit;}
-void coaxial_close(uint32_t p){fgn_stop(view(p));}
+void coaxial_close(uint32_t p){fgn_close(view(p));}

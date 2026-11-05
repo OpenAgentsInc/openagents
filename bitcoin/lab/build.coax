@@ -1,0 +1,17 @@
+// Native Lab service: the same Coax/C platform effects as the explorer.
+#load "../platform/native-build.coax";
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])>1 {return 2;}
+  sanitize:=args_count(a[..])==1 && args_at(a[..],0)=="--sanitize";
+  if args_count(a[..])==1 && !sanitize {return 2;}
+  dir:=ifx sanitize then "bitcoin/lab/build/sanitize" else "bitcoin/lab/build/native";
+  if !fs_mkdir(dir) {return 1;}p:[5][4096]u8;source:=fs_join(dir,"service.c",p[0][..]);header:=fs_join(dir,"service.h",p[1][..]);
+  entropy:=fs_join(dir,"entropy.c",p[2][..]);entropy_h:=fs_join(dir,"entropy-policy.h",p[3][..]);binary:=fs_join(dir,"bitcoin-lab",p[4][..]);
+  if !bn_emit_mode("bitcoin/lab/service.coax",source,header,false) || !bn_emit_mode("coax/lib/crypto/entropy.coax",entropy,entropy_h,false) {return 1;}
+  args:[32]string;n:=0;args[n]="cc";n+=1;args[n]="-std=c11";n+=1;args[n]="-D_DEFAULT_SOURCE";n+=1;
+  for f:(ifx sanitize then [4]string.["-O1","-g","-fsanitize=address,undefined","-fno-omit-frame-pointer"] else [4]string.["-O2","-ffunction-sections","-fdata-sections","-Wl,--gc-sections"]) {args[n]=f;n+=1;}
+  for f:[3]string.[source,entropy,"bitcoin/lab/host.c"] {args[n]=f;n+=1;}
+  for f:[7]string.["coax/platform/tool-native.c","coax/platform/process-native.c","coax/platform/store-file-native.c","coax/platform/read-file-native.c","coax/platform/socket-native.c","coax/platform/entropy-native.c","coax/platform/entropy-foreign.c"] {args[n]=f;n+=1;}
+  args[n]="-I";n+=1;args[n]=dir;n+=1;args[n]="-Icoax/platform";n+=1;args[n]="-lpthread";n+=1;args[n]="-lm";n+=1;args[n]="-o";n+=1;args[n]=binary;n+=1;
+  out:[65536]u8;err:[65536]u8;r:=proc_run(args[0..<n],600000,out[..],err[..]);if r.started!=0 || r.status!=0 || r.timed_out {tool_errln(cast(string)err[0..<r.err_n]);return 1;}tool_errln(binary);return 0;
+}

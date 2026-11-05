@@ -1,0 +1,148 @@
+// Extend the explorer's two-slot ownership model with full Lab identities.
+// Source/profile/cursor changes invalidate all related views together.
+#load "../explorer/model.coax";
+#load "request.coax";
+#load "model-fixtures.coax";
+#authority;
+LabIdentity :: struct {code:int=502;source:int;mode:int;chain:int;profile:int;height:int;validated:int;background:int=-1;observed:int=-1;hash:[64]u8;cursor:[128]u8;cn:int;ticket:int;}
+LabClient :: struct {base:[1]UxModel;identity:LabIdentity;source:int=1;phase:int;generation:int;epochs:[2]int;ready:bool;error:int;failures:int;retry_at:int;}
+LM_SAMPLE :: "200\n{\"ticket\":\"1\",\"snapshot\":{\"source\":\"fixture\",\"mode\":\"fixture\",\"network\":\"regtest\",\"profile\":\"validated-v1\",\"height\":102,\"hash\":\"055359b6e245148e0e02bd513f35c86bb00b82fe80bff6f4c85884db207e01df\",\"cursor\":\"fixture-a\",\"observed_ms\":null,\"validated_height\":102,\"background_height\":null,\"complete\":true,\"available\":true,\"capabilities\":[\"blocks\"]}}";
+#test "Lab identity admits complete explicit metadata without inventing observation time" {
+  nodes:[256]JvNode;r:=lm_decode(LM_SAMPLE,nodes[..]);#assert r.code==0 && r.source==1 && r.chain==5 && r.profile==2 && r.ticket==1 && r.height==102 && r.observed== -1;
+  #assert r.mode==1;
+  #assert lm_decode("503\n{}",nodes[..]).code==503 && lm_decode("0\n",nodes[..]).code==503;
+  #assert lm_decode("200\n{}",nodes[..]).code==502 && lm_decode(LM_SAMPLE,nodes[0..<0]).code==502;
+}
+#test "Lab source changes cancel both slots and reject callbacks even after slot reuse" {
+  s:[1]LabClient;#assert lm_begin(s[..],1,0)==1;
+  nodes:[256]JvNode;a:=lm_decode(LM_SAMPLE,nodes[..]);#assert lm_receive(s[..],1,0,a,0)==1 && s[0].ready;
+  #assert lm_begin(s[..],0,1)==2;lm_select(s[..],2,0);#assert !s[0].ready && s[0].base[0].pending[0].id== -1;
+  #assert lm_begin(s[..],1,0)==3;#assert lm_receive(s[..],1,0,a,0)==0 && !s[0].ready;
+  a.source=2;a.mode=2;a.profile=1;a.ticket=3;#assert lm_receive(s[..],1,0,a,0)==1 && s[0].ready;
+  #assert lm_begin(s[..],0,1)==4;a.ticket=4;a.hash[0]='a';#assert lm_receive(s[..],0,1,a,0)==2 && !s[0].ready;
+  #assert lm_begin(s[..],1,0)==5;a.ticket=5;#assert lm_receive(s[..],1,0,a,0)==1;
+  #assert lm_begin(s[..],0,1)==6;a.ticket=6;a.code=503;#assert lm_receive(s[..],0,1,a,50)== -1 && !s[0].ready && s[0].retry_at>50;
+  s[0].base[0].serial=9223372036854775807;#assert lm_begin(s[..],1,0)== -1;
+}
+#test "Lab identities include profile publication and same-height reorgs but not receipt clocks" {
+  a:LabIdentity;a.code=0;b:=a;#assert lm_same(a,b);b.observed=1;#assert lm_same(a,b);
+  b.profile=1;#assert !lm_same(a,b);b=a;b.mode=1;#assert !lm_same(a,b);b=a;b.source=1;#assert !lm_same(a,b);
+  b=a;b.chain=1;#assert !lm_same(a,b);b=a;b.height=1;#assert !lm_same(a,b);b=a;b.hash[0]='a';#assert !lm_same(a,b);
+  b=a;b.cn=1;b.cursor[0]='x';#assert !lm_same(a,b);
+  #assert lm_backoff(0)==500 && lm_backoff(1)==1000 && lm_backoff(20)==30000;
+}
+#test "Lab wire metadata refuses malformed fields and retains explicit unknowns" {
+  b:[4096]u8;nodes:[256]JvNode;
+  for bad:1..<24 {r:=lm_decode(lm_wire(bad,"regtest",b[..]),nodes[..]);#assert r.code==ifx bad>=18 && bad<=20 then 503 else 502;}
+  for chain:UX_CHAINS {r:=lm_decode(lm_wire(0,chain,b[..]),nodes[..]);#assert r.code==ifx chain=="" then 502 else 0;}
+  own:=lm_decode(lm_wire(24,"main",b[..]),nodes[..]);#assert own.code==0 && own.profile==1 && own.chain==1 && own.source==2 && own.mode==2 && own.height==0;
+  background:=lm_decode(lm_wire(25,"signet",b[..]),nodes[..]);#assert background.code==0 && background.profile==3 && background.height==2147483647 && background.background==2147483647 && background.observed==0;
+  #assert lm_decode(lm_wire(27,"regtest",b[..]),nodes[..]).code==502;
+  #assert lm_decode(lm_wire(28,"regtest",b[..]),nodes[..]).ticket==9223372036854775807;
+  for bad:[4]int.[29,30,33,34] {#assert lm_decode(lm_wire(bad,"regtest",b[..]),nodes[..]).code==502;}
+  for bad:[4]int.[35,36,37,38] {#assert lm_decode(lm_wire(bad,"regtest",b[..]),nodes[..]).code==502;}
+  #assert lm_decode(lm_wire(31,"regtest",b[..]),nodes[..]).code==0;
+  zero:=lm_decode(lm_wire(32,"regtest",b[..]),nodes[..]);#assert zero.code==0 && zero.background==0;
+  #assert lm_decode("200\n",nodes[..]).code==502 && lm_decode("100\n",nodes[..]).code==100;
+  for broken:[6]string.["200x{}","099\n{}","600\n{}","200\n{","200\n[]","200\n{\"snapshot\":[]}"] {#assert lm_decode(broken,nodes[..]).code==ifx broken=="200x{}" || broken=="099\n{}" || broken=="600\n{}" then 503 else 502;}
+}
+#forall "Lab snapshot hashes require all 64 lowercase hexadecimal bytes" c:0..<128 {
+  b:[4096]u8;nodes:[256]JvNode;r:=lm_decode(lm_wire(100+c,"regtest",b[..]),nodes[..]);
+  #assert r.code==ifx (c>=48 && c<=57)||(c>=97 && c<=102) then 0 else 502;
+}
+#test "Lab reply size accepts its exact bound and refuses one byte beyond" #steps 100000000 {
+  b:[LAB_REPLY_MAX+1]u8;for i:0..<b.count {b[i]=' ';}for i:0..<LM_SAMPLE.count {b[i]=LM_SAMPLE[i];}nodes:[256]JvNode;
+  #assert lm_decode(cast(string)b[0..<LAB_REPLY_MAX],nodes[..]).code==0 && lm_decode(cast(string)b[..],nodes[..]).code==503;
+}
+#test "Lab client stale error recovery and bounded retries cover both request slots" {
+  s:[1]LabClient;d:[256]JvNode;a:=lm_decode(LM_SAMPLE,d[..]);
+  for kind:[2]int.[-1,2] {#assert lm_receive(s[..],kind,0,a,0)==0 && lm_begin(s[..],kind,0)== -1;}
+  #assert lm_begin(s[..],1,-1)== -1 && lm_begin(s[..],1,8)== -1;
+  #assert lm_begin(s[..],0,0)==1;s[0].epochs[0]=1;#assert lm_receive(s[..],0,0,a,0)==0;s[0].epochs[0]=0;
+  #assert lm_receive(s[..],0,1,a,0)==0;
+  a.source=2;#assert lm_receive(s[..],0,0,a,0)==0;a.source=1;
+  #assert lm_receive(s[..],0,0,a,0)==1 && !s[0].ready;
+  #assert lm_begin(s[..],1,7)==2;a.ticket=2;#assert lm_receive(s[..],1,7,a,0)==1;
+  #assert lm_begin(s[..],0,0)==3;a.ticket=3;a.cursor[0]='b';#assert lm_receive(s[..],0,0,a,0)==2 && !s[0].ready;
+  a.code=503;#assert lm_begin(s[..],1,0)==4;#assert lm_receive(s[..],1,0,a,30)== -1 && s[0].retry_at==530 && s[0].failures==1;
+  #assert lm_begin(s[..],1,0)==5;#assert lm_receive(s[..],1,0,a,60)== -1 && s[0].retry_at==1060 && s[0].failures==2;
+  source:=s[0].source;for bad:[2]int.[0,3] {lm_select(s[..],bad,0);#assert s[0].source==source;}
+  for bad:[2]int.[-1,3] {lm_select(s[..],1,bad);#assert s[0].phase==0;}
+  lm_select(s[..],1,2);#assert s[0].phase==2 && s[0].error==0 && s[0].failures==0 && s[0].retry_at==0;
+  #assert lm_backoff(5)==16000 && lm_backoff(6)==30000 && lm_backoff(7)==30000;
+  #assert lm_backoff(-1)== -1;
+  #assert lm_backoff(2)==2000 && lm_backoff(3)==4000 && lm_backoff(4)==8000;
+  #assert lm_receive(s[..],0,-1,a,0)==0;
+  a.code=0;a.chain=5;a.ticket=6;#assert lm_begin(s[..],1,0)==6 && lm_receive(s[..],1,0,a,0)==1;
+  s[0].error=503;s[0].failures=3;s[0].retry_at=50;
+  #assert lm_begin(s[..],1,1)==7 && !s[0].ready;a.ticket=7;#assert lm_receive(s[..],1,1,a,0)==1 && s[0].error==0 && s[0].failures==0 && s[0].retry_at==0 && lm_same(s[0].identity,a);
+  #assert lm_begin(s[..],0,0)==8;s[0].base[0].last=8;
+  a.ticket=8;#assert lm_receive(s[..],0,0,a,0)==0 && s[0].ready && s[0].error==0;
+  s[0].base[0].snapshot.chain=1;s[0].base[0].ready=true;
+  generation:=s[0].generation;lm_select(s[..],2,0);
+  #assert s[0].generation==generation+1 && s[0].base[0].snapshot.chain==0 && !s[0].base[0].ready;
+  s[0].generation=9223372036854775807;lm_select(s[..],1,0);#assert s[0].source==2;
+}
+#test "Lab a second poll still invalidates an unready view on a changed tip" {
+  s:[1]LabClient;d:[256]JvNode;a:=lm_decode(LM_SAMPLE,d[..]);
+  #assert lm_begin(s[..],1,0)==1 && lm_receive(s[..],1,0,a,0)==1;
+  #assert lm_begin(s[..],1,1)==2 && !s[0].ready;
+  #assert lm_begin(s[..],0,0)==3;a.ticket=3;a.hash[0]='a';#assert lm_receive(s[..],0,0,a,0)==2;
+  #assert lm_begin(s[..],0,0)==4;a.ticket=4;a.code=503;#assert lm_receive(s[..],0,0,a,0)== -1 && s[0].error==503;
+  #assert s[0].base[0].snapshot.chain==5;
+  #assert lm_begin(s[..],1,1)==5;a.ticket=5;a.code=0;a.chain=1;
+  #assert lm_receive(s[..],1,1,a,0)== -1 && s[0].error==409 && s[0].base[0].snapshot.chain==0 && s[0].base[0].snapshot.height==0;
+  #assert lm_begin(s[..],1,1)==6;a.ticket=6;#assert lm_receive(s[..],1,1,a,0)==1 && s[0].ready;
+}
+lm_backoff :: (failures:int)->int {if failures<0 {return -1;}if failures>=6 {return 30000;}return [6]int.[500,1000,2000,4000,8000,16000][failures];}
+lm_same :: (left:LabIdentity,right:LabIdentity)->bool {
+  a:=left;b:=right;return a.source==b.source && a.mode==b.mode && a.chain==b.chain && a.profile==b.profile && a.height==b.height && cast(string)a.hash[..]==cast(string)b.hash[..] && cast(string)a.cursor[0..<a.cn]==cast(string)b.cursor[0..<b.cn];
+}
+lm_select :: (s:[]LabClient,source:int,phase:int) {
+  if source<1 || source>2 || phase<0 || phase>2 || s[0].generation==9223372036854775807 {return;}
+  for i:0..<2 {s[0].base[0].pending[i].id= -1;}s[0].base[0].snapshot=UxSnapshot.{};s[0].base[0].ready=false;
+  s[0].source=source;s[0].phase=phase;s[0].ready=false;s[0].error=0;s[0].failures=0;s[0].retry_at=0;s[0].generation+=1;
+}
+lm_begin :: (s:[]LabClient,kind:int,id:int)->int {
+  if !ux_begin(s[0].base[..],kind,id) {return -1;}s[0].epochs[kind]=s[0].generation;
+  if kind==1 {s[0].ready=false;}return s[0].base[0].serial;
+}
+lm_receive :: (s:[]LabClient,kind:int,id:int,snapshot:LabIdentity,now:int)->int {
+  if kind<0 || kind>1 {return 0;}pending:=s[0].base[0].pending[kind];
+  if pending.id!=id || s[0].epochs[kind]!=s[0].generation {return 0;}
+  // Invalid transport replies may have no echo. Valid replies must echo the
+  // exact request ticket before consuming a potentially recycled effect slot.
+  if snapshot.code==0 && (snapshot.ticket!=pending.serial || snapshot.source!=s[0].source) {return 0;}
+  changed:=s[0].ready && !lm_same(s[0].identity,snapshot);
+  hash:=snapshot.hash;plain:=UxSnapshot.{code=snapshot.code,chain=snapshot.chain,height=snapshot.height,hash=hash};
+  accepted:=ux_receive(s[0].base[..],kind,id,plain);
+  if accepted<=0 {if accepted<0 {s[0].ready=false;s[0].error=s[0].base[0].error;if s[0].error==409 {s[0].base[0].snapshot=UxSnapshot.{};}s[0].retry_at=now+lm_backoff(s[0].failures);s[0].failures+=1;}return accepted;}
+  s[0].identity=snapshot;s[0].error=0;s[0].failures=0;s[0].retry_at=0;
+  if kind==1 {s[0].ready=true;return 1;}if changed || accepted==2 {s[0].ready=false;return 2;}return 1;
+}
+lm_decode :: (text:string,nodes:[]JvNode)->LabIdentity {
+  r:LabIdentity;if text.count<4 || text.count>LAB_REPLY_MAX || text[3]!='\n' {r.code=503;return r;}
+  status:=lr_number(text[0..<3],599);if status<100 {r.code=503;return r;}if status!=200 {r.code=status;return r;}
+  d:[1]Jv;if !jv_parse(d[..],text[4..<text.count],nodes) {return r;}v:=d[0];sn:=jv_get(v,0,"snapshot");
+  // Object readers reject nonobjects; thirteen required named fields below
+  // also reject duplicate/missing snapshot fields without redundant guards.
+  if jv_len(v,sn)!=13 {return r;}
+  r.ticket=lr_number(jv_raw(v,jv_get(v,0,"ticket")),9223372036854775807);
+  source:=jv_raw(v,jv_get(v,sn,"source"));r.source=ifx source=="fixture" then 1 else ifx source=="own-node" then 2 else 0;
+  mode:=jv_raw(v,jv_get(v,sn,"mode"));r.mode=ifx mode=="fixture" then 1 else ifx mode=="live" then 2 else 0;
+  chain:=jv_raw(v,jv_get(v,sn,"network"));for i:1..<6 {if chain==UX_CHAINS[i] {r.chain=i;}}
+  profile:=jv_raw(v,jv_get(v,sn,"profile"));for p,i:[4]string.["pow-only","validated-v1","snapshot-background","unavailable"] {if profile==p {r.profile=i+1;}}
+  r.height=jv_int(v,jv_get(v,sn,"height"),-1);r.validated=jv_int(v,jv_get(v,sn,"validated_height"),-1);
+  if r.ticket<1 || r.source==0 || r.mode!=r.source || r.chain==0 || r.profile==0 || r.height<0 || r.height>2147483647 || r.validated<0 || r.validated>r.height {return r;}
+  if r.profile==2 && r.validated!=r.height {return r;}
+  if jv_str(v,jv_get(v,sn,"hash"),r.hash[..])!=64 {return r;}for c:r.hash {if !((c>='0' && c<='9')||(c>='a' && c<='f')) {return r;}}
+  r.cn=jv_str(v,jv_get(v,sn,"cursor"),r.cursor[..]);if r.cn<1 {return r;}
+  // jv_str already bounded the owned array, so no duplicate size gate.
+  if !lr_token(cast(string)r.cursor[0..<r.cn],r.cn) {return r;}
+  observed:=jv_get(v,sn,"observed_ms");background:=jv_get(v,sn,"background_height");
+  if jv_kind(v,observed)!=JV_NULL {r.observed=jv_int(v,observed,-1);if r.observed<0 {return r;}}
+  if jv_kind(v,background)!=JV_NULL {r.background=jv_int(v,background,-1);if r.background<0 || r.background>r.height {return r;}}
+  if jv_kind(v,jv_get(v,sn,"capabilities"))!=JV_ARRAY {return r;}
+  if !jv_bool(v,jv_get(v,sn,"complete")) || !jv_bool(v,jv_get(v,sn,"available")) || r.profile==4 {r.code=503;return r;}
+  r.code=0;return r;
+}

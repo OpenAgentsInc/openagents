@@ -11,7 +11,8 @@ ForgeNative :: struct {
   lab:[1]BitcoinLab;hud:[1]ForgeLinux;
   initialized:bool;quit:bool;shift:bool;control:bool;coder:int=-1;last:int;ended:bool;
   session:[128]u8;sn:int;workspace:[4096]u8;wn:int;image:[4096]u8;imn:int;engine:[16]u8;en:int;context:[4096]u8;cn:int;
-  inbox:[262144]u8;frame:int;px:f32;py:f32;
+  inbox:[LAB_REPLY_MAX]u8;frame:int;px:f32;py:f32;
+  lab_service:int=-1;lab_port:int;lab_started:int;lab_fetch:[2]int=[2]int.[-1,-1];lab_status:[2]int;lab_deadline:[2]int;
 }
 #test "native Aethyrforge releases walking when Return opens its shared composer" {
   s:[1]ForgeNative;s[0].hud[0].ready=true;
@@ -27,6 +28,11 @@ ForgeNative :: struct {
   #assert cast(string)s[0].session[0..<s[0].sn]=="owned_123";
   fgn_event(s[..],"{\"kind\":\"session\",\"id\":\"../bad\"}");
   #assert cast(string)s[0].session[0..<s[0].sn]=="owned_123";
+}
+#test "native Aethyrforge lets Lab search consume Return before opening Coder" {
+  s:[1]ForgeNative;s[0].hud[0].ready=true;lab_start(s[0].lab[..]);lab_do(s[0].lab[..],221);lab_do(s[0].lab[..],205);
+  #assert fgn_key(s[..],49,true,0) && s[0].lab[0].remote[0].qn==1;
+  #assert fgn_key(s[..],-2,true,0) && !s[0].hud[0].opened && s[0].lab[0].remote[0].kind==7;
 }
 #test "native Aethyrforge reserves its composer and history without overwriting world vertices" {
   v:[18*12]f32;for i:0..<18 {v[i*12]=700;v[i*12+1]=600;v[i*12+2]=cast(f32)i;}
@@ -44,6 +50,7 @@ fgn_boot :: (s:[]ForgeNative) #export_c {
   s[0].en=engine.count;for i:0..<engine.count {s[0].engine[i]=engine[i];}
   context:=fs_join(home,".openagents/aethyrforge/native-linux/bitcoin-lab-context.txt",p[..]);s[0].cn=context.count;for i:0..<context.count {s[0].context[i]=context[i];}
   fgl_init(s[0].hud[..],FGN_EPOCH,cast(string)s[0].workspace[0..<s[0].wn],"Coder ready · Enter to compose",false,0);
+  lab_start(s[0].lab[..]);source:=proc_getenv("AETHYRFORGE_LAB_SOURCE",p[..]);lab_do(s[0].lab[..],ifx source=="recording" then 220 else ifx source=="own-node" then 222 else 221);
   s[0].initialized=true;
 }
 fgn_event :: (s:[]ForgeNative,line:string) {
@@ -73,7 +80,7 @@ fgn_tick :: (s:[]ForgeNative) {
       if r.op==1 {s[0].hud[0].busy=fgn_launch(s,cast(string)r.text[0..<r.n]);fgl_status(s[0].hud[..],ifx s[0].coder>=0 then "Coder is running" else "Coder could not start");}
       else if r.op==2 {fgn_stop(s);fgn_event(s,"{\"kind\":\"end\",\"ending\":\"stopped\"}");}
       else if r.op==3 {s[0].sn=0;}
-      else if r.op==4 {s[0].lab[0]=BitcoinLab.{};}
+      else if r.op==4 {lr_select(s[0].lab[0].remote[..],0,0);lab_blur(s[0].lab[..]);s[0].lab[0].ready=false;s[0].lab[0].explorer[0]=LabExplore.{};}
       else if r.op==5 {s[0].quit=true;}
     }
     s[0].hud[0].pending=false;s[0].hud[0].request_n=0;
@@ -94,6 +101,7 @@ fgn_tick :: (s:[]ForgeNative) {
 fgn_key :: (s:[]ForgeNative,key:int,down:bool,mods:int)->bool #export_c {
   if key== -13 {s[0].shift=down;return true;}if key== -14 {s[0].control=down;return true;}
   bits:=mods | (ifx s[0].shift then 1 else 0) | (ifx s[0].control then 2 else 0);
+  if !s[0].hud[0].opened && (s[0].lab[0].remote[0].search || s[0].lab[0].explorer[0].search) {return lab_key(s[0].lab[..],key,down,bits);}
   if key== -2 {
     opened:=s[0].hud[0].opened;used:=fgl_key(s[0].hud[..],key,down,bits);
     if !opened && s[0].hud[0].opened {lab_blur(s[0].lab[..]);}return used;
@@ -112,8 +120,8 @@ fgn_pointer :: (s:[]ForgeNative,x:f32,y:f32,phase:int,kind:int,id:int)->bool #ex
 fgn_hover :: (s:[]ForgeNative,x:f32,y:f32) #export_c {s[0].px=x;s[0].py=y;}
 fgn_message :: (s:[]ForgeNative,kind:int,n:int) #export_c {
   if n<0 || n>s[0].inbox.count {return;}
-  if kind==1 {fgl_text(s[0].hud[..],cast(string)s[0].inbox[0..<n]);return;}
-  if n<=256 {for i:0..<n {s[0].lab[0].inbox[i]=s[0].inbox[i];}lab_message(s[0].lab[..],kind,n);}
+  if kind==1 && s[0].hud[0].opened {fgl_text(s[0].hud[..],cast(string)s[0].inbox[0..<n]);return;}
+  for i:0..<n {s[0].lab[0].inbox[i]=s[0].inbox[i];}lab_message(s[0].lab[..],kind,n);
 }
 fgn_crop :: (out:[]f32,count:int,h:f32,d:f32)->int {
   kept:=0;
@@ -125,10 +133,53 @@ fgn_crop :: (out:[]f32,count:int,h:f32,d:f32)->int {
   }return kept;
 }
 fgn_frame :: (s:[]ForgeNative,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32)->int #export_c {
-  if !s[0].initialized {fgn_boot(s);}fgn_tick(s);
+  if !s[0].initialized {fgn_boot(s);}fgn_tick(s);fgn_lab_tick(s);
   n:=lab_frame(s[0].lab[..],out,u,w,h,d,dt,false);s[0].hud[0].ready=lab_scene_ready(s[0].lab[..]);
   if s[0].hud[0].opened {n=fgn_crop(out,n,h,d);}
   overlay:[88]f32;extra:=fgl_frame(s[0].hud[..],out[n*12..<out.count],overlay[..],w,h,d,dt);n+=extra;
   if s[0].hud[0].opened {p:=HdPen.{d=1,cyan=true,top=0,bottom=h,sans=false};n=hd_line(out,n,s[0].px-7,s[0].py,s[0].px+7,s[0].py,p,0,1);n=hd_line(out,n,s[0].px,s[0].py-7,s[0].px,s[0].py+7,p,0,1);}
   s[0].frame+=1;return n;
+}
+fgn_lab_end :: (s:[]ForgeNative,slot:int) {
+  if s[0].lab_fetch[slot]>=0 {r:=proc_release(s[0].lab_fetch[slot]);s[0].lab_fetch[slot]= -1;}s[0].lab_status[slot]=0;
+}
+fgn_close :: (s:[]ForgeNative) #export_c {
+  fgn_stop(s);for i:0..<2 {fgn_lab_end(s,i);}if s[0].lab_service>=0 {r:=proc_release(s[0].lab_service);s[0].lab_service= -1;}
+}
+fgn_lab_program :: (name:string,out:[]u8)->string {
+  home:[4096]u8;root:=proc_getenv("HOME",home[..]);b:[4096]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_put(o[..],".openagents/bin/");jo_put(o[..],name);return fs_join(root,jo_text(o[..]),out);
+}
+fgn_lab_tick :: (s:[]ForgeNative) {
+  lab:=s[0].lab[0].remote[..];now:=proc_now_ms();
+  for slot:0..<2 {if lab[0].effects[slot].cancel>=0 {fgn_lab_end(s,slot);lab[0].effects[slot].cancel= -1;}}
+  wanted:=lab[0].effects[0].wanted || lab[0].effects[1].wanted;
+  if wanted && s[0].lab_service<0 {
+    h:=proc_new();path:[4096]u8;ok:=h>=0 && proc_arg(h,fgn_lab_program("bitcoin-lab-api",path[..])) && proc_arg(h,"--port") && proc_arg(h,"0");
+    for key,i:[3]string.["BITCOIN_LAB_STATE","BITCOIN_LAB_BLOCKS","BITCOIN_LAB_CHAIN"] {value:[4096]u8;text:=proc_getenv(key,value[..]);if text!="" {ok=ok && proc_arg(h,[3]string.["--state","--blocks","--chain"][i]) && proc_arg(h,text);}}
+    if !ok || proc_start(h)!=0 {r:=proc_release(h);for i:0..<2 {if lab[0].effects[i].wanted {lr_dispatched(lab,i,-1);}}return;}
+    s[0].lab_service=h;s[0].lab_started=now;s[0].lab_port=0;
+  }
+  if s[0].lab_service>=0 && s[0].lab_port==0 {
+    line:[512]u8;n:=proc_line(s[0].lab_service,0,line[..]);prefix:="bitcoin-lab http://127.0.0.1:";
+    if n>prefix.count && cast(string)line[0..<prefix.count]==prefix {end:=prefix.count;while end<n && line[end]>='0' && line[end]<='9' {end+=1;}s[0].lab_port=lr_number(cast(string)line[prefix.count..<end],65535);}
+    if n==PROC_EOF || now-s[0].lab_started>10000 || s[0].lab_port<0 {r:=proc_release(s[0].lab_service);s[0].lab_service= -1;for i:0..<2 {if lab[0].effects[i].wanted {lr_dispatched(lab,i,-1);}}return;}
+  }
+  for slot:0..<2 {
+    if lab[0].effects[slot].wanted && s[0].lab_port>0 && s[0].lab_service>=0 {
+      fgn_lab_end(s,slot);h:=proc_new();path:[4096]u8;port:[32]u8;o:[1]Jo;jo_start(o[..],port[..]);jo_int(o[..],s[0].lab_port);
+      ok:=h>=0 && proc_arg(h,fgn_lab_program("bitcoin-lab-fetch",path[..])) && proc_arg(h,jo_text(o[..])) && proc_arg(h,cast(string)lab[0].effects[slot].path[0..<lab[0].effects[slot].n]);
+      if !ok || proc_start(h)!=0 {r:=proc_release(h);lr_dispatched(lab,slot,-1);}else {s[0].lab_fetch[slot]=h;s[0].lab_deadline[slot]=now+12000;lr_dispatched(lab,slot,slot);}
+    }
+    h:=s[0].lab_fetch[slot];if h<0 {continue;}
+    if s[0].lab_status[slot]==0 {
+      n:=proc_line(h,0,s[0].inbox[0..<4]);if n==3 {code:=lr_number(cast(string)s[0].inbox[0..<3],599);if code>=100 {s[0].lab_status[slot]=code;}}
+      else if n!=PROC_TIMEOUT {fgn_lab_end(s,slot);lr_receive(lab,slot,"503\n{}");continue;}
+    }
+    if s[0].lab_status[slot]>0 {
+      n:=proc_line(h,0,s[0].inbox[4..<LAB_REPLY_MAX]);
+      if n>=0 {code:=s[0].lab_status[slot];s[0].inbox[0]=cast(u8)(48+code/100);s[0].inbox[1]=cast(u8)(48+code/10%10);s[0].inbox[2]=cast(u8)(48+code%10);s[0].inbox[3]='\n';fgn_lab_end(s,slot);lr_receive(lab,slot,cast(string)s[0].inbox[0..<n+4]);}
+      else if n!=PROC_TIMEOUT {fgn_lab_end(s,slot);lr_receive(lab,slot,"503\n{}");}
+    }
+    if s[0].lab_fetch[slot]>=0 && now>=s[0].lab_deadline[slot] {fgn_lab_end(s,slot);lr_receive(lab,slot,"503\n{}");}
+  }
 }

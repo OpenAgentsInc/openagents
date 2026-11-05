@@ -1,0 +1,87 @@
+// Closed read-only Lab routes. Configuration, paths and RPC are never inputs.
+#load "../../coax/lib/bitcoin/explorer-request.coax";
+#load "../../coax/lib/json/json.coax";
+#authority;
+LAB_REPLY_MAX :: 2097152;
+LAB_WINDOW_MAX :: 24;
+LAB_TX_MAX :: 32;
+LAB_LINK_MAX :: 16;
+LabRoute :: struct {code:int=400;kind:int;source:int;phase:int;ticket:int;offset:int;cursor:[128]u8;cn:int;key:[256]u8;kn:int;}
+#test "Lab routes admit only named read-only sources and bounded page requests" {
+  r:=lr_route("GET","/api/lab/v1/window?source=fixture&ticket=1&cursor=latest");
+  #assert r.code==200 && r.kind==2 && r.source==1 && r.ticket==1 && r.phase==0 && r.offset==0;
+  r=lr_route("GET","/api/lab/v1/transaction?source=own-node&ticket=9223372036854775807&cursor=abc_123&key=abcd&offset=2147483647");
+  #assert r.code==200 && r.kind==4 && r.source==2 && r.ticket==9223372036854775807 && r.offset==2147483647 && cast(string)r.key[0..<r.kn]=="abcd";
+  #assert lr_route("POST","/api/lab/v1/window?source=fixture&ticket=1&cursor=latest").code==405;
+  for path:[13]string.["/api/v1/rpc","/api/lab/v1/no","/api/lab/v1/window","/api/lab/v1/window?source=x&ticket=1&cursor=latest","/api/lab/v1/window?source=fixture&ticket=0&cursor=latest","/api/lab/v1/window?source=fixture&ticket=9223372036854775808&cursor=latest","/api/lab/v1/window?source=fixture&ticket=1&cursor=latest&x=1","/api/lab/v1/window?source=fixture&ticket=1&ticket=2&cursor=latest","/api/lab/v1/window?source=fixture&ticket=1&cursor=latest&phase=3","/api/lab/v1/window?source=own-node&ticket=1&cursor=latest&phase=1","/api/lab/v1/script?source=fixture&ticket=1&cursor=latest&key=abc","/api/lab/v1/search?source=fixture&ticket=1&cursor=latest&key=http://evil","/api/lab/v1/window?source=fixture&ticket=1&cursor=latest#x"] {#assert lr_route("GET",path).code==400;}
+}
+#test "Lab decimal and public-token boundaries do not wrap or accept escapes" {
+  #assert lr_number("0",0)==0 && lr_number("1",1)==1 && lr_number("10",10)==10;
+  #assert lr_number("",9)== -1 && lr_number("-1",9)== -1 && lr_number("10",9)== -1 && lr_number("x",99)== -1;
+  #assert lr_token("aZ_09-",128) && !lr_token("",128) && !lr_token("a%20",128) && !lr_token("ab",1);
+  for endpoint,i:[7]string.["snapshot","window","transactions","transaction","script","outputs","search"] {#assert lr_kind(endpoint)==i+1;}
+  #assert lr_kind("")==0;
+  #assert lr_prefix("abc","abc") && lr_prefix("abcd","abc") && !lr_prefix("ab","abc") && !lr_prefix("xbc","abc");
+  #assert lr_route("GET","/api/lab/v1/").code==400;
+  for endpoint:[7]string.["snapshot","window","transactions","transaction","script","outputs","search"] {
+    b:[1024]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_put(o[..],"/api/lab/v1/");jo_put(o[..],endpoint);jo_put(o[..],"?source=fixture&ticket=1&cursor=bound&key=ab&phase=2&offset=0");
+    r:=lr_route("GET",jo_text(o[..]));#assert r.code==200 && r.phase==2;
+  }
+  #assert lr_route("GET","/api/lab/v1/no?source=fixture&ticket=1&cursor=latest").code==400;
+  #assert lr_route("GET","/api/lab/v1/window?source=fixture&ticket=1&cursor=latest&").code==400;
+  #assert lr_route("GET","/api/lab/v1/window?source=fixture&ticket=1&cursor=latest&bad").code==400;
+  #assert lr_route("GET","/api/lab/v1/window?source=fixture&ticket=1").code==400;
+  #assert lr_route("GET","/api/lab/v1/search?source=fixture&ticket=1&cursor=latest").code==400;
+  wide:[1025]u8;prefix:="/api/lab/v1/window?source=fixture&cursor=latest&ticket=";
+  for i:0..<prefix.count {wide[i]=prefix[i];}for i:prefix.count..<wide.count {wide[i]='0';}wide[1023]='1';
+  #assert lr_route("GET",cast(string)wide[0..<1024]).code==200 && lr_route("GET",cast(string)wide[..]).code==400;
+  for key,i:[6]string.["source","ticket","cursor","phase","offset","key"] {#assert lr_field(key)==1<<i;}#assert lr_field("unknown")==0;
+  #assert lr_route("GET","/api/lab/v1/snapshot?source=own-node&ticket=1&cursor=latest&phase=0").code==200;
+  #assert lr_route("GET","/api/lab/v1/transactions?source=fixture&ticket=1&cursor=bound").code==400;
+  #assert lr_route("GET","/api/lab/v1/transactions?source=fixture&ticket=1&cursor=latest&key=ab").code==400;
+  #assert lr_route("GET","/api/lab/v1/outputs?source=fixture&ticket=1&cursor=latest&key=ab").code==400;
+  #assert lr_route("GET","/api/lab/v1/search?source=fixture&ticket=1&cursor=latest&key=ab").code==200;
+  #assert lr_route("GET","/api/lab/v1/window?source=fixture&ticket=1&cursor=latest&offset=2147483648").code==400;
+  for k:0..<2 {for extra:0..<2 {
+    data:[1024]u8;o:[1]Jo;jo_start(o[..],data[..]);jo_put(o[..],"/api/lab/v1/search?source=fixture&ticket=1&cursor=");
+    for i:0..<(ifx k==0 then 128+extra else 1) {jo_put(o[..],"a");}jo_put(o[..],"&key=");for i:0..<(ifx k==1 then 256+extra else 1) {jo_put(o[..],"a");}
+    #assert lr_route("GET",jo_text(o[..])).code==ifx extra==0 then 200 else 400;
+  }}
+}
+#forall "Lab decimals reject every nondigit without confusing punctuation with ten" c:0..<128 {
+  b:=[1]u8.[cast(u8)c];#assert lr_number(cast(string)b[..],100)==ifx c>=48 && c<=57 then c-48 else -1;
+}
+#forall "Lab public tokens accept exactly unescaped identifier bytes" c:0..<128 {
+  text:=[1]u8.[cast(u8)c];#assert lr_token(cast(string)text[..],1)==((c>=48 && c<=57)||(c>=65 && c<=90)||(c>=97 && c<=122)||c==45||c==95);
+}
+lr_number :: (s:string,limit:int)->int {
+  if s.count==0 {return -1;}n:=0;
+  for c:s {if c<'0' || c>'9' {return -1;}v:=cast(int)c-48;if n>limit/10 || (n==limit/10 && v>limit%10) {return -1;}n=n*10+v;}return n;
+}
+lr_token :: (s:string,cap:int)->bool {
+  if s.count==0 || s.count>cap {return false;}
+  for c:s {if !((c>='0' && c<='9')||(c>='A' && c<='Z')||(c>='a' && c<='z')||c=='-'||c=='_') {return false;}}return true;
+}
+lr_kind :: (s:string)->int {for name,i:[7]string.["snapshot","window","transactions","transaction","script","outputs","search"] {if s==name {return i+1;}}return 0;}
+lr_field :: (s:string)->int {for name,i:[6]string.["source","ticket","cursor","phase","offset","key"] {if s==name {return 1<<i;}}return 0;}
+lr_prefix :: (s:string,p:string)->bool {return s.count>=p.count && s[0..<p.count]==p;}
+lr_route :: (method:string,path:string)->LabRoute {
+  r:LabRoute;if method!="GET" {r.code=405;return r;}prefix:="/api/lab/v1/";
+  if path.count>1024 || !lr_prefix(path,prefix) {return r;}
+  q:=prefix.count;while q<path.count && path[q]!='?' {q+=1;}r.kind=lr_kind(path[prefix.count..<q]);
+  if r.kind==0 {return r;}seen:=0;at:=q+1;
+  while true {
+    end:=at;while end<path.count && path[end]!='&' {end+=1;}eq:=at;while eq<end && path[eq]!='=' {eq+=1;}if eq==end {return r;}
+    key:=path[at..<eq];value:=path[eq+1..<end];bit:=lr_field(key);
+    if key=="source" {r.source=ifx value=="fixture" then 1 else ifx value=="own-node" then 2 else 0;if r.source==0 {return r;}}
+    else if key=="ticket" {r.ticket=lr_number(value,9223372036854775807);if r.ticket<1 {return r;}}
+    else if key=="cursor" {if !lr_token(value,128) {return r;}r.cn=value.count;for i:0..<r.cn {r.cursor[i]=value[i];}}
+    else if key=="phase" {r.phase=lr_number(value,2);if r.phase<0 {return r;}}
+    else if key=="offset" {r.offset=lr_number(value,2147483647);if r.offset<0 {return r;}}
+    else if key=="key" {if !lr_token(value,256) {return r;}r.kn=value.count;for i:0..<r.kn {r.key[i]=value[i];}}
+    if bit==0 || (seen&bit)!=0 {return r;}seen|=bit;if end==path.count {break;}at=end+1;if at==path.count {return r;}
+  }
+  if (seen&7)!=7 || (r.source==2 && r.phase!=0) || (r.kind>=3 && r.kn==0) {return r;}
+  if cast(string)r.cursor[0..<r.cn]=="latest" && r.kind>=3 && r.kind<=6 {return r;}
+  r.code=200;return r;
+}

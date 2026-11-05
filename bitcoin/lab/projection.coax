@@ -1,0 +1,112 @@
+// Bounded HTTP projection of the acknowledged validated recording. Values
+// come from the existing validator/index recorder, never a second node.
+#load "request.coax";
+#load "../../apps/openagents-web/bitcoin-lab-blocks.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/bitcoin/subsidy.coax";
+lj_cursor :: (phase:int,out:[]u8)->string {
+  o:[1]Jo;jo_start(o[..],out);jo_put(o[..],"fixture-");jo_int(o[..],phase);jo_put(o[..],"-");jo_put(o[..],LAB_SNAPSHOTS[phase].hash);return jo_text(o[..]);
+}
+lj_ticket :: (o:[]Jo,ticket:int) {b:[32]u8;p:[1]Jo;jo_start(p[..],b[..]);jo_int(p[..],ticket);jo_key(o,"ticket");jo_str(o,jo_text(p[..]));}
+lj_snapshot :: (o:[]Jo,phase:int) {
+  s:=LAB_SNAPSHOTS[phase];cursor:[128]u8;jo_key(o,"snapshot");jo_obj(o);
+  for key,i:[4]string.["source","mode","network","profile"] {jo_key(o,key);jo_str(o,[4]string.["fixture","fixture","regtest","validated-v1"][i]);}
+  jo_key(o,"height");jo_int(o,s.height);jo_key(o,"hash");jo_str(o,s.hash);jo_key(o,"cursor");jo_str(o,lj_cursor(phase,cursor[..]));
+  jo_key(o,"observed_ms");jo_null(o);jo_key(o,"validated_height");jo_int(o,s.height);jo_key(o,"background_height");jo_null(o);
+  jo_key(o,"complete");jo_bool(o,true);jo_key(o,"available");jo_bool(o,true);
+  jo_key(o,"capabilities");jo_arr(o);for c:[5]string.["blocks","transactions","outpoints","script-history","replay"] {jo_str(o,c);}jo_end(o);jo_end(o);
+}
+lj_count :: (o:[]Jo,key:string,total:int,offset:int,cap:int,cursor:string) {
+  returned:=total-offset;if returned<0 {returned=0;}if returned>cap {returned=cap;}
+  jo_key(o,key);jo_obj(o);jo_key(o,"returned");jo_int(o,returned);jo_key(o,"total");jo_int(o,total);
+  jo_key(o,"omitted");jo_int(o,total-returned);jo_key(o,"next");next:[256]u8;p:[1]Jo;jo_start(p[..],next[..]);
+  if offset+returned<total {jo_put(p[..],cursor);jo_put(p[..],"~");jo_int(p[..],offset+returned);}jo_str(o,jo_text(p[..]));jo_end(o);
+}
+lj_block :: (o:[]Jo,phase:int,b:int) {
+  row:=LAB_BLOCKS[b];jo_obj(o);
+  for key,i:[3]string.["hash","previous","chainwork"] {jo_key(o,key);jo_str(o,[3]string.[row.hash,row.previous,row.chainwork][i]);}
+  for key,i:[5]string.["height","time","tx_count","size","weight"] {jo_key(o,key);jo_int(o,[5]int.[row.height,row.time,row.count,row.size,row.weight][i]);}
+  jo_key(o,"active");jo_bool(o,row.active);fees:=0;known:=true;
+  for t:row.tx+1..<row.tx+row.count {fee:=lb_fee(phase,t);if fee<0 {known=false;}else {fees+=fee;}}
+  jo_key(o,"fees_sat");if known {jo_int(o,fees);}else {jo_null(o);}
+  jo_key(o,"subsidy_sat");jo_int(o,subsidy_vartime(row.height,CHAIN_REGTEST_PARAMS.halving));jo_end(o);
+}
+lj_input :: (o:[]Jo,phase:int,t:int,i:int) {
+  tx:=LAB_TXS[t];input:=LAB_INPUTS[tx.input+i];jo_obj(o);jo_key(o,"txid");jo_str(o,input.txid);
+  jo_key(o,"vout");jo_int(o,input.vout);jo_key(o,"coinbase");jo_bool(o,input.coinbase);
+  parent:=ifx input.coinbase then -1 else lb_parent_tx(phase,tx.block,input.txid,tx.order);known:=parent>=0 && input.vout<LAB_TXS[parent].no;
+  jo_key(o,"value_sat");if known {jo_int(o,LAB_OUTPUTS[LAB_TXS[parent].output+input.vout].value_sat);}else {jo_null(o);}
+  jo_key(o,"script_hex");jo_str(o,ifx known then LAB_OUTPUTS[LAB_TXS[parent].output+input.vout].script_hex else "");jo_key(o,"block");jo_str(o,ifx known then LAB_BLOCKS[LAB_TXS[parent].block].hash else "");jo_end(o);
+}
+lj_output :: (o:[]Jo,phase:int,t:int,i:int) {
+  output:=LAB_OUTPUTS[LAB_TXS[t].output+i];jo_obj(o);jo_key(o,"vout");jo_int(o,i);jo_key(o,"value_sat");jo_int(o,output.value_sat);
+  tx:=LAB_TXS[t];row:=LAB_BLOCKS[tx.block];status:=ifx output.status=="unspent" && tx.order==0 && row.height+100>LAB_SNAPSHOTS[phase].height then "immature" else output.status;
+  for key,j:[4]string.["script_hex","address","status","spender"] {jo_key(o,key);jo_str(o,[4]string.[output.script_hex,output.address,status,output.spend][j]);}
+  jo_key(o,"vin");if output.vin<0 {jo_null(o);}else {jo_int(o,output.vin);}jo_key(o,"spend_block");jo_str(o,output.spend_block);jo_end(o);
+}
+lj_transaction :: (o:[]Jo,phase:int,t:int,offset:int) {
+  tx:=LAB_TXS[t];row:=LAB_BLOCKS[tx.block];cursor:[128]u8;c:=lj_cursor(phase,cursor[..]);
+  jo_obj(o);jo_key(o,"txid");jo_str(o,tx.txid);jo_key(o,"block");jo_str(o,row.hash);jo_key(o,"order");jo_int(o,tx.order);
+  jo_key(o,"height");jo_int(o,row.height);jo_key(o,"active");jo_bool(o,row.active);
+  jo_key(o,"weight");jo_int(o,tx.weight);jo_key(o,"size");jo_int(o,tx.size);jo_key(o,"fee_sat");fee:=lb_fee(phase,t);if fee<0 {jo_null(o);}else {jo_int(o,fee);}
+  jo_key(o,"inputs");jo_arr(o);for i:offset..<tx.ni {if i-offset>=LAB_LINK_MAX {break;}lj_input(o,phase,t,i);}jo_end(o);
+  jo_key(o,"outputs");jo_arr(o);for i:offset..<tx.no {if i-offset>=LAB_LINK_MAX {break;}lj_output(o,phase,t,i);}jo_end(o);
+  lj_count(o,"input_page",tx.ni,offset,LAB_LINK_MAX,c);lj_count(o,"output_page",tx.no,offset,LAB_LINK_MAX,c);jo_end(o);
+}
+lj_matches :: (phase:int,t:int,key:string)->bool {
+  tx:=LAB_TXS[t];for i:0..<tx.no {v:=LAB_OUTPUTS[tx.output+i];if v.script_hex==key || v.address==key {return true;}}
+  for i:0..<tx.ni {v:=LAB_INPUTS[tx.input+i];if v.coinbase {continue;}p:=lb_parent_tx(phase,tx.block,v.txid,tx.order);
+    if p>=0 && v.vout<LAB_TXS[p].no {output:=LAB_OUTPUTS[LAB_TXS[p].output+v.vout];if output.script_hex==key || output.address==key {return true;}}
+  }return false;
+}
+lj_fixture :: (route:LabRoute,o:[]Jo)->int {
+  r:=route;
+  cursor:[128]u8;c:=lj_cursor(r.phase,cursor[..]);if cast(string)r.cursor[0..<r.cn]!="latest" && cast(string)r.cursor[0..<r.cn]!=c {return 409;}
+  s:=LAB_SNAPSHOTS[r.phase];key:=cast(string)r.key[0..<r.kn];e:[1]LabExplore;e[0].phase=r.phase;e[0].ready=true;e[0].block=lb_height(r.phase,s.height);
+  if r.kind==4 && key.count==129 && key[64]=='-' {
+    b:=lb_block(r.phase,key[65..<129]);if b<0 {return 404;}e[0].block=b;
+    row:=LAB_BLOCKS[b];for t:row.tx..<row.tx+row.count {if LAB_TXS[t].txid==key[0..<64] {e[0].tx=t;}}
+  }
+  if r.kind>=3 && r.kind<=4 && e[0].tx<0 && !lb_find(e[..],key) {return 404;}
+  if r.kind==3 && e[0].tx>=0 {return 400;}if r.kind==4 && e[0].tx<0 {return 404;}
+  if r.kind==7 && !lb_find(e[..],key) {return 404;}
+  jo_obj(o);lj_ticket(o,r.ticket);lj_snapshot(o,r.phase);
+  if r.kind==2 {
+    jo_key(o,"blocks");jo_arr(o);for i:r.offset..<s.count {if i-r.offset>=LAB_WINDOW_MAX {break;}lj_block(o,r.phase,s.first+i);}jo_end(o);lj_count(o,"page",s.count,r.offset,LAB_WINDOW_MAX,c);
+  }else if r.kind==3 {
+    b:=LAB_BLOCKS[e[0].block];jo_key(o,"block");jo_str(o,b.hash);jo_key(o,"transactions");jo_arr(o);
+    for i:r.offset..<b.count {if i-r.offset>=LAB_TX_MAX {break;}lj_transaction(o,r.phase,b.tx+i,0);}jo_end(o);lj_count(o,"page",b.count,r.offset,LAB_TX_MAX,c);
+  }else if r.kind==4 {jo_key(o,"transaction");lj_transaction(o,r.phase,e[0].tx,r.offset);}
+  else if r.kind==5 || r.kind==6 {
+    script:="";total:=0;outputs:=0;balance:=0;
+    for b:s.first..<s.first+s.count {row:=LAB_BLOCKS[b];for t:row.tx..<row.tx+row.count {
+      if lj_matches(r.phase,t,key) {total+=1;}
+      tx:=LAB_TXS[t];for i:0..<tx.no {v:=LAB_OUTPUTS[tx.output+i];if v.script_hex==key || v.address==key {
+        script=v.script_hex;outputs+=1;if row.active && (v.status=="unspent" || v.status=="immature") {balance+=v.value_sat;}
+      }}
+    }}
+    if script=="" {return 404;}
+    jo_key(o,"script_hex");jo_str(o,script);jo_key(o,"balance_sat");jo_int(o,balance);ordinal:=0;
+    if r.kind==5 {
+      jo_key(o,"transactions");jo_arr(o);for b:s.first..<s.first+s.count {row:=LAB_BLOCKS[b];for t:row.tx..<row.tx+row.count {if lj_matches(r.phase,t,key) {
+        if ordinal>=r.offset && ordinal-r.offset<LAB_TX_MAX {lj_transaction(o,r.phase,t,0);}ordinal+=1;
+      }}}jo_end(o);lj_count(o,"page",total,r.offset,LAB_TX_MAX,c);
+    }else {
+      jo_key(o,"outputs");jo_arr(o);for b:s.first..<s.first+s.count {row:=LAB_BLOCKS[b];for t:row.tx..<row.tx+row.count {tx:=LAB_TXS[t];for i:0..<tx.no {v:=LAB_OUTPUTS[tx.output+i];if v.script_hex==script {
+        if ordinal>=r.offset && ordinal-r.offset<LAB_LINK_MAX {jo_obj(o);jo_key(o,"txid");jo_str(o,tx.txid);jo_key(o,"block");jo_str(o,row.hash);jo_key(o,"height");jo_int(o,row.height);jo_key(o,"active");jo_bool(o,row.active);jo_key(o,"output");lj_output(o,r.phase,t,i);jo_end(o);}ordinal+=1;
+      }}}}jo_end(o);lj_count(o,"page",outputs,r.offset,LAB_LINK_MAX,c);
+    }
+  }else if r.kind==7 {
+    kind:=ifx e[0].tx<0 then "block" else ifx LAB_TXS[e[0].tx].txid==key then "transaction" else "script";
+    found:=ifx kind=="block" then LAB_BLOCKS[e[0].block].hash else ifx kind=="transaction" then LAB_TXS[e[0].tx].txid else LAB_OUTPUTS[LAB_TXS[e[0].tx].output+e[0].output].script_hex;
+    jo_key(o,"kind");jo_str(o,kind);jo_key(o,"key");jo_str(o,found);
+  }
+  jo_end(o);return ifx o[0].bad then 503 else 200;
+}
+#test "Lab fixture pages bind exact cursors and expose complete counts separately" {
+  r:=lr_route("GET","/api/lab/v1/window?source=fixture&ticket=1&cursor=latest&offset=100");bytes:[32768]u8;o:[1]Jo;jo_start(o[..],bytes[..]);
+  #assert lj_fixture(r,o[..])==200;d:[1]Jv;nodes:[2048]JvNode;#assert jv_parse(d[..],jo_text(o[..]),nodes[..]);
+  #assert jv_len(d[0],jv_get(d[0],0,"blocks"))==3 && jv_int(d[0],jv_path(d[0],0,"page.total"),-1)==103;
+  #assert jv_raw(d[0],jv_path(d[0],0,"snapshot.profile"))=="validated-v1" && jv_kind(d[0],jv_path(d[0],0,"snapshot.observed_ms"))==JV_NULL;
+  r.cursor[0]='x';r.cn=1;jo_start(o[..],bytes[..]);#assert lj_fixture(r,o[..])==409;
+}

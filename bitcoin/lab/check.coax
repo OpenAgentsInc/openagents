@@ -1,0 +1,84 @@
+// Physical journal replacement through the actual native service and socket
+// client. Never repairs the source or reuses a view after a failed response.
+// tool.sh: run-steps 250000000
+#import "Basic";
+#load "client.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "model.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/bitcoin/kvstore.coax";
+#load "../../coax/lib/bitcoin/addrindex.coax";
+lc_publish :: (path:string,bytes:[]u8)->bool {
+  b:[4096]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_put(o[..],path);jo_put(o[..],".new");return fs_write(jo_text(o[..]),cast(string)bytes) && fs_rename(jo_text(o[..]),path);
+}
+lc_path :: (kind:string,ticket:int,cursor:string,out:[]u8)->string {
+  o:[1]Jo;jo_start(o[..],out);jo_put(o[..],"/api/lab/v1/");jo_put(o[..],kind);jo_put(o[..],"?source=own-node&ticket=");jo_int(o[..],ticket);jo_put(o[..],"&cursor=");jo_put(o[..],cursor);return jo_text(o[..]);
+}
+lc_check :: (h:int,port:int,state:string,blocks:string,original:[]u8,journal:[]u8,same:bool)->bool {
+  ends:[5]int;ends[0]=20;at:=20;frames:=0;while at<journal.count {if frames>=4 || journal.count-at<8 {return false;}at+=8+kv_get32(journal,at);frames+=1;ends[frames]=at;}if frames!=4 || at!=journal.count {return false;}
+  reply:[LAB_REPLY_MAX]u8;nodes:[32768]JvNode;path:[1024]u8;s:[1]LabClient;lm_select(s[..],2,0);previous:LabIdentity;
+  for frame,i:[5]int.[2,3,4,3,2] {
+    if !lc_publish(state,journal[0..<ends[frame]]) {return false;}
+    ticket:=lm_begin(s[..],0,0);n:=lf_get(port,lc_path("snapshot",ticket,"latest",path[..]),reply[..]);if n<0 {return false;}identity:=lm_decode(cast(string)reply[0..<n],nodes[..]);
+    if identity.code!=0 || identity.height!=(ifx same then 102 else frame+100) {return false;}
+    accepted:=lm_receive(s[..],0,0,identity,0);if i>0 && accepted!=2 {return false;}if i>0 && s[0].ready {return false;}
+    if same && i>0 && cast(string)previous.hash[..]==cast(string)identity.hash[..] {return false;}
+    if i>0 {
+      stale:=lf_get(port,lc_path("window",ticket,cast(string)previous.cursor[0..<previous.cn],path[..]),reply[..]);
+      if stale<4 || cast(string)reply[0..<4]!="409\n" {return false;}
+    }
+    ticket=lm_begin(s[..],1,1);n=lf_get(port,lc_path("window",ticket,cast(string)identity.cursor[0..<identity.cn],path[..]),reply[..]);if n<0 {return false;}
+    if lm_receive(s[..],1,1,lm_decode(cast(string)reply[0..<n],nodes[..]),0)!=1 || !s[0].ready {return false;}previous=identity;
+  }
+  // Native reader refuses torn tails (the lower journal layer's recoverable
+  // previous frame is deliberately not a servable complete source snapshot).
+  for cut:[5]int.[0,19,ends[2]+1,ends[3]-1,journal.count-1] {
+    if !lc_publish(state,journal[0..<cut]) {return false;}n:=lf_get(port,lc_path("window",99,"latest",path[..]),reply[..]);if n<4 || cast(string)reply[0..<4]!="503\n" {return false;}
+  }
+  journal[24]^=1;ok:=lc_publish(state,journal);journal[24]^=1;if !ok {return false;}
+  corrupt:=lf_get(port,lc_path("window",99,"latest",path[..]),reply[..]);if corrupt<4 || cast(string)reply[0..<4]!="503\n" {return false;}
+  // The production fs_truncate intentionally only shrinks. Coreutils supplies
+  // this test's sparse-file extension as a filesystem effect, not a reader.
+  args:=[5]string.["truncate","-s","268435457","--",state];out:[64]u8;err:[256]u8;grown:=proc_run(args[..],5000,out[..],err[..]);if grown.started!=0 || grown.status!=0 {return false;}
+  capacity:=lf_get(port,lc_path("window",99,"latest",path[..]),reply[..]);if capacity<4 || cast(string)reply[0..<4]!="503\n" {return false;}
+  if !lc_publish(state,journal) || !lc_publish(blocks,original[0..<8]) {return false;}
+  n:=lf_get(port,lc_path("window",100,"latest",path[..]),reply[..]);if n<4 || cast(string)reply[0..<4]!="503\n" {return false;}
+  if !lc_publish(blocks,original) {return false;}n=lf_get(port,lc_path("window",101,"latest",path[..]),reply[..]);if n<4 || cast(string)reply[0..<4]!="200\n" {return false;}
+  return proc_wait(h,0)==PROC_RUNNING;
+}
+lc_equal :: (port:int,state:string,a:[]u8,b:[]u8)->bool {
+  end:=20;for i:0..<2 {if a.count-end<8 {return false;}end+=8+kv_get32(a,end);}if end>a.count {return false;}
+  reply:[LAB_REPLY_MAX]u8;nodes:[256]JvNode;path:[1024]u8;old:LabIdentity;
+  for i:0..<3 {if !lc_publish(state,ifx i==1 then b else a[0..<end]) {return false;}
+    n:=lf_get(port,lc_path("snapshot",i+1,"latest",path[..]),reply[..]);if n<0 {return false;}identity:=lm_decode(cast(string)reply[0..<n],nodes[..]);
+    if identity.code!=0 || identity.height!=102 {return false;}
+    if i>0 {if cast(string)identity.hash[..]==cast(string)old.hash[..] {return false;}n=lf_get(port,lc_path("window",i+1,cast(string)old.cursor[0..<old.cn],path[..]),reply[..]);if n<4 || cast(string)reply[0..<4]!="409\n" {return false;}}
+    old=identity;
+  }return true;
+}
+lc_pow :: (port:int,state:string)->bool {
+  table:[8192]u8;stage:[8192]u8;batch:[8192]u8;decode:[32]u8;g:[32]u8;
+  text:=tx_unhex("0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206",decode[..]);for i:0..<32 {g[i]=text[31-i];}
+  init:=axi_init_vartime(5,g[..],table[..],0,stage[..],batch[..]);if init.code!=LC_OK {return false;}
+  journal:[8220]u8;header:=kv_header_vartime(0,journal[0..<20]);for i:0..<init.n {journal[28+i]=batch[i];}kv_seal_vartime(journal[20..<journal.count],init.n,1,0);
+  if !lc_publish(state,journal[0..<28+init.n]) {return false;}path:[1024]u8;reply:[LAB_REPLY_MAX]u8;nodes:[256]JvNode;
+  n:=lf_get(port,lc_path("window",123,"latest",path[..]),reply[..]);if n<0 {return false;}r:=lm_decode(cast(string)reply[0..<n],nodes[..]);return r.code==0 && r.source==2 && r.mode==2 && r.profile==1 && r.height==0 && r.validated==0;
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=4 {tool_errln("usage: check API_BINARY JOURNAL SAME_HEIGHT_JOURNAL NEW_DIRECTORY");return 2;}
+  dir:=args_at(a[..],3);if fs_exists(dir) || !fs_mkdir(dir) {return 2;}
+  p:[3][4096]u8;state:=fs_join(dir,"state.kv",p[0][..]);blocks:=fs_join(dir,"blk00000.dat",p[1][..]);
+  raw:[1048576]u8;raw_n:=fs_read("bitcoin/fixtures/explorer-core-reorg/blk00000.dat",raw[..]);if raw_n<0 || !lc_publish(blocks,raw[0..<raw_n]) {return 1;}
+  h:=proc_new();ok:=proc_arg(h,args_at(a[..],0)) && proc_arg(h,"--port") && proc_arg(h,"0") && proc_arg(h,"--state") && proc_arg(h,state) && proc_arg(h,"--blocks") && proc_arg(h,blocks);
+  if !ok || proc_start(h)!=0 {r:=proc_release(h);return 1;}
+  line:[512]u8;n:=proc_line(h,10000,line[..]);prefix:="bitcoin-lab http://127.0.0.1:";port:= -1;
+  if n>prefix.count && cast(string)line[0..<prefix.count]==prefix {end:=prefix.count;while end<n && line[end]!=' ' {end+=1;}port=lr_number(cast(string)line[prefix.count..<end],65535);}
+  good:=port>0;journal:[2097152]u8;same:[2097152]u8;size:=fs_read(args_at(a[..],1),journal[..]);same_n:=fs_read(args_at(a[..],2),same[..]);
+  good=good && size>20 && same_n>20;
+  if good {good=lc_check(h,port,state,blocks,raw[0..<raw_n],journal[0..<size],false);if !good {tool_errln("physical source/capacity/recovery checks failed");}}
+  if good {good=lc_equal(port,state,journal[0..<size],same[0..<same_n]);if !good {tool_errln("same-height source replacement failed");}}
+  if good {good=lc_pow(port,state);if !good {tool_errln("pow-only source identity failed");}}
+  error:[65536]u8;err:=proc_stderr(h,error[..]);if err!="" {tool_errln(err);good=false;}r:=proc_release(h);
+  if good {print("PASS: native API/file replacement, both reorg directions, same-height branch changes, stale cursor refusal, five torn files, corrupt frame, 256 MiB capacity refusal, unavailable bodies, recovery and genuine L origin retaining pow-only; no sanitizer diagnostics\n");return 0;}
+  tool_errln("Lab native source transition refused");return 1;
+}

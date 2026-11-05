@@ -1,12 +1,11 @@
 # Bitcoin Lab read-only projection v1
 
-**Status: alpha contract design for the remaining #12803 adapter.** The
-shipped block-view milestone uses immutable compiled fixture projections
-rebuilt by `bitcoin/lab/record.coax`, rather than these future HTTP routes.
-It exposes no live-source selector or proxy. The recorder's internal JSON is
-a build artifact, not a published HTTP contract. Observation time is unknown
-for this recording and remains absent. The rules below specify the adapter
-still to be implemented; they do not claim that it exists.
+**Status: alpha read-only Lab adapter.** The deterministic fixture projections
+are rebuilt by `bitcoin/lab/record.coax`. The optional `own-node` source is
+configured by the local service operator; clients select its name only.
+Explorer HTTP v1 remains pow-only. The recorder's internal JSON remains a
+build artifact, separate from this HTTP contract. Unknown observation time
+remains absent; a response's receipt time is not invented source freshness.
 
 Typed source: `proto/openagents/bitcoin/lab/v1alpha1/lab.proto`. This is a
 new contract for #12803/#12804; it changes neither explorer HTTP v1 nor the
@@ -28,7 +27,10 @@ retained public regtest blocks, replayed through our own validator/indexer.
 An explicitly configured `own-node` source uses our read-only service. A
 source's `mode` is fixture/live, separately from `profile`: pow-only,
 validated-v1, snapshot-background, unavailable. The existing explorer's
-answers remain pow-only, even when adapted into this envelope.
+L/I/E node journals retain pow-only. An acknowledged V/X origin retains
+validated-v1 through its disposable reader view. No profile is inferred from
+the compatible query table. Snapshot/background mode is representable but
+this adapter does not create or run a background validator.
 
 Every response identifies source, mode, network, exact committed tip
 height/hash, publication cursor, observation time, validation frontiers,
@@ -84,6 +86,39 @@ the expected snapshot cursor (or `latest` for a new window). An old cursor
 returns 409; malformed requests 400; unknown objects 404; unavailable/pruned
 bodies, corruption and local capacity failures 503. Responses are no-store.
 The local service binds loopback and can sit behind the existing /api proxy.
+
+Routes are `snapshot`, `window`, `transactions`, `transaction`, `script`,
+`outputs` and `search` under that prefix. Query fields are `source`
+(`fixture` or `own-node`), a decimal `ticket` (1–9223372036854775807),
+`cursor`, optional fixture `phase` (0–2), optional `offset`, and `key` for
+object queries. Fields cannot repeat; unknown fields, URL escapes, fragments,
+credentials, request bodies and non-GET methods refuse. Public identifiers
+use their literal alphanumeric/hex encoding. `key` is bounded to 256 bytes.
+The server never accepts an upstream URL, RPC verb or filesystem path.
+
+`latest` is allowed for snapshot, window and search requests. Subsequent
+object/page requests use the returned exact snapshot cursor. A page's `next`
+is `CURSOR~OFFSET`, so an ordinal from a different publication cannot silently
+continue a new view. The client sends its cursor and ordinal separately.
+Fixture phase is part of source identity. The own-node reader opens one
+complete committed journal into private bounded memory per response. It
+checks size/mtime before and after the read and after projecting the response;
+a concurrent publication refuses with 409. Torn/corrupt frames, foreign V/X
+metadata and unavailable authenticated bodies refuse without serving amounts.
+Windows include genesis and retain archive sequence order. They page blocks
+without downloading or returning the complete block archive. At most 24
+blocks, 32 transactions and 16 inputs/outputs per transaction page are returned.
+The query table is bounded to 64 MiB, the journal to 256 MiB and a response to
+2 MiB. Exceeding any local bound refuses rather than returning a partial page.
+
+`transaction` accepts `TXID-BLOCKHASH` for an exact archived occurrence. Plain
+txids retain active-first search semantics. Fixture inputs name their exact
+known parent occurrence. A node input whose receipt is unavailable remains
+unknown and is not followed to a different active occurrence. Node fees and
+cumulative work remain unknown when the journal does not retain them. Script
+keys are exact hex (up to 128 bytes) or a standard address; no ownership or
+clustering is inferred. The node index reports active script history; fixtures
+also retain stale occurrences with explicit active/stale membership.
 
 Windows contain at most 24 block records. Transaction pages contain at most
 32 transactions; each input/output page contains at most 16 links. Counts

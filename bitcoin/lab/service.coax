@@ -1,0 +1,30 @@
+// Native loopback service. Client parameters select closed read-only routes;
+// only the operator configures the node's files and network.
+// tool.sh: run-steps 250000000
+#load "state.coax";
+ls_main :: (s:[]LabState)->int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}
+  if args_has(a[..],"--help") {print("usage: service --port PORT [--state JOURNAL --blocks BLOCKS --chain CHAIN]\n");return 0;}
+  port:=args_whole(args_value(a[..],"--port","8835"));state:=args_value(a[..],"--state","");store:=args_value(a[..],"--blocks","");chain_name:=args_value(a[..],"--chain","regtest");chain:=0;
+  for i:1..<6 {if chain_name==CHAIN_NAMES[i] {chain=i;}}if port<0 || port>65535 || chain==0 || (state=="")!=(store=="") {return 2;}
+  reply:[LAB_REPLY_MAX]u8;request:[32768]u8;listener:=cxsock_listen(port);if listener<0 {return 1;}
+  print("bitcoin-lab http://127.0.0.1:% fixture=available own-node=%\n",cxsock_port(listener),state!="");flushed:=cxtool_out_flush();
+  while true {
+    h:=cxsock_accept(listener,1000);if h<0 {continue;}n:=0;http:ExHttp;deadline:=cxsock_now_ms()+3000;
+    while cxsock_now_ms()<deadline {
+      got:=cxsock_read(h,deadline-cxsock_now_ms());if got<=0 || got>request.count-n {break;}
+      for i:0..<got {request[n+i]=cast(u8)cxsock_byte(h,i);}n+=got;http=ex_http(cast(string)request[0..<n]);if http.complete || http.status!=0 {break;}
+    }
+    status:=http.status;o:[1]Jo;jo_start(o[..],reply[..]);
+    if !http.complete && status==0 {status=408;}
+    if status==200 {
+      r:=lr_route(http.method,http.path);status=r.code;if http.body.count!=0 {status=400;}
+      if status==200 {
+        if r.source==1 {status=lj_fixture(r,o[..]);}
+        else if state=="" || !ls_load(s,state,chain) {status=503;}
+        else {status=ls_data(s,store,chain_params(chain),r,o[..]);if fs_size(state)!=s[0].size || fs_mtime_ns(state)!=s[0].stamp {status=409;}}
+      }
+    }
+    if status!=200 {jo_start(o[..],reply[..]);api_error(o[..],status);}api_send(h,status,jo_text(o[..]));closed:=cxsock_close(h);
+  }return 0;
+}

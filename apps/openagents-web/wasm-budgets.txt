@@ -61,4 +61,6 @@ voice 190000
 watchtower 290000
 waterlab 190000
 # The acknowledged three-phase block/transaction recording adds 156 KiB of data.
-bitcoin-lab 270000
+# Snapshot admission, bounded HTTP pages, source controls and graph paging add
+# 33 KiB to the recorded-only realm (302,889 bytes measured on Linux).
+bitcoin-lab 315000

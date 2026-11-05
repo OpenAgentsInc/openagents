@@ -1,0 +1,127 @@
+// Read-only native effect adapter around the existing explorer codecs and
+// the explicit validated V/X reader. It never repairs or writes node state.
+#load "../../bitcoin/platform/explorer-http.coax";
+#load "../../coax/lib/bitcoin/validated-index-view.coax";
+#load "../../coax/lib/bitcoin/txindex-occurrence.coax";
+#load "projection.coax";
+#load "origin.coax";
+LabState :: struct {
+  api:[1]ExplorerServer;base:[67108864]u8;view:[67108864]u8;
+  profile:int;seq:u64;cursor:[128]u8;cn:int;stamp:int;size:int;
+}
+ls_load :: (s:[]LabState,path:string,chain:int)->bool {
+  size:=fs_size(path);stamp:=fs_mtime_ns(path);s[0].api[0].loaded=false;
+  if size<20 || size>s[0].api[0].log.count {return false;}
+  n:=fs_read(path,s[0].api[0].log[..]);if n<0 || n!=size {return false;}
+  opened:=kv_open_vartime(s[0].api[0].log[0..<n],s[0].base[..]);
+  if opened.code!=KV_OK || opened.cut || opened.keep!=n || fs_size(path)!=size || fs_mtime_ns(path)!=stamp {return false;}
+  p:=chain_params(chain);if !ex_id(p.genesis.hash,s[0].api[0].genesis[..]) {return false;}
+  profile:=lab_profile(s[0].base[..],opened.used,chain);if profile==0 {return false;}
+  if profile==2 {
+    v:=vxi_view(s[0].base[..],opened.used,s[0].view[..]);if v.code!=CS_OK || v.tip.chain!=chain {return false;}
+    s[0].api[0].table=s[0].view[..];s[0].api[0].used=v.used;s[0].profile=2;
+    s[0].api[0].tip=LcTip.{chain=v.tip.chain,height=v.tip.height,hash=v.tip.hash};
+  }else {
+    tip:=lc_tip_vartime(s[0].base[..],opened.used);if tip.chain!=chain {return false;}
+    s[0].api[0].table=s[0].base[..];s[0].api[0].used=opened.used;s[0].api[0].tip=tip;s[0].profile=1;
+  }
+  s[0].stamp=stamp;s[0].size=size;s[0].seq=opened.seq;s[0].api[0].loaded=true;
+  s[0].api[0].external=true;hash:[64]u8;tip:=s[0].api[0].tip;
+  o:[1]Jo;jo_start(o[..],s[0].cursor[..]);jo_put(o[..],"node-");jo_int(o[..],chain);jo_put(o[..],"-");jo_int(o[..],s[0].profile);jo_put(o[..],"-");
+  digits:="0123456789abcdef";for i:0..<16 {jo_byte(o[..],digits[cast(int)((opened.seq>>cast(u64)((15-i)*4))&15)]);}
+  jo_put(o[..],"-");jo_put(o[..],api_hash_text(tip.hash[..],hash[..]));s[0].cn=o[0].n;return !o[0].bad;
+}
+ls_snapshot :: (s:[]LabState,o:[]Jo) {
+  tip:=s[0].api[0].tip;jo_key(o,"snapshot");jo_obj(o);
+  for key,i:[4]string.["source","mode","network","profile"] {jo_key(o,key);jo_str(o,[4]string.["own-node","live",CHAIN_NAMES[tip.chain],ifx s[0].profile==2 then "validated-v1" else "pow-only"][i]);}
+  jo_key(o,"height");jo_int(o,tip.height);jo_key(o,"hash");ex_json_hex(o,tip.hash[..],true);jo_key(o,"cursor");jo_str(o,cast(string)s[0].cursor[0..<s[0].cn]);
+  jo_key(o,"observed_ms");jo_null(o);jo_key(o,"validated_height");jo_int(o,ifx s[0].profile==2 then tip.height else 0);jo_key(o,"background_height");jo_null(o);
+  jo_key(o,"complete");jo_bool(o,true);jo_key(o,"available");jo_bool(o,true);jo_key(o,"capabilities");jo_arr(o);
+  for c:[4]string.["blocks","transactions","outpoints","script-history"] {jo_str(o,c);}jo_end(o);jo_end(o);
+}
+ls_output :: (s:[]LabState,o:[]Jo,network:int,vout:int,value:int,script:[]u8,state:ExOutput,immature:bool) {
+  jo_obj(o);jo_key(o,"vout");jo_int(o,vout);jo_key(o,"value_sat");jo_int(o,value);jo_key(o,"script_hex");ex_json_hex(o,script,false);
+  address:[128]u8;n:=address_encode_vartime(network,script,address[..]);jo_key(o,"address");jo_str(o,ifx n>=0 then cast(string)address[0..<n] else "");
+  jo_key(o,"status");jo_str(o,ifx immature && state.status==0 then "immature" else EX_OUTPUT_NAMES[state.status]);
+  spend:=state.spend;jo_key(o,"spender");if state.status==1 {ex_json_hex(o,spend.txid[..],true);}else {jo_str(o,"");}
+  jo_key(o,"vin");if state.status==1 {jo_int(o,spend.vin);}else {jo_null(o);}
+  jo_key(o,"spend_block");if state.status==1 {ex_json_hex(o,spend.block[..],true);}else {jo_str(o,"");}jo_end(o);
+}
+ls_transaction :: (s:[]LabState,store:string,p:ChainParams,id:[]u8,block:[]u8,offset:int,o:[]Jo)->int {
+  a:=s[0].api[..];hit:=ifx block.count==32 then txi_occurrence_vartime(a[0].table,a[0].used,id,block) else txi_find_vartime(a[0].table,a[0].used,id,false);
+  if hit.code==TXI_MISS && (block.count==0 || lc_same(block,a[0].genesis[..])) {
+    genesis:=ExBlock.{active=true,hash=a[0].genesis,record=TxiBlock.{file=-1}};if !api_block_read(a,store,p,genesis) {return 503;}
+    if !lc_same(id,a[0].ids[0..<32]) {return 404;}hit=TxiHit.{active=true,block=a[0].genesis,offset=tx_compact_read_vartime(a[0].raw[0..<a[0].n],80).next};hit.n=a[0].n-hit.offset;
+  }else {if hit.code!=LC_OK {return ifx hit.code==TXI_MISS then 404 else 503;}hash:=hit.block;b:=ex_block_hash(a[0].table,a[0].used,hash[..]);if b.code!=LC_OK || !api_block_read(a,store,p,b) {return 503;}}
+  hash:=hit.block;
+  span:=ex_tx_span(hit,id,a[0].raw[0..<a[0].n],a[0].ins[..],a[0].outs[..],a[0].items[..]);if span.code!=LC_OK {return 503;}
+  t:=span.tx;raw:=a[0].raw[hit.offset..<hit.offset+t.total];coinbase:=tx_coinbase_vartime(raw,t,a[0].ins[..]);
+  jo_obj(o);jo_key(o,"txid");ex_json_hex(o,id,true);jo_key(o,"block");ex_json_hex(o,hash[..],true);
+  for key,i:[4]string.["order","height","weight","size"] {jo_key(o,key);jo_int(o,[4]int.[span.order,hit.height,tx_weight_vartime(t),t.total][i]);}
+  jo_key(o,"active");jo_bool(o,hit.active);jo_key(o,"fee_sat");jo_null(o);
+  jo_key(o,"inputs");jo_arr(o);for i:offset..<t.nin {if i-offset>=LAB_LINK_MAX {break;}v:=a[0].ins[i].outpoint;jo_obj(o);
+    jo_key(o,"txid");ex_json_hex(o,raw[v..<v+32],true);jo_key(o,"vout");jo_int(o,tx_le_vartime(raw,v+32,4));jo_key(o,"coinbase");jo_bool(o,coinbase);
+    jo_key(o,"value_sat");jo_null(o);jo_key(o,"script_hex");jo_str(o,"");jo_key(o,"block");jo_str(o,"");jo_end(o);
+  }jo_end(o);jo_key(o,"outputs");jo_arr(o);
+  for i:offset..<t.nout {if i-offset>=LAB_LINK_MAX {break;}out:=a[0].outs[i];point:[36]u8;for k:0..<32 {point[k]=id[k];}kv_put32(point[..],32,i);
+    value:=tx_le_vartime(raw,out.value,8);script:=raw[out.script..<out.script+out.script_n];state:=ifx hit.height==0 then ExOutput.{status=3} else ex_output(a[0].table,a[0].used,point[..],hit.height,value,script,hit.active);if state.code!=LC_OK {return 503;}
+    ls_output(s,o,p.network,i,value,script,state,coinbase && a[0].tip.height-hit.height<100);
+  }jo_end(o);cursor:=cast(string)s[0].cursor[0..<s[0].cn];lj_count(o,"input_page",t.nin,offset,LAB_LINK_MAX,cursor);lj_count(o,"output_page",t.nout,offset,LAB_LINK_MAX,cursor);jo_end(o);return 200;
+}
+ls_block :: (s:[]LabState,store:string,p:ChainParams,b:ExBlock,o:[]Jo)->int {
+  a:=s[0].api[..];if !api_block_read(a,store,p,b) {return 503;}
+  raw:=a[0].raw[0..<a[0].n];count:=tx_compact_read_vartime(raw,80);at:=count.next;weight:=count.next*4;
+  for i:0..<count.value {t:=tx_parse_vartime(raw[at..<raw.count],true,a[0].ins[..],a[0].outs[..],a[0].items[..]);if t.code!=TX_OK {return 503;}weight+=tx_weight_vartime(t);at+=t.total;}
+  hash:=b.hash;jo_obj(o);jo_key(o,"hash");ex_json_hex(o,hash[..],true);jo_key(o,"previous");ex_json_hex(o,raw[4..<36],true);
+  for key,i:[5]string.["height","time","tx_count","size","weight"] {jo_key(o,key);jo_int(o,[5]int.[b.record.height,tx_le_vartime(raw,68,4),count.value,raw.count,weight][i]);}
+  jo_key(o,"active");jo_bool(o,b.active);jo_key(o,"chainwork");jo_str(o,"");jo_key(o,"fees_sat");jo_null(o);jo_key(o,"subsidy_sat");jo_int(o,subsidy_vartime(b.record.height,p.halving));jo_end(o);return 200;
+}
+ls_data :: (s:[]LabState,store:string,p:ChainParams,route:LabRoute,o:[]Jo)->int {
+  r:=route;a:=s[0].api[..];cursor:=cast(string)s[0].cursor[0..<s[0].cn];key:=cast(string)r.key[0..<r.kn];
+  if cast(string)r.cursor[0..<r.cn]!="latest" && cast(string)r.cursor[0..<r.cn]!=cursor {return 409;}
+  jo_obj(o);lj_ticket(o,r.ticket);ls_snapshot(s,o);
+  if r.kind==2 {
+    jo_key(o,"blocks");jo_arr(o);total:=1;returned:=0;
+    if r.offset==0 {genesis:=ExBlock.{active=true,hash=a[0].genesis,record=TxiBlock.{file=-1}};if ls_block(s,store,p,genesis,o)!=200 {return 503;}returned=1;}
+    entries:[LAB_WINDOW_MAX]int;sequences:[LAB_WINDOW_MAX]int;kept:=0;cap:=LAB_WINDOW_MAX-returned;
+    prefix:=[1]u8.['J'];at:=kv_seek_vartime(a[0].table,a[0].used,prefix[..]);
+    while at!=a[0].used {
+      entry:=at;e:=kv_entry_vartime(a[0].table,a[0].used,at);at=e.next;if e.key.count==0 || e.key[0]!='J' {break;}if e.key.count!=33 {return 503;}
+      b:=txi_block_vartime(a[0].table,a[0].used,e.key[1..<33]);if b.code!=LC_OK {return 503;}
+      if b.seq+1>=r.offset {
+        position:=0;while position<kept && sequences[position]<b.seq {position+=1;}
+        if position<cap {end:=kept;if end>=cap {end=cap-1;}while end>position {entries[end]=entries[end-1];sequences[end]=sequences[end-1];end-=1;}entries[position]=entry;sequences[position]=b.seq;if kept<cap {kept+=1;}}
+      }total+=1;
+    }
+    for i:0..<kept {e:=kv_entry_vartime(a[0].table,a[0].used,entries[i]);b:=ex_block_hash(a[0].table,a[0].used,e.key[1..<33]);if b.code!=LC_OK || ls_block(s,store,p,b,o)!=200 {return 503;}}
+    jo_end(o);lj_count(o,"page",total,r.offset,LAB_WINDOW_MAX,cursor);
+  }else if r.kind==3 {
+    b:=ex_block_key(a[0].table,a[0].used,key,a[0].genesis[..]);if b.code!=LC_OK {return ifx b.code==TXI_MISS then 404 else 503;}
+    if !api_block_read(a,store,p,b) {return 503;}ids:[1024]u8;n:=a[0].count;returned:=0;
+    for i:r.offset..<n {if returned>=LAB_TX_MAX {break;}for j:0..<32 {ids[returned*32+j]=a[0].ids[i*32+j];}returned+=1;}
+    hash:=b.hash;jo_key(o,"block");ex_json_hex(o,hash[..],true);jo_key(o,"transactions");jo_arr(o);
+    for i:0..<returned {if ls_transaction(s,store,p,ids[i*32..<i*32+32],hash[..],0,o)!=200 {return 503;}}jo_end(o);lj_count(o,"page",n,r.offset,LAB_TX_MAX,cursor);
+  }else if r.kind==4 {
+    id:[32]u8;hash:[32]u8;bn:=0;wanted:=key;
+    if key.count==129 && key[64]=='-' {wanted=key[0..<64];if !ex_id(key[65..<129],hash[..]) {return 400;}bn=32;}
+    if !ex_id(wanted,id[..]) {return 400;}jo_key(o,"transaction");status:=ls_transaction(s,store,p,id[..],hash[0..<bn],r.offset,o);if status!=200 {return status;}
+  }else if r.kind==5 || r.kind==6 {
+    script:[128]u8;decoded:=hex_decode_checked(key,script[..],false);size:=-1;
+    if decoded.error==NC_OK {size=decoded.written;}else {address:=address_decode_vartime(p.network,key,script[..]);size=address.length;}
+    if size<0 {return 400;}bytes:=script[0..<size];q:=axi_query_vartime(a[0].table,a[0].used,bytes,a[0].address_outs[..],a[0].history[..]);if q.code!=LC_OK {return 503;}
+    jo_key(o,"script_hex");ex_json_hex(o,bytes,false);jo_key(o,"balance_sat");jo_int(o,q.balance);
+    if r.kind==5 {
+      jo_key(o,"transactions");jo_arr(o);for i:r.offset..<q.transactions {if i-r.offset>=LAB_TX_MAX {break;}hit:=a[0].history[i];id:=hit.txid;hash:=hit.block;if ls_transaction(s,store,p,id[..],hash[..],0,o)!=200 {return 503;}}jo_end(o);lj_count(o,"page",q.transactions,r.offset,LAB_TX_MAX,cursor);
+    }else {
+      jo_key(o,"outputs");jo_arr(o);for i:r.offset..<q.outputs {if i-r.offset>=LAB_LINK_MAX {break;}v:=a[0].address_outs[i];id:=v.txid;hash:=v.block;
+        jo_obj(o);jo_key(o,"txid");ex_json_hex(o,id[..],true);jo_key(o,"block");ex_json_hex(o,hash[..],true);jo_key(o,"height");jo_int(o,v.height);jo_key(o,"active");jo_bool(o,true);
+        jo_key(o,"output");ls_output(s,o,p.network,v.vout,v.value,bytes,ExOutput.{status=v.status,spend=v.spend},v.order==0 && a[0].tip.height-v.height<100);jo_end(o);
+      }jo_end(o);lj_count(o,"page",q.outputs,r.offset,LAB_LINK_MAX,cursor);
+    }
+  }else if r.kind==7 {
+    inner:[1]Jo;jo_start(inner[..],a[0].answer[..]);status:=api_data(a,store,p,ExRoute.{kind=EX_SEARCH,key=key},inner[..]);if status!=200 {return status;}
+    d:[1]Jv;nodes:[128]JvNode;if !jv_parse(d[..],jo_text(inner[..]),nodes[..]) {return 503;}
+    kind:=jv_raw(d[0],jv_get(d[0],0,"kind"));jo_key(o,"kind");jo_str(o,ifx kind=="address" then "script" else kind);jo_key(o,"key");jo_str(o,jv_raw(d[0],jv_get(d[0],0,"key")));
+  }
+  jo_end(o);return ifx o[0].bad then 503 else 200;
+}

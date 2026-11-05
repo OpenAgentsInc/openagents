@@ -7,22 +7,33 @@
 static coax_t_BitcoinLab *at(uint32_t p){return (coax_t_BitcoinLab *)(uintptr_t)p;}
 static coax_v_t_BitcoinLab view(uint32_t p){return (coax_v_t_BitcoinLab){at(p),1};}
 static uint8_t accessible[16384]; /* Derived transport bytes, rebuilt from Coax state. */
+static bool transport_started;
+__attribute__((import_module("env"), import_name("coaxial_http_bounded"))) extern int32_t lab_http(uint32_t,uint32_t,uint32_t,uint32_t,uint32_t,int64_t);
+__attribute__((import_module("env"), import_name("coaxial_http_cancel"))) extern int32_t lab_cancel(int32_t);
+static void effects(uint32_t p){
+  for(int i=0;i<2;i++){
+    coax_t_LrEffect *e=&at(p)->remote.e[0].effects.e[i];
+    if(e->cancel>=0){lab_cancel((int32_t)e->cancel);e->cancel=-1;}
+    if(e->wanted){int id=lab_http((uint32_t)(uintptr_t)e->path.e,(uint32_t)e->n,0,0,4,10000);
+      lr_dispatched((coax_v_t_LabRemote){at(p)->remote.e,1},i,id);}
+  }
+}
 EXPORT("coaxial_layout") uint32_t layout(void){return sizeof(coax_t_BitcoinLab)*1000003u+offsetof(coax_t_BitcoinLab,session)*7u+0x424c3031u;}
 EXPORT("coaxial_state_size") uint32_t state_size(void){return sizeof(coax_t_BitcoinLab);}
 EXPORT("coaxial_state_init") void state_init(uint32_t p){coax_default_t_BitcoinLab(at(p));}
 EXPORT("coaxial_max_vertices") uint32_t max_vertices(void){return 72000;}
 EXPORT("coaxial_vertex_floats") uint32_t vertex_floats(void){return 12;}
 EXPORT("coaxial_uniform_floats") uint32_t uniform_floats(void){return 88;}
-EXPORT("coaxial_frame") uint32_t frame(uint32_t p,uint32_t v,uint32_t u,float w,float h,float d,float dt,uint32_t still){return (uint32_t)lab_frame(view(p),(coax_v_f32){(float *)(uintptr_t)v,72000*12},(coax_v_f32){(float *)(uintptr_t)u,88},w,h,d,dt,still!=0);}
+EXPORT("coaxial_frame") uint32_t frame(uint32_t p,uint32_t v,uint32_t u,float w,float h,float d,float dt,uint32_t still){if(!transport_started){transport_started=true;lab_message(view(p),600,0);}effects(p);return (uint32_t)lab_frame(view(p),(coax_v_f32){(float *)(uintptr_t)v,72000*12},(coax_v_f32){(float *)(uintptr_t)u,88},w,h,d,dt,still!=0);}
 EXPORT("coaxial_key") uint32_t key(uint32_t p,int32_t k,int32_t mods){return lab_key(view(p),k,true,mods);}
 EXPORT("coaxial_key_up") uint32_t key_up(uint32_t p,int32_t k,int32_t mods){return lab_key(view(p),k,false,mods);}
 EXPORT("coaxial_pointer") uint32_t pointer(uint32_t p,float x,float y,int32_t phase,int32_t kind,int32_t id){return lab_pointer(view(p),x,y,phase,kind,id);}
 EXPORT("coaxial_blur") void blur(uint32_t p){lab_blur(view(p));}
 EXPORT("coaxial_inbox") uint32_t inbox(uint32_t p){return (uint32_t)(uintptr_t)at(p)->inbox.e;}
-EXPORT("coaxial_inbox_cap") uint32_t inbox_cap(uint32_t p){(void)p;return 256;}
+EXPORT("coaxial_inbox_cap") uint32_t inbox_cap(uint32_t p){(void)p;return 2097152;}
 EXPORT("coaxial_hash") void hash(uint32_t p,int32_t n){lab_hash(view(p),n);}
 EXPORT("coaxial_message") void message(uint32_t p,int32_t k,int32_t n){lab_message(view(p),k,n);}
-EXPORT("coaxial_wants_text") uint32_t wants_text(uint32_t p){return at(p)->explorer.e[0].search;}
+EXPORT("coaxial_wants_text") uint32_t wants_text(uint32_t p){return at(p)->remote.e[0].active?at(p)->remote.e[0].search:at(p)->explorer.e[0].search;}
 EXPORT("coaxial_field") uint32_t field(uint32_t p){return (uint32_t)(uintptr_t)at(p)->field_box.e;}
 EXPORT("coaxial_action") int32_t action(uint32_t p){return (int32_t)at(p)->action;}
 EXPORT("coaxial_outbox") uint32_t outbox(uint32_t p){return (uint32_t)(uintptr_t)at(p)->outbox.e;}

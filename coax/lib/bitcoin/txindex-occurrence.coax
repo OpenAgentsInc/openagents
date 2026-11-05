@@ -1,0 +1,34 @@
+// Exact archival occurrence lookup for graphs. A txid may occur on two
+// branches; selecting a stale block must not silently substitute the active one.
+#load "txindex-store.coax";
+#authority;
+#test "transaction occurrence binds the requested block even when another is active" {
+  table:[16384]u8;stage:[16384]u8;batch:[8192]u8;g:[32]u8;id:[32]u8;id[0]=99;
+  c:=[1]LcCursor.[LcCursor.{n=kv_batch_new(batch[..])}];#assert lc_set_tip_vartime(table[..],c[..],batch[..],5,2,g[..]);a:[32]u8;a[0]=1;b:[32]u8;b[0]=2;
+  for i:0..<2 {hash:=ifx i==0 then a else b;#assert txi_put_block_vartime(table[..],c[..],batch[..],hash[..],TxiBlock.{height=i+1,count=1,seq=i,pos=8,n=100});
+    key:[65]u8;txi_txkey(id[..],hash[..],key[..]);value:[8]u8;kv_put32(value[..],0,81);kv_put32(value[..],4,19);#assert lc_put_vartime(table[..],c[..],batch[..],key[..],value[..]);
+  }
+  hk:[33]u8;txi_blockkey('H',a[..],hk[..]);hv:[80]u8;kv_put32(hv[..],0,1);kv_put32(hv[..],4,1);#assert lc_put_vartime(table[..],c[..],batch[..],hk[..],hv[..]);#assert txi_sync_vartime(table[..],c[..],batch[..],2);
+  first:=txi_occurrence_vartime(table[..],c[0].used,id[..],a[..]);second:=txi_occurrence_vartime(table[..],c[0].used,id[..],b[..]);
+  #assert first.code==LC_OK && first.active && first.block[0]==1 && first.height==1 && first.offset==81 && first.n==19;
+  #assert second.code==LC_OK && !second.active && second.block[0]==2 && second.height==2;
+  #assert txi_find_vartime(table[..],c[0].used,id[..],false).block[0]==1;
+  #assert txi_occurrence_vartime(table[..],0,id[..],a[..]).code==LC_CONTEXT && txi_occurrence_vartime(table[..],c[0].used,id[0..<31],a[..]).code==LC_CONTEXT;
+  #assert txi_occurrence_vartime(table[..],c[0].used,id[..],a[0..<31]).code==LC_CONTEXT;
+  id[1]=1;#assert txi_occurrence_vartime(table[..],c[0].used,id[..],a[..]).code==TXI_MISS;id[1]=0;
+  hv[0]=2;#assert lc_put_vartime(table[..],c[..],batch[..],hk[..],hv[..]);#assert txi_occurrence_vartime(table[..],c[0].used,id[..],a[..]).code==TXI_CORRUPT;
+  key:[65]u8;txi_txkey(id[..],b[..],key[..]);short:[7]u8;#assert lc_put_vartime(table[..],c[..],batch[..],key[..],short[..]);#assert txi_occurrence_vartime(table[..],c[0].used,id[..],b[..]).code==TXI_CORRUPT;
+  value:[8]u8;kv_put32(value[..],0,81);kv_put32(value[..],4,20);#assert lc_put_vartime(table[..],c[..],batch[..],key[..],value[..]);#assert txi_occurrence_vartime(table[..],c[0].used,id[..],b[..]).code==TXI_CORRUPT;
+  kv_put32(value[..],4,19);#assert lc_put_vartime(table[..],c[..],batch[..],key[..],value[..]);
+  #assert txi_put_block_vartime(table[..],c[..],batch[..],b[..],TxiBlock.{height=2,count=1,seq=2,pos=8,n=100});#assert txi_occurrence_vartime(table[..],c[0].used,id[..],b[..]).code==TXI_CORRUPT;
+  blockkey:[33]u8;txi_blockkey('J',b[..],blockkey[..]);c[0].used=kv_delete_vartime(table[..],c[0].used,blockkey[..]);#assert txi_occurrence_vartime(table[..],c[0].used,id[..],b[..]).code==TXI_CORRUPT;
+}
+txi_occurrence_vartime :: (table:[]u8,used:int,id:[]u8,hash:[]u8)->TxiHit #export_c {
+  meta:=txi_context_vartime(table,used);if meta.code!=LC_OK || id.count!=32 || hash.count!=32 {return TxiHit.{code=LC_CONTEXT};}
+  key:[65]u8;txi_txkey(id,hash,key[..]);value:=lc_value_vartime(table,used,key[..]);if value.count==0 {return TxiHit.{code=TXI_MISS};}
+  if value.count!=8 {return TxiHit.{code=TXI_CORRUPT};}b:=txi_block_vartime(table,used,hash);offset:=kv_get32(value,0);n:=kv_get32(value,4);
+  if b.code!=LC_OK || b.seq>=meta.next || !txi_tx_extent(offset,n,b.n) {return TxiHit.{code=TXI_CORRUPT};}
+  hk:[33]u8;txi_blockkey('H',hash,hk[..]);receipt:=lc_value_vartime(table,used,hk[..]);active:=receipt.count!=0;
+  if active {if receipt.count!=80 || kv_get32(receipt,0)!=LC_VERSION || kv_get32(receipt,4)!=b.height {return TxiHit.{code=TXI_CORRUPT};}}
+  r:=TxiHit.{height=b.height,seq=b.seq,file=b.file,pos=b.pos,offset=offset,n=n,active=active};for i:0..<32 {r.block[i]=hash[i];}return r;
+}

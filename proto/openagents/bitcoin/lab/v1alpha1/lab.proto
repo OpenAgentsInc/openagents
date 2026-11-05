@@ -43,6 +43,7 @@ message Input {
   bool coinbase = 3;
   optional uint64 value_sat = 4;
   string script_hex = 5;
+  string block = 6; // exact known parent occurrence; empty when unavailable
 }
 message Output {
   uint32 vout = 1;
@@ -52,6 +53,7 @@ message Output {
   string status = 5; // unspent, spent, immature, unspendable, stale, replaced
   string spender = 6;
   optional uint32 vin = 7;
+  string spend_block = 8;
 }
 message Transaction {
   string txid = 1;
@@ -65,6 +67,7 @@ message Transaction {
   repeated Output outputs = 9;
   Counts input_page = 10;
   Counts output_page = 11;
+  uint32 height = 12;
 }
 message Window {
   string ticket = 1; // echoed request nonce; late replies cannot recycle a slot
@@ -86,4 +89,30 @@ message ScriptHistory {
   optional uint64 balance_sat = 4;
   repeated Transaction transactions = 5;
   Counts page = 6;
+}
+message TransactionEnvelope {
+  string ticket = 1;
+  Snapshot snapshot = 2;
+  Transaction transaction = 3;
+}
+message OutputOccurrence {
+  string txid = 1;
+  string block = 2;
+  uint32 height = 3;
+  bool active = 4;
+  Output output = 5;
+}
+message ScriptOutputs {
+  string ticket = 1;
+  Snapshot snapshot = 2;
+  string script_hex = 3;
+  optional uint64 balance_sat = 4;
+  repeated OutputOccurrence outputs = 5;
+  Counts page = 6;
+}
+message SearchResult {
+  string ticket = 1;
+  Snapshot snapshot = 2;
+  string kind = 3;
+  string key = 4;
 }

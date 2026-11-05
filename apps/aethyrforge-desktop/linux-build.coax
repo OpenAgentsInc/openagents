@@ -33,6 +33,11 @@ fgl_build :: (a:[]Args)->int {
   here:=af_path(p[..],root,"apps/aethyrforge-desktop");work:=af_path(p[..],here,"build/native-linux");spec:=af_path(p[..],work,"spec");wl:=af_path(p[..],work,"wl");
   if !fs_mkdir(spec) || !fs_mkdir(wl) {return 1;}out:[16777216]u8;
   print("Building native Aethyrforge: Coax Coder + Bitcoin Lab, Wayland + Vulkan…\n");
+  api_build:=[2]string.[af_path(p[..],root,"coax/web/tool.sh"),af_path(p[..],root,"bitcoin/lab/build.coax")];if !fgn_cmd(api_build[..],deadline) {return 1;}
+  fetch_build:=[4]string.[af_path(p[..],root,"coax/web/tool.sh"),af_path(p[..],root,"bitcoin/lab/fetch.coax"),"--help",""];
+  // Compile through tool.sh without a request. Argument refusal is expected;
+  // the resulting image is copied only after the compiler has produced it.
+  hfetch:=af_start(fetch_build[0..<3]);if hfetch<0 {return 1;}status_fetch:=proc_wait(hfetch,proc_left(deadline,proc_now_ms()));r_fetch:=proc_release(hfetch);if status_fetch!=2 {return 1;}
   coax:=af_path(p[..],root,"coax/bin/coax");header:=af_path(p[..],work,"linux-native.h");
   emit:=[6]string.[coax,"c",af_path(p[..],here,"linux-native.coax"),"--library","--header",header];
   if !fgn_emit(emit[..],af_path(p[..],work,"linux-native.c"),deadline) {return 1;}n:=0;
@@ -78,9 +83,11 @@ fgl_build :: (a:[]Args)->int {
   coderbuild:=[3]string.[af_path(p[..],root,"coax/web/tool.sh"),af_path(p[..],root,"coder/tui/coder.coax"),"--version"];if !fgn_cmd(coderbuild[..],deadline) {return 1;}
   hashcmd:=[4]string.["shasum","-a","256",coax];if af_run(hashcmd[..],out[..],deadline)<64 {return 1;}
   cachebuf:[256]u8;o:[1]Jo;jo_start(o[..],cachebuf[..]);jo_put(o[..],"coax/web/build/tools/coder-");jo_put(o[..],cast(string)out[0..<64]);codercache:=af_path(p[..],root,jo_text(o[..]));
+  fetchbuf:[256]u8;vfetch:[1]Jo;jo_start(vfetch[..],fetchbuf[..]);jo_put(vfetch[..],"coax/web/build/tools/fetch-");jo_put(vfetch[..],cast(string)out[0..<64]);fetchcache:=af_path(p[..],root,jo_text(vfetch[..]));
   home:=proc_getenv("HOME",env[..]);base:=af_path(p[..],home,".openagents");runtime:=af_path(p[..],base,"aethyrforge/native-linux");bin:=af_path(p[..],base,"bin");workspace:=af_path(p[..],base,"aethyrforge/workspace");
   if !fs_mkdir(runtime) || !fs_mkdir(bin) || !fs_mkdir(workspace) {return 1;}
   if !fgl_copy(af_path(p[..],work,"aethyrforge"),af_path(p[..],bin,"aethyrforge-native"),deadline) || !fgl_copy(codercache,af_path(p[..],bin,"aethyrforge-coder"),deadline) {return 1;}
+  if !fgl_copy(af_path(p[..],root,"bitcoin/lab/build/native/bitcoin-lab"),af_path(p[..],bin,"bitcoin-lab-api"),deadline) || !fgl_copy(fetchcache,af_path(p[..],bin,"bitcoin-lab-fetch"),deadline) {return 1;}
   copy:=[4]string.["cp","-a",af_path(p[..],spec,"."),runtime];if !fgn_cmd(copy[..],deadline) {return 1;}
   if !fgl_copy(af_path(p[..],here,"linux-scene-context.txt"),af_path(p[..],runtime,"bitcoin-lab-context.txt"),deadline) {return 1;}
   launcher:=af_path(p[..],bin,"aethyrforge");temporary:=af_path(p[..],bin,"aethyrforge.new");
@@ -88,7 +95,7 @@ fgl_build :: (a:[]Args)->int {
   mode:=[3]string.["chmod","755",temporary];if !fgn_cmd(mode[..],deadline) || !fs_rename(temporary,launcher) {return 1;}
   unitdir:=af_path(p[..],home,".config/systemd/user");desktopdir:=af_path(p[..],home,".local/share/applications");
   if !fs_mkdir(unitdir) || !fs_mkdir(desktopdir) {return 1;}
-  unit:[65536]u8;u:[1]Jo;jo_start(u[..],unit[..]);jo_put(u[..],"[Unit]\nDescription=Aethyrforge native desktop — Bitcoin Lab\n[Service]\nType=simple\nKillMode=control-group\nTimeoutStopSec=10\nExecStart=");jo_str(u[..],launcher);jo_put(u[..],"\n");
+  unit:[65536]u8;u:[1]Jo;jo_start(u[..],unit[..]);jo_put(u[..],"[Unit]\nDescription=Aethyrforge native desktop — Bitcoin Lab\n[Service]\nType=simple\nKillMode=control-group\nTimeoutStopSec=10\nEnvironmentFile=-%h/.openagents/aethyrforge/lab.env\nExecStart=");jo_str(u[..],launcher);jo_put(u[..],"\n");
   for key:[3]string.["WAYLAND_DISPLAY","XDG_RUNTIME_DIR","PATH"] {
     valuebuf:[8192]u8;value:=proc_getenv(key,valuebuf[..]);if value=="" {continue;}
     pair:[16384]u8;q:[1]Jo;jo_start(q[..],pair[..]);jo_put(q[..],key);jo_put(q[..],"=");jo_put(q[..],value);jo_put(u[..],"Environment=");jo_str(u[..],jo_text(q[..]));jo_put(u[..],"\n");

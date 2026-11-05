@@ -1,4 +1,4 @@
-# Recorded Bitcoin Lab source
+# Bitcoin Lab sources
 
 The unlisted `/worlds/bitcoin-lab` renders actual regtest blocks from the
 retained Bitcoin Core 32.1 / Electrs recording in
@@ -40,8 +40,8 @@ read-only codecs. That view contains foreign compatibility metadata, so the
 validator refuses it. It is never persisted, cached or used to label a source.
 
 The recorder's JSON is an internal build artifact. `project.coax` writes
-immutable typed Coax arrays. The realm changes all facts together when A/B/C
-changes; there are no requests or late fixture callbacks. The independent
+immutable typed Coax arrays for the offline Recording source. The realm
+changes all facts together when A/B/C changes. The independent
 Python oracle parses raw transactions/blocks, computes txids and weight,
 replays active UTXOs, and checks output/spend states and retained Core/Electrs
 answers. `recover.coax` writes and reloads physical journal cuts and checks
@@ -50,12 +50,63 @@ that V, X, coins and indexes recover at the same complete frame.
 This is a deliberately bounded source: 128 headers/blocks, 16 transactions
 per block and 16 inputs/outputs per transaction; all excesses refuse the
 recording. The realm has 103/106/108 retained blocks and shows a bounded
-height window plus stale blocks, with explicit omitted counts. Script/address
-search selects an occurrence; it is not a complete script-history report.
+height window plus stale blocks, with explicit omitted counts.
 
-The alpha adapter design is in
+The implemented alpha adapter contract is in
 [`docs/protocol/bitcoin-lab-v1.md`](../../docs/protocol/bitcoin-lab-v1.md).
-#12803/#12804 remain open for the allowlisted live adapter, snapshot-bound
-paging/tickets, general graph expansion, script history, ordinary explorer
-handoff and their broader animation/restore criteria. No live or mainnet
-validation claim follows from this recording.
+
+The native app defaults to **Fixture API**, served by its owned native Coax
+process. **Recording** works offline without that process. **Own Node** is
+explicitly selected and unavailable until configured. Its metadata comes from
+one complete committed journal: L/I/E stays pow-only; acknowledged V/X stays
+validated-v1. The reader never repairs or migrates state. No Bitcoin Core,
+Electrs, Python, browser or public explorer is needed at runtime. The service
+does not start a node or perform administrative RPC.
+
+Build and run the standalone loopback service from this checkout:
+
+```sh
+coax/web/tool.sh bitcoin/lab/build.coax
+bitcoin/lab/build/native/bitcoin-lab --port 8835
+# Optional configured node source (absolute operator-owned paths):
+bitcoin/lab/build/native/bitcoin-lab --port 8835 --state /path/state.kv --blocks /path/blocks --chain regtest
+```
+
+`--blocks` accepts the block directory or its single `blk00000.dat` file.
+This first reader supports unmasked block files. Pruned/missing bytes and
+local capacity failures refuse the whole view. A snapshot is read afresh for
+each request; a file publication during a response returns 409. Source,
+profile, network, cursor and tip changes clear related amounts together.
+The client owns two requests, unique monotonic tickets, cancellation and
+500 ms–30 s transport backoff; replies stop at 2 MiB.
+
+Windows page 24 blocks including genesis; transaction pages contain at most
+32 occurrences; graph pages contain at most 16 inputs and outputs. `< PAGE`
+and `PAGE >` expose the rest with explicit totals/omitted counts. FIND accepts
+public identifiers. HISTORY and OUTPUTS query an exact script, with no wallet
+ownership inference. Fixture history retains stale occurrences; node history
+uses the active index. Unknown fees, parent receipts, cumulative work and
+observation/background time stay unknown. Full explorer handoff and the
+broader animation/navigation requirements remain #12804 work.
+
+The Linux installer packages `bitcoin-lab-api` and `bitcoin-lab-fetch` beside
+`aethyrforge-native` in `~/.openagents/bin`. Optional node configuration for
+the existing user service belongs in `~/.openagents/aethyrforge/lab.env`:
+
+```ini
+BITCOIN_LAB_STATE=/absolute/path/state.kv
+BITCOIN_LAB_BLOCKS=/absolute/path/blocks
+BITCOIN_LAB_CHAIN=regtest
+# Optional startup selection; selecting Own Node in the app also works.
+AETHYRFORGE_LAB_SOURCE=own-node
+```
+
+No configuration file is created automatically. `AETHYRFORGE_LAB_SOURCE=recording`
+selects the offline fallback. Restart the user's existing app service after
+changing its environment file. The build does not change shared model files,
+provider credentials or the standalone `openagents` command.
+
+Browser checks use the same API through `coax serve --api 8835`. Qualification
+and its exact source commit are recorded in
+[`docs/verification/bitcoin-lab-12803.md`](../../docs/verification/bitcoin-lab-12803.md).
+No mainnet validation or chapter promotion follows from these regtest checks.

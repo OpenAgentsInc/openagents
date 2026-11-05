@@ -97,7 +97,7 @@ lab_record_snapshot :: (s:[]LabRecorder,phase:int)->bool {
   }jo_end(o[..]);jo_end(o[..]);s[0].json_n=jo_text(o[..]).count;return !o[0].bad;
 }
 tool_main :: ()->int #export_c {
-  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {tool_errln("usage: record OUT_DIRECTORY (new directory only)");return 2;}
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])<1 || args_count(a[..])>2 || (args_count(a[..])==2 && args_at(a[..],1)!="--same-height") {tool_errln("usage: record OUT_DIRECTORY [--same-height] (new directory only)");return 2;}
   dir:=args_at(a[..],0);if fs_exists(dir) || !fs_mkdir(dir) {return 2;}
   s:[1]LabRecorder;if !lab_record_init(s[..]) {tool_errln("raw archive/header admission refused");return 1;}
   p:[4096]u8;state:=lab_record_path(dir,"state.kv",p[..]);header:[20]u8;#assert kv_header_vartime(0,header[..])==20;
@@ -106,10 +106,19 @@ tool_main :: ()->int #export_c {
   if init.code!=CS_OK || !lab_record_commit(s[..],state,init.n,init.used) {return 1;}
   if cc_init_vartime(s[0].cache[..],d[0].live[..],d[0].used,600000,s[0].delta[..],s[0].spare[..],s[0].record[..])!=CS_OK {return 1;}
   for phase:0..<3 {
+    if args_count(a[..])==2 && phase>0 {
+      // Equal-work tips are never forced through the reorganizer. Build an
+      // independent fully validated node journal from genesis for each tip;
+      // reader checks can then replace sources at exactly the same height.
+      state=fs_join(dir,ifx phase==1 then "same-b.kv" else "same-c.kv",p[..]);s[0].seq=0;d[0].used=0;s[0].cache[0]=CoinsCache.{};
+      if !fs_write(state,cast(string)header[..]) {return 1;}fresh:=vxi_init(5,d[0].live[..],0,s[0].stage[..],s[0].batch[..]);
+      if fresh.code!=CS_OK || !lab_record_commit(s[..],state,fresh.n,fresh.used) || cc_init_vartime(s[0].cache[..],d[0].live[..],d[0].used,600000,s[0].delta[..],s[0].spare[..],s[0].record[..])!=CS_OK {return 1;}
+    }
     phase_headers:[10240]u8;name:=[3]string.["headers-a","headers-b","headers-c"][phase];pathbuf:[4096]u8;
     n:=fs_read(fs_join("bitcoin/fixtures/explorer-core-reorg",name,pathbuf[..]),phase_headers[..]);hash:[32]u8;
     if n<80 || pow_block_hash_vartime(phase_headers[n-80..<n],hash[..])!=POW_OK {return 1;}
-    target:=bi_find(d[0].tree[..],hash[..]);tip:=cs_tip_vartime(d[0].live[..],d[0].used);current:=bi_find(d[0].tree[..],tip.hash[..]);
+    target:=bi_find(d[0].tree[..],hash[..]);if args_count(a[..])==2 {while d[0].links[target].height>102 {target=d[0].links[target].prev;}}
+    tip:=cs_tip_vartime(d[0].live[..],d[0].used);current:=bi_find(d[0].tree[..],tip.hash[..]);
     fork:=bi_last_common_ancestor(d[0].links[..],current,target);
     count:=d[0].links[target].height-d[0].links[fork].height;j:=target;
     for k:0..<count {s[0].path[count-1-k]=j;j=d[0].links[j].prev;}

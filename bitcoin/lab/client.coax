@@ -1,0 +1,23 @@
+// Native HTTP effect for the local Lab. No browser, TLS bypass or caller-
+// selected upstream. The service supplies exact Content-Length responses.
+#load "request.coax";
+#load "../../coax/lib/net/http.coax";
+#load "../../coax/lib/sys/proc.coax";
+lf_get :: (port:int,path:string,out:[]u8)->int {
+  for c:"127.0.0.1" {r:=cxsock_host_push(cast(int)c);}h:=cxsock_connect(port,2000);if h<0 {return -1;}
+  req:[2048]u8;o:[1]Jo;jo_start(o[..],req[..]);jo_put(o[..],"GET ");jo_put(o[..],path);jo_put(o[..]," HTTP/1.1\r\nHost: 127.0.0.1:");jo_int(o[..],port);jo_put(o[..],"\r\nConnection: close\r\n\r\n");
+  ok:=!o[0].bad;for c:jo_text(o[..]) {ok=ok && cxsock_write(h,cast(int)c)==0;}
+  ok=ok && cxsock_flush(h,2000)==0;raw:[LAB_REPLY_MAX+16384]u8;n:=0;head:HttpHead;until:=proc_now_ms()+10000;
+  while ok && proc_now_ms()<until {
+    head=http_head(cast(string)raw[0..<n]);
+    if head.status==HH_OK {
+      if head.chunked || head.length<0 || head.length>LAB_REPLY_MAX-4 {ok=false;break;}
+      if n-head.head_n==head.length {break;}if n-head.head_n>head.length {ok=false;break;}
+    }else if head.status!=HH_MORE {ok=false;break;}
+    got:=cxsock_read(h,proc_left(until,proc_now_ms()));if got<=0 || got>raw.count-n {ok=false;break;}
+    for i:0..<got {raw[n+i]=cast,trunc(u8)cxsock_byte(h,i);}n+=got;
+  }
+  closed:=cxsock_close(h);if !ok || head.status!=HH_OK || n-head.head_n!=head.length || head.length+4>out.count {return -1;}
+  out[0]=cast(u8)(48+head.code/100);out[1]=cast(u8)(48+head.code/10%10);out[2]=cast(u8)(48+head.code%10);out[3]='\n';
+  for i:0..<head.length {out[4+i]=raw[head.head_n+i];}return head.length+4;
+}

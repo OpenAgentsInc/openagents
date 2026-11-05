@@ -1,0 +1,22 @@
+// Validation claims come from the original committed representation, before
+// any disposable query view exists. Even empty foreign metadata is foreign.
+#load "../../coax/lib/bitcoin/validated-index-meta.coax";
+#authority;
+#test "Lab profiles bind original V/X or L/I/E metadata to the configured network" {
+  table:[8192]u8;batch:[8192]u8;c:=[1]LcCursor.[LcCursor.{n=kv_batch_new(batch[..])}];g:[32]u8;g[0]=7;
+  #assert lab_profile(table[..],0,5)==0;
+  #assert cs_tip_set_vartime(table[..],c[..],batch[..],5,1,g[..]) && vxi_sync(table[..],c[..],batch[..],1);
+  for want:0..<7 {#assert lab_profile(table[..],c[0].used,want)==ifx want==5 then 2 else 0;}
+  x:=VXI_META;bad:[48]u8;#assert lc_put_vartime(table[..],c[..],batch[..],x[..],bad[..]);#assert lab_profile(table[..],c[0].used,5)==0;
+  light:[8192]u8;stage:[8192]u8;init:=axi_init_vartime(5,g[..],light[..],0,stage[..],batch[..]);#assert init.code==LC_OK;
+  for i:0..<init.used {light[i]=stage[i];}used:=init.used;
+  for want:0..<7 {#assert lab_profile(light[..],used,want)==ifx want==5 then 1 else 0;}
+  v:=CS_META;used=kv_set_vartime(light[..],used,v[..],bad[0..<0]);#assert !kv_is_error(used) && lab_profile(light[..],used,5)==0;
+  used=kv_delete_vartime(light[..],used,v[..]);used=kv_set_vartime(light[..],used,x[..],bad[0..<0]);#assert !kv_is_error(used) && lab_profile(light[..],used,5)==0;
+  used=kv_delete_vartime(light[..],used,x[..]);e:=AXI_META;used=kv_delete_vartime(light[..],used,e[..]);#assert lab_profile(light[..],used,5)==0;
+}
+lab_profile :: (table:[]u8,used:int,chain:int)->int #export_c {
+  if vxi_context(table,used).code==CS_OK {return ifx cs_tip_vartime(table,used).chain==chain then 2 else 0;}
+  v:=CS_META;x:=VXI_META;if kv_find_vartime(table,used,v[..]).found || kv_find_vartime(table,used,x[..]).found {return 0;}
+  if axi_context_vartime(table,used)!=LC_OK {return 0;}return ifx lc_tip_vartime(table,used).chain==chain then 1 else 0;
+}

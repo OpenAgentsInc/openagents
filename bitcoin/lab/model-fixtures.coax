@@ -1,0 +1,22 @@
+// Deliberately malformed protocol observations for client authority checks.
+#load "../../coax/lib/json/json.coax";
+lm_wire :: (which:int,chain:string,out:[]u8)->string {
+  o:[1]Jo;jo_start(o[..],out);jo_put(o[..],"200\n");jo_obj(o[..]);jo_key(o[..],"ticket");jo_str(o[..],ifx which==21 then "0" else ifx which==22 then "9223372036854775808" else ifx which==28 then "9223372036854775807" else "1");
+  jo_key(o[..],"snapshot");jo_obj(o[..]);
+  for key,i:[4]string.["source","mode","network","profile"] {jo_key(o[..],key);value:=[4]string.["fixture","fixture",chain,"validated-v1"][i];
+    if which==i+1 {value="invalid";}if which==20 && i==3 {value="unavailable";}
+    if which==24 {if i==0 {value="own-node";}if i==1 {value="live";}if i==3 {value="pow-only";}}
+    if which==25 && i==3 {value="snapshot-background";}if which==35 && i==1 {value="live";}jo_str(o[..],value);
+  }
+  height:=ifx which==5 then -1 else ifx which==6 || which==37 then 2147483648 else ifx which==24 || which==38 then 0 else ifx which==25 then 2147483647 else 102;
+  jo_key(o[..],"height");if which==29 || which==34 {jo_str(o[..],"0");}else {jo_int(o[..],height);}
+  jo_key(o[..],"validated_height");if which==30 || which==38 {jo_str(o[..],"0");}else {jo_int(o[..],ifx which==7 then -1 else ifx which==8 then 103 else ifx which==36 then 101 else ifx which==37 then 2147483648 else ifx which==24 || which==25 || which==34 then 0 else 102);}
+  hash:[64]u8;for i:0..<64 {hash[i]='a';}if which>=100 && which<228 {hash[31]=cast(u8)(which-100);}if which==10 {hash[31]='g';}
+  jo_key(o[..],"hash");jo_str(o[..],cast(string)hash[0..<ifx which==9 then 63 else 64]);
+  jo_key(o[..],"cursor");if which==27 {long:[129]u8;for i:0..<129 {long[i]='a';}jo_str(o[..],cast(string)long[..]);}else {jo_str(o[..],ifx which==11 then "" else ifx which==12 then "/bad" else ifx which==31 then "a" else "fixture-a");}
+  jo_key(o[..],"observed_ms");if which==13 {jo_int(o[..],-1);}else if which==14 {jo_str(o[..],"0");}else if which==25 {jo_int(o[..],0);}else {jo_null(o[..]);}
+  jo_key(o[..],"background_height");if which==15 {jo_int(o[..],-1);}else if which==16 {jo_int(o[..],103);}else if which==25 {jo_int(o[..],height);}else if which==32 {jo_int(o[..],0);}else if which==33 {jo_str(o[..],"0");}else {jo_null(o[..]);}
+  jo_key(o[..],"complete");jo_bool(o[..],which!=18);jo_key(o[..],"available");jo_bool(o[..],which!=19);
+  jo_key(o[..],"capabilities");if which==17 {jo_str(o[..],"blocks");}else {jo_arr(o[..]);jo_str(o[..],"blocks");jo_end(o[..]);}
+  if which==23 {jo_key(o[..],"extra");jo_null(o[..]);}jo_end(o[..]);jo_end(o[..]);return jo_text(o[..]);
+}

@@ -1,0 +1,41 @@
+// Admission of bounded pages. Completeness means the whole promised page,
+// including an exact cursor/ordinal continuation, fits before it is shown.
+#load "../../coax/lib/json/json.coax";
+#authority;
+#test "Lab pages require exact lengths, totals, omitted counts and continuations" {
+  for offset:0..<6 {for total:0..<7 {for cap:1..<5 {
+    n:=total-offset;if n<0 {n=0;}if n>cap {n=cap;}
+    for fault:0..<10 {
+      b:[512]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);
+      jo_key(o[..],"returned");if fault==7 {jo_str(o[..],"0");}else {jo_int(o[..],n+(ifx fault==1 then 1 else 0));}
+      jo_key(o[..],"total");if fault==8 {jo_str(o[..],"0");}else {jo_int(o[..],ifx fault==2 then -1 else ifx fault==6 then 2147483648 else total);}
+      jo_key(o[..],"omitted");if fault==9 {jo_str(o[..],"0");}else {jo_int(o[..],total-n+(ifx fault==3 then 1 else 0));}
+      jo_key(o[..],"next");next:[256]u8;p:[1]Jo;jo_start(p[..],next[..]);
+      if offset+n<total {jo_put(p[..],"cursor~");jo_int(p[..],offset+n);}if fault==4 {jo_put(p[..],"x");}
+      jo_str(o[..],jo_text(p[..]));if fault==5 {jo_key(o[..],"extra");jo_null(o[..]);}jo_end(o[..]);
+      d:[1]Jv;nodes:[32]JvNode;#assert jv_parse(d[..],jo_text(o[..]),nodes[..]);
+      #assert lp_counts(d[0],0,n,cap,offset,"cursor")== (fault==0);
+      if n>0 {#assert !lp_counts(d[0],0,n-1,cap,offset,"cursor");}
+      #assert !lp_counts(d[0],0,cap+1,cap,offset,"cursor");
+    }
+  }}}
+  d:[1]Jv;nodes:[16]JvNode;#assert jv_parse(d[..],"{}",nodes[..]);#assert !lp_counts(d[0],0,0,24,0,"cursor");
+  #assert jv_parse(d[..],"{\"returned\":0,\"total\":2147483647,\"omitted\":2147483647,\"next\":\"\"}",nodes[..]);#assert lp_counts(d[0],0,0,24,2147483647,"cursor");
+  #assert jv_parse(d[..],"{\"returned\":1,\"total\":2147483648,\"omitted\":2147483647,\"next\":\"cursor~1\"}",nodes[..]);#assert !lp_counts(d[0],0,1,24,0,"cursor");
+  for total:0..<6 {for offset:0..<7 {for count: -1..<6 {
+    b:[512]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"returned");jo_int(o[..],count);jo_key(o[..],"total");jo_int(o[..],total);jo_key(o[..],"omitted");jo_int(o[..],total-count);
+    next:[128]u8;p:[1]Jo;jo_start(p[..],next[..]);if offset+count<total {jo_put(p[..],"cursor~");jo_int(p[..],offset+count);}jo_key(o[..],"next");jo_str(o[..],jo_text(p[..]));jo_end(o[..]);
+    #assert jv_parse(d[..],jo_text(o[..]),nodes[..]);valid:=count>=0 && count<=4 && (ifx offset>=total then count==0 else count>0 && count<=total-offset);
+    #assert lp_counts(d[0],0,count,4,offset,"cursor")==valid;
+  }}}
+}
+lp_counts :: (v:Jv,node:int,length:int,cap:int,offset:int,cursor:string)->bool #export_c {
+  if jv_len(v,node)!=4 {return false;}
+  returned:=jv_int(v,jv_get(v,node,"returned"),-1);total:=jv_int(v,jv_get(v,node,"total"),-1);
+  if returned!=length || total<0 || total>2147483647 {return false;}
+  if returned<0 || returned>cap {return false;}
+  if offset>=total {if returned!=0 {return false;}}else {if returned<1 || returned>total-offset {return false;}}
+  if jv_int(v,jv_get(v,node,"omitted"),-1)!=total-returned {return false;}
+  next:[256]u8;o:[1]Jo;jo_start(o[..],next[..]);if offset+returned<total {jo_put(o[..],cursor);jo_put(o[..],"~");jo_int(o[..],offset+returned);}
+  return jv_raw(v,jv_get(v,node,"next"))==jo_text(o[..]);
+}
