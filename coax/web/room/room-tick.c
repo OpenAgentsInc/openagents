@@ -92,7 +92,7 @@ static void everglade_ability_casts(int k) {
 // Room k's hotbar abilities the world runs (room-abilities.coax, everglade-room-abilities.coax; #12718):
 // the rules' saves and the casts and ends since into it, its step, then what it holds up and the falls' damage back.
 static void everglade_abilities(int k) {
-  float c[WORLD_CAST], l[WORLD_LIFE] = {0}, h[3]; coax_v_f32 cv = {c, WORLD_CAST};
+  float l[WORLD_LIFE] = {0}, h[3];
   /* the saves the rules rolled against the abilities cast: their copies take them, not a second roll (#12874) */
   for (int j = 0; j < WORLD_FOLK; j++)
     if (rm_eg_folk_save(view(), k, j, (coax_v_f32){h, 3})) world_folk_save(k, j, (int)h[0], (int)h[1], h[2] > 0.5f);
