@@ -37,6 +37,9 @@
 //                                             answered as "room" and "shard" (#12717)
 //                                             ?with=P: the friend whose invite holds them a seat (#12795);
 //                                             a full asked room adds "asked" and the friend's name "by"
+//                                             ?party=P (with ?realm, no room named): the room party member P
+//                                             sits in (#12911); "party_full" when full, "party_away" when P
+//                                             is in no room of yours to join
 //                                             at most 12 asks a minute a player key, 120 an address: 429
 //                                             {retry_ms}; every room full: 503 {waiting, last_wait_ms, retry_ms} (#12796)
 //   POST /api/playtest/room-invite/<room>     INVITE: a seat in your room held two minutes for a friend
@@ -390,12 +393,15 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
   // room asked, which shard 1 seats (a page from before the directory).
   // ?with=PLAYER (#12795): the friend whose invite brought them, whose held seat they take
   // ?build=ENGINE.RULES.CONTENT (#12839): the page's build, placed on a shard that runs it
-  char realm[32] = "", placed[32] = "", asked[32] = "", via[48] = "", build[40] = "";
-  char party_room[32] = ""; bool party_full = false;
+  // ?party=MEMBER (#12911, migrations/0134_party_follow.sql): a member of your party, whose room you join
+  char realm[32] = "", placed[32] = "", asked[32] = "", via[48] = "", build[40] = "", mate[48] = "";
+  char party_room[32] = ""; bool party_full = false, party_away = false;
   int shard = 0; bool full = false;
   snprintf(asked, sizeof asked, "%s", room);
   if (!api_query(q, "with", via, sizeof via)) via[0] = 0;
   if (!api_query(q, "build", build, sizeof build)) build[0] = 0;
+  if (!api_query(q, "party", mate, sizeof mate)) mate[0] = 0;
+  for (char *c = mate; *c; c++) if (!((*c >= 'a' && *c <= 'z') || (*c >= '0' && *c <= '9') || *c == '-')) { mate[0] = 0; break; }
   if (api_query(q, "realm", realm, sizeof realm) && realm[0]) {
     char rn_s[24]; snprintf(rn_s, sizeof rn_s, "%lld", room_rate_n);
     const char *wv[2] = {pid, rn_s};
@@ -404,13 +410,17 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
     char seats_s[8]; snprintf(seats_s, sizeof seats_s, "%d", ROOM_SEATS);
     const char *gv[3] = {realm, pid, seats_s};
     const char *goes = room;
+    const char *mv[4] = {realm, pid, mate, seats_s};
     if (!via[0] && !strcmp(room, realm)) {
-      PGresult *gr = PQexecParams(db, "SELECT code, is_full FROM verse.party_room($1, $2, $3::int)", 3, NULL, gv, NULL, NULL, 0);
+      // the member you asked to join (?party=), else where your party sits
+      PGresult *gr = mate[0] ? PQexecParams(db, "SELECT code, is_full FROM verse.party_member_room($1, $2, $3, $4::int)", 4, NULL, mv, NULL, NULL, 0)
+                             : PQexecParams(db, "SELECT code, is_full FROM verse.party_room($1, $2, $3::int)", 3, NULL, gv, NULL, NULL, 0);
       if (PQresultStatus(gr) == PGRES_TUPLES_OK && PQntuples(gr) == 1 && !PQgetisnull(gr, 0, 0) && strlen(PQgetvalue(gr, 0, 0)) < sizeof party_room) {
         snprintf(party_room, sizeof party_room, "%s", PQgetvalue(gr, 0, 0));
         party_full = PQgetvalue(gr, 0, 1)[0] == 't';
         if (!party_full) goes = party_room;
       } else if (PQresultStatus(gr) != PGRES_TUPLES_OK) api_log("party-room: %s", PQerrorMessage(db));
+      else if (mate[0]) party_away = true;
       PQclear(gr);
     }
     if (!rooms_pick(db, realm, goes, pid, via, build, placed, sizeof placed, &shard, &full)) {
@@ -482,6 +492,7 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
   if (klass[0]) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"class\":\"%s\"", klass);
   if (shard > 0) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"room\":\"%s\",\"shard\":%d%s", room, shard, full ? ",\"full\":true" : "");
   if (shard > 0 && party_full) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"party_full\":\"%s\"", party_room);
+  if (shard > 0 && party_away) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"party_away\":true");
   /* the room asked was full: which, and whose it was when an invite named them (the page says so, #12795) */
   if (shard > 0 && full) {
     char by[32] = "", eb[48] = "";

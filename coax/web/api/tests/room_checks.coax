@@ -451,6 +451,25 @@ rc_parties :: (t: [] Ap) {
   ap_check(t, "party: asked for the realm, Dave is placed in Alice's room (evpty-2), not the lowest (evpty-1)", st == 200 && rc_is(ap_body(t), "room", "evpty-2") && ap_kind(ap_body(t), "party_full") == 0, ap_body(t));
   st = ri_ticket_in(t, pl_key(dave), "evpty-1", "evpty");
   ap_check(t, "party: a room he names is his choice", st == 200 && rc_is(ap_body(t), "room", "evpty-1"), ap_body(t));
+  // JOIN a member (#12911): the ticket names the member, not a room; the roster never names rooms.
+  // Bob in evpty-1 and Alice in evpty-2, one seat taken each: the party's pick is evpty-1 (the lower).
+  sb_clear(body[..]); sb(body[..], "t "); sb_int(body[..], rc_wall_ms()); sb(body[..], "\ns 1 3\nr evpty-1 1 "); sb(body[..], pl_id(bob));
+  sb(body[..], "\nr evpty-2 1 "); sb(body[..], pl_id(alice)); sb(body[..], "\n");
+  st = rc_room_post(t, "/api/playtest/room-directory", sb_text(body[..]), "");
+  st = ri_ticket_in(t, pl_key(dave), "evpty", "evpty");
+  ap_check(t, "party join: without a member named, Dave goes where the party's pick is (evpty-1)", st == 200 && rc_is(ap_body(t), "room", "evpty-1"), ap_body(t));
+  st = ri_ticket_party(t, pl_key(dave), "evpty", pl_id(alice));
+  ap_check(t, "party join: Dave joins Alice: her room (evpty-2)", st == 200 && rc_is(ap_body(t), "room", "evpty-2") && ap_kind(ap_body(t), "party_away") == 0 && ap_kind(ap_body(t), "party_full") == 0, ap_body(t));
+  st = ri_ticket_party(t, pl_key(ps[4..<5]), "evpty", pl_id(alice));
+  ap_check(t, "party join: one not in Alice's party can't follow her (party_away, placed as before)", st == 200 && ap_kind(ap_body(t), "party_away") != 0 && !rc_is(ap_body(t), "room", "evpty-2"), ap_body(t));
+  st = rp_party(t, pl_key(bob), "hide", "{\"on\": true}");
+  st = ri_ticket_party(t, pl_key(dave), "evpty", pl_id(bob));
+  ap_check(t, "party join: a hidden member can't be followed (party_away)", st == 200 && ap_kind(ap_body(t), "party_away") != 0, ap_body(t));
+  st = rp_party(t, pl_key(bob), "hide", "{\"on\": false}");
+  st = ri_ticket_party(t, pl_key(dave), "evpty", pl_id(bob));
+  ap_check(t, "party join: Bob shown again: Dave joins him (evpty-1)", st == 200 && rc_is(ap_body(t), "room", "evpty-1") && ap_kind(ap_body(t), "party_away") == 0, ap_body(t));
+  st = rp_party(t, pl_key(alice), "", "");
+  ap_check(t, "party join: the roster still names no room", st == 200 && !ap_has(ap_body(t), "room") && !ap_has(ap_body(t), "evpty"), ap_body(t));
   sb_clear(body[..]); sb(body[..], "t "); sb_int(body[..], rc_wall_ms()); sb(body[..], "\ns 1 3\nr evpty-1 0\nr evpty-2 16 "); sb(body[..], pl_id(alice));
   for i: 0..<15 { sb(body[..], " p-evpty"); n: [1] Sb; sb_int(n[..], i); for z: n[0].n..<11 { sb_byte(body[..], '0'); } sb(body[..], sb_text(n[..])); }
   sb(body[..], "\n");
@@ -460,6 +479,9 @@ rc_parties :: (t: [] Ap) {
   st = ri_ticket_in(t, pl_key(dave), "evpty", "evpty");
   b = ap_body(t);
   ap_check(t, "party: Alice's room full: Dave's ticket says so (party_full) and he is placed elsewhere", st == 200 && rc_is(b, "party_full", "evpty-2") && ap_member(b, "room", rb[..]) != "evpty-2", b);
+  st = ri_ticket_party(t, pl_key(dave), "evpty", pl_id(alice));
+  b = ap_body(t);
+  ap_check(t, "party join: Alice's room full: joining her names it (party_full), placed elsewhere", st == 200 && rc_is(b, "party_full", "evpty-2") && ap_member(b, "room", rb[..]) != "evpty-2", b);
 
   // leaving: the version rises, and one who left has no roster
   st = rp_party(t, pl_key(bob), "leave", "{}");
@@ -579,6 +601,16 @@ rc_parties_room :: (t: [] Ap, room_bin_in: string) {
   ap_check(t, "parties (room): a real room's report is Alice's HP in Bob's roster", seen && st == 200 && hp != "" && hp != "null" && hp == ap_sql(t, sb_text(hq[..]), out[..]), b);
   st = ri_ticket_in(t, pl_key(dave), "ptyroom", "ptyroom");
   ap_check(t, "parties (room): from the room's own directory report, Dave's ticket for the realm goes to Alice's room", st == 200 && rc_is(ap_body(t), "room", "ptyroom-1"), ap_body(t));
+  // JOIN (#12911): Dave's ticket that names Alice seats him in her real room, beside her
+  st = ri_ticket_party(t, pl_key(dave), "ptyroom", pl_id(alice));
+  jtkb: [1024] u8; jtk := ap_member(ap_body(t), "ticket", jtkb[..]);
+  jnamed := st == 200 && rc_is(ap_body(t), "room", "ptyroom-1") && jtk.count > 0;
+  jdu: [1] Sb; sb(jdu[..], "ws://localhost:"); sb_int(jdu[..], pa[0]); sb(jdu[..], "/api/room/relay/everglade/ptyroom-1?t="); sb(jdu[..], jtk);
+  jds: [16] u8;
+  jsd := [4] string.["coax/web/tool.sh", "coax/web/room/owner-seat.coax", sb_text(jdu[..]), ap_num(4, jds[..])];
+  jsj: [4096] u8;
+  jdj := ifx jnamed && room >= 0 then ro_seat_json(fc_start(jsd[..], none[0..<0], ""), 60000, jsj[..]) else "";
+  ap_check(t, "parties (room): JOIN Alice: Dave's ticket names her room, and he sits in that real room with it", jnamed && ap_member_int(jdj, "seat", -1) >= 0, jdj);
   // the crash
   rp_stop(seat, PROC_SIGKILL); rp_stop(room, PROC_SIGKILL);
   st = rp_party(t, pl_key(bob), "", "");
@@ -634,6 +666,13 @@ rc_parties_room :: (t: [] Ap, room_bin_in: string) {
   g := fs_remove(work_a); g = fs_remove(work_b);
 }
 // A ticket for room in REALM (ri_ticket's, with the realm named).
+// A seat ticket for the realm that joins party member mate (?party=, #12911).
+ri_ticket_party :: (t: [] Ap, key: string, realm: string, mate: string) -> int {
+  q: [1] Sb; sb(q[..], "/api/playtest/room-ticket/"); sb(q[..], realm); sb(q[..], "?realm="); sb(q[..], realm); sb(q[..], "&party="); sb(q[..], mate);
+  ph: [1] Sb; sb(ph[..], "X-Verse-Player: "); sb(ph[..], key);
+  h := [2] string.["Content-Type: application/json", sb_text(ph[..])];
+  return ap_call(t, "POST", sb_text(q[..]), "{}", h[..]);
+}
 ri_ticket_in :: (t: [] Ap, key: string, room: string, realm: string) -> int {
   q: [1] Sb; sb(q[..], "/api/playtest/room-ticket/"); sb(q[..], room); sb(q[..], "?realm="); sb(q[..], realm);
   ph: [1] Sb; sb(ph[..], "X-Verse-Player: "); sb(ph[..], key);

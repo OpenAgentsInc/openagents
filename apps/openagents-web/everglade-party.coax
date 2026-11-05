@@ -10,6 +10,11 @@
 //     of one is made when you have none). The page's address with ?party=CODE goes to the clipboard.
 //   - LEAVE, in a party (POST /api/playtest/party/leave).
 //   - CLOSE.
+//   - JOIN, on a member's row while a room reports them (their HP shows): the page goes to the realm
+//     with ?join=THEIR_ID, and its seat ticket asks for the realm with &party=THEIR_ID (#12911), so the
+//     directory seats you in their room. The roster never names a room; the ticket does, for that one
+//     member of your party (coax/web/api/migrations/0134_party_follow.sql). Their room full is said
+//     with the room you join instead; a member no room has now (they left) is said too.
 // A page opened with ?party=CODE joins that party (POST /api/playtest/party/join) before it asks for
 // its seat ticket, and a page whose room came from the realm's list asks its ticket for the realm, so
 // the directory seats it with its party while that room has a seat; when it is full, the ticket says
@@ -23,6 +28,7 @@ PT_POLL_MS :: 5000;        // ms between roster asks while the pane is open
 PT_LATE_MS :: 15000;       // ms an ask may take before the pane says it couldn't reach the party
 PB_LINK :: 0; PB_LEAVE :: 1; PB_CLOSE :: 2; PB_N :: 3;
 PT_ASK_INVITE :: 1; PT_ASK_LEAVE :: 2; PT_ASK_JOIN :: 3;
+PT_PRESS_ROW :: 100;       // a press on member q's JOIN: PT_PRESS_ROW + q
 
 EgParty :: struct {
   button: Box;               // PARTY, in the top row (join_hud)
@@ -31,6 +37,10 @@ EgParty :: struct {
   known: bool; in: bool; version: int; n: int;
   name: [PT_MEMBERS * NET_NAME] u8; name_n: [PT_MEMBERS] int;
   hp: [PT_MEMBERS] int; hp_max: [PT_MEMBERS] int; you: [PT_MEMBERS] bool;
+  id: [PT_MEMBERS * NET_ID] u8; id_n: [PT_MEMBERS] int;
+  rows: [PT_MEMBERS] Box;    // each member's JOIN (none for you, or one no room reports)
+  // ?join=PLAYER: the party member whose room this page's ticket asks for (#12911)
+  follow: [NET_ID] u8; follow_n: int;
   reading: bool; read_at: int = -1000000; failed: bool;
   asked: int;                // the POST in flight (PT_ASK_*, 0 none)
   // ?party=CODE: joined before the seat ticket is asked for
@@ -51,6 +61,8 @@ pt_facts :: (n: [] EgNet, url: string, golden: bool) {
   p := pt_of(n);
   code := net_query(url, "party");
   p[0].join_n = 0; p[0].join_due = false;
+  mate := net_query(url, "join");
+  p[0].follow_n = ifx !golden && net_code_ok(mate) && mate.count <= NET_ID then net_copy(p[0].follow[..], mate) else 0;
   if golden || !pt_hex(code) { return; }
   for i: 0..<code.count { p[0].join[i] = code[i]; }
   p[0].join_n = code.count; p[0].join_due = true;
@@ -104,6 +116,8 @@ pt_take :: (p: [] EgParty, body: string) {
     p[0].hp[q] = ifx net_json_field(m, "hp") == "null" then -1 else net_number(net_json_field(m, "hp"));
     p[0].hp_max[q] = ifx net_json_field(m, "hp_max") == "null" then -1 else net_number(net_json_field(m, "hp_max"));
     p[0].you[q] = net_json_field(m, "you") == "true";
+    id := net_json_field(m, "id");
+    p[0].id_n[q] = ifx net_code_ok(id) && id.count <= NET_ID then net_copy(p[0].id[q * NET_ID..<(q + 1) * NET_ID], id) else 0;
     p[0].n += 1;
     a = e2;
   }
@@ -114,6 +128,34 @@ pt_find :: (t: string, from: int, part: string) -> int {
   return -1;
 }
 pt_name :: (p: [] EgParty, q: int) -> string { return cast(string) p[0].name[q * NET_NAME..<q * NET_NAME + p[0].name_n[q]]; }
+pt_id :: (p: [] EgParty, q: int) -> string { return cast(string) p[0].id[q * NET_ID..<q * NET_ID + p[0].id_n[q]]; }
+// Whether member q's row has JOIN: not you, and a room reports them (their HP is known).
+pt_joinable :: (p: [] EgParty, q: int) -> bool { return q >= 0 && q < p[0].n && !p[0].you[q] && p[0].hp[q] >= 0 && p[0].id_n[q] > 0; }
+// JOIN on member q: this page's path with ?join=THEIR_ID, to the host (action 1). Its ticket asks for
+// their room (pt_ticket_with).
+pt_follow :: (s: [] Everglade, q: int) {
+  n := net_of(s); p := pt_of(n);
+  if !pt_joinable(p, q) || s[0].action != 0 { return; }
+  j := n[0].join[..];
+  page := cast(string) j[0].page[0..<j[0].page_n];
+  from := 0;
+  for i: 0..<page.count - 2 { if page[i] == ':' && page[i + 1] == '/' && page[i + 2] == '/' { from = i + 3; break; } }
+  if from > 0 { while from < page.count && page[from] != '/' { from += 1; } }
+  path := page[from..<page.count];
+  if path.count == 0 || path[0] != '/' { return; }
+  k := jn_put(s[0].outbox[..], 0, path);
+  k = jn_put(s[0].outbox[..], k, "?join="); k = jn_put(s[0].outbox[..], k, pt_id(p, q));
+  s[0].out_n = k; s[0].action = NET_ACT_NAVIGATE;
+  pt_set_line(p, "JOINING");
+}
+// The seat ticket's ask (net_ask_ticket): with ?join=, the member whose room it asks for. Only for a
+// page the realm places (jn_listed): a link's room is its own choice.
+pt_ticket_with :: (n: [] EgNet, t: [] u8, at: int) -> int {
+  p := pt_of(n);
+  if p[0].follow_n == 0 || !jn_listed(n) { return at; }
+  k := wire_put(t, at, "&party=");
+  return wire_put(t, k, cast(string) p[0].follow[0..<p[0].follow_n]);
+}
 
 // The API's answer to a press's POST (through net_moderated): true when it was the party's.
 pt_answered :: (s: [] Everglade, answer: string) -> bool {
@@ -154,9 +196,13 @@ pt_say :: (s: [] Everglade, t: string) { if s[0].started { sp_say(s, t, -1, "");
 
 // The ticket's answer: the party's room was full (party_full), said with the room joined instead.
 pt_ticket :: (s: [] Everglade, answer: string) {
+  p := pt_of(net_of(s));
+  following := p[0].follow_n > 0;
+  p[0].follow_n = 0;   // once: a later ticket (a reconnect) keeps the room it was given
+  if following && net_json_field(answer, "party_away") == "true" { pt_say(s, "YOUR FRIEND ISN'T IN A ROOM NOW"); return; }
   full := net_json_field(answer, "party_full");
   if full.count == 0 { return; }
-  b: [96] u8; k := jn_put(b[..], 0, "YOUR PARTY'S ROOM IS FULL");
+  b: [96] u8; k := jn_put(b[..], 0, ifx following then "THEIR ROOM IS FULL" else "YOUR PARTY'S ROOM IS FULL");
   room := net_json_field(answer, "room");
   if room.count > 0 && room.count < 32 { k = jn_put(b[..], k, " · JOINING "); k = jn_put(b[..], k, room); }
   for i: 0..<k { if b[i] >= 'a' && b[i] <= 'z' { b[i] -= 32; } }
@@ -177,10 +223,11 @@ pt_draw :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, top: f32) -> int {
   if !net_on(s) { return at; }
   p := pt_of(net_of(s));
   for b: 0..<PB_N { p[0].boxes[b] = Box.{}; }
+  for q: 0..<PT_MEMBERS { p[0].rows[q] = Box.{}; }
   p[0].pane = Box.{};
   if !p[0].open { return at; }
   k := hi(s[0].dpr, 0.5);
-  cap := 9 * k; row_h := 22 * k; gap := 8 * k; bh := 38 * k;
+  cap := 9 * k; row_h := 32 * k; gap := 8 * k; bh := 38 * k;
   words := [PB_N] string.["PARTY LINK", "LEAVE", "CLOSE"];
   shown := [PB_N] bool.[true, p[0].in, true];
   brow := 0.0f32;
@@ -193,7 +240,8 @@ pt_draw :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, top: f32) -> int {
   else if !p[0].known { note = "ONE MOMENT"; }
   else if !p[0].in { note = "NOT IN A PARTY · PARTY LINK MAKES ONE"; }
   extra := ifx p[0].line_n > 0 then 1 else 0;
-  pw := hi(brow, 300 * k);
+  jw := text_width("JOIN", 7 * k) + 20 * k;   // a member's JOIN
+  pw := hi(brow, 300 * k + jw + gap);
   if note.count > 0 { pw = hi(pw, text_width(note, 7 * k) + 32 * k); }
   if p[0].line_n > 0 { pw = hi(pw, text_width(cast(string) p[0].line[0..<p[0].line_n], 7 * k) + 32 * k); }
   pw = lo(pw + 32 * k, s[0].width - 32 * k);
@@ -219,7 +267,15 @@ pt_draw :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, top: f32) -> int {
       if p[0].hp[q] >= 0 && p[0].hp_max[q] > 0 { h = jn_put(hp[..], 0, "HP "); h = jn_digits(hp[..], h, p[0].hp[q]); h = jn_put(hp[..], h, "/"); h = jn_digits(hp[..], h, p[0].hp_max[q]); }
       else { h = jn_put(hp[..], 0, "AWAY"); }
       hw := text_width(cast(string) hp[0..<h], 7 * k);
-      v = draw_text(out, v, cast(string) hp[0..<h], pane.x1 - 16 * k - hw, y, 7 * k, GAP, SPACE, pale, false, false);
+      right := pane.x1 - 16 * k;
+      if pt_joinable(p, q) {
+        jb := Box.{x0 = right - jw, y0 = y - 19 * k, x1 = right, y1 = y + 9 * k};
+        p[0].rows[q] = jb;
+        plate(s, u, jb, 0.85, ifx p[0].press == PT_PRESS_ROW + q then 2.0f32 else 1.0f32);
+        v = draw_text(out, v, "JOIN", jb.x0 + 10 * k, y, 7 * k, GAP, SPACE, gold, false, false);
+        right = jb.x0 - gap;
+      }
+      v = draw_text(out, v, cast(string) hp[0..<h], right - hw, y, 7 * k, GAP, SPACE, pale, false, false);
       y += row_h;
     }
   }
@@ -243,6 +299,7 @@ pt_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
   if phase == 0 {
     if p[0].open {
       for b: 0..<PB_N { if in_box(p[0].boxes[b], x, y) { p[0].press = b; p[0].finger = id; return true; } }
+      for q: 0..<p[0].n { if in_box(p[0].rows[q], x, y) { p[0].press = PT_PRESS_ROW + q; p[0].finger = id; return true; } }
       if !in_box(p[0].pane, x, y) { p[0].open = false; p[0].finger = id; p[0].press = -2; }
       return true;
     }
@@ -253,6 +310,7 @@ pt_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
   if phase == 1 { return true; }
   b := p[0].press; p[0].press = -1; p[0].finger = -1;
   if b == PB_N { if phase == 2 && in_box(p[0].button, x, y) { pt_open(s); } return true; }
+  if b >= PT_PRESS_ROW { q := b - PT_PRESS_ROW; if phase == 2 && q < p[0].n && in_box(p[0].rows[q], x, y) { pt_follow(s, q); } return true; }
   if b < 0 || phase != 2 || !in_box(p[0].boxes[b], x, y) { return true; }
   pt_act(s, b);
   return true;
@@ -390,4 +448,58 @@ pt_act :: (s: [] Everglade, b: int) {
   n = pt_draw(g[..], out[..], u[..], 0, 600);
   pane := nn[0].party[0].pane;
   #assert pane.x0 >= 0 && pane.x1 <= 1170 && nn[0].party[0].boxes[PB_LEAVE].x1 > 0 && nn[0].party[0].boxes[PB_CLOSE].x1 <= pane.x1;
+}
+
+#test "party: JOIN shows on a member a room reports and goes to the realm with ?join=; that page's ticket asks for their room, said when full or gone (#12911)" {
+  g: [1] Everglade; nn: [1] EgNet;
+  everglade_attach_net(g[..], nn[..]);
+  net_facts(g[..], "url=https://openagents.com/worlds/everglade?room=everglade-2#market\nplayer=p-me\nnow=5000000\nnav=0\n", "everglade", false);
+  n := net_of(g[..]); p := pt_of(n);
+  net_party(g[..], "200\n{\"party\":12,\"version\":3,\"until\":99,\"members\":[{\"id\":\"p-a\",\"name\":\"Willow\",\"hp\":7,\"hp_max\":9,\"you\":false},{\"id\":\"p-b\",\"name\":\"Finch\",\"hp\":null,\"hp_max\":null,\"you\":false},{\"id\":\"p-me\",\"name\":\"Ash\",\"hp\":9,\"hp_max\":9,\"you\":true}]}");
+  #assert pt_joinable(p, 0) && !pt_joinable(p, 1) && !pt_joinable(p, 2) && pt_id(p, 0) == "p-a";
+  // drawn: JOIN on Willow's row only, inside the pane; a press on it goes to the realm with ?join=p-a
+  out: [8192] f32; u: [8192] f32;
+  g[0].dpr = 1; g[0].width = 1440; g[0].height = 900;
+  p[0].open = true;
+  v := pt_draw(g[..], out[..], u[..], 0, 100);
+  #assert p[0].rows[0].x1 > p[0].rows[0].x0 && p[0].rows[0].x1 <= p[0].pane.x1 && p[0].rows[1].x1 == 0 && p[0].rows[2].x1 == 0;
+  cx := (p[0].rows[0].x0 + p[0].rows[0].x1) / 2; cy := (p[0].rows[0].y0 + p[0].rows[0].y1) / 2;
+  #assert pt_pointer(g[..], cx, cy, 0, 1) && pt_pointer(g[..], cx, cy, 2, 1);
+  #assert g[0].action == NET_ACT_NAVIGATE && cast(string) g[0].outbox[0..<g[0].out_n] == "/worlds/everglade?join=p-a";
+  g[0].action = 0;
+  pt_follow(g[..], 1);
+  #assert g[0].action == 0;   // AWAY: no JOIN
+  // the page it goes to: listed, its ticket asks for the realm and names the member
+  h: [1] Everglade; hn: [1] EgNet;
+  everglade_attach_net(h[..], hn[..]);
+  net_facts(h[..], "url=https://openagents.com/worlds/everglade?join=p-a#market\nplayer=p-me\n", "everglade", false);
+  net_test_rooms(h[..]);
+  net_step(h[..], 100, 0, 0, -84, 0, 0, 0, false, 0, false, 0);
+  net_rooms(h[..], "200\n{\"join\":\"everglade-2\"}");
+  pipe_drained(hn[0].pipe[..]);
+  net_step(h[..], 200, 0, 0, -84, 0, 0, 0, false, 0, false, 0);
+  #assert jn_listed(hn[..]) && jn_has(pipe_bytes(hn[0].pipe[..], 0), "/api/playtest/room-ticket/everglade?realm=everglade&party=p-a&build=");
+  h[0].started = true;
+  net_ticket(h[..], "200\n{\"ticket\":\"v3.x\",\"room\":\"everglade-5\",\"shard\":1}");
+  #assert cast(string) hn[0].code[0..<hn[0].code_n] == "everglade-5" && hn[0].party[0].follow_n == 0;
+  // their room full: said with the room you join instead
+  f: [1] Everglade; fnn: [1] EgNet;
+  everglade_attach_net(f[..], fnn[..]);
+  net_facts(f[..], "url=https://openagents.com/worlds/everglade?join=p-a\nplayer=p-me\n", "everglade", false);
+  f[0].started = true;
+  net_ticket(f[..], "200\n{\"ticket\":\"v3.x\",\"room\":\"everglade-4\",\"shard\":1,\"party_full\":\"everglade-2\"}");
+  #assert jn_has(cast(string) f[0].sp.news[0..<f[0].sp.news_n], "THEIR ROOM IS FULL · JOINING EVERGLADE-4");
+  // gone from every room: said
+  a: [1] Everglade; an: [1] EgNet;
+  everglade_attach_net(a[..], an[..]);
+  net_facts(a[..], "url=https://openagents.com/worlds/everglade?join=p-a\nplayer=p-me\n", "everglade", false);
+  a[0].started = true;
+  net_ticket(a[..], "200\n{\"ticket\":\"v3.x\",\"room\":\"everglade-1\",\"shard\":1,\"party_away\":true}");
+  #assert jn_has(cast(string) a[0].sp.news[0..<a[0].sp.news_n], "YOUR FRIEND ISN'T IN A ROOM NOW");
+  // a link's room is its own choice: no member named
+  r: [1] Everglade; rn: [1] EgNet;
+  everglade_attach_net(r[..], rn[..]);
+  net_facts(r[..], "url=https://openagents.com/worlds/everglade?room=everglade-2&join=p-a\nplayer=p-me\n", "everglade", false);
+  net_step(r[..], 100, 0, 0, -84, 0, 0, 0, false, 0, false, 0);
+  #assert !jn_has(pipe_bytes(rn[0].pipe[..], 0), "party=");
 }

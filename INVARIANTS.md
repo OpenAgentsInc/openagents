@@ -823,7 +823,12 @@ A page whose room came from the realm's list asks its ticket for the realm,
 so placement by party applies; a room a link names, or a friend's INVITE,
 stays the player's choice. A failing party service never blocks a ticket:
 placement goes on without the party. The page's PARTY pane shows only what
-the roster carries. Checks: `coax/web/api/tests/room_checks.coax` parties
+the roster carries. JOIN on a member (#12911) asks a seat ticket for the
+realm naming that member (`?party=`, `verse.party_member_room`, migration
+0134): the ticket places the asker in the member's live room only when both
+are in the same party, neither blocks the other and the member isn't hidden;
+otherwise it says `party_away` and places as usual. The ticket names the one
+room it seats; the roster still never names a room. Checks: `coax/web/api/tests/room_checks.coax` parties
 (with `ROOM_BIN`, a real room's crash, restart and the service down), and
 `everglade5e.coax` "party:".
 

@@ -1244,6 +1244,7 @@ net_ask_ticket :: (n: [] EgNet) {
   k = wire_put(t[..], k, ifx jn_listed(n) then cast(string) n[0].realm[0..<n[0].realm_n] else cast(string) n[0].code[0..<n[0].code_n]);
   if n[0].realm_n > 0 { k = wire_put(t[..], k, "?realm="); k = wire_put(t[..], k, cast(string) n[0].realm[0..<n[0].realm_n]); }
   k = jn_ticket_with(n, t[..], k);   // the friend whose invite holds you a seat (everglade-join.coax, #12795)
+  k = pt_ticket_with(n, t[..], k);   // the party member whose room you join (everglade-party.coax, #12911)
   // this page's build: the directory places it on a shard that runs it (#12839, migrations/0128_room_builds.sql)
   if n[0].realm_n > 0 { k = net_put_build(t[..], wire_put(t[..], k, "&build=")); }
   k = wire_put(t[..], k, "\n"); k += jn_ticket_body(n, t[k..<t.count]);
