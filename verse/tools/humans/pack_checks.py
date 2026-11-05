@@ -21,7 +21,7 @@ unlisted V key) and only reduced to numbers here:
             changes
   eyes      the eyes' blended layers (the occlusion, 25, and the wet layer, 7) are the catalog's
             last pieces, so the lab draws them over the scene
-  garments  with a fantasy outfit (its outfit line, outfits.py): every garment it names is a piece
+  garments  with a fantasy outfit (its outfit line, ph_outfits.coax): every garment it names is a piece
   frame     the share of the frame the figure covers
   lod       each lower level of detail (the lab's unlisted L) covers the figure's pixels as the
             full mesh does: the share of them it misses and the share it adds
@@ -36,6 +36,18 @@ WEB = Path.home() / ".openagents/verse/private-build/web"
 RENDERS = Path.home() / ".openagents/verse/private-build/renders"
 HUD_TOP, HUD_BOTTOM = 70, 960
 
+
+# The pieces each fantasy outfit packs (ph_outfits.coax's parts, a split one as its parts, the
+# robe's skirt and the chain of office; pack_human.coax's metahuman path checks the same list).
+GARMENTS = {
+    "fantasy": ["Female_Ranger_Arms", "Female_Ranger_Arms_Bracer", "Female_Ranger_Body", "Female_Ranger_Body_Belt_1",
+                "Female_Ranger_Feet", "Female_Ranger_Legs"],
+    "hooded": ["Female_Ranger_Acc_Pauldrons", "Female_Ranger_Arms", "Female_Ranger_Arms_Bracer", "Female_Ranger_Body",
+               "Female_Ranger_Body_Belt_1", "Female_Ranger_Feet", "Female_Ranger_Head_Hood", "Female_Ranger_Legs"],
+    "mayoral": ["Chain_Of_Office", "Coat", "Male_Peasant_Feet", "Male_Peasant_Legs", "Male_Ranger_Arms", "Robe",
+                "Shirt_Collar", "Waistcoat"],
+    "robe": ["Female_Peasant_Arms", "Female_Peasant_Body", "Female_Peasant_Feet", "Robe"],
+}
 
 def shot(url, out, views, face=True, expressions=0, lod=-1):
     """A frame after pressing V `views` times; face: the lab's unlisted F first (the clip paused at
@@ -165,9 +177,7 @@ def main(argv):
     b = pack.read_bytes(); worn = re.search(rb"\noutfit (\S+) ", b[:b.find(b"\nbox")])
     worn = worn and worn.group(1).decode()
     if worn and worn not in ("student", "bare"):
-        sys.path.insert(0, str(Path(__file__).resolve().parent)); sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-        import outfits
-        want = outfits.garment_names(worn)
+        want = set(GARMENTS.get(worn, ()))
         have = {m.group(1) for m in re.finditer(r"^P (\S+) ", cat, re.M)}
         print(f"garments: {worn}: {len(want & have)} of {len(want)} named garments packed; missing {sorted(want - have)}")
         if want - have:

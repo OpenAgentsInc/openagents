@@ -1,7 +1,7 @@
 # Firm reason: 1 (Unreal Engine's Python API: Creator's character, rig service and exporters run only inside Unreal Editor)
 """Makes a private human character in Unreal's character creator with no clicks: from a preset, a
 look recipe (characters/NAME.json), the cloud face rig, the texture download and the exports
-that pack_human.py reads (docs/verse/2026-11-04-speaking-characters.md, "Making the mayor").
+that pack_human.coax reads (docs/verse/2026-11-04-speaking-characters.md, "Making the mayor").
 
 Runs inside Unreal Editor 5.8, headless, on a private project outside the repository (never one
 open in the editor):
@@ -25,7 +25,7 @@ environment:
                        export    head and body DNA, the DCC bundle (maps), to CHARACTER_EXPORT
                        cards     each chosen groom's hair cards (LOD 0, OBJ) and cards atlas (TGA),
                                  to CHARACTER_EXPORT/grooms/NAME (they sit on the archetype
-                                 head; pack_human.py carries them onto the DNA head)
+                                 head; pack_human.coax carries them onto the DNA head)
   CHARACTER_RENDER   where shots go (PNG)
   CHARACTER_EXPORT   where exports go
 

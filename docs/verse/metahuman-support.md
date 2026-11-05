@@ -165,7 +165,7 @@ pack reaches a browser, what that protects against, and what it costs.
    catalog names the MetaHuman licence or a MetaHuman body.
 
 What the visitor gets is the compiled runtime pack (VPK1 from
-`pack_human.py`: quantized vertices, octahedral normals, the compiled
+`pack_human.coax`: quantized vertices, octahedral normals, the compiled
 face-rig block and texture layers). It is never DNA, source meshes, grooms or
 the DCC bundle.
 
@@ -223,7 +223,7 @@ Visitors who never open a page with a `private:` asset cost nothing.
 Refetching on every visit is the price of `no-store`. The daily budget
 bounds the worst case at $144 a month, well inside the $1,500 cap.
 
-**Phone packs.** `pack_human.py ... --phone` writes `NAME-phone.pack` beside
+**Phone packs.** `pack_human.coax ... --phone` writes `NAME-phone.pack` beside
 each pack from the same build: its layers are 1024 texels a side, the body
 and its clothes start at the first lower level of detail (its P lines are
 LOD 1's and its D lines LOD 2's), and the face rig keeps only what the lab's
@@ -435,14 +435,14 @@ The lab runs the face rig live. The pieces:
   OpenRigLogic) dumps the head DNA's Behavior layer as text and, with a
   third argument, its LOD0 blend-shape targets as binary. Both stay in
   `~/.openagents/verse/private-build/metahuman-dump/head/`.
-- `verse/tools/humans/face_rig.py` compiles them into a flat block: the
+- `verse/tools/humans/ph_face.coax` compiles them into a flat block: the
   raw controls' correctives (PSDs), the LOD0 joint groups, the face joints'
   neutral pose, each face point's rest position, normal and six joint
   weights, the blend-shape deltas (0.01 cm and up, in 0.001 cm steps) and
   a few named expressions (neutral, smile, frown, surprise, talk, blink,
   jaw). It also evaluates them in Python as a reference, and the pack
   build fails if a blink or the jaw moves the head by less than 0.5 cm.
-- `pack_human.py` writes the face pieces (head, teeth, eyes, lashes) as one
+- `pack_human.coax` writes the face pieces (head, teeth, eyes, lashes) as one
   vertex range and adds the line `F FIRST COUNT BYTES` to the catalog. The
   block follows the catalog's text after a NUL.
 - `aethyr/facerig.coax` evaluates the block, ported from OpenRigLogic's
@@ -709,14 +709,14 @@ It holds no MetaHuman asset and draws with none.
   the rig's rest and places it by its parent's turn of its own bind-pose bone,
   so a pack keeps its proportions. Bound at the rig's rest it equals
   `skin_palette` (a check runs every clip).
-- **The pack.** `verse/tools/humans/pack_human.py` writes one VPK1 file:
+- **The pack.** `verse/tools/humans/pack_human.coax` (run with `coax/web/tool.sh`) writes one VPK1 file:
   the catalog (body, 65 bind positions, materials, pieces), 32-byte vertices
   (position, octahedral normal and tangent, uv, four joints and weights, the
   layers its material reads), u32 indices and the texture layers. Weights
   must sum to 255 and joints stay under 65, or it refuses.
-  `pack_human.py standin` builds a CC0 stand-in (the Quaternius superhero
+  `pack_human.coax standin` builds a CC0 stand-in (the Quaternius superhero
   male with eyes, brows and hair, on the rig already) for checking the look.
-  `pack_human.py metahuman EXPORT_DIR` is the MetaHuman source. When the
+  `pack_human.coax metahuman EXPORT_DIR` is the MetaHuman source. When the
   export's portrait (`latest/mh.neutral.glb`) is there, its grooms (hair cards
   and brows, rigid to the head) and clothes join the pack, with the film's
   lower garments beside it (`world/*_lower.glb`: tights, skirt, the robe's
@@ -773,7 +773,7 @@ It holds no MetaHuman asset and draws with none.
   7.8% to 5.4% (slash) and 4.6% to 3.2% (spell). A loose robe is blended
   over 6 cm already, and the band spiked its edges in a walk past the 4 cm
   limit, so the robe still stretches in slash and spell.
-- **Fantasy outfits.** `pack_human.py metahuman EXPORT_DIR --outfit NAME`
+- **Fantasy outfits.** `pack_human.coax metahuman EXPORT_DIR --outfit NAME`
   dresses the body in a Quaternius fantasy outfit (Modular Character Outfits
   - Fantasy, CC0: the clothes Everglade's people and 5E Lab's classes wear)
   instead of the portrait's clothes, into its own pack (`human-NAME.pack`).
@@ -795,7 +795,7 @@ It holds no MetaHuman asset and draws with none.
   cloth without a simulation follows a stride, so a thigh would poke
   through its front. The shins below the knee are drawn as dark stockings
   (the under layer below), so a boot stepping out behind the hem has its
-  leg. The portrait still gives the brows and hair. `verse/tools/humans/outfits.py` fits each garment in the
+  leg. The portrait still gives the brows and hair. `verse/tools/humans/ph_outfits.coax` fits each garment in the
   T pose: each joint's frame from the outfits' skeleton (the superhero
   female, which the clothes sit 4 mm off) to the body's, stretched along the
   bone by the bones' length ratio, the garment following its own skin;
@@ -830,7 +830,7 @@ It holds no MetaHuman asset and draws with none.
   walk, from the front, back and both sides, the body and garments are
   rasterized at 5 mm into a depth buffer, and skin that is nearest with
   cloth on all four sides within 8 cm counts; more than 1 cm2 in any view
-  fails. `pack_human.py standin
+  fails. `pack_human.coax standin
   --outfit NAME` fits the same female outfits onto the male stand-in, a
   harder fit to judge by eye. In the lab, with a pack in, the body button
   (and G) shows the outfit and steps to the next: `?pack&outfit=fantasy`,

@@ -1,5 +1,5 @@
 // A face rig: a port of OpenRigLogic's evaluation (controls, pose-space correctives, joint groups
-// and blend shapes) to Coax, for a face from a DNA file (verse/tools/humans/face_rig.py packs one).
+// and blend shapes) to Coax, for a face from a DNA file (verse/tools/humans/ph_face.coax packs one).
 //
 // Ported from OpenRigLogic (src/riglogic: psdnet/PSDNetImpl.cpp, joints/cpu/bpcm, blendshapes),
 // under its licence:
@@ -34,7 +34,7 @@
 //             then each point is skinned by its joints (the pose's world times the neutral's
 //             inverse), its normal turned with them
 // The result is each face vertex's move from the bind (metres) and its normal, written for the
-// vertex shader. The block's layout is face_rig.py pack()'s.
+// vertex shader. The block's layout is ph_face.coax's.
 //   coax/bin/coax test aethyr/facerig.coax --library
 
 #load "points.coax";

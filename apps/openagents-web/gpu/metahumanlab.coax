@@ -282,7 +282,7 @@ mhlab_bg_fs :: (pos:V4,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->M
   }
   return MhlabBg.{light=v4(c.x,c.y,c.z,0.0f32),aux=v4(0.0f32,0.0f32,0.0f32,0.0f32),depth=depth};
 }
-// ---- the mesh (a human pack, verse/tools/humans/pack_human.py): GPU skinning by four joints of
+// ---- the mesh (a human pack, verse/tools/humans/pack_human.coax): GPU skinning by four joints of
 // the pose (metahumanlab.coax lab_palette: three rows of four per joint), drawn into the depth
 // buffer bg_fs has written the floor into, lit by the key (with its shadow map), a fill, a rim
 // and the sky. MhlabU's mesh rows (floats):
@@ -296,7 +296,7 @@ mhlab_bg_fs :: (pos:V4,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->M
 //   388: the face rig's vertices: the first, how many, and 1 when it moves them. Their rows (a
 //        move in metres and a normal word, metahumanlab.coax lab_face) follow the palette in the
 //        pose store, from row MHLAB_FACE_ROW.
-// A vertex, 8 words (pack_human.py vertex): x y (unorm16 each), z (unorm16) | material << 16 |
+// A vertex, 8 words (ph_pack.coax vertex): x y (unorm16 each), z (unorm16) | material << 16 |
 // the bitangent's sign << 31, the normal and the tangent (octahedral unorm16 pairs), uv (unorm16
 // pair), four joints (u8), four weights (unorm8), the layers base | normal << 8 | rough << 16.
 MHLAB_SPAN :: 2.5f32;
@@ -642,7 +642,7 @@ mhlab_scene_fs :: (s:MhlabS,front:bool,u:[]f32,sheets:Tex2DArray,sheet:Sampler,s
   if (u[386]>4.5f32) { c=v3(cast(f32)(m)/255.0f32,cast(f32)(s.layers&255)/255.0f32,saturate(u[390])); }
   return MhlabLit.{light=v4(c.x,c.y,c.z,0.0f32),aux=v4(0.0f32,0.0f32,0.0f32,0.0f32)};
 }
-// ---- the eyes' blended layers (pack_human.py: material 25 the occlusion, 7 the wet layer), the
+// ---- the eyes' blended layers (ph_pack.coax: material 25 the occlusion, 7 the wet layer), the
 // pack's last pieces, drawn after the scene as the host draws water: depth-tested and not written,
 // water_transmit_fs multiplying what lies behind, then water_emit_fs adding. Their uv is lid
 // coordinates (pack_human.lid_coords): x from the lids' margin (0) inward (1), y up the opening.

@@ -1359,14 +1359,14 @@ function parseAssets(text) {
     else if (kind === "sounds") { if (/^\/[a-z0-9/_-]+\/$/.test(rest)) soundDir = rest; }
     else if (kind === "pack") { const pack = { url: rest }; for (const part of PACK_PARTS) list.push({ i: list.length, kind: part, pack }); }
     else if (kind === "private") {
-      // ?pack&outfit=NAME: the pack's NAME outfit (pack_human.py --outfit), its own pack, BASE-NAME.
+      // ?pack&outfit=NAME: the pack's NAME outfit (pack_human.coax --outfit), its own pack, BASE-NAME.
       // On a local address only when asked (serve.c's /private/); on openagents.com always, through
       // the broker (privatePack), never in a golden.
       const q = new URLSearchParams(location.search), site = /(^|\.)openagents\.com$/.test(location.hostname);
       const pick = golden ? null : dev ? q.get("pack") : site ? q.get("pack") || rest : null;
       const outfit = pick !== null ? q.get("outfit") : null, name = (pick || rest) + (outfit ? `-${outfit}` : "");
       // a phone (a coarse pointer on a small screen, or ?phone; ?phone=0 never) asks first for the
-      // pack's phone build, NAME-phone (pack_human.py --phone: smaller layers and meshes), and the
+      // pack's phone build, NAME-phone (pack_human.coax --phone: smaller layers and meshes), and the
       // full pack when there is none
       const asked = q.get("phone"), phone = asked !== null ? asked !== "0"
         : matchMedia("(pointer: coarse)").matches && Math.min(screen.width, screen.height) <= 820;

@@ -8,7 +8,7 @@ below with these limits:
   `speakingRate`. ElevenLabs, `*emphasis*` and SSML marks aren't built. Word times come from
   Speech-to-Text and the take's loudness: the tool splits the take into phrases by loudness and
   spreads each word's phonemes by length.
-- **Face.** The 14 visemes and 6 moods are raw-control sets in `verse/tools/humans/face_rig.py`. The
+- **Face.** The 14 visemes and 6 moods are raw-control sets in `verse/tools/humans/ph_face.coax`. The
   lab mixes them by weight and clamps the sum. Blinks are seeded, and phrase breaks get an extra
   blink. Saccades, head nods, breathing and the `talk` body clip aren't built.
 - **Stage.** `?stage=speak&track=...` takes the track inline in the URL. The stage plays no sound:
@@ -195,7 +195,7 @@ the repository.
 character mayor
   name      "Mayor Tobin Hale"        # placeholder; the owner names him
   pack      everglade-mayor            # private pack ID, resolved owner-locally
-  outfit    mayor-coat                 # verse/tools/humans/outfits.py
+  outfit    mayor-coat                 # verse/tools/humans/ph_outfits.coax
   voice     google en-US-Chirp3-HD-Charon   # placeholder until the audition
   framing   head-shoulders
   backdrop  town-hall-night
@@ -230,14 +230,14 @@ recipe `verse/tools/humans/characters/everglade-mayor.json`, in git: names and n
    their nearest head points, so the beard opens with the jaw; the scalp's hair follows the head
    joint, since the lab's face rig holds at most 65,536 vertices. The pack fails if the brows sit
    more than 0.6 cm off the archetype skin, which means the cards' frame is wrong.
-5. **Outfit.** `outfits.py`'s `mayoral` outfit is made from Quaternius CC0 parts and parts we
+5. **Outfit.** `ph_outfits.coax`'s `mayoral` outfit is made from Quaternius CC0 parts and parts we
    modelled, never MetaHuman garments, fitted to the male body. The male peasant's tunic is cut
    three ways: a cream shirt collar, a wine waistcoat between the coat's open edges, and the navy
    coat. The coat's sleeves are the male ranger's, which reach the wrist. Its tails are a navy wool
    skirt to mid-calf, and `chain()` models a gold chain of office with a medallion. The head
    mesh's skin below the collar and the trunk's skin under the coat are left out, so his chest
    never shows through.
-6. **Pack.** `python3 verse/tools/humans/pack_human.py metahuman EXPORT_DIR OUT.pack --outfit mayoral --phone`
+6. **Pack.** `coax/web/tool.sh verse/tools/humans/pack_human.coax metahuman EXPORT_DIR OUT.pack --outfit mayoral --phone`
    builds the pack with its face rig (`DNA_DUMP` names OpenRigLogic's `dna_dump`). `pack_checks.py` checks
    that the mouth moves: each viseme must move the lips by at least 0.3 cm, and `mbp` must close
    them. The pack is `~/.openagents/verse/private-build/web/everglade-mayor.pack`, and the
@@ -255,7 +255,7 @@ are needed for speech:
 
 - **Visemes.** The 14 viseme expressions, as sets of raw controls (`CTRL_expressions_jawOpen`,
   `mouthFunnel`, `mouthPucker`, `mouthLipsTogether`, `mouthStretch`, `tongueOut` and so on). They go
-  in `face_rig.py`'s named expressions. The pack build fails if any viseme moves the mouth less than
+  in `ph_face.coax`'s named expressions. The pack build fails if any viseme moves the mouth less than
   its threshold.
 - **Weighted mixing.** Several weighted expressions at once (mood plus mouth plus blink). The lab
   eases one expression into the next, and `facerig.coax` takes a control vector, so the work is
@@ -308,7 +308,7 @@ One issue under the raid launch work. The order:
 1. The cast file, cue sheet parser and the composite with a still portrait. This alone proves the
    panel, sound and subtitles.
 2. Voice and auditions: both providers, the cache, and the transcript check.
-3. Align and perform, with the viseme expressions in `face_rig.py` and weighted mixing in the lab.
+3. Align and perform, with the viseme expressions in `ph_face.coax` and weighted mixing in the lab.
 4. The speaking stage and portrait rendering.
 5. The mayor: design (owner), export, pack, outfit, voice audition, and the raid promo's cues.
 

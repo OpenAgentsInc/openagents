@@ -204,31 +204,12 @@ should pass unchanged: the oracles no longer touch libm, and the Coax side
 compares within 1e-12. Both oracles need Python 3.12 or later. If either
 fails, comment on #12695.
 
-## MetaHuman packers: port them, or name a Firm reason (#12693, 2026-11-03)
+## ~~MetaHuman packers: port them, or name a Firm reason (#12693, 2026-11-03)~~
 
-Audit update: [five remaining generators and dependency roadmap](docs/coder/tools-check-audit.md).
-`pack_checks.py` is independently justified as a pixel oracle (reason 2), with
-public synthetic match/refusal checks; no private assets were read. `outfits.py`
-also needs a production port. The owner choice of full ports versus a temporary
-exception remains pending; no exception or port-list expansion was applied.
-
-
-`verse/tools/humans/metahuman.py` (453 lines) and `pack_human.py` (301)
-have no `Firm reason:` line, so `coax/web/tool.sh tools-check` reports them.
-None of the six reasons holds: they are packers with real logic (OBJ and
-skin parsing, joint folding, A-pose to T-pose posing, vertex packing, and
-JPEG and PNG layers through Pillow), not a thin wrapper or a Python-only
-SDK. They can't go on `coax/tools-port.txt` either: tools-check refuses a
-path that wasn't tracked at the list's base commit. Porting them means
-porting what they import too (`verse/tools/people.py`'s glTF loader and
-skeleton, `pack_realm.py`'s container) plus a JPEG encoder in Coax, which is
-larger than a release-blocker fix. Decide: port them (and with them
-`people.py`), or accept them as an exception some other way.
-Since then, two more MetaHuman Lab tools without a `Firm reason:` line have
-landed, and tools-check reports them too: `verse/tools/humans/face_rig.py`
-(234 lines, 58a1c8741d, the face rig's tables and a Python evaluation after
-OpenRigLogic's) and `pack_checks.py` (181, 1487a7c576, headless frame checks
-of a pack). They belong in the same decision (noted by #12702).
+Done, nothing for the owner (#12859, 2026-11-05). `pack_human.py`,
+`metahuman.py`, `outfits.py`, `face_rig.py` and `shape.py` are ported to
+`verse/tools/humans/pack_human.coax` and its `ph_*.coax` files and deleted.
+`pack_checks.py` keeps its reason 2 (an independent pixel oracle).
 
 ## Drop's Mac golden in golden mode (#12693, 2026-11-03)
 
