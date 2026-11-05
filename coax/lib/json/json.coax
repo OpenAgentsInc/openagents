@@ -1,3 +1,4 @@
+#module "coax.json";
 // JSON (RFC 8259) for Coax tools: parse a text into a tree of nodes in a
 // caller's array, read it by key, index or path, and write JSON into a
 // caller's buffer. Nothing allocates; the text is never copied. A node keeps

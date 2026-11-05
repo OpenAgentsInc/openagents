@@ -1,0 +1,31 @@
+// Real controller trace used by the native/browser record-exchange check.
+#load "replay-walk.coax";
+#load "../replay-wire.coax";
+RW_PROFILE :: 1;
+RW_BYTES :: 131072;
+RwWalk :: struct {backing:[1]WalkBacking;wire:[RW_BYTES]u8;count:int;steps:int;digest:int;remote:int;diverged:int;}
+rw_make :: (r:[]RwWalk,seed:int)->int #export_c {
+  s:=walk_session(r[0].backing[..]);w:[1]Walk;walk_init(w[..]);sent:[1]int;
+  replay_record(s,walk_digest(w[..]),seed);
+  accepted:=walk_live(s,w[..],sent[..],seed);
+  if accepted!=replay_events(s) {return -1;}
+  // Complete the pending final frame even when it offered no fixed step.
+  if s.n[REPLAY_CURSOR]<s.n[REPLAY_EVENTS] {walk_step(s,w[..],sent[..]);}
+  r[0].count=arc_encode(s,RW_PROFILE,r[0].wire[..],false);
+  r[0].steps=s.n[REPLAY_MARKS];r[0].digest=replay_digest(s);r[0].remote=sent[0];
+  return r[0].count;
+}
+rw_play :: (r:[]RwWalk,count:int,fault:int)->int #export_c {
+  if count<0 || count>RW_BYTES {return -1;}
+  s:=walk_session(r[0].backing[..]);
+  if !arc_decode(r[0].wire[0..<count],RW_PROFILE,s,false) {return -2;}
+  w:[1]Walk;walk_init(w[..]);w[0].fault_at=fault;sent:[1]int;
+  if !replay_play(s,walk_digest(w[..])) {return -3;}
+  walk_replay(s,w[..],sent[..]);
+  r[0].count=count;r[0].steps=s.n[REPLAY_MARKS];r[0].digest=replay_digest(s);r[0].remote=sent[0];r[0].diverged=replay_diverged(s);
+  if !replay_matched(s) || sent[0]!=0 {return -4;}
+  return r[0].steps;
+}
+rw_mark :: (r:[]RwWalk,tick:int)->int #export_c {
+  if tick<0 || tick>=r[0].steps {return -1;}return r[0].backing[0].marks[tick];
+}

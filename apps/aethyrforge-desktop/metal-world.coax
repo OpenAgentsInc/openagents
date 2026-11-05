@@ -1,2 +1,6 @@
 // The very same Everglade5E producer, compiled natively into a reloadable image.
 #load "../openagents-web/everglade5e.coax";
+
+// Movement, model-decision recording and the producer share one C symbol owner.
+#load "../openagents-web/everglade-step.coax" as movement;
+#load "../../verse/everglade/guard-guide-policy.coax" as guard_policy;

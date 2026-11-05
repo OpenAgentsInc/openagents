@@ -1,0 +1,195 @@
+{
+  "schema": 1,
+  "date": "2026-11-05",
+  "issue": 12921,
+  "scope": "Opening five chapters of the six README books; Nostr active chapters 14,16,17,19,20. Implements the identified opening profiles, retaining explicit limits on future chapters and broader target qualification.",
+  "mutation": [
+    {
+      "unit": "coax/lib/agent/journal.coax",
+      "mutants": 154,
+      "killed": 154,
+      "survivors": 0,
+      "source_sha256": "6d50483c8daf6745f2b0e085b630cffbbee1fe2a7fb4088daabb5ad2ddc85842",
+      "report_sha256": "465c945ea58f37a058a36451febf7207cc39024219aa14ba7a2554adacbb24f8"
+    },
+    {
+      "unit": "coax/lib/agent/journal-flow.coax",
+      "mutants": 174,
+      "killed": 174,
+      "survivors": 0,
+      "source_sha256": "723828a5d2ea3aadeb27489d4004f322d18949efd7a6d75eeb7e639cf1360769",
+      "report_sha256": "df555439be6e91494748f53877365633c3c3aeb11a49daec8faf154df79997c3"
+    },
+    {
+      "unit": "coax/lib/agent/native-profile.coax",
+      "mutants": 136,
+      "killed": 136,
+      "survivors": 0,
+      "source_sha256": "5504dd09fd9b692704032f791d2802639b989c33b326bcb6c1eceb74e9500cb8",
+      "report_sha256": "0939c7ba6ac91b9a3b84597150e0b6feba8dd90954770f389391016968c0ecbe"
+    },
+    {
+      "unit": "aethyr/replay-wire.coax",
+      "mutants": 218,
+      "killed": 218,
+      "survivors": 0,
+      "source_sha256": "554dcfc68cd854051f1897404aa2e614779e2cc0e5eadf6e4f891720e9b51632",
+      "report_sha256": "b186807be77a93a8ce89f37529693f04133272c5c9b731cc14a2f0b0a95801a2"
+    },
+    {
+      "unit": "aethyr/walk-control.coax",
+      "mutants": 86,
+      "killed": 86,
+      "survivors": 0,
+      "source_sha256": "7deaa8232c968f78140bf78ec82c86978623340d36404400a1d730a50f0d2a84",
+      "report_sha256": "4bde28c85953079d7c17c6ec9fc3355e852deb1235a3228d5f999084578bc1f2"
+    },
+    {
+      "unit": "aethyr/decision-trace.coax",
+      "mutants": 134,
+      "killed": 134,
+      "survivors": 0,
+      "source_sha256": "89aad71fbd2c3346784923ff569ca7cbd329a167b2bd522c5ad1e9e4ff62ca5b",
+      "report_sha256": "a5a2aa27825a6a729bd394137048347008f783fb9cd8633ae8a7fd6d4db41813"
+    },
+    {
+      "unit": "verse/everglade/guard-replay.coax",
+      "mutants": 102,
+      "killed": 102,
+      "survivors": 0,
+      "source_sha256": "352f933b04b71518f0cf5996aef15ef75a4ed9741378dcb4dc733c4d62f8812b",
+      "report_sha256": "209d8fbfa641537943e0c6edc14e3e2b24bb122f17cda18cfbcc90adbb06ac5b"
+    },
+    {
+      "unit": "psionic/lib/game/decision.coax",
+      "mutants": 173,
+      "killed": 173,
+      "survivors": 0,
+      "source_sha256": "58f76fc7ae0e6229224993012b9214837064a7146e795ec5d39cbdca19831edd",
+      "report_sha256": "2e23a6817328303bc747722c2d95dafa92bb86bf09ce80b1d59c6d323010b10a"
+    },
+    {
+      "unit": "coax/lib/nostr/nip59/sign-erasure.coax",
+      "mutants": 980,
+      "killed": 980,
+      "survivors": 0,
+      "source_sha256": "ac0170ddc1ab0d7a1074800e73063999ceb993dddcd3eb728dac782418ebc7b8",
+      "report_sha256": "51485dfb43f9c8a9cb6b9f374e3f6efcd245c7971c3448b1d16278d316f36624"
+    },
+    {
+      "unit": "coax/lib/nostr/host/browser/cleanup.coax",
+      "mutants": 11,
+      "killed": 11,
+      "survivors": 0,
+      "source_sha256": "08b39f1b9db9023c684026808dcd8ef7a333e4c5faf28aa7c18abd25cb6abb2c",
+      "report_sha256": "1cbdc6e7d6861fa3b3c1246c68842a65908f5611e725f0eca5d82a7f308fdb79"
+    },
+    {
+      "unit": "coax/lib/nostr/nipkeys_carry/cleanup.coax",
+      "mutants": 11,
+      "killed": 11,
+      "survivors": 0,
+      "source_sha256": "563572c4f966c34ad4900aacec0cf57b0f056684dbaf87e391130d067cfad3c0",
+      "report_sha256": "de6e19952a98c8f976f983173a653c4c1b1ce38ab7fc788c71ac0bc499a6365c"
+    },
+    {
+      "unit": "coax/lib/nostr/nip59.coax",
+      "entry": "coax/tests/nostr/nip59_checks.coax",
+      "shards": 16,
+      "mutants": 379,
+      "killed": 379,
+      "survivors": 0,
+      "source_sha256": "3a514282cf8ab0736c4aaee25b065a2b737697db8b54025758c2c42c3c7378bf",
+      "report_sha256": "b35d7bf5e04a2227be4f38cf5bc7c0fed8d0d830a0121dfba7a36bf044310ab8"
+    }
+  ],
+  "runtime": [
+    {
+      "command": "coax/web/tool.sh coder/tests/journal-worker.coax",
+      "result": "Actual worker, real shell/view, stale approval refusal, frozen read ceiling despite approval, complete private journal, physical JSONL refusal before dispatch passed"
+    },
+    {
+      "command": "coax/web/tool.sh coder/tests/journal-live.coax",
+      "result": "Two translated requests reconstructed byte for byte; real shell/view, durable results, cancellation unknown and storage failure blocks transport passed"
+    },
+    {
+      "command": "coax/web/tool.sh coder/tests/journal-file.coax",
+      "result": "ASan/UBSan, exclusive 0600 file, symlink refusal, descriptor loss, forced partial write rollback passed"
+    },
+    {
+      "command": "coax/web/tool.sh coder/tests/native-profile.coax",
+      "result": "Workspace write, read-only refusal, escaping symlink, IP/Unix EPERM, cleared environment and timeout passed"
+    },
+    {
+      "command": "coax/web/tool.sh replay-hosts exchange",
+      "result": "Native record transferred into real headless Wasm, browser record transferred into native; all step/session digests match; fault first diverges at 150; replay remote calls zero"
+    },
+    {
+      "command": "coax/web/tool.sh replay-hosts crypto",
+      "result": "NIP-59 actual wrap/open, cleanup and authenticated refusal in checked/release native, ASan/UBSan and real headless Wasm passed"
+    },
+    {
+      "command": "python3 coax/tests/nostr/hmac_hkdf.py",
+      "result": "10/10; includes NIP-44 native/release, ASan/UBSan and Wasm cleanup at 1,33,65535,65536 bytes"
+    },
+    {
+      "command": "python3 coax/tests/nostr/sha256.py",
+      "result": "9/9 native, sanitizer and Wasm checks"
+    },
+    {
+      "command": "python3 coax/tests/constant_time.py",
+      "result": "Optimized native and wasm-opt dead-local erasure survives; ordinary-store negative controls disappear"
+    }
+  ],
+  "boundaries": [
+    "Explicit source numeric storage erased on admitted normal exits; caller-owned keys and successful plaintext output remain caller lifetimes; no ABI/register/spill or process-death guarantee.",
+    "Linux x86_64 selected workspace confinement; full-access default unchanged, unsupported selected hosts fail closed. Per-process limits are not cgroup-wide quotas.",
+    "Portable bounded component recordings; complete-world asset/state/effect qualification remains specific to each realm.",
+    "No hosted model quality, provider tokenization/cache hit, or external driven-engine internal-history claim."
+  ],
+  "realm_wasm_builds": [
+    {
+      "name": "deadgears",
+      "bytes": 451667,
+      "sha256": "767614272fcd8d614448e875b89045751a428f2f2fdd1c6ff2fc6b883348557e"
+    },
+    {
+      "name": "everglade",
+      "bytes": 1885738,
+      "sha256": "47dcfd9fd54658e06cf345a4b4197ec1e4869de8040fdedda6cdb47859e31104"
+    },
+    {
+      "name": "everglade5e",
+      "bytes": 2091595,
+      "sha256": "5f47ca657bf6b944c25e9cac7654bb5211a7ad592cc65938c160d8af7fb33e46"
+    },
+    {
+      "name": "fairy",
+      "bytes": 660104,
+      "sha256": "79019659c322d8c37ef9e8b0789014c76a0d63340062ca3c53c65f772c12b72a"
+    },
+    {
+      "name": "fivemmo",
+      "bytes": 1618678,
+      "sha256": "b8b3468f642e9aa471efa1aacb774fda6eca94a122313ee7e16eba0fa145207c"
+    },
+    {
+      "name": "garden",
+      "bytes": 286741,
+      "sha256": "a9d0179a06ccd02a0a422aa211ca934536850efad8c69c165f46f3ba0a6e1983"
+    },
+    {
+      "name": "realm",
+      "bytes": 517429,
+      "sha256": "5fe78c6bcde411e709c487d30fed7c73b02398df9269cf357dd327afd94bc1cd"
+    },
+    {
+      "name": "villa",
+      "bytes": 524872,
+      "sha256": "376516db8987e0c0580dfcda1c34abece8c937abc509b71bb3550e11186958e2"
+    }
+  ],
+  "native_primary": "metal-world.coax generated to native C and compiled at -O2 on Linux; actual Metal SDK runtime requires its separate macOS qualification",
+  "retained_original_review": "Issue body records 35 selected Coax units, 56 debug/release runs across other books and 25 authored suites. Unchanged passing units were retained; changed examples and composed runtimes were tested as listed.",
+  "reconciled_main": "640adf8debe5917804a3221a36206681fdfbb1de"
+}

@@ -1,3 +1,4 @@
+#module "psionic.game.decision";
 // A game's single outstanding decision. This gate owns no I/O and never
 // interprets a probability as permission. Context versions are caller-owned
 // immutable local identities; answer parsing and action meaning live outside it.

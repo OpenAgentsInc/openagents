@@ -1,5 +1,8 @@
+#module "verse.everglade.guard_policy";
 // One independently qualified library; no authority implementation is imported
 // into the large, pure game page. Shared dependencies are emitted only once.
 #load "guard-decision.coax";
 #load "guard-guide-session.coax";
 #load "guard-guide-game.coax";
+
+#load "guard-replay.coax";

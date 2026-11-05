@@ -19,6 +19,8 @@
 #define EXPORT(name) __attribute__((export_name(name)))
 
 static coax_t_Player player;
+static coax_t_WalkControlV2 controls;
+static coax_v_t_WalkControlV2 control(void) { return (coax_v_t_WalkControlV2){&controls,1}; }
 static coax_t_Sticks sticks;
 static bool placed, golden, aimed;
 static double now;
@@ -75,6 +77,7 @@ static void new_battle(uint32_t state) {
   mmo_set_pick(mm(), pick);
   coax_t_Point p = mmo_start_point(mm());
   player = verse_player_place(p.x, 0, p.z, 3.14159265f);
+  controls = verse_player_v2_reset();
   (void)state;
 }
 static void start(uint32_t state) {
@@ -144,16 +147,16 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   take_battle(state);
   float pace = mmo_pace(mm());
   bool stuck = pace <= 0;
-  player = verse_player_input(player, stuck ? 0 : g->key_x, stuck ? 0 : g->key_y, stuck ? 0 : sticks.pad_x, stuck ? 0 : sticks.pad_y, false, false, 0, 0);
+  verse_player_v2_input(control(), stuck ? 0 : g->key_x, stuck ? 0 : g->key_y, stuck ? 0 : sticks.pad_x, stuck ? 0 : sticks.pad_y, false, false, 0, 0);
   player.pace = pace;
-  player.theta = everglade_player_theta(at(state));
+  verse_player_v2_heading(control(), player, everglade_player_theta(at(state)));
   if (sticks.zoom != 0) everglade_wheel(at(state), sticks.zoom);
   sticks = verse_sticks_used(sticks);
   int64_t walls = everglade_walls_on(at(state), false);
   int64_t nb = mmo_bodies(at(state), mm(), (coax_v_f32){bodies, sizeof bodies / sizeof bodies[0]});
   int64_t floors = everglade_floors_near(at(state), player.pos.x, player.pos.z);
-  player = verse_player_advance_in_realm(player, frame, (coax_v_f32){bodies, nb * 7}, (coax_v_f32){g->walls.e, walls * 6},
-                                         (coax_v_f32){g->floors.e, floors * 10}, (coax_string){"everglade", sizeof "everglade" - 1});
+  player = verse_player_v2_advance(control(), player, frame, (coax_v_f32){bodies, nb * 7}, (coax_v_f32){g->walls.e, walls * 6},
+                                         (coax_v_f32){g->floors.e, floors * 10}, (coax_string){"everglade", sizeof "everglade" - 1}).player;
   // on the grid; and where the engine couldn't take you (a Skeleton in the way, Restrained), back
   coax_t_Point kept = mmo_hold(mm(), player.pos.x, player.pos.z);
   if (mmo_drift(mm(), kept.x, kept.z) > 2.5f) {

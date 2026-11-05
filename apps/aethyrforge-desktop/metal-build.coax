@@ -27,7 +27,13 @@ mb_unit :: (root:string,work:string,compiler:string,name:string)->bool {
  o[0]=Jo.{};jo_start(o[..],text[..]);jo_put(o[..],name);jo_put(o[..],".c");code:=fs_join(work,jo_text(o[..]),paths[1][..]);
  o[0]=Jo.{};jo_start(o[..],text[..]);jo_put(o[..],name);jo_put(o[..],".o");object:=fs_join(work,jo_text(o[..]),paths[2][..]);
  out:[67108864]u8;cmd:=[8]string.[compiler,"c",fs_join(root,sources[found],paths[3][..]),"--library","--run-steps","128000","--header",header];
- n:=mb_run(cmd[..],out[..]);if n<0 || !fs_write(code,cast(string)out[0..<n]) {return false;}
+ if name=="Everglade-step" || name=="Guard-guide-policy" {
+  // These names remain compatibility headers/objects. The producer's graph
+  // owns their exported definitions once, alongside replay's shared hashes.
+  if !fs_write(header,"#include \"everglade5e.h\"\n") || !fs_write(code,"/* definitions are owned by everglade5e.o */\n") {return false;}
+ } else {
+  n:=mb_run(cmd[..],out[..]);if n<0 || !fs_write(code,cast(string)out[0..<n]) {return false;}
+ }
  cc:=[11]string.["/usr/bin/clang","-std=c11","-O2","-ffp-contract=off","-fno-fast-math","-Wno-unused-function","-Wno-unused-variable","-c",code,"-o",object];
  return mb_run(cc[..],out[..])>=0;
 }

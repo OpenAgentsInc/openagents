@@ -12,10 +12,14 @@ the external events it accepted. The fixed step
 ([chapter 1](ch001-a-frame-has-a-fixed-step.md)) and the typed actions
 ([chapter 4](ch004-input-becomes-typed-actions.md)) make that possible.
 The checked walk reconstructs the same state at every step, natively and in
-the browser. This is a bounded engine-core profile: the Grid adopts it for
-walking, while other realms and external-event paths still need their own
-migration and evidence. The host check runs the same scenario separately on
-both hosts; importing a recording produced by the other host remains open.
+the browser. The host check also exchanges actual encoded records in both
+directions, with per-step comparisons and a planted fault at step 150.
+Grid walking uses the replay-backed input buffer; the other frame-driven
+walker faces use the versioned shared input adapter. Everglade's actual
+ambient/directions ticket consumers record admitted choices before publishing
+them and replay without model dispatch. These are bounded component profiles,
+with each realm's initial state, assets and remaining external effects still
+requiring their own complete-world qualification.
 You use this property for bug reports that reproduce, for
 regression tests recorded from play, for saves, for networking by orders
 ([chapter 50](ch050-shared-state-over-the-network.md)), and for the physics
@@ -635,34 +639,41 @@ authored checks and its root mutation gate kills 169 of 169 mutants, with
 zero survivors. The power-boundary transcript passes in native debug and
 release, including optimized ASan/UBSan builds. The changed math also retains
 the walk's native/Wasm parity through `coax/web/tool.sh replay-hosts walk`.
-The standalone boundary transcript is CPU evidence; the host check qualifies
-the recorded walk, not all possible power inputs or recording-file exchange.
+The standalone boundary transcript is CPU evidence; the original host check
+qualifies its recorded walk. The separate exchange check below qualifies
+record transfer in both directions.
 
-## Adoption and remaining integration
+## Adoption and record exchange
 
-- The Grid's walking session already records and replays through this module
-  in `verse/gridwalk.coax`, including per-step look and zoom. That is component
-  adoption, not recording all Grid presence traffic or every host effect.
-  Its own native/Wasm evidence is described in
-  [chapter 56](ch056-the-grid.md); the walk example above is a separate scenario.
-- Each migrated realm gets a replay check
-  ([chapter 64](ch064-every-realm-runs-on-aethyr.md)). That includes moving
-  its own random generators (`next_seed` in Everglade, `rand_next` in Belt,
-  `sp_rand` in Everglade's spells) onto `aethyr/rand.coax`, and its step's
-  `sin`, `cos` and `pow` onto `aethyr/math.coax`.
-- Ice Cream Man's Rust traces (`verse/icecream/replay.c`), Orbit League's
-  goal replays and Belt's lockstep orders move onto this record. The Rust
-  traces then serve as an independent recorder.
-- Everglade's guard decisions take a model's action through the ticket in
-  `psionic/lib/game/decision.coax`, which decides whether the answer is
-  still current. Routing the admitted action through `replay_offer` as a
-  `REPLAY_MODEL` event remains work; the current ticket does not itself record
-  the action for this replay system.
-- A mismatch reports its step, but not yet the fields that differ. A realm
-  can add that by comparing its state's fields at that step.
-- The host check runs the same session on both hosts. Replaying a record
-  made natively in the browser, and the reverse, needs a way to load a
-  record into the wasm module.
+- [Grid walking](../../verse/gridwalk.coax) records sampled input, including
+  look and zoom. The shared [version 2 walker adapter](../walk-control.coax)
+  supplies the same step-buffering semantics to frame-driven walker faces.
+  The original `Player` C layout and legacy single-sample entry stay compatible.
+- [replay-wire.coax](../replay-wire.coax) encodes accepted events and step
+  marks as `AETHYR01`: a version/profile, initial-state digest, seed, bounded
+  counts, little-endian words and SHA-256. It admits the whole record before
+  modifying destination storage and refuses malformed metadata, order,
+  truncation, checksum changes, capacities and aliases.
+- `coax/web/tool.sh replay-hosts exchange` makes a native record, transfers its
+  actual bytes into headless Wasm, and compares every step and the session
+  digest. It then makes a different browser record and transfers those bytes
+  back to native replay. Neither receiver dispatches inference. A planted
+  divergence reports step 150. The codec's 218-mutant gate has zero survivors.
+- [decision-trace.coax](../decision-trace.coax) binds each accepted model
+  choice to all six local ticket identities, sequence, deadline and application
+  time in a `REPLAY_MODEL` envelope. The
+  [guard adapters](../../verse/everglade/guard-replay.coax) run the actual
+  ambient/directions policy on a private copy, record before publication,
+  and refuse effects when the trace is full. They keep authored local lines
+  independent of the shadow model. Replay stages the recorded choice, runs
+  current admission again and grants no transport capability. Ticket, trace
+  and consumer-adapter mutation gates kill 173/173, 134/134 and 102/102 mutants.
+- These profiles require the same constructed state and declared world
+  inputs. They do not serialize an arbitrary running realm, every presence
+  packet or every GPU/host effect. Whole-realm migration and qualification
+  remain the scope of [chapter 64](ch064-every-realm-runs-on-aethyr.md).
+- A mismatch reports its first step. Field-by-field diagnostics can be added
+  by the realm's state comparer.
 
 ## Contract: one envelope for every external event
 

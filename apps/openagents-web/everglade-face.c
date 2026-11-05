@@ -73,6 +73,9 @@ static coax_v_t_GgsSession guides(void) { return (coax_v_t_GgsSession){&guide_st
 static int32_t guard_id = -1;
 static int64_t guard_sequence;
 static coax_t_GaSession guard_state;
+static coax_t_DecisionTraceV1 guard_trace, guide_trace;
+static coax_v_t_DecisionTraceV1 guard_record(void) { return (coax_v_t_DecisionTraceV1){&guard_trace,1}; }
+static coax_v_t_DecisionTraceV1 guide_record(void) { return (coax_v_t_DecisionTraceV1){&guide_trace,1}; }
 static coax_v_t_GaSession gs(void) { return (coax_v_t_GaSession){&guard_state,1}; }
 __attribute__((import_module("env"), import_name("coaxial_now_ms"))) extern int64_t guard_now_ms(void);
 __attribute__((import_module("env"), import_name("coaxial_http_bounded"))) extern int32_t guard_http(uint32_t,uint32_t,uint32_t,uint32_t,uint32_t,int64_t);
@@ -646,7 +649,7 @@ static void guard_out(uint32_t state) {
   coax_t_GaInput policy_input;
   _Static_assert(sizeof policy_input == sizeof page_input, "shared guard input ABI");
   memcpy(&policy_input, &page_input, sizeof policy_input);
-  ga_page(gs(), policy_input, monotonic_ms);
+  ga_page_v2(gs(), guard_record(), policy_input, monotonic_ms);
   if (guard_id >= 0 && !ga_pending(gs(), guard_sequence)) { guard_cancel(guard_id); guard_id = -1; }
   coax_t_GaEffect effect = ga_effect(gs(), monotonic_ms);
   if (!effect.body.count) return;
@@ -684,7 +687,7 @@ static void guide_out(uint32_t state) {
   input.configured = page.configured; input.authenticated = guide_authenticated;
   input.suspended = page.suspended; input.blocked = page.blocked; input.boundary = page.boundary;
   input.url = page.url; input.hint_intent = page.hint_intent;
-  ggs_step(guides(), input, ms);
+  ggs_step_v2(guides(), guide_record(), input, ms);
   if (guide_id >= 0 && !ggs_pending(guides(), guide_sequence)) { guard_cancel(guide_id); guide_id = -1; }
   coax_t_GgsEffect effect = ggs_effect(guides(), ms);
   if (effect.body.count) {
@@ -709,6 +712,7 @@ __attribute__((constructor)) static void coaxial_face_defaults(void) {
   coax_default_t_Player(&player);
   coax_default_t_Sticks(&sticks);
   coax_default_t_GaSession(&guard_state);
+  guard_trace = guard_trace_v1_reset(); guide_trace = guard_trace_v1_reset();
   coax_default_t_River(&river);
   coax_default_t_DemoWorld(&demo_world);
 }

@@ -8,6 +8,7 @@
 #load "../loop.coax";
 #load "../rand.coax";
 #load "../player.coax";
+#load "../walk-control.coax" as controls;
 
 WALK_FRAMES :: 240;
 WALK_EVENTS :: 1024;
@@ -26,6 +27,7 @@ walk_session :: (b: [] WalkBacking) -> ReplaySession {
 // The realm's state: you, the peer's capsule, and the step that asks the model next.
 Walk :: struct {
   you: Player;
+  control:[1]controls.WalkControlV2;
   peer: [BODY] f32;
   fault_at: int = -1;   // from this step on, the step reads something it shouldn't
 }
@@ -40,6 +42,10 @@ walk_digest :: (w: [] Walk) -> int {
     p.target.x, p.target.y, p.target.z, p.pace];
   for k: 0..<14 { h = replay_mix(h, cast(int) f32_bits(floats[k])); }
   for k: 0..<BODY { h = replay_mix(h, cast(int) f32_bits(w[0].peer[k])); }
+  b:=w[0].control[0].input;
+  for value:[5]f32.[b.move_x,b.move_y,b.look_x,b.look_y,b.zoom] {h=replay_mix(h,cast(int)f32_bits(value));}
+  for value:[9]int.[b.steps_left,b.jump.waiting,b.jump.pressed,b.jump.taken,b.jump.lost,b.act.waiting,b.mended,b.untimed,replay_flag(b.run)] {h=replay_mix_wide(h,value);}
+  h=replay_mix(h,replay_flag(b.jump.held));
   return replay_mix(replay_mix(h, replay_flag(p.on_ground)), p.jumps.pressed * 64 + p.jumps.taken);
 }
 // book:end walk-state
@@ -54,7 +60,11 @@ walk_step :: (s: ReplaySession, w: [] Walk, sent: [] int) {
     take := replay_take(s);
     if !take.ok { break; }
     e := take.event;
-    if e.source == REPLAY_ACTIONS { w[0].you = verse_player_intent(w[0].you, replay_intent(e)); }
+    if e.source == REPLAY_ACTIONS {
+      i:=replay_intent(e);controls.walk_control_feed(w[0].control[..],0,0,i.move_x,i.move_y,i.run,i.jump,i.look_x,i.look_y);
+      controls.walk_control_zoom(w[0].control[..],i.zoom);
+      w[0].control[0].input=input_frame(w[0].control[0].input,replay_steps(e));
+    }
     if e.source == REPLAY_MODEL { w[0].you.pace = replay_float(e.words[0]); }
     if e.source == REPLAY_NETWORK { for k: 0..<3 { w[0].peer[k] = replay_float(e.words[k]); w[0].peer[3 + k] = replay_float(e.words[k]) + ifx k == 1 then 1.4f32 else 0; } }
   }
@@ -64,7 +74,7 @@ walk_step :: (s: ReplaySession, w: [] Walk, sent: [] int) {
   }
   if t % 100 == 99 { replay_new_epoch(s, REPLAY_MODEL); }
   world := World.{bodies = w[0].peer[..]};
-  next := steps_in(world, w[0].you, 1);
+  next := controls.walk_control_once(w[0].control[..],world,w[0].you);
   if w[0].fault_at >= 0 && t >= w[0].fault_at { next.vel.x += 0.0001; }
   w[0].you = next;
   replay_stepped(s, walk_digest(w));

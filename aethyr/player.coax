@@ -3,6 +3,7 @@
 // These wrappers do no policy or arithmetic; the authoritative core owns both.
 #module "verse.player";
 #load "walk.coax" as walk;
+#load "walk-control.coax" as control;
 
 verse_player_advance_in_realm_traced :: (p: walk.Player, frame: f32, bodies: [] f32, walls: [] f32, floors: [] f32, realm: string) -> walk.AdvanceTrace #export_c {
   return walk.walk_advance_in_realm_traced(p, frame, bodies, walls, floors, realm);
@@ -74,3 +75,17 @@ verse_player_zoom :: (p:walk.Player,delta:f32) ->walk.Player #export_c { return 
 verse_player_zoom_view :: (p:walk.Player,mode:int,delta:f32) ->walk.PlayerZoom #export_c { return walk.walk_zoom_view(p, mode, delta); }
 
 verse_player_constrain :: (p:walk.Player,x:f32,z:f32) ->walk.Player #export_c { return walk.walk_constrain(p, x, z); }
+
+// Version 2 keeps pending input outside the published Player layout.
+verse_player_v2_input :: (c:[]control.WalkControlV2,key_x:f32,key_y:f32,pad_x:f32,pad_y:f32,run:bool,jump:bool,look_x:f32,look_y:f32) #export_c {
+  control.walk_control_feed(c,key_x,key_y,pad_x,pad_y,run,jump,look_x,look_y);
+}
+verse_player_v2_heading :: (c:[]control.WalkControlV2,p:walk.Player,heading:f32) #export_c {control.walk_control_heading(c,p,heading);}
+verse_player_v2_flying :: (c:[]control.WalkControlV2,p:walk.Player,key_x:f32,key_y:f32,pad_x:f32,pad_y:f32,run:bool,jump:bool,taps:int,wings:bool,dive:bool)->walk.Player #export_c {
+  return control.walk_control_flying(c,p,key_x,key_y,pad_x,pad_y,run,jump,taps,wings,dive);
+}
+verse_player_v2_advance :: (c:[]control.WalkControlV2,p:walk.Player,frame:f32,bodies:[]f32,walls:[]f32,floors:[]f32,realm:string)->walk.AdvanceTrace #export_c {
+  return control.walk_control_realm(c,p,frame,bodies,walls,floors,realm);
+}
+
+verse_player_v2_reset :: ()->control.WalkControlV2 #export_c {fresh:control.WalkControlV2;return fresh;}

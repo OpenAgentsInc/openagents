@@ -16,6 +16,8 @@
 #define EXPORT(name) __attribute__((export_name(name)))
 
 static coax_t_Player player;
+static coax_t_WalkControlV2 controls;
+static coax_v_t_WalkControlV2 control(void) { return (coax_v_t_WalkControlV2){&controls,1}; }
 static coax_t_Sticks sticks;
 static bool placed;
 static double now;
@@ -35,6 +37,7 @@ static void start(uint32_t state) {
   if (placed) return;
   coax_t_Point spawn = garden_spawn(at(state));
   player = verse_player_place(spawn.x, spawn.y, spawn.z, 0);
+  controls = verse_player_v2_reset();
   sticks = verse_sticks_reset();
   placed = true;
   verse_place_golden(place_k(), golden);
@@ -49,6 +52,7 @@ static coax_t_Place place_here(uint32_t state) {
 static void place_put(uint32_t state, coax_t_Place p) {
   coax_t_Place q = garden_place_fix(at(state), p);
   player = verse_player_place(q.x, 0, q.z, q.face);
+  controls = verse_player_v2_reset();
   garden_place_camera(at(state), q);
 }
 
@@ -75,12 +79,12 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   garden_controls(at(state), dt, sticks.dyaw, sticks.dpitch);
   bool busy = garden_busy(at(state));
   if (busy) sticks = verse_sticks_reset();
-  player = verse_player_input(player, g->key_x, g->key_y, sticks.pad_x, sticks.pad_y, verse_runs(g->run, sticks.run, sticks.pad_x, sticks.pad_y), g->jump || sticks.jump, 0, 0);
-  player.theta = garden_player_theta(at(state));
+  verse_player_v2_input(control(), g->key_x, g->key_y, sticks.pad_x, sticks.pad_y, verse_runs(g->run, sticks.run, sticks.pad_x, sticks.pad_y), g->jump || sticks.jump, 0, 0);
+  verse_player_v2_heading(control(), player, garden_player_theta(at(state)));
   if (sticks.zoom != 0) garden_wheel(at(state), sticks.zoom);   /* a pinch zooms as the wheel does (verse/grid.coax) */
   sticks = verse_sticks_used(sticks);
   int64_t walls = garden_walls(at(state));
-  coax_t_AdvanceTrace walked = verse_player_advance_in_realm_traced(player, frame, (coax_v_f32){0, 0}, (coax_v_f32){g->walls.e, walls * 6},
+  coax_t_AdvanceTrace walked = verse_player_v2_advance(control(), player, frame, (coax_v_f32){0, 0}, (coax_v_f32){g->walls.e, walls * 6},
                                          (coax_v_f32){0, 0}, (coax_string){"garden", sizeof "garden" - 1});
   player = walked.player;
   coax_t_Vec3 feet = verse_player_feet(player);

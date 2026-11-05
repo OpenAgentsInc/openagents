@@ -1,12 +1,15 @@
 # 4. Input becomes typed actions
 
-> Engine-core task: `ec-input` (#12609). The module is
-> [aethyr/input.coax](../input.coax). The walking controller in
-> [aethyr/player.coax](../../aethyr/player.coax) takes its jump from it, and
-> its run rule and dead zone come from it. Full per-step action buffering
-> and look/zoom splitting are adopted by `verse/gridwalk.coax`. The shared
-> walking controller still applies look when a frame's input arrives;
-> other realm and host-event migrations remain below.
+> Engine-core task: `ec-input` (#12609). [input.coax](../input.coax)
+> defines typed actions. [walk-control.coax](../walk-control.coax) adds
+> `WalkControlV2`: frame input waits for physical steps, presses survive
+> zero-step frames, and relative look/zoom split across a frame's steps.
+> The versioned C adapter in [player.coax](../player.coax) is used by the
+> Haunted House/sandbox, Garden, Villa, Fairy Forest and 5E MMO faces; Dead
+> Gears calls the same core directly. Grid walking already samples its own
+> replay-backed buffer. Absolute camera headings are levels; Everglade's
+> shared room step keeps its existing absolute-heading protocol.
+
 
 Input arrives as events at any time: keys, mouse moves, touches, and pad
 axes. The simulation runs in fixed steps ([chapter 1](ch001-a-frame-has-a-fixed-step.md)).
@@ -318,9 +321,9 @@ controls. It records a jump as a press with `input_level`:
 // 1), stick axes in [-1, 1] (x right, y forward), run and jump held, and look
 // deltas in radians (positive turns left and looks up). A jump is a press, not a hold:
 // it is counted here and taken by the first fixed step after it (aethyr/input.coax), so a
-// frame that runs no step keeps it and a frame that runs two jumps once. The look turns the
-// camera at once (the realms' cameras read theta and phi each frame); the Grid's session splits
-// it over the steps (verse/gridwalk.coax), and the other realms follow with ec-migrate.
+// frame that runs no step keeps it and a frame that runs two jumps once. This v1
+// single-sample primitive applies look immediately. Frame-driven consumers use
+// walk-control.coax's versioned sidecar; the Grid samples before calling here.
 walk_input :: (p: Player, key_x: f32, key_y: f32, pad_x: f32, pad_y: f32,
                           run: bool, jump: bool, dyaw: f32, dpitch: f32) -> Player {
   next := p;
@@ -366,13 +369,16 @@ the jump still starts at the next step. What changed is that a press now
 belongs to a step, which replay ([chapter 5](ch005-replay-a-session-exactly.md))
 needs.
 
-The controller's look still turns the camera when `verse_player_input` is
-called, not per step. The realms' cameras read `theta` and `phi` every frame.
-The Grid's session instead splits look/zoom through its `InputBuffer` and
-applies each sample in `gw_step`, then interpolates the camera turn for drawing.
-[Chapter 10](ch010-the-camera-follows.md) explains that composition. Applying
-it to every realm remains part of chapter 64's migration; importing the
-walking controller alone does not adopt the Grid's input path.
+The legacy `verse_player_input` API still applies look at its call boundary.
+Frame-driven adopters now use `verse_player_v2_input` and
+`verse_player_v2_advance`: a sidecar buffers relative look and samples it at
+each physical step without changing the published `Player` layout. Absolute
+camera headings are held levels, consumed at the first step. Garden, Villa,
+the Haunted House, Fairy Forest, Five MMO and Dead Gears use this adapter.
+The Grid keeps its own `InputBuffer`/`gw_step` composition and interpolated
+camera turn, explained in [chapter 10](ch010-the-camera-follows.md).
+The room protocol already supplies absolute headings at step boundaries;
+complete realm recording remains a separate chapter 64 qualification.
 
 ## Checks
 
@@ -537,12 +543,14 @@ Checks for these actions:
   produce the same action in the same step.
 - A remapping that removes the last key for `back` is refused.
 
-## Still to do
+## Further input surfaces
 
-The realm migration ([chapter 64](ch064-every-realm-runs-on-aethyr.md)) moves
-the other input paths onto this module:
+The frame-driven walking adapters now use the shared buffer. The broader
+realm migration ([chapter 64](ch064-every-realm-runs-on-aethyr.md)) also covers
+UI, remote input and other gameplay-specific action types:
 
-- the Grid's touch controls (`Sticks` in [verse/grid.coax](../../verse/grid.coax));
+- gameplay-specific uses of the Grid's touch controls (`Sticks` in
+  [verse/grid.coax](../../verse/grid.coax));
 - Ice Cream Man's held-key bits (`H_W`, `H_SPACE`, and the others) in
   `verse/icecream/play.coax`;
 - the page shells' C code, which can then report key and tap events with

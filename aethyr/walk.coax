@@ -294,9 +294,9 @@ walk_place :: (x: f32, y: f32, z: f32, yaw: f32) -> Player {
 // 1), stick axes in [-1, 1] (x right, y forward), run and jump held, and look
 // deltas in radians (positive turns left and looks up). A jump is a press, not a hold:
 // it is counted here and taken by the first fixed step after it (aethyr/input.coax), so a
-// frame that runs no step keeps it and a frame that runs two jumps once. The look turns the
-// camera at once (the realms' cameras read theta and phi each frame); the Grid's session splits
-// it over the steps (verse/gridwalk.coax), and the other realms follow with ec-migrate.
+// frame that runs no step keeps it and a frame that runs two jumps once. This v1
+// single-sample primitive applies look immediately. Frame-driven consumers use
+// walk-control.coax's versioned sidecar; the Grid samples before calling here.
 walk_input :: (p: Player, key_x: f32, key_y: f32, pad_x: f32, pad_y: f32,
                           run: bool, jump: bool, dyaw: f32, dpitch: f32) -> Player {
   next := p;

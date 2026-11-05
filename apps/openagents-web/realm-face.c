@@ -84,6 +84,8 @@ static coax_t_Haunt house;
 #define ROOM_ZOOM 3.0f   // indoors, at most this far back
 static float zoom_pref = 4.4f;
 static coax_t_Player player;
+static coax_t_WalkControlV2 controls;
+static coax_v_t_WalkControlV2 control(void) { return (coax_v_t_WalkControlV2){&controls,1}; }
 static coax_t_Sticks sticks;
 static coax_t_Realm realm;
 static coax_t_RealmView view;
@@ -406,6 +408,7 @@ static void open_house(void) {
   if (kept_n && !world_holds()) restore_kept();
   for (int i = 0; i < 5; i++) item_mesh[i] = verse_haunt_mesh(house, text(items[i].mesh));
   player = sandbox ? verse_player_place(0, 0, -2, 0) : verse_player_place(7, 0, 2, 0);
+  controls = verse_player_v2_reset();
   house.camera = 1; player.phi = 1.107f;   // one camera: behind you, pulled in and cut away indoors
   sticks = verse_sticks_reset();
   opened = true;
@@ -442,6 +445,7 @@ static void place_put(uint32_t state, coax_t_Place p) {
     if (place_open(t.x, t.z)) { x = t.x; z = t.z; break; }
   }
   player = verse_player_place(x, 0, z, p.face);
+  controls = verse_player_v2_reset();
   house.camera = 1;   // one camera, whatever an older save kept
   player.theta = p.yaw;
   player.phi = isfinite(p.pitch) && p.pitch > 0.3f && p.pitch < 2.2f ? p.pitch : 1.107f;
@@ -936,12 +940,12 @@ static void step(float frame, float dt) {
   if (realm.hold >= 0 && house.quest == 1) house = verse_haunt_quest(house, text("edit"));   // a hotbar item in hand
   bool run = verse_runs((realm.held & 16) != 0, sticks.run, sticks.pad_x, sticks.pad_y), jump = sticks.jump || (realm.held & 32) || jump_asked;
   jump_asked = false;
-  player = verse_player_input(player, realm_key_x(r), realm_key_y(r), sticks.pad_x, sticks.pad_y, run, jump,
+  verse_player_v2_input(control(), realm_key_x(r), realm_key_y(r), sticks.pad_x, sticks.pad_y, run, jump,
                                  sticks.dyaw + realm.dyaw, sticks.dpitch + realm.dpitch);
   realm.dyaw = 0; realm.dpitch = 0;
   sticks = verse_sticks_used(sticks);
-  player = verse_player_advance_in_realm(player, frame, (coax_v_f32){0, 0}, (coax_v_f32){walls, wall_count * 6},
-                                         (coax_v_f32){0, 0}, house.world_id);
+  player = verse_player_v2_advance(control(), player, frame, (coax_v_f32){0, 0}, (coax_v_f32){walls, wall_count * 6},
+                                         (coax_v_f32){0, 0}, house.world_id).player;
   coax_t_HauntPoint kept = verse_haunt_constrain(house, point(was), point(player.pos));
   player = verse_player_constrain(player, kept.x, kept.z);
   coax_t_Vec3 feet = verse_player_feet(player);

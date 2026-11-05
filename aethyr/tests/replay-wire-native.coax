@@ -1,0 +1,17 @@
+#import "Basic";
+#load "replay-wire-walk.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=3 {return 2;}
+  mode:=args_at(a[..],0);path:=args_at(a[..],1);seed:=args_number(args_at(a[..],2));if !seed.ok {return 2;}
+  r:[1]RwWalk;
+  if mode=="make" {
+    n:=rw_make(r[..],cast(int)seed.value);if n<=0 || !fs_write(path,cast(string)r[0].wire[0..<n]) {return 1;}
+  } else if mode=="play" {
+    n:=fs_read(path,r[0].wire[..]);if n<0 || rw_play(r[..],n,-1)<0 {return 1;}
+  } else {return 2;}
+  print("% % %\n",r[0].count,r[0].steps,r[0].digest);
+  for tick:0..<r[0].steps {print("%\n",rw_mark(r[..],tick));}
+  return 0;
+}

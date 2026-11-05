@@ -56,6 +56,8 @@ IMPORT("coaxial_http") int32_t coaxial_http(uint32_t url, uint32_t url_len, uint
 #include "edit-face.h"
 
 static coax_t_Player player;
+static coax_t_WalkControlV2 controls;
+static coax_v_t_WalkControlV2 control(void) { return (coax_v_t_WalkControlV2){&controls,1}; }
 static coax_t_Sticks sticks;
 static bool placed;
 static double now;
@@ -97,6 +99,7 @@ static void start(uint32_t state) {
   if (placed) return;
   coax_t_Point spawn = fairy_spawn(at(state));
   player = verse_player_place(spawn.x, spawn.y, spawn.z, fairy_spawn_face());
+  controls = verse_player_v2_reset();
   sticks = verse_sticks_reset();
   placed = true;
   verse_place_golden(place_k(), golden);
@@ -231,6 +234,7 @@ static coax_t_Place place_here(uint32_t state) {
 static void place_put(uint32_t state, coax_t_Place p) {
   coax_t_Place q = fairy_place_fix(at(state), p);
   player = verse_player_place(q.x, 0, q.z, q.face);
+  controls = verse_player_v2_reset();
   fairy_place_camera(at(state), q);
 }
 
@@ -274,17 +278,18 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   // with flight off for visitors (SETTINGS), there are no wings.
   int64_t beats_were = player.beats, jumps_were = (int64_t)player.jumps.pressed;
   bool grounded = player.on_ground;
-  player = verse_player_input_flying(player, g->key_x, g->key_y, sticks.pad_x, sticks.pad_y, verse_runs(g->run, sticks.run, sticks.pad_x, sticks.pad_y),
+  player = verse_player_v2_flying(control(), player, g->key_x, g->key_y, sticks.pad_x, sticks.pad_y, verse_runs(g->run, sticks.run, sticks.pad_x, sticks.pad_y),
                                      jump && !afloat, afloat ? 0 : taps, fairy_may_fly(at(state)) && !afloat, g->run && !afloat);
   player.pace = swim.pace;
-  player.theta = fairy_player_theta(at(state));
-  bool pressed = (int64_t)player.jumps.pressed != jumps_were;
+  verse_player_v2_heading(control(), player, fairy_player_theta(at(state)));
+
   if (sticks.zoom != 0) fairy_wheel(at(state), sticks.zoom);   /* a pinch zooms as the wheel does (verse/grid.coax) */
   sticks = verse_sticks_used(sticks);
   int64_t walls = fairy_walls(at(state));
-  player = verse_player_advance_in_realm(player, frame, (coax_v_f32){0, 0}, (coax_v_f32){g->walls.e, walls * 6},
-                                         (coax_v_f32){0, 0}, (coax_string){"fairy-forest", sizeof "fairy-forest" - 1});
+  player = verse_player_v2_advance(control(), player, frame, (coax_v_f32){0, 0}, (coax_v_f32){g->walls.e, walls * 6},
+                                         (coax_v_f32){0, 0}, (coax_string){"fairy-forest", sizeof "fairy-forest" - 1}).player;
   coax_t_Vec3 feet = verse_player_feet(player);
+  bool pressed = (int64_t)player.jumps.pressed != jumps_were;
   /* a flap, for the wings and the count: a beat the steps took, or a press from the ground or with wings */
   bool beat = player.beats != beats_were || (pressed && (grounded || fairy_may_fly(at(state))));
   bool diving = player.diving;

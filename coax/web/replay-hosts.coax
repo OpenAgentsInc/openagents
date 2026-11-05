@@ -18,9 +18,10 @@
 // aethyr/tests/crowd-deadgears.coax the same way and compares its three digests (Dead Gears'
 // mutants sensing, remembering and finding their way as two crowds meet in a passage) with the
 // native run of aethyr/tests/crowd-deadgears-native.coax.
-//   coax/web/tool.sh replay-hosts [walk|grid|scatter|deadgears]     (from the repo root; all by default)
+//   coax/web/tool.sh replay-hosts [walk|grid|scatter|deadgears|exchange|crypto]     (from the repo root; all by default)
 // Prints "pass"/"FAIL" per check and exits 0 only when every check passes.
 #load "wasm-chrome.coax";
+#load "../lib/sys/proc-raw.coax";
 
 RH_OUT :: 1048576;
 RH_NUMS :: 4096;
@@ -72,7 +73,7 @@ rh_run :: (argv: [] string, out: [] u8) -> int {
   err: [8192] u8;
   r := proc_run(argv, 600000, out, err[..]);
   if r.started != 0 || r.status != 0 || r.cut {
-    tool_err("replay-hosts: "); tool_err(argv[0]); tool_err(" "); tool_err(argv[1]); tool_err(" "); tool_err(argv[2]); tool_err(" failed: ");
+    tool_err("replay-hosts: ");for i:0..<argv.count {if i>=3 {break;}tool_err(argv[i]);tool_err(" ");}tool_err("failed: ");
     tool_errln(cast(string) err[0..<r.err_n]);
     return -1;
   }
@@ -114,6 +115,71 @@ rh_walk :: (c: [] Cdp) -> bool {
   // the native output: refused (3 numbers), recorded, replayed, "step 150", first divergent step
   return rh_check(same, "the browser's numbers differ from native") && rh_check(native[3] == native[4], "the replay did not match the recording") &&
          rh_check(native[3] > 0, "the recording's digest is 0") && rh_check(native[6] == 150, "the planted fault was not found where it starts");
+}
+
+// Exchange actual encoded records in both directions. Each receiver reads
+// the producer's bytes and compares every step; it never makes model calls.
+rh_exchange :: (c:[]Cdp)->bool {
+  tmp:[1024]u8;dir:=fs_temp("replay-exchange-",tmp[..]);if dir.count==0 {return false;}
+  defer {removed:=fs_remove(dir);}
+  pb:[1200]u8;path:=fs_join(dir,"native.arc",pb[..]);out:[RH_OUT]u8;
+  make:=[6]string.["coax/web/tool.sh","aethyr/tests/replay-wire-native.coax","make",path,"2026",""];
+  n:=rh_run(make[0..<5],out[..]);if n<0 {return false;}
+  native:[RH_NUMS]int;nn:=rh_numbers(cast(string)out[0..<n],native[..]);
+  if !rh_check(nn>3 && native[0]>0 && native[1]==nn-3,"native exchange trace has invalid extents") {return false;}
+  bytes:[131072]u8;nb:=fs_read(path,bytes[..]);
+  if !rh_check(nb==native[0],"native record size differs") {return false;}
+  if !rh_wasm(c,"aethyr/tests/replay-wire-walk.coax","aethyr/tests/replay-wire-face.c",512) {return false;}
+  pointer:=wc_int(c,"rw_pointer","");
+  if !wc_write(c,pointer,cast(string)bytes[0..<nb]) {return false;}
+  arg:[128]u8;d:[24]u8;parts:=[2]string.[wc_dec(d[..],nb),"n,-1n"];
+  if !rh_check(wc_int(c,"rw_play",wc_cat(arg[..],parts[..]))==native[1],"browser refused native record") {return false;}
+  for tick:0..<native[1] {
+    number:=[2]string.[wc_dec(d[..],tick),"n"];
+    if !rh_check(wc_int(c,"rw_mark",wc_cat(arg[..],number[..]))==native[tick+3],"native-to-browser step differs") {return false;}
+  }
+  if !rh_check(wc_int(c,"rw_digest","")==native[2] && wc_int(c,"rw_remote","")==0,"native-to-browser digest or remote-call count differs") {return false;}
+  faulty:=[2]string.[wc_dec(d[..],nb),"n,150n"];
+  if !rh_check(wc_int(c,"rw_play",wc_cat(arg[..],faulty[..]))==-4 && wc_int(c,"rw_diverged","")==150,"exchanged record misses the planted fault") {return false;}
+  browser_bytes:=wc_int(c,"rw_make","2027n");steps:=wc_int(c,"rw_steps","");digest:=wc_int(c,"rw_digest","");
+  if !rh_check(browser_bytes>0 && steps>0,"browser produced no record") {return false;}
+  if wc_read(c,pointer,browser_bytes,bytes[..])!=browser_bytes {return false;}
+  bp:[1200]u8;browser:=fs_join(dir,"browser.arc",bp[..]);if !fs_write(browser,cast(string)bytes[0..<browser_bytes]) {return false;}
+  play:=[5]string.["coax/web/tool.sh","aethyr/tests/replay-wire-native.coax","play",browser,"2027"];
+  n=rh_run(play[..],out[..]);if n<0 {return false;}
+  nn=rh_numbers(cast(string)out[0..<n],native[..]);
+  if !rh_check(nn==steps+3 && native[0]==browser_bytes && native[1]==steps && native[2]==digest,"browser-to-native record differs") {return false;}
+  for tick:0..<steps {
+    number:=[2]string.[wc_dec(d[..],tick),"n"];
+    if !rh_check(wc_int(c,"rw_mark",wc_cat(arg[..],number[..]))==native[tick+3],"browser-to-native step differs") {return false;}
+  }
+  return true;
+}
+
+// Explicit secret storage after a real signed/encrypted roundtrip and
+// refusal, using the same Coax runtime in optimized C, ASan/UBSan and Wasm.
+rh_crypto :: (c:[]Cdp)->bool {
+  temp:[1024]u8;dir:=fs_temp("nip59-host-cleanup-",temp[..]);if dir.count==0 {return false;}
+  defer {removed:=fs_remove(dir);}
+  paths:[4][1200]u8;header:=fs_join(dir,"nip59-cleanup.h",paths[0][..]);source:=fs_join(dir,"cleanup.c",paths[1][..]);exe:=fs_join(dir,"cleanup",paths[2][..]);
+  out:[8388608]u8;
+  for release:[2]bool.[false,true] {
+    argv:=[8]string.["coax/bin/coax","c","coax/tests/nostr/nip59-cleanup.coax","--library","--header",header,"--release",""];
+    env:[]string;errors:[8192]u8;
+    emitted:=proc_run_bytes(argv[0..<ifx release then 7 else 6],env,600000,out[..],errors[..]);
+    if emitted.started!=0 || emitted.status!=0 || emitted.cut || emitted.timed_out {tool_errln(cast(string)errors[0..<emitted.err_n]);return false;}
+    if !fs_write(source,cast(string)out[0..<emitted.out_n]) {return false;}
+    include:[1300]u8;prefix:="-I";parts:=[2]string.[prefix,dir];inc:=wc_cat(include[..],parts[..]);
+    for sanitizer:[2]bool.[false,true] {
+      if release && sanitizer {continue;}
+      cc:=[15]string.["cc","-std=c11",ifx sanitizer then "-O1" else "-O2","-g","-ffp-contract=off","-fno-fast-math",inc,source,
+        "coax/tests/nostr/nip59-cleanup-face.c","-lm","-o",exe,ifx sanitizer then "-fsanitize=address,undefined" else "-fno-omit-frame-pointer","-fno-omit-frame-pointer",""];
+      if rh_run(cc[0..<14],out[..])<0 {return false;}
+      run:=[1]string.[exe];if rh_run(run[..],out[..])<0 {return false;}
+    }
+  }
+  if !rh_wasm(c,"coax/tests/nostr/nip59-cleanup.coax","coax/tests/nostr/nip59-cleanup-face.c",512) {return false;}
+  return rh_check(wc_int(c,"crypto_cleanup","")==1,"Wasm NIP-59 cleanup or roundtrip failed");
 }
 
 // A recorded Grid session gives the same digest at every step natively and in wasm.
@@ -207,7 +273,7 @@ tool_main :: () -> int #export_c {
   a: [1] Args;
   if !args_load(a[..]) { return 2; }
   only := ifx args_count(a[..]) > 0 then args_at(a[..], 0) else "";
-  if only != "" && only != "walk" && only != "grid" && only != "scatter" && only != "deadgears" { tool_errln("usage: coax/web/tool.sh replay-hosts [walk|grid|scatter|deadgears]"); return 2; }
+  if only != "" && only != "walk" && only != "grid" && only != "scatter" && only != "deadgears" && only != "exchange" && only != "crypto" { tool_errln("usage: coax/web/tool.sh replay-hosts [walk|grid|scatter|deadgears|exchange|crypto]"); return 2; }
   c: [1] Cdp;
   if !wc_open(c[..]) { tool_err("replay-hosts: "); tool_errln(cdp_error(c[..])); return 1; }
   failed := 0;
@@ -231,6 +297,8 @@ tool_main :: () -> int #export_c {
     print("% Dead Gears' crowds in a passage give the same digests natively and in wasm\n", ifx ok then "pass" else "FAIL");
     if !ok { failed += 1; }
   }
+  if only=="" || only=="exchange" {ok:=rh_exchange(c[..]);print("% actual replay records exchanged native/browser in both directions\n",ifx ok then "pass" else "FAIL");if !ok {failed+=1;}}
+  if only=="" || only=="crypto" {ok:=rh_crypto(c[..]);print("% NIP-59 cleanup in native/release, ASan/UBSan and Wasm\n",ifx ok then "pass" else "FAIL");if !ok {failed+=1;}}
   cdp_close(c[..]);
   return ifx failed == 0 then 0 else 1;
 }
