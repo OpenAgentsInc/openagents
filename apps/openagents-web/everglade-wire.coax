@@ -982,6 +982,49 @@ wire_test_send :: (st: [] WireSeat, h: [] WireHist, m: [] WireMirror, me: int, b
   #assert done_at >= 4 && done_at <= 5;
 }
 
+// A seat throttled to 64 kbit/s (267 bytes a tick at 30 a second) and then released, as the room sends
+// to it (#12837): its frames wait in a socket queue the page reads at that rate, and while more than
+// 4096 bytes wait (room-everglade.coax EG_BEHIND) its budget is 0 (its own row and the x's only).
+WIRE_TEST_QN :: 64; WIRE_TEST_QB :: 4096;   // the throttle check's socket queue: frames, and bytes a frame
+#test "wire: a seat throttled to 64 kbit/s keeps its queue bounded, and once released its page holds every entity as it is within a second (#12837)" #steps 6000000000 {
+  h: [1] WireHist; st: [1] WireSeat; m: [1] WireMirror;
+  qb: [WIRE_TEST_QN * WIRE_TEST_QB] u8; ql: [WIRE_TEST_QN] int; qh := 0; qn := 0; queued := 0; allow := 0;
+  most := 0; recovered := -1;
+  for t: 1..<241 {
+    rate := ifx t > 30 && t <= 180 then 267 else 1000000;
+    wire_hist_begin(h[..], t);
+    wire_test_put(h[..], 0, WireS.{id = 0, kind = WK_PLAYER, hp = 10, max = 10});
+    for i: 0..<40 { wire_test_put(h[..], 16 + i, WireS.{id = WIRE_ID_FOLK + i, kind = WK_FOLK, x = 2 + f32(i) * 2, z = f32(t) * 0.04, vz = 1.2, clip = 1, p1 = i}); }
+    wire_seat_ack(st[..], h[..], m[0].heard);
+    // this tick's frame into the queue's tail (the budget 0 while behind)
+    if qn < WIRE_TEST_QN {
+      at := ((qh + qn) % WIRE_TEST_QN) * WIRE_TEST_QB;
+      b := qb[at..<at + WIRE_TEST_QB];
+      n := wire_put_d(b, 0, WireD.{tick = t, ack = 0, f = ifx t == 1 then 1 else 0, part = 0});
+      n += wire_seat_frame(st[..], h[..], 0, 0, 0, 120, ifx queued > 4096 then 0 else WIRE_BUDGET, b[n..<WIRE_TEST_QB]);
+      ql[(qh + qn) % WIRE_TEST_QN] = n; qn += 1; queued += n;
+    }
+    if queued > most { most = queued; }
+    // the page reads rate bytes a tick, whole frames in order
+    allow += rate;
+    while qn > 0 && ql[qh] <= allow {
+      at := qh * WIRE_TEST_QB;
+      _ := wire_mirror_frame(m[..], cast(string) qb[at..<at + ql[qh]]);
+      allow -= ql[qh]; queued -= ql[qh]; qh = (qh + 1) % WIRE_TEST_QN; qn -= 1;
+    }
+    if qn == 0 && allow > rate { allow = rate; }
+    // released: the first tick the page holds every walker where it is now
+    if t > 180 && recovered < 0 {
+      ok := true;
+      for i: 0..<40 { w := wire_mirror_of(m[..], WIRE_ID_FOLK + i); if w.id < 0 || abs(w.z - f32(t) * 0.04) > 0.006 { ok = false; } }
+      if ok { recovered = t - 180; }
+    }
+  }
+  // throttled: the queue never past the behind line and a frame; released: whole within 30 ticks (1 s)
+  #assert most <= 4096 + WIRE_TEST_QB;
+  #assert recovered >= 0 && recovered <= 30;
+}
+
 #test "wire: a changed row waits at most WIRE_MAX_AGE ticks before it goes for its age, from bytes of its own; a seat behind is sent none (#12836)" #steps 2000000000 {
   h: [1] WireHist; st: [1] WireSeat; m: [1] WireMirror;
   // 60 townsfolk walking, from 2 m to 90 m off, with a budget of about 2 rows a tick: the far ones'
