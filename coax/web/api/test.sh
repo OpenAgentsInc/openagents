@@ -63,6 +63,10 @@ $cc -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,u
 export RUNNER_BIN="$work/oa-agent" RUNNER_BIN_SRC="$here/../agent/runner.c"
 export SIGN="$work/sign" ADMIN_KEY="$work/admin.key" OTHER_KEY="$work/other.key"
 export OA_ADMIN_PUBKEYS="$("$SIGN" --new "$ADMIN_KEY")"
+# The rooms' signed routes (seat tickets, vitals reports, room-control): a local key unless the caller
+# set one, so tests/room_checks.coax runs its keyed checks (admission, invites, stats, vitals) too.
+export ROOM_KEY="${ROOM_KEY:-local-development-room-ticket-key-not-a-secret}"
+export OA_ROOM_TICKET_KEY="${OA_ROOM_TICKET_KEY:-$ROOM_KEY}"
 # Our team (test_team.py): a web player, an old playtest player and an email's hash (team@example.com).
 export OA_TEAM="player:p-7ea0000000000001,player:kiki-7ea0000000000002,email_sha256:$(printf '%s' team@example.com | shasum -a 256 | cut -c1-64),player:bad'quote"
 export RUN_KEY_FILE="$work/runner.key" OA_AGENT_RUNNER_PUBKEYS="$("$SIGN" --new "$work/runner.key")"
@@ -122,8 +126,8 @@ API_LOG="$work/api.log" API="http://127.0.0.1:$api_port" PGURL="$OA_API_DATABASE
 # fresh worktree has none of its own, so take the main checkout's.
 if [[ -x "$cli_coax" ]]; then
   # The rooms' checks and the private packs' checks (tests/room_checks.coax, tests/verse_packs.coax).
-  # With ROOM_KEY and OA_ROOM_TICKET_KEY set to one key, the rooms' signed routes too; with ROOM_BIN as
-  # well, the vitals fault check. API_TESTS_ONLY runs them when it names them (room_checks.coax).
+  # The rooms' signed routes run with the key above; with ROOM_BIN (coax/web/room/build.sh) as well,
+  # the vitals fault check and the owner and travel checks. API_TESTS_ONLY runs them when it names them (room_checks.coax).
   coax_failed=0
   for f in room_checks verse_packs; do
     [[ -z "${API_TESTS_ONLY:-}" || ",$API_TESTS_ONLY," == *",$f.coax,"* ]] || continue
