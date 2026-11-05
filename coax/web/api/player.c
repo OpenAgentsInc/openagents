@@ -41,6 +41,8 @@
 //                                             {retry_ms}; every room full: 503 {waiting, last_wait_ms, retry_ms} (#12796)
 //   POST /api/playtest/room-invite/<room>     INVITE: a seat in your room held two minutes for a friend
 //                                             (rooms_invite, migrations/0125_room_invites.sql, #12795)
+//   POST /api/playtest/room-items            the item ledger's one mutation, signed with the room key
+//                                             (room_items below, migrations/0130_item_ledger.sql, #12849)
 //   GET  /api/playtest/party, POST /api/playtest/party/invite|join|leave|hide   durable parties, the
 //                                             roster health only (party below, migrations/0129_parties.sql, #12852)
 //   POST /api/playtest/player/name            {name}: a guest's own name ({"name": ""} the generated one)
@@ -632,6 +634,39 @@ static void room_vitals_receipt(const request *q, PGconn *db, const char *o, int
 // oa-room's part (#12715): "t MS\nPID HP MAX XP\n..." (XP since #12739; a line without it keeps the XP) signed with the seat-ticket key (X-Room-Mac: the
 // hex HMAC-SHA256 of the body), within two minutes of now. Each seat's HP is kept by who the
 // player is, unless a newer one is already kept.
+// The inventory and reward ledger (#12849, migrations/0130_item_ledger.sql): one mutation, signed with
+// the seat-ticket key as vitals are, as JSON {id, op, pid, gen, ver, item, to, kind, sent}; the answer
+// is verse.item_apply's: {"status":..., "item":..., "replay":...}. Game items only.
+static void room_items(const request *q, PGconn *db) {
+  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a mutation\"}"); return; }
+  const char *secret = getenv("OA_ROOM_TICKET_KEY");
+  if (!secret || strlen(secret) < 32) { api_json(q->fd, 503, "{\"error\":\"no ticket key\"}"); return; }
+  char given[80];
+  if (!api_header(q, "X-Room-Mac", given, sizeof given) || strlen(given) != 64 || q->body_len == 0 || q->body_len > 4096) { api_json(q->fd, 401, "{\"error\":\"unsigned\"}"); return; }
+  unsigned char mac[EVP_MAX_MD_SIZE]; unsigned int ml = 0;
+  if (!HMAC(EVP_sha256(), secret, (int)strlen(secret), (const unsigned char *)q->body, q->body_len, mac, &ml) || ml != 32) { api_json(q->fd, 500, "{\"error\":\"no mac\"}"); return; }
+  char want[65]; for (unsigned i = 0; i < 32; i++) snprintf(want + 2 * i, 3, "%02x", mac[i]);
+  unsigned diff = 0; for (int i = 0; i < 64; i++) diff |= (unsigned)(want[i] ^ given[i]);
+  if (diff) { api_json(q->fd, 401, "{\"error\":\"bad mac\"}"); return; }
+  char *b = malloc(q->body_len + 1);
+  if (!b) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
+  memcpy(b, q->body, q->body_len); b[q->body_len] = 0;
+  const char *v[1] = {b};
+  PGresult *r = PQexecParams(db,
+    "WITH j AS (SELECT $1::jsonb AS j) SELECT format('{\"status\":%s,\"item\":%s,\"replay\":%s}', to_json(x.status), "
+    "coalesce(x.item::text, 'null'), CASE WHEN x.replay THEN 'true' ELSE 'false' END) FROM j, "
+    "verse.item_apply(j->>'id', j->>'op', j->>'pid', (j->>'gen')::bigint, (j->>'ver')::int, (j->>'item')::bigint, "
+    "j->>'to', (j->>'kind')::int, (j->>'sent')::bigint) x", 1, NULL, v, NULL, NULL, 0);
+  free(b);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
+    const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);
+    bool theirs = state && !strncmp(state, "22", 2);
+    if (!theirs) api_log("room-items: %s", PQerrorMessage(db));
+    PQclear(r); api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not kept\"}"); return;
+  }
+  api_json(q->fd, 200, PQgetvalue(r, 0, 0));
+  PQclear(r);
+}
 static void room_vitals(const request *q, PGconn *db) {
   if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST vitals\"}"); return; }
   const char *secret = getenv("OA_ROOM_TICKET_KEY");
@@ -810,6 +845,7 @@ bool player_route(const request *q) {
   if (!strncmp(rest, "survey", 6) && (rest[6] == 0 || rest[6] == '/')) { feedback(q, db, parts); return true; }
   // oa-room's HP report (#12715): signed with the seat-ticket key, not a player's
   if (!strcmp(rest, "room-vitals")) { room_vitals(q, db); return true; }
+  if (!strcmp(rest, "room-items")) { room_items(q, db); return true; }   // the item ledger (#12849)
   if (!strcmp(rest, "room-control")) { room_control(q, db); return true; }
   // the Everglade instance directory (rooms.c, #12717): a shard's report, and the instances' list
   if (rooms_route(q, db, rest)) return true;

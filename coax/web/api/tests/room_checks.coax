@@ -4,6 +4,7 @@
 //   events     Everglade's world event (#12738; migrations/0118_room_events.sql): the dials an admin
 //              sets, what everyone else may do with them, and oa-room's side of them
 //   invites    an INVITE holds a seat in the inviter's room (#12795; migrations/0125_room_invites.sql)
+//   items      the item ledger: duplicates, conflicts, versions, escrow, owners, outbox, restore (#12849; migrations/0130)
 //   parties    durable parties, their health-only roster, and placement with the party (#12852; migrations/0129_parties.sql)
 //   stats      the rooms' vitals reports and the admins' room view (#12791; migrations/0123_room_stats.sql)
 //   vitals     room vitals receipts (#12793) and server-owned WANTED (#12794; migrations/0124_room_vital_receipts.sql)
@@ -17,7 +18,7 @@
 // two answers past the room's timeout; the API's XP must end exactly the XP each seat earned.
 //   ROOM_BIN=coax/web/room/bin/room coax/web/api/test.sh
 //   API=... PGURL=... PSQL=... SIGN=... ADMIN_KEY=... [ROOM_KEY=...] [ROOM_BIN=...] \
-//     coax/web/tool.sh coax/web/api/tests/room_checks.coax [admission|chat|events|invites|parties|stats|vitals|owner|travel|builds ...]
+//     coax/web/tool.sh coax/web/api/tests/room_checks.coax [admission|chat|events|invites|parties|items|stats|vitals|owner|travel|builds ...]
 // (from the repository root; no names runs them all, in that order).
 #load "api_harness.coax";
 
@@ -483,6 +484,76 @@ ri_ticket_in :: (t: [] Ap, key: string, room: string, realm: string) -> int {
   ph: [1] Sb; sb(ph[..], "X-Verse-Player: "); sb(ph[..], key);
   h := [2] string.["Content-Type: application/json", sb_text(ph[..])];
   return ap_call(t, "POST", sb_text(q[..]), "{}", h[..]);
+}
+
+// ---- items --------------------------------------------------------------------------------------------
+
+// One ledger mutation (POST /api/playtest/room-items, signed); its answer's status word in out.
+ri_item :: (t: [] Ap, id: string, op: string, pid: string, gen: int, ver: int, item: int, to: string, kind: int, sent: int, out: [] u8) -> string {
+  b: [1] Sb;
+  sb(b[..], "{\"id\":\""); sb(b[..], id); sb(b[..], "\",\"op\":\""); sb(b[..], op); sb(b[..], "\",\"pid\":\""); sb(b[..], pid); sb(b[..], "\"");
+  if gen > 0 { sb(b[..], ",\"gen\":"); sb_int(b[..], gen); }
+  sb(b[..], ",\"ver\":"); sb_int(b[..], ver);
+  if item > 0 { sb(b[..], ",\"item\":"); sb_int(b[..], item); }
+  if to != "" { sb(b[..], ",\"to\":\""); sb(b[..], to); sb(b[..], "\""); }
+  if kind > 0 { sb(b[..], ",\"kind\":"); sb_int(b[..], kind); }
+  sb(b[..], ",\"sent\":"); sb_int(b[..], sent); sb(b[..], "}");
+  st := rc_room_post(t, "/api/playtest/room-items", sb_text(b[..]), "");
+  if st != 200 { return "http"; }
+  return ap_member(ap_body(t), "status", out);
+}
+rc_items :: (t: [] Ap) {
+  out: [4096] u8; w: [64] u8; q: [1] Sb;
+  a: [1] Player; b: [1] Player; c: [1] Player;
+  r := ap_player(t, a[..]); r = ap_player(t, b[..]); r = ap_player(t, c[..]);
+  now := rc_wall_ms();
+  // a grant, its retry after a lost answer, and another payload under its ID
+  s := ri_item(t, "it-g1", "grant", pl_id(a[..]), 0, 0, 0, "", 7, now, w[..]);
+  item := ap_member_int(ap_body(t), "item", 0);
+  ap_check(t, "items: a grant applies and names its item", s == "ok" && item > 0 && rc_is(ap_body(t), "replay", "false"), ap_body(t));
+  s = ri_item(t, "it-g1", "grant", pl_id(a[..]), 0, 0, 0, "", 7, now, w[..]);
+  ap_check(t, "items: the same grant again (its answer lost) answers the same item and grants nothing more",
+           s == "ok" && ap_member_int(ap_body(t), "item", 0) == item && rc_is(ap_body(t), "replay", "true"), ap_body(t));
+  s = ri_item(t, "it-g1", "grant", pl_id(a[..]), 0, 0, 0, "", 8, now, w[..]);
+  ap_check(t, "items: another payload under that ID is refused (conflict)", s == "conflict", ap_body(t));
+  sb(q[..], "select count(*) from verse.items where owner = '"); sb(q[..], pl_id(a[..])); sb(q[..], "'");
+  ap_check(t, "items: one item, not two", ap_sql(t, sb_text(q[..]), out[..]) == "1", "");
+  // two transfers of the item from one read: one applies, the other is refused
+  s = ri_item(t, "it-t1", "transfer", pl_id(a[..]), 0, 1, item, pl_id(b[..]), 0, now, w[..]);
+  s2b: [64] u8;
+  s2 := ri_item(t, "it-t2", "transfer", pl_id(a[..]), 0, 1, item, pl_id(c[..]), 0, now, s2b[..]);
+  sb_clear(q[..]); sb(q[..], "select owner from verse.items where id = "); sb_int(q[..], item);
+  ap_check(t, "items: two transfers from one read: the first applies, the second is refused (version), the item moved once",
+           s == "ok" && s2 == "version" && ap_sql(t, sb_text(q[..]), out[..]) == pl_id(b[..]), s2);
+  s = ri_item(t, "it-t3", "transfer", pl_id(a[..]), 0, 2, item, pl_id(c[..]), 0, now, w[..]);
+  ap_check(t, "items: a transfer of an item that isn't yours is refused (held)", s == "held", ap_body(t));
+  // escrow: held until it settles or cancels
+  s = ri_item(t, "it-e1", "escrow", pl_id(b[..]), 0, 1, item, pl_id(c[..]), 0, now, w[..]);
+  s2 = ri_item(t, "it-e2", "transfer", pl_id(b[..]), 0, 2, item, pl_id(a[..]), 0, now, s2b[..]);
+  ap_check(t, "items: an escrowed item can't be transferred elsewhere", s == "ok" && s2 == "held", s2);
+  s = ri_item(t, "it-e3", "settle", pl_id(b[..]), 0, 2, item, "", 0, now, w[..]);
+  ap_check(t, "items: the escrow settles to its party", s == "ok" && ap_sql(t, sb_text(q[..]), out[..]) == pl_id(c[..]), ap_body(t));
+  s = ri_item(t, "it-e4", "cancel", pl_id(c[..]), 0, 1, item, "", 0, now, w[..]);
+  ap_check(t, "items: no escrow to cancel (held)", s == "held", ap_body(t));
+  // an old owner's write, and an expired ID
+  sb_clear(q[..]); sb(q[..], "select verse.room_owner_next('"); sb(q[..], pl_id(c[..])); sb(q[..], "')");
+  g1 := rc_num(ap_sql(t, sb_text(q[..]), out[..])); g2 := rc_num(ap_sql(t, sb_text(q[..]), out[..]));
+  s = ri_item(t, "it-o1", "grant", pl_id(c[..]), g1, 1, 0, "", 3, now, w[..]);
+  ap_check(t, "items: a write under an older owner generation is refused (stale)", g2 == g1 + 1 && s == "stale", ap_body(t));
+  s = ri_item(t, "it-o2", "grant", pl_id(c[..]), g2, 1, 0, "", 3, now, w[..]);
+  ap_check(t, "items: the newest owner's applies", s == "ok", ap_body(t));
+  s = ri_item(t, "it-x1", "grant", pl_id(c[..]), g2, 2, 0, "", 3, now - 90000000, w[..]);
+  ap_check(t, "items: a retry first sent more than a day ago is refused (expired), not applied", s == "expired", ap_body(t));
+  st := rc_room_post(t, "/api/playtest/room-items", "{\"id\":\"x\"}", "0000000000000000000000000000000000000000000000000000000000000000");
+  ap_check(t, "items: an unsigned mutation is refused (401)", st == 401, ap_body(t));
+  // the outbox: one entry a change, in order; a consumer from its last sequence skips what it has
+  ap_check(t, "items: the outbox has an entry for each applied change (grant, transfer, escrow, settle, grant)",
+           ap_sql(t, "select string_agg(op, ' ' order by seq) from verse.item_outbox", out[..]) == "grant transfer escrow settle grant", "");
+  ap_check(t, "items: a consumer at sequence 2 gets 3 onward, once",
+           ap_sql(t, "select string_agg(seq::text, ' ') from verse.item_outbox_since(2, 10)", out[..]) == "3 4 5", "");
+  ap_check(t, "items: replaying the outbox gives the same items, owners and versions (restore)", ap_sql(t, "select verse.item_reconcile()", out[..]) == "t", "");
+  ap_do(t, "update verse.items set owner = 'p-tampered' where id = (select max(id) from verse.items)");
+  ap_check(t, "items: a row changed outside the ledger fails the reconciliation", ap_sql(t, "select verse.item_reconcile()", out[..]) == "f", "");
 }
 
 // ---- stats --------------------------------------------------------------------------------------------
@@ -1216,7 +1287,7 @@ tool_main :: () -> int #export_c {
   }
   t: [1] Ap;
   if !ap_open(t[..]) { return 2; }
-  names := [10] string.["admission", "chat", "events", "invites", "parties", "stats", "vitals", "owner", "travel", "builds"];
+  names := [11] string.["admission", "chat", "events", "invites", "parties", "items", "stats", "vitals", "owner", "travel", "builds"];
   for name: names {
     run := args_count(a[..]) == 0;
     for i: 0..<args_count(a[..]) { if args_at(a[..], i) == name { run = true; } }
@@ -1228,6 +1299,7 @@ tool_main :: () -> int #export_c {
     if name == "events" { rc_events(t[..]); }
     if name == "invites" { rc_invites(t[..]); }
     if name == "parties" { rc_parties(t[..]); }
+    if name == "items" { rc_items(t[..]); }
     if name == "stats" { rc_stats(t[..]); }
     if name == "vitals" {
       rc_vitals_checks(t[..]);

@@ -685,6 +685,21 @@ first). Checks: `room.coax` "owner (#12834)", `everglade.coax` "r 0
 elsewhere", and `room_checks.coax` owner, which pauses and resumes a running
 room process.
 
+## A game item changes only in the ledger's one transaction
+
+Every item, each character's inventory version and every applied operation
+ID live in one store (`verse.items`, `verse.inventories`, `verse.item_ops`,
+migration 0130, #12849), the Postgres form of `aethyr/session/ledger.coax`.
+`verse.item_apply` checks and changes them in one transaction: the same ID
+and payload answer the recorded result (refusals too), another payload under
+an ID is `conflict`, a generation below the character's newest owner
+(`verse.room_owners`) is `stale`, a version other than the inventory's is
+`version`, and an escrowed item moves only by its settle or cancel. Each
+change appends its `verse.item_outbox` entry in the same transaction, and
+replaying the outbox gives the same items, owners and versions
+(`verse.item_reconcile`). Only a room-key-signed post reaches it. The ledger
+holds game items only, never money. Checks: `coax/web/api/tests/room_checks.coax` items.
+
 ## A party roster carries health only, to its members, never across a block
 
 A party (`verse.parties`, migration 0129, #12852) outlives rooms and
