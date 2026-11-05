@@ -776,13 +776,6 @@
       "source": "psionic/examples/diagnose-faults.coax",
       "chapter": "psionic/book/ch105-make-a-model-fail-then-find-out-why.md",
       "stdout": "psionic/fixtures/diagnose-faults.out",
-      "platform_stdout": {
-        "darwin": "psionic/fixtures/diagnose-faults.darwin.out"
-      },
-      "platform_tolerance": {
-        "relative": 1e-9,
-        "reason": "macOS's libm rounds some sin, cos, exp and log results a step from glibc's (#12689, #12912), and the examples' last digits follow; this transcript is exact on macOS"
-      },
       "exit_status": 0,
       "modes": [
         "debug",
@@ -793,13 +786,6 @@
       "source": "psionic/examples/choose-next-example.coax",
       "chapter": "psionic/book/ch108-choose-the-next-example-to-learn-from.md",
       "stdout": "psionic/fixtures/choose-next-example.out",
-      "platform_stdout": {
-        "darwin": "psionic/fixtures/choose-next-example.darwin.out"
-      },
-      "platform_tolerance": {
-        "relative": 1e-9,
-        "reason": "macOS's libm rounds some sin, cos, exp and log results a step from glibc's (#12689, #12912), and the examples' last digits follow; this transcript is exact on macOS"
-      },
       "exit_status": 0,
       "modes": [
         "debug",
@@ -810,13 +796,6 @@
       "source": "psionic/examples/distill-mammoth.coax",
       "chapter": "psionic/book/ch141-distill-mammoth-into-elephant.md",
       "stdout": "psionic/fixtures/distill-mammoth.out",
-      "platform_stdout": {
-        "darwin": "psionic/fixtures/distill-mammoth.darwin.out"
-      },
-      "platform_tolerance": {
-        "relative": 1e-9,
-        "reason": "macOS's libm rounds some sin, cos, exp and log results a step from glibc's (#12689, #12912), and the examples' last digits follow; this transcript is exact on macOS"
-      },
       "exit_status": 0,
       "modes": [
         "debug",
@@ -1114,13 +1093,6 @@
       "source": "psionic/examples/distill-router.coax",
       "chapter": "psionic/book/ch223-distill-elephant-into-a-small-router.md",
       "stdout": "psionic/fixtures/distill/distill-router.out",
-      "platform_stdout": {
-        "darwin": "psionic/fixtures/distill/distill-router.darwin.out"
-      },
-      "platform_tolerance": {
-        "relative": 1e-9,
-        "reason": "macOS's libm rounds some sin, cos, exp and log results a step from glibc's (#12689, #12912), and the examples' last digits follow; this transcript is exact on macOS"
-      },
       "exit_status": 0,
       "modes": [
         "debug",
@@ -2464,13 +2436,6 @@
       "source": "psionic/examples/split-model.coax",
       "chapter": "psionic/book/ch183-split-a-model-across-devices.md",
       "stdout": "psionic/fixtures/split-model.out",
-      "platform_stdout": {
-        "darwin": "psionic/fixtures/split-model.darwin.out"
-      },
-      "platform_tolerance": {
-        "relative": 1e-9,
-        "reason": "macOS's libm rounds some sin, cos, exp and log results a step from glibc's (#12689, #12912), and the examples' last digits follow; this transcript is exact on macOS"
-      },
       "exit_status": 0,
       "modes": [
         "debug",
@@ -2868,13 +2833,6 @@
       "source": "psionic/examples/tiny-train.coax",
       "chapter": "psionic/book/ch115-train-the-whole-tiny-decoder.md",
       "stdout": "psionic/fixtures/tiny-train.out",
-      "platform_stdout": {
-        "darwin": "psionic/fixtures/tiny-train.darwin.out"
-      },
-      "platform_tolerance": {
-        "relative": 1e-9,
-        "reason": "macOS's libm rounds some sin, cos, exp and log results a step from glibc's (#12689, #12912), and the examples' last digits follow; this transcript is exact on macOS"
-      },
       "exit_status": 0,
       "modes": [
         "debug",
@@ -2885,13 +2843,6 @@
       "source": "psionic/examples/patch-shortcut.coax",
       "chapter": "psionic/book/ch119-change-an-activation-change-the-answer.md",
       "stdout": "psionic/fixtures/patch-shortcut.out",
-      "platform_stdout": {
-        "darwin": "psionic/fixtures/patch-shortcut.darwin.out"
-      },
-      "platform_tolerance": {
-        "relative": 1e-9,
-        "reason": "macOS's libm rounds some sin, cos, exp and log results a step from glibc's (#12689, #12912), and the examples' last digits follow; this transcript is exact on macOS"
-      },
       "exit_status": 0,
       "modes": [
         "debug",
@@ -2929,13 +2880,6 @@
       "source": "psionic/examples/nanochat-gradient.coax",
       "chapter": "psionic/book/ch127-differentiate-nanochat.md",
       "stdout": "psionic/fixtures/nanochat-gradient.out",
-      "platform_stdout": {
-        "darwin": "psionic/fixtures/nanochat-gradient.darwin.out"
-      },
-      "platform_tolerance": {
-        "relative": 1e-9,
-        "reason": "macOS's libm rounds some sin, cos, exp and log results a step from glibc's (#12689, #12912), and the examples' last digits follow; this transcript is exact on macOS"
-      },
       "exit_status": 0,
       "modes": [
         "debug",
@@ -2946,13 +2890,6 @@
       "source": "psionic/examples/one-trainer.coax",
       "chapter": "psionic/book/ch118-one-trainer-for-every-model.md",
       "stdout": "psionic/fixtures/one-trainer.out",
-      "platform_stdout": {
-        "darwin": "psionic/fixtures/one-trainer.darwin.out"
-      },
-      "platform_tolerance": {
-        "relative": 1e-9,
-        "reason": "macOS's libm rounds some sin, cos, exp and log results a step from glibc's (#12689, #12912), and the examples' last digits follow; this transcript is exact on macOS"
-      },
       "exit_status": 0,
       "modes": [
         "debug",
@@ -3008,13 +2945,6 @@
       "source": "psionic/examples/device-group.coax",
       "chapter": "psionic/book/ch132-train-across-devices.md",
       "stdout": "psionic/fixtures/device-group.out",
-      "platform_stdout": {
-        "darwin": "psionic/fixtures/device-group.darwin.out"
-      },
-      "platform_tolerance": {
-        "relative": 1e-9,
-        "reason": "macOS's libm rounds some sin, cos, exp and log results a step from glibc's (#12689, #12912), and the examples' last digits follow; this transcript is exact on macOS"
-      },
       "exit_status": 0,
       "modes": [
         "debug",

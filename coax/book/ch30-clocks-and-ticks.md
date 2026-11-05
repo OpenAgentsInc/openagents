@@ -21,7 +21,8 @@ lands on every scheduled event.
 A clock is an empty tag struct. An instant is a nanosecond count in an `s64`
 with the tag as a type parameter, so `Instant(Sim)` and `Instant(Steady)` are
 different types. The library declares `Sim`, `Steady`, `Civil`, `UTC`, `TAI`,
-`TT` and `TDB`, and a constructor for each, such as `sim_at(ns)`:
+`TT` and `TDB`, and a constructor for each, such as `sim_at(ns)`. A literal
+that names its clock, such as `Instant(Sim).{ns = 0}`, works too:
 
 ```jai
 Instant :: struct($C: copyable) { ns: s64; }
@@ -65,13 +66,13 @@ $ coax run examples/ch30_clocks_refused.coax
 examples/ch30_clocks_refused.coax:7:36: error[E0348]: '$C' is Steady from another argument of 'elapsed', but argument 2 is Sim
     print("%\n", clock.elapsed(wall, sim));   // refused: two clocks
                                      ^
-  fix: pass the same type, or convert it: cast(Steady) value
+  fix: pass the same type; a struct or array does not convert with cast
 1 error
 ```
 
-The fix line suggests a cast, but a clock tag has no value to cast. To
-compare a steady instant with a simulation instant, convert one of them
-explicitly, as the next section shows.
+A clock tag is a struct with no value, so nothing converts to it with a
+cast. To compare a steady instant with a simulation instant, convert one of
+them explicitly, as the next section shows.
 
 ## Conversions name their source
 
@@ -252,9 +253,6 @@ that the compiler tracks and refuses in pure code is R11 work.
   max_age=4ms))`. Today a schedule is a `Rate_Task` array and a connection is
   a `Hold` value.
 - Clock reads as compiler-checked effects (R11).
-- A constructor that takes the clock as a type argument, such as
-  `Instant(Sim).{ns = 0}`. `coax0` reports E0804 for that form, so the
-  library provides one constructor per clock.
 - Adoption: the simulated robot's physics and control steps and Verse's
   fixed-step update driven from declared schedules
   ([Aethyr chapter 1](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch001-a-frame-has-a-fixed-step.md)),

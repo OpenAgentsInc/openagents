@@ -98,6 +98,8 @@ CK_expr_inner :: (c:CK_Context,id:int,want:CK_Hint)->int {
     if d==CK_NONE {field:=e.head;while field!=CK_NONE {ignored:=CK_value(c,c.nodes[field].a,CK_Hint.{});field=c.nodes[field].next;}if !bound {return CK_NONE;}code:="E0302";if CK_lookup(c,CK_Tag.enum_,e.d)!=0 {code="E0354";}CK_error(c,e.loc,code,CK_join3(c,"'",name,"' is not a struct"),"");return CK_NONE;}
     // A generic struct's literal is its hint's instance, or the one its fields deduce; the
     // fields are then checked against that instance like any literal's.
+    // Instant(Sim).{...} names its instance.
+    if c.nodes[d].generic && syntax.head!=CK_NONE {t:=CK_resolve(c,e.d,CK_Access.value);if c.types[t].kind!=CK_Kind.struct_ {return CK_NONE;}d=c.types[t].decl;}  // type 0 (unresolved) is no struct
     if c.nodes[d].generic {h:=c.types[want.type];if h.kind==CK_Kind.struct_ && c.nodes[h.decl].origin==d {d=h.decl;}else {d=CK_deduce(c,id,d);if d==CK_NONE {return CK_NONE;}}}
     CK_layout(c,d);field:=e.head;
     while field!=CK_NONE && !c.state[0].fatal {

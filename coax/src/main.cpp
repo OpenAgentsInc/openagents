@@ -1622,6 +1622,10 @@ static int build(const char *path, const std::string &exe, const EmitOptions &op
   std::vector<std::string> args = {cc && *cc ? cc : "cc", "-std=c11", "-w", "-O"+std::to_string(opts.optimization)};
   if (opts.debug_info) args.push_back("-g");
   args.push_back("-ffp-contract=off");
+  // Apple clang at -O1 and above fuses sin(x) and cos(x) of one argument into
+  // __sincos_stret, which rounds some results differently from sin and cos,
+  // so a release build printed other digits than a debug one (#12912).
+  args.insert(args.end(),{"-fno-builtin-sin","-fno-builtin-cos"});
   std::string object=opts.library?exe:exe+".o";
   args.insert(args.end(),{"-c","-o",object,c_path});
   int rc;

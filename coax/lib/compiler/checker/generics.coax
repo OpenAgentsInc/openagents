@@ -154,7 +154,13 @@ CK_bind :: (c:CK_Context,inst:int,node:int,t:int,arg:int,i:int) {
   if r==CK_NONE {CK_satisfies(c,inst,name,t,loc);ignored:=CK_new_type(c,CK_Type.{kind=CK_Kind.param,name=name,decl=inst,elem=t,scope=c.nodes[inst].scope});return;}
   bound:=c.types[r].elem;
   if bound!=t {parts:=[7] string.["'",name,"' is ",c.types[bound].name,CK_earlier(c,inst),proc,CK_join2(c,"', but ",CK_which(c,inst,i))];
-    CK_error(c,loc,"E0348",CK_join3(c,CK_text(c,parts[..])," is ",c.types[t].name),CK_join3(c,"pass the same type, or convert it: cast(",c.types[bound].name,") value"));}
+    CK_error(c,loc,"E0348",CK_join3(c,CK_text(c,parts[..])," is ",c.types[t].name),CK_cast_fix(c,bound,t));}
+}
+// E0348's fix: a cast only when neither side is a struct or array, which
+// convert to nothing (#12913: cast(Sim) for a clock's tag type).
+CK_cast_fix :: (c:CK_Context,bound:int,t:int)->string {
+  if CK_aggregate(c,bound) || CK_aggregate(c,t) {return "pass the same type; a struct or array does not convert with cast";}
+  return CK_join3(c,"pass the same type, or convert it: cast(",c.types[bound].name,") value");
 }
 CK_bind_length :: (c:CK_Context,inst:int,node:int,length:int,arg:int,i:int) {
   name:=CK_join2(c,"$",c.nodes[node].name);r:=CK_param_record(c,inst,name);
@@ -217,10 +223,11 @@ CK_constrain :: (c:CK_Context,id:int,r:int) {
 }
 // Only equatable, ordered and numeric can be unmet.
 CK_constraint_name :: (need:int)->string {if need==2 {return "equatable";}if need==3 {return "ordered";}return "numeric";}
-// Whether t can stand for a placeholder that needs `need`.
+// Whether t can stand for a placeholder that needs `need`. Every type is
+// copyable, an unconstrained placeholder too.
 CK_meets :: (c:CK_Context,t:int,need:int)->bool {
-  r:=c.types[t];if r.kind==CK_Kind.param {return r.need>=need;}
   if need<=1 {return true;}
+  r:=c.types[t];if r.kind==CK_Kind.param {return r.need>=need;}
   if r.carrier!=0 {return need<=3;}
   if need==2 {return !CK_aggregate(c,t) && r.kind!=CK_Kind.view;}
   return CK_numeric(c,t);

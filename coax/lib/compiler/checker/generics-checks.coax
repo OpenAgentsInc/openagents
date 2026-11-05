@@ -5024,3 +5024,44 @@
   #assert types[29].kind==CK_Kind.param && types[29].name=="$U" && types[29].elem==11 && types[29].decl==156 && types[29].size==0 && types[29].alignment==1 && types[29].bits==0 && types[29].length==0;
 }
 
+// #12913: E0348 suggests a cast only between types that convert.
+#test "generics: E0348 suggests cast only when neither type is a struct or array" {
+  types:[8] CK_Type;types[1]=CK_Type.{kind=CK_Kind.struct_,name="Sim"};types[2]=CK_Type.{kind=CK_Kind.struct_,name="Steady"};
+  types[3]=CK_Type.{kind=CK_Kind.integer,name="u8"};types[4]=CK_Type.{kind=CK_Kind.untyped_int,name="integer literal"};types[5]=CK_Type.{kind=CK_Kind.array,name="[2] int"};
+  nodes:[2] CK_Node;locals:[1] CK_Local;errors:[1] CK_Error;bytes:[512] u8;state:[1] CK_State;
+  c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+  none:="pass the same type; a struct or array does not convert with cast";
+  #assert CK_cast_fix(c,1,2)==none && CK_cast_fix(c,1,3)==none && CK_cast_fix(c,3,1)==none && CK_cast_fix(c,5,4)==none && CK_cast_fix(c,4,5)==none;
+  #assert CK_cast_fix(c,3,4)=="pass the same type, or convert it: cast(u8) value";
+}
+// Source: "Sim :: struct {}\nI :: struct($C: copyable) { ns: int; }\nmain :: () { a := I(Sim).{ns = 3}; b := I(Nope).{ns = 1}; }"
+// #12913: a literal that names its instance checks against it; an unknown argument is refused.
+#test "generic structs: a literal may name its instance" {
+  initial:=[21] CK_Node.[
+    CK_Node.{},
+    CK_Node.{kind=CK_Tag.file,head=2,tail=7},
+    CK_Node.{kind=CK_Tag.struct_,loc=CK_Loc.{line=1,column=1,offset=0},name="Sim",next=3},
+    CK_Node.{kind=CK_Tag.struct_,loc=CK_Loc.{line=2,column=1,offset=17},name="I",d=4,head=5,tail=5,next=7},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=2,column=13,offset=29},name="C",name2="copyable",loc2=CK_Loc.{line=2,column=17,offset=33}},
+    CK_Node.{kind=CK_Tag.field,loc=CK_Loc.{line=2,column=29,offset=45},name="ns",a=6,field_index=0},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=2,column=33,offset=49},name="int"},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=3,column=1,offset=56},name="main",b=8},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=3,column=12,offset=67},head=9,tail=15},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=3,column=14,offset=69},name="a",a=10,next=15},
+    CK_Node.{kind=CK_Tag.expr_struct,loc=CK_Loc.{line=3,column=19,offset=74},d=11,head=13,tail=13},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=3,column=19,offset=74},name="I",head=12,tail=12},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=3,column=21,offset=76},name="Sim"},
+    CK_Node.{kind=CK_Tag.field_init,loc=CK_Loc.{line=3,column=27,offset=82},name="ns",a=14},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=3,column=32,offset=87},value=3},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=3,column=36,offset=91},name="b",a=16},
+    CK_Node.{kind=CK_Tag.expr_struct,loc=CK_Loc.{line=3,column=41,offset=96},d=17,head=19,tail=19},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=3,column=41,offset=96},name="I",head=18,tail=18},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=3,column=43,offset=98},name="Nope"},
+    CK_Node.{kind=CK_Tag.field_init,loc=CK_Loc.{line=3,column=50,offset=105},name="ns",a=20},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=3,column=55,offset=110},value=1}];
+  nodes:[64] CK_Node;for v,i:initial {nodes[i]=v;}
+  types:[64] CK_Type;locals:[31] CK_Local;errors:[16] CK_Error;bytes:[12296] u8;state:[1] CK_State;
+  context:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+  ok:=CK_run(context,initial.count-1,CK_Options.{library=true,metal=false,authority=false});
+  #assert ok==false && state[0].error_count==1 && errors[0].code=="E0302" && errors[0].loc.line==3 && errors[0].loc.column==43 && errors[0].message=="unknown type 'Nope'" && nodes[16].type==0 && nodes[10].type!=0 && types[nodes[10].type].kind==CK_Kind.struct_ && nodes[types[nodes[10].type].decl].origin==3 && types[nodes[10].type].size==8;
+}

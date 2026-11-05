@@ -32,7 +32,7 @@
       "evidence": [
         {
           "path": "coax/tests/generics.py",
-          "sha256": "84b663bb202b6c701a0cebcd58e6cf70a74b25aec1489cc658ac1b95ac4ed307"
+          "sha256": "f7f087799dae7da5f46e7ff528ebc444cc2435a315cdf2805e5aa11a9b5a91f5"
         }
       ]
     },
@@ -182,7 +182,7 @@
         },
         {
           "path": "psionic/book/examples.json",
-          "sha256": "cfc52640204808726b271426435868daf9521cbefb91abad4bc0bb906d67ff3f"
+          "sha256": "19dc4db3062b6b9995e3ab90e65dbd90d2151d273921fa2c513f3995c42673eb"
         },
         {
           "path": "docs/verification/psionic-ch10-2026-10-29.md",
@@ -267,7 +267,7 @@
         },
         {
           "path": "psionic/book/examples.json",
-          "sha256": "cfc52640204808726b271426435868daf9521cbefb91abad4bc0bb906d67ff3f"
+          "sha256": "19dc4db3062b6b9995e3ab90e65dbd90d2151d273921fa2c513f3995c42673eb"
         },
         {
           "path": "docs/verification/psionic-gptoss-device-2026-10-29.md",

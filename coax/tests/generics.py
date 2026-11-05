@@ -442,6 +442,50 @@ class Constraints(unittest.TestCase):
             self.assertEqual(self.coax("explain", code).returncode, 0, code)
 
 
+class Diagnostics12913(unittest.TestCase):
+    """#12913: copyable placeholders, struct mismatches and named instance literals."""
+    setUp = TypeParameters.setUp
+    write = TypeParameters.write
+    coax = TypeParameters.coax
+    codes = TypeParameters.codes
+
+    def test_an_unconstrained_placeholder_meets_copyable(self):
+        source = ('#import "Basic";\n'
+                  "Box :: struct($C: copyable) { n: int; }\n"
+                  "keep :: (x: $C: copyable) -> int { return 1; }\n"
+                  "wrap :: (x: $T) -> int { return keep(x); }\n"
+                  "tag :: (b: Box($K)) -> int { return b.n + 1; }\n"
+                  'main :: () { b: Box(bool); b.n = 4; print("% %\\n", wrap(3), tag(b)); }\n')
+        r = self.coax("run", self.write("copyable.coax", source))
+        self.assertEqual((r.returncode, r.stdout), (0, "1 5\n"), r.stderr)
+        # An unmet constraint still names the constraint it needs.
+        r = self.coax("check", self.write("ordered.coax", "max :: (a: $T: ordered) -> $T { return a; } wrap :: (x: $T) -> $T { return max(x); }\nmain :: () {}\n"))
+        self.assertIn("$T is not ordered, but 'max' needs '$T: ordered'", r.stderr)
+
+    def test_a_struct_mismatch_does_not_suggest_cast(self):
+        source = ("A :: struct { n: int; } B :: struct { n: int; }\n"
+                  "same :: (a: $T, b: $T) -> int { return 1; }\n"
+                  "g :: () { a: A; b: B; n := same(a, b); }\nmain :: () {}\n")
+        r = self.coax("check", self.write("tags.coax", source))
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("E0348", r.stderr)
+        self.assertIn("fix: pass the same type; a struct or array does not convert with cast", r.stderr)
+        self.assertNotIn("cast(A)", r.stderr)
+        r = self.coax("check", self.write("numbers.coax", "pick :: (a: $T, b: $T) -> $T { return a; } g :: () { x: u8 = 1; y: int = 2; z := pick(x, y); }\nmain :: () {}\n"))
+        self.assertIn("fix: pass the same type, or convert it: cast(u8) value", r.stderr)
+
+    def test_a_literal_may_name_its_instance(self):
+        source = ('#import "Basic";\n'
+                  "Sim :: struct {} Instant :: struct($C: copyable) { ns: s64; }\n"
+                  "Pair :: struct($T) { a: $T; b: $T; }\n"
+                  "at :: (i: Instant($C)) -> s64 { return i.ns; }\n"
+                  'main :: () { i := Instant(Sim).{ns = 7}; p := Pair(f64).{a = 1, b = 2}; print("% %\\n", at(i), p.a + p.b); }\n')
+        r = self.coax("run", self.write("named.coax", source))
+        self.assertEqual((r.returncode, r.stdout), (0, "7 3.0\n"), r.stderr)
+        code, codes = self.codes(self.write("wrong.coax", "Pair :: struct($T) { a: $T; } g :: () { p := Pair(int).{a = true}; }\nmain :: () {}\n"))
+        self.assertEqual(codes, ["E0367"])
+
+
 class LiteralArguments(unittest.TestCase):
     """0.43.0: typed arguments bind $T first, then literals take the bound type."""
     setUp = TypeParameters.setUp
