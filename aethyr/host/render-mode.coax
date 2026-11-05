@@ -1,0 +1,8 @@
+// The single host-version/profile decision, usable by the small web services
+// companion without importing the renderer's complete typed facade.
+#authority;
+#forall "only version one and the qualified Everglade profile select shared presentation" which:0..<20 {
+ versions:=[5]int.[-1,0,1,2,9223372036854775807];profiles:=[4]int.[-1,2,13,18];
+ #assert hrm_presentation(versions[which/4],profiles[which%4])==(which==9);
+}
+hrm_presentation :: (version:int,profile:int)->bool #export_c {return version==1&&profile==2;}

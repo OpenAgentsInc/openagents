@@ -236,6 +236,17 @@ Image byte parity and the separately measured disabled presentation path do
 not enable a desktop default or substitute for the remaining complete host
 services.
 
+The new admitted 3f8 compiler regenerates shader products byte-identical to
+the frozen graphics corpus. Actual current17a browser, Vulkan and Metal
+adapters admit the new package identity; complete displayed and direct
+native/Wasm/Vulkan composition pass the unchanged live allowance, retaining
+all nonzero strict failures. This clears the scoped graphics admission exit,
+not ordinary service/default integration. The standalone shared presentation
+mode and typed selector kill 5/2 root mutants; eligible invalid requests
+refuse rather than fall back. No ordinary adapter or realm is opted in by
+loading that standalone policy. Exact source/SDK scope is recorded in
+`docs/verification/host-contract-2026-11-05/graphics-admitted.md`.
+
 ## The indexed KV arena preserves the durable v1 contract
 
 `coax/lib/bitcoin/kvskip.coax` is an optional native representation behind

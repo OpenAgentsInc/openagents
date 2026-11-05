@@ -8,6 +8,11 @@ The subsequent [original-provenance preparation](qualified-shared-frame.md)
 supplies a genuinely matching admitted historical CPU compiler and separately
 pinned current product inputs. Its new half-float comparisons pass; ordinary
 8-bit Vulkan presentation fails the unchanged gate and remains an explicit exit.
+The subsequent [admitted graphics/current-realm record](graphics-admitted.md)
+uses an actually admitted new compiler and unchanged shader bytes. All three
+adapters accept its new package identity; current displayed and direct
+native/Wasm/Vulkan composition pass the inherited live allowance. Ordinary
+selector/service integration remains required; earlier failures stay retained.
 
 The disabled [explicit display quantization iteration](display-quantized-iteration.md)
 has byte-exact conversion probes on all three GPUs and a frozen full-frame
