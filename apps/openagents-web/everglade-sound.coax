@@ -158,12 +158,14 @@ egs_cue :: (s: [] Everglade, id: int, at: Point, wait: f32, gain: f32) {
   if !d[0].page || id < 0 || id >= SFX_COUNT || !finite3(at) || d[0].cue_n >= EGS_CUES { return; }
   d[0].cues[d[0].cue_n] = EgsCue.{id = id, at = at, wait = hi(wait, 0), gain = gain};
   d[0].cue_n += 1; d[0].cued += 1;
+  ega_heard(s, id, at, false);   // its caption (everglade-access.coax)
 }
 egs_here :: (s: [] Everglade, id: int, gain: f32) {
   d := egs_of(s);
   if !d[0].page || id < 0 || d[0].cue_n >= EGS_CUES { return; }
   d[0].cues[d[0].cue_n] = EgsCue.{id = id, wait = 0, gain = gain, here = true};
   d[0].cue_n += 1; d[0].cued += 1;
+  ega_heard(s, id, v3(0, 0, 0), true);
 }
 // A spell goes off: its cast at the hand and, `flight` seconds on its way to `at`, its flight
 // between (the impact is its landing's, egs_hit).

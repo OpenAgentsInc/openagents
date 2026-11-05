@@ -2447,7 +2447,7 @@ spells_camera :: (s: [] Everglade, shot: Shot, dt: f32) -> Shot {
   if !sp_on(s) { return shot; }
   s[0].sp.shake = hi(s[0].sp.shake - dt, 0);
   out := shot;
-  if s[0].sp.shake > 0.001 {
+  if s[0].sp.shake > 0.001 && !ega_still(s) {   // REDUCED MOTION: no shake (everglade-access.coax)
     a := s[0].sp.shake * s[0].sp.shake * 0.28;
     t := f32(s[0].time);
     jolt := times(v3(sin(t * 47) + 0.5 * sin(t * 83), sin(t * 53 + 1), sin(t * 61 + 2) + 0.5 * sin(t * 97)), a);

@@ -220,7 +220,10 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   // the same Coax step the room server runs for your seat, in the order written there.
   bool busy = everglade_busy(at(state)) || everglade_held(at(state));
   if (busy) sticks = verse_sticks_reset();
-  coax_t_EgMoveIn input = {g->key_x, g->key_y, sticks.pad_x, sticks.pad_y, verse_runs(g->run, sticks.run, sticks.pad_x, sticks.pad_y),
+  /* a controller's stick walks as a thumb's does (everglade-access.coax everglade_pad) */
+  float walk_x = sticks.pad_x + (busy ? 0 : everglade_pad_x(at(state))), walk_y = sticks.pad_y + (busy ? 0 : everglade_pad_y(at(state)));
+  walk_x = walk_x < -1 ? -1 : walk_x > 1 ? 1 : walk_x; walk_y = walk_y < -1 ? -1 : walk_y > 1 ? 1 : walk_y;
+  coax_t_EgMoveIn input = {g->key_x, g->key_y, walk_x, walk_y, verse_runs(g->run, sticks.run, walk_x, walk_y),
                            g->jump || sticks.jump, everglade_player_theta(at(state))};
   if (sticks.zoom != 0) everglade_wheel(at(state), sticks.zoom);   /* a pinch zooms as the wheel does (verse/grid.coax) */
   sticks = verse_sticks_used(sticks);
@@ -492,6 +495,24 @@ EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, floa
   if (everglade_pointer(at(state), x, y, phase, kind, id)) return 1u;
   if (kind != 0) sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
   return kind != 0 ? 1u : 0u;
+}
+// The accessible layer (coax/web/host.js a11yMirror; everglade-access.coax): the HUD's controls as
+// lines, and the one pressed there; a controller's stick and buttons, once a frame.
+static char a11y_text[8192];
+EXPORT("coaxial_a11y_buf") uint32_t coaxial_a11y_buf(void) { return (uint32_t)(uintptr_t)a11y_text; }
+EXPORT("coaxial_a11y") int32_t coaxial_a11y(uint32_t state) {
+  coax_v_u8 out = {(uint8_t *)a11y_text, sizeof a11y_text};
+  int64_t n = everglade_a11y(at(state), out);
+  return n < 0 ? 0 : (int32_t)n;
+}
+EXPORT("coaxial_a11y_do") uint32_t coaxial_a11y_do(uint32_t state, int32_t id) {
+  start(state);
+  return everglade_a11y_do(at(state), id) ? 1u : 0u;
+}
+EXPORT("coaxial_a11y_focus") void coaxial_a11y_focus(uint32_t state, int32_t id) { everglade_a11y_focus(at(state), id); }
+EXPORT("coaxial_pad") void coaxial_pad(uint32_t state, float x, float y, int32_t first, int32_t buttons) {
+  (void)first;
+  everglade_pad(at(state), x, y, buttons);
 }
 // The spell bar's icons and card for the host to draw (coax/web/host.js coaxial_media): everglade-spells.coax sp_media.
 EXPORT("coaxial_media") uint32_t coaxial_media(uint32_t state) { coax_t_Everglade *g = city(state); return g->sp.media_big.count ? (uint32_t)(uintptr_t)g->sp.media_big.data : (uint32_t)(uintptr_t)g->sp.media.e; }

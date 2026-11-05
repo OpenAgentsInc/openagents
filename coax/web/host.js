@@ -810,6 +810,7 @@ function pageFacts() {
     cores: navigator.hardwareConcurrency || 0, memory: navigator.deviceMemory || 0, quality: storedQuality(),
     frame_hz: globalThis.coaxialPreferredFrameRate || 0, minimum_hz: globalThis.coaxialMinimumFrameRate || 0,
     sound: (() => { try { return localStorage.getItem("verse.sound") || ""; } catch { return ""; } })(),
+    settings: (() => { try { return localStorage.getItem("verse.settings") || ""; } catch { return ""; } })(),
     focused: document.hasFocus() ? 1 : 0,
     clip: globalThis.coaxialClip === true ? 1 : 0,
     webdriver: navigator.webdriver ? 1 : 0, fcp: fcp ? Math.round(fcp.startTime) : 0, dcl: nav ? Math.round(nav.domContentLoadedEventEnd) : 0,
@@ -2179,8 +2180,9 @@ function frame(now) {
 }
 
 // A controller (a module that exports coaxial_pad): the first pad's left stick (x right, y
-// forward) and its first button, once a frame; the module decides what they do (myrealm:
-// aethyr/input.coax). A pad gone sends one still frame.
+// forward), its first button, and every button as bits (bit b for button b), once a frame; the
+// module decides what they do (myrealm: aethyr/input.coax; Everglade: its settings record,
+// everglade-access.coax). A pad gone sends one still frame.
 let padLive = false;
 function padPoll() {
   const x = engine?.exports;
@@ -2188,7 +2190,9 @@ function padPoll() {
   const pad = [...navigator.getGamepads()].find((g) => g && g.connected);
   if (!pad && !padLive) return;
   padLive = !!pad;
-  x.coaxial_pad(arena.state, pad ? Number(pad.axes[0]) || 0 : 0, pad ? -(Number(pad.axes[1]) || 0) : 0, pad?.buttons[0]?.pressed ? 1 : 0);
+  let bits = 0;
+  if (pad) for (let i = 0; i < Math.min(31, pad.buttons.length); i++) if (pad.buttons[i]?.pressed) bits |= 1 << i;
+  x.coaxial_pad(arena.state, pad ? Number(pad.axes[0]) || 0 : 0, pad ? -(Number(pad.axes[1]) || 0) : 0, pad?.buttons[0]?.pressed ? 1 : 0, bits);
 }
 
 // The accessible layer (Aethyr book chapter 85): a module that describes its controls
@@ -2766,6 +2770,8 @@ function after(gesture, tap = false) {
     else if (code === 6) setQuality(text);
     // a realm's sound settings, "VOLUME MUTED" (0..100, 0 or 1), back in its facts as sound=
     else if (code === 13) { if (!golden) try { localStorage.setItem("verse.sound", text.slice(0, 16)); } catch {} }
+    // a realm's input and reading settings (aethyr/ui/settings.coax), back in its facts as settings=
+    else if (code === 14) { if (!golden) try { localStorage.setItem("verse.settings", text.slice(0, 256)); } catch {} }
     else if (code === ACT_VOICE && voice) voice.toggle(text === "end" ? "end" : text === "hold" ? "hold" : text === "on");
     else if (code === ACT_VOICE_TO && voice) voice.face(text);
     else if (code === ACT_VOICE_SAY && voice) voice.say(text);

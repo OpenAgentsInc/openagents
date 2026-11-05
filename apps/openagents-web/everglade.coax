@@ -92,6 +92,7 @@
 #load "everglade-warlock.coax";   // the Warlock's bar, spells and Zombies (CHARACTER: WARLOCK)
 #load "everglade-raid-preview.coax";   // the Cultist Raid offline, a preview (?raid=preview, &cine=1 its flight)
 #load "everglade-sound.coax";   // the spells', the fight's, the raid's and the town's sound (#12751)
+#load "everglade-access.coax";   // SETTINGS: keys and a pad through one record, text size, captions, the accessible layer (#12857)
 #load "../../verse/style-preset.coax";
 #load "../../aethyr/budget.coax";
 
@@ -359,6 +360,7 @@ Box :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
 
 Everglade :: struct {
   started: bool;
+  ax: [1] EgAccess;   // the settings record, its pane, captions and the accessible layer (everglade-access.coax)
   guard_ai: EgGuardAi;
   guide: EgGuide;
   ground_gen: int;   // bumped each time the ground (store 0) is built: the host uploads it then
@@ -1101,6 +1103,7 @@ everglade_message :: (s: [] Everglade, kind: int, text: string) #export_c {
     spells_facts(s, text);
     eg_quality_facts(s, text);
     egs_facts(s, text);   // the volume and MUTE this browser kept (everglade-sound.coax)
+    ega_facts(s, text);   // the settings record this browser kept, and ?pseudo=1 (everglade-access.coax)
     fork_facts(s, text);
     weather_facts(s, text);
     forge_facts(s, fact(text, "url"));   // ?forge on a local server (everglade-forge.coax)
@@ -1401,10 +1404,17 @@ hold_bit :: (key: int) -> int {
 
 everglade_key :: (s: [] Everglade, key: int, mods: int) -> bool #export_c {
   if !s[0].started { everglade_start(s); }
+  if ega_key(s, key) { return true; }   // a SETTINGS row waiting for its key, or Esc shutting the pane (everglade-access.coax)
   if join_key(s, key) { return true; }   // the CHARACTER picker takes the keys while it is up
   if s[0].talk >= 0 { return talk_key(s, key, mods); }
   if s[0].chat.typing { return chat_key(s, key, mods); }
   if s[0].board { return board_key(s, key, mods); }
+  play := eg_key_play(s, key);   // through the settings record: a rebound key does its action's
+  if play == 0 { return false; }
+  return eg_play_key(s, play, mods);
+}
+// A key for play, as the settings record reads it (and a pad's button, everglade-access.coax everglade_pad).
+eg_play_key :: (s: [] Everglade, key: int, mods: int) -> bool {
   if everglade_voice_key(s, key, true) { return true; }
   if everglade_guide_key(s, key) { return true; }
   if spells_key(s, key, mods) { everglade_guard_invalidate(s); return true; }
@@ -1425,7 +1435,9 @@ everglade_key :: (s: [] Everglade, key: int, mods: int) -> bool #export_c {
   return true;
 }
 
-everglade_key_up :: (s: [] Everglade, key: int, mods: int) -> bool #export_c {
+everglade_key_up :: (s: [] Everglade, raw: int, mods: int) -> bool #export_c {
+  key := eg_key_play(s, raw);
+  if key == 0 { return false; }
   if key == 'g' || key == 'G' { s[0].guide.key_down=false; }
   if everglade_voice_key(s, key, false) { return true; }
   if spells_key_up(s, key, mods) { return true; }
@@ -1455,6 +1467,7 @@ everglade_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id
   if pt_pointer(s, x, y, phase, id) { return true; }   // PARTY and its pane (everglade-party.coax)
   if md_pointer(s, x, y, phase, id) { return true; }   // a player's nameplate and its pane (everglade-moderate.coax)
   if ege_pointer(s, x, y, phase, id) { return true; }   // an admin's EVENTS and its pane (everglade-events.coax)
+  if ega_pointer(s, x, y, phase, id) { return true; }   // SETTINGS and its pane (everglade-access.coax)
   if egs_pointer(s, x, y, phase, id) { return true; }   // SOUND, its slider and MUTE (everglade-sound.coax)
   if eg_quality_pointer(s, x, y, phase, id) { return true; }   // the graphics tier, bottom right
   // Aethyrforge's panels in edit mode: only they and edit mode's own presses (everglade-forge.coax)
@@ -3540,11 +3553,11 @@ hint :: (s: [] Everglade) -> string {
   if !s[0].pack_ready { return "THE FOREST IS ON ITS WAY"; }
   if s[0].above {
     if phone(s) { return "THE MAP · TAP MAP TO WALK AGAIN"; }
-    return "THE MAP · M OR ESC TO WALK AGAIN";
+    return ega_map_hint(s);   // "THE MAP · M OR ESC TO WALK AGAIN", with the key bound now
   }
   if s[0].ev.editing { return edit_hint(s); }
   if s[0].news_time > 0 && s[0].news >= 0 && !s[0].guide.quiet { return news_line(s); }
-  if s[0].water == WATER_BOAT { return ifx phone(s) then "ROWING · LEFT THUMB ROWS AND TURNS" else "ROWING · W AND S ROW · A AND D TURN"; }
+  if s[0].water == WATER_BOAT { return ifx phone(s) then "ROWING · LEFT THUMB ROWS AND TURNS" else ega_row_hint(s); }
   if s[0].water == WATER_WADING { return "WADING · HALF SPEED IN THE WATER"; }
   if s[0].water == WATER_SWIMMING { return ifx phone(s) then "SWIMMING · HALF SPEED" else "SWIMMING · HOLD C TO DIVE"; }
   if s[0].water == WATER_DIVING { return ifx phone(s) then "UNDER WATER" else "UNDER WATER · LET GO OF C TO COME UP"; }
@@ -4046,6 +4059,7 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   n = spells_hud(s, out, u, n, y1 - hs - 28 * k);
   n = eg_quality_hud(s, out, u, n);   // the graphics tier, bottom right, clear of the bar (everglade-quality.coax)
   n = egs_hud(s, out, u, n);   // SOUND over it, and its volume and MUTE (everglade-sound.coax)
+  n = ega_hud(s, out, u, n);   // SETTINGS over SOUND, its pane, and the captions (everglade-access.coax)
   // the damage numbers over who was hit (everglade-watch.coax), their shades from the plates the bar left
   if sp_on(s) && !s[0].above && s[0].wv.started { n = watch_pops_draw(s, out, u, n); n = st_tags_draw(s, out, u, n); }
   y1 -= s[0].sp.lift;
@@ -4084,7 +4098,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   if u.count < UNIFORM_FLOATS { return 0; }
   t := ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32;
   s[0].time += f64(t);
-  s[0].width = width; s[0].height = height; s[0].dpr = hi(dpr, 0.5);
+  s[0].width = width; s[0].height = height; s[0].dpr = hi(dpr, 0.5) * ega_scale(s, width, height, dpr);   // TEXT SIZE scales the HUD as a zoom does (everglade-access.coax)
   feet := v3(fx, fy, fz);
   if !finite3(feet) { feet = s[0].feet; }
   s[0].feet = feet; s[0].face = face; s[0].act = act;
