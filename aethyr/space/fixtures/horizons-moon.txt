@@ -1,0 +1,148 @@
+API VERSION: 1.2
+API SOURCE: NASA/JPL Horizons API
+
+*******************************************************************************
+ Revised: July 31, 2013             Moon / (Earth)                          301
+ 
+ GEOPHYSICAL DATA (updated 2018-Aug-15):
+  Vol. mean radius, km  = 1737.53+-0.03    Mass, x10^22 kg       =    7.349
+  Radius (gravity), km  = 1738.0           Surface emissivity    =    0.92
+  Radius (IAU), km      = 1737.4           GM, km^3/s^2          = 4902.800066
+  Density, g/cm^3       =    3.3437        GM 1-sigma, km^3/s^2  =  +-0.0001  
+  V(1,0)                =   +0.21          Surface accel., m/s^2 =    1.62
+  Earth/Moon mass ratio = 81.3005690769    Farside crust. thick. = ~80 - 90 km
+  Mean crustal density  = 2.97+-.07 g/cm^3 Nearside crust. thick.= 58+-8 km 
+  Heat flow, Apollo 15  = 3.1+-.6 mW/m^2   Mean angular diameter = 31'05.2"
+  Heat flow, Apollo 17  = 2.2+-.5 mW/m^2   Sid. rot. rate, rad/s = 0.0000026617
+  Geometric Albedo      = 0.12             Mean solar day        = 29.5306 d
+  Obliquity to orbit    = 6.67 deg         Orbit period          = 27.321582 d
+  Semi-major axis, a    = 384400 km        Eccentricity          = 0.05490
+  Mean motion, rad/s    = 2.6616995x10^-6  Inclination           = 5.145 deg
+  Apsidal period        = 3231.50 d        Nodal period          = 6798.38 d
+                                 Perihelion  Aphelion    Mean
+  Solar Constant (W/m^2)         1414+-7     1323+-7     1368+-7
+  Maximum Planetary IR (W/m^2)   1314        1226        1268
+  Minimum Planetary IR (W/m^2)      5.2         5.2         5.2
+********************************************************************************
+
+
+*******************************************************************************
+Ephemeris / API_USER Thu Nov  5 07:26:15 2026 Pasadena, USA      / Horizons
+*******************************************************************************
+Target body name: Moon (301)                      {source: DE441}
+Center body name: Earth (399)                     {source: DE441}
+Center-site name: BODY CENTER
+*******************************************************************************
+Start time      : A.D. 2000-Jan-01 00:00:00.0000 TDB
+Stop  time      : A.D. 2000-Jan-29 00:00:00.0000 TDB
+Step-size       : 1440 minutes
+*******************************************************************************
+Center geodetic : 0.0, 0.0, 0.0                   {E-lon(deg),Lat(deg),Alt(km)}
+Center cylindric: 0.0, 0.0, 0.0                   {E-lon(deg),Dxy(km),Dz(km)}
+Center radii    : 6378.137, 6378.137, 6356.752 km {Equator_a, b, pole_c}
+Output units    : KM-S
+Calendar mode   : Mixed Julian/Gregorian
+Output type     : GEOMETRIC cartesian states
+Output format   : 2 (position and velocity)
+EOP file        : eop.261104.p270131
+EOP coverage    : DATA-BASED 1962-JAN-20 TO 2026-NOV-04. PREDICTS-> 2027-JAN-30
+Reference frame : Ecliptic of J2000.0
+*******************************************************************************
+            JDTDB,            Calendar Date (TDB),                      X,                      Y,                      Z,                     VX,                     VY,                     VZ,
+**************************************************************************************************************************************************************************************************
+$$SOE
+2451544.500000000, A.D. 2000-Jan-01 00:00:00.0000, -3.176502412950324E+05, -2.418831762389348E+05,  3.655582307692753E+04,  5.607870661110091E-01, -7.999322601345352E-01, -1.639333043759017E-03,
+2451545.500000000, A.D. 2000-Jan-02 00:00:00.0000, -2.621678580160148E+05, -3.049312488346043E+05,  3.556503300193747E+04,  7.180329555975437E-01, -6.544707145083992E-01, -2.113981878877849E-02,
+2451546.500000000, A.D. 2000-Jan-03 00:00:00.0000, -1.945880405819181E+05, -3.542042733315080E+05,  3.293995511533599E+04,  8.401086245509187E-01, -4.822326101803908E-01, -3.935445267845061E-02,
+2451547.500000000, A.D. 2000-Jan-04 00:00:00.0000, -1.181193458754391E+05, -3.876957951574922E+05,  2.882078709336926E+04,  9.232504083961977E-01, -2.903799821651653E-01, -5.561947844909186E-02,
+2451548.500000000, A.D. 2000-Jan-05 00:00:00.0000, -3.625182013515214E+04, -4.040332811123611E+05,  2.340255074392761E+04,  9.647116390615910E-01, -8.643459832870648E-02, -6.932960695748372E-02,
+2451549.500000000, A.D. 2000-Jan-06 00:00:00.0000,  4.733385167785535E+04, -4.025108726029522E+05,  1.692987310356312E+04,  9.628474375041611E-01,  1.216944915979409E-01, -7.994366196100837E-02,
+2451550.500000000, A.D. 2000-Jan-07 00:00:00.0000,  1.288677730377841E+05, -3.831211578308564E+05,  9.690859933542757E+03,  9.172650133857190E-01,  3.257655045689181E-01, -8.699942223630322E-02,
+2451551.500000000, A.D. 2000-Jan-08 00:00:00.0000,  2.046060101952709E+05, -3.465782291310572E+05,  2.009424085266161E+03,  8.289827469044352E-01,  5.173501068762096E-01, -9.013381838235453E-02,
+2451552.500000000, A.D. 2000-Jan-09 00:00:00.0000,  2.709582264183379E+05, -2.943247376617247E+05, -5.764204762794936E+03,  7.005539584695289E-01,  6.880527969690070E-01, -8.910415509633801E-02,
+2451553.500000000, A.D. 2000-Jan-10 00:00:00.0000,  3.246236822981431E+05, -2.285180386251730E+05, -1.326472424637845E+04,  5.361360311778618E-01,  8.297695181279017E-01, -8.380711688525747E-02,
+2451554.500000000, A.D. 2000-Jan-11 00:00:00.0000,  3.627310985975410E+05, -1.519934564750788E+05, -2.012450886659301E+04,  3.415144797352682E-01,  9.349550067298646E-01, -7.429470848129438E-02,
+2451555.500000000, A.D. 2000-Jan-12 00:00:00.0000,  3.829797056107402E+05, -6.820443702533119E+04, -2.598766599261672E+04,  1.241121340168835E-01,  9.968922646539642E-01, -6.078909089146622E-02,
+2451556.500000000, A.D. 2000-Jan-13 00:00:00.0000,  3.837815650539302E+05,  1.886164984021313E+04, -3.052546192597929E+04, -1.069873455269250E-01,  1.009995338310016E+00, -4.370015006595435E-02,
+2451557.500000000, A.D. 2000-Jan-14 00:00:00.0000,  3.644066333293714E+05,  1.047976729990159E+05, -3.345351230867904E+04, -3.410045177194148E-01,  9.702139640240022E-01, -2.364909287601891E-02,
+2451558.500000000, A.D. 2000-Jan-15 00:00:00.0000,  3.251291627213820E+05,  1.849333260548718E+05, -3.455126134435697E+04, -5.654867354684164E-01,  8.756240233134686E-01, -1.497072994607440E-03,
+2451559.500000000, A.D. 2000-Jan-16 00:00:00.0000,  2.673642750851294E+05,  2.545527916373286E+05, -3.368384076307889E+04, -7.665473650511406E-01,  7.272520486313995E-01,  2.163093571933816E-02,
+2451560.500000000, A.D. 2000-Jan-17 00:00:00.0000,  1.937661004041554E+05,  3.091918746033083E+05, -3.082504119511986E+04, -9.295593298778019E-01,  5.300635013345650E-01,  4.434896107423852E-02,
+2451561.500000000, A.D. 2000-Jan-18 00:00:00.0000,  1.082377560017490E+05,  3.450184088035037E+05, -2.607774948501951E+04, -1.040530762526809E+00,  2.938346856207484E-01,  6.507153692032522E-02,
+2451562.500000000, A.D. 2000-Jan-19 00:00:00.0000,  1.579076547636122E+04,  3.592652021313195E+05, -1.968544972967965E+04, -1.088189278185524E+00,  3.339801921575075E-02,  8.216220320274166E-02,
+2451563.500000000, A.D. 2000-Jan-20 00:00:00.0000, -7.779369053512863E+04,  3.506361056109366E+05, -1.202702122947812E+04, -1.066375517469648E+00, -2.323055070075010E-01,  9.416733451763369E-02,
+2451564.500000000, A.D. 2000-Jan-21 00:00:00.0000, -1.664938182010893E+05,  3.195684593259286E+05, -3.589426046467517E+03, -9.758861171286096E-01, -4.825866955599907E-01,  1.000802635432904E-01,
+2451565.500000000, A.D. 2000-Jan-22 00:00:00.0000, -2.446766602660228E+05,  2.682459337614663E+05,  5.080235998076649E+03, -8.248267482575617E-01, -6.982750503108780E-01,  9.953710649451428E-02,
+2451566.500000000, A.D. 2000-Jan-23 00:00:00.0000, -3.076773377021235E+05,  2.003301300530494E+05,  1.343330856431750E+04, -6.271138768325494E-01, -8.647478319222164E-01,  9.285741667111011E-02,
+2451567.500000000, A.D. 2000-Jan-24 00:00:00.0000, -3.521864062340028E+05,  1.204828361477945E+05,  2.097415260906648E+04, -3.996949330813818E-01, -9.736077833720902E-01,  8.091622553469557E-02,
+2451568.500000000, A.D. 2000-Jan-25 00:00:00.0000, -3.763823380558086E+05,  3.381869537852624E+04,  2.729864239048730E+04, -1.596251689061421E-01, -1.022631466320484E+00,  6.491580783202239E-02,
+2451569.500000000, A.D. 2000-Jan-26 00:00:00.0000, -3.798418950221606E+05, -5.457739365560573E+04,  3.211218163875124E+04,  7.803784473094874E-02, -1.014448268145102E+00,  4.615502866125454E-02,
+2451570.500000000, A.D. 2000-Jan-27 00:00:00.0000, -3.633182354136307E+05, -1.399935662777602E+05,  3.523032125312174E+04,  3.011894987277322E-01, -9.547722796545526E-01,  2.586432193407312E-02,
+2451571.500000000, A.D. 2000-Jan-28 00:00:00.0000, -3.284796985262578E+05, -2.182873270419391E+05,  3.656875056590448E+04,  5.006968270971699E-01, -8.508495931063478E-01,  5.123985084287019E-03,
+2451572.500000000, A.D. 2000-Jan-29 00:00:00.0000, -2.776721894999815E+05, -2.859690275558828E+05,  3.612927083077001E+04,  6.699053594059218E-01, -7.104193487214887E-01, -1.515158782133996E-02,
+$$EOE
+**************************************************************************************************************************************************************************************************
+ 
+TIME
+
+  Barycentric Dynamical Time ("TDB" or T_eph) output was requested. This
+continuous coordinate time is equivalent to the relativistic proper time
+of a clock at rest in a reference frame co-moving with the solar system
+barycenter but outside the system's gravity well. It is the independent
+variable in the solar system relativistic equations of motion.
+
+  TDB runs at a uniform rate of one SI second per second and is independent
+of irregularities in Earth's rotation.
+ 
+CALENDAR SYSTEM
+
+  Mixed calendar mode was active such that calendar dates after AD 1582-Oct-15
+(if any) are in the modern Gregorian system. Dates prior to 1582-Oct-5 (if any)
+are in the Julian calendar system, which is automatically extended for dates
+prior to its adoption on 45-Jan-1 BC.  The Julian calendar is useful for
+matching historical dates. The Gregorian calendar more accurately corresponds
+to the Earth's orbital motion and seasons. A "Gregorian-only" calendar mode is
+available if such physical events are the primary interest.
+
+REFERENCE FRAME AND COORDINATES
+
+  Ecliptic at the standard reference epoch
+
+    Reference epoch: J2000.0
+    X-Y plane: adopted Earth orbital plane at the reference epoch
+               Note: IAU76 obliquity of 84381.448 arcseconds wrt ICRF X-Y plane
+    X-axis   : ICRF
+    Z-axis   : perpendicular to the X-Y plane in the directional (+ or -) sense
+               of Earth's north pole at the reference epoch.
+
+  Symbol meaning:
+
+    JDTDB    Julian Day Number, Barycentric Dynamical Time
+      X      X-component of position vector (km)
+      Y      Y-component of position vector (km)
+      Z      Z-component of position vector (km)
+      VX     X-component of velocity vector (km/sec)                           
+      VY     Y-component of velocity vector (km/sec)                           
+      VZ     Z-component of velocity vector (km/sec)                           
+
+ABERRATIONS AND CORRECTIONS
+
+ Geometric state vectors have NO corrections or aberrations applied.
+
+Computations by ...
+
+    Solar System Dynamics Group, Horizons On-Line Ephemeris System
+    4800 Oak Grove Drive, Jet Propulsion Laboratory
+    Pasadena, CA  91109   USA
+
+    General site: https://ssd.jpl.nasa.gov/
+    Mailing list: https://ssd.jpl.nasa.gov/email_list.html
+    System news : https://ssd.jpl.nasa.gov/horizons/news.html
+    User Guide  : https://ssd.jpl.nasa.gov/horizons/manual.html
+    Connect     : browser        https://ssd.jpl.nasa.gov/horizons/app.html#/x
+                  API            https://ssd-api.jpl.nasa.gov/doc/horizons.html
+                  command-line   telnet ssd.jpl.nasa.gov 6775
+                  e-mail/batch   https://ssd.jpl.nasa.gov/ftp/ssd/horizons_batch.txt
+                  scripts        https://ssd.jpl.nasa.gov/ftp/ssd/SCRIPTS
+    Inquiries   : Jon.D.Giorgini@jpl.nasa.gov
+*******************************************************************************

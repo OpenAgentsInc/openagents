@@ -1,0 +1,65 @@
+// Frames (book chapter 39): a whole state, position and velocity, carried
+// between an inertial frame and a frame turning with a body.
+//
+// A body-fixed frame here turns about its own +z at a constant rate w from
+// an angle theta0 at J2000, and its +z is tilted from the inertial +z by a
+// fixed obliquity about the inertial +x: R(t) = Rx(obliquity) Rz(theta0 + w t).
+// Going to the inertial frame,
+//   r_i = R r_b,   v_i = R (v_b + w_b x r_b),   w_b = (0, 0, w),
+// and back, r_b = R^T r_i, v_b = R^T v_i - w_b x r_b. Leaving out the
+// w x r term is the classic error: a point standing on the equator then has
+// no inertial velocity at all. FrameModel carries what the rotation needs;
+// it is a model with stated constants, not an IAU rotation model.
+//   coax/bin/coax test aethyr/space/frames.coax --library
+#load "ephemeris.coax";
+
+FrameModel :: struct { theta0: f64; rate: f64; obliquity: f64; }
+// The Earth: 23.439 degrees of obliquity to the ecliptic, one turn a sidereal
+// day (7.2921159e-5 rad/s), the Greenwich angle 280.46 degrees at J2000.
+FRAME_EARTH :: FrameModel.{theta0 = 4.894961212735792, rate = 0.000072921159, obliquity = 0.40909280422232897};
+
+frame_rz :: (a: f64, p: D3) -> D3 { c := cos(a); s := sin(a); return d3(c * p.x - s * p.y, s * p.x + c * p.y, p.z); }
+frame_rx :: (a: f64, p: D3) -> D3 { c := cos(a); s := sin(a); return d3(p.x, c * p.y - s * p.z, s * p.y + c * p.z); }
+frame_rotate :: (m: FrameModel, t: f64, p: D3) -> D3 { return frame_rx(m.obliquity, frame_rz(m.theta0 + m.rate * t, p)); }
+frame_unrotate :: (m: FrameModel, t: f64, p: D3) -> D3 { return frame_rz(-(m.theta0 + m.rate * t), frame_rx(-m.obliquity, p)); }
+
+// A body-fixed state at t seconds past J2000 (TDB) to the inertial frame.
+frame_to_inertial :: (m: FrameModel, t: f64, r: D3, v: D3) -> State {
+  w := d3(0, 0, m.rate);
+  return State.{r = frame_rotate(m, t, r), v = frame_rotate(m, t, d3_add(v, d3_cross(w, r)))};
+}
+// An inertial state to the body-fixed frame.
+frame_to_body :: (m: FrameModel, t: f64, r: D3, v: D3) -> State {
+  w := d3(0, 0, m.rate); rb := frame_unrotate(m, t, r);
+  return State.{r = rb, v = d3_sub(frame_unrotate(m, t, v), d3_cross(w, rb))};
+}
+// The same transform with the w x r term left out: kept only so the checks
+// can show what it gets wrong.
+frame_to_inertial_position_only :: (m: FrameModel, t: f64, r: D3, v: D3) -> State {
+  return State.{r = frame_rotate(m, t, r), v = frame_rotate(m, t, v)};
+}
+
+#test "inertial to body-fixed and back returns the state" {
+  r := d3(7000000, -1200000, 300000); v := d3(1200, 7400, -50);
+  for k: 0..<4 {
+    t := 86400.0 * 3.7 * f64(k) + 1234.5;
+    b := frame_to_body(FRAME_EARTH, t, r, v); back := frame_to_inertial(FRAME_EARTH, t, b.r, b.v);
+    #assert d3_len(d3_sub(back.r, r)) < 0.00001 && d3_len(d3_sub(back.v, v)) < 0.000001;
+  }
+}
+#test "a point on the equator moves at w R inertially; leaving out w x r is caught" {
+  ground := d3(6378137, 0, 0); still := d3(0, 0, 0);
+  s := frame_to_inertial(FRAME_EARTH, 5000.0, ground, still);
+  // 465.1 m/s eastward, perpendicular to the radius.
+  #assert abs(d3_len(s.v) - 6378137.0 * 0.000072921159) < 0.000001 && abs(d3_dot(s.v, s.r)) < 0.001;
+  wrong := frame_to_inertial_position_only(FRAME_EARTH, 5000.0, ground, still);
+  #assert d3_len(d3_sub(wrong.v, s.v)) > 465.0;
+  // Back in the turning frame the point is at rest again, which the
+  // position-only state is not.
+  back := frame_to_body(FRAME_EARTH, 5000.0, s.r, s.v); #assert d3_len(back.v) < 0.000001;
+  #assert d3_len(frame_to_body(FRAME_EARTH, 5000.0, wrong.r, wrong.v).v) > 465.0;
+}
+#test "the pole of the turning frame is the obliquity away from the ecliptic pole" {
+  pole := frame_rotate(FRAME_EARTH, 0.0, d3(0, 0, 1));
+  #assert abs(acos_d(pole.z) - 0.40909280422232897) < 1e-12 && abs(pole.x) < 1e-15;
+}

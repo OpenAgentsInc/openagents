@@ -380,6 +380,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "aethyr/examples/read-an-ephemeris.coax",
+      "chapter": "aethyr/book/ch039-ephemerides-time-scales-and-frames.md",
+      "stdout": "aethyr/fixtures/read-an-ephemeris.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

@@ -55,7 +55,7 @@
 **V. Big worlds**
 
 - [38. Stream a large world](ch038-stream-a-large-world.md) — design draft
-- [39. Ephemerides, time scales and frames](ch039-ephemerides-time-scales-and-frames.md) — design draft
+- [39. Ephemerides, time scales and frames](ch039-ephemerides-time-scales-and-frames.md) — partly implemented
 - [40. Propagate with a stated error](ch040-propagate-with-a-stated-error.md) — design draft
 - [41. Burns consume mass](ch041-burns-consume-mass.md) — design draft
 - [42. Reach a moving target](ch042-reach-a-moving-target.md) — design draft

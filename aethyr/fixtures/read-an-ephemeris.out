@@ -1,0 +1,12 @@
+Mars about the Sun: 41 rows of DE441, TDB, ecliptic J2000, from day -0.5 to day 73039.5 after J2000
+a day before the first row: outside; a day after the last: outside
+UTC 2025-01-01 23:58:50.816 is TDB 0 ms after 2025-01-02 00:00
+a UTC time after the leap-second table: after_table
+Mars from the Earth on 2025-01-02 00:00 TDB: 97892185 km away, light time 326.533 s
+  geometric vs light-time: 7424 km apart; ours vs Horizons' LT: 1 m
+  aberration turns it 19.625 arcsec; ours vs Horizons' LT+S: 0.0 arcsec
+a point on the equator: 465.1 m/s inertial with w x r, 0.0 m/s without
+orbit.coax's mean elements against DE441, 2000-2200, every 5 years:
+  Earth-Moon barycentre: at most 694953 km (2200)
+  Mars: at most 3138904 km (2200)
+  Jupiter: at most 3872562 km (2185)
