@@ -108,6 +108,7 @@ EgSeat :: struct {
   fresh: bool;                                        // just sat: the world's watch meets a new player
   want_seed: int;                                     // the WANTED level it comes back with, for the world's town (rv_join; 0 none)
   hold_due: bool;                                     // a scripted Hold Person (room-control.coax "hold"): the host's world holds it on the next tick
+  place_due: int;                                     // a place line (room-control.coax "place"): beside rowboat place_due - 1 on the next tick (0 none)
   back_hp: int = -1; back_dead: bool;                 // the Hit Points it came back with until its hello built it (rv_join; -1 none)
   wcond: int;                                         // the world's conditions on it (WC_*), with the rules' in p's COND
   fx_left: [WE_WATCH] f32; fx_t0: [WE_WATCH] int; fx_dur: [WE_WATCH] int;   // its watch effects (WE_*): seconds left, start tick, ticks
@@ -157,6 +158,7 @@ EgRoom :: struct {
   // the rowboats as the world has them (rm_eg_boat): where, which way, who rows (a seat, -1 none), the oars, the float
   boat_on: [EG_BOATS] bool; boat_x: [EG_BOATS] f32; boat_y: [EG_BOATS] f32; boat_z: [EG_BOATS] f32; boat_yaw: [EG_BOATS] f32;
   boat_by: [EG_BOATS] int; boat_oar: [EG_BOATS] int; boat_i: [EG_BOATS] int;
+  place_stamp: int;                                // the newest place line's STAMP this room laid (room-control.coax "place"; 0 none)
   gates: int;                                      // 1 while the world has the town's gates shut (rm_eg_gates, WANTED 4: #12794), the row's FORM
   folk_by: [E5R_FOLK] int;
   // each person's save against a seat's ability the rules rolled this tick (eg_folk_saved: the world's
@@ -239,7 +241,7 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
     v[0].eg[q].cast_order = 0; v[0].eg[q].hurt_n = 0;
     v[0].eg[q].ev_n = 0; v[0].eg[q].ev_bytes = 0;
     // the town as new: the world's (the host's) is made whole again on rm_eg_fresh
-    v[0].eg[q].folk_on = false; v[0].eg[q].crime_n = 0; v[0].eg[q].use_ask_n = 0; for w: 0..<WIRE_DOOR_WORDS { v[0].eg[q].doors[w] = 0; } for b: 0..<EG_BOATS { v[0].eg[q].boat_on[b] = false; } v[0].eg[q].strike_n = 0; v[0].eg[q].rebuild = false; v[0].eg[q].fresh = true;
+    v[0].eg[q].folk_on = false; v[0].eg[q].crime_n = 0; v[0].eg[q].use_ask_n = 0; for w: 0..<WIRE_DOOR_WORDS { v[0].eg[q].doors[w] = 0; } for b: 0..<EG_BOATS { v[0].eg[q].boat_on[b] = false; } v[0].eg[q].place_stamp = 0; v[0].eg[q].strike_n = 0; v[0].eg[q].rebuild = false; v[0].eg[q].fresh = true;
     v[0].eg[q].broke_at = -100000; v[0].eg[q].rebuilt_at = -100000;
     for s: 0..<EG_SEATS { v[0].eg[q].wanted[s] = 0; }
     for j: 0..<E5R_FOLK { v[0].eg[q].folk_by[j] = -1; v[0].eg[q].folk_save[j] = 0; }
@@ -935,6 +937,14 @@ rm_eg_hold_take :: (v: [] RmServer, k: int, s: int) -> bool #export_c {
   v[0].eg[k].seat[s].hold_due = false;
   return true;
 }
+// The rowboat seat s is to be put beside (room-control.coax "place", #12861), once: -1 none. The host
+// puts it there in the world (room-tick.c everglade_town, room-world.c world_place_boat).
+rm_eg_place_take :: (v: [] RmServer, k: int, s: int) -> int #export_c {
+  if !rm_eg_seat_live(v, k, s) || v[0].eg[k].seat[s].place_due <= 0 { return -1; }
+  b := v[0].eg[k].seat[s].place_due - 1;
+  v[0].eg[k].seat[s].place_due = 0;
+  return b;
+}
 // Whether room k's dice are fixed (room-control.coax "dice fixed"): the host fixes its world's alike.
 rm_eg_dice_fixed :: (v: [] RmServer, k: int) -> bool #export_c { return rm_eg_live(v, k) && v[0].eg[k].rules[0].b[0].dice[0].fixed; }
 rm_eg_wanted :: (v: [] RmServer, k: int, s: int, level: int) #export_c { if rm_eg_seat_live(v, k, s) { v[0].eg[k].wanted[s] = level; } }
@@ -1391,6 +1401,27 @@ eg_test_input :: (v: [] RmServer, seq: int) {
   // a new stamp, a seat not there, a word short: only the first holds
   rm_control(v[..], "hold pair-hold 1 78\nhold pair-hold 9 79\nhold pair-hold 0\n");
   #assert rm_eg_hold_take(v[..], k, 1) && !rm_eg_hold_take(v[..], k, 0);
+}
+#test "everglade room: a control place line puts its seat beside a rowboat once a stamp, in a local room only (#12861)" #steps 2000000000 {
+  for local: 0..<2 {
+    v: [1] RmServer;
+    rm_init(v[..]);
+    if local == 1 { rm_control_local(v[..]); }
+    rm_clock(v[..], 0, 1762190000000);
+    box: [1] EgInbox;
+    #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-place HTTP/1.1\r\n\r\n") == 0 && rm_join(v[..], 1, "GET /api/room/relay/everglade/pair-place HTTP/1.1\r\n\r\n") == 1;
+    k := eg_room_at(v[..], v[0].conns[0].relay);
+    for c: 0..<2 { rm_heard(v[..], c, "H 4 ranger.0.0.0 druid 0 -"); }
+    eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
+    rm_control(v[..], "place pair-place 1 2 50\nplace pair-place 0 0 51\n");
+    if local == 0 { #assert rm_eg_place_take(v[..], k, 0) == -1 && rm_eg_place_take(v[..], k, 1) == -1; continue; }
+    #assert rm_eg_place_take(v[..], k, 1) == 2 && rm_eg_place_take(v[..], k, 0) == 0 && rm_eg_place_take(v[..], k, 1) == -1;
+    // asked again: laid once; an older stamp, a boat past the three, a seat not there: none
+    rm_control(v[..], "place pair-place 1 2 50\nplace pair-place 0 1 49\nplace pair-place 0 3 60\nplace pair-place 9 0 61\n");
+    #assert rm_eg_place_take(v[..], k, 0) == -1 && rm_eg_place_take(v[..], k, 1) == -1;
+    rm_control(v[..], "place pair-place 0 1 62\n");
+    #assert rm_eg_place_take(v[..], k, 0) == 1;
+  }
 }
 #test "everglade room: \"dice fixed\" fixes a local room's dice and those made after it, never a production room's (#12887)" #steps 2000000000 {
   for local: 0..<2 {

@@ -21,6 +21,8 @@ bool world_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE])
 void world_floats(int k, float dt);
 bool world_boat(int k, int n, float out[WORLD_BOAT]);
 void world_gone(int k, int s);
+/* seat s of room k on the bank beside its n-th rowboat (room-control.coax "place"): false none there */
+bool world_place_boat(int k, int s, int n);
 /* The ground's height at (x, z) in room k's world. */
 float world_ground(int k, float x, float z);
 bool world_forge_open(int k, float x, float z);

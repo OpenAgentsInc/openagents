@@ -828,6 +828,39 @@ boat_off :: (r: [] River, heights: [] f32, time: f64, i: int) -> Seat {
 
 // ---- a room's rowers (#12861): each seat rows its own boat in the room server's one river
 
+// A place within reach of boat i to board it from (0.7 m off its hull, on the bank or in the shallows,
+// the nearest round it; else where its rower would step out): a room's place line puts a seat there
+// (coax/web/room/room-control.coax "place", #12861). Its mooring is left as it was.
+everglade_river_beside :: (r: [] River, heights: [] f32, time: f64, i: int) -> Seat #export_c {
+  out: Seat; out.boat = -1;
+  if !r[0].ready || i < 0 || i >= r[0].float_n || r[0].kinds[i] != FLOAT_BOAT { return out; }
+  b := r[0].floats[i];
+  yaw := yaw_of_q(b.orientation);
+  ax := sin(yaw); az := cos(yaw);
+  best := 1000.0; bx := 0.0; bz := 0.0;
+  for k: 0..<16 {
+    a := TAU_D * f64(k) / 16.0;
+    px := b.pos.x + ax * cos(a) * (BOAT_HALF.z + 0.7) + az * sin(a) * (BOAT_HALF.x + 0.7);
+    pz := b.pos.z + az * cos(a) * (BOAT_HALF.z + 0.7) - ax * sin(a) * (BOAT_HALF.x + 0.7);
+    bed := river_bed(r, heights, cast(f32) px, cast(f32) pz);
+    w := water_sample(r[0].set, px, pz, river_tick(time));
+    deep := ifx w.found then cast(f32) w.height + r[0].rise - bed else 0.0f32;
+    if deep > f32(WADE_DEPTH) || boat_gap(b, px, pz) > BOAT_REACH { continue; }
+    d := (px - b.pos.x) * (px - b.pos.x) + (pz - b.pos.z) * (pz - b.pos.z);
+    if d < best { best = d; bx = px; bz = pz; }
+  }
+  if best < 1000.0 {
+    out.on = true; out.boat = i;
+    out.x = cast(f32) bx; out.z = cast(f32) bz; out.y = river_bed(r, heights, cast(f32) bx, cast(f32) bz);
+    out.yaw = cast(f32) yaw;
+    return out;
+  }
+  hx := r[0].homes[i * 3]; hz := r[0].homes[i * 3 + 1]; hy := r[0].homes[i * 3 + 2];
+  out = boat_off(r, heights, time, i);
+  r[0].homes[i * 3] = hx; r[0].homes[i * 3 + 1] = hz; r[0].homes[i * 3 + 2] = hy;
+  return out;
+}
+
 // The free rowboat (no one rows it) within BOAT_REACH of (x, z), -1 none.
 everglade_river_crew_near :: (r: [] River, x: f32, z: f32) -> int #export_c {
   if !r[0].ready { return -1; }
@@ -1688,7 +1721,7 @@ test_pond :: (heights: [] f32, all: [] f32) {
   #assert abs(r[0].homes[boat * 3] - b2.pos.x) < 0.001 && everglade_river_boat_near(r[..], cast(f32) b2.pos.x + 9, cast(f32) b2.pos.z + 9) == -1;
 }
 
-#test "a room's rowers: a seat boards a free boat, rows it on its own clock, holds it from others, and leaves it tied up (#12861)" {
+#test "a room's rowers: a seat boards a free boat, rows it on its own clock, holds it from others, and leaves it tied up (#12861)" #steps 2000000000 {
   heights: [(TEST_N + 1) * (TEST_N + 1)] f32;
   all: [TEST_N + 1 + PONDS * 4] f32;
   test_pond(heights[..], all[..]);
@@ -1700,6 +1733,10 @@ test_pond :: (heights: [] f32, all: [] f32) {
   b0 := r[0].floats[boat];
   bx := cast(f32) b0.pos.x; bz := cast(f32) b0.pos.z;
   #assert everglade_river_crew_near(r[..], bx, bz) == boat && everglade_river_crew_near(r[..], bx + 9, bz + 9) == -1;
+  // a place line's spot beside it (a room's place line): in reach to board from, its mooring as it was
+  hx := r[0].homes[boat * 3];
+  side := everglade_river_beside(r[..], heights[..], 10, boat);
+  #assert side.on && everglade_river_crew_near(r[..], side.x, side.z) == boat && r[0].homes[boat * 3] == hx;
   #assert everglade_river_crew_board(r[..], boat, 4) && everglade_river_crew_of(r[..], boat) == 4;
   // held: no one else boards it, and it is no longer anyone's near boat
   #assert !everglade_river_crew_board(r[..], boat, 7) && everglade_river_crew_near(r[..], bx, bz) == -1;

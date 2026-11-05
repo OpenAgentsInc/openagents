@@ -12,6 +12,9 @@
 //     sooner or later) and the rules' on the living townsperson nearest it (6 s, no save). The same
 //     line reaches the local host (coax/web/room-worker.js roomHost.control), so both pages of the
 //     check are held by one spell.
+//   - place: "place CODE SEAT BOAT STAMP", seat SEAT of everglade room CODE put on the bank beside
+//     rowboat BOAT (0 to 2, the Lantern, Thinking and Fern ponds' boats; river.coax), once a STAMP:
+//     the boat check's two seats at a pond (GitHub #12861). Only a local room takes it, as the dice.
 //   - dice: "dice fixed" (or "dice random"), every everglade room's rules rolling each die on half its
 //     faces from now on (aethyr/rules/srd/engine.coax RsDice.fixed), and the rooms made after it too:
 //     the drift check's two rooms roll alike whatever order their rolls come in (GitHub #12887). Only
@@ -88,6 +91,35 @@ rc_hold :: (v: [] RmServer, line: string) {
   p := v[0].eg[k].seat[seat].pose;
   _ := e5rr_hold_folk(v[0].eg[k].rules[..], p.x, p.z, RC_HOLD_REACH);
 }
+// "place CODE SEAT BOAT STAMP" (see the top): seat SEAT of everglade room CODE beside rowboat BOAT on
+// the host's next tick (room-world.c world_place_boat). A local room's only; lines with newer STAMPs
+// than the last that room laid are each laid once.
+rc_place :: (v: [] RmServer, line: string) {
+  if !(v[0].dev.on || v[0].ctl.local) { return; }
+  code := rc_word(line, 6);
+  at := 6 + code.count + 1;
+  if at >= line.count { return; }
+  sw := rc_word(line, at); seat := rc_num(sw);
+  at += sw.count + 1;
+  if at >= line.count { return; }
+  bw := rc_word(line, at); boat := rc_num(bw);
+  at += bw.count + 1;
+  if at >= line.count { return; }
+  stamp := rc_num(rc_word(line, at));
+  if code.count == 0 || seat < 0 || boat < 0 || boat >= EG_BOATS || stamp <= 0 { return; }
+  k := rc_room(v, code);
+  if k < 0 || stamp <= v[0].eg[k].place_stamp || !rm_eg_seat_live(v, k, seat) { return; }   // not yet: a later answer's line lays it
+  v[0].eg[k].place_stamp = stamp;
+  v[0].eg[k].seat[seat].place_due = boat + 1;
+}
+// Everglade room CODE's slot (-1 none open).
+rc_room :: (v: [] RmServer, code: string) -> int {
+  for q: 0..<RELAYS {
+    m := v[0].relays[q];
+    if m.live && cast(string) m.game[0..<m.game_n] == EVERGLADE && cast(string) m.code[0..<m.code_n] == code { return eg_room_at(v, q); }
+  }
+  return -1;
+}
 rm_control :: (v: [] RmServer, text: string) #export_c {
   kicks := 0; pvp := v[0].ctl.pvp; edit := -1;
   at := 0;
@@ -101,6 +133,7 @@ rm_control :: (v: [] RmServer, text: string) #export_c {
     if line == "oldwire 0" { v[0].ctl.old_shut = true; }
     if line.count > 5 && line[0..<5] == "edit " { edit = rc_num(line[5..<line.count]); }
     if line.count > 5 && line[0..<5] == "hold " { rc_hold(v, line); }
+    if line.count > 6 && line[0..<6] == "place " { rc_place(v, line); }
     if line == "dice fixed" { v[0].ctl.dice_fixed = true; }
     if line == "dice random" { v[0].ctl.dice_fixed = false; }
     if line.count > 5 && line[0..<5] == "kick " && kicks < CONTROL_KICKS {

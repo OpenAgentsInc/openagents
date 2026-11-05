@@ -293,6 +293,18 @@ bool world_boat(int k, int n, float out[WORLD_BOAT]) {
   }
   return false;
 }
+/* Seat s on the bank beside the n-th rowboat, in reach to board it (everglade_river_beside), facing along it: the
+   boat check's seats at a pond (room-control.coax "place", #12861). Its next step starts there. */
+bool world_place_boat(int k, int s, int n) {
+  float bt[WORLD_BOAT];
+  if (!world_boat(k, n, bt) || s < 0 || s >= WORLD_SEATS) return false;
+  coax_t_Seat at_bank = everglade_river_beside(rv_of(k), heights_of(k), river_now[k], (int64_t)bt[6]);
+  if (!at_bank.on) return false;
+  seat_ashore(k, s);
+  seat_p[k][s] = verse_player_place(at_bank.x, at_bank.y, at_bank.z, at_bank.yaw);
+  seat_dry(k, s); seat_w[k][s].breath = river[k]->breath;
+  return true;
+}
 /* Seat s, gone from the room: out of any boat it rowed. */
 void world_gone(int k, int s) { if (world_of(k) && s >= 0 && s < WORLD_SEATS) seat_ashore(k, s); }
 int world_doors(int k, int w) { return world_of(k) ? (int)everglade_room_doors(at(k), w) : 0; }

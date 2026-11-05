@@ -468,6 +468,22 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
       if (!net_boat_row(at(state), b, (coax_v_f32){br, 7})) continue;
       if (br[1] >= 0) everglade_river_pin(rv(), (int64_t)br[0], (int64_t)br[1], br[2], br[3], br[4], br[5], br[6]);
     }
+  /* a board the room refused (#12861): the room's row of that boat names someone else, or no one,
+     NET_BOARD_WAIT s on (everglade-net.coax net_boat_refused): you step ashore again, as the room has you */
+  {
+    static double boarded_at = -1;
+    static int64_t boarded = -1;
+    if (!net_live(at(state)) || river.aboard < 0) { boarded = -1; boarded_at = -1; }
+    else {
+      if (boarded != river.aboard) { boarded = river.aboard; boarded_at = now; }
+      if (net_boat_refused(at(state), river.aboard, (float)(now - boarded_at))) {
+        coax_t_Seat off = everglade_river_leave(rv(), heights, now);
+        if (off.on) player = verse_player_place(off.x, 0, off.z, off.yaw);
+        swim = everglade_river_swim(rv(), heights, player.pos.x, player.pos.z, false, 0, now);
+        boarded = -1; boarded_at = -1;
+      }
+    }
+  }
   int64_t floats = everglade_river_floats(rv(), dt, (coax_v_f32){river_floats, 28 * 8});
   // a rowboat near you to board, or E (the prompt) to board it or step ashore
   everglade_boat_near(at(state), swim.medium == 3 || swim.aloft || busy ? -1 : everglade_river_boat_near(rv(), player.pos.x, player.pos.z));

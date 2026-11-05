@@ -1,0 +1,177 @@
+// Rowboats are the room's (#12861): two sockets at the Lantern Pond's rowboat (boat 0), put there by
+// the room's place line (room-control.coax "place": a local room's only). A boards it (E, WE_BOAT):
+// both hear boat 0's row (WK_BOAT) name A as its rower, and A's own row says G 4 (in a boat). B's E
+// at the same boat is refused: the row still names A, and B's G has no 4. A rows (W) for 5 s: both
+// hear the boat move over a metre, and B hears A where the boat is. A steps ashore (E again): the row
+// says moored, and B, put beside the boat again, boards it.
+//   coax/web/tool.sh coax/web/room/boat-check.coax ws://127.0.0.1:PORT DIR/room-control.txt
+// Run it against a local room (room --dev DIR, with OA_ROOM_TICKET_KEY its key): it writes its place
+// lines after DIR/room-control.txt's own and puts the file back as it was. Prints one JSON line, then
+// "rows" and exits 0, or "fails" and 1.
+#load "room-socket.coax";
+#load "../../lib/sys/fs.coax";
+
+BC_BOAT :: 0;
+
+BcSeat :: struct {
+  c: [1] RelayConn; m: [1] WireMirror; seq: int; me: int = -1;
+  x: f32; z: f32; g: int; seen: bool;
+  other: int = -1; ox: f32; oz: f32; og: int;     // the other seat's row as heard
+  bx: f32; bz: f32; by: int = -2; bf: int = -1;   // boat BC_BOAT's row: where, its rower (-1 none; -2 none heard), its float
+}
+bc_hear :: (s: [] BcSeat, t: string) {
+  if rs_starts(t, "y ") { s[0].me = rs_num(rs_field(t, 1)); return; }
+  if !rs_starts(t, "D ") { return; }
+  _ := wire_mirror_frame(s[0].m[..], t);
+  if s[0].me >= 0 {
+    w := wire_mirror_of(s[0].m[..], s[0].me);
+    if w.id >= 0 && w.kind == WK_PLAYER { s[0].x = w.x; s[0].z = w.z; s[0].g = w.g; s[0].seen = true; }
+  }
+  if s[0].other >= 0 {
+    o := wire_mirror_of(s[0].m[..], s[0].other);
+    if o.id >= 0 && o.kind == WK_PLAYER { s[0].ox = o.x; s[0].oz = o.z; s[0].og = o.g; }
+  }
+  b := wire_mirror_of(s[0].m[..], WIRE_ID_MADE + WIRE_BOAT_EID + BC_BOAT);
+  if b.id >= 0 && b.kind == WK_BOAT { s[0].bx = b.x; s[0].bz = b.z; s[0].by = b.owner; s[0].bf = b.p1; }
+}
+// Both seats, ms long: each sends an input each 1/30 s (A W when wa, B W when wb: the stick all the way, 100).
+bc_steps :: (a: [] BcSeat, b: [] BcSeat, wa: bool, wb: bool, ms: int) -> bool {
+  ok := true;
+  t0 := rs_now(); n := 0;
+  while rs_now() - t0 < ms {
+    for q: 0..<2 {
+      s := ifx q == 0 then a else b;
+      s[0].seq += 1;
+      m: [128] u8;
+      go := ifx q == 0 then wa else wb;
+      k := wire_put_in(m[..], 0, WireIn.{seq = s[0].seq, ky = ifx go then 100 else 0, heard = s[0].m[0].heard});
+      if !relay_conn_send(s[0].c[..], cast(string) m[0..<k]) { ok = false; }
+    }
+    n += 1;
+    while rs_now() - t0 < n * 1000 / 30 {
+      while relay_conn_poll(a[0].c[..], 0) == RC_TEXT { bc_hear(a, cast(string) a[0].c[0].text[0..<a[0].c[0].text_n]); }
+      while relay_conn_poll(b[0].c[..], 0) == RC_TEXT { bc_hear(b, cast(string) b[0].c[0].text[0..<b[0].c[0].text_n]); }
+      proc_sleep(2);
+    }
+  }
+  return ok;
+}
+// E at a rowboat (WE_BOAT): float id, or -1 out of yours.
+bc_use :: (s: [] BcSeat, id: int) -> bool {
+  s[0].seq += 1;
+  m: [96] u8;
+  k := wire_put_use(m[..], 0, WireUse.{seq = s[0].seq, kind = WE_BOAT, id = id});
+  return relay_conn_send(s[0].c[..], cast(string) m[0..<k]);
+}
+bc_far :: (x: f32, z: f32, tx: f32, tz: f32) -> f32 { return sqrt((tx - x) * (tx - x) + (tz - z) * (tz - z)); }
+bc_open :: (s: [] BcSeat, url: string, pid: string, name: string) -> bool {
+  ut: [1024] u8;
+  url_t := rs_ticketed(ut[..], url, pid, name);
+  if url_t.count == 0 || !relay_conn_open(s[0].c[..], url_t) { return false; }
+  h: [128] u8;
+  k := rs_put(h[..], 0, "H "); k = rs_int(h[..], k, WIRE_VERSION); k = rs_put(h[..], k, " ranger.1.0.0 druid 64 "); k = rs_put(h[..], k, name);
+  return relay_conn_send(s[0].c[..], cast(string) h[0..<k]);
+}
+// The room's control file: its own lines, then "place CODE SEAT BC_BOAT STAMP" for each seat given (-1 none).
+bc_place :: (path: string, base: string, code: string, sa: int, sb: int, stamp: int) -> bool {
+  t: [16384] u8;
+  k := rs_put(t[..], 0, base);
+  for q: 0..<2 {
+    seat := ifx q == 0 then sa else sb;
+    if seat < 0 || k < 0 { continue; }
+    k = rs_put(t[..], k, "place "); k = rs_put(t[..], k, code); k = rs_put(t[..], k, " "); k = rs_int(t[..], k, seat);
+    k = rs_put(t[..], k, " "); k = rs_int(t[..], k, BC_BOAT); k = rs_put(t[..], k, " "); k = rs_int(t[..], k, stamp + q); k = rs_put(t[..], k, "\n");
+  }
+  return k > 0 && fs_write(path, cast(string) t[0..<k]);
+}
+// Wait (stepping both, standing) until seat q's place lines took (it stands within reach of the boat), at most ms.
+bc_placed :: (a: [] BcSeat, b: [] BcSeat, wa: bool, wb: bool, ms: int) -> bool {
+  t0 := rs_now();
+  while rs_now() - t0 < ms {
+    _ := bc_steps(a, b, false, false, 200);
+    near_a := bc_far(a[0].x, a[0].z, a[0].bx, a[0].bz) < 3.0; near_b := bc_far(b[0].x, b[0].z, b[0].bx, b[0].bz) < 3.0;
+    if (!wa || near_a) && (!wb || near_b) { return true; }
+  }
+  return false;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 2 { tool_errln("usage: coax/web/tool.sh coax/web/room/boat-check.coax ws://127.0.0.1:PORT DIR/room-control.txt"); return 2; }
+  b: [512] u8;
+  base := rs_base(args_at(a[..], 0), b[..]);
+  ctl := args_at(a[..], 1);
+  orig: [8192] u8;
+  on := fs_read(ctl, orig[..]);
+  if on < 0 { tool_err("boat-check: can't read "); tool_errln(ctl); return 2; }
+  own := cast(string) orig[0..<on];
+  stamp := rs_stamp();
+  cb: [64] u8; cn := rs_put(cb[..], 0, "pair-boat-"); cn = rs_int(cb[..], cn, stamp);
+  code := cast(string) cb[0..<cn];
+  u: [1024] u8;
+  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-boat-", stamp);
+  sa: [1] BcSeat; sb: [1] BcSeat;
+  if url.count == 0 || !bc_open(sa[..], url, "p-boatcheck-a", "Boat A") || !bc_open(sb[..], url, "p-boatcheck-b", "Boat B") {
+    tool_err("boat-check: can't open "); tool_errln(url); print("fails\n"); return 1;
+  }
+  ok := bc_steps(sa[..], sb[..], false, false, 2000);
+  sa[0].other = sb[0].me; sb[0].other = sa[0].me;
+  // both beside boat 0
+  ok = bc_place(ctl, own, code, sa[0].me, sb[0].me, 10) && ok;
+  placed := bc_placed(sa[..], sb[..], true, true, 8000);
+  float := sa[0].bf;
+  moored0 := sa[0].by == -1 && sb[0].by == -1;
+  // A boards it: the room names A its rower on both, A's G says in a boat
+  ok = bc_use(sa[..], float) && ok;
+  ok = bc_steps(sa[..], sb[..], false, false, 1500) && ok;
+  ag0 := sa[0].g;
+  rower_a := sa[0].by == sa[0].me && sb[0].by == sa[0].me;
+  a_boat := (sa[0].g & WG_BOAT) != 0;
+  b_og := sb[0].og;
+  // B's E at it while A holds it: refused
+  ok = bc_use(sb[..], float) && ok;
+  ok = bc_steps(sa[..], sb[..], false, false, 1500) && ok;
+  held := sa[0].by == sa[0].me && sb[0].by == sa[0].me && (sb[0].g & WG_BOAT) == 0;
+  // A rows 5 s: both hear the boat move, B hears A in it
+  x0 := sb[0].bx; z0 := sb[0].bz;
+  ok = bc_steps(sa[..], sb[..], true, false, 5000) && ok;
+  ok = bc_steps(sa[..], sb[..], false, false, 500) && ok;
+  rowed := bc_far(x0, z0, sb[0].bx, sb[0].bz);
+  rowed_a := bc_far(x0, z0, sa[0].bx, sa[0].bz);
+  a_in := bc_far(sb[0].ox, sb[0].oz, sb[0].bx, sb[0].bz);
+  b_sees_boat := (sb[0].og & WG_BOAT) != 0;
+  a_g_rowing := sa[0].g;
+  // A steps ashore: moored; B, put beside it again, boards it
+  ok = bc_use(sa[..], -1) && ok;
+  ok = bc_steps(sa[..], sb[..], false, false, 1500) && ok;
+  ashore := sa[0].by == -1 && sb[0].by == -1 && (sa[0].g & WG_BOAT) == 0;
+  ok = bc_place(ctl, own, code, -1, sb[0].me, 20) && ok;
+  placed_b := bc_placed(sa[..], sb[..], false, true, 8000);
+  ok = bc_use(sb[..], float) && ok;
+  ok = bc_steps(sa[..], sb[..], false, false, 1500) && ok;
+  rower_b := sa[0].by == sb[0].me && sb[0].by == sb[0].me && (sb[0].g & WG_BOAT) != 0;
+  _ := fs_write(ctl, own);
+  pass := ok && sa[0].seen && sb[0].seen && placed && float >= 0 && moored0 && rower_a && a_boat && held && rowed > 1.0 && rowed_a > 1.0 && a_in < 0.8 && b_sees_boat && ashore && placed_b && rower_b;
+  out: [1024] u8; o: [1] Jo;
+  jo_start(o[..], out[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "seats"); jo_arr(o[..]); jo_int(o[..], sa[0].me); jo_int(o[..], sb[0].me); jo_end(o[..]);
+  jo_key(o[..], "placed"); jo_bool(o[..], placed);
+  jo_key(o[..], "float"); jo_int(o[..], float);
+  jo_key(o[..], "moored_first"); jo_bool(o[..], moored0);
+  jo_key(o[..], "a_rows_it"); jo_bool(o[..], rower_a);
+  jo_key(o[..], "a_g"); jo_arr(o[..]); jo_int(o[..], ag0); jo_int(o[..], b_og); jo_end(o[..]);
+  jo_key(o[..], "b_refused"); jo_bool(o[..], held);
+  jo_key(o[..], "rowed_cm"); jo_arr(o[..]); jo_int(o[..], cast(int) (rowed_a * 100)); jo_int(o[..], cast(int) (rowed * 100)); jo_end(o[..]);
+  jo_key(o[..], "a_from_boat_cm"); jo_int(o[..], cast(int) (a_in * 100));
+  jo_key(o[..], "b_hears_a_in_boat"); jo_bool(o[..], b_sees_boat);
+  jo_key(o[..], "a_g_rowing"); jo_int(o[..], a_g_rowing);
+  jo_key(o[..], "ashore"); jo_bool(o[..], ashore);
+  jo_key(o[..], "b_placed_again"); jo_bool(o[..], placed_b);
+  jo_key(o[..], "b_rows_it"); jo_bool(o[..], rower_b);
+  jo_end(o[..]);
+  print("%\n", jo_text(o[..]));
+  _ = relay_conn_close(sa[0].c[..], 1000); _ = relay_conn_close(sb[0].c[..], 1000);
+  print("%\n", ifx pass then "rows" else "fails");
+  return ifx pass then 0 else 1;
+}

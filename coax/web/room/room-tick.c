@@ -41,6 +41,8 @@ static void everglade_town(int k) {
     if (!world_boat(k, n, bt)) break;
     rm_eg_boat(view(), k, n, (coax_v_f32){bt, WORLD_BOAT});
   }
+  /* a place line (room-control.coax "place", #12861): the seat on the bank beside that rowboat */
+  for (int s = 0; s < WORLD_SEATS; s++) { int b = (int)rm_eg_place_take(view(), k, s); if (b >= 0) world_place_boat(k, s, b); }
   /* a scripted Hold Person (room-control.coax "hold", #12886): the watch's hold on the seat, before the town steps */
   for (int s = 0; s < WORLD_SEATS; s++) if (rm_eg_hold_take(view(), k, s)) world_hold(k, s);
   int64_t t0 = now_us();

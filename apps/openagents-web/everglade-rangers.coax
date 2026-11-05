@@ -41,6 +41,7 @@ REMOTE_MID :: 35.0;            // m: nearer, every second frame
 REMOTE_FAR_EVERY :: 4;         // farther: one frame in this many
 REMOTE_MARK :: 3.0;            // colour.z of another player's Ranger (yours 1, a person 2)
 REMOTE_BOAT_SINK :: 0.42;      // m a rower sits below the deck (figure)
+REMOTE_BOAT_SEAT :: -0.55;     // a rower's feet under the boat's middle (verse/everglade/river.coax BOAT_SEAT)
 REMOTE_BLOCK :: RANGER_JOINTS * 12;
 REMOTE_LOOK_ROWS :: 2;         // skin tone and the Ranger's first layer; the cloak's and leather's dyes, how shown
 REMOTE_PAL_AT :: RANGER_JOINTS * 12 + PEOPLE_SHOWN * PERSON_ROWS * 4;
@@ -190,6 +191,7 @@ class_of :: (t: string) -> int {
 remote_clip :: (e: RemoteBody) -> int {
   if !e.alive || e.down { return SKIN_IDLE; }
   if !e.air && e.swing >= 0 && e.swing < RANGER_DURATION[SKIN_SWING] { return SKIN_SWING; }
+  if e.boat { return SKIN_IDLE; }   // a rower sits: the boat moves them, not their legs
   return skin_motion(flat_length(e.v), e.air);
 }
 
@@ -216,6 +218,11 @@ remote_bodies :: (s: [] Everglade, out: [] RemoteBody) -> int {
     if !v.ok { continue; }
     pid := net_view_id(s, WK_PLAYER, k);
     if net_blocks(s, pid) { continue; }   // you block them: no body, no nameplate (#12714)
+    // in a rowboat (WG_BOAT): on its thwart, where the boat they row is drawn this frame, facing its bow (#12861)
+    if v.boat {
+      bt := net_boat_by(s, v.eid);
+      if bt.ok { v.x = bt.x; v.y = bt.y + f32(REMOTE_BOAT_SEAT); v.z = bt.z; v.yaw = bt.yaw; v.vx = 0; v.vz = 0; }
+    }
     out[n] = RemoteBody.{seat = v.eid, name = net_view_name(s, WK_PLAYER, k), pid = pid, account = v.account, away = v.away,
                          kind = class_of(net_view_class(s, WK_PLAYER, k)),
                          p = v3(v.x, v.y, v.z), yaw = v.yaw, v = v3(v.vx, 0, v.vz),
@@ -723,20 +730,45 @@ rangers_fixture :: (s: [] Everglade, out: [] RemoteBody, n: int) -> int {
     net_test_s(room[0].r[..], WireS.{id = 7, kind = WK_PLAYER, owner = 7, x = 2, y = 0.5, z = -70 + 0.043 * f32(q), yaw = 0.2, vz = 1.3, g = WG_GROUND, hp = 57, max = 57});
     net_test_s(room[0].r[..], WireS.{id = 8, kind = WK_PLAYER, owner = 8, x = -2, z = -72, g = WG_GROUND | WG_DEAD | WG_AWAY, hp = 0, max = 57});
     net_test_s(room[0].r[..], WireS.{id = 9, kind = WK_PLAYER, owner = 9, x = 0, z = -75, form = CI_FORM_WOLF, hp = 11, max = 11});
+    // seat 10 rows a rowboat (#12861): its row says WG_BOAT, the boat's row has it as the rower
+    net_test_s(room[0].r[..], WireS.{id = 10, kind = WK_PLAYER, owner = 10, x = 51, y = 1.5, z = 20, vz = 1.3, g = WG_BOAT, hp = 57, max = 57});
+    net_test_s(room[0].r[..], WireS.{id = WIRE_ID_MADE + WIRE_BOAT_EID, kind = WK_BOAT, owner = 10, x = 52, y = 0.4, z = 21, yaw = 1, g = 1, p1 = 26, p2 = 250});
     if q == 1 { net_test_n(room[0].r[..], WireN.{ss = 7, id = "pa", look = "ranger.2.1.4", kind = "druid", flags = 2, name = "Ash"}); }
     net_step(b[..], 100 + 33 * q, 0, 0, -84, 0, 0, 0, false, 0, false, 0);
     #assert net_test_hear(b[..], 1, net_test_frame(room[0].r[..]));
   }
   n := remote_bodies(b[..], rs[..]);
-  #assert n == 3;
-  ash := -1; dead := -1; wolf := -1;
-  for i: 0..<n { if rs[i].seat == 7 { ash = i; } if rs[i].seat == 8 { dead = i; } if rs[i].seat == 9 { wolf = i; } }
-  #assert ash >= 0 && dead >= 0 && wolf >= 0;
+  #assert n == 4;
+  ash := -1; dead := -1; wolf := -1; rower := -1;
+  for i: 0..<n { if rs[i].seat == 7 { ash = i; } if rs[i].seat == 8 { dead = i; } if rs[i].seat == 9 { wolf = i; } if rs[i].seat == 10 { rower = i; } }
+  #assert ash >= 0 && dead >= 0 && wolf >= 0 && rower >= 0;
+  // the rower sits on the thwart of the boat it rows, as drawn, facing its bow, still
+  ro := rs[rower];
+  #assert ro.boat && abs(ro.p.x - 52) < 0.01 && abs(ro.p.z - 21) < 0.01 && abs(ro.p.y - (0.4 + f32(REMOTE_BOAT_SEAT))) < 0.01;
+  #assert abs(ro.yaw - 1) < 0.01 && remote_clip(ro) == SKIN_IDLE;
   a := rs[ash];
   #assert a.name == "Ash" && a.look.skin == 2 && a.look.dye == 1 && a.look.trim == 4 && a.alive && !a.air;
   #assert abs(a.v.z - 1.3) < 0.01 && remote_clip(a) == SKIN_WALK && abs(a.p.x - 2) < 0.01;
   #assert a.account && !a.away && a.kind == CLASS_DRUID && a.swing > 1000;
   #assert !rs[dead].alive && rs[dead].name == "" && remote_clip(rs[dead]) == SKIN_IDLE && rs[dead].away && !rs[dead].account;
   #assert rs[wolf].form == CI_FORM_WOLF && rs[wolf].air && remote_clip(rs[wolf]) == SKIN_JUMP;
+}
+#test "rangers: a board the room refused: the boat's row names another rower or none, two seconds on (#12861)" {
+  b: [1] Everglade; nb: [1] EgNet;
+  #assert net_test_page(b[..], nb[..], 1, "pb", 100) && net_test_hear(b[..], 1, "y 1 2 5000100");
+  room: [1] RemoteBodyRoom;
+  net_test_world(room[0].r[..], 0);
+  #assert net_test_hear(b[..], 1, net_test_frame(room[0].r[..]));
+  for owner: [3] int.[1, 4, -1] {
+    for q: 1..<4 {
+      net_test_tick(room[0].r[..], q, 0);
+      net_test_s(room[0].r[..], WireS.{id = WIRE_ID_MADE + WIRE_BOAT_EID, kind = WK_BOAT, owner = owner, x = 52, y = 0.4, z = 21, g = 1, p1 = 26, p2 = -1});
+      net_step(b[..], 100 + 33 * q, 0, 0, -84, 0, 0, 0, false, 0, false, 0);
+      #assert net_test_hear(b[..], 1, net_test_frame(room[0].r[..]));
+    }
+    // yours (seat 1): never refused; another's or moored: refused once the wait is over
+    #assert !net_boat_refused(b[..], 26, 1.0) && net_boat_refused(b[..], 26, 3.0) == (owner != 1);
+    #assert !net_boat_refused(b[..], 27, 3.0);   // no row of that float heard
+  }
 }
 RemoteBodyRoom :: struct { r: [1] NetTestRoom; }

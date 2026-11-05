@@ -1192,14 +1192,15 @@ net_gates :: (s: [] Everglade) -> int {
 }
 // The n-th rowboat the room has (its WK_BOAT row, #12861), for the face to put on your river: false
 // none heard. out: the float, who rows it (a seat + 1, 0 moored; you: -1, your own page rows it),
-// x y z yaw, the oars' share (-1 shipped).
+// x y z yaw, the oars' share (-1 shipped). Where it is drawn now (the jitter buffer's), so another's
+// rower, drawn at the same time (net_boat_by), sits in it.
 net_boat_row :: (s: [] Everglade, b: int, out: [] f32) -> bool #export_c {
   if !net_live(s) || out.count < 7 { return false; }
   n := net_of(s);
   for e: 0..<NET_ENTS {
     en := n[0].ents[e];
     if !en.live || en.kind != WK_BOAT || en.eid != NET_MADE_ID + WIRE_BOAT_EID + b || en.ring_n == 0 { continue; }
-    st := en.ring[en.ring_n - 1];
+    st := en.shown;
     out[0] = f32(en.p1);
     out[1] = ifx en.owner < 0 then 0.0f32 else ifx en.owner == n[0].seat then -1.0f32 else f32(en.owner + 1);
     out[2] = st.x; out[3] = st.y; out[4] = st.z; out[5] = st.yaw;
@@ -1207,6 +1208,30 @@ net_boat_row :: (s: [] Everglade, b: int, out: [] f32) -> bool #export_c {
     return true;
   }
   return false;
+}
+// Whether the room refused your board of rowboat float F (#12861): your page seats you at once, and
+// the room's row of that boat must name you its rower within NET_BOARD_WAIT s of it (WAITED s since);
+// else another seat took it the same tick, or it was out of the room's reach, and you step ashore.
+NET_BOARD_WAIT :: 2.0;
+net_boat_refused :: (s: [] Everglade, f: int, waited: f32) -> bool #export_c {
+  if !net_live(s) || f < 0 || !(waited > NET_BOARD_WAIT) { return false; }
+  br: [7] f32;
+  for b: 0..<NET_BOATS { if net_boat_row(s, b, br[..]) && cast(int) br[0] == f { return br[1] >= 0; } }
+  return false;   // no row of it heard: nothing to say it isn't yours
+}
+NET_BOATS :: 3;   // the rows the room sends (room-everglade.coax EG_BOATS)
+// The rowboat seat SEAT rows, as drawn now (its WK_BOAT row's OWNER, #12861): ok false when none.
+// Another player in a boat (WG_BOAT) is drawn on its thwart (everglade-rangers.coax remote_bodies).
+NetBoat :: struct { ok: bool; x: f32; y: f32; z: f32; yaw: f32; }
+net_boat_by :: (s: [] Everglade, seat: int) -> NetBoat {
+  if !net_live(s) || seat < 0 { return NetBoat.{}; }
+  n := net_of(s);
+  for e: 0..<NET_ENTS {
+    en := n[0].ents[e];
+    if !en.live || en.kind != WK_BOAT || en.owner != seat || en.ring_n == 0 { continue; }
+    return NetBoat.{ok = true, x = en.shown.x, y = en.shown.y, z = en.shown.z, yaw = en.shown.yaw};
+  }
+  return NetBoat.{};
 }
 net_rebuild :: (s: [] Everglade) -> bool {
   if !net_open(s) { return false; }
