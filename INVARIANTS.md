@@ -4655,6 +4655,18 @@ handle refused at use, recovery after a lost device); natively,
 `verse/gpu/realm.sh local check` prints the ledger at the last frame and
 none live after close.
 
+## Everglade's legacy GPU host bounds unfinished frames
+
+`aethyr/frame-pacing.coax` admits a frame only with a nonnegative count below
+two. Everglade exports that Coax decision to `coax/web/host.js`, which checks
+before simulation or GPU writes and completes submissions at queue fences.
+Skipped callbacks retain elapsed simulation time. Pending counts belong to
+their GPUDevice, so a late completion from a lost device cannot decrement a
+replacement device's count. Shared-renderer validation remains separate.
+All five admission mutants are killed; held fences and device recovery were
+checked in headless Chrome. Native measurements are in
+`docs/verification/aethyrforge-frame-pacing-2026-11-04.md`.
+
 ## Bounded original-model weight windows
 
 `psionic/lib/original-window.coax` owns `original-window-v1`, separate from

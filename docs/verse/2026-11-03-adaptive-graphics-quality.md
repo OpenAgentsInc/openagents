@@ -117,6 +117,16 @@ length (2 s time constant) and a short one (0.25 s):
   climbs again from there. It goes back to 60 FPS once frames hold 60 for
   10 s.
 
+The Aethyrforge desktop shell overrides these defaults through `frame_hz` and
+`minimum_hz` page facts (2026-11-04): AUTO initially targets the native display
+rate, bounded to 60–240 Hz, and its fallback quality budget is 60 FPS. It never
+adopts the 30 FPS budget. Missing facts preserve the web/phone behavior above.
+The frame governor controls rendering quality, not the display's refresh rate;
+WebKit's preference is set by the desktop host. A separate Coax admission rule
+limits Everglade to two unfinished GPU frames, so stalled GPU work cannot build
+an unbounded queue. See
+[the native measurement record](../verification/aethyrforge-frame-pacing-2026-11-04.md).
+
 ### What the player sees and picks
 
 - The tier is always on screen, small, at the bottom right: `GFX AUTO · MED`,

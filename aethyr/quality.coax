@@ -66,7 +66,7 @@ QUALITY_30 :: 33.3333;
 // What the page says about its device (host.js pageFacts): its CSS size and pixel ratio, whether
 // it is touched, its cores (navigator.hardwareConcurrency) and memory in GB
 // (navigator.deviceMemory), 0 for one it doesn't say.
-QualityDevice :: struct { css_w: f32; css_h: f32; dpr: f32 = 1; touch: bool; cores: int; memory: f32; }
+QualityDevice :: struct { css_w: f32; css_h: f32; dpr: f32 = 1; touch: bool; cores: int; memory: f32; frame_hz:int;minimum_hz:int; }
 
 QualityKnobs :: struct { scale: f32 = 3; debris: f32 = 1; fine: f32 = 1; fx: f32 = 1; scenery: f32 = 1; }
 
@@ -83,6 +83,7 @@ Quality :: struct {
   wait: [QUALITY_RUNGS] f32;  // s on time each rung waits for before a step up to it (0: QUALITY_UP_S)
   slow: f32; fast: f32;       // s toward the 30 FPS budget, and back to 60
   budget: f32 = QUALITY_60;
+  target_ms:f32=QUALITY_60;fallback_ms:f32=QUALITY_30;
   steps: int;                 // steps taken, up or down
 }
 
@@ -115,6 +116,9 @@ quality_parse :: (text: string) -> int {
 // The start: the device's rung, and the mode the player picked (from the URL, else the one this
 // browser kept), AUTO when neither names one.
 quality_start :: (q: [] Quality, d: QualityDevice, mode: int) {
+  q[0].target_ms=ifx d.frame_hz>=60 && d.frame_hz<=240 then 1000/f32(d.frame_hz) else f32(QUALITY_60);
+  q[0].fallback_ms=ifx d.minimum_hz>=60 then f32(QUALITY_60) else f32(QUALITY_30);
+  q[0].slow_avg=q[0].target_ms;q[0].fast_avg=q[0].target_ms;
   q[0].start = quality_device_rung(d);
   quality_choose(q, ifx mode >= 0 && mode <= QUALITY_AUTO then mode else QUALITY_AUTO);
 }
@@ -125,7 +129,7 @@ quality_choose :: (q: [] Quality, mode: int) {
   q[0].mode = mode;
   q[0].rung = ifx mode == QUALITY_AUTO then q[0].start else QUALITY_TIER_RUNG[mode];
   q[0].over = 0; q[0].burst = 0; q[0].on_time = 0; q[0].since = 0; q[0].slow = 0; q[0].fast = 0;
-  q[0].budget = QUALITY_60;
+  q[0].budget = q[0].target_ms;
   for r: 0..<QUALITY_RUNGS { q[0].wait[r] = 0; }
 }
 // The control's next choice: AUTO, HIGH, MED, LOW, then AUTO again.
@@ -187,13 +191,13 @@ quality_frame :: (q: [] Quality, dt: f32) -> bool {
   was := q[0].rung;
   b := q[0].budget;
   // the budget: 30 FPS for a page that can't hold 60 at the bottom, 60 again once it can
-  if b < f32(QUALITY_30) - 1 && q[0].rung == 0 && q[0].slow_avg > b * f32(QUALITY_OVER) {
+  if b < q[0].fallback_ms - 1 && q[0].rung == 0 && q[0].slow_avg > b * f32(QUALITY_OVER) {
     q[0].slow += dt;
-    if q[0].slow >= f32(QUALITY_SLOW_S) { q[0].budget = QUALITY_30; q[0].slow = 0; q[0].fast = 0; q[0].over = 0; q[0].on_time = 0; return false; }
+    if q[0].slow >= f32(QUALITY_SLOW_S) { q[0].budget = q[0].fallback_ms; q[0].slow = 0; q[0].fast = 0; q[0].over = 0; q[0].on_time = 0; return false; }
   } else { q[0].slow = 0; }
-  if b > f32(QUALITY_60) + 1 {
-    if q[0].slow_avg <= f32(QUALITY_60) * f32(QUALITY_ON_TIME) { q[0].fast += dt; } else { q[0].fast = 0; }
-    if q[0].fast >= f32(QUALITY_FAST_S) { q[0].budget = QUALITY_60; q[0].fast = 0; q[0].on_time = 0; return false; }
+  if b > q[0].target_ms + 1 {
+    if q[0].slow_avg <= q[0].target_ms * f32(QUALITY_ON_TIME) { q[0].fast += dt; } else { q[0].fast = 0; }
+    if q[0].fast >= f32(QUALITY_FAST_S) { q[0].budget = q[0].target_ms; q[0].fast = 0; q[0].on_time = 0; return false; }
   }
   b = q[0].budget;
   if q[0].fast_avg > b * f32(QUALITY_BURST) { q[0].burst += dt; } else { q[0].burst = 0; }
@@ -214,6 +218,20 @@ quality_put :: (out: [] u8, at: int, s: string) -> int {
   m := at;
   for c: s { if m < out.count { out[m] = c; m += 1; } }
   return m;
+}
+
+#test "quality desktop targets the display rate and never settles for a 30 FPS budget" {
+  q:[1]Quality;quality_start(q[..],QualityDevice.{frame_hz=120,minimum_hz=60},-1);
+  #assert abs(q[0].target_ms-8.333333)<0.001 && q[0].budget==q[0].target_ms && q[0].slow_avg==q[0].target_ms;
+  #assert q[0].fallback_ms==f32(QUALITY_60);q[0].rung=0;
+  for i:0..<600 {_:=quality_frame(q[..],0.05);#assert q[0].budget<=f32(QUALITY_60);}
+  #assert q[0].budget==f32(QUALITY_60);
+  for i:0..<3600 {_:=quality_frame(q[..],1.0/120);}
+  #assert q[0].budget==q[0].target_ms;
+  quality_choose(q[..],QUALITY_AUTO);#assert q[0].budget==q[0].target_ms;
+  quality_start(q[..],QualityDevice.{frame_hz=240,minimum_hz=60},-1);#assert abs(q[0].budget-4.166666)<0.001;
+  quality_start(q[..],QualityDevice.{frame_hz=241},-1);#assert q[0].budget==f32(QUALITY_60) && q[0].fallback_ms==f32(QUALITY_30);
+  quality_start(q[..],QualityDevice.{frame_hz=30},-1);#assert q[0].budget==f32(QUALITY_60);
 }
 // "AUTO · MED", or the tier the player picked ("LOW"), for the corner of the screen.
 quality_label :: (q: [] Quality, out: [] u8) -> string {

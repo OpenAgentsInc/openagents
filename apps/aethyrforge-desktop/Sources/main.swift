@@ -77,6 +77,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     var stopping = false
     let startedAt = Date()
     var firstFrameSeconds = 0.0
+    var highRefreshEnabled = false
     let setupSmoke = CommandLine.arguments.contains("--setup-smoke")
     let voiceSmoke = CommandLine.arguments.contains("--voice-smoke")
     let chatSmoke = CommandLine.arguments.contains("--chat-smoke")
@@ -89,6 +90,10 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     }
     var launchReport: URL? {
         guard let i = CommandLine.arguments.firstIndex(of: "--launch-check"), i + 1 < CommandLine.arguments.count else { return nil }
+        return URL(fileURLWithPath: CommandLine.arguments[i + 1])
+    }
+    var frameProfileURL: URL? {
+        guard let i = CommandLine.arguments.firstIndex(of: "--frame-profile"), i + 1 < CommandLine.arguments.count else { return nil }
         return URL(fileURLWithPath: CommandLine.arguments[i + 1])
     }
     var smoke: Bool { npcSmoke || sceneSmoke || inputSmoke || chatSmoke || setupSmoke || voiceSmoke || CommandLine.arguments.contains("--smoke-test") }
@@ -136,6 +141,11 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         NSApp.mainMenu = menu
 
         let config = WKWebViewConfiguration()
+        let displayHz = NSScreen.main?.maximumFramesPerSecond ?? 60
+        if forge_high_refresh(Int64(displayHz)) { highRefreshEnabled = configureHighRefresh(config.preferences) }
+        let preferredHz = highRefreshEnabled ? displayHz : 60
+        config.userContentController.addUserScript(WKUserScript(source: "globalThis.coaxialPreferredFrameRate=\(preferredHz);globalThis.coaxialMinimumFrameRate=60;", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        if frameProfileURL != nil { config.userContentController.addUserScript(WKUserScript(source: "globalThis.coaxialFrameTrace=true;", injectionTime: .atDocumentStart, forMainFrameOnly: true)) }
         config.userContentController.add(self, name: "forgeVoiceStatus")
         config.userContentController.add(self, name: "forgeVoiceCoder")
         config.userContentController.addScriptMessageHandler(self, contentWorld: .page, name: "forgeVoiceCapture")
@@ -228,6 +238,21 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         try p.run()
         return p
     }
+    // This experimental, ad-hoc signed Mac shell uses WebKit's feature SPI.
+    // Enumerate and check availability; never change Safari or system defaults.
+    func configureHighRefresh(_ preferences: WKPreferences) -> Bool {
+        let kind: AnyObject = WKPreferences.self
+        let featuresSelector = NSSelectorFromString("_features")
+        let setterSelector = NSSelectorFromString("_setEnabled:forFeature:")
+        let getterSelector = NSSelectorFromString("_isEnabledForFeature:")
+        guard kind.responds(to: featuresSelector), preferences.responds(to: setterSelector), preferences.responds(to: getterSelector),
+              let features = kind.perform(featuresSelector)?.takeUnretainedValue() as? [NSObject],
+              let feature = features.first(where: { $0.value(forKey: "key") as? String == "PreferPageRenderingUpdatesNear60FPSEnabled" }) else { return false }
+        let set = unsafeBitCast(preferences.method(for: setterSelector), to: (@convention(c) (AnyObject, Selector, Bool, AnyObject) -> Void).self)
+        let get = unsafeBitCast(preferences.method(for: getterSelector), to: (@convention(c) (AnyObject, Selector, AnyObject) -> Bool).self)
+        set(preferences, setterSelector, false, feature)
+        return !get(preferences, getterSelector, feature)
+    }
 
     func start() async {
         do {
@@ -291,6 +316,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
             sceneReady = true; setupPane.sceneReady = true; setupPane.update()
             if setupPane.isHidden { window.makeFirstResponder(web) }
             try await startSceneControls()
+            if let frameProfileURL { Task { try? await captureFrameProfile(frameProfileURL) } }
             if let launchReport {
                 await inventoryTask?.value
                 enterWorld()
@@ -623,6 +649,35 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         state["hudHeight"] = chatPane.hud.frame.height; state["windowHeight"] = web.frame.height
         return String(decoding: try JSONSerialization.data(withJSONObject: state, options: [.sortedKeys]), as: UTF8.self)
     }
+    // Raw browser and platform observations; the Coax profiler owns statistics.
+    func captureFrameProfile(_ url: URL) async throws {
+        try await Task.sleep(for: .seconds(3))
+        _ = try await web.evaluateJavaScript("coaxial.takeFrameTrace();true")
+        var windows: [[String: Any]] = []
+        let walking = CommandLine.arguments.contains("--frame-profile-walk")
+        func walkKey(_ key: String, _ down: Bool) async throws {
+            _ = try await web.evaluateJavaScript("dispatchEvent(new KeyboardEvent('\(down ? "keydown" : "keyup")',{key:'\(key)',code:'Key\(key.uppercased())',bubbles:true}));true")
+        }
+        for _ in 0..<6 {
+            if walking { try await walkKey("w", true) }
+            try await Task.sleep(for: .milliseconds(2500))
+            if walking { try await walkKey("w", false); try await walkKey("s", true) }
+            try await Task.sleep(for: .milliseconds(2500))
+            if walking { try await walkKey("s", false) }
+            guard !stopping else { return }
+            let raw = try await web.evaluateJavaScript("JSON.stringify({samples:coaxial.takeFrameTrace(),quality:Array.from({length:9},(_,i)=>coaxial.quality(i)),queue:coaxial.frameQueue(),hidden:document.hidden,focused:document.hasFocus()})") as? String ?? "{}"
+            var snapshot = try JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [String: Any] ?? [:]
+            snapshot["visible"] = window.isVisible && window.occlusionState.contains(.visible)
+            snapshot["thermal"] = ProcessInfo.processInfo.thermalState.rawValue
+            snapshot["lowPower"] = ProcessInfo.processInfo.isLowPowerModeEnabled
+            snapshot["displayFPS"] = window.screen?.maximumFramesPerSecond ?? 0
+            snapshot["highRefreshEnabled"] = highRefreshEnabled
+            snapshot["active"] = NSApp.isActive
+            snapshot["walking"] = walking
+            windows.append(snapshot)
+            try JSONSerialization.data(withJSONObject: ["schema":"aethyrforge.frame-profile.v1","windows":windows], options: [.sortedKeys]).write(to: url, options: .atomic)
+        }
+    }
 
     // Exercises the actual WKWebView and packaged stack, without ordering a
     // window onto the owner's screen or enabling audio. Isolated world directory.
@@ -837,6 +892,9 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         try fm.createDirectory(at: chatPane.cwd, withIntermediateDirectories: true)
         try fm.createDirectory(at: root.appendingPathComponent(".openagents/aethyrforge"), withIntermediateDirectories: true)
         chatPane.engineOverride = "echo"
+        let originalSceneContext = chatPane.sceneContextURL
+        chatPane.sceneContextURL = nil // Echo exercises input/streaming, without slowly echoing the tool manual.
+        defer { chatPane.sceneContextURL = originalSceneContext }
         key(36); key(36, down: false)
         chatPane.input.string = "FORGE_ENTER_CODER_OK"
         key(36); key(36, repeatKey: true); key(36, down: false)

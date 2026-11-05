@@ -46,6 +46,37 @@ page is hidden. A genuine startup/server failure shows its error, stops the
 spinner and provides Retry startup. Retrying replaces only this app's local
 processes and preserves the saved world.
 
+On a ProMotion display the shell disables WebKit's preference for updates near
+60 Hz, using its feature API only when that feature and its selectors exist.
+Otherwise it keeps the 60 Hz preference. This changes this app's WebKit instance.
+The native display rate reaches Coax's AUTO governor through page facts; desktop
+AUTO targets that rate and has a 60 FPS minimum quality budget. It can reduce
+rendering quality under load without adopting the web/phone governor's 30 FPS
+budget. Actual throughput still depends on the scene and available GPU time.
+
+`aethyr/frame-pacing.coax` admits at most two unfinished GPU frames in Everglade's
+legacy WebGPU host. When both are outstanding, the host waits for a queue fence
+before doing more simulation/encoding work; the next admitted frame receives the
+elapsed time. Device recovery owns a fresh pending count. The HUD retains its
+vertex array instead of allocating/zeroing its 8 MB feed capacity for each draw.
+
+For a real, visible WKWebView timing capture, quit the app first, then run:
+
+```sh
+~/.openagents/aethyrforge/Aethyrforge.app/Contents/MacOS/Aethyrforge \
+  --frame-profile /tmp/aethyrforge-frames.json
+coax/web/tool.sh apps/aethyrforge-desktop/frame-profile.coax /tmp/aethyrforge-frames.json
+```
+
+After scene readiness and a three-second warmup, this writes six five-second
+windows. Wait for all six before summarizing. Add `--frame-profile-walk` to
+alternate real W/S key events every 2.5 seconds during capture. Ordinary launches
+do not collect traces. The report separates animation callbacks from GPU
+submissions and reports CPU work, queue completion round trips and pending work;
+it does not claim to measure display presentation timestamps. Measurements and
+checks are recorded in
+[the performance verification](../../docs/verification/aethyrforge-frame-pacing-2026-11-04.md).
+
 The Coder HUD uses `aethyr/ui/draw.coax` for a compact, lightly tinted 88-point
 composer and shared layout. Floating messages use `aethyr/ui/feed.coax` and
 `feed-draw.coax`: Coax owns the bounded UTF-8 ring, wrapping, newest visible rows

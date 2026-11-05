@@ -35,6 +35,7 @@
 #include <string.h>
 
 #define EXPORT(name) __attribute__((export_name(name)))
+EXPORT("coaxial_frame_admit") int32_t coaxial_frame_admit(int32_t pending) { return afp_submit(pending) ? 1 : 0; }
 
 static coax_t_Player player;
 static coax_t_Sticks sticks;

@@ -36,6 +36,7 @@ final class ForgeHUD: MTKView, MTKViewDelegate {
     var feed = false
     var viewport = NSSize.zero
     var drawOrigin = NSPoint.zero
+    var vertexStorage: [Float] = []
     override var isOpaque: Bool { false }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
     init(frame: NSRect) {
@@ -60,13 +61,14 @@ final class ForgeHUD: MTKView, MTKViewDelegate {
     required init(coder: NSCoder) { fatalError() }
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) { needsDisplay = true }
     func vertexStream(scale d: Float) -> ([Float], Int) {
-        var vertices = [Float](repeating: 0, count: feed ? 2_000_000 : 48000)
-        let n = vertices.withUnsafeMutableBufferPointer {
+        let capacity = feed ? 2_000_000 : 48000
+        if vertexStorage.count < capacity { vertexStorage = [Float](repeating: 0, count: capacity) }
+        let n = vertexStorage.withUnsafeMutableBufferPointer {
             feed ? fgc_feed_draw($0.baseAddress, Int64($0.count), Float(viewport.width), Float(viewport.height), d)
                  : fgc_draw($0.baseAddress, Int64($0.count), Float(viewport.width), Float(viewport.height), d, busy)
         }
-        for i in 0..<Int(n) { vertices[i * 12] -= Float(drawOrigin.x) * d; vertices[i * 12 + 1] -= Float(drawOrigin.y) * d }
-        return (vertices, Int(n))
+        for i in 0..<Int(n) { vertexStorage[i * 12] -= Float(drawOrigin.x) * d; vertexStorage[i * 12 + 1] -= Float(drawOrigin.y) * d }
+        return (vertexStorage, Int(n))
     }
     func draw(in view: MTKView) {
         guard let device, let pipeline, let queue, let pass = currentRenderPassDescriptor,
@@ -74,8 +76,8 @@ final class ForgeHUD: MTKView, MTKViewDelegate {
         let d = Float(drawableSize.width / max(bounds.width, 1))
         // Coax's point-space layout is window-relative. The native Metal view
         // covers only its HUD component, so WebKit can see the world around it.
-        var (vertices, n) = vertexStream(scale: d)
-        guard let buffer = device.makeBuffer(bytes: &vertices, length: Int(n) * 48), let encoder = cmd.makeRenderCommandEncoder(descriptor: pass) else { return }
+        let (vertices, n) = vertexStream(scale: d)
+        guard let buffer = vertices.withUnsafeBytes({ device.makeBuffer(bytes: $0.baseAddress!, length: Int(n) * 48) }), let encoder = cmd.makeRenderCommandEncoder(descriptor: pass) else { return }
         var size = SIMD2<Float>(Float(drawableSize.width), Float(drawableSize.height))
         encoder.setRenderPipelineState(pipeline); encoder.setVertexBuffer(buffer, offset: 0, index: 0)
         encoder.setVertexBytes(&size, length: MemoryLayout.size(ofValue: size), index: 1)

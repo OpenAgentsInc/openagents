@@ -25,6 +25,7 @@ eg_quality_facts :: (s: [] Everglade, text: string) {
   d.touch = fact(text, "coarse") == "1" || fact_num(fact(text, "touch")) > 0;
   d.cores = cast(int) fact_num(fact(text, "cores"));
   d.memory = cast(f32) fact_num(fact(text, "memory"));
+  d.frame_hz=cast(int)fact_num(fact(text,"frame_hz"));d.minimum_hz=cast(int)fact_num(fact(text,"minimum_hz"));
   s[0].q_dev = d;
   quality_start(s[0].q[..], d, mode);
   s[0].q_ready = true;
@@ -156,6 +157,15 @@ everglade_quality_probe :: (s: [] Everglade, field: int) -> int #export_c {
     for i: 0..<900 { if frame == 1 { if seen[i] == kept[i] { same += 1; } else { changed += 1; } } kept[i] = seen[i]; }
     if frame == 1 { #assert changed < 30; }
   }
+}
+
+#test "graphics quality: desktop display facts target 120 Hz with a 60 Hz floor" {
+  g:[1]Everglade;
+  eg_quality_facts(g[..],"url=http://localhost/worlds/everglade?forge\nvw=1280\nvh=800\ndpr=2\ncores=10\nframe_hz=120\nminimum_hz=60\nquality=auto");
+  #assert g[0].q_ready && quality_auto(g[0].q[..]);
+  #assert abs(g[0].q[0].target_ms-8.333333)<0.001 && g[0].q[0].fallback_ms==f32(QUALITY_60);
+  eg_quality_facts(g[..],"url=http://localhost/worlds/everglade\nvw=1280\nvh=800\ndpr=2\ncores=10");
+  #assert g[0].q[0].target_ms==f32(QUALITY_60) && g[0].q[0].fallback_ms==f32(QUALITY_30);
 }
 
 #test "graphics quality: the facts start it; ?quality= wins over the kept tier; a tap picks the next and tells the host" {

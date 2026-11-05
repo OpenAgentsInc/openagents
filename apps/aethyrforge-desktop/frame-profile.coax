@@ -1,0 +1,28 @@
+// Summarize raw WKWebView timing observations with Aethyr's frame statistics.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../aethyr/frame-report.coax";
+FP_LIMIT :: 4096;
+fp_us :: (v:Jv,node:int)->int {n:=args_number(jv_raw(v,node));return ifx n.ok && n.value>=0 then cast(int)(n.value*1000+0.5) else 0;}
+#test "profile converts browser fractional milliseconds without discarding submillisecond work" {
+  j:[1]Jv;nodes:[8]JvNode;#assert jv_parse(j[..],"[16.6667,0.012,-1]",nodes[..]);
+  #assert fp_us(j[0],jv_at(j[0],0,0))==16667 && fp_us(j[0],jv_at(j[0],0,1))==12 && fp_us(j[0],jv_at(j[0],0,2))==0;
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;data:[1048576]u8;if !args_load(a[..]) {return 2;}n:=fs_read(args_at(a[..],0),data[..]);if n<0 {return 1;}
+  nodes:[65536]JvNode;j:[1]Jv;if !jv_parse(j[..],cast(string)data[0..<n],nodes[..]) {tool_errln("Invalid frame profile.");return 1;}
+  v:=j[0];windows:=jv_get(v,0,"windows");all:[FP_LIMIT*11]int;count:=0;submitted:=0;visible:=0;pending:=0;elapsed:=0;gap:=0;gaps:[FP_LIMIT]int;
+  for w:0..<jv_len(v,windows) {
+    window:=jv_at(v,windows,w);if jv_bool(v,jv_get(v,window,"visible")) {visible+=1;}
+    samples:=jv_get(v,window,"samples");
+    for i:0..<jv_len(v,samples) {if count>=FP_LIMIT {break;}row:=jv_at(v,samples,i);for k:0..<11 {all[count*11+k]=fp_us(v,jv_at(v,row,k));}gap+=all[count*11];if jv_int(v,jv_at(v,row,7),0)==1 {gaps[submitted]=gap;gap=0;submitted+=1;}p:=jv_int(v,jv_at(v,row,10),0);if p>pending{pending=p;}elapsed+=all[count*11];count+=1;}
+  }
+  print("frames=% submitted=% skipped=% visible_windows=%/% max_pending=% submitted_fps_x10=%\n",count,submitted,count-submitted,visible,jv_len(v,windows),pending,ifx elapsed>0 then submitted*10000000/elapsed else 0);
+  sub:=frame_stats(gaps[..],submitted);print("submitted_interval p50_us=% p95_us=% max_us=%\n",sub.p50,sub.p95,sub.max);
+  labels:=[6]string.["cadence","wasm","encode","input","cpu","gpu_completion_roundtrip"];fields:=[6]int.[0,1,2,3,4,8];
+  for k:0..<6 {times:[FP_LIMIT]int;for i:0..<count {times[i]=all[i*11+fields[k]];}s:=frame_stats(times[..],count);print("% p50_us=% p95_us=% max_us=% fps_x10=%\n",labels[k],s.p50,s.p95,s.max,frame_fps10(s));}
+  if count>0 {print("last_width=% last_height=% retained_staging_bytes=%\n",all[(count-1)*11+5]/1000,all[(count-1)*11+6]/1000,all[(count-1)*11+9]/1000);}
+  return 0;
+}

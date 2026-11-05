@@ -761,6 +761,7 @@ function pageFacts() {
     vw: innerWidth, vh: innerHeight, dpr: devicePixelRatio || 1, coarse: matchMedia("(pointer: coarse)").matches ? 1 : 0,
     touch: navigator.maxTouchPoints || 0, gpu: navigator.gpu ? 1 : 0, hidden: document.hidden ? 1 : 0,
     cores: navigator.hardwareConcurrency || 0, memory: navigator.deviceMemory || 0, quality: storedQuality(),
+    frame_hz: globalThis.coaxialPreferredFrameRate || 0, minimum_hz: globalThis.coaxialMinimumFrameRate || 0,
     sound: (() => { try { return localStorage.getItem("verse.sound") || ""; } catch { return ""; } })(),
     focused: document.hasFocus() ? 1 : 0,
     clip: globalThis.coaxialClip === true ? 1 : 0,
@@ -2037,6 +2038,10 @@ const scale = () => (canvas.width && canvas.clientWidth ? canvas.width / canvas.
 // coaxialClipStep says so, each frame one fixed step of game time, so a recording has
 // every frame at its exact moment however slowly the machine draws or captures.
 const clipping = globalThis.coaxialClip === true;
+// Optional platform timing observations for the desktop profiler. No work is
+// collected in an ordinary page; Coax tools summarize these raw milliseconds.
+const frameTrace = globalThis.coaxialFrameTrace === true ? [] : null;
+let traceRow = null, traceLast = 0;
 let clipNow = 0;
 if (clipping) globalThis.coaxialClipStep = async (frames = 1, fps = 30) => {
   // a clip that records its sound starts the audio once the engine is up (no gesture needed: nothing plays)
@@ -2048,11 +2053,15 @@ if (clipping) globalThis.coaxialClipStep = async (frames = 1, fps = 30) => {
 function frame(now) {
   requestAnimationFrame(frame);
   if (clipping) return;
+  const observedStart = frameTrace ? performance.now() : 0;
+  if (frameTrace) { traceRow = [traceLast ? now - traceLast : 0, 0, 0, 0, 0, 0, 0, -1, 0, 0, 0];traceLast = now; }
   if (engine && socketHead < socketQueue.length) drainSockets(Math.max(2, SOCKET_BUDGET_MS - frameCost));
   padPoll();
   const t0 = performance.now();
+  if (traceRow) traceRow[3] = t0 - observedStart;
   try { draw(now); } finally { frameCost = 0.9 * frameCost + 0.1 * (performance.now() - t0); }
   a11yMirror(now);
+  if (traceRow) { traceRow[4] = performance.now() - observedStart;if (traceRow[5] && globalThis.coaxial.sceneReady) {frameTrace.push(traceRow);if(frameTrace.length>600)frameTrace.shift();}traceRow=null; }
 }
 
 // A controller (a module that exports coaxial_pad): the first pad's left stick (x right, y
@@ -2135,11 +2144,17 @@ let frameCost = 0;   // ms of main thread the drawing itself takes, smoothed: so
 function draw(now) {
   if (engineInstalling || !engine || !gpu?.bg || recovering) return;
   releaseWaiting();   // once this frame, which draws the state as the loss found it, is done
-  const dt = last ? (now - last) / 1000 : 0; last = now;
   const [dw, dh] = devicePixels || [Math.max(1, Math.round(canvas.clientWidth * devicePixelRatio)), Math.max(1, Math.round(canvas.clientHeight * devicePixelRatio))];
   const f = drawn(dw) * SUPERSAMPLE, w = Math.max(1, Math.round(dw * f)), h = Math.max(1, Math.round(dh * f));
+  const pending = gpu.device.__coaxialFrames || 0;
+  if (traceRow) {traceRow[5]=w;traceRow[6]=h;traceRow[10]=pending;}
+  if (!gpu.renderer && engine.exports.coaxial_frame_admit && !engine.exports.coaxial_frame_admit(pending)) {
+    if(traceRow){traceRow[7]=0;traceRow[8]=gpu.device.__coaxialCompletionMs||0;}return;
+  }
+  const dt = last ? (now - last) / 1000 : 0; last = now;
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
   const dpr = scale();
+  if (traceRow) {traceRow[5]=w;traceRow[6]=h;}
   let n = 0;
   frameStart();   // a rescue save put back, then this frame's start kept (a trap saves it)
   const trap = dev && trapArmed;trapArmed = false;
@@ -2147,12 +2162,16 @@ function draw(now) {
     for (let k = 0; probeAt && !gpu.probed && k < probeAt * 10; k++)
       engine.exports.coaxial_frame(arena.state, arena.vertices, arena.uniforms, w, h, dpr, 0.1, 0);
     if (probeDo && !gpu.probed) runProbe(w, h, dpr);
+    const engineStart = traceRow ? performance.now() : 0;
     n = engine.exports.coaxial_frame(trap ? -16 : arena.state, arena.vertices, arena.uniforms, w, h, dpr, dt, still ? 1 : 0);
+    if (traceRow) traceRow[1] = performance.now() - engineStart;
     if (gpu.gpuiOn) gpuiFrame(dpr);
   } catch (e) { trapped(e); return; }
   if (gpu.renderer) {
     try {
+      const encodeStart = traceRow ? performance.now() : 0;
       const submitted = gpu.renderer.frame(n, w, h, captureRequested && probeArmed && ++frames >= 1 && !gpu.probed ? (encoder, texture) => readBack(encoder, texture) : null);
+      if (traceRow) {traceRow[2]=performance.now()-encodeStart;traceRow[7]=submitted?1:0;traceRow[9]=gpu.renderer.buffers?.reduce((n,r)=>n+(r.image?r.bytes:0),0)||0;}
       if (submitted && gpu.renderer.readiness === gpu.renderer.ids.readiness.ready) globalThis.coaxial.sceneReady = true;
       if (probe || dev) globalThis.coaxial.renderStatus = { submitted, readiness: gpu.renderer.readiness, refusal: gpu.renderer.lastRefusal, error: gpu.renderer.error?.message, captureArmed: probeArmed, observed: !!gpu.renderer.observation, probed: gpu.probed };
       if (gpu.snap) { const take = gpu.snap;gpu.snap = null;take(); }
@@ -2165,6 +2184,7 @@ function draw(now) {
     return;
   }
   n = Math.min(n, arena.maxVertices);
+  const legacyEncodeStart = traceRow ? performance.now() : 0;
   const { device, context } = gpu;
   const x = engine.exports;
   device.queue.writeBuffer(gpu.uniformBuffer, 0, new Float32Array(memory.buffer, arena.uniforms, arena.uniformFloats));
@@ -2296,6 +2316,14 @@ function draw(now) {
   }
   const readback = captureRequested && probeArmed && ++frames >= 1 && !gpu.probed ? readBack(encoder, texture) : null;
   device.queue.submit([encoder.finish()]);
+  if (x.coaxial_frame_admit) {
+    device.__coaxialFrames=(device.__coaxialFrames||0)+1;
+    const began=frameTrace?performance.now():0;
+    device.queue.onSubmittedWorkDone().then(()=>{if(began)device.__coaxialCompletionMs=performance.now()-began;}).catch(()=>{}).finally(()=>{device.__coaxialFrames--;});
+  }
+  if (traceRow) {
+    traceRow[2]=performance.now()-legacyEncodeStart;traceRow[7]=1;traceRow[8]=device.__coaxialCompletionMs||0;traceRow[10]=device.__coaxialFrames||0;
+  }
   if (timed) timingRead(gpu.timer);
   if (gpu.snap) { const take = gpu.snap; gpu.snap = null; take(); }   // card.js: this frame, before it is shown
   if (shaderLoads === 0 && installedGeneration === wanted && !globalThis.coaxial.sceneReady && pendingSceneEpoch !== sceneEpoch) {
@@ -2454,6 +2482,8 @@ function send(kind, text = "") {
   after(false);
 }
 globalThis.coaxial = { send, ready: false, sceneReady: false, facts: () => pageFacts(), probe: () => engine?.exports.coaxial_probe?.(arena.state) ?? 0,
+  takeFrameTrace: () => frameTrace?.splice(0) ?? [],
+  frameQueue: () => ({pending:gpu?.device.__coaxialFrames||0,bounded:typeof engine?.exports.coaxial_frame_admit==="function"}),
   quality: (field = 0) => engine?.exports.coaxial_quality_probe?.(arena.state, field) ?? -1,
   captureFrame: () => { if (captureRequested) { probeArmed = true;if (gpu) gpu.probed = false; }return probeArmed; },
   guardProbe: (field = 0) => engine?.exports.coaxial_guard_probe?.(arena.state, field) ?? 0,

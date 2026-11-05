@@ -1,0 +1,8 @@
+// Bound GPU submissions independently of simulation/display refresh. The host
+// reports outstanding submissions and completes each only at the queue fence.
+#authority;
+#test "GPU presentation admits at most two unfinished frames and refuses invalid observations" {
+  #assert afp_submit(0) && afp_submit(1);
+  #assert !afp_submit(2) && !afp_submit(3) && !afp_submit(-1) && !afp_submit(1000000);
+}
+afp_submit :: (pending:int)->bool #export_c {return pending>=0 && pending<2;}

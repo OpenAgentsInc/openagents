@@ -28,6 +28,16 @@ entry-point rules and Coax build tool. It bundles the website's existing
 page server, the voice Wasm and a local Parakeet voice host. This is the same
 `/worlds/everglade` engine players use.
 
+- On ProMotion displays, disables WebKit's preference for updates near 60 Hz
+  through a guarded per-instance feature API; an unavailable API retains 60 Hz.
+  The desktop supplies its display rate to Coax's AUTO quality governor with a
+  60 FPS fallback budget, replacing the web/phone 30 FPS fallback for this app.
+  Everglade's Coax GPU admission rule bounds the legacy host to two unfinished
+  frames; skipped callbacks retain elapsed simulation time. The native Aethyr
+  HUD reuses its vertex array. The optional `--frame-profile PATH` records actual
+  visible WKWebView timings, with Coax summarizing the observations. Results and
+  scope are in [the performance verification](../verification/aethyrforge-frame-pacing-2026-11-04.md).
+
 - Opens at the South Gate (`#gate`) with EDIT on (`?forge`). The native window
   identifies this as local editing. The existing editor's placement, selection,
   movement, rotation, resizing, deletion and in-session undo/redo are available.

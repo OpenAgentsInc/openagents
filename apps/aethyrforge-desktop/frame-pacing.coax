@@ -1,0 +1,6 @@
+// Desktop presentation preference; display observations come from AppKit.
+#test "desktop asks WebKit for high refresh only on a faster display" {
+  #assert !forge_high_refresh(0) && !forge_high_refresh(30) && !forge_high_refresh(60);
+  #assert forge_high_refresh(61) && forge_high_refresh(120) && forge_high_refresh(240);
+}
+forge_high_refresh :: (display_hz:int)->bool #export_c {return display_hz>60;}

@@ -5039,3 +5039,4 @@ EVERGLADE_BUDGET :: FrameBudget.{steps = 8, vertices = 6000, draws = DRAWS, byte
 // A walk from the gate: three frames at each budget screen, the last one 0.1 s long. Book
 // chapter 16 gives the peaks of 120 frames at each screen, measured natively.
 // Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+#load "../../aethyr/frame-pacing.coax";

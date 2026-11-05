@@ -54,6 +54,7 @@
 #include <string.h>
 
 #define EXPORT(name) __attribute__((export_name(name)))
+EXPORT("coaxial_frame_admit") int32_t coaxial_frame_admit(int32_t pending) { return afp_submit(pending) ? 1 : 0; }
 #define IMPORT(name) __attribute__((import_module("env"), import_name(name)))
 IMPORT("coaxial_socket_open") int32_t coaxial_socket_open(uint32_t url, uint32_t len);
 IMPORT("coaxial_socket_send") void coaxial_socket_send(int32_t id, uint32_t ptr, uint32_t len);
