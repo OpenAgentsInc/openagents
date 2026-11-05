@@ -50,7 +50,7 @@ ledger all depend on integer behavior that differs between debug and release.
 So the P0 items in §4.2 are taken in this order:
 
 1. Read-only views ([#12924](https://github.com/OpenAgentsInc/openagents/issues/12924)),
-   already in progress, to its full acceptance in the issue.
+   implemented in 0.49.0; see the follow-up in §5.1 and its profile limits.
 2. Per-phase build timing and per-declaration costs, then reuse across edits
    ([#12925](https://github.com/OpenAgentsInc/openagents/issues/12925), §11).
 3. Capacity refusals that name the exhausted resource, its top consumers and a
@@ -209,13 +209,22 @@ compiler defect.
 
 ### 5.1 Read-only views and exclusive write regions
 
-Today a view descriptor is immutable as a parameter, but its elements are
-mutable. Strings are read-only bytes; that does not supply a general read-only
-view of an asset table or entity component. The memory chapter explicitly
-requires copying an immutable fixed-array parameter before borrowing it. The
-[Unicode normalizer notes](../lib/text/README.md) describe local table copies
-needed because mutable views cannot borrow constants; one optimized native
-build removes them, but that is not a portable language guarantee.
+At the start of this audit, a view descriptor was immutable as a parameter,
+but its elements were mutable. Strings supplied read-only bytes without a
+general read-only view of an asset table or entity component. The memory
+chapter required copying an immutable fixed-array parameter before borrowing
+it. The [Unicode normalizer notes](../lib/text/README.md) described local table
+copies needed because mutable views cannot borrow constants; one optimized
+native build removed them, without a portable language guarantee.
+
+Implementation follow-up, 2026-11-05: Coax 0.49.0 adds `[] const T`, one-way
+restriction of writable views, immutable-array borrows, generic readers and
+returned carriers, with const native descriptors and the existing lifetime
+checks. The Unicode normalizer now borrows its static tables directly. See
+the [contract](../readonly-views.md) and [verification record](../../docs/verification/coax-readonly-views-2026-11-05.md).
+Device profiles refuse this type explicitly; elements containing writable
+descriptors are also refused. Exclusive regions, race freedom and ownership
+remain separate work, as does Aethyr's scheduling policy described below.
 
 An MMO reads far more data than it changes: collision meshes, skeletons, item
 definitions, navigation tiles and animation clips. I want a general immutable

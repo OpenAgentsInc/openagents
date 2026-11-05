@@ -46,9 +46,11 @@ exclusive-ownership, deep immutability or Aethyr scheduling qualifications.
   reject with their expected diagnostics.
 - The native suite's new ABI/ASan/UBSan test checks exact pointer/count aliasing,
   static backing across calls, read-only byte/string borrowing and const header
-  fields in checked/release modes. Existing native tests also pass. The target
+  fields in checked/release modes. A returned carrier of read-only record
+  elements checks exported type reachability and exact caller aliasing too.
+  Existing native tests also pass. The target
   refusal test checks cuda, metal-compute, WGSL, SPIR-V and scalar Metal.
-- After rebasing the concurrent compiler-timing change, the final binary passes
+- After rebasing the concurrent compiler timing and emitter changes, the final binary passes
   all ten native integration tests and all ten checker integration tests,
   including generated-header layout and native sanitizer probes. The positive
   read-only fixture also passes its authored check and native debug/release
@@ -93,7 +95,7 @@ disabled. The final input fingerprint and artifact record must verify against
 the worktree before installation. An earlier uninterrupted build was stopped
 before the time limit; it is not reported as a successful complete command.
 The completed bootstrap's input fingerprint is
-`3e543190935a9ed27af463366c4ae68a7ff940cf3664ee852791a590c05aa23d`.
+`f4ad43d62d0d65fad111a6b937886e84e4c6de4a8d4970194eee4a1701f58115`.
 Its provenance verifies against the rebased worktree. `coax/build.sh` then
 successfully installs that checked build through its normal verified-cache path.
 

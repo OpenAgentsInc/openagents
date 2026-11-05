@@ -39,6 +39,9 @@ class NativeTests(unittest.TestCase):
 
     def test_readonly_descriptors_and_static_backing_under_sanitizers(self):
         source = '''TABLE :: [4]int.[3,5,7,9];
+        Row :: struct {n:int;}
+        Carrier :: struct {data:[] const Row;}
+        row_tail :: (input:[] const Row)->Carrier #export_c {return Carrier.{data=input[1..<input.count]};}
         table :: ()->[] const int #export_c {return TABLE[..];}
         tail :: (input:[] const int)->[] const int #export_c {return input[1..<input.count];}
         total :: (input:[] const int)->int #export_c {answer:=0;for x:input {answer+=x;}return answer;}
@@ -52,6 +55,7 @@ class NativeTests(unittest.TestCase):
                 header=(d/'readonly.h').read_text()
                 self.assertIn('const int64_t *data',header)
                 self.assertIn('const uint8_t *data',header)
+                self.assertIn('const coax_t_Row *data',header)
                 (d/'host.c').write_text('''#include "readonly.h"
                 #include <assert.h>
                 int main(void){const int64_t a[]={2,4,6};coax_rv_s64 v={a,3};
@@ -60,7 +64,10 @@ class NativeTests(unittest.TestCase):
                   coax_rv_s64 first=table();coax_rv_s64 second=table();
                   assert(first.data==second.data && total(first)==24);
                   const uint8_t b[]={65,0,66};coax_rv_u8 bv={b,3};coax_string text=bytes(bv);
-                  assert(text.count==3 && text.data[2]==66);return 0;}
+                  assert(text.count==3 && text.data[2]==66);
+                  const coax_t_Row rows[]={{.n=9},{.n=11}};coax_rv_t_Row rv={rows,2};
+                  coax_t_Carrier carrier=row_tail(rv);
+                  assert(carrier.data.data==rows+1 && carrier.data.count==1 && carrier.data.data[0].n==11);return 0;}
                 ''')
                 r=subprocess.run([os.environ.get('CC','cc'),'-std=c11','-O1','-g','-fsanitize=address,undefined',str(d/'readonly.c'),str(d/'host.c'),'-lm','-o',str(d/'host')],capture_output=True,text=True,timeout=30)
                 self.assertEqual(r.returncode,0,r.stderr)

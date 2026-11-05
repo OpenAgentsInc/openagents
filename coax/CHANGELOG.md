@@ -15,7 +15,7 @@ versions. [`STATUS.md`](STATUS.md) describes current support;
 
 ## 0.49.0 — Read-only Borrowed Views — 2026-11-05
 
-Commit: [`3f7b075dadf94f3e53d61a62f132425221e97176`](https://github.com/OpenAgentsInc/openagents/commit/3f7b075dadf94f3e53d61a62f132425221e97176)
+Commit: [`2cebf7d8fe9c8501525a14abf51204484be501da`](https://github.com/OpenAgentsInc/openagents/commit/2cebf7d8fe9c8501525a14abf51204484be501da)
 
 - Add `[] const T` with one-way access restriction, immutable-array borrowing
   in read-only contexts, generic readers and preserved borrow lifetimes.
