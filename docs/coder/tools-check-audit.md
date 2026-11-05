@@ -12,17 +12,11 @@ one stale exception-list entry. No exception-list expansion is proposed.
 Five asset-generation tools needed real ports. The four MetaHuman packers
 (`face_rig.py`, `metahuman.py`, `outfits.py`, `pack_human.py`, with `shape.py`) were
 ported to `verse/tools/humans/pack_human.coax` and deleted in #12859 (2026-11-05).
-One remains:
+The fifth, `verse/tools/fivemmo_hotbar.py`, and `everglade_hotbar.py` were
+ported to Coax the same day (#12859, `coax/tools-in-coax.md`). None remain.
 
-| Tool | Approximate lines at audit | Required work |
-| --- | ---: | --- |
-| `verse/tools/fivemmo_hotbar.py` | 209 | Port spell extraction and card/icon composition; also drawing in `everglade_hotbar.py`, fonts, SVG rasterization and JPEG encoding. |
-
-These are production generators with substantial logic. Calling them thin
-wrappers or independent oracles would misclassify them. They are newer than
-the frozen port-list base and cannot be added there. Existing owner work in
-[NEEDS_OWNER.md](../../NEEDS_OWNER.md) already records this decision. The owner's
-choice of full ports or a temporary exception is pending; no waiver is applied.
+They were production generators with substantial logic, so each was ported
+rather than given a reason; no waiver was applied.
 
 A port should first freeze public synthetic fixtures for mesh/skin/material,
 rig and image outputs, then port shared readers/container arithmetic, then

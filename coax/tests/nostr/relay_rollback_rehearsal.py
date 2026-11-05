@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent side of the Rust-to-Coax relay equality: it signs, publishes, reads and compares event sets with relay_live_cutover.py's client, not the Coax Nostr library under test)
 """Chapter 103's cutover and rollback, rehearsed on a staging name.
 
 Runs inside rust_relay_sandbox.sh's network-less sandbox (loopback only),

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent reader: exports and compares relay.openagents.com and the Coax relay with code that shares nothing with the Coax Nostr library under test)
 """Chapter 103's export, shadow period and equality against the live relay.
 
 Reads relay.openagents.com only through the public Nostr protocol, as any
