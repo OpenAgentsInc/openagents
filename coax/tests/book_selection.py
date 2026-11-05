@@ -36,6 +36,8 @@ class BookSelection(unittest.TestCase):
             'examples/ch27_frontend/driver.coax': 'main :: () {}\n',
             'examples/ch27_frontend/driver.out': 'frontend\n',
             'examples/ch20_interop/run.out': 'interop\n',
+            # check-examples.sh compares against this one when swiftc is on PATH.
+            'examples/ch20_interop/run-swift.out': 'interop\n',
             'examples/ch24_workflow/run.out': 'workflow\n',
         }.items():
             path = self.book / name
