@@ -55,7 +55,17 @@ Browser raw `.f32`/`.ogg`, exact SDK/harness source, executables, receipts
 and hashes are under `host-contract-12869/audio-default-first/` there.
 The committed comparison and diagnostic windows preserve the failure.
 
-The shared compressed-input/PCM preflight and complete default codec
+The additional 31 authored candidates have now been observed without
+repeating the unchanged 122 decoder measurements. Their exact original
+Ogg and native PCM bytes join the earlier snapshot before reuse. Nine
+additional candidates fail, giving **121 pass and 32 fail across all 153
+authored files**. The frozen extra comparison is in `audio-pcm-assets/`;
+all original failures remain recorded. The versioned, source-pinned
+[PCM companion component](audio-pcm-assets.md) retains those original
+identities and supplies exact payloads for the 32 discrepant files.
+
+Shared compressed preflight and post-SDK shape admission are qualified
+components; their ordinary host adoption and complete default codec
 workload remain open. Separate native demand-loading work removes the
 unused synth-bank allocation pressure without raising the shared limits;
 that memory result cannot erase this codec difference. These observations

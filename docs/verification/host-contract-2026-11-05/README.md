@@ -26,6 +26,14 @@ default remains web. Metal's interactive host is #12868; neither these
 browser checks nor the earlier offscreen Metal qualification authorizes a
 default switch or issue closure.
 
+The complete authored audio inventory now has a
+[source-pinned PCM companion component](audio-pcm-assets.md). All 153
+original Ogg identities are preserved; 32 frozen codec discrepancies get
+exact versioned PCM companions, while 121 retain admitted SDK decoding.
+Format/catalogue qualification and aggregate bank bounds are complete.
+Ordinary browser/Linux/Metal adoption, default demand and device lifecycle
+remain separate exits, alongside current primary and graphics admission.
+
 ## Qualified sections
 
 The actual `coax/web/host.js` loads a real Coax fixture realm and generated

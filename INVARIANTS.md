@@ -55,8 +55,25 @@ Synth-bank decoding and DSP receipts do not qualify those codec outputs,
 their complete retained-memory workload or default-profile audio parity.
 The shared `audio/host-opus.coax` preflight admits all 122 picked sources
 and bounds full coded PCM separately from pre-skip/EOS output trim. Its
-389-mutant root gate has no survivors or equivalents. SDK adoption and
+395-mutant root gate has no survivors or equivalents; `hpo_output` requires
+the exact admitted frame/channel shape and 48 kHz before an SDK publishes PCM.
+SDK adoption and
 codec-output comparisons remain separate; metadata is not decoded parity.
+
+The complete authored 153-candidate inventory preserves all original Ogg
+sources, including candidates outside the current pick set. Frozen SDK
+observations fail the unchanged sample gate for 32 files. The new APC1
+companion format binds original source bytes/SHA, exact finite F32 payload
+bytes/SHA and output shape. Required companions refuse missing, corrupt or
+mismatched bytes without SDK fallback or partial output. The complete
+catalogue pins all 153 identities; 121 rows retain admitted SDK decoding.
+Its format and catalogue root gates kill 179 and 26 mutants without
+equivalents. These source/format components do not qualify host adoption,
+default demand or compiler/build/load admission. Evidence and regeneration
+identity are in `docs/verification/host-contract-2026-11-05/audio-pcm-assets.md`.
+The bank registry separately caps aggregate copied source bytes at 8 MiB,
+including overlapping spans under distinct names. Refusal changes no row,
+count or byte total; reset releases all. Its sharp root gate kills 101 mutants.
 
 The Linux audio SDK executes the same Coax PCM/WAV interpreter and bank/
 memory authorities. All 48 frozen bank assets decode byte-identically and

@@ -7,7 +7,7 @@ HOST_AUDIO_BANK_SOURCE_BYTES :: 8388608;
 HostAudioBankNumber :: struct {valid:bool;value:u64;}
 HostAudioBankSpan :: struct {valid:bool;name:string;address:u64;bytes:int;}
 HostAudioBankRow :: struct {name:[48]u8;name_bytes:int;address:u64;bytes:int;}
-HostAudioBank :: struct {rows:[HOST_AUDIO_BANK_ASSETS]HostAudioBankRow;count:int;}
+HostAudioBank :: struct {rows:[HOST_AUDIO_BANK_ASSETS]HostAudioBankRow;count:int;source_bytes:int;}
 
 #test "audio bank decimal words preserve every unsigned boundary without wrap or prefix parsing" {
  for text,i:[5]string.["0","1","00042","18446744073709551614","18446744073709551615"] {
@@ -51,6 +51,20 @@ HostAudioBank :: struct {rows:[HOST_AUDIO_BANK_ASSETS]HostAudioBankRow;count:int
  #assert hab_insert(s[..],cast(string)long[..],4096,44)==0&&hab_source(s[..],0).name.count==48;
  for byte:hab_source(s[..],0).name {#assert byte=='z';}
 }
+#test "audio bank aggregate copied source bytes refuse atomically at the exact budget" {
+ s:[1]HostAudioBank;
+ #assert hab_insert(s[..],"x 1 8388608",1,8388608)==0;
+ #assert hab_insert(s[..],"y 1 1",1,8388608)== -1&&s[0].count==1&&s[0].source_bytes==8388608;
+ #assert hab_source(s[..],0).bytes==8388608&&!hab_source(s[..],1).valid;
+ hab_reset(s[..]);
+ #assert hab_insert(s[..],"x 1 4194304",1,8388608)==0;
+ #assert hab_insert(s[..],"y 1 4194305",1,8388608)== -1&&s[0].count==1&&s[0].source_bytes==4194304;
+ #assert hab_insert(s[..],"x 1 1",1,8388608)== -1;
+ #assert hab_insert(s[..],"bad 1 0",1,8388608)== -1;
+ #assert hab_insert(s[..],"y 1 4194304",1,8388608)==1;
+ #assert hab_insert(s[..],"z 1 1",1,8388608)== -1&&s[0].count==2;
+ hab_reset(s[..]);#assert s[0].source_bytes==0&&hab_insert(s[..],"z 1 8388608",1,8388608)==0&&s[0].source_bytes==8388608;
+}
 hab_number :: (word:string)->HostAudioBankNumber {
  if word.count==0 {return HostAudioBankNumber.{};}v:u64=0;maximum:u64=18446744073709551615;
  for byte:word {if byte<'0'||byte>'9' {return HostAudioBankNumber.{};}digit:=u64(byte-'0');if v>(maximum-digit)/10 {return HostAudioBankNumber.{};}v=v*10+digit;}
@@ -70,7 +84,8 @@ hab_find :: (s:[]HostAudioBank,name:string)->int #export_c {
 }
 hab_insert :: (s:[]HostAudioBank,line:string,base:u64,capacity:u64)->int #export_c {
  q:=hab_span(line,base,capacity);if !q.valid||s[0].count==HOST_AUDIO_BANK_ASSETS||hab_find(s,q.name)>=0 {return -1;}
- id:=s[0].count;row:HostAudioBankRow;for byte,i:q.name {row.name[i]=byte;}row.name_bytes=q.name.count;row.address=q.address;row.bytes=q.bytes;s[0].rows[id]=row;s[0].count+=1;return id;
+ if q.bytes>HOST_AUDIO_BANK_SOURCE_BYTES-s[0].source_bytes {return -1;}
+ id:=s[0].count;row:HostAudioBankRow;for byte,i:q.name {row.name[i]=byte;}row.name_bytes=q.name.count;row.address=q.address;row.bytes=q.bytes;s[0].rows[id]=row;s[0].count+=1;s[0].source_bytes+=q.bytes;return id;
 }
 hab_source :: (s:[]HostAudioBank,id:int)->HostAudioBankSpan #export_c {
  if id<0||id>=s[0].count {return HostAudioBankSpan.{};}row:=s[0].rows[id];return HostAudioBankSpan.{valid=true,name=cast(string)s[0].rows[id].name[0..<row.name_bytes],address=row.address,bytes=row.bytes};

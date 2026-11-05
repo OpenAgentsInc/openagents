@@ -33,11 +33,13 @@ final physical/sample reference, including a pending decode completion.
 
 Metadata admission is not full packet decoding. A platform codec can still
 refuse compressed payloads; that refusal publishes no PCM or successful
-prefix. Compare observed channels, frame count and 48 kHz rate against
-the plan before copying or retaining output. Platform codec private
+prefix. `hpo_output(plan, frames:int, channels:int, rate:f64) -> bool`, also
+exported to C, requires a valid plan and exactly its output frame count,
+channels and 48000 Hz. Apply it before copying or retaining any SDK output;
+a refused observation publishes no successful prefix. Platform codec private
 workspace and OS buffering remain separate observations.
 
-The check-first root gate kills 389/389 mutants with no survivors or
+The check-first root gate kills 395/395 mutants with no survivors or
 equivalents. Tests include an independently recorded page CRC, every TOC
 configuration/count, both channel layouts, high-byte pre-skip, exact page
 endpoints, multi-segment comments/audio, zero/incomplete packets, serial,

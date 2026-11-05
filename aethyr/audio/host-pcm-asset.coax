@@ -1,0 +1,125 @@
+// Versioned, content-pinned PCM companions. Hosts supply bytes; Coax admits
+// source identity, complete format, finite words and atomic output capacity.
+#load "host-opus.coax";
+#load "../../coax/lib/crypto/sha256-kernel.coax";
+#authority;
+HOST_PCM_ASSET_HEADER :: 112;
+HOST_PCM_ASSET_BYTES :: 1048576;
+HostAudioAsset :: struct {
+ valid:bool;name:string;source_url:string;source_bytes:int;source_sha:[32]u8;
+ frames:int;channels:int;canonical:bool;companion_url:string;companion_bytes:int;pcm_sha:[32]u8;
+}
+HostPcmAssetPlan :: struct {valid:bool;channels:int;frames:int;samples:int;offset:int;}
+
+#test "PCM companion extent bounds frames and channels before multiplication" {
+ #assert hpc_extent(1,1)==116&&hpc_extent(1,2)==120;
+ #assert hpc_extent(262116,1)==1048576&&hpc_extent(262117,1)==0;
+ #assert hpc_extent(131058,2)==1048576&&hpc_extent(131059,2)==0;
+ for frames:[4]int.[-1,0,8388609,9223372036854775807] {#assert hpc_extent(frames,1)==0;}
+ for channels:[4]int.[-1,0,3,9223372036854775807] {#assert hpc_extent(1,channels)==0;}
+}
+#test "PCM identity uses every SHA byte in its published binary order" {
+ raw:=[3]u8.[97,98,99];h:=hpc_hash(raw[..]);expected:=[32]u8.[186,120,22,191,143,1,207,234,65,65,64,222,93,174,34,35,176,3,97,163,150,23,122,156,180,16,255,97,242,0,21,173];
+ for byte,i:h {#assert byte==expected[i];}
+ #assert hpc_equal(h,expected);for i:0..<32 {expected[i]^=1;#assert !hpc_equal(h,expected);expected[i]^=1;}
+}
+#test "PCM companion retains exact finite f32 bits and complete source identity" {
+ source:[256]u8;sn:=hpo_fixture(source[..],1,119,120);pcm:=[4]u8.[0,0,128,191];blob:[120]u8;out:[2]f32;out[0]=7;out[1]=9;for i:0..<120 {blob[i]=77;}
+ #assert hpc_pack(source[0..<sn],pcm[..],blob[..])==116&&blob[116]==77;
+ #assert cast(string)blob[0..<4]=="APC1"&&hpc_u64(blob[..],16)==1&&hpc_u64(blob[..],24)==u64(sn);
+ a:=hpc_fixture_asset(source[0..<sn],pcm[..]);p:=hpc_plan(a,source[0..<sn],blob[0..<116]);
+ #assert p.valid&&p.channels==1&&p.frames==1&&p.samples==1&&p.offset==112;
+ #assert hpc_decode(a,source[0..<sn],blob[0..<116],out[..])&&f32_bits(out[0])==3212836864&&out[1]==9;
+ for byte,i:source[0..<sn] {source[i]=byte^1;#assert !hpc_source_plan(a,source[0..<sn]).valid;source[i]=byte;}
+ source[sn]=0;#assert !hpc_source_plan(a,source[0..<sn+1]).valid;
+ a.valid=false;#assert !hpc_source_plan(a,source[0..<sn]).valid;a.valid=true;
+ a.frames=2;#assert !hpc_source_plan(a,source[0..<sn]).valid;a.frames=1;
+ a.channels=2;#assert !hpc_source_plan(a,source[0..<sn]).valid;a.channels=1;
+ a.source_bytes-=1;#assert !hpc_source_plan(a,source[0..<sn]).valid;
+}
+#test "PCM companion corruption missing data and short output publish no prefix" {
+ source:[256]u8;sn:=hpo_fixture(source[..],1,119,120);pcm:=[4]u8.[1,0,0,0];blob:[120]u8;#assert hpc_pack(source[0..<sn],pcm[..],blob[..])==116;
+ a:=hpc_fixture_asset(source[0..<sn],pcm[..]);out:[1]f32;out[0]=42;
+ #assert hpc_decode(a,source[0..<sn],blob[0..<116],out[..])&&f32_bits(out[0])==1;out[0]=42;
+ for i:0..<116 {old:=blob[i];blob[i]=old^1;#assert !hpc_decode(a,source[0..<sn],blob[0..<116],out[..])&&out[0]==42;blob[i]=old;}
+ #assert !hpc_plan(a,source[0..<sn],blob[0..<115]).valid&&!hpc_plan(a,source[0..<sn],blob[0..<117]).valid;
+ #assert !hpc_plan(a,source[0..<sn],blob[0..<0]).valid&&!hpc_decode(a,source[0..<sn],blob[0..<116],out[0..<0])&&out[0]==42;
+ a.canonical=false;#assert !hpc_plan(a,source[0..<sn],blob[0..<116]).valid;a.canonical=true;
+ a.companion_bytes=117;#assert !hpc_plan(a,source[0..<sn],blob[0..<116]).valid;a.companion_bytes=116;
+ a.pcm_sha[31]^=1;#assert !hpc_plan(a,source[0..<sn],blob[0..<116]).valid;
+}
+#test "PCM little endian words retain all eight independent bytes at a nonzero offset" {
+ raw:=[10]u8.[99,239,205,171,137,103,69,35,1,88];#assert hpc_u64(raw[..],1)==81985529216486895;
+ for byte,i:raw {raw[i]=byte^255;}hpc_put64(raw[..],1,81985529216486895);
+ #assert raw[0]==156&&raw[9]==167;for byte,i:[8]u8.[239,205,171,137,103,69,35,1] {#assert raw[1+i]==byte;}
+}
+#test "PCM stereo copying preserves every distinct word and finite admission checks the final word" {
+ source:[256]u8;sn:=hpo_fixture(source[..],2,116,120);pcm:[32]u8;out:[8]f32;blob:[144]u8;
+ for i:0..<8 {hpo_word(pcm[..],i*4,1065353217+i);}
+ #assert hpc_pack(source[0..<sn],pcm[..],blob[..])==144;
+ a:=hpc_fixture_asset(source[0..<sn],pcm[..]);a.frames=4;a.channels=2;a.companion_bytes=144;
+ #assert hpc_decode(a,source[0..<sn],blob[..],out[..]);for word,i:out {#assert f32_bits(word)==u32(1065353217+i);}
+ for i:0..<8 {old:=pcm[i*4+3];pcm[i*4+3]=127;pcm[i*4+2]=128;#assert !hpc_finite(pcm[..]);hpo_word(pcm[..],i*4,1065353217+i);}
+}
+#test "PCM companion refuses a valid compressed stream beyond the version one companion extent" #steps 40000000 {
+ base:[256]u8;bn:=hpo_fixture(base[..],1,1,120);src:[5000]u8;for i:0..<91 {src[i]=base[i];}at:=91;
+ for page:0..<9 {for byte,i:"OggS" {src[at+i]=byte;}src[at+5]=ifx page==8 then u8(4) else u8(0);hpo_word(src[..],at+14,17);hpo_word(src[..],at+18,page+2);src[at+26]=255;
+  for i:0..<255 {src[at+27+i]=1;src[at+282+i]=128;}hpo_word(src[..],at+6,(page+1)*30600);hpo_seal(src[at..<at+537]);at+=537;
+ }
+ p:=hpo_plan(src[0..<at]);#assert p.valid&&p.frames==275399;
+ a:=hpc_fixture_asset(src[0..<at],src[0..<0]);a.frames=p.frames;a.companion_bytes=0;out:[1]u8;out[0]=77;pcm:[1101596]u8;
+ #assert !hpc_plan(a,src[0..<at],out[0..<0]).valid&&hpc_pack(src[0..<at],pcm[..],out[..])== -1&&out[0]==77;
+}
+#test "PCM finite admission includes signed zero subnormals and finite extremes but no NaN or infinity" {
+ raw:[4]u8;
+ for bits:[6]u32.[0,2147483648,1,2147483649,2139095039,4286578687] {hpo_word(raw[..],0,int(bits));#assert hpc_finite(raw[..]);}
+ for bits:[6]u32.[2139095040,4286578688,2139095041,2143289344,4294967295,4290772992] {hpo_word(raw[..],0,int(bits));#assert !hpc_finite(raw[..]);}
+}
+#test "PCM writer and reader refuse invalid shape and nonfinite payload atomically" {
+ source:[256]u8;sn:=hpo_fixture(source[..],1,119,120);pcm:=[4]u8.[0,0,128,127];out:[116]u8;out[0]=77;
+ #assert hpc_pack(source[0..<sn],pcm[..],out[..])== -1&&out[0]==77;
+ pcm[2]=0;pcm[3]=0;#assert hpc_pack(source[0..<sn],pcm[..],out[0..<115])== -1&&out[0]==77;
+ #assert hpc_pack(source[0..<sn],pcm[0..<3],out[..])== -1&&out[0]==77;
+ #assert hpc_pack(source[0..<sn-1],pcm[..],out[..])== -1&&out[0]==77;
+ #assert hpc_pack(source[0..<sn],pcm[..],out[..])==116;
+ a:=hpc_fixture_asset(source[0..<sn],pcm[..]);pcm[2]=128;pcm[3]=127;for byte,i:pcm {out[112+i]=byte;}hash:=hpc_hash(pcm[..]);for byte,i:hash {out[64+i]=byte;}
+ a.pcm_sha=hash;#assert !hpc_plan(a,source[0..<sn],out[..]).valid;
+}
+
+hpc_extent :: (frames:int,channels:int)->int #export_c {
+ words:=ham_extent(frames,channels);if words==0||words>262116 {return 0;}return 112+words*4;
+}
+hpc_hash :: (src:[]u8)->[32]u8 {
+ d:=S_hash(cast(string)src);out:[32]u8;for i:0..<32 {out[i]=cast,trunc(u8)(d.words[i/4]>>((3-i%4)*8));}return out;
+}
+hpc_equal :: (a:[32]u8,b:[32]u8)->bool {for i:0..<32 {if a[i]!=b[i] {return false;}}return true;}
+hpc_u64 :: (src:[]u8,at:int)->u64 {v:u64=0;for i:0..<8 {v|=u64(src[at+i])<<(i*8);}return v;}
+hpc_put64 :: (out:[]u8,at:int,value:u64) {for i:0..<8 {out[at+i]=cast,trunc(u8)(value>>(i*8));}}
+hpc_finite :: (pcm:[]u8)->bool {for i:0..<pcm.count/4 {if (hpo_u32(pcm,i*4)&2139095040)==2139095040 {return false;}}return true;}
+hpc_source_plan :: (a:HostAudioAsset,src:[]u8)->HostOpusPlan #export_c {
+ if !a.valid||src.count!=a.source_bytes {return HostOpusPlan.{};}p:=hpo_plan(src);
+ if !hpo_output(p,a.frames,a.channels,48000)||!hpc_equal(hpc_hash(src),a.source_sha) {return HostOpusPlan.{};}return p;
+}
+hpc_plan :: (a:HostAudioAsset,src:[]u8,blob:[]u8)->HostPcmAssetPlan #export_c {
+ if !a.canonical||!hpc_source_plan(a,src).valid {return HostPcmAssetPlan.{};}n:=hpc_extent(a.frames,a.channels);
+ if n==0||blob.count!=n||a.companion_bytes!=n {return HostPcmAssetPlan.{};}
+ if cast(string)blob[0..<4]!="APC1"||hpo_u32(blob,4)!=112||hpo_u32(blob,8)!=48000||u64(hpo_u32(blob,12))!=u64(a.channels)||hpc_u64(blob,16)!=u64(a.frames)||hpc_u64(blob,24)!=u64(src.count) {return HostPcmAssetPlan.{};}
+ for i:96..<112 {if blob[i]!=0 {return HostPcmAssetPlan.{};}}
+ sh:=hpc_hash(src);ph:=hpc_hash(blob[112..<blob.count]);for i:0..<32 {if blob[32+i]!=sh[i]||blob[64+i]!=ph[i] {return HostPcmAssetPlan.{};}}
+ if !hpc_equal(ph,a.pcm_sha)||!hpc_finite(blob[112..<blob.count]) {return HostPcmAssetPlan.{};}
+ return HostPcmAssetPlan.{valid=true,channels=a.channels,frames=a.frames,samples=(n-112)/4,offset=112};
+}
+hpc_decode :: (a:HostAudioAsset,src:[]u8,blob:[]u8,out:[]f32)->bool #export_c {
+ p:=hpc_plan(a,src,blob);if !p.valid||out.count<p.samples {return false;}for i:0..<p.samples {out[i]=f32_from_bits(u32(hpo_u32(blob,112+i*4)));}return true;
+}
+hpc_pack :: (src:[]u8,pcm:[]u8,out:[]u8)->int #export_c {
+ p:=hpo_plan(src);if !p.valid {return -1;}n:=hpc_extent(p.frames,p.channels);
+ if n==0||pcm.count!=p.samples*4||out.count<n||!hpc_finite(pcm) {return -1;}
+ zero:[16]u8;for byte,i:zero {out[96+i]=byte;}for byte,i:"APC1" {out[i]=byte;}hpo_word(out,4,112);hpo_word(out,8,48000);hpo_word(out,12,p.channels);hpc_put64(out,16,u64(p.frames));hpc_put64(out,24,u64(src.count));
+ sh:=hpc_hash(src);ph:=hpc_hash(pcm);for i:0..<32 {out[32+i]=sh[i];out[64+i]=ph[i];}for byte,i:pcm {out[112+i]=byte;}return n;
+}
+// Small independently checked format fixture; products use pinned catalogue data.
+hpc_fixture_asset :: (src:[]u8,pcm:[]u8)->HostAudioAsset {
+ a:HostAudioAsset;a.valid=true;a.canonical=true;a.source_bytes=src.count;a.frames=1;a.channels=1;a.companion_bytes=116;
+ a.source_sha=hpc_hash(src);a.pcm_sha=hpc_hash(pcm);return a;
+}

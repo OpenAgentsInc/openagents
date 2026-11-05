@@ -6,6 +6,13 @@
 HOST_OPUS_SOURCE_BYTES :: 8388608;
 HostOpusPlan :: struct {valid:bool;channels:int;pre_skip:int;frames:int;decode_frames:int;samples:int;decode_samples:int;}
 HostOpusPage :: struct {valid:bool;flags:int;segments:int;bytes:int;payload:int;end:int;granule:int;serial:int;sequence:int;}
+#test "observed SDK output must match the admitted output shape and exact playback rate" {
+ b:[256]u8;n:=hpo_fixture(b[..],2,1,120);p:=hpo_plan(b[0..<n]);#assert hpo_output(p,119,2,48000);
+ #assert !hpo_output(p,118,2,48000)&&!hpo_output(p,120,2,48000)&&!hpo_output(p,119,1,48000)&&!hpo_output(p,119,3,48000);
+ #assert !hpo_output(p,119,2,47999)&&!hpo_output(p,119,2,48001)&&!hpo_output(p,119,2,48000.5);
+ p.valid=false;#assert !hpo_output(p,119,2,48000);empty:HostOpusPlan;#assert !hpo_output(empty,0,0,48000);
+}
+hpo_output :: (p:HostOpusPlan,frames:int,channels:int,rate:f64)->bool #export_c {return p.valid&&frames==p.frames&&channels==p.channels&&rate==48000;}
 #test "Ogg CRC uses the unreflected polynomial and zero checksum bytes on an independently recorded page" {
  b:=[47]u8.[79,103,103,83,0,2,0,0,0,0,0,0,0,0,168,16,133,170,0,0,0,0,164,102,150,3,1,19,79,112,117,115,72,101,97,100,1,1,56,1,128,187,0,0,0,0,0];
  #assert hpo_crc(b[..])==0x039666a4;

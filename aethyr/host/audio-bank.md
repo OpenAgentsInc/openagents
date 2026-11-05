@@ -41,18 +41,25 @@ measured physical allocation, including a final exact byte. The complete
 base/capacity range itself must fit in unsigned 64 bits. No address-plus-
 length overflow or partial decimal prefix is accepted.
 
-There are 128 stable identity rows. Invalid, duplicate and exhausted offers
-change no existing row. This identity registry is separate from decoded PCM
+There are 128 stable identity rows and an aggregate 8 MiB copied-source
+budget. `HostAudioBank.source_bytes` counts every admitted row, including
+overlapping physical spans with different names: each identity can cause a
+separate owned copy. Insertion preflights against the remaining byte budget
+before changing any row, count or total. Reset releases the complete total.
+Invalid, duplicate and exhausted offers change no existing row or total.
+This identity registry is separate from decoded PCM
 memory: consumers must additionally apply `apw_plan` before allocating and
 use `ham_reserve`/`ham_words`/`ham_release` for the shared 128-ticket,
 8,388,608-float PCM budget. A bank name alone does not admit decoded storage
 or playback. Original source spans, canonical WAV decoding, immutable PCM
 lifetime and the SDK device stream remain distinct responsibilities.
 
-Checks were written first. Final entry-source mutation kills all 92 mutants,
+Checks were written first. Final entry-source mutation kills all 101 mutants,
 with no survivors or equivalents. Tests cover every unsigned boundary,
 physical base/end/capacity, malformed metadata, duplicate atomicity, copied
-name ownership, all 128 entries, 48-byte names and complete reset. The
+name ownership, all 128 entries, 48-byte names, exact aggregate boundaries,
+overlapping-span copy accounting and complete reset. The aggregate check
+first failed against the former per-row-only admission. The
 original admitted 598 compiler emits the native carrier with exact source
 hashes; no compiler build/load policy or release changes. Native/browser
 adapters and actual allocation-refusal measurements are subsequent work.

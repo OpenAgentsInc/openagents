@@ -1,0 +1,27 @@
+// Extend a frozen SDK observation without repeating unchanged decoder work.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/json/json.coax";
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])!=5 {tool_errln("usage: extend-codec-inventory AUTHORED.json PICKED.json PRIOR_BROWSER_DIR EXTRA.json JOIN.json");return 2;}
+ text:[2][131072]u8;nodes:[2][16384]JvNode;d:[2]Jv;
+ for i:0..<2 {n:=fs_read(args_at(a[..],i),text[i][..]);if n<0||!jv_parse(d[i..<i+1],cast(string)text[i][0..<n],nodes[i][..]) {return 1;}}
+ out:[131072]u8;receipt:[32768]u8;o:[1]Jo;r:[1]Jo;jo_start(o[..],out[..]);jo_obj(o[..]);jo_key(o[..],"rows");jo_arr(o[..]);jo_start(r[..],receipt[..]);jo_obj(r[..]);jo_key(r[..],"reused");jo_arr(r[..]);
+ names:[2][128]u8;paths:[4][4096]u8;raw:[2][8388608]u8;filename:[256]u8;f:[1]Jo;reused:=0;extra:=0;assets:=jv_get(d[0],0,"rows");picked:=jv_get(d[1],0,"rows");
+ for i:0..<jv_len(d[0],assets) {
+  row:=jv_at(d[0],assets,i);nn:=jv_str(d[0],jv_get(d[0],row,"name"),names[0][..]);if nn<1 {return 1;}name:=cast(string)names[0][0..<nn];found:= -1;
+  for j:0..<jv_len(d[1],picked) {p:=jv_at(d[1],picked,j);pn:=jv_str(d[1],jv_get(d[1],p,"name"),names[1][..]);if pn==nn&&cast(string)names[1][0..<pn]==name {found=p;break;}}
+  if found<0 {jv_write(d[0],row,o[..]);extra+=1;continue;}
+  for field:[3]string.["samples","channels","rate"] {if jv_int(d[0],jv_get(d[0],row,field),-1)!=jv_int(d[1],jv_get(d[1],found,field),-2) {return 1;}}
+  for field:[2]string.["source","file"] {
+   an:=jv_str(d[0],jv_get(d[0],row,field),paths[0][..]);pn:=jv_str(d[1],jv_get(d[1],found,field),paths[1][..]);if an<1||pn<1 {return 1;}
+   n:=fs_read(cast(string)paths[0][0..<an],raw[0][..]);m:=fs_read(cast(string)paths[1][0..<pn],raw[1][..]);if n<1||n!=m||cast(string)raw[0][0..<n]!=cast(string)raw[1][0..<m] {return 1;}
+   if field=="source" {jo_start(f[..],filename[..]);jo_put(f[..],name);jo_put(f[..],".ogg");m=fs_read(fs_join(args_at(a[..],2),jo_text(f[..]),paths[2][..]),raw[1][..]);if n!=m||cast(string)raw[0][0..<n]!=cast(string)raw[1][0..<m] {return 1;}}
+  }
+  jo_str(r[..],name);reused+=1;
+ }
+ jo_end(o[..]);jo_end(o[..]);jo_end(r[..]);jo_key(r[..],"reused_count");jo_int(r[..],reused);jo_key(r[..],"new_count");jo_int(r[..],extra);jo_key(r[..],"passed");jo_bool(r[..],reused==122&&extra==31);jo_end(r[..]);
+ if o[0].bad||r[0].bad||reused!=122||extra!=31||!fs_write(args_at(a[..],3),jo_text(o[..]))||!fs_write(args_at(a[..],4),jo_text(r[..])) {return 1;}
+ print("Frozen source/native PCM joins: % reused, % new decoder observations.\n",reused,extra);return 0;
+}
