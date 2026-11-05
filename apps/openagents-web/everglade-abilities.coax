@@ -328,8 +328,10 @@ ab_in_cylinder :: (a: [] Abilities, p: Point) -> bool {
 }
 // The field's pull on a reference point (a body's middle, a creature's feet) at height y moving up at
 // v, in the cylinder (reverse_gravity.rs Gravity::at): up at g, or the hover spring under its top.
-ab_rg_accel :: (a: [] Abilities, y: f32, v: f32) -> f32 {
-  below := a[0].rg_at.y + f32(AB_RG_H) - y;
+ab_rg_accel :: (a: [] Abilities, y: f32, v: f32) -> f32 { return ab_rg_accel_at(a[0].rg_at.y, y, v); }
+// The same, for a cylinder whose floor is at height `base`.
+ab_rg_accel_at :: (base: f32, y: f32, v: f32) -> f32 {
+  below := base + f32(AB_RG_H) - y;
   if below > f32(AB_RG_BAND) { return f32(AB_G); }
   w := f32(AB_RG_OMEGA);
   return w * w * below - 2 * w * v;
@@ -1577,7 +1579,31 @@ everglade_lift :: (s: [] Everglade, x: f32, z: f32, y0: f32, vy0: f32, y1: f32, 
   if !sp_on(s) || !(dt > 0) || !finite(y0) || !finite(y1) { return out; }
   out = ab_lift_of(s, ab_of(s), x, z, y0, vy0, y1, vy1, dt, true);
   if out.on { return out; }
+  // in a room, your own Reverse Gravity as the page predicts it for this step (everglade-net.coax net_own_rg)
+  own := net_own_rg(s);
+  if own.on {
+    l := ab_rg_lift(s, own.at, x, z, y0, vy0, dt);
+    if l.on { return l; }
+  }
   return eg_ra_lift(s, x, z, y0, vy0, y1, vy1, dt);
+}
+// Reverse Gravity's cylinder standing at `at` (its floor) on a step at (x, z): off when you are out of it.
+ab_rg_lift :: (s: [] Everglade, at: Point, x: f32, z: f32, y0: f32, vy0: f32, dt: f32) -> SpLift {
+  out := SpLift.{on = false, y = y0, vy = vy0, dx = 0, dz = 0};
+  floor_y := walk_at(s, x, z);
+  fl := everglade_stand_lift(s, x, z, y0);
+  feet := floor_y + y0;
+  dx := x - at.x; dz := z - at.z;
+  if dx * dx + dz * dz > f32(AB_RG_R * AB_RG_R) || feet < at.y - 0.5 || feet > at.y + f32(AB_RG_H + AB_RG_BAND) { return out; }
+  steps := clamp_i(cast(int) -floor(-dt * 120), 1, 30);
+  h := dt / f32(steps);
+  y := feet; v := vy0;
+  for q: 0..<steps { v += ab_rg_accel_at(at.y, y, v) * h; y += v * h; }
+  roof := ab_roof(s, x, z, feet + f32(AB_HEIGHT) - 0.2);
+  if y + f32(AB_HEIGHT) > roof { y = roof - f32(AB_HEIGHT); v = lo(v, 0); }
+  if y <= floor_y + fl { y = floor_y + fl; v = hi(v, 0); }
+  out.on = true; out.y = y - floor_y; out.vy = v;
+  return out;
 }
 // What abilities `a` do to a step at (x, z); `mine`: their Levitate and Feather Fall are the stepper's.
 ab_lift_of :: (s: [] Everglade, a: [] Abilities, x: f32, z: f32, y0: f32, vy0: f32, y1: f32, vy1: f32, dt: f32, mine: bool) -> SpLift {
@@ -1586,19 +1612,8 @@ ab_lift_of :: (s: [] Everglade, a: [] Abilities, x: f32, z: f32, y0: f32, vy0: f
   // what you come down onto over that ground: a roof, the rubble (everglade-stand.coax)
   fl := everglade_stand_lift(s, x, z, y0);
   if a[0].rg_on {
-    feet := floor_y + y0;
-    dx := x - a[0].rg_at.x; dz := z - a[0].rg_at.z;
-    if dx * dx + dz * dz <= f32(AB_RG_R * AB_RG_R) && feet >= a[0].rg_at.y - 0.5 && feet <= a[0].rg_at.y + f32(AB_RG_H + AB_RG_BAND) {
-      steps := clamp_i(cast(int) -floor(-dt * 120), 1, 30);
-      h := dt / f32(steps);
-      y := feet; v := vy0;
-      for q: 0..<steps { v += ab_rg_accel(a, y, v) * h; y += v * h; }
-      roof := ab_roof(s, x, z, feet + f32(AB_HEIGHT) - 0.2);
-      if y + f32(AB_HEIGHT) > roof { y = roof - f32(AB_HEIGHT); v = lo(v, 0); }
-      if y <= floor_y + fl { y = floor_y + fl; v = hi(v, 0); }
-      out.on = true; out.y = y - floor_y; out.vy = v;
-      return out;
-    }
+    l := ab_rg_lift(s, a[0].rg_at, x, z, y0, vy0, dt);
+    if l.on { return l; }
   }
   if mine && a[0].lev_on {
     // Levitate: up while held, down while X is, else held at its height; never over 18 m

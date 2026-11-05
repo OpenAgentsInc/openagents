@@ -565,3 +565,33 @@ rc_test_at :: (t: string, part: string) -> int {
   eg_test_drain(v[..], box[..]);
   #assert eg_test_has(eg_test_of(box[..], 1), "e stop 0 47 no") && v[0].eg[k].strike_n == 1;
 }
+
+#test "casts: a cast and an end take their place among their seat's inputs: the inputs after one wait for it (#12877)" #steps 3000000000 {
+  v: [1] RmServer;
+  k := rc_test_room(v[..], "pair-cast-order", 1, false);
+  for q: 0..<8 { rc_test_tick(v[..], k, true); }   // steps owed, banked
+  eg_test_input(v[..], 1); eg_test_input(v[..], 2);
+  rm_heard(v[..], 0, "C 3 1 3000 0 0 -1");
+  eg_test_input(v[..], 4); eg_test_input(v[..], 5);
+  rc_test_tick(v[..], k, true);
+  // the two before it stepped, the cast started at the tick's end, and the two after it waited for it
+  st := v[0].eg[k].seat[0];
+  #assert st.ack == 2 && st.q_n == 2;
+  waiting := false;
+  for q: 0..<EG_CASTS { c := v[0].eg[k].casts[q]; if c.on && c.seq == 3 && c.phase == RC_WAIT { waiting = true; } }
+  #assert !waiting;
+  rc_test_tick(v[..], k, true);
+  #assert v[0].eg[k].seat[0].ack == 5;
+  // an end heard with the inputs before it still queued waits for them, and the input after it for it
+  eg_test_input(v[..], 6); eg_test_input(v[..], 7);
+  rm_heard(v[..], 0, "E 8 5 4");
+  eg_test_input(v[..], 9);
+  #assert v[0].eg[k].seat[0].ends_n == 1;
+  rc_test_tick(v[..], k, true);
+  #assert v[0].eg[k].seat[0].ack == 7 && v[0].eg[k].seat[0].ends_n == 0;
+  rc_test_tick(v[..], k, true);
+  #assert v[0].eg[k].seat[0].ack == 9;
+  // with nothing before it queued, an end is taken at once
+  rm_heard(v[..], 0, "E 10 5 4");
+  #assert v[0].eg[k].seat[0].ends_n == 0;
+}

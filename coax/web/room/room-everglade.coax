@@ -104,7 +104,10 @@ EgSeat :: struct {
   wcond: int;                                         // the world's conditions on it (WC_*), with the rules' in p's COND
   fx_left: [WE_WATCH] f32; fx_t0: [WE_WATCH] int; fx_dur: [WE_WATCH] int;   // its watch effects (WE_*): seconds left, start tick, ticks
   step_at: int; ack_at: int; ack_told: int;           // when the input stepped last and the one ACK names were heard (room-stats.coax rm_st_ack)
+  ends: [EG_ENDS] EgEnd; ends_n: int;                 // ends (E) waiting for the inputs sent before them (eg_ends_due)
 }
+EG_ENDS :: 4;
+EgEnd :: struct { seq: int; slot: int; }
 // A cast from its hearing to its strike (room-casts.coax, #12790): its phase (RC_*), the ticks it was
 // heard, started, is released and strikes at, the order it was heard in, and its line of sight's
 // question this tick and answer (0 none, 1 clear, 2 blocked).
@@ -321,9 +324,14 @@ eg_heard :: (v: [] RmServer, r: int, seat: int, text: string) {
     }
     // boats and boards are the world's, not yet the server's: only ending a slot is
     if u.kind != WE_END { eg_refuse(v, k, seat, u.seq, "unbuilt"); return; }
-    world := ra_end(v, k, seat, u.id);   // the world's (room-abilities.coax), and the rules' concentration
-    if ra_whole(u.id) { return; }
-    if !e5rr_end(v[0].eg[k].rules[..], seat, u.id) && !world { eg_refuse(v, k, seat, u.seq, "nothing"); }
+    // an end takes its place among the seat's inputs, as a cast does (rc_ready): with inputs sent
+    // before it still queued, it waits for them (eg_ends_due), and the inputs after it wait for it
+    st := v[0].eg[k].seat[seat..<seat + 1];
+    if st[0].q_n > 0 && st[0].q[0].seq < u.seq && st[0].ends_n < EG_ENDS {
+      st[0].ends[st[0].ends_n] = EgEnd.{seq = u.seq, slot = u.id}; st[0].ends_n += 1;
+      return;
+    }
+    eg_end_now(v, k, seat, u.seq, u.id);
     return;
   }
   if c == 'L' { eg_heard_rest(v, k, seat, text); return; }   // a Long Rest (room-events.coax ev_rest_ok)
@@ -363,6 +371,38 @@ eg_seat_heard :: (v: [] RmServer, k: int, seat: int, heard: int) {
     if (st[0].n_bits[q] & bit) != 0 && heard >= st[0].n_t[q] - WIRE_ACKS + 1 { st[0].n_ok[q] = true; }
     if (st[0].w_bits[q] & bit) != 0 && heard >= st[0].w_t[q] - WIRE_ACKS + 1 { st[0].w_ok[q] = true; }
   }
+}
+// E SEQ 5 SLOT, ending what bar slot SLOT holds up: the world's (room-abilities.coax), and the rules'
+// concentration; nothing held up, refused.
+eg_end_now :: (v: [] RmServer, k: int, seat: int, seq: int, slot: int) {
+  world := ra_end(v, k, seat, slot);
+  if ra_whole(slot) { return; }
+  if !e5rr_end(v[0].eg[k].rules[..], seat, slot) && !world { eg_refuse(v, k, seat, seq, "nothing"); }
+}
+// The ends that waited for the inputs before them (eg_heard): each once those are stepped.
+eg_ends_due :: (v: [] RmServer, k: int) {
+  for s: 0..<EG_SEATS {
+    st := v[0].eg[k].seat[s..<s + 1];
+    while st[0].ends_n > 0 && (!st[0].live || st[0].q_n == 0 || st[0].q[0].seq > st[0].ends[0].seq) {
+      e := st[0].ends[0];
+      for i: 1..<st[0].ends_n { st[0].ends[i - 1] = st[0].ends[i]; }
+      st[0].ends_n -= 1;
+      if st[0].live { eg_end_now(v, k, s, e.seq, e.slot); }
+    }
+  }
+}
+// Whether seat s's next input, seq, waits this tick: a cast or an end sent before it hasn't started
+// yet (room-casts.coax rc_ready, eg_ends_due). The cast starts at the tick's end, once the inputs
+// before it are stepped, and its world takes it before the next tick's steps (room-tick.c), so the
+// server steps the inputs after a cast with what it holds up, as the page that pressed it did.
+eg_waits :: (v: [] RmServer, k: int, s: int, seq: int) -> bool {
+  st := v[0].eg[k].seat[s];
+  if st.ends_n > 0 && st.ends[0].seq < seq { return true; }
+  for q: 0..<EG_CASTS {
+    c := v[0].eg[k].casts[q];
+    if c.on && c.seat == s && c.phase == RC_WAIT && c.seq < seq { return true; }
+  }
+  return false;
 }
 // book:begin intent-queue
 // I SEQ KX KY PX PY THETA B HEARD: one step's input (THETA in WIRE_FINE units), queued for the tick; and the state tick its page
@@ -502,6 +542,7 @@ rm_eg_input :: (v: [] RmServer, k: int, s: int, out: [] int) -> bool #export_c {
   if k < 0 || k >= EG_ROOMS || s < 0 || s >= EG_SEATS || out.count < EG_IN_FIELDS { return false; }
   st := v[0].eg[k].seat[s..<s + 1];
   if !st[0].live || !st[0].placed || st[0].q_n == 0 || st[0].bank <= 0 || st[0].took >= EG_TICK_STEPS { return false; }
+  if eg_waits(v, k, s, st[0].q[0].seq) { return false; }
   i := st[0].q[0];
   for q: 1..<st[0].q_n { st[0].q[q - 1] = st[0].q[q]; }
   st[0].q_n -= 1; st[0].bank -= 1; st[0].took += 1;
@@ -548,6 +589,7 @@ rm_eg_rules :: (v: [] RmServer, k: int) #export_c {
   t := v[0].eg[k].tick;
   // the casts in the tick's order (room-casts.coax): starts, heals, the world's harm; the rules' step
   // (the creatures' turns); then stops, releases and harm
+  eg_ends_due(v, k);
   rc_tick_first(v, k);
   fg_sync(v,k);
   e5rr_step(v[0].eg[k].rules[..], f32(t) / f32(EG_HZ));

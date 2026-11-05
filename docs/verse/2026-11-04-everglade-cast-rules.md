@@ -87,6 +87,13 @@ so the cast is checked where the page was when you pressed. It waits at most `CR
 (0.5 s). After that the cast starts where the room has you. A cast is therefore never older than
 half a second of the room's time when it starts, and no client time can move it.
 
+The inputs sent after a cast wait for it: the room steps none of them until the cast has started,
+and the world takes what the cast holds up before the next tick's steps. An end (`E SEQ 5 SLOT`)
+takes its place the same way: heard while inputs sent before it are still queued, it waits for
+them, and the inputs after it wait for it. So the room steps each of your inputs with what your
+casts hold up exactly as your page stepped it, and your page can predict your own Reverse
+Gravity's lift without a correction at its start or end (#12877).
+
 ## 4. A target that falls, leaves or becomes invalid
 
 | When | What happens |

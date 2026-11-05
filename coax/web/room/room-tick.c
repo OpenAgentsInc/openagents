@@ -69,6 +69,16 @@ static void everglade_town(int k) {
   for (int q = 0; q < 16 && world_missile(k, ms); q++) rm_eg_missile(view(), k, (coax_v_f32){ms, WORLD_MISSILE});
   part_us[PART_PEOPLE] += now_us() - t3;
 }
+// The hotbar abilities' casts and ends since into room k's world. Before a tick's steps: a cast started,
+// or an end taken, at the last tick's end (rm_eg_rules) has its place among its seat's inputs (the inputs
+// after it waited for it: room-everglade.coax eg_waits), so the steps after it feel what it holds up, as
+// its page's prediction did (#12877).
+static void everglade_ability_casts(int k) {
+  float c[WORLD_CAST]; coax_v_f32 cv = {c, WORLD_CAST};
+  int64_t n = rm_ra_casts(view(), k);
+  for (int64_t q = 0; q < n; q++) { rm_ra_cast(view(), k, q, cv); world_ability(k, c); }
+  rm_ra_heard(view(), k);
+}
 // Room k's hotbar abilities the world runs (room-abilities.coax, everglade-room-abilities.coax; #12718):
 // the rules' saves and the casts and ends since into it, its step, then what it holds up and the falls' damage back.
 static void everglade_abilities(int k) {
@@ -76,9 +86,7 @@ static void everglade_abilities(int k) {
   /* the saves the rules rolled against the abilities cast: their copies take them, not a second roll (#12874) */
   for (int j = 0; j < WORLD_FOLK; j++)
     if (rm_eg_folk_save(view(), k, j, (coax_v_f32){h, 3})) world_folk_save(k, j, (int)h[0], (int)h[1], h[2] > 0.5f);
-  int64_t n = rm_ra_casts(view(), k);
-  for (int64_t q = 0; q < n; q++) { rm_ra_cast(view(), k, q, cv); world_ability(k, c); }
-  rm_ra_heard(view(), k);
+  everglade_ability_casts(k);   /* (and those since the tick's steps: a cast's start and its end with them) */
   world_abilities(k, 1.0f / WORLD_HZ);
   /* every seat's abilities up, each its own entity */
   for (int s = 0; s < WORLD_SEATS; s++)
@@ -97,6 +105,7 @@ static bool everglade_room_tick(int k) {
   int64_t in[WORLD_IN]; float pose[WORLD_POSE];
   coax_v_s64 inv = {in, WORLD_IN};
   if (!rm_eg_begin(view(), k)) return false;
+  everglade_ability_casts(k);
   int64_t tm = now_us();
   for (int s = 0; s < WORLD_SEATS; s++) {
     if (rm_eg_unplaced(view(), k, s) &&

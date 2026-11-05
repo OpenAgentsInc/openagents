@@ -380,9 +380,15 @@ eg_ra_lift :: (s: [] Everglade, x: f32, z: f32, y0: f32, vy0: f32, y1: f32, vy1:
   out := SpLift.{on = false, y = y1, vy = vy1, dx = 0, dz = 0};
   r := s[0].sp.room_ab[..];
   if r[0].in_copy > 0 { return out; }
+  // your own Reverse Gravity, where the page predicts it (everglade_lift), lifts you by that alone
+  own := ifx !r[0].server && net_owns_rg(s) then net_of(s)[0].seat else -1;
   for q: 0..<EG_RA_SEATS {
     if !r[0].seat[q].used { continue; }
-    l := ab_lift_of(s, r[0].seat[q].ab[..], x, z, y0, vy0, y1, vy1, dt, r[0].server && q == s[0].wt[0].me);
+    c := r[0].seat[q].ab[..];
+    was := c[0].rg_on;
+    if q == own { c[0].rg_on = false; }
+    l := ab_lift_of(s, c, x, z, y0, vy0, y1, vy1, dt, r[0].server && q == s[0].wt[0].me);
+    c[0].rg_on = was;
     if l.on { return l; }
   }
   return out;

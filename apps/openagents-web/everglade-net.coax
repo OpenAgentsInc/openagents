@@ -131,6 +131,11 @@ EgNet :: struct {
   // your inputs, and the server's word on you
   seq: int; inputs: [NET_HIST] NetInput; acked: int;
   fix: NetFix; fix_due: bool;
+  stepping: int;             // the input the face is stepping now (net_input, net_replay_input)
+  // your Reverse Gravity, predicted (net_own_rg): the cast's sequence number and its end's (0 none),
+  // and where it stands; the room steps the inputs after the cast in it and those after the end out
+  // of it (room-everglade.coax eg_waits), so the page steps each input as the server will
+  rg_open: int; rg_close: int; rg_at: Point; rg_heard: bool;
   off_x: f32; off_y: f32; off_z: f32;   // where you are drawn less where you are, eased out
   wanted: int = -1;          // your WANTED level (w; -1 none heard: the server runs no town)
   breaks_heard: int; burns_heard: int;   // the town's pieces the server broke and lit (e break, e burn)
@@ -412,6 +417,7 @@ net_down :: (n: [] EgNet) {
   for q: 0..<NET_FX { n[0].fx[q].live = false; }
   net_forget(n);
   n[0].fix_due = false; n[0].off_x = 0; n[0].off_y = 0; n[0].off_z = 0;
+  n[0].rg_open = 0; n[0].rg_close = 0;
 }
 // What the page holds of the server's rows, forgotten: a new seat's are a new snapshot.
 net_forget :: (n: [] EgNet) {
@@ -483,7 +489,7 @@ net_record :: (s: [] Everglade, n: [] EgNet, t: string) {
     net_forget(n);
     if n[0].lost { n[0].lost = false; net_tell(s, n, "BACK IN THE ROOM"); }
     if r[0].ok && clock > 0 && n[0].synced < 2 { n[0].offset = clock - n[0].mono; n[0].synced = 1; }
-    n[0].hello_due = true; n[0].acked = n[0].seq; n[0].fix_due = false;
+    n[0].hello_due = true; n[0].acked = n[0].seq; n[0].fix_due = false; n[0].rg_open = 0; n[0].rg_close = 0;
     return;
   }
   if c == 't' {
@@ -545,6 +551,7 @@ net_record :: (s: [] Everglade, n: [] EgNet, t: string) {
     for q: 0..<NET_MINE {
       if n[0].mine_seq[q] != seq || seq <= 0 { continue; }
       n[0].mine_seq[q] = 0;
+      if seq == n[0].rg_open { n[0].rg_open = 0; n[0].rg_close = 0; }   // your Reverse Gravity never stood
       if cr_repair(n[0].mine_slot[q]) { mend_cancel(s); }   // a Repair the server refused: its bar stops (everglade-repair.coax)
       else if s[0].started { cr_refused(s, n[0].mine_slot[q], cr_why(why)); }
       return;
@@ -859,6 +866,7 @@ net_input :: (s: [] Everglade, input: EgMoveIn, dive: bool) -> int #export_c {
   if !net_open(s) { return 0; }
   n := net_of(s);
   n[0].seq += 1;
+  n[0].stepping = n[0].seq;
   n[0].inputs[n[0].seq % NET_HIST] = NetInput.{seq = n[0].seq, input = input};
   a := ab_of(s);   // and your Levitate's rise and sink keys, for the server's (everglade_room_rise)
   b := (ifx input.run then WB_RUN else 0) | (ifx input.jump then WB_JUMP else 0) | (ifx dive then WB_DIVE else 0) |
@@ -887,7 +895,7 @@ net_replay_input :: (s: [] Everglade, k: int) -> EgMoveIn #export_c {
   c := 0; first := n[0].fix.ack + 1; last := n[0].seq;
   for q: first..<last + 1 {
     if q <= last - NET_HIST || n[0].inputs[q % NET_HIST].seq != q { continue; }
-    if c == k { return net_as_sent(s, n[0].inputs[q % NET_HIST].input); }
+    if c == k { n[0].stepping = q; return net_as_sent(s, n[0].inputs[q % NET_HIST].input); }
     c += 1;
   }
   return EgMoveIn.{};
@@ -975,6 +983,7 @@ net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: 
     en[0].shown = p;
   }
   if net_open(s) && sp_on(s) { net_follow(s, n, now); }
+  if net_open(s) { net_own_rg_frame(s, n); }
   // the casts, each at its time
   for q: 0..<NET_FX {
     fx := n[0].fx[q];
@@ -1147,15 +1156,47 @@ net_shared :: (s: [] Everglade, k: int) -> bool { return net_live(s) && !net_sel
 // where you stand, facing as you face.
 net_press :: (s: [] Everglade, k: int) {
   b := SP_SLOTS + k;
+  n := net_of(s);
+  // your Reverse Gravity held up as the page predicts it, before the room's word of it comes
+  rg_up := k == AB_REVERSE && n[0].rg_open > 0 && n[0].rg_close == 0;
   // (a Wind Wall or a Wall of Stone pressed again raises another, as offline: they stack, and fall at their time)
-  if net_holds(s, k) && !net_stacks(k) && (s[0].sp.armed == b || !ab_aimed(k)) {
-    _ := net_end(s, b);
+  if (rg_up || net_holds(s, k)) && !net_stacks(k) && (s[0].sp.armed == b || !ab_aimed(k)) {
+    if net_end(s, b) && rg_up { n[0].rg_close = n[0].seq; }
     s[0].sp.armed = -1;
     return;
   }
   if ab_aimed(k) { s[0].sp.armed = ifx s[0].sp.armed == b then -1 else b; return; }
   s[0].sp.armed = -1;
-  _ := net_cast(s, b, add(ab_you(s), times(ab_forward(s), 2)), -1);
+  you := ab_you(s);
+  if net_cast(s, b, add(you, times(ab_forward(s), 2)), -1) && k == AB_REVERSE {
+    // where the room's copy opens it: on the floor under you (everglade-abilities.coax ab_rg_open)
+    n[0].rg_open = n[0].seq; n[0].rg_close = 0; n[0].rg_heard = false; n[0].rg_at = v3(you.x, walk_at(s, you.x, you.z), you.z);
+  }
+}
+// Your Reverse Gravity for the input being stepped (net_stepping): on when it is after the cast and
+// before the end. Where the room's word of it is gone (it ended without your end: its time ran
+// out, you lost concentration), it ends at the last input the room stepped; a cast the room never
+// raised is forgotten once the room has stepped NET_RG_LOST inputs past it.
+NET_RG_LOST :: 60;
+NetOwnRg :: struct { on: bool; at: Point; }
+net_own_rg :: (s: [] Everglade) -> NetOwnRg {
+  if !net_live(s) || eg_ra_copying(s) { return NetOwnRg.{}; }
+  n := net_of(s);
+  if n[0].rg_open <= 0 { return NetOwnRg.{}; }
+  q := n[0].stepping;
+  return NetOwnRg.{on = q > n[0].rg_open && (n[0].rg_close == 0 || q < n[0].rg_close), at = n[0].rg_at};
+}
+// Whether the page predicts your Reverse Gravity (then the room's copy of yours lifts no one here).
+net_owns_rg :: (s: [] Everglade) -> bool { return net_live(s) && net_of(s)[0].rg_open > 0; }
+// Each frame: your Reverse Gravity's prediction kept to the room's word of it.
+net_own_rg_frame :: (s: [] Everglade, n: [] EgNet) {
+  if n[0].rg_open <= 0 { return; }
+  held := net_holds(s, AB_REVERSE);
+  if held { n[0].rg_heard = true; return; }
+  if n[0].rg_heard && n[0].rg_close == 0 { n[0].rg_close = n[0].acked + 1; }
+  if !n[0].rg_heard && n[0].acked > n[0].rg_open + NET_RG_LOST { n[0].rg_open = 0; n[0].rg_close = 0; }
+  // ended and gone: nothing left to predict once the room has stepped past the end
+  if n[0].rg_heard && n[0].rg_close > 0 && n[0].acked >= n[0].rg_close { n[0].rg_open = 0; n[0].rg_close = 0; }
 }
 
 // ---- the server's spell effects on this page
@@ -1965,6 +2006,32 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   // gone from B's view when the server says
   net_test_tick(room[..], 25, 0); net_test_x(room[..], 0);
   #assert net_test_hear(b[..], 1, net_test_frame(room[..])) && net_count(b[..], WK_PLAYER) == 0;
+}
+#test "net: your Reverse Gravity lifts the inputs after its cast and before its end, the room's order for them (#12877)" {
+  a: [1] Everglade; na: [1] EgNet;
+  #assert net_test_page(a[..], na[..], 2, "pa", 100) && net_test_hear(a[..], 2, "y 3 1 5000100");
+  s1 := net_input(a[..], EgMoveIn.{key_y = 1}, false);
+  #assert !net_own_rg(a[..]).on && !net_owns_rg(a[..]);
+  // the cast (net_press takes its number and where it stands), an input, the end, an input
+  na[0].seq += 1; na[0].rg_open = na[0].seq; na[0].rg_at = v3(1, 0, 2);
+  s2 := net_input(a[..], EgMoveIn.{key_y = 1}, false);
+  #assert net_own_rg(a[..]).on && net_owns_rg(a[..]) && net_own_rg(a[..]).at.x == 1;
+  na[0].seq += 1; na[0].rg_close = na[0].seq;
+  s3 := net_input(a[..], EgMoveIn.{key_y = 1}, false);
+  #assert s2 == s1 + 2 && s3 == s2 + 2 && !net_own_rg(a[..]).on;
+  // a re-run from the room's word on s1 steps s2 in it and s3 out of it
+  na[0].fix.ack = s1;
+  #assert net_replay_n(a[..]) == 2;
+  _ := net_replay_input(a[..], 0);
+  #assert net_own_rg(a[..]).on;
+  _ = net_replay_input(a[..], 1);
+  #assert !net_own_rg(a[..]).on;
+  // a cast the room never raised is forgotten once it stepped NET_RG_LOST inputs past it
+  na[0].rg_close = 0;
+  na[0].acked = na[0].rg_open + NET_RG_LOST; net_own_rg_frame(a[..], na[..]);
+  #assert net_owns_rg(a[..]);
+  na[0].acked += 1; net_own_rg_frame(a[..], na[..]);
+  #assert !net_owns_rg(a[..]);
 }
 #test "net: every step's input goes out; the server's word on you starts the re-run from there, eased in; past NET_SNAP at once" {
   a: [1] Everglade; na: [1] EgNet; room: [1] NetTestRoom;
