@@ -10,7 +10,7 @@ static uint8_t wave[60],listing[256];
 static coax_v_t_HostAudioFixture audio_view(void){return(coax_v_t_HostAudioFixture){&audio_fixture,1};}
 HF_EXPORT("coaxial_state_init") void coaxial_state_init(HfAddress p){audio_base_state_init(p);audio_fixture=hfa_open();(void)hfa_wave((coax_v_u8){wave,sizeof wave});}
 HF_EXPORT("coaxial_message") void coaxial_message(HfAddress p,int32_t kind,uint32_t n){audio_base_message(p,kind,n);if(kind==930)(void)hfa_offer(audio_view(),(coax_string){(const char*)game(p)->inbox.e,n});}
-static coax_t_HostAudioFixturePacket packet_plan(void){return hfa_packet(audio_view(),(uint64_t)(uintptr_t)audio_fixture.line.e);}
+static coax_t_HostAudioFixturePacket packet_plan(void){HfAddress maximum=(HfAddress)~(HfAddress)0;return hfa_packet_extent(audio_view(),(uint64_t)(uintptr_t)audio_fixture.line.e,(uint64_t)maximum);}
 HF_EXPORT("coaxial_sounds") HfAddress coaxial_sounds(HfAddress p){(void)p;return(HfAddress)packet_plan().address;}
 HF_EXPORT("coaxial_sounds_capacity") uint32_t coaxial_sounds_capacity(HfAddress p){(void)p;return(uint32_t)packet_plan().capacity;}
 HF_EXPORT("coaxial_sounds_len") uint32_t coaxial_sounds_len(HfAddress p){(void)p;int64_t n=hfa_take(audio_view());return(uint32_t)(n?n+packet_plan().extra:0);}
