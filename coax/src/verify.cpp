@@ -151,7 +151,19 @@ static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::ve
       capacity_use(resource.c_str(), "E0400", use.used, use.limit, use.detail);
       steps_near = steps_near || resource == "compile-time steps";
     }
-    if (!steps_near && r.budget && r.passed) capacity_use("compile-time steps", "E0400", r.steps, r.budget);
+    if (!steps_near && r.budget && r.passed) {
+      // A child's check reports its total only: name the check, and the run
+      // of it alone that lists what inside it used the most.
+      CapacityDetail d;
+      if (child && capacity_near(r.steps, r.budget)) {
+        d.src = file->src;
+        d.unit = "steps";
+        const std::string kind = c->forall ? "#forall" : "#test", name = to_std(c->name);
+        d.consumers.push_back({kind + " '" + name + "'", c->loc, true, r.steps, "", "", ""});
+        d.fix = "run coax test --only '" + name + "' for what inside the check uses the most; then do less work in it, split it, or give it a larger #steps N";
+      }
+      capacity_use("compile-time steps", "E0400", r.steps, r.budget, d);
+    }
     if (unstable && MS_storage_changed(slots, containers, file->ct_memory->slots, file->ct_memory->containers)) *unstable = true;
     if (steps) steps->push_back(r.steps);
     executed.insert(executed.end(), r.executed.begin(), r.executed.end());

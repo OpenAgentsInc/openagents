@@ -65,6 +65,8 @@ class CapacityRefusals(unittest.TestCase):
         self.path.write_text(source)
         environment = dict(os.environ)
         environment.pop('COAX_NEAR_LIMIT', None)
+        # A fresh check cache each run: a cached verdict runs no checks, so it reports no use.
+        environment['COAX_CHECK_CACHE'] = tempfile.mkdtemp(dir=self.tmp.name)
         environment.update(env or {})
         return subprocess.run([str(COMPILER), command, str(self.path), *args], text=True, capture_output=True,
                               timeout=120, env=environment)
@@ -157,6 +159,21 @@ class CapacityRefusals(unittest.TestCase):
         loose = self.near('check', STEPS, 'compile-time steps', '--run-steps', str(used * 2), '--near-limit', '40')
         self.assertEqual(loose['near_percent'], 40)
         self.near('check', STEPS, 'compile-time steps', '--run-steps', str(used * 2), env={'COAX_NEAR_LIMIT': '40'})
+
+    def test_check_steps_near_limit_from_a_parallel_check(self):
+        """#authority checks run in child processes report only their totals: the note names the check."""
+        source = ('#authority;\n'
+                  'spin :: (n: int) -> int { s := 0; for i: 0..<n { s += i; } return s; }\n'
+                  '#test "heavy" #steps 40000 { #assert spin(8000) > 0; }\n'
+                  '#test "light" { #assert spin(3) == 3; }\n'
+                  'main :: () {}\n')
+        timings = Path(self.tmp.name) / 't.json'
+        capacity = self.near('check', source, 'compile-time steps', '--timings', str(timings), env={'COAX_CHECK_JOBS': '2'})
+        self.assertNotIn('sequential', json.loads(timings.read_text())['parallel_checks'])
+        self.assertEqual(capacity['limit'], 40000)
+        self.assertEqual(capacity['consumers'][0]['what'], "#test 'heavy'")
+        self.assertEqual(capacity['consumers'][0]['span']['line'], 3)
+        self.assertIn("coax test --only 'heavy'", capacity['suggestion'])
 
     def test_near_limit_option_is_validated(self):
         for value in ('0', '101', '', 'x', '7.5'):
