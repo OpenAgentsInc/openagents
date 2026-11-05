@@ -53,7 +53,8 @@
 E5RR_FORM_WARD :: 40;                        // a ward stone
 E5RD_TEAM :: 3;                              // the cult's team: not the players' (0), the town's (1) or a summons' (2)
 E5RD_MAX :: 64;                              // raid creatures at once, the leader and the stones with them
-E5RD_CASTS :: 32; E5RD_DOWNS :: 32;
+E5RD_CASTS :: 32;
+E5RD_DOWNS :: E5RR_BEASTS;                   // one critical outcome reserved per physical creature slot
 E5RD_REACH_MELEE :: 12.0; E5RD_REACH_CAST :: 30.0; E5RD_REACH_ARCH :: 40.0;   // m: how far a raider looks for a foe
 E5RD_KEEP :: 20.0;                           // m a Warlock keeps from its foe (15 to 25)
 E5RD_SEAT_FIRST :: 6.0;                      // m: a player this much farther than a townsperson still comes first
@@ -94,6 +95,7 @@ E5rdRaid :: struct {
   slot: [E5RR_BEASTS] E5rdSlot;
   casts: [E5RD_CASTS] E5rdCast; cast_n: int;
   downs: [E5RD_DOWNS] E5rdDown; down_n: int;
+  down_pending: [E5RR_BEASTS] bool;          // no raid reuses a slot before its result is consumed
   aggr: int = 2; harm: bool = true;
   seq: int;                                  // the engine's log read so far (its Hellish Rebukes)
   arch: int = -1;                            // Darian's place among the beasts (-1 away)
@@ -178,7 +180,7 @@ e5rd_free :: (r: [] E5rRoom) -> int {
   for q: 0..<E5RR_BEASTS { if e5rd_is(r[0].beasts[q]) { on += 1; } }
   if on >= r[0].raid[0].limit { return -1; }
   q := E5RR_BEASTS - 1;
-  while q >= 0 { if r[0].beasts[q].id == 0 && r[0].beasts[q].forge_id == 0 { return q; } q -= 1; }
+  while q >= 0 { if outcome_slot_reusable(r[0].beasts[q].id,r[0].raid[0].down_pending[q]) && r[0].beasts[q].forge_id == 0 { return q; } q -= 1; }
   return -1;
 }
 // Creature c joins the raid at (x, z) as form `form`, by its gate (gx, gz) to (sx, sz) in the square:
@@ -337,6 +339,7 @@ e5rd_clear :: (r: [] E5rRoom) {
   r[0].raid[0].arch = -1;
   for q: 0..<E5RR_BEASTS { if e5rd_is(r[0].beasts[q]) { r[0].b[0].c[E5RR_BEAST0 + q].floor = 0; e5b_gone(r[0].b[..], r[0].beasts[..], E5RR_BEAST0, q); } }
   r[0].raid[0].cast_n = 0; r[0].raid[0].down_n = 0;
+  for q:0..<E5RR_BEASTS{r[0].raid[0].down_pending[q]=false;}
 }
 // How many raiders stand (the stones and the leader not counted), and how many stones.
 e5rd_standing :: (r: [] E5rRoom) -> int {
@@ -375,13 +378,16 @@ e5rd_cast :: (r: [] E5rRoom, q: int, k: int, to: int, ax: f32, az: f32) {
   w[0].cast_n += 1;
 }
 // Raid creature q fell (everglade5e-room-rules.coax e5rr_beasts_check, before it goes).
-e5rd_down :: (r: [] E5rRoom, q: int) {
+e5rd_down :: (r: [] E5rRoom, q: int) -> bool {
   w := r[0].raid[..];
+  if w[0].slot[q].stage == E5RD_FLEE || w[0].down_pending[q] { return true; }
+  if !outcome_slot_record(q,w[0].down_n,E5RD_DOWNS,w[0].down_pending[q]) { return false; }
   if q == w[0].arch { w[0].arch = -1; }
-  if w[0].down_n >= E5RD_DOWNS || w[0].slot[q].stage == E5RD_FLEE { return; }
   bt := r[0].beasts[q];
   w[0].downs[w[0].down_n] = E5rdDown.{q = q, tag = bt.tag, npc = w[0].slot[q].npc, level = w[0].slot[q].level, x = bt.x, z = bt.z};
   w[0].down_n += 1;
+  w[0].down_pending[q]=true;
+  return true;
 }
 
 // ---- how they fight

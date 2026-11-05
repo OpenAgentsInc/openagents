@@ -1,0 +1,21 @@
+// A bounded authoritative result owns its source slot until consumed.
+#authority;
+#test "outcome slots: recording requires a valid source and a free reserved result" {
+  caps:=[3]int.[1,3,96];
+  for capacity:caps{for q:-1..<capacity+1{for count:-1..<capacity+1{
+    want:=q>=0&&q<capacity&&count>=0&&count<capacity;
+    #assert outcome_slot_record(q,count,capacity,false)==want;
+    #assert !outcome_slot_record(q,count,capacity,true);
+  }}}
+  #assert !outcome_slot_record(0,0,0,false)&&!outcome_slot_record(0,0,-1,false);
+}
+outcome_slot_record::(q:int,count:int,capacity:int,pending:bool)->bool #export_c{
+  return q>=0&&q<capacity&&count>=0&&count<capacity&&!pending;
+}
+#test "outcome slots: pending results fence reuse independently of the old body's liveness" {
+  for id:-1..<3{
+    #assert outcome_slot_reusable(id,false)==(id==0);
+    #assert !outcome_slot_reusable(id,true);
+  }
+}
+outcome_slot_reusable::(id:int,pending:bool)->bool #export_c{return id==0&&!pending;}

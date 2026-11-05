@@ -329,6 +329,24 @@ ev_xp_of :: (v: [] RmServer, k: int, s: int) -> int { return ifx k >= 0 && k < E
 
 // ---- the lifecycle
 
+#test "overload: every creature's simultaneous death keeps its XP and holds its raid slot until consumed (#12841)" #steps 6000000000 {
+  v:[1]RmServer;k:=ev_test_server(v[..]);r:=v[0].eg[k].rules[..];
+  v[0].ev[k].phase=EV_SIEGE;v[0].ev[k].kind=EV_RAID;r[0].raid[0].limit=E5RR_BEASTS;
+  r[0].raid[0].mix=RtMix.{skirm=1,casters=0,support=0,guard=0};
+  for n:0..<E5RR_BEASTS{
+    #assert e5rd_raider(r,RS_NPC_CULTIST,1,n+1,f32(n%12)*3,-30-f32(n/12)*3,rt_open(0,-45,0,-1),n/RT_SQUAD,n%RT_SQUAD,0,0)>0;
+  }
+  for q:0..<E5RR_BEASTS{v[0].ev[k].hurt[q]=1;r[0].b[0].c[E5RR_BEAST0+q].hp=0;r[0].b[0].c[E5RR_BEAST0+q].dead=true;}
+  e5rr_beasts_check(r);#assert r[0].raid[0].down_n==E5RR_BEASTS;
+  e5rr_beasts_check(r);#assert r[0].raid[0].down_n==E5RR_BEASTS;
+  #assert !ev_cult_one(v[..],k);
+  seen:[E5RR_BEASTS]bool;for n:0..<r[0].raid[0].down_n{q:=r[0].raid[0].downs[n].q;#assert q>=0&&q<E5RR_BEASTS&&!seen[q];seen[q]=true;}
+  ev_raid_downs(v[..],k);expected:=E5RR_BEASTS*EV_XP_SRD_X*EV_XP_CULTIST;
+  #assert v[0].ev[k].xp[0]==expected&&v[0].ev[k].xp[1]==0&&v[0].ev[k].slain==E5RR_BEASTS;
+  ev_raid_downs(v[..],k);#assert v[0].ev[k].xp[0]==expected&&r[0].raid[0].down_n==0;
+  #assert ev_cult_one(v[..],k);
+}
+
 ev_secs :: (n: int) -> int { return n * EG_HZ; }
 ev_phase :: (v: [] RmServer, k: int, phase: int, secs: int) {
   v[0].ev[k].phase = phase;
@@ -404,6 +422,8 @@ ev_tick :: (v: [] RmServer, k: int) {
   e := v[0].ev[k..<k + 1];
   d := v[0].evc.d;
   t := v[0].eg[k].tick;
+  // Settle last tick's results before reinforcement can reuse their identities.
+  ev_raid_downs(v,k);
   // the schedule: each whole multiple of EVERY minutes on the wall clock (checked once a second)
   if t % EG_HZ == 0 && v[0].evc.known && d.on && d.every > 0 {
     slot := v[0].wall_ms / (d.every * 60000);
@@ -664,7 +684,7 @@ ev_raid_clear :: (v: [] RmServer, k: int) { ev_raid_downs(v, k); v[0].ev[k].pend
 ev_raid_downs :: (v: [] RmServer, k: int) {
   r := ev_rules(v, k);
   w := r[0].raid[..];
-  for c: 0..<w[0].down_n { ev_fell(v, k, w[0].downs[c]); }
+  for c: 0..<w[0].down_n { dn:=w[0].downs[c];ev_fell(v, k, dn);w[0].down_pending[dn.q]=false; }
   w[0].down_n = 0;
 }
 // The players in room k now.

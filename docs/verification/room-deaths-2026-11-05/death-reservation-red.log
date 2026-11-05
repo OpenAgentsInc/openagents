@@ -1,0 +1,10 @@
+FAIL #test overload: every creature's simultaneous death keeps its XP and holds its raid slot until consumed (#12841) (448 ms)
+coax/web/room/room-events.coax:339:24: error[E0406]: assertion failed
+    e5rr_beasts_check(r);#assert r[0].raid[0].down_n==E5RR_BEASTS;
+                         ^
+  note: in #test overload: every creature's simultaneous death keeps its XP and holds its raid slot until consumed (#12841)
+1 of 607 checks (--only 'every creature's simultaneous death'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: this compiler is out of date: /Users/christopherdavid/work/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/work/openagents/coax/build.sh

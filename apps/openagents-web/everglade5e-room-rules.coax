@@ -28,6 +28,7 @@
 #load "everglade5e-room-raid.coax";   // the Cultist Raid's raiders, ward stones and leader (#12740)
 #load "everglade-raid-scale.coax";   // the raid's waves for the players present (room-events.coax, the EVENTS pane)
 #load "../../aethyr/forge/npc-document.coax";
+#load "../../aethyr/session/outcome-slot.coax";
 #load "everglade5e-forge.coax";
 
 E5RR_SEATS :: 16;
@@ -467,7 +468,8 @@ e5rr_beasts_check :: (r: [] E5rRoom) {
     me := E5RR_SEAT + rs_max(bt.by, 0);
     held := raid || b[0].c[me].conc == bt.spell || (bt.form == E5RR_FORM_ZOMBIE && r[0].live[bt.by]);
     if b[0].c[i].dead || b[0].c[i].hp <= 0 || !held {
-      if raid && bt.forge_id==0 { e5rd_down(r, q); }
+      // Retain a dead source if its authoritative result cannot be reserved.
+      if raid && bt.forge_id==0 && !e5rd_down(r, q) { continue; }
       e5b_gone(b, r[0].beasts[..], E5RR_BEAST0, q);
     }
   }

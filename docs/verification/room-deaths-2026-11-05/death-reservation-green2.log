@@ -1,0 +1,3 @@
+ok   #test overload: every creature's simultaneous death keeps its XP and holds its raid slot until consumed (#12841) (1 case, 4153826 steps, 439 ms)
+1 of 609 checks (--only 'every creature's simultaneous death'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

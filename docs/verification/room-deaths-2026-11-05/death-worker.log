@@ -1,0 +1,2 @@
+wasm-size: everglade-room-death is 1025631 bytes and has no size budget: add a line "everglade-room-death BYTES" to apps/openagents-web/wasm-budgets.txt
+built /private/tmp/overload-12841/everglade-room-death.wasm (1025631 bytes)

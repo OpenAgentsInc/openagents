@@ -1,9 +1,9 @@
 # Everglade room overload profile
 
 Issue #12841. This records the single-owner room's work classes and the bounds
-enforced so far. A bound on storage is separate from CPU isolation; the remaining
-CPU/content-warming and integrated gameplay qualification stay open until their
-receipts are recorded.
+enforced so far. A bound on storage is separate from CPU isolation; measured
+work and startup/content-warming receipts are in the room-work record. Remaining
+downstream effects and integrated gameplay qualification stay open.
 
 | Work | Admission and reservation | Full/late/outage outcome |
 | --- | --- | --- |
@@ -14,6 +14,7 @@ receipts are recorded.
 | Simulation/serialization | Each room earns 45 us/ms, with a 3,000 us burst; a tick requires 1,500 us credit | Charge actual wall duration; an indebted room defers itself, counts/discards queued movement and earns no deferred movement; new casts/seats receive busy/full before order or fencing |
 | Waiting cast intents | Two per seat and a 533 ms monotonic deadline | Busy refusal before start/cooldown even if simulation time is deferred; bars/flight and accepted lifecycle work are retained |
 | World damage input | One aggregate per seat per tick, 16 reserved mailboxes | Repeated complete reports replace their seat's snapshot; resolved once after heals; no overflow-to-immediate-damage path |
+| Raid deaths and XP | One reserved result per physical creature slot, 96; pending result fences raid reuse | Consume once before reinforcements; preserve the dead source for retry if recording cannot reserve space; explicit event clear settles results first |
 | Entity state | Bounded row budget and maximum-age selection | Replace/coalesce; old slow-link state is skipped; resnapshot after catch-up |
 | Lifecycle and outcomes | Separate lifecycle allowance and reserved outcome storage | Lifecycle deferred; missed town outcomes counted and repaired by complete town state |
 | Presentation cues | Per-seat cue allowance | Disposable cues discarded and counted |

@@ -797,6 +797,15 @@ socket admission, including sharded relay paths. Other games retain their
 startup admission contract. A missing initial publication refuses new play;
 an already admitted room keeps its current world during dependency outages.
 
+Raid deaths reserve one authoritative outcome for each physical creature slot
+(`aethyr/session/outcome-slot.coax`, #12841). A pending death prevents raid
+reuse of that slot until its XP/contribution result is consumed. All 96
+creatures may die in one step without a dropped result. If recording cannot
+reserve space, the dead source remains for retry instead of disappearing.
+The room settles deaths before reinforcements, drains once and releases each
+reservation; deliberate event clear settles pending results first. Checks:
+outcome-slot's mutation gate and room-events' full-capacity death/reuse/XP case.
+
 The native room's background HTTP effects use six independent lanes
 (`background-budget.coax`): control, world, legacy vitals, complete checkpoints,
 directory and statistics. Each has one serial SDK helper and one admitted Coax
