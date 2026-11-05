@@ -81,6 +81,9 @@ async fn m3_gateway_contract_against_postgres() {
     tokio::task::spawn_blocking(move || malformed_legacy_wrap_contract(address_two))
         .await
         .unwrap();
+    tokio::task::spawn_blocking(move || stored_row_failing_read_check_contract(address_two))
+        .await
+        .unwrap();
 
     stop_one.shutdown();
     stop_two.shutdown();
@@ -1945,6 +1948,87 @@ fn protected_and_private_contract(address_one: SocketAddr, address_two: SocketAd
     recipient.close(None).unwrap();
     outsider.close(None).unwrap();
     publisher.close(None).unwrap();
+}
+
+/// #12909: a kind 31990 handler stored before the read check tightened. Its
+/// `alt` tag is read as a platform link without the bech32 placeholder, so
+/// decoding it fails. A REQ that matches it must still answer with the other
+/// events and end with EOSE, and the relay must keep serving: before the fix
+/// the database worker treated the row as fatal and the process exited.
+fn stored_row_failing_read_check_contract(address: SocketAddr) {
+    let good = signed_event(113, now() - 20, 1, Vec::new(), "a readable note");
+    let bad = signed_event(
+        113,
+        now() - 10,
+        31_990,
+        vec![
+            Tag::new(vec!["d".into(), "app".into()]),
+            Tag::new(vec!["k".into(), "1".into()]),
+            Tag::new(vec!["alt".into(), "Nostr app handler".into()]),
+            Tag::new(vec![
+                "web".into(),
+                "https://example.com/e/<bech32>".into(),
+                "nevent".into(),
+            ]),
+        ],
+        "",
+    );
+    assert!(
+        bad.validate_structure().is_err(),
+        "the fixture fails the read check"
+    );
+    insert_raw_event(&good, None);
+    insert_raw_event(&bad, Some("app"));
+
+    for round in 0..2 {
+        let mut reader = connect_client(address);
+        let challenge = expect_auth_challenge(&mut reader);
+        authenticate(&mut reader, 21, &challenge);
+        let id = format!("skip-corrupt-{round}");
+        send_json(
+            &mut reader,
+            json!(["REQ", id, {"authors": [pubkey(113)], "kinds": [1, 31_990], "limit": 127}]),
+        );
+        let mut seen = Vec::new();
+        loop {
+            let message = read_json(&mut reader);
+            if is_eose_for(&message, &id) {
+                break;
+            }
+            assert_eq!(message[0], "EVENT", "unexpected message: {message}");
+            seen.push(message[2]["id"].as_str().unwrap().to_owned());
+        }
+        assert!(
+            seen.contains(&good.id),
+            "the readable event is still served"
+        );
+        assert!(!seen.contains(&bad.id), "the unreadable row is left out");
+        send_json(&mut reader, json!(["REQ", "by-id", {"ids": [bad.id]}]));
+        assert!(is_eose_for(&read_json(&mut reader), "by-id"));
+        reader.close(None).unwrap();
+    }
+}
+
+fn insert_raw_event(event: &Event, identifier: Option<&str>) {
+    let database_url = std::env::var("NOSTR_RELAY_TEST_DATABASE_URL").unwrap();
+    let event = event.clone();
+    let identifier = identifier.map(str::to_owned);
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(async move {
+            let (client, connection) = tokio_postgres::connect(&database_url, NoTls).await.unwrap();
+            tokio::spawn(async move { connection.await.unwrap() });
+            let tags = serde_json::to_string(&event.tags).unwrap();
+            client
+                .execute(
+                    "INSERT INTO nostr_event (id, pubkey, created_at, kind, tags, content, sig, replacement_identifier) VALUES ($1, $2, $3, $4, $5::text::jsonb, $6, $7, $8)",
+                    &[&event.id, &event.pubkey, &i64::try_from(event.created_at).unwrap(), &i32::from(event.kind), &tags, &event.content, &event.sig, &identifier],
+                )
+                .await
+                .unwrap();
+        });
 }
 
 fn insert_legacy_wrap(event: &Event) {

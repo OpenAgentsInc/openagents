@@ -15,7 +15,7 @@ use std::{
     pin::Pin,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     task::Poll,
 };
@@ -290,6 +290,9 @@ pub struct Store {
     statements: Statements,
     connection_current: Arc<AtomicBool>,
     connection_task: JoinHandle<()>,
+    /// Stored events a read left out because they fail the current read
+    /// check (#12909). See [`Store::skipped_rows`].
+    skipped_rows: AtomicU64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -314,6 +317,7 @@ impl Store {
                 statements,
                 connection_current,
                 connection_task,
+                skipped_rows: AtomicU64::new(0),
             },
             migration_report,
         ))
@@ -331,11 +335,47 @@ impl Store {
             statements,
             connection_current,
             connection_task,
+            skipped_rows: AtomicU64::new(0),
         })
     }
 
     pub fn is_current(&self) -> bool {
         self.connection_current.load(Ordering::Acquire)
+    }
+
+    /// How many stored events this connection's reads have left out because
+    /// they fail the read check (#12909). A row admitted under an older,
+    /// looser check stays in the table; a read skips it and logs it instead
+    /// of failing the whole read, so one bad row cannot stop the relay. A
+    /// caller that promises completeness compares this count before and
+    /// after its reads.
+    pub fn skipped_rows(&self) -> u64 {
+        self.skipped_rows.load(Ordering::Relaxed)
+    }
+
+    /// Decode a read's rows, leaving out (and logging) each row that fails
+    /// the read check. Any other failure still fails the read.
+    fn decode_readable(&self, rows: Vec<Row>) -> Result<Vec<StoredEvent>, StoreError> {
+        let mut events = Vec::with_capacity(rows.len());
+        for row in rows {
+            if let Some(stored) = self.decode_readable_one(row)? {
+                events.push(stored);
+            }
+        }
+        Ok(events)
+    }
+
+    fn decode_readable_one(&self, row: Row) -> Result<Option<StoredEvent>, StoreError> {
+        let id = row.try_get::<_, String>(0).unwrap_or_default();
+        match decode_event_row(row) {
+            Ok(stored) => Ok(Some(stored)),
+            Err(StoreError::CorruptRow(reason)) => {
+                self.skipped_rows.fetch_add(1, Ordering::Relaxed);
+                log_skipped_row(&id, &reason);
+                Ok(None)
+            }
+            Err(error) => Err(error),
+        }
     }
 
     fn ensure_current(&self) -> Result<(), StoreError> {
@@ -1167,8 +1207,7 @@ impl Store {
         self.client
             .query_opt(&self.statements.event_by_id, &[&id, &now])
             .await?
-            .map(decode_event_row)
-            .transpose()
+            .map_or(Ok(None), |row| self.decode_readable_one(row))
     }
 
     pub async fn latest_ingest_seq(&self) -> Result<i64, StoreError> {
@@ -1306,9 +1345,11 @@ impl Store {
                 &[&now, &limit],
             )
             .await?;
-        rows.into_iter()
-            .map(|row| decode_event_row(row).map(|stored| stored.event))
-            .collect()
+        Ok(self
+            .decode_readable(rows)?
+            .into_iter()
+            .map(|stored| stored.event)
+            .collect())
     }
 
     pub async fn set_workspace_icon(
@@ -1521,8 +1562,7 @@ impl Store {
         self.client
             .query_opt(&self.statements.event_by_ingest, &[&ingest_seq, &now])
             .await?
-            .map(decode_event_row)
-            .transpose()
+            .map_or(Ok(None), |row| self.decode_readable_one(row))
     }
 
     /// Read a bounded, stable catch-up page through a previously sampled
@@ -1544,7 +1584,7 @@ impl Store {
                 &[&after, &through, &now, &limit],
             )
             .await?;
-        rows.into_iter().map(decode_event_row).collect()
+        self.decode_readable(rows)
     }
 
     /// Complete own-author read state from one writer MVCC statement cut.
@@ -1751,7 +1791,7 @@ impl Store {
                 .query(&self.statements.query_filter, params)
                 .await?
         };
-        rows.into_iter().map(decode_event_row).collect()
+        self.decode_readable(rows)
     }
 
     pub async fn count_filters(
@@ -3465,6 +3505,19 @@ async fn apply_deletion(
         }
     }
     Ok(())
+}
+
+/// One JSON warning line on stderr for a stored event a read left out. The
+/// row stays in the table: the relay never deletes or rewrites it.
+fn log_skipped_row(id: &str, reason: &str) {
+    use std::io::Write;
+    let line = json!({
+        "level": "warn",
+        "message": "a read skipped a stored event that fails the read check",
+        "id": id,
+        "reason": reason,
+    });
+    let _ = writeln!(std::io::stderr().lock(), "{line}");
 }
 
 fn decode_event_row(row: Row) -> Result<StoredEvent, StoreError> {

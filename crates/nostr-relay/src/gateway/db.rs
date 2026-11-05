@@ -852,6 +852,9 @@ async fn query_history(
     // overflow means the relay holds matching stored events it did not
     // send, which the EOSE carries as "more" instead of "finish".
     let mut complete = true;
+    // A read leaves out a stored event that fails the read check (#12909);
+    // the relay then holds a matching event it did not send.
+    let skipped_before = store.skipped_rows();
     for filter in filters {
         // The store applies the client's own `limit`, so probing past
         // the smaller of it and this filter's budget share is what
@@ -891,6 +894,9 @@ async fn query_history(
         complete = false;
         events.truncate(max_results);
     }
+    if store.skipped_rows() != skipped_before {
+        complete = false;
+    }
     Ok(HistoryResult {
         high_water,
         events,
@@ -926,5 +932,9 @@ fn is_fatal(error: &StoreError) -> bool {
             | StoreError::EphemeralTooLarge(_)
             | StoreError::Management(_)
             | StoreError::Media(_)
+            // A stored row that fails the read check fails only the request
+            // that read it; the connection is fine (#12909). Ordinary reads
+            // skip such a row; a read that promises a complete cut refuses.
+            | StoreError::CorruptRow(_)
     )
 }
