@@ -39,12 +39,12 @@ export function goldenPages(file = join(ROOT, APP, "realms.json")): Pages {
   const pages: Record<string, Page> = { landing: { path: "/verse", lit: 0.004, settle: 2500, blocks: 4, module: "verse" } }
   // Every realm, the open worlds in realms.json's order.
   const open = worlds(file, { site: join(ROOT, APP), packs: join(ROOT, "verse/packs"), styleBlock: existsSync(join(ROOT, "verse/style.coax")) }).filter((w) => w.kind === "open" && w.realm)
-  for (const w of open) pages[w.realm!.slug] = { path: `/realms/${w.realm!.slug}`, ...w.realm!.golden, module: w.realm!.module }
+  for (const w of open) pages[w.realm!.slug] = { path: `/worlds/${w.realm!.slug}`, ...w.realm!.golden, module: w.realm!.module }
   // Realms /realms doesn't list yet: with no golden, their shot waits in pending/ (golden-policy.ts).
   const unlisted = new Set(open.filter((w) => w.listed === false).map((w) => w.realm!.slug))
   // Pages of their own (not in realms.json), walked by their address.
-  const byAddress: Record<string, Page> = { garden: { path: "/realms/garden", lit: 0.5, settle: 3000, blocks: 6, module: "garden" },
-    "realms-new": { path: "/realms/new", lit: 0.004, settle: 2500, blocks: 4, module: "builder" } }
+  const byAddress: Record<string, Page> = { garden: { path: "/worlds/garden", lit: 0.5, settle: 3000, blocks: 6, module: "garden" },
+    "realms-new": { path: "/worlds/new", lit: 0.004, settle: 2500, blocks: 4, module: "builder" } }
   byAddress["connect-pylon"] = {path:"/docs/connect-a-pylon",lit:0.004,settle:1500,blocks:4,module:"connect-pylon"}
   byAddress["connect-pylon-phone"] = {path:"/docs/connect-a-pylon",lit:0.004,settle:1500,blocks:4,module:"connect-pylon",size:[390,844]}
   byAddress["coax-changelog"] = {path:"/coax/changelog",lit:0.004,settle:1200,blocks:4,module:"changelog"}
@@ -72,12 +72,12 @@ export function goldenPages(file = join(ROOT, APP, "realms.json")): Pages {
   }
   // The style fixture (docs/verse/art-styles.md): the fixture realm in the painterly preset at each clock key.
   for (const c of ["0", "0.25", "0.5", "0.75"])
-    byAddress[`fixture-painterly-${c}`] = { path: `/realms/fixture?style=painterly&clock=${c}`, lit: 0.5, settle: 3000, blocks: 6, module: "fixture" }
+    byAddress[`fixture-painterly-${c}`] = { path: `/worlds/fixture?style=painterly&clock=${c}`, lit: 0.5, settle: 3000, blocks: 6, module: "fixture" }
   // and on a phone (390x844 css px: the phone tier, art-styles.md 14) at each clock key
   for (const c of ["0", "0.25", "0.5", "0.75"])
-    byAddress[`fixture-painterly-phone-${c}`] = { path: `/realms/fixture?style=painterly&clock=${c}`, lit: 0.5, settle: 3000, blocks: 6, module: "fixture", size: [390, 844] }
+    byAddress[`fixture-painterly-phone-${c}`] = { path: `/worlds/fixture?style=painterly&clock=${c}`, lit: 0.5, settle: 3000, blocks: 6, module: "fixture", size: [390, 844] }
   // and backlit at noon, the sun put behind the blob tree (?sun=, ?sunup=), for the light shafts (spec 6)
-  byAddress["fixture-painterly-shafts"] = { path: "/realms/fixture?style=painterly&clock=0.5&sun=156&sunup=9.5", lit: 0.5, settle: 3000, blocks: 6, module: "fixture" }
+  byAddress["fixture-painterly-shafts"] = { path: "/worlds/fixture?style=painterly&clock=0.5&sun=156&sunup=9.5", lit: 0.5, settle: 3000, blocks: 6, module: "fixture" }
   for (const [name, page] of Object.entries(byAddress)) pages[name] ??= page
   return { pages, byAddress, open, unlisted }
 }

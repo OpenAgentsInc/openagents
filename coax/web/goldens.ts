@@ -1,7 +1,7 @@
 // The playtest flow, walked in headless Chrome with WebGPU (no window opens,
 // nothing takes focus): the landing, ENTER as a guest directly to the house;
 // then every other realm in realms.json, each opened by its address
-// (/realms/<slug>), unlisted ones too, so a realm is walked before its launch;
+// (/worlds/<slug>), unlisted ones too, so a realm is walked before its launch;
 // then the pages of their own (the Garden) by their address. Each page must start (its engine says
 // ready, nothing reports an error or throws) and draw (enough lit pixels),
 // and looks like its golden screenshot. It closes the gap the HTTP smoke
