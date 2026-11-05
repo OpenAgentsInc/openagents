@@ -18,6 +18,8 @@
 
 extern char **environ;
 static int golden_mode;
+extern uint32_t coaxial_host_contract_version(void) __attribute__((weak));
+extern uint32_t coaxial_host_copy_span(uint64_t, uint64_t, uint64_t, uint64_t) __attribute__((weak));
 
 // The face's offsets are 32 bits. Built without PIE, its static data is
 // below 2 GB; malloc stays on the brk heap (no mmap), which follows it; and
@@ -101,7 +103,9 @@ void rh_deliver(RealmHost *h, int extra, const uint32_t *extra_sizes) {
   uint32_t sizes[4] = {catalog ? catalog->length : 0, vertices ? vertices->length : 0, indices ? indices->length : 0, (uint32_t)h->layers};
   if (catalog) {
     uint32_t at = coaxial_asset(h->state, 0, catalog->length);
-    if (at) memcpy(rh_ptr(at), catalog->bytes, catalog->length);
+    int contract = coaxial_host_contract_version && coaxial_host_contract_version() == 1;
+    if (contract && (!coaxial_host_copy_span || !coaxial_host_copy_span(at, coaxial_asset_capacity(h->state,0),catalog->length,UINT64_C(1)<<32))) sizes[0] = 0;
+    else if (at) memcpy(rh_ptr(at), catalog->bytes, catalog->length);
   }
   for (int i = 0; i < 4; i++) coaxial_asset_ready(h->state, i, sizes[i]);
   for (int i = 0; i < extra; i++) coaxial_asset_ready(h->state, 4 + i, extra_sizes[i]);
@@ -116,9 +120,27 @@ void rh_send(RealmHost *h, int kind, const char *text, size_t length) {
 }
 
 uint32_t rh_frame(RealmHost *h, float w, float ht, float scale, float dt) {
-  uint32_t n = coaxial_frame(h->state, h->vertices, h->uniforms, w, ht, scale, dt, 0);
+  return rh_frame_input(h,w,ht,scale,dt,0);
+}
+uint32_t rh_frame_input(RealmHost *h, float w, float ht, float scale, float dt, int still) {
+  uint32_t n = coaxial_frame(h->state, h->vertices, h->uniforms, w, ht, scale, dt, still!=0);
   return n > (uint32_t)h->max_vertices ? (uint32_t)h->max_vertices : n;
 }
+int rh_asset_data(RealmHost *h, int index, const void *bytes, size_t length) {
+  uint32_t n=length<=UINT32_MAX?(uint32_t)length:0;
+  uint32_t at=n?coaxial_asset(h->state,index,n):0;
+  int contract=coaxial_host_contract_version && coaxial_host_contract_version()==1;
+  if (length>UINT32_MAX || !at || (contract && (!coaxial_host_copy_span || !coaxial_host_copy_span(at,coaxial_asset_capacity(h->state,index),length,UINT64_C(1)<<32)))) n=0;
+  if(n)memcpy(rh_ptr(at),bytes,n);
+  coaxial_asset_ready(h->state,index,n);
+  return n==length;
+}
+void rh_key(RealmHost *h,int key,int mods,int down) {
+  if(down)coaxial_key(h->state,key,mods);else coaxial_key_up(h->state,key,mods);rh_after(h,0);
+}
+void rh_pointer(RealmHost *h,float x,float y,int phase,int kind,int id) {coaxial_pointer(h->state,x,y,phase,kind,id);rh_after(h,0);}
+void rh_blur(RealmHost *h) {coaxial_blur(h->state);rh_after(h,0);}
+void rh_wheel(RealmHost *h,float dy) {coaxial_wheel(h->state,dy);rh_after(h,0);}
 
 static void keep(int action, const char *text, uint32_t len);
 static char went[1100];

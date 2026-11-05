@@ -1,0 +1,28 @@
+// Build the Coax probe against the actual Linux realm SDK, without a GPU
+// window or speaker. COAX is supplied explicitly, never republished.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/args.coax";
+#load "../../coax/lib/sys/proc.coax";
+hvb_run :: (argv:[]string,output:string)->bool {
+  out:[16777216]u8;err:[8192]u8;r:=proc_run(argv,90000,out[..],err[..]);
+  if r.started!=0 || r.status!=0 || r.timed_out || r.cut {tool_errln(cast(string)err[0..<r.err_n]);return false;}
+  return output=="" || fs_write(output,cast(string)out[0..<r.out_n]);
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])<2 || args_count(a[..])>3 {tool_errln("usage: build-vulkan OUT COAX [--sanitize]");return 2;}
+  sanitize:=args_count(a[..])==3;if sanitize && args_at(a[..],2)!="--sanitize" {return 2;}
+  if cxtool_os()!=2 {tool_errln("build-vulkan: the low-4G realm ABI runs on Linux");return 2;}
+  paths:[8][4096]u8;dir:=args_at(a[..],0);coax:=args_at(a[..],1);if !fs_mkdir(dir) {return 1;}dir=fs_realpath(dir,paths[0][..]);
+  fixture_c:=fs_join(dir,"fixture.c",paths[1][..]);fixture_h:=fs_join(dir,"fixture.h",paths[2][..]);
+  check_c:=fs_join(dir,"HostCheck.c",paths[3][..]);check_h:=fs_join(dir,"HostCheck.h",paths[4][..]);bin:=fs_join(dir,"check-vulkan",paths[5][..]);
+  emit_fixture:=[7]string.[coax,"c","aethyr/host/fixture.coax","--library","--header",fixture_h,"--release"];
+  emit_check:=[7]string.[coax,"c","aethyr/host/check-vulkan.coax","--library","--header",check_h,"--release"];
+  if !hvb_run(emit_fixture[..],fixture_c) || !hvb_run(emit_check[..],check_c) {return 1;}
+  base:=[28]string.["gcc","-std=gnu11","-O2","-no-pie","-ffp-contract=off","-fno-fast-math","-Wno-attributes","-I",dir,"-I","verse/native","-I","coax/platform",fixture_c,check_c,"aethyr/host/tests/fixture-face.c","aethyr/host/tests/vulkan-effects.c","verse/native/realm-host.c","coax/platform/tool-native.c","coax/platform/process-native.c","coax/platform/store-file-native.c","coax/platform/read-file-native.c","-lpthread","-lm","-o",bin,"-Wno-unused-function","-Wno-unused-variable"];
+  cc:[31]string;for i:0..<28 {cc[i]=base[i];}cn:=28;
+  if sanitize {cc[28]="-fsanitize=address,undefined";cc[29]="-fno-omit-frame-pointer";cc[30]="-fno-sanitize-recover=all";cn=31;}
+  if !hvb_run(cc[0..<cn],"") {return 1;}
+  print("Built native core observer: %\n",bin);return 0;
+}

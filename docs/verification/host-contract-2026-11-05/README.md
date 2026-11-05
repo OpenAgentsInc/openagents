@@ -55,6 +55,16 @@ the browser receipt here. Root mutation killed all 190 semantic checker
 and 60 JSON adapter mutants, with no survivors or equivalents. This shared
 core check does not imply that unrecorded sections or hosts passed.
 
+The Linux Vulkan realm adapter (`verse/native/realm-host.c`) also admits
+the same core receipt on coderos-4080. `check-vulkan.coax` drives the real
+realm arena, face, explicit still-frame input, inbox/action dispatch and
+measured asset-copy SDK. Its tiny C adapter contains only those SDK calls;
+Coax authors all probes and JSON. The same run passes ASan/UBSan with leak
+checking. `vulkan-core.json` retains its rows and
+`vulkan-artifacts.sha256` identifies the actual Linux compiler, generated
+C/header pair, executable and output. No GPU/window or audio device is
+opened by this core-only observer.
+
 `browser-core.json`, `browser-transport.json` and
 `browser-replacement.json` retain the actual fixture event rows. Each row
 is `[kind,a,b,c,d,e,byteCount,FNV32]`, as defined by `fixture.coax`.
@@ -95,9 +105,24 @@ face accepts `COAXIAL_NATIVE_ADDRESS` for the native uintptr ABI; the same
 observer and networking commands are available to the Metal/Vulkan adapter
 checks. It is an effects fixture and does not need Everglade's render package.
 
+On Linux, with an existing compiler selected explicitly:
+
+```sh
+coax/web/tool.sh aethyr/host/build-vulkan.coax \
+  "$HOME/.openagents/aethyrforge/host-contract-12869/vulkan" "$COAX"
+"$HOME/.openagents/aethyrforge/host-contract-12869/vulkan/check-vulkan" \
+  "$HOME/.openagents/aethyrforge/host-contract-12869/vulkan/core.json"
+coax/web/tool.sh aethyr/host/check-observations.coax \
+  "$HOME/.openagents/aethyrforge/host-contract-12869/vulkan/core.json"
+```
+
+Add `--sanitize` to the builder and use a separate output directory for
+the ASan/UBSan image. The Linux ABI retains the existing non-PIE/low-4-GiB
+allocation rule; Metal uses the fixture's explicit native uintptr ABI.
+
 ## Required exits still open
 
-The native Metal and Vulkan adapter runs, shared lifecycle transitions and
+The native Metal core run, native transport, shared lifecycle transitions and
 device-loss/replacement receipts, complete production render graph, and
 muted/offline audio sample comparison remain to be recorded. The older
 Vulkan realm adapter explicitly refuses live sockets and does not execute

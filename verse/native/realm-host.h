@@ -49,6 +49,17 @@ void rh_deliver(RealmHost *h, int extra, const uint32_t *extra_sizes);
 void rh_send(RealmHost *h, int kind, const char *text, size_t length);
 // One frame: the vertex count.
 uint32_t rh_frame(RealmHost *h, float w, float ht, float scale, float dt);
+// The explicit still-frame form used by deterministic host probes/previews.
+uint32_t rh_frame_input(RealmHost *h, float w, float ht, float scale, float dt, int still);
+// Copy a complete declared data asset, then deliver readiness. Contract v1
+// faces use the shared measured-span authority; refusal delivers zero bytes.
+int rh_asset_data(RealmHost *h, int index, const void *bytes, size_t length);
+// SDK dispatch of already normalized host inputs (device-pixel pointer
+// coordinates, CSS-pixel wheel delta and contract key/modifier values).
+void rh_key(RealmHost *h, int key, int mods, int down);
+void rh_pointer(RealmHost *h, float x, float y, int phase, int kind, int id);
+void rh_blur(RealmHost *h);
+void rh_wheel(RealmHost *h, float dy);
 // The realm's pending action, handled the way a host with no browser can:
 // it is printed (when `say`) and marked done. Returns the action, 0 for none.
 int rh_after(RealmHost *h, int say);

@@ -23,6 +23,11 @@ in `aethyr/host/README.md` and
 `docs/verification/host-contract-2026-11-05/`. Native adapters, production
 GPU/lifecycle and rendered audio retain their separate conformance exits;
 the desktop default stays web until the complete Metal/three-host gates pass.
+The common core receipt admits every authored event word plus observed
+version/default/dropped/held metadata through `conformance.coax` and its
+`receipt.coax` JSON adapter (190 and 60 root mutants killed, no equivalents).
+The Linux realm SDK exposes explicit still-frame and measured asset-copy
+effects, so its fixture uses the same production dispatch as a realm.
 
 ## The indexed KV arena preserves the durable v1 contract
 
