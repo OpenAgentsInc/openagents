@@ -94,6 +94,8 @@ fr_story_pose :: (t: f32) -> FrPose {
 // The page's camera: the story's path, then onto the lap.
 fr_cam :: (mid: Fv, t: f32, width: f32, height: f32) -> Cam {
   q := fr_story_pose(t);
+  // the rest of the reading has its own shots (newland-frontier-shots.coax)
+  if t > FR_FALL - 0.7 { q = fr_pose_mix(q, fr_shots(t), smooth01((t - (FR_FALL - 0.7)) / FR_BLEND)); }
   if t > FR_END {
     lap := wk_fly_path(mid, t - FR_END);
     j := smooth01((t - FR_END) / FR_JOIN);

@@ -1,0 +1,66 @@
+// Penultimate Frontier's camera for the rest of the reading (newland-frontier-act2.coax): a shot
+// per beat, each a move round its subject (an orbit that cranes up or down, closes in or pulls
+// out), the shots blending into each other over FR_BLEND. A shot keeps moving through its
+// blends, so the camera never stops. fr_cam uses it from FR_FALL to the lap.
+
+FrShot :: struct { t0: f32; t1: f32; o: Fv; look_y: f32; r0: f32; r1: f32; h0: f32; h1: f32; a0: f32; a1: f32; }
+FR_SHOTS :: 15;
+FR_BLEND :: 1.4f32;
+FR_DEG :: 0.0174533f32;
+FR_SHOT_TABLE :: [FR_SHOTS] FrShot.[
+  // millions fall out: sweeping round the ruins as they pour out of them
+  FrShot.{t0 = FR_FALL, t1 = FR_TABLES, o = Fv.{x = 12.5, y = 0, z = 1.5}, look_y = 1.0, r0 = 11, r1 = 9, h0 = 4.5, h1 = 3.0, a0 = 70, a1 = 30},
+  // the old table: low, all the way round it
+  FrShot.{t0 = FR_TABLES, t1 = FR_WHAT, o = Fv.{x = 21, y = 0, z = -0.2}, look_y = 0.9, r0 = 6.5, r1 = 4.6, h0 = 2.6, h1 = 1.6, a0 = 10, a1 = 95},
+  // "but what?": craning up over the empty plot
+  FrShot.{t0 = FR_WHAT, t1 = FR_NUMBERS, o = Fv.{x = 21, y = 0, z = 8}, look_y = 0.5, r0 = 8, r1 = 11, h0 = 3, h1 = 9, a0 = 100, a1 = 60},
+  // the ranks and the one: low through them
+  FrShot.{t0 = FR_NUMBERS, t1 = FR_MAJORITY, o = Fv.{x = 21, y = 0, z = 6}, look_y = 1.3, r0 = 7, r1 = 5.5, h0 = 1.7, h1 = 1.4, a0 = 80, a1 = 10},
+  // the silent majority: up and out over all of them
+  FrShot.{t0 = FR_MAJORITY, t1 = FR_TOOL, o = Fv.{x = 21, y = 0, z = 8}, look_y = 0, r0 = 9, r1 = 30, h0 = 3, h1 = 22, a0 = 20, a1 = 55},
+  // the computer and its shield: round them, closing in
+  FrShot.{t0 = FR_TOOL, t1 = FR_POCKET, o = Fv.{x = 21, y = 0, z = 8}, look_y = 3.5, r0 = 17, r1 = 12, h0 = 6, h1 = 4.5, a0 = 55, a1 = 120},
+  // the Pylons forming: low, among the first of them
+  FrShot.{t0 = FR_POCKET, t1 = FR_PAY, o = Fv.{x = 21, y = 0, z = 8}, look_y = 1.0, r0 = 8, r1 = 10, h0 = 2.0, h1 = 3.0, a0 = 120, a1 = 80},
+  // the payments: a rising spiral out over the storm
+  FrShot.{t0 = FR_PAY, t1 = FR_APART, o = Fv.{x = 21, y = 0, z = 8}, look_y = 1.5, r0 = 14, r1 = 24, h0 = 4, h1 = 15, a0 = 80, a1 = 20},
+  // apart, arguing: weaving low past the cages
+  FrShot.{t0 = FR_APART, t1 = FR_FARMED, o = Fv.{x = 21, y = 0, z = 8}, look_y = 1.2, r0 = 7, r1 = 5, h0 = 2.4, h1 = 1.7, a0 = 20, a1 = 80},
+  // attention farmed: round the old buildings standing again
+  FrShot.{t0 = FR_FARMED, t1 = FR_REFOCUS, o = Fv.{x = 11.5, y = 0, z = 1.5}, look_y = 2.2, r0 = 15, r1 = 12, h0 = 8, h1 = 6, a0 = 65, a1 = 35},
+  // refocused: round the new tree as it grows
+  FrShot.{t0 = FR_REFOCUS, t1 = FR_CYBER, o = Fv.{x = 15, y = 0, z = 3}, look_y = 3.5, r0 = 11, r1 = 9, h0 = 4, h1 = 6, a0 = 40, a1 = 75},
+  // cyberspace: craning up through the grid in the sky
+  FrShot.{t0 = FR_CYBER, t1 = FR_BBS, o = Fv.{x = 18, y = 0, z = 5}, look_y = 5.5, r0 = 13, r1 = 12, h0 = 2.5, h1 = 11, a0 = 75, a1 = 35},
+  // the bulletin board: close, round its screen
+  FrShot.{t0 = FR_BBS, t1 = FR_VIRTUAL, o = Fv.{x = 18, y = 0, z = 5}, look_y = 8.3, r0 = 7, r1 = 6, h0 = 9, h1 = 8.8, a0 = 30, a1 = 60},
+  // virtual worlds: a long arc round them as they bloom
+  FrShot.{t0 = FR_VIRTUAL, t1 = FR_VERSE, o = Fv.{x = 18, y = 0, z = 5}, look_y = 9.2, r0 = 13, r1 = 12, h0 = 9.5, h1 = 12, a0 = 60, a1 = 150},
+  // the Verse: down to the new tree and out
+  FrShot.{t0 = FR_VERSE, t1 = FR_END, o = Fv.{x = 15, y = 0, z = 3}, look_y = 1.8, r0 = 8, r1 = 15, h0 = 3.5, h1 = 9, a0 = 150, a1 = 70}];
+
+fr_shot_pose :: (k: int, t: f32) -> FrPose {
+  s := FR_SHOT_TABLE[clamp_i(k, 0, FR_SHOTS - 1)];
+  u := clamp((t - s.t0) / (s.t1 - s.t0), -0.4, 1.4);
+  e := smooth01(clamp(u, 0, 1)) * 0.6 + u * 0.4;   // eased, but never still
+  a := (s.a0 + (s.a1 - s.a0) * e) * FR_DEG;
+  r := s.r0 + (s.r1 - s.r0) * e; h := s.h0 + (s.h1 - s.h0) * e;
+  return FrPose.{eye = fv(s.o.x + r * cos(a), h, s.o.z + r * sin(a)), at = fv(s.o.x, s.look_y, s.o.z)};
+}
+fr_pose_mix :: (a: FrPose, b: FrPose, w: f32) -> FrPose { return FrPose.{eye = fv_mix(a.eye, b.eye, w), at = fv_mix(a.at, b.at, w)}; }
+// The camera from FR_FALL on: the shot for t, blended into the next round its cut.
+fr_shots :: (t: f32) -> FrPose {
+  k := 0;
+  while k < FR_SHOTS - 1 && t >= FR_SHOT_TABLE[k].t1 { k += 1; }
+  q := fr_shot_pose(k, t);
+  half := FR_BLEND * 0.5;
+  if k < FR_SHOTS - 1 && t > FR_SHOT_TABLE[k].t1 - half {
+    w := smooth01((t - (FR_SHOT_TABLE[k].t1 - half)) / FR_BLEND);
+    q = fr_pose_mix(q, fr_shot_pose(k + 1, t), w);
+  }
+  if k > 0 && t < FR_SHOT_TABLE[k].t0 + half {
+    w := smooth01((t - (FR_SHOT_TABLE[k].t0 - half)) / FR_BLEND);
+    q = fr_pose_mix(fr_shot_pose(k - 1, t), q, w);
+  }
+  return q;
+}

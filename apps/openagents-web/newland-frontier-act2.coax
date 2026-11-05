@@ -326,17 +326,21 @@ fr_tables :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
       v = figure(out, v, c, k, pose, x, z, yaw, white, seen * took, p, top[0..<0]);
     }
   }
-  // the pillar the one stands on, where the table was, and the one
+  // the one: alone on the floor where the table was, tall and lit, a halo round its feet
   up := fr_in(t, FR_ELITE - 0.6, 1.4) * fr_out(t, FR_TOOL, 1.2);
   if t >= FR_ELITE - 1.5 && up > 0 {
-    v = fr_cage(out, v, c, o, 0.55, 0.55, 0, FR_PILLAR * up, white, up);
-    for k2: 1..<6 { y := FR_PILLAR * up * f32(k2) / 6; v = loop3(out, v, c, o.x, y, o.z, 0.78, dim, 0.5 * up); }
-    sh: Shape; sh.size = 1.05;
+    gold := ink(p, INK_BITCOIN); bright := ink(p, INK_BRIGHT);
+    for k2: 0..<3 {
+      ph := fract(t * 0.5 + f32(k2) / 3);
+      v = loop3(out, v, c, o.x, 0.02, o.z, 0.5 + 1.4 * ph, gold, 0.6 * (1 - ph) * up);
+    }
+    v = loop3(out, v, c, o.x, 0.02, o.z, 0.55, bright, 0.9 * up);
+    sh: Shape; sh.size = 1.45;
     k := verse_figure_skeleton(sh);
     pose := verse_figure_gait(Rig.person, Gait.stand, 0, t);
     pose.turn[P_R_SHOULDER] = fv(-0.3, 0, -1.2); pose.turn[P_L_SHOULDER] = fv(-0.3, 0, 1.2);   // arms out, over them
     top: [1] Spot;
-    v = figure_up(out, v, c, k, pose, o.x, FR_PILLAR * up, o.z, angle_of(FR_PLOT.x - o.x, FR_PLOT.z - o.z), ink(p, INK_BRIGHT), up, p, top[0..<0]);
+    v = figure(out, v, c, k, pose, o.x, o.z, angle_of(FR_PLOT.x - o.x, FR_PLOT.z - o.z), bright, up, p, top[0..<0]);
   }
   return v;
 }
@@ -443,38 +447,108 @@ fr_computer :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
     }
   }
   // the shield: a dome from it over all of them
-  dome := fr_in(t, FR_SHIELD, 1.6) * fr_out(t, FR_POCKET + 0.6, 1.4);
-  if dome > 0 {
-    q := FR_PLOT; r: f32 = 6.4;
-    for m: 0..<18 {
-      a := FR_TAU * f32(m) / 18 + 0.1 * t;
-      prev := fv(q.x + r * cos(a), 0, q.z + r * sin(a));
-      for j: 1..<9 {
-        lat := 1.5707963 * f32(j) / 8;
-        if f32(j) / 8 > dome { break; }
-        pt := fv(q.x + r * cos(lat) * cos(a), r * sin(lat), q.z + r * cos(lat) * sin(a));
-        v = seg(out, v, c, prev, pt, blue, 0.55 * dome);
-        prev = pt;
-      }
+  v = fr_shield(out, v, c, p, t, fr_in(t, FR_SHIELD, 1.6) * fr_out(t, FR_POCKET + 0.6, 1.4));
+  return v;
+}
+i32_floor :: (x: f32) -> int { return cast(int) floor(x); }
+
+// The shield: a bubble of light over the crowd. It grows up from a bright ring on the floor, its
+// lattice brightest at its edges as the eye sees it (where a bubble's skin is thickest), with
+// motes of light drifting over it, waves of light running up it, and strikes turned away on it,
+// each flaring, rippling out across its skin and throwing sparks.
+FR_DOME_R :: 6.4f32;
+FR_MOTES :: 900;
+fr_fresnel :: (pt: Fv, o: Fv, eye: Fv) -> f32 {
+  n := unit3(fv_sub(pt, o)); e := unit3(fv_sub(eye, pt));
+  f := 1 - abs(dot3(n, e));
+  return f * f;
+}
+fr_dome_pt :: (o: Fv, lat: f32, lon: f32, r: f32) -> Fv { return fv(o.x + r * cos(lat) * cos(lon), o.y + r * sin(lat), o.z + r * cos(lat) * sin(lon)); }
+fr_shield :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32, dome: f32) -> int {
+  if dome <= 0.003 { return at; }
+  v := at;
+  o := fv(FR_PLOT.x, 0, FR_PLOT.z); r := FR_DOME_R;
+  skin := ink(p, INK_BLUE); skin.core = 0.7 * p.d; skin.glow = 11 * p.d;
+  hot := ink(p, INK_BRIGHT); hot.glow = 8 * p.d;
+  top := 1.5707963 * dome;   // how far up it has grown
+  // the lattice: meridians and parallels, lit by the fresnel, a wave running up it
+  wave := fract((t - FR_SHIELD) * 0.6);
+  for m: 0..<30 {
+    lon := FR_TAU * f32(m) / 30 + 0.05 * t;
+    prev := fr_dome_pt(o, 0, lon, r);
+    for j: 1..<13 {
+      lat := 1.5707963 * f32(j) / 12;
+      if lat > top { break; }
+      q := fr_dome_pt(o, lat, lon, r);
+      mid := fv_mix(prev, q, 0.5);
+      band := clamp(1 - abs(sin(lat) - wave) * 6, 0, 1);
+      v = seg(out, v, c, prev, q, skin, dome * (0.07 + 0.8 * fr_fresnel(mid, o, c.eye) + 0.5 * band));
+      prev = q;
     }
-    for j: 1..<7 {
-      lat := 1.5707963 * f32(j) / 7;
-      if f32(j) / 7 > dome { break; }
-      rr := r * cos(lat);
-      v = fr_ring3(out, v, c, fv(q.x, r * sin(lat), q.z), fv(1, 0, 0), fv(0, 0, 1), rr, 40, blue, 0.4 * dome);
+  }
+  for j: 1..<11 {
+    lat := 1.5707963 * f32(j) / 11;
+    if lat > top { break; }
+    prev := fr_dome_pt(o, lat, 0, r);
+    for m: 1..<41 {
+      lon := FR_TAU * f32(m) / 40;
+      q := fr_dome_pt(o, lat, lon, r);
+      mid := fv_mix(prev, q, 0.5);
+      band := clamp(1 - abs(sin(lat) - wave) * 6, 0, 1);
+      v = seg(out, v, c, prev, q, skin, dome * (0.05 + 0.65 * fr_fresnel(mid, o, c.eye) + 0.6 * band));
+      prev = q;
     }
-    // a strike on it, turned away: flares where they land
-    for k: 0..<4 {
-      ft := fract((t - FR_SHIELD) * 0.9 + f32(k) * 0.27);
-      a := FR_TAU * fr_h(k + i32_floor(t - FR_SHIELD) * 4, 31);
-      hit := fv(q.x + r * 0.75 * cos(a), r * 0.66, q.z + r * 0.75 * sin(a));
+  }
+  // its growing edge while it rises, and its foot on the floor
+  if dome < 1 { v = fr_ring3(out, v, c, fv(o.x, r * sin(top), o.z), fv(1, 0, 0), fv(0, 0, 1), r * cos(top), 56, hot, 0.9); }
+  v = fr_ring3(out, v, c, fv(o.x, 0.02, o.z), fv(1, 0, 0), fv(0, 0, 1), r, 64, hot, 0.8 * dome);
+  v = fr_ring3(out, v, c, fv(o.x, 0.02, o.z), fv(1, 0, 0), fv(0, 0, 1), r * 1.06, 64, skin, 0.4 * dome);
+  // motes drifting over its skin, twinkling
+  for i: 0..<FR_MOTES {
+    f := (f32(i) + 0.5) / f32(FR_MOTES);
+    lat := 1.5707963 * f * (0.62 + 0.38 * f);   // denser low, where the skin is widest
+    if lat > top { continue; }
+    lon := f32(i) * 2.39996323 + t * (0.08 + 0.12 * fr_h(i, 90));
+    pt := fr_dome_pt(o, lat, lon, r * 1.01);
+    sp := spot(c, pt);
+    if !sp.ok || !inside(c.clip, sp.x, sp.y) { continue; }
+    tw := 0.5 + 0.5 * sin(t * (3 + 4 * fr_h(i, 91)) + f32(i));
+    l := dome * (0.25 + 0.75 * fr_fresnel(pt, o, c.eye)) * tw;
+    v = diamond(out, v, sp.x, sp.y, (1.4 + 2.2 * fr_h(i, 92)) * p.d, ifx i % 2 == 0 then hot else skin, l);
+  }
+  // strikes on it: a flare, a ripple across its skin, sparks thrown off
+  if dome > 0.9 {
+    for k: 0..<5 {
+      cyc := (t - FR_SHIELD - 1.0) * 0.8 + f32(k) * 0.2;
+      n := i32_floor(cyc); ft := cyc - f32(n);
+      if cyc < 0 { continue; }
+      lon := FR_TAU * fr_h(n * 5 + k, 93); lat := 0.35 + 0.9 * fr_h(n * 5 + k, 94);
+      d := unit3(fv_sub(fr_dome_pt(o, lat, lon, r), o));
+      hit := fv_add(o, fv_times(d, r));
       sp := spot(c, hit);
-      if sp.ok && dome > 0.9 { v = ring(out, v, sp.x, sp.y, (4 + 26 * ft) * p.d, ink(p, INK_BRIGHT), (1 - ft) * dome); }
+      if sp.ok && ft < 0.25 { v = diamond(out, v, sp.x, sp.y, (8 - 20 * ft) * p.d, hot, 1 - ft * 4); }
+      // the ripple: a circle on the sphere round the hit, widening
+      side := unit3(cross3(d, fv(0, 1, 0))); up := cross3(side, d);
+      rho := 0.15 + 1.4 * ft;
+      prev := fv(0, 0, 0);
+      for s: 0..<33 {
+        a := FR_TAU * f32(s) / 32;
+        dir := unit3(fv_add(fv_times(d, cos(rho)), fv_times(fv_add(fv_times(side, cos(a)), fv_times(up, sin(a))), sin(rho))));
+        q := fv_add(o, fv_times(dir, r * 1.005));
+        if s > 0 { v = seg(out, v, c, prev, q, hot, 0.9 * (1 - ft) * dome); }
+        prev = q;
+      }
+      for s: 0..<8 {
+        a := FR_TAU * f32(s) / 8 + f32(n);
+        dir := fv_add(fv_times(d, 0.8), fv_times(fv_add(fv_times(side, cos(a)), fv_times(up, sin(a))), 0.6));
+        q := fv_add(hit, fv_times(dir, 0.2 + 1.6 * ft));
+        sq := spot(c, q);
+        if sq.ok && inside(c.clip, sq.x, sq.y) { v = diamond(out, v, sq.x, sq.y, 1.6 * p.d, hot, (1 - ft) * dome); }
+      }
     }
   }
   return v;
 }
-i32_floor :: (x: f32) -> int { return cast(int) floor(x); }
 
 // "To create or conquer nations": borders drawn on the floor where the lines come down, and
 // cities rising in each.
