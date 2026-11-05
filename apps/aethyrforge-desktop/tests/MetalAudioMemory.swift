@@ -57,6 +57,7 @@ struct MetalAudioMemory {
             let audio = ForgeMetalAudio(host:host,resources:resources,muted:true,memory:memory)
             defer { audio.close() }
             audio.bank()
+            for name in audio.bankWav.keys.sorted() { _ = audio.buffer(name) }
             let output = URL(fileURLWithPath:CommandLine.arguments[1]).deletingLastPathComponent().appendingPathComponent("decoded")
             try FileManager.default.createDirectory(at:output,withIntermediateDirectories:true)
             var files: [[String:Any]] = [], words: Int64 = 0

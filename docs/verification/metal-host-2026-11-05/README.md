@@ -839,3 +839,59 @@ could feed `metal-build generated --generated` and `producer
 has been established here; source paths alone do not prove that join.
 Shared-carrier C and the parent's classic room C are not substitutes for
 the matching 5E producer closure. Graphics admission remains a separate gate.
+
+## Default audio demand allocation
+
+The actual frozen native producer exposes an allocation bug that the synth-only
+fixtures did not cover. In `audio-default-second/prefetch.json`, 16 CPU frames
+emit 120 distinct default variant fetches, one ambient bed and one room command.
+Eagerly decoding the 48 synthesized assets first retains 2,042,394 words. The
+adapter subsequently stops at 126 retained assets: converter input/output and
+final-copy allocations also require the unchanged shared tickets. Forty-two
+fetches have no PCM, and the ambient bed is unavailable. This is a failed ordinary
+startup observation. The earlier `audio-default-first` observer allowed a borrowed
+name pointer to escape its byte-view lifetime; its corrupted-name count is invalid
+and is not used as evidence.
+
+The adapter now registers and validates the canonical WAV bytes at bank handoff,
+then decodes a name only when a Coax effect requests it. It preserves every default
+Ogg variant, the canonical decoder, the 128-ticket/8,388,608-word limits and explicit
+allocation refusal. It adds no eviction or platform fallback for canonical WAVs.
+The 48-asset synth fixtures explicitly request all names before their existing
+byte/lifetime observations. Their `mamm_bank` acceptance and all complete frozen
+bytes remain unchanged.
+
+`audio-lazy-final/prefetch.json` and its `audio-lazy-final-asan` counterpart observe
+48 registered WAVs, zero initially decoded assets/words, all 120 requested default
+variants ready, the ambient bed and room ready, and all 126 command rows satisfying
+their expected results (including pre-gesture cue refusal). They retain 122 assets
+and 7,739,161 words, then release to zero; no audio-device frames are requested.
+The new `audio-prefetch-conformance.coax` receipt authority kills 80/80 root mutants,
+with no survivors or equivalents. `metal-audio-prefetch.coax --require-ready` checks
+the actual rows and complete summary; it also refuses the preserved eager receipt.
+The input-only diagnostic extension changed the observer, so the final normal and
+instrumented SDK binaries and receipts are frozen together in `audio-lazy-final-sdk`
+and `audio-lazy-final-asan-sdk`.
+
+The changed adapter additionally passes the existing complete 48-asset bank/span/
+retained-lifetime checks normally and with AddressSanitizer (`audio-lazy-bank` and
+`audio-lazy-bank-asan`), comparing all 10,193,456 WAV/PCM bytes. Its actual muted
+source-device/session traces (`audio-lazy-session` and `audio-lazy-session-asan`)
+pass the unchanged 32-word/93-mutant authority: physical packet refusals, gesture,
+covered clock holds, resume and terminal retirement remain observed. The previously
+qualified allocator/PCM/session authorities are unchanged and their mutation gates
+are cited rather than rerun. macOS leak detection remains disabled in these ASan
+runs; this does not claim Linux leak coverage. Source/executable/object/producer
+hashes are retained in `audio-lazy-sources/{normal,asan}-artifacts.sha256` beside the
+frozen Swift and Coax sources. These use the earlier admitted frozen 5E producer
+and additive physical face exports, not a current-main primary emission.
+
+Actual default codec samples remain a separate failed gate. The contract sibling
+compares the exact three exported compressed inputs and every decoded word without
+alignment or masks: fire-cast-e2 and ambient-e1 pass 2^-20, but fire-hit-e2 has 745
+words beyond it, maximum absolute residual 0.0252900571. The input-only SDK export
+in `audio-default-input-second` is byte-identical to the final native fire-hit PCM,
+locating that residual before AVAudioConverter. The original bytes, raw outputs
+and comparison remain under the sibling's `audio-default-first`. This memory fix
+does not qualify default codec parity, current packaging, graphics admission or a
+desktop-default change.

@@ -186,8 +186,10 @@ final class ForgeMetalAudio {
             let data = Data(bytes:bytes,count:asset.byte_count)
             try? data.write(to:path,options:.atomic)
             bankWav[name] = data
-            buffers[name] = decodeCanonical(data)
-            if buffers[name] == nil { bankStatus = -1 }
+            // Register canonical bytes now; only a Coax effect requesting this
+            // name needs a decoded PCM allocation. Default effects request the
+            // authored Ogg variants rather than the unused synthesized bank.
+            if data.withUnsafeBytes({ mf_wav_info($0.bindMemory(to:UInt8.self).baseAddress,$0.count,0) }) < 1 { bankStatus = -1 }
         }
     }
     func decodeCanonical(_ bytes: Data) -> ForgeDecodedPCM? {
@@ -222,9 +224,13 @@ final class ForgeMetalAudio {
     }
     func buffer(_ name: String) -> ForgeDecodedPCM? {
         if let pcm = buffers[name] { return pcm }
-        // An admitted canonical WAV that refused decoding/allocation stays
-        // unavailable; it must not acquire platform-resampled substitute PCM.
-        if bankWav[name] != nil { return nil }
+        if let bytes = bankWav[name] {
+            let pcm = decodeCanonical(bytes)
+            buffers[name] = pcm
+            if pcm == nil { bankStatus = -1 }
+            // A refused canonical allocation never acquires an SDK substitute.
+            return pcm
+        }
         let bytes = Data(name.utf8)
         guard bytes.withUnsafeBytes({ mf_audio_asset_name($0.bindMemory(to:UInt8.self).baseAddress,$0.count) }) else { return nil }
         let pcm = decode(resources.appendingPathComponent("web/realms/everglade/sfx/\(name).ogg"))

@@ -32,6 +32,7 @@ struct MetalAudioEffects {
                 if op["capture"] as? Bool == true { events.append(["op":kind,"text":String(decoding:lines,as:UTF8.self),"results":results]) }
             case "bank":
                 audio.bank()
+                for name in audio.bankWav.keys.sorted() { _ = audio.buffer(name) }
                 events.append(["op":kind,"assets":audio.buffers.map { ["name":$0.key,"samples":$0.value.count,"channels":$0.value.channels] }.sorted { ($0["name"] as! String) < ($1["name"] as! String) }])
             case "export":
                 let directory = URL(fileURLWithPath:op["directory"] as! String)

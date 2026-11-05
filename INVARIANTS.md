@@ -76,6 +76,14 @@ frames continue. Session and observer root gates kill 33 and 93 mutants
 without equivalents. This recording-face/device trace does not qualify
 the ordinary Vulkan window, realm/room integration or desktop default.
 
+The Metal adapter registers canonical synthesized WAV bytes before decoding;
+only a requested Coax effect retains their PCM. Actual frozen ordinary startup
+observes all 120 selected variant fetches, ambient bed and room ready under the
+unchanged shared allocation limits, then zero retained words after retirement.
+Normal and instrumented receipts pass an 80-mutant authority. The prior eager
+allocation failure is retained, as is the independent default Ogg sample-parity
+failure; synth-only byte parity does not qualify those compressed assets.
+
 Linux and Metal compile the same portable native socket workers. Shared
 Coax leases precede retained event/command copies; a full inbound queue
 blocks its reader, and outbound refusal produces error/close. Engine

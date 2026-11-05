@@ -30,6 +30,7 @@ struct MetalAudioSession {
             self.host=host
             audio=ForgeMetalAudio(host:host,resources:resources,muted:true,bankDirectory:resources.appendingPathComponent("bank-\(mode)"))
             audio.bank()
+            for name in audio.bankWav.keys.sorted() { _ = audio.buffer(name) }
         }
         func send(_ text: String)->Int64 {
             Data(text.utf8).withUnsafeBytes { mf_message(host,930,$0.bindMemory(to:UInt8.self).baseAddress,$0.count) }
