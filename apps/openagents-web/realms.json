@@ -453,6 +453,15 @@
         "assets": ["sounds:/realms/everglade/sfx/"]
       }
     },
+    { "id": "valley-lab", "name": "VALLEY LAB", "kind": "open", "listed": false,
+      "orbit": { "r": 0.43, "a": 3.5, "size": 0.02 },
+      "realm": {
+        "slug": "valley-lab", "title": "Valley Lab", "module": "valleylab", "slot": "valley-lab",
+        "description": "An unlisted Aethyr world built in Coax: walk an original sandstone graybox with a shared character controller, collision, touch controls and follow camera.",
+        "alt": "A traveller in a sandstone basin with a monumental arch and stone steps",
+        "style": "lowpoly", "clock": "fixed:0.5", "timing": true,
+        "golden": { "lit": 0.05, "settle": 1000, "blocks": 6 }, "assets": []
+      } },
     { "id": "splatlab", "name": "SPLAT LAB", "kind": "open", "listed": false, "orbit": { "r": 0.41, "a": 3.3, "size": 0.02 },
       "realm": {
         "slug": "splat-lab",

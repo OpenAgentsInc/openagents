@@ -1,0 +1,5 @@
+9bb770a40bdce1166c17f9b363873e81deb6948c29fe36a5ae6f53f0fad063b7  apps/openagents-web/valleylab.coax
+b753196c16d6713a1d4c6a3d7b25bfc2935c45618bda179952aeb9b566de1707  apps/openagents-web/valleylab-face.c
+587dfc5ba7e74b8df5f4e3af75ef7305d90a37ad2ccf29db7831eacc686cc105  apps/openagents-web/gpu/valleylab.coax
+116687e55db641342979c818a5d04668ead14dc3b88ee4a1fb6907fbbff4ad6a  apps/openagents-web/valleylab.wgsl
+034679da163e9ee65c7a0c84eedd82cce2c3877faf26a5cd34b5244df68b2e2c  apps/openagents-web/build/valleylab.wasm

@@ -1,0 +1,19 @@
+// The existing HUD projection and Filament stroke renderer. No texture atlas.
+// All world geometry, projection, labels and input are decided by valleylab.coax.
+#load "splash.coax";
+valley_lab_bg_vs :: (i:u32,j:u32)->V4 {return splash_bg_vs(i,j);}
+valley_lab_bg_fs :: (pos:V4,u:[]f32)->V4 {return v4(0.48f32,0.60f32,0.65f32,1.0f32);}
+valley_lab_vertex :: struct {a:V4;b:V4;c:V4;}
+valley_lab_fx_vs :: (i:u32,j:u32,a:valley_lab_vertex,u:[]f32)->SplashV {
+  return splash_fx_vs(i,j,splash_fx_vs_in.{a=a.a,b=a.b,c=a.c,d=v4(0.0f32,0.0f32,0.0f32,0.0f32)},u);
+}
+valley_lab_fx_fs :: (v:SplashV,u:[]f32)->V4 {return splash_fx_fs(v,u);}
+// A bounded native mesh in the shared scene pass and depth buffer. CPU Coax
+// supplies homogeneous clip vertices from the same follow camera as labels.
+LabScene :: struct {pos:V4;colour:V4;}
+valley_lab_scene_vs :: (i:u32,j:u32,u:[]f32,mesh:[]V4)->LabScene {
+  return LabScene.{pos=mesh[cast(int)i*2],colour=mesh[cast(int)i*2+1]};
+}
+valley_lab_scene_fs :: (v:LabScene,u:[]f32)->V4 {
+  if v.pos.y<u[80] || v.pos.y>u[81] {return v4(0.48f32,0.60f32,0.65f32,1.0f32);}return v.colour;
+}

@@ -1,0 +1,51 @@
+// Actual muted headless Valley Lab: route -> Wasm -> input -> shared walker -> GPU.
+// coax/web/tool.sh valley-lab-check http://127.0.0.1:8891
+#import "Basic";
+#load "../lib/net/cdp.coax";
+vl_eval :: (c:[]Cdp,js:string)->bool {
+  n:=cdp_evaluate(c,js);return n>=0 && jv_raw(c[0].doc[0],n)=="true";
+}
+vl_param :: (c:[]Cdp,method:string,key:string,value:string)->bool {
+  b:[4096]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],key);jo_str(o[..],value);jo_end(o[..]);
+  return cdp_call(c,method,jo_text(o[..]),30000)>=0;
+}
+vl_key :: (c:[]Cdp,key:string,code:string,down:bool)->bool {
+  b:[1024]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);
+  jo_key(o[..],"type");jo_str(o[..],ifx down then "keyDown" else "keyUp");jo_key(o[..],"key");jo_str(o[..],key);
+  jo_key(o[..],"code");jo_str(o[..],code);jo_end(o[..]);return cdp_call(c,"Input.dispatchKeyEvent",jo_text(o[..]),30000)>=0;
+}
+vl_run :: (c:[]Cdp,url:string,phone:bool)->bool {
+  _:=cdp_call(c,"Page.enable","",30000);
+  if !vl_param(c,"Page.addScriptToEvaluateOnNewDocument","source","globalThis.coaxialClip=true;globalThis.valleyErrors=[];const ce=console.error;console.error=(...a)=>{valleyErrors.push(a.map(String).join(' '));ce(...a)}") {return false;}
+  if phone {
+    metrics:=cdp_call(c,"Emulation.setDeviceMetricsOverride","{\"width\":390,\"height\":844,\"deviceScaleFactor\":1,\"mobile\":true}",30000);
+    touch_enabled:=cdp_call(c,"Emulation.setTouchEmulationEnabled","{\"enabled\":true,\"maxTouchPoints\":5}",30000);}
+  if !vl_param(c,"Page.navigate","url",url) {return false;}
+  ready:=false;until:=proc_now_ms()+30000;
+  while proc_now_ms()<until {
+    if vl_eval(c,"(async()=>!!globalThis.coaxial?.ready && (await globalThis.coaxialClipStep?.(1,60))===1 && coaxial.sceneReady===true)()") {ready=true;break;}
+    proc_sleep(100);
+  }
+  if !ready {return false;}
+  if !vl_key(c,"w","KeyW",true) || !vl_eval(c,"coaxialClipStep(32,60).then(()=>coaxial.guardProbe(2)>-11000 && coaxial.guardProbe(3)>0)") {return false;}
+  if !vl_key(c,"w","KeyW",false) || !vl_key(c," ","Space",true) || !vl_eval(c,"coaxialClipStep(5,60).then(()=>coaxial.guardProbe(1)>100)") {return false;}
+  if !vl_key(c," ","Space",false) || !vl_eval(c,"coaxialClipStep(100,60).then(()=>Math.abs(coaxial.guardProbe(1))<100)") {return false;}
+  if !vl_key(c,"r","KeyR",true) || !vl_key(c,"r","KeyR",false) || !vl_eval(c,"coaxialClipStep(1,60).then(()=>coaxial.guardProbe(2)===-12000 && coaxial.guardProbe(4)===0)") {return false;}
+  if phone {
+    if cdp_call(c,"Input.dispatchTouchEvent","{\"type\":\"touchStart\",\"touchPoints\":[{\"x\":70,\"y\":650,\"id\":1}]}",30000)<0 {return false;}
+    if cdp_call(c,"Input.dispatchTouchEvent","{\"type\":\"touchMove\",\"touchPoints\":[{\"x\":70,\"y\":594,\"id\":1}]}",30000)<0 {return false;}
+    if !vl_eval(c,"coaxialClipStep(32,60).then(()=>coaxial.guardProbe(2)>-11000)") {return false;}
+    if cdp_call(c,"Input.dispatchTouchEvent","{\"type\":\"touchEnd\",\"touchPoints\":[]}",30000)<0 {return false;}
+  }
+  if !vl_eval(c,"document.querySelector('meta[name=robots]')?.content==='noindex, nofollow' && valleyErrors.length===0 && coaxial.guardProbe(5)>600") {return false;}
+  print("PASS Valley Lab %: direct route, rendered geometry, WASD, jump/land, reset, %, noindex, no console errors\n",ifx phone then "phone" else "desktop",ifx phone then "actual touch movement" else "keyboard controls");return true;
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {return 2;}
+  for phone:0..<2 {
+    c:[1]Cdp;if !cdp_launch_background(c[..],ifx phone==1 then 390 else 1280,ifx phone==1 then 844 else 800,"valley-lab-check-") {return 1;}
+    p:[4096]u8;url:=fs_join(args_at(a[..],0),"worlds/valley-lab",p[..]);ok:=vl_run(c[..],url,phone==1);
+    if !ok {n:=cdp_evaluate(c[..],"JSON.stringify({ready:globalThis.coaxial?.ready,scene:globalThis.coaxial?.sceneReady,pose:Array.from({length:6},(_,i)=>globalThis.coaxial?.guardProbe(i)),errors:globalThis.valleyErrors,text:document.body.innerText.slice(0,300)})");if n>=0 {print("FAIL %: %\n",ifx phone==1 then "phone" else "desktop",jv_raw(c[0].doc[0],n));}}
+    cdp_close(c[..]);if !ok {return 1;}
+  }return 0;
+}

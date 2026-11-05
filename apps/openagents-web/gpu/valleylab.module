@@ -1,0 +1,3 @@
+--vertices valley_lab_bg_vs,valley_lab_scene_vs,valley_lab_fx_vs
+--fragments valley_lab_bg_fs,valley_lab_scene_fs,valley_lab_fx_fs
+--bindings apps/openagents-web/gpu/valleylab.bindings --strip valley_lab_

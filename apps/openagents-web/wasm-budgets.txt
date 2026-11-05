@@ -80,3 +80,6 @@ host-layers 70000
 host-media 70000
 # Physical host-service spans, synthesized-bank registry and PCM reservations.
 host-services 32000
+
+# Initial procedural Valley Lab and shared walker, no fetched assets.
+valleylab 160000

@@ -93,7 +93,13 @@ RenderAdoption :: struct { shared: bool; tracked_legacy: bool; profile: int = -1
   #assert !route.shared && route.tracked_legacy && route.profile == -1;
   #assert !render_adoption("penultimate-frontier", "realm").tracked_legacy;
 }
+#test "Valley Lab graybox binds only its explicit initial renderer" {
+  r:=render_adoption("valley-lab","valleylab");#assert r.tracked_legacy && !r.shared && r.profile== -1;
+  #assert !render_adoption("valley-lab","newland").tracked_legacy;
+  #assert !render_adoption("valley-la","valleylab").tracked_legacy;
+}
 render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c {
+  if slug == "valley-lab" && app == "valleylab" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "built" && app == "myrealm" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "bitcoin-lab" && app == "bitcoin-lab" { return RenderAdoption.{tracked_legacy = true}; }
   index := render_catalog_find(slug);

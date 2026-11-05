@@ -127,6 +127,8 @@ fixture=$!
 waterlab=$!
 "$here/../../coax/web/wasm.sh" "$here/bitcoin-lab.coax" "$here/bitcoin-lab-face.c" "$here/build/bitcoin-lab.wasm" &
 bitcoin_lab=$!
+"$here/../../coax/web/wasm.sh" "$here/valleylab.coax" "$here/valleylab-face.c" "$here/build/valleylab.wasm" &
+valleylab=$!
 # /worlds/anime-lab: direct an anime (docs/verse/anime-lab.md): the director and stage (verse/anime/), the
 # anime style's block from its own library (animelab-style.coax). (animelab.wgsl loads verse/style.coax in gpu/animelab.coax.)
 "$here/../../coax/web/wasm.sh" "$here/animelab.coax" "$here/animelab-face.c" "$here/build/animelab.wasm" "$here/animelab-style.coax" &
@@ -285,6 +287,7 @@ wait "$characters"
 wait "$fixture"
 wait "$waterlab"
 wait "$bitcoin_lab"
+wait "$valleylab"
 wait "$animelab"
 wait "$droprealm"
 wait "$builder"
