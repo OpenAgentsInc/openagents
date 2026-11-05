@@ -951,10 +951,15 @@ and one negative-ID request per seat per tick (the latter includes letting go of
 a conversation and the boat's nearest/toggle request), with explicit busy refusal of extras. No full queue silently
 accepts those commands. Checks: room-abilities and room-everglade overload cases.
 
-`work-budget.coax` (#12841, authority) owns each room's measured-work credit:
-45 microseconds per monotonic millisecond, capped at 3,000 microseconds. The
+`work-budget.coax` (#12841, authority) owns each room's measured-work credit.
+The process's rooms share a pool of 720 microseconds per monotonic
+millisecond: each live room earns an equal share, never less than 45 (all
+sixteen live), and its credit cap (3,000 microseconds at 45) and start credit
+(1,500 at 45) scale with its share (#12936: a fixed 45 per room deferred a
+lone 16-player room on a 1 vCPU shard to 23-26 Hz and refused its joins). The
+live rooms' shares never sum past the pool. The
 shared native/worker tick charges its complete simulation and serialization
-wall duration. It starts only with 1,500 microseconds available. An overrun is
+wall duration. It starts only with its share's start credit available. An overrun is
 that room's debt; deferral advances neither world nor rule time, clears/counts
 queued movement and resets its earning epoch. It grants no movement for the
 deferred interval. Bar/flight casts and accepted lifecycle work remain held.

@@ -1,10 +1,48 @@
-// Measured room work, in microseconds. Each of sixteen rooms owns 45 ms/s;
-// one uninterruptible tick may exceed its allowance, then only that room owes
+// Measured room work, in microseconds. The process's sixteen rooms share
+// 720 ms/s (WB_POOL): each live room earns an equal share of it, 45 ms/s when
+// all sixteen are live, and its burst and start credit scale with that share.
+// One uninterruptible tick may exceed its allowance, then only that room owes
 // the debt. This is an amortized budget, not preemption of a Coax call.
+// (A fixed 45 ms/s for every room deferred a lone 16-player room on a 1 vCPU
+// Cloud Run shard, whose ticks cost more than 1.5 ms, to 23-26 Hz: #12936.)
 #authority;
 WB_RATE::45;WB_BURST::3000;WB_START::1500;WB_LIMIT::900000000;
+WB_ROOMS::16;WB_POOL::WB_RATE*WB_ROOMS;
 WB_WAIT_MS::533; // fifteen wait ticks plus one 30 Hz scheduling interval
-WorkBudget::struct{credit:int=WB_BURST;at:int= -1;last:int;skipped:int;refused:int;retired:bool;}
+WorkBudget::struct{credit:int=WB_BURST;at:int= -1;last:int;skipped:int;refused:int;retired:bool;rate:int=WB_RATE;}
+#test "room work: the live rooms share the pool, and a share's burst and start scale with it (#12936)" {
+  #assert wb_share(WB_ROOMS)==WB_RATE&&wb_share(1)==WB_POOL&&wb_share(2)==WB_POOL/2&&wb_share(0)==WB_POOL&&wb_share(-3)==WB_POOL&&wb_share(WB_ROOMS*4)==WB_RATE;
+  b:[1]WorkBudget;#assert wb_burst(b[..])==WB_BURST&&wb_start(b[..])==WB_START;
+  wb_rate(b[..],WB_POOL/2);#assert b[0].rate==WB_POOL/2&&wb_burst(b[..])==WB_BURST*8&&wb_start(b[..])==WB_START*8;
+  // a 2 ms tick every 33 ms: deferred on a sixteenth of the pool, served on an eighth
+  a:[1]WorkBudget;#assert wb_ready(a[..],0);
+  served:=0;for t:0..<30{if wb_ready(a[..],t*33+33){served+=1;ignored:=wb_charge(a[..],2000);}}
+  #assert served<30;
+  c:[1]WorkBudget;wb_rate(c[..],WB_POOL/2);#assert c[0].credit==WB_BURST*8&&wb_ready(c[..],0);
+  served=0;for t:0..<30{if wb_ready(c[..],t*33+33){served+=1;ignored:=wb_charge(c[..],2000);}}
+  #assert served==30&&c[0].credit==wb_burst(c[..])-2000;
+  // a smaller share caps stored credit at the smaller burst
+  wb_rate(c[..],WB_RATE);#assert wb_ready(c[..],1000+30*33)&&c[0].credit==WB_BURST;
+  wb_rate(c[..],0);#assert c[0].rate==1&&c[0].credit==WB_BURST;
+  d:[1]WorkBudget;d[0].credit=WB_START;wb_rate(d[..],WB_POOL);#assert d[0].credit==WB_START;
+  #assert wb_share(2)==WB_RATE*8&&wb_share(WB_ROOMS+1)==WB_RATE&&wb_share(WB_ROOMS-1)==48&&wb_share(7)==102;
+  // a started budget (at 0 is started) keeps its credit when its share changes
+  e:[1]WorkBudget;e[0].at=0;wb_rate(e[..],WB_POOL);#assert e[0].credit==WB_BURST;
+}
+// Each live room's share of the pool (at least WB_RATE: never less than all sixteen rooms' share).
+wb_share::(live:int)->int #export_c {
+  if live<=1{return WB_POOL;}
+  if live>=WB_ROOMS{return WB_RATE;}
+  return WB_POOL/live;
+}
+// A budget that hasn't started yet and is full stays full at its new share's burst.
+wb_rate::(b:[]WorkBudget,rate:int){
+  full:=b[0].at<0&&b[0].credit==wb_burst(b);
+  b[0].rate=ifx rate<1 then 1 else rate;
+  if full{b[0].credit=wb_burst(b);}
+}
+wb_burst::(b:[]WorkBudget)->int{return WB_BURST*b[0].rate/WB_RATE;}
+wb_start::(b:[]WorkBudget)->int{return WB_START*b[0].rate/WB_RATE;}
 #test "room work: a new Everglade session waits for prepared worlds while other games keep their startup contract" {
   #assert wb_startup_admit(false,false)&&wb_startup_admit(false,true)&&wb_startup_admit(true,true)&&!wb_startup_admit(true,false);
 }
@@ -67,7 +105,7 @@ wb_startup_admit::(everglade:bool,prepared:bool)->bool #export_c{return !evergla
   #assert !wb_waitable(99,100)&&!wb_waitable(-1,0)&&!wb_waitable(100,-1);
 }
 wb_admit::(b:[]WorkBudget,now:int)->bool #export_c {
-  if wb_ready(b,now)&&b[0].last<=WB_BURST{return true;}
+  if wb_ready(b,now)&&b[0].last<=wb_burst(b){return true;}
   b[0].refused+=1;return false;
 }
 wb_waitable::(now:int,heard:int)->bool #export_c {
@@ -75,14 +113,14 @@ wb_waitable::(now:int,heard:int)->bool #export_c {
 }
 wb_ready::(b:[]WorkBudget,now:int)->bool #export_c {
   if b[0].retired||now<0{return false;}
-  if b[0].at<0{b[0].at=now;return b[0].credit>=WB_START;}
+  if b[0].at<0{b[0].at=now;return b[0].credit>=wb_start(b);}
   if now<b[0].at{return false;}
   dt:=now-b[0].at;b[0].at=now;
   // Multiplication is only used below the time needed to repay this debt.
-  need:=(WB_BURST-b[0].credit)/WB_RATE;
-  if dt>need{b[0].credit=WB_BURST;}
-  else{b[0].credit+=dt*WB_RATE;}
-  return b[0].credit>=WB_START;
+  burst:=wb_burst(b);need:=(burst-b[0].credit)/b[0].rate;
+  if dt>need{b[0].credit=burst;}
+  else{b[0].credit+=dt*b[0].rate;}
+  return b[0].credit>=wb_start(b);
 }
 wb_charge::(b:[]WorkBudget,cost:int)->bool #export_c {
   if cost<0||cost>WB_LIMIT||b[0].credit< -WB_LIMIT+cost{b[0].retired=true;return false;}
