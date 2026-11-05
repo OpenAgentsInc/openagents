@@ -9,14 +9,17 @@ extern "C" {
    is the program; this file's main() saves argv and runs tool_main on a
    thread with a large stack (COAX_TOOL_STACK, 1 GiB of address space,
    committed only as it is touched), because a Coax program keeps its
-   buffers in locals and a browser frame is megabytes. tool_main's result is
-   the exit status.
+   buffers in locals and a browser frame is megabytes (a tool may ask for
+   more: coax/web/tool.sh's "stack-gib N" line). tool_main's result is the
+   exit status.
 
    cxargs_count() is argc; cxargs_len(i) argument i's length (-1 past the
    end); cxargs_byte(i, j) its byte j (-1 past it). cxtool_err(byte) buffers
    one byte for stderr and cxtool_err_flush() writes them. cxtool_os() is 1
    on macOS, 2 on Linux, 0 elsewhere. */
+#ifndef COAX_TOOL_STACK
 #define COAX_TOOL_STACK ((size_t)1 << 30)
+#endif
 int64_t tool_main(void);
 int64_t cxargs_count(void);
 int64_t cxargs_len(int64_t i);

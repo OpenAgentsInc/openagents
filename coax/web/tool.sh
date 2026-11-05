@@ -13,6 +13,9 @@
 # secp256k1 tables (coder/tui/host.coax). A "// tool.sh: release" line in the
 # tool's own file emits release C (coax c --release: no checked-arithmetic
 # traps), for a long numerical tool such as a training run (psionic/examples/fit-mnist.coax).
+# A "// tool.sh: stack-gib N" line gives tool_main an N GiB stack (address space, committed
+# as it is touched) in place of 1 GiB, for a tool whose buffers are larger
+# (verse/tools/humans/pack_human.coax).
 #   coax/web/tool.sh shot URL OUT.png [WxH] [WAIT_MS] [--eval JS]
 #   coax/web/tool.sh clip URL OUT.mp4 [--size WxH] [--seconds S] ...
 set -euo pipefail
@@ -57,12 +60,13 @@ if [[ -n "$why" ]]; then
   fi
   steps=(); n="$(sed -n 's|^// tool.sh: run-steps \([0-9][0-9]*\)$|\1|p' "$src" | head -n 1)"; [[ -z "$n" ]] || steps=(--run-steps "$n")
   release=(); ! grep -qs '^// tool.sh: release$' "$src" || release=(--release)
+  stack=(); n="$(sed -n 's|^// tool.sh: stack-gib \([0-9][0-9]*\)$|\1|p' "$src" | head -n 1)"; [[ -z "$n" ]] || stack=("-DCOAX_TOOL_STACK=((size_t)$n<<30)")
   work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
   "$coax" c "$repo/coax/lib/crypto/entropy.coax" --library --header "$work/entropy-policy.h" > "$work/entropy.c"
   "$coax" deps "$src" ${steps[@]+"${steps[@]}"} > "$work/deps.json" 2> /dev/null & deps_pid=$!
   "$coax" c "$src" --library ${steps[@]+"${steps[@]}"} ${release[@]+"${release[@]}"} > "$work/$name.c"
   mkdir -p "$(dirname "$bin")"
-  "${cc[@]}" -std=c11 -O2 -I"$work" -I"$p" -o "$work/$name" "$work/$name.c" "$p/tool-native.c" "$p/process-native.c" \
+  "${cc[@]}" -std=c11 -O2 ${stack[@]+"${stack[@]}"} -I"$work" -I"$p" -o "$work/$name" "$work/$name.c" "$p/tool-native.c" "$p/process-native.c" \
     "$p/store-file-native.c" "$p/read-file-native.c" "$p/socket-native.c" "$p/entropy-native.c" "$p/entropy-foreign.c" "$work/entropy.c" ${tls[@]+"${tls[@]}"} "${libs[@]}" -lm
   mv -f "$work/$name" "$bin"
   # the sources this build read, for the next staleness check (none: the broad check)
