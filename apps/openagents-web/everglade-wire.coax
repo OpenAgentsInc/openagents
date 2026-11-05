@@ -680,6 +680,9 @@ WireSeat :: struct {
   last: [WIRE_SLOTS] int;     // the tick its last row went out
   gone: [WIRE_SLOTS] s32;     // id + 1 of what is to go (x), until a tick that held the x is acknowledged
   gone_t: [WIRE_SLOTS] int;   // the tick that x last went out, 0 not yet
+  // The slot's earlier x, still unacknowledged when the entity after it left too (#12900); the slot's
+  // next row waits until it is acknowledged, so a slot never owes more than these two.
+  gone2: [WIRE_SLOTS] s32; gone2_t: [WIRE_SLOTS] int;
   acc: [WIRE_SLOTS] f32;      // priority, gained each tick something is left to send
   since: [WIRE_SLOTS] int;    // the tick its row began waiting to go (changed, not yet sent), 0 none
   heard: int;                 // the newest tick acknowledged
@@ -690,7 +693,7 @@ WireSeat :: struct {
   oldest: int;                // ticks the oldest row still waiting has waited, after this tick
 }
 wire_seat_reset :: (st: [] WireSeat) {
-  for q: 0..<WIRE_SLOTS { st[0].held[q] = 0; st[0].base[q] = 0; st[0].sent[q] = 0; st[0].last[q] = 0; st[0].gone[q] = 0; st[0].gone_t[q] = 0; st[0].acc[q] = 0; st[0].since[q] = 0; }
+  for q: 0..<WIRE_SLOTS { st[0].held[q] = 0; st[0].base[q] = 0; st[0].sent[q] = 0; st[0].last[q] = 0; st[0].gone[q] = 0; st[0].gone_t[q] = 0; st[0].gone2[q] = 0; st[0].gone2_t[q] = 0; st[0].acc[q] = 0; st[0].since[q] = 0; }
   st[0].heard = 0; st[0].bytes = 0; st[0].left = 0; st[0].aged = 0; st[0].oldest = 0;
 }
 // The page heard tick `heard` whole (I's HEARD): what went out that tick is its own.
@@ -701,6 +704,7 @@ wire_seat_ack :: (st: [] WireSeat, h: [] WireHist, heard: int) {
   for q: 0..<WIRE_SLOTS {
     if (st[0].sent[q] & bit) != 0 && heard > st[0].base[q] { st[0].base[q] = heard; }
     if st[0].gone[q] != 0 && st[0].gone_t[q] == heard { st[0].gone[q] = 0; st[0].gone_t[q] = 0; }
+    if st[0].gone2[q] != 0 && st[0].gone2_t[q] == heard { st[0].gone2[q] = 0; st[0].gone2_t[q] = 0; }
   }
 }
 // Slot q's row now into out at `at`, against the newest row the page acknowledged when the table
@@ -753,8 +757,18 @@ wire_seat_frame_in :: (st: [] WireSeat, h: [] WireHist, me: int, px: f32, pz: f3
     held := cast(int) st[0].held[q];
     // what the page holds that is gone, out of view, or another entity now: an x, until acknowledged
     if held != 0 && (!seen || held != id1) {
+      // an earlier x still owed is kept (held is set only once it went, and never while gone2 is owed)
+      if st[0].gone[q] != 0 { st[0].gone2[q] = st[0].gone[q]; st[0].gone2_t[q] = st[0].gone_t[q]; }
       st[0].gone[q] = wire_s32(held); st[0].gone_t[q] = 0;
       st[0].held[q] = 0; st[0].base[q] = 0; st[0].sent[q] = 0; st[0].acc[q] = 0;
+    }
+    if st[0].gone2[q] != 0 && now - st[0].gone2_t[q] >= WIRE_RESEND {
+      m := wire_put_x(e[..], 0, cast(int) st[0].gone2[q] - 1) + 1;
+      if life + m <= WIRE_LIFE_BUDGET && n + m < out.count {
+        if n > 0 { n = wire_sep(out, n); }
+        n = wire_put_x(out, n, cast(int) st[0].gone2[q] - 1);
+        st[0].gone2_t[q] = now; life += m;
+      }
     }
     if st[0].gone[q] != 0 && (st[0].gone_t[q] == 0 || now - st[0].gone_t[q] >= WIRE_RESEND) {
       m := wire_put_x(e[..], 0, cast(int) st[0].gone[q] - 1) + 1;
@@ -766,6 +780,7 @@ wire_seat_frame_in :: (st: [] WireSeat, h: [] WireHist, me: int, px: f32, pz: f3
     }
     if !seen || q == me { st[0].since[q] = 0; continue; }
     if st[0].gone[q] != 0 && st[0].gone_t[q] == 0 { continue; }   // its x waits, and the slot's next row behind it
+    if st[0].gone2[q] != 0 { continue; }   // two x's owed: the next row waits for the earlier one's word
     cur := (row * WIRE_SLOTS + q) * WIRE_SF;
     // the page has it as it is now: nothing to send
     if cast(int) st[0].held[q] == id1 {
@@ -782,7 +797,8 @@ wire_seat_frame_in :: (st: [] WireSeat, h: [] WireHist, me: int, px: f32, pz: f3
   }
   // your own player first, every tick: its row with the ACK is where your page re-runs from
   wrote := 0;
-  if me >= 0 && me < WIRE_SLOTS && h[0].id[row * WIRE_SLOTS + me] != 0 {
+  // (behind its slot's x, as every row is: in the life of a seat its slot is someone else's at most once)
+  if me >= 0 && me < WIRE_SLOTS && h[0].id[row * WIRE_SLOTS + me] != 0 && !(st[0].gone[me] != 0 && st[0].gone_t[me] == 0) && st[0].gone2[me] == 0 {
     if n > 0 { n = wire_sep(out, n); }
     was := n; n = wire_seat_put(st, h, me, out, n); wrote += n - was;
   }
@@ -985,6 +1001,38 @@ wire_test_send :: (st: [] WireSeat, h: [] WireHist, m: [] WireMirror, me: int, b
   }
   // the 60 x's take 3 ticks of the allowance (26 a tick); every new one is held by then
   #assert done_at >= 4 && done_at <= 5;
+}
+
+// A slot's entity leaves while the x of the one before it is still unacknowledged (#12900): both x's
+// are owed, and neither is overwritten by the other.
+#test "wire: a slot reused and left again before its earlier x is acknowledged still owes both x's (#12900)" #steps 2000000000 {
+  h: [1] WireHist; st: [1] WireSeat; m: [1] WireMirror;
+  me := WireS.{id = 0, kind = WK_PLAYER, hp = 10, max = 10};
+  a := WIRE_ID_MADE + 7; b := WIRE_ID_MADE + 8; c := WIRE_ID_MADE + 9;
+  // tick 1: A in slot 20, and the page holds it
+  wire_hist_begin(h[..], 1); wire_test_put(h[..], 0, me);
+  wire_test_put(h[..], 20, WireS.{id = a, kind = WK_BEAST, x = 2, z = 3, hp = 5, max = 5});
+  _ := wire_test_send(st[..], h[..], m[..], 0, WIRE_BUDGET, false, true);
+  wire_seat_ack(st[..], h[..], m[0].heard);
+  #assert wire_mirror_of(m[..], a).id == a;
+  // tick 2: A leaves; the frame with its x is lost
+  wire_hist_begin(h[..], 2); wire_test_put(h[..], 0, me);
+  _2 := wire_test_send(st[..], h[..], m[..], 0, WIRE_BUDGET, true, false);
+  // tick 3: B takes slot 20 and reaches the page
+  wire_hist_begin(h[..], 3); wire_test_put(h[..], 0, me);
+  wire_test_put(h[..], 20, WireS.{id = b, kind = WK_BEAST, x = 2, z = 3, hp = 5, max = 5});
+  _3 := wire_test_send(st[..], h[..], m[..], 0, WIRE_BUDGET, false, false);
+  wire_seat_ack(st[..], h[..], m[0].heard);
+  // tick 4: B leaves before A's x is acknowledged; from tick 5 C wants the slot
+  for t: 4..<40 {
+    wire_hist_begin(h[..], t); wire_test_put(h[..], 0, me);
+    if t >= 5 { wire_test_put(h[..], 20, WireS.{id = c, kind = WK_BEAST, x = 2, z = 3, hp = 5, max = 5}); }
+    _4 := wire_test_send(st[..], h[..], m[..], 0, WIRE_BUDGET, false, false);
+    wire_seat_ack(st[..], h[..], m[0].heard);
+  }
+  #assert wire_mirror_of(m[..], a).id == -1;   // A's x was not lost
+  #assert wire_mirror_of(m[..], b).id == -1;
+  #assert wire_mirror_of(m[..], c).id == c;
 }
 
 // A seat throttled to 64 kbit/s (267 bytes a tick at 30 a second) and then released, as the room sends
