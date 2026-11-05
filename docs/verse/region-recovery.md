@@ -1,9 +1,10 @@
 # Region recovery for Verse rooms
 
-Status: design and model qualification (#12853). The room fleet runs in one
-region (`us-central1`) today, and nothing here changes that. This page states
-what a second region would have to guarantee before it is added, and the model
-that checks the ownership rules.
+Status: design, model qualification and a local rehearsal (#12853). The room
+fleet runs in one region (`us-central1`) today, and nothing here changes that.
+This page states what a second region would have to guarantee before it is
+added, the model that checks the ownership rules, and what a failover measured
+on one machine.
 
 ## Targets
 
@@ -32,7 +33,12 @@ that checks the ownership rules.
 - Owner generations in the new region start at the epoch shifted left by 20
   bits, so every ticket or room write from the old region carries a lower
   generation and is stale at every fence (`control.coax`, the vitals fence of
-  migration 0127, and the item ledger of migration 0130).
+  migration 0127, the item ledger of migration 0130, and the checkpoint
+  receiver of migration 0131). Migration 0132 holds the store's epoch:
+  `verse.region_promote(EPOCH)` takes a newer epoch and raises every
+  character's owner generation to the new floor in one transaction, and
+  `verse.room_owner_next` never issues below it. A store that was never
+  promoted is at epoch 1 and issues generations as before.
 - Parties, invites and seat holds live in the same store. They survive as
   replicated, or are lost with the window.
 
@@ -64,10 +70,61 @@ window it sets, the return of the former primary, stale epochs and owner
 generations, a replica whose build can't read the store, and replication out
 of order.
 
-## Not yet measured
+## Rehearsal
 
-The loss window and restore time above are targets. They have not been
-measured against two real regions: that needs a second region's store and
-rooms, which the project does not run. The model gives the loss window in
-entries for a given lag; a real measurement records it in seconds, the time to
-the first seat, and the cost of a standing replica.
+```sh
+ROOM_BIN=... coax/web/api/test.sh   # or API_TESTS_ONLY=room_checks.coax; room_checks.coax region
+```
+
+`room_checks.coax region` rehearses a failover on one machine, against real
+processes. The test database is region A's primary. The check:
+
+1. Makes region B a streaming replica of A (`pg_basebackup -R`).
+2. Saves a player's HP in A through the signed vitals route and waits for B to
+   have it.
+3. Cuts B off from A's stream. A's API keeps taking the room's writes: ten
+   lines over 2 seconds, the loss window.
+4. Waits out the 5-second lease, promotes B, calls `verse.region_promote(2)`,
+   and starts a second API on B from the same migrations.
+5. Checks that B's tickets carry owner generations above `2 << 20`, that B has
+   the HP saved before the cut and none of A's later writes, and that a line
+   from A's room under A's generation is refused (`f`).
+6. With `ROOM_BIN`, seats the player in a room that reports to B, with B's
+   ticket, and checks that the room's save is applied.
+7. Brings the former primary back as a fresh copy of B. It is at epoch 2 and
+   holds B's HP, not its own window's.
+
+Measured on an M-series Mac, 2026-11-05, with local sockets:
+
+| Measure | Result |
+| --- | --- |
+| Replication lag (a save in A visible in B) | 10-550 ms over three runs |
+| Loss window | 10 of 10 writes made during the 5.06 s between the cut and the promotion; none before the cut |
+| Promotion (`pg_ctl promote` and the epoch) | 115-132 ms |
+| B's API answering health | 245-268 ms after the promotion starts |
+| The first ticket from B | 265-286 ms |
+| The first seat in a room that reports to B | 6.4-8.0 s, of which 2 s is the check's wait for the room process to start and most of the rest the seat client's own start |
+
+The loss window equals the time A ran cut off before the promotion: the
+partition plus the lease. Across real regions, add the replication lag
+(target: at most 5 s) and the time to detect the cut. Restore time across real
+regions adds starting rooms in B, DNS or load balancer changes, and pages
+reconnecting; the 10-minute target leaves room for those.
+
+### Cost and capacity assumptions
+
+These are planning figures, not measurements. A standing replica costs about
+what the primary's database instance costs, plus cross-region replication
+egress for the write volume (vitals lines every few seconds per seated player,
+a few hundred bytes each). Rooms in B are started on failover, not kept warm,
+so B costs nothing in room servers until it is used. B's room fleet needs the
+same capacity as A's, since one region serves everyone after a failover.
+
+### What the rehearsal doesn't cover
+
+- Real cross-region latency, DNS and load balancer failover, and the arbiter
+  as a service. The check acts as the arbiter.
+- Rewinding the former primary in place (`pg_rewind`). The check replaces its
+  data with a fresh copy of B, which drops the window the same way.
+- A deployed second region. Adding one is a production change and needs the
+  owner's approval (NEEDS_OWNER.md).

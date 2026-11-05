@@ -1475,6 +1475,213 @@ rc_checkpoints :: (t:[]Ap) {
   ap_check(t,"checkpoint: a separate database connection sees the complete committed dead/place/build state",ap_sql(t,sb_text(q[..]),out[..])=="2:2000:1:4800:true:3","");
 }
 
+// ---- region failover --------------------------------------------------------------------------------
+
+// The value of name=VALUE in a libpq connection string ("" none).
+rg_conn :: (c: string, name: string) -> string {
+  i := 0;
+  while i < c.count {
+    j := i; while j < c.count && c[j] != ' ' { j += 1; }
+    w := c[i..<j];
+    if w.count > name.count && w[0..<name.count] == name && w[name.count] == '=' { return w[name.count + 1..<w.count]; }
+    i = j + 1;
+  }
+  return "";
+}
+// The directory of a path ("" none).
+rg_dir :: (p: string) -> string { i := p.count - 1; while i > 0 && p[i] != '/' { i -= 1; } return p[0..<i]; }
+// Runs argv to its end (at most ms); whether it exited 0. Its stderr on failure.
+rg_run :: (argv: [] string, ms: int) -> bool {
+  out: [8192] u8; err: [4096] u8;
+  r := proc_run(argv, ms, out[..], err[..]);
+  if r.status != 0 || r.timed_out {
+    print("  region: % ended % (started %, timed out %): % %\n", argv[argv.count - 1], r.status, r.started, r.timed_out, cast(string) out[0..<r.out_n], cast(string) err[0..<r.err_n]);
+    return false;
+  }
+  return true;
+}
+// The owner generation in a seat ticket's HP field ("...gGEN.MAC"), or -1.
+rg_ticket_gen :: (tk: string) -> int {
+  e := tk.count - 1; while e > 0 && tk[e] != '.' { e -= 1; }
+  s := e - 1; while s > 0 && tk[s] != '.' { s -= 1; }
+  g := e - 1; while g > s && tk[g] != 'g' { g -= 1; }
+  if g <= s { return -1; }
+  return rc_num(tk[g + 1..<e]);
+}
+// text kept in t's own storage (after its environment), so t may hold it: the region check's second
+// database and API.
+rg_keep :: (t: [] Ap, text: string) -> string {
+  if t[0].env_n + text.count > AP_ENV { return ""; }
+  a := t[0].env_n;
+  for c: text { t[0].env[t[0].env_n] = c; t[0].env_n += 1; }
+  return cast(string) t[0].env[a..<t[0].env_n];
+}
+// Region failover rehearsed on this machine (#12853; spec docs/verse/region-recovery.md; contract
+// aethyr/session/region.coax). The harness's database is region A's primary. Then:
+//   1. region B's replica: a streaming copy of A (pg_basebackup), behind by the replication lag;
+//   2. a partition: B loses A's stream, while A's API keeps taking a room's writes (the loss window);
+//   3. after the lease (5 s on the arbiter's clock), the arbiter promotes B, gives it epoch 2
+//      (verse.region_promote, migration 0132), and B's API starts on the same build;
+//   4. a player's ticket from B carries an owner generation past 2 << 20, so A's room's lines are
+//      refused (f) in B; with ROOM_BIN, the player sits in a room that reports to B;
+//   5. the former primary returns as a replica of B: a fresh copy of B, its window dropped.
+// It prints the measured replication lag, loss window, and the time from promotion to the first seat.
+// API_BIN (the api binary test.sh built) only.
+rc_region :: (t: [] Ap, api_bin: string, room_bin: string) {
+  out: [4096] u8; q: [1] Sb; none: [1] string; nolog: [1] FcLog;
+  pgbin := rg_dir(t[0].psql);
+  host := rg_conn(t[0].db, "host"); aport := rg_conn(t[0].db, "port");
+  wb: [4096] u8; work := fs_temp("region", wb[..]);
+  rb: [4200] u8; replica := fs_join(work, "b", rb[..]);
+  jb: [4200] u8; rejoin := fs_join(work, "a-again", jb[..]);
+  tb: [1] Sb; sb(tb[..], pgbin); sb(tb[..], "/pg_basebackup");
+  cb: [1] Sb; sb(cb[..], pgbin); sb(cb[..], "/pg_ctl");
+  // 1. region B: a streaming replica of A
+  l := cxsock_listen(0); bport := cxsock_port(l); c := cxsock_close(l);
+  ps: [32] u8; bps := ap_num(bport, ps[..]);
+  bo: [1] Sb; sb(bo[..], "-p "); sb(bo[..], bps); sb(bo[..], " -k "); sb(bo[..], host); sb(bo[..], " -c listen_addresses=''");
+  lb: [4200] u8; blog := fs_join(work, "b.log", lb[..]);
+  bb := [14] string.[sb_text(tb[..]), "-h", host, "-p", aport, "-U", "postgres", "-D", replica, "-R", "-c", "fast", "-X", "stream"];
+  bs := [9] string.[sb_text(cb[..]), "-D", replica, "-o", sb_text(bo[..]), "-l", blog, "-w", "start"];
+  up := host != "" && aport != "" && rg_run(bb[..], 120000) && rg_run(bs[..], 60000);
+  bdb: [1] Sb; sb(bdb[..], "host="); sb(bdb[..], host); sb(bdb[..], " port="); sb(bdb[..], bps); sb(bdb[..], " user=oa_analytics dbname=oa_analytics");
+  bsu: [1] Sb; sb(bsu[..], "host="); sb(bsu[..], host); sb(bsu[..], " port="); sb(bsu[..], bps); sb(bsu[..], " user=postgres dbname=oa_analytics");
+  adb := t[0].db; aapi := t[0].api;
+  t[0].db = rg_keep(t, sb_text(bdb[..]));
+  ap_check(t, "region: B is a streaming replica of A", up && ap_sql(t, "select pg_is_in_recovery()", out[..]) == "t", "");
+  t[0].db = adb;
+  if !up { gone := fs_remove(work); return; }
+  // 2. Alice's character, saved in A by a room with A's ticket (owner generation ga)
+  p: [1] Player; r := ap_player(t, p[..]);
+  pid := pl_id(p[..]);
+  sb(q[..], "select verse.room_owner_next('"); sb(q[..], pid); sb(q[..], "')");
+  ga := rc_num(ap_sql(t, sb_text(q[..]), out[..]));
+  hq: [1] Sb; sb(hq[..], "select hp from verse.room_vitals where who = '"); sb(hq[..], pid); sb(hq[..], "'");
+  gen := rc_wall_ms() - 60000;
+  b: [1] Sb; ln: [1] Sb; one: [1] string;
+  sb(ln[..], pid); sb(ln[..], " 18 20 300 0 1 "); sb_int(ln[..], rc_wall_ms()); sb(ln[..], " "); sb_int(ln[..], ga); one[0] = sb_text(ln[..]);
+  rv_body(b[..], gen, 1, one[..], 1);
+  st := rc_vitals(t, sb_text(b[..]), "");
+  saved_at := proc_now_ms();
+  t[0].db = rg_keep(t, sb_text(bdb[..]));
+  seen := rp_until(t, sb_text(hq[..]), "18", -1, nolog[..], 10000);
+  lag := proc_now_ms() - saved_at;
+  ap_check(t, "region: a room's save in A reaches B", st == 200 && rv_receipt(t, gen, 1, "a") && seen, ap_body(t));
+  // 3. the partition: B's stream from A cut (its primary_conninfo to nowhere)
+  t[0].db = rg_keep(t, sb_text(bsu[..]));
+  ap_do(t, "alter system set primary_conninfo = 'host=/nonexistent port=1'");
+  ap_do(t, "select pg_reload_conf()");
+  ap_do(t, "select pg_terminate_backend(pid) from pg_stat_activity where backend_type = 'walreceiver'");
+  cut := rp_until(t, "select count(*) from pg_stat_wal_receiver where status = 'streaming'", "0", -1, nolog[..], 10000);
+  cut_at := proc_now_ms();
+  t[0].db = adb;
+  // A, cut off, still takes its room's writes: each a line B never hears
+  window := 0;
+  for i: 0..<10 {
+    sb_clear(ln[..]); sb(ln[..], pid); sb(ln[..], " "); sb_int(ln[..], 17 - i); sb(ln[..], " 20 300 0 "); sb_int(ln[..], 2 + i); sb(ln[..], " "); sb_int(ln[..], rc_wall_ms()); sb(ln[..], " "); sb_int(ln[..], ga);
+    one[0] = sb_text(ln[..]); rv_body(b[..], gen, 2 + i, one[..], 1);
+    if rc_vitals(t, sb_text(b[..]), "") == 200 && rv_receipt(t, gen, 2 + i, "a") { window += 1; }
+    proc_sleep(200);
+  }
+  window_ms := proc_now_ms() - cut_at;
+  ap_check(t, "region: partitioned, A keeps taking its room's writes", cut && window == 10 && ap_sql(t, sb_text(hq[..]), out[..]) == "8", "");
+  // the lease lapses on the arbiter's clock (5 s after A's last renewal: the cut)
+  while proc_now_ms() - cut_at < 5000 { proc_sleep(100); }
+  // 4. the arbiter promotes B and gives it epoch 2; B's API starts on the same build
+  t0 := proc_now_ms();
+  pr := [6] string.[sb_text(cb[..]), "-D", replica, "-w", "-t", "60"];
+  promote := [7] string.[pr[0], pr[1], pr[2], pr[3], pr[4], pr[5], "promote"];
+  promoted := rg_run(promote[..], 70000);
+  t[0].db = rg_keep(t, sb_text(bdb[..]));
+  epoch := ap_sql(t, "select verse.region_promote(2)", out[..]);
+  promote_ms := proc_now_ms() - t0;
+  ap_check(t, "region: promoted after the lease, B takes epoch 2; an epoch not newer is refused", promoted && epoch == "2" && ap_sql(t, "select verse.region_promote(2)", out[..]) == "2" && ap_sql(t, "select verse.region_promote(1)", out[..]) == "2", "");
+  rootb: [4096] u8; root := fs_cwd(rootb[..]);
+  mig: [1] Sb; sb(mig[..], root); sb(mig[..], "/coax/web/api/migrations");
+  l = cxsock_listen(0); api_port := cxsock_port(l); c = cxsock_close(l);
+  au: [1] Sb; sb(au[..], "http://127.0.0.1:"); sb_int(au[..], api_port);
+  lis: [1] Sb; sb(lis[..], "127.0.0.1:"); sb_int(lis[..], api_port);
+  e1: [1] Sb; sb(e1[..], "OA_API_DATABASE="); sb(e1[..], sb_text(bdb[..]));
+  e2: [1] Sb; sb(e2[..], "OA_ROOM_TICKET_KEY="); sb(e2[..], t[0].room_key);
+  e3: [1] Sb; sb(e3[..], "OA_API_ORIGIN="); sb(e3[..], sb_text(au[..]));
+  aenv := [4] string.[sb_text(e1[..]), sb_text(e2[..]), sb_text(e3[..]), "OA_ROOM_OWNER_GEN=1"];
+  aa := [5] string.[api_bin, "--listen", sb_text(lis[..]), "--migrations", sb_text(mig[..])];
+  api := fc_start(aa[..], aenv[..], "");
+  t[0].api = rg_keep(t, sb_text(au[..]));
+  healthy := false;
+  while api >= 0 && !healthy && proc_now_ms() - t0 < 60000 {
+    healthy = ap_call(t, "GET", "/api/playtest/health", "", none[0..<0]) == 200;
+    if !healthy { proc_sleep(100); }
+  }
+  api_ms := proc_now_ms() - t0;
+  mb: [256] u8; b_mig := ap_sql(t, "select max(name) from schema_migrations", mb[..]);
+  t[0].db = adb; ma: [256] u8; a_mig := ap_sql(t, "select max(name) from schema_migrations", ma[..]);
+  t[0].db = rg_keep(t, sb_text(bdb[..]));
+  ap_check(t, "region: B's API starts on B with the same migrations as A (a compatible build)", healthy && b_mig == a_mig && b_mig != "", b_mig);
+  // Alice's ticket from B: the HP B holds (A's window lost) and an owner generation past epoch 2's floor
+  st = ri_ticket_in(t, pl_key(p[..]), "region-1", "region");
+  ticket_ms := proc_now_ms() - t0;
+  tkb: [1024] u8; tk := ap_member(ap_body(t), "ticket", tkb[..]);
+  gb := rg_ticket_gen(tk);
+  ap_check(t, "region: B's ticket carries an owner generation above anything A issued (2 << 20 and up)", st == 200 && gb > 2 << 20 && ga < 2 << 20, ap_body(t));
+  ap_check(t, "region: the loss window: B has the HP saved before the partition, none of A's 10 later writes", ap_sql(t, sb_text(hq[..]), out[..]) == "18", "");
+  // A's room, still running on the old generation, reports to B: refused (f), nothing changed
+  sb_clear(ln[..]); sb(ln[..], pid); sb(ln[..], " 5 20 300 0 20 "); sb_int(ln[..], rc_wall_ms()); sb(ln[..], " "); sb_int(ln[..], ga); one[0] = sb_text(ln[..]);
+  rv_body(b[..], gen, 20, one[..], 1);
+  st = rc_vitals(t, sb_text(b[..]), "");
+  ap_check(t, "region: A's room's line under A's owner generation is refused in B (f)", st == 200 && rv_receipt(t, gen, 20, "f") && ap_sql(t, sb_text(hq[..]), out[..]) == "18", ap_body(t));
+  // with ROOM_BIN: Alice sits in a room that reports to B, with B's ticket
+  seat_ms := -1;
+  room := -1; rl: [1] FcLog;
+  if room_bin != "" {
+    rwb: [4200] u8; rwork := fs_join(work, "room", rwb[..]);
+    made := fs_mkdir(rwork);
+    pa: [1] int;
+    room_at := rc_wall_ms();
+    room = rp_room(t, room_bin, rwork, pa[..], rl[..]);
+    st = ri_ticket_in(t, pl_key(p[..]), "region-1", "region");
+    tk = ap_member(ap_body(t), "ticket", tkb[..]);
+    du: [1] Sb; sb(du[..], "ws://localhost:"); sb_int(du[..], pa[0]); sb(du[..], "/api/room/relay/everglade/region-1?t="); sb(du[..], tk);
+    secs: [16] u8;
+    sd := [4] string.["coax/web/tool.sh", "coax/web/room/owner-seat.coax", sb_text(du[..]), ap_num(4, secs[..])];
+    sj: [4096] u8;
+    dj := ifx room >= 0 then ro_seat_json(fc_start(sd[..], none[0..<0], ""), 60000, sj[..]) else "";
+    sat := ap_member_int(dj, "seat", -1) >= 0;
+    if sat { seat_ms = proc_now_ms() - t0; }
+    ap_check(t, "region: Alice sits in a room that reports to B, with B's ticket", sat, dj);
+    sb_clear(q[..]); sb(q[..], "select count(*) > 0 from verse.room_vital_ops where pid = '"); sb(q[..], pid); sb(q[..], "' and at > "); sb_int(q[..], room_at);
+    ap_check(t, "region: that room's save under B's generation is kept in B", sat && rp_until(t, sb_text(q[..]), "t", room, rl[..], 30000), "");
+  }
+  // 5. the former primary returns as a replica of B: a fresh copy of B (its window dropped)
+  hb: [64] u8; b_hp := ap_sql(t, sb_text(hq[..]), hb[..]);
+  t[0].db = adb;
+  a_epoch := ap_sql(t, "select verse.region_epoch()", out[..]);
+  ra := [14] string.[sb_text(tb[..]), "-h", host, "-p", bps, "-U", "postgres", "-D", rejoin, "-R", "-c", "fast", "-X", "stream"];
+  l = cxsock_listen(0); jport := cxsock_port(l); c = cxsock_close(l);
+  js: [32] u8; jps := ap_num(jport, js[..]);
+  jo: [1] Sb; sb(jo[..], "-p "); sb(jo[..], jps); sb(jo[..], " -k "); sb(jo[..], host); sb(jo[..], " -c listen_addresses=''");
+  jl: [4200] u8; jlog := fs_join(work, "a-again.log", jl[..]);
+  rs := [9] string.[sb_text(cb[..]), "-D", rejoin, "-o", sb_text(jo[..]), "-l", jlog, "-w", "start"];
+  back := rg_run(ra[..], 120000) && rg_run(rs[..], 60000);
+  jdb: [1] Sb; sb(jdb[..], "host="); sb(jdb[..], host); sb(jdb[..], " port="); sb(jdb[..], jps); sb(jdb[..], " user=oa_analytics dbname=oa_analytics");
+  t[0].db = rg_keep(t, sb_text(jdb[..]));
+  why: [1] Sb; sb(why[..], "A at epoch "); sb(why[..], a_epoch);
+  ob: [256] u8; sb(why[..], "; again: in recovery "); sb(why[..], ap_sql(t, "select pg_is_in_recovery()", ob[..]));
+  sb(why[..], ", epoch "); sb(why[..], ap_sql(t, "select verse.region_epoch()", ob[..]));
+  sb(why[..], ", HP "); sb(why[..], ap_sql(t, sb_text(hq[..]), ob[..]));
+  wb2: [1] Sb; sb(wb2[..], "A at epoch 1; again: in recovery t, epoch 2, HP "); sb(wb2[..], b_hp);
+  ap_check(t, "region: the former primary (epoch 1) returns as B's replica at epoch 2, with B's HP, not its own window's", sb_text(why[..]) == sb_text(wb2[..]) && b_hp != "8" && back, sb_text(why[..]));
+  print("  rate  region: replication lag % ms; loss window % writes over % ms (the partition until the promotion); promoted in % ms, B's API ready at % ms, the first ticket at % ms, the first seat at % ms (-1: no ROOM_BIN)\n", lag, window, t0 - cut_at, promote_ms, api_ms, ticket_ms, seat_ms);
+  // stopped: the room, B's API, the copies
+  t[0].db = adb; t[0].api = aapi;
+  rp_stop(room, PROC_SIGTERM);
+  rp_stop(api, PROC_SIGTERM);
+  js1 := [5] string.[sb_text(cb[..]), "-D", rejoin, "-m", "immediate"];
+  st1 := [6] string.[js1[0], js1[1], js1[2], js1[3], js1[4], "stop"];
+  x := rg_run(st1[..], 30000);
+  st1[2] = replica; x = rg_run(st1[..], 30000);
+  gone := fs_remove(work);
+}
 tool_main :: () -> int #export_c {
   a: [1] Args;
   if !args_load(a[..]) { return 2; }
@@ -1484,7 +1691,7 @@ tool_main :: () -> int #export_c {
   }
   t: [1] Ap;
   if !ap_open(t[..]) { return 2; }
-  names := [12] string.["admission", "chat", "events", "invites", "parties", "items", "stats", "vitals", "owner", "travel", "builds", "checkpoints"];
+  names := [13] string.["admission", "chat", "events", "invites", "parties", "items", "stats", "vitals", "owner", "travel", "builds", "checkpoints", "region"];
   for name: names {
     run := args_count(a[..]) == 0;
     for i: 0..<args_count(a[..]) { if args_at(a[..], i) == name { run = true; } }
@@ -1512,6 +1719,11 @@ tool_main :: () -> int #export_c {
     if name == "travel" {
       bb: [4096] u8; bin := proc_getenv("ROOM_BIN", bb[..]);
       if bin != "" { rc_travel(t[..], bin); }
+    }
+    if name == "region" {
+      ab: [4096] u8; api_bin := proc_getenv("API_BIN", ab[..]);
+      bb: [4096] u8; bin := proc_getenv("ROOM_BIN", bb[..]);
+      if api_bin != "" { rc_region(t[..], api_bin, bin); }
     }
     if name == "owner" {
       bb: [4096] u8; bin := proc_getenv("ROOM_BIN", bb[..]);

@@ -128,10 +128,11 @@ if [[ -x "$cli_coax" ]]; then
   # The rooms' checks and the private packs' checks (tests/room_checks.coax, tests/verse_packs.coax).
   # The rooms' signed routes run with the key above; with ROOM_BIN (coax/web/room/build.sh) as well,
   # the vitals fault check and the owner and travel checks. API_TESTS_ONLY runs them when it names them (room_checks.coax).
+  # API_BIN: the region check starts a second API on a promoted replica of this database.
   coax_failed=0
   for f in room_checks verse_packs; do
     [[ -z "${API_TESTS_ONLY:-}" || ",$API_TESTS_ONLY," == *",$f.coax,"* ]] || continue
-    (cd "$repo_root" && API="http://127.0.0.1:$api_port" PGURL="$OA_API_DATABASE" PSQL="$pg/bin/psql" COAX="$cli_coax" \
+    (cd "$repo_root" && API="http://127.0.0.1:$api_port" PGURL="$OA_API_DATABASE" PSQL="$pg/bin/psql" COAX="$cli_coax" API_BIN="$work/api" \
       coax/web/tool.sh "coax/web/api/tests/$f.coax") || coax_failed=1
   done
   [[ $coax_failed == 0 ]] || { cat "$work/api.log"; exit 1; }

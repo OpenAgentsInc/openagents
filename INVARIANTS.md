@@ -710,6 +710,16 @@ the store-side fence of `aethyr/session/control.coax` (`control_fence`).
 Checks: `coax/web/api/tests/room_checks.coax` vitals (older owner refused, newest kept),
 `coax/web/room/room-ticket.coax` and `room-vitals.coax` (#12834 checks).
 
+A store promoted to a newer region epoch (`verse.region_promote`, migration
+0132, #12853) raises every character's newest generation to at least
+`EPOCH << 20` in the same transaction, and `verse.room_owner_next` never
+issues below that floor, so a ticket or room write from a region the store
+replaced is older at every fence. An epoch not newer than the store's, or
+2048 and up, is refused. A store never promoted is at epoch 1 and issues
+generations as before. Model: `aethyr/session/region.coax`. Check:
+`room_checks.coax region` (a replica promoted after a partition refuses the
+old region's line, and its tickets start past the floor).
+
 In the room server, one seat plays a character at a time (`room-relay.coax`,
 #12834). Among tickets that carry a generation, the newest wins: a join with
 an older one than a seat of that character holds on the server is refused
