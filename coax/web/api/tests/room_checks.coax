@@ -791,11 +791,14 @@ rc_fault :: (t: [] Ap, room_bin_in: string) {
   room := ifx ok && pport > 0 then fc_start(ra[..], envs[..], "") else -1;
   rstart := proc_now_ms();
   while room >= 0 && proc_now_ms() - rstart < 2000 { fc_drain(room, rl[..]); proc_sleep(50); }
-  // the raid: START NOW 6 s in, the faults from 16 s
+  // the raid: START NOW 6 s in, the faults from 16 s. The seats fight (raid-check's fight mode: each goes
+  // into range of the nearest raider and casts at it), since the raid is a siege on the south road
+  // (#12860) that never reaches the square where square mode's seats wait, so they would cast nothing and
+  // earn nothing to post.
   url: [1] Sb; sb(url[..], "ws://127.0.0.1:"); sb_int(url[..], port);
   kb: [1] Sb; sb(kb[..], "OA_ROOM_TICKET_KEY="); sb(kb[..], t[0].room_key);
   nn: [8] u8; secs: [32] u8;
-  ca := [6] string.["coax/web/tool.sh", "coax/web/room/raid-check.coax", sb_text(url[..]), ap_num(FC_N, nn[..]), "100", ap_num(rc_wall_ms() / 1000, secs[..])];
+  ca := [8] string.["coax/web/tool.sh", "coax/web/room/raid-check.coax", sb_text(url[..]), ap_num(FC_N, nn[..]), "100", ap_num(rc_wall_ms() / 1000, secs[..]), "druid", "fight"];
   cenv := [1] string.[sb_text(kb[..])];
   check := ifx room >= 0 then fc_start(ca[..], cenv[..], "") else -1;
   begun := proc_now_ms(); pressed := false; raided := false;
