@@ -41,6 +41,8 @@
 //                                             {retry_ms}; every room full: 503 {waiting, last_wait_ms, retry_ms} (#12796)
 //   POST /api/playtest/room-invite/<room>     INVITE: a seat in your room held two minutes for a friend
 //                                             (rooms_invite, migrations/0125_room_invites.sql, #12795)
+//   GET  /api/playtest/party, POST /api/playtest/party/invite|join|leave|hide   durable parties, the
+//                                             roster health only (party below, migrations/0129_parties.sql, #12852)
 //   POST /api/playtest/player/name            {name}: a guest's own name ({"name": ""} the generated one)
 //
 // Who asks: the X-Verse-Player key; a NIP-98 signed request (Authorization:
@@ -387,6 +389,7 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
   // ?with=PLAYER (#12795): the friend whose invite brought them, whose held seat they take
   // ?build=ENGINE.RULES.CONTENT (#12839): the page's build, placed on a shard that runs it
   char realm[32] = "", placed[32] = "", asked[32] = "", via[48] = "", build[40] = "";
+  char party_room[32] = ""; bool party_full = false;
   int shard = 0; bool full = false;
   snprintf(asked, sizeof asked, "%s", room);
   if (!api_query(q, "with", via, sizeof via)) via[0] = 0;
@@ -394,7 +397,21 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
   if (api_query(q, "realm", realm, sizeof realm) && realm[0]) {
     char rn_s[24]; snprintf(rn_s, sizeof rn_s, "%lld", room_rate_n);
     const char *wv[2] = {pid, rn_s};
-    if (!rooms_pick(db, realm, room, pid, via, build, placed, sizeof placed, &shard, &full)) {
+    // a page that asks for the realm, not a room, goes where its party sits while that room has a seat
+    // (#12852, migrations/0129_parties.sql verse.party_room); every such room full: "party_full" says which
+    char seats_s[8]; snprintf(seats_s, sizeof seats_s, "%d", ROOM_SEATS);
+    const char *gv[3] = {realm, pid, seats_s};
+    const char *goes = room;
+    if (!via[0] && !strcmp(room, realm)) {
+      PGresult *gr = PQexecParams(db, "SELECT code, is_full FROM verse.party_room($1, $2, $3::int)", 3, NULL, gv, NULL, NULL, 0);
+      if (PQresultStatus(gr) == PGRES_TUPLES_OK && PQntuples(gr) == 1 && !PQgetisnull(gr, 0, 0) && strlen(PQgetvalue(gr, 0, 0)) < sizeof party_room) {
+        snprintf(party_room, sizeof party_room, "%s", PQgetvalue(gr, 0, 0));
+        party_full = PQgetvalue(gr, 0, 1)[0] == 't';
+        if (!party_full) goes = party_room;
+      } else if (PQresultStatus(gr) != PGRES_TUPLES_OK) api_log("party-room: %s", PQerrorMessage(db));
+      PQclear(gr);
+    }
+    if (!rooms_pick(db, realm, goes, pid, via, build, placed, sizeof placed, &shard, &full)) {
       // every room full: this player waits; the answer says how many wait, the last wait, and when to ask again
       PGresult *w = PQexecParams(db, "SELECT waiting, last_wait_ms FROM verse.room_wait($1, $2::bigint)", 2, NULL, wv, NULL, NULL, 0);
       long long waiting = 0, last = -1;
@@ -462,6 +479,7 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
   if (look[0]) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"look\":\"%s\"", look);
   if (klass[0]) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"class\":\"%s\"", klass);
   if (shard > 0) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"room\":\"%s\",\"shard\":%d%s", room, shard, full ? ",\"full\":true" : "");
+  if (shard > 0 && party_full) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"party_full\":\"%s\"", party_room);
   /* the room asked was full: which, and whose it was when an invite named them (the page says so, #12795) */
   if (shard > 0 && full) {
     char by[32] = "", eb[48] = "";
@@ -496,6 +514,39 @@ static void room_invite(const request *q, PGconn *db, const char *key, const cha
   if (got < 0) { api_json(q->fd, 500, "{\"error\":\"no invite\"}"); return; }
   char out[96]; snprintf(out, sizeof out, "{\"room\":\"%s\",\"until\":%lld}", room, until);
   api_json(q->fd, 200, out);
+}
+
+// Durable parties (#12852, migrations/0129_parties.sql): invite, join, leave, hide, and the roster,
+// health only. sub is "" (GET the roster) or invite, join, leave, hide (POST).
+static void party(const request *q, PGconn *db, const char *key, const char *sub, const char *body) {
+  if (!key || !key[0]) { api_json(q->fd, 401, "{\"error\":\"a player key\"}"); return; }
+  bool get = !strcmp(q->method, "GET");
+  if (sub[0] ? get : !get) { api_json(q->fd, 405, sub[0] ? "{\"error\":\"POST it\"}" : "{\"error\":\"GET the party\"}"); return; }
+  const char *v[1] = {key};
+  PGresult *r = PQexecParams(db, "SELECT id FROM verse.players WHERE key_sha256 = encode(sha256(convert_to($1, 'UTF8')), 'hex')", 1, NULL, v, NULL, NULL, 0);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { PQclear(r); api_json(q->fd, 403, "{\"error\":\"unknown player key\"}"); return; }
+  char pid[64]; snprintf(pid, sizeof pid, "%s", PQgetvalue(r, 0, 0));
+  PQclear(r);
+  const char *pv[2] = {pid, body};
+  const char *sql =
+    !sub[0] ? "SELECT 200, verse.party_view($1)" :
+    !strcmp(sub, "invite") ? "SELECT 200, format('{\"party\":%s,\"code\":%s,\"until\":%s}', x.party, to_json(x.code), x.until_ms) FROM verse.party_invite($1) x" :
+    !strcmp(sub, "join") ? "SELECT CASE x.why WHEN 'gone' THEN 404 WHEN 'blocked' THEN 403 WHEN 'full' THEN 409 ELSE 200 END, "
+                           "CASE WHEN x.why IS NULL THEN format('{\"party\":%s,\"version\":%s}', x.party, x.version) ELSE format('{\"error\":%s}', to_json(x.why)) END "
+                           "FROM verse.party_join($1, coalesce($2::jsonb->>'code', '')) x" :
+    !strcmp(sub, "leave") ? "SELECT 200, '{\"party\":null}' FROM verse.party_leave($1)" :
+    !strcmp(sub, "hide") ? "SELECT CASE WHEN h THEN 200 ELSE 404 END, CASE WHEN h THEN verse.party_view($1) ELSE '{\"error\":\"no party\"}' END "
+                           "FROM verse.party_hide($1, coalesce(($2::jsonb->>'on')::boolean, true)) h" : NULL;
+  if (!sql) { api_json(q->fd, 404, "{\"error\":\"unknown\"}"); return; }
+  r = PQexecParams(db, sql, strstr(sql, "$2") ? 2 : 1, NULL, pv, NULL, NULL, 0);   /* (an unused $2 has no type) */
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
+    const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);
+    bool theirs = state && !strncmp(state, "22", 2);
+    if (!theirs) api_log("party: %s", PQerrorMessage(db));
+    PQclear(r); api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"no party\"}"); return;
+  }
+  api_json(q->fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1));
+  PQclear(r);
 }
 
 // The page's part of what a player brings back into a room (#12715): {"look":"...","class":"..."},
@@ -799,6 +850,7 @@ bool player_route(const request *q) {
   if (!strncmp(rest, "room-ticket/", 12) && segs == 2) { room_ticket(q, db, key, site, rest + 12, body); free(body); return true; }
   if (!strncmp(rest, "room-invite/", 12) && segs == 2) { room_invite(q, db, key, rest + 12); free(body); return true; }
   if (!strcmp(rest, "room-state")) { room_state(q, db, key, body); free(body); return true; }
+  if (!strcmp(rest, "party") || !strncmp(rest, "party/", 6)) { party(q, db, key, rest[5] == '/' ? rest + 6 : "", body); free(body); return true; }
   if (!strcmp(rest, "player/name")) {   // a guest's own name, through the same filter (migrations/0116)
     if (strcmp(q->method, "POST")) { free(body); api_json(q->fd, 405, "{\"error\":\"POST a name\"}"); return true; }
     const char *nv[2] = {key, body};

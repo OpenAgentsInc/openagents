@@ -685,6 +685,21 @@ first). Checks: `room.coax` "owner (#12834)", `everglade.coax` "r 0
 elsewhere", and `room_checks.coax` owner, which pauses and resumes a running
 room process.
 
+## A party roster carries health only, to its members, never across a block
+
+A party (`verse.parties`, migration 0129, #12852) outlives rooms and
+sessions; its roster (`GET /api/playtest/party`, `verse.party_view`) goes
+only to a member, by their player key, and lists each other member's id,
+name and HP from the room's own report (`verse.room_vitals`, so the newest
+owner's), nothing of a member's place, room, look or the room's simulation.
+HP older than ten minutes is no HP. A member who blocks the reader or whom
+the reader blocks, and a hidden member, are left out, and a player blocked
+either way by a member can't join. Every change of membership or hiding
+raises the party's version, and a roster lasts a minute (`until`). Placement
+by party (`verse.party_room`) never seats anyone past a room's seats: a full
+party room is named to the page (`party_full`) and the page goes elsewhere.
+Checks: `coax/web/api/tests/room_checks.coax` parties.
+
 ## Inverse physics differentiates the owned solver and exposes ambiguity
 
 `psionic/lib/physics/inverse-*.coax` unrolls chapter 109’s exact left-associated

@@ -17,7 +17,6 @@
 #include <openssl/hmac.h>
 #include <openssl/evp.h>
 
-#define ROOM_SEATS 16   // coax/web/room/room-relay.coax RELAY_SEATS
 
 static bool code_ok(const char *s, size_t most) {
   size_t n = strlen(s);

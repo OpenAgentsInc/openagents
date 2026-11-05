@@ -40,6 +40,7 @@ bool chat_route(const request *q);        // chat.c
 void chat_key(const request *q, const char *pubkey, bool member);   // KEY for a signed-in admin, or a project member (private.c)
 bool player_route(const request *q);      // player.c
 bool rooms_route(const request *q, PGconn *db, const char *rest);   // rooms.c: the Everglade instance directory (#12717)
+#define ROOM_SEATS 16   // an Everglade room's seats: coax/web/room/room-relay.coax RELAY_SEATS
 bool rooms_pick(PGconn *db, const char *realm, const char *asked, const char *pid, const char *via, const char *build, char *code, size_t cap, int *shard, bool *full);
 int rooms_invite(PGconn *db, const char *room, const char *pid, long long *until);
 bool npc_route(const request *q);         // npc.c

@@ -4,6 +4,7 @@
 //   events     Everglade's world event (#12738; migrations/0118_room_events.sql): the dials an admin
 //              sets, what everyone else may do with them, and oa-room's side of them
 //   invites    an INVITE holds a seat in the inviter's room (#12795; migrations/0125_room_invites.sql)
+//   parties    durable parties, their health-only roster, and placement with the party (#12852; migrations/0129_parties.sql)
 //   stats      the rooms' vitals reports and the admins' room view (#12791; migrations/0123_room_stats.sql)
 //   vitals     room vitals receipts (#12793) and server-owned WANTED (#12794; migrations/0124_room_vital_receipts.sql)
 //   owner      one owner per character through a room process's pause and resume (#12834; ROOM_BIN only)
@@ -16,7 +17,7 @@
 // two answers past the room's timeout; the API's XP must end exactly the XP each seat earned.
 //   ROOM_BIN=coax/web/room/bin/room coax/web/api/test.sh
 //   API=... PGURL=... PSQL=... SIGN=... ADMIN_KEY=... [ROOM_KEY=...] [ROOM_BIN=...] \
-//     coax/web/tool.sh coax/web/api/tests/room_checks.coax [admission|chat|events|invites|stats|vitals|owner|travel|builds ...]
+//     coax/web/tool.sh coax/web/api/tests/room_checks.coax [admission|chat|events|invites|parties|stats|vitals|owner|travel|builds ...]
 // (from the repository root; no names runs them all, in that order).
 #load "api_harness.coax";
 
@@ -363,6 +364,125 @@ rc_invites :: (t: [] Ap) {
 rc_truthy :: (body: string, path: string) -> bool {
   k := ap_kind(body, path); b: [4096] u8; v := ap_member(body, path, b[..]);
   return k != 0 && k != JV_FALSE && k != JV_NULL && v != "" && v != "0";
+}
+
+// ---- parties ------------------------------------------------------------------------------------------
+
+// A party route for player key (sub "" the roster, a GET); its status.
+rp_party :: (t: [] Ap, key: string, sub: string, body: string) -> int {
+  q: [1] Sb; sb(q[..], "/api/playtest/party"); if sub != "" { sb(q[..], "/"); sb(q[..], sub); }
+  ph: [1] Sb; sb(ph[..], "X-Verse-Player: "); sb(ph[..], key);
+  h := [2] string.["Content-Type: application/json", sb_text(ph[..])];
+  return ap_call(t, ifx sub == "" then "GET" else "POST", sb_text(q[..]), ifx sub == "" then "" else body, h[..]);
+}
+// Player key joins by a fresh invite of inviter's: the join's status.
+rp_join_of :: (t: [] Ap, inviter: string, key: string) -> int {
+  st := rp_party(t, inviter, "invite", "{}");
+  if st != 200 { return -st; }
+  cb: [128] u8; code := ap_member(ap_body(t), "code", cb[..]);
+  jb: [1] Sb; sb(jb[..], "{\"code\":\""); sb(jb[..], code); sb(jb[..], "\"}");
+  return rp_party(t, key, "join", sb_text(jb[..]));
+}
+// Member i's field f in a roster's path ("members[I].F", or "members[I]" for f "").
+rp_path :: (o: [] Sb, i: int, f: string) -> string { sb_clear(o); sb(o, "members["); sb_int(o, i); sb(o, "]"); if f != "" { sb(o, "."); sb(o, f); } return sb_text(o); }
+// How many members a roster lists, and whether one has id pid.
+rp_members :: (b: string) -> int { p: [1] Sb; n := 0; while n < 16 && ap_kind(b, rp_path(p[..], n, "")) != 0 { n += 1; } return n; }
+rp_has :: (b: string, pid: string) -> bool {
+  p: [1] Sb;
+  for i: 0..<rp_members(b) { if rc_is(b, rp_path(p[..], i, "id"), pid) { return true; } }
+  return false;
+}
+rc_parties :: (t: [] Ap) {
+  out: [4096] u8; q: [1] Sb;
+  ps: [10] Player;
+  for i: 0..<10 { r := ap_player(t, ps[i..<i + 1]); }
+  alice := ps[0..<1]; bob := ps[1..<2]; carol := ps[2..<3]; dave := ps[3..<4];
+  st := rp_party(t, pl_key(alice), "", "");
+  ap_check(t, "party: a player in no party has none", st == 200 && ap_kind(ap_body(t), "party") == JV_NULL, ap_body(t));
+  st = rp_party(t, "not-a-key", "", "");
+  ap_check(t, "party: an unknown key has no roster (403)", st == 403, ap_body(t));
+
+  // an invite's code joins once
+  st = rp_party(t, pl_key(alice), "invite", "{}");
+  cb: [128] u8; code := ap_member(ap_body(t), "code", cb[..]);
+  ap_check(t, "party: an invite makes Alice's party and a code that lasts minutes", st == 200 && code.count >= 16 && ap_member_int(ap_body(t), "until", 0) > rc_wall_ms() + 60000, ap_body(t));
+  jb: [1] Sb; sb(jb[..], "{\"code\":\""); sb(jb[..], code); sb(jb[..], "\"}");
+  st = rp_party(t, pl_key(bob), "join", sb_text(jb[..]));
+  v1 := ap_member_int(ap_body(t), "version", 0);
+  ap_check(t, "party: Bob joins by the code; the party's version rises", st == 200 && v1 >= 2, ap_body(t));
+  st = rp_party(t, pl_key(carol), "join", sb_text(jb[..]));
+  ap_check(t, "party: a code is used once (404 for the next)", st == 404, ap_body(t));
+  st = rp_party(t, pl_key(carol), "join", "{\"code\":\"nonsense\"}");
+  ap_check(t, "party: no such code (404)", st == 404, ap_body(t));
+
+  // health only, from the room's own report
+  vb: [1] Sb; sb(vb[..], "t "); sb_int(vb[..], rc_wall_ms()); sb(vb[..], "\n"); sb(vb[..], pl_id(alice)); sb(vb[..], " 7 9 0\n");
+  st = rc_vitals(t, sb_text(vb[..]), "");
+  st = rp_party(t, pl_key(bob), "", "");
+  b := ap_body(t);
+  ap_check(t, "party: Bob's roster has Alice and him, the version he joined at", st == 200 && rp_members(b) == 2 && rp_has(b, pl_id(alice)) && rp_has(b, pl_id(bob)) && ap_member_int(b, "version", 0) == v1, b);
+  ap_check(t, "party: Alice's HP is the room's report (7 of 9), and the roster lasts a minute", rc_is(b, "members[0].hp", "7") && rc_is(b, "members[0].hp_max", "9") && ap_member_int(b, "until", 0) > rc_wall_ms() + 30000, b);
+  ap_check(t, "party: health only: no place, room, look or class", !ap_has(b, "\"x\"") && !ap_has(b, "room") && !ap_has(b, "look") && !ap_has(b, "class") && !ap_has(b, "key"), b);
+  sb_clear(q[..]); sb(q[..], "update verse.room_vitals set hp_at = hp_at - 700000 where who = '"); sb(q[..], pl_id(alice)); sb(q[..], "'"); ap_do(t, sb_text(q[..]));
+  st = rp_party(t, pl_key(bob), "", "");
+  ap_check(t, "party: a report older than ten minutes (the room stopped) is no HP, not an old one", st == 200 && ap_kind(ap_body(t), "members[0].hp") == JV_NULL, ap_body(t));
+
+  // blocks, either way, and hiding
+  sb_clear(q[..]); sb(q[..], "insert into verse.player_blocks (player, blocked, at_ms) values ('"); sb(q[..], pl_id(carol)); sb(q[..], "', '"); sb(q[..], pl_id(alice)); sb(q[..], "', 1)"); ap_do(t, sb_text(q[..]));
+  st = rp_join_of(t, pl_key(alice), pl_key(carol));
+  ap_check(t, "party: Carol, who blocks Alice, can't join her party (403)", st == 403, ap_body(t));
+  st = rp_party(t, pl_key(bob), "hide", "{\"on\": true}");
+  st = rp_party(t, pl_key(alice), "", "");
+  b = ap_body(t);
+  ap_check(t, "party: Bob hidden: not in Alice's roster; the version rose", st == 200 && !rp_has(b, pl_id(bob)) && rp_has(b, pl_id(alice)) && ap_member_int(b, "version", 0) > v1, b);
+  st = rp_party(t, pl_key(bob), "", "");
+  ap_check(t, "party: a hidden member still sees themself", st == 200 && rp_has(ap_body(t), pl_id(bob)), ap_body(t));
+  st = rp_party(t, pl_key(bob), "hide", "{\"on\": false}");
+
+  // placement: Dave joins and asks for the realm; he goes to Alice's room while it has a seat
+  st = rp_join_of(t, pl_key(alice), pl_key(dave));
+  ap_check(t, "party: Dave joins", st == 200, ap_body(t));
+  body: [1] Sb; sb(body[..], "t "); sb_int(body[..], rc_wall_ms()); sb(body[..], "\ns 1 3\nr evpty-1 0\nr evpty-2 1 "); sb(body[..], pl_id(alice)); sb(body[..], "\n");
+  st = rc_room_post(t, "/api/playtest/room-directory", sb_text(body[..]), "");
+  rb: [256] u8;
+  st = ri_ticket_in(t, pl_key(dave), "evpty", "evpty");
+  ap_check(t, "party: asked for the realm, Dave is placed in Alice's room (evpty-2), not the lowest (evpty-1)", st == 200 && rc_is(ap_body(t), "room", "evpty-2") && ap_kind(ap_body(t), "party_full") == 0, ap_body(t));
+  st = ri_ticket_in(t, pl_key(dave), "evpty-1", "evpty");
+  ap_check(t, "party: a room he names is his choice", st == 200 && rc_is(ap_body(t), "room", "evpty-1"), ap_body(t));
+  sb_clear(body[..]); sb(body[..], "t "); sb_int(body[..], rc_wall_ms()); sb(body[..], "\ns 1 3\nr evpty-1 0\nr evpty-2 16 "); sb(body[..], pl_id(alice));
+  for i: 0..<15 { sb(body[..], " p-evpty"); n: [1] Sb; sb_int(n[..], i); for z: n[0].n..<11 { sb_byte(body[..], '0'); } sb(body[..], sb_text(n[..])); }
+  sb(body[..], "\n");
+  st = rc_room_post(t, "/api/playtest/room-directory", sb_text(body[..]), "");
+  st = ri_ticket_in(t, pl_key(ps[4..<5]), "evpty", "evpty");   // (one who isn't in the party: as before)
+  ap_check(t, "party: one in no party is placed as before", st == 200 && ap_kind(ap_body(t), "party_full") == 0, ap_body(t));
+  st = ri_ticket_in(t, pl_key(dave), "evpty", "evpty");
+  b = ap_body(t);
+  ap_check(t, "party: Alice's room full: Dave's ticket says so (party_full) and he is placed elsewhere", st == 200 && rc_is(b, "party_full", "evpty-2") && ap_member(b, "room", rb[..]) != "evpty-2", b);
+
+  // leaving: the version rises, and one who left has no roster
+  st = rp_party(t, pl_key(bob), "leave", "{}");
+  st = rp_party(t, pl_key(bob), "", "");
+  ap_check(t, "party: Bob leaves and has no party", st == 200 && ap_kind(ap_body(t), "party") == JV_NULL, ap_body(t));
+  st = rp_party(t, pl_key(alice), "", "");
+  ap_check(t, "party: Alice's roster no longer has Bob", st == 200 && !rp_has(ap_body(t), pl_id(bob)) && rp_has(ap_body(t), pl_id(dave)), ap_body(t));
+
+  // a full party: 8 at most
+  for i: 4..<9 { st = rp_join_of(t, pl_key(alice), pl_key(ps[i..<i + 1])); }
+  st = rp_party(t, pl_key(alice), "", "");
+  full_n := rp_members(ap_body(t));
+  st = rp_join_of(t, pl_key(alice), pl_key(bob));
+  eighth := st;
+  st = rp_join_of(t, pl_key(alice), pl_key(ps[9..<10]));
+  ap_check(t, "party: eight at most: the eighth joins, the ninth is refused (409)", full_n == 7 && eighth == 200 && st == 409, ap_body(t));
+  ap_check(t, "party: durable: kept in the database (a restart reads the same rows)",
+           ap_sql(t, "select count(*) from verse.party_members m join verse.parties p on p.id = m.party", out[..]) != "0", "");
+}
+// A ticket for room in REALM (ri_ticket's, with the realm named).
+ri_ticket_in :: (t: [] Ap, key: string, room: string, realm: string) -> int {
+  q: [1] Sb; sb(q[..], "/api/playtest/room-ticket/"); sb(q[..], room); sb(q[..], "?realm="); sb(q[..], realm);
+  ph: [1] Sb; sb(ph[..], "X-Verse-Player: "); sb(ph[..], key);
+  h := [2] string.["Content-Type: application/json", sb_text(ph[..])];
+  return ap_call(t, "POST", sb_text(q[..]), "{}", h[..]);
 }
 
 // ---- stats --------------------------------------------------------------------------------------------
@@ -1096,7 +1216,7 @@ tool_main :: () -> int #export_c {
   }
   t: [1] Ap;
   if !ap_open(t[..]) { return 2; }
-  names := [9] string.["admission", "chat", "events", "invites", "stats", "vitals", "owner", "travel", "builds"];
+  names := [10] string.["admission", "chat", "events", "invites", "parties", "stats", "vitals", "owner", "travel", "builds"];
   for name: names {
     run := args_count(a[..]) == 0;
     for i: 0..<args_count(a[..]) { if args_at(a[..], i) == name { run = true; } }
@@ -1107,6 +1227,7 @@ tool_main :: () -> int #export_c {
     if name == "chat" { rc_chat(t[..]); }
     if name == "events" { rc_events(t[..]); }
     if name == "invites" { rc_invites(t[..]); }
+    if name == "parties" { rc_parties(t[..]); }
     if name == "stats" { rc_stats(t[..]); }
     if name == "vitals" {
       rc_vitals_checks(t[..]);
