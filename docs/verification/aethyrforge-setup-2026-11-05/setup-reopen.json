@@ -1,0 +1,21 @@
+{
+  "cli" : true,
+  "concurrentPermissionShared" : true,
+  "deniedPermissionSettings" : true,
+  "firstFrameSeconds" : 1.0929689407348633,
+  "localAgents" : 10,
+  "microphoneBeforeVoice" : true,
+  "microphoneOpened" : false,
+  "microphoneStatus" : "Microphone allowed · Ready for TALK \/ V",
+  "pagePID" : 2602,
+  "permissionRequests" : 1,
+  "ready" : true,
+  "roomPID" : 2598,
+  "selectedAgent" : 1,
+  "settingsSaved" : true,
+  "setupSkippedOnLaunch" : true,
+  "setupVisible" : true,
+  "voiceInstalled" : true,
+  "voicePath" : "\/Users\/christopherdavid\/.openagents\/models\/parakeet\/parakeet-tdt-0.6b-v3-541d1f99",
+  "voiceVerified" : false
+}

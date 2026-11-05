@@ -1,0 +1,23 @@
+// Platform facts in, world-loop admission out. Setup needs its first real
+// rendered frame before it may freeze the background. The room is independent.
+#authority;
+#forall "world visibility preserves startup and pauses every covered ready view" mask:0..<32 {
+  ready:=(mask & 1)!=0;setup:=(mask & 2)!=0;visible:=(mask & 4)!=0;
+  minimized:=(mask & 8)!=0;occluded:=(mask & 16)!=0;
+  paused:=forge_world_paused(ready,setup,visible,minimized,occluded);
+  if !ready {#assert !paused;}
+  if ready && setup {#assert paused;}
+  if ready && !visible {#assert paused;}
+  if ready && minimized {#assert paused;}
+  if ready && occluded {#assert paused;}
+  if ready && visible && !setup && !minimized && !occluded {#assert !paused;}
+}
+#test "setup cannot deadlock the first frame, and play resumes immediately" {
+  #assert !forge_world_paused(false,true,true,false,false);
+  #assert forge_world_paused(true,true,true,false,false);
+  #assert !forge_world_paused(true,false,true,false,false);
+  #assert !forge_world_paused(false,true,false,false,false);
+}
+forge_world_paused :: (ready:bool,setup:bool,visible:bool,minimized:bool,occluded:bool)->bool #export_c {
+  return ready && (!visible || minimized || occluded || setup);
+}

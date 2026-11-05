@@ -1,0 +1,115 @@
+// Aethyrforge's own setup/status chrome on the shared Zeron primitives.
+// The realm's HUD is independent. AppKit supplies input and font rasterization.
+#load "../../apps/shared/zeron/gpui.coax";
+#load "setup.coax";
+
+ForgeChrome :: struct {atlas:[1]Atlas;scene:bool;checking:bool;verifying:bool;status:bool;paused:bool;error:[2048]u8;error_n:int;}
+ForgePanelBox :: struct {x:f32;y:f32;w:f32;h:f32;}
+FUI_SIZES :: [4]f32.[13,15,26,11];
+FUI_WEIGHTS :: [4]int.[0,1,2,3];
+fui_font_size :: (slot:int)->f32 #export_c {a:=FUI_SIZES;return ifx slot>=0 && slot<4 then a[slot] else 13.0f32;}
+fui_font_weight :: (slot:int)->int #export_c {a:=FUI_WEIGHTS;return ifx slot>=0 && slot<4 then a[slot] else 0;}
+fui_glyph_code :: (g:int)->u32 #export_c {a:=GP_EXTRA;return ifx g>=0 && g<95 then cast(u32)(g+32) else ifx g>=95 && g<GP_GLYPHS then a[g-95] else cast(u32)32;}
+fui_update :: (c:[]ForgeChrome,scene:bool,checking:bool,verifying:bool,status:bool,paused:bool,error:string) #export_c {
+  c[0].scene=scene;c[0].checking=checking;c[0].verifying=verifying;c[0].status=status;c[0].paused=paused;
+  c[0].error_n=ifx error.count<c[0].error.count then error.count else c[0].error.count;
+  for i:0..<c[0].error_n {c[0].error[i]=error[i];}
+}
+fui_set_font :: (c:[]ForgeChrome,slot:int,h:[]f32,a:[]f32,k:[]f32) #export_c {gp_set_font(c[0].atlas[..],slot,fui_font_size(slot),h,a,k);}
+fui_set_atlas :: (c:[]ForgeChrome,w:f32,h:f32) #export_c {gp_set_atlas(c[0].atlas[..],w,h,5);}
+fui_set_dynamic :: (c:[]ForgeChrome,size:f32,px:f32,py:f32,y:f32,cols:int,ccols:int,cw:f32,ch:f32) #export_c {gp_set_dynamic(c[0].atlas[..],size,px,py,y,cols,ccols,cw,ch);}
+fui_next_cluster :: (c:[]ForgeChrome)->int #export_c {return gp_next_cluster(c[0].atlas[..]);}
+fui_cluster :: (c:[]ForgeChrome,slot:int,b:[]u8)->int #export_c {return gp_cluster(c[0].atlas[..],slot,b);}
+fui_measured :: (c:[]ForgeChrome,slot:int,width:f32,color:bool) #export_c {gp_measured(c[0].atlas[..],slot,width,color);}
+fui_next_cell :: (c:[]ForgeChrome)->int #export_c {return gp_next_cell(c[0].atlas[..]);}
+fui_cell :: (c:[]ForgeChrome,cell:int,out:[]f32)->bool #export_c {return gp_cell(c[0].atlas[..],cell,out);}
+fui_cell_ready :: (c:[]ForgeChrome,cell:int) #export_c {gp_cell_ready(c[0].atlas[..],cell);}
+
+#test "native setup and status share a bounded centered panel and button hit targets" {
+  for w:[3]f32.[900,1280,1920] {
+    p:=fui_box(0,w,800);#assert p.x>=20 && p.x+p.w<=w-20 && p.y>=20;
+    for button:1..<6 {
+      b:=fui_box(button,w,800);#assert b.x>=p.x && b.x+b.w<=p.x+p.w && b.y>=p.y && b.y+b.h<=p.y+p.h;
+      #assert fui_at(button,w,800,b.x+b.w/2,b.y+b.h/2);
+      #assert !fui_at(button,w,800,0,0);
+    }
+  }
+}
+#test "chrome input respects discovery and permission readiness; status always offers return" {
+  c:[1]ForgeChrome;s:[1]ForgeSetup;
+  #assert !fui_enabled(c[..],s[..],1) && fui_enabled(c[..],s[..],2) && !fui_enabled(c[..],s[..],3);
+  c[0].checking=true;#assert !fui_enabled(c[..],s[..],2);
+  c[0].status=true;#assert fui_enabled(c[..],s[..],1);
+  c[0].status=false;c[0].checking=false;c[0].scene=true;s[0].cli=true;s[0].agents=true;s[0].models=true;
+  #assert fui_enabled(c[..],s[..],1);c[0].error_n=1;#assert !fui_enabled(c[..],s[..],1);
+  #assert fui_button(c[..],s[..],2)=="Retry startup";
+}
+#test "native chrome paints shared GPUI quads even before its font atlas is ready" {
+  c:[1]ForgeChrome;s:[1]ForgeSetup;out:[16384]f32;
+  n:=fui_draw(c[..],s[..],out[..],1280,800,1);
+  #assert n>36 && n*GP_VERTEX_FLOATS<=out.count;
+  #assert out[2]==GP_QUAD && out[15]>0;
+}
+fui_box :: (kind:int,w:f32,h:f32)->ForgePanelBox {
+  pw:=ifx w<700 then w-40 else 660.0f32;ph:=660.0f32;
+  p:=ForgePanelBox.{x=(w-pw)/2,y=(h-ph)/2,w=pw,h=ph};
+  if kind==1 {return ForgePanelBox.{x=p.x+pw-192,y=p.y+592,w=164,h=36};}
+  if kind==2 {return ForgePanelBox.{x=p.x+144,y=p.y+592,w=112,h=36};}
+  if kind==3 {return ForgePanelBox.{x=p.x+pw-208,y=p.y+210,w=180,h=30};}
+  if kind==4 {return ForgePanelBox.{x=p.x+28,y=p.y+592,w=104,h=36};}
+  if kind==5 {return ForgePanelBox.{x=p.x+pw-224,y=p.y+360,w=196,h=30};}
+  return p;
+}
+fui_at :: (kind:int,w:f32,h:f32,x:f32,y:f32)->bool {b:=fui_box(kind,w,h);return x>=b.x && y>=b.y && x<b.x+b.w && y<b.y+b.h;}
+fui_box_field :: (kind:int,w:f32,h:f32,field:int)->f32 #export_c {b:=fui_box(kind,w,h);return ifx field==0 then b.x else ifx field==1 then b.y else ifx field==2 then b.w else b.h;}
+fui_enabled :: (c:[]ForgeChrome,s:[]ForgeSetup,button:int)->bool {
+  if button==1 {return c[0].status || (c[0].error_n==0 && !c[0].checking && !c[0].verifying && fsu_can_enter(s,c[0].scene));}
+  if button==2 {return !c[0].checking && !c[0].verifying;}
+  if button==3 {return !c[0].checking && !c[0].verifying && fsu_status(s,1)>0;}
+  if button==4 {return true;}
+  return button==5 && fsu_status(s,3)!=0;
+}
+fui_button :: (c:[]ForgeChrome,s:[]ForgeSetup,button:int)->string {
+  if button==1 {return ifx c[0].status then "Return to Everglade" else "Open Everglade";}
+  if button==2 {return ifx c[0].error_n>0 then "Retry startup" else "Refresh";}
+  if button==3 {return "Verify voice model";}
+  if button==4 {return "Open folder";}
+  return fsu_text(s,15);
+}
+fui_hit :: (c:[]ForgeChrome,s:[]ForgeSetup,w:f32,h:f32,x:f32,y:f32)->int #export_c {
+  for button:1..<6 {if fui_enabled(c,s,button) && fui_at(button,w,h,x,y) {return button;}}return 0;
+}
+fui_text :: (c:[]ForgeChrome,out:[]f32,n:int,d:f32,font:int,text:string,x:f32,y:f32,width:f32)->int {
+  k:=paint_text(out,n,c[0].atlas[..],d,font,text,x,y,22,hex(0xe5e7eb,1));
+  gp_clip(out,n,k,d,x,y,width,24);return k;
+}
+fui_draw :: (c:[]ForgeChrome,s:[]ForgeSetup,out:[]f32,width:f32,height:f32,d:f32)->int #export_c {
+  if d<=0 {return 0;}w:=width/d;h:=height/d;p:=fui_box(0,w,h);x:=p.x+28;y:=p.y;span:=p.w-56;
+  n:=paint_quad(out,0,d,0,0,w,h,0,0,hex(0,0.28),hex(0,0));
+  n=paint_shadow(out,n,d,p.x,p.y,p.w,p.h,16,0,8,16,0,hex(0,0.4));
+  n=paint_quad(out,n,d,p.x,p.y,p.w,p.h,16,1,hex(0x171b23,0.98),hex(0x405362,1));
+  n=fui_text(c,out,n,d,3,"AETHYRFORGE",x,y+24,span);
+  n=fui_text(c,out,n,d,2,ifx c[0].status then "Local status" else fsu_text(s,0),x,y+52,span);
+  n=fui_text(c,out,n,d,0,fsu_text(s,1),x,y+94,span);
+  n=paint_quad(out,n,d,x,y+132,span,1,0,0,hex(0x405362,1),hex(0,0));
+  n=fui_text(c,out,n,d,3,"OPENAGENTS CLI",x,y+146,span);
+  n=fui_text(c,out,n,d,0,ifx c[0].error_n>0 then cast(string)c[0].error[0..<c[0].error_n] else fsu_text(s,2),x,y+170,span);
+  n=fui_text(c,out,n,d,3,"LOCAL VOICE",x,y+210,span-196);
+  n=fui_text(c,out,n,d,1,fsu_text(s,3),x,y+242,span);
+  n=fui_text(c,out,n,d,0,ifx c[0].verifying then "Verifying pinned model files…" else fsu_text(s,4),x,y+270,span);
+  n=fui_text(c,out,n,d,3,fsu_text(s,6),x,y+296,span);
+  n=fui_text(c,out,n,d,0,fsu_text(s,5),x,y+326,span);
+  n=fui_text(c,out,n,d,0,fsu_text(s,14),x,y+362,span-208);
+  n=fui_text(c,out,n,d,0,fsu_text(s,16),x,y+402,span);
+  n=fui_text(c,out,n,d,3,"LOCAL AGENTS",x,y+440,span);
+  n=fui_text(c,out,n,d,0,fsu_text(s,7),x,y+464,span);
+  n=fui_text(c,out,n,d,0,"Automatic routing · agent, model and effort chosen per task",x,y+490,span);
+  n=fui_text(c,out,n,d,0,ifx !c[0].scene then "Waiting for the world's first rendered frame…" else ifx c[0].paused then "World view paused · native room continues ticking" else "World view running · native room active",x,y+532,span);
+  n=fui_text(c,out,n,d,3,"Model files are shared with other OpenAgents apps.",x,y+560,span);
+  for button:1..<6 {
+    b:=fui_box(button,w,h);enabled:=fui_enabled(c,s,button);
+    n=paint_quad(out,n,d,b.x,b.y,b.w,b.h,7,1,hex(ifx button==1 then 0x265c63 else 0x292f3b,ifx enabled then 1 else 0.4),hex(0x50606c,0.7));
+    n=fui_text(c,out,n,d,0,fui_button(c,s,button),b.x+10,b.y+(b.h-22)/2,b.w-20);
+  }
+  return n;
+}

@@ -251,6 +251,23 @@ them, the arrows move, `R` rotates, `+`/`-` resize, Delete removes, and `Z`/`Y`
 undo/redo during the session. Saving settles through the local room; this path's
 word “publish” means the local document only. The undo stack is not durable yet.
 
+Setup and **View → Status…** use the shared native Zeron Metal renderer; their
+layout, labels and readiness stay in Coax. After the first real scene frame,
+the world view pauses while either panel covers it, or the app is hidden,
+minimized or occluded. Its native room and socket delivery keep running.
+The panels render only on changes. Returning to play resumes the same loop;
+Reload obtains a fresh first frame before pausing a covered world again.
+
+The visible, muted acceptance run uses an isolated world, no physical microphone
+and no model load. It measures CPU and GPU effects, captures both panels and
+checks setup/status, reload, minimize, hide and resume:
+
+```sh
+mkdir -p /tmp/aethyrforge-setup-profile
+apps/aethyrforge-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge \
+  --setup-profile /tmp/aethyrforge-setup-profile/result.json
+```
+
 Normal launches play Everglade's ambience, footsteps and effects through its
 usual SOUND volume/mute control. Audio starts with the first click, tap or key
 in the world. Automated smoke, launch, microphone and frame-profile checks keep

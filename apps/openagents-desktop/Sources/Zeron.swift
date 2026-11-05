@@ -1,216 +1,28 @@
-// The Zeron-fork chat screen (docs/desktop/coax-desktop.md): zeron/screen.coax
-// compiled to C writes GPUI-style primitives (zeron/gpui.coax), drawn here by
-// Zeron.metal. This file is GPUI's platform layer for it: the window's Metal
-// view, input, and the atlas of Zeron's font (Geist, rasterized as
-// gpui_macos/text_system.rs does) and Zeron's SVG icons. Based on Zeron by Wing, MIT.
+// Zeron's AppKit effects; shared glyph atlas and Metal renderer live in apps/shared/zeron/MetalUI.swift.
 import AppKit
 import CoreText
 import MetalKit
 
-// Geist and Geist Mono from the bundle (fonts/, SIL OFL 1.1, as Zeron bundles
-// them): 0 Geist, 1 Geist Medium, 2 Geist SemiBold, 3 Geist Mono (zr_font_weight).
-func geist(_ weight: Int32) -> CGFont? {
-  let name = ["Geist", "Geist-Medium", "Geist-SemiBold", "GeistMono"][Int(min(max(weight, 0), 3))]
-  guard let url = Bundle.main.url(forResource: name, withExtension: "ttf", subdirectory: "fonts"),
-        let data = try? Data(contentsOf: url) as CFData, let provider = CGDataProvider(data: data) else { return nil }
-  return CGFont(provider)
-}
-
-// The atlas: per font, every glyph at four subpixel x offsets and five dilations
-// (gpui_macos rasterize_glyph: alpha-only, smoothing with fill luminance
-// level/4 when dilated), then every icon at twice its device size (gpui svg_renderer).
-// Then room for GPUI's glyph cache (gpui.coax): every other grapheme, shaped
-// and rasterized when the text first uses it (ZeronAtlas.serve), mono ones
-// below the icons, emoji in a second, color atlas.
-final class ZeronAtlas {
-  let mono: MTLTexture, color: MTLTexture
-  let fonts: [CTFont], dpr: CGFloat, cell: Int, penX: Int, penY: Int
-  init(mono: MTLTexture, color: MTLTexture, fonts: [CTFont], dpr: CGFloat, cell: Int, penX: Int, penY: Int) {
-    self.mono = mono; self.color = color; self.fonts = fonts; self.dpr = dpr; self.cell = cell; self.penX = penX; self.penY = penY
-  }
-
-  // What the last frame asked for: each new grapheme's advance and whether
-  // CoreText draws it in color (a color-glyph font, Apple Color Emoji), then
-  // each wanted cell drawn as rasterize_glyph does.
-  func serve(_ state: UnsafeMutableRawPointer) {
-    var bytes = [UInt8](repeating: 0, count: 64)
-    var guardCount = 0
-    while case let slot = zr_next_cluster(state), slot >= 0, guardCount < 600 {
-      guardCount += 1
-      let (line, _) = shape(state, slot, &bytes)
-      let width = Float(CTLineGetTypographicBounds(line, nil, nil, nil))
-      let runs = CTLineGetGlyphRuns(line) as! [CTRun]
-      let isColor = runs.contains { run in
-        let attrs = CTRunGetAttributes(run) as NSDictionary
-        guard let f = attrs[kCTFontAttributeName] else { return false }
-        return CTFontGetSymbolicTraits(f as! CTFont).contains(.traitColorGlyphs)
-      }
-      zr_measured(state, slot, width, isColor ? 1 : 0)
-    }
-    var info = [Float](repeating: 0, count: 6)
-    guardCount = 0
-    while case let index = zr_next_cell(state), index >= 0, guardCount < 3000 {
-      guardCount += 1
-      _ = zr_cell(state, index, &info)
-      let (line, _) = shape(state, Int32(info[0]), &bytes)
-      let level = Int(info[1]), variant = Int(info[2]), isColor = info[3] > 0.5
-      let tx = Int(info[4]), ty = Int(info[5])
-      if isColor {
-        let g = CGContext(data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: side * 4, space: CGColorSpaceCreateDeviceRGB(),
-                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
-        draw(line, in: g, level: 0, variant: 0)
-        // RGBA with premultiplied alpha to straight alpha (swap_rgba_pa_to_bgra, in RGBA order here)
-        let px = g.data!.assumingMemoryBound(to: UInt8.self)
-        for i in 0..<(side * side) {
-          let a = Int(px[i * 4 + 3])
-          if a > 0 && a < 255 { for k in 0..<3 { px[i * 4 + k] = UInt8(min(255, Int(px[i * 4 + k]) * 255 / a)) } }
-        }
-        color.replace(region: MTLRegionMake2D(tx, ty, side, side), mipmapLevel: 0, withBytes: g.data!, bytesPerRow: side * 4)
-      } else {
-        let g = CGContext(data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: side, space: CGColorSpaceCreateDeviceGray(),
-                          bitmapInfo: CGImageAlphaInfo.alphaOnly.rawValue)!
-        draw(line, in: g, level: level, variant: variant)
-        mono.replace(region: MTLRegionMake2D(tx, ty, side, side), mipmapLevel: 0, withBytes: g.data!, bytesPerRow: side)
-      }
-      zr_cell_ready(state, index)
-    }
-  }
-  var side: Int { cell }
-  func shape(_ state: UnsafeMutableRawPointer, _ slot: Int32, _ bytes: inout [UInt8]) -> (CTLine, Int) {
-    let code = Int(zr_cluster(state, slot, &bytes, Int32(bytes.count)))
-    let font = fonts[min(max(code / 256, 0), fonts.count - 1)], n = code % 256
-    let text = String(decoding: bytes[0..<n], as: UTF8.self)
-    let attrs: [NSAttributedString.Key: Any] = [.font: font, NSAttributedString.Key(kCTForegroundColorFromContextAttributeName as String): true]
-    return (CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: attrs)), n)
-  }
-  func draw(_ line: CTLine, in g: CGContext, level: Int, variant: Int) {
-    g.setAllowsAntialiasing(true); g.setShouldAntialias(true)
-    g.setAllowsFontSubpixelPositioning(true); g.setShouldSubpixelPositionFonts(true)
-    g.setAllowsFontSubpixelQuantization(false); g.setShouldSubpixelQuantizeFonts(false)
-    g.setTextDrawingMode(.fill)
-    if level > 0 { g.setShouldSmoothFonts(true); g.setFillColor(gray: CGFloat(level) * 0.25, alpha: 1) }
-    else { g.setShouldSmoothFonts(false); g.setFillColor(gray: 0, alpha: 1) }
-    g.translateBy(x: CGFloat(penX), y: CGFloat(cell - penY))
-    g.scaleBy(x: dpr, y: dpr)
-    g.textPosition = CGPoint(x: CGFloat(variant) / 4 / dpr, y: 0)
-    CTLineDraw(line, g)
-  }
-}
-
-func zeronAtlas(_ device: MTLDevice, state: UnsafeMutableRawPointer, dpr: CGFloat) -> ZeronAtlas {
-  let glyphs = Int(zr_glyph_count()), fonts = Int(zr_font_count()), icons = Int(zr_icon_count())
-  let width = 8192
-  var y0 = 0
-  struct Slot { var font: CTFont; var cell: Int; var penX: Int; var penY: Int; var y0: Int; var cols: Int; var size: CGFloat; var mono: Bool }
-  var slots: [Slot] = []
-  for f in 0..<fonts {
-    let size = CGFloat(zr_font_size(Int32(f)))
-    let weight = zr_font_weight(Int32(f))
-    let cg = geist(weight)!
-    let font = CTFontCreateWithGraphicsFont(cg, size, nil, nil)
-    let cell = Int(ceil(size * dpr * 2.4))
-    let cols = width / cell
-    let cells = glyphs * 4 * 5
-    let slot = Slot(font: font, cell: cell, penX: Int(round(Double(cell) * 0.2)), penY: Int(round(Double(cell) * 0.7)), y0: y0, cols: cols, size: size, mono: weight == 3)
-    slots.append(slot)
-    y0 += ((cells + cols - 1) / cols) * cell
-  }
-  var iconY = y0, iconX = 0, rowH = 0
-  var tiles: [(Int, Int, Int)] = []
-  for i in 0..<icons {
-    let px = Int(ceil(CGFloat(zr_icon_size(Int32(i))) * dpr * 2))
-    if iconX + px > width { iconX = 0; iconY += rowH; rowH = 0 }
-    tiles.append((iconX, iconY, px)); iconX += px + 2; rowH = max(rowH, px + 2)
-  }
-  // the glyph cache's mono cells, sized for the largest font
-  let dynCell = slots.map { $0.cell }.max() ?? 64
-  let dynY0 = iconY + rowH + 1, dynCols = width / dynCell
-  let height = dynY0 + ((2048 + dynCols - 1) / dynCols) * dynCell
-  let g = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width,
-                    space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.alphaOnly.rawValue)!
-  for (f, s) in slots.enumerated() {
-    var header: [Float] = [Float(CTFontGetAscent(s.font)), Float(CTFontGetDescent(s.font)), Float(s.cell), Float(s.penX), Float(s.penY), Float(s.y0), Float(s.cols)]
-    var codes = (0..<glyphs).map { UniChar(truncatingIfNeeded: zr_glyph_code(Int32($0))) }
-    var ids = [CGGlyph](repeating: 0, count: glyphs)
-    CTFontGetGlyphsForCharacters(s.font, &codes, &ids, glyphs)
-    var adv = [CGSize](repeating: .zero, count: glyphs)
-    CTFontGetAdvancesForGlyphs(s.font, .horizontal, ids, &adv, glyphs)
-    var advance = adv.map { Float($0.width) }
-    // Kerning as CoreText shapes it (what GPUI's line layout gets from CTLine): a pair's width less its advances.
-    var kern = [Float](repeating: 0, count: glyphs * glyphs)
-    let attrs: [NSAttributedString.Key: Any] = [.font: s.font]
-    // (a monospaced font has none)
-    for a in 1..<glyphs where a < 95 && !s.mono {
-      for b in 1..<glyphs where b < 95 {
-        let pair = String(UnicodeScalar(UInt8(32 + a))) + String(UnicodeScalar(UInt8(32 + b)))
-        let line = CTLineCreateWithAttributedString(NSAttributedString(string: pair, attributes: attrs))
-        let w = Float(CTLineGetTypographicBounds(line, nil, nil, nil))
-        let k = w - advance[a] - advance[b]
-        if abs(k) > 0.001 { kern[a * glyphs + b] = k }
-      }
-    }
-    header.withUnsafeBufferPointer { h in advance.withUnsafeMutableBufferPointer { ad in kern.withUnsafeBufferPointer { k in
-      zr_set_font(state, Int32(f), h.baseAddress, ad.baseAddress, k.baseAddress) } } }
-    g.setAllowsAntialiasing(true); g.setShouldAntialias(true)
-    g.setAllowsFontSubpixelPositioning(true); g.setShouldSubpixelPositionFonts(true)
-    g.setAllowsFontSubpixelQuantization(false); g.setShouldSubpixelQuantizeFonts(false)
-    g.setTextDrawingMode(.fill)
-    let font = CTFontCreateCopyWithAttributes(s.font, s.size, nil, nil)
-    for dilation in 0..<5 {
-      if dilation > 0 { g.setShouldSmoothFonts(true); g.setFillColor(gray: CGFloat(dilation) * 0.25, alpha: 1) }
-      else { g.setShouldSmoothFonts(false); g.setFillColor(gray: 0, alpha: 1) }
-      for variant in 0..<4 {
-        for i in 0..<glyphs {
-          let cell = (dilation * 4 + variant) * glyphs + i
-          let cx = (cell % s.cols) * s.cell, cy = s.y0 + (cell / s.cols) * s.cell
-          g.saveGState()
-          g.clip(to: CGRect(x: cx, y: height - cy - s.cell, width: s.cell, height: s.cell))
-          g.translateBy(x: CGFloat(cx + s.penX), y: CGFloat(height - cy - s.penY))
-          g.scaleBy(x: dpr, y: dpr)
-          var glyph = ids[i]
-          var at = CGPoint(x: CGFloat(variant) / 4 / dpr, y: 0)
-          CTFontDrawGlyphs(font, &glyph, &at, 1, g)
-          g.restoreGState()
-        }
-      }
-    }
-  }
-  // Icons: Zeron's SVGs, their 1em size replaced by the tile's, the alpha kept.
-  for (i, t) in tiles.enumerated() {
-    var name = [UInt8](repeating: 0, count: 64)
-    let n = Int(zr_icon_name(Int32(i), &name, 64))
-    let file = String(decoding: name[0..<n], as: UTF8.self)
-    guard let url = Bundle.main.url(forResource: file, withExtension: "svg", subdirectory: "icons"),
-          var svg = try? String(contentsOf: url, encoding: .utf8) else { continue }
-    // Sized to the tile (a viewBox that isn't square fills it, which lands closest to usvg's pixmap).
-    if let open = svg.range(of: "<svg"), let close = svg.range(of: ">", range: open.upperBound..<svg.endIndex) {
-      let head = String(svg[open.lowerBound..<close.lowerBound])
-        .replacingOccurrences(of: #"\s(width|height)="[^"]*""#, with: "", options: .regularExpression)
-      svg.replaceSubrange(open.lowerBound..<close.lowerBound, with: head)
-    }
-    svg = svg.replacingOccurrences(of: "<svg ", with: "<svg width=\"\(t.2)\" height=\"\(t.2)\" ")
-    guard let image = NSImage(data: Data(svg.utf8)) else { continue }
-    let rgba = CGContext(data: nil, width: t.2, height: t.2, bitsPerComponent: 8, bytesPerRow: t.2 * 4, space: CGColorSpaceCreateDeviceRGB(),
-                         bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
-    NSGraphicsContext.saveGraphicsState()
-    NSGraphicsContext.current = NSGraphicsContext(cgContext: rgba, flipped: false)
-    image.draw(in: NSRect(x: 0, y: 0, width: t.2, height: t.2))
-    NSGraphicsContext.restoreGraphicsState()
-    let src = rgba.data!.assumingMemoryBound(to: UInt8.self), dst = g.data!.assumingMemoryBound(to: UInt8.self)
-    for y in 0..<t.2 { for x in 0..<t.2 { dst[(t.1 + y) * width + t.0 + x] = src[(y * t.2 + x) * 4 + 3] } }
-    zr_set_icon(state, Int32(i), Float(t.0), Float(t.1), Float(t.2), Float(t.2))
-  }
-  zr_set_atlas(state, Float(width), Float(height))
-  let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r8Unorm, width: width, height: height, mipmapped: false)
-  let texture = device.makeTexture(descriptor: d)!
-  texture.replace(region: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0, withBytes: g.data!, bytesPerRow: width)
-  let colorCols = width / dynCell, colorHeight = ((256 + colorCols - 1) / colorCols) * dynCell
-  let cd = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: width, height: colorHeight, mipmapped: false)
-  let color = device.makeTexture(descriptor: cd)!
-  let penX = Int(round(Double(dynCell) * 0.2)), penY = Int(round(Double(dynCell) * 0.7))
-  zr_set_dynamic(state, Float(dynCell), Float(penX), Float(penY), Float(dynY0), Int32(dynCols), Int32(colorCols), Float(width), Float(colorHeight))
-  return ZeronAtlas(mono: texture, color: color, fonts: slots.map { $0.font }, dpr: dpr, cell: dynCell, penX: penX, penY: penY)
-}
+let zeronAtlasAPI = ZeronAtlasAPI(
+  next_cluster: zr_next_cluster,
+  measured: zr_measured,
+  next_cell: zr_next_cell,
+  cell: zr_cell,
+  cell_ready: zr_cell_ready,
+  cluster: zr_cluster,
+  glyph_count: zr_glyph_count,
+  font_count: zr_font_count,
+  icon_count: zr_icon_count,
+  font_size: zr_font_size,
+  font_weight: zr_font_weight,
+  icon_size: zr_icon_size,
+  glyph_code: zr_glyph_code,
+  set_font: zr_set_font,
+  icon_name: zr_icon_name,
+  set_icon: zr_set_icon,
+  set_atlas: zr_set_atlas,
+  set_dynamic: zr_set_dynamic
+)
 
 final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemValidation {
   // The desk (zeron/desk.coax): every session's chat; the input and the frame go through it.
@@ -421,7 +233,7 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
   }
 
   var queue: MTLCommandQueue!
-  var pipeline: MTLRenderPipelineState!
+  var renderer: ZeronMetalRenderer!
   // each chat's atlas (a chat's glyph cache is its own), made when it is first shown
   var atlases: [UnsafeMutableRawPointer: ZeronAtlas] = [:]
   var atlas: ZeronAtlas? { atlases[state] }
@@ -439,22 +251,10 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     colorPixelFormat = .bgra8Unorm
     preferredFramesPerSecond = 60
     delegate = self
-    queue = device.makeCommandQueue()
     let library = try! device.makeDefaultLibrary(bundle: .main)
-    let p = MTLRenderPipelineDescriptor()
-    p.vertexFunction = library.makeFunction(name: "zr_vs"); p.fragmentFunction = library.makeFunction(name: "zr_fs")
-    let v = MTLVertexDescriptor()
+    renderer = try! ZeronMetalRenderer(device: device, library: library)
+    queue = renderer.queue
     let floats = Int(zr_vertex_floats())
-    for i in 0..<(floats / 4) { v.attributes[i].format = .float4; v.attributes[i].offset = 16 * i; v.attributes[i].bufferIndex = 0 }
-    v.layouts[0].stride = floats * 4
-    p.vertexDescriptor = v
-    // GPUI's blending (metal_renderer.rs): straight alpha, source over.
-    let a = p.colorAttachments[0]!
-    a.pixelFormat = colorPixelFormat; a.isBlendingEnabled = true
-    a.rgbBlendOperation = .add; a.alphaBlendOperation = .add
-    a.sourceRGBBlendFactor = .sourceAlpha; a.sourceAlphaBlendFactor = .one
-    a.destinationRGBBlendFactor = .oneMinusSourceAlpha; a.destinationAlphaBlendFactor = .oneMinusSourceAlpha
-    pipeline = try! device.makeRenderPipelineState(descriptor: p)
     let bytes = Int(zr_max_vertices()) * floats * 4
     vertices = (0..<2).map { _ in device.makeBuffer(length: bytes, options: .storageModeShared)! }
     addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect, .cursorUpdate], owner: self))
@@ -481,7 +281,7 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
   func render(_ pass: MTLRenderPassDescriptor, size: CGSize, dpr: CGFloat, done: ((MTLCommandBuffer) -> Void)? = nil) {
     syncDictation()
     let shown = state
-    if atlases[shown] == nil || atlases[shown]!.dpr != dpr { atlases[shown] = zeronAtlas(device!, state: shown, dpr: dpr) }
+    if atlases[shown] == nil || atlases[shown]!.dpr != dpr { atlases[shown] = zeronAtlas(device!, state: shown, dpr: dpr, api: zeronAtlasAPI) }
     let now = CACurrentMediaTime(), dt = Float(now - last); last = now
     inflight.wait()
     slot = (slot + 1) % 2
@@ -513,15 +313,7 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     pass.colorAttachments[0].loadAction = .clear
     pass.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
     guard let cmd = queue.makeCommandBuffer(), let enc = cmd.makeRenderCommandEncoder(descriptor: pass) else { inflight.signal(); return }
-    if n > 0 {
-      var viewport = SIMD2<Float>(Float(size.width), Float(size.height))
-      enc.setRenderPipelineState(pipeline)
-      enc.setVertexBuffer(buf, offset: 0, index: 0)
-      enc.setVertexBytes(&viewport, length: 8, index: 1)
-      enc.setFragmentTexture(atlases[shown]!.mono, index: 0)
-      enc.setFragmentTexture(atlases[shown]!.color, index: 1)
-      enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: Int(n))
-    }
+    renderer.encode(enc, vertices: buf, count: Int(n), size: size, atlas: atlases[shown]!)
     enc.endEncoding()
     cmd.addCompletedHandler { [inflight] _ in inflight.signal() }
     done?(cmd)

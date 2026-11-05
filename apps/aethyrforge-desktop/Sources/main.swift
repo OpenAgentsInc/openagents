@@ -85,6 +85,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     let startedAt = Date()
     var firstFrameSeconds = 0.0
     var highRefreshEnabled = false
+    var worldPauseWanted: Bool?
     let setupSmoke = CommandLine.arguments.contains("--setup-smoke")
     let voiceSmoke = CommandLine.arguments.contains("--voice-smoke")
     let voiceWarmSmoke = CommandLine.arguments.contains("--voice-warm-smoke")
@@ -145,6 +146,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         let view = NSMenu(title: "View"); viewItem.submenu = view
         let reload = view.addItem(withTitle: "Reload Everglade", action: #selector(reloadWorld), keyEquivalent: "r"); reload.target = self
         let setup = view.addItem(withTitle: "Setup…", action: #selector(showSetup), keyEquivalent: ","); setup.target = self
+        let status = view.addItem(withTitle: "Status…", action: #selector(showStatus), keyEquivalent: "i"); status.target = self
         let chat = view.addItem(withTitle: "Message Coding Agent", action: #selector(focusChat), keyEquivalent: "l"); chat.target = self
         let folder = view.addItem(withTitle: "Open Local World Folder", action: #selector(openWorldFolder), keyEquivalent: "o"); folder.target = self
         folder.keyEquivalentModifierMask = [.command, .shift]
@@ -173,11 +175,14 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         globalThis.coaxialVoiceStopped = ticket => webkit.messageHandlers.forgeVoiceCoder.postMessage(JSON.stringify({schema:'aethyrforge.voice-coder.v1',kind:'cancel',ticket}));
         """, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         config.websiteDataStore = .nonPersistent()
+        if setupProfileURL != nil {
+            config.userContentController.addUserScript(WKUserScript(source:"globalThis.__forgeErrors=[];addEventListener('error',e=>__forgeErrors.push(String(e.message)));addEventListener('unhandledrejection',e=>__forgeErrors.push(String(e.reason)));",injectionTime:.atDocumentStart,forMainFrameOnly:true))
+        }
         if launchReport != nil {
             config.userContentController.addUserScript(WKUserScript(source: "globalThis.__forgeFrameCount=0;const nativeRAF=requestAnimationFrame;globalThis.requestAnimationFrame=f=>nativeRAF(t=>{__forgeFrameCount++;f(t);});", injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
         config.mediaTypesRequiringUserActionForPlayback = []
-        configureAudioOutput(config, muted: smoke || launchReport != nil || microphoneReport != nil || frameProfileURL != nil)
+        configureAudioOutput(config, muted: smoke || launchReport != nil || microphoneReport != nil || frameProfileURL != nil || setupProfileURL != nil)
         if smoke {
             // The native test pumps the callback: WebKit throttles both animation
             // callbacks and page timers in an unordered window.
@@ -272,7 +277,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     func start() async {
         do {
             guard let resources = Bundle.main.resourceURL else { throw ShellError.failed("Missing bundled resources.") }
-            if let report = smoke ? report : microphoneReport {
+            if let report = smoke ? report : microphoneReport ?? setupProfileURL {
                 dataURL = report.deletingLastPathComponent().appendingPathComponent("world")
             } else {
                 let base = fm.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/aethyrforge", isDirectory: true)
@@ -329,9 +334,11 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
             firstFrameSeconds = Date().timeIntervalSince(startedAt)
             notice.isHidden = true
             sceneReady = true; setupPane.sceneReady = true; setupPane.update()
+            updateWorldVisibility()
             warmVoiceIfNeeded()
             if setupPane.isHidden { window.makeFirstResponder(web) }
             try await startSceneControls()
+            if setupProfileURL != nil { await inventoryTask?.value; try await setupProfileCheck(); return }
             if let frameProfileURL { Task { try? await captureFrameProfile(frameProfileURL) } }
             if let launchReport {
                 await inventoryTask?.value
@@ -824,6 +831,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         setupPane.checking = false; setupPane.verifying = false
         setupPane.isHidden = false
         setupPane.refresh.title = "Retry startup"; setupPane.update()
+        if let report=setupProfileURL {try? Data(message.utf8).write(to:report.appendingPathExtension("error"));fputs("Aethyrforge setup profile: \(message)\n",stderr);exit(1)}
         if smoke {
             if let report { try? Data("FAILED: \(message)".utf8).write(to: report) }
             fputs("Aethyrforge: \(message)\n", stderr)
@@ -891,9 +899,19 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
             try saved.write(to: settingsURL, options: .atomic)
             try acceptSetup(saved, kind: 3)
             setupPane.isHidden = true; window.makeFirstResponder(web)
+            setupPane.statusMode = false; updateWorldVisibility()
         } catch { setupPane.errorMessage = "Could not save setup: \(error.localizedDescription)"; setupPane.update() }
     }
-    @objc func showSetup() { cancelVoice(); chatPane.closeComposer(); setupPane.isHidden = false; setupPane.sceneReady = sceneReady; setupPane.update(); refreshMicrophoneSetup() }
+    @objc func showSetup() { cancelVoice(); chatPane.closeComposer(); setupPane.statusMode = false; setupPane.isHidden = false; setupPane.sceneReady = sceneReady; updateWorldVisibility(); setupPane.update(); window.makeFirstResponder(setupPane); refreshMicrophoneSetup() }
+    @objc func showStatus() { showSetup(); setupPane.statusMode = true; setupPane.update() }
+    func updateWorldVisibility() {
+        guard web != nil, setupPane != nil, window != nil else { return }
+        let paused = forge_world_paused(sceneReady,!setupPane.isHidden,smoke || (window.isVisible && !NSApp.isHidden),!smoke && window.isMiniaturized,!smoke && !window.occlusionState.contains(.visible))
+        setupPane.worldPaused = paused
+        guard worldPauseWanted != paused else { return }
+        worldPauseWanted = paused; setupPane.update()
+        web.evaluateJavaScript("globalThis.coaxial?.setWorldPaused(\(paused)); true", completionHandler: nil)
+    }
     @objc func focusChat() { guard setupPane.isHidden else { return }; chatPane.openComposer() }
     func routeCoderKey(_ event: NSEvent) -> Bool {
         guard event.type == .keyDown || event.type == .keyUp else { return false }
@@ -1250,7 +1268,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
 
     func warmVoiceIfNeeded() {
         guard setupPane != nil, window != nil else { return }
-        let interactive = !smoke && launchReport == nil && microphoneReport == nil && frameProfileURL == nil
+        let interactive = !smoke && launchReport == nil && microphoneReport == nil && frameProfileURL == nil && setupProfileURL == nil
         guard forge_voice_warm(!stopping && pageURL != nil, window.isVisible && !window.isMiniaturized,
                                microphoneStatus() == .authorized, fgs_status(1) > 0, interactive, voiceWarmup != nil, voiceWarmReady) else { return }
         Task { try? await prepareVoice() }
@@ -1305,9 +1323,12 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     func applicationDidBecomeActive(_ notification: Notification) { refreshMicrophoneSetup() }
     func windowDidBecomeKey(_ notification: Notification) { refreshMicrophoneSetup() }
     func applicationDidResignActive(_ notification: Notification) { if !microphonePrompt { cancelVoice("focus-lost") } }
-    func applicationDidHide(_ notification: Notification) { cancelVoice("app-hidden") }
+    func applicationDidHide(_ notification: Notification) { cancelVoice("app-hidden"); updateWorldVisibility() }
+    func applicationDidUnhide(_ notification: Notification) { updateWorldVisibility() }
+    func windowDidChangeOcclusionState(_ notification: Notification) { updateWorldVisibility() }
     func windowDidResignKey(_ notification: Notification) { coderHeldKeys.removeAll() }
-    func windowDidMiniaturize(_ notification: Notification) { cancelVoice("window-minimized") }
+    func windowDidMiniaturize(_ notification: Notification) { cancelVoice("window-minimized"); updateWorldVisibility() }
+    func windowDidDeminiaturize(_ notification: Notification) { updateWorldVisibility() }
     func microphoneStatus() -> AVAuthorizationStatus {
         microphoneAuthorization?() ?? AVCaptureDevice.authorizationStatus(for: .audio)
     }
@@ -1320,7 +1341,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     func refreshMicrophoneSetup() {
         guard setupPane != nil, window != nil else { return }
         updateMicrophoneSetup()
-        let interactive = !smoke && launchReport == nil && microphoneReport == nil && frameProfileURL == nil
+        let interactive = !smoke && launchReport == nil && microphoneReport == nil && frameProfileURL == nil && setupProfileURL == nil
         guard fm_setup_request(!stopping && window.isVisible && !window.isMiniaturized, NSApp.isActive,
                                !setupPane.isHidden, fgs_completed(), Int64(microphoneStatus().rawValue), microphonePrompt, interactive) else { return }
         Task { _ = await authorizeMicrophone() }
@@ -1632,10 +1653,11 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     }
 
     @objc func reloadWorld() {
-        guard !stopping, let pageURL else { return }
+        guard !stopping, pageURL != nil else { return }
+        sceneReady = false; worldPauseWanted = nil
         cancelVoice()
         voiceWarmEpoch += 1; voiceWarmup?.cancel(); voiceWarmup = nil; voiceWarmReady = false; fgs_voice_ready(0)
-        web.load(URLRequest(url: pageURL))
+        web.reload()
     }
     @objc func openWorldFolder() { if let dataURL { NSWorkspace.shared.open(dataURL) } }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
@@ -1667,7 +1689,13 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         if !stopping && (error as NSError).code != NSURLErrorCancelled { fail(error.localizedDescription) }
     }
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { warmVoiceIfNeeded() }
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) { sceneReady = false; worldPauseWanted = nil }
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        warmVoiceIfNeeded()
+        if firstFrameSeconds > 0 {
+            Task { do { try await waitForScene(); sceneReady = true; setupPane.sceneReady = true; updateWorldVisibility() } catch { if !stopping { fail(error.localizedDescription) } } }
+        }
+    }
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { fail("The world view stopped. Quit and reopen Aethyrforge.") }
     func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin, initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType, decisionHandler: @escaping (WKPermissionDecision) -> Void) {
         traceVoice("microphone request: main=\(frame.isMainFrame) local=\(origin.host == "127.0.0.1" && origin.port == pageURL?.port) key=\(window.isKeyWindow) setup=\(!setupPane.isHidden) authorization=\(AVCaptureDevice.authorizationStatus(for: .audio).rawValue)")

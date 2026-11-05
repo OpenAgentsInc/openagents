@@ -249,6 +249,16 @@ page server, the voice Wasm and a local Parakeet voice host. This is the same
 - Requires Apple Silicon and macOS 26+ for this initial WKWebView/WebGPU build.
   The app is ad-hoc signed, experimental and outside `/Applications`.
 
+- Setup and View → Status use the shared native Zeron Metal renderer, with
+  Coax layout/text/readiness and transparent AppKit input controls. After the
+  world's first actual rendered frame, setup/status, hiding, minimizing and
+  occlusion pause its frame loop and realm audio. The native room and socket
+  delivery keep running. Revealing it resumes one loop; Reload obtains a fresh
+  first frame before a covering panel pauses it again. On the M5 Max, app plus
+  world-view CPU fell from 19.53% of one core in play to 0.58% in setup, with
+  zero world GPU submissions/pending frames and zero idle panel draws.
+  [Measured record and rerunnable native harness](../verification/aethyrforge-setup-2026-11-05/README.md).
+
 - Typed and finalized voice requests can now change the live local scene through
   the same routed Coder conversation. The bundled Coax `aethyrforge-scene` tool
   reads the catalogue and current document, then atomically places rows or

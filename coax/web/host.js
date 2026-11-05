@@ -465,8 +465,9 @@ const utf8 = (ptr, len) => new TextDecoder().decode(new Uint8Array(memory.buffer
 // signature: handled as they arrive they took half the main thread for the first ~17 s and Chrome
 // held frames back up to 100 ms). A hidden tab, which draws no frames, is drained on a timer.
 const SOCKET_BUDGET_MS = 12, socketQueue = [];
-let socketHead = 0, socketTimer = 0, socketDrained = 0;
+let socketHead = 0, socketTimer = 0, socketDrained = 0, socketFrames = 0;
 function socketQueued(ws, id, event, text = "") {
+  if (event === SOCKET_FRAME) socketFrames++;
   socketQueue.push([ws, id, event, text]);
   if (!socketTimer) socketTimer = setTimeout(socketIdle, 100);
 }
@@ -2043,6 +2044,19 @@ const clipping = globalThis.coaxialClip === true;
 const frameTrace = globalThis.coaxialFrameTrace === true ? [] : null;
 let traceRow = null, traceLast = 0;
 let clipNow = 0;
+let worldPaused = false, frameRequest = 0, worldFrames = 0, worldSubmissions = 0;
+function setWorldPaused(paused) {
+  worldPaused = !!paused;
+  if (worldPaused) {
+    cancelAnimationFrame(frameRequest); frameRequest = 0;
+    audio?.suspend().catch(() => {});
+  } else {
+    traceLast = 0;
+    if (!frameRequest) frameRequest = requestAnimationFrame(frame);
+    audio?.resume().catch(() => {});
+  }
+  return worldPaused;
+}
 if (clipping) globalThis.coaxialClipStep = async (frames = 1, fps = 30) => {
   // a clip that records its sound starts the audio once the engine is up (no gesture needed: nothing plays)
   if (globalThis.coaxialClipAudio && engine && !audio) startAudio();
@@ -2051,8 +2065,11 @@ if (clipping) globalThis.coaxialClipStep = async (frames = 1, fps = 30) => {
   return engine && gpu?.bg ? 1 : 0;
 };
 function frame(now) {
-  requestAnimationFrame(frame);
+  frameRequest = 0;
+  if (worldPaused) return;
+  frameRequest = requestAnimationFrame(frame);
   if (clipping) return;
+  worldFrames++;
   const observedStart = frameTrace ? performance.now() : 0;
   if (frameTrace) { traceRow = [traceLast ? now - traceLast : 0, 0, 0, 0, 0, 0, 0, -1, 0, 0, 0];traceLast = now; }
   if (engine && socketHead < socketQueue.length) drainSockets(Math.max(2, SOCKET_BUDGET_MS - frameCost));
@@ -2171,6 +2188,7 @@ function draw(now) {
     try {
       const encodeStart = traceRow ? performance.now() : 0;
       const submitted = gpu.renderer.frame(n, w, h, captureRequested && probeArmed && ++frames >= 1 && !gpu.probed ? (encoder, texture) => readBack(encoder, texture) : null);
+      if (submitted) worldSubmissions++;
       if (traceRow) {traceRow[2]=performance.now()-encodeStart;traceRow[7]=submitted?1:0;traceRow[9]=gpu.renderer.buffers?.reduce((n,r)=>n+(r.image?r.bytes:0),0)||0;}
       if (submitted && gpu.renderer.readiness === gpu.renderer.ids.readiness.ready) globalThis.coaxial.sceneReady = true;
       if (probe || dev) globalThis.coaxial.renderStatus = { submitted, readiness: gpu.renderer.readiness, refusal: gpu.renderer.lastRefusal, error: gpu.renderer.error?.message, captureArmed: probeArmed, observed: !!gpu.renderer.observation, probed: gpu.probed };
@@ -2316,6 +2334,7 @@ function draw(now) {
   }
   const readback = captureRequested && probeArmed && ++frames >= 1 && !gpu.probed ? readBack(encoder, texture) : null;
   device.queue.submit([encoder.finish()]);
+  worldSubmissions++;
   if (x.coaxial_frame_admit) {
     device.__coaxialFrames=(device.__coaxialFrames||0)+1;
     const began=frameTrace?performance.now():0;
@@ -2482,6 +2501,7 @@ function send(kind, text = "") {
   after(false);
 }
 globalThis.coaxial = { send, ready: false, sceneReady: false, facts: () => pageFacts(), probe: () => engine?.exports.coaxial_probe?.(arena.state) ?? 0,
+  setWorldPaused, worldLoop: () => ({paused:worldPaused,frames:worldFrames,submissions:worldSubmissions,socketFrames,pending:gpu?.device.__coaxialFrames||0}),
   takeFrameTrace: () => frameTrace?.splice(0) ?? [],
   frameQueue: () => ({pending:gpu?.device.__coaxialFrames||0,bounded:typeof engine?.exports.coaxial_frame_admit==="function"}),
   quality: (field = 0) => engine?.exports.coaxial_quality_probe?.(arena.state, field) ?? -1,
@@ -2857,7 +2877,7 @@ async function main() {
     const started = await startGpu();
     if (!started) { document.documentElement.classList.remove("gpu"); loading.fail("SHADERS FAILED TO COMPILE", !gpu); return; }
     observeSize();
-    requestAnimationFrame(frame);
+    if (!worldPaused) frameRequest = requestAnimationFrame(frame);
     // The heavy ones first; sounds are fetched when first played.
     loading.step("assets");
     for (const a of firstAssets) loadAsset(a);

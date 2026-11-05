@@ -1,6 +1,7 @@
 // AppKit rendering and process/file effects for setup. Coax owns report parsing,
 // model/agent status, selection, readiness and the persisted settings document.
 import AppKit
+import MetalKit
 
 func setupText(_ field: Int64) -> String {
     var bytes: [UInt8] = []
@@ -10,142 +11,140 @@ func setupText(_ field: Int64) -> String {
     return String(decoding: bytes, as: UTF8.self)
 }
 
+let forgeAtlasAPI = ZeronAtlasAPI(
+  next_cluster: fgu_next_cluster,
+  measured: fgu_measured,
+  next_cell: fgu_next_cell,
+  cell: fgu_cell,
+  cell_ready: fgu_cell_ready,
+  cluster: fgu_cluster,
+  glyph_count: fgu_glyph_count,
+  font_count: fgu_font_count,
+  icon_count: fgu_icon_count,
+  font_size: fgu_font_size,
+  font_weight: fgu_font_weight,
+  icon_size: fgu_icon_size,
+  glyph_code: fgu_glyph_code,
+  set_font: fgu_set_font,
+  icon_name: fgu_icon_name,
+  set_icon: fgu_set_icon,
+  set_atlas: fgu_set_atlas,
+  set_dynamic: fgu_set_dynamic
+)
+
 @MainActor
-final class ForgeSetupPane: NSView {
-    let panel = NSVisualEffectView()
-    let cliStatus = NSTextField(labelWithString: "Checking OpenAgents CLI…")
-    let voiceStatus = NSTextField(labelWithString: "Checking shared model files…")
-    let modelPath = NSTextField(labelWithString: "~/.openagents/models")
-    let editModel = NSTextField(labelWithString: "Checking edit model…")
+final class ForgeSetupPane: MTKView, MTKViewDelegate {
+    // Value holders and transparent accessibility/input controls only.
+    // Every visible primitive, label and hit rectangle comes from chrome.coax.
+    let cliStatus = NSTextField(labelWithString: "")
+    let voiceStatus = NSTextField(labelWithString: "")
+    let modelPath = NSTextField(labelWithString: "")
+    let editModel = NSTextField(labelWithString: "")
     let microphoneStatus = NSTextField(labelWithString: "")
     let preparationStatus = NSTextField(labelWithString: "")
+    let agentStatus = NSTextField(labelWithString: "")
+    let routerStatus = NSTextField(labelWithString: "")
     let microphone = NSButton(title: "Allow microphone", target: nil, action: nil)
-    let agentStatus = NSTextField(labelWithString: "Looking for local agents…")
-    let routerStatus = NSTextField(labelWithString: "Automatic routing · agent, model and effort chosen per task")
     let verify = NSButton(title: "Verify voice model", target: nil, action: nil)
     let refresh = NSButton(title: "Refresh", target: nil, action: nil)
     let enter = NSButton(title: "Open Everglade", target: nil, action: nil)
-    let progress = NSProgressIndicator()
+    let folder = NSButton(title: "Open folder", target: nil, action: nil)
     var enterAction: (() -> Void)?
     var refreshAction: (() -> Void)?
     var verifyAction: (() -> Void)?
     var folderAction: (() -> Void)?
     var microphoneAction: (() -> Void)?
-    var sceneReady = false
-    var checking = true
-    var verifying = false
+    var sceneReady = false, checking = true, verifying = false
+    var statusMode = false, worldPaused = false
     var errorMessage: String?
-
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        wantsLayer = true; layer?.backgroundColor = NSColor.black.withAlphaComponent(0.25).cgColor
-        panel.material = .hudWindow; panel.blendingMode = .withinWindow; panel.state = .active
-        panel.appearance = NSAppearance(named: .darkAqua)
-        panel.wantsLayer = true; panel.layer?.cornerRadius = 16
-        panel.layer?.borderWidth = 1; panel.layer?.borderColor = NSColor(calibratedRed: 0.29, green: 0.76, blue: 0.76, alpha: 0.55).cgColor
-        panel.translatesAutoresizingMaskIntoConstraints = false; addSubview(panel)
-        NSLayoutConstraint.activate([
-            panel.centerXAnchor.constraint(equalTo: centerXAnchor), panel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            panel.widthAnchor.constraint(equalToConstant: 630), panel.heightAnchor.constraint(equalToConstant: 680)
-        ])
-        let stack = NSStackView(); stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 12
-        stack.translatesAutoresizingMaskIntoConstraints = false; panel.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 32),
-            stack.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -32),
-            stack.topAnchor.constraint(equalTo: panel.topAnchor, constant: 28)
-        ])
-        let mark = label("AETHYRFORGE", size: 11, weight: .medium)
-        mark.textColor = .init(calibratedRed: 0.35, green: 0.85, blue: 0.83, alpha: 1)
-        mark.font = .monospacedSystemFont(ofSize: 11, weight: .medium)
-        stack.addArrangedSubview(mark)
-        stack.addArrangedSubview(label(setupText(0), size: 28, weight: .semibold))
-        stack.addArrangedSubview(label(setupText(1), size: 14, secondary: true))
-        stack.addArrangedSubview(rule())
-
-        let cli = row("OPENAGENTS CLI", value: cliStatus)
-        cliStatus.toolTip = "~/.openagents/bin/openagents"
-        stack.addArrangedSubview(cli)
-
-        let voice = NSStackView(); voice.orientation = .vertical; voice.alignment = .leading; voice.spacing = 5
-        voice.addArrangedSubview(label("LOCAL VOICE", size: 10, weight: .semibold, secondary: true))
-        let voiceHead = NSStackView(); voiceHead.orientation = .horizontal; voiceHead.spacing = 18
-        voiceHead.addArrangedSubview(label(setupText(3), size: 17, weight: .medium))
-        verify.bezelStyle = .rounded; verify.controlSize = .small; verify.target = self; verify.action = #selector(verifyPressed)
-        voiceHead.addArrangedSubview(verify); voice.addArrangedSubview(voiceHead)
-        style(voiceStatus, size: 13, secondary: true); voice.addArrangedSubview(voiceStatus)
-        style(modelPath, size: 11, secondary: true); modelPath.lineBreakMode = .byTruncatingMiddle; modelPath.maximumNumberOfLines = 1
-        voice.addArrangedSubview(modelPath); modelPath.widthAnchor.constraint(equalToConstant: 560).isActive = true
-        style(editModel, size: 12, secondary: true); voice.addArrangedSubview(editModel)
-        let permission = NSStackView(); permission.orientation = .horizontal; permission.spacing = 12
-        style(microphoneStatus, size: 12); permission.addArrangedSubview(microphoneStatus)
-        microphone.bezelStyle = .rounded; microphone.controlSize = .small
-        microphone.target = self; microphone.action = #selector(microphonePressed)
-        permission.addArrangedSubview(microphone); voice.addArrangedSubview(permission)
-        style(preparationStatus, size: 12, secondary: true); voice.addArrangedSubview(preparationStatus)
-        stack.addArrangedSubview(voice)
-
-        let agents = NSStackView(); agents.orientation = .vertical; agents.alignment = .leading; agents.spacing = 7
-        agents.addArrangedSubview(label("LOCAL AGENTS", size: 10, weight: .semibold, secondary: true))
-        style(agentStatus, size: 13, secondary: true); agents.addArrangedSubview(agentStatus)
-        style(routerStatus, size: 13, secondary: true); agents.addArrangedSubview(routerStatus)
-        stack.addArrangedSubview(agents)
-        stack.addArrangedSubview(rule())
-
-        let footer = label("Model files are shared with your other OpenAgents apps.", size: 12, secondary: true)
-        stack.addArrangedSubview(footer)
-        let buttons = NSStackView(); buttons.orientation = .horizontal; buttons.spacing = 12
-        let folder = NSButton(title: "Open folder", target: self, action: #selector(folderPressed)); folder.bezelStyle = .rounded
-        buttons.addArrangedSubview(folder)
-        refresh.bezelStyle = .rounded; refresh.target = self; refresh.action = #selector(refreshPressed); buttons.addArrangedSubview(refresh)
-        progress.style = .spinning; progress.controlSize = .small; progress.isDisplayedWhenStopped = false
-        buttons.addArrangedSubview(progress)
-        let spacer = NSView(); spacer.setContentHuggingPriority(.defaultLow, for: .horizontal); buttons.addArrangedSubview(spacer)
-        enter.bezelStyle = .rounded; enter.bezelColor = .init(calibratedRed: 0.14, green: 0.55, blue: 0.56, alpha: 1)
-        enter.target = self; enter.action = #selector(enterPressed); buttons.addArrangedSubview(enter)
-        stack.addArrangedSubview(buttons); buttons.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
-        stack.addArrangedSubview(label("Setup is always available in the View menu.", size: 11, secondary: true))
+    var renderer: ZeronMetalRenderer!
+    var atlas: ZeronAtlas?
+    var drawCount = 0
+    var gpuSeconds = 0.0
+    var lastVertexCount = 0
+    override var isOpaque: Bool { false }
+    override var acceptsFirstResponder: Bool { true }
+    init(frame: NSRect) {
+        let device = MTLCreateSystemDefaultDevice()!
+        super.init(frame: frame, device: device)
+        colorPixelFormat = .bgra8Unorm
+        clearColor = MTLClearColorMake(0,0,0,0)
+        isPaused = true; enableSetNeedsDisplay = true; layer?.isOpaque = false
+        let path = Bundle.main.url(forResource: "Zeron", withExtension: "metal")!
+        let source = try! String(contentsOf: path, encoding: .utf8)
+        renderer = try! ZeronMetalRenderer(device: device, library: device.makeLibrary(source: source, options: nil))
+        delegate = self
+        for (i,b) in [enter,refresh,verify,folder,microphone].enumerated() {
+            b.isTransparent = true; b.tag = i+1; b.target = self; b.action = #selector(pressed(_:)); addSubview(b)
+        }
+        setAccessibilityLabel("Aethyrforge setup")
         update()
     }
-    required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
-    private func style(_ field: NSTextField, size: CGFloat, secondary: Bool = false) {
-        field.font = .systemFont(ofSize: size); field.textColor = secondary ? .secondaryLabelColor : .labelColor
+    required init(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
+    override func layout() {
+        super.layout()
+        for b in [enter,refresh,verify,folder,microphone] {
+            b.frame = NSRect(x: CGFloat(fgu_box(Int64(b.tag),Float(bounds.width),Float(bounds.height),0)),
+                y: bounds.height-CGFloat(fgu_box(Int64(b.tag),Float(bounds.width),Float(bounds.height),1))-CGFloat(fgu_box(Int64(b.tag),Float(bounds.width),Float(bounds.height),3)),
+                width: CGFloat(fgu_box(Int64(b.tag),Float(bounds.width),Float(bounds.height),2)),
+                height: CGFloat(fgu_box(Int64(b.tag),Float(bounds.width),Float(bounds.height),3)))
+        }
     }
-    private func label(_ value: String, size: CGFloat, weight: NSFont.Weight = .regular, secondary: Bool = false) -> NSTextField {
-        let field = NSTextField(labelWithString: value); style(field, size: size, secondary: secondary)
-        field.font = .systemFont(ofSize: size, weight: weight); return field
+    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) { needsDisplay = true }
+    func draw(in view: MTKView) {
+        guard !isHidden, let pass = currentRenderPassDescriptor, let drawable = currentDrawable else { return }
+        render(pass, size: drawableSize, dpr: window?.backingScaleFactor ?? 2) { $0.present(drawable) }
     }
-    private func rule() -> NSBox {
-        let line = NSBox(); line.boxType = .separator; line.widthAnchor.constraint(equalToConstant: 566).isActive = true; return line
-    }
-    private func row(_ heading: String, value: NSTextField) -> NSStackView {
-        let row = NSStackView(); row.orientation = .vertical; row.alignment = .leading; row.spacing = 5
-        row.addArrangedSubview(label(heading, size: 10, weight: .semibold, secondary: true))
-        style(value, size: 14); row.addArrangedSubview(value); return row
+    func render(_ pass: MTLRenderPassDescriptor, size: CGSize, dpr: CGFloat, done: ((MTLCommandBuffer)->Void)? = nil) {
+        guard let device, let state = fgu_state() else { return }
+        if atlas == nil || atlas!.dpr != dpr { atlas = zeronAtlas(device, state: state, dpr: dpr, api: forgeAtlasAPI) }
+        let bytes = Array((errorMessage ?? "").utf8)
+        bytes.withUnsafeBufferPointer { fgu_update(sceneReady,checking,verifying,statusMode,worldPaused,$0.baseAddress,Int64($0.count)) }
+        let buffer = device.makeBuffer(length: 32768*28*4, options: .storageModeShared)!
+        var n: Int64 = 0
+        for _ in 0..<3 {
+            n = fgu_draw(buffer.contents().assumingMemoryBound(to: Float.self),32768*28,Float(size.width),Float(size.height),Float(dpr))
+            atlas!.serve(state)
+        }
+        pass.colorAttachments[0].loadAction = .clear
+        pass.colorAttachments[0].clearColor = MTLClearColorMake(0,0,0,0)
+        guard let cmd = renderer.queue.makeCommandBuffer(), let enc = cmd.makeRenderCommandEncoder(descriptor: pass) else { return }
+        renderer.encode(enc, vertices: buffer, count: Int(n), size: size, atlas: atlas!)
+        enc.endEncoding(); done?(cmd)
+        cmd.addCompletedHandler { [weak self] command in
+            let seconds = max(0,command.gpuEndTime-command.gpuStartTime)
+            DispatchQueue.main.async { self?.gpuSeconds += seconds }
+        }
+        cmd.commit(); drawCount += 1; lastVertexCount = Int(n)
     }
     func update() {
         cliStatus.stringValue = errorMessage ?? setupText(2)
-        voiceStatus.stringValue = verifying ? "Verifying the pinned weight and tokenizer files…" : setupText(4)
-        modelPath.stringValue = setupText(6).isEmpty ? "~/.openagents/models" : setupText(6)
-        modelPath.toolTip = modelPath.stringValue
-        editModel.stringValue = setupText(5)
-        microphoneStatus.stringValue = setupText(14)
+        voiceStatus.stringValue = setupText(4); modelPath.stringValue = setupText(6)
+        editModel.stringValue = setupText(5); microphoneStatus.stringValue = setupText(14)
+        preparationStatus.stringValue = setupText(16); agentStatus.stringValue = setupText(7)
         microphone.title = setupText(15); microphone.isEnabled = fgs_status(3) != 0
-        preparationStatus.stringValue = setupText(16)
-        agentStatus.stringValue = setupText(7)
         refresh.isEnabled = !checking && !verifying
-        verify.isEnabled = !checking && !verifying && fgs_status(1) > 0
-        enter.isEnabled = errorMessage == nil && !checking && !verifying && fgs_can_enter(sceneReady)
-        if errorMessage == nil && (checking || verifying || !sceneReady) { progress.startAnimation(nil) } else { progress.stopAnimation(nil) }
-        setAccessibilityLabel("Aethyrforge setup")
+        verify.isEnabled = !checking && !verifying && fgs_status(1)>0
+        enter.title = statusMode ? "Return to Everglade" : "Open Everglade"
+        enter.isEnabled = statusMode || (errorMessage == nil && !checking && !verifying && fgs_can_enter(sceneReady))
+        needsLayout = true; needsDisplay = true
     }
-    @objc private func enterPressed() { if enter.isEnabled { enterAction?() } }
-    @objc private func refreshPressed() { refreshAction?() }
-    @objc private func verifyPressed() { verifyAction?() }
-    @objc private func folderPressed() { folderAction?() }
-    @objc private func microphonePressed() { microphoneAction?() }
+    @objc private func pressed(_ button: NSButton) {
+        guard button.isEnabled else { return }
+        switch button.tag {
+        case 1: enterAction?()
+        case 2: refreshAction?()
+        case 3: verifyAction?()
+        case 4: folderAction?()
+        case 5: microphoneAction?()
+        default: break
+        }
+    }
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 36 || event.keyCode == 76 || event.keyCode == 53 { if enter.isEnabled { enterAction?() }; return }
+        super.keyDown(with: event)
+    }
 }
-
 struct ForgeCLI {
     static func run(_ executable: URL, _ arguments: [String], timeout: TimeInterval = 15, environment: [String: String]? = nil) async throws -> Data {
         try await Task.detached(priority: .userInitiated) {

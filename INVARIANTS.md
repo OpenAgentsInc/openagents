@@ -4698,6 +4698,27 @@ handle refused at use, recovery after a lost device); natively,
 `verse/gpu/realm.sh local check` prints the ledger at the last frame and
 none live after close.
 
+## Aethyrforge pauses the world view after its first rendered frame
+
+`apps/aethyrforge-desktop/world-visibility.coax` admits the first real rendered
+frame even with setup open, then pauses the world's loop while setup/status
+covers it or its window is hidden, minimized or occluded. The browser host
+cancels the animation callback and suspends realm audio; socket delivery and
+the separate native room continue. Revealing the world schedules one loop;
+Reload performs a real navigation and reacquires first-frame readiness.
+The visibility authority kills all four mutants, including its 32-case fact
+matrix. The visible `--setup-profile` measures process CPU, GPU submissions,
+room delivery and idle panel draws through setup, status, reload, minimize,
+hide and resume.
+
+Setup and status paint through `apps/shared/zeron/gpui.coax` and the shared
+`MetalUI.swift`/`Zeron.metal` effects used by OpenAgents desktop. Coax owns
+labels, geometry, readiness and button rectangles. AppKit's transparent buttons
+supply input/accessibility only. The surfaces redraw on changes, with no idle
+animation loop. The game's own HUD is unchanged. CPU measurement converts
+`proc_pid_rusage` Mach ticks to nanoseconds and is checked against the independent
+POSIX process CPU clock before any numbers are recorded.
+
 ## Everglade's legacy GPU host bounds unfinished frames
 
 `aethyr/frame-pacing.coax` admits a frame only with a nonnegative count below

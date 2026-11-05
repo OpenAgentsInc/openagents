@@ -1,0 +1,18 @@
+{
+  "ending" : "finished",
+  "escapeKeepsDraftAndRun" : true,
+  "feedComponent" : "aethyr\/ui\/feed-draw.coax",
+  "feedVertices" : 3912,
+  "heldEnter" : true,
+  "nativeReturnAndKeypad" : true,
+  "ok" : true,
+  "realCoder" : "20261105-061509-660",
+  "realm" : {
+    "downs" : 0,
+    "scene" : true,
+    "typing" : false,
+    "ups" : 0
+  },
+  "replyLingerSeconds" : 5.041702083311975,
+  "shiftEnter" : true
+}
