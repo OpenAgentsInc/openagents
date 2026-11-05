@@ -9,6 +9,8 @@
   #assert b.pos.x==1 && b.pos.w==4 && b.colour.x==0.2 && b.edge.y==1;
   u[81]=100;u[82]=4;c:=valley_lab_scene_fs(LabScene.{pos=v4(0,50,0,1),colour=v4(1,0,0,0),edge=v4(0,0,0,10)},u[..]);
   #assert c.x==0.5 && c.y==0.5 && c.z==0.5 && c.w==1;
+  u[82]=5;d:=valley_lab_scene_fs(LabScene.{pos=v4(0,50,0,1),colour=v4(0.2,0.4,0.8,0),edge=v4(1,0,0,10)},u[..]);
+  #assert d.x==0.2 && d.y==0.4 && d.z==0.8 && d.w==1;
 }
 valley_lab_bg_vs :: (i:u32,j:u32)->V4 {return splash_bg_vs(i,j);}
 valley_lab_bg_fs :: (pos:V4,u:[]f32)->V4 {return v4(0.48f32,0.60f32,0.65f32,1.0f32);}
@@ -26,8 +28,8 @@ valley_lab_scene_vs :: (i:u32,j:u32,u:[]f32,mesh:[]V4,indices:[]u32)->LabScene {
 }
 valley_lab_scene_fs :: (v:LabScene,u:[]f32)->V4 {
   if v.pos.y<u[80] || v.pos.y>u[81] {return v4(0.48f32,0.60f32,0.65f32,1.0f32);}
-  if u[82]>3.5f32 && v.colour.w<0.5f32 {d:=v.edge.w/20.0f32;if d>1.0f32 {d=1.0f32;}return v4(d,d,d,1.0f32);}
-  if u[82]>2.5f32 && v.colour.w<0.5f32 {
+  if u[82]>3.5f32 && u[82]<4.5f32 && v.colour.w<0.5f32 {d:=v.edge.w/20.0f32;if d>1.0f32 {d=1.0f32;}return v4(d,d,d,1.0f32);}
+  if u[82]>2.5f32 && u[82]<3.5f32 && v.colour.w<0.5f32 {
     if v.edge.x>0.025f32 && v.edge.y>0.025f32 && v.edge.z>0.025f32 {gpu_discard();}
   }
   return v4(v.colour.x,v.colour.y,v.colour.z,1.0f32);

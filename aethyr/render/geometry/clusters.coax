@@ -1,0 +1,92 @@
+// Source-order leaf partitioning. No simplification, reordering or runtime LOD.
+#load "../../points.coax";
+#authority;
+CLUSTER_VERTICES :: 64;
+CLUSTER_TRIANGLES :: 124;
+CLUSTER_LEAVES :: 512;
+ClusterLeaf :: struct {
+  source:[CLUSTER_VERTICES]u32;local:[CLUSTER_TRIANGLES*3]u8;
+  vertices:int;triangles:int;first:int;low:Point;high:Point;
+}
+Clusters :: struct {leaf:[CLUSTER_LEAVES]ClusterLeaf;count:int;vertices:int;triangles:int;}
+
+#test "clusters remap a hand worked shared edge and bound every axis" {
+  p:=[4]Point.[v3(2,3,4),v3(-2,5,-6),v3(7,-8,9),v3(0,1,2)];i:=[6]u32.[2,0,1,1,0,3];c:[1]Clusters;
+  #assert clusters_build(c[..],p[..],i[..],1);
+  #assert c[0].count==1 && c[0].vertices==4 && c[0].triangles==2;
+  a:=c[0].leaf[0];#assert a.vertices==4 && a.triangles==2 && a.first==0;
+  #assert a.source[0]==2 && a.source[1]==0 && a.source[2]==1 && a.source[3]==3;
+  #assert a.local[0]==0 && a.local[1]==1 && a.local[2]==2 && a.local[3]==2 && a.local[4]==1 && a.local[5]==3;
+  #assert a.low.x== -2 && a.low.y== -8 && a.low.z== -6 && a.high.x==7 && a.high.y==5 && a.high.z==9;
+}
+#test "cluster triangle limit is inclusive and overflow never publishes partial output" {
+  p:=[3]Point.[v3(0,0,0),v3(1,0,0),v3(0,1,0)];i:[125*3]u32;for k:0..<i.count {i[k]=cast(u32)(k%3);}c:[1]Clusters;
+  #assert clusters_build(c[..],p[..],i[0..<124*3],1) && c[0].count==1 && c[0].leaf[0].triangles==124;
+  #assert !clusters_build(c[..],p[..],i[..],1) && c[0].triangles==124 && c[0].leaf[0].triangles==124;
+  #assert clusters_build(c[..],p[..],i[..],2) && c[0].count==2 && c[0].leaf[1].first==124 && c[0].leaf[1].triangles==1;
+}
+#test "cluster vertex boundary admits 64 then starts another leaf with independent local indices" {
+  p:[66]Point;for k:0..<66 {p[k]=v3(cast(f32)k,0,0);}i:[69]u32;
+  for k:0..<63 {i[k]=cast(u32)k;}i[63]=62;i[64]=63;i[65]=0;i[66]=63;i[67]=64;i[68]=65;c:[1]Clusters;
+  #assert clusters_build(c[..],p[..],i[..],2) && c[0].count==2 && c[0].vertices==67;
+  #assert c[0].leaf[0].vertices==64 && c[0].leaf[0].triangles==22 && c[0].leaf[1].vertices==3;
+  #assert c[0].leaf[1].source[0]==63 && c[0].leaf[1].source[2]==65 && c[0].leaf[1].local[2]==2;
+  for a:c[0].leaf[0..<c[0].count] {for k:0..<a.triangles*3 {#assert a.source[cast(int)a.local[k]]==i[a.first*3+k];}}
+}
+#test "cluster malformed inputs and capacity ranges leave an existing result untouched" {
+  p:=[3]Point.[v3(0,0,0),v3(1,0,0),v3(0,1,0)];i:=[3]u32.[0,1,2];c:[1]Clusters;
+  #assert clusters_build(c[..],p[..],i[..],512);
+  #assert !clusters_build(c[..],p[..],i[..],0) && !clusters_build(c[..],p[..],i[..],513);
+  #assert !clusters_build(c[..],p[0..<0],i[..],1) && !clusters_build(c[..],p[..],i[0..<0],1);
+  #assert !clusters_build(c[..],p[..],i[0..<2],1);
+  for k:0..<3 {bad:=i;bad[k]=3;#assert !clusters_build(c[..],p[..],bad[..],1);}
+  p[2].z=1000000;#assert !clusters_build(c[..],p[..],i[..],1);
+  #assert c[0].count==1 && c[0].triangles==1 && c[0].leaf[0].source[2]==2;
+}
+
+#test "clusters split at exactly 65 proposed vertices and reuse a later new corner" {
+  p:[65]Point;for k:0..<65 {p[k]=v3(cast(f32)k,0,0);}i:[66]u32;for k:0..<63 {i[k]=cast(u32)k;}
+  i[63]=63;i[64]=64;i[65]=64;c:[1]Clusters;
+  #assert clusters_build(c[..],p[..],i[..],2) && c[0].count==2;
+  #assert c[0].leaf[0].vertices==63 && c[0].leaf[1].vertices==2;
+  #assert c[0].leaf[1].local[0]==0 && c[0].leaf[1].local[1]==1 && c[0].leaf[1].local[2]==1;
+}
+#test "clusters share repeated corners inside a triangle and retain the exact capacity ceiling" #steps 100000000 #traversal 536870912 {
+  p:=[1]Point.[v3(0,0,0)];i:[513*124*3]u32;c:[1]Clusters;
+  #assert clusters_build(c[..],p[..],i[0..<512*124*3],512);
+  #assert c[0].count==512 && c[0].vertices==512 && c[0].leaf[511].triangles==124;
+  #assert c[0].leaf[0].vertices==1 && c[0].leaf[0].local[1]==0 && c[0].leaf[0].local[2]==0;
+  #assert !clusters_build(c[..],p[..],i[..],512) && c[0].triangles==512*124;
+}
+
+clusters_build :: (out:[]Clusters,p:[]Point,indices:[]u32,capacity:int)->bool {
+  if capacity<1 || capacity>CLUSTER_LEAVES || p.count==0 || indices.count==0 || indices.count%3!=0 {return false;}
+  for v:p {if !finite3(v) {return false;}}
+  for v:indices {if cast(int)v>=p.count {return false;}}
+  next:[1]Clusters;next[0].count=1;
+  for t:0..<indices.count/3 {
+    again:=true;
+    while again {
+      a:=next[0].leaf[next[0].count-1];map:[3]int;missing:[3]u32;added:=0;
+      for corner:0..<3 {
+        global:=indices[t*3+corner];found:= -1;
+        for k:0..<a.vertices {if a.source[k]==global {found=k;}}
+        for k:0..<added {if missing[k]==global {found=a.vertices+k;}}
+        if found<0 {found=a.vertices+added;missing[added]=global;added+=1;}
+        map[corner]=found;
+      }
+      if a.vertices+added>CLUSTER_VERTICES || a.triangles==CLUSTER_TRIANGLES {
+        if next[0].count==capacity {return false;}
+        next[0].leaf[next[0].count].first=t;next[0].count+=1;
+      }else {
+        for k:0..<added {a.source[a.vertices+k]=missing[k];}a.vertices+=added;
+        for corner:0..<3 {a.local[a.triangles*3+corner]=cast(u8)map[corner];v:=p[cast(int)indices[t*3+corner]];
+          if a.triangles==0 && corner==0 {a.low=v;a.high=v;}
+          else {a.low=v3(lo(a.low.x,v.x),lo(a.low.y,v.y),lo(a.low.z,v.z));a.high=v3(hi(a.high.x,v.x),hi(a.high.y,v.y),hi(a.high.z,v.z));}
+        }
+        a.triangles+=1;next[0].vertices+=added;next[0].triangles+=1;next[0].leaf[next[0].count-1]=a;again=false;
+      }
+    }
+  }
+  out[0]=next[0];return true;
+}

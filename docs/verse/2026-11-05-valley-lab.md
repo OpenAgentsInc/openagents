@@ -1,7 +1,7 @@
 # Valley Lab: build a valley from checked Aethyr primitives
 
 Status: active implementation roadmap, updated 2026-11-05. The initial
-walkable world and the first procedural asset/geometry stations now run locally.
+walkable world, procedural asset/indexed baseline and bounded cluster station now run locally.
 
 Build **Valley Lab**, an unlisted world at `/worlds/valley-lab`, where a
 visitor can inspect each engine system alone and then watch those same
@@ -72,6 +72,48 @@ ledger/native-host parity, hero-quality imported art, texture streaming,
 cluster hierarchy, error-based LOD or Nanite parity is claimed by this slice.
 The 6 MB arena and 64,000 submitted-vertex budget now include index traffic
 and the highest tessellation; the physical HUD buffer has 65,536 vertices.
+
+## Landed: bounded leaf clusters
+
+The next slice builds source-order leaves over the same admitted indexed rock.
+[`clusters.coax`](../../aethyr/render/geometry/clusters.coax) owns the reusable
+atomic builder: at most 64 local vertices and 124 triangles per leaf, with a
+512-leaf physical ceiling. Each leaf carries its source-vertex remap, local
+u8 triangle indices, source triangle range and conservative position bounds.
+A complete candidate is built privately; malformed input or capacity refusal
+leaves the previously published result untouched. This structural partitioner
+accepts repeated corners; mesh admission remains the indexed validator's job.
+
+| Tessellation | Leaves | Vertices across leaves | Largest leaf vertices / triangles |
+| --- | --- | --- | --- |
+| 8 | 9 | 556 | 64 / 97 |
+| 16 | 36 | 2,286 | 64 / 90 |
+| 32 | 204 | 13,056 | 64 / 62 |
+
+`#clusters` opens the geometry inspector in cluster-ID mode. `C` switches
+between decoded leaves and the original reference path; entering from WALK
+opens the inspector. `V` cycles six views, including cluster IDs, and can
+shade the decoded leaves normally for a reference comparison. Phone VIEW
+also reaches cluster IDs. The renderer uploads each leaf's local vertices
+and pulls its local indices, so colors identify actual independently remapped
+leaves. The HUD reports live leaf/remapped-vertex counts and limits. Source
+bytes, hashes, normals and triangle ordering remain unchanged.
+
+This first partitioner is deliberately deterministic and source ordered.
+It duplicates boundary vertices and offers no reduction in triangle count;
+the high profile duplicates about twice the original vertices. It is a
+correctness baseline, not a spatially optimized meshlet builder. It introduces
+no hierarchy, simplification, culling, LOD, paging or Nanite parity claim.
+The initial renderer adoption remains in place. Checks cover tiny hand-worked
+meshes, both exact leaf boundaries, atomic refusal, all three rock profiles,
+every decoded source corner, every bound and submitted buffer budgets.
+The authority mutation gate kills all 124 mutants. Actual WebGPU checks
+compare the decoded lit reference patch with the original path and inspect
+cluster-ID pixels on desktop/phone viewports.
+
+Run the native builder/report with
+`coax/web/tool.sh aethyr/tools/valley-clusters.coax`.
+Evidence is in the [cluster slice receipt](../verification/valley-lab-clusters-2026-11-05/README.md).
 
 ## What the book gives us
 
@@ -305,15 +347,15 @@ draft's status on the strength of a roadmap.
 
 ## Next implementation task
 
-Build **bounded cluster partitioning** over the current indexed rock. Add a
-cluster-ID view beside the full-detail baseline and a deterministic Coax
-builder with at most 64 local vertices and 124 triangles per leaf. Prove
-that decoding the clusters covers every source triangle exactly once,
-remaps indices correctly, encloses every referenced vertex and refuses
-capacity overflow without publishing a partial mesh. Test tiny hand-worked
-meshes before the 12,288-triangle rock. Keep the current baseline and its
-hashes unchanged. Hierarchy simplification, screen-error selection and
-paging come only after that leaf representation is checked and visible.
+Build **the first hierarchy and simplification fixtures** above these checked
+leaves. Start with tiny planar and bent meshes: explicit parent/child ownership,
+conservative parent bounds, deterministic simplification and a measured geometric
+error that is zero for an unchanged mesh. Preserve shared boundaries or prove
+crack-free reconstruction before simplifying the rock. Add a hierarchy-level
+inspection view beside the unchanged full-detail and leaf references; show
+actual triangle counts and error rather than presenting source tessellation
+changes as LOD. Screen-error cuts and paging follow only after hierarchy/error
+fixtures pass. Keep the current rock bytes and reference hashes unchanged.
 
 Continue the remaining milestone 0/1 exits alongside that step: saved
 walkthrough/replay, bounded source import and shared-renderer qualification.

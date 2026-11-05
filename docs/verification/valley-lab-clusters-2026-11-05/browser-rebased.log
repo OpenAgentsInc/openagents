@@ -1,0 +1,8 @@
+PASS Valley clusters desktop: decoded leaf counts/index traffic, cluster-ID readback, exact lit reference region, C path toggle and #clusters link
+Valley fenced frame observation: {\"scope\":\"30 static cluster-view frames, CPU submission plus GPU queue completion, not GPU timestamps or route FPS\",\"viewport\":[1280,800],\"triangles\":3072,\"medianMs\":0.9500000476837158,\"p95Ms\":1.5600000619888306,\"p99Ms\":1.7200000286102295}
+PASS Valley asset/geometry desktop: stations, actual index pulling, view modes, three native/Wasm SHA256 matches, bounded replacement and keyboard controls
+PASS Valley Lab desktop: direct route, rendered geometry, WASD, jump/land, reset, keyboard controls, noindex, no console errors
+PASS Valley clusters phone: decoded leaf counts/index traffic, cluster-ID readback, exact lit reference region, C path toggle and #clusters link
+Valley fenced frame observation: {\"scope\":\"30 static cluster-view frames, CPU submission plus GPU queue completion, not GPU timestamps or route FPS\",\"viewport\":[390,844],\"triangles\":3072,\"medianMs\":0.9599999189376831,\"p95Ms\":1.5749999284744263,\"p99Ms\":1.6150000095367432}
+PASS Valley asset/geometry phone: stations, actual index pulling, view modes, three native/Wasm SHA256 matches, bounded replacement and touch station/detail controls
+PASS Valley Lab phone: direct route, rendered geometry, WASD, jump/land, reset, actual touch movement, noindex, no console errors

@@ -1,0 +1,7 @@
+coax: note[E0400]: compile-time steps: 78790452 of 100000000 used (78%), above three quarters of the limit; more than 100000000 fails with E0400
+  top users of compile-time steps:
+    78790452 steps  /Users/christopherdavid/work/oa-valley-clusters/aethyr/render/geometry/clusters.coax:47:1  #test 'clusters share repeated corners inside a triangle and retain the exact capacity ceiling'
+  fix: run coax test --only 'clusters share repeated corners inside a triangle and retain the exact capacity ceiling' for what inside the check uses the most; then do less work in it, split it, or give it a larger #steps N
+source-order-v1 divisions=8 leaves=9 remapped_vertices=556 triangles=768 max_vertices=64 max_triangles=97 sha256=c39ef513e76cfb373abbb2185e35120cf4a02e13db13f80f92c82e05449bbf64
+source-order-v1 divisions=16 leaves=36 remapped_vertices=2286 triangles=3072 max_vertices=64 max_triangles=90 sha256=3669c50bede0c4da9f611f4c658620ffc906ad6839984107838ab73aba37550b
+source-order-v1 divisions=32 leaves=204 remapped_vertices=13056 triangles=12288 max_vertices=64 max_triangles=62 sha256=4e2053348a34e5a363ee5451b54412daba41bd41813c40d0cd6d8559f2ddd56c

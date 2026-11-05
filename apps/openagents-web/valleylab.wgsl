@@ -76,7 +76,7 @@ fn coax_p_scene_fs(p_v: coax_t10) -> vec4f {
   {
     return coax_p_v4(0x1.eb851ep-2f, 0x1.333334p-1f, 0x1.4cccccp-1f, 0x1.000000p0f);
   }
-  if (((coax_at_u(i32(82i)) > 0x1.c00000p1f) && (l_v.y.w < 0x1.000000p-1f)))
+  if ((((coax_at_u(i32(82i)) > 0x1.c00000p1f) && (coax_at_u(i32(82i)) < 0x1.200000p2f)) && (l_v.y.w < 0x1.000000p-1f)))
   {
     l_d = (l_v.z.w / 0x1.400000p4f);
     if ((l_d > 0x1.000000p0f))
@@ -85,7 +85,7 @@ fn coax_p_scene_fs(p_v: coax_t10) -> vec4f {
     }
     return coax_p_v4(l_d, l_d, l_d, 0x1.000000p0f);
   }
-  if (((coax_at_u(i32(82i)) > 0x1.400000p1f) && (l_v.y.w < 0x1.000000p-1f)))
+  if ((((coax_at_u(i32(82i)) > 0x1.400000p1f) && (coax_at_u(i32(82i)) < 0x1.c00000p1f)) && (l_v.y.w < 0x1.000000p-1f)))
   {
     if ((((l_v.z.x > 0x1.99999ap-6f) && (l_v.z.y > 0x1.99999ap-6f)) && (l_v.z.z > 0x1.99999ap-6f)))
     {

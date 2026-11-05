@@ -5,6 +5,7 @@
 #load "../../aethyr/ui/draw.coax";
 #load "../../aethyr/budget.coax";
 #load "../../verse/valley/rock.coax";
+#load "../../aethyr/render/geometry/clusters.coax";
 
 VALLEY_VERTICES :: 65536;
 VALLEY_MESH :: 16384;
@@ -18,6 +19,8 @@ ValleyLab :: struct {
   eye:Point; forward:Point; right:Point; up:Point; scale:f32;
   mesh:[VALLEY_MESH*8]f32; mesh_n:int; draws:[4]u32;
   meter:[1]BudgetMeter;
+  clusters:[1]Clusters;cluster_path:bool;
+  candidate_rock:[1]Rock; // bounded admission scratch, counted in the frame arena
   rock:[1]Rock;registry:[1]AssetRegistry;rock_ready:bool;divisions:int=16;
   index:[VALLEY_INDICES]u32;index_n:int;
   stage:int;mode:int;orbit:f32=0.65;tilt:f32=0.28;distance:f32=9;
@@ -66,6 +69,33 @@ VALLEY_BOXES :: [19*6]f32.[
     for k:0..<s[0].rock[0].indices {#assert s[0].index[1296+k]==cast(u32)1296+s[0].rock[0].i[k];}
     #assert s[0].draws[1]==cast(u32)s[0].index_n && s[0].registry[0].held==1;
   }
+}
+#test "Valley cluster decoding covers every source triangle once and fits all detail buffers" #steps 3000000000 {
+  s:[1]ValleyLab;out:[VALLEY_VERTICES*12]f32;u:[88]f32;valley_start(s[..]);
+  #assert valley_key(s[..],99,true) && s[0].stage==2 && s[0].mode==5 && s[0].cluster_path;
+  for detail:[3]int.[8,16,32] {
+    #assert valley_load_rock(s[..],detail);r:=s[0].rock[..];c:=s[0].clusters[..];covered:=0;
+    #assert c[0].triangles==r[0].indices/3 && c[0].count>1;
+    for a:c[0].leaf[0..<c[0].count] {
+      #assert a.first==covered && a.vertices<=64 && a.triangles<=124 && a.triangles>0;
+      for k:0..<a.vertices {p:=r[0].p[cast(int)a.source[k]];
+        #assert p.x>=a.low.x && p.y>=a.low.y && p.z>=a.low.z && p.x<=a.high.x && p.y<=a.high.y && p.z<=a.high.z;}
+      for k:0..<a.triangles*3 {#assert cast(int)a.local[k]<a.vertices && a.source[cast(int)a.local[k]]==r[0].i[a.first*3+k];}
+      covered+=a.triangles;
+    }
+    #assert covered==r[0].indices/3;
+    n:=valley_frame(s[..],out[..],u[..],390,844,1,0,true);
+    #assert n>0 && budget_ok(s[0].meter[0]) && s[0].mesh_n==1296+c[0].vertices && s[0].index_n==1296+r[0].indices;
+    base:=1296;at:=1296;
+    for a:c[0].leaf[0..<c[0].count] {
+      for k:0..<a.triangles*3 {#assert s[0].index[at+k]==cast(u32)(base+cast(int)a.local[k]);}
+      base+=a.vertices;at+=a.triangles*3;
+    }
+    // Cluster reconstruction can also be shaded normally for a reference comparison.
+    s[0].mode=0;_:=valley_frame(s[..],out[..],u[..],1280,800,1,0,true);
+    #assert s[0].mesh_n==1296+c[0].vertices && budget_ok(s[0].meter[0]);s[0].mode=5;
+  }
+  #assert valley_key(s[..],99,true) && !s[0].cluster_path && s[0].mode==0;
 }
 #test "Valley walker moves, jumps, lands and releases input on blur" #steps 1000000000 {
   s:[1]ValleyLab;valley_start(s[..]);
@@ -119,7 +149,8 @@ valley_blur :: (s:[]ValleyLab) #export_c {
 valley_key :: (s:[]ValleyLab,key:int,down:bool)->bool #export_c {
   valley_start(s);bit:=0;
   if down && key>=49 && key<=51 {valley_station(s,key-49);return true;}
-  if down && (key==118 || key==86) {s[0].mode=(s[0].mode+1)%5;return true;}
+  if down && (key==99 || key==67) {if s[0].stage==0 {valley_station(s,2);}s[0].cluster_path=!s[0].cluster_path;s[0].mode=ifx s[0].cluster_path then 5 else 0;return true;}
+  if down && (key==118 || key==86) {s[0].mode=(s[0].mode+1)%6;if s[0].mode==5 && s[0].stage==0 {valley_station(s,2);s[0].mode=5;}return true;}
   if down && (key==108 || key==76) {#assert valley_load_rock(s,ifx s[0].divisions==8 then 16 else ifx s[0].divisions==16 then 32 else 8);return true;}
   if s[0].stage!=0 && bit==0 {
     if down && (key== -4 || key== -5) {s[0].orbit+=ifx key== -4 then 0.12f32 else -0.12f32;return true;}
@@ -148,7 +179,7 @@ valley_pointer :: (s:[]ValleyLab,x:f32,y:f32,phase:int,kind:int,id:int)->bool #e
     }
     if s[0].stage!=0 && s[0].width/s[0].d<700 && y>=s[0].height-88*s[0].d && y<=s[0].height-44*s[0].d {
       cx:=x/s[0].d;w:=s[0].width/s[0].d;
-      if cx>=16 && cx<=w*0.5-16 {s[0].mode=(s[0].mode+1)%5;return true;}
+      if cx>=16 && cx<=w*0.5-16 {s[0].mode=(s[0].mode+1)%6;return true;}
       if cx>=w*0.5+16 && cx<=w-16 {#assert valley_load_rock(s,ifx s[0].divisions==8 then 16 else ifx s[0].divisions==16 then 32 else 8);return true;}
     }
     if s[0].stage!=0 {s[0].drag=true;s[0].drag_id=id;s[0].drag_x=x;s[0].drag_y=y;return true;}
@@ -230,7 +261,7 @@ valley_frame :: (s:[]ValleyLab,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:
   n=hd_text(out,n,"RESET",w/d-84,36,12,pen,0);
   for tab:0..<3 {b:=HudBox.{x=16+cast(f32)tab*102,y=82,width=96,height=44};n=hd_panel(out,n,b,pen,s[0].stage==tab);n=hd_text_fit(out,n,[3]string.["1 WALK","2 ASSETS","3 MESH"][tab],b.x+7,109,11,82,pen,0);}
   if s[0].stage!=0 {n=valley_inspector(s,out,n,pen);}
-  if w/d>=700 {n=hd_text(out,n,ifx s[0].stage==0 then "WASD MOVE / SHIFT RUN / SPACE JUMP / 1-3 STATIONS" else "DRAG OR ARROWS ORBIT / WHEEL ZOOM / V VIEW / L DETAIL",20,h/d-22,11,pen,0);}
+  if w/d>=700 {n=hd_text(out,n,ifx s[0].stage==0 then "WASD MOVE / SHIFT RUN / SPACE JUMP / 1-3 STATIONS" else "DRAG ORBIT / WHEEL ZOOM / V VIEW / L DETAIL / C CLUSTER PATH",20,h/d-22,11,pen,0);}
   else {n=hd_text_fit(out,n,ifx s[0].stage==0 then "LEFT DRAG MOVE / RIGHT DRAG LOOK / TAP JUMP" else "DRAG ORBIT / TAP VIEW OR DETAIL",16,h/d-22,10,w/d-32,pen,0);}
   if s[0].thumbs.move_on {t:=s[0].thumbs;n=hd_ring(out,n,t.ox/d,t.oy/d,44,44,0,6.2831853,pen,2);n=hd_ring(out,n,t.ox/d+t.pad_x*44,t.oy/d-t.pad_y*44,12,12,0,6.2831853,pen,0);}
   s[0].meter[0]=budget_meter(VALLEY_BUDGET);budget_measure(s[0].meter[..],n+s[0].index_n,3,budget_arena_bytes(size_of(ValleyLab),VALLEY_VERTICES,12,88));
@@ -242,31 +273,47 @@ valley_probe :: (s:[]ValleyLab,field:int)->int #export_c {
   if field==4 {return s[0].keys;}if field==5 {return s[0].mesh_n;}
   if field==6 {return s[0].stage;}if field==7 {return s[0].mode;}if field==8 {return s[0].rock[0].indices/3;}
   if field==9 {return s[0].rock[0].vertices;}if field==10 {return s[0].rock[0].bytes;}
+  if field==14 {return s[0].clusters[0].count;}if field==15 {return s[0].clusters[0].vertices;}if field==16 {return ifx s[0].cluster_path || s[0].mode==5 then 1 else 0;}
   if field==11 {return s[0].registry[0].held;}if field==12 {return s[0].index_n;}if field>=20 && field<28 {return cast(int)s[0].rock[0].id.words[field-20];}return s[0].divisions;
 }
 
 valley_load_rock :: (s:[]ValleyLab,divisions:int)->bool {
   if divisions!=8 && divisions!=16 && divisions!=32 {return false;}
   if s[0].rock_ready && s[0].divisions==divisions {return true;}
-  next:[1]Rock;if !rock_build(next[..],divisions,12609) {return false;}
+  next:=s[0].candidate_rock[..];if !rock_build(next,divisions,12609) {return false;}
+  leaves:[1]Clusters;if !clusters_build(leaves[..],next[0].p[0..<next[0].vertices],next[0].i[0..<next[0].indices],CLUSTER_LEAVES) {return false;}
   if !s[0].rock_ready {s[0].registry[0]=asset_registry(ROCK_MAX_BYTES*2);}
   content:=[1]string.[cast(string)next[0].encoded[0..<next[0].bytes]];ids:=[1]AssetId.[next[0].id];
   if asset_admit(s[0].registry[..],content[..],ids[..])!=ASSET_OK {return false;}
   if s[0].rock_ready {_:=asset_release(s[0].registry[..],s[0].rock[0].id);}
-  s[0].rock[0]=next[0];s[0].divisions=divisions;s[0].rock_ready=true;return true;
+  s[0].clusters[0]=leaves[0];s[0].rock[0]=next[0];s[0].divisions=divisions;s[0].rock_ready=true;return true;
 }
 valley_station :: (s:[]ValleyLab,stage:int) {
   valley_start(s);if stage<0 || stage>2 || stage==s[0].stage {return;}
   valley_blur(s);s[0].stage=stage;s[0].orbit=0.65;s[0].tilt=0.28;s[0].distance=9;
-  s[0].mode=ifx stage==2 then 3 else 0;
+  s[0].cluster_path=false;s[0].mode=ifx stage==2 then 3 else 0;
   name:=[3]string.["walk","assets","geometry"][stage];
   for c,k:name {s[0].outbox[k]=c;}s[0].out_n=name.count;s[0].action=3;
 }
 valley_hash :: (s:[]ValleyLab,n:int) #export_c {
   if n<0 || n>s[0].inbox.count {return;}h:=cast(string)s[0].inbox[0..<n];
-  if h=="walk" {valley_station(s,0);}if h=="assets" {valley_station(s,1);}if h=="geometry" {valley_station(s,2);}
+  if h=="walk" {valley_station(s,0);}if h=="assets" {valley_station(s,1);}if h=="geometry" {valley_station(s,2);}if h=="clusters" {valley_station(s,2);s[0].mode=5;s[0].cluster_path=true;}
 }
 valley_rock_mesh :: (s:[]ValleyLab,x:f32) {
+  if s[0].cluster_path || s[0].mode==5 {
+    r:=s[0].rock[..];
+    for a,id:s[0].clusters[0].leaf[0..<s[0].clusters[0].count] {
+      base:=s[0].mesh_n;first:=s[0].index_n;
+      colour:=v3(0.2+cast(f32)((id*37+11)%89)/120,0.2+cast(f32)((id*53+31)%83)/115,0.2+cast(f32)((id*71+7)%79)/110);
+      for k:0..<a.vertices {
+        source:=cast(int)a.source[k];p:=r[0].p[source];
+        c:=ifx s[0].mode==5 then colour else rock_colour(r[0].n[source],s[0].mode,p.y);
+        valley_vertex(s,add(p,v3(x,0,0)),c);s[0].mesh[(s[0].mesh_n-1)*8+7]=0;
+      }
+      s[0].index_n=first;
+      for k:0..<a.triangles*3 {#assert s[0].index_n<VALLEY_INDICES;s[0].index[s[0].index_n]=cast(u32)(base+cast(int)a.local[k]);s[0].index_n+=1;}
+    }return;
+  }
   start:=s[0].mesh_n;first:=s[0].index_n;r:=s[0].rock[..];
   for k:0..<r[0].vertices {
     p:=r[0].p[k];valley_vertex(s,add(p,v3(x,0,0)),rock_colour(r[0].n[k],s[0].mode,p.y));
@@ -300,9 +347,16 @@ valley_inspector :: (s:[]ValleyLab,out:[]f32,n:int,pen:HdPen)->int {
   at=valley_number(out,at,"HEIGHT mm ",cast(int)((r[0].measured.high.y-r[0].measured.low.y)*1000),20,y+66,pen);
   at=valley_number(out,at,"WIDTH mm ",cast(int)((r[0].measured.high.x-r[0].measured.low.x)*1000),20,y+88,pen);
   at=valley_number(out,at,"DEPTH mm ",cast(int)((r[0].measured.high.z-r[0].measured.low.z)*1000),20,y+110,pen);
-  at=hd_text(out,at,[5]string.["VIEW / LIT","VIEW / ALBEDO","VIEW / NORMALS","VIEW / TRIANGLE EDGES","VIEW / DEPTH 0-20m"][s[0].mode],20,y+132,11,pen,0);
+  at=hd_text(out,at,[6]string.["VIEW / LIT","VIEW / ALBEDO","VIEW / NORMALS","VIEW / TRIANGLE EDGES","VIEW / DEPTH 0-20m","VIEW / CLUSTER IDS"][s[0].mode],20,y+132,11,pen,0);
+  if s[0].mode==5 || s[0].cluster_path {
+    at=valley_number(out,at,"LEAVES ",s[0].clusters[0].count,20,y+154,pen);
+    at=valley_number(out,at,"REMAPPED VERTICES ",s[0].clusters[0].vertices,20,y+176,pen);
+    at=hd_text(out,at,"LIMIT / 64 VERTICES / 124 TRIANGLES",20,y+198,10,pen,1);
+    at=hd_text(out,at,"DECODED LEAVES / FULL TRIANGLE COVERAGE",20,y+220,10,pen,0);
+  }else {
   at=hd_text(out,at,"SHA256 / CANONICAL ASSET",20,y+154,10,pen,1);
   for line:0..<4 {at=hd_text(out,at,cast(string)r[0].hash[line*16..<(line+1)*16],20,y+170+cast(f32)line*13,10,pen,0);}
+  }
   if width<700 {
     for k:0..<2 {b:=HudBox.{x=16+cast(f32)k*(width*0.5),y=height-88,width=width*0.5-32,height=44};
       at=hd_panel(out,at,b,pen,false);at=hd_text_fit(out,at,ifx k==0 then "V / VIEW" else "L / DETAIL",b.x+8,b.y+28,11,b.width-16,pen,0);}

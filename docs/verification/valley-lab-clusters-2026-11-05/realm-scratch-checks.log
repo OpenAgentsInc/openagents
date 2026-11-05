@@ -1,0 +1,10 @@
+ok   #test Valley stations stop held movement and expose one content identified indexed rock (1 case, 220823993 steps, 3256 ms)
+ok   #test Valley full detail GPU index pulling covers the source without expansion (1 case, 1065059978 steps, 14870 ms)
+ok   #test Valley cluster decoding covers every source triangle once and fits all detail buffers (1 case, 1084313759 steps, 14435 ms)
+ok   #test Valley walker moves, jumps, lands and releases input on blur (1 case, 180037991 steps, 2399 ms)
+ok   #test Valley drawn gate stops the capsule and its low steps can be climbed (1 case, 179247766 steps, 2427 ms)
+ok   #test Valley keyboard and touch controls drive the same shared walker (1 case, 351311883 steps, 4675 ms)
+ok   #test Valley frames fit desktop and phone buffers and freeze for goldens (1 case, 190438377 steps, 2569 ms)
+ok   #test Valley Lab declares the shared walking capsule for its exact route and producer (1 case, 354 steps, 0 ms)
+8 of 441 checks (--only 'Valley'), 8 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
