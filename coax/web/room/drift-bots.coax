@@ -1,8 +1,12 @@
 // The drift check's bots (coax/web/everglade-drift.coax, #12778): N players in the room the page plays
 // (pair-drift-ROOM), so the page draws other bodies and the server steps more than one seat. They
-// walk rings around the page's player, 10 m out and more (clear of you: a body you bump is a
-// correction offline never has). Bot 0 keeps 6 m from that player and, each time the file DIR/hold
-// appears and it is within 15 m (the spell's 60 feet, less the lag), casts Hold Person (bar slot 45) on them, removes the file
+// walk rings around the page's player, DB_OUT m out and more: clear of you (a body you bump is a
+// correction offline never has) and of what the check's spells reach, and farther from the people
+// round you than you are, so they turn to you as they do offline (the townspeople face and greet
+// the nearest player, everglade-watch.coax everglade_room_town; at 6 and 10 m the bots drew some,
+// and your Reverse Gravity lifted them, so the room's WANTED level and its conditions on the town
+// came out unlike the offline page's, #12887). Each time the file DIR/hold appears bot 0 comes in
+// to 6 m and, within 15 m (the spell's 60 feet, less the lag), casts Hold Person (bar slot 45) on them, removes the file
 // and writes DIR/held with the cast's sequence number. DIR/bots-heard.txt has what bot 0 sent and
 // heard of it: its casts, every e cast and every refusal (r SEQ WHY). The page's player is the seat that isn't a bot's.
 //   coax/web/tool.sh coax/web/room/drift-bots.coax ws://127.0.0.1:PORT N SECONDS ROOM DIR
@@ -13,6 +17,9 @@
 #load "../../lib/sys/fs.coax";
 
 DB_MAX :: 8;
+// m round the page's player the bots walk: twice your Reverse Gravity's reach (everglade-abilities.coax
+// AB_RG_R, 15.24 m), so anyone it lifts is nearer you than any bot
+DB_OUT :: 32;
 DbBot :: struct { seat: int = -1; x: f32; z: f32; seen: bool; d: int; refused: int; m: [1] WireMirror; }   // m: the rows its D's left, as a page's (its I's HEARD)
 DbWorld :: struct { seats: [64] bool; px: [64] f32; pz: [64] f32; }
 
@@ -105,10 +112,10 @@ tool_main :: () -> int #export_c {
     page := db_page_seat(b[..], n, w[..]);
     for i: 0..<n {
       if !b[i].seen { continue; }
-      // where it walks: bot 0 6 m from the page's player, the others round them 10 m and more out
+      // where it walks: round the page's player DB_OUT m and more out, bot 0 in to 6 m while a hold is asked
       cx := ifx page >= 0 then w[0].px[page] else b[i].x; cz := ifx page >= 0 then w[0].pz[page] else b[i].z;
       ang := f32(tick) * 0.01 + f32(i) * 1.3;
-      r := ifx i == 0 then 6.0f32 else 8.0f32 + 2 * f32(i);
+      r := ifx i == 0 && fs_exists(hold) then 6.0f32 else f32(DB_OUT) + 4 * f32(i);
       tx := cx + r * cos(ang); tz := cz + r * sin(ang);
       wx := tx - b[i].x; wz := tz - b[i].z;
       ahead := ifx wx * wx + wz * wz > 1 then 100 else 0;

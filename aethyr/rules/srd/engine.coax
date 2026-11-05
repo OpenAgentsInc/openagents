@@ -22,7 +22,10 @@ RS_SQUARE :: 5;         // feet in a grid square
 
 // ---- dice: SplitMix64, every face equally likely (rejection sampling)
 
-RsDice :: struct { state: u64; rolled: int; }
+// fixed: every die lands on half its faces (a d20 on 10, at least 1), for a check that plays one
+// session in two places and compares them (oa-room room-control.coax "dice fixed", #12887): rolled
+// in any order the two sessions' rolls agree. No player's game sets it.
+RsDice :: struct { state: u64; rolled: int; fixed: bool; }
 RS_LOW32 :: 0xFFFFFFFF;
 rs_wmul :: (a: u64, b: u64) -> u64 {
   al := a & RS_LOW32; ah := a >> 32; bl := b & RS_LOW32; bh := b >> 32;
@@ -45,6 +48,7 @@ rs_next :: (d: [] RsDice) -> u64 {
 rs_roll :: (d: [] RsDice, sides: int) -> int {
   n := ifx sides < 1 then 1 else sides;
   d[0].rolled += 1;
+  if d[0].fixed { return ifx n / 2 < 1 then 1 else n / 2; }
   span: u64 = 4294967296;
   zone := span - span % cast(u64) n;
   while true {
@@ -58,7 +62,7 @@ rs_sum :: (d: [] RsDice, count: int, sides: int) -> int {
   for i: 0..<count { t += rs_roll(d, sides); }
   return t;
 }
-rs_unit :: (d: [] RsDice) -> f32 { top: f32 = 16777216.0; return f32(rs_next(d) >> 40) / top; }
+rs_unit :: (d: [] RsDice) -> f32 { if d[0].fixed { return 0.5; } top: f32 = 16777216.0; return f32(rs_next(d) >> 40) / top; }
 
 // A d20 with Advantage (> 0), Disadvantage (< 0) or neither: two dice, the higher or the lower.
 // Any of each cancel to neither (the SRD's rule), so a caller adds +1 per source and -1 per source

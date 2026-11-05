@@ -236,6 +236,7 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
     for c: 0..<EG_PIECES { v[0].eg[q].broken[c] = false; v[0].eg[q].burning[c] = false; }
     for c: 0..<CR_PLACED_MAX { v[0].eg[q].placed_burn[c] = false; v[0].eg[q].placed_gone[c] = false; }
     e5rr_start(v[0].eg[q].rules[..], v[0].eg[q].seed);
+    v[0].eg[q].rules[0].b[0].dice[0].fixed = rc_dice_fixed(v);   // a local room told "dice fixed" (room-control.coax)
     ra_fresh(v, q);   // its abilities (room-abilities.coax)
     ev_fresh(v, q);   // its world event, XP and levels (room-events.coax)
     return q;
@@ -849,6 +850,8 @@ rm_eg_hold_take :: (v: [] RmServer, k: int, s: int) -> bool #export_c {
   v[0].eg[k].seat[s].hold_due = false;
   return true;
 }
+// Whether room k's dice are fixed (room-control.coax "dice fixed"): the host fixes its world's alike.
+rm_eg_dice_fixed :: (v: [] RmServer, k: int) -> bool #export_c { return rm_eg_live(v, k) && v[0].eg[k].rules[0].b[0].dice[0].fixed; }
 rm_eg_wanted :: (v: [] RmServer, k: int, s: int, level: int) #export_c { if rm_eg_seat_live(v, k, s) { v[0].eg[k].wanted[s] = level; } }
 // The WANTED level seat s comes back with (rv_join, #12794), once: the host lays it on the world's town
 // when the town first steps the seat. 0 none.
@@ -1297,6 +1300,30 @@ eg_test_input :: (v: [] RmServer, seq: int) {
   // a new stamp, a seat not there, a word short: only the first holds
   rm_control(v[..], "hold pair-hold 1 78\nhold pair-hold 9 79\nhold pair-hold 0\n");
   #assert rm_eg_hold_take(v[..], k, 1) && !rm_eg_hold_take(v[..], k, 0);
+}
+#test "everglade room: \"dice fixed\" fixes a local room's dice and those made after it, never a production room's (#12887)" #steps 2000000000 {
+  for local: 0..<2 {
+    v: [1] RmServer;
+    rm_init(v[..]);
+    if local == 1 { rm_control_local(v[..]); }
+    rm_clock(v[..], 0, 1762190000000);
+    #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/dice-a HTTP/1.1\r\n\r\n") == 0;
+    k := eg_room_at(v[..], v[0].conns[0].relay);
+    rm_control(v[..], "pvp 1\ndice fixed\n");
+    #assert v[0].eg[k].rules[0].b[0].dice[0].fixed == (local == 1) && rm_eg_dice_fixed(v[..], k) == (local == 1);
+    #assert rm_join(v[..], 1, "GET /api/room/relay/everglade/dice-b HTTP/1.1\r\n\r\n") == 0;
+    o := eg_room_at(v[..], v[0].conns[1].relay);
+    #assert o != k && v[0].eg[o].rules[0].b[0].dice[0].fixed == (local == 1);
+    if local == 1 {
+      d := v[0].eg[k].rules[0].b[0].dice[..];
+      #assert rs_roll(d, 20) == 10 && rs_roll(d, 8) == 4 && rs_roll(d, 1) == 1 && rs_d20(d, 1).roll == 10;
+    }
+    // an answer without the line keeps it; "dice random" ends it
+    rm_control(v[..], "pvp 1\n");
+    #assert v[0].eg[k].rules[0].b[0].dice[0].fixed == (local == 1);
+    rm_control(v[..], "dice random\n");
+    #assert !v[0].eg[k].rules[0].b[0].dice[0].fixed && !v[0].eg[o].rules[0].b[0].dice[0].fixed;
+  }
 }
 #test "everglade room: a page that stalls spends the steps it is owed, and its inputs wait no tick after (#12731)" #steps 2000000000 {
   v: [1] RmServer;

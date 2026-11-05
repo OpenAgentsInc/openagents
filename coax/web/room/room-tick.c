@@ -107,6 +107,7 @@ static bool everglade_room_tick(int k) {
   int64_t in[WORLD_IN]; float pose[WORLD_POSE];
   coax_v_s64 inv = {in, WORLD_IN};
   if (!rm_eg_begin(view(), k)) return false;
+  world_dice(k, rm_eg_dice_fixed(view(), k));   /* a local room told "dice fixed": the world's too (room-control.coax) */
   everglade_ability_casts(k);
   int64_t tm = now_us();
   for (int s = 0; s < WORLD_SEATS; s++) {

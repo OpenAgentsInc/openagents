@@ -7,7 +7,7 @@
 // (__dr.mark(NAME)) and reads the rows back in parts (__dr.rows(FROM, N)).
 (() => {
   const now = () => performance.timeOrigin + performance.now();
-  const D = (window.__dr = { x: null, state: 0, rows: null, fr: [], marks: [], texts: [], bars: [], pageT: 0, folk: null, look: 0 });
+  const D = (window.__dr = { x: null, state: 0, rows: null, fr: [], marks: [], texts: [], bars: [], pageT: 0, folk: null, look: 0, conds: [], fcond: null });
   // a pointer move this frame (1): the camera may turn only then (the drift check's camera probe)
   addEventListener("pointermove", (e) => { if (e.buttons || document.pointerLockElement) D.look = 1; }, true);
   // a row's columns, in order (the driver reads them by these names)
@@ -60,6 +60,12 @@
           np(61), np(45), np(46), np(47), np(48), np(49), held(np(52)), np(53), np(55), fp(8),
           fp(9), np(57), np(58), np(29), np(30), np(0), walking, stalled, Math.round(moved), np(63), np(64), D.look]);
         D.look = 0;
+        // the conditions (E5_CONDITION bits) on each of the town's people and its watch, and your
+        // WANTED level, as they change: the notes beside the rows (conds-*.txt)
+        const fc = ["w" + np(24)];
+        for (let i = 0, c; i < 96 && (c = fp(100 + i)) >= 0; i++) if (c > 0) fc.push(i + ":" + c);
+        const fcs = fc.join(" ");
+        if (fcs !== D.fcond) { D.fcond = fcs; if (D.conds.length < 2000) D.conds.push(t + " " + fcs); }
         const p = text(ex, state, 0), s = text(ex, state, 1), b = np(49);
         if (p !== plate) { plate = p; D.texts.push([t, 0, p]); }
         if (s !== status) { status = s; D.texts.push([t, 1, s]); }

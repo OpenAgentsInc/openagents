@@ -30,6 +30,7 @@ EXPORT("rw_start") int32_t rw_start(void) {
   if (!server) return 0;
   coax_default_t_RmServer(server);
   rm_init(view());
+  rm_control_local(view());   /* offline play: the room's control lines are its own player's (room-control.coax) */
   return rm_start_check(view()) == 0 ? 1 : 0;
 }
 EXPORT("rw_size") int32_t rw_size(void) { return (int32_t)sizeof *server; }

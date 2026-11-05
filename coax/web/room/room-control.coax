@@ -12,6 +12,11 @@
 //     sooner or later) and the rules' on the living townsperson nearest it (6 s, no save). The same
 //     line reaches the local host (coax/web/room-worker.js roomHost.control), so both pages of the
 //     check are held by one spell.
+//   - dice: "dice fixed" (or "dice random"), every everglade room's rules rolling each die on half its
+//     faces from now on (aethyr/rules/srd/engine.coax RsDice.fixed), and the rooms made after it too:
+//     the drift check's two rooms roll alike whatever order their rolls come in (GitHub #12887). Only
+//     a local room takes it: oa-room under --dev, and the browser's local host (rm_control_local).
+//     Production's answer never says it, and production's rooms never take it.
 CONTROL_KICKS :: 64;
 CONTROL_EVERY_MS :: 2000;
 
@@ -24,7 +29,14 @@ RmControl :: struct {
   mac: [64] u8;
   old_shut: bool;                // "oldwire 0": old pages' hellos refused before WIRE_OLD_UNTIL_MS (room-oldwire.coax)
   hold_stamp: int;               // the last "hold" line's STAMP (0 none yet): each is laid once
+  local: bool;                   // the browser's local host (room-worker.c): its own player's offline game
+  dice_fixed: bool;              // "dice fixed": the rooms' dice land on half their faces (a local room's only)
 }
+
+// The browser's local host (room-worker.c rw_start): offline play, one player's own game.
+rm_control_local :: (v: [] RmServer) #export_c { v[0].ctl.local = true; }
+// Whether a room's dice are fixed: "dice fixed" said to a local room (--dev or the local host).
+rc_dice_fixed :: (v: [] RmServer) -> bool { return v[0].ctl.dice_fixed && (v[0].dev.on || v[0].ctl.local); }
 
 rc_kicked :: (v: [] RmServer, pid: string) -> bool {
   for i: 0..<v[0].ctl.kicks {
@@ -89,6 +101,8 @@ rm_control :: (v: [] RmServer, text: string) #export_c {
     if line == "oldwire 0" { v[0].ctl.old_shut = true; }
     if line.count > 5 && line[0..<5] == "edit " { edit = rc_num(line[5..<line.count]); }
     if line.count > 5 && line[0..<5] == "hold " { rc_hold(v, line); }
+    if line == "dice fixed" { v[0].ctl.dice_fixed = true; }
+    if line == "dice random" { v[0].ctl.dice_fixed = false; }
     if line.count > 5 && line[0..<5] == "kick " && kicks < CONTROL_KICKS {
       pid := rc_word(line, 5);
       if pid.count > 0 && pid.count <= TICKET_PID {
@@ -100,7 +114,7 @@ rm_control :: (v: [] RmServer, text: string) #export_c {
   v[0].ctl.kicks = kicks;
   ev_control_done(v);
   v[0].ctl.pvp = pvp;
-  for k: 0..<EG_ROOMS { v[0].eg[k].rules[0].pvp = pvp; }
+  for k: 0..<EG_ROOMS { v[0].eg[k].rules[0].pvp = pvp; v[0].eg[k].rules[0].b[0].dice[0].fixed = rc_dice_fixed(v); }
   // the board or world changed: every page asks for it again
   if edit >= 0 {
     if v[0].ctl.edit_known && edit != v[0].ctl.edit {

@@ -136,6 +136,10 @@ EgNet :: struct {
   // and where it stands; the room steps the inputs after the cast in it and those after the end out
   // of it (room-everglade.coax eg_waits), so the page steps each input as the server will
   rg_open: int; rg_close: int; rg_at: Point; rg_heard: bool;
+  // your own lasting abilities, shown at the press (net_own_show): each one's cast's sequence number
+  // until the room's entity for it comes (0 none), the entity up at the press (a new one is this
+  // cast's), and one you ended before its entity came (its entity is not raised again here)
+  own_pend: [AB_N] int; own_was: [AB_N] int; own_gone: [AB_N] bool;
   off_x: f32; off_y: f32; off_z: f32;   // where you are drawn less where you are, eased out
   wanted: int = -1;          // your WANTED level (w; -1 none heard: the server runs no town)
   breaks_heard: int; burns_heard: int;   // the town's pieces the server broke and lit (e break, e burn)
@@ -1160,18 +1164,87 @@ net_press :: (s: [] Everglade, k: int) {
   // your Reverse Gravity held up as the page predicts it, before the room's word of it comes
   rg_up := k == AB_REVERSE && n[0].rg_open > 0 && n[0].rg_close == 0;
   // (a Wind Wall or a Wall of Stone pressed again raises another, as offline: they stack, and fall at their time)
-  if (rg_up || net_holds(s, k)) && !net_stacks(k) && (s[0].sp.armed == b || !ab_aimed(k)) {
-    if net_end(s, b) && rg_up { n[0].rg_close = n[0].seq; }
+  if (rg_up || net_holds(s, k) || net_own_shows(s, k)) && !net_stacks(k) && (s[0].sp.armed == b || !ab_aimed(k)) {
+    if net_end(s, b) {
+      if rg_up { n[0].rg_close = n[0].seq; }
+      net_own_end(s, k);
+    }
     s[0].sp.armed = -1;
     return;
   }
   if ab_aimed(k) { s[0].sp.armed = ifx s[0].sp.armed == b then -1 else b; return; }
   s[0].sp.armed = -1;
   you := ab_you(s);
-  if net_cast(s, b, add(you, times(ab_forward(s), 2)), -1) && k == AB_REVERSE {
-    // where the room's copy opens it: on the floor under you (everglade-abilities.coax ab_rg_open)
-    n[0].rg_open = n[0].seq; n[0].rg_close = 0; n[0].rg_heard = false; n[0].rg_at = v3(you.x, walk_at(s, you.x, you.z), you.z);
+  if net_cast(s, b, add(you, times(ab_forward(s), 2)), -1) {
+    if k == AB_REVERSE {
+      // where the room's copy opens it: on the floor under you (everglade-abilities.coax ab_rg_open)
+      n[0].rg_open = n[0].seq; n[0].rg_close = 0; n[0].rg_heard = false; n[0].rg_at = v3(you.x, walk_at(s, you.x, you.z), you.z);
+    }
+    net_own_show(s, k);
   }
+}
+// Your own Reverse Gravity, Wind Wall and Wall of Stone show at your press, as they do offline: your
+// seat's copy (everglade-room-abilities.coax) casts it where you stand, and the room's entity for it
+// is taken as that cast when it comes, a round trip and the jitter buffer later (#12887). Until then
+// your copy holds it up; a cast the room never raised ends once the room has stepped NET_RG_LOST
+// inputs past it. Their saves, lifts and harm stay the room's, as from the entity.
+net_own_predicts :: (k: int) -> bool { return k == AB_REVERSE || k == AB_WIND || k == AB_STONE; }
+net_own_show :: (s: [] Everglade, k: int) {
+  if !net_own_predicts(k) || !net_live(s) || eg_ra_copying(s) { return; }
+  n := net_of(s);
+  q := n[0].seat;
+  if q < 0 || q >= EG_RA_SEATS { return; }
+  you := ab_you(s);
+  c := s[0].sp.room_ab[0].seat[q..<q + 1];
+  n[0].own_was[k] = c[0].heard[k]; n[0].own_pend[k] = n[0].seq; n[0].own_gone[k] = false;
+  eg_ra_play(s, q, k, you, s[0].face, add(you, times(v3(sin(s[0].face), 0, cos(s[0].face)), 2)), eg_ra_mode(s, k));
+}
+// Whether your copy holds ability k up from a press the room hasn't answered yet.
+net_own_shows :: (s: [] Everglade, k: int) -> bool {
+  if !net_live(s) || k < 0 || k >= AB_N { return false; }
+  n := net_of(s);
+  q := n[0].seat;
+  return n[0].own_pend[k] > 0 && q >= 0 && q < EG_RA_SEATS && s[0].sp.room_ab[0].seat[q].live[k];
+}
+// Your end of ability k (its E sent): your copy ends it now, not when the room's entity goes.
+net_own_end :: (s: [] Everglade, k: int) {
+  if !net_own_predicts(k) || !net_live(s) || eg_ra_copying(s) { return; }
+  n := net_of(s);
+  q := n[0].seat;
+  if q < 0 || q >= EG_RA_SEATS { return; }
+  c := s[0].sp.room_ab[0].seat[q..<q + 1];
+  if n[0].own_pend[k] > 0 { n[0].own_gone[k] = true; }
+  n[0].own_pend[k] = 0;
+  if c[0].used && c[0].live[k] {
+    was := eg_ra_in(s, q, ab_you(s), s[0].face);
+    if was.ok { eg_ra_drop(s, k); eg_ra_out(s, q, was); }
+  }
+}
+// net_follow's word on your ability k with the room's entity id (0 none): true when it is settled
+// here (a press's cast waiting for its entity, or taking it), so the entity isn't kept to as another's.
+net_own_follow :: (s: [] Everglade, n: [] EgNet, k: int, id: int) -> bool {
+  if !net_own_predicts(k) { return false; }
+  q := n[0].seat;
+  c := s[0].sp.room_ab[0].seat[q..<q + 1];
+  // ended before its entity came: that entity isn't raised here; once it goes, nothing is left
+  if n[0].own_gone[k] {
+    if id == 0 || id != n[0].own_was[k] { c[0].heard[k] = id; }
+    if id == 0 { n[0].own_gone[k] = false; }
+    return true;
+  }
+  if n[0].own_pend[k] <= 0 { return false; }
+  // the press's entity came: it is this cast, already up here
+  if id != 0 && id != n[0].own_was[k] { c[0].heard[k] = id; n[0].own_pend[k] = 0; return true; }
+  // the room never raised it: it ends here too
+  if n[0].acked > n[0].own_pend[k] + NET_RG_LOST {
+    n[0].own_pend[k] = 0;
+    if c[0].used && c[0].live[k] && id == 0 {
+      was := eg_ra_in(s, q, ab_you(s), s[0].face);
+      if was.ok { eg_ra_drop(s, k); eg_ra_out(s, q, was); }
+    }
+    return false;
+  }
+  return true;
 }
 // Your Reverse Gravity for the input being stepped (net_stepping): on when it is after the cast and
 // before the end. Where the room's word of it is gone (it ended without your end: its time ran
@@ -1221,6 +1294,7 @@ net_follow :: (s: [] Everglade, n: [] EgNet, now: int) {
     seated := net_seat_pose(s, o, pose[..]);
     for k: 0..<AB_N {
       q := o * AB_N + k;
+      if o == n[0].seat && net_own_follow(s, n, k, id[q]) { continue; }   // yours, shown at your press
       if id[q] == 0 && s[0].sp.room_ab[0].seat[o].heard[k] == 0 { continue; }
       // the caster where this page draws them, else where the server has the cast
       c := ifx seated then v3(pose[0], pose[1], pose[2]) else at[q];
@@ -2068,6 +2142,42 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   #assert net_owns_rg(a[..]);
   na[0].acked += 1; net_own_rg_frame(a[..], na[..]);
   #assert !net_owns_rg(a[..]);
+}
+#test "net: your own Reverse Gravity shows at your press, the room's entity for it is that cast, and one the room never raised ends (#12887)" #steps 4000000000 {
+  a: [1] Everglade; na: [1] EgNet; dm: [1] DemoWorld;
+  everglade_start(a[..]);
+  a[0].sp.on = true; everglade_attach_demolish(a[..], dm[..]);
+  #assert net_test_page(a[..], na[..], 2, "pa", 100) && net_test_hear(a[..], 2, "y 3 1 5000100");
+  q := na[0].seat;
+  #assert q == 3 && net_live(a[..]) && !a[0].sp.room_ab[0].seat[q].live[AB_REVERSE];
+  // the press: your copy holds it up at once, and the cast goes out
+  net_press(a[..], AB_REVERSE);
+  #assert a[0].sp.room_ab[0].seat[q].live[AB_REVERSE] && net_own_shows(a[..], AB_REVERSE) && na[0].rg_open == na[0].seq;
+  // no entity yet: it stays up; the room's entity comes: it is this cast, kept, not cast again
+  #assert net_own_follow(a[..], na[..], AB_REVERSE, 0) && a[0].sp.room_ab[0].seat[q].live[AB_REVERSE];
+  id := NET_MADE_ID + NET_ABILITY_ID + 5;
+  #assert net_own_follow(a[..], na[..], AB_REVERSE, id) && !net_own_shows(a[..], AB_REVERSE) && a[0].sp.room_ab[0].seat[q].heard[AB_REVERSE] == id;
+  #assert !net_own_follow(a[..], na[..], AB_REVERSE, id);
+  // your press again ends it here at once; the entity still heard doesn't raise it again
+  net_press(a[..], AB_REVERSE);
+  #assert !a[0].sp.room_ab[0].seat[q].live[AB_REVERSE] && na[0].rg_close == na[0].seq;
+  eg_ra_keep(a[..], q, AB_REVERSE, id, ab_you(a[..]), 0, ab_you(a[..]), 0, 0);
+  #assert !a[0].sp.room_ab[0].seat[q].live[AB_REVERSE];
+  eg_ra_keep(a[..], q, AB_REVERSE, 0, ab_you(a[..]), 0, ab_you(a[..]), 0, 0);
+  // a cast the room never raised ends once the room has stepped NET_RG_LOST inputs past it
+  na[0].rg_open = 0; na[0].rg_close = 0;
+  net_press(a[..], AB_REVERSE);
+  #assert a[0].sp.room_ab[0].seat[q].live[AB_REVERSE];
+  na[0].acked = na[0].own_pend[AB_REVERSE] + NET_RG_LOST;
+  #assert net_own_follow(a[..], na[..], AB_REVERSE, 0) && a[0].sp.room_ab[0].seat[q].live[AB_REVERSE];
+  na[0].acked += 1;
+  #assert !net_own_follow(a[..], na[..], AB_REVERSE, 0) && !a[0].sp.room_ab[0].seat[q].live[AB_REVERSE];
+  // ended before its entity came: the entity, when it comes, isn't raised here
+  na[0].rg_open = 0; na[0].rg_close = 0;
+  net_press(a[..], AB_REVERSE); net_press(a[..], AB_REVERSE);
+  #assert !a[0].sp.room_ab[0].seat[q].live[AB_REVERSE] && na[0].own_gone[AB_REVERSE];
+  #assert net_own_follow(a[..], na[..], AB_REVERSE, id + 1) && !a[0].sp.room_ab[0].seat[q].live[AB_REVERSE];
+  #assert net_own_follow(a[..], na[..], AB_REVERSE, 0) && !na[0].own_gone[AB_REVERSE];
 }
 #test "net: every step's input goes out; the server's word on you starts the re-run from there, eased in; past NET_SNAP at once" {
   a: [1] Everglade; na: [1] EgNet; room: [1] NetTestRoom;

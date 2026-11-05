@@ -28,7 +28,10 @@ SRD_RULESET :: "srd5";   // realms.json "ruleset"
 
 // ---- dice
 
-SrdDice :: struct { seed: u64; state: u64; rolled: u64; }
+// fixed: every die lands on half its faces (a d20 on 10, at least 1) and a unit roll on a half, for a
+// check that plays one session in two places and compares them (oa-room room-control.coax "dice
+// fixed", #12887): rolled in any order, the two sessions' rolls agree. No player's game sets it.
+SrdDice :: struct { seed: u64; state: u64; rolled: u64; fixed: bool; }
 
 SRD_LOW32 :: 0xFFFFFFFF;
 srd_wmul :: (a: u64, b: u64) -> u64 {
@@ -59,6 +62,7 @@ srd_next :: (d: [] SrdDice) -> u64 {
 srd_roll :: (d: [] SrdDice, sides: int) -> int {
   n := ifx sides < 1 then 1 else sides;
   d[0].rolled += 1;
+  if d[0].fixed { return ifx n / 2 < 1 then 1 else n / 2; }
   span: u64 = 4294967296;
   zone := span - span % cast(u64) n;
   while true {
@@ -74,7 +78,7 @@ srd_sum :: (d: [] SrdDice, count: int, sides: int) -> int {
   return t;
 }
 // A number from 0 up to 1 off the same stream (for where a meteor lands, not for rules).
-srd_unit :: (d: [] SrdDice) -> f32 { top: f32 = 16777216.0; return f32(srd_next(d) >> 40) / top; }
+srd_unit :: (d: [] SrdDice) -> f32 { if d[0].fixed { return 0.5; } top: f32 = 16777216.0; return f32(srd_next(d) >> 40) / top; }
 
 // A saving throw: d20 + modifier against dc. A natural 20 is not an
 // automatic success for a save in the SRD; the total decides.
@@ -253,6 +257,14 @@ srd_object_takes :: (o: SrdObject, dmg: SrdDamage, share: f32) -> int {
   #assert alike < 15;
 }
 
+#test "srd5: fixed dice land on half their faces whatever was rolled before, and a save of 10 against DC 15 fails (#12887)" {
+  a: [1] SrdDice; b: [1] SrdDice;
+  a[0] = srd_dice(42); b[0] = srd_dice(7);
+  for i: 0..<5 { _ := srd_roll(b[..], 20); }
+  a[0].fixed = true; b[0].fixed = true;
+  #assert srd_roll(a[..], 20) == 10 && srd_roll(b[..], 20) == 10 && srd_roll(a[..], 8) == 4 && srd_roll(a[..], 1) == 1;
+  #assert srd_sum(a[..], 4, 8) == 16 && srd_unit(b[..]) == 0.5 && !srd_save(a[..], 0, 15).success;
+}
 #test "srd5: 20d6 sums between 20 and 120 and averages near 70" {
   d: [1] SrdDice; d[0] = srd_dice(7);
   total := 0;

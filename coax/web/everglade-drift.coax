@@ -129,6 +129,13 @@ dr_match :: (pr: DrProbe, a: [] DrPage, r: int, b: [] DrPage, window: int, lo: i
   while k < b[0].n && dr_at(b, k, C_T) <= t + window {
     vb := dr_at(b, k, pr.col); vb2 := ifx pr.how == DR_PLACE then dr_at(b, k, pr.col + ifx pr.col == C_X then 2 else 1) else 0;
     d := dr_diff(pr.how, va, vb, va2, vb2);
+    // a value that moves fast (a fall, a lift) passes between two of b's frames: b had it then. Two
+    // pages draw at their own instants, and under load a frame is 50-80 ms, so a fall at 4 cm/ms
+    // moves past the tolerance between frames (#12887). Not the counts (tolerance 0): they step
+    if pr.how == DR_NEAR && pr.tol > 0 && k > 0 && dr_at(b, k - 1, C_T) >= t - window {
+      vp := dr_at(b, k - 1, pr.col);
+      if (vp <= va && va <= vb) || (vb <= va && va <= vp) { d = 0; }
+    }
     if d < best { best = d; other[0] = vb; }
     if d <= dr_tol(pr, va, vb) { return -1; }
     k += 1;
@@ -555,8 +562,19 @@ dr_open :: (c: [] Cdp, url: string, script: string) -> bool {
 
 DR_DEV_KEY :: "local-development-room-ticket-key-not-a-secret";   // room-dev.coax DEV_KEY, the bots' tickets
 // the paired session's control lines: PvP on, levels off (the whole bar on both
-// pages), no raid
-DR_CONTROL_PAIR :: "pvp 1\nedit 1\nlevels 0 2\nevent 0 0 3 12 6 1 3 3 31 1 2 1 100 15 0 0\n";
+// pages), no raid, and the dice fixed: each die lands on half its faces in both rooms (room-control.coax
+// "dice", #12887). Otherwise each room's rules seed their dice from the clock and the room's slot,
+// its world draws its own dice (whom your Reverse Gravity and Wind Wall lift) in its own order, and
+// its townspeople take their turns (the saves they repeat) on a beat from when the room was made:
+// the same spells harmed different people, so the WANTED level, the watch's blows and the
+// conditions on the town came out differently in the two.
+DR_CONTROL_PAIR :: "pvp 1\nedit 1\nlevels 0 2\nevent 0 0 3 12 6 1 3 3 31 1 2 1 100 15 0 0\ndice fixed\n";
+// The offline page's room on the local host (--offline worker) takes the dice line as the room page's
+// room takes it from its control file (coax/web/room-worker.js roomHost.control).
+dr_dice :: (c: [] Cdp, worker: bool) {
+  if !worker { return; }
+  if dr_int(c, "coaxial.roomHost && coaxial.roomHost.control ? coaxial.roomHost.control('dice fixed\\n') : 0", 0) != 1 { print("  (the offline page's room didn't take the dice line)\n"); }
+}
 // worker: the offline page plays on the room server's local host (?offline=worker, #12784); false its own game
 DrRun :: struct { port: int; bots: int; stamp: int; dir: string; ctl: string; script: string; key: string; worker: bool; }
 
@@ -581,10 +599,18 @@ dr_session :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] Dr
   if cdp_launch(ca[..], 1280, 800, "coax-drift-a-") {
     if cdp_launch(cb[..], 1280, 800, "coax-drift-b-") {
       if dr_open(ca[..], btext(ua[..]), run.script) && dr_open(cb[..], btext(ub[..]), run.script) && dr_ready(ca[..], false) && dr_ready(cb[..], true) {
+        dr_dice(ca[..], run.worker);
         proc_sleep(2500);
         sh: [1] Buf; bput(sh[..], run.dir); bput(sh[..], "/shot-"); bput(sh[..], profile);
         dr_script(DrPair.{a = ca[..], b = cb[..], shots = btext(sh[..]), ctl = run.ctl, room = code, worker = run.worker}, run.dir);
         ok = dr_pull(ca[..], a) && dr_pull(cb[..], b);
+        // the town's people's conditions as each page drew them (wall ms, then PERSON:BITS), a note
+        // for a drift of "conditions on the town's people": conds-PROFILE-offline.txt, -room.txt
+        for side: 0..<2 {
+          cn: [1] Buf; bput(cn[..], run.dir); bput(cn[..], "/conds-"); bput(cn[..], profile); bput(cn[..], ifx side == 0 then "-offline.txt" else "-room.txt");
+          ct: [65536] u8;
+          _ := fs_write(btext(cn[..]), dr_str(ifx side == 0 then ca[..] else cb[..], "__dr.conds.join('\\n') + '\\n'", ct[..]));
+        }
       } else {
         da: [2048] u8; db: [2048] u8; js := "JSON.stringify({rows: window.__dr && __dr.count(), net: window.__dr && __dr.probe(0), seat: window.__dr && __dr.probe(1), wasm: !!(window.__dr && __dr.x), title: document.title, url: location.href})";
         print("everglade-drift: the pages didn't come up: offline %, room %\n", dr_str(ca[..], js, da[..]), dr_str(cb[..], js, db[..]));
@@ -627,6 +653,7 @@ dr_raid :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] DrPag
   if cdp_launch(ca[..], 1280, 800, "coax-drift-a-") {
     if cdp_launch(cc[..], 1280, 800, "coax-drift-b-") {
       if dr_open(ca[..], btext(ua[..]), run.script) && dr_open(cc[..], btext(ub[..]), run.script) && dr_ready(ca[..], false) && dr_ready(cc[..], true) {
+        dr_dice(ca[..], run.worker);
         sh: [1] Buf; bput(sh[..], run.dir); bput(sh[..], "/shot-raid-"); bput(sh[..], profile);
         p := DrPair.{a = ca[..], b = cc[..], shots = btext(sh[..])};
         dr_mark(p, "raid");

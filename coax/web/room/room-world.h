@@ -47,7 +47,8 @@ int world_gates(int k);                           /* 1 while the town's gates ar
 void world_seed_wanted(int k, int s, int level);   /* a seat back WANTED at its saved level (#12794) */
 /* Seat s's conditions from the watch (wire WC_*: Hold Person's hold, Ray of Frost's slow). */
 int world_cond(int k, int s);
-void world_hold(int k, int s);   /* seat s held by the watch's Hold Person, 3 s (a scripted hold, room-control.coax) */
+void world_hold(int k, int s);
+void world_dice(int k, bool fixed);   /* the world's dice fixed as the room's rules' are (room-control.coax "dice fixed") */   /* seat s held by the watch's Hold Person, 3 s (a scripted hold, room-control.coax) */
 float world_cond_left(int k, int s, int cause);   /* seconds left of seat s's watch effect by cause (WE_*), 0 none */
 /* The town's pieces: a strike of Everglade's four spells from seat `by`; dt of the strikes landing and
    fire, the count of its events; event q: KIND PIECE A B C X Z (KIND 1 a break thrown at A B C m/s, 2
