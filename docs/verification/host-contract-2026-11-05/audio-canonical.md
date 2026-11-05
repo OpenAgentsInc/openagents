@@ -10,6 +10,12 @@ retains the complete inventory. The word comparator's root gate kills all
 103 mutants, with no survivors or equivalent annotations; the stereo
 wrapper keeps its original frame-position behavior.
 
+This bank is Everglade's `?sfx=synth` profile. Ordinary default gameplay
+selects the 122 picked `NAME-CAND.ogg` assets, including its stereo bed.
+Those compressed codec outputs, their retained memory and ordinary mixed
+workload remain separate qualification exits. The synth receipts below do
+not establish default-profile audio parity.
+
 The canonical bank also passes the same eleven actual AudioWorklet/native
 render ranges. Nine are bit-identical; maximum room error is 2.3634e-19 and
 loud error is 3.4772e-24. All ranges have zero samples beyond 2^-20 and no

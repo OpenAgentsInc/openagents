@@ -222,7 +222,7 @@ import { startLoading, readBytes } from "./loader.js";
 import { makeHttpRequests } from "./http-requests.js";
 import { makeHostTransport } from "./host-transport.js";
 import { makeHostLifecycle } from "./host-lifecycle.js";
-import { openHostServices } from "./services-host.js";
+import { openHostServices, openPcmMemory } from "./services-host.js";
 import { openCoaxAudio, renderCoaxAudio } from "./audio-host.js";
 import { RenderHost } from "./render.js";
 
@@ -351,6 +351,7 @@ function importedMemoryPages(bytes) {
 }
 
 async function loadEngine(bytes, generation) {
+  await audioRetirement;if(generation!==wanted)return false;
   if (dev) globalThis.coaxial.renderLifecyclePhase="engine-await-render";
   if (dev) globalThis.coaxial.renderLifecyclePhase="engine-compile";
   const module = await WebAssembly.compile(bytes);
@@ -1804,20 +1805,29 @@ function drawMedia(x, pass, w, h, depth, over = false) {
 // ---- sounds: Web Audio, started by the first touch or key (browsers wait for one)
 let audio = null, audioOut = null;
 let contractAudio = null, contractAudioReady = null, audioOwner = 0, audioStarted = false, audioFailure = null;
+let contractAudioMemory = null, audioRetirement = Promise.resolve(), lastAudioRetirement = null;
 let audioBankStatus = 0, audioPacketStatus = 0, audioOfferRefusals = 0;
 const bankSounds = new Map();
 function retireContractAudio() {
-  ++audioOwner;contractAudio?.close();contractAudio=null;contractAudioReady=null;
-  audio?.close().catch(()=>{});audio=null;audioOut=null;banked=false;bankSounds.clear();sounds.clear();audioFailure=null;audioBankStatus=0;audioPacketStatus=0;audioOfferRefusals=0;
+  ++audioOwner;const adapter=contractAudio,pending=contractAudioReady,context=audio,memory=contractAudioMemory;
+  contractAudio=null;contractAudioReady=null;contractAudioMemory=null;
+  audio=null;audioOut=null;banked=false;bankSounds.clear();sounds.clear();audioFailure=null;audioBankStatus=0;audioPacketStatus=0;audioOfferRefusals=0;
+  if(!context)return;
+  audioRetirement=audioRetirement.then(async()=>{
+    let report;try{const owner=adapter??await pending;report=await owner?.close();}
+    finally{if(context.state!=='closed')await context.close();}
+    lastAudioRetirement=[report?.memoryBefore??0,report?.memoryAfter??memory?.total()??0,report?.nodeBefore??0,report?.nodeAfter??0,Number(context.state==='closed')];
+  });
+  audioRetirement.catch(error=>{audioFailure=String(error.message);say(`Audio retirement: ${audioFailure}`,true);});
 }
 function prepareContractAudio() {
   if(contractAudioReady || !audio)return;
-  const owner=audioOwner,context=audio;
+  const owner=audioOwner,context=audio,services=hostServices;contractAudioMemory=openPcmMemory(services);
   contractAudioReady=openCoaxAudio(context,audioOut,async(name,canonical)=>{
     const asset=soundAsset(name);if(!asset)return null;
     if(asset.canonical)return canonical(asset.bytes);
     return decoded(asset);
-  }).then(adapter=>{if(owner!==audioOwner){adapter.close();return null;}contractAudio=adapter;return adapter;}).catch(error=>{if(owner===audioOwner){audioFailure=String(error.message);say(`Audio: ${audioFailure}`);}return null;});
+  },{services,memory:contractAudioMemory}).then(adapter=>{if(owner===audioOwner)contractAudio=adapter;return adapter;}).catch(error=>{if(owner===audioOwner){audioFailure=String(error.message);say(`Audio: ${audioFailure}`);}return null;});
 }
 const sounds = new Map();   // name -> a decoding or decoded buffer
 // A realm that renders its own sounds (aethyr/audio/sfx.coax) lists them once, when audio
@@ -1954,6 +1964,9 @@ const heard = [];         // on this machine only: the last lines played, for th
 // A mixed voice's line, NAME GAIN PAN DELAY LOWPASS RATE WET ID (aethyr/audio/mix.coax), goes to the
 // bus with its rate and room send, and at most 48 at once (the realm keeps far fewer); a line that
 // starts ! or - is the bus's (busLine).
+function deliverContractAudio(offer,owner,started){
+  contractAudioReady.then(adapter=>owner===audioOwner&&adapter?.play(offer.bytes,started,true)).finally(()=>offer.release()).catch(error=>{if(owner===audioOwner)audioFailure=String(error.message);});
+}
 function playSoundText(text) {
   for (const line of text.split("\n")) {
     if (clipping) { clipHear(line); continue; }
@@ -1962,7 +1975,7 @@ function playSoundText(text) {
       startAudio(false);const owner=audioOwner,started=audioStarted;
       if(dev){heard.push(new TextDecoder().decode(offer.bytes));if(heard.length>512)heard.shift();}
       if(!contractAudioReady){offer.release();continue;}
-      contractAudioReady.then(adapter=>owner===audioOwner&&adapter?.play(offer.bytes,started)).finally(()=>offer.release()).catch(error=>{if(owner===audioOwner)audioFailure=String(error.message);});continue;
+      deliverContractAudio(offer,owner,started);continue;
     }
     if (line[0] === "~") { bedLine(line.slice(1)); continue; }
     if (line[0] === "!" || line[0] === "-") { if (audio) { bus ??= soundBus(audio, audioOut); busLine(audio, bus, line, audio.currentTime, decoded); } continue; }
@@ -2671,7 +2684,7 @@ if (dev) {
     start: () => { startAudio(); return audio; }, play: (text) => playSoundText(text), playing: () => playing,
     heard: () => heard.slice(), probe: (slot, right, ahead, up) => engine?.exports.coaxial_sound_probe?.(arena.state, slot, right, ahead, up) ?? -1, beds: () => [...beds].map(([name, b]) => `${name} ${b.gain.gain.value.toFixed(3)} ${b.pan.pan.value.toFixed(3)}`),
     decode: (name) => decoded(soundAsset(name)), voice: soundVoice, mixed: () => mixed,
-    contract: async () => ({version:hostTransport?1:0,owner:audioOwner,started:audioStarted,state:audio?.state??"absent",failure:audioFailure,queue:hostServices?.audioQueueInfo()??[0,0],queueRefusals:audioOfferRefusals,worklet:await contractAudio?.info()}),
+    contract: async () => ({version:hostTransport?1:0,owner:audioOwner,started:audioStarted,state:audio?.state??"absent",failure:audioFailure,memory:contractAudioMemory?.total()??0,retirement:lastAudioRetirement,queue:hostServices?.audioQueueInfo()??[0,0],queueRefusals:audioOfferRefusals,worklet:await contractAudio?.info()}),
     bank: () => {soundBank();return {status:audioBankStatus,count:bankSounds.size,bytes:Object.fromEntries([...bankSounds].map(([name,asset])=>[name,asset.bytes.length])),packet:audioPacketStatus};},
     fixtureMode: mode => engine?.exports.coaxial_audio_fixture_mode?.(mode),fixtureProbe: field => Number(engine?.exports.coaxial_audio_fixture_probe?.(field)??-1n),
     bus: soundBus, busVoice, busLine,

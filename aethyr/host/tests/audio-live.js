@@ -14,8 +14,8 @@ globalThis.hostAudioLive={context:null,adapter:null,events:[],
   async retireDuringDecode(line){
     let release,entered;const gate=new Promise(ok=>release=ok),began=new Promise(ok=>entered=ok);
     const adapter=await this.open(this.context,this.context.destination,async()=>{entered();await gate;return {samples:this.samples.slice(),channels:1};});
-    await adapter.ready;const command=adapter.play(line,true);await began;adapter.close();release();return command;
+    await adapter.ready;const command=adapter.play(line,true);await began;const retired=adapter.close();release();const result=await command;await retired;return result;
   },
-  async close(){this.adapter.close();await this.context.close();return this.context.state;}
+  async close(){await this.adapter.close();await this.context.close();return this.context.state;}
 };
 'ready'

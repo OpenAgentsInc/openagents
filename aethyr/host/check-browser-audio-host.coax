@@ -1,6 +1,9 @@
 // Actual host.js v1 selection, canonical asset, pause and engine replacement.
 #load "../../coax/web/wasm-chrome.coax";
-hpa_host_wait :: (c:[]Cdp,expression:string)->bool {until:=proc_now_ms()+15000;while proc_now_ms()<until {if wc_eval(c,expression)=="true" {return true;}proc_sleep(50);}tool_errln(expression);tool_errln(cdp_error(c));return false;}
+hpa_host_wait :: (c:[]Cdp,expression:string)->bool {
+ bytes:[8192]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_put(o[..],"Promise.race([Promise.resolve(");jo_put(o[..],expression);jo_put(o[..],"),new Promise(resolve=>setTimeout(()=>resolve(false),1000))])");if o[0].bad {return false;}
+ until:=proc_now_ms()+15000;while proc_now_ms()<until {if wc_eval(c,jo_text(o[..]))=="true" {return true;}proc_sleep(50);}tool_errln(expression);tool_errln(cdp_error(c));return false;
+}
 hpa_host_copy :: (source:string,target:string)->bool {bytes:[8388608]u8;n:=fs_read(source,bytes[..]);return n>=0&&fs_write(target,cast(string)bytes[0..<n]);}
 tool_main :: ()->int #export_c {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=4 {tool_errln("usage: check-browser-audio-host SITE_ROOT LOCAL_URL FIXTURE_DIR OUT.json");return 2;}

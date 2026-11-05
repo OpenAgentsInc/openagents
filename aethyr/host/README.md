@@ -413,7 +413,9 @@ borrowed immutable PCM ABI are in `aethyr/audio/host-pcm.md`.
 Generated bank WAVs use `aethyr/audio/host-wav.coax`: exact 44-byte PCM16
 RIFF, mono/stereo, 22,050 or 48,000 Hz, through the shared zero-phase 64-tap
 rational resampler into 48 kHz PCM. Its measured output extent precedes
-allocation. Optional compressed assets use their SDK codec separately;
+allocation. Everglade's ordinary default instead selects the picked
+`NAME-CAND.ogg` assets from `everglade-bank.coax`; the 48 generated WAVs
+are the `?sfx=synth` profile. Compressed assets use their SDK codec separately;
 they are not canonical-bank sample-parity evidence. Browser immutable PCM
 has 128 allocation tickets and 8,388,608 binary32 words (32 MiB); allocation
 refusal cannot publish a partial asset. Pre-contract faces retain the

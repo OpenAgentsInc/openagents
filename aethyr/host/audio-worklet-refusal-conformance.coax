@@ -1,0 +1,11 @@
+// Actual SDK refusal and retirement observations, separate from DSP samples.
+#authority;
+#test "worklet allocation refusal is atomic and pending decode cannot install after cleanup" {
+ q:=[20]int.[-1,8388608,0,1,0,128,8,8,0,8,0,8,0,1,0,0,-1,0,1,1];
+ #assert hwr_accept(q[..]) && !hwr_accept(q[0..<19]);extra:[21]int;#assert !hwr_accept(extra[..]);
+ for i:0..<20 {q[i]+=1;#assert !hwr_accept(q[..]);q[i]-=1;}
+}
+hwr_accept :: (q:[]int)->bool #export_c {
+ if q.count!=20 {return false;}want:=[20]int.[-1,8388608,0,1,0,128,8,8,0,8,0,8,0,1,0,0,-1,0,1,1];
+ for value,i:want {if q[i]!=value {return false;}}return true;
+}

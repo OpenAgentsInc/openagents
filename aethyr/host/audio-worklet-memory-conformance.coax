@@ -1,0 +1,9 @@
+// Exact ownership handoff for the recording producer's eight-sample WAV.
+#authority;
+#test "canonical worklet PCM remains owned until explicit cleanup before replacement" {
+ q:=[10]int.[8,8,0,8,0,8,0,1,0,1];#assert hwm_accept(q[..]);#assert !hwm_accept(q[0..<9]);extra:[11]int;#assert !hwm_accept(extra[..]);
+ for i:0..<10 {q[i]+=1;#assert !hwm_accept(q[..]);q[i]-=1;}
+}
+hwm_accept :: (q:[]int)->bool #export_c {
+ if q.count!=10 {return false;}expected:=[10]int.[8,8,0,8,0,8,0,1,0,1];for value,i:expected {if q[i]!=value {return false;}}return true;
+}

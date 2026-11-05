@@ -49,6 +49,11 @@ The word comparator kills 103/103 root mutants, with no equivalents. These
 audio receipts remain separate from Linux output and complete three-host
 qualification; the desktop default remains web.
 
+The 48 generated WAVs are Everglade's explicit synth profile. Ordinary
+default gameplay selects the picked Ogg/Opus variants and stereo bed.
+Synth-bank decoding and DSP receipts do not qualify those codec outputs,
+their complete retained-memory workload or default-profile audio parity.
+
 The Linux audio SDK executes the same Coax PCM/WAV interpreter and bank/
 memory authorities. All 48 frozen bank assets decode byte-identically and
 eleven rendered ranges pass the unchanged sample bound. Actual allocator,
@@ -96,6 +101,15 @@ their 46/16 root mutants are killed without equivalents. The real product
 holds 64 six-byte offers, refuses the 65th and returns all leases after
 delivery while its pre-gesture audio clock stays held. Global PCM and
 complete old-node retirement retain their separate gates.
+
+Canonical browser WAV installs reserve shared PCM tickets before planning,
+transfer/input copies and decoded output. Temporary reservations release
+after the actual Worklet reply; retained samples release only after that
+processor clears borrowed views/assets and acknowledges cleanup. The
+concrete AudioContext closes before replacement installation. Actual
+product and refusal/cancellation observers kill 18 and 28 root mutants
+without equivalents; pending decoded results cannot install after cleanup.
+Default Ogg codec ownership and complete host qualification remain open.
 
 The shared lifecycle adapter records monotonic microseconds before handing
 the unchanged delta to the producer. Actual browser, sanitized Linux realm

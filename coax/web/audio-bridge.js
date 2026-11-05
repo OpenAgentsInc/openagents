@@ -1,4 +1,5 @@
 // Firm reason: 1 (browser glue: Wasm memory, immutable PCM copies and scalar Coax audio calls).
+export class AudioRefusal extends Error {}
 export class AudioBridge {
   constructor(module, render = true) {
     this.memory=new WebAssembly.Memory({initial:256,maximum:1024});
@@ -10,19 +11,35 @@ export class AudioBridge {
     this.x._initialize?.();if(render&&!this.x.audio_init())throw Error('audio reactor allocation failed');
     this.encoder=globalThis.TextEncoder?new TextEncoder():null;this.decoder=globalThis.TextDecoder?new TextDecoder('utf-8',{fatal:true}):null;this.assets=new Map();
   }
-  line(text){const bytes=typeof text==='string'?this.encoder.encode(text):text;if(bytes.length>this.x.audio_line_capacity())return -1;new Uint8Array(this.memory.buffer,this.x.audio_line_ptr(),bytes.length).set(bytes);return bytes.length;}
+  line(text){const storage=new Uint8Array(this.memory.buffer,this.x.audio_line_ptr(),this.x.audio_line_capacity());if(typeof text==='string'){const q=this.encoder.encodeInto(text,storage);return q.read===text.length?q.written:-1;}if(text.length>storage.length)return -1;storage.set(text);return text.length;}
   parse(text){const n=this.line(text);if(n<0)return {kind:0,name:''};const kind=this.x.audio_parse(n),bytes=new Uint8Array(this.memory.buffer,this.x.audio_name_ptr(),this.x.audio_name_bytes());return {kind,name:this.decoder?this.decoder.decode(bytes):String.fromCharCode(...bytes)};}
   install(name,samples,channels){
     if(this.assets.has(name))return this.assets.get(name).id;
-    const id=this.x.audio_alloc(BigInt(samples.length));if(id<0)throw Error('Coax refused audio allocation');
+    const id=this.x.audio_alloc(BigInt(samples.length));if(id<0)throw new AudioRefusal('Coax refused audio allocation');
     new Float32Array(this.memory.buffer,this.x.audio_asset_ptr(id),samples.length).set(samples);this.assets.set(name,{id,channels});return id;
   }
   decodeWav(bytes){
-    const input=this.x.audio_alloc(BigInt(Math.ceil(bytes.length/4)));if(input<0)throw Error('Coax refused WAV allocation');let output=-1;
-    try{new Uint8Array(this.memory.buffer,this.x.audio_asset_ptr(input),bytes.length).set(bytes);output=this.x.audio_decode_wav(input,bytes.length);if(output<0)throw Error('Coax refused canonical WAV');const channels=this.x.audio_wav_channels(),words=Number(this.x.audio_info(6));return {samples:new Float32Array(this.memory.buffer,this.x.audio_asset_ptr(output),words).slice(),channels};}
+    const input=this.x.audio_alloc(BigInt(Math.ceil(bytes.length/4)));if(input<0)throw new AudioRefusal('Coax refused WAV allocation');let output=-1;
+    try{new Uint8Array(this.memory.buffer,this.x.audio_asset_ptr(input),bytes.length).set(bytes);output=this.x.audio_decode_wav(input,bytes.length);if(output<0)throw new AudioRefusal('Coax refused canonical WAV');const channels=this.x.audio_wav_channels(),words=Number(this.x.audio_info(6));return {samples:new Float32Array(this.memory.buffer,this.x.audio_asset_ptr(output),words).slice(),channels};}
     finally{this.x.audio_release(input);if(output>=0)this.x.audio_release(output);}
+  }
+  planWav(bytes){
+    const input=this.x.audio_alloc(BigInt(Math.ceil(bytes.length/4)));if(input<0)throw new AudioRefusal('Coax refused WAV plan storage');
+    try{new Uint8Array(this.memory.buffer,this.x.audio_asset_ptr(input),bytes.length).set(bytes);if(!this.x.audio_prepare_wav(input,bytes.length))throw new AudioRefusal('Coax refused canonical WAV plan');return {channels:this.x.audio_wav_channels(),frames:Number(this.x.audio_wav_frames()),words:Number(this.x.audio_info(6))};}
+    finally{this.x.audio_release(input);}
+  }
+  installWav(name,bytes,expected){
+    if(this.assets.has(name))return this.assets.get(name).id;
+    const input=this.x.audio_alloc(BigInt(Math.ceil(bytes.length/4)));if(input<0)throw new AudioRefusal('Coax refused WAV input storage');let output=-1;
+    try{new Uint8Array(this.memory.buffer,this.x.audio_asset_ptr(input),bytes.length).set(bytes);if(!this.x.audio_prepare_wav(input,bytes.length))throw new AudioRefusal('Coax refused canonical WAV plan');
+      const channels=this.x.audio_wav_channels(),frames=Number(this.x.audio_wav_frames()),words=Number(this.x.audio_info(6));
+      if(channels!==expected.channels||frames!==expected.frames||words!==expected.words)throw Error('Audio allocation observation changed');
+      output=this.x.audio_decode_wav(input,bytes.length);if(output<0)throw new AudioRefusal('Coax refused canonical WAV decode');this.assets.set(name,{id:output,channels});return output;
+    }catch(error){if(output>=0)this.x.audio_release(output);throw error;}
+    finally{this.x.audio_release(input);}
   }
   command(text,started=true){const effect=this.parse(text),asset=this.assets.get(effect.name),n=this.line(text);return n<0?-1:this.x.audio_command(n,asset?.id??-1,asset?.channels??0,started?1:0);}
   block(){if(!this.x.audio_block())throw Error('Coax refused audio block');return new Float32Array(this.memory.buffer,this.x.audio_output_ptr(),2048);}
   info(){return {frames:Number(this.x.audio_info(0)),accepted:Number(this.x.audio_info(1)),refused:Number(this.x.audio_info(2)),roomPartitions:Number(this.x.audio_info(3)),voices:Number(this.x.audio_info(4)),words:Number(this.x.audio_info(5))};}
+  close(){const before=this.info();this.x.audio_close();this.assets.clear();return {before,after:this.info()};}
 }

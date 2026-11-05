@@ -1,6 +1,7 @@
 // Firm reason: 1 (browser glue: load the shared service authority and copy admitted spans).
 const wasmURL=new URL('../build/host-services.wasm',import.meta.url);
 let compiled;
+function queueRelease(x,lease){return ()=>!!x.services_audio_queue_release(...lease);}
 export async function openHostServices(){
  compiled??=(async()=>{const response=await fetch(wasmURL,{cache:'no-store'});if(!response.ok)throw Error(`host services reactor: ${response.status}`);return WebAssembly.compile(await response.arrayBuffer());})().catch(error=>{compiled=null;throw error;});
  const memory=new WebAssembly.Memory({initial:128,maximum:1024});
@@ -15,7 +16,7 @@ export async function openHostServices(){
    const field=i=>Number(x.services_bank_field(i));return {id:Number(id),name:decoder.decode(new Uint8Array(memory.buffer,field(0),field(1))),address:field(2),bytes:field(3)};},
   bankCount:()=>Number(x.services_bank_count()),extent:(frames,channels)=>Number(x.services_extent(BigInt(frames),BigInt(channels))),reserve:words=>Number(x.services_reserve(BigInt(words))),release:ticket=>!!x.services_release(BigInt(ticket)),words:()=>Number(x.services_words()),
   audioLine(line){const storage=new Uint8Array(memory.buffer,x.services_line_ptr(),x.services_line_capacity()),written=encoder.encodeInto(line,storage);if(written.read!==line.length||x.services_audio_queue_offer(BigInt(written.written))!==0)return null;
-   const lease=[0,1,2].map(field=>x.services_audio_queue_lease(field)),release=()=>!!x.services_audio_queue_release(...lease);
+   const lease=[0,1,2].map(field=>x.services_audio_queue_lease(field)),release=queueRelease(x,lease);
    try{return Object.freeze({bytes:storage.slice(0,written.written),release});}catch{release();return null;}},
   audioQueueInfo:()=>[0,1].map(field=>Number(x.services_audio_queue_info(field)))};
 }

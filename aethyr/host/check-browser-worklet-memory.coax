@@ -1,0 +1,15 @@
+// Real host producer bank, retained Worklet PCM and acknowledged retirement.
+#load "../../coax/web/wasm-chrome.coax";
+#load "audio-worklet-memory-conformance.coax";
+hwm_wait :: (c:[]Cdp,text:string)->bool {until:=proc_now_ms()+15000;while proc_now_ms()<until {if wc_eval(c,text)=="true" {return true;}proc_sleep(50);}tool_errln(text);tool_errln(wc_eval(c,"(async()=>JSON.stringify(await coaxial.audio.contract()))()"));return false;}
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])!=2 {tool_errln("usage: check-browser-worklet-memory LOCAL_URL OUT.json");return 2;}url:=args_at(a[..],0);if url.count<17||url[0..<17]!="http://127.0.0.1:" {return 2;}
+ c:[1]Cdp;if !cdp_launch(c[..],160,90,"coax-worklet-memory-product-") {return 1;}defer {cdp_close(c[..]);}tool_errln("Launched worklet memory fixture.");
+ bytes:[16384]u8;params:[8192]u8;o:[1]Jo;jo_start(o[..],params[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],url);jo_end(o[..]);nav:=cdp_call(c[..],"Page.navigate",jo_text(o[..]),CDP_CALL_MS);
+ if !hwm_wait(c[..],"!!globalThis.coaxial?.ready&&typeof coaxial.audio?.contract==='function'") {return 1;}tool_errln("Producer ready.");
+ if wc_eval(c[..],"coaxial.audio.play('!fetch pulse');true")!="true"||!hwm_wait(c[..],"Promise.race([(async()=>{const q=await coaxial.audio.contract();return q.worklet?.words===8&&q.queue[0]===0})(),new Promise(resolve=>setTimeout(()=>resolve(false),1000))])") {return 1;}tool_errln("Canonical PCM retained.");
+ value:=cdp_evaluate(c[..],"coaxial.audio.contract()");d:=cdp_doc(c[..]);rows:[10]int;rows[0]=jv_int(d,jv_get(d,value,"memory"),-999);rows[1]=jv_int(d,jv_get(d,jv_get(d,value,"worklet"),"words"),-999);rows[2]=jv_int(d,jv_at(d,jv_get(d,value,"queue"),0),-999);
+ if wc_eval(c[..],"Promise.race([coaxial.reloadEngine(),new Promise(resolve=>setTimeout(()=>resolve('retirement timeout'),5000))])")!="true" {tool_errln("Replacement did not acknowledge retirement.");return 1;}tool_errln("Retirement acknowledged.");value=cdp_evaluate(c[..],"coaxial.audio.contract()");d=cdp_doc(c[..]);retired:=jv_get(d,value,"retirement");if jv_len(d,retired)!=5 {tool_errln(wc_eval(c[..],"(async()=>JSON.stringify(await coaxial.audio.contract()))()"));return 1;}
+ for i:0..<5 {rows[3+i]=jv_int(d,jv_at(d,retired,i),-999);}rows[8]=jv_int(d,jv_get(d,value,"memory"),-999);rows[9]=ifx jv_raw(d,jv_get(d,value,"state"))=="absent" then 1 else 0;
+ jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.host.browser-worklet-memory.v1");jo_key(o[..],"rows");jo_arr(o[..]);for v:rows {jo_int(o[..],v);}jo_end(o[..]);jo_key(o[..],"passed");jo_bool(o[..],hwm_accept(rows[..]));jo_end(o[..]);if o[0].bad||!fs_write(args_at(a[..],1),jo_text(o[..])) {return 1;}if !hwm_accept(rows[..]) {tool_errln("Actual worklet PCM ownership differs; raw observations retained.");return 1;}print("Real worklet PCM: canonical retained allocation and explicit zero-budget retirement passed.\n");return 0;
+}
