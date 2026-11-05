@@ -1,0 +1,8 @@
+everglade5e globalplayer pass bytes344/344
+everglade5e globalsticks pass bytes152/152
+everglade5e globalnet_state FAIL bytes697112/697112
+everglade5e globalguard_state pass bytes1952/1952
+everglade5e globalriver pass bytes375664/375664
+everglade5e globale5_rules pass bytes408888/408888
+everglade5e globaldemo_world pass bytes3207032/3207032
+Face globals:7 compared,1 failed; generated units reused unchanged

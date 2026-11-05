@@ -12,6 +12,7 @@ tool_main :: ()->int #export_c {
  jo_obj(o[..]);jo_key(o[..],"op");jo_str(o[..],"raise");jo_end(o[..]);
  for op,i:[10]string.["resize","reset","wait","observe","status","wait","observe","world","wait","observe"] {jo_obj(o[..]);jo_key(o[..],"op");jo_str(o[..],op);if op=="resize" {jo_key(o[..],"width");jo_int(o[..],640);jo_key(o[..],"height");jo_int(o[..],360);}if op=="wait" {jo_key(o[..],"ms");jo_int(o[..],ifx i==2 then 1000 else 500);}if op=="observe" {jo_key(o[..],"label");jo_str(o[..],ifx i==3 then "play" else ifx i==6 then "covered" else "resumed");}jo_end(o[..]);
   if audio&&i==1 {jo_obj(o[..]);jo_key(o[..],"op");jo_str(o[..],"audio");jo_end(o[..]);}
+  if i==7 {jo_obj(o[..]);jo_key(o[..],"op");jo_str(o[..],"raise");jo_end(o[..]);}
   if held&&i==6 {jo_obj(o[..]);jo_key(o[..],"op");jo_str(o[..],"wait");jo_key(o[..],"ms");jo_int(o[..],1000);jo_end(o[..]);jo_obj(o[..]);jo_key(o[..],"op");jo_str(o[..],"observe");jo_key(o[..],"label");jo_str(o[..],"covered-more");jo_end(o[..]);}
  }
  jo_end(o[..]);jo_end(o[..]);if o[0].bad||!fs_write(input,jo_text(o[..])) {return 1;}if !args_has(a[..],"--existing") {argv:=[10]string.[fs_join(app,"Contents/MacOS/Aethyrforge",paths[2][..]),"--world","metal","--mute-audio","--data-dir",data,"--metal-measure-plan",input,"--test-window-title","Metal12868Check"];out:[65536]u8;err:[65536]u8;r:=proc_run(argv[..],120000,out[..],err[..]);if !fs_write(fs_join(dir,"sdk.stderr",paths[3][..]),cast(string)err[0..<r.err_n])||r.started!=0||r.status!=0||r.cut||r.timed_out {tool_errln(cast(string)err[0..<r.err_n]);return 1;}}

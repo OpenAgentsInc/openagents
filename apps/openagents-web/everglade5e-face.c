@@ -1072,6 +1072,7 @@ EXPORT("coaxial_guard_probe") int32_t coaxial_guard_probe(cx_face_addr state, in
 __attribute__((constructor)) static void coaxial_face_defaults(void) {
   coax_default_t_Player(&player);
   coax_default_t_Sticks(&sticks);
+  coax_default_t_EgNet(&net_state);
   coax_default_t_GaSession(&guard_state);
   guard_trace = guard_trace_v1_reset(); guide_trace = guard_trace_v1_reset();
   coax_default_t_River(&river);

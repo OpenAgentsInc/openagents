@@ -16,6 +16,10 @@ extension ForgeApp {
         let started = ProcessInfo.processInfo.systemUptime
         let cpu = forge_process_cpu_ns(ProcessInfo.processInfo.processIdentifier)
         for op in plan["operations"] as? [[String:Any]] ?? [] {
+            guard !stopping, view.host == host else {
+                observations.append(["label":"host-stopped","error":notice.stringValue,"stopping":stopping,"sameHost":view.host == host])
+                break
+            }
             switch op["op"] as? String {
             case "wait": try await Task.sleep(for:.milliseconds((op["ms"] as! NSNumber).intValue))
             case "raise": NSApp.unhide(nil); window.deminiaturize(nil); window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps:true)
@@ -30,6 +34,11 @@ extension ForgeApp {
             case "focus": view.focus(op["focused"] as? Bool ?? false)
             case "resize": window.setContentSize(NSSize(width:(op["width"] as! NSNumber).doubleValue,height:(op["height"] as! NSNumber).doubleValue))
             case "snapshot": guard mf_snapshot(host,op["file"] as! String) else { throw ShellError.failed("Native snapshot failed.") }
+            case "presented": guard mf_snapshot_presented(host,op["file"] as! String) else { throw ShellError.failed("Native display readback failed.") }
+            case "jpeg":
+                var count = 0
+                guard let bytes = mf_frame_jpeg(host,&count),let image = Data(base64Encoded:Data(bytes:bytes,count:count)),!image.isEmpty else { throw ShellError.failed("Native display JPEG failed.") }
+                try image.write(to:URL(fileURLWithPath:op["file"] as! String),options:.atomic)
             case "observe":
                 var count = 0, dropped = 0
                 let records = mf_measure_rows(host,&count,&dropped)

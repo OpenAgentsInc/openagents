@@ -635,6 +635,47 @@ sd_differs :: (have: string, ref: string) -> int {
   #assert sd_differs("abc", "abc") == -1 && sd_differs("abd", "abc") == 2 && sd_differs("ab", "abc") == 2 && sd_differs("abcd", "abc") == 3;
 }
 
+#test "the 5E room global is discovered beside trailing comments" {
+  p:[1]Plan;sd_plan("static coax_t_EgNet net_state; /* room state */\n", "void coax_default_t_EgNet(coax_t_EgNet *p);\n", "world.c",p[..]);
+  #assert p[0].nglobals==1&&p[0].g_name[0]=="net_state"&&p[0].g_type[0]=="coax_t_EgNet";
+}
+#test "face global comparison requires complete matching declared storage" {
+  #assert sd_global_matches("ab","ab",false)&&sd_global_matches("abab","ab",true);
+  #assert !sd_global_matches("abac","ab",true)&&!sd_global_matches("aba","ab",true);
+  #assert !sd_global_matches("abab","ab",false)&&!sd_global_matches("","",false)&&!sd_global_matches("","a",true);
+}
+sd_global_matches :: (actual:string,expected:string,array:bool)->bool {
+  if expected.count==0||actual.count<expected.count||actual.count%expected.count!=0||(!array&&actual.count!=expected.count){return false;}
+  for at:0..<actual.count/expected.count {if sd_differs(actual[at*expected.count..<(at+1)*expected.count],expected)>=0{return false;}}
+  return true;
+}
+// Reuse exact, source-joined generated units for a native face-only check.
+// This mode emits no compiler C and makes no browser/current-primary claim.
+sd_prepared :: (args:[]Args)->int {
+  if args_count(args)<4 {tool_errln("usage: state-defaults native-prepared NAME FACE.C UNIT.C...");return 2;}
+  store:[33554432]u8;ar:[1]Arena;ar[0].b=store[..];why:[1]Lines;
+  name:=args_at(args,1);face:=args_at(args,2);units:[SD_UNITS]string;nu:=args_count(args)-3;if nu>SD_UNITS{return 2;}
+  headers:[SD_TEXT]u8;names:[65536]u8;hn:=0;nn:=0;
+  for i:0..<nu {
+    unit:=args_at(args,i+3);if !sd_ends(unit,".c"){return 2;}units[i]=unit;
+    header:=ar2(ar[..],unit[0..<unit.count-2],".h");n:=fs_read(header,headers[hn..<headers.count-1]);if n<1{return 1;}hn+=n;headers[hn]=0;hn+=1;
+    if unit.count+nn+1>names.count{return 1;}for b:unit{names[nn]=b;nn+=1;}names[nn]=0;nn+=1;
+  }
+  source:[SD_TEXT]u8;sn:=fs_read(face,source[..]);if sn<1{return 1;}p:[1]Plan;
+  sd_plan(cast(string)source[0..<sn],cast(string)headers[0..<hn],cast(string)names[0..<nn],p[..]);
+  if p[0].nglobals==0 {tool_errln("No defaulted face globals discovered");return 1;}
+  temp:[4096]u8;work:=fs_temp("coax-face-defaults-",temp[..]);if work==""{return 1;}
+  e:[1]Engine;e[0]=Engine.{name=name,face=face};raw:[SD_FACE_OUT]u8;n:=sd_face_native(ar[..],work,e[..],units[0..<nu],p[..],raw[..],why[..]);
+  if n<1 {tool_errln(cast(string)why[0].b[0..<why[0].n]);return 1;}
+  expected:[SD_FACE_MAX]u8;actual:[SD_FACE_MAX*4]u8;bad:=0;
+  for i:0..<p[0].nglobals {
+    field:=p[0].g_name[i];rn:=sd_face_bytes(cast(string)raw[0..<n],ar2(ar[..],"ref:",field),expected[..]);an:=sd_face_bytes(cast(string)raw[0..<n],field,actual[..]);
+    ok:=rn>0&&an>=0&&sd_global_matches(cast(string)actual[0..<an],cast(string)expected[0..<rn],p[0].g_array[i].count>0);
+    print("% global% % bytes%/%\n",name,field,ifx ok then "pass" else "FAIL",an,rn);if !ok{bad+=1;}
+  }
+  print("Face globals:% compared,% failed; generated units reused unchanged\n",p[0].nglobals,bad);return ifx bad==0 then 0 else 1;
+}
+
 Work :: struct {
   es: [SD_ENGINES] Engine; ne: int;
   units: [SD_ENGINES * SD_UNITS] string; nunits: [SD_ENGINES] int;
@@ -644,6 +685,7 @@ Work :: struct {
 tool_main :: () -> int #export_c {
   a: [1] Args;
   if !args_load(a[..]) { return 2; }
+  if args_count(a[..])>0&&args_at(a[..],0)=="native-prepared" {return sd_prepared(a[..]);}
   store: [33554432] u8; ar: [1] Arena; ar[0].b = store[..]; fails: [1] Lines; checked: [1] Lines; globals: [1] Lines; sharp: [1] Lines;
   cwd: [4096] u8;
   root := ar_one(ar[..], fs_cwd(cwd[..]));
