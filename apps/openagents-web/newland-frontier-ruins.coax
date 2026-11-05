@@ -143,11 +143,15 @@ fr_towers :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
     up := fr_in(t, FR_OLD + 0.35 * f32(pc.b) + 1.1 * yn, 0.35);
     if up <= 0 { continue; }
     w := fr_piece_at(pc, i, t);
+    // propped back up by the attention farmed for it (newland-frontier-act2.coax), then let fall again
+    pr := fr_prop(pc.b, t);
+    if pr > 0 { w.c = fv_mix(w.c, pc.c, pr); w.ang = w.ang * (1 - pr); if pr >= 0.999 { w.free = false; w.landed = -1; } }
     standing := !w.free;
     if pc.dome && standing { continue; }   // the dome is drawn whole while it stands (below)
     if standing && up < 1 { w.c = fv(w.c.x, w.c.y - (1 - up) * 0.4, w.c.z); }
     light := up * (ifx standing then 0.85f32 else (ifx w.landed >= 0 then 0.55f32 else 0.8f32)) * quiet;
-    v = fr_box(out, v, c, pc, w, ifx standing then white else pale, dim, light);
+    if pr > 0.3 { light = hi(light, 0.95 * pr); }   // propped up, it shines with what feeds it
+    v = fr_box(out, v, c, pc, w, ifx pr > 0.3 then ink(p, INK_BRIGHT) else ifx standing then white else pale, dim, light);
     // dust where it strikes: a ring on the floor and a puff that drifts up and out
     if w.landed >= 0 && w.landed < 1.4 && i % 2 == 0 {
       d := w.landed / 1.4;
@@ -163,6 +167,7 @@ fr_towers :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
   // the capitol's dome while it stands: a hemisphere of rings and ribs on the drum
   lantern := fr_piece_at(ps[16], 16, t);
   up := fr_in(t, FR_OLD + 1.1 * 2.55 / FR_HEIGHT[0], 0.35);
+  if fr_prop(0, t) >= 0.999 { lantern = FrAt.{c = ps[16].c, axis = fv(0, 1, 0), ang = 0, free = false, landed = -1, land = ps[16].c}; }
   if !lantern.free && up > 0 {
     o := fv_add(fv_add(FR_S, FR_BUILT[0]), fv(0, 2.36, 0));
     o = fv_add(o, fv(lantern.c.x - ps[16].c.x, 0, lantern.c.z - ps[16].c.z));   // it shudders with the rest

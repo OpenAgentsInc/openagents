@@ -18,23 +18,17 @@
 
 FR_FRONTIER :: 27.4; FR_SPACE :: 30.3; FR_SUN :: 32.8; FR_EARTH :: 36.4; FR_MARS :: 36.9; FR_BELT :: 38.2;
 FR_OUTER :: 39.2; FR_HUMANS :: 40.3; FR_OLD :: 44.1; FR_DECAY :: 46.4; FR_NEW :: 48.3; FR_MIDWIVES :: 52.1;
-FR_END :: 56.0;      // the story's last key: the lap takes over after it
+FR_END :: 157.0;      // the story's last key: the lap takes over after it
 FR_JOIN :: 5.0;      // s the camera takes to ease onto the lap
 FR_S :: Fv.{x = 15, y = 0, z = 3};         // the open ground east of the places, where the story stands
 FR_SKY :: Fv.{x = 15, y = 20, z = 3};      // the sun, straight up from the open ground: the orbits' middle
 FR_PEOPLE :: 9;
 FR_TOWERS :: 3;
-FR_KEYS :: 14;
+FR_KEYS :: 33;
 
 // ---- the camera: a smooth path through keys (Catmull-Rom), eye and aim, in grid units
 FrKey :: struct { t: f32; eye: Fv; at: Fv; }
-fr_key :: (i: int) -> FrKey {
-  j := clamp_i(i, 0, FR_KEYS - 1);
-  // the worlds' keys follow the worlds: Earth and Mars where they are at their beats
-  if j == 6 { e := fr_body_sky(BODY_EARTH, FR_EARTH + 0.5); return FrKey.{t = FR_EARTH + 0.5, eye = fv_add(e, fv(1.1, 0.55, 1.25)), at = e}; }
-  if j == 7 { m := fr_body_sky(BODY_MARS, FR_MARS + 0.95); return FrKey.{t = FR_MARS + 0.95, eye = fv_add(m, fv(0.85, 0.45, 1.0)), at = m}; }
-  if j == 8 { ce := fr_body_sky(BODY_CERES, FR_BELT + 0.6); return FrKey.{t = FR_BELT + 0.6, eye = fv_add(ce, fv(0.9, 0.5, 1.3)), at = fv_mix(ce, FR_SKY, 0.25)}; }
-  k := [FR_KEYS] FrKey.[
+FR_KEY_TABLE :: [FR_KEYS] FrKey.[
     FrKey.{t = 0,           eye = Fv.{x = 32, y = 17, z = 32}, at = Fv.{x = 0, y = 0, z = 0}},
     FrKey.{t = 14,          eye = Fv.{x = 28, y = 13, z = 31}, at = Fv.{x = 2, y = 0, z = 2}},
     FrKey.{t = FR_FRONTIER, eye = Fv.{x = 20, y = 6.5, z = 22}, at = Fv.{x = -1, y = 1.5, z = 1}},
@@ -46,9 +40,37 @@ fr_key :: (i: int) -> FrKey {
     FrKey.{t = FR_HUMANS + 1.7, eye = Fv.{x = 25, y = 3.2, z = 11}, at = Fv.{x = 14, y = 1.2, z = 2.5}},
     FrKey.{t = FR_DECAY,    eye = Fv.{x = 27.5, y = 5.5, z = 13.5}, at = Fv.{x = 12.5, y = 2.6, z = 0.5}},
     FrKey.{t = FR_MIDWIVES - 0.5, eye = Fv.{x = 24, y = 3.6, z = 10}, at = Fv.{x = 15, y = 2.3, z = 3}},
-    FrKey.{t = FR_END,      eye = Fv.{x = 23, y = 5.5, z = 7.5}, at = Fv.{x = 15, y = 2.0, z = 3}}];
-  return k[j];
+    // the rest of the reading (newland-frontier-act2.coax)
+    FrKey.{t = 55.8,  eye = Fv.{x = 25, y = 6, z = 14},     at = Fv.{x = 14, y = 1, z = 3}},
+    FrKey.{t = 60.6,  eye = Fv.{x = 27.5, y = 4.6, z = 8},   at = Fv.{x = 20, y = 0.8, z = 0.6}},
+    FrKey.{t = 65.6,  eye = Fv.{x = 25.6, y = 2.4, z = 4.2}, at = Fv.{x = 20, y = 0.9, z = -0.4}},
+    FrKey.{t = 70.6,  eye = Fv.{x = 31, y = 9, z = 17},      at = Fv.{x = 20.5, y = 0, z = 6.5}},
+    FrKey.{t = 76.2,  eye = Fv.{x = 29, y = 5, z = 15.5},    at = Fv.{x = 21, y = 1.3, z = 6}},
+    FrKey.{t = 80.8,  eye = Fv.{x = 26, y = 3.0, z = 13},    at = Fv.{x = 21, y = 2.2, z = 2.5}},
+    FrKey.{t = 85.6,  eye = Fv.{x = 42, y = 22, z = 32},     at = Fv.{x = 20, y = 0, z = 7}},
+    FrKey.{t = 90.8,  eye = Fv.{x = 32, y = 7.5, z = 19},    at = Fv.{x = 21, y = 3.6, z = 8}},
+    FrKey.{t = 96.2,  eye = Fv.{x = 28, y = 3.6, z = 14.5},  at = Fv.{x = 21, y = 2.2, z = 8}},
+    FrKey.{t = 101.6, eye = Fv.{x = 34, y = 13, z = 23},     at = Fv.{x = 21, y = 6, z = 8}},
+    FrKey.{t = 106.6, eye = Fv.{x = 40, y = 26, z = 30},     at = Fv.{x = 20, y = 0, z = 8}},
+    FrKey.{t = 111.6, eye = Fv.{x = 29, y = 3.6, z = 15},    at = Fv.{x = 21, y = 1, z = 8}},
+    FrKey.{t = 117.6, eye = Fv.{x = 22, y = 9.5, z = 14},    at = Fv.{x = 11, y = 2.0, z = 0.6}},
+    FrKey.{t = 123.6, eye = Fv.{x = 25, y = 6, z = 13.5},    at = Fv.{x = 14, y = 3.4, z = 2.5}},
+    FrKey.{t = 128.6, eye = Fv.{x = 31, y = 8, z = 18},      at = Fv.{x = 19, y = 3.5, z = 6}},
+    FrKey.{t = 133.6, eye = Fv.{x = 29, y = 11, z = 16},     at = Fv.{x = 18, y = 7, z = 5}},
+    FrKey.{t = 137.6, eye = Fv.{x = 23.5, y = 9.2, z = 10.5}, at = Fv.{x = 18, y = 8.3, z = 5}},
+    FrKey.{t = 143.0, eye = Fv.{x = 30, y = 14, z = 20},     at = Fv.{x = 17, y = 4, z = 4}},
+    FrKey.{t = 151.0, eye = Fv.{x = 27, y = 7, z = 16},      at = Fv.{x = 15, y = 2.2, z = 3}},
+    FrKey.{t = FR_END, eye = Fv.{x = 38, y = 20, z = 32},    at = Fv.{x = 13, y = 1, z = 2}}];
+
+fr_key :: (i: int) -> FrKey {
+  j := clamp_i(i, 0, FR_KEYS - 1);
+  // the worlds' keys follow the worlds: Earth and Mars where they are at their beats
+  if j == 6 { e := fr_body_sky(BODY_EARTH, FR_EARTH + 0.5); return FrKey.{t = FR_EARTH + 0.5, eye = fv_add(e, fv(1.1, 0.55, 1.25)), at = e}; }
+  if j == 7 { m := fr_body_sky(BODY_MARS, FR_MARS + 0.95); return FrKey.{t = FR_MARS + 0.95, eye = fv_add(m, fv(0.85, 0.45, 1.0)), at = m}; }
+  if j == 8 { ce := fr_body_sky(BODY_CERES, FR_BELT + 0.6); return FrKey.{t = FR_BELT + 0.6, eye = fv_add(ce, fv(0.9, 0.5, 1.3)), at = fv_mix(ce, FR_SKY, 0.25)}; }
+  return FR_KEY_TABLE[j];
 }
+
 clamp_i :: (v: int, a: int, b: int) -> int { if v < a { return a; } if v > b { return b; } return v; }
 fr_cr :: (p0: Fv, p1: Fv, p2: Fv, p3: Fv, u: f32) -> Fv {
   u2 := u * u; u3 := u2 * u;
@@ -96,6 +118,7 @@ fr_scene :: (out: [] f32, at: int, s: [] LandState, c: Cam, look: Fv, p: Pen, t:
   v = fr_towers(out, v, c, p, t);
   v = fr_new_world(out, v, c, p, t);
   v = fr_people(out, v, c, p, t);
+  v = fr_act2(out, v, c, p, t);
   return v;
 }
 fr_in :: (t: f32, from: f32, take: f32) -> f32 { return ease((t - from) / take); }
@@ -190,7 +213,7 @@ fr_new_world :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
   white := ink(p, INK_WHITE);
   n := 34;
   shown := cast(int) (cast(f32) n * g);
-  height: f32 = 4.6;
+  height := fr_tree_height(t);
   nodes: [34] Fv;
   for i: 0..<n {
     f := cast(f32) i / cast(f32) (n - 1);
@@ -224,7 +247,7 @@ fr_new_world :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
   return v;
 }
 
-#test "the story's camera passes every key and moves smoothly between them" {
+#test "the story's camera passes every key and moves smoothly between them" #steps 4000000000 {
   for i: 0..<FR_KEYS - 1 {
     k := fr_key(i);
     q := fr_story_pose(k.t);

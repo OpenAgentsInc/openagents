@@ -1,0 +1,623 @@
+// Penultimate Frontier, the rest of Episode 292 (newland-frontier.coax draws the opening): the
+// crowd that falls out of the old world, the tables with no seats, the numbers, the computer, and
+// the space our computers make when they connect. All line art on the Grid's floor, as before; the
+// crowd is the same FR_MANY people all the way through, walking from beat to beat.
+//
+//   FR_FALL     "millions of people now fall out of the old system"  they pour out of the rubble and wander
+//   FR_TABLES   "never seats for them at those old tables"           a long table, every chair taken; they stand round it
+//   FR_WHAT     "something new is needed. But what?"                 an empty plot draws itself; they gather at its edge
+//   FR_NUMBERS  "we have numbers"                                    they fall into ranks on it
+//   FR_ELITE    "the people against the elites, the 99% against the one": one stands on a pillar over them
+//   FR_MAJORITY "we have the silent majority"                        the ranks go on, out over the floor
+//   FR_TOOL     "this century's greatest tool"                       a giant laptop rises over them
+//   FR_SHIELD   "a weapon in our defense"                            a dome goes up from it over them all
+//   FR_POCKET   "in your pocket or on your desktop"                  each holds a phone; the laptop climbs
+//   FR_NATIONS  "to create or conquer nations"                       lines from every phone meet over them; borders and cities
+//   FR_APART    "isolated, disconnected"                             they spread out, each in a cage, heads down
+//   FR_ARGUE    "used to argue with each other"                      pairs turn on each other
+//   FR_FARMED   "our attention farmed... yesterday's winners"        their attention streams to the ruins, which stand again
+//   FR_REFOCUS  "refocus our attention, repurpose our computing power": it swings to the new tree; the old falls
+//   FR_CYBER    "the space created when our computers connect"       a mesh between them lifts into a second grid in the sky
+//   FR_BBS      "its forefathers met on bulletin boards"             an old terminal on it, typing
+//   FR_THERE    "we hope to meet you there"                          they ring the new tree, hands up
+
+FR_FALL :: 55.3; FR_TABLES :: 60.4; FR_WHAT :: 68.9; FR_HAVE :: 72.6; FR_NUMBERS :: 74.6; FR_ELITE :: 76.4;
+FR_MAJORITY :: 81.5; FR_TOOL :: 86.5; FR_SHIELD :: 90.6; FR_COMPUTER :: 94.6; FR_POCKET :: 95.6;
+FR_POWER :: 99.0; FR_NATIONS :: 104.2; FR_APART :: 108.4; FR_ARGUE :: 112.6; FR_FARMED :: 115.2;
+FR_REFOCUS :: 122.1; FR_REPURPOSE :: 125.3; FR_CYBER :: 128.0; FR_BBS :: 135.8; FR_VIRTUAL :: 139.5;
+FR_VERSE :: 149.7; FR_THERE :: 152.0;
+
+FR_MANY :: 99;
+FR_SEATS :: 12;
+FR_CROWDS :: 560;
+FR_PLOT :: Fv.{x = 21, y = 0, z = 8};      // where they stand together
+FR_TABLE :: Fv.{x = 21, y = 0, z = -0.2};  // the old table, then the pillar
+FR_NODE :: Fv.{x = 21, y = 10, z = 8};     // where their phones' lines meet
+FR_NET :: Fv.{x = 18, y = 7, z = 5};       // the middle of the grid in the sky
+FR_PILLAR :: 3.2;
+
+fr_h :: (i: int, k: f32) -> f32 { return hash01(f32(i) * 1.618 + k * 7.31); }
+
+// ---- where each of the crowd stands, beat by beat
+fr_spawn :: (i: int) -> Fv {
+  b := i % 3;
+  o := fv_add(FR_S, FR_BUILT[b]);
+  a := FR_TAU * fr_h(i, 1); r := 0.3 + 0.7 * fr_h(i, 2);
+  return fv(o.x + r * cos(a), 0, o.z + r * sin(a));
+}
+fr_lost :: (i: int) -> Fv {   // nowhere to go: scattered over the open floor
+  p := fv(13 + 12 * fr_h(i, 3), 0, 3.2 + 10 * fr_h(i, 4));
+  d := fv_sub(p, FR_S); l := sqrt(d.x * d.x + d.z * d.z);
+  if l < 2.7 { p = fv_add(FR_S, fv_times(unit3(fv(d.x + 0.01, 0, d.z + 0.01)), 2.7)); }
+  return p;
+}
+fr_round_table :: (i: int) -> Fv {   // standing round the table, not at it
+  s := (f32(i) + 0.5 * fr_h(i, 5)) / f32(FR_MANY);
+  hx: f32 = 4.0; hz: f32 = 2.0;
+  per := 2 * (hx + hz) * 2; d := s * per; x: f32 = 0; z: f32 = 0;
+  if d < 2 * hx { x = -hx + d; z = -hz; } else if d < 2 * hx + 2 * hz { x = hx; z = -hz + (d - 2 * hx); }
+  else if d < 4 * hx + 2 * hz { x = hx - (d - 2 * hx - 2 * hz); z = hz; } else { x = -hx; z = hz - (d - 4 * hx - 2 * hz); }
+  out := 0.9 * fr_h(i, 6);
+  x += ifx x > 0 then out else -out; z += ifx z > 0 then out else -out;
+  return fv(FR_TABLE.x + x, 0, FR_TABLE.z + z);
+}
+fr_plot_edge :: (i: int) -> Fv {
+  a := FR_TAU * (f32(i) + 0.4 * fr_h(i, 7)) / f32(FR_MANY);
+  r := 4.4 + 0.7 * fr_h(i, 8);
+  return fv(FR_PLOT.x + r * cos(a), 0, FR_PLOT.z + r * sin(a));
+}
+fr_rank :: (i: int, spread: f32) -> Fv {
+  row := i / 10; col := i % 10;
+  s := 0.55 * spread;
+  return fv(FR_PLOT.x + (f32(col) - 4.5) * s, 0, FR_PLOT.z + (f32(row) - 4.5) * s);
+}
+fr_there :: (i: int) -> Fv {   // rings round the new tree
+  counts := [5] int.[14, 17, 20, 23, 25];
+  k := i; ringi := 0;
+  while ringi < 4 && k >= counts[ringi] { k -= counts[ringi]; ringi += 1; }
+  a := FR_TAU * (f32(k) + 0.5 * f32(ringi % 2)) / f32(counts[ringi]);
+  r := 2.6 + 0.6 * f32(ringi);
+  return fv(FR_S.x + r * cos(a), 0, FR_S.z + r * sin(a));
+}
+FrStep :: struct { t: f32; take: f32; }
+// The crowd member's place at t, and whether it is walking there.
+FrWhere :: struct { at: Fv; from: Fv; to: Fv; walking: bool; }
+fr_where :: (i: int, t: f32) -> FrWhere {
+  lag := 0.9 * fr_h(i, 9);
+  steps := [8] FrStep.[
+    FrStep.{t = FR_FALL + lag * 2.2, take = 3.2},
+    FrStep.{t = FR_TABLES + 0.6 + lag * 1.6, take = 2.6},
+    FrStep.{t = FR_WHAT + lag, take = 2.4},
+    FrStep.{t = FR_NUMBERS + lag * 0.8, take = 1.8},
+    FrStep.{t = FR_APART + lag * 0.6, take = 1.8},
+    FrStep.{t = FR_REFOCUS + 0.4 + lag * 0.8, take = 2.2},
+    FrStep.{t = FR_VERSE - 1.2 + lag, take = 2.6},
+    FrStep.{t = 1000, take = 1}];
+  places := [8] Fv.[fr_spawn(i), fr_lost(i), fr_round_table(i), fr_plot_edge(i), fr_rank(i, 1), fr_rank(i, 1.9), fr_rank(i, 1), fr_there(i)];
+  k := 0;
+  while k < 7 && t >= steps[k].t { k += 1; }
+  // places[k] is where it stands once step k-1 is done; step k (if begun) takes it to places[k + 1]
+  if k == 0 { return FrWhere.{at = places[0], from = places[0], to = places[0], walking = false}; }
+  st := steps[k - 1];
+  u := clamp((t - st.t) / st.take, 0, 1);
+  a := places[k - 1]; b := places[k];
+  return FrWhere.{at = fv_mix(a, b, smooth01(u)), from = a, to = b, walking = u > 0 && u < 1};
+}
+
+// ---- small things
+fr_stick :: (out: [] f32, at: int, c: Cam, o: Fv, h: f32, sway: f32, k: Ink, light: f32) -> int {
+  if light <= 0.003 { return at; }
+  v := at;
+  hip := fv(o.x, o.y + 0.48 * h, o.z); neck := fv(o.x + sway, o.y + 0.85 * h, o.z);
+  v = seg(out, v, c, fv(o.x - 0.1 * h, o.y, o.z), hip, k, light);
+  v = seg(out, v, c, fv(o.x + 0.1 * h, o.y, o.z), hip, k, light);
+  v = seg(out, v, c, hip, neck, k, light);
+  v = seg(out, v, c, neck, fv(o.x - 0.17 * h, o.y + 0.5 * h, o.z), k, light * 0.8);
+  v = seg(out, v, c, neck, fv(o.x + 0.17 * h, o.y + 0.5 * h, o.z), k, light * 0.8);
+  q := spot(c, fv(o.x + sway, o.y + 0.97 * h, o.z));
+  if q.ok && inside(c.clip, q.x, q.y) { v = diamond(out, v, q.x, q.y, 22 * h / q.z * c.focal / 600, k, light); }
+  return v;
+}
+// A box from its corner points, its twelve edges.
+fr_cage :: (out: [] f32, at: int, c: Cam, o: Fv, hx: f32, hz: f32, y0: f32, y1: f32, k: Ink, light: f32) -> int {
+  v := box3(out, at, c, o.x, o.z, hx, hz, y0, y1, k, light);
+  v = seg(out, v, c, fv(o.x - hx, y0, o.z - hz), fv(o.x - hx, y1, o.z - hz), k, light);
+  v = seg(out, v, c, fv(o.x - hx, y0, o.z - hz), fv(o.x + hx, y0, o.z - hz), k, light);
+  v = seg(out, v, c, fv(o.x - hx, y0, o.z - hz), fv(o.x - hx, y0, o.z + hz), k, light);
+  return v;
+}
+fr_box_at :: (out: [] f32, at: int, c: Cam, o: Fv, yaw: f32, a: Fv, b: Fv, k: Ink, light: f32) -> int {
+  // a box in a frame turned by yaw at o, its corners a (low) and b (high), local
+  v := at;
+  q: [8] Fv;
+  for j: 0..<8 {
+    x := ifx (j & 1) != 0 then b.x else a.x; y := ifx (j & 2) != 0 then b.y else a.y; z := ifx (j & 4) != 0 then b.z else a.z;
+    q[j] = fr_ship_pt(o, yaw, 1, fv(x, y, z));
+  }
+  edges := [24] int.[0, 1, 2, 3, 4, 5, 6, 7, 0, 2, 1, 3, 4, 6, 5, 7, 0, 4, 1, 5, 2, 6, 3, 7];
+  for e: 0..<12 { v = seg(out, v, c, q[edges[e * 2]], q[edges[e * 2 + 1]], k, light); }
+  return v;
+}
+// The tree's top: where attention goes once it's refocused (fr_new_world grows it).
+fr_tree_height :: (t: f32) -> f32 { return 4.6 * (1 + 0.55 * fr_in(t, FR_REPURPOSE, 2.6)); }
+fr_tree_top :: (t: f32) -> Fv { return fv(FR_S.x, 0.3 + fr_tree_height(t), FR_S.z); }
+fr_capitol_top :: () -> Fv { return fv_add(fv_add(FR_S, FR_BUILT[0]), fv(0, 3.4, 0)); }
+// How far the old buildings stand again, propped up by attention (fr_towers reads it).
+fr_prop :: (b: int, t: f32) -> f32 {
+  if b == 1 { return 0; }
+  up := fr_in(t, FR_FARMED + 1.2 + 0.8 * f32(b / 2), 3.4);
+  return up * fr_out(t, FR_REFOCUS + 0.4 + 0.3 * f32(b / 2), 1.1);
+}
+
+// ---- the crowd
+fr_many :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
+  if t < FR_FALL { return at; }
+  v := at;
+  pale := ink(p, INK_PALE); bright := ink(p, INK_BRIGHT); blue := ink(p, INK_BLUE); white := ink(p, INK_WHITE);
+  sh: Shape; sh.size = 0.82;
+  k := verse_figure_skeleton(sh);
+  caged := fr_in(t, FR_APART + 1.2, 1.4) * fr_out(t, FR_REFOCUS + 0.3, 1.4);
+  phones := fr_in(t, FR_POCKET, 1.0) * fr_out(t, FR_VERSE - 1.5, 1.0);
+  arguing := fr_in(t, FR_ARGUE, 0.5) * fr_out(t, FR_FARMED + 0.3, 0.6);
+  heads: [FR_MANY] Fv; hands: [FR_MANY] Fv;
+  for i: 0..<FR_MANY {
+    w := fr_where(i, t);
+    seen := fr_in(t, FR_FALL + 2.2 * fr_h(i, 9), 0.5);
+    // facing: where it walks, else at the beat's middle
+    look := fv(1, 0, 1);
+    if t >= FR_TABLES + 0.6 { look = fv_sub(FR_TABLE, w.at); }
+    if t >= FR_WHAT { look = fv_sub(FR_PLOT, w.at); }
+    if t >= FR_NUMBERS + 1.0 { look = fv_sub(FR_TABLE, FR_PLOT); }          // at the pillar
+    if t >= FR_TOOL { look = fv(1, 0, 1); }                                   // at us
+    if t >= FR_VERSE { look = fv_sub(FR_S, w.at); }
+    pair := (i % 10) % 2 == 0;
+    if arguing > 0.5 { look = ifx pair then fv(1, 0, 0) else fv(-1, 0, 0); }
+    if w.walking { look = fv_sub(w.to, w.from); }
+    yaw := angle_of(look.x, look.z);
+    pose := verse_figure_gait(Rig.person, ifx w.walking then Gait.walk else Gait.stand, fract(t * 1.3 + f32(i) * 0.37), t * 1.2 + f32(i));
+    // a phone held up, the head bowed to it while they're apart
+    if phones > 0 && !w.walking {
+      pose.turn[P_R_SHOULDER] = fv(-0.75 * phones, 0, -0.1);
+      pose.turn[P_R_ELBOW] = fv(-1.1 * phones, 0, 0);
+      bow := hi(caged, 0.0) * (1 - arguing);
+      pose.turn[P_NECK] = fv(0.55 * bow, 0, 0);
+    }
+    if arguing > 0 && !w.walking {
+      jab := 0.5 + 0.5 * sin(t * 9 + f32(i));
+      pose.turn[P_L_SHOULDER] = fv(-1.4 * arguing * jab, 0, 0.2);
+    }
+    if t >= FR_THERE && !w.walking {
+      lift := fr_in(t, FR_THERE + 0.15 * fr_h(i, 10), 0.8);
+      pose.turn[P_R_SHOULDER] = fv(-2.4 * lift, 0, -0.15 * lift);
+      pose.turn[P_L_SHOULDER] = fv(-2.4 * lift, 0, 0.15 * lift);
+      pose.turn[P_R_ELBOW] = fv(0, 0, 0);
+    }
+    top: [1] Spot;
+    v = figure(out, v, c, k, pose, w.at.x, w.at.z, yaw, pale, seen, p, top[0..<0]);
+    fx := sin(yaw); fz := cos(yaw);
+    heads[i] = fv(w.at.x, 1.45, w.at.z);
+    hands[i] = fv(w.at.x + 0.3 * fx, 1.05, w.at.z + 0.3 * fz);
+    if phones > 0 && !w.walking {
+      q := spot(c, hands[i]);
+      if q.ok && inside(c.clip, q.x, q.y) { v = diamond(out, v, q.x, q.y, 1.8 * p.d, blue, phones * seen); }
+    }
+    if caged > 0 {
+      v = fr_cage(out, v, c, w.at, 0.36, 0.36, 0, 1.9 * caged, ink(p, INK_DIM), 0.75 * caged);
+    }
+  }
+  // the arguments: a jagged line between each pair's heads, flickering
+  if arguing > 0 {
+    for i: 0..<FR_MANY {
+      if (i % 10) % 2 != 0 || i + 1 >= FR_MANY { continue; }
+      a := heads[i]; b := heads[i + 1];
+      prev := a;
+      for j: 1..<7 {
+        f := f32(j) / 6;
+        jag := ifx j == 6 then 0.0f32 else 0.14 * (ifx j % 2 == 0 then 1.0f32 else -1.0f32) * (0.6 + 0.4 * sin(t * 23 + f32(i)));
+        q := fv_add(fv_mix(a, b, f), fv(0, jag, 0));
+        v = seg(out, v, c, prev, q, bright, arguing * (0.6 + 0.4 * sin(t * 31 + f32(i * 3))));
+        prev = q;
+      }
+    }
+  }
+  // attention, farmed: a stream from each head to the old capitol, then refocused on the new tree
+  stream := fr_in(t, FR_FARMED, 1.2) * fr_out(t, FR_REPURPOSE + 0.6, 1.0);
+  if stream > 0 {
+    swing := fr_in(t, FR_REFOCUS, 1.6);
+    target := fv_mix(fr_capitol_top(), fr_tree_top(t), swing);
+    for i: 0..<FR_MANY {
+      a := heads[i];
+      mid := fv_add(fv_mix(a, target, 0.5), fv(0, 3.0 + 2.0 * fr_h(i, 11), 0));
+      prev := a;
+      n := 9;
+      for j: 1..<n + 1 {
+        u := f32(j) / f32(n);
+        q := fv_add(fv_add(fv_times(a, (1 - u) * (1 - u)), fv_times(mid, 2 * u * (1 - u))), fv_times(target, u * u));
+        if u > stream * 1.05 { break; }
+        dash := 0.25 + 0.75 * clamp(1 - abs(fract(u * 3 - t * 0.9 + fr_h(i, 12)) - 0.5) * 4, 0, 1);
+        v = seg(out, v, c, prev, q, bright, 0.75 * dash * stream);
+        prev = q;
+      }
+    }
+  }
+  // computing power: a line up from every phone to where they meet, then to the new tree's crown
+  power := fr_in(t, FR_POWER, 2.2) * fr_out(t, FR_APART, 0.8);
+  re := fr_in(t, FR_REPURPOSE, 1.6) * fr_out(t, FR_CYBER + 1.0, 1.4);
+  if power > 0 || re > 0 {
+    node := ifx re > 0 then fv_add(fr_tree_top(t), fv(0, 1.6, 0)) else FR_NODE;
+    amount := hi(power, re);
+    for i: 0..<FR_MANY {
+      a := hands[i];
+      tip := fv_mix(a, node, clamp(amount * 1.3 - 0.3 * fr_h(i, 13), 0, 1));
+      v = seg(out, v, c, a, tip, blue, 0.45 * amount);
+      pulse := fract(t * 0.8 + fr_h(i, 14));
+      q := spot(c, fv_mix(a, tip, pulse));
+      if q.ok && inside(c.clip, q.x, q.y) && amount > 0.9 { v = diamond(out, v, q.x, q.y, 1.6 * p.d, bright, 0.7 * amount); }
+    }
+    q := spot(c, node);
+    if q.ok { v = ring(out, v, q.x, q.y, (8 + 3 * sin(t * 4)) * p.d, bright, amount); v = ring(out, v, q.x, q.y, 16 * p.d, ink(p, INK_PALE), 0.5 * amount); }
+  }
+  // the mesh between them, as their computers connect
+  mesh := fr_in(t, FR_CYBER, 1.4) * fr_out(t, FR_VIRTUAL, 1.5);
+  if mesh > 0 {
+    for i: 0..<FR_MANY {
+      for d: 0..<2 {
+        j := ifx d == 0 then i + 1 else i + 10;
+        if j >= FR_MANY || (d == 0 && i % 10 == 9) { continue; }
+        if fr_h(i * 2 + d, 15) > mesh * 1.2 { continue; }
+        v = seg(out, v, c, hands[i], hands[j], blue, 0.6 * mesh);
+      }
+      if i % 3 == 0 {
+        rise := fr_in(t, FR_CYBER + 1.6, 2.0);
+        v = seg(out, v, c, hands[i], fv_mix(hands[i], fv(hands[i].x, FR_NET.y, hands[i].z), rise), blue, 0.35 * mesh);
+      }
+    }
+  }
+  return v;
+}
+
+// "Never seats for them at those old tables": a long table, every chair taken by the old.
+fr_tables :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
+  if t < FR_TABLES - 0.2 || t > FR_TOOL + 1.5 { return at; }
+  v := at;
+  seen := fr_in(t, FR_TABLES - 0.2, 1.0) * fr_out(t, FR_WHAT + 0.4, 1.2);
+  white := ink(p, INK_WHITE); pale := ink(p, INK_PALE); dim := ink(p, INK_DIM);
+  o := FR_TABLE;
+  if seen > 0 {
+    // the table: its top, its edge and four legs
+    v = box3(out, v, c, o.x, o.z, 2.7, 0.55, 0.72, 0.8, white, seen);
+    for j: 0..<4 {
+      x := ifx j % 2 == 0 then -2.5f32 else 2.5f32; z := ifx j < 2 then -0.45f32 else 0.45f32;
+      v = seg(out, v, c, fv(o.x + x, 0, o.z + z), fv(o.x + x, 0.72, o.z + z), pale, seen);
+    }
+    // a cloth's fold along it, plates and cups
+    for j: 0..<6 {
+      for side: 0..<2 {
+        z := ifx side == 0 then -0.3f32 else 0.3f32;
+        x := -2.1 + 0.84 * f32(j);
+        v = loop3(out, v, c, o.x + x, 0.81, o.z + z, 0.13, dim, seen);
+        v = seg(out, v, c, fv(o.x + x + 0.2, 0.8, o.z + z * 0.7), fv(o.x + x + 0.2, 0.95, o.z + z * 0.7), dim, seen);
+      }
+    }
+    sh: Shape; sh.size = 0.95;
+    k := verse_figure_skeleton(sh);
+    for s: 0..<FR_SEATS {
+      side := ifx s < 6 then -1.0f32 else 1.0f32;
+      x := o.x - 2.1 + 0.84 * f32(s % 6);
+      z := o.z + side * 1.0;
+      // the chair: high back, seat and legs
+      took := fr_in(t, FR_TABLES + 0.25 * f32(s), 0.5);
+      v = box3(out, v, c, x, z, 0.24, 0.22, 0.44, 0.5, pale, seen);
+      back_z := z + side * 0.22;
+      v = seg(out, v, c, fv(x - 0.24, 0.5, back_z), fv(x - 0.24, 1.65, back_z), pale, seen);
+      v = seg(out, v, c, fv(x + 0.24, 0.5, back_z), fv(x + 0.24, 1.65, back_z), pale, seen);
+      v = seg(out, v, c, fv(x - 0.24, 1.65, back_z), fv(x + 0.24, 1.65, back_z), pale, seen);
+      v = seg(out, v, c, fv(x - 0.24, 1.3, back_z), fv(x + 0.24, 1.3, back_z), dim, seen);
+      for l: 0..<2 { lx := ifx l == 0 then -0.2f32 else 0.2f32; v = seg(out, v, c, fv(x + lx, 0, z - side * 0.18), fv(x + lx, 0.44, z - side * 0.18), dim, seen); }
+      // the one in it: seated, facing the table
+      pose := verse_figure_gait(Rig.person, Gait.stand, 0, t + f32(s));
+      pose.turn[P_L_HIP] = fv(-1.5, 0, 0.05); pose.turn[P_R_HIP] = fv(-1.5, 0, -0.05);
+      pose.turn[P_L_KNEE] = fv(1.5, 0, 0); pose.turn[P_R_KNEE] = fv(1.5, 0, 0);
+      pose.turn[P_R_SHOULDER] = fv(-0.6, 0, -0.1); pose.turn[P_L_SHOULDER] = fv(-0.6, 0, 0.1);
+      pose.turn[P_R_ELBOW] = fv(-0.7, 0, 0); pose.turn[P_L_ELBOW] = fv(-0.7, 0, 0);
+      pose.lift = fv(0, FR_SIT_DROP, 0);
+      yaw := angle_of(0, -side);
+      top: [1] Spot;
+      v = figure(out, v, c, k, pose, x, z, yaw, white, seen * took, p, top[0..<0]);
+    }
+  }
+  // the pillar the one stands on, where the table was, and the one
+  up := fr_in(t, FR_ELITE - 0.6, 1.4) * fr_out(t, FR_TOOL, 1.2);
+  if t >= FR_ELITE - 1.5 && up > 0 {
+    v = fr_cage(out, v, c, o, 0.55, 0.55, 0, FR_PILLAR * up, white, up);
+    for k2: 1..<6 { y := FR_PILLAR * up * f32(k2) / 6; v = loop3(out, v, c, o.x, y, o.z, 0.78, dim, 0.5 * up); }
+    sh: Shape; sh.size = 1.05;
+    k := verse_figure_skeleton(sh);
+    pose := verse_figure_gait(Rig.person, Gait.stand, 0, t);
+    pose.turn[P_R_SHOULDER] = fv(-0.3, 0, -1.2); pose.turn[P_L_SHOULDER] = fv(-0.3, 0, 1.2);   // arms out, over them
+    top: [1] Spot;
+    v = figure_up(out, v, c, k, pose, o.x, FR_PILLAR * up, o.z, angle_of(FR_PLOT.x - o.x, FR_PLOT.z - o.z), ink(p, INK_BRIGHT), up, p, top[0..<0]);
+  }
+  return v;
+}
+FR_SIT_DROP :: -0.42;
+
+// "Something new is needed. But what?": an empty plot draws itself and waits.
+fr_plot :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
+  if t < FR_WHAT { return at; }
+  v := at;
+  draw := fr_in(t, FR_WHAT, 1.6); fade := fr_out(t, FR_TOOL + 2, 2.0) * 0.7 + 0.3 * fr_out(t, FR_APART, 1.0);
+  bright := ink(p, INK_BRIGHT); pale := ink(p, INK_PALE);
+  o := FR_PLOT; h: f32 = 3.0;
+  cs := [5] Fv.[fv(o.x - h, 0.02, o.z - h), fv(o.x + h, 0.02, o.z - h), fv(o.x + h, 0.02, o.z + h), fv(o.x - h, 0.02, o.z + h), fv(o.x - h, 0.02, o.z - h)];
+  for i: 0..<4 {
+    f := clamp(draw * 4 - f32(i), 0, 1);
+    if f <= 0 { break; }
+    v = seg(out, v, c, cs[i], fv_mix(cs[i], cs[i + 1], f), bright, 0.9 * fade);
+  }
+  // a slow dashed ring inside it, turning, and a pulse: waiting
+  wait := fr_in(t, FR_WHAT + 1.2, 0.8) * fr_out(t, FR_NUMBERS + 0.5, 0.8);
+  if wait > 0 {
+    v = fr_orbit(out, v, c, fv(o.x, 0.03, o.z), 2.0, 1, 40, pale, 0.7 * wait, true);
+    ph := fract((t - FR_WHAT) * 0.7);
+    v = loop3(out, v, c, o.x, 0.03, o.z, 0.3 + 2.4 * ph, bright, 0.6 * (1 - ph) * wait);
+    // the question, standing in the middle: a tall thin mark, its top curled
+    q0 := fv(o.x, 0.4, o.z);
+    v = seg(out, v, c, q0, fv(o.x, 0.55, o.z), bright, wait);
+    prev := fv(o.x, 1.0, o.z);
+    v = seg(out, v, c, fv(o.x, 0.75, o.z), prev, bright, wait);
+    for j: 1..<12 {
+      a := -1.57 + 4.2 * f32(j) / 11;
+      q := fv(o.x + 0.32 * sin(a) * 0.9, 1.32 + 0.32 * -cos(a), o.z);
+      v = seg(out, v, c, prev, q, bright, wait);
+      prev = q;
+    }
+  }
+  return v;
+}
+
+// "We have the silent majority": the ranks go on, faint, out across the floor.
+fr_majority :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
+  if t < FR_MAJORITY || t > FR_POCKET + 2 { return at; }
+  v := at;
+  fade := fr_out(t, FR_POCKET, 1.6);
+  dim := ink(p, INK_DIM);
+  for i: 0..<FR_CROWDS {
+    a := FR_TAU * fr_h(i, 20);
+    r := 4.8 + 15 * sqrt(fr_h(i, 21));
+    show := fr_in(t, FR_MAJORITY + 0.25 * (r - 4.8), 0.5);
+    if show <= 0 { continue; }
+    o := fv(FR_PLOT.x + r * cos(a), 0, FR_PLOT.z + r * sin(a));
+    v = fr_stick(out, v, c, o, 1.25, 0.03 * sin(t * 1.3 + f32(i)), dim, show * fade * 0.8);
+  }
+  return v;
+}
+
+// "This century's greatest tool... a weapon in our defense... the computer": a giant laptop.
+FR_PC :: Fv.{x = 21, y = 4.8, z = 8};
+fr_pc_at :: (t: f32) -> Fv {
+  rise := fr_in(t, FR_TOOL, 2.4);
+  climb := fr_in(t, FR_POWER - 0.5, 2.4);
+  o := fv(FR_PC.x, 1.0 + (FR_PC.y - 1.0) * rise, FR_PC.z);
+  return fv_mix(o, fv(FR_NODE.x, FR_NODE.y + 2.2, FR_NODE.z), climb);
+}
+fr_computer :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
+  if t < FR_TOOL || t > FR_NATIONS + 1 { return at; }
+  v := at;
+  seen := fr_in(t, FR_TOOL, 1.0) * fr_out(t, FR_POWER + 2.0, 1.6);
+  white := ink(p, INK_WHITE); pale := ink(p, INK_PALE); bright := ink(p, INK_BRIGHT); blue := ink(p, INK_BLUE); dim := ink(p, INK_DIM);
+  o := fr_pc_at(t);
+  o = fv_add(o, fv(0, 0.12 * sin(t * 1.1), 0));
+  yaw := 0.785 + 0.25 * sin(t * 0.3);   // its screen toward us (+x +z)
+  s: f32 = 1.0;
+  // the base: a slab, its keys a grid, the trackpad
+  v = fr_box_at(out, v, c, o, yaw, fv(-1.7, -0.08, -1.15), fv(1.7, 0.04, 1.15), white, seen);
+  for r: 0..<5 {
+    z := -0.85 + 0.25 * f32(r);
+    v = fr_sl(out, v, c, o, yaw, s, fv(-1.45, 0.05, z), fv(1.45, 0.05, z), dim, seen);
+  }
+  for k: 0..<13 {
+    x := -1.45 + 2.9 * f32(k) / 12;
+    v = fr_sl(out, v, c, o, yaw, s, fv(x, 0.05, -0.85), fv(x, 0.05, 0.15), dim, seen * 0.7);
+  }
+  v = fr_box_at(out, v, c, o, yaw, fv(-0.5, 0.04, 0.4), fv(0.5, 0.05, 0.95), pale, seen);
+  // the screen, hinged at the back, leaning back a little, its bezel and its light
+  lean: f32 = 0.22;
+  top_z := -1.15 - 2.2 * sin(lean); top_y := 2.2 * cos(lean);
+  corners := [4] Fv.[fv(-1.7, 0.04, -1.15), fv(1.7, 0.04, -1.15), fv(1.7, top_y, top_z), fv(-1.7, top_y, top_z)];
+  for i: 0..<4 { v = fr_sl(out, v, c, o, yaw, s, corners[i], corners[(i + 1) % 4], white, seen); }
+  inner := [4] Fv.[fv(-1.55, 0.18, -1.15 - 0.14 * sin(lean)), fv(1.55, 0.18, -1.15 - 0.14 * sin(lean)), fv(1.55, top_y - 0.15, top_z + 0.15 * sin(lean)), fv(-1.55, top_y - 0.15, top_z + 0.15 * sin(lean))];
+  for i: 0..<4 { v = fr_sl(out, v, c, o, yaw, s, inner[i], inner[(i + 1) % 4], pale, seen); }
+  // "the computer": the screen lights, lines of code typing down it
+  lit_up := fr_in(t, FR_COMPUTER - 0.4, 0.6);
+  if lit_up > 0 {
+    for r: 0..<9 {
+      f := (f32(r) + 0.7) / 9.5;
+      y0 := fv_mix(inner[3], inner[0], f);
+      span := 0.25 + 0.6 * fr_h(r, 30) + 0.15 * f32(r % 3);
+      typed := clamp((t - FR_COMPUTER + 0.4) * 3 - f32(r) * 0.35, 0, 1);
+      if typed <= 0 { continue; }
+      indent := 0.15 * f32((r * 7) % 3);
+      a := fv(y0.x + 0.15 + indent, y0.y, y0.z); b := fv(a.x + 2.6 * span * typed, a.y, a.z);
+      v = fr_sl(out, v, c, o, yaw, s, a, b, ifx r % 4 == 0 then bright else blue, seen * lit_up);
+    }
+  }
+  // the shield: a dome from it over all of them
+  dome := fr_in(t, FR_SHIELD, 1.6) * fr_out(t, FR_POCKET + 0.6, 1.4);
+  if dome > 0 {
+    q := FR_PLOT; r: f32 = 6.4;
+    for m: 0..<18 {
+      a := FR_TAU * f32(m) / 18 + 0.1 * t;
+      prev := fv(q.x + r * cos(a), 0, q.z + r * sin(a));
+      for j: 1..<9 {
+        lat := 1.5707963 * f32(j) / 8;
+        if f32(j) / 8 > dome { break; }
+        pt := fv(q.x + r * cos(lat) * cos(a), r * sin(lat), q.z + r * cos(lat) * sin(a));
+        v = seg(out, v, c, prev, pt, blue, 0.55 * dome);
+        prev = pt;
+      }
+    }
+    for j: 1..<7 {
+      lat := 1.5707963 * f32(j) / 7;
+      if f32(j) / 7 > dome { break; }
+      rr := r * cos(lat);
+      v = fr_ring3(out, v, c, fv(q.x, r * sin(lat), q.z), fv(1, 0, 0), fv(0, 0, 1), rr, 40, blue, 0.4 * dome);
+    }
+    // a strike on it, turned away: flares where they land
+    for k: 0..<4 {
+      ft := fract((t - FR_SHIELD) * 0.9 + f32(k) * 0.27);
+      a := FR_TAU * fr_h(k + i32_floor(t - FR_SHIELD) * 4, 31);
+      hit := fv(q.x + r * 0.75 * cos(a), r * 0.66, q.z + r * 0.75 * sin(a));
+      sp := spot(c, hit);
+      if sp.ok && dome > 0.9 { v = ring(out, v, sp.x, sp.y, (4 + 26 * ft) * p.d, ink(p, INK_BRIGHT), (1 - ft) * dome); }
+    }
+  }
+  return v;
+}
+i32_floor :: (x: f32) -> int { return cast(int) floor(x); }
+
+// "To create or conquer nations": borders drawn on the floor where the lines come down, and
+// cities rising in each.
+fr_nations :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
+  if t < FR_NATIONS - 0.5 || t > FR_APART + 1.5 { return at; }
+  v := at;
+  seen := fr_in(t, FR_NATIONS - 0.5, 0.8) * fr_out(t, FR_APART, 1.2);
+  bright := ink(p, INK_BRIGHT); white := ink(p, INK_WHITE); pale := ink(p, INK_PALE); blue := ink(p, INK_BLUE);
+  for n: 0..<6 {
+    a := FR_TAU * f32(n) / 6 + 0.3;
+    mid := fv(FR_PLOT.x + 10.5 * cos(a), 0, FR_PLOT.z + 10.5 * sin(a));
+    start := FR_NATIONS + 0.35 * f32(n);
+    // the beam down from where the lines meet
+    beam := fr_in(t, start - 0.3, 0.3) * fr_out(t, start + 0.6, 0.6);
+    v = seg(out, v, c, FR_NODE, fv_mix(FR_NODE, mid, clamp(beam * 2, 0, 1)), bright, beam);
+    // the border, drawing round
+    round := fr_in(t, start, 1.2);
+    prev := mid;
+    sides := 9;
+    for s: 0..<sides + 1 {
+      f := f32(s) / f32(sides);
+      if f > round { break; }
+      ang := FR_TAU * f;
+      rr := 3.0 + 0.9 * fr_h(n * 16 + (s % sides), 32);
+      q := fv(mid.x + rr * cos(ang), 0.03, mid.z + rr * sin(ang));
+      if s > 0 { v = seg(out, v, c, prev, q, ifx n % 2 == 0 then bright else white, 0.8 * seen); }
+      prev = q;
+    }
+    // the city: towers rising
+    for b: 0..<7 {
+      ba := FR_TAU * fr_h(n * 8 + b, 33); br := 1.8 * sqrt(fr_h(n * 8 + b, 34));
+      bx := mid.x + br * cos(ba); bz := mid.z + br * sin(ba);
+      hgt := (0.6 + 2.2 * fr_h(n * 8 + b, 35)) * fr_in(t, start + 0.5 + 0.1 * f32(b), 0.8);
+      if hgt <= 0.01 { continue; }
+      v = box3(out, v, c, bx, bz, 0.22, 0.22, 0, hgt, pale, seen);
+    }
+    // its flag
+    fl := fr_in(t, start + 1.2, 0.5);
+    if fl > 0 {
+      v = seg(out, v, c, mid, fv(mid.x, 3.4 * fl, mid.z), white, seen);
+      wv := 0.1 * sin(t * 5 + f32(n));
+      v = seg(out, v, c, fv(mid.x, 3.4 * fl, mid.z), fv(mid.x + 0.7, 3.2 * fl + wv, mid.z), blue, seen * fl);
+      v = seg(out, v, c, fv(mid.x + 0.7, 3.2 * fl + wv, mid.z), fv(mid.x, 2.9 * fl, mid.z), blue, seen * fl);
+    }
+  }
+  return v;
+}
+
+// "That space created when our computers connect, called cyberspace": a second grid, in the sky,
+// rippling; "its forefathers met on bulletin boards": an old terminal on it, typing.
+fr_cyberspace :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
+  if t < FR_CYBER + 1 || t > FR_VERSE + 7 { return at; }
+  v := at;
+  seen := fr_in(t, FR_CYBER + 1.8, 2.2) * (0.35 + 0.65 * fr_out(t, FR_VIRTUAL + 2, 2.0));
+  blue := ink(p, INK_BLUE); pale := ink(p, INK_PALE); white := ink(p, INK_WHITE); bright := ink(p, INK_BRIGHT); dim := ink(p, INK_DIM);
+  rise := fr_in(t, FR_CYBER + 1.4, 2.6);
+  base := 1.2 + (FR_NET.y - 1.2) * rise;
+  half := 13;
+  for line: 0..<2 * half + 1 {
+    for dir: 0..<2 {
+      prev := fv(0, 0, 0);
+      for s: 0..<2 * half + 1 {
+        u := f32(line - half); w := f32(s - half);
+        x := ifx dir == 0 then u else w; z := ifx dir == 0 then w else u;
+        d := sqrt(x * x + z * z);
+        if d > f32(half) { prev = fv(0, -1000, 0); continue; }
+        y := base + 0.22 * sin(d * 0.7 - t * 2.2) * (1 - d / f32(half));
+        q := fv(FR_NET.x + x, y, FR_NET.z + z);
+        if prev.y > -100 && s > 0 {
+          edge := 1 - d / f32(half);
+          v = seg(out, v, c, prev, q, ifx line % 4 == 0 then pale else blue, seen * (0.15 + 0.5 * edge));
+        }
+        prev = q;
+      }
+    }
+  }
+  // the terminal
+  term := fr_in(t, FR_BBS - 0.4, 0.8) * fr_out(t, FR_VIRTUAL + 2.5, 1.0);
+  if term > 0 {
+    o := fv(FR_NET.x, FR_NET.y + 0.05, FR_NET.z);
+    yaw: f32 = 0.785;
+    // the case: a deep box, its face, its screen's curved glass
+    v = fr_box_at(out, v, c, o, yaw, fv(-1.4, 0.4, -1.6), fv(1.4, 2.6, 0.6), white, term);
+    v = fr_box_at(out, v, c, o, yaw, fv(-1.6, 0, -0.2), fv(1.6, 0.4, 0.8), pale, term);
+    scr := [4] Fv.[fv(-1.15, 0.62, 0.62), fv(1.15, 0.62, 0.62), fv(1.15, 2.38, 0.62), fv(-1.15, 2.38, 0.62)];
+    for i: 0..<4 { v = fr_sl(out, v, c, o, yaw, 1, scr[i], scr[(i + 1) % 4], white, term); }
+    // its keys
+    for r: 0..<3 {
+      z := 0.05 + 0.22 * f32(r);
+      v = fr_sl(out, v, c, o, yaw, 1, fv(-1.4, 0.41, z), fv(1.4, 0.41, z), dim, term);
+    }
+    // its text: rows scrolling up, the newest typed out, a cursor blinking
+    tt := (t - FR_BBS) * 2.4;
+    row0 := cast(int) floor(tt);
+    for r: 0..<8 {
+      n := row0 - r;
+      if n < 0 { continue; }
+      y := 0.78 + 0.2 * f32(r);
+      span := 0.4 + 1.5 * fr_h(n, 40);
+      typed := ifx r == 0 then fract(tt) else 1.0f32;
+      if (n % 5) == 4 { span = 0.3; }
+      v = fr_sl(out, v, c, o, yaw, 1, fv(-1.0, y, 0.63), fv(-1.0 + span * typed, y, 0.63), ifx r == 0 then bright else pale, term * (1 - 0.08 * f32(r)));
+      if r == 0 && fract(t * 2.5) < 0.6 {
+        cx := -1.0 + span * typed + 0.08;
+        v = fr_box_at(out, v, c, o, yaw, fv(cx, y - 0.06, 0.63), fv(cx + 0.09, y + 0.06, 0.64), bright, term);
+      }
+    }
+    // those who met there, standing round it
+    for k: 0..<7 {
+      a := 2.2 + 2.0 * f32(k) / 6;
+      sp := fv(o.x + 3.2 * cos(a), o.y, o.z + 3.2 * sin(a));
+      v = fr_stick(out, v, c, sp, 1.4, 0, pale, term * fr_in(t, FR_BBS + 0.3 + 0.2 * f32(k), 0.5));
+    }
+  }
+  return v;
+}
+
+fr_act2 :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
+  if t < FR_FALL - 1 { return at; }
+  v := fr_tables(out, at, c, p, t);
+  v = fr_plot(out, v, c, p, t);
+  v = fr_majority(out, v, c, p, t);
+  v = fr_computer(out, v, c, p, t);
+  v = fr_nations(out, v, c, p, t);
+  v = fr_cyberspace(out, v, c, p, t);
+  v = fr_many(out, v, c, p, t);
+  return v;
+}
+
+#test "the crowd's people never share a place, and walk where they're going" {
+  ts := [7] f32.[FR_FALL + 4, FR_TABLES + 5, FR_WHAT + 3.6, FR_NUMBERS + 3, FR_APART + 3, FR_REFOCUS + 4, FR_THERE + 2];
+  for k: 0..<7 {
+    for i: 0..<FR_MANY {
+      a := fr_where(i, ts[k]);
+      #assert !a.walking || k == 0;
+    }
+  }
+  for i: 0..<FR_MANY {
+    for j: i + 1..<FR_MANY {
+      #assert fv_length(fv_sub(fr_rank(i, 1), fr_rank(j, 1))) > 0.5;
+      #assert fv_length(fv_sub(fr_there(i), fr_there(j))) > 0.45;
+    }
+    // they ring the tree outside the first nine
+    #assert fv_length(fv_sub(fr_there(i), FR_S)) > 2.5;
+  }
+}
