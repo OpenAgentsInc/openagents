@@ -125,6 +125,9 @@ EgNet :: struct {
   // coax/web/room-worker.js runs coax/web/room/room-worker.c, #12784). The socket is local:PATH, a
   // loopback to it that speaks the same frames; it seats without a ticket and has no list or shard
   local_host: bool;
+  // local_ok: this page may fall back to the local host when Everglade's rooms can't be reached
+  // (NET_LOCAL_AFTER tries before a seat, net_down; #12882): not a golden page, not ?offline=page
+  local_ok: bool;
   // what you bring back into a room (#12715): the look last saved, and when
   saved_look: [NET_LOOK] u8; saved_look_n: int; saved_at: int; restored: bool;
   edit_due: bool;            // the server said "e edit": the world and the board are asked for again (#12714)
@@ -266,6 +269,7 @@ net_facts :: (s: [] Everglade, facts: string, room: string, golden: bool) #expor
   jn_facts(s, n, url, room, golden);   // the instance: named, listed or a local server's (everglade-join.coax)
   n[0].want = !golden && start < k && (n[0].code_n > 0 || n[0].join[0].list_due);
   n[0].local_host = !golden && net_query(url, "offline") == "worker" && !n[0].local_relay && n[0].join[0].list_due;
+  n[0].local_ok = !golden && net_query(url, "offline") != "page" && !n[0].local_relay && !n[0].join[0].test && room == "everglade";
   if n[0].local_host { net_local_host(n); }
   pid := fact(facts, "player");
   if pid.count > 0 { n[0].pid_n = net_copy(n[0].pid[..], pid); }
@@ -279,6 +283,7 @@ net_facts :: (s: [] Everglade, facts: string, room: string, golden: bool) #expor
 // Offline play as a one-seat room (#12784): the local host's loopback socket, local:/api/room/relay/
 // everglade/local-1, opened at once (no ticket, no list), the same frames as a room's.
 NET_LOCAL :: "local:";
+NET_LOCAL_AFTER :: 3;   // tries before a seat (about 7 s of the backoff) before offline play goes to the local host
 net_local_host :: (n: [] EgNet) {
   m := wire_put(n[0].url[..], 0, NET_LOCAL);
   m = wire_put(n[0].url[..], m, "/api/room/relay/"); m = wire_put(n[0].url[..], m, NET_GAME); m = wire_put(n[0].url[..], m, "/");
@@ -310,6 +315,7 @@ net_ticket :: (s: [] Everglade, answer: string) #export_c {
   if !net_on(s) { return; }
   n := net_of(s);
   n[0].ticket_asked = false;
+  if n[0].local_host { return; }   // the local host seats without one
   key := "\"ticket\":\"";
   if answer.count > 4 && answer[0..<4] == "200\n" {
     for i: 4..<answer.count {
@@ -457,6 +463,16 @@ net_opened :: (s: [] Everglade, id: int) #export_c {
 net_down :: (n: [] EgNet) {
   n[0].state = NET_DOWN; n[0].sock = -1; n[0].seat = -1; n[0].quiet_fresh = true;
   n[0].tries += 1;
+  // never seated and the rooms still can't be reached: offline play is the room server's own game on
+  // this device (the local host, #12882), as ?offline=worker plays it from the start
+  if n[0].local_ok && !n[0].local_host && !n[0].sat && n[0].tries >= NET_LOCAL_AFTER {
+    net_local_host(n);
+    n[0].local_host = true; n[0].join[0].list_asked = false; n[0].ticket_asked = false; n[0].ticket_n = 0;
+    n[0].tries = 0; n[0].retry = 0;
+    for e: 0..<NET_ENTS { n[0].ents[e].live = false; }
+    net_forget(n);
+    return;
+  }
   wait := 1000;
   for q: 0..<lo_int(n[0].tries - 1, 6) { wait *= 2; }
   // jitter, 75% to 125% of the wait, so the pages a restarted room dropped don't all come back at once
@@ -2524,6 +2540,19 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   #assert cast(string) nl[0].url[0..<nl[0].url_n] == "local:/api/room/relay/everglade/local-1";
   net_facts(l[..], "url=https://openagents.com/worlds/everglade?offline=worker\n", "everglade", true);
   #assert !nl[0].local_host;
+  // Everglade's rooms unreachable: never seated, the third refusal moves offline play to the local host
+  // (#12882); not with ?offline=page, not another realm's page
+  for q: 0..<3 {
+    o: [1] Everglade; no: [1] EgNet;
+    everglade_attach_net(o[..], no[..]);
+    net_facts(o[..], ifx q == 1 then "url=https://openagents.com/worlds/everglade?offline=page\n" else "url=https://openagents.com/worlds/everglade\n",
+              ifx q == 2 then "made-moss" else "everglade", false);
+    #assert !no[0].local_host && no[0].join[0].list_due;
+    for t: 0..<3 { no[0].ticket_asked = true; net_ticket(o[..], "502\n{}"); #assert no[0].local_host == (q == 0 && t == 2); }
+    if q == 0 { #assert cast(string) no[0].url[0..<no[0].url_n] == "local:/api/room/relay/everglade/local-1" && no[0].want && no[0].retry == 0 && no[0].tries == 0; }
+    net_ticket(o[..], "200\n{\"ticket\":\"abc\"}");
+    #assert (no[0].ticket_n == 0) == (q == 0);   // a late ticket is not the local host's
+  }
   // a page with no socket attached is no room's
   t: [1] Everglade;
   #assert !net_live(t[..]) && net_room(t[..], "everglade") == "everglade" && net_probe(t[..], 0) == -1;

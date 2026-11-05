@@ -7,8 +7,11 @@
 > `room-host.c`, both hosts include one tick
 > ([room-tick.c](../../coax/web/room/room-tick.c)), and
 > [room-worker.js](../../coax/web/room-worker.js) runs it in a Web Worker
-> behind a `local:` socket. The page's own offline simulation is not yet
-> deleted, and the switch is not yet the default (#12882).
+> behind a `local:` socket. Since #12882 an Everglade page that never sat
+> and still can't reach the rooms after three tries plays on the local host
+> too (`everglade-net.coax` `net_down`, `NET_LOCAL_AFTER`); `?offline=page`
+> keeps the page's own game. The page's own offline simulation is not yet
+> deleted, and a page plays it until that fallback (#12882).
 
 Every feature of a game that has an offline mode and an online mode is
 written twice, unless the offline mode is the online mode. This chapter adds
