@@ -76,40 +76,42 @@ net_quiet :: (s: [] Everglade, n: [] EgNet, mono: int) {
 }
 ```
 
-On the server, a new join by the same player replaces their socket once it
-has been quiet for 3 s, saving its HP, XP and place first
-(`rl_replace_stale` in `room-relay.coax`), and `rv_back` puts the returning
-player where they stood.
+On the server, reconnecting is its own protocol (#12792). A socket, the
+player's ticket and the seat have different lifetimes:
 
-What the design adds (#12792):
-
-- **A seat generation.** Each join starts one, and every frame carries it.
-  Frames from an earlier generation are dropped. Today frames still in
-  flight on a replaced socket act on the old seat, because `rl_heard` doesn't
-  check for a kicked socket.
-- **A grace hold.** A closed socket's character stays in the world, AWAY,
-  for a stated grace (for example 15 s). A rejoin within it takes the same
-  seat with its conditions, effects and cooldowns. Today the character leaves
-  the moment the socket closes.
-- **Resume from a snapshot.** The returning seat gets a full snapshot
-  (chapter 91), which is enough at Everglade's scale; there is no event log
-  to replay.
+- **A seat generation.** Each time a socket takes a seat, the seat's
+  generation goes up by one, and the room's `y` frame names it
+  (`y SEAT N T G`). A frame counts only while its socket is the seat's current
+  socket of the current generation (`rl_current` in `room-relay.coax`). A
+  frame still in flight on a replaced socket is dropped and counted (the room
+  view's `old socket frames dropped`).
+- **A grace hold.** When a socket closes and its ticket names the player, the
+  seat is held for `EG_GRACE_MS` (15 s, `room-everglade.coax`). The character
+  stays in the rules and the world, standing, AWAY once the page has been
+  quiet for `WIRE_AWAY_MS`. The others hear no `l`. A kicked socket (over its
+  rate limits, on another wire, or kicked by an admin) leaves at once.
+- **Taking the seat back.** The player's next join within the grace takes the
+  same seat (`rl_take_back`). So does a join while their old socket has been
+  quiet for 3 s (a phone between networks): the old socket is closed, and its
+  close leaves the seat alone. The character keeps its HP, conditions,
+  effects, cooldowns, XP and place. What the server knew of the page is reset
+  (`eg_rejoin`): the next `D` is a snapshot (chapter 91), and inputs count
+  from the new page's first. The others hear no `j`.
+- **After the grace.** The seat leaves as a closed socket's did before: its
+  HP, XP and place are noted for the player, everyone hears `l SEAT`, and
+  `rv_back` puts the player where they stood when they join later.
 
 ## Run it
 
 ```shell
+coax/bin/coax test --library coax/web/room/room.coax --only "relay: a closed socket" --steps 4000000000
 coax/bin/coax test --library coax/web/room/room.coax --only "relay: a player's own silent" --steps 4000000000
 coax/bin/coax test --library coax/web/room/room.coax --only "vitals: a player back" --steps 4000000000
 ```
 
-```text
-ok   #test relay: a player's own silent socket gives way to their new one (no twin in the town); one still talking stays (1 case, 3372690 steps, 4144 ms)
-1 of 357 checks (--only 'relay: a player's own silent'), 1 passed, 0 failed
-1 of 357 checks (--only 'vitals: a player back'), 1 passed, 0 failed
-```
-
-The live check `coax/web/room/rejoin-check.coax` drops a bot's socket and
-checks where and how it comes back.
+The live check `coax/web/room/rejoin-check.coax` silences a bot's socket and
+brings it back, sends a late frame on the old socket, closes the new one and
+rejoins within the grace, and last closes for good and waits out the grace.
 
 ## Acceptance checks
 

@@ -79,6 +79,10 @@ EgIn :: struct { seq: int; kx: int; ky: int; px: int; py: int; theta: int; b: in
 EgPose :: struct { x: f32; y: f32; z: f32; yaw: f32; vx: f32; vy: f32; vz: f32; g: int; clip: int; carry: int; }
 EgSeat :: struct {
   live: bool; conn: int = -1;
+  // its generation: one more each time a socket takes the seat (a join or its player's rejoin); a
+  // socket's frames count only while its generation is the seat's (room-relay.coax rl_heard, #12792)
+  gen: int;
+  held: bool; held_at: int;      // its socket closed and its character waits for its player, since held_at (mono ms)
   q: [EG_INPUTS] EgIn; q_n: int; bank: int; took: int; ack: int;   // took: inputs stepped this tick
   sat_ms: int = -1; earned: int;   // the server's clock when it sat (mono ms), and the steps of time earned since
   late: int;                       // inputs gone for coming faster than the clock (EG_KEEP)
@@ -129,6 +133,7 @@ EgRoom :: struct {
   ev_dropped: int;               // events a tick had no room for (EG_EVENTS, EG_EV_BYTES), since the host last asked
   sky: int;                      // the weather its seats last heard, as W has it (room-sky.coax)
   seat: [EG_SEATS] EgSeat;
+  tk: [EG_SEATS] Ticket;         // who each seat's ticket says its player is, kept while the seat is held (#12792)
   casts: [EG_CASTS] EgCast; cast_order: int;
   hurts: [EG_HURTS] EgHurt; hurt_n: int;   // the world's harm to seats this tick, dealt after the heals (room-casts.coax)
   rules: [1] E5rRoom;
@@ -248,7 +253,8 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
 eg_join :: (v: [] RmServer, r: int, conn: int, seat: int) {
   k := eg_room_of(v, r);
   if k < 0 || seat < 0 || seat >= EG_SEATS { return; }
-  v[0].eg[k].seat[seat] = EgSeat.{live = true, conn = conn, full = true, bank = EG_JOIN_BANK, fresh = true};
+  v[0].eg[k].seat[seat] = EgSeat.{live = true, conn = conn, full = true, bank = EG_JOIN_BANK, fresh = true, gen = v[0].conns[conn].gen};
+  v[0].eg[k].tk[seat] = v[0].conns[conn].ticket;
   v[0].eg[k].wanted[seat] = 0;
   e5rr_join(v[0].eg[k].rules[..], seat, 0, 0);
   rv_join(v, k, seat);   // the HP its player left with (room-vitals.coax, #12715)
@@ -265,12 +271,72 @@ eg_join :: (v: [] RmServer, r: int, conn: int, seat: int) {
   v[0].eg[k].im_blk[seat] = ImBlockList.{};   // its page sends its blocks after its hello
   im_seat_reset(v[0].eg[k].im[..], seat); im_room_blocks(v, k);
 }
+// How long a closed socket's character waits for its player (#12792): standing, AWAY once
+// WIRE_AWAY_MS passes, still in the rules and the world. Their rejoin within it takes the same seat.
+EG_GRACE_MS :: 15000;
+// Seat s of room k's player rejoined on socket conn within the grace, or their silent socket gave way
+// to this one (room-relay.coax rl_take_back): the character, its conditions, effects, cooldowns, XP
+// and place are kept; what the server knows of the page is not. Its next D is a snapshot, its inputs
+// count from the new page's first, and it hears the world's header again. The others never saw it go.
+eg_rejoin :: (v: [] RmServer, r: int, conn: int, seat: int) {
+  k := eg_room_at(v, r);
+  if k < 0 || seat < 0 || seat >= EG_SEATS || !v[0].eg[k].seat[seat].live { return; }
+  o := v[0].eg[k].seat[seat];
+  n := EgSeat.{live = true, conn = conn, full = true, gen = v[0].conns[conn].gen};
+  v[0].eg[k].tk[seat] = v[0].conns[conn].ticket;
+  n.sat_ms = o.sat_ms; n.earned = o.earned; n.bank = o.bank; n.late = o.late;
+  n.pose = o.pose; n.placed = o.placed;
+  n.back = o.back; n.back_x = o.back_x; n.back_y = o.back_y; n.back_z = o.back_z; n.back_yaw = o.back_yaw;
+  n.look = o.look; n.look_n = o.look_n; n.klass = o.klass; n.klass_n = o.klass_n; n.flags = o.flags; n.name = o.name; n.name_n = o.name_n;
+  n.last_cast = o.last_cast; n.repaired = o.repaired;
+  n.want_seed = o.want_seed; n.hold_due = o.hold_due; n.back_hp = o.back_hp; n.back_dead = o.back_dead;
+  n.wcond = o.wcond; n.fx_left = o.fx_left; n.fx_t0 = o.fx_t0; n.fx_dur = o.fx_dur;
+  n.heard_ms = v[0].mono_ms;
+  v[0].eg[k].seat[seat] = n;
+  v[0].eg[k].rules[0].pvp = v[0].ctl.pvp;
+  b: [128] u8;
+  w := eg_sky_world(v, k); v[0].eg[k].sky = w.weather;
+  m := wire_put_world(b[..], 0, w);
+  rl_queue(v, r, conn, -1, cast(string) b[0..<m], "");
+  v[0].eg[k].im_blk[seat] = ImBlockList.{};   // its page sends its blocks after its hello
+  im_seat_reset(v[0].eg[k].im[..], seat); im_room_blocks(v, k);
+}
+// Seat s's socket closed with a ticket naming its player: the seat waits for them EG_GRACE_MS. Its
+// HP and place are noted and posted now, as a leave's are, so a crash in the grace loses no more; a
+// cast still waiting for inputs that will never come goes, and its queued inputs are stepped.
+eg_hold :: (v: [] RmServer, k: int, s: int) {
+  v[0].eg[k].seat[s].conn = -1; v[0].eg[k].seat[s].held = true; v[0].eg[k].seat[s].held_at = v[0].mono_ms;
+  v[0].eg[k].seat[s].ends_n = 0;
+  rv_note_seat(v, k, s); v[0].vit.flush = true;
+  for c: 0..<EG_CASTS { if v[0].eg[k].casts[c].on && v[0].eg[k].casts[c].seat == s && v[0].eg[k].casts[c].phase == RC_WAIT { v[0].eg[k].casts[c].on = false; } }
+  v[0].st.held += 1;
+}
+// Whether seat s's ticket names player pid.
+eg_held_for :: (v: [] RmServer, k: int, s: int, pid: string) -> bool {
+  tk := v[0].eg[k].tk[s..<s + 1];
+  return tk[0].ok && cast(string) tk[0].pid[0..<tk[0].pid_n] == pid;
+}
+eg_held :: (v: [] RmServer, k: int, s: int) -> bool { return v[0].eg[k].seat[s].live && v[0].eg[k].seat[s].conn < 0 && v[0].eg[k].seat[s].held; }
+// The held seats whose grace ran out leave as a closed socket's did before the grace: everyone hears
+// "l SEAT", and a room nobody is in or waits for closes.
+eg_grace_ends :: (v: [] RmServer, k: int) {
+  r := v[0].eg[k].relay;
+  out := false;
+  for s: 0..<EG_SEATS {
+    if !v[0].eg[k].seat[s].held || !v[0].eg[k].live || !eg_held(v, k, s) || v[0].mono_ms - v[0].eg[k].seat[s].held_at < EG_GRACE_MS { continue; }
+    h: [16] u8;
+    rl_queue(v, r, -1, -1, rl_head(h[..], 'l', s, false), "");
+    eg_left(v, r, s);
+    v[0].st.held_out += 1; out = true;
+  }
+  if out && r >= 0 && r < RELAYS && rl_people(v, r) == 0 { v[0].relays[r].live = false; }
+}
 eg_left :: (v: [] RmServer, r: int, seat: int) {
   k := eg_room_at(v, r);
   if k < 0 || seat < 0 || seat >= EG_SEATS { return; }
   rv_note_seat(v, k, seat);   // its HP kept for its player (room-vitals.coax, #12715)
   v[0].vit.flush = true;      // and posted at the host's next second; the note stays until a receipt covers it (#12793)
-  v[0].eg[k].seat[seat].live = false;
+  v[0].eg[k].seat[seat].live = false; v[0].eg[k].seat[seat].conn = -1; v[0].eg[k].seat[seat].held = false;
   e5rr_leave(v[0].eg[k].rules[..], seat);
   rc_left(v, k, seat);   // its casts on their bars stop where everyone hears (room-casts.coax)
   v[0].eg[k].im_blk[seat] = ImBlockList.{}; im_seat_reset(v[0].eg[k].im[..], seat); im_room_blocks(v, k);
@@ -279,6 +345,7 @@ eg_left :: (v: [] RmServer, r: int, seat: int) {
   if !any { v[0].eg[k].live = false; v[0].eg[k].relay = -1; }
 }
 eg_refuse :: (v: [] RmServer, k: int, seat: int, seq: int, why: string) {
+  if v[0].eg[k].seat[seat].conn < 0 { return; }   // (held: no socket to tell)
   b: [64] u8;
   n := wire_put_refused(b[..], 0, seq, why);
   rl_queue(v, v[0].eg[k].relay, v[0].eg[k].seat[seat].conn, -1, cast(string) b[0..<n], "");
@@ -475,7 +542,8 @@ eg_heard_hello :: (v: [] RmServer, k: int, seat: int, text: string) {
 // The seat's ticket (ok false: none, in a room that needs none).
 eg_ticket :: (v: [] RmServer, k: int, seat: int) -> Ticket {
   c := v[0].eg[k].seat[seat].conn;
-  if c < 0 || c >= CONNS || !v[0].eg[k].seat[seat].live { return Ticket.{}; }   // (its socket may be closing: eg_left)
+  if !v[0].eg[k].seat[seat].live { return Ticket.{}; }
+  if c < 0 || c >= CONNS || !v[0].conns[c].live { return v[0].eg[k].tk[seat]; }   // held, or its socket closing (eg_left): the one it sat with
   return v[0].conns[c].ticket;
 }
 // C SEQ SLOT AX AY AZ TGT: a cast at the aim. The checks that need no place here (the slot, the class,
@@ -519,6 +587,8 @@ eg_heard_rest :: (v: [] RmServer, k: int, seat: int, text: string) {
 // tick (EG_BANK at most), however late this tick is. False: no such room.
 rm_eg_begin :: (v: [] RmServer, k: int) -> bool #export_c {
   if k < 0 || k >= EG_ROOMS || !v[0].eg[k].live { return false; }
+  eg_grace_ends(v, k);   // held seats whose player did not come back in time leave (#12792)
+  if !v[0].eg[k].live { return false; }
   v[0].eg[k].tick += 1;
   now := v[0].mono_ms;
   for s: 0..<EG_SEATS {
@@ -605,7 +675,7 @@ rm_eg_rules :: (v: [] RmServer, k: int) #export_c {
 }
 rm_eg_send :: (v: [] RmServer, k: int) #export_c {
   if k < 0 || k >= EG_ROOMS || !v[0].eg[k].live || v[0].eg[k].tick % EG_SEND != 0 { return; }
-  for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live && v[0].eg[k].seat[s].placed { eg_send(v, k, s); } }
+  for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live && v[0].eg[k].seat[s].placed && v[0].eg[k].seat[s].conn >= 0 { eg_send(v, k, s); } }
   v[0].eg[k].ev_n = 0; v[0].eg[k].ev_bytes = 0;
 }
 // Where a TGT code is now (a seat's place, a summoned creature's), else (x, z).
@@ -1192,7 +1262,7 @@ eg_test_has :: (t: string, part: string) -> bool {
   box: [1] EgInbox;
   #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
   eg_test_drain(v[..], box[..]);
-  #assert eg_test_has(eg_test_of(box[..], 0), "y 0 0 1762190000000|W 0 30 ");
+  #assert eg_test_has(eg_test_of(box[..], 0), "y 0 0 1762190000000 1|W 0 30 ");
   k := eg_room_at(v[..], v[0].conns[0].relay);
   #assert k >= 0;
   rm_heard(v[..], 0, "H 4 ranger.2.1.0 druid 1 Ash Vale");
@@ -1518,7 +1588,7 @@ eg_test_input :: (v: [] RmServer, seq: int) {
   box: [1] EgInbox;
   #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 3 ranger.0.0.0 druid 0 A"); rm_heard(v[..], 1, "H 3 ranger.0.0.0 druid 0 B");
+  rm_heard(v[..], 0, "H 4 ranger.0.0.0 druid 0 A"); rm_heard(v[..], 1, "H 4 ranger.0.0.0 druid 0 B");
   eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
   doors := WIRE_ID_MADE + EG_DOORS_ID;
   #assert eg_test_ent(box[..], 0, doors).kind == WK_DOORS && eg_test_ent(box[..], 0, doors).p1 == 0;   // every door shut
@@ -1533,7 +1603,7 @@ eg_test_input :: (v: [] RmServer, seq: int) {
   #assert eg_test_ent(box[..], 0, doors).p1 == 32 && eg_test_ent(box[..], 1, doors).p1 == 32;
   // a seat that joins now has it open in its first snapshot
   #assert rm_join(v[..], 2, ev) == 2;
-  rm_heard(v[..], 2, "H 3 ranger.0.0.0 druid 0 C");
+  rm_heard(v[..], 2, "H 4 ranger.0.0.0 druid 0 C");
   eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
   #assert eg_test_ent(box[..], 2, doors).p1 == 32 && eg_test_ent(box[..], 2, doors).form == 0;   // the gates open
   // a door past the doors there are is dropped

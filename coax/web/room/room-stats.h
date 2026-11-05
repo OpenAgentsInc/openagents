@@ -65,7 +65,7 @@ typedef struct {
 static st_conn st_c[CONNS];
 static uint32_t st_ack_all[ST_ACK_BUCKETS], st_ack_all_n;   /* every seat's input-to-ACK this window */
 static int64_t st_burst_n, st_burst_bytes_max, st_burst_ms_max, st_burst_bytes_sum, st_burst_ms_sum;
-static int64_t st_refused_was[16], st_re_tries_was, st_re_ok_was;
+static int64_t st_refused_was[16], st_re_tries_was, st_re_ok_was, st_re_seat_was, st_stale_was;
 
 static void st_ack_add(int i, int64_t ms) {
   int64_t b = ms / 2; b = b < 0 ? 0 : b >= ST_ACK_BUCKETS ? ST_ACK_BUCKETS - 1 : b;
@@ -209,6 +209,9 @@ static void st_report(st_buf *o, coax_v_t_RmServer v, int64_t players, int64_t s
   int64_t tries = rm_st_re_tries(v), ok = rm_st_re_ok(v);
   st_line(o, "rejoins tried=%lld", (long long)(tries - st_re_tries_was));
   st_line(o, "rejoins seated=%lld", (long long)(ok - st_re_ok_was));
+  int64_t same = rm_st_re_seat(v), stale = rm_st_stale(v);
+  st_line(o, "rejoins same seat=%lld", (long long)(same - st_re_seat_was));
+  st_line(o, "old socket frames dropped=%lld", (long long)(stale - st_stale_was));
   int64_t nr = rm_st_reasons();
   for (int64_t r = 0; r < nr && r < 16; r++) {
     coax_string name = rm_st_reason(r);
@@ -245,7 +248,7 @@ static void st_report(st_buf *o, coax_v_t_RmServer v, int64_t players, int64_t s
   memset(st_out_b, 0, sizeof st_out_b); memset(st_out_m, 0, sizeof st_out_m); memset(st_in_b, 0, sizeof st_in_b); memset(st_in_m, 0, sizeof st_in_m);
   st_out_frames = st_out_bytes = st_in_frames = st_in_bytes = 0;
   st_burst_n = st_burst_bytes_max = st_burst_ms_max = st_burst_bytes_sum = st_burst_ms_sum = 0;
-  st_re_tries_was = tries; st_re_ok_was = ok;
+  st_re_tries_was = tries; st_re_ok_was = ok; st_re_seat_was = same; st_stale_was = stale;
   for (int64_t r = 0; r < nr && r < 16; r++) st_refused_was[r] = rm_st_refused(v, r);
   for (int i = 0; i < CONNS; i++) { st_c[i].q_bytes = st_c[i].q_ms = 0; memset(st_c[i].ack, 0, sizeof st_c[i].ack); st_c[i].ack_n = 0; }
 }

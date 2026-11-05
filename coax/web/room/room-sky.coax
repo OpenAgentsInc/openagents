@@ -30,7 +30,7 @@ eg_sky_tick :: (v: [] RmServer, k: int) {
   b: [128] u8;
   n := wire_put_world(b[..], 0, w);
   for s: 0..<EG_SEATS {
-    if v[0].eg[k].seat[s].live { rl_queue(v, v[0].eg[k].relay, v[0].eg[k].seat[s].conn, -1, cast(string) b[0..<n], ""); }
+    if v[0].eg[k].seat[s].live && v[0].eg[k].seat[s].conn >= 0 { rl_queue(v, v[0].eg[k].relay, v[0].eg[k].seat[s].conn, -1, cast(string) b[0..<n], ""); }
   }
 }
 

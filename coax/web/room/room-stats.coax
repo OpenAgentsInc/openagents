@@ -22,6 +22,9 @@ ST_REASON_NAMES :: [6] string.["no room", "ticket", "kicked", "shard", "full", "
 RmStats :: struct {
   refused: [ST_REASONS] int;
   re_tries: int; re_ok: int;      // joins with re=1, and those seated
+  re_seat: int;                   // joins that took back their player's held seat (room-relay.coax rl_take_back, #12792)
+  held: int; held_out: int;       // seats held for their player when the socket closed, and those that left at the grace's end
+  stale: int;                     // frames dropped from a socket that is no longer its seat's (an older generation)
 }
 
 st_refuse :: (v: [] RmServer, why: int) -> int {
@@ -34,6 +37,8 @@ rm_st_reason :: (why: int) -> string #export_c { return ifx why >= 0 && why < ST
 rm_st_refuse_more :: (v: [] RmServer, why: int) #export_c { _ := st_refuse(v, why); }   // the host's own (no free connection)
 rm_st_re_tries :: (v: [] RmServer) -> int #export_c { return v[0].st.re_tries; }
 rm_st_re_ok :: (v: [] RmServer) -> int #export_c { return v[0].st.re_ok; }
+rm_st_re_seat :: (v: [] RmServer) -> int #export_c { return v[0].st.re_seat; }
+rm_st_stale :: (v: [] RmServer) -> int #export_c { return v[0].st.stale; }
 
 // The everglade room and seat on connection conn into out (k, s), or false.
 rm_st_conn :: (v: [] RmServer, conn: int, out: [] int) -> bool #export_c {

@@ -169,12 +169,17 @@ im_room_blocks :: (v: [] RmServer, k: int) {
   n = tk_sign(key, "p-00000000000000cc", false, "", "pair-blk", now + 60000, -1, t[..]);
   #assert rm_join(v[..], 2, tk_test_ask_in(r[..], t[..], n, "pair-blk")) == 2;
   #assert im[0].blocks[0] == 6;
+  // bb leaves: held for them, still withheld; their grace over, gone
   rm_left(v[..], 1);
+  #assert im[0].blocks[0] == 6;
+  rm_clock(v[..], EG_GRACE_MS + 1000, now);
+  if rm_eg_begin(v[..], k) {}
   #assert im[0].blocks[0] == 4;
   rm_heard(v[..], 0, "K -");
   #assert im[0].blocks[0] == 0;
   rm_heard(v[..], 2, "K p-00000000000000aa");
   #assert im[0].blocks[2] == 1;
+  v[0].conns[2].kicked = true;   // (kicked: it leaves at once)
   rm_left(v[..], 2);
   #assert im[0].blocks[2] == 0;
 }

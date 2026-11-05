@@ -49,6 +49,7 @@ RmConn :: struct {
   ftok: int; btok: int; refill_at: int; over: bool; over_since: int; last_drop: int; dropped: int; kicked: bool;
   ticket: Ticket;      // who its seat ticket says it is (room-ticket.coax; ok false in a room that needs none)
   waiting: int;        // bytes its socket still had waiting at the tick's start (the host's, rm_conn_waiting)
+  gen: int;            // an everglade seat's generation when this socket took it (room-relay.coax, #12792)
 }
 RmRoom :: struct {
   name: [ROOM_NAME] u8; name_n: int;
@@ -565,19 +566,30 @@ tk_test_ask_in :: (r: [] u8, t: [] u8, n: int, room: string) -> string {
   rm_eg_moved(v[..], k, 0, 1, 12.5, 0.25, -30, 1.5, 0, 0, 0, 1, 0, 0);
   n = tk_sign(key, "p-8899aabbccddeeff", false, "", "pair-tk", now + 600000, -1, t[..]);
   #assert rm_join(v[..], 1, tk_test_ask(r[..], t[..], n)) == 1;
-  // A's socket goes silent (a network that dropped) and A's page opens a new one 7 s on
+  // A's socket goes silent (a network that dropped) and A's page opens a new one 7 s on: A's own seat,
+  // still where A stood (#12792)
   rm_clock(v[..], 7000, now + 7000);
   rm_heard(v[..], 1, "I 1 0 0 0 0 0 0 0");
   n = tk_sign(key, "p-0011223344556677", false, "", "pair-tk", now + 600000, -1, t[..]);
   s2 := rm_join(v[..], 2, tk_test_ask(r[..], t[..], n));
-  #assert s2 == 2 && rm_relay_kicked(v[..], 0);
-  #assert rm_eg_back(v[..], k, s2, 0) == 1 && rm_eg_back(v[..], k, s2, 1) == 12.5 && rm_eg_back(v[..], k, s2, 2) == 0.25 && rm_eg_back(v[..], k, s2, 3) == -30 && rm_eg_back(v[..], k, s2, 4) == 1.5;
+  #assert s2 == 0 && rm_relay_kicked(v[..], 0) && v[0].eg[k].seat[0].placed && v[0].eg[k].seat[0].pose.x == 12.5 && v[0].eg[k].seat[0].pose.z == -30;
   rm_left(v[..], 0);
+  // A's socket closes and the grace runs out: A's next join is a new seat, where A stood
+  rm_left(v[..], 2);
+  rm_clock(v[..], 7000 + EG_GRACE_MS + 1000, now + 7000 + EG_GRACE_MS + 1000);
+  #assert rm_eg_begin(v[..], k) && !v[0].eg[k].seat[0].live;
+  n = tk_sign(key, "p-0011223344556677", false, "", "pair-tk", now + 600000, -1, t[..]);
+  s4 := rm_join(v[..], 2, tk_test_ask(r[..], t[..], n));
+  #assert s4 >= 0 && !v[0].eg[k].seat[s4].placed;
+  #assert rm_eg_back(v[..], k, s4, 0) == 1 && rm_eg_back(v[..], k, s4, 1) == 12.5 && rm_eg_back(v[..], k, s4, 2) == 0.25 && rm_eg_back(v[..], k, s4, 3) == -30 && rm_eg_back(v[..], k, s4, 4) == 1.5;
+  rm_left(v[..], 2);
   // B leaves and comes back after VITALS_PLACE_MS: the gate
   rm_left(v[..], 1);
   rm_clock(v[..], 7000 + VITALS_PLACE_MS + 1000, now + 7000 + VITALS_PLACE_MS + 1000);
+  if rm_eg_begin(v[..], k) {}   // (the held seats' grace over)
   n = tk_sign(key, "p-8899aabbccddeeff", false, "", "pair-tk", now + 600000 + VITALS_PLACE_MS, -1, t[..]);
   s3 := rm_join(v[..], 1, tk_test_ask(r[..], t[..], n));
+  k = eg_room_at(v[..], v[0].conns[1].relay);
   #assert s3 >= 0 && rm_eg_back(v[..], k, s3, 0) == 0;
   // A in another room: the gate there
   n = tk_sign(key, "p-0011223344556677", false, "", "pair-other", now + 600000 + VITALS_PLACE_MS, -1, t[..]);
@@ -601,18 +613,91 @@ tk_test_ask_in :: (r: [] u8, t: [] u8, n: int, room: string) -> string {
   n = tk_sign(key, "p-0011223344556677", false, "", "pair-tk", now + 600000, -1, t[..]);
   #assert rm_join(v[..], 1, tk_test_ask(r[..], t[..], n)) == 1;
   #assert !rm_relay_kicked(v[..], 0) && !rm_relay_kicked(v[..], 1);
-  // the first goes silent (its phone changed networks); the player's new socket takes its place
+  // the first goes silent (its phone changed networks); the player's new socket takes its seat (#12792)
   rm_clock(v[..], 6000, now + 6000);
   rm_heard(v[..], 1, "I 1 0 0 0 0 0 0 0");
   n = tk_sign(key, "p-0011223344556677", false, "", "pair-tk", now + 600000, -1, t[..]);
-  #assert rm_join(v[..], 2, tk_test_ask(r[..], t[..], n)) == 2;
+  #assert rm_join(v[..], 2, tk_test_ask(r[..], t[..], n)) == 0;
   #assert rm_relay_kicked(v[..], 0) && !rm_relay_kicked(v[..], 1) && !rm_relay_kicked(v[..], 2);
+  // a frame still in flight on the old socket is dropped and counted; the host's close of it leaves the seat be
+  stale := rm_st_stale(v[..]);
+  rm_heard(v[..], 0, "I 9 100 0 0 0 0 0 0");
+  k := eg_room_at(v[..], v[0].conns[2].relay);
+  #assert rm_st_stale(v[..]) == stale + 1 && v[0].eg[k].seat[0].q_n == 0;
+  rm_left(v[..], 0);
+  #assert v[0].eg[k].seat[0].live && v[0].eg[k].seat[0].conn == 2;
   // another player's silent socket is theirs: it stays
   n = tk_sign(key, "p-8899aabbccddeeff", false, "", "pair-tk", now + 600000, -1, t[..]);
-  #assert rm_join(v[..], 3, tk_test_ask(r[..], t[..], n)) == 3;
+  #assert rm_join(v[..], 3, tk_test_ask(r[..], t[..], n)) == 2;
   rm_clock(v[..], 12000, now + 12000);
   rm_heard(v[..], 1, "I 2 0 0 0 0 0 0 0"); rm_heard(v[..], 2, "I 1 0 0 0 0 0 0 0");
   n = tk_sign(key, "p-0011223344556677", false, "", "pair-tk", now + 600000, -1, t[..]);
-  #assert rm_join(v[..], 4, tk_test_ask(r[..], t[..], n)) == 4;
+  #assert rm_join(v[..], 4, tk_test_ask(r[..], t[..], n)) == 3;
   #assert !rm_relay_kicked(v[..], 3) && !rm_relay_kicked(v[..], 1) && !rm_relay_kicked(v[..], 2);
+}
+// Ticks of room k, each draining what conn heard: whether any frame held part.
+rl_test_ticks :: (v: [] RmServer, k: int, ticks: int, conn: int, part: string) -> bool {
+  box: [65536] u8; any := false;
+  for i: 0..<ticks { eg_test_tick(v, k); if eg_test_has(rl_heard_by(v, conn, box[..]), part) { any = true; } }
+  return any;
+}
+#test "relay: a closed socket's seat is held for its player EG_GRACE_MS; their rejoin takes it back as it stood, after it the seat goes (#12792)" #steps 4000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  now := 1762190000000;
+  rm_clock(v[..], 0, now);
+  key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  rm_ticket_key(v[..], key, true);
+  t: [256] u8; r: [512] u8; box: [8192] u8;
+  n := tk_sign(key, "p-0011223344556677", false, "", "pair-tk", now + 600000, -1, t[..]);
+  #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], n)) == 0;
+  n = tk_sign(key, "p-8899aabbccddeeff", false, "", "pair-tk", now + 600000, -1, t[..]);
+  #assert rm_join(v[..], 1, tk_test_ask(r[..], t[..], n)) == 1;
+  rm_heard(v[..], 0, "H 4 ranger.2.1.0 druid 0 A"); rm_heard(v[..], 1, "H 4 ranger.0.0.0 druid 0 B");
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  for i: 0..<10 { eg_test_tick(v[..], k); }
+  // A is hurt, and walks a little; then A's socket closes
+  v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + 0].hp -= 3;
+  hp := v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + 0].hp;
+  for i: 1..<6 { m: [64] u8; q := put(m[..], 0, "I "); q = put_int(m[..], q, i); q = put(m[..], q, " 0 0 100 0 0 0 0"); rm_heard(v[..], 0, cast(string) m[0..<q]); eg_test_tick(v[..], k); }
+  x := v[0].eg[k].seat[0].pose.x;
+  _ := rl_heard_by(v[..], 1, box[..]);
+  rm_left(v[..], 0);
+  // held: B hears no l, and A stands in the world
+  v[0].eg_test_t0 += 5000;   // (the clock jumps on 5 s)
+  #assert !rl_test_ticks(v[..], k, 3, 1, "l 0") && eg_held(v[..], k, 0) && v[0].eg[k].seat[0].pose.x == x && rl_people(v[..], v[0].eg[k].relay) == 2;
+  // A's page rejoins within the grace: the same seat, the next generation, the same HP; B hears no j
+  n = tk_sign(key, "p-0011223344556677", false, "", "pair-tk", now + 600000, -1, t[..]);
+  #assert rm_join(v[..], 2, tk_test_ask(r[..], t[..], n)) == 0;
+  a := rl_heard_by(v[..], 2, box[..]);
+  #assert eg_test_has(a, "y 0 1 ") && eg_test_has(a, " 2|") && eg_test_has(a, "j 1") && v[0].conns[2].gen == 2 && v[0].eg[k].seat[0].gen == 2;
+  #assert !eg_held(v[..], k, 0) && v[0].eg[k].seat[0].full && v[0].eg[k].seat[0].ack == 0 && rm_st_re_seat(v[..]) == 1;
+  #assert v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + 0].hp == hp && v[0].eg[k].seat[0].pose.x == x && v[0].eg[k].seat[0].placed;
+  rm_heard(v[..], 2, "H 4 ranger.2.1.0 druid 0 A");
+  #assert v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + 0].hp == hp;
+  rm_heard(v[..], 1, "I 1 0 0 0 0 0 0 0");
+  b := rl_heard_by(v[..], 1, box[..]);
+  #assert !eg_test_has(b, "j 0") && !eg_test_has(b, "l 0");
+  // its first D is a snapshot, and its inputs count from the new page's first
+  rm_heard(v[..], 2, "I 1 0 0 0 0 0 0 0");
+  eg_test_tick(v[..], k);
+  #assert v[0].eg[k].seat[0].ack == 1;
+  // closed again, and not back: at the grace's end the seat goes and B hears l
+  rm_left(v[..], 2);
+  v[0].eg_test_t0 += EG_GRACE_MS - 1000;
+  #assert !rl_test_ticks(v[..], k, 3, 1, "l 0") && eg_held(v[..], k, 0);
+  v[0].eg_test_t0 += 1000;
+  #assert rl_test_ticks(v[..], k, 3, 1, "l 0") && !v[0].eg[k].seat[0].live && rl_people(v[..], v[0].eg[k].relay) == 1;
+  // a kicked socket (over its limits, refused, an admin's kick) leaves at once
+  n = tk_sign(key, "p-0011223344556677", false, "", "pair-tk", now + 600000, -1, t[..]);
+  #assert rm_join(v[..], 3, tk_test_ask(r[..], t[..], n)) == 0;
+  v[0].conns[3].kicked = true;
+  rm_left(v[..], 3);
+  #assert !v[0].eg[k].seat[0].live;
+  // the last player gone, the held seat keeps the room; its grace over, the room closes
+  rm_left(v[..], 1);
+  #assert v[0].eg[k].live && eg_held(v[..], k, 1);
+  v[0].eg_test_t0 += EG_GRACE_MS;
+  for i: 0..<3 { eg_test_tick(v[..], k); }
+  #assert !v[0].eg[k].live;
 }

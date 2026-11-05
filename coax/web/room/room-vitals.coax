@@ -447,9 +447,14 @@ rv_test_receipt :: (b: [] u8, gen: int, batch: int, codes: string) -> string {
   v[0].eg[k].wanted[0] = 4;
   rm_left(v[..], 0);
   #assert rm_vitals_due(v[..]) > 0 && eg_test_has(cast(string) v[0].vit.out[0..<v[0].vit.out_n], " 40 4 ");
-  // back within 5 minutes with a ticket that has none: this server's note
-  rm_clock(v[..], 0, now + 60000);
+  // back within the seat's grace (#12792): the same seat, its live level kept and no seed
   n = tk_sign_xp(key, "p-0011223344556677", false, "", "pair-tk", 0, now + 120000, -1, 40, t[..]);
+  #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], n)) == 0;
+  #assert v[0].eg[k].wanted[0] == 4 && v[0].eg[k].seat[0].want_seed == 0;
+  rm_left(v[..], 0);
+  // back after it, within 5 minutes, with a ticket that has none: this server's note
+  rm_clock(v[..], EG_GRACE_MS + 1000, now + 60000);
+  if rm_eg_begin(v[..], k) {}
   #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], n)) == 0;
   k = eg_room_at(v[..], v[0].conns[0].relay);
   #assert v[0].eg[k].wanted[0] == 4 && v[0].eg[k].seat[0].want_seed == 4;

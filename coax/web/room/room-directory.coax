@@ -94,6 +94,12 @@ dir_lines :: (v: [] RmServer, b: [] u8, rooms: [] int) -> int {
       if !c.live || c.relay != r || !c.ticket.ok { continue; }
       n = dir_put(b, n, " "); n = dir_put(b, n, cast(string) c.ticket.pid[0..<c.ticket.pid_n]);
     }
+    // and those whose seats are held for them (#12792): still in the room
+    for s: 0..<EG_SEATS {
+      if !eg_held(v, k, s) || !v[0].eg[k].tk[s].ok { continue; }
+      tk := v[0].eg[k].tk[s..<s + 1];
+      n = dir_put(b, n, " "); n = dir_put(b, n, cast(string) tk[0].pid[0..<tk[0].pid_n]);
+    }
     n = dir_put(b, n, "\n");
     rooms[0] += 1;
   }
@@ -208,11 +214,18 @@ rm_directory_due :: (v: [] RmServer) -> int #export_c {
   #assert rm_directory_due(v[..]) == 0;
   rm_clock(v[..], 0, 995500);
   #assert rm_directory_due(v[..]) > 0;
-  // one leaves: due at once
+  // one leaves: held for them, still named; their grace over, due at once
+  kd := eg_room_at(v[..], v[0].conns[1].relay);
   rm_left(v[..], 0);
+  d0 := rm_directory_due(v[..]);
+  #assert d0 == 0 || eg_test_has(cast(string) v[0].dir.out[0..<d0], "r everglade-2 2 ");
+  rm_clock(v[..], EG_GRACE_MS + 1000, 995500);
+  if rm_eg_begin(v[..], kd) {}
   #assert rm_directory_due(v[..]) > 0 && cast(string) v[0].dir.out[0..<v[0].dir.out_n] == "t 995500\ns 3 15\nr everglade-2 1 p-00000000000000a2\n";
   // the last leaves: the room closes, and one report says so; then nothing until something changes
   rm_left(v[..], 1);
+  rm_clock(v[..], 2 * EG_GRACE_MS + 2000, 995500);
+  if rm_eg_begin(v[..], kd) {}
   #assert rm_directory_due(v[..]) > 0 && cast(string) v[0].dir.out[0..<v[0].dir.out_n] == "t 995500\ns 3 16\n";
   rm_clock(v[..], 0, 999500);
   #assert rm_directory_due(v[..]) == 0;

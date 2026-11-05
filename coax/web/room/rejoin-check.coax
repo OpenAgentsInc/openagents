@@ -1,10 +1,14 @@
-// The everglade rooms' rejoin check (room-relay.coax rl_replace_stale, room-vitals.coax rv_back,
-// room-world.c world_place_at): a player whose network drops without a close comes back where they
-// stood, once. A and B sit in one room with seat tickets; A walks east off the gate for 3 s, then
-// A's socket goes silent (it neither sends nor reads, and never closes, as a phone between networks).
-// 7 s on (the page's own quiet check, everglade-net.coax NET_SILENT_MS, is 6 s), A opens a new
-// socket with a fresh ticket for the same player. A's new seat's first word on itself is where A
-// stood, within 1 m, not the gate; B hears A's old seat go and A's new one where A was, and has one A.
+// The everglade rooms' rejoin check (room-relay.coax rl_take_back and rl_left, room-everglade.coax
+// eg_hold, eg_rejoin and eg_grace_ends; #12792): a player whose socket goes away comes back in the same
+// seat as the same character. A and B sit in one room with seat tickets; A walks east off the gate for
+// 3 s, then A's socket goes silent (it neither sends nor reads, and never closes, as a phone between
+// networks). 7 s on (the page's own quiet check, everglade-net.coax NET_SILENT_MS, is 6 s), A opens a
+// new socket with a fresh ticket for the same player: it takes A's seat back (the next generation in
+// its y), its first word on itself is where A stood, within 1 m, B hears no l or j for A, and has one A.
+// A frame still in flight on the silent socket (a walk east) moves nobody. Then A's socket closes: for
+// the grace (EG_GRACE_MS, 15 s) B still sees A where A stood with A's HP and conditions, and hears no
+// l; A's rejoin 3 s on takes the same seat again, with the same HP and conditions and no second body.
+// Last A closes for good: once the grace is over B hears A leave and A is gone.
 // Then a page on another wire (#12788): a socket whose hello says wire 2 hears "r 0 version" and is
 // closed. Last, a page from before wire 3 (hello "H 1", room-oldwire.coax): until WIRE_OLD_UNTIL_MS
 // (by the clock in the room's y) it is seated, its D's are the old wire's ("D TICK ACK F " and its own
@@ -17,14 +21,20 @@
 
 RJ_SEATS :: 16;
 RjHeard :: struct {
-  seat: int = -1;
+  seat: int = -1; gen: int;
   d: int;
+  joins: [RJ_SEATS] int; leaves: [RJ_SEATS] int;   // the j and l frames heard for each seat
   x: [RJ_SEATS] f32; z: [RJ_SEATS] f32; seen: [RJ_SEATS] bool; gone: [RJ_SEATS] bool;
   first_ok: bool; first_x: f32; first_z: f32;   // this socket's first word on its own seat
   m: [1] WireMirror;                             // the rows its D's left, as the page's (its I's HEARD)
 }
 rj_hear :: (h: [] RjHeard, t: string) {
-  if rs_starts(t, "y ") { h[0].seat = rs_num(rs_field(t, 1)); return; }
+  if rs_starts(t, "y ") { h[0].seat = rs_num(rs_field(t, 1)); h[0].gen = rs_num(rs_field(t, 4)); return; }
+  if rs_starts(t, "j ") || rs_starts(t, "l ") {
+    q := rs_num(rs_field(t, 1));
+    if q >= 0 && q < RJ_SEATS { if t[0] == 'j' { h[0].joins[q] += 1; } else { h[0].leaves[q] += 1; } }
+    return;
+  }
   if !rs_starts(t, "D ") { return; }
   h[0].d += 1;
   _ := wire_mirror_frame(h[0].m[..], t);
@@ -53,6 +63,19 @@ rj_has :: (text: string, part: string) -> bool {
   for i: 0..<text.count - part.count + 1 { if text[i..<i + part.count] == part { return true; } }
   return false;
 }
+// Socket a (when it is open) sends its input, and B stands, for ms; both read.
+rj_run :: (c: [] RelayConn, h: [] RjHeard, a: int, seq: [] int, ms: int) -> bool {
+  sent := true;
+  t0 := rs_now(); n := 0;
+  while rs_now() - t0 < ms {
+    seq[0] += 1; seq[1] += 1;
+    if a >= 0 && c[a].h >= 0 { sent = rj_input(c[a..<a + 1], h[a..<a + 1], seq[0], false) && sent; }
+    sent = rj_input(c[1..<2], h[1..<2], seq[1], false) && sent;
+    n += 1;
+    while rs_now() - t0 < n * 1000 / 30 { rj_drain(c[1..<2], h[1..<2]); if a >= 0 { rj_drain(c[a..<a + 1], h[a..<a + 1]); } proc_sleep(2); }
+  }
+  return sent;
+}
 // The players other than seat `me` this socket has now.
 rj_others :: (h: [] RjHeard, me: int) -> int { n := 0; for s: 0..<RJ_SEATS { if s != me && h[0].seen[s] { n += 1; } } return n; }
 
@@ -65,8 +88,8 @@ tool_main :: () -> int #export_c {
   base := rs_base(ifx args_count(a[..]) > 0 then args_at(a[..], 0) else "ws://localhost:8830", b[..]);
   u: [1024] u8;
   url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-rejoin-", rs_stamp());
-  c: [3] RelayConn; h: [3] RjHeard;   // 0 A's first socket, 1 B, 2 A's second
-  for i: 0..<3 { c[i].h = -1; }
+  c: [4] RelayConn; h: [4] RjHeard;   // 0 A's first socket, 1 B, 2 A's second, 3 A's third
+  for i: 0..<4 { c[i].h = -1; }
   ua: [1024] u8; ub: [1024] u8;
   url_a := rs_ticketed(ua[..], url, "p-rejoincheck-a", "Rejoin A"); url_b := rs_ticketed(ub[..], url, "p-rejoincheck-b", "Rejoin B");
   if url.count == 0 || url_a.count == 0 || url_b.count == 0 || !relay_conn_open(c[0..<1], url_a) || !relay_conn_open(c[1..<2], url_b) { tool_err("rejoin-check: can't open "); tool_errln(url); print("fails\n"); return 1; }
@@ -91,24 +114,42 @@ tool_main :: () -> int #export_c {
   }
   stood_x := ifx sa >= 0 then h[1].x[sa] else 0; stood_z := ifx sa >= 0 then h[1].z[sa] else 0;
   walked := sa >= 0 && h[1].seen[sa] && stood_x > 3;
-  // A's page opens a new socket, with a fresh ticket for the same player
+  // A's page opens a new socket, with a fresh ticket for the same player: it takes A's seat back
   ua2: [1024] u8;
   url_a2 := rs_ticketed(ua2[..], url, "p-rejoincheck-a", "Rejoin A");
   opened := url_a2.count > 0 && relay_conn_open(c[2..<3], url_a2);
   sent = opened && relay_conn_send(c[2..<3], "H 4 ranger.2.1.0 druid 0 Rejoin A") && sent;
-  t2 := rs_now(); n = 0;
-  while opened && rs_now() - t2 < 3000 {
-    seq_a += 1; seq_b += 1;
-    sent = rj_input(c[2..<3], h[2..<3], seq_a, false) && rj_input(c[1..<2], h[1..<2], seq_b, false) && sent;
-    n += 1;
-    while rs_now() - t2 < n * 1000 / 30 { rj_drain(c[1..<2], h[1..<2]); rj_drain(c[2..<3], h[2..<3]); proc_sleep(2); }
-  }
+  // a frame still in flight on the silent socket: a walk east, which must move nobody (the room
+  // closes that socket, so it may not even go)
+  late := false;
+  for i: 0..<5 { if c[0].h >= 0 && rj_input(c[0..<1], h[0..<1], seq_a + 100 + i, true) { late = true; } }
+  sq: [2] int; sq[0] = seq_a; sq[1] = seq_b;
+  if opened { sent = rj_run(c[..], h[..], 2, sq[..], 3000) && sent; }
   sa2 := h[2].seat;
   dx := h[2].first_x - stood_x; dz := h[2].first_z - stood_z;
   back_m := ifx h[2].first_ok then sqrt(dx * dx + dz * dz) else -1;
   where_b := ifx sa2 >= 0 && h[1].seen[sa2] then sqrt((h[1].x[sa2] - stood_x) * (h[1].x[sa2] - stood_x) + (h[1].z[sa2] - stood_z) * (h[1].z[sa2] - stood_z)) else -1;
-  old_gone := sa >= 0 && sa != sa2 && !h[1].seen[sa];
+  same := sa >= 0 && sa2 == sa && h[2].gen > h[0].gen && h[1].seen[sa] && h[1].leaves[sa] == 0 && h[1].joins[sa] == 1;
   once := rj_others(h[1..<2], sb) == 1;
+  // A's socket closes: the seat is held, A stands where A stood with A's HP and conditions
+  w0 := wire_mirror_of(h[1].m[..], sa);
+  if c[2].h >= 0 { _ := relay_conn_close(c[2..<3], 1000); }
+  sent = rj_run(c[..], h[..], -1, sq[..], 3000) && sent;
+  w1 := wire_mirror_of(h[1].m[..], sa);
+  held := sa >= 0 && h[1].seen[sa] && h[1].leaves[sa] == 0 && w1.hp == w0.hp && w1.cond == w0.cond && (w1.x - w0.x) * (w1.x - w0.x) + (w1.z - w0.z) * (w1.z - w0.z) < 0.25;
+  // and back within the grace: the same seat, the same character, no second body
+  ua3: [1024] u8;
+  url_a3 := rs_ticketed(ua3[..], url, "p-rejoincheck-a", "Rejoin A");
+  again := url_a3.count > 0 && relay_conn_open(c[3..<4], url_a3);
+  sent = again && relay_conn_send(c[3..<4], "H 4 ranger.2.1.0 druid 0 Rejoin A") && sent;
+  if again { sent = rj_run(c[..], h[..], 3, sq[..], 2000) && sent; }
+  w2 := wire_mirror_of(h[1].m[..], sa);
+  sa3 := h[3].seat;
+  regained := again && sa3 == sa && h[3].gen > h[2].gen && h[1].leaves[sa] == 0 && h[1].joins[sa] == 1 && rj_others(h[1..<2], sb) == 1 && w2.hp == w0.hp && w2.cond == w0.cond;
+  // closed for good: after the grace, B hears A go
+  if c[3].h >= 0 { _ := relay_conn_close(c[3..<4], 1000); }
+  sent = rj_run(c[..], h[..], -1, sq[..], 17000) && sent;
+  left := sa >= 0 && h[1].leaves[sa] == 1 && !h[1].seen[sa];
   // an old page (#12788): its hello says wire 2; the room says why (r 0 version) and closes the socket
   old: [1] RelayConn; old[0].h = -1;
   uo: [1024] u8; url_o := rs_ticketed(uo[..], url, "p-rejoincheck-old", "Rejoin Old");
@@ -146,7 +187,7 @@ tool_main :: () -> int #export_c {
     }
   }
   page2 := ifx window then plays && acked && !told && !shut else told && shut;
-  ok := sent && walked && opened && h[2].first_ok && back_m >= 0 && back_m < 1 && where_b >= 0 && where_b < 1 && old_gone && once && refused && closed && page2;
+  ok := sent && walked && opened && h[2].first_ok && back_m >= 0 && back_m < 1 && where_b >= 0 && where_b < 1 && same && once && held && regained && left && refused && closed && page2;
   out: [1024] u8; o: [1] Jo;
   jo_start(o[..], out[..]);
   jo_obj(o[..]);
@@ -156,7 +197,14 @@ tool_main :: () -> int #export_c {
   jo_key(o[..], "first_cm"); jo_int(o[..], cast(int) (h[2].first_x * 100)); jo_key(o[..], "first_z_cm"); jo_int(o[..], cast(int) (h[2].first_z * 100));
   jo_key(o[..], "back_cm"); jo_int(o[..], cast(int) (back_m * 100));
   jo_key(o[..], "b_sees_a_again_cm"); jo_int(o[..], cast(int) (where_b * 100));
-  jo_key(o[..], "old_seat_gone"); jo_bool(o[..], old_gone);
+  jo_key(o[..], "same_seat"); jo_bool(o[..], same);
+  jo_key(o[..], "gens"); jo_int(o[..], h[0].gen * 100 + h[2].gen * 10 + h[3].gen);
+  jo_key(o[..], "late_frame_sent"); jo_bool(o[..], late);
+  jo_key(o[..], "held_in_grace"); jo_bool(o[..], held);
+  jo_key(o[..], "hp"); jo_int(o[..], w0.hp); jo_key(o[..], "hp_held"); jo_int(o[..], w1.hp); jo_key(o[..], "hp_back"); jo_int(o[..], w2.hp);
+  jo_key(o[..], "seat_a_third"); jo_int(o[..], sa3);
+  jo_key(o[..], "back_in_grace"); jo_bool(o[..], regained);
+  jo_key(o[..], "left_after_grace"); jo_bool(o[..], left);
   jo_key(o[..], "b_others"); jo_int(o[..], rj_others(h[1..<2], sb));
   jo_key(o[..], "walked"); jo_bool(o[..], walked);
   jo_key(o[..], "sent"); jo_bool(o[..], sent);
