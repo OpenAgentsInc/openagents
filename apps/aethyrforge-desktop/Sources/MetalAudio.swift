@@ -34,6 +34,25 @@ final class ForgeAudioReservation {
     deinit { memory.release(ticket) }
 }
 
+// The reservation precedes the SDK read and survives every borrowed byte view.
+final class ForgeEncodedAudio {
+    let data: Data
+    private let reservation: ForgeAudioReservation
+    init?(_ url: URL, companion: Bool, memory: ForgeAudioMemory) {
+        guard let file = try? FileHandle(forReadingFrom:url) else { return nil }
+        defer { try? file.close() }
+        guard let extent = try? file.seekToEnd(), let count = Int64(exactly:extent) else { return nil }
+        let words = mf_audio_encoded_words(count,companion)
+        guard let ticket = memory.reserve(frames:words,channels:1) else { return nil }
+        do {
+            try file.seek(toOffset:0)
+            guard let bytes = try file.read(upToCount:Int(count)), bytes.count == count,
+                  try file.seekToEnd() == extent else { return nil }
+            data = bytes; reservation = ticket
+        } catch { return nil }
+    }
+}
+
 // Stable decoded memory. Coax borrows it until engine retirement.
 final class ForgeDecodedPCM {
     let samples: UnsafeMutablePointer<Float>
@@ -152,6 +171,8 @@ final class ForgeMetalAudio {
     var scheduled = 0
     var lastResult: Int64 = -1
     var bankStatus: Int64 = -1
+    var sdkDecodes = 0
+    var companionDecodes = 0
     init(host: UnsafeMutableRawPointer, resources: URL, muted: Bool, memory: ForgeAudioMemory = ForgeAudioMemory(), bankDirectory: URL? = nil) {
         self.host = host; self.resources = resources; self.muted = muted; self.memory = memory
         self.bankDirectory = bankDirectory ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/aethyrforge/audio-bank")
@@ -202,13 +223,16 @@ final class ForgeMetalAudio {
             return pcm
         }
     }
-    func decode(_ url: URL) -> ForgeDecodedPCM? {
+    func decode(_ url: URL, admitted: MFOpusPlan? = nil) -> ForgeDecodedPCM? {
         guard let file = try? AVAudioFile(forReading:url),
-              let inputTicket = memory.reserve(frames:file.length,channels:Int64(file.processingFormat.channelCount)),
-              let input = AVAudioPCMBuffer(pcmFormat:file.processingFormat,frameCapacity:AVAudioFrameCount(file.length)),
+              admitted.map({ mf_audio_opus_output($0,file.length,Int64(file.processingFormat.channelCount),file.processingFormat.sampleRate) }) ?? true,
+              let inputTicket = memory.reserve(frames:admitted?.decode_frames ?? file.length,channels:Int64(file.processingFormat.channelCount)),
+              let inputCapacity = AVAudioFrameCount(exactly:admitted?.decode_frames ?? file.length),
+              let input = AVAudioPCMBuffer(pcmFormat:file.processingFormat,frameCapacity:inputCapacity),
               let format = AVAudioFormat(commonFormat:.pcmFormatFloat32,sampleRate:48000,channels:file.processingFormat.channelCount,interleaved:true),
               let converter = AVAudioConverter(from:file.processingFormat,to:format) else { return nil }
         do { try file.read(into:input) } catch { return nil }
+        guard admitted.map({ mf_audio_opus_output($0,Int64(input.frameLength),Int64(input.format.channelCount),input.format.sampleRate) }) ?? true else { return nil }
         let capacity = ceil(Double(input.frameLength)*48000/file.processingFormat.sampleRate)+1024
         guard let outputFrames = Int64(exactly:capacity),
               let outputTicket = memory.reserve(frames:outputFrames,channels:Int64(format.channelCount)),
@@ -219,8 +243,40 @@ final class ForgeMetalAudio {
             if supplied { state.pointee = .endOfStream; return nil }
             supplied = true; state.pointee = .haveData; return input
         }
-        guard status != .error, error == nil, output.frameLength > 0 else { return nil }
+        guard status != .error, error == nil, output.frameLength > 0,
+              admitted.map({ mf_audio_opus_output($0,Int64(output.frameLength),Int64(output.format.channelCount),output.format.sampleRate) }) ?? true else { return nil }
+        sdkDecodes += 1
         return ForgeDecodedPCM(output,memory:memory)
+    }
+    func loadAsset(_ name: String) -> ForgeDecodedPCM? {
+        let nameBytes = Data(name.utf8)
+        guard nameBytes.withUnsafeBytes({ mf_audio_asset_name($0.bindMemory(to:UInt8.self).baseAddress,$0.count) }) else { return nil }
+        var asset = MFAudioAsset()
+        let descriptor = nameBytes.withUnsafeBytes { mf_audio_asset_open($0.bindMemory(to:UInt8.self).baseAddress,$0.count,&asset) }
+        defer { mf_audio_asset_close(descriptor) }
+        guard !asset.valid || descriptor != nil else { return nil }
+        let sourcePath = asset.source_url.map { String(decoding:UnsafeBufferPointer(start:$0,count:asset.source_url_count),as:UTF8.self) } ?? "/realms/everglade/sfx/\(name).ogg"
+        let url = resources.appendingPathComponent("web"+sourcePath)
+        guard let source = ForgeEncodedAudio(url,companion:false,memory:memory) else { return nil }
+        defer { withExtendedLifetime(source) {} }
+        let plan = source.data.withUnsafeBytes { mf_audio_opus_plan(descriptor,$0.bindMemory(to:UInt8.self).baseAddress,$0.count) }
+        guard plan.valid else { return nil }
+        if asset.canonical {
+            guard let pathBytes = asset.companion_url else { return nil }
+            let path = String(decoding:UnsafeBufferPointer(start:pathBytes,count:asset.companion_url_count),as:UTF8.self)
+            guard let companion = ForgeEncodedAudio(resources.appendingPathComponent("web"+path),companion:true,memory:memory) else { return nil }
+            defer { withExtendedLifetime(companion) {} }
+            return source.data.withUnsafeBytes { rawSource in
+                companion.data.withUnsafeBytes { rawCompanion in
+                    let input = rawSource.bindMemory(to:UInt8.self), encoded = rawCompanion.bindMemory(to:UInt8.self)
+                    let shape = mf_audio_companion_plan(descriptor,input.baseAddress,input.count,encoded.baseAddress,encoded.count)
+                    guard shape.valid, let pcm = ForgeDecodedPCM(frames:shape.frames,channels:shape.channels,memory:memory),
+                          mf_audio_companion_decode(descriptor,input.baseAddress,input.count,encoded.baseAddress,encoded.count,pcm.samples,pcm.count) else { return nil }
+                    companionDecodes += 1; return pcm
+                }
+            }
+        }
+        return decode(url,admitted:plan)
     }
     func buffer(_ name: String) -> ForgeDecodedPCM? {
         if let pcm = buffers[name] { return pcm }
@@ -231,9 +287,7 @@ final class ForgeMetalAudio {
             // A refused canonical allocation never acquires an SDK substitute.
             return pcm
         }
-        let bytes = Data(name.utf8)
-        guard bytes.withUnsafeBytes({ mf_audio_asset_name($0.bindMemory(to:UInt8.self).baseAddress,$0.count) }) else { return nil }
-        let pcm = decode(resources.appendingPathComponent("web/realms/everglade/sfx/\(name).ogg"))
+        let pcm = loadAsset(name)
         buffers[name] = pcm; return pcm
     }
     @discardableResult

@@ -1,0 +1,30 @@
+// Complete actual native outputs against the independently frozen browser codec.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../aethyr/host/pcm-compare.coax";
+#load "../../aethyr/audio/everglade-pcm-assets.coax";
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])!=4 {tool_errln("usage: metal-audio-assets-compare CANONICAL.json BROWSER_PICKED_DIR BROWSER_EXTRA_DIR OUTPUT.json");return 2;}
+ raw:[262144]u8;nodes:[16384]JvNode;doc:[1]Jv;n:=fs_read(args_at(a[..],0),raw[..]);if n<1||!jv_parse(doc[..],cast(string)raw[0..<n],nodes[..]){return 1;}
+ rows:=jv_get(doc[0],0,"rows");if jv_len(doc[0],rows)!=153{return 1;}
+ native:[8388608]u8;browser:[8388608]u8;source:[8388608]u8;original:[8388608]u8;paths:[5][4096]u8;namebuf:[128]u8;filenames:[2][256]u8;seen:[153]bool;
+ report:[131072]u8;out:[1]Jo;jo_start(out[..],report[..]);jo_obj(out[..]);jo_key(out[..],"schema");jo_str(out[..],"aethyr.metal.audio-assets-comparison.v1");jo_key(out[..],"assets");jo_arr(out[..]);passed:=true;companions:=0;words:=0;
+ for at:0..<153 {
+  row:=jv_at(doc[0],rows,at);nn:=jv_str(doc[0],jv_get(doc[0],row,"name"),namebuf[..]);if nn<1{return 1;}name:=cast(string)namebuf[0..<nn];asset:=hpc_everglade(name);if !asset.valid{return 1;}
+  id:=-1;for candidate:0..<153 {if hpc_everglade_at(candidate).name==name{id=candidate;break;}}if id<0||seen[id]{return 1;}seen[id]=true;
+  for suffix,k:[2]string.[".f32",".ogg"] {o:[1]Jo;jo_start(o[..],filenames[k][..]);jo_put(o[..],name);jo_put(o[..],suffix);}
+  pcmname:=cast(string)filenames[0][0..<name.count+4];oggname:=cast(string)filenames[1][0..<name.count+4];first:=fs_join(args_at(a[..],1),pcmname,paths[0][..]);dir:=ifx fs_size(first)>=0 then args_at(a[..],1) else args_at(a[..],2);
+  bn:=fs_read(fs_join(dir,pcmname,paths[0][..]),browser[..]);on:=fs_read(fs_join(dir,oggname,paths[1][..]),original[..]);
+  pn:=jv_str(doc[0],jv_get(doc[0],row,"file"),paths[2][..]);sn:=jv_str(doc[0],jv_get(doc[0],row,"source"),paths[3][..]);if pn<1||sn<1{return 1;}
+  cn:=fs_read(cast(string)paths[2][0..<pn],native[..]);source_n:=fs_read(cast(string)paths[3][0..<sn],source[..]);
+  shape:=cn==asset.frames*asset.channels*4&&jv_int(doc[0],jv_get(doc[0],row,"samples"),-1)==asset.frames*asset.channels&&jv_int(doc[0],jv_get(doc[0],row,"channels"),-1)==asset.channels&&jv_int(doc[0],jv_get(doc[0],row,"rate"),-1)==48000;
+  if cn<0||bn<0||source_n<1||on!=source_n{return 1;}identity:=cast(string)source[0..<source_n]==cast(string)original[0..<on]&&hpc_source_plan(asset,source[0..<source_n]).valid;
+  q:=hpcm_compare_words(native[0..<cn],browser[0..<bn]);exact:=cast(string)native[0..<cn]==cast(string)browser[0..<bn];ok:=shape&&identity&&q.shape&&q.nonfinite==0&&q.over==0&&(!asset.canonical||exact);passed=passed&&ok;words+=q.samples;if asset.canonical{companions+=1;}
+  jo_obj(out[..]);jo_key(out[..],"name");jo_str(out[..],name);jo_key(out[..],"canonical");jo_bool(out[..],asset.canonical);jo_key(out[..],"shape");jo_bool(out[..],shape);jo_key(out[..],"source_identity");jo_bool(out[..],identity);jo_key(out[..],"samples");jo_int(out[..],q.samples);jo_key(out[..],"over_2pow_minus20");jo_int(out[..],q.over);jo_key(out[..],"nonfinite");jo_int(out[..],q.nonfinite);jo_key(out[..],"max_abs_f64_bits");jo_int(out[..],cast(int)f64_bits(q.max_abs));jo_key(out[..],"exact");jo_bool(out[..],exact);jo_key(out[..],"passed");jo_bool(out[..],ok);jo_end(out[..]);
+  if !ok{print("Asset comparison failed: % words=% over=% identity=% shape=%\n",name,q.samples,q.over,identity,shape);}
+ }
+ jo_end(out[..]);jo_key(out[..],"count");jo_int(out[..],153);jo_key(out[..],"canonical");jo_int(out[..],companions);jo_key(out[..],"samples");jo_int(out[..],words);passed=passed&&companions==32;jo_key(out[..],"passed");jo_bool(out[..],passed);jo_end(out[..]);if out[0].bad||!fs_write(args_at(a[..],3),jo_text(out[..])){return 1;}
+ print("Actual153 native assets: companion=% words=% complete sample gate=%\n",companions,words,passed);return ifx passed then 0 else 1;
+}

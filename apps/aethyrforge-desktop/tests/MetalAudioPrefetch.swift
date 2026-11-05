@@ -36,12 +36,12 @@ struct MetalAudioPrefetch {
         audio.bank()
         let registered=audio.bankWav.count,bankAssets=audio.buffers.count,bankWords=memory.total
         var rows: [[String:Any]]=[]
-        if ["decode","picked","authored"].contains(plan["phase"] as? String ?? "") {
+        if ["decode","picked","authored","canonical"].contains(plan["phase"] as? String ?? "") {
             for name in plan["assets"] as? [String] ?? [] {
                 // Whole-bank codec observation owns one decoded asset at a
                 // time, independently of the production demand-cache receipt.
                 let picked=plan["phase"] as? String != "decode"
-                var pcm=picked ? audio.decode(resources.appendingPathComponent("web/realms/everglade/sfx/\(name).ogg")):audio.buffer(name)
+                var pcm=plan["phase"] as? String == "canonical" ? audio.loadAsset(name):(picked ? audio.decode(resources.appendingPathComponent("web/realms/everglade/sfx/\(name).ogg")):audio.buffer(name))
                 var row: [String:Any]=["name":name,"samples":pcm?.count ?? 0,"channels":pcm?.channels ?? 0,"rate":48000,"memory":memory.total]
                 let compressed=resources.appendingPathComponent("web/realms/everglade/sfx/\(name).ogg")
                 let original=report.deletingLastPathComponent().appendingPathComponent(name+".ogg")
@@ -74,7 +74,28 @@ struct MetalAudioPrefetch {
         }
         let deviceFrames=audio.source.observations()["deviceFrames",default:-1],held=memory.total,assets=audio.buffers.count,worldFrames=mf_info(host,0)
         audio.close()
-        let output: [String:Any]=["schema":"aethyr.metal.audio-prefetch-observed.v1","phase":plan["phase"] as? String ?? "prefetch","registered":registered,"bankAssets":bankAssets,"bankWords":bankWords,"rows":rows,"heldAssets":assets,"heldWords":held,"closedWords":memory.total,"deviceFrames":deviceFrames,"worldFrames":worldFrames]
+        var faults: [Int64]=[]
+        if plan["phase"] as? String == "canonical" {
+            let root=report.deletingLastPathComponent().appendingPathComponent("refusal-resources"),bank=root.appendingPathComponent("web/realms/everglade"),sfx=bank.appendingPathComponent("sfx"),companions=bank.appendingPathComponent("pcm-v1")
+            try FileManager.default.createDirectory(at:sfx,withIntermediateDirectories:true)
+            try FileManager.default.createDirectory(at:companions,withIntermediateDirectories:true)
+            let hit=try Data(contentsOf:resources.appendingPathComponent("web/realms/everglade/sfx/fire-hit-e2.ogg")),cast=try Data(contentsOf:resources.appendingPathComponent("web/realms/everglade/sfx/fire-cast-e2.ogg")),companion=try Data(contentsOf:resources.appendingPathComponent("web/realms/everglade/pcm-v1/fire-hit-e2.apc"))
+            try hit.write(to:sfx.appendingPathComponent("fire-hit-e2.ogg"));try cast.write(to:sfx.appendingPathComponent("fire-cast-e2.ogg"));try cast.write(to:sfx.appendingPathComponent("probe-safe.ogg"))
+            let owner=ForgeMetalAudio(host:host,resources:root,muted:true)
+            func observe(_ name: String) {
+                let sdk=owner.sdkDecodes,canonical=owner.companionDecodes
+                var pcm=owner.loadAsset(name);faults.append(Int64(pcm?.count ?? 0));faults.append(Int64(owner.sdkDecodes-sdk));faults.append(Int64(owner.companionDecodes-canonical));pcm=nil;faults.append(owner.memory.total)
+            }
+            observe("fire-hit-e2") // Missing required companion.
+            var damaged=companion;damaged[damaged.count-1] ^= 1;try damaged.write(to:companions.appendingPathComponent("fire-hit-e2.apc"));observe("fire-hit-e2")
+            try companion.write(to:companions.appendingPathComponent("fire-hit-e2.apc"));damaged=hit;damaged[damaged.count-1] ^= 1;try damaged.write(to:sfx.appendingPathComponent("fire-hit-e2.ogg"));observe("fire-hit-e2")
+            try hit.write(to:sfx.appendingPathComponent("fire-hit-e2.ogg"));observe("fire-hit-e2");observe("fire-cast-e2");observe("probe-safe")
+            var ticket=owner.memory.reserve(frames:8388608,channels:1)
+            let sdk=owner.sdkDecodes,canonical=owner.companionDecodes
+            var refused=withExtendedLifetime(ticket) { owner.loadAsset("fire-hit-e2") };faults.append(Int64(refused?.count ?? 0));faults.append(Int64(owner.sdkDecodes-sdk));faults.append(Int64(owner.companionDecodes-canonical));refused=nil;ticket=nil;faults.append(owner.memory.total)
+            owner.close()
+        }
+        let output: [String:Any]=["schema":"aethyr.metal.audio-prefetch-observed.v1","phase":plan["phase"] as? String ?? "prefetch","registered":registered,"bankAssets":bankAssets,"bankWords":bankWords,"rows":rows,"heldAssets":assets,"heldWords":held,"closedWords":memory.total,"deviceFrames":deviceFrames,"worldFrames":worldFrames,"sdkDecodes":audio.sdkDecodes,"companionDecodes":audio.companionDecodes,"refusal":faults]
         try JSONSerialization.data(withJSONObject:output,options:[.sortedKeys,.prettyPrinted]).write(to:report,options:.atomic)
     }
 }

@@ -1,0 +1,16 @@
+// Encoded SDK input/transfer allocations share the existing PCM word budget.
+#load "../audio/host-pcm-asset.coax";
+#authority;
+#test "encoded audio reserves every physical byte before a source or companion copy" {
+ for companion:[2]bool.[false,true] {
+  #assert hae_words(1,companion)==1&&hae_words(4,companion)==1&&hae_words(5,companion)==2;
+  #assert hae_words(1048576,companion)==262144;
+  #assert hae_words(0,companion)==0&&hae_words(-1,companion)==0&&hae_words(9223372036854775807,companion)==0;
+ }
+ #assert hae_words(1048577,true)==0&&hae_words(1048577,false)==262145;
+ #assert hae_words(8388608,false)==2097152&&hae_words(8388609,false)==0;
+}
+hae_words :: (bytes:int,companion:bool)->int #export_c {
+ if bytes<1||bytes>(ifx companion then HOST_PCM_ASSET_BYTES else HOST_OPUS_SOURCE_BYTES) {return 0;}
+ return (bytes+3)/4;
+}

@@ -842,6 +842,11 @@ the matching 5E producer closure. Graphics admission remains a separate gate.
 
 ## Default audio demand allocation
 
+The complete authored companion/SDK adoption and actual normal/instrumented
+153-asset sample, refusal, startup and session gates are recorded in
+[Native authored audio adoption](audio-assets.md). This preserves the older raw
+SDK decoder failures below and keeps current primary/graphics admission separate.
+
 The actual frozen native producer exposes an allocation bug that the synth-only
 fixtures did not cover. In `audio-default-second/prefetch.json`, 16 CPU frames
 emit 120 distinct default variant fetches, one ambient bed and one room command.

@@ -91,6 +91,17 @@ int32_t mf_sound_probe(void *host,int32_t slot,float right,float ahead,float up)
 typedef struct {int64_t kind;const uint8_t *name;size_t name_count;const uint8_t *voice_id;size_t id_count;float gain,pan,delay,lowpass,rate,wet;} MFAudioEffect;
 bool mf_audio_decode(const uint8_t *bytes,size_t count,MFAudioEffect *out);
 bool mf_audio_asset_name(const uint8_t *bytes,size_t count);
+// Borrowed catalogue strings live independently of the opaque descriptor.
+typedef struct {bool valid,canonical;const uint8_t *source_url;size_t source_url_count;const uint8_t *companion_url;size_t companion_url_count;int64_t source_bytes,companion_bytes,frames,channels;} MFAudioAsset;
+typedef struct {bool valid;int64_t channels,pre_skip,frames,decode_frames,samples,decode_samples;} MFOpusPlan;
+typedef struct {bool valid;int64_t channels,frames,samples,offset;} MFPcmAssetPlan;
+void *mf_audio_asset_open(const uint8_t *name,size_t count,MFAudioAsset *out);
+void mf_audio_asset_close(void *asset);
+int64_t mf_audio_encoded_words(int64_t bytes,bool companion);
+MFOpusPlan mf_audio_opus_plan(void *asset,const uint8_t *source,size_t count);
+bool mf_audio_opus_output(MFOpusPlan plan,int64_t frames,int64_t channels,double rate);
+MFPcmAssetPlan mf_audio_companion_plan(void *asset,const uint8_t *source,size_t source_count,const uint8_t *companion,size_t companion_count);
+bool mf_audio_companion_decode(void *asset,const uint8_t *source,size_t source_count,const uint8_t *companion,size_t companion_count,float *out,size_t count);
 typedef struct {bool active,started,retired;} MFAudioSessionOffer;
 void *mf_audio_session_open(void);
 MFAudioSessionOffer mf_audio_session_offer(void *session);

@@ -527,6 +527,18 @@ const uint8_t *mf_sound_commands(void *host,size_t *n){MFRealm *r=(__bridge MFRe
 int32_t mf_sound_probe(void *host,int32_t slot,float right,float ahead,float up){MFRealm *r=(__bridge MFRealm*)host;return r->face.sound_probe?r->face.sound_probe(r->state,slot,right,ahead,up):0;}
 bool mf_audio_decode(const uint8_t *bytes,size_t n,MFAudioEffect *out){coax_t_AudioHostEffect e=audio_host_parse((coax_string){(const char*)bytes,(int64_t)n});*out=(MFAudioEffect){e.kind,(const uint8_t*)e.name.data,(size_t)e.name.count,(const uint8_t*)e.id.data,(size_t)e.id.count,e.gain,e.pan,e.delay,e.lowpass,e.rate,e.wet};return e.kind!=0;}
 bool mf_audio_asset_name(const uint8_t *bytes,size_t n){return apv_asset_name((coax_string){(const char*)bytes,(int64_t)n});}
+void *mf_audio_asset_open(const uint8_t *name,size_t n,MFAudioAsset *out){
+ *out=(MFAudioAsset){0};if(n>INT64_MAX)return NULL;coax_t_HostAudioAsset q=hpc_everglade((coax_string){(const char*)name,(int64_t)n});if(!q.valid)return NULL;
+ *out=(MFAudioAsset){q.valid,q.canonical,(const uint8_t*)q.source_url.data,(size_t)q.source_url.count,(const uint8_t*)q.companion_url.data,(size_t)q.companion_url.count,q.source_bytes,q.companion_bytes,q.frames,q.channels};
+ coax_t_HostAudioAsset *p=malloc(sizeof*p);if(p)*p=q;return p;
+}
+void mf_audio_asset_close(void *asset){free(asset);}
+int64_t mf_audio_encoded_words(int64_t bytes,bool companion){return hae_words(bytes,companion);}
+static MFOpusPlan opusOffer(coax_t_HostOpusPlan q){return(MFOpusPlan){q.valid,q.channels,q.pre_skip,q.frames,q.decode_frames,q.samples,q.decode_samples};}
+MFOpusPlan mf_audio_opus_plan(void *asset,const uint8_t *source,size_t n){if(n>INT64_MAX)return(MFOpusPlan){0};coax_v_u8 bytes={(uint8_t*)source,(int64_t)n};return opusOffer(asset?hpc_source_plan(*(coax_t_HostAudioAsset*)asset,bytes):hpo_plan(bytes));}
+bool mf_audio_opus_output(MFOpusPlan p,int64_t frames,int64_t channels,double rate){return hpo_output((coax_t_HostOpusPlan){p.valid,p.channels,p.pre_skip,p.frames,p.decode_frames,p.samples,p.decode_samples},frames,channels,rate);}
+MFPcmAssetPlan mf_audio_companion_plan(void *asset,const uint8_t *source,size_t n,const uint8_t *companion,size_t count){if(!asset||n>INT64_MAX||count>INT64_MAX)return(MFPcmAssetPlan){0};coax_t_HostPcmAssetPlan q=hpc_plan(*(coax_t_HostAudioAsset*)asset,(coax_v_u8){(uint8_t*)source,(int64_t)n},(coax_v_u8){(uint8_t*)companion,(int64_t)count});return(MFPcmAssetPlan){q.valid,q.channels,q.frames,q.samples,q.offset};}
+bool mf_audio_companion_decode(void *asset,const uint8_t *source,size_t n,const uint8_t *companion,size_t count,float *out,size_t words){return asset&&n<=INT64_MAX&&count<=INT64_MAX&&words<=INT64_MAX&&hpc_decode(*(coax_t_HostAudioAsset*)asset,(coax_v_u8){(uint8_t*)source,(int64_t)n},(coax_v_u8){(uint8_t*)companion,(int64_t)count},(coax_v_f32){out,(int64_t)words});}
 typedef struct {coax_t_AudioPcmHost state;double *workspace;int64_t words;float block[2048];} MFAudioPCM;
 void *mf_audio_session_open(void){coax_t_HostAudioSession *s=malloc(sizeof*s);if(s)*s=has_open();return s;}
 static MFAudioSessionOffer audioOffer(coax_t_HostAudioSessionOffer q){return(MFAudioSessionOffer){q.active,q.started,q.retired};}

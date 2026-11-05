@@ -8,7 +8,9 @@
 #load "../../aethyr/audio/host-effects.coax";
 #load "../../aethyr/audio/host-pcm.coax";
 #load "../../aethyr/audio/host-wav.coax";
+#load "../../aethyr/audio/everglade-pcm-assets.coax";
 #load "../../aethyr/host/audio-bank.coax";
+#load "../../aethyr/host/audio-encoded.coax";
 #load "../../aethyr/host/audio-memory.coax";
 #load "../../aethyr/host/audio-session.coax";
 #load "../../aethyr/host/lifecycle.coax";
