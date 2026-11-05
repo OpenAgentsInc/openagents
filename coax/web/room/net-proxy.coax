@@ -74,8 +74,11 @@ np_take :: (net: [] NpNet, p: [] NpPair, side: int, now: int) -> bool {
   if w[0].n + r > NP_BUF || w[0].c_n >= NP_CHUNKS { tool_errln("net-proxy: more held than it keeps; the socket closes"); return false; }
   for i: 0..<r { w[0].buf[(w[0].head + w[0].n + i) % NP_BUF] = cast(u8) cxsock_byte(h, i); }
   w[0].n += r;
+  lost := net[0].lost;
   due := np_due(net, now, w[0].last_due);
   w[0].last_due = due;
+  // each lost read, for a probe that drifts at that moment: when, which way, and how long it holds
+  if net[0].lost > lost { print("net-proxy: lost a read % at % ms, held % ms\n", ifx side == 0 then "up" else "down", now, due - now); }
   if due - now > net[0].most { net[0].most = due - now; }
   c := (w[0].c_head + w[0].c_n) % NP_CHUNKS;
   w[0].size[c] = r; w[0].due[c] = due; w[0].c_n += 1;

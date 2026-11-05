@@ -19,10 +19,13 @@
 //     frame's T, then the lowest round trip of the last NET_PINGS pings; a tick's time from W;
 //   - every remote entity's (players, townsfolk, creatures, zones) last NET_RING states from the
 //     server's ticks (D), drawn from one buffer a delay behind the server clock: the states' lateness,
-//     one interval and twice their arrival jitter, NET_LOW (100 ms) to NET_HIGH ms; between the two
-//     states round that time (yaw the short way), past the newest by its velocity for NET_AHEAD ms
-//     at most, then held. A row the server didn't send was the same as the last (it sends what
-//     changed), so the entity stood there until the tick before its next;
+//     one interval and twice their arrival jitter, NET_LOW (100 ms) to NET_HIGH ms, the drawn
+//     delay coming to it at NET_SLEW; between the two states round that time (yaw the short way),
+//     past the newest by its velocity for NET_AHEAD ms at most (a townsperson NET_AHEAD_FOLK: on
+//     their way through a lost read's resend), then held; where the states after that put it
+//     differs from where it went on to by a little, eased out over NET_EASE s. A row the server
+//     didn't send was the same as the last (it sends what changed), so the entity stood there until
+//     the tick before its next;
 //   - your inputs, NET_HIST of them, until the server has stepped them; where the re-run puts you
 //     differs from where you were drawn by a little: that is eased out over NET_SMOOTH s (past
 //     NET_SNAP m at once);
@@ -51,7 +54,16 @@ NET_PIPE_STATE :: 5;    // the pipe's save of what you bring back into a room: i
 NET_STATE_EVERY :: 2000;   // ms: a changed look is saved at most this often (WANTED is the room's to save, #12794)
 NET_PIPE_TICKET :: 4;   // the pipe's ask for a seat ticket: its bytes the API path to POST, a newline, the body (the face carries it)
 NET_BASE :: 0; NET_LOW :: 100; NET_HIGH :: 300;   // ms: the jitter buffer's delay (NET_BASE over the states' lateness, spread and interval, NET_LOW at least)
+// The drawn delay moves to the buffer's at most this much a second (s/s): its first NET_SETTLE ticks
+// at once, then the world's time runs 10% slow or fast while it comes. A burst of states after a
+// socket's hold raises the spread at once, and a delay taken at once drew everyone back (#12890).
+NET_SLEW :: 0.1; NET_SETTLE :: 30;
 NET_AHEAD :: 150;          // ms past its newest state an entity goes on by its velocity
+// ms a townsperson goes on: they walk their way at their pace, so their velocity holds while the
+// states stop. A read lost on the socket holds every read after it for TCP's resend (200 ms, or two
+// round trips: 500 ms at 250 ms), which NET_AHEAD and the buffer's spread don't cover (#12890).
+NET_AHEAD_FOLK :: 700;
+NET_EASE :: 0.2;           // s an entity's difference from where it went on to is eased out over
 NET_SNAP :: 1.5;           // m: a re-run's difference this big is taken at once (a teleport, a throw)
 NET_SMOOTH :: 0.12;        // s a smaller one is eased out over (a start or stop the page and server stepped apart)
 NET_PINGS :: 8;
@@ -88,6 +100,9 @@ NetEnt :: struct {
   cls: [16] u8; cls_n: int; hello_flags: int;   // its class and its hello's FLAGS (1 touch, 2 an account)
   // drawn this frame (net_step)
   shown: NetState; run: f32;
+  // where it went on to past its newest state (lead: that state; lead_on: drawn past it last frame),
+  // and the difference from where the states after it put it, eased out (NET_EASE)
+  lead: NetState; lead_on: bool; ease_x: f32; ease_y: f32; ease_z: f32;
   cast_slot: int = -1; cast_at: int;   // its last cast (e cast), server ms
 }
 NetInput :: struct { seq: int; input: EgMoveIn; }
@@ -125,6 +140,9 @@ EgNet :: struct {
   hz: int = WIRE_HZ; w_tick: int; w_t: int; seed: int; day: int; weather: int; worlds: int;
   tick: int; tick_t: int;    // the last state's tick and its server time
   late_mean: f32; jitter: f32; interval: f32 = 33; delay: int = NET_LOW; ticks: int;
+  // the delay the world is drawn at, which comes to `delay` at NET_SLEW (the drawn time runs a little
+  // slow or fast, never back), and the server time drawn this frame
+  lag: f32 = NET_LOW; rt: int;
   mir: [1] WireMirror;       // the server's rows as it sent them, what each delta is read against (everglade-wire.coax)
   budget: int = WIRE_BUDGET; // the bytes of rows a tick the server sends this page at most (W)
   rate_t: int; rate_b: int; rate: int;   // the bytes a second heard, over the last second (vitals)
@@ -151,6 +169,7 @@ EgNet :: struct {
   lost: bool;                // the room's socket closed under you: said again when you're back
   sat: bool;                 // you sat in a room this load: the page plays in rooms from then (net_live)
   quiet_frames: int; quiet_since: int; quiet_fresh: bool = true; stepped_at: int;   // the quiet socket's watch (NET_SILENT_MS)
+  drawn_at: int;             // the last frame's monotonic ms (the world's ease)
   hello_due: bool;
   pipe: [1] Pipe;
   out: [WIRE_FRAME] u8;
@@ -843,6 +862,13 @@ net_push :: (en: [] NetEnt, p: NetState) {
   if c == NET_RING { for q: 0..<NET_RING - 1 { en[0].ring[q] = en[0].ring[q + 1]; } c -= 1; }
   en[0].ring[c] = p; en[0].ring_n = c + 1;
 }
+// How long entity en goes on past its newest state (ms).
+net_ahead :: (en: [] NetEnt) -> int { return ifx en[0].kind == WK_FOLK then NET_AHEAD_FOLK else NET_AHEAD; }
+// State p gone on by its velocity to server time rt, `ahead` ms at most, then held.
+net_on_from :: (p: NetState, rt: int, ahead_ms: int) -> NetState {
+  ahead := f32(lo_int(hi_int(rt - p.t, 0), ahead_ms)) / 1000;
+  return NetState.{t = rt, x = p.x + p.vx * ahead, y = p.y + p.vy * ahead, z = p.z + p.vz * ahead, yaw = p.yaw, vx = p.vx, vy = p.vy, vz = p.vz, f = p.f, a = p.a};
+}
 // Where entity en is at server time rt.
 net_state_at :: (en: [] NetEnt, rt: int) -> NetState {
   c := en[0].ring_n;
@@ -856,10 +882,27 @@ net_state_at :: (en: [] NetEnt, rt: int) -> NetState {
     return NetState.{t = rt, x = lerp(a.x, b.x, f), y = lerp(a.y, b.y, f), z = lerp(a.z, b.z, f), yaw = a.yaw + net_turn(a.yaw, b.yaw) * f,
                      vx = lerp(a.vx, b.vx, f), vy = lerp(a.vy, b.vy, f), vz = lerp(a.vz, b.vz, f), f = o.f, a = o.a};
   }
-  // past the newest: on by its velocity for NET_AHEAD ms (a frame late or lost), then held
-  p := en[0].ring[c - 1];
-  ahead := f32(lo_int(rt - p.t, NET_AHEAD)) / 1000;
-  return NetState.{t = rt, x = p.x + p.vx * ahead, y = p.y + p.vy * ahead, z = p.z + p.vz * ahead, yaw = p.yaw, vx = p.vx, vy = p.vy, vz = p.vz, f = p.f, a = p.a};
+  // past the newest: on by its velocity for net_ahead ms (a frame late or lost), then held
+  return net_on_from(en[0].ring[c - 1], rt, net_ahead(en));
+}
+// Drawn past its newest state last frame, and newer states came since: where they put it differs
+// from where it went on to (a turn or a stop it made meanwhile). That difference is drawn and eased
+// out over NET_EASE s, so it doesn't jump back; past NET_SNAP m (a new life, a jump), taken at once.
+// p: where the ring has it at rt now; dt: the frame's seconds.
+net_ease :: (en: [] NetEnt, p: NetState, rt: int, dt: f32) {
+  c := en[0].ring_n;
+  newest := en[0].ring[c - 1];
+  if c < 2 { en[0].ease_x = 0; en[0].ease_y = 0; en[0].ease_z = 0; }
+  else if en[0].lead_on && newest.t > en[0].lead.t {
+    q := net_on_from(en[0].lead, rt, net_ahead(en));
+    ex := en[0].ease_x + q.x - p.x; ey := en[0].ease_y + q.y - p.y; ez := en[0].ease_z + q.z - p.z;
+    if abs(ex) + abs(ey) + abs(ez) > f32(NET_SNAP) { ex = 0; ey = 0; ez = 0; }
+    en[0].ease_x = ex; en[0].ease_y = ey; en[0].ease_z = ez;
+  }
+  en[0].lead = newest; en[0].lead_on = rt > newest.t;
+  k := clamp01(1 - dt / f32(NET_EASE));
+  en[0].ease_x *= k; en[0].ease_y *= k; en[0].ease_z *= k;
+  if abs(en[0].ease_x) + abs(en[0].ease_y) + abs(en[0].ease_z) < 0.001 { en[0].ease_x = 0; en[0].ease_y = 0; en[0].ease_z = 0; }
 }
 // book:end interp-buffer
 
@@ -975,11 +1018,16 @@ net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: 
     if n[0].hello_due { net_hello(s, n); }
   }
   // the world, a jitter buffer's delay behind the server clock
-  rt := now - n[0].delay;
+  dt := f32(clamp_i(mono - n[0].drawn_at, 0, 100)) / 1000; n[0].drawn_at = mono;
+  if n[0].ticks <= NET_SETTLE { n[0].lag = f32(n[0].delay); }
+  else { step := dt * 1000 * f32(NET_SLEW); n[0].lag += clamp(f32(n[0].delay) - n[0].lag, -step, step); }
+  rt := now - cast(int) n[0].lag; n[0].rt = rt;
   for e: 0..<NET_ENTS {
     en := n[0].ents[e..<e + 1];
     if !en[0].live || en[0].ring_n == 0 { continue; }
     p := net_state_at(en, rt);
+    net_ease(en, p, rt, dt);
+    p.x += en[0].ease_x; p.y += en[0].ease_y; p.z += en[0].ease_z;
     dx := p.x - en[0].shown.x; dz := p.z - en[0].shown.z;
     en[0].run += sqrt(dx * dx + dz * dz);
     // a townsperson on their day with the walk clip (watch_net_frame): drawn moving, or walking in place
@@ -1651,7 +1699,7 @@ net_probe :: (s: [] Everglade, field: int) -> int #export_c {
     return wire_cm(ifx field == 8 then v.x else v.z);
   }
   if field == 10 { return n[0].played; }
-  if field == 11 { return n[0].delay; }
+  if field == 11 { return cast(int) n[0].lag; }
   if field == 12 { return n[0].acked; }
   if field == 13 { return n[0].hits; }
   if field == 14 { return n[0].replays; }
@@ -2533,11 +2581,14 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
 // A walker at 1.2 m/s as the server would send it to seat 0 (everglade-wire.coax's seat frames:
 // deltas against what this page said it heard), its ticks late by up to `jitter` ms and one in
 // `lose` lost: how many frames the page drew it walking, how many of those where the frame before had
-// it, and how far it was drawn from where it was at the time drawn, at most (cm). With `jump`, it
+// it, how far it was drawn from where it was at the time drawn, at most (cm), and its largest move
+// between two frames and back (cm). With `jump`, it
 // jumps 20 m on at tick 270 (a teleport): `between` counts the frames drawn more than 1 m off both sides.
+// With `resend` ms, the socket's: 125 ms on the way, and one frame in 30 lost and sent again `resend`
+// ms later, every frame after it held behind it (TCP's order, coax/web/room/net-proxy.coax).
 NET_TEST_WAY :: 16;
-NetTestWalk :: struct { walk: int; still: int; err_cm: int; held: bool; bad: int; between: int; }
-net_test_walk :: (jitter: int, lose: int, jump: bool) -> NetTestWalk {
+NetTestWalk :: struct { walk: int; still: int; err_cm: int; held: bool; bad: int; between: int; step_cm: int; back_cm: int; }
+net_test_walk :: (jitter: int, lose: int, jump: bool, resend: int) -> NetTestWalk {
   a: [1] Everglade; na: [1] EgNet; room: [1] NetTestRoom;
   out := NetTestWalk.{};
   if !net_test_page(a[..], na[..], 0, "pa", 100) || !net_test_hear(a[..], 0, "y 0 1 5000100") { return out; }
@@ -2547,7 +2598,7 @@ net_test_walk :: (jitter: int, lose: int, jump: bool) -> NetTestWalk {
   // the frames on their way, in order (one socket): each one's text and when it comes
   way: [NET_TEST_WAY * 512] u8; way_n: [NET_TEST_WAY] int; way_at: [NET_TEST_WAY] int; way_head := 0; way_len := 0; last_at := 0;
   seed := 12345;
-  t := 0; mono := 100; walk0 := 0; still0 := 0;
+  t := 0; mono := 100; walk0 := 0; still0 := 0; last_x := 0.0f32;
   for frame: 0..<600 {
     mono = 100 + frame * 16;
     // the server's ticks due by now (the last 60 none: a long gap)
@@ -2565,6 +2616,7 @@ net_test_walk :: (jitter: int, lose: int, jump: bool) -> NetTestWalk {
       n := wire_put_d(b, 0, WireD.{tick = t, ack = 0, f = ifx t == 1 then 1 else 0, part = 0});
       n += wire_seat_frame(st[..], h[..], 0, 0, 0, 120, WIRE_BUDGET, b[n..<512]);
       late := ifx jitter > 0 then (seed / 7) % (jitter + 1) else 0;
+      if resend > 0 { late += 125; if (seed / 1024) % 30 == 0 { late += resend; } }
       way_n[q] = n; way_at[q] = hi_int(last_at, 100 + t * 1000 / 30 + late); last_at = way_at[q];
       way_len += 1;
     }
@@ -2578,9 +2630,11 @@ net_test_walk :: (jitter: int, lose: int, jump: bool) -> NetTestWalk {
     if frame == 540 { out.walk = net_probe(a[..], 41) - walk0; out.still = net_probe(a[..], 42) - still0; }
     if frame >= 60 && frame < 540 {
       f := net_folk(a[..], 0);
+      if f.ok && frame > 60 { d := f.x - last_x; out.step_cm = hi_int(out.step_cm, cast(int) (abs(d) * 100)); if d < 0 { out.back_cm = hi_int(out.back_cm, cast(int) (-d * 100)); } }
+      if f.ok { last_x = f.x; }
       if f.ok {
-        // where it was at the time drawn: the server's clock less the delay
-        rt := net_now(na[..]) - na[0].delay;
+        // where it was at the time drawn: the server's clock less the drawn delay
+        rt := na[0].rt;
         truth := 1.2 * f32(rt - 5000100) / 1000;
         e := abs(f.x - truth);
         if jump { e2 := abs(f.x - truth - 20); if e2 < e { e = e2; } if e > 1 { out.between += 1; } }
@@ -2597,17 +2651,22 @@ net_test_walk :: (jitter: int, lose: int, jump: bool) -> NetTestWalk {
 }
 #test "net: a walker drawn from the buffer moves every frame through late and lost ticks and stays near where it was; after a long gap it holds" #steps 4000000000 {
   // on time, every tick: moving every frame drawn, within a centimetre or two
-  w := net_test_walk(0, 0, false);
+  w := net_test_walk(0, 0, false, 0);
   #assert w.walk > 400 && w.still == 0 && w.err_cm <= 3 && w.held && w.bad == 0;
   // up to 60 ms late and one tick in 8 lost: the buffer grows past the lateness; still never drawn standing
-  w = net_test_walk(60, 8, false);
+  w = net_test_walk(60, 8, false, 0);
   #assert w.walk > 400 && w.still * 100 < w.walk * 5 && w.err_cm <= 20 && w.held && w.bad == 0;
   // one in 3 lost: the deltas still read (a base it acknowledged), and it moves on its velocity between
-  w = net_test_walk(30, 3, false);
+  w = net_test_walk(30, 3, false, 0);
   #assert w.walk > 400 && w.still * 100 < w.walk * 5 && w.err_cm <= 30 && w.bad == 0;
   // a teleport 20 m on (a WARP): drawn where it was, then where it landed, never a frame between
-  w = net_test_walk(30, 8, true);
+  w = net_test_walk(30, 8, true, 0);
   #assert w.walk > 400 && w.between == 0 && w.bad == 0;
+  // a socket that loses a read about once a second and sends it again two round trips later (500
+  // ms at 250 ms): the townsperson goes on their way through each hold, never drawn standing, and
+  // the buffer's growth after it never draws them back or on in a jump (#12890)
+  w = net_test_walk(30, 0, false, 500);
+  #assert w.walk > 400 && w.still * 100 < w.walk * 2 && w.err_cm <= 30 && w.bad == 0 && w.back_cm == 0 && w.step_cm <= 4;
 }
 
 #test "net: a room on another wire version refuses the hello; the page says a new version is out, opens no socket again and reloads once" {

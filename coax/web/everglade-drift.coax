@@ -32,7 +32,8 @@
 // The probes (coax/web/everglade-drift.js notes them every frame: everglade-net.coax net_probe 45 to
 // 62, 400+, 600+, everglade5e-face.c coaxial_field_probe and coaxial_drift_text), each compared
 // both ways within a window: a frame of one page fails when no frame of the other within WINDOW ms
-// (250 plus the round trip) has the same value, within the probe's tolerance. A probe drifts when
+// (250 plus the round trip; the town's conditions a lost read's resend more, DrProbe) has the same
+// value, within the probe's tolerance. A probe drifts when
 // DR_RUN frames fail in a row. Some are judged on each page alone: the camera's turn in one frame
 // (DR_YAW_JUMP) and in DR_TURN_MS with no look (DR_TURN), the room's corrections (re-runs that moved you more than 5 cm: at most DR_FIX_RATE a
 // second, none over 0.5 m), and the town's people (walking in place: a walking clip drawn where it
@@ -100,7 +101,11 @@ dr_mark_t :: (p: [] DrPage, name: string) -> int { for k: 0..<p[0].marks_n { if 
 
 // A probe: a column (or two for the feet), how far apart two values may be, and how it is compared.
 DR_EXACT :: 0; DR_NEAR :: 1; DR_SHARE :: 2; DR_ANGLE :: 3; DR_PLACE :: 4; DR_ON :: 5;
-DrProbe :: struct { name: string; col: int; how: int; tol: int; from: string; }
+// lossy: what the room decides and the page only hears (the town's conditions), judged within a lost
+// read's resend more: a read lost on the way holds every read after it for TCP's resend (net-proxy.coax:
+// two round trips, 200 ms at least), so the room's word on it comes that much later, and no page can
+// draw it before it comes (#12890). The page draws those conditions as their row comes, unbuffered.
+DrProbe :: struct { name: string; col: int; how: int; tol: int; from: string; lossy: bool; }
 // The verdict on one probe: whether it drifted, the first frame that did (wall ms and its step),
 // the values there and the smallest difference the window had.
 DrVerdict :: struct { drifted: bool; t: int; step: string; mine: int; other: int; by: int; frames: int; note: [200] u8; note_n: int; }
@@ -402,15 +407,18 @@ dr_compare :: (a: [] DrPage, b: [] DrPage, rtt: int, rep: [] DrReport, worker: b
     DrProbe.{name = "hotbar slots", col = C_BAR, how = DR_EXACT},
     DrProbe.{name = "condition on you", col = C_COND, how = DR_EXACT},
     DrProbe.{name = "condition on others", col = C_OCOND, how = DR_EXACT},
-    DrProbe.{name = "conditions on the town's people", col = C_FCOND, how = DR_NEAR, tol = 0},
+    DrProbe.{name = "conditions on the town's people", col = C_FCOND, how = DR_NEAR, tol = 0, lossy = true},
     DrProbe.{name = "your engine conditions", col = C_ECOND, how = DR_EXACT},
     DrProbe.{name = "stables down", col = C_SDOWN, how = DR_NEAR, tol = 0},
   ];
+  // a lost read's resend (coax/web/room/net-proxy.coax np_due); the local profile loses none
+  resend := ifx rtt <= 0 then 0 else ifx 2 * rtt > 200 then 2 * rtt else 200;
   for pr: probes {
+    win := window + (ifx pr.lossy then resend else 0);
     v: [1] DrVerdict;
-    dr_way(pr, a, b, window, t0, t1, v[..]);
+    dr_way(pr, a, b, win, t0, t1, v[..]);
     w: [1] DrVerdict;
-    dr_way(pr, b, a, window, t0, t1, w[..]);
+    dr_way(pr, b, a, win, t0, t1, w[..]);
     // the room's side drifting first is said as the room's value against offline's
     if w[0].drifted && (!v[0].drifted || w[0].t < v[0].t) { x := w[0]; x.mine = w[0].other; x.other = w[0].mine; x.frames += v[0].frames; v[0] = x; }
     else { v[0].frames += w[0].frames; }
