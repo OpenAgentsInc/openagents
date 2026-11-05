@@ -663,6 +663,7 @@ struct EmitOptions {
   bool cuda = false;     // CUDA C for NVRTC: the compute subset (lib/compiler/compute.coax)
   bool quantity_device = false; // device output is outside initial quantity qualification
   bool metal_compute = false;  // Metal Shading Language compute kernels: the same subset, f64 as float-float
+  int32_t split = 0;  // --split N: a --library unit's C as N translation units and a shared one (#12938)
 };
 std::string emit_c(const File *file, const EmitOptions &opts);
 // Verification emission borrows the original checked graph. Its procedure

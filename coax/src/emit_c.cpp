@@ -1118,6 +1118,11 @@ struct Emitter {
   int32_t temp_count = 0;
   std::vector<std::string> temps;           // declarations at the top of the current function
   std::vector<const Expr *> ct_values;      // compile-time aggregates, emitted as static constants
+  // --split: the unit being emitted names its own compile-time values, so a
+  // value added in one unit doesn't renumber another's (#12938).
+  bool split = false;
+  std::map<const Expr *, int32_t> *unit_ct_ids = nullptr;
+  std::vector<const Expr *> *unit_ct_values = nullptr;
   bool wrapping = false;
   bool wide = false;
   bool barrier = false;                       // value_barrier is used: emit its helpers
@@ -1279,6 +1284,14 @@ struct Emitter {
         return "coax_k" + std::to_string(id);
       }
       return "coax_k" + std::to_string(found->second);
+    }
+    if (unit_ct_ids) {
+      auto found = unit_ct_ids->find(e);
+      if (found != unit_ct_ids->end()) return "coax_k" + std::to_string(found->second);
+      int32_t id = (int32_t)unit_ct_values->size();
+      unit_ct_ids->emplace(e, id);
+      unit_ct_values->push_back(e);
+      return "coax_k" + std::to_string(id);
     }
     Expr *m = (Expr *)e;
     if (m->ct_id < 0) {
@@ -2309,7 +2322,7 @@ struct Emitter {
   // ---- declarations ----
 
   std::string prototype(const ProcDecl *p, bool header = false) {
-    std::string s = (opts.cuda ? "static __device__ " : opts.metal_compute ? "static inline " : header || (p->export_c && !verification) ? "" : p->foreign ? "extern " : "static ") + c_type(p->ret) + " " +
+    std::string s = (opts.cuda ? "static __device__ " : opts.metal_compute ? "static inline " : header || (p->export_c && !verification) ? "" : p->foreign ? "extern " : split ? "" : "static ") + c_type(p->ret) + " " +
                     proc_name(p) + (n32 && n32->proc == p ? "_n32" : "") + "(";
     if (p->params.count == 0 && !opts.metal_compute) s += "void";
     for (int32_t i = 0; i < p->params.count; i++) {
@@ -2553,26 +2566,28 @@ void collect_types(const File *file, std::vector<Type> *types) {
 // calls them), only the helpers that C reaches are kept, through the helpers
 // they call in turn: a type that is never printed or converted to gets none
 // (ax-library-check-cache).
-std::string show_functions(const File *file, Emitter &em, const std::string *uses = nullptr) {
+std::string show_functions(const File *file, Emitter &em, const std::string *uses = nullptr, std::string *protos_out = nullptr) {
   std::vector<Type> types;
   collect_types(file, &types);
   struct Item { std::string protos, bodies; std::vector<std::string> names; };
   std::vector<Item> items;
+  // --split: defined once, in the shared unit, for every unit (#12938).
+  const std::string local = em.split ? "" : "static ";
   for (Type t : types) {
     items.emplace_back();
     std::string &protos = items.back().protos, &bodies = items.back().bodies;
     std::string c = c_type(t), tg = tag(t);
     items.back().names = {"coax_show_" + tg, "coax_to_" + tg};
     if (t->kind == TypeKind::enum_) {
-      protos += "static void coax_show_" + tg + "(" + c + " v);\n";
-      bodies += "static void coax_show_" + tg + "(" + c + " v) {\n  switch (v) {\n";
+      protos += local + "void coax_show_" + tg + "(" + c + " v);\n";
+      bodies += local + "void coax_show_" + tg + "(" + c + " v) {\n  switch (v) {\n";
       for (const EnumMember &m : t->enum_decl->members)
         bodies += "    case " + int_text(t, m.bits) + ": fputs(\"" + to_std(m.name) + "\", stdout); return;\n";
       bodies += "    default: break;\n  }\n  fputs(\"" + to_std(t->enum_decl->name) + "(\", stdout); " +
                 (t->elem->is_signed ? "coax_print_int((int64_t)v);" : "coax_print_uint((uint64_t)v);") +
                 " fputc(')', stdout);\n}\n";
       // Checked conversion from an integer: it must name a member.
-      bodies += "static " + c + " coax_to_" + tg + "(int64_t s, uint64_t u, int is_signed, int32_t l) {\n";
+      bodies += local + c + " coax_to_" + tg + "(int64_t s, uint64_t u, int is_signed, int32_t l) {\n";
       for (const EnumMember &m : t->enum_decl->members) {
         bool negative = t->elem->is_signed && (int64_t)m.bits < 0;
         if (negative) bodies += "  if (is_signed && s == INT64_C(" + std::to_string((int64_t)m.bits) + ")) return " + int_text(t, m.bits) + ";\n";
@@ -2580,11 +2595,11 @@ std::string show_functions(const File *file, Emitter &em, const std::string *use
                        std::to_string(m.bits) + ")) return " + int_text(t, m.bits) + ";\n";
       }
       bodies += "  coax_trap(\"value is not a member of enum " + to_std(t->enum_decl->name) + "\", l);\n  return 0;\n}\n";
-      protos += "static " + c + " coax_to_" + tg + "(int64_t s, uint64_t u, int is_signed, int32_t l);\n";
+      protos += local + c + " coax_to_" + tg + "(int64_t s, uint64_t u, int is_signed, int32_t l);\n";
       continue;
     }
-    protos += "static void coax_show_" + tg + "(const " + c + " *v);\n";
-    bodies += "static void coax_show_" + tg + "(const " + c + " *v) {\n";
+    protos += local + "void coax_show_" + tg + "(const " + c + " *v);\n";
+    bodies += local + "void coax_show_" + tg + "(const " + c + " *v) {\n";
     if(is_sum(t)){
       bodies+="  switch(v->tag) {\n";
       for(int32_t i=0;i<sum_count(t);i++){
@@ -2663,6 +2678,7 @@ std::string show_functions(const File *file, Emitter &em, const std::string *use
   }
   std::string protos, bodies;
   for (size_t i = 0; i < items.size(); i++) if (kept[i]) { protos += items[i].protos; bodies += items[i].bodies; }
+  if (protos_out) { *protos_out = protos; return bodies; }
   return protos + bodies;
 }
 
@@ -2683,15 +2699,16 @@ std::string view_helpers() {
   return s;
 }
 
-std::string init_functions(const File *file, Emitter &em) {
+std::string init_functions(const File *file, Emitter &em, std::string *protos_out = nullptr) {
   std::vector<Type> types;
   collect_types(file, &types);
   std::string protos, bodies;
+  const std::string local = em.split ? "" : "static ";  // --split: one definition (#12938)
   for (Type t : types) {
     if (!needs_init(t)) continue;
     std::string c = c_type(t), tg = tag(t);
-    protos += "static " + c + " coax_init_" + tg + "(void);\n";
-    bodies += "static " + c + " coax_init_" + tg + "(void) {\n  " + c + " v;\n  memset(&v, 0, sizeof v);\n";
+    protos += local + c + " coax_init_" + tg + "(void);\n";
+    bodies += local + c + " coax_init_" + tg + "(void) {\n  " + c + " v;\n  memset(&v, 0, sizeof v);\n";
     if (t->kind == TypeKind::struct_) {
       for (const Field &f : t->struct_decl->fields) {
         if (f.init) bodies += "  v." + to_std(f.name) + " = " + em.ex(f.init) + ";\n";
@@ -2702,6 +2719,7 @@ std::string init_functions(const File *file, Emitter &em) {
     }
     bodies += "  return v;\n}\n";
   }
+  if (protos_out) { *protos_out = protos; return bodies; }
   return protos + bodies;
 }
 
@@ -3508,9 +3526,126 @@ static std::set<const ProcDecl *> called_instances(const File *file) {
 }
 
 size_t g_instance_c_bytes = 0;
+
+// --split N (#12938): a --library unit's C as up to N translation units and a
+// shared one, so a build compiles again only the units whose C changed (a
+// gameplay edit to Everglade's carrier changed all 9 MB of one unit). The
+// output is one stream: a prelude every unit begins with (the runtime, the
+// types, the view helpers and every procedure's prototype), then each unit's
+// part after a line "/* coax-unit ID */" (coax/web/wasm.sh writes each part,
+// after the prelude, to a file of its own). Procedures are grouped into runs
+// of neighbours in one source file, a run ending after a procedure whose
+// name's hash is 0 mod 8, so an edit moves no other procedure between runs; a
+// run's unit is the hash of its file and first procedure's name, mod N. A
+// generic instance goes with the generic's file and name. Each unit names its
+// own compile-time values (coax_k0...). The shared unit holds the init, show
+// and host-default helpers. Procedures the program alone calls lose static:
+// they are called across units (a release's link-time optimization, which sees
+// every unit, internalizes them again).
+static uint64_t split_hash(const std::string &text) {
+  uint64_t h = 1469598103934665603ULL;  // FNV-1a
+  for (unsigned char c : text) { h ^= c; h *= 1099511628211ULL; }
+  return h;
+}
+
+static std::string emit_c_split(const File *file, const EmitOptions &opts) {
+  Emitter em{file, opts};
+  em.split = true;
+  g_instance_c_bytes = 0;
+  TimedLaps laps;
+  const std::set<const ProcDecl *> called = called_instances(file);
+  laps.lap("emit.instances");
+  auto emitted = [&](const ProcDecl *p) { return !p->origin || called.count(p); };
+  const uint64_t units = (uint64_t)opts.split;
+  // Each procedure's unit: runs of a source file's own procedures, then instances.
+  std::map<const ProcDecl *, uint64_t> unit_of;
+  std::string run_key, last_path;
+  bool cut = true;
+  for (const ProcDecl *p : file->procs) {
+    if (p->origin) continue;
+    std::string path = source_point(file->src, p->loc).path, name = to_std(p->name);
+    if (cut || path != last_path) run_key = path + "\n" + name;
+    unit_of[p] = split_hash(run_key) % units;
+    last_path = path;
+    cut = split_hash(name) % 8 == 0;
+  }
+  for (const ProcDecl *p : file->procs) {
+    if (!p->origin) continue;
+    unit_of[p] = split_hash(source_point(file->src, p->origin->loc).path + "\n" + to_std(p->origin->name) + "\ninstance") % units;
+  }
+  struct Part { std::map<const Expr *, int32_t> ids; std::vector<const Expr *> values; std::string text; };
+  std::vector<Part> parts(units + 1);  // parts[units]: the shared unit
+  auto into = [&](Part &part) { em.unit_ct_ids = &part.ids; em.unit_ct_values = &part.values; };
+  std::string functions;  // all of them, for the show helpers' reachability
+  for (const ProcDecl *p : file->procs) {
+    if (!emitted(p)) continue;
+    const ProcDecl *o = p->origin ? p->origin : p;
+    DeclCost *cost = g_decl_costs.at(file, o, "procedure", o->name, o->loc);
+    Part &part = parts[unit_of.at(p)];
+    into(part);
+    std::string f;
+    { DeclClock clock{cost ? &cost->emit_seconds : nullptr}; f = em.function(p); }
+    if (cost) cost->c_bytes += f.size();
+    if (p->origin) g_instance_c_bytes += f.size();
+    part.text += f;
+    functions += f;
+  }
+  laps.lap("emit.functions");
+  Part &shared = parts[units];
+  into(shared);
+  std::string init_protos, show_protos;
+  std::string inits = init_functions(file, em, &init_protos);
+  std::string hosted = state_defaults(file, em);
+  laps.lap("emit.inits");
+  const std::string uses = inits + functions + hosted;
+  std::string shows = show_functions(file, em, &uses, &show_protos);
+  laps.lap("emit.shows");
+  em.unit_ct_ids = nullptr; em.unit_ct_values = nullptr;
+  shared.text = "\n" + inits + shows + "\n" + hosted;
+
+  TypeWriter types;
+  types.forward_structs(file);
+  std::vector<Type> all;
+  collect_types(file, &all);
+  for (Type t : all) types.need(t);
+  types.layout_asserts(file);
+  laps.lap("emit.types");
+
+  std::string s = "/* Generated by coax0 from " + file->src->path + " (coax c --split " + std::to_string(units) + "). Do not edit: change the .coax file. */\n";
+  s += "static const char *coax_source_path = \"" + escape_path(file->src->path) + "\";\n";
+  s += source_runtime(file);
+  if (em.strict_math) s += strict_math_runtime();
+  if (em.erasure) s += ZERO_RUNTIME;
+  if (em.barrier) s += BARRIER_RUNTIME;
+  if (em.wrapping) s += WRAP_RUNTIME;
+  if (em.versioned) s += IV_RUNTIME;
+  s += "#define COAX_LAYOUT(c, m) _Static_assert(c, m)\n";
+  s += "\n/* Types */\n" + types.out;
+  if (em.wide) s += WIDE_RUNTIME;
+  s += view_helpers();
+  s += "\n" + init_protos + show_protos + "\n";
+  for (const ProcDecl *p : file->procs) if (emitted(p)) s += em.prototype(p) + ";\n";
+  for (uint64_t u = 0; u <= units; u++) {
+    Part &part = parts[u];
+    if (part.text.empty() || part.text == "\n\n") continue;
+    s += "/* coax-unit " + (u == units ? std::string("shared") : std::to_string(u)) + " */\n";
+    if (!part.values.empty()) {
+      s += "\n/* Values computed at compile time */\n";
+      for (size_t i = 0; i < part.values.size(); i++) {
+        const Expr *e = part.values[i];
+        s += "static const " + c_type(e->type) + " coax_k" + std::to_string(i) + " = " + em.init_list(*e->ct) + ";\n";
+      }
+    }
+    s += part.text;
+  }
+  laps.lap("emit.assemble");
+  return s;
+}
+
 std::string emit_c(const File *file, const EmitOptions &opts) {
   if (opts.cuda) return emit_cuda(file, opts);
   if (opts.metal_compute) return emit_metal_compute(file, opts);
+  if (opts.split > 0 && opts.library && !opts.metal) return emit_c_split(file, opts);
   Emitter em{file, opts};
   std::string functions;
   g_instance_c_bytes = 0;

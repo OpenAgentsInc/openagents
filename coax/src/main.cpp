@@ -1885,7 +1885,7 @@ static int usage() {
           "       coax build   file.coax [-o out] [--release] [--keep-c]\n"
           "       coax lib     file.coax [-o out.o] [--release] [--keep-c]\n"
           "       coax header  file.coax [-o out.h]\n"
-          "       coax c       file.coax [--release] [--library [--header out.h]]\n"
+          "       coax c       file.coax [--release] [--library [--header out.h] [--split N]]\n"
           "       coax checks-c file.coax [--verification-abi 1|2] [--only SUBSTR] [-o checks.c]  verification-only checked C\n"
           "       coax metal   file.coax [--vertex V --fragment F [--tree]] [-o out.metal]\n"
           "       coax cuda    file.coax [--release]\n"
@@ -2297,6 +2297,15 @@ static int main_impl(int argc, char **argv) {
       g_json_errors = g_diagnostics_json;   // no text trailers or notes between the JSON lines
     }
     else if (a == "--lib" || a == "--library") opts.library = true;
+    else if (a == "--split" && cmd == "c") {
+      // A --library unit's C as up to N translation units and a shared one (#12938).
+      const char *value = i + 1 < argc ? argv[i + 1] : "";
+      char *end = nullptr;
+      long n = strtol(value, &end, 10);
+      if (!*value || *end || n < 1 || n > 256) { fprintf(stderr, "coax: --split requires a unit count from 1 to 256\n"); return 1; }
+      opts.split = (int32_t)n;
+      ++i;
+    }
     else if (a == "--header" && i + 1 < argc) header = argv[++i];
     else if (a == "-o" && i + 1 < argc) out = argv[++i];
     else if (a == "--fresh" && cmd == "query") query.fresh = true;
