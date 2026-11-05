@@ -41,7 +41,7 @@ ENTITY_REFUSED :: 7;   // spawns refused because every slot was in use
 ENTITY_COUNTERS :: 8;
 
 EntityStore :: struct {
-  gen: [] int;       // each slot's generation
+  gen: [] int #counter;   // each slot's generation (it changes through add_sat only, #12927)
   live: [] bool;     // the slot holds a live entity
   born: [] bool;     // the slot holds an entity that is live from the next flush
   doomed: [] bool;   // the slot's entity despawns at the next flush
@@ -134,7 +134,7 @@ entity_doomed :: (w: EntityStore, h: int) -> bool { return (entity_alive(w, h) |
 entity_release :: (w: EntityStore, i: int) {
   w.doomed[i] = false; w.ids[i] = ENTITY_NO_ID;
   if w.gen[i] == ENTITY_GEN_MASK { w.n[ENTITY_RETIRED] += 1; return; }
-  w.gen[i] += 1;
+  w.gen[i] = add_sat(w.gen[i], 1);
   w.free[w.n[ENTITY_FREE]] = i;
   w.n[ENTITY_FREE] += 1;
 }

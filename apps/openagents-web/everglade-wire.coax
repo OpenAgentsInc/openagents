@@ -602,7 +602,7 @@ WireHist :: struct {
   f: [WIRE_BASES * WIRE_SLOTS * WIRE_SF] s32;
   // now's: where each is (m), its weight, and whether every seat hears it however far (a player)
   x: [WIRE_SLOTS] f32; y: [WIRE_SLOTS] f32; z: [WIRE_SLOTS] f32; w: [WIRE_SLOTS] f32; all: [WIRE_SLOTS] bool;
-  life: [WIRE_SLOTS] s32; warp: [WIRE_SLOTS] s32;   // each slot's entity's LIFE and WARP now
+  life: [WIRE_SLOTS] s32 #counter; warp: [WIRE_SLOTS] s32 #counter;   // each slot's entity's LIFE and WARP now (wire_count_next only, #12927)
   // the next row of each slot is a new life (born: a new player in the seat, its id the same) or a
   // jump (cut: a teleport, a placing, a seat into or out of a boat, however short), as its world says (#12835)
   born: [WIRE_SLOTS] bool; cut: [WIRE_SLOTS] bool;
@@ -614,9 +614,10 @@ WireHist :: struct {
 // a row's LIFE or WARP is the one it holds, and a slot counts at most one a tick, so a number comes
 // back in one slot only after WIRE_LIFE_MAX - 1 of them: over two years of a new life every tick. As
 // aethyr/entity.coax retires a slot before its generation would wrap, nothing here repeats while a
-// page could still hold the number it repeats.
+// page could still hold the number it repeats. The step is the named add_sat, so a debug and a release
+// room count the same (#12927).
 WIRE_LIFE_MAX :: 2000000000;
-wire_count_next :: (c: int) -> int { n := (ifx c < 0 then 0 else c % WIRE_LIFE_MAX) + 1; return ifx n >= WIRE_LIFE_MAX then 1 else n; }
+wire_count_next :: (c: int) -> int { n := add_sat(ifx c < 0 then 0 else c % WIRE_LIFE_MAX, 1); return ifx n >= WIRE_LIFE_MAX then 1 else n; }
 // The table's lives begin at numbers of this room's own (#12835): a room made again, in this process
 // or after a restart, never starts its slots' lives where an earlier room's were, so a page that
 // rejoins never takes a new entity for the one it held (their ids and slots may be the same: the

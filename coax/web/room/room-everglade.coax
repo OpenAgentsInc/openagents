@@ -129,8 +129,9 @@ EgSeat :: struct {
   live: bool; conn: int = -1;
   behind_t: int;   // the tick its socket went behind, 0 not behind (EG_RESNAP)
   // its generation: one more each time a socket takes the seat (a join or its player's rejoin); a
-  // socket's frames count only while its generation is the seat's (room-relay.coax rl_heard, #12792)
-  gen: int;
+  // socket's frames count only while its generation is the seat's (room-relay.coax rl_heard, #12792);
+  // a #counter, so it moves only through the named integer operations (#12927)
+  gen: int #counter;
   held: bool; held_at: int;      // its socket closed and its character waits for its player, since held_at (mono ms)
   q: [EG_INPUTS] EgIn; q_n: int; bank: int; took: int; ack: int;   // took: inputs stepped this tick
   sat_ms: int = -1; earned: int;   // the server's clock when it sat (mono ms), and the steps of time earned since
@@ -155,8 +156,9 @@ EgSeat :: struct {
   full: bool; full_t: int; pieces: int;
   // the town's outcomes (WIRE_OUTCOMES) sent it, which o says (#12902): how many, the count o last said
   // and its tick; and an e town owed once the pieces have all gone: every seat's first, and one its page
-  // asked for (O: it heard fewer outcomes than o said), so what the page holds and the room doesn't stands
-  out_n: int; out_said: int; out_t: int; town_end: bool = true;
+  // asked for (O: it heard fewer outcomes than o said), so what the page holds and the room doesn't stands.
+  // The counts are #counter fields: they stop at the largest int, as the page's does (#12927)
+  out_n: int #counter; out_said: int #counter; out_t: int; town_end: bool = true;
   said_heard: int; said_ms: int;   // the HEARD its page's last input said, and when (EG_HEARD_BEHIND)
   snap_at: int;                    // the tick its last snapshot went (EG_SNAP_WAIT)
   old: bool;                                          // a page from before wire 3: its state on the old wire (room-oldwire.coax)
@@ -1141,7 +1143,7 @@ rm_eg_want_take :: (v: [] RmServer, k: int, s: int) -> int #export_c {
 EgOut :: struct { b: [EG_CHUNK + 512] u8; n: int; any: bool; part: int; old: bool; }   // old: D's header on the old wire (room-oldwire.coax)
 eg_out_entry :: (o: [] EgOut, v: [] RmServer, k: int, s: int, f: int, entry: string) {
   if o[0].any && o[0].n + entry.count + 1 > EG_CHUNK { eg_out_send(o, v, k, s, f | 2); }
-  if entry.count > 2 && entry[0] == 'e' && wire_outcome(entry) { v[0].eg[k].seat[s].out_n += 1; }
+  if entry.count > 2 && entry[0] == 'e' && wire_outcome(entry) { v[0].eg[k].seat[s].out_n = add_sat(v[0].eg[k].seat[s].out_n, 1); }
   if o[0].any { o[0].b[o[0].n] = ';'; o[0].n += 1; }
   o[0].n = put(o[0].b[..], o[0].n, entry);
   o[0].any = true;

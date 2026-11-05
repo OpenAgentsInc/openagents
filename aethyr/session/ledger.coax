@@ -12,7 +12,10 @@
 //   - a write under a generation below the store's newest for that character is refused
 //     (LEDGER_STALE): an old owner can't grant or move anything after a new one took over;
 //   - a write that names an inventory version other than the current one is refused
-//     (LEDGER_VERSION), so two concurrent transfers or claims can't both spend one item.
+//     (LEDGER_VERSION), so two concurrent transfers or claims can't both spend one item;
+//   - a write that would move a character's version past the largest int is refused
+//     (LEDGER_EXHAUSTED) before anything changes: versions are #counter fields, advanced only by
+//     add_checked, the same in every build (#12927).
 // A workflow that spans owners (a trade, travel with an item) escrows the item first: an escrowed
 // item can't be transferred, granted again or escrowed elsewhere until its escrow settles (moves it)
 // or cancels (returns it).
@@ -43,6 +46,7 @@ LEDGER_HELD :: 4;      // the item is escrowed, or isn't the writer's
 LEDGER_FULL :: 5;      // no room for another item or operation
 LEDGER_EXPIRED :: 6;   // the ID is older than LEDGER_KEEP
 LEDGER_NO_ITEM :: 7;
+LEDGER_EXHAUSTED :: 8; // a version the write would advance has no next value
 
 LOP_GRANT :: 1; LOP_TRANSFER :: 2; LOP_ESCROW :: 3; LOP_SETTLE :: 4; LOP_CANCEL :: 5;
 
@@ -52,7 +56,7 @@ LedgerEntry :: struct { seq: int; op: int; c: int; item: int; to: int; kind: int
 Ledger :: struct {
   fence: [1] ControlFence;
   items: [LEDGER_ITEMS] LedgerItem;
-  version: [CONTROL_CHARACTERS] int;
+  version: [CONTROL_CHARACTERS] int #counter;
   ops: [LEDGER_OPS] LedgerOp;
   out: [LEDGER_OUTBOX] LedgerEntry; out_n: int;
 }
@@ -96,6 +100,23 @@ ledger_apply :: (l: [] Ledger, a: LedgerAsk, now: int) -> LedgerAnswer {
 }
 // Whether a may apply now (nothing changes).
 ledger_check :: (l: [] Ledger, a: LedgerAsk) -> int {
+  st := ledger_allowed(l, a);
+  if st != LEDGER_OK { return st; }
+  // every version the change advances must have a next one, or nothing changes
+  if !ledger_has_next(l, a.c) { return LEDGER_EXHAUSTED; }
+  if a.op == LOP_TRANSFER && !ledger_has_next(l, a.to) { return LEDGER_EXHAUSTED; }
+  if a.op == LOP_SETTLE && !ledger_has_next(l, l[0].items[a.item].escrow_to) { return LEDGER_EXHAUSTED; }
+  return LEDGER_OK;
+}
+// Whether character c's inventory version can advance.
+ledger_has_next :: (l: [] Ledger, c: int) -> bool { return add_checked(l[0].version[c], 1) != null; }
+// Character c's inventory version advances; at its last it stays (ledger_check refused the change first).
+ledger_bump :: (l: [] Ledger, c: int) {
+  next := add_checked(l[0].version[c], 1);
+  switch next { case none {} case some(v) { l[0].version[c] = v; } }
+}
+// The writer's generation, version, item and escrow rules (nothing changes).
+ledger_allowed :: (l: [] Ledger, a: LedgerAsk) -> int {
   if l[0].fence[0].gen[a.c] > a.gen { return LEDGER_STALE; }
   if a.ver != l[0].version[a.c] { return LEDGER_VERSION; }
   if a.op == LOP_GRANT { return LEDGER_OK; }
@@ -111,11 +132,11 @@ ledger_check :: (l: [] Ledger, a: LedgerAsk) -> int {
 }
 // The change itself, shared by apply and replay.
 ledger_mutate :: (l: [] Ledger, op: int, c: int, item: int, to: int, kind: int) {
-  if op == LOP_GRANT { l[0].items[item] = LedgerItem.{live = true, kind = kind, owner = c}; l[0].version[c] += 1; return; }
-  if op == LOP_TRANSFER { l[0].items[item].owner = to; l[0].version[c] += 1; l[0].version[to] += 1; return; }
-  if op == LOP_ESCROW { l[0].items[item].escrow_to = to; l[0].version[c] += 1; return; }
-  if op == LOP_SETTLE { t := l[0].items[item].escrow_to; l[0].items[item].owner = t; l[0].items[item].escrow_to = -1; l[0].version[c] += 1; l[0].version[t] += 1; return; }
-  if op == LOP_CANCEL { l[0].items[item].escrow_to = -1; l[0].version[c] += 1; }
+  if op == LOP_GRANT { l[0].items[item] = LedgerItem.{live = true, kind = kind, owner = c}; ledger_bump(l, c); return; }
+  if op == LOP_TRANSFER { l[0].items[item].owner = to; ledger_bump(l, c); ledger_bump(l, to); return; }
+  if op == LOP_ESCROW { l[0].items[item].escrow_to = to; ledger_bump(l, c); return; }
+  if op == LOP_SETTLE { t := l[0].items[item].escrow_to; l[0].items[item].owner = t; l[0].items[item].escrow_to = -1; ledger_bump(l, c); ledger_bump(l, t); return; }
+  if op == LOP_CANCEL { l[0].items[item].escrow_to = -1; ledger_bump(l, c); }
 }
 // A new owner generation for character c reaches the store (control.coax): older writers are fenced.
 ledger_fence :: (l: [] Ledger, c: int, gen: int) -> bool { return control_fence(l[0].fence[..], c, gen) == CONTROL_OK; }
@@ -227,6 +248,32 @@ ledger_sent :: (a: LedgerAsk, t: int) -> LedgerAsk { b := a; b.sent = t; return 
   // full, a refusal stays the refusal it is
   #assert ledger_apply(l[..], ledger_ask(101, LOP_GRANT, 0, 0, 0, -1, -1, 1), 1).status == LEDGER_VERSION;
   #assert ledger_apply(l[..], ledger_ask(102, LOP_TRANSFER, 0, 0, 0, 3, 1, 0), 1).status == LEDGER_VERSION;
+}
+#test "ledger: a version at the largest int refuses the change before anything moves, in every build (#12927)" {
+  l: [1] Ledger;
+  // character 2 one below the largest: its grant applies and reaches it; the next is refused
+  l[0].version[2] = 9223372036854775806;
+  #assert ledger_apply(l[..], ledger_ask(1, LOP_GRANT, 2, 0, 9223372036854775806, -1, -1, 4), 1).status == LEDGER_OK && l[0].version[2] == 9223372036854775807 && l[0].out_n == 1;
+  r := ledger_apply(l[..], ledger_ask(2, LOP_GRANT, 2, 0, 9223372036854775807, -1, -1, 4), 2);
+  #assert r.status == LEDGER_EXHAUSTED && r.item == -1 && l[0].version[2] == 9223372036854775807 && l[0].out_n == 1 && !l[0].items[1].live;
+  // its retry hears the same, and nothing changes
+  #assert ledger_apply(l[..], ledger_ask(2, LOP_GRANT, 2, 0, 9223372036854775807, -1, -1, 4), 3).status == LEDGER_EXHAUSTED && l[0].out_n == 1;
+  // a transfer to a character at the largest: refused; the item and both versions stay
+  g := ledger_apply(l[..], ledger_ask(3, LOP_GRANT, 1, 0, 0, -1, -1, 5), 3);
+  l[0].version[5] = 9223372036854775807;
+  #assert ledger_apply(l[..], ledger_ask(4, LOP_TRANSFER, 1, 0, 1, g.item, 5, 0), 4).status == LEDGER_EXHAUSTED;
+  #assert l[0].items[g.item].owner == 1 && l[0].version[1] == 1 && l[0].version[5] == 9223372036854775807 && l[0].out_n == 2;
+  // escrowed to it, the settle is refused and the escrow stands; to one below, it settles
+  #assert ledger_apply(l[..], ledger_ask(5, LOP_ESCROW, 1, 0, 1, g.item, 5, 0), 5).status == LEDGER_OK && l[0].version[1] == 2;
+  #assert ledger_apply(l[..], ledger_ask(6, LOP_SETTLE, 1, 0, 2, g.item, -1, 0), 6).status == LEDGER_EXHAUSTED && l[0].items[g.item].escrow_to == 5 && l[0].version[1] == 2;
+  l[0].version[5] = 9223372036854775806;
+  #assert ledger_apply(l[..], ledger_ask(7, LOP_SETTLE, 1, 0, 2, g.item, -1, 0), 7).status == LEDGER_OK && l[0].items[g.item].owner == 5 && l[0].version[5] == 9223372036854775807 && l[0].version[1] == 3;
+  // the writer itself at the largest: an escrow or a cancel is refused
+  l[0].version[5] = 9223372036854775807;
+  #assert ledger_apply(l[..], ledger_ask(8, LOP_ESCROW, 5, 0, 9223372036854775807, g.item, 1, 0), 8).status == LEDGER_EXHAUSTED && l[0].items[g.item].escrow_to == -1;
+  // a bump at the largest leaves it; one below reaches it
+  ledger_bump(l[..], 5); #assert l[0].version[5] == 9223372036854775807;
+  l[0].version[6] = 9223372036854775806; ledger_bump(l[..], 6); #assert l[0].version[6] == 9223372036854775807 && ledger_has_next(l[..], 4) && !ledger_has_next(l[..], 6);
 }
 #test "ledger: each mutation's exact versions, slots and outbox; a retry differing in any field is a conflict" {
   l: [1] Ledger;

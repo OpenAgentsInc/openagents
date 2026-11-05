@@ -42,8 +42,9 @@ RoomVital :: struct {
   rev_at: int;      // wall ms they changed: the report's AT, which orders HP at the API
   acked: int;       // the newest revision a receipt covers: rev > acked is in the outbox
   durable_rev:int;durable_at:int;durable_capture_at:int;durable_owner:int;durable_process:int; // exact a/d receipt only, not expiry/refusal/stale/fallback
-  owner: int;       // the newest owner generation a seat ticket gave its character here (#12834; 0 none): its lines carry it
-  floor: int;       // the lowest owner generation that may still sit here: one past an owner the API fenced (f, #12834)
+  // owner generations are #counter fields: they move only through the named integer operations (#12927)
+  owner: int #counter;   // the newest owner generation a seat ticket gave its character here (#12834; 0 none): its lines carry it
+  floor: int #counter;   // the lowest owner generation that may still sit here: one past an owner the API fenced (f, #12834)
   sent_at: int;     // wall ms its line last went out (a seated owner's goes again each VITALS_OWNER_MS)
   // where it stood, in which room's code, and when (wall ms; 0 none)
   room: [RELAY_NAME] u8; room_n: int; x: f32; y: f32; z: f32; yaw: f32; placed_at: int;
@@ -55,7 +56,7 @@ RmVitals :: struct {
   rev: int;         // the last revision given out
   batch: int;       // the last post's number (its receipt names it)
   // the post in flight: which entries, at which revisions
-  fly: bool; fly_at: int; fly_n: int; fly_i: [VITALS_BATCH] int; fly_rev: [VITALS_BATCH] int; fly_owner: [VITALS_BATCH] int;fly_capture_at:[VITALS_BATCH]int;
+  fly: bool; fly_at: int; fly_n: int; fly_i: [VITALS_BATCH] int; fly_rev: [VITALS_BATCH] int; fly_owner: [VITALS_BATCH] int #counter;fly_capture_at:[VITALS_BATCH]int;
   tries: int;       // failures in a row
   retry_at: int;    // wall ms the next post may go (backoff)
   flush: bool;      // note every seat and post at the next call, not at VITALS_EVERY_MS
@@ -297,9 +298,11 @@ rm_vitals_answer :: (v: [] RmServer, batch: int, status: int, body: string) #exp
           if c == 'f' && v[0].vit.fly_owner[q] > 0 {
             e := v[0].vit.v[i];
             // that owner's tickets sit no more: the floor is fenced up to one past it, never down
+            // (one past the largest owner generation stays the largest: none sits above it, #12927)
+            past := add_sat(v[0].vit.fly_owner[q], 1);
             g: [1] ControlFence; g[0].gen[0] = e.floor;
-            if control_fence(g[..], 0, v[0].vit.fly_owner[q] + 1) == CONTROL_OK { v[0].vit.v[i].floor = g[0].gen[0]; }
-            v[0].vit.dropped += rl_owner_drop(v, cast(string) e.pid[0..<e.pid_n], v[0].vit.fly_owner[q] + 1, -1);
+            if control_fence(g[..], 0, past) == CONTROL_OK { v[0].vit.v[i].floor = g[0].gen[0]; }
+            v[0].vit.dropped += rl_owner_drop(v, cast(string) e.pid[0..<e.pid_n], past, -1);
           }
         }
         v[0].vit.fly = false; v[0].vit.tries = 0; v[0].vit.retry_at = 0;

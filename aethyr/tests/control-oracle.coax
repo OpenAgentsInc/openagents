@@ -34,6 +34,8 @@ co_run :: (r: [] CoRun, skew: int) {
     if accepted > r[0].owners_at_once { r[0].owners_at_once = accepted; }
     control_tick(d[..], 1);
   }
-  r[0].digest = (((store[0].gen[1] * 1009 + d[0].entries[1].room) * 1009 + b_first) * 1009 + r[0].stale_writes) * 1009 + d[0].entries[1].gen;
+  // the generations (#counter fields) as plain values, digested
+  stored := store[0].gen[1]; owner := d[0].entries[1].gen;
+  r[0].digest = (((stored * 1009 + d[0].entries[1].room) * 1009 + b_first) * 1009 + r[0].stale_writes) * 1009 + owner;
 }
 co_reference :: () -> int { r: [1] CoRun; co_run(r[..], 0); return r[0].digest; }

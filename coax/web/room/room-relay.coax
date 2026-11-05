@@ -195,7 +195,8 @@ rl_join :: (v: [] RmServer, conn: int, request: string) -> int {
   if back { v[0].st.re_seat += 1; }
   now := v[0].mono_ms;
   eg := ifx v[0].relays[r].limited then eg_room_at(v, r) else -1;
-  gen := ifx eg >= 0 then v[0].eg[eg].seat[seat].gen + 1 else 0;
+  // the seat's next generation: at the largest int (9.2e18 takings) it stays there, never wraps to an old one (#12927)
+  gen := ifx eg >= 0 then add_sat(v[0].eg[eg].seat[seat].gen, 1) else 0;
   v[0].conns[conn] = RmConn.{live = true, relay = r, seat = seat, ftok = RL_BURST * 1000, btok = RL_BYTES * 1000, refill_at = now, ticket = tk, gen = gen};
   h: [16] u8;
   // (taking a seat back, its held seat or its old socket is counted too: they are this player)

@@ -178,7 +178,7 @@ EgNet :: struct {
   // the town's outcomes heard (WIRE_OUTCOMES), against the room's count of them (o N, #12902); and the
   // check of the town the room sends from the first piece: begun at a snapshot or an O, each piece,
   // fire and placed thing it names marked, ended by e town (net_town_end); towns_asked: Os sent
-  out_got: int; was_snap: bool; town_check: bool; towns_asked: int; towns_fixed: int;
+  out_got: int #counter; was_snap: bool; town_check: bool; towns_asked: int; towns_fixed: int;
   town_seen: [DEMO_PIECES] bool; burn_seen: [DEMO_PIECES] bool; placed_seen: [CR_PLACED_MAX] bool;
   fx: [NET_FX] NetFx;
   mine_seq: [NET_MINE] int; mine_slot: [NET_MINE] int; mine_at: int;   // your last casts: each SEQ and slot
@@ -803,7 +803,7 @@ net_entry :: (s: [] Everglade, n: [] EgNet, t: string, d: WireD) {
   if t.count < 1 { return; }
   r: [1] WireRd; r[0] = wire_rd(t, 1);
   c := t[0];
-  if c == 'e' && wire_outcome(t) { n[0].out_got += 1; }
+  if c == 'e' && wire_outcome(t) { n[0].out_got = add_sat(n[0].out_got, 1); }   // stops at the largest int, as the room's count does (#12927)
   if c == 'o' {
     // the room's count of the outcomes it sent this seat: fewer heard, a frame was lost (#12902)
     m := wire_num(t, r[..]);

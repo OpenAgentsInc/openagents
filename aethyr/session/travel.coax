@@ -304,7 +304,7 @@ travel_recover :: (w: [] TravelWorld, r: int) -> int {
   #assert travel_abort(w[..]) == TRAVEL_OK && w[0].rooms[1].reserved == 0 && travel_command(w[..], 0, 1, 2, 1) && w[0].rec[0].status == TRAVEL_ABORTED;
   // a source that lost the character before commit: the commit aborts
   #assert travel_reserve(w[..], 1, 0, 1) == TRAVEL_OK && travel_prepare(w[..]) == TRAVEL_OK;
-  w[0].dir[0].entries[1].gen += 1;
+  w[0].dir[0].entries[1].gen = add_checked(w[0].dir[0].entries[1].gen, 1) or_else CONTROL_GEN_MAX;
   #assert travel_commit(w[..]) == TRAVEL_NOT_OWNER && w[0].rec[0].status == TRAVEL_ABORTED;
   // a destination down at activation waits
   v: [1] TravelWorld; travel_world(v[..]);

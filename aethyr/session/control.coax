@@ -21,7 +21,9 @@
 // A new owner's first act is to fence the store with its generation (its load does), so nothing
 // the old owner sends after that point is accepted.
 //
-// A generation that would pass CONTROL_GEN_MAX is refused (exhausted), never wrapped. A client
+// A generation that would pass CONTROL_GEN_MAX is refused (exhausted), never wrapped: generations
+// are #counter fields, which change only through add_checked (control_next), the same in every
+// build (#12927). A client
 // never supplies a generation: a resume ticket names the character and room, and the room asks the
 // directory for its own generation.
 //   coax/bin/coax test aethyr/session/control.coax --library
@@ -43,19 +45,21 @@ CONTROL_EXHAUSTED :: 4;       // no generation left
 CONTROL_UNKNOWN :: 5;         // no such character
 CONTROL_COUNTERS :: 6;
 
-ControlEntry :: struct { room: int; gen: int; until: int; held: bool; }
+ControlEntry :: struct { room: int; gen: int #counter; until: int; held: bool; }
 ControlDirectory :: struct {
   entries: [CONTROL_CHARACTERS] ControlEntry;
   now: int;                   // the directory's clock: the only one leases use
   counts: [CONTROL_COUNTERS] int;
 }
 // What a recipient (store, command gate) keeps: the newest generation it accepted, per character.
-ControlFence :: struct { gen: [CONTROL_CHARACTERS] int; counts: [CONTROL_COUNTERS] int; }
+ControlFence :: struct { gen: [CONTROL_CHARACTERS] int #counter; counts: [CONTROL_COUNTERS] int; }
 ControlGrant :: struct { status: int; gen: int; }
 // book:end control-profile
 
 control_known :: (c: int) -> bool { return c >= 0 && c < CONTROL_CHARACTERS; }
 control_count :: (counts: [] int, status: int) -> int { counts[status] += 1; return status; }
+// The generation after gen, or none past CONTROL_GEN_MAX: exhausted, never wrapped (#12927).
+control_next :: (gen: int) -> int? { if gen >= CONTROL_GEN_MAX { return null; } return add_checked(gen, 1); }
 
 // book:begin control-directory
 // Room `room` asks for character c. A room already holding it (a duplicate or a retry) gets its own
@@ -70,9 +74,14 @@ control_acquire :: (d: [] ControlDirectory, c: int, room: int) -> ControlGrant {
     return ControlGrant.{status = control_count(d[0].counts[..], CONTROL_OK), gen = e.gen};
   }
   if live { return ControlGrant.{status = control_count(d[0].counts[..], CONTROL_ELSEWHERE), gen = e.gen}; }
-  if e.gen == CONTROL_GEN_MAX { return ControlGrant.{status = control_count(d[0].counts[..], CONTROL_EXHAUSTED), gen = e.gen}; }
-  d[0].entries[c] = ControlEntry.{room = room, gen = e.gen + 1, until = d[0].now + CONTROL_LEASE, held = true};
-  return ControlGrant.{status = control_count(d[0].counts[..], CONTROL_OK), gen = e.gen + 1};
+  next := control_next(e.gen);
+  switch next {
+    case none { return ControlGrant.{status = control_count(d[0].counts[..], CONTROL_EXHAUSTED), gen = e.gen}; }
+    case some(g) {
+      d[0].entries[c] = ControlEntry.{room = room, gen = g, until = d[0].now + CONTROL_LEASE, held = true};
+      return ControlGrant.{status = control_count(d[0].counts[..], CONTROL_OK), gen = g};
+    }
+  }
 }
 // Whether (room, gen) is character c's live owner now.
 control_holds :: (d: [] ControlDirectory, c: int, room: int, gen: int) -> int {
@@ -101,9 +110,14 @@ control_release :: (d: [] ControlDirectory, c: int, room: int, gen: int) -> int 
 control_transfer :: (d: [] ControlDirectory, c: int, room: int, gen: int, to: int) -> ControlGrant {
   v := control_holds(d, c, room, gen);
   if v != CONTROL_OK { return ControlGrant.{status = control_count(d[0].counts[..], v), gen = gen}; }
-  if gen == CONTROL_GEN_MAX { return ControlGrant.{status = control_count(d[0].counts[..], CONTROL_EXHAUSTED), gen = gen}; }
-  d[0].entries[c] = ControlEntry.{room = to, gen = gen + 1, until = d[0].now + CONTROL_LEASE, held = true};
-  return ControlGrant.{status = control_count(d[0].counts[..], CONTROL_OK), gen = gen + 1};
+  next := control_next(gen);
+  switch next {
+    case none { return ControlGrant.{status = control_count(d[0].counts[..], CONTROL_EXHAUSTED), gen = gen}; }
+    case some(g) {
+      d[0].entries[c] = ControlEntry.{room = to, gen = g, until = d[0].now + CONTROL_LEASE, held = true};
+      return ControlGrant.{status = control_count(d[0].counts[..], CONTROL_OK), gen = g};
+    }
+  }
 }
 // The directory's clock moves on.
 control_tick :: (d: [] ControlDirectory, ticks: int) { d[0].now += ticks; }

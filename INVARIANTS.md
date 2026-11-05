@@ -1212,6 +1212,20 @@ replaying the outbox gives the same items, owners and versions
 (`verse.item_reconcile`). Only a room-key-signed post reaches it. The ledger
 holds game items only, never money. Checks: `coax/web/api/tests/room_checks.coax` items.
 
+## A critical counter moves only through a named integer operation
+
+Owner generations, the ledger's inventory versions, entity slot generations,
+the room's seat generations, Everglade's outcome counts and its LIFE/WARP
+numbers are `#counter` fields (#12927). Plain `+`, `-`, `*` or a compound
+assignment on one is compile error E0840; each moves through `add_checked`
+(an optional the caller must handle), `add_sat` or `add_wrap`, which give the
+same result in debug, release, the evaluator and native C. A ledger write
+that would advance a version past the largest int is refused
+(`LEDGER_EXHAUSTED`) before anything changes; a control generation at its
+last is `CONTROL_EXHAUSTED`; a seat or owner generation saturates, never
+wraps to an older one. Checks: `coax/tests/integer_ops.py`,
+`aethyr/session/ledger.coax` "a version at the largest int".
+
 ## A party roster carries health only, to its members, never across a block
 
 A party (`verse.parties`, migration 0129, #12852) outlives rooms and
