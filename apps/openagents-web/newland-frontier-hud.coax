@@ -1,0 +1,210 @@
+// Penultimate Frontier's HUD: the OpenAgents HUD look (Arwes: aethyr/ui/arwes-frames.coax and
+// the Speedrun HUD's instruments) over the story, with no words in it. It assembles at
+// FR_FRONTIER as an Arwes frame does, its lines drawing in from the corners with a flicker:
+//
+//   - a target lock on each beat's subject: corner brackets that close in on it, a segmented
+//     ring turning round its middle and a leader to a tick on the screen's edge;
+//   - a heading tape across the top and a pitch ladder down the left, both read off the camera,
+//     so they scroll as it orbits;
+//   - a radar at the bottom left plotting the crowd from above, its arm sweeping;
+//   - a telemetry trace along the bottom, from the beat's activity (the payment rate when
+//     payments run);
+//   - segmented meters under the reader's card on the right;
+//   - rows of a terminal stream down the left, as dashes;
+//   - a faint scan line sweeping the screen.
+//
+// The top right is left clear for the reader's card.
+
+FrTarget :: struct { o: Fv; r: f32; from: f32; gold: bool; }
+fr_target :: (t: f32) -> FrTarget {
+  tg := FrTarget.{o = FR_S, r = 3, from = FR_FRONTIER, gold = false};
+  if t >= FR_SPACE { tg = FrTarget.{o = fv(FR_SKY.x, 8 + 10 * fr_in(t, FR_SPACE, 2.6), FR_SKY.z), r = 1.2, from = FR_SPACE, gold = false}; }
+  if t >= FR_SHIP_IN + 0.8 { tg = FrTarget.{o = fv_add(FR_SKY, fv(0, 1.1, 0.2)), r = 3.2, from = FR_SHIP_IN + 0.8, gold = false}; }
+  if t >= FR_EARTH - 0.3 { tg = FrTarget.{o = fr_body_sky(BODY_EARTH, t), r = 0.55, from = FR_EARTH - 0.3, gold = false}; }
+  if t >= FR_MARS + 0.4 { tg = FrTarget.{o = fr_body_sky(BODY_MARS, t), r = 0.4, from = FR_MARS + 0.4, gold = false}; }
+  if t >= FR_BELT { tg = FrTarget.{o = fr_body_sky(BODY_CERES, t), r = 0.5, from = FR_BELT, gold = false}; }
+  if t >= FR_OUTER { tg = FrTarget.{o = fr_body_sky(BODY_JUPITER, t), r = 1.0, from = FR_OUTER, gold = false}; }
+  if t >= FR_HUMANS { tg = FrTarget.{o = fv(FR_S.x, 1, FR_S.z + 0.5), r = 3.2, from = FR_HUMANS, gold = false}; }
+  if t >= FR_OLD { tg = FrTarget.{o = fv_add(fv_add(FR_S, FR_BUILT[1]), fv(0, 3, 0)), r = 4.5, from = FR_OLD, gold = false}; }
+  if t >= FR_NEW { tg = FrTarget.{o = fv(FR_S.x, 2.5, FR_S.z), r = 3, from = FR_NEW, gold = false}; }
+  if t >= FR_FALL { tg = FrTarget.{o = fv(13, 1, 3), r = 5, from = FR_FALL, gold = false}; }
+  if t >= FR_TABLES { tg = FrTarget.{o = fv(FR_TABLE.x, 0.9, FR_TABLE.z), r = 3.2, from = FR_TABLES, gold = false}; }
+  if t >= FR_WHAT { tg = FrTarget.{o = fv(FR_PLOT.x, 1, FR_PLOT.z), r = 3.6, from = FR_WHAT, gold = false}; }
+  if t >= FR_ELITE { tg = FrTarget.{o = fv(FR_ENCLAVE.x, 1.4, FR_ENCLAVE.z), r = 2.2, from = FR_ELITE, gold = true}; }
+  if t >= FR_MAJORITY { tg = FrTarget.{o = fv(FR_PLOT.x, 1, FR_PLOT.z), r = 9, from = FR_MAJORITY, gold = false}; }
+  if t >= FR_TOOL { tg = FrTarget.{o = fr_pc_at(t), r = 2.2, from = FR_TOOL, gold = false}; }
+  if t >= FR_SHIELD { tg = FrTarget.{o = fv(FR_PLOT.x, 3, FR_PLOT.z), r = 6.6, from = FR_SHIELD, gold = false}; }
+  if t >= FR_POCKET { tg = FrTarget.{o = fv(FR_PLOT.x, 1, FR_PLOT.z), r = 5, from = FR_POCKET, gold = false}; }
+  if t >= FR_PAY { tg = FrTarget.{o = fv(FR_PLOT.x, 1.5, FR_PLOT.z), r = 14, from = FR_PAY, gold = true}; }
+  if t >= FR_APART { tg = FrTarget.{o = fv(FR_PLOT.x, 1, FR_PLOT.z), r = 7, from = FR_APART, gold = false}; }
+  if t >= FR_FARMED { tg = FrTarget.{o = fv_add(fv_add(FR_S, FR_BUILT[0]), fv(0, 2, 0)), r = 2.6, from = FR_FARMED, gold = false}; }
+  if t >= FR_REFOCUS { tg = FrTarget.{o = fr_tree_top(t), r = 2, from = FR_REFOCUS, gold = false}; }
+  if t >= FR_CYBER { tg = FrTarget.{o = FR_NET, r = 7, from = FR_CYBER, gold = false}; }
+  if t >= FR_BBS { tg = FrTarget.{o = fv(FR_NET.x, FR_NET.y + 1.4, FR_NET.z), r = 2.2, from = FR_BBS, gold = false}; }
+  if t >= FR_VIRTUAL { tg = FrTarget.{o = fv(FR_NET.x, FR_NET.y + 2.3, FR_NET.z), r = 7.5, from = FR_VIRTUAL, gold = true}; }
+  if t >= FR_VERSE { tg = FrTarget.{o = fv(FR_S.x, 1.5, FR_S.z), r = 5, from = FR_VERSE, gold = false}; }
+  return tg;
+}
+// An Arwes entrance: 0 before, drawing in over `take`, flickering as it comes.
+fr_enter :: (t: f32, from: f32, take: f32) -> f32 {
+  u := clamp((t - from) / take, 0, 1);
+  if u <= 0 { return 0; }
+  if u >= 1 { return 1; }
+  flick := ifx fract(u * 7.3) < 0.5 then 0.45f32 else 1.0f32;
+  return u * flick;
+}
+// A line drawn in from a to b as far as f.
+fr_rule_in :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, f: f32, k: Ink, light: f32) -> int {
+  if f <= 0 { return at; }
+  return rule(out, at, ax, ay, ax + (bx - ax) * f, ay + (by - ay) * f, k, light);
+}
+fr_hud :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
+  if t < FR_FRONTIER || t > FR_END + 1 { return at; }
+  v := at;
+  d := p.d;
+  W := c.vx * 2; H := c.vy * 2;
+  on := fr_enter(t, FR_FRONTIER + 0.2, 0.9) * fr_out(t, FR_END - 1.2, 1.2);
+  if on <= 0 { return v; }
+  cool := ink(p, INK_COOL); pale := ink(p, INK_PALE); bright := ink(p, INK_BRIGHT); blue := ink(p, INK_BLUE); dim := ink(p, INK_DIM); gold := ink(p, INK_BITCOIN);
+  thin := cool; thin.core = 0.45 * d; thin.glow = 2.2 * d;
+  m := 22 * d;
+  // the screen's corner brackets (not the top right, the card's)
+  arm := 46 * d; f := clamp(on * 1.4, 0, 1);
+  v = fr_rule_in(out, v, m, m, m + arm, m, f, pale, 0.7 * on); v = fr_rule_in(out, v, m, m, m, m + arm, f, pale, 0.7 * on);
+  v = fr_rule_in(out, v, m, H - m, m + arm, H - m, f, pale, 0.7 * on); v = fr_rule_in(out, v, m, H - m, m, H - m - arm, f, pale, 0.7 * on);
+  v = fr_rule_in(out, v, W - m, H - m, W - m - arm, H - m, f, pale, 0.7 * on); v = fr_rule_in(out, v, W - m, H - m, W - m, H - m - arm, f, pale, 0.7 * on);
+  // the heading tape: ticks every 5 degrees of the camera's heading, a caret in the middle
+  heading := angle_of(c.ahead.x, c.ahead.z) * 57.29578;
+  tx0 := W * 0.2; tx1 := W * 0.68; ty := m + 8 * d; mid := (tx0 + tx1) * 0.5;
+  v = fr_rule_in(out, v, mid, ty, tx0, ty, on, thin, 0.4 * on); v = fr_rule_in(out, v, mid, ty, tx1, ty, on, thin, 0.4 * on);
+  span: f32 = 60; px_per := (tx1 - tx0) / span;
+  base := floor((heading - span * 0.5) / 5) * 5;
+  for k: 0..<14 {
+    deg := base + 5 * f32(k);
+    x := mid + (deg - heading) * px_per;
+    if x < tx0 || x > tx1 { continue; }
+    major := cast(int) floor(deg / 5 + 0.5) % 3 == 0;
+    edge := 1 - abs(x - mid) / (mid - tx0);
+    v = rule(out, v, x, ty, x, ty + (ifx major then 9.0f32 else 4.5f32) * d, thin, (0.25 + 0.5 * edge) * on);
+  }
+  v = rule(out, v, mid - 5 * d, ty + 16 * d, mid, ty + 11 * d, bright, on); v = rule(out, v, mid, ty + 11 * d, mid + 5 * d, ty + 16 * d, bright, on);
+  // the pitch ladder down the left
+  pitch := asin_approx(c.ahead.y) * 57.29578;
+  lx := m + 6 * d; ly0 := H * 0.3; ly1 := H * 0.7; lmid := (ly0 + ly1) * 0.5;
+  v = fr_rule_in(out, v, lx, lmid, lx, ly0, on, thin, 0.35 * on); v = fr_rule_in(out, v, lx, lmid, lx, ly1, on, thin, 0.35 * on);
+  pspan: f32 = 40; ppx := (ly1 - ly0) / pspan;
+  pbase := floor((pitch - pspan * 0.5) / 5) * 5;
+  for k: 0..<10 {
+    deg := pbase + 5 * f32(k);
+    y := lmid - (deg - pitch) * ppx;
+    if y < ly0 || y > ly1 { continue; }
+    v = rule(out, v, lx, y, lx + (ifx cast(int) floor(deg / 5 + 0.5) % 2 == 0 then 10.0f32 else 5.0f32) * d, y, thin, 0.45 * on);
+  }
+  v = rule(out, v, lx + 16 * d, lmid - 4 * d, lx + 12 * d, lmid, bright, on); v = rule(out, v, lx + 12 * d, lmid, lx + 16 * d, lmid + 4 * d, bright, on);
+  // terminal rows, as dashes, streaming down the left
+  rows := 7; rx := m + 26 * d; ry := H * 0.36;
+  tick := cast(int) floor(t * 3);
+  for r: 0..<rows {
+    n := tick - r;
+    w := (18 + 70 * fr_h(n, 100)) * d;
+    typed := ifx r == 0 then fract(t * 3) else 1.0f32;
+    k := ifx fr_h(n, 101) < 0.15 then blue else thin;
+    v = rule(out, v, rx, ry + 9 * d * f32(r), rx + w * typed, ry + 9 * d * f32(r), k, (0.5 - 0.06 * f32(r)) * on);
+  }
+  // the radar: rings, a sweeping arm, and the crowd from above round the plot, turned with the camera
+  cx := m + 58 * d; cy := H - m - 58 * d; rr := 44 * d;
+  v = ring(out, v, cx, cy, rr * on, thin, 0.5 * on); v = ring(out, v, cx, cy, rr * 0.55 * on, thin, 0.3 * on);
+  v = rule(out, v, cx - rr, cy, cx + rr, cy, dim, 0.3 * on); v = rule(out, v, cx, cy - rr, cx, cy + rr, dim, 0.3 * on);
+  sweep := t * 1.6;
+  v = rule(out, v, cx, cy, cx + rr * cos(sweep), cy + rr * sin(sweep), blue, 0.8 * on);
+  yaw := angle_of(c.ahead.x, c.ahead.z);
+  if t >= FR_FALL {
+    for i: 0..<FR_MANY {
+      w := fr_where(i, t);
+      dx := w.at.x - FR_PLOT.x; dz := w.at.z - FR_PLOT.z;
+      // turned so the camera looks up the radar
+      rx2 := dx * cos(yaw) - dz * sin(yaw); rz2 := dx * sin(yaw) + dz * cos(yaw);
+      bx := cx + rx2 / 16 * rr; by := cy + rz2 / 16 * rr;
+      if (bx - cx) * (bx - cx) + (by - cy) * (by - cy) > rr * rr { continue; }
+      ang := atan_approx(by - cy, bx - cx);
+      lag := fract((sweep - ang) / FR_TAU);
+      v = diamond(out, v, bx, by, 1.3 * d, pale, (0.35 + 0.65 * (1 - lag)) * on);
+    }
+  }
+  // the telemetry trace along the bottom, from the beat's activity
+  gx0 := cx + rr + 28 * d; gx1 := W * 0.62; gy := H - m - 14 * d; gh := 30 * d;
+  v = frame(out, v, Box.{x0 = gx0, y0 = gy - gh - 6 * d, x1 = gx1, y1 = gy + 6 * d}, 6 * d, thin, 0.5 * on, p);
+  pay := fr_rate(FR_PAY, FR_NATIONS + 2.0, 14, 1100);
+  prev_x: f32 = 0; prev_y: f32 = 0;
+  for k: 0..<72 {
+    u := f32(k) / 71;
+    tt := t - (1 - u) * 6;
+    act := 0.25 + 0.2 * sin(tt * 2.3) + 0.15 * sin(tt * 5.1 + 1) + 0.1 * (fr_h(cast(int) floor(tt * 8), 102) - 0.5);
+    if tt > FR_PAY && tt < FR_APART { act = act * 0.4 + 0.6 * clamp(log(1 + fr_count(pay, tt + 0.1) - fr_count(pay, tt)) / 5, 0, 1); }
+    x := gx0 + 8 * d + (gx1 - gx0 - 16 * d) * u; y := gy - clamp(act, 0, 1) * gh;
+    if k > 0 { v = rule(out, v, prev_x, prev_y, x, y, ifx tt > FR_PAY && tt < FR_APART then gold else blue, 0.75 * on * clamp(u * 3, 0, 1)); }
+    prev_x = x; prev_y = y;
+  }
+  // segmented meters under the card: how much of the beat is under way
+  mx0 := W * 0.8; my := H - m - 8 * d;
+  for b: 0..<3 {
+    level := clamp(0.35 + 0.3 * sin(t * (0.7 + 0.3 * f32(b)) + f32(b) * 2) + 0.25 * (fr_h(cast(int) floor(t * 2) + b * 17, 103) - 0.5), 0, 1);
+    if b == 0 && t > FR_PAY && t < FR_APART { level = 0.4 + 0.6 * fr_in(t, FR_PAY, 6); }
+    for s: 0..<16 {
+      x := mx0 + f32(s) * 9 * d;
+      lit_s := f32(s) / 16 < level;
+      v = rule(out, v, x, my - 14 * d * f32(b), x + 6 * d, my - 14 * d * f32(b), ifx lit_s then (ifx s >= 13 then gold else blue) else dim, (ifx lit_s then 0.85f32 else 0.25f32) * on);
+    }
+  }
+  // the scan line
+  sy := fract(t / 5.5) * H;
+  v = rule(out, v, 0, sy, W * 0.76, sy, thin, 0.07 * on);
+  // the target lock
+  tg := fr_target(t);
+  ctr := spot(c, tg.o);
+  if ctr.ok {
+    lock := fr_enter(t, tg.from, 0.5);
+    size := tg.r / ctr.z * c.focal;
+    size = clamp(size, 22 * d, H * 0.42);
+    close := 1 + 0.6 * (1 - lock);   // the brackets close in on it
+    hs := size * close;
+    k := ifx tg.gold then gold else pale;
+    a2 := hs * 0.28;
+    x0 := ctr.x - hs; x1 := ctr.x + hs; y0 := ctr.y - hs; y1 := ctr.y + hs;
+    if x1 > W * 0.77 && y0 < H * 0.6 { x1 = lo(x1, W * 0.77); }
+    v = rule(out, v, x0, y0, x0 + a2, y0, k, 0.8 * lock * on); v = rule(out, v, x0, y0, x0, y0 + a2, k, 0.8 * lock * on);
+    v = rule(out, v, x1, y0, x1 - a2, y0, k, 0.8 * lock * on); v = rule(out, v, x1, y0, x1, y0 + a2, k, 0.8 * lock * on);
+    v = rule(out, v, x0, y1, x0 + a2, y1, k, 0.8 * lock * on); v = rule(out, v, x0, y1, x0, y1 - a2, k, 0.8 * lock * on);
+    v = rule(out, v, x1, y1, x1 - a2, y1, k, 0.8 * lock * on); v = rule(out, v, x1, y1, x1, y1 - a2, k, 0.8 * lock * on);
+    // a segmented ring turning round its middle, and a small cross
+    rr2 := clamp(size * 0.22, 7 * d, 26 * d);
+    for s: 0..<3 {
+      a0 := t * 1.2 + FR_TAU * f32(s) / 3;
+      for j: 0..<6 {
+        b0 := a0 + 0.12 * f32(j); b1 := b0 + 0.12;
+        v = rule(out, v, ctr.x + rr2 * cos(b0), ctr.y + rr2 * sin(b0), ctr.x + rr2 * cos(b1), ctr.y + rr2 * sin(b1), k, 0.7 * lock * on);
+      }
+    }
+    v = rule(out, v, ctr.x - 4 * d, ctr.y, ctr.x + 4 * d, ctr.y, bright, 0.6 * lock * on); v = rule(out, v, ctr.x, ctr.y - 4 * d, ctr.x, ctr.y + 4 * d, bright, 0.6 * lock * on);
+    // a leader from its bracket down to the bottom rail
+    lead := clamp((t - tg.from - 0.3) / 0.4, 0, 1);
+    if y1 < H - m - 40 * d {
+      v = fr_rule_in(out, v, x0, y1, x0 - 18 * d, y1 + 18 * d, lead, thin, 0.5 * on);
+      v = fr_rule_in(out, v, x0 - 18 * d, y1 + 18 * d, x0 - 70 * d, y1 + 18 * d, lead, thin, 0.5 * on);
+      for s: 0..<4 { v = rule(out, v, x0 - 70 * d + f32(s) * 12 * d, y1 + 22 * d, x0 - 62 * d + f32(s) * 12 * d, y1 + 22 * d, k, 0.6 * lead * on * (ifx fract(t * 2 + f32(s) * 0.25) < 0.7 then 1.0f32 else 0.3f32)); }
+    }
+  }
+  return v;
+}
+asin_approx :: (x: f32) -> f32 { y := clamp(x, -1, 1); return y * (1 + y * y * (0.1667 + 0.075 * y * y)); }
+atan_approx :: (y: f32, x: f32) -> f32 {   // atan2, to a few thousandths: good enough for a radar's fade
+  if x == 0 && y == 0 { return 0; }
+  ax := abs(x); ay := abs(y);
+  a := ifx ax > ay then ay / ax else ax / ay;
+  s := a * a;
+  r := ((-0.0464964749 * s + 0.15931422) * s - 0.327622764) * s * a + a;
+  if ay > ax { r = 1.5707963 - r; }
+  if x < 0 { r = 3.1415926 - r; }
+  if y < 0 { r = -r; }
+  return r;
+}

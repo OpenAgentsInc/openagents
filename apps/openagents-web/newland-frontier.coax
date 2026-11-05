@@ -122,6 +122,7 @@ fr_scene :: (out: [] f32, at: int, s: [] LandState, c: Cam, look: Fv, p: Pen, t:
   v = fr_new_world(out, v, c, p, t);
   v = fr_people(out, v, c, p, t);
   v = fr_act2(out, v, c, p, t);
+  v = fr_hud(out, v, c, p, t);
   return v;
 }
 fr_in :: (t: f32, from: f32, take: f32) -> f32 { return ease((t - from) / take); }

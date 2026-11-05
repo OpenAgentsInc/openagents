@@ -35,6 +35,7 @@ FR_TABLE :: Fv.{x = 21, y = 0, z = -0.2};  // the old table, then the pillar
 FR_NODE :: Fv.{x = 21, y = 10, z = 8};     // where their phones' lines meet
 FR_NET :: Fv.{x = 18, y = 7, z = 5};       // the middle of the grid in the sky
 FR_PILLAR :: 3.2;
+FR_ENCLAVE :: Fv.{x = 22, y = 0, z = -4.2};   // the one percent, walled off
 
 fr_h :: (i: int, k: f32) -> f32 { return hash01(f32(i) * 1.618 + k * 7.31); }
 
@@ -66,10 +67,20 @@ fr_plot_edge :: (i: int) -> Fv {
   r := 4.4 + 0.7 * fr_h(i, 8);
   return fv(FR_PLOT.x + r * cos(a), 0, FR_PLOT.z + r * sin(a));
 }
+// No ranks and no front: eleven circles of nine, each facing its own middle, side by side
+// (a hex of seven and four round it), as many talking at once as there are circles.
+FR_CLUSTER_R :: 0.75f32;
+fr_cluster_mid :: (k: int, spread: f32) -> Fv {
+  if k == 0 { return FR_PLOT; }
+  a: f32 = 0; r: f32 = 0;
+  if k <= 6 { a = FR_TAU * f32(k - 1) / 6; r = 2.25; } else { a = 0.5236 + 2.0943951 * f32((k - 7) / 2) + ifx (k - 7) % 2 == 1 then -1.0472f32 else 0; r = 3.8; }
+  return fv(FR_PLOT.x + r * spread * cos(a), 0, FR_PLOT.z + r * spread * sin(a));
+}
 fr_rank :: (i: int, spread: f32) -> Fv {
-  row := i / 10; col := i % 10;
-  s := 0.55 * spread;
-  return fv(FR_PLOT.x + (f32(col) - 4.5) * s, 0, FR_PLOT.z + (f32(row) - 4.5) * s);
+  k := i / 9; j := i % 9; n := 9; r := FR_CLUSTER_R;
+  m := fr_cluster_mid(k, spread);
+  a := FR_TAU * f32(j) / f32(n) + 0.4 * f32(k);
+  return fv(m.x + r * spread * cos(a), 0, m.z + r * spread * sin(a));
 }
 fr_there :: (i: int) -> Fv {   // rings round the new tree
   counts := [5] int.[14, 17, 20, 23, 25];
@@ -167,8 +178,7 @@ fr_many :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
     look := fv(1, 0, 1);
     if t >= FR_TABLES + 0.6 { look = fv_sub(FR_TABLE, w.at); }
     if t >= FR_WHAT { look = fv_sub(FR_PLOT, w.at); }
-    if t >= FR_NUMBERS + 1.0 { look = fv_sub(FR_TABLE, FR_PLOT); }          // at the pillar
-    if t >= FR_TOOL { look = fv(1, 0, 1); }                                   // at us
+    if t >= FR_NUMBERS + 1.0 { look = fv_sub(fr_cluster_mid(i / 9, ifx t >= FR_APART + 1 && t < FR_REFOCUS + 2 then 1.9f32 else 1.0f32), w.at); }   // each circle at its own middle
     if t >= FR_VERSE { look = fv_sub(FR_S, w.at); }
     pair := (i % 10) % 2 == 0;
     if arguing > 0.5 { look = ifx pair then fv(1, 0, 0) else fv(-1, 0, 0); }
@@ -203,6 +213,28 @@ fr_many :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
     }
     if caged > 0 {
       v = fr_cage(out, v, c, w.at, 0.36, 0.36, 0, 1.9 * caged, ink(p, INK_DIM), 0.75 * caged);
+    }
+  }
+  // peer to peer: each circle linked to its neighbours, packets running both ways along the links
+  net := fr_in(t, FR_NUMBERS + 1.6, 1.4) * fr_out(t, FR_APART, 0.6);
+  if net > 0 {
+    blue2 := ink(p, INK_BLUE);
+    for a: 0..<11 {
+      for b: a + 1..<11 {
+        ma := fr_cluster_mid(a, 1); mb := fr_cluster_mid(b, 1);
+        if fv_length(fv_sub(ma, mb)) > 2.3 { continue; }
+        pa := fv(ma.x, 1.15, ma.z); pb := fv(mb.x, 1.15, mb.z);
+        v = seg(out, v, c, pa, pb, blue2, 0.45 * net);
+        for d: 0..<2 {
+          f := fract(t * (0.5 + 0.4 * fr_h(a * 11 + b, 95)) + f32(d) * 0.5 + fr_h(a + b * 7, 96));
+          q := spot(c, fv_mix(ifx d == 0 then pa else pb, ifx d == 0 then pb else pa, f));
+          if q.ok && inside(c.clip, q.x, q.y) { v = diamond(out, v, q.x, q.y, 2.2 * p.d, bright, 0.9 * net); }
+        }
+      }
+      m := fr_cluster_mid(a, 1);
+      v = loop3(out, v, c, m.x, 0.02, m.z, FR_CLUSTER_R + 0.3, blue2, 0.4 * net);
+      q := spot(c, fv(m.x, 1.15, m.z));
+      if q.ok && inside(c.clip, q.x, q.y) { v = diamond(out, v, q.x, q.y, (3 + 0.8 * sin(t * 3 + f32(a))) * p.d, blue2, net); }
     }
   }
   // the arguments: a jagged line between each pair's heads, flickering
@@ -326,21 +358,38 @@ fr_tables :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
       v = figure(out, v, c, k, pose, x, z, yaw, white, seen * took, p, top[0..<0]);
     }
   }
-  // the one: alone on the floor where the table was, tall and lit, a halo round its feet
+  // the one percent: a walled enclave off past where the table stood, gold, its gate shut; nobody
+  // faces it. Round the crowd, a gauge of a hundred: ninety-nine white, one gold.
   up := fr_in(t, FR_ELITE - 0.6, 1.4) * fr_out(t, FR_TOOL, 1.2);
   if t >= FR_ELITE - 1.5 && up > 0 {
-    gold := ink(p, INK_BITCOIN); bright := ink(p, INK_BRIGHT);
-    for k2: 0..<3 {
-      ph := fract(t * 0.5 + f32(k2) / 3);
-      v = loop3(out, v, c, o.x, 0.02, o.z, 0.5 + 1.4 * ph, gold, 0.6 * (1 - ph) * up);
+    gold := ink(p, INK_BITCOIN); white2 := ink(p, INK_WHITE);
+    e := FR_ENCLAVE;
+    v = fr_cage(out, v, c, e, 1.5, 1.5, 0, 0.9 * up, gold, 0.7 * up);
+    for k2: 0..<12 {   // crenels along its wall
+      f := f32(k2) / 12;
+      v = seg(out, v, c, fv(e.x - 1.5 + 3 * f, 0.9 * up, e.z + 1.5), fv(e.x - 1.5 + 3 * f, 1.05 * up, e.z + 1.5), gold, 0.6 * up);
+      v = seg(out, v, c, fv(e.x + 1.5, 0.9 * up, e.z - 1.5 + 3 * f), fv(e.x + 1.5, 1.05 * up, e.z - 1.5 + 3 * f), gold, 0.6 * up);
     }
-    v = loop3(out, v, c, o.x, 0.02, o.z, 0.55, bright, 0.9 * up);
-    sh: Shape; sh.size = 1.45;
-    k := verse_figure_skeleton(sh);
-    pose := verse_figure_gait(Rig.person, Gait.stand, 0, t);
-    pose.turn[P_R_SHOULDER] = fv(-0.3, 0, -1.2); pose.turn[P_L_SHOULDER] = fv(-0.3, 0, 1.2);   // arms out, over them
-    top: [1] Spot;
-    v = figure(out, v, c, k, pose, o.x, o.z, angle_of(FR_PLOT.x - o.x, FR_PLOT.z - o.z), bright, up, p, top[0..<0]);
+    v = box3(out, v, c, e.x, e.z, 0.35, 0.35, 0, 2.4 * up, gold, up);
+    tip := fv(e.x, 3.3 * up, e.z);
+    for k2: 0..<4 {
+      a0 := 1.5707963 * f32(k2) + 0.785;
+      v = seg(out, v, c, fv(e.x + 0.49 * cos(a0), 2.4 * up, e.z + 0.49 * sin(a0)), tip, gold, up);
+    }
+    for k2: 0..<3 {
+      ph := fract(t * 0.4 + f32(k2) / 3);
+      v = loop3(out, v, c, e.x, 0.02, e.z, 1.6 + 1.6 * ph, gold, 0.35 * (1 - ph) * up);
+    }
+    // the gauge
+    gauge := fr_in(t, FR_ELITE, 1.8) * fr_out(t, FR_TOOL, 1.0);
+    for s: 0..<100 {
+      if f32(s) / 100 > gauge { break; }
+      a0 := FR_TAU * (f32(s) + 0.12) / 100 - 1.5707963; a1 := FR_TAU * (f32(s) + 0.88) / 100 - 1.5707963;
+      rr: f32 = 5.0;
+      k3 := ifx s == 99 then gold else white2;
+      v = seg(out, v, c, fv(FR_PLOT.x + rr * cos(a0), 0.03, FR_PLOT.z + rr * sin(a0)), fv(FR_PLOT.x + rr * cos(a1), 0.03, FR_PLOT.z + rr * sin(a1)), k3, ifx s == 99 then 1.0f32 else 0.55f32);
+      if s % 10 == 0 { v = seg(out, v, c, fv(FR_PLOT.x + rr * cos(a0), 0.03, FR_PLOT.z + rr * sin(a0)), fv(FR_PLOT.x + (rr + 0.25) * cos(a0), 0.03, FR_PLOT.z + (rr + 0.25) * sin(a0)), white2, 0.5); }
+    }
   }
   return v;
 }
@@ -680,6 +729,7 @@ fr_act2 :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
   for i: 0..<FR_MANY {
     for j: i + 1..<FR_MANY {
       #assert fv_length(fv_sub(fr_rank(i, 1), fr_rank(j, 1))) > 0.5;
+      #assert fv_length(fv_sub(fr_rank(i, 1), FR_PLOT)) < 4.9;
       #assert fv_length(fv_sub(fr_there(i), fr_there(j))) > 0.45;
     }
     // they ring the tree outside the first nine
