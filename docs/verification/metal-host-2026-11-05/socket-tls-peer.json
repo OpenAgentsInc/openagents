@@ -1,0 +1,1 @@
+[{"path":"/auth/a","origin":"https://bound.invalid","cookie":"plain=one; secure=two","version":"TLSv1.3"},{"path":"/auth/d","origin":"https://bound.invalid","cookie":"plain=one; secure=two","version":"TLSv1.3"}]

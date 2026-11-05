@@ -1,0 +1,29 @@
+// Actual raw worker TLS composition; certificate trust remains an SDK effect.
+#load "transport-conformance.coax";
+#authority;
+HostTlsOpening :: struct {path:string;origin:string;cookie:string;version:string;}
+#test "TLS composition requires exact trusted openings and refusal before untrusted application bytes" {
+ p:=[2]HostTlsOpening.[HostTlsOpening.{path="/auth/a",origin="https://bound.invalid",cookie="plain=one; secure=two",version="TLSv1.3"},HostTlsOpening.{path="/auth/d",origin="https://bound.invalid",cookie="secure=two; plain=one",version="TLSv1.2"}];
+ #assert hst_peer(p[..],0,0);#assert !hst_peer(p[0..<1],0,0)&&!hst_peer(p[..],1,0)&&!hst_peer(p[..],0,1);
+ for i:0..<2 {q:=p;q[i].path="bad";#assert !hst_peer(q[..],0,0);q=p;q[i].origin="bad";#assert !hst_peer(q[..],0,0);q=p;q[i].cookie="plain=one";#assert !hst_peer(q[..],0,0);q=p;q[i].version="TLSv1.1";#assert !hst_peer(q[..],0,0);}
+ p[0].cookie="secure=two; plain=one";p[1].cookie="plain=one; secure=two";p[0].version="TLSv1.2";p[1].version="TLSv1.3";#assert hst_peer(p[..],0,0);
+}
+hst_peer :: (rows:[]HostTlsOpening,untrusted_headers:int,wrong_name_headers:int)->bool #export_c {
+ if rows.count!=2||untrusted_headers!=0||wrong_name_headers!=0{return false;}
+ for row,i:rows {if row.path!=(ifx i==0 then "/auth/a" else "/auth/d")||row.origin!="https://bound.invalid"||(row.cookie!="plain=one; secure=two"&&row.cookie!="secure=two; plain=one")||(row.version!="TLSv1.2"&&row.version!="TLSv1.3"){return false;}}return true;
+}
+#test "TLS callbacks retain all request result and terminal words with no missing or extra rows" {
+ // Independent recorded input words live outside the expected-row constructor.
+ rows:=hst_observed_rows();#assert hst_client(rows[..],0);#assert !hst_client(rows[0..<17],0)&&!hst_client(rows[..],1);
+ for i:0..<18 {for field:0..<8 {q:=rows;q[i][field]+=1;#assert !hst_client(q[..],0);}}
+}
+#load "tests/socket-tls-observations.coax";
+hst_client :: (rows:[][8]int,dropped:int)->bool #export_c {
+ if dropped!=0||rows.count!=18{return false;}at:=0;
+ for uri,i:[4]string.["wss://localhost:9174/auth/a","wss://localhost:9175/auth/b","wss://localhost:9176/auth/c","wss://localhost:9174/auth/d"] {
+  if !htc_equal(rows[at],htc_row(910,uri))||!htc_equal(rows[at+1],htc_result(1,0)){return false;}at+=2;
+  if i==0||i==3 {if !htc_equal(rows[at],htc_row(256,""))||!htc_equal(rows[at+1],htc_row(257,"tls-authenticated")){return false;}at+=2;}
+  else {if !htc_equal(rows[at],htc_row(259,"")){return false;}at+=1;}
+  if !htc_equal(rows[at],htc_row(258,"")){return false;}at+=1;
+ }return true;
+}

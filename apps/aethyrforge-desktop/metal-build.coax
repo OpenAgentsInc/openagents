@@ -63,11 +63,21 @@ mb_socket_probe :: (root:string,work:string,sanitize:bool)->bool {
  cmd[n]="-o";cmd[n+1]=fs_join(work,"MetalSocketEffects",paths[9][..]);n+=2;return mb_run(cmd[0..<n],out[..])>=0;
 }
 mb_socket_library :: (root:string,work:string,sanitize:bool)->bool {
- if !mb_socket_sdk(root,work,sanitize) {return false;}paths:[8][4096]u8;out:[1048576]u8;cmd:[24]string;n:=0;
+ if !mb_socket_sdk(root,work,sanitize) {return false;}return mb_socket_link(work,sanitize);
+}
+mb_socket_link :: (work:string,sanitize:bool)->bool {
+ paths:[8][4096]u8;out:[1048576]u8;cmd:[24]string;n:=0;
  for arg:[4]string.["/usr/bin/clang","-dynamiclib","-Wl,-install_name,@rpath/libnetwork.dylib",ifx sanitize then "-fsanitize=address" else "-g0"] {cmd[n]=arg;n+=1;}
  for object,i:[7]string.["HostNetwork.o","entropy-policy.o","MetalSockets.o","socket-native.o","tls-native.o","entropy-native.o","entropy-foreign.o"] {cmd[n]=fs_join(work,object,paths[i][..]);n+=1;}
  for name:[3]string.["Network","Security","CoreFoundation"] {cmd[n]="-framework";cmd[n+1]=name;n+=2;}
  cmd[n]="-o";cmd[n+1]=fs_join(work,"libnetwork.dylib",paths[7][..]);n+=2;return mb_run(cmd[0..<n],out[..])>=0;
+}
+// Test-only certificate anchors are compiled into a separate SDK directory.
+// Ordinary socket-library never calls this task or changes platform trust.
+mb_socket_test_trust :: (root:string,work:string,sanitize:bool)->bool {
+ paths:[3][4096]u8;out:[1048576]u8;
+ cmd:=[17]string.["/usr/bin/clang","-std=gnu11","-O2","-ffp-contract=off","-fno-fast-math","-fblocks","-DCXTLS_TEST_TRUST",ifx sanitize then "-fsanitize=address" else "-g0","-I",fs_join(root,"coax/platform",paths[0][..]),"-c",fs_join(root,"coax/platform/tls-native.c",paths[1][..]),"-o",fs_join(work,"tls-native.o",paths[2][..]),"-Wno-unused-function","-Wno-unused-variable","-Wno-unused-parameter"];
+ return mb_run(cmd[..],out[..])>=0&&mb_socket_link(work,sanitize);
 }
 mb_generated :: (work:string,source:string)->bool {
  if source=="" {return false;}paths:[1][4096]u8;out:[1048576]u8;cc:=[11]string.["/usr/bin/clang","-std=c11","-O2","-ffp-contract=off","-fno-fast-math","-Wno-unused-function","-Wno-unused-variable","-c",source,"-o",fs_join(work,"everglade5e.o",paths[0][..])];return mb_run(cc[..],out[..])>=0;
@@ -199,6 +209,7 @@ tool_main :: ()->int #export_c {
  if task=="socket-sdk" {return ifx mb_socket_sdk(root,work,args_has(a[..],"--sanitize")) then 0 else 1;}
  if task=="socket-probe" {return ifx mb_socket_probe(root,work,args_has(a[..],"--sanitize")) then 0 else 1;}
  if task=="socket-library" {return ifx mb_socket_library(root,work,args_has(a[..],"--sanitize")) then 0 else 1;}
+ if task=="socket-test-trust" {return ifx mb_socket_test_trust(root,work,args_has(a[..],"--sanitize")) then 0 else 1;}
  if task=="audio-packet" {return ifx mb_audio_packet(root,work,args_has(a[..],"--sanitize")) then 0 else 1;}
  if task=="audio-session" {return ifx mb_audio_session(root,work,args_has(a[..],"--sanitize")) then 0 else 1;}
  if task=="audio-fixture" {return ifx mb_audio_fixture(root,work,args_has(a[..],"--sanitize")) then 0 else 1;}

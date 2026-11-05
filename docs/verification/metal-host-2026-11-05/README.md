@@ -693,3 +693,41 @@ fixture includes the public pointer-width-aware hostile-span export from
 `3a4ef4a0b8`. Existing sample gates were not repeated. These CPU/device checks
 do not admit the experimental presentation product, qualify current primary
 packaging, close either issue, or change the desktop default.
+
+## Local TLS opening composition
+
+`socket-tls/` and `socket-tls-asan/` exercise the same raw worker and MF/Swift
+adapter over actual Network.framework TLS. A real ephemeral cookie jar is
+seeded through its SDK with a plain cookie, Secure cookie and different-path
+cookie. Both trusted `/auth` openings physically carry only
+`plain=one; secure=two` and the explicit world Origin
+`https://bound.invalid`; the actual negotiated version isTLS1.3. An untrusted
+self-signed certificate and a trusted certificate for the wrong hostname
+produce the exact deferred error/close rows. Those two peers observe no
+application header bytes. A later trusted opening succeeds, so refusal does
+not poison the next socket owner. The full18-row callback receipt and two
+physical openings are copied as [client](socket-tls.json) and
+[peer](socket-tls-peer.json).
+
+The admission/observation authority kills68 root mutants without equivalent
+annotations. Literal reference input rows are separate from the expected
+row constructor. The peer is an independent Python `ssl` wire oracle; Coax
+owns process/certificate orchestration and the exact receipt gate. It runs
+only on loopback, ends within120 seconds and retains raw observations.
+Private generated keys are deleted after both runs; public fixture
+certificates/configurations remain for the record. No Keychain or system
+trust-store entry is added.
+
+The explicit `socket-test-trust` build task recompiles only the TLS effect
+with the pre-existing `CXTLS_TEST_TRUST` fixture hook, then relinks a separate
+SDK directory. Its sole anchor is the generated fixture certificate.
+Ordinary `socket-library` never enters that task; production trust code and
+the packaged app are unchanged. ASan instruments the portable worker,
+platform effects, generated network/renderer/texture C, MF reader and Swift
+driver. The recording fixture is uninstrumented and leak detection is
+disabled. This is synthetic local credential/TLS composition, not a claim
+about a production authenticated session. The unchanged17-source networking
+emission join is reused from `cbf057b592`; no compiler or GPU gate is repeated.
+`socket-tls-sdk/artifacts.sha256` joins both exact executables/libraries,
+sources and public fixture identities. This check opens no GPU or audio
+device and changes no host default or graphics admission.

@@ -42,6 +42,10 @@ struct HostEffects {
             func f(_ k: String) -> Float { (op[k] as? NSNumber)?.floatValue ?? 0 }
             switch op["op"] as? String {
             case "origin": mf_network_config(host,op["text"] as? String ?? "",nil)
+            case "cookie":
+                let properties: [HTTPCookiePropertyKey:Any] = [.domain:op["domain"] as? String ?? "",.path:op["path"] as? String ?? "/",.name:op["name"] as? String ?? "",.value:op["value"] as? String ?? "",.secure:op["secure"] as? Bool == true ? "TRUE":"FALSE"]
+                guard let cookie = HTTPCookie(properties:properties), let jar = network.session.configuration.httpCookieStorage else { throw HostEffectError.failed("cookie fixture") }
+                jar.setCookie(cookie)
             case "drawable-unavailable":
                 let layer = HostUnavailableLayer(), before = mf_info(host,0), clock = mf_lifecycle_info(host,4)
                 mf_layer(host,Unmanaged.passUnretained(layer).toOpaque())
