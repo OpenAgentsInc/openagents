@@ -335,11 +335,12 @@ is `cut`, and `nav_grid_way` refuses to read a field that isn't `ok`.
   from a point, and the typed ways.
 - `coax/bin/coax mutate aethyr/nav/grid.coax --library --root-only`: 276
   mutants, 276 killed.
-- `coax/bin/coax test aethyr/tests/nav-deadgears.coax --library`: 32 of 32,
-  with Dead Gears' own checks. On Dead Gears' deck (64 by 76 cells of 0.5 m,
-  11 boxes), for six goals, the module's field equals `nav_flow_to`'s in all
-  4,864 cells, bit for bit, and `nav_grid_downhill` gives the same next cell
-  as `nav_downhill` in every cell.
+- `coax/bin/coax test aethyr/tests/nav-deadgears.coax --library`: 33 of 33,
+  with Dead Gears' own checks. Dead Gears' `nav_flow_to` and `nav_downhill`
+  call the module (#12854). On its deck (64 by 76 cells of 0.5 m, 11 boxes),
+  for six goals, the field equals the private search it replaced, kept in the
+  test as the trace, in all 4,864 cells, bit for bit, and so does every step
+  and every next cell.
 
 The oracle in [aethyr/tests/nav-oracle.coax](../../aethyr/tests/nav-oracle.coax)
 shares no code with the module. It writes the step rules again and relaxes
@@ -350,9 +351,9 @@ the costs a search lowers.
 
 ## Still to do
 
-- **Realms on the module.** Dead Gears' `nav_flow_to` and `nav_downhill` can
-  call it with the same results (the identity check above), with its goldens
-  unchanged. Everglade's townsfolk and guide, and Hecate's dog, use path
+- **Realms on the module.** Dead Gears' `nav_flow_to` and `nav_downhill` call
+  it since #12854, and its private search is gone; `nav-deadgears.coax` keeps
+  that search as the consumer's trace and holds the module to it. Everglade's townsfolk and guide, and Hecate's dog, use path
   graphs instead.
 - **Path graphs.** Today [aethyr/terrain.coax](../../aethyr/terrain.coax)
   holds them: nodes (x, z pairs) and links (two node numbers each), each

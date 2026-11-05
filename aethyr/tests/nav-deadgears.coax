@@ -1,29 +1,120 @@
-// Dead Gears' flow fields (verse/deadgears/arena.coax nav_flow_to and nav_downhill) against
-// aethyr/nav/grid.coax on the same deck: every cell's cost bit for bit and every next cell,
-// for goals across the deck. Dead Gears is loaded, not changed.
+// Dead Gears' flow fields on aethyr/nav/grid.coax (#12854): verse/deadgears/arena.coax's
+// nav_flow_to and nav_downhill now call the module, and this file keeps the private search they
+// replaced (ndg_old_*, the consumer's trace, as it stood in c3ae074831) to hold them to it: every
+// cell's cost bit for bit, every step and every next cell, for goals across the deck.
 //   coax/bin/coax test aethyr/tests/nav-deadgears.coax --library
 #load "../../verse/deadgears/arena.coax";
-#load "../nav/grid.coax";
+
+// ---- the private search Dead Gears ran before #12854, kept as its trace
+
+NdgOld :: struct { cost: [NAV_CELLS] f32; heap: [NAV_CELLS] s32; slot: [NAV_CELLS] s32; goal: int; }
+NDG_DX :: [8] int.[1, -1, 0, 0, 1, 1, -1, -1];
+NDG_DZ :: [8] int.[0, 0, 1, -1, 1, -1, 1, -1];
+ndg_old_step :: (n: [] Nav, c: int, k: int) -> int {
+  x := nav_cell_x(c) + NDG_DX[k]; z := nav_cell_z(c) + NDG_DZ[k];
+  if x < 0 || z < 0 || x >= NAV_NX || z >= NAV_NZ { return -1; }
+  to := z * NAV_NX + x;
+  if !n[0].walk[to] { return -1; }
+  if k >= 4 {
+    if !n[0].walk[nav_cell_z(c) * NAV_NX + x] || !n[0].walk[z * NAV_NX + nav_cell_x(c)] { return -1; }
+  }
+  return to;
+}
+ndg_old_less :: (o: [] NdgOld, a: int, b: int) -> bool {
+  ca := o[0].cost[a]; cb := o[0].cost[b];
+  return ca < cb || (ca == cb && a < b);
+}
+ndg_old_swap :: (o: [] NdgOld, i: int, j: int) {
+  a := o[0].heap[i]; b := o[0].heap[j];
+  o[0].heap[i] = b; o[0].heap[j] = a;
+  o[0].slot[int(b)] = s32(i); o[0].slot[int(a)] = s32(j);
+}
+ndg_old_up :: (o: [] NdgOld, at: int) {
+  i := at;
+  while i > 0 {
+    parent := (i - 1) / 2;
+    if !ndg_old_less(o, int(o[0].heap[i]), int(o[0].heap[parent])) { break; }
+    ndg_old_swap(o, i, parent);
+    i = parent;
+  }
+}
+ndg_old_down :: (o: [] NdgOld, size: int) {
+  i := 0;
+  while true {
+    l := i * 2 + 1; r := l + 1; m := i;
+    if l < size && ndg_old_less(o, int(o[0].heap[l]), int(o[0].heap[m])) { m = l; }
+    if r < size && ndg_old_less(o, int(o[0].heap[r]), int(o[0].heap[m])) { m = r; }
+    if m == i { break; }
+    ndg_old_swap(o, i, m);
+    i = m;
+  }
+}
+ndg_old_flow :: (n: [] Nav, o: [] NdgOld, goal: Point, max_cost: f32) -> bool {
+  for c: 0..<NAV_CELLS { o[0].cost[c] = f32(NAV_FAR); o[0].slot[c] = -1; }
+  g := nav_nearest(n, goal, 1.5);
+  o[0].goal = g;
+  if g < 0 { return false; }
+  o[0].cost[g] = 0;
+  size := 1;
+  o[0].heap[0] = s32(g); o[0].slot[g] = 0;
+  while size > 0 {
+    c := int(o[0].heap[0]);
+    size -= 1;
+    o[0].slot[c] = -2;
+    if size > 0 { ndg_old_swap(o, 0, size); o[0].slot[c] = -2; ndg_old_down(o, size); }
+    here := o[0].cost[c];
+    if here > max_cost { break; }
+    for k: 0..<8 {
+      to := ndg_old_step(n, c, k);
+      if to < 0 || o[0].slot[to] == -2 { continue; }
+      cost := here + ifx k < 4 then f32(NAV_CELL) else f32(NAV_CELL) * 1.4142135;
+      if cost >= o[0].cost[to] { continue; }
+      o[0].cost[to] = cost;
+      if o[0].slot[to] < 0 { o[0].heap[size] = s32(to); o[0].slot[to] = s32(size); size += 1; }
+      ndg_old_up(o, int(o[0].slot[to]));
+    }
+  }
+  return true;
+}
+ndg_old_downhill :: (n: [] Nav, o: [] NdgOld, c: int) -> int {
+  best := -1; low := o[0].cost[c];
+  for k: 0..<8 {
+    to := ndg_old_step(n, c, k);
+    if to < 0 { continue; }
+    if o[0].cost[to] < low { low = o[0].cost[to]; best = to; }
+  }
+  return best;
+}
+
+// ---- checks
 
 ndg_goals :: () -> [6] Point {
   return [6] Point.[v3(-8, 0, -8.4), v3(0, 0, 9), v3(12, 0, -20), v3(-14.6, 0, 12.4), v3(5, 0, 1.2), v3(0.3, 0, -13.1)];
 }
 
-#forall "Dead Gears' fields and the module's are the same, bit for bit, cell for cell" which: 0..<6 #steps 400000000 {
+#forall "Dead Gears' fields on the module are its old private search's, bit for bit, cell for cell" which: 0..<6 #steps 400000000 {
   deck: [1] Arena; deck[0] = test_deck(); a := deck[..];
   nav: [1] Nav; n := nav[..];
   nav_bake(n, a);
   goals := ndg_goals();
   #assert nav_flow_to(n, 0, goals[which], 80);
-  g := NavGrid.{nx = NAV_NX, nz = NAV_NZ, cell = f32(NAV_CELL), x0 = f32(NAV_X0), z0 = f32(NAV_Z0)};
-  cost: [NAV_CELLS] f32; heap: [NAV_CELLS] s32; slot: [NAV_CELLS] s32;
-  f := nav_grid_flow(g, n[0].walk[..], cost[..], heap[..], slot[..], heap[0..<0], n[0].flows[0].goal, 80, NAV_CELLS);
-  #assert f.status == NavFlowStatus.ok && f.goal == n[0].flows[0].goal;
+  old: [1] NdgOld; o := old[..];
+  #assert ndg_old_flow(n, o, goals[which], 80) && o[0].goal == n[0].flows[0].goal;
   same := 0; reached := 0;
   for c: 0..<NAV_CELLS {
-    if cost[c] == n[0].flows[0].cost[c] { same += 1; }
-    if cost[c] < f32(NAV_GRID_FAR) { reached += 1; }
-    #assert nav_grid_downhill(g, n[0].walk[..], cost[..], c) == nav_downhill(n, 0, c);
+    if f32_bits(o[0].cost[c]) == f32_bits(n[0].flows[0].cost[c]) { same += 1; }
+    if n[0].flows[0].cost[c] < f32(NAV_FAR) { reached += 1; }
+    #assert nav_downhill(n, 0, c) == ndg_old_downhill(n, o, c);
+    for k: 0..<8 { #assert nav_step(n, c, k) == ndg_old_step(n, c, k); }
   }
   #assert same == NAV_CELLS && reached > 3000;
+}
+
+#test "a goal off the deck is refused as before, and leaves no way" {
+  deck: [1] Arena; deck[0] = test_deck(); a := deck[..];
+  nav: [1] Nav; n := nav[..];
+  nav_bake(n, a);
+  old: [1] NdgOld; o := old[..];
+  #assert !nav_flow_to(n, 0, v3(500, 0, 500), 80) && !ndg_old_flow(n, o, v3(500, 0, 500), 80);
+  #assert n[0].flows[0].goal == -1 && n[0].flows[0].cost[0] == f32(NAV_FAR);
 }
