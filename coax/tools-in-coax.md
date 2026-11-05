@@ -122,6 +122,9 @@ the same inputs, then deletes it in the same commit that switches callers.
   same staged tree). Four files gained a true reason: the Cultist Raid robe
   scripts run inside Blender (6), Granite's capture runs Hugging Face and
   llama.cpp (3), and its Unicode table comes from Python's database (2).
+  `coax/web/room/room-proof.coax` (`cast` and `raid`) replaces
+  `cast-proof.sh` and `raid-proof.sh`: the same room, network and check,
+  with the same verdicts on the same room server.
 
 ## Keeping it this way
 

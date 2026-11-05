@@ -7,7 +7,7 @@
 //
 // - The SIZE dial is the wave at RAID_SIZE_AT players. Each player present adds a share of it:
 //   the default 12 is 3 raiders a player, and 24 is 6. At least RAID_WAVE_MIN come. (Played out
-//   at 1, 4 and 8 level 1 players with the watch and the siege tactics, raid-proof.sh: spec 4.2.)
+//   at 1, 4 and 8 level 1 players with the watch and the siege tactics, room-proof.coax raid: spec 4.2.)
 // - Fanatics and Warlocks grow wave by wave. Wave w of W has w / W of their dial parts, rounded
 //   down, but always one Warlock when the dial has any; the last wave has the dials' whole mix.
 // - The Warlocks' top level grows the same way, from level 1 in the first wave to the dial's.
@@ -26,9 +26,9 @@ RAID_CULT_SHARE :: 5;          // ninths of them the cult's
 // A player's help on the front: what each seat does adds points, which fade over RAID_WORTH_FADE_S;
 // a seat with RAID_WORTH_FULL points is an active player, worth RAID_WORTH_FIGHTERS of the watch on
 // the line, and no seat counts for more than RAID_WORTH_MOST active players. Tuned so one player
-// shifts the line a little and about 4 take it to the camp (raid-proof.sh, spec 4.2).
+// shifts the line a little and about 4 take it to the camp (room-proof.coax raid, spec 4.2).
 RAID_WORTH_FADE_S :: 20.0;     // s: a seat's points fade by this time constant
-RAID_WORTH_FULL :: 15;         // points an active player keeps up between its falls (raid-proof.sh, 4 players: #12860)
+RAID_WORTH_FULL :: 15;         // points an active player keeps up between its falls (room-proof.coax raid, 4 players: #12860)
 RAID_WORTH_FIGHTERS :: 6.0;    // what an active player is worth on the line, in fighters
 RAID_WORTH_MOST :: 1.5;        // a seat's worth at most, in active players
 RAID_PTS_KILL :: 6;            // points for a share in a raider's fall (beside its damage)

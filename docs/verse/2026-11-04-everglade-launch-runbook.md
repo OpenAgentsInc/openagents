@@ -412,7 +412,7 @@ check are gone; only BLOCK is still skipped (the stand-in keeps no blocks).
   `rejoin-check`, `load.coax`) sign their own tickets: export the `KEY=` line
   that `local.sh` prints as `OA_ROOM_TICKET_KEY`. They sit as an admin and send
   the demo bit, so they cast the whole bar whatever the levels switch says.
-- `raid-proof.sh` runs the room with `--dev` too.
+- `room-proof.coax raid` runs the room with `--dev` too.
 - The server starts every field at its declared default
   (`coax_default_t_RmServer`), and `build.sh` fails if `bin/room
   --start-check` finds a field off its default. With no Everglade row in
@@ -642,7 +642,7 @@ windows in a row (20 seconds) is a real alarm.
 | `relevant entities most` | 70 | Over 150 | One seat sees too much. |
 | `measuring % of tick` | 0.35 to 1.1 | Over 2 | The vitals cost too much. Report it on #12791. |
 
-The normal column is from a 16-player local raid (`raid-proof.sh` with
+The normal column is from a 16-player local raid (`room-proof.coax raid` with
 `RAID_MODE=fight RAID_CLASS=mix`, 120 seconds, on an M-series Mac). In that
 raid `input to ack p95 ms` stays flat: 12 ms before the fight, 30 ms during
 it. A seat earns one step for each 1/30 s of the server's clock, so a tick

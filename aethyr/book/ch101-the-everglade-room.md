@@ -81,11 +81,11 @@ work it can make, and counts what it drops:
 
 ```shell
 coax/web/room/local.sh
-coax/web/room/raid-proof.sh coax/web/room/bin/room 4 120
+coax/web/tool.sh coax/web/room/room-proof.coax raid coax/web/room/bin/room 4 120
 ```
 
 `local.sh` runs a room server and the page against one world document on
-this machine. `raid-proof.sh` starts a room server, joins 4 bots from
+this machine. `room-proof.coax raid` starts a room server, joins 4 bots from
 `raid-check.coax`, starts the raid and lets it run 120 s; it exits 0 when the
 raid ran.
 

@@ -1,0 +1,306 @@
+// A local room server under a check, as production runs it: BIN (a room server built by build.sh)
+// with --dev (room-dev.coax: dev/'s world, a control file, the stand-in's ticket key), so nothing
+// reaches the API. Run from the repository's root.
+//
+//   coax/web/tool.sh coax/web/room/room-proof.coax cast BIN [PORT] [LATENCY_MS] [JITTER_MS] [LOSS_PERMILLE] [ROUNDS]
+//     The cast rules under latency (cast-check.coax, GitHub #12790): the bad network in front of
+//     the room on PORT + 1 (net-proxy.coax: LATENCY_MS round trip, JITTER_MS, LOSS_PERMILLE of reads
+//     lost) and cast-check's four players through it. Levels are off, so every seat has its whole
+//     bar. Defaults: 8881, 250 ms, 30 ms, 20 (2%), 6 rounds. Exits 0 when cast-check prints
+//     "casts hold". CAST_PROOF_LOG names a file for the room's output.
+//
+//   coax/web/tool.sh coax/web/room/room-proof.coax raid BIN [N] [SECONDS] [PORT]
+//     The Cultist Raid (raid-check.coax): N players join (default 8), START NOW is pressed by
+//     rewriting the control file 3 + N/2 seconds later, and the raid runs SECONDS (default 160) on
+//     PORT (default 8871). RAID_CLASS (druid, warlock, mix), RAID_MODE (square, fight),
+//     RAID_LEVEL2=1 (every player must reach level 2) and RAID_EXPECT (hold, fall, any: the siege's
+//     front, #12860) pass to raid-check; RAID_DIALS replaces the API's default dials. The server's
+//     health is read every 5 s and the worst 95th percentile tick is printed. Exits 0 when
+//     raid-check prints "raids". RAID_PROOF_LOG names a file for the room's output.
+// tool.sh: tls
+#import "Basic";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+#load "../../lib/sys/args.coax";
+#load "../../lib/sys/proc.coax";
+#load "../../lib/net/http.coax";
+
+RP_WORLD :: "coax/web/room/dev/world-everglade.json";
+RP_KEY :: "OA_ROOM_TICKET_KEY=local-development-room-ticket-key-not-a-secret";   // room-dev.coax DEV_KEY
+// the API's defaults: EVERY 0, 3 waves of 12 at 4 players (scaled to those here: everglade-raid-
+// scale.coax), 6 Cultists, 1 Fanatic, 3 Warlocks in parts by the last wave, levels up to 3, all gates,
+// the leader on at aggression 2, town damage on, 100% reward, 15 minutes
+RP_DIALS :: "event 1 0 3 12 6 1 3 3 31 1 2 1 100 15";
+RP_LOG :: 4194304;
+
+// A text being built.
+Rp :: struct { b: [8192] u8; n: int; }
+rp_s :: (t: [] Rp, s: string) { for c: s { if t[0].n < t[0].b.count { t[0].b[t[0].n] = c; t[0].n += 1; } } }
+rp_i :: (t: [] Rp, v: int) {
+  d: [24] u8; k := 0; x := ifx v < 0 then -v else v;
+  if v < 0 { rp_s(t, "-"); }
+  if x == 0 { d[0] = '0'; k = 1; }
+  while x > 0 { d[k] = cast,trunc(u8) ('0' + x % 10); x /= 10; k += 1; }
+  for i: 0..<k { if t[0].n < t[0].b.count { t[0].b[t[0].n] = d[k - 1 - i]; t[0].n += 1; } }
+}
+rp_text :: (t: [] Rp) -> string { return cast(string) t[0].b[0..<t[0].n]; }
+
+#test "text and whole numbers" {
+  t: [1] Rp;
+  rp_s(t[..], "a "); rp_i(t[..], 0); rp_s(t[..], " "); rp_i(t[..], 8871); rp_s(t[..], " "); rp_i(t[..], -12);
+  #assert rp_text(t[..]) == "a 0 8871 -12";
+}
+
+// An argument as a whole number, or fallback when it is absent; -1 when it is not one.
+rp_arg :: (a: [] Args, i: int, fallback: int) -> int {
+  if i >= args_count(a) { return fallback; }
+  return args_whole(args_at(a, i));
+}
+// The tick's 95th percentile in a /health answer ("... at the 95th N us ..."), or -1.
+rp_p95 :: (body: string) -> int {
+  mark := "at the 95th ";
+  i := 0;
+  while i + mark.count <= body.count {
+    if body[i..<i + mark.count] == mark {
+      j := i + mark.count; v := 0; any := false;
+      while j < body.count && body[j] >= '0' && body[j] <= '9' { v = v * 10 + cast(int) (body[j] - '0'); j += 1; any = true; }
+      if any && j + 3 <= body.count && body[j..<j + 3] == " us" { return v; }
+    }
+    i += 1;
+  }
+  return -1;
+}
+#test "the 95th percentile from the room's health" {
+  #assert rp_p95("{\"tick\":\"p50 410 us, at the 95th 1290 us\"}") == 1290;
+  #assert rp_p95("at the 95th us") == -1 && rp_p95("") == -1 && rp_p95("at the 95th 12 ms") == -1;
+  #assert rp_p95("x at the 95th 7 us at the 95th 9 us") == 7;
+}
+// Whether a room output line is one of the reports the proof repeats (the minute's ticks and parts).
+rp_report :: (line: string) -> bool {
+  return (rp_has(line, "room: ") && rp_has(line, "ticks in")) || rp_has(line, "tick parts");
+}
+rp_has :: (s: string, part: string) -> bool {
+  if part.count > s.count { return false; }
+  for i: 0..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return true; } }
+  return false;
+}
+#test "which room lines the proof repeats" {
+  #assert rp_report("room: 600 ticks in 60 s") && rp_report("x tick parts: a 1") && !rp_report("ticks in") && !rp_report("room: joined");
+}
+
+// The room's output so far, kept for the reports and the log file.
+RpLog :: struct { b: [RP_LOG] u8; n: int; }
+rp_keep :: (l: [] RpLog, line: string) {
+  if l[0].n + line.count + 1 > l[0].b.count { return; }
+  for c: line { l[0].b[l[0].n] = c; l[0].n += 1; }
+  l[0].b[l[0].n] = '\n'; l[0].n += 1;
+}
+// Reads every line h has ready (none waits) into l.
+rp_drain :: (h: int, l: [] RpLog) {
+  line: [65536] u8;
+  while true {
+    n := proc_line(h, 0, line[..]);
+    if n < 0 { if n == PROC_TOO_LONG { continue; } return; }
+    rp_keep(l, cast(string) line[0..<n]);
+  }
+}
+// The end of h's stderr, a line at a time, into l.
+rp_keep_stderr :: (h: int, l: [] RpLog) {
+  err: [65536] u8;
+  tail := proc_stderr(h, err[..]);
+  i := 0;
+  while i < tail.count {
+    e := i;
+    while e < tail.count && tail[e] != '\n' { e += 1; }
+    rp_keep(l, tail[i..<e]); i = e + 1;
+  }
+}
+// Starts argv with env entries; the handle, or -1.
+rp_start :: (argv: [] string, env: [] string) -> int {
+  h := proc_new();
+  if h < 0 { return -1; }
+  ok := true;
+  for x: argv { ok = ok && proc_arg(h, x); }
+  for e: env { ok = ok && proc_env(h, e); }
+  if !ok || proc_start(h) != 0 { r := proc_release(h); return -1; }
+  return h;
+}
+// Builds a Coax tool (its first run), so the clock starts with the players.
+rp_build :: (tool: string, argv: [] string) {
+  out: [256] u8; err: [256] u8;
+  r := proc_run(argv, 900000, out[..], err[..]);
+}
+// Ends a child: a TERM, then what is left of its group.
+rp_end :: (h: int) {
+  if h < 0 { return; }
+  k := proc_kill(h, PROC_SIGTERM); w := proc_wait(h, 2000); r := proc_release(h);
+}
+// The room's output: its stdout lines and the end of its stderr, into the log env names, and the reports.
+rp_finish_room :: (h: int, l: [] RpLog, log_env: string, reports: bool) {
+  rp_drain(h, l);
+  rp_keep_stderr(h, l);
+  rp_end(h);
+  i := 0;
+  pb: [FS_PATH_MAX] u8; path := proc_getenv(log_env, pb[..]);
+  if path.count > 0 { ok := fs_write(path, cast(string) l[0].b[0..<l[0].n]); }
+  if !reports { return; }
+  // the last six reports
+  at: [6] int; to: [6] int; k := 0;
+  i = 0;
+  while i < l[0].n {
+    e := i;
+    while e < l[0].n && l[0].b[e] != '\n' { e += 1; }
+    if rp_report(cast(string) l[0].b[i..<e]) { at[k % 6] = i; to[k % 6] = e; k += 1; }
+    i = e + 1;
+  }
+  first := ifx k > 6 then k - 6 else 0;
+  for j: first..<k { print("%\n", cast(string) l[0].b[at[j % 6]..<to[j % 6]]); }
+}
+// Runs the check h to its end, printing its lines while the room's are drained; whether it printed want.
+// When press_at is not 0, the control file ctl gets press at that time (proc_now_ms). When port is not
+// 0, the room's /health is read every 5 s and the worst 95th percentile kept in worst[0].
+rp_watch :: (check: int, room: int, l: [] RpLog, want: string, ctl: string, press: string, press_at_in: int, port: int, worst: [] int) -> bool {
+  press_at := press_at_in;
+  line: [65536] u8; seen := false; next_health := proc_now_ms() + 5000;
+  w: [1] HttpWork; body: [16384] u8;
+  hu: [1] Rp; rp_s(hu[..], "http://127.0.0.1:"); rp_i(hu[..], port); rp_s(hu[..], "/health");
+  while true {
+    n := proc_line(check, 200, line[..]);
+    if n == PROC_EOF || n == PROC_ERROR { break; }
+    if n >= 0 { s := cast(string) line[0..<n]; print("%\n", s); if s == want { seen = true; } }
+    rp_drain(room, l);
+    now := proc_now_ms();
+    if press_at != 0 && now >= press_at { ok := fs_write(ctl, press); press_at = 0; }
+    if port != 0 && now >= next_health {
+      next_health = now + 5000;
+      nh: [1] string; r := http_do(w[..], "GET", rp_text(hu[..]), nh[0..<0], "", 2000, 0, body[..]);
+      if r.error == HTTP_OK { p := rp_p95(cast(string) body[0..<r.n]); if p > worst[0] { worst[0] = p; } }
+    }
+  }
+  st := proc_wait(check, 10000); r := proc_release(check);
+  return seen;
+}
+
+rp_cast :: (a: [] Args, dir: string) -> int {
+  bin := args_at(a, 1);
+  port := rp_arg(a, 2, 8881); lat := rp_arg(a, 3, 250); jit := rp_arg(a, 4, 30); loss := rp_arg(a, 5, 20); rounds := rp_arg(a, 6, 6);
+  if port < 1 || port > 65534 || lat < 0 || jit < 0 || loss < 0 || rounds < 1 { tool_errln("room-proof cast: PORT, LATENCY_MS, JITTER_MS, LOSS_PERMILLE and ROUNDS are whole numbers"); return 2; }
+  if !rp_control(dir, "levels 0 2\n") { return 1; }
+  ps: [1] Rp; rp_i(ps[..], port);
+  room := rp_room(bin, rp_text(ps[..]), dir);
+  if room < 0 { return 1; }
+  l: [1] RpLog;
+  b1 := [8] string.["coax/web/tool.sh", "coax/web/room/net-proxy.coax", "1", "1", "0", "0", "0", "1"]; rp_build("net-proxy", b1[..]);
+  b2 := [2] string.["coax/web/tool.sh", "coax/web/room/cast-check.coax"]; rp_build("cast-check", b2[..]);
+  px: [1] Rp; rp_i(px[..], port + 1);
+  la: [1] Rp; rp_i(la[..], lat); ji: [1] Rp; rp_i(ji[..], jit); lo: [1] Rp; rp_i(lo[..], loss);
+  pa := [8] string.["coax/web/tool.sh", "coax/web/room/net-proxy.coax", rp_text(px[..]), rp_text(ps[..]), rp_text(la[..]), rp_text(ji[..]), rp_text(lo[..]), "600"]; none: [1] string;
+  proxy := rp_start(pa[..], none[0..<0]);
+  if proxy < 0 { tool_errln("room-proof: can't start the network"); rp_finish_room(room, l[..], "CAST_PROOF_LOG", false); return 1; }
+  proc_sleep(2000);
+  print("cast-proof: room on %, the network on %: % ms round trip, % ms jitter, % per thousand lost\n", port, port + 1, lat, jit, loss);
+  u: [1] Rp; rp_s(u[..], "ws://127.0.0.1:"); rp_i(u[..], port + 1);
+  ts: [1] Rp; rp_i(ts[..], proc_now_ms() / 1000);
+  ro: [1] Rp; rp_i(ro[..], rounds);
+  ca := [5] string.["coax/web/tool.sh", "coax/web/room/cast-check.coax", rp_text(u[..]), rp_text(ts[..]), rp_text(ro[..])]; key := [1] string.[RP_KEY];
+  check := rp_start(ca[..], key[..]);
+  held := false;
+  if check < 0 { tool_errln("room-proof: can't start cast-check"); }
+  else { worst: [1] int; held = rp_watch(check, room, l[..], "casts hold", "", "", 0, 0, worst[..]); }
+  // the network's own count of what it lost and read
+  pl: [1] RpLog;
+  rp_drain(proxy, pl[..]);
+  k := proc_kill(proxy, PROC_SIGTERM); w := proc_wait(proxy, 2000);
+  rp_drain(proxy, pl[..]);
+  rp_keep_stderr(proxy, pl[..]);
+  r := proc_release(proxy);
+  rp_tail_matching(pl[..], "lost", "reads", 2);
+  rp_finish_room(room, l[..], "CAST_PROOF_LOG", false);
+  return ifx held then 0 else 1;
+}
+// Prints the last count lines of l that hold either part.
+rp_tail_matching :: (l: [] RpLog, p1: string, p2: string, count: int) {
+  at: [8] int; to: [8] int; k := 0; i := 0;
+  while i < l[0].n {
+    e := i;
+    while e < l[0].n && l[0].b[e] != '\n' { e += 1; }
+    s := cast(string) l[0].b[i..<e];
+    if rp_has(s, p1) || rp_has(s, p2) { at[k % 8] = i; to[k % 8] = e; k += 1; }
+    i = e + 1;
+  }
+  first := ifx k > count then k - count else 0;
+  for j: first..<k { print("%\n", cast(string) l[0].b[at[j % 8]..<to[j % 8]]); }
+}
+
+rp_raid :: (a: [] Args, dir: string) -> int {
+  bin := args_at(a, 1);
+  n := rp_arg(a, 2, 8); secs := rp_arg(a, 3, 160); port := rp_arg(a, 4, 8871);
+  if n < 1 || secs < 1 || port < 1 || port > 65535 { tool_errln("room-proof raid: N, SECONDS and PORT are whole numbers"); return 2; }
+  db: [512] u8; dials := proc_getenv("RAID_DIALS", db[..]);
+  if dials.count == 0 { dials = RP_DIALS; }
+  waiting: [1] Rp; rp_s(waiting[..], dials); rp_s(waiting[..], " 0 0\nlevels 1 2\n");
+  press: [1] Rp; rp_s(press[..], dials); rp_s(press[..], " 1 0\nlevels 1 2\n");
+  if !rp_control(dir, rp_text(waiting[..])) { return 1; }
+  ps: [1] Rp; rp_i(ps[..], port);
+  room := rp_room(bin, rp_text(ps[..]), dir);
+  if room < 0 { return 1; }
+  l: [1] RpLog;
+  // a press of START acts in the live rooms only, so it waits for the players: build the check first
+  b3 := [5] string.["coax/web/tool.sh", "coax/web/room/raid-check.coax", "ws://127.0.0.1:1", "1", "10"]; rp_build("raid-check", b3[..]);
+  proc_sleep(3000);
+  rp_drain(room, l[..]);
+  u: [1] Rp; rp_s(u[..], "ws://127.0.0.1:"); rp_i(u[..], port);
+  nb: [1] Rp; rp_i(nb[..], n); sb: [1] Rp; rp_i(sb[..], secs);
+  ts: [1] Rp; rp_i(ts[..], proc_now_ms() / 1000);
+  cb: [64] u8; mb: [64] u8; vb: [64] u8; eb: [64] u8;
+  class := proc_getenv("RAID_CLASS", cb[..]); mode := proc_getenv("RAID_MODE", mb[..]);
+  level2 := proc_getenv("RAID_LEVEL2", vb[..]); expect := proc_getenv("RAID_EXPECT", eb[..]);
+  if class.count == 0 { class = "druid"; }
+  if mode.count == 0 { mode = "square"; }
+  if level2.count == 0 { level2 = "0"; }
+  if expect.count == 0 { expect = "any"; }
+  cp: [1] Rp; rp_s(cp[..], dir); rp_s(cp[..], "/room-control.txt");
+  press_at := proc_now_ms() + (3 + n / 2) * 1000;
+  ra := [10] string.["coax/web/tool.sh", "coax/web/room/raid-check.coax", rp_text(u[..]), rp_text(nb[..]), rp_text(sb[..]), rp_text(ts[..]), class, mode, level2, expect]; key := [1] string.[RP_KEY];
+  check := rp_start(ra[..], key[..]);
+  raided := false; worst: [1] int; worst[0] = -1;
+  if check < 0 { tool_errln("room-proof: can't start raid-check"); }
+  else { raided = rp_watch(check, room, l[..], "raids", rp_text(cp[..]), rp_text(press[..]), press_at, port, worst[..]); }
+  if worst[0] >= 0 { print("tick p95 at worst: % us\n", worst[0]); } else { print("tick p95 at worst: ? us\n"); }
+  rp_finish_room(room, l[..], "RAID_PROOF_LOG", true);
+  return ifx raided then 0 else 1;
+}
+
+// The room's directory: dev/'s world and its control lines.
+rp_control :: (dir: string, lines: string) -> bool {
+  wb: [1048576] u8;
+  n := fs_read(RP_WORLD, wb[..]);
+  wp: [1] Rp; rp_s(wp[..], dir); rp_s(wp[..], "/world-everglade.json");
+  cp: [1] Rp; rp_s(cp[..], dir); rp_s(cp[..], "/room-control.txt");
+  if n < 0 || !fs_write(rp_text(wp[..]), cast(string) wb[0..<n]) || !fs_write(rp_text(cp[..]), lines) {
+    tool_errln("room-proof: can't make the room's directory (run it from the repository's root)"); return false;
+  }
+  return true;
+}
+rp_room :: (bin: string, port: string, dir: string) -> int {
+  ra := [5] string.[bin, "--port", port, "--dev", dir]; none: [1] string;
+  h := rp_start(ra[..], none[0..<0]);
+  if h < 0 { tool_err("room-proof: can't start "); tool_errln(bin); }
+  return h;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  ok := args_load(a[..]);
+  verb := args_at(a[..], 0);
+  if !ok || args_count(a[..]) < 2 || (verb != "cast" && verb != "raid") {
+    tool_errln("usage: room-proof cast BIN [PORT] [LATENCY_MS] [JITTER_MS] [LOSS_PERMILLE] [ROUNDS] | room-proof raid BIN [N] [SECONDS] [PORT]");
+    return 2;
+  }
+  tb: [FS_PATH_MAX] u8;
+  dir := fs_temp(ifx verb == "cast" then "cast-proof." else "raid-proof.", tb[..]);
+  if dir.count == 0 { tool_errln("room-proof: no temporary directory"); return 1; }
+  rc := ifx verb == "cast" then rp_cast(a[..], dir) else rp_raid(a[..], dir);
+  gone := fs_remove(dir);
+  return rc;
+}

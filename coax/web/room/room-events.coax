@@ -54,7 +54,7 @@ EV_XP2 :: 300; EV_XP3 :: 900; EV_LEVEL_TOP :: 3;   // the cap is a dial (EvDials
 // among those who took part). A ward stone gives EV_XP_WARD the same way; one of the watch nothing.
 // When the camp falls, each seat that earned XP in the siege gets EV_XP_HELD (an admin's STOP:
 // nothing). Tuned so a new player who fights reaches level 2 in about one push to the camp
-// (raid-proof.sh RAID_MODE=fight RAID_LEVEL2=1).
+// (room-proof.coax raid RAID_MODE=fight RAID_LEVEL2=1).
 EV_XP_SRD_X :: 2;               // the raid pays twice the SRD's XP for each raider
 EV_XP_CULTIST :: 25;            // SRD: Cultist, CR 1/8
 EV_XP_FANATIC :: 450;           // SRD: Cultist Fanatic, CR 2

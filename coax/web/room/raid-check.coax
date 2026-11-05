@@ -4,7 +4,7 @@
 // (2000 + EID). The check counts what each heard: the raid's g entries (its phases, waves and leader),
 // the raiders (c, kind 12, P1 27 to 30 a Cultist, Fanatic, Warlock or Darian Odiodei, 40 a ward
 // stone), their casts (e rc), the hits on them (e hit), and the XP and levels it earned (e xp, e
-// level, v). The raid's start and its dials are the room's control lines: run it as raid-proof.sh
+// level, v). The raid's start and its dials are the room's control lines: run it as room-proof.coax raid
 // does, with a local room server whose control URL is a file the script writes.
 //   coax/web/tool.sh coax/web/room/raid-check.coax ws://127.0.0.1:8871 [N] [SECONDS] [ROOM]
 // ROOM: the room's number (pair-raid-ROOM), so browser players (?relay=ws://localhost:8871&room=
@@ -14,7 +14,7 @@
 // range of the nearest raider it sees, as a new player does, and casts its level 1 kit at it: the
 // druid's Starry Wisp, Produce Flame and Ray of Frost, and Ice Knife while it has slots; the
 // Warlock's Eldritch Blast, and Chill Touch up close). LEVEL2: 1 to fail unless every seat reached
-// level 2 (the XP check, raid-proof.sh RAID_LEVEL2=1).
+// level 2 (the XP check, room-proof.coax raid RAID_LEVEL2=1).
 //   coax/web/tool.sh coax/web/room/raid-check.coax URL N SECONDS ROOM CLASS MODE LEVEL2
 // The siege (#12860): the town's watch (P1 21 to 24) are on the players' side, never a target. The
 // check follows the front from each g entry's FRONT (permille of the road, 0 the cult's camp, 1000 the

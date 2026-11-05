@@ -1,5 +1,5 @@
 // The cast rules under a bad network (GitHub #12790; spec docs/verse/2026-11-04-everglade-cast-rules.md):
-// four players in one Everglade room, each through the network cast-proof.sh puts between them and
+// four players in one Everglade room, each through the network room-proof.coax cast puts between them and
 // the room (net-proxy.coax: 250 ms round trip, 30 ms of jitter, 2% of reads lost and sent again).
 //   bot 0, a Warlock, walks and casts Eldritch Blast (120 feet) at a point behind it as it goes: one
 //     2 m inside its range from where it last heard itself (the slack takes the lag: taken), one 8 m

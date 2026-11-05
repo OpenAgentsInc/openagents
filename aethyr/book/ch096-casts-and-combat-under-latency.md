@@ -7,7 +7,7 @@
 > for the inputs sent before a cast, stops a bar whose target falls or whose
 > caster is held, and orders each tick heals before harm
 > ([room-casts.coax](../../coax/web/room/room-casts.coax)). The page runs
-> the same checks before it sends. `cast-proof.sh` runs four players at
+> the same checks before it sends. `room-proof.coax cast` runs four players at
 > 250 ms with 2% loss. The rules are Everglade's; a shared `aethyr/net`
 > module for other realms is not extracted.
 
@@ -115,7 +115,7 @@ the press feel immediate; it doesn't make the result arrive sooner.
 ```shell
 coax/bin/coax test --library apps/openagents-web/everglade-cast-rules.coax
 coax/web/room/build.sh
-coax/web/room/cast-proof.sh coax/web/room/bin/room 8881 250 30 20
+coax/web/tool.sh coax/web/room/room-proof.coax cast coax/web/room/bin/room 8881 250 30 20
 ```
 
 The first command's last line:
@@ -124,7 +124,7 @@ The first command's last line:
 4 checks, 4 passed, 0 failed
 ```
 
-`cast-proof.sh` puts the shaping proxy between four players and the room at
+`room-proof.coax cast` puts the shaping proxy between four players and the room at
 250 ms, 30 ms of jitter and 2% loss. A Warlock casts 2 m inside its range
 (taken) and 8 m past it (refused for range), and two druids cast at one wolf
 so the first's target falls in its bar (stopped as gone). It prints
@@ -134,7 +134,7 @@ so the first's target falls in its bar (stopped as gone). It prints
 
 - Every rule above has a unit check (`casts:` in `room.coax`, the
   cast-rules library, `cast sight` in `everglade5e.coax`).
-- `cast-proof.sh` holds at 250 ms with 2% loss.
+- `room-proof.coax cast` holds at 250 ms with 2% loss.
 
 ## Dependencies
 

@@ -373,7 +373,7 @@ Darian Odiodei, stays level 17 and can't be killed.
   times the multiplier. An admin's STOP pays nothing. Raiders struck down in the tick the camp
   falls still pay their XP. The watch's fallen pay no XP.
 - **One raid to level 2.** A new player who fights reaches level 2 (300 XP) in about one raid,
-  held or fallen, with 1 player or 16 (`coax/web/room/raid-proof.sh` with `RAID_MODE=fight
+  held or fallen, with 1 player or 16 (`coax/web/room/room-proof.coax raid` with `RAID_MODE=fight
   RAID_LEVEL2=1`), when it helps take the camp. Every XP number is in one place: `EV_XP_*` in `coax/web/room/room-events.coax`.
 - **The aftermath.** For 60 s after the end, raiders still standing flee to the gates and
   vanish, and Darian Odiodei's Zombies fall. At the aftermath's end, the server runs the R rebuild
@@ -501,7 +501,7 @@ instance must add less than 0.5 ms to that instance's tick. The design keeps it 
 `load.coax` (#12711) gets a raid case: 16 seats in one instance and 60 raiders fighting, which
 reports the tick's p95 with and without the raid.
 
-The raid load test runs on a local room server (`raid-proof.sh`, 16 players, Wave size 24, 2
+The raid load test runs on a local room server (`room-proof.coax raid`, 16 players, Wave size 24, 2
 waves, aggression 3), with the siege tactics (section 4.3), 2026-11-03 on an M-series Mac:
 
 | Case | Raiders | Tick rate | Tick p95 at worst | Everglade tick parts a minute | Events with no room |
@@ -544,7 +544,7 @@ XP saves the way HP does (#12715):
   time, the camp stands, and both sides lose fighters and reinforce. At the default dials,
   2026-11-04: in 30 minutes the front stayed between z -72.4 and z -71.4 (100% in the band); the
   cult lost and reinforced 363 fighters and the watch 843; the room's tick cost 0.11 ms.
-- **A local raid** (`coax/web/room/raid-proof.sh BIN [N] [SECONDS] [PORT]`): it starts a room server
+- **A local raid** (`coax/web/tool.sh coax/web/room/room-proof.coax raid BIN [N] [SECONDS] [PORT]`): it starts a room server
   built by `build.sh`, with a local key, its control lines read from a file, and nothing sent to
   the API. Then it joins N players, presses START NOW once they're in, and runs
   `raid-check.coax`. Each player walks to the square and casts Starry Wisp at the nearest raider.
@@ -587,7 +587,7 @@ Epic #12737 holds the work. Each part is its own issue, built in this order:
 | XP and levels 1 to 3, with persistence | #12739 | Done |
 | The Cultist Raid: raiders, waves, the AI and drawing them | #12740 | Done: the page draws each raider through the preview's `everglade_raider`, and a fallen one lies 7 s, then sinks |
 | Darian Odiodei: the wards, the retreat and its spells | #12741 | Server done |
-| Rewards, aftermath and the raid load test | #12742 | Rewards done; `raid-proof.sh` runs N players against a local room (below) |
+| Rewards, aftermath and the raid load test | #12742 | Rewards done; `room-proof.coax raid` runs N players against a local room (below) |
 
 ## 13. Open questions for the owner
 

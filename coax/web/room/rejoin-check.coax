@@ -14,7 +14,7 @@
 // (by the clock in the room's y) it is seated, its D's are the old wire's ("D TICK ACK F " and its own
 // p) and its inputs without HEARD are acknowledged; after it, it is refused as wire 2 is.
 // It needs the seat-ticket key (OA_ROOM_TICKET_KEY): run it as deploy.sh does, or against a local
-// room server started with the same key (raid-proof.sh's way).
+// room server started with the same key (room-proof.coax raid's way).
 //   coax/web/tool.sh coax/web/room/rejoin-check.coax [ws://localhost:8830]
 // Prints one JSON line, then "rejoins" and exits 0, or "fails" and 1.
 #load "room-socket.coax";

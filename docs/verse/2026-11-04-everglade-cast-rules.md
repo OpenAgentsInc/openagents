@@ -13,7 +13,7 @@ The code:
 - `apps/openagents-web/everglade-cast-rules.coax`: the numbers and the small rules both sides use.
 - `apps/openagents-web/everglade-cast-sight.coax`: line of sight, and how your page shows a refusal.
 - `coax/web/room/room-casts.coax`: how the room resolves a cast, phase by phase.
-- `coax/web/room/cast-check.coax` and `cast-proof.sh`: the run against a room under a bad network.
+- `coax/web/room/cast-check.coax` and `room-proof.coax cast`: the run against a room under a bad network.
 
 ## Contents
 
@@ -196,7 +196,7 @@ Unit tests, one or more for each rule:
 The run under latency, against a local room server built by `coax/web/room/build.sh`:
 
 ```sh
-coax/web/room/cast-proof.sh coax/web/room/bin/room 8881 250 30 20
+coax/web/tool.sh coax/web/room/room-proof.coax cast coax/web/room/bin/room 8881 250 30 20
 ```
 
 It puts `net-proxy.coax` between four players and the room: 250 ms round trip, 30 ms jitter, 2% of
