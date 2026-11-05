@@ -2,6 +2,7 @@
 #load "../../aethyr/render/native-host.coax";
 #load "../../aethyr/render/metal-host.coax";
 #load "../../aethyr/render/metal-package.coax";
+#load "../../aethyr/render/presentation-host.coax";
 #load "../../aethyr/render/host-surface.coax";
 #load "../../aethyr/render/image-bytes.coax";
 #load "../../aethyr/forge/pack.coax";

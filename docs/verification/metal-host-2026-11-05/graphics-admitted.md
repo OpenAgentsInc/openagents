@@ -70,6 +70,7 @@ actual observation tool, complete frozen product-source archive and this
 initial refusal are retained under
 `~/.openagents/aethyrforge/metal-host-12868/graphics-admitted-3f8/`.
 The original historical CPU constructor qualification remains separate.
-Complete current native composition, display-rate/window/room evidence and
-the common host service exits remain required; ordinary precision selection,
-the desktop default and issue states are unchanged.
+The subsequent [native selector/JPEG record](graphics-selector.md) joins
+current native composition and the shared precision selector. Display-rate,
+window/room and common host service exits remain separate; the desktop
+default and issue states are unchanged.

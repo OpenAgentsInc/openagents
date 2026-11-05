@@ -16,6 +16,7 @@ tool_main :: ()->int #export_c {
  jo_obj(o[..]);mr_field(o[..],"op","frame");for key,i:[4]string.["width","height","scale","dt"] {jo_key(o[..],key);jo_int(o[..],ifx i==0 then 320 else ifx i==1 then 180 else ifx i==2 then 1 else 0);}jo_end(o[..]);
  jo_obj(o[..]);mr_field(o[..],"op","snapshot");mr_field(o[..],"file",screen);jo_end(o[..]);
  presented_path:[4096]u8;presented:=fs_join(dir,"presented.f32",presented_path[..]);if presentation {jo_obj(o[..]);mr_field(o[..],"op","presented");mr_field(o[..],"file",presented);jo_end(o[..]);}
+ jpeg_path:[4096]u8;if args_has(a[..],"--jpeg") {jo_obj(o[..]);mr_field(o[..],"op","jpeg");mr_field(o[..],"file",fs_join(dir,"frame-image",jpeg_path[..]));mr_field(o[..],"body","{\"keep\":7}");jo_end(o[..]);}
  recovered_path:[4096]u8;recovered:=fs_join(dir,"recovered.f32",recovered_path[..]);recovery:=args_has(a[..],"--recover");
  if recovery {jo_obj(o[..]);mr_field(o[..],"op","recover");jo_end(o[..]);jo_obj(o[..]);mr_field(o[..],"op","frame");for key,i:[4]string.["width","height","scale","dt"] {jo_key(o[..],key);jo_int(o[..],ifx i==0 then 320 else ifx i==1 then 180 else ifx i==2 then 1 else 0);}jo_end(o[..]);jo_obj(o[..]);mr_field(o[..],"op","snapshot");mr_field(o[..],"file",recovered);jo_end(o[..]);}
  recovered_display_path:[4096]u8;recovered_display:=fs_join(dir,"recovered-presented.f32",recovered_display_path[..]);if recovery&&presentation {jo_obj(o[..]);mr_field(o[..],"op","presented");mr_field(o[..],"file",recovered_display);jo_end(o[..]);}

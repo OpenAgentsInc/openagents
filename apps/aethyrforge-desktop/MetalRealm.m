@@ -31,7 +31,7 @@ typedef struct {int64_t slot,generation;} MFHandle;
  NSString *directory,*error,*pageOrigin,*localOrigin;BOOL fixture,golden,still,closed,replay,wantsRecovery,clockedFrame,slotBusy[2];int slot,pending;
  uint64_t frames,draws,completedFrames,lastGpuNS,gpuEpoch,recoveries;uint32_t lastHud;int64_t recoveryReleasedLive;NSMutableArray<NSDictionary*> *effects;NSData *lastEffect;
  id<MTLDevice> device;id<MTLCommandQueue> queue;CAMetalLayer *layer;
- BOOL presentationExperiment,presentationQuantized;id<MTLTexture> presentedTexture;MFHandle presentedHandle;
+ BOOL presentationExperiment,presentationQuantized,presentationContract;coax_t_RenderPresentation presentationPlan;id<MTLTexture> presentedTexture;MFHandle presentedHandle;
  NSMutableArray<id<MTLCommandBuffer>> *inflight;
  NSMutableDictionary<NSNumber*,id<MTLTexture>> *targets;
  NSMutableDictionary<NSNumber*,NSValue*> *targetHandles;
@@ -252,9 +252,11 @@ static void blend(MTLRenderPipelineColorAttachmentDescriptor *a,coax_t_RenderBle
 }
 - (BOOL)present:(id<MTLCommandBuffer>)command drawable:(id<CAMetalDrawable>)drawable descriptor:(coax_t_RenderPresentation)p {
  if(p.status!=COAX_RenderResourceStatus_ok)return [self fail:@"Coax refused experimental presentation"];
- id<MTLTexture> destination=drawable.texture;
+ // Retain the actual UNORM result for bounded JPEG/readback effects, then
+ // copy those exact texels to the platform drawable without another conversion.
+ id<MTLTexture> destination=nil;
  if(!destination){
-  if(presentedTexture&&(presentedTexture.width!=(NSUInteger)p.display.width||presentedTexture.height!=(NSUInteger)p.display.height)){releaseHandle(self,&presentedHandle);presentedTexture=nil;}
+  if(presentedTexture&&(presentedTexture.width!=(NSUInteger)p.display.width||presentedTexture.height!=(NSUInteger)p.display.height||presentedTexture.pixelFormat!=pixel(p.display.format))){releaseHandle(self,&presentedHandle);presentedTexture=nil;}
   if(!presentedTexture){
    if(!acquire(self,2,aethyr_render_format_words(p.display.format,p.display.width,p.display.height,1,1),&presentedHandle))return [self fail:@"Presentation ledger capacity"];
    MTLTextureDescriptor *d=[MTLTextureDescriptor texture2DDescriptorWithPixelFormat:pixel(p.display.format) width:(NSUInteger)p.display.width height:(NSUInteger)p.display.height mipmapped:NO];d.usage=MTLTextureUsageRenderTarget|MTLTextureUsageShaderRead;d.storageMode=MTLStorageModeShared;presentedTexture=[device newTextureWithDescriptor:d];
@@ -273,7 +275,8 @@ static void blend(MTLRenderPipelineColorAttachmentDescriptor *a,coax_t_RenderBle
   else if(use.use.native_kind==2){id<MTLTexture> source=targets[@(p.source)];MFHandle handle;[targetHandles[@(p.source)]getValue:&handle size:sizeof handle];if(!source||!live(self,handle)){[encoder endEncoding];return [self fail:@"Presentation source is not live"];}if(vertex)[encoder setVertexTexture:source atIndex:at];if(fragment)[encoder setFragmentTexture:source atIndex:at];}
   else if(use.use.native_kind==3){if(vertex)[encoder setVertexSamplerState:sampler atIndex:at];if(fragment)[encoder setFragmentSamplerState:sampler atIndex:at];}
  }
- [encoder setVertexBytes:lengths length:sizeof lengths atIndex:29];[encoder setFragmentBytes:lengths length:sizeof lengths atIndex:29];[encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:(NSUInteger)p.vertices];[encoder endEncoding];if(drawable)[command presentDrawable:drawable];return YES;
+ [encoder setVertexBytes:lengths length:sizeof lengths atIndex:29];[encoder setFragmentBytes:lengths length:sizeof lengths atIndex:29];[encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:(NSUInteger)p.vertices];[encoder endEncoding];
+ if(drawable){id<MTLBlitCommandEncoder> copy=[command blitCommandEncoder];[copy copyFromTexture:destination sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0,0,0) sourceSize:MTLSizeMake(destination.width,destination.height,1) toTexture:drawable.texture destinationSlice:0 destinationLevel:0 destinationOrigin:MTLOriginMake(0,0,0)];[copy endEncoding];[command presentDrawable:drawable];}return YES;
 }
 - (BOOL)bind:(id<MTLRenderCommandEncoder>)e entry:(int)entry op:(coax_t_RenderOp)op media:(const coax_t_RenderMediaRect*)media images:(NSDictionary<NSNumber*,MFMedia*>*)images {
  coax_t_MetalHostInterface m=interfaces[entry];uint32_t lengths[29]={0};
@@ -299,6 +302,12 @@ static void blend(MTLRenderPipelineColorAttachmentDescriptor *a,coax_t_RenderBle
  uint64_t began=measureRows?nanoseconds():0;
  if(wantsRecovery&&![self recoverGPU])return NO;
  if(error)return NO;if(face.frame_admit&&!face.frame_admit(pending))return YES;if(slotBusy[slot])return YES;
+ if(layer&&!fixture&&!presentationExperiment){
+  int64_t format=layer.pixelFormat==MTLPixelFormatBGRA8Unorm?COAX_RenderTextureFormat_bgra8:layer.pixelFormat==MTLPixelFormatRGBA8Unorm?COAX_RenderTextureFormat_rgba8:-1;
+  coax_t_RenderHostPresentation selected=render_host_presentation(face.host_contract_version?face.host_contract_version():0,packageState.package.profile_index,(int64_t)width,(int64_t)height,format,16384);
+  presentationContract=selected.enabled;
+  if(selected.enabled){if(selected.plan.status!=COAX_RenderResourceStatus_ok)return [self fail:@"Coax refused the contract presentation surface"];presentationPlan=selected.plan;screenFormat=selected.plan.draw.format;}
+ }
  if(!fixture&&pending){id<MTLTexture> screen=targets[@(COAX_RenderTarget_screen)];if(screen&&(screen.width!=(NSUInteger)width||screen.height!=(NSUInteger)height||screen.pixelFormat!=pixel(screenFormat)))return YES;}
  // Concrete presentation availability precedes both the admitted clock and
  // the producer. A temporarily unavailable drawable consumes neither.
@@ -373,7 +382,7 @@ static void blend(MTLRenderPipelineColorAttachmentDescriptor *a,coax_t_RenderBle
    }
   }
  }
- if(encoder)[encoder endEncoding];if(presentationExperiment){if(![self present:cb drawable:drawable width:(int64_t)width height:(int64_t)height])return NO;}else if(drawable){id<MTLTexture> screen=targets[@(COAX_RenderTarget_screen)];id<MTLBlitCommandEncoder> blit=[cb blitCommandEncoder];[blit copyFromTexture:screen sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0,0,0) sourceSize:MTLSizeMake(screen.width,screen.height,1) toTexture:drawable.texture destinationSlice:0 destinationLevel:0 destinationOrigin:MTLOriginMake(0,0,0)];[blit endEncoding];[cb presentDrawable:drawable];}
+ if(encoder)[encoder endEncoding];if(presentationContract){if(![self present:cb drawable:drawable descriptor:presentationPlan])return NO;}else if(presentationExperiment){if(![self present:cb drawable:drawable width:(int64_t)width height:(int64_t)height])return NO;}else if(drawable){id<MTLTexture> screen=targets[@(COAX_RenderTarget_screen)];id<MTLBlitCommandEncoder> blit=[cb blitCommandEncoder];[blit copyFromTexture:screen sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0,0,0) sourceSize:MTLSizeMake(screen.width,screen.height,1) toTexture:drawable.texture destinationSlice:0 destinationLevel:0 destinationOrigin:MTLOriginMake(0,0,0)];[blit endEncoding];[cb presentDrawable:drawable];}
  MFFrameObservation observation={.frame=frames+1,.start_ns=began,.submit_ns=measureRows?nanoseconds():0,.input_sequence=inputSequence,.input_ns=inputNS,.x_mm=face.field_probe?face.field_probe(state,0):0,.z_mm=face.field_probe?face.field_probe(state,2):0,.width=counts.width,.height=counts.height,.scale=scale};uint64_t observedEpoch=measureEpoch;
  int submittedSlot=slot;uint64_t submittedEpoch=gpuEpoch;slotBusy[slot]=YES;pending++;slot=(slot+1)%2;[inflight addObject:cb];__weak MFRealm *weak=self;[cb addCompletedHandler:^(id<MTLCommandBuffer> completed){uint64_t finished=observation.start_ns?nanoseconds():0;dispatch_async(dispatch_get_main_queue(),^{MFRealm *r=weak;if(!r||r->closed||r->gpuEpoch!=submittedEpoch)return;[r->inflight removeObject:completed];r->slotBusy[submittedSlot]=NO;r->pending--;if(completed.error){if(completed.error.code==MTLCommandBufferErrorDeviceRemoved)r->wantsRecovery=YES;else[r fail:completed.error.localizedDescription];}else{r->completedFrames++;r->lastGpuNS=(uint64_t)((completed.GPUEndTime-completed.GPUStartTime)*1e9);if(observation.start_ns&&r->measureRows&&r->measureEpoch==observedEpoch){MFFrameObservation row=observation;row.complete_ns=finished;row.gpu_ns=r->lastGpuNS;if(r->measureRows.length/sizeof(row)<4096)[r->measureRows appendBytes:&row length:sizeof(row)];else r->measureDropped++;}}});}];[cb commit];frames++;draws=calls;
  for(MFBuffer *b in buffers)b->upload=aethyr_render_upload_ack(b->upload,true);return YES;
@@ -476,9 +485,9 @@ static bool snapshotTexture(MFRealm *r,id<MTLTexture> t,const char *path){
  CGColorSpaceRelease(colour);CGDataProviderRelease(provider);free(half);free(full);return ok;
 }
 bool mf_snapshot(void *host,const char *path){MFRealm *r=(__bridge MFRealm*)host;return snapshotTexture(r,r->targets[@(COAX_RenderTarget_screen)],path);}
-bool mf_snapshot_presented(void *host,const char *path){MFRealm *r=(__bridge MFRealm*)host;return r->presentationExperiment&&snapshotTexture(r,r->presentedTexture,path);}
+bool mf_snapshot_presented(void *host,const char *path){MFRealm *r=(__bridge MFRealm*)host;return (r->presentationExperiment||r->presentationContract)&&snapshotTexture(r,r->presentedTexture,path);}
 bool mf_snapshot_presented_raw(void *host,const char *path){
- MFRealm *r=(__bridge MFRealm*)host;id<MTLTexture> t=r->presentedTexture;if(!r->presentationExperiment||!t||(t.pixelFormat!=MTLPixelFormatBGRA8Unorm&&t.pixelFormat!=MTLPixelFormatRGBA8Unorm))return false;
+ MFRealm *r=(__bridge MFRealm*)host;id<MTLTexture> t=r->presentedTexture;if(!(r->presentationExperiment||r->presentationContract)||!t||(t.pixelFormat!=MTLPixelFormatBGRA8Unorm&&t.pixelFormat!=MTLPixelFormatRGBA8Unorm))return false;
  id<MTLCommandBuffer> end=[r->queue commandBuffer];[end commit];[end waitUntilCompleted];if(end.error)return false;
  NSMutableData *raw=[NSMutableData dataWithLength:t.width*t.height*4];[t getBytes:raw.mutableBytes bytesPerRow:t.width*4 fromRegion:MTLRegionMake2D(0,0,t.width,t.height) mipmapLevel:0];return [raw writeToFile:[NSString stringWithUTF8String:path] atomically:YES];
 }
@@ -490,7 +499,7 @@ bool mf_media_snapshot(void *host,const char *url,const char *path){
 const uint8_t *mf_media_notice(void *host,size_t *count){MFRealm *r=(__bridge MFRealm*)host;*count=r->lastMediaNotice.length;return r->lastMediaNotice.bytes;}
 int64_t mf_media_info(void *host,const char *url,int32_t field){MFRealm *r=(__bridge MFRealm*)host;MFMedia *m=r->mediaCache[[NSString stringWithUTF8String:url]];if(!m)return 0;switch(field){case 0:return 1;case 1:return m->texture&&!m->failed;case 2:return m->failed;case 3:return m->width;case 4:return m->height;default:return -1;}}
 const uint8_t *mf_frame_jpeg(void *host,size_t *count){
- *count=0;MFRealm *r=(__bridge MFRealm*)host;id<MTLTexture> t=r->targets[@(COAX_RenderTarget_screen)];if(!t||t.pixelFormat!=MTLPixelFormatBGRA8Unorm)return NULL;
+ *count=0;MFRealm *r=(__bridge MFRealm*)host;id<MTLTexture> t=r->presentedTexture?:r->targets[@(COAX_RenderTarget_screen)];if(!t||t.pixelFormat!=MTLPixelFormatBGRA8Unorm)return NULL;
  id<MTLCommandBuffer> end=[r->queue commandBuffer];[end commit];[end waitUntilCompleted];if(end.error)return NULL;
  coax_t_HostImageExtent size=hpi_extent(t.width,t.height);if(size.width<1||size.height<1)return NULL;
  NSMutableData *pixels=[NSMutableData dataWithLength:t.width*t.height*4];[t getBytes:pixels.mutableBytes bytesPerRow:t.width*4 fromRegion:MTLRegionMake2D(0,0,t.width,t.height) mipmapLevel:0];
