@@ -1,0 +1,25 @@
+// Frozen SDK-codec observation; this does not admit ordinary decoder allocations.
+#load "../../coax/web/wasm-chrome.coax";
+#load "pcm-compare.coax";
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])!=3 {tool_errln("usage: check-browser-codec LOCAL_URL NATIVE_DECODE.json NEW_OUTPUT_DIR");return 2;}
+ url:=args_at(a[..],0);dir:=args_at(a[..],2);if url.count<17||url[0..<17]!="http://127.0.0.1:"||!fs_mkdir(dir) {return 2;}
+ meta:[65536]u8;nodes:[8192]JvNode;m:[1]Jv;n:=fs_read(args_at(a[..],1),meta[..]);if n<0||!jv_parse(m[..],cast(string)meta[0..<n],nodes[..]) {return 1;}
+ c:[1]Cdp;if !cdp_launch(c[..],160,90,"coax-codec-frozen-") {return 1;}defer {cdp_close(c[..]);}
+ js:[8192]u8;o:[1]Jo;jo_start(o[..],js[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],url);jo_end(o[..]);nav:=cdp_call(c[..],"Page.navigate",jo_text(o[..]),CDP_CALL_MS);
+ glue:[65536]u8;gn:=fs_read(WC_HOST_FILE,glue[..]);if gn<0||wc_eval(c[..],cast(string)glue[0..<gn])!="ready" {return 1;}gn=fs_read("aethyr/host/tests/audio-codec.js",glue[..]);if gn<0||wc_eval(c[..],cast(string)glue[0..<gn])!="ready" {return 1;}
+ report:[65536]u8;r:[1]Jo;jo_start(r[..],report[..]);jo_obj(r[..]);jo_key(r[..],"schema");jo_str(r[..],"aethyr.host.sdk-codec-observed.v1");jo_key(r[..],"assets");jo_arr(r[..]);passed:=true;count:=0;
+ raw:[8388608]u8;native:[8388608]u8;compressed:[8388608]u8;text:[65536]u8;paths:[3][4096]u8;namebuf:[128]u8;filename:[256]u8;
+ assets:=jv_get(m[0],0,"rows");for i:0..<jv_len(m[0],assets) {
+  row:=jv_at(m[0],assets,i);nn:=jv_str(m[0],jv_get(m[0],row,"name"),namebuf[..]);sn:=jv_str(m[0],jv_get(m[0],row,"source"),paths[0][..]);fn:=jv_str(m[0],jv_get(m[0],row,"file"),paths[1][..]);samples:=jv_int(m[0],jv_get(m[0],row,"samples"),0);channels:=jv_int(m[0],jv_get(m[0],row,"channels"),0);
+  if nn<1||sn<1||fn<1||samples<1||samples>2097152||(channels!=1&&channels!=2)||samples%channels!=0 {return 1;}
+  source_n:=fs_read(cast(string)paths[0][0..<sn],compressed[..]);native_n:=fs_read(cast(string)paths[1][0..<fn],native[..]);if source_n<1||native_n!=samples*4||!wc_file(c[..],"input.ogg",cast(string)compressed[0..<source_n]) {return 1;}
+  jo_start(o[..],js[..]);jo_put(o[..],"hostCodec.decode('input.ogg',");jo_int(o[..],samples/channels);jo_put(o[..],",");jo_int(o[..],channels);jo_put(o[..],")");value:=cdp_evaluate(c[..],jo_text(o[..]));d:=cdp_doc(c[..]);if value<0||jv_int(d,jv_get(d,value,"frames"),0)!=samples/channels||jv_int(d,jv_get(d,value,"channels"),0)!=channels||jv_int(d,jv_get(d,value,"rate"),0)!=48000 {tool_errln("SDK codec shape differs; no sample alignment applied.");return 1;}
+  at:=0;while at<samples {words:=ifx samples-at>8192 then 8192 else samples-at;jo_start(o[..],js[..]);jo_put(o[..],"hostCodec.read(");jo_int(o[..],at);jo_put(o[..],",");jo_int(o[..],words);jo_put(o[..],")");value=cdp_evaluate(c[..],jo_text(o[..]));if value<0 {return 1;}bn:=jv_str(cdp_doc(c[..]),value,text[..]);if bn<0||b64_decode(cast(string)text[0..<bn],raw[at*4..<(at+words)*4])!=words*4 {return 1;}at+=words;}
+  name:=cast(string)namebuf[0..<nn];q:=hpcm_compare_words(raw[0..<samples*4],native[0..<native_n]);ok:=q.shape&&q.nonfinite==0&&q.over==0;passed=passed&&ok;count+=1;
+  jo_start(o[..],filename[..]);jo_put(o[..],name);jo_put(o[..],".f32");if !fs_write(fs_join(dir,jo_text(o[..]),paths[2][..]),cast(string)raw[0..<samples*4]) {return 1;}
+  jo_start(o[..],filename[..]);jo_put(o[..],name);jo_put(o[..],".ogg");if !fs_write(fs_join(dir,jo_text(o[..]),paths[2][..]),cast(string)compressed[0..<source_n]) {return 1;}
+  jo_obj(r[..]);jo_key(r[..],"name");jo_str(r[..],name);jo_key(r[..],"channels");jo_int(r[..],channels);jo_key(r[..],"samples");jo_int(r[..],samples);jo_key(r[..],"over_2pow_minus20");jo_int(r[..],q.over);jo_key(r[..],"nonfinite");jo_int(r[..],q.nonfinite);jo_key(r[..],"max_abs_f64_bits");jo_int(r[..],cast(int)f64_bits(q.max_abs));jo_key(r[..],"passed");jo_bool(r[..],ok);jo_end(r[..]);print("SDK codec %: % words, maxabs %, % over2^-20.\n",name,samples,q.max_abs,q.over);
+ }
+ jo_end(r[..]);jo_key(r[..],"count");jo_int(r[..],count);passed=passed&&count>0;jo_key(r[..],"passed");jo_bool(r[..],passed);jo_end(r[..]);if r[0].bad||!fs_write(fs_join(dir,"comparison.json",paths[2][..]),jo_text(r[..])) {return 1;}return ifx passed then 0 else 1;
+}

@@ -1,0 +1,14 @@
+// Unshifted diagnostic windows; the unchanged PCM comparator is the gate.
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/json/json.coax";
+#load "pcm-compare.coax";
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])!=3 {return 2;}left:[8388608]u8;right:[8388608]u8;n:=fs_read(args_at(a[..],0),left[..]);rn:=fs_read(args_at(a[..],1),right[..]);if n<1||n!=rn||n%4!=0 {return 1;}
+ out:[262144]u8;o:[1]Jo;jo_start(o[..],out[..]);jo_obj(o[..]);jo_key(o[..],"words");jo_int(o[..],n/4);jo_key(o[..],"windows_120_words");jo_arr(o[..]);first:= -1;last:= -1;total:=0;
+ for at:0..<(n/4+119)/120 {start:=at*120;end:=ifx start+120<n/4 then start+120 else n/4;q:=hpcm_compare_words(left[start*4..<end*4],right[start*4..<end*4]);if q.over==0 {continue;}total+=q.over;
+  for i:start..<end {av:=f64(f32_from_bits(hpcm_bits(left[..],i)));bv:=f64(f32_from_bits(hpcm_bits(right[..],i)));if abs(av-bv)>HOST_PCM_TOL {if first<0 {first=i;}last=i;}}
+  jo_obj(o[..]);jo_key(o[..],"at");jo_int(o[..],start);jo_key(o[..],"over");jo_int(o[..],q.over);jo_key(o[..],"max_abs_f64_bits");jo_int(o[..],cast(int)f64_bits(q.max_abs));jo_end(o[..]);
+ }
+ jo_end(o[..]);jo_key(o[..],"over");jo_int(o[..],total);jo_key(o[..],"first_over");jo_int(o[..],first);jo_key(o[..],"last_over");jo_int(o[..],last);jo_end(o[..]);return ifx !o[0].bad&&fs_write(args_at(a[..],2),jo_text(o[..])) then 0 else 1;
+}
