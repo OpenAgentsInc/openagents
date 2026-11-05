@@ -20,8 +20,10 @@ changelog 160000
 characters 100000
 chat 200000
 connect-pylon 80000
-deadgears 450000
-droprealm 180000
+# the host ABI every renderer carrier exports grew about 11 KB on 11-05 (#12869: transport, HTTP and sockets 3b02a1b75b, e6d471d805; lifecycle 259490d9f5; presentation 0f1bb416be): 451,253 measured; about 5% room
+deadgears 480000
+# the host ABI every renderer carrier exports grew about 11 KB on 11-05 (#12869: transport, HTTP and sockets 3b02a1b75b, e6d471d805; lifecycle 259490d9f5; presentation 0f1bb416be): 168,145 before, 180,101 after; about 5% room
+droprealm 190000
 # everglade.coax (the base world everglade5e and fivemmo build on): 1,813,705 measured 2026-11-04 after the day's room work (#12794, #12862, #12877, #12887); about 5% room
 everglade 1910000
 # /worlds/everglade (everglade5e.coax): 2,032,230 measured 2026-11-04 after #12887; 2,166,756 on 2026-11-05 before the PARTY pane, 2,175,433 with it (#12852); 2,181,339 before the page's own raid battle and rules battle went (#12908), 2,041,247 after; about 5% room
@@ -32,7 +34,8 @@ fairy 660000
 fivelab 590000
 # loads everglade.coax, so carries its growth: 1,461,096 measured (c580b0be3f); 1,549,370 after the rooms' WANTED responders, incoming casts and downed bodies, Long Rest, status words, doors and talk (#12892)
 fivemmo 1630000
-fixture 190000
+# the host ABI every renderer carrier exports grew about 11 KB on 11-05 (#12869: transport, HTTP and sockets 3b02a1b75b, e6d471d805; lifecycle 259490d9f5; presentation 0f1bb416be): 182,826 before, 194,755 after; about 5% room
+fixture 210000
 garden 270000
 gridcrowd 60000
 icecream 500000
@@ -55,10 +58,12 @@ speedrunhud 120000
 splash 90000
 splatlab 120000
 stair 290000
-verse 210000
+# the host ABI every renderer carrier exports grew about 11 KB on 11-05 (#12869: transport, HTTP and sockets 3b02a1b75b, e6d471d805; lifecycle 259490d9f5; presentation 0f1bb416be): 215,662 measured; about 5% room
+verse 230000
 villa 520000
 voice 190000
-watchtower 290000
+# the host ABI every renderer carrier exports grew about 11 KB on 11-05 (#12869: transport, HTTP and sockets 3b02a1b75b, e6d471d805; lifecycle 259490d9f5; presentation 0f1bb416be): 293,263 measured; about 5% room
+watchtower 310000
 waterlab 190000
 # The acknowledged three-phase block/transaction recording adds 156 KiB of data.
 # Snapshot admission, bounded HTTP pages, source controls and graph paging add
