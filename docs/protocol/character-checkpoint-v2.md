@@ -57,10 +57,12 @@ without bound while paused. A planned drain freezes and captures final state,
 and succeeds only after the final checkpoints are accepted. Forced termination
 reports remaining unsaved characters and follows the same loss bound.
 
-Healthy-service objectives: capture every 5 seconds, and restore to the first
-authoritative socket state within 60 seconds, with matching builds, at most
+Healthy-service objectives: capture every 5 seconds, and restore from the start
+of a replacement process to its first authoritative socket state within 60
+seconds, including startup, ticket issuance and join, with matching builds, at most
 256 reserved characters, successful API responses within 100 ms and the host
-being scheduled. These are separate from browser presentation and store/disk
+being scheduled. Fault detection and browser presentation are measured separately
+and are not included. These are separate from store/disk
 or regional-disaster guarantees. Fault verification records measured loss,
 acceptance and recovery time; an unavailable store has no finite recovery-time
 objective. Deployment remains an owner action; tests use scratch stores only.

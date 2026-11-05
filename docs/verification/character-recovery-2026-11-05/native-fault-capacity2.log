@@ -1,0 +1,44 @@
+nip98 diff: 33286 cases (925 accepted by both, 16 numbers past the end), 0 disagreements
+/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/tmp.wg37BuWslv/runner-sign.c:1882:9: warning: variable 'l_written' set but not used [-Wunused-but-set-variable]
+ 1882 |   _Bool l_written = coax_p_ss_write((l_challenge).value, coax_mkview_v_u8((((*coax_elem_v_t_SignWork(l_work, INT64_C(0), 492))).challenge).e, 32, 0, 32, 492));
+      |         ^
+1 warning generated.
+  ok    health answers with a database round trip
+  ok    health reports exact deployment identity
+  ok    every migration applied once
+  ok    an unknown path is a 404
+  ok    resume2: ticket issuance succeeds
+  ok    resume2: first join is an authenticated v4 envelope with no capture
+  ok    resume2: unversioned reports are fenced from the first durable ticket, before its first capture
+  ok    resume2: full dead body and spent resources commit before the receipt
+  ok    resume2: a lost reply retry keeps its first acceptance
+  ok    resume2: a separate connection sees the complete committed state
+  ok    resume2: ticket issuance succeeds
+  ok    resume2: a newly owned ticket returns the complete durable dead capture
+  ok    resume2: obsolete process cannot save after the next ticket
+  ok    resume2: a new owner cannot reduce the cumulative XP floor
+  ok    resume2: the new owner starts a fresh process revision
+  ok    resume2: a newer legacy XP report cannot strand an immutable same-owner capture
+  ok    resume2: ticket issuance succeeds
+  ok    resume2: account linking carries the durable body and fences its old owner
+  ok    resume2: the pre-link process cannot overwrite the account checkpoint
+capacity2 batch=1 joined=16
+capacity2 batch=2 joined=32
+capacity2 batch=3 joined=48
+capacity2 batch=4 joined=64
+capacity2 batch=5 joined=80
+capacity2 batch=6 joined=96
+capacity2 batch=7 joined=112
+capacity2 batch=8 joined=128
+capacity2 batch=9 joined=144
+capacity2 batch=10 joined=160
+capacity2 batch=11 joined=176
+capacity2 batch=12 joined=192
+capacity2 batch=13 joined=208
+capacity2 batch=14 joined=224
+capacity2 batch=15 joined=240
+capacity2 batch=16 joined=256
+  ok    capacity2: all 256 unaccepted captures survive their sockets and grace bodies
+  ok    capacity2: the 257th character is refused by the outbox with a free simulation seat
+Character checkpoint profile 2: 17 checks, 0 failed
+api: checkpoint2 checks passed
