@@ -12,6 +12,14 @@ uint32_t coaxial_state_size(void);
 uint32_t coaxial_max_vertices(void);
 uint32_t coaxial_vertex_floats(void);
 uint32_t coaxial_uniform_floats(void);
+// Optional synthesized audio. The storage pair names the complete physical
+// allocation before any NAME ADDRESS BYTES metadata span is copied.
+uint32_t coaxial_sound_bank(uint32_t state);
+uint32_t coaxial_sound_bank_len(uint32_t state);
+uint32_t coaxial_sound_bank_storage(uint32_t state);
+uint32_t coaxial_sound_bank_storage_bytes(uint32_t state);
+uint32_t coaxial_sounds(uint32_t state);
+uint32_t coaxial_sounds_len(uint32_t state);
 void coaxial_golden(uint32_t on);
 uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, float w, float h, float scale, float dt, uint32_t still);
 uint32_t coaxial_draws(uint32_t state);

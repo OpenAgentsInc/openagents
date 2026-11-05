@@ -1,0 +1,78 @@
+// Synthesized-bank identity and measured producer-span admission. SDKs copy
+// compressed bytes only after this receipt, then apply the shared WAV plan.
+#load "../audio/host-voice.coax";
+#authority;
+HOST_AUDIO_BANK_ASSETS :: 128;
+HOST_AUDIO_BANK_SOURCE_BYTES :: 8388608;
+HostAudioBankNumber :: struct {valid:bool;value:u64;}
+HostAudioBankSpan :: struct {valid:bool;name:string;address:u64;bytes:int;}
+HostAudioBankRow :: struct {name:[48]u8;name_bytes:int;address:u64;bytes:int;}
+HostAudioBank :: struct {rows:[HOST_AUDIO_BANK_ASSETS]HostAudioBankRow;count:int;}
+
+#test "audio bank decimal words preserve every unsigned boundary without wrap or prefix parsing" {
+ for text,i:[5]string.["0","1","00042","18446744073709551614","18446744073709551615"] {
+  expected:=[5]u64.[0,1,42,18446744073709551614,18446744073709551615];q:=hab_number(text);#assert q.valid&&q.value==expected[i];
+ }
+ for text:[9]string.["","-1","+1","1x","1.0"," 1",":","18446744073709551616","999999999999999999999"] {q:=hab_number(text);#assert !q.valid&&q.value==0;}
+}
+#test "audio bank spans retain exact names and measured bytes at nonzero physical bases" {
+ q:=hab_span("fire-hit 4096 44",4096,44);#assert q.valid&&q.name=="fire-hit"&&q.address==4096&&q.bytes==44;
+ q=hab_span("\troom 004097 00043\r",4096,44);#assert q.valid&&q.name=="room"&&q.address==4097&&q.bytes==43;
+ q=hab_span("x 18446744073709551614 1",18446744073709551614,1);#assert q.valid&&q.address==18446744073709551614&&q.bytes==1;
+ q=hab_span("x 1 8388608",1,8388608);#assert q.valid&&q.bytes==8388608;
+ #assert !hab_span("x 1 8388609",1,8388609).valid;
+ for line:[14]string.["","x 4096","x 4096 44 extra","../x 4096 44","X 4096 44","x 0 44","x -1 44","x 4096 -1","x 4096 0","x 4096 8388609","x 4095 1","x 4140 1","x 4097 44","x 18446744073709551616 1"] {
+  q=hab_span(line,4096,44);#assert !q.valid&&q.name==""&&q.address==0&&q.bytes==0;
+ }
+ #assert !hab_span("x 1 1",0,0).valid&&!hab_span("x 1 1",18446744073709551615,2).valid;
+}
+#test "audio bank registry copies borrowed identity refuses duplicates and exposes exact live rows" {
+ s:[1]HostAudioBank;line:=[9]u8.[120,32,52,48,57,54,32,52,52];
+ #assert hab_insert(s[..],cast(string)line[..],4096,44)==0&&s[0].count==1;
+ line[0]='y';#assert hab_find(s[..],"x")==0&&hab_find(s[..],"y")== -1;
+ q:=hab_source(s[..],0);#assert q.valid&&q.name=="x"&&q.address==4096&&q.bytes==44;
+ #assert hab_insert(s[..],"x 4097 43",4096,44)== -1&&s[0].count==1&&hab_source(s[..],0).address==4096;
+ #assert hab_insert(s[..],"y 4096 45",4096,44)== -1&&s[0].count==1;
+ #assert !hab_source(s[..],-1).valid&&!hab_source(s[..],1).valid;
+ #assert hab_insert(s[..],"y 4097 43",4096,44)==1&&hab_find(s[..],"y")==1;
+ hab_reset(s[..]);#assert s[0].count==0&&hab_find(s[..],"x")== -1&&!hab_source(s[..],0).valid;
+ for row:s[0].rows {#assert row.name_bytes==0&&row.address==0&&row.bytes==0;for byte:row.name {#assert byte==0;}}
+}
+#test "audio bank physical identity capacity includes the final ticket and all forty eight name bytes" {
+ s:[1]HostAudioBank;names:[128][4]u8;lines:[128][12]u8;
+ for i:0..<128 {
+  names[i][0]='s';names[i][1]=cast(u8)('0'+i/100);names[i][2]=cast(u8)('0'+(i/10)%10);names[i][3]=cast(u8)('0'+i%10);
+  for j:0..<4 {lines[i][j]=names[i][j];}tail:=" 4096 44";for byte,j:tail {lines[i][4+j]=byte;}
+  #assert hab_insert(s[..],cast(string)lines[i][..],4096,44)==i&&hab_find(s[..],cast(string)names[i][..])==i;
+  #assert hab_source(s[..],i).name==cast(string)names[i][..];
+ }
+ #assert s[0].count==128&&hab_insert(s[..],"extra 4096 44",4096,44)== -1&&!hab_source(s[..],128).valid;
+ hab_reset(s[..]);long:[56]u8;for i:0..<48 {long[i]='z';}tail:=" 4096 44";for byte,j:tail {long[48+j]=byte;}
+ #assert hab_insert(s[..],cast(string)long[..],4096,44)==0&&hab_source(s[..],0).name.count==48;
+ for byte:hab_source(s[..],0).name {#assert byte=='z';}
+}
+hab_number :: (word:string)->HostAudioBankNumber {
+ if word.count==0 {return HostAudioBankNumber.{};}v:u64=0;maximum:u64=18446744073709551615;
+ for byte:word {if byte<'0'||byte>'9' {return HostAudioBankNumber.{};}digit:=u64(byte-'0');if v>(maximum-digit)/10 {return HostAudioBankNumber.{};}v=v*10+digit;}
+ return HostAudioBankNumber.{valid=true,value=v};
+}
+hab_span :: (line:string,base:u64,capacity:u64)->HostAudioBankSpan #export_c {
+ words:=audio_host_words(line);if !words.ok||words.count!=3||!apv_asset_name(words.words[0]) {return HostAudioBankSpan.{};}
+ a:=hab_number(words.words[1]);b:=hab_number(words.words[2]);
+ maximum:u64=18446744073709551615;
+ // Invalid decimal words have value zero, which is refused for both fields.
+ if a.value==0||b.value<1||b.value>HOST_AUDIO_BANK_SOURCE_BYTES||capacity>maximum-base||a.value<base {return HostAudioBankSpan.{};}
+ offset:=a.value-base;if b.value>capacity {return HostAudioBankSpan.{};}if offset>capacity-b.value {return HostAudioBankSpan.{};}
+ return HostAudioBankSpan.{valid=true,name=words.words[0],address=a.value,bytes=int(b.value)};
+}
+hab_find :: (s:[]HostAudioBank,name:string)->int #export_c {
+ for i:0..<s[0].count {row:=s[0].rows[i];if name==cast(string)row.name[0..<row.name_bytes] {return i;}}return -1;
+}
+hab_insert :: (s:[]HostAudioBank,line:string,base:u64,capacity:u64)->int #export_c {
+ q:=hab_span(line,base,capacity);if !q.valid||s[0].count==HOST_AUDIO_BANK_ASSETS||hab_find(s,q.name)>=0 {return -1;}
+ id:=s[0].count;row:HostAudioBankRow;for byte,i:q.name {row.name[i]=byte;}row.name_bytes=q.name.count;row.address=q.address;row.bytes=q.bytes;s[0].rows[id]=row;s[0].count+=1;return id;
+}
+hab_source :: (s:[]HostAudioBank,id:int)->HostAudioBankSpan #export_c {
+ if id<0||id>=s[0].count {return HostAudioBankSpan.{};}row:=s[0].rows[id];return HostAudioBankSpan.{valid=true,name=cast(string)s[0].rows[id].name[0..<row.name_bytes],address=row.address,bytes=row.bytes};
+}
+hab_reset :: (s:[]HostAudioBank) #export_c {s[0]=HostAudioBank.{};}

@@ -799,6 +799,10 @@ EXPORT("coaxial_sound_bank_len") uint32_t coaxial_sound_bank_len(cx_face_addr st
   return n;
 }
 EXPORT("coaxial_sound_bank") cx_face_addr coaxial_sound_bank(cx_face_addr state) { (void)state; return (cx_face_addr)(uintptr_t)sound_list; }
+// Physical borrowed bank storage. V1 hosts admit every metadata span against
+// this measured allocation before copying or decoding its WAV bytes.
+EXPORT("coaxial_sound_bank_storage") cx_face_addr coaxial_sound_bank_storage(cx_face_addr state) { (void)state; return (cx_face_addr)(uintptr_t)sound_bank; }
+EXPORT("coaxial_sound_bank_storage_bytes") uint32_t coaxial_sound_bank_storage_bytes(cx_face_addr state) { (void)state; return sizeof sound_bank; }
 // A check's cue (aethyr/tests/everglade-sound.coax, through host.js coaxial.audio.probe on this machine).
 EXPORT("coaxial_sound_probe") int32_t coaxial_sound_probe(cx_face_addr state, int32_t slot, float right, float ahead, float up) {
   return (int32_t)everglade_sound_probe(at(state), slot, right, ahead, up);
