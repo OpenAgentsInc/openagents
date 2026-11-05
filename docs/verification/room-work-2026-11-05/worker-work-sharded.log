@@ -1,0 +1,2 @@
+wasm-size: everglade-room-sharded is 1025190 bytes and has no size budget: add a line "everglade-room-sharded BYTES" to apps/openagents-web/wasm-budgets.txt
+built /private/tmp/overload-12841/everglade-room-sharded.wasm (1025190 bytes)

@@ -154,6 +154,7 @@ rl_join :: (v: [] RmServer, conn: int, request: string) -> int {
       return st_refuse(v, ifx !tk.ok then ST_TICKET else ifx tk.shard != v[0].shard then ST_SHARD else ST_KICKED);
     }
   }
+  if v[0].relays[r].limited&&!rm_work_admit(v,eg_room_at(v,r)){return st_refuse(v,ST_FULL);}
   // the player's seat held for them since their socket closed, or the seat of their other socket here
   // silent for RL_STALE_MS (a phone that changed networks, a tab that slept): this join takes it back,
   // so no twin of them stands in the town (#12792). A socket of theirs still talking (another tab) stays.

@@ -37,7 +37,7 @@ rc_hear :: (v: [] RmServer, k: int, seat: int, seq: int, slot: int, ax: f32, ay:
   if free < 0 || !cb_admit(owned) { return false; }
   v[0].eg[k].cast_order += 1;
   v[0].eg[k].casts[free] = EgCast.{on = true, seat = seat, slot = slot, x = ax, y = ay, z = az, tgt = tgt, seq = seq, mode = mode,
-                                   phase = RC_WAIT, heard = v[0].eg[k].tick, order = v[0].eg[k].cast_order};
+                                   phase = RC_WAIT, heard = v[0].eg[k].tick, queued_ms=v[0].mono_ms, order = v[0].eg[k].cast_order};
   return true;
 }
 // Whether cast c may start now (cr_ready on its seat's queue).

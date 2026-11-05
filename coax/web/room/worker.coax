@@ -6,6 +6,8 @@
 // The C of each unit is kept under the SHA-256 of the compiler and the unit's #load closure
 // (COAXIAL_WASM_CACHE, default ~/.cache/coax-wasm; empty for none), so a build whose sources didn't
 // change compiles no Coax. COAXIAL_MODE=dev links at -O1 without LTO, as wasm.sh does.
+// COAX_ROOM_KEEP_C=DIR retains these same C/header units and their compiler/key
+// manifest for native qualification. COAX_ROOM_C_ONLY=1 stops after retention.
 #import "Basic";
 #load "../../lib/sys/tool.coax";
 #load "../../lib/sys/fs.coax";
@@ -272,6 +274,25 @@ wk_build :: (root: string, coax: string, clang: string, sysroot_dir: string, res
       fin: [1] Wk; wk_s(fin[..], cache); wk_s(fin[..], "/"); wk_s(fin[..], key); wk_s(fin[..], ext);
       if !wk_copy(wk_text(from[..]), wk_text(tmp[..]), buf[..]) || !fs_rename(wk_text(tmp[..]), wk_text(fin[..])) { tool_errln("worker: can't keep a unit's C in the cache"); return 1; }
     }
+  }
+  keep_b:[FS_PATH_MAX]u8;keep:=proc_getenv("COAX_ROOM_KEEP_C",keep_b[..]);
+  only_b:[8]u8;only:=proc_getenv("COAX_ROOM_C_ONLY",only_b[..])=="1";
+  if only&&keep.count==0{tool_errln("worker: C-only needs COAX_ROOM_KEEP_C");return 2;}
+  if keep.count>0{
+    if !fs_mkdir(keep)&&fs_kind(keep)!=2{tool_errln("worker: cannot make retained C directory");return 1;}
+    manifest:[1]Wk;wk_s(manifest[..],"compiler ");wk_s(manifest[..],compiler_sum);wk_s(manifest[..],"\n");
+    for ui:0..<6{n:=wk_name(WK_UNITS[ui]);
+      wk_s(manifest[..],WK_UNITS[ui]);wk_s(manifest[..]," ");
+      wk_s(manifest[..],ifx keyed[ui] then cast(string)keys[ui][..] else "uncached");wk_s(manifest[..],"\n");
+      for ext:[2]string.[".c",".h"]{
+        from:[1]Wk;wk_s(from[..],work);wk_s(from[..],"/");wk_s(from[..],n);wk_s(from[..],ext);
+        dest:[1]Wk;wk_s(dest[..],keep);wk_s(dest[..],"/");wk_s(dest[..],n);wk_s(dest[..],ext);
+        if !wk_copy(wk_text(from[..]),wk_text(dest[..]),buf[..]){tool_errln("worker: cannot retain generated C");return 1;}
+      }
+    }
+    dest:[1]Wk;wk_s(dest[..],keep);wk_s(dest[..],"/sources.txt");
+    if !fs_write(wk_text(dest[..]),wk_text(manifest[..])){return 1;}
+    if only{print("retained native C in %\n",keep);return 0;}
   }
   // The room's unit and the city's both carry apps/openagents-web/analytics.coax's exports (build.sh
   // makes the room's copies local to it): here the room's are renamed in its object, room_dup_NAME.

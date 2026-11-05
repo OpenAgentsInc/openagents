@@ -107,6 +107,8 @@ static bool world_of(int k) {
   }
   return true;
 }
+bool world_prepared(int k) { return k >= 0 && k < WORLD_ROOMS && world[k] && river[k] && pieces[k]; }
+bool world_prepare(int k) { return world_of(k) && world_prepared(k); }
 bool world_forge_open(int k, float x, float z) {
   return world_of(k) && everglade_forge_open(at(k), x, z);
 }

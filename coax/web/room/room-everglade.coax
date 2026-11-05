@@ -179,11 +179,12 @@ EgEnd :: struct { seq: int; slot: int; }
 // question this tick and answer (0 none, 1 clear, 2 blocked).
 EgCast :: struct {
   on: bool; seat: int; slot: int; x: f32; y: f32; z: f32; tgt: int; due: int;
-  seq: int; mode: int; phase: int; heard: int; start: int; release: int; order: int; helps: bool; seed: int;
+  seq: int; mode: int; phase: int; heard: int; queued_ms:int; start: int; release: int; order: int; helps: bool; seed: int;
   ask: int = -1; sight: int;
   hp0: int; mx: f32; mz: f32;   // a Repair's: its caster's HP and feet at its start (hurt or moved, it stops)
 }
 EgRoom :: struct {
+  work:[1]WorkBudget;
   forge_version:int=-1;
   stale_n: int;        // hellos refused for another WIRE_VERSION (#12788)
   old_n: int;          // seats on the old wire, its window open (room-oldwire.coax)
@@ -291,6 +292,7 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
   for q: 0..<EG_ROOMS {
     if v[0].eg[q].live { continue; }
     v[0].eg[q].live = true; v[0].eg[q].relay = r; v[0].eg[q].tick = 0; v[0].eg[q].cache_tick = -1;
+    v[0].eg[q].work[0]=WorkBudget.{};
     for t: 0..<WIRE_BASES { v[0].eg[q].hist[0].tick[t] = -1; }
     // its entities' lives numbered its own (a restart, or this slot's last room, never repeats one: #12835)
     wire_hist_scope(v[0].eg[q].hist[..], v[0].wall_ms + r * 7919);
@@ -738,6 +740,7 @@ eg_heard_cast :: (v: [] RmServer, k: int, seat: int, text: string) {
   if a.kind == FB_WORLD && !cr_repair(slot) { eg_refuse(v, k, seat, seq, "slot"); return; }   // R is Repair (everglade-repair.coax)
   if !ev_may_cast(v, k, seat, slot, a) { eg_refuse(v, k, seat, seq, "level"); return; }   // levels 1 to 3 (room-events.coax)
   if !(wc.ax == wc.ax) || !(wc.az == wc.az) || !(wc.ay == wc.ay) { eg_refuse(v, k, seat, seq, cr_word(CR_AIM)); return; }
+  if !rm_work_admit(v,k){eg_refuse(v,k,seat,seq,"busy");return;}
   if !rc_hear(v, k, seat, seq, slot, wc.ax, wc.ay, wc.az, wc.tgt, mode) { eg_refuse(v, k, seat, seq, "busy"); return; }
   if !cr_repair(slot) { ev_fought(v, k, seat); }   // casting is fighting (a Repair isn't): no Long Rest for EV_CALM_S
 }
@@ -765,6 +768,7 @@ rm_eg_begin :: (v: [] RmServer, k: int) -> bool #export_c {
   eg_grace_ends(v, k);   // held seats whose player did not come back in time leave (#12792)
   if !v[0].eg[k].live { return false; }
   if rm_checkpoint_paused(v,k) { ck_pause(v,k); return false; }
+  if !rm_work_begin(v,k){return false;}
   v[0].eg[k].tick += 1;
   now := v[0].mono_ms;
   for s: 0..<EG_SEATS {

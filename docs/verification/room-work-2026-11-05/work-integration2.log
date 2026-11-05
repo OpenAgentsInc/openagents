@@ -1,0 +1,8 @@
+ok   #test overload: a full ordered end queue refuses before ending an ability ahead of its inputs (#12841) (1 case, 3786146 steps, 524 ms)
+ok   #test overload: one seat cannot consume another seat's door talk or boat work (#12841) (1 case, 4453073 steps, 434 ms)
+ok   #test overload: refused world starts keep cooldown and resources and refused ends keep concentration (#12841) (1 case, 4362275 steps, 440 ms)
+ok   #test overload: every seat keeps two ability starts and four ordered ends (#12841) (1 case, 22119040 steps, 500 ms)
+ok   #test overload: room debt defers only that room and earns no movement during the deferral (#12841) (1 case, 3423138 steps, 354 ms)
+ok   #test overload: waiting casts expire by monotonic age even while their room is deferred (#12841) (1 case, 2778182 steps, 336 ms)
+6 of 602 checks (--only 'overload:'), 6 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

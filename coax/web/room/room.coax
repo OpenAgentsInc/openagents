@@ -41,6 +41,7 @@
 #load "room-forge.coax";
 #load "room-forge-raid.coax";
 #load "room-stats.coax";   // what the server counts of its own work, for the admins' room view (#12791)
+#load "room-work.coax";
 
 ROOMS :: 8;
 CONNS :: 512;

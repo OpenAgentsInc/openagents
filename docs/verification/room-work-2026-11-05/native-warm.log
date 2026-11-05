@@ -1,0 +1,3 @@
+background native: ready=true opened=true outage_s=35 health_ok=30 health_failed=40 pending_max=0/6 recovered=false
+background native: busy_room_frames=1410 healthy_room_frames=1398 healthy_gap_max_ms=59 busy_refusals=129 closed=false/false
+warm native: rooms=16 publication_requested=true publication_served=true all_streaming=true

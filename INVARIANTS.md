@@ -762,9 +762,30 @@ World ability service reserves two starts and four ends per seat independently
 one seat cannot consume another's service or let its ends consume its starts.
 An overloaded start is refused before cooldown or rule resources are spent. An
 ordered end queue refuses its fifth waiting request as busy rather than ending
-an ability ahead of preceding movement. Doors/talks/boats reserve one interaction
-and one release per seat per tick, with explicit busy refusal of extras. No full queue silently
+an ability ahead of preceding movement. Doors/talks/boats reserve one nonnegative-ID
+and one negative-ID request per seat per tick (the latter includes letting go of
+a conversation and the boat's nearest/toggle request), with explicit busy refusal of extras. No full queue silently
 accepts those commands. Checks: room-abilities and room-everglade overload cases.
+
+`work-budget.coax` (#12841, authority) owns each room's measured-work credit:
+45 microseconds per monotonic millisecond, capped at 3,000 microseconds. The
+shared native/worker tick charges its complete simulation and serialization
+wall duration. It starts only with 1,500 microseconds available. An overrun is
+that room's debt; deferral advances neither world nor rule time, clears/counts
+queued movement and resets its earning epoch. It grants no movement for the
+deferred interval. Bar/flight casts and accepted lifecycle work remain held.
+Waiting cast intents expire after 533 monotonic milliseconds with explicit busy
+before cooldown/resources. New casts and seats are refused while credit is
+insufficient or the last measured tick exceeds the burst; refusal precedes
+cast order and ownership fencing. Invalid cost/debt retires that room; clock
+reversal cannot refund work. This is amortized isolation: an uninterruptible
+Coax call and OS scheduling are not preempted. HTTP and transport retain their
+separate bounds. Checks: independent credit/debt/clock/age mutation gates and
+the room-work separate-room, no-credit and refusal/expiry regressions.
+Native startup prepares all sixteen world slots before Everglade readiness or
+socket admission, including sharded relay paths. Other games retain their
+startup admission contract. A missing initial publication refuses new play;
+an already admitted room keeps its current world during dependency outages.
 
 The native room's background HTTP effects use six independent lanes
 (`background-budget.coax`): control, world, legacy vitals, complete checkpoints,

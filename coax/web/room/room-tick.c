@@ -9,6 +9,8 @@
    pump_all), printed with the tick line; each tick's are the room view's workloads too (room-stats.h). */
 enum { PART_MOVE, PART_ABILITIES, PART_TOWN, PART_SPELLS, PART_PEOPLE, PART_RULES, PART_WRITE, PART_SEND, PARTS };
 static int64_t part_us[PARTS];
+static int64_t room_prepare_us[WORLD_ROOMS];
+static int64_t world_publication_us;
 static const char *part_name[PARTS] = {"move", "abilities", "town", "spells", "people", "rules", "write", "send"};
 // Room k's town for this tick (room-world.c world_town, GitHub #12713): the rules' Hit Points and the
 // crimes since into it, a step against every seat, then the guards' blows, WANTED and where everyone is
@@ -119,16 +121,30 @@ static void everglade_place(int k, int s, float *pose) {
                                         : world_place(k, s, pose)))
     rm_eg_moved(view(), k, s, 0, pose[0], pose[1], pose[2], pose[3], pose[4], pose[5], pose[6], (int64_t)pose[7], (int64_t)pose[8], (int64_t)pose[9]);
 }
+static bool everglade_prepare(int k) {
+  if (world_prepared(k)) return true;
+  int64_t preparing = now_us();bool prepared = world_prepare(k);
+  room_prepare_us[k] = now_us() - preparing;
+  return prepared;
+}
 static bool everglade_room_tick(int k) {
+  int64_t room_work_start = now_us();
   int64_t in[WORLD_IN]; float pose[WORLD_POSE];
   coax_v_s64 inv = {in, WORLD_IN};
   if (!rm_eg_begin(view(), k)) {
     /* Placement resolves the capture's standing height, without advancing a
        paused encounter. The initial durable capture must precede gameplay. */
-    if (rm_checkpoint_paused(view(), k))
+    if (rm_checkpoint_paused(view(), k)) {
+      if (!world_prepared(k)) {
+        bool prepared=everglade_prepare(k);
+        rm_work_done(view(),k,now_us()-room_work_start);
+        if(!prepared)return false;
+      }
       for (int s = 0; s < WORLD_SEATS; s++) everglade_place(k, s, pose);
+    }
     return false;
   }
+  if (!everglade_prepare(k)) { rm_work_done(view(), k, now_us() - room_work_start); return false; }
   world_dice(k, rm_eg_dice_fixed(view(), k));   /* a local room told "dice fixed": the world's too (room-control.coax) */
   everglade_ability_casts(k);
   int64_t tm = now_us();
@@ -168,5 +184,6 @@ static bool everglade_room_tick(int k) {
   int64_t tw = now_us(); part_us[PART_RULES] += tw - te;
   rm_eg_send(view(), k);
   part_us[PART_WRITE] += now_us() - tw;
+  rm_work_done(view(), k, now_us() - room_work_start);
   return true;
 }

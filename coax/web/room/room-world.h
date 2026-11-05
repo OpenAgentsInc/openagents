@@ -13,6 +13,8 @@
 void world_edits(const char *text, int64_t n);
 /* readiness: the published world laid and a room's world built from it (#12797) */
 bool world_ready(void);
+bool world_prepared(int k);
+bool world_prepare(int k);
 bool world_place(int k, int s, float out[WORLD_POSE]);
 /* seat s of room k where its player stood (x, y, z, facing yaw), as world_place does at the gate */
 bool world_place_at(int k, int s, float x, float y, float z, float yaw, float out[WORLD_POSE]);

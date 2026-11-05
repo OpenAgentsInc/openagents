@@ -1,0 +1,81 @@
+// The room's measured work budget. Both SDK hosts charge the same complete
+// simulation/serialization call. Transport remains separately socket-bounded.
+#load "work-budget.coax";
+#test "overload: only Everglade relay startup requires prepared worlds (#12841)" {
+  #assert !rm_work_request_ready("GET /api/room/relay/everglade/pair-ready HTTP/1.1\r\n\r\n",false);
+  #assert rm_work_request_ready("GET /api/room/relay/everglade/pair-ready HTTP/1.1\r\n\r\n",true);
+  #assert rm_work_request_ready("GET /api/room/relay/check/pair-ready HTTP/1.1\r\n\r\n",false);
+  #assert rm_work_request_ready("GET /api/room/orbit-league/pair-ready HTTP/1.1\r\n\r\n",false);
+  #assert !rm_work_request_ready("GET /api/room/s1/relay/everglade/pair-ready HTTP/1.1\r\n\r\n",false);
+  #assert rm_work_request_ready("GET /api/room/s1/relay/everglade/pair-ready HTTP/1.1\r\n\r\n",true);
+  #assert !rm_work_request_ready("GET /api/room/s1/s1/relay/everglade/pair-ready HTTP/1.1\r\n\r\n",false);
+}
+rm_work_request_ready::(request:string,prepared:bool)->bool #export_c{
+  if rm_path_shard(request)>0{
+    line:[1024]u8;n:=rm_path_unshard(request,line[..]);
+    if n<0||n>=request.count{return false;}
+    return rm_work_request_ready(cast(string)line[0..<n],prepared);
+  }
+  game:[RELAY_NAME]u8;code:[RELAY_NAME]u8;ns:[2]int;
+  everglade:=rl_path(request,game[..],code[..],ns[..])&&cast(string)game[0..<ns[0]]==EVERGLADE;
+  return wb_startup_admit(everglade,prepared);
+}
+#test "overload: room debt defers only that room and earns no movement during the deferral (#12841)" #steps 3000000000 {
+  v:[1]RmServer;box:[1]EgInbox;k:=rc_test_room(v[..],"pair-work-debt",1,false);
+  #assert rm_join(v[..],1,"GET /api/room/relay/everglade/pair-work-other HTTP/1.1\r\n\r\n")==0;
+  other:=eg_room_at(v[..],v[0].conns[1].relay);#assert other!=k;
+  at:=v[0].mono_ms;tick:=v[0].eg[k].tick;
+  rm_work_done(v[..],k,5000);rm_clock(v[..],at+33,1762190000000+at+33);
+  rm_heard(v[..],0,"I 1 100 0 0 0 0 0 0");
+  rm_heard(v[..],0,"C 2 1 0 0 200 -1");
+  #assert !rm_eg_begin(v[..],k)&&v[0].eg[k].tick==tick&&v[0].eg[k].seat[0].q_n==0&&v[0].eg[k].seat[0].bank==0;
+  #assert v[0].eg[k].seat[0].late==1&&v[0].eg[k].work[0].skipped==1;
+  #assert rm_eg_begin(v[..],other)&&v[0].eg[k].cast_order==0;
+  eg_test_drain(v[..],box[..]);#assert eg_test_has(eg_test_of(box[..],0),"r 2 busy");
+  #assert rm_join(v[..],2,"GET /api/room/relay/everglade/pair-work-debt HTTP/1.1\r\n\r\n")== -1;
+  #assert v[0].eg[k].work[0].refused==2;
+  rm_clock(v[..],at+100,1762190000000+at+100);#assert rm_eg_begin(v[..],k)&&v[0].eg[k].tick==tick+1&&v[0].eg[k].seat[0].bank<=EG_TICK_STEPS;
+  rm_work_done(v[..],k,1000);
+  #assert rm_join(v[..],2,"GET /api/room/relay/everglade/pair-work-debt HTTP/1.1\r\n\r\n")==1;
+}
+#test "overload: waiting casts expire by monotonic age even while their room is deferred (#12841)" #steps 2000000000 {
+  v:[1]RmServer;box:[1]EgInbox;k:=rc_test_room(v[..],"pair-work-age",1,false);
+  rm_heard(v[..],0,"I 1 100 0 0 0 0 0 0");rm_heard(v[..],0,"C 2 1 0 0 200 -1");
+  #assert v[0].eg[k].cast_order==1;before:=v[0].eg[k].seat[0].last_cast;
+  rm_work_done(v[..],k,50000);at:=v[0].mono_ms+WB_WAIT_MS+1;
+  rm_clock(v[..],at,1762190000000+at);#assert !rm_eg_begin(v[..],k);
+  for q:0..<EG_CASTS{#assert !v[0].eg[k].casts[q].on;}
+  #assert v[0].eg[k].seat[0].last_cast==before;
+  eg_test_drain(v[..],box[..]);#assert eg_test_has(eg_test_of(box[..],0),"r 2 busy");
+}
+rm_work_done::(v:[]RmServer,k:int,cost_us:int) #export_c {
+  if !rm_eg_live(v,k){return;}
+  b:=v[0].eg[k].work[..];ignored_ready:=wb_ready(b,v[0].mono_ms);
+  ignored_charge:=wb_charge(b,cost_us);
+}
+rm_work_admit::(v:[]RmServer,k:int)->bool {
+  if !rm_eg_live(v,k){return false;}b:=v[0].eg[k].work[..];
+  return wb_admit(b,v[0].mono_ms);
+}
+rm_work_begin::(v:[]RmServer,k:int)->bool {
+  // A waiting intent has a wall-clock bound even if simulation time slows.
+  for q:0..<EG_CASTS{c:=v[0].eg[k].casts[q];
+    if c.on&&c.phase==RC_WAIT&&!wb_waitable(v[0].mono_ms,c.queued_ms){
+      v[0].eg[k].casts[q].on=false;eg_refuse(v,k,c.seat,c.seq,"busy");
+    }
+  }
+  b:=v[0].eg[k].work[..];if wb_ready(b,v[0].mono_ms){return true;}
+  b[0].skipped+=1;
+  for s:0..<EG_SEATS{st:=v[0].eg[k].seat[s..<s+1];if !st[0].live{continue;}
+    st[0].late+=st[0].q_n;st[0].q_n=0;st[0].bank=0;st[0].sat_ms=v[0].mono_ms;st[0].earned=0;
+  }
+  return false;
+}
+// Process-wide gauges/totals, with the room of the largest measured tick.
+rm_work_stats::(v:[]RmServer,out:[]int) #export_c {
+  if out.count<8{return;}for i:0..<8{out[i]=0;}out[1]=WB_BURST;out[7]=-1;
+  for k:0..<EG_ROOMS{if !rm_eg_live(v,k){continue;}b:=v[0].eg[k].work[0];out[0]+=1;
+    if b.credit<out[1]{out[1]=b.credit;}if b.last>out[2]{out[2]=b.last;out[7]=k;}
+    out[3]+=b.skipped;out[4]+=b.refused;if b.retired{out[5]+=1;}out[6]+=b.last;
+  }
+}

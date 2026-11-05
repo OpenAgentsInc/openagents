@@ -271,6 +271,15 @@ static void relay_flush(void) {
   }
 }
 #include "room-tick.c"   /* the tick both hosts run (room-worker.c too) */
+static bool rooms_warmed;
+static int64_t rooms_warm_us;
+static void warm_rooms(void) {
+  if(rooms_warmed)return;
+  int64_t preparing=now_us();
+  for(int k=0;k<WORLD_ROOMS;k++)if(!everglade_prepare(k))return;
+  rooms_warmed=world_ready();
+  rooms_warm_us=now_us()-preparing;
+}
 static void everglade_tick(void) {
   int64_t was[PARTS]; memcpy(was, part_us, sizeof was);
   pump_held = true;
@@ -413,7 +422,8 @@ static void opening(int i) {
   /* readiness (#12797): 200 once the start check held, the realm's world is laid, and a room's world
      builds (room-world.c world_ready); the deploy's startup probe, so a revision takes no traffic before */
   if (!strncmp((char *)c->in, "GET /ready ", 11) || is_shard_path((char *)c->in, "GET ", "/ready ")) {
-    if (started_ok && world_ready()) http(i, "200 OK", "text/plain", "ready\n");
+    bool prepared=started_ok&&rooms_warmed;
+    if (prepared) http(i, "200 OK", "text/plain", "ready\n");
     else http(i, "503 Service Unavailable", "text/plain", started_ok ? "no world yet\n" : "start check failed\n");
     return;
   }
@@ -504,6 +514,10 @@ static void opening(int i) {
     snprintf(body+strlen(body),sizeof body-strlen(body),"checkpoints pending %lld, flying %d, refused %lld, applied %lld, duplicates %lld\n",(long long)rm_checkpoint_pending(view()),server->ck.fly?1:0,(long long)server->ck.refused,(long long)server->ck.applied,(long long)server->ck.duplicates);
     int pending=0;for(int lane=0;lane<6;lane++)if(server->bg.e[0].slot.e[lane].id>0)pending++;
     snprintf(body+strlen(body),sizeof body-strlen(body),"background pending %d/6, offered %lld, refused %lld, expired %lld, late %lld, failed %lld\n",pending,(long long)server->bg.e[0].offered,(long long)server->bg.e[0].refused,(long long)server->bg.e[0].expired,(long long)server->bg.e[0].late,(long long)server->bg.e[0].failed);
+    int64_t work[8];rm_work_stats(view(),(coax_v_s64){work,8});
+    snprintf(body+strlen(body),sizeof body-strlen(body),"work process rooms %lld, lowest credit %lld us, largest last tick %lld us room %lld, deferred ticks %lld, refused new work %lld, retired rooms %lld\n",(long long)work[0],(long long)work[1],(long long)work[2],(long long)work[7],(long long)work[3],(long long)work[4],(long long)work[5]);
+    int64_t warm=0;int warm_room=-1;for(int k=0;k<WORLD_ROOMS;k++)if(room_prepare_us[k]>warm){warm=room_prepare_us[k];warm_room=k;}
+    snprintf(body+strlen(body),sizeof body-strlen(body),"world preparation max %lld us room %d, startup preparation %lld us, last publication %lld us\n",(long long)warm,warm_room,(long long)rooms_warm_us,(long long)world_publication_us);
     http(i, "200 OK", "text/plain", body); return;
   }
   /* --dev: the API's stand-in (local.coax): the world document the room laid, byte for byte */
@@ -523,6 +537,7 @@ static void opening(int i) {
   char out[512];
   size_t hn = ws_server_handshake((char *)c->in, len, out, sizeof out);
   if (!hn) { http(i, "400 Bad Request", "text/plain", "Rooms: open a WebSocket to /api/room/orbit-league/NAME, or to /api/room/relay/GAME/CODE.\n"); return; }
+  if(!rm_work_request_ready(req,rooms_warmed)){http(i,"503 Service Unavailable","text/plain","The world is getting ready.\n");return;}
   int64_t seat = rm_join(view(), i, req);
   if (seat < 0) { http(i, "404 Not Found", "text/plain", "No such room, or it is full.\n"); return; }
   c->ws = true;
@@ -652,7 +667,7 @@ static void world_ask(void) {
   if (dev_dir) {
     free(dev_world); dev_world = dev_read("world-everglade.json", &dev_world_n);
     if (!dev_world || dev_world[0] != '{') { fprintf(stderr, "room: --dev %s has no world-everglade.json\n", dev_dir); exit(1); }
-    world_edits(dev_world, (int64_t)dev_world_n); rm_eg_placed_reset(view());
+    int64_t preparing=now_us();world_edits(dev_world, (int64_t)dev_world_n);world_publication_us=now_us()-preparing;warm_rooms();rm_eg_placed_reset(view());
     printf("room: the local world (%zu bytes) laid over the rooms\n", dev_world_n);
     return;
   }
@@ -721,7 +736,7 @@ static void poster_hear(void) {
     coax_string body={buf+head,(int64_t)len};
     if(lane==POST_CHECKPOINT)rm_checkpoint_answer(view(),batch,status,body);
     else if(lane==POST_VITALS)rm_vitals_answer(view(),batch,status,body);
-    else if(lane==POST_WORLD&&ok){world_edits(body.data,body.count);rm_eg_placed_reset(view());printf("room: the realm's world (%zu bytes) laid over the rooms\n",len);}
+    else if(lane==POST_WORLD&&ok){int64_t preparing=now_us();world_edits(body.data,body.count);world_publication_us=now_us()-preparing;warm_rooms();rm_eg_placed_reset(view());printf("room: the realm's world (%zu bytes) laid over the rooms\n",len);}
     else if(lane==POST_CONTROL&&ok){
       rm_control(view(),body);
       if(server->ctl.edit_known&&server->ctl.edit!=edit_asked){edit_asked=server->ctl.edit;bg_world_changed(background());}

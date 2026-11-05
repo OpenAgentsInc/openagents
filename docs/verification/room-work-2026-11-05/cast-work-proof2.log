@@ -1,0 +1,4 @@
+cast-check: can't open ws://127.0.0.1:49772/api/room/relay/everglade/pair-cast-849943
+
+cast-proof: room on 49771, the network on 49772: 250 ms round trip, 30 ms jitter, 20 per thousand lost
+casts fail

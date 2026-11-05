@@ -1,0 +1,10 @@
+FAIL #test overload: only Everglade relay startup requires prepared worlds (#12841) (0 ms)
+coax/web/room/room-work.coax:9:3: error[E0406]: assertion failed
+    #assert !rm_work_request_ready("GET /api/room/s1/relay/everglade/pair-ready HTTP/1.1\r\n\r\n",false);
+    ^
+  note: in #test overload: only Everglade relay startup requires prepared worlds (#12841)
+1 of 605 checks (--only 'only Everglade relay startup'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: this compiler is out of date: /Users/christopherdavid/work/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/work/openagents/coax/build.sh

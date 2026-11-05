@@ -1,0 +1,6 @@
+cast-proof: room on 49771, the network on 49772: 250 ms round trip, 30 ms jitter, 20 per thousand lost
+cast-check: 4 players in ws://127.0.0.1:49772/api/room/relay/everglade/pair-cast-850408, 6 rounds
+cast-check: 30 casts sent, 30 answered (24 taken, 6 refused), the slowest answer 1165 ms, 0 past 2000 ms
+cast-check: bot 2's casts stopped: 6 gone, 0 for another reason; bot 3 sent 6
+cast-check: 3610 D frames heard
+casts hold

@@ -227,7 +227,9 @@ rp_watch :: (check: int, room: int, l: [] RpLog, want: string, ctl: string, pres
       }
     }
   }
-  st := proc_wait(check, 10000); r := proc_release(check);
+  st := proc_wait(check, 10000);
+  if st!=0{err:[65536]u8;tail:=proc_stderr(check,err[..]);if tail.count>0{tool_errln(tail);}}
+  r := proc_release(check);
   if capture {capture_ok=fs_write(vp,cast(string)vl[0].b[0..<vl[0].n])&&capture_ok;print("raid vitals: % samples, complete=%\n",samples,capture_ok&&samples>0);}
   return seen&&(!capture||(capture_ok&&samples>0));
 }

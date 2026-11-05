@@ -1,0 +1,51 @@
+nip98 diff: 33286 cases (925 accepted by both, 16 numbers past the end), 0 disagreements
+/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/tmp.E30mVcrJo3/runner-sign.c:1882:9: warning: variable 'l_written' set but not used [-Wunused-but-set-variable]
+ 1882 |   _Bool l_written = coax_p_ss_write((l_challenge).value, coax_mkview_v_u8((((*coax_elem_v_t_SignWork(l_work, INT64_C(0), 492))).challenge).e, 32, 0, 32, 492));
+      |         ^
+1 warning generated.
+  ok    health answers with a database round trip
+  ok    health reports exact deployment identity
+  ok    every migration applied once
+  ok    an unknown path is a 404
+  ok    resume2: ticket issuance succeeds
+  ok    resume2: first join is an authenticated v4 envelope with no capture
+  ok    resume2: unversioned reports are fenced from the first durable ticket, before its first capture
+  ok    resume2: full dead body and spent resources commit before the receipt
+  ok    resume2: a lost reply retry keeps its first acceptance
+  ok    resume2: a separate connection sees the complete committed state
+  ok    resume2: ticket issuance succeeds
+  ok    resume2: a newly owned ticket returns the complete durable dead capture
+  ok    resume2: obsolete process cannot save after the next ticket
+  ok    resume2: a new owner cannot reduce the cumulative XP floor
+  ok    resume2: the new owner starts a fresh process revision
+  ok    resume2: a newer legacy XP report cannot strand an immutable same-owner capture
+  ok    resume2: ticket issuance succeeds
+  ok    resume2: account linking carries the durable body and fences its old owner
+  ok    resume2: the pre-link process cannot overwrite the account checkpoint
+  ok    crash2: fault proxy starts on its own port
+  ok    resume2: ticket issuance succeeds
+  ok    resume2: ticket issuance succeeds
+  ok    crash2: before COMMIT initial gameplay stays gated
+  ok    resume2: ticket issuance succeeds
+  ok    crash2: a killed unaccepted room restores the last committed full body
+crash2 first_restore_socket_ms=98 first_restore_total_ms=385 consumer=native-socket
+  ok    crash2: a changed place is committed independently while its HTTP reply is lost
+  ok    resume2: ticket issuance succeeds
+  ok    crash2: kill after COMMIT before reply restores the committed place
+crash2 after_commit_socket_ms=101 after_commit_total_ms=386
+  ok    crash2: real lost HTTP replies retry idempotently and gameplay resumes
+  ok    crash2: unavailable save store pauses authoritative gameplay inside the 30 second bound
+crash2 outage_observation_ms=38015 active_ticks=883 last_frame_ms=29404 loss_bound_ticks=901 rollback_meters=34.659
+  ok    crash2: the outage includes actual unsaved movement to roll back
+  ok    resume2: ticket issuance succeeds
+  ok    crash2: crash during outage returns exactly the accepted place
+crash2 outage_restore_socket_ms=97 outage_restore_total_ms=415
+  ok    crash2: all healthy replacements restore within the 60 second total objective
+  ok    resume2: ticket issuance succeeds
+  ok    crash2: paused obsolete process resumes, loses its seat, and cannot overwrite its successor
+crash2 final_exit=0 saved_x_mm=4791 saved_z_mm=-84000 observed_x=4.79 observed_z=-84.0
+  ok    crash2: planned termination accepts the final frozen body before successful exit
+  ok    resume2: ticket issuance succeeds
+  ok    crash2: unavailable final save exits with failure rather than claiming a successful drain
+Character checkpoint profile 2: 35 checks, 0 failed
+api: checkpoint2 checks passed

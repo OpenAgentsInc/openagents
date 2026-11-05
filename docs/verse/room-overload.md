@@ -10,7 +10,9 @@ receipts are recorded.
 | Movement intents | Per-socket frame/byte token buckets, fixed input queue and authoritative time credit | Extra input is discarded/counted; sustained abuse closes that socket; a faster sender earns no faster movement |
 | Cast intents | Two outstanding reservations per seat, 32 per room | Existing `r SEQ busy` before cast order/cooldown is spent |
 | World ability service | Two starts and four ends per seat, 96 entries | Refuse extra starts before cooldown/resources; refuse extra ends before ending concentration; preserve movement/end ordering |
-| Door/talk/boat interactions | One interaction and one release per seat, 32 entries | Existing `r SEQ busy` for extras; starting an interaction cannot consume its release reservation or another seat's work |
+| Door/talk/boat interactions | One nonnegative-ID and one negative-ID request per seat, 32 entries | Existing `r SEQ busy` for extras; positive-ID floods cannot consume the talk release/boat nearest-toggle class or another seat's work |
+| Simulation/serialization | Each room earns 45 us/ms, with a 3,000 us burst; a tick requires 1,500 us credit | Charge actual wall duration; an indebted room defers itself, counts/discards queued movement and earns no deferred movement; new casts/seats receive busy/full before order or fencing |
+| Waiting cast intents | Two per seat and a 533 ms monotonic deadline | Busy refusal before start/cooldown even if simulation time is deferred; bars/flight and accepted lifecycle work are retained |
 | World damage input | One aggregate per seat per tick, 16 reserved mailboxes | Repeated complete reports replace their seat's snapshot; resolved once after heals; no overflow-to-immediate-damage path |
 | Entity state | Bounded row budget and maximum-age selection | Replace/coalesce; old slow-link state is skipped; resnapshot after catch-up |
 | Lifecycle and outcomes | Separate lifecycle allowance and reserved outcome storage | Lifecycle deferred; missed town outcomes counted and repaired by complete town state |
@@ -49,3 +51,14 @@ Related qualifications: `2026-11-05-cast-reservations.md` and
 `2026-11-05-character-recovery.md` under `docs/verification/`; the latter includes
 real storage outage, save-capacity, stale-owner and drain faults. The native
 background outage consumer is `coax/web/room/background-check.coax`.
+
+Measured work is an amortized budget, not preemption of a call. Across sixteen
+rooms the refill is 720 ms of charged work per second; each room also has at
+most 3 ms stored credit and can overrun by its current uninterruptible call.
+Socket framing/sending and publication application are measured separately.
+OS descheduling is included in wall duration. A room under sustained overload
+slows its simulation rather than corrupting accepted effects or taking another
+room's future credit. This is observable in `/health`'s process-wide deferred,
+refused and retired counters, lowest credit and named largest last tick.
+The qualified throughput/latency envelope still requires workload receipts;
+the arithmetic is not a claim that every workload holds 30 Hz.

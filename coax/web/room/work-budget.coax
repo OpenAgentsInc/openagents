@@ -1,0 +1,90 @@
+// Measured room work, in microseconds. Each of sixteen rooms owns 45 ms/s;
+// one uninterruptible tick may exceed its allowance, then only that room owes
+// the debt. This is an amortized budget, not preemption of a Coax call.
+#authority;
+WB_RATE::45;WB_BURST::3000;WB_START::1500;WB_LIMIT::900000000;
+WB_WAIT_MS::533; // fifteen wait ticks plus one 30 Hz scheduling interval
+WorkBudget::struct{credit:int=WB_BURST;at:int= -1;last:int;skipped:int;refused:int;retired:bool;}
+#test "room work: a new Everglade session waits for prepared worlds while other games keep their startup contract" {
+  #assert wb_startup_admit(false,false)&&wb_startup_admit(false,true)&&wb_startup_admit(true,true)&&!wb_startup_admit(true,false);
+}
+wb_startup_admit::(everglade:bool,prepared:bool)->bool #export_c{return !everglade||prepared;}
+#test "room work: normal thirty hertz ticks retain service and idle credit is bounded" {
+  b:[1]WorkBudget;
+  #assert wb_ready(b[..],0)&&b[0].at==0;#assert wb_charge(b[..],1000);
+  #assert wb_ready(b[..],33)&&b[0].credit==WB_BURST;
+  #assert wb_charge(b[..],1500);#assert wb_ready(b[..],67)&&b[0].credit==WB_BURST;
+  #assert wb_ready(b[..],1000000)&&b[0].credit==WB_BURST;
+}
+#test "room work: an expensive tick spends its own debt and cannot take another room's credit" {
+  a:[1]WorkBudget;b:[1]WorkBudget;
+  #assert wb_ready(a[..],0)&&wb_charge(a[..],5000)&&a[0].credit== -2000;
+  #assert !wb_ready(a[..],33)&&a[0].credit== -515;
+  #assert !wb_ready(a[..],66)&&a[0].credit==970;
+  #assert wb_ready(a[..],100)&&a[0].credit==2500;
+  #assert wb_ready(b[..],100)&&b[0].credit==WB_BURST&&b[0].last==0;
+  #assert wb_charge(a[..],1000)&&a[0].last==1000;
+}
+#test "room work: repeated probes earn no credit and backwards clocks cannot refund work" {
+  b:[1]WorkBudget;#assert wb_ready(b[..],10)&&wb_charge(b[..],2000);
+  #assert !wb_ready(b[..],10)&&b[0].credit==1000;
+  #assert !wb_ready(b[..],9)&&b[0].credit==1000&&b[0].at==10;
+  #assert !wb_ready(b[..],-1)&&b[0].credit==1000;
+  #assert !wb_ready(b[..],21)&&b[0].credit==1495;
+  #assert wb_ready(b[..],22)&&b[0].credit==1540;
+  b[0].credit=WB_START;#assert wb_ready(b[..],22);
+}
+#test "room work: invalid costs and exhausted debt fail closed without arithmetic wrap" {
+  b:[1]WorkBudget;#assert !wb_charge(b[..],-1)&&b[0].retired;
+  #assert !wb_ready(b[..],1000);
+  b[0]=WorkBudget.{};#assert !wb_charge(b[..],WB_LIMIT+1)&&b[0].retired;
+  b[0]=WorkBudget.{};#assert wb_charge(b[..],WB_LIMIT)&&b[0].credit==WB_BURST-WB_LIMIT;
+  #assert !wb_charge(b[..],WB_BURST+1)&&b[0].retired;
+  b[0]=WorkBudget.{};#assert wb_ready(b[..],0)&&wb_charge(b[..],0)&&b[0].last==0;
+  b[0].credit= -WB_LIMIT;#assert wb_ready(b[..],9223372036854775807)&&b[0].credit==WB_BURST;
+  b[0]=WorkBudget.{};b[0].credit=0;#assert wb_charge(b[..],WB_LIMIT)&&b[0].credit== -WB_LIMIT;
+  #assert !wb_charge(b[..],1)&&b[0].retired;
+  b[0]=WorkBudget.{};#assert wb_ready(b[..],0)&&wb_charge(b[..],2000);
+  #assert wb_ready(b[..],45)&&b[0].credit==WB_BURST;
+}
+#test "room work: refill boundaries cover every fractional millisecond" {
+  for debt:0..<WB_RATE*3+1{
+    b:[1]WorkBudget;b[0].at=0;b[0].credit=WB_BURST-debt;
+    elapsed:=debt/WB_RATE;expected:=WB_BURST-debt%WB_RATE;
+    ready:=wb_ready(b[..],elapsed);#assert ready&&b[0].credit==expected;
+    #assert wb_ready(b[..],elapsed+1)&&b[0].credit==WB_BURST;
+  }
+  b:[1]WorkBudget;b[0].credit=WB_START;#assert wb_ready(b[..],0)&&b[0].at==0;
+  b[0]=WorkBudget.{};b[0].credit=WB_START-1;#assert !wb_ready(b[..],0)&&b[0].at==0;
+}
+#test "room work: new work needs recovered credit and waiting intents have a monotonic deadline" {
+  b:[1]WorkBudget;#assert wb_admit(b[..],0);
+  #assert wb_charge(b[..],WB_BURST+1)&&!wb_admit(b[..],1000)&&b[0].refused==1;
+  #assert wb_charge(b[..],1)&&wb_admit(b[..],1001);
+  b[0].credit=0;#assert !wb_admit(b[..],1001)&&b[0].refused==2;
+  b[0].last=WB_BURST;b[0].credit=WB_BURST;#assert wb_admit(b[..],1001)&&b[0].refused==2;
+  #assert wb_waitable(0,0)&&wb_waitable(633,100)&&!wb_waitable(634,100);
+  #assert !wb_waitable(99,100)&&!wb_waitable(-1,0)&&!wb_waitable(100,-1);
+}
+wb_admit::(b:[]WorkBudget,now:int)->bool #export_c {
+  if wb_ready(b,now)&&b[0].last<=WB_BURST{return true;}
+  b[0].refused+=1;return false;
+}
+wb_waitable::(now:int,heard:int)->bool #export_c {
+  return heard>=0&&now>=heard&&now-heard<=WB_WAIT_MS;
+}
+wb_ready::(b:[]WorkBudget,now:int)->bool #export_c {
+  if b[0].retired||now<0{return false;}
+  if b[0].at<0{b[0].at=now;return b[0].credit>=WB_START;}
+  if now<b[0].at{return false;}
+  dt:=now-b[0].at;b[0].at=now;
+  // Multiplication is only used below the time needed to repay this debt.
+  need:=(WB_BURST-b[0].credit)/WB_RATE;
+  if dt>need{b[0].credit=WB_BURST;}
+  else{b[0].credit+=dt*WB_RATE;}
+  return b[0].credit>=WB_START;
+}
+wb_charge::(b:[]WorkBudget,cost:int)->bool #export_c {
+  if cost<0||cost>WB_LIMIT||b[0].credit< -WB_LIMIT+cost{b[0].retired=true;return false;}
+  b[0].last=cost;b[0].credit-=cost;return true;
+}
