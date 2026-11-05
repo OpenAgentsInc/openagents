@@ -1,0 +1,16 @@
+// One native Coax renderer facade; the producer remains a separate image.
+#load "../../aethyr/render/native-host.coax";
+#load "../../aethyr/render/metal-host.coax";
+#load "../../aethyr/render/metal-package.coax";
+#load "../../aethyr/render/host-surface.coax";
+#load "../../aethyr/render/image-bytes.coax";
+#load "../../aethyr/forge/pack.coax";
+#load "../../aethyr/audio/host-effects.coax";
+#load "../../aethyr/audio/host-pcm.coax";
+#load "../../aethyr/audio/host-wav.coax";
+#load "../../aethyr/host/lifecycle.coax";
+#load "../../aethyr/host/http-image.coax";
+metal_pack_read :: (bytes:string,out:[]PackRead)->bool #export_c {return pack_read(bytes,out);}
+metal_geometry_diagnose :: (c:FrameCounts,records:[]u32,index:[]u32,u:[]f32,b:[]RenderGeometryBuffer,hud:[]f32,domains:[]RenderDrawDomain)->RenderGeometryResult #export_c {
+ return render_geometry_admit(2,c,records,index,u,b,hud,domains,RENDER_GEOMETRY_WORK);
+}

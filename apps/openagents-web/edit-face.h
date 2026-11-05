@@ -7,13 +7,13 @@
 #ifndef EDIT_FACE_H
 #define EDIT_FACE_H
 #include <stdbool.h>
-#include <stdint.h>
+#include "face-address.h"
 
 static inline void edit_face_drain(coax_v_t_RealmEdit e) {
   coax_t_RealmEdit *x = e.data;
   if (!x->req_ready) return;
-  int32_t id = coaxial_http((uint32_t)(uintptr_t)x->req_url.e, (uint32_t)x->req_url_n,
-                            (uint32_t)(uintptr_t)x->req_body.e, (uint32_t)x->req_body_n, (int32_t)x->req_flags);
+  int32_t id = coaxial_http((cx_face_addr)(uintptr_t)x->req_url.e, (uint32_t)x->req_url_n,
+                            (cx_face_addr)(uintptr_t)x->req_body.e, (uint32_t)x->req_body_n, (int32_t)x->req_flags);
   redit_requested(e, id);
 }
 static inline bool edit_face_message(coax_v_t_RealmEdit e, int32_t kind, coax_string text) {

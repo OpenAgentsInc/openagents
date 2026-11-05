@@ -1,0 +1,31 @@
+// Freeze no new simulation: replay a real browser RFI through MetalRealm's
+// production bindings, geometry admission and pass interpreter.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/json/json.coax";
+mr_field :: (o:[]Jo,key:string,value:string) {jo_key(o,key);jo_str(o,value);}
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])<5 {tool_errln("usage: metal-replay ROOT RESOURCES FRAME.CONFIG WEB.GPU.BIN OUTPUT [--recover]");return 2;}
+ root:=args_at(a[..],0);res:=args_at(a[..],1);frame:=args_at(a[..],2);gold:=args_at(a[..],3);dir:=args_at(a[..],4);if !fs_mkdir(dir) {return 1;}
+ paths:[9][4096]u8;screen:=fs_join(dir,"metal.f32",paths[0][..]);plan:=fs_join(dir,"plan.json",paths[1][..]);report:=fs_join(dir,"metal.json",paths[2][..]);receipt:=fs_join(dir,"comparison.json",paths[3][..]);bytes:[32768]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);mr_field(o[..],"schema","aethyr.metal.effects.v1");jo_key(o[..],"operations");jo_arr(o[..]);
+ rgba8:=args_has(a[..],"--rgba8");if rgba8 {jo_obj(o[..]);mr_field(o[..],"op","bgra8");jo_end(o[..]);}
+ presentation:=args_has(a[..],"--presentation");if presentation {jo_obj(o[..]);mr_field(o[..],"op","presentation");jo_end(o[..]);}
+ jo_obj(o[..]);mr_field(o[..],"op","replay");mr_field(o[..],"file",frame);jo_end(o[..]);
+ jo_obj(o[..]);mr_field(o[..],"op","frame");for key,i:[4]string.["width","height","scale","dt"] {jo_key(o[..],key);jo_int(o[..],ifx i==0 then 320 else ifx i==1 then 180 else ifx i==2 then 1 else 0);}jo_end(o[..]);
+ jo_obj(o[..]);mr_field(o[..],"op","snapshot");mr_field(o[..],"file",screen);jo_end(o[..]);
+ presented_path:[4096]u8;if presentation {jo_obj(o[..]);mr_field(o[..],"op","presented");mr_field(o[..],"file",fs_join(dir,"presented.f32",presented_path[..]));jo_end(o[..]);}
+ recovered_path:[4096]u8;recovered:=fs_join(dir,"recovered.f32",recovered_path[..]);recovery:=args_has(a[..],"--recover");
+ if recovery {jo_obj(o[..]);mr_field(o[..],"op","recover");jo_end(o[..]);jo_obj(o[..]);mr_field(o[..],"op","frame");for key,i:[4]string.["width","height","scale","dt"] {jo_key(o[..],key);jo_int(o[..],ifx i==0 then 320 else ifx i==1 then 180 else ifx i==2 then 1 else 0);}jo_end(o[..]);jo_obj(o[..]);mr_field(o[..],"op","snapshot");mr_field(o[..],"file",recovered);jo_end(o[..]);}
+ jo_end(o[..]);jo_end(o[..]);if o[0].bad || !fs_write(plan,jo_text(o[..])) {return 1;}
+ stdout:[1048576]u8;stderr:[65536]u8;runner:=args_value(a[..],"--effects",fs_join(root,"apps/aethyrforge-desktop/build/metal/MetalEffects",paths[4][..]));run:=[5]string.[runner,res,fs_join(res,"metal/libeverglade.dylib",paths[5][..]),plan,report];r:=proc_run(run[..],60000,stdout[..],stderr[..]);
+ log_path:[4096]u8;if !fs_write(fs_join(dir,"sdk-stdout.txt",log_path[..]),cast(string)stdout[0..<r.out_n]) || !fs_write(fs_join(dir,"sdk-stderr.txt",log_path[..]),cast(string)stderr[0..<r.err_n]) {return 1;}
+ if r.started!=0 || r.status!=0 || r.cut || r.timed_out {tool_errln(cast(string)stderr[0..<r.err_n]);return 1;}
+ n:=fs_read(report,bytes[..]);doc:[1]Jv;nodes:[256]JvNode;if n<1 || !jv_parse(doc[..],cast(string)bytes[0..<n],nodes[..]) {return 1;}d:=doc[0];
+ if jv_int(d,jv_get(d,0,"completed"),-1)!=(ifx recovery then 2 else 1) || jv_int(d,jv_get(d,0,"pending"),-1)!=0 || jv_int(d,jv_get(d,0,"closedLedgerLive"),-1)!=0 || jv_int(d,jv_get(d,0,"closedLedgerWords"),-1)!=0 {tool_errln("Replay did not complete and release the actual GPU resources.");return 1;}
+ if recovery {if jv_int(d,jv_get(d,0,"recoveries"),-1)!=1 || jv_int(d,jv_get(d,0,"recoveryReleasedLive"),-1)!=0 {tool_errln("Recovery did not release the old GPU generation.");return 1;}left:[1048576]u8;right:[1048576]u8;ln:=fs_read(screen,left[..]);rn:=fs_read(recovered,right[..]);if ln<1 || rn!=ln || cast(string)left[0..<ln]!=cast(string)right[0..<rn] {tool_errln("Resource recovery changed the exact frozen output bytes.");return 1;}}
+ if args_has(a[..],"--render-only") {return 0;}
+ check:=[14]string.[fs_join(root,"coax/web/tool.sh",paths[6][..]),fs_join(root,"aethyr/render/tests/compare-frames.coax",paths[7][..]),"--cpu",screen,"--gpu",gold,"--gpu-format",ifx rgba8 then "bgra8" else "rgba16f","--width","320","--height","180","--receipt",receipt];q:=proc_run(check[..],60000,stdout[..],stderr[..]);
+ print("%",cast(string)stdout[0..<q.out_n]);if q.started!=0 || q.status!=0 || q.cut || q.timed_out {tool_errln(cast(string)stderr[0..<q.err_n]);return 1;}return 0;
+}

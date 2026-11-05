@@ -1,0 +1,23 @@
+// CoreGraphics decodes/resizes into premultiplied RGBA8. The shared media
+// profile uploads straight-alpha bytes; this conversion owns that arithmetic.
+#module "aethyr.render.image.bytes";
+#authority;
+#test "straight RGBA conversion preserves opaque colour and uses rounded alpha division" {
+ p:=[16]u8.[11,31,128,128,64,32,1,128,1,0,1,1,0,0,0,0];
+ #assert render_image_straight(p[..]);want:=[16]u8.[22,62,255,128,128,64,2,128,255,0,255,1,0,0,0,0];for x,i:p {#assert x==want[i];}
+ opaque:=[4]u8.[11,31,200,255];#assert render_image_straight(opaque[..]) && opaque[0]==11 && opaque[1]==31 && opaque[2]==200 && opaque[3]==255;
+ #assert render_image_straight(p[0..<0]);
+}
+#test "incomplete RGBA pixels refuse without changing any byte" {
+ p:=[5]u8.[1,2,3,4,5];#assert !render_image_straight(p[..]);for x,i:p {#assert x==u8(i+1);}
+ p=[5]u8.[128,128,128,128,7];#assert render_image_straight(p[0..<4]);#assert p[0]==255 && p[1]==255 && p[2]==255 && p[3]==128 && p[4]==7;
+ for channel:0..<3 {bad:=[8]u8.[64,32,1,128,0,0,0,0];bad[4+channel]=1;#assert !render_image_straight(bad[..]);#assert bad[0]==64 && bad[1]==32 && bad[2]==1 && bad[4+channel]==1;}
+ bad:=[4]u8.[1,0,0,0];#assert !render_image_straight(bad[..]) && bad[0]==1;
+}
+render_image_straight :: (rgba:[]u8)->bool #export_c {
+ if rgba.count%4!=0 {return false;}
+ for pixel:0..<rgba.count/4 {at:=pixel*4;alpha:=rgba[at+3];if rgba[at]>alpha || rgba[at+1]>alpha || rgba[at+2]>alpha {return false;}}
+ for pixel:0..<rgba.count/4 {at:=pixel*4;alpha:=int(rgba[at+3]);
+  for channel:0..<3 {value:=ifx alpha==0 then 0 else (int(rgba[at+channel])*255+alpha/2)/alpha;rgba[at+channel]=u8(value);}
+ }return true;
+}

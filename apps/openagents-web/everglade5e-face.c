@@ -51,18 +51,19 @@
 #include "edit-face.h"
 #include <stdbool.h>
 #include <stddef.h>
+#include "face-address.h"
 #include <string.h>
 
 #define EXPORT(name) __attribute__((export_name(name)))
 EXPORT("coaxial_frame_admit") int32_t coaxial_frame_admit(int32_t pending) { return afp_submit(pending) ? 1 : 0; }
 #define IMPORT(name) __attribute__((import_module("env"), import_name(name)))
-IMPORT("coaxial_socket_open") int32_t coaxial_socket_open(uint32_t url, uint32_t len);
-IMPORT("coaxial_socket_send") void coaxial_socket_send(int32_t id, uint32_t ptr, uint32_t len);
+IMPORT("coaxial_socket_open") int32_t coaxial_socket_open(cx_face_addr url, uint32_t len);
+IMPORT("coaxial_socket_send") void coaxial_socket_send(int32_t id, cx_face_addr ptr, uint32_t len);
 IMPORT("coaxial_socket_close") void coaxial_socket_close(int32_t id);
 IMPORT("coaxial_measure_ms") double coaxial_measure_ms(void);
 static bool frame_measuring;
 static double frame_parts[3];
-EXPORT("coaxial_frame_parts") double coaxial_frame_parts(uint32_t state,int32_t field) {
+EXPORT("coaxial_frame_parts") double coaxial_frame_parts(cx_face_addr state,int32_t field) {
   (void)state;if(field==-1){frame_measuring=true;return 1;}
   return field>=0&&field<3?frame_parts[field]:0;
 }
@@ -82,22 +83,22 @@ static coax_t_EgSeen track_seen;   // what everglade_track saw last frame (everg
 static int32_t ask_id = -1, mint_id = -1;
 /* Everglade's world, or a fork's own (made-<slug>: everglade-fork.coax everglade_world_path) */
 static uint8_t world_url_buf[4][128];
-static uint32_t world_path(uint32_t state, int what);
+static uint32_t world_path(cx_face_addr state, int what);
 static coax_t_EgFork fork_state;   /* FORK's state (everglade-fork.coax everglade_attach_fork) */
 static coax_t_EgNet net_state;     /* the room server's world (everglade-net.coax everglade_attach_net) */
-#define WORLD_URL_OF(st) (uint32_t)(uintptr_t)world_url_buf[0], world_path(st, 0)
-#define RESET_URL_OF(st) (uint32_t)(uintptr_t)world_url_buf[1], world_path(st, 1)
-#define EDIT_URL_OF(st) (uint32_t)(uintptr_t)world_url_buf[2], world_path(st, 2)
-#define LOOK_URL_OF(st) (uint32_t)(uintptr_t)world_url_buf[3], world_path(st, 3)
+#define WORLD_URL_OF(st) (cx_face_addr)(uintptr_t)world_url_buf[0], world_path(st, 0)
+#define RESET_URL_OF(st) (cx_face_addr)(uintptr_t)world_url_buf[1], world_path(st, 1)
+#define EDIT_URL_OF(st) (cx_face_addr)(uintptr_t)world_url_buf[2], world_path(st, 2)
+#define LOOK_URL_OF(st) (cx_face_addr)(uintptr_t)world_url_buf[3], world_path(st, 3)
 static int32_t world_id = -1, edit_id = -1, post_id = -1;
 static bool world_asked;
-static void edit_out(uint32_t state);
-static void bar_frame(uint32_t state);
+static void edit_out(cx_face_addr state);
+static void bar_frame(cx_face_addr state);
 static bool facts_seen, has_player, mint_tried;
 static uint32_t sound_n;   /* this frame's sound lines (everglade-sound.coax everglade_sound_lines) */
-static void ask_out(uint32_t state);
-static void guard_out(uint32_t state);
-static void guide_out(uint32_t state);
+static void ask_out(cx_face_addr state);
+static void guard_out(cx_face_addr state);
+static void guide_out(cx_face_addr state);
 static int32_t guide_id = -1;
 static int64_t guide_sequence, guide_intent;
 static bool guide_authenticated, guide_world_outer;
@@ -108,11 +109,11 @@ static int64_t guard_sequence;
 static coax_t_GaSession guard_state;
 static coax_v_t_GaSession gs(void) { return (coax_v_t_GaSession){&guard_state,1}; }
 __attribute__((import_module("env"), import_name("coaxial_now_ms"))) extern int64_t guard_now_ms(void);
-__attribute__((import_module("env"), import_name("coaxial_http_bounded"))) extern int32_t guard_http(uint32_t,uint32_t,uint32_t,uint32_t,uint32_t,int64_t);
+__attribute__((import_module("env"), import_name("coaxial_http_bounded"))) extern int32_t guard_http(cx_face_addr,uint32_t,cx_face_addr,uint32_t,uint32_t,int64_t);
 __attribute__((import_module("env"), import_name("coaxial_http_cancel"))) extern int32_t guard_cancel(int32_t);
-static void room_out(uint32_t state, float dt);
+static void room_out(cx_face_addr state, float dt);
 // the guard captain's plan (verse/everglade/captain.coax): one request at most, Coax decides when
-static void captain_out(uint32_t state);
+static void captain_out(cx_face_addr state);
 static int32_t captain_id = -1;
 static int64_t captain_sequence;
 static uint8_t captain_body[4096];
@@ -133,7 +134,7 @@ static coax_v_t_E5r e5r(void) { return (coax_v_t_E5r){&e5_rules, 1}; }
 static float e5_bar_buf[49 * 6], e5_hero_buf[32], e5_me_buf[8], e5_folk_buf[48 * 8], e5_others_buf[16 * 4], e5_out_buf[48 * 4], e5_pass[64];
 static int64_t e5_bar_n, e5_hero_n;
 static uint8_t e5_lines_buf[4096], e5_card_buf[200];
-static void e5_frame(uint32_t state);
+static void e5_frame(cx_face_addr state);
 static coax_v_t_River rv(void) { return (coax_v_t_River){&river, 1}; }
 // The walls' round bodies, then each rowboat's hull as a capsule along its keel (river.coax W6): so
 // you swim and wade round a hull, not through it. 7 numbers each, as the page's bodies.
@@ -158,13 +159,13 @@ static int64_t boat_hulls(coax_t_Everglade *g) {
 #include "place-face.h"
 static bool place_back;   // a kept place was put back: checked again when the published pieces come
 
-static coax_t_Everglade *city(uint32_t state) { return (coax_t_Everglade *)(uintptr_t)state; }
+static coax_t_Everglade *city(cx_face_addr state) { return (coax_t_Everglade *)(uintptr_t)state; }
 // The town's breakable pieces and their debris (everglade-spells.coax), handed to the city on its first use.
 static coax_t_DemoWorld demo_world;
 static bool demo_attached;
 // The spell bar's pictures for the host, room for every slot moved (everglade-arrange.coax).
 static uint8_t media_big[10240];
-static coax_v_t_Everglade at(uint32_t state) {
+static coax_v_t_Everglade at(cx_face_addr state) {
   coax_v_t_Everglade v = {city(state), 1};
   if (!demo_attached) {
     demo_attached = true;
@@ -202,40 +203,40 @@ static void party_out(void) {
 static void mod_out(void) {
   if (!mod_due || mod_id >= 0 || !has_player) return;
   mod_due = false;
-  mod_id = coaxial_http((uint32_t)(uintptr_t)mod_url, mod_url_n, (uint32_t)(uintptr_t)mod_body, mod_body_n, 1 | 4 | 8);
+  mod_id = coaxial_http((cx_face_addr)(uintptr_t)mod_url, mod_url_n, (cx_face_addr)(uintptr_t)mod_body, mod_body_n, 1 | 4 | 8);
   if (mod_id < 0) mod_id = -1;
 }
 static void rooms_out(void) {
   if (!rooms_due || rooms_id >= 0 || !facts_seen) return;
   rooms_due = false;
-  rooms_id = coaxial_http((uint32_t)(uintptr_t)rooms_url, rooms_url_n, 0, 0, 4);   /* a GET, its answer wanted */
+  rooms_id = coaxial_http((cx_face_addr)(uintptr_t)rooms_url, rooms_url_n, 0, 0, 4);   /* a GET, its answer wanted */
   if (rooms_id < 0) { rooms_id = -1; rooms_due = true; }
 }
 static void ticket_out(void) {
   if (!ticket_due || ticket_id >= 0 || !facts_seen) return;   /* a golden page asks for none: its net wants no socket */
   if (!has_player && !mint_tried) {
     mint_tried = true;
-    mint_id = coaxial_http((uint32_t)(uintptr_t)PLAYER_URL, sizeof PLAYER_URL - 1, (uint32_t)(uintptr_t)"{}", 2, 1 | 4);
+    mint_id = coaxial_http((cx_face_addr)(uintptr_t)PLAYER_URL, sizeof PLAYER_URL - 1, (cx_face_addr)(uintptr_t)"{}", 2, 1 | 4);
     if (mint_id < 0) mint_id = -1;
     return;
   }
   if (mint_id >= 0 || !has_player) return;
   ticket_due = false;
   if (!ticket_body_n) { memcpy(ticket_body, "{}", 2); ticket_body_n = 2; }
-  ticket_id = coaxial_http((uint32_t)(uintptr_t)ticket_url, ticket_url_n, (uint32_t)(uintptr_t)ticket_body, ticket_body_n, 1 | 4 | 8);
+  ticket_id = coaxial_http((cx_face_addr)(uintptr_t)ticket_url, ticket_url_n, (cx_face_addr)(uintptr_t)ticket_body, ticket_body_n, 1 | 4 | 8);
   if (ticket_id < 0) { ticket_id = -1; ticket_due = true; }
 }
 /* The room socket's commands (socket.coax's pipe) to the host, in order; then the pipe is empty. */
-static void net_drain(uint32_t state) {
+static void net_drain(cx_face_addr state) {
   coax_t_Pipe *p = &net_state.pipe.e[0];
   int64_t n = p->n;
   for (int64_t k = 0; k < n; k++) {
-    uint32_t from = (uint32_t)(uintptr_t)&p->buf.e[p->from.e[k]], len = (uint32_t)p->len.e[k];
+    cx_face_addr from = (cx_face_addr)(uintptr_t)&p->buf.e[p->from.e[k]], len = (uint32_t)p->len.e[k];
     int32_t id = (int32_t)p->id.e[k];
     if (p->op.e[k] == 1) net_opened(at(state), coaxial_socket_open(from, len));
     else if (p->op.e[k] == 2) coaxial_socket_send(id, from, len);
     else if (p->op.e[k] == 3) coaxial_socket_close(id);
-    else if (p->op.e[k] == 5 && has_player) coaxial_http((uint32_t)(uintptr_t)STATE_URL, sizeof STATE_URL - 1, from, len, 1 | 8);   /* what you bring back into a room (#12715) */
+    else if (p->op.e[k] == 5 && has_player) coaxial_http((cx_face_addr)(uintptr_t)STATE_URL, sizeof STATE_URL - 1, from, len, 1 | 8);   /* what you bring back into a room (#12715) */
     else if (p->op.e[k] == 4) {
       /* the path, a newline, the body */
       const uint8_t *b = &p->buf.e[p->from.e[k]];
@@ -263,20 +264,20 @@ static void net_drain(uint32_t state) {
   p->n = 0; p->used = 0;
 }
 /* For a headless check (globalThis.coaxial): everglade-net.coax net_probe's fields. */
-EXPORT("coaxial_net_probe") int32_t coaxial_net_probe(uint32_t state, int32_t field) { return (int32_t)net_probe(at(state), field); }
+EXPORT("coaxial_net_probe") int32_t coaxial_net_probe(cx_face_addr state, int32_t field) { return (int32_t)net_probe(at(state), field); }
 /* For the drift check (coax/web/everglade-drift.coax): words as last drawn, 0 the LEVEL plate, 1 the
    status lines under your Hit Points ("|" between); the length is coaxial_drift_text_len's. */
 static int32_t drift_text_n;
-EXPORT("coaxial_drift_text") uint32_t coaxial_drift_text(uint32_t state, int32_t which) {
+EXPORT("coaxial_drift_text") cx_face_addr coaxial_drift_text(cx_face_addr state, int32_t which) {
   coax_string t = which == 0 ? ege_shown(at(state)) : e5_shown(e5v());
   drift_text_n = (int32_t)t.count;
-  return (uint32_t)(uintptr_t)t.data;
+  return (cx_face_addr)(uintptr_t)t.data;
 }
 EXPORT("coaxial_drift_text_len") int32_t coaxial_drift_text_len(void) { return drift_text_n; }
-static uint32_t world_path(uint32_t state, int what) {
+static uint32_t world_path(cx_face_addr state, int what) {
   return (uint32_t)everglade_world_path(at(state), (coax_v_u8){world_url_buf[what], sizeof world_url_buf[what]}, what);
 }
-static void start(uint32_t state) {
+static void start(cx_face_addr state) {
   if (!track_state.page_n) track_init(tr(), e5_realm(at(state)));
   if (placed) return;
   coax_t_Point spawn = everglade_spawn(at(state));
@@ -293,14 +294,14 @@ static void start(uint32_t state) {
 }
 
 // Where you are: your feet, your facing, the camera, the room you're in.
-static coax_t_Place place_here(uint32_t state) {
+static coax_t_Place place_here(cx_face_addr state) {
   coax_t_Everglade *g = city(state);
   if (!placed) return (coax_t_Place){0};
   return everglade_place_here(at(state), verse_place_of(player.pos.x, player.pos.y, player.pos.z, verse_player_face(player), g->orbit,
                         everglade_room_at(at(state), player.pos.x, player.pos.z)));
 }
 // Put you at a kept place, on open ground near it if it no longer is.
-static void place_put(uint32_t state, coax_t_Place p) {
+static void place_put(cx_face_addr state, coax_t_Place p) {
   coax_t_Place q = everglade_place_fix(at(state), p);
   player = verse_player_place(q.x, 0, q.z, q.face);
   everglade_place_camera(at(state), q);
@@ -313,27 +314,33 @@ EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
 }
 EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return (uint32_t)sizeof(coax_t_Everglade); }
 // A new state's declared defaults (coax_default_T, from the compiler). The host calls this first.
-EXPORT("coaxial_state_init") void coaxial_state_init(uint32_t state) { coax_default_t_Everglade((coax_t_Everglade *)(uintptr_t)state); }
+EXPORT("coaxial_state_init") void coaxial_state_init(cx_face_addr state) { coax_default_t_Everglade((coax_t_Everglade *)(uintptr_t)state); }
 EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uint32_t)coaxial_everglade_max_vertices(); }
 EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (uint32_t)coaxial_everglade_vertex_floats(); }
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_everglade_uniform_floats(); }
 
 // golden mode (goldens.ts): the frame runs still, so the clock holds at noon and the river and leaves hold one moment
 static bool golden;
+// Scalar observation of the real native face during SDK qualification.
+// This does not grant the production realm the fixture observer's version.
+EXPORT("coaxial_host_probe") int64_t coaxial_host_probe(cx_face_addr state,int64_t event,int64_t field) {
+  if (event != -2) return -1;
+  switch (field) {case 0:return golden;case 1:return facts_seen;case 2:return city(state)->net.count;case 3:return net_state.want;case 4:return net_state.state;case 5:return net_state.realm_n;case 6:return net_state.code_n;case 7:return net_state.url_n;case 8:return ticket_due;case 9:return has_player;case 10:return net_state.local_relay;default:return -1;}
+}
 // The graphics quality (everglade-quality.coax): the pixels the host draws at most (host.js drawn),
 // and what a frame costs, for a headless check (globalThis.coaxial.quality(field)).
-static uint32_t quality_state;
+static cx_face_addr quality_state;
 EXPORT("coaxial_pixel_budget") uint32_t coaxial_pixel_budget(void) {
   if (!quality_state || golden) return 0;
   int64_t px = everglade_pixel_budget(at(quality_state), width, height, dpr);
   return px > 0 ? (uint32_t)px : 0u;
 }
-EXPORT("coaxial_quality_probe") int32_t coaxial_quality_probe(uint32_t state, int32_t field) { return (int32_t)everglade_quality_probe(at(state), field); }
-EXPORT("coaxial_hotbar_probe") int32_t coaxial_hotbar_probe(uint32_t state, int32_t slot, int32_t field) { return (int32_t)everglade_bar_probe(at(state), slot, field); }
+EXPORT("coaxial_quality_probe") int32_t coaxial_quality_probe(cx_face_addr state, int32_t field) { return (int32_t)everglade_quality_probe(at(state), field); }
+EXPORT("coaxial_hotbar_probe") int32_t coaxial_hotbar_probe(cx_face_addr state, int32_t slot, int32_t field) { return (int32_t)everglade_bar_probe(at(state), slot, field); }
 EXPORT("coaxial_golden") void coaxial_golden(uint32_t on) { golden = on != 0; }
 // Where you stand, for a headless walk (globalThis.coaxial.probe()): x and z to a tenth of a metre,
 // as (x + 500) * 10 * 10000 + (z + 500) * 10.
-EXPORT("coaxial_probe") int32_t coaxial_probe(uint32_t state) {
+EXPORT("coaxial_probe") int32_t coaxial_probe(cx_face_addr state) {
   (void)state;
   return (int32_t)(player.pos.x * 10 + 5000.5f) * 10000 + (int32_t)(player.pos.z * 10 + 5000.5f);
 }
@@ -343,7 +350,7 @@ EXPORT("coaxial_probe") int32_t coaxial_probe(uint32_t state) {
 // SKIN_*, 3 the jump); 5 the gait's speed squared in cm^2/s^2 / 100; 6 the room's re-runs so far;
 // 7 the last re-run's move, squared, in mm^2.
 static float probe_feet[3], probe_speed, probe_fix;
-EXPORT("coaxial_field_probe") int32_t coaxial_field_probe(uint32_t state, int32_t field) {
+EXPORT("coaxial_field_probe") int32_t coaxial_field_probe(cx_face_addr state, int32_t field) {
   if (field >= 0 && field < 3) return (int32_t)(probe_feet[field] * 1000);
   if (field == 3) return (int32_t)verse_player_act(player);
   if (field == 4) return (int32_t)city(state)->skin.e[0].clip;
@@ -363,7 +370,7 @@ EXPORT("coaxial_field_probe") int32_t coaxial_field_probe(uint32_t state, int32_
 static float step_acc;            /* in a room: the time not yet stepped, under one 1/30 s step */
 static bool step_jump;            /* a jump pressed since the last step */
 static coax_t_Vec3 step_from;     /* where the last step started, to draw between */
-static void move_once(uint32_t state, coax_t_Everglade *g, coax_t_EgMoveIn input, coax_t_Seat seat, int64_t hulls, float dt, float frame,
+static void move_once(cx_face_addr state, coax_t_Everglade *g, coax_t_EgMoveIn input, coax_t_Seat seat, int64_t hulls, float dt, float frame,
                       float *show_vx, float *show_vz) {
   coax_t_EgMoveWorld mw = everglade_move_world(at(state), player.pos.x, player.pos.y, player.pos.z, swim.medium, swim.pace, swim.flow_x, swim.flow_z,
                                                river.aboard >= 0, seat.x, seat.z, seat.yaw, (coax_v_f32){hull_bodies, hulls * 7});
@@ -377,7 +384,7 @@ static void move_once(uint32_t state, coax_t_Everglade *g, coax_t_EgMoveIn input
 }
 
 EXPORT("coaxial_frame")
-uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, float w, float h, float scale, float dt, uint32_t still) {
+uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr uniforms, float w, float h, float scale, float dt, uint32_t still) {
   double measure_start=frame_measuring?coaxial_measure_ms():0;
   start(state);
   frames += 1;
@@ -592,7 +599,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
 
 // Everglade 5E, after Everglade's frame: what its dice did goes back and to the engine, the casts that
 // land are the engine's, and its numbers come back to the page.
-static void e5_frame(uint32_t state) {
+static void e5_frame(cx_face_addr state) {
   coax_v_t_Everglade g = at(state);
   e5_after(g, e5v());
   int64_t mn = e5_me(g, (coax_v_f32){e5_me_buf, 8});
@@ -642,29 +649,29 @@ static uint32_t bar_text_n;
 static bool bar_out_now;
 static int32_t bar_ask_id = -1;
 static int32_t bar_post_id = -1;   // the send in flight, whose answer everglade-arrange.coax reads (#12719)
-static void bar_frame(uint32_t state) {
+static void bar_frame(cx_face_addr state) {
   if (golden || !facts_seen) return;
   if (everglade_bar_ask(at(state))) {
     int64_t un = everglade_bar_url(at(state), (coax_v_u8){bar_url, sizeof bar_url});
-    if (un > 0) bar_ask_id = coaxial_http((uint32_t)(uintptr_t)bar_url, (uint32_t)un, 0, 0, 4 | 8);
+    if (un > 0) bar_ask_id = coaxial_http((cx_face_addr)(uintptr_t)bar_url, (uint32_t)un, 0, 0, 4 | 8);
     if (bar_ask_id < 0) everglade_bar_server(at(state), (coax_string){"0\n", 2});   /* no copy coming: send without one */
   }
   if (!bar_text_n) { int64_t n = everglade_bar_keep(at(state), (coax_v_u8){bar_text, sizeof bar_text}); if (n > 0) bar_text_n = (uint32_t)n; }
   int64_t bn = everglade_bar_send(at(state), (coax_v_u8){bar_body, sizeof bar_body});
   if (bn > 0) {
     int64_t un = everglade_bar_url(at(state), (coax_v_u8){bar_url, sizeof bar_url});
-    bar_post_id = un > 0 ? coaxial_http((uint32_t)(uintptr_t)bar_url, (uint32_t)un, (uint32_t)(uintptr_t)bar_body, (uint32_t)bn, 1 | 4 | 8) : -1;
+    bar_post_id = un > 0 ? coaxial_http((cx_face_addr)(uintptr_t)bar_url, (uint32_t)un, (cx_face_addr)(uintptr_t)bar_body, (uint32_t)bn, 1 | 4 | 8) : -1;
     if (bar_post_id < 0) everglade_bar_unsent(at(state));
   }
 }
 
 // The published edits once, then an admin's heard words, ORIGINAL's reset and new list, one request each at a time.
-static void edit_out(uint32_t state) {
+static void edit_out(cx_face_addr state) {
   coax_t_Everglade *g = city(state);
   edit_face_drain((coax_v_t_RealmEdit){g->ev.ed.e, 1});   /* the shared edit layer's one request */
   if (everglade_fork_ready(at(state))) {   /* FORK's one request (everglade-fork.coax) */
-    int32_t id = coaxial_http((uint32_t)(uintptr_t)fork_state.req_url.e, (uint32_t)fork_state.req_url_n,
-                              (uint32_t)(uintptr_t)fork_state.req_body.e, (uint32_t)fork_state.req_body_n, (int32_t)fork_state.req_flags);
+    int32_t id = coaxial_http((cx_face_addr)(uintptr_t)fork_state.req_url.e, (uint32_t)fork_state.req_url_n,
+                              (cx_face_addr)(uintptr_t)fork_state.req_body.e, (uint32_t)fork_state.req_body_n, (int32_t)fork_state.req_flags);
     everglade_fork_requested(at(state), id);
   }
   if (net_edit_take(at(state)) && world_id < 0) world_asked = false;   /* "e edit": a publish reaches every page in the room (#12714) */
@@ -676,19 +683,19 @@ static void edit_out(uint32_t state) {
   int64_t n = edit_id < 0 ? everglade_edit_ask(at(state)) : 0;
   if (n > 0) {
     /* a look goes to .../look with the next frame drawn (host flag 32) */
-    if (everglade_edit_look(at(state))) edit_id = coaxial_http(LOOK_URL_OF(state), (uint32_t)(uintptr_t)g->ev.ask.e, (uint32_t)n, 1 | 4 | 8 | 32);
-    else edit_id = coaxial_http(EDIT_URL_OF(state), (uint32_t)(uintptr_t)g->ev.ask.e, (uint32_t)n, 1 | 4 | 8);
+    if (everglade_edit_look(at(state))) edit_id = coaxial_http(LOOK_URL_OF(state), (cx_face_addr)(uintptr_t)g->ev.ask.e, (uint32_t)n, 1 | 4 | 8 | 32);
+    else edit_id = coaxial_http(EDIT_URL_OF(state), (cx_face_addr)(uintptr_t)g->ev.ask.e, (uint32_t)n, 1 | 4 | 8);
     everglade_edit_ask_sent(at(state));
     if (edit_id < 0) { edit_id = -1; everglade_edit_answer(at(state), (coax_string){"0\n", 2}); }
   }
   // ORIGINAL: the designed city back, before any list published after it.
   if (post_id < 0 && everglade_edit_reset(at(state))) {
-    post_id = coaxial_http(RESET_URL_OF(state), (uint32_t)(uintptr_t)"{}", 2, 1 | 4 | 8);
+    post_id = coaxial_http(RESET_URL_OF(state), (cx_face_addr)(uintptr_t)"{}", 2, 1 | 4 | 8);
     if (post_id < 0) { post_id = -1; everglade_edit_saved(at(state), 0); }
   }
   n = everglade_edit_post(at(state));
   if (n > 0 && post_id < 0) {
-    post_id = coaxial_http(WORLD_URL_OF(state), (uint32_t)(uintptr_t)g->ev.post.e, (uint32_t)n, 1 | 4 | 8);   /* the player key: a realm admin account publishes too */
+    post_id = coaxial_http(WORLD_URL_OF(state), (cx_face_addr)(uintptr_t)g->ev.post.e, (uint32_t)n, 1 | 4 | 8);   /* the player key: a realm admin account publishes too */
     everglade_edit_post_sent(at(state));
     if (post_id < 0) { post_id = -1; everglade_edit_saved(at(state), 0); }
   }
@@ -703,12 +710,12 @@ static double room_at = -10, room_asked_at;
 static char room_url_buf[120], chat_url_buf[120], room_asked[64];   /* room_asked: the room the presence in flight is for */
 static int room_asked_n;
 static uint8_t room_body[256], chat_body[1200];
-static coax_v_t_RoomState rooms(uint32_t state) { return (coax_v_t_RoomState){&city(state)->room.e[0], 1}; }
-static void room_out(uint32_t state, float dt) {
+static coax_v_t_RoomState rooms(cx_face_addr state) { return (coax_v_t_RoomState){&city(state)->room.e[0], 1}; }
+static void room_out(cx_face_addr state, float dt) {
   if (golden || !facts_seen) return;
   if (!has_player && !mint_tried) {
     mint_tried = true;
-    mint_id = coaxial_http((uint32_t)(uintptr_t)PLAYER_URL, sizeof PLAYER_URL - 1, (uint32_t)(uintptr_t)"{}", 2, 1 | 4);
+    mint_id = coaxial_http((cx_face_addr)(uintptr_t)PLAYER_URL, sizeof PLAYER_URL - 1, (cx_face_addr)(uintptr_t)"{}", 2, 1 | 4);
     if (mint_id < 0) mint_id = -1;
     return;
   }
@@ -724,7 +731,7 @@ static void room_out(uint32_t state, float dt) {
     coax_string sid = {(const char *)track_state.sid.e, track_state.sid_n};
     int64_t bn = room_chat_body(said, sid, (coax_v_u8){chat_body, sizeof chat_body});
     if (un > 0 && bn > 0) {
-      chat_id = coaxial_http((uint32_t)(uintptr_t)chat_url_buf, (uint32_t)un, (uint32_t)(uintptr_t)chat_body, (uint32_t)bn, 1 | 4 | 8);
+      chat_id = coaxial_http((cx_face_addr)(uintptr_t)chat_url_buf, (uint32_t)un, (cx_face_addr)(uintptr_t)chat_body, (uint32_t)bn, 1 | 4 | 8);
       if (chat_id < 0) { chat_id = -1; everglade_chat_answer(at(state), (coax_string){"0\n", 2}); }
     } else everglade_chat_answer(at(state), (coax_string){"400\n", 4});   /* a line that can't be written is dropped */
   }
@@ -738,23 +745,23 @@ static void room_out(uint32_t state, float dt) {
   float air = player.on_ground ? 0.0f : feet.y;
   int64_t bn = room_presence_body(feet.x, air, feet.z, verse_player_face(player), city(state)->room.e[0].last, (coax_v_u8){room_body, sizeof room_body});
   if (un <= 0 || bn <= 0) return;
-  room_id = coaxial_http((uint32_t)(uintptr_t)room_url_buf, (uint32_t)un, (uint32_t)(uintptr_t)room_body, (uint32_t)bn, 1 | 4 | 8);
+  room_id = coaxial_http((cx_face_addr)(uintptr_t)room_url_buf, (uint32_t)un, (cx_face_addr)(uintptr_t)room_body, (uint32_t)bn, 1 | 4 | 8);
   if (room_id < 0) room_id = -1;
   room_asked_at = now;
 }
 
 // The page's question, once the browser has a player key (or minting one failed).
-static void ask_out(uint32_t state) {
+static void ask_out(cx_face_addr state) {
   int64_t n = everglade_ask(at(state));
   if (n <= 0 || ask_id >= 0 || !facts_seen) return;
   if (!has_player && !mint_tried) {
     mint_tried = true;
-    mint_id = coaxial_http((uint32_t)(uintptr_t)PLAYER_URL, sizeof PLAYER_URL - 1, (uint32_t)(uintptr_t)"{}", 2, 1 | 4);
+    mint_id = coaxial_http((cx_face_addr)(uintptr_t)PLAYER_URL, sizeof PLAYER_URL - 1, (cx_face_addr)(uintptr_t)"{}", 2, 1 | 4);
     if (mint_id < 0) mint_id = -1;
     return;
   }
   if (mint_id >= 0) return;
-  ask_id = coaxial_http((uint32_t)(uintptr_t)NPC_URL, sizeof NPC_URL - 1, (uint32_t)(uintptr_t)city(state)->ask.e, (uint32_t)n, 1 | 4 | 8);
+  ask_id = coaxial_http((cx_face_addr)(uintptr_t)NPC_URL, sizeof NPC_URL - 1, (cx_face_addr)(uintptr_t)city(state)->ask.e, (uint32_t)n, 1 | 4 | 8);
   everglade_ask_sent(at(state));
   track_chat(tr(), track_cstr("npc"), n);   // a question to a character: its length only
   if (ask_id < 0) { ask_id = -1; everglade_answer(at(state), (coax_string){"0\n", 2}); }
@@ -771,30 +778,30 @@ static bool has_line(uint32_t length, const char *prefix) {
   return false;
 }
 
-EXPORT("coaxial_draws") uint32_t coaxial_draws(uint32_t state) { return (uint32_t)(uintptr_t)city(state)->draws.e; }
-EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(uint32_t state) { return city(state)->started ? (uint32_t)everglade_draws(at(state)) : 0u; }
+EXPORT("coaxial_draws") cx_face_addr coaxial_draws(cx_face_addr state) { return (cx_face_addr)(uintptr_t)city(state)->draws.e; }
+EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(cx_face_addr state) { return city(state)->started ? (uint32_t)everglade_draws(at(state)) : 0u; }
 EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 4; }
 EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) { return (uint32_t)(k == 3 ? everglade_river_node_bytes() : everglade_store_cap(k)); }
-EXPORT("coaxial_store") uint32_t coaxial_store(uint32_t state, int32_t k) {
-  if (k == 3) return (uint32_t)(uintptr_t)river.nodes.e;
-  return (uint32_t)(uintptr_t)(k == 0 ? (void *)city(state)->ground_store.e : k == 1 ? (void *)city(state)->objects.e : (void *)city(state)->palette.e);
+EXPORT("coaxial_store") cx_face_addr coaxial_store(cx_face_addr state, int32_t k) {
+  if (k == 3) return (cx_face_addr)(uintptr_t)river.nodes.e;
+  return (cx_face_addr)(uintptr_t)(k == 0 ? (void *)city(state)->ground_store.e : k == 1 ? (void *)city(state)->objects.e : (void *)city(state)->palette.e);
 }
-EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(uint32_t state, int32_t k) { return k == 1 || k == 2 ? (uint32_t)everglade_store_used(at(state), k) : coaxial_store_cap(k); }   /* the raid's people only while drawn (everglade.coax) */
+EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(cx_face_addr state, int32_t k) { return k == 1 || k == 2 ? (uint32_t)everglade_store_used(at(state), k) : coaxial_store_cap(k); }   /* the raid's people only while drawn (everglade.coax) */
 // What the host uploads: the ground and the river only when built, the objects and joints every frame.
-EXPORT("coaxial_store_version") uint32_t coaxial_store_version(uint32_t state, int32_t k) {
+EXPORT("coaxial_store_version") uint32_t coaxial_store_version(cx_face_addr state, int32_t k) {
   return k == 0 ? (uint32_t)city(state)->ground_gen : k == 3 ? river_gen : frames;
 }
 // The last draw is the river's (everglade.coax WATER_DRAW): the host draws it after the rest, in two halves.
 // ---- sound (everglade-sound.coax): this frame's lines for the host (NAME GAIN PAN [DELAY], ~ the bed),
 // and the effects themselves, rendered by Aethyr's synthesizer once the host starts audio (aethyr/audio/sfx.coax)
-EXPORT("coaxial_sounds") uint32_t coaxial_sounds(uint32_t state) { return (uint32_t)(uintptr_t)city(state)->snd.e[0].lines.e; }
-EXPORT("coaxial_sounds_len") uint32_t coaxial_sounds_len(uint32_t state) { (void)state; uint32_t n = sound_n; sound_n = 0; return n; }
+EXPORT("coaxial_sounds") cx_face_addr coaxial_sounds(cx_face_addr state) { return (cx_face_addr)(uintptr_t)city(state)->snd.e[0].lines.e; }
+EXPORT("coaxial_sounds_len") uint32_t coaxial_sounds_len(cx_face_addr state) { (void)state; uint32_t n = sound_n; sound_n = 0; return n; }
 #define SOUND_BANK (3u << 20)   /* the effects' WAV bytes and the room's: everglade_sound_bytes() is under this (a check, everglade-sound.coax) */
 static uint8_t sound_bank[SOUND_BANK];
 static int64_t sound_mix[300000];   /* one effect's samples at a time, or the room's (everglade_sound_scratch) */
 static char sound_list[4096];
 static uint32_t sound_list_n;
-EXPORT("coaxial_sound_bank_len") uint32_t coaxial_sound_bank_len(uint32_t state) {
+EXPORT("coaxial_sound_bank_len") uint32_t coaxial_sound_bank_len(cx_face_addr state) {
   (void)state;
   if (sound_list_n || everglade_sound_scratch() > (int64_t)(sizeof sound_mix / sizeof sound_mix[0])) return sound_list_n;
   uint32_t at = 0, n = 0;
@@ -804,9 +811,9 @@ EXPORT("coaxial_sound_bank_len") uint32_t coaxial_sound_bank_len(uint32_t state)
     int64_t b = everglade_sound_render(i, (coax_v_s64){sound_mix, sizeof sound_mix / sizeof sound_mix[0]}, (coax_v_u8){sound_bank + at, SOUND_BANK - at});
     if (nn <= 0 || b <= 0 || n + nn + 24 > sizeof sound_list) continue;
     memcpy(sound_list + n, name, (size_t)nn); n += (uint32_t)nn;
-    uint32_t parts[2] = { (uint32_t)(uintptr_t)(sound_bank + at), (uint32_t)b };
+    uintptr_t parts[2] = { (cx_face_addr)(uintptr_t)(sound_bank + at), (uint32_t)b };
     for (int p = 0; p < 2; p++) {
-      char d[12]; int dn = 0; uint32_t v = parts[p];
+      char d[24]; int dn = 0; uintptr_t v = parts[p];
       do { d[dn++] = (char)('0' + v % 10); v /= 10; } while (v);
       sound_list[n++] = ' ';
       while (dn) sound_list[n++] = d[--dn];
@@ -817,28 +824,28 @@ EXPORT("coaxial_sound_bank_len") uint32_t coaxial_sound_bank_len(uint32_t state)
   sound_list_n = n;
   return n;
 }
-EXPORT("coaxial_sound_bank") uint32_t coaxial_sound_bank(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)sound_list; }
+EXPORT("coaxial_sound_bank") cx_face_addr coaxial_sound_bank(cx_face_addr state) { (void)state; return (cx_face_addr)(uintptr_t)sound_list; }
 // A check's cue (aethyr/tests/everglade-sound.coax, through host.js coaxial.audio.probe on this machine).
-EXPORT("coaxial_sound_probe") int32_t coaxial_sound_probe(uint32_t state, int32_t slot, float right, float ahead, float up) {
+EXPORT("coaxial_sound_probe") int32_t coaxial_sound_probe(cx_face_addr state, int32_t slot, float right, float ahead, float up) {
   return (int32_t)everglade_sound_probe(at(state), slot, right, ahead, up);
 }
 
-EXPORT("coaxial_water_draws") uint32_t coaxial_water_draws(uint32_t state) { (void)state; return 1; }
+EXPORT("coaxial_water_draws") uint32_t coaxial_water_draws(cx_face_addr state) { (void)state; return 1; }
 
-EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t mods) {
+EXPORT("coaxial_key") uint32_t coaxial_key(cx_face_addr state, int32_t key, int32_t mods) {
   start(state);
   track_key(tr(), key, false);
   bool used = everglade_key(at(state), key, mods);
   track_drain(&track_state);
   return used ? 1u : 0u;
 }
-EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, int32_t mods) {
+EXPORT("coaxial_key_up") uint32_t coaxial_key_up(cx_face_addr state, int32_t key, int32_t mods) {
   track_key_up(tr(), key);
   return everglade_key_up(at(state), key, mods) ? 1u : 0u;
 }
-EXPORT("coaxial_focus") void coaxial_focus(uint32_t state) { everglade_guard_focus(at(state), true); guard_out(state); guide_out(state); }
-EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { everglade_blur(at(state)); guard_out(state); guide_out(state); sticks = verse_sticks_reset(); track_blur(tr()); }
-EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
+EXPORT("coaxial_focus") void coaxial_focus(cx_face_addr state) { everglade_guard_focus(at(state), true); guard_out(state); guide_out(state); }
+EXPORT("coaxial_blur") void coaxial_blur(cx_face_addr state) { everglade_blur(at(state)); guard_out(state); guide_out(state); sticks = verse_sticks_reset(); track_blur(tr()); }
+EXPORT("coaxial_pointer") uint32_t coaxial_pointer(cx_face_addr state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
   start(state);
   track_pointer(tr(), x, y, phase, kind, (coax_string){"", 0});
   track_drain(&track_state);
@@ -847,13 +854,18 @@ EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, floa
   return kind != 0 ? 1u : 0u;
 }
 // The spell bar's icons and card for the host to draw (coax/web/host.js coaxial_media): everglade-spells.coax sp_media.
-EXPORT("coaxial_media") uint32_t coaxial_media(uint32_t state) { coax_t_Everglade *g = city(state); return g->sp.media_big.count ? (uint32_t)(uintptr_t)g->sp.media_big.data : (uint32_t)(uintptr_t)g->sp.media.e; }
-EXPORT("coaxial_media_len") uint32_t coaxial_media_len(uint32_t state) { return (uint32_t)city(state)->sp.media_n; }
-EXPORT("coaxial_wheel") void coaxial_wheel(uint32_t state, float dy) { everglade_wheel(at(state), dy); }
+EXPORT("coaxial_media") cx_face_addr coaxial_media(cx_face_addr state) { coax_t_Everglade *g = city(state); return g->sp.media_big.count ? (cx_face_addr)(uintptr_t)g->sp.media_big.data : (cx_face_addr)(uintptr_t)g->sp.media.e; }
+EXPORT("coaxial_media_len") uint32_t coaxial_media_len(cx_face_addr state) { return (uint32_t)city(state)->sp.media_n; }
+EXPORT("coaxial_wheel") void coaxial_wheel(cx_face_addr state, float dy) { everglade_wheel(at(state), dy); }
 
-EXPORT("coaxial_inbox") uint32_t coaxial_inbox(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)inbox; }
+EXPORT("coaxial_inbox") cx_face_addr coaxial_inbox(cx_face_addr state) { (void)state; return (cx_face_addr)(uintptr_t)inbox; }
 EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inbox; }
-EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uint32_t length) {
+#ifdef COAXIAL_NATIVE_ADDRESS
+// Native is an explicit experimental v1 carrier. The web carrier migrates
+// only when its complete service receipts qualify the production opt-in.
+EXPORT("coaxial_host_contract_version") uint32_t coaxial_host_contract_version(void) { return 1; }
+#endif
+EXPORT("coaxial_message") void coaxial_message(cx_face_addr state, int32_t kind, uint32_t length) {
   if (length > sizeof inbox) return;
   start(state);
   /* the room's socket (256 + 4 * id + event): the server's world (everglade-net.coax) */
@@ -942,22 +954,22 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
   if (track_message(tr(), kind, (coax_string){(const char *)inbox, length})) track_drain(&track_state);
 }
 
-EXPORT("coaxial_asset") uint32_t coaxial_asset(uint32_t state, int32_t i, uint32_t bytes) {
+EXPORT("coaxial_asset") cx_face_addr coaxial_asset(cx_face_addr state, int32_t i, uint32_t bytes) {
   (void)state;
-  return i == 0 && bytes <= sizeof catalog ? (uint32_t)(uintptr_t)catalog : 0u;
+  return i == 0 && bytes <= sizeof catalog ? (cx_face_addr)(uintptr_t)catalog : 0u;
 }
 // Physical destination allocation observation; the typed host admits its
 // requested byte span before copying into this existing asset buffer.
-EXPORT("coaxial_asset_capacity") uint32_t coaxial_asset_capacity(uint32_t state, int32_t i) {
+EXPORT("coaxial_asset_capacity") uint32_t coaxial_asset_capacity(cx_face_addr state, int32_t i) {
   (void)state;return i == 0 ? (uint32_t)sizeof catalog : 0u;
 }
-EXPORT("coaxial_asset_ready") void coaxial_asset_ready(uint32_t state, int32_t i, uint32_t bytes) {
+EXPORT("coaxial_asset_ready") void coaxial_asset_ready(cx_face_addr state, int32_t i, uint32_t bytes) {
   start(state);
   if (i == 0 && bytes > 0 && bytes <= sizeof catalog) everglade_catalog(at(state), (coax_string){(const char *)catalog, bytes});
   if (i >= 0 && i <= 3 && bytes == 0) everglade_pack_failed(at(state));
 }
 
-EXPORT("coaxial_hash") void coaxial_hash(uint32_t state, uint32_t length) {
+EXPORT("coaxial_hash") void coaxial_hash(cx_face_addr state, uint32_t length) {
   if (length > sizeof inbox) return;
   start(state);
   // Everglade 5E's staging tails first ("gate+held": e5_hash), the rest is Everglade's
@@ -968,27 +980,27 @@ EXPORT("coaxial_hash") void coaxial_hash(uint32_t state, uint32_t length) {
   verse_place_named(place_k(), g->warp || g->above);
 }
 
-EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) {
+EXPORT("coaxial_action") int32_t coaxial_action(cx_face_addr state) {
   int32_t a = (int32_t)everglade_action(at(state));
   if (!a) a = place_action();
   if (!a && bar_text_n) { bar_out_now = true; a = BAR_ACTION; }
   return a;
 }
-EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { return bar_out_now ? (uint32_t)(uintptr_t)bar_text : place_out_now ? place_outbox() : (uint32_t)(uintptr_t)city(state)->outbox.e; }
-EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { return bar_out_now ? bar_text_n : place_out_now ? place_outbox_len() : (uint32_t)city(state)->out_n; }
-EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { if (bar_out_now) { bar_out_now = false; bar_text_n = 0; } else if (place_out_now) place_done(); else everglade_action_done(at(state)); }
-EXPORT("coaxial_wants_text") int32_t coaxial_wants_text(uint32_t state) { return everglade_wants_text(at(state)) ? 1 : 0; }
+EXPORT("coaxial_outbox") cx_face_addr coaxial_outbox(cx_face_addr state) { return bar_out_now ? (cx_face_addr)(uintptr_t)bar_text : place_out_now ? place_outbox() : (cx_face_addr)(uintptr_t)city(state)->outbox.e; }
+EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(cx_face_addr state) { return bar_out_now ? bar_text_n : place_out_now ? place_outbox_len() : (uint32_t)city(state)->out_n; }
+EXPORT("coaxial_action_done") void coaxial_action_done(cx_face_addr state) { if (bar_out_now) { bar_out_now = false; bar_text_n = 0; } else if (place_out_now) place_done(); else everglade_action_done(at(state)); }
+EXPORT("coaxial_wants_text") int32_t coaxial_wants_text(cx_face_addr state) { return everglade_wants_text(at(state)) ? 1 : 0; }
 // ---- the spells' fire and smoke, drawn after the scene (everglade-fx.wgsl, host.js particles)
 EXPORT("coaxial_particle_cap") uint32_t coaxial_particle_cap(void) { return (uint32_t)sizeof(((coax_t_Everglade *)0)->sp.sprites); }
-EXPORT("coaxial_particles") uint32_t coaxial_particles(uint32_t state) { return (uint32_t)(uintptr_t)city(state)->sp.sprites.e; }
-EXPORT("coaxial_particle_bytes") uint32_t coaxial_particle_bytes(uint32_t state) { return (uint32_t)(city(state)->sp.sprite_n * 12 * sizeof(float)); }
-EXPORT("coaxial_particle_instances") uint32_t coaxial_particle_instances(uint32_t state) { return city(state)->started ? (uint32_t)city(state)->sp.sprite_n : 0u; }
-EXPORT("coaxial_grass_instances") uint32_t coaxial_grass_instances(uint32_t state) { return city(state)->started ? (uint32_t)everglade_grass_instances(at(state)) : 0u; }
-EXPORT("coaxial_field") uint32_t coaxial_field(uint32_t state) { return (uint32_t)(uintptr_t)city(state)->field.e; }
+EXPORT("coaxial_particles") cx_face_addr coaxial_particles(cx_face_addr state) { return (cx_face_addr)(uintptr_t)city(state)->sp.sprites.e; }
+EXPORT("coaxial_particle_bytes") uint32_t coaxial_particle_bytes(cx_face_addr state) { return (uint32_t)(city(state)->sp.sprite_n * 12 * sizeof(float)); }
+EXPORT("coaxial_particle_instances") uint32_t coaxial_particle_instances(cx_face_addr state) { return city(state)->started ? (uint32_t)city(state)->sp.sprite_n : 0u; }
+EXPORT("coaxial_grass_instances") uint32_t coaxial_grass_instances(cx_face_addr state) { return city(state)->started ? (uint32_t)everglade_grass_instances(at(state)) : 0u; }
+EXPORT("coaxial_field") cx_face_addr coaxial_field(cx_face_addr state) { return (cx_face_addr)(uintptr_t)city(state)->field.e; }
 
 // Coax owns the URL/body, consent, cadence, deadline, decoding and lifecycle.
 // This binding only moves bounded byte views and aborts the revoked fetch.
-static void guard_out(uint32_t state) {
+static void guard_out(cx_face_addr state) {
   int64_t monotonic_ms = guard_now_ms();
   coax_t_GaInput page_input = everglade_guard_take(at(state));
   coax_t_GaInput policy_input;
@@ -999,26 +1011,26 @@ static void guard_out(uint32_t state) {
   coax_t_GaEffect effect = ga_effect(gs(), monotonic_ms);
   if (!effect.body.count) return;
   guard_sequence = ga_sequence(gs());
-  guard_id = guard_http((uint32_t)(uintptr_t)effect.url.data, (uint32_t)effect.url.count,
-                       (uint32_t)(uintptr_t)effect.body.data, (uint32_t)effect.body.count,
+  guard_id = guard_http((cx_face_addr)(uintptr_t)effect.url.data, (uint32_t)effect.url.count,
+                       (cx_face_addr)(uintptr_t)effect.body.data, (uint32_t)effect.body.count,
                        (uint32_t)effect.flags, effect.timeout_ms);
   ga_sent(gs(), guard_sequence, guard_id >= 0);
 }
 // The captain's request: Coax owns the body, cadence and deadline; a dropped one is aborted.
-static void captain_out(uint32_t state) {
+static void captain_out(cx_face_addr state) {
   int64_t monotonic_ms = guard_now_ms();
   if (captain_id >= 0 && !everglade_captain_pending(cs(), captain_sequence)) { guard_cancel(captain_id); captain_id = -1; }
   coax_t_CapEffect effect = everglade_captain_effect(at(state), cs(), monotonic_ms, (coax_v_u8){captain_body, sizeof captain_body});
   if (!effect.body.count || captain_id >= 0) return;
   captain_sequence = effect.sequence;
-  captain_id = guard_http((uint32_t)(uintptr_t)effect.url.data, (uint32_t)effect.url.count,
-                          (uint32_t)(uintptr_t)effect.body.data, (uint32_t)effect.body.count, 5u, effect.timeout_ms);
+  captain_id = guard_http((cx_face_addr)(uintptr_t)effect.url.data, (uint32_t)effect.url.count,
+                          (cx_face_addr)(uintptr_t)effect.body.data, (uint32_t)effect.body.count, 5u, effect.timeout_ms);
   everglade_captain_sent(cs(), captain_sequence, captain_id >= 0);
 }
-EXPORT("coaxial_captain_probe") int32_t coaxial_captain_probe(uint32_t state, int32_t field) { (void)state; return (int32_t)everglade_captain_probe(cs(), field); }
+EXPORT("coaxial_captain_probe") int32_t coaxial_captain_probe(cx_face_addr state, int32_t field) { (void)state; return (int32_t)everglade_captain_probe(cs(), field); }
 // The whole game update precedes this call; only the local view is copied
 // back before HUD draw. C performs transport/clock/span effects only.
-static void guide_out(uint32_t state) {
+static void guide_out(cx_face_addr state) {
   int64_t ms = guard_now_ms();
   coax_t_EgGuideInput page = everglade_guide_take(at(state));
   guide_intent = ggp_intent(guide_intent, page.asked, page.boundary, page.asked_epoch, page.epoch);
@@ -1037,14 +1049,14 @@ static void guide_out(uint32_t state) {
   coax_t_GgsEffect effect = ggs_effect(guides(), ms);
   if (effect.body.count) {
     guide_sequence = effect.sequence;
-    guide_id = guard_http((uint32_t)(uintptr_t)effect.url.data, (uint32_t)effect.url.count,
-        (uint32_t)(uintptr_t)effect.body.data, (uint32_t)effect.body.count,
+    guide_id = guard_http((cx_face_addr)(uintptr_t)effect.url.data, (uint32_t)effect.url.count,
+        (cx_face_addr)(uintptr_t)effect.body.data, (uint32_t)effect.body.count,
         (uint32_t)effect.flags, effect.timeout_ms);
     ggs_sent(guides(), guide_sequence, guide_id >= 0);
   }
   everglade_guide_view(at(state), ggs_view(guides(), ms), observation, ggp_offer(facts), ms);
 }
-EXPORT("coaxial_guard_probe") int32_t coaxial_guard_probe(uint32_t state, int32_t field) {
+EXPORT("coaxial_guard_probe") int32_t coaxial_guard_probe(cx_face_addr state, int32_t field) {
   if (field == 248) return guide_authenticated ? 1 : 0;
   if (field >= 240 && field <= 252) return (int32_t)everglade_guide_probe(at(state), field);
   if (field >= 200) return (int32_t)ggs_probe(guides(), field);

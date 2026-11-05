@@ -2,7 +2,7 @@
 // features were actually enabled; support alone is not permission to publish.
 #module "aethyr.render.capabilities";
 #authority;
-RenderBackend :: enum u8 {invalid;webgpu;vulkan;reference;}
+RenderBackend :: enum u8 {invalid;webgpu;vulkan;reference;metal;}
 RenderCapabilityStatus :: enum u8 {ok;invalid;generic_derivatives;legacy_kill;helper_unavailable;int64_unavailable;}
 RenderShaderRequirements :: struct {
   reflection_schema:int=2;tree_version:int=2;derivatives:int;control:int;requires_int64:bool;
@@ -63,11 +63,18 @@ RenderDeviceCapabilities :: struct {backend:RenderBackend;helper_enabled:bool;in
   rc_dev.helper_enabled=true;rc_dev.int64_enabled=false;#assert render_capabilities_admit(rc_req,rc_dev,true)==RenderCapabilityStatus.int64_unavailable;
   rc_req=RenderShaderRequirements.{};rc_dev.helper_enabled=false;#assert render_capabilities_admit(rc_req,rc_dev,true)==RenderCapabilityStatus.ok;
 }
+#test "Metal declares precise helper semantics and actual native integer support" {
+ rc_req:=RenderShaderRequirements.{tree_version=3,derivatives=2,control=2,requires_int64=true};
+ rc_dev:=RenderDeviceCapabilities.{backend=RenderBackend.metal,helper_enabled=true,int64_enabled=true};
+ #assert render_capabilities_admit(rc_req,rc_dev,true)==RenderCapabilityStatus.ok;
+ rc_dev.helper_enabled=false;#assert render_capabilities_admit(rc_req,rc_dev,true)==RenderCapabilityStatus.helper_unavailable;
+ rc_dev.helper_enabled=true;rc_dev.int64_enabled=false;#assert render_capabilities_admit(rc_req,rc_dev,true)==RenderCapabilityStatus.int64_unavailable;
+}
 
 render_capabilities_admit :: (rc_req:RenderShaderRequirements,rc_dev:RenderDeviceCapabilities,rc_portable_fine:bool)->RenderCapabilityStatus {
   if rc_req.reflection_schema!=2 || (rc_req.tree_version!=2 && rc_req.tree_version!=3) ||
     rc_req.derivatives<0 || rc_req.derivatives>3 || rc_req.control<0 || rc_req.control>3 ||
-    (rc_dev.backend!=RenderBackend.webgpu && rc_dev.backend!=RenderBackend.vulkan && rc_dev.backend!=RenderBackend.reference) {return RenderCapabilityStatus.invalid;}
+    (rc_dev.backend!=RenderBackend.webgpu && rc_dev.backend!=RenderBackend.vulkan && rc_dev.backend!=RenderBackend.reference && rc_dev.backend!=RenderBackend.metal) {return RenderCapabilityStatus.invalid;}
   if rc_req.tree_version==2 && ((rc_req.derivatives&2)!=0 || (rc_req.control&2)!=0) {return RenderCapabilityStatus.invalid;}
   if rc_portable_fine && (rc_req.derivatives&1)!=0 {return RenderCapabilityStatus.generic_derivatives;}
   if rc_portable_fine && (rc_req.control&1)!=0 {return RenderCapabilityStatus.legacy_kill;}

@@ -1,0 +1,2 @@
+// The very same Everglade5E producer, compiled natively into a reloadable image.
+#load "../openagents-web/everglade5e.coax";

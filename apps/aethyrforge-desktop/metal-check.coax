@@ -1,0 +1,25 @@
+// A bounded real native producer/GPU smoke, driven and checked in Coax.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/json/json.coax";
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])<3 {tool_errln("usage: metal-check ROOT RESOURCES OUTPUT [--live] [--facts FILE]");return 2;}
+ root:=args_at(a[..],0);resources:=args_at(a[..],1);out:=args_at(a[..],2);if !fs_mkdir(out) {return 1;}
+ path:[4096]u8;facts:[16384]u8;n:=fs_read(args_value(a[..],"--facts",fs_join(root,"verse/native/everglade.facts",path[..])),facts[..]);if n<1 {return 1;}
+ plan:[65536]u8;o:[1]Jo;jo_start(o[..],plan[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.metal.effects.v1");jo_key(o[..],"golden");jo_bool(o[..],!args_has(a[..],"--live"));jo_key(o[..],"operations");jo_arr(o[..]);
+ jo_obj(o[..]);jo_key(o[..],"op");jo_str(o[..],"message");jo_key(o[..],"kind");jo_int(o[..],600);jo_key(o[..],"text");jo_str(o[..],cast(string)facts[0..<n]);jo_end(o[..]);
+ for i:0..<90 {jo_obj(o[..]);jo_key(o[..],"op");jo_str(o[..],"frame");jo_key(o[..],"width");jo_int(o[..],320);jo_key(o[..],"height");jo_int(o[..],180);jo_key(o[..],"scale");jo_int(o[..],1);jo_key(o[..],"dt");jo_raw(o[..],"0.016666666666666666");jo_end(o[..]);}
+ paths:[5][4096]u8;snapshot:=fs_join(out,"screen.f32",paths[0][..]);jo_obj(o[..]);jo_key(o[..],"op");jo_str(o[..],"snapshot");jo_key(o[..],"file");jo_str(o[..],snapshot);jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);
+ planPath:=fs_join(out,"inputs.json",paths[1][..]);report:=fs_join(out,"result.json",paths[2][..]);if o[0].bad || !fs_write(planPath,jo_text(o[..])) {return 1;}
+ argv:=[5]string.[fs_join(root,"apps/aethyrforge-desktop/build/metal/MetalEffects",paths[3][..]),resources,fs_join(resources,"metal/libeverglade.dylib",paths[4][..]),planPath,report];stdout:[65536]u8;stderr:[65536]u8;r:=proc_run(argv[..],60000,stdout[..],stderr[..]);
+ if r.started!=0 || r.status!=0 || r.timed_out || r.cut {tool_errln(cast(string)stdout[0..<r.out_n]);tool_errln(cast(string)stderr[0..<r.err_n]);return 1;}
+ bytes:[1048576]u8;rn:=fs_read(report,bytes[..]);doc:[1]Jv;nodes:[256]JvNode;if rn<0 || !jv_parse(doc[..],cast(string)bytes[0..<rn],nodes[..]) {return 1;}d:=doc[0];
+ if jv_int(d,jv_get(d,0,"frames"),-1)!=90 || jv_int(d,jv_get(d,0,"draws"),-1)<=0 || jv_int(d,jv_get(d,0,"ledgerLive"),-1)<10 || jv_int(d,jv_get(d,0,"stateAddress"),-1)<=4294967295 {tool_errln("Metal smoke: wrong frame/draw/resource/native-address observation");return 1;}
+ if jv_int(d,jv_get(d,0,"completed"),-1)!=90 || jv_int(d,jv_get(d,0,"pending"),-1)!=0 || jv_int(d,jv_get(d,0,"closedLedgerLive"),-1)!=0 || jv_int(d,jv_get(d,0,"closedLedgerWords"),-1)!=0 {tool_errln("Metal smoke: incomplete GPU completion or resources left after close");return 1;}
+ bn:=fs_read(snapshot,bytes[..]);if bn!=320*180*16 {tool_errln("Metal smoke: missing whole RGBA f32 readback");return 1;}
+ different:=false;for i:0..<bn/4 {at:=i*4;bits:=u32(bytes[at])|(u32(bytes[at+1])<<8)|(u32(bytes[at+2])<<16)|(u32(bytes[at+3])<<24);if (bits&0x7F800000)==0x7F800000 {tool_errln("Metal smoke: nonfinite GPU output");return 1;}if i%4!=3 && bits!=0 {different=true;}}
+ if !different {tool_errln("Metal smoke: black image");return 1;}
+ print("Metal native smoke: 90 real Coax frames, full finite GPU readback, native address above4GiB\n");return 0;
+}

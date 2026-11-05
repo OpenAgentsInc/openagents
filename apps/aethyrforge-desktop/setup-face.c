@@ -5,6 +5,7 @@ static coax_t_ForgeSetup setup;
 static coax_t_ForgeChrome chrome;
 static uint8_t input[65536];
 static coax_v_t_ForgeSetup view(void) { return (coax_v_t_ForgeSetup){&setup, 1}; }
+int64_t forge_world_backend_bytes(const uint8_t *bytes,int64_t count){return forge_world_backend((coax_string){(const char*)bytes,count});}
 void fgs_reset(void) { fsu_reset(view()); }
 int64_t fgs_input_byte(int64_t i, int64_t v) {
   if (i < 0 || i >= (int64_t)sizeof input || v < 0 || v > 255) return 0;

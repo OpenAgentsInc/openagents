@@ -1,0 +1,43 @@
+// Author native window measurements and reduce actual platform clocks.
+// Input latency ends at GPU completion; this is not an optical measurement.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/json/json.coax";
+mw_op :: (o:[]Jo,name:string) {jo_obj(o);jo_key(o,"op");jo_str(o,name);}
+mw_wait :: (o:[]Jo,ms:int) {mw_op(o,"wait");jo_key(o,"ms");jo_int(o,ms);jo_end(o);}
+mw_observe :: (o:[]Jo,name:string) {mw_op(o,"observe");jo_key(o,"label");jo_str(o,name);jo_end(o);}
+mw_key :: (o:[]Jo,down:bool) {mw_op(o,"key");jo_key(o,"key");jo_int(o,119);jo_key(o,"down");jo_bool(o,down);jo_end(o);}
+mw_field :: (d:Jv,node:int,name:string)->int {return jv_int(d,jv_get(d,node,name),-1);}
+mw_value :: (d:Jv,row:int,column:int)->int {return jv_int(d,jv_at(d,row,column),-1);}
+mw_label :: (d:Jv,name:string)->int {rows:=jv_get(d,0,"observations");for i:0..<jv_len(d,rows) {row:=jv_at(d,rows,i);if jv_raw_eq(jv_raw(d,jv_get(d,row,"label")),name) {return row;}}return -1;}
+mw_percentile :: (v:[]int,n:int)->f64 {for i:1..<n {x:=v[i];at:=i;while at>0 && v[at-1]>x {v[at]=v[at-1];at-=1;}v[at]=x;}return f64(v[(n-1)*95/100])/1000000;}
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])<4 {tool_errln("usage: metal-window ROOT STAGED_APP DATA_DIRECTORY NEW_OUTPUT [--hz HZ] [--size CSS_WIDTHxHEIGHT]");return 2;}
+ rate:=args_whole(args_value(a[..],"--hz","60"));size:=args_size(args_value(a[..],"--size","640x360"));if rate<1 || rate>240 || !size.ok {return 2;}
+ root:=args_at(a[..],0);app:=args_at(a[..],1);data:=args_at(a[..],2);dir:=args_at(a[..],3);if !fs_mkdir(dir) {return 1;}paths:[4][4096]u8;report:=fs_join(dir,"window.json",paths[0][..]);plan:=fs_join(dir,"plan.json",paths[1][..]);
+ bytes:[65536]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.metal.window-plan.v1");jo_key(o[..],"report");jo_str(o[..],report);jo_key(o[..],"operations");jo_arr(o[..]);
+ // Default to the existing benchmark's explicit60Hz cap. Optional surface
+ // dimensions are CSS points; receipts retain actual pixels and scale.
+ if args_has(a[..],"--size") {mw_op(o[..],"resize");jo_key(o[..],"width");jo_int(o[..],size.w);jo_key(o[..],"height");jo_int(o[..],size.h);jo_end(o[..]);}
+ mw_op(o[..],"presentation");jo_key(o[..],"hz");jo_int(o[..],rate);jo_end(o[..]);mw_op(o[..],"audio");jo_end(o[..]);mw_wait(o[..],2000);mw_op(o[..],"reset");jo_end(o[..]);mw_wait(o[..],6000);mw_observe(o[..],"active");
+ mw_op(o[..],"reset");jo_end(o[..]);mw_op(o[..],"status");jo_end(o[..]);mw_wait(o[..],1000);mw_observe(o[..],"covered-a");mw_wait(o[..],1000);mw_observe(o[..],"covered-b");mw_op(o[..],"world");jo_end(o[..]);mw_wait(o[..],1000);mw_op(o[..],"reset");jo_end(o[..]);
+ for i:0..<10 {mw_wait(o[..],100);mw_key(o[..],true);mw_wait(o[..],40);mw_key(o[..],false);mw_wait(o[..],160);}mw_observe(o[..],"input");
+ mw_op(o[..],"focus");jo_key(o[..],"focused");jo_bool(o[..],false);jo_end(o[..]);mw_wait(o[..],250);mw_op(o[..],"focus");jo_key(o[..],"focused");jo_bool(o[..],true);jo_end(o[..]);
+ mw_op(o[..],"resize");jo_key(o[..],"width");jo_int(o[..],900);jo_key(o[..],"height");jo_int(o[..],600);jo_end(o[..]);mw_wait(o[..],500);mw_op(o[..],"reset");jo_end(o[..]);mw_wait(o[..],2000);mw_observe(o[..],"resized");
+ mw_op(o[..],"snapshot");jo_key(o[..],"file");jo_str(o[..],fs_join(dir,"screen.f32",paths[2][..]));jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);if o[0].bad || !fs_write(plan,jo_text(o[..])) {return 1;}
+ child:=proc_new();if child<0 {return 1;}defer {released:=proc_release(child);}
+ for arg:[10]string.[fs_join(app,"Contents/MacOS/Aethyrforge",paths[3][..]),"--world","metal","--mute-audio","--data-dir",data,"--metal-measure-plan",plan,"--test-window-title","Metal12868Check"] {if !proc_arg(child,arg) {return 1;}}
+ quiet:=proc_quiet(child);if !quiet || proc_start(child)!=0 {return 1;}deadline:=proc_now_ms()+120000;status:=PROC_RUNNING;
+ while proc_now_ms()<deadline && status==PROC_RUNNING {status=proc_wait(child,1000);}if status!=0 {tool_errln("Native window measurement did not finish successfully");return 1;}
+ text:[4194304]u8;nn:=fs_read(report,text[..]);nodes:[131072]JvNode;doc:[1]Jv;if nn<1 || !jv_parse(doc[..],cast(string)text[0..<nn],nodes[..]) {return 1;}d:=doc[0];active:=mw_label(d,"active");input:=mw_label(d,"input");ca:=mw_label(d,"covered-a");cb:=mw_label(d,"covered-b");resized:=mw_label(d,"resized");if active<0 || input<0 || ca<0 || cb<0 || resized<0 {return 1;}
+ rows:=jv_get(d,active,"rows");n:=jv_len(d,rows);if n<2 {return 1;}first:=jv_at(d,rows,0);last:=jv_at(d,rows,n-1);duration:=mw_value(d,last,1)-mw_value(d,first,1);if duration<=0 {return 1;}fps:=f64(n-1)*1000000000/f64(duration);intervals:[4096]int;for i:1..<n {intervals[i-1]=mw_value(d,jv_at(d,rows,i),1)-mw_value(d,jv_at(d,rows,i-1),1);}p95:=mw_percentile(intervals[..],n-1);
+ latencies:[64]int;latency_n:=0;sequence:=0;ir:=jv_get(d,input,"rows");for i:0..<jv_len(d,ir) {row:=jv_at(d,ir,i);seq:=mw_value(d,row,5);if seq>0 && seq!=sequence {if latency_n==64 {return 1;}latencies[latency_n]=mw_value(d,row,3)-mw_value(d,row,6);if latencies[latency_n]<0 {return 1;}latency_n+=1;sequence=seq;}}
+ latency95:=ifx latency_n>0 then mw_percentile(latencies[..],latency_n) else -1.0;
+ continued:=mw_field(d,ca,"frames")==mw_field(d,cb,"frames") && mw_field(d,ca,"completed")==mw_field(d,cb,"completed") && mw_field(d,cb,"pending")==0 && mw_field(d,cb,"messages")>mw_field(d,ca,"messages");
+ changed:=false;if jv_len(d,ir)>1 {start:=jv_at(d,ir,0);finish:=jv_at(d,ir,jv_len(d,ir)-1);changed=abs(f64(mw_value(d,finish,7)-mw_value(d,start,7)))+abs(f64(mw_value(d,finish,8)-mw_value(d,start,8)))>100;}
+ hz:=mw_field(d,0,"preferredFPS");passed:=mw_field(d,active,"dropped")==0 && mw_field(d,input,"dropped")==0 && fps>=f64(hz)*0.9 && latency_n>=16 && changed && continued && mw_field(d,resized,"net")==2 && mw_field(d,0,"closedLedgerLive")==0 && mw_field(d,0,"closedLedgerWords")==0;
+ print("Native window: %Hz configured/%Hz display, %frames in%s =%fps, p95interval%ms; softwareinput→GPUcompletion p95%ms over%events; moved%, coveredroomcontinued%, pass:%\n",hz,mw_field(d,0,"displayFPS"),n,f64(duration)/1000000000,fps,p95,latency95,latency_n,changed,continued,passed);
+ return ifx passed then 0 else 1;
+}

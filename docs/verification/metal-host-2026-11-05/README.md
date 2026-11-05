@@ -1,0 +1,186 @@
+# Interactive Metal host (#12868): qualification in progress
+
+The opt-in `--world metal` AppKit host executes the shared Coax renderer and
+Everglade producer. The desktop default remains WebKit. This record does not
+close #12868 or qualify the three-host default change in #12869.
+
+The durable raw observations are under
+`~/.openagents/aethyrforge/metal-host-12868/`. Tests use a separate app bundle,
+data directory and native window, with audio muted. The ordinary installed
+Aethyrforge app is not replaced by these runs.
+
+## Boundary
+
+`MetalRealm.m` binds Metal objects, reads packages and images through SDKs,
+copies admitted buffers, submits the Coax-authored pass plan and observes GPU
+completion. The Coax geometry, bindings, package, ledger, surface, transport,
+HTTP route and lifecycle authorities decide admission. The face uses native
+`uintptr_t` addresses and the same game payloads as its Wasm build. Metal
+contains no replacement gameplay, HUD or world simulation.
+
+`MetalWorld.swift` presents a `CAMetalLayer` with `CADisplayLink`, translates
+AppKit input and releases held input on blur and hiding. `MetalNetwork.swift`
+executes URLSession effects after shared Coax slot/generation decisions.
+`MetalAudio.swift` passes canonical decoded PCM and commands to the shared
+Coax mixer; CoreAudio supplies the device callback. The native setup, status,
+Coder and voice bridge remain desktop services around that world.
+
+## Observed sections
+
+| Section | Retained observation | Result and scope |
+| --- | --- | --- |
+| Core dispatch | `conformance-current/metal-core.json` | Common Coax checker accepts the actual fixture defaults, assets, two frames and input/message event words. |
+| Socket/HTTP ownership | `conformance-current/metal-transport.json` | Actual loopback workload passes all 79 common rows, including slot exhaustion, UTF-8, overflow, cancellation and stale-owner fencing. |
+| HTTP normalization | `conformance-http/metal-http-target.json` | All 30 physical peer targets pass the common checker. |
+| Lifecycle | `conformance-current-hidden/metal-lifecycle.json` | Ten actual rows include a held key followed by hidden release. Negative, backward and hidden frame offers do not advance the producer. Final lifecycle is `[1,1,1,1,4015625]`, held input is zero. |
+| Drawable affordability | `conformance-drawable-after/metal-lifecycle.json` | A CAMetalLayer SDK subclass returns no drawable. The host calls it once, leaves producer frames at zero and its clock at -1; the same ten lifecycle rows then pass. This check failed before moving drawable acquisition ahead of `htl_offer` and the producer. |
+| GPU recovery | `replay-qualified-half/` | Same frozen inputs before/after resource recreation produce identical bytes; two frames complete, pending is zero, old and closed ledger live counts are zero. |
+| Sanitized interpreter | `replay-asan/` and `asan-sdk/` | AddressSanitizer instruments the Objective-C interpreter, generated shared renderer/texture C and Swift effects driver. Frozen frame/recovery remain byte-identical, strict browser comparison has zero outliers, and API/GPU validation report no errors. The separately loaded producer image is not instrumented by this run. |
+| Frame image | `frame-jpeg/` | Actual 320×180 BGRA readback encodes through the SDK; JPEG/base64 bytes round-trip through the shared Coax HTTP object attachment, preserving the other JSON fields. API and GPU validation are enabled. This run sends no provider request. |
+| Canonical audio bank | `audio-canonical-bank/` | Actual current native producer WAV bytes and canonical decoded PCM are retained. The independent browser bridge compares all 48 assets bit-for-bit. |
+| Rendered audio | `audio-fixtures-canonical/` | The actual browser AudioWorklet matches all eleven native ranges at the unchanged `2^-20` sample bound, without alignment or masks; nine ranges are bit-exact. See the [common audio record](../host-contract-2026-11-05/audio-canonical.md). |
+| CoreAudio device | `audio-canonical-device/audio.json` | Actual muted device callbacks remain finite, hold during pause and resume; the authored room impulse uses 66 partitions. |
+| Visible native window | `window-timing-60/` | Prior staged producer: 356 frames in 5.966595 s, 59.497921 FPS at an explicit 60 Hz cap on a 120 Hz display. Synthetic SDK key-call to GPU-completion p95 is 27.071 ms over 20 events; movement and resize are observed. Covered rendering/audio stop while native room messages continue near 30 Hz. Final ledger is zero. This software proxy excludes the physical keyboard/AppKit event queue and is not an optical measurement. |
+| Display-rate native window | `window-current-120/` | Updated producer/SDK: 728 frames in 6.058315 s, 120.00036 FPS on a 120 Hz display at 1280×720 physical pixels (640×360 CSS, DPR 2). P95 interval is 8.34 ms; the same software input proxy is 14.547 ms over 20 events. Movement and resize pass. Covered frames/completions hold at 958, audio callbacks at 757, while room messages advance 280→310. Close releases the ledger. |
+| Physical AppKit flows | `ui-*.json` | Actual Command-M minimizes: producer/completion counters hold at 1136 with pending zero while room messages advance 631→881. Raising restores drawing, and Command-R replaces the engine and reconnects (net 2). Native Coder accepts a Unicode draft, which is cleared without sending; status returns to ordinary play. The isolated bundle has no microphone permission, so this observation does not qualify capture. |
+
+The earlier 60 Hz window timing uses an earlier staged producer. It is retained as evidence
+of the host path, and is not a claim that final current-source packaging has
+passed. Its raw JSON contains every observed frame and event clock.
+The newer 120 Hz result is scoped to its measured surface; the later
+1800×1200 resize is a functional check, not a claim of 120 FPS there.
+The native display-link preference now starts from AppKit's actual display
+maximum. A standard Window/Minimize menu consumes Command-M before it can
+reach the realm's map key.
+
+## Complete frozen GPU frame
+
+The source-qualified browser capture and genuine historical CPU compiler
+receipt are described in the [common frame record](../host-contract-2026-11-05/qualified-shared-frame.md).
+These runs use that exact RFI, package, buffers, texture mip chains and media;
+they do not rerun or synthesize the producer. The retained graphics compiler
+is the separately qualified #12867 iteration image, not a newly released
+compiler with a fabricated provenance receipt.
+
+The unchanged channel rule is
+`abs(value-reference) <= .002 * max(1,abs(reference))`. The inherited G5 live
+frame allows 2,000 colour channels beyond that rule. Nonfinite values and
+masked pixels remain zero-required. Supplemental strict comparator failures
+are retained rather than reclassified as strict passes.
+
+| Actual Metal target | Channels outside the rule | Maximum absolute error | Nonfinite/masked | Existing live gate |
+| --- | ---: | ---: | ---: | --- |
+| RGBA16Float | 0 / 230,400 | 0.001220703125 | 0 / 0 | Pass |
+| BGRA8Unorm | 8 / 230,400 | approximately 1/255 | 0 / 0 | Pass; strict supplemental comparator fails |
+
+Both runs issue 136 actual draw calls and release all ledger resources.
+`replay-qualified-half/sdk/` and `replay-qualified-bgra8/sdk/` freeze their
+respective SDK executables, source, generated C/headers and objects. Shared
+runtime package/assets and producer image are frozen separately at
+`replay-qualified-shared-resources/metal/`.
+
+The same qualified browser input currently fails Vulkan's BGRA8/RGBA8 live
+comparison with 7,020 colour channels outside the rule, exceeding 2,000.
+Its half-float comparison has 53 and passes the existing allowance. The
+common record retains both. This is unresolved three-host evidence; the
+desktop default remains web.
+
+`rgba8-float-diagnostic/` additionally renders the *same RGBA8 input RFI* into
+half-float and applies the published `rr_unorm8` once after the full frame.
+That differs from browser BGRA8 in 5,811 channels, Metal BGRA8 in 5,805 and
+Vulkan RGBA8 in 3,223 (maximum 0.1294117645 for Vulkan). It changes current
+per-pass rounding and is diagnostic only. No production target, shader,
+comparison rule or allowance was changed by this experiment.
+
+The disabled `presentation-experiment/` path consumes the shared Coax
+`RenderPresentation` descriptor, draws the complete graph into RGBA16Float
+and uses existing media entry 13 with the descriptor's nearest/clamp sampler
+to render once into an actual BGRA8Unorm target. Against the matched new
+browser actual display readback, 5/230,400 channels differ beyond the rule
+(maximum one UNORM step), with zero nonfinite values or masks. It passes the
+inherited live allowance and retains the strict failure. API and GPU
+validation are enabled with no reported errors; pending and closed ledger
+counts are zero. `sdk/` and `artifacts.sha256` retain the exact interpreter,
+generated units and executable. This is a private experiment, with no
+production target/default change.
+
+## Actual producer and asset isolation
+
+`cpu-current-capacity/` supplies the matched 90-frame workload to the native
+and actual Wasm faces. All 128 scalar probe results agree; this includes
+the probe's unused sentinel indices and does not imply every simulation
+word is identical. The measured store/particle allocation capacities agree.
+The tighter CPU byte diagnostic fails on draw transform S1 word 3184.
+`state-fields.txt` maps arena differences through 211 actual compiler field
+offsets: floats, heights, ground store, objects, sprite/draw storage and the
+two native/Wasm pointer-bearing views differ. It does not waive a simulation
+difference by classifying it as drawing.
+
+With the same frozen texture/media bytes, the two actual producer handoffs
+render through the same MF interpreter with 27/230,400 channels beyond the
+unchanged rule, zero nonfinite/masked pixels, within the existing live
+allowance. Using the actual native asset preparation instead gives 15,581
+channels and fails; native-versus-native frozen asset isolation accounts
+for 15,554. These actual failures remain in `handoff-current-capacity/`.
+The existing native layer tool makes alpha-weighted box mipmaps, whereas
+the historical browser asks its image SDK for high quality resizing. A
+canonical Coax decode/mip API is published separately in
+`aethyr/render/host-layers.coax`; its native byte identity does not qualify
+the still-pending browser migration or erase these old asset failures.
+
+## Build status
+
+The conditional native-v1/web-v0 literal-table shared release Wasm is 2,176,847 bytes, within the
+existing 2,280,000-byte budget recorded by the room/party changes. An older
+packed-table snapshot measured 2,377,513 bytes shared versus 2,253,731 bytes
+producer-only: the shared renderer increment was 123,782 bytes and the old
+producer baseline excess was separate. This work raises no Wasm budget.
+
+Native generated C now travels through the existing raw-byte process API.
+The old line reader refused 386,979-byte rig-table lines. The retained runner
+check observes all 70,001 bytes of a long line including its terminal LF;
+the current native producer emission and host C compilation then complete.
+
+The next full packaging slice was stopped at twelve minutes while emitting
+the local room on the loaded machine, before its fourteen-minute deadline.
+The incomplete output is not admitted. A separately source-qualified room
+artifact from the room-interest work was compared across all 235 Coax inputs,
+its native SDK closure and pack, with no difference from `fae22e7101` at this
+host snapshot. The reused binary is SHA-256
+`04339e37ddc7147c093b2aa64c34a56c89fd5fb3fbe6b434f912c6b9388d6140`;
+`room-reused-fae22/` retains the successful `build-sdk-fix.log`, 545-check
+suite and two-socket transport log. Subsequent room/travel changes on main
+are separate from this pin. This does not qualify the renderer.
+
+The native primary's actual emitted C table names 137 Coax sources. The
+source-observation tool hashes each original path and the corresponding
+prepared product snapshot; all 137 matched at the successful emission's
+product pin. The C SHA-256 is
+`56b670afd85498c45a472710d92838cddffdead54b3247692dc3cd5371e3c447`.
+The original admitted 598 image/receipt verifies against the genuine
+historical `c224561457` compiler root before and after product preparation.
+`qualified-current/` retains that verification, the product tar, successful
+C/header/object and explicit source observation. The observation is not a
+new compiler provenance receipt or release.
+
+A separate fresh historical-root native emission hit its bounded deadline;
+the deps traversal was also stopped without a result. Neither is claimed
+as successful. The already successful C remains the native primary. The
+web-v0 preview uses the existing content-addressed C cache with its exact
+prepared product closure and the current conditional face, and retains
+the actual generated units under `qualified-current/web-v0-emission/`.
+
+After rebasing the host, `rebased-source-observation.json` finds five
+subsequent game-source changes: raid tactics, network, wire, raid preview
+and sound. The recorded producer/window runs remain explicitly pinned to
+the earlier successful image; they are not current-main producer receipts.
+A fresh current-source emission and final app packaging are still required.
+
+The required current tools check reports two unrelated existing Nostr relay
+Python tools missing a `Firm reason` header. An earlier checkout also
+reported five human asset tools, which main has since ported. The current
+raw output is retained; none is added by this host.
+
+Current-source complete producer handoff/frame comparison, final staged app
+flows, source/artifact joins and packaging remain in progress. This record
+must be updated with those receipts before any completion/default claim.

@@ -1,0 +1,75 @@
+// A separate versioned product manifest; package.v1 remains unchanged.
+#load "package.coax";
+#authority;
+MetalPackageEntry :: struct {present:bool;file:string;hash:string;reflection_file:string;reflection_hash:string;}
+MetalPackage :: struct {status:RenderPackageStatus=RenderPackageStatus.invalid;entries:[14]MetalPackageEntry;}
+METAL_PACKAGE_TEST_HASH :: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+METAL_PACKAGE_TEST :: "{\"schema\":\"aethyr.render.metal.v1\",\"render_sha256\":\"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\",\"entries\":[{\"entry_index\":0,\"file\":\"bg.metal\",\"sha256\":\"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\",\"reflection_file\":\"bg.bindings\",\"reflection_sha256\":\"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\"}]}";
+#test "Metal manifest binds every product to the exact admitted portable package bytes" {
+ entries:[14]RenderPackageEntry;entries[0].present=true;
+ base:=RenderPackage.{status=RenderPackageStatus.ok,entry_count=1,entries=entries[..]};abc:=[3]u8.[97,98,99];
+ q:=metal_package_parse(METAL_PACKAGE_TEST,base,abc[..]);
+ #assert q.status==RenderPackageStatus.ok && q.entries[0].present && q.entries[0].file=="bg.metal" && q.entries[0].reflection_file=="bg.bindings";
+ #assert metal_package_product(q,0,0,abc[..])==RenderPackageStatus.ok && metal_package_product(q,0,1,abc[..])==RenderPackageStatus.ok;
+ abc[2]=100;#assert metal_package_parse(METAL_PACKAGE_TEST,base,abc[..]).status==RenderPackageStatus.hash;
+ #assert metal_package_product(q,0,0,abc[..])==RenderPackageStatus.hash;
+ #assert metal_package_product(q,-1,0,abc[..])==RenderPackageStatus.invalid && metal_package_product(q,14,0,abc[..])==RenderPackageStatus.invalid;
+ #assert metal_package_product(q,1,0,abc[..])==RenderPackageStatus.invalid && metal_package_product(q,0,2,abc[..])==RenderPackageStatus.invalid;
+ entries[1].present=true;#assert metal_package_parse(METAL_PACKAGE_TEST,base,abc[..]).status!=RenderPackageStatus.ok;
+ base.status=RenderPackageStatus.invalid;#assert metal_package_parse(METAL_PACKAGE_TEST,base,abc[..]).status==RenderPackageStatus.invalid;
+ #assert metal_package_product(MetalPackage.{},0,0,abc[..])==RenderPackageStatus.invalid;
+}
+#test "Metal products authenticate shader and reflection under different identities" {
+ q:=MetalPackage.{status=RenderPackageStatus.ok};q.entries[0]=MetalPackageEntry.{present=true,hash=METAL_PACKAGE_TEST_HASH,reflection_hash="88d4266fd4e6338d13b845fcf289579d209c897823b9217da3e161936f031589"};
+ a:=[4]u8.[97,98,99,100];
+ #assert metal_package_product(q,0,0,a[0..<3])==RenderPackageStatus.ok && metal_package_product(q,0,1,a[..])==RenderPackageStatus.ok;
+ #assert metal_package_product(q,0,0,a[..])==RenderPackageStatus.hash && metal_package_product(q,0,1,a[0..<3])==RenderPackageStatus.hash;
+}
+#test "Metal manifest refuses each malformed identity file hash index and duplicate row independently" {
+ entries:[14]RenderPackageEntry;entries[0].present=true;abc:=[3]u8.[97,98,99];
+ base:=RenderPackage.{status=RenderPackageStatus.ok,entry_count=1,entries=entries[..]};
+ for fault:0..<11 {bytes:[4096]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);
+  jo_key(o[..],"schema");jo_str(o[..],ifx fault==0 then "aethyr.render.metal.v2" else "aethyr.render.metal.v1");
+  jo_key(o[..],"render_sha256");jo_str(o[..],METAL_PACKAGE_TEST_HASH);jo_key(o[..],"entries");jo_arr(o[..]);
+  for row:0..<(ifx fault==8 then 2 else 1) {jo_obj(o[..]);jo_key(o[..],"entry_index");jo_int(o[..],ifx fault==5 then 14 else ifx fault==6 then -1 else ifx fault==7 then 1 else 0);
+   jo_key(o[..],"file");jo_str(o[..],ifx fault==1 then "../bg.metal" else "bg.metal");jo_key(o[..],"sha256");jo_str(o[..],ifx fault==2 then "bad" else METAL_PACKAGE_TEST_HASH);
+   jo_key(o[..],"reflection_file");jo_str(o[..],ifx fault==3 then "x.metal" else "bg.bindings");jo_key(o[..],"reflection_sha256");jo_str(o[..],ifx fault==4 then "bad" else METAL_PACKAGE_TEST_HASH);jo_end(o[..]);
+  }jo_end(o[..]);if fault==9 {jo_key(o[..],"extra");jo_int(o[..],1);}jo_end(o[..]);
+  base.entry_count=ifx fault==8 then 2 else ifx fault==10 then 0 else 1;
+  #assert metal_package_parse(jo_text(o[..]),base,abc[..]).status!=RenderPackageStatus.ok;
+ }
+ base.entry_count=0;
+ #assert metal_package_parse("{\"schema\":\"aethyr.render.metal.v1\",\"render_sha256\":\"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\",\"entries\":{}}",base,abc[..]).status!=RenderPackageStatus.ok;
+ #assert metal_package_parse("{\"schema\":\"aethyr.render.metal.v1\",\"render_sha256\":\"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\",\"entries\":[]}",base,abc[..]).status!=RenderPackageStatus.ok;
+}
+#test "Metal manifest admits its exact byte ceiling and refuses one byte past it" #steps 10000000 {
+ entries:[14]RenderPackageEntry;entries[0].present=true;abc:=[3]u8.[97,98,99];base:=RenderPackage.{status=RenderPackageStatus.ok,entry_count=1,entries=entries[..]};
+ padded:[RENDER_PACKAGE_JSON+1]u8;
+ for i:0..<padded.count {padded[i]=ifx i<METAL_PACKAGE_TEST.count then METAL_PACKAGE_TEST[i] else 32;}
+ #assert metal_package_parse(cast(string)padded[0..<RENDER_PACKAGE_JSON],base,abc[..]).status==RenderPackageStatus.ok;
+ #assert metal_package_parse(cast(string)padded[..],base,abc[..]).status==RenderPackageStatus.invalid;
+}
+metal_package_parse :: (json:string,base:RenderPackage,base_bytes:[]u8)->MetalPackage #export_c {
+ q:MetalPackage;
+ if base.status!=RenderPackageStatus.ok || base.entries.count!=14 || json.count>RENDER_PACKAGE_JSON {return q;}
+ doc:[1]Jv;nodes:[1024]JvNode;if !jv_parse(doc[..],json,nodes[..]) {return q;}d:=doc[0];
+ keys:=[3]string.["schema","render_sha256","entries"];
+ if !rpkg_object(d,0,keys[..],3) || rpkg_string(d,0,"schema")!="aethyr.render.metal.v1" {return q;}
+ hash:=rpkg_string(d,0,"render_sha256");if !rpkg_hash(hash) {return q;}
+ status:=rpkg_bytes(hash,base_bytes);if status!=RenderPackageStatus.ok {q.status=status;return q;}
+ rows:=jv_get(d,0,"entries");if jv_kind(d,rows)!=JV_ARRAY || jv_len(d,rows)!=base.entry_count {return q;}
+ fields:=[5]string.["entry_index","file","sha256","reflection_file","reflection_sha256"];
+ for i:0..<jv_len(d,rows) {
+  row:=jv_at(d,rows,i);if !rpkg_object(d,row,fields[..],5) {return q;}
+  index:=rpkg_int(d,row,"entry_index");if index<0 || index>=14 || q.entries[index].present {return q;}
+  e:=MetalPackageEntry.{present=true,file=rpkg_string(d,row,"file"),hash=rpkg_string(d,row,"sha256"),reflection_file=rpkg_string(d,row,"reflection_file"),reflection_hash=rpkg_string(d,row,"reflection_sha256")};
+  if !rpkg_file(e.file,".metal") || !rpkg_hash(e.hash) || !rpkg_file(e.reflection_file,".bindings") || !rpkg_hash(e.reflection_hash) {return q;}
+  q.entries[index]=e;
+ }
+ for i:0..<14 {if q.entries[i].present!=base.entries[i].present {return q;}}
+ q.status=RenderPackageStatus.ok;return q;
+}
+metal_package_product :: (q:MetalPackage,index:int,kind:int,bytes:[]u8)->RenderPackageStatus #export_c {
+ if q.status!=RenderPackageStatus.ok || index<0 || index>=14 || !q.entries[index].present || kind<0 || kind>1 {return RenderPackageStatus.invalid;}
+ return rpkg_bytes(ifx kind==0 then q.entries[index].hash else q.entries[index].reflection_hash,bytes);
+}

@@ -103,7 +103,7 @@ if [[ -x "$coax" ]]; then
     (cd "$root" && COAX="$coax" coax/web/tool.sh verse/native/render-assets.coax --table "$out/render-assets.pending.json" --package "$out/render/render.json" --web-root "$web" --output "$out/render-assets")
     rm "$out/render-assets.pending.json"
   fi
-  cp "$face" "$web"/*-face.h "$web"/*-bridge.h ${faces_too[@]+"${faces_too[@]}"} "$out/"
+  cp "$face" "$web"/*-face.h "$web"/*-bridge.h "$web/face-address.h" ${faces_too[@]+"${faces_too[@]}"} "$out/"
   cp "$here"/face.h "$here"/realm-host.h "$here"/realm-host.c "$here"/realm-run.c "$out/"
   units="$(cd "$out" && ls ./*.c | grep -v -e face -e realm-host -e realm-run | xargs -n1 basename | tr '\n' ' ')"
   # C the face includes itself (the haunted house's realm-flight.c ...): beside it, not a unit

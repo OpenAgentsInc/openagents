@@ -1,0 +1,41 @@
+// The existing HTTP flag32 attaches the observed next rendered frame to an
+// object body. SDKs supply JPEG/base64 bytes; Coax owns JSON composition.
+#module "aethyr.host.http.image";
+// The shared renderer's build-policy module is the existing logical owner of
+// the unmoduled JSON library; load that owner rather than creating a second.
+#load "../render/build-policy.coax";
+#authority;
+HostImageExtent :: struct {width:int;height:int;quality:f64;}
+#test "HTTP image dimensions retain a small frame and bound large frames to1024 pixels wide" {
+ q:=hpi_extent(320,180);#assert q.width==320 && q.height==180 && q.quality==0.75;
+ q=hpi_extent(2560,1600);#assert q.width==1024 && q.height==640;
+ q=hpi_extent(2049,2);#assert q.width==1024 && q.height==1;
+ q=hpi_extent(1,1);#assert q.width==1 && q.height==1;
+ q=hpi_extent(1025,600);#assert q.width==1024 && q.height==599;
+ for size:[6][2]int.[[2]int.[0,1],[2]int.[1,0],[2]int.[-1,1],[2]int.[1,-1],[2]int.[16385,1],[2]int.[1,16385]] {q=hpi_extent(size[0],size[1]);#assert q.width==0 && q.height==0 && q.quality==0;}
+ q=hpi_extent(16384,16384);#assert q.width==1024 && q.height==1024;
+}
+#test "HTTP image attachment replaces the existing image and preserves nested Unicode values" {
+ out:[1024]u8;n:=hpi_attach("{\"question\":\"é🙂\",\"image\":\"old\",\"n\":{\"a\":[1,true,null]}}","YWJj",out[..]);#assert n>0;
+ d:[1]Jv;nodes:[128]JvNode;#assert jv_parse(d[..],cast(string)out[0..<n],nodes[..]);#assert jv_raw_eq(jv_raw(d[0],jv_get(d[0],0,"image")),"YWJj");#assert jv_raw_eq(jv_raw(d[0],jv_get(d[0],0,"question")),"é🙂");#assert jv_len(d[0],0)==3;
+ #assert hpi_attach("{}","",out[..])==2 && cast(string)out[0..<2]=="{}";
+ #assert hpi_attach("[]","YWJj",out[..])==2 && cast(string)out[0..<2]=="[]";
+ #assert hpi_attach("null","YWJj",out[..])==4 && cast(string)out[0..<4]=="null";
+ #assert hpi_attach("{","YWJj",out[..])== -1 && hpi_attach("{}","YWJj",out[0..<1])== -1;
+ #assert hpi_attach("invalid","",out[..])==7 && hpi_attach("invalid","",out[0..<6])== -1;
+ #assert hpi_attach("invalid","",out[0..<7])==7;
+ #assert hpi_attach("{\"image\":1,\"image\":2}","YWJj",out[..])==16 && cast(string)out[0..<16]=="{\"image\":\"YWJj\"}";
+ n=hpi_attach("{\"ima\\u0067e\":1,\"a\\u0062\":2}","YWJj",out[..]);#assert n>0 && cast(string)out[0..<n]=="{\"ab\":2,\"image\":\"YWJj\"}";
+}
+hpi_extent :: (width:int,height:int)->HostImageExtent #export_c {
+ if width<=0 || height<=0 || width>16384 || height>16384 {return HostImageExtent.{};}
+ w:=int((f64(width)+1024-abs(f64(width)-1024))*0.5);
+ return HostImageExtent.{width=w,height=int(floor(f64(height)*f64(w)/f64(width)+0.5)),quality=0.75};
+}
+hpi_copy :: (input:string,out:[]u8)->int {if input.count>out.count {return -1;}for c,i:input {out[i]=c;}return input.count;}
+hpi_attach :: (body:string,image:string,out:[]u8)->int #export_c {
+ if image.count==0 {return hpi_copy(body,out);}d:[1]Jv;nodes:[4096]JvNode;if !jv_parse(d[..],body,nodes[..]) {return -1;}
+ if jv_kind(d[0],0)!=JV_OBJECT {return hpi_copy(body,out);}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);child:=d[0].nodes[0].first;
+ while child!=-1 {key:=jv_key(d[0],child);if !jv_raw_eq(key,"image") {jo_value(o[..]);jo_requote(o[..],key);jo_byte(o[..],':');o[0].keyed=true;jv_write(d[0],child,o[..]);}child=d[0].nodes[child].next;}
+ jo_key(o[..],"image");jo_str(o[..],image);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}

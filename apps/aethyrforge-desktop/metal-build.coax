@@ -1,0 +1,120 @@
+// Bounded native build slices. This tool never changes the qualified cache.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc-raw.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../aethyr/render/metal-package.coax";
+
+mb_join :: (dir:string,name:string,out:[]u8)->string {return fs_join(dir,name,out);}
+mb_run :: (argv:[]string,stdout:[]u8)->int {
+ stderr:[65536]u8;env:[]string;r:=proc_run_bytes(argv,env,840000,stdout,stderr[..]);
+ if r.started!=0 || r.status!=0 || r.timed_out || r.cut {tool_errln(cast(string)stderr[0..<r.err_n]);print("Metal build failed: started=% status=% timeout=% cut=% stdout=% stderr=%\n",r.started,r.status,r.timed_out,r.cut,r.out_n,r.err_n);return -1;}
+ return r.out_n;
+}
+// Literal rig tables produce C lines longer than the text-process API's
+// 64 KiB line bound. Generated code must retain every byte, including LF.
+mb_check_runner :: ()->bool {
+ line:[70001]u8;for i:0..<70000 {line[i]='a';}line[70000]='\n';
+ out:[70001]u8;cmd:=[3]string.["/usr/bin/printf","%s",cast(string)line[..]];
+ n:=mb_run(cmd[..],out[..]);return n==line.count && cast(string)out[..]==cast(string)line[..];
+}
+mb_unit :: (root:string,work:string,compiler:string,name:string)->bool {
+ names:=[9]string.["everglade5e","Everglade-step","Grid","River","Guard-guide-policy","Everglade5e-rules","MetalRender","RenderTexture","fixture"];
+ sources:=[9]string.["apps/aethyrforge-desktop/metal-world.coax","apps/openagents-web/everglade-step.coax","verse/grid.coax","verse/everglade/river.coax","verse/everglade/guard-guide-policy.coax","apps/openagents-web/everglade5e-rules.coax","apps/aethyrforge-desktop/metal-render.coax","aethyr/render/native-texture.coax","aethyr/host/fixture.coax"];
+ found:=-1;for n,i:names {if n==name {found=i;}}if found<0 {return false;}
+ text:[256]u8;o:[1]Jo;jo_start(o[..],text[..]);jo_put(o[..],name);jo_put(o[..],".h");paths:[5][4096]u8;header:=fs_join(work,jo_text(o[..]),paths[0][..]);
+ o[0]=Jo.{};jo_start(o[..],text[..]);jo_put(o[..],name);jo_put(o[..],".c");code:=fs_join(work,jo_text(o[..]),paths[1][..]);
+ o[0]=Jo.{};jo_start(o[..],text[..]);jo_put(o[..],name);jo_put(o[..],".o");object:=fs_join(work,jo_text(o[..]),paths[2][..]);
+ out:[67108864]u8;cmd:=[8]string.[compiler,"c",fs_join(root,sources[found],paths[3][..]),"--library","--run-steps","128000","--header",header];
+ n:=mb_run(cmd[..],out[..]);if n<0 || !fs_write(code,cast(string)out[0..<n]) {return false;}
+ cc:=[11]string.["/usr/bin/clang","-std=c11","-O2","-ffp-contract=off","-fno-fast-math","-Wno-unused-function","-Wno-unused-variable","-c",code,"-o",object];
+ return mb_run(cc[..],out[..])>=0;
+}
+mb_producer :: (root:string,work:string,face:string,primary:string)->bool {
+ paths:[10][4096]u8;out:[1048576]u8;
+ bridge:=fs_join(work,"producer-face.o",paths[0][..]);
+ cc:=[13]string.["/usr/bin/clang","-std=gnu11","-O2","-ffp-contract=off","-fno-fast-math","-DCOAXIAL_NATIVE_ADDRESS","-Wno-unknown-attributes","-I",work,"-c",face,"-o",bridge];
+ if mb_run(cc[..],out[..])<0 {return false;}
+ link:=[13]string.["/usr/bin/clang","-dynamiclib","-Wl,-undefined,dynamic_lookup","-Wl,-install_name,@rpath/libeverglade.dylib",
+ primary,fs_join(work,"Everglade-step.o",paths[2][..]),fs_join(work,"Grid.o",paths[3][..]),fs_join(work,"River.o",paths[4][..]),fs_join(work,"Guard-guide-policy.o",paths[5][..]),fs_join(work,"Everglade5e-rules.o",paths[6][..]),bridge,"-o",fs_join(work,"libeverglade.dylib",paths[7][..])];
+ return mb_run(link[..],out[..])>=0;
+}
+mb_sdk :: (root:string,work:string,sanitize:bool)->bool {
+ paths:[2][4096]u8;out:[1048576]u8;
+ cc:=[12]string.["/usr/bin/clang","-fobjc-arc","-O2","-ffp-contract=off","-fno-fast-math",ifx sanitize then "-fsanitize=address" else "-g0","-I",work,"-c",fs_join(root,"apps/aethyrforge-desktop/MetalRealm.m",paths[0][..]),"-o",fs_join(work,"MetalRealm.o",paths[1][..])];
+ return mb_run(cc[..],out[..])>=0;
+}
+mb_generated :: (work:string,source:string)->bool {
+ if source=="" {return false;}paths:[1][4096]u8;out:[1048576]u8;cc:=[11]string.["/usr/bin/clang","-std=c11","-O2","-ffp-contract=off","-fno-fast-math","-Wno-unused-function","-Wno-unused-variable","-c",source,"-o",fs_join(work,"everglade5e.o",paths[0][..])];return mb_run(cc[..],out[..])>=0;
+}
+mb_instrument_render :: (work:string)->bool {
+ paths:[2][4096]u8;out:[1048576]u8;
+ for name:[2]string.["MetalRender","RenderTexture"] {
+  suffixes:[2][64]u8;for k:0..<2 {o:[1]Jo;jo_start(o[..],suffixes[k][..]);jo_put(o[..],name);jo_put(o[..],ifx k==0 then ".c" else ".o");}
+  cc:=[13]string.["/usr/bin/clang","-std=c11","-O1","-g","-ffp-contract=off","-fno-fast-math","-fsanitize=address","-fno-omit-frame-pointer","-Wno-unused-function","-c",fs_join(work,cast(string)suffixes[0][0..<name.count+2],paths[0][..]),"-o",fs_join(work,cast(string)suffixes[1][0..<name.count+2],paths[1][..])];
+  if mb_run(cc[..],out[..])<0 {return false;}
+ }
+ return true;
+}
+mb_fixture :: (root:string,work:string)->bool {
+ paths:[5][4096]u8;out:[1048576]u8;face:=fs_join(work,"fixture-face.o",paths[0][..]);
+ cc:=[11]string.["/usr/bin/clang","-std=c11","-O2","-DCOAXIAL_NATIVE_ADDRESS","-I",work,"-c",fs_join(root,"aethyr/host/tests/fixture-face.c",paths[1][..]),"-o",face,"-Wno-unused-function"];
+ if mb_run(cc[..],out[..])<0 {return false;}
+ link:=[8]string.["/usr/bin/clang","-dynamiclib","-Wl,-undefined,dynamic_lookup",fs_join(work,"fixture.o",paths[2][..]),face,"-o",fs_join(work,"libfixture.dylib",paths[3][..]),"-lm"];
+ return mb_run(link[..],out[..])>=0;
+}
+mb_conformance :: (root:string,work:string)->bool {
+ paths:[8][4096]u8;out:[1048576]u8;cmd:[40]string;n:=0;
+ for s:[8]string.["xcrun","swiftc","-O","-parse-as-library","-target","arm64-apple-macos26.0","-import-objc-header",fs_join(root,"apps/aethyrforge-desktop/metal-host.h",paths[0][..])] {cmd[n]=s;n+=1;}
+ cmd[n]=fs_join(root,"apps/aethyrforge-desktop/tests/MetalConformance.swift",paths[1][..]);n+=1;
+ cmd[n]=fs_join(root,"apps/aethyrforge-desktop/Sources/MetalNetwork.swift",paths[2][..]);n+=1;
+ for name,i:[3]string.["MetalRealm.o","MetalRender.o","RenderTexture.o"] {cmd[n]=fs_join(work,name,paths[3+i][..]);n+=1;}
+ for s:[2]string.["-Xlinker","-export_dynamic"] {cmd[n]=s;n+=1;}
+ for name:[5]string.["Foundation","Metal","QuartzCore","ImageIO","CoreGraphics"] {cmd[n]="-framework";cmd[n+1]=name;n+=2;}
+ cmd[n]="-o";cmd[n+1]=fs_join(work,"HostEffects",paths[6][..]);n+=2;return mb_run(cmd[0..<n],out[..])>=0;
+}
+mb_effects :: (root:string,work:string,sanitize:bool)->bool {
+ paths:[7][4096]u8;out:[1048576]u8;cmd:[32]string;n:=0;
+ for s:[7]string.["xcrun","swiftc","-O","-target","arm64-apple-macos26.0","-import-objc-header",fs_join(root,"apps/aethyrforge-desktop/metal-host.h",paths[0][..])] {cmd[n]=s;n+=1;}
+ if sanitize {cmd[n]="-sanitize=address";n+=1;}
+ cmd[n]=fs_join(root,"apps/aethyrforge-desktop/tests/MetalEffects.swift",paths[1][..]);n+=1;
+ for name,i:[3]string.["MetalRealm.o","MetalRender.o","RenderTexture.o"] {cmd[n]=fs_join(work,name,paths[2+i][..]);n+=1;}
+ for s:[2]string.["-Xlinker","-export_dynamic"] {cmd[n]=s;n+=1;}
+ for name:[5]string.["Foundation","Metal","QuartzCore","ImageIO","CoreGraphics"] {cmd[n]="-framework";cmd[n+1]=name;n+=2;}
+ cmd[n]="-o";cmd[n+1]=fs_join(work,"MetalEffects",paths[5][..]);n+=2;return mb_run(cmd[0..<n],out[..])>=0;
+}
+mb_product_fields :: (o:[]Jo,name:string,bytes:[]u8,hash_key:string) {
+ hash:[64]u8;ok:=S_hex(S_hash(cast(string)bytes),hash[..]);jo_key(o,hash_key);jo_str(o,ifx ok then cast(string)hash[..] else "");
+}
+mb_shaders :: (root:string,work:string,compiler:string)->bool {
+ paths:[7][4096]u8;render:=fs_join(work,"render",paths[0][..]);if !fs_mkdir(render) {return false;}
+ out:[4194304]u8;cmd:=[6]string.[fs_join(root,"coax/web/tool.sh",paths[1][..]),fs_join(root,"aethyr/render/build.coax",paths[2][..]),"everglade",render,"--coax",compiler];
+ if mb_run(cmd[..],out[..])<0 {return false;}
+ base:[262144]u8;n:=fs_read(fs_join(render,"render.json",paths[1][..]),base[..]);entries:[14]RenderPackageEntry;
+ if n<1 {return false;}p:=render_package_parse(cast(string)base[0..<n],entries[..]);
+ if render_package_admit(p,2,RenderDeviceCapabilities.{backend=RenderBackend.metal,helper_enabled=true,int64_enabled=true})!=RenderPackageStatus.ok {return false;}
+ manifest:[65536]u8;o:[1]Jo;jo_start(o[..],manifest[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.render.metal.v1");mb_product_fields(o[..],"",base[0..<n],"render_sha256");jo_key(o[..],"entries");jo_arr(o[..]);
+ for i:0..<14 {if !p.entries[i].present {continue;}e:=p.entries[i];
+  source:=ifx i==13 then render_media_entry().source else render_catalog_entry(2,cast(RenderPassId)i).source;
+  name:[64]u8;w:[1]Jo;jo_start(w[..],name[..]);jo_put(w[..],"entry-");jo_int(w[..],i);jo_put(w[..],".metal");file:=jo_text(w[..]);path:=fs_join(render,file,paths[3][..]);
+  shader_cmd:=[9]string.[compiler,"metal",fs_join(root,source,paths[4][..]),"--vertex",e.vertex,"--fragment",e.fragment,"-o",path];
+  err:[65536]u8;r:=proc_run(shader_cmd[..],840000,out[..],err[..]);if r.started!=0 || r.status!=0 || r.timed_out || r.cut {tool_errln(cast(string)err[0..<r.err_n]);return false;}
+  binding_name:[64]u8;b:[1]Jo;jo_start(b[..],binding_name[..]);jo_put(b[..],"entry-");jo_int(b[..],i);jo_put(b[..],".bindings");
+  if !fs_write(fs_join(render,jo_text(b[..]),paths[5][..]),cast(string)err[0..<r.err_n]) {return false;}
+  sn:=fs_read(path,out[..]);if sn<1 {return false;}jo_obj(o[..]);jo_key(o[..],"entry_index");jo_int(o[..],i);jo_key(o[..],"file");jo_str(o[..],file);mb_product_fields(o[..],"",out[0..<sn],"sha256");
+  jo_key(o[..],"reflection_file");jo_str(o[..],jo_text(b[..]));mb_product_fields(o[..],"",err[0..<r.err_n],"reflection_sha256");jo_end(o[..]);
+ }
+ jo_end(o[..]);jo_end(o[..]);if o[0].bad {return false;}
+ q:=metal_package_parse(jo_text(o[..]),p,base[0..<n]);return q.status==RenderPackageStatus.ok && fs_write(fs_join(render,"metal.json",paths[1][..]),jo_text(o[..]));
+}
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])<2 {tool_errln("usage: metal-build ROOT UNIT|shaders [--coax COMPILER] [--out DIRECTORY]");return 2;}
+ root:=args_at(a[..],0);task:=args_at(a[..],1);paths:[2][4096]u8;work:=args_value(a[..],"--out",fs_join(root,"apps/aethyrforge-desktop/build/metal",paths[0][..]));
+ compiler:=args_value(a[..],"--coax",fs_join(root,"coax/bin/coax",paths[1][..]));if !fs_mkdir(work) {return 1;}
+ face_path:[4096]u8;face:=args_value(a[..],"--face",fs_join(root,"apps/openagents-web/everglade5e-face.c",face_path[..]));
+ primary_path:[4096]u8;primary:=args_value(a[..],"--producer-object",fs_join(work,"everglade5e.o",primary_path[..]));
+ if task=="instrument-render" {return ifx mb_instrument_render(work) then 0 else 1;}
+ ok:=ifx task=="check-runner" then mb_check_runner() else ifx task=="shaders" then mb_shaders(root,work,compiler) else ifx task=="generated" then mb_generated(work,args_value(a[..],"--generated","")) else ifx task=="producer" then mb_producer(root,work,face,primary) else ifx task=="fixture-producer" then mb_fixture(root,work) else ifx task=="conformance" then mb_conformance(root,work) else ifx task=="effects" then mb_effects(root,work,args_has(a[..],"--sanitize")) else ifx task=="sdk" then mb_sdk(root,work,args_has(a[..],"--sanitize")) else mb_unit(root,work,compiler,task);
+ return ifx ok then 0 else 1;
+}

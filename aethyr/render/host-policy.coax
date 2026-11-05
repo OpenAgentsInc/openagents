@@ -23,9 +23,9 @@ RenderHostWordView :: struct {status:RenderFrameStatus=RenderFrameStatus.bad_upl
   #assert render_host_words(15,16,8,4).status==RenderFrameStatus.bad_upload;
   #assert render_host_words(17,16,8,4).status==RenderFrameStatus.bad_upload;
 }
-#forall "host backend transport preserves only the three declared identities" rh_backend:0..<5 {
+#forall "host backend transport preserves only the four declared identities" rh_backend:0..<6 {
   rh_device:=render_host_device(rh_backend,true,false);
-  if rh_backend>=1 && rh_backend<=3 {
+  if rh_backend>=1 && rh_backend<=4 {
     #assert cast(int)rh_device.backend==rh_backend && rh_device.helper_enabled && !rh_device.int64_enabled;
   }else {#assert rh_device.backend==RenderBackend.invalid;}
 }
@@ -105,7 +105,7 @@ render_host_json_size :: (rh_count:int)->RenderPackageStatus {
   return RenderPackageStatus.ok;
 }
 render_host_device :: (rh_backend:int,rh_helper:bool,rh_int64:bool)->RenderDeviceCapabilities {
-  if rh_backend<cast(int)RenderBackend.webgpu || rh_backend>cast(int)RenderBackend.reference {return RenderDeviceCapabilities.{};}
+  if rh_backend<cast(int)RenderBackend.webgpu || rh_backend>cast(int)RenderBackend.metal {return RenderDeviceCapabilities.{};}
   return RenderDeviceCapabilities.{backend=cast(RenderBackend)rh_backend,helper_enabled=rh_helper,int64_enabled=rh_int64};
 }
 render_host_operation :: (rh_frame:[]RenderRuntimeFrame,rh_index:int)->RenderOp {

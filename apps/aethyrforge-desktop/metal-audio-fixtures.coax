@@ -1,0 +1,29 @@
+// Freeze real decoded bank PCM, room IR, exact cue order/sample alignment,
+// and native carrier output for the actual Web Audio comparison.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/json/json.coax";
+maf_str :: (o:[]Jo,k:string,v:string) {jo_key(o,k);jo_str(o,v);}
+maf_op :: (o:[]Jo,name:string) {jo_obj(o);maf_str(o,"op",name);}
+maf_command :: (o:[]Jo,line:string) {maf_op(o,"command");maf_str(o,"line",line);jo_end(o);}
+maf_path :: (dir:string,name:string,out:[]u8)->string {b:[256]u8;n:=0;for part:[2]string.[name,".f32"] {for c:part {b[n]=c;n+=1;}}return fs_join(dir,cast(string)b[0..<n],out);}
+maf_render :: (o:[]Jo,path:string,blocks:int) {maf_op(o,"render");maf_str(o,"file",path);jo_key(o,"blocks");jo_int(o,blocks);jo_end(o);}
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])<3 {tool_errln("usage: metal-audio-fixtures ROOT RESOURCES NEW_OUTPUT [--bank-only] (build MetalAudioEffects first)");return 2;}
+ root:=args_at(a[..],0);res:=args_at(a[..],1);dir:=args_at(a[..],2);if !fs_mkdir(dir) {return 1;}paths:[8][4096]u8;
+ impulse:=[4]u8.[0,0,128,63];ip:=fs_join(dir,"impulse.f32",paths[0][..]);if !fs_write(ip,cast(string)impulse[..]) {return 1;}
+ data:[65536]u8;o:[1]Jo;jo_start(o[..],data[..]);jo_obj(o[..]);maf_str(o[..],"schema","aethyr.metal.audio-effects.v1");jo_key(o[..],"operations");jo_arr(o[..]);
+ maf_op(o[..],"frame");jo_end(o[..]);maf_op(o[..],"bank");jo_end(o[..]);maf_op(o[..],"asset");maf_str(o[..],"name","impulse");maf_str(o[..],"file",ip);jo_key(o[..],"channels");jo_int(o[..],1);jo_end(o[..]);maf_op(o[..],"export");maf_str(o[..],"directory",fs_join(dir,"decoded",paths[1][..]));jo_end(o[..]);
+ names:=[9]string.["legacy-left","legacy-right","legacy-filter-delay","stereo-pan","rate","room","bed","stop","loud"];
+ cues:=[9]string.["fire-hit 0.125 -1","fire-hit 0.125 1","fire-hit 0.25 0 0.02 1000","room 0.03125 -0.5","fire-hit 0.03125 0 0 0 0.75 0 r","impulse 0.03125 0 0 0 1 1 room-test","~ambient 0.25 -0.5","fireball 0.03125 -1 0 1000 1 0 stop-me","fire-hit 4 0 0 0 1 0.5 loud"];
+ blocks:=[9]int.[32,32,32,67,34,68,16,3,96];
+ for name,i:names {if args_has(a[..],"--bank-only") {break;}maf_op(o[..],"reset");jo_end(o[..]);if i==5 || i==8 {maf_command(o[..],"!room room");}maf_command(o[..],cues[i]);maf_render(o[..],maf_path(dir,name,paths[2][..]),blocks[i]);
+  if i==6 {maf_command(o[..],"~ambient 0.125 0.5");maf_render(o[..],maf_path(dir,"bed-update",paths[2][..]),16);}
+  if i==7 {maf_command(o[..],"-stop-me");maf_render(o[..],maf_path(dir,"stop-tail",paths[2][..]),16);}
+ }
+ jo_end(o[..]);jo_end(o[..]);input:=fs_join(dir,"plan.json",paths[3][..]);report:=fs_join(dir,"audio.json",paths[4][..]);if o[0].bad || !fs_write(input,jo_text(o[..])) {return 1;}
+ run:=[5]string.[fs_join(root,"apps/aethyrforge-desktop/build/metal/MetalAudioEffects",paths[5][..]),res,fs_join(res,"metal/libeverglade.dylib",paths[6][..]),input,report];out:[65536]u8;err:[65536]u8;r:=proc_run(run[..],120000,out[..],err[..]);if r.started!=0 || r.status!=0 || r.timed_out || r.cut {tool_errln(cast(string)err[0..<r.err_n]);return 1;}
+ print("Frozen48kHz interleaved PCM and nine aligned native carrier cases:%\n",report);return 0;
+}

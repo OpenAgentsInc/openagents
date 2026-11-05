@@ -1,0 +1,37 @@
+// Build-time pack decoding uses the same Coax reader and image/mip producer.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../aethyr/forge/pack.coax";
+#load "../../aethyr/render/native-texture-profile.coax";
+#load "../../aethyr/render/host-layers.coax";
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=3 {tool_errln("usage: metal-assets ROOT PACK OUTPUT");return 2;}
+ root:=args_at(a[..],0);file:=args_at(a[..],1);out:=args_at(a[..],2);
+ data:[67108864]u8;n:=fs_read(file,data[..]);if n<0 {return 1;}p:=cast(string)data[0..<n];r:[1]PackRead;
+ if !pack_read(p,r[..]) {tool_errln("Metal assets: Coax refused the pack");return 1;}
+ profile:=htx_profile(2);if !profile.valid || !fs_mkdir(out) {return 1;}list:[8192]u8;o:[1]Jo;jo_start(o[..],list[..]);layers:=0;side:=profile.side;
+ for i:0..<r[0].count {e:=r[0].entries[i];if e.kind!=PACK_LAYER {continue;}
+  image:=pack_bytes(p,r[..],i);if htx_plan(data[e.at..<e.at+e.n],side).status!=IMG_OK {return 1;}
+  name:[64]u8;w:[1]Jo;jo_start(w[..],name[..]);jo_put(w[..],"layer-");jo_int(w[..],layers);jo_put(w[..],".img");path:[4096]u8;
+  if !fs_write(fs_join(out,jo_text(w[..]),path[..]),image) {return 1;}
+  jo_put(o[..],jo_text(w[..]));jo_put(o[..],"\n");layers+=1;
+ }
+ paths:[4][4096]u8;lp:=fs_join(out,"layers.list",paths[0][..]);dest:=fs_join(out,"layers.rgba",paths[1][..]);
+ if o[0].bad || !fs_write(lp,jo_text(o[..])) {return 1;}
+ digits:[32]u8;w:[1]Jo;jo_start(w[..],digits[..]);jo_int(w[..],side);
+ cmd:=[5]string.[fs_join(root,"coax/web/tool.sh",paths[2][..]),fs_join(root,"verse/gpu/layers.coax",paths[3][..]),lp,dest,jo_text(w[..])];
+ stdout:[65536]u8;stderr:[65536]u8;run:=proc_run(cmd[..],840000,stdout[..],stderr[..]);
+ if run.started!=0 || run.status!=0 || run.timed_out || run.cut {tool_errln(cast(string)stderr[0..<run.err_n]);return 1;}
+ stage:=render_native_texture_stage(2,RenderNativeTextureKind.layers,side,side,layers,img_levels(side,side),u64(fs_size(dest)),67108864);
+ if !stage.valid {tool_errln("Metal assets: decoded layers differ from the canonical profile");return 1;}
+ config:[8192]u8;c:[1]Jo;jo_start(c[..],config[..]);jo_put(c[..],"textures 1\n");jo_put(c[..],stage.name);jo_put(c[..]," ");jo_put(c[..],stage.format);
+ jo_put(c[..]," ");jo_int(c[..],layers);jo_put(c[..]," ");jo_int(c[..],stage.levels);jo_put(c[..]," layers.rgba\n");
+ for level:0..<stage.levels {m:=render_native_texture_mip(stage,level);
+  jo_int(c[..],m.width);jo_put(c[..]," ");jo_int(c[..],m.height);jo_put(c[..]," ");jo_int(c[..],cast(int)m.offset);jo_put(c[..]," ");jo_int(c[..],cast(int)m.row_bytes);jo_put(c[..]," ");jo_int(c[..],cast(int)m.layer_bytes);jo_put(c[..],"\n");
+ }
+ if c[0].bad || !fs_write(fs_join(out,"textures.config",paths[0][..]),jo_text(c[..])) {return 1;}
+ print("Metal assets: % decoded layers, % pixels per side\n",layers,side);return 0;
+}

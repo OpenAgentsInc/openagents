@@ -343,9 +343,20 @@ tool_main :: () -> int #export_c {
     print(" p %\n", wr_fnv(hx[..], ifx r[0].has.particles then wr_bytes(r[..], wr_s(r[..], "coaxial_particles"), pb, buf[..]) else ""));
   }
   dump := wr_opt(o[..], on, "dump", "");
+  state_dump:=wr_opt(o[..],on,"state-dump","");
+  if state_dump.count>0 {
+    if !wr_write(state_dump,"state.bin",wr_bytes(r[..],r[0].state,ss,buf[..])) {return wr_fail(r[..],"writing the observed state arena");}
+    if wc_has(c,"coaxial_field_probe") {probe_bytes:[16384]u8;j:[1]Jo;jo_start(j[..],probe_bytes[..]);jo_arr(j[..]);for field:0..<128 {pa:=[2]int.[r[0].state,field];jo_int(j[..],wr_call(r[..],"coaxial_field_probe",pa[..]));}jo_end(j[..]);if j[0].bad || !wr_write(state_dump,"fields.json",jo_text(j[..])) {return wr_fail(r[..],"writing observed state probes");}}
+  }
   if dump.count > 0 {
     ok := wr_write(dump, "u.bin", wr_bytes(r[..], r[0].uniforms, uniform_floats * 4, buf[..]));
+    if wc_has(c,"coaxial_media") && wc_has(c,"coaxial_media_len") {ok=wr_write(dump,"media.txt",wr_bytes(r[..],wr_s(r[..],"coaxial_media"),wr_s(r[..],"coaxial_media_len"),buf[..])) && ok;}
     stores := ifx r[0].has.stores then wc_int(c, "coaxial_stores", "") else 0;
+    if stores==4 && wc_has(c,"coaxial_store_cap") && wc_has(c,"coaxial_particle_cap") {
+      capacities:[1024]u8;cw:[1]Jo;jo_start(cw[..],capacities[..]);jo_obj(cw[..]);jo_key(cw[..],"u.bin");jo_int(cw[..],uniform_floats*4);
+      for k:0..<4 {name:[16]u8;digit:[24]u8;cap_parts:=[3]string.["s",wc_dec(digit[..],k),".bin"];jo_key(cw[..],wc_cat(name[..],cap_parts[..]));call:=[1]int.[k];jo_int(cw[..],wr_u(wr_call(r[..],"coaxial_store_cap",call[..])));}
+      jo_key(cw[..],"puffs.bin");jo_int(cw[..],wr_u(wc_int(c,"coaxial_particle_cap","")));jo_end(cw[..]);ok=(!cw[0].bad && wr_write(dump,"capacities.json",jo_text(cw[..]))) && ok;
+    }
     for k: 0..<(ifx stores < 4 then stores else 4) {
       sa := [2] int.[r[0].state, k];
       sb := wr_u(wr_call(r[..], "coaxial_store_bytes", sa[..])) & 4294967292;

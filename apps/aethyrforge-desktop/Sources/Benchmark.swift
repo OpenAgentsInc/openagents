@@ -1,9 +1,51 @@
 // Firm reason: 6 (visible WebKit lifecycle, SDK process measurements and benchmark byte transport).
 import AppKit
 import WebKit
+import QuartzCore
 
 @MainActor
 extension ForgeApp {
+    // Execute only SDK effects from the Coax-authored native measurement
+    // plan. Coax reduces these raw clocks and decides the qualification.
+    func measureMetal(_ planURL: URL) async throws {
+        guard let view = metalWorld, let host = view.host,
+              let plan = try JSONSerialization.jsonObject(with:Data(contentsOf:planURL)) as? [String:Any],
+              plan["schema"] as? String == "aethyr.metal.window-plan.v1",
+              let report = plan["report"] as? String else { throw ShellError.failed("Invalid native measurement plan.") }
+        var observations: [[String:Any]] = []
+        let started = ProcessInfo.processInfo.systemUptime
+        let cpu = forge_process_cpu_ns(ProcessInfo.processInfo.processIdentifier)
+        for op in plan["operations"] as? [[String:Any]] ?? [] {
+            switch op["op"] as? String {
+            case "wait": try await Task.sleep(for:.milliseconds((op["ms"] as! NSNumber).intValue))
+            case "reset": mf_measure_reset(host)
+            case "audio": view.audio?.start()
+            case "presentation":
+                view.preferredHz = (op["hz"] as! NSNumber).floatValue
+                view.display?.preferredFrameRateRange = CAFrameRateRange(minimum:view.preferredHz,maximum:view.preferredHz,preferred:view.preferredHz)
+            case "key": _ = mf_key(host,(op["key"] as! NSNumber).int32Value,op["down"] as? Bool ?? false,0)
+            case "status": showStatus()
+            case "world": enterWorld()
+            case "focus": view.focus(op["focused"] as? Bool ?? false)
+            case "resize": window.setContentSize(NSSize(width:(op["width"] as! NSNumber).doubleValue,height:(op["height"] as! NSNumber).doubleValue))
+            case "snapshot": guard mf_snapshot(host,op["file"] as! String) else { throw ShellError.failed("Native snapshot failed.") }
+            case "observe":
+                var count = 0, dropped = 0
+                let records = mf_measure_rows(host,&count,&dropped)
+                let rows = records.map { p in (0..<count).map { i -> [Any] in
+                    let r = p[i]
+                    return [r.frame,r.start_ns,r.submit_ns,r.complete_ns,r.gpu_ns,r.input_sequence,r.input_ns,r.x_mm,r.z_mm,r.width,r.height,r.scale]
+                } } ?? []
+                observations.append(["label":op["label"] as? String ?? "", "rows":rows,"dropped":dropped,"frames":mf_info(host,0),"completed":mf_info(host,10),"pending":mf_info(host,2),"net":mf_info(host,7),"seat":mf_info(host,8),"messages":view.network?.delivered ?? 0,"paused":view.paused,"setup":!setupPane.isHidden,"ledgerLive":mf_info(host,3),"recoveries":mf_info(host,12),"width":view.bounds.width,"height":view.bounds.height,"backingScale":window.backingScaleFactor,"audio":view.audio?.source.observations() ?? [:],"nativeFace":(0..<11).map { mf_observe(host,-2,Int64($0)) }])
+            default: throw ShellError.failed("Unknown native measurement effect.")
+            }
+        }
+        let seconds = ProcessInfo.processInfo.systemUptime-started
+        var result: [String:Any] = ["schema":"aethyr.metal.window-result.v1","observations":observations,"seconds":seconds,"cpuPercentOfOneCore":Double(forge_process_cpu_ns(ProcessInfo.processInfo.processIdentifier)-cpu)/1e9/seconds*100,"residentBytes":forge_process_resident_bytes(ProcessInfo.processInfo.processIdentifier),"displayFPS":window.screen?.maximumFramesPerSecond ?? 0,"preferredFPS":view.preferredHz,"visible":window.isVisible && window.occlusionState.contains(.visible),"thermal":ProcessInfo.processInfo.thermalState.rawValue,"lowPower":ProcessInfo.processInfo.isLowPowerModeEnabled,"firstFrameSeconds":firstFrameSeconds]
+        view.close(); result["closedLedgerLive"] = mf_closed_info(0); result["closedLedgerWords"] = mf_closed_info(1)
+        try JSONSerialization.data(withJSONObject:result,options:[.prettyPrinted,.sortedKeys]).write(to:URL(fileURLWithPath:report),options:.atomic)
+        stopChildren(); NSApp.terminate(nil)
+    }
     var benchmarkReportURL: URL? {CommandLine.arguments.contains("--frame-benchmark") ? frameProfileURL:nil}
     func benchmarkGPUPID()->Int32 {
         // WebKit's guarded diagnostic PID property; no behavior depends on it.

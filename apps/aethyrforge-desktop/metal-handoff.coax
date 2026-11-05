@@ -1,0 +1,38 @@
+// Compare actual CPU producer handoffs through one production GPU adapter.
+// Frozen textures/package stay identical; only observed producer bytes change.
+// This diagnostic does not replace the independent WebGPU/Vulkan golden gate.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../aethyr/render/tests/reference-frame-tool-policy.coax";
+mhp_make :: (reference:string,dump:string,assets:string,dir:string)->bool {
+ text:[1048576]u8;n:=fs_read(reference,text[..]);p:[1]RfrConfig;if n<1 || !rfr_parse(cast(string)text[0..<n],p[..]) || !fs_mkdir(dir) {return false;}
+ capacity_text:[2048]u8;capacity_path:[4096]u8;capacity_n:=fs_read(fs_join(dump,"capacities.json",capacity_path[..]),capacity_text[..]);capacity_doc:[1]Jv;capacity_nodes:[64]JvNode;
+ if capacity_n<1 || !jv_parse(capacity_doc[..],cast(string)capacity_text[0..<capacity_n],capacity_nodes[..]) {tool_errln("Missing actual producer allocation capacities");return false;}
+ names:=[11]string.["u.bin","hud.bin","draws.bin","s0.bin","s1.bin","s2.bin","s3.bin","puffs.bin","vertices.bin","index.bin","media.txt"];
+ files:[11][4096]u8;sizes:[11]int;paths:[11]string;raw:[16777216]u8;
+ for name,i:names {from:[4096]u8;source:=fs_join(ifx i==8 || i==9 then assets else dump,name,from[..]);sizes[i]=fs_read(source,raw[..]);if sizes[i]<0 {tool_errln(source);return false;}paths[i]=fs_join(dir,name,files[i][..]);if !fs_write(paths[i],cast(string)raw[0..<sizes[i]]) {return false;}}
+ count_text:[256]u8;count_path:[4096]u8;nn:=fs_read(fs_join(assets,"draws.txt",count_path[..]),count_text[..]);counts:[1]RfrConfig;if nn<1 || !rfr_tokenize(cast(string)count_text[0..<nn],counts[..]) || counts[0].token_count!=9 {return false;}
+ values:[9]int;for i:0..<9 {q:=rfr_number(counts[0].tokens[i]);if !q.ok {return false;}values[i]=q.value;}
+ if sizes[1]!=values[4]*values[5]*4 || sizes[2]!=values[0]*16 || sizes[7]!=values[3]*48 {tool_errln("Actual native/Wasm handoff counts differ");return false;}
+ number_bytes:[13][32]u8;for i:0..<13 {value:=p[0].counts[i];if i==3 {value=values[4];}if i==4 {value=values[5];}if i==5 {value=values[0];}if i==6 {value=values[1];}if i==7 {value=values[2];}if i==8 {value=values[3];}if i>=9 && i<=11 {value=values[i-3];}o:[1]Jo;jo_start(o[..],number_bytes[i][..]);jo_int(o[..],value);p[0].tokens[p[0].rows[0].first+i]=jo_text(o[..]);}
+ for row:1..<5 {p[0].tokens[p[0].rows[row].first]=paths[ifx row==4 then 9 else row-1];}
+ meta:[7][6][32]u8;buf:=0;
+ for r:0..<p[0].row_count {row:=p[0].rows[r];if row.count==8 {
+   name:=rfr_token(p[..],r,0);pick:=-1;for k:0..<names.count {if name==names[k] {pick=k;}}if pick<0 || buf>=7 {return false;}
+   physical:=rfr_number(rfr_token(p[..],r,6));if !physical.ok || physical.value<sizes[pick] || physical.value>raw.count {return false;}
+   capacity:=ifx pick==8 then sizes[pick] else jv_int(capacity_doc[0],jv_get(capacity_doc[0],0,name),-1);if capacity<sizes[pick] || capacity>physical.value {tool_errln("Measured allocation no longer fits the frozen physical buffer");return false;}
+   source:[4096]u8;read:=fs_read(fs_join(dir,name,source[..]),raw[..]);if read!=sizes[pick] {return false;}for k:read..<physical.value {raw[k]=0;}
+   if !fs_write(paths[pick],cast(string)raw[0..<physical.value]) {return false;}
+   p[0].tokens[row.first+1]=paths[pick];for k:0..<6 {o:[1]Jo;jo_start(o[..],meta[buf][k][..]);jo_int(o[..],ifx k<2 then capacity else ifx k==2 || k==4 then physical.value else ifx k==3 then sizes[pick] else 1);p[0].tokens[row.first+2+k]=jo_text(o[..]);}buf+=1;
+  }else if rfr_token(p[..],r,0)=="media_text" {p[0].tokens[row.first+1]=paths[10];}
+ }
+ if buf!=7 {return false;}out:[1048576]u8;o:[1]Jo;jo_start(o[..],out[..]);for r:0..<p[0].row_count {row:=p[0].rows[r];for k:0..<row.count {if k>0 {jo_put(o[..]," ");}jo_put(o[..],p[0].tokens[row.first+k]);}jo_put(o[..],"\n");}
+ config:[4096]u8;return !o[0].bad && fs_write(fs_join(dir,"frame.config",config[..]),jo_text(o[..]));
+}
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=4 {tool_errln("usage: metal-handoff REFERENCE.CONFIG WASM_DUMP NATIVE_DUMP OUTPUT");return 2;}
+ dir:=args_at(a[..],3);if !fs_mkdir(dir) {return 1;}paths:[2][4096]u8;web:=fs_join(dir,"wasm",paths[0][..]);native:=fs_join(dir,"native",paths[1][..]);
+ return ifx mhp_make(args_at(a[..],0),args_at(a[..],1),args_at(a[..],1),web) && mhp_make(args_at(a[..],0),args_at(a[..],2),args_at(a[..],1),native) then 0 else 1;
+}

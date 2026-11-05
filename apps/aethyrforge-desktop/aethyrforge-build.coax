@@ -3,7 +3,7 @@
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
-#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/sys/proc-raw.coax";
 #load "../../coax/lib/json/json.coax";
 #load "linux-build.coax";
 
@@ -19,7 +19,8 @@ af_run :: (argv: [] string, out: [] u8, deadline: int) -> int {
   left := deadline - proc_now_ms();
   if left <= 0 { tool_errln("Aethyrforge build reached its fourteen-minute limit; resume the remaining build step."); return -1; }
   err: [65536] u8;
-  r := proc_run(argv, left, out, err[..]);
+  env: [] string;
+  r := proc_run_bytes(argv, env, left, out, err[..]);
   if r.started != 0 || r.status != 0 || r.timed_out || r.cut {
     tool_errln(cast(string) out[0..<r.out_n]); tool_errln(cast(string) err[0..<r.err_n]);
     tool_errln("Aethyrforge build step failed or exceeded its time/output limit."); return -1;
@@ -92,6 +93,33 @@ af_stack_stamp :: (root: string, deadline: int) -> int {
   b: [4096] u8; compiler := fs_mtime_ns(fs_join(root, "coax/bin/coax", b[..]));
   return ifx compiler > latest then compiler else latest;
 }
+// Native units have separate resumable artifacts. Their source closure is the
+// compiler's existing load listing; the SDK never implements a Coax parser.
+af_native_stamp :: (root:string,source:string,deadline:int)->int {
+ paths:[2][4096]u8;out:[1048576]u8;cmd:=[4]string.[fs_join(root,"coax/web/tool.sh",paths[0][..]),"wasm-size","sources",source];n:=af_run(cmd[..],out[..],deadline);if n<0 {return -1;}latest:=0;start:=0;
+ for i:0..<n {if out[i]=='\n' {if i>start {stamp:=fs_mtime_ns(fs_join(root,cast(string)out[start..<i],paths[1][..]));if stamp<0 {return -1;}if stamp>latest {latest=stamp;}}start=i+1;}}
+ return latest;
+}
+af_native :: (root:string,here:string,work:string,coax:string,out:[]u8,deadline:int)->bool {
+ paths:[8][4096]u8;metal:=fs_join(work,"metal",paths[0][..]);if !fs_mkdir(metal) {return false;}
+ names:=[8]string.["everglade5e","Everglade-step","Grid","River","Guard-guide-policy","Everglade5e-rules","MetalRender","RenderTexture"];
+ sources:=[8]string.["apps/aethyrforge-desktop/metal-world.coax","apps/openagents-web/everglade-step.coax","verse/grid.coax","verse/everglade/river.coax","verse/everglade/guard-guide-policy.coax","apps/openagents-web/everglade5e-rules.coax","apps/aethyrforge-desktop/metal-render.coax","aethyr/render/native-texture.coax"];
+ compiler_stamp:=fs_mtime_ns(coax);producer_stamp:=0;
+ for name,i:names {stamp:=af_native_stamp(root,sources[i],deadline);if stamp<0 {return false;}if compiler_stamp>stamp {stamp=compiler_stamp;}
+  text:[128]u8;j:[1]Jo;jo_start(j[..],text[..]);jo_put(j[..],name);jo_put(j[..],".o");object:=fs_join(metal,jo_text(j[..]),paths[1][..]);
+  if fs_mtime_ns(object)<stamp {print("Building native Metal unit %…\n",name);cmd:=[6]string.[fs_join(root,"coax/web/tool.sh",paths[2][..]),fs_join(here,"metal-build.coax",paths[3][..]),root,name,"--coax",coax];if af_run(cmd[..],out,deadline)<0 {return false;}}
+  if i<6 && fs_mtime_ns(object)>producer_stamp {producer_stamp=fs_mtime_ns(object);}
+ }
+ for name:[5]string.["apps/openagents-web/everglade5e-face.c","apps/openagents-web/face-address.h","apps/openagents-web/edit-face.h","apps/openagents-web/place-face.h","apps/openagents-web/analytics-face.h"] {stamp:=fs_mtime_ns(fs_join(root,name,paths[1][..]));if stamp>producer_stamp {producer_stamp=stamp;}}
+ if fs_mtime_ns(fs_join(metal,"libeverglade.dylib",paths[1][..]))<producer_stamp {cmd:=[4]string.[fs_join(root,"coax/web/tool.sh",paths[2][..]),fs_join(here,"metal-build.coax",paths[3][..]),root,"producer"];if af_run(cmd[..],out,deadline)<0 {return false;}}
+ sdk_stamp:=fs_mtime_ns(fs_join(here,"MetalRealm.m",paths[1][..]));for name:[4]string.["metal-host.h","metal-producer.h","build/metal/MetalRender.h","build/metal/RenderTexture.h"] {stamp:=fs_mtime_ns(fs_join(here,name,paths[1][..]));if stamp>sdk_stamp {sdk_stamp=stamp;}}
+ if fs_mtime_ns(fs_join(metal,"MetalRealm.o",paths[1][..]))<sdk_stamp {cmd:=[4]string.[fs_join(root,"coax/web/tool.sh",paths[2][..]),fs_join(here,"metal-build.coax",paths[3][..]),root,"sdk"];if af_run(cmd[..],out,deadline)<0 {return false;}}
+ shader_stamp:=af_newest(fs_join(root,"verse/gpu",paths[1][..]));for dir:[2]string.["aethyr/render","apps/openagents-web"] {stamp:=af_newest(fs_join(root,dir,paths[1][..]));if stamp>shader_stamp {shader_stamp=stamp;}}
+ if fs_mtime_ns(fs_join(metal,"render/metal.json",paths[1][..]))<shader_stamp {env:[4096]u8;graphics:=proc_getenv("COAX_GRAPHICS",env[..]);if graphics=="" {tool_errln("Metal shader products need a graphics-qualified compiler: set COAX_GRAPHICS to its executable, then resume build.sh. The cached tool compiler is never replaced.");return false;}cmd:=[6]string.[fs_join(root,"coax/web/tool.sh",paths[2][..]),fs_join(here,"metal-build.coax",paths[3][..]),root,"shaders","--coax",graphics];if af_run(cmd[..],out,deadline)<0 {return false;}}
+ pack:=fs_join(root,"apps/openagents-web/realms/everglade/assets/everglade.pack",paths[1][..]);asset_stamp:=af_native_stamp(root,"apps/aethyrforge-desktop/metal-assets.coax",deadline);if fs_mtime_ns(pack)>asset_stamp {asset_stamp=fs_mtime_ns(pack);}
+ if fs_mtime_ns(fs_join(metal,"assets/textures.config",paths[2][..]))<asset_stamp {cmd:=[5]string.[fs_join(root,"coax/web/tool.sh",paths[3][..]),fs_join(here,"metal-assets.coax",paths[4][..]),root,pack,fs_join(metal,"assets",paths[5][..])];if af_run(cmd[..],out,deadline)<0 {return false;}}
+ return true;
+}
 tool_main :: () -> int #export_c {
   a: [1] Args;
   if tool_os()==TOOL_LINUX {if !args_load(a[..]) {return 2;}return fgl_build(a[..]);}
@@ -132,6 +160,12 @@ tool_main :: () -> int #export_c {
   if !af_finish(room_job, deadline) { if page_job >= 0 { released := proc_release(page_job); }if worker_job>=0 {released:=proc_release(worker_job);} return 1; }
   if !af_finish(page_job, deadline) { return 1; }
   if !af_finish(worker_job,deadline) {return 1;}
+  audio_stamp:=af_native_stamp(root,"aethyr/host/audio-carrier.coax",deadline);if audio_stamp<0 {return 1;}
+  for name:[4]string.["coax/web/audio-face.c","coax/web/build-audio.coax","coax/web/wasm.sh","coax/bin/coax"] {stamp:=fs_mtime_ns(af_path(p[..],root,name));if stamp>audio_stamp {audio_stamp=stamp;}}
+  if fs_mtime_ns(af_path(p[..],root,"apps/openagents-web/build/host-audio.wasm"))<audio_stamp {
+    print("Building the shared browser audio carrier…\n");audio_cmd:=[3]string.[af_path(p[..],root,"coax/web/tool.sh"),af_path(p[..],root,"coax/web/build-audio.coax"),root];if af_run(audio_cmd[..],out[..],deadline)<0 {return 1;}
+  }
+  if !af_native(root,here,work,coax,out[..],deadline) {return 1;}
   print("Building Aethyrforge's AppKit shell…\n");
   serve := af_path(p[..], res, "serve");
   sc := [12] string.["/usr/bin/clang", "-std=c11", "-O2", "-D_DARWIN_C_SOURCE", "-Wall", "-Wextra", "-o", serve,
@@ -156,18 +190,20 @@ tool_main :: () -> int #export_c {
   if af_run(cbc[..],out[..],deadline)<0 {return 1;}
   hud_copy := [3]string.["ditto",af_path(p[..],here,"HUD.metal"),af_path(p[..],res,"HUD.metal")];
   if af_run(hud_copy[..],out[..],deadline)<0 {return 1;}
-  sw := [28] string.["xcrun", "swiftc", "-O", "-target", "arm64-apple-macos26.0", "-import-objc-header", af_path(p[..], here, "face.h"),
-    af_path(p[..], here, "Sources/main.swift"), af_path(p[..], here, "Sources/Setup.swift"), af_path(p[..],here,"Sources/Chat.swift"), af_path(p[..],here,"Sources/SetupProfile.swift"), af_path(p[..],here,"Sources/Offline.swift"), af_path(p[..],here,"Sources/Benchmark.swift"), af_path(p[..],root,"apps/shared/zeron/MetalUI.swift"), object, bridge,chat_o,chat_face,"-framework","MetalKit", "-framework", "AppKit", "-framework", "WebKit", "-framework", "AVFoundation", "-o", af_path(p[..], mac, "Aethyrforge")];
+  sw := [43] string.["xcrun", "swiftc", "-O", "-target", "arm64-apple-macos26.0", "-import-objc-header", af_path(p[..], here, "face.h"),
+    af_path(p[..], here, "Sources/main.swift"), af_path(p[..], here, "Sources/Setup.swift"), af_path(p[..],here,"Sources/Chat.swift"), af_path(p[..],here,"Sources/SetupProfile.swift"), af_path(p[..],here,"Sources/Offline.swift"), af_path(p[..],here,"Sources/Benchmark.swift"), af_path(p[..],root,"apps/shared/zeron/MetalUI.swift"),af_path(p[..],here,"Sources/MetalWorld.swift"),af_path(p[..],here,"Sources/MetalNetwork.swift"),af_path(p[..],here,"Sources/MetalAudio.swift"),af_path(p[..],here,"Sources/MetalBridge.swift"),object,bridge,chat_o,chat_face,af_path(p[..],work,"metal/MetalRealm.o"),af_path(p[..],work,"metal/MetalRender.o"),af_path(p[..],work,"metal/RenderTexture.o"),"-Xlinker","-export_dynamic","-framework","MetalKit", "-framework", "AppKit", "-framework", "WebKit", "-framework", "AVFoundation","-framework","QuartzCore","-framework","ImageIO","-framework","CoreGraphics", "-o", af_path(p[..], mac, "Aethyrforge")];
   if af_run(sw[..], out[..], deadline) < 0 { return 1; }
   for name:[3]string.["Zeron.metal","fonts","NOTICE"] {
     copy:=[3]string.["ditto",af_path(p[..],af_path(p[..],root,"apps/shared/zeron"),name),af_path(p[..],res,name)];
     if af_run(copy[..],out[..],deadline)<0 {return 1;}
   }
+  for name:[3]string.["render","assets","libeverglade.dylib"] {cmd:=[3]string.["ditto",af_path(p[..],af_path(p[..],work,"metal"),name),af_path(p[..],af_path(p[..],res,"metal"),name)];if af_run(cmd[..],out[..],deadline)<0 {return 1;}}
   // Keep a compact self-contained page tree: the exact engine, shaders and pack
   // the website uses, plus all generic browser host modules.
   web := af_path(p[..], res, "web"); host := af_path(p[..], res, "host"); seed := af_path(p[..], res, "seed");
   if !fs_mkdir(web) || !fs_mkdir(host) || !fs_mkdir(seed) { return 1; }
-  for name: [7] string.["everglade5e.wgsl", "everglade-fx.wgsl", "favicon.svg", "realms/everglade", "build/everglade5e.wasm", "build/everglade-room.wasm", "render-shaders"] {
+  metal_voice:=[3]string.["ditto",af_path(p[..],here,"metal-voice.html"),af_path(p[..],web,"metal-voice.html")];if af_run(metal_voice[..],out[..],deadline)<0 {return 1;}
+  for name: [8] string.["everglade5e.wgsl", "everglade-fx.wgsl", "favicon.svg", "realms/everglade", "build/everglade5e.wasm", "build/everglade-room.wasm", "build/host-audio.wasm", "render-shaders"] {
     src := af_path(p[..], root, "apps/openagents-web"); from := af_path(p[..], src, name); to := af_path(p[..], web, name);
     if fs_kind(from) == FS_NONE { if name == "render-shaders" { continue; } return 1; }
     cmd := [3] string.["ditto", from, to]; if af_run(cmd[..], out[..], deadline) < 0 { return 1; }

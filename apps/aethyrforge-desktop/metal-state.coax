@@ -1,0 +1,16 @@
+// Read-only diagnostic: map actual state-arena differences to the compiler's
+// measured Coax struct fields. This does not classify a difference as parity.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+ms_find :: (text:string,part:string,start:int)->int {if part.count==0 {return -1;}for i:start..<text.count {if part.count>text.count-i {break;}same:=true;for j:0..<part.count {if text[i+j]!=part[j] {same=false;break;}}if same {return i;}}return -1;}
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])<3 {tool_errln("usage: metal-state NATIVE.STATE WASM.STATE GENERATED.HEADER [--type TYPE --base OFFSET]");return 2;}
+ left:[8388608]u8;right:[8388608]u8;header:[4194304]u8;ln:=fs_read(args_at(a[..],0),left[..]);rn:=fs_read(args_at(a[..],1),right[..]);hn:=fs_read(args_at(a[..],2),header[..]);if ln<1 || rn!=ln || hn<1 {tool_errln("state/header observation length differs or is unreadable");return 1;}
+ text:=cast(string)header[0..<hn];kind:=args_value(a[..],"--type","Everglade");base_number:=args_number(args_value(a[..],"--base","0"));if !base_number.ok || base_number.value<0 || base_number.value>f64(ln) {return 1;}base:=int(base_number.value);prefix_bytes:[256]u8;pn:=0;for part:[3]string.["COAX_LAYOUT(offsetof(coax_t_",kind,", "] {for c:part {if pn==256 {return 1;}prefix_bytes[pn]=c;pn+=1;}}prefix:=cast(string)prefix_bytes[0..<pn];names:[512]string;offsets:[512]int;count:=0;at:=0;
+ while count<512 {row:=ms_find(text,prefix,at);if row<0 {break;}start:=row+prefix.count;end:=ms_find(text,") == ",start);if end<0 {return 1;}names[count]=text[start..<end];pos:=end+5;number:=0;while pos<hn && text[pos]>='0' && text[pos]<='9' {number=number*10+int(text[pos]-'0');pos+=1;}offsets[count]=number;count+=1;at=pos;}
+ extent_bytes:[256]u8;en:=0;for part:[3]string.["COAX_LAYOUT(sizeof(coax_t_",kind,") == "] {for c:part {if en==256 {return 1;}extent_bytes[en]=c;en+=1;}}extent:=cast(string)extent_bytes[0..<en];finish:=ms_find(text,extent,0);if finish<0 || count==512 {return 1;}pos:=finish+extent.count;size:=0;while pos<hn && text[pos]>='0' && text[pos]<='9' {size=size*10+int(text[pos]-'0');pos+=1;}
+ if size<1 || size>ln-base {print("bad compiler extent %\n",size);return 1;}
+ for i:0..<count {start:=offsets[i];end:=ifx i+1<count then offsets[i+1] else size;different:=0;first:=-1;last:=-1;for j:start..<end {if left[base+j]!=right[base+j] {different+=1;if first<0 {first=j-start;}last=j-start;}}if different>0 {print("%: %/% bytes differ, relative offsets %..%\n",names[i],different,end-start,first,last);}}
+ print("Observed% compiler fields across% bytes; whole arena% bytes\n",count,size,ln);return 0;
+}

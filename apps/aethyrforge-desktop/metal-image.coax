@@ -1,0 +1,23 @@
+// Observe the real BGRA presentation readback, SDK JPEG encoder and shared
+// Coax HTTP image attachment. No request reaches a provider or public API.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/text/base64.coax";
+mi_text :: (o:[]Jo,key:string,value:string) {jo_key(o,key);jo_str(o,value);}
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=4 {tool_errln("usage: metal-image ROOT RESOURCES FRAME.CONFIG OUTPUT");return 2;}
+ root:=args_at(a[..],0);res:=args_at(a[..],1);frame:=args_at(a[..],2);dir:=args_at(a[..],3);if !fs_mkdir(dir) {return 1;}paths:[9][4096]u8;
+ plan:=fs_join(dir,"plan.json",paths[0][..]);report:=fs_join(dir,"result.json",paths[1][..]);image:=fs_join(dir,"frame",paths[2][..]);b:[32768]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);mi_text(o[..],"schema","aethyr.metal.effects.v1");jo_key(o[..],"operations");jo_arr(o[..]);
+ jo_obj(o[..]);mi_text(o[..],"op","bgra8");jo_end(o[..]);jo_obj(o[..]);mi_text(o[..],"op","replay");mi_text(o[..],"file",frame);jo_end(o[..]);jo_obj(o[..]);mi_text(o[..],"op","frame");for key,i:[4]string.["width","height","scale","dt"] {jo_key(o[..],key);jo_int(o[..],ifx i==0 then 320 else ifx i==1 then 180 else ifx i==2 then 1 else 0);}jo_end(o[..]);
+ jo_obj(o[..]);mi_text(o[..],"op","jpeg");mi_text(o[..],"file",image);mi_text(o[..],"body","{\"question\":\"Show é🙂\",\"image\":\"old\",\"number\":7}");jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);if o[0].bad || !fs_write(plan,jo_text(o[..])) {return 1;}
+ argv:=[5]string.[fs_join(root,"apps/aethyrforge-desktop/build/metal/MetalEffects",paths[3][..]),res,fs_join(res,"metal/libeverglade.dylib",paths[4][..]),plan,report];out:[65536]u8;err:[65536]u8;r:=proc_run(argv[..],60000,out[..],err[..]);if !fs_write(fs_join(dir,"stdout.txt",paths[7][..]),cast(string)out[0..<r.out_n]) || !fs_write(fs_join(dir,"stderr.txt",paths[8][..]),cast(string)err[0..<r.err_n]) {return 1;}if r.started!=0 || r.status!=0 || r.cut || r.timed_out {tool_errln(cast(string)err[0..<r.err_n]);return 1;}
+ data:[1048576]u8;nodes:[4096]JvNode;d:[1]Jv;n:=fs_read(report,data[..]);if n<1 || !jv_parse(d[..],cast(string)data[0..<n],nodes[..]) {return 1;}images:=jv_get(d[0],0,"images");row:=jv_at(d[0],images,0);
+ if jv_len(d[0],images)!=1 || jv_int(d[0],jv_get(d[0],row,"width"),-1)!=320 || jv_int(d[0],jv_get(d[0],row,"height"),-1)!=180 || jv_int(d[0],jv_get(d[0],row,"bytes"),0)<1000 || jv_int(d[0],jv_get(d[0],0,"closedLedgerLive"),-1)!=0 {return 1;}
+ n=fs_read(fs_join(dir,"frame.json",paths[5][..]),data[..]);if n<1 || !jv_parse(d[..],cast(string)data[0..<n],nodes[..]) {return 1;}if !jv_raw_eq(jv_raw(d[0],jv_get(d[0],0,"question")),"Show é🙂") || jv_int(d[0],jv_get(d[0],0,"number"),-1)!=7 || jv_len(d[0],0)!=3 {return 1;}
+ encoded:[524288]u8;jpeg:[393216]u8;physical:[393216]u8;length:=jv_str(d[0],jv_get(d[0],0,"image"),encoded[..]);decoded:=ifx length>0 then b64_decode(cast(string)encoded[0..<length],jpeg[..]) else -1;bytes:=fs_read(fs_join(dir,"frame.jpg",paths[6][..]),physical[..]);
+ if decoded<1000 || decoded!=bytes || cast(string)jpeg[0..<decoded]!=cast(string)physical[0..<bytes] || jpeg[0]!=255 || jpeg[1]!=216 || jpeg[decoded-2]!=255 || jpeg[decoded-1]!=217 {return 1;}
+ print("Native next-frame image effects: actual320x180 BGRA JPEG bytes round-trip through the shared Coax object attachment; no API request sent.\n");return 0;
+}

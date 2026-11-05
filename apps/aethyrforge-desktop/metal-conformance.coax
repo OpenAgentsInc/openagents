@@ -1,0 +1,75 @@
+// Author the same versioned host fixture workload used by the browser. Swift
+// performs SDK calls and records raw observations; the common Coax checker
+// interprets them. GPU qualification is a separate complete-frame gate.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/net/cdp.coax";
+#load "../../aethyr/host/http-conformance.coax";
+mc_op :: (o:[]Jo,name:string) {jo_obj(o);jo_key(o,"op");jo_str(o,name);}
+mc_int :: (o:[]Jo,key:string,v:int) {jo_key(o,key);jo_int(o,v);}
+mc_str :: (o:[]Jo,key:string,v:string) {jo_key(o,key);jo_str(o,v);}
+mc_observe :: (o:[]Jo,name:string) {mc_op(o,"observe");mc_str(o,"name",name);jo_end(o);}
+mc_message :: (o:[]Jo,kind:int,text:string) {mc_op(o,"message");mc_int(o,"kind",kind);mc_str(o,"text",text);jo_end(o);}
+mc_wait :: (o:[]Jo,ms:int) {mc_op(o,"wait");mc_int(o,"ms",ms);jo_end(o);}
+mc_fact :: (o:[]Jo,name:string,value:bool) {mc_op(o,name);jo_key(o,"value");jo_bool(o,value);jo_end(o);}
+mc_clock :: (o:[]Jo,us:int) {mc_op(o,"frame-at");mc_int(o,"us",us);mc_int(o,"width",320);mc_int(o,"height",180);mc_int(o,"dpr",1);jo_end(o);}
+mc_lifecycle :: (o:[]Jo) {
+ mc_op(o,"drawable-unavailable");jo_end(o);
+ mc_clock(o,-1);mc_clock(o,0);mc_clock(o,15625);mc_clock(o,10000);
+ mc_op(o,"key");mc_int(o,"key",119);jo_key(o,"down");jo_bool(o,true);jo_end(o);
+ mc_fact(o,"shown",false);mc_observe(o,"hidden");mc_clock(o,1000000);mc_fact(o,"focus",false);mc_fact(o,"focus",true);mc_clock(o,1100000);
+ mc_fact(o,"shown",true);mc_clock(o,2000000);mc_fact(o,"focus",false);mc_clock(o,3000000);mc_fact(o,"focus",true);mc_clock(o,4000000);mc_clock(o,4015625);mc_observe(o,"events");
+}
+mc_lifecycle_check :: (file:string)->bool {
+ bytes:[65536]u8;nodes:[4096]JvNode;d:[1]Jv;n:=fs_read(file,bytes[..]);if n<1 || !jv_parse(d[..],cast(string)bytes[0..<n],nodes[..]) {return false;}doc:=d[0];rows:=jv_get(doc,0,"events");frames:=0;
+ for i:0..<jv_len(doc,rows) {row:=jv_at(doc,rows,i);if jv_int(doc,jv_at(doc,row,0),-1)!=1 {continue;}dt:=ifx frames==1 || frames==5 then f32_bits(0.015625f32) else 0;
+  if jv_int(doc,jv_at(doc,row,1),-1)!=int(f32_bits(320.0f32)) || jv_int(doc,jv_at(doc,row,2),-1)!=int(f32_bits(180.0f32)) || jv_int(doc,jv_at(doc,row,3),-1)!=int(f32_bits(1.0f32)) || jv_int(doc,jv_at(doc,row,4),-1)!=int(dt) {return false;}frames+=1;
+ }
+ life:=jv_get(doc,0,"lifecycle");want:=[5]int.[1,1,1,1,4015625];for x,i:want {if jv_int(doc,jv_at(doc,life,i),-1)!=x {return false;}}
+ hidden:=jv_get(doc,0,"hidden");release:=jv_at(doc,hidden,jv_len(doc,hidden)-1);if jv_int(doc,jv_at(doc,release,0),-1)!=5 || jv_int(doc,jv_at(doc,release,1),-1)!=1 {return false;}
+ return frames==6 && jv_int(doc,jv_get(doc,0,"dropped"),-1)==0 && jv_int(doc,jv_get(doc,0,"held"),-1)==0;
+}
+mc_transport :: (o:[]Jo) {
+ mc_wait(o,500);
+ for i:0..<5 {mc_message(o,910,"ws://127.0.0.1:9170/echo");}mc_wait(o,300);
+ for text:[4]string.["0 Aé🙂","1 ","2 first","2 second"] {mc_message(o,911,text);}mc_wait(o,100);
+ mc_message(o,911,"0 large");mc_wait(o,100);mc_message(o,911,"0 binary");mc_wait(o,250);
+ mc_message(o,912,"1");mc_message(o,910,"ws://127.0.0.1:9170/echo");mc_wait(o,150);
+ for path:[3]string.["/api/host-contract/ok","/api/host-contract/large","/api/host-contract/invalid"] {mc_message(o,920,path);mc_wait(o,150);}
+ mc_message(o,920,"/api/host-contract/slow");mc_message(o,921,"0");mc_message(o,920,"/api/host-contract/ok");mc_wait(o,400);
+ for i:0..<9 {mc_message(o,920,"/api/host-contract/batch");}mc_wait(o,500);
+ for id:[4]string.["0","1","2","3"] {mc_message(o,912,id);}mc_wait(o,150);mc_observe(o,"events");
+}
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])<3 {tool_errln("usage: metal-conformance ROOT RESOURCES OUTPUT [--transport]");return 2;}
+ root:=args_at(a[..],0);res:=args_at(a[..],1);dir:=args_at(a[..],2);if !fs_mkdir(dir) {return 1;}
+ transport:=args_has(a[..],"--transport");http:=args_has(a[..],"--http-target");lifecycle:=args_has(a[..],"--lifecycle");scope:=ifx lifecycle then "lifecycle" else ifx http then "http-target" else ifx transport then "transport" else "core";bytes:[65536]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);mc_str(o[..],"schema","aethyr.host.effects.v1");mc_str(o[..],"scope",scope);jo_key(o[..],"operations");jo_arr(o[..]);
+ if lifecycle {mc_lifecycle(o[..]);}else if http {for q:htu_cases() {mc_message(o[..],920,q.input);mc_wait(o[..],150);}mc_observe(o[..],"events");}else if transport {mc_transport(o[..]);}else {
+ big:[129]u8;for i:0..<big.count {big[i]='z';}
+ for i:0..<2 {mc_op(o[..],"asset");mc_int(o[..],"index",i);mc_str(o[..],"text",ifx i==0 then "ABCD" else cast(string)big[0..<65]);jo_end(o[..]);}
+ mc_observe(o[..],"assets");mc_op(o[..],"reset");jo_end(o[..]);
+ for i:0..<2 {mc_op(o[..],"frame");mc_int(o[..],"width",320);mc_int(o[..],"height",180);mc_int(o[..],"dpr",2);jo_key(o[..],"dt");jo_raw(o[..],ifx i==0 then "0" else "0.015625");jo_key(o[..],"still");jo_bool(o[..],true);jo_end(o[..]);}
+ mc_observe(o[..],"frames");mc_op(o[..],"reset");jo_end(o[..]);
+ for i:0..<3 {mc_op(o[..],"key");mc_int(o[..],"key",ifx i==2 then 128578 else -6);mc_int(o[..],"mods",ifx i==2 then 0 else 15);jo_key(o[..],"down");jo_bool(o[..],i!=1);jo_end(o[..]);}
+ mc_op(o[..],"blur");jo_end(o[..]);mc_op(o[..],"wheel");mc_int(o[..],"dy",32);jo_end(o[..]);
+ for kind:0..<2 {for phase:[2]int.[0,2] {mc_op(o[..],"pointer");mc_int(o[..],"kind",kind);mc_int(o[..],"id",ifx kind==0 then 17 else 19);mc_int(o[..],"phase",phase);mc_int(o[..],"x",ifx kind==0 then 25 else 14);jo_key(o[..],"y");jo_raw(o[..],ifx kind==0 then "68.5" else "18");jo_end(o[..]);}}
+ mc_message(o[..],901,"Aé🙂");for i:0..<big.count {big[i]='x';}mc_message(o[..],901,cast(string)big[..]);mc_message(o[..],900,"hash");mc_observe(o[..],"events");}
+ jo_end(o[..]);jo_end(o[..]);
+ paths:[6][4096]u8;plan:=fs_join(dir,ifx lifecycle then "lifecycle-plan.json" else ifx http then "http-target-plan.json" else ifx transport then "transport-plan.json" else "core-plan.json",paths[0][..]);result:=fs_join(dir,ifx lifecycle then "metal-lifecycle.json" else ifx http then "metal-http-target.json" else ifx transport then "metal-transport.json" else "metal-core.json",paths[1][..]);if o[0].bad || !fs_write(plan,jo_text(o[..])) {return 1;}
+ server:=-1;
+ defer {if server>=0 {killed:=proc_kill(server,PROC_SIGTERM);waited:=proc_wait(server,2000);released:=proc_release(server);}}
+ if transport || http {
+  server=proc_new();if server<0 {return 1;}for arg:[3]string.[fs_join(root,"coax/web/tool.sh",paths[2][..]),fs_join(root,"aethyr/host/tests/network.coax",paths[5][..]),"9170"] {if !proc_arg(server,arg) {return 1;}}
+  if proc_start(server)!=0 {return 1;}
+  probe:[1]Cdp;health:[4096]u8;deadline:=proc_now_ms()+10000;ready:=false;
+  while proc_now_ms()<deadline {if cdp_get(probe[..],9170,"/health",health[..])>0 {ready=true;break;}proc_sleep(50);}
+  if !ready {tool_errln("Host fixture server did not become ready.");return 1;}
+ }
+ run:=[5]string.[fs_join(root,"apps/aethyrforge-desktop/build/metal/HostEffects",paths[2][..]),res,fs_join(root,"apps/aethyrforge-desktop/build/metal/libfixture.dylib",paths[3][..]),plan,result];out:[1048576]u8;err:[65536]u8;r:=proc_run(run[..],60000,out[..],err[..]);if r.started!=0 || r.status!=0 || r.cut || r.timed_out {tool_errln(cast(string)err[0..<r.err_n]);return 1;}
+ if lifecycle {if !mc_lifecycle_check(result) {tool_errln("Actual native lifecycle/clock observations differ; raw receipt retained.");return 1;}print("Actual Metal lifecycle: six exact admitted frame clocks; negative/backward/hidden offers refused, focus/shown composed, first/resume dt zero.\n");return 0;}
+ check:=[4]string.[fs_join(root,"coax/web/tool.sh",paths[2][..]),fs_join(root,"aethyr/host/check-observations.coax",paths[4][..]),result,""];
+ q:=proc_run(check[0..<3],60000,out[..],err[..]);if q.started!=0 || q.status!=0 || q.cut || q.timed_out {tool_errln(cast(string)out[0..<q.out_n]);tool_errln(cast(string)err[0..<q.err_n]);return 1;}print("%",cast(string)out[0..<q.out_n]);return 0;
+}

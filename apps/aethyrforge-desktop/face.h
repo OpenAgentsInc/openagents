@@ -1,6 +1,8 @@
 // Scalar Swift bridge to the Coax setup state. No borrowed Coax storage escapes.
 #include <stdbool.h>
 #include <stdint.h>
+#include "metal-host.h"
+int64_t forge_world_backend_bytes(const uint8_t *bytes,int64_t count);
 int64_t forge_url_byte(int64_t page, int64_t room, int64_t index);
 int64_t forge_offline_url_byte(int64_t page,int64_t index);
 int64_t forge_startup_budget(int64_t remaining, int64_t elapsed, bool visible);

@@ -12,8 +12,8 @@
 // The face includes its page's header (which #loads place.coax) and
 // analytics-face.h (track_state, the page's clock and the wall clock), then
 // defines, before including this file:
-//   static coax_t_Place place_here(uint32_t state);         where you are now (ok false: not yet placed)
-//   static void place_put(uint32_t state, coax_t_Place p);   put you there, at the nearest open ground
+//   static coax_t_Place place_here(cx_face_addr state);         where you are now (ok false: not yet placed)
+//   static void place_put(cx_face_addr state, coax_t_Place p);   put you there, at the nearest open ground
 // and calls place_seen(state) once you are first placed, place_frame(state)
 // after each step, place_message(state, kind, inbox, length) at the top of
 // coaxial_message (true: it was the place's), and lets place_action() take
@@ -23,13 +23,13 @@
 // you back where you were, not to the place the link named.
 #pragma once
 #include <stdbool.h>
-#include <stdint.h>
+#include "face-address.h"
 
 #define PLACE_ACTION 11
 #define PLACE_MESSAGE 11
 
-static coax_t_Place place_here(uint32_t state);
-static void place_put(uint32_t state, coax_t_Place p);
+static coax_t_Place place_here(cx_face_addr state);
+static void place_put(cx_face_addr state, coax_t_Place p);
 
 static coax_t_PlaceKeeper place_keeper;
 static uint8_t place_text_out[400];
@@ -46,9 +46,9 @@ static coax_v_t_PlaceKeeper place_k(void) { return (coax_v_t_PlaceKeeper){&place
 static double place_wall_ms(void) { return track_state.epoch > 0 ? track_state.epoch + track_state.t * 1000.0 : 0; }
 
 // You were first put down (the spawn, or where the hash named).
-static void place_seen(uint32_t state) { verse_place_open(place_k(), place_here(state)); }
+static void place_seen(cx_face_addr state) { verse_place_open(place_k(), place_here(state)); }
 
-static void place_keep(uint32_t state, bool leaving) {
+static void place_keep(cx_face_addr state, bool leaving) {
   coax_t_Place here = place_here(state);
   here.at = place_wall_ms();
   int64_t due = verse_place_due(place_k(), here, track_state.t, leaving);
@@ -62,24 +62,24 @@ static void place_keep(uint32_t state, bool leaving) {
   if (due & 2) {
     int64_t un = verse_place_url(place_k(), (coax_v_u8){place_url, sizeof place_url});
     int64_t bn = un > 0 ? verse_place_send(place_k(), here, leaving, (coax_v_u8){place_body, sizeof place_body}) : 0;
-    int32_t id = bn > 0 ? coaxial_http((uint32_t)(uintptr_t)place_url, (uint32_t)un, (uint32_t)(uintptr_t)place_body, (uint32_t)bn, leaving ? 1 | 8 : 1 | 4 | 8) : -1;
+    int32_t id = bn > 0 ? coaxial_http((cx_face_addr)(uintptr_t)place_url, (uint32_t)un, (cx_face_addr)(uintptr_t)place_body, (uint32_t)bn, leaving ? 1 | 8 : 1 | 4 | 8) : -1;
     if (id >= 0) { done |= 2; if (!leaving) place_post_id = id; }
     else if (bn > 0 && !leaving) verse_place_unsent(place_k());
   }
   verse_place_kept(place_k(), here, track_state.t, done);
 }
-static void place_frame(uint32_t state) { place_keep(state, false); }
+static void place_frame(cx_face_addr state) { place_keep(state, false); }
 
 // The page facts (600: the slot and the account; the server's copy is asked
 // for), hidden (601) or left (603: kept at once), the kept text (11) and the
 // server's answer. True when the message was the place's alone.
-static bool place_message(uint32_t state, int32_t kind, const uint8_t *inbox, uint32_t length) {
+static bool place_message(cx_face_addr state, int32_t kind, const uint8_t *inbox, uint32_t length) {
   coax_string text = {(const char *)inbox, (int64_t)length};
   if (kind == 600) {
     verse_place_facts(place_k(), text);
     if (verse_place_ask(place_k())) {
       int64_t un = verse_place_url(place_k(), (coax_v_u8){place_url, sizeof place_url});
-      if (un > 0) place_ask_id = coaxial_http((uint32_t)(uintptr_t)place_url, (uint32_t)un, 0, 0, 4 | 8);
+      if (un > 0) place_ask_id = coaxial_http((cx_face_addr)(uintptr_t)place_url, (uint32_t)un, 0, 0, 4 | 8);
       if (place_ask_id < 0) verse_place_server(place_k(), (coax_string){"0\n", 2});   // no copy coming: send without one
     }
     return false;
@@ -110,7 +110,7 @@ static int32_t place_action(void) {
   if (place_unhash) { place_out_now = true; place_out_code = 3; return 3; }
   return 0;
 }
-static uint32_t place_outbox(void) { return (uint32_t)(uintptr_t)place_text_out; }
+static cx_face_addr place_outbox(void) { return (cx_face_addr)(uintptr_t)place_text_out; }
 static uint32_t place_outbox_len(void) { return place_out_code == 3 ? 0 : place_text_n; }
 static void place_done(void) {
   if (place_out_code == 3) place_unhash = false; else place_text_n = 0;
