@@ -194,7 +194,7 @@ dr_str :: (c: [] Cdp, js: string, out: [] u8) -> string {
 // ctl: the room's control file (the held step's scripted Hold Person); room: the room page's room
 // code; worker: the offline page plays on the local host (?offline=worker)
 // at: the step the last press went in at (dr_both); empty, each page takes a press as it comes
-DrPair :: struct { a: [] Cdp; b: [] Cdp; shots: string; ctl: string; room: int; worker: bool; at: [] int; }
+DrPair :: struct { a: [] Cdp; b: [] Cdp; shots: string; ctl: string; room: int; worker: bool; native: bool; at: [] int; }
 DR_SHOT :: 8388608;
 // Both pages as they look now, into SHOTS-NAME-offline.png and -room.png (no SHOTS: none).
 dr_shots :: (p: DrPair, name: string) {
@@ -209,11 +209,17 @@ dr_shots :: (p: DrPair, name: string) {
 // A press on both pages at one step of each (everglade-drift.js __dr.at, #12893): DR_AHEAD steps past
 // the later page's step now, and after the last press's, so the two rooms hear the same inputs.
 DR_AHEAD :: 3;
+#test "paired events share a future input step and never overtake an earlier event" {
+  #assert dr_target(10,12,0)==15 && dr_target(12,10,0)==15;
+  #assert dr_target(10,12,16)==17 && dr_target(0,0,0)==3;
+}
+dr_target :: (a:int,b:int,previous:int)->int {
+  t:=(ifx a>b then a else b)+DR_AHEAD;return ifx t<=previous then previous+1 else t;
+}
 dr_both :: (p: DrPair, down: bool, key: string, code: string, vk: int, shift: bool) {
   sa := dr_int(p.a, "__dr.sstep()", -1); sb := dr_int(p.b, "__dr.sstep()", -1);
   if p.at.count == 0 || sa < 0 || sb < 0 { _ := dr_press(p.a, down, key, code, vk, shift); _ = dr_press(p.b, down, key, code, vk, shift); return; }
-  t := (ifx sa > sb then sa else sb) + DR_AHEAD;
-  if t <= p.at[0] { t = p.at[0] + 1; }
+  t := dr_target(sa,sb,p.at[0]);
   p.at[0] = t;
   for side: 0..<2 {
     q: [1] Buf; bput(q[..], "__dr.at("); bint(q[..], t); bput(q[..], ", () => "); dr_key_js(q[..], down, key, code, vk, shift); bput(q[..], ")");
@@ -224,7 +230,11 @@ dr_both_key :: (p: DrPair, down: bool, key: string, code: string, vk: int) { dr_
 dr_tap :: (p: DrPair, key: string, code: string, vk: int) { dr_both_key(p, true, key, code, vk); proc_sleep(80); dr_both_key(p, false, key, code, vk); }
 dr_mark :: (p: DrPair, name: string) {
   if p.shots.count > 0 && name != "start" && name != "raid" { dr_shots(p, name); }
-  q: [1] Buf; bput(q[..], "__dr.mark('"); bput(q[..], name); bput(q[..], "')");
+  q: [1] Buf;
+  sa:=dr_int(p.a,"__dr.sstep()",-1);sb:=dr_int(p.b,"__dr.sstep()",-1);
+  scheduled:=name!="start" && p.at.count>0 && sa>=0 && sb>=0;
+  if scheduled {t:=dr_target(sa,sb,p.at[0]);p.at[0]=t;bput(q[..],"__dr.at(");bint(q[..],t);bput(q[..],",()=>");}
+  bput(q[..], "__dr.mark('"); bput(q[..], name); bput(q[..], "')");if scheduled {bput(q[..],")");}
   _ := dr_int(p.a, btext(q[..]), 0); _ = dr_int(p.b, btext(q[..]), 0);
   print("  step %\n", name);
 }
@@ -236,6 +246,16 @@ dr_mark :: (p: DrPair, name: string) {
 // holds start as one. With --offline page, the offline page is held by its own watch (net_probe 59).
 DR_HELD :: "((__dr.probe(52) & 3) || __dr.probe(53) > 0) ? 1 : 0";
 dr_hold :: (p: DrPair) {
+  if p.native {
+    // Both rooms are in one native process. Apply both holds in one control-file read,
+    // then remove the lines before its next read (the shared last-stamp is global).
+    c:[1]Buf;bput(c[..],DR_CONTROL_PAIR);stamp:=proc_now_ms();
+    bput(c[..],"hold pair-drift-");bint(c[..],p.room);bput(c[..]," ");bint(c[..],dr_int(p.b,"__dr.probe(1)",-1));bput(c[..]," ");bint(c[..],stamp);bput(c[..],"\n");
+    bput(c[..],"hold local-1 ");bint(c[..],dr_int(p.a,"__dr.probe(1)",-1));bput(c[..]," ");bint(c[..],stamp+1);bput(c[..],"\n");
+    _:=fs_write(p.ctl,btext(c[..]));deadline:=proc_now_ms()+4000;
+    while proc_now_ms()<deadline && (dr_int(p.a,DR_HELD,0)!=1 || dr_int(p.b,DR_HELD,0)!=1) {proc_sleep(20);}
+    _=fs_write(p.ctl,DR_CONTROL_PAIR);return;
+  }
   took := false; tries := 0; asked := 0; stamp := 0;
   while tries < 3 && !took {
     if proc_now_ms() - asked > 6500 {
@@ -602,7 +622,15 @@ dr_dice :: (c: [] Cdp, worker: bool) {
   if dr_int(c, "coaxial.roomHost && coaxial.roomHost.control ? coaxial.roomHost.control('dice fixed\\n') : 0", 0) != 1 { print("  (the offline page's room didn't take the dice line)\n"); }
 }
 // worker: the offline page plays on the room server's local host (?offline=worker, #12784); false its own game
-DrRun :: struct { port: int; bots: int; stamp: int; dir: string; ctl: string; script: string; key: string; worker: bool; }
+DrRun :: struct { port: int; bots: int; stamp: int; dir: string; ctl: string; script: string; key: string; worker: bool; native: bool; }
+dr_offline_script :: (run:DrRun,out:[]Buf)->string {
+  out[0].n=0;
+  if run.native {bput(out,"globalThis.coaxialNativeRoomHost='ws://127.0.0.1:");bint(out,run.port);bput(out,"';\n");}
+  bput(out,run.script);return btext(out);
+}
+dr_native_ready :: (run:DrRun,c:[]Cdp)->bool {
+  return !run.native || dr_int(c,"coaxial.roomHost?.native === true && __dr.probe(0)===2 && __dr.probe(1)===0 ? 1:0",0)==1;
+}
 
 // One paired session on one network profile: its verdicts into rep; false when it couldn't run.
 dr_session :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] DrPage, b: [] DrPage) -> bool {
@@ -624,12 +652,13 @@ dr_session :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] Dr
   ca: [1] Cdp; cb: [1] Cdp; ok := false;
   if cdp_launch(ca[..], 1280, 800, "coax-drift-a-") {
     if cdp_launch(cb[..], 1280, 800, "coax-drift-b-") {
-      if dr_open(ca[..], btext(ua[..]), run.script) && dr_open(cb[..], btext(ub[..]), run.script) && dr_ready(ca[..], false) && dr_ready(cb[..], true) {
-        dr_dice(ca[..], run.worker);
+      script:[1]Buf;
+      if dr_open(ca[..], btext(ua[..]), dr_offline_script(run,script[..])) && dr_open(cb[..], btext(ub[..]), run.script) && dr_ready(ca[..], false) && dr_ready(cb[..], true) && dr_native_ready(run,ca[..]) {
+        dr_dice(ca[..], run.worker && !run.native);
         proc_sleep(2500);
         sh: [1] Buf; bput(sh[..], run.dir); bput(sh[..], "/shot-"); bput(sh[..], profile);
         at: [1] int;
-        dr_script(DrPair.{a = ca[..], b = cb[..], shots = btext(sh[..]), ctl = run.ctl, room = code, worker = run.worker, at = at[..]}, run.dir);
+        dr_script(DrPair.{a = ca[..], b = cb[..], shots = btext(sh[..]), ctl = run.ctl, room = code, worker = run.worker, native=run.native, at = at[..]}, run.dir);
         ok = dr_pull(ca[..], a) && dr_pull(cb[..], b);
         if run.worker { print("  (offline room host: % stalls, % ms of its beat dropped)\n", dr_int(ca[..], "coaxial.roomHost ? coaxial.roomHost.stalls | 0 : -1", -1), dr_int(ca[..], "coaxial.roomHost ? coaxial.roomHost.lost | 0 : -1", -1)); }
         // the town's people's conditions as each page drew them (wall ms, then PERSON:BITS), a note
@@ -686,8 +715,9 @@ dr_raid :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] DrPag
   ca: [1] Cdp; cc: [1] Cdp; ok := false;
   if cdp_launch(ca[..], 1280, 800, "coax-drift-a-") {
     if cdp_launch(cc[..], 1280, 800, "coax-drift-b-") {
-      if dr_open(ca[..], btext(ua[..]), run.script) && dr_open(cc[..], btext(ub[..]), run.script) && dr_ready(ca[..], false) && dr_ready(cc[..], true) {
-        dr_dice(ca[..], run.worker);
+      script:[1]Buf;
+      if dr_open(ca[..], btext(ua[..]), dr_offline_script(run,script[..])) && dr_open(cc[..], btext(ub[..]), run.script) && dr_ready(ca[..], false) && dr_ready(cc[..], true) && dr_native_ready(run,ca[..]) {
+        dr_dice(ca[..], run.worker && !run.native);
         sh: [1] Buf; bput(sh[..], run.dir); bput(sh[..], "/shot-raid-"); bput(sh[..], profile);
         p := DrPair.{a = ca[..], b = cc[..], shots = btext(sh[..])};
         dr_mark(p, "raid");
@@ -780,9 +810,10 @@ tool_main :: () -> int #export_c {
   profiles := args_value(a[..], "--profiles", "local,100,250");
   bots := args_whole(args_value(a[..], "--bots", "3"));
   port := args_whole(args_value(a[..], "--port", "8960"));
+  offline:=args_value(a[..],"--offline","worker");native:=offline=="native";
   near := (port <= 8830 && port + 4 >= 8830) || (port <= 8872 && port + 4 >= 8872);   // the owner's servers (it takes PORT to PORT + 4)
-  if !ok || bots < 1 || port < 1024 || near {
-    tool_errln("usage: coax/web/tool.sh everglade-drift [--profiles local,100,250] [--bots 3] [--port 8960] [--no-raid] [--offline worker|page] [--out DIR] (not on 8830 or 8872)"); return 2;
+  if !ok || bots < 1 || port < 1024 || near || (offline!="native" && offline!="worker" && offline!="page") {
+    tool_errln("usage: coax/web/tool.sh everglade-drift [--profiles local,100,250] [--bots 3] [--port 8960] [--no-raid] [--offline native|worker|page] [--out DIR] (not on 8830 or 8872)"); return 2;
   }
   js: [65536] u8;
   jn := fs_read("coax/web/everglade-drift.js", js[..]);
@@ -810,7 +841,7 @@ tool_main :: () -> int #export_c {
   _ = fs_write(ctl, DR_CONTROL_PAIR);
   // the room server, the API's stand-in (--dev DIR): its seat tickets signed with the stand-in's key
   q: [1] Buf;
-  bput(q[..], "exec coax/web/room/bin/room --port "); bint(q[..], port); bput(q[..], " --dev "); bput(q[..], dir); bput(q[..], " > "); bput(q[..], dir); bput(q[..], "/room.log 2>&1");
+  bput(q[..], "exec coax/web/room/bin/room --port "); bint(q[..], port); bput(q[..], " --dev "); bput(q[..], dir);if native {bput(q[..]," --listen 127.0.0.1 --native-local");} bput(q[..], " > "); bput(q[..], dir); bput(q[..], "/room.log 2>&1");
   hr := dr_spawn(btext(q[..]));
   q[0].n = 0;
   bput(q[..], "exec coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:"); bint(q[..], port + 1); bput(q[..], " --api "); bint(q[..], port); bput(q[..], " --static --cache 0 > "); bput(q[..], dir); bput(q[..], "/serve.log 2>&1");
@@ -822,10 +853,10 @@ tool_main :: () -> int #export_c {
   bput(q[..], "exec coax/web/room/bin/room --port "); bint(q[..], port + 4); bput(q[..], " --dev "); bput(q[..], dir); bput(q[..], " --no-rooms > "); bput(q[..], dir); bput(q[..], "/room-offline.log 2>&1");
   hn := dr_spawn(btext(q[..]));
   q[0].n = 0;
-  bput(q[..], "exec coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:"); bint(q[..], port + 3); bput(q[..], " --api "); bint(q[..], port + 4); bput(q[..], " --static --cache 0 > "); bput(q[..], dir); bput(q[..], "/serve-offline.log 2>&1");
+  bput(q[..], "exec coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:"); bint(q[..], port + 3); bput(q[..], " --api "); bint(q[..], ifx native then port else port+4); bput(q[..], " --static --cache 0 > "); bput(q[..], dir); bput(q[..], "/serve-offline.log 2>&1");
   ho := dr_spawn(btext(q[..]));
   // the bots sign their seat tickets with the room's key
-  run := DrRun.{port = port, bots = bots, stamp = stamp, dir = dir, ctl = ctl, script = cast(string) js[0..<jn], key = DR_DEV_KEY, worker = args_value(a[..], "--offline", "worker") != "page"};
+  run := DrRun.{port = port, bots = bots, stamp = stamp, dir = dir, ctl = ctl, script = cast(string) js[0..<jn], key = DR_DEV_KEY, worker = offline!="page",native=native};
   proc_sleep(2000);
   print("everglade-drift: room 127.0.0.1:%, page 127.0.0.1:%, results in %\n", port, port + 1, dir);
   all := true;

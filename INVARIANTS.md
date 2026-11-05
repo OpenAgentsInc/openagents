@@ -771,6 +771,18 @@ imports one of those functions. Checks: `coax/web/room/room-math-check.coax`
 the host C library's) and the drift check's local profile
 (`coax/web/tool.sh everglade-drift --no-raid`).
 
+Aethyrforge binds `local:` room sockets to its existing native room process,
+using the same text frames. Browsers retain the Wasm Worker. Native ticketless
+admission requires development mode, an explicit IPv4 loopback bind and the
+exact `everglade/local-1` path, with one seat; ordinary room ticket checks
+are preserved. `native-local-policy.coax` is authority (all 8 mutants killed).
+The native executable refuses wildcard binds. The desktop `--offline-check`
+observes seat zero, actual Worker creation, room traffic and tick costs;
+`everglade-drift --offline native --profiles local --no-raid` passes all 25
+probes at the existing tolerances. Paired marks and inputs use a common future
+input step, avoiding asynchronous frame origins at collisions. Evidence:
+`docs/verification/aethyrforge-offline-2026-11-05/`.
+
 ## Every walking realm asks one ground question
 
 The walking controller's floor comes from `aethyr/query.coax`:

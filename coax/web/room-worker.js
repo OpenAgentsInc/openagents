@@ -18,6 +18,7 @@ function roomWorkerMain() {
   const waiting = [], conns = new Set();
   const enc = new TextEncoder(), dec = new TextDecoder();
   let costTicks = 0, costUs = 0, costAt = performance.now(), partsWas = new Array(PARTS).fill(0), lost = 0, stalls = 0;
+  let tickTimes = [];
   const view = () => new DataView(mem.buffer);
   // WASI, as little as the C runtime asks for: clocks, randomness, stdout to the console, nothing else.
   const wasi = {
@@ -63,14 +64,18 @@ function roomWorkerMain() {
     while (now >= next) {
       const t0 = performance.now();
       clock(); x.rw_tick(); flush();
-      costUs += (performance.now() - t0) * 1000; costTicks++;
+      const us = (performance.now() - t0) * 1000;
+      costUs += us; tickTimes.push(us); costTicks++;
       next += STEP;
     }
     if (now - costAt >= 1000) {
       x.rw_vitals();
       const parts = [];
       for (let q = 0; q < PARTS; q++) { const v = x.rw_part_us(q); parts.push(v - partsWas[q]); partsWas[q] = v; }
-      postMessage({ t: "cost", ticks: costTicks, us: Math.round(costUs), ms: Math.round(now - costAt), parts, lost: Math.round(lost), stalls });
+      tickTimes.sort((a,b)=>a-b);
+      const q = p => tickTimes[Math.min(tickTimes.length-1,Math.max(0,Math.ceil(tickTimes.length*p)-1))] || 0;
+      postMessage({ t: "cost", ticks: costTicks, us: Math.round(costUs), ms: Math.round(now - costAt), parts, lost: Math.round(lost), stalls, tickP50Us:q(.50),tickP95Us:q(.95),tickP99Us:q(.99) });
+      tickTimes = [];
       costTicks = 0; costUs = 0; costAt = now;
     }
     if (conns.size) timer = setTimeout(beat, Math.max(0, next - performance.now()));
@@ -121,6 +126,31 @@ function roomWorkerMain() {
 
 let worker = null, nextId = 0;
 const sockets = new Map();
+// Desktop binding: the same room and text frames over a private native socket.
+// The Coax server admits only local-1 without a ticket under --native-local.
+// A browser without this platform binding keeps its existing worker host.
+let nativeCostTimer = 0, nativeSockets = 0;
+function nativeRoomSocket(path) {
+  const s = new WebSocket(globalThis.coaxialNativeRoomHost + path);
+  const host = (globalThis.coaxial ||= {}).roomHost ||= {native:true,transport:"native-room",failed:""};
+  host.native = true; host.transport = "native-room"; nativeSockets++;
+  const cost = async () => {
+    try {
+      const response = await fetch("/api/room/vitals",{cache:"no-store"});
+      if (!response.ok) return;
+      const text = await response.text(); if (text.length > 16000) return;
+      const fields = Object.fromEntries(text.split("\n").map(line=>{const at=line.indexOf("=");return [line.slice(0,at),Number(line.slice(at+1))];}));
+      if (!("tick p50 ms" in fields)) return;
+      host.tickP50Us=fields["tick p50 ms"]*1000;host.tickP95Us=fields["tick p95 ms"]*1000;host.tickP99Us=fields["tick p99 ms"]*1000;
+      host.ticksPerSecond=fields["ticks a second"];host.report=text;host.observedAt=performance.now();
+    } catch {} // cost observations never steer or stop the room
+  };
+  if (!nativeCostTimer) { nativeCostTimer=setInterval(cost,1000);cost(); }
+  s.addEventListener("open",()=>{host.failed="";});
+  s.addEventListener("error",()=>{host.failed="The native local room is unavailable.";});
+  s.addEventListener("close",()=>{if(--nativeSockets===0){clearInterval(nativeCostTimer);nativeCostTimer=0;}});
+  return s;
+}
 function roomWorker(wasmUrl) {
   if (worker) return worker;
   const blob = new Blob([`(${roomWorkerMain.toString()})()`], { type: "text/javascript" });
@@ -135,7 +165,7 @@ function roomWorker(wasmUrl) {
   const levels = params.get("levels") === "off" ? "levels 0 2\n" : "";
   const control = levels + (raid ? raid + " 0 0\n" : "");
   worker.postMessage({ t: "boot", wasm: href(wasmUrl), world: href("/api/playtest/world/everglade"), control, start: raid ? levels + raid + " 1 0\n" : "" });
-  const host = (globalThis.coaxial ||= {}).roomHost = { ticks: 0, us: 0, ms: 0, parts: [], failed: "" };
+  const host = (globalThis.coaxial ||= {}).roomHost = { native: false, transport: "wasm-worker", ticks: 0, us: 0, ms: 0, parts: [], failed: "" };
   // Control lines for the room (room-control.coax), as the API's answer is to oa-room: the drift
   // check's scripted Hold Person ("hold CODE SEAT STAMP", #12886) reaches this room as it does its own.
   host.control = (text) => { worker.postMessage({ t: "control", text: String(text) }); return 1; };
@@ -155,6 +185,7 @@ function roomWorker(wasmUrl) {
 export function localRoomSocket(url, wasmUrl) {
   const path = url.slice("local:".length);
   if (!path.startsWith("/api/room/")) throw new Error("not a room's path");
+  if (globalThis.coaxialNativeRoomHost) return nativeRoomSocket(path);
   const w = roomWorker(wasmUrl), id = nextId++;
   const s = {
     readyState: 0,

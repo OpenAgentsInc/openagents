@@ -61,6 +61,29 @@ An AppKit shell around the website's Everglade 5e WebGPU engine in WKWebView,
 with its own local room, page server and local Parakeet voice service. Requires an Apple Silicon Mac running
 macOS 26 or later, Xcode and the existing Coax web build toolchain.
 
+Offline `local:` sockets use that native room process through the same text
+messages as a network room. The loopback-only `--native-local` room option admits
+one ticketless `everglade/local-1` seat; ordinary rooms still require tickets.
+Launch the app executable with `--offline` to select this one-seat mode.
+The browser still runs the same simulation in its Web Worker. For a visible,
+muted comparison without microphone/model preparation, run the app executable
+with `--offline-check /tmp/forge-native.json`, then
+`--offline-check /tmp/forge-worker.json --offline-worker`. Each check uses an
+isolated world, verifies seat zero and room delivery, counts actual Workers,
+and records 15 seconds of tick observations. Native vitals are 10-second
+histograms with 10 microsecond bins; Worker samples include frame delivery
+and are quantiles of individual ticks over each second.
+
+Run both with one command after building the app:
+
+```sh
+coax/web/tool.sh apps/aethyrforge-desktop/offline-check.coax \
+  "$PWD/apps/aethyrforge-desktop/build/Aethyrforge.app" /tmp/forge-offline
+```
+
+The simulation comparison uses the existing drift harness and tolerances:
+`coax/web/tool.sh everglade-drift --offline native --profiles local --no-raid`.
+
 ```sh
 coax/build.sh
 apps/aethyrforge-desktop/build.sh --open

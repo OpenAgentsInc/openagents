@@ -137,6 +137,8 @@ rl_join :: (v: [] RmServer, conn: int, request: string) -> int {
   if re && cast(string) game[0..<ns[0]] == EVERGLADE { v[0].st.re_tries += 1; }
   r := rl_find(v, cast(string) game[0..<ns[0]], cast(string) code[0..<ns[1]]);
   if r < 0 { return st_refuse(v, ST_NO_ROOM); }
+  local:=native_local_path(v[0].ctl.local,cast(string)game[0..<ns[0]],cast(string)code[0..<ns[1]]);
+  v[0].relays[r].seats=native_local_seats(local,v[0].relays[r].seats);
   // an everglade room needs one of the server's simulations (room-everglade.coax EG_ROOMS)
   if v[0].relays[r].limited && eg_room_of(v, r) < 0 {
     if rl_people(v, r) == 0 { v[0].relays[r].live = false; }
@@ -145,7 +147,7 @@ rl_join :: (v: [] RmServer, conn: int, request: string) -> int {
   // a seat ticket for this room, when the server has a key (room-ticket.coax): forged, expired or another room's, no seat
   tk := Ticket.{};
   given := tk_query(request);
-  if v[0].relays[r].limited && v[0].tkey_n > 0 && (given.count > 0 || v[0].tkey_must) {
+  if native_local_ticket_check(local,v[0].relays[r].limited,v[0].tkey_n>0,given.count>0,v[0].tkey_must) {
     tk = tk_check(cast(string) v[0].tkey[0..<v[0].tkey_n], given, cast(string) code[0..<ns[1]], v[0].wall_ms);
     // and for this shard (#12717): the directory put the room here, and nowhere else
     if !tk.ok || rc_kicked(v, cast(string) tk.pid[0..<tk.pid_n]) || tk.shard != v[0].shard {
@@ -411,6 +413,20 @@ rl_heard_by :: (v: [] RmServer, conn: int, buf: [] u8) -> string {
     for i: 0..<got { buf[n] = v[0].rout[i]; n += 1; }
   }
   return cast(string) buf[0..<n];
+}
+
+#test "native local: one ticketless seat without weakening ticketed room joins" #steps 2000000000 {
+  v:[1]RmServer;rm_init(v[..]);rm_dev_start(v[..]);rm_clock(v[..],0,500000);
+  #assert rm_join(v[..],0,"GET /api/room/relay/everglade/local-1 HTTP/1.1\r\n\r\n")==-1;
+  #assert !rm_native_local(v[..],"0.0.0.0") && !v[0].ctl.local;
+  #assert rm_native_local(v[..],"127.0.0.1");
+  #assert rm_join(v[..],0,"GET /api/room/relay/everglade/local-1 HTTP/1.1\r\n\r\n")==0;
+  #assert rm_join(v[..],1,"GET /api/room/relay/everglade/local-1 HTTP/1.1\r\n\r\n")==-1;
+  #assert rm_join(v[..],1,"GET /api/room/relay/everglade/pair-native HTTP/1.1\r\n\r\n")==-1;
+  b:[256]u8;request:[512]u8;
+  n:=tk_sign(DEV_KEY,"p-native-check",false,"Native","pair-native",1000000,-1,b[..]);
+  k:=put(request[..],0,"GET /api/room/relay/everglade/pair-native?t=");k=put(request[..],k,cast(string)b[0..<n]);k=put(request[..],k," HTTP/1.1\r\n\r\n");
+  #assert rm_join(v[..],1,cast(string)request[0..<k])==0;
 }
 
 #test "relay: rooms keyed by game and code carry each player's frames, unread, to the others; Orbit League's rooms are as they were (room-relay)" {

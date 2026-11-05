@@ -109,7 +109,7 @@ tool_main :: () -> int #export_c {
   print("Checking local stack sources…\n"); newest := af_stack_stamp(root, deadline);
   if newest < 0 { tool_errln("Cannot read the local stack's source closure."); return 1; }
   room := af_path(p[..], root, "coax/web/room/bin/room");
-  room_job := -1; page_job := -1;
+  room_job := -1; page_job := -1;worker_job:=-1;
   if fs_mtime_ns(room) < newest {
     print("Building the local room…\n");
     script := af_path(p[..], root, "coax/web/room/build.sh"); cmd := [2] string.["bash", script];
@@ -125,8 +125,13 @@ tool_main :: () -> int #export_c {
       af_path(p[..], root, "apps/openagents-web/everglade5e-rules.coax")];
     page_job = af_start(cmd[..]); if page_job < 0 { if room_job >= 0 { released := proc_release(room_job); } return 1; }
   }
-  if !af_finish(room_job, deadline) { if page_job >= 0 { released := proc_release(page_job); } return 1; }
+  worker_wasm:=af_path(p[..],root,"apps/openagents-web/build/everglade-room.wasm");
+  if fs_mtime_ns(worker_wasm)<newest {
+    cmd:=[2]string.["bash",af_path(p[..],root,"coax/web/room/worker.sh")];worker_job=af_start(cmd[..]);if worker_job<0 {return 1;}
+  }
+  if !af_finish(room_job, deadline) { if page_job >= 0 { released := proc_release(page_job); }if worker_job>=0 {released:=proc_release(worker_job);} return 1; }
   if !af_finish(page_job, deadline) { return 1; }
+  if !af_finish(worker_job,deadline) {return 1;}
   print("Building Aethyrforge's AppKit shell…\n");
   serve := af_path(p[..], res, "serve");
   sc := [12] string.["/usr/bin/clang", "-std=c11", "-O2", "-D_DARWIN_C_SOURCE", "-Wall", "-Wextra", "-o", serve,
@@ -151,8 +156,8 @@ tool_main :: () -> int #export_c {
   if af_run(cbc[..],out[..],deadline)<0 {return 1;}
   hud_copy := [3]string.["ditto",af_path(p[..],here,"HUD.metal"),af_path(p[..],res,"HUD.metal")];
   if af_run(hud_copy[..],out[..],deadline)<0 {return 1;}
-  sw := [26] string.["xcrun", "swiftc", "-O", "-target", "arm64-apple-macos26.0", "-import-objc-header", af_path(p[..], here, "face.h"),
-    af_path(p[..], here, "Sources/main.swift"), af_path(p[..], here, "Sources/Setup.swift"), af_path(p[..],here,"Sources/Chat.swift"), af_path(p[..],here,"Sources/SetupProfile.swift"), af_path(p[..],root,"apps/shared/zeron/MetalUI.swift"), object, bridge,chat_o,chat_face,"-framework","MetalKit", "-framework", "AppKit", "-framework", "WebKit", "-framework", "AVFoundation", "-o", af_path(p[..], mac, "Aethyrforge")];
+  sw := [27] string.["xcrun", "swiftc", "-O", "-target", "arm64-apple-macos26.0", "-import-objc-header", af_path(p[..], here, "face.h"),
+    af_path(p[..], here, "Sources/main.swift"), af_path(p[..], here, "Sources/Setup.swift"), af_path(p[..],here,"Sources/Chat.swift"), af_path(p[..],here,"Sources/SetupProfile.swift"), af_path(p[..],here,"Sources/Offline.swift"), af_path(p[..],root,"apps/shared/zeron/MetalUI.swift"), object, bridge,chat_o,chat_face,"-framework","MetalKit", "-framework", "AppKit", "-framework", "WebKit", "-framework", "AVFoundation", "-o", af_path(p[..], mac, "Aethyrforge")];
   if af_run(sw[..], out[..], deadline) < 0 { return 1; }
   for name:[3]string.["Zeron.metal","fonts","NOTICE"] {
     copy:=[3]string.["ditto",af_path(p[..],af_path(p[..],root,"apps/shared/zeron"),name),af_path(p[..],res,name)];
@@ -162,7 +167,7 @@ tool_main :: () -> int #export_c {
   // the website uses, plus all generic browser host modules.
   web := af_path(p[..], res, "web"); host := af_path(p[..], res, "host"); seed := af_path(p[..], res, "seed");
   if !fs_mkdir(web) || !fs_mkdir(host) || !fs_mkdir(seed) { return 1; }
-  for name: [6] string.["everglade5e.wgsl", "everglade-fx.wgsl", "favicon.svg", "realms/everglade", "build/everglade5e.wasm", "render-shaders"] {
+  for name: [7] string.["everglade5e.wgsl", "everglade-fx.wgsl", "favicon.svg", "realms/everglade", "build/everglade5e.wasm", "build/everglade-room.wasm", "render-shaders"] {
     src := af_path(p[..], root, "apps/openagents-web"); from := af_path(p[..], src, name); to := af_path(p[..], web, name);
     if fs_kind(from) == FS_NONE { if name == "render-shaders" { continue; } return 1; }
     cmd := [3] string.["ditto", from, to]; if af_run(cmd[..], out[..], deadline) < 0 { return 1; }

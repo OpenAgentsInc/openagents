@@ -259,6 +259,12 @@ page server, the voice Wasm and a local Parakeet voice host. This is the same
   zero world GPU submissions/pending frames and zero idle panel draws.
   [Measured record and rerunnable native harness](../verification/aethyrforge-setup-2026-11-05/README.md).
 
+- Offline `local:` room sockets now use the bundled native room process beside
+  the world view. The one-seat loopback mode keeps the existing room messages,
+  shared simulation and strict native/wasm math; ordinary network rooms retain
+  ticket admission. `--offline` selects it explicitly, and `--offline-check`
+  compares native ticks with the browser Worker without microphone/model work.
+
 - Typed and finalized voice requests can now change the live local scene through
   the same routed Coder conversation. The bundled Coax `aethyrforge-scene` tool
   reads the catalogue and current document, then atomically places rows or

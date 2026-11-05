@@ -758,12 +758,13 @@ static int start_check(void) {
 }
 
 int main(int argc, char **argv) {
-  const char *address = "127.0.0.1"; int port = 8830;
+  const char *address = "127.0.0.1"; int port = 8830; bool native_local = false;
   for (int i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "--listen") && i + 1 < argc) address = argv[++i];
     else if (!strcmp(argv[i], "--port") && i + 1 < argc) port = atoi(argv[++i]);
     else if (!strcmp(argv[i], "--dev") && i + 1 < argc) dev_dir = argv[++i];
     else if (!strcmp(argv[i], "--no-rooms")) no_rooms = true;
+    else if (!strcmp(argv[i], "--native-local")) native_local = true;
     else if (!strcmp(argv[i], "--start-check")) return start_check();
   }
   const char *env = getenv("PORT");
@@ -777,6 +778,9 @@ int main(int argc, char **argv) {
   rm_vitals_gen(view(), wall_ms());   /* this process's generation, in every vitals operation ID (#12793) */
   signal(SIGTERM, on_term);
   if (dev_dir) { rm_dev_start(view()); const char *da = getenv("OA_ROOM_DEV_ADMIN"); if (da && !strcmp(da, "0")) rm_dev_admin(view(), false); printf("room: --dev %s: the API's stand-in (seat tickets checked and required)\n", dev_dir); }
+  if (native_local && !rm_native_local(view(), (coax_string){address,(int64_t)strlen(address)})) {
+    fprintf(stderr,"room: --native-local requires --dev and --listen 127.0.0.1\n");return 1;
+  }
   world_ask();   /* the realm's published world, for every room's plan (room-world.c world_edits) */
   if (dev_dir) {
     size_t nn = 0; char *doc = dev_read("forge-npcs.json", &nn);

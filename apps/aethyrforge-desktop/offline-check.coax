@@ -1,0 +1,35 @@
+// Visible, muted native WebKit checks; no microphone, inference or provider session.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/json/json.coax";
+
+#test "offline evidence requires room traffic and the actual expected host" {
+  #assert of_valid(false,0,301,450,4) && of_valid(true,1,301,450,4);
+  #assert !of_valid(false,1,301,450,4) && !of_valid(true,0,301,450,4);
+  #assert !of_valid(false,0,100,450,4) && !of_valid(false,0,301,100,4) && !of_valid(false,0,301,450,0);
+}
+of_valid :: (worker:bool,workers:int,frames:int,messages:int,samples:int)->bool {
+  return workers==(ifx worker then 1 else 0) && frames>100 && messages>100 && samples>0;
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {
+    tool_errln("usage: coax/web/tool.sh apps/aethyrforge-desktop/offline-check.coax APP OUT_DIR");return 2;
+  }
+  app:=args_at(a[..],0);dir:=args_at(a[..],1);
+  if !fs_mkdir(dir) {return 1;}
+  for side:0..<2 {
+    path_buf:[4096]u8;path:=fs_join(dir,ifx side==0 then "native.json" else "worker.json",path_buf[..]);
+    args:=[9]string.["open","-n","-W",app,"--args","--offline-check",path,"--offline-worker",""];
+    out:[16384]u8;err:[16384]u8;
+    result:=proc_run(args[0..<(ifx side==0 then 7 else 8)],120000,out[..],err[..]);
+    if result.status!=0 {tool_errln("Offline app check failed (see the report's .error file).");return 1;}
+    data:[262144]u8;n:=fs_read(path,data[..]);j:[1]Jv;nodes:[16384]JvNode;
+    if n<0 || !jv_parse(j[..],cast(string)data[0..<n],nodes[..]) {tool_errln("Missing/invalid offline evidence.");return 1;}
+    v:=j[0];samples:=jv_get(v,0,"samples");
+    if !of_valid(side==1,jv_int(v,jv_get(v,0,"workersCreated"),-1),jv_int(v,jv_get(v,0,"worldFrames"),0),jv_int(v,jv_get(v,0,"roomFramesReceived"),0),jv_len(v,samples)) {return 1;}
+    print("%: %\n",ifx side==0 then "native room" else "Web Worker",path);
+  }
+  return 0;
+}

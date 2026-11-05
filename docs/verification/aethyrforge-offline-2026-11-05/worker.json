@@ -1,0 +1,584 @@
+{
+  "appCPUPercentOfOneCore" : 4.4670417259516437,
+  "firstFrameSeconds" : 3.0061019659042358,
+  "roomCPUPercentOfOneCore" : 0.27331923404482078,
+  "roomFramesReceived" : 476,
+  "samples" : [
+    {
+      "host" : {
+        "failed" : "",
+        "lost" : 0,
+        "ms" : 1005,
+        "native" : false,
+        "parts" : [
+          1960,
+          760,
+          820,
+          180,
+          400,
+          780,
+          2180,
+          0
+        ],
+        "stalls" : 0,
+        "t" : "cost",
+        "tickP50Us" : 820.00000000016371,
+        "tickP95Us" : 1260.0000000002183,
+        "tickP99Us" : 1320.0000000001637,
+        "ticks" : 30,
+        "tickUs" : 874.66666666666663,
+        "transport" : "wasm-worker",
+        "us" : 26240
+      },
+      "loop" : {
+        "frames" : 129,
+        "paused" : false,
+        "pending" : 2,
+        "socketFrames" : 97,
+        "submissions" : 41
+      },
+      "net" : 2,
+      "seat" : 0,
+      "url" : "http:\/\/127.0.0.1:58478\/worlds\/everglade?forge=play&offline=worker",
+      "workers" : 1
+    },
+    {
+      "host" : {
+        "failed" : "",
+        "lost" : 0,
+        "ms" : 1033,
+        "native" : false,
+        "parts" : [
+          1320,
+          920,
+          819,
+          120,
+          421,
+          1039,
+          2141,
+          0
+        ],
+        "stalls" : 0,
+        "t" : "cost",
+        "tickP50Us" : 780.00000000020009,
+        "tickP95Us" : 920.00000000007276,
+        "tickP99Us" : 1039.9999999995089,
+        "ticks" : 31,
+        "tickUs" : 803.22580645161293,
+        "transport" : "wasm-worker",
+        "us" : 24900
+      },
+      "loop" : {
+        "frames" : 246,
+        "paused" : false,
+        "pending" : 2,
+        "socketFrames" : 129,
+        "submissions" : 72
+      },
+      "net" : 2,
+      "seat" : 0,
+      "url" : "http:\/\/127.0.0.1:58478\/worlds\/everglade?forge=play&offline=worker",
+      "workers" : 1
+    },
+    {
+      "host" : {
+        "failed" : "",
+        "lost" : 0,
+        "ms" : 1029,
+        "native" : false,
+        "parts" : [
+          1400,
+          820,
+          720,
+          140,
+          380,
+          760,
+          2020,
+          0
+        ],
+        "stalls" : 0,
+        "t" : "cost",
+        "tickP50Us" : 760.00000000021828,
+        "tickP95Us" : 980.00000000047294,
+        "tickP99Us" : 980.00000000047294,
+        "ticks" : 31,
+        "tickUs" : 794.83870967741939,
+        "transport" : "wasm-worker",
+        "us" : 24640
+      },
+      "loop" : {
+        "frames" : 365,
+        "paused" : false,
+        "pending" : 2,
+        "socketFrames" : 162,
+        "submissions" : 110
+      },
+      "net" : 2,
+      "seat" : 0,
+      "url" : "http:\/\/127.0.0.1:58478\/worlds\/everglade?forge=play&offline=worker",
+      "workers" : 1
+    },
+    {
+      "host" : {
+        "failed" : "",
+        "lost" : 0,
+        "ms" : 1000,
+        "native" : false,
+        "parts" : [
+          1360,
+          600,
+          640,
+          220,
+          320,
+          720,
+          1700,
+          0
+        ],
+        "stalls" : 0,
+        "t" : "cost",
+        "tickP50Us" : 680.00000000029104,
+        "tickP95Us" : 1479.9999999995634,
+        "tickP99Us" : 1660.000000000764,
+        "ticks" : 30,
+        "tickUs" : 744.66666666666663,
+        "transport" : "wasm-worker",
+        "us" : 22340
+      },
+      "loop" : {
+        "frames" : 490,
+        "paused" : false,
+        "pending" : 2,
+        "socketFrames" : 194,
+        "submissions" : 189
+      },
+      "net" : 2,
+      "seat" : 0,
+      "url" : "http:\/\/127.0.0.1:58478\/worlds\/everglade?forge=play&offline=worker",
+      "workers" : 1
+    },
+    {
+      "host" : {
+        "failed" : "",
+        "lost" : 0,
+        "ms" : 1035,
+        "native" : false,
+        "parts" : [
+          1180,
+          620,
+          660,
+          180,
+          320,
+          620,
+          1660,
+          0
+        ],
+        "stalls" : 0,
+        "t" : "cost",
+        "tickP50Us" : 619.99999999989086,
+        "tickP95Us" : 720.00000000025466,
+        "tickP99Us" : 1260.0000000002183,
+        "ticks" : 31,
+        "tickUs" : 646.45161290322585,
+        "transport" : "wasm-worker",
+        "us" : 20040
+      },
+      "loop" : {
+        "frames" : 615,
+        "paused" : false,
+        "pending" : 2,
+        "socketFrames" : 227,
+        "submissions" : 278
+      },
+      "net" : 2,
+      "seat" : 0,
+      "url" : "http:\/\/127.0.0.1:58478\/worlds\/everglade?forge=play&offline=worker",
+      "workers" : 1
+    },
+    {
+      "host" : {
+        "failed" : "",
+        "lost" : 0,
+        "ms" : 1004,
+        "native" : false,
+        "parts" : [
+          1180,
+          560,
+          620,
+          160,
+          260,
+          620,
+          1580,
+          0
+        ],
+        "stalls" : 0,
+        "t" : "cost",
+        "tickP50Us" : 619.99999999989086,
+        "tickP95Us" : 659.99999999985448,
+        "tickP99Us" : 800.0000000001819,
+        "ticks" : 30,
+        "tickUs" : 594.66666666666663,
+        "transport" : "wasm-worker",
+        "us" : 17840
+      },
+      "loop" : {
+        "frames" : 740,
+        "paused" : false,
+        "pending" : 1,
+        "socketFrames" : 259,
+        "submissions" : 374
+      },
+      "net" : 2,
+      "seat" : 0,
+      "url" : "http:\/\/127.0.0.1:58478\/worlds\/everglade?forge=play&offline=worker",
+      "workers" : 1
+    },
+    {
+      "host" : {
+        "failed" : "",
+        "lost" : 0,
+        "ms" : 1000,
+        "native" : false,
+        "parts" : [
+          1160,
+          500,
+          580,
+          180,
+          280,
+          621,
+          1480,
+          0
+        ],
+        "stalls" : 0,
+        "t" : "cost",
+        "tickP50Us" : 619.99999999898137,
+        "tickP95Us" : 680.00000000211003,
+        "tickP99Us" : 719.99999999934516,
+        "ticks" : 30,
+        "tickUs" : 578,
+        "transport" : "wasm-worker",
+        "us" : 17340
+      },
+      "loop" : {
+        "frames" : 866,
+        "paused" : false,
+        "pending" : 2,
+        "socketFrames" : 291,
+        "submissions" : 476
+      },
+      "net" : 2,
+      "seat" : 0,
+      "url" : "http:\/\/127.0.0.1:58478\/worlds\/everglade?forge=play&offline=worker",
+      "workers" : 1
+    },
+    {
+      "host" : {
+        "failed" : "",
+        "lost" : 0,
+        "ms" : 1027,
+        "native" : false,
+        "parts" : [
+          1100,
+          620,
+          620,
+          100,
+          320,
+          620,
+          1520,
+          0
+        ],
+        "stalls" : 0,
+        "t" : "cost",
+        "tickP50Us" : 600.0000000003638,
+        "tickP95Us" : 779.99999999883585,
+        "tickP99Us" : 819.99999999788997,
+        "ticks" : 31,
+        "tickUs" : 593.54838709677415,
+        "transport" : "wasm-worker",
+        "us" : 18400
+      },
+      "loop" : {
+        "frames" : 993,
+        "paused" : false,
+        "pending" : 2,
+        "socketFrames" : 323,
+        "submissions" : 590
+      },
+      "net" : 2,
+      "seat" : 0,
+      "url" : "http:\/\/127.0.0.1:58478\/worlds\/everglade?forge=play&offline=worker",
+      "workers" : 1
+    },
+    {
+      "host" : {
+        "failed" : "",
+        "lost" : 0,
+        "ms" : 1007,
+        "native" : false,
+        "parts" : [
+          1160,
+          560,
+          600,
+          140,
+          320,
+          640,
+          1540,
+          0
+        ],
+        "stalls" : 0,
+        "t" : "cost",
+        "tickP50Us" : 600.0000000003638,
+        "tickP95Us" : 700.0000000007276,
+        "tickP99Us" : 719.99999999934516,
+        "ticks" : 30,
+        "tickUs" : 592.66666666666663,
+        "transport" : "wasm-worker",
+        "us" : 17780
+      },
+      "loop" : {
+        "frames" : 1119,
+        "paused" : false,
+        "pending" : 1,
+        "socketFrames" : 355,
+        "submissions" : 705
+      },
+      "net" : 2,
+      "seat" : 0,
+      "url" : "http:\/\/127.0.0.1:58478\/worlds\/everglade?forge=play&offline=worker",
+      "workers" : 1
+    },
+    {
+      "host" : {
+        "failed" : "",
+        "lost" : 0,
+        "ms" : 1027,
+        "native" : false,
+        "parts" : [
+          1040,
+          620,
+          580,
+          60,
+          280,
+          620,
+          1540,
+          0
+        ],
+        "stalls" : 0,
+        "t" : "cost",
+        "tickP50Us" : 600.0000000003638,
+        "tickP95Us" : 739.99999999978172,
+        "tickP99Us" : 740.00000000160071,
+        "ticks" : 31,
+        "tickUs" : 598.70967741935488,
+        "transport" : "wasm-worker",
+        "us" : 18560
+      },
+      "loop" : {
+        "frames" : 1243,
+        "paused" : false,
+        "pending" : 2,
+        "socketFrames" : 386,
+        "submissions" : 822
+      },
+      "net" : 2,
+      "seat" : 0,
+      "url" : "http:\/\/127.0.0.1:58478\/worlds\/everglade?forge=play&offline=worker",
+      "workers" : 1
+    },
+    {
+      "host" : {
+        "failed" : "",
+        "lost" : 0,
+        "ms" : 1003,
+        "native" : false,
+        "parts" : [
+          1140,
+          580,
+          600,
+          140,
+          160,
+          560,
+          1540,
+          0
+        ],
+        "stalls" : 0,
+        "t" : "cost",
+        "tickP50Us" : 639.99999999759893,
+        "tickP95Us" : 700.0000000007276,
+        "tickP99Us" : 700.0000000007276,
+        "ticks" : 30,
+        "tickUs" : 572.66666666666663,
+        "transport" : "wasm-worker",
+        "us" : 17180
+      },
+      "loop" : {
+        "frames" : 1370,
+        "paused" : false,
+        "pending" : 1,
+        "socketFrames" : 418,
+        "submissions" : 940
+      },
+      "net" : 2,
+      "seat" : 0,
+      "url" : "http:\/\/127.0.0.1:58478\/worlds\/everglade?forge=play&offline=worker",
+      "workers" : 1
+    },
+    {
+      "host" : {
+        "failed" : "",
+        "lost" : 0,
+        "ms" : 1002,
+        "native" : false,
+        "parts" : [
+          1000,
+          520,
+          520,
+          100,
+          260,
+          600,
+          1400,
+          0
+        ],
+        "stalls" : 0,
+        "t" : "cost",
+        "tickP50Us" : 600.0000000003638,
+        "tickP95Us" : 659.99999999985448,
+        "tickP99Us" : 660.00000000167347,
+        "ticks" : 30,
+        "tickUs" : 560,
+        "transport" : "wasm-worker",
+        "us" : 16800
+      },
+      "loop" : {
+        "frames" : 1492,
+        "paused" : false,
+        "pending" : 2,
+        "socketFrames" : 448,
+        "submissions" : 1056
+      },
+      "net" : 2,
+      "seat" : 0,
+      "url" : "http:\/\/127.0.0.1:58478\/worlds\/everglade?forge=play&offline=worker",
+      "workers" : 1
+    },
+    {
+      "host" : {
+        "failed" : "",
+        "lost" : 0,
+        "ms" : 1001,
+        "native" : false,
+        "parts" : [
+          960,
+          520,
+          480,
+          160,
+          320,
+          560,
+          1480,
+          0
+        ],
+        "stalls" : 0,
+        "t" : "cost",
+        "tickP50Us" : 600.0000000003638,
+        "tickP95Us" : 659.99999999985448,
+        "tickP99Us" : 699.99999999890861,
+        "ticks" : 30,
+        "tickUs" : 576.66666666666663,
+        "transport" : "wasm-worker",
+        "us" : 17300
+      },
+      "loop" : {
+        "frames" : 1613,
+        "paused" : false,
+        "pending" : 2,
+        "socketFrames" : 478,
+        "submissions" : 1168
+      },
+      "net" : 2,
+      "seat" : 0,
+      "url" : "http:\/\/127.0.0.1:58478\/worlds\/everglade?forge=play&offline=worker",
+      "workers" : 1
+    },
+    {
+      "host" : {
+        "failed" : "",
+        "lost" : 0,
+        "ms" : 1033,
+        "native" : false,
+        "parts" : [
+          1180,
+          580,
+          540,
+          180,
+          240,
+          640,
+          1500,
+          0
+        ],
+        "stalls" : 0,
+        "t" : "cost",
+        "tickP50Us" : 600.0000000003638,
+        "tickP95Us" : 719.99999999752617,
+        "tickP99Us" : 719.99999999934516,
+        "ticks" : 31,
+        "tickUs" : 569.67741935483866,
+        "transport" : "wasm-worker",
+        "us" : 17660
+      },
+      "loop" : {
+        "frames" : 1740,
+        "paused" : false,
+        "pending" : 1,
+        "socketFrames" : 510,
+        "submissions" : 1288
+      },
+      "net" : 2,
+      "seat" : 0,
+      "url" : "http:\/\/127.0.0.1:58478\/worlds\/everglade?forge=play&offline=worker",
+      "workers" : 1
+    },
+    {
+      "host" : {
+        "failed" : "",
+        "lost" : 0,
+        "ms" : 1033,
+        "native" : false,
+        "parts" : [
+          1120,
+          581,
+          560,
+          120,
+          320,
+          641,
+          1440,
+          0
+        ],
+        "stalls" : 0,
+        "t" : "cost",
+        "tickP50Us" : 600.00000000218279,
+        "tickP95Us" : 699.99999999708962,
+        "tickP99Us" : 740.00000000160071,
+        "ticks" : 31,
+        "tickUs" : 578.70967741935488,
+        "transport" : "wasm-worker",
+        "us" : 17940
+      },
+      "loop" : {
+        "frames" : 1869,
+        "paused" : false,
+        "pending" : 2,
+        "socketFrames" : 542,
+        "submissions" : 1410
+      },
+      "net" : 2,
+      "seat" : 0,
+      "url" : "http:\/\/127.0.0.1:58478\/worlds\/everglade?forge=play&offline=worker",
+      "workers" : 1
+    }
+  ],
+  "schema" : "aethyrforge.offline.v1",
+  "seconds" : 15.650258625042625,
+  "transport" : "wasm-worker",
+  "webCPUPercentOfOneCore" : 32.711078178658894,
+  "workersCreated" : 1,
+  "worldFrames" : 1850
+}

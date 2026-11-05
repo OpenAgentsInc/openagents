@@ -1,0 +1,326 @@
+{
+  "appCPUPercentOfOneCore" : 3.3865071874591495,
+  "firstFrameSeconds" : 1.7994610071182251,
+  "roomCPUPercentOfOneCore" : 1.1108536281676191,
+  "roomFramesReceived" : 468,
+  "samples" : [
+    {
+      "host" : {
+        "failed" : "",
+        "native" : true,
+        "transport" : "native-room"
+      },
+      "loop" : {
+        "frames" : 135,
+        "paused" : false,
+        "pending" : 2,
+        "socketFrames" : 64,
+        "submissions" : 65
+      },
+      "net" : 2,
+      "seat" : 0,
+      "url" : "http:\/\/127.0.0.1:56806\/worlds\/everglade?forge=play&offline=worker",
+      "workers" : 0
+    },
+    {
+      "host" : {
+        "failed" : "",
+        "native" : true,
+        "transport" : "native-room"
+      },
+      "loop" : {
+        "frames" : 247,
+        "paused" : false,
+        "pending" : 2,
+        "socketFrames" : 96,
+        "submissions" : 114
+      },
+      "net" : 2,
+      "seat" : 0,
+      "url" : "http:\/\/127.0.0.1:56806\/worlds\/everglade?forge=play&offline=worker",
+      "workers" : 0
+    },
+    {
+      "host" : {
+        "failed" : "",
+        "native" : true,
+        "transport" : "native-room"
+      },
+      "loop" : {
+        "frames" : 362,
+        "paused" : false,
+        "pending" : 1,
+        "socketFrames" : 130,
+        "submissions" : 165
+      },
+      "net" : 2,
+      "seat" : 0,
+      "url" : "http:\/\/127.0.0.1:56806\/worlds\/everglade?forge=play&offline=worker",
+      "workers" : 0
+    },
+    {
+      "host" : {
+        "failed" : "",
+        "native" : true,
+        "transport" : "native-room"
+      },
+      "loop" : {
+        "frames" : 476,
+        "paused" : false,
+        "pending" : 2,
+        "socketFrames" : 162,
+        "submissions" : 224
+      },
+      "net" : 2,
+      "seat" : 0,
+      "url" : "http:\/\/127.0.0.1:56806\/worlds\/everglade?forge=play&offline=worker",
+      "workers" : 0
+    },
+    {
+      "host" : {
+        "failed" : "",
+        "native" : true,
+        "transport" : "native-room"
+      },
+      "loop" : {
+        "frames" : 585,
+        "paused" : false,
+        "pending" : 2,
+        "socketFrames" : 193,
+        "submissions" : 287
+      },
+      "net" : 2,
+      "seat" : 0,
+      "url" : "http:\/\/127.0.0.1:56806\/worlds\/everglade?forge=play&offline=worker",
+      "workers" : 0
+    },
+    {
+      "host" : {
+        "failed" : "",
+        "native" : true,
+        "transport" : "native-room"
+      },
+      "loop" : {
+        "frames" : 703,
+        "paused" : false,
+        "pending" : 2,
+        "socketFrames" : 224,
+        "submissions" : 360
+      },
+      "net" : 2,
+      "seat" : 0,
+      "url" : "http:\/\/127.0.0.1:56806\/worlds\/everglade?forge=play&offline=worker",
+      "workers" : 0
+    },
+    {
+      "host" : {
+        "failed" : "",
+        "native" : true,
+        "transport" : "native-room"
+      },
+      "loop" : {
+        "frames" : 825,
+        "paused" : false,
+        "pending" : 1,
+        "socketFrames" : 255,
+        "submissions" : 438
+      },
+      "net" : 2,
+      "seat" : 0,
+      "url" : "http:\/\/127.0.0.1:56806\/worlds\/everglade?forge=play&offline=worker",
+      "workers" : 0
+    },
+    {
+      "host" : {
+        "failed" : "",
+        "native" : true,
+        "transport" : "native-room"
+      },
+      "loop" : {
+        "frames" : 945,
+        "paused" : false,
+        "pending" : 2,
+        "socketFrames" : 285,
+        "submissions" : 515
+      },
+      "net" : 2,
+      "seat" : 0,
+      "url" : "http:\/\/127.0.0.1:56806\/worlds\/everglade?forge=play&offline=worker",
+      "workers" : 0
+    },
+    {
+      "host" : {
+        "failed" : "",
+        "native" : true,
+        "observedAt" : 10217.980000000001,
+        "report" : "shard=1\nplayers=1\nticks a second=30.1\ntick p50 ms=0.25\ntick p95 ms=0.33\ntick p99 ms=0.43\nplayers p50 ms=0.02\nplayers p95 ms=0.03\nplayers p99 ms=0.04\nraiders p50 ms=0.01\nraiders p95 ms=0.02\nraiders p99 ms=0.03\neffects p50 ms=0.02\neffects p95 ms=0.02\neffects p99 ms=0.03\nfolk p50 ms=0.02\nfolk p95 ms=0.02\nfolk p99 ms=0.03\nwriting p50 ms=0.03\nwriting p95 ms=0.04\nwriting p99 ms=0.06\nsending p50 ms=0.03\nsending p95 ms=0.04\nsending p99 ms=0.04\nmeasuring % of tick=0.32\nqueue bytes most=0\nqueue age ms most=0\nrelevant entities a seat=23.0\nrelevant entities most=23\ninput to ack p50 ms=14\ninput to ack p95 ms=18\njoins=1\njoin burst bytes=1350\njoin burst bytes most=1350\njoin burst ms=45\njoin burst ms most=45\nrejoins tried=0\nrejoins seated=0\nrejoins same seat=0\nold socket frames dropped=0\nrefused no room=0\nrefused ticket=0\nrefused kicked=0\nrefused shard=0\nrefused full=0\nrefused version=0\nout bytes a second=7719\nout messages a second=30\nin bytes a second=559\nin messages a second=28\nout D bytes a second=7696\nout D a second=29\nout W bytes a second=3\nout W a second=0\nout t bytes a second=17\nout t a second=1\nout y bytes a second=2\nout y a second=0\nout D g bytes a second=113\nout D g a second=2\nout D n bytes a second=70\nout D n a second=2\nout D v bytes a second=70\nout D v a second=2\nout D w bytes a second=14\nout D w a second=2\nout D s players bytes a second=511\nout D s players a second=29\nout D s townsfolk bytes a second=7420\nout D s townsfolk a second=238\nout D s made bytes a second=388\nout D s made a second=12\nout D header bytes a second=481\nout D header a second=29\nin H bytes a second=3\nin H a second=0\nin I bytes a second=552\nin I a second=27\nin K bytes a second=0\nin K a second=0\nin t bytes a second=5\nin t a second=1\nseat|local-1|0|0|0|23|14|18|-1\n",
+        "tickP50Us" : 250,
+        "tickP95Us" : 330,
+        "tickP99Us" : 430,
+        "ticksPerSecond" : 30.100000000000001,
+        "transport" : "native-room"
+      },
+      "loop" : {
+        "frames" : 1065,
+        "paused" : false,
+        "pending" : 2,
+        "socketFrames" : 316,
+        "submissions" : 592
+      },
+      "net" : 2,
+      "seat" : 0,
+      "url" : "http:\/\/127.0.0.1:56806\/worlds\/everglade?forge=play&offline=worker",
+      "workers" : 0
+    },
+    {
+      "host" : {
+        "failed" : "",
+        "native" : true,
+        "observedAt" : 11222.620000000001,
+        "report" : "shard=1\nplayers=1\nticks a second=30.1\ntick p50 ms=0.25\ntick p95 ms=0.33\ntick p99 ms=0.43\nplayers p50 ms=0.02\nplayers p95 ms=0.03\nplayers p99 ms=0.04\nraiders p50 ms=0.01\nraiders p95 ms=0.02\nraiders p99 ms=0.03\neffects p50 ms=0.02\neffects p95 ms=0.02\neffects p99 ms=0.03\nfolk p50 ms=0.02\nfolk p95 ms=0.02\nfolk p99 ms=0.03\nwriting p50 ms=0.03\nwriting p95 ms=0.04\nwriting p99 ms=0.06\nsending p50 ms=0.03\nsending p95 ms=0.04\nsending p99 ms=0.04\nmeasuring % of tick=0.32\nqueue bytes most=0\nqueue age ms most=0\nrelevant entities a seat=23.0\nrelevant entities most=23\ninput to ack p50 ms=14\ninput to ack p95 ms=18\njoins=1\njoin burst bytes=1350\njoin burst bytes most=1350\njoin burst ms=45\njoin burst ms most=45\nrejoins tried=0\nrejoins seated=0\nrejoins same seat=0\nold socket frames dropped=0\nrefused no room=0\nrefused ticket=0\nrefused kicked=0\nrefused shard=0\nrefused full=0\nrefused version=0\nout bytes a second=7719\nout messages a second=30\nin bytes a second=559\nin messages a second=28\nout D bytes a second=7696\nout D a second=29\nout W bytes a second=3\nout W a second=0\nout t bytes a second=17\nout t a second=1\nout y bytes a second=2\nout y a second=0\nout D g bytes a second=113\nout D g a second=2\nout D n bytes a second=70\nout D n a second=2\nout D v bytes a second=70\nout D v a second=2\nout D w bytes a second=14\nout D w a second=2\nout D s players bytes a second=511\nout D s players a second=29\nout D s townsfolk bytes a second=7420\nout D s townsfolk a second=238\nout D s made bytes a second=388\nout D s made a second=12\nout D header bytes a second=481\nout D header a second=29\nin H bytes a second=3\nin H a second=0\nin I bytes a second=552\nin I a second=27\nin K bytes a second=0\nin K a second=0\nin t bytes a second=5\nin t a second=1\nseat|local-1|0|0|0|23|14|18|-1\n",
+        "tickP50Us" : 250,
+        "tickP95Us" : 330,
+        "tickP99Us" : 430,
+        "ticksPerSecond" : 30.100000000000001,
+        "transport" : "native-room"
+      },
+      "loop" : {
+        "frames" : 1191,
+        "paused" : false,
+        "pending" : 2,
+        "socketFrames" : 348,
+        "submissions" : 674
+      },
+      "net" : 2,
+      "seat" : 0,
+      "url" : "http:\/\/127.0.0.1:56806\/worlds\/everglade?forge=play&offline=worker",
+      "workers" : 0
+    },
+    {
+      "host" : {
+        "failed" : "",
+        "native" : true,
+        "observedAt" : 12227.260000000002,
+        "report" : "shard=1\nplayers=1\nticks a second=30.1\ntick p50 ms=0.25\ntick p95 ms=0.33\ntick p99 ms=0.43\nplayers p50 ms=0.02\nplayers p95 ms=0.03\nplayers p99 ms=0.04\nraiders p50 ms=0.01\nraiders p95 ms=0.02\nraiders p99 ms=0.03\neffects p50 ms=0.02\neffects p95 ms=0.02\neffects p99 ms=0.03\nfolk p50 ms=0.02\nfolk p95 ms=0.02\nfolk p99 ms=0.03\nwriting p50 ms=0.03\nwriting p95 ms=0.04\nwriting p99 ms=0.06\nsending p50 ms=0.03\nsending p95 ms=0.04\nsending p99 ms=0.04\nmeasuring % of tick=0.32\nqueue bytes most=0\nqueue age ms most=0\nrelevant entities a seat=23.0\nrelevant entities most=23\ninput to ack p50 ms=14\ninput to ack p95 ms=18\njoins=1\njoin burst bytes=1350\njoin burst bytes most=1350\njoin burst ms=45\njoin burst ms most=45\nrejoins tried=0\nrejoins seated=0\nrejoins same seat=0\nold socket frames dropped=0\nrefused no room=0\nrefused ticket=0\nrefused kicked=0\nrefused shard=0\nrefused full=0\nrefused version=0\nout bytes a second=7719\nout messages a second=30\nin bytes a second=559\nin messages a second=28\nout D bytes a second=7696\nout D a second=29\nout W bytes a second=3\nout W a second=0\nout t bytes a second=17\nout t a second=1\nout y bytes a second=2\nout y a second=0\nout D g bytes a second=113\nout D g a second=2\nout D n bytes a second=70\nout D n a second=2\nout D v bytes a second=70\nout D v a second=2\nout D w bytes a second=14\nout D w a second=2\nout D s players bytes a second=511\nout D s players a second=29\nout D s townsfolk bytes a second=7420\nout D s townsfolk a second=238\nout D s made bytes a second=388\nout D s made a second=12\nout D header bytes a second=481\nout D header a second=29\nin H bytes a second=3\nin H a second=0\nin I bytes a second=552\nin I a second=27\nin K bytes a second=0\nin K a second=0\nin t bytes a second=5\nin t a second=1\nseat|local-1|0|0|0|23|14|18|-1\n",
+        "tickP50Us" : 250,
+        "tickP95Us" : 330,
+        "tickP99Us" : 430,
+        "ticksPerSecond" : 30.100000000000001,
+        "transport" : "native-room"
+      },
+      "loop" : {
+        "frames" : 1305,
+        "paused" : false,
+        "pending" : 1,
+        "socketFrames" : 378,
+        "submissions" : 743
+      },
+      "net" : 2,
+      "seat" : 0,
+      "url" : "http:\/\/127.0.0.1:56806\/worlds\/everglade?forge=play&offline=worker",
+      "workers" : 0
+    },
+    {
+      "host" : {
+        "failed" : "",
+        "native" : true,
+        "observedAt" : 13231.400000000001,
+        "report" : "shard=1\nplayers=1\nticks a second=30.1\ntick p50 ms=0.25\ntick p95 ms=0.33\ntick p99 ms=0.43\nplayers p50 ms=0.02\nplayers p95 ms=0.03\nplayers p99 ms=0.04\nraiders p50 ms=0.01\nraiders p95 ms=0.02\nraiders p99 ms=0.03\neffects p50 ms=0.02\neffects p95 ms=0.02\neffects p99 ms=0.03\nfolk p50 ms=0.02\nfolk p95 ms=0.02\nfolk p99 ms=0.03\nwriting p50 ms=0.03\nwriting p95 ms=0.04\nwriting p99 ms=0.06\nsending p50 ms=0.03\nsending p95 ms=0.04\nsending p99 ms=0.04\nmeasuring % of tick=0.32\nqueue bytes most=0\nqueue age ms most=0\nrelevant entities a seat=23.0\nrelevant entities most=23\ninput to ack p50 ms=14\ninput to ack p95 ms=18\njoins=1\njoin burst bytes=1350\njoin burst bytes most=1350\njoin burst ms=45\njoin burst ms most=45\nrejoins tried=0\nrejoins seated=0\nrejoins same seat=0\nold socket frames dropped=0\nrefused no room=0\nrefused ticket=0\nrefused kicked=0\nrefused shard=0\nrefused full=0\nrefused version=0\nout bytes a second=7719\nout messages a second=30\nin bytes a second=559\nin messages a second=28\nout D bytes a second=7696\nout D a second=29\nout W bytes a second=3\nout W a second=0\nout t bytes a second=17\nout t a second=1\nout y bytes a second=2\nout y a second=0\nout D g bytes a second=113\nout D g a second=2\nout D n bytes a second=70\nout D n a second=2\nout D v bytes a second=70\nout D v a second=2\nout D w bytes a second=14\nout D w a second=2\nout D s players bytes a second=511\nout D s players a second=29\nout D s townsfolk bytes a second=7420\nout D s townsfolk a second=238\nout D s made bytes a second=388\nout D s made a second=12\nout D header bytes a second=481\nout D header a second=29\nin H bytes a second=3\nin H a second=0\nin I bytes a second=552\nin I a second=27\nin K bytes a second=0\nin K a second=0\nin t bytes a second=5\nin t a second=1\nseat|local-1|0|0|0|23|14|18|-1\n",
+        "tickP50Us" : 250,
+        "tickP95Us" : 330,
+        "tickP99Us" : 430,
+        "ticksPerSecond" : 30.100000000000001,
+        "transport" : "native-room"
+      },
+      "loop" : {
+        "frames" : 1417,
+        "paused" : false,
+        "pending" : 2,
+        "socketFrames" : 408,
+        "submissions" : 797
+      },
+      "net" : 2,
+      "seat" : 0,
+      "url" : "http:\/\/127.0.0.1:56806\/worlds\/everglade?forge=play&offline=worker",
+      "workers" : 0
+    },
+    {
+      "host" : {
+        "failed" : "",
+        "native" : true,
+        "observedAt" : 14234.560000000001,
+        "report" : "shard=1\nplayers=1\nticks a second=30.1\ntick p50 ms=0.25\ntick p95 ms=0.33\ntick p99 ms=0.43\nplayers p50 ms=0.02\nplayers p95 ms=0.03\nplayers p99 ms=0.04\nraiders p50 ms=0.01\nraiders p95 ms=0.02\nraiders p99 ms=0.03\neffects p50 ms=0.02\neffects p95 ms=0.02\neffects p99 ms=0.03\nfolk p50 ms=0.02\nfolk p95 ms=0.02\nfolk p99 ms=0.03\nwriting p50 ms=0.03\nwriting p95 ms=0.04\nwriting p99 ms=0.06\nsending p50 ms=0.03\nsending p95 ms=0.04\nsending p99 ms=0.04\nmeasuring % of tick=0.32\nqueue bytes most=0\nqueue age ms most=0\nrelevant entities a seat=23.0\nrelevant entities most=23\ninput to ack p50 ms=14\ninput to ack p95 ms=18\njoins=1\njoin burst bytes=1350\njoin burst bytes most=1350\njoin burst ms=45\njoin burst ms most=45\nrejoins tried=0\nrejoins seated=0\nrejoins same seat=0\nold socket frames dropped=0\nrefused no room=0\nrefused ticket=0\nrefused kicked=0\nrefused shard=0\nrefused full=0\nrefused version=0\nout bytes a second=7719\nout messages a second=30\nin bytes a second=559\nin messages a second=28\nout D bytes a second=7696\nout D a second=29\nout W bytes a second=3\nout W a second=0\nout t bytes a second=17\nout t a second=1\nout y bytes a second=2\nout y a second=0\nout D g bytes a second=113\nout D g a second=2\nout D n bytes a second=70\nout D n a second=2\nout D v bytes a second=70\nout D v a second=2\nout D w bytes a second=14\nout D w a second=2\nout D s players bytes a second=511\nout D s players a second=29\nout D s townsfolk bytes a second=7420\nout D s townsfolk a second=238\nout D s made bytes a second=388\nout D s made a second=12\nout D header bytes a second=481\nout D header a second=29\nin H bytes a second=3\nin H a second=0\nin I bytes a second=552\nin I a second=27\nin K bytes a second=0\nin K a second=0\nin t bytes a second=5\nin t a second=1\nseat|local-1|0|0|0|23|14|18|-1\n",
+        "tickP50Us" : 250,
+        "tickP95Us" : 330,
+        "tickP99Us" : 430,
+        "ticksPerSecond" : 30.100000000000001,
+        "transport" : "native-room"
+      },
+      "loop" : {
+        "frames" : 1538,
+        "paused" : false,
+        "pending" : 2,
+        "socketFrames" : 439,
+        "submissions" : 840
+      },
+      "net" : 2,
+      "seat" : 0,
+      "url" : "http:\/\/127.0.0.1:56806\/worlds\/everglade?forge=play&offline=worker",
+      "workers" : 0
+    },
+    {
+      "host" : {
+        "failed" : "",
+        "native" : true,
+        "observedAt" : 15239.18,
+        "report" : "shard=1\nplayers=1\nticks a second=30.1\ntick p50 ms=0.25\ntick p95 ms=0.33\ntick p99 ms=0.43\nplayers p50 ms=0.02\nplayers p95 ms=0.03\nplayers p99 ms=0.04\nraiders p50 ms=0.01\nraiders p95 ms=0.02\nraiders p99 ms=0.03\neffects p50 ms=0.02\neffects p95 ms=0.02\neffects p99 ms=0.03\nfolk p50 ms=0.02\nfolk p95 ms=0.02\nfolk p99 ms=0.03\nwriting p50 ms=0.03\nwriting p95 ms=0.04\nwriting p99 ms=0.06\nsending p50 ms=0.03\nsending p95 ms=0.04\nsending p99 ms=0.04\nmeasuring % of tick=0.32\nqueue bytes most=0\nqueue age ms most=0\nrelevant entities a seat=23.0\nrelevant entities most=23\ninput to ack p50 ms=14\ninput to ack p95 ms=18\njoins=1\njoin burst bytes=1350\njoin burst bytes most=1350\njoin burst ms=45\njoin burst ms most=45\nrejoins tried=0\nrejoins seated=0\nrejoins same seat=0\nold socket frames dropped=0\nrefused no room=0\nrefused ticket=0\nrefused kicked=0\nrefused shard=0\nrefused full=0\nrefused version=0\nout bytes a second=7719\nout messages a second=30\nin bytes a second=559\nin messages a second=28\nout D bytes a second=7696\nout D a second=29\nout W bytes a second=3\nout W a second=0\nout t bytes a second=17\nout t a second=1\nout y bytes a second=2\nout y a second=0\nout D g bytes a second=113\nout D g a second=2\nout D n bytes a second=70\nout D n a second=2\nout D v bytes a second=70\nout D v a second=2\nout D w bytes a second=14\nout D w a second=2\nout D s players bytes a second=511\nout D s players a second=29\nout D s townsfolk bytes a second=7420\nout D s townsfolk a second=238\nout D s made bytes a second=388\nout D s made a second=12\nout D header bytes a second=481\nout D header a second=29\nin H bytes a second=3\nin H a second=0\nin I bytes a second=552\nin I a second=27\nin K bytes a second=0\nin K a second=0\nin t bytes a second=5\nin t a second=1\nseat|local-1|0|0|0|23|14|18|-1\n",
+        "tickP50Us" : 250,
+        "tickP95Us" : 330,
+        "tickP99Us" : 430,
+        "ticksPerSecond" : 30.100000000000001,
+        "transport" : "native-room"
+      },
+      "loop" : {
+        "frames" : 1653,
+        "paused" : false,
+        "pending" : 2,
+        "socketFrames" : 470,
+        "submissions" : 880
+      },
+      "net" : 2,
+      "seat" : 0,
+      "url" : "http:\/\/127.0.0.1:56806\/worlds\/everglade?forge=play&offline=worker",
+      "workers" : 0
+    },
+    {
+      "host" : {
+        "failed" : "",
+        "native" : true,
+        "observedAt" : 16241.639999999999,
+        "report" : "shard=1\nplayers=1\nticks a second=30.1\ntick p50 ms=0.25\ntick p95 ms=0.33\ntick p99 ms=0.43\nplayers p50 ms=0.02\nplayers p95 ms=0.03\nplayers p99 ms=0.04\nraiders p50 ms=0.01\nraiders p95 ms=0.02\nraiders p99 ms=0.03\neffects p50 ms=0.02\neffects p95 ms=0.02\neffects p99 ms=0.03\nfolk p50 ms=0.02\nfolk p95 ms=0.02\nfolk p99 ms=0.03\nwriting p50 ms=0.03\nwriting p95 ms=0.04\nwriting p99 ms=0.06\nsending p50 ms=0.03\nsending p95 ms=0.04\nsending p99 ms=0.04\nmeasuring % of tick=0.32\nqueue bytes most=0\nqueue age ms most=0\nrelevant entities a seat=23.0\nrelevant entities most=23\ninput to ack p50 ms=14\ninput to ack p95 ms=18\njoins=1\njoin burst bytes=1350\njoin burst bytes most=1350\njoin burst ms=45\njoin burst ms most=45\nrejoins tried=0\nrejoins seated=0\nrejoins same seat=0\nold socket frames dropped=0\nrefused no room=0\nrefused ticket=0\nrefused kicked=0\nrefused shard=0\nrefused full=0\nrefused version=0\nout bytes a second=7719\nout messages a second=30\nin bytes a second=559\nin messages a second=28\nout D bytes a second=7696\nout D a second=29\nout W bytes a second=3\nout W a second=0\nout t bytes a second=17\nout t a second=1\nout y bytes a second=2\nout y a second=0\nout D g bytes a second=113\nout D g a second=2\nout D n bytes a second=70\nout D n a second=2\nout D v bytes a second=70\nout D v a second=2\nout D w bytes a second=14\nout D w a second=2\nout D s players bytes a second=511\nout D s players a second=29\nout D s townsfolk bytes a second=7420\nout D s townsfolk a second=238\nout D s made bytes a second=388\nout D s made a second=12\nout D header bytes a second=481\nout D header a second=29\nin H bytes a second=3\nin H a second=0\nin I bytes a second=552\nin I a second=27\nin K bytes a second=0\nin K a second=0\nin t bytes a second=5\nin t a second=1\nseat|local-1|0|0|0|23|14|18|-1\n",
+        "tickP50Us" : 250,
+        "tickP95Us" : 330,
+        "tickP99Us" : 430,
+        "ticksPerSecond" : 30.100000000000001,
+        "transport" : "native-room"
+      },
+      "loop" : {
+        "frames" : 1764,
+        "paused" : false,
+        "pending" : 2,
+        "socketFrames" : 501,
+        "submissions" : 925
+      },
+      "net" : 2,
+      "seat" : 0,
+      "url" : "http:\/\/127.0.0.1:56806\/worlds\/everglade?forge=play&offline=worker",
+      "workers" : 0
+    }
+  ],
+  "schema" : "aethyrforge.offline.v1",
+  "seconds" : 15.363117666682228,
+  "transport" : "native-room",
+  "webCPUPercentOfOneCore" : 16.205572469182709,
+  "workersCreated" : 0,
+  "worldFrames" : 1738
+}

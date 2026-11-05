@@ -1,0 +1,27 @@
+// The desktop's private native local host. Public/ticketed room admission
+// remains unchanged; only this exact one-seat local path may omit a ticket.
+#authority;
+#test "native local hosting requires both development mode and an IPv4 loopback bind" {
+  #assert native_local_enable(true,"127.0.0.1");
+  #assert !native_local_enable(false,"127.0.0.1");
+  for address:[5]string.["0.0.0.0","localhost","127.0.0.2","::","example.com"] {
+    #assert !native_local_enable(true,address) && !native_local_enable(false,address);
+  }
+}
+#test "only the enabled Everglade local-1 path has one-seat ticketless admission" {
+  #assert native_local_path(true,"everglade","local-1");
+  #assert !native_local_path(false,"everglade","local-1");
+  for game:[3]string.["orbit-league","everglade-x",""] {#assert !native_local_path(true,game,"local-1");}
+  for code:[5]string.["local-2","pair-aethyrforge","everglade-1","local-1-x",""] {#assert !native_local_path(true,"everglade",code);}
+}
+#forall "native local seats and ticket checks preserve every ordinary room combination" bits:0..<32 {
+  local:=(bits & 1)!=0;limited:=(bits & 2)!=0;key:=(bits & 4)!=0;given:=(bits & 8)!=0;required:=(bits & 16)!=0;
+  check:=native_local_ticket_check(local,limited,key,given,required);
+  if local || !limited || !key {#assert !check;}
+  if !local && limited && key {#assert check==(given || required);}
+  #assert native_local_seats(local,16)==ifx local then 1 else 16;
+}
+native_local_enable :: (development:bool,address:string)->bool {return development && address=="127.0.0.1";}
+native_local_path :: (enabled:bool,game:string,code:string)->bool {return enabled && game=="everglade" && code=="local-1";}
+native_local_ticket_check :: (local:bool,limited:bool,key:bool,given:bool,required:bool)->bool {return !local && limited && key && (given || required);}
+native_local_seats :: (local:bool,usual:int)->int {return ifx local then 1 else usual;}

@@ -1,0 +1,5 @@
+ok   #test native local: one ticketless seat without weakening ticketed room joins (1 case, 2393829 steps, 558 ms)
+ok   #test native local hosting requires both development mode and an IPv4 loopback bind (1 case, 138 steps, 0 ms)
+ok   #forall native local seats and ticket checks preserve every ordinary room combination (32 cases, 2390 steps, 0 ms)
+3 of 507 checks (--only 'native local'), 3 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

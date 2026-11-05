@@ -175,6 +175,9 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         globalThis.coaxialVoiceStopped = ticket => webkit.messageHandlers.forgeVoiceCoder.postMessage(JSON.stringify({schema:'aethyrforge.voice-coder.v1',kind:'cancel',ticket}));
         """, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         config.websiteDataStore = .nonPersistent()
+        if offlineReportURL != nil {
+            config.userContentController.addUserScript(WKUserScript(source:"globalThis.__forgeRoomWorkers=0;const NativeWorker=Worker;globalThis.Worker=class extends NativeWorker{constructor(...args){super(...args);__forgeRoomWorkers++;}};",injectionTime:.atDocumentStart,forMainFrameOnly:true))
+        }
         if setupProfileURL != nil {
             config.userContentController.addUserScript(WKUserScript(source:"globalThis.__forgeErrors=[];addEventListener('error',e=>__forgeErrors.push(String(e.message)));addEventListener('unhandledrejection',e=>__forgeErrors.push(String(e.reason)));",injectionTime:.atDocumentStart,forMainFrameOnly:true))
         }
@@ -182,7 +185,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
             config.userContentController.addUserScript(WKUserScript(source: "globalThis.__forgeFrameCount=0;const nativeRAF=requestAnimationFrame;globalThis.requestAnimationFrame=f=>nativeRAF(t=>{__forgeFrameCount++;f(t);});", injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
         config.mediaTypesRequiringUserActionForPlayback = []
-        configureAudioOutput(config, muted: smoke || launchReport != nil || microphoneReport != nil || frameProfileURL != nil || setupProfileURL != nil)
+        configureAudioOutput(config, muted: smoke || launchReport != nil || microphoneReport != nil || frameProfileURL != nil || setupProfileURL != nil || offlineReportURL != nil)
         if smoke {
             // The native test pumps the callback: WebKit throttles both animation
             // callbacks and page timers in an unordered window.
@@ -277,7 +280,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     func start() async {
         do {
             guard let resources = Bundle.main.resourceURL else { throw ShellError.failed("Missing bundled resources.") }
-            if let report = smoke ? report : microphoneReport ?? setupProfileURL {
+            if let report = smoke ? report : microphoneReport ?? setupProfileURL ?? offlineReportURL {
                 dataURL = report.deletingLastPathComponent().appendingPathComponent("world")
             } else {
                 let base = fm.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/aethyrforge", isDirectory: true)
@@ -306,15 +309,18 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
             do { voiceReservation = try reservePort(); voicePort = voiceReservation!.1 }
             catch { close(r.0); close(p.0); throw error }
             web.configuration.userContentController.addUserScript(WKUserScript(source: "globalThis.coaxialVoiceHost='ws://127.0.0.1:\(voicePort)';", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+            if !offlineWorker {
+                web.configuration.userContentController.addUserScript(WKUserScript(source: "globalThis.coaxialNativeRoomHost='ws://127.0.0.1:\(r.1)';", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+            }
             var bytes: [UInt8] = []
             for i in 0..<256 {
-                let c = forge_url_byte(Int64(p.1), Int64(r.1), Int64(i))
+                let c = offlineMode ? forge_offline_url_byte(Int64(p.1),Int64(i)) : forge_url_byte(Int64(p.1), Int64(r.1), Int64(i))
                 if c < 0 { break }; bytes.append(UInt8(c))
             }
             close(r.0); close(p.0)
             guard !bytes.isEmpty, let url = URL(string: String(decoding: bytes, as: UTF8.self)) else { throw ShellError.failed("Invalid local ports.") }
             pageURL = url
-            room = try startChild("room", ["--listen", "127.0.0.1", "--port", String(r.1), "--dev", dataURL.path], resources: resources)
+            room = try startChild("room", ["--listen", "127.0.0.1", "--port", String(r.1), "--dev", dataURL.path, "--native-local"], resources: resources)
             page = try startChild("serve", [resources.appendingPathComponent("web").path, "--host-dir", resources.appendingPathComponent("host").path, "--static", "--cache", "0", "--listen", "127.0.0.1:\(p.1)", "--api", String(r.1)], resources: resources)
             try await waitForHTTP(URL(string: "http://127.0.0.1:\(r.1)/health")!)
             try await waitForHTTP(URL(string: "http://127.0.0.1:\(p.1)/worlds/everglade")!)
@@ -339,6 +345,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
             if setupPane.isHidden { window.makeFirstResponder(web) }
             try await startSceneControls()
             if setupProfileURL != nil { await inventoryTask?.value; try await setupProfileCheck(); return }
+            if offlineReportURL != nil {await inventoryTask?.value;try await offlineCheck();return}
             if let frameProfileURL { Task { try? await captureFrameProfile(frameProfileURL) } }
             if let launchReport {
                 await inventoryTask?.value
@@ -832,6 +839,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         setupPane.isHidden = false
         setupPane.refresh.title = "Retry startup"; setupPane.update()
         if let report=setupProfileURL {try? Data(message.utf8).write(to:report.appendingPathExtension("error"));fputs("Aethyrforge setup profile: \(message)\n",stderr);exit(1)}
+        if let report=offlineReportURL {try? Data(message.utf8).write(to:report.appendingPathExtension("error"));fputs("Aethyrforge offline check: \(message)\n",stderr);exit(1)}
         if smoke {
             if let report { try? Data("FAILED: \(message)".utf8).write(to: report) }
             fputs("Aethyrforge: \(message)\n", stderr)
@@ -1268,7 +1276,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
 
     func warmVoiceIfNeeded() {
         guard setupPane != nil, window != nil else { return }
-        let interactive = !smoke && launchReport == nil && microphoneReport == nil && frameProfileURL == nil && setupProfileURL == nil
+        let interactive = !smoke && launchReport == nil && microphoneReport == nil && frameProfileURL == nil && setupProfileURL == nil && offlineReportURL == nil
         guard forge_voice_warm(!stopping && pageURL != nil, window.isVisible && !window.isMiniaturized,
                                microphoneStatus() == .authorized, fgs_status(1) > 0, interactive, voiceWarmup != nil, voiceWarmReady) else { return }
         Task { try? await prepareVoice() }
@@ -1341,7 +1349,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     func refreshMicrophoneSetup() {
         guard setupPane != nil, window != nil else { return }
         updateMicrophoneSetup()
-        let interactive = !smoke && launchReport == nil && microphoneReport == nil && frameProfileURL == nil && setupProfileURL == nil
+        let interactive = !smoke && launchReport == nil && microphoneReport == nil && frameProfileURL == nil && setupProfileURL == nil && offlineReportURL == nil
         guard fm_setup_request(!stopping && window.isVisible && !window.isMiniaturized, NSApp.isActive,
                                !setupPane.isHidden, fgs_completed(), Int64(microphoneStatus().rawValue), microphonePrompt, interactive) else { return }
         Task { _ = await authorizeMicrophone() }

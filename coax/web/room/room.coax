@@ -29,6 +29,7 @@
 #load "room-ticket.coax";
 #load "room-vitals.coax";
 #load "room-control.coax";
+#load "native-local-policy.coax";
 #load "room-directory.coax";
 #load "room-events.coax";
 #load "room-dev.coax";
