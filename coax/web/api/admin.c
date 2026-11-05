@@ -535,9 +535,12 @@ static void rooms(const request *q, PGconn *db) {
   if (PQresultStatus(r) != PGRES_TUPLES_OK) api_log("rooms: %s", PQerrorMessage(db));
   if (n == 0) puts_(&o, "#ROOMS||NUMBER|NOW\n");
   static const struct { const char *group, *match; } groups[] = {
-    {"TICK", "^(ticks a second|tick |players p|raiders |effects |folk |writing |sending |measuring)"},
-    {"PLAYERS", "^(players$|queue |relevant |input to ack|join|rejoins |refused )"},
-    {"BYTES", "^(out|in) "},
+    {"TICK", "^(ticks a second|tick |players p|raiders |effects |folk |writing |sending |measuring|report |observation measured)"},
+    {"PLAYERS", "^(players$|queue |relevant |input to ack|server queued ack|join|rejoins |refused )"},
+    {"BYTES", "^(out|in) .*a second$|^transport "},
+    {"REPLICATION", "^(interest (seats|whole |health only |blocked |hidden |aggregation)|rows |row text |row wait |removal |removals |player info |join pieces |cue |cues |outcome |outcomes |snapshots |towns |observation counter)"},
+    {"SAVES", "^(checkpoint |legacy |owner )"},
+    {"CAPACITY", "^capacity "},
   };
   for (int i = 0; i < n && i < 8; i++) {
     const char *shard = PQgetvalue(r, i, 0);
@@ -554,6 +557,34 @@ static void rooms(const request *q, PGconn *db) {
       "SELECT split_part(x, '|', 2), split_part(x, '|', 3), split_part(x, '|', 4), split_part(x, '|', 5), split_part(x, '|', 6), "
       "  split_part(x, '|', 7), split_part(x, '|', 8), split_part(x, '|', 9) "
       "FROM b, regexp_split_to_table(b.body, E'\\n') AS x WHERE x LIKE 'seat|%'", 1, v);
+    snprintf(title,sizeof title,"SHARD %s QUEUED ACK",shard);
+    section(&o,db,title,"w","ROOM|SEAT|P50 MS|P95 MS",
+      "WITH b AS (SELECT body FROM verse.room_stats WHERE shard=$1::int ORDER BY at DESC LIMIT 1) "
+      "SELECT split_part(x,'|',2),split_part(x,'|',3),split_part(x,'|',4),split_part(x,'|',5) "
+      "FROM b,regexp_split_to_table(b.body,E'\\n') AS x WHERE x LIKE 'queued ack|%'",1,v);
+    snprintf(title,sizeof title,"SHARD %s ACCEPTED SAVES",shard);
+    section(&o,db,title,"w","ROOM|SEAT|PROFILE|OWNER|REVISION|CAPTURE AGE MS",
+      "WITH b AS (SELECT body FROM verse.room_stats WHERE shard=$1::int ORDER BY at DESC LIMIT 1) "
+      "SELECT split_part(x,'|',2),split_part(x,'|',3),split_part(x,'|',4),split_part(x,'|',5),split_part(x,'|',7),split_part(x,'|',8) "
+      "FROM b,regexp_split_to_table(b.body,E'\\n') AS x WHERE x LIKE 'saved|%'",1,v);
+    snprintf(title,sizeof title,"SHARD %s SAVE DELIVERY",shard);
+    section(&o,db,title,"w","ROOM|SEAT|PROCESS|RECEIPT AGE MS|API ACCEPTED MS|LATEST REVISION|PENDING|PAUSED",
+      "WITH b AS (SELECT body FROM verse.room_stats WHERE shard=$1::int ORDER BY at DESC LIMIT 1) "
+      "SELECT split_part(x,'|',2),split_part(x,'|',3),split_part(x,'|',6),split_part(x,'|',9),split_part(x,'|',10),split_part(x,'|',11),split_part(x,'|',12),split_part(x,'|',13) "
+      "FROM b,regexp_split_to_table(b.body,E'\\n') AS x WHERE x LIKE 'saved|%'",1,v);
+    snprintf(title,sizeof title,"SHARD %s MEASUREMENT SCOPE",shard);
+    section(&o,db,title,"w","MEASUREMENT|SCOPE",
+      "WITH b AS (SELECT body FROM verse.room_stats WHERE shard=$1::int ORDER BY at DESC LIMIT 1) "
+      "SELECT split_part(x,'=',1),split_part(x,'=',2) FROM b,regexp_split_to_table(b.body,E'\\n') AS x WHERE x LIKE '% scope=%'",1,v);
+    snprintf(title,sizeof title,"SHARD %s BUSIEST REPLICATION",shard);
+    section(&o,db,title,"w","ROOM|SEAT|SERIALIZED|DEFERRED",
+      "WITH b AS (SELECT body FROM verse.room_stats WHERE shard=$1::int ORDER BY at DESC LIMIT 1) "
+      "SELECT split_part(x,'|',2),split_part(x,'|',3),split_part(x,'|',4),split_part(x,'|',5) FROM b,regexp_split_to_table(b.body,E'\\n') AS x WHERE x LIKE 'replication worst|%'",1,v);
+    snprintf(title,sizeof title,"SHARD %s BUSIEST INTEREST",shard);
+    section(&o,db,title,"w","ROOM|SEAT|WHOLE|HEALTH|BLOCKED|HIDDEN",
+      "WITH b AS (SELECT body FROM verse.room_stats WHERE shard=$1::int ORDER BY at DESC LIMIT 1) "
+      "SELECT split_part(x,'|',2),split_part(x,'|',3),split_part(x,'|',4),split_part(x,'|',5),split_part(x,'|',6),split_part(x,'|',7) "
+      "FROM b,regexp_split_to_table(b.body,E'\\n') AS x WHERE x LIKE 'interest worst|%'",1,v);
   }
   PQclear(r);
   api_respond(q->fd, 200, "text/plain; charset=utf-8", "Cache-Control: no-store\r\n", o.p ? o.p : "", o.n);

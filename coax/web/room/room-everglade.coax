@@ -172,6 +172,7 @@ EgSeat :: struct {
   wcond: int;                                         // the world's conditions on it (WC_*), with the rules' in p's COND
   fx_left: [WE_WATCH] f32; fx_t0: [WE_WATCH] int; fx_dur: [WE_WATCH] int;   // its watch effects (WE_*): seconds left, start tick, ticks
   step_at: int; ack_at: int; ack_told: int;           // when the input stepped last and the one ACK names were heard (room-stats.coax rm_st_ack)
+  ack_sent_told:int; // exact final-D queue observation, independent of the legacy estimate
   ends: [EG_ENDS] EgEnd; ends_n: int;                 // ends (E) waiting for the inputs sent before them (eg_ends_due)
 }
 EG_ENDS :: 4;
@@ -1338,8 +1339,10 @@ eg_send :: (v: [] RmServer, k: int, s: int) {
   pick: [WIRE_SLOTS] f32;
   eg_im_pick(v, k, s, me.x, me.z, pick[..]);
   n := wire_seat_frame_in(st[0].rep[..], rm[0].hist[..], s, me.x, me.z, pick[..], ifx full then rows.count else ifx behind then 0 else WIRE_BUDGET, rows[..]);
+  observed_seat:=k*EG_SEATS+s;v[0].st.rows_last[observed_seat]=0;v[0].st.left_last[observed_seat]=st[0].rep[0].left;v[0].st.rows_deferred+=st[0].rep[0].left;
   for q: 0..<wire_entries(cast(string) rows[0..<n], 0) {
     en := wire_entry(cast(string) rows[0..<n], 0, q);
+    if en.count>1&&en[0]=='s'&&en[1]==' '{v[0].st.rows+=1;v[0].st.row_bytes+=en.count;v[0].st.rows_last[observed_seat]+=1;}
     if en.count > 0 { eg_out_entry(o[..], v, k, s, f, en); }
     if en.count > 1 && en[0] == 'x' && en[1] == ' ' { v[0].st.life_b += en.count + 1; }
   }

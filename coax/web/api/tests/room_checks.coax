@@ -755,6 +755,8 @@ rc_items :: (t: [] Ap) {
 rs_body :: (s: [] Sb, at: int, tick: string) {
   sb_clear(s); sb(s, "t "); sb_int(s, at); sb(s, "\nshard=2\nplayers=16\ntick p95 ms="); sb(s, tick);
   sb(s, "\nraiders p95 ms=0.40\nqueue age ms most=20\nout D s players bytes a second=9000\nseat|everglade-1|3|512|20|41|36|52|7\n");
+  sb(s,"rows serialized a second=123\ncheckpoint failures=4\ncheckpoint pending=2\ninterest scope=process latest picks\nreplication worst|everglade-1|3|7|2\ninterest worst|everglade-1|4|12|0|3|9\nqueued ack|everglade-1|3|18|24\nsaved|everglade-1|3|2|7|101|12|2500|500|1762190000001|14|1|0\n");
+  sb(s,"report omitted lines=0\nreport generation us=60\nobservation measured wall share %=0.028\nobservation timing scope=timed observer spans plus report\n");
 }
 // Percent-encodes everything but letters, digits and _.-~ (Python's quote with safe="").
 rc_quote :: (s: string, o: [] Sb) {
@@ -800,6 +802,19 @@ rc_stats :: (t: [] Ap) {
            && ap_has(text, "#SHARD 2 BYTES|k|") && ap_has(text, "\nout D s players bytes a second|9000|9000,9000\n"), text);
   ap_check(t, "room view: the seats from the last report",
            ap_has(text, "#SHARD 2 SEATS|w|ROOM|SEAT|QUEUE BYTES|QUEUE MS|RELEVANT|ACK P50 MS|ACK P95 MS|ROUND TRIP MS\neverglade-1|3|512|20|41|36|52|7\n"), text);
+  ap_check(t,"room view: actual replication and durable acceptance keep their separate groups",
+    ap_has(text,"#SHARD 2 REPLICATION|k|")&&ap_has(text,"\nrows serialized a second|123|123,123\n")
+    &&ap_has(text,"#SHARD 2 SAVES|k|")&&ap_has(text,"\ncheckpoint failures|4|4,4\n")&&ap_has(text,"\ncheckpoint pending|2|2,2\n"),text);
+  ap_check(t,"room view: accepted revision and owner are visible separately from pending latest state",
+    ap_has(text,"#SHARD 2 ACCEPTED SAVES|w|ROOM|SEAT|PROFILE|OWNER|REVISION|CAPTURE AGE MS\neverglade-1|3|2|7|12|2500\n")
+    &&ap_has(text,"#SHARD 2 SAVE DELIVERY|w|")&&ap_has(text,"\neverglade-1|3|101|500|1762190000001|14|1|0\n"),text);
+  ap_check(t,"room view: worst selection and actual queue ACK retain their own boundaries",
+    ap_has(text,"#SHARD 2 BUSIEST INTEREST|w|ROOM|SEAT|WHOLE|HEALTH|BLOCKED|HIDDEN\neverglade-1|4|12|0|3|9\n")
+    &&ap_has(text,"#SHARD 2 QUEUED ACK|w|ROOM|SEAT|P50 MS|P95 MS\neverglade-1|3|18|24\n"),text);
+  ap_check(t,"room view: omission and measured overhead numbers remain visible beside their scope",
+    ap_has(text,"\nreport omitted lines|0|0,0\n")&&ap_has(text,"\nreport generation us|60|60,60\n")
+    &&ap_has(text,"\nobservation measured wall share %|0.028|0.028,0.028\n")
+    &&ap_has(text,"\nobservation timing scope|timed observer spans plus report\n"),text);
   ap_do(t, "delete from verse.room_stats where shard = 2");
   st = ap_call(t, "GET", "/api/admin/rooms", "", hc[..]);
   // (the admission section, #12796, stays: it isn't a shard's)

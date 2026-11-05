@@ -1,0 +1,2 @@
+c5b61e46eed556c0e41dc71988099b9d636ae1df22ebdfa43b16c757ead8122c  coax/web/room/room-host.c
+953139708ddc0992a1bc2dde5018f21114ffb5204c77c1b6de472528db8fbc5f  coax/web/room/room-stats.h

@@ -54,6 +54,7 @@ static int64_t st_ticks, st_tick_us, st_cost_us;   /* this window's ticks, their
 #define ST_K_D_HEAD 259
 static int64_t st_out_b[ST_KEYS], st_out_m[ST_KEYS], st_in_b[128], st_in_m[128];
 static int64_t st_out_frames, st_out_bytes, st_in_frames, st_in_bytes;
+static int64_t st_kernel_bytes,st_discarded_bytes;
 
 /* each socket's: its queue's worst this window, its join burst, its input-to-ACK samples */
 #define ST_ACK_BUCKETS 512       /* 2 ms buckets: 0 to 1024 ms */
@@ -62,6 +63,7 @@ typedef struct {
   int burst;                     /* 0 none, 1 counting its join's bytes, 2 its snapshot is queued: until sent */
   int64_t burst_at, burst_bytes; /* when it joined (us), its bytes since */
   uint16_t ack[ST_ACK_BUCKETS]; uint32_t ack_n;
+  uint16_t queued_ack[ST_ACK_BUCKETS];uint32_t queued_ack_n;
   int64_t rtt_ms;                /* its round trip, as the kernel has it (-1 unknown) */
   int relevant;
   int64_t aged_was, aged;        /* rows sent for their age: the seat's count when last sampled, and this window's */
@@ -69,6 +71,7 @@ typedef struct {
 } st_conn;
 static st_conn st_c[CONNS];
 static uint32_t st_ack_all[ST_ACK_BUCKETS], st_ack_all_n;   /* every seat's input-to-ACK this window */
+static uint32_t st_queued_ack_all[ST_ACK_BUCKETS],st_queued_ack_n;
 static int64_t st_burst_n, st_burst_bytes_max, st_burst_ms_max, st_burst_bytes_sum, st_burst_ms_sum;
 static int64_t st_refused_was[16], st_re_tries_was, st_re_ok_was, st_re_seat_was, st_stale_was;
 static int64_t st_alloc_was[13];   /* rm_st_alloc's totals at the window's start (#12836) */
@@ -76,6 +79,10 @@ static int64_t st_alloc_was[13];   /* rm_st_alloc's totals at the window's start
 static void st_ack_add(int i, int64_t ms) {
   int64_t b = ms / 2; b = b < 0 ? 0 : b >= ST_ACK_BUCKETS ? ST_ACK_BUCKETS - 1 : b;
   st_c[i].ack[b]++; st_c[i].ack_n++; st_ack_all[b]++; st_ack_all_n++;
+}
+static void st_queued_ack_add(int i,int64_t ms){
+  int64_t b=ms/2;b=b<0?0:b>=ST_ACK_BUCKETS?ST_ACK_BUCKETS-1:b;
+  st_c[i].queued_ack[b]++;st_c[i].queued_ack_n++;st_queued_ack_all[b]++;st_queued_ack_n++;
 }
 /* The q-th thousandth of 2 ms buckets h (n counted) in ms, -1 none. */
 static int64_t st_ack_q(const uint16_t *h16, const uint32_t *h32, uint32_t n, int q) {
@@ -112,59 +119,26 @@ static void st_drained(int i, int64_t us) {
   if (ms > st_burst_ms_max) st_burst_ms_max = ms;
 }
 
-static bool st_digit(uint8_t c) { return (c >= '0' && c <= '9') || c == '-'; }
-/* One frame out (its text, t[0..n)), to `to` sockets, k bytes each on the wire: counted by its letter,
-   and a D frame's entries by theirs on one tick in ST_DEEP (counted ST_DEEP times: the entries are
-   most of the measuring's cost). Returns D's F (its third number), -1 for any other frame. */
-#define ST_DEEP 4
+/* Every accepted application frame, including WebSocket framing. Coax owns
+   the exact class/entry accounting; queue acceptance is separate from send(). */
 static int st_frame_out(const uint8_t *t, size_t n, int to, size_t k) {
-  if (!n || to <= 0) return -1;
-  int c = t[0] & 127;
-  st_out_frames += to; st_out_bytes += (int64_t)k * to;
-  st_out_b[c] += (int64_t)k * to; st_out_m[c] += to;
-  if (c != 'D' || n < 2) return -1;
-  /* the header's numbers (TICK ACK F [PART]), then the entries, ';' apart */
-  size_t i = 1; int nums = 0, f = -1;
-  while (i < n) {
-    while (i < n && t[i] == ' ') i++;
-    if (i >= n || !st_digit(t[i])) break;
-    int64_t x = 0; bool neg = t[i] == '-'; if (neg) i++;
-    while (i < n && t[i] >= '0' && t[i] <= '9') { x = x * 10 + (t[i] - '0'); i++; }
-    if (++nums == 3) f = (int)(neg ? -x : x);
-  }
-  st_out_b[ST_K_D_HEAD] += (int64_t)(i + (k - n)) * to; st_out_m[ST_K_D_HEAD] += to;   /* the header and the WebSocket's own bytes */
-  if (st_ticks % ST_DEEP) return f;
-  to *= ST_DEEP;
-  while (i < n) {
-    const uint8_t *semi = memchr(t + i, ';', n - i);
-    size_t e = semi ? (size_t)(semi - t) : n;
-    int key = ST_K_ENTRY + (t[i] & 127);
-    if (t[i] == 's' && i + 2 < e) {   /* s ID ...: a player, a townsperson (100000 + I) or made (200000 + EID) */
-      int64_t id = 0; for (size_t j = i + 2; j < e && t[j] >= '0' && t[j] <= '9'; j++) id = id * 10 + (t[j] - '0');
-      key = id >= 200000 ? ST_K_S_MADE : id >= 100000 ? ST_K_S_FOLK : ST_K_S_PLAYER;
-    }
-    st_out_b[key] += (int64_t)(e - i + (semi ? 1 : 0)) * to; st_out_m[key] += to;
-    i = e + 1;
-  }
-  return f;
+  return (int)fo_out((coax_v_t_FrameObserved){server->st.frames.e,1},(coax_string){(const char *)t,(int64_t)n},to,(int64_t)k);
 }
-static void st_frame_in(const uint8_t *t, size_t n) {
-  if (!n) return;
-  int c = t[0] & 127;
-  st_in_frames++; st_in_bytes += (int64_t)n; st_in_b[c] += (int64_t)n; st_in_m[c]++;
+static void st_frame_in(const uint8_t *t, size_t n,size_t framed) {
+  fo_in((coax_v_t_FrameObserved){server->st.frames.e,1},(coax_string){(const char *)t,(int64_t)n},(int64_t)framed);
 }
 
 /* ---- the report */
 
-typedef struct { char *p; size_t n, cap; } st_buf;
+typedef struct { char *p; size_t n, cap; int64_t omitted; } st_buf;
 static void st_line(st_buf *o, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
 #include <stdarg.h>
 static void st_line(st_buf *o, const char *fmt, ...) {
-  if (o->n + 1 >= o->cap) return;
+  if (o->n + 1 >= o->cap) {o->omitted++;return;}
   va_list a; va_start(a, fmt);
   int k = vsnprintf(o->p + o->n, o->cap - o->n, fmt, a);
   va_end(a);
-  if (k < 0 || o->n + (size_t)k + 1 >= o->cap) { o->p[o->n] = 0; return; }
+  if (k < 0 || o->n + (size_t)k + 1 >= o->cap) { o->p[o->n] = 0;o->omitted++;return; }
   o->n += (size_t)k; o->p[o->n++] = '\n'; o->p[o->n] = 0;
 }
 static double st_ms(int64_t us) { return (double)us / 1000.0; }
@@ -181,6 +155,21 @@ static void st_key_name(int key, char *out, size_t cap) {
    named as the admins read it. secs: the window's length. */
 static void st_report(st_buf *o, coax_v_t_RmServer v, int64_t players, int64_t shard, double secs, bool reset) {
   if (secs <= 0) secs = 1;
+  const coax_t_FrameObserved *observed=&server->st.frames.e[0];
+  memcpy(st_out_b,observed->out_b.e,sizeof st_out_b);memcpy(st_out_m,observed->out_n.e,sizeof st_out_m);
+  memcpy(st_in_b,observed->in_b.e,sizeof st_in_b);memcpy(st_in_m,observed->in_n.e,sizeof st_in_m);
+  st_out_frames=observed->out_frames;st_out_bytes=observed->out_bytes;st_in_frames=observed->in_frames;st_in_bytes=observed->in_bytes;
+  st_line(o,"observation scope=process report window");
+  st_line(o,"out scope=accepted application frames including websocket framing");
+  st_line(o,"transport kernel bytes including upgrade and controls a second=%.0f",st_kernel_bytes/secs);
+  st_line(o,"transport discarded queued bytes a second=%.0f",st_discarded_bytes/secs);
+  st_line(o,"transport refused frame bytes a second=%.0f",observed->refused_bytes/secs);
+  st_line(o,"transport refused frames a second=%.1f",observed->refused_frames/secs);
+  st_line(o,"observation counter overflow=%d",observed->overflow.e[0]?1:0);
+  st_line(o,"server ack scope=input heard to final D accepted by socket queue");
+  st_line(o,"server queued ack p50 ms=%lld",(long long)st_ack_q(NULL,st_queued_ack_all,st_queued_ack_n,500));
+  st_line(o,"server queued ack p95 ms=%lld",(long long)st_ack_q(NULL,st_queued_ack_all,st_queued_ack_n,950));
+  st_line(o,"server queued ack samples=%u",st_queued_ack_n);
   st_line(o, "shard=%lld", (long long)shard);
   st_line(o, "players=%lld", (long long)players);
   st_line(o, "ticks a second=%.1f", st_ticks / secs);
@@ -233,6 +222,16 @@ static void st_report(st_buf *o, coax_v_t_RmServer v, int64_t players, int64_t s
   st_line(o, "rows sent for their age a second=%.1f", aged / secs);
   st_line(o, "row wait ticks most=%lld", (long long)wait_most);
   st_line(o, "rows left for later most=%lld", (long long)left_most);
+  int64_t rows[9];rm_st_rows(v,(coax_v_s64){rows,9});
+  st_line(o,"replication scope=process serialized output before relay admission");
+  st_line(o,"rows serialized a second=%.1f",rows[0]/secs);st_line(o,"row text bytes serialized a second=%.0f",rows[1]/secs);st_line(o,"rows deferred a second=%.1f",rows[2]/secs);
+  st_line(o,"rows latest serialized total=%lld",(long long)rows[3]);st_line(o,"rows latest deferred total=%lld",(long long)rows[4]);
+  if(rows[5]>=0){coax_string code=rm_st_code(v,rows[5]);st_line(o,"replication worst|%.*s|%lld|%lld|%lld",(int)code.count,code.data,(long long)rows[6],(long long)rows[7],(long long)rows[8]);}
+  int64_t saves[28];rm_st_saves(v,(coax_v_s64){saves,28});
+  static const char *save_names[28]={"checkpoint pending","checkpoint flying","checkpoint posts","checkpoint retries","checkpoint failures","checkpoint applied","checkpoint duplicates","checkpoint late receipts","checkpoint capacity refusals","checkpoint stale owner refusals","checkpoint resident","checkpoint accepted","checkpoint capture age ms most","checkpoint receipt age ms most","checkpoint paused rooms","checkpoint finalizing","legacy save pending","legacy save flying","legacy save posts","legacy save retries","legacy save failures","legacy save applied","legacy save duplicates","legacy stale owner refusals","legacy save abandoned","legacy save evicted","owner generation most","owner ticket refusals"};
+  for(int q=0;q<28;q++)st_line(o,"%s=%lld",save_names[q],(long long)saves[q]);
+  st_line(o,"checkpoint active loss bound ms=30000");st_line(o,"checkpoint healthy recovery target ms=60000");
+  st_line(o,"capacity draining=%d",server->drain?1:0);
   /* the allowances beside the rows' (#12836): their bytes a second, and the entries each left waiting */
   int64_t al[13] = {0}; rm_st_alloc(v, (coax_v_s64){al, 13});
   st_line(o, "removal bytes a second=%.0f", (al[0] - st_alloc_was[0]) / secs);
@@ -292,15 +291,21 @@ static void st_report(st_buf *o, coax_v_t_RmServer v, int64_t players, int64_t s
     st_line(o, "seat|%.*s|%lld|%lld|%lld|%d|%lld|%lld|%lld", (int)code.count, code.data, (long long)ks[1],
              (long long)st_c[i].q_bytes, (long long)st_c[i].q_ms, st_c[i].relevant, (long long)st_ack_at(&st_c[i], 500),
              (long long)st_ack_at(&st_c[i], 950), (long long)st_c[i].rtt_ms);
+    st_line(o,"queued ack|%.*s|%lld|%lld|%lld",(int)code.count,code.data,(long long)ks[1],(long long)st_ack_q(st_c[i].queued_ack,NULL,st_c[i].queued_ack_n,500),(long long)st_ack_q(st_c[i].queued_ack,NULL,st_c[i].queued_ack_n,950));
+    int64_t saved[12];if(rm_st_saved(v,ks[0],ks[1],(coax_v_s64){saved,12}))
+      st_line(o,"saved|%.*s|%lld|%lld|%lld|%lld|%lld|%lld|%lld|%lld|%lld|%lld|%lld",(int)code.count,code.data,(long long)ks[1],(long long)saved[0],(long long)saved[1],(long long)saved[2],(long long)saved[3],(long long)saved[4],(long long)saved[5],(long long)saved[6],(long long)saved[7],(long long)saved[8],(long long)saved[9]);
   }
   if (!reset) return;
   memset(st_work, 0, sizeof st_work); memset(st_ack_all, 0, sizeof st_ack_all); st_ack_all_n = 0;
+  memset(st_queued_ack_all,0,sizeof st_queued_ack_all);st_queued_ack_n=0;
   st_ticks = st_tick_us = st_cost_us = 0;
   memset(st_out_b, 0, sizeof st_out_b); memset(st_out_m, 0, sizeof st_out_m); memset(st_in_b, 0, sizeof st_in_b); memset(st_in_m, 0, sizeof st_in_m);
   st_out_frames = st_out_bytes = st_in_frames = st_in_bytes = 0;
+  server->st.frames.e[0]=(coax_t_FrameObserved){0};st_kernel_bytes=st_discarded_bytes=0;
+  server->st.rows=server->st.row_bytes=server->st.rows_deferred=0;
   st_burst_n = st_burst_bytes_max = st_burst_ms_max = st_burst_bytes_sum = st_burst_ms_sum = 0;
   st_re_tries_was = tries; st_re_ok_was = ok; st_re_seat_was = same; st_stale_was = stale;
     for (int q = 0; q < 13; q++) st_alloc_was[q] = al[q];
   for (int64_t r = 0; r < nr && r < 16; r++) st_refused_was[r] = rm_st_refused(v, r);
-  for (int i = 0; i < CONNS; i++) { st_c[i].q_bytes = st_c[i].q_ms = 0; st_c[i].aged = st_c[i].wait_most = st_c[i].left_most = 0; memset(st_c[i].ack, 0, sizeof st_c[i].ack); st_c[i].ack_n = 0; }
+  for (int i = 0; i < CONNS; i++) { st_c[i].q_bytes = st_c[i].q_ms = 0; st_c[i].aged = st_c[i].wait_most = st_c[i].left_most = 0; memset(st_c[i].ack, 0, sizeof st_c[i].ack); st_c[i].ack_n = 0;memset(st_c[i].queued_ack,0,sizeof st_c[i].queued_ack);st_c[i].queued_ack_n=0; }
 }

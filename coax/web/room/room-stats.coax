@@ -9,6 +9,8 @@
 //     (room-interest.coax, #12789), read when asked (once a second);
 //   - the signature over the host's report (rm_st_sign), with the seat-ticket key, as room-vitals is.
 // Every counter here is a total since the start; the host takes differences for its window.
+#load "frame-observe.coax";
+#load "room-observe.coax";
 
 ST_REASONS :: 11;
 ST_NO_ROOM :: 0;     // no such room, or no free simulation for a new one
@@ -42,6 +44,8 @@ rm_st_pin :: (i: int) -> int #export_c {
 }
 
 RmStats :: struct {
+  frames:[1]FrameObserved; // exact accepted application frames for the current report window
+  rows:int;row_bytes:int;rows_deferred:int;rows_last:[EG_ROOMS*EG_SEATS]int;left_last:[EG_ROOMS*EG_SEATS]int;
   refused: [ST_REASONS] int;
   re_tries: int; re_ok: int;      // joins with re=1, and those seated
   re_seat: int;                   // joins that took back their player's held seat (room-relay.coax rl_take_back, #12792)

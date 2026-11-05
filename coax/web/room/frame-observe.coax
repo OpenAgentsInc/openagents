@@ -1,0 +1,83 @@
+// Exact application-frame observations. Queue acceptance is not TCP delivery.
+#load "../../../apps/openagents-web/everglade-wire.coax";
+#authority;
+FO_KEYS::260;FO_PLAYER::256;FO_FOLK::257;FO_MADE::258;FO_HEADER::259;
+FrameObserved::struct{out_b:[FO_KEYS]int;out_n:[FO_KEYS]int;in_b:[128]int;in_n:[128]int;out_bytes:int;out_frames:int;in_bytes:int;in_frames:int;refused_bytes:int;refused_frames:int;overflow:[1]bool;}
+#test "frame observations: every frame is counted, with exact framing and a complete D partition" {
+  o:[1]FrameObserved;s:="D 7 3 0 0 s 0 0 1 2;s 100004 0 1 7;s 200005 0 1 8;e break 7 0 0 0";
+  for i:0..<5{#assert fo_out(o[..],s,3,s.count+4)==0;}
+  #assert o[0].out_frames==15&&o[0].out_bytes==15*(s.count+4)&&o[0].out_b[cast(int)'D']==o[0].out_bytes;
+  #assert o[0].out_n[FO_PLAYER]==15&&o[0].out_n[FO_FOLK]==15&&o[0].out_n[FO_MADE]==15&&o[0].out_n[128+cast(int)'e']==15;
+  sum:=o[0].out_b[FO_HEADER];for k:128..<FO_HEADER{sum+=o[0].out_b[k];}#assert sum==o[0].out_bytes;
+  #assert o[0].out_b[FO_HEADER]==15*14; // ten text header bytes plus four framing bytes
+}
+#test "frame observations: queued multicast, refused queues and input mask bytes stay distinct" {
+  o:[1]FrameObserved;#assert fo_out(o[..],"y 2 1 9",2,9)== -1;
+  fo_refused(o[..],9);fo_in(o[..],"I 1 0",11);
+  #assert o[0].out_frames==2&&o[0].out_bytes==18&&o[0].refused_frames==1&&o[0].refused_bytes==9;
+  #assert o[0].in_frames==1&&o[0].in_bytes==11&&o[0].in_b[cast(int)'I']==11&&o[0].in_n[cast(int)'I']==1;
+  #assert fo_out(o[..],"",1,2)== -1&&fo_out(o[..],"D 1",0,5)== -1&&fo_out(o[..],"x",513,3)== -1;
+  #assert fo_out(o[..],"x",1,0)== -1&&fo_out(o[..],"x",1,16)== -1;
+  fo_in(o[..],"",6);fo_in(o[..],"I",0);fo_in(o[..],"I",16);fo_refused(o[..],0);
+  #assert o[0].in_frames==1&&o[0].refused_frames==1;
+  o[0].out_bytes=9223372036854775806;ignored_full:=fo_out(o[..],"t",1,3);#assert o[0].out_bytes==9223372036854775807&&o[0].overflow[0];
+}
+#test "frame observations: malformed D remains opaque rather than inventing entry bytes" {
+  o:[1]FrameObserved;#assert fo_out(o[..],"D x",1,5)== -1;
+  #assert o[0].out_b[FO_HEADER]==5&&o[0].out_n[FO_HEADER]==1;
+  #assert fo_out(o[..],"D 4 2 3 1",1,11)==3&&o[0].out_b[FO_HEADER]==16;
+  over:[1]bool;
+  #assert fo_add(0,0,over[..])==0&&fo_add(2,3,over[..])==5&&fo_add(9223372036854775806,1,over[..])==9223372036854775807&&!over[0];
+  #assert fo_add(9223372036854775807,1,over[..])==9223372036854775807&&over[0];
+}
+#test "frame observations: boundary IDs and maximal physical frame spans preserve exact counts" {
+  o:[1]FrameObserved;s:="D 1 0 0 0 s 99999 0;s 100000 0;s 199999 0;s 200000 0";
+  ignored_ids:=fo_out(o[..],s,1,s.count+2);#assert o[0].out_n[FO_PLAYER]==1&&o[0].out_n[FO_FOLK]==2&&o[0].out_n[FO_MADE]==1;
+  b:[4301]u8;for i:0..<b.count{b[i]='x';}
+  #assert fo_out(o[..],cast(string)b[0..<4298],512,4300)== -1&&o[0].out_n[cast(int)'x']==512;
+  before:=o[0].out_frames;#assert fo_out(o[..],cast(string)b[..],1,4301)== -1&&o[0].out_frames==before;
+  fo_in(o[..],cast(string)b[0..<4298],4300);fo_in(o[..],cast(string)b[..],4301);#assert o[0].in_frames==1&&o[0].in_bytes==4300;
+  fo_refused(o[..],9223372036854775807);fo_refused(o[..],1);#assert o[0].refused_bytes==9223372036854775807;
+}
+#test "frame observations: rejected physical boundaries change no counter and zero recipients reveal no snapshot" {
+  o:[1]FrameObserved;#assert fo_out(o[..],"D 1 0 3 0",0,11)== -1;
+  #assert fo_out(o[..],"t",513,3)== -1&&o[0].out_frames==0;
+  ignored_unframed:=fo_out(o[..],"t",1,1);ignored_max_header:=fo_out(o[..],"t",1,15);
+  #assert o[0].out_frames==2&&o[0].out_bytes==16;
+  ignored_oversize_header:=fo_out(o[..],"t",1,16);#assert o[0].out_frames==2&&o[0].out_bytes==16;
+  fo_in(o[..],"I",1);fo_in(o[..],"I",15);#assert o[0].in_bytes==16&&o[0].in_n[cast(int)'I']==2;
+  fo_refused(o[..],1);#assert o[0].refused_bytes==1&&o[0].refused_frames==1;
+}
+#test "frame observations: hostile leading bytes cannot forge an ASCII class or put a NUL in the report" {
+  o:[1]FrameObserved;raw:=[2]u8.[196,128];fo_in(o[..],cast(string)raw[..],8);raw[0]=0;fo_in(o[..],cast(string)raw[..],8);
+  #assert o[0].in_n[cast(int)'?']==2&&o[0].in_n[cast(int)'D']==0&&o[0].in_n[0]==0;
+  #assert fo_letter('A')==cast(int)'A'&&fo_letter('Z')==cast(int)'Z'&&fo_letter('a')==cast(int)'a'&&fo_letter('z')==cast(int)'z';
+  for c:[7]u8.[0,32,64,91,96,123,255]{#assert fo_letter(c)==cast(int)'?';}
+}
+fo_letter::(c:u8)->int{if (c>='A'&&c<='Z')||(c>='a'&&c<='z'){return cast(int)c;}return cast(int)'?';}
+fo_add::(a:int,b:int,over:[]bool)->int{if b>9223372036854775807-a{over[0]=true;return 9223372036854775807;}return a+b;}
+fo_bump::(o:[]FrameObserved,key:int,bytes:int,n:int){o[0].out_b[key]=fo_add(o[0].out_b[key],bytes,o[0].overflow[..]);o[0].out_n[key]=fo_add(o[0].out_n[key],n,o[0].overflow[..]);}
+fo_out::(o:[]FrameObserved,text:string,to:int,bytes:int)->int #export_c{
+  if text.count==0||to<=0||to>512||bytes<text.count||bytes>4300||bytes-text.count>14{return -1;}
+  o[0].out_bytes=fo_add(o[0].out_bytes,bytes*to,o[0].overflow[..]);o[0].out_frames=fo_add(o[0].out_frames,to,o[0].overflow[..]);
+  fo_bump(o,fo_letter(text[0]),bytes*to,to);
+  if text[0]!='D'{return -1;}
+  r:[1]WireRd;r[0]=wire_rd(text,1);d:=wire_read_d(text,r[..]);at:=r[0].at;
+  if !r[0].ok{fo_bump(o,FO_HEADER,bytes*to,to);return -1;}
+  while at<text.count&&text[at]==' '{at+=1;}
+  fo_bump(o,FO_HEADER,(at+bytes-text.count)*to,to);
+  while at<text.count{
+    end:=at;while end<text.count&&text[end]!=';'{end+=1;}
+    next:=end+(ifx end<text.count then 1 else 0);key:=128+fo_letter(text[at]);
+    if text[at]=='s'{read:[1]WireRd;read[0]=wire_rd(text[at..<end],1);id:=wire_num(text[at..<end],read[..]);
+      if read[0].ok{key=ifx id>=200000 then FO_MADE else ifx id>=100000 then FO_FOLK else FO_PLAYER;}}
+    fo_bump(o,key,(next-at)*to,to);at=next;
+  }
+  return d.f;
+}
+fo_in::(o:[]FrameObserved,text:string,bytes:int) #export_c{
+  if text.count==0||bytes<text.count||bytes>4300||bytes-text.count>14{return;}
+  k:=fo_letter(text[0]);o[0].in_b[k]=fo_add(o[0].in_b[k],bytes,o[0].overflow[..]);o[0].in_n[k]=fo_add(o[0].in_n[k],1,o[0].overflow[..]);
+  o[0].in_bytes=fo_add(o[0].in_bytes,bytes,o[0].overflow[..]);o[0].in_frames=fo_add(o[0].in_frames,1,o[0].overflow[..]);
+}
+fo_refused::(o:[]FrameObserved,bytes:int) #export_c{if bytes<=0{return;}o[0].refused_bytes=fo_add(o[0].refused_bytes,bytes,o[0].overflow[..]);o[0].refused_frames=fo_add(o[0].refused_frames,1,o[0].overflow[..]);}

@@ -37,7 +37,7 @@ AD_MAX_VERTICES :: 240000;
 AD_INBOX :: 1048576;       // the host's messages: an answer is "STATUS\n" then the rows
 AD_DATA :: 1048576;        // the last answer's rows (AdminHost holds both; AdminState sees them)
 AD_ROWS :: 4096;
-AD_SECTIONS :: 32;
+AD_SECTIONS :: 128; // eight reporting shards, including replication, saves and scope
 AD_COLS :: 12;
 AD_ASK :: 512;
 AD_ROW :: 17.0;            // CSS pixels a row
@@ -1025,6 +1025,14 @@ AD_ACCESS_LINES :: "200\nF|realm_invites|1\nF|auth_v2|0\nI|12|10|3|1790000000000
 }
 
 AD_ROOMS_LINES :: "200\n#SHARD 1 TICK|k|NUMBER|NOW|LAST 10 MINUTES\ntick p95 ms|1.80|1.20,1.50,1.80\nraiders p95 ms|0.40|0.40,0.40,0.40\n#SHARD 1 SEATS|w|ROOM|SEAT|QUEUE BYTES|QUEUE MS|RELEVANT|ACK P50 MS|ACK P95 MS|ROUND TRIP MS\neverglade-1|0|0|0|41|36|52|3\n";
+
+#test "/admin/rooms keeps every shard's measurement and durable sections (#12840)" {
+  s:[1]AdminState;data:[16384]u8;s[0].data=data[..];answer:[8192]u8;n:=0;
+  for c:"200\n"{answer[n]=c;n+=1;}
+  for q:0..<96{for c:"#ROOM SAVES|w|NUMBER|VALUE\naccepted revision|12\n"{answer[n]=c;n+=1;}}
+  ad_answer(s[..],cast(string)answer[0..<n]);
+  last:=s[0].sec_n-1;#assert s[0].status==200&&s[0].sec_n==96&&s[0].row_n==96&&s[0].sec_first[last]==95&&s[0].sec_rows[last]==1;
+}
 
 #test "/admin/rooms asks for the rooms' vitals, draws each series as a sparkline, and asks again every 10 seconds (#12791)" {
   s: [1] AdminState; data: [AD_TEST_DATA] u8; s[0].data = data[..];

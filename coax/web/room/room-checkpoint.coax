@@ -5,6 +5,7 @@
 CheckpointSlot :: struct {
   live:bool;owner:int;pid:[TICKET_PID]u8;pid_n:int;
   latest:CharacterCapture;capture_mono:int;acked:int;accepted:bool;accepted_mono:int;
+  receipt_mono:int;accepted_at:int;accepted_process:int;accepted_capture_wall:int;
 }
 RmCheckpoints :: struct {
   slot:[CF_CAP]CheckpointSlot;
@@ -12,7 +13,7 @@ RmCheckpoints :: struct {
   fly:bool;waiting:bool;fly_i:int;fly_capture:CharacterCapture;fly_mono:int;
   request:int;sent_mono:int;retry_at:int;tries:int;
   out:[CC_BODY]u8;out_n:int;mac:[64]u8;
-  posts:int;retries:int;applied:int;duplicates:int;failures:int;late:int;refused:int;
+  posts:int;retries:int;applied:int;duplicates:int;failures:int;late:int;refused:int;fenced:int;
   finalizing:bool;
 }
 
@@ -141,10 +142,10 @@ rm_checkpoint_answer :: (v:[]RmServer,request:int,status:int,body:string) #expor
   word:[24]u8;wn:=ifx valid then jv_str(d[0],jv_get(d[0],0,"status"),word[..]) else -1;name:=ifx wn>=0 then cast(string)word[0..<wn] else "";
   version:=jv_int(d[0],jv_get(d[0],0,"v"),0);owner:=jv_int(d[0],jv_get(d[0],0,"owner"),0);process:=jv_int(d[0],jv_get(d[0],0,"process"),0);rev:=jv_int(d[0],jv_get(d[0],0,"rev"),0);accepted:=jv_int(d[0],jv_get(d[0],0,"accepted_at"),0);
   if !valid||!cf_ack(version,name,owner,process,rev,accepted,f.n[1],f.n[2],f.n[3]){
-    if valid&&cf_fenced(version,name,owner,process,rev,f.n[1],f.n[2],f.n[3]){pid:=f.pid;_:=rl_owner_drop(v,cast(string)pid[0..<f.pid_n],owner+1,-1);i:=v[0].ck.fly_i;if v[0].ck.slot[i].owner==owner{v[0].ck.slot[i].live=false;}v[0].ck.fly=false;v[0].ck.waiting=false;return;}
+    if valid&&cf_fenced(version,name,owner,process,rev,f.n[1],f.n[2],f.n[3]){v[0].ck.fenced+=1;pid:=f.pid;_:=rl_owner_drop(v,cast(string)pid[0..<f.pid_n],owner+1,-1);i:=v[0].ck.fly_i;if v[0].ck.slot[i].owner==owner{v[0].ck.slot[i].live=false;}v[0].ck.fly=false;v[0].ck.waiting=false;return;}
     ck_failed(v);return;
   }
-  i:=v[0].ck.fly_i;if v[0].ck.slot[i].owner==owner{v[0].ck.slot[i].acked=rev;v[0].ck.slot[i].accepted=true;v[0].ck.slot[i].accepted_mono=v[0].ck.fly_mono;}
+  i:=v[0].ck.fly_i;if v[0].ck.slot[i].owner==owner{v[0].ck.slot[i].acked=rev;v[0].ck.slot[i].accepted=true;v[0].ck.slot[i].accepted_mono=v[0].ck.fly_mono;v[0].ck.slot[i].receipt_mono=v[0].mono_ms;v[0].ck.slot[i].accepted_at=accepted;v[0].ck.slot[i].accepted_process=process;v[0].ck.slot[i].accepted_capture_wall=f.n[4];}
   if name=="duplicate"{v[0].ck.duplicates+=1;}else{v[0].ck.applied+=1;}v[0].ck.fly=false;v[0].ck.waiting=false;v[0].ck.tries=0;v[0].ck.retry_at=0;
   trv_route_due(v);
 }

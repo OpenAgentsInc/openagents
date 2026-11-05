@@ -217,6 +217,7 @@ static bool pump(int i) {
     if (w < 0 && errno == EINTR) continue;
     if (w < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) break;
     if (w <= 0) return false;
+    if(c->ws)st_kernel_bytes+=(int64_t)w;
     done += (size_t)w;
   }
   if (done) { memmove(c->out, c->out + done, c->on - done); c->on -= done; }
@@ -225,15 +226,15 @@ static bool pump(int i) {
 }
 // n bytes onto i's output, sent as far as the socket takes them now. Past OUT_MAX, or on a failed
 // socket, i is doomed (closed by reap, after the frame being sent reaches everyone else).
-static void put_out(int i, const void *p, size_t n) {
+static bool put_out(int i, const void *p, size_t n) {
   conn *c = &conns[i];
-  if (c->fd < 0 || c->doomed) return;
-  if (c->on + n > OUT_MAX) { c->doomed = true; slow_closed++; return; }
+  if (c->fd < 0 || c->doomed) return false;
+  if (c->on + n > OUT_MAX) { c->doomed = true; slow_closed++; return false; }
   if (c->on + n > c->ocap) {
     size_t cap = c->ocap ? c->ocap : 8192;
     while (cap < c->on + n) cap *= 2;
     uint8_t *grown = realloc(c->out, cap);
-    if (!grown) { c->doomed = true; return; }
+    if (!grown) { c->doomed = true; return false; }
     c->out = grown; c->ocap = cap;
   }
   if (!c->on) c->since = now_ms();
@@ -241,6 +242,7 @@ static void put_out(int i, const void *p, size_t n) {
   memcpy(c->out + c->on, p, n); c->on += n;
   if ((int64_t)c->on > out_peak) out_peak = (int64_t)c->on;
   if (!pump_held && !pump(i)) c->doomed = true;
+  return true;
 }
 /* Every connection's held output sent: the everglade tick holds its frames (pump_held) and sends each
    socket's once at its end, one send a socket a tick and not one a frame (a send under Cloud Run's
@@ -262,10 +264,11 @@ static void relay_flush(void) {
     size_t k = ws_build(out, sizeof out, WS_TEXT, server->rout.e, (size_t)len, false);
     if (!k) continue;
     int to = 0, last = -1;
-    for (int j = 0; j < CONNS; j++) if (conns[j].fd >= 0 && conns[j].ws && rm_relay_to(view(), j)) { put_out(j, out, k); to++; last = j; }
+    for (int j = 0; j < CONNS; j++) if (conns[j].fd >= 0 && conns[j].ws && rm_relay_to(view(), j)) { if(put_out(j,out,k)){to++;last=j;}else{fo_refused((coax_v_t_FrameObserved){server->st.frames.e,1},(int64_t)k);} }
     /* counted by type (room-stats.h); a D frame (one seat's) with no more parts ends a joiner's first snapshot */
     int64_t t0 = now_us();
     int f = st_frame_out(server->rout.e, (size_t)len, to, k);
+    if(f>=0&&!(f&2)&&to==1){int64_t at=rm_st_sent_ack(view(),last,(coax_string){(const char *)server->rout.e,len});if(at>=0)st_queued_ack_add(last,now_ms()-at);}
     if (f >= 0 && !(f & 2) && to == 1 && st_c[last].burst == 1) { st_c[last].burst = 2; if (!conns[last].on) st_drained(last, now_us()); }
     st_cost_us += now_us() - t0;
   }
@@ -323,6 +326,7 @@ static void shut(int i) {
   if (conns[i].fd < 0) return;
   bool was = conns[i].ws;
   if (was) rm_left(view(), i);
+  if(was)st_discarded_bytes+=(int64_t)conns[i].on;
   close(conns[i].fd);
   free(conns[i].out);
   conns[i] = (conn){.fd = -1};
@@ -554,7 +558,7 @@ static void frames(int i) {
     if (r == 0) return;
     if (r < 0) { c->doomed = true; return; }
     if (f.opcode == WS_TEXT) {
-      st_frame_in(f.payload, f.length);
+      st_frame_in(f.payload, f.length,f.consumed);
       rm_heard(view(), i, (coax_string){(const char *)f.payload, (int64_t)f.length});
       relay_flush();
       if (rm_relay_kicked(view(), i)) { c->doomed = true; return; }
@@ -785,14 +789,20 @@ static void stats_sample(void) {
 /* Each window: its report kept for GET /api/room/vitals, a line in the log, and the signed post the
    admins' room view reads (POST /api/playtest/room-stats, coax/web/api/rooms.c; never under --dev). */
 static void stats_window(double secs) {
+  int64_t observation_started=now_us(),observation_path_us=st_cost_us;
   static char body[ST_BODY_CAP];
-  st_buf o = {body, 0, sizeof body};
+  st_buf o = {body, 0, sizeof body-512,0};
   body[0] = 0;
   st_line(&o, "t %lld", (long long)wall_ms());
   size_t head = o.n;
   double cost = st_tick_us > 0 ? 100.0 * (double)st_cost_us / (double)st_tick_us : 0;
   int64_t p95 = st_hist_at(&st_work[STW_ALL], 950), ack95 = st_ack_q(NULL, st_ack_all, st_ack_all_n, 950);
   st_report(&o, view(), rm_players(view()), server->shard, secs, true);
+  int64_t report_us=now_us()-observation_started,omitted=o.omitted;o.cap=sizeof body;
+  st_line(&o,"report omitted lines=%lld",(long long)omitted);
+  st_line(&o,"report generation us=%lld",(long long)report_us);
+  st_line(&o,"observation measured wall share %%=%.3f",secs>0?100.0*(observation_path_us+report_us)/(secs*1000000.0):0.0);
+  st_line(&o,"observation timing scope=timed observer spans plus report; excludes inline serializer input and transport counters");
   memcpy(st_last, body + head, o.n - head + 1);
   if (rm_players(view()) > 0)
     printf("room: vitals: tick p95 %.2f ms, input to ack p95 %lld ms, measuring %.2f%% of the tick\n", p95 / 1000.0, (long long)ack95, cost);

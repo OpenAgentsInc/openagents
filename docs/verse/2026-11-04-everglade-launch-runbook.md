@@ -790,10 +790,57 @@ names the largest whole-plus-health selection; ties retain the first seat.
 Compare the process totals with the per-category maxima to find concentration.
 No universal alarm threshold is qualified yet; workload capacity determines it.
 
-Durable revision/age/owner/outage reporting, complete row/message accounting,
-client presentation with clock uncertainty, dashboard charts for these new
-fields and instrumentation overhead remain open in #12840. Server ACKs and
-interest picks do not prove either durable acceptance or presentation.
+The additive #12840 observation report separates three boundaries:
+
+- `interest` remains each live seat's latest production pick. Blocked/hidden
+  are withheld categories, not sent rows. The health-only hook is not a claim
+  that the current realm has attached a party roster to that channel.
+- `rows serialized`, `row text bytes serialized` and `rows deferred` count
+  production v3 output before relay admission. The row-text counter excludes
+  separators and frame headers. `replication worst|ROOM|SEAT|ROWS|DEFERRED`
+  names the largest latest serialized-plus-deferred seat.
+- `out` counts every complete application frame accepted by an actual native
+  socket queue, including its WebSocket header; the D header and entry
+  subclasses partition it without sampling. Input includes the client mask.
+  Actual kernel writes (including upgrade/control bytes), refused queues and
+  queued bytes discarded on close have separate `transport` counters. None
+  is a claim of remote delivery or display.
+
+`saved|ROOM|SEAT|PROFILE|OWNER|PROCESS|ACCEPTED_REV|CAPTURE_AGE_MS|RECEIPT_AGE_MS|API_ACCEPTED_MS|LATEST_REV|PENDING|PAUSED`
+is read from the actual producer. Unknown ages are `-1`, unknown revisions and
+API times `0`. Profile 2 capture/receipt ages use this process's monotonic
+clock; capture age can keep growing while an encounter is paused and is not
+itself active gameplay lost. Legacy ages use the producer's wall clock and
+have its uncertainty. An expired or abandoned legacy outbox entry is not an
+accepted revision. The API acceptance timestamp is known only in profile 2.
+
+The existing admin view adds replication, save and capacity series, separate
+accepted-save/delivery tables, measurement scopes and named worst seats. It
+retains existing tick, byte and seat charts. Its section capacity covers all
+eight displayed shards. `report omitted lines` exposes any bounded report
+truncation; `observation counter overflow` marks degraded counting. The new
+`server queued ack` samples end when the final ACK frame is actually accepted
+by the socket queue and exclude estimated network RTT. The older input-to-ACK
+series keeps its historical RTT estimate; kernel RTT is also displayed
+separately. Client render delay and clock-offset uncertainty remain separate
+#12840 qualification work.
+
+| Reading | Action threshold |
+| --- | --- |
+| `checkpoint pending`, failures or retries | A rising count requires checking the persistence lane; HTTP transport completion alone does not settle it |
+| `checkpoint capture age ms most` | At 30,000 ms the affected profile-2 encounter pauses; compare `checkpoint paused rooms` |
+| `checkpoint healthy recovery target ms` | 60,000 ms is the healthy-service target, not an outage guarantee |
+| Stale-owner refusals | Any increase should correspond to a known ownership transfer; check owner generation and accepted revision |
+| Queue age/bytes, refused/discarded frames | Inspect the named seat and the existing 3 s / 256 KB slow-consumer bounds |
+| Report omissions or counter overflow | Any nonzero value means the detailed observation is incomplete; do not treat missing values as zero |
+
+`report generation us` measures the off-tick report. `observation measured
+wall share %` includes timed path hooks and report generation as a share of
+the reporting interval, including descheduling; it is not CPU utilization or
+the total overhead. `observation timing scope` declares that inline serializer,
+input and transport counters are outside those spans.
+The older `measuring % of tick` retains its existing denominator. Representative
+overhead and the remaining client/reservation coverage stay open in #12840.
 
 ## What a crash may lose
 

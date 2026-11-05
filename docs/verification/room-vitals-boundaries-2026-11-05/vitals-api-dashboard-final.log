@@ -1,0 +1,406 @@
+coax/web/api/mesh-policy.coax: OK
+coax/lib/nostr/json.coax: OK
+coax/web/api/mesh-policy.generated.c: OK
+coax/web/api/mesh-policy.generated.h: OK
+coax/web/api/caller-policy.coax: OK
+coax/web/api/caller-policy.generated.c: OK
+coax/web/api/caller-policy.generated.h: OK
+coax/web/api/nip98.coax: OK
+coax/web/api/nip98_vectors.coax: OK
+coax/web/api/nip98_testkit.coax: OK
+coax/web/api/nip98.generated.c: OK
+coax/web/api/nip98.generated.h: OK
+/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/tmp.mTxYeryNxu/nip98.generated.c /Users/christopherdavid/work/oa-character-recovery/coax/web/api/nip98.generated.c differ: char 400, line 7
+nip98: regenerate the C cache from its Coax source
+nip98: the C cache differs from this compiler's output (the image builds from source; regenerate with nip98.sh --generate)
+199 checks, 199 passed, 0 failed
+200 checks, 200 passed, 0 failed
+deployment command failures propagate; successful output filtering is non-fatal
+.....
+----------------------------------------------------------------------
+Ran 5 tests in 0.267s
+
+OK
+....
+----------------------------------------------------------------------
+Ran 4 tests in 11.553s
+
+OK
+....
+----------------------------------------------------------------------
+Ran 4 tests in 9.628s
+
+OK
+nip98 diff: 33286 cases (925 accepted by both, 16 numbers past the end), 0 disagreements
+/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/tmp.saqGZcRiLg/runner-sign.c:1882:9: warning: variable 'l_written' set but not used [-Wunused-but-set-variable]
+ 1882 |   _Bool l_written = coax_p_ss_write((l_challenge).value, coax_mkview_v_u8((((*coax_elem_v_t_SignWork(l_work, INT64_C(0), 492))).challenge).e, 32, 0, 32, 492));
+      |         ^
+1 warning generated.
+  ok    health answers with a database round trip
+  ok    health reports exact deployment identity
+  ok    every migration applied once
+  ok    an unknown path is a 404
+  ok    room-admission: 250 bots for 192 seats: 192 seated, 58 wait
+  ok    room-admission: a full answer says how many wait and when to ask again (and Retry-After)
+  ok    room-admission: once all have asked, the 58 waiting pages ask 3.49 times a second, under the bound of 5
+  ok    room-admission: a reconnect storm of the 192 seated keeps every seat
+  ok    room-admission: a freed seat goes to a waiting bot
+  ok    room-admission: the next full answer names the last wait
+  ok    room-admission: the 13th ask in a minute from one player is 429 with retry_ms and Retry-After
+  ok    room-admission: one address is limited at 120 asks a minute
+  ok    room-admission: refusals are counted by reason: full, rate, seated after a wait
+  ok    a chat line's blocked words are masked, in any case
+  ok    a clean line is kept as said
+  ok    a kicked player can't say a line, and is told until when
+  ok    a kick that ended lets them speak again
+  ok    a paired check says a line
+  ok    the other check of the pair reads it with its presence
+  ok    and with a chat read
+  ok    another mark's check doesn't
+  ok    nor does a person
+  ok    the speaker still reads their own
+  ok    room-event: anyone reads the dials, off by default with every default
+  ok    room-event: a visitor can't change it
+  ok    room-event: a site admin's dials are kept, each clamped to its range
+  ok    room-event: dials not named keep their values; START counts a press
+  ok    room-event: STOP counts a press
+  ok    room-event: a body that isn't JSON is a 400
+  ok    room-event: room-control's line is the room server's 16 numbers
+  ok    room-event: XP is a column of the vitals, and the migration runs twice
+  ok    room-control: the event's line and the levels switch
+  ok    room-vitals: XP is kept and only rises; an old line (no XP) keeps it
+  ok    room-vitals: a line without XP keeps the XP
+  ok    room-ticket: its HP field carries the XP (HPxXP), and the answer says it
+  ok    room-invite: the shard's report puts Alice and 14 others in evinv-1
+  ok    room-invite: a player not in the room holds no seat (403)
+  ok    room-invite: Alice's INVITE holds the 16th seat for two minutes
+  ok    room-invite: a stranger is placed elsewhere while the seat is held
+  ok    room-invite: the list sends Alice's friend to her room while her invite holds a seat
+  ok    room-invite: the friend's ticket takes the held seat
+  ok    room-invite: claimed once: a second friend hears the room was full, whose it was, and is placed elsewhere
+  ok    room-invite: no invite into a full room (409)
+  ok    room-invite: the list names Alice's full room as with_full
+  ok    party: a player in no party has none
+  ok    party: an unknown key has no roster (403)
+  ok    party: an invite makes Alice's party and a code that lasts minutes
+  ok    party: Bob joins by the code; the party's version rises
+  ok    party: a code is used once (404 for the next)
+  ok    party: no such code (404)
+  ok    party: Bob's roster has Alice and him, the version he joined at
+  ok    party: Alice's HP is the room's report (7 of 9), and the roster lasts a minute
+  ok    party: health only: no place, room, look or class
+  ok    party: a report older than ten minutes (the room stopped) is no HP, not an old one
+  ok    party: Carol, who blocks Alice, can't join her party (403)
+  ok    party: Bob hidden: not in Alice's roster; the version rose
+  ok    party: a hidden member still sees themself
+  ok    party: Dave joins
+  ok    party: asked for the realm, Dave is placed in Alice's room (evpty-2), not the lowest (evpty-1)
+  ok    party: a room he names is his choice
+  ok    party join: without a member named, Dave goes where the party's pick is (evpty-1)
+  ok    party join: Dave joins Alice: her room (evpty-2)
+  ok    party join: one not in Alice's party can't follow her (party_away, placed as before)
+  ok    party join: a hidden member can't be followed (party_away)
+  ok    party join: Bob shown again: Dave joins him (evpty-1)
+  ok    party join: the roster still names no room
+  ok    party: one in no party is placed as before
+  ok    party: Alice's room full: Dave's ticket says so (party_full) and he is placed elsewhere
+  ok    party join: Alice's room full: joining her names it (party_full), placed elsewhere
+  ok    party: Bob leaves and has no party
+  ok    party: Alice's roster no longer has Bob
+  ok    party: eight at most: the eighth joins, the ninth is refused (409)
+  ok    party: durable: kept in the database (a restart reads the same rows)
+  rate  party placement: 32 of 32 tickets kept with the party while its room had a seat; 2 of 2 full rooms named; 0 trials not run
+  ok    party: the placement rate: every ticket with a seat in its party's room went there, every full one was named
+  ok    items: a grant applies and names its item
+  ok    items: the same grant again (its answer lost) answers the same item and grants nothing more
+  ok    items: another payload under that ID is refused (conflict)
+  ok    items: one item, not two
+  ok    items: two transfers from one read: the first applies, the second is refused (version), the item moved once
+  ok    items: a transfer of an item that isn't yours is refused (held)
+  ok    items: an escrowed item can't be transferred elsewhere
+  ok    items: the escrow settles to its party
+  ok    items: no escrow to cancel (held)
+  ok    items: a write under an older owner generation is refused (stale)
+  ok    items: the newest owner's applies
+  ok    items: a retry first sent more than a day ago is refused (expired), not applied
+  ok    items: an unsigned mutation is refused (401)
+  ok    items: the outbox has an entry for each applied change (grant, transfer, escrow, settle, grant)
+  ok    items: a consumer at sequence 2 gets 3 onward, once
+  ok    items: replaying the outbox gives the same items, owners and versions (restore)
+  ok    items: a row changed outside the ledger fails the reconciliation
+  ok    room-stats: a shard's signed report is kept
+  ok    room-stats: an unsigned one is refused
+  ok    room-stats: a replayed one (its t ten minutes old) is refused
+  ok    room-stats: the next is kept beside it
+  ok    room view: signed out, a 401 and no numbers
+  ok    room view: each number now and its series, oldest first, in its group
+  ok    room view: the queues and the bytes in their own groups
+  ok    room view: the seats from the last report
+  ok    room view: actual replication and durable acceptance keep their separate groups
+  ok    room view: accepted revision and owner are visible separately from pending latest state
+  ok    room view: worst selection and actual queue ACK retain their own boundaries
+  ok    room view: omission and measured overhead numbers remain visible beside their scope
+  ok    room view: no shard reporting is one empty section
+  ok    room-vitals: a post with operation IDs answers a receipt, a line applied
+  ok    room-vitals: the line's HP, XP and WANTED are kept, WANTED by the room that wrote it
+  ok    room-vitals: the same operation again (a retry) is applied once: d
+  ok    room-vitals: an older revision from the same process is stale and changes nothing
+  ok    room-vitals: a receipt names each line: no such player, unreadable, applied
+  ok    room-vitals: an unsigned post is refused
+  ok    room-vitals: another process's revisions are its own; XP still only rises
+  ok    room-state: a page's WANTED alone is refused
+  ok    room-state: the look is kept and the WANTED refused
+  ok    room-ticket: after the page's 0 and a reload, the room's WANTED is still there (w4)
+  ok    room-ticket: a WANTED level no room wrote (a page's, from before 0124) is not brought back
+  ok    room-ticket: the API runs without OA_ROOM_OWNER_GEN here: the ticket carries no generation (a room from before reads it)
+  ok    room-owner: each ticket takes the character's next generation
+  ok    room-owner: no such player has none
+  ok    room-vitals: a line from an older owner is refused (f) and changes nothing; the newest owner's is kept
+  ok    room-vitals: a line without a generation (a room from before) applies as before; generation 0 doesn't read
+  ok    builds: each shard's stats name its build, and the directory keeps it
+  ok    builds: a page of build 1.2.3 is placed on shard 4, the shard that runs it
+  ok    builds: a page of build 7.7.7 that asks for that instance is placed on a shard of its build instead
+  ok    builds: a page that names no build is placed as before (the instance it asks for)
+  ok    builds: a page of a build no shard runs is placed as before, for the room to send it to reload
+  ok    builds: once shard 4's build is a minute old, a 7.7.7 page may join its instance
+  ok    builds: an older report leaves the newer build
+  ok    builds: a saved character names the build that saved it (1.2.3, schema 2)
+  ok    checkpoint: a bad signature is refused
+  ok    checkpoint: a partial snapshot is refused
+  ok    checkpoint: an unissued owner cannot create a snapshot
+  ok    checkpoint: a whole snapshot is committed before its versioned receipt
+  ok    checkpoint: retry after a lost response keeps the original acceptance time
+  ok    checkpoint: a reused identity with changed coordinates conflicts
+  ok    checkpoint: a process cannot switch under the same owner
+  ok    checkpoint: later revisions cannot reduce accepted XP
+  ok    checkpoint: the next revision advances the entire snapshot
+  ok    checkpoint: an older revision is stale
+  ok    checkpoint: taking a new owner fences the old process
+  ok    checkpoint: a newly issued owner starts its own process revision
+  ok    checkpoint: a separate database connection sees the complete committed dead/place/build state
+  ok    region: B is a streaming replica of A
+  ok    region: a room's save in A reaches B
+  ok    region: partitioned, A keeps taking its room's writes
+  ok    region: promoted after the lease, B takes epoch 2; an epoch not newer is refused
+  ok    region: B's API starts on B with the same migrations as A (a compatible build)
+  ok    region: B's ticket carries an owner generation above anything A issued (2 << 20 and up)
+  ok    region: the loss window: B has the HP saved before the partition, none of A's 10 later writes
+  ok    region: A's room's line under A's owner generation is refused in B (f)
+  ok    region: the former primary (epoch 1) returns as B's replica at epoch 2, with B's HP, not its own window's
+  rate  region: replication lag 56 ms; loss window 10 writes over 5045 ms (the partition until the promotion); promoted in 185 ms, B's API ready at 603 ms, the first ticket at 746 ms, the first seat at -1 ms (-1: no ROOM_BIN)
+  ok    drain: a report with its process's generation is kept, and the shard takes players
+  ok    drain: once the shard says it drains, a new player is placed on another shard
+  ok    drain: a player of the draining shard who joins again is placed on another shard
+  ok    drain: a report from an older process of the shard is refused whole (409) and changes nothing
+  ok    drain: the replacement's first report clears the drain, and the shard takes players again
+  ok    drain: a report with no generation (a room from before) is kept as before
+  ok    drain: a malformed generation line is not a report
+room checks: 153 checks, 0 failed
+ok   me: nobody is 401
+ok   me: a signed GET answers the key's own account
+ok   me: the same signature again is refused
+ok   me: a signature for another URL is refused
+ok   realms: a signed MAKE IT makes a realm
+ok   realms: a replayed MAKE IT is refused
+ok   realms: its owner makes it public
+ok   realms: the signer owns it
+ok   realms: the owner's signed save works
+ok   realms: another key's signed save is refused
+ok   realms: another key is a visitor, or can't see it
+ok   realms: a changed body is refused
+ok   realms: an unbound signed write is refused
+ok   realms: a signed write from another site's page is 403
+ok   realms: a forged header is 401, never the player key
+ok   guest: a player key is minted
+ok   guest: the player key makes a realm, as before
+ok   guest: and saves it
+ok   guest: a signer can't save the guest's realm
+ok   guest: the guest can't save the signer's realm
+ok   mine: an owner's realms, as lines
+ok   mine: and as JSON
+ok   mine: a key with no realms has none
+ok   mine: a guest key's realms
+ok   mine: nobody has none
+ok   mine: a replayed signature is refused
+ok   mine: is a GET
+ok   device: an unsigned start is 401
+ok   device: a start names its machine
+ok   device: a signed start answers an id and a code
+ok   device: the key's poll is waiting
+ok   device: another key's poll is 404
+ok   device: an unsigned poll is 401
+ok   device: look from another site is 403
+ok   device: look shows the machine
+ok   device: look with a bad code is 404
+ok   device: approving logged out is 401
+ok   device: a's key logs in with a session cookie
+ok   device: the session approves it
+ok   device: approved once
+ok   device: look says approved
+ok   device: the key's poll says approved, and the account
+ok   device: the key is the account now
+ok   device: the key saves the account's realm
+ok   device: and lists it as its own
+ok   device: a key with realms of its own is refused
+ok   unlink: the account's own key stays
+ok   unlink: a key not the account's is 404
+ok   unlink: logged out is 401
+ok   unlink: the device's key unlinks itself
+ok   unlink: and is its own account again
+ok   unlink: so it can't save the account's realm
+ok   expiry: the poll says expired
+ok   expiry: an expired code isn't approved
+ok   visibility: a made realm
+ok   visibility: a new realm is private: its owner sees it
+ok   visibility: private: another key gets 404
+ok   visibility: private: nobody gets 404
+ok   visibility: private: its document is 404 too
+ok   visibility: private: another key can't fork it
+ok   visibility: private: not on /og's rows
+ok   visibility: private: not on /realms' list
+ok   visibility: mine says private
+ok   visibility: another key can't change it (it is not there for them)
+ok   visibility: a word not a visibility is 400
+ok   visibility: its owner makes it unlisted
+ok   visibility: unlisted: another key reaches it by its slug
+ok   visibility: unlisted: still not on /og's rows
+ok   visibility: unlisted: still not on /realms' list
+ok   visibility: another key still can't change it
+ok   visibility: public: on /og's rows
+ok   visibility: public: on /realms' list
+ok   visibility: back to private: 404 to others again
+ok   visibility: back to private: off /realms' list
+ok   visibility: /realms' list takes no POST
+ok   visibility: a site admin sees a private realm
+ok   visibility: a site admin changes any realm's
+ok   admin realms: every realm with who sees it
+ok   admin realms: a filter leaves the others out
+ok   admin realms: not for others
+ok   invites on
+ok   visibility: invite only: an owner not approved is 403
+ok   visibility: invite only: and a publish can't list it
+ok   admin: approve the owner as a creator
+ok   visibility: invite only: an approved creator changes it
+ok   invites off
+ok   admin keys: not an admin yet
+ok   admin keys: a non-admin can't add one
+ok   admin keys: a root adds a database admin
+ok   admin keys: who is then an admin
+ok   admin keys: listed as db, the root as root
+ok   admin keys: a database admin sees a private realm
+ok   admin keys: a database admin can't add another
+ok   admin keys: a database admin can't remove a root
+ok   admin keys: nor can a root remove a root
+ok   admin keys: a root removes the database admin
+ok   admin keys: who is no longer an admin
+ok   admin keys: removing it again is 404
+98 checks, 98 passed, 0 failed
+ok no identity cannot spend selector quota
+ok a guest player header is not a spending identity
+ok a bound fresh NIP-98 request works without Origin
+ok the same signed event is refused on replay
+ok an unbound signed write is refused
+ok changed body cannot reuse a valid signature
+ok a signature for another URL is refused
+ok foreign Origin is refused before spending a good signature
+ok changing only Origin admits that exact unspent signature
+ok actual sign-in mints a throwaway session
+ok cookie writes require the same-site Origin
+ok a same-site session request reaches the selector
+ok bad Authorization cannot fall back to a good cookie
+ok wrong Origin wins even without an identity
+ok malformed input JSON
+ok missing input fields
+ok strict duplicate/version/type/unknown-field refusal
+ok strict duplicate/version/type/unknown-field refusal
+ok strict duplicate/version/type/unknown-field refusal
+ok strict duplicate/version/type/unknown-field refusal
+ok strict duplicate/version/type/unknown-field refusal
+ok strict duplicate/version/type/unknown-field refusal
+ok 601-byte words refuse before quota/model
+ok raw request cap refuses byte 16385
+ok empty raw request refuses before model
+ok wrong media is 415 without quota/model effects
+ok wrong method is 405
+ok stock
+ok selector receives exact words and typed stage context
+ok multi
+ok out
+ok exact-play
+ok above-play
+ok half
+ok below-half
+ok empty answer list is heard-only success
+ok private selection rows normalize to the same strict public answer
+ok in-stock creature retains confidence but unsupported entrance stays heard
+ok unsupported creature body action stays heard despite high confidence
+ok malformed
+ok duplicate
+ok bad-second
+ok scalar-p
+ok embedded-nul
+ok overlong
+ok missing-option
+ok wrong-sum
+ok not-argmax
+ok bad-envelope
+ok candidates-object
+ok parts-object
+ok status500
+ok status429
+ok minute
+ok user-day
+ok global-day
+ok user-active
+ok global-active
+ok expired lease no longer occupies an active slot
+ok reservation waits on the lock and refuses against the concurrently committed lease
+ok overlapping same-user slot admission is atomic
+ok overlapping global slot admission is atomic
+ok model timeout finishes one charged lease with no partial answer
+63 anime API checks passed, 0 failed
+ok the server's manifest of the fixture is the Coax rule's, byte for byte
+ok a template is refused when its engine is not named by content
+ok a realm's first revision is pinned to the engine served then; its page and spec name it
+ok publish pins the revision and today's engine together; a refused publish keeps nothing
+ok a fork starts on its parent's engine; its own publish leaves the parent's record alone
+ok without a bucket a publish is unpinned and the page plays today's engine
+ok coax/web/api/tests/realm_engine_pin.sql: 6 checks
+ok a shape is a FEATURE:N name, a whole-degree turn, a whole-percent size and gone
+ok a save keeps shapes with its moves; a page that sends moves only keeps them; refusals change nothing
+ok visitors, forks and undo carry the shapes of their revision
+ok coax/web/api/tests/realm_shapes.sql: 3 checks
+ok a slot is read and written as aethyr/forge/edit.coax names it; an edit's ops are the slots that differ
+ok a save, the settings, a row, lore, a quest and a card accepted are one step each, with their ops
+ok undo walks every step back to the first state, redo walks forward to the last, cards with them
+ok a new edit drops the redo; a step whose slots changed under it is refused whole; a declined card goes back and forth
+ok a step kept before the log undoes and redoes its whole revision
+ok lore and quests are published, undone and forked with the document; a visitor reads the revision published
+ok lore and quests kept before move into the document as one revision; older bytes and hashes stay; visitors see no change
+ok coax/web/api/tests/realm_edit_log.sql: 7 checks
+ok   release 1 staged; engine-served wrote its served hashes
+ok   its engine is named by content, served hashes included
+ok   the realm read into the edit model at revision 1
+ok   four edits and an undo in the model
+ok   saved as revision 2
+ok   published revision 2; the engine hash stated is the manifest's, worked out here
+ok   the record: revision 2, its manifest holds by the rule, its hash is the manifest's
+ok   every file the record names is served with the bytes it records (engine-served check)
+ok   a visitor's document hashes, here, to the record's document hash
+ok   reloaded from the published document: the same moves, turns, sizes and removals the edits made
+ok   the realm's page plays the pinned engine, not today's template
+ok   release 2 staged with a new engine
+ok   after release 2 the record and the realm's page still name release 1's engine
+ok   the owner moves trees:1 again
+ok   saved as revision 3, not published
+ok   a visitor still gets revision 2's document, byte for byte
+ok   a visitor forks it
+ok   the fork starts on its parent's pinned engine
+ok   the fork's document is the published revision's moves and shapes
+ok   the fork's owner restores props:2 and turns trees:1
+ok   the parent's published and current documents are untouched by the fork's edits
+ok   a save from a stale revision is refused (409); nothing changes
+ok   a publish whose engine can't be pinned is refused (503); revision 2 stays published
+ok   a newer document version is refused by the reader; the last one read stays
+24 of 24 checks
+api: checks passed

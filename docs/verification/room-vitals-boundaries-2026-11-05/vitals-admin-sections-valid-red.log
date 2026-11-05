@@ -1,0 +1,10 @@
+FAIL #test /admin/rooms keeps every shard's measurement and durable sections (#12840) (3 ms)
+apps/openagents-web/admin.coax:1034:22: error[E0406]: assertion failed
+    last:=s[0].sec_n-1;#assert s[0].status==200&&s[0].sec_n==96&&s[0].row_n==96&&s[0].sec_first[last]==95&&s[0].sec_rows[last]==1;
+                       ^
+  note: in #test /admin/rooms keeps every shard's measurement and durable sections (#12840)
+1 of 47 checks (--only '/admin/rooms keeps'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: this compiler is out of date: /Users/christopherdavid/work/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/work/openagents/coax/build.sh

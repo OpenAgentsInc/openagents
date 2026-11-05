@@ -41,6 +41,7 @@ RoomVital :: struct {
   rev: int;         // these values' revision (RmVitals.rev when they changed)
   rev_at: int;      // wall ms they changed: the report's AT, which orders HP at the API
   acked: int;       // the newest revision a receipt covers: rev > acked is in the outbox
+  durable_rev:int;durable_at:int;durable_capture_at:int;durable_owner:int;durable_process:int; // exact a/d receipt only, not expiry/refusal/stale/fallback
   owner: int;       // the newest owner generation a seat ticket gave its character here (#12834; 0 none): its lines carry it
   floor: int;       // the lowest owner generation that may still sit here: one past an owner the API fenced (f, #12834)
   sent_at: int;     // wall ms its line last went out (a seated owner's goes again each VITALS_OWNER_MS)
@@ -54,7 +55,7 @@ RmVitals :: struct {
   rev: int;         // the last revision given out
   batch: int;       // the last post's number (its receipt names it)
   // the post in flight: which entries, at which revisions
-  fly: bool; fly_at: int; fly_n: int; fly_i: [VITALS_BATCH] int; fly_rev: [VITALS_BATCH] int; fly_owner: [VITALS_BATCH] int;
+  fly: bool; fly_at: int; fly_n: int; fly_i: [VITALS_BATCH] int; fly_rev: [VITALS_BATCH] int; fly_owner: [VITALS_BATCH] int;fly_capture_at:[VITALS_BATCH]int;
   tries: int;       // failures in a row
   retry_at: int;    // wall ms the next post may go (backoff)
   flush: bool;      // note every seat and post at the next call, not at VITALS_EVERY_MS
@@ -235,7 +236,7 @@ rm_vitals_due :: (v: [] RmServer) -> int #export_c {
     n = tk_add(o, n, " "); n = rv_int(o, n, e.rev_at);
     if e.owner > 0 { n = tk_add(o, n, " "); n = rv_int(o, n, e.owner); }   // the owner generation (#12834)
     n = tk_add(o, n, "\n");
-    v[0].vit.fly_i[m] = i; v[0].vit.fly_rev[m] = e.rev; v[0].vit.fly_owner[m] = e.owner; m += 1;
+    v[0].vit.fly_i[m] = i; v[0].vit.fly_rev[m] = e.rev; v[0].vit.fly_owner[m] = e.owner;v[0].vit.fly_capture_at[m]=e.rev_at; m += 1;
     v[0].vit.v[i].sent_at = v[0].wall_ms;
   }
   if m == 0 { return 0; }
@@ -289,6 +290,7 @@ rm_vitals_answer :: (v: [] RmServer, batch: int, status: int, body: string) #exp
           else if c == 'f' { v[0].vit.fenced += 1; if v[0].vit.v[v[0].vit.fly_i[q]].owner > v[0].vit.fly_owner[q] { continue; } }
           else { continue; }
           i := v[0].vit.fly_i[q];
+          if (c=='a'||c=='d')&&v[0].vit.v[i].owner==v[0].vit.fly_owner[q]&&v[0].vit.fly_rev[q]>=v[0].vit.v[i].durable_rev{v[0].vit.v[i].durable_rev=v[0].vit.fly_rev[q];v[0].vit.v[i].durable_at=v[0].wall_ms;v[0].vit.v[i].durable_capture_at=v[0].vit.fly_capture_at[q];v[0].vit.v[i].durable_owner=v[0].vit.fly_owner[q];v[0].vit.v[i].durable_process=v[0].vit.gen;}
           if v[0].vit.fly_rev[q] > v[0].vit.v[i].acked { v[0].vit.v[i].acked = v[0].vit.fly_rev[q]; }
           // fenced for good: a newer owner has the character elsewhere, so its seats here of that
           // generation or older go, each told "elsewhere" (room-relay.coax rl_owner_drop)

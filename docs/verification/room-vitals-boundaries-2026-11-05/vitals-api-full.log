@@ -1,0 +1,2042 @@
+coax/web/api/mesh-policy.coax: OK
+coax/lib/nostr/json.coax: OK
+coax/web/api/mesh-policy.generated.c: OK
+coax/web/api/mesh-policy.generated.h: OK
+coax/web/api/caller-policy.coax: OK
+coax/web/api/caller-policy.generated.c: OK
+coax/web/api/caller-policy.generated.h: OK
+coax/web/api/nip98.coax: OK
+coax/web/api/nip98_vectors.coax: OK
+coax/web/api/nip98_testkit.coax: OK
+coax/web/api/nip98.generated.c: OK
+coax/web/api/nip98.generated.h: OK
+/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/tmp.22kHqMbfxp/nip98.generated.c /Users/christopherdavid/work/oa-character-recovery/coax/web/api/nip98.generated.c differ: char 400, line 7
+nip98: regenerate the C cache from its Coax source
+nip98: the C cache differs from this compiler's output (the image builds from source; regenerate with nip98.sh --generate)
+199 checks, 199 passed, 0 failed
+200 checks, 200 passed, 0 failed
+deployment command failures propagate; successful output filtering is non-fatal
+.....
+----------------------------------------------------------------------
+Ran 5 tests in 0.194s
+
+OK
+....
+----------------------------------------------------------------------
+Ran 4 tests in 6.466s
+
+OK
+....
+----------------------------------------------------------------------
+Ran 4 tests in 5.404s
+
+OK
+nip98 diff: 33286 cases (925 accepted by both, 16 numbers past the end), 0 disagreements
+/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/tmp.NTaeB1BWnu/runner-sign.c:1882:9: warning: variable 'l_written' set but not used [-Wunused-but-set-variable]
+ 1882 |   _Bool l_written = coax_p_ss_write((l_challenge).value, coax_mkview_v_u8((((*coax_elem_v_t_SignWork(l_work, INT64_C(0), 492))).challenge).e, 32, 0, 32, 492));
+      |         ^
+1 warning generated.
+  ok    health answers with a database round trip
+  ok    health reports exact deployment identity
+  ok    every migration applied once
+  ok    an unknown path is a 404
+  ok    access: a words account logs in for these checks
+  ok    access: the migration adds no flag rows (off)
+  ok    access off: the page is told to show MAKE A REALM
+  ok    access off: redeem answers as the path did before
+  ok    access off: the waitlist is not there
+  ok    access off: /api/auth/v2 answers as /api/auth did before
+  ok    access off: /api/auth/v2/me still says who
+  ok    access off: MAKE IT is not gated (no plan is a 400, not a 403)
+  ok    access off: FORK is not gated
+  ok    access admin: nobody logged in is a 401
+  ok    access admin: someone else is a 403
+  ok    access admin: the rows start with the flags, both off
+  ok    access admin: only an admin turns a flag on
+  ok    access admin: an unknown flag is a 400
+  ok    access admin: another site's page is refused
+  ok    access admin: uses 1 to 1000
+  ok    access admin: days 1 to 90
+  ok    access admin: an invite's code and link, once
+  ok    access admin: only the code's hash is kept
+  ok    access admin: an invite is one use for 14 days by default
+  ok    access admin: invites are listed, '|' in a note made a space
+  ok    access admin: each invite says when it expires, in Chicago time
+  ok    access: an admin turns realm_invites on
+  ok    access on: a guest is told it's invite only
+  ok    access on: a logged-in key that isn't approved
+  ok    access on: an admin may make realms
+  ok    access on: /api/playtest/realms/plan refuses a guest, 403 invite only
+  ok    access on: /api/playtest/realms/pick refuses a guest, 403 invite only
+  ok    access on: /api/playtest/realms/plan/doc refuses a guest, 403 invite only
+  ok    access on: /api/playtest/realms refuses a guest, 403 invite only
+  ok    access on: /api/playtest/realms/the-grid/fork refuses a guest, 403 invite only
+  ok    access on: as JSON it says what is needed
+  ok    access on: reading a FORK pane is not gated
+  ok    access on: an admin passes the gate (no plan: 400)
+  ok    access redeem: a guest must log in first
+  ok    access redeem: an unknown code isn't good
+  ok    access redeem: another site's page is refused
+  ok    access redeem: refusals spend nothing
+  ok    access redeem: a logged-in key becomes a creator
+  ok    access redeem: the account is kept as a creator by invite
+  ok    access redeem: the code is never logged
+  ok    access redeem: a creator redeeming again spends no use
+  ok    access on: the creator is told to show MAKE A REALM
+  ok    access on: the creator passes the gate on MAKE IT
+  ok    access on: the creator passes the gate on FORK
+  ok    access on: a NIP-98 signature (an agent) is the same account
+  ok    access redeem: the second of two uses
+  ok    access redeem: used up is the same answer as unknown
+  ok    access admin: an invite is revoked
+  ok    access redeem: a revoked code isn't good
+  ok    access redeem: an expired code isn't good
+  ok    access admin: revoking no invite is a 404
+  ok    access redeem: ten tries a minute an address
+  ok    access request: a guest must log in first
+  ok    access request: it says what they'd make
+  ok    access request: a contact is an email
+  ok    access request: asked, waiting
+  ok    access request: asking again rewrites the one request
+  ok    access request: the page knows it's waiting
+  ok    access request: a creator needn't ask
+  ok    access admin: the request is listed with its npub
+  ok    access admin: each request and creator says when
+  ok    access admin: only an admin approves
+  ok    access admin: an admin approves a request
+  ok    access admin: a request is decided once
+  ok    access request: approved, the page shows MAKE A REALM
+  ok    access admin: a request is declined, and still invite only
+  ok    access admin: no such request is a 404
+  ok    access admin: an admin names a key a creator
+  ok    access admin: and takes it back
+  ok    access admin: GRANDFATHER approves everyone who made a realm
+  ok    access on: a grandfathered guest passes the gate by their player key
+  ok    access on: and is told to show MAKE A REALM
+  ok    auth v2: an admin turns it on
+  ok    auth v2: me needs a login
+  ok    auth v2: me is the key's own account
+  ok    auth v2: linking needs the new key's signature
+  ok    auth v2: linking signs exactly {kind: link}
+  ok    auth v2: linking needs a session to link into
+  ok    auth v2: the signed key joins the session's account
+  ok    auth v2: either key is the one account
+  ok    auth v2: the linked key makes realms as its account's creator
+  ok    auth v2: a key that is another account's is refused
+  ok    auth v2: AuthKit start redirects with Google first and a state
+  ok    auth v2: a callback with an unknown state is refused
+  ok    auth v2: a good state reaches the exchange, which is not built
+  ok    auth v2: a state is spent once
+  ok    auth v2: the state is kept only as its hash, bound to the session's key
+  ok    auth v2: a WorkOS profile links to the logged-in account and makes a session
+  ok    auth v2: the same WorkOS login later is the same account
+  ok    auth v2: a new WorkOS login is a new account w-...
+  ok    auth v2: a WorkOS login that is another account's is refused
+  ok    auth v2: me lists the WorkOS identity's email
+  ok    access off again: a guest is not gated
+  ok    access off again: MAKE A REALM shows
+  ok    access off again: /api/auth/v2 is gone
+  ok    access off again: the flags are off and nothing else changed
+  ok    a batch is kept, all but the malformed event
+  ok    the session has the visitor's address, host and city
+  ok    a session replays in the page's order
+  ok    words with consent are kept
+  ok    words without consent, bad keys and objects are dropped; strings cut to 80
+  ok    floats keep three places
+  ok    a headless agent is noted on its session-start
+  ok    automation marks from the header, then the cookie
+  ok    at most 50 events a batch
+  ok    bad JSON is a 400
+  ok    a batch without a session is a 400
+  ok    a GET is a 405
+  ok    a bad NIP-98 signature is refused
+  ok    course: an unknown course is a 404
+  ok    course: a bad id is not a route
+  ok    course: no key, no course
+  ok    course: two hoops are not a course
+  ok    course: a hoop is four numbers
+  ok    course: hoops stay in reach
+  ok    course: a new id is the maker's
+  ok    course: a friend opens it by its link
+  ok    course: and can't change it
+  ok    course: a run flown is kept
+  ok    course: one run at a time
+  ok    course: a slower run keeps the best
+  ok    course: the fastest is first, and each sees which is theirs
+  ok    course: a run under a second is refused
+  ok    course: no time on no course
+  ok    course: the same hoops sent again keep the times
+  ok    course: new hoops are a new course: the times clear
+  ok    course: other routes still answer
+  ok    signed out: a 401 and no numbers
+  ok    a made-up session: a 401
+  ok    someone not on the list can't sign in
+  ok    someone not on the list can't sign a request either
+  ok    an admin signs in: a session cookie and on to the dashboard
+  ok    the same signed sign-in can't be used twice
+  ok    a sign-in signed for another site is refused
+  ok    only the token's hash is kept
+  ok    the admin sees the reports
+  ok    the reports count Hecate's Cemetery's first visit step by step
+  ok    the reports count the captured sessions
+  ok    playtesters: real people by default, each email once, visits apart
+  ok    with automated runs counted, theirs too
+  ok    automated sessions can be left out
+  ok    the sessions list
+  ok    a session's timeline, in order, with its words
+  ok    a bad session id is a 400
+  ok    an admin's signed request works once
+  ok    signed out: the session is gone
+  ok    an admin logged in on the site sees the dashboard
+  ok    and the review queue
+  ok    someone else logged in on the site: admins only
+  ok    pages: /realm/everglade, /realms/everglade and /worlds/everglade are one row
+  ok    a realm's card: its steps, then the most done, a tally summed
+  ok    the realms table counts the app's visits
+  ok    email: unsigned is a 401
+  ok    email: a non-admin is a 403
+  ok    email: nothing reached Resend for them
+  ok    email: an admin's message is sent
+  ok    email: with the key, from no-reply
+  ok    email: to, subject, text and html as given
+  ok    email: the PDF attached as sent
+  ok    email: a List-Unsubscribe header
+  ok    email: an idempotency key that is not the caller's
+  ok    email: the same key again is already sent, and Resend is not asked
+  ok    email: a 503 twice, then sent on the third attempt
+  ok    email: a 422 is not retried, and is a 502
+  ok    email: a failed key may go again
+  ok    email: a bad address is a 400
+  ok    email: no body is a 400
+  ok    email: a short key is a 400
+  ok    email: not JSON is a 400
+  ok    email: an address off the allowlist is refused
+  ok    email: the send log counts, never says
+  ok    email: no key, address, subject or body in the logs
+  ok    the contract in the database is the one the release walk checks
+  ok    the report has a Health card
+  ok    the house: its last event, counts for the hour and the day, and the missing quest named
+  ok    once it arrives the house is whole
+  ok    a surface nobody reached says never
+  ok    import: counts match source and destination
+  ok    import: a world openagents.com published is kept
+  ok    import: events keep their space, source file and line, and the demo's words
+  ok    import: a session's first and last seen, events and robot agent
+  ok    import: awards, planets (the registry's and the Kiki flow's published ones) and a planet's saved copy
+  ok    import: an automated run keeps its mark
+  ok    import: the rooms' chat has its table, its lines numbered in their room
+  ok    import: offered changes have their table, chat is kept in demo_files too
+  ok    import: a demo player's old key still works
+  ok    import: re-running changes nothing
+  ok    import: a later run adds only what the demo recorded since
+  ok    inference: unsigned is a 401
+  ok    inference: a GET is a 405
+  ok    inference: a signature for another URL is a 401
+  ok    inference: a key not on the list, with no credit, is a 402
+  ok    inference: a model the route doesn't serve is a 400
+  ok    inference: no messages is a 400
+  ok    inference: bad requests never reach Vertex
+  ok    inference: a signed request gets Vertex's answer
+  ok    inference: the service's token goes to Vertex, not the caller's signature
+  ok    inference: Vertex gets the messages, its model name, the output capped at 8192, nothing stored
+  ok    inference: the call is kept with its tokens and its cost at the card's rates
+  ok    inference: a stream comes back as server-sent events
+  ok    inference: a stream asks Vertex for its usage
+  ok    inference: a stream's usage, from its last chunk, is metered
+  ok    inference: Vertex's refusal comes back as its status, so the Lab falls through to its next gateway
+  ok    inference: a refused call costs nothing
+  ok    inference: an admin's key may use the route
+  ok    inference: an account's day is five requests here; the sixth is a 429 and never reaches Vertex
+  ok    inference: the day's count and spend are the account's
+  ok    inference: an account whose day's spend is used up gets a 429
+  ok    credit: an unsigned GET is a 401
+  ok    credit: a PUT is a 405
+  ok    credit: not JSON is a 400
+  ok    credit: a pubkey that isn't 64 lowercase hex digits is a 400
+  ok    credit: below the smallest top-up (10 sats) is a 400
+  ok    credit: above the largest is a 400
+  ok    credit: msat that isn't whole sats is a 400
+  ok    credit: refused top-ups never reach the wallet
+  ok    credit: a top-up is a 402 with PAYMENT-REQUIRED, x402 v2 exact on Lightning mainnet in msat
+  ok    credit: the body repeats the challenge
+  ok    credit: the invoice is our wallet's, asked for the sats with the request digest in its memo
+  ok    credit: the wallet is asked with the service's token
+  ok    credit: the binding is kept in our database
+  ok    credit: before the wallet sees the payment, the retry is a 402 payment_pending with the challenge again
+  ok    credit: a pending receive is still payment_pending
+  ok    credit: a proof for another body (another key, same invoice) refuses
+  ok    credit: a proof for another amount refuses
+  ok    credit: accepted terms changed (the amount) refuse
+  ok    credit: an invoice we didn't issue refuses
+  ok    credit: a payload that isn't base64 JSON is a 400
+  ok    credit: x402 version 1 is a 400
+  ok    credit: a wallet preimage that doesn't hash to the payment hash refuses
+  ok    credit: a receive for less than the invoice refuses
+  ok    credit: a payer's preimage that isn't the invoice's refuses
+  ok    credit: nothing refused added credit
+  ok    credit: our wallet's record of the payment credits the key: 200 with PAYMENT-RESPONSE naming the payment hash
+  ok    credit: the same payment again is duplicate_settlement and adds nothing
+  ok    credit: the replay key is kept once
+  ok    credit: no preimage in the log
+  ok    credit: a signed GET reads the signer's credit
+  ok    credit: a key with none reads 0
+  ok    credit: a payer with no preimage is credited from our wallet's record
+  ok    drawdown: a key with no credit is a 402 that points at the top-up route
+  ok    drawdown: with no bitcoin price, paid use is refused (503) and never reaches Vertex
+  ok    drawdown: with credit and a price, the key's request is answered
+  ok    drawdown: the price was asked of our wallet and kept
+  ok    drawdown: the call's cost ($0.0015) is taken from its credit in msat at the kept price (1500 msat at $100,000)
+  ok    drawdown: a listed key is never debited
+  ok    drawdown: the last call may take credit below zero; then the key gets a 402
+  ok    jobs: an unauthenticated call is refused
+  ok    jobs: a token Google refuses is refused
+  ok    jobs: a token for another audience is refused
+  ok    jobs: another service account is refused
+  ok    jobs: an expired token is refused
+  ok    jobs: a GET is a 405
+  ok    jobs: the scheduler runs today's (Chicago) job
+  ok    jobs: the same day again is already ran
+  ok    jobs: the scheduler cannot pick a day
+  ok    jobs: no such job is a 404
+  ok    jobs: an admin runs a missed day by hand
+  ok    jobs: and runs it again on purpose
+  ok    jobs: a bad day is a 400
+  ok    jobs: the runs are counted
+  ok    jobs: 7:00 Chicago is 12:00 UTC before the change and 13:00 after
+  ok    jobs: and those runs are each 7:00 in Chicago
+  ok    makers: an unclaimed realm says so, with no maker
+  ok    makers: a code needs an admin (nobody signed in)
+  ok    makers: a code needs an admin (someone else)
+  ok    makers: an admin makes a code and its link
+  ok    makers: only the code's hash is kept
+  ok    makers: the code is never logged
+  ok    makers: a claim needs a login
+  ok    makers: a bad Lightning address is refused
+  ok    makers: a bad name is refused
+  ok    makers: a refused claim leaves the code unspent
+  ok    makers: another realm's code is refused
+  ok    makers: another site's page is refused
+  ok    makers: the claim binds the signed key, the name and the address
+  ok    makers: the maker is kept
+  ok    makers: the code is refused after
+  ok    makers: and the maker stays
+  ok    makers: anyone sees the maker's name, never the address
+  ok    makers: the maker sees their own address
+  ok    makers: only the maker changes the address
+  ok    makers: the maker changes the address
+  ok    makers: a signed request is good once
+  ok    makers: a signed write must bind its body
+  ok    makers: a bad slug is a 404
+  ok    tips: an unclaimed realm takes no tips
+  ok    tips: a tip has a floor
+  ok    tips: sats is a number
+  ok    tips: a tip is our wallet's invoice
+  ok    tips: the invoice was asked of our wallet for the tip's sats
+  ok    tips: unpaid, it is open
+  ok    tips: paid the wrong amount, it stays open
+  ok    tips: a preimage that doesn't hash to the invoice is no payment
+  ok    tips: paid, it is settled and credited to the maker
+  ok    tips: the payment is kept once in the replay ledger, as the maker's
+  ok    tips: the first tip carries the first-paid bonus
+  ok    tips: the payout is sent to the maker's address
+  ok    tips: it was quoted for the address and the tip with the bonus, and sent once
+  ok    tips: the routing fee is kept with it
+  ok    tips: asked again, it stays paid and is settled once
+  ok    tips: a second tip has no bonus
+  ok    tips: a failed payout waits to try again
+  ok    tips: an admin runs the due payouts
+  ok    tips: tried again, the payout is sent
+  ok    tips: one payment completed for it
+  ok    tips: a payout with no answer keeps its invoice
+  ok    tips: the admin's second run is let in
+  ok    tips: asked again, our wallet's record says it was paid: sent, without paying twice
+  ok    tips: only an admin gives a gift
+  ok    tips: an admin's gift is a paid tip from our wallet, flagged team
+  ok    tips: the gift is paid out to the maker, with no bonus
+  ok    tips: a gift has a ceiling
+  ok    tips: an admin reads the payouts
+  ok    tips: an unknown tip is a 404
+  ok    tips: another site's page can't ask for one
+  ok    a question is answered in character
+  ok    the service's token goes with it
+  ok    the demo's prompt: who, where, role, greeting, the rules and the controls
+  ok    the web's controls: ASK, TEACH, HINT and BYE in a conversation, not the old demo's
+  ok    what players taught it
+  ok    the memory: a speaker's lines run together, the model's first line dropped, the question last
+  ok    every question and answer is kept
+  ok    no question is a 400
+  ok    a GET is a 405
+  ok    a model error is a 503, so the page says its own lines
+  ok    an unnamed character in an unnamed world
+  ok    the day's answers are capped across the server
+  ok    the service answered other requests meanwhile
+  ok    a world names its own controls: no Haunted House edit mode in Everglade
+  ok    a first meeting has nothing to remember
+  ok    the log keeps who asked and on which visit
+  ok    on the same visit the conversation is the page's own history, not memory
+  ok    on a later visit the character is told what the player said before, oldest first
+  ok    without a player key nobody is remembered
+  ok    one player's words are never told to another
+  ok    each character remembers only what was said to it
+  ok    a shared planet opens that world
+  ok    a link with no world opens the Haunted House
+  ok    the house's own id is the house
+  ok    anything else in visit is dropped
+  ok    POST player mints a guest's key
+  ok    only the key's hash is kept, with the automation mark
+  ok    POST player with a key echoes it
+  ok    GET player: id, account, worlds
+  ok    GET player with an unknown key is a 404
+  ok    POST worlds without a key is a 403
+  ok    POST worlds makes a world the player owns
+  ok    GET player lists it
+  ok    an unpublished world opens empty
+  ok    the owner publishes: version 1
+  ok    anyone with the link opens it
+  ok    someone else may not publish: 403 with offer
+  ok    nobody known: 403, log in to publish
+  ok    a publish needs a document
+  ok    a world id outside [A-Za-z0-9_-] is not a route
+  ok    owner: claimed and you
+  ok    owner, for someone else: not you
+  ok    only the owner opens it
+  ok    the owner opens it
+  ok    an opened world takes anyone known: version 2
+  ok    but not someone unknown
+  ok    closed again
+  ok    settings start empty
+  ok    bad settings are a 400
+  ok    only the owner sets them
+  ok    the owner sets the view
+  ok    everyone reads them
+  ok    the log, newest first
+  ok    only the owner resets
+  ok    the owner resets
+  ok    a reset world opens empty, its settings kept
+  ok    the reset is logged; every publish keeps its document
+  ok    a built-in world is the site's: a player may not publish it
+  ok    an admin's NIP-98 signature publishes it
+  ok    a signature is good once
+  ok    a bad signature is a 401
+  ok    someone else's signature does not own it
+  ok    the Sandbox is open, and nobody's but the site's
+  ok    anyone with a player key publishes the Sandbox
+  ok    someone unknown may not
+  ok    and nobody but the site resets it
+  ok    every publish is in its log
+  ok    a guest keeps no progress on the server
+  ok    a bad email is a 400
+  ok    join by email gives the guest's key an account of its own
+  ok    the join is a playtester row, the email lower-cased
+  ok    the account keeps no email
+  ok    no route shows the email
+  ok    the guest's world is still theirs
+  ok    joining again keeps the key and its account
+  ok    progress starts empty, at revision 0
+  ok    a broken save is a 400
+  ok    not base64 is a 400
+  ok    a version 3 container is a 400
+  ok    a revision that is not a whole number (-1) is a 400
+  ok    a revision that is not a whole number (1.5) is a 400
+  ok    a revision that is not a whole number ('0') is a 400
+  ok    a revision that is not a whole number (True) is a 400
+  ok    a revision that is not a whole number ([0]) is a 400
+  ok    a save from revision 0 is kept as revision 1, at the server's time
+  ok    a slow clock's save from the revision there now is kept
+  ok    a fast clock's save from an older revision is a 409 with what is there
+  ok    from the revision there now it is kept, at the server's time, not its own
+  ok    two devices from the same revision: the first is kept
+  ok    and the second is a 409 with the first's save
+  ok    the 409 changed nothing
+  ok    an old page's save on a slot a page with revisions saved is a 409
+  ok    an old page's save on a slot only old pages saved is kept, at the server's time
+  ok    and the next one is kept whatever its clock says
+  ok    a page with revisions saves it
+  ok    and from then on an old page's save is a 409
+  ok    an erase is a new revision with no save
+  ok    an old page still can't save it
+  ok    nor a page from the revision before the erase
+  ok    a page with revisions saves from the erase
+  ok    a rollback's save still lands, as a new revision
+  ok    a guest's XP follows them into the account they join
+  ok    and into an account with more XP, the larger stays
+  ok    or the guest's, when it is larger
+  ok    the same email typed in another browser opens nothing of the first's
+  ok    its progress is its own
+  ok    nor its worlds
+  ok    an email's account from the demo is never handed out
+  ok    erase
+  ok    a NIP-98 signed request is its pubkey's account
+  ok    unknown playtest paths are 404s
+  ok    a PUT is a 405
+  ok    an answer is kept
+  ok    as the demo keeps it: trimmed, with its session and the automation mark
+  ok    choices are kept as a list
+  ok    an empty answer is a skip
+  ok    a bad respondent or question is a 400
+  ok    an answer that is an object is a 400
+  ok    the whole form is kept too
+  ok    a GET is a 405
+  ok    the dashboard shows each answer with its session, which opens
+  ok    nobody known may not offer
+  ok    an offer needs a change
+  ok    a price is whole sats, 0 to 1,000,000
+  ok    a second session offers a change: it waits
+  ok    the visitor may not accept it
+  ok    an unknown offer is a 404
+  ok    a GET on a change is a 405
+  ok    the owner declines one
+  ok    a declined offer changes nothing
+  ok    a decided offer stays decided
+  ok    the owner accepts the other
+  ok    the world shows it after a reload
+  ok    the log lists every edit, newest first
+  ok    offers keep no world in the log
+  ok    the legacy /api/log/<id> answers the same
+  ok    the legacy /api/change/<id> offers too
+  ok    an offer without its world needs one to accept
+  ok    a built-in world's offers are the site's to decide
+  ok    making a planet needs a player key
+  ok    and the user and settings
+  ok    a guest is awarded a realm and sets it up
+  ok    the award is the same planet, made once
+  ok    an award for someone new is theirs
+  ok    it reopens after a reload: planets/mine
+  ok    it is a world its player owns
+  ok    the galaxy lists the new realm
+  ok    one planet by id
+  ok    set up again: the same planet, a later number, the defaults where a choice isn't one
+  ok    after its number the galaxy sees nothing new
+  ok    someone else can't set it up
+  ok    nobody's planet: planets/mine is empty, keeping is a 404
+  ok    a saved copy must be a world record
+  ok    the owner keeps a copy and the invite
+  ok    and gets them back
+  ok    a null doc drops the copy, the invite stays
+  ok    legacy /api/planets answers like the playtest's
+  ok    legacy /api/award
+  ok    legacy /api/planets/mine
+  ok    legacy paths stop at what moved
+  ok    an unknown slug's page is the locked shell (404)
+  ok    every private answer is no-store, private
+  ok    private answers vary by credential, can't be framed, send no referrer
+  ok    /projects/no-such/api/state without a session: 404, nothing else
+  ok    /projects/test-proj/api/state without a session: 404, nothing else
+  ok    /api/private/no-such/state without a session: 404, nothing else
+  ok    /api/private/test-proj/state without a session: 404, nothing else
+  ok    the first push is an admin's only
+  ok    a document's slug is the project's
+  ok    an admin's first push makes version 1
+  ok    a push from a stale version is refused
+  ok    a project's page, signed out, is the same locked shell as no project
+  ok    the locked shell names nothing of the project
+  ok    a stranger's signature gets the same 404 for a project and for none
+  ok    a made-up cookie is nobody
+  ok    a project and no project answer in the same time (0.02 ms apart, margin 3.00 ms)
+  ok    a member reads the state
+  ok    the state carries the live numbers
+  ok    a stranger can't make an invite
+  ok    invites are for members only
+  ok    a member invites a member
+  ok    only the invite's hash is kept
+  ok    a sign-in without an Origin is refused (CSRF)
+  ok    a sign-in from another site is refused (CSRF)
+  ok    an invite works only for its project
+  ok    an invite signs in once, with a 30-day cookie
+  ok    the cookie is HttpOnly
+  ok    the cookie is Secure
+  ok    the cookie is SameSite=Lax
+  ok    the cookie is Path=/projects/test-proj
+  ok    the session's token isn't in the answer's body
+  ok    only the session's hash is kept
+  ok    an invite is good once
+  ok    an invite expires
+  ok    invites last 24 hours
+  ok    a member's page is the member shell, its title generic
+  ok    the page's state comes as lines
+  ok    the lines have the day, the checklist, the numbers and the links
+  ok    a session is for its own project only
+  ok    a message from another site is refused
+  ok    a member sends a message from the page
+  ok    an agent nobody registered is nobody
+  ok    an agent can't register itself
+  ok    a member registers an agent
+  ok    the agent reads the state
+  ok    the agent's inbox has the message
+  ok    the agent replies
+  ok    an answered message leaves the inbox
+  ok    the agent posts a plan
+  ok    a note's kind is note, plan or status
+  ok    the agent moves a milestone
+  ok    a status for an unknown id is refused
+  ok    the status change is in the document and the activity
+  ok    an agent can't edit an agreed goal
+  ok    an agent can't remove an agreed goal
+  ok    an agent can't add an agreed goal
+  ok    an agent can't change the members
+  ok    an agent can't change anything else
+  ok    an agent can't make invites
+  ok    an agent proposes a goal and ticks an item
+  ok    an agreed goal names members who agreed ([])
+  ok    an agreed goal names members who agreed (['Zed'])
+  ok    a goal one member agreed to is agreed by that member
+  ok    a member pushes anything valid
+  ok    every push is kept
+  ok    a session expires
+  ok    an expired session can't write
+  ok    a signature is good once
+  ok    sign-in attempts are limited per address
+  ok    another address isn't limited by that
+  ok    writes are limited per address, whatever the visitor puts first
+  ok    the log never holds 28c6ae...
+  ok    the log never holds 5f2ed2...
+  ok    the log never holds 87ae65...
+  ok    the log never holds Test P...
+  ok    the log never holds Ship t...
+  ok    the log never holds Please...
+  ok    the agent's fixture project is pushed
+  ok    a member registers the runner's key
+  ok    the same key is a runner on the unapproved project too
+  ok    an unapproved project's talk is the same 404 as no project
+  ok    an unapproved project's ask is the same 404 as no project
+  ok    an unapproved project's stop is the same 404 as no project
+  ok    an unapproved project's undo is the same 404 as no project
+  ok    an unapproved project's agree is the same 404 as no project
+  ok    the runner's next on an unapproved project is not found
+  ok    the runner's event on an unapproved project is not found
+  ok    the runner's end on an unapproved project is not found
+  ok    a stranger's talk is not found
+  ok    the panel's lines start with the day's spend and the cap
+  ok    a member asks the agent
+  ok    asking wakes the runner with the slug only, and a token
+  ok    the other member sees the queued turn
+  ok    asking from another site is refused
+  ok    someone who isn't in the project can't ask
+  ok    the runner can't edit before the turn is running
+  ok    the runner takes the turn, with the member's message
+  ok    one turn at a time per project
+  ok    the runner's write without a turn is refused
+  ok    the runner sets a milestone's status inside the turn
+  ok    the runner adds a milestone and proposes a goal
+  ok    the runner can't change an agreed goal
+  ok    the runner can't change the members
+  ok    the runner can't change the title
+  ok    the runner can't change a goal to agreed
+  ok    a stale write is refused and the agent reads again
+  ok    the runner streams events and hears it isn't stopped
+  ok    the working line shows while it works
+  ok    each edit is a diff line under the turn
+  ok    an unknown event type is refused
+  ok    the runner ends the turn with its answer, commit and cost
+  ok    the turn shows done, its commit and its spend, and can be undone
+  ok    the commit is a card with its files
+  ok    after the turn ends the runner can't write
+  ok    members' tools get the conversation as JSON, each edit with the message that caused it
+  ok    one member agreeing leaves the goal proposed
+  ok    the panel says who agreed to a proposed goal
+  ok    only a proposed goal is agreed to
+  ok    before the undo the document has the turn's edits
+  ok    UNDO TURN is a new turn, and wakes the runner for the revert
+  ok    UNDO TURN restores the document version from before the turn
+  ok    a turn is undone once
+  ok    the runner gets the undo with the commit to revert
+  ok    the undo shows as its own turn with its revert commit
+  ok    the undone turn can't be undone again
+  ok    over the cap the turn is refused
+  ok    and the page says why
+  ok    a member stops a running turn
+  ok    the runner hears STOP on its next event
+  ok    the stopped turn says who stopped it
+  ok    the log never holds Mark the...
+  ok    the log never holds Send it ...
+  ok    the log never holds Done: th...
+  ok    the log never holds bac4651b...
+  ok    the log never holds fddaaae7...
+  ok    the npub encoding matches BIP-173
+  ok    a challenge needs this site's Origin
+  ok    a challenge from another site is refused
+  ok    the page gets a challenge and its own poll token
+  ok    only the challenge's and poll's hashes are kept
+  ok    before the phone approves, the poll waits
+  ok    the challenge itself is not a poll token (the QR alone can't take the session)
+  ok    an unsigned approval is refused
+  ok    an approval must sign its body (payload tag)
+  ok    an approval names the challenge's kind
+  ok    a made-up challenge is not found
+  ok    the phone approves the challenge
+  ok    a challenge is approved once
+  ok    the poll then signs the page in, bound to the phone's key
+  ok    the session cookie is HttpOnly, Secure, SameSite=Lax, site-wide, 30 days
+  ok    the session token isn't in the answer's body
+  ok    the poll is good once
+  ok    a challenge expires
+  ok    challenges last five minutes
+  ok    me: the session's npub and hex key, no projects yet
+  ok    me without a session is 401
+  ok    a second fixture project
+  ok    an unlinked phone's session gets the locked page
+  ok    and the same 404 as anyone
+  ok    LINK A PHONE needs a member
+  ok    LINK A PHONE from another site is refused
+  ok    a member gets a link challenge
+  ok    a link challenge can't be approved as a sign-in
+  ok    an agent's key can't be linked to a member
+  ok    another member's key can't be linked to Ada
+  ok    the phone links to Ada
+  ok    the phone's key is Ada's
+  ok    the page's poll sees it linked, and makes no session
+  ok    the phone's site session opens the project page
+  ok    and reads its state as Ada
+  ok    and writes as Ada
+  ok    a site-session write still needs this site's Origin
+  ok    the phone's signature reads the project as Ada
+  ok    but only in the project it was linked to
+  ok    me lists the project
+  ok    me names the member the linked key speaks for
+  ok    a claim must be signed
+  ok    a key already linked to another member can't claim, and the invite stays good
+  ok    an invite claims only its project
+  ok    the phone claims Cy's invite
+  ok    and its key is Cy's
+  ok    an invite claims once
+  ok    the claimed phone reads as Cy
+  ok    a linked key acts as its member (members invite)
+  ok    a removed member's phone is nobody
+  ok    SIGN OUT on the project page ends the site session too
+  ok    /api/auth/logout ends it and clears the cookie
+  ok    while the phone hasn't approved, the poll moves no player
+  ok    the poll signs the page's Verse player in with the phone's key: same key, the pubkey's account
+  ok    its worlds moved to that account
+  ok    signing in again keeps the same player
+  ok    another phone signs another player in to its own account
+  ok    a player on another pubkey's account stays there: the page gets a fresh key on the phone's
+  ok    a malformed player key is ignored
+  ok    a sign-in nobody approved never touches the player
+  ok    challenges are limited to 10 a minute per address
+  ok    no challenge, poll, session or invite token reaches the log
+  ok    a signed login gets the poll's oa_session cookie (HttpOnly, Secure, Lax, 30 days) for that key
+  ok    the session is that key's
+  ok    the same event again (a replay) is refused
+  ok    an event for another URL (wrong u) is refused
+  ok    an event whose payload is another body is refused
+  ok    an event two minutes old (stale) is refused
+  ok    no signature is refused
+  ok    another site's page is refused
+  ok    a body other than {"kind":"login"} is refused
+  ok    a login with the page's player key moves that player to the key's account
+  ok    the eleventh login in a minute from one address gets 429
+  ok    the runner answers a wake at once
+  ok    a wake runs one turn to the end
+  ok    the engine ran in its checkout with the model's key and without the runner's
+  ok    the turn's file edit is one commit, named for the turn and the member's first line
+  ok    the commit is the turn's, with its files
+  ok    the turn's document edit streamed in as a card
+  ok    the turn's events reached oa-api in order
+  ok    its cost counts against the day
+  ok    UNDO TURN's revert turn ends done
+  ok    UNDO TURN pushes the revert of the turn's commit
+  ok    and the document is the version from before the turn
+  ok    STOP stops a running turn, which pushes nothing
+  ok    the runner's key is in no log, event or answer
+  ok    the Anthropic key is in no log, event or answer
+  ok    the runner's log keeps no message text
+  ok    sprints: a project with a sprint, a backlog and a change log is kept
+  ok    sprints: a sprint with no goal is refused on push
+  ok    sprints: a sprint nobody agreed to is refused on push
+  ok    sprints: a sprint agreed by a stranger is refused on push
+  ok    sprints: a sprint ending before it starts is refused on push
+  ok    sprints: two active sprints is refused on push
+  ok    sprints: a done item without evidence is refused on push
+  ok    sprints: more doing than the WIP limit is refused on push
+  ok    sprints: a WIP limit of zero is refused on push
+  ok    sprints: a backlog id twice is refused on push
+  ok    sprints: a priority change without a why is refused on push
+  ok    sprints: a backlog that is not a list is refused on push
+  ok    sprints: an agent is registered
+  ok    sprints: an agent's push that changes a sprint goal is refused
+  ok    sprints: an agent can't add a sprint
+  ok    sprints: an agent can't reorder the backlog
+  ok    sprints: an agent can't record a change as agreed
+  ok    sprints: an agent can't raise the WIP limit
+  ok    sprints: an agent finishes an item with evidence and proposes an item and a change
+  ok    sprints: the document keeps them
+  ok    sprints: a member changes the goal and logs it
+  ok    the tools' turn runs
+  ok    milestone_edit adds a milestone on a new day, with an id
+  ok    the new day is in date order
+  ok    milestone_edit rewords it
+  ok    milestone_edit carries it over, noting where it came from
+  ok    milestone_edit on an unknown id says so
+  ok    a stale milestone_edit is refused with the current version
+  ok    goal_propose adds a proposed goal
+  ok    a change to an agreed goal is a proposal naming it; the agreed goal stays
+  ok    document_patch applies test, add and append
+  ok    milestone_edit adds a backlog item to a checklist
+  ok    document_patch can't change the title
+  ok    document_patch can't change an agreed goal
+  ok    a failed test op changes nothing
+  ok    a patch that breaks the document is refused
+  ok    a patch at a missing path says so
+  ok    the tools on an unapproved project are the same 404
+  ok    a member's key can't use the agent's tools
+  ok    milestone_status and checklist_status go through status
+  ok    project_plan and project_note go through note
+  ok    the edit log has "day 10-30: + Rehearse the pitch" under the turn
+  ok    the edit log has "goal proposed: Win the demo day" under the turn
+  ok    the edit log has "plan: m1: draft, then review" under the turn
+  ok    the edit log has "Start the deck → done" under the turn
+  ok    after the turn ends the tools are refused
+  ok    UNDO TURN takes the tools' turn back
+  ok    and the document is as it was before the turn
+  ok    drops: nobody signed in is told to sign in
+  ok    drops: a key with no account, membership or admin can't sign in
+  ok    drops: an admin's signed sign-in sets a session cookie for /api/drops only
+  ok    drops: only the session token's hash is kept
+  ok    drops: me says who and the limits
+  ok    drops: a write from another site is refused
+  ok    drops: a new drop
+  ok    drops: an admitted file gets an upload for exactly its bytes and our type, for this site
+  ok    drops: the session isn't readable from a listing
+  ok    drops: done before the bytes arrive waits
+  ok    drops: an uploaded document is scanned
+  ok    drops: done again is the same answer
+  ok    drops: run.exe (10) is refused with 415
+  ok    drops: noext (10) is refused with 415
+  ok    drops: big.glb (67108865) is refused with 413
+  ok    drops: empty.png (0) is refused with 400
+  ok    drops: a/b.png (10) is refused with 400
+  ok    drops: x.png (ten) is refused with 400
+  ok    drops: a program called .png is refused and its object deleted
+  ok    drops: a file that arrives at another size is refused
+  ok    drops: the scan takes glb 676c54460200
+  ok    drops: the scan takes wav 524946460000
+  ok    drops: the scan takes jpg ffd8ffe0
+  ok    drops: the scan takes mp3 4944330300
+  ok    drops: the scan takes m4a 000000206674
+  ok    drops: the scan takes pdf 255044462d31
+  ok    drops: the scan takes docx 504b030414
+  ok    drops: the scan takes svg 3c3f786d6c3f
+  ok    drops: the scan takes md 68690a
+  ok    drops: the scan refuses md 6869000a
+  ok    drops: the scan refuses png ffd8ff
+  ok    drops: the scan refuses glb 7f454c46
+  ok    drops: the scan takes ogg 4f67675300
+  ok    drops: the scan takes fbx 4b6179646172
+  ok    drops: the scan takes blend 424c454e4445
+  ok    drops: the scan takes stl 736f6c6964
+  ok    drops: a cut UTF-8 character at the end of the head is still text
+  ok    drops: a key with no Verse account can't drop
+  ok    drops: a Verse account's key may
+  ok    drops: someone else's drop is not found
+  ok    drops: and their list is their own
+  ok    drops: the admin's list counts the files kept
+  ok    drops: a signed request works without a cookie
+  ok    drops: the admin sign-in link opens /api/drops too
+  ok    drops: with that cookie the admin sees their drops
+  ok    drops: a drop with nothing kept has nothing to read
+  ok    drops: no draft yet
+  ok    drops: the model reads the kept files from the bucket, with the schema and the engine's tasks
+  ok    drops: the draft is kept, its slug made a slug
+  ok    drops: and read back
+  ok    drops: someone else can't read or start it
+  ok    drops: a draft with a task no one could check is refused, and the good one kept
+  ok    review: the owner renames the project
+  ok    review: a slug stays a slug
+  ok    review: a check is added at a list's end
+  ok    review: an emptied item leaves its list
+  ok    review: the last check can't go
+  ok    review: a yes or no
+  ok    review: a size is S, M or L
+  ok    review: no field outside the draft, no title emptied, nothing too long
+  ok    review: someone else can't change it
+  ok    review: an edit from another site is refused
+  ok    review: the edits are kept, the model's answer too
+  ok    review: PUBLISH freezes the reviewed draft and publishes it
+  ok    publish: the project's key is kept only sealed (nonce, 32 bytes, tag)
+  ok    publish: the relay asked for AUTH and the project's key answered
+  ok    publish: repository, project, initiative, milestone, task and order, signed by the project's key, each id its NIP-01 hash
+  ok    publish: the project is the draft as reviewed, its dropper the maintainer
+  ok    publish: the tasks hang from their milestone, the milestone from the initiative, the checks in the body
+  ok    publish: the order ranks every issue
+  ok    publish: the page is in the site's bucket, uncached, drawn live by the project app
+  ok    publish: /projects lists it from published.txt, with no release
+  ok    publish: the kept files are copied next to the page
+  ok    publish: index.md for agents names the design and the relay
+  ok    publish: PUBLISH again is the same answer and signs nothing twice
+  ok    review: after PUBLISH nothing changes and nothing is read again
+  ok    publish: a published drop can't be discarded
+  ok    review: someone else can't discard it
+  ok    review: DISCARD takes the files out of the bucket and forgets the draft
+  ok    review: a discarded drop is closed
+  ok    realm: lantern.glb is kept
+  ok    realm: Old Crate.glb is kept
+  ok    realm: broken.glb is kept
+  ok    realm: cover.png is kept
+  ok    realm: notes.md is kept
+  ok    realm: the drop is published
+  ok    realm: the project's event names its realm
+  ok    realm: a project with no model names none
+  ok    realm: the pack is in the site's bucket
+  ok    realm: catalog, vertices, indices, the model's texture, then white
+  ok    realm: each model a licence and a mesh, stood where its nodes put it (translation, rotation, scale, a parent's matrix)
+  ok    realm: the triangles index the model's own vertices, a line strip left out
+  ok    realm: positions and normals in the world, the uv kept, the colour and the layer in the colour's bytes
+  ok    realm: a model without normals gets its faces', and without a texture the white layer
+  ok    realm: its page opens the first-realm module on the pack, named for the project
+  ok    realm: its index.md lists what stands there and says what couldn't be placed
+  ok    realm: the project's index.md links its realm
+  ok    realm: the project's link preview is the drop's cover
+  ok    realm: kept once
+  ok    grow: adopting a key takes a call signed by that key
+  ok    grow: a hand-made project gives the service its key, kept only sealed with its members
+  ok    grow: the key is in no log
+  ok    grow: the drop area knows the project and who may drop on it
+  ok    grow: only the project's members drop on it
+  ok    grow: the project's maintainer opens a drop on it
+  ok    grow: the drop says which project it grows
+  ok    grow: the model reads the drop with the project's work as the relay has it now
+  ok    grow: the proposals are kept as a draft for the project, named for it
+  ok    grow: the member changes a proposal
+  ok    grow: and can't touch what it grows
+  ok    grow: ACCEPT adds them to the project
+  ok    grow: tasks, a milestone, the design notes and the order, signed by the project's key
+  ok    grow: a task for a milestone the project has hangs from it; a new milestone from the initiative
+  ok    grow: the design notes are a comment on the project, its 30621 event named beside its address
+  ok    grow: the order keeps every rank and puts the new issues after them
+  ok    grow: the drop's files go next to the project's page
+  ok    grow: ACCEPT again signs nothing twice
+  ok    grow: a drop on a project isn't read as a new project
+  ok    drops: signing out ends the session
+  ok    a prompt comes back as a board
+  ok    the board is held to the catalogue: an unknown feature, a nameless character, an unknown tool and a twice-named one are gone
+  ok    counts are held to their range and a word not the feature's is its default
+  ok    each feature's words are written from its typed fields
+  ok    on and off come through
+  ok    the model is asked under the catalogue's schema
+  ok    the prompt is what was said
+  ok    the model is asked with its thinking off, for a fast board (0060)
+  ok    talking again sends the current board
+  ok    a second prompt within two seconds waits
+  ok    no prompt is a 400
+  ok    an answer that isn't json is a 503
+  ok    a board without a name is a 502
+  ok    the model's error is a 503
+  ok    a plan from another site's page is refused
+  ok    making needs a player
+  ok    MAKE IT makes the realm at /worlds/<slug>, private, so with no page until it is shown (0099)
+  ok    its page, its bare path, its text and the list of made realms are in the bucket
+  ok    the page opens the made-realm template for this realm
+  ok    its text says what is there and what visitors may do
+  ok    its page has every preview tag, its line from what is in it, and the branded card until its own
+  ok    its owner is asked for its picture; a visitor isn't
+  ok    only its owner (or an admin) keeps its picture
+  ok    a picture that isn't a 1200x630 JPEG is refused
+  ok    its own picture is kept in the bucket and the page names it
+  ok    once it has one, its owner isn't asked again until it changes
+  ok    a visitor can't change its line
+  ok    its owner writes its line: one line, escaped in the page, and the page says it at once
+  ok    a changed line asks its owner for a new picture
+  ok    /og's rows list the made realms with their line and picture
+  ok    the spec: only what was checked, the typed rocks (not the words sent), characters only those checked
+  ok    anyone may read it; only the owner is told they own it
+  ok    an unknown realm is a 404
+  ok    the realm is a world its owner owns
+  ok    an empty realm's line still says what it is
+  ok    a second realm of the same name gets its own address
+  ok    a made realm never takes a built-in realm's address
+  ok    a realm made with nothing checked is empty
+  ok    MAKE IT may send its own line
+  ok    a player makes at most OA_BUILDER_PER_DAY realms a day
+  ok    a visitor can't change the settings
+  ok    nor can someone without a key
+  ok    a visitor can't build while build is off
+  ok    the owner switches tools on; a value that isn't true or false keeps what was
+  ok    a visitor's thing is proposed, not placed
+  ok    a thing not in the list is refused
+  ok    so is one off the ground
+  ok    nothing changes until the owner accepts; the owner is told one waits
+  ok    the owner's card: who, what, where, before and after
+  ok    anyone else sees no cards
+  ok    a visitor can't accept
+  ok    ACCEPT places it: its owner sees it at once, visitors once it is published (0094)
+  ok    a card is decided once
+  ok    DECLINE changes nothing
+  ok    an unknown card is a 404
+  ok    the owner's own thing goes in at once
+  ok    build switched off again stops visitors at once
+  ok    a GET of the make route is a 405
+  ok    ?as=lines answers the board as lines
+  ok    MAKE IT with only the on switches: the plan's board, as the page switched it
+  ok    a character switched off is not there
+  ok    someone else's plan makes nothing
+  ok    an error as lines is its words alone
+  ok    setup answers are fixed over the model's; one not in the catalogue is left to the model
+  ok    the model is told what is fixed and asked for a camera
+  ok    an answer changed on the board goes with MAKE IT
+  ok    the made realm keeps its camera, and the setup as the board showed it
+  ok    its text names the camera
+  ok    a realm made before cameras is third person
+  ok    a realm named Plan never takes the builder's route
+  ok    a spoken answer is picked by the model under that question's words
+  ok    a word not the question's is none
+  ok    an unknown question is a 400
+  ok    no words is a 400
+  ok    the model's error on a pick is a 503
+  ok    SAY IT's pick is asked with its thinking off too
+  ok    subject: the schema asks for what was asked first, each with its feature, and a house is in the catalogue
+  ok    subject: a board without the house is asked again, told what it left out
+  ok    subject: the second answer is the board, the house first, in its colour
+  ok    subject: the plan keeps what was asked and that it was asked again
+  ok    subject: when the second answer still holds it off, it is switched on
+  ok    subject: and the plan says it was repaired
+  ok    subject: when the second try fails, the first board answers with what was asked put on (none is left alone)
+  ok    subject: a board with what was asked is asked once
+  ok    subject: the made realm's spec has its house, for the engine to draw
+  ok    a stalled try is cut off and tried again: the board still comes, before the stalled one would have
+  ok    two stalled tries are a 503, not a wait
+  ok    0092: mist, a pagoda, a longhouse, elephants, acacias, a fountain, a stone wall and a shipwreck are the catalogue's
+  ok    0092: words that said less than is drawn: a market of stalls, a stream, a cottage, wagons
+  ok    0092: a drawn thing is wanted only for what of it isn't drawn; one no feature draws, whole
+  ok    0092: an older answer with no missing still keeps its place whole
+  ok    0092: each asked thing says what of it is missing
+  ok    an admin's /api/auth/me says so (A|1)
+  ok    someone else logged in: no A|1
+  ok    signed out: no viewer at all
+  ok    signed out, the pages' viewer: 200 and empty, not an error
+  ok    logged in, the viewer is me's lines
+  ok    a guest can't publish Everglade's edits
+  ok    nor can someone signed out
+  ok    nor someone logged in who isn't an admin
+  ok    an admin's cookie on another site's write doesn't count
+  ok    nothing was published
+  ok    an admin logged in on the site publishes Everglade's edits
+  ok    and everyone gets them, signed out too
+  ok    the realm says the admin may edit it
+  ok    and a guest that they may not
+  ok    a second publish is the next version
+  ok    a guest can't put the designed city back
+  ok    nor can someone who isn't an admin
+  ok    the admin puts the designed city back
+  ok    so everyone sees the plan again
+  ok    every edit and the reset are in the realm's log, newest first
+  ok    Everglade can be forked: its title, its maker credited, and the rule sets its code implements, all off
+  ok    a made realm that isn't a fork, and no realm at all, can't be forked
+  ok    forking needs a player
+  ok    a rule Everglade doesn't implement is refused, by name
+  ok    rules not as a list of words is refused too
+  ok    a name of no plain words is refused
+  ok    a fork from another site's page is refused
+  ok    FORK makes a realm of its own at /realms/<slug>, with the rules chosen (once each, in Everglade's order), and writes its page
+  ok    its page loads Everglade's module with this fork's slug, slot and rules
+  ok    its page says what it was forked from, links to it and credits its maker
+  ok    its line says what it forks and its rules, until its owner writes one
+  ok    unpublished, it is noindex and not on /og's rows
+  ok    its text names what it forks and its rules
+  ok    it is on the list of made pages the site keeps
+  ok    ?as=lines answers the slug and path as lines; a name's markup is taken out
+  ok    and never reaches its page as markup
+  ok    no name: the base's name and Fork
+  ok    Everglade itself is unchanged: its spec, its world, its edits and its page
+  ok    its city starts as Everglade's published one, in its own world
+  ok    its owner publishes the fork's own city; anyone else can't
+  ok    a visitor can't edit the fork by voice
+  ok    its owner may (an empty sentence is a 400, not a 403)
+  ok    by voice the fork switches its own rows (its rules too) and speaks with Everglade's catalogue (0106)
+  ok    the fork's spec gives its owner the board: Everglade's rows and its rules, on as chosen
+  ok    anyone else is a visitor there
+  ok    its FORK pane says it is a fork, of what, its rules and that this is its owner
+  ok    and not anyone else's
+  ok    a visitor can't switch its rules
+  ok    its owner switches a rule on
+  ok    and one of Everglade's rows off
+  ok    a row it hasn't is a 404
+  ok    a visitor can't revise it
+  ok    the model is asked under a schema of the fork's row ids, told what each does
+  ok    its answer is the fork now: low gravity on, night off; a row it hasn't is ignored
+  ok    and Everglade is still unchanged
+  ok    a visitor can't publish it
+  ok    only a made realm's owner publishes it (0093)
+  ok    its owner publishes it with its own line, markup taken out
+  ok    published, its page is written again: indexed, with its own line and still crediting Everglade
+  ok    and it is on /og's rows with its line, an unpublished fork still not
+  ok    unpublishing takes it off again
+  ok    a fork can be forked again: its base stays Everglade, it comes from the fork
+  ok    its page links what it was forked from and the realm that came from
+  ok    the fork it came from is unchanged
+  ok    a made realm's document: revision 1, its setup and features, and a hash
+  ok    its spec says its revision, published as it was made (0094), listed, nothing moved and nothing to undo
+  ok    only its owner saves
+  ok    a save names a revision and holds its moves
+  ok    a save from the revision there now is kept as the next revision, rounded to the centimetre
+  ok    a visitor sees the revision published, not the owner's save (0094)
+  ok    and so does the visitor's document; its owner's is the save
+  ok    a save from an older revision is refused with the revision there now: newer never just wins
+  ok    any change to what it is makes a new revision (a row switched off)
+  ok    so a save read before it is refused too
+  ok    a publish names its revision
+  ok    publishing keeps the revision and its document's hash; unlisted, it is off /og's rows
+  ok    anyone forks a made realm: a realm of its own that records its parent and the revision it came from
+  ok    the fork's spec names its parent and revision, starts at revision 1 and keeps the moves
+  ok    and its document says so
+  ok    its owner saves the fork
+  ok    the original is unchanged: the same revision and the same bytes
+  ok    the fork's owner can't save the original
+  ok    the fork's page names its parent and plays the made-realm template
+  ok    a realm a tool makes is private, like every new realm (0099): off /og's rows
+  ok    unlisted, its page says noindex
+  ok    after a save its owner sees it and a visitor still sees the revision published
+  ok    a visitor's document is the one published, its hash the publish's
+  ok    a visitor's fork copies the revision published
+  ok    only its owner undoes, from the revision there now
+  ok    UNDO takes the save back as a new revision, with the moves before it
+  ok    a thing placed is one step: UNDO takes it out
+  ok    a row switched is one step: UNDO switches it back
+  ok    a card accepted is one step: UNDO takes its thing out and the card waits again
+  ok    a card declined is a step too, though nothing in the realm changes
+  ok    every revision is kept, an edit's and an undo's too
+  ok    a visitor still sees revision 4 through all of it
+  ok    every hand-built realm in realms.json has its owner, admins, tools, things and rows on the server, the same
+  ok    the owner, an admin account and anyone else
+  ok    a site admin switches a row of a hand-built realm
+  ok    everyone's spec has it off: rows, the tools its code honours, what may be placed; no cards for a visitor
+  ok    a visitor may not switch, change settings, see or settle cards
+  ok    the owner and an admin account switch rows
+  ok    an unknown row is a 404
+  ok    an admin changes the settings, only the tools its code honours
+  ok    a visitor's thing waits as a card
+  ok    a thing the realm doesn't place is refused
+  ok    an admin sees the card
+  ok    a visitor can't settle it; an admin accepts it once
+  ok    accepted, it is placed; the owner is told nothing waits
+  ok    the owner places at once
+  ok    build off stops a visitor's card
+  ok    a realm nobody has is a 404
+  ok    a realm's visitor can't publish its world
+  ok    a realm's visitor can't make a voice edit there
+  ok    Everglade's admin account makes voice edits there (past the gate: an empty sentence is 400), not on another realm's
+  ok    Everglade's admin account publishes its edits, and puts the designed city back
+  ok    a visitor can't revise
+  ok    the model is asked under an enum of the realm's rows, with the board as it is
+  ok    its answer is the realm now (an unknown row dropped), as lines
+  ok    a made realm's spec has its role and its board's rows
+  ok    a visitor can't switch a made realm's row
+  ok    its owner switches one off
+  ok    off, it is gone from the realm and kept on the board
+  ok    a visitor still gets the revision published, rocks and all (0094)
+  ok    a site admin switches it back on
+  ok    talking revises a made realm: its ground, time and features, its name and style kept
+  ok    a visitor can't add or read the list
+  ok    ADD goes to the model under the realm's rows, and an answer that changes the realm is APPLIED
+  ok    one the realm's code can't do yet changes nothing and waits, NOT APPLIED
+  ok    the list, newest first: each ask, its state and its words
+  ok    a visitor can't delete one
+  ok    DELETE puts the owls back and the ask leaves the list
+  ok    deleting it again is a 404
+  ok    an ask whose change was undone by hand since puts nothing back
+  ok    a waiting ask's DELETE just takes it off
+  ok    a hand-built row's DELETE switches it off and files a remove ask
+  ok    asked twice, it's the same ask
+  ok    DELETE on the remove ask puts the row back
+  ok    an unknown row is a 404
+  ok    only a site admin marks one built
+  ok    and only with a whole commit hash
+  ok    built in code, it is APPLIED
+  ok    its DELETE waits for its code to come out
+  ok    and when that commit lands it is gone
+  ok    a made realm's ADD revises it and is APPLIED
+  ok    DELETE takes the lanterns off the board entirely and puts the meadow and the day back
+  ok    a made realm's row DELETE removes the feature from it, on or off
+  ok    the planner is asked for a palette, and the catalogue has a herd, dwellings and a village
+  ok    her prompt's board: pastel, a herd of bison, tepees, its people, and what no feature makes kept as wanted
+  ok    each asked thing is said as said and then without its mood words; a whole place is its own kind (0088)
+  ok    her colours are the setup's palette, not a line still wanted (0081)
+  ok    a revision keeps what was wanted before
+  ok    MAKE IT makes it: pastel, the herd, the tepees, the village
+  ok    and what it can't draw yet waits on its feature list, NOT APPLIED
+  ok    an ADD that changes the palette is APPLIED, and what it named that no feature makes waits on the list
+  ok    DELETE puts the pastel back
+  ok    a dropped .md: the model reads its words, and each thing it asks for is a line, APPLIED or NOT APPLIED
+  ok    and the realm has what it could draw
+  ok    DELETE on one line takes back only what it changed
+  ok    and the herd's line puts the bison back
+  ok    a dropped .docx: its paragraphs are what the model reads
+  ok    a dropped .pdf goes to the model as itself
+  ok    anything else is refused, and a visitor can't drop one
+  ok    the builder plans the board from a dropped document
+  ok    the Grid's rows are its walkers and its names, its robots row gone
+  ok    GET /api/analytics/realms answers text
+  ok    the Haunted House: two visitors, three visits (its old address counts), no team or automation
+  ok    a robot's batch is marked auto = 'bot' at the source
+  ok    Everglade: one visitor, one visit
+  ok    the list page and a realm nobody visited are not rows
+  ok    every row's minutes are a number
+  ok    only GET
+  ok    a guest makes a realm
+  ok    the guest owns it before logging in
+  ok    logging in keeps the guest's key, now the account's
+  ok    the made realm's world is the account's
+  ok    on that browser it is still theirs
+  ok    a fresh browser logging in to the same account gets its own key
+  ok    the account owns the realm there too
+  ok    the account changes its settings
+  ok    a visitor still may not
+  ok    a visitor's build waits as a card
+  ok    the account sees the card
+  ok    the account accepts it
+  ok    and declines one from the first browser
+  ok    another account doesn't own it
+  ok    with TALK on a visitor's question is answered in character
+  ok    and kept in the realm's name
+  ok    with TALK off a visitor gets no answer
+  ok    and nothing is spent on the day's cap
+  ok    nor does someone with no key
+  ok    the owner still talks
+  ok    a realm that isn't there is a 404
+  ok    the style question offers low poly, painterly and flat
+  ok    the planner is told what flat looks like
+  ok    a board asking for flat makes a flat realm
+  ok    a player comes into a room and is alone there
+  ok    the next one sees the first, where they are
+  ok    and the first sees them back
+  ok    another room is another room
+  ok    no player key, no room
+  ok    a room's name is a world id
+  ok    silly numbers are zero
+  ok    a line said in the room
+  ok    everyone reads it, with who said it
+  ok    presence brings the lines after the last one seen, marked whose
+  ok    and the speaker's own are marked theirs
+  ok    a line is at most 500 characters
+  ok    an empty line is refused
+  ok    a guest without a key can't speak
+  ok    five lines in ten seconds, then a pause
+  ok    the sid is kept with the line
+  ok    the demo's paths answer too
+  ok    a read is the last 50 at most
+  ok    a room holds 16 at once
+  ok    those in it stay
+  ok    someone gone six seconds isn't there any more, and frees a place
+  ok    automation in a room still sees the people there
+  ok    anyone can see who walks a room, and automation isn't among them
+  ok    a person in the room doesn't see the automation
+  ok    automation sees itself when it asks
+  ok    a headless browser is automation too
+  ok    a paired check sees the other of its pair, and the people
+  ok    and the first sees the second move
+  ok    another pair doesn't see them
+  ok    a mark that isn't a pair doesn't see them
+  ok    a person doesn't see a pair
+  ok    nor does the homepage
+  ok    a pair's GET sees its pair
+  ok    a GET joins nobody
+  ok    a signed presence is an agent's seat, under its account
+  ok    a person in the realm sees the seat, flagged agent, where it stands
+  ok    the seat's own page sees the people, not its own agent
+  ok    the homepage counts the seat
+  ok    an unsigned seat mark is automation, unseen
+  ok    a seat stays seen through a long action (40 s, not 6)
+  ok    a seat leaves at once
+  ok    a forged signature is refused, not taken as the player key
+  ok    a private realm's room is 404 to a visitor
+  ok    and to another account's seat
+  ok    its owner is in it
+  ok    a site admin's seat is in it
+  ok    a seat is an account's: unsigned is refused
+  ok    an account opens a seat and gets its own player key
+  ok    the seat's player is the account's
+  ok    a realm it can't see opens no seat
+  ok    its own private realm opens to it
+  ok    one seat an account: the newer closed the older, and its key is dead
+  ok    the seat's key sees its account's private realm, a visitor's doesn't
+  ok    the seat's page posting with its key is an agent's presence
+  ok    but a private realm's room stays its owner's
+  ok    a site admin's seat opens a private realm, and its key sees it
+  ok    keep: the account's open seat only
+  ok    a seat not kept for 10 minutes is closed, its key dead
+  ok    one kept under 10 minutes ago is open
+  ok    closed by its account, its key dead
+  ok    an eighth seat opens
+  ok    a ninth account's is refused: the site's seats are full
+  ok    the account with a seat may open again (it replaces its own)
+  ok    a hosted seat opens on the runner, with its key; the caller gets it without the key
+  ok    its actions go to the runner and come back
+  ok    an action is one JSON object
+  ok    another account can't act in it
+  ok    closing it tells the runner
+  ok    a logged-in page on this site opens a hosted seat as its account, without the key
+  ok    the page's verbs reach the seat
+  ok    the session on another site's page is refused
+  ok    a POST without this site's Origin isn't the session's
+  ok    the player key is no account here
+  ok    an unknown session is no account
+  ok    the page closes its seat
+  ok    no runner answering: no hosted seat, and nothing left open
+  ok    the runner opens a hosted seat, its key on the seat's stdin
+  ok    the same seat twice is refused
+  ok    its actions are answered
+  ok    an action is a JSON object, for a seat that is open
+  ok    at most 8 at once
+  ok    a closed seat is gone and frees its place
+  ok    a seat idle past its limit is closed; one acted in stays
+  ok    no seat's key reaches the runner's log
+  ok    a sentence makes the piece the model picked, with its fields
+  ok    the service's token goes with it
+  ok    the sentence is the model's only words from the visitor
+  ok    the model answers under the catalogue's schema: one piece of four, or none
+  ok    the prompt names every piece and its bounds
+  ok    the server's catalogue is the page's (verse/setpiece.coax)
+  ok    a count is held to the piece's range, and fields it doesn't have are left out
+  ok    a kind not the piece's is its default; a count is rounded and held
+  ok    missing fields are the piece's defaults
+  ok    a pond has a size only
+  ok    nothing in the catalogue fits: a 422
+  ok    an answer that isn't a piece is refused
+  ok    an answer that isn't JSON is no answer
+  ok    every sentence and what was picked is kept
+  ok    a model error is a 503
+  ok    no sentence is a 400
+  ok    a GET is a 405
+  ok    a player's set pieces come one at a time
+  ok    a player's piece is kept as theirs
+  ok    voice edit: an admin's sentence becomes the edit the model picked, without its not-said fields
+  ok    voice edit: the planner is asked with its thinking off, for a fast answer
+  ok    voice edit: the next sentence goes the moment the last is answered
+  ok    voice edit: one at a time: not while another is with the model
+  ok    voice edit: a failed try is tried once more
+  ok    voice edit: a stalled try is cut off and tried again, and the time both took is kept
+  ok    voice edit: the words are the model's only input from the admin
+  ok    voice edit: under the realm's catalogue as enums
+  ok    voice edit: the server's things are the page's (verse/everglade/edits.coax EG_EDIT_NAME)
+  ok    voice edit: the server's people are the page's (verse/everglade/people.coax), after nobody
+  ok    voice edit: every field is answered, edit and item first, then name
+  ok    voice edit: the prompt lists every thing with its size, and shows the logged sentences
+  ok    voice edit: switch: one of the realm's rows, off
+  ok    voice edit: switch: on, other fields dropped
+  ok    voice edit: show: the editing screen's pane
+  ok    voice edit: look: a question about the screen, the verb alone
+  ok    look: the picture and the words go to the model; its answer comes back as a chat reply
+  ok    look: the picture is never kept
+  ok    look: no picture is a 400, a picture not in base64 too
+  ok    look: admins only
+  ok    voice edit: a switch the realm doesn't have is no edit
+  ok    voice edit: a count is held to 1..40, other edits' fields dropped
+  ok    voice edit: a count under one is one
+  ok    voice edit: place onto a thing with a top
+  ok    voice edit: fill, with a colour
+  ok    voice edit: a ring
+  ok    voice edit: a size is held to 0.25..4
+  ok    voice edit: a colour not of the list is dropped
+  ok    voice edit: onto only a thing with a top, arrange only of the list
+  ok    voice edit: a place of a thing not in the list is missing, by its name
+  ok    voice edit: people and cats aren't placed
+  ok    voice edit: a place of nothing it knows and no name is not an edit
+  ok    voice edit: an item not in the catalogue, no name: not an edit
+  ok    voice edit: undo has no fields
+  ok    voice edit: list has no fields
+  ok    voice edit: remove these crates is every crate near
+  ok    voice edit: a name never rides along with a placed thing's kind
+  ok    voice edit: nor with many
+  ok    voice edit: remove that is the nearest
+  ok    voice edit: clear this
+  ok    voice edit: a name not of the city is dropped
+  ok    voice edit: remove a person by name
+  ok    voice edit: remove a building of the city
+  ok    voice edit: a building named is a building
+  ok    voice edit: a placed house is not the city's
+  ok    voice edit: a person not of the city is missing
+  ok    voice edit: a known thing named wins over a missing one
+  ok    voice edit: move, here
+  ok    voice edit: metres are held to 0.5..30
+  ok    voice edit: a direction not of the list is here
+  ok    voice edit: move takes placed things only
+  ok    voice edit: resize
+  ok    voice edit: a resize is held to 0.25..4
+  ok    voice edit: a resize of no factor is bigger
+  ok    voice edit: rotate
+  ok    voice edit: a turn is held to -360..360
+  ok    voice edit: a turn of no amount is 90
+  ok    voice edit: restore a building
+  ok    voice edit: restore a person
+  ok    voice edit: restore of someone not of the city is missing
+  ok    voice edit: the model can't answer missing itself
+  ok    voice edit: nothing fits
+  ok    voice edit: someone logged in who isn't an admin is refused
+  ok    voice edit: signed out is refused
+  ok    voice edit: another site's page is refused
+  ok    voice edit: a realm without rows or a catalogue says so
+  ok    voice edit: every sentence is kept with the admin who said it
+  ok    every realm: a hand-built realm's switch, held to its own rows
+  ok    every realm: its schema is the shared verbs and its rows, nothing of Everglade's
+  ok    every realm: the prompt names the realm, its rows and the shared verbs, and no catalogue
+  ok    every realm: open the settings is show, its own fields only
+  ok    every realm: why is the floor flickering is look, its own fields only
+  ok    every realm: add a ghost in the attic is ask, its own fields only
+  ok    every realm: chat answers
+  ok    every realm: a catalogue's verb or a row it hasn't is no edit
+  ok    every realm: look answers from the picture, the realm named
+  ok    every realm: Everglade keeps its catalogue and no ask
+  ok    every realm: a made realm's rows are its board's
+  ok    every realm: a made realm's row switched by voice
+  ok    every realm: a made realm's prompt is by its name
+  ok    a guest's batch with the player key records the player on the session
+  ok    sign-in needs a signature
+  ok    a bad signature is refused
+  ok    signing in keeps the guest's key, now the pubkey's
+  ok    the guest's world and realm moved, and the session
+  ok    the same signature is good once
+  ok    the worlds are the account's
+  ok    the realm's award is the account's
+  ok    the session carries the pubkey
+  ok    later events in that session carry it, even sent as a beacon
+  ok    a new session with the signed-in key carries it from the start
+  ok    a joined guest's saves move to the pubkey
+  ok    the guest's own account keeps none
+  ok    the save reads back as it was
+  ok    at a revision no device read from the guest's slot (#12719)
+  ok    so a device still at the guest's revision gets a 409
+  ok    another browser signing in with the same key gets a fresh key on the account
+  ok    and the same saves
+  ok    an older guest save than the account's stays behind it
+  ok    a key on one pubkey never moves to another: a fresh key, nothing moved
+  ok    the first pubkey keeps its worlds and session
+  ok    a key on an email's account signs in with a fresh key and takes nothing
+  ok    signed-out play is unchanged: a guest still makes worlds and keeps no server saves
+  ok    social: a line says who said it
+  ok    social: a presence keeps how high you fly
+  ok    social: in the room together, they have met
+  ok    social: the inbox lists who you have met, and nothing yet
+  ok    social: no key, no inbox
+  ok    social: a message to someone you have met
+  ok    social: it waits in their inbox, unread, with who sent it
+  ok    social: and the sender sees it as theirs
+  ok    social: reading another's leaves theirs unread
+  ok    social: read, it is no longer unread
+  ok    social: they answer from the inbox
+  ok    social: only to someone you have met
+  ok    social: not to nobody, nor yourself
+  ok    social: an empty message is refused
+  ok    social: a message is at most 500 characters
+  ok    social: five a minute, then a pause
+  ok    social: messages are never in analytics
+  ok    social: block a player
+  ok    social: a blocked player's messages are hidden
+  ok    social: and their lines, for who blocked them only
+  ok    social: you can't block yourself or nobody
+  ok    social: unblock, and they are back
+  ok    social: a player can't remove a line
+  ok    social: the inbox says who is an admin
+  ok    social: an admin removes a line
+  ok    social: it is gone for everyone, and the room says so
+  ok    social: removing needs a line
+  ok    automation: every line is kept
+  ok    automation: kept with its mark
+  ok    automation: a visitor sees only the real line, read or in the room
+  ok    automation: its sender still sees its own lines
+  ok    panes: a realm with none says nothing
+  ok    panes: no such realm is a 404
+  ok    panes: a visitor can't write lore
+  ok    panes: nor make a quest
+  ok    panes: an admin saves a character's lore
+  ok    panes: lore names its character by key
+  ok    panes: lore is capped at 400 characters
+  ok    panes: saving the form makes the quest
+  ok    panes: everyone reads the lore, one line, its bars and breaks made spaces
+  ok    panes: and the quest, its first three steps in place (a blank one kept blank)
+  ok    panes: saving again changes the giver's one quest
+  ok    panes: an empty ask takes the quest away
+  ok    panes: empty lore forgets it
+  ok    panes: a write from another site is refused
+  ok    panes: nothing written reaches analytics
+  ok    the team is loaded on start: the admin's key, two players and an email's hash, not the bad value
+  ok    no email is kept in the team
+  ok    an admin's login marks the browser team: oa_team for the whole site, two years
+  ok    a stranger is a visitor
+  ok    the team's browser (oa_team) is kept as auto = 'team'
+  ok    its session is team
+  ok    and its device is the team's
+  ok    (3) that device later, logged out and without the cookie, is team, and gets the cookie back
+  ok    a later batch of a team session (no pid in it) is team too
+  ok    automation keeps its own mark, even from the team's browser
+  ok    a browser logged in (/login) as an admin is team
+  ok    before anything ties it to the team, a visitor
+  ok    a join with a team email marks its session and the device
+  ok    and that device's earlier session is backfilled
+  ok    an imported team player's sessions are team as they come in, a stranger's are not
+  ok    a player not yet on the team: a visitor
+  ok    adding them to the team and running the backfill marks both their sessions
+  ok    the backfill runs twice harmlessly
+  ok    a stranger is never swept in
+  ok    the summary says how many of our team's sessions were left out
+  ok    team=1 counts them
+  ok    a team playtester is left out of the playtesters
+  ok    the sessions list leaves them out
+  ok    and shows them, marked, with team=1
+  ok    upgrades: listing needs a login
+  ok    upgrades: a look code Fairy Forest can't draw is refused
+  ok    upgrades: a name with markup is refused
+  ok    upgrades: a name is at most 40 letters
+  ok    upgrades: a price has a floor
+  ok    upgrades: a maker lists a fairy; it waits
+  ok    upgrades: a waiting listing isn't under UPGRADE
+  ok    upgrades: an admin sees what waits
+  ok    upgrades: nobody sees the maker's address
+  ok    upgrades: only an admin approves
+  ok    upgrades: an admin approves
+  ok    upgrades: the admin's lines
+  ok    upgrades: an approved listing shows under UPGRADE
+  ok    upgrades: buying needs a player
+  ok    upgrades: buying with sats is our wallet's invoice for the price
+  ok    upgrades: someone else's purchase isn't theirs to see
+  ok    upgrades: unpaid, it is open
+  ok    upgrades: not bought, not worn
+  ok    upgrades: paid, it is bought and its look comes back
+  ok    upgrades: the purchase is kept once in the replay ledger
+  ok    upgrades: the maker's payout is sent to their address, the price less the fee
+  ok    upgrades: the quote asked the maker's address for the price
+  ok    upgrades: asked again, nothing is paid twice
+  ok    upgrades: the first purchase carries no first-tip bonus
+  ok    upgrades: the buyer wears it, and owns it
+  ok    upgrades: most bought goes first
+  ok    upgrades: what you own isn't sold to you again
+  ok    upgrades: everyone in the forest sees the bought fairy
+  ok    upgrades: someone who bought nothing carries no look
+  ok    upgrades: back in the fairy you made, the room carries no look
+  ok    upgrades: what you bought you wear again
+  ok    upgrades: credit needs a login
+  ok    upgrades: not enough credit is a 402, and nothing is taken
+  ok    upgrades: bought with credit, the price comes out of it
+  ok    upgrades: a credit purchase pays the maker too
+  ok    upgrades: what was bought with credit isn't sold again
+  ok    upgrades: and the credit buyer is seen in it too
+  ok    upgrades: a rejected listing leaves UPGRADE and the room
+  ok    upgrades: a page of another site can't buy
+  ok    villa: no key, no pets
+  ok    villa: a pet is made, its name cleaned
+  ok    villa: someone else can't see it
+  ok    villa: a write from another site is refused
+  ok    villa: edits kept, avatar numbers held to range
+  ok    villa: a program is refused by name
+  ok    villa: a big photo is refused
+  ok    villa: an upload is opened in the bucket
+  ok    villa: a real JPEG is kept
+  ok    villa: it is under the environment's villa folder
+  ok    villa: a program called a PNG is refused and leaves the bucket
+  ok    villa: the agent reads the story and the kept photo only
+  ok    villa: its avatar and choices are kept
+  ok    villa: an emote needs words
+  ok    villa: someone else can't ask for one
+  ok    villa: the agent writes a motion from what was said
+  ok    villa: one ask at a time
+  ok    villa: a refused motion is asked again with the reason
+  ok    villa: a motion that played is kept on the pet
+  ok    villa: eight emotes at most, the newest kept
+  ok    villa: an emote is taken off
+  ok    villa: the garden has no draft
+  ok    villa: a memorial is not open before PLAY
+  ok    villa: PLAY gives it a plot, never an old stone's
+  ok    villa: everyone sees its tombstone
+  ok    villa: the memorial opens for anyone, without files
+  ok    villa: no photo is on the memorial until its owner shows one
+  ok    villa: an unshown photo can't be fetched
+  ok    villa: someone else can't show it
+  ok    villa: a refused file can't be shown
+  ok    villa: its owner shows it
+  ok    villa: the memorial lists it
+  ok    villa: anyone fetches a shown photo, as itself
+  ok    villa: a range of it, for a video
+  ok    villa: another pet's path doesn't open it
+  ok    villa: a link in a note is refused
+  ok    villa: a note is left
+  ok    villa: the owner hides it
+  ok    villa: a report needs a key
+  ok    villa: a report of nothing is refused
+  ok    villa: a note is reported
+  ok    villa: two reports (one twice) don't hold it
+  ok    villa: three people's reports hold it
+  ok    villa: reports never hide a memorial
+  ok    villa: three reports hold a chat line
+  ok    villa: the queue is for admins only
+  ok    villa: an admin sees each reported thing once, with how many reported it
+  ok    villa: what the reviewer reads is what it said
+  ok    villa: a kept note comes back
+  ok    villa: a kept chat line comes back as it was
+  ok    villa: a removed note is gone
+  ok    villa: decided, it leaves the queue
+  ok    villa: a hidden note is among the decisions, with RESTORE
+  ok    villa: RESTORE brings the note back as it was
+  ok    villa: nothing to restore twice
+  ok    villa: the queue page's rows are for admins only
+  ok    villa: the queue as rows: the open memorial report, then the decisions
+  ok    villa: a decision from another site is refused
+  ok    villa: HIDE from the page holds the memorial
+  ok    villa: PLAY again doesn't lift an admin's hold
+  ok    villa: the owner still has it, story and all
+  ok    villa: RESTORE from the page puts it back on its plot
+  ok    villa: a hidden chat line says so
+  ok    villa: a shown photo is reported
+  ok    villa: the queue says what and where it is
+  ok    villa: a hidden photo is off the memorial and can't be fetched
+  ok    villa: showing it again doesn't lift the hold
+  ok    villa: restored, it's back
+  ok    villa: its owner takes it off
+  ok    villa: a restored chat line says what it said
+  ok    villa: the old share link goes on to the memorial's own page
+  ok    villa: a memorial's page names her in its title and link preview
+  ok    villa: the page carries the memorial anyone sees, and takes its script from the site's shell
+  ok    villa: a trailing slash is the same page
+  ok    villa: a memorial that isn't here is the page saying so, 404 and unindexed
+  ok    villa: a name that can't be a memorial's is refused the same way
+  ok    villa: only GET
+  ok    villa: removing takes the pet, its tombstone and its files
+  ok    villa: a new pet has every skill
+  ok    villa: skills are only the known ones
+  ok    villa: an empty vase is refused
+  ok    villa: a vase is left, its bad flower dropped
+  ok    villa: one vase a minute
+  ok    villa: everyone sees it
+  ok    villa: someone else can't clean it up
+  ok    villa: its maker cleans it up
+  ok    chat: admin sign-in with next=chat goes to /chat
+  ok    chat: the admin's cookie opens /api/chat too
+  ok    admin: the same cookie goes to /api/playtest, so every realm's EDIT knows a site admin without /login
+  ok    admin: with only the oa_admin cookie, the Grid's spec says role admin (and a visitor's says visitor)
+  ok    chat: signed out, a 401 like the dashboard's
+  ok    chat: someone not an admin, a 403 and nothing else
+  ok    chat: a made-up session can't send
+  ok    chat: a write from another site is refused
+  ok    chat: only the runner takes turns
+  ok    chat: an admin's empty state
+  ok    chat: a message makes a conversation and a turn
+  ok    chat: the turn ran in a fresh checkout of main, on our key, as a chat workspace
+  ok    chat: the answer keeps its Markdown line breaks escaped
+  ok    chat: its tool use is shown
+  ok    chat: the conversation is listed with its title and model
+  ok    chat: big binary assets are left out of the checkout
+  ok    chat: the session file is kept for the next turn
+  ok    chat: the model changes mid-conversation
+  ok    chat: only the three Claude models are accepted
+  ok    chat: the follow-up resumes the same session, on the new model, in a refreshed checkout
+  ok    chat: a turn records that it resumed
+  ok    chat: a model given with the message is used and kept
+  ok    chat: one turn at a time in a conversation
+  ok    chat: STOP stops the running turn
+  ok    chat: the turn's budget is what's left of the cap
+  ok    chat: over the cap, OpenAgents' key refuses, and says so
+  ok    chat: the page sees the spend at the cap
+  ok    chat: something that isn't a key is refused
+  ok    chat: a bad API key is refused with the reason, and nothing is saved
+  ok    chat: a bad subscription token is refused with the reason
+  ok    chat: a good API key is checked and saved; only its kind and last four come back
+  ok    chat: the page shows the key's kind and last four only
+  ok    chat: with your own key the cap doesn't apply, and the turn uses only your key
+  ok    chat: a good subscription token is checked with a CLI turn and replaces the API key
+  ok    chat: a subscription token goes in CLAUDE_CODE_OAUTH_TOKEN alone
+  ok    chat: an expired token says so and is marked expired
+  ok    chat: REMOVE deletes the saved key
+  ok    chat: someone else's session can't read the conversation
+  ok    project: a member saves a subscription token from the project page
+  ok    project: KEY needs a member
+  ok    project: Cy's turn runs on Cy's token alone, no cap from us
+  ok    project: Cy's panel shows Cy's key
+  ok    project: Ada has none, so hers runs on OpenAgents' key under the cap, never Cy's
+  ok    project: Ada's panel shows no key of hers
+  ok    project: a key saved on /chat runs Ada's project turns too (one store)
+  ok    project: turns on a member's own credential don't count toward the project's spend
+  ok    project: an expired token says so and is marked expired; the next turn falls back to our key
+  ok    project: REMOVE from the project page deletes it
+  ok    chat: no key or token in the logs, turns, events or conversations
+  ok    room-admission: 250 bots for 192 seats: 192 seated, 58 wait
+  ok    room-admission: a full answer says how many wait and when to ask again (and Retry-After)
+  ok    room-admission: once all have asked, the 58 waiting pages ask 3.49 times a second, under the bound of 5
+  ok    room-admission: a reconnect storm of the 192 seated keeps every seat
+  ok    room-admission: a freed seat goes to a waiting bot
+  ok    room-admission: the next full answer names the last wait
+  ok    room-admission: the 13th ask in a minute from one player is 429 with retry_ms and Retry-After
+  ok    room-admission: one address is limited at 120 asks a minute
+  ok    room-admission: refusals are counted by reason: full, rate, seated after a wait
+  ok    a chat line's blocked words are masked, in any case
+  ok    a clean line is kept as said
+  ok    a kicked player can't say a line, and is told until when
+  ok    a kick that ended lets them speak again
+  ok    a paired check says a line
+  ok    the other check of the pair reads it with its presence
+  ok    and with a chat read
+  ok    another mark's check doesn't
+  ok    nor does a person
+  ok    the speaker still reads their own
+  ok    room-event: anyone reads the dials, off by default with every default
+  ok    room-event: a visitor can't change it
+  ok    room-event: a site admin's dials are kept, each clamped to its range
+  ok    room-event: dials not named keep their values; START counts a press
+  ok    room-event: STOP counts a press
+  ok    room-event: a body that isn't JSON is a 400
+  ok    room-event: room-control's line is the room server's 16 numbers
+  ok    room-event: XP is a column of the vitals, and the migration runs twice
+  ok    room-control: the event's line and the levels switch
+  ok    room-vitals: XP is kept and only rises; an old line (no XP) keeps it
+  ok    room-vitals: a line without XP keeps the XP
+  ok    room-ticket: its HP field carries the XP (HPxXP), and the answer says it
+  ok    room-invite: the shard's report puts Alice and 14 others in evinv-1
+  ok    room-invite: a player not in the room holds no seat (403)
+  ok    room-invite: Alice's INVITE holds the 16th seat for two minutes
+  ok    room-invite: a stranger is placed elsewhere while the seat is held
+  ok    room-invite: the list sends Alice's friend to her room while her invite holds a seat
+  ok    room-invite: the friend's ticket takes the held seat
+  ok    room-invite: claimed once: a second friend hears the room was full, whose it was, and is placed elsewhere
+  ok    room-invite: no invite into a full room (409)
+  ok    room-invite: the list names Alice's full room as with_full
+  ok    party: a player in no party has none
+  ok    party: an unknown key has no roster (403)
+  ok    party: an invite makes Alice's party and a code that lasts minutes
+  ok    party: Bob joins by the code; the party's version rises
+  ok    party: a code is used once (404 for the next)
+  ok    party: no such code (404)
+  ok    party: Bob's roster has Alice and him, the version he joined at
+  ok    party: Alice's HP is the room's report (7 of 9), and the roster lasts a minute
+  ok    party: health only: no place, room, look or class
+  ok    party: a report older than ten minutes (the room stopped) is no HP, not an old one
+  ok    party: Carol, who blocks Alice, can't join her party (403)
+  ok    party: Bob hidden: not in Alice's roster; the version rose
+  ok    party: a hidden member still sees themself
+  ok    party: Dave joins
+  ok    party: asked for the realm, Dave is placed in Alice's room (evpty-2), not the lowest (evpty-1)
+  ok    party: a room he names is his choice
+  ok    party join: without a member named, Dave goes where the party's pick is (evpty-1)
+  ok    party join: Dave joins Alice: her room (evpty-2)
+  ok    party join: one not in Alice's party can't follow her (party_away, placed as before)
+  ok    party join: a hidden member can't be followed (party_away)
+  ok    party join: Bob shown again: Dave joins him (evpty-1)
+  ok    party join: the roster still names no room
+  ok    party: one in no party is placed as before
+  ok    party: Alice's room full: Dave's ticket says so (party_full) and he is placed elsewhere
+  ok    party join: Alice's room full: joining her names it (party_full), placed elsewhere
+  ok    party: Bob leaves and has no party
+  ok    party: Alice's roster no longer has Bob
+  ok    party: eight at most: the eighth joins, the ninth is refused (409)
+  ok    party: durable: kept in the database (a restart reads the same rows)
+  rate  party placement: 32 of 32 tickets kept with the party while its room had a seat; 2 of 2 full rooms named; 0 trials not run
+  ok    party: the placement rate: every ticket with a seat in its party's room went there, every full one was named
+  ok    items: a grant applies and names its item
+  ok    items: the same grant again (its answer lost) answers the same item and grants nothing more
+  ok    items: another payload under that ID is refused (conflict)
+  ok    items: one item, not two
+  ok    items: two transfers from one read: the first applies, the second is refused (version), the item moved once
+  ok    items: a transfer of an item that isn't yours is refused (held)
+  ok    items: an escrowed item can't be transferred elsewhere
+  ok    items: the escrow settles to its party
+  ok    items: no escrow to cancel (held)
+  ok    items: a write under an older owner generation is refused (stale)
+  ok    items: the newest owner's applies
+  ok    items: a retry first sent more than a day ago is refused (expired), not applied
+  ok    items: an unsigned mutation is refused (401)
+  ok    items: the outbox has an entry for each applied change (grant, transfer, escrow, settle, grant)
+  ok    items: a consumer at sequence 2 gets 3 onward, once
+  ok    items: replaying the outbox gives the same items, owners and versions (restore)
+  ok    items: a row changed outside the ledger fails the reconciliation
+  ok    room-stats: a shard's signed report is kept
+  ok    room-stats: an unsigned one is refused
+  ok    room-stats: a replayed one (its t ten minutes old) is refused
+  ok    room-stats: the next is kept beside it
+  ok    room view: signed out, a 401 and no numbers
+  ok    room view: each number now and its series, oldest first, in its group
+  ok    room view: the queues and the bytes in their own groups
+  ok    room view: the seats from the last report
+  ok    room view: actual replication and durable acceptance keep their separate groups
+  ok    room view: accepted revision and owner are visible separately from pending latest state
+  ok    room view: no shard reporting is one empty section
+  ok    room-vitals: a post with operation IDs answers a receipt, a line applied
+  ok    room-vitals: the line's HP, XP and WANTED are kept, WANTED by the room that wrote it
+  ok    room-vitals: the same operation again (a retry) is applied once: d
+  ok    room-vitals: an older revision from the same process is stale and changes nothing
+  ok    room-vitals: a receipt names each line: no such player, unreadable, applied
+  ok    room-vitals: an unsigned post is refused
+  ok    room-vitals: another process's revisions are its own; XP still only rises
+  ok    room-state: a page's WANTED alone is refused
+  ok    room-state: the look is kept and the WANTED refused
+  ok    room-ticket: after the page's 0 and a reload, the room's WANTED is still there (w4)
+  ok    room-ticket: a WANTED level no room wrote (a page's, from before 0124) is not brought back
+  ok    room-ticket: the API runs without OA_ROOM_OWNER_GEN here: the ticket carries no generation (a room from before reads it)
+  ok    room-owner: each ticket takes the character's next generation
+  ok    room-owner: no such player has none
+  ok    room-vitals: a line from an older owner is refused (f) and changes nothing; the newest owner's is kept
+  ok    room-vitals: a line without a generation (a room from before) applies as before; generation 0 doesn't read
+  ok    builds: each shard's stats name its build, and the directory keeps it
+  ok    builds: a page of build 1.2.3 is placed on shard 4, the shard that runs it
+  ok    builds: a page of build 7.7.7 that asks for that instance is placed on a shard of its build instead
+  ok    builds: a page that names no build is placed as before (the instance it asks for)
+  ok    builds: a page of a build no shard runs is placed as before, for the room to send it to reload
+  ok    builds: once shard 4's build is a minute old, a 7.7.7 page may join its instance
+  ok    builds: an older report leaves the newer build
+  ok    builds: a saved character names the build that saved it (1.2.3, schema 2)
+  ok    checkpoint: a bad signature is refused
+  ok    checkpoint: a partial snapshot is refused
+  ok    checkpoint: an unissued owner cannot create a snapshot
+  ok    checkpoint: a whole snapshot is committed before its versioned receipt
+  ok    checkpoint: retry after a lost response keeps the original acceptance time
+  ok    checkpoint: a reused identity with changed coordinates conflicts
+  ok    checkpoint: a process cannot switch under the same owner
+  ok    checkpoint: later revisions cannot reduce accepted XP
+  ok    checkpoint: the next revision advances the entire snapshot
+  ok    checkpoint: an older revision is stale
+  ok    checkpoint: taking a new owner fences the old process
+  ok    checkpoint: a newly issued owner starts its own process revision
+  ok    checkpoint: a separate database connection sees the complete committed dead/place/build state
+  ok    region: B is a streaming replica of A
+  ok    region: a room's save in A reaches B
+  ok    region: partitioned, A keeps taking its room's writes
+  ok    region: promoted after the lease, B takes epoch 2; an epoch not newer is refused
+  ok    region: B's API starts on B with the same migrations as A (a compatible build)
+  ok    region: B's ticket carries an owner generation above anything A issued (2 << 20 and up)
+  ok    region: the loss window: B has the HP saved before the partition, none of A's 10 later writes
+  ok    region: A's room's line under A's owner generation is refused in B (f)
+  ok    region: the former primary (epoch 1) returns as B's replica at epoch 2, with B's HP, not its own window's
+  rate  region: replication lag 15 ms; loss window 10 writes over 5086 ms (the partition until the promotion); promoted in 135 ms, B's API ready at 290 ms, the first ticket at 334 ms, the first seat at -1 ms (-1: no ROOM_BIN)
+  ok    drain: a report with its process's generation is kept, and the shard takes players
+  ok    drain: once the shard says it drains, a new player is placed on another shard
+  ok    drain: a player of the draining shard who joins again is placed on another shard
+  ok    drain: a report from an older process of the shard is refused whole (409) and changes nothing
+  ok    drain: the replacement's first report clears the drain, and the shard takes players again
+  ok    drain: a report with no generation (a room from before) is kept as before
+  ok    drain: a malformed generation line is not a report
+room checks: 151 checks, 0 failed
+  ok    resume2: ticket issuance succeeds
+  ok    resume2: first join is an authenticated v4 envelope with no capture
+  ok    resume2: unversioned reports are fenced from the first durable ticket, before its first capture
+  ok    resume2: full dead body and spent resources commit before the receipt
+  ok    resume2: a lost reply retry keeps its first acceptance
+  ok    resume2: a separate connection sees the complete committed state
+  ok    resume2: ticket issuance succeeds
+  ok    resume2: a newly owned ticket returns the complete durable dead capture
+  ok    resume2: obsolete process cannot save after the next ticket
+  ok    resume2: a new owner cannot reduce the cumulative XP floor
+  ok    resume2: the new owner starts a fresh process revision
+  ok    resume2: a newer legacy XP report cannot strand an immutable same-owner capture
+  ok    resume2: ticket issuance succeeds
+  ok    resume2: account linking carries the durable body and fences its old owner
+  ok    resume2: the pre-link process cannot overwrite the account checkpoint
+Character checkpoint profile 2: 15 checks, 0 failed
+  ok    a pack session answers its key, digest and sizes
+  ok    a pack session is never cached
+  ok    the session's bytes arrive once, no-store
+  ok    the bytes are neither the stored object nor the pack
+  ok    the session's key opens them to the pack, digest and all
+  ok    a session's bytes come once
+  ok    an unknown session is gone
+  ok    an unknown pack is a 404
+  ok    the routes take their own methods
+  ok    each session has its own key
+  ok    a session past its two minutes is gone
+  ok    an address's third session this hour is given
+  ok    an address gets no fourth session this hour (OA_VERSE_PACK_PER_HOUR)
+  ok    the address is kept only as its digest
+  ok    the day's budget stops new sessions (OA_VERSE_PACK_DAILY_GB)
+  ok    the bucket was asked with the service's token
+verse pack checks: 16 checks, 0 failed
+ok   me: nobody is 401
+ok   me: a signed GET answers the key's own account
+ok   me: the same signature again is refused
+ok   me: a signature for another URL is refused
+ok   realms: a signed MAKE IT makes a realm
+ok   realms: a replayed MAKE IT is refused
+ok   realms: its owner makes it public
+ok   realms: the signer owns it
+ok   realms: the owner's signed save works
+ok   realms: another key's signed save is refused
+ok   realms: another key is a visitor, or can't see it
+ok   realms: a changed body is refused
+ok   realms: an unbound signed write is refused
+ok   realms: a signed write from another site's page is 403
+ok   realms: a forged header is 401, never the player key
+ok   guest: a player key is minted
+ok   guest: the player key makes a realm, as before
+ok   guest: and saves it
+ok   guest: a signer can't save the guest's realm
+ok   guest: the guest can't save the signer's realm
+ok   mine: an owner's realms, as lines
+ok   mine: and as JSON
+ok   mine: a key with no realms has none
+ok   mine: a guest key's realms
+ok   mine: nobody has none
+ok   mine: a replayed signature is refused
+ok   mine: is a GET
+ok   device: an unsigned start is 401
+ok   device: a start names its machine
+ok   device: a signed start answers an id and a code
+ok   device: the key's poll is waiting
+ok   device: another key's poll is 404
+ok   device: an unsigned poll is 401
+ok   device: look from another site is 403
+ok   device: look shows the machine
+ok   device: look with a bad code is 404
+ok   device: approving logged out is 401
+ok   device: a's key logs in with a session cookie
+ok   device: the session approves it
+ok   device: approved once
+ok   device: look says approved
+ok   device: the key's poll says approved, and the account
+ok   device: the key is the account now
+ok   device: the key saves the account's realm
+ok   device: and lists it as its own
+ok   device: a key with realms of its own is refused
+ok   unlink: the account's own key stays
+ok   unlink: a key not the account's is 404
+ok   unlink: logged out is 401
+ok   unlink: the device's key unlinks itself
+ok   unlink: and is its own account again
+ok   unlink: so it can't save the account's realm
+ok   expiry: the poll says expired
+ok   expiry: an expired code isn't approved
+ok   visibility: a made realm
+ok   visibility: a new realm is private: its owner sees it
+ok   visibility: private: another key gets 404
+ok   visibility: private: nobody gets 404
+ok   visibility: private: its document is 404 too
+ok   visibility: private: another key can't fork it
+ok   visibility: private: not on /og's rows
+ok   visibility: private: not on /realms' list
+ok   visibility: mine says private
+ok   visibility: another key can't change it (it is not there for them)
+ok   visibility: a word not a visibility is 400
+ok   visibility: its owner makes it unlisted
+ok   visibility: unlisted: another key reaches it by its slug
+ok   visibility: unlisted: still not on /og's rows
+ok   visibility: unlisted: still not on /realms' list
+ok   visibility: another key still can't change it
+ok   visibility: public: on /og's rows
+ok   visibility: public: on /realms' list
+ok   visibility: back to private: 404 to others again
+ok   visibility: back to private: off /realms' list
+ok   visibility: /realms' list takes no POST
+ok   visibility: a site admin sees a private realm
+ok   visibility: a site admin changes any realm's
+ok   admin realms: every realm with who sees it
+ok   admin realms: a filter leaves the others out
+ok   admin realms: not for others
+ok   invites on
+ok   visibility: invite only: an owner not approved is 403
+ok   visibility: invite only: and a publish can't list it
+ok   admin: approve the owner as a creator
+ok   visibility: invite only: an approved creator changes it
+ok   invites off
+ok   admin keys: not an admin yet
+ok   admin keys: a non-admin can't add one
+ok   admin keys: a root adds a database admin
+ok   admin keys: who is then an admin
+ok   admin keys: listed as db, the root as root
+ok   admin keys: a database admin sees a private realm
+ok   admin keys: a database admin can't add another
+ok   admin keys: a database admin can't remove a root
+ok   admin keys: nor can a root remove a root
+ok   admin keys: a root removes the database admin
+ok   admin keys: who is no longer an admin
+ok   admin keys: removing it again is 404
+98 checks, 98 passed, 0 failed
+ok no identity cannot spend selector quota
+ok a guest player header is not a spending identity
+ok a bound fresh NIP-98 request works without Origin
+ok the same signed event is refused on replay
+ok an unbound signed write is refused
+ok changed body cannot reuse a valid signature
+ok a signature for another URL is refused
+ok foreign Origin is refused before spending a good signature
+ok changing only Origin admits that exact unspent signature
+ok actual sign-in mints a throwaway session
+ok cookie writes require the same-site Origin
+ok a same-site session request reaches the selector
+ok bad Authorization cannot fall back to a good cookie
+ok wrong Origin wins even without an identity
+ok malformed input JSON
+ok missing input fields
+ok strict duplicate/version/type/unknown-field refusal
+ok strict duplicate/version/type/unknown-field refusal
+ok strict duplicate/version/type/unknown-field refusal
+ok strict duplicate/version/type/unknown-field refusal
+ok strict duplicate/version/type/unknown-field refusal
+ok strict duplicate/version/type/unknown-field refusal
+ok 601-byte words refuse before quota/model
+ok raw request cap refuses byte 16385
+ok empty raw request refuses before model
+ok wrong media is 415 without quota/model effects
+ok wrong method is 405
+ok stock
+ok selector receives exact words and typed stage context
+ok multi
+ok out
+ok exact-play
+ok above-play
+ok half
+ok below-half
+ok empty answer list is heard-only success
+ok private selection rows normalize to the same strict public answer
+ok in-stock creature retains confidence but unsupported entrance stays heard
+ok unsupported creature body action stays heard despite high confidence
+ok malformed
+ok duplicate
+ok bad-second
+ok scalar-p
+ok embedded-nul
+ok overlong
+ok missing-option
+ok wrong-sum
+ok not-argmax
+ok bad-envelope
+ok candidates-object
+ok parts-object
+ok status500
+ok status429
+ok minute
+ok user-day
+ok global-day
+ok user-active
+ok global-active
+ok expired lease no longer occupies an active slot
+ok reservation waits on the lock and refuses against the concurrently committed lease
+ok overlapping same-user slot admission is atomic
+ok overlapping global slot admission is atomic
+ok model timeout finishes one charged lease with no partial answer
+63 anime API checks passed, 0 failed
+ok the server's manifest of the fixture is the Coax rule's, byte for byte
+ok a template is refused when its engine is not named by content
+ok a realm's first revision is pinned to the engine served then; its page and spec name it
+ok publish pins the revision and today's engine together; a refused publish keeps nothing
+ok a fork starts on its parent's engine; its own publish leaves the parent's record alone
+ok without a bucket a publish is unpinned and the page plays today's engine
+ok coax/web/api/tests/realm_engine_pin.sql: 6 checks
+ok a shape is a FEATURE:N name, a whole-degree turn, a whole-percent size and gone
+ok a save keeps shapes with its moves; a page that sends moves only keeps them; refusals change nothing
+ok visitors, forks and undo carry the shapes of their revision
+ok coax/web/api/tests/realm_shapes.sql: 3 checks
+ok a slot is read and written as aethyr/forge/edit.coax names it; an edit's ops are the slots that differ
+ok a save, the settings, a row, lore, a quest and a card accepted are one step each, with their ops
+ok undo walks every step back to the first state, redo walks forward to the last, cards with them
+ok a new edit drops the redo; a step whose slots changed under it is refused whole; a declined card goes back and forth
+ok a step kept before the log undoes and redoes its whole revision
+ok lore and quests are published, undone and forked with the document; a visitor reads the revision published
+ok lore and quests kept before move into the document as one revision; older bytes and hashes stay; visitors see no change
+ok coax/web/api/tests/realm_edit_log.sql: 7 checks
+ok   release 1 staged; engine-served wrote its served hashes
+ok   its engine is named by content, served hashes included
+ok   the realm read into the edit model at revision 1
+ok   four edits and an undo in the model
+ok   saved as revision 2
+ok   published revision 2; the engine hash stated is the manifest's, worked out here
+ok   the record: revision 2, its manifest holds by the rule, its hash is the manifest's
+ok   every file the record names is served with the bytes it records (engine-served check)
+ok   a visitor's document hashes, here, to the record's document hash
+ok   reloaded from the published document: the same moves, turns, sizes and removals the edits made
+ok   the realm's page plays the pinned engine, not today's template
+ok   release 2 staged with a new engine
+ok   after release 2 the record and the realm's page still name release 1's engine
+ok   the owner moves trees:1 again
+ok   saved as revision 3, not published
+ok   a visitor still gets revision 2's document, byte for byte
+ok   a visitor forks it
+ok   the fork starts on its parent's pinned engine
+ok   the fork's document is the published revision's moves and shapes
+ok   the fork's owner restores props:2 and turns trees:1
+ok   the parent's published and current documents are untouched by the fork's edits
+ok   a save from a stale revision is refused (409); nothing changes
+ok   a publish whose engine can't be pinned is refused (503); revision 2 stays published
+ok   a newer document version is refused by the reader; the last one read stays
+24 of 24 checks
+api: checks passed

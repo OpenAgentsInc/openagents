@@ -69,6 +69,20 @@ c2_url :: (port:int,ticket:string,out:[]Sb)->string {sb_clear(out);sb(out,"ws://
 c2_ready :: (v:[]C2Client)->bool {until:=proc_now_ms()+10000;while !v[0].closed&&v[0].frames==0&&proc_now_ms()<until{c2_pump(v,50,false);}return v[0].frames>0&&v[0].own.id>=0;}
 c2_near :: (a:f32,b:f32)->bool {d:=a-b;return d>=-0.03&&d<=0.03;}
 c2_place_matches :: (v:[]C2Client,c:CharacterCapture)->bool {return c.ok&&c2_near(v[0].own.x,f32(c.n[13])/1000)&&c2_near(v[0].own.z,f32(c.n[15])/1000);}
+c2_metric::(s:string,key:string)->int{at:=0;while at<s.count{end:=at;while end<s.count&&s[end]!='\n'{end+=1;}line:=s[at..<end];if line.count>key.count&&line[0..<key.count]==key&&line[key.count]=='='{return ap_whole(line[key.count+1..<line.count]);}at=end+1;}return -1;}
+c2_column::(line:string,which:int)->string{at:=0;field:=0;while at<=line.count{end:=at;while end<line.count&&line[end]!='|'{end+=1;}if field==which{return line[at..<end];}field+=1;at=end+1;}return "";}
+c2_observed_capture::(text:string,c:CharacterCapture)->bool{at:=0;while at<text.count{end:=at;while end<text.count&&text[end]!='\n'{end+=1;}line:=text[at..<end];at=end+1;
+  if c2_column(line,0)=="saved"&&c2_column(line,1)=="checkpoint-test"&&c2_column(line,3)=="2"{
+    return ap_whole(c2_column(line,4))==c.n[1]&&ap_whole(c2_column(line,5))==c.n[2]&&ap_whole(c2_column(line,6))==c.n[3]
+      &&ap_whole(c2_column(line,7))>=30000&&ap_whole(c2_column(line,8))>=30000&&ap_whole(c2_column(line,9))>0&&c2_column(line,11)=="1"&&c2_column(line,12)=="1";
+  }}return false;}
+#test "checkpoint telemetry oracle keeps owner process and accepted revision distinct from pending" {
+  c:=cc_fixture();c.n[1]=7;c.n[2]=101;c.n[3]=12;
+  s:="checkpoint failures=4\ncheckpoint pending=1\nsaved|checkpoint-test|0|2|7|101|12|35000|34000|1762190000001|14|1|1\n";
+  #assert c2_metric(s,"checkpoint failures")==4&&c2_metric(s,"checkpoint failure")== -1&&c2_observed_capture(s,c);
+  c.n[3]=14;#assert !c2_observed_capture(s,c);
+}
+c2_vitals::(port:int,out:[]u8)->string{url:[1]Sb;sb(url[..],"http://127.0.0.1:");sb_int(url[..],port);sb(url[..],"/api/room/vitals");w:[1]HttpWork;none:[1]string;r:=http_do(w[..],"GET",sb_text(url[..]),none[0..<0],"",1000,0,out);return ifx r.error==HTTP_OK&&r.code==200 then cast(string)out[0..<r.n] else "";}
 c2_signal :: (h:int,signal:string)->bool {
   pid:[24]u8;word:[16]u8;n:=wire_put(word[..],0,"-");n=wire_put(word[..],n,signal);
   argv:=[3]string.["/bin/kill",cast(string)word[0..<n],ap_num(cxproc_pid(h),pid[..])];none:[1]string;child:=c2_start(argv[..],none[0..<0]);return c2_reap(child,0)==0;
@@ -150,16 +164,24 @@ c2_runtime :: (t:[]Ap,bin:string) {
   durable:=c2_saved(t,pid);dx:=client[0].own.x-f32(durable.n[13])/1000;dz:=client[0].own.z-f32(durable.n[15])/1000;
   print("crash2 outage_observation_ms=% active_ticks=% last_frame_ms=% loss_bound_ticks=901 rollback_meters=%\n",proc_now_ms()-outage_at,paused-base_tick,stopped_at-outage_at,sqrt(dx*dx+dz*dz));
   ap_check(t,"crash2: the outage includes actual unsaved movement to roll back",dx*dx+dz*dz>0.01,"");
+  metrics:[16384]u8;seen:=false;observe_until:=proc_now_ms()+11000;
+  while !seen&&proc_now_ms()<observe_until{observed:=c2_vitals(port[0],metrics[..]);seen=c2_metric(observed,"checkpoint failures")>0&&c2_metric(observed,"checkpoint retries")>0&&c2_metric(observed,"checkpoint pending")>0&&c2_metric(observed,"checkpoint paused rooms")==1&&c2_observed_capture(observed,durable);if !seen{c2_pump(client[..],100,true);}}
+  print("crash2 outage observed report:\n%",c2_vitals(port[0],metrics[..]));
+  ap_check(t,"vitals2: real outage reports the exact accepted owner process revision, pending retries failures and pause",seen,"");
   ignored_37:=c2_reap(server,PROC_SIGKILL);c2_close(client[..]);third_restart_at:=proc_now_ms();ignored_38:=c2_file(dir,"mode","pass");server=c2_room(t,bin,dir,proxy_port,port[..]);
   opened=c2_connect(client[..],c2_url(port[0],c2_ticket(t,pl_key(p[..]),tb[..]),url[..]));ready=c2_ready(client[..]);
   ap_check(t,"crash2: crash during outage returns exactly the accepted place",opened&&ready&&c2_place_matches(client[..],durable),"");
   third_total:=client[0].opened_ms+client[0].first_ms-third_restart_at;
   print("crash2 outage_restore_socket_ms=% outage_restore_total_ms=%\n",client[0].first_ms,third_total);
   ap_check(t,"crash2: all healthy replacements restore within the 60 second total objective",first_total>0&&first_total<=60000&&second_total>0&&second_total<=60000&&third_total>0&&third_total<=60000,"");
-  stopped:=c2_signal(server,"STOP");old_server:=server;other:[1]C2Client;
+  stopped:=c2_signal(server,"STOP");old_server:=server;old_port:=port[0];other:[1]C2Client;
   server=c2_room(t,bin,dir,proxy_port,port[..]);opened=c2_connect(other[..],c2_url(port[0],c2_ticket(t,pl_key(p[..]),tb[..]),url[..]));ready=c2_ready(other[..]);newer:=c2_saved(t,pid);
   resumed:=c2_signal(old_server,"CONT");c2_pump(client[..],7000,false);kept:=c2_saved(t,pid);
   ap_check(t,"crash2: paused obsolete process resumes, loses its seat, and cannot overwrite its successor",stopped&&resumed&&opened&&ready&&client[0].closed&&client[0].elsewhere&&kept.n[1]==newer.n[1],"");
+  fenced_seen:=false;observe_until=proc_now_ms()+11000;
+  while !fenced_seen&&proc_now_ms()<observe_until{fenced_seen=c2_metric(c2_vitals(old_port,metrics[..]),"checkpoint stale owner refusals")>0;if !fenced_seen{c2_pump(other[..],100,false);}}
+  print("crash2 obsolete owner observed report:\n%",c2_vitals(old_port,metrics[..]));
+  ap_check(t,"vitals2: the actual obsolete process exposes its stale-owner receipt refusal",fenced_seen,"");
   ignored_old:=c2_reap(old_server,PROC_SIGKILL);c2_close(client[..]);client[0]=other[0];
   c2_pump(client[..],500,true);c2_pump(client[..],400,false);final_x:=client[0].own.x;final_z:=client[0].own.z;
   ignored_39:=proc_kill(server,PROC_SIGTERM);c2_pump(client[..],500,false);exit:=c2_reap(server,0);final:=c2_saved(t,pid);

@@ -788,6 +788,27 @@ do not count transmitted rows, accepted saves or presented outcomes. The native
 vitals report labels their scope and keeps existing seat records unchanged.
 Checks: room-stats.coax's category, liveness and production-path cases.
 
+`frame-observe.coax` counts every application frame actually accepted by a
+native socket queue. Complete frame bytes include WebSocket framing (and the
+client mask on input); D-header and entry bytes partition that complete D
+frame exactly, with no one-in-four extrapolation. Queued bytes are not claimed
+as delivered. Actual kernel writes, refused frame queues and bytes discarded
+on close are separate native effects. Counter saturation marks the observation
+degraded. Serialized rows and deferrals are read from the production v3
+serializer and labeled before relay admission, with their own worst room/seat.
+
+Accepted-save metrics advance only at the producer's exact receipt boundary.
+Checkpoint revision, process, API acceptance time, capture age and local receipt
+age stay separate from the latest pending capture and retry counts. A late or
+failed post cannot advance them. Legacy expiry, eviction, stale/refused receipts
+and historical bare success cannot create a durable revision; legacy receipt
+times use their declared wall clock while profile 2 ages use monotonic time.
+These observations do not alter ownership, persistence admission or loss bounds.
+The separate server-queued ACK sample ends only when the final ACK frame is
+accepted by the socket queue; it excludes estimated network RTT. The older
+input-to-ACK estimate retains its historical RTT term. Client presentation
+remains a separate measured boundary. Report truncation is explicitly counted.
+
 ## An admitted Everglade seat keeps a cast reservation
 
 `coax/web/room/cast-budget.coax` (#12841, `#authority`, mutation-checked)

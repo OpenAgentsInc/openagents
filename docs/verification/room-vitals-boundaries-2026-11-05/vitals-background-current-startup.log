@@ -1,0 +1,1 @@
+startup native: healthy=true unready=true all_three_cold_paths_refused=true ready_after_publication=true sharded_connected=true frames=1
