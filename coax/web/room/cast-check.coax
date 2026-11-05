@@ -8,6 +8,8 @@
 //   bot 2, a druid, casts Thunderbolt (a 1.2 s bar) at a wolf by its TGT, and bot 3, a druid, Mega
 //     Thunderbolt (a 0.5 s bar) at the same wolf 150 ms later: the wolf falls to bot 3's in bot 2's
 //     bar, so bot 2's stops (e stop SS 1 gone) and never strikes.
+// The bots play Everglade's own characters, their whole bars (the hello's EV_DEMO_FLAG on an admin's
+// ticket, room-socket.coax), so a room with levels on takes the same casts as one with them off.
 // Every cast must be answered (taken: e cast; refused: r) within CC_ANSWER_MS, whatever the network
 // held or lost. Prints a line for each part and "casts hold" (exit 0), or "casts fail" (exit 1).
 //   coax/web/tool.sh coax/web/room/cast-check.coax ws://127.0.0.1:PORT [ROOM] [ROUNDS]
@@ -131,7 +133,7 @@ tool_main :: () -> int #export_c {
     ui := rs_ticketed(ub[..], url, cast(string) pid[0..<pn], cast(string) nm[0..<mn]);
     if ui.count == 0 || !relay_conn_open(c[i..<i + 1], ui) { tool_err("cast-check: can't open "); tool_errln(url); print("casts fail\n"); return 1; }
     hm: [96] u8;
-    hn := rs_put(hm[..], rs_put(hm[..], 0, ifx i == 0 then "H 4 ranger.0.0.0 warlock 0 " else "H 4 ranger.0.0.0 druid 0 "), cast(string) nm[0..<mn]);
+    hn := rs_put(hm[..], rs_put(hm[..], 0, ifx i == 0 then "H 4 ranger.0.0.0 warlock 64 " else "H 4 ranger.0.0.0 druid 64 "), cast(string) nm[0..<mn]);
     _ := relay_conn_send(c[i..<i + 1], cast(string) hm[0..<hn]);
   }
   print("cast-check: % players in %, % rounds\n", CC_BOTS, url, rounds);

@@ -801,7 +801,7 @@ rc_fault :: (t: [] Ap, room_bin_in: string) {
   ca := [8] string.["coax/web/tool.sh", "coax/web/room/raid-check.coax", sb_text(url[..]), ap_num(FC_N, nn[..]), "100", ap_num(rc_wall_ms() / 1000, secs[..]), "druid", "fight"];
   cenv := [1] string.[sb_text(kb[..])];
   check := ifx room >= 0 then fc_start(ca[..], cenv[..], "") else -1;
-  begun := proc_now_ms(); pressed := false; raided := false;
+  begun := proc_now_ms(); pressed := false; raided := false; stopped := false;
   rb: [4200] u8; raid_path := fs_join(work, "raid", rb[..]);
   json: [65536] u8; json_n := 0; tail: [1] Sb;
   line: [65536] u8;
@@ -818,6 +818,9 @@ rc_fault :: (t: [] Ap, room_bin_in: string) {
     e := proc_now_ms() - begun;
     if !pressed && e >= 6000 { sb_clear(ctl[..]); sb(ctl[..], dials); sb(ctl[..], " 1 0\nlevels 1 2\n"); w := fs_write(control, sb_text(ctl[..])); pressed = true; }   // START NOW
     if !raided && e >= 16000 { w := fs_write(raid_path, "1"); raided = true; }   // the faults start with the next post
+    // STOP 10 s before the bots leave: the raiders go, so no XP comes after the bots stop listening (a
+    // raider one hurt and the watch felled later would still pay its held seat: room-events.coax ev_fell)
+    if !stopped && e >= 90000 { sb_clear(ctl[..]); sb(ctl[..], dials); sb(ctl[..], " 1 1\nlevels 1 2\n"); w := fs_write(control, sb_text(ctl[..])); stopped = true; }
   }
   if check >= 0 { w := proc_wait(check, 5000); r := proc_release(check); }
   // each seat's XP as raid-check heard it ("xp_seats": "x10+20 x5 ...")

@@ -547,7 +547,10 @@ XP saves the way HP does (#12715):
 - **A local raid** (`coax/web/tool.sh coax/web/room/room-proof.coax raid BIN [N] [SECONDS] [PORT]`): it starts a room server
   built by `build.sh`, with a local key, its control lines read from a file, and nothing sent to
   the API. Then it joins N players, presses START NOW once they're in, and runs
-  `raid-check.coax`. Each player walks to the square and casts Starry Wisp at the nearest raider.
+  `raid-check.coax`. In square mode (the default), each player walks to the square and casts
+  Starry Wisp at a raider within range. The siege stands outside the palisade, so no raider comes
+  in range there. In fight mode (`RAID_MODE=fight`), each player walks out through the South Gate
+  to the nearest raider and casts its level 1 kit at it, which earns XP (#12906).
   The check reports what every seat heard: the phases, waves, raiders by kind, their casts, the
   hits on them, XP, refusals by reason, and the D rate. `RAID_DIALS` sets other dials.
   - The siege (#12860), 2026-11-04, at the default dials, players in fight mode (`RAID_MODE=fight`,

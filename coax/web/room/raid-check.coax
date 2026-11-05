@@ -10,8 +10,9 @@
 // ROOM: the room's number (pair-raid-ROOM), so browser players (?relay=ws://localhost:8871&room=
 // pair-raid-ROOM) can join the same raid; a number from the clock when it isn't given.
 // CLASS: druid (the default), warlock, or mix (every other seat a Warlock). MODE: square (the default:
-// each walks to the square and holds it, casting at what comes in range) or fight (each goes into
-// range of the nearest raider it sees, as a new player does, and casts its level 1 kit at it: the
+// each walks to the square and holds it, casting at what comes in range; the siege stands outside the
+// palisade, so nothing does) or fight (each goes into range of the nearest raider it sees, out
+// through the South Gate, as a new player does, and casts its level 1 kit at it: the
 // druid's Starry Wisp, Produce Flame and Ray of Frost, and Ice Knife while it has slots; the
 // Warlock's Eldritch Blast, and Chill Touch up close). LEVEL2: 1 to fail unless every seat reached
 // level 2 (the XP check, room-proof.coax raid RAID_LEVEL2=1).
@@ -33,6 +34,7 @@ rc_max :: (a: int, b: int) -> int { return ifx a > b then a else b; }
 rc_min :: (a: int, b: int) -> int { return ifx a < b then a else b; }
 RC_SEEN :: 128;
 RC_SQUARE_X :: 0.0; RC_SQUARE_Z :: 16.0;
+RC_GATE_X :: 0.0; RC_GATE_Z :: -56.0;   // the palisade's South Gate (verse/everglade/plan.coax EG_GATE), 6 m wide
 RcHeard :: struct {
   w: bool; d: int; me_x: f32; me_z: f32; me_seen: bool;
   phase_seen: int;                 // bit p: phase p was heard in a g entry
@@ -42,10 +44,12 @@ RcHeard :: struct {
   kinds: int;                      // bit (P1 - 20): the kinds it saw
   raiders_seen: int; casts: int; hits_on: int; breaks: int; xp: int; level: int; levels_heard: int; v_level: int;
   bad: int;
+  seat: int = -1;                  // the seat the room gave it (its y frame); its index until then
   refused: int; r_cool: int; r_range: int; r_level: int; r_other: int; r_dead: int; r_busy: int; r_slot: int;
-  flip: f32; last_gap: f32 = -1; gap_at: int;   // the walk to the square: its yaw's sign, and the gap a second ago
+  flip: f32; last_gap: f32 = -1; gap_at: int; aside: int;   // the walk: the side it last stepped to, the gap a second ago, the tick its step aside ends
   wl: bool; casts_n: int;                        // a Warlock's seat; its casts sent, for the kit's turn
   xp_end: int;                                   // XP heard after the raid's outcome (its end award)
+  v_xp: int;                                     // its XP as the room's v entry last said (the total)
   bytes: int;                                    // the bytes of every frame it heard
   m: [1] WireMirror;                             // the rows its D's left, as the page's (its I's HEARD)
   // the siege (#12860): the front's least and most (permille), its samples and those in the band, the
@@ -120,7 +124,7 @@ rc_entry :: (h: [] RcHeard, me: int, t: string) {
     return;
   }
   if k == "v" {
-    if rs_num(rs_field(t, 1)) == me { h[0].v_level = rs_num(rs_field(t, 2)); }
+    if rs_num(rs_field(t, 1)) == me { h[0].v_level = rs_num(rs_field(t, 2)); h[0].v_xp = rc_max(h[0].v_xp, rs_num(rs_field(t, 3))); }
     return;
   }
   if k == "x" {
@@ -140,6 +144,7 @@ rc_entry :: (h: [] RcHeard, me: int, t: string) {
 rc_hear :: (h: [] RcHeard, me: int, t: string) {
   h[0].bytes += t.count;
   if rs_starts(t, "W ") { h[0].w = true; return; }
+  if rs_starts(t, "y ") { h[0].seat = rs_num(rs_field(t, 1)); return; }
   if rs_starts(t, "r ") {
     h[0].refused += 1;
     why := rs_field(t, 2);
@@ -154,7 +159,7 @@ rc_hear :: (h: [] RcHeard, me: int, t: string) {
   while at < t.count {
     e := at;
     while e < t.count && t[e] != ';' { e += 1; }
-    rc_entry(h, me, t[at..<e]);
+    rc_entry(h, ifx h[0].seat >= 0 then h[0].seat else me, t[at..<e]);
     at = e + 1;
   }
 }
@@ -234,17 +239,26 @@ tool_main :: () -> int #export_c {
       }
       stop: f32 = 3;
       if fight && nq >= 0 { sx = h[i].xs[nq]; sz = h[i].zs[nq]; stop = rc_reach(h[i..<i + 1]) - 2; }
+      // the siege stands outside the palisade (#12860): a seat inside it with its raider outside walks
+      // out through the South Gate's gap, not into the wall beside it
+      if fight && nq >= 0 && h[i].me_z > RC_GATE_Z - 2 && sz < RC_GATE_Z {
+        sx = RC_GATE_X; sz = ifx abs(h[i].me_x - RC_GATE_X) > 1.5 then RC_GATE_Z + 5 else RC_GATE_Z - 4; stop = 0.5;
+      }
       wx := sx - h[i].me_x; wz := sz - h[i].me_z; gap := sqrt(wx * wx + wz * wz);
       ahead := ifx h[i].me_seen && gap > stop then 100 else 0;
+      // ahead is -(sin, cos) of the camera's yaw (cast-check.coax): the yaw that faces the goal. A
+      // second of walking that came no nearer (the watch's ranks in the way) steps aside for 0.7 s,
+      // the other side each time.
+      yaw := rc_atan2(-wx, -wz);
       if h[i].me_seen && tick - h[i].gap_at >= 30 {
-        if h[i].last_gap >= 0 && ahead > 0 && gap > h[i].last_gap - 0.5 { h[i].flip = ifx h[i].flip == 0 then 3.14159 else 0; }
+        if h[i].last_gap >= 0 && ahead > 0 && gap > h[i].last_gap - 0.5 { h[i].flip = ifx h[i].flip > 0 then -1.0f32 else 1.0f32; h[i].aside = tick + 20; }
         h[i].last_gap = gap; h[i].gap_at = tick;
       }
-      yaw := rc_atan2(wx, wz) + h[i].flip;
+      side := ifx ahead > 0 && tick < h[i].aside then cast(int) (h[i].flip * 100) else 0;
       while yaw > 3.14159 { yaw -= 6.28318; }
       while yaw < -3.14159 { yaw += 6.28318; }
-      k := rs_put(m[..], rs_int(m[..], rs_put(m[..], 0, "I "), seq[i]), " 0 ");
-      k = rs_int(m[..], k, ahead); k = rs_put(m[..], k, " 0 0 "); k = rs_int(m[..], k, cast(int) (yaw * 10000)); k = rs_put(m[..], k, " 1 "); k = rs_int(m[..], k, h[i].m[0].heard);
+      k := rs_put(m[..], rs_int(m[..], rs_put(m[..], 0, "I "), seq[i]), " ");
+      k = rs_int(m[..], k, side); k = rs_put(m[..], k, " "); k = rs_int(m[..], k, ahead); k = rs_put(m[..], k, " 0 0 "); k = rs_int(m[..], k, cast(int) (yaw * 10000)); k = rs_put(m[..], k, " 1 "); k = rs_int(m[..], k, h[i].m[0].heard);
       _ := relay_conn_send(c[i..<i + 1], cast(string) m[0..<k]);
       // about every 0.6 s, a Starry Wisp at the nearest raider within 18 m (its 60 feet)
       if tick < next[i] || !h[i].me_seen { continue; }
@@ -268,6 +282,10 @@ tool_main :: () -> int #export_c {
     }
     while rs_now() - t0 < tick * 1000 / 30 { rc_drain(c[..], h[..], n,capture,capture_at,written[..]); proc_sleep(2); }
   }
+  // a gain's e xp is a cue, which a busy tick may drop; the v entry carries the room's total, so a
+  // seat's XP is the larger (what the room saves), the part an e xp missed counted with the raid's
+  missed := 0;
+  for i: 0..<n { if h[i].v_xp > h[i].xp { missed += h[i].v_xp - h[i].xp; h[i].xp = h[i].v_xp; } }
   // what all heard
   waves := 1000; climax := 0; seen := 1000; casts := 1000; hits := 1000; breaks := 0; earned := 0; bad := 0; xp := 0; lv2 := 0; d := 1000000; bytes := 0;
   for i: 0..<n {
@@ -328,6 +346,7 @@ tool_main :: () -> int #export_c {
     sn = rs_put(sb[..], sn, ifx h[i].wl then "w" else "d"); sn = rs_int(sb[..], sn, h[i].xp - h[i].xp_end);
     sn = rs_put(sb[..], sn, "+"); sn = rs_int(sb[..], sn, h[i].xp_end);
   }
+  jo_key(o[..], "xp_cues_missed"); jo_int(o[..], missed);
   jo_key(o[..], "xp_seats"); jo_str(o[..], cast(string) sb[0..<sn]);
   far := 0; for i: 0..<n { if h[i].last_gap > 8 { far += 1; } }
   rf := 0; rcool := 0; rrange := 0; rlevel := 0; rother := 0;
