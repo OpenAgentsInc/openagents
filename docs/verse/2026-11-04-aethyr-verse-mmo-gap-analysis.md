@@ -706,6 +706,6 @@ production test or deploy was run for this review.
 The required `coax/web/tool.sh tools-check` ran at `eeeea52fac`
 and reported 20 existing tracked tools without a `Firm reason:` header or
 port-list entry. They include `coax/web/api/test_room_stats.py`,
-`coax/web/room/cast-proof.sh`, `coax/web/room/local.sh` and the
+`coax/web/room/cast-proof.sh`, `coax/web/room/local.coax` and the
 `verse/tools/humans/` tools. This document introduces no tool files and does
 not repair or waive those baseline failures.

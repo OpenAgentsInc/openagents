@@ -5,7 +5,7 @@
 // over others' heads), and the bot's body lies (everglade-rangers.coax). A picture of each, with
 // --shots PREFIX.
 //   coax/web/tool.sh coax/web/everglade-combat.coax PAGE_URL [--shots PREFIX] [--seconds S]
-// PAGE_URL is the local room's page with ?relay= and &room=pair-guard-N (coax/web/room/local.sh).
+// PAGE_URL is the local room's page with ?relay= and &room=pair-guard-N (coax/web/room/local.coax).
 // Prints a line per check, one JSON line, then holds or fails. Nothing opens on screen.
 #import "Basic";
 #load "../lib/net/cdp.coax";

@@ -30,7 +30,7 @@ decision with the conditions that would reverse it.
 
 ### The WebSocket profile, measured
 
-`coax/web/room/transport-proof.sh` runs a local room server
+`coax/web/room/room-proof.coax transport` runs a local room server
 (`coax/web/room/bin/room --dev`), the shaping proxy
 (`coax/web/room/net-proxy.coax`) in front of it, and four `load.coax`
 everglade players through the proxy for 60 seconds per profile. Each player
@@ -46,7 +46,7 @@ and longest gap between new state frames (33 ms at the room's 30 Hz), and
 
 ```sh
 coax/web/room/build.sh
-coax/web/room/transport-proof.sh "$PWD/coax/web/room/bin/room" 8981 4 60 0/0/0 100/30/20 250/30/20 250/30/50
+coax/web/tool.sh coax/web/room/room-proof.coax transport "$PWD/coax/web/room/bin/room" 8981 4 60 0/0/0 100/30/20 250/30/20 250/30/50
 ```
 
 Results on 2026-11-05, Apple Silicon Mac, room and players on one machine:

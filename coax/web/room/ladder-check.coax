@@ -11,7 +11,7 @@
 // Knight, 5 the Priest, 8 a Scout), and fight: the outlaw's Hit Points drop. At WANTED 4 and over the
 // doors row's FORM says the gates are shut on both pages; under 4 it says they are open.
 //   coax/web/tool.sh coax/web/room/ladder-check.coax ws://127.0.0.1:PORT [SECONDS] [earn | arrive L [PID] | rejoin L PID]
-// Run it against a local room (local.sh, or room --dev with its stand-in key as OA_ROOM_TICKET_KEY).
+// Run it against a local room (local.coax, or room --dev with its stand-in key as OA_ROOM_TICKET_KEY).
 // Prints one JSON line, then "comes" and exits 0, or "fails" and 1.
 #load "room-socket.coax";
 

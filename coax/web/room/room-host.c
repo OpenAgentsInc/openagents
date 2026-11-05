@@ -4,7 +4,7 @@
    (rm_join), each text frame (rm_heard) and each close (rm_left), calls
    rm_tick 60 times a second and sends each player what rm_state writes.
      room [--listen 127.0.0.1] [--port 8830] [--dev DIR [--no-rooms]]     PORT in the environment wins (Cloud Run: 0.0.0.0)
-   --dev DIR is local development (coax/web/room/local.sh): the room is also the API's stand-in. Its
+   --dev DIR is local development (coax/web/room/local.coax): the room is also the API's stand-in. Its
    world is DIR/world-everglade.json, and it answers GET /api/playtest/world/everglade with
    that same document, so a page served with `serve.sh --api` reads the world the room plays.
    The local player is the realm's admin (GET /api/auth/viewer says A|1; OA_ROOM_DEV_ADMIN=0 a
@@ -59,7 +59,7 @@ static coax_t_RmServer *server;
 static int64_t slow_closed, out_peak;
 static coax_v_t_RmServer view(void) { return (coax_v_t_RmServer){server, 1}; }
 #include "room-stats.h"   /* the vitals for the admins' room view (#12791) */
-/* --dev DIR: the local stand-in for the API (local.sh). The world document is read once from DIR and
+/* --dev DIR: the local stand-in for the API (local.coax). The world document is read once from DIR and
    is the one both the room and the page use. */
 static const char *dev_dir;
 static bool no_rooms;   /* --no-rooms (with --dev): the rooms list and joins answer 503, the rooms down */
@@ -420,7 +420,7 @@ static void opening(int i) {
                              (long long)server->shard, (long long)tp50, (long long)tp95, (long long)tn);
     http(i, "200 OK", "text/plain", body); return;
   }
-  /* --dev: the API's stand-in (local.sh): the world document the room laid, byte for byte */
+  /* --dev: the API's stand-in (local.coax): the world document the room laid, byte for byte */
   if (dev_dir && !strncmp((char *)c->in, "GET /api/playtest/world/everglade", 33) && (c->in[33] == ' ' || c->in[33] == '?')) {
     http(i, "200 OK", "application/json", dev_world ? dev_world : "{}"); return;
   }

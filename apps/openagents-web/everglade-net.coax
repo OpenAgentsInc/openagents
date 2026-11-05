@@ -118,7 +118,7 @@ EgNet :: struct {
   // instance and its oa-room shard), and how much of url is the host (wss://HOST)
   realm: [NET_CODE] u8; realm_n: int; host_n: int;
   // the seat ticket the socket opens with (?t=, #12712): asked of the API before each open, used once;
-  // local_relay: a room server on this machine (?relay=ws://localhost:PORT, coax/web/room/local.sh),
+  // local_relay: a room server on this machine (?relay=ws://localhost:PORT, coax/web/room/local.coax),
   // which keeps its own address; its tickets come from the API's local stand-in, as production's do
   ticket: [NET_TICKET] u8; ticket_n: int; ticket_asked: bool; local_relay: bool;
   // local_host: offline play's room, the room server's own simulation in this browser (?offline=worker:

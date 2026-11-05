@@ -476,7 +476,7 @@ join_key :: (s: [] Everglade, key: int) -> bool {
   l: [1] Everglade; ln: [1] EgNet;
   everglade_attach_net(l[..], ln[..]);
   net_facts(l[..], "url=http://localhost:8787/worlds/everglade?relay=ws://localhost:8830\nplayer=p1\n", "everglade", false);
-  // a local room server (local.sh) is asked for its list through the page's /api/, as the API is
+  // a local room server (local.coax) is asked for its list through the page's /api/, as the API is
   #assert cast(string) ln[0].url[0..<ln[0].url_n] == "ws://localhost:8830/api/room/relay/everglade/" && ln[0].join[0].list_due && !ln[0].join[0].test;
   q: [1] Everglade; qn: [1] EgNet;
   everglade_attach_net(q[..], qn[..]);

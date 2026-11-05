@@ -9,7 +9,7 @@
 //   coax/web/tool.sh coax/web/room/hp-rejoin-check.coax ws://127.0.0.1:PORT [SECONDS] [hurt | down] [CLASS] [FLAGS]
 // CLASS is the hello's (druid, the default, or warlock: its hello builds the caster again), FLAGS its
 // FLAGS (64, the default: an admin's demo character, the #12883 report's 52 of 57).
-// Run it against a local room (local.sh, or room --dev with its stand-in key as OA_ROOM_TICKET_KEY).
+// Run it against a local room (local.coax, or room --dev with its stand-in key as OA_ROOM_TICKET_KEY).
 // Prints one JSON line, then "keeps" and exits 0, or "fails" and 1.
 #load "room-socket.coax";
 

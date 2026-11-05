@@ -1,0 +1,171 @@
+// A local Everglade room as production has it: the room server and the page server, with the room
+// as the API's stand-in (room-host.c --dev, coax/web/room/dev/). The page asks its usual /api/ paths,
+// which serve.sh --api sends to the room, so the page and the room read the same world document
+// (dev/world-everglade.json) and the same seat tickets, names, levels and cap (dev/room-control.txt).
+//   coax/web/tool.sh coax/web/room/local.coax [--room PORT] [--page PORT] [--static] [--no-build] [--levels on|off]
+// Prints the page's URL (ROOM= and PAGE= lines for scripts), then runs until stopped; both servers stop with it.
+// --static serves the last build without watching (as the harnesses run it); --no-build skips the room build.
+// --levels off plays Everglade's own character, its whole bar, as an admin's levels switch does (the
+// two-browser everglade-pair check casts high-level spells); the default is dev/room-control.txt's, on.
+// The harnesses sign their own seat tickets with the stand-in's key: the KEY= line, as OA_ROOM_TICKET_KEY.
+#import "Basic";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+#load "../../lib/sys/args.coax";
+#load "../../lib/sys/proc.coax";
+
+cxproc_self_path :: (out: [] u8) -> int #foreign;
+cxtool_out_flush :: () -> int #foreign;
+
+LC_KEY :: "local-development-room-ticket-key-not-a-secret";   // room-dev.coax DEV_KEY
+
+// A text being built.
+Lc :: struct { b: [4096] u8; n: int; }
+lc_s :: (t: [] Lc, s: string) { for c: s { if t[0].n < t[0].b.count { t[0].b[t[0].n] = c; t[0].n += 1; } } }
+lc_i :: (t: [] Lc, v: int) {
+  d: [24] u8; k := 0; x := ifx v < 0 then -v else v;
+  if v < 0 { lc_s(t, "-"); }
+  if x == 0 { d[0] = '0'; k = 1; }
+  while x > 0 { d[k] = cast,trunc(u8) ('0' + x % 10); x /= 10; k += 1; }
+  for i: 0..<k { if t[0].n < t[0].b.count { t[0].b[t[0].n] = d[k - 1 - i]; t[0].n += 1; } }
+}
+lc_text :: (t: [] Lc) -> string { return cast(string) t[0].b[0..<t[0].n]; }
+
+// The repository's root from this tool's own binary (ROOT/coax/web/build/tools/NAME-HASH, tool.sh).
+lc_root :: (self: string) -> string {
+  r := self;
+  for i: 0..<5 { r = fs_dir(r); }
+  return r;
+}
+#test "the repository's root from the tool's path" {
+  #assert lc_root("/w/openagents/coax/web/build/tools/local-abc") == "/w/openagents";
+}
+
+// dev/room-control.txt with its levels line's switch set to on (1) or off (0).
+lc_levels :: (control: string, on: bool, out: [] Lc) {
+  i := 0;
+  while i < control.count {
+    e := i;
+    while e < control.count && control[e] != '\n' { e += 1; }
+    line := control[i..<e];
+    if line.count >= 9 && line[0..<7] == "levels " && (line[7] == '0' || line[7] == '1') && line[8] == ' ' {
+      lc_s(out, "levels "); lc_s(out, ifx on then "1" else "0"); lc_s(out, line[8..<line.count]);
+    } else { lc_s(out, line); }
+    if e < control.count { lc_s(out, "\n"); }
+    i = e + 1;
+  }
+}
+#test "the levels switch" {
+  t: [1] Lc;
+  lc_levels("world x\nlevels 1 2\nlevels 10 3\n", false, t[..]);
+  #assert lc_text(t[..]) == "world x\nlevels 0 2\nlevels 10 3\n";
+  u: [1] Lc;
+  lc_levels("levels 0 2", true, u[..]);
+  #assert lc_text(u[..]) == "levels 1 2";
+}
+
+lc_usage :: () -> int { tool_errln("usage: local.coax [--room PORT] [--page PORT] [--static] [--no-build] [--levels on|off]"); return 2; }
+
+// Starts argv with its stdout a pipe and its stderr ours; the handle, or -1.
+lc_start :: (argv: [] string) -> int {
+  h := proc_new();
+  if h < 0 { return -1; }
+  ok := proc_err_ours(h) && proc_gentle(h);
+  for x: argv { ok = ok && proc_arg(h, x); }
+  if !ok || proc_start(h) != 0 { r := proc_release(h); return -1; }
+  return h;
+}
+// Prints the lines h has ready (waiting up to wait_ms for the first); false once its stdout ended.
+lc_pass :: (h: int, wait_ms: int) -> bool {
+  line: [65536] u8; w := wait_ms;
+  while true {
+    n := proc_line(h, w, line[..]);
+    if n == PROC_EOF || n == PROC_ERROR { f := cxtool_out_flush(); return false; }
+    if n == PROC_TIMEOUT { f := cxtool_out_flush(); return true; }
+    if n >= 0 { print("%\n", cast(string) line[0..<n]); }
+    w = 0;
+  }
+  return true;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) { return lc_usage(); }
+  room_port := 8841; page_port := 8875; static := false; build := true; levels := "";
+  i := 0;
+  while i < args_count(a[..]) {
+    x := args_at(a[..], i);
+    if (x == "--room" || x == "--page" || x == "--levels") && i + 1 < args_count(a[..]) {
+      v := args_at(a[..], i + 1);
+      if x == "--levels" { levels = v; }
+      else {
+        p := args_whole(v);
+        if p < 1 || p > 65535 { return lc_usage(); }
+        if x == "--room" { room_port = p; } else { page_port = p; }
+      }
+      i += 2;
+    } else if x == "--static" { static = true; i += 1; }
+    else if x == "--no-build" { build = false; i += 1; }
+    else { return lc_usage(); }
+  }
+  if levels.count > 0 && levels != "on" && levels != "off" { return lc_usage(); }
+  for p: [2] int.[room_port, page_port] {
+    if p == 8830 || p == 8872 { tool_err("local.coax: "); pt: [1] Lc; lc_i(pt[..], p); tool_err(lc_text(pt[..])); tool_errln(" is the owner's; pick another port"); return 2; }
+  }
+  sb: [4096] u8; sn := cxproc_self_path(sb[..]);
+  if sn <= 0 || sn > sb.count { tool_errln("local.coax: can't find this tool's own path"); return 1; }
+  root := lc_root(cast(string) sb[0..<sn]);
+  here: [1] Lc; lc_s(here[..], root); lc_s(here[..], "/coax/web/room");
+  bin: [1] Lc; lc_s(bin[..], lc_text(here[..])); lc_s(bin[..], "/bin/room");
+  if build || !fs_exists(lc_text(bin[..])) {
+    bs: [1] Lc; lc_s(bs[..], lc_text(here[..])); lc_s(bs[..], "/build.sh");
+    ba := [1] string.[lc_text(bs[..])];
+    b := lc_start(ba[..]);
+    if b < 0 { tool_errln("local.coax: can't run build.sh"); return 1; }
+    while lc_pass(b, 1000) { }
+    st := proc_wait(b, -1); r := proc_release(b);
+    if st != 0 { return 1; }
+  }
+  dev: [1] Lc; lc_s(dev[..], lc_text(here[..])); lc_s(dev[..], "/dev");
+  tb: [FS_PATH_MAX] u8; temp := "";
+  if levels.count > 0 {
+    // dev/'s world and control lines, with the levels switch as asked
+    temp = fs_temp("everglade-local.", tb[..]);
+    if temp.count == 0 { tool_errln("local.coax: no temporary directory"); return 1; }
+    world: [1048576] u8; ctl: [65536] u8;
+    wp: [1] Lc; lc_s(wp[..], lc_text(dev[..])); lc_s(wp[..], "/world-everglade.json");
+    cp: [1] Lc; lc_s(cp[..], lc_text(dev[..])); lc_s(cp[..], "/room-control.txt");
+    wn := fs_read(lc_text(wp[..]), world[..]); cn := fs_read(lc_text(cp[..]), ctl[..]);
+    lv: [1] Lc; lc_levels(cast(string) ctl[0..<cn], levels != "off", lv[..]);
+    wo: [1] Lc; lc_s(wo[..], temp); lc_s(wo[..], "/world-everglade.json");
+    co: [1] Lc; lc_s(co[..], temp); lc_s(co[..], "/room-control.txt");
+    if wn < 0 || cn < 0 || !fs_write(lc_text(wo[..]), cast(string) world[0..<wn]) || !fs_write(lc_text(co[..]), lc_text(lv[..])) {
+      tool_errln("local.coax: can't make the room's directory"); gone := fs_remove(temp); return 1;
+    }
+    dev[0].n = 0; lc_s(dev[..], temp);
+  }
+  rp: [1] Lc; lc_i(rp[..], room_port);
+  ra := [5] string.[lc_text(bin[..]), "--port", lc_text(rp[..]), "--dev", lc_text(dev[..])];
+  room := lc_start(ra[..]);
+  if room < 0 { tool_errln("local.coax: can't start the room server"); if temp.count > 0 { gone := fs_remove(temp); } return 1; }
+  serve: [1] Lc; lc_s(serve[..], root); lc_s(serve[..], "/coax/web/serve.sh");
+  app: [1] Lc; lc_s(app[..], root); lc_s(app[..], "/apps/openagents-web");
+  listen: [1] Lc; lc_s(listen[..], "127.0.0.1:"); lc_i(listen[..], page_port);
+  sa := [9] string.[lc_text(serve[..]), lc_text(app[..]), "--listen", lc_text(listen[..]), "--api", lc_text(rp[..]), "--static", "--cache", "0"];
+  page := lc_start(ifx static then sa[..] else sa[0..<6]);
+  if page < 0 { tool_errln("local.coax: can't start the page server"); }
+  print("ROOM=ws://localhost:%\n", room_port);
+  print("PAGE=http://localhost:%\n", page_port);
+  print("KEY=%\n", LC_KEY);
+  print("open http://localhost:%/worlds/everglade?relay=ws://localhost:%\n", page_port, room_port);
+  f := cxtool_out_flush();
+  room_up := true; page_up := page >= 0;
+  while room_up || page_up {
+    if room_up { room_up = lc_pass(room, ifx page_up then 100 else 1000); }
+    if page_up { page_up = lc_pass(page, ifx room_up then 100 else 1000); }
+  }
+  st := proc_wait(room, -1); r := proc_release(room);
+  if page >= 0 { s2 := proc_wait(page, -1); r2 := proc_release(page); }
+  if temp.count > 0 { gone := fs_remove(temp); }
+  return 0;
+}

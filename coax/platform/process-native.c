@@ -31,7 +31,7 @@ typedef struct { char *data; size_t count, cap; } Bytes;
 typedef struct { Bytes *items; size_t count, cap; Bytes open; } List;
 
 typedef struct {
-  int used, started, reaped, status, quiet, detach, outnull;
+  int used, started, reaped, status, quiet, detach, outnull, errours, gentle;
   int pty, cols, rows; /* run on a pseudo-terminal of cols x rows instead of pipes */
   pid_t pid;
   int in, out, err;
@@ -54,6 +54,19 @@ static Proc procs[CXPROC_MAX];
    the tool (2026-10-30: headless Chromes ran for hours after their tools were
    killed). Installed only where the program left the default action. */
 static void take_children(int sig) {
+  /* a gentle child (cxproc_gentle) gets a TERM first and up to 2 s to finish, as a shell
+     script's trap gives it, before the KILL */
+  int asked = 0;
+  for (int i = 0; i < CXPROC_MAX; i++)
+    if (procs[i].used && procs[i].started && !procs[i].reaped && !procs[i].detach && procs[i].gentle && procs[i].pid > 0) { kill(-procs[i].pid, SIGTERM); asked = 1; }
+  for (int t = 0; asked && t < 200; t++) {
+    asked = 0;
+    for (int i = 0; i < CXPROC_MAX; i++)
+      if (procs[i].used && procs[i].started && !procs[i].reaped && !procs[i].detach && procs[i].gentle && procs[i].pid > 0) {
+        if (waitpid(procs[i].pid, &procs[i].status, WNOHANG) == procs[i].pid) procs[i].reaped = 1; else asked = 1;
+      }
+    if (asked) { struct timespec ts = {0, 10000000}; nanosleep(&ts, NULL); }
+  }
   for (int i = 0; i < CXPROC_MAX; i++)
     if (procs[i].used && procs[i].started && !procs[i].reaped && !procs[i].detach && procs[i].pid > 0) kill(-procs[i].pid, SIGKILL);
   signal(sig, SIG_DFL);
@@ -347,7 +360,7 @@ int64_t cxproc_spawn(int64_t h) {
       if (p->outnull) { /* stdout to /dev/null, stderr left as this process's */
         int null = open("/dev/null", O_WRONLY);
         if (null >= 0) { dup2(null, 1); if (null > 2) close(null); }
-      } else { dup2(out[1], 1); dup2(err[1], 2); }
+      } else { dup2(out[1], 1); if (!p->errours) dup2(err[1], 2); }
     }
     signal(SIGPIPE, SIG_DFL);
     /* a detached child is stopped by a signal from a later run, so an ignored SIGINT (a command
@@ -746,6 +759,24 @@ int64_t cxproc_out_null(int64_t h) {
   Proc *p = get(h);
   if (!p || p->started) return -1;
   p->outnull = 1;
+  return 0;
+}
+
+/* Before cxproc_spawn: the child's stderr is this process's (the terminal, as a shell script's
+   children's is), while its stdout stays a pipe read with cxproc_read_line. */
+int64_t cxproc_err_ours(int64_t h) {
+  Proc *p = get(h);
+  if (!p || p->started) return -1;
+  p->errours = 1;
+  return 0;
+}
+
+/* Before cxproc_spawn: when this process is stopped by SIGINT, SIGTERM or SIGHUP, the child's
+   group gets a TERM and up to 2 s to finish before the KILL (a server that saves on TERM). */
+int64_t cxproc_gentle(int64_t h) {
+  Proc *p = get(h);
+  if (!p || p->started) return -1;
+  p->gentle = 1;
   return 0;
 }
 

@@ -382,7 +382,7 @@ When steps 2 and 3 hold, post the evidence on #12733 and close it.
 
 ### What a local `everglade-pair` run can and can't show
 
-Start a local room with `coax/web/room/local.sh` (#12773). It runs `bin/room
+Start a local room with `coax/web/tool.sh coax/web/room/local.coax` (#12773). It runs `bin/room
 --dev coax/web/room/dev` and the page server with `--api`, so the page's
 `/api/` requests go to the room. The room and the page then read the same world
 document, `coax/web/room/dev/world-everglade.json`. In production both read
@@ -405,12 +405,12 @@ seconds, and brings HP and XP back from its own vitals. A local room plays as
 production does, so the local skips in `everglade-pair` for names and the twin
 check are gone; only BLOCK is still skipped (the stand-in keeps no blocks).
 
-- Levels are on at cap 2 by default. `local.sh --levels off` plays Everglade's
+- Levels are on at cap 2 by default. `local.coax --levels off` plays Everglade's
   own character with the whole bar; `everglade-pair` casts high-level spells,
-  so run it against `local.sh --levels off`.
+  so run it against `local.coax --levels off`.
 - The room harnesses (`sim-check`, `abilities-check`, `bridge-check`,
   `rejoin-check`, `load.coax`) sign their own tickets: export the `KEY=` line
-  that `local.sh` prints as `OA_ROOM_TICKET_KEY`. They sit as an admin and send
+  that `local.coax` prints as `OA_ROOM_TICKET_KEY`. They sit as an admin and send
   the demo bit, so they cast the whole bar whatever the levels switch says.
 - `room-proof.coax raid` runs the room with `--dev` too.
 - The server starts every field at its declared default

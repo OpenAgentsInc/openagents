@@ -71,7 +71,7 @@ walked you in place, with a correction every update.
 
 The rule: both programs read one document key, from one place, in every
 setup. Locally, `bin/room --dev` serves the same document the page reads
-(`coax/web/room/local.sh`).
+(`coax/web/room/local.coax`).
 
 ## Run it
 

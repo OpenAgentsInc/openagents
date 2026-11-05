@@ -6,7 +6,7 @@
 // in a live Entangle's square, 96 those in only one of the two, 97 a hash of the vines' set. A cast
 // that restrains no one is cast again (each guard saves on the room's dice).
 //   coax/web/tool.sh coax/web/everglade-vines.coax PAGE_URL [--shots PREFIX] [--seconds S]
-// PAGE_URL is the local room's page with ?relay= and &room=pair-guard-N (coax/web/room/local.sh).
+// PAGE_URL is the local room's page with ?relay= and &room=pair-guard-N (coax/web/room/local.coax).
 // Prints a line per check, one JSON line, then holds or fails. Nothing opens on screen.
 #import "Basic";
 #load "../lib/net/cdp.coax";

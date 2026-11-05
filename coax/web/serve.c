@@ -14,7 +14,7 @@
 // next to this binary's directory (coax/web/).
 //
 // --api PORT sends every /api/ request to 127.0.0.1:PORT and its answer back, as the load balancer
-// sends /api/ to the API: a local room's stand-in for the API (coax/web/room/local.sh), so a page
+// sends /api/ to the API: a local room's stand-in for the API (coax/web/room/local.coax), so a page
 // asks the same paths it asks in production.
 //
 // --static is production: no building, no watching, no live channel; files

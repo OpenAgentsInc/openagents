@@ -9,7 +9,7 @@
 // What it checks, in order (each a line, then one JSON line with every number, then holds/fails):
 //   1. both join (ENTER past the CHARACTER picker), each has the other's player (its row) and who it is
 //      (D's n) and draws it (net_probe 2), and the name for its nameplate isn't "-" (a local room,
-//      coax/web/room/local.sh, names players as the API does; 8b's BLOCK is skipped there, for the
+//      coax/web/room/local.coax, names players as the API does; 8b's BLOCK is skipped there, for the
 //      local stand-in keeps no blocks, and 8's link keeps the ?relay=);
 //   2. by the spawn: A casts Conjure Animals (bar slot 32); both hear e cast from A's seat and have
 //      the pack;
@@ -225,7 +225,7 @@ ep_run :: (ca: [] Cdp, cb: [] Cdp, url: string, origin: string, mark: string, wh
   oa := ep_int(ca, "__eg.otherSeat()", -1); ob := ep_int(cb, "__eg.otherSeat()", -1);
   all = ep_check(seen && oa == sb && ob == sa, "each has the other's player and who it is (D's n) and draws its body") && all;
   named := "(() => { const n = __eg.names[__eg.otherSeat()]; return n && n !== '-' ? 1 : 0; })()";
-  // names come from the seat ticket (the server never takes a hello's): the API's, or a local room's stand-in (local.sh)
+  // names come from the seat ticket (the server never takes a hello's): the API's, or a local room's stand-in (local.coax)
   all = ep_check(ep_int(ca, named, 0) == 1 && ep_int(cb, named, 0) == 1, "each has a name for the other's nameplate (not -)") && all;
   info: [4096] u8; info2: [4096] u8;
   print("  A seat % sees %, drawn %; B seat % sees %, drawn %; names A % B %\n", sa, oa, ep_int(ca, "__eg.probe(2)", -1), sb, ob, ep_int(cb, "__eg.probe(2)", -1),

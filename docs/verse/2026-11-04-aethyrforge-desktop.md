@@ -12,7 +12,7 @@ the selected agent's normal provider connection and existing CLI login. World
 publication remains a separate explicit action.
 
 It builds on the web Aethyrforge (docs/verse/aethyrforge.md), the local room
-(`coax/web/room/local.sh`, `room-dev.coax`), local Parakeet (#12667, #12669), and
+(`coax/web/room/local.coax`, `room-dev.coax`), local Parakeet (#12667, #12669), and
 gpt-oss-20b on Metal (docs/verification/psionic-gptoss-metal-2026-10-29.md).
 
 Where it goes next: [Aethyrforge as the conductor](2026-11-04-aethyrforge-conductor.md)

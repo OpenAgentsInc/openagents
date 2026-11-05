@@ -1,4 +1,4 @@
-// The API's stand-in for local development (room-host.c --dev, coax/web/room/local.sh; #12774).
+// The API's stand-in for local development (room-host.c --dev, coax/web/room/local.coax; #12774).
 // A local room then behaves as production's: seat tickets signed with a key and checked, players
 // named, the control's levels, cap, PvP and event dials read from dev/room-control.txt every two
 // seconds as the API's answer is, and HP, XP and WANTED brought back between visits from the room's own
