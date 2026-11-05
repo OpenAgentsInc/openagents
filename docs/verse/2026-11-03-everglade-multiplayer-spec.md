@@ -737,7 +737,7 @@ owners who want it. A duel invitation is a later phase.
 | Position and room you were in | Yes | `localStorage coaxial.everglade.place` (`place.coax`, host action 11, already) |
 | Spell bar arrangement | Yes | `localStorage coaxial.everglade.bar` (host action 12, already) |
 | Quests, the flock, NPC memory of you | Yes | The realm's save slot (host action 4), and the account's progress |
-| HP, spell slots, conditions | Yes, for 10 minutes | The room server keeps them by player id for 10 minutes after you leave, so a reload is not a free heal; after that, full |
+| HP, spell slots, conditions | Yes, for 10 minutes | The room server keeps them by player id for 10 minutes after you leave, so a reload is not a free heal; after that, full. A player who rejoins the same room server has the HP they left with whatever their class, and down or dead stays so (#12883; `coax/web/room/hp-rejoin-check.coax`) |
 | WANTED | Yes, for 5 minutes | The room server, by player id, so a reload does not clear it |
 | Inventory | Yes | The account's progress; a guest's save slot |
 | Spawned creatures and zones | No | They end when their effect ends |

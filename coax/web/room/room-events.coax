@@ -316,10 +316,9 @@ ev_join :: (v: [] RmServer, k: int, s: int) {
     if i >= 0 && v[0].vit.v[i].xp > xp { xp = v[0].vit.v[i].xp; }
     v[0].ev[k].xp[s] = ev_clamp(xp, 0, EV_XP_MAX);
   }
-  hp := v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + s].hp;
   ev_build(v, k, s);
   // a returning player's HP is theirs at the new level too (rv_join set it on Everglade's own)
-  if tk.ok && tk.hp > 0 { b := v[0].eg[k].rules[0].b[..]; b[0].c[E5RR_SEAT + s].hp = rs_min(hp, b[0].c[E5RR_SEAT + s].hp_max); }
+  rv_hp_back(v, k, s);
 }
 // Seat s's class changed (its hello's CLASS: e5rr_join_as built Everglade's own): built at its level again.
 ev_class :: (v: [] RmServer, k: int, s: int) { v[0].ev[k].level[s] = 0; ev_build(v, k, s); }

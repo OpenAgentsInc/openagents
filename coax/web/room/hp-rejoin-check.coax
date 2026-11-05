@@ -1,0 +1,185 @@
+// A player who rejoins a room that kept running comes back with the HP they left with (#12883,
+// room-vitals.coax rv_join, rv_hp_back). One socket (another page) stands by and keeps the room
+// running. The player sits, bolts the nearest of the town until the room says it is WANTED (w), then
+// stands while the watch hits it: once its Hit Points (its s row, as the room replicates them) are
+// below where they started, or at 0 in mode down, it closes its socket. 2 s on it sits again on a new
+// socket with a fresh ticket for the same player, one that brings no HP. Its new seat's first word on
+// itself must be the HP it left with (a blow landed in between may take it lower, never higher), and
+// in mode down 0.
+//   coax/web/tool.sh coax/web/room/hp-rejoin-check.coax ws://127.0.0.1:PORT [SECONDS] [hurt | down] [CLASS] [FLAGS]
+// CLASS is the hello's (druid, the default, or warlock: its hello builds the caster again), FLAGS its
+// FLAGS (64, the default: an admin's demo character, the #12883 report's 52 of 57).
+// Run it against a local room (local.sh, or room --dev with its stand-in key as OA_ROOM_TICKET_KEY).
+// Prints one JSON line, then "keeps" and exits 0, or "fails" and 1.
+#load "room-socket.coax";
+
+HrHeard :: struct {
+  w: bool; d: int; seat: int = -1;
+  me_x: f32; me_z: f32; me_seen: bool; hp: int = -1; hp_first: int = -1;
+  near_i: int = -1; near_d: f32 = 1000000; near_x: f32; near_z: f32;
+  wanted: int;
+  bad: int;
+  m: [1] WireMirror;
+}
+hr_entry :: (h: [] HrHeard, t: string) {
+  k := rs_field(t, 0);
+  if k == "s" {
+    w := wire_mirror_of(h[0].m[..], rs_num(rs_field(t, 1)));
+    if w.id < 0 { h[0].bad += 1; return; }
+    if w.kind == WK_PLAYER && w.id == h[0].seat {
+      h[0].me_x = w.x; h[0].me_z = w.z; h[0].me_seen = true; h[0].hp = w.hp;
+      if h[0].hp_first < 0 { h[0].hp_first = w.hp; }
+      return;
+    }
+    if w.kind == WK_FOLK {
+      i := w.id - WIRE_ID_FOLK;
+      d := (w.x - h[0].me_x) * (w.x - h[0].me_x) + (w.z - h[0].me_z) * (w.z - h[0].me_z);
+      if w.hp > 0 && (i == h[0].near_i || d < h[0].near_d) { h[0].near_i = i; h[0].near_d = d; h[0].near_x = w.x; h[0].near_z = w.z; }
+      if w.hp <= 0 && i == h[0].near_i { h[0].near_i = -1; h[0].near_d = 1000000; }
+    }
+    return;
+  }
+  if k == "w" && rs_num(rs_field(t, 1)) == h[0].seat { h[0].wanted = rs_num(rs_field(t, 2)); }
+}
+hr_hear :: (h: [] HrHeard, t: string) {
+  if rs_starts(t, "W ") { h[0].w = true; return; }
+  if rs_starts(t, "y ") { h[0].seat = rs_num(rs_field(t, 1)); return; }
+  if !rs_starts(t, "D ") { return; }
+  h[0].d += 1;
+  _ := wire_mirror_frame(h[0].m[..], t);
+  at := 0; sp := 0;
+  while at < t.count && sp < 5 { if t[at] == ' ' { sp += 1; } at += 1; }
+  while at < t.count {
+    e := at;
+    while e < t.count && t[e] != ';' { e += 1; }
+    hr_entry(h, t[at..<e]);
+    at = e + 1;
+  }
+}
+hr_input :: (c: [] RelayConn, h: [] HrHeard, seq: [] int) -> bool {
+  seq[0] += 1;
+  m: [96] u8;
+  k := rs_int(m[..], rs_put(m[..], 0, "I "), seq[0]);
+  k = rs_put(m[..], k, " 0 0 0 0 0 0 "); k = rs_int(m[..], k, h[0].m[0].heard);
+  return relay_conn_send(c, cast(string) m[0..<k]);
+}
+// The open sockets (live) stand still for ms, an input each 1/30 s, hearing everything; until `until`
+// says to stop early (the player's HP at or under `under`, or -1 never).
+hr_steps :: (c: [] RelayConn, h: [] HrHeard, seq: [] int, live: [] bool, ms: int, under: int) -> bool {
+  ok := true;
+  t0 := rs_now(); n := 0;
+  while rs_now() - t0 < ms {
+    for q: 0..<c.count { if live[q] { ok = hr_input(c[q..<q + 1], h[q..<q + 1], seq[q..<q + 1]) && ok; } }
+    n += 1;
+    while rs_now() - t0 < n * 1000 / 30 {
+      for q: 0..<c.count { if live[q] { while relay_conn_poll(c[q..<q + 1], 0) == RC_TEXT { hr_hear(h[q..<q + 1], cast(string) c[q].text[0..<c[q].text_n]); } } }
+      if under >= 0 && h[0].hp >= 0 && h[0].hp <= under { return ok; }
+      proc_sleep(2);
+    }
+  }
+  return ok;
+}
+// An admin's seat ticket for pid (no HP, no WANTED), signed with the stand-in key (OA_ROOM_TICKET_KEY).
+hr_ticketed :: (out: [] u8, url: string, pid: string, name: string) -> string {
+  kb: [TICKET_KEY] u8;
+  key := proc_getenv("OA_ROOM_TICKET_KEY", kb[..]);
+  if key.count < 32 { return url; }
+  at := url.count;
+  while at > 0 && url[at - 1] != '/' { at -= 1; }
+  t: [TICKET_TEXT] u8;
+  n := tk_sign_admin_wanted(key, pid, name, url[at..<url.count], 0, cxproc_wall_us() / 1000 + 300000, 0, t[..]);
+  if n == 0 || url.count + 3 + n > out.count { return ""; }
+  k := rs_put(out, 0, url); k = rs_put(out, k, "?t="); k = rs_put(out, k, cast(string) t[0..<n]);
+  return ifx k < 0 then "" else cast(string) out[0..<k];
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("hp-rejoin-check: bad arguments"); return 2; }
+  b: [512] u8;
+  base := rs_base(ifx args_count(a[..]) > 0 then args_at(a[..], 0) else "ws://localhost:8841", b[..]);
+  secs := ifx args_count(a[..]) > 1 then rs_num(args_at(a[..], 1)) else 90;
+  down := args_count(a[..]) > 2 && args_at(a[..], 2) == "down";
+  klass := ifx args_count(a[..]) > 3 then args_at(a[..], 3) else "druid";
+  flags := ifx args_count(a[..]) > 4 then args_at(a[..], 4) else "64";
+  u: [1024] u8;
+  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-hprejoin-", rs_stamp());
+  // 0 the player, 1 the page that keeps the room running, 2 the player again
+  c: [3] RelayConn; h: [3] HrHeard; seq: [3] int; live: [3] bool;
+  ua: [1024] u8; ub: [1024] u8; uc: [1024] u8;
+  pb: [64] u8;
+  pk := rs_int(pb[..], rs_put(pb[..], 0, "p-hprejoin-a-"), rs_stamp());
+  pid := cast(string) pb[0..<pk];
+  url_a := hr_ticketed(ua[..], url, pid, "HP Rejoin");
+  url_b := rs_ticketed(ub[..], url, "p-hprejoin-b", "HP Watcher");
+  hm: [128] u8;
+  hn := rs_put(hm[..], 0, "H 4 ranger.1.0.0 "); hn = rs_put(hm[..], hn, klass); hn = rs_put(hm[..], hn, " ");
+  hn = rs_put(hm[..], hn, flags); hn = rs_put(hm[..], hn, " HP Rejoin");
+  hello := cast(string) hm[0..<hn];
+  if url.count == 0 || url_a.count == 0 || url_b.count == 0 || !relay_conn_open(c[1..<2], url_b) {
+    tool_err("hp-rejoin-check: can't open "); tool_errln(url); print("fails\n"); return 1;
+  }
+  live[1] = true;
+  sent := relay_conn_send(c[1..<2], "H 4 ranger.2.0.0 druid 64 HP Watcher");
+  sent = hr_steps(c[..], h[..], seq[..], live[..], 1000, -1) && sent;
+  if !relay_conn_open(c[0..<1], url_a) { tool_err("hp-rejoin-check: can't open "); tool_errln(url); print("fails\n"); return 1; }
+  live[0] = true;
+  sent = relay_conn_send(c[0..<1], hello) && sent;
+  sent = hr_steps(c[..], h[..], seq[..], live[..], 2000, -1) && sent;
+  hp_start := h[0].hp;
+  // the bolt (the druid's slot 1, the Warlock's Eldritch Blast, FB_WL0) at the nearest of the town standing, until WANTED
+  slot := ifx klass == "warlock" then 64 else 1;
+  m: [128] u8;
+  t0 := rs_now();
+  while h[0].wanted == 0 && rs_now() - t0 < secs * 1000 {
+    if h[0].near_i >= 0 {
+      seq[0] += 1;
+      k := rs_int(m[..], rs_put(m[..], 0, "C "), seq[0]);
+      k = rs_put(m[..], k, " "); k = rs_int(m[..], k, slot); k = rs_put(m[..], k, " "); k = rs_int(m[..], k, cast(int) (h[0].near_x * 100));
+      k = rs_put(m[..], k, " 0 "); k = rs_int(m[..], k, cast(int) (h[0].near_z * 100)); k = rs_put(m[..], k, " ");
+      k = rs_int(m[..], k, h[0].near_i);
+      sent = relay_conn_send(c[0..<1], cast(string) m[0..<k]) && sent;
+    }
+    sent = hr_steps(c[..], h[..], seq[..], live[..], 900, -1) && sent;
+  }
+  // it stands while the watch hits it, and leaves once hurt (or down)
+  under := ifx down then 0 else hp_start - 1;
+  t1 := rs_now();
+  while rs_now() - t1 < secs * 1000 && !(h[0].hp >= 0 && h[0].hp <= under) {
+    sent = hr_steps(c[..], h[..], seq[..], live[..], 500, under) && sent;
+  }
+  hp_left := h[0].hp;
+  _ := relay_conn_close(c[0..<1], 1000);
+  live[0] = false;
+  // the room runs on with the other page; then the player sits again
+  sent = hr_steps(c[..], h[..], seq[..], live[..], 2000, -1) && sent;
+  url_c := hr_ticketed(uc[..], url, pid, "HP Rejoin");
+  if url_c.count == 0 || !relay_conn_open(c[2..<3], url_c) { tool_err("hp-rejoin-check: can't open "); tool_errln(url); print("fails\n"); return 1; }
+  live[2] = true;
+  sent = relay_conn_send(c[2..<3], hello) && sent;
+  sent = hr_steps(c[..], h[..], seq[..], live[..], 2000, -1) && sent;
+  hp_back := h[2].hp_first;
+  hurt := hp_left >= 0 && hp_left < hp_start && (!down || hp_left == 0);
+  kept := hp_back >= 0 && hp_back <= hp_left && (!down || hp_back == 0) && (down || hp_back > 0 || hp_left <= 0);
+  ok := sent && h[0].w && h[1].w && h[2].w && hurt && kept && h[0].bad + h[1].bad + h[2].bad == 0;
+  out: [768] u8; o: [1] Jo;
+  jo_start(o[..], out[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "mode"); jo_str(o[..], ifx down then "down" else "hurt");
+  jo_key(o[..], "class"); jo_str(o[..], klass);
+  jo_key(o[..], "flags"); jo_str(o[..], flags);
+  jo_key(o[..], "wanted_when_hit"); jo_int(o[..], h[0].wanted);
+  jo_key(o[..], "hp_start"); jo_int(o[..], hp_start);
+  jo_key(o[..], "hp_left_with"); jo_int(o[..], hp_left);
+  jo_key(o[..], "hp_back_with"); jo_int(o[..], hp_back);
+  jo_key(o[..], "hp_after_2s"); jo_int(o[..], h[2].hp);
+  jo_key(o[..], "seat_before"); jo_int(o[..], h[0].seat);
+  jo_key(o[..], "seat_after"); jo_int(o[..], h[2].seat);
+  jo_key(o[..], "bad_rows"); jo_int(o[..], h[0].bad + h[1].bad + h[2].bad);
+  jo_end(o[..]);
+  print("%\n", jo_text(o[..]));
+  _ = relay_conn_close(c[1..<2], 1000);
+  _ = relay_conn_close(c[2..<3], 1000);
+  print("%\n", ifx ok then "keeps" else "fails");
+  return ifx ok then 0 else 1;
+}

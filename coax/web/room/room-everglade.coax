@@ -101,6 +101,7 @@ EgSeat :: struct {
   old: bool;                                          // a page from before wire 3: its state on the old wire (room-oldwire.coax)
   fresh: bool;                                        // just sat: the world's watch meets a new player
   want_seed: int;                                     // the WANTED level it comes back with, for the world's town (rv_join; 0 none)
+  back_hp: int = -1; back_dead: bool;                 // the Hit Points it came back with until its hello built it (rv_join; -1 none)
   wcond: int;                                         // the world's conditions on it (WC_*), with the rules' in p's COND
   fx_left: [WE_WATCH] f32; fx_t0: [WE_WATCH] int; fx_dur: [WE_WATCH] int;   // its watch effects (WE_*): seconds left, start tick, ticks
   step_at: int; ack_at: int; ack_told: int;           // when the input stepped last and the one ACK names were heard (room-stats.coax rm_st_ack)
@@ -450,6 +451,7 @@ eg_heard_hello :: (v: [] RmServer, k: int, seat: int, text: string) {
   if v[0].eg[k].rules[0].klass[seat] != wl { e5rr_join_as(v[0].eg[k].rules[..], seat, st[0].pose.x, st[0].pose.z, wl); ev_class(v, k, seat); }
   st[0].flags = eg_clamp(h.flags, 0, 255);
   ev_hello(v, k, seat, st[0].flags);   // an admin's demo character (room-events.coax)
+  rv_hp_back(v, k, seat); st[0].back_hp = -1;   // built: the HP its player came back with, once (#12883)
   // the name: letters, digits, spaces, '-' and '_' ("-" none)
   m := 0;
   for ch: h.name {

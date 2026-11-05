@@ -32,6 +32,7 @@ RoomVital :: struct {
   live: bool;
   pid: [TICKET_PID] u8; pid_n: int;
   hp: int; max: int;
+  dead: bool;       // it was dead, not only down at 0 (#12883)
   xp: int;          // the XP it has (room-events.coax)
   wanted: int;      // its WANTED level, the room's (room-everglade.coax wanted; 0 none, #12794)
   at: int;          // wall ms it was noted
@@ -67,19 +68,21 @@ rv_find :: (v: [] RmServer, pid: string) -> int {
 }
 // The player's HP, XP and WANTED now (from the seat of ticket pid). A change is a new revision, in
 // the outbox until a receipt covers it.
-rv_note :: (v: [] RmServer, pid: string, hp: int, max: int, xp: int, wanted: int) {
+rv_note :: (v: [] RmServer, pid: string, hp: int, max: int, xp: int, wanted: int) { rv_note_as(v, pid, hp, max, xp, wanted, false); }
+// The same, dead (not only down at 0) or not.
+rv_note_as :: (v: [] RmServer, pid: string, hp: int, max: int, xp: int, wanted: int, dead: bool) {
   if pid.count == 0 || pid.count > TICKET_PID || max <= 0 { return; }
   i := rv_find(v, pid);
   if i < 0 {
     i = rv_slot(v);
     v[0].vit.v[i] = RoomVital.{live = true, pid_n = pid.count};
     for c: 0..<pid.count { v[0].vit.v[i].pid[c] = pid[c]; }
-  } else if v[0].vit.v[i].hp == hp && v[0].vit.v[i].max == max && v[0].vit.v[i].xp == xp && v[0].vit.v[i].wanted == wanted {
+  } else if v[0].vit.v[i].hp == hp && v[0].vit.v[i].max == max && v[0].vit.v[i].xp == xp && v[0].vit.v[i].wanted == wanted && v[0].vit.v[i].dead == dead {
     v[0].vit.v[i].at = v[0].wall_ms;
     return;
   }
   e := v[0].vit.v[i..<i + 1];
-  e[0].hp = hp; e[0].max = max; e[0].xp = xp; e[0].wanted = wanted; e[0].at = v[0].wall_ms;
+  e[0].hp = hp; e[0].max = max; e[0].xp = xp; e[0].wanted = wanted; e[0].dead = dead; e[0].at = v[0].wall_ms;
   v[0].vit.rev += 1;
   e[0].rev = v[0].vit.rev; e[0].rev_at = v[0].wall_ms;
 }
@@ -103,7 +106,7 @@ rv_note_seat :: (v: [] RmServer, k: int, s: int) {
   if !tk.ok { return; }
   c := v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + s];
   pid := cast(string) tk.pid[0..<tk.pid_n];
-  rv_note(v, pid, c.hp, c.hp_max, ev_xp_of(v, k, s), v[0].eg[k].wanted[s]);
+  rv_note_as(v, pid, c.hp, c.hp_max, ev_xp_of(v, k, s), v[0].eg[k].wanted[s], c.dead && c.hp <= 0);
   i := rv_find(v, pid);
   st := v[0].eg[k].seat[s];
   r := v[0].eg[k].relay;
@@ -139,22 +142,35 @@ rm_eg_back :: (v: [] RmServer, k: int, s: int, field: int) -> f32 #export_c {
   return 1;
 }
 // A seat that just joined (after e5rr_join): the HP its player left with, this server's note when it
-// has one from the last 10 minutes, else its ticket's. None (or 0: it fell) leaves it full.
+// has one from the last 10 minutes (down at 0, or dead, stays so: #12883), else its ticket's. A ticket
+// with none (or 0: it fell somewhere else) leaves it full. The seat keeps it (back_hp) until its hello
+// has built its character (rv_hp_back), since a class or the demo character builds it whole again.
 rv_join :: (v: [] RmServer, k: int, s: int) {
+  v[0].eg[k].seat[s].back_hp = -1; v[0].eg[k].seat[s].back_dead = false;
   tk := eg_ticket(v, k, s);
   if !tk.ok { return; }
-  hp := tk.hp;
+  hp := tk.hp; dead := false;
   i := rv_find(v, cast(string) tk.pid[0..<tk.pid_n]);
-  if i >= 0 && v[0].wall_ms - v[0].vit.v[i].at <= VITALS_KEEP_MS { hp = v[0].vit.v[i].hp; }
+  noted := i >= 0 && v[0].wall_ms - v[0].vit.v[i].at <= VITALS_KEEP_MS;
+  if noted { hp = rs_max(v[0].vit.v[i].hp, 0); dead = v[0].vit.v[i].dead && hp == 0; }
   // its WANTED level (#12794): this server's note from the last 5 minutes, else the ticket's (the
   // API's, which only a room's signed report writes); the host lays it on the town (rm_eg_want_take)
   want := tk.wanted;
   if i >= 0 && v[0].wall_ms - v[0].vit.v[i].at <= VITALS_WANTED_MS { want = v[0].vit.v[i].wanted; }
   if want > 0 && want <= 5 { v[0].eg[k].seat[s].want_seed = want; v[0].eg[k].wanted[s] = want; }
-  if hp <= 0 { return; }
-  b := v[0].eg[k].rules[0].b[..];
-  ci := E5RR_SEAT + s;
-  b[0].c[ci].hp = least(hp, b[0].c[ci].hp_max);
+  if hp < 0 || (hp == 0 && !noted) { return; }
+  v[0].eg[k].seat[s].back_hp = hp; v[0].eg[k].seat[s].back_dead = dead;
+  rv_hp_back(v, k, s);
+}
+// Seat s's character after a build (its join, its level, its hello's class or demo): no more Hit Points
+// than its player came back with, and down or dead as they left. The hello's build is the last
+// (eg_heard_hello clears back_hp).
+rv_hp_back :: (v: [] RmServer, k: int, s: int) {
+  hp := v[0].eg[k].seat[s].back_hp;
+  if hp < 0 { return; }
+  c := v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + s..<E5RR_SEAT + s + 1];
+  c[0].hp = rs_min(rs_min(hp, c[0].hp_max), c[0].hp);
+  if c[0].hp <= 0 { c[0].hp = 0; c[0].dead = v[0].eg[k].seat[s].back_dead; }
 }
 
 // Called by the host once a second: every VITALS_EVERY_MS the playing seats are noted, and the
@@ -449,4 +465,61 @@ rv_test_receipt :: (b: [] u8, gen: int, batch: int, codes: string) -> string {
   #assert tk_mac(key, cast(string) x[0..<m], mac[..]);
   m = tk_add(x[..], m, "."); m = tk_add(x[..], m, cast(string) mac[..]);
   #assert tk_check(key, cast(string) x[0..<m], "pair-tk", now + 60000).wanted == 2;
+}
+
+// Seat 0's creature in the room of conn 0's relay.
+rv_test_c0 :: (v: [] RmServer) -> RsCreature {
+  k := eg_room_at(v, v[0].conns[0].relay);
+  return v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + v[0].conns[0].seat];
+}
+// Conn 0 (player pid) leaves at `hp` (dead or not) while conn 1 keeps the room running, and comes back
+// on a ticket that brings no HP, saying `hello`; admin signs its tickets as an admin's (the demo).
+rv_test_back :: (v: [] RmServer, key: string, pid: string, admin: bool, hello: string, hp: int, dead: bool) -> RsCreature {
+  t: [256] u8; r: [512] u8;
+  now := v[0].wall_ms;
+  n := ifx admin then tk_sign_admin_wanted(key, pid, "", "pair-tk", 0, now + 60000, 0, t[..]) else tk_sign_xp(key, pid, false, "", "pair-tk", 0, now + 60000, -1, 0, t[..]);
+  _ := rm_join(v, 0, tk_test_ask(r[..], t[..], n));
+  rm_heard(v, 0, hello);
+  k := eg_room_at(v, v[0].conns[0].relay);
+  c := v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + v[0].conns[0].seat..<E5RR_SEAT + v[0].conns[0].seat + 1];
+  c[0].hp = hp; c[0].dead = dead;
+  rm_left(v, 0);
+  rm_clock(v, 0, now + 20000);
+  n = ifx admin then tk_sign_admin_wanted(key, pid, "", "pair-tk", 0, now + 80000, 0, t[..]) else tk_sign_xp(key, pid, false, "", "pair-tk", 0, now + 80000, -1, 0, t[..]);
+  _ = rm_join(v, 0, tk_test_ask(r[..], t[..], n));
+  rm_heard(v, 0, hello);
+  return rv_test_c0(v);
+}
+#test "vitals (#12883): a player who rejoins a running room has the HP they left with, as a Warlock or the demo too, and down or dead stays so" #steps 4000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  now := 1762190000000;
+  rm_clock(v[..], 0, now);
+  key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  rm_ticket_key(v[..], key, true);
+  t: [256] u8; r: [512] u8;
+  // the other page keeps the room running
+  n := tk_sign_xp(key, "p-ffffeeeeddddcccc", false, "", "pair-tk", 0, now + 600000, -1, 0, t[..]);
+  #assert rm_join(v[..], 1, tk_test_ask(r[..], t[..], n)) == 0;
+  // the druid: its hello builds nothing new
+  c := rv_test_back(v[..], key, "p-0000000000000001", false, "H 4 ranger.0.0.0 druid 0 -", 5, false);
+  #assert c.hp == 5 && !c.dead && c.hp_max > 5;
+  // the Warlock: its hello builds the caster whole, and the HP comes back after it
+  c = rv_test_back(v[..], key, "p-0000000000000002", false, "H 4 ranger.0.0.0 warlock 0 -", 4, false);
+  #assert v[0].eg[eg_room_at(v[..], v[0].conns[0].relay)].rules[0].klass[v[0].conns[0].seat] == 1;
+  #assert c.hp == 4 && !c.dead && c.hp_max > 4;
+  // an admin's demo character (the hello's FLAGS 64): Everglade's own, whole, unless it left hurt (the #12883 report: 52 of 57)
+  c = rv_test_back(v[..], key, "p-0000000000000003", true, "H 4 ranger.1.0.0 druid 64 -", 52, false);
+  #assert c.hp == 52 && c.hp_max == 57;
+  // down at 0 stays down, and dead stays dead (the room stands them up after EV_RISE_S, ev_rise)
+  c = rv_test_back(v[..], key, "p-0000000000000004", false, "H 4 ranger.0.0.0 druid 0 -", 0, false);
+  #assert c.hp == 0 && !c.dead;
+  c = rv_test_back(v[..], key, "p-0000000000000005", false, "H 4 ranger.0.0.0 warlock 0 -", 0, true);
+  #assert c.hp == 0 && c.dead;
+  // a ticket's 0 from another server still means full (its player fell there)
+  n = tk_sign_xp(key, "p-0000000000000006", false, "", "pair-tk", 0, v[0].wall_ms + 60000, 0, 0, t[..]);
+  _ := rm_join(v[..], 0, tk_test_ask(r[..], t[..], n));
+  rm_heard(v[..], 0, "H 4 ranger.0.0.0 druid 0 -");
+  c = rv_test_c0(v[..]);
+  #assert c.hp == c.hp_max && !c.dead;
 }
