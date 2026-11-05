@@ -1,0 +1,5 @@
+// Fixture only, outside the production authority's mutation sites.
+cc_fixture :: ()->CharacterCapture {
+  c:=CharacterCapture.{ok=true,pid_n=3,room_n=6};c.pid[0]='p';c.pid[1]='-';c.pid[2]='a';c.room[0]='p';c.room[1]='a';c.room[2]='i';c.room[3]='r';c.room[4]='-';c.room[5]='a';
+  c.n=[17]int.[2,7,101,3,1762190000000,1762190000000,1,1,1,0,20,350,2,-1234,200,-9876,1234];c.dead=true;c.state[0]=1;c.state[2]=4;c.state[3]=50;c.state[4]=2;c.state[5]=6;c.state[7]=2;c.state[16]=1;return c;
+}

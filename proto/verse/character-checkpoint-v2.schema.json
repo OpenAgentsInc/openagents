@@ -1,0 +1,288 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "openagents:verse:character-checkpoint:2",
+  "title": "Character checkpoint v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "pid",
+    "owner",
+    "process",
+    "rev",
+    "at",
+    "sent",
+    "engine",
+    "rules",
+    "content",
+    "hp",
+    "max",
+    "dead",
+    "xp",
+    "wanted",
+    "room",
+    "x_mm",
+    "y_mm",
+    "z_mm",
+    "yaw_mrad",
+    "state"
+  ],
+  "properties": {
+    "v": {
+      "const": 2
+    },
+    "pid": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]{1,40}$"
+    },
+    "owner": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+    "process": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "rev": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "at": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "sent": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "engine": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+    "rules": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+    "content": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+    "hp": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 99999
+    },
+    "max": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 99999
+    },
+    "dead": {
+      "type": "boolean"
+    },
+    "xp": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9999999
+    },
+    "wanted": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 5
+    },
+    "room": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]{1,24}$"
+    },
+    "x_mm": {
+      "type": "integer",
+      "minimum": -10000000,
+      "maximum": 10000000
+    },
+    "y_mm": {
+      "type": "integer",
+      "minimum": -10000000,
+      "maximum": 10000000
+    },
+    "z_mm": {
+      "type": "integer",
+      "minimum": -10000000,
+      "maximum": 10000000
+    },
+    "yaw_mrad": {
+      "type": "integer",
+      "minimum": -1000000,
+      "maximum": 1000000
+    },
+    "state": {
+      "type": "array",
+      "minItems": 27,
+      "maxItems": 27,
+      "description": "Class, demo, temporary HP, Repair ticks, cast ticks, down seconds, 10 slots and 11 limited uses; field bounds in the profile contract.",
+      "prefixItems": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99999
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18000
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18000
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        }
+      ],
+      "items": false
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "dead": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "hp": {
+            "const": 0
+          }
+        }
+      }
+    }
+  ]
+}

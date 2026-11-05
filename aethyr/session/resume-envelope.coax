@@ -1,0 +1,64 @@
+// Seat-ticket v4: an authenticated envelope around an unchanged signed v2/v3
+// ticket and its complete durable capture. The room still validates the inner ticket.
+#authority;
+#load "resume-payload.coax";
+#load "../../coax/lib/crypto/hmac.coax";
+#load "../../coax/lib/nostr/block/fi-base64url.coax";
+ResumeEnvelope :: struct {ok:bool;legacy:[256]u8;legacy_n:int;capture:CharacterCapture;}
+#test "resume envelope: signed core and full capture are bound together, or no capture for a first join" {
+  key:="profile-check-key-not-a-secret-0123456789";core:="v3.p-a.0.-.pair-a.1.1762190600000.-x350g7.signature";
+  c:=cc_fixture();saved:[CC_BODY]u8;out:[RT_TEXT]u8;s:=resume_ticket_wrap(key,core,cc_stored(c,saved[..]),out[..]);r:=rt_read(key,s);
+  #assert RT_TEXT==4096&&r.ok&&r.legacy_n==core.count&&r.capture.ok&&r.capture.n[13]==-1234&&r.capture.state[7]==2;
+  for i:0..<core.count{#assert r.legacy[i]==core[i];}
+  out[5]=ifx out[5]=='A' then 'B' else 'A';#assert !rt_read(key,cast(string)out[0..<s.count]).ok;
+  s=resume_ticket_wrap(key,core,"-",out[..]);#assert rt_read(key,s).ok&&!rt_read(key,s).capture.ok&&!rt_read("another-key-that-is-not-the-same-012345",s).ok;
+  small:=[1]u8.[77];#assert resume_ticket_wrap(key,core,"-",small[..])==""&&small[0]==77;
+  #assert resume_ticket_wrap(key,core,"{}",out[..])==""&&resume_ticket_wrap(key,"v4.nested","-",out[..])=="";
+  #assert !rt_read(key,"").ok&&!rt_read(key,"v4.a.b.c.d").ok;
+}
+#test "resume envelope: full byte and signing limits are inclusive" {
+  #assert rt_size(4096)&&!rt_size(4097);
+  b:[4097]u8;k:[129]u8;mac:[64]u8;
+  for i:0..<129{k[i]='a';}
+  #assert rt_mac(cast(string)k[0..<32],cast(string)b[0..<4096],mac[..]);
+  #assert rt_mac(cast(string)k[0..<128],"",mac[..]);
+  #assert !rt_mac(cast(string)k[0..<31],"",mac[..])&&!rt_mac(cast(string)k[..],"",mac[..]);
+  #assert !rt_mac(cast(string)k[0..<32],cast(string)b[..],mac[..])&&!rt_mac(cast(string)k[0..<32],"",mac[0..<63]);
+  #assert !rt_read(cast(string)k[0..<32],cast(string)b[..]).ok;
+  for i:0..<257{b[i]='a';}b[0]='v';b[1]='2';b[2]='.';
+  #assert rt_core(cast(string)b[0..<256])&&!rt_core(cast(string)b[0..<257]);
+  #assert rt_fit(4031,4096)&&!rt_fit(4032,4097)&&rt_fit(50,115)&&!rt_fit(50,114);
+  #assert rt_mac("profile-check-key-not-a-secret-0123456789","v4.alpha.-",mac[..]);
+  #assert cast(string)mac[..]=="c841d86727f5eab86de80bfd3ab0376b01e98a9968cb8325b686599f6a33c692";
+}
+rt_mac :: (key:string,text:string,out:[]u8)->bool {
+  if key.count<32||key.count>128||!rt_size(text.count)||out.count<64{return false;}
+  k:[128]u8;b:[RT_TEXT]u8;mac:[32]u8;for i:0..<key.count{k[i]=key[i];}for i:0..<text.count{b[i]=text[i];}
+  _:=hmac_sha256_checked(k[0..<key.count],b[0..<text.count],mac[..],false);
+  alphabet:="0123456789abcdef";for i:0..<32{out[i*2]=alphabet[cast(int)(mac[i]>>4)];out[i*2+1]=alphabet[cast(int)(mac[i]&15)];}return true;
+}
+resume_ticket_wrap :: (key:string,legacy:string,saved:string,out:[]u8)->string #export_c {
+  b:[RT_TEXT]u8;prefix:=resume_ticket_prefix(legacy,saved,b[..]);if prefix==""{return "";}n:=prefix.count;
+  mac:[64]u8;if !rt_mac(key,cast(string)b[0..<n],mac[..])||!rt_fit(n,out.count){return "";}
+  for i:0..<n{out[i]=b[i];}out[n]='.';for i:0..<64{out[n+1+i]=mac[i];}return cast(string)out[0..<n+65];
+}
+rt_read :: (key:string,text:string)->ResumeEnvelope {
+  r:=ResumeEnvelope.{};if !rt_size(text.count){return r;}
+  starts:[4]int;if rt_split(text,starts[..])!=4{return r;}f:[4]string;for i:0..<4{end:=ifx i==3 then text.count else starts[i+1]-1;f[i]=text[starts[i]..<end];}
+  if f[0]!="v4"||f[3].count!=64{return r;}
+  mac:[64]u8;if !rt_mac(key,text[0..<starts[3]-1],mac[..]){return r;}diff:=0;for i:0..<64{diff=diff|cast(int)(mac[i]^f[3][i]);}if diff!=0{return r;}
+  core:=fi_b64url_decode(f[1],r.legacy[..]);if core.error!=NC_OK{return r;}r.legacy_n=core.written;
+  if !rt_core(cast(string)r.legacy[0..<r.legacy_n]){return ResumeEnvelope.{};}
+  if f[2]!="-"{saved:[CC_BODY]u8;n:=fi_b64url_decode(f[2],saved[..]);if n.error!=NC_OK{return ResumeEnvelope.{};}r.capture=cc_read(cast(string)saved[0..<n.written],false);if !r.capture.ok{return ResumeEnvelope.{};}}
+  r.ok=true;return r;
+}
+
+rt_split :: (text:string,starts:[]int)->int {
+  fields:=1;for i:0..<text.count{if text[i]=='.'{if fields>=starts.count{return -1;}starts[fields]=i+1;fields+=1;}}return fields;
+}
+#test "resume envelope: malformed header and a first-byte MAC change cannot bypass authentication" {
+  starts:[4]int;#assert rt_split(".a.b.c",starts[..])==4&&starts[1]==1;#assert rt_split(".a.b.c.d",starts[..])==-1;
+  key:="profile-check-key-not-a-secret-0123456789";out:[4096]u8;core:="v2.p-a.0.-.pair-a.1762190600000.-g7.signature";
+  s:=resume_ticket_wrap(key,core,"-",out[..]);at:=s.count-64;out[at]=ifx out[at]=='a' then 'b' else 'a';#assert !rt_read(key,cast(string)out[0..<s.count]).ok;
+  s=resume_ticket_wrap(key,core,"-",out[..]);out[1]='5';mac:[64]u8;#assert rt_mac(key,cast(string)out[0..<at-1],mac[..]);for i:0..<64{out[at+i]=mac[i];}#assert !rt_read(key,cast(string)out[0..<s.count]).ok;
+}

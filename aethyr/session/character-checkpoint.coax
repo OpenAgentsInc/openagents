@@ -1,0 +1,90 @@
+// Durable character resume profile 2; contract in docs/protocol/character-checkpoint-v2.md.
+#authority;
+#load "../../coax/lib/json/json.coax";
+CC_BODY :: 2048; CC_STATE :: 27;
+CC_KEYS :: [17]string.["v","owner","process","rev","at","sent","engine","rules","content","hp","max","xp","wanted","x_mm","y_mm","z_mm","yaw_mrad"];
+CC_LOW :: [17]int.[2,1,1,1,1,1,1,1,1,0,1,0,0,-10000000,-10000000,-10000000,-1000000];
+CC_HIGH :: [17]int.[2,2147483647,9007199254740991,9007199254740991,9007199254740991,9007199254740991,2147483647,2147483647,2147483647,99999,99999,9999999,5,10000000,10000000,10000000,1000000];
+CharacterCapture :: struct {ok:bool; n:[17]int; pid:[40]u8;pid_n:int;room:[24]u8;room_n:int;dead:bool;state:[CC_STATE]int;}
+#load "tests/character-checkpoint-fixture.coax";
+#test "character checkpoint: a whole dead character, place and spent resources round trip" {
+  c:=cc_fixture();out:[CC_BODY]u8;s:=cc_write(c,out[..]);d:=cc_read(s,true);
+  #assert d.ok&&d.dead&&d.pid_n==3&&d.room_n==6;
+  for i:0..<17{#assert d.n[i]==c.n[i];}for i:0..<27{#assert d.state[i]==c.state[i];}
+  #assert checkpoint2_input(s,c.n[5]);#assert !checkpoint2_input(s,c.n[5]+120001)&&!checkpoint2_input(s,c.n[5]-120001);
+  #assert !cc_read(s,false).ok; // A stored capture omits sent; ingress requires it.
+  saved:[CC_BODY]u8;back:=cc_read(cc_stored(c,saved[..]),false);#assert back.ok&&back.n[4]==c.n[4]&&back.n[5]==c.n[4]&&back.state[5]==6;
+  c.n[4]=1;c.n[5]=1762190000000;#assert checkpoint2_input(cc_write(c,out[..]),c.n[5]); // Never expire a retry.
+}
+#test "character checkpoint: every numeric field has its own exact closed range" {
+  lows:=[17]int.[2,1,1,1,1,1,1,1,1,0,1,0,0,-10000000,-10000000,-10000000,-1000000];
+  highs:=[17]int.[2,2147483647,9007199254740991,9007199254740991,9007199254740991,9007199254740991,2147483647,2147483647,2147483647,99999,99999,9999999,5,10000000,10000000,10000000,1000000];
+  for i:0..<17{#assert cc_number(i,lows[i])&&cc_number(i,highs[i]);#assert !cc_number(i,lows[i]-1)&&!cc_number(i,highs[i]+1);}
+  #assert !cc_number(-1,0)&&!cc_number(17,0);
+}
+#forall "character checkpoint: identifiers classify every byte" ch:0..<256 {
+  b:=[1]u8.[cast(u8)ch];allowed:="abcdefghijklmnopqrstuvwxyz0123456789-";found:=false;for a:allowed{if cast(int)a==ch{found=true;}}
+  #assert cc_id(cast(string)b[..])==found;
+}
+#test "character checkpoint: byte limits, integer rejection, exact time endpoints and array shape" {
+  c:=cc_fixture();o:[CC_BODY]u8;s:=cc_write(c,o[..]);p:[2049]u8;for i:0..<s.count{p[i]=s[i];}for i:s.count..<2049{p[i]=' ';}
+  #assert cc_read(cast(string)p[0..<2048],true).ok&&!cc_read(cast(string)p[..],true).ok;
+  d:[1]Jv;nodes:[64]JvNode;#assert jv_parse(d[..],"0.5",nodes[..])&&cc_integer(d[0],0)==-9007199254740991;
+  #assert jv_parse(d[..],"null",nodes[..])&&cc_integer(d[0],0)==-9007199254740991;
+  #assert !cc_array(d[0],0);#assert jv_parse(d[..],"[0]",nodes[..])&&!cc_array(d[0],0);
+  c.dead=false;c.n[9]=20;c.n[11]=0;c.pid_n=1;c.pid[0]='a';c.room_n=1;c.room[0]='z';#assert cc_read(cc_write(c,o[..]),true).ok;
+  c.n[9]=21;#assert !cc_read(cc_write(c,o[..]),true).ok;c.n[9]=20;
+  #assert cc_present(1)&&cc_present(40)&&!cc_present(0)&&!cc_present(-1);
+  c.pid_n=0;#assert !cc_read(cc_write(c,o[..]),true).ok;c=cc_fixture();c.room_n=0;#assert !cc_read(cc_write(c,o[..]),true).ok;
+  c=cc_fixture();c.n[4]=1;c.n[5]=120001;s=cc_write(c,o[..]);#assert checkpoint2_input(s,1)&&checkpoint2_input(s,240001)&&!checkpoint2_input(s,0);
+  c.n[4]=9007199254740991;c.n[5]=9007199254740991;s=cc_write(c,o[..]);#assert checkpoint2_input(s,9007199254740991)&&!checkpoint2_input(s,9007199254740992);
+  #assert !checkpoint2_input("{}",1);
+}
+#test "character checkpoint: bounded complete resources and strict identifiers" {
+  #assert CC_STATE==27&&CC_BODY==2048;
+  for i:0..<27{high:=ifx i<2 then 1 else ifx i==2 then 99999 else ifx i<5 then 18000 else ifx i==5 then 9 else 99;#assert cc_resource(i,0)&&cc_resource(i,high)&&!cc_resource(i,-1)&&!cc_resource(i,high+1);}
+  #assert !cc_resource(-1,0)&&!cc_resource(CC_STATE,0);
+  #assert cc_id("p-0a")&&!cc_id("")&&!cc_id("UP")&&!cc_id("p_a")&&!cc_id("a.b");
+  c:=cc_fixture();c.pid[0]='A';o:[CC_BODY]u8;#assert !cc_read(cc_write(c,o[..]),true).ok;
+  c=cc_fixture();c.n[9]=21;#assert !cc_read(cc_write(c,o[..]),true).ok;
+  c=cc_fixture();c.n[9]=1;#assert !cc_read(cc_write(c,o[..]),true).ok;
+  c=cc_fixture();c.n[4]=c.n[5]+1;#assert !checkpoint2_input(cc_write(c,o[..]),c.n[5]);
+}
+#test "character checkpoint: malformed, partial and substituted captures never publish" {
+  #assert !cc_read("{}",true).ok&&!cc_read("[]",true).ok&&!cc_read("bad",true).ok;
+  c:=cc_fixture();o:[CC_BODY]u8;s:=cc_write(c,o[..]);#assert !cc_read(s[0..<s.count-1],true).ok;
+  short:[8]u8;#assert cc_write(c,short[..])=="";
+}
+cc_number :: (i:int,n:int)->bool {return i>=0&&i<17&&n>=CC_LOW[i]&&n<=CC_HIGH[i];}
+cc_resource_max :: (i:int)->int {return ifx i<2 then 1 else ifx i==2 then 99999 else ifx i<5 then 18000 else ifx i==5 then 9 else 99;}
+cc_resource :: (i:int,n:int)->bool {return i>=0&&i<CC_STATE&&n>=0&&n<=cc_resource_max(i);}
+cc_id :: (s:string)->bool{if s.count==0{return false;}for c:s{if !((c>='a'&&c<='z')||(c>='0'&&c<='9')||c=='-'){return false;}}return true;}
+cc_present :: (n:int)->bool{return n>0;}
+cc_integer :: (d:Jv,node:int)->int{return jv_int(d,node,-9007199254740991);}
+cc_array :: (d:Jv,node:int)->bool{return jv_kind(d,node)==JV_ARRAY&&jv_len(d,node)==CC_STATE;}
+cc_read :: (text:string,ingress:bool)->CharacterCapture {
+  c:=CharacterCapture.{};if text.count>CC_BODY{return c;}
+  nodes:[128]JvNode;d:[1]Jv;if !jv_parse(d[..],text,nodes[..]){return c;}
+  if jv_kind(d[0],0)!=JV_OBJECT||jv_len(d[0],0)!=(ifx ingress then 21 else 20){return c;}
+  for i:0..<17{if i==5&&!ingress{continue;}n:=cc_integer(d[0],jv_get(d[0],0,CC_KEYS[i]));if !cc_number(i,n){return CharacterCapture.{};}c.n[i]=n;}
+  if !ingress{c.n[5]=c.n[4];}
+  c.pid_n=jv_str(d[0],jv_get(d[0],0,"pid"),c.pid[..]);c.room_n=jv_str(d[0],jv_get(d[0],0,"room"),c.room[..]);
+  if !cc_present(c.pid_n){return CharacterCapture.{};}if !cc_present(c.room_n){return CharacterCapture.{};}
+  if !cc_id(cast(string)c.pid[0..<c.pid_n])||!cc_id(cast(string)c.room[0..<c.room_n]){return CharacterCapture.{};}
+  kind:=jv_kind(d[0],jv_get(d[0],0,"dead"));if kind!=JV_TRUE&&kind!=JV_FALSE{return CharacterCapture.{};}c.dead=kind==JV_TRUE;
+  if c.n[9]>c.n[10]||(c.dead&&c.n[9]!=0){return CharacterCapture.{};}
+  a:=jv_get(d[0],0,"state");if !cc_array(d[0],a){return CharacterCapture.{};}
+  for i:0..<CC_STATE{n:=cc_integer(d[0],jv_at(d[0],a,i));if !cc_resource(i,n){return CharacterCapture.{};}c.state[i]=n;}
+  c.ok=true;return c;
+}
+cc_encode :: (c:CharacterCapture,out:[]u8,ingress:bool)->string {
+  pid:=c.pid;room:=c.room;
+  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);for i:0..<17{if i==5&&!ingress{continue;}jo_key(o[..],CC_KEYS[i]);jo_int(o[..],c.n[i]);}
+  jo_key(o[..],"pid");jo_str(o[..],cast(string)pid[0..<c.pid_n]);jo_key(o[..],"room");jo_str(o[..],cast(string)room[0..<c.room_n]);jo_key(o[..],"dead");jo_bool(o[..],c.dead);
+  jo_key(o[..],"state");jo_arr(o[..]);for i:0..<CC_STATE{jo_int(o[..],c.state[i]);}jo_end(o[..]);jo_end(o[..]);return ifx o[0].bad then "" else jo_text(o[..]);
+}
+cc_write :: (c:CharacterCapture,out:[]u8)->string{return cc_encode(c,out,true);}
+cc_stored :: (c:CharacterCapture,out:[]u8)->string{return cc_encode(c,out,false);}
+checkpoint2_input :: (text:string,now:int)->bool #export_c {
+  c:=cc_read(text,true);return c.ok&&now>=1&&now<=9007199254740991&&c.n[5]>=now-120000&&c.n[5]<=now+120000&&c.n[4]<=c.n[5];
+}

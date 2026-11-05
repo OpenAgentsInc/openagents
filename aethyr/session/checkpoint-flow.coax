@@ -1,0 +1,37 @@
+// Backpressure and acknowledgment policy for character resume profile 2.
+#authority;
+CF_CAP :: 256; CF_EVERY :: 5000; CF_BOUND :: 30000; CF_RESPONSE :: 6000;
+#test "checkpoint flow: gameplay has a strict accepted-capture age bound, including initial and reversed clocks" {
+  #assert CF_CAP==256&&CF_EVERY==5000&&CF_BOUND==30000&&CF_RESPONSE==6000;
+  #assert cf_fresh(true,0)&&cf_fresh(true,29999)&&!cf_fresh(true,30000)&&!cf_fresh(true,30001)&&!cf_fresh(true,-1)&&!cf_fresh(false,0);
+}
+#test "checkpoint flow: no unsaved, seated or in-flight reservation can be recycled" {
+  for bits:0..<16{live:=(bits&1)!=0;pending:=(bits&2)!=0;seated:=(bits&4)!=0;flying:=(bits&8)!=0;want:=!live||(bits==1);#assert cf_reuse(live,pending,seated,flying)==want;}
+}
+#test "checkpoint flow: exact v2 receipt identity, status and acceptance are required" {
+  #assert cf_ack(2,"applied",7,101,3,100,7,101,3)&&cf_ack(2,"duplicate",7,101,3,100,7,101,3);
+  #assert cf_ack(2,"applied",7,101,3,1,7,101,3);
+  #assert !cf_ack(1,"applied",7,101,3,100,7,101,3)&&!cf_ack(2,"kept",7,101,3,100,7,101,3)&&!cf_ack(2,"stale",7,101,3,100,7,101,3);
+  #assert !cf_ack(2,"applied",8,101,3,100,7,101,3)&&!cf_ack(2,"applied",7,102,3,100,7,101,3)&&!cf_ack(2,"applied",7,101,4,100,7,101,3)&&!cf_ack(2,"applied",7,101,3,0,7,101,3);
+}
+#test "checkpoint flow: retries stay bounded and add deterministic per-process jitter" {
+  #assert cf_wait(0,0)==500&&cf_wait(1,0)==500&&cf_wait(1,500)==1000&&cf_wait(1,501)==500&&cf_wait(2,0)==1000&&cf_wait(3,0)==2000&&cf_wait(4,0)==2500&&cf_wait(100,2500)==5000;
+  for i:0..<9{for salt:0..<37{n:=cf_wait(i,salt*317);#assert n>=500&&n<=5000;}}
+}
+#test "checkpoint flow: only an exact versioned fencing answer retires a capture" {
+  #assert cf_fenced(2,"fenced",7,101,3,7,101,3);
+  #assert !cf_fenced(1,"fenced",7,101,3,7,101,3)&&!cf_fenced(2,"applied",7,101,3,7,101,3);
+  #assert !cf_fenced(2,"fenced",8,101,3,7,101,3)&&!cf_fenced(2,"fenced",7,102,3,7,101,3)&&!cf_fenced(2,"fenced",7,101,4,7,101,3);
+}
+cf_fenced :: (version:int,status:string,owner:int,process:int,rev:int,want_owner:int,want_process:int,want_rev:int)->bool {
+  return version==2&&status=="fenced"&&owner==want_owner&&process==want_process&&rev==want_rev;
+}
+cf_fresh :: (accepted:bool,age:int)->bool{return accepted&&age>=0&&age<CF_BOUND;}
+cf_reuse :: (live:bool,pending:bool,seated:bool,flying:bool)->bool{return !live||(!pending&&!seated&&!flying);}
+cf_ack :: (version:int,status:string,owner:int,process:int,rev:int,at:int,want_owner:int,want_process:int,want_rev:int)->bool {
+  return version==2&&(status=="applied"||status=="duplicate")&&owner==want_owner&&process==want_process&&rev==want_rev&&at>0;
+}
+cf_wait :: (tries:int,salt:int)->int {
+  half:=500;if tries==2{half=1000;}else if tries==3{half=2000;}else if tries>=4{half=2500;}
+  return half+salt%(half+1);
+}
