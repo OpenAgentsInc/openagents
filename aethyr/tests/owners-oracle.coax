@@ -1,0 +1,28 @@
+// The checks' side of aethyr/world/owners.coax: fights and crowds on the two owners' line.
+// Only the checks call it.
+
+// Two entities that fight each other at (ax, 0) and (bx, 0), on a link of `link` ticks. Returns the
+// tick the first one falls (or -1 by `ticks`).
+ow_fight :: (w: [] OwWorld, ax: f32, bx: f32, link: int, ticks: int) -> int {
+  w[0] = OwWorld.{}; w[0].link = link;
+  a := ow_add(w, OwEntity.{x = ax, target = 1}); b := ow_add(w, OwEntity.{x = bx, target = 0});
+  for t: 0..<ticks {
+    ow_tick(w);
+    if ow_truth(w, a).hp <= 0 || ow_truth(w, b).hp <= 0 { return w[0].tick; }
+  }
+  return -1;
+}
+// Eight walkers that cross the line, four each way, at 0.25 m a tick.
+ow_crowd :: (w: [] OwWorld) {
+  w[0] = OwWorld.{};
+  for k: 0..<4 { _ := ow_add(w, OwEntity.{x = -6 - f32(k), z = f32(k) * 2, vx = 0.25}); }
+  for k: 0..<4 { _ := ow_add(w, OwEntity.{x = 6 + f32(k), z = f32(k) * 2 + 1, vx = -0.25}); }
+}
+// Every entity has exactly one owner, except while its state is in flight.
+ow_one_owner :: (w: [] OwWorld) -> bool {
+  for i: 0..<w[0].n {
+    c := ow_claims(w, i);
+    if w[0].in_flight[i] { if c != 0 { return false; } } else if c != 1 { return false; }
+  }
+  return true;
+}
