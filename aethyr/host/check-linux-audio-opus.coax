@@ -1,0 +1,46 @@
+// Actual installed SDK output, with complete shape/identity and sample receipts.
+#load "audio-opus-conformance.coax";
+#load "audio-assets-conformance.coax";
+#load "pcm-compare.coax";
+#load "../render/tests/qualification-files.coax";
+#load "../../coax/lib/sys/args.coax";
+hao_open :: ()->int #foreign;
+hao_decode :: (name:[]u8,source:[]u8,companion:[]u8)->int #foreign;
+hao_info :: (field:int)->int #foreign;
+hao_copy :: (out:[]u8)->int #foreign;
+hao_release :: () #foreign;
+hao_close :: () #foreign;
+hao_budget :: (fill:bool) #foreign;
+hao_asset :: (id:int,field:int)->int #foreign;
+hao_text :: (id:int,field:int,out:[]u8)->int #foreign;
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])!=4 {tool_errln("usage: check-linux-audio-opus REPO PICKED_BROWSER EXTRA_BROWSER NEW_OUT");return 2;}
+ root:=args_at(a[..],0);out:=args_at(a[..],3);if !fs_mkdir(out)||hao_open()!=1 {return 1;}defer {hao_close();}
+ paths:[3][4096]u8;filename:[512]u8;f:[1]Jo;source:[8388608]u8;companion:[1048576]u8;expected:[8388608]u8;actual:[8388608]u8;
+ record:[131072]u8;o:[1]Jo;jo_start(o[..],record[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.host.linux-audio-opus.v1");jo_key(o[..],"assets");jo_arr(o[..]);
+ rows:[6]int;passed:=true;words:=0;over:=0;nonfinite:=0;
+ for id:0..<153 {
+  name_bytes:[128]u8;url_bytes:[512]u8;nn:=hao_text(id,0,name_bytes[..]);un:=hao_text(id,1,url_bytes[..]);if nn<1||un<1 {return 1;}asset_name:=cast(string)name_bytes[0..<nn];frames:=hao_asset(id,0);asset_channels:=hao_asset(id,1);canonical:=hao_asset(id,2)==1;
+  jo_start(f[..],filename[..]);jo_put(f[..],"apps/openagents-web");jo_put(f[..],cast(string)url_bytes[0..<un]);n:=fs_read(fs_join(root,jo_text(f[..]),paths[0][..]),source[..]);if n<1 {return 1;}
+  pn:=0;if canonical {un=hao_text(id,2,url_bytes[..]);if un<1 {return 1;}jo_start(f[..],filename[..]);jo_put(f[..],"apps/openagents-web");jo_put(f[..],cast(string)url_bytes[0..<un]);pn=fs_read(fs_join(root,jo_text(f[..]),paths[0][..]),companion[..]);if pn<1 {return 1;}}
+  jo_start(f[..],filename[..]);jo_put(f[..],asset_name);jo_put(f[..],".f32");name:=jo_text(f[..]);en:=fs_read(fs_join(args_at(a[..],1),name,paths[1][..]),expected[..]);if en<0 {en=fs_read(fs_join(args_at(a[..],2),name,paths[1][..]),expected[..]);}if en!=frames*asset_channels*4 {return 1;}
+  observed:=hao_decode(name_bytes[0..<nn],source[0..<n],companion[0..<pn]);an:=hao_copy(actual[..]);channels:=hao_info(0);sdk:=hao_info(1);apc:=hao_info(4);reads:=hao_info(2);retained:=hao_info(7);
+  rows[0]+=1;rows[1]+=ifx apc>0 then 1 else 0;rows[2]+=sdk;
+  q:HostPcmCompare;different:=0;if an>0 {q=hpcm_compare_words(actual[0..<an],expected[0..<en]);if canonical&&an==en {for byte,i:actual[0..<an] {if byte!=expected[i] {different+=1;}}}}
+  good:=q.shape&&q.over==0&&q.nonfinite==0&&observed==frames*asset_channels&&channels==asset_channels&&retained==observed;
+  rows[3]+=different;if observed!=frames*asset_channels||channels!=asset_channels {rows[4]+=1;}
+  words+=q.samples;over+=q.over;nonfinite+=q.nonfinite;passed=passed&&good;
+  jo_obj(o[..]);jo_key(o[..],"name");jo_str(o[..],asset_name);jo_key(o[..],"samples");jo_int(o[..],q.samples);jo_key(o[..],"over_2pow_minus20");jo_int(o[..],q.over);jo_key(o[..],"nonfinite");jo_int(o[..],q.nonfinite);jo_key(o[..],"max_abs_f64_bits");jo_int(o[..],cast(int)f64_bits(q.max_abs));jo_key(o[..],"sdk_opens");jo_int(o[..],sdk);jo_key(o[..],"sdk_reads");jo_int(o[..],reads);jo_key(o[..],"canonical_different_bytes");jo_int(o[..],different);jo_key(o[..],"passed");jo_bool(o[..],good);jo_end(o[..]);
+  if an>0&&!fs_write(fs_join(out,name,paths[2][..]),cast(string)actual[0..<an]) {return 1;}hao_release();rows[5]+=hao_info(7);
+  print("Linux authored %: samples %, over %, finite failures %.\n",asset_name,q.samples,q.over,q.nonfinite);
+ }
+ jo_end(o[..]);refusal:[28]int;
+ for i:0..<7 {
+  key:=ifx i<4 then "fire-hit-e2" else "fire-cast-e2";jo_start(f[..],filename[..]);jo_put(f[..],"apps/openagents-web/realms/everglade/sfx/");jo_put(f[..],key);jo_put(f[..],".ogg");n:=fs_read(fs_join(root,jo_text(f[..]),paths[0][..]),source[..]);if n<1 {return 1;}
+  pn:=0;if i<4 {pn=fs_read(fs_join(root,"apps/openagents-web/realms/everglade/pcm-v1/fire-hit-e2.apc",paths[0][..]),companion[..]);if pn<1 {return 1;}}
+  if i==0 {pn=0;}if i==1 {companion[pn-1]^=1;}if i==2 {source[n-1]^=1;}if i==5 {key="unlisted-safe";}if i==6 {hao_budget(true);}
+  name_bytes:[128]u8;for byte,j:key {name_bytes[j]=byte;}refusal[i*4]=hao_decode(name_bytes[0..<key.count],source[0..<n],companion[0..<pn]);refusal[i*4+1]=hao_info(1);refusal[i*4+2]=ifx hao_info(4)>0 then 1 else 0;hao_release();if i==6 {hao_budget(false);}refusal[i*4+3]=hao_info(7);
+ }
+ passed=passed&&haoc_decode(rows[..])&&hac_refusal(refusal[..]);jo_key(o[..],"rows");jo_arr(o[..]);for value:rows {jo_int(o[..],value);}jo_end(o[..]);jo_key(o[..],"refusal");jo_arr(o[..]);for value:refusal {jo_int(o[..],value);}jo_end(o[..]);jo_key(o[..],"samples");jo_int(o[..],words);jo_key(o[..],"over_2pow_minus20");jo_int(o[..],over);jo_key(o[..],"nonfinite");jo_int(o[..],nonfinite);jo_key(o[..],"passed");jo_bool(o[..],passed);jo_end(o[..]);
+ if o[0].bad||!fs_write(fs_join(out,"audio.json",paths[0][..]),jo_text(o[..])) {return 1;}return ifx passed then 0 else 1;
+}

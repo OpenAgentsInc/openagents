@@ -1,0 +1,12 @@
+// SDK results cannot publish NaN or infinity into the shared mixer.
+#load "../audio/host-pcm-asset.coax";
+#authority;
+#test "sample publication includes signed zero subnormal and finite extreme bits" {
+ values:[24]u8;for bits,i:[6]int.[0,2147483648,1,2147483649,2139095039,4286578687] {hpo_word(values[..],i*4,bits);}
+ #assert hdo_finite(values[..])&&hdo_finite(values[0..<0]);
+ for count:[3]int.[1,2,3] {#assert !hdo_finite(values[0..<count]);}
+ for bits:[6]int.[2139095040,4286578688,2139095041,2143289344,4294967295,4290772992] {
+  for at:0..<6 {old:=hpo_u32(values[..],at*4);hpo_word(values[..],at*4,bits);#assert !hdo_finite(values[..]);hpo_word(values[..],at*4,old);}
+ }
+}
+hdo_finite :: (samples:[]u8)->bool #export_c {return samples.count%4==0&&hpc_finite(samples);}

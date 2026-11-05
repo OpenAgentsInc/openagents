@@ -3,3 +3,6 @@
 #load "audio-carrier.coax";
 #load "audio-bank.coax";
 #load "audio-session.coax";
+#load "audio-encoded.coax";
+#load "audio-decode.coax";
+#load "audio-samples.coax";

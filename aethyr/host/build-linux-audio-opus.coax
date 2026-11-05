@@ -1,0 +1,21 @@
+// Link retained Coax emission to the installed libopusfile SDK; no downloads.
+#import "Basic";
+#load "../render/tests/qualification-files.coax";
+#load "../../coax/lib/sys/args.coax";
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])<4||args_count(a[..])>5||(args_count(a[..])==5&&args_at(a[..],4)!="--sanitize") {tool_errln("usage: build-linux-audio-opus ROOT EMISSION NEW_OUT OPUSFILE.so [--sanitize]");return 2;}
+ if cxtool_os()!=2 {return 2;}root:=args_at(a[..],0);emission:=args_at(a[..],1);out:=args_at(a[..],2);sdk:=args_at(a[..],3);sanitize:=args_count(a[..])==5;
+ if !fs_mkdir(out) {return 1;}paths:[24][4096]u8;argv:[64]string;n:=0;inputs:[1]RtqInputs;
+ for flag:[9]string.["nice","-n10","gcc","-std=gnu11",ifx sanitize then "-O1" else "-O2","-ffp-contract=off","-fno-fast-math","-Wno-unused-function","-Wno-unused-variable"] {argv[n]=flag;n+=1;}
+ argv[n]="-I";argv[n+1]=emission;n+=2;argv[n]="-I";argv[n+1]=fs_join(root,"verse/native",paths[0][..]);n+=2;
+ argv[n]=fs_join(emission,"NativeAudio.c",paths[1][..]);if !rtq_input_add(inputs[..],argv[n]) {return 1;}n+=1;
+ for file,i:[7]string.["verse/native/audio-host.c","verse/native/audio-opus.c","aethyr/host/tests/linux-audio-opus-effects.c","coax/platform/tool-native.c","coax/platform/process-native.c","coax/platform/store-file-native.c","coax/platform/read-file-native.c"] {argv[n]=fs_join(root,file,paths[3+i][..]);if !rtq_input_add(inputs[..],argv[n]) {return 1;}n+=1;}
+ for file:[2]string.["NativeAudio.h","profile.json"] {if !rtq_input_add(inputs[..],fs_join(emission,file,paths[10][..])) {return 1;}}
+ for file:[6]string.["verse/native/audio-host.h","verse/native/audio-opus.h","coax/platform/tool-native.h","coax/platform/process-native.h","coax/platform/store-file-native.h","coax/platform/read-file-native.h"] {if !rtq_input_add(inputs[..],fs_join(root,file,paths[10][..])) {return 1;}}
+ if !rtq_input_add(inputs[..],sdk) {return 1;}argv[n]=sdk;n+=1;for flag:[2]string.["-lpthread","-lm"] {argv[n]=flag;n+=1;}
+ if sanitize {for flag:[4]string.["-fsanitize=address,undefined","-fno-sanitize-recover=all","-fno-omit-frame-pointer","-g"] {argv[n]=flag;n+=1;}}
+ bin:=fs_join(out,"check-linux-audio-opus",paths[11][..]);argv[n]="-o";argv[n+1]=bin;n+=2;env:[]string;stdout:[1048576]u8;stderr:[1048576]u8;
+ r:=rtq_command(argv[0..<n],env,proc_now_ms()+180000,out,"link",stdout[..],stderr[..]);if !rtq_ok(r)||!rtq_inputs_match(inputs[..])||!rtq_input_add(inputs[..],bin) {return 1;}
+ record:[65536]u8;o:[1]Jo;jo_start(o[..],record[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.host.linux-audio-opus-build.v1");jo_key(o[..],"sanitized");jo_bool(o[..],sanitize);jo_key(o[..],"inputs");rtq_inputs_json(o[..],inputs[..],"");jo_end(o[..]);
+ if o[0].bad||!fs_write(fs_join(out,"build.json",paths[12][..]),jo_text(o[..])) {return 1;}return 0;
+}

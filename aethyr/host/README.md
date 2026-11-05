@@ -439,6 +439,15 @@ decoder reservation. Validate observed 48 kHz frame/channel shape against
 that plan before publishing PCM; codec refusal publishes no prefix. The
 exact supported framing profile is documented in `audio/host-opus.md`.
 Its metadata gate is separate from actual codec-output conformance.
+The Linux synchronous SDK adapter additionally executes `audio-decode.coax`:
+partial reads advance frame offsets, premature/error/extra output refuses,
+and exact output requires an independent EOF probe. Complete coded and probe
+planes precede SDK opening; finite-word admission precedes the separately
+reserved retained copy. All 153 actual Linux outputs pass the unchanged
+sample bound, with exact required companions and zero per-row cleanup. This
+component is separate from ordinary Linux default demand and realm/device
+composition; its record is `docs/verification/host-contract-2026-11-05/linux-opus.md`.
+
 The browser now accepts raw source descriptors at its v1 audio boundary.
 `audio-source.coax` admits streamed application-owned copies before retention;
 each encoded input, coded decoder extent, transfer and retained Worklet plane

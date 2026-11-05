@@ -1,0 +1,59 @@
+// A complete SDK stream must produce exactly the admitted frame count and EOF.
+#load "audio-memory.coax";
+#authority;
+HostAudioDecode :: struct {frames:int;channels:int;offset:int;phase:int;}
+HostAudioRead :: struct {kind:int;offset:int;words:int;}
+#test "SDK output extent opens only positive bounded mono or stereo streams" {
+ for channels:[2]int.[1,2] {
+  s:=had_open(9,channels);#assert s.frames==9&&s.channels==channels&&s.offset==0&&s.phase==1;
+  r:=had_read(s);#assert r.kind==1&&r.offset==0&&r.words==9*channels;
+ }
+ #assert had_open(8388608,1).phase==1&&had_open(4194304,2).phase==1;
+ for frames:[4]int.[-1,0,8388609,9223372036854775807] {#assert had_open(frames,1).phase==0;}
+ #assert had_open(4194305,2).phase==0;
+ for channels:[4]int.[-1,0,3,9223372036854775807] {#assert had_open(1,channels).phase==0;}
+}
+#test "partial SDK reads retain exact frame offsets and require an independent EOF probe" {
+ s:[1]HostAudioDecode;s[0]=had_open(7,2);
+ #assert had_observe(s[..],3)&&s[0].offset==3&&s[0].phase==1;
+ r:=had_read(s[0]);#assert r.kind==1&&r.offset==6&&r.words==8;
+ #assert had_observe(s[..],4)&&s[0].offset==7&&s[0].phase==2;
+ r=had_read(s[0]);#assert r.kind==2&&r.offset==0&&r.words==2;
+ #assert had_observe(s[..],0)&&s[0].phase==3;
+ r=had_read(s[0]);#assert r.kind==3&&r.offset==0&&r.words==0;
+ #assert !had_observe(s[..],0)&&s[0].phase==3;
+}
+#test "premature EOF decoder errors and oversized returns refuse without publishing a prefix" {
+ for count:[4]int.[-1,0,8,9223372036854775807] {
+  s:[1]HostAudioDecode;s[0]=had_open(7,1);#assert !had_observe(s[..],count)&&s[0].phase==0&&s[0].offset==0;
+  r:=had_read(s[0]);#assert r.kind==0&&r.words==0&&r.offset==0;
+ }
+ s:[1]HostAudioDecode;s[0]=had_open(7,2);#assert had_observe(s[..],3);
+ #assert !had_observe(s[..],5)&&s[0].offset==3&&s[0].phase==0;
+ #assert !had_observe(s[..],1)&&s[0].phase==0;
+}
+#test "extra output or an SDK error after the admitted frame count refuses the complete stream" {
+ for count:[3]int.[-1,1,9223372036854775807] {
+  s:[1]HostAudioDecode;s[0]=had_open(1,1);#assert had_observe(s[..],1)&&s[0].phase==2;
+  #assert !had_observe(s[..],count)&&s[0].phase==0&&had_read(s[0]).kind==0;
+ }
+}
+had_open :: (frames:int,channels:int)->HostAudioDecode #export_c {
+ if ham_extent(frames,channels)==0 {return HostAudioDecode.{};}
+ return HostAudioDecode.{frames=frames,channels=channels,phase=1};
+}
+// kind: 0 refused, 1 read admitted output plane, 2 read separate one-frame
+// probe plane, 3 complete. Offset and capacity are F32 words, not frames.
+had_read :: (s:HostAudioDecode)->HostAudioRead #export_c {
+ if s.phase==1 {return HostAudioRead.{kind=1,offset=s.offset*s.channels,words=(s.frames-s.offset)*s.channels};}
+ if s.phase==2 {return HostAudioRead.{kind=2,words=s.channels};}
+ return HostAudioRead.{kind=ifx s.phase==3 then 3 else 0};
+}
+had_observe :: (s:[]HostAudioDecode,frames:int)->bool #export_c {
+ if s[0].phase==1 {
+  if frames<1||frames>s[0].frames-s[0].offset {s[0].phase=0;return false;}
+  s[0].offset+=frames;if s[0].offset==s[0].frames {s[0].phase=2;}return true;
+ }
+ if s[0].phase==2 {s[0].phase=ifx frames==0 then 3 else 0;return frames==0;}
+ return false;
+}

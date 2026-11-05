@@ -1,0 +1,12 @@
+93a9fd018036cd019155be3f77e3df96154ec302d94cf3ecd70c5058bc826632  aethyr/host/audio-decode.coax
+6f3afc8b9ef22e4e558ef8196e303e79ac20410483c94debcebb548a8375f887  aethyr/host/audio-samples.coax
+1b9cf2452d67093e0e13d7651a5972b89ec5952fff41c5065122d33e440006fe  aethyr/host/native-audio.coax
+01a31fecb6fb293e86cd75a4247ecbdf7351d9ca2be31cf15b482b04c51d0d15  aethyr/host/check-linux-audio-opus.coax
+6212e1f65d068f32c42e09362ef1097494d60b92cf752590b42b37109d989d0d  aethyr/host/linux-audio-opus-tool.coax
+9a6fce03d02354d0a14484e85a05d36989a23a749c84e3b2954fe9223be94b1f  aethyr/host/build-linux-audio-opus.coax
+4a087f9e6a5c2dd5127f60ece5007d6826d42013259a5d51122853ade88143ea  aethyr/host/tests/linux-audio-opus-effects.c
+15af727d42dc110476820774cade326afb444dcf49bd948c57a9dca9d630de3a  verse/native/audio-opus.c
+1b050e03eeedf4b07ca9173983d9a1df05ec23d988e8235b431cc88d86a2ea4b  verse/native/audio-opus.h
+53a5dd00a446cd002f12d5fd5671dc9e644b62c81276beeb5efc71476fe00e88  /Users/christopherdavid/.openagents/aethyrforge/host-contract-12869/linux-opus/emission-tool/NativeAudio.c
+eb89e012eb0ad81f13471e07969185f18edaf62061ef5a70b14de7db0b9197ca  /Users/christopherdavid/.openagents/aethyrforge/host-contract-12869/linux-opus/emission-tool/NativeAudio.h
+65bc3c53ac857dfb740fd4dffaadaef2b331c877edb92adc4881d98d8f6676bf  /Users/christopherdavid/.openagents/aethyrforge/host-contract-12869/linux-opus/emission-tool/profile.json

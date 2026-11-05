@@ -1,0 +1,4 @@
+// One closed Coax graph avoids duplicate exported digest kernels between the
+// product decoder facade and its source-fenced observation tool.
+#load "native-audio.coax";
+#load "check-linux-audio-opus.coax";

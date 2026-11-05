@@ -39,6 +39,10 @@ owned decode retirement and real muted host replacement. Its direct default
 rendered cue comparison passes all 262,144 samples at unchanged 2^-20.
 These small SDK components retain their exact original-compiler/source joins;
 ordinary full host/default admission remains separate.
+The [Linux encoded-audio component](linux-opus.md) now passes all 153 actual
+outputs at the same bound, exact companions, EOF/shape and allocation/refusal
+gates normally and instrumented. Ordinary Linux demand and device composition
+remain separate.
 
 ## Qualified sections
 

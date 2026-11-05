@@ -102,6 +102,18 @@ samples. The device and retention observer root gates kill 59 and 11 mutants
 without equivalents. These SDK components do not substitute for ordinary
 Vulkan world integration or the complete host/default gates.
 
+The Linux encoded-audio component admits all 153 original authored sources
+through the shared catalogue/preflight and required companion reader. Actual
+normal and instrumented SDK runs pass all 12,657,718 samples at unchanged
+2^-20, including byte-exact companions and zero retained words after each row.
+Shared read control requires the admitted frame count and an independent EOF
+probe; finite publication and separate source/coded/probe/retained tickets
+precede PCM publication. Missing/corrupt required data and exhausted capacity
+publish no prefix and reach no SDK decode. New read/finite root gates kill
+59/5 mutants. This component does not qualify ordinary Linux default demand,
+realm/device composition or graphics/default admission. Exact provenance and
+SDK scope are in `docs/verification/host-contract-2026-11-05/linux-opus.md`.
+
 The Linux realm dispatcher admits physical bank metadata, WAV storage and
 draining sound packet spans before forming views. A refused asset does not
 silence later independently admitted assets. Its audio clock consumes the
