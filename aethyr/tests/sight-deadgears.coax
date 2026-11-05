@@ -1,0 +1,66 @@
+// Dead Gears' sight on Aethyr's ray query and senses (#12854): verse/deadgears/arena.coax's
+// arena_sight now asks aethyr/query.coax's query_ray, and arena_wall_ray (what a mutant, the
+// support engineer and your aim assist see across the deck) asks aethyr/ai/stimulus.coax's
+// sense_sight. This file keeps the private slab test they replaced (sdg_old_*, the consumer's
+// trace, as it stood in 4b30ee96fa) and holds them to it over random lines on the real deck,
+// and on lines that graze, start in or end on a box.
+//   coax/bin/coax test aethyr/tests/sight-deadgears.coax --library
+#load "../../verse/deadgears/arena.coax";
+#load "../rand.coax";
+
+// ---- the private sight Dead Gears ran before #12854, kept as its trace
+
+sdg_old_sight :: (a: [] Arena, p: Point, q: Point) -> bool {
+  d := sub(q, p);
+  for i: 0..<a[0].n {
+    b := a[0].boxes[i];
+    if p.x >= b.lo.x && p.x <= b.hi.x && p.y >= b.lo.y && p.y <= b.hi.y && p.z >= b.lo.z && p.z <= b.hi.z { return false; }
+    if arena_enter(b, 0, p, d) <= 1 { return false; }
+  }
+  return true;
+}
+sdg_old_wall_ray :: (a: [] Arena, p: Point, q: Point) -> bool {
+  return !sdg_old_sight(a, v3(p.x, 1.3, p.z), v3(q.x, 1.3, q.z));
+}
+
+// A point on the deck, or a little past its walls, from a counter.
+sdg_coord :: (seed: int, k: int, lo: f32, span: f32) -> f32 {
+  return lo + span * f32(rand_u32(seed, 7, k) % 100000) / 100000.0;
+}
+sdg_point :: (seed: int, k: int) -> Point {
+  return v3(sdg_coord(seed, k * 3, -17, 34), sdg_coord(seed, k * 3 + 1, 0, 2.2), sdg_coord(seed, k * 3 + 2, -25, 40));
+}
+
+// ---- checks
+
+#forall "sight on the shared query is the old slab test's, over random lines on the deck" which: 0..<8 #steps 400000000 {
+  deck: [1] Arena; deck[0] = test_deck(); a := deck[..];
+  seen := 0; hidden := 0;
+  for k: 0..<400 {
+    p := sdg_point(which, k * 2); q := sdg_point(which, k * 2 + 1);
+    old := sdg_old_sight(a, p, q);
+    #assert arena_sight(a, p, q) == old;
+    #assert arena_wall_ray(a, p, q) == sdg_old_wall_ray(a, p, q);
+    if old { seen += 1; } else { hidden += 1; }
+  }
+  #assert seen > 40 && hidden > 40;   // both answers are exercised
+}
+
+#test "sight: lines along a face, into a corner, from inside a box and to a point agree" {
+  deck: [1] Arena; deck[0] = test_deck(); a := deck[..];
+  // the low cover at (-5, 3) spans x -6.6..-3.4, y -0.2..1.15, z 2.35..3.65
+  lines := [12] Point.[
+    v3(-8, 1.15, 3), v3(-2, 1.15, 3),     // along its top face
+    v3(-8, 1.3, 3), v3(-2, 1.3, 3),       // just over it
+    v3(-5, 0.5, 3), v3(0, 1.3, 9),        // from inside it
+    v3(-5, 1.3, 0), v3(-5, 1.3, 2.35),    // ending on its face
+    v3(-6.6, 1, 0), v3(-6.6, 1, 6),       // along its side
+    v3(0, 1.3, 9), v3(0, 1.3, 9)];        // a point in the open
+  for i: 0..<6 {
+    p := lines[i * 2]; q := lines[i * 2 + 1];
+    #assert arena_sight(a, p, q) == sdg_old_sight(a, p, q);
+    #assert arena_wall_ray(a, p, q) == sdg_old_wall_ray(a, p, q);
+  }
+  #assert !arena_sight(a, v3(-5, 0.5, 3), v3(-5, 0.5, 3));   // a point inside a box
+  #assert !arena_wall_ray(a, v3(0, 0, 9), v3(0, 0, 9));     // standing in the open, on the same spot
+}

@@ -2660,7 +2660,7 @@ won_through_the_controls :: (phone_size: bool) -> bool {
 }
 // Full native integration scenario: aethyr/tests/check_native_gameplay.py.
 // Full native integration scenario: aethyr/tests/check_native_gameplay.py.
-#test "a full game is lost by standing still" #steps 533000000 {
+#test "a full game is lost by standing still" #steps 588000000 {
   s: [1] DeadGears;
   started(s[..]);
   f := play_out(s[..], false, false, 6000);

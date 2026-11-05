@@ -1,8 +1,8 @@
 // What a creature senses and what it knows (book chapter 75). A creature senses on the realm's
 // fixed step (aethyr/loop.coax's ticks, 1/64 s each), never on frame time, so it senses the same
 // at any frame rate. Each sense gives a typed stimulus: sight (a flat range, an eye height above
-// the feet and a line of sight through chapter 7's query_ray, so boxes, capsules and heightfields
-// all hide), sound (a flat range per source, as the watch's WATCH_HEAR) and touch (a flat reach).
+// the feet and a line of sight through chapter 7's query_clear, query_ray's hit or miss, so boxes,
+// capsules and heightfields all hide), sound (a flat range per source, as the watch's WATCH_HEAR) and touch (a flat reach).
 // What it senses goes into its Memory, a fixed number of stimuli forgotten a stated number of
 // ticks after they were sensed. A decision reads the memory, not the world: what a creature
 // "knows" about someone is its newest remembered stimulus of them. Nothing here changes the
@@ -20,6 +20,7 @@ SENSE_MEMORY :: 8;             // stimuli one creature remembers at most
 SENSE_REACH :: 1000.0;         // metres: a longer range is not one
 SENSE_EYE_MAX :: 100.0;        // metres: and a higher eye
 SENSE_FORGET_MAX :: 230400;    // ticks: an hour at 64 a second
+SENSE_SHORT_OF_ONE :: 0.99999994;   // the largest f32 below 1: what is on the target itself doesn't hide it
 
 StimulusKind :: enum u8 { none; sight; sound; touch; }
 SenseStatus :: enum u8 { sensed; out_of_range; hidden; invalid; }
@@ -56,9 +57,9 @@ sense_sight :: (s: Senses, c: Colliders, feet: WorldPoint, target: WorldPoint, s
   if !senses_ok(s) || !sense_point_ok(feet) || !sense_point_ok(target) || now < 0 { out.status = SenseStatus.invalid; return out; }
   if sense_flat(feet, target) > s.sight { out.status = SenseStatus.out_of_range; return out; }
   eye := world_point(feet.x, feet.y + s.eye, feet.z);
-  hit := query_ray(c, eye, world_sub(target, eye), 1);
-  if hit.status != QueryStatus.ok { out.status = SenseStatus.invalid; return out; }
-  if hit.hit && hit.t < 1 { out.status = SenseStatus.hidden; return out; }
+  line := query_clear(c, eye, world_sub(target, eye), SENSE_SHORT_OF_ONE);   // a hit at t < 1 hides it
+  if line.status != QueryStatus.ok { out.status = SenseStatus.invalid; return out; }
+  if !line.clear { out.status = SenseStatus.hidden; return out; }
   out.stimulus = Stimulus.{kind = StimulusKind.sight, source = source, at = target, tick = now};
   return out;
 }

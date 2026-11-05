@@ -1573,7 +1573,7 @@ repair :: (g: Game) { for k: 0..<51 { tick(g, v3(0, 0, -14.2), false, true, 0, -
   #assert finite3(g.pos[o]);
 }
 
-#test "stun, and pause freezes everything" #steps 122000000 {
+#test "stun, and pause freezes everything" #steps 152000000 {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
   g.st[0].ally_time = 100;
   clear_mutants(g);
@@ -1713,7 +1713,7 @@ shot_hits :: (g: Game) -> int {
 
 // ---- roles (#96d6): runners flank, the brute pins, crawlers use the vents and the reactor
 
-#test "a runner reaches you from the side while you face a crawler" #steps 136000000 {
+#test "a runner reaches you from the side while you face a crawler" #steps 168000000 {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
   g.st[0].ally_time = 1000000;   // the support engineer holds its fire
   clear_mutants(g);
@@ -1739,7 +1739,7 @@ shot_hits :: (g: Game) -> int {
 
 // Full native integration scenario: aethyr/tests/check_native_gameplay.py.
 
-#test "the brute holds off where it sees you and shoots; behind cover it can't" #steps 134000000 {
+#test "the brute holds off where it sees you and shoots; behind cover it can't" #steps 167000000 {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
   g.st[0].ally_time = 1000000;
   clear_mutants(g);
@@ -1846,7 +1846,7 @@ shot_hits :: (g: Game) -> int {
   }
 }
 
-#test "a brute winds up before its bolt, and the bolt can be stepped out of (#adba)" #steps 114000000 {
+#test "a brute winds up before its bolt, and the bolt can be stepped out of (#adba)" #steps 142000000 {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
   g.st[0].ally_time = 1000000;
   clear_mutants(g);
@@ -1914,7 +1914,7 @@ spawn_crowd :: (g: Game) {
 }
 
 // The support engineer follows you, and gets behind cover from a mutant it sees.
-#test "the support engineer follows and takes cover" #steps 86000000 {
+#test "the support engineer follows and takes cover" #steps 100000000 {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
   clear_mutants(g);
   ally := dg_support(g);
@@ -1966,7 +1966,7 @@ spawn_crowd :: (g: Game) {
 
 // Mutants are character bodies (#19): a crowd closing on you keeps apart
 // and never stands inside you, and a save mid-fight plays on exactly.
-#test "mutants keep apart" #steps 331000000 {
+#test "mutants keep apart" #steps 388000000 {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
   clear_mutants(g);
   g.st[0].ally_time = 1000000000;   // the support engineer holds its fire

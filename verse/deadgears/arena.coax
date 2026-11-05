@@ -4,7 +4,8 @@
 //
 //   arena_blocked   a small sphere resting on the deck meets a wall or cover
 //   arena_sight     nothing stands between two points (3D, so low cover lets
-//                   you look over it)
+//                   you look over it): Aethyr's query_clear over the boxes
+//   arena_sees      what a creature sees at chest height: Aethyr's sense_sight
 //   arena_sweep     how far a sphere moves before it meets a wall or cover,
 //                   so a fast crate or bolt cannot step through thin cover
 //   arena_walk      a character's circle walks, sliding along what it meets
@@ -17,16 +18,33 @@
 
 #load "../../aethyr/points.coax";
 #load "../../aethyr/nav/grid.coax";   // the walking grid's fields and steps (Aethyr book chapter 76)
+#load "../../aethyr/ai/stimulus.coax";   // sight through the shared ray query (Aethyr book chapter 75)
 
 BOXES :: 16;
 Block :: struct { lo: Point; hi: Point; }
-Arena :: struct { boxes: [BOXES] Block; n: int; }
+// `solid` holds the same boxes as Aethyr's colliders (aethyr/query.coax: min x, y, z, max x, y, z).
+Arena :: struct { boxes: [BOXES] Block; n: int; solid: [96] f32; }
 
 arena_add :: (a: Arena, low: Point, high: Point) -> Arena {
   next := a;
-  if a.n < BOXES { next.boxes[a.n] = Block.{lo = low, hi = high}; next.n = a.n + 1; }
+  if a.n < BOXES {
+    next.boxes[a.n] = Block.{lo = low, hi = high};
+    k := a.n * QUERY_BOX;
+    next.solid[k] = low.x; next.solid[k + 1] = low.y; next.solid[k + 2] = low.z;
+    next.solid[k + 3] = high.x; next.solid[k + 4] = high.y; next.solid[k + 5] = high.z;
+    next.n = a.n + 1;
+  }
   return next;
 }
+
+// The arena as Aethyr's colliders: its boxes, and a ground far below the deck, so a sight line
+// is only ever stopped by a wall or a cover.
+ARENA_GROUND :: -100.0;
+arena_colliders :: (a: [] Arena) -> Colliders {
+  c: Colliders; c.ground = ARENA_GROUND; c.boxes = a[0].solid[0..<a[0].n * QUERY_BOX];
+  return c;
+}
+arena_world :: (p: Point) -> WorldPoint { return world_point(p.x, p.y, p.z); }
 
 // The four hull walls; the covers are added after (arena_add).
 arena_hull :: () -> Arena {
@@ -84,21 +102,26 @@ arena_enter :: (b: Block, g: f32, p: Point, d: Point) -> f32 {
   return t0;
 }
 
-// Nothing (wall or cover) stands on the segment from p to q.
+// Nothing (wall or cover) stands on the segment from p to q: Aethyr's line-of-sight query over the
+// arena's boxes. Starting inside a box sees nothing.
 arena_sight :: (a: [] Arena, p: Point, q: Point) -> bool {
-  d := sub(q, p);
-  for i: 0..<a[0].n {
-    b := a[0].boxes[i];
-    if p.x >= b.lo.x && p.x <= b.hi.x && p.y >= b.lo.y && p.y <= b.hi.y && p.z >= b.lo.z && p.z <= b.hi.z { return false; }
-    if arena_enter(b, 0, p, d) <= 1 { return false; }
-  }
-  return true;
+  d := sub(q, p); far: f32 = 1;
+  if d.x == 0 && d.y == 0 && d.z == 0 { d = v3(0, -1, 0); far = 0; }   // a point: only whether it is inside a box
+  return query_clear(arena_colliders(a), arena_world(p), arena_world(d), far).clear;
+}
+
+// What a Dead Gears creature sees across the deck: eyes and target at chest height (1.3 m), no
+// range of its own (a caller that has one checks it), through Aethyr's senses.
+ARENA_SENSES :: Senses.{sight = SENSE_REACH, eye = 1.3};
+arena_sees :: (a: [] Arena, p: Point, q: Point) -> bool {
+  eye := v3(p.x, 1.3, p.z);
+  if p.x == q.x && p.z == q.z { return arena_sight(a, eye, eye); }   // no line: only a box it stands in hides
+  seen := sense_sight(ARENA_SENSES, arena_colliders(a), world_point(p.x, 0, p.z), world_point(q.x, 1.3, q.z), 0, 0);
+  return seen.status == SenseStatus.sensed;
 }
 
 // Sight at chest height (1.3 m) across the deck: low cover lets you peek.
-arena_wall_ray :: (a: [] Arena, p: Point, q: Point) -> bool {
-  return !arena_sight(a, v3(p.x, 1.3, p.z), v3(q.x, 1.3, q.z));
-}
+arena_wall_ray :: (a: [] Arena, p: Point, q: Point) -> bool { return !arena_sees(a, p, q); }
 
 // How far (0..1) a sphere of radius r at c moves along motion before it
 // meets a wall or cover; more than 1 when it never does. A box the sphere
