@@ -57,7 +57,7 @@ are `published-{normal,asan}/`. This record commits both receipts, exact
 source join and artifact manifest. The Mac sanitizer run disables framework
 leak detection and reports no ASan/UBSan findings; it is not an LSan claim.
 
-The ordinary render adapters have not adopted this component in this
-checkpoint. Their matching GPU uploads/607/recovery and full current realm
-packaging remain separate gates. WebKit stays the default and both issues
-remain open.
+This checkpoint qualifies the portable component. Subsequent Metal adapter
+adoption and matching GPU uploads/607/recovery are recorded separately in
+`image-cache-mac.md`; full current realm packaging remains a separate gate.
+WebKit stays the default and both issues remain open.

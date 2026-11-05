@@ -32,6 +32,7 @@ func runEffects() throws {
     }
     var snapshots: [String] = []
     var images: [[String:Any]] = []
+    var mediaOwnership: [[Int64]] = []
     let started = ProcessInfo.processInfo.systemUptime
     for op in plan["operations"] as? [[String: Any]] ?? [] {
         switch op["op"] as? String {
@@ -61,6 +62,8 @@ func runEffects() throws {
         case "media-state":
             let rows = (op["urls"] as? [String] ?? []).map { url in (0..<5).map { mf_media_info(host,url,Int32($0)) } }
             try JSONSerialization.data(withJSONObject:rows).write(to:URL(fileURLWithPath:try required(op["file"] as? String,"media state path")),options:.atomic)
+        case "media-ownership":
+            mediaOwnership.append((0..<2).map { mf_media_cache_info(host,Int32($0)) })
         case "replay":
             let path = try required(op["file"] as? String, "frame config")
             guard mf_replay(host,path) else { throw MetalEffectFailure.failed(mf_error(host).map { String(cString:$0) } ?? "frozen frame refused") }
@@ -118,8 +121,10 @@ func runEffects() throws {
     var result: [String: Any] = ["schema": "aethyr.metal.effects-result.v1", "frames": mf_info(host, 0), "completed":mf_info(host,10), "draws": mf_info(host, 1), "pending": mf_info(host, 2), "ledgerLive": mf_info(host, 3), "ledgerWords": mf_info(host, 4), "ledgerEpoch": mf_info(host, 5), "stateAddress": mf_info(host, 6), "seconds": ProcessInfo.processInfo.systemUptime - started, "snapshots": snapshots]
     result["recoveries"] = mf_info(host,12); result["recoveryReleasedLive"] = mf_info(host,13)
     result["images"] = images
+    result["mediaOwnership"] = mediaOwnership
     mf_close(host); open = false
     result["closedLedgerLive"] = mf_closed_info(0); result["closedLedgerWords"] = mf_closed_info(1)
+    result["closedMediaBytes"] = mf_closed_info(2)
     try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]).write(to: URL(fileURLWithPath: CommandLine.arguments[4]), options: .atomic)
 }
 do { try runEffects() } catch { fputs("Metal SDK effects: \(error)\n", stderr); exit(1) }
