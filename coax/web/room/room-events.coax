@@ -975,6 +975,69 @@ ev_test_count :: (v: [] RmServer, k: int, form: int) -> int {
   #assert eg_test_has(eg_test_of(box[..], 0), "e rebuild") && v[0].ev[k].phase == EV_SIEGE && v[0].ev[k].standing == c[RF_CULT] && v[0].ev[k].arch == EV_ARCH_WARDED;
 }
 
+// Whether t (frames joined by '|') has an entry that starts with part (after a ';' or a D's header).
+ev_test_entry :: (t: string, part: string) -> bool {
+  for i: 0..<t.count - part.count + 1 {
+    if t[i..<i + part.count] != part || i == 0 { continue; }
+    if t[i - 1] == ';' { return true; }
+    // the first entry: after "D TICK ACK F PART "
+    j := i - 1; sp := 0;
+    while j >= 0 && t[j] != '|' { if t[j] == ' ' { sp += 1; } if t[j] == ';' { sp = 99; } j -= 1; }
+    if sp == 5 && t[j + 1] == 'D' { return true; }
+  }
+  return false;
+}
+// The whole raid at the allowances' limits (#12836): the siege at its caps, seat 0's wolves, ten of the
+// town's pieces breaking every 6 ticks, a third page joining every 2 s (the second time its snapshot's
+// first part is lost on the way), and seat 1's socket behind for a second.
+#test "events: a whole raid at the allowances' limits keeps your own row every tick, starves nothing, bounds each tick's bytes, and brings a late or broken join whole (#12836)" #steps 400000000000 {
+  v: [1] RmServer;
+  box: [1] EgInbox;
+  k := ev_test_server(v[..]);
+  ev := "GET /api/room/relay/everglade/pair-events HTTP/1.1\r\n\r\n";
+  rm_control(v[..], "event 1 0 2 12 6 1 3 3 31 1 2 1 100 15 0 0\n");
+  rm_control(v[..], "event 1 0 2 12 6 1 3 3 31 1 2 1 100 15 1 0\n");
+  ev_test_skip(v[..], k);
+  #assert v[0].ev[k].phase == EV_SIEGE;
+  rm_heard(v[..], 0, "C 1 32 400 0 700 -1");   // Conjure Animals: four wolves of seat 0's
+  eg_test_drain(v[..], box[..]);
+  // a tick's bytes to a seat that isn't taking a snapshot: every allowance, its own row, a tick's breaks
+  // (10, 25 bytes each at most) and the event and level lines, with each frame's header
+  bound := WIRE_BUDGET + WIRE_AGED_BUDGET + WIRE_LIFE_BUDGET + EG_META_BUDGET + EG_CUE_BUDGET + WIRE_ROW + 10 * 25 + 1200;
+  broke := 0; joins := 0; lost := false; whole_at := -1; breaks2 := 0; most := 0;
+  for t: 0..<240 {
+    if t % 6 == 0 && broke < 300 { for q: 0..<10 { rm_eg_piece(v[..], k, 1, broke * 3, 0, 0, 0, 0, 0); broke += 1; } }
+    if t % 60 == 0 {
+      #assert rm_join(v[..], 2, ev) >= 0; rm_heard(v[..], 2, "H 4 ranger.0.0.0 druid 0 -");
+      joins += 1; breaks2 = 0;
+      if joins == 2 { box[0].lose[2] = true; }
+    }
+    if t % 60 == 40 && t < 180 { rm_left(v[..], 2); }
+    rm_conn_waiting(v[..], 1, ifx t >= 90 && t < 120 then EG_BEHIND + 1 else 0);
+    eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
+    for c: 0..<2 {
+      s := v[0].conns[c].seat;
+      own := ifx c == 0 then "s 0 " else "s 1 ";
+      #assert ev_test_entry(eg_test_of(box[..], c), own);   // your own row, every tick
+      if t >= 2 { #assert box[0].bytes[c] <= bound; if box[0].bytes[c] > most { most = box[0].bytes[c]; } }
+      // nothing waits past its age bound, but behind (and the second after it, catching up)
+      if c == 0 || t < 90 || t >= 150 { #assert v[0].eg[k].seat[s].rep[0].oldest <= WIRE_MAX_AGE + 1; }
+    }
+    // the lost part: no tick of that snapshot is heard, so it goes again until one is, within half a second
+    if joins == 2 && !box[0].lose[2] { lost = true; }
+    s2 := v[0].conns[2].seat;
+    if lost && whole_at < 0 && !v[0].eg[k].seat[s2].full { whole_at = t; }
+    t2 := eg_test_of(box[..], 2);
+    at := 0; while at + 8 <= t2.count { if t2[at..<at + 8] == "e break " { breaks2 += 1; } at += 1; }
+  }
+  #assert lost && whole_at >= 60 && whole_at < 75;
+  #assert most > WIRE_BUDGET;   // (the bound was approached, not idle)
+  // the last join (tick 180) heard every broken piece once, and holds both players and the wolves
+  #assert breaks2 == broke && broke == 300;
+  #assert eg_test_ent(box[..], 2, 0).id == 0 && eg_test_ent(box[..], 2, 1).id == 1;
+  for w: 1..<5 { #assert eg_test_ent(box[..], 2, WIRE_ID_MADE + w).kind == eg_test_ent(box[..], 0, WIRE_ID_MADE + w).kind; }
+  #assert v[0].st.ev_lost == 0;
+}
 #test "events: an assist shares a raider's XP, however far the seat stands and whoever struck last; the camp's fall pays EV_XP_HELD and its last kills" #steps 16000000000 {
   v: [1] RmServer;
   box: [1] EgInbox;

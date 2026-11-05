@@ -1304,13 +1304,20 @@ eg_test_tick :: (v: [] RmServer, k: int) {
 // queue is read once, for everyone), and each one's page's table as its D's leave it (a mirror, as
 // the page's), whose heard tick goes back to the room as the page's next I would say it (unless deaf).
 EG_TEST_CONNS :: 4;
-EgInbox :: struct { t: [EG_TEST_CONNS * 16384] u8; n: [EG_TEST_CONNS] int; m: [EG_TEST_CONNS] WireMirror; deaf: [EG_TEST_CONNS] bool; }
+// lose: conn c's next D frame with more of its tick after it (F 2) is lost on the way; bytes: what each
+// conn was sent since the last read, every frame whole.
+EgInbox :: struct { t: [EG_TEST_CONNS * 16384] u8; n: [EG_TEST_CONNS] int; m: [EG_TEST_CONNS] WireMirror; deaf: [EG_TEST_CONNS] bool; lose: [EG_TEST_CONNS] bool; bytes: [EG_TEST_CONNS] int; }
 eg_test_drain :: (v: [] RmServer, box: [] EgInbox) {
-  for c: 0..<EG_TEST_CONNS { box[0].n[c] = 0; }
+  for c: 0..<EG_TEST_CONNS { box[0].n[c] = 0; box[0].bytes[c] = 0; }
   while true {
     got := rm_relay_next(v);
     if got == 0 { break; }
     for c: 0..<EG_TEST_CONNS {
+      if v[0].rto[c] && got > 0 { box[0].bytes[c] += got; }
+      if v[0].rto[c] && got > 0 && box[0].lose[c] && v[0].rout[0] == 'D' {
+        r: [1] WireRd; r[0] = wire_rd(cast(string) v[0].rout[0..<got], 1);
+        if (wire_read_d(cast(string) v[0].rout[0..<got], r[..]).f & 2) != 0 { box[0].lose[c] = false; continue; }
+      }
       if v[0].rto[c] && got > 0 && v[0].rout[0] == 'D' { _ := wire_mirror_frame(box[0].m[c..<c + 1], cast(string) v[0].rout[0..<got]); }
       if !v[0].rto[c] || box[0].n[c] + got + 1 > 16384 { continue; }
       at := c * 16384 + box[0].n[c];
