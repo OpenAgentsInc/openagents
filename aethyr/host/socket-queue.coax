@@ -1,0 +1,44 @@
+// Retained native/browser command storage is separate from physical socket
+// buffers. The caller must execute error+close on refusal, never retain more.
+#load "inbox-queue.coax";
+#authority;
+HOST_SOCKET_COMMAND_BYTES :: 8388608;
+HostSocketQueuePlan :: struct {valid:bool;workers:int;events:int;input_bytes:int;input_total:int;output_bytes:int;output_total:int;}
+HostSocketSend :: struct {accepted:bool;lease:HostInboxLease;error:int;close:int;}
+HostSocketControl :: struct {send:bool;stop:bool;error:bool;}
+#test "socket storage descriptor bounds exactly four workers and complete message and queue extents" {
+ for capacity:[3]int.[0,1,8388608] {p:=hsq_plan(capacity);#assert p.valid&&p.workers==4&&p.events==64&&p.input_bytes==capacity&&p.input_total==capacity*4&&p.output_bytes==8388608&&p.output_total==33554432;}
+ for capacity:[3]int.[-1,8388609,9223372036854775807] {p:=hsq_plan(capacity);#assert !p.valid&&p.workers==0&&p.events==0&&p.input_bytes==0&&p.input_total==0&&p.output_bytes==0&&p.output_total==0;}
+}
+#test "outbound command refusal explicitly reports error and close without hiding retained bytes" {
+ failure:=hsq_failure();#assert !failure.accepted&&failure.lease.slot== -1&&failure.error==3&&failure.close==2;
+ q:=[1]HostInboxQueue.[hiq_open(8388608)];leases:[4]HostInboxLease;
+ for i:0..<4 {r:=hsq_send(q[..],8388608);#assert r.accepted&&r.error==0&&r.close==0&&r.lease.slot==i;leases[i]=r.lease;}
+ r:=hsq_send(q[..],1);#assert !r.accepted&&r.error==3&&r.close==2&&r.lease.slot== -1&&q[0].count==4&&q[0].bytes==33554432;
+ #assert hiq_release(q[..],leases[0]);r=hsq_send(q[..],1);#assert r.accepted&&r.error==0&&r.close==0&&r.lease.slot==0&&q[0].bytes==25165825;
+ for bytes:[3]int.[-1,8388609,9223372036854775807] {bad:=hsq_send(q[..],bytes);#assert !bad.accepted&&bad.error==3&&bad.close==2&&bad.lease.slot== -1&&q[0].bytes==25165825;}
+ #assert hiq_release(q[..],r.lease);for i:1..<4 {#assert hiq_release(q[..],leases[i]);}#assert q[0].count==0&&q[0].bytes==0;
+}
+#test "empty outbound commands consume all sixty four leases and malformed queue descriptors refuse" {
+ q:=[1]HostInboxQueue.[hiq_open(8388608)];for i:0..<64 {r:=hsq_send(q[..],0);#assert r.accepted&&r.lease.slot==i;}r:=hsq_send(q[..],0);#assert !r.accepted&&r.error==3&&r.close==2&&q[0].count==64&&q[0].bytes==0;
+ for capacity:[3]int.[-1,0,8388607] {bad:=[1]HostInboxQueue.[hiq_open(capacity)];r=hsq_send(bad[..],0);#assert !r.accepted&&r.error==3&&r.close==2&&bad[0].count==0;}
+}
+#test "native worker command interpretation preserves ordinary dispatch and explicit SDK failure closure" {
+ idle:=hsq_control(0);#assert !idle.send&&!idle.stop&&!idle.error;
+ send:=hsq_control(1);#assert send.send&&!send.stop&&!send.error;
+ close:=hsq_control(2);#assert !close.send&&close.stop&&!close.error;
+ for command:[4]int.[-1,3,4,9223372036854775807] {fail:=hsq_control(command);#assert !fail.send&&fail.stop&&fail.error;}
+}
+hsq_plan :: (capacity:int)->HostSocketQueuePlan #export_c {
+ if capacity<0||capacity>HOST_INBOX_CAPACITY {return HostSocketQueuePlan.{};}
+ return HostSocketQueuePlan.{valid=true,workers=4,events=HOST_INBOX_EVENTS,input_bytes=capacity,input_total=capacity*4,output_bytes=HOST_SOCKET_COMMAND_BYTES,output_total=HOST_SOCKET_COMMAND_BYTES*4};
+}
+hsq_send :: (q:[]HostInboxQueue,bytes:int)->HostSocketSend #export_c {
+ if q[0].capacity==HOST_SOCKET_COMMAND_BYTES {g:=hiq_reserve(q,bytes);if g.status==HostInboxStatus.ok {return HostSocketSend.{accepted=true,lease=g.lease};}}
+ return hsq_failure();
+}
+hsq_failure :: ()->HostSocketSend #export_c {return HostSocketSend.{error=3,close=2};}
+hsq_control :: (command:int)->HostSocketControl #export_c {
+ if command==0 {return HostSocketControl.{};}if command==1 {return HostSocketControl.{send=true};}
+ if command==2 {return HostSocketControl.{stop=true};}return HostSocketControl.{stop=true,error=true};
+}

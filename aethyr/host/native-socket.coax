@@ -3,6 +3,7 @@
 // callback ownership on the main host thread. No room/game policy lives here.
 #load "socket-stream.coax";
 #load "socket-outbound.coax";
+#load "socket-queue.coax";
 #load "event-drain.coax";
 #load "../../coax/lib/net/relay_conn.coax";
 hni_lock :: () #foreign;
@@ -49,18 +50,19 @@ hns_worker :: (context:int,uri:string,out:[]u8) #export_c {
   hni_emit(context,0,out[0..<0]);s:[1]HostSocketStream;
   live:=hns_input(context,c[..],s[..],cast(string)c[0].inb[0..<c[0].used],out);c[0].used=0;
   while live {
-    command:=hni_take(context);
-    if command==2 {
+    command:=hsq_control(hni_take(context));
+    if command.error {hni_emit(context,3,out[0..<0]);}
+    if command.stop {
       hni_lock();sent:=rc_close_frame(c[..],WS_CLOSE_NORMAL);hni_unlock();break;
     }
-    if command==1 {
+    if command.send {
       sent:=hns_send(context,c[..]);hni_done(context);
       if !sent {hni_emit(context,3,out[0..<0]);break;}
     }
     hni_lock();n:=rc_fill(c[..],0);hni_unlock();
     if n>0 {live=hns_input(context,c[..],s[..],cast(string)c[0].inb[0..<c[0].used],out);c[0].used=0;}
     else if n!=0 && n!= -2 {if n!= -1 {hni_emit(context,3,out[0..<0]);}break;}
-    if command==0 && n<=0 {hni_pause(2);}
+    if !command.send && n<=0 {hni_pause(2);}
   }
   hni_lock();rc_shut(c[..]);hni_unlock();hni_emit(context,2,out[0..<0]);
 }
