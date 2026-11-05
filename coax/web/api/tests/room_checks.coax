@@ -6,6 +6,7 @@
 //   invites    an INVITE holds a seat in the inviter's room (#12795; migrations/0125_room_invites.sql)
 //   stats      the rooms' vitals reports and the admins' room view (#12791; migrations/0123_room_stats.sql)
 //   vitals     room vitals receipts (#12793) and server-owned WANTED (#12794; migrations/0124_room_vital_receipts.sql)
+//   owner      one owner per character through a room process's pause and resume (#12834; ROOM_BIN only)
 // Admission, invites, stats, vitals and oa-room's side of the event need the seat-ticket key: run test.sh
 // with ROOM_KEY and OA_ROOM_TICKET_KEY set to the same key. With ROOM_BIN (a room server built by
 // coax/web/room/build.sh) it also runs the vitals fault check: a raid in a room --dev whose vitals go to
@@ -14,7 +15,7 @@
 //   ROOM_KEY=local-development-room-ticket-key-not-a-secret OA_ROOM_TICKET_KEY=$ROOM_KEY \
 //   ROOM_BIN=coax/web/room/bin/room coax/web/api/test.sh
 //   API=... PGURL=... PSQL=... SIGN=... ADMIN_KEY=... [ROOM_KEY=...] [ROOM_BIN=...] \
-//     coax/web/tool.sh coax/web/api/tests/room_checks.coax [admission|chat|events|invites|stats|vitals ...]
+//     coax/web/tool.sh coax/web/api/tests/room_checks.coax [admission|chat|events|invites|stats|vitals|owner ...]
 // (from the repository root; no names runs them all, in that order).
 #load "api_harness.coax";
 
@@ -822,6 +823,120 @@ rc_fault :: (t: [] Ap, room_bin_in: string) {
   gone := fs_remove(work);
 }
 
+// ---- owner: one owner per character through a room's pause (#12834) -----------------------------------
+// A seat ticket for pid in room (v2, so shard 1's) with owner generation g, signed with ROOM_KEY, as the
+// API signs one with OA_ROOM_OWNER_GEN=1 (player.c room_ticket); the socket's URL with it.
+ro_url :: (t: [] Ap, o: [] Sb, port: int, pid: string, room: string, g: int) -> string {
+  tx: [1] Sb; sb(tx[..], "v2."); sb(tx[..], pid); sb(tx[..], ".0.-."); sb(tx[..], room); sb(tx[..], ".");
+  sb_int(tx[..], rc_wall_ms() + 300000); sb(tx[..], ".-g"); sb_int(tx[..], g);
+  mac: [64] u8; m := ap_room_mac(t, sb_text(tx[..]), mac[..]);
+  sb_clear(o); sb(o, "ws://localhost:"); sb_int(o, port); sb(o, "/api/room/relay/everglade/"); sb(o, room);
+  sb(o, "?t="); sb(o, sb_text(tx[..])); sb(o, "."); sb(o, m);
+  return sb_text(o);
+}
+// /bin/kill -SIG on the process behind handle h (STOP or CONT): whether it went.
+ro_signal :: (h: int, sig: string) -> bool {
+  pb: [32] u8; sg: [16] u8; k := 0;
+  for c: "-" { sg[k] = c; k += 1; } for c: sig { sg[k] = c; k += 1; }
+  a := [3] string.["/bin/kill", cast(string) sg[0..<k], ap_num(cxproc_pid(h), pb[..])];
+  none: [1] string;
+  x := fc_start(a[..], none[0..<0], "");
+  if x < 0 { return false; }
+  w := proc_wait(x, 5000); r := proc_release(x);
+  return w == 0;
+}
+// The JSON line an owner-seat client printed (empty if none), waiting at most ms for it to end.
+ro_seat_json :: (h: int, ms: int, out: [] u8) -> string {
+  line: [4096] u8; n_out := 0; t0 := proc_now_ms();
+  while h >= 0 && proc_now_ms() - t0 < ms {
+    n := proc_line(h, 200, line[..]);
+    if n == PROC_EOF || n == PROC_ERROR { break; }
+    if n > 0 && line[0] == '{' && n <= out.count { for i: 0..<n { out[i] = line[i]; } n_out = n; }
+  }
+  if h >= 0 { w := proc_wait(h, 2000); if w == PROC_RUNNING { k := proc_kill(h, PROC_SIGKILL); w = proc_wait(h, 2000); } r := proc_release(h); }
+  return cast(string) out[0..<n_out];
+}
+// A room process (ROOM_BIN --dev, its vitals to this API) seats player P under owner generation g1. The
+// room is paused (SIGSTOP); meanwhile the directory gives P's character to a room on another shard
+// (g2, verse.room_owner_next) and that room saves P's HP. The paused room resumes and reports P again
+// (a seated owner's line goes at least every VITALS_OWNER_MS, room-vitals.coax): the API answers f,
+// the room ends P's seat and tells the page "r 0 elsewhere", and the new owner's HP stays. Then a page
+// with the old ticket is refused, and a newer ticket sits.
+rc_owner :: (t: [] Ap, room_bin_in: string) {
+  out: [4096] u8; q: [1] Sb;
+  p: [1] Player; r := ap_player(t, p[..]);
+  pid := pl_id(p[..]);
+  rootb: [4096] u8; root := fs_cwd(rootb[..]);
+  binb: [1] Sb;
+  if room_bin_in.count > 0 && room_bin_in[0] != '/' { sb(binb[..], root); sb(binb[..], "/"); }
+  sb(binb[..], room_bin_in);
+  wb: [4096] u8; work := fs_temp("room-owner", wb[..]);
+  pb: [4200] u8; wf: [65536] u8;
+  world_n := fs_read("coax/web/room/dev/world-everglade.json", wf[..]);
+  ok := world_n > 0 && fs_write(fs_join(work, "world-everglade.json", pb[..]), cast(string) wf[0..<world_n]);
+  cb: [4200] u8; ok = ok && fs_write(fs_join(work, "room-control.txt", cb[..]), "levels 1 2\n");
+  l := cxsock_listen(0); port := cxsock_port(l); c := cxsock_close(l);
+  env: [1] Sb; sb(env[..], "OA_ROOM_VITALS_URL="); sb(env[..], t[0].api); sb(env[..], "/api/playtest/room-vitals");
+  envs := [1] string.[sb_text(env[..])];
+  ps: [32] u8;
+  ra := [5] string.[sb_text(binb[..]), "--port", ap_num(port, ps[..]), "--dev", work];
+  rl: [1] FcLog;
+  room := ifx ok then fc_start(ra[..], envs[..], "") else -1;
+  rstart := proc_now_ms();
+  while room >= 0 && proc_now_ms() - rstart < 2000 { fc_drain(room, rl[..]); proc_sleep(50); }
+  sb(q[..], "select verse.room_owner_next('"); sb(q[..], pid); sb(q[..], "')");
+  g1 := rc_num(ap_sql(t, sb_text(q[..]), out[..]));
+  u: [1] Sb; secs: [16] u8;
+  sa := [4] string.["coax/web/tool.sh", "coax/web/room/owner-seat.coax", ro_url(t, u[..], port, pid, "pair-owner", g1), ap_num(150, secs[..])];
+  none: [1] string;
+  seat := ifx room >= 0 then fc_start(sa[..], none[0..<0], "") else -1;
+  // the room saves P as g1: a row for P
+  hv: [256] u8; vq: [1] Sb; sb(vq[..], "select hp from verse.room_vitals where who = '"); sb(vq[..], pid); sb(vq[..], "'");
+  saved := false; deadline := proc_now_ms() + 60000;
+  while seat >= 0 && !saved && proc_now_ms() < deadline { fc_drain(room, rl[..]); saved = ap_sql(t, sb_text(vq[..]), hv[..]) != ""; if !saved { proc_sleep(500); } }
+  ap_check(t, "owner: a running room seats P with owner generation g1 and saves P's vitals", g1 > 0 && saved, "");
+  // paused; the directory gives P to another shard's room (g2), which saves HP 3
+  stopped := room >= 0 && ro_signal(room, "STOP");
+  g2 := rc_num(ap_sql(t, sb_text(q[..]), out[..]));
+  now := rc_wall_ms();
+  b: [1] Sb; ln: [1] Sb; one: [1] string;
+  sb(ln[..], pid); sb(ln[..], " 3 40 0 0 1 "); sb_int(ln[..], now); sb(ln[..], " "); sb_int(ln[..], g2); one[0] = sb_text(ln[..]);
+  rv_body(b[..], now - 1000, 1, one[..], 2);
+  st := rc_vitals(t, sb_text(b[..]), "");
+  ap_check(t, "owner: while the room is paused, another shard's room saves P as g2", stopped && g2 == g1 + 1 && st == 200 && rv_receipt(t, now - 1000, 1, "a") && ap_sql(t, sb_text(vq[..]), hv[..]) == "3", ap_body(t));
+  proc_sleep(5000);   // the page's hellos wait in the socket meanwhile
+  resumed := room >= 0 && ro_signal(room, "CONT");
+  // resumed: its next post for P is fenced, P's seat ends, and the page hears elsewhere
+  sj: [4096] u8;
+  js := "";
+  t0 := proc_now_ms();
+  while seat >= 0 && proc_now_ms() - t0 < 75000 {
+    fc_drain(room, rl[..]);
+    line: [4096] u8;
+    n := proc_line(seat, 200, line[..]);
+    if n == PROC_EOF || n == PROC_ERROR { break; }
+    if n > 0 && line[0] == '{' { for i: 0..<n { sj[i] = line[i]; } js = cast(string) sj[0..<n]; break; }
+  }
+  if seat >= 0 { w := proc_wait(seat, 2000); if w == PROC_RUNNING { k := proc_kill(seat, PROC_SIGKILL); w = proc_wait(seat, 2000); } r = proc_release(seat); }
+  ap_check(t, "owner: resumed, the room's line for P is refused, P's seat ends and its page is told elsewhere", resumed && rc_truthy(js, "elsewhere") && rc_truthy(js, "closed") && ap_member_int(js, "seat", -1) >= 0, js);
+  ap_check(t, "owner: the new owner's HP stays", ap_sql(t, sb_text(vq[..]), hv[..]) == "3", "");
+  // the old page again, with its g1 ticket: refused; a page with a newer ticket (g3) sits
+  sa[2] = ro_url(t, u[..], port, pid, "pair-owner", g1); sa[3] = ap_num(3, secs[..]);
+  old := ro_seat_json(fc_start(sa[..], none[0..<0], ""), 30000, sj[..]);
+  ap_check(t, "owner: a page with the older ticket is refused", !rc_truthy(old, "open") || ap_member_int(old, "seat", -1) < 0, old);
+  g3 := rc_num(ap_sql(t, sb_text(q[..]), out[..]));
+  sa[2] = ro_url(t, u[..], port, pid, "pair-owner", g3);
+  fresh := ro_seat_json(fc_start(sa[..], none[0..<0], ""), 30000, sj[..]);
+  ap_check(t, "owner: a page with a newer ticket sits", ap_member_int(fresh, "seat", -1) >= 0 && !rc_truthy(fresh, "elsewhere"), fresh);
+  if room >= 0 {
+    k := proc_kill(room, PROC_SIGTERM);
+    w := proc_wait(room, 15000);
+    if w == PROC_RUNNING { k = proc_kill(room, PROC_SIGKILL); w = proc_wait(room, 2000); }
+    r = proc_release(room);
+  }
+  gone := fs_remove(work);
+}
+
 tool_main :: () -> int #export_c {
   a: [1] Args;
   if !args_load(a[..]) { return 2; }
@@ -831,7 +946,7 @@ tool_main :: () -> int #export_c {
   }
   t: [1] Ap;
   if !ap_open(t[..]) { return 2; }
-  names := [6] string.["admission", "chat", "events", "invites", "stats", "vitals"];
+  names := [7] string.["admission", "chat", "events", "invites", "stats", "vitals", "owner"];
   for name: names {
     run := args_count(a[..]) == 0;
     for i: 0..<args_count(a[..]) { if args_at(a[..], i) == name { run = true; } }
@@ -847,6 +962,10 @@ tool_main :: () -> int #export_c {
       rc_vitals_checks(t[..]);
       bb: [4096] u8; bin := proc_getenv("ROOM_BIN", bb[..]);
       if bin != "" { rc_fault(t[..], bin); }
+    }
+    if name == "owner" {
+      bb: [4096] u8; bin := proc_getenv("ROOM_BIN", bb[..]);
+      if bin != "" { rc_owner(t[..], bin); }
     }
   }
   return ap_done(t[..], "room checks");

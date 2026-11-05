@@ -637,6 +637,132 @@ tk_test_ask_in :: (r: [] u8, t: [] u8, n: int, room: string) -> string {
   #assert rm_join(v[..], 4, tk_test_ask(r[..], t[..], n)) == 3;
   #assert !rm_relay_kicked(v[..], 3) && !rm_relay_kicked(v[..], 1) && !rm_relay_kicked(v[..], 2);
 }
+// A ticket for player pid in room with owner generation owner (#12834), and the join's request line.
+rl_test_owned :: (r: [] u8, t: [] u8, key: string, pid: string, room: string, owner: int, now: int) -> string {
+  n := tk_sign_owner(key, pid, false, "", room, 0, now + 600000, -1, -1, 0, owner, t);
+  return tk_test_ask_in(r, t, n, room);
+}
+// What conns a and b heard since the last drain, into ba and bb (rl_heard_by for two).
+rl_test_heard2 :: (v: [] RmServer, a: int, ba: [] u8, na: [] int, b: int, bb: [] u8, nb: [] int) {
+  na[0] = 0; nb[0] = 0;
+  while true {
+    got := rm_relay_next(v);
+    if got == 0 { break; }
+    if v[0].rto[a] { if na[0] > 0 { ba[na[0]] = '|'; na[0] += 1; } for i: 0..<got { ba[na[0]] = v[0].rout[i]; na[0] += 1; } }
+    if v[0].rto[b] { if nb[0] > 0 { bb[nb[0]] = '|'; nb[0] += 1; } for i: 0..<got { bb[nb[0]] = v[0].rout[i]; nb[0] += 1; } }
+  }
+}
+#test "owner (#12834): a newer ticket takes its character's seat from a tab still talking, which is told elsewhere; an older ticket is refused" #steps 2000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  now := 1762190000000;
+  rm_clock(v[..], 0, now);
+  key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  rm_ticket_key(v[..], key, true);
+  t: [256] u8; r: [512] u8; box: [8192] u8;
+  a := "p-0011223344556677";
+  #assert rm_join(v[..], 0, rl_test_owned(r[..], t[..], key, a, "pair-tk", 3, now)) == 0;
+  #assert rm_join(v[..], 1, rl_test_owned(r[..], t[..], key, "p-8899aabbccddeeff", "pair-tk", 9, now)) == 1;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  _ := rl_heard_by(v[..], 0, box[..]); _ = rl_heard_by(v[..], 1, box[..]);
+  // a second tab (generation 4) while the first still talks: it takes the same seat, the first hears elsewhere
+  rm_clock(v[..], 1000, now + 1000);
+  rm_heard(v[..], 0, "I 1 0 0 0 0 0 0 0");
+  #assert rm_join(v[..], 2, rl_test_owned(r[..], t[..], key, a, "pair-tk", 4, now)) == 0;
+  #assert rm_relay_kicked(v[..], 0) && !rm_relay_kicked(v[..], 2) && v[0].eg[k].seat[0].conn == 2;
+  #assert eg_test_has(rl_heard_by(v[..], 0, box[..]), "r 0 elsewhere");
+  b := rl_heard_by(v[..], 1, box[..]);
+  #assert !eg_test_has(b, "j 0") && !eg_test_has(b, "l 0");
+  // the first tab's close leaves the seat be
+  rm_left(v[..], 0);
+  #assert v[0].eg[k].seat[0].live && v[0].eg[k].seat[0].conn == 2;
+  // a page that asked for its ticket before the second tab's (3): refused, and counted
+  #assert rm_join(v[..], 3, rl_test_owned(r[..], t[..], key, a, "pair-tk", 3, now)) == -1 && rm_st_refused(v[..], ST_ELSEWHERE) == 1;
+  #assert rm_st_reason(ST_ELSEWHERE) == "elsewhere";
+  // the player chose this tab again (a new ticket, 5): it takes the seat back, and the second hears elsewhere
+  rm_heard(v[..], 2, "I 1 0 0 0 0 0 0 0");
+  #assert rm_join(v[..], 4, rl_test_owned(r[..], t[..], key, a, "pair-tk", 5, now)) == 0;
+  #assert rm_relay_kicked(v[..], 2) && eg_test_has(rl_heard_by(v[..], 2, box[..]), "r 0 elsewhere");
+  // held seat: a closed socket's seat waits for its player, and an older ticket can't take it
+  rm_left(v[..], 2); rm_left(v[..], 4);
+  #assert eg_held(v[..], k, 0) && rl_owner_newest(v[..], a) == 5;
+  #assert rm_join(v[..], 5, rl_test_owned(r[..], t[..], key, a, "pair-tk", 4, now)) == -1;
+  #assert rm_join(v[..], 5, rl_test_owned(r[..], t[..], key, a, "pair-tk", 6, now)) == 0 && !eg_held(v[..], k, 0);
+  // tickets with no generation keep the rule before: a second tab sits beside the first
+  c := "p-c0ffeec0ffeec0ff";
+  n := tk_sign(key, c, false, "", "pair-tk", now + 600000, -1, t[..]);
+  #assert rm_join(v[..], 6, tk_test_ask(r[..], t[..], n)) == 2;
+  rm_heard(v[..], 6, "I 1 0 0 0 0 0 0 0");
+  n = tk_sign(key, c, false, "", "pair-tk", now + 600000, -1, t[..]);
+  #assert rm_join(v[..], 7, tk_test_ask(r[..], t[..], n)) == 3 && !rm_relay_kicked(v[..], 6);
+}
+#test "owner (#12834): a newer ticket in another room here ends the character's seat in the first, held or not; an older one there is refused" #steps 2000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  now := 1762190000000;
+  rm_clock(v[..], 0, now);
+  key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  rm_ticket_key(v[..], key, true);
+  t: [256] u8; r: [512] u8; box: [8192] u8;
+  a := "p-0011223344556677";
+  #assert rm_join(v[..], 0, rl_test_owned(r[..], t[..], key, a, "pair-a", 5, now)) == 0;
+  #assert rm_join(v[..], 1, rl_test_owned(r[..], t[..], key, "p-8899aabbccddeeff", "pair-a", 2, now)) == 1;
+  ka := eg_room_at(v[..], v[0].conns[0].relay);
+  _ := rl_heard_by(v[..], 0, box[..]); _ = rl_heard_by(v[..], 1, box[..]);
+  // A logs in to pair-b with a newer ticket: their pair-a seat goes at once, its socket told elsewhere
+  #assert rm_join(v[..], 2, rl_test_owned(r[..], t[..], key, a, "pair-b", 6, now)) == 0;
+  ha: [8192] u8; hb: [8192] u8; na: [1] int; nb: [1] int;
+  rl_test_heard2(v[..], 0, ha[..], na[..], 1, hb[..], nb[..]);
+  #assert rm_relay_kicked(v[..], 0) && !v[0].eg[ka].seat[0].live && eg_test_has(cast(string) ha[0..<na[0]], "r 0 elsewhere");
+  #assert eg_test_has(cast(string) hb[0..<nb[0]], "l 0") && !eg_test_has(cast(string) ha[0..<na[0]], "l 0");
+  // another player sits meanwhile; the old socket's close: no second l, and nobody else's seat changes
+  #assert rm_join(v[..], 3, rl_test_owned(r[..], t[..], key, "p-1111222233334444", "pair-a", 1, now)) == 2;
+  _ = rl_heard_by(v[..], 1, box[..]);
+  rm_left(v[..], 0);
+  #assert v[0].eg[ka].seat[2].live && v[0].eg[ka].seat[1].live && !v[0].eg[ka].seat[0].live && !eg_test_has(rl_heard_by(v[..], 1, box[..]), "l ");
+  // A's old page asks pair-a again with its older ticket: refused
+  #assert rm_join(v[..], 4, rl_test_owned(r[..], t[..], key, a, "pair-a", 5, now)) == -1 && rm_st_refused(v[..], ST_ELSEWHERE) == 1;
+  // A's pair-b socket closes (held), and A logs in to pair-a with a newer ticket: the held seat goes too
+  kb := eg_room_at(v[..], v[0].conns[2].relay);
+  rm_left(v[..], 2);
+  #assert eg_held(v[..], kb, 0);
+  #assert rm_join(v[..], 5, rl_test_owned(r[..], t[..], key, a, "pair-a", 7, now)) == 0;
+  #assert !v[0].eg[kb].live && rl_owner_newest(v[..], a) == 7;
+}
+#test "owner (#12834): a vitals line fenced for good ends the character's seats of that owner here, each told elsewhere" #steps 2000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  now := 1762190000000;
+  rm_clock(v[..], 0, now);
+  key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  rm_ticket_key(v[..], key, true);
+  rm_vitals_gen(v[..], now - 5000);
+  t: [256] u8; r: [512] u8; box: [8192] u8; b: [128] u8;
+  a := "p-0011223344556677";
+  #assert rm_join(v[..], 0, rl_test_owned(r[..], t[..], key, a, "pair-tk", 7, now)) == 0;
+  #assert rm_join(v[..], 1, rl_test_owned(r[..], t[..], key, "p-8899aabbccddeeff", "pair-tk", 2, now)) == 1;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  _ := rl_heard_by(v[..], 0, box[..]); _ = rl_heard_by(v[..], 1, box[..]);
+  #assert rm_vitals_due(v[..]) > 0 && eg_test_has(cast(string) v[0].vit.out[0..<v[0].vit.out_n], " 7\n");
+  rm_vitals_answer(v[..], 1, 200, rv_test_receipt(b[..], now - 5000, 1, "aa"));
+  // unchanged, nothing goes; VITALS_OWNER_MS on, the seated owners' lines go again
+  rm_clock(v[..], 1000, now + 1000);
+  #assert rm_vitals_due(v[..]) == 0;
+  rm_clock(v[..], VITALS_OWNER_MS, now + VITALS_OWNER_MS);
+  #assert rm_vitals_due(v[..]) > 0 && eg_test_has(cast(string) v[0].vit.out[0..<v[0].vit.out_n], " 7\n") && v[0].vit.fly_n == 2;
+  // the room was paused while A moved to a room on another shard; resumed, its line for A is fenced
+  rm_vitals_answer(v[..], 2, 200, rv_test_receipt(b[..], now - 5000, 2, "fd"));
+  #assert rm_vitals_stat(v[..], 11) == 1 && rm_vitals_stat(v[..], 12) == 1;
+  #assert !v[0].eg[k].seat[0].live && v[0].eg[k].seat[1].live && rm_relay_kicked(v[..], 0) && !rm_relay_kicked(v[..], 1);
+  ha: [8192] u8; hb: [8192] u8; na: [1] int; nb: [1] int;
+  rl_test_heard2(v[..], 0, ha[..], na[..], 1, hb[..], nb[..]);
+  #assert eg_test_has(cast(string) ha[0..<na[0]], "r 0 elsewhere") && eg_test_has(cast(string) hb[0..<nb[0]], "l 0");
+  rm_left(v[..], 0);
+  #assert !v[0].eg[k].seat[0].live;
+  // the page again with its ticket of that owner: refused, though no seat of A's is here; a newer one sits
+  #assert rm_join(v[..], 2, rl_test_owned(r[..], t[..], key, a, "pair-tk", 7, now)) == -1 && rm_st_refused(v[..], ST_ELSEWHERE) == 1;
+  #assert rm_join(v[..], 3, rl_test_owned(r[..], t[..], key, a, "pair-tk", 8, now)) >= 0;
+}
 // Ticks of room k, each draining what conn heard: whether any frame held part.
 rl_test_ticks :: (v: [] RmServer, k: int, ticks: int, conn: int, part: string) -> bool {
   box: [65536] u8; any := false;

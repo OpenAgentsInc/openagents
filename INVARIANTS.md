@@ -613,6 +613,21 @@ the store-side fence of `aethyr/session/control.coax` (`control_fence`).
 Checks: `coax/web/api/tests/room_checks.coax` vitals (older owner refused, newest kept),
 `coax/web/room/room-ticket.coax` and `room-vitals.coax` (#12834 checks).
 
+In the room server, one seat plays a character at a time (`room-relay.coax`,
+#12834). Among tickets that carry a generation, the newest wins: a join with
+an older one than a seat of that character holds on the server is refused
+(`elsewhere`), and a newer one ends the older seats, in the same room (the
+new socket takes the seat over) and in the server's other rooms. A vitals
+line answered `f` with no newer ticket seated ends that owner's seats too.
+Every socket that loses its seat this way hears `r 0 elsewhere`, and the page
+then opens no socket on its own (`everglade-net.coax` `net_elsewhere`), so
+two pages that rejoin by themselves can't take the character in turns. A
+seat of an older owner never notes vitals over a newer owner's. Tickets
+without a generation keep the earlier rule (a second tab sits beside the
+first). Checks: `room.coax` "owner (#12834)", `everglade.coax` "r 0
+elsewhere", and `room_checks.coax` owner, which pauses and resumes a running
+room process.
+
 ## Inverse physics differentiates the owned solver and exposes ambiguity
 
 `psionic/lib/physics/inverse-*.coax` unrolls chapter 109’s exact left-associated

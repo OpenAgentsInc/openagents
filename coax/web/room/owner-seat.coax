@@ -1,0 +1,55 @@
+// One seat held through a room's pause and resume, for the owner check (#12834,
+// coax/web/api/tests/room_checks.coax `owner`). It opens URL (a ticket in its t=), sits, and stands
+// sending an input each 1/30 s. Every 2 s it says its hello again, as a druid and then as a warlock in
+// turn: each change of class changes its Hit Points, so the room has a new vitals line for it to post.
+// It stops when the room closes its socket or SECONDS pass, and prints one JSON line: the seat, the D
+// frames heard, whether the room said "r 0 elsewhere", and whether the socket closed.
+//   coax/web/tool.sh coax/web/room/owner-seat.coax ws://localhost:PORT/api/room/relay/everglade/CODE?t=TICKET SECONDS
+#load "room-socket.coax";
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("owner-seat URL [SECONDS]"); return 2; }
+  url := args_at(a[..], 0);
+  secs := ifx args_count(a[..]) > 1 then rs_num(args_at(a[..], 1)) else 60;
+  c: [1] RelayConn;
+  if !relay_conn_open(c[..], url) { tool_err("owner-seat: can't open "); tool_errln(url); print("{\"open\":false}\n"); return 1; }
+  hellos := [2] string.["H 4 ranger.1.0.0 druid 0 Owner", "H 4 ranger.1.0.0 warlock 0 Owner"];
+  sent := relay_conn_send(c[..], hellos[0]);
+  seat := -1; d := 0; elsewhere := false; closed := false; said := 1;
+  seq := 0; m: [96] u8;
+  t0 := rs_now(); n := 0; hello_at := t0;
+  while !closed && rs_now() - t0 < secs * 1000 {
+    seq += 1;
+    k := rs_int(m[..], rs_put(m[..], 0, "I "), seq);
+    k = rs_put(m[..], k, " 0 0 0 0 0 0 0");
+    _ := relay_conn_send(c[..], cast(string) m[0..<k]);
+    if rs_now() - hello_at >= 2000 { hello_at = rs_now(); _ = relay_conn_send(c[..], hellos[said % 2]); said += 1; }
+    n += 1;
+    while !closed && rs_now() - t0 < n * 1000 / 30 {
+      r := relay_conn_poll(c[..], 0);
+      while r == RC_TEXT {
+        t := cast(string) c[0].text[0..<c[0].text_n];
+        if rs_starts(t, "y ") { seat = rs_num(rs_field(t, 1)); }
+        if rs_starts(t, "D ") { d += 1; }
+        if t == "r 0 elsewhere" { elsewhere = true; }
+        r = relay_conn_poll(c[..], 0);
+      }
+      if r == RC_CLOSED || r == RC_FAIL { closed = true; }
+      proc_sleep(2);
+    }
+  }
+  if !closed { _ := relay_conn_close(c[..], 1000); }
+  out: [256] u8; o: [1] Jo;
+  jo_start(o[..], out[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "open"); jo_bool(o[..], sent);
+  jo_key(o[..], "seat"); jo_int(o[..], seat);
+  jo_key(o[..], "d"); jo_int(o[..], d);
+  jo_key(o[..], "hellos"); jo_int(o[..], said);
+  jo_key(o[..], "elsewhere"); jo_bool(o[..], elsewhere);
+  jo_key(o[..], "closed"); jo_bool(o[..], closed);
+  jo_end(o[..]);
+  print("%\n", jo_text(o[..]));
+  return 0;
+}

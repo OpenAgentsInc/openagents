@@ -14,6 +14,7 @@ VITALS_KEEP_MS :: 600000;
 // were in that room instead of at the gate: within VITALS_PLACE_MS of the note.
 VITALS_PLACE_MS :: 120000;
 VITALS_EVERY_MS :: 10000;
+VITALS_OWNER_MS :: 30000;   // a seated character with an owner generation is reported at least this often, changed or not (#12834)
 VITALS_BODY :: 4096;
 // The outbox (#12793). A note that changed is a new revision. The API applies each report once by its
 // operation ID (this shard, this process's generation, the player, the revision) and answers with a
@@ -41,6 +42,8 @@ RoomVital :: struct {
   rev_at: int;      // wall ms they changed: the report's AT, which orders HP at the API
   acked: int;       // the newest revision a receipt covers: rev > acked is in the outbox
   owner: int;       // the newest owner generation a seat ticket gave its character here (#12834; 0 none): its lines carry it
+  floor: int;       // the lowest owner generation that may still sit here: one past an owner the API fenced (f, #12834)
+  sent_at: int;     // wall ms its line last went out (a seated owner's goes again each VITALS_OWNER_MS)
   // where it stood, in which room's code, and when (wall ms; 0 none)
   room: [RELAY_NAME] u8; room_n: int; x: f32; y: f32; z: f32; yaw: f32; placed_at: int;
 }
@@ -58,6 +61,7 @@ RmVitals :: struct {
   // counted since start, for the minute log (rm_vitals_stat)
   posts: int; retried: int; failed: int; applied: int; dup: int; stale: int; refused: int; late: int; gave_up: int; evicted: int;
   fenced: int;      // lines the API refused for an older owner generation (f, #12834): the character plays elsewhere
+  dropped: int;     // seats that went for it (room-relay.coax rl_owner_drop)
   out: [VITALS_BODY] u8; out_n: int;   // the post rm_vitals_due made: "t MS\no SHARD GEN BATCH\nPID HP MAX XP WANTED REV AT\n..."
   mac: [64] u8;                        // its X-Room-Mac
 }
@@ -109,6 +113,9 @@ rv_note_seat :: (v: [] RmServer, k: int, s: int) {
   if !tk.ok { return; }
   c := v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + s];
   pid := cast(string) tk.pid[0..<tk.pid_n];
+  // a seat of an older owner than one already noted here (#12834): its HP isn't the character's now
+  was := rv_find(v, pid);
+  if tk.owner > 0 && was >= 0 && v[0].vit.v[was].owner > tk.owner { return; }
   rv_note_as(v, pid, c.hp, c.hp_max, ev_xp_of(v, k, s), v[0].eg[k].wanted[s], c.dead && c.hp <= 0);
   i := rv_find(v, pid);
   if i >= 0 && tk.owner > v[0].vit.v[i].owner { v[0].vit.v[i].owner = tk.owner; }   // its lines go as the newest owner here
@@ -215,7 +222,11 @@ rm_vitals_due :: (v: [] RmServer) -> int #export_c {
   m := 0;
   for i: 0..<VITALS {
     e := v[0].vit.v[i];
-    if !e.live || e.rev <= e.acked { continue; }
+    // unchanged, a character seated here under an owner generation still goes each VITALS_OWNER_MS
+    // (e.at: noted at the last VITALS_EVERY_MS), so a room that lost it (a paused process that
+    // resumed) hears f from the API and ends the seat, as the owner's lease lapses in the contract
+    seated := e.owner > 0 && v[0].wall_ms - e.at <= 2 * VITALS_EVERY_MS && v[0].wall_ms - e.sent_at >= VITALS_OWNER_MS;
+    if !e.live || (e.rev <= e.acked && !seated) { continue; }
     if m >= VITALS_BATCH || n + e.pid_n + 100 > o.count { break; }
     n = tk_add(o, n, cast(string) e.pid[0..<e.pid_n]); n = tk_add(o, n, " "); n = rv_int(o, n, e.hp);
     n = tk_add(o, n, " "); n = rv_int(o, n, e.max); n = tk_add(o, n, " "); n = rv_int(o, n, e.xp);
@@ -224,6 +235,7 @@ rm_vitals_due :: (v: [] RmServer) -> int #export_c {
     if e.owner > 0 { n = tk_add(o, n, " "); n = rv_int(o, n, e.owner); }   // the owner generation (#12834)
     n = tk_add(o, n, "\n");
     v[0].vit.fly_i[m] = i; v[0].vit.fly_rev[m] = e.rev; v[0].vit.fly_owner[m] = e.owner; m += 1;
+    v[0].vit.v[i].sent_at = v[0].wall_ms;
   }
   if m == 0 { return 0; }
   if !tk_mac(cast(string) v[0].tkey[0..<v[0].tkey_n], cast(string) o[0..<n], v[0].vit.mac[..]) { return 0; }
@@ -277,6 +289,13 @@ rm_vitals_answer :: (v: [] RmServer, batch: int, status: int, body: string) #exp
           else { continue; }
           i := v[0].vit.fly_i[q];
           if v[0].vit.fly_rev[q] > v[0].vit.v[i].acked { v[0].vit.v[i].acked = v[0].vit.fly_rev[q]; }
+          // fenced for good: a newer owner has the character elsewhere, so its seats here of that
+          // generation or older go, each told "elsewhere" (room-relay.coax rl_owner_drop)
+          if c == 'f' && v[0].vit.fly_owner[q] > 0 {
+            e := v[0].vit.v[i];
+            if v[0].vit.fly_owner[q] + 1 > e.floor { v[0].vit.v[i].floor = v[0].vit.fly_owner[q] + 1; }   // that owner's tickets sit no more
+            v[0].vit.dropped += rl_owner_drop(v, cast(string) e.pid[0..<e.pid_n], v[0].vit.fly_owner[q] + 1, -1);
+          }
         }
         v[0].vit.fly = false; v[0].vit.tries = 0; v[0].vit.retry_at = 0;
         return;
@@ -315,7 +334,8 @@ rm_vitals_pending :: (v: [] RmServer) -> int #export_c {
   return n;
 }
 // The counts for the minute log: 0 posts, 1 retried, 2 failed, 3 applied, 4 already applied, 5 stale,
-// 6 refused, 7 late answers, 8 given up, 9 evicted unsaved, 10 pending now, 11 fenced (#12834).
+// 6 refused, 7 late answers, 8 given up, 9 evicted unsaved, 10 pending now, 11 fenced (#12834), 12 seats
+// that went for it.
 rm_vitals_stat :: (v: [] RmServer, which: int) -> int #export_c {
   t := v[0].vit;
   if which == 0 { return t.posts; }
@@ -330,6 +350,7 @@ rm_vitals_stat :: (v: [] RmServer, which: int) -> int #export_c {
   if which == 9 { return t.evicted; }
   if which == 10 { return rm_vitals_pending(v); }
   if which == 11 { return t.fenced; }
+  if which == 12 { return t.dropped; }
   return 0;
 }
 // This process's generation (the host's start, wall ms): a later process's is larger.

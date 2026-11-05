@@ -158,8 +158,18 @@ rl_join :: (v: [] RmServer, conn: int, request: string) -> int {
   // the player's seat held for them since their socket closed, or the seat of their other socket here
   // silent for RL_STALE_MS (a phone that changed networks, a tab that slept): this join takes it back,
   // so no twin of them stands in the town (#12792). A socket of theirs still talking (another tab) stays.
+  // one owner per character (#12834): a ticket older than the one a seat of theirs here holds is
+  // refused; a newer one drops their seats in this server's other rooms (each told "elsewhere")
+  if v[0].relays[r].limited && tk.ok && tk.pid_n > 0 && tk.owner > 0 {
+    pid := cast(string) tk.pid[0..<tk.pid_n];
+    if rl_owner_newest(v, pid) > tk.owner {
+      if rl_people(v, r) == 0 { v[0].relays[r].live = false; }
+      return st_refuse(v, ST_ELSEWHERE);
+    }
+    _ := rl_owner_drop(v, pid, tk.owner, r);
+  }
   seat := -1;
-  if v[0].relays[r].limited && tk.ok && tk.pid_n > 0 { seat = rl_take_back(v, r, cast(string) tk.pid[0..<tk.pid_n]); }
+  if v[0].relays[r].limited && tk.ok && tk.pid_n > 0 { seat = rl_take_back(v, r, cast(string) tk.pid[0..<tk.pid_n], tk.owner); }
   back := seat >= 0;
   if !back { seat = rl_seat(v, r); }
   if seat < 0 {
@@ -196,7 +206,9 @@ RL_STALE_MS :: 3000;      // a socket of a joiner's own silent this long is thei
 // The seat player pid takes back in everglade room r, or -1: the one held for them, else that of their
 // socket silent RL_STALE_MS, which is marked kicked (the host closes it; its close leaves the seat be,
 // rl_left). Their other silent sockets are kicked too, and their seats go as a kicked socket's do.
-rl_take_back :: (v: [] RmServer, r: int, pid: string) -> int {
+// With an owner generation (#12834), a socket of theirs still talking whose ticket is older gives
+// way too (a second tab takes over), and is told "elsewhere", so its page stops rejoining.
+rl_take_back :: (v: [] RmServer, r: int, pid: string, owner: int) -> int {
   k := eg_room_at(v, r);
   if k < 0 { return -1; }
   for s: 0..<EG_SEATS { if eg_held(v, k, s) && eg_held_for(v, k, s, pid) { return s; } }
@@ -204,12 +216,76 @@ rl_take_back :: (v: [] RmServer, r: int, pid: string) -> int {
   for i: 0..<CONNS {
     c := v[0].conns[i];
     if !c.live || c.relay != r || c.kicked || !c.ticket.ok || cast(string) c.ticket.pid[0..<c.ticket.pid_n] != pid { continue; }
-    if c.seat < 0 || c.seat >= EG_SEATS || v[0].mono_ms - v[0].eg[k].seat[c.seat].heard_ms < RL_STALE_MS { continue; }
+    if c.seat < 0 || c.seat >= EG_SEATS { continue; }
+    older := owner > 0 && c.ticket.owner > 0 && c.ticket.owner < owner;
+    silent := v[0].mono_ms - v[0].eg[k].seat[c.seat].heard_ms >= RL_STALE_MS;
+    if !silent && !older { continue; }
+    if !silent { rl_elsewhere(v, i); }
     v[0].conns[i].kicked = true;
     if seat < 0 && v[0].eg[k].seat[c.seat].live && v[0].eg[k].seat[c.seat].conn == i { seat = c.seat; }
   }
   return seat;
 }
+// ---- one owner per character (#12834; aethyr/session/control.coax)
+// A seat ticket carries its character's owner generation (room-ticket.coax g; 0 none), which the API
+// issues one higher with each ticket. On this server the newest owns the character: an older ticket
+// is refused (ST_ELSEWHERE), and a newer one ends the older seats, in this room (rl_take_back) and
+// in the others (rl_owner_drop). The store fences the rest: a vitals line of an older owner is
+// answered f (room-vitals.coax), and its seats here go too, as when the character moved to a room on
+// another shard. Each socket that loses its seat so is told "r 0 elsewhere", and its page stops
+// rejoining (everglade-net.coax), so two pages that rejoin on their own can't take turns. Tickets
+// without a generation keep the earlier rule: a second tab sits beside the first.
+
+// The newest owner generation a seat of player pid holds on this server (0 none): a socket's, or a
+// held seat's ticket; or one past an owner the API fenced (room-vitals.coax floor).
+rl_owner_newest :: (v: [] RmServer, pid: string) -> int {
+  best := 0;
+  f := rv_find(v, pid);
+  if f >= 0 { best = v[0].vit.v[f].floor; }
+  for i: 0..<CONNS {
+    c := v[0].conns[i];
+    if !c.live || c.kicked || c.relay < 0 || !c.ticket.ok || c.ticket.owner <= best { continue; }
+    if cast(string) c.ticket.pid[0..<c.ticket.pid_n] == pid { best = c.ticket.owner; }
+  }
+  for k: 0..<EG_ROOMS {
+    if !v[0].eg[k].live { continue; }
+    for s: 0..<EG_SEATS {
+      if eg_held(v, k, s) && eg_held_for(v, k, s, pid) && v[0].eg[k].tk[s].owner > best { best = v[0].eg[k].tk[s].owner; }
+    }
+  }
+  return best;
+}
+// Socket conn has lost its character to a newer ticket: it hears "r 0 elsewhere" (the host closes it).
+rl_elsewhere :: (v: [] RmServer, conn: int) {
+  b: [32] u8;
+  n := wire_put_refused(b[..], 0, 0, WIRE_REFUSE_ELSEWHERE);
+  rl_queue(v, v[0].conns[conn].relay, conn, -1, cast(string) b[0..<n], "");
+  v[0].conns[conn].kicked = true;
+}
+// Player pid's seats on this server whose ticket's owner generation is below `below` (and above 0),
+// in every everglade room but `but` (-1 none), leave now: their HP noted, the others told l, a socket
+// told "elsewhere". The seats that went.
+rl_owner_drop :: (v: [] RmServer, pid: string, below: int, but: int) -> int {
+  n := 0;
+  for k: 0..<EG_ROOMS {
+    r := v[0].eg[k].relay;
+    if !v[0].eg[k].live || r < 0 || r == but { continue; }
+    for s: 0..<EG_SEATS {
+      if !v[0].eg[k].live || !v[0].eg[k].seat[s].live { continue; }
+      tk := eg_ticket(v, k, s);
+      if !tk.ok || tk.owner <= 0 || tk.owner >= below || cast(string) tk.pid[0..<tk.pid_n] != pid { continue; }
+      c := v[0].eg[k].seat[s].conn;
+      if c >= 0 && c < CONNS && v[0].conns[c].live { rl_elsewhere(v, c); }
+      h: [16] u8;
+      rl_queue(v, r, -1, c, rl_head(h[..], 'l', s, false), "");
+      eg_left(v, r, s);
+      n += 1;
+    }
+    if rl_people(v, r) == 0 { v[0].relays[r].live = false; }
+  }
+  return n;
+}
+
 // Whether an everglade socket may send a frame of bytes now (a token bucket for frames and one
 // for bytes, in thousandths). A refused frame is counted; refusing for RL_OVER_MS marks it kicked.
 rl_allow :: (v: [] RmServer, conn: int, bytes: int) -> bool {
@@ -277,6 +353,10 @@ rl_left :: (v: [] RmServer, conn: int) {
     }
     // closed (not kicked), with a ticket naming its player: the seat waits for them (#12792)
     if !c.kicked && c.ticket.ok && c.ticket.pid_n > 0 { eg_hold(v, k, c.seat); return; }
+  } else if k >= 0 && c.seat >= 0 && c.seat < EG_SEATS {
+    // its seat already went (a newer ticket ended it, rl_owner_drop): the others heard l then
+    if rl_people(v, c.relay) == 0 { v[0].relays[c.relay].live = false; }
+    return;
   }
   h: [16] u8;
   rl_queue(v, c.relay, -1, conn, rl_head(h[..], 'l', c.seat, false), "");

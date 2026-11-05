@@ -890,9 +890,10 @@ int main(int argc, char **argv) {
         printf("room: everglade tick parts over the minute (ms):"); for (int q = 0; q < PARTS; q++) { printf(" %s %lld", part_name[q], (long long)(part_us[q] / 1000)); part_us[q] = 0; }
         printf(", %lld events with no room in their tick\n", (long long)rm_eg_dropped(view()));
         { coax_v_t_RmServer w = view();
-          printf("room: vitals posts %lld (%lld retried, %lld failed), lines applied %lld, already applied %lld, stale %lld, refused %lld, late answers %lld, given up %lld, evicted unsaved %lld, %lld players unsaved now\n",
+          printf("room: vitals posts %lld (%lld retried, %lld failed), lines applied %lld, already applied %lld, stale %lld, refused %lld, late answers %lld, given up %lld, evicted unsaved %lld, %lld players unsaved now, fenced %lld (%lld seats ended)\n",
                  (long long)rm_vitals_stat(w, 0), (long long)rm_vitals_stat(w, 1), (long long)rm_vitals_stat(w, 2), (long long)rm_vitals_stat(w, 3), (long long)rm_vitals_stat(w, 4),
-                 (long long)rm_vitals_stat(w, 5), (long long)rm_vitals_stat(w, 6), (long long)rm_vitals_stat(w, 7), (long long)rm_vitals_stat(w, 8), (long long)rm_vitals_stat(w, 9), (long long)rm_vitals_stat(w, 10)); }
+                 (long long)rm_vitals_stat(w, 5), (long long)rm_vitals_stat(w, 6), (long long)rm_vitals_stat(w, 7), (long long)rm_vitals_stat(w, 8), (long long)rm_vitals_stat(w, 9), (long long)rm_vitals_stat(w, 10),
+                 (long long)rm_vitals_stat(w, 11), (long long)rm_vitals_stat(w, 12)); }
         ticks = 0; last_report = now; memcpy(fan_last, fan_now, sizeof fan_now); memset(fan_now, 0, sizeof fan_now); memcpy(tick_last, tick_now, sizeof tick_now); memset(tick_now, 0, sizeof tick_now); }
     }
   }

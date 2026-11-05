@@ -771,12 +771,23 @@ tab, moves to another room, or a paused room process resumes, only the room
 that holds the newest ticket writes their HP, XP and WANTED. A line with no
 generation applies as before.
 
+The room also keeps one seat per character. A newer ticket takes over the
+character's seat: in the same room, the new tab takes the seat; in another
+room on the same shard, the old seat ends. An older ticket is refused. When
+the API answers `f` and no newer ticket sits there, the room ends that seat
+too. The page that lost its seat says "YOU'RE PLAYING ELSEWHERE · RELOAD TO
+PLAY HERE" and doesn't rejoin by itself. The minute log counts these as
+`fenced N (M seats ended)`, and the room view counts refused joins as
+`elsewhere`.
+
 A room from before #12834 refuses a ticket that carries a generation, so the
 API signs one only when `OA_ROOM_OWNER_GEN=1`:
 
 1. Deploy the API (migration 0127) and every oa-room shard from #12834 or
    later. Nothing changes yet.
-2. Set `OA_ROOM_OWNER_GEN=1` on the API service and roll it.
+2. Wait a day, so pages loaded before that release (which don't stop on
+   "elsewhere") have reloaded. Then set `OA_ROOM_OWNER_GEN=1` on the API
+   service and roll it.
 3. Check: a new ticket's HP field ends in `g` and a number, and the room's
    minute log keeps counting applied vitals lines.
 

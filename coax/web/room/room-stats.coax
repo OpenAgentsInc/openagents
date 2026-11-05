@@ -10,7 +10,7 @@
 //   - the signature over the host's report (rm_st_sign), with the seat-ticket key, as room-vitals is.
 // Every counter here is a total since the start; the host takes differences for its window.
 
-ST_REASONS :: 10;
+ST_REASONS :: 11;
 ST_NO_ROOM :: 0;     // no such room, or no free simulation for a new one
 ST_TICKET :: 1;      // a seat ticket missing, forged or expired
 ST_KICKED :: 2;      // the player is kicked (room-control.coax)
@@ -20,7 +20,8 @@ ST_VERSION :: 5;     // a page on another wire (#12788)
 // a page of another build (#12839, room-everglade.coax eg_admit): its engine, its rules, its world, or
 // saved data newer than this room reads (a rollback past its limit)
 ST_ENGINE :: 6; ST_RULES :: 7; ST_CONTENT :: 8; ST_SCHEMA :: 9;
-ST_REASON_NAMES :: [10] string.["no room", "ticket", "kicked", "shard", "full", "version", "engine", "rules", "content", "schema"];
+ST_ELSEWHERE :: 10;  // a ticket older than the one a seat of the same character holds on this server (#12834)
+ST_REASON_NAMES :: [11] string.["no room", "ticket", "kicked", "shard", "full", "version", "engine", "rules", "content", "schema", "elsewhere"];
 // The reason a compatibility refusal (CP_*) is counted under.
 st_compat :: (why: int) -> int {
   if why == CP_ENGINE { return ST_ENGINE; }

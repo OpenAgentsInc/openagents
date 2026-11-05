@@ -170,6 +170,7 @@ EgNet :: struct {
   mine_seq: [NET_MINE] int; mine_slot: [NET_MINE] int; mine_at: int;   // your last casts: each SEQ and slot
   said: [48] u8; said_n: int; said_t: f32;   // the last refusal's reason, or what became of the room
   stale: bool; reload_at: int;   // the room speaks a newer wire (r 0 version): no more opens; reloaded once at reload_at
+  elsewhere: bool;               // a newer seat ticket has your character (r 0 elsewhere, #12834): no more opens
   lost: bool;                // the room's socket closed under you: said again when you're back
   sat: bool;                 // you sat in a room this load: the page plays in rooms from then (net_live)
   quiet_frames: int; quiet_since: int; quiet_fresh: bool = true; stepped_at: int;   // the quiet socket's watch (NET_SILENT_MS)
@@ -532,7 +533,7 @@ net_event :: (s: [] Everglade, kind: int, text: string) -> bool #export_c {
   if ev.event == SOCKET_OPENED { n[0].state = NET_OPEN; n[0].tries = 0; n[0].ping_n = 0; n[0].ping_at = 0; n[0].quiet_fresh = true; return true; }
   if ev.event == SOCKET_ERROR && text.count > 0 && n[0].state == NET_OPEN { return true; }   // a frame over the inbox cap: dropped
   if ev.event == SOCKET_CLOSED || ev.event == SOCKET_ERROR {
-    if n[0].stale { net_down(n); return true; }   // a new version's: it says so, and reloads (net_stale)
+    if n[0].stale || n[0].elsewhere { net_down(n); return true; }   // a new version's (it says so, and reloads: net_stale), or your character's elsewhere
     if n[0].seat < 0 { jn_refused(s, n); }   // closed before a seat: full, or gone (everglade-join.coax)
     else { n[0].lost = true; net_tell(s, n, "LOST THE ROOM · REJOINING"); }   // your network dropped, or the room went
     net_down(n); return true;
@@ -627,6 +628,7 @@ net_record :: (s: [] Everglade, n: [] EgNet, t: string) {
     seq := wire_num(t, r[..]);
     why := wire_word(t, r[..]);
     if why == WIRE_REFUSE_VERSION { net_stale(s, n); return; }
+    if why == WIRE_REFUSE_ELSEWHERE { net_elsewhere(s, n); return; }
     n[0].said_n = 0;
     for ch: "CAN'T · " { n[0].said[n[0].said_n] = ch; n[0].said_n += 1; }
     for ch: why { if n[0].said_n >= 48 { break; } n[0].said[n[0].said_n] = ifx ch >= 'a' && ch <= 'z' then ch - 32 else ch; n[0].said_n += 1; }
@@ -653,6 +655,14 @@ net_stale :: (s: [] Everglade, n: [] EgNet) {
   again := net_query(cast(string) n[0].join[0].href[0..<n[0].join[0].href_n], "reload") == "1";
   n[0].reload_at = ifx again then -1 else n[0].mono + NET_RELOAD_MS;
   net_tell(s, n, ifx again then "A NEW VERSION IS OUT · RELOAD THE PAGE" else "A NEW VERSION IS OUT · RELOADING");
+}
+// You play this character in another tab, device or room now (a newer seat ticket took it, #12834):
+// the page says so and opens no socket again, so two pages that rejoin on their own never take turns.
+// A reload asks for a new ticket, and plays here again.
+net_elsewhere :: (s: [] Everglade, n: [] EgNet) {
+  if n[0].elsewhere { return; }
+  n[0].elsewhere = true; n[0].want = false;
+  net_tell(s, n, "YOU'RE PLAYING ELSEWHERE · RELOAD TO PLAY HERE");
 }
 // The reload, when its time comes: this page's path and query with reload=1, to the host (action 1).
 net_reload :: (s: [] Everglade, n: [] EgNet) {
@@ -2849,6 +2859,17 @@ net_test_walk :: (jitter: int, lose: int, jump: bool, resend: int) -> NetTestWal
   #assert w.walk > 400 && w.still * 100 < w.walk * 2 && w.err_cm <= 30 && w.bad == 0 && w.back_cm == 0 && w.step_cm <= 4;
 }
 
+#test "net: a newer ticket took your character (r 0 elsewhere): the page says so and opens no socket again (#12834)" {
+  a: [1] Everglade; na: [1] EgNet;
+  #assert net_test_page(a[..], na[..], 0, "pa", 100);
+  net_step(a[..], 120, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  #assert net_test_hear(a[..], 0, "r 0 elsewhere") && na[0].elsewhere && !na[0].want;
+  #assert cast(string) na[0].said[0..<na[0].said_n] == "YOU'RE PLAYING ELSEWHERE · RELOAD TO PLAY HERE";
+  #assert net_event(a[..], SOCKET_KIND + SOCKET_CLOSED, "") && !na[0].lost && !net_rejoining(a[..]);
+  pipe_drained(na[0].pipe[..]);
+  for t: 0..<20 { net_step(a[..], 2000 + t * 5000, 0, 0, 0, 0, 0, 0, false, 0, false, 0); #assert na[0].pipe[0].n == 0; }
+  #assert a[0].action == 0;
+}
 #test "net: a room on another wire version refuses the hello; the page says a new version is out, opens no socket again and reloads once" {
   a: [1] Everglade; na: [1] EgNet;
   #assert net_test_page(a[..], na[..], 0, "pa", 100);
