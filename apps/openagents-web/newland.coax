@@ -2407,6 +2407,8 @@ press :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int, id: int) {
 #test "a click on a Pylon opens its card, which never navigates" #steps 110000000 {
   s: [1] LandState; u: [UNIFORM_FLOATS] f32;
   out: [TEST_VERTICES * VERTEX_FLOATS] f32;
+  // The snapshot's Pylon (HOME_GOLD_PYLONS): a fresh capture may find none online.
+  s[0].golden = true;
   settled(s[..], out[..], u[..]);
   i := -1;
   for j: 0..<s[0].pylons { if i < 0 && s[0].pyl[j].ok { i = j; } }
