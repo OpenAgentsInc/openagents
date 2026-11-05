@@ -1,7 +1,7 @@
 # 5. A sandbox and approvals
 
 > **Status: partly implemented.** A sandbox runs on the CPU around chapter
-> 203's tools. Its policy is data: an effect ceiling and the rooms of the
+> 4's tools. Its policy is data: an effect ceiling and the rooms of the
 > world a session may ever touch, the effect, rooms and cost that run
 > without asking, and limits on calls, call bytes, ticks per call and the
 > session's clock. The policy decides before every run. A call between what

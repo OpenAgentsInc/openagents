@@ -18,8 +18,23 @@ A harness turns a model into an agent. It sends the model a request, reads
 the reply, runs the tool the reply asks for, appends the tool's output and
 asks again. It also decides when to stop: when the model gives a final
 answer, or when the turn has used up what it was allowed to spend. This
-chapter builds the smallest loop that does that, and every later chapter in
-Parts I–V of this book adds one thing to it.
+chapter builds the smallest loop that does that. Later chapters in Parts I–V
+develop additional mechanisms as separately checked experiments. They do not
+yet all compose into this loop or the live Coder application.
+
+The implementation boundaries are concrete:
+
+| Chapters | What composes today | Remaining join |
+| --- | --- | --- |
+| 1–2 | `lg_run` logs the calculator loop, and checks compare it with `hl_run`. | The hash-chained token log remains in memory, separate from Coder's durable JSONL reporting. |
+| 3 | `px_assemble` reads chapter 2's logged history and checks stable prefixes. | It is not the live engine's prompt assembler; its cache times are modeled. |
+| 4–5 | The sandbox wraps `ht_call` and logs simulated calls/approvals through chapter 2's log. | The registry's constrained calls are not wired into chapter 1's model loop, and the three-room policy does not confine native processes. |
+
+The [live coverage matrix](CONTRACT.md#coverage-by-execution-path) governs
+which properties each engine actually has. Joining these experiments requires
+an end-to-end check of the same model request, admitted tool effect, durable
+intent/result and cancellation path; passing the separate examples does not
+establish that join. The chapter status remains partly implemented.
 
 Everything here lives in one `#authority` file,
 [harness/loop.coax](../../psionic/lib/harness/loop.coax), because the loop decides

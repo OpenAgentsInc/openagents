@@ -3,7 +3,10 @@
 > Engine-core task: `ec-input` (#12609). The module is
 > [aethyr/input.coax](../input.coax). The walking controller in
 > [aethyr/player.coax](../../aethyr/player.coax) takes its jump from it, and
-> its run rule and dead zone come from it.
+> its run rule and dead zone come from it. Full per-step action buffering
+> and look/zoom splitting are adopted by `verse/gridwalk.coax`. The shared
+> walking controller still applies look when a frame's input arrives;
+> other realm and host-event migrations remain below.
 
 Input arrives as events at any time: keys, mouse moves, touches, and pad
 axes. The simulation runs in fixed steps ([chapter 1](ch001-a-frame-has-a-fixed-step.md)).
@@ -365,8 +368,11 @@ needs.
 
 The controller's look still turns the camera when `verse_player_input` is
 called, not per step. The realms' cameras read `theta` and `phi` every frame.
-The camera chapter ([chapter 10](ch010-the-camera-follows.md)) moves look to
-the steps, together with drawing the camera between the last two steps.
+The Grid's session instead splits look/zoom through its `InputBuffer` and
+applies each sample in `gw_step`, then interpolates the camera turn for drawing.
+[Chapter 10](ch010-the-camera-follows.md) explains that composition. Applying
+it to every realm remains part of chapter 64's migration; importing the
+walking controller alone does not adopt the Grid's input path.
 
 ## Checks
 

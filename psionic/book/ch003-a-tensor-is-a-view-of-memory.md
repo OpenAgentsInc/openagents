@@ -7,7 +7,7 @@ is the rule that maps a coordinate to a storage address.
 [Chapter 2](ch002-shapes-and-storage.md) deliberately admitted only contiguous,
 nonempty tensors. We keep that contract intact and introduce
 [`tensor-view.coax`](../lib/tensor-view.coax), a separate bounded CPU view layer.
-It is the storage foundation for chapter 5's future general operators.
+It is the storage foundation for chapter 5's implemented bounded CPU operators.
 
 ## Run it
 
@@ -177,6 +177,6 @@ a maximum-size transposed materialization. Debug/release and native
 ASan/UBSan supplement the authored Coax checks and exact example transcript.
 
 The [verification record](../../docs/verification/psionic-ch002a-2026-10-29.md)
-names the tested build and its limits. Chapter 5 can now implement operators
-against shared layout and mutation rules. Existing model engines retain their
+names the tested build and its limits. Chapter 5 implements operators
+against these shared layout and mutation rules. Existing model engines retain their
 qualified contiguous interfaces until each migration has its own checks.

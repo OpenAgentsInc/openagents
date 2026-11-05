@@ -1,7 +1,7 @@
 # 2. Model-visible means logged
 
 > **Status: partly implemented.** A session log runs on the CPU over chapter
-> 200's loop: an append-only, SHA-256 hash-chained list of typed events, in
+> 1's loop: an append-only, SHA-256 hash-chained list of typed events, in
 > which every token a request holds is an event before the request is sent,
 > and the request is read from the log's own token store. A verifier
 > rebuilds every turn and step from the events and refuses a log or a

@@ -1,0 +1,5 @@
+large base: 1000000.0
+overflow fallback: 0.0
+smallest subnormal bits: 1
+largest finite bits: 2139095039
+underflow: 0.0

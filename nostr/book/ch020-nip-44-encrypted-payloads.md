@@ -10,6 +10,33 @@ official vector file.
 
 Part I, Shared secrets, encodings and encryption.
 
+## Secret storage and cleanup
+
+This chapter qualifies payload bytes, admission and authentication order.
+Its helpers do not implement the complete erasure rule from
+[Bitcoin chapter 3](../../bitcoin/book/ch003-constant-time-rules.md#erasing-secrets).
+`nip44_encrypt_checked` and `nip44_decrypt_checked` derive message keys in
+local 76-byte arrays. Encryption leaves padded plaintext in `work`; successful
+decryption, and padding or output-capacity failures after authentication,
+can leave decrypted plaintext there too. The output-preservation checks say
+nothing about erasure of those temporaries.
+
+The caller must keep the conversation key, work and returned plaintext under
+its own lifetime policy and securely wipe identified storage when finished.
+That alone cannot wipe the callee's local message keys or deeper primitive
+temporaries. `nip44_conversation_key_from_keys_checked` clears its ECDH scratch
+with ordinary stores, and higher-level helpers such as
+[`n46_seal` and `n46_open`](../../coax/lib/nostr/nip46.coax) allocate further
+local work arrays without a secure cleanup effect. These paths are not
+qualified for end-to-end secret erasure.
+
+Closing that gap requires owned workspaces for explicit secret temporaries,
+the host's observable wipe effect on every completion path, and native and
+browser checks of optimized execution and refused/failed cleanup. The
+[owned ECDH host](../../coax/lib/crypto/platform/ecdh_host.c) supplies a smaller
+existing pattern, not qualification of the full NIP-44 call graph. The examples
+below use published test keys.
+
 ## What this chapter teaches
 
 - Derive the conversation key with HKDF-extract over the raw ECDH x and the

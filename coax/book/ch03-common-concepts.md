@@ -19,7 +19,7 @@ go through them one at a time.
 > `examples/ch03_variables.coax`), and every output shown is what
 > the current `coax0` prints. A few
 > things the language plans aren't in `coax0` yet: local constants,
-> global variables, `switch`, loop labels and doc comments. Each one is
+> global variables, loop labels and doc comments. Each one is
 > marked where it comes up, along with what the compiler says if you
 > try it.
 
@@ -1204,10 +1204,11 @@ A `for` loop owns its counter. To skip an item, use `continue`. When you
 really need to move the counter by hand, write a `while` loop with its
 own variable, as `power` does in Listing 3-9.
 
-> Note: Loop labels (to `break` out of an outer loop), reverse ranges and
-> an exhaustive `switch` are planned. `coax0` reserves `switch` and
-> refuses it with `E0204`. Until labels arrive, put the nested loops in a
-> procedure and `return` from it.
+> Note: Loop labels (to `break` out of an outer loop) and reverse ranges
+> are planned. Until labels arrive, put the nested loops in a procedure
+> and `return` from it. Exhaustive `switch` over enums and tagged unions
+> works in the current native profile; Chapter 5 shows its cases and
+> coverage checks in `examples/ch05_tagged.coax`.
 
 ## Printing
 

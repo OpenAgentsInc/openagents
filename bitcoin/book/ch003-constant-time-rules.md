@@ -111,8 +111,10 @@ doesn't prove that a whole program runs in constant time.
 ## Erasing secrets
 
 A secret left in memory after use can reach a crash dump, swap or a later
-bug. Every secret buffer is erased when its work ends, on success and on
-every failure path.
+bug. The rule for a qualified secret-handling boundary is to erase every
+identified secret buffer when its work ends, on success and on every failure
+path. This chapter implements the bookkeeping and host effect for registered
+buffers; it does not establish that every later cryptographic API uses them.
 
 Erasure has two parts:
 
@@ -134,8 +136,24 @@ buffer that overlaps one already registered (`ZERO_ALIAS`).
 
 Erasure doesn't reach copies the compiler makes in registers or on the
 stack, or copies the operating system makes. Passing a secret by value
-makes such a copy. Later chapters keep secrets in caller-owned buffers for
-this reason.
+makes such a copy. Caller-owned buffers let a host identify and wipe explicit
+storage, but that is not yet the contract of every later helper.
+
+For example, Nostr chapter 14's conversation-key helper zeroes its explicit
+ECDH scratch with ordinary Coax stores. Nostr chapter 20's NIP-44 helpers
+leave plaintext in work buffers and derive message keys in local arrays.
+The NIP-46 `n46_seal` and `n46_open` helpers also own local work arrays that
+their caller cannot register or securely erase after return. Their successful
+vector checks establish cryptographic results, not this chapter's erasure rule.
+See [Nostr chapter 20's cleanup boundary](../../nostr/book/ch020-nip-44-encrypted-payloads.md#secret-storage-and-cleanup).
+
+The native [ECDH host](../../coax/lib/crypto/platform/ecdh_host.c) is a concrete
+consumer of the secure-zero effect: it wipes its caller-owned scratch after
+the operation and reports pending cleanup if the effect fails. Extending
+that ownership to message keys and nested cryptographic temporaries, wiring
+it through native and browser consumers, and checking optimized failure and
+cancellation paths remain separate integration work. An ordinary zeroing loop
+or a host wipe of only the outer buffer does not establish that integration.
 
 ## The example
 

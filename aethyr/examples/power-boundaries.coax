@@ -1,0 +1,12 @@
+#import "Basic";
+#load "../math.coax";
+
+// book:begin example
+main :: () {
+  print("large base: %\n", math_pow(1000000, 1));
+  print("overflow fallback: %\n", math_pow(2, 128));
+  print("smallest subnormal bits: %\n", f32_bits(math_pow(f32_from_bits(1), 1)));
+  print("largest finite bits: %\n", f32_bits(math_pow(f32_from_bits(0x7f7fffff), 1)));
+  print("underflow: %\n", math_pow(2, -151));
+}
+// book:end example

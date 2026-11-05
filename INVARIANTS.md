@@ -1024,13 +1024,22 @@ never Coax's `sin`, `cos`, `tan`, `exp`, `log` or `pow`: those call the host's
 C library, and macOS's libm and wasi-libc round some inputs differently (a
 recorded walk parted after 105 steps). Drawing may use either. Random draws
 in a step come from `aethyr/rand.coax` (seed, stream, counter). Checks:
-`aethyr/math.coax` (within 2 ulps of the C library, f64 kernels against
-Python's `math`; mutation 0 survivors) and `coax/web/replay-hosts.coax`
+`aethyr/math.coax` (sampled comparisons use a scaled tolerance with a near-zero
+floor, not a universal ULP theorem; f64 kernels against pinned Python values;
+mutation 0 survivors) and `coax/web/replay-hosts.coax`
 (the recorded walk's session digests, and the recorded Grid session's digest
 at every step, are equal natively and in wasm). Both sessions must stay
 sharp: each steers while turning through angles where the two C libraries
 round `sinf` and `cosf` differently, so a step that calls `sin` or `cos`
 fails them.
+
+The math authority keeps the trigonometric angle bound separate from powers.
+`math_pow` accepts finite positive binary32 bases and finite exponents; a zero
+exponent yields one even for an invalid base. Otherwise invalid operands or a
+computed wide result outside finite binary32 return zero before narrowing.
+Underflow may also yield zero. Identity powers preserve finite endpoints.
+The chapter-5 power-boundary transcript covers native debug/release and
+ASan/UBSan; 169 root mutants are killed with zero survivors (#12921).
 
 The room server's step runs in two hosts (oa-room natively and the
 browser's local host in wasm), and Everglade's town, lifts and falls still

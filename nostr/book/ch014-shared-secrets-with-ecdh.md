@@ -151,6 +151,12 @@ after the dirty regions are wiped. The
 [owned lifecycle record](../../docs/verification/2026-10-29-ecdh-owned-lifecycle.md)
 maps every return of that host interface.
 
+That host interface is separate from the pure Coax conversation-key helper
+used in this chapter. Its ordinary stores, and the fact that the scratch
+reads as zero in a check, do not prove optimizer-resistant erasure. Message
+encryption adds other secret temporaries; see
+[chapter 20's cleanup boundary](ch020-nip-44-encrypted-payloads.md#secret-storage-and-cleanup).
+
 ## The example
 
 The example is [nostr/examples/ecdh.coax](../examples/ecdh.coax). It works

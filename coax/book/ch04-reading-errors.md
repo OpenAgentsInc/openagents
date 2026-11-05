@@ -153,7 +153,7 @@ the *why*:
 ```shell
 $ coax explain E0204
 E0204: reserved word not supported yet
-  The word is reserved for a planned feature (union, switch, using, try...). coax0 refuses it rather than guessing what it means.
+  The word is reserved for a planned feature, such as using or enum_flags. coax0 refuses it rather than guessing what it means.
 ```
 
 Codes are case-sensitive, and an unknown code says so:
@@ -500,16 +500,17 @@ type that `coax0` doesn't implement, and the compiler says exactly that.
 The same goes for planned keywords:
 
 ```jai
-modes.coax:5:3: error[E0204]: 'switch' is reserved and not supported by coax0 yet
-    switch mode {
-    ^
+layers.coax:1:10: error[E0204]: 'enum_flags' is reserved and not supported by coax0 yet
+  Layer :: enum_flags u32 { solid; visible; }
+           ^
 1 error
 ```
 
 This tells you whether to fix your spelling or change your approach. It
-also works as a guarantee: since no program that uses `switch` or
-`fixed32` compiles today, none can change meaning when they arrive.
-Chapter 28 lists what's planned.
+also keeps unsupported syntax from acquiring an accidental meaning before
+its feature arrives. `enum_flags` and `fixed32` remain planned. Exhaustive
+`switch` over enums and tagged unions already works; Chapter 5 runs it in
+`examples/ch05_tagged.coax`. Chapter 28 lists the remaining work.
 
 ## Errors while compiling your code
 

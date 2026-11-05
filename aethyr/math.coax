@@ -3,7 +3,7 @@
 // the host's C library: macOS's libm natively and wasi-libc in the browser. They differ in the
 // last bit for some inputs, so a walk drawn natively and in the browser parted after 105 steps
 // (aethyr/tests/replay-walk.coax, 2026-10-31). These use only +, -, *, /, floor and the bits of
-// a float, which IEEE 754 defines exactly, in f64, and round once to f32.
+// a float, with explicit IEEE 754 rounding in f64, then narrow once to f32.
 //
 // Simulation steps call these, never sin, cos, tan, exp, log or pow (INVARIANTS.md). Drawing
 // may use either: it is not part of a step's state.
@@ -12,6 +12,41 @@
 
 #module "aethyr.math";
 #load "tests/math-oracle.coax";   // the checks' closeness test
+#authority;
+
+// Independent binary32 boundaries, checked before extending the implementation.
+#test "powers accept finite bases beyond the angle limit" {
+  #assert math_pow(1000000, 1) == 1000000;
+  #assert math_pow(10000000, 2) == 100000000000000.0f32;
+  #assert math_pow(1, f32_from_bits(0x7f7fffff)) == 1;
+  #assert math_pow(f32_from_bits(1), 1) == f32_from_bits(1);
+  #assert math_pow(f32_from_bits(0x7f7fffff), 1) == f32_from_bits(0x7f7fffff);
+}
+#test "power overflow and nonfinite operands return the declared fallback" {
+  #assert math_pow(2, 127) == f32_from_bits(0x7f000000);
+  #assert math_pow(2, 128) == 0;
+  #assert math_pow(2, 1024) == 0;
+  #assert math_pow(2, -149) == f32_from_bits(1);
+  // The log/exp approximation can land on either side of a half-subnormal
+  // tie; the profile permits one minimum-subnormal of absolute error here.
+  #assert math_pow(2, -150) <= f32_from_bits(1);
+  #assert math_pow(2, -151) == 0;
+  #assert math_pow(2, -1024) == 0;
+  #assert math_pow(0, 0.001) == 0;
+  maximum := cast(f64) f32_from_bits(0x7f7fffff);
+  #assert math_power_fits(maximum) && !math_power_fits(maximum * 2);
+  // Compile-time bit conversion rejects nonfinite encodings; arithmetic
+  // produces them without asking that conversion to admit them.
+  infinity := f32_from_bits(0x7f7fffff) * 2;
+  nan := 0.0f32; nan = nan / nan;
+  #assert math_pow(infinity, 1) == 0;
+  #assert math_pow(2, infinity) == 0;
+  #assert math_pow(2, -infinity) == 0;
+  #assert math_pow(1, infinity) == 0;
+  #assert math_pow(nan, 1) == 0;
+  #assert math_pow(2, nan) == 0;
+  #assert math_pow(nan, 0) == 1;
+}
 
 // book:begin math
 MATH_PIO2_HI :: 1.5707963267341256;     // pi/2's leading 33 bits: k * MATH_PIO2_HI is exact
@@ -84,11 +119,21 @@ math_log_f64 :: (x: f64) -> f64 {
     + z * (1.0 / 15 + z * (1.0 / 17 + z * (1.0 / 19 + z * (1.0 / 21 + z * (1.0 / 23 + z * (1.0 / 25 + z * (1.0 / 27))))))))))))));
   return cast(f64) e * MATH_LN2_HI + (a + cast(f64) e * MATH_LN2_LO);
 }
-// a^b for a > 0 and finite: e^(b ln a). Any other a gives 0, and b = 0 gives 1.
+// Finite positive binary32 bases and finite exponents, independent of the
+// trigonometric angle limit. Invalid operands or an overflowing result give 0;
+// b = 0 gives 1 even for an invalid base. Underflow may also round to 0.
+math_power_fits :: (value: f64) -> bool {
+  return value <= cast(f64) f32_from_bits(0x7f7fffff);
+}
 math_pow :: (a: f32, b: f32) -> f32 {
   if b == 0 { return 1; }
-  if !(a > 0) || !math_finite(a) || !math_finite(b) { return 0; }
-  return cast(f32) math_exp_f64(cast(f64) b * math_log_f64(cast(f64) a));
+  if !(a > 0) || (f32_bits(a) & 2147483647) >= 2139095040 || (f32_bits(b) & 2147483647) >= 2139095040 { return 0; }
+  // Preserve the endpoints exactly rather than taking a log/exp round trip.
+  if b == 1 { return a; }
+  if a == 1 { return 1; }
+  value := math_exp_f64(cast(f64) b * math_log_f64(cast(f64) a));
+  if !math_power_fits(value) { return 0; }
+  return cast(f32) value;
 }
 // book:end math
 
@@ -123,7 +168,7 @@ math_pow :: (a: f32, b: f32) -> f32 {
   #assert math_pow(0.9, 1.25) == 0.876603364944458 && math_pow(0.5, 0.9375) == 0.5221368670463562;
   #assert math_pow(1.5, 3) == 3.375 && math_pow(7, 1) == 7 && math_pow(1, 123.4) == 1;
   #assert math_pow(0.001, 3) == 1.0000001937626735e-9 && math_pow(1000, 3) == 1000000000;
-  #assert math_pow(-2, 2) == 0 && math_pow(0, 2) == 0 && math_pow(-2, 0) == 1 && math_pow(2, 1.0e7) == 0 && math_pow(1.0e7, 2) == 0;
+  #assert math_pow(-2, 2) == 0 && math_pow(0, 2) == 0 && math_pow(-2, 0) == 1 && math_pow(2, 1.0e7) == 0 && math_pow(1.0e7, 2) == 100000000000000.0f32;
   #assert math_exp_f64(-800) == 0 && math_exp_f64(800) == 1.0e300 && math_exp_f64(0) == 1;
   #assert math_log_f64(1) == 0 && math_log_f64(2) == 0.6931471805599453;
 }

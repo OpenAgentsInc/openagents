@@ -11,8 +11,12 @@ state ([chapter 3](ch003-state-starts-from-its-defaults.md)), a seed, and
 the external events it accepted. The fixed step
 ([chapter 1](ch001-a-frame-has-a-fixed-step.md)) and the typed actions
 ([chapter 4](ch004-input-becomes-typed-actions.md)) make that possible.
-Replaying the record gives the same state at every step, natively and in the
-browser. You use that property for bug reports that reproduce, for
+The checked walk reconstructs the same state at every step, natively and in
+the browser. This is a bounded engine-core profile: the Grid adopts it for
+walking, while other realms and external-event paths still need their own
+migration and evidence. The host check runs the same scenario separately on
+both hosts; importing a recording produced by the other host remains open.
+You use this property for bug reports that reproduce, for
 regression tests recorded from play, for saves, for networking by orders
 ([chapter 50](ch050-shared-state-over-the-network.md)), and for the physics
 recordings in [chapter 36](ch036-record-and-replay-a-world.md).
@@ -369,13 +373,14 @@ camera turned.
 The walking controller computed its direction with Coax's `sin` and `cos`
 and its camera with `pow`. Coax compiles these to the C library's `sinf`,
 `cosf` and `powf`. Natively that's macOS's libm, and in the browser it's
-wasi-libc's. For some inputs, the two libraries round differently. Every
-other operation in a step (`+`, `-`, `*`, `/`, `sqrt`, `floor`) is exact in
-IEEE 754 and gives the same bits on both hosts, because both builds turn off
-fused multiply-add contraction and fast math.
+wasi-libc's. For some inputs, the two libraries round differently. The basic
+IEEE operations in this checked profile use the same rounding on both hosts;
+they are not generally exact real arithmetic. Both builds turn off fused
+multiply-add contraction and fast math, and the replay check verifies the
+resulting per-step bits for this scenario.
 
 `aethyr/math.coax` gives `math_sin`, `math_cos` and `math_pow` built only
-from those exact operations:
+from those explicitly rounded operations:
 
 - Sine and cosine reduce the angle to a quarter turn in `f64`, with
   π/2 split into two parts so that the reduction is exact for angles below
@@ -384,17 +389,59 @@ from those exact operations:
 - `math_pow(a, b)` computes e^(b ln a) in `f64`. `ln` uses the float's
   exponent bits and the series for 2 atanh(s); `exp` reduces by ln 2 and
   scales by 2^k through the exponent bits.
-- An angle past 10^6 radians, a NaN, or a base that isn't positive and
-  finite is refused: sine gives 0, cosine 1, and a power 0 (or 1 when
-  b = 0).
+- Sine and cosine require a finite angle strictly between -10^6 and 10^6
+  radians; outside it they return 0 and 1 respectively.
+- Powers accept any finite positive binary32 base and finite binary32
+  exponent, independently of that angle limit. A zero exponent returns 1
+  even for an invalid base. Otherwise invalid operands and a computed wide
+  result above the largest finite `f32` return 0 before narrowing. Underflow
+  can also produce zero; this scalar fallback carries no distinct error code.
+  Thus `math_pow(1000000, 1)` returns 1000000 and `math_pow(2, 128)` returns
+  zero without a narrowing trap. Identity powers preserve even the smallest
+  subnormal and largest finite base exactly.
 
-Each result is within 2 units in the last place of the C library's, and the
-`f64` kernels match Python's `math` at the ends of their ranges.
+The sampled normal-range comparisons use `math_near`'s scaled tolerance:
+`2 * 2^-23 * max(abs(reference), 1e-6)`. This is not a universal two-ULP
+bound, especially near zero. The `f64` kernels have separate pinned Python
+values at their tested range endpoints. Power checks additionally cover
+overflow, nonfinite operands, normal/subnormal results and underflow. The
+log/exp approximation is not guaranteed correctly rounded at a half-subnormal
+tie; the `2^-150` check permits an absolute error of one minimum subnormal.
+
+The [power-boundary example](../examples/power-boundaries.coax) exercises
+the actual native conversion boundary as well as the compile-time checks:
+
+<!-- source: aethyr/examples/power-boundaries.coax example -->
+```jai
+main :: () {
+  print("large base: %\n", math_pow(1000000, 1));
+  print("overflow fallback: %\n", math_pow(2, 128));
+  print("smallest subnormal bits: %\n", f32_bits(math_pow(f32_from_bits(1), 1)));
+  print("largest finite bits: %\n", f32_bits(math_pow(f32_from_bits(0x7f7fffff), 1)));
+  print("underflow: %\n", math_pow(2, -151));
+}
+```
+
+```shell
+coax/bin/coax run aethyr/examples/power-boundaries.coax
+```
+
+Its [exact transcript](../fixtures/power-boundaries.out), checked in debug
+and release, is:
+
+```text
+large base: 1000000.0
+overflow fallback: 0.0
+smallest subnormal bits: 1
+largest finite bits: 2139095039
+underflow: 0.0
+```
 
 `aethyr/player.coax` now calls these in its step, and the walk gives the same
-digests on both hosts. A simulation step calls `aethyr/math.coax`, never
-`sin`, `cos`, `tan`, `exp`, `log` or `pow` (INVARIANTS.md). Drawing can use
-either, because what it computes isn't part of a step's state.
+digests on both hosts. A step qualified under this replay profile calls
+`aethyr/math.coax` rather than the host's transcendental functions. Other
+realm migrations remain below. Drawing can use either, because what it
+computes isn't part of a step's state.
 
 ## Random streams
 
@@ -578,11 +625,22 @@ wasm the way pages are built (`coax/web/wasm.sh`: `-O2`, no fast math, no
 contraction). It runs the module in headless Chrome, the browser's own
 engine, and compares every number with the native run of the example.
 
-## Still to do
+The 2026-11-05 cleanup for GitHub #12921 extends the power operand domain
+and checks overflow before narrowing. The updated math authority has seven
+authored checks and its root mutation gate kills 169 of 169 mutants, with
+zero survivors. The power-boundary transcript passes in native debug and
+release, including optimized ASan/UBSan builds. The changed math also retains
+the walk's native/Wasm parity through `coax/web/tool.sh replay-hosts walk`.
+The standalone boundary transcript is CPU evidence; the host check qualifies
+the recorded walk, not all possible power inputs or recording-file exchange.
 
-- The Grid is the first realm that records and replays its sessions through
-  this module. Its recorded session must give the same digests natively and
-  in the browser ([chapter 56](ch056-the-grid.md)).
+## Adoption and remaining integration
+
+- The Grid's walking session already records and replays through this module
+  in `verse/gridwalk.coax`, including per-step look and zoom. That is component
+  adoption, not recording all Grid presence traffic or every host effect.
+  Its own native/Wasm evidence is described in
+  [chapter 56](ch056-the-grid.md); the walk example above is a separate scenario.
 - Each migrated realm gets a replay check
   ([chapter 64](ch064-every-realm-runs-on-aethyr.md)). That includes moving
   its own random generators (`next_seed` in Everglade, `rand_next` in Belt,
@@ -593,8 +651,9 @@ engine, and compares every number with the native run of the example.
   traces then serve as an independent recorder.
 - Everglade's guard decisions take a model's action through the ticket in
   `psionic/lib/game/decision.coax`, which decides whether the answer is
-  still current. The action it hands the game then goes through
-  `replay_offer` as a `REPLAY_MODEL` event, so those decisions replay too.
+  still current. Routing the admitted action through `replay_offer` as a
+  `REPLAY_MODEL` event remains work; the current ticket does not itself record
+  the action for this replay system.
 - A mismatch reports its step, but not yet the fields that differ. A realm
   can add that by comparing its state's fields at that step.
 - The host check runs the same session on both hosts. Replaying a record

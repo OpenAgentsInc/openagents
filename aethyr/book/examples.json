@@ -2,6 +2,13 @@
   "schema": 1,
   "examples": [
     {
+      "source": "aethyr/examples/power-boundaries.coax",
+      "chapter": "aethyr/book/ch005-replay-a-session-exactly.md",
+      "stdout": "aethyr/fixtures/power-boundaries.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"]
+    },
+    {
       "source": "aethyr/examples/frame-rates.coax",
       "chapter": "aethyr/book/ch001-a-frame-has-a-fixed-step.md",
       "stdout": "aethyr/fixtures/frame-rates.out",

@@ -489,5 +489,8 @@ one of the equal softmax scores: the allowed entry should become one and the
 other exact zero. Finally, place an out-of-range index at the end of a gather
 request and verify that neither writable buffer changes.
 
-Next, [read original weight artifacts](ch007-reading-original-weights.md). The bounded numerical operations
-remain shared library code as real-model architecture and tokenizer work begins.
+Next, [build the tensor operator library](ch005-a-standard-library-of-tensor-operators.md)
+on chapter 3's views, then add [devices and dtypes](ch006-one-tensor-several-devices-and-dtypes.md).
+[Reading original weight artifacts](ch007-reading-original-weights.md) follows
+those contracts. The bounded numerical operations remain shared library code
+as real-model architecture and tokenizer work begins.
