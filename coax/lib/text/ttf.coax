@@ -1,0 +1,334 @@
+// TrueType outlines (the `glyf` flavour of OpenType) read and rasterized to 8-bit coverage, for
+// tools that draw text into pictures (verse/tools/hotbar.coax). It reads head, hhea, hmtx, cmap
+// (formats 4 and 12), loca and glyf, simple and composite glyphs. Points are scaled as FreeType
+// scales them (FT_DivFix, FT_MulFix: 26.6 pixels), quadratic arcs are split as FreeType's smooth
+// rasterizer splits them (a quarter pixel's deviation), and coverage is each pixel's exact area
+// under the non-zero rule, in 256ths capped at 255, as FreeType's gray rasterizer gives it.
+// It does not run a font's hinting instructions, apply kerning or substitutions, or read CFF
+// outlines; a hinted face drawn by FreeType differs where hinting moves points (a fraction of
+// a pixel up or down). Nothing is allocated.
+TTF_STACK :: 4;   // composite glyphs nested this deep
+
+TtfFont :: struct {
+  data: []u8; ok: bool;
+  head: int; hhea: int; hmtx: int; cmap: int; loca: int; glyf: int; glyf_n: int;
+  upm: int; loc_long: bool; glyphs: int; metrics: int;
+  ascender: int; descender: int; line_gap: int;
+  sub: int; sub_format: int;     // the Unicode cmap subtable used and its format
+}
+// A pixel coverage target: a w by h byte mask the glyphs are composited into.
+TtfMask :: struct { px: []u8; w: int; h: int; }
+
+ttf_u8 :: (f: TtfFont, at: int) -> int { if at < 0 || at >= f.data.count { return 0; } return cast(int) f.data[at]; }
+ttf_u16 :: (f: TtfFont, at: int) -> int { return (ttf_u8(f, at) << 8) | ttf_u8(f, at + 1); }
+ttf_s16 :: (f: TtfFont, at: int) -> int { v := ttf_u16(f, at); return ifx v >= 32768 then v - 65536 else v; }
+ttf_u32 :: (f: TtfFont, at: int) -> int { return (ttf_u16(f, at) << 16) | ttf_u16(f, at + 2); }
+ttf_tag :: (f: TtfFont, at: int, tag: string) -> bool {
+  for i: 0..<4 { if ttf_u8(f, at + i) != cast(int) tag[i] { return false; } }
+  return true;
+}
+
+// The font in data (it must outlive the TtfFont); .ok false when it isn't a TrueType font.
+ttf_open :: (data: []u8) -> TtfFont {
+  f: TtfFont; f.data = data; f.ok = false;
+  if data.count < 12 { return f; }
+  n := ttf_u16(f, 4);
+  glyf_len := 0;
+  for i: 0..<n {
+    r := 12 + 16 * i; off := ttf_u32(f, r + 8);
+    if ttf_tag(f, r, "head") { f.head = off; }
+    if ttf_tag(f, r, "hhea") { f.hhea = off; }
+    if ttf_tag(f, r, "hmtx") { f.hmtx = off; }
+    if ttf_tag(f, r, "cmap") { f.cmap = off; }
+    if ttf_tag(f, r, "loca") { f.loca = off; }
+    if ttf_tag(f, r, "glyf") { f.glyf = off; glyf_len = ttf_u32(f, r + 12); }
+    if ttf_tag(f, r, "maxp") { f.glyphs = ttf_u16(f, off + 4); }
+  }
+  if f.head == 0 || f.hhea == 0 || f.hmtx == 0 || f.cmap == 0 || f.loca == 0 || f.glyf == 0 { return f; }
+  f.glyf_n = glyf_len;
+  f.upm = ttf_u16(f, f.head + 18);
+  f.loc_long = ttf_s16(f, f.head + 50) == 1;
+  f.ascender = ttf_s16(f, f.hhea + 4); f.descender = ttf_s16(f, f.hhea + 6); f.line_gap = ttf_s16(f, f.hhea + 8);
+  f.metrics = ttf_u16(f, f.hhea + 34);
+  // a Unicode subtable: format 12 preferred, else format 4
+  k := ttf_u16(f, f.cmap + 2);
+  for i: 0..<k {
+    pid := ttf_u16(f, f.cmap + 4 + 8 * i); eid := ttf_u16(f, f.cmap + 6 + 8 * i);
+    sub := f.cmap + ttf_u32(f, f.cmap + 8 + 8 * i);
+    fmt := ttf_u16(f, sub);
+    unicode := pid == 0 || (pid == 3 && (eid == 1 || eid == 10));
+    if unicode && fmt == 12 { f.sub = sub; f.sub_format = 12; }
+    if unicode && fmt == 4 && f.sub_format != 12 { f.sub = sub; f.sub_format = 4; }
+  }
+  f.ok = f.upm > 0 && f.sub_format != 0;
+  return f;
+}
+
+// The glyph for a code point (0, .notdef, when the font has none).
+ttf_glyph :: (f: TtfFont, cp: int) -> int {
+  s := f.sub;
+  if f.sub_format == 12 {
+    n := ttf_u32(f, s + 12);
+    for i: 0..<n {
+      g := s + 16 + 12 * i; a := ttf_u32(f, g); b := ttf_u32(f, g + 4);
+      if cp >= a && cp <= b { return ttf_u32(f, g + 8) + cp - a; }
+    }
+    return 0;
+  }
+  if f.sub_format == 4 && cp <= 65535 {
+    segs := ttf_u16(f, s + 6) / 2;
+    ends := s + 14; starts := ends + 2 * segs + 2; deltas := starts + 2 * segs; ranges := deltas + 2 * segs;
+    for i: 0..<segs {
+      e := ttf_u16(f, ends + 2 * i);
+      if cp > e { continue; }
+      st := ttf_u16(f, starts + 2 * i);
+      if cp < st { return 0; }
+      d := ttf_u16(f, deltas + 2 * i); r := ttf_u16(f, ranges + 2 * i);
+      if r == 0 { return (cp + d) & 65535; }
+      g := ttf_u16(f, ranges + 2 * i + r + 2 * (cp - st));
+      return ifx g == 0 then 0 else (g + d) & 65535;
+    }
+  }
+  return 0;
+}
+// A glyph's advance, font units.
+ttf_advance :: (f: TtfFont, g: int) -> int {
+  i := ifx g < f.metrics then g else f.metrics - 1;
+  return ttf_u16(f, f.hmtx + 4 * i);
+}
+
+ttf_abs :: (v: int) -> int { return ifx v < 0 then -v else v; }
+// FreeType's fixed point: FT_DivFix(a, b) and FT_MulFix(a, b), rounding half away from zero.
+ttf_divfix :: (a: int, b: int) -> int {
+  s := 1; x := a; y := b;
+  if x < 0 { x = -x; s = -s; }
+  if y < 0 { y = -y; s = -s; }
+  q := ifx y == 0 then 2147483647 else ((x << 16) + (y >> 1)) / y;
+  return ifx s < 0 then -q else q;
+}
+ttf_mulfix :: (a: int, b: int) -> int {
+  s := 1; x := a; y := b;
+  if x < 0 { x = -x; s = -s; }
+  if y < 0 { y = -y; s = -s; }
+  c := (x * y + 32768) >> 16;
+  return ifx s < 0 then -c else c;
+}
+// The scale from font units to 26.6 pixels at ppem pixels an em (FT_Set_Pixel_Sizes).
+ttf_scale :: (f: TtfFont, ppem: int) -> int { return ttf_divfix(ppem * 64, f.upm); }
+// A glyph's advance in 26.6 pixels, unhinted (what HarfBuzz lays text out with).
+ttf_advance26 :: (f: TtfFont, g: int, ppem: int) -> int { return ttf_mulfix(ttf_advance(f, g), ttf_scale(f, ppem)); }
+// A font-unit length in 26.6 pixels (ascender, line height).
+ttf_units26 :: (f: TtfFont, v: int, ppem: int) -> int { return ttf_mulfix(v, ttf_scale(f, ppem)); }
+
+// ---- the rasterizer: signed area per pixel, accumulated along rows
+TTF_ACC :: 1048576;
+TtfRaster :: struct { acc: [TTF_ACC] f64; x0: int; y0: int; w: int; h: int; }
+
+// A line from (ax, ay) to (bx, by), pixels relative to the raster's corner, y down.
+ttf_line :: (r: []TtfRaster, ax: f64, ay: f64, bx: f64, by: f64) {
+  if ay == by { return; }
+  dir := 1.0f64; p0x := ax; p0y := ay; p1x := bx; p1y := by;
+  if ay > by { dir = -1.0; p0x = bx; p0y = by; p1x = ax; p1y = ay; }
+  dxdy := (p1x - p0x) / (p1y - p0y);
+  x := p0x;
+  ystart := cast(int) floor(p0y);
+  if p0y < 0.0 { x -= p0y * dxdy; ystart = 0; }
+  yend := cast(int) floor(p1y);
+  if cast(f64) yend < p1y { yend += 1; }
+  if yend > r[0].h { yend = r[0].h; }
+  w := r[0].w;
+  for y: ystart..<yend {
+    line := y * (w + 2);
+    top := cast(f64) y; if p0y > top { top = p0y; }
+    bot := cast(f64) (y + 1); if p1y < bot { bot = p1y; }
+    dy := bot - top;
+    xnext := x + dxdy * dy;
+    d := dy * dir;
+    lo := x; hi := xnext; if lo > hi { lo = xnext; hi = x; }
+    lof := floor(lo); loi := cast(int) lof;
+    hic := floor(hi); if hic < hi { hic += 1.0; } hii := cast(int) hic;
+    if hii <= loi + 1 {
+      xm := 0.5 * (x + xnext) - lof;
+      r[0].acc[line + loi + 1] += d - d * xm;
+      r[0].acc[line + loi + 2] += d * xm;
+    } else {
+      s := 1.0 / (hi - lo);
+      x0f := lo - lof;
+      a0 := 0.5 * s * (1.0 - x0f) * (1.0 - x0f);
+      x1f := hi - hic + 1.0;
+      am := 0.5 * s * x1f * x1f;
+      r[0].acc[line + loi + 1] += d * a0;
+      if hii == loi + 2 { r[0].acc[line + loi + 2] += d * (1.0 - a0 - am); }
+      else {
+        a1 := s * (1.5 - x0f);
+        r[0].acc[line + loi + 2] += d * (a1 - a0);
+        for xi: loi + 2..<hii - 1 { r[0].acc[line + xi + 1] += d * s; }
+        a2 := a1 + cast(f64) (hii - loi - 3) * s;
+        r[0].acc[line + hii] += d * (1.0 - a2 - am);
+      }
+      r[0].acc[line + hii + 1] += d * am;
+    }
+    x = xnext;
+  }
+}
+// 26.6 points to the raster's pixels (y up in the font, down in the raster).
+ttf_px :: (r: []TtfRaster, x26: int) -> f64 { return cast(f64) x26 / 64.0 - cast(f64) r[0].x0 + 0.0; }
+ttf_py :: (r: []TtfRaster, y26: int) -> f64 { return cast(f64) r[0].y0 - cast(f64) y26 / 64.0; }
+ttf_seg :: (r: []TtfRaster, ax: int, ay: int, bx: int, by: int) { ttf_line(r, ttf_px(r, ax), ttf_py(r, ay), ttf_px(r, bx), ttf_py(r, by)); }
+// A quadratic arc in 26.6, split into 2^k lines until each strays at most a quarter pixel
+// (FreeType's gray_render_conic, in its 1/256-pixel units).
+ttf_conic :: (r: []TtfRaster, ax: int, ay: int, cx: int, cy: int, bx: int, by: int) {
+  dx := ttf_abs(ax - 2 * cx + bx) * 4; dy := ttf_abs(ay - 2 * cy + by) * 4;
+  if dx < dy { dx = dy; }
+  n := 1;
+  while dx > 64 { dx = dx >> 2; n *= 2; }
+  px := ttf_px(r, ax); py := ttf_py(r, ay);
+  for i: 1..<n + 1 {
+    t := cast(f64) i / cast(f64) n; u := 1.0 - t;
+    x := u * u * cast(f64) ax + 2.0 * u * t * cast(f64) cx + t * t * cast(f64) bx;
+    y := u * u * cast(f64) ay + 2.0 * u * t * cast(f64) cy + t * t * cast(f64) by;
+    qx := x / 64.0 - cast(f64) r[0].x0; qy := cast(f64) r[0].y0 - y / 64.0;
+    ttf_line(r, px, py, qx, qy);
+    px = qx; py = qy;
+  }
+}
+
+// A glyph's outline, scaled (26.6) and moved by (dx, dy) 26.6, drawn into the raster; with a
+// composite, each component in turn. false for a glyph the font doesn't hold whole.
+ttf_outline :: (f: TtfFont, g: int, scale: int, dx: int, dy: int, r: []TtfRaster, depth: int) -> bool {
+  if g < 0 || g >= f.glyphs || depth > TTF_STACK { return false; }
+  a := ifx f.loc_long then ttf_u32(f, f.loca + 4 * g) else 2 * ttf_u16(f, f.loca + 2 * g);
+  b := ifx f.loc_long then ttf_u32(f, f.loca + 4 * g + 4) else 2 * ttf_u16(f, f.loca + 2 * g + 2);
+  if b <= a { return true; }   // an empty glyph (a space)
+  if b > f.glyf_n { return false; }
+  at := f.glyf + a;
+  contours := ttf_s16(f, at);
+  if contours < 0 {
+    p := at + 10;
+    while true {
+      flags := ttf_u16(f, p); cg := ttf_u16(f, p + 2); p += 4;
+      ox := 0; oy := 0;
+      if (flags & 1) != 0 { ox = ttf_s16(f, p); oy = ttf_s16(f, p + 2); p += 4; }
+      else { ox = ttf_u8(f, p); oy = ttf_u8(f, p + 1); if ox >= 128 { ox -= 256; } if oy >= 128 { oy -= 256; } p += 2; }
+      if (flags & 8) != 0 { p += 2; } else if (flags & 64) != 0 { p += 4; } else if (flags & 128) != 0 { p += 8; }
+      if (flags & 2) == 0 { return false; }   // point-matched components: not taken
+      if !ttf_outline(f, cg, scale, dx + ttf_mulfix(ox, scale), dy + ttf_mulfix(oy, scale), r, depth + 1) { return false; }
+      if (flags & 32) == 0 { break; }
+    }
+    return true;
+  }
+  ends := at + 10;
+  npts := ttf_u16(f, ends + 2 * (contours - 1)) + 1;
+  ins := ttf_u16(f, ends + 2 * contours);
+  p := ends + 2 * contours + 2 + ins;
+  if npts > 4096 { return false; }
+  fl: [4096] int; xs: [4096] int; ys: [4096] int;
+  i := 0;
+  while i < npts {
+    c := ttf_u8(f, p); p += 1; rep := 0;
+    if (c & 8) != 0 { rep = ttf_u8(f, p); p += 1; }
+    for k: 0..<rep + 1 { if i < npts { fl[i] = c; i += 1; } }
+  }
+  v := 0;
+  for j: 0..<npts {
+    c := fl[j];
+    if (c & 2) != 0 { d := ttf_u8(f, p); p += 1; v += ifx (c & 16) != 0 then d else -d; }
+    else if (c & 16) == 0 { v += ttf_s16(f, p); p += 2; }
+    xs[j] = v;
+  }
+  v = 0;
+  for j: 0..<npts {
+    c := fl[j];
+    if (c & 4) != 0 { d := ttf_u8(f, p); p += 1; v += ifx (c & 32) != 0 then d else -d; }
+    else if (c & 32) == 0 { v += ttf_s16(f, p); p += 2; }
+    ys[j] = v;
+  }
+  for j: 0..<npts { xs[j] = ttf_mulfix(xs[j], scale) + dx; ys[j] = ttf_mulfix(ys[j], scale) + dy; }
+  first := 0;
+  for c: 0..<contours {
+    last := ttf_u16(f, ends + 2 * c);
+    n := last - first + 1;
+    if n >= 2 {
+      // the start: the first on-curve point, or between two off-curve ones
+      sx := 0; sy := 0; s0 := -1;
+      for k: 0..<n { if (fl[first + k] & 1) != 0 { s0 = k; break; } }
+      if s0 < 0 { sx = (xs[first] + xs[last]) / 2; sy = (ys[first] + ys[last]) / 2; s0 = 0; }
+      else { sx = xs[first + s0]; sy = ys[first + s0]; s0 += 1; }
+      cx := sx; cy := sy; ctrl := false; qx := 0; qy := 0;
+      for k: 0..<n {
+        j := first + (s0 + k) % n;
+        px := xs[j]; py := ys[j];
+        if (fl[j] & 1) != 0 {
+          if ctrl { ttf_conic(r, cx, cy, qx, qy, px, py); ctrl = false; } else { ttf_seg(r, cx, cy, px, py); }
+          cx = px; cy = py;
+        } else {
+          if ctrl {
+            mx := (qx + px) / 2; my := (qy + py) / 2;
+            ttf_conic(r, cx, cy, qx, qy, mx, my); cx = mx; cy = my;
+          }
+          qx = px; qy = py; ctrl = true;
+        }
+      }
+      if ctrl { ttf_conic(r, cx, cy, qx, qy, sx, sy); } else { ttf_seg(r, cx, cy, sx, sy); }
+    }
+    first = last + 1;
+  }
+  return true;
+}
+
+// Glyph g at ppem with its origin (the pen on the baseline) at pixel (ox, oy) of the mask,
+// composited over what the mask holds (Pillow's text mask: a + m * (255 - a) / 255).
+ttf_draw :: (f: TtfFont, g: int, ppem: int, ox: int, oy: int, m: TtfMask, r: []TtfRaster) -> bool {
+  // the raster covers the em box and then some: x from -ppem, y from ascender + ppem
+  r[0].x0 = -ppem; r[0].y0 = 2 * ppem; r[0].w = 4 * ppem; r[0].h = 4 * ppem;
+  if (r[0].w + 2) * r[0].h > TTF_ACC { return false; }
+  for i: 0..<(r[0].w + 2) * r[0].h { r[0].acc[i] = 0.0; }
+  if !ttf_outline(f, g, ttf_scale(f, ppem), 0, 0, r, 0) { return false; }
+  for y: 0..<r[0].h {
+    sum := 0.0f64; line := y * (r[0].w + 2);
+    for x: 0..<r[0].w + 1 {
+      sum += r[0].acc[line + x];
+      if x == 0 { continue; }
+      c := abs(sum);
+      a := cast(int) floor(c * 256.0);
+      if a > 255 { a = 255; }
+      if a == 0 { continue; }
+      tx := ox + r[0].x0 + x - 1; ty := oy - r[0].y0 + y;
+      if tx < 0 || ty < 0 || tx >= m.w || ty >= m.h { continue; }
+      o := ty * m.w + tx;
+      t := cast(int) m.px[o];
+      if t == 0 { m.px[o] = cast(u8) a; }
+      else { k := t * (255 - a) + 128; v := a + (((k >> 8) + k) >> 8); m.px[o] = cast(u8) (ifx v > 255 then 255 else v); }
+    }
+  }
+  return true;
+}
+
+// A UTF-8 code point at s[i]; its length in n[0].
+ttf_utf8 :: (s: string, i: int, n: []int) -> int {
+  c := cast(int) s[i];
+  if c < 128 || i + 1 >= s.count { n[0] = 1; return c; }
+  if c < 224 { n[0] = 2; return ((c & 31) << 6) | (cast(int) s[i + 1] & 63); }
+  if c < 240 || i + 3 >= s.count { n[0] = 3; if i + 2 >= s.count { n[0] = 1; return 63; } return ((c & 15) << 12) | ((cast(int) s[i + 1] & 63) << 6) | (cast(int) s[i + 2] & 63); }
+  n[0] = 4; return ((c & 7) << 18) | ((cast(int) s[i + 1] & 63) << 12) | ((cast(int) s[i + 2] & 63) << 6) | (cast(int) s[i + 3] & 63);
+}
+// A line of text (UTF-8) with its pen at pixel (x, y) on the baseline, laid out as HarfBuzz lays
+// it without features (each glyph at the pen rounded to a pixel, the pen moving by unhinted 26.6
+// advances), composited into the mask; the pen's end, 26.6 from x.
+ttf_text :: (f: TtfFont, s: string, ppem: int, x: int, y: int, m: TtfMask, r: []TtfRaster) -> int {
+  pen := 0; i := 0; n: [1] int;
+  while i < s.count {
+    cp := ttf_utf8(s, i, n[..]); i += n[0];
+    g := ttf_glyph(f, cp);
+    ok := ttf_draw(f, g, ppem, x + ((pen + 32) >> 6), y, m, r);
+    pen += ttf_advance26(f, g, ppem);
+  }
+  return pen;
+}
+
+#test "fixed point as FreeType's" {
+  #assert ttf_divfix(11 * 64, 1000) == 46137;
+  #assert ttf_mulfix(606, 46137) == 427 && ttf_mulfix(-606, 46137) == -427;
+  n: [1] int;
+  #assert ttf_utf8("a·", 1, n[..]) == 183 && n[0] == 2;
+}

@@ -168,6 +168,20 @@ the same inputs, then deletes it in the same commit that switches callers.
   every name and pack before asking gcloud anything, and `--dry-run` runs no
   gcloud at all.
 
+- 2026-11-05 (#12859): the hotbar pictures are drawn in Coax.
+  `verse/tools/fivemmo_hotbar.coax` and `everglade_hotbar.coax` replace
+  the two Python tools, drawing through `verse/tools/hotbar.coax` on two new
+  libraries: `coax/lib/image/jpeg_enc.coax` (baseline JPEG as libjpeg-turbo
+  writes it: the same bytes as Pillow for the same pixels, at quality 90 and
+  92, 4:4:4 and 4:2:0, standard and optimized tables) and
+  `coax/lib/text/ttf.coax` (TrueType outlines to coverage). On the same
+  inputs both tools write the same files and the same tables; icons without
+  a key tab are the same bytes. Text is the one tolerance: FreeType ran
+  Paper Mono's hinting instructions and `ttf.coax` doesn't (it matches
+  FreeType's unhinted rendering within 4 levels), so on the cards and tabs
+  decoded pixels differ by a mean of 2.2 to 2.5 levels a channel, under 1.5%
+  of channels by more than 48, at glyph edges only.
+
 ## Keeping it this way
 
 - `coax/web/release.sh` runs `coax/web/tool.sh tools-check` on the release

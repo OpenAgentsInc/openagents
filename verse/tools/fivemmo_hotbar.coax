@@ -1,0 +1,277 @@
+// 5E MMO's hotbar art, drawn as Everglade's is.
+//
+//   coax/web/tool.sh verse/tools/fivemmo_hotbar.coax
+//
+// 5E MMO (apps/openagents-web/fivemmo.coax) gives each class the hotbar 5E Lab's has
+// (fivemmo-battle.coax abilities): every SRD 5e spell and class feature the engine plays. Its
+// slots look like Everglade's (everglade_hotbar.coax; the drawing is hotbar.coax's): a
+// game-icons.net SVG rasterized white, tinted and laid over a dark slot, its key on a dark tab in
+// the top left, and a short card in Paper Mono on a dark notched panel. A class's slots hold
+// different abilities, so the icons are drawn bare and the key tabs on their own (the page lays
+// the tab over the icon):
+//
+//   apps/openagents-web/realms/5e-mmo/hotbar/NAME-SIZE.jpg     an ability's icon, SIZE px a side
+//   apps/openagents-web/realms/5e-mmo/hotbar/key-K-SIZE.jpg    the tab of key K (1 to 9)
+//   apps/openagents-web/realms/5e-mmo/hotbar/NAME-card-Sx.jpg  its card at S device px a CSS px
+//   apps/openagents-web/fivemmo-hotbar.coax                    their names and sizes, for the page
+//
+// A spell's card is its SRD 5.2.1 text (aethyr/rules/srd/spells.coax), cut to its first
+// sentences; a feature's is the SRD 5.2.1 feature's own sentence. The icons' credits are in
+// assets/verse/icons/game-icons/CREDITS.md.
+//
+// It replaced fivemmo_hotbar.py (#12859): the same files and table on the same inputs, the icons
+// byte for byte, the cards' and tabs' text drawn without the font's hinting (everglade_hotbar.coax
+// says how far that moves pixels).
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+#import "Basic";
+#load "hotbar.coax";
+
+FM_OUT :: "apps/openagents-web/realms/5e-mmo/hotbar";
+FM_TABLE :: "apps/openagents-web/fivemmo-hotbar.coax";
+FM_SRD :: "aethyr/rules/srd/spells.coax";
+// A spent ability comes back this long after (fivemmo-battle.coax ACTION_RECHARGE).
+FM_BACK :: "Back 9 s after it is spent";
+
+// Tints (icons.rs's palette, as Everglade's): fire 1.0 0.55 0.2, radiant 1.0 0.9 0.5, necrotic
+// 0.62 0.9 0.55, force 0.8 0.55 1.0, psychic 1.0 0.6 0.9, heal 0.45 1.0 0.5, nature 0.45 0.95 0.4,
+// storm 0.55 0.75 1.0, steel 0.86 0.84 0.8, holy 1.0 0.85 0.45, focus 0.6 0.88 1.0, shadow 0.7 0.66
+// 0.78, rage 1.0 0.35 0.25, charm 0.9 0.6 1.0.
+// The spells: their engine id, icon and tint (their card is the engine's SRD text).
+FM_SPELLS :: 24;
+FM_SPELL_ID :: [24] string.["starry-wisp", "produce-flame", "produce-flame-hurl", "thunderwave", "entangle", "healing-word", "call-lightning", "fire-bolt", "chill-touch", "ray-of-sickness", "false-life", "scorching-ray", "blindness-deafness", "fireball", "eldritch-blast", "hex", "hold-person", "vicious-mockery", "hypnotic-pattern", "sacred-flame", "guiding-bolt", "spirit-guardians", "divine-smite", "hunters-mark"];
+FM_SPELL_SVG :: [24] string.["lorc/star-swirl.svg", "carl-olsen/flame.svg", "lorc/burning-embers.svg", "lorc/sonic-boom.svg", "delapouite/vines.svg", "zeromancer/heart-plus.svg", "lorc/lightning-storm.svg", "lorc/burning-meteor.svg", "lorc/spectre.svg", "lorc/vomiting.svg", "lorc/glass-heart.svg", "lorc/fire-ray.svg", "delapouite/blindfold.svg", "lorc/fireball.svg", "lorc/beam-wake.svg", "lorc/pentagram-rose.svg", "delapouite/frozen-body.svg", "lorc/screaming.svg", "lorc/vortex.svg", "lorc/candle-flame.svg", "lorc/spark-spirit.svg", "lorc/angel-outfit.svg", "lorc/lightning-saber.svg", "lorc/on-target.svg"];
+fm_spell_tint :: (i: int) -> [3] f64 {
+  t := [24][3] f64.[[3] f64.[1.0, 0.9, 0.5], [3] f64.[1.0, 0.55, 0.2], [3] f64.[1.0, 0.55, 0.2], [3] f64.[0.55, 0.75, 1.0], [3] f64.[0.45, 0.95, 0.4], [3] f64.[0.45, 1.0, 0.5], [3] f64.[0.55, 0.75, 1.0], [3] f64.[1.0, 0.55, 0.2], [3] f64.[0.62, 0.9, 0.55], [3] f64.[0.62, 0.9, 0.55], [3] f64.[0.62, 0.9, 0.55], [3] f64.[1.0, 0.55, 0.2], [3] f64.[0.7, 0.66, 0.78], [3] f64.[1.0, 0.55, 0.2], [3] f64.[0.8, 0.55, 1.0], [3] f64.[0.8, 0.55, 1.0], [3] f64.[0.8, 0.55, 1.0], [3] f64.[1.0, 0.6, 0.9], [3] f64.[0.9, 0.6, 1.0], [3] f64.[1.0, 0.9, 0.5], [3] f64.[1.0, 0.9, 0.5], [3] f64.[1.0, 0.9, 0.5], [3] f64.[1.0, 0.9, 0.5], [3] f64.[0.45, 0.95, 0.4]];
+  return t[i];
+}
+fm_features :: (s: [] HbSlot) -> int {
+  s[0] = HbSlot.{name = "attack", svg = "lorc/crossed-swords.svg", tint = [3] f64.[0.86, 0.84, 0.8], key = "", title = "Attack",
+    body = "Make an attack with a weapon or an Unarmed Strike. Your turn takes it when no other slot is waiting: your target if it is in reach, else a shot, else your class's attack cantrip.",
+    n = 1, dt = [6] string.["Action", "", "", "", "", ""], dc = [6] int.[3, 0, 0, 0, 0, 0]};
+  s[1] = HbSlot.{name = "dash", svg = "lorc/run.svg", tint = [3] f64.[0.86, 0.84, 0.8], key = "", title = "Dash",
+    body = "When you take the Dash action, you gain extra movement for the current turn. The increase equals your Speed after applying any modifiers.",
+    n = 1, dt = [6] string.["Action", "", "", "", "", ""], dc = [6] int.[3, 0, 0, 0, 0, 0]};
+  s[2] = HbSlot.{name = "lands-aid", svg = "lorc/flowers.svg", tint = [3] f64.[0.45, 0.95, 0.4], key = "", title = "Land's Aid",
+    body = "Expend a use of your Wild Shape: flowers and thorns fill a 10-foot-radius Sphere within 60 feet. Each creature of your choice in it makes a Constitution save, 2d6 Necrotic damage, half on a success, and one creature of your choice there regains 2d6 Hit Points.",
+    n = 3, dt = [6] string.["Magic action", "Wild Shape", "Back 9 s after it is spent", "", "", ""], dc = [6] int.[3, 3, 1, 0, 0, 0]};
+  s[3] = HbSlot.{name = "innate-sorcery", svg = "lorc/magic-swirl.svg", tint = [3] f64.[1.0, 0.55, 0.2], key = "", title = "Innate Sorcery",
+    body = "For 1 minute the spell save DC of your Sorcerer spells increases by 1, and you have Advantage on the attack rolls of Sorcerer spells you cast.",
+    n = 3, dt = [6] string.["Bonus Action", "1 minute", "Back 9 s after it is spent", "", "", ""], dc = [6] int.[3, 2, 1, 0, 0, 0]};
+  s[4] = HbSlot.{name = "bardic-inspiration", svg = "lorc/lyre.svg", tint = [3] f64.[1.0, 0.6, 0.9], key = "", title = "Bardic Inspiration",
+    body = "Inspire another creature within 60 feet who can see or hear you: it gains one of your Bardic Inspiration dice, to add to a D20 Test it fails within the next hour.",
+    n = 3, dt = [6] string.["Bonus Action", "60 ft range", "Back 9 s after it is spent", "", "", ""], dc = [6] int.[3, 3, 1, 0, 0, 0]};
+  s[5] = HbSlot.{name = "turn-undead", svg = "lorc/holy-symbol.svg", tint = [3] f64.[1.0, 0.85, 0.45], key = "", title = "Turn Undead",
+    body = "Present your Holy Symbol and censure Undead: each Undead of your choice within 30 feet makes a Wisdom save or has the Frightened and Incapacitated conditions for 1 minute, and tries to move away from you.",
+    n = 3, dt = [6] string.["Magic action", "Channel Divinity", "Back 9 s after it is spent", "", "", ""], dc = [6] int.[3, 3, 1, 0, 0, 0]};
+  s[6] = HbSlot.{name = "preserve-life", svg = "lorc/angel-wings.svg", tint = [3] f64.[0.45, 1.0, 0.5], key = "", title = "Preserve Life",
+    body = "Present your Holy Symbol and restore Hit Points equal to five times your Cleric level, divided among Bloodied creatures within 30 feet, you among them; none goes past half its Hit Point maximum.",
+    n = 3, dt = [6] string.["Magic action", "Channel Divinity", "Back 9 s after it is spent", "", "", ""], dc = [6] int.[3, 3, 1, 0, 0, 0]};
+  s[7] = HbSlot.{name = "second-wind", svg = "lorc/heart-bottle.svg", tint = [3] f64.[0.45, 1.0, 0.5], key = "", title = "Second Wind",
+    body = "Draw on a limited well of physical and mental stamina: regain Hit Points equal to 1d10 plus your Fighter level.",
+    n = 2, dt = [6] string.["Bonus Action", "Back 9 s after it is spent", "", "", "", ""], dc = [6] int.[3, 1, 0, 0, 0, 0]};
+  s[8] = HbSlot.{name = "action-surge", svg = "lorc/lightning-helix.svg", tint = [3] f64.[0.86, 0.84, 0.8], key = "", title = "Action Surge",
+    body = "Push yourself beyond your normal limits for a moment: on your turn, take one additional action, except the Magic action.",
+    n = 2, dt = [6] string.["No action", "Back 9 s after it is spent", "", "", "", ""], dc = [6] int.[3, 1, 0, 0, 0, 0]};
+  s[9] = HbSlot.{name = "lay-on-hands", svg = "lorc/glowing-hands.svg", tint = [3] f64.[0.45, 1.0, 0.5], key = "", title = "Lay On Hands",
+    body = "Touch a creature, which could be yourself, and draw power from your pool of healing to restore Hit Points to it.",
+    n = 3, dt = [6] string.["Bonus Action", "Touch", "Back 9 s after it is spent", "", "", ""], dc = [6] int.[3, 3, 1, 0, 0, 0]};
+  s[10] = HbSlot.{name = "sacred-weapon", svg = "lorc/winged-sword.svg", tint = [3] f64.[1.0, 0.85, 0.45], key = "", title = "Sacred Weapon",
+    body = "Imbue a Melee weapon you hold with positive energy for 10 minutes: add your Charisma modifier to its attack rolls, its hits can deal Radiant damage, and it sheds Bright Light in a 20-foot radius.",
+    n = 3, dt = [6] string.["With the Attack action", "Channel Divinity", "Back 9 s after it is spent", "", "", ""], dc = [6] int.[3, 3, 1, 0, 0, 0]};
+  s[11] = HbSlot.{name = "reckless-attack", svg = "lorc/axe-swing.svg", tint = [3] f64.[1.0, 0.35, 0.25], key = "", title = "Reckless Attack",
+    body = "Attack recklessly: Advantage on attack rolls using Strength until the start of your next turn, but attack rolls against you have Advantage during that time.",
+    n = 1, dt = [6] string.["With your first attack", "", "", "", "", ""], dc = [6] int.[3, 0, 0, 0, 0, 0]};
+  s[12] = HbSlot.{name = "rage", svg = "delapouite/angry-eyes.svg", tint = [3] f64.[1.0, 0.35, 0.25], key = "", title = "Rage",
+    body = "Imbue yourself with a primal power: Resistance to Bludgeoning, Piercing and Slashing damage, extra damage on Strength attacks, and Advantage on Strength checks and saving throws.",
+    n = 3, dt = [6] string.["Bonus Action", "Up to 10 minutes", "Back 9 s after it is spent", "", "", ""], dc = [6] int.[3, 2, 1, 0, 0, 0]};
+  s[13] = HbSlot.{name = "flurry-of-blows", svg = "lorc/punch-blast.svg", tint = [3] f64.[0.6, 0.88, 1.0], key = "", title = "Flurry of Blows",
+    body = "Expend 1 Focus Point to make two Unarmed Strikes.",
+    n = 3, dt = [6] string.["Bonus Action", "1 Focus Point", "Back 9 s after it is spent", "", "", ""], dc = [6] int.[3, 1, 1, 0, 0, 0]};
+  s[14] = HbSlot.{name = "patient-defense", svg = "lorc/meditation.svg", tint = [3] f64.[0.6, 0.88, 1.0], key = "", title = "Patient Defense",
+    body = "Expend 1 Focus Point to take both the Disengage and the Dodge actions.",
+    n = 3, dt = [6] string.["Bonus Action", "1 Focus Point", "Back 9 s after it is spent", "", "", ""], dc = [6] int.[3, 1, 1, 0, 0, 0]};
+  s[15] = HbSlot.{name = "step-of-the-wind", svg = "lorc/footprint.svg", tint = [3] f64.[0.6, 0.88, 1.0], key = "", title = "Step of the Wind",
+    body = "Expend 1 Focus Point to take both the Disengage and the Dash actions, and your jump distance is doubled for the turn.",
+    n = 3, dt = [6] string.["Bonus Action", "1 Focus Point", "Back 9 s after it is spent", "", "", ""], dc = [6] int.[3, 1, 1, 0, 0, 0]};
+  s[16] = HbSlot.{name = "wholeness-of-body", svg = "lorc/beams-aura.svg", tint = [3] f64.[0.45, 1.0, 0.5], key = "", title = "Wholeness of Body",
+    body = "Roll your Martial Arts die: regain Hit Points equal to the number rolled plus your Wisdom modifier (at least 1).",
+    n = 2, dt = [6] string.["Bonus Action", "Back 9 s after it is spent", "", "", "", ""], dc = [6] int.[3, 1, 0, 0, 0, 0]};
+  s[17] = HbSlot.{name = "steady-aim", svg = "lorc/archery-target.svg", tint = [3] f64.[0.86, 0.84, 0.8], key = "", title = "Steady Aim",
+    body = "Give yourself Advantage on your next attack roll on the current turn. Only if you haven't moved this turn, and your Speed is 0 until its end.",
+    n = 1, dt = [6] string.["Bonus Action", "", "", "", "", ""], dc = [6] int.[3, 0, 0, 0, 0, 0]};
+  s[18] = HbSlot.{name = "cunning-dash", svg = "lorc/cloak-dagger.svg", tint = [3] f64.[0.7, 0.66, 0.78], key = "", title = "Cunning Action: Dash",
+    body = "Your quick thinking and agility let you take the Dash action as a Bonus Action.",
+    n = 1, dt = [6] string.["Bonus Action", "", "", "", "", ""], dc = [6] int.[3, 0, 0, 0, 0, 0]};
+  return 19;
+}
+
+// ---- the engine's spells (spells.coax's RsSpell records)
+FmSpell :: struct { id: string; name: string; level: int; cast_time: string; range: int; duration: string; text: string; }
+fm_find :: (s: string, at: int, what: string) -> int {
+  i := at;
+  while i + what.count <= s.count { if s[i..<i + what.count] == what { return i; } i += 1; }
+  return -1;
+}
+fm_digits :: (s: string, at: int, n: []int) -> int {
+  v := 0; i := at;
+  while i < s.count && s[i] >= '0' && s[i] <= '9' { v = v * 10 + cast(int) (s[i] - '0'); i += 1; }
+  n[0] = v; return i;
+}
+// A spell's record from `id = "` at `at`: its fields, or false; next[0] past its text.
+fm_spell :: (s: string, at: int, sp: []FmSpell, next: []int) -> bool {
+  i := at + 6; e := i;
+  while e < s.count && ((s[e] >= 'a' && s[e] <= 'z') || s[e] == '-') { e += 1; }
+  if e == i || fm_find(s, e, "\", name = \"") != e { return false; }
+  sp[0].id = s[i..<e];
+  i = e + 11; e = i; while e < s.count && s[e] != '"' { e += 1; }
+  if e == i { return false; }
+  sp[0].name = s[i..<e];
+  if fm_find(s, e, "\", level = ") != e { return false; }
+  n: [1] int; i = fm_digits(s, e + 11, n[..]); sp[0].level = n[0];
+  c := fm_find(s, i, "cast_time = RS_T_"); if c < 0 { return false; }
+  i = c + 12; e = i; while e < s.count && (s[e] == '_' || (s[e] >= 'A' && s[e] <= 'Z') || (s[e] >= '0' && s[e] <= '9')) { e += 1; }
+  t := s[i..<e];
+  sp[0].cast_time = ifx t == "RS_T_BONUS" then "Bonus Action" else (ifx t == "RS_T_REACTION" then "Reaction" else "Action");
+  if fm_find(s, e, ", range_ft = ") != e { return false; }
+  i = fm_digits(s, e + 13, n[..]); sp[0].range = n[0];
+  d := fm_find(s, i, "duration = \""); if d < 0 { return false; }
+  i = d + 12; e = i; while e < s.count && s[e] != '"' { e += 1; }
+  sp[0].duration = s[i..<e];
+  x := fm_find(s, e, "text = \""); if x < 0 { return false; }
+  i = x + 8; e = i;
+  while e < s.count && s[e] != '"' { if s[e] == '\\' { e += 1; } e += 1; }
+  sp[0].text = s[i..<e];
+  next[0] = e + 1;
+  return true;
+}
+fm_space :: (c: u8) -> bool { return c == ' ' || c == '\n' || c == '\t' || c == '\r' || c == 11 || c == 12; }
+// The spell's text up to its last whole sentence within `most` characters (at least one): its
+// sentences are split where white space follows . ! or ?, and joined again by one space.
+fm_sentences :: (text: string, most: int, out: []u8) -> string {
+  n := 0; first := true; i := 0; total := 0;
+  while i <= text.count {
+    // the next part: up to white space after . ! ?
+    e := i;
+    while e < text.count && !(fm_space(text[e]) && e > 0 && (text[e - 1] == '.' || text[e - 1] == '!' || text[e - 1] == '?')) { e += 1; }
+    part := text[i..<e];
+    pl := hb_chars(part);
+    if !first {
+      if total + 1 + pl > most { break; }
+      out[n] = ' '; n += 1; total += 1;
+    }
+    for c: part { out[n] = c; n += 1; }
+    total += pl; first = false;
+    if e >= text.count { break; }
+    while e < text.count && fm_space(text[e]) { e += 1; }
+    i = e;
+  }
+  return cast(string) out[0..<n];
+}
+
+tool_main :: () -> int #export_c {
+  hbs: [1] Hb; hb := hbs[..];
+  cwd: [4096] u8; root := fs_cwd(cwd[..]);
+  if !fs_exists(fs_join(root, FM_TABLE, hb[0].path[..])) { tool_errln("fivemmo_hotbar: run it from the repository's root"); return 2; }
+  if !hb_init(hb, root) { return 1; }
+  defer { ok := fs_remove(hb[0].tmp); }
+  outp: [4096] u8; dir := fs_join(root, FM_OUT, outp[..]);
+  if !fs_mkdir(dir) && fs_kind(dir) <= 0 { tool_errln("fivemmo_hotbar: can't make the hotbar directory"); return 1; }
+  srd: [4194304] u8; sp: [4096] u8;
+  sn := fs_read(fs_join(root, FM_SRD, sp[..]), srd[..]);
+  if sn <= 0 { tool_errln("fivemmo_hotbar: can't read the SRD spells"); return 1; }
+  src := cast(string) srd[0..<sn];
+  spells: [512] FmSpell; ns := 0; at := 0; next: [1] int;
+  while true {
+    k := fm_find(src, at, "id = \"");
+    if k < 0 { break; }
+    one: [1] FmSpell;
+    if fm_spell(src, k, one[..], next[..]) { spells[ns] = one[0]; ns += 1; at = next[0]; } else { at = k + 1; }
+  }
+  // the spells' slots, then the features'
+  slots: [128] HbSlot; n := 0;
+  bodies: [65536] u8; bn := 0;
+  titles: [4096] u8; tn := 0;
+  ids := FM_SPELL_ID; svgs := FM_SPELL_SVG;
+  for i: 0..<FM_SPELLS {
+    s := -1; for j: 0..<ns { if spells[j].id == ids[i] { s = j; } }   // the last record of an id, as a dict keeps
+    if s < 0 { tool_err("fivemmo_hotbar: no spell "); tool_errln(ids[i]); return 1; }
+    p := spells[s];
+    sl: HbSlot; sl.name = ids[i]; sl.svg = svgs[i]; sl.tint = fm_spell_tint(i); sl.key = "";
+    t0 := tn; for c: p.name { titles[tn] = c; tn += 1; }
+    if ids[i] == "produce-flame-hurl" { for c: ": Hurl" { titles[tn] = c; tn += 1; } }
+    sl.title = cast(string) titles[t0..<tn];
+    b := fm_sentences(p.text, 360, bodies[bn..<65536]); sl.body = cast(string) bodies[bn..<bn + b.count]; bn += b.count;
+    k := 0;
+    if p.level == 0 { sl.dt[k] = "Cantrip"; }
+    else { t1 := tn; for c: "Level " { titles[tn] = c; tn += 1; } d: [24] u8; for c: hb_int(d[..], p.level) { titles[tn] = c; tn += 1; } sl.dt[k] = cast(string) titles[t1..<tn]; }
+    sl.dc[k] = HB_RULE; k += 1;
+    sl.dt[k] = p.cast_time; sl.dc[k] = HB_RULE; k += 1;
+    if p.range == 0 { sl.dt[k] = "Self"; }
+    else { t1 := tn; d: [24] u8; for c: hb_int(d[..], p.range) { titles[tn] = c; tn += 1; } for c: " ft range" { titles[tn] = c; tn += 1; } sl.dt[k] = cast(string) titles[t1..<tn]; }
+    sl.dc[k] = HB_RULE; k += 1;
+    if p.duration != "Instantaneous" { sl.dt[k] = p.duration; sl.dc[k] = HB_TIME; k += 1; }
+    if p.level > 0 {
+      t1 := tn; for c: "A spell slot, " { titles[tn] = c; tn += 1; }
+      for c: FM_BACK { titles[tn] = ifx c >= 'A' && c <= 'Z' then c + 32 else c; tn += 1; }
+      sl.dt[k] = cast(string) titles[t1..<tn]; sl.dc[k] = HB_MANA; k += 1;
+    }
+    sl.n = k;
+    slots[n] = sl; n += 1;
+  }
+  n += fm_features(slots[n..<128]);
+  buf: [12582912] u8;
+  sizes := HB_SIZES; scales := HB_SCALES;
+  cw: [512] int; ch: [512] int; cn := 0;
+  for s: slots[0..<n] {
+    for size: sizes {
+      d: [24] u8; t: [1] HbText; hb_put(t[..], s.name); hb_put(t[..], "-"); hb_put(t[..], hb_int(d[..], size)); hb_put(t[..], ".jpg");
+      if !hb_save(hb, hb_icon(hb, buf[..], s.svg, s.tint, "", size, true), dir, cast(string) t[0].b[0..<t[0].n]) { return 1; }
+    }
+    for sc: scales {
+      d: [24] u8; t: [1] HbText; hb_put(t[..], s.name); hb_put(t[..], "-card-"); hb_put(t[..], hb_int(d[..], sc)); hb_put(t[..], "x.jpg");
+      im := hb_card(hb, buf[..], s.title, s.body, s.n, s.dt, s.dc, sc);
+      if !hb_save(hb, im, dir, cast(string) t[0].b[0..<t[0].n]) { return 1; }
+      cw[cn] = im.w; ch[cn] = im.h; cn += 1;
+    }
+  }
+  for k: 1..<10 {
+    kb: [1] u8; kb[0] = cast,trunc(u8) (48 + k);
+    for size: sizes {
+      d: [24] u8; t: [1] HbText; hb_put(t[..], "key-"); hb_put(t[..], cast(string) kb[..]); hb_put(t[..], "-"); hb_put(t[..], hb_int(d[..], size)); hb_put(t[..], ".jpg");
+      if !hb_save(hb, hb_key_tab(hb, buf[..], cast(string) kb[..], size), dir, cast(string) t[0].b[0..<t[0].n]) { return 1; }
+    }
+  }
+  tw: [4] int; th: [4] int;
+  for size, i: sizes { wh := hb_tab_size(hb, "1", size); tw[i] = wh[0]; th[i] = wh[1]; }
+  names: [128] string; for s, i: slots[0..<n] { names[i] = s.name; }
+  t: [1] HbText;
+  hb_put(t[..], "// 5E MMO's hotbar pictures (realms/5e-mmo/hotbar/), drawn as Everglade's bar is: written by\n");
+  hb_put(t[..], "// verse/tools/fivemmo_hotbar.coax, do not edit. Each ability's name (a spell's engine id, else its\n");
+  hb_put(t[..], "// feature's), the icon sizes (px a side), each card at 1x, 2x and 3x (device px, ability * 3 +\n");
+  hb_put(t[..], "// scale - 1), and a key's tab (key-K-SIZE.jpg) at each icon size.\n");
+  hb_put(t[..], "MH_ABILITIES :: "); hb_put_int(t[..], n); hb_put(t[..], ";\n");
+  hb_put(t[..], "MH_NAME :: "); hb_put_names(t[..], names[0..<n]);
+  hb_put(t[..], "MH_SIZES :: 4;\nMH_SIZE :: "); hb_put_list(t[..], "int", sizes[..]);
+  hb_put(t[..], "MH_CARD_W :: "); hb_put_list(t[..], "f32", cw[0..<cn]);
+  hb_put(t[..], "MH_CARD_H :: "); hb_put_list(t[..], "f32", ch[0..<cn]);
+  hb_put(t[..], "MH_TAB_W :: "); hb_put_list(t[..], "f32", tw[..]);
+  hb_put(t[..], "MH_TAB_H :: "); hb_put_list(t[..], "f32", th[..]);
+  tp: [4096] u8;
+  if !fs_write(fs_join(root, FM_TABLE, tp[..]), cast(string) t[0].b[0..<t[0].n]) { tool_errln("fivemmo_hotbar: can't write the table"); return 1; }
+  print("% abilities: 4 icon sizes and 3 cards each, 9 key tabs, into %\n", n, FM_OUT);
+  return 0;
+}
+#test "a spell record" {
+  r := "s = RsSpell.{id = \"fire-bolt\", name = \"Fire Bolt\", level = 0, school = \"E\",\n cast_time = RS_T_ACTION, range_ft = 120, components = \"V\", duration = \"Instantaneous\", concentration = false, text = \"You hurl. A b\\\"c.\"};";
+  sp: [1] FmSpell; nx: [1] int;
+  k := fm_find(r, 0, "id = \"");
+  #assert k == 13;
+  #assert fm_spell(r, k, sp[..], nx[..]);
+  #assert sp[0].name == "Fire Bolt" && sp[0].range == 120 && sp[0].duration == "Instantaneous";
+  out: [256] u8;
+  #assert fm_sentences("One. Two!  Three", 9, out[..]) == "One. Two!";
+}

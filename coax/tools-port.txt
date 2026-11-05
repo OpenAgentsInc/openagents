@@ -749,7 +749,6 @@ verse/test_home.py
 verse/test_sanitized.sh
 verse/test_voice.sh
 verse/tools/check_haunt_doors.py
-verse/tools/everglade_hotbar.py
 verse/tools/haunt_panes.py
 verse/tools/pack_cast.py
 verse/tools/pack_grid.py

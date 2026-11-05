@@ -2072,7 +2072,7 @@ spells_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom: f32) ->
 // everglade/hotbar.rs` draw_of and tooltip.rs): a beveled tray of game-icons.net art, a slot 36
 // units square and 42 apart, padded 8, the tray's bottom 8 above the screen's, a unit the screen's
 // CSS height over 768 (never under a pixel); each slot's icon over a dark slot with its key at the
-// top right (pictures from verse/tools/everglade_hotbar.py, drawn by the host), framed in bronze,
+// top right (pictures from verse/tools/everglade_hotbar.coax, drawn by the host), framed in bronze,
 // or in gold and twice as thick while its spell is picked or casting. The mouse resting on a slot
 // for 0.35 s, or a finger holding it for 0.45 s, shows its card over it. On a phone the tray stands
 // above the thumbs' sticks, as the old phone app's (24 points and two 56-point stick radii up).

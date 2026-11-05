@@ -2,7 +2,7 @@
 // Hold Shift and drag a slot onto another to swap them; on a phone hold a slot until its card shows
 // (that picks it up too), then drag it onto another. Let go anywhere else, or where it was, and
 // nothing moves (the card closes). The spell moves and the key stays with the place: a moved
-// slot draws its bare icon with the key tab of the place it is in (verse/tools/everglade_hotbar.py).
+// slot draws its bare icon with the key tab of the place it is in (verse/tools/everglade_hotbar.coax).
 // Rebuild and the switcher stay where they are.
 //
 // Kept as your place is (place.coax): in this browser by the host's action 12 (localStorage

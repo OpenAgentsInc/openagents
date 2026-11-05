@@ -1,0 +1,273 @@
+// Baseline JPEG encoding (ITU-T T.81, sequential Huffman, 8 bits) from RGB or RGBA8, written as
+// libjpeg-turbo writes it with its defaults, which is what Pillow's JPEG save uses: a JFIF 1.01
+// header, quality-scaled Annex K tables (jcparam.c), the fixed-point YCbCr conversion
+// (jccolor.c), the integer forward DCT (jfdctint.c), rounded quantization (jcdctmgr.c), and
+// either the Annex K Huffman tables or, optimized, tables built from the image's own counts
+// (jchuff.c jpeg_gen_optimal_table). Chroma is full size (4:4:4) or halved both ways (4:2:0,
+// jcsample.c h2v2_downsample, its bias alternating 1 and 2). Edges are padded by repeating the
+// last column and row (jcprep.c, jcsample.c). For the same pixels, the bytes are Pillow's:
+//   Image.save(f, "JPEG", quality=Q, subsampling=0)          jpe_encode(px, w, h, 3, Q, false, false, out)
+//   Image.save(f, "JPEG", quality=Q, optimize=True)          jpe_encode(px, w, h, 3, Q, true, true, out)
+// A 4:2:0 image's width and height must be multiples of 16 (where libjpeg would add dummy
+// blocks, refused). Alpha in RGBA input is ignored. Nothing is allocated.
+JPE_SMALL :: -1;      // out is too small
+JPE_REFUSED :: -2;    // a size or quality this encoder does not take
+
+// Annex K's tables, natural order.
+JPE_LUMA :: [64] int.[16,11,10,16,24,40,51,61,12,12,14,19,26,58,60,55,14,13,16,24,40,57,69,56,14,17,22,29,51,87,80,62,18,22,37,56,68,109,103,77,24,35,55,64,81,104,113,92,49,64,78,87,103,121,120,101,72,92,95,98,112,100,103,99];
+JPE_CHROMA :: [64] int.[17,18,24,47,99,99,99,99,18,21,26,66,99,99,99,99,24,26,56,99,99,99,99,99,47,66,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99];
+// The natural place of each coefficient in zigzag order.
+JPE_ZZ :: [64] int.[0,1,8,16,9,2,3,10,17,24,32,25,18,11,4,5,12,19,26,33,40,48,41,34,27,20,13,6,7,14,21,28,35,42,49,56,57,50,43,36,29,22,15,23,30,37,44,51,58,59,52,45,38,31,39,46,53,60,61,54,47,55,62,63];
+JPE_DC_BITS :: [32] int.[0,1,5,1,1,1,1,1,1,0,0,0,0,0,0,0, 0,3,1,1,1,1,1,1,1,1,1,0,0,0,0,0];
+JPE_DC_VALS :: [12] int.[0,1,2,3,4,5,6,7,8,9,10,11];
+JPE_AC_BITS :: [32] int.[0,2,1,3,3,2,4,3,5,5,4,4,0,0,1,125, 0,2,1,2,4,4,3,4,7,5,4,4,0,1,2,119];
+JPE_AC_LUMA :: [162] int.[1,2,3,0,4,17,5,18,33,49,65,6,19,81,97,7,34,113,20,50,129,145,161,8,35,66,177,193,21,82,209,240,36,51,98,114,130,9,10,22,23,24,25,26,37,38,39,40,41,42,52,53,54,55,56,57,58,67,68,69,70,71,72,73,74,83,84,85,86,87,88,89,90,99,100,101,102,103,104,105,106,115,116,117,118,119,120,121,122,131,132,133,134,135,136,137,138,146,147,148,149,150,151,152,153,154,162,163,164,165,166,167,168,169,170,178,179,180,181,182,183,184,185,186,194,195,196,197,198,199,200,201,202,210,211,212,213,214,215,216,217,218,225,226,227,228,229,230,231,232,233,234,241,242,243,244,245,246,247,248,249,250];
+JPE_AC_CHROMA :: [162] int.[0,1,2,3,17,4,5,33,49,6,18,65,81,7,97,113,19,34,50,129,8,20,66,145,161,177,193,9,35,51,82,240,21,98,114,209,10,22,36,52,225,37,241,23,24,25,26,38,39,40,41,42,53,54,55,56,57,58,67,68,69,70,71,72,73,74,83,84,85,86,87,88,89,90,99,100,101,102,103,104,105,106,115,116,117,118,119,120,121,122,130,131,132,133,134,135,136,137,138,146,147,148,149,150,151,152,153,154,162,163,164,165,166,167,168,169,170,178,179,180,181,182,183,184,185,186,194,195,196,197,198,199,200,201,202,210,211,212,213,214,215,216,217,218,226,227,228,229,230,231,232,233,234,242,243,244,245,246,247,248,249,250];
+
+// A Huffman table: its bits (codes of each length 1..16) and values, and each value's code.
+JpeHuff :: struct { bits: [17] int; vals: [256] int; n: int; code: [256] int; size: [256] int; }
+JpeState :: struct {
+  px: []u8; w: int; h: int; ch: int; sub: bool;
+  q: [2][64] int;                 // the quantization tables, natural order
+  huff: [4] JpeHuff;              // DC 0, AC 0, DC 1, AC 1
+  freq: [4][257] int;             // counts, for optimized tables
+  gather: bool;
+  out: []u8; at: int; over: bool;
+  acc: int; nacc: int;            // bits waiting to be written
+  last: [3] int;                  // each component's previous DC
+}
+
+jpe_byte :: (s: []JpeState, b: int) {
+  if s[0].at >= s[0].out.count { s[0].over = true; return; }
+  s[0].out[s[0].at] = cast,trunc(u8) b;
+  s[0].at += 1;
+}
+jpe_word :: (s: []JpeState, v: int) { jpe_byte(s, v >> 8); jpe_byte(s, v & 255); }
+// n bits of v, high first; a 0xFF byte in the data is followed by a 0.
+jpe_bits :: (s: []JpeState, v: int, n: int) {
+  if n == 0 { return; }
+  s[0].acc = (s[0].acc << n) | (v & ((1 << n) - 1));
+  s[0].nacc += n;
+  while s[0].nacc >= 8 {
+    b := (s[0].acc >> (s[0].nacc - 8)) & 255;
+    jpe_byte(s, b);
+    if b == 255 { jpe_byte(s, 0); }
+    s[0].nacc -= 8;
+  }
+  s[0].acc = s[0].acc & ((1 << s[0].nacc) - 1);
+}
+
+// Codes for a table from its bits and values (T.81 C.2).
+jpe_codes :: (h: []JpeHuff) {
+  for i: 0..<256 { h[0].size[i] = 0; h[0].code[i] = 0; }
+  code := 0; k := 0;
+  for l: 1..<17 {
+    for i: 0..<h[0].bits[l] { v := h[0].vals[k]; h[0].code[v] = code; h[0].size[v] = l; code += 1; k += 1; }
+    code = code << 1;
+  }
+}
+jpe_standard :: (h: []JpeHuff, bits: []int, vals: []int) {
+  h[0].bits[0] = 0; n := 0;
+  for l: 1..<17 { h[0].bits[l] = bits[l - 1]; n += bits[l - 1]; }
+  for i: 0..<n { h[0].vals[i] = vals[i]; }
+  h[0].n = n;
+  jpe_codes(h);
+}
+// jchuff.c jpeg_gen_optimal_table: code lengths by Huffman's procedure over the counts (with a
+// reserved 257th symbol so no code is all ones), cut to 16 bits, values by length then value.
+jpe_optimal :: (h: []JpeHuff, freq_in: [257] int) {
+  freq := freq_in; freq[256] = 1;
+  codesize: [257] int; others: [257] int; bits: [33] int;
+  for i: 0..<257 { others[i] = -1; codesize[i] = 0; }
+  while true {
+    c1 := -1; v := 1000000000;
+    for i: 0..<257 { if freq[i] != 0 && freq[i] <= v { v = freq[i]; c1 = i; } }
+    c2 := -1; v = 1000000000;
+    for i: 0..<257 { if freq[i] != 0 && freq[i] <= v && i != c1 { v = freq[i]; c2 = i; } }
+    if c2 < 0 { break; }
+    freq[c1] += freq[c2]; freq[c2] = 0;
+    codesize[c1] += 1;
+    while others[c1] >= 0 { c1 = others[c1]; codesize[c1] += 1; }
+    others[c1] = c2;
+    codesize[c2] += 1;
+    while others[c2] >= 0 { c2 = others[c2]; codesize[c2] += 1; }
+  }
+  for i: 0..<33 { bits[i] = 0; }
+  for i: 0..<257 { if codesize[i] != 0 { bits[codesize[i]] += 1; } }
+  i := 32;
+  while i > 16 {
+    while bits[i] > 0 {
+      j := i - 2;
+      while bits[j] == 0 { j -= 1; }
+      bits[i] -= 2; bits[i - 1] += 1; bits[j + 1] += 2; bits[j] -= 1;
+    }
+    i -= 1;
+  }
+  while bits[i] == 0 { i -= 1; }
+  bits[i] -= 1;
+  h[0].bits[0] = 0;
+  for l: 1..<17 { h[0].bits[l] = bits[l]; }
+  p := 0;
+  for l: 1..<33 { for j: 0..<256 { if codesize[j] == l { h[0].vals[p] = j; p += 1; } } }
+  h[0].n = p;
+  jpe_codes(h);
+}
+
+jpe_clamp :: (v: int) -> int { return ifx v < 0 then 0 else (ifx v > 255 then 255 else v); }
+// One pixel's Y, Cb or Cr (c 0, 1, 2), jccolor.c's fixed point.
+jpe_ycc :: (s: []JpeState, x_in: int, y_in: int, c: int) -> int {
+  x := ifx x_in < s[0].w then x_in else s[0].w - 1;
+  y := ifx y_in < s[0].h then y_in else s[0].h - 1;
+  o := (y * s[0].w + x) * s[0].ch;
+  r := cast(int) s[0].px[o]; g := cast(int) s[0].px[o + 1]; b := cast(int) s[0].px[o + 2];
+  if c == 0 { return (19595 * r + 38470 * g + 7471 * b + 32768) >> 16; }
+  if c == 1 { return (-11059 * r - 21709 * g + 32768 * b + 8388608 + 32767) >> 16; }
+  return (32768 * r - 27439 * g - 5329 * b + 8388608 + 32767) >> 16;
+}
+// A component's sample at (x, y) of its own plane: full size, or a halved chroma's mean of four
+// (jcsample.c h2v2_downsample: bias 1 at even columns, 2 at odd ones).
+jpe_sample :: (s: []JpeState, x: int, y: int, c: int) -> int {
+  if !s[0].sub || c == 0 { return jpe_ycc(s, x, y, c); }
+  sum := jpe_ycc(s, 2 * x, 2 * y, c) + jpe_ycc(s, 2 * x + 1, 2 * y, c) + jpe_ycc(s, 2 * x, 2 * y + 1, c) + jpe_ycc(s, 2 * x + 1, 2 * y + 1, c);
+  return (sum + 1 + (x & 1)) >> 2;
+}
+
+jpe_descale :: (x: int, n: int) -> int { return (x + (1 << (n - 1))) >> n; }
+// jfdctint.c on eight values (at `at`, `step` apart); pass 1 (rows) or 2 (columns).
+jpe_fdct8 :: (b: []int, at: int, step: int, pass2: bool) {
+  d0 := b[at]; d1 := b[at + step]; d2 := b[at + 2 * step]; d3 := b[at + 3 * step];
+  d4 := b[at + 4 * step]; d5 := b[at + 5 * step]; d6 := b[at + 6 * step]; d7 := b[at + 7 * step];
+  tmp0 := d0 + d7; tmp7 := d0 - d7; tmp1 := d1 + d6; tmp6 := d1 - d6;
+  tmp2 := d2 + d5; tmp5 := d2 - d5; tmp3 := d3 + d4; tmp4 := d3 - d4;
+  tmp10 := tmp0 + tmp3; tmp13 := tmp0 - tmp3; tmp11 := tmp1 + tmp2; tmp12 := tmp1 - tmp2;
+  sh := ifx pass2 then 15 else 11;
+  if pass2 { b[at] = jpe_descale(tmp10 + tmp11, 2); b[at + 4 * step] = jpe_descale(tmp10 - tmp11, 2); }
+  else { b[at] = (tmp10 + tmp11) << 2; b[at + 4 * step] = (tmp10 - tmp11) << 2; }
+  z1 := (tmp12 + tmp13) * 4433;
+  b[at + 2 * step] = jpe_descale(z1 + tmp13 * 6270, sh);
+  b[at + 6 * step] = jpe_descale(z1 - tmp12 * 15137, sh);
+  y1 := tmp4 + tmp7; y2 := tmp5 + tmp6; y3 := tmp4 + tmp6; y4 := tmp5 + tmp7;
+  z5 := (y3 + y4) * 9633;
+  t4 := tmp4 * 2446; t5 := tmp5 * 16819; t6 := tmp6 * 25172; t7 := tmp7 * 12299;
+  y1 = -y1 * 7373; y2 = -y2 * 20995; y3 = -y3 * 16069 + z5; y4 = -y4 * 3196 + z5;
+  b[at + 7 * step] = jpe_descale(t4 + y1 + y3, sh);
+  b[at + 5 * step] = jpe_descale(t5 + y2 + y4, sh);
+  b[at + 3 * step] = jpe_descale(t6 + y2 + y3, sh);
+  b[at + step] = jpe_descale(t7 + y1 + y4, sh);
+}
+// Block (bx, by) of component c: its samples, transformed and quantized, natural order.
+jpe_block :: (s: []JpeState, c: int, bx: int, by: int, out: []int) {
+  b: [64] int;
+  for y: 0..<8 { for x: 0..<8 { b[y * 8 + x] = jpe_sample(s, bx * 8 + x, by * 8 + y, c) - 128; } }
+  for r: 0..<8 { jpe_fdct8(b[..], r * 8, 1, false); }
+  for k: 0..<8 { jpe_fdct8(b[..], k, 8, true); }
+  t := ifx c == 0 then 0 else 1;
+  for i: 0..<64 {
+    d := s[0].q[t][i] * 8; v := b[i];
+    out[i] = ifx v < 0 then -((-v + d / 2) / d) else (v + d / 2) / d;
+  }
+}
+jpe_nbits :: (v: int) -> int { n := 0; x := v; while x > 0 { n += 1; x = x >> 1; } return n; }
+// One block coded (or, gathering, counted), jchuff.c encode_one_block.
+jpe_code :: (s: []JpeState, c: int, blk: []int) {
+  dc := ifx c == 0 then 0 else 2; ac := dc + 1;
+  zz := JPE_ZZ;
+  t := blk[0] - s[0].last[c]; s[0].last[c] = blk[0];
+  t2 := t; if t < 0 { t = -t; t2 -= 1; }
+  n := jpe_nbits(t);
+  if s[0].gather { s[0].freq[dc][n] += 1; }
+  else { jpe_bits(s, s[0].huff[dc].code[n], s[0].huff[dc].size[n]); jpe_bits(s, t2, n); }
+  r := 0;
+  for k: 1..<64 {
+    v := blk[zz[k]];
+    if v == 0 { r += 1; continue; }
+    while r > 15 {
+      if s[0].gather { s[0].freq[ac][240] += 1; } else { jpe_bits(s, s[0].huff[ac].code[240], s[0].huff[ac].size[240]); }
+      r -= 16;
+    }
+    v2 := v; if v < 0 { v = -v; v2 -= 1; }
+    n = jpe_nbits(v);
+    sym := (r << 4) + n;
+    if s[0].gather { s[0].freq[ac][sym] += 1; }
+    else { jpe_bits(s, s[0].huff[ac].code[sym], s[0].huff[ac].size[sym]); jpe_bits(s, v2, n); }
+    r = 0;
+  }
+  if r > 0 { if s[0].gather { s[0].freq[ac][0] += 1; } else { jpe_bits(s, s[0].huff[ac].code[0], s[0].huff[ac].size[0]); } }
+}
+// Every MCU, in order: 4:4:4 a block of each component; 4:2:0 four of Y then one of each chroma.
+jpe_scan :: (s: []JpeState) {
+  blk: [64] int;
+  for c: 0..<3 { s[0].last[c] = 0; }
+  m := ifx s[0].sub then 16 else 8;
+  mw := (s[0].w + m - 1) / m; mh := (s[0].h + m - 1) / m;
+  for my: 0..<mh {
+    for mx: 0..<mw {
+      if s[0].sub {
+        for k: 0..<4 { jpe_block(s, 0, mx * 2 + (k & 1), my * 2 + (k >> 1), blk[..]); jpe_code(s, 0, blk[..]); }
+        jpe_block(s, 1, mx, my, blk[..]); jpe_code(s, 1, blk[..]);
+        jpe_block(s, 2, mx, my, blk[..]); jpe_code(s, 2, blk[..]);
+      } else {
+        for c: 0..<3 { jpe_block(s, c, mx, my, blk[..]); jpe_code(s, c, blk[..]); }
+      }
+    }
+  }
+}
+jpe_dht :: (s: []JpeState, k: int) {
+  h := s[0].huff[k];
+  jpe_word(s, 65476); jpe_word(s, 2 + 1 + 16 + h.n);
+  jpe_byte(s, ((k & 1) << 4) | (k >> 1));
+  for l: 1..<17 { jpe_byte(s, h.bits[l]); }
+  for i: 0..<h.n { jpe_byte(s, h.vals[i]); }
+}
+
+// The image (w*h pixels of ch bytes, ch 3 or 4, row by row) as a JPEG in out; its length, or
+// JPE_SMALL or JPE_REFUSED.
+jpe_encode :: (px: []u8, w: int, h: int, ch: int, quality: int, sub: bool, optimize: bool, out: []u8) -> int {
+  if w < 1 || h < 1 || w > 65535 || h > 65535 || quality < 1 || quality > 100 || (ch != 3 && ch != 4) || px.count < w * h * ch { return JPE_REFUSED; }
+  if sub && (w % 16 != 0 || h % 16 != 0) { return JPE_REFUSED; }
+  ss: [1] JpeState; s := ss[..];
+  s[0].px = px; s[0].w = w; s[0].h = h; s[0].ch = ch; s[0].sub = sub; s[0].out = out;
+  scale := ifx quality < 50 then 5000 / quality else 200 - quality * 2;
+  luma := JPE_LUMA; chroma := JPE_CHROMA;
+  for i: 0..<64 {
+    a := (luma[i] * scale + 50) / 100; b := (chroma[i] * scale + 50) / 100;
+    s[0].q[0][i] = ifx a < 1 then 1 else (ifx a > 255 then 255 else a);
+    s[0].q[1][i] = ifx b < 1 then 1 else (ifx b > 255 then 255 else b);
+  }
+  if optimize {
+    for k: 0..<4 { for i: 0..<257 { s[0].freq[k][i] = 0; } }
+    s[0].gather = true; jpe_scan(s); s[0].gather = false;
+    for k: 0..<4 { jpe_optimal(s[0].huff[k..<k + 1], s[0].freq[k]); }
+  } else {
+    dcb := JPE_DC_BITS; acb := JPE_AC_BITS; dcv := JPE_DC_VALS; acl := JPE_AC_LUMA; acc := JPE_AC_CHROMA;
+    jpe_standard(s[0].huff[0..<1], dcb[0..<16], dcv[..]); jpe_standard(s[0].huff[1..<2], acb[0..<16], acl[..]);
+    jpe_standard(s[0].huff[2..<3], dcb[16..<32], dcv[..]); jpe_standard(s[0].huff[3..<4], acb[16..<32], acc[..]);
+  }
+  // SOI, JFIF 1.01 (no units, 1:1), the tables (zigzag order), SOF0, the Huffman tables, SOS.
+  jpe_word(s, 65496);
+  jfif := [18] int.[255, 224, 0, 16, 74, 70, 73, 70, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0];
+  for b: jfif { jpe_byte(s, b); }
+  zz := JPE_ZZ;
+  for t: 0..<2 { jpe_word(s, 65499); jpe_word(s, 67); jpe_byte(s, t); for k: 0..<64 { jpe_byte(s, s[0].q[t][zz[k]]); } }
+  jpe_word(s, 65472); jpe_word(s, 17); jpe_byte(s, 8); jpe_word(s, h); jpe_word(s, w); jpe_byte(s, 3);
+  jpe_byte(s, 1); jpe_byte(s, ifx sub then 34 else 17); jpe_byte(s, 0);
+  jpe_byte(s, 2); jpe_byte(s, 17); jpe_byte(s, 1);
+  jpe_byte(s, 3); jpe_byte(s, 17); jpe_byte(s, 1);
+  jpe_dht(s, 0); jpe_dht(s, 1); jpe_dht(s, 2); jpe_dht(s, 3);
+  sos := [14] int.[255, 218, 0, 12, 3, 1, 0, 2, 17, 3, 17, 0, 63, 0];
+  for b: sos { jpe_byte(s, b); }
+  jpe_scan(s);
+  if s[0].nacc > 0 { jpe_bits(s, 127, 8 - s[0].nacc); }
+  jpe_word(s, 65497);
+  return ifx s[0].over then JPE_SMALL else s[0].at;
+}
+
+#test "a gray square, coded, is a JPEG of its size" {
+  px: [192] u8;
+  for i: 0..<192 { px[i] = 128; }
+  out: [1024] u8;
+  n := jpe_encode(px[..], 8, 8, 3, 90, false, false, out[..]);
+  #assert n > 0 && out[0] == 255 && out[1] == 216 && out[n - 2] == 255 && out[n - 1] == 217;
+  #assert jpe_encode(px[..], 8, 8, 3, 90, true, false, out[..]) == JPE_REFUSED;
+  #assert jpe_encode(px[..], 8, 8, 3, 90, false, false, out[0..<100]) == JPE_SMALL;
+}
