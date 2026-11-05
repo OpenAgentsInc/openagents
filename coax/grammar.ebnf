@@ -49,7 +49,10 @@ struct-parameters = "(", type-parameter, { ",", type-parameter }, ")" ;
    determines a length parameter; other uses determine a type parameter. *)
 field-block = "{", { field | profile-fields }, "}" ;
 profile-fields = "#if", "BUILD_DEBUG", field-block, [ "else", field-block ] ;
-field = identifier, ":", type, [ "=", expression ], ";" ;
+field = identifier, ":", type, [ field-note ], [ "=", expression ], ";" ;
+(* #flat and #depth are read by the shader backends; #counter refuses plain
+   + - * on the field (E0840) in favor of the named integer operations. *)
+field-note = "#flat" | "#depth" | "#counter" ;
 union = identifier, "::", "union", "{", { variant }, "}" ;
 variant = identifier, [ ":", type ], ";" ;
 (* The checker requires 1..64 unique alternatives; a unit has no payload. *)

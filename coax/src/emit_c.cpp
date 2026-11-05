@@ -265,6 +265,35 @@ static inline __attribute__((unused)) int coax_iv_mul(coax_iv a, coax_iv b, coax
 }
 )COAXRT";
 
+// add_checked, sub_checked, mul_checked: 1 with the result in *r when it fits
+// the type, else 0 with *r untouched; add_sat, sub_sat, mul_sat: the result,
+// or the bound it passed. One definition for every build, so a debug build, a
+// release build and #run agree (spec section 9).
+static const char *INTOPS_RUNTIME = R"COAXRT(
+#define COAX_INTOPS_CHECKED(T, N)                                                                          \
+  static inline __attribute__((unused)) int coax_add_checked_##N(T a, T b, T *r) { T v; if (__builtin_add_overflow(a, b, &v)) return 0; *r = v; return 1; } \
+  static inline __attribute__((unused)) int coax_sub_checked_##N(T a, T b, T *r) { T v; if (__builtin_sub_overflow(a, b, &v)) return 0; *r = v; return 1; } \
+  static inline __attribute__((unused)) int coax_mul_checked_##N(T a, T b, T *r) { T v; if (__builtin_mul_overflow(a, b, &v)) return 0; *r = v; return 1; }
+#define COAX_INTOPS_SIGNED(T, N, MIN, MAX)                                                                 \
+  COAX_INTOPS_CHECKED(T, N)                                                                                \
+  static inline __attribute__((unused)) T coax_add_sat_##N(T a, T b) { T v; if (!__builtin_add_overflow(a, b, &v)) return v; return b < 0 ? MIN : MAX; } \
+  static inline __attribute__((unused)) T coax_sub_sat_##N(T a, T b) { T v; if (!__builtin_sub_overflow(a, b, &v)) return v; return b < 0 ? MAX : MIN; } \
+  static inline __attribute__((unused)) T coax_mul_sat_##N(T a, T b) { T v; if (!__builtin_mul_overflow(a, b, &v)) return v; return (a < 0) != (b < 0) ? MIN : MAX; }
+#define COAX_INTOPS_UNSIGNED(T, N, MAX)                                                                    \
+  COAX_INTOPS_CHECKED(T, N)                                                                                \
+  static inline __attribute__((unused)) T coax_add_sat_##N(T a, T b) { T v; if (!__builtin_add_overflow(a, b, &v)) return v; return MAX; } \
+  static inline __attribute__((unused)) T coax_sub_sat_##N(T a, T b) { T v; if (!__builtin_sub_overflow(a, b, &v)) return v; return 0; } \
+  static inline __attribute__((unused)) T coax_mul_sat_##N(T a, T b) { T v; if (!__builtin_mul_overflow(a, b, &v)) return v; return MAX; }
+COAX_INTOPS_SIGNED(int8_t, s8, INT8_MIN, INT8_MAX)
+COAX_INTOPS_SIGNED(int16_t, s16, INT16_MIN, INT16_MAX)
+COAX_INTOPS_SIGNED(int32_t, s32, INT32_MIN, INT32_MAX)
+COAX_INTOPS_SIGNED(int64_t, s64, INT64_MIN, INT64_MAX)
+COAX_INTOPS_UNSIGNED(uint8_t, u8, UINT8_MAX)
+COAX_INTOPS_UNSIGNED(uint16_t, u16, UINT16_MAX)
+COAX_INTOPS_UNSIGNED(uint32_t, u32, UINT32_MAX)
+COAX_INTOPS_UNSIGNED(uint64_t, u64, UINT64_MAX)
+)COAXRT";
+
 static const char *WRAP_RUNTIME = R"COAXRT(
 static uint32_t coax_add_wrap_u32(uint32_t a,uint32_t b){return (uint32_t)(a+b);}
 static uint32_t coax_sub_wrap_u32(uint32_t a,uint32_t b){return (uint32_t)(a-b);}
@@ -1124,6 +1153,7 @@ struct Emitter {
   std::map<const Expr *, int32_t> *unit_ct_ids = nullptr;
   std::vector<const Expr *> *unit_ct_values = nullptr;
   bool wrapping = false;
+  bool intops = false;                        // add_checked..mul_sat are used: emit their helpers
   bool wide = false;
   bool barrier = false;                       // value_barrier is used: emit its helpers
   bool strict_math = false;
@@ -1541,6 +1571,27 @@ struct Emitter {
             std::string a=new_temp("uint64_t"),b=new_temp("uint64_t");
             std::string x=ex(e->args[0]); std::string y=ex(e->args[1]);
             return "("+a+" = "+x+", "+b+" = "+y+", coax_mul_wide("+a+", "+b+"))";
+          }
+          if (e->byte_intrinsic >= ByteIntrinsic::add_checked) {
+            // add_checked..mul_sat (spec section 9): operands once, left to right, then one helper
+            intops=true;
+            const bool checked=e->byte_intrinsic<=ByteIntrinsic::mul_checked;
+            const Type t=checked?e->type->elem:e->type;
+            static const char *const ops[]={"add","sub","mul"};
+            const int op=(int)e->byte_intrinsic-(int)(checked?ByteIntrinsic::add_checked:ByteIntrinsic::add_sat);
+            std::string a=new_temp(c_type(t)),b=new_temp(c_type(t));
+            std::string x=ex(e->args[0]); std::string y=ex(e->args[1]);
+            std::string fn=std::string("coax_")+ops[op]+(checked?"_checked_":"_sat_")+int_tag(t);
+            if(!checked) return "("+a+" = "+x+", "+b+" = "+y+", "+fn+"("+a+", "+b+"))";
+            std::string r=new_temp(c_type(t));
+            return "("+a+" = "+x+", "+b+" = "+y+", "+fn+"("+a+", "+b+", &"+r+") ? "+sum_construct(e->type,1,r)+" : "+sum_construct(e->type,0,"")+")";
+          }
+          if (e->byte_intrinsic >= ByteIntrinsic::add_wrap && e->byte_intrinsic <= ByteIntrinsic::mul_wrap && e->type != &T_U32 && e->type != &T_U64) {
+            // add_wrap, sub_wrap, mul_wrap on the other widths: the runtime's wrapping forms
+            static const char *const ops[]={"coax_wadd_","coax_wsub_","coax_wmul_"};
+            std::string a=new_temp(c_type(e->type)),b=new_temp(c_type(e->type));
+            std::string x=ex(e->args[0]); std::string y=ex(e->args[1]);
+            return "("+a+" = "+x+", "+b+" = "+y+", "+ops[(int)e->byte_intrinsic-(int)ByteIntrinsic::add_wrap]+int_tag(e->type)+"("+a+", "+b+"))";
           }
           if (e->byte_intrinsic >= ByteIntrinsic::add_wrap) {
             wrapping=true;
@@ -3695,6 +3746,7 @@ std::string emit_c(const File *file, const EmitOptions &opts) {
   if (em.erasure) s += ZERO_RUNTIME;
   if (em.barrier) s += BARRIER_RUNTIME;
   if (em.wrapping) s += WRAP_RUNTIME;
+  if (em.intops) s += INTOPS_RUNTIME;
   if (em.versioned) s += IV_RUNTIME;
   s += "#define COAX_LAYOUT(c, m) _Static_assert(c, m)\n";
   s += "\n/* Types */\n" + types.out;
@@ -3831,6 +3883,7 @@ std::string emit_native_checks_c_plan(const File *file, const EmitOptions &opts,
   if (em.erasure) s += ZERO_RUNTIME;
   if (em.barrier) s += BARRIER_RUNTIME;
   if (em.wrapping) s += WRAP_RUNTIME;
+  if (em.intops) s += INTOPS_RUNTIME;
   s += "#define COAX_LAYOUT(c, m) _Static_assert(c, m)\n";
   s += "\n/* Types */\n" + types.out;
   if (em.wide) s += WIDE_RUNTIME;

@@ -1293,13 +1293,34 @@ struct Evaluator {
             unsigned __int128 product=(unsigned __int128)a.bits*b.bits;
             r=zero(e->type,e->loc);(*r.agg)[0].bits=(uint64_t)(product>>64);(*r.agg)[1].bits=(uint64_t)product;return r;
           }
-          if(e->byte_intrinsic >= ByteIntrinsic::add_wrap) {
+          // add_wrap, sub_wrap, mul_wrap, the checked and the saturating forms on any integer width:
+          // the exact result in 128 bits, then its low bits, none or the nearest bound (spec section 9)
+          const ByteIntrinsic bk=e->byte_intrinsic;
+          const bool wrap=bk>=ByteIntrinsic::add_wrap && bk<=ByteIntrinsic::mul_wrap, checked=bk>=ByteIntrinsic::add_checked && bk<=ByteIntrinsic::mul_checked;
+          if(wrap || checked || bk>=ByteIntrinsic::add_sat) {
+            CT_EVAL(b,e->args[1]);
+            const Type t=checked?e->type->elem:e->type;
+            const int op=(int)bk-(int)(wrap?ByteIntrinsic::add_wrap:checked?ByteIntrinsic::add_checked:ByteIntrinsic::add_sat);
+            const __int128 x=as_int128(t,a.bits),y=as_int128(t,b.bits);
+            if(wrap) {
+              const unsigned __int128 ux=(unsigned __int128)x,uy=(unsigned __int128)y;
+              return scalar(t,canon_bits(t,(uint64_t)(op==0?ux+uy:op==1?ux-uy:ux*uy)));
+            }
+            __int128 v=0;bool over=false;
+            if(op==0)v=x+y;else if(op==1)v=x-y;else over=__builtin_mul_overflow(x,y,&v);
+            const bool negative=over?((x<0)!=(y<0)):v<0;
+            if(!over && fits_type(t,v)) {
+              if(checked)return sum_value(e->type,1,scalar(t,canon_bits(t,(uint64_t)v)),e->loc);
+              return scalar(t,canon_bits(t,(uint64_t)v));
+            }
+            if(checked)return sum_value(e->type,0,{},e->loc);
+            const __int128 lo=t->is_signed?-((__int128)1<<(t->bits-1)):0,hi=t->is_signed?((__int128)1<<(t->bits-1))-1:(((__int128)1<<t->bits)-1);
+            return scalar(t,canon_bits(t,(uint64_t)(negative?lo:hi)));
+          }
+          if(e->byte_intrinsic >= ByteIntrinsic::rotl) {
             CT_EVAL(b,e->args[1]);
             unsigned width=e->type==&T_U32?32:64,k=(unsigned)(b.bits&(width-1));
             switch(e->byte_intrinsic) {
-              case ByteIntrinsic::add_wrap:r.bits=a.bits+b.bits;break;
-              case ByteIntrinsic::sub_wrap:r.bits=a.bits-b.bits;break;
-              case ByteIntrinsic::mul_wrap:r.bits=a.bits*b.bits;break;
               case ByteIntrinsic::rotl:r.bits=(a.bits<<k)|(a.bits>>((width-k)&(width-1)));break;
               case ByteIntrinsic::rotr:r.bits=(a.bits>>k)|(a.bits<<((width-k)&(width-1)));break;
               default:break;

@@ -1,0 +1,20 @@
+#import "Basic";
+// Checked, saturating and wrapping integer operations: the same in debug and release (#12927).
+Seat :: struct { generation: u8 #counter; }
+// The next generation, or a refusal that leaves the seat as it was.
+advance :: (s: [] Seat) -> bool {
+  next := add_checked(s[0].generation, 1);
+  switch next { case none { return false; } case some(g) { s[0].generation = g; return true; } }
+}
+main :: () {
+  s: [1] Seat; s[0].generation = 254;
+  a := advance(s[..]); b := advance(s[..]);
+  print("% % %\n", a, b, s[0].generation);
+  print("% % %\n", add_sat(cast(s8) 120, cast(s8) 10), sub_sat(cast(s8) -120, cast(s8) 10), mul_sat(cast(u16) 300, cast(u16) 300));
+  print("% % %\n", add_wrap(cast(s8) 127, cast(s8) 1), sub_wrap(cast(u8) 0, cast(u8) 1), mul_wrap(cast(s16) 256, cast(s16) 256));
+  big := mul_checked(cast(s64) 3037000500, cast(s64) 3037000500) or_else -1;
+  fits := mul_checked(cast(s64) 3037000499, cast(s64) 3037000499) or_else -1;
+  print("% %\n", big, fits);
+  // the bit casts beside them stay bit casts (a C emitter once sent f32_from_bits to the wrapping helpers)
+  print("% % %\n", f32_bits(f32_from_bits(0x3f800000)), f64_bits(f64_from_bits(0x4000000000000000)), f32_from_bits(0x40400000));
+}

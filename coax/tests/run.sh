@@ -202,6 +202,7 @@ unit_debugging() { python3 tests/debugging.py; }
 unit_nostr() { python3 tests/nostr.py; }
 unit_constant_time() { python3 tests/constant_time.py; }
 unit_wrapping() { python3 tests/wrapping.py; }
+unit_integer_ops() { python3 tests/integer_ops.py; }
 unit_mul_wide() { python3 tests/mul_wide.py && python3 tests/foreign_buffers.py; }
 unit_cuda() {
   python3 tests/cuda.py && python3 tests/metal_compute.py && "$COAX" test lib/compute/mma.coax --lib && "$COAX" mutate lib/compute/mma.coax --lib && "$COAX" test lib/compute/apple.coax --lib && "$COAX" mutate lib/compute/apple.coax --lib
@@ -252,7 +253,7 @@ unit_spatial() {
 UNITS=(pass fail examples pulse python native strict_math native_checks lexer parser budget strings traversal
   provenance query steps library_checks authority_cache check_reuse parallel_checks job_budget loaded release mutation_schedule
   build_profiles semantic_profiles checker systemone results book sources reflection library_tools
-  sequence bounded kept clock debugging nostr constant_time wrapping mul_wide cuda proto_cap proto proto_policy
+  sequence bounded kept clock debugging nostr constant_time wrapping integer_ops mul_wide cuda proto_cap proto proto_policy
   proto_message verify wire_checks generated_checks wire_core importer_checks fingerprint_checks
   unit_algebra unit_forms spatial_policy borrow_summary spatial_operators spatial)
 

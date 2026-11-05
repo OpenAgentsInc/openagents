@@ -809,12 +809,42 @@ bits.
 Ordinary compile-time arithmetic is checked in every build mode (§10). This avoids
 release settings silently changing generated constants.
 
-`add_wrap(a, b)`, `sub_wrap(a, b)` and `mul_wrap(a, b)` accept two
-matching `u32` or `u64` operands and return their sum, difference or product
-modulo 2^32 or 2^64. They wrap in checked builds, `--release` and compile-time
-execution; ordinary operators retain their existing overflow rules.
-`rotl(a, count)` and `rotr(a, count)` use the same matching unsigned operand
-width and reduce the count modulo that width. A zero or full-width count
+**Named integer operations (#12927).** An overflow's meaning can be part of
+the program instead of the build. Each of these takes two operands of one
+integer type, any of `s8 s16 s32 s64 u8 u16 u32 u64` (an untyped literal takes
+the other operand's type), runs them once, left to right, and computes the
+exact mathematical result before deciding:
+
+| Operation | Result |
+| --- | --- |
+| `add_checked(a, b)` `sub_checked(a, b)` `mul_checked(a, b)` | `T?`: `some(r)` when the exact result fits T, else `null` |
+| `add_sat(a, b)` `sub_sat(a, b)` `mul_sat(a, b)` | T: the exact result, or T's minimum or maximum when it passes one |
+| `add_wrap(a, b)` `sub_wrap(a, b)` `mul_wrap(a, b)` | T: the exact result modulo 2^width, as two's complement for signed T |
+
+None of them traps, and each gives the same value in a checked build,
+`--release`, `--arithmetic wrapping`, `#run`, native C at any optimization
+level and wasm32: the C helpers are one definition for every profile, spelled
+with the compiler's overflow builtins, so no C undefined behavior remains. A
+checked operation reports a refusal as an ordinary optional the caller must
+select (`switch`, `or_else`, `try`) before it has a value to store, so a
+transition that cannot fit is refused before any write. Wrapping stays the
+explicit form for hashes and digests; a counter that must retire before it
+wraps uses the checked form. Ordinary operators keep their existing overflow
+rules. Mixed types, floats, other arities and a literal that does not fit are
+E0378 or E0350. These lower to C11 and wasm32; CUDA and Metal admit only the
+wrapping forms, and refuse checked and saturating ones.
+
+**Counters.** A struct field may be declared `#counter`
+(`generation: u32 #counter;`). Plain `+`, `-`, `*` and `+=`, `-=`, `*=` on a
+read of that field, directly, through an index (`s.lives[i]`) or through a
+cast, are refused with E0840; its fix names the three forms. `/`, `%`,
+comparisons, assignment and passing it to the named operations are
+unaffected. The note is per field and opt-in: declaring it changes no layout,
+default or existing program, and fields without it keep the build's overflow
+profile.
+
+`rotl(a, count)` and `rotr(a, count)` take two matching `u32` or `u64`
+operands and reduce the count modulo that width. A zero or full-width count
 returns `a`; there is no shift-by-width undefined behavior. Operands execute
 once, left to right. These CPU intrinsics lower to C11 and wasm32; the Metal
 scalar profile continues to reject integer/storage intrinsics.

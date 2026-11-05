@@ -3,7 +3,7 @@
 #load "release-model.coax";
 IMPLEMENTATION_VERSION :: "0.50.0";
 STATUS_SCHEMA_VERSION :: 1;
-CATALOGUE :: [132]ReleaseFeature.[
+CATALOGUE :: [135]ReleaseFeature.[
   ReleaseFeature.{id="keywords.if",section="Keywords",name="`if` `else`",meaning="Conditional",status="works",introduced=""},
   ReleaseFeature.{id="keywords.while",section="Keywords",name="`while`",meaning="Loop",status="works",introduced=""},
   ReleaseFeature.{id="keywords.for",section="Keywords",name="`for` `break` `continue`",meaning="`for i: lo..<hi`, `for x, i: collection`; leave or skip an iteration",status="works",introduced=""},
@@ -52,6 +52,7 @@ CATALOGUE :: [132]ReleaseFeature.[
   ReleaseFeature.{id="directives.as",section="Directives",name="`#as`",meaning="Declared conversion to an embedded field",status="reserved",introduced=""},
   ReleaseFeature.{id="directives.import-c",section="Directives",name="`#import_c` `#c_call` `#no_context`",meaning="C header import and calling conventions",status="reserved",introduced=""},
   ReleaseFeature.{id="directives.scope-file",section="Directives",name="`#scope_file` `#scope_module` `#scope_export`",meaning="Visibility",status="reserved",introduced=""},
+  ReleaseFeature.{id="directives.counter",section="Directives",name="`#counter` on a struct field",meaning="Plain `+ - *` and their compound assignments on the field are refused (E0840); it changes through the named integer operations (#12927)",status="works",introduced="0.50.0"},
   ReleaseFeature.{id="intrinsics.print-format",section="Intrinsics",name="`print(format, ...)`",meaning="Print with `%` slots checked at compile time; needs `#import \"Basic\"`",status="works",introduced=""},
   ReleaseFeature.{id="intrinsics.type-name-expr",section="Intrinsics",name="`type_name(expr)`",meaning="The expression's type name as a string; the operand isn't evaluated",status="works",introduced=""},
   ReleaseFeature.{id="intrinsics.size-of-t",section="Intrinsics",name="`size_of(T)`",meaning="The type's size in bytes (bootstrap LP64 CPU layout)",status="works",introduced=""},
@@ -65,7 +66,9 @@ CATALOGUE :: [132]ReleaseFeature.[
   ReleaseFeature.{id="intrinsics.f32-bits-x",section="Intrinsics",name="`f32_bits(x)` `f64_bits(x)`",meaning="A float's bit pattern as `u32` or `u64`",status="works",introduced=""},
   ReleaseFeature.{id="intrinsics.f32-from-bits-b",section="Intrinsics",name="`f32_from_bits(b)` `f64_from_bits(b)`",meaning="The reverse",status="works",introduced=""},
   ReleaseFeature.{id="intrinsics.bytes-overlap-a-b",section="Intrinsics",name="`bytes_overlap(a, b)`",meaning="Whether two byte views or strings share memory",status="works",introduced=""},
-  ReleaseFeature.{id="intrinsics.wrapping",section="Intrinsics",name="`add_wrap(a, b)` `sub_wrap(a, b)` `mul_wrap(a, b)`",meaning="Matching u32/u64 arithmetic modulo the word width, including checked and compile-time execution",status="works",introduced="0.15.0"},
+  ReleaseFeature.{id="intrinsics.wrapping",section="Intrinsics",name="`add_wrap(a, b)` `sub_wrap(a, b)` `mul_wrap(a, b)`",meaning="Two integers of one type, modulo the type's width (u32/u64 since 0.15.0, every width since #12927), including checked and compile-time execution",status="works",introduced="0.15.0"},
+  ReleaseFeature.{id="intrinsics.checked",section="Intrinsics",name="`add_checked(a, b)` `sub_checked(a, b)` `mul_checked(a, b)`",meaning="Two integers of one type; `T?`, none when the exact result does not fit, the same in debug, release, compile-time and Wasm execution (#12927)",status="works",introduced="0.50.0"},
+  ReleaseFeature.{id="intrinsics.saturating",section="Intrinsics",name="`add_sat(a, b)` `sub_sat(a, b)` `mul_sat(a, b)`",meaning="Two integers of one type; the exact result, or the type's bound it passed, in every build (#12927)",status="works",introduced="0.50.0"},
   ReleaseFeature.{id="intrinsics.rotation",section="Intrinsics",name="`rotl(a, count)` `rotr(a, count)`",meaning="Matching u32/u64 rotation; count reduced modulo the word width",status="works",introduced="0.15.0"},
   ReleaseFeature.{id="intrinsics.mul-wide",section="Intrinsics",name="`mul_wide(a, b)`",meaning="Two u64 operands produce CoaxU64Product with hi/lo halves; native128-bit and portable wasm32 lowering",status="works",introduced="0.16.0"},
   ReleaseFeature.{id="intrinsics.value-barrier",section="Intrinsics",name="`value_barrier(x)`",meaning="u32/u64 identity opaque to native optimization; compiler identity; backend-specific evidence is required for constant-time claims",status="works",introduced=""},

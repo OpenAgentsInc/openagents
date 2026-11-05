@@ -1,6 +1,21 @@
 // Expressions: operators, reflection metadata, calls and arguments. A part of
 // the checker: lib/compiler/checker.coax loads it (#12646).
 #authority;
+// A field declared #counter (op 1 on its declaration, #12927) read through indexes and casts: its name, else "".
+CK_counter :: (c:CK_Context,id:int)->string {
+  n:=c.nodes[id];while n.kind==CK_Tag.expr_index || n.kind==CK_Tag.expr_cast {n=c.nodes[n.a];}
+  if n.kind!=CK_Tag.expr_field || n.field_index<0 || c.types[c.nodes[n.a].type].kind!=CK_Kind.struct_ {return "";}
+  f:=c.nodes[c.types[c.nodes[n.a].type].decl].head;i:=0;while f!=0 && i<n.field_index {f=c.nodes[f].next;i+=1;}
+  if f==0 || c.nodes[f].op!=1 {return "";}
+  return n.name;
+}
+// Plain + - * (op 34-36) on a counter is refused with the named operations as the fix (E0840, spec section 9).
+CK_counter_arithmetic :: (c:CK_Context,loc:CK_Loc,op:u32,a:int,b:int) {
+  name:=CK_counter(c,a);if name=="" {name=CK_counter(c,b);}if name=="" || op<34 || op>36 {return;}
+  forms:=[3] string.["add","sub","mul"];k:=forms[cast(int)(op-34)];
+  parts:=[5] string.["plain ",CK_op(op)," on the counter '",name,"'"];fix:=[6] string.[k,"_checked(a, b), ",k,"_sat(a, b) or ",k,"_wrap(a, b)"];
+  CK_error(c,loc,"E0840",CK_text(c,parts[..]),CK_text(c,fix[..]));
+}
 CK_binary :: (c:CK_Context,id:int,want:CK_Hint)->int {
   e:=c.nodes[id];if c.nodes[e.a].kind==CK_Tag.expr_null || c.nodes[e.b].kind==CK_Tag.expr_null {return CK_null_comparison(c,id);}
   comparison:=e.op>=44;shift:=e.op==42 || e.op==43;hint:=want;
@@ -20,7 +35,8 @@ CK_binary :: (c:CK_Context,id:int,want:CK_Hint)->int {
       need:=" needs two numbers of one type";if e.op==38 {need=" needs two integers of one type";}
       fix:=CK_constrain_fix(c,a,"numeric");if a==3 {fix="build strings with print's % formatting";}else if CK_numeric(c,a) && CK_numeric(c,b) {fix=CK_join3(c,"convert one: cast(",c.types[a].name,") x");}
       parts:=[4] string.[CK_op(e.op),need,", found ",pair];CK_error(c,e.loc,"E0309",CK_text(c,parts[..]),fix);return CK_NONE;
-    }return a;
+    }
+    if CK_integer(c,a) {CK_counter_arithmetic(c,e.loc,e.op,e.a,e.b);}return a;
   }
   if e.op>=39 && e.op<=41 {
     if a!=b || !CK_integer(c,a) {CK_error(c,e.loc,"E0370",CK_join3(c,CK_op(e.op)," needs two integers of one type, found ",pair),"");return CK_NONE;}return a;
@@ -447,7 +463,7 @@ CK_call :: (c:CK_Context,id:int,want:CK_Hint)->int {
   }
   byte:=CK_byte_intrinsic(e.name);
   if byte!=0 {
-    c.nodes[id].byte_intrinsic=byte;n:=1;if byte==1 || (byte>=7 && byte<=12) {n=2;}
+    c.nodes[id].byte_intrinsic=byte;n:=1;if byte==1 || (byte>=7 && byte<=12) || byte>=14 {n=2;}
     if count!=n {CK_error(c,e.loc,"E0378","wrong byte intrinsic argument count","");return CK_NONE;}
     if byte==13 {
       t:=CK_value(c,e.head,CK_Hint.{});if t==0 {return 0;}
@@ -465,10 +481,20 @@ CK_call :: (c:CK_Context,id:int,want:CK_Hint)->int {
       return c.nodes[result].type;
     }
     if byte>=7 {
-      t:=CK_value(c,e.head,want);if t==CK_NONE {return CK_NONE;}
-      if t!=14 && t!=15 {CK_error(c,e.loc,"E0378","wrapping operations take matching u32 or u64 operands","");return CK_NONE;}
-      other:=CK_value(c,c.nodes[e.head].next,CK_Hint.{type=t});if other==CK_NONE {return CK_NONE;}
-      if other!=t {CK_error(c,e.loc,"E0378","wrapping operand widths must match","");return CK_NONE;}
+      // add_wrap, sub_wrap, mul_wrap (7-9), add_checked.. (14-16) and add_sat.. (17-19): two integers of one
+      // type; a checked form returns that type's optional, none when the exact result does not fit (spec
+      // section 9). rotl and rotr (10, 11) take u32 or u64. An untyped literal takes the other operand's type.
+      checked:=byte>=14 && byte<=16;rotate:=byte==10 || byte==11;hint:=want;
+      if checked {hint=CK_Hint.{};if c.types[want.type].kind==CK_Kind.optional {hint=CK_Hint.{type=c.types[want.type].elem};}}
+      second:=c.nodes[e.head].next;
+      t:=CK_expr(c,e.head,hint);if t==CK_NONE {return CK_NONE;}
+      other_hint:=CK_Hint.{type=t};if CK_untyped(c,t) {other_hint=hint;}
+      other:=CK_value(c,second,other_hint);if other==CK_NONE {return CK_NONE;}
+      if CK_untyped(c,t) {CK_coerce(c,e.head,other);t=c.nodes[e.head].type;if t==CK_NONE {return CK_NONE;}}
+      if rotate && t!=14 && t!=15 {CK_error(c,e.loc,"E0378","rotations take matching u32 or u64 operands","");return CK_NONE;}
+      if !CK_integer(c,t) {CK_error(c,e.loc,"E0378",CK_join2(c,e.name," takes two integers of one type"),"");return CK_NONE;}
+      if other!=t {CK_error(c,e.loc,"E0378",CK_join3(c,e.name," operands must have one type, found ",CK_join3(c,c.types[t].name," and ",c.types[other].name)),"");return CK_NONE;}
+      if checked {return CK_sum_type(c,CK_Kind.optional,t,0,e.loc);}
       return t;
     }
     if byte==6 {

@@ -1,0 +1,2 @@
+// expect: E0378
+main :: () { r := add_checked(cast(u8) 1, cast(s8) 2); }

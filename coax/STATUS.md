@@ -68,6 +68,7 @@ schema. Keep signed protocol/schema identities in their own version domains.
 | `#as` | Declared conversion to an embedded field | reserved | — |
 | `#import_c` `#c_call` `#no_context` | C header import and calling conventions | reserved | — |
 | `#scope_file` `#scope_module` `#scope_export` | Visibility | reserved | — |
+| `#counter` on a struct field | Plain `+ - *` and their compound assignments on the field are refused (E0840); it changes through the named integer operations (#12927) | works | 0.50.0 |
 
 ## Intrinsics
 
@@ -86,7 +87,9 @@ schema. Keep signed protocol/schema identities in their own version domains.
 | `f32_bits(x)` `f64_bits(x)` | A float's bit pattern as `u32` or `u64` | works | — |
 | `f32_from_bits(b)` `f64_from_bits(b)` | The reverse | works | — |
 | `bytes_overlap(a, b)` | Whether two byte views or strings share memory | works | — |
-| `add_wrap(a, b)` `sub_wrap(a, b)` `mul_wrap(a, b)` | Matching u32/u64 arithmetic modulo the word width, including checked and compile-time execution | works | 0.15.0 |
+| `add_wrap(a, b)` `sub_wrap(a, b)` `mul_wrap(a, b)` | Two integers of one type, modulo the type's width (u32/u64 since 0.15.0, every width since #12927), including checked and compile-time execution | works | 0.15.0 |
+| `add_checked(a, b)` `sub_checked(a, b)` `mul_checked(a, b)` | Two integers of one type; `T?`, none when the exact result does not fit, the same in debug, release, compile-time and Wasm execution (#12927) | works | 0.50.0 |
+| `add_sat(a, b)` `sub_sat(a, b)` `mul_sat(a, b)` | Two integers of one type; the exact result, or the type's bound it passed, in every build (#12927) | works | 0.50.0 |
 | `rotl(a, count)` `rotr(a, count)` | Matching u32/u64 rotation; count reduced modulo the word width | works | 0.15.0 |
 | `mul_wide(a, b)` | Two u64 operands produce CoaxU64Product with hi/lo halves; native128-bit and portable wasm32 lowering | works | 0.16.0 |
 | `value_barrier(x)` | u32/u64 identity opaque to native optimization; compiler identity; backend-specific evidence is required for constant-time claims | works | — |

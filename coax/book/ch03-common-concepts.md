@@ -665,6 +665,63 @@ wrap to: dividing by zero (or taking `%` of zero), dividing the smallest
 `int` by `-1`, and shifting by a negative amount or by the type's width
 or more.
 
+### Overflow you choose
+
+Some numbers must behave the same in every build: a seat's generation, an
+item count, a ledger version. For those, name what happens on overflow
+instead of leaving it to the build:
+
+- `add_checked(a, b)`, `sub_checked(a, b)` and `mul_checked(a, b)` return
+  `T?`: the result when it fits the type, none when it doesn't. Nothing
+  traps, and the caller decides what a refusal means.
+- `add_sat(a, b)`, `sub_sat(a, b)` and `mul_sat(a, b)` return the result,
+  or the type's smallest or largest value when the result passes it.
+- `add_wrap(a, b)`, `sub_wrap(a, b)` and `mul_wrap(a, b)` keep the low bits,
+  for hashes and digests that wrap on purpose.
+
+Each takes two integers of one type, any width, and gives the same answer
+in a debug build, a release build and `#run`. Mark a field `#counter` and
+plain `+`, `-` and `*` on it (and `+=`, `-=`, `*=`) become an error, E0840,
+whose fix names these operations:
+
+Filename: counter.coax
+
+```jai
+#import "Basic";
+
+Seat :: struct { generation: u8 #counter; }
+
+// The seat's next generation, or false with the seat as it was.
+advance :: (s: [] Seat) -> bool {
+  next := add_checked(s[0].generation, 1);
+  switch next {
+    case none { return false; }
+    case some(g) { s[0].generation = g; return true; }
+  }
+}
+
+main :: () {
+  s: [1] Seat;
+  s[0].generation = 254;
+  print("% %\n", advance(s[..]), s[0].generation);
+  print("% %\n", advance(s[..]), s[0].generation);
+  print("% %\n", add_sat(cast(u8) 250, cast(u8) 10), add_wrap(cast(u8) 250, cast(u8) 10));
+}
+```
+
+*Listing 3-8: A counter that refuses to wrap*
+
+```shell
+$ coax run counter.coax
+true 255
+false 255
+255 4
+```
+
+The second `advance` refuses and leaves the generation at 255, with or
+without `--release`. A refusal is an ordinary value you handle before any
+write, so a change that can't fit never half happens.
+
 ### Bit operations
 
 `&`, `|`, `^`, `<<` and `>>` work on integers of one type. They're for
@@ -699,7 +756,7 @@ main :: () {
 }
 ```
 
-*Listing 3-8: Packing and counting bits*
+*Listing 3-9: Packing and counting bits*
 
 ```shell
 $ coax run bits.coax
@@ -781,7 +838,7 @@ greet :: (name: string) {
 }
 ```
 
-*Listing 3-9: Procedures with parameters and return values*
+*Listing 3-10: Procedures with parameters and return values*
 
 ```shell
 $ coax run procedures.coax
@@ -810,7 +867,7 @@ A call checks everything about its arguments. `gcd(1071)` is `E0316`,
 A parameter is the value the caller passed, and inside the procedure it
 stays that value. Writing `n -= 1;` in `parity` is `E0344`, "parameters
 cannot be assigned", with the fix "copy it into a local variable". That's
-what `power` does with `result` and `i`, and what `ones` in Listing 3-8
+what `power` does with `result` and `i`, and what `ones` in Listing 3-9
 does with `rest := bits;`.
 
 ### Results must be used
@@ -880,7 +937,7 @@ main :: () {
 }
 ```
 
-*Listing 3-10: A loop whose condition says when it ends*
+*Listing 3-11: A loop whose condition says when it ends*
 
 ```shell
 $ coax run squares.coax
@@ -913,7 +970,7 @@ main :: () {
 }
 ```
 
-*Listing 3-11: Math built-ins*
+*Listing 3-12: Math built-ins*
 
 ```shell
 $ coax run math.coax
@@ -977,7 +1034,7 @@ main :: () {
 }
 ```
 
-*Listing 3-12: An `if` chain and `ifx`*
+*Listing 3-13: An `if` chain and `ifx`*
 
 ```shell
 $ coax run branches.coax
@@ -1078,7 +1135,7 @@ main :: () {
 }
 ```
 
-*Listing 3-13: Two `while` loops*
+*Listing 3-14: Two `while` loops*
 
 ```shell
 $ coax run collatz.coax
@@ -1091,7 +1148,7 @@ pattern is common enough that Coax has a loop for it.
 
 Coax has no separate `loop` keyword for a loop with no condition. Write
 `while true { }` and leave with `break` or `return`, but remember from
-Listing 3-10 that a procedure still needs a `return` after the loop.
+Listing 3-11 that a procedure still needs a `return` after the loop.
 
 ### Counting and walking with `for`
 
@@ -1126,7 +1183,7 @@ main :: () {
 }
 ```
 
-*Listing 3-14: `for` over ranges and a string, with `break` and `continue`*
+*Listing 3-15: `for` over ranges and a string, with `break` and `continue`*
 
 ```shell
 $ coax run for.coax
@@ -1202,7 +1259,7 @@ skip.coax:5:19: error[E0359]: a loop variable cannot be assigned
 
 A `for` loop owns its counter. To skip an item, use `continue`. When you
 really need to move the counter by hand, write a `while` loop with its
-own variable, as `power` does in Listing 3-9.
+own variable, as `power` does in Listing 3-10.
 
 > Note: Loop labels (to `break` out of an outer loop) and reverse ranges
 > are planned. Until labels arrive, put the nested loops in a procedure
@@ -1231,7 +1288,7 @@ main :: () {
 }
 ```
 
-*Listing 3-15: `print` formats*
+*Listing 3-16: `print` formats*
 
 ```shell
 $ coax run print.coax
@@ -1291,7 +1348,7 @@ main :: () {
 }
 ```
 
-*Listing 3-16: Easing procedures from the iOS home screen*
+*Listing 3-17: Easing procedures from the iOS home screen*
 
 ```shell
 $ coax run smooth.coax

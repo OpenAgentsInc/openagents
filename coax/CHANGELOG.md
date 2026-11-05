@@ -25,6 +25,10 @@ Commit: [`3266aa2d5c9a14a43ab478a28be4c889a55415f7`](https://github.com/OpenAgen
 - Use lexical `defer` to make explicit secret-buffer cleanup cover normal and
   refused returns. Hidden register/spill and operating-system copies remain
   outside this primitive's contract.
+- Follow-up (#12927): `add_checked`, `sub_checked`, `mul_checked` return `T?`
+  and `add_sat`, `sub_sat`, `mul_sat` clamp, on every integer width, with
+  `add_wrap`, `sub_wrap`, `mul_wrap` widened to all of them; one result in debug,
+  release, `#run` and native C. A `#counter` field refuses plain `+ - *` (E0840).
 
 ## 0.49.0 — Read-only Borrowed Views — 2026-11-05
 

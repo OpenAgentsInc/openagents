@@ -1,0 +1,20 @@
+#import "Basic";
+
+Seat :: struct { generation: u8 #counter; }
+
+// The seat's next generation, or false with the seat as it was.
+advance :: (s: [] Seat) -> bool {
+  next := add_checked(s[0].generation, 1);
+  switch next {
+    case none { return false; }
+    case some(g) { s[0].generation = g; return true; }
+  }
+}
+
+main :: () {
+  s: [1] Seat;
+  s[0].generation = 254;
+  print("% %\n", advance(s[..]), s[0].generation);
+  print("% %\n", advance(s[..]), s[0].generation);
+  print("% %\n", add_sat(cast(u8) 250, cast(u8) 10), add_wrap(cast(u8) 250, cast(u8) 10));
+}

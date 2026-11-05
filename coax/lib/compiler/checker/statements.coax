@@ -142,7 +142,8 @@ CK_stmt :: (c:CK_Context,id:int) {
     if s.op!=23 {
       op:=CK_compound(s.op);int_only:=op>=38;shift:=op==42 || op==43;bad:=!CK_numeric(c,target);if int_only {bad=!CK_integer(c,target);}
       if bad {need:="a number";if int_only {need="an integer";}parts:=[5] string.[CK_op(s.op)," needs ",need," target, this is ",c.types[target].name];CK_error(c,s.loc,"E0326",CK_text(c,parts[..]),CK_constrain_fix(c,target,"numeric"));}
-      else {mismatch:=t!=target;if shift {mismatch=!CK_integer(c,t);}if mismatch {parts:=[4] string.["the target is ",c.types[target].name,", given ",c.types[t].name];CK_error(c,c.nodes[s.a].loc,"E0327",CK_text(c,parts[..]),"");}}
+      else {mismatch:=t!=target;if shift {mismatch=!CK_integer(c,t);}if mismatch {parts:=[4] string.["the target is ",c.types[target].name,", given ",c.types[t].name];CK_error(c,c.nodes[s.a].loc,"E0327",CK_text(c,parts[..]),"");}
+        else if CK_integer(c,target) {CK_counter_arithmetic(c,s.loc,op,s.c,CK_NONE);}}
     }else if t!=target {fix:="";if CK_numeric(c,target) && CK_numeric(c,t) {fix=CK_join3(c,"convert it: cast(",c.types[target].name,") x");}parts:=[4] string.["the target is ",c.types[target].name,", assigned ",c.types[t].name];CK_error(c,c.nodes[s.a].loc,"E0327",CK_text(c,parts[..]),fix);}
     CK_borrow_write(c,id);if target_expr.kind==CK_Tag.expr_ident {CK_taint_borrow(c,target_expr.name,s.a);}return;
   }

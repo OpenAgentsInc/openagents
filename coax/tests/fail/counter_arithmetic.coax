@@ -1,0 +1,3 @@
+// expect: E0840
+Seat :: struct { generation: u32 #counter; }
+main :: () { s: Seat; s.generation += 1; }

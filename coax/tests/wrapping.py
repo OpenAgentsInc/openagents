@@ -125,11 +125,13 @@ console.log(rows.length);
 """)
             p=subprocess.run(['bun',str(d/'run.mjs'),str(d/'wrap.wasm'),str(d/'cases.json')],capture_output=True,text=True)
             self.assertEqual(p.returncode,0,p.stderr);self.assertEqual(p.stdout.strip(),str(len(rows)))
-    def test_rejects_wrong_width_signed_float_and_arity(self):
+    def test_rejects_mixed_width_float_and_arity(self):
         with tempfile.TemporaryDirectory() as tmp:
             src=Path(tmp)/'bad.coax'
             for op in OPS:
-                for args in ('','cast(u32)1','cast(u32)1,cast(u64)2','cast(u8)1,cast(u8)2','cast(s64)1,cast(s64)2','1.0,2.0','cast(u32)1,cast(u32)2,cast(u32)3'):
+                # add_wrap, sub_wrap and mul_wrap take any one integer type since #12927 (tests/integer_ops.py); rotations two words
+                narrow=('cast(u8)1,cast(u8)2','cast(s64)1,cast(s64)2') if op in ('rotl','rotr') else ()
+                for args in ('','cast(u32)1','cast(u32)1,cast(u64)2',*narrow,'1.0,2.0','cast(u32)1,cast(u32)2,cast(u32)3'):
                     src.write_text(f'main :: () {{x:={op}({args});}}')
                     p=subprocess.run([str(COMPILER),'c',str(src)],capture_output=True,text=True)
                     self.assertNotEqual(p.returncode,0,(op,args))

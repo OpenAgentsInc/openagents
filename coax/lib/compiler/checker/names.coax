@@ -3,7 +3,7 @@
 // lib/compiler/checker.coax loads it (#12646).
 #authority;
 CK_intrinsic :: (name:string)->u32 #export_c {names:=[10] string.["sin","cos","tan","exp","log","sqrt","floor","abs","pow","fma"];for x,i:names {if x==name {return cast(u32)(i+1);}}return CK_NONE;}
-CK_byte_intrinsic :: (name:string)->u32 #export_c {names:=[13] string.["bytes_overlap","f32_from_bits","f64_from_bits","f32_bits","f64_bits","value_barrier","add_wrap","sub_wrap","mul_wrap","rotl","rotr","mul_wide","secure_zero"];for x,i:names {if x==name {return cast(u32)(i+1);}}return CK_NONE;}
+CK_byte_intrinsic :: (name:string)->u32 #export_c {names:=[19] string.["bytes_overlap","f32_from_bits","f64_from_bits","f32_bits","f64_bits","value_barrier","add_wrap","sub_wrap","mul_wrap","rotl","rotr","mul_wide","secure_zero","add_checked","sub_checked","mul_checked","add_sat","sub_sat","mul_sat"];for x,i:names {if x==name {return cast(u32)(i+1);}}return CK_NONE;}
 #forall "secure zero requires one numeric borrowed view and returns no value" variant:0..<10 {
  nodes:[8]CK_Node;types:[20]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{current=2,type_count=20}];
  c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
@@ -124,28 +124,118 @@ CK_byte_intrinsic :: (name:string)->u32 #export_c {names:=[13] string.["bytes_ov
  if variant==4 {#assert errors[0].code!="E0378";}
  if variant==5 {#assert errors[0].code=="E0378" && errors[0].message=="wrong byte intrinsic argument count";}
 }
-#forall "wrapping operations admit only two matching unsigned words" variant:0..<50 {
-  nodes:[12]CK_Node;types:[16]CK_Type;locals:[8]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{current=2,type_count=16}];
+#forall "integer operations admit two integers of one type, rotations two words; a checked one returns an optional" variant:0..<143 {
+  nodes:[12]CK_Node;types:[24]CK_Type;locals:[8]CK_Local;errors:[4]CK_Error;bytes:[1024]u8;state:=[1]CK_State.[CK_State.{current=2,type_count=16}];
   c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
   for i:0..<16 {types[i]=CK_builtin(i);}
-  names:=[5]string.["add_wrap","sub_wrap","mul_wrap","rotl","rotr"];
-  op:=variant%5;v:=variant/5;
-  ts:=[10]int.[15,14,11,6,12,15,15,15,14,15];
-  CK_declare(c,"a",ts[v],CK_Loc.{},"");CK_declare(c,"b",ifx v==8 then 15 else ts[v],CK_Loc.{},"");
+  names:=[11]string.["add_wrap","sub_wrap","mul_wrap","rotl","rotr","add_checked","sub_checked","mul_checked","add_sat","sub_sat","mul_sat"];
+  codes:=[11]u32.[7,8,9,10,11,14,15,16,17,18,19];
+  op:=variant%11;v:=variant/11;rotate:=op==3 || op==4;checked:=op>=5 && op<=7;
+  // a and b: 0 u64, 1 u32, 2 int, 3 f32, 4 u8, 5 a missing, 6 no operands, 7 three, 8 u64 and u32,
+  // 9 b missing, 10 the literal 7 and a u8, 11 the literal 300 and a u8, 12 a u8 and the literal 7
+  ts:=[13]int.[15,14,11,6,12,15,15,15,15,15,12,12,12];
+  CK_declare(c,"a",ts[v],CK_Loc.{},"");CK_declare(c,"b",ifx v==8 then 14 else ts[v],CK_Loc.{},"");
   nodes[2]=CK_Node.{kind=CK_Tag.expr_call,name=names[op],head=3,tail=4};
   nodes[3]=CK_Node.{kind=CK_Tag.expr_ident,name="a",next=4};nodes[4]=CK_Node.{kind=CK_Tag.expr_ident,name="b"};
   if v==5 {nodes[3].name="missing";}
   if v==6 {nodes[2].head=CK_NONE;nodes[2].tail=CK_NONE;}
   if v==7 {nodes[4].next=5;nodes[2].tail=5;nodes[5]=CK_Node.{kind=CK_Tag.expr_ident,name="a"};}
   if v==9 {nodes[4].name="missing";}
+  if v==10 || v==11 {nodes[3]=CK_Node.{kind=CK_Tag.expr_int,value=ifx v==10 then cast(u64)7 else cast(u64)300,next=4};}
+  if v==12 {nodes[4]=CK_Node.{kind=CK_Tag.expr_int,value=7};}
   t:=CK_call(c,2,CK_Hint.{});
-  #assert CK_byte_intrinsic(names[op])==cast(u32)(7+op) && nodes[2].byte_intrinsic==cast(u32)(7+op);
-  if v<2 {#assert t==ts[v] && state[0].error_count==0;}
+  #assert CK_byte_intrinsic(names[op])==codes[op] && nodes[2].byte_intrinsic==codes[op];
+  ok:=v<2 || ((v==2 || v==4 || v==10 || v==12) && !rotate);
+  if ok && checked {#assert types[t].kind==CK_Kind.optional && types[t].elem==ts[v] && state[0].error_count==0;}
+  else if ok {#assert t==ts[v] && state[0].error_count==0;}
   else {#assert t==CK_NONE && state[0].error_count==1;}
-  if v==2 || v==3 || v==4 {#assert errors[0].code=="E0378" && errors[0].message=="wrapping operations take matching u32 or u64 operands";}
-  if v==8 {#assert errors[0].code=="E0378" && errors[0].message=="wrapping operand widths must match";}
-  if v==5 || v==9 {#assert errors[0].code!="E0378";}
+  if v==10 && !rotate {#assert nodes[3].type==12;}
+  if (v==2 || v==4 || v==10 || v==12 || v==3) && rotate {#assert errors[0].code=="E0378" && errors[0].message=="rotations take matching u32 or u64 operands";}
+  if v==3 && !rotate {#assert errors[0].code=="E0378" && errors[0].message==CK_join2(c,names[op]," takes two integers of one type");}
+  if v==8 {#assert errors[0].code=="E0378" && errors[0].message==CK_join2(c,names[op]," operands must have one type, found u64 and u32");}
+  if v==5 || v==9 || v==11 {#assert errors[0].code!="E0378";}
   if v==6 || v==7 {#assert errors[0].code=="E0378" && errors[0].message=="wrong byte intrinsic argument count";}
+}
+#forall "a checked operation's expected optional types an untyped first operand" variant:0..<6 {
+  nodes:[12]CK_Node;types:[24]CK_Type;locals:[8]CK_Local;errors:[4]CK_Error;bytes:[1024]u8;state:=[1]CK_State.[CK_State.{current=2,type_count=16}];
+  c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+  for i:0..<16 {types[i]=CK_builtin(i);}
+  names:=[6]string.["add_checked","sub_checked","mul_checked","add_sat","add_wrap","rotl"];
+  want:=CK_sum_type(c,CK_Kind.optional,13,0,CK_Loc.{});if variant>=3 {want=13;}if variant==5 {want=14;}
+  nodes[2]=CK_Node.{kind=CK_Tag.expr_call,name=names[variant],head=3,tail=4};
+  nodes[3]=CK_Node.{kind=CK_Tag.expr_int,value=5,next=4};nodes[4]=CK_Node.{kind=CK_Tag.expr_int,value=6};
+  t:=CK_call(c,2,CK_Hint.{type=want});
+  expected:=13;if variant==5 {expected=14;}
+  #assert state[0].error_count==0 && nodes[3].type==expected && nodes[4].type==expected;
+  if variant<3 {#assert t==want;}else {#assert t==expected;}
+  // with no expected type both literals are ints, which a rotation refuses
+  nodes[3]=CK_Node.{kind=CK_Tag.expr_int,value=5,next=4};nodes[4]=CK_Node.{kind=CK_Tag.expr_int,value=6};
+  u:=CK_call(c,2,CK_Hint.{});
+  #assert nodes[3].type==11 && nodes[4].type==11;
+  if variant<3 {#assert types[u].kind==CK_Kind.optional && types[u].elem==11 && state[0].error_count==0;}
+  if variant==3 || variant==4 {#assert u==11 && state[0].error_count==0;}
+  if variant==5 {#assert u==CK_NONE && state[0].error_count==1;}
+  // a checked operation's plain integer expectation is not its operands' type: an int optional
+  if variant<3 {
+    nodes[3]=CK_Node.{kind=CK_Tag.expr_int,value=5,next=4};nodes[4]=CK_Node.{kind=CK_Tag.expr_int,value=6};
+    w:=CK_call(c,2,CK_Hint.{type=13});
+    #assert nodes[3].type==11 && types[w].kind==CK_Kind.optional && types[w].elem==11;
+  }
+}
+#forall "plain + - * on a #counter field is E0840, through casts and indexes; other fields and operators are not" variant:0..<120 {
+  nodes:[48]CK_Node;types:[24]CK_Type;locals:[8]CK_Local;errors:[4]CK_Error;bytes:[1024]u8;state:=[1]CK_State.[CK_State.{current=2,type_count=18,used=23}];
+  c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+  for i:0..<16 {types[i]=CK_builtin(i);}
+  types[16]=CK_Type.{kind=CK_Kind.struct_,name="S",decl=20,size=56,alignment=8};types[17]=CK_Type.{kind=CK_Kind.array,elem=11,length=4,size=32,alignment=8};
+  // S :: struct { m: int; n: int #counter; f: f32 #counter; k: [4] int #counter; }
+  nodes[20]=CK_Node.{kind=CK_Tag.struct_,name="S",head=21,type=16};nodes[21]=CK_Node.{kind=CK_Tag.field,name="m",type=11,next=22};
+  nodes[22]=CK_Node.{kind=CK_Tag.field,name="n",type=11,op=1,next=23};nodes[23]=CK_Node.{kind=CK_Tag.field,name="f",type=6,op=1,next=19};nodes[19]=CK_Node.{kind=CK_Tag.field,name="k",type=17,op=1};
+  CK_declare(c,"s",16,CK_Loc.{},"");
+  // node 1 reads the counter s.n, so a compound assignment that looked past its own place would see it
+  nodes[1]=CK_Node.{kind=CK_Tag.expr_field,name="n",a=5,field_index=1};
+  ops:=[5]u32.[34,35,36,37,38];op:=ops[variant%5];shape:=(variant/5)%6;assign:=variant>=60;right:=variant%2==1 && !assign;
+  // shape: 0 s.n, 1 s.m, 2 cast(int) s.n, 3 s.k[1], 4 s.f, 5 the literal 2
+  names:=[6]string.["n","m","n","k","f","n"];
+  nodes[5]=CK_Node.{kind=CK_Tag.expr_ident,name="s"};nodes[3]=CK_Node.{kind=CK_Tag.expr_field,name=names[shape],a=5};place:=3;
+  if shape==2 {nodes[7]=CK_Node.{kind=CK_Tag.expr_cast,a=3,d=6};nodes[6]=CK_Node.{kind=CK_Tag.type_named,name="int"};place=7;}
+  if shape==3 {nodes[8]=CK_Node.{kind=CK_Tag.expr_index,a=3,b=9};nodes[9]=CK_Node.{kind=CK_Tag.expr_int,value=1};place=8;}
+  if shape==5 {nodes[3]=CK_Node.{kind=CK_Tag.expr_int,value=2};}
+  float:=shape==4;
+  nodes[4]=CK_Node.{kind=CK_Tag.expr_int,value=1};if float {nodes[4]=CK_Node.{kind=CK_Tag.expr_float,floating=0x3ff0000000000000};}
+  if assign {
+    if shape==2 || shape==5 {place=3;nodes[3]=CK_Node.{kind=CK_Tag.expr_field,name="n",a=5};}
+    nodes[2]=CK_Node.{kind=CK_Tag.stmt_assign,c=place,a=4,op=op-10};CK_stmt(c,2);
+  }else {
+    nodes[2]=CK_Node.{kind=CK_Tag.expr_binary,op=op,a=ifx right then 4 else place,b=ifx right then place else 4};
+    ignored:=CK_binary(c,2,CK_Hint.{});
+  }
+  counter:=(shape==0 || shape==2 || shape==3 || (shape==5 && assign)) && op<=36;
+  if float && op==38 {#assert state[0].error_count==1 && errors[0].code!="E0840";}
+  else if counter {
+    forms:=[3]string.["add","sub","mul"];k:=forms[cast(int)(op-34)];field:=names[shape];
+    #assert state[0].error_count==1 && errors[0].code=="E0840" && errors[0].message==CK_join3(c,CK_join3(c,"plain ",CK_op(op)," on the counter '"),field,"'");
+    #assert errors[0].fix==CK_join3(c,CK_join2(c,k,"_checked(a, b), "),CK_join2(c,k,"_sat(a, b) or "),CK_join2(c,k,"_wrap(a, b)"));
+  }else {#assert state[0].error_count==0;}
+}
+#test "the counter of a read: only a struct's field declared #counter, through indexes and casts" {
+  nodes:[24]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{type_count=19,used=23}];
+  c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};
+  for i:0..<16 {types[i]=CK_builtin(i);}
+  types[16]=CK_Type.{kind=CK_Kind.struct_,decl=10};types[17]=CK_Type.{kind=CK_Kind.view,elem=16};types[18]=CK_Type.{kind=CK_Kind.struct_,decl=14};
+  // struct 16: a, then the counter b; struct 18: the counter p (node 1), then q
+  nodes[10]=CK_Node.{kind=CK_Tag.struct_,head=11};nodes[11]=CK_Node.{kind=CK_Tag.field,name="a",next=12};nodes[12]=CK_Node.{kind=CK_Tag.field,name="b",op=1};
+  nodes[14]=CK_Node.{kind=CK_Tag.struct_,head=1};nodes[1]=CK_Node.{kind=CK_Tag.field,name="p",op=1,next=15};nodes[15]=CK_Node.{kind=CK_Tag.field,name="q"};
+  nodes[20]=CK_Node.{kind=CK_Tag.expr_ident,type=16};nodes[16]=CK_Node.{kind=CK_Tag.expr_ident,type=18};
+  nodes[2]=CK_Node.{kind=CK_Tag.expr_field,name="b",a=20,field_index=1};nodes[3]=CK_Node.{kind=CK_Tag.expr_field,name="a",a=20,field_index=0};
+  nodes[4]=CK_Node.{kind=CK_Tag.expr_cast,a=2};nodes[5]=CK_Node.{kind=CK_Tag.expr_index,a=4};nodes[6]=CK_Node.{kind=CK_Tag.expr_field,name="b",a=7,field_index=1};
+  nodes[7]=CK_Node.{kind=CK_Tag.expr_ident,type=17};nodes[8]=CK_Node.{kind=CK_Tag.expr_field,name="count",a=16,field_index= -2};
+  nodes[9]=CK_Node.{kind=CK_Tag.expr_field,name="c",a=20,field_index=2};nodes[13]=CK_Node.{kind=CK_Tag.expr_binary,name="b",a=20,field_index=1};
+  nodes[17]=CK_Node.{kind=CK_Tag.expr_field,name="p",a=16,field_index=0};nodes[18]=CK_Node.{kind=CK_Tag.expr_field,name="q",a=16,field_index=1};
+  nodes[19]=CK_Node.{kind=CK_Tag.expr_field,name="p",a=16,field_index= -1};
+  #assert CK_counter(c,2)=="b" && CK_counter(c,3)=="" && CK_counter(c,4)=="b" && CK_counter(c,5)=="b";
+  #assert CK_counter(c,6)=="" && CK_counter(c,8)=="" && CK_counter(c,9)=="" && CK_counter(c,13)=="" && CK_counter(c,0)=="";
+  #assert CK_counter(c,17)=="p" && CK_counter(c,18)=="" && CK_counter(c,19)=="";
+  nodes[12].op=2;#assert CK_counter(c,2)=="";
 }
 #forall "mul_wide admits two u64 values and returns its named pair" variant:0..<12 {
  nodes:[16]CK_Node;types:[17]CK_Type;locals:[8]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{current=2,type_count=17}];
