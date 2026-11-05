@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent capacity-diagnostic oracle using authored limits and emitted JSON).
 """Capacity refusals and near-limit notes name the resource, its limit and use,
 the top consumers with their source locations, and one reduction (#12926).
 
