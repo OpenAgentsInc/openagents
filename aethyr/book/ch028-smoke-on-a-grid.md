@@ -1,6 +1,7 @@
 # 28. Smoke on a grid
 
 > **Status: partly implemented.** [`aethyr/sim/grid-fluid.coax`](../../aethyr/sim/grid-fluid.coax)
+> (996 mutants: 963 killed, 33 marked equivalent with their reason)
 > runs stable fluids on a 2D MAC grid on the CPU in f64 (profile
 > `stable-fluids-2d-f64-v1`): semi-Lagrangian advection, implicit viscosity
 > and pressure projection, both by preconditioned conjugate gradients with
