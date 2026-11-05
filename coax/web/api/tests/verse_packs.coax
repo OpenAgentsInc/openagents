@@ -1,0 +1,194 @@
+// Private human packs' API checks (verse_packs.c, 0117_verse_pack_sessions.sql), run by test.sh after
+// test.py: a session a visitor, its bytes once under the session's own key, never the stored bytes or
+// the plain pack, no-store, and the hourly and daily limits. test.sh makes the pack (VERSE_PACK_DIR: the
+// plain pack and the object stored as upload_packs.sh stores it) and the manifest (OA_VERSE_PACKS); the
+// bucket is a fake on VERSE_GCS_PORT, this program in its `bucket` mode, which logs what it was asked.
+//   API=... PGURL=... PSQL=... VERSE_PACK_DIR=... VERSE_GCS_PORT=... coax/web/tool.sh coax/web/api/tests/verse_packs.coax
+//   coax/web/tool.sh coax/web/api/tests/verse_packs.coax bucket PORT OBJECT SHA256 DIR   (the fake bucket)
+#load "api_harness.coax";
+#load "../../../lib/image/inflate.coax";
+
+VP_MAX :: 1048576;
+
+// The fake bucket: GET /storage/v1/b/verse-test/o/packs%2FSHA?alt=media with the service's token answers the
+// object; anything else is a 404. Each request's path and Authorization go to DIR/asked, a line each
+// (PATH TAB AUTH). It stops when DIR/stop exists.
+vb_main :: (port: int, object_path: string, sha: string, dir: string) -> int {
+  object: [VP_MAX] u8; on := fs_read(object_path, object[..]);
+  if on < 0 { tool_errln("verse_packs bucket: no object"); return 1; }
+  listener := cxsock_listen(port);
+  if listener < 0 { tool_errln("verse_packs bucket: can't listen"); return 1; }
+  pb: [1100] u8; ready := fs_write(fs_join(dir, "ready", pb[..]), "1");
+  ab: [1100] u8; asked := fs_join(dir, "asked", ab[..]);
+  sp: [1100] u8; stop := fs_join(dir, "stop", sp[..]);
+  want: [1] Sb; sb(want[..], "/storage/v1/b/verse-test/o/packs%2F"); sb(want[..], sha); sb(want[..], "?alt=media");
+  req: [65536] u8;
+  while !fs_exists(stop) {
+    h := cxsock_accept(listener, 50);
+    if h < 0 { continue; }
+    used := 0; end := -1; deadline := proc_now_ms() + 5000;
+    while end < 0 && proc_now_ms() < deadline {
+      n := cxsock_read(h, 100);
+      if n == -2 { continue; }
+      if n < 0 || used + n > req.count { break; }
+      for i: 0..<n { req[used + i] = cast,trunc(u8) cxsock_byte(h, i); }
+      used += n;
+      if used >= 4 { for i: 0..<used - 3 { if end < 0 && req[i] == '\r' && req[i + 1] == '\n' && req[i + 2] == '\r' && req[i + 3] == '\n' { end = i + 4; } } }
+    }
+    if end < 0 { c := cxsock_close(h); continue; }
+    head := cast(string) req[0..<end];
+    sp1 := 0; while sp1 < head.count && head[sp1] != ' ' { sp1 += 1; }
+    sp2 := sp1 + 1; while sp2 < head.count && head[sp2] != ' ' && head[sp2] != '\r' { sp2 += 1; }
+    path := ifx sp2 <= head.count && sp1 < head.count then head[sp1 + 1..<sp2] else "";
+    auth := vb_header(head, "Authorization");
+    line: [1] Sb; sb(line[..], path); sb(line[..], "\t"); sb(line[..], auth); sb(line[..], "\n");
+    logged := fs_append(asked, sb_text(line[..]));
+    ok := path == sb_text(want[..]) && auth == "Bearer test-gcs";
+    s: [1] Sb;
+    if ok { sb(s[..], "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: "); sb_int(s[..], on); sb(s[..], "\r\n\r\n"); }
+    else { sb(s[..], "HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: 0\r\n\r\n"); }
+    good := true;
+    for c: sb_text(s[..]) { if good && cxsock_write(h, cast(int) c) != 0 { good = false; } }
+    if ok { for i: 0..<on { if good && cxsock_write(h, cast(int) object[i]) != 0 { good = false; } } }
+    if good { f := cxsock_flush(h, 5000); }
+    c := cxsock_close(h);
+  }
+  c := cxsock_close(listener);
+  return 0;
+}
+vb_header :: (head: string, name: string) -> string {
+  at := 0;
+  for i: 0..<head.count {
+    if head[i] != '\n' { continue; }
+    line := head[at..<i]; at = i + 1;
+    if line.count > 0 && line[line.count - 1] == '\r' { line = line[0..<line.count - 1]; }
+    if line.count > name.count && line[name.count] == ':' && http_same(line[0..<name.count], name) { return http_trim(line[name.count + 1..<line.count]); }
+  }
+  return "";
+}
+
+// A pack session for name from ip; its status, the answer in ap_body.
+vp_session :: (t: [] Ap, name: string, ip: string) -> int {
+  p: [1] Sb; sb(p[..], "/api/verse/packs/"); sb(p[..], name);
+  x: [1] Sb; sb(x[..], "X-Forwarded-For: "); sb(x[..], ip); sb(x[..], ", 130.211.0.1");
+  h := [1] string.[sb_text(x[..])];
+  return ap_call(t, "POST", sb_text(p[..]), "", h[..]);
+}
+// a contains b's first 64 bytes somewhere.
+vp_holds :: (a: string, b: string) -> bool { return b.count >= 64 && ap_has(a, b[0..<64]); }
+// The session's bytes opened with its key and iv (openssl's AES-256-CTR, as test.sh sealed them), then
+// gunzipped: the plain pack's length in out, or -1.
+vp_open :: (body: string, key: string, iv: string, out: [] u8) -> int {
+  db: [4096] u8; d := fs_temp("verse-packs", db[..]);
+  ib: [4200] u8; in := fs_join(d, "in", ib[..]);
+  ob: [4200] u8; outp := fs_join(d, "out", ob[..]);
+  if d == "" || !fs_write(in, body) { return -1; }
+  a := [11] string.["openssl", "enc", "-d", "-aes-256-ctr", "-K", key, "-iv", iv, "-in", in, "-out"];
+  argv: [12] string; for i: 0..<11 { argv[i] = a[i]; } argv[11] = outp;
+  o: [256] u8; e: [4096] u8;
+  r := proc_run(argv[..], 30000, o[..], e[..]);
+  gz: [VP_MAX] u8; n := ifx r.status == 0 then fs_read(outp, gz[..]) else -1;
+  gone := fs_remove(d);
+  // gzip -n: the 10-byte header with no flags, then raw DEFLATE
+  if n < 18 || gz[0] != 31 || gz[1] != 139 || gz[2] != 8 || gz[3] != 0 { return -1; }
+  return inflate(gz[10..<n - 8], out);
+}
+vp_checks :: (t: [] Ap, dir: string) {
+  out: [4096] u8; pb: [4200] u8;
+  plain: [VP_MAX] u8; pn := fs_read(fs_join(dir, "plain", pb[..]), plain[..]);
+  object: [VP_MAX] u8; on := fs_read(fs_join(dir, "object", pb[..]), object[..]);
+  if pn <= 0 || on <= 0 { ap_check(t, "the made pack is in VERSE_PACK_DIR", false, dir); return; }
+  P := cast(string) plain[0..<pn]; O := cast(string) object[0..<on];
+  digest: [32] u8; sh := sha256_hash(plain[0..<pn], digest[..]);
+  shab: [64] u8; sha := ap_lower_hex(digest[..], shab[..]);
+
+  ap_do(t, "DELETE FROM verse.pack_sessions");
+  st := vp_session(t, "test-human", "203.0.113.7");
+  s: [8192] u8; sn := t[0].n; for i: 0..<sn { s[i] = t[0].out[i]; }
+  S := cast(string) s[0..<sn];
+  kb: [128] u8; key := ap_member(S, "key", kb[..]);
+  ivb: [128] u8; iv := ap_member(S, "iv", ivb[..]);
+  hb: [128] u8; ub: [512] u8; url := ap_member(S, "url", ub[..]);
+  ap_check(t, "a pack session answers its key, digest and sizes", st == 200 && key.count == 64 && ap_ends(iv, "0000000000000000")
+           && ap_member(S, "sha256", hb[..]) == sha && ap_member_int(S, "bytes", -1) == pn && ap_member_int(S, "size", -1) == on && ap_member_int(S, "expires", -1) == 120, S);
+  ap_check(t, "a pack session is never cached", ap_has(ap_header(t, "Cache-Control"), "no-store"), ap_header(t, "Cache-Control"));
+  st = ap_call(t, "GET", url, "", none_of(t));
+  body: [VP_MAX] u8; bn := t[0].n; for i: 0..<bn { body[i] = t[0].out[i]; }
+  B := cast(string) body[0..<bn];
+  why: [1] Sb; sb_int(why[..], st); sb(why[..], " "); sb(why[..], ap_header(t, "Cache-Control")); sb(why[..], " "); sb_int(why[..], bn);
+  ap_check(t, "the session's bytes arrive once, no-store", st == 200 && ap_has(ap_header(t, "Cache-Control"), "no-store") && bn == on, sb_text(why[..]));
+  ap_check(t, "the bytes are neither the stored object nor the pack", B != O && !vp_holds(B, P) && !vp_holds(B, O), "");
+  opened: [VP_MAX] u8; got := ifx st == 200 then vp_open(B, key, iv, opened[..]) else -1;
+  od: [32] u8; ohex: [64] u8; same := false;
+  if got >= 0 { r := sha256_hash(opened[0..<got], od[..]); same = ap_lower_hex(od[..], ohex[..]) == sha && got == ap_member_int(S, "bytes", -2); }
+  ap_check(t, "the session's key opens them to the pack, digest and all", same, "");
+  ap_check(t, "a session's bytes come once", ap_call(t, "GET", url, "", none_of(t)) == 410, ap_body(t));
+  ap_check(t, "an unknown session is gone", ap_call(t, "GET", "/api/verse/packs/fetch/00000000000000000000000000000000", "", none_of(t)) == 410
+           && ap_call(t, "GET", "/api/verse/packs/fetch/x/../../y", "", none_of(t)) == 410, ap_body(t));
+  ap_check(t, "an unknown pack is a 404", vp_session(t, "no-such", "203.0.113.7") == 404 && vp_session(t, "Bad_Name", "203.0.113.7") == 404, ap_body(t));
+  ap_check(t, "the routes take their own methods", ap_call(t, "GET", "/api/verse/packs/test-human", "", none_of(t)) == 405 && ap_call(t, "POST", url, "", none_of(t)) == 405, ap_body(t));
+  st2 := vp_session(t, "test-human", "203.0.113.7");
+  k2b: [128] u8; key2 := ap_member(ap_body(t), "key", k2b[..]);
+  u2b: [512] u8; url2 := ap_member(ap_body(t), "url", u2b[..]);
+  st3 := vp_session(t, "test-human", "203.0.113.8");
+  k3b: [128] u8; key3 := ap_member(ap_body(t), "key", k3b[..]);
+  ap_check(t, "each session has its own key", st2 == 200 && key2 != key && key3 != "" && key3 != key && key3 != key2, "");
+  slash := url2.count; while slash > 0 && url2[slash - 1] != '/' { slash -= 1; }
+  q: [1] Sb; sb(q[..], "UPDATE verse.pack_sessions SET at = now() - interval '121 seconds' WHERE sid = '"); sb(q[..], url2[slash..<url2.count]); sb(q[..], "'");
+  ap_do(t, sb_text(q[..]));
+  ap_check(t, "a session past its two minutes is gone", ap_call(t, "GET", url2, "", none_of(t)) == 410, ap_body(t));
+  ap_check(t, "an address's third session this hour is given", vp_session(t, "test-human", "203.0.113.7") == 200, ap_body(t));
+  st = vp_session(t, "test-human", "203.0.113.7");
+  eb: [512] u8;
+  ap_check(t, "an address gets no fourth session this hour (OA_VERSE_PACK_PER_HOUR)", st == 429 && ap_has(ap_member(ap_body(t), "error", eb[..]), "hour"), ap_body(t));
+  ap_check(t, "the address is kept only as its digest", ap_sql(t, "SELECT count(*) FROM verse.pack_sessions WHERE ip_sha256 LIKE '203.%'", out[..]) == "0"
+           && ap_sql(t, "SELECT count(*) FROM verse.pack_sessions WHERE ip_sha256 = encode(sha256('203.0.113.7'::bytea), 'hex')", out[..]) == "3", "");
+  ap_do(t, "INSERT INTO verse.pack_sessions (sid, ip_sha256, pack, bytes, fetched_at) VALUES ('budget', 'x', 'test-human', 40000000000, now())");
+  st = vp_session(t, "test-human", "203.0.113.9");
+  ap_check(t, "the day's budget stops new sessions (OA_VERSE_PACK_DAILY_GB)", st == 429 && ap_has(ap_member(ap_body(t), "error", eb[..]), "budget"), ap_body(t));
+  ap_do(t, "DELETE FROM verse.pack_sessions");
+}
+none_of :: (t: [] Ap) -> [] string { return t[0].no[0..<0]; }
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) { return 2; }
+  if args_count(a[..]) >= 1 && args_at(a[..], 0) == "bucket" {
+    if args_count(a[..]) != 5 { tool_errln("verse_packs bucket PORT OBJECT SHA256 DIR"); return 2; }
+    return vb_main(ap_whole(args_at(a[..], 1)), args_at(a[..], 2), args_at(a[..], 3), args_at(a[..], 4));
+  }
+  t: [1] Ap;
+  if !ap_open(t[..]) { return 2; }
+  db: [4096] u8; dir := proc_getenv("VERSE_PACK_DIR", db[..]);
+  gp: [32] u8; port := proc_getenv("VERSE_GCS_PORT", gp[..]);
+  if dir == "" || port == "" { tool_errln("verse_packs: VERSE_PACK_DIR and VERSE_GCS_PORT come from test.sh"); return 2; }
+  // the bucket, with the stored object under the plain pack's digest
+  pb: [4200] u8; plain: [VP_MAX] u8; pn := fs_read(fs_join(dir, "plain", pb[..]), plain[..]);
+  digest: [32] u8; sh := sha256_hash(plain[0..<ifx pn > 0 then pn else 0], digest[..]);
+  shab: [64] u8; sha := ap_lower_hex(digest[..], shab[..]);
+  wb: [4096] u8; work := fs_temp("verse-bucket", wb[..]);
+  ob: [4200] u8; object := fs_join(dir, "object", ob[..]);
+  ba := [7] string.["coax/web/tool.sh", "coax/web/api/tests/verse_packs.coax", "bucket", port, object, sha, work];
+  h := proc_new(); ok := h >= 0;
+  for x: ba { ok = ok && proc_arg(h, x); }
+  started := ok && proc_start(h) == 0;
+  rb: [4200] u8; ready := fs_join(work, "ready", rb[..]);
+  deadline := proc_now_ms() + 300000;
+  while started && !fs_exists(ready) && proc_now_ms() < deadline && proc_wait(h, 0) == PROC_RUNNING { proc_sleep(50); }
+  if !started || !fs_exists(ready) { ap_check(t[..], "the fake bucket listens", false, port); return ap_done(t[..], "verse pack checks"); }
+  vp_checks(t[..], dir);
+  sb_: [4200] u8; stopped := fs_write(fs_join(work, "stop", sb_[..]), "1");
+  w := proc_wait(h, 5000); r := proc_release(h);
+  // the bucket was asked with the service's token
+  ab: [4200] u8; asked: [65536] u8; an := fs_read(fs_join(work, "asked", ab[..]), asked[..]);
+  all := an > 0; at := 0;
+  for i: 0..<an {
+    if asked[i] != '\n' { continue; }
+    line := cast(string) asked[at..<i]; at = i + 1;
+    tab := 0; while tab < line.count && line[tab] != '\t' { tab += 1; }
+    if tab >= line.count || line[tab + 1..<line.count] != "Bearer test-gcs" { all = false; }
+  }
+  ap_check(t[..], "the bucket was asked with the service's token", all, cast(string) asked[0..<ifx an > 0 then an else 0]);
+  gone := fs_remove(work);
+  return ap_done(t[..], "verse pack checks");
+}

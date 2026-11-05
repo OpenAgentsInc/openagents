@@ -90,8 +90,8 @@ export RESEND_PORT=$((48000 + RANDOM % 1000))
 export TOKENINFO_PORT=$((47000 + RANDOM % 1000))
 # /chat (test_zchat.py): its own runner on CHAT_PORT, a $1 daily cap.
 export CHAT_PORT=$((54000 + RANDOM % 1000))
-# Private human packs (test_verse_packs.py): a made-up pack, gzipped and stored under a key of its own
-# as upload_packs.sh does, served by a fake bucket on VERSE_GCS_PORT; three sessions an address an hour.
+# Private human packs (tests/verse_packs.coax): a made-up pack, gzipped and stored under a key of its own
+# as upload_packs.coax does, served by a fake bucket on VERSE_GCS_PORT; three sessions an address an hour.
 export VERSE_GCS_PORT=$((45000 + RANDOM % 1000)) VERSE_PACK_DIR="$work/verse-pack"
 mkdir -p "$VERSE_PACK_DIR"; head -c 300000 /dev/urandom > "$VERSE_PACK_DIR/plain"
 gzip -9 -n -c "$VERSE_PACK_DIR/plain" > "$VERSE_PACK_DIR/plain.gz"
@@ -121,6 +121,16 @@ API_LOG="$work/api.log" API="http://127.0.0.1:$api_port" PGURL="$OA_API_DATABASE
 # The CLI-caller checks are a Coax program: they need a compiler. A deploy's
 # fresh worktree has none of its own, so take the main checkout's.
 if [[ -x "$cli_coax" ]]; then
+  # The rooms' checks and the private packs' checks (tests/room_checks.coax, tests/verse_packs.coax).
+  # With ROOM_KEY and OA_ROOM_TICKET_KEY set to one key, the rooms' signed routes too; with ROOM_BIN as
+  # well, the vitals fault check. API_TESTS_ONLY runs them when it names them (room_checks.coax).
+  coax_failed=0
+  for f in room_checks verse_packs; do
+    [[ -z "${API_TESTS_ONLY:-}" || ",$API_TESTS_ONLY," == *",$f.coax,"* ]] || continue
+    (cd "$repo_root" && API="http://127.0.0.1:$api_port" PGURL="$OA_API_DATABASE" PSQL="$pg/bin/psql" COAX="$cli_coax" \
+      coax/web/tool.sh "coax/web/api/tests/$f.coax") || coax_failed=1
+  done
+  [[ $coax_failed == 0 ]] || { cat "$work/api.log"; exit 1; }
   ADMIN_SECRET_HEX="$(tr -d '\n' < "$ADMIN_KEY")" COAX="$cli_coax" "$here/cli-auth-test.sh" "http://127.0.0.1:$api_port" || { cat "$work/api.log"; exit 1; }
   # The shell only compiles platform entry points. Coax owns the selector,
   # all requests/assertions, bounded subprocesses and fixture cleanup.

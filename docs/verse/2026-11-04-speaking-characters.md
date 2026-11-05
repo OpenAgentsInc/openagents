@@ -245,7 +245,7 @@ recipe `verse/tools/humans/characters/everglade-mayor.json`, in git: names and n
 7. **Framing.** The cast file's `camera 0.62 -0.17` frames his head and shoulders. The tool passes
    it to the lab as `&cam=`. His eyes sit about 40% from the top, his chin about 65%, and his collar
    at the bottom edge. Other characters keep the default camera.
-8. **Upload.** `upload_packs.sh` puts it in the private bucket. This step is on hold while
+8. **Upload.** `upload_packs.coax` puts it in the private bucket. This step is on hold while
    production deploys are paused.
 
 ## Face rig work this needs

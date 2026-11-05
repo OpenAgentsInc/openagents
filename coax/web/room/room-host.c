@@ -658,7 +658,7 @@ static const char *api_url(const char *env, const char *path, char *buf, size_t 
 /* Players' HP, XP and WANTED between visits (room-vitals.coax, #12715, #12793, #12794): the outbox's
    next post, and its receipt when it comes. A request the poster's pipe dropped failed at once.
    --dev posts only when OA_ROOM_VITALS_URL names an API (the vitals check, coax/web/api/
-   test_room_vitals.py); otherwise the stand-in keeps the room's own notes (room-dev.coax). */
+   tests/room_checks.coax); otherwise the stand-in keeps the room's own notes (room-dev.coax). */
 static void vitals_post(void) {
   int64_t n = rm_vitals_due(view());
   if (n <= 0) return;

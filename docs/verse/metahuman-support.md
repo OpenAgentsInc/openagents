@@ -126,7 +126,7 @@ pack reaches a browser, what that protects against, and what it costs.
 
 ### The path
 
-1. **Upload (owner-run).** `verse/tools/humans/upload_packs.sh [NAME...]`
+1. **Upload (owner-run).** `coax/web/tool.sh verse/tools/humans/upload_packs.coax [--dry-run] [NAME...]`
    reads `~/.openagents/verse/private-build/web/NAME.pack`. It takes the
    pack's SHA-256, gzips it (`-9 -n`) and encrypts it under a fresh random
    key and iv (AES-256-CTR). It stores the result as
@@ -233,7 +233,7 @@ face pieces, the hair and the brows stay whole. The student's phone pack is
 14.4 MB against 40.2 MB, its face rig 3.2 MB against 12.0 MB. `host.js`
 asks a phone (a coarse pointer on a screen no wider than 820 px, or `?phone`;
 `?phone=0` never) for `NAME-phone` first and falls back to `NAME`.
-`upload_packs.sh` uploads both.
+`upload_packs.coax` uploads both.
 
 ### The old `verse-assets` service
 
@@ -624,7 +624,7 @@ levels coarser.
 | Shaders | `verse/gpu/human.coax` (skinned vertex, painterly and photoreal profiles, hair cards, impostors) | Public |
 | Broker | `coax/web/api/verse_packs.c` and migration `0117_verse_pack_sessions.sql` in `oa-api` (built) | Public. Its keys are in Secret Manager. |
 | Browser loader | `coax/web/host.js` `privatePack` (built): a session, its bytes, WebCrypto AES-CTR, gunzip, a SHA-256 check, then the pack's parts | Public |
-| Upload | `verse/tools/humans/upload_packs.sh` (built, owner-run) | Public. It names no asset. |
+| Upload | `verse/tools/humans/upload_packs.coax` (built, owner-run) | Public. It names no asset. |
 | Packs, DNA, maps, grooms, impostor atlases | `~/.openagents/verse/private-build/`, `gs://openagentsgemini-verse-private-assets/packs/` | **Private** |
 | Placements and reader grants | `~/.openagents/verse/private-assets.json`, the manifest's `readers` | **Private** |
 | Rules | Restore `docs/verse/private-assets.md` from `853417f290` with its MetaHuman section | Public |

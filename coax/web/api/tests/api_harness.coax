@@ -1,0 +1,187 @@
+// The harness for the API checks written in Coax that test.sh runs after test.py, against the same
+// throwaway Postgres and API (API, PGURL, PSQL, SIGN, ADMIN_KEY in the environment, as test.py has
+// them): a request over net/http.coax (no redirects followed), one psql statement's value, a player
+// minted for the check, the room server's HMAC-SHA256 signature (ROOM_KEY), a NIP-98 header from
+// test.sh's signer, and each check printed as test.py prints it ("  ok    NAME" or "  FAIL  NAME  WHY").
+// Loaded by room_checks.coax and verse_packs.coax.
+// tool.sh: tls
+#import "Basic";
+#load "../../../lib/sys/tool.coax";
+#load "../../../lib/sys/proc.coax";
+#load "../../../lib/sys/fs.coax";
+#load "../../../lib/net/http.coax";
+#load "../../../lib/json/json.coax";
+#load "../../../lib/crypto/hmac-memory.coax";
+#load "../../../lib/crypto/sha256-memory.coax";
+
+AP_TEXT :: 65536;
+AP_ENV :: 16384;
+
+// Text joined into a buffer.
+Sb :: struct { b: [AP_TEXT] u8; n: int; bad: bool; }
+sb :: (s: [] Sb, t: string) {
+  if s[0].bad || s[0].n + t.count > AP_TEXT { s[0].bad = true; return; }
+  for i: 0..<t.count { s[0].b[s[0].n + i] = t[i]; }
+  s[0].n += t.count;
+}
+sb_byte :: (s: [] Sb, c: u8) { if s[0].n >= AP_TEXT { s[0].bad = true; return; } s[0].b[s[0].n] = c; s[0].n += 1; }
+sb_int :: (s: [] Sb, v_in: int) {
+  v := v_in;
+  if v < 0 { sb_byte(s, '-'); v = -v; }
+  d: [24] u8; k := 0;
+  while true { d[k] = cast,trunc(u8) (48 + v % 10); k += 1; v /= 10; if v == 0 { break; } }
+  while k > 0 { k -= 1; sb_byte(s, d[k]); }
+}
+// A number with two decimals, as Python's "%.2f" of a positive value.
+sb_fixed2 :: (s: [] Sb, v: f64) {
+  c := cast(int) (v * 100.0 + 0.5);
+  sb_int(s, c / 100); sb_byte(s, '.'); sb_byte(s, cast,trunc(u8) (48 + (c / 10) % 10)); sb_byte(s, cast,trunc(u8) (48 + c % 10));
+}
+sb_text :: (s: [] Sb) -> string { return cast(string) s[0].b[0..<s[0].n]; }
+sb_clear :: (s: [] Sb) { s[0].n = 0; s[0].bad = false; }
+// The text of v, in out.
+ap_num :: (v: int, out: [] u8) -> string { s: [1] Sb; sb_int(s[..], v); for i: 0..<s[0].n { out[i] = s[0].b[i]; } return cast(string) out[0..<s[0].n]; }
+ap_whole :: (s: string) -> int {   // a decimal (with an optional -), or -1 when it isn't one
+  if s.count == 0 { return -1; }
+  neg := s[0] == '-'; v := 0; at := ifx neg then 1 else 0;
+  if at >= s.count { return -1; }
+  for i: at..<s.count { if s[i] < '0' || s[i] > '9' { return -1; } v = v * 10 + cast(int) (s[i] - '0'); }
+  return ifx neg then -v else v;
+}
+ap_trim :: (s: string) -> string {
+  a := 0; b := s.count;
+  while a < b && (s[a] == ' ' || s[a] == '\n' || s[a] == '\r' || s[a] == '\t') { a += 1; }
+  while b > a && (s[b - 1] == ' ' || s[b - 1] == '\n' || s[b - 1] == '\r' || s[b - 1] == '\t') { b -= 1; }
+  return s[a..<b];
+}
+ap_has :: (s: string, part: string) -> bool {
+  if part.count == 0 { return true; }
+  if part.count > s.count { return false; }
+  for i: 0..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return true; } }
+  return false;
+}
+ap_starts :: (s: string, p: string) -> bool { return s.count >= p.count && s[0..<p.count] == p; }
+ap_ends :: (s: string, p: string) -> bool { return s.count >= p.count && s[s.count - p.count..<s.count] == p; }
+ap_lower_hex :: (bytes: [] u8, out: [] u8) -> string {
+  digits := "0123456789abcdef";
+  for i: 0..<bytes.count { out[2 * i] = digits[cast(int) bytes[i] >> 4]; out[2 * i + 1] = digits[cast(int) bytes[i] & 15]; }
+  return cast(string) out[0..<2 * bytes.count];
+}
+
+Ap :: struct {
+  env: [AP_ENV] u8; env_n: int;
+  api: string; db: string; psql: string; sign: string; admin_key: string; room_key: string;
+  w: [1] HttpWork; out: [HTTP_BODY_MAX] u8; n: int; code: int;
+  q: [AP_TEXT] u8;
+  failed: int; checks: int; sql_bad: int;
+  no: [1] string;   // for no headers: no[0..<0]
+}
+ap_env :: (t: [] Ap, name: string) -> string {
+  got := proc_getenv(name, t[0].env[t[0].env_n..<AP_ENV]);
+  t[0].env_n += got.count;
+  return got;
+}
+// Reads the environment test.sh sets; false (and a line on stderr) when API, PGURL or PSQL is missing.
+ap_open :: (t: [] Ap) -> bool {
+  t[0].api = ap_env(t, "API"); t[0].db = ap_env(t, "PGURL"); t[0].psql = ap_env(t, "PSQL");
+  t[0].sign = ap_env(t, "SIGN"); t[0].admin_key = ap_env(t, "ADMIN_KEY"); t[0].room_key = ap_env(t, "ROOM_KEY");
+  if t[0].api == "" || t[0].db == "" || t[0].psql == "" { tool_errln("api checks: API, PGURL and PSQL come from coax/web/api/test.sh"); return false; }
+  return true;
+}
+ap_check :: (t: [] Ap, name: string, ok: bool, why: string) {
+  t[0].checks += 1;
+  if ok { print("  ok    %\n", name); return; }
+  t[0].failed += 1;
+  w := ifx why.count > 600 then why[0..<600] else why;
+  print("  FAIL  %  %\n", name, w);
+}
+ap_body :: (t: [] Ap) -> string { return cast(string) t[0].out[0..<t[0].n]; }
+ap_header :: (t: [] Ap, name: string) -> string { return http_header(cast(string) t[0].w[0].head[0..<t[0].w[0].head_n], name); }
+// One request to the API (a path) or to a full URL; its status (or -1 when it failed), the body in
+// ap_body and the head in ap_header.
+ap_call :: (t: [] Ap, method: string, path: string, body: string, headers: [] string) -> int {
+  url: [1] Sb;
+  if !ap_starts(path, "http://") { sb(url[..], t[0].api); }
+  sb(url[..], path);
+  got := http_do(t[0].w[..], method, sb_text(url[..]), headers, body, 30000, 0, t[0].out[..]);
+  t[0].n = got.n; t[0].code = ifx got.error == HTTP_OK then got.code else -1;
+  if got.error != HTTP_OK { t[0].n = 0; t[0].w[0].head_n = 0; }
+  return t[0].code;
+}
+ap_json :: (t: [] Ap, method: string, path: string, body: string) -> int {
+  h := [1] string.["Content-Type: application/json"];
+  return ap_call(t, method, path, body, h[..]);
+}
+// One statement's value (psql -At, stripped), in out; "" on an error (counted, and said on stderr).
+ap_sql :: (t: [] Ap, q: string, out: [] u8) -> string {
+  a := [8] string.[t[0].psql, "-XAt", "-v", "ON_ERROR_STOP=1", "--dbname", t[0].db, "-c", q];
+  err: [4096] u8;
+  got := proc_run(a[..], 60000, out, err[..]);
+  if got.status != 0 || got.timed_out || got.cut { t[0].sql_bad += 1; tool_err("api checks: sql failed: "); tool_errln(cast(string) err[0..<got.err_n]); return ""; }
+  return ap_trim(cast(string) out[0..<got.out_n]);
+}
+ap_do :: (t: [] Ap, q: string) { out: [4096] u8; r := ap_sql(t, q, out[..]); }
+// A JSON body's member at a path (json.coax's jv_path), as raw text: a string's between its quotes, unescaped.
+ap_member :: (text: string, path: string, out: [] u8) -> string {
+  nodes: [8192] JvNode; j: [1] Jv;
+  if !jv_parse(j[..], text, nodes[..]) { return ""; }
+  at := jv_path(j[0], 0, path);
+  if at < 0 { return ""; }
+  if jv_kind(j[0], at) == JV_STRING { n := jv_str(j[0], at, out); return ifx n < 0 then "" else cast(string) out[0..<n]; }
+  raw := jv_raw(j[0], at);
+  if raw.count > out.count { return ""; }
+  for i: 0..<raw.count { out[i] = raw[i]; }
+  return cast(string) out[0..<raw.count];
+}
+// The kind of a JSON body's member (JV_*), 0 when it is missing or the body isn't JSON.
+ap_kind :: (text: string, path: string) -> int {
+  nodes: [8192] JvNode; j: [1] Jv;
+  if !jv_parse(j[..], text, nodes[..]) { return 0; }
+  return jv_kind(j[0], jv_path(j[0], 0, path));
+}
+ap_member_int :: (text: string, path: string, fallback: int) -> int {
+  b: [64] u8; v := ap_member(text, path, b[..]);
+  n := ap_whole(v);
+  return ifx v == "" || (n == -1 && v != "-1") then fallback else n;
+}
+// A new player (POST /api/playtest/player): its key in key and its id (verse.players, by the key's digest) in id.
+Player :: struct { key: [128] u8; key_n: int; id: [64] u8; id_n: int; }
+pl_key :: (p: [] Player) -> string { return cast(string) p[0].key[0..<p[0].key_n]; }
+pl_id :: (p: [] Player) -> string { return cast(string) p[0].id[0..<p[0].id_n]; }
+ap_player :: (t: [] Ap, p: [] Player) -> bool {
+  p[0].key_n = 0; p[0].id_n = 0;
+  if ap_json(t, "POST", "/api/playtest/player", "{}") != 200 { return false; }
+  k := ap_member(ap_body(t), "key", p[0].key[..]); p[0].key_n = k.count;
+  q: [1] Sb; sb(q[..], "select id from verse.players where key_sha256 = encode(sha256(convert_to('"); sb(q[..], k); sb(q[..], "', 'UTF8')), 'hex')");
+  out: [256] u8; id := ap_sql(t, sb_text(q[..]), out[..]);
+  for i: 0..<id.count { p[0].id[i] = id[i]; }
+  p[0].id_n = id.count;
+  return k.count > 0 && id.count > 0;
+}
+// HMAC-SHA256 of text under ROOM_KEY, in hex (the room server's X-Room-Mac).
+ap_room_mac :: (t: [] Ap, text: string, out: [] u8) -> string {
+  mac: [32] u8; key: [1024] u8; body: [1] Sb;
+  rk := t[0].room_key;
+  for i: 0..<rk.count { key[i] = rk[i]; }
+  sb(body[..], text);
+  r := hmac_sha256(key[0..<rk.count], body[0].b[0..<body[0].n], mac[..]);
+  return ap_lower_hex(mac[..], out);
+}
+// A NIP-98 Authorization value for METHOD URL (and the body, when there is one) from test.sh's signer, keyed by keyfile.
+ap_nostr :: (t: [] Ap, keyfile: string, method: string, url: string, body: string, has_body: bool, out: [] u8) -> string {
+  dir: [1024] u8; d := fs_temp("api-sign", dir[..]);
+  path: [1100] u8; file := fs_join(d, "body", path[..]);
+  if has_body && !fs_write(file, body) { return ""; }
+  a := [6] string.[t[0].sign, "--key", keyfile, method, url, file];
+  err: [4096] u8;
+  got := proc_run(a[0..<ifx has_body then 6 else 5], 30000, out, err[..]);
+  gone := fs_remove(d);
+  if got.status != 0 { tool_errln(cast(string) err[0..<got.err_n]); return ""; }
+  return ap_trim(cast(string) out[0..<got.out_n]);
+}
+// The end: the count of failures as test.py's exit says it.
+ap_done :: (t: [] Ap, what: string) -> int {
+  if t[0].sql_bad > 0 { print("  FAIL  % sql statements failed\n", t[0].sql_bad); t[0].failed += 1; }
+  print("%: % checks, % failed\n", what, t[0].checks, t[0].failed);
+  return ifx t[0].failed > 0 then 1 else 0;
+}

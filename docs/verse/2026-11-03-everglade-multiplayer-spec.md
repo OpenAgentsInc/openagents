@@ -337,7 +337,7 @@ things change from a plain relay room:
   1,475 waiting. The page says `ALL ROOMS FULL · 58 WAITING · LAST WAIT 42S`
   and waits `retry_ms` plus up to a quarter more of jitter. The API counts
   refusals by reason (`full`, `rate`, `kicked`) and the asks seated after a
-  wait; `/admin/rooms` shows them as ADMISSION. `test_room_admission.py`
+  wait; `/admin/rooms` shows them as ADMISSION. `room_checks.coax admission`
   asks for 192 seats with 250 bots: 192 are seated, 58 wait and ask 3.5
   times a second, and a reconnect storm of the 192 keeps every seat.
 - HTTP presence uses the instance's name as its room, so the roster and the

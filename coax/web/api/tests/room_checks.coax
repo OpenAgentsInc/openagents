@@ -1,0 +1,825 @@
+// The rooms' API checks, run by test.sh after test.py against the same API and database:
+//   admission  when the rooms are full (#12796; migrations/0126_room_admission.sql, player.c room_ticket)
+//   chat       Everglade room chat's moderation (migrations/0121_room_chat_moderation.sql)
+//   events     Everglade's world event (#12738; migrations/0118_room_events.sql): the dials an admin
+//              sets, what everyone else may do with them, and oa-room's side of them
+//   invites    an INVITE holds a seat in the inviter's room (#12795; migrations/0125_room_invites.sql)
+//   stats      the rooms' vitals reports and the admins' room view (#12791; migrations/0123_room_stats.sql)
+//   vitals     room vitals receipts (#12793) and server-owned WANTED (#12794; migrations/0124_room_vital_receipts.sql)
+// Admission, invites, stats, vitals and oa-room's side of the event need the seat-ticket key: run test.sh
+// with ROOM_KEY and OA_ROOM_TICKET_KEY set to the same key. With ROOM_BIN (a room server built by
+// coax/web/room/build.sh) it also runs the vitals fault check: a raid in a room --dev whose vitals go to
+// the API through a proxy (this program's `proxy` mode) that answers 500 for 30 s mid-raid and then holds
+// two answers past the room's timeout; the API's XP must end exactly the XP each seat earned.
+//   ROOM_KEY=local-development-room-ticket-key-not-a-secret OA_ROOM_TICKET_KEY=$ROOM_KEY \
+//   ROOM_BIN=coax/web/room/bin/room coax/web/api/test.sh
+//   API=... PGURL=... PSQL=... SIGN=... ADMIN_KEY=... [ROOM_KEY=...] [ROOM_BIN=...] \
+//     coax/web/tool.sh coax/web/api/tests/room_checks.coax [admission|chat|events|invites|stats|vitals ...]
+// (from the repository root; no names runs them all, in that order).
+#load "api_harness.coax";
+
+cxproc_wall_us :: () -> int #foreign;
+rc_wall_ms :: () -> int { return cxproc_wall_us() / 1000; }
+
+// A JSON body's member, by path, compared with text (a string's text, or a number's or literal's raw text).
+rc_is :: (body: string, path: string, want: string) -> bool { b: [4096] u8; return ap_kind(body, path) != 0 && ap_member(body, path, b[..]) == want; }
+
+// ---- admission ----------------------------------------------------------------------------------------
+
+AD_BOTS :: 250;
+AdAnswer :: struct { st: int; room: [64] u8; room_n: int; retry_ms: int; waiting: int; last_wait: int; retry_after: int; }
+ad_room :: (a: [] AdAnswer, i: int) -> string { return cast(string) a[i].room[0..<a[i].room_n]; }
+ad_ask :: (t: [] Ap, key: string, i: int, out: [] AdAnswer, at: int) {
+  ph: [1] Sb; sb(ph[..], "X-Verse-Player: "); sb(ph[..], key);
+  xf: [1] Sb; sb(xf[..], "X-Forwarded-For: 10.9."); sb_int(xf[..], i / 256); sb_byte(xf[..], '.'); sb_int(xf[..], i % 256); sb(xf[..], ", 130.211.0.1");
+  h := [3] string.["Content-Type: application/json", sb_text(ph[..]), sb_text(xf[..])];
+  st := ap_call(t, "POST", "/api/playtest/room-ticket/evadm?realm=evadm", "{}", h[..]);
+  a := out[at..<at + 1];
+  a[0] = AdAnswer.{st = st, retry_ms = -1, waiting = -1, last_wait = -1, retry_after = -1};
+  body := ap_body(t);
+  if body.count > 0 && body[0] == '{' {
+    r := ap_member(body, "room", a[0].room[..]); a[0].room_n = r.count;
+    a[0].retry_ms = ap_member_int(body, "retry_ms", -1);
+    a[0].waiting = ap_member_int(body, "waiting", -1);
+    a[0].last_wait = ap_member_int(body, "last_wait_ms", -1);
+  }
+  ra := ap_header(t, "Retry-After");
+  a[0].retry_after = ifx ra == "" then -1 else ap_whole(ap_trim(ra));
+}
+rc_admission :: (t: [] Ap) {
+  out: [4096] u8; q: [1] Sb;
+  caps_b: [4096] u8; c0 := ap_sql(t, "select string_agg(shard || ':' || rooms_cap, ',' order by shard) from verse.room_shards", out[..]);
+  for i: 0..<c0.count { caps_b[i] = c0[i]; }
+  caps := cast(string) caps_b[0..<c0.count];
+  ap_do(t, "update verse.room_shards set rooms_cap = 2, free = null, at = null");
+  before := ap_whole(ap_sql(t, "select coalesce(sum(n), 0) from verse.room_admission where reason = 'full'", out[..]));
+  bots: [AD_BOTS] Player;
+  for i: 0..<AD_BOTS { ok := ap_player(t, bots[i..<i + 1]); }
+  answers: [AD_BOTS] AdAnswer;
+  for i: 0..<AD_BOTS { ad_ask(t, pl_key(bots[i..<i + 1]), i, answers[..], i); }
+  // the seats are holds until a shard reports them; kept for the rest of the check
+  ap_do(t, "update verse.room_holds h set until_ms = until_ms + 600000 from verse.room_instances i where h.code = i.code and i.realm = 'evadm'");
+  seated: [AD_BOTS] int; ns := 0; waiting: [AD_BOTS] int; nw := 0;
+  for i: 0..<AD_BOTS {
+    if answers[i].st == 200 { seated[ns] = i; ns += 1; }
+    if answers[i].st == 503 { waiting[nw] = i; nw += 1; }
+  }
+  why: [1] Sb; sb(why[..], "("); sb_int(why[..], ns); sb(why[..], ", "); sb_int(why[..], nw); sb(why[..], ")");
+  ap_check(t, "room-admission: 250 bots for 192 seats: 192 seated, 58 wait", ns == 192 && nw == 58, sb_text(why[..]));
+  ok := false;
+  if nw > 0 {
+    last := answers[waiting[nw - 1]];
+    ok = last.waiting == 58 && last.retry_ms == 5000 + 58 * 200 && last.retry_after == (5000 + 58 * 200 + 999) / 1000;
+  }
+  ap_check(t, "room-admission: a full answer says how many wait and when to ask again (and Retry-After)", ok, "");
+  // the waiting pages' next asks (each at its retry_ms): their answers set the steady rate
+  round2: [AD_BOTS] AdAnswer; rate := 0.0; all := true;
+  for j: 0..<nw {
+    i := waiting[j];
+    ad_ask(t, pl_key(bots[i..<i + 1]), i, round2[..], j);
+    if round2[j].st == 503 && round2[j].retry_ms > 0 { rate += 1000.0 / cast(f64) round2[j].retry_ms; } else { all = false; }
+  }
+  name: [1] Sb; sb(name[..], "room-admission: once all have asked, the 58 waiting pages ask "); sb_fixed2(name[..], rate); sb(name[..], " times a second, under the bound of 5");
+  ap_check(t, sb_text(name[..]), all && rate < 5.0, "");
+
+  // a reconnect storm: every seated bot asks again at once and keeps its room
+  again: [AD_BOTS] AdAnswer; kept := true;
+  for j: 0..<ns {
+    i := seated[j];
+    ad_ask(t, pl_key(bots[i..<i + 1]), i, again[..], j);
+    if again[j].st != 200 || ad_room(again[..], j) != ad_room(answers[..], i) { kept = false; }
+  }
+  ap_check(t, "room-admission: a reconnect storm of the 192 seated keeps every seat", kept, "");
+
+  // a seat frees: the next waiting bot is seated, and its wait is the last wait
+  if ns > 0 && nw > 2 {
+    gone_b: [64] u8; g := ad_room(answers[..], seated[0]); for i: 0..<g.count { gone_b[i] = g[i]; }
+    gone := cast(string) gone_b[0..<g.count];
+    sb_clear(q[..]); sb(q[..], "delete from verse.room_holds where pid = '"); sb(q[..], pl_id(bots[seated[0]..<seated[0] + 1])); sb(q[..], "'");
+    ap_do(t, sb_text(q[..]));
+    one: [1] AdAnswer;
+    w0 := waiting[0];
+    ad_ask(t, pl_key(bots[w0..<w0 + 1]), w0, one[..], 0);
+    ap_check(t, "room-admission: a freed seat goes to a waiting bot", one[0].st == 200 && ad_room(one[..], 0) == gone, ap_body(t));
+    w1 := waiting[1];
+    ad_ask(t, pl_key(bots[w1..<w1 + 1]), w1, one[..], 0);
+    ap_check(t, "room-admission: the next full answer names the last wait", one[0].st == 503 && one[0].waiting == 57 && one[0].last_wait >= 0, ap_body(t));
+  } else {
+    ap_check(t, "room-admission: a freed seat goes to a waiting bot", false, "no seated or waiting bots");
+    ap_check(t, "room-admission: the next full answer names the last wait", false, "no seated or waiting bots");
+  }
+
+  // one player key asking too often: 429 with a retry time
+  k: [1] Player; r := ap_player(t, k[..]);
+  got: [13] AdAnswer; early := true;
+  for j: 0..<13 { ad_ask(t, pl_key(k[..]), 9000, got[..], j); if j < 12 && got[j].st == 429 { early = false; } }
+  last := got[12];
+  ap_check(t, "room-admission: the 13th ask in a minute from one player is 429 with retry_ms and Retry-After",
+           early && last.st == 429 && last.retry_ms > 0 && last.retry_ms <= 60000 && last.retry_after >= 1, ap_body(t));
+  // one address asking for many players: limited at 120 a minute
+  many: [121] Player;
+  for j: 0..<121 { r = ap_player(t, many[j..<j + 1]); }
+  by: [1] AdAnswer; limited := 0; last_st := 0;
+  for j: 0..<121 { ad_ask(t, pl_key(many[j..<j + 1]), 7777, by[..], 0); if by[0].st == 429 { limited += 1; } last_st = by[0].st; }
+  why2: [1] Sb; sb_int(why2[..], limited);
+  ap_check(t, "room-admission: one address is limited at 120 asks a minute", limited == 1 && last_st == 429, sb_text(why2[..]));
+
+  // refusals counted by reason
+  if nw > 2 { w2 := waiting[2]; one: [1] AdAnswer; ad_ask(t, pl_key(bots[w2..<w2 + 1]), w2, one[..], 0); }   // writes the process's 429s with this 'full'
+  counts := ap_sql(t, "select reason || '|' || n from verse.room_admission", out[..]);
+  full := 0; rate_n := 0; after_wait := 0; at := 0;
+  for i: 0..<counts.count + 1 {
+    if i < counts.count && counts[i] != '\n' { continue; }
+    line := counts[at..<i]; at = i + 1;
+    bar := 0; while bar < line.count && line[bar] != '|' { bar += 1; }
+    if bar >= line.count { continue; }
+    reason := line[0..<bar]; n := ap_whole(line[bar + 1..<line.count]);
+    if reason == "full" { full = n; }
+    if reason == "rate" { rate_n = n; }
+    if reason == "seated after a wait" { after_wait = n; }
+  }
+  ap_check(t, "room-admission: refusals are counted by reason: full, rate, seated after a wait",
+           full - before >= 60 && rate_n >= 2 && after_wait >= 1, counts);
+
+  // back as the other checks found it
+  ap_do(t, "delete from verse.room_holds h using verse.room_instances i where h.code = i.code and i.realm = 'evadm'");
+  ap_do(t, "delete from verse.room_instances where realm = 'evadm'");
+  ap_do(t, "delete from verse.room_waiting");
+  at = 0;
+  for i: 0..<caps.count + 1 {
+    if i < caps.count && caps[i] != ',' { continue; }
+    kv := caps[at..<i]; at = i + 1;
+    colon := 0; while colon < kv.count && kv[colon] != ':' { colon += 1; }
+    if colon >= kv.count { continue; }
+    sb_clear(q[..]); sb(q[..], "update verse.room_shards set rooms_cap = "); sb(q[..], kv[colon + 1..<kv.count]); sb(q[..], " where shard = "); sb(q[..], kv[0..<colon]);
+    ap_do(t, sb_text(q[..]));
+  }
+}
+
+RC :: "/api/playtest/chat/everglade-9";
+RP :: "/api/playtest/presence/pair-chat-t1";
+EV :: "/api/playtest/room-event";
+
+// ---- chat ---------------------------------------------------------------------------------------------
+
+// A request as the chat checks make it: JSON, as a player (key) and an automation mark when given.
+rc_call :: (t: [] Ap, method: string, path: string, body: string, key: string, mark: string) -> int {
+  ph: [1] Sb; sb(ph[..], "X-Verse-Player: "); sb(ph[..], key);
+  mh: [1] Sb; sb(mh[..], "X-Verse-Automation: "); sb(mh[..], mark);
+  h: [3] string; n := 0;
+  h[n] = "Content-Type: application/json"; n += 1;
+  if key != "" { h[n] = sb_text(ph[..]); n += 1; }
+  if mark != "" { h[n] = sb_text(mh[..]); n += 1; }
+  return ap_call(t, method, path, body, h[0..<n]);
+}
+// The texts of a body's messages are exactly one line, text.
+rc_only :: (body: string, text: string) -> bool { return ap_kind(body, "messages") == JV_ARRAY && rc_count(body, "messages") == 1 && rc_is(body, "messages[0].text", text); }
+rc_count :: (body: string, path: string) -> int { nodes: [8192] JvNode; j: [1] Jv; if !jv_parse(j[..], body, nodes[..]) { return -1; } return jv_len(j[0], jv_path(j[0], 0, path)); }
+// The text of the room's chat line n.
+rc_line :: (t: [] Ap, room: string, n: string, out: [] u8) -> string {
+  q: [1] Sb; sb(q[..], "select text from verse.room_chat where room = '"); sb(q[..], room); sb(q[..], "' and n = "); sb(q[..], n);
+  return ap_sql(t, sb_text(q[..]), out);
+}
+rc_chat :: (t: [] Ap) {
+  a: [1] Player; b: [1] Player; r := ap_player(t, a[..]) && ap_player(t, b[..]);
+  out: [4096] u8; nb: [64] u8;
+  st := rc_call(t, "POST", RC, "{\"text\": \"Shit, a FUCKING mess, and Scunthorpe\"}", pl_key(a[..]), "");
+  n := ap_member(ap_body(t), "n", nb[..]);
+  ap_check(t, "a chat line's blocked words are masked, in any case", st == 200 && n != "" && rc_line(t, "everglade-9", n, out[..]) == "****, a ****ING mess, and S****horpe", ap_body(t));
+  st = rc_call(t, "POST", RC, "{\"text\": \"a fine line\"}", pl_key(a[..]), "");
+  n = ap_member(ap_body(t), "n", nb[..]);
+  ap_check(t, "a clean line is kept as said", st == 200 && n != "" && rc_line(t, "everglade-9", n, out[..]) == "a fine line", ap_body(t));
+
+  q: [1] Sb; sb(q[..], "insert into verse.room_kicks (player, by_who, until_ms, at_ms) values ('"); sb(q[..], pl_id(b[..])); sb(q[..], "', 'test', verse.now_ms() + 60000, verse.now_ms())");
+  ap_do(t, sb_text(q[..]));
+  st = rc_call(t, "POST", RC, "{\"text\": \"still here\"}", pl_key(b[..]), "");
+  ap_check(t, "a kicked player can't say a line, and is told until when", st == 403 && rc_is(ap_body(t), "error", "kicked") && ap_member_int(ap_body(t), "until", 0) > 0, ap_body(t));
+  sb_clear(q[..]); sb(q[..], "update verse.room_kicks set until_ms = verse.now_ms() - 1 where player = '"); sb(q[..], pl_id(b[..])); sb(q[..], "'");
+  ap_do(t, sb_text(q[..]));
+  ap_check(t, "a kick that ended lets them speak again", rc_call(t, "POST", RC, "{\"text\": \"back\"}", pl_key(b[..]), "") == 200, ap_body(t));
+
+  // Two checks of one pair mark read each other's lines (as they see each other, 0074); another mark and a person don't.
+  pa: [1] Player; pb: [1] Player; pc: [1] Player; person: [1] Player;
+  r = ap_player(t, pa[..]) && ap_player(t, pb[..]) && ap_player(t, pc[..]) && ap_player(t, person[..]);
+  st = rc_call(t, "POST", "/api/playtest/chat/pair-chat-t1", "{\"text\": \"from check a\"}", pl_key(pa[..]), "pair-chat-t1");
+  ap_check(t, "a paired check says a line", st == 200, ap_body(t));
+  said := ap_member_int(ap_body(t), "n", 0);
+  after: [1] Sb; sb(after[..], "{\"after\": "); sb_int(after[..], said - 1); sb(after[..], "}");
+  st = rc_call(t, "POST", RP, sb_text(after[..]), pl_key(pb[..]), "pair-chat-t1");
+  ap_check(t, "the other check of the pair reads it with its presence", st == 200 && rc_only(ap_body(t), "from check a"), ap_body(t));
+  path: [1] Sb; sb(path[..], "/api/playtest/chat/pair-chat-t1?after="); sb_int(path[..], said - 1);
+  st = rc_call(t, "GET", sb_text(path[..]), "", pl_key(pb[..]), "pair-chat-t1");
+  ap_check(t, "and with a chat read", st == 200 && rc_only(ap_body(t), "from check a"), ap_body(t));
+  st = rc_call(t, "POST", RP, sb_text(after[..]), pl_key(pc[..]), "pair-chat-other");
+  ap_check(t, "another mark's check doesn't", ap_kind(ap_body(t), "messages") == JV_ARRAY && rc_count(ap_body(t), "messages") == 0, ap_body(t));
+  st = rc_call(t, "POST", RP, sb_text(after[..]), pl_key(person[..]), "");
+  ap_check(t, "nor does a person", ap_kind(ap_body(t), "messages") == JV_ARRAY && rc_count(ap_body(t), "messages") == 0, ap_body(t));
+  st = rc_call(t, "POST", RP, sb_text(after[..]), pl_key(pa[..]), "pair-chat-t1");
+  ap_check(t, "the speaker still reads their own", rc_only(ap_body(t), "from check a"), ap_body(t));
+}
+
+// ---- events -------------------------------------------------------------------------------------------
+
+// A request signed with keyfile's key (NIP-98, test.sh's signer), its body JSON.
+rc_signed :: (t: [] Ap, method: string, path: string, body: string, keyfile: string) -> int {
+  url: [1] Sb; sb(url[..], t[0].api); sb(url[..], path);
+  sig: [4096] u8; s := ap_nostr(t, keyfile, method, sb_text(url[..]), body, true, sig[..]);
+  auth: [1] Sb; sb(auth[..], "Authorization: Nostr "); sb(auth[..], s);
+  h := [2] string.["Content-Type: application/json", sb_text(auth[..])];
+  return ap_call(t, method, path, body, h[..]);
+}
+// The dials are exactly these sixteen.
+rc_dials :: (body: string) -> bool {
+  names := [16] string.["on", "every", "waves", "size", "cultists", "fanatics", "warlocks", "warlock_level", "gates", "leader", "aggression", "town_damage", "reward", "minutes", "levels", "level_cap"];
+  want := [16] string.["false", "0", "3", "12", "6", "1", "3", "3", "31", "true", "2", "true", "100", "15", "false", "2"];
+  if ap_kind(body, "dials") != JV_OBJECT || rc_count(body, "dials") != 16 { return false; }
+  p: [1] Sb;
+  for i: 0..<16 { sb_clear(p[..]); sb(p[..], "dials."); sb(p[..], names[i]); if !rc_is(body, sb_text(p[..]), want[i]) { return false; } }
+  return true;
+}
+rc_events :: (t: [] Ap) {
+  none: [1] string;
+  out: [4096] u8;
+  st := ap_call(t, "GET", EV, "", none[0..<0]);
+  ap_check(t, "room-event: anyone reads the dials, off by default with every default", st == 200 && rc_dials(ap_body(t)) && rc_is(ap_body(t), "admin", "false"), ap_body(t));
+  visitor: [1] Player; r := ap_player(t, visitor[..]);
+  ph: [1] Sb; sb(ph[..], "X-Verse-Player: "); sb(ph[..], pl_key(visitor[..]));
+  h := [2] string.["Content-Type: application/json", sb_text(ph[..])];
+  st = ap_call(t, "POST", EV, "{\"dials\": {\"on\": true}, \"start\": true}", h[..]);
+  ap_check(t, "room-event: a visitor can't change it", st == 403 && ap_sql(t, "select (dials->>'on') is null and start_n = 0 from verse.room_events where slug = 'everglade'", out[..]) == "t", ap_body(t));
+  st = rc_signed(t, "POST", EV, "{\"dials\": {\"on\": true, \"waves\": 99, \"size\": 2, \"reward\": 1000, \"every\": 3, \"levels\": true, \"aggression\": -4}}", t[0].admin_key);
+  b := ap_body(t);
+  ap_check(t, "room-event: a site admin's dials are kept, each clamped to its range", st == 200 && rc_is(b, "admin", "true") && rc_is(b, "dials.on", "true") && rc_is(b, "dials.waves", "8")
+           && rc_is(b, "dials.size", "4") && rc_is(b, "dials.reward", "300") && rc_is(b, "dials.every", "15") && rc_is(b, "dials.levels", "true") && rc_is(b, "dials.aggression", "0") && rc_is(b, "dials.minutes", "15"), b);
+  st = rc_signed(t, "POST", EV, "{\"dials\": {\"waves\": 2}, \"start\": true}", t[0].admin_key);
+  b = ap_body(t);
+  ap_check(t, "room-event: dials not named keep their values; START counts a press", st == 200 && rc_is(b, "dials.waves", "2") && rc_is(b, "dials.size", "4")
+           && rc_is(b, "start_n", "1") && rc_is(b, "stop_n", "0") && ap_member_int(b, "started_ms", 0) > 0, b);
+  st = rc_signed(t, "POST", EV, "{\"stop\": true}", t[0].admin_key);
+  b = ap_body(t);
+  ap_check(t, "room-event: STOP counts a press", st == 200 && rc_is(b, "stop_n", "1") && rc_is(b, "start_n", "1"), b);
+  st = ap_call(t, "POST", EV, "not json", h[..]);
+  ap_check(t, "room-event: a body that isn't JSON is a 400", st == 400, ap_body(t));
+  line := ap_sql(t, "select 'event ' || concat_ws(' ', (d->>'on')::boolean::int, d->>'every', d->>'waves', d->>'size', d->>'cultists', d->>'fanatics', d->>'warlocks', d->>'warlock_level', d->>'gates', (d->>'leader')::boolean::int, d->>'aggression', (d->>'town_damage')::boolean::int, d->>'reward', d->>'minutes', e.start_n, e.stop_n) from verse.room_events e, lateral (select verse.room_event_dials(e.dials) as d) x where e.slug = 'everglade'", out[..]);
+  ap_check(t, "room-event: room-control's line is the room server's 16 numbers", line == "event 1 15 2 4 6 1 3 3 31 1 0 1 300 15 1 1", line);
+  ap_check(t, "room-event: XP is a column of the vitals, and the migration runs twice",
+           ap_sql(t, "select count(*) from information_schema.columns where table_schema = 'verse' and table_name = 'room_vitals' and column_name = 'xp'", out[..]) == "1", "");
+
+  // oa-room's side, signed with the seat-ticket key (ROOM_KEY when the run has one): room-control's new
+  // lines, XP in the vitals report (it only rises), and the ticket bringing it back as HPxXP.
+  if t[0].room_key == "" { return; }
+  now: [1] Sb; sb_int(now[..], rc_wall_ms());
+  signed: [1] Sb; sb(signed[..], "t "); sb(signed[..], sb_text(now[..]));
+  mac: [64] u8; mh: [1] Sb; sb(mh[..], "X-Room-Mac: "); sb(mh[..], ap_room_mac(t, sb_text(signed[..]), mac[..]));
+  ah: [1] Sb; sb(ah[..], "X-Room-At: "); sb(ah[..], sb_text(now[..]));
+  hc := [2] string.[sb_text(mh[..]), sb_text(ah[..])];
+  st = ap_call(t, "GET", "/api/playtest/room-control", "", hc[..]);
+  text: [1] Sb; sb(text[..], "\n"); sb(text[..], ap_body(t));
+  ap_check(t, "room-control: the event's line and the levels switch", st == 200 && ap_has(sb_text(text[..]), "\nevent 1 15 2 4 6 1 3 3 31 1 0 1 300 15 1 1\n") && ap_has(ap_body(t), "\nlevels 1 2\n"), ap_body(t));
+  pid := pl_id(visitor[..]);
+  t0 := rc_wall_ms();
+  v: [1] Sb;
+  sb_clear(v[..]); sb(v[..], "t "); sb_int(v[..], t0); sb(v[..], "\n"); sb(v[..], pid); sb(v[..], " 5 9 420\n"); vr := rc_vitals(t, sb_text(v[..]), "");
+  sb_clear(v[..]); sb(v[..], "t "); sb_int(v[..], t0 + 1); sb(v[..], "\n"); sb(v[..], pid); sb(v[..], " 6 9 100\n"); vr = rc_vitals(t, sb_text(v[..]), "");
+  q: [1] Sb; sb(q[..], "select xp || ' ' || hp from verse.room_vitals where who = '"); sb(q[..], pid); sb(q[..], "'");
+  ap_check(t, "room-vitals: XP is kept and only rises; an old line (no XP) keeps it", ap_sql(t, sb_text(q[..]), out[..]) == "420 6", "");
+  sb_clear(v[..]); sb(v[..], "t "); sb_int(v[..], t0 + 2); sb(v[..], "\n"); sb(v[..], pid); sb(v[..], " 7 9\n"); vr = rc_vitals(t, sb_text(v[..]), "");
+  ap_check(t, "room-vitals: a line without XP keeps the XP", ap_sql(t, sb_text(q[..]), out[..]) == "420 7", "");
+  st = ap_call(t, "POST", "/api/playtest/room-ticket/pair-tk", "{}", h[..]);
+  ticket: [1024] u8;
+  ap_check(t, "room-ticket: its HP field carries the XP (HPxXP), and the answer says it", st == 200 && ap_has(ap_member(ap_body(t), "ticket", ticket[..]), ".7x420.") && rc_is(ap_body(t), "xp", "420"), ap_body(t));
+}
+// A vitals report, signed with ROOM_KEY (or the given MAC); its status.
+rc_vitals :: (t: [] Ap, body: string, mac_in: string) -> int {
+  mac: [64] u8; m := ifx mac_in != "" then mac_in else ap_room_mac(t, body, mac[..]);
+  mh: [1] Sb; sb(mh[..], "X-Room-Mac: "); sb(mh[..], m);
+  h := [2] string.[sb_text(mh[..]), "Content-Type: text/plain"];
+  return ap_call(t, "POST", "/api/playtest/room-vitals", body, h[..]);
+}
+// A signed text post to a room route.
+rc_room_post :: (t: [] Ap, route: string, body: string, mac_in: string) -> int {
+  mac: [64] u8; m := ifx mac_in != "" then mac_in else ap_room_mac(t, body, mac[..]);
+  mh: [1] Sb; sb(mh[..], "X-Room-Mac: "); sb(mh[..], m);
+  h := [2] string.[sb_text(mh[..]), "Content-Type: text/plain"];
+  return ap_call(t, "POST", route, body, h[..]);
+}
+
+// ---- invites ------------------------------------------------------------------------------------------
+
+ri_ticket :: (t: [] Ap, key: string, room: string, via: string) -> int {
+  q: [1] Sb; sb(q[..], "/api/playtest/room-ticket/"); sb(q[..], room); sb(q[..], "?realm=evinv");
+  if via != "" { sb(q[..], "&with="); sb(q[..], via); }
+  ph: [1] Sb; sb(ph[..], "X-Verse-Player: "); sb(ph[..], key);
+  h := [2] string.["Content-Type: application/json", sb_text(ph[..])];
+  return ap_call(t, "POST", sb_text(q[..]), "{}", h[..]);
+}
+ri_invite :: (t: [] Ap, key: string, room: string) -> int {
+  q: [1] Sb; sb(q[..], "/api/playtest/room-invite/"); sb(q[..], room);
+  ph: [1] Sb; sb(ph[..], "X-Verse-Player: "); sb(ph[..], key);
+  h := [2] string.["Content-Type: application/json", sb_text(ph[..])];
+  return ap_call(t, "POST", sb_text(q[..]), "{}", h[..]);
+}
+rc_invites :: (t: [] Ap) {
+  none: [1] string;
+  alice: [1] Player; r := ap_player(t, alice[..]);
+  body: [1] Sb; sb(body[..], "t "); sb_int(body[..], rc_wall_ms()); sb(body[..], "\ns 1 2\nr evinv-1 15 "); sb(body[..], pl_id(alice[..]));
+  for i: 0..<14 { sb(body[..], " p-evinv"); n: [1] Sb; sb_int(n[..], i); for z: n[0].n..<10 { sb_byte(body[..], '0'); } sb(body[..], sb_text(n[..])); }
+  sb(body[..], "\n");
+  st := rc_room_post(t, "/api/playtest/room-directory", sb_text(body[..]), "");
+  ap_check(t, "room-invite: the shard's report puts Alice and 14 others in evinv-1", st == 200, ap_body(t));
+
+  stranger: [1] Player; r = ap_player(t, stranger[..]);
+  st = ri_invite(t, pl_key(stranger[..]), "evinv-1");
+  ap_check(t, "room-invite: a player not in the room holds no seat (403)", st == 403, ap_body(t));
+  st = ri_invite(t, pl_key(alice[..]), "evinv-1");
+  until := ifx st == 200 then ap_member_int(ap_body(t), "until", 0) else 0;
+  ap_check(t, "room-invite: Alice's INVITE holds the 16th seat for two minutes",
+           st == 200 && rc_is(ap_body(t), "room", "evinv-1") && until > rc_wall_ms() + 110000, ap_body(t));
+
+  st = ri_ticket(t, pl_key(stranger[..]), "evinv", "");
+  rb: [256] u8;
+  ap_check(t, "room-invite: a stranger is placed elsewhere while the seat is held", st == 200 && ap_kind(ap_body(t), "room") == JV_STRING && ap_member(ap_body(t), "room", rb[..]) != "evinv-1", ap_body(t));
+  lp: [1] Sb; sb(lp[..], "/api/playtest/rooms/evinv?with="); sb(lp[..], pl_id(alice[..]));
+  st = ap_call(t, "GET", sb_text(lp[..]), "", none[0..<0]);
+  ap_check(t, "room-invite: the list sends Alice's friend to her room while her invite holds a seat", st == 200 && rc_is(ap_body(t), "join", "evinv-1") && rc_is(ap_body(t), "with", "evinv-1"), ap_body(t));
+
+  friend: [1] Player; r = ap_player(t, friend[..]);
+  st = ri_ticket(t, pl_key(friend[..]), "evinv-1", pl_id(alice[..]));
+  b := ap_body(t);
+  ap_check(t, "room-invite: the friend's ticket takes the held seat", st == 200 && rc_is(b, "room", "evinv-1") && !rc_truthy(b, "full"), b);
+  second: [1] Player; r = ap_player(t, second[..]);
+  st = ri_ticket(t, pl_key(second[..]), "evinv-1", pl_id(alice[..]));
+  b = ap_body(t);
+  ap_check(t, "room-invite: claimed once: a second friend hears the room was full, whose it was, and is placed elsewhere",
+           st == 200 && rc_is(b, "full", "true") && rc_is(b, "asked", "evinv-1") && rc_truthy(b, "by") && ap_member(b, "room", rb[..]) != "evinv-1", b);
+  st = ri_invite(t, pl_key(alice[..]), "evinv-1");
+  ap_check(t, "room-invite: no invite into a full room (409)", st == 409, ap_body(t));
+  st = ap_call(t, "GET", sb_text(lp[..]), "", none[0..<0]);
+  ap_check(t, "room-invite: the list names Alice's full room as with_full", st == 200 && rc_is(ap_body(t), "with_full", "evinv-1"), ap_body(t));
+}
+// A member Python would call true: present and not false, null, 0 or "".
+rc_truthy :: (body: string, path: string) -> bool {
+  k := ap_kind(body, path); b: [4096] u8; v := ap_member(body, path, b[..]);
+  return k != 0 && k != JV_FALSE && k != JV_NULL && v != "" && v != "0";
+}
+
+// ---- stats --------------------------------------------------------------------------------------------
+
+rs_body :: (s: [] Sb, at: int, tick: string) {
+  sb_clear(s); sb(s, "t "); sb_int(s, at); sb(s, "\nshard=2\nplayers=16\ntick p95 ms="); sb(s, tick);
+  sb(s, "\nraiders p95 ms=0.40\nqueue age ms most=20\nout D s players bytes a second=9000\nseat|everglade-1|3|512|20|41|36|52|7\n");
+}
+// Percent-encodes everything but letters, digits and _.-~ (Python's quote with safe="").
+rc_quote :: (s: string, o: [] Sb) {
+  digits := "0123456789ABCDEF";
+  for c: s {
+    if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '.' || c == '-' || c == '~' { sb_byte(o, c); continue; }
+    sb_byte(o, '%'); sb_byte(o, digits[cast(int) c >> 4]); sb_byte(o, digits[cast(int) c & 15]);
+  }
+}
+rc_stats :: (t: [] Ap) {
+  none: [1] string;
+  out: [4096] u8; b: [1] Sb;
+  now := rc_wall_ms();
+  rs_body(b[..], now, "1.20");
+  st := rc_room_post(t, "/api/playtest/room-stats", sb_text(b[..]), "");
+  ap_check(t, "room-stats: a shard's signed report is kept", st == 200 && ap_sql(t, "select count(*) from verse.room_stats where shard = 2", out[..]) == "1", ap_body(t));
+  zeros: [64] u8; for i: 0..<64 { zeros[i] = '0'; }
+  st = rc_room_post(t, "/api/playtest/room-stats", sb_text(b[..]), cast(string) zeros[..]);
+  ap_check(t, "room-stats: an unsigned one is refused", st == 401, ap_body(t));
+  rs_body(b[..], now - 600000, "1.20");
+  st = rc_room_post(t, "/api/playtest/room-stats", sb_text(b[..]), "");
+  ap_check(t, "room-stats: a replayed one (its t ten minutes old) is refused", st == 400, ap_body(t));
+  rs_body(b[..], now + 1, "1.80");
+  st = rc_room_post(t, "/api/playtest/room-stats", sb_text(b[..]), "");
+  ap_check(t, "room-stats: the next is kept beside it", st == 200 && ap_sql(t, "select count(*) from verse.room_stats where shard = 2", out[..]) == "2", ap_body(t));
+
+  st = ap_call(t, "GET", "/api/admin/rooms", "", none[0..<0]);
+  ap_check(t, "room view: signed out, a 401 and no numbers", st == 401 && !ap_has(ap_body(t), "tick"), ap_body(t));
+  url: [1] Sb; sb(url[..], t[0].api); sb(url[..], "/api/admin/login");
+  sig: [4096] u8; s := ap_nostr(t, t[0].admin_key, "GET", sb_text(url[..]), "", false, sig[..]);
+  login: [1] Sb; sb(login[..], "/api/admin/login?auth="); rc_quote(s, login[..]);
+  st = ap_call(t, "GET", sb_text(login[..]), "", none[0..<0]);
+  set := ap_header(t, "Set-Cookie"); end := 0;
+  while end < set.count && set[end] != ';' { end += 1; }
+  cookie: [1] Sb; sb(cookie[..], "Cookie: "); sb(cookie[..], set[0..<end]);
+  hc := [1] string.[sb_text(cookie[..])];
+  st = ap_call(t, "GET", "/api/admin/rooms", "", hc[..]);
+  text := ap_body(t);
+  ap_check(t, "room view: each number now and its series, oldest first, in its group",
+           st == 200 && ap_has(text, "#SHARD 2 TICK|k|NUMBER|NOW|LAST 10 MINUTES\ntick p95 ms|1.80|1.20,1.80\nraiders p95 ms|0.40|0.40,0.40\n"), text);
+  ap_check(t, "room view: the queues and the bytes in their own groups",
+           ap_has(text, "#SHARD 2 PLAYERS|k|") && ap_has(text, "\nplayers|16|16,16\n") && ap_has(text, "\nqueue age ms most|20|20,20\n")
+           && ap_has(text, "#SHARD 2 BYTES|k|") && ap_has(text, "\nout D s players bytes a second|9000|9000,9000\n"), text);
+  ap_check(t, "room view: the seats from the last report",
+           ap_has(text, "#SHARD 2 SEATS|w|ROOM|SEAT|QUEUE BYTES|QUEUE MS|RELEVANT|ACK P50 MS|ACK P95 MS|ROUND TRIP MS\neverglade-1|3|512|20|41|36|52|7\n"), text);
+  ap_do(t, "delete from verse.room_stats where shard = 2");
+  st = ap_call(t, "GET", "/api/admin/rooms", "", hc[..]);
+  // (the admission section, #12796, stays: it isn't a shard's)
+  ap_check(t, "room view: no shard reporting is one empty section", st == 200 && !ap_has(ap_body(t), "#SHARD") && ap_ends(ap_body(t), "\n#ROOMS||NUMBER|NOW\n"), ap_body(t));
+}
+
+// ---- vitals -------------------------------------------------------------------------------------------
+
+rv_body :: (s: [] Sb, gen: int, batch: int, lines: [] string, shard: int) {
+  sb_clear(s); sb(s, "t "); sb_int(s, rc_wall_ms()); sb(s, "\no "); sb_int(s, shard); sb(s, " "); sb_int(s, gen); sb(s, " "); sb_int(s, batch); sb(s, "\n");
+  for l: lines { sb(s, l); sb(s, "\n"); }
+}
+rv_receipt :: (t: [] Ap, gen: int, batch: int, marks: string) -> bool {
+  w: [1] Sb; sb(w[..], "receipt "); sb_int(w[..], gen); sb(w[..], " "); sb_int(w[..], batch); sb(w[..], " "); sb(w[..], marks); sb(w[..], "\n");
+  return ap_body(t) == sb_text(w[..]);
+}
+rv_line :: (s: [] Sb, pid: string, rest: string, at: int) { sb_clear(s); sb(s, pid); sb(s, " "); sb(s, rest); sb(s, " "); sb_int(s, at); }
+rc_vitals_checks :: (t: [] Ap) {
+  out: [4096] u8;
+  p: [1] Player; r := ap_player(t, p[..]);
+  pid := pl_id(p[..]);
+  now := rc_wall_ms();
+  gen := now - 60000;
+  b: [1] Sb; l: [1] Sb; one: [1] string;
+  q: [1] Sb;
+  rv_line(l[..], pid, "7 10 120 3 1", now - 1000); one[0] = sb_text(l[..]);
+  rv_body(b[..], gen, 1, one[..], 3);
+  st := rc_vitals(t, sb_text(b[..]), "");
+  ap_check(t, "room-vitals: a post with operation IDs answers a receipt, a line applied", st == 200 && rv_receipt(t, gen, 1, "a"), ap_body(t));
+  sb(q[..], "select hp || ' ' || xp || ' ' || wanted || ' ' || wanted_by from verse.room_vitals where who = '"); sb(q[..], pid); sb(q[..], "'");
+  want: [1] Sb; sb(want[..], "7 120 3 3."); sb_int(want[..], gen);
+  ap_check(t, "room-vitals: the line's HP, XP and WANTED are kept, WANTED by the room that wrote it", ap_sql(t, sb_text(q[..]), out[..]) == sb_text(want[..]), "");
+  rv_body(b[..], gen, 2, one[..], 3);
+  st = rc_vitals(t, sb_text(b[..]), "");
+  ops: [1] Sb; sb(ops[..], "select applied || ' ' || dups from verse.room_vital_ops where shard = 3 and gen = "); sb_int(ops[..], gen); sb(ops[..], " and pid = '"); sb(ops[..], pid); sb(ops[..], "'");
+  ok := st == 200 && rv_receipt(t, gen, 2, "d");
+  why: [1] Sb; sb(why[..], ap_body(t));
+  ap_check(t, "room-vitals: the same operation again (a retry) is applied once: d", ok && ap_sql(t, sb_text(ops[..]), out[..]) == "1 1", sb_text(why[..]));
+  rv_line(l[..], pid, "6 10 150 3 2", now - 500); one[0] = sb_text(l[..]);
+  rv_body(b[..], gen, 3, one[..], 3); st = rc_vitals(t, sb_text(b[..]), "");
+  rv_line(l[..], pid, "9 10 130 0 1", now - 1000); one[0] = sb_text(l[..]);
+  rv_body(b[..], gen, 4, one[..], 3); st = rc_vitals(t, sb_text(b[..]), "");
+  ok = st == 200 && rv_receipt(t, gen, 4, "s"); sb_clear(why[..]); sb(why[..], ap_body(t));
+  sb_clear(q[..]); sb(q[..], "select hp || ' ' || xp || ' ' || wanted from verse.room_vitals where who = '"); sb(q[..], pid); sb(q[..], "'");
+  ap_check(t, "room-vitals: an older revision from the same process is stale and changes nothing", ok && ap_sql(t, sb_text(q[..]), out[..]) == "6 150 3", sb_text(why[..]));
+  l1: [1] Sb; sb(l1[..], "p-nobody00000000 5 10 1 0 1 "); sb_int(l1[..], now);
+  rv_line(l[..], pid, "6 10 160 4 3", now - 400);
+  three := [3] string.[sb_text(l1[..]), "not a line", sb_text(l[..])];
+  rv_body(b[..], gen, 5, three[..], 3); st = rc_vitals(t, sb_text(b[..]), "");
+  ap_check(t, "room-vitals: a receipt names each line: no such player, unreadable, applied", st == 200 && rv_receipt(t, gen, 5, "uxa"), ap_body(t));
+  xp: [1] Sb; sb(xp[..], "select xp from verse.room_vitals where who = '"); sb(xp[..], pid); sb(xp[..], "'");
+  rv_line(l[..], pid, "6 10 200 0 4", now); one[0] = sb_text(l[..]);
+  rv_body(b[..], gen, 6, one[..], 3);
+  zeros: [64] u8; for i: 0..<64 { zeros[i] = '0'; }
+  st = rc_vitals(t, sb_text(b[..]), cast(string) zeros[..]);
+  ok = st == 401; sb_clear(why[..]); sb(why[..], ap_body(t));
+  ap_check(t, "room-vitals: an unsigned post is refused", ok && ap_sql(t, sb_text(xp[..]), out[..]) == "160", sb_text(why[..]));
+  rv_line(l[..], pid, "6 10 155 4 1", now - 300); one[0] = sb_text(l[..]);
+  rv_body(b[..], gen + 5, 7, one[..], 3); st = rc_vitals(t, sb_text(b[..]), "");
+  ok = st == 200 && rv_receipt(t, gen + 5, 7, "a"); sb_clear(why[..]); sb(why[..], ap_body(t));
+  ap_check(t, "room-vitals: another process's revisions are its own; XP still only rises", ok && ap_sql(t, sb_text(xp[..]), out[..]) == "160", sb_text(why[..]));
+
+  // WANTED is the room's: a page can't clear it, and the next ticket brings the room's level back
+  ph: [1] Sb; sb(ph[..], "X-Verse-Player: "); sb(ph[..], pl_key(p[..]));
+  h := [2] string.["Content-Type: application/json", sb_text(ph[..])];
+  st = ap_call(t, "POST", "/api/playtest/room-state", "{\"wanted\":0}", h[..]);
+  ap_check(t, "room-state: a page's WANTED alone is refused", st == 403 && ap_has(ap_body(t), "refused"), ap_body(t));
+  st = ap_call(t, "POST", "/api/playtest/room-state", "{\"wanted\":0,\"look\":\"elf.2\"}", h[..]);
+  ok = st == 200 && rc_is(ap_body(t), "refused", "wanted"); sb_clear(why[..]); sb(why[..], ap_body(t));
+  sb_clear(q[..]); sb(q[..], "select look || ' ' || wanted from verse.room_vitals where who = '"); sb(q[..], pid); sb(q[..], "'");
+  ap_check(t, "room-state: the look is kept and the WANTED refused", ok && ap_sql(t, sb_text(q[..]), out[..]) == "elf.2 4", sb_text(why[..]));
+  st = ap_call(t, "POST", "/api/playtest/room-ticket/pair-rv", "{}", h[..]);
+  ticket: [1024] u8;
+  ap_check(t, "room-ticket: after the page's 0 and a reload, the room's WANTED is still there (w4)", st == 200 && rc_is(ap_body(t), "wanted", "4") && ap_has(ap_member(ap_body(t), "ticket", ticket[..]), "x160w4."), ap_body(t));
+  sb_clear(q[..]); sb(q[..], "update verse.room_vitals set wanted_by = null where who = '"); sb(q[..], pid); sb(q[..], "'");
+  ap_do(t, sb_text(q[..]));
+  st = ap_call(t, "POST", "/api/playtest/room-ticket/pair-rv", "{}", h[..]);
+  tk := ap_member(ap_body(t), "ticket", ticket[..]);
+  // the ticket's second-last dot-separated field
+  e := tk.count; while e > 0 && tk[e - 1] != '.' { e -= 1; }
+  s := e - 1; while s > 0 && tk[s - 1] != '.' { s -= 1; }
+  field := ifx e > 0 && s >= 0 then tk[s..<e - 1] else tk;
+  no_w := true; for c: field { if c == 'w' { no_w = false; } }
+  ap_check(t, "room-ticket: a WANTED level no room wrote (a page's, from before 0124) is not brought back", st == 200 && ap_kind(ap_body(t), "wanted") == 0 && no_w, ap_body(t));
+}
+
+// ---- the vitals fault check ---------------------------------------------------------------------------
+
+// The proxy's state, in DIR/proxy (one line: mode failed passed held after), its port in DIR/port. The
+// raid starts the faults when DIR/raid exists; DIR/stop ends it.
+FP_MODES :: [4] string.["pass", "500", "hold", "done"];
+FP_HELD :: 8;
+FpHeld :: struct { h: int; due: int; code: int; body: [4096] u8; n: int; }
+fp_head_end :: (s: string) -> int { if s.count < 4 { return -1; } for i: 0..<s.count - 3 { if s[i..<i + 4] == "\r\n\r\n" { return i + 4; } } return -1; }
+// A request header's value (case folded), or "".
+fp_header :: (head: string, name: string) -> string {
+  at := 0;
+  for i: 0..<head.count {
+    if head[i] != '\n' { continue; }
+    line := head[at..<i]; at = i + 1;
+    if line.count > 0 && line[line.count - 1] == '\r' { line = line[0..<line.count - 1]; }
+    if line.count > name.count && line[name.count] == ':' && http_same(line[0..<name.count], name) { return http_trim(line[name.count + 1..<line.count]); }
+  }
+  return "";
+}
+// Reads one request on h: its head and body in out; the body's start, or -1.
+fp_read :: (h: int, out: [] u8, total_out: [] int) -> int {
+  used := 0; total := -1; end := -1; deadline := proc_now_ms() + 5000;
+  while proc_now_ms() < deadline && (total < 0 || used < total) {
+    n := cxsock_read(h, 100);
+    if n == -2 { continue; }
+    if n < 0 { return -1; }
+    if used + n > out.count { return -1; }
+    for i: 0..<n { out[used + i] = cast,trunc(u8) cxsock_byte(h, i); }
+    used += n;
+    if end < 0 { end = fp_head_end(cast(string) out[0..<used]); }
+    if end > 0 && total < 0 { length := ap_whole(fp_header(cast(string) out[0..<end], "Content-Length")); total = end + (ifx length < 0 then 0 else length); if total > out.count { return -1; } }
+  }
+  if total < 0 || total != used { return -1; }
+  total_out[0] = total;
+  return end;
+}
+fp_send :: (h: int, code: int, body: string) {
+  s: [1] Sb; sb(s[..], "HTTP/1.1 "); sb_int(s[..], code); sb(s[..], " Proxy\r\nConnection: close\r\nContent-Length: "); sb_int(s[..], body.count); sb(s[..], "\r\n\r\n");
+  ok := true;
+  for c: sb_text(s[..]) { if ok && cxsock_write(h, cast(int) c) != 0 { ok = false; } }
+  for c: body { if ok && cxsock_write(h, cast(int) c) != 0 { ok = false; } }
+  if ok { f := cxsock_flush(h, 2000); }
+  c := cxsock_close(h);
+}
+// The proxy: posts to the room's vitals URL go on to the API's, but once the raid has started every post
+// fails for 30 s from the first; then the next two are kept by the API but answered 7 s later, after the
+// room's 5 s timeout, so the room sends them again within its 10 s between notes, the same revisions (the
+// API's d). Then all pass ("after" counts them).
+fp_main :: (dir: string, api: string) -> int {
+  listener := cxsock_listen(0);
+  if listener < 0 { tool_errln("room_checks proxy: can't listen"); return 1; }
+  pb: [1100] u8; nb: [32] u8;
+  if !fs_write(fs_join(dir, "port", pb[..]), ap_num(cxsock_port(listener), nb[..])) { return 1; }
+  mode := 0; at := 0; failed := 0; passed := 0; held := 0; after := 0;
+  pending: [FP_HELD] FpHeld; for i: 0..<FP_HELD { pending[i].h = -1; }
+  w: [1] HttpWork; answer: [65536] u8; req: [262144] u8;
+  url: [1] Sb; sb(url[..], api); sb(url[..], "/api/playtest/room-vitals");
+  stop: [1100] u8; stop_path := fs_join(dir, "stop", stop[..]);
+  rf: [1100] u8; raid_path := fs_join(dir, "raid", rf[..]);
+  sp: [1100] u8; state_path := fs_join(dir, "proxy", sp[..]);
+  last_state := -1;
+  while !fs_exists(stop_path) {
+    now := proc_now_ms();
+    for i: 0..<FP_HELD {
+      if pending[i].h >= 0 && now >= pending[i].due { fp_send(pending[i].h, pending[i].code, cast(string) pending[i].body[0..<pending[i].n]); pending[i].h = -1; }
+    }
+    h := cxsock_accept(listener, 20);
+    if h >= 0 {
+      tot: [1] int; end := fp_read(h, req[..], tot[..]);
+      if end < 0 { c := cxsock_close(h); continue; }
+      raid := fs_exists(raid_path);
+      if raid && mode == 0 && failed == 0 { mode = 1; at = proc_now_ms(); }
+      if mode == 1 && proc_now_ms() - at > 30000 { mode = 2; }
+      if mode == 2 && held >= 2 { mode = 3; }
+      if mode == 1 {
+        failed += 1;
+        fp_send(h, 500, "{}");
+      } else {
+        mac := fp_header(cast(string) req[0..<end], "X-Room-Mac");
+        mh: [1] Sb; sb(mh[..], "X-Room-Mac: "); sb(mh[..], mac);
+        hs := [2] string.[sb_text(mh[..]), "Content-Type: text/plain"];
+        got := http_do(w[..], "POST", sb_text(url[..]), hs[..], cast(string) req[end..<tot[0]], 30000, 0, answer[..]);
+        code := ifx got.error == HTTP_OK then got.code else 502;
+        n := ifx got.error == HTTP_OK then got.n else 0;
+        if mode == 2 {   // the API kept it; the answer comes after the room has given up on it
+          held += 1;
+          slot := -1; for i: 0..<FP_HELD { if slot < 0 && pending[i].h < 0 { slot = i; } }
+          if slot < 0 { c := cxsock_close(h); } else {
+            pending[slot].h = h; pending[slot].due = proc_now_ms() + 7000; pending[slot].code = code;
+            k := ifx n > 4096 then 4096 else n;
+            for i: 0..<k { pending[slot].body[i] = answer[i]; }
+            pending[slot].n = k;
+          }
+        } else {
+          passed += 1;
+          if mode == 3 { after += 1; }
+          fp_send(h, code, cast(string) answer[0..<n]);
+        }
+      }
+    }
+    sig := mode * 1000003 + failed * 10007 + passed * 101 + held * 7 + after;
+    if sig != last_state {
+      s: [1] Sb; sb(s[..], FP_MODES[mode]); sb(s[..], " "); sb_int(s[..], failed); sb(s[..], " "); sb_int(s[..], passed); sb(s[..], " "); sb_int(s[..], held); sb(s[..], " "); sb_int(s[..], after); sb(s[..], "\n");
+      ok := fs_write(state_path, sb_text(s[..]));
+      last_state = sig;
+    }
+  }
+  for i: 0..<FP_HELD { if pending[i].h >= 0 { c := cxsock_close(pending[i].h); } }
+  c := cxsock_close(listener);
+  return 0;
+}
+// The proxy's numbers: failed, passed, held, after (from DIR/proxy).
+FpState :: struct { mode: [8] u8; mode_n: int; failed: int; passed: int; held: int; after: int; }
+fp_state :: (dir: string) -> FpState {
+  s: FpState; pb: [1100] u8; text: [256] u8;
+  n := fs_read(fs_join(dir, "proxy", pb[..]), text[..]);
+  if n <= 0 { return s; }
+  v: [5] int; k := 0; at := 0;
+  for i: 0..<n + 1 {
+    if i < n && text[i] != ' ' && text[i] != '\n' { continue; }
+    if i > at && k < 5 {
+      word := cast(string) text[at..<i];
+      if k == 0 { for j: 0..<word.count { s.mode[j] = word[j]; } s.mode_n = word.count; } else { v[k] = ap_whole(word); }
+      k += 1;
+    }
+    at = i + 1;
+  }
+  s.failed = v[1]; s.passed = v[2]; s.held = v[3]; s.after = v[4];
+  return s;
+}
+fp_text :: (s_in: FpState, o: [] Sb) {
+  s := s_in;
+  sb(o, "{'mode': '"); sb(o, cast(string) s.mode[0..<s.mode_n]); sb(o, "', 'failed': "); sb_int(o, s.failed); sb(o, ", 'passed': "); sb_int(o, s.passed);
+  sb(o, ", 'held': "); sb_int(o, s.held); sb(o, ", 'after': "); sb_int(o, s.after); sb(o, "}");
+}
+
+FC_N :: 4;
+FC_LOG :: 1048576;
+// Keeps the lines of a child's output that name the vitals.
+FcLog :: struct { b: [FC_LOG] u8; n: int; }
+fc_keep :: (l: [] FcLog, line: string) {
+  if !ap_has(line, "vitals") || l[0].n + line.count + 1 > FC_LOG { return; }
+  for c: line { l[0].b[l[0].n] = c; l[0].n += 1; }
+  l[0].b[l[0].n] = '\n'; l[0].n += 1;
+}
+fc_drain :: (h: int, l: [] FcLog) {
+  line: [65536] u8;
+  while true {
+    n := proc_line(h, 0, line[..]);
+    if n == PROC_TOO_LONG { continue; }
+    if n < 0 { return; }
+    fc_keep(l, cast(string) line[0..<n]);
+  }
+}
+fc_start :: (argv: [] string, env: [] string, cwd: string) -> int {
+  h := proc_new();
+  if h < 0 { return -1; }
+  ok := true;
+  for x: argv { ok = ok && proc_arg(h, x); }
+  for e: env { ok = ok && proc_env(h, e); }
+  if cwd != "" { ok = ok && proc_cwd(h, cwd); }
+  if !ok || proc_start(h) != 0 { r := proc_release(h); return -1; }
+  return h;
+}
+// The repository's root (where coax/web/tool.sh is): the working directory, as test.sh runs this.
+rc_fault :: (t: [] Ap, room_bin_in: string) {
+  none: [1] string;
+  out: [65536] u8; q: [1] Sb;
+  rootb: [4096] u8; root := fs_cwd(rootb[..]);
+  binb: [1] Sb;
+  if room_bin_in.count > 0 && room_bin_in[0] != '/' { sb(binb[..], root); sb(binb[..], "/"); }
+  sb(binb[..], room_bin_in);
+  for i: 0..<FC_N {
+    sb_clear(q[..]); sb(q[..], "insert into verse.players (id, key_sha256, created_ms) values ('p-raidcheck-"); sb_int(q[..], i); sb(q[..], "', 'rv-fault-"); sb_int(q[..], i); sb(q[..], "', 1) on conflict (id) do nothing");
+    ap_do(t, sb_text(q[..]));
+  }
+  wb: [4096] u8; work := fs_temp("room-checks", wb[..]);
+  pb: [4200] u8; wf: [65536] u8;
+  world_n := fs_read("coax/web/room/dev/world-everglade.json", wf[..]);
+  ok := world_n > 0 && fs_write(fs_join(work, "world-everglade.json", pb[..]), cast(string) wf[0..<world_n]);
+  dials := "event 1 0 3 12 6 1 3 3 31 1 2 1 100 15";
+  ctl: [1] Sb; sb(ctl[..], dials); sb(ctl[..], " 0 0\nlevels 1 2\n");
+  cb: [4200] u8; control := fs_join(work, "room-control.txt", cb[..]);
+  ok = ok && fs_write(control, sb_text(ctl[..]));
+  // the proxy, this program in its proxy mode
+  pa := [5] string.["coax/web/tool.sh", "coax/web/api/tests/room_checks.coax", "proxy", work, t[0].api];
+  proxy := fc_start(pa[..], none[0..<0], "");
+  pp: [4200] u8; portb: [32] u8; pport := -1; deadline := proc_now_ms() + 300000;
+  while ok && proxy >= 0 && pport < 0 && proc_now_ms() < deadline {
+    n := fs_read(fs_join(work, "port", pp[..]), portb[..]);
+    if n > 0 { pport = ap_whole(cast(string) portb[0..<n]); } else { proc_sleep(100); }
+  }
+  // a free port for the room
+  l := cxsock_listen(0); port := cxsock_port(l); c := cxsock_close(l);
+  env: [1] Sb; sb(env[..], "OA_ROOM_VITALS_URL=http://127.0.0.1:"); sb_int(env[..], pport); sb(env[..], "/api/playtest/room-vitals");
+  envs := [1] string.[sb_text(env[..])];
+  ps: [32] u8;
+  ra := [5] string.[sb_text(binb[..]), "--port", ap_num(port, ps[..]), "--dev", work];
+  rl: [1] FcLog;
+  room := ifx ok && pport > 0 then fc_start(ra[..], envs[..], "") else -1;
+  rstart := proc_now_ms();
+  while room >= 0 && proc_now_ms() - rstart < 2000 { fc_drain(room, rl[..]); proc_sleep(50); }
+  // the raid: START NOW 6 s in, the faults from 16 s
+  url: [1] Sb; sb(url[..], "ws://127.0.0.1:"); sb_int(url[..], port);
+  kb: [1] Sb; sb(kb[..], "OA_ROOM_TICKET_KEY="); sb(kb[..], t[0].room_key);
+  nn: [8] u8; secs: [32] u8;
+  ca := [6] string.["coax/web/tool.sh", "coax/web/room/raid-check.coax", sb_text(url[..]), ap_num(FC_N, nn[..]), "100", ap_num(rc_wall_ms() / 1000, secs[..])];
+  cenv := [1] string.[sb_text(kb[..])];
+  check := ifx room >= 0 then fc_start(ca[..], cenv[..], "") else -1;
+  begun := proc_now_ms(); pressed := false; raided := false;
+  rb: [4200] u8; raid_path := fs_join(work, "raid", rb[..]);
+  json: [65536] u8; json_n := 0; tail: [1] Sb;
+  line: [65536] u8;
+  while check >= 0 {
+    n := proc_line(check, 100, line[..]);
+    if n == PROC_EOF || n == PROC_ERROR { break; }
+    if n >= 0 {
+      s := cast(string) line[0..<n];
+      if s.count > 0 && s[0] == '{' && s.count <= json.count { for i: 0..<s.count { json[i] = s[i]; } json_n = s.count; }
+      if tail[0].n + s.count + 1 > AP_TEXT { sb_clear(tail[..]); }
+      sb(tail[..], s); sb(tail[..], "\n");
+    }
+    fc_drain(room, rl[..]);
+    e := proc_now_ms() - begun;
+    if !pressed && e >= 6000 { sb_clear(ctl[..]); sb(ctl[..], dials); sb(ctl[..], " 1 0\nlevels 1 2\n"); w := fs_write(control, sb_text(ctl[..])); pressed = true; }   // START NOW
+    if !raided && e >= 16000 { w := fs_write(raid_path, "1"); raided = true; }   // the faults start with the next post
+  }
+  if check >= 0 { w := proc_wait(check, 5000); r := proc_release(check); }
+  // each seat's XP as raid-check heard it ("xp_seats": "x10+20 x5 ...")
+  heard := ap_member(cast(string) json[0..<json_n], "xp_seats", out[..]);
+  want: [FC_N] int; seats := 0; at := 0;
+  for i: 0..<heard.count + 1 {
+    if i < heard.count && heard[i] != ' ' { continue; }
+    word := heard[at..<i]; at = i + 1;
+    if word.count < 2 || seats >= FC_N { continue; }
+    sum := 0; from := 1;
+    for j: 1..<word.count + 1 { if j == word.count || word[j] == '+' { sum += ap_whole(word[from..<j]); from = j + 1; } }
+    want[seats] = sum; seats += 1;
+  }
+  // the seats have left: their notes flush; then the room drains on SIGTERM
+  have: [FC_N] int; for i: 0..<FC_N { have[i] = -1; }
+  deadline = proc_now_ms() + 90000;
+  hv: [4096] u8;
+  while proc_now_ms() < deadline {
+    fc_drain(room, rl[..]);
+    rows := ap_sql(t, "select who || ' ' || coalesce(xp, 0) from verse.room_vitals where who like 'p-raidcheck-%'", hv[..]);
+    for i: 0..<FC_N { have[i] = -1; }
+    at = 0;
+    for i: 0..<rows.count + 1 {
+      if i < rows.count && rows[i] != '\n' { continue; }
+      row := rows[at..<i]; at = i + 1;
+      sp := 0; while sp < row.count && row[sp] != ' ' { sp += 1; }
+      pre := "p-raidcheck-";
+      if sp >= row.count || !ap_starts(row, pre) { continue; }
+      k := ap_whole(row[pre.count..<sp]);
+      if k >= 0 && k < FC_N { have[k] = ap_whole(row[sp + 1..<row.count]); }
+    }
+    all := rows != "";
+    for i: 0..<seats { if have[i] != want[i] { all = false; } }
+    if all && fp_state(work).after > 0 { break; }
+    proc_sleep(1000);
+  }
+  if room >= 0 {
+    k := proc_kill(room, PROC_SIGTERM);
+    w := proc_wait(room, 15000);
+    if w == PROC_RUNNING { k = proc_kill(room, PROC_SIGKILL); w = proc_wait(room, 2000); }
+    fc_drain(room, rl[..]);
+    err: [65536] u8; e := proc_stderr(room, err[..]);
+    at = 0;
+    for i: 0..<e.count + 1 { if i < e.count && e[i] != '\n' { continue; } fc_keep(rl[..], e[at..<i]); at = i + 1; }
+    r := proc_release(room);
+  }
+  sf: [1100] u8; w := fs_write(fs_join(work, "stop", sf[..]), "1");
+  if proxy >= 0 { x := proc_wait(proxy, 5000); if x == PROC_RUNNING { k := proc_kill(proxy, PROC_SIGTERM); x = proc_wait(proxy, 2000); } r := proc_release(proxy); }
+  fst := fp_state(work);
+  pairs: [1] Sb; sb(pairs[..], "{");
+  for i: 0..<seats { if i > 0 { sb(pairs[..], ", "); } sb(pairs[..], "'p-raidcheck-"); sb_int(pairs[..], i); sb(pairs[..], "': "); sb_int(pairs[..], want[i]); }
+  sb(pairs[..], "}, API XP {");
+  for i: 0..<FC_N { if have[i] < 0 { continue; } if pairs[0].b[pairs[0].n - 1] != '{' { sb(pairs[..], ", "); } sb(pairs[..], "'p-raidcheck-"); sb_int(pairs[..], i); sb(pairs[..], "': '"); sb_int(pairs[..], have[i]); sb(pairs[..], "'"); }
+  sb(pairs[..], "}, proxy "); fp_text(fst, pairs[..]);
+  print("  fault check: heard XP %\n", sb_text(pairs[..]));
+  total := 0; for i: 0..<seats { total += want[i]; }
+  ap_check(t, "vitals fault: the raid ran with every seat, and they earned XP", seats == FC_N && total > 0, sb_text(tail[..]));
+  st: [1] Sb; fp_text(fst, st[..]);
+  ap_check(t, "vitals fault: the API refused and then held posts mid-raid", fst.failed > 0 && fst.held > 0, sb_text(st[..]));
+  exact := true; for i: 0..<seats { if have[i] != want[i] { exact = false; } }
+  ap_check(t, "vitals fault: the API's XP is exactly what each seat earned", exact, sb_text(pairs[..]));
+  dups := ap_sql(t, "select coalesce(sum(dups), 0) || ' ' || coalesce(max(applied), 0) from verse.room_vital_ops where pid like 'p-raidcheck-%'", hv[..]);
+  sp := 0; while sp < dups.count && dups[sp] != ' ' { sp += 1; }
+  ap_check(t, "vitals fault: posts kept while their answers were lost came again and were not applied twice", ap_whole(dups[0..<sp]) > 0, dups);
+  logs := cast(string) rl[0].b[0..<rl[0].n];
+  ap_check(t, "vitals fault: the room exits on SIGTERM with every note saved", ap_has(logs, "0 players' vitals with no receipt"), logs);
+  gone := fs_remove(work);
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) { return 2; }
+  if args_count(a[..]) >= 1 && args_at(a[..], 0) == "proxy" {
+    if args_count(a[..]) != 3 { tool_errln("room_checks proxy DIR API"); return 2; }
+    return fp_main(args_at(a[..], 1), args_at(a[..], 2));
+  }
+  t: [1] Ap;
+  if !ap_open(t[..]) { return 2; }
+  names := [6] string.["admission", "chat", "events", "invites", "stats", "vitals"];
+  for name: names {
+    run := args_count(a[..]) == 0;
+    for i: 0..<args_count(a[..]) { if args_at(a[..], i) == name { run = true; } }
+    if !run { continue; }
+    keyed := name != "chat" && name != "events";
+    if keyed && t[0].room_key == "" { continue; }
+    if name == "admission" { rc_admission(t[..]); }
+    if name == "chat" { rc_chat(t[..]); }
+    if name == "events" { rc_events(t[..]); }
+    if name == "invites" { rc_invites(t[..]); }
+    if name == "stats" { rc_stats(t[..]); }
+    if name == "vitals" {
+      rc_vitals_checks(t[..]);
+      bb: [4096] u8; bin := proc_getenv("ROOM_BIN", bb[..]);
+      if bin != "" { rc_fault(t[..], bin); }
+    }
+  }
+  return ap_done(t[..], "room checks");
+}

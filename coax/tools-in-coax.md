@@ -148,6 +148,26 @@ the same inputs, then deletes it in the same commit that switches callers.
   equal, close, far and mismatched dumps). `granite_fixture.py` keeps a
   reason (2): it writes the tiny GGUF apart from the Coax reader it checks.
 
+- 2026-11-05 (#12859): the API checks test.py ran from Python fragments
+  for the rooms and the private packs are Coax, on a small harness
+  (`coax/web/api/tests/api_harness.coax`: requests over `net/http.coax`,
+  psql, the rooms' HMAC signature, NIP-98 from test.sh's signer).
+  `tests/room_checks.coax` replaces `test_room_{admission,chat,events,
+  invites,stats,vitals}.py`, with the vitals fault proxy as its `proxy`
+  mode; `tests/verse_packs.coax` replaces `test_verse_packs.py`, with the
+  fake bucket as its `bucket` mode. test.sh runs both after test.py. In
+  full `test.sh` runs with the room key and a room server, the old and the
+  new printed the same verdicts, failures included; with a broken API (a
+  duplicate receipt marked applied, the pack bytes cacheable) both failed
+  the same checks. The room view's empty check now allows the admission
+  section #12796 added, which the old check refused.
+  `verse/tools/humans/upload_packs.coax` replaces `upload_packs.sh`: against
+  a stand-in gcloud and a fixed `openssl rand`, both made the same gcloud
+  calls, the same manifest and the same stored objects, byte for byte, on
+  new, existing, already-stored and masterless manifests. The new one checks
+  every name and pack before asking gcloud anything, and `--dry-run` runs no
+  gcloud at all.
+
 ## Keeping it this way
 
 - `coax/web/release.sh` runs `coax/web/tool.sh tools-check` on the release

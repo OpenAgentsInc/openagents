@@ -1,7 +1,7 @@
 // Private human packs for every visitor (docs/verse/metahuman-support.md, "Sending packs to
 // browsers"): MetaHuman Lab's figure is shown on openagents.com, and its pack is never a file
 // anyone can save and pass on. The pack is a compiled runtime format (VPK1, pack_human.py), never
-// DNA or source meshes. verse/tools/humans/upload_packs.sh gzips it, encrypts it with a key of its
+// DNA or source meshes. verse/tools/humans/upload_packs.coax gzips it, encrypts it with a key of its
 // own (AES-256-CTR) and puts it in the private bucket by its digest, packs/<sha256>; the keys and
 // the names live in Secret Manager (verse-private-packs), never in git.
 //
