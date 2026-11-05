@@ -29,7 +29,8 @@
 //       1000 the South Gate), the caps each side's fighters at most. WAVE, WAVES, LEFT and SQUARE are 0.
 //   v SS LEVEL XP CAP LO HI   each seat's level, XP, the level cap, and the bar slots its character has
 //       (bit q of LO: druid slot q; bit q of HI: Warlock slot FB_WL0 + q; both 0: the whole bar)
-//   e xp SS AMOUNT, e level SS LEVEL   a gain, a level-up
+//   e xp SS AMOUNT, e level SS LEVEL   a gain, a level-up: aimed at seat SS, so its page always hears
+//       them, past a tick full of cues (#12907); the seats near it hear them as cues
 //
 // Levels (spec 6): with `levels 1`, each seat's character is the SRD 5.2.1 Druid or Fiend Warlock at
 // the level its XP gives (300 for 2, 900 for 3, never past the cap), built by the engine's rs_druid
@@ -286,12 +287,14 @@ ev_award :: (v: [] RmServer, k: int, s: int, base: int) {
   v[0].ev[k].earned[s] = true;
   p := v[0].eg[k].seat[s].pose;
   b: [64] u8;
+  // aimed at the seat (ev_who): the gainer always hears its own gain and level-up, however busy the
+  // tick (the outcomes' room, no cue allowance); the seats near it hear them as cues
   n := wire_int(b[..], wire_int(b[..], wire_put(b[..], 0, "e xp"), s), amount);
-  eg_event(v, k, cast(string) b[0..<n], p.x, p.z, false);
+  eg_event_who(v, k, cast(string) b[0..<n], p.x, p.z, false, 1 << s);
   now := ev_level(v, v[0].ev[k].xp[s]);
   if now > was {
     n = wire_int(b[..], wire_int(b[..], wire_put(b[..], 0, "e level"), s), now);
-    eg_event(v, k, cast(string) b[0..<n], p.x, p.z, true);
+    eg_event_who(v, k, cast(string) b[0..<n], p.x, p.z, true, 1 << s);
     ev_build(v, k, s);
   }
 }
@@ -1223,6 +1226,23 @@ ev_test_healthy :: (v: [] RmServer, k: int, box: [] EgInbox, c: int, own: string
   rm_clock(v[..], 0, (1762190000000 / per + 1) * per + 10);
   ev_test_second(v[..], k);
   #assert v[0].ev[k].phase == EV_ANNOUNCE;
+}
+
+#test "events: a seat hears its own XP gain and level-up past a tick full of cues (#12907)" #steps 8000000000 {
+  v: [1] RmServer;
+  box: [1] EgInbox;
+  k := ev_test_server(v[..]);
+  rm_control(v[..], "levels 1 2\n");
+  eg_test_drain(v[..], box[..]);
+  // more cues near both seats than a tick has room for, then seat 0's gain
+  b: [64] u8;
+  for q: 0..<200 { n := wire_put_hit(b[..], 0, WireHit.{who = 2000 + q, by = 2001, amt = 7, kind = 3}); eg_event(v[..], k, cast(string) b[0..<n], 0, 0, false); }
+  #assert v[0].eg[k].ev_n >= EG_EVENTS;
+  ev_award(v[..], k, 0, 300);
+  eg_test_tick(v[..], k);
+  eg_test_drain(v[..], box[..]);
+  #assert v[0].ev[k].level[0] == 2;
+  #assert eg_test_has(eg_test_of(box[..], 0), "e xp 0 300") && eg_test_has(eg_test_of(box[..], 0), "e level 0 2");
 }
 
 #test "events: XP levels a seat at 300 and no further than the cap (2, then 3 at 900), times the reward dial; the SRD class at its level with its kit only" #steps 8000000000 {

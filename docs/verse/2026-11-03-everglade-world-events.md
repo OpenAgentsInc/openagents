@@ -469,7 +469,7 @@ New D entries, which pages that don't know them skip:
 - `v SS LEVEL XP CAP LO HI`: a seat's level, XP, the cap, and the bar slots its character has
   (bit masks of the druid's and the warlock's bars; both 0 means the whole bar), heard by every
   seat on change, for nameplates, your XP bar and your hotbar.
-- `e xp SS AMOUNT` and `e level SS LEVEL`: a gain and a level-up.
+- `e xp SS AMOUNT` and `e level SS LEVEL`: a gain and a level-up. Each is aimed at seat SS, so its page hears it past a tick full of cues (#12907).
 - `e rc EID K AX AY AZ SEED`: a raid creature's cast, which the page plays as the Warlock's bar
   slot K (0 Eldritch Blast, 1 Fireball, 2 Blight, 3 Circle of Death, 4 Finger of Death,
   5 Dimension Door) from where the creature stands. With the town's damage dial on, Eldritch

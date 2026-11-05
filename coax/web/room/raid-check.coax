@@ -282,8 +282,9 @@ tool_main :: () -> int #export_c {
     }
     while rs_now() - t0 < tick * 1000 / 30 { rc_drain(c[..], h[..], n,capture,capture_at,written[..]); proc_sleep(2); }
   }
-  // a gain's e xp is a cue, which a busy tick may drop; the v entry carries the room's total, so a
-  // seat's XP is the larger (what the room saves), the part an e xp missed counted with the raid's
+  // a gain's e xp is aimed at its seat, so no busy tick drops it (#12907), but a frame lost on the
+  // way still can; the v entry carries the room's total, so a seat's XP is the larger (what the room
+  // saves), the part an e xp missed counted with the raid's
   missed := 0;
   for i: 0..<n { if h[i].v_xp > h[i].xp { missed += h[i].v_xp - h[i].xp; h[i].xp = h[i].v_xp; } }
   // what all heard
