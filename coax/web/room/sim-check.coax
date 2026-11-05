@@ -3,8 +3,10 @@
 // world's header (W), state at about 30 Hz (D), its own player with its ACK, and the other by name.
 // A conjures its wolves 3 m off: both hear the cast (e cast) and the four Wolves (c, kind 12, with
 // their Hit Points). B casts Starry Wisp (slot 22, one target) at one of them by its TGT code (2000 + EID) until it
-// is gone: both hear B's hits on it (e hit) and it go (x c). A leaves: B hears A gone (x p 0) and
-// the rest of the pack stay (its 10 minutes of Concentration outlast A).
+// is gone: both hear B's hits on it (e hit) and it go (x c). A leaves: the room holds A's seat for
+// the session's hold (LIFECYCLE_HOLD_MS, 15 s, #12792 and #12856), so 800 ms on B still has A and
+// the rest of the pack (A's Concentration holds while A's character does), then hears A gone (x ID)
+// once the hold runs out.
 // B strikes a townsperson (WANTED, A not) and calls meteors on the town: both hear the same breaks up to the rebuild (A leaves just after it).
 // C joins then: within 1 s its snapshot has the broken town, B's WANTED and the people. B's R is
 // refused while the spell is fresh, and 10 s on stands the town up for everyone.
@@ -12,8 +14,11 @@
 //   (deploy.sh runs it through wss://openagents.com)
 // Prints one JSON line, then "shares" and exits 0, or "fails" and 1.
 #load "room-socket.coax";
+#load "../../../aethyr/session/lifecycle.coax";   // LIFECYCLE_HOLD_MS: how long the room holds a closed socket's seat
 
 SC_SEATS :: 3;   // A, B and C, who joins late
+// the town's people it can tell apart: the 40 who live there and the watch's responders a WANTED star brings (#12872)
+SC_FOLK :: 128;
 // What one socket heard.
 ScHeard :: struct {
   w: bool; d: int; snap: bool; ack: int;
@@ -21,7 +26,7 @@ ScHeard :: struct {
   other_seen: bool; other_z0: f32; other_z: f32; other_named: bool;
   cast_seen: bool; wolves: [8] int; wolf_n: int; wolf_x: f32; wolf_z: f32; wolf_hp: int;
   gone: [8] int; gone_n: int; hits: int; other_gone: bool;
-  folk: [40] bool; folk_n: int; near_i: int = -1; near_d: f32 = 1000000; near_x: f32; near_z: f32;   // the town's people (f)
+  folk: [SC_FOLK] bool; folk_n: int; near_i: int = -1; near_d: f32 = 1000000; near_x: f32; near_z: f32;   // the town's people (f)
   wanted: int; wanted_heard: bool;                       // its own WANTED level (w)
   other_wanted: int;                                     // the other's (w)
   wanted_of: [16] int;                                   // every seat's (w)
@@ -53,7 +58,7 @@ sc_entry :: (h: [] ScHeard, me: int, t: string) {
     }
     if w.kind == WK_FOLK {
       i := w.id - WIRE_ID_FOLK;
-      if i < 0 || i >= 40 || w.p1 != i { h[0].bad += 1; return; }
+      if i < 0 || i >= SC_FOLK || w.p1 != i { h[0].bad += 1; return; }
       if !h[0].folk[i] { h[0].folk[i] = true; h[0].folk_n += 1; }
       x := w.x; z := w.z;
       d := (x - h[0].me_x) * (x - h[0].me_x) + (z - h[0].me_z) * (z - h[0].me_z);
@@ -127,17 +132,27 @@ sc_steps :: (c: [] RelayConn, h: [] ScHeard, seq: [] int, ms: int, walk: bool) -
   return ok;
 }
 
+// p-simcheck-STAMP-x: a test player (p-simcheck-*, as before, so a usage count leaves it out).
+sc_pid :: (out: [] u8, stamp: int, end: string) -> string {
+  n := rs_put(out, 0, "p-simcheck-"); n = rs_int(out, n, stamp); n = rs_put(out, n, end);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
 tool_main :: () -> int #export_c {
   a: [1] Args;
   if !args_load(a[..]) { tool_errln("sim-check: bad arguments"); return 2; }
   b: [512] u8;
   base := rs_base(ifx args_count(a[..]) > 0 then args_at(a[..], 0) else "ws://localhost:8830", b[..]);
   u: [1024] u8;
-  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-sim-", rs_stamp());
+  stamp := rs_stamp();
+  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-sim-", stamp);
+  // each run's own players: a fixed id came back with the last run's saved HP (down, once the watch
+  // had struck it) and WANTED, and couldn't walk or cast
+  ida: [48] u8; idb: [48] u8; idc: [48] u8;
+  pa := sc_pid(ida[..], stamp, "-a"); pb := sc_pid(idb[..], stamp, "-b"); pc := sc_pid(idc[..], stamp, "-c");
   c: [SC_SEATS] RelayConn; h: [SC_SEATS] ScHeard; seq: [SC_SEATS] int;
   c[2].h = -1;   // C joins after the town breaks
   ua: [1024] u8; ub: [1024] u8;
-  url_a := rs_ticketed(ua[..], url, "p-simcheck-a", "Sim A"); url_b := rs_ticketed(ub[..], url, "p-simcheck-b", "Sim B");
+  url_a := rs_ticketed(ua[..], url, pa, "Sim A"); url_b := rs_ticketed(ub[..], url, pb, "Sim B");
   if url.count == 0 || url_a.count == 0 || url_b.count == 0 || !relay_conn_open(c[0..<1], url_a) || !relay_conn_open(c[1..<2], url_b) { tool_err("sim-check: can't open "); tool_errln(url); print("fails\n"); return 1; }
   sent := relay_conn_send(c[0..<1], "H 4 ranger.2.1.0 druid 64 Sim A") && relay_conn_send(c[1..<2], "H 4 ranger.0.0.0 druid 64 Sim B");
   t0 := rs_now();
@@ -186,7 +201,7 @@ tool_main :: () -> int #export_c {
   sent = sc_steps(c[..], h[..], seq[..], 4000, false) && sent;
   // C joins now: within a second its snapshot has the broken town, B's WANTED, A not, and the people
   uc: [1024] u8;
-  url_c := rs_ticketed(uc[..], url, "p-simcheck-c", "Sim C");
+  url_c := rs_ticketed(uc[..], url, pc, "Sim C");
   late_open := url_c.count > 0 && relay_conn_open(c[2..<3], url_c);
   if late_open { sent = relay_conn_send(c[2..<3], "H 4 ranger.1.0.0 druid 64 Sim C") && sent; }
   b_breaks_at_join := h[1].breaks;
@@ -196,7 +211,9 @@ tool_main :: () -> int #export_c {
     sent = sc_steps(c[..], h[..], seq[..], 100, false) && sent;
     if late_ms < 0 && h[2].snap && h[2].breaks > 0 && h[2].wanted_of[1] >= 1 && h[2].folk_n >= 5 { late_ms = rs_now() - late_t0; }
   }
-  late_ok := late_open && late_ms >= 0 && h[2].wanted_of[0] == 0 && h[2].wanted_of[1] == h[1].wanted;
+  // C has the WANTED levels B has: B's own, and A's (A's wolves may bite a townsperson too, which is A's crime)
+  late_a_wanted := h[2].wanted_of[0];
+  late_ok := late_open && late_ms >= 0 && h[2].wanted_of[0] == h[1].wanted_of[0] && h[2].wanted_of[1] == h[1].wanted;
   late_breaks := h[2].breaks;
   // R while the town still breaks is refused; once nothing broke for 10 s it stands the town up (spec 6.6)
   k = rs_int(m[..], rs_put(m[..], 0, "R "), seq[1] + 1);
@@ -215,19 +232,42 @@ tool_main :: () -> int #export_c {
   sent = relay_conn_send(c[1..<2], cast(string) m[0..<k]) && sent;
   sent = sc_steps(c[..], h[..], seq[..], 500, false) && sent;
   killed := h[1].gone_n;   // the meteors may take a wolf too; none more goes once A has
+  bad_before := h[0].bad + h[1].bad + h[2].bad;
+  // WANTED went to B and A heard it (the watch may strike B down in the hold that follows)
+  wanted_ok := h[0].wanted_heard && h[1].wanted_heard && h[1].wanted >= 1 && h[0].wanted_of[1] >= 1;
   closed := relay_conn_close(c[0..<1], 1000);
   c[0].h = -1;
+  left0 := rs_now();
   sent = sc_steps(c[..], h[..], seq[..], 800, false) && sent;
+  // the seat is held: B still has A, and A's pack (its Concentration with A's held character)
+  a_held := !h[1].other_gone;
+  // (the watch's responders may kill a wolf meanwhile: the leave just doesn't take the pack, so one
+  // still stands; when the fight took all four before A left there is no pack to keep)
+  pack_stays := killed >= 4 || h[1].gone_n < 4;
+  // and freed once the hold runs out (B keeps stepping, so the room keeps it); 3 s of slack for the network
+  gone_ms := -1;
+  while rs_now() - left0 < LIFECYCLE_HOLD_MS + 3000 && gone_ms < 0 {
+    sent = sc_steps(c[..], h[..], seq[..], 100, false) && sent;
+    if h[1].other_gone { gone_ms = rs_now() - left0; }
+  }
+  a_freed := gone_ms >= LIFECYCLE_HOLD_MS - 500;
   ms := rs_now() - t0;
   rate := f32(h[1].d) / (f32(ms) / 1000.0);
-  ok := sent && h[0].w && h[1].w && h[0].snap && h[1].snap && h[0].ack > 30 && abs(walked) > 3 && abs(seen_walk - walked) < 1.5 && h[1].other_named &&
-        h[0].cast_seen && h[1].cast_seen && h[0].wolf_n == 4 && h[1].wolf_n == 4 && h[0].hits > 0 && h[1].hits > 0 &&
-        sc_gone(h[0], wolf) && sc_gone(h[1], wolf) && h[1].gone_n == killed && killed < 4 && h[1].other_gone && rate > 12 &&
-        h[0].folk_n >= 5 && h[1].folk_n >= 5 && h[0].wanted_heard && h[1].wanted_heard && h[1].wanted >= 1 && h[0].other_wanted >= 1 &&
-        h[0].breaks_up > 0 && h[0].breaks_up == h[1].breaks_up && h[0].sum_up == h[1].sum_up && h[0].rebuilt && h[1].rebuilt && !early && h[1].refused_breaking && late_ok && h[0].bad + h[1].bad + h[2].bad == 0;
-  out: [2048] u8; o: [1] Jo;
+  // each condition by name, so a failure says which (deploy.sh's check loop prints the line)
+  conds := [22] bool.[sent, h[0].w && h[1].w, h[0].snap && h[1].snap, h[0].ack > 30, abs(walked) > 3, abs(seen_walk - walked) < 1.5, h[1].other_named,
+                 h[0].cast_seen && h[1].cast_seen, h[0].wolf_n == 4 && h[1].wolf_n == 4, h[0].hits > 0 && h[1].hits > 0,
+                 sc_gone(h[0], wolf) && sc_gone(h[1], wolf), pack_stays, a_held, a_freed, rate > 12,
+                 h[0].folk_n >= 5 && h[1].folk_n >= 5, wanted_ok,
+                 h[0].breaks_up > 0 && h[0].breaks_up == h[1].breaks_up && h[0].sum_up == h[1].sum_up, h[0].rebuilt && h[1].rebuilt && !early,
+                 h[1].refused_breaking, late_ok, h[0].bad + h[1].bad + h[2].bad == 0];
+  names := [22] string.["sent", "w", "snap", "ack", "walked", "seen_walk", "named", "cast_seen", "wolves", "hits", "wolf_killed", "pack_stays",
+                   "a_held", "a_freed", "rate", "folk", "wanted", "breaks_up", "rebuilt", "refused_breaking", "late", "bad"];
+  ok := true;
+  for q: 0..<conds.count { if !conds[q] { ok = false; } }
+  out: [4096] u8; o: [1] Jo;
   jo_start(o[..], out[..]);
   jo_obj(o[..]);
+  jo_key(o[..], "failed"); jo_arr(o[..]); for q: 0..<conds.count { if !conds[q] { jo_str(o[..], names[q]); } } jo_end(o[..]);
   jo_key(o[..], "a_walked_cm"); jo_int(o[..], cast(int) (walked * 100));
   jo_key(o[..], "b_saw_walk_cm"); jo_int(o[..], cast(int) (seen_walk * 100));
   jo_key(o[..], "a_ack"); jo_int(o[..], h[0].ack);
@@ -249,7 +289,17 @@ tool_main :: () -> int #export_c {
   jo_key(o[..], "refused_n"); jo_int(o[..], h[1].refused_n);
   jo_key(o[..], "quiet_wait_ms"); jo_int(o[..], waited);
   jo_key(o[..], "wolf_killed"); jo_bool(o[..], sc_gone(h[0], wolf) && sc_gone(h[1], wolf));
+  jo_key(o[..], "a_held"); jo_bool(o[..], a_held);
   jo_key(o[..], "a_gone"); jo_bool(o[..], h[1].other_gone);
+  jo_key(o[..], "a_gone_ms"); jo_int(o[..], gone_ms);
+  jo_key(o[..], "pack_stays"); jo_bool(o[..], pack_stays);
+  jo_key(o[..], "wolves_killed_before_leave"); jo_int(o[..], killed);
+  jo_key(o[..], "late_ok"); jo_bool(o[..], late_ok);
+  jo_key(o[..], "late_a_wanted"); jo_int(o[..], late_a_wanted);
+  jo_key(o[..], "sums_up_match"); jo_bool(o[..], h[0].sum_up == h[1].sum_up);
+  jo_key(o[..], "bad"); jo_int(o[..], h[0].bad + h[1].bad + h[2].bad);
+  jo_key(o[..], "bad_abc"); jo_arr(o[..]); for i: 0..<SC_SEATS { jo_int(o[..], h[i].bad); } jo_end(o[..]);
+  jo_key(o[..], "bad_before_leave"); jo_int(o[..], bad_before);
   jo_key(o[..], "wolves_gone_b"); jo_int(o[..], h[1].gone_n);
   jo_key(o[..], "folk_seen_a"); jo_int(o[..], h[0].folk_n);
   jo_key(o[..], "folk_seen_b"); jo_int(o[..], h[1].folk_n);
@@ -257,7 +307,7 @@ tool_main :: () -> int #export_c {
   jo_key(o[..], "b_strikes"); jo_int(o[..], strikes);
   jo_key(o[..], "b_wanted"); jo_int(o[..], h[1].wanted);
   jo_key(o[..], "a_wanted"); jo_int(o[..], h[0].wanted);
-  jo_key(o[..], "a_heard_b_wanted"); jo_int(o[..], h[0].other_wanted);
+  jo_key(o[..], "a_heard_b_wanted"); jo_int(o[..], h[0].wanted_of[1]);
   jo_key(o[..], "breaks_a"); jo_int(o[..], h[0].breaks);
   jo_key(o[..], "breaks_b"); jo_int(o[..], h[1].breaks);
   jo_key(o[..], "breaks_a_to_rebuild"); jo_int(o[..], h[0].breaks_up);
