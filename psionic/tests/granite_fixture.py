@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: it writes the tiny GGUF and its expected header and offsets apart from the Coax reader that tiny.coax checks)
 """Owned tiny Granite GGUF: two layers, every matrix format, a byte-level
 tokenizer. Synthetic, deterministic weights; no model data.
   granite_fixture.py --gguf PATH     write the tiny model file

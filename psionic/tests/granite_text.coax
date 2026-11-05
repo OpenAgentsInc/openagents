@@ -1,0 +1,481 @@
+// Checks Psionic's Granite tokenizer and chat renderer against the recorded Hugging Face vectors,
+// and the GGUF's vocabulary and merges against the pinned tokenizer.json.
+//   coax/web/tool.sh psionic/tests/granite_text.coax --cases OUT.bin
+//       writes the cases for granite_text.c (the fixtures' texts and chats, in its binary form)
+//   coax/web/tool.sh psionic/tests/granite_text.coax --check RESULTS [MODEL_DIR GGUF]
+//       compares granite_text.c's lines with the vectors, then (given a model) the GGUF's
+//       tokens, merges and added tokens with MODEL_DIR/tokenizer.json
+// The vectors are psionic/fixtures/granite/tokenizer-vectors.json and chat-vectors.json. A tool's
+// definition and a call's dict or list argument go to granite_text.c as Python's
+// json.dumps(..., ensure_ascii=False) writes them (", " and ": " between items).
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/args.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/json/json.coax";
+
+cxproc_self_path :: (out: [] u8) -> int #foreign;
+
+GT_FIXTURE :: 262144;
+GT_OUT :: 4194304;
+GT_TJ :: 16777216;          // tokenizer.json's bytes at most
+GT_TJ_NODES :: 1048576;
+GT_META :: 33554432;        // the GGUF's metadata bytes read at most
+GT_VOCAB :: 262144;
+
+// A byte buffer that is written in order.
+Buf :: struct { b: [GT_OUT] u8; n: int; bad: bool; }
+bput :: (o: [] Buf, s: string) { for c: s { if o[0].n < GT_OUT { o[0].b[o[0].n] = c; o[0].n += 1; } else { o[0].bad = true; } } }
+bbyte :: (o: [] Buf, c: u8) { if o[0].n < GT_OUT { o[0].b[o[0].n] = c; o[0].n += 1; } else { o[0].bad = true; } }
+bu32 :: (o: [] Buf, v: int) { for i: 0..<4 { bbyte(o, cast,trunc(u8) ((v >> (8 * i)) & 255)); } }
+bint :: (o: [] Buf, v: int) {
+  if v < 0 { bbyte(o, '-'); bint(o, -v); return; }
+  if v >= 10 { bint(o, v / 10); }
+  bbyte(o, cast,trunc(u8) ('0' + v % 10));
+}
+// pack(): a u32 length, then the bytes.
+bpack :: (o: [] Buf, s: string) { bu32(o, s.count); bput(o, s); }
+
+// A string node's text (unescaped) into scratch.
+gt_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  if n < 0 { return ""; }
+  return cast(string) out[0..<n];
+}
+
+// Whether a number's raw text is the way Python writes it back (an int, or a float's repr in
+// plain decimals); the vectors' numbers all are, and a different one is refused.
+gt_canonical :: (raw: string) -> bool {
+  i := 0; if raw.count > 0 && raw[0] == '-' { i = 1; }
+  if i >= raw.count { return false; }
+  if raw[i] == '0' && i + 1 < raw.count && raw[i + 1] != '.' { return false; }
+  dot := -1;
+  for j: i..<raw.count {
+    c := raw[j];
+    if c == '.' { if dot >= 0 { return false; } dot = j; }
+    else if c < '0' || c > '9' { return false; }
+  }
+  if dot < 0 { return true; }
+  if dot == raw.count - 1 { return false; }
+  if raw[raw.count - 1] == '0' && dot != raw.count - 2 { return false; }   // 2.50 is written 2.5; 2.0 stays
+  return raw.count - dot - 1 <= 15;
+}
+
+// json.dumps(value, ensure_ascii=False).
+gt_dump_str :: (o: [] Buf, s: string) {
+  bbyte(o, '"');
+  hex := "0123456789abcdef";
+  for c: s {
+    if c == '"' { bput(o, "\\\""); }
+    else if c == '\\' { bput(o, "\\\\"); }
+    else if c == 10 { bput(o, "\\n"); }
+    else if c == 13 { bput(o, "\\r"); }
+    else if c == 9 { bput(o, "\\t"); }
+    else if c == 8 { bput(o, "\\b"); }
+    else if c == 12 { bput(o, "\\f"); }
+    else if c < 32 { bput(o, "\\u00"); bbyte(o, hex[c >> 4]); bbyte(o, hex[c & 15]); }
+    else { bbyte(o, c); }
+  }
+  bbyte(o, '"');
+}
+gt_dump :: (o: [] Buf, d: Jv, at: int) -> bool {
+  k := jv_kind(d, at);
+  if k == JV_NULL { bput(o, "null"); return true; }
+  if k == JV_TRUE { bput(o, "true"); return true; }
+  if k == JV_FALSE { bput(o, "false"); return true; }
+  if k == JV_NUMBER { if !gt_canonical(jv_raw(d, at)) { return false; } bput(o, jv_raw(d, at)); return true; }
+  if k == JV_STRING { s: [GT_FIXTURE] u8; gt_dump_str(o, gt_str(d, at, s[..])); return true; }
+  if k == JV_ARRAY {
+    bbyte(o, '[');
+    for i: 0..<jv_len(d, at) { if i > 0 { bput(o, ", "); } if !gt_dump(o, d, jv_at(d, at, i)) { return false; } }
+    bbyte(o, ']'); return true;
+  }
+  if k == JV_OBJECT {
+    bbyte(o, '{');
+    for i: 0..<jv_len(d, at) {
+      m := jv_at(d, at, i);
+      if i > 0 { bput(o, ", "); }
+      kb: [4096] u8; gt_dump_str(o, gt_key(d, m, kb[..])); bput(o, ": ");
+      if !gt_dump(o, d, m) { return false; }
+    }
+    bbyte(o, '}'); return true;
+  }
+  return false;
+}
+gt_key :: (d: Jv, m: int, out: [] u8) -> string {
+  n := jv_unescape(jv_key(d, m), out);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+// str(value) for a call's argument that is not a dict or a list.
+gt_str_value :: (o: [] Buf, d: Jv, at: int) -> bool {
+  k := jv_kind(d, at);
+  if k == JV_STRING { s: [GT_FIXTURE] u8; bput(o, gt_str(d, at, s[..])); return true; }
+  if k == JV_NUMBER { if !gt_canonical(jv_raw(d, at)) { return false; } bput(o, jv_raw(d, at)); return true; }
+  if k == JV_TRUE { bput(o, "True"); return true; }
+  if k == JV_FALSE { bput(o, "False"); return true; }
+  if k == JV_NULL { bput(o, "None"); return true; }
+  return false;
+}
+// A truth value as a byte: true, or a nonzero number, is 1.
+gt_flag :: (d: Jv, at: int, dflt: bool) -> u8 {
+  k := jv_kind(d, at);
+  if k == 0 { return ifx dflt then cast(u8) 1 else cast(u8) 0; }
+  if k == JV_TRUE { return 1; }
+  if k == JV_NUMBER { return cast,trunc(u8) jv_int(d, at, 0); }
+  return 0;
+}
+
+Fixtures :: struct { tbytes: [GT_FIXTURE] u8; cbytes: [GT_FIXTURE] u8; tn: [65536] JvNode; cn: [65536] JvNode; t: [1] Jv; c: [1] Jv; }
+gt_load :: (f: [] Fixtures, repo: string) -> bool {
+  p: [4096] u8; q: [4096] u8;
+  tp := gt_join(repo, "/psionic/fixtures/granite/tokenizer-vectors.json", p[..]);
+  cp := gt_join(repo, "/psionic/fixtures/granite/chat-vectors.json", q[..]);
+  tn := fs_read(tp, f[0].tbytes[..]); cn := fs_read(cp, f[0].cbytes[..]);
+  if tn <= 0 || cn <= 0 || tn >= GT_FIXTURE || cn >= GT_FIXTURE { return false; }
+  return jv_parse(f[0].t[..], cast(string) f[0].tbytes[0..<tn], f[0].tn[..]) && jv_parse(f[0].c[..], cast(string) f[0].cbytes[0..<cn], f[0].cn[..]);
+}
+gt_join :: (a: string, b: string, out: [] u8) -> string {
+  n := 0; for c: a { out[n] = c; n += 1; } for c: b { out[n] = c; n += 1; }
+  return cast(string) out[0..<n];
+}
+
+gt_cases :: (f: [] Fixtures, path: string) -> int {
+  o: [1] Buf;
+  t := f[0].t[0]; c := f[0].c[0];
+  s: [GT_FIXTURE] u8;
+  for i: 0..<jv_len(t, 0) { bu32(o[..], 0); bpack(o[..], gt_str(t, jv_get(t, jv_at(t, 0, i), "text"), s[..])); }
+  for i: 0..<jv_len(c, 0) {
+    v := jv_at(c, 0, i); opts := jv_get(c, v, "options");
+    flags: [3] u8;
+    flags[0] = gt_flag(c, jv_get(c, v, "generation"), false);
+    flags[1] = gt_flag(c, jv_get(c, opts, "enable_thinking"), true);
+    flags[2] = gt_flag(c, jv_get(c, opts, "low_effort"), false);
+    msgs := jv_get(c, v, "messages"); tools := jv_get(c, v, "tools");
+    if tools < 0 {
+      bu32(o[..], 1); for b: flags { bbyte(o[..], b); } bu32(o[..], jv_len(c, msgs));
+      for j: 0..<jv_len(c, msgs) {
+        m := jv_at(c, msgs, j);
+        bpack(o[..], gt_str(c, jv_get(c, m, "role"), s[..])); bpack(o[..], gt_str(c, jv_get(c, m, "content"), s[..]));
+      }
+      continue;
+    }
+    // kind 2: the tools as the template's tool_to_json writes them, then each message with its calls
+    bu32(o[..], 2); for b: flags { bbyte(o[..], b); } bu32(o[..], jv_len(c, tools));
+    for j: 0..<jv_len(c, tools) {
+      tl := jv_at(c, tools, j);
+      fn := jv_get(c, tl, "function"); if fn < 0 { fn = tl; }
+      w: [1] Buf; bbyte(w[..], '{'); first := true;
+      for k: 0..<jv_len(c, fn) {
+        m := jv_at(c, fn, k);
+        kb: [4096] u8; key := gt_key(c, m, kb[..]);
+        if key == "defer_loading" || key == "strict" { continue; }
+        if !first { bput(w[..], ", "); } first = false;
+        bbyte(w[..], '"'); bput(w[..], key); bput(w[..], "\": ");
+        if !gt_dump(w[..], c, m) { tool_errln("granite_text: a number Python would write differently"); return 1; }
+      }
+      bbyte(w[..], '}');
+      bpack(o[..], cast(string) w[0].b[0..<w[0].n]);
+    }
+    bu32(o[..], jv_len(c, msgs));
+    for j: 0..<jv_len(c, msgs) {
+      m := jv_at(c, msgs, j);
+      calls := jv_get(c, m, "tool_calls");
+      ncalls := ifx jv_kind(c, calls) == JV_ARRAY then jv_len(c, calls) else 0;
+      bpack(o[..], gt_str(c, jv_get(c, m, "role"), s[..]));
+      content := jv_get(c, m, "content");
+      bpack(o[..], ifx jv_kind(c, content) == JV_STRING then gt_str(c, content, s[..]) else "");
+      bu32(o[..], ncalls);
+      for k: 0..<ncalls {
+        call := jv_at(c, calls, k);
+        fn := jv_get(c, call, "function"); if fn < 0 { fn = call; }
+        a := jv_get(c, fn, "arguments");
+        na := ifx jv_kind(c, a) == JV_OBJECT then jv_len(c, a) else 0;
+        bpack(o[..], gt_str(c, jv_get(c, fn, "name"), s[..])); bu32(o[..], na);
+        for q: 0..<na {
+          arg := jv_at(c, a, q);
+          kb: [4096] u8; bpack(o[..], gt_key(c, arg, kb[..]));
+          w: [1] Buf;
+          kind := jv_kind(c, arg);
+          ok := ifx kind == JV_OBJECT || kind == JV_ARRAY then gt_dump(w[..], c, arg) else gt_str_value(w[..], c, arg);
+          if !ok { tool_errln("granite_text: a number Python would write differently"); return 1; }
+          bpack(o[..], cast(string) w[0].b[0..<w[0].n]);
+        }
+      }
+    }
+  }
+  if o[0].bad || !fs_write(path, cast(string) o[0].b[0..<o[0].n]) { tool_err("granite_text: can't write "); tool_errln(path); return 1; }
+  return 0;
+}
+
+// The words of a line (split on blanks).
+Words :: struct { at: [65536] int; to: [65536] int; n: int; }
+gt_words :: (line: string, w: [] Words) {
+  w[0].n = 0; i := 0;
+  while i < line.count {
+    while i < line.count && (line[i] == ' ' || line[i] == '\t') { i += 1; }
+    if i >= line.count { break; }
+    j := i; while j < line.count && line[j] != ' ' && line[j] != '\t' { j += 1; }
+    if w[0].n < 65536 { w[0].at[w[0].n] = i; w[0].to[w[0].n] = j; w[0].n += 1; }
+    i = j;
+  }
+}
+gt_has :: (text: string, part: string) -> bool {
+  if part.count > text.count { return false; }
+  for at: 0..<text.count - part.count + 1 { if text[at..<at + part.count] == part { return true; } }
+  return false;
+}
+gt_num :: (s: string) -> int {
+  v := 0; neg := false; i := 0;
+  if s.count > 0 && s[0] == '-' { neg = true; i = 1; }
+  if i >= s.count { return -1 << 62; }
+  for j: i..<s.count { if s[j] < '0' || s[j] > '9' { return -1 << 62; } v = v * 10 + cast(int) (s[j] - '0'); }
+  return ifx neg then -v else v;
+}
+// Whether words from..<w.n of line are the ids of a vector's "ids" array.
+gt_ids_equal :: (line: string, w: [] Words, from: int, d: Jv, ids: int) -> bool {
+  if jv_len(d, ids) != w[0].n - from { return false; }
+  for i: from..<w[0].n { if gt_num(line[w[0].at[i]..<w[0].to[i]]) != jv_int(d, jv_at(d, ids, i - from), -1) { return false; } }
+  return true;
+}
+// Python's repr() of a str, for a line about a case that differs.
+gt_repr :: (s: string) {
+  q := ifx gt_has(s, "'") && !gt_has(s, "\"") then "\"" else "'";
+  print("%", q);
+  for c: s {
+    if c == '\\' { print("\\\\"); }
+    else if c == 10 { print("\\n"); } else if c == 13 { print("\\r"); } else if c == 9 { print("\\t"); }
+    else if c == '\'' && q == "'" { print("\\'"); }
+    else if c < 32 || c == 127 { print("\\x"); hex := "0123456789abcdef"; b: [2] u8; b[0] = hex[c >> 4]; b[1] = hex[c & 15]; print("%", cast(string) b[..]); }
+    else { b: [1] u8; b[0] = c; print("%", cast(string) b[..]); }
+  }
+  print("%", q);
+}
+// Python's repr() of a parsed JSON value (dicts, lists, strings, numbers, True, False, None).
+gt_repr_value :: (d: Jv, at: int) {
+  k := jv_kind(d, at);
+  if k == JV_STRING { s: [GT_FIXTURE] u8; gt_repr(gt_str(d, at, s[..])); }
+  else if k == JV_NUMBER { print("%", jv_raw(d, at)); }
+  else if k == JV_TRUE { print("True"); } else if k == JV_FALSE { print("False"); } else if k == JV_NULL { print("None"); }
+  else if k == JV_ARRAY { print("["); for i: 0..<jv_len(d, at) { if i > 0 { print(", "); } gt_repr_value(d, jv_at(d, at, i)); } print("]"); }
+  else if k == JV_OBJECT {
+    print("{");
+    for i: 0..<jv_len(d, at) { m := jv_at(d, at, i); if i > 0 { print(", "); } kb: [4096] u8; gt_repr(gt_key(d, m, kb[..])); print(": "); gt_repr_value(d, m); }
+    print("}");
+  }
+}
+gt_unhex :: (h: string, out: [] u8) -> int {
+  if h.count % 2 != 0 || h.count / 2 > out.count { return -1; }
+  for i: 0..<h.count / 2 {
+    a := gt_hexv(h[2 * i]); b := gt_hexv(h[2 * i + 1]);
+    if a < 0 || b < 0 { return -1; }
+    out[i] = cast,trunc(u8) (a * 16 + b);
+  }
+  return h.count / 2;
+}
+gt_hexv :: (c: u8) -> int {
+  if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
+  if c >= 'a' && c <= 'f' { return cast(int) (c - 'a') + 10; }
+  if c >= 'A' && c <= 'F' { return cast(int) (c - 'A') + 10; }
+  return -1;
+}
+
+gt_chat_differs :: (c: Jv, v: int) {
+  print("chat differs: "); gt_repr_value(c, jv_get(c, v, "messages")); print(" "); gt_repr_value(c, jv_get(c, v, "options")); print(" ");
+}
+gt_check :: (f: [] Fixtures, results: string, model: string, gguf: string) -> int {
+  rb: [GT_OUT] u8;
+  rn := fs_read(results, rb[..]);
+  if rn < 0 || rn >= GT_OUT { tool_err("granite_text: can't read "); tool_errln(results); return 1; }
+  text := cast(string) rb[0..<rn];
+  // the lines (Python's splitlines: a last newline ends a line, it doesn't start one)
+  starts: [65536] int; ends: [65536] int; nl := 0; at := 0;
+  for i: 0..<text.count + 1 {
+    if i == text.count && at == text.count { break; }
+    if i == text.count || text[i] == '\n' || text[i] == '\r' {
+      if nl < 65536 { starts[nl] = at; ends[nl] = i; nl += 1; }
+      if i < text.count && text[i] == '\r' && i + 1 < text.count && text[i + 1] == '\n' { at = i + 2; } else { at = i + 1; }
+    }
+  }
+  if nl == 0 { tool_errln("IndexError: list index out of range"); return 1; }
+  head := text[starts[0]..<ends[0]];
+  tail := "chapter 52 refuses: whitespace control";
+  if head.count < tail.count || head[head.count - tail.count..<head.count] != tail { tool_err("AssertionError: "); tool_errln(head); return 1; }
+  t := f[0].t[0]; c := f[0].c[0];
+  nt := jv_len(t, 0); nc := jv_len(c, 0);
+  bad := 0;
+  w: [1] Words; s: [GT_FIXTURE] u8; s2: [GT_FIXTURE] u8;
+  for i: 0..<nt {
+    if 1 + i >= nl { break; }
+    line := text[starts[1 + i]..<ends[1 + i]];
+    v := jv_at(t, 0, i);
+    gt_words(line, w[..]);
+    got := !gt_has(line, "refused") && !gt_has(line, "roundtrip");
+    if !got || !gt_ids_equal(line, w[..], 1, t, jv_get(t, v, "ids")) {
+      bad += 1;
+      print("tokenizer differs: "); gt_repr(gt_str(t, jv_get(t, v, "text"), s[..])); print(" %\n", ifx line.count > 120 then line[0..<120] else line);
+    }
+  }
+  for i: 0..<nc {
+    if 1 + nt + i >= nl { break; }
+    line := text[starts[1 + nt + i]..<ends[1 + nt + i]];
+    v := jv_at(c, 0, i);
+    gt_words(line, w[..]);
+    want := gt_str(c, jv_get(c, v, "text"), s[..]);
+    have := false; same := false;
+    if w[0].n > 1 && line[w[0].at[1]..<w[0].to[1]] != "refused" {
+      n := gt_unhex(line[w[0].at[1]..<w[0].to[1]], s2[..]);
+      have = n >= 0;
+      failed := false;
+      for k: 2..<w[0].n { if line[w[0].at[k]..<w[0].to[k]] == "roundtrip-failed" { failed = true; } }
+      same = have && cast(string) s2[0..<n] == want && !failed && gt_ids_equal(line, w[..], 2, c, jv_get(c, v, "ids"));
+      if have && !same { gt_chat_differs(c, v); gt_repr(cast(string) s2[0..<n]); print(" "); gt_repr(want); print("\n"); }
+    }
+    if !same {
+      bad += 1;
+      if !have { gt_chat_differs(c, v); print("None "); gt_repr(want); print("\n"); }
+    }
+  }
+  if nl - 1 != nt + nc { tool_errln("AssertionError: the results have a line for each case"); return 1; }
+  print("% texts and % chat renders: % equal Hugging Face token for token\n", nt, nc, nt + nc - bad);
+  if model.count > 0 {
+    r := gt_model(model, gguf);
+    if r != 0 { return r; }
+  }
+  return ifx bad > 0 then 1 else 0;
+}
+
+// The GGUF's metadata: the tokens, merges and token types.
+Meta :: struct { b: [GT_META] u8; n: int; at: int; bad: bool; tok_at: int; tok_n: int; merge_at: int; merge_n: int; type_at: int; type_n: int; type_kind: int; }
+mu :: (m: [] Meta, k: int) -> int {
+  if m[0].at + k > m[0].n { m[0].bad = true; return 0; }
+  v := 0;
+  for i: 0..<k { v = v | (cast(int) m[0].b[m[0].at + i] << (8 * i)); }
+  m[0].at += k;
+  return v;
+}
+GT_SIZES :: [13] int.[1, 1, 2, 2, 4, 4, 4, 1, 0, 0, 8, 8, 8];
+mskip :: (m: [] Meta, kind: int) {
+  if kind == 8 { n := mu(m, 8); m[0].at += n; if m[0].at > m[0].n { m[0].bad = true; } return; }
+  if kind == 9 { item := mu(m, 4); n := mu(m, 8); for i: 0..<n { if m[0].bad { return; } mskip(m, item); } return; }
+  if kind < 0 || kind > 12 { m[0].bad = true; return; }
+  m[0].at += GT_SIZES[kind];
+}
+gt_meta :: (m: [] Meta, path: string) -> bool {
+  m[0].n = fs_read_at(path, 0, m[0].b[..]);
+  if m[0].n < 24 { return false; }
+  m[0].at = 4; v := mu(m, 4); tensors := mu(m, 8); kvs := mu(m, 8);
+  m[0].tok_at = -1; m[0].merge_at = -1; m[0].type_at = -1;
+  for i: 0..<kvs {
+    kn := mu(m, 8); if m[0].at + kn > m[0].n { return false; }
+    key := cast(string) m[0].b[m[0].at..<m[0].at + kn]; m[0].at += kn;
+    kind := mu(m, 4);
+    if kind == 9 && (key == "tokenizer.ggml.tokens" || key == "tokenizer.ggml.merges" || key == "tokenizer.ggml.token_type") {
+      item := mu(m, 4); n := mu(m, 8);
+      if key == "tokenizer.ggml.tokens" { m[0].tok_at = m[0].at; m[0].tok_n = n; }
+      if key == "tokenizer.ggml.merges" { m[0].merge_at = m[0].at; m[0].merge_n = n; }
+      if key == "tokenizer.ggml.token_type" { m[0].type_at = m[0].at; m[0].type_n = n; m[0].type_kind = item; }
+      for j: 0..<n { if m[0].bad { return false; } mskip(m, item); }
+    } else { mskip(m, kind); }
+    if m[0].bad { return false; }
+  }
+  return m[0].tok_at >= 0 && m[0].merge_at >= 0 && m[0].type_at >= 0;
+}
+// The next string of an array at m.at.
+mstr :: (m: [] Meta) -> string {
+  n := mu(m, 8);
+  if m[0].bad || m[0].at + n > m[0].n { m[0].bad = true; return ""; }
+  s := cast(string) m[0].b[m[0].at..<m[0].at + n]; m[0].at += n;
+  return s;
+}
+
+TJ :: struct { b: [GT_TJ] u8; nodes: [GT_TJ_NODES] JvNode; d: [1] Jv; by_id: [GT_VOCAB] int; }
+gt_model :: (model: string, gguf: string) -> int {
+  tj: [1] TJ; pb: [4096] u8;
+  tn := fs_read(gt_join(model, "/tokenizer.json", pb[..]), tj[0].b[..]);
+  if tn <= 0 || tn >= GT_TJ || !jv_parse(tj[0].d[..], cast(string) tj[0].b[0..<tn], tj[0].nodes[..]) { tool_errln("granite_text: can't read tokenizer.json"); return 1; }
+  d := tj[0].d[0];
+  for i: 0..<GT_VOCAB { tj[0].by_id[i] = -1; }
+  vocab := jv_path(d, 0, "model.vocab");
+  ids := 0;
+  ve := ifx jv_kind(d, vocab) == JV_OBJECT then d.nodes[vocab].first else -1;   // in order (jv_at walks from the first)
+  while ve != -1 {
+    id := jv_int(d, ve, -1);
+    if id < 0 || id >= GT_VOCAB { tool_errln("granite_text: a vocabulary id out of range"); return 1; }
+    if tj[0].by_id[id] < 0 { ids += 1; }
+    tj[0].by_id[id] = -2 - ve;         // a vocab member: its key is the token
+    ve = d.nodes[ve].next;
+  }
+  added := jv_get(d, 0, "added_tokens");
+  is_added: [GT_VOCAB] bool;
+  nadded := 0;
+  for i: 0..<jv_len(d, added) {
+    a := jv_at(d, added, i); id := jv_int(d, jv_get(d, a, "id"), -1);
+    if id < 0 || id >= GT_VOCAB { tool_errln("granite_text: an added token's id out of range"); return 1; }
+    if tj[0].by_id[id] == -1 { ids += 1; }
+    tj[0].by_id[id] = jv_get(d, a, "content");
+    if !is_added[id] { is_added[id] = true; nadded += 1; }
+  }
+  m: [1] Meta;
+  if !gt_meta(m[..], gguf) { tool_err("granite_text: can't read the GGUF's metadata in "); tool_errln(gguf); return 1; }
+  // the vocabulary
+  ok := m[0].tok_n == ids && ids == 100352;
+  m[0].at = m[0].tok_at;
+  s: [65536] u8;
+  for i: 0..<m[0].tok_n {
+    if !ok { break; }
+    tok := mstr(m[..]);
+    e := tj[0].by_id[i];
+    want := "";
+    if e == -1 { ok = false; break; }
+    if e <= -2 { kn := jv_unescape(jv_key(d, -2 - e), s[..]); want = ifx kn < 0 then "" else cast(string) s[0..<kn]; }
+    else { want = gt_str(d, e, s[..]); }
+    if tok != want { ok = false; }
+  }
+  if !ok { tool_errln("AssertionError: vocabulary differs from tokenizer.json"); return 1; }
+  // the merges
+  merges := jv_path(d, 0, "model.merges");
+  same := jv_len(d, merges) == m[0].merge_n;
+  m[0].at = m[0].merge_at;
+  me := ifx same then d.nodes[merges].first else -1;
+  for i: 0..<m[0].merge_n {
+    if !same { break; }
+    got := mstr(m[..]);
+    w: [1] Buf;
+    if jv_kind(d, me) == JV_ARRAY { for k: 0..<jv_len(d, me) { if k > 0 { bbyte(w[..], ' '); } bput(w[..], gt_str(d, jv_at(d, me, k), s[..])); } }
+    else { bput(w[..], gt_str(d, me, s[..])); }
+    if cast(string) w[0].b[0..<w[0].n] != got { same = false; }
+    me = d.nodes[me].next;
+  }
+  if !same { tool_errln("AssertionError: merges differ from tokenizer.json"); return 1; }
+  // the added tokens: the ids whose type is 3 (control) or 4 (user defined)
+  m[0].at = m[0].type_at;
+  size := ifx m[0].type_kind == 4 || m[0].type_kind == 5 then 4 else GT_SIZES[m[0].type_kind];
+  typed := 0; agree := true;
+  for i: 0..<m[0].type_n {
+    v := mu(m[..], size);
+    if size == 4 && v >= 0x80000000 { v -= 0x100000000; }
+    on := v == 3 || v == 4;
+    if on { typed += 1; }
+    if on != (i < GT_VOCAB && is_added[i]) { agree = false; }
+  }
+  if !agree || typed != nadded { tool_errln("AssertionError: added tokens differ"); return 1; }
+  print("the GGUF vocabulary (%), merges (%) and added tokens (%) equal tokenizer.json\n", m[0].tok_n, m[0].merge_n, nadded);
+  return 0;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  ok := args_load(a[..]);
+  sb: [4096] u8; sn := cxproc_self_path(sb[..]);
+  if !ok || args_count(a[..]) < 2 || sn <= 0 { tool_errln("usage: granite_text.coax --cases OUT.bin | --check RESULTS [MODEL_DIR GGUF]"); return 2; }
+  // the repository's root from this tool's own binary (ROOT/coax/web/build/tools/NAME-HASH, tool.sh)
+  repo := cast(string) sb[0..<sn]; for i: 0..<5 { repo = fs_dir(repo); }
+  f: [1] Fixtures;
+  if !gt_load(f[..], repo) { tool_errln("granite_text: can't read the vectors in psionic/fixtures/granite"); return 1; }
+  if args_at(a[..], 0) == "--cases" { return gt_cases(f[..], args_at(a[..], 1)); }
+  if args_at(a[..], 0) != "--check" { tool_errln("usage: granite_text.coax --cases OUT.bin | --check RESULTS [MODEL_DIR GGUF]"); return 2; }
+  model := ifx args_count(a[..]) >= 4 then args_at(a[..], 2) else "";
+  gguf := ifx args_count(a[..]) >= 4 then args_at(a[..], 3) else "";
+  return gt_check(f[..], args_at(a[..], 1), model, gguf);
+}

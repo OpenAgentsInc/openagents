@@ -1,5 +1,5 @@
 /* Granite tokenizer and chat renderer on a GGUF file: reads cases written by
-   granite_text.py and prints one line per case for it to compare.
+   granite_text.coax and prints one line per case for it to compare.
      granite_text MODEL.gguf CASES.bin */
 #include <stdio.h>
 #include <stdlib.h>

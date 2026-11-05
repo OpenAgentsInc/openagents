@@ -126,6 +126,28 @@ the same inputs, then deletes it in the same commit that switches callers.
   `cast-proof.sh` and `raid-proof.sh`: the same room, network and check,
   with the same verdicts on the same room server.
 
+- 2026-11-05 (#12859): more ports, each checked against the old tool
+  before it was deleted. `coax/web/room/local.coax` replaces `local.sh`
+  (the same lines and answers from the same room and page);
+  `room-proof.coax transport` replaces `transport-proof.sh` (the same
+  verdicts and ACK numbers through the same proxy profiles);
+  `room-math-check.coax` replaces `room-math-check.sh` (the same bits, and
+  the same 19,846 failures with `sinf` scaled); `coax/tests/job_budget.coax`
+  replaces `job_budget.py`; `coax/web/room/worker.coax` replaces
+  `worker.sh` (the same wasm module, byte for byte, with and without the
+  cache); `coder/tui/resize_check.coax` replaces `resize_check.py` (the
+  same 40 verdicts, and the same 7 failures with the reflow taken out).
+  `coax/web/raid-cost.ts` was a one-off measurement for #12747 with no
+  callers and went. Granite's gate is Coax: `psionic/tests/check_granite.coax`
+  replaces `check_granite.sh` (the same lines from the owned-only run and
+  from the full run on both pinned GGUFs, timings aside),
+  `granite_text.coax` replaces `granite_text.py` (the same case file, byte
+  for byte, and the same verdicts on good, corrupted and short results and
+  on changed vocabularies and merges), and `granite_parity.coax` replaces
+  `granite_parity.py` (the same text and `--json` file, byte for byte, on
+  equal, close, far and mismatched dumps). `granite_fixture.py` keeps a
+  reason (2): it writes the tiny GGUF apart from the Coax reader it checks.
+
 ## Keeping it this way
 
 - `coax/web/release.sh` runs `coax/web/tool.sh tools-check` on the release
