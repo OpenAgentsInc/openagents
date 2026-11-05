@@ -1,0 +1,56 @@
+// JSON adapter for the same core observer receipt on web, Vulkan and Metal.
+#load "conformance.coax";
+#load "../../coax/lib/json/json.coax";
+#authority;
+#test "all three hosts use the same complete core row semantics and required metadata" {
+  text:[4096]u8;o:[1]Jo;d:[1]Jv;nodes:[512]JvNode;
+  for host:[3]string.["web","vulkan","metal"] {
+    for bad:0..<15 {
+      jo_start(o[..],text[..]);jo_obj(o[..]);
+      jo_key(o[..],"schema");jo_str(o[..],ifx bad==1 then "bad" else "aethyr.host.observations.v1");
+      jo_key(o[..],"scope");jo_str(o[..],ifx bad==2 then "transport" else "core");
+      jo_key(o[..],"host");jo_str(o[..],ifx bad==3 then "other" else host);
+      if bad!=12 {jo_key(o[..],"version");jo_int(o[..],ifx bad==4 then 2 else 1);}
+      if bad!=13 {jo_key(o[..],"constructed");jo_int(o[..],ifx bad==5 then 0 else 73);}
+      if bad!=14 {jo_key(o[..],"dropped");jo_int(o[..],ifx bad==6 then 1 else 0);}
+      if bad!=7 {jo_key(o[..],"held");jo_int(o[..],ifx bad==8 then 1 else 0);}
+      jo_key(o[..],"assets");jo_raw(o[..],ifx bad==9 then "null" else "[[7,0,4,0,0,0,4,3541452541],[7,1,0,0,0,0,0,2166136261]]");
+      jo_key(o[..],"frames");jo_raw(o[..],ifx bad==10 then "null" else "[[1,1134559232,1127481344,1073741824,0,1,0,0],[1,1134559232,1127481344,1073741824,1015021568,1,0,0]]");
+      jo_key(o[..],"events");jo_raw(o[..],ifx bad==11 then "null" else "[[2,-6,15,1,0,0,0,0],[2,-6,15,0,0,0,0,0],[2,128578,0,1,0,0,0,0],[5,1,0,0,0,0,0,0],[6,1107296256,0,0,0,0,0,0],[3,1103626240,1116274688,0,0,17,0,0],[3,1103626240,1116274688,2,0,17,0,0],[3,1096810496,1099956224,0,1,19,0,0],[3,1096810496,1099956224,2,1,19,0,0],[4,901,0,0,0,0,7,2634860734],[4,901,0,0,0,0,128,794728389],[4,900,0,0,0,0,4,3469047761],[8,3,0,0,0,0,0,0]]");
+      jo_end(o[..]);#assert !o[0].bad && jv_parse(d[..],jo_text(o[..]),nodes[..]);#assert hcr_core(d[0])==(bad==0);
+    }
+  }
+}
+#test "receipt rows require arrays of eight exact integers within caller capacity" {
+  d:[1]Jv;nodes:[64]JvNode;out:[1][8]int;
+  #assert jv_parse(d[..],"[[1,2,3,4,5,6,7,8]]",nodes[..]) && hcr_rows(d[0],0,out[..])==1 && out[0][7]==8;
+  for text:[8]string.["{}","null","[1]","[[1]]","[[1,2,3,4,5,6,7,8,9]]","[[1,2,3,4,5,6,7,1.5]]","[[1,2,3,4,5,6,7,\"8\"]]","[[1,2,3,4,5,6,7,8],[1,2,3,4,5,6,7,8]]"] {
+    #assert jv_parse(d[..],text,nodes[..]) && hcr_rows(d[0],0,out[..])== -1;
+  }
+  #assert jv_parse(d[..],"[]",nodes[..]) && hcr_rows(d[0],0,out[..])==0;
+  #assert jv_parse(d[..],"[[0,1,2,3,4,5,6,0]]",nodes[..]) && hcr_rows(d[0],0,out[..])==1 && out[0][0]==0 && out[0][6]==6;
+  #assert hcr_rows(d[0],-1,out[..])== -1;
+}
+#test "receipt envelope rejects missing metadata, wrong host, scope and schema" {
+  d:[1]Jv;nodes:[64]JvNode;
+  for text:[8]string.["{}","[]","{\"schema\":\"wrong\"}","{\"schema\":\"aethyr.host.observations.v1\",\"scope\":\"transport\"}","{\"schema\":\"aethyr.host.observations.v1\",\"scope\":\"core\",\"host\":\"other\"}","{\"schema\":\"aethyr.host.observations.v1\",\"scope\":\"core\",\"host\":\"web\"}","{\"schema\":\"aethyr.host.observations.v1\",\"scope\":\"core\",\"host\":\"vulkan\"}","{\"schema\":\"aethyr.host.observations.v1\",\"scope\":\"core\",\"host\":\"metal\"}"] {
+    #assert jv_parse(d[..],text,nodes[..]) && !hcr_core(d[0]);
+  }
+}
+hcr_rows :: (d:Jv,at:int,out:[][8]int)->int {
+  if jv_kind(d,at)!=JV_ARRAY || jv_len(d,at)>out.count {return -1;}
+  n:=jv_len(d,at);
+  for i:0..<n {
+    row:=jv_at(d,at,i);if jv_kind(d,row)!=JV_ARRAY || jv_len(d,row)!=8 {return -1;}
+    for k:0..<8 {v:=jv_int(d,jv_at(d,row,k),-9223372036854775808);if v== -9223372036854775808 {return -1;}out[i][k]=v;}
+  }
+  return n;
+}
+hcr_core :: (d:Jv)->bool {
+  if jv_kind(d,0)!=JV_OBJECT || jv_raw(d,jv_get(d,0,"schema"))!="aethyr.host.observations.v1" || jv_raw(d,jv_get(d,0,"scope"))!="core" {return false;}
+  host:=jv_raw(d,jv_get(d,0,"host"));if host!="web" && host!="vulkan" && host!="metal" {return false;}
+  assets:[4][8]int;frames:[2][8]int;events:[13][8]int;
+  an:=hcr_rows(d,jv_get(d,0,"assets"),assets[..]);fn:=hcr_rows(d,jv_get(d,0,"frames"),frames[..]);en:=hcr_rows(d,jv_get(d,0,"events"),events[..]);
+  if an<2 || fn!=2 || en!=13 {return false;}
+  return hc_core(jv_int(d,jv_get(d,0,"version"),0),jv_int(d,jv_get(d,0,"constructed"),72),jv_int(d,jv_get(d,0,"dropped"),-1),jv_int(d,jv_get(d,0,"held"),-1),assets[0..<an],frames[0..<fn],events[0..<en]);
+}

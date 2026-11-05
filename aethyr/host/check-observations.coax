@@ -1,0 +1,16 @@
+// One Coax checker for actual core receipts from any of the three adapters.
+#import "Basic";
+#load "receipt.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/args.coax";
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])<1 {tool_errln("usage: check-observations CORE.json [CORE.json...]");return 2;}
+  text:[65536]u8;nodes:[4096]JvNode;d:[1]Jv;
+  for i:0..<args_count(a[..]) {
+    file:=args_at(a[..],i);n:=fs_read(file,text[..]);
+    if n<0 || !jv_parse(d[..],cast(string)text[0..<n],nodes[..]) || !hcr_core(d[0]) {tool_err("Core observation refused: ");tool_errln(file);return 1;}
+    print("Core observations accepted: % (%).\n",file,jv_raw(d[0],jv_get(d[0],0,"host")));
+  }
+  print("Core section only; transport, production GPU, lifecycle and audio retain separate exits.\n");return 0;
+}

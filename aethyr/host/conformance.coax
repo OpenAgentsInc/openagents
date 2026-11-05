@@ -1,0 +1,68 @@
+// Shared admission of actual recording-realm observations. This qualifies
+// the core section only; transport/GPU/lifecycle/audio are separate exits.
+#authority;
+
+#test "core receipt accepts the exact authored probes and ignores only setup messages" {
+  assets:=[2][8]int.[[8]int.[7,0,4,0,0,0,4,3541452541],[8]int.[7,1,0,0,0,0,0,2166136261]];
+  frames:=[2][8]int.[[8]int.[1,1134559232,1127481344,1073741824,0,1,0,0],[8]int.[1,1134559232,1127481344,1073741824,1015021568,1,0,0]];
+  events:=[13][8]int.[
+    [8]int.[2,-6,15,1,0,0,0,0],[8]int.[2,-6,15,0,0,0,0,0],[8]int.[2,128578,0,1,0,0,0,0],[8]int.[5,1,0,0,0,0,0,0],
+    [8]int.[6,1107296256,0,0,0,0,0,0],[8]int.[3,1103626240,1116274688,0,0,17,0,0],[8]int.[3,1103626240,1116274688,2,0,17,0,0],
+    [8]int.[3,1096810496,1099956224,0,1,19,0,0],[8]int.[3,1096810496,1099956224,2,1,19,0,0],
+    [8]int.[4,901,0,0,0,0,7,2634860734],[8]int.[4,901,0,0,0,0,128,794728389],[8]int.[4,900,0,0,0,0,4,3469047761],[8]int.[8,3,0,0,0,0,0,0]
+  ];
+  #assert hc_core(1,73,0,0,assets[..],frames[..],events[..]);
+  for field:0..<8 {
+    for i:0..<2 {a:=assets;a[i][field]+=1;#assert !hc_core(1,73,0,0,a[..],frames[..],events[..]);}
+    for i:0..<2 {f:=frames;f[i][field]+=1;#assert !hc_core(1,73,0,0,assets[..],f[..],events[..]);}
+    for i:0..<13 {e:=events;e[i][field]+=1;#assert !hc_core(1,73,0,0,assets[..],frames[..],e[..]);}
+  }
+  #assert !hc_core(0,73,0,0,assets[..],frames[..],events[..]);
+  #assert !hc_core(2,73,0,0,assets[..],frames[..],events[..]);
+  #assert !hc_core(1,72,0,0,assets[..],frames[..],events[..]);
+  #assert !hc_core(1,73,1,0,assets[..],frames[..],events[..]);
+  #assert !hc_core(1,73,0,1,assets[..],frames[..],events[..]);
+  #assert !hc_core(1,73,0,0,assets[0..<1],frames[..],events[..]);
+  #assert !hc_core(1,73,0,0,assets[..],frames[0..<1],events[..]);
+  #assert !hc_core(1,73,0,0,assets[..],frames[..],events[0..<12]);
+  extra:[14][8]int;for i:0..<13 {extra[i]=events[i];}
+  #assert !hc_core(1,73,0,0,assets[..],frames[..],extra[..]);
+  startup:[4][8]int;startup[0]=[8]int.[4,600,0,0,0,0,128,1];startup[1]=assets[0];startup[2]=[8]int.[4,606,0,0,0,0,0,2166136261];startup[3]=assets[1];
+  #assert hc_core(1,73,0,0,startup[..],frames[..],events[..]);
+  startup[0][1]=607;#assert !hc_core(1,73,0,0,startup[..],frames[..],events[..]);
+  startup[0][1]=600;startup[0][0]=3;#assert !hc_core(1,73,0,0,startup[..],frames[..],events[..]);
+  over:[5][8]int;over[0]=assets[0];over[1]=assets[1];for i:2..<5 {over[i]=[8]int.[4,600,0,0,0,0,1,1];}
+  #assert !hc_core(1,73,0,0,over[..],frames[..],events[..]);
+  over[2]=assets[0];#assert !hc_core(1,73,0,0,over[0..<3],frames[..],events[..]);
+  #assert !hc_core(1,73,0,0,startup[0..<0],frames[..],events[..]);
+}
+#test "row matcher checks all eight words and both slice lengths" {
+  a:=[1][8]int.[[8]int.[1,2,3,4,5,6,7,8]];b:=[1][8]int.[[8]int.[1,2,3,4,5,6,7,8]];
+  #assert hc_rows(a[..],b[..]) && hc_rows(a[0..<0],b[0..<0]);
+  #assert !hc_rows(a[..],b[0..<0]) && !hc_rows(a[0..<0],b[..]);
+  for k:0..<8 {c:=b;c[0][k]+=1;#assert !hc_rows(a[..],c[..]);}
+}
+hc_rows :: (actual:[][8]int,want:[][8]int)->bool {
+  if actual.count!=want.count {return false;}
+  for i:0..<want.count {for k:0..<8 {if actual[i][k]!=want[i][k] {return false;}}}
+  return true;
+}
+hc_core :: (version:int,constructed:int,dropped:int,held:int,assets:[][8]int,frames:[][8]int,events:[][8]int)->bool #export_c {
+  if version!=1 || constructed!=73 || dropped!=0 || held!=0 {return false;}
+  expected_assets:=[2][8]int.[[8]int.[7,0,4,0,0,0,4,3541452541],[8]int.[7,1,0,0,0,0,0,2166136261]];
+  if assets.count>4 {return false;}
+  copied:[2][8]int;n:=0;
+  for row:assets {
+    if row[0]==4 && (row[1]==600 || row[1]==606) {continue;}
+    if n>=2 {return false;}copied[n]=row;n+=1;
+  }
+  if n!=2 || !hc_rows(copied[..],expected_assets[..]) {return false;}
+  expected_frames:=[2][8]int.[[8]int.[1,1134559232,1127481344,1073741824,0,1,0,0],[8]int.[1,1134559232,1127481344,1073741824,1015021568,1,0,0]];
+  expected_events:=[13][8]int.[
+    [8]int.[2,-6,15,1,0,0,0,0],[8]int.[2,-6,15,0,0,0,0,0],[8]int.[2,128578,0,1,0,0,0,0],[8]int.[5,1,0,0,0,0,0,0],
+    [8]int.[6,1107296256,0,0,0,0,0,0],[8]int.[3,1103626240,1116274688,0,0,17,0,0],[8]int.[3,1103626240,1116274688,2,0,17,0,0],
+    [8]int.[3,1096810496,1099956224,0,1,19,0,0],[8]int.[3,1096810496,1099956224,2,1,19,0,0],
+    [8]int.[4,901,0,0,0,0,7,2634860734],[8]int.[4,901,0,0,0,0,128,794728389],[8]int.[4,900,0,0,0,0,4,3469047761],[8]int.[8,3,0,0,0,0,0,0]
+  ];
+  return hc_rows(frames,expected_frames[..]) && hc_rows(events,expected_events[..]);
+}

@@ -55,7 +55,7 @@ tool_main :: ()->int #export_c {
   out:[2097152]u8;n:=cb_text(c[..],"JSON.stringify(coaxial.renderCapture)",out[..]);
   if n<0 || !fs_write(fs_join(dir,"browser-readback.json",paths[4][..]),cast(string)out[0..<n]) {return 1;}
   if !cb_expect(c[..],"globalThis.C=coaxial.renderCapture;C.width===320&&C.height===180&&C.bytes.length===320*180*4&&C.bytes.every((v,i)=>v===(i%4===3?255:i%4===((C.format==='bgra8unorm')?0:2)?64:128))") {tool_errln(wc_eval(c[..],"JSON.stringify({width:C.width,height:C.height,format:C.format,first:C.bytes.slice(0,16),last:C.bytes.slice(-16)})"));return 1;}
-  n=cb_text(c[..],"JSON.stringify({schema:'aethyr.host.observations.v1',host:'web',scope:'core',assets:assetRows,frames:frameRows,events:rows(),readback:{width:C.width,height:C.height,format:C.format,sha256:C.sha256}})",out[..]);
+  n=cb_text(c[..],"JSON.stringify({schema:'aethyr.host.observations.v1',host:'web',scope:'core',version:Number(coaxial.hostProbe(-1,0)),constructed:Number(coaxial.hostProbe(-1,1)),dropped:Number(coaxial.hostProbe(-1,3)),held:Number(coaxial.hostProbe(-1,5)),assets:assetRows,frames:frameRows,events:rows(),readback:{width:C.width,height:C.height,format:C.format,sha256:C.sha256}})",out[..]);
   if n<0 || !fs_write(fs_join(dir,"browser-core.json",paths[4][..]),cast(string)out[0..<n]) {return 1;}
   if !cb_expect(c[..],"coaxial.hostReset();for(let i=0;i<5;i++)coaxial.send(910,'ws://127.0.0.1:9170/echo');rows().filter(r=>r[0]===9&&r[1]===1).map(r=>r[2]).join(',')==='0,1,2,3,-1'") {return 1;}
   if !cb_wait(c[..],"[256,260,264,268].every(k=>rows().some(r=>r[0]===4&&r[1]===k&&r[6]===0))") {return 1;}

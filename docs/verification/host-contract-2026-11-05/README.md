@@ -47,6 +47,14 @@ transport, 59 route and 9 copy-span mutants, with no equivalents. Those
 unchanged passing gates were not repeated. Native carrier C emission and
 the scalar renderer face's native C compilation passed.
 
+`check-observations.coax` reads the same core receipt from web, Vulkan or
+Metal and admits the actual rows through `conformance.coax`. All eight
+words of every authored input event, both frame rows, asset copy/refusal,
+and observed version/default/dropped/held metadata are required. It admits
+the browser receipt here. Root mutation killed all 190 semantic checker
+and 60 JSON adapter mutants, with no survivors or equivalents. This shared
+core check does not imply that unrecorded sections or hosts passed.
+
 `browser-core.json`, `browser-transport.json` and
 `browser-replacement.json` retain the actual fixture event rows. Each row
 is `[kind,a,b,c,d,e,byteCount,FNV32]`, as defined by `fixture.coax`.
@@ -76,6 +84,8 @@ coax/web/tool.sh aethyr/host/check-transport.coax \
   "$HOME/.openagents/aethyrforge/host-contract-12869/fixture.wasm"
 coax/web/tool.sh aethyr/host/check-browser.coax \
   "$HOME/.openagents/aethyrforge/host-contract-12869"
+coax/web/tool.sh aethyr/host/check-observations.coax \
+  "$HOME/.openagents/aethyrforge/host-contract-12869/browser-core.json"
 ```
 
 Each command takes seconds, not a whole-model or release gate. The browser

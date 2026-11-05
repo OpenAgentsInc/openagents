@@ -309,6 +309,15 @@ Lifecycle checks use the versioned shared authority. GPU checks compare
 admitted draws and readbacks at the existing G5 tolerances. Audio checks
 capture muted/offline PCM, including asynchronous decode/voice ownership.
 
+`check-observations.coax CORE.json...` is the common core receipt checker.
+Each JSON receipt has `schema: "aethyr.host.observations.v1"`, `scope:
+"core"`, `host: "web" | "vulkan" | "metal"`, observed integer `version`,
+`constructed`, `dropped` and `held` metadata, and `assets`, `frames` and
+`events` arrays. Each row has exactly eight integers in the fixture's
+`[kind,a,b,c,d,e,byteCount,FNV32]` order. The shared `conformance.coax`
+checks the authored core sequence and `receipt.coax` adapts JSON. A core
+receipt cannot substitute for any other section.
+
 A passing result must identify source, compiler, host executable/module,
 fixture, shader and asset identities and retain raw observations. A missing
 section or an explicitly refused required service is an incomplete result.
