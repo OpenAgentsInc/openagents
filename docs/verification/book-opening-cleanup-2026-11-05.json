@@ -139,6 +139,14 @@
     {
       "command": "python3 coax/tests/constant_time.py",
       "result": "Optimized native and wasm-opt dead-local erasure survives; ordinary-store negative controls disappear"
+    },
+    {
+      "command": "python3 psionic/tests/book.py (NIP-44 selected example, checked and release)",
+      "result": "Both runs match erased-plaintext-scratch transcript"
+    },
+    {
+      "command": "aethyr/examples/replay-a-walk.coax (checked and release)",
+      "result": "Both runs match new buffered-input digest 3581155823; planted divergence remains 150"
     }
   ],
   "boundaries": [
@@ -207,6 +215,25 @@
       }
     },
     "readonly_erasure_refusal": "E0378; authored typed-graph case and real source fixture",
-    "bootstrap": "COAX_MUTATION=0 bootstrap checks and seed reproduction; changed checker units mutated separately. This is not a claim of a new full compiler mutation gate."
+    "bootstrap": "Completed stage0 checks and seed comparison, final compiler checks and byte-identical compiler/seed reproduction, release metadata check and verified provenance. Split before the unfinished final reproduction command to keep each command under 15 minutes. COAX_MUTATION=0; changed checker units mutated separately, not a new full compiler mutation claim.",
+    "result": "passed",
+    "provenance_record": [
+      "coax-provenance-v1",
+      "ffb77e562b75b6aacf37a49fc1b044b265225a2ba75bef448b04cb16ab056caa",
+      "a3b5d09de4066684aed3682b3870bde1eeaec596ca20bdf4cbc2d656a04ce740",
+      "60cae029d12189fd8d837140f218e7eba0ecf94f624d3116c792fcec5abb0778"
+    ],
+    "runtime": "Actual worker, native/release/ASan/UBSan/Wasm NIP-59 cleanup and two-way native/Wasm record exchange passed with the merged frontend."
+  },
+  "tools_check": "1795 tracked tool files, 0 new without a reason",
+  "merged_world": {
+    "name": "everglade5e",
+    "result": "passed",
+    "bytes": 2038414,
+    "sha256": "516295d350f4ff77c31463b21e0b6b700873ea8b5e7e0f3e9feae91572dfa6ed",
+    "seconds": 283.2,
+    "compiler": "0.50.0 merged frontend",
+    "budget": 2150000,
+    "note": "Initial attempt stopped at 840-second command limit while limited to one worker. Completed bounded retry with COAX_JOBS=6, COAX_JOBS_LOAD=28; shared 19-worker budget unchanged."
   }
 }
