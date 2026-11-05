@@ -62,7 +62,16 @@ EG_CHUNK :: 3740;               // a D frame's entries at most (WIRE_SERVER_FRAM
 EG_CASTS :: 32;                 // casts heard and on their way, from the press to the strike (room-casts.coax)
 EG_CAST_GAP :: 8;               // ticks between a seat's casts at least (about 4 a second)
 EG_NAME :: 24; EG_LOOK :: 32;
-EG_EVENTS :: 96; EG_EV_BYTES :: 6144;
+// A tick's events (e entries) at most. An outcome (eg_ev_outcome: the town's pieces, a rebuild, an edit:
+// a page that misses one is wrong until it joins again) has EG_EV_KEEP more events and EG_EV_KEEP_BYTES
+// more bytes that cues never take, so a busy tick's cues can't crowd one out (#12836); so does a cue
+// aimed at a seat (eg_event_who). Every other e
+// entry is a cue, shown and gone (the rows carry its result: HP, death, level): a seat hears at most
+// EG_CUE_BUDGET bytes of them a tick, and the rest are dropped for it and counted. Outcomes, and cues
+// aimed at the seat (ev_who), go without a limit.
+EG_EVENTS :: 96; EG_EV_BYTES :: 6144; EG_EV_KEEP :: 32; EG_EV_KEEP_BYTES :: 2048;
+EG_CUE_BUDGET :: 600;
+EG_OUTCOMES :: [7] string.["break", "burn", "mend", "pgone", "pburn", "rebuild", "edit"];
 EG_TGT_SEAT :: 1000;            // TGT codes (spec 3.6): 1000 + SS a seat, 2000 + EID a creature
 // the bar slots that make the wire's creature kinds (everglade-wire.coax WK_*): SP_SLOTS (4) + the
 // ability (everglade-abilities.coax AB_*, everglade-circle.coax)
@@ -157,9 +166,10 @@ EgRoom :: struct {
   hurts: [EG_HURTS] EgHurt; hurt_n: int;   // the world's harm to seats this tick, dealt after the heals (room-casts.coax)
   rules: [1] E5rRoom;
   // the events since the last D, as entry text, each with where it happened
-  ev: [EG_EV_BYTES] u8; ev_bytes: int; ev_n: int;
-  ev_at: [EG_EVENTS] int; ev_len: [EG_EVENTS] int; ev_x: [EG_EVENTS] f32; ev_z: [EG_EVENTS] f32; ev_all: [EG_EVENTS] bool;
-  ev_who: [EG_EVENTS] int;       // the seats an event also tells of beyond its own fields, one bit each (room-blocks.coax eg_im_event)
+  ev: [EG_EV_BYTES + EG_EV_KEEP_BYTES] u8; ev_bytes: int; ev_n: int;
+  ev_at: [EG_EVENTS + EG_EV_KEEP] int; ev_len: [EG_EVENTS + EG_EV_KEEP] int; ev_x: [EG_EVENTS + EG_EV_KEEP] f32; ev_z: [EG_EVENTS + EG_EV_KEEP] f32; ev_all: [EG_EVENTS + EG_EV_KEEP] bool;
+  ev_out: [EG_EVENTS + EG_EV_KEEP] bool;   // an outcome (eg_ev_outcome), not a cue
+  ev_who: [EG_EVENTS + EG_EV_KEEP] int;       // the seats an event also tells of beyond its own fields, one bit each (room-blocks.coax eg_im_event)
   // the town, as the host's world steps it (everglade-watch.coax everglade_room_town): each person as a
   // page hears them (EG_FOLK_FLOATS: X Z YAW CLIP MODE HP SHOWN CASTING KIND FOE RANK MAX), each seat's WANTED level
   folk: [E5R_FOLK * EG_FOLK_FLOATS] f32; folk_on: bool;
@@ -381,12 +391,26 @@ rm_eg_dropped :: (v: [] RmServer) -> int #export_c {
   for k: 0..<EG_ROOMS { n += v[0].eg[k].ev_dropped; v[0].eg[k].ev_dropped = 0; }
   return n;
 }
+// Whether e entry t is an outcome (EG_OUTCOMES), not a cue.
+eg_ev_outcome :: (t: string) -> bool {
+  if t.count < 3 || t[0] != 'e' || t[1] != ' ' { return false; }
+  j := 2; while j < t.count && t[j] != ' ' { j += 1; }
+  for i: 0..<EG_OUTCOMES.count { if cast(string) t[2..<j] == EG_OUTCOMES[i] { return true; } }
+  return false;
+}
 // An event since the last D, heard within EG_VIEW of (x, z), or by everyone (all).
 eg_event :: (v: [] RmServer, k: int, text: string, x: f32, z: f32, all: bool) { eg_event_who(v, k, text, x, z, all, 0); }
 // The same, telling of the seats in `who` too (a raider's cast aimed at a seat): one bit a seat.
 eg_event_who :: (v: [] RmServer, k: int, text: string, x: f32, z: f32, all: bool, who: int) {
   e := v[0].eg[k].ev_n;
-  if e >= EG_EVENTS || v[0].eg[k].ev_bytes + text.count > EG_EV_BYTES { v[0].eg[k].ev_dropped += 1; return; }
+  out := eg_ev_outcome(text);
+  keep := out || who != 0;   // (one aimed at a seat has the outcomes' room too: it is on that player)
+  if e >= EG_EVENTS + (ifx keep then EG_EV_KEEP else 0) || v[0].eg[k].ev_bytes + text.count > EG_EV_BYTES + (ifx keep then EG_EV_KEEP_BYTES else 0) {
+    v[0].eg[k].ev_dropped += 1;
+    if out { v[0].st.ev_lost += 1; }   // past even the outcomes' own room: counted apart, for the vitals
+    return;
+  }
+  v[0].eg[k].ev_out[e] = out;
   a := v[0].eg[k].ev_bytes;
   for i: 0..<text.count { v[0].eg[k].ev[a + i] = text[i]; }
   v[0].eg[k].ev_at[e] = a; v[0].eg[k].ev_len[e] = text.count; v[0].eg[k].ev_x[e] = x; v[0].eg[k].ev_z[e] = z; v[0].eg[k].ev_all[e] = all; v[0].eg[k].ev_who[e] = who;
@@ -1235,13 +1259,19 @@ eg_send :: (v: [] RmServer, k: int, s: int) {
   }
   v[0].st.meta_b += meta;
   ev_send(v, k, s, full, unseen, o[..]);   // the world event and the level of everyone in view (room-events.coax)
-  // the events since the last state, near you
+  // the events since the last state, near you: cues from EG_CUE_BUDGET, outcomes and what is aimed at you without
+  cue := 0; ob := 0;
   for q: 0..<v[0].eg[k].ev_n {
-    if !v[0].eg[k].ev_all[q] && ((v[0].eg[k].ev_who[q] >> s) & 1) == 0 && !eg_near(me, v[0].eg[k].ev_x[q], v[0].eg[k].ev_z[q]) { continue; }   // (aimed at s: wherever it is)
+    aimed := ((v[0].eg[k].ev_who[q] >> s) & 1) != 0;
+    if !v[0].eg[k].ev_all[q] && !aimed && !eg_near(me, v[0].eg[k].ev_x[q], v[0].eg[k].ev_z[q]) { continue; }   // (aimed at s: wherever it is)
     if eg_im_event_withheld(v, k, s, q, unseen) { continue; }   // of a player it blocks or can't see (room-blocks.coax, #12789)
-    a := v[0].eg[k].ev_at[q];
+    a := v[0].eg[k].ev_at[q]; m := v[0].eg[k].ev_len[q] + 1;
+    if v[0].eg[k].ev_out[q] || aimed { ob += m; }
+    else if cue + m > EG_CUE_BUDGET { v[0].st.cue_drop += 1; continue; }
+    else { cue += m; }
     eg_out_entry(o[..], v, k, s, f, cast(string) v[0].eg[k].ev[a..<a + v[0].eg[k].ev_len[q]]);
   }
+  v[0].st.cue_b += cue; v[0].st.out_b += ob;
   eg_out_send(o[..], v, k, s, f);
 }
 
@@ -1496,6 +1526,36 @@ eg_test_input :: (v: [] RmServer, seq: int) {
   // all 3000 and the fire, once each, over about 25 ticks rather than in the join's first
   #assert breaks == 3000 && burns == 1 && ticks >= 20 && ticks <= 35;
   #assert v[0].eg[k].seat[1].pieces == EG_PIECES_ALL && v[0].st.join_b - was >= 3000 * 15 && v[0].st.join_wait > 0;
+}
+#test "everglade room: cues go from their own allowance and the rest are dropped and counted; outcomes reach every page past a tick full of cues (#12836)" #steps 4000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  rm_control(v[..], "levels 0 2\n");
+  rm_clock(v[..], 0, 1762190000000);
+  ev := "GET /api/room/relay/everglade/pair-cues HTTP/1.1\r\n\r\n";
+  box: [1] EgInbox;
+  #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  rm_heard(v[..], 0, "H 4 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 4 ranger.0.0.0 druid 0 -");
+  for t: 0..<3 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
+  #assert eg_ev_outcome("e break 12 0 0 0") && eg_ev_outcome("e rebuild") && eg_ev_outcome("e edit 3") && !eg_ev_outcome("e hit 1001 2003 7 3") && !eg_ev_outcome("e breakx 1") && !eg_ev_outcome("x 3");
+  // a tick of 200 hits near both seats (more than a tick's events), a hit aimed at seat 1, then 20 pieces break
+  b: [64] u8;
+  for q: 0..<200 { n := wire_put_hit(b[..], 0, WireHit.{who = 2000 + q, by = 2001, amt = 7, kind = 3}); eg_event(v[..], k, cast(string) b[0..<n], 0, 0, false); }
+  lost := v[0].st.ev_lost; dropped := v[0].st.cue_drop;
+  n := wire_put_hit(b[..], 0, WireHit.{who = 1001, by = 2400, amt = 9, kind = 3}); eg_event_who(v[..], k, cast(string) b[0..<n], 900, 900, false, 2);
+  for q: 0..<20 { rm_eg_piece(v[..], k, 1, 100 + q, 0, 0, 0, 0, 0); }
+  #assert v[0].st.ev_lost == lost;   // the outcomes had their own room
+  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
+  for c: 0..<2 {
+    t := eg_test_of(box[..], c);
+    hits := 0; breaks := 0; cueb := 0; at := 0;
+    while at + 8 <= t.count { if t[at..<at + 6] == "e hit " { hits += 1; } if t[at..<at + 8] == "e break " { breaks += 1; } at += 1; }
+    #assert breaks == 20;   // every outcome, on every page
+    #assert hits * 17 <= EG_CUE_BUDGET + 17 && hits < 96;   // the cues within the allowance ("e hit 2000 2001 7 3;" 17 bytes or more)
+    #assert eg_test_has(t, "e hit 1001 2400 9 3") == (c == 1);   // the hit aimed at seat 1 went to it, the allowance spent or not
+  }
+  #assert v[0].st.cue_drop > dropped && v[0].st.out_b > 0 && v[0].st.cue_b > 0;
 }
 #test "everglade room: the watch's Hold Person on a seat is an effect entity on every page, its start and length the rules' time left, gone when it ends" #steps 2000000000 {
   v: [1] RmServer;
