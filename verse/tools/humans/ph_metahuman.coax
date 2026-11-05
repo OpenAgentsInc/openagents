@@ -1,0 +1,1019 @@
+// pack_human.coax's MetaHuman source: a MetaHuman export's DNA meshes on the people rig.
+//
+//     coax/web/tool.sh verse/tools/humans/pack_human.coax metahuman EXPORT_DIR [OUT.pack]
+//
+// EXPORT_DIR is a MetaHuman export (~/work/film-out/draconia/metahuman/export): its
+// dna/*_Body.dna and dna/*_Head.dna and its texture maps. Each DNA is dumped by OpenRigLogic's
+// dna_dump (MIT; built under ../src/openriglogic/build, or DNA_DUMP names it) with --skin into
+// ~/.openagents/verse/private-build/metahuman-dump/, outside the repository: an OBJ per mesh
+// (centimetres), a skin file per mesh (joint index and weight pairs per vertex) and joints.txt
+// (name, parent, translation in cm, Euler XYZ rotation in degrees).
+//
+// Then, for each mesh:
+//   - every joint folds onto the rig's 65 by name (aethyr/mannequin.coax mannequin_fold, ported
+//     here as mh_fold()); a joint that folds to nothing gives its weight to its nearest ancestor
+//     that does (a face joint to the head, a finger helper to its finger);
+//   - the body is bound where the clothes were fitted (the DNA body with its arms lowered,
+//     rig-body-down), each kept joint carrying its turn from there to the rig's rest;
+//   - positions go to metres, Y up, +Z forward, the figure's left +x (the rig's axes);
+//   - weights keep the four heaviest after folding, summing to 255.
+//
+// The head DNA's rig behaviour (OpenRigLogic's tables, dumped by dna_behavior beside dna_dump)
+// gives the pack a face rig (ph_face.coax) the lab evaluates: expressions and blinks. The
+// export's own hair cards (its grooms) ride the head, carried from the engine's archetype face.
+// A fantasy outfit (--outfit, ph_outfits.coax) is fitted onto the body in the T pose and moved
+// into the bind.
+//
+// Not here yet (the Python tool had them; no export on hand has them to check against): a
+// portrait's clothes and grooms (the export's latest/mh.neutral.glb), its skin maps and scalp,
+// and the female figure's sculpt (shape.py). An export with a portrait, or a female body, stops
+// with a message naming that.
+//
+// Nothing this reads or writes goes into git or is used to train AI models (the export's
+// NO-TRAINING.txt).
+
+MH_DUMP :: "/.openagents/verse/private-build/metahuman-dump";
+MH_NAMES :: [65] string.["root", "pelvis", "spine_01", "spine_02", "spine_03", "neck_01", "head", "clavicle_l", "upperarm_l", "lowerarm_l", "hand_l", "index_01_l", "index_02_l", "index_03_l", "index_04_leaf_l", "middle_01_l", "middle_02_l", "middle_03_l", "middle_04_leaf_l", "pinky_01_l", "pinky_02_l", "pinky_03_l", "pinky_04_leaf_l", "ring_01_l", "ring_02_l", "ring_03_l", "ring_04_leaf_l", "thumb_01_l", "thumb_02_l", "thumb_03_l", "thumb_04_leaf_l", "clavicle_r", "upperarm_r", "lowerarm_r", "hand_r", "index_01_r", "index_02_r", "index_03_r", "index_04_leaf_r", "middle_01_r", "middle_02_r", "middle_03_r", "middle_04_leaf_r", "pinky_01_r", "pinky_02_r", "pinky_03_r", "pinky_04_leaf_r", "ring_01_r", "ring_02_r", "ring_03_r", "ring_04_leaf_r", "thumb_01_r", "thumb_02_r", "thumb_03_r", "thumb_04_leaf_r", "thigh_l", "calf_l", "foot_l", "ball_l", "ball_leaf_l", "thigh_r", "calf_r", "foot_r", "ball_r", "ball_leaf_r"];
+mh_lower :: (name: string) -> int { for k: 0..<65 { if MH_NAMES[k] == name { return k; } } return -1; }
+MH_ARCHETYPE_FACE :: "/Users/Shared/Epic Games/UE_5.8/Engine/Plugins/MetaHuman/MetaHumanCoreTechLib/Content/ArchetypeDNA/SKM_Face.dna";
+// The cards' export frame from the archetype's DNA frame (cm): measured once, by the brows' fit
+// (their median distance to the archetype skin 0.24 cm with it), and checked every pack.
+CARDS_OFFSET :: [3] f64.[0.0, -14.0, -2.5];
+CARDS_FIT_CM :: 0.6; CARDS_NEAR :: 4;
+// each groom's colour (sRGB): the mayor's greys, as his look recipe's (Melanin 0.55, high Whiteness)
+cards_rgb :: (kind: string) -> [3] int {
+  if kind == "Beard" { return [3] int.[166, 163, 158]; }
+  if kind == "Mustache" { return [3] int.[160, 157, 152]; }
+  if kind == "Eyebrows" { return [3] int.[112, 107, 101]; }
+  return [3] int.[150, 147, 141];
+}
+cards_on_rig :: (kind: string) -> bool { return kind == "Beard" || kind == "Mustache" || kind == "Eyebrows"; }
+// The hair cards' atlas holds fine strands: each is thickened (its alpha's maximum over HAIR_GROW
+// texels), the faint part of the curve lifted (HAIR_LIFT), and the new coverage filled with the
+// strands' own colour; cards whose atlas region is nearly empty (a mean coverage under
+// HAIR_SPARSE: lone flyaways round the outline) are left out.
+HAIR_GROW :: 5; HAIR_LIFT :: 0.55; HAIR_SPARSE :: 0.035;
+// Each DNA mesh the pack draws: its material and its maps (the export's dcc/*/Maps). The eyes'
+// shell and edge have no maps: they are blended over the eyes, shaded from lid coordinates.
+MH_MESHES :: [8] string.["body_lod0_mesh", "head_lod0_mesh", "teeth_lod0_mesh", "eyeLeft_lod0_mesh", "eyeRight_lod0_mesh", "eyelashes_lod0_mesh", "eyeshell_lod0_mesh", "eyeEdge_lod0_mesh"];
+MH_MAT :: [8] string.["skin", "skin", "teeth", "eye", "eye", "brow", "occlusion", "wet"];
+MH_BASE :: [8] string.["Body_Basecolor.png", "Head_Basecolor.png", "Teeth_Color.png", "Eyes_Color.png", "Eyes_Color.png", "Eyelashes_Color.png", "", ""];
+MH_NORMAL :: [8] string.["Body_Normal.png", "Head_Normal.png", "Teeth_Normal.png", "Eyes_Normal.png", "Eyes_Normal.png", "", "", ""];
+MH_ROUGH :: [8] string.["Body_SRMF.png", "Head_SRMF.png", "", "", "", "", "", ""];
+ALIGNED :: [12] string.["clavicle", "upperarm", "lowerarm", "hand", "index", "middle", "ring", "pinky", "thumb", "thigh", "calf", "foot"];
+MH_ARM :: [2] string.["upperarm", "lowerarm"];
+MH_HAND :: [6] string.["hand", "index", "middle", "ring", "pinky", "thumb"];
+// outfits' "trunk_covered": the trunk's skin from this far (cm) under the neck's base down is the
+// coat's; "head_under": the piece under whose foot the head's skin is the cloth's
+outfit_trunk_covered :: (o: int) -> f64 { return ifx o == O_MAYORAL then 7.0 else 0.0; }
+outfit_head_under :: (o: int) -> string { return ifx o == O_MAYORAL then "Shirt_Collar" else ""; }
+
+// ---- a DNA's joints.txt
+MJ :: 1024;
+MhJoints :: struct {
+  n: int; names: [MJ] string; nb: [65536] u8; parent: [MJ] int; R: [MJ][3][3] f64; p: [MJ][3] f64; kept: [MJ] int; of: [65] int;
+}
+mh_side :: (n: string) -> int {
+  if ends(n, "_l") || has(n, "_l_") { return 1; }
+  if ends(n, "_r") || has(n, "_r_") { return 2; }
+  return 0;
+}
+// mannequin_fold: the rig's joint a body's joint (lower case) is, or -1
+mh_fold :: (n: string) -> int {
+  k := mh_lower(n); if k >= 0 { return k; }
+  if n == "spine_04" || n == "spine_05" { return mh_lower("spine_03"); }
+  if n == "neck_02" { return mh_lower("neck_01"); }
+  sd := mh_side(n);
+  suffix := ifx sd == 1 then "_l" else ifx sd == 2 then "_r" else "";
+  b: [64] u8;
+  if has(n, "metacarpal") && suffix.count > 0 { return mh_lower(cat2(b[..], "hand", suffix)); }
+  for bone: [7] string.["clavicle", "upperarm", "lowerarm", "thigh", "calf", "foot", "hand"] {
+    pre: [64] u8;
+    if suffix.count > 0 && starts(n, cat2(pre[..], bone, "_")) && n != cat2(b[..], bone, suffix) { return mh_lower(cat2(b[..], bone, suffix)); }
+  }
+  return -1;
+}
+joints_read :: (path: string, J: []MhJoints, t: []ObjText) {
+  n := fs_read(path, t[0].b[..]);
+  if n < 0 || n >= OBJ_TEXT { ph_die2("metahuman: can't read ", path); }
+  l: [1] Lines; l[0].text = cast(string) t[0].b[0..<n];
+  J[0].n = 0; at := 0;
+  while !lines_done(l[0]) {
+    line := lines_next(l[..]);
+    w: [1] Words; w[0] = words(line);
+    nm := word(w[..]); if nm.count == 0 { continue; }
+    j := J[0].n;
+    if j >= MJ || at + nm.count > 65536 { ph_die("metahuman: joints past the port's table"); }
+    lw := lower_into(nm, J[0].nb[at..<at + nm.count]); J[0].names[j] = lw; at += nm.count;
+    par := pint(word(w[..]));
+    t3 := [3] f64.[pf(word(w[..])), pf(word(w[..])), pf(word(w[..]))];
+    rx := pf(word(w[..])); ry := pf(word(w[..])); rz := pf(word(w[..]));
+    r := euler_xyz(rx, ry, rz);
+    J[0].parent[j] = par;
+    if par < 0 { J[0].R[j] = r; J[0].p[j] = t3; }
+    else { J[0].R[j] = mmul3(J[0].R[par], r); J[0].p[j] = vadd(J[0].p[par], mv3(J[0].R[par], t3)); }
+    J[0].n += 1;
+  }
+  for j: 0..<J[0].n {
+    k := mh_fold(J[0].names[j]); a := j;
+    while k < 0 && J[0].parent[a] >= 0 { a = J[0].parent[a]; k = mh_fold(J[0].names[a]); }
+    J[0].kept[j] = imax(k, 0);
+  }
+  for k: 0..<65 { J[0].of[k] = -1; }
+  for j: 0..<J[0].n {
+    k := mh_lower(J[0].names[j]);
+    if mh_fold(J[0].names[j]) >= 0 && k >= 0 && J[0].of[k] < 0 { J[0].of[k] = j; }
+  }
+}
+mh_of :: (J: []MhJoints, name: string) -> [3] f64 {
+  j := J[0].of[mh_lower(name)];
+  if j < 0 { ph_die2("metahuman: the DNA has no joint ", name); }
+  return J[0].p[j];
+}
+
+// ---- the dumps: dna_dump (and dna_behavior for a head) when the DNA is newer than its dump
+mh_mkdirs :: (path: string) {
+  if path.count == 0 || fs_exists(path) { return; }
+  mh_mkdirs(dir_name(path));
+  if !fs_mkdir(path) {}
+}
+mh_dump :: (w: []World, dna: string, out: string) -> string {
+  txt := w[0].txt[..];
+  real: [4096] u8; rdna := txt_keep(txt, fs_realpath(dna, real[..]));
+  eb: [4096] u8; tool := proc_getenv("DNA_DUMP", eb[..]);
+  if tool.count == 0 {
+    up := rdna; for i: 0..<5 { up = dir_name(up); }
+    tool = txt_cat(txt, up, "/src/openriglogic/build/dna_dump");
+  } else { tool = txt_keep(txt, tool); }
+  mh_mkdirs(out);
+  mt := fs_mtime_ns(dna);
+  sb_b: [4096] u8; s: [1] Sb; s[0] = sb(sb_b[..]);
+  sb_put(s[..], rdna); sb_byte(s[..], ' '); sb_int(s[..], mt); sb_byte(s[..], '\n');
+  source := sb_text(s[..]);
+  was := txt_cat(txt, out, "/source.txt");
+  old: [8192] u8; n := fs_read(was, old[..]);
+  fresh := n >= 0 && n < 8192 && cast(string) old[0..<n] == source;
+  joints := txt_cat(txt, out, "/joints.txt"); targets := txt_cat(txt, out, "/targets.bin");
+  if !fresh { if !fs_remove(joints) {} if !fs_remove(targets) {} }
+  if !fs_exists(joints) || fs_mtime_ns(joints) < mt { a3: [3] string; a3[0] = tool; a3[1] = dna; a3[2] = out; b1: [1] string; b1[0] = "--skin"; mh_run(a3[..], b1[..]); }
+  bb: [4096] u8; behave := proc_getenv("DNA_BEHAVIOR", bb[..]);
+  behave = ifx behave.count > 0 then txt_keep(txt, behave) else txt_cat(txt, dir_name(tool), "/dna_behavior");
+  if has(base_name(dna), "_Head") && fs_exists(behave) && (!fs_exists(targets) || fs_mtime_ns(targets) < mt) {
+    a4: [4] string; a4[0] = behave; a4[1] = dna; a4[2] = txt_cat(txt, out, "/behavior.txt"); a4[3] = targets; b0: [1] string; mh_run(a4[..], b0[0..<0]);
+  }
+  if !fs_write(was, source) { ph_die2("metahuman: can't write ", was); }
+  return out;
+}
+mh_run :: (a: []string, b: []string) {
+  argv: [8] string; n := 0;
+  for x: a { argv[n] = x; n += 1; } for x: b { argv[n] = x; n += 1; }
+  o: [4096] u8; e: [4096] u8;
+  r := proc_run(argv[0..<n], -1, o[..], e[..]);
+  if r.started != 0 || r.status != 0 { ph_die2("metahuman: this failed: ", argv[0]); }
+}
+// sorted(dir.glob(prefix + "*" + suffix)): the first, or ""
+mh_glob1 :: (w: []World, dir: string, suffix: string) -> string {
+  l: [1] FsList; n := fs_list(dir, l[..]);
+  best := ""; found := false;
+  for i: 0..<n { e := fs_entry(l[..], i); if ends(e, suffix) && (!found || str_less(e, best)) { best = e; found = true; } }
+  if !found { return ""; }
+  return txt_cat3(w[0].txt[..], dir, "/", best);
+}
+
+// ---- maths: 3x3 rotations as row lists, column vectors
+mh_arc :: (a_in: [3] f64, b_in: [3] f64) -> [3][3] f64 {
+  a := mh_unit(a_in); b := mh_unit(b_in);
+  c := vdot(a, b);
+  if c > 0.999999 { return m3_id(); }
+  axis := vcross(a, b);
+  if c < -0.999999 { axis = ifx abs(a[0]) < 0.9 then vcross(a, [3] f64.[1.0, 0.0, 0.0]) else vcross(a, [3] f64.[0.0, 1.0, 0.0]); }
+  k := mh_unit(axis); s := sqrt(vmax(0.0, 1.0 - c * c)); t := 1.0 - c;
+  x := k[0]; y := k[1]; z := k[2];
+  m: [3][3] f64;
+  m[0] = [3] f64.[t * x * x + c, t * x * y - s * z, t * x * z + s * y];
+  m[1] = [3] f64.[t * x * y + s * z, t * y * y + c, t * y * z - s * x];
+  m[2] = [3] f64.[t * x * z - s * y, t * y * z + s * x, t * z * z + c];
+  return m;
+}
+inv3 :: (a: [3][3] f64) -> [3][3] f64 {
+  p := a[0][0]; q := a[0][1]; r := a[0][2]; s := a[1][0]; t := a[1][1]; u := a[1][2]; v := a[2][0]; w := a[2][1]; x := a[2][2];
+  d := p * (t * x - u * w) - q * (s * x - u * v) + r * (s * w - t * v);
+  if abs(d) < 0.000000000001 { return m3_id(); }
+  m: [3][3] f64;
+  m[0] = [3] f64.[(t * x - u * w) / d, (r * w - q * x) / d, (q * u - r * t) / d];
+  m[1] = [3] f64.[(u * v - s * x) / d, (p * x - r * v) / d, (r * s - p * u) / d];
+  m[2] = [3] f64.[(s * w - t * v) / d, (q * v - p * w) / d, (p * t - q * s) / d];
+  return m;
+}
+// a rotation matrix's unit quaternion (x, y, z, w)
+mh_quat :: (R: [3][3] f64) -> [4] f64 {
+  t := R[0][0] + R[1][1] + R[2][2];
+  q: [4] f64;
+  if t > 0.0 {
+    w := sqrt(1.0 + t) * 2.0; q = [4] f64.[(R[2][1] - R[1][2]) / w, (R[0][2] - R[2][0]) / w, (R[1][0] - R[0][1]) / w, w / 4.0];
+  } else if R[0][0] > R[1][1] && R[0][0] > R[2][2] {
+    w := sqrt(1.0 + R[0][0] - R[1][1] - R[2][2]) * 2.0; q = [4] f64.[w / 4.0, (R[0][1] + R[1][0]) / w, (R[0][2] + R[2][0]) / w, (R[2][1] - R[1][2]) / w];
+  } else if R[1][1] > R[2][2] {
+    w := sqrt(1.0 + R[1][1] - R[0][0] - R[2][2]) * 2.0; q = [4] f64.[(R[0][1] + R[1][0]) / w, w / 4.0, (R[1][2] + R[2][1]) / w, (R[0][2] - R[2][0]) / w];
+  } else {
+    w := sqrt(1.0 + R[2][2] - R[0][0] - R[1][1]) * 2.0; q = [4] f64.[(R[0][2] + R[2][0]) / w, (R[1][2] + R[2][1]) / w, w / 4.0, (R[1][0] - R[0][1]) / w];
+  }
+  l := sqrt(pn_sum4(q[0] * q[0], q[1] * q[1], q[2] * q[2], q[3] * q[3]));
+  return [4] f64.[q[0] / l, q[1] / l, q[2] / l, q[3] / l];
+}
+// Horn's quaternion method: the rigid motion (R, t) taking points A onto B best
+horn :: (A: [][3] f64, B: [][3] f64, R_out: [][3][3] f64, t_out: [][3] f64) {
+  n := A.count;
+  ca: [3] f64; cb: [3] f64;
+  for i: 0..<3 {
+    sa: [1] PnSum; sbb: [1] PnSum;
+    for e: 0..<n { pn_add(sa[..], A[e][i]); pn_add(sbb[..], B[e][i]); }
+    ca[i] = pn_total(sa[0]) / cast(f64) n; cb[i] = pn_total(sbb[0]) / cast(f64) n;
+  }
+  S: [3][3] f64;
+  for e: 0..<n { a := vsub(A[e], ca); b := vsub(B[e], cb); for i: 0..<3 { for j: 0..<3 { S[i][j] += a[i] * b[j]; } } }
+  sxx := S[0][0]; sxy := S[0][1]; sxz := S[0][2]; syx := S[1][0]; syy := S[1][1]; syz := S[1][2]; szx := S[2][0]; szy := S[2][1]; szz := S[2][2];
+  N: [4][4] f64;
+  N[0] = [4] f64.[sxx + syy + szz, syz - szy, szx - sxz, sxy - syx];
+  N[1] = [4] f64.[syz - szy, sxx - syy - szz, sxy + syx, szx + sxz];
+  N[2] = [4] f64.[szx - sxz, sxy + syx, (0.0 - sxx) + syy - szz, syz + szy];
+  N[3] = [4] f64.[sxy - syx, szx + sxz, syz + szy, (0.0 - sxx) - syy + szz];
+  sc: [1] PnSum; for i: 0..<4 { for j: 0..<4 { pn_add(sc[..], abs(N[i][j])); } }
+  c := pn_total(sc[0]) + 1.0;
+  q := [4] f64.[1.0, 0.0, 0.0, 0.0];
+  for iter: 0..<200 {
+    q2: [4] f64;
+    for i: 0..<4 {
+      s: [1] PnSum;
+      for j: 0..<4 { pn_add(s[..], (N[i][j] + (ifx i == j then c else 0.0)) * q[j]); }
+      q2[i] = pn_total(s[0]);
+    }
+    l := sqrt(pn_sum4(q2[0] * q2[0], q2[1] * q2[1], q2[2] * q2[2], q2[3] * q2[3]));
+    for i: 0..<4 { q[i] = q2[i] / l; }
+  }
+  w := q[0]; x := q[1]; y := q[2]; z := q[3];
+  R: [3][3] f64;
+  R[0] = [3] f64.[1.0 - 2.0 * (y * y + z * z), 2.0 * (x * y - w * z), 2.0 * (x * z + w * y)];
+  R[1] = [3] f64.[2.0 * (x * y + w * z), 1.0 - 2.0 * (x * x + z * z), 2.0 * (y * z - w * x)];
+  R[2] = [3] f64.[2.0 * (x * z - w * y), 2.0 * (y * z + w * x), 1.0 - 2.0 * (x * x + y * y)];
+  R_out[0] = R; t_out[0] = vsub(cb, mv3(R, ca));
+}
+
+// ---- the work
+MB_P :: 120000; MB_T :: 400000; CV :: 400000; CT :: 400000;
+MhWork :: struct {
+  ob: [4] Obj; sk: [2] Skin; text: [1] ObjText; frt: [1] FrTmp;
+  JB: [1] MhJoints; JH: [1] MhJoints;
+  rest: [65][3] f64; rpar: [65] int; ends: [65] int;
+  W: [65][3][3] f64; p: [65][3] f64; P: [65][3] f64;
+  MR: [65][3][3] f64; Mt: [65][3] f64; Q: [65][3][3] f64; c: [65][3] f64;
+  nbody: int; bn: [MB_P][3] f64; bw: [MB_P] Wl;          // the arms-down body (ob[3]): normals, folded weights
+  nhead: int; hn: [MB_P][3] f64; hw: [MB_P] Wl;          // the head (ob[1])
+  hide: [MB_P] bool; more: [MB_P] bool; hhide: [MB_P] bool;
+  nbt: int; bt: [MB_T][3] int; ident: [MB_T] int; gid2: [MB_T] int; kt: [MB_T][3] int; ut: [MB_T][3] int;
+  pairs_a: [65][600][3] f64; pairs_b: [65][600][3] f64; npairs: [65] int;
+  folded: [MB_P][4] int; foldw: [MB_P][4] f64;
+  ptmap: [PV_MAX] int;
+  near: [1] Near; q: [1] Nq;
+  // cards
+  cp: [CV][3] f64; cuv: [CV][2] f64; cn: [CV][3] f64; ncv: int; ct: [CT][3] int; nct: int;
+  par: [CV] int; cov_n: [CV] int; cov_s: [CV] f64; thin: [CV] bool; keep: [CT] bool; renum: [CV] int;
+  mp: [CV][3] f64; mk: [CV] int; md: [CV] f64;
+  hjw: [MB_P][8] u8; hseen: [MB_P] bool;
+  a0: [16777216] u8; al: [1048576] u8; a2: [4194304] u8; rgba: [16777216] u8; fill: [12582912] u8; blur: [12582912] u8;
+  m1: [4194304] u8; m2: [4194304] u8; grown: [4194304] u8; lifted: [4194304] u8; lo: [16384] int;
+}
+// folded_weights(): per point its weights folded onto the rig, over their sum (insertion order)
+folded_weights :: (sk: []Skin, J: []MhJoints, i: int) -> Wl {
+  d: [1] Wd;
+  for e: sk[0].s[i]..<sk[0].s[i + 1] { wd_add(d[..], J[0].kept[sk[0].j[e]], sk[0].w[e]); }
+  t := wd_total(d[0]); if d[0].n == 0 || t == 0.0 { t = 1.0; }
+  r: Wl;
+  if d[0].n > WL { ph_die("metahuman: more folded weights on a point than the port holds"); }
+  for k: 0..<d[0].n { r.j[k] = cast(int) d[0].k[k]; r.w[k] = d[0].v[k] / t; } r.n = d[0].n;
+  return r;
+}
+
+// ---- the rig's rest and the T pose
+rig_rest :: (w: []World, m: []MhWork, female: bool) {
+  sk: [1] Skel;
+  sk_file(txt_cat3(w[0].txt[..], w[0].home, OUTFITS_DIR, ifx female then "/Female_Peasant.gltf" else "/Male_Peasant.gltf"), sk[..], w[0].g[..]);
+  if sk[0].n != 65 { ph_die("metahuman: the people rig isn't 65 joints"); }
+  for k: 0..<65 { m[0].rest[k] = sk_pos(sk[0], k); m[0].rpar[k] = sk[0].parent[k]; }
+}
+bone_ends_mh :: (m: []MhWork) {
+  for k: 0..<65 { m[0].ends[k] = -1; }
+  for j: 0..<65 { p := m[0].rpar[j]; if p >= 0 && m[0].ends[p] < 0 { m[0].ends[p] = j; } }
+  for sd: [2] string.["_l", "_r"] {
+    b: [64] u8; c: [64] u8;
+    m[0].ends[mh_lower(cat2(b[..], "hand", sd))] = mh_lower(cat2(c[..], "middle_01", sd));
+    m[0].ends[mh_lower(cat2(b[..], "clavicle", sd))] = mh_lower(cat2(c[..], "upperarm", sd));
+    m[0].ends[mh_lower(cat2(b[..], "foot", sd))] = mh_lower(cat2(c[..], "ball", sd));
+  }
+  m[0].ends[mh_lower("spine_03")] = mh_lower("neck_01");
+  m[0].ends[mh_lower("pelvis")] = mh_lower("spine_01");
+}
+mh_aligned :: (k: int) -> bool { p := part(MH_NAMES[k], 0); for a: ALIGNED { if p == a { return true; } } return false; }
+// t_pose(): per rig joint its world turn W (bind to T pose), bind position p and posed position P (cm)
+t_pose :: (m: []MhWork, J: []MhJoints) {
+  bone_ends_mh(m);
+  W1: [65][3][3] f64; P1: [65][3] f64;
+  for k: 0..<65 {
+    par := m[0].rpar[k];
+    if J[0].of[k] >= 0 { m[0].p[k] = J[0].p[J[0].of[k]]; }
+    else {
+      pp := m[0].rpar[par];
+      scale := 100.0;
+      if pp >= 0 && J[0].of[par] >= 0 && J[0].of[pp] >= 0 {
+        rig_len := pn_dist3(m[0].rest[par], m[0].rest[pp]); if rig_len == 0.0 { rig_len = 1.0; }
+        scale = pn_dist3(J[0].p[J[0].of[par]], J[0].p[J[0].of[pp]]) / rig_len;
+      }
+      m[0].p[k] = vadd(m[0].p[par], vscale(mv3(mtr3(W1[par]), vsub(m[0].rest[k], m[0].rest[par])), scale));
+    }
+    W1[k] = m3_id();
+  }
+  for k: 0..<65 {
+    par := m[0].rpar[k];
+    m[0].P[k] = ifx par < 0 then m[0].p[k] else vadd(m[0].P[par], mv3(m[0].W[par], vsub(m[0].p[k], m[0].p[par])));
+    base := ifx par < 0 then m3_id() else m[0].W[par];
+    c := m[0].ends[k];
+    if c >= 0 && mh_aligned(k) {
+      now := mv3(base, vsub(m[0].p[c], m[0].p[k]));
+      m[0].W[k] = mmul3(mh_arc(now, vsub(m[0].rest[c], m[0].rest[k])), base);
+    } else { m[0].W[k] = base; }
+  }
+}
+// body_female(): whether the people rig's female body is nearer these proportions (its T pose)
+body_female :: (w: []World, m: []MhWork) -> bool {
+  offs: [2] f64;
+  for f: 0..<2 {
+    rig_rest(w, m, f == 1);
+    s: [1] PnSum; for k: 0..<65 { pn_add(s[..], pn_dist3(m[0].rest[k], vscale(m[0].P[k], 0.01))); }
+    offs[f] = pn_total(s[0]);
+  }
+  return offs[1] < offs[0];
+}
+
+// lips_v(): whether the DNA's v runs up its images: of v and 1 - v the right one puts the lips'
+// vertices on texels redder than the cheeks'
+lips_v :: (w: []World, m: []MhWork, head_obj: []Obj, image: string) -> bool {
+  o := head_obj;
+  uvof: [] int = m[0].ident[0..<o[0].nv];
+  for i: 0..<o[0].nv { uvof[i] = -1; }
+  for f: 0..<o[0].nf { for e: o[0].fs[f]..<o[0].fs[f + 1] { c := o[0].c[e]; if uvof[c[0]] < 0 { uvof[c[0]] = c[1]; } } }
+  tip := -1;
+  for i: 0..<o[0].nv { if abs(o[0].v[i][0]) < 3.0 && (tip < 0 || o[0].v[i][2] > o[0].v[tip][2]) { tip = i; } }
+  tx := o[0].v[tip][0]; ty := o[0].v[tip][1];
+  iw := w[0].iw[..];
+  im := img_resize(img_to(img_load(image, iw), 3), 512, 512, PI_BICUBIC, iw);
+  contrast: [2] f64;
+  for fl: 0..<2 {
+    flip := fl == 1;
+    reds: [2] f64;
+    for which: 0..<2 {
+      top := 0.0; first := true;
+      for i: 0..<o[0].nv { if mh_sel(which, o[0].v[i], tx, ty) && uvof[i] >= 0 { if first || o[0].v[i][2] > top { top = o[0].v[i][2]; } first = false; } }
+      sum := 0; n := 0;
+      for i: 0..<o[0].nv {
+        if !(mh_sel(which, o[0].v[i], tx, ty) && uvof[i] >= 0 && o[0].v[i][2] > top - 1.5) { continue; }
+        uv := o[0].vt[uvof[i]];
+        vv := ifx flip then 1.0 - uv[1] else uv[1];
+        x := imin(511, imax(0, cast(int) (uv[0] * 512.0))); y := imin(511, imax(0, cast(int) (vv * 512.0)));
+        sum += cast(int) im.px[(y * 512 + x) * 3] - cast(int) im.px[(y * 512 + x) * 3 + 1]; n += 1;
+      }
+      reds[which] = cast(f64) sum / cast(f64) imax(n, 1);
+    }
+    contrast[fl] = reds[0] - reds[1];
+  }
+  lb: [256] u8; lo: [1] Sb; lo[0] = sb(lb[..]);
+  sb_put(lo[..], "metahuman: the lips' redness over the cheeks', v as is "); sb_fixed(lo[..], contrast[0], 0);
+  sb_put(lo[..], ", flipped "); sb_fixed(lo[..], contrast[1], 0); sb_line(lo[..]);
+  if abs(contrast[1] - contrast[0]) < 5.0 { ph_die("metahuman: can't tell which way the DNA's v runs (the lips aren't redder either way)"); }
+  return contrast[1] > contrast[0];
+}
+// lips (0): front and middle, 2 to 4.5 cm under the nose's tip; cheeks (1): 4 to 6 cm aside, level with it
+mh_sel :: (which: int, p: [3] f64, tx: f64, ty: f64) -> bool {
+  if which == 0 { return abs(p[0] - tx) < 1.5 && ty - 4.5 < p[1] && p[1] < ty - 2.0; }
+  return 4.0 < abs(p[0] - tx) && abs(p[0] - tx) < 6.0 && ty - 1.0 < p[1] && p[1] < ty + 2.0;
+}
+
+// arms_down(): the body as the clothes were fitted to it (ob[3]; the bind itself when the export
+// has none) and each rig joint's rigid motion from the bind to it (Horn), fitted to the vertices
+// it nearly owns
+arms_down :: (m: []MhWork) {
+  vb := m[0].ob[0..<1]; vd := m[0].ob[3..<4];
+  if vb[0].nv != vd[0].nv { ph_die("metahuman: the arms-down body doesn't match the bind body's vertices"); }
+  for k: 0..<65 { m[0].npairs[k] = 0; }
+  for i: 0..<vb[0].nv {
+    wl := m[0].bw[i];
+    k := -1; top := 0.0;
+    for e: 0..<wl.n { if k < 0 || wl.w[e] > top { k = wl.j[e]; top = wl.w[e]; } }
+    if k >= 0 && top >= 0.9 && m[0].npairs[k] < 600 {
+      m[0].pairs_a[k][m[0].npairs[k]] = vb[0].v[i]; m[0].pairs_b[k][m[0].npairs[k]] = vd[0].v[i]; m[0].npairs[k] += 1;
+    }
+  }
+  for k: 0..<65 {
+    n := m[0].npairs[k];
+    if n >= 6 {
+      R: [1][3][3] f64; t: [1][3] f64;
+      horn(m[0].pairs_a[k][0..<n], m[0].pairs_b[k][0..<n], R[..], t[..]);
+      still := 0.0;
+      for e: 0..<n { still = vmax(still, pn_dist3(m[0].pairs_a[k][e], m[0].pairs_b[k][e])); }
+      if still < 0.05 { m[0].MR[k] = m3_id(); m[0].Mt[k] = vzero(); } else { m[0].MR[k] = R[0]; m[0].Mt[k] = t[0]; }
+    } else if m[0].rpar[k] >= 0 { m[0].MR[k] = m[0].MR[m[0].rpar[k]]; m[0].Mt[k] = m[0].Mt[m[0].rpar[k]]; }
+    else { m[0].MR[k] = m3_id(); m[0].Mt[k] = vzero(); }
+  }
+}
+
+// ---- the build
+mh_build :: (w: []World, export: string, outfit: int) {
+  txt := w[0].txt[..]; m := w[0].mw[..]; st := w[0].st[..]; pk := w[0].pk[..]; iw := w[0].iw[..];
+  dna_dir := txt_cat(txt, export, "/dna");
+  bdna := mh_glob1(w, dna_dir, "_Body.dna"); hdna := mh_glob1(w, dna_dir, "_Head.dna");
+  if bdna.count == 0 || hdna.count == 0 { ph_die2("metahuman: no *_Body.dna and *_Head.dna under ", dna_dir); }
+  dump_dir := txt_cat(txt, w[0].home, MH_DUMP);
+  body := mh_dump(w, bdna, txt_cat(txt, dump_dir, "/body")); head := mh_dump(w, hdna, txt_cat(txt, dump_dir, "/head"));
+  maps := mh_maps_dir(w, export);
+  joints_read(txt_cat(txt, body, "/joints.txt"), m[0].JB[..], m[0].text[..]);
+  joints_read(txt_cat(txt, head, "/joints.txt"), m[0].JH[..], m[0].text[..]);
+  // the DNA's axes (found from the skeleton): rows rig x (left), y (up), z (forward)
+  up := mh_unit(vsub(mh_of(m[0].JB[..], "head"), mh_of(m[0].JB[..], "pelvis")));
+  left := mh_unit(vsub(mh_of(m[0].JB[..], "thigh_l"), mh_of(m[0].JB[..], "thigh_r")));
+  left = mh_unit(vsub(left, vscale(up, vdot(left, up))));
+  fwd := vcross(left, up);
+  if abs(left[0]) < 0.99 || abs(up[1]) < 0.99 || abs(fwd[2]) < 0.99 { ph_die("metahuman: the DNA's axes aren't the rig's (y up, z forward)"); }
+  rig_rest(w, m, false);
+  t_pose(m, m[0].JB[..]);
+  // the head's mesh, kept in ob[1]
+  obj_read(txt_cat(txt, head, "/head_lod0_mesh.obj"), m[0].ob[1..<2], m[0].text[..]);
+  flip_v := lips_v(w, m, m[0].ob[1..<2], txt_cat(txt, maps, "/Head_Basecolor.png"));
+  portrait := txt_cat(txt, dir_name(export), "/latest/mh.neutral.glb");
+  if fs_exists(portrait) { ph_die2("metahuman: an export with a portrait (its clothes, grooms and skin maps) isn't ported to Coax yet: ", portrait); }
+  female := body_female(w, m);
+  rig_rest(w, m, false);
+  if female { ph_die("metahuman: a female body's figure (shape.py) isn't ported to Coax yet"); }
+  // the bind body (ob[0]) and the arms-down body (ob[3]): the clothes' own pose
+  obj_read(txt_cat(txt, body, "/body_lod0_mesh.obj"), m[0].ob[0..<1], m[0].text[..]);
+  down_path := txt_cat(txt, dir_name(export), "/rig-body-down/body_lod0_mesh.obj");
+  if fs_exists(down_path) { obj_read(down_path, m[0].ob[3..<4], m[0].text[..]); } else { m[0].ob[3] = m[0].ob[0]; }
+  skin_read(txt_cat(txt, body, "/body_lod0_mesh.skin.txt"), m[0].sk[0..<1], m[0].text[..]);
+  nb := m[0].ob[3].nv; m[0].nbody = nb;
+  if nb > MB_P { ph_die("metahuman: a body past the port's points"); }
+  for i: 0..<nb { m[0].bw[i] = folded_weights(m[0].sk[0..<1], m[0].JB[..], i); }
+  position_normals(m[0].ob[3..<4], m[0].bn[0..<nb]);
+  arms_down(m);
+  // binds(): each joint where the bind has it (metres) and its turn from there to the rig's rest
+  pk[0].nb = 65; pk[0].bw = 7;
+  for k: 0..<65 {
+    pos := vadd(mv3(m[0].MR[k], m[0].p[k]), m[0].Mt[k]);
+    qq := mh_quat(mmul3(m[0].W[k], mtr3(m[0].MR[k])));
+    for c: 0..<3 { pk[0].binds[k][c] = pos[c] / 100.0; } for c: 0..<4 { pk[0].binds[k][3 + c] = qq[c]; }
+  }
+  for i: 0..<nb { m[0].hide[i] = false; }
+  under := false;
+  if outfit >= 0 {
+    mh_fitted(w, m, outfit, female);
+    under = true;
+  }
+  // the head mesh reaches down over the collarbones: under a closed collar the head's skin below
+  // the collar's foot is the cloth's
+  hu := ifx outfit >= 0 then outfit_head_under(outfit) else "";
+  nh := m[0].ob[1].nv;
+  for i: 0..<nh { m[0].hhide[i] = false; }
+  use_hh := false;
+  if hu.count > 0 {
+    foot := 0.0; first := true;
+    for k: 0..<pk[0].np {
+      p := pk[0].pieces[k];
+      if p.name != hu { continue; }
+      for i: p.vf..<p.vf + p.vn { y := st[0].v[i].p[1]; if first || y < foot { foot = y; } first = false; }
+    }
+    foot = foot * 100.0;
+    n := 0;
+    for i: 0..<nh { if m[0].ob[1].v[i][1] < foot { m[0].hhide[i] = true; n += 1; } }
+    use_hh = true;
+    lb: [256] u8; lo: [1] Sb; lo[0] = sb(lb[..]);
+    sb_put(lo[..], "head under the collar: "); sb_int(lo[..], n); sb_put(lo[..], " of "); sb_int(lo[..], nh); sb_put(lo[..], " head positions hidden"); sb_line(lo[..]);
+  }
+  head_piece := -1;
+  for mi: 0..<8 {
+    name := MH_MESHES[mi];
+    is_body := mi == 0;
+    src := ifx is_body then body else head;
+    path := txt_cat3(txt, src, "/", txt_cat(txt, name, ".obj"));
+    if !fs_exists(path) { continue; }
+    ob := m[0].ob[2..<3];
+    obj_read(path, ob, m[0].text[..]);
+    skin_read(txt_cat3(txt, src, "/", txt_cat(txt, name, ".skin.txt")), m[0].sk[1..<2], m[0].text[..]);
+    J := ifx is_body then m[0].JB[..] else m[0].JH[..];
+    hide_mode := 0;     // 1: the body's covered points, 2: the head's under the collar
+    if is_body && !under { hide_mode = 1; }
+    if mi == 1 && use_hh { hide_mode = 2; }
+    vf := st[0].nv; tf := st[0].nt;
+    mh_mesh(w, m, ob, m[0].sk[1..<2], J, flip_v, hide_mode, is_body, name);
+    vn := st[0].nv - vf; tn := st[0].nt - tf;
+    if is_body && under {
+      // the skin meant to be covered as the cloth under the outfit, the rest it covers left out
+      for i: 0..<vn { m[0].ptmap[i] = st[0].v[vf + i].pt; }
+      x := mh_split(st[0].t[tf..<tf + tn], m[0].ptmap[0..<vn], w[0].u[..], w[0].gid[..]);
+      tf2 := st[0].nt; nk := 0;
+      for e: 0..<tn {
+        if w[0].gid[e] >= 0 { continue; }
+        t := st[0].t[tf + e];
+        if m[0].hide[m[0].ptmap[t[0]]] && m[0].hide[m[0].ptmap[t[1]]] && m[0].hide[m[0].ptmap[t[2]]] { continue; }
+        m[0].kt[nk] = t; nk += 1;
+      }
+      for e: 0..<nk { y := st_tri(st, m[0].kt[e][0], m[0].kt[e][1], m[0].kt[e][2]); }
+      outfit_pack_under(pk, st, vf, tf, tn, w[0].gid[..], w[0].u[..], w[0].mats[..], txt, iw, w[0].home, "under");
+      tf = tf2; tn = nk;
+    }
+    base := ifx MH_BASE[mi].count > 0 then txt_cat3(txt, maps, "/", MH_BASE[mi]) else "";
+    normal := ifx MH_NORMAL[mi].count > 0 then txt_cat3(txt, maps, "/", MH_NORMAL[mi]) else "";
+    rough := ifx MH_ROUGH[mi].count > 0 then txt_cat3(txt, maps, "/", MH_ROUGH[mi]) else "";
+    if blended(mat_of(MH_MAT[mi])) { lid_coords(st, vf, vn, tf, tn, w[0].lw[..], w[0].h1[..]); }
+    short := name[0..<name.count - 10];
+    pack_piece(pk, short, vf, vn, tf, tn, MH_MAT[mi], base, normal, rough, iw);
+    if !is_body { for z: 0..<7 { if FACE_MESHES[z] == name { pk[0].pieces[pk[0].np - 1].face = name; } } }
+    if mi == 1 { head_piece = pk[0].np - 1; }
+  }
+  // the export's own hair cards
+  gdir := txt_cat(txt, export, "/grooms");
+  if fs_kind(gdir) == 2 && head_piece >= 0 { mh_cards(w, m, gdir, head, head_piece, dump_dir); }
+  else if fs_exists(gdir) && head_piece >= 0 && fs_kind(gdir) != 1 { mh_cards(w, m, gdir, head, head_piece, dump_dir); }
+  // the face rig
+  if face_load(w[0].fr, head, txt, m[0].ob[2..<3], m[0].sk[1..<2], m[0].frt[..]) {
+    W: [1] FrPose; W0: [1] FrPose;
+    face_checks(w[0].fr, W[..], W0[..]);
+    pk[0].face = true;
+  }
+  pack_tint(pk, "skin", [4] f64.[1.0, 1.0, 1.0, 1.0]); pack_tint(pk, "eye", [4] f64.[1.0, 1.0, 1.0, 0.25]);
+  pack_tint(pk, "teeth", [4] f64.[1.0, 1.0, 1.0, 0.5]); pack_tint(pk, "brow", [4] f64.[1.0, 1.0, 1.0, 0.6]);
+  pack_tint(pk, "hair", [4] f64.[1.0, 1.0, 1.0, 0.55]);
+  if !pack_has_tint(pk, "cloth") { pack_tint(pk, "cloth", [4] f64.[1.0, 1.0, 1.0, 1.0]); }
+  pack_tint(pk, "wet", [4] f64.[1.0, 1.0, 1.0, 0.06]);
+  pk[0].body = ifx female then "female" else "male";
+}
+mh_maps_dir :: (w: []World, export: string) -> string {
+  dcc := txt_cat(w[0].txt[..], export, "/dcc");
+  l: [1] FsList; n := fs_list(dcc, l[..]);
+  best := ""; found := false;
+  for i: 0..<n {
+    e := fs_entry(l[..], i);
+    if fs_kind(txt_cat3(w[0].txt[..], dcc, "/", txt_cat(w[0].txt[..], e, "/Maps"))) != 2 { continue; }
+    if !found || str_less(e, best) { best = txt_keep(w[0].txt[..], e); found = true; }
+  }
+  if !found { ph_die2("metahuman: no dcc/*/Maps under ", export); }
+  return txt_cat3(w[0].txt[..], dcc, "/", txt_cat(w[0].txt[..], best, "/Maps"));
+}
+// split_under() by point: triangles all of whose points are in under groups to the group most of
+// them are in (gid), the rest -1
+mh_split :: (tris: [][3] int, pt: []int, u: []Under, gid: []int) -> int {
+  nskin := 0;
+  for e: 0..<tris.count {
+    t := tris[e];
+    gs := [3] int.[u[0].of[pt[t[0]]], u[0].of[pt[t[1]]], u[0].of[pt[t[2]]]];
+    if gs[0] < 0 || gs[1] < 0 || gs[2] < 0 { gid[e] = -1; nskin += 1; continue; }
+    s: [1] PySet; pset_clear(s[..]); for k: 0..<3 { pset_add(s[..], gs[k]); }
+    order: [8] int; n := pset_list(s[0], order[..], 0);
+    best := -1; bc := -1;
+    for z: 0..<n { c := 0; for k: 0..<3 { if gs[k] == order[z] { c += 1; } } if c > bc { bc = c; best = order[z]; } }
+    gid[e] = best;
+  }
+  return nskin;
+}
+// mesh(): one DNA mesh in the pack's bind pose (metres) into the store: a vertex per distinct
+// corner (position, uv, normal), its quads split; hide 1 leaves out the faces all on the body's
+// covered points, 2 those all on the head's hidden ones. The body takes the arms-down positions.
+mh_mesh :: (w: []World, m: []MhWork, ob: []Obj, sk: []Skin, J: []MhJoints, flip_v: bool, hide: int, is_body: bool, name: string) {
+  st := w[0].st[..]; h := w[0].h1[..];
+  if sk[0].n != ob[0].nv { ph_die2("metahuman: skin lines and positions differ: ", name); }
+  if ob[0].nv > MB_P { ph_die("metahuman: a mesh past the port's points"); }
+  pos := ifx is_body then m[0].ob[3..<4] else ob;
+  // per position: its weights folded onto the rig's joints, the four heaviest
+  for i: 0..<ob[0].nv {
+    d: [1] Wd;
+    for e: sk[0].s[i]..<sk[0].s[i + 1] { wd_add(d[..], J[0].kept[sk[0].j[e]], sk[0].w[e]); }
+    o: [WDK] int; wd_order(d[0], o[..]);
+    for k: 0..<4 { if k < d[0].n { m[0].folded[i][k] = cast(int) d[0].k[o[k]]; m[0].foldw[i][k] = d[0].v[o[k]]; } else { m[0].folded[i][k] = 0; m[0].foldw[i][k] = 0.0; } }
+  }
+  hm_clear(h);
+  vf := st[0].nv;
+  for f: 0..<ob[0].nf {
+    a := ob[0].fs[f]; b := ob[0].fs[f + 1];
+    if hide > 0 {
+      all := true;
+      for e: a..<b { pi := ob[0].c[e][0]; if !(ifx hide == 1 then m[0].hide[pi] else m[0].hhide[pi]) { all = false; } }
+      if all { continue; }
+    }
+    ids: [64] int; ni := 0;
+    for e: a..<b {
+      c := ob[0].c[e];
+      before := h[0].n;
+      k := hm_put(h, hm4(c[0], c[1], c[2], 0));
+      if k == before {
+        pi := c[0];
+        v: PV;
+        x := pos[0].v[pi]; nn := pos[0].vn[c[2]];
+        v.p = [3] f64.[x[0] / 100.0, x[1] / 100.0, x[2] / 100.0];
+        v.n = mh_unit(nn);
+        uv := ob[0].vt[c[1]];
+        v.uv = [2] f64.[uv[0], ifx flip_v then 1.0 - uv[1] else uv[1]];
+        v.pt = pi;
+        q := quantize4(m[0].foldw[pi]);
+        for z: 0..<4 { v.j[z] = cast(u8) (ifx m[0].foldw[pi][z] > 0.0 then m[0].folded[pi][z] else 0); v.w[z] = cast(u8) q[z]; }
+        st[0].v[st_vert(st)] = v;
+      }
+      if ni >= 64 { ph_die("metahuman: a face past the port's corners"); }
+      ids[ni] = vf + k - vf; ni += 1;
+    }
+    for z: 1..<ni - 1 { y := st_tri(st, ids[0], ids[z], ids[z + 1]); }
+  }
+}
+
+// ---- the outfit: fitted onto the body in the T pose, then moved into the bind
+// rest(): x -> sum of w_k (Q_k (x - c_k) + P_k) (cm)
+mh_rest :: (m: []MhWork, x: [3] f64, wl: Wl) -> [3] f64 {
+  y := vzero();
+  for e: 0..<wl.n { k := wl.j[e]; a := wl.w[e]; y = vadd(y, vscale(vadd(mv3(m[0].Q[k], vsub(x, m[0].c[k])), m[0].P[k]), a)); }
+  return y;
+}
+mh_turn :: (m: []MhWork, n: [3] f64, wl: Wl, back: bool) -> [3] f64 {
+  q := vzero();
+  for e: 0..<wl.n { k := wl.j[e]; a := wl.w[e]; q = vadd(q, vscale(mv3(ifx back then mtr3(m[0].Q[k]) else m[0].Q[k], n), a)); }
+  return mh_unit(q);
+}
+mh_fitted :: (w: []World, m: []MhWork, o: int, female: bool) {
+  txt := w[0].txt[..]; ow := w[0].ow[..]; st := w[0].st[..]; pk := w[0].pk[..];
+  for k: 0..<65 {
+    m[0].Q[k] = mmul3(m[0].W[k], mtr3(m[0].MR[k]));
+    m[0].c[k] = vadd(mv3(m[0].MR[k], m[0].p[k]), m[0].Mt[k]);
+  }
+  // the head: its weights and normals
+  skin_read(txt_cat(txt, txt_cat(txt, w[0].home, MH_DUMP), "/head/head_lod0_mesh.skin.txt"), m[0].sk[1..<2], m[0].text[..]);
+  nh := m[0].ob[1].nv; nb := m[0].nbody;
+  for i: 0..<nh { m[0].hw[i] = folded_weights(m[0].sk[1..<2], m[0].JH[..], i); }
+  position_normals(m[0].ob[1..<2], m[0].hn[0..<nh]);
+  if nb + nh > TG_MAX { ph_die("metahuman: a target past the port's points"); }
+  for i: 0..<nb + nh {
+    x := ifx i < nb then m[0].ob[3].v[i] else m[0].ob[1].v[i - nb];
+    n := ifx i < nb then m[0].bn[i] else m[0].hn[i - nb];
+    wl := ifx i < nb then m[0].bw[i] else m[0].hw[i - nb];
+    ow[0].tx[i] = mh_rest(m, x, wl); ow[0].tn[i] = mh_turn(m, n, wl, false); ow[0].tw[i] = wl;
+  }
+  ow[0].ntg = nb + nh;
+  for k: 0..<65 { ow[0].tj[k] = m[0].P[k]; }
+  outfit_fit(o, ow, st, txt, w[0].g[..], w[0].iw[..], w[0].home);
+  // back into the bind: with its weights fixed, rest() is affine, J x + b, so x = J^-1 (y - b)
+  worst := 0.0; flat := 1.0;
+  for pi: 0..<ow[0].np {
+    pc := ow[0].p[pi];
+    ow[0].p[pi].has_t = true;
+    for vi_: pc.vf..<pc.vf + pc.vn {
+      // a split part's vertex is the cut piece's, shared by the parts: each part moves it again
+      // (as the Python did, whose parts held the same vertex dicts)
+      vi := ifx pc.split then ow[0].src[vi_] else vi_;
+      v := ow[0].v[vi];
+      y := v.x; wl := v.wl;
+      J: [3][3] f64;
+      for i: 0..<3 { for j: 0..<3 { s: [1] PnSum; for e: 0..<wl.n { pn_add(s[..], wl.w[e] * m[0].Q[wl.j[e]][i][j]); } J[i][j] = ifx wl.n == 0 then 0.0 else pn_total(s[0]); } }
+      b := mh_rest(m, vzero(), wl);
+      d := J[0][0] * (J[1][1] * J[2][2] - J[1][2] * J[2][1]) - J[0][1] * (J[1][0] * J[2][2] - J[1][2] * J[2][0]) + J[0][2] * (J[1][0] * J[2][1] - J[1][1] * J[2][0]);
+      flat = vmin(flat, d);
+      x := mv3(inv3(J), vsub(y, b));
+      worst = vmax(worst, pn_dist3(mh_rest(m, x, wl), y));
+      ow[0].v[vi].t = y;
+      ow[0].v[vi].x = x; ow[0].v[vi].n = mh_turn(m, v.n, wl, true);
+    }
+  }
+  for pi: 0..<ow[0].np { pc := ow[0].p[pi]; if pc.split { for vi: pc.vf..<pc.vf + pc.vn { ow[0].v[vi] = ow[0].v[ow[0].src[vi]]; } } }
+  lb: [4096] u8; lo: [1] Sb; lo[0] = sb(lb[..]);
+  sb_put(lo[..], "outfit "); sb_put(lo[..], OUTFIT_NAMES[o]); sb_put(lo[..], ": into the bind pose, the T pose kept within "); sb_fixed(lo[..], worst, 3);
+  sb_put(lo[..], " cm (least blended determinant "); sb_fixed(lo[..], flat, 2); sb_put(lo[..], ")"); sb_line(lo[..]);
+  clips_load(w[0].cl[..], female, w[0].g[..], txt, w[0].home);
+  clip_poses(w[0].cl[..], pk[0].binds[..], 7, female, w[0].ps[..]);
+  bb: [4096] u8; bad: [1] Sb; bad[0] = sb(bb[..]);
+  if outfit_edges(ow, w[0].ps[..], w[0].ew[..], w[0].h1[..], bad[..]) { ph_die2("metahuman: torn cloth (edge outliers) in ", sb_text(bad[..])); }
+  w[0].mats[0].n = 0;
+  outfit_packed(ow, pk, st, w[0].mats[..], w[0].iw[..]);
+  mh_check_garments(ow, o);
+  lower := ow[0].lower[0..<ow[0].nj];
+  for k: 0..<65 { if lower[k] != MH_NAMES[k] { ph_die("metahuman: the outfit's skeleton isn't the rig's order"); } }
+  xs := m[0].ob[3].v[0..<nb]; ns := m[0].bn[0..<nb]; ws := m[0].bw[0..<nb];
+  outfit_legs(o, lower, ws, w[0].leg[..]);
+  covered(ow, xs, ns, ws, w[0].bflag[..]);
+  for i: 0..<nb { m[0].hide[i] = w[0].bflag[i] || w[0].leg[i]; }
+  // a coat closed over the trunk: all of the trunk's skin from the collar down is the cloth's
+  tc := outfit_trunk_covered(o);
+  if tc > 0.0 {
+    collar := m[0].c[mh_lower("neck_01")][1] - tc;
+    hips := m[0].c[mh_lower("pelvis")][1];
+    nmore := 0;
+    for i: 0..<nb {
+      x := xs[i];
+      s: [1] PnSum; any := false;
+      for e: 0..<ws[i].n { p := part(MH_NAMES[ws[i].j[e]], 0); if mh_armhand(p) { pn_add(s[..], ws[i].w[e]); any = true; } }
+      armw := ifx any then pn_total(s[0]) else 0.0;
+      m[0].more[i] = hips < x[1] && x[1] < collar && (abs(x[0]) < 13.0 || armw < 0.3);
+      if m[0].more[i] && !m[0].hide[i] { nmore += 1; }
+    }
+    lo[0].n = 0; sb_put(lo[..], "trunk under the coat: "); sb_int(lo[..], nmore); sb_put(lo[..], " more body positions hidden"); sb_line(lo[..]);
+    for i: 0..<nb { m[0].hide[i] = m[0].hide[i] || m[0].more[i]; }
+  }
+  // the ranger's gloves cover the palm, the fingers' roots and the thumb: the fingertips show
+  ntips := 0; shown := 0; nhide := 0;
+  for i: 0..<nb {
+    if m[0].hide[i] { nhide += 1; }
+    s: [1] PnSum; any := false;
+    for e: 0..<ws[i].n {
+      nm := MH_NAMES[ws[i].j[e]]; p := part(nm, 0);
+      if (p == "index" || p == "middle" || p == "ring" || p == "pinky") && part(nm, 1) == "03" { pn_add(s[..], ws[i].w[e]); any = true; }
+    }
+    if any && pn_total(s[0]) > 0.5 { ntips += 1; if !m[0].hide[i] { shown += 1; } }
+  }
+  lo[0].n = 0;
+  sb_put(lo[..], "body positions under the outfit: "); sb_int(lo[..], nhide); sb_put(lo[..], " of "); sb_int(lo[..], nb);
+  sb_put(lo[..], "; fingertip positions shown: "); sb_int(lo[..], shown); sb_put(lo[..], " of "); sb_int(lo[..], ntips); sb_line(lo[..]);
+  if ntips > 0 && cast(f64) shown < 0.9 * cast(f64) ntips { ph_die("metahuman: the fingers are hidden under cloth"); }
+  outfit_thighs(ow, w[0].leg[..], xs, w[0].thigh[..]);
+  for i: 0..<nb { w[0].force[i] = w[0].leg[i] && !w[0].thigh[i]; }
+  outfit_under(ow, lower, xs, ws, w[0].thigh[..], w[0].force[..], w[0].u[..], w[0].iw[..]);
+  lo[0].n = 0; sb_put(lo[..], "body positions drawn as the cloth under the outfit: ");
+  for g: 0..<w[0].u[0].n { if g > 0 { sb_put(lo[..], ", "); } sb_put(lo[..], w[0].u[0].g[g].name); sb_byte(lo[..], ' '); sb_int(lo[..], w[0].u[0].g[g].n); }
+  sb_line(lo[..]);
+  // the body's triangles by point (the bind OBJ's faces)
+  ob := m[0].ob[0..<1]; m[0].nbt = 0;
+  for f: 0..<ob[0].nf {
+    a := ob[0].fs[f]; b := ob[0].fs[f + 1];
+    for z: a + 1..<b - 1 {
+      if m[0].nbt >= MB_T { ph_die("metahuman: body triangles past the port's table"); }
+      m[0].bt[m[0].nbt] = [3] int.[ob[0].c[a][0], ob[0].c[z][0], ob[0].c[z + 1][0]]; m[0].nbt += 1;
+    }
+  }
+  for i: 0..<nb { m[0].ident[i] = i; }
+  x := mh_split(m[0].bt[0..<m[0].nbt], m[0].ident[0..<nb], w[0].u[..], m[0].gid2[..]);
+  nk := 0; nu := 0;
+  for e: 0..<m[0].nbt {
+    if m[0].gid2[e] >= 0 { continue; }
+    t := m[0].bt[e];
+    if m[0].hide[t[0]] && m[0].hide[t[1]] && m[0].hide[t[2]] { continue; }
+    m[0].kt[nk] = t; nk += 1;
+  }
+  for g: 0..<w[0].u[0].n { for e: 0..<m[0].nbt { if m[0].gid2[e] == g { m[0].ut[nu] = m[0].bt[e]; nu += 1; } } }
+  bad[0].n = 0;
+  if peeks(ow, lower, xs, ws, m[0].kt[0..<nk], m[0].ut[0..<nu], w[0].ps[..], w[0].pw[..], bad[..]) { ph_die2("metahuman: skin shows through the cloth: ", sb_text(bad[..])); }
+  // a hood's hair: only what lies inside the hood
+  clip := OUTFIT_CLIP_HAIR[o];
+  if clip.count > 0 {
+    for k: 0..<pk[0].np {
+      p := pk[0].pieces[k];
+      if p.material != MAT_HAIR { continue; }
+      t0 := st[0].nt;
+      n := outfit_clipped(ow, st, p.vf, p.vn, p.tf, p.tn, clip);
+      lo[0].n = 0; sb_put(lo[..], "hair under the hood: "); sb_int(lo[..], n); sb_put(lo[..], " of "); sb_int(lo[..], p.tn); sb_put(lo[..], " triangles kept"); sb_line(lo[..]);
+      pk[0].pieces[k].tf = t0; pk[0].pieces[k].tn = n;
+    }
+  }
+}
+mh_armhand :: (s: string) -> bool { for x: MH_ARM { if x == s { return true; } } for x: MH_HAND { if x == s { return true; } } return false; }
+// garments not packed: each of garment_names() must be one of the pieces
+mh_check_garments :: (ow: []OutfitWork, o: int) {
+  stems: [16] string; meshes: [16] string; n := outfit_parts(o, stems[..], meshes[..]);
+  want: [32] string; nw := 0;
+  for i: 0..<n { if !(o == O_MAYORAL && meshes[i] == SPLIT_PIECE) { want[nw] = meshes[i]; nw += 1; } }
+  if o == O_MAYORAL { for s: SPLIT_NAMES { want[nw] = s; nw += 1; } want[nw] = "Chain_Of_Office"; nw += 1; }
+  if o == O_ROBE || o == O_MAYORAL { want[nw] = "Robe"; nw += 1; }
+  for i: 0..<nw {
+    found := false;
+    for p: 0..<ow[0].np { if ow[0].p[p].name == want[i] { found = true; } }
+    if !found { ph_die2("metahuman: garments not packed: ", want[i]); }
+  }
+}
+
+// ---- hair cards: the grooms' cards carried onto the DNA head
+mh_cards :: (w: []World, m: []MhWork, gdir: string, head: string, head_piece: int, dump_dir: string) {
+  txt := w[0].txt[..]; st := w[0].st[..]; pk := w[0].pk[..]; iw := w[0].iw[..];
+  eb: [4096] u8; arch_dna := proc_getenv("ARCHETYPE_FACE", eb[..]);
+  arch_dna = ifx arch_dna.count > 0 then txt_keep(txt, arch_dna) else MH_ARCHETYPE_FACE;
+  arch_dir := mh_dump(w, arch_dna, txt_cat(txt, dump_dir, "/archetype-face"));
+  arch := m[0].ob[0..<1];      // the bind body is done with: the archetype face in its place
+  obj_read(txt_cat(txt, arch_dir, "/head_lod0_mesh.obj"), arch, m[0].text[..]);
+  mine := m[0].ob[1..<2];
+  if arch[0].nv != mine[0].nv { ph_die("metahuman: the archetype face's points aren't this head's"); }
+  near_build(m[0].near[..], arch[0].v[0..<arch[0].nv], 2.0);
+  // the head's weights by point (its first vertex's)
+  hp := pk[0].pieces[head_piece];
+  for i: 0..<mine[0].nv { m[0].hseen[i] = false; }
+  for i: hp.vf..<hp.vf + hp.vn {
+    v := st[0].v[i];
+    if m[0].hseen[v.pt] { continue; }
+    m[0].hseen[v.pt] = true;
+    for z: 0..<4 { m[0].hjw[v.pt][z] = v.j[z]; m[0].hjw[v.pt][4 + z] = v.w[z]; }
+  }
+  out := txt_cat(txt, dump_dir, "/grooms"); mh_mkdirs(out);
+  l: [1] FsList; n := fs_list(gdir, l[..]);
+  names: [64] string; nn := 0;
+  for i: 0..<n { e := fs_entry(l[..], i); if fs_kind(txt_cat3(txt, gdir, "/", e)) == 2 && nn < 64 { names[nn] = txt_keep(txt, e); nn += 1; } }
+  for i: 1..<nn { x := names[i]; j := i - 1; while j >= 0 && str_less(x, names[j]) { names[j + 1] = names[j]; j -= 1; } names[j + 1] = x; }
+  for gi: 0..<nn {
+    g := names[gi];
+    gpath := txt_cat3(txt, gdir, "/", g);
+    mesh_path := txt_cat3(txt, gpath, "/", txt_cat(txt, g, "_CardsMesh_Group0_LOD0.obj"));
+    tga := txt_cat3(txt, gpath, "/", txt_cat(txt, g, "_CardsAtlas_Attribute.tga"));
+    if !fs_exists(mesh_path) || !fs_exists(tga) { continue; }
+    kind := part(g, 0);
+    brow := kind == "Eyebrows";
+    // the atlas's coverage (its red), 1024 a side for the cards' test
+    a := img_load(tga, iw);
+    A := pi_img(m[0].a0[..], a.w, a.h, 1); pi_channel(img_to(a, 3), 0, A);
+    al := img_resize(A, 1024, 1024, PI_BICUBIC, iw);
+    for i: 0..<1024 * 1024 { m[0].al[i] = al.px[i]; }
+    alpha := pi_img(m[0].al[..], 1024, 1024, 1);
+    // the uv's orientation: the one whose cards land on strands
+    obj_read(mesh_path, m[0].ob[2..<3], m[0].text[..]);
+    kt := card_obj(m, m[0].ob[2..<3], true, w[0].h2[..]); kept_t := sparse_cards(m, alpha);
+    kf := card_obj(m, m[0].ob[2..<3], false, w[0].h2[..]); kept_f := sparse_cards(m, alpha);
+    flip := !(kept_f > kept_t);
+    x := card_obj(m, m[0].ob[2..<3], flip, w[0].h2[..]); kept := sparse_cards(m, alpha);
+    nthin := 0; ncomp := 0;
+    for i: 0..<m[0].ncv { if m[0].par[i] == i && m[0].cov_n[i] > 0 { ncomp += 1; if m[0].thin[i] { nthin += 1; } } }
+    // used vertices, renumbered in order
+    for i: 0..<m[0].ncv { m[0].renum[i] = -1; }
+    for e: 0..<m[0].nct { if m[0].keep[e] { for c: 0..<3 { m[0].renum[m[0].ct[e][c]] = 0; } } }
+    nv := 0; for i: 0..<m[0].ncv { if m[0].renum[i] >= 0 { m[0].renum[i] = nv; nv += 1; } }
+    // each card point follows its nearest archetype points' moves to this head
+    for i: 0..<m[0].ncv {
+      if m[0].renum[i] < 0 { continue; }
+      k := m[0].renum[i];
+      q := vadd(m[0].cp[i], CARDS_OFFSET);
+      near_nearest(m[0].near[..], q, 2.0, 64.0, m[0].q[..]);
+      if m[0].q[0].n == 0 { ph_die("metahuman: a card point far from the archetype face"); }
+      m[0].md[k] = m[0].q[0].d[0];
+      acc := vzero(); tot := 0.0;
+      for e: 0..<imin(m[0].q[0].n, CARDS_NEAR) {
+        d := m[0].q[0].d[e]; pi := m[0].q[0].i[e];
+        f := 1.0 / (d + 0.3);
+        acc = vadd(acc, vscale(vsub(mine[0].v[pi], arch[0].v[pi]), f)); tot += f;
+      }
+      m[0].mp[k] = vadd(q, [3] f64.[acc[0] / tot, acc[1] / tot, acc[2] / tot]);
+      m[0].mk[k] = m[0].q[0].i[0];
+    }
+    // the log: the cm to the archetype skin, 50/95%
+    ds := m[0].cov_s[0..<nv];     // (cov_s is done with)
+    if nv > CV / 2 { ph_die("metahuman: cards past the port's table"); }
+    for i: 0..<nv { ds[i] = m[0].md[i]; }
+    sort_f64(ds, m[0].md[CV / 2..<CV / 2 + nv]);
+    lb: [512] u8; lo: [1] Sb; lo[0] = sb(lb[..]);
+    sb_put(lo[..], "cards "); sb_put(lo[..], g); sb_put(lo[..], ": "); sb_int(lo[..], kept); sb_put(lo[..], " triangles (");
+    sb_int(lo[..], nthin); sb_put(lo[..], " of "); sb_int(lo[..], ncomp); sb_put(lo[..], " cards nearly empty left out, uv flipped ");
+    sb_put(lo[..], ifx flip then "True" else "False"); sb_put(lo[..], "); cm to the archetype skin 50/95% ");
+    sb_fixed(lo[..], ds[nv / 2], 2); sb_byte(lo[..], ' '); sb_fixed(lo[..], ds[cast(int) (cast(f64) nv * 0.95)], 2); sb_line(lo[..]);
+    if brow && ds[nv / 2] > CARDS_FIT_CM { ph_die2("metahuman: the cards don't sit on the archetype face: ", g); }
+    vf := st[0].nv;
+    for i: 0..<m[0].ncv {
+      if m[0].renum[i] < 0 { continue; }
+      k := m[0].renum[i]; pt := m[0].mk[k];
+      v: PV;
+      v.p = vscale(m[0].mp[k], 0.01);
+      v.p = [3] f64.[m[0].mp[k][0] / 100.0, m[0].mp[k][1] / 100.0, m[0].mp[k][2] / 100.0];
+      v.n = mh_unit(m[0].cn[i]); v.uv = m[0].cuv[i]; v.pt = pt;
+      if m[0].hseen[pt] { for z: 0..<4 { v.j[z] = m[0].hjw[pt][z]; v.w[z] = m[0].hjw[pt][4 + z]; } }
+      else { v.j = [4] u8.[cast(u8) mh_lower("head"), 0, 0, 0]; v.w = [4] u8.[255, 0, 0, 0]; }
+      st[0].v[st_vert(st)] = v;
+    }
+    tf := st[0].nt;
+    for e: 0..<m[0].nct { if m[0].keep[e] { t := m[0].ct[e]; y := st_tri(st, m[0].renum[t[0]], m[0].renum[t[1]], m[0].renum[t[2]]); } }
+    // the atlas: the coverage as the strands' alpha over one colour (2048 a side at most)
+    base := card_atlas(w, m, tga, cards_rgb(kind), txt_cat3(txt, out, "/", txt_cat(txt, g, ".png")));
+    if !brow { base = hair_atlas(w, m, base, txt_cat3(txt, dump_dir, "/portrait/", txt_cat(txt, g, "_thick.png"))); }
+    pack_piece(pk, g, vf, nv, tf, kept, ifx brow then "brow" else "hair", base, "", "", iw);
+    if cards_on_rig(kind) { pk[0].pieces[pk[0].np - 1].face = "head_lod0_mesh"; }
+  }
+}
+// card_obj(): a cards OBJ as one vertex per distinct corner (welded by position and uv)
+card_obj :: (m: []MhWork, o: []Obj, flip: bool, hm: []Hmap) -> int {
+  // a corner's key: its position in 1000ths, its uv in 100000ths
+  m[0].ncv = 0; m[0].nct = 0;
+  hm_clear(hm);
+  for f: 0..<o[0].nf {
+    a := o[0].fs[f]; b := o[0].fs[f + 1];
+    ids: [64] int; ni := 0;
+    for e: a..<b {
+      c := o[0].c[e];
+      uv := ifx c[1] >= 0 then o[0].vt[c[1]] else [2] f64.[0.0, 0.0];
+      x := o[0].v[c[0]];
+      key := hm4(pn_round(x[0] * 1000.0), pn_round(x[1] * 1000.0), pn_round(x[2] * 1000.0), ((pn_round(uv[0] * 100000.0) + 2147483648) << 32) | (pn_round(uv[1] * 100000.0) + 2147483648));
+      before := hm[0].n;
+      k := hm_put(hm, key);
+      if k == before {
+        if m[0].ncv >= CV { ph_die("metahuman: card corners past the port's table"); }
+        m[0].cp[k] = x; m[0].cuv[k] = [2] f64.[uv[0], ifx flip then 1.0 - uv[1] else uv[1]];
+        m[0].cn[k] = ifx c[2] >= 0 then o[0].vn[c[2]] else [3] f64.[0.0, 0.0, 1.0];
+        m[0].ncv += 1;
+      }
+      ids[ni] = k; ni += 1;
+    }
+    for z: 1..<ni - 1 {
+      if m[0].nct >= CT { ph_die("metahuman: card triangles past the port's table"); }
+      m[0].ct[m[0].nct] = [3] int.[ids[0], ids[z], ids[z + 1]]; m[0].nct += 1;
+    }
+  }
+  return m[0].ncv;
+}
+// sparse_cards(): the cards (connected by shared vertices) whose atlas region is nearly empty are
+// left out (keep), as their roots' thin flags; the kept triangles' count
+card_root :: (m: []MhWork, i_in: int) -> int {
+  i := i_in;
+  while m[0].par[i] != i { m[0].par[i] = m[0].par[m[0].par[i]]; i = m[0].par[i]; }
+  return i;
+}
+sparse_cards :: (m: []MhWork, alpha: PiImg) -> int {
+  n := m[0].ncv;
+  for i: 0..<n { m[0].par[i] = i; m[0].cov_n[i] = 0; m[0].cov_s[i] = 0.0; m[0].thin[i] = false; }
+  for e: 0..<m[0].nct {
+    t := m[0].ct[e];
+    m[0].par[card_root(m, t[1])] = card_root(m, t[0]);
+    m[0].par[card_root(m, t[2])] = card_root(m, t[0]);
+  }
+  // flatten: every vertex's par its root
+  for i: 0..<n { r := card_root(m, i); m[0].par[i] = r; }
+  W := alpha.w; H := alpha.h;
+  for e: 0..<m[0].nct {
+    t := m[0].ct[e]; r := m[0].par[t[0]];
+    ua := m[0].cuv[t[0]]; ub := m[0].cuv[t[1]]; uc := m[0].cuv[t[2]];
+    for x: 1..<4 {
+      for y: 1..<4 - x + 1 {
+        wa := cast(f64) x / 4.0; wb := cast(f64) y / 4.0; wc := 1.0 - wa - wb;
+        u := wa * ua[0] + wb * ub[0] + wc * uc[0]; v := wa * ua[1] + wb * ub[1] + wc * uc[1];
+        px := imin(W - 1, imax(0, cast(int) (pn_mod(u, 1.0) * cast(f64) W)));
+        py := imin(H - 1, imax(0, cast(int) (pn_mod(v, 1.0) * cast(f64) H)));
+        m[0].cov_n[r] += 1; m[0].cov_s[r] = m[0].cov_s[r] + cast(f64) alpha.px[py * W + px] / 255.0;
+      }
+    }
+  }
+  for i: 0..<n { if m[0].par[i] == i && m[0].cov_n[i] > 0 { m[0].thin[i] = m[0].cov_s[i] / cast(f64) m[0].cov_n[i] < HAIR_SPARSE; } }
+  kept := 0;
+  for e: 0..<m[0].nct { m[0].keep[e] = !m[0].thin[m[0].par[m[0].ct[e][0]]]; if m[0].keep[e] { kept += 1; } }
+  return kept;
+}
+// card_atlas(): the coverage (the TGA's red, 2048 a side at most) as alpha over one colour, saved
+card_atlas :: (w: []World, m: []MhWork, tga: string, rgb: [3] int, out: string) -> string {
+  iw := w[0].iw[..];
+  a := img_load(tga, iw);
+  A := pi_img(m[0].a0[..], a.w, a.h, 1); pi_channel(img_to(a, 3), 0, A);
+  if A.w > 2048 { r := img_resize(A, 2048, 2048, PI_BICUBIC, iw); for i: 0..<2048 * 2048 { m[0].a2[i] = r.px[i]; } A = pi_img(m[0].a2[..], 2048, 2048, 1); }
+  im := pi_img(m[0].rgba[..], A.w, A.h, 4);
+  for i: 0..<A.w * A.h { im.px[4 * i] = cast(u8) rgb[0]; im.px[4 * i + 1] = cast(u8) rgb[1]; im.px[4 * i + 2] = cast(u8) rgb[2]; im.px[4 * i + 3] = A.px[i]; }
+  mh_save(w, im, out);
+  return out;
+}
+mh_save :: (w: []World, im: PiImg, path: string) {
+  iw := w[0].iw[..];
+  mh_mkdirs(dir_name(path));
+  n := pi_png(im, iw[0].z[..], iw[0].work[..], iw[0].out[..]);
+  if n <= 0 { ph_die2("metahuman: an image too big for the port's PNG buffer: ", path); }
+  if !fs_write(path, cast(string) iw[0].out[0..<n]) { ph_die2("metahuman: can't write ", path); }
+}
+// hair_atlas(): each strand thickened (its alpha's maximum over HAIR_GROW texels) and the faint
+// part of the curve lifted, the new coverage filled with the strands' own colour
+hair_atlas :: (w: []World, m: []MhWork, path: string, out: string) -> string {
+  iw := w[0].iw[..];
+  src := img_to(img_load(path, iw), 4);
+  W := src.w; H := src.h; n := W * H;
+  if n > 4194304 { ph_die("metahuman: a hair atlas past the port's buffers"); }
+  im := pi_img(m[0].rgba[..], W, H, 4); for i: 0..<n * 4 { im.px[i] = src.px[i]; }
+  a := pi_img(m[0].a2[..], W, H, 1); pi_channel(im, 3, a);
+  grown := pi_img(m[0].grown[..], W, H, 1); pi_rank(a, HAIR_GROW, true, grown);
+  g08: [256] u8; for v: 0..<256 { g08[v] = cast(u8) imin(255, cast(int) (cast(f64) v * 0.8)); }
+  pi_point(grown, g08);
+  lifted := pi_img(m[0].lifted[..], W, H, 1); for i: 0..<n { lifted.px[i] = a.px[i]; }
+  lut: [256] u8; for v: 0..<256 { lut[v] = cast(u8) imin(255, pn_round(255.0 * pow(cast(f64) v / 255.0, HAIR_LIFT))); }
+  pi_point(lifted, lut);
+  pi_lighter(grown, lifted, grown);      // the new alpha, in grown
+  // the strands' mean colour (a 256 a side copy, its texels past 160 alpha)
+  small := img_resize(im, 256, 256, PI_BICUBIC, iw);
+  for i: 0..<n * 4 { im.px[i] = src.px[i]; }   // (the resize premultiplied im in place)
+  sum := [3] int.[0, 0, 0]; cnt := 0;
+  for i: 0..<256 * 256 { if small.px[4 * i + 3] > 160 { for c: 0..<3 { sum[c] += cast(int) small.px[4 * i + c]; } cnt += 1; } }
+  mean := [3] int.[90, 75, 55];
+  if cnt > 0 { for c: 0..<3 { mean[c] = cast(int) (0.85 * cast(f64) sum[c] / cast(f64) cnt); } }
+  // fill: the strands' colour where they were, the mean where nothing was; then theirs blurred round them
+  rgb := pi_img(m[0].fill[..], W, H, 3);
+  for i: 0..<n { for c: 0..<3 { rgb.px[3 * i + c] = im.px[4 * i + c]; } }
+  meanim := pi_img(m[0].blur[..], W, H, 3);
+  for i: 0..<n { for c: 0..<3 { meanim.px[3 * i + c] = cast(u8) mean[c]; } }
+  m1 := pi_img(m[0].m1[..], W, H, 1); m2 := pi_img(m[0].m2[..], W, H, 1);
+  for i: 0..<n {
+    v := cast(int) a.px[i];
+    m1.px[i] = cast(u8) (ifx v > 60 then 255 else imin(255, v * 4));
+    m2.px[i] = cast(u8) (ifx v > 60 then 255 else 0);
+  }
+  pi_composite(rgb, meanim, m1, meanim);       // fill, in meanim
+  fill := meanim;
+  for i: 0..<n * 3 { rgb.px[i] = fill.px[i]; }  // rgb: a copy to blur
+  pi_gaussian(rgb, cast(f64) HAIR_GROW, m[0].lo[..]);
+  pi_composite(fill, rgb, m2, rgb);            // the fill over its blur, in rgb
+  for i: 0..<n { for c: 0..<3 { im.px[4 * i + c] = rgb.px[3 * i + c]; } im.px[4 * i + 3] = grown.px[i]; }
+  mh_save(w, im, out);
+  print("hair: the atlas's strands thickened (% texels) and lifted (^0.55)\n", HAIR_GROW);
+  return out;
+}

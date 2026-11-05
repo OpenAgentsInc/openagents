@@ -1,0 +1,362 @@
+// The lab's clips as the pack's checks pose a figure (metahuman.py's clip_poses and edge_check,
+// people.py's clips, channel and thin): verse/packs/everglade.json's people clips, sampled the way
+// metahumanlab.coax's palette poses the mesh, and a garment's edges skinned into them. Checks
+// only: what they find stops the tool, they change no byte of a pack.
+
+// ---- people.clips: per clip its seconds, per joint its rotation keys, the body's pelvis keys
+KEY_TOLERANCE_T :: 0.0008; KEY_TOLERANCE_R :: 0.0015;
+CK_MAX :: 262144;
+Clip :: struct {
+  name: string; duration: f64;
+  rf: [SK_MAX] int; rn: [SK_MAX] int;        // per joint its keys in kt/kq
+  mf: int; mn: int;                           // the body's pelvis keys in kt/kv
+}
+Clips :: struct {
+  n: int; c: [16] Clip;
+  nk: int; kt: [CK_MAX] f64; kq: [CK_MAX][4] f64; kv: [CK_MAX][3] f64;
+  // a channel's keys, read
+  ct: [65536] f64; co: [65536 * 4] f64;
+  tt: [65536] f64; tq: [65536][4] f64; tv: [65536][3] f64; keep: [65536] int;
+  male: [1] Skel; female: [1] Skel; lib: [1] Skel;
+  namebuf: [256] u8;
+}
+// channel(): the node's keys on a path ("rotation" or "translation") into cl.ct/co; their count
+clip_channel :: (g: []Gltf, anim: int, node_name: string, path: string, cl: []Clips) -> int {
+  chs := gl_get(g, anim, "channels"); smp := gl_get(g, anim, "samplers");
+  for c: 0..<gl_len(g, chs) {
+    ch := gl_item(g, chs, c); tgt := gl_get(g, ch, "target");
+    if gl_str(g, gl_at(g, GA_NODE, gl_int(g, tgt, "node", -1)), "name") != node_name || gl_str(g, tgt, "path") != path { continue; }
+    s := gl_item(g, smp, gl_int(g, ch, "sampler", 0));
+    if gl_has(g, s, "interpolation") && gl_str(g, s, "interpolation") != "LINEAR" { ph_die2(node_name, ": a channel that isn't linear"); }
+    a := gl_acc(g, gl_int(g, s, "input", 0), cl[0].ct[..]);
+    b := gl_acc(g, gl_int(g, s, "output", 0), cl[0].co[..]);
+    if a.count > 65536 { ph_die("pack_human: a channel past the port's keys"); }
+    return imin(a.count, b.count);
+  }
+  return 0;
+}
+// thin(): keys (cl.tt and tq or tv, n of them) the line (arc) between their neighbours reproduces
+// within tol dropped; the kept ones' positions into cl.keep, their count
+clip_thin :: (cl: []Clips, n: int, rotation: bool, tol: f64) -> int {
+  if n <= 2 { for i: 0..<n { cl[0].keep[i] = i; } return n; }
+  m := 0; cl[0].keep[m] = 0; m += 1;
+  i := 0;
+  while i < n - 1 {
+    j := i + 2;
+    while j < n {
+      ok := true;
+      for k: i + 1..<j {
+        f := (cl[0].tt[k] - cl[0].tt[i]) / (cl[0].tt[j] - cl[0].tt[i]);
+        if rotation {
+          if qangle(slerp(cl[0].tq[i], cl[0].tq[j], f), cl[0].tq[k]) > tol { ok = false; break; }
+        } else {
+          worst := 0.0; first := true;
+          for c: 0..<3 {
+            x := cl[0].tv[i][c]; y := cl[0].tv[j][c];
+            e := abs(x + (y - x) * f - cl[0].tv[k][c]);
+            if first || e > worst { worst = e; } first = false;
+          }
+          if worst > tol { ok = false; break; }
+        }
+      }
+      if !ok { break; }
+      j += 1;
+    }
+    i = j - 1;
+    cl[0].keep[m] = i; m += 1;
+  }
+  return m;
+}
+CLIP_LIBS :: [2] string.["ual1", "ual2"];
+// the clips clip_poses samples (the others aren't posed by the checks)
+CLIP_USED :: [7] string.["idle", "walk", "talk", "fold", "spell", "slash", "run"];
+clips_load :: (cl: []Clips, body_female: bool, g: []Gltf, txt: []Txt, home: string) {
+  // the spec: verse/packs/everglade.json (tools run from the repository's root)
+  specb: [1048576] u8;
+  path := "verse/packs/everglade.json";
+  n := fs_read(path, specb[..]);
+  if n < 0 { ph_die("pack_human: can't read verse/packs/everglade.json (run from the repository's root)"); }
+  d: [1] Jv; nodes: [65536] JvNode;
+  if !jv_parse(d[..], cast(string) specb[0..<n], nodes[..]) { ph_die("pack_human: bad JSON in everglade.json"); }
+  people := jv_get(d[0], 0, "people");
+  skels := jv_get(d[0], people, "skeletons"); libs := jv_get(d[0], people, "libraries");
+  sk_file(expand(txt, home, jv_raw(d[0], jv_get(d[0], skels, "male"))), cl[0].male[..], g);
+  sk_file(expand(txt, home, jv_raw(d[0], jv_get(d[0], skels, "female"))), cl[0].female[..], g);
+  // library_rest: the first library's skeleton's rest translations
+  lib_paths: [2] string;
+  for k: 0..<2 { lib_paths[k] = expand(txt, home, jv_raw(d[0], jv_get(d[0], libs, CLIP_LIBS[k]))); }
+  sk_file(lib_paths[0], cl[0].lib[..], g);
+  loaded := -1;
+  male := cl[0].male[0];
+  pelvis := sk_index(male, "pelvis");
+  cl[0].n = 0; cl[0].nk = 0;
+  clist := jv_get(d[0], people, "clips");
+  for ci: 0..<jv_len(d[0], clist) {
+    c := jv_at(d[0], clist, ci);
+    cname := jv_raw(d[0], jv_get(d[0], c, "name"));
+    used := false; for u: CLIP_USED { if u == cname { used = true; } }
+    if !used { continue; }
+    lib := jv_raw(d[0], jv_get(d[0], c, "library"));
+    li := ifx lib == "ual1" then 0 else 1;
+    if loaded != li { gl_load(g, lib_paths[li]); loaded = li; }
+    want := jv_raw(d[0], jv_get(d[0], c, "clip"));
+    anim := -1;
+    for a: 0..<g[0].nx[GA_ANIM] { if gl_str(g, g[0].ix[GA_ANIM][a], "name") == want { anim = g[0].ix[GA_ANIM][a]; break; } }
+    if anim < 0 { ph_die2(want, ": not in its library"); }
+    cl_: Clip; cl_.name = txt_keep(txt, cname);
+    // duration: the latest input time of any channel
+    dur := 0.0; firstd := true;
+    chs := gl_get(g, anim, "channels"); smp := gl_get(g, anim, "samplers");
+    for e: 0..<gl_len(g, chs) {
+      s := gl_item(g, smp, gl_int(g, gl_item(g, chs, e), "sampler", 0));
+      a := gl_acc(g, gl_int(g, s, "input", 0), cl[0].ct[..]);
+      for q: 0..<a.count { if firstd || cl[0].ct[q] > dur { dur = cl[0].ct[q]; } firstd = false; }
+    }
+    cl_.duration = dur;
+    tv := jv_get(d[0], c, "tolerance");
+    tol_r := ifx tv >= 0 then pf(jv_raw(d[0], tv)) else KEY_TOLERANCE_R;
+    tol_t := vmax(KEY_TOLERANCE_T, tol_r / 20.0);
+    sf := jv_get(d[0], c, "still_fingers");
+    still := sf >= 0 && jv_raw(d[0], sf) == "true";
+    for j: 0..<male.n {
+      name := male.names[j];
+      k := clip_channel(g, anim, name, "rotation", cl);
+      for q: 0..<k { cl[0].tt[q] = cl[0].ct[q]; cl[0].tq[q] = qunit([4] f64.[cl[0].co[q * 4], cl[0].co[q * 4 + 1], cl[0].co[q * 4 + 2], cl[0].co[q * 4 + 3]]); }
+      if still && k > 0 && (starts(name, "index_") || starts(name, "middle_") || starts(name, "pinky_") || starts(name, "ring_") || starts(name, "thumb_")) { k = 1; }
+      for q: 1..<k { if q_sum4(cl[0].tq[q - 1], cl[0].tq[q]) < 0.0 { p := cl[0].tq[q]; cl[0].tq[q] = [4] f64.[0.0 - p[0], 0.0 - p[1], 0.0 - p[2], 0.0 - p[3]]; } }
+      if k > 0 {
+        all_rest := true; all_first := true;
+        for q: 0..<k {
+          if !(qangle(cl[0].tq[q], male.q[j]) < KEY_TOLERANCE_R && qangle(cl[0].tq[q], cl[0].female[0].q[j]) < KEY_TOLERANCE_R) { all_rest = false; }
+          if !(qangle(cl[0].tq[q], cl[0].tq[0]) < KEY_TOLERANCE_R) { all_first = false; }
+        }
+        if all_rest { k = 0; } else if all_first { k = 1; }
+      }
+      m := clip_thin(cl, k, true, tol_r);
+      cl_.rf[j] = cl[0].nk; cl_.rn[j] = m;
+      for q: 0..<m {
+        if cl[0].nk >= CK_MAX { ph_die("pack_human: clips past the port's keys"); }
+        cl[0].kt[cl[0].nk] = cl[0].tt[cl[0].keep[q]]; cl[0].kq[cl[0].nk] = cl[0].tq[cl[0].keep[q]]; cl[0].nk += 1;
+      }
+    }
+    // the pelvis: the library's moves off its rest, on the body's rest
+    k := clip_channel(g, anim, "pelvis", "translation", cl);
+    lr := cl[0].lib[0].t[pelvis];
+    for q: 0..<k { cl[0].tt[q] = cl[0].ct[q]; for c3: 0..<3 { cl[0].tv[q][c3] = cl[0].co[q * 3 + c3] - lr[c3]; } }
+    m := clip_thin(cl, k, false, tol_t);
+    sk := ifx body_female then cl[0].female[0].t[pelvis] else male.t[pelvis];
+    cl_.mf = cl[0].nk; cl_.mn = m;
+    for q: 0..<m {
+      if cl[0].nk >= CK_MAX { ph_die("pack_human: clips past the port's keys"); }
+      v := cl[0].tv[cl[0].keep[q]];
+      cl[0].kt[cl[0].nk] = cl[0].tt[cl[0].keep[q]]; cl[0].kv[cl[0].nk] = [3] f64.[sk[0] + v[0], sk[1] + v[1], sk[2] + v[2]]; cl[0].nk += 1;
+    }
+    // a clip that moves the root isn't one of the library's in-place clips
+    root := -1; for q: 0..<male.n { if male.names[q] == "root" { root = q; } }
+    if root >= 0 {
+      k = clip_channel(g, anim, "root", "translation", cl);
+      lr2 := lib_rest(cl[0].lib[0], "root");
+      for q: 0..<k { for c3: 0..<3 { if abs(cl[0].co[q * 3 + c3] - lr2[c3]) > 0.0001 { ph_die2(want, ": moves the root (use the library's in-place clips)"); } } }
+    }
+    cl[0].c[cl[0].n] = cl_; cl[0].n += 1;
+  }
+}
+lib_rest :: (s: Skel, name: string) -> [3] f64 { for k: 0..<s.n { if s.names[k] == name { return s.t[k]; } } return vzero(); }
+expand :: (txt: []Txt, home: string, p: string) -> string { if starts(p, "~/") { return txt_cat(txt, home, p[1..<p.count]); } return p; }
+// ---- clip_poses
+PEOPLE_CLIP_NAMES :: [12] string.["idle", "walk", "talk", "nod", "fold", "lantern", "spell", "slash", "run", "die", "knock", "cower"];
+POSTURE_SAMPLES :: 24; POSTURE_HAND :: 0.22; POSTURE_GRIP :: 0.7; POSTURE_CLAVICLE :: 0.5;
+posture_kind :: (c: int, j: int) -> int {
+  if (11 <= j && j <= 30) || (35 <= j && j <= 54) { return 4; }
+  nm := PEOPLE_CLIP_NAMES[c];
+  if nm == "die" || nm == "knock" || nm == "cower" { return 0; }
+  if 1 <= j && j <= 6 { return 1; }
+  if j == 7 || j == 31 { return 2; }
+  if (nm == "idle" || nm == "talk" || nm == "nod" || nm == "fold" || nm == "lantern") && 55 <= j && j <= 64 { return 3; }
+  return 0;
+}
+POSES :: 16;
+Pose :: struct { name: string; A: [SK_MAX][3][3] f64; c: [SK_MAX][3] f64; }
+Poses :: struct { n: int; p: [POSES] Pose; nameb: [POSES][32] u8; }
+Loc :: struct { t: [SK_MAX][3] f64; q: [SK_MAX][4] f64; }
+clip_pair_u :: (cl: []Clips, f: int, n: int, t: f64) -> [3] f64 {
+  // (a index, b index, u)
+  cnt := 0; for k: 0..<n { if cl[0].kt[f + k] <= t { cnt += 1; } }
+  i := imax(cnt - 1, 0);
+  a := f + i; b := ifx i + 1 < n then f + i + 1 else a;
+  u := 0.0;
+  if cl[0].kt[b] > cl[0].kt[a] { u = vmin(vmax((t - cl[0].kt[a]) / (cl[0].kt[b] - cl[0].kt[a]), 0.0), 1.0); }
+  return [3] f64.[cast(f64) a, cast(f64) b, u];
+}
+locals_at :: (cl: []Clips, c: Clip, sk: Skel, t: f64, pel: int) -> Loc {
+  L: Loc;
+  for j: 0..<sk.n {
+    lt := sk.t[j];
+    if j == pel && c.mn > 0 {
+      p := clip_pair_u(cl, c.mf, c.mn, t); a := cl[0].kv[cast(int) p[0]]; b := cl[0].kv[cast(int) p[1]]; u := p[2];
+      lt = [3] f64.[a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u];
+    }
+    lq := sk.q[j];
+    if c.rn[j] > 0 {
+      p := clip_pair_u(cl, c.rf[j], c.rn[j], t);
+      lq = slerp(qunit(cl[0].kq[cast(int) p[0]]), qunit(cl[0].kq[cast(int) p[1]]), p[2]);
+    }
+    L.t[j] = lt; L.q[j] = lq;
+  }
+  return L;
+}
+loc_floor :: (L: Loc, sk: Skel) -> f64 {
+  gq: [SK_MAX][4] f64; gt: [SK_MAX][3] f64;
+  for j: 0..<sk.n {
+    par := sk.parent[j];
+    if par < 0 { gq[j] = L.q[j]; gt[j] = L.t[j]; }
+    else { gq[j] = qunit(qmul(gq[par], L.q[j])); gt[j] = vadd(gt[par], qrot(gq[par], L.t[j])); }
+  }
+  r := gt[57][1];
+  for k: [3] int.[58, 62, 63] { r = vmin(r, gt[k][1]); }
+  return r;
+}
+lean_rest :: (sk: Skel, j: int) -> [4] f64 {
+  lw: [64] u8; nm := lower_into(sk.names[j], lw[..]);
+  deg := ifx nm == "spine_03" then -2.0 else ifx nm == "neck_01" then -14.0 else ifx nm == "head" then 13.0 else 0.0;
+  if deg == 0.0 { return sk.q[j]; }
+  g := [4] f64.[0.0, 0.0, 0.0, 1.0];
+  chain: [SK_MAX] int; nc := 0; p := sk.parent[j];
+  while p >= 0 { chain[nc] = p; nc += 1; p = sk.parent[p]; }
+  i := nc - 1;
+  while i >= 0 { g = qunit(qmul(g, sk.q[chain[i]])); i -= 1; }
+  h := deg * (PH_PI / 180.0) * 0.5;
+  lean := [4] f64.[sin(h), 0.0, 0.0, cos(h)];
+  return qunit(qmul(qmul(qmul(qconj(g), lean), g), sk.q[j]));
+}
+// clip_poses(binds, body): per pose per joint a 3x3 and an offset (metres) taking a bind point to it
+clip_poses :: (cl: []Clips, binds: [][7] f64, bw: int, female: bool, out: []Poses) {
+  sk := ifx female then cl[0].female[0] else cl[0].male[0];
+  pel := sk_index(sk, "pelvis");
+  mom_name: [12] string; mom_f: [12] f64; nm := 0;
+  for f: [3] f64.[0.0, 0.33, 0.66] { mom_name[nm] = "idle"; mom_f[nm] = f; nm += 1; }
+  for f: [4] f64.[0.0, 0.25, 0.5, 0.75] { mom_name[nm] = "walk"; mom_f[nm] = f; nm += 1; }
+  for n: [5] string.["talk", "spell", "slash", "run", "fold"] { mom_name[nm] = n; mom_f[nm] = 0.5; nm += 1; }
+  out[0].n = 0;
+  for mi: 0..<nm {
+    name := mom_name[mi]; f := mom_f[mi];
+    ci := -1; for q: 0..<cl[0].n { if cl[0].c[q].name == name { ci = q; } }
+    if ci < 0 { continue; }
+    c := cl[0].c[ci];
+    t := f * c.duration;
+    // posture(): per trunk, clavicle and leg joint its correction, and the pelvis's lift
+    n := 0; for q: 0..<12 { if PEOPLE_CLIP_NAMES[q] == name { n = q; } }
+    post: [SK_MAX][4] f64;
+    samples: [POSTURE_SAMPLES] Loc;
+    for i: 0..<POSTURE_SAMPLES { samples[i] = locals_at(cl, c, sk, c.duration * cast(f64) i / cast(f64) POSTURE_SAMPLES, pel); }
+    for j: 0..<sk.n {
+      k := posture_kind(n, j);
+      if k < 1 || k > 3 { continue; }
+      rest := lean_rest(sk, j);
+      acc := [4] f64.[0.0, 0.0, 0.0, 0.0];
+      for i: 0..<POSTURE_SAMPLES {
+        q := samples[i].q[j];
+        if q_sum4(q, rest) < 0.0 { q = [4] f64.[0.0 - q[0], 0.0 - q[1], 0.0 - q[2], 0.0 - q[3]]; }
+        for e: 0..<4 { acc[e] = acc[e] + q[e]; }
+      }
+      post[j] = qunit(qmul(rest, qconj(qunit(acc))));
+    }
+    raw := 0.0; fixed := 0.0;
+    for i: 0..<POSTURE_SAMPLES {
+      raw += loc_floor(samples[i], sk);
+      M := samples[i];
+      for j: 0..<sk.n { k := posture_kind(n, j); if k == 1 || k == 3 { M.q[j] = qunit(qmul(post[j], samples[i].q[j])); } }
+      fixed += loc_floor(M, sk);
+    }
+    lift := (raw - fixed) / cast(f64) POSTURE_SAMPLES;
+    L := locals_at(cl, c, sk, t, pel);
+    for j: 0..<sk.n {
+      k := posture_kind(n, j);
+      lq := L.q[j];
+      if k == 4 { L.q[j] = slerp(sk.q[j], lq, ifx name == "lantern" || name == "slash" then POSTURE_GRIP else POSTURE_HAND); }
+      else if k == 1 || k == 3 { L.q[j] = qunit(qmul(post[j], lq)); }
+      else if k == 2 { L.q[j] = slerp(lq, qunit(qmul(post[j], lq)), POSTURE_CLAVICLE); }
+    }
+    par := sk.parent[pel];
+    up := ifx par < 0 then [3] f64.[0.0, lift, 0.0] else qrot(qconj(L.q[par]), [3] f64.[0.0, lift, 0.0]);
+    L.t[pel] = vadd(L.t[pel], up);
+    gq: [SK_MAX][4] f64; rq: [SK_MAX][4] f64; gp: [SK_MAX][3] f64; D: [SK_MAX][4] f64;
+    for j: 0..<sk.n {
+      lt := L.t[j]; lq := L.q[j];
+      bp := [3] f64.[binds[j][0], binds[j][1], binds[j][2]];
+      bq := ifx bw >= 7 then [4] f64.[binds[j][3], binds[j][4], binds[j][5], binds[j][6]] else [4] f64.[0.0, 0.0, 0.0, 1.0];
+      p := sk.parent[j];
+      if p < 0 { gq[j] = lq; rq[j] = sk.q[j]; gp[j] = vadd(bp, vsub(lt, sk.t[j])); }
+      else {
+        gq[j] = qunit(qmul(gq[p], lq)); rq[j] = qunit(qmul(rq[p], sk.q[j]));
+        bpp := [3] f64.[binds[p][0], binds[p][1], binds[p][2]];
+        gp[j] = vadd(vadd(gp[p], qrot(D[p], vsub(bp, bpp))), qrot(gq[p], vsub(lt, sk.t[j])));
+      }
+      D[j] = qunit(qmul(qmul(gq[j], qconj(rq[j])), bq));
+    }
+    if out[0].n >= POSES { ph_die("pack_human: more poses than the port holds"); }
+    po := out[0].n;
+    o: [1] Sb; o[0] = sb(out[0].nameb[po][..]); sb_put(o[..], name); sb_byte(o[..], '@'); sb_fixed(o[..], f, 2);
+    out[0].p[po].name = sb_text(o[..]);
+    for j: 0..<sk.n {
+      bp := [3] f64.[binds[j][0], binds[j][1], binds[j][2]];
+      for e: 0..<3 {
+        col := qrot(D[j], ifx e == 0 then [3] f64.[1.0, 0.0, 0.0] else ifx e == 1 then [3] f64.[0.0, 1.0, 0.0] else [3] f64.[0.0, 0.0, 1.0]);
+        for i: 0..<3 { out[0].p[po].A[j][i][e] = col[i]; }
+      }
+      out[0].p[po].c[j] = vsub(gp[j], qrot(D[j], bp));
+    }
+    out[0].n += 1;
+  }
+}
+// a point (cm) with its weights skinned into a pose (cm)
+skinned :: (x: [3] f64, wl: Wl, P: Pose) -> [3] f64 {
+  xm := [3] f64.[x[0] / 100.0, x[1] / 100.0, x[2] / 100.0];
+  q := vzero();
+  for e: 0..<wl.n {
+    a := wl.w[e]; y := vadd(mv3(P.A[wl.j[e]], xm), P.c[wl.j[e]]);
+    q = vadd(q, [3] f64.[y[0] * a, y[1] * a, y[2] * a]);
+  }
+  return vscale(q, 100.0);
+}
+
+// ---- edge_check: per pose (share past 1.5x, worst ratio, share past 1.5x and 1 cm, most grown cm)
+EdgeRes :: struct { v: [POSES][4] f64; }
+EC_MAX :: 1200000;
+EdgeWork :: struct { e: [EC_MAX][2] int; Y: [400000][3] f64; }
+edge_check :: (pos: [][3] f64, fw: []Wl, tris: [][3] int, poses: []Poses, ref: [][3] f64, ew: []EdgeWork, h: []Hmap) -> EdgeRes {
+  hm_clear(h);
+  ne := 0;
+  for t: tris {
+    for e: 0..<3 {
+      a := t[e]; b := t[(e + 1) % 3];
+      if vmax(pn_dist3(ref[a], ref[b]), pn_dist3(pos[a], pos[b])) >= 0.05 {
+        before := h[0].n; x := hm_put(h, hm4(imin(a, b), imax(a, b), 0, 0));
+        if h[0].n != before { if ne >= EC_MAX { ph_die("pack_human: edges past the port's table"); } ew[0].e[ne] = [2] int.[imin(a, b), imax(a, b)]; ne += 1; }
+      }
+    }
+  }
+  r: EdgeRes;
+  if pos.count > 400000 { ph_die("pack_human: a piece past the port's edge check"); }
+  for pi: 0..<poses[0].n {
+    for i: 0..<pos.count {
+      xm := [3] f64.[pos[i][0] / 100.0, pos[i][1] / 100.0, pos[i][2] / 100.0]; q := vzero();
+      for e: 0..<fw[i].n {
+        a := fw[i].w[e]; y := vadd(mv3(poses[0].p[pi].A[fw[i].j[e]], xm), poses[0].p[pi].c[fw[i].j[e]]);
+        q = vadd(q, [3] f64.[y[0] * a, y[1] * a, y[2] * a]);
+      }
+      ew[0].Y[i] = q;
+    }
+    over := 0; grown := 0; worst := 1.0; most := 0.0;
+    for k: 0..<ne {
+      a := ew[0].e[k][0]; b := ew[0].e[k][1];
+      l0 := vmax(pn_dist3(ref[a], ref[b]), pn_dist3(pos[a], pos[b])); l1 := pn_dist3(ew[0].Y[a], ew[0].Y[b]) * 100.0;
+      if l1 > 1.5 * l0 { over += 1; }
+      worst = vmax(worst, l1 / l0);
+      if l1 - l0 > 1.0 && l1 > 1.5 * l0 { grown += 1; }
+      most = vmax(most, l1 - l0);
+    }
+    r.v[pi] = [4] f64.[cast(f64) over / cast(f64) imax(ne, 1), worst, cast(f64) grown / cast(f64) imax(ne, 1), most];
+  }
+  return r;
+}

@@ -66,7 +66,10 @@ if [[ -n "$why" ]]; then
   "$coax" deps "$src" ${steps[@]+"${steps[@]}"} > "$work/deps.json" 2> /dev/null & deps_pid=$!
   "$coax" c "$src" --library ${steps[@]+"${steps[@]}"} ${release[@]+"${release[@]}"} > "$work/$name.c"
   mkdir -p "$(dirname "$bin")"
-  "${cc[@]}" -std=c11 -O2 ${stack[@]+"${stack[@]}"} -I"$work" -I"$p" -o "$work/$name" "$work/$name.c" "$p/tool-native.c" "$p/process-native.c" \
+  # IEEE arithmetic as written (no fused multiply-adds, as coax/web/wasm.sh, and pow() the C
+  # library's, not folded to x * x): a tool that reproduces another program's floats
+  # (verse/tools/humans/pack_human.coax) needs each rounding
+  "${cc[@]}" -std=c11 -O2 -ffp-contract=off -fno-fast-math -fno-builtin-pow ${stack[@]+"${stack[@]}"} -I"$work" -I"$p" -o "$work/$name" "$work/$name.c" "$p/tool-native.c" "$p/process-native.c" \
     "$p/store-file-native.c" "$p/read-file-native.c" "$p/socket-native.c" "$p/entropy-native.c" "$p/entropy-foreign.c" "$work/entropy.c" ${tls[@]+"${tls[@]}"} "${libs[@]}" -lm
   mv -f "$work/$name" "$bin"
   # the sources this build read, for the next staleness check (none: the broad check)

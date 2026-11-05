@@ -185,7 +185,7 @@ wd_order :: (w: Wd, order: []int) {
 }
 
 // A short list of (joint, weight) pairs: a vertex's "ws" (at most 4 in every source here).
-WL :: 6;
+WL :: 8;
 Wl :: struct { n: int; j: [WL] int; w: [WL] f64; }
 wl_add :: (l: []Wl, j: int, w: f64) {
   if l[0].n >= WL { ph_die("pack_human: more weights on a point than the port holds"); }
@@ -278,7 +278,7 @@ nb_finish :: (g: []Nbr) {
   }
   g[0].start[n] = w;
 }
-nb_count :: (g: Nbr, i: int) -> int { return g.start[i + 1] - g.start[i]; }
+nb_count :: (g: []Nbr, i: int) -> int { return g[0].start[i + 1] - g[0].start[i]; }
 
 // ---- an int-tuple (up to 4) to index map, indices in insertion order (a dict's keys)
 HM_SIZE :: 524288;
@@ -379,9 +379,9 @@ ph_sort_ints :: (idx: []int, key: []int, tmp: []int) {
     w = w * 2;
   }
 }
-near_find :: (g: Near, key: int) -> int {
-  lo := 0; hi := g.nu - 1;
-  while lo <= hi { m := (lo + hi) / 2; if g.uk[m] == key { return m; } if g.uk[m] < key { lo = m + 1; } else { hi = m - 1; } }
+near_find :: (g: []Near, key: int) -> int {
+  lo := 0; hi := g[0].nu - 1;
+  while lo <= hi { m := (lo + hi) / 2; if g[0].uk[m] == key { return m; } if g[0].uk[m] < key { lo = m + 1; } else { hi = m - 1; } }
   return -1;
 }
 // A search's results: (d, i) in the Python's order (cells dx, dy, dz, each in index order), or sorted.
@@ -392,7 +392,7 @@ near_within :: (g: []Near, x: [3] f64, r: f64, q: []Nq) {
   k := cast(int) ceil(r / g[0].cell);
   q[0].n = 0;
   for dx: 0 - k..<k + 1 { for dy: 0 - k..<k + 1 { for dz: 0 - k..<k + 1 {
-    u := near_find(g[0], near_key(c0 + dx, c1 + dy, c2 + dz));
+    u := near_find(g, near_key(c0 + dx, c1 + dy, c2 + dz));
     if u < 0 { continue; }
     for o: g[0].us[u]..<g[0].us[u + 1] {
       i := g[0].order[o];

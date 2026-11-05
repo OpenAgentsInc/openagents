@@ -64,7 +64,7 @@ pack_piece :: (pk: []Pack, name: string, vf: int, vn: int, tf: int, tn: int, mat
 }
 
 // ---- images
-IW_FILE :: 50331648; IW_WORK :: 134217728; IW_PX :: 67108864; IW_MID :: 33554432; IW_RES :: 16777216; IW_OUT :: 16777216;
+IW_FILE :: 67108864; IW_WORK :: 134217728; IW_PX :: 67108864; IW_MID :: 33554432; IW_RES :: 16777216; IW_OUT :: 16777216;
 ImgWork :: struct {
   file: [IW_FILE] u8; work: [IW_WORK] u8; px: [IW_PX] u8; mid: [IW_MID] u8; res: [IW_RES] u8; out: [IW_OUT] u8;
   r: [1] PiResample; z: [1] PiZ;
@@ -258,13 +258,13 @@ octant :: (n: [3] f64) -> int {
   for i: 1..<3 { if abs(n[i]) > abs(n[k]) { k = i; } }
   return 2 * k + (ifx n[k] < 0.0 then 1 else 0);
 }
-RD_MAX :: 400000;
+RD_MAX :: 400000; RD_PARTS :: 4096;  // a cell's parts (octant by uv eighth; a card cell has many)
 Reduce :: struct {
   cell_of: [RD_MAX] int; cnt: [RD_MAX + 1] int; list: [RD_MAX] int; fill: [RD_MAX] int;
   keep: [RD_MAX] int; out: [RD_MAX] int;           // per input vertex its output; per output its source vertex
   anchor_of: [RD_MAX] int;
   tri: [RD_MAX * 2][3] int; used: [RD_MAX] int;
-  pk: [64][3] int; pmembers: [RD_MAX] int; pn: [64] int;
+  pk: [RD_PARTS][3] int; pmembers: [RD_MAX] int; pn: [RD_PARTS] int;
 }
 // The piece's reduction at cell: new vertices and triangles appended to the store; returns (vf, vn, tf, tn).
 reduce :: (st: []Store, vf: int, vn: int, tf: int, tn: int, cell: f64, rd: []Reduce, h1: []Hmap, h2: []Hmap) -> [4] int {
@@ -294,7 +294,7 @@ reduce :: (st: []Store, vf: int, vn: int, tf: int, tn: int, cell: f64, rd: []Red
       key := [3] int.[octant(v.n), pn_floor(v.uv[0] * 8.0), pn_floor(v.uv[1] * 8.0)];
       k := -1;
       for e: 0..<np { if rd[0].pk[e][0] == key[0] && rd[0].pk[e][1] == key[1] && rd[0].pk[e][2] == key[2] { k = e; break; } }
-      if k < 0 { if np >= 64 { ph_die("pack_human: a cell past the port's parts"); } k = np; rd[0].pk[k] = key; rd[0].pn[k] = 0; np += 1; }
+      if k < 0 { if np >= RD_PARTS { ph_die("pack_human: a cell past the port's parts"); } k = np; rd[0].pk[k] = key; rd[0].pn[k] = 0; np += 1; }
       rd[0].pmembers[q] = k;
     }
     for e: 0..<np {
@@ -388,7 +388,7 @@ lid_coords :: (st: []Store, vf: int, vn: int, tf: int, tn: int, lw: []LidWork, h
     np := lid_walk(lw, start, false, 0);
     for q: 0..<np { lw[0].part[q] = lw[0].loop[q]; lw[0].done[lw[0].part[q]] = true; }
     // the border loops, the one reaching lowest and highest first
-    for q: 0..<np { i := lw[0].part[q]; lw[0].inpart[i] = nb_count(lw[0].rim[0], i) > 0; }
+    for q: 0..<np { i := lw[0].part[q]; lw[0].inpart[i] = nb_count(lw[0].rim[..], i) > 0; }
     nl := 0; lstart: [64] int; lh: [64] f64; lfirst: [64] int; lcount: [64] int;
     members: [LC_MAX] int; nm := 0;
     for q: 0..<np {
