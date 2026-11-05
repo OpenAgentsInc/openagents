@@ -576,7 +576,7 @@ hi_int :: (a: int, b: int) -> int { return ifx a > b then a else b; }
 clamp_int :: (a: int, low: int, high: int) -> int { if a < low { return low; } if a > high { return high; } return a; }
 
 // A realm of its own, for /worlds/built with no realm named: what every release checks.
-SAMPLE :: "realm built\nname A Realm You Built\nstyle lowpoly\nground meadow\ntime dusk\nowner 0\ntool build 0\ntool fly 0\ntool jump 1\ntool map 1\ntool talk 1\ntool voice 0\nfeature water medium\nfeature trees round 9\nfeature rocks 6\nfeature plants 10\nfeature lanterns gold 8\nfeature props crates\ncharacter Mira|the herbalist\n";
+SAMPLE :: "realm built\nname A World You Built\nstyle lowpoly\nground meadow\ntime dusk\nowner 0\ntool build 0\ntool fly 0\ntool jump 1\ntool map 1\ntool talk 1\ntool voice 0\nfeature water medium\nfeature trees round 9\nfeature rocks 6\nfeature plants 10\nfeature lanterns gold 8\nfeature props crates\ncharacter Mira|the herbalist\n";
 
 // ---- in from the host
 
@@ -3257,7 +3257,7 @@ edit_opened :: (s: [] MyRealm) { redit_requested(s[0].ed[..], 6); used := redit_
   realm_message(q[..], u[..], HOST_FACTS, g);
   realm_catalog(q[..], PACK);
   n := frame_of(q[..], u[..], 780, 1688);
-  #assert q[0].spec_ready && !q[0].req_ready && name_text(q[..]) == "A Realm You Built" && q[0].laid && realm_draw_count(q[..]) > 0;
+  #assert q[0].spec_ready && !q[0].req_ready && name_text(q[..]) == "A World You Built" && q[0].laid && realm_draw_count(q[..]) > 0;
   #assert q[0].shown[BTN_MAP] && q[0].shown[BTN_JUMP] && !q[0].shown[BTN_BUILD];
   // a bad slug is never asked for
   r: [1] MyRealm; v: [1] Track;
