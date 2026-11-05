@@ -2,7 +2,7 @@
 
 Everglade's ordinary default is the picked `NAME-CAND.ogg` set from
 `aethyr/audio/everglade-bank.coax`, rather than its 48 generated synth WAVs.
-The initial exact-source SDK comparison observes three real picked files.
+The initial exact-source SDK comparison observes three available files.
 Chrome's actual 48 kHz `decodeAudioData` and the native AVAudioFile/converter
 path decode the same complete compressed bytes. Every interleaved binary32
 word is compared without shifts, masks or omission at the unchanged 2^-20
@@ -21,6 +21,12 @@ audio result. A separate native export immediately after AVAudioFile.read,
 before AVAudioConverter, is byte-identical to its final PCM. Conversion
 and interleaving therefore do not explain this failure. No corrective
 shift, alternate asset or synth alias has been applied.
+
+The initial record incorrectly called all three probes picked defaults.
+The current fire-hit row is `[55,-1,-1,-1]`, selecting `fire-hit-e3`;
+`fire-hit-e2` is an available candidate. Its supported-codec failure is
+preserved, but cannot decide default-profile conformance. The complete
+122-pick comparison remains required before a default-bank verdict.
 
 `check-browser-codec.coax` is an observation harness, not ordinary decoder
 admission. Its SDK glue decodes frozen files and exports every measured

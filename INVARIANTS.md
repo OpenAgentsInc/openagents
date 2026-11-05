@@ -53,6 +53,10 @@ The 48 generated WAVs are Everglade's explicit synth profile. Ordinary
 default gameplay selects the picked Ogg/Opus variants and stereo bed.
 Synth-bank decoding and DSP receipts do not qualify those codec outputs,
 their complete retained-memory workload or default-profile audio parity.
+The shared `audio/host-opus.coax` preflight admits all 122 picked sources
+and bounds full coded PCM separately from pre-skip/EOS output trim. Its
+389-mutant root gate has no survivors or equivalents. SDK adoption and
+codec-output comparisons remain separate; metadata is not decoded parity.
 
 The Linux audio SDK executes the same Coax PCM/WAV interpreter and bank/
 memory authorities. All 48 frozen bank assets decode byte-identically and

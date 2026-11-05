@@ -422,6 +422,15 @@ refusal cannot publish a partial asset. Pre-contract faces retain the
 existing Web Audio graph. Its independent retained observations are not a
 sample-parity claim for the version 1 interpreter.
 
+Before an authored Opus SDK decode, `audio/host-opus.coax` measures complete
+Ogg framing and packet-derived decoded extent as well as trimmed output.
+Reserve each observable compressed scratch, decoded plane, transfer and
+retained allocation separately. A short EOS granule cannot reduce the
+decoder reservation. Validate observed 48 kHz frame/channel shape against
+that plan before publishing PCM; codec refusal publishes no prefix. The
+exact supported framing profile is documented in `audio/host-opus.md`.
+Its metadata gate is separate from actual codec-output conformance.
+
 ## Conformance and the desktop default
 
 The fixture in this directory retains **actual delivered arguments and

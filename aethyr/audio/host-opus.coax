@@ -1,0 +1,120 @@
+// Measured Ogg/Opus input and decoded extents before an SDK codec allocation.
+// This profile matches authored 48 kHz mono/stereo effects; codec arithmetic is
+// separately observed and is not made equivalent by admitting its headers.
+#load "../host/audio-memory.coax";
+#authority;
+HOST_OPUS_SOURCE_BYTES :: 8388608;
+HostOpusPlan :: struct {valid:bool;channels:int;pre_skip:int;frames:int;decode_frames:int;samples:int;decode_samples:int;}
+HostOpusPage :: struct {valid:bool;flags:int;segments:int;bytes:int;payload:int;end:int;granule:int;serial:int;sequence:int;}
+#test "Ogg CRC uses the unreflected polynomial and zero checksum bytes on an independently recorded page" {
+ b:=[47]u8.[79,103,103,83,0,2,0,0,0,0,0,0,0,0,168,16,133,170,0,0,0,0,164,102,150,3,1,19,79,112,117,115,72,101,97,100,1,1,56,1,128,187,0,0,0,0,0];
+ #assert hpo_crc(b[..])==0x039666a4;
+ b[22]=0;b[23]=0;b[24]=0;b[25]=0;#assert hpo_crc(b[..])==0x039666a4;b[46]=1;#assert hpo_crc(b[..])!=0x039666a4;
+ #assert hpo_u32(b[..],14)==0xaa8510a8;
+}
+#test "Opus TOC durations bound each coded frame and variable frame count before decoding" {
+ b:[2]u8;
+ for i:0..<32 {frames:=ifx i>=16 then 120<<(i%4) else ifx i>=12 then 480<<(i%2) else ifx i%4==3 then 2880 else 480<<(i%4);b[0]=u8(i*8);#assert hpo_packet(b[0..<1])==frames;b[0]+=1;#assert hpo_packet(b[..])==frames*2;b[0]+=1;#assert hpo_packet(b[..])==frames*2;b[0]+=1;b[1]=1;#assert hpo_packet(b[..])==frames;b[1]=u8(5760/frames);#assert hpo_packet(b[..])==(5760/frames)*frames;b[1]+=1;#assert hpo_packet(b[..])==0;b[1]=0;#assert hpo_packet(b[..])==0;#assert hpo_packet(b[0..<1])==0;}
+ #assert hpo_packet(b[0..<0])==0;b[0]=131;b[1]=48;#assert hpo_packet(b[..])==5760;b[1]=49;#assert hpo_packet(b[..])==0;
+}
+#test "complete profile measures trimmed output and full decoder extent independently" {
+ b:[256]u8;for i:0..<256 {b[i]=255;}n:=hpo_fixture(b[..],1,1,119);p:=hpo_plan(b[0..<n]);#assert p.valid&&p.channels==1&&p.pre_skip==1&&p.frames==118&&p.decode_frames==120&&p.samples==118&&p.decode_samples==120;#assert b[121]==255&&hpo_u32(b[..],14)==17&&hpo_u32(b[..],61)==17&&hpo_u32(b[..],105)==17&&hpo_u32(b[..],40)==48000;
+ n=hpo_fixture(b[..],2,0,120);p=hpo_plan(b[0..<n]);#assert p.valid&&p.channels==2&&p.frames==120&&p.decode_frames==120&&p.samples==240&&p.decode_samples==240;
+ #assert !hpo_plan(b[0..<n-1]).valid&&!hpo_plan(b[0..<n+1]).valid&&!hpo_plan(b[0..<0]).valid;
+ for channel:[3]int.[0,3,255] {n=hpo_fixture(b[..],channel,0,120);#assert !hpo_plan(b[0..<n]).valid;}
+ for end:[3]int.[0,121,4294967295] {n=hpo_fixture(b[..],1,0,end);#assert !hpo_plan(b[0..<n]).valid;}
+ n=hpo_fixture(b[..],1,120,119);#assert !hpo_plan(b[0..<n]).valid;
+ n=hpo_fixture(b[..],1,4660,5000);b[119]=3;b[120]=12;hpo_seal(b[91..<n]);p=hpo_plan(b[0..<n]);#assert p.valid&&p.pre_skip==4660&&p.frames==340&&p.decode_frames==5760&&b[38]==52&&b[39]==18&&hpo_u32(b[..],40)==48000;
+}
+#test "source and individual page bounds precede checksum access and retain exact physical endpoints" {
+ #assert !hpo_source(-1)&&hpo_source(0)&&hpo_source(8388608)&&!hpo_source(8388609);
+ b:[512]u8;n:=hpo_fixture(b[..],1,1,120);p:=hpo_page(b[0..<47],0);#assert p.valid&&p.flags==2&&p.segments==1&&p.bytes==19&&p.payload==28&&p.end==47&&p.granule==0&&p.serial==17&&p.sequence==0;
+ for size:0..<47 {#assert !hpo_page(b[0..<size],0).valid;}#assert !hpo_page(b[..],-1).valid&&!hpo_page(b[..],513).valid;
+ b[22]^=1;#assert !hpo_page(b[0..<47],0).valid;b[22]^=1;b[10]=1;hpo_seal(b[0..<47]);#assert !hpo_page(b[0..<47],0).valid;
+ n=hpo_fixture(b[..],1,1,120);
+ prefixed:[80]u8;for i:0..<47 {prefixed[17+i]=b[i];}p=hpo_page(prefixed[0..<64],17);#assert p.valid&&p.payload==45&&p.end==64;
+ empty:[27]u8;for byte,i:"OggS" {empty[i]=byte;}hpo_seal(empty[..]);p=hpo_page(empty[..],0);#assert p.valid&&p.segments==0&&p.bytes==0&&p.payload==27&&p.end==27;
+ #assert !hpo_plan(empty[..]).valid;
+}
+#test "multi segment comments and a nonfinal audio page retain packet and granule boundaries" {
+ base:[256]u8;n:=hpo_fixture(base[..],1,1,240);
+ for segments:[2]int.[2,3] {
+  b:[1024]u8;for i:0..<47 {b[i]=base[i];}for i:0..<27 {b[47+i]=base[47+i];}b[73]=u8(segments);
+  for i:0..<segments {b[74+i]=ifx i==segments-1 then u8(16) else u8(255);}payload:=74+segments;end:=payload+(segments-1)*255+16;for byte,i:"OpusTags" {b[payload+i]=byte;}hpo_seal(b[47..<end]);
+  for i:0..<30 {b[end+i]=base[91+i];b[end+30+i]=base[91+i];}b[end+5]=0;hpo_word(b[..],end+6,120);hpo_seal(b[end..<end+30]);hpo_word(b[..],end+48,3);hpo_seal(b[end+30..<end+60]);
+  p:=hpo_plan(b[0..<end+60]);#assert p.valid&&p.frames==239&&p.decode_frames==240;
+  b[74]=254;b[payload-1]=17;hpo_seal(b[47..<end]);#assert !hpo_plan(b[0..<end+60]).valid;b[74]=255;b[payload-1]=16;hpo_seal(b[47..<end]);
+  hpo_word(b[..],end+6,119);hpo_seal(b[end..<end+30]);#assert !hpo_plan(b[0..<end+60]).valid;hpo_word(b[..],end+6,120);hpo_seal(b[end..<end+30]);
+  hpo_word(b[..],end+36,119);hpo_seal(b[end+30..<end+60]);#assert !hpo_plan(b[0..<end+60]).valid;hpo_word(b[..],end+36,120);hpo_seal(b[end+30..<end+60]);#assert hpo_plan(b[0..<end+60]).valid;
+ }
+}
+#test "audio lacing retains complete multi segment packets and rejects a partial final packet or zero duration" {
+ b:[1024]u8;n:=hpo_fixture(b[..],1,1,360);b[117]=2;b[118]=1;b[119]=1;b[120]=128;b[121]=136;hpo_seal(b[91..<122]);p:=hpo_plan(b[0..<122]);#assert p.valid&&p.frames==359&&p.decode_frames==360;
+ b[119]=2;b[121]=131;b[122]=0;hpo_word(b[..],97,120);hpo_seal(b[91..<123]);#assert !hpo_plan(b[0..<123]).valid;
+ for i:119..<1024 {b[i]=0;}b[117]=3;b[118]=255;b[119]=1;b[120]=1;b[121]=128;b[377]=136;hpo_word(b[..],97,360);hpo_seal(b[91..<378]);p=hpo_plan(b[0..<378]);#assert p.valid&&p.decode_frames==360&&p.frames==359;
+ b[117]=2;b[118]=1;b[119]=255;b[120]=128;hpo_word(b[..],97,120);hpo_seal(b[91..<376]);#assert hpo_page(b[0..<376],91).valid&&!hpo_plan(b[0..<376]).valid;
+}
+#test "comment packet must complete before the first audio page" {
+ base:[256]u8;n:=hpo_fixture(base[..],1,1,120);b:[512]u8;for i:0..<91 {b[i]=base[i];}b[74]=255;hpo_seal(b[47..<330]);for i:0..<30 {b[330+i]=base[91+i];}#assert !hpo_plan(b[0..<360]).valid;
+}
+#test "full decoded frame budget includes packets discarded by final trimming" #steps 20000000 {
+ for final_count:[2]int.[216,217] {
+  base:[256]u8;n:=hpo_fixture(base[..],1,1,120);b:[5000]u8;for i:0..<91 {b[i]=base[i];}at:=91;decoded:=0;
+  for page:0..<6 {count:=ifx page==5 then final_count else 248;for byte,i:"OggS" {b[at+i]=byte;}b[at+5]=ifx page==5 then u8(4) else u8(0);hpo_word(b[..],at+14,17);hpo_word(b[..],at+18,page+2);b[at+26]=u8(count);payload:=at+27+count;
+   for i:0..<count {b[at+27+i]=2;b[payload+2*i]=3;b[payload+2*i+1]=12;}decoded+=count*5760;hpo_word(b[..],at+6,decoded);end:=payload+2*count;hpo_seal(b[at..<end]);at=end;
+  }
+  p:=hpo_plan(b[0..<at]);#assert p.valid==(final_count==216);if p.valid {#assert p.decode_frames==8386560&&p.frames==8386559;}
+ }
+}
+#test "profile checks header pages sequencing ownership flags and CRC before any success" {
+ b:[256]u8;n:=hpo_fixture(b[..],1,1,120);
+ for at:[15]int.[0,4,5,14,18,26,27,28,36,37,44,45,46,53,99] {old:=b[at];b[at]=255;#assert !hpo_plan(b[0..<n]).valid;b[at]=old;}
+ // Recompute checksums so the semantic guards, not only CRC, are required.
+ for at:[9]int.[4,5,18,26,27,36,44,45,46] {n=hpo_fixture(b[..],1,1,120);b[at]=255;hpo_seal(b[0..<47]);#assert !hpo_plan(b[0..<n]).valid;}
+ for at:[7]int.[47,51,52,61,65,73,75] {n=hpo_fixture(b[..],1,1,120);b[at]=255;hpo_seal(b[47..<91]);#assert !hpo_plan(b[0..<n]).valid;}
+ for at:[6]int.[91,95,96,105,109,117] {n=hpo_fixture(b[..],1,1,120);b[at]=255;hpo_seal(b[91..<n]);#assert !hpo_plan(b[0..<n]).valid;}
+}
+hpo_u32 :: (b:[]u8,at:int)->int {return int(b[at])+(int(b[at+1])<<8)+(int(b[at+2])<<16)+(int(b[at+3])<<24);}
+hpo_crc :: (b:[]u8)->u32 {
+ crc:u32=0;for byte,i:b {value:=ifx i>=22&&i<26 then u8(0) else byte;crc^=u32(value)<<24;for bit:0..<8 {high:=(crc&0x80000000)!=0;crc=cast,trunc(u32)(u64(crc)<<1);if high {crc^=0x04c11db7;}}}return crc;
+}
+hpo_word :: (b:[]u8,at:int,n:int) {for i:0..<4 {b[at+i]=cast,trunc(u8)((n>>(8*i))&255);}}
+hpo_seal :: (b:[]u8) {hpo_word(b,22,int(hpo_crc(b)));}
+hpo_fixture :: (b:[]u8,channels:int,skip:int,last:int)->int {
+ for i:4..<121 {b[i]=0;}
+ for at:[3]int.[0,47,91] {for byte,i:"OggS" {b[at+i]=byte;}hpo_word(b,at+14,17);b[at+26]=1;}
+ b[5]=2;b[27]=19;for byte,i:"OpusHead" {b[28+i]=byte;}b[36]=1;b[37]=u8(channels);b[38]=cast,trunc(u8)(skip&255);b[39]=cast,trunc(u8)(skip>>8);hpo_word(b,40,48000);hpo_seal(b[0..<47]);
+ hpo_word(b,65,1);b[74]=16;for byte,i:"OpusTags" {b[75+i]=byte;}hpo_seal(b[47..<91]);
+ b[96]=4;hpo_word(b,97,last);hpo_word(b,109,2);b[118]=2;b[119]=128;hpo_seal(b[91..<121]);return 121;
+}
+hpo_packet :: (b:[]u8)->int {
+ if b.count==0 {return 0;}units:=[32]int.[4,8,16,24,4,8,16,24,4,8,16,24,4,8,4,8,1,2,4,8,1,2,4,8,1,2,4,8,1,2,4,8];
+ code:=int(b[0]&3);count:=ifx code==0 then 1 else 2;if code==3 {if b.count<2 {return 0;}count=int(b[1]&63);}
+ duration:=units[int(b[0]>>3)]*count;return ifx duration<=48 then duration*120 else 0;
+}
+hpo_source :: (bytes:int)->bool {return bytes>=0&&bytes<=HOST_OPUS_SOURCE_BYTES;}
+hpo_page :: (b:[]u8,at:int)->HostOpusPage {
+ if at<0 {return HostOpusPage.{};}remaining:=b.count-at;if remaining<27 {return HostOpusPage.{};}
+ if cast(string)b[at..<at+4]!="OggS"||b[at+4]!=0 {return HostOpusPage.{};}segments:=int(b[at+26]);if segments>remaining-27 {return HostOpusPage.{};}
+ payload:=at+27+segments;bytes:=0;for i:0..<segments {bytes+=int(b[at+27+i]);}if bytes>b.count-payload {return HostOpusPage.{};}end:=payload+bytes;
+ if int(hpo_crc(b[at..<end]))!=hpo_u32(b,at+22)||hpo_u32(b,at+10)!=0 {return HostOpusPage.{};}
+ return HostOpusPage.{valid=true,flags=int(b[at+5]),segments=segments,bytes=bytes,payload=payload,end=end,granule=hpo_u32(b,at+6),serial=hpo_u32(b,at+14),sequence=hpo_u32(b,at+18)};
+}
+hpo_plan :: (b:[]u8)->HostOpusPlan #export_c {
+ if !hpo_source(b.count) {return HostOpusPlan.{};}head:=hpo_page(b,0);
+ if !head.valid||head.flags!=2||head.granule!=0||head.sequence!=0||head.segments!=1||head.bytes!=19 {return HostOpusPlan.{};}payload:=head.payload;
+ if cast(string)b[payload..<payload+8]!="OpusHead"||b[payload+8]!=1||b[payload+16]!=0||b[payload+17]!=0||b[payload+18]!=0 {return HostOpusPlan.{};}
+ channels:=int(b[payload+9]);if channels!=1&&channels!=2 {return HostOpusPlan.{};}skip:=int(b[payload+10])+(int(b[payload+11])<<8);
+ tags:=hpo_page(b,head.end);if !tags.valid||tags.flags!=0||tags.granule!=0||tags.sequence!=1||tags.serial!=head.serial||tags.bytes<16||cast(string)b[tags.payload..<tags.payload+8]!="OpusTags" {return HostOpusPlan.{};}
+ if b[tags.payload-1]==255 {return HostOpusPlan.{};}
+ for i:0..<tags.segments-1 {if b[tags.payload-tags.segments+i]!=255 {return HostOpusPlan.{};}}
+ at:=tags.end;page:=2;decoded:=0;
+ while true {
+  p:=hpo_page(b,at);if !p.valid||p.sequence!=page||p.serial!=head.serial||(p.flags!=0&&p.flags!=4)||b[p.payload-1]==255 {return HostOpusPlan.{};}
+  previous:=decoded;packet:=p.payload;cursor:=p.payload;
+  for i:0..<p.segments {size:=int(b[p.payload-p.segments+i]);cursor+=size;if size<255 {duration:=hpo_packet(b[packet..<cursor]);if duration==0 {return HostOpusPlan.{};}decoded+=duration;if ham_extent(decoded,channels)==0 {return HostOpusPlan.{};}packet=cursor;}}
+  if p.flags==4 {if p.end!=b.count||p.granule<previous||p.granule>decoded||p.granule<=skip {return HostOpusPlan.{};}frames:=p.granule-skip;return HostOpusPlan.{valid=true,channels=channels,pre_skip=skip,frames=frames,decode_frames=decoded,samples=frames*channels,decode_samples=decoded*channels};}
+  if p.granule!=decoded {return HostOpusPlan.{};}at=p.end;page+=1;
+ }
+ return HostOpusPlan.{};
+}

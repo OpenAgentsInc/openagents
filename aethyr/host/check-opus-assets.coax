@@ -1,0 +1,18 @@
+// Observe the exact authored pick set against the shared compressed preflight.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../audio/host-opus.coax";
+#load "../audio/sfx.coax";
+#load "../audio/everglade-bank.coax";
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])!=2 {tool_errln("usage: check-opus-assets REPO_ROOT OUTPUT.json");return 2;}
+ source:[HOST_OPUS_SOURCE_BYTES]u8;path:[4096]u8;name:[256]u8;out:[262144]u8;r:[1]Jo;o:[1]Jo;jo_start(r[..],out[..]);jo_obj(r[..]);jo_key(r[..],"schema");jo_str(r[..],"aethyr.host.opus-picks.v1");jo_key(r[..],"assets");jo_arr(r[..]);seen:[SFXB_N]bool;total:=0;words:=0;count:=0;passed:=true;
+ for pick:SFXB_PICK {if pick<0||pick>=SFXB_N||seen[pick] {continue;}seen[pick]=true;c:=SFXB[pick];if c.source==SFXB_SYNTH {continue;}
+  jo_start(o[..],name[..]);jo_put(o[..],"apps/openagents-web/realms/everglade/sfx/");jo_put(o[..],SFX_NAMES[c.sound]);jo_put(o[..],"-");jo_put(o[..],c.cand);jo_put(o[..],".ogg");if o[0].bad {return 1;}file:=fs_join(args_at(a[..],0),jo_text(o[..]),path[..]);n:=fs_read(file,source[..]);if n<0 {tool_errln(file);return 1;}
+  p:=hpo_plan(source[0..<n]);passed=passed&&p.valid;total+=n;words+=p.samples;count+=1;jo_obj(r[..]);jo_key(r[..],"file");jo_str(r[..],file);jo_key(r[..],"bytes");jo_int(r[..],n);jo_key(r[..],"valid");jo_bool(r[..],p.valid);jo_key(r[..],"channels");jo_int(r[..],p.channels);jo_key(r[..],"pre_skip");jo_int(r[..],p.pre_skip);jo_key(r[..],"frames");jo_int(r[..],p.frames);jo_key(r[..],"decode_frames");jo_int(r[..],p.decode_frames);jo_key(r[..],"samples");jo_int(r[..],p.samples);jo_key(r[..],"decode_samples");jo_int(r[..],p.decode_samples);jo_end(r[..]);if !p.valid {tool_errln(file);}
+ }
+ jo_end(r[..]);jo_key(r[..],"count");jo_int(r[..],count);jo_key(r[..],"source_bytes");jo_int(r[..],total);jo_key(r[..],"samples");jo_int(r[..],words);jo_key(r[..],"passed");jo_bool(r[..],passed);jo_end(r[..]);if r[0].bad||!fs_write(args_at(a[..],1),jo_text(r[..])) {return 1;}
+ print("Actual Opus picks: %, % source bytes, % sample words, admitted %.\n",count,total,words,passed);return ifx passed then 0 else 1;
+}

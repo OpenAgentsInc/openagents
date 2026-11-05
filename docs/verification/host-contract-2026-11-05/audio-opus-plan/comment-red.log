@@ -1,0 +1,7 @@
+FAIL #test comment packet must complete before the first audio page (1 ms)
+aethyr/audio/host-opus.coax:58:153: error[E0406]: assertion failed
+   base:[256]u8;n:=hpo_fixture(base[..],1,1,120);b:[512]u8;for i:0..<91 {b[i]=base[i];}b[74]=255;hpo_seal(b[47..<330]);for i:0..<30 {b[330+i]=base[91+i];}#assert !hpo_plan(b[0..<360]).valid;
+                                                                                                                                                          ^
+  note: in #test comment packet must complete before the first audio page
+1 of 12 checks (--only 'comment packet must'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
