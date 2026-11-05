@@ -113,7 +113,11 @@ eg_heard_travel :: (v: [] RmServer, k: int, seat: int, text: string) {
   pid := cast(string) tk.pid[0..<tk.pid_n];
   // 1. reserve: a seat in the destination when it runs here
   d := trv_room(v, to);
-  if d >= 0 && trv_free(v, d) - trv_held_for_others(v, to, pid) <= 0 { v[0].trv.full += 1; eg_refuse(v, k, seat, seq, "full"); return; }
+  // (the session contract's admission, aethyr/session/travel.coax travel_admits; a room running here is up and ready)
+  if d >= 0 {
+    seats := v[0].relays[d].seats;
+    if travel_admits(true, true, seats - trv_free(v, d), trv_held_for_others(v, to, pid), seats) == TRAVEL_FULL { v[0].trv.full += 1; eg_refuse(v, k, seat, seq, "full"); return; }
+  }
   slot := -1;
   for j: 0..<TRAVELS {
     if slot < 0 && !trv_live(v, j) { slot = j; }

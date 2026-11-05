@@ -82,11 +82,18 @@ travel_command :: (w: [] TravelWorld, r: int, c: int, seq: int, xp: int) -> bool
 // book:begin travel-steps
 // One journey at a time: a record that is settled (none, done or aborted) can start another.
 travel_settled :: (w: [] TravelWorld) -> bool { st := w[0].rec[0].status; return st == TRAVEL_NONE || st == TRAVEL_DONE || st == TRAVEL_ABORTED; }
+// Whether a destination takes one more reservation: up and ready, with a place that is neither used
+// nor set aside for another journey. The room server asks it of its own rooms (coax/web/room/room-travel.coax).
+travel_admits :: (up: bool, ready: bool, used: int, reserved: int, capacity: int) -> int {
+  if !up || !ready { return TRAVEL_UNREADY; }
+  if used + reserved >= capacity { return TRAVEL_FULL; }
+  return TRAVEL_OK;
+}
 travel_reserve :: (w: [] TravelWorld, c: int, from: int, to: int) -> int {
   if !travel_settled(w) { return TRAVEL_WRONG_STEP; }
   d := w[0].rooms[to];
-  if !d.up || !d.ready { return TRAVEL_UNREADY; }
-  if d.used + d.reserved >= d.capacity { return TRAVEL_FULL; }
+  why := travel_admits(d.up, d.ready, d.used, d.reserved, d.capacity);
+  if why != TRAVEL_OK { return why; }
   w[0].rooms[to].reserved += 1;
   w[0].rec[0] = TravelRecord.{status = TRAVEL_RESERVED, c = c, from = from, to = to};
   return TRAVEL_OK;
@@ -166,6 +173,13 @@ travel_recover :: (w: [] TravelWorld, r: int) -> int {
 // book:end travel-recover
 
 // ---- checks
+
+#test "travel: a destination admits while it has a place neither used nor set aside" {
+  #assert travel_admits(true, true, 2, 1, 4) == TRAVEL_OK;
+  #assert travel_admits(true, true, 3, 1, 4) == TRAVEL_FULL && travel_admits(true, true, 4, 0, 4) == TRAVEL_FULL && travel_admits(true, true, 0, 4, 4) == TRAVEL_FULL;
+  #assert travel_admits(false, true, 0, 0, 4) == TRAVEL_UNREADY && travel_admits(true, false, 0, 0, 4) == TRAVEL_UNREADY;
+  #assert travel_admits(false, true, 4, 0, 4) == TRAVEL_UNREADY;   // down before full
+}
 #load "../tests/travel-oracle.coax";
 
 #test "travel: a journey moves the character once, with its profile, and its old commands are refused" {
