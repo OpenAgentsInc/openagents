@@ -57,6 +57,7 @@ EXPORT("vw_set_epoch") void vw_set_epoch(double e) { oa_voice_set_epoch(v, (uint
 EXPORT("vw_playing") void vw_playing(int on) { oa_voice_playing(v, on != 0); }
 EXPORT("vw_cut") void vw_cut(void) { oa_voice_cut(v); }
 EXPORT("vw_cancel_turn") void vw_cancel_turn(void) { oa_voice_cancel_turn(v); }
+EXPORT("vw_hold") void vw_hold(int pressed) { oa_voice_push_to_talk(v, pressed != 0); }
 EXPORT("vw_flush") void vw_flush(void) { oa_voice_jitter_flush(v); }
 EXPORT("vw_depth") uint32_t vw_depth(void) { return oa_voice_jitter_depth(v); }
 

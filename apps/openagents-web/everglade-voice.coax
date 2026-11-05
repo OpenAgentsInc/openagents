@@ -1,7 +1,7 @@
 // Everglade's voice edits (eg-voice-edit), loaded by everglade.coax: an
 // admin holds TALK TO EDIT at the bottom middle (or V on a keyboard) and
 // says what to change. Holding opens the microphone through the page's voice
-// (coax/web/voice.js, action 7 "on"); letting go closes it at once and ends
+// (coax/web/voice.js, action 7 "hold"); letting go closes it at once and ends
 // the turn ("end"). The voice host sends the final words back unanswered
 // (we face the realm's builder, action 8) as message 50 "heard|WORDS"; the
 // face sends them to the server's typed selector (POST
@@ -189,7 +189,7 @@ everglade_voice_actions :: (s: [] Everglade) {
     return;
   }
   if s[0].ev.want_voice != 0 {
-    s[0].out_n = ev_put(s[0].outbox[..], ifx s[0].ev.want_voice == 1 then "on" else "end"); s[0].action = ACT_VOICE;
+    s[0].out_n = ev_put(s[0].outbox[..], ifx s[0].ev.want_voice == 1 then "hold" else "end"); s[0].action = ACT_VOICE;
     s[0].ev.want_voice = 0;
     return;
   }
@@ -1103,7 +1103,7 @@ ev_row_end :: (text: string, cuts: [] int, r: int, rows: int) -> int {
   #assert s[0].action == ACT_VOICE_TO && cast(string) s[0].outbox[0..<s[0].out_n] == VOICE_FACING;
   s[0].action = 0;
   everglade_voice_actions(s[..]);
-  #assert s[0].action == ACT_VOICE && cast(string) s[0].outbox[0..<s[0].out_n] == "on";
+  #assert s[0].action == ACT_VOICE && cast(string) s[0].outbox[0..<s[0].out_n] == "hold";
   s[0].action = 0;
   #assert everglade_key_up(s[..], 'v', 0) && !s[0].ev.held;
   everglade_voice_actions(s[..]);

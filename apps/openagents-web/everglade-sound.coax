@@ -58,7 +58,7 @@ EGS_LEVEL :: [SFX_COUNT] int.[
   400, 450, 550, 500,         // missile, arcane cast and hit, radiant
   420, 750, 750, 600, 450,    // swing, hit, heavy hit, death, standing up
   900, 750, 950, 800, 800,    // the raid: horn, wall, tower, won, lost
-  300, 300, 300, 1000, 450,   // footsteps, the bed (its own level, EGS_BED), Levitate
+  100, 100, 100, 1000, 450,   // quieter footsteps, the bed (its own level, EGS_BED), Levitate
   550, 520,                   // splash, ice
   950];                       // a building's fall (the raid's stables)
 

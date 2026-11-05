@@ -221,8 +221,10 @@ tool_main :: () -> int #export_c {
     cp := [3] string.["ditto", af_path(p[..], af_path(p[..], work, "voice"), name), destination];
     if af_run(cp[..], out[..], deadline) < 0 { return 1; }
   }
-  fixture := [3] string.["ditto", af_path(p[..], root, "verse/voice-host/fixtures/hello-foreman.wav"), af_path(p[..], res, "hello-foreman.wav")];
-  if af_run(fixture[..], out[..], deadline) < 0 { return 1; }
+  for name:[2]string.["hello-foreman.wav","add-two-giant-crates.wav"] {
+    fixture := [3] string.["ditto", af_path(p[..],af_path(p[..],root,"verse/voice-host/fixtures"),name), af_path(p[..],res,name)];
+    if af_run(fixture[..], out[..], deadline) < 0 { return 1; }
+  }
   plist := [3] string.["ditto", af_path(p[..], here, "Info.plist"), af_path(p[..], app, "Contents/Info.plist")];
   if af_run(plist[..], out[..], deadline) < 0 { return 1; }
   sign := [5] string.["codesign", "--force", "--sign", "-", app]; if af_run(sign[..], out[..], deadline) < 0 { return 1; }

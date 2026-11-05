@@ -2624,7 +2624,7 @@ function after(gesture, tap = false) {
     else if (code === 6) setQuality(text);
     // a realm's sound settings, "VOLUME MUTED" (0..100, 0 or 1), back in its facts as sound=
     else if (code === 13) { if (!golden) try { localStorage.setItem("verse.sound", text.slice(0, 16)); } catch {} }
-    else if (code === ACT_VOICE && voice) voice.toggle(text === "end" ? "end" : text === "on");
+    else if (code === ACT_VOICE && voice) voice.toggle(text === "end" ? "end" : text === "hold" ? "hold" : text === "on");
     else if (code === ACT_VOICE_TO && voice) voice.face(text);
     else if (code === ACT_VOICE_SAY && voice) voice.say(text);
     else if (code === 5) { try { const p = JSON.parse(text); if (p && typeof p.key === "string") localStorage.setItem("verse.player", text); } catch {} }

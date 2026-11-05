@@ -239,8 +239,10 @@ audio-model setup (old preferred-agent fields are ignored). The local world is `
 - `room-control.txt`: the local room's existing development controls.
 - `room.log`, `serve.log`: the current launch's server output.
 - `local-url.txt`: the current local page URL, for headless inspection.
-- `voice-host.log`, `voice-access.log`: local voice service output and permission/
-  phase diagnostics. The access log contains no transcripts or audio.
+- `voice-host.log`, `voice-host.previous.log`, `voice-access.log`: current/previous
+  local voice service output and timestamped permission/capture-phase diagnostics,
+  including release, cancellation reason and frame counts. The access log contains
+  no transcripts or audio.
 
 On the first launch only, the app copies the repository's development world
 snapshot and controls there. Existing files are preserved. It does not fetch the
@@ -253,6 +255,8 @@ Normal launches play Everglade's ambience, footsteps and effects through its
 usual SOUND volume/mute control. Audio starts with the first click, tap or key
 in the world. Automated smoke, launch, microphone and frame-profile checks keep
 a live zero-gain output so they never play through the owner's speakers.
+Footstep bank gain is 0.08 (previously 0.22); the synthesized fallback is 0.10
+(previously 0.30), about 9 dB quieter. Other sound levels retain their settings.
 
 The native audio regression check opens hidden, isolated WebKit views. It checks
 that normal configuration leaves the realm's speaker route alone, then measures
@@ -283,6 +287,13 @@ the client establishes a fresh idle connection and suspends its graph, ready
 for the next hold. Page exit closes the graph/socket. Ordinary web voice remains
 on demand; automatic preparation is restricted to the desktop's local host.
 
+Held capture uses the shared Coax engine's explicit push-to-talk mode. Silence
+and quiet speech do not end it while V/TALK remains held. Release closes the mic
+immediately, drains queued worklet PCM, then sends one end-of-turn. The configured
+turn cap and cancellation still apply. Other clients retain automatic VAD turns
+after engine init. Warmup primes one silent audio quantum before suspending;
+it never opens the microphone.
+
 The hidden `--voice-warm-smoke REPORT.json` check uses synthetic media and the
 real resident Parakeet host. It verifies no microphone request during warmup,
 an idle suspended graph, no startup audio frames, three prepared holds without
@@ -304,6 +315,27 @@ The bundled browser voice engine receives real microphone samples and returns
 the final words to Everglade's existing voice UI, without the public voice host.
 Release closes capture; setup, leaving the app, hiding and quit cancel it. A permission
 request that finishes after cancellation cannot reopen capture or a voice socket.
+
+Held-capture regression (2026-11-04): `/tmp/forge-voice-hold/native6/result.json`
+passed a one-second quiet onset, “Add two giant crates,” a 2.4-second pause and
+the existing Foreman fixture in one 8.97-second buffer. No final arrived during
+the pause. Release returned “Add two giant crates. Hello Foreman, what are we
+building today?” and a second capture returned the complete Foreman sentence.
+The crates WAV was synthesized locally with macOS `say` and converted with
+`afconvert` to mono 16 kHz PCM; no owner microphone recording is committed.
+Prepared V/direct holds measured 138.86/0.52/0.66 ms with no new sockets or
+CONNECTING; the hidden harness pumps both Coax outbox frames and observes
+capture-promise completion rather than a throttled polling timer. Cancellation,
+reconnection and the cold path passed. All 45 voice and 36 mix checks passed;
+the C bridge passed ASan/UBSan at 16/24/44.1/48 kHz, including a three-second
+held pause and the existing automatic-turn regressions. The full Everglade Wasm
+build passed its checks and size gate. Repository tools-check retains 29
+unrelated missing-reason headers.
+The rebuilt-world audio check (`audio/result.json` in the same directory)
+observed ambience/effect PCM with normal speaker routing and a muted test sink.
+The real routed voice-to-Coder check (`coder/result.json`) also passed: complete
+Foreman transcript, live reply with the bar closed, preserved draft and duplicate
+rejection. Those tests used isolated worlds and left the owner's document alone.
 
 The native `--microphone-check REPORT.json` acceptance mode opens the real
 microphone through WebKit, immediately stops each track without recording or

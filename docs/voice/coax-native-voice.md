@@ -287,6 +287,15 @@ and its `Route` goes to its agent. A global voice toggle is another
 binding of the same primitives, routed to your default agent. Neither is
 built into the system.
 
+Everglade's hold-to-talk edits use explicit turn boundaries instead of the
+conversation toggle's automatic silence ending. Action 7 `hold` selects
+`oa_voice_push_to_talk` in the same Coax engine; `end` releases it. Quiet onset
+and long pauses remain inside the held recording. Release closes the platform
+microphone immediately and drains queued worklet samples before TURN_END.
+Cancellation and the configured turn cap still apply. `on` retains automatic
+conversation for ordinary web clients; the local Aethyrforge host uses held
+capture. The C/Wasm addition changes no published wire message.
+
 ### Talking to each other in the Verse
 
 Player voice needs no speech models at all, only moving audio between

@@ -63,6 +63,21 @@ static void feed(oa_voice *v, uint32_t rate, int kind, int frames, Tally *t, lon
   }
 }
 
+static void hold_at(uint32_t rate) {
+  oa_voice *v = fresh(rate); Tally t = {0};
+  oa_voice_push_to_talk(v, true);
+  feed(v, rate, 0, 50, &t, NULL);
+  feed(v, rate, 2, 50, &t, NULL);
+  feed(v, rate, 0, 150, &t, NULL); /* three-second pause stays in the held turn */
+  feed(v, rate, 2, 50, &t, NULL);
+  CHECK(t.starts == 1 && t.ends == 0 && t.forwards == 300);
+  oa_voice_push_to_talk(v, false); feed(v, rate, 0, 1, &t, NULL);
+  CHECK(t.ends == 1);
+  oa_voice_cancel_turn(v); feed(v, rate, 2, 20, &t, NULL);
+  CHECK(t.starts == 1 && t.ends == 1);
+  free(v);
+}
+
 static void turns_at(uint32_t rate) {
   oa_voice *v = fresh(rate);
   Tally t = {0};
@@ -417,6 +432,7 @@ static void wav(const char *path) {
 }
 
 int main(int argc, char **argv) {
+  hold_at(16000); hold_at(24000); hold_at(44100); hold_at(48000);
   const char *dir = NULL;
   int first = 1;
   if (argc > 2 && !strcmp(argv[1], "--frames")) { dir = argv[2]; first = 3; }

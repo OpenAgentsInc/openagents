@@ -202,7 +202,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         content.addSubview(notice)
         chatPane = ForgeChatPane(frame: content.bounds)
         chatPane.autoresizingMask = [.width, .height]
-        chatPane.onActivity = { [weak self] in self?.cancelVoice() }
+        chatPane.onActivity = { [weak self] in self?.cancelVoice("coder-activity") }
         chatPane.onClose = { [weak self] in guard let self else { return }; window.makeFirstResponder(web) }
         content.addSubview(chatPane)
         fgs_reset()
@@ -235,6 +235,10 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         env["COAXIAL_MODE"] = "dev"
         p.environment = env
         let logURL = dataURL.appendingPathComponent("\(name).log")
+        if name == "voice-host", fm.fileExists(atPath: logURL.path) {
+            let previous = dataURL.appendingPathComponent("voice-host.previous.log")
+            try? fm.removeItem(at: previous); try? fm.moveItem(at: logURL, to: previous)
+        }
         fm.createFile(atPath: logURL.path, contents: nil)
         let log = try FileHandle(forWritingTo: logURL); logs.append(log)
         p.standardOutput = log; p.standardError = log
@@ -1145,19 +1149,26 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         let holdReport = try await web.callAsyncJavaScript("""
         const fixture=new AudioContext();await fixture.resume();
         const result=[];
+        const toggle=coaxial.voice.toggle;
+        // Observe promise completion, not the hidden window's clamped polling
+        // timer. The interval still starts before the actual V key event.
+        coaxial.voice.toggle=want=>{const pending=toggle(want);if(want&&want!=='end')pending.then(()=>{globalThis.__warmHoldReady=performance.now();});return pending;};
         try {
-        const key=(type,k)=>dispatchEvent(new KeyboardEvent(type,{key:k,code:'Key'+k.toUpperCase(),bubbles:true}));
+        // Pump the realm's two outbox frames (facing, then hold) here as well as
+        // in the native harness; an unordered WebKit window throttles timers.
+        const key=(type,k)=>{dispatchEvent(new KeyboardEvent(type,{key:k,code:'Key'+k.toUpperCase(),bubbles:true}));for(let i=0;i<2;i++)if(globalThis.__forgeFrame){const f=__forgeFrame;globalThis.__forgeFrame=null;f(performance.now());}};
         for(let i=0;i<3;i++){
           await coaxial.voice.warm();
           const before=__warmCheck.sockets;
           const capture=fixture.createMediaStreamDestination();
           navigator.mediaDevices.getUserMedia=async()=>{__warmCheck.microphones++;return capture.stream;};
           const phaseAt=globalThis.coaxialVoice?.length||0;
+          globalThis.__warmHoldReady=0;
           const started=performance.now();
           if(i===0){key('keydown','v');const end=performance.now()+1500;while(!(globalThis.coaxialVoice||[]).slice(phaseAt).some(s=>s.startsWith('listening|'))&&performance.now()<end)await new Promise(r=>setTimeout(r,1));}
           else await coaxial.voice.toggle('on');
           const state=coaxial.voice.prepared();
-          result.push({milliseconds:performance.now()-started,actualV:i===0,extraSockets:__warmCheck.sockets-before,connecting:(globalThis.coaxialVoice||[]).slice(phaseAt).some(s=>s.startsWith('connecting|')),...state});
+          result.push({milliseconds:__warmHoldReady?__warmHoldReady-started:10000,actualV:i===0,extraSockets:__warmCheck.sockets-before,connecting:(globalThis.coaxialVoice||[]).slice(phaseAt).some(s=>s.startsWith('connecting|')),...state});
           await new Promise(r=>setTimeout(r,80));
           if(i===0)key('keyup','v');else coaxial.voice.toggle(false);
           const released=performance.now()+500;
@@ -1167,28 +1178,41 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         }
         return {rows:result};
         } catch(e) {return {rows:result,error:String(e),stack:e.stack,state:coaxial.voice.prepared()};}
-        finally {coaxial.voice.toggle(false);await fixture.close();}
+        finally {coaxial.voice.toggle(false);coaxial.voice.toggle=toggle;await fixture.close();}
         """, arguments: [:], in: nil, contentWorld: .page) as? [String:Any] ?? [:]
         let holds = holdReport["rows"] as? [[String:Any]] ?? []
-        guard holdReport["error"] == nil, holds.count == 3, holds.allSatisfy({ $0["extraSockets"] as? Int == 0 && $0["connecting"] as? Bool == false && $0["connected"] as? Bool == true && $0["microphone"] as? Bool == true && ($0["milliseconds"] as? Double ?? 10000) < 250 }) else {
-            throw ShellError.failed("A prepared voice hold still waited for a connection: \(holdReport)")
-        }
         let wav = try Data(contentsOf: Bundle.main.resourceURL!.appendingPathComponent("hello-foreman.wav")).base64EncodedString()
+        let crates = try Data(contentsOf: Bundle.main.resourceURL!.appendingPathComponent("add-two-giant-crates.wav")).base64EncodedString()
         let speech = try await web.callAsyncJavaScript("""
         const originalFinal=globalThis.coaxialVoiceFinal;
         const originalMedia=navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
         const fixture=new AudioContext();await fixture.resume();
         try {
-          let transcript='',tracksClosed=true;const transcripts=[];
+          let transcript='',tracksClosed=true,heldDuringPause=false;const transcripts=[];
           globalThis.coaxialVoiceFinal=e=>{transcript=e.text;return true;};
           const buffer=await fixture.decodeAudioData(Uint8Array.from(atob('\(wav)'),c=>c.charCodeAt(0)).buffer);
+          const crates=await fixture.decodeAudioData(Uint8Array.from(atob('\(crates)'),c=>c.charCodeAt(0)).buffer);
+          const gap=2.4,leading=1,rate=fixture.sampleRate;
+          const whole=fixture.createBuffer(1,Math.ceil((leading+crates.duration+gap+buffer.duration+0.3)*rate),rate);
+          whole.getChannelData(0).set(crates.getChannelData(0),Math.round(leading*rate));
+          whole.getChannelData(0).set(buffer.getChannelData(0),Math.round((leading+crates.duration+gap)*rate));
+          const key=type=>{dispatchEvent(new KeyboardEvent(type,{key:'v',code:'KeyV',bubbles:true}));for(let i=0;i<2;i++)if(globalThis.__forgeFrame){const f=__forgeFrame;globalThis.__forgeFrame=null;f(performance.now());}};
           for(let i=0;i<2;i++){
-            transcript='';const source=fixture.createBufferSource();source.buffer=buffer;
+            transcript='';const source=fixture.createBufferSource();source.buffer=i===0?whole:buffer;
             const capture=fixture.createMediaStreamDestination();source.connect(capture);
             navigator.mediaDevices.getUserMedia=async()=>capture.stream;
-            await coaxial.voice.warm();coaxial.voice.face('Coding agent');await coaxial.voice.toggle('on');
-            await new Promise(r=>{source.onended=r;source.start();});
-            await new Promise(r=>setTimeout(r,300));coaxial.voice.toggle('end');
+            await coaxial.voice.warm();coaxial.voice.face('Coding agent');
+            if(i===0){const at=globalThis.coaxialVoice.length;key('keydown');const end=performance.now()+1500;while(!globalThis.coaxialVoice.slice(at).some(s=>s.startsWith('listening|'))&&performance.now()<end)await new Promise(r=>setTimeout(r,5));}
+            else await coaxial.voice.toggle('hold');
+            const played=new Promise(r=>{source.onended=r;source.start();});
+            if(i===0){
+              await new Promise(r=>setTimeout(r,(leading+crates.duration+gap-0.3)*1000));
+              const state=coaxial.voice.prepared();heldDuringPause=state.running&&state.microphone&&!transcript;
+              if(!heldDuringPause)throw Error('Held V finalized or closed capture during the pause');
+            }
+            await played;
+            await new Promise(r=>setTimeout(r,300));
+            if(i===0)key('keyup');else await coaxial.voice.toggle('end');
             const end=performance.now()+20000;while(!transcript && performance.now()<end)await new Promise(r=>setTimeout(r,50));
             transcripts.push(transcript);tracksClosed=tracksClosed&&capture.stream.getTracks().every(t=>t.readyState==='ended');
             coaxial.voice.toggle(false);await coaxial.voice.warm();
@@ -1209,15 +1233,18 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
           await cold.toggle('on');const until=performance.now()+3000;
           while(!phases.some(s=>s.startsWith('listening|')) && performance.now()<until)await new Promise(r=>setTimeout(r,20));
           const coldReady=phases.some(s=>s.startsWith('listening|'));cold.toggle(false);
-          return {transcript,transcripts,cancelled,coldReady,reconnected,tracksClosed,wire:__warmCheck.wire,received:__warmCheck.received};
+          return {transcript,transcripts,heldDuringPause,heldSeconds:whole.duration,cancelled,coldReady,reconnected,tracksClosed,wire:__warmCheck.wire,received:__warmCheck.received};
         } catch(e) {return {error:String(e)};}
         finally {coaxial.voice.toggle(false);navigator.mediaDevices.getUserMedia=originalMedia;globalThis.coaxialVoiceFinal=originalFinal;await fixture.close();__warmRestore();}
         """, arguments: [:], in: nil, contentWorld: .page) as? [String:Any] ?? [:]
         let transcript = (speech["transcript"] as? String ?? "").lowercased()
         let transcripts = speech["transcripts"] as? [String] ?? []
-        guard transcripts.count == 2, transcripts.allSatisfy({$0.lowercased().contains("hello") && $0.lowercased().contains("building today")}), transcript.contains("hello"), transcript.contains("building today"), speech["cancelled"] as? Bool == true,
+        guard transcripts.count == 2, transcripts.first?.range(of: "add (two|2|to) giant crates",options:[.regularExpression,.caseInsensitive]) != nil, speech["heldDuringPause"] as? Bool == true, transcripts.allSatisfy({$0.lowercased().contains("hello") && $0.lowercased().contains("building today")}), transcript.contains("hello"), transcript.contains("building today"), speech["cancelled"] as? Bool == true,
               speech["coldReady"] as? Bool == true, speech["reconnected"] as? Bool == true, speech["tracksClosed"] as? Bool == true else { throw ShellError.failed("Prepared voice speech/cancellation regression: \(speech)") }
         try JSONSerialization.data(withJSONObject:["warmSeconds":warmSeconds,"idle":idle,"holds":holds,"speech":speech,"hardwareMicrophone":false],options:[.prettyPrinted,.sortedKeys]).write(to:report,options:.atomic)
+        guard holdReport["error"] == nil, holds.count == 3, holds.allSatisfy({ $0["extraSockets"] as? Int == 0 && $0["connecting"] as? Bool == false && $0["connected"] as? Bool == true && $0["microphone"] as? Bool == true && ($0["milliseconds"] as? Double ?? 10000) < 250 }) else {
+            throw ShellError.failed("A prepared voice hold still waited for a connection: \(holdReport)")
+        }
         stopChildren();NSApp.terminate(nil)
     }
 
@@ -1263,7 +1290,8 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         defer { voiceStartup = nil }
         try await task.value
     }
-    func cancelVoice() {
+    func cancelVoice(_ reason: String = "cancel") {
+        traceVoice("capture:cancel reason=\(reason)")
         voiceCaptureEpoch += 1; voiceCaptureRequest = nil
         fgv_cancel(); _ = web?.evaluateJavaScript("globalThis.coaxialVoiceCancel?.(); true")
     }
@@ -1276,10 +1304,10 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     // the app (or explicit hide/minimize/setup) cancels its live capture.
     func applicationDidBecomeActive(_ notification: Notification) { refreshMicrophoneSetup() }
     func windowDidBecomeKey(_ notification: Notification) { refreshMicrophoneSetup() }
-    func applicationDidResignActive(_ notification: Notification) { if !microphonePrompt { cancelVoice() } }
-    func applicationDidHide(_ notification: Notification) { cancelVoice() }
+    func applicationDidResignActive(_ notification: Notification) { if !microphonePrompt { cancelVoice("focus-lost") } }
+    func applicationDidHide(_ notification: Notification) { cancelVoice("app-hidden") }
     func windowDidResignKey(_ notification: Notification) { coderHeldKeys.removeAll() }
-    func windowDidMiniaturize(_ notification: Notification) { cancelVoice() }
+    func windowDidMiniaturize(_ notification: Notification) { cancelVoice("window-minimized") }
     func microphoneStatus() -> AVAuthorizationStatus {
         microphoneAuthorization?() ?? AVCaptureDevice.authorizationStatus(for: .audio)
     }
@@ -1423,7 +1451,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         guard let dataURL, line.utf8.count <= 1024 else { return }
         let path = dataURL.appendingPathComponent("voice-access.log")
         if !fm.fileExists(atPath: path.path) { fm.createFile(atPath: path.path, contents: nil) }
-        if let file = try? FileHandle(forWritingTo: path) { defer { try? file.close() }; _ = try? file.seekToEnd(); try? file.write(contentsOf: Data((line + "\n").utf8)) }
+        if let file = try? FileHandle(forWritingTo: path) { defer { try? file.close() }; _ = try? file.seekToEnd(); try? file.write(contentsOf: Data((Date().ISO8601Format() + " " + line + "\n").utf8)) }
     }
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         let origin = message.frameInfo.securityOrigin

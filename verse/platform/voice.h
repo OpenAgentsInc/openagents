@@ -407,6 +407,10 @@ uint64_t oa_voice_set_epoch(oa_voice *v, uint64_t epoch);
 uint64_t oa_voice_cut(oa_voice *v);
 /* Drop the current uplink turn (no TURN_END follows). */
 void     oa_voice_cancel_turn(oa_voice *v);
+/* Opt in to explicit push-to-talk after init. While pressed, every input frame
+ * belongs to one turn, including silence. Release ends on the next uplink;
+ * max_turn_ms still caps it, and init restores automatic conversation. */
+void     oa_voice_push_to_talk(oa_voice *v, bool pressed);
 
 /* Current downlink state. */
 float    oa_voice_gain_db(const oa_voice *v);      /* applied gain incl. duck */

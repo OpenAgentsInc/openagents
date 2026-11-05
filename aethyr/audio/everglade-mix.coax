@@ -55,7 +55,7 @@ EGM_LEVEL :: [SFX_COUNT] int.[
   450, 300, 550, 900,   420, 300, 500,   450, 300, 550,   420, 300, 550,   450, 400, 850,
   600, 450, 450, 600, 550,   450, 450, 500, 800,   400, 400, 500, 500,
   420, 650, 750, 550, 380,   850, 700, 850, 800, 800,
-  220, 220, 220, 1000, 420,   550, 550, 900];
+  80, 80, 80, 1000, 420,   550, 550, 900];
 
 // ---- writing lines
 
@@ -167,6 +167,16 @@ egm_end :: (m: [] Mixer, out: [] u8, k: int, picks: [] int, now: f64, dt: f32, m
 }
 
 // ---- Checks ----
+
+#test "footsteps remain below one tenth gain at the listener, including mixer variation" {
+  pk:=SFXB_PICK;out:[256]u8;
+  for sound:SFX_STEP_1..<SFX_STEP_3+1 {
+    m:[1]Mixer;
+    #assert egm_cue(m[..],out[..],0,sound,pk[..],EgmPlace.{},0,1,0,1)>0;
+    #assert m[0].played==1;
+    for v:m[0].voices {if v.on {#assert v.gain>0.05 && v.gain<0.1;}}
+  }
+}
 
 #test "every sound has variants in the bank, each a file the page can name" {
   out: [64] u8; pk := SFXB_PICK;

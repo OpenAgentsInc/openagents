@@ -103,7 +103,8 @@ page server, the voice Wasm and a local Parakeet voice host. This is the same
   macOS consent for audio from its own loopback main frame. Startup prepares a
   reserved-loopback voice host with Parakeet on Metal and local-only providers,
   the bundled voice Wasm/worklet and a local HELLO/WELCOME connection before
-  V/TALK. The idle graph is suspended and has no microphone source or active turn.
+  V/TALK. The graph primes one silent quantum, then suspends without a microphone
+  source or active turn.
   The model remains resident until quit. Setup shows voice preparation/readiness.
   Capture closes on release, setup, leaving the app, hiding
   or quit. A canceled permission request cannot later reopen capture. Speech
@@ -124,12 +125,31 @@ page server, the voice Wasm and a local Parakeet voice host. This is the same
   were stopped without recording/sending audio. It also passed repeated-ticket,
   model-failure recovery and canceled-preparation checks. The permission policy
   killed all four mutants; 137 desktop checks passed.
+- V/TALK now selects explicit held turns in `verse/voice.coax`, including quiet
+  onset and pauses. The conversation detector's 700 ms silence ending no longer
+  finalizes a fragment while the gesture stays held. Release stops microphone
+  tracks immediately, drains already-posted audio and sends one TURN_END;
+  cancellation and the configured turn cap still apply. Ordinary conversation
+  remains automatic after init. This adds a C/Wasm entry point without changing
+  the voice wire. Capture diagnostics include timestamps, frame counts and
+  cancellation reasons, with one previous host log preserved across launches.
+  The reported local 22:07 incident has a Coder session at 22:08:12 containing
+  only “And”; current host logs also showed 1–2 second fragments. No recorded
+  microphone audio exists to reconstruct the original spoken sentence.
+  Verification: 45 engine checks, the C bridge under ASan/UBSan at four rates,
+  and real WebKit/Wasm/local GPU Parakeet through one 8.97-second fixture with
+  quiet onset and a 2.4-second pause. The full command and following sentence
+  arrived together only after release; repeat capture, cancellation and recovery
+  passed. No physical microphone or coding provider was used by that check.
 - Normal launches use Everglade's usual speaker output, SOUND volume/mute
   control and first-world-interaction audio start. Only automated checks install
   a live zero-gain graph; the microphone's AudioWorklet remains connected in both
   modes. The native `--audio-smoke` regression reproduced the old unconditional
   mute, then passed with normal speaker routing and actual ambience/effect PCM
   measured before a silent test sink (peak 0.312, no microphone requested).
+  Footsteps now use 0.08 bank gain and 0.10 synthesized fallback, about 9 dB
+  quieter; other levels are unchanged. All 36 mix checks and the rebuilt
+  Everglade Wasm checks/size gate pass.
   A final Parakeet transcript now starts the
   same automatically routed Coder run/fork as typed input, while the Enter bar
   stays closed and typed drafts remain intact. Recognized words and live reply

@@ -141,6 +141,7 @@ uint64_t oa_voice_epoch(const oa_voice *v) { return verse_voice_epoch(sv(v)); }
 uint64_t oa_voice_set_epoch(oa_voice *v, uint64_t epoch) { return verse_voice_set_epoch(sv(v), epoch); }
 uint64_t oa_voice_cut(oa_voice *v) { return verse_voice_cut(sv(v)); }
 void oa_voice_cancel_turn(oa_voice *v) { verse_voice_cancel_turn(sv(v)); }
+void oa_voice_push_to_talk(oa_voice *v, bool pressed) { verse_voice_push_to_talk(sv(v), pressed); }
 float oa_voice_gain_db(const oa_voice *v) { return verse_voice_gain_db(sv(v)); }
 float oa_voice_playback_rate(const oa_voice *v) { return verse_voice_playback_rate(sv(v)); }
 uint32_t oa_voice_current_turn_state(const oa_voice *v) { return verse_voice_turn_state(sv(v)); }

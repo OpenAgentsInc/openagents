@@ -15,7 +15,8 @@
 // question, and its answer goes back to be spoken (action 9, the words).
 //
 // Push to talk (a realm's HOLD TO TALK, Everglade's voice edits): action 7
-// "on" while it's held, "end" when it's let go. Letting go closes the
+// "hold" while it's held, "end" when it's let go. Silence stays inside the
+// held Coax turn; ordinary "on" uses automatic conversation. Letting go closes the
 // microphone at once and ends the turn; the socket stays only until the
 // heard words are answered and spoken (or LET_GO_WAIT), then voice is off.
 //
@@ -26,7 +27,7 @@ const ANSWER_WAIT = 20000;   // ms a heard question waits for the app's answer
 const LET_GO_WAIT = 20000;   // ms after push to talk is let go before voice is off whatever happens
 const DEFAULT_HOST = "wss://voice.openagents.com";   // Cloud Run oa-voice (verse/voice-host/deploy.sh)
 const OUT_RATE = 24000, AHEAD = 0.2;
-const EV = { TURN_START: 1, TURN_END: 2, BARGE_IN: 4, FORWARD: 8, DROPPED: 128, UNDERRUN: 256 };
+const EV = { TURN_START: 1, TURN_END: 2, BARGE_IN: 4, FORWARD: 8, TOO_LONG: 64, DROPPED: 128, UNDERRUN: 256 };
 const MSG = { WELCOME: 2, AUDIO: 3, CONTROL: 4, TURN_EVENT: 5, SPEECH: 6, ERROR: 9 };
 const CONTROL = { TURN_START: 1, TURN_END: 2, BARGE_IN: 3, CANCEL: 5, PING: 6, PONG: 7, SPEECH_END: 8 };
 const PHASE = { PARTIAL: 2, FINAL: 3, INTERRUPTED: 4, ENDED: 5 };
@@ -38,12 +39,18 @@ const WORDS = { 3: "Today's free voice time is used up.", 4: "Speech isn't worki
 const WORKLET = `
 class OaVoice extends AudioWorkletProcessor {
   constructor() {
-    super(); this.q = []; this.at = 0; this.played = 0; this.since = 0;
-    this.port.onmessage = (e) => { if (e.data === "flush") { this.q = []; this.at = 0; } else this.q.push(e.data); };
+    super(); this.q = []; this.at = 0; this.played = 0; this.since = 0; this.capture = true; this.primed = false;
+    this.port.onmessage = (e) => {
+      if (e.data === "flush") { this.q = []; this.at = 0; }
+      else if (e.data === "capture") this.capture = true;
+      else if (e.data?.kind === "drain-capture") { this.capture = false; this.port.postMessage({kind:"capture-drained",ticket:e.data.ticket}); }
+      else this.q.push(e.data);
+    };
   }
   process(inputs, outputs) {
+    if (!this.primed) { this.primed = true; this.port.postMessage({kind:"graph-ready"}); }
     const mic = inputs[0] && inputs[0][0];
-    if (mic) this.port.postMessage(mic.slice(0));
+    if (mic && this.capture) this.port.postMessage(mic.slice(0));
     const out = outputs[0][0];
     let n = 0;
     while (n < out.length && this.q.length) {
@@ -78,6 +85,8 @@ export function startVoice({ send, route, wasmUrl }) {
   let nativeTicket = 0;
   let source = null, engineLoading = null, audioLoading = null, audioOwner = null, warming = null, initialized = false;
   let warmEnabled = false, disposed = false, warmResolve = null, warmReject = null;
+  let heldMode = false, released = false, captureDrain = null, inputFrames = 0;
+  const trace = text => { if (globalThis.coaxialVoiceHost) globalThis.webkit?.messageHandlers?.forgeVoiceStatus?.postMessage(text); };
   const enc = new TextEncoder(), dec = new TextDecoder();
 
   const show = (p, c = caption) => {
@@ -116,13 +125,31 @@ export function startVoice({ send, route, wasmUrl }) {
     if (ctx && node) return;
     const context = ctx ||= new AudioContext();
     const work = (async () => {
-      if (idle) await context.suspend();
       const url = URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" }));
       try { await context.audioWorklet.addModule(url); } finally { URL.revokeObjectURL(url); }
       if (disposed || ctx !== context) return;
       node = new AudioWorkletNode(context, "oa-voice", { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });
-      node.port.onmessage = e => { if (typeof e.data === "number") played = e.data; else if (running) take(e.data); };
+      let primed; const ready = new Promise(resolve => { primed = resolve; });
+      node.port.onmessage = e => {
+        if (typeof e.data === "number") played = e.data;
+        else if (e.data?.kind === "graph-ready") primed();
+        else if (e.data?.kind === "capture-drained") { if (captureDrain?.ticket === e.data.ticket) captureDrain.resolve(); }
+        else if (running && (!released || captureDrain)) take(e.data);
+      };
       node.connect(typeof globalThis.coaxialAudioTap === "function" ? globalThis.coaxialAudioTap(context) : context.destination);
+      if (idle) {
+        // Run one silent quantum ahead of the gesture, then suspend. Merely
+        // loading a worklet into a suspended context leaves its first start cold.
+        let deadline;
+        try {
+          await context.resume();
+          await Promise.race([ready,new Promise((_,reject)=>{deadline=setTimeout(()=>reject(new Error("Voice audio preparation timed out.")),3000);})]);
+          if (!running) await context.suspend();
+        } catch(e) {
+          if (ctx === context && !running) { node?.disconnect(); node = null; ctx = null; context.close().catch(()=>{}); }
+          throw e;
+        } finally { clearTimeout(deadline); }
+      }
     })();
     audioLoading = work; audioOwner = context;
     try { await work; }
@@ -161,10 +188,14 @@ export function startVoice({ send, route, wasmUrl }) {
     return warming;
   }
 
-  async function on() {
+  async function on(hold = false) {
+    if (released) off();
     if (letGo) { clearTimeout(letGo); letGo = 0; off(); }
     if (running) return;
     const owner = ++generation;
+    heldMode = hold || !!globalThis.coaxialVoiceHost; released = false; inputFrames = 0;
+    heardTurn = ""; heardAt = 0;
+    const pressAt = performance.now(); trace(`capture:opening mode=${heldMode ? "hold" : "automatic"}`);
     running = true;
     if (!prepared().ready) show("connecting", "");
     try {
@@ -188,8 +219,12 @@ export function startVoice({ send, route, wasmUrl }) {
       if (!running || owner !== generation) return;
       await audioGraph(false);
       if (!running || owner !== generation) return;
-      source = ctx.createMediaStreamSource(mic); source.connect(node);
+      source = ctx.createMediaStreamSource(mic); node.port.postMessage("capture"); source.connect(node);
       frame = x.vw_start(Math.round(ctx.sampleRate));
+      if (heldMode) {
+        if (!x.vw_hold) throw new Error("Voice runtime needs an update for hold-to-talk.");
+        x.vw_hold(1);
+      }
       initialized = true;
       if (x.vw_rate() !== Math.round(ctx.sampleRate)) throw new Error(`no engine for ${ctx.sampleRate} Hz`);
     } catch (e) {
@@ -203,6 +238,7 @@ export function startVoice({ send, route, wasmUrl }) {
       if (!running || owner !== generation) return;
       show("listening", "");
     } else connect();
+    trace(`capture:start mode=${heldMode ? "hold" : "automatic"} rate=${ctx.sampleRate} elapsed_ms=${Math.round(performance.now()-pressAt)}`);
     timer = setInterval(tick, 10);
   }
 
@@ -212,6 +248,8 @@ export function startVoice({ send, route, wasmUrl }) {
     if (letGo) { clearTimeout(letGo); letGo = 0; }
     if (!running) return;
     running = false;
+    released = false; captureDrain?.resolve(); captureDrain = null;
+    trace(`capture:stop frames=${inputFrames} ms=${inputFrames * 20}`);
     globalThis.coaxialVoiceCancelCapture?.(capture).catch(() => {});
     globalThis.coaxialVoiceStopped?.(nativeTicket); nativeTicket = 0;
     if (turn) control(CONTROL.CANCEL, turn);
@@ -254,16 +292,32 @@ export function startVoice({ send, route, wasmUrl }) {
       ws = null; welcomed = false; turn = ""; cut();
       warmReject?.(new Error("Local voice connection closed."));
       if (!running) { globalThis.webkit?.messageHandlers?.forgeVoiceStatus?.postMessage("warm:lost"); return; }
+      if (heldMode && source) { x.vw_cancel_turn(); x.vw_hold(1); }
       show("connecting", "Voice needs a connection. Trying again…");
       setTimeout(connect, backoff * 1000); backoff = Math.min(backoff * 2, 10);
     };
   }
 
   // Push to talk let go: the microphone closes now and the turn ends; nothing heard yet, voice is off.
-  function release() {
-    if (!running) return;
-    mic?.getTracks().forEach((t) => t.stop()); mic = null; pending = new Float32Array(0);
+  async function release() {
+    if (!running || released) return;
+    released = true;
+    const owner = generation;
+    trace(`capture:release frames=${inputFrames} ms=${inputFrames * 20}`);
+    mic?.getTracks().forEach((t) => t.stop()); mic = null;
     source?.disconnect(); source = null;
+    // The worklet's acknowledgement follows every already-posted input block.
+    // Capture is closed now; drain its queued samples before ending the turn.
+    if (node && ctx?.state === "running") await new Promise(resolve => {
+      const deadline = setTimeout(() => { trace("capture:drain-timeout"); resolve(); }, 100);
+      captureDrain = { ticket: owner, resolve: () => { clearTimeout(deadline); resolve(); } };
+      node.port.postMessage({kind:"drain-capture",ticket:owner});
+    });
+    if (generation !== owner || !running) return;
+    captureDrain = null;
+    if (welcomed) drainInput(true);
+    pending = new Float32Array(0);
+    if (heldMode) x.vw_hold(0);
     if (!turn && !heardTurn) { off(); return; }
     if (turn) { control(CONTROL.TURN_END, turn); turn = ""; show("thinking"); }
     letGo = setTimeout(() => { letGo = 0; off(); }, LET_GO_WAIT);
@@ -278,18 +332,23 @@ export function startVoice({ send, route, wasmUrl }) {
 
   function tick() {
     if (!running || !x) return;
-    const input = new Int16Array(mem.buffer, x.vw_in(), frame);
-    while (pending.length >= frame) {
-      for (let i = 0; i < frame; i++) input[i] = Math.max(-32768, Math.min(32767, Math.round(pending[i] * 32767)));
-      pending = pending.subarray(frame);
-      uplink();
-    }
+    if (welcomed) drainInput();
     feed();
     if (heardTurn && Date.now() - heardAt > ANSWER_WAIT) { heardTurn = ""; if (phase === "heard" || phase === "thinking") show("listening", ""); }
+  }
+  function drainInput(pad = false) {
+    const input = new Int16Array(mem.buffer, x.vw_in(), frame);
+    while (pending.length >= frame || (pad && pending.length)) {
+      const n = Math.min(frame, pending.length);
+      for (let i = 0; i < frame; i++) input[i] = i < n ? Math.max(-32768, Math.min(32767, Math.round(pending[i] * 32767))) : 0;
+      pending = pending.subarray(n);
+      uplink();
+    }
   }
 
   function uplink() {
     const ev = x.vw_uplink();
+    inputFrames++;
     if (ev & EV.BARGE_IN) bargeIn();
     if (ev & EV.TURN_START && welcomed) {
       turn = `${speaker}-${++turns}`;
@@ -300,7 +359,15 @@ export function startVoice({ send, route, wasmUrl }) {
       show("hearing", "");
     }
     if (ev & (EV.FORWARD | EV.TURN_START) && !(ev & EV.DROPPED) && turn && welcomed) { const [t] = strings(turn); out(x.vw_audio(t, 0, 0, 0)); }
-    if (ev & EV.TURN_END && turn) { control(CONTROL.TURN_END, turn); turn = ""; show("thinking"); }
+    if (ev & EV.TURN_END && turn) {
+      trace(`capture:end cause=${ev & EV.TOO_LONG ? "limit" : "automatic"} frames=${inputFrames} ms=${inputFrames * 20}`);
+      control(CONTROL.TURN_END, turn); turn = "";
+      if (ev & EV.TOO_LONG) {
+        released = true; mic?.getTracks().forEach(t => t.stop()); mic = null; source?.disconnect(); source = null;
+        pending = new Float32Array(0); letGo = setTimeout(() => { letGo = 0; off(); }, LET_GO_WAIT);
+      }
+      show("thinking", ev & EV.TOO_LONG ? "Recording reached its time limit." : caption);
+    }
   }
 
   // Reply audio: keep about 200 ms queued on the audio thread beyond what has played.
@@ -401,5 +468,5 @@ export function startVoice({ send, route, wasmUrl }) {
     show("thinking", caption);
   }
 
-  return { toggle: (want) => (want === "end" ? release() : want ? on() : off()), running: () => running, face, say, warm, prepared };
+  return { toggle: (want) => (want === "end" ? release() : want ? on(want === "hold") : off()), running: () => running, face, say, warm, prepared };
 }
