@@ -1,0 +1,175 @@
+// One lifecycle and recovery profile for a multiplayer client, the same on every host (GitHub
+// #12856). Hosts keep only the platform effects: they report what happened (the events below) and
+// carry out what the profile returns. The profile decides.
+//
+// Hosts today (2026-11-05):
+// - Browser (coax/web/host.js): resize (ResizeObserver), focus and blur, hidden and shown
+//   (visibilitychange), leave and return (pagehide, pageshow), GPU device loss (device.lost; a new
+//   device is taken unless the page is leaving). No network-change event is reported yet: the
+//   socket's own close stands for it.
+// - Linux native face (apps/aethyrforge-desktop/linux-native-face.c): reports frames and input; it
+//   reports none of these lifecycle events yet.
+// - Mac Metal host: not built yet (#12867, #12868).
+//
+// Version LIFECYCLE_VERSION. The policy:
+// - Blur or hidden releases every held input at once (a key held while the window loses focus
+//   never sticks) and stops the local predicted clock; the room's authoritative clock keeps going.
+// - Shown or focus restarts the clock from the room's accepted state. After LIFECYCLE_RESYNC ticks
+//   away (a long suspension), every pending command is revoked, never replayed, and the client asks
+//   for a full state.
+// - A network change or a closed socket replaces the socket and resumes from the last accepted
+//   state; pending commands newer than it are sent again only if not revoked and younger than
+//   LIFECYCLE_RESEND ticks.
+// - GPU device loss stops drawing, keeps the session, and reloads GPU resources on the new device;
+//   a trap restarts the module from the last accepted state. Neither replays a command.
+//   coax/bin/coax test aethyr/session/lifecycle.coax --library
+//   coax/bin/coax mutate aethyr/session/lifecycle.coax --library --root-only
+
+#module "aethyr.session.lifecycle";
+#authority;
+
+// book:begin lifecycle-profile
+LIFECYCLE_VERSION :: 1;
+LIFECYCLE_RESYNC :: 900;     // ticks away (30 s at 30 Hz) after which pending commands are revoked
+LIFECYCLE_RESEND :: 90;      // ticks a pending command may be sent again after a socket change
+LIFECYCLE_PENDING :: 16;     // commands a client keeps unacknowledged
+
+LC_RESIZE :: 1; LC_FOCUS :: 2; LC_BLUR :: 3; LC_HIDDEN :: 4; LC_SHOWN :: 5; LC_NET :: 6;
+LC_SOCKET_CLOSED :: 7; LC_DEVICE_LOST :: 8; LC_DEVICE_NEW :: 9; LC_TRAP :: 10; LC_ACK :: 11;
+
+// What the host must do, as bits of LifeActions.does.
+LC_RELEASE_INPUTS :: 1; LC_STOP_CLOCK :: 2; LC_START_CLOCK :: 4; LC_FULL_STATE :: 8;
+LC_NEW_SOCKET :: 16; LC_STOP_DRAWING :: 32; LC_RELOAD_GPU :: 64; LC_RESTART_MODULE :: 128; LC_LAYOUT :: 256;
+
+LifePending :: struct { seq: int; sent: int; revoked: bool; }
+LifeState :: struct {
+  active: bool = true;                 // focused and shown
+  away_since: int = -1;                // the tick it went away, or -1
+  drawing: bool = true;
+  held: int;                           // input bits held down
+  accepted: int;                       // the last command the room accepted
+  pending: [LIFECYCLE_PENDING] LifePending; pending_n: int;
+}
+// What one event asks of the host: the actions, the inputs to release, and the commands to send again.
+LifeActions :: struct { does: int; released: int; resend: [LIFECYCLE_PENDING] int; resend_n: int; revoked: int; }
+// book:end lifecycle-profile
+
+// A command the client sent at tick `now`; false when its pending list is full (the client waits).
+life_sent :: (s: [] LifeState, seq: int, now: int) -> bool {
+  if s[0].pending_n >= LIFECYCLE_PENDING { return false; }
+  s[0].pending[s[0].pending_n] = LifePending.{seq = seq, sent = now};
+  s[0].pending_n += 1;
+  return true;
+}
+
+// book:begin lifecycle-event
+// The host reports event `kind` at tick `now` (`arg`: the accepted command for LC_ACK).
+life_event :: (s: [] LifeState, kind: int, now: int, arg: int) -> LifeActions {
+  out: LifeActions;
+  if kind == LC_RESIZE { out.does = LC_LAYOUT; }
+  if kind == LC_BLUR || kind == LC_HIDDEN {
+    out.released = s[0].held; s[0].held = 0;
+    out.does = LC_RELEASE_INPUTS;
+    if s[0].active { s[0].active = false; s[0].away_since = now; out.does += LC_STOP_CLOCK; }
+  }
+  if (kind == LC_FOCUS || kind == LC_SHOWN) && !s[0].active {
+    s[0].active = true;
+    out.does = LC_START_CLOCK;
+    if now - s[0].away_since > LIFECYCLE_RESYNC { out.revoked = life_revoke(s); out.does += LC_FULL_STATE; }
+    s[0].away_since = -1;
+  }
+  if kind == LC_NET || kind == LC_SOCKET_CLOSED {
+    out.does = LC_NEW_SOCKET;
+    for k: 0..<s[0].pending_n {
+      p := s[0].pending[k];
+      if p.revoked || p.seq <= s[0].accepted { continue; }
+      if now - p.sent > LIFECYCLE_RESEND { s[0].pending[k].revoked = true; out.revoked += 1; continue; }
+      out.resend[out.resend_n] = p.seq; out.resend_n += 1;
+    }
+  }
+  if kind == LC_DEVICE_LOST { s[0].drawing = false; out.does = LC_STOP_DRAWING; }
+  if kind == LC_DEVICE_NEW { s[0].drawing = true; out.does = LC_RELOAD_GPU; }
+  if kind == LC_TRAP { out.revoked = life_revoke(s); out.does = LC_RESTART_MODULE | LC_FULL_STATE; }
+  if kind == LC_ACK { life_ack(s, arg); }
+  return out;
+}
+// Every pending command is revoked: none is ever sent again. Returns how many.
+life_revoke :: (s: [] LifeState) -> int {
+  n := 0;
+  for k: 0..<s[0].pending_n { if !s[0].pending[k].revoked { s[0].pending[k].revoked = true; n += 1; } }
+  return n;
+}
+// The room accepted every command up to seq: they leave the pending list, in order.
+life_ack :: (s: [] LifeState, seq: int) {
+  d := f64(seq - s[0].accepted);
+  s[0].accepted += cast(int) ((d + abs(d)) / 2);   // only forward
+  keep := 0;
+  for k: 0..<s[0].pending_n {
+    if s[0].pending[k].seq > s[0].accepted { s[0].pending[keep] = s[0].pending[k]; keep += 1; }
+  }
+  s[0].pending_n = keep;
+}
+// book:end lifecycle-event
+
+// ---- checks
+
+#test "lifecycle: blur releases held inputs and stops the clock once; focus starts it" {
+  s: [1] LifeState;
+  s[0].held = 5;
+  a := life_event(s[..], LC_BLUR, 10, 0);
+  #assert a.does == LC_RELEASE_INPUTS | LC_STOP_CLOCK && a.released == 5 && s[0].held == 0 && !s[0].active && s[0].away_since == 10;
+  s[0].held = 2;
+  b := life_event(s[..], LC_HIDDEN, 12, 0);   // already away: released again, the clock already stopped
+  #assert b.does == LC_RELEASE_INPUTS && b.released == 2 && s[0].away_since == 10;
+  c := life_event(s[..], LC_FOCUS, 10 + LIFECYCLE_RESYNC, 0);
+  #assert c.does == LC_START_CLOCK && c.revoked == 0 && s[0].active && s[0].away_since == -1;
+  #assert life_event(s[..], LC_SHOWN, 2000, 0).does == 0 && life_event(s[..], LC_RESIZE, 2000, 0).does == LC_LAYOUT;
+}
+
+#test "lifecycle: a long suspension revokes every pending command and asks for the full state" {
+  s: [1] LifeState;
+  #assert life_sent(s[..], 1, 0) && life_sent(s[..], 2, 0);
+  _ := life_event(s[..], LC_HIDDEN, 5, 0);
+  a := life_event(s[..], LC_SHOWN, 6 + LIFECYCLE_RESYNC, 0);
+  #assert a.does == LC_START_CLOCK | LC_FULL_STATE && a.revoked == 2 && s[0].pending[0].revoked && s[0].pending[1].revoked;
+  // nothing revoked is sent again
+  n := life_event(s[..], LC_NET, 7 + LIFECYCLE_RESYNC, 0);
+  #assert n.does == LC_NEW_SOCKET && n.resend_n == 0 && n.revoked == 0 && life_revoke(s[..]) == 0;
+}
+
+#test "lifecycle: a new socket sends again only young, unaccepted, unrevoked commands" {
+  s: [1] LifeState;
+  for q: 1..<6 { #assert life_sent(s[..], q, q * 10); }
+  life_ack(s[..], 2);
+  #assert s[0].pending_n == 3 && s[0].pending[0].seq == 3 && s[0].accepted == 2;
+  life_ack(s[..], 1);
+  #assert s[0].accepted == 2 && s[0].pending_n == 3;
+  a := life_event(s[..], LC_SOCKET_CLOSED, 40 + LIFECYCLE_RESEND, 0);
+  #assert a.does == LC_NEW_SOCKET && a.resend_n == 2 && a.resend[0] == 4 && a.resend[1] == 5 && a.revoked == 1 && s[0].pending[0].revoked;
+  s[0].accepted = 4;
+  b := life_event(s[..], LC_NET, 40 + LIFECYCLE_RESEND, 0);
+  #assert b.resend_n == 1 && b.resend[0] == 5;
+  _ := life_event(s[..], LC_ACK, 60, 5);
+  #assert s[0].pending_n == 0 && s[0].accepted == 5;
+  // exactly LIFECYCLE_RESEND ticks old is sent again; one tick older is revoked
+  e: [1] LifeState;
+  #assert life_sent(e[..], 1, 0) && life_sent(e[..], 2, 1);
+  r := life_event(e[..], LC_NET, LIFECYCLE_RESEND + 1, 0);
+  #assert r.resend_n == 1 && r.resend[0] == 2 && r.revoked == 1;
+  life_ack(e[..], 5);
+  #assert e[0].accepted == 5 && e[0].pending_n == 0;
+  // the pending list holds LIFECYCLE_PENDING commands and refuses the next
+  for q: 0..<LIFECYCLE_PENDING { #assert life_sent(s[..], 10 + q, 70); }
+  #assert !life_sent(s[..], 99, 70) && s[0].pending_n == LIFECYCLE_PENDING && s[0].pending[LIFECYCLE_PENDING - 1].seq == 10 + LIFECYCLE_PENDING - 1;
+}
+
+#test "lifecycle: device loss and a trap keep the session and replay nothing" {
+  s: [1] LifeState;
+  #assert life_sent(s[..], 1, 0);
+  a := life_event(s[..], LC_DEVICE_LOST, 1, 0);
+  #assert a.does == LC_STOP_DRAWING && !s[0].drawing && a.revoked == 0 && !s[0].pending[0].revoked;
+  b := life_event(s[..], LC_DEVICE_NEW, 2, 0);
+  #assert b.does == LC_RELOAD_GPU && s[0].drawing;
+  c := life_event(s[..], LC_TRAP, 3, 0);
+  #assert c.does == LC_RESTART_MODULE | LC_FULL_STATE && c.revoked == 1 && s[0].pending[0].revoked && LIFECYCLE_VERSION == 1;
+}
