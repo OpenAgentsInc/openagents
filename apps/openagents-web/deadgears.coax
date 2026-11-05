@@ -2819,7 +2819,8 @@ won_through_the_controls :: (phone_size: bool) -> bool {
 // ---------------------------------------------------------------------------------------------
 // The frame budget (aethyr/budget.coax, book chapter 16): what one frame of Dead Gears may use.
 // The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
-DEADGEARS_BUDGET :: FrameBudget.{steps = 8, vertices = 7000, draws = 0, bytes = 2490368};
+// The bytes grew by 24 KB for the mutants' second flow field (#12854).
+DEADGEARS_BUDGET :: FrameBudget.{steps = 8, vertices = 7000, draws = 0, bytes = 2514944};
 
 // Its opening: three frames at each budget screen, the last one 0.1 s long. Book
 // chapter 16 gives the peaks of 120 frames at each screen, measured natively.

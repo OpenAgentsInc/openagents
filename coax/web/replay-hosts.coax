@@ -14,8 +14,11 @@
 // aethyr/tests/scatter-hosts.coax the same way and compares its seven
 // digests (a forest scattered from a seed over a built ground, its trees'
 // heights, a second layer, a split window, another version, another seed)
-// with the native run of aethyr/examples/scatter-from-a-seed.coax.
-//   coax/web/tool.sh replay-hosts [walk|grid|scatter]     (from the repo root; all by default)
+// with the native run of aethyr/examples/scatter-from-a-seed.coax. The fourth (#12854) builds
+// aethyr/tests/crowd-deadgears.coax the same way and compares its three digests (Dead Gears'
+// mutants sensing, remembering and finding their way as two crowds meet in a passage) with the
+// native run of aethyr/tests/crowd-deadgears-native.coax.
+//   coax/web/tool.sh replay-hosts [walk|grid|scatter|deadgears]     (from the repo root; all by default)
 // Prints "pass"/"FAIL" per check and exits 0 only when every check passes.
 #load "wasm-chrome.coax";
 
@@ -172,11 +175,39 @@ rh_scatter :: (c: [] Cdp) -> bool {
          rh_check(native[0] > 0 && native[1] != native[0], "the keep-outs took nothing away");
 }
 
+// Dead Gears' crowds in a passage give the same digests natively and in wasm.
+RH_DEADGEARS_CASES :: 3;
+rh_deadgears :: (c: [] Cdp) -> bool {
+  out: [RH_OUT] u8;
+  argv := [3] string.["coax/bin/coax", "run", "aethyr/tests/crowd-deadgears-native.coax"];
+  n := rh_run(argv[..], out[..]);
+  if n < 0 { return false; }
+  text := cast(string) out[0..<n];
+  line := ""; stated := false;
+  for k: 0..<64 {
+    l := rh_line(text, k);
+    if l.count > 8 && l[0..<8] == "digests " { line = l; }
+    if l == "runs not as stated: 0" { stated = true; }
+  }
+  if !rh_check(stated, "a passage run in crowd-deadgears-native is not as stated") { return false; }
+  native: [8] int;
+  if !rh_check(rh_numbers(line, native[..]) == RH_DEADGEARS_CASES, "crowd-deadgears-native printed no line of 3 digests") { return false; }
+  if !rh_wasm(c, "aethyr/tests/crowd-deadgears.coax", "aethyr/tests/crowd-deadgears-face.c", 256) { return false; }
+  same := true;
+  d: [24] u8; arg: [32] u8;
+  for i: 0..<RH_DEADGEARS_CASES {
+    parts := [2] string.[wc_dec(d[..], i), "n"];
+    browser := wc_int(c, "deadgears_npc_case", wc_cat(arg[..], parts[..]));
+    if browser != native[i] { same = false; print("  case %: browser % native %\n", i, browser, native[i]); }
+  }
+  return rh_check(same, "the browser's crowds differ from native") && rh_check(native[0] != native[1] && native[1] != native[2], "two cases gave one digest");
+}
+
 tool_main :: () -> int #export_c {
   a: [1] Args;
   if !args_load(a[..]) { return 2; }
   only := ifx args_count(a[..]) > 0 then args_at(a[..], 0) else "";
-  if only != "" && only != "walk" && only != "grid" && only != "scatter" { tool_errln("usage: coax/web/tool.sh replay-hosts [walk|grid|scatter]"); return 2; }
+  if only != "" && only != "walk" && only != "grid" && only != "scatter" && only != "deadgears" { tool_errln("usage: coax/web/tool.sh replay-hosts [walk|grid|scatter|deadgears]"); return 2; }
   c: [1] Cdp;
   if !wc_open(c[..]) { tool_err("replay-hosts: "); tool_errln(cdp_error(c[..])); return 1; }
   failed := 0;
@@ -193,6 +224,11 @@ tool_main :: () -> int #export_c {
   if only == "" || only == "scatter" {
     ok := rh_scatter(c[..]);
     print("% a scatter and its ground from a seed give the same digests natively and in wasm\n", ifx ok then "pass" else "FAIL");
+    if !ok { failed += 1; }
+  }
+  if only == "" || only == "deadgears" {
+    ok := rh_deadgears(c[..]);
+    print("% Dead Gears' crowds in a passage give the same digests natively and in wasm\n", ifx ok then "pass" else "FAIL");
     if !ok { failed += 1; }
   }
   cdp_close(c[..]);

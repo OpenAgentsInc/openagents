@@ -213,13 +213,17 @@ Flow :: struct {
   goal: int = -1;       // the goal cell, -1 none
   key_x: f32 = 1000000000;
   key_z: f32 = 1000000000;
+  used: int;            // when a walker last read it (Nav.uses)
 }
 
 Nav :: struct {
   walk: [NAV_CELLS] bool;
   heap: [NAV_CELLS] s32;
   slot: [NAV_CELLS] s32;   // where each cell is in the heap, -1 out of it
-  flows: [3] Flow;         // 0 to you (the mutants), 1 where the support engineer heads, 2 to the reactor
+  // 0 and 3 where the mutants believe you are (two spots, so mutants remembering you in two places
+  // don't search the deck afresh in turn), 1 where the support engineer heads, 2 to the reactor
+  flows: [4] Flow;
+  uses: int;
   ready: bool;
   bakes: int;
   // The search budget (#12854): flows a step may bake again, -1 for no limit. A mutant whose goal
@@ -229,18 +233,14 @@ Nav :: struct {
 }
 NAV_STEP_BAKES :: 2;   // flows the mutants may bake in one step: each is a search of the whole deck
 
+// The cell holding a point is aethyr/nav/grid.coax's. A cell's centre is the module's formula
+// written out: nav_bake asks it for every cell of the deck, and a NavGrid a call costs too much there.
 nav_cell_x :: (c: int) -> int { return c % NAV_NX; }
 nav_cell_z :: (c: int) -> int { return c / NAV_NX; }
 nav_centre :: (c: int) -> Point {
   return v3(f32(NAV_X0) + (f32(nav_cell_x(c)) + 0.5) * f32(NAV_CELL), 0, f32(NAV_Z0) + (f32(nav_cell_z(c)) + 0.5) * f32(NAV_CELL));
 }
-nav_cell_at :: (p: Point) -> int {
-  if !finite(p.x) || !finite(p.z) { return -1; }
-  cx := int(floor((p.x - f32(NAV_X0)) / f32(NAV_CELL)));
-  cz := int(floor((p.z - f32(NAV_Z0)) / f32(NAV_CELL)));
-  if cx < 0 || cz < 0 || cx >= NAV_NX || cz >= NAV_NZ { return -1; }
-  return cz * NAV_NX + cx;
-}
+nav_cell_at :: (p: Point) -> int { return nav_grid_cell_at(nav_grid(), p.x, p.z); }
 
 // A cell is walkable when the agent's circle at its centre meets no box.
 nav_bake :: (n: [] Nav, a: [] Arena) {
@@ -255,7 +255,7 @@ nav_bake :: (n: [] Nav, a: [] Arena) {
     }
     n[0].walk[c] = open;
   }
-  for f: 0..<3 { n[0].flows[f].goal = -1; n[0].flows[f].key_x = 1000000000; n[0].flows[f].key_z = 1000000000; }
+  for f: 0..<4 { n[0].flows[f].goal = -1; n[0].flows[f].key_x = 1000000000; n[0].flows[f].key_z = 1000000000; }
   n[0].ready = true;
   n[0].bakes += 1;
 }
@@ -341,9 +341,16 @@ nav_flow_ahead :: (n: [] Nav, a: [] Arena, f: int, from: Point, look: f32, out: 
 // Where to head from `from` for goal: straight there when the line is
 // clear, else along flow f round the covers. The flow is rebuilt only when
 // the goal moves to another metre, and is a pure function of that metre.
-nav_head_for :: (n: [] Nav, a: [] Arena, f: int, from: Point, goal: Point) -> Point {
+nav_head_for :: (n: [] Nav, a: [] Arena, flow: int, from: Point, goal: Point) -> Point {
   if !n[0].ready || nav_straight(a, from, goal) { return goal; }
   kx := floor(goal.x + 0.5); kz := floor(goal.z + 0.5);
+  // the chasers' two flows: the one baked for this metre, else the one read longest ago
+  f := flow;
+  if f == 0 {
+    if n[0].flows[3].key_x == kx && n[0].flows[3].key_z == kz { f = 3; }
+    else if !(n[0].flows[0].key_x == kx && n[0].flows[0].key_z == kz) && n[0].flows[3].used < n[0].flows[0].used { f = 3; }
+  }
+  n[0].uses += 1; n[0].flows[f].used = n[0].uses;
   if kx != n[0].flows[f].key_x || kz != n[0].flows[f].key_z {
     if n[0].budget == 0 { n[0].refused += 1; return goal; }
     if n[0].budget > 0 { n[0].budget -= 1; }

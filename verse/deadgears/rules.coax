@@ -767,10 +767,29 @@ is_body :: (e: Entities, hp: [] f32, i: int) -> bool {
 // covers and walls, sliding where it meets them, and stays on the deck.
 walk_body :: (g: Game, i: int, dx: f32, dz: f32, radius: f32) {
   p := g.pos[i];
-  want := push_characters(g, i, p, v3(p.x + dx, p.y, p.z + dz), g.yaw[i]);
-  to := arena_walk(g.arena, p, v3(want.x - p.x, 0, want.z - p.z), radius);
-  g.pos[i].x = clamp(to.x, -14.5, 14.5);
-  g.pos[i].z = clamp(to.z, -22, 12);
+  // A wall can slide a step back into another body (a squeeze in a passage): then half the
+  // step is tried, then a quarter, and else none is taken.
+  share: f32 = 1;
+  for k: 0..<3 {
+    want := push_characters(g, i, p, v3(p.x + dx * share, p.y, p.z + dz * share), g.yaw[i]);
+    to := arena_walk(g.arena, p, v3(want.x - p.x, 0, want.z - p.z), radius);
+    to.x = clamp(to.x, -14.5, 14.5); to.z = clamp(to.z, -22, 12);
+    slid := to.x != want.x || to.z != want.z;   // unslid, the push has kept it apart already
+    if !slid || !closes_on_body(g.e, g.hp, g.pos, i, p, to) { g.pos[i].x = to.x; g.pos[i].z = to.z; return; }
+    share = share / 2;
+  }
+}
+// Moving body slot i from p to `to` brings it nearer than REACH to another body it was not
+// already that near. It takes the fields it reads, not the Game (see arena_walk).
+closes_on_body :: (e: Entities, hp: [] f32, pos: [] Point, i: int, p: Point, to: Point) -> bool {
+  reach := f32(REACH) - 0.001;
+  for j: 0..<ecs_high(e) {
+    if j == i || !is_body(e, hp, j) { continue; }
+    o := pos[j];
+    if abs(o.y - p.y) >= f32(CHARACTER_HEIGHT) { continue; }
+    if flat(to, o) < reach && flat(to, o) < flat(p, o) { return true; }
+  }
+  return false;
 }
 
 // ---- the systems, in the order the rules ran in the original model
@@ -1032,9 +1051,42 @@ dg_progress :: (g: Game, i: int, m: Mutant, flow: int, goal: Point) -> Mutant {
   out.since += 1;
   if out.since < STUCK_STEPS { return out; }
   out.tries += 1; out.since = 0; out.best = 1000000;
-  if out.tries < STUCK_TRIES { g.st[0].retries += 1; g.nav[0].flows[flow].key_x = 1000000000; }
+  if out.tries < STUCK_TRIES {
+    g.st[0].retries += 1; g.nav[0].flows[flow].key_x = 1000000000;
+    if flow == 0 { g.nav[0].flows[3].key_x = 1000000000; }   // the chasers' other flow too
+  }
   else { g.st[0].stops += 1; }
   return out;
+}
+
+// Giving way (#12854): a mutant walking at another that walks the other way (their headings more
+// than 120 degrees apart) within GIVE_LOOK metres ahead and REACH plus GIVE_SIDE across steers
+// 45 degrees to its right (GIVE_RIGHT of a step). Both keep right, so two crowds meeting head on in a
+// passage pass each other instead of standing face to face. A mutant only reads where the
+// others stand and face: the same on every host, in spawn order.
+GIVE_LOOK :: 3.0;      // metres ahead: lanes form before they meet
+GIVE_SIDE :: 0.25;     // metres across, past REACH
+GIVE_RIGHT :: 1.0;     // of a step, to the right: 45 degrees
+GIVE_FACING :: -0.5;   // cosine of the headings' angle: more than 120 degrees apart
+
+// Mutant slot i's step direction (x, z), a unit vector, after giving way. It takes the fields it
+// reads, not the Game: it runs for every pair of walking mutants each step (see arena_walk).
+dg_give_way :: (e: Entities, hp: [] f32, pos: [] Point, yaw: [] f32, i: int, x: f32, z: f32) -> Point {
+  p := pos[i];
+  for j: 0..<ecs_high(e) {
+    if j == i || !ecs_match(e, j, C_MUTANT | C_HEALTH, 0) || hp[j] <= 0 { continue; }
+    o := pos[j];
+    ox := o.x - p.x; oz := o.z - p.z;
+    ahead := ox * x + oz * z;
+    if ahead <= 0 || ahead > f32(GIVE_LOOK) { continue; }
+    if abs(ox * z - oz * x) > f32(REACH) + f32(GIVE_SIDE) { continue; }
+    if sin(yaw[j]) * x + cos(yaw[j]) * z > f32(GIVE_FACING) { continue; }
+    // its right, facing (x, z): (z, -x)
+    rx := x + z * f32(GIVE_RIGHT); rz := z - x * f32(GIVE_RIGHT);
+    l := sqrt(rx * rx + rz * rz);
+    return v3(rx / l, 0, rz / l);
+  }
+  return v3(x, 0, z);
 }
 
 // A wall, rubble or crate dropped on the deck at (x, z): the arena and the walking grid are built
@@ -1188,7 +1240,8 @@ mutant_system :: (g: Game, dt: f32) {
       if l > 0.05 {
         g.yaw[i] = atan2(x, z);
         g.mutant[i] = m;
-        walk_body(g, i, x / l * speed * dt, z / l * speed * dt, mutant_radius(m));
+        way := dg_give_way(g.e, g.hp, g.pos, g.yaw, i, x / l, z / l);
+        walk_body(g, i, way.x * speed * dt, way.z * speed * dt, mutant_radius(m));
         e = g.pos[i];
       }
       m = dg_progress(g, i, m, flow, goal);
