@@ -4,8 +4,14 @@
 // its 144-byte super-blocks, Q6_K and Q8_0 as 16-bit words (their blocks
 // are 210 and 34 bytes). Activations and sums are f32, rounded once per
 // operation in a fixed order; the KV cache is f16 in pages of 256
-// positions. No host code does arithmetic on activations. The checks are
-// psionic/tests/granite-kernel-checks.coax and the CPU repeat.
+// positions. No host code does arithmetic on activations. The prompt's
+// products (past 8 tokens) and its attention run on Apple's matrix units,
+// which add a tile's products in their own order: the products on BF16
+// pairs of each weight (16 bits of it), the attention on simdgroup
+// matrices. The checks are psionic/tests/granite-kernel-checks.coax and the
+// CPU repeat, and granite_run compare holds the prompt in one call within
+// 1e-3 of the decoder fed a token at a time.
+#load "../../../coax/lib/compute/apple.coax";
 
 GR_T :: 64;      // threads in a product group
 GR_R :: 4;       // rows a product group writes
@@ -14,6 +20,7 @@ GR_NT :: 256;    // threads in a norm or softmax group
 GR_PAGE :: 256;  // positions in a cache page
 GR_CHUNK :: 128; // positions a context work item adds
 GR_HEAD :: 128;  // head width
+GR_MT :: 128;    // threads in a simdgroup-matrix group
 GR_HIDDEN :: -300000000000000000000000000000000000000.0;  // a hidden key's score, -3e38
 
 // ---- Scalars.
@@ -585,6 +592,61 @@ gr_dvglu_q8 :: (item:int,rows:int,cols:int,wg:[]u16,wu:[]u16,x:[]f32,out:[]f32) 
     }
 }
 
+// ---- Prefill products on the tensor ops (Metal 4 matmul2d). A weight
+// matrix is widened once per launch of tokens into BF16 pairs: word
+// r*cols+k holds w[r][k] rounded to BF16 (low half) and the rest,
+// w[r][k] - that, rounded to BF16 (high half), so each weight keeps about
+// 16 bits; the inputs are paired to match (x2[t][2k] = x2[t][2k+1] =
+// x[t][k]) and one matmul over 2*cols columns adds both halves.
+gr_bf16 :: (v:f32)->u32 {b:=f32_bits(v);return add_wrap(b,add_wrap(0x7fff,(b>>16)&1))>>16;}
+gr_split :: (v:f32)->u32 {hi:=gr_bf16(v);return hi|(gr_bf16(v-f32_from_bits(hi<<16))<<16);}
+// gr_widen_q4k: item (row, super-block, group g, code word c) writes the
+// 16 values of code word 2+4g+c: 8 of sub-block 2g, 8 of sub-block 2g+1.
+gr_widen_q4k :: (item:int,cols:int,w:[]u64,out:[]u32) #export_c {
+    ui:=cast,trunc(u32)item;nc:=cast(u32)cols;per:=nc/16;row:=ui/per;rest:=ui%per;blk:=rest/16;g:=rest%16/4;c:=rest%4;
+    at:=add_wrap(mul_wrap(row,nc/256*18),mul_wrap(blk,18));w0:=w[cast(int)at];w1:=w[cast(int)add_wrap(at,1)];
+    d:=gr_half(cast,trunc(u32)w0&0xffff);dmin:=gr_half(cast,trunc(u32)(w0>>16)&0xffff);
+    s0:=d*gr_q4k_scale(w0,w1,2*g,0);m0:=dmin*gr_q4k_scale(w0,w1,2*g,1);s1:=d*gr_q4k_scale(w0,w1,2*g+1,0);m1:=dmin*gr_q4k_scale(w0,w1,2*g+1,1);
+    q:=w[cast(int)add_wrap(at,2+4*g+c)];base:=add_wrap(add_wrap(mul_wrap(row,nc),mul_wrap(blk,256)),add_wrap(64*g,8*c));
+    for k:cast(u32)0..<cast(u32)8 {
+        byte:=cast,trunc(u32)(q>>cast(u64)(8*k))&255;
+        out[cast(int)add_wrap(base,k)]=gr_split(s0*f32(byte&15)-m0);out[cast(int)add_wrap(base,32+k)]=gr_split(s1*f32(byte>>4)-m1);
+    }
+}
+// gr_widen_q6k: item (row, super-block, half n, pair m) writes values
+// 128n+l+32p for l = 2m, 2m+1 and the four parts p.
+gr_widen_q6k :: (item:int,cols:int,w:[]u16,out:[]u32) #export_c {
+    ui:=cast,trunc(u32)item;nc:=cast(u32)cols;per:=nc/8;row:=ui/per;rest:=ui%per;blk:=rest/32;n:=rest%32/16;m:=rest%16;
+    at:=add_wrap(mul_wrap(row,nc/256*105),mul_wrap(blk,105));d:=gr_half(cast(u32)w[cast(int)add_wrap(at,104)]);
+    la:=cast(u32)w[cast(int)add_wrap(at,32*n+m)];lb:=cast(u32)w[cast(int)add_wrap(at,32*n+16+m)];hb:=cast(u32)w[cast(int)add_wrap(at,64+16*n+m)];
+    base:=add_wrap(add_wrap(mul_wrap(row,nc),mul_wrap(blk,256)),128*n+2*m);
+    for e:cast(u32)0..<cast(u32)2 {
+        l:=2*m+e;a:=(la>>(8*e))&255;b:=(lb>>(8*e))&255;h:=(hb>>(8*e))&255;
+        for p:cast(u32)0..<cast(u32)4 {
+            low:=ifx p%2==0 then a else b;q:=((low>>(4*(p/2)))&15)|(((h>>(2*p))&3)<<4);
+            i:=8*n+2*p+l/16;sc:=gr_signed((cast(u32)w[cast(int)add_wrap(at,96+i/2)]>>(8*(i%2)))&255);
+            out[cast(int)add_wrap(base,e+32*p)]=gr_split(d*sc*(f32(q)-32)+0);
+        }
+    }
+}
+// gr_widen_q8: item (row, block, quarter c) writes codes 8c..8c+7.
+gr_widen_q8 :: (item:int,cols:int,w:[]u16,out:[]u32) #export_c {
+    ui:=cast,trunc(u32)item;nc:=cast(u32)cols;per:=nc/8;row:=ui/per;rest:=ui%per;blk:=rest/4;c:=rest%4;
+    at:=add_wrap(mul_wrap(row,nc/32*17),mul_wrap(blk,17));d:=gr_half(cast(u32)w[cast(int)at]);base:=add_wrap(add_wrap(mul_wrap(row,nc),mul_wrap(blk,32)),8*c);
+    for e:cast(u32)0..<cast(u32)8 {
+        v:=(cast(u32)w[cast(int)add_wrap(at,1+4*c+e/2)]>>(8*(e%2)))&255;
+        out[cast(int)add_wrap(base,e)]=gr_split(d*gr_signed(v));
+    }
+}
+gr_pair :: (item:int,x:[]f32,x2:[]f32) #export_c {ui:=cast,trunc(u32)item;x2[item]=x[cast(int)(ui/2)];}
+gr_add :: (item:int,x:[]f32,y:[]f32) #export_c {x[item]=x[item]+y[item];}
+// out = x2 w2^T: tiles of 64 tokens by 128 rows (item%tt token tile, tt =
+// ceil(tokens/64)), 256 threads.
+gr_tile :: (item:int,rows:int,cols:int,tokens:int,w:[]u32,x:[]f32,out:[]f32) #export_c {
+    tt:=(tokens+63)/64;
+    am_matmul_bf16(256,64,128,rows,cols,tokens,item/tt*128,item%tt*64,w,x,out);
+}
+
 // ---- Embedding rows: item t*cols+i is value i of token ids[t]'s row.
 gr_embed_q4k :: (item:int,cols:int,ids:[]int,w:[]u64,out:[]f32) #export_c {
     t:=item/cols;i:=item%cols;row:=ids[t];words:=cols/256*18;b:=w[row*words+i/256*18..<row*words+i/256*18+18];
@@ -670,6 +732,68 @@ gr_context_part :: (item:int,heads:int,kv_heads:int,span:int,capacity:int,chunks
 gr_context :: (item:int,chunks:int,partial:[]f32,out:[]f32) #export_c {
     d:=item%GR_HEAD;th:=item/GR_HEAD;sum:f32=0;for c:0..<chunks {sum+=partial[(th*chunks+c)*GR_HEAD+d];}out[item]=sum;
 }
+// ---- Prefill attention on simdgroup matrices, for the `tokens` tokens at
+// position..: token t sees keys 0..position+t. gr_att_scores: group
+// `item` of 128 threads is head item/(qt kt) and the tile of 64 tokens by
+// 32 keys item%(qt kt) (qt = ceil(tokens/64), kt = ceil(span/32), the
+// token tile first); a tile no token of which sees a key is skipped. Each
+// of four 32-dimension steps stages the queries in a and the keys in b
+// (thread j takes dimension j%32 of tokens or keys j/32, j/32+4, ..), and
+// the scores the tokens see are written scaled.
+gr_att_scores :: (item:int,heads:int,kv_heads:int,position:int,tokens:int,span:int,capacity:int,scale_bits:int,layer_pages:int,pages:[]int,q:[]f32,cache:[]u16,scores:[]f32) #export_c {
+    a:[2048]f32;b:[1024]f32;acc:[2048]f32;
+    kt:=(span+31)/32;per:=(tokens+63)/64*kt;head:=item/per;tile:=item%per;t0:=tile/kt*64;j0:=tile%kt*32;kh:=head/(heads/kv_heads);
+    last:=ifx t0+63<tokens then t0+63 else tokens-1;
+    if j0<=position+last {
+        for st:0..<4 {
+            for thread:0..<GR_MT {
+                d:=st*32+thread%32;
+                for i:0..<16 {t:=t0+thread/32+4*i;v:f32=0;if t<tokens {v=q[(t*heads+head)*GR_HEAD+d];}a[thread+GR_MT*i]=v;}
+                for i:0..<8 {j:=j0+thread/32+4*i;v:f32=0;if j<span {v=gr_half(cast(u32)cache[gr_cache_at(pages,layer_pages,kv_heads,j,kh,0)+d]);}b[thread+GR_MT*i]=v;}
+            }
+            am_sg_mma_64x32x32(acc[..],a[..],b[..]);
+        }
+        am_sg_spill_64x32(acc[..],a[..]);
+        for thread:0..<GR_MT {
+            for i:0..<16 {
+                e:=thread+GR_MT*i;t:=t0+e/32;j:=j0+e%32;
+                if t<tokens && j<=position+t {scores[(t*heads+head)*capacity+j]=a[e]*f32_from_bits(cast(u32)scale_bits);}
+            }
+        }
+    }
+}
+// Group (t, head): the scores token t sees become probabilities; the rest
+// of the span becomes 0.
+gr_att_softmax :: (item:int,heads:int,position:int,span:int,capacity:int,scores:[]f32) #export_c {
+    part:[256]f32;sums:[256]f32;
+    seen:=position+item/heads+1;row:=scores[item*capacity..<item*capacity+span];
+    for thread:0..<GR_NT {m:f32=GR_HIDDEN;for k:0..<(seen+GR_NT-1)/GR_NT {i:=k*GR_NT+thread;if i<seen {if row[i]>m {m=row[i];}}}part[thread]=m;}
+    top:f32=GR_HIDDEN;for j:0..<GR_NT {if part[j]>top {top=part[j];}}
+    for thread:0..<GR_NT {sum:f32=0;for k:0..<(seen+GR_NT-1)/GR_NT {i:=k*GR_NT+thread;if i<seen {sum+=exp(row[i]-top);}}sums[thread]=sum;}
+    total:f32=0;for j:0..<GR_NT {total+=sums[j];}
+    for thread:0..<GR_NT {for k:0..<(span+GR_NT-1)/GR_NT {i:=k*GR_NT+thread;if i<span {if i<seen {row[i]=exp(row[i]-top)/total;}else {row[i]=0;}}}}
+}
+// out = p v: group `item` is head item/(qt 4) and the tile of 64 tokens by
+// 32 dimensions item%(qt 4); the keys, up to the last its tokens see, are
+// the inner dimension, 32 a step.
+gr_att_values :: (item:int,heads:int,kv_heads:int,position:int,tokens:int,span:int,capacity:int,layer_pages:int,pages:[]int,scores:[]f32,cache:[]u16,out:[]f32) #export_c {
+    a:[2048]f32;b:[1024]f32;acc:[2048]f32;
+    per:=(tokens+63)/64*4;head:=item/per;tile:=item%per;t0:=tile/4*64;c0:=tile%4*32;kh:=head/(heads/kv_heads);
+    last:=ifx t0+63<tokens then t0+63 else tokens-1;keys:=position+last+1;
+    for st:0..<(keys+31)/32 {
+        for thread:0..<GR_MT {
+            j:=st*32+thread%32;
+            for i:0..<16 {t:=t0+thread/32+4*i;v:f32=0;if t<tokens && j<span {v=scores[(t*heads+head)*capacity+j];}a[thread+GR_MT*i]=v;}
+            for i:0..<8 {v:f32=0;if j<span {v=gr_half(cast(u32)cache[gr_cache_at(pages,layer_pages,kv_heads,j,kh,1)+c0+thread/32+4*i]);}b[thread+GR_MT*i]=v;}
+        }
+        am_sg_mma_64x32x32(acc[..],a[..],b[..]);
+    }
+    am_sg_spill_64x32(acc[..],a[..]);
+    for thread:0..<GR_MT {
+        for i:0..<16 {e:=thread+GR_MT*i;t:=t0+e/32;if t<tokens {out[(t*heads+head)*GR_HEAD+c0+e%32]=a[e];}}
+    }
+}
+
 gr_swiglu :: (item:int,gate:[]f32,up:[]f32,out:[]f32) #export_c {out[item]=gr_silu(gate[item])*up[item];}
 // ---- Greedy choice: the first largest logit; a non-finite logit refuses.
 gr_argmax_part :: (item:int,logits:[]f32,best:[]f32,index:[]int) #export_c {

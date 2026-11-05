@@ -49,9 +49,13 @@ F=(-std=c11 -O2 -g -ffp-contract=off -fno-fast-math -Wall -Wextra -Werror -Wno-u
 "$cc" "${F[@]}" -fblocks psionic/platform/granite-file.c psionic/platform/granite-metal.c psionic/tests/granite_run.c "$out/host.o" "$out/metal-host.o" -framework Metal -framework Foundation -lm -o "$out/granite-run"
 python3 -I psionic/tests/granite_fixture.py --gguf "$out/tiny.gguf"
 "$out/granite-run" "$out/tiny.gguf" "$out/k.metal" compare --raw --prompt "hello world hello" --steps 8 --capacity 512 | tail -1
+# Past 8 tokens the prompt takes the prefill products and attention; compare
+# also holds it within 1e-3 of the decoder fed a token at a time.
+"$out/granite-run" "$out/tiny.gguf" "$out/k.metal" compare --raw --prompt "hello world hello hello world hello world hello world hello" --steps 8 --capacity 512 | tail -2
+GRANITE_CHUNK=13 "$out/granite-run" "$out/tiny.gguf" "$out/k.metal" compare --raw --prompt "hello world hello hello world hello world hello world hello" --steps 8 --capacity 512 | tail -1 | sed "s|^|chunks of 13: |"
 for f in "${ggufs[@]}";do
  q=$(basename "$f" .gguf)
- "$out/granite-run" "$f" "$out/k.metal" compare --prompt "Move the oak tree" --steps 2 --capacity 512 | tail -1 | sed "s|^|$q: |"
+ "$out/granite-run" "$f" "$out/k.metal" compare --prompt "Move the oak tree" --steps 2 --capacity 512 | tail -2 | sed "s|^|$q: |"
  "$out/granite-run" "$f" "$out/k.metal" generate --prompt "What is the capital of France? Answer in one sentence." --steps 24 --capacity 1024 > "$out/answer.txt"
  grep -q "Paris" "$out/answer.txt" || { echo "$q: the answer does not name Paris" >&2; cat "$out/answer.txt" >&2; exit 1; }
  tail -2 "$out/answer.txt" | sed "s|^|$q: |"

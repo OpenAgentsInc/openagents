@@ -3,8 +3,13 @@
        renders TEXT as one user turn with thinking off (unless --raw), then
        decodes greedily; prints the ids, the text and the speed.
      granite_run MODEL.gguf KERNELS.metal compare [--prompt TEXT | --ids ..] [--steps N]
-       runs Metal and the CPU on the same tokens and compares every layer's
-       residual stream and every step's logits and choice.
+       runs Metal and the CPU on the same tokens (at most 64, in one call, so
+       prompts past 8 tokens take the prefill products) and compares every
+       layer's residual stream and every step's logits and choice; then the
+       same prompt fed to Metal a token at a time against the one call.
+     granite_run MODEL.gguf KERNELS.metal bench-prefill [--prompt TEXT | --ids ..] [--steps N]
+       evaluates the prompt N times (default 3) from an empty cache after
+       one warm-up, and prints each time and the best speed.
      granite_run MODEL.gguf KERNELS.metal dump [--prompt TEXT | --ids ..] --out FILE
        writes the prompt's ids, each layer's residual stream and the last
        token's logits (Metal) for the llama.cpp comparison. */
@@ -62,10 +67,13 @@ static void print_text(const GrFile *f, const int64_t *ids, int64_t n) {
     printf("%.*s\n", (int)d.written, out);
 }
 
-typedef struct { float *layers; int64_t width, tokens, count; } Capture;
+/* Each layer's residual stream for up to `room` tokens: layer l, token t at
+   layers[(l * room + t) * width]; `at` counts the tokens captured so far. */
+typedef struct { float *layers; int64_t width, tokens, count, room, at; } Capture;
 static void capture(void *context, int layer, const float *x, int64_t tokens, int64_t width) {
-    Capture *c = context; if (layer >= c->count) return;
-    c->width = width; c->tokens = tokens; memcpy(c->layers + (size_t)layer * 8 * width, x, (size_t)(tokens * width) * 4);
+    Capture *c = context; if (layer >= c->count || c->at + tokens > c->room) return;
+    c->width = width; c->tokens = tokens; memcpy(c->layers + (size_t)(layer * c->room + c->at) * width, x, (size_t)(tokens * width) * 4);
+    if (layer == c->count - 1) c->at += tokens;
 }
 /* max |a - b| / (1 + max |b|) */
 static double distance(const float *a, const float *b, int64_t n) {
@@ -160,6 +168,15 @@ int main(int argc, char **argv) {
             }
         }
         double g = gr_session_bench_product(s, 2, 1, 10) / 10; printf("output %.1f us %.1f GB/s\n", g * 1e6, f->table[2].bytes / g / 1e9);
+    } else if (!strcmp(mode, "bench-prefill")) {
+        int64_t next; double t, best = 1e9; if (steps < 1 || steps > 100) steps = 3;
+        for (int64_t r = 0; r <= steps; r++) {
+            gr_session_reset(s);
+            if (gr_session_eval(s, ids, n, &next, NULL, NULL, &t)) { fprintf(stderr, "%s\n", gr_session_error(s)); return 1; }
+            if (r == 0) continue;
+            printf("prefill %lld tokens: %.3f s (%.1f tok/s)\n", (long long)n, t, n / t); if (t < best) best = t;
+        }
+        printf("best: %.1f tok/s\n", n / best);
     } else if (!strcmp(mode, "generate")) {
         int64_t next; double prefill = 0, decode = 0, t;
         if (gr_session_eval(s, ids, n, &next, NULL, NULL, &prefill)) { fprintf(stderr, "%s\n", gr_session_error(s)); return 1; }
@@ -179,21 +196,28 @@ int main(int argc, char **argv) {
         if (next == -2) { printf("a logit was not finite\n"); code = 1; }
     } else if (!strcmp(mode, "compare")) {
         GrSession *c; if (gr_session_open(model, capacity, GR_CPU, source, source_bytes, &c, error, sizeof error)) { fprintf(stderr, "%s\n", error); return 1; }
-        if (n > 8) n = 8; /* one launch of tokens, so every layer is captured */
-        Capture a = {calloc((size_t)layers * 8 * width, 4), 0, 0, layers}, b = {calloc((size_t)layers * 8 * width, 4), 0, 0, layers};
-        int64_t na, nb; double worst_layer = 0, worst_logit = 0;
+        if (n > 64) n = 64; /* one call, so every layer is captured */
+        Capture a = {calloc((size_t)(layers * n * width), 4), 0, 0, layers, n, 0}, b = a, q = a; b.layers = calloc((size_t)(layers * n * width), 4); q.layers = calloc((size_t)(layers * n * width), 4);
+        int64_t na, nb, nq; double worst_layer = 0, worst_logit = 0, seq_layer = 0, seq_logit = 0;
         if (gr_session_eval(s, ids, n, &na, capture, &a, NULL) || gr_session_eval(c, ids, n, &nb, capture, &b, NULL)) { fprintf(stderr, "%s %s\n", gr_session_error(s), gr_session_error(c)); return 1; }
-        for (int64_t l = 0; l < layers; l++) { double d = distance(a.layers + l * 8 * width, b.layers + l * 8 * width, n * width); if (d > worst_layer) worst_layer = d; }
+        for (int64_t l = 0; l < layers; l++) { double d = distance(a.layers + l * n * width, b.layers + l * n * width, n * width); if (d > worst_layer) worst_layer = d; }
         int same = na == nb; double d = distance(gr_session_logits(s), gr_session_logits(c), vocab); worst_logit = d;
+        /* The decoder a token at a time on Metal, against the one call. */
+        GrSession *one; if (gr_session_open(model, capacity, GR_METAL, source, source_bytes, &one, error, sizeof error)) { fprintf(stderr, "%s\n", error); return 1; }
+        for (int64_t t = 0; t < n; t++) { if (gr_session_eval(one, ids + t, 1, &nq, capture, &q, NULL)) { fprintf(stderr, "%s\n", gr_session_error(one)); return 1; } }
+        for (int64_t l = 0; l < layers; l++) { double e = distance(a.layers + l * n * width, q.layers + l * n * width, n * width); if (e > seq_layer) seq_layer = e; }
+        seq_logit = distance(gr_session_logits(s), gr_session_logits(one), vocab); int seq_same = nq == na; gr_session_close(one);
         int64_t step = 0;
         for (; step < steps && same && na >= 0; step++) {
             int64_t x = na;
             if (gr_session_eval(s, &x, 1, &na, NULL, NULL, NULL) || gr_session_eval(c, &x, 1, &nb, NULL, NULL, NULL)) { fprintf(stderr, "%s\n", gr_session_error(s)); return 1; }
             d = distance(gr_session_logits(s), gr_session_logits(c), vocab); if (d > worst_logit) worst_logit = d; same = na == nb;
         }
+        printf("one call against a token at a time (metal): largest residual distance %.3g; logit distance %.3g; next token %s\n",
+               seq_layer, seq_logit, seq_same ? "the same" : "DIFFERS");
         printf("metal against cpu: %lld prompt tokens, %lld layers: largest residual distance %.3g; %lld greedy steps %s; largest logit distance %.3g\n",
                (long long)n, (long long)layers, worst_layer, (long long)step, same ? "choose the same tokens" : "DIFFER", worst_logit);
-        code = !same || worst_layer > 1e-3 || worst_logit > 1e-3;
+        code = !same || !seq_same || worst_layer > 1e-3 || worst_logit > 1e-3 || seq_layer > 1e-3 || seq_logit > 1e-3;
         gr_session_close(c);
     } else if (!strcmp(mode, "dump")) {
         /* The format of granite_llama.c: header {n, layers, width, vocab,
@@ -202,12 +226,8 @@ int main(int argc, char **argv) {
         if (!out_path) { fprintf(stderr, "dump needs --out\n"); return 2; }
         FILE *o = fopen(out_path, "wb"); int64_t next;
         int64_t header[5] = {n, layers, width, vocab, steps}; fwrite(header, 8, 5, o); fwrite(ids, 8, (size_t)n, o);
-        float *all = calloc((size_t)(layers * n * width), 4); Capture a = {calloc((size_t)layers * 8 * width, 4), 0, 0, layers};
-        for (int64_t at = 0; at < n; at += 8) {
-            int64_t m = n - at < 8 ? n - at : 8;
-            if (gr_session_eval(s, ids + at, m, &next, capture, &a, NULL)) { fprintf(stderr, "%s\n", gr_session_error(s)); return 1; }
-            for (int64_t l = 0; l < layers; l++) memcpy(all + (size_t)(l * n + at) * width, a.layers + l * 8 * width, (size_t)(m * width) * 4);
-        }
+        float *all = calloc((size_t)(layers * n * width), 4); Capture a = {all, 0, 0, layers, n, 0};
+        if (gr_session_eval(s, ids, n, &next, capture, &a, NULL)) { fprintf(stderr, "%s\n", gr_session_error(s)); return 1; }
         fwrite(all, 4, (size_t)(layers * n * width), o); fwrite(gr_session_logits(s), 4, (size_t)vocab, o);
         for (int64_t step = 0; step < steps; step++) {
             fwrite(&next, 8, 1, o); int64_t x = next;

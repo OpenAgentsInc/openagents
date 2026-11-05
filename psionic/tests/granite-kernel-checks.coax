@@ -164,6 +164,73 @@ gr_fill :: (kind:int,rows:int,cols:int,b:[]u8) {
     }}
     g:=[3]f32.[-2,0,3];u:=[3]f32.[1,2,0.5];o:[3]f32;for item:0..<3 {gr_swiglu(item,g[..],u[..],o[..]);}#assert o[1]==0 && abs(f64(o[0])+0.238405844)<0.000001;
 }
+// Prefill: the weights widened to BF16 pairs keep each decoded value to
+// 2^-16 (the low half is the BF16 rounding of the value itself), and the
+// paired tensor-op tiles match binary64 sums: 130 rows (a partial tile of
+// 128), 66 tokens (a partial tile of 64), 256 columns.
+#forall "widened weights keep every decoded value" format:0..<3 {
+    kinds:=[3]int.[12,14,8];kind:=kinds[format];rows:=5;cols:=512;
+    b:[5280]u8;n:=rows*cols/PG_BLOCKS[kind]*PG_WIDTHS[kind];gr_fill(kind,rows,cols,b[0..<n]);
+    values:[2560]f32;
+    if kind==8 {#assert qz_decode(kind,rows,cols,b[0..<n],values[..]).status==QzStatus.ok;}else {#assert kq_decode(kind,rows,cols,b[0..<n],values[..]).status==QzStatus.ok;}
+    w64:[660]u64;w16:[2640]u16;gr_words64(b[0..<n-n%8],w64[0..<n/8]);gr_words16(b[0..<n],w16[0..<n/2]);
+    out:[2560]u32;for i:0..<2560 {out[i]=0xffffffff;}
+    if kind==12 {for item:0..<rows*cols/16 {gr_widen_q4k(item,cols,w64[0..<n/8],out[..]);}}
+    else if kind==14 {for item:0..<rows*cols/8 {gr_widen_q6k(item,cols,w16[0..<n/2],out[..]);}}
+    else {for item:0..<rows*cols/8 {gr_widen_q8(item,cols,w16[0..<n/2],out[..]);}}
+    for i:0..<rows*cols {
+        v:=values[i];hi:=f32_from_bits(out[i]<<16);lo:=f32_from_bits(out[i]&0xffff0000);
+        #assert out[i]&0xffff==gr_bf16(v);
+        #assert abs(f64(hi)+f64(lo)-f64(v))<=abs(f64(v))/65536;
+    }
+    #assert gr_bf16(1)==0x3f80 && gr_bf16(f32_from_bits(0x3f808000))==0x3f80 && gr_bf16(f32_from_bits(0x3f818000))==0x3f82 && gr_bf16(f32_from_bits(0x3f808001))==0x3f81;
+}
+#test "the prefill product matches binary64 sums of decoded weights" #steps 400000000 {
+    rows:=130;cols:=256;tokens:=66;
+    b:[18720]u8;n:=rows*cols/256*144;gr_fill(12,rows,cols,b[0..<n]);
+    values:[33280]f32;#assert kq_decode(12,rows,cols,b[0..<n],values[..]).status==QzStatus.ok;
+    w64:[2340]u64;gr_words64(b[0..<n],w64[..]);w2:[33280]u32;
+    for item:0..<rows*cols/16 {gr_widen_q4k(item,cols,w64[..],w2[..]);}
+    x:[16896]f32;for i:0..<16896 {x[i]=f32(cast(int)(gr_noise(97,i)%2001)-1000)/1000;}
+    x2:[33792]f32;for item:0..<33792 {gr_pair(item,x[..],x2[..]);}
+    #assert x2[0]==x[0] && x2[1]==x[0] && x2[33791]==x[16895];
+    out:[8580]f32;tmp:[8580]f32;for i:0..<8580 {out[i]=1;}
+    for item:0..<2*2 {gr_tile(item,rows,2*cols,tokens,w2[..],x2[..],tmp[..]);}
+    for item:0..<8580 {gr_add(item,out[..],tmp[..]);}
+    for t:0..<tokens {for r:0..<rows {
+        want:=1.0;scale:=0.0;for i:0..<cols {p:=f64(values[r*cols+i])*f64(x[t*cols+i]);want+=p;scale+=abs(p);}
+        #assert abs(f64(out[t*rows+r])-want)<=0.00002*(1+scale);
+    }}
+}
+// Prefill attention: 70 tokens from position 0, two query heads on one key
+// head; the first tile of 64 tokens sees no key of the third key tile, so
+// that tile is skipped.
+#test "prefill attention on simdgroup matrices against binary64" #steps 400000000 {
+    heads:=2;kv:=1;tokens:=70;span:=70;cap:=72;
+    q:[17920]f32;k:[8960]f32;v:[8960]f32;
+    for i:0..<17920 {q[i]=f32(cast(int)(gr_noise(21,i)%2001)-1000)/100;}
+    for i:0..<8960 {k[i]=f32(cast(int)(gr_noise(22,i)%2001)-1000)/1000;v[i]=f32(cast(int)(gr_noise(23,i)%2001)-1000)/1000;}
+    pages:=[1]int.[0];cache:[65536]u16;
+    for item:0..<tokens*128 {gr_store(item,kv,0,0,pages[..],k[..],v[..],cache[..]);}
+    scores:[10080]f32;for i:0..<10080 {scores[i]=12345;}
+    sb:=cast(int)f32_bits(0.0078125);
+    for item:0..<heads*2*3 {gr_att_scores(item,heads,kv,0,tokens,span,cap,sb,0,pages[..],q[..],cache[..],scores[..]);}
+    // Token 0's row past its one key, in the skipped tile, is untouched.
+    #assert scores[cap+40]==12345 && scores[cap+70]==12345;
+    for item:0..<tokens*heads {gr_att_softmax(item,heads,0,span,cap,scores[..]);}
+    #assert scores[cap+40]==0 && scores[cap+69]==0;
+    att:[17920]f32;
+    for item:0..<heads*2*4 {gr_att_values(item,heads,kv,0,tokens,span,cap,0,pages[..],scores[..],cache[..],att[..]);}
+    for t:0..<tokens {for h:0..<heads {
+        logits:[70]f64;top:=-1000000.0;
+        for key:0..<t+1 {dot:=0.0;for d:0..<128 {dot+=f64(q[(t*heads+h)*128+d])*f64(gr_half(gr_f16(k[key*128+d])));}logits[key]=dot/128;if logits[key]>top {top=logits[key];}}
+        den:=0.0;for key:0..<t+1 {den+=exp(logits[key]-top);}
+        for d:0..<128 {
+            want:=0.0;for key:0..<t+1 {want+=exp(logits[key]-top)/den*f64(gr_half(gr_f16(v[key*128+d])));}
+            #assert abs(f64(att[(t*heads+h)*128+d])-want)<=0.00001;
+        }
+    }}
+}
 #test "greedy choice takes the first largest logit" {
     logits:[600]f32;for i:0..<600 {logits[i]=f32(i%300);}logits[450]=1000;logits[451]=1000;
     best:[3]f32;index:[3]int;control:[1]int;
