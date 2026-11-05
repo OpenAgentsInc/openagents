@@ -152,7 +152,6 @@ decide_admit :: (t: [] DecideTable, e: ReplayEvent, now: int, m: Memory, s: Sens
   t[0].tickets[slot].live = false;
   if out.status != DECIDE_OK { return out; }
   out.intent = DecideIntent.{kind = w[DECIDE_W_KIND], actor = tk.actor, target = w[DECIDE_W_TARGET], x = f32(w[DECIDE_W_X]) / 100.0, z = f32(w[DECIDE_W_Z]) / 100.0};
-  if out.intent.kind != DECIDE_CHASE && out.intent.kind != DECIDE_FLEE && out.intent.kind != DECIDE_SAY { out.intent.target = -1; }
   return out;
 }
 // book:end decide-admit
@@ -209,7 +208,7 @@ decide_digest :: (h: int, t: [] DecideTable) -> int {
 // ---- checks
 #load "../tests/decide-oracle.coax";
 
-dc_session :: (b: [] ReplayBacking) -> ReplaySession { s := replay_backing(b); replay_record(s, 1, 1); return s; }
+dc_session :: (b: [] ReplayBacking) -> ReplaySession { return replay_backing(b); }   // a new record: all zeros
 dc_seen :: (source: int, x: f32, tick: int) -> Memory {
   s: Senses;
   return memory_note(Memory.{}, s, Stimulus.{kind = StimulusKind.sight, source = source, at = world_point(x, 0, 2), tick = tick}).memory;
@@ -344,4 +343,54 @@ dc_seen :: (source: int, x: f32, tick: int) -> Memory {
     again: [1] DoRun; do_replay(live[..], again[..]);
     #assert again[0].matched && again[0].sent == 0 && again[0].digest == live[0].digest && again[0].intents == live[0].intents;
   }
+}
+
+#test "decide: the edges of every check, one at a time" {
+  t: [1] DecideTable;
+  t[0].counts[DECIDE_OK] = 5; t[0].owner[0] = 3;
+  decide_table(t[..]);
+  #assert t[0].counts[DECIDE_OK] == 0 && t[0].owner[0] == 0;
+  for a: 0..<DECIDE_ACTORS { #assert t[0].catalogue[a] == (1 << DECIDE_HOLD) | (1 << DECIDE_GO) | (1 << DECIDE_CHASE) | (1 << DECIDE_FLEE) | (1 << DECIDE_SAY); }
+  #assert decide_context(Memory.{}) == replay_mix(2166136261, 0) & 4294967295;
+  m := dc_seen(3, 1.5, 7);
+  #assert m.count == 1 && m.items[0].source == 3 && m.items[0].tick == 7 && m.items[0].at.x == 1.5 && m.items[0].at.z == 2;
+  // asking: a wait of 1 and a tick of 0 are fine; 0 and -1 are not
+  b: [1] ReplayBacking; s := dc_session(b[..]);
+  #assert decide_ask(t[..], s, 0, 0, 0, 0).status == DECIDE_BAD && decide_ask(t[..], s, 0, -1, 5, 0).status == DECIDE_BAD;
+  #assert decide_ask(t[..], s, 0, 0, 1, 0).status == DECIDE_OK;
+  // the catalogue and the arguments' bounds
+  #assert !decide_allowed(255, DECIDE_NONE, -1, 0, 0) && !decide_allowed(255, DECIDE_KINDS, -1, 0, 0) && decide_allowed(255, DECIDE_KINDS - 1, 0, 0, 0);
+  #assert decide_allowed(DECIDE_ALL, DECIDE_GO, -1, DECIDE_REACH, -DECIDE_REACH) && decide_allowed(DECIDE_ALL, DECIDE_GO, -1, -DECIDE_REACH, DECIDE_REACH);
+  #assert !decide_allowed(DECIDE_ALL, DECIDE_GO, -1, DECIDE_REACH + 1, 0) && !decide_allowed(DECIDE_ALL, DECIDE_GO, -1, 0, -DECIDE_REACH - 1) && !decide_allowed(DECIDE_ALL, DECIDE_GO, -1, 0, DECIDE_REACH + 1);
+  #assert decide_allowed(DECIDE_ALL, DECIDE_SAY, 0, 0, 0) && !decide_allowed(DECIDE_ALL, DECIDE_SAY, -1, 0, 0);
+  // an answer nobody asked for is counted once
+  u := decide_admit(t[..], ReplayEvent.{source = REPLAY_MODEL, request = 999}, 0, Memory.{}, Senses.{});
+  #assert u.status == DECIDE_UNASKED && t[0].counts[DECIDE_UNASKED] == 1;
+  // a hold that moves is forbidden: z is read from its own word
+  t2: [1] DecideTable; decide_table(t2[..]);
+  b2: [1] ReplayBacking; s2 := dc_session(b2[..]);
+  k := decide_ask(t2[..], s2, 1, 0, 10, 0);
+  #assert decide_admit(t2[..], decide_answer(k, 1, 0, 0, DECIDE_HOLD, -1, 0, 5), 1, Memory.{}, Senses.{}).status == DECIDE_FORBIDDEN;
+  k = decide_ask(t2[..], s2, 1, 2, 10, 0);
+  g := decide_admit(t2[..], decide_answer(k, 1, 0, 0, DECIDE_GO, -1, 150, -250), 3, Memory.{}, Senses.{});
+  #assert g.status == DECIDE_OK && g.intent.target == -1 && g.intent.x == 1.5 && g.intent.z == -2.5;
+  // the fallback goes to the newest remembered, the first of equals
+  two: Memory; two.count = 3;
+  two.items[0] = Stimulus.{kind = StimulusKind.sight, source = 1, at = world_point(1, 0, 0), tick = 5};
+  two.items[1] = Stimulus.{kind = StimulusKind.sight, source = 2, at = world_point(2, 0, 0), tick = 3};
+  two.items[2] = Stimulus.{kind = StimulusKind.sound, source = 3, at = world_point(3, 0, 0), tick = 5};
+  f := decide_fallback(4, two);
+  #assert f.kind == DECIDE_GO && f.x == 1 && f.actor == 4;
+  // the digest sees each ticket's flag and fields, and every actor's owner
+  t3: [1] DecideTable; decide_table(t3[..]);
+  d0 := decide_digest(1, t3[..]);
+  pin := 1;
+  for q: 0..<DECIDE_FLEET { pin = replay_mix(pin, 0); }
+  for q: 0..<DECIDE_ACTORS { pin = replay_mix(pin, 0); }
+  #assert d0 == pin;
+  t3[0].tickets[0].request = 9; #assert decide_digest(1, t3[..]) == d0;   // a closed ticket's leftovers don't count
+  t3[0].tickets[0].live = true; d1 := decide_digest(1, t3[..]); #assert d1 != d0;
+  t3[0].tickets[0].request = 8; d2 := decide_digest(1, t3[..]); #assert d2 != d1;
+  t3[0].tickets[0].due = 8; d3 := decide_digest(1, t3[..]); #assert d3 != d2;
+  t3[0].owner[0] = 1; d4 := decide_digest(1, t3[..]); #assert d4 != d3 && decide_digest(2, t3[..]) != d4;
 }
