@@ -23,6 +23,15 @@
 //   LIFECYCLE_RESEND ticks.
 // - GPU device loss stops drawing, keeps the session, and reloads GPU resources on the new device;
 //   a trap restarts the module from the last accepted state. Neither replays a command.
+// The room's side, the same version (coax/web/room/room-everglade.coax, room-host.c, room-worker.js):
+// - It takes a command only when it is newer than the last it accepted and the last it queued
+//   (life_room_takes), so a command sent again after a socket change applies once, and a revoked one
+//   the client never sends can't be wanted.
+// - A closed socket's seat is held LIFECYCLE_HOLD_MS (life_room_holds): longer than the client's
+//   resend window, so a new socket's resends find their seat, and shorter than a long suspension, so
+//   a client back after LIFECYCLE_RESYNC asks for the full state of a seat it rejoins.
+// - Each host's room tick has a budget (LIFECYCLE_TICK_US: the native room server and the browser's
+//   worker); a tick over its beat is a stall, and the room's beat starts again rather than catch up.
 //   coax/bin/coax test aethyr/session/lifecycle.coax --library
 //   coax/bin/coax mutate aethyr/session/lifecycle.coax --library --root-only
 
@@ -34,6 +43,15 @@ LIFECYCLE_VERSION :: 1;
 LIFECYCLE_RESYNC :: 900;     // ticks away (30 s at 30 Hz) after which pending commands are revoked
 LIFECYCLE_RESEND :: 90;      // ticks a pending command may be sent again after a socket change
 LIFECYCLE_PENDING :: 16;     // commands a client keeps unacknowledged
+LIFECYCLE_HZ :: 30;          // the ticks above: a room's world steps
+LIFECYCLE_HOLD_MS :: 15000;  // a closed socket's seat waits this long for its player
+// Each host's room tick, at the 95th percentile, in µs: within a third of the beat (33,333 µs), so a
+// crowd's spikes stay inside it. Measured 2026-11-05 on an M5 Max at a load average near 40: the
+// native room server 840 µs with one full room (16 players, coax/web/room/load.coax everglade) and
+// 2,360 µs with four (64 players), and 710 µs as the native local room; the browser's worker (headless
+// Chrome, the offline one-seat room) 585 µs. Both from everglade-drift and the room's vitals.
+LIFECYCLE_HOST_NATIVE :: 0; LIFECYCLE_HOST_WORKER :: 1;
+LIFECYCLE_TICK_US :: [2] int.[8000, 11000];
 
 LC_RESIZE :: 1; LC_FOCUS :: 2; LC_BLUR :: 3; LC_HIDDEN :: 4; LC_SHOWN :: 5; LC_NET :: 6;
 LC_SOCKET_CLOSED :: 7; LC_DEVICE_LOST :: 8; LC_DEVICE_NEW :: 9; LC_TRAP :: 10; LC_ACK :: 11;
@@ -112,7 +130,30 @@ life_ack :: (s: [] LifeState, seq: int) {
 }
 // book:end lifecycle-event
 
+// book:begin lifecycle-room
+// The room takes command seq when it is newer than the last it accepted and the last it queued
+// (queued 0: none queued).
+life_room_takes :: (seq: int, accepted: int, queued: int) -> bool { return seq > accepted && seq > queued; }
+// A seat held since held_ms still waits for its player at now_ms.
+life_room_holds :: (held_ms: int, now_ms: int) -> bool { return now_ms - held_ms < LIFECYCLE_HOLD_MS; }
+// Whether a host's measured 95th-percentile tick (µs) is within its budget.
+life_tick_ok :: (host: int, p95_us: int) -> bool {
+  if host < 0 || host >= LIFECYCLE_TICK_US.count || p95_us < 0 { return false; }
+  return p95_us <= LIFECYCLE_TICK_US[host];
+}
+// book:end lifecycle-room
+
 // ---- checks
+
+#test "lifecycle: the room takes a command once, holds a seat past the resend window and inside a long suspension" {
+  #assert life_room_takes(5, 4, 0) && life_room_takes(5, 4, 4) && !life_room_takes(4, 4, 0) && !life_room_takes(5, 4, 5) && !life_room_takes(5, 6, 0);
+  #assert life_room_holds(1000, 1000 + LIFECYCLE_HOLD_MS - 1) && !life_room_holds(1000, 1000 + LIFECYCLE_HOLD_MS);
+  #assert LIFECYCLE_HOLD_MS > LIFECYCLE_RESEND * 1000 / LIFECYCLE_HZ && LIFECYCLE_HOLD_MS < LIFECYCLE_RESYNC * 1000 / LIFECYCLE_HZ;
+  #assert life_tick_ok(LIFECYCLE_HOST_NATIVE, 8000) && !life_tick_ok(LIFECYCLE_HOST_NATIVE, 8001);
+  #assert life_tick_ok(LIFECYCLE_HOST_WORKER, 11000) && !life_tick_ok(LIFECYCLE_HOST_WORKER, 11001) && life_tick_ok(LIFECYCLE_HOST_WORKER, 0);
+  #assert !life_tick_ok(2, 0) && !life_tick_ok(-1, 0) && !life_tick_ok(LIFECYCLE_HOST_NATIVE, -1);
+  #assert LIFECYCLE_TICK_US[LIFECYCLE_HOST_WORKER] * 3 <= 1000000 / LIFECYCLE_HZ;
+}
 
 #test "lifecycle: blur releases held inputs and stops the clock once; focus starts it" {
   s: [1] LifeState;

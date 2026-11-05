@@ -342,7 +342,7 @@ eg_join :: (v: [] RmServer, r: int, conn: int, seat: int) {
 }
 // How long a closed socket's character waits for its player (#12792): standing, AWAY once
 // WIRE_AWAY_MS passes, still in the rules and the world. Their rejoin within it takes the same seat.
-EG_GRACE_MS :: 15000;
+EG_GRACE_MS :: LIFECYCLE_HOLD_MS;   // the session lifecycle's hold (aethyr/session/lifecycle.coax)
 // Seat s of room k's player rejoined on socket conn within the grace, or their silent socket gave way
 // to this one (room-relay.coax rl_take_back): the character, its conditions, effects, cooldowns, XP
 // and place are kept; what the server knows of the page is not. Its next D is a snapshot, its inputs
@@ -393,7 +393,7 @@ eg_grace_ends :: (v: [] RmServer, k: int) {
   r := v[0].eg[k].relay;
   out := false;
   for s: 0..<EG_SEATS {
-    if !v[0].eg[k].seat[s].held || !v[0].eg[k].live || !eg_held(v, k, s) || v[0].mono_ms - v[0].eg[k].seat[s].held_at < EG_GRACE_MS { continue; }
+    if !v[0].eg[k].seat[s].held || !v[0].eg[k].live || !eg_held(v, k, s) || life_room_holds(v[0].eg[k].seat[s].held_at, v[0].mono_ms) { continue; }
     h: [16] u8;
     rl_queue(v, r, -1, -1, rl_head(h[..], 'l', s, false), "");
     eg_left(v, r, s);
@@ -620,7 +620,7 @@ eg_heard_input :: (v: [] RmServer, k: int, seat: int, text: string) {
   st := v[0].eg[k].seat[seat..<seat + 1];
   seq := w.seq;
   n := st[0].q_n;
-  if seq <= st[0].ack || (n > 0 && seq <= st[0].q[n - 1].seq) { return; }   // old or repeated
+  if !life_room_takes(seq, st[0].ack, ifx n > 0 then st[0].q[n - 1].seq else st[0].ack) { return; }   // old or repeated (aethyr/session/lifecycle.coax)
   if n >= EG_INPUTS {
     for i: 1..<EG_INPUTS { st[0].q[i - 1] = st[0].q[i]; }
     n = EG_INPUTS - 1;

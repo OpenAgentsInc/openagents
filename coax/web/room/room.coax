@@ -19,6 +19,7 @@
 #load "../../../apps/openagents-web/everglade5e-room-rules.coax";
 #load "../../../apps/openagents-web/everglade-wire.coax";
 #load "../../../aethyr/session/compat.coax";   // sessions pinned to a build (#12839)
+#load "../../../aethyr/session/lifecycle.coax";   // the room's side of the session lifecycle: what it takes, how long it holds a seat (#12856)
 #load "../../../aethyr/session/travel.coax";   // one owner per character (its fence, control.coax) and travel's admission (#12834, #12850, #12845)
 #load "../../../aethyr/net/profile.coax";   // each realm's timing, trust, durability and fairness (#12845)
 #load "../../../aethyr/session/party.coax";   // a party's rules: who shows to whom (#12852, #12845)

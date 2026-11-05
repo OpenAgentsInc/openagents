@@ -46,6 +46,7 @@
 // beat, and room.log oa-room's ("a stall of"): a town a stall set back is not the two simulations parting.
 #import "Basic";
 #load "../lib/net/cdp.coax";
+#load "../../aethyr/session/lifecycle.coax";   // each host's room tick budget (#12856)
 
 DR_JS_COLS :: 32;         // everglade-drift.js D.cols
 DR_COLS :: 35;            // those, then C_LX, C_LZ and C_ST (dr_local)
@@ -687,7 +688,14 @@ dr_session :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] Dr
         at: [1] int;
         dr_script(DrPair.{a = ca[..], b = cb[..], shots = btext(sh[..]), ctl = run.ctl, room = code, worker = run.worker, native=run.native, at = at[..]}, run.dir);
         ok = dr_pull(ca[..], a) && dr_pull(cb[..], b);
-        if run.worker { print("  (offline room host: % stalls, % ms of its beat dropped)\n", dr_int(ca[..], "coaxial.roomHost ? coaxial.roomHost.stalls | 0 : -1", -1), dr_int(ca[..], "coaxial.roomHost ? coaxial.roomHost.lost | 0 : -1", -1)); }
+        if run.worker {
+          print("  (offline room host: % stalls, % ms of its beat dropped)\n", dr_int(ca[..], "coaxial.roomHost ? coaxial.roomHost.stalls | 0 : -1", -1), dr_int(ca[..], "coaxial.roomHost ? coaxial.roomHost.lost | 0 : -1", -1));
+          // its tick against the host's budget (aethyr/session/lifecycle.coax LIFECYCLE_TICK_US)
+          host := ifx run.native then LIFECYCLE_HOST_NATIVE else LIFECYCLE_HOST_WORKER;
+          p95 := dr_int(ca[..], "coaxial.roomHost && coaxial.roomHost.tickP95Us >= 0 ? Math.round(coaxial.roomHost.tickP95Us) : -1", -1);
+          p99 := dr_int(ca[..], "coaxial.roomHost && coaxial.roomHost.tickP99Us >= 0 ? Math.round(coaxial.roomHost.tickP99Us) : -1", -1);
+          print("  (% room tick: p95 % us, p99 % us, budget % us at p95: %)\n", ifx run.native then "native" else "worker", p95, p99, LIFECYCLE_TICK_US[host], ifx life_tick_ok(host, p95) then "within" else "over");
+        }
         // the town's people's conditions as each page drew them (wall ms, WANTED, the rows held, then PERSON:BITS), a note
         // for a drift of "conditions on the town's people": conds-PROFILE-offline.txt, -room.txt
         for side: 0..<2 {

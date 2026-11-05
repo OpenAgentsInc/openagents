@@ -851,6 +851,18 @@ separate profiles and never qualify as authoritative play. The host steps a
 realm only on the beats `net_due` names (`room-host.c`, `room.coax`
 `rm_realm_due`). Checks: `aethyr/net/profile.coax`, `room.coax` "profiles:".
 
+## The room keeps the client's session lifecycle
+
+The room server takes an intent only when it is newer than the last it
+accepted and the last it queued (`aethyr/session/lifecycle.coax`
+`life_room_takes`), so a resend after a socket change applies once. A closed
+socket's seat is held `LIFECYCLE_HOLD_MS` (`life_room_holds`, Everglade's
+`EG_GRACE_MS`): longer than the client's resend window and shorter than a
+long suspension. Each host's room tick has a 95th-percentile budget
+(`LIFECYCLE_TICK_US`, native and browser worker) that the drift check reports
+(`everglade-drift`). Checks: `aethyr/session/lifecycle.coax`, `room.coax`
+"relay:".
+
 ## A character travels between rooms as one body
 
 A player's travel to another room (`T`, `coax/web/room/room-travel.coax`,
