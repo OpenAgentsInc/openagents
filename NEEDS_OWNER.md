@@ -1,21 +1,12 @@
 # Owner actions
 
-## Verse OS WoW recording capacity (2026-11-04, #12863)
+## WoW automation terminated (2026-11-04)
 
-- [x] Make at least 5 GiB available for further recorded WoW trials, or select
-      an archive volume. This machine fell below the controller's 768 MiB
-      recording reserve. Retained evidence is under
-      `~/.openagents/verse-os/combat/2026-11-04-loot/`; earlier records remain
-      separate. No unique recording or another task's data was deleted.
-      Foob is alive in the neutral wolf field at (17915,49504), level 5,
-      1399/2800 XP, with full health and mana. The
-      next agent work is supervised V6 facing-recovery qualification and
-      continued leveling; no additional control permission is required.
-      Resolved later on 2026-11-04: removed 61 stale worktrees (41.91 GiB)
-      and 193 local branch names, preserving unmerged commits under archive
-      refs. Free space reached 43 GiB. Dirty/active worktrees and all WoW
-      evidence remain. The local inventory is
-      `~/.openagents/worktree-cleanup-2026-11-04-removed.jsonl`.
+The owner cancelled this entire subproject and requested deletion from main.
+The owner had accepted custom scripts and later allowed temporary native
+keyboard focus for recovery; both authorizations end with this cancellation.
+No WoW trial, recovery, leveling or input handover remains an owner task.
+
 
 ## Aethyrforge Coder HUD / Cursor installation (2026-11-04)
 
@@ -34,22 +25,6 @@
       closed on release. Recognition of the committed recording also passed
       through the bundled WKWebView voice path. Local edit-model integration
       remains separate work in the [desktop spec](docs/verse/2026-11-04-aethyrforge-desktop.md).
-
-## WoW recording run: input handover (#12799, 2026-11-04)
-
-- [x] Owner confirmed no key/button was held, clicked and released ground,
-      then requested resume. Verse still reported held physical input.
-      Operator-only release events cleared the stale virtual state;
-      the normal broker gate continues to apply. The failed attempts and
-      recovery events are retained with the [recorded trial](docs/verification/verse-combat-2026-11-04/README.md).
-
-## Verse OS: optional visible WoW trial (#12724–#12727, 2026-11-03)
-
-- [ ] Try the installed Verse window using [the gaming commands](docs/os/verse-gaming.md).
-      Battle.net, entering Classic Era, bounded movement, camera turns and
-      cancellation passed programmatically in a private headless session.
-      This optional play-through checks the visible desktop experience and
-      sustained performance. The default desktop/session has not changed.
 
 ## The agent runner: redeploy (2026-11-03)
 

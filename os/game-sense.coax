@@ -1,3 +1,0 @@
-#import "Basic";
-#load "game-observation.coax";
-tool_main :: () -> int #export_c { return nav_sense_main(); }

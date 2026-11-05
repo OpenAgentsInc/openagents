@@ -407,41 +407,6 @@ would change Everglade's companion, so it is left as it is (see below).
   example's output in debug and release equals
   `aethyr/fixtures/watch-and-follow.out`.
 
-## An external actor: observed controls
-
-An actor can also live in another engine. The Verse OS WoW adapter cannot
-query WoW through Aethyr's colliders or step its physics. It observes a
-screenshot and a visible read-only public-API sensor strip instead.
-`aethyr/ai/pilot.coax` gives that adapter bounded actions built from
-chapter 4's `Intent`, and records them in chapter 5's `ReplayEvent`
-envelope. A 300 ms forward action has `move_y = 1`; its record carries
-the action name and 300 ms. A 501 ms action is refused. Turn intents carry
-the requested turn direction; the external adapter calibrates its key pulse
-and reobserves the actual heading, rather than promising a physical angle.
-
-`os/game-navigate.coax` is the native consumer. It captures, takes one
-decision, rechecks the sensor, acquires a short desk lease, acts, releases,
-waits for rendering, then captures again. Psionic's `GdContext` ticket binds
-a local Elephant choice to that exact observation and window lifetime. The
-record replays the controller's accepted event sequence; it cannot reproduce
-WoW's server or promise the same resulting world.
-
-These external controls are separate from the in-engine creature example.
-They do not complete this chapter's general behavior graphs, path planning
-or realm-wide model adoption. The [navigation journal](../../docs/os/verse-navigation.md)
-records real routes, refused input and model trials.
-
-`os/game-combat.coax` adds an observed external encounter loop. Its local
-survey reuses the same Aethyr pilot geometry through
-`os/game-navigation-policy.coax`. A screenshot supplies candidate creature
-bars; public target identity, eligibility and resources admit an action,
-and another capture rechecks it before a short input lease. A matched player
-kill event plus actual XP verifies a kill. This controller is deterministic;
-Elephant remains the separately qualified local waypoint decision model.
-Its journal is evidence about an external game, not an Aethyr simulation
-replay. The [combat journal](../../docs/os/verse-combat.md) records the
-qualified starter profile, failures, recovery and graceful encounter drain.
-
 ## Still to do
 
 - **Realms on the module.** Everglade's watch

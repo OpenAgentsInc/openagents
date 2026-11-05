@@ -1,1 +1,0 @@
-ok: all four final/native XP kills match the client's player PARTY_KILL NPC and spawn GUIDs

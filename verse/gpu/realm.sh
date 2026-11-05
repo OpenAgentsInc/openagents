@@ -165,17 +165,6 @@ coax="${COAX:-$root/coax/bin/coax}"
 (cd "$root" && "$coax" c verse/native/net.coax --library) > "$work/ship/net-src/net.c"
 (cd "$root" && "$coax" c os/verse-session.coax --library) > "$work/ship/net-src/verse-session.c"
 (cd "$root" && "$coax" c os/verse-transcript.coax --library) > "$work/ship/net-src/verse-transcript.c"
-(cd "$root" && "$coax" c os/game.coax --library) > "$work/ship/net-src/verse-game.c"
-(cd "$root" && "$coax" c os/game-navigate.coax --library) > "$work/ship/net-src/verse-navigate.c"
-(cd "$root" && "$coax" c os/game-sense.coax --library) > "$work/ship/net-src/verse-sense.c"
-(cd "$root" && "$coax" c os/game-combat.coax --library) > "$work/ship/net-src/verse-combat.c"
-(cd "$root" && "$coax" c os/game-combat-sense.coax --library) > "$work/ship/net-src/verse-combat-sense.c"
-(cd "$root" && "$coax" c os/game-loot-sense.coax --library) > "$work/ship/net-src/verse-loot-sense.c"
-(cd "$root" && "$coax" c os/game-combat-analyze.coax --library) > "$work/ship/net-src/verse-combat-analyze.c"
-(cd "$root" && "$coax" c os/game-video.coax --library) > "$work/ship/net-src/verse-game-video.c"
-mkdir -p "$work/ship/wow"
-cp -a "$root/os/wow/VerseNavigation" "$work/ship/wow/"
-(cd "$root" && "$coax" c os/battlenet.coax --library) > "$work/ship/net-src/verse-battlenet.c"
 (cd "$root" && "$coax" c os/gpu-limits.coax --library) > "$work/ship/net-src/gpu-limits.c"
 # the desk: the Coax compositor (os/compositor.coax), headless, which vk-realm --desk runs
 mkdir -p "$work/ship/desk"
@@ -214,17 +203,6 @@ nix-shell -p gcc pkg-config libdrm libglvnd libgbm vulkan-headers vulkan-loader 
      entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-session
    gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-transcript.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c \
      entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-transcript
-   gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-game.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c \
-     entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-game
-   gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-navigate.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c tls-native.c entropy-native.c entropy-foreign.c entropy.c \$(pkg-config --cflags --libs openssl) -lpthread -lm -o ../verse-navigate
-   gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-sense.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-sense
-   gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-combat.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-combat
-   gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-combat-sense.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-combat-sense
-   gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-loot-sense.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-loot-sense
-   gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-combat-analyze.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-combat-analyze
-   gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-game-video.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-game-video
-   gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-battlenet.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c \
-     entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-battlenet
    gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. gpu-limits.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c \
      entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../gpu-limits
    gcc -std=c11 -O2 -D_DEFAULT_SOURCE -DCOAX_WAYLAND_GPU -w -I. \$(pkg-config --cflags libdrm egl glesv2 gbm) ../desk/compositor.c tool-native.c process-native.c store-file-native.c read-file-native.c \
@@ -309,7 +287,6 @@ if [ $mode = install ]; then
   # the desk's launchers (os/compositor.coax runs LAUNCH/NAME): a terminal to start with, and on Super+Return
   mkdir -p \$dest.new/desk/launch
   for n in start coder pane; do printf \"#!/bin/sh\\nexec foot\\n\" > \$dest.new/desk/launch/\$n; chmod +x \$dest.new/desk/launch/\$n; done
-  ln -s ../../verse-battlenet \$dest.new/desk/launch/battlenet
   # Keep the installed optional CLI when this checkout has not built a replacement.
   if [ -x \$dest/openagents ] && [ ! -x \$dest.new/openagents ]; then cp \$dest/openagents \$dest.new/openagents; fi
   { [ ! -e \$dest ] || mv \$dest \$dest.old; } && mv \$dest.new \$dest && rm -rf \$dest.old
