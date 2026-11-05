@@ -66,3 +66,5 @@ waterlab 190000
 # Virtual ordinary explorer tables, exact selection links and admitted reorg
 # geometry add 38 KiB (340,930 bytes measured before final link persistence).
 bitcoin-lab 365000
+# Shared PCM interpreter, authored-room FFT and canonical WAV resampling.
+host-audio 140000

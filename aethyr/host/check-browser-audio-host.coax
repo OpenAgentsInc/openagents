@@ -1,0 +1,30 @@
+// Actual host.js v1 selection, canonical asset, pause and engine replacement.
+#load "../../coax/web/wasm-chrome.coax";
+hpa_host_wait :: (c:[]Cdp,expression:string)->bool {until:=proc_now_ms()+15000;while proc_now_ms()<until {if wc_eval(c,expression)=="true" {return true;}proc_sleep(50);}tool_errln(expression);tool_errln(cdp_error(c));return false;}
+hpa_host_copy :: (source:string,target:string)->bool {bytes:[8388608]u8;n:=fs_read(source,bytes[..]);return n>=0&&fs_write(target,cast(string)bytes[0..<n]);}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=4 {tool_errln("usage: check-browser-audio-host SITE_ROOT LOCAL_URL FIXTURE_DIR OUT.json");return 2;}
+  site:=args_at(a[..],0);url:=args_at(a[..],1);fixture:=args_at(a[..],2);paths:[3][4096]u8;if url.count<17||url[0..<17]!="http://127.0.0.1:" {return 2;}
+  for file:[2]string.["fixture.wasm","fixture.wgsl"] {if !hpa_host_copy(fs_join(fixture,file,paths[0][..]),fs_join(site,file,paths[1][..])) {return 1;}}
+  page:="<!doctype html><meta charset=utf-8><style>html,body{margin:0;width:160px;height:90px}canvas{display:block;width:160px;height:90px}</style><canvas id=coaxial></canvas><script type=module src=/coaxial/host.js data-app=host-contract data-wasm=/fixture.wasm data-wgsl=/fixture.wgsl></script>";
+  if !fs_write(fs_join(site,"world.html",paths[0][..]),page) {return 1;}
+  c:[1]Cdp;if !cdp_launch(c[..],160,90,"coax-host-audio-product-") {return 1;}defer {cdp_close(c[..]);}
+  params:[8192]u8;o:[1]Jo;jo_start(o[..],params[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],url);jo_end(o[..]);nav:=cdp_call(c[..],"Page.navigate",jo_text(o[..]),CDP_CALL_MS);
+  if !hpa_host_wait(c[..],"!!coaxial?.ready&&typeof coaxial.audio?.contract==='function'") {return 1;}
+  glue:[65536]u8;n:=fs_read(WC_HOST_FILE,glue[..]);if n<0||wc_eval(c[..],cast(string)glue[0..<n])!="ready" {return 1;}
+  wave:=[60]u8.[82,73,70,70,52,0,0,0,87,65,86,69,102,109,116,32,16,0,0,0,1,0,1,0,128,187,0,0,0,119,1,0,2,0,16,0,100,97,116,97,16,0,0,0,255,127,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+  if !wc_file(c[..],"impulse.wav",cast(string)wave[..]) || wc_eval(c[..],"coaxial.audio.add('impulse',W.files['impulse.wav'],true);coaxial.audio.play('!bus 0.25');coaxial.audio.play('impulse 0.125 0');true")!="true" {return 1;}
+  if !hpa_host_wait(c[..],"(async()=>{const q=await coaxial.audio.contract();return q.version===1&&q.state==='suspended'&&!q.started&&!q.failure&&q.worklet?.accepted===1&&q.worklet?.frames===0})()") {return 1;}
+  report:[16384]u8;r:[1]Jo;jo_start(r[..],report[..]);jo_obj(r[..]);jo_key(r[..],"schema");jo_str(r[..],"aethyr.host.audio-product.v1");jo_key(r[..],"before_gesture");v:=cdp_evaluate(c[..],"coaxial.audio.contract()");jv_write(cdp_doc(c[..]),v,r[..]);
+  key:=cdp_call(c[..],"Input.dispatchKeyEvent","{\"type\":\"keyDown\",\"key\":\"a\",\"code\":\"KeyA\",\"windowsVirtualKeyCode\":65}",CDP_CALL_MS);
+  if !hpa_host_wait(c[..],"(async()=>{const q=await coaxial.audio.contract();return q.started&&q.state==='running'&&q.worklet?.frames>0})()") {return 1;}
+  if wc_eval(c[..],"coaxial.audio.play('impulse 0.125 0');true")!="true" || !hpa_host_wait(c[..],"(async()=>{const q=await coaxial.audio.contract();return q.worklet.accepted===2&&!q.failure})()") {return 1;}
+  jo_key(r[..],"running");v=cdp_evaluate(c[..],"coaxial.audio.contract()");jv_write(cdp_doc(c[..]),v,r[..]);
+  if wc_eval(c[..],"coaxial.setWorldPaused(true)")!="true" || !hpa_host_wait(c[..],"(async()=>{const q=await coaxial.audio.contract();return q.state==='suspended'})()") {return 1;}
+  v=cdp_evaluate(c[..],"coaxial.audio.contract()");d:=cdp_doc(c[..]);w:=jv_get(d,v,"worklet");frames:=jv_int(d,jv_get(d,w,"frames"),-1);callbacks:=jv_int(d,jv_get(d,w,"callbacks"),-1);jo_key(r[..],"paused");jv_write(d,v,r[..]);proc_sleep(120);
+  v=cdp_evaluate(c[..],"coaxial.audio.contract()");d=cdp_doc(c[..]);w=jv_get(d,v,"worklet");if jv_int(d,jv_get(d,w,"frames"),-2)!=frames || jv_int(d,jv_get(d,w,"callbacks"),-2)!=callbacks {return 1;}jo_key(r[..],"held");jv_write(d,v,r[..]);
+  if wc_eval(c[..],"coaxial.setWorldPaused(false)")!="false" || !hpa_host_wait(c[..],"(async()=>{const q=await coaxial.audio.contract();return q.state==='running'})()") {return 1;}
+  v=cdp_evaluate(c[..],"coaxial.audio.contract()");old_owner:=jv_int(cdp_doc(c[..]),jv_get(cdp_doc(c[..]),v,"owner"),-1);
+  if wc_eval(c[..],"coaxial.reloadEngine()")!="true" {return 1;}v=cdp_evaluate(c[..],"coaxial.audio.contract()");d=cdp_doc(c[..]);if jv_int(d,jv_get(d,v,"owner"),-2)<=old_owner || jv_raw(d,jv_get(d,v,"state"))!="absent" {return 1;}jo_key(r[..],"replacement");jv_write(d,v,r[..]);jo_key(r[..],"passed");jo_bool(r[..],true);jo_end(r[..]);if r[0].bad||!fs_write(args_at(a[..],3),jo_text(r[..])) {return 1;}
+  print("Actual host.js v1 audio selection/canonical cue/gesture/pause/replacement passed.\n");return 0;
+}

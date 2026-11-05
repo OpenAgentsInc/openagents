@@ -3,10 +3,10 @@
 #load "../../coax/web/wasm-chrome.coax";
 #load "pcm-compare.coax";
 HpaRender :: struct {file:string;at:int;frames:int;}
-hpa_install :: (c:[]Cdp,name:string,file:string,channels:int)->bool {
+hpa_install :: (c:[]Cdp,name:string,file:string,channels:int,wav:bool)->bool {
   bytes:[8388608]u8;n:=fs_read(file,bytes[..]);if n<1 || !wc_file(c,name,cast(string)bytes[0..<n]) {return false;}
-  js:[1024]u8;o:[1]Jo;jo_start(o[..],js[..]);jo_put(o[..],"hostAudioEffects.install(");jo_str(o[..],name);jo_put(o[..],",");o[0].depth=0;jo_str(o[..],name);jo_put(o[..],",");jo_int(o[..],channels);jo_put(o[..],")");
-  return !o[0].bad && wc_parse(wc_eval(c,jo_text(o[..])))==n/4;
+  js:[1024]u8;o:[1]Jo;jo_start(o[..],js[..]);jo_put(o[..],ifx wav then "hostAudioEffects.installCanonical(" else "hostAudioEffects.install(");jo_str(o[..],name);jo_put(o[..],",");o[0].depth=0;jo_str(o[..],name);jo_put(o[..],",");jo_int(o[..],channels);jo_put(o[..],")");
+  measured:=wc_parse(wc_eval(c,jo_text(o[..])));return !o[0].bad && (ifx wav then measured>0 else measured==n/4);
 }
 hpa_group :: (c:[]Cdp,commands:[]string,times:[]int,renders:[]HpaRender,total:int,dir:string,report:[]Jo,common:bool)->bool {
   if total==0 {return true;}
@@ -41,8 +41,8 @@ hpa_group :: (c:[]Cdp,commands:[]string,times:[]int,renders:[]HpaRender,total:in
   return passed;
 }
 tool_main :: ()->int #export_c {
-  a:[1]Args;if !args_load(a[..]) || (args_count(a[..])!=4 && args_count(a[..])!=5) {tool_errln("usage: check-browser-audio LOCAL_URL PLAN.json AUDIO.json OUT_DIR [--coax]");return 2;}
-  common:=args_count(a[..])==5;if common && args_at(a[..],4)!="--coax" {return 2;}
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])<4 || args_count(a[..])>6 {tool_errln("usage: check-browser-audio LOCAL_URL PLAN.json AUDIO.json OUT_DIR [--coax | --canonical WAV_DIR]");return 2;}
+  common:=args_count(a[..])>=5;canonical:=args_count(a[..])==6;if common && args_at(a[..],4)!=(ifx canonical then "--canonical" else "--coax") {return 2;}
   url:=args_at(a[..],0);if url.count<17 || url[0..<17]!="http://127.0.0.1:" {return 2;}
   dir:=args_at(a[..],3);if !fs_mkdir(dir) {return 1;}
   plan_text:[65536]u8;metadata:[65536]u8;plan_nodes:[2048]JvNode;meta_nodes:[8192]JvNode;p:[1]Jv;m:[1]Jv;
@@ -67,7 +67,8 @@ tool_main :: ()->int #export_c {
       row:=jv_at(m[0],assets,j);name:=jv_raw(m[0],jv_get(m[0],row,"name"));
       if name!="ambient" && name!="fire-hit" && name!="fireball" && name!="room" && name!="impulse" {continue;}
       file:[4096]u8;fn:=jv_str(m[0],jv_get(m[0],row,"file"),file[..]);channels:=jv_int(m[0],jv_get(m[0],row,"channels"),0);
-      if fn<0 || !hpa_install(c[..],name,cast(string)file[0..<fn],channels) {tool_errln("frozen PCM installation failed");return 1;}installed+=1;
+      wav:=canonical&&name!="impulse";wavepath:[4096]u8;filename:[128]u8;z:[1]Jo;jo_start(z[..],filename[..]);jo_put(z[..],name);jo_put(z[..],".wav");assetfile:=ifx wav then fs_join(args_at(a[..],5),jo_text(z[..]),wavepath[..]) else cast(string)file[0..<fn];
+      if fn<0 || !hpa_install(c[..],name,assetfile,channels,wav) {tool_errln("frozen PCM/canonical WAV installation failed");return 1;}installed+=1;
     }
   }
   if installed!=5 {tool_errln("frozen PCM inventory is incomplete");return 1;}

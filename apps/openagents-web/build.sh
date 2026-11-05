@@ -26,6 +26,9 @@ bun "$here/../../coax/web/realms.ts"
 if [[ "${COAXIAL_MODE:-release}" != dev ]]; then
   (cd "$here/../.." && coax/web/tool.sh wasm-size budgets apps/openagents-web/wasm-budgets.txt apps/openagents-web/build.sh)
 fi
+# Host-contract v1 uses the same Coax PCM interpreter as native audio.
+"$here/../../coax/web/tool.sh" "$here/../../coax/web/build-audio.coax" "$here/../.." "$here/build/host-audio.wasm" &
+host_audio=$!
 # The HUD bar's light, the same function the iOS stages draw (verse/light.coax).
 # (splash.wgsl loads verse/light.coax in its Coax: gpu/splash.coax.)
 "$here/../../coax/web/wasm.sh" "$here/splash.coax" "$here/face.c" "$here/build/splash.wasm" &
@@ -293,6 +296,7 @@ wait "$everglade"
 wait "$fivemmo"
 wait "$everglade5e"
 wait "$everglade_room"
+wait "$host_audio"
 wait "$fairy"
 wait "$villa"
 wait "$animelab"

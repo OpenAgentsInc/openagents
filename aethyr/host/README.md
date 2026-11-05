@@ -307,7 +307,12 @@ draining length twice and then play nothing. Lines are the existing
 eight-field mixed voice `NAME GAIN PAN DELAY LOWPASS RATE WET ID`;
 `~NAME GAIN PAN` updates a looping bed; `!bus`, `!room`, `!fetch` and `-ID`
 operate the shared bus/room/cache/voice identity. Decode promises retain a
-voice slot, so decoding cannot bypass the 16 simple/48 mixed voice bounds.
+concrete engine owner and command order. The shared PCM interpreter admits
+at most 16 simple, 48 mixed and 64 bed voices when complete decoded data is
+available. Retiring the engine disconnects its audio node and fences pending
+decodes. The gesture fact is captured when the command is issued: controls,
+room/cache and beds can initialize while suspended; earlier one-shot cues
+are refused rather than replayed after a later gesture.
 Pan clamps to [-1,1], rate to [0.5,2] and wet/bus gain to [0,1]. Delay is
 seconds on the audio clock. Lowpass is the declared one-pole filter
 `y += (1-exp(-2*pi*f/rate))*(x-y)` when `1 <= f < rate/2`.
@@ -318,6 +323,25 @@ attack 0.01 s/release 0.25 s; the final limiter is -1 dB, knee 0, ratio 20,
 attack 0.001 s/release 0.08 s. Stopped voice IDs fade at 0.015 s and stop
 after 0.08 s. Native playback must qualify rendered samples against the
 existing muted audio checks; consuming strings is not audio parity.
+
+Version 1 executes `aethyr/audio/host-pcm.coax` at 48 kHz on every host;
+the browser runs that exact interpreter in an AudioWorklet. SDK callbacks
+copy its 1024-frame stereo blocks without implementing DSP. Both shared
+dynamics stages have 288 frames of lookahead, giving mixed voices 576
+frames of authored bus delay; simple and bed voices bypass that bus.
+The final linked peak ceiling is -1 dB. Bed gain starts with a 0.5 s time
+constant and updates gain/pan with 0.25 s. The precise shared algorithm and
+borrowed immutable PCM ABI are in `aethyr/audio/host-pcm.md`.
+
+Generated bank WAVs use `aethyr/audio/host-wav.coax`: exact 44-byte PCM16
+RIFF, mono/stereo, 22,050 or 48,000 Hz, through the shared zero-phase 64-tap
+rational resampler into 48 kHz PCM. Its measured output extent precedes
+allocation. Optional compressed assets use their SDK codec separately;
+they are not canonical-bank sample-parity evidence. Browser immutable PCM
+has 128 allocation tickets and 8,388,608 binary32 words (32 MiB); allocation
+refusal cannot publish a partial asset. Pre-contract faces retain the
+existing Web Audio graph. Its independent retained observations are not a
+sample-parity claim for the version 1 interpreter.
 
 ## Conformance and the desktop default
 

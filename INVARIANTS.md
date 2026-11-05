@@ -37,6 +37,18 @@ Transport receipt admission checks the actual command/result/callback
 streams and callback-after-reservation ordering, allowing only independent
 connection scheduling (277 semantic and 20 JSON adapter root mutants killed).
 
+Version 1 browser audio executes the shared Coax PCM interpreter in a real
+48 kHz AudioWorklet; generated bank WAVs use the shared canonical decoder,
+not platform resampling. All 48 actual native bank WAVs decode bit-identically
+through the browser bridge. Eleven actual rendered ranges pass the unchanged
+2^-20 sample bound without shifts or masks. Startup controls/beds may survive
+suspension; earlier one-shot cues cannot acquire a later gesture. Engine
+retirement fences pending decodes and closes the concrete node/context.
+Actual muted host.js receipts cover gesture, pause/resume and replacement.
+The word comparator kills 103/103 root mutants, with no equivalents. These
+audio receipts remain separate from Linux output and complete three-host
+qualification; the desktop default remains web.
+
 ## The indexed KV arena preserves the durable v1 contract
 
 `coax/lib/bitcoin/kvskip.coax` is an optional native representation behind

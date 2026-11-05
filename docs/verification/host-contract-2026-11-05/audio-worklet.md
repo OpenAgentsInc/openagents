@@ -46,7 +46,8 @@ nice -n 10 coax/web/tool.sh aethyr/host/check-browser-audio.coax \
   LOCAL_AUDIO_PAGE PLAN.json AUDIO.json NEW_OUTPUT --coax
 ```
 
-Product v1 host wiring, real muted running-context pause/resume, canonical
-WAV decoding/resampling, Linux output and final three-host receipts remain
-separate exits. The pre-contract Web Audio graph remains the independent
-legacy observation path; this component result alone does not switch it.
+The subsequent [canonical/playback record](audio-canonical.md) adds product
+v1 wiring, actual muted running-context pause/resume and all 48 canonical
+WAVs. Linux output and final three-host receipts remain separate exits.
+The pre-contract Web Audio graph remains the independent legacy observation
+path; this component result alone does not switch the desktop default.

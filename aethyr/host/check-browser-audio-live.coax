@@ -1,0 +1,29 @@
+// Actual running AudioWorklet, gesture, suspend/resume and retired decode owner.
+#load "../../coax/web/wasm-chrome.coax";
+hpal_row :: (c:[]Cdp,rows:[]Jo,name:string,expression:string)->int {
+  v:=cdp_evaluate(c,expression);if v<0 {tool_errln(cdp_error(c));return -1;}
+  jo_obj(rows);jo_key(rows,"op");jo_str(rows,name);jo_key(rows,"result");jv_write(cdp_doc(c),v,rows);jo_end(rows);return v;
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {tool_errln("usage: check-browser-audio-live LOCAL_URL OUT.json");return 2;}
+  url:=args_at(a[..],0);if url.count<17 || url[0..<17]!="http://127.0.0.1:" {return 2;}
+  c:[1]Cdp;if !cdp_launch(c[..],160,90,"coax-host-audio-live-") {return 1;}defer {cdp_close(c[..]);}
+  params:[8192]u8;o:[1]Jo;jo_start(o[..],params[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],url);jo_end(o[..]);nav:=cdp_call(c[..],"Page.navigate",jo_text(o[..]),CDP_CALL_MS);
+  deadline:=proc_now_ms()+30000;ready:=false;while proc_now_ms()<deadline {if wc_eval(c[..],"document.readyState==='complete'&&location.hostname==='127.0.0.1'")=="true" {ready=true;break;}proc_sleep(50);}if !ready {return 1;}
+  glue:[16384]u8;n:=fs_read("aethyr/host/tests/audio-live.js",glue[..]);if n<0 || wc_eval(c[..],cast(string)glue[0..<n])!="ready" {return 1;}
+  report:[32768]u8;r:[1]Jo;jo_start(r[..],report[..]);jo_obj(r[..]);jo_key(r[..],"schema");jo_str(r[..],"aethyr.host.audio-live.v1");jo_key(r[..],"host");jo_str(r[..],"web");jo_key(r[..],"events");jo_arr(r[..]);passed:=true;
+  v:=hpal_row(c[..],r[..],"prepare","hostAudioLive.prepare(Float32Array.of(1,0,0,0,0,0,0,0))");passed=passed&&v>=0&&jv_raw(cdp_doc(c[..]),v)=="suspended";
+  v=hpal_row(c[..],r[..],"control-before-gesture","hostAudioLive.command('!bus 0.25',false)");passed=passed&&v>=0&&jv_int(cdp_doc(c[..]),v,-9)==128;
+  v=hpal_row(c[..],r[..],"cue-before-gesture","hostAudioLive.command('impulse 0.125 0',false)");passed=passed&&v>=0&&jv_int(cdp_doc(c[..]),v,-9)== -2;
+  v=hpal_row(c[..],r[..],"before-gesture","hostAudioLive.info()");passed=passed&&v>=0&&jv_int(cdp_doc(c[..]),jv_get(cdp_doc(c[..]),v,"frames"),-1)==0&&jv_int(cdp_doc(c[..]),jv_get(cdp_doc(c[..]),v,"callbacks"),-1)==0;
+  if wc_eval(c[..],"hostAudioLive.gesture()")!="true" {return 1;}event:=cdp_call(c[..],"Input.dispatchKeyEvent","{\"type\":\"keyDown\",\"key\":\"a\",\"code\":\"KeyA\",\"windowsVirtualKeyCode\":65}",CDP_CALL_MS);
+  v=hpal_row(c[..],r[..],"gesture","hostAudioLive.gesturePromise.then(()=>hostAudioLive.context.state)");passed=passed&&v>=0&&jv_raw(cdp_doc(c[..]),v)=="running";
+  v=hpal_row(c[..],r[..],"cue-after-gesture","hostAudioLive.command('impulse 0.125 0',true)");passed=passed&&v>=0&&jv_int(cdp_doc(c[..]),v,-1)==0;
+  proc_sleep(120);v=hpal_row(c[..],r[..],"pause","hostAudioLive.pause()");d:=cdp_doc(c[..]);frames:=jv_int(d,jv_get(d,v,"frames"),0);callbacks:=jv_int(d,jv_get(d,v,"callbacks"),0);passed=passed&&v>=0&&frames>0&&callbacks>0&&jv_raw(d,jv_get(d,v,"state"))=="suspended";
+  proc_sleep(120);v=hpal_row(c[..],r[..],"held","hostAudioLive.info()");d=cdp_doc(c[..]);passed=passed&&v>=0&&jv_int(d,jv_get(d,v,"frames"),-1)==frames&&jv_int(d,jv_get(d,v,"callbacks"),-1)==callbacks;
+  v=hpal_row(c[..],r[..],"resume","hostAudioLive.resume()");proc_sleep(120);v=hpal_row(c[..],r[..],"resumed","hostAudioLive.info()");d=cdp_doc(c[..]);passed=passed&&v>=0&&jv_int(d,jv_get(d,v,"frames"),0)>frames&&jv_int(d,jv_get(d,v,"callbacks"),0)>callbacks&&jv_raw(d,jv_get(d,v,"state"))=="running";
+  v=hpal_row(c[..],r[..],"retire-during-decode","hostAudioLive.retireDuringDecode('impulse 1 0')");passed=passed&&v>=0&&jv_int(cdp_doc(c[..]),v,0)== -1;
+  v=hpal_row(c[..],r[..],"close","hostAudioLive.close()");passed=passed&&v>=0&&jv_raw(cdp_doc(c[..]),v)=="closed";
+  jo_end(r[..]);jo_key(r[..],"passed");jo_bool(r[..],passed);jo_end(r[..]);if r[0].bad || !fs_write(args_at(a[..],1),jo_text(r[..])) {return 1;}
+  print("Actual browser audio gesture/pause/resume/retirement: %.\n",passed);return ifx passed then 0 else 1;
+}

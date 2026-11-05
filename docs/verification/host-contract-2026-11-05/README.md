@@ -220,9 +220,15 @@ Raw receipts are `browser-http-target.json` and `vulkan-http-target.json`;
 The private Linux helper's optional `--host-v1` uses the new authority;
 nine-argument pre-contract callers keep their original path behavior.
 
+Canonical audio and normal version 1 browser playback now have actual
+receipts in [audio-canonical.md](audio-canonical.md): all 48 generated WAVs
+decode bit-identically, all eleven AudioWorklet/native rendered ranges pass
+the unchanged sample bound, and real muted callback pause/resume and engine
+retirement are observed. Linux output and version 1 clip rendering remain.
+
 The native Metal receipt/source record, shared lifecycle transitions and
 device-loss/replacement receipts, interactive producer/GPU parity, and
-muted/offline audio sample comparison remain to be recorded. Ordinary
+complete three-host audio sample comparison remain to be recorded. Ordinary
 Vulkan lifecycle/audio execution and the Metal HTTP target receipt are
 still required. The ordinary SDK packaging and local routing probes do not
 substitute for complete interactive host qualification.

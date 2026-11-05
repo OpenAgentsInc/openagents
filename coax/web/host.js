@@ -221,6 +221,7 @@ import { startGpui } from "./gpui.js";
 import { startLoading, readBytes } from "./loader.js";
 import { makeHttpRequests } from "./http-requests.js";
 import { makeHostTransport } from "./host-transport.js";
+import { openCoaxAudio, renderCoaxAudio } from "./audio-host.js";
 import { RenderHost } from "./render.js";
 
 const script = document.currentScript || document.querySelector("script[data-app]");
@@ -312,6 +313,7 @@ function beginEngine() {
   return generation;
 }
 function retireTransport() {
+  if(hostTransport)retireContractAudio();
   httpRequests.reset();resetSockets();hostTransport?.reset();hostTransport=null;
 }
 const randomScratch = {}; // lazily reserved once, shared by synchronous engine calls
@@ -1777,6 +1779,21 @@ function drawMedia(x, pass, w, h, depth, over = false) {
 
 // ---- sounds: Web Audio, started by the first touch or key (browsers wait for one)
 let audio = null, audioOut = null;
+let contractAudio = null, contractAudioReady = null, audioOwner = 0, audioStarted = false, audioFailure = null;
+const bankSounds = new Map();
+function retireContractAudio() {
+  ++audioOwner;contractAudio?.close();contractAudio=null;contractAudioReady=null;
+  audio?.close().catch(()=>{});audio=null;audioOut=null;banked=false;bankSounds.clear();sounds.clear();audioFailure=null;
+}
+function prepareContractAudio() {
+  if(contractAudioReady || !audio)return;
+  const owner=audioOwner,context=audio;
+  contractAudioReady=openCoaxAudio(context,audioOut,async(name,canonical)=>{
+    const asset=soundAsset(name);if(!asset)return null;
+    if(asset.canonical)return canonical(asset.bytes);
+    return decoded(asset);
+  }).then(adapter=>{if(owner!==audioOwner){adapter.close();return null;}contractAudio=adapter;return adapter;}).catch(error=>{if(owner===audioOwner){audioFailure=String(error.message);say(`Audio: ${audioFailure}`);}return null;});
+}
 const sounds = new Map();   // name -> a decoding or decoded buffer
 // A realm that renders its own sounds (aethyr/audio/sfx.coax) lists them once, when audio
 // starts: coaxial_sound_bank(state) and coaxial_sound_bank_len(state), a line each, NAME
@@ -1791,18 +1808,21 @@ function soundBank() {
   for (const line of text.split("\n")) {
     const [name, at, bytes] = line.split(" ");
     if (!name || !(+bytes > 0)) continue;
-    assets.push({ i: assets.length, kind: "sound", name, bytes: new Uint8Array(memory.buffer, +at, +bytes).slice(), done: true });
+    const asset={ i: assets.length, kind: "sound", name, bytes: new Uint8Array(memory.buffer, +at, +bytes).slice(), done: true };
+    if(hostTransport)bankSounds.set(name,{...asset,canonical:true});else assets.push(asset);
   }
 }
-function startAudio() {
-  if (audio) return;
+function startAudio(gesture = true) {
+  if(gesture)audioStarted=true;
+  if (audio) {if(hostTransport){prepareContractAudio();if(gesture&&!worldPaused)audio.resume().catch(()=>{});}return;}
   if (clipping && !globalThis.coaxialClipAudio) return;   // a clip is silent unless it records its sound
   soundBank();
-  if (!soundDir && !assets.some((a) => a.kind === "sound" || a.kind === "loop")) return;
-  try { audio = new AudioContext(); } catch { return; }
+  if (!soundDir && !bankSounds.size && !assets.some((a) => a.kind === "sound" || a.kind === "loop")) return;
+  try { audio = new AudioContext(hostTransport?{sampleRate:48000}:undefined); } catch { return; }
   // checks (aethyr/tests/live-audio.coax): the live graph ends in the check's tap, which
   // records the samples on the audio thread and passes them on to the (muted) speakers
   audioOut = dev && typeof globalThis.coaxialAudioTap === "function" ? globalThis.coaxialAudioTap(audio) : audio.destination;
+  if(hostTransport){if(!audioStarted||worldPaused)audio.suspend().catch(()=>{});prepareContractAudio();return;}
   const loop = assets.find((a) => a.kind === "loop");
   if (loop) decoded(loop).then((b) => {
     const s = audio.createBufferSource(), g = audio.createGain();
@@ -1831,6 +1851,7 @@ function soundVoice(ctx, b, gain, pan, out, lowpass) {
 }
 // A sound by name: the page's, or DIR/NAME.ogg of its sounds:/DIR/, added when first named.
 function soundAsset(name) {
+  if(hostTransport&&bankSounds.has(name))return bankSounds.get(name);
   const a = assets.find((s) => s.kind === "sound" && s.name === name);
   if (a || !soundDir || !/^[a-z0-9-]{1,48}$/.test(name)) return a;
   const b = { i: assets.length, kind: "sound", name, url: `${soundDir}${name}.ogg` };
@@ -1874,6 +1895,7 @@ function busLine(ctx, b, line, at, decode) {
 let playing = 0, mixed = 0;
 function playSounds(x) {
   const n = x.coaxial_sounds_len(arena.state);
+  if(n&&hostTransport&&!audio)startAudio(false);
   if (!n || !audio) return;
   playSoundText(new TextDecoder().decode(new Uint8Array(memory.buffer, x.coaxial_sounds(arena.state), n).slice()));
 }
@@ -1891,6 +1913,11 @@ const heard = [];         // on this machine only: the last lines played, for th
 function playSoundText(text) {
   for (const line of text.split("\n")) {
     if (clipping) { clipHear(line); continue; }
+    if(hostTransport){
+      startAudio(false);const owner=audioOwner,started=audioStarted;
+      if(dev&&line){heard.push(line);if(heard.length>512)heard.shift();}
+      contractAudioReady?.then(adapter=>owner===audioOwner&&adapter?.play(line,started)).catch(error=>{if(owner===audioOwner)audioFailure=String(error.message);});continue;
+    }
     if (line[0] === "~") { bedLine(line.slice(1)); continue; }
     if (line[0] === "!" || line[0] === "-") { if (audio) { bus ??= soundBus(audio, audioOut); busLine(audio, bus, line, audio.currentTime, decoded); } continue; }
     const f = line.split(" ");
@@ -2101,7 +2128,7 @@ function setWorldPaused(paused) {
   } else {
     traceLast = 0;
     if (!frameRequest) frameRequest = requestAnimationFrame(frame);
-    audio?.resume().catch(() => {});
+    if(!hostTransport||audioStarted)audio?.resume().catch(() => {});
   }
   return worldPaused;
 }
@@ -2576,11 +2603,13 @@ if (dev) {
     ...[...gpu.renderer.resourceRecords.values()].map((r) => r.gpu), gpu.renderer.indexRecord?.gpu, gpu.renderer.sansTexture, gpu.renderer.layerTexture] : [];
   // Live audio for aethyr/tests/live-audio.coax: a sound added as the realm's own, its
   // lines played through the host's path, and the voice graph for an offline render.
-  globalThis.coaxial.audio = { add: (name, bytes) => { assets.push({ i: assets.length, kind: "sound", name, bytes, done: true }); },
+  globalThis.coaxial.audio = { add: (name, bytes, canonical=false) => { const asset={ i: assets.length, kind: "sound", name, bytes, done: true };if(canonical)bankSounds.set(name,{...asset,canonical:true});else assets.push(asset); },
     start: () => { startAudio(); return audio; }, play: (text) => playSoundText(text), playing: () => playing,
     heard: () => heard.slice(), probe: (slot, right, ahead, up) => engine?.exports.coaxial_sound_probe?.(arena.state, slot, right, ahead, up) ?? -1, beds: () => [...beds].map(([name, b]) => `${name} ${b.gain.gain.value.toFixed(3)} ${b.pan.pan.value.toFixed(3)}`),
     decode: (name) => decoded(soundAsset(name)), voice: soundVoice, mixed: () => mixed,
+    contract: async () => ({version:hostTransport?1:0,owner:audioOwner,started:audioStarted,state:audio?.state??"absent",failure:audioFailure,worklet:await contractAudio?.info()}),
     bus: soundBus, busVoice, busLine,
+    offlineCoax: renderCoaxAudio,
     offline: (lines, frames, buffers) => renderSoundLines(lines.map(([frame,line])=>[frame*1000/48000,line]), frames / 48000, 0, 48000, name => ({name}), a => Promise.resolve(buffers[a.name])) };
   globalThis.coaxial.renderLedger = () => gpu?.renderer?.ready ? gpu.renderer.ledger() : null;
   globalThis.coaxial.renderLedgerLive = (slot, generation) => engine?.exports.coaxial_render_live?.(slot, generation) ?? -1;

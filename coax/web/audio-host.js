@@ -1,10 +1,12 @@
 // Firm reason: 1 (browser SDK: compile the shared reactor, decode/copy assets, and operate its AudioWorklet).
 import {AudioBridge} from './audio-bridge.js';
 const wasmURL=new URL('../build/host-audio.wasm',import.meta.url),workletURL=new URL('./audio-worklet.js',import.meta.url);
-let compiled;
+let compiled,decoder;
 async function moduleForAudio(){return compiled??=(async()=>{const r=await fetch(wasmURL,{cache:'no-store'});if(!r.ok)throw Error('audio reactor unavailable');return WebAssembly.compile(await r.arrayBuffer());})().catch(error=>{compiled=null;throw error;});}
 function interleave(buffer){const data=new Float32Array(buffer.length*buffer.numberOfChannels);for(let c=0;c<buffer.numberOfChannels;c++){const p=buffer.getChannelData(c);for(let i=0;i<p.length;i++)data[i*buffer.numberOfChannels+c]=p[i];}return data;}
+export async function decodeCoaxWav(bytes){decoder??=new AudioBridge(await moduleForAudio(),false);return decoder.decodeWav(bytes);}
 export async function openCoaxAudio(context,destination,decode){
+  if(context.sampleRate!==48000)throw Error('host contract v1 requires a 48kHz audio context');
   const module=await moduleForAudio(),parser=new AudioBridge(module,false);await context.audioWorklet.addModule(workletURL);
   const node=new AudioWorkletNode(context,'aethyr-coax-audio-v1',{numberOfInputs:0,numberOfOutputs:1,outputChannelCount:[2],processorOptions:{module}});
   node.connect(destination);const pending=new Map(),assets=new Map();let serial=0,closed=false,tail=Promise.resolve(),readyResolve,readyReject;
@@ -16,8 +18,8 @@ export async function openCoaxAudio(context,destination,decode){
   async function command(line,started){
     await ready;if(closed)return -1;const effect=parser.parse(line);
     if(effect.name&&!assets.has(effect.name)){
-      const buffer=await decode(effect.name);if(closed)return -1;if(!buffer) return -1;
-      const samples=interleave(buffer);await request('install',{name:effect.name,samples,channels:buffer.numberOfChannels},[samples.buffer]);assets.set(effect.name,true);
+      const buffer=await decode(effect.name,bytes=>parser.decodeWav(bytes));if(closed)return -1;if(!buffer) return -1;
+      const samples=buffer.samples??interleave(buffer),channels=buffer.channels??buffer.numberOfChannels;await request('install',{name:effect.name,samples,channels},[samples.buffer]);assets.set(effect.name,true);
     }
     const bytes=parser.encoder.encode(line);return request('command',{line:bytes,started},[bytes.buffer]);
   }
