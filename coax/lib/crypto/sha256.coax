@@ -171,6 +171,7 @@ sha256_update_limit :: (total: u64, count: int) -> u32 #export_c {
 }
 sha256_unpack :: (state: [] u8) -> Sha256Work {
   w: Sha256Work;
+  defer {secure_zero(w.h[..]);#assert crypto_zeroed(w.h[..]);}defer {secure_zero(w.block[..]);#assert crypto_zeroed(w.block[..]);}
   if state.count != SHA_STATE_BYTES { return w; }
   if state[0] != 'S' || state[1] != '2' || state[2] != '5' || state[3] != '6' || state[4] != 1 || state[6] != 0 { return w; }
   w.phase = cast(u32)state[5]; w.used = cast(int)state[7]; w.total = cb_load_be64(state,8).value;
@@ -197,14 +198,17 @@ sha256_emit :: (h: [] u32, out: [] u8) -> u32 {
 }
 sha256_init :: (state: [] u8) -> u32 #export_c {
   w: Sha256Work;w.h=SHA_IV.words;w.phase=SHA_ACTIVE;
+  defer {secure_zero(w.h[..]);#assert crypto_zeroed(w.h[..]);}
   return sha256_pack(w,state);
 }
 sha256_info :: (state: [] u8) -> Sha256Info #export_c {
   w:=sha256_unpack(state);if !w.ok { return Sha256Info.{error=SHA_BAD_STATE}; }
+  defer {secure_zero(w.h[..]);#assert crypto_zeroed(w.h[..]);}defer {secure_zero(w.block[..]);#assert crypto_zeroed(w.block[..]);}
   return Sha256Info.{phase=w.phase,total=w.total,buffered=cast(u32)w.used};
 }
 sha256_update_checked :: (state: [] u8, input: [] u8, overlap: bool) -> u32 {
   w:=sha256_unpack(state);if !w.ok { return SHA_BAD_STATE; }
+  defer {secure_zero(w.h[..]);#assert crypto_zeroed(w.h[..]);}defer {secure_zero(w.block[..]);#assert crypto_zeroed(w.block[..]);}
   if w.phase != SHA_ACTIVE { return SHA_PHASE; }
   status:=sha256_update_limit(w.total,input.count);if status != SHA_OK { return status; }
   if input.count > 0 && overlap { return SHA_ALIAS; }
@@ -217,6 +221,7 @@ sha256_update_checked :: (state: [] u8, input: [] u8, overlap: bool) -> u32 {
 }
 sha256_final_checked :: (state: [] u8, out: [] u8, overlap: bool) -> u32 {
   w:=sha256_unpack(state);if !w.ok { return SHA_BAD_STATE; }
+  defer {secure_zero(w.h[..]);#assert crypto_zeroed(w.h[..]);}defer {secure_zero(w.block[..]);#assert crypto_zeroed(w.block[..]);}
   if !cb_span(out.count,0,32) { return SHA_BAD_OUTPUT; }
   if overlap { return SHA_ALIAS; }
   if w.phase == SHA_FINAL { return sha256_emit(w.h[..],out); }
@@ -232,6 +237,7 @@ sha256_final_checked :: (state: [] u8, out: [] u8, overlap: bool) -> u32 {
 sha256_hash_checked :: (input: [] u8, out: [] u8, overlap: bool) -> u32 {
   status:=sha256_request(input.count,out.count,overlap);if status != SHA_OK {return status;}
   state:[112]u8;
+  defer {secure_zero(state[..]);#assert crypto_zeroed(state[..]);}
   status=sha256_init(state[..]);if status != SHA_OK {return status;}
   status=sha256_update_checked(state[..],input,false);if status != SHA_OK {return status;}
   return sha256_final_checked(state[..],out,false);
@@ -243,7 +249,7 @@ sha256_tagged_init :: (state: [] u8, tag: string) -> u32 {
   if !sha256_tag_ok(tag.count) {return SHA_BAD_TAG;}
   if state.count != SHA_STATE_BYTES {return SHA_BAD_STATE;}
   digest:=S_hash(tag);if digest.error != 0 {return digest.error;}
-  tag_hash:[32]u8;status:=sha256_emit(digest.words[..],tag_hash[..]);if status != SHA_OK {return status;}
+  tag_hash:[32]u8;defer {secure_zero(tag_hash[..]);#assert crypto_zeroed(tag_hash[..]);}status:=sha256_emit(digest.words[..],tag_hash[..]);if status != SHA_OK {return status;}
   status=sha256_init(state);if status != SHA_OK {return status;}
   status=sha256_update_checked(state,tag_hash[..],false);if status != SHA_OK {return status;}
   return sha256_update_checked(state,tag_hash[..],false);
@@ -252,7 +258,7 @@ sha256_tagged_init :: (state: [] u8, tag: string) -> u32 {
 sha256_tagged_checked :: (tag: string, input: [] u8, out: [] u8, overlap: bool) -> u32 {
   if !sha256_tag_ok(tag.count) {return SHA_BAD_TAG;}
   status:=sha256_request(input.count,out.count,overlap);if status != SHA_OK {return status;}
-  state:[112]u8;status=sha256_tagged_init(state[..],tag);if status != SHA_OK {return status;}
+  state:[112]u8;defer {secure_zero(state[..]);#assert crypto_zeroed(state[..]);}status=sha256_tagged_init(state[..],tag);if status != SHA_OK {return status;}
   status=sha256_update_checked(state[..],input,false);if status != SHA_OK {return status;}
   return sha256_final_checked(state[..],out,false);
 }

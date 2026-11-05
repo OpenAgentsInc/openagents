@@ -70,6 +70,7 @@ counter for a longer nonce, so one key and nonce can encrypt at most
 ```jai
 cc_initial :: (key:[]u8,nonce:[]u8,counter:u32)->CcWords {
   state:CcWords;
+  defer {secure_zero(state.words[..]);#assert crypto_zeroed(state.words[..]);}
   state.words[0]=0x61707865;state.words[1]=0x3320646e;
   state.words[2]=0x79622d32;state.words[3]=0x6b206574;
   state.words[12]=counter;
@@ -139,6 +140,7 @@ holding a block could undo the rounds and read the key out of words 4 to 11.
 ```jai
 cc_block_words :: (initial:CcWords)->CcWords {
   x:=initial;
+  defer {secure_zero(x.words[..]);#assert crypto_zeroed(x.words[..]);}
   for round:0..<10 {
     q:=cc_quarter(x.words[0],x.words[4],x.words[8],x.words[12]);
     x.words[0]=q.a;x.words[4]=q.b;x.words[8]=q.c;x.words[12]=q.d;
@@ -195,10 +197,12 @@ chacha20_xor_checked :: (key:[]u8,nonce:[]u8,counter:u32,input:[]u8,out:[]u8,ove
   error:=cc_admit(key.count,nonce.count,counter,input.count,out.count,overlap);
   if error!=CC_OK {return ChaChaResult.{error=error};}
   initial:=cc_initial(key,nonce,counter);
+  defer {secure_zero(initial.words[..]);#assert crypto_zeroed(initial.words[..]);}
   for block_index:0..<cc_blocks(input.count) {
     at:=block_index*64;
     initial.words[12]=add_wrap(counter,cast(u32)block_index);
     block:=cc_block_words(initial);
+    defer {secure_zero(block.words[..]);#assert crypto_zeroed(block.words[..]);}
     for j:0..<64 {
       if at+j>=input.count {break;}
       stream:=cast(u8)((block.words[j/4]>>((j%4)*8))&255);

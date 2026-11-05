@@ -45,16 +45,16 @@ SmcDigits :: struct { magnitude: [65] u64; negative: [65] u64; }
   infinity := sg32_to_point(smc_signed(sg32_from_point(sg_infinity()),CB_MAX64));
   #assert infinity.x.limb[0] == 1 && infinity.y.limb[0] == 1 && infinity.z.limb[0] == 0;
 }
-#test "variable-base multiplication returns the generator for scalar one" {
+#test "variable-base multiplication returns the generator for scalar one" #steps 100000000 {
   result := smc_multiply(sc_small(1),sg_generator());
   #assert result.ok && sg_equal_mask(result.value,sg_generator()) == CB_MAX64;
 }
-#test "variable-base multiplication handles a negative radix16 digit" {
+#test "variable-base multiplication handles a negative radix16 digit" #steps 100000000 {
   g:=sg_generator();expected:=g;for i:0..<3 {expected=sg_double_valid(expected);}
   result:=smc_multiply(sc_small(8),g);
   #assert result.ok && sg_equal_mask(result.value,expected)==CB_MAX64;
 }
-#test "variable-base multiplication shifts a nonzero higher window" {
+#test "variable-base multiplication shifts a nonzero higher window" #steps 100000000 {
   g:=sg_generator();expected:SgPoint;
   expected.x.limb=[10]u64.[40758282,62531466,28220484,27714025,62038803,7376805,18525122,41620672,43234718,3769331];
   expected.y.limb=[10]u64.[23160865,13317018,66108959,7934792,1218185,22957508,60420943,39209590,7576037,4061396];
@@ -62,18 +62,18 @@ SmcDigits :: struct { magnitude: [65] u64; negative: [65] u64; }
   result:=smc_multiply(sc_small(16),g);
   #assert result.ok && sg_equal_mask(result.value,expected)==CB_MAX64;
 }
-#test "variable-base multiplication consumes the highest scalar window" {
+#test "variable-base multiplication consumes the highest scalar window" #steps 100000000 {
   input:ScScalar;input.limbs[7]=0x80000000;expected:SgPoint;
   expected.x.limb=[10]u64.[59499396,55345423,57425547,45517942,41020426,66567196,28142740,16280724,10759142,2919908];
   expected.y.limb=[10]u64.[52004878,43110266,11898128,63984251,18345988,44072529,22083722,24866723,21567957,4135642];
   expected.z.limb[0]=1;result:=smc_multiply(input,sg_generator());
   #assert result.ok && sg_equal_mask(result.value,expected)==CB_MAX64;
 }
-#test "variable-base multiplication accepts mathematical infinity" {
+#test "variable-base multiplication accepts mathematical infinity" #steps 100000000 {
   result:=smc_multiply(sc_small(1),sg_infinity());
   #assert result.ok && sg_equal_mask(result.value,sg_infinity())==CB_MAX64;
 }
-#test "variable-base multiplication refuses invalid bounded peers" {
+#test "variable-base multiplication refuses invalid bounded peers" #steps 100000000 {
   bad:SgPoint;result:=smc_multiply(sc_small(1),bad);
   #assert !result.ok && sg_equal_mask(result.value,sg_infinity())==CB_MAX64;
 }
@@ -99,10 +99,31 @@ SmcDigits :: struct { magnitude: [65] u64; negative: [65] u64; }
   #assert rz.value.x.limb[0] == 1 && rz.value.y.limb[0] == 1 && rz.value.z.limb[0] == 0;
 }
 
+#test "secret recoding normalization matches the independent scalar path" {
+  max:ScScalar;for i:0..<8 {max.limbs[i]=4294967295;}
+  #assert sc_equal(smc_scalar(max),sc_normalize(max));
+  #assert sc_equal(smc_scalar(SC_N),ScScalar.{});
+  #assert sc_equal(smc_scalar(sc_small(1)),sc_small(1));
+  below:=SC_N;below.limbs[0]-=1;#assert sc_equal(smc_scalar(below),below);
+}
+// Keep erasing secret normalization separate from the public constant-table
+// builder, whose evaluator work bound remains unchanged.
+smc_scalar :: (input:ScScalar)->ScScalar {
+  reduced:ScScalar;defer {secure_zero(reduced.limbs[..]);#assert crypto_zeroed(reduced.limbs[..]);}
+  result:ScScalar;defer {secure_zero(result.limbs[..]);#assert crypto_zeroed(result.limbs[..]);}
+  borrow:u64;
+  for i:0..<8 {
+    wide:=SC_BASE+cast(u64)input.limbs[i]-cast(u64)SC_N.limbs[i]-borrow;
+    reduced.limbs[i]=cast,trunc(u32)wide;borrow=1-(wide>>32);
+  }
+  mask:=cast,trunc(u32)cb_mask(borrow);
+  for i:0..<8 {result.limbs[i]=cb_ct_select32(mask,input.limbs[i],reduced.limbs[i]);}
+  return result;
+}
 // Fixed65 digits; negative entries use a complete mask, never a branch.
 // The scalar is reduced modulo the group order before recoding.
 smc_recode :: (input: ScScalar) -> SmcDigits {
-  scalar := sc_normalize(input); result: SmcDigits; carry: u64;
+  scalar := smc_scalar(input);defer {secure_zero(scalar.limbs[..]);#assert crypto_zeroed(scalar.limbs[..]);} result: SmcDigits;defer {secure_zero(result.magnitude[..]);#assert crypto_zeroed(result.magnitude[..]);}defer {secure_zero(result.negative[..]);#assert crypto_zeroed(result.negative[..]);} carry: u64;
   for i: 0..<64 {
     value := cast(u64) ((scalar.limbs[i/8] >> ((i%8)*4)) & 15) + carry;
     carry = (value + 8) >> 4;
@@ -120,7 +141,7 @@ smc_table :: (point: Sg32) -> [9] Sg32 {
 }
 // PRIVATE BY CONVENTION: canonical valid generated points only.
 smc_pick :: (table: [] Sg32,which: u64) -> Sg32 {
-  chosen := sg32_infinity();
+  chosen := sg32_infinity();defer {secure_zero(chosen.x.limb[..]);#assert crypto_zeroed(chosen.x.limb[..]);}defer {secure_zero(chosen.y.limb[..]);#assert crypto_zeroed(chosen.y.limb[..]);}defer {secure_zero(chosen.z.limb[..]);#assert crypto_zeroed(chosen.z.limb[..]);}
   for i: 0..<table.count {
     mask := cast,trunc(u32)(sg_word_equal(which,cast(u64) i)); point := table[i];
     for limb: 0..<8 {
@@ -132,7 +153,7 @@ smc_pick :: (table: [] Sg32,which: u64) -> Sg32 {
   return chosen;
 }
 smc_signed :: (point: Sg32,negative: u64) -> Sg32 {
-  zero:Sf32; neg := point; neg.y = sf32_sub(zero,point.y); neg = sg32_canonical_infinity(neg);
+  zero:Sf32; neg := point;defer {secure_zero(neg.x.limb[..]);#assert crypto_zeroed(neg.x.limb[..]);}defer {secure_zero(neg.y.limb[..]);#assert crypto_zeroed(neg.y.limb[..]);}defer {secure_zero(neg.z.limb[..]);#assert crypto_zeroed(neg.z.limb[..]);} neg.y = sf32_sub(zero,point.y); neg = sg32_canonical_infinity(neg);
   return sg32_choose(negative,neg,point);
 }
 // Public raw peer admission: no field arithmetic runs until all three

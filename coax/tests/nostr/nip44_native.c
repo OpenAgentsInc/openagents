@@ -22,12 +22,24 @@ int main(int argc,char **argv){
   coax_t_Nip44Result r=nip44_encrypt(profile,bytes(ck,32),bytes(nonce,32),bytes(plain,n),bytes(work,WORK),bytes(out,CHARS));
   if(r.error==7){for(int i=0;i<CHARS;i++)assert(out[i]==165);return 3;}
   assert(r.error==0&&r.written==nip44_payload_size(profile,n));
+  /* Only the admitted padded-plaintext region is erased, not its guard. */
+  int64_t ew=nip44_encrypt_work_size(profile,n),padded=(ew-65)/2,raw=65+padded;
+  for(int64_t i=raw;i<ew;i++)assert(work[i]==0);
+  assert(work[ew]==165);
   /* overlap: out inside work */
   coax_t_Nip44Result a=nip44_encrypt(profile,bytes(ck,32),bytes(nonce,32),bytes(plain,n),bytes(work,WORK),bytes(work+8,CHARS));
   assert(a.error==10);
   coax_string text={(const char*)out,r.written};
+  memset(dwork,165,sizeof dwork);memset(back,165,sizeof back);
+  coax_t_Nip44Result short_out=nip44_decrypt(profile,bytes(ck,32),text,bytes(dwork,WORK),bytes(back,n-1));
+  assert(short_out.error==9&&short_out.written==0);
+  for(int64_t i=raw;i<ew;i++)assert(dwork[i]==0);
+  for(int64_t i=0;i<MAXN;i++)assert(back[i]==165);
+  assert(dwork[ew]==165);
   coax_t_Nip44Result d=nip44_decrypt(profile,bytes(ck,32),text,bytes(dwork,WORK),bytes(back,MAXN));
   assert(d.error==0&&d.written==n&&memcmp(back,plain,(size_t)n)==0);
+  for(int64_t i=raw;i<ew;i++)assert(dwork[i]==0);
+  assert(dwork[ew]==165);
   coax_string inside={(const char*)dwork,r.written};memcpy(dwork,out,(size_t)r.written);
   coax_t_Nip44Result b=nip44_decrypt(profile,bytes(ck,32),inside,bytes(dwork,WORK),bytes(back,MAXN));
   assert(b.error==10);

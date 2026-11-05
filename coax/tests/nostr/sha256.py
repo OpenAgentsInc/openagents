@@ -18,7 +18,7 @@ ROOT=Path(__file__).resolve().parents[3]
 COMPILER=Path(os.environ.get('COAX_TEST_COMPILER',ROOT/'coax/bin/coax'))
 PURE=ROOT/'coax/lib/crypto/sha256.coax'
 BRIDGE=ROOT/'coax/lib/crypto/sha256-memory.coax'
-FINGERPRINT_PIN='cbb06bc1439ca987d14de9addf60f6966bff9c291f80987c2b69f0bbe9db50a2'  # kernel bytes, then fingerprint.coax bytes
+FINGERPRINT_PIN='5e0e0900c30d91b670f14c4f3c47d07461936b6c07d22ca08dfa68bc26c2159a'  # kernel bytes, then fingerprint.coax bytes
 
 def run(*args,**kw):
  r=subprocess.run([str(a) for a in args],capture_output=True,text=True,**kw)
@@ -144,7 +144,7 @@ int main(void){{
  for(int i=0;i<7;i++)printf("%s%.6f",i?",":"",rates[i]);printf("],\\\"digest_sink\\\":%u}}\\n",sink);return 0;
 }}
 ''')
-   run('cc','-std=c11','-O2',host,'-lm','-o',self.dir/(label+'_chunks'))
+   run('cc','-std=c11','-D_POSIX_C_SOURCE=200809L','-O2',host,'-lm','-o',self.dir/(label+'_chunks'))
    self.evidence['measurements'].append(json.loads(run(self.dir/(label+'_chunks')).stdout))
 
  def test_native_state_and_alias_sanitizers(self):

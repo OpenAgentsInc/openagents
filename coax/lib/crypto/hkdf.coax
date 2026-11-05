@@ -53,12 +53,13 @@ hkdf_extract_checked :: (salt:[]u8,ikm:[]u8,out:[]u8,overlap:bool)->u32 {
 hkdf_blocks :: (length:int)->int {return (length+31)/32;}
 hkdf_expand_checked :: (prk:[]u8,info:[]u8,out:[]u8,length:int,overlap:bool)->u32 {
   status:=hkdf_expand_request(prk.count,info.count,out.count,length,overlap);if status!=SHA_OK {return status;}
-  base:[224]u8;status=hmac_sha256_init_checked(base[..],prk,false);if status!=SHA_OK {return status;}
-  staged:[HKDF_MAX_OUTPUT]u8;previous:[32]u8;previous_count:=0;
+  base:[224]u8;defer {secure_zero(base[..]);#assert crypto_zeroed(base[..]);}status=hmac_sha256_init_checked(base[..],prk,false);if status!=SHA_OK {return status;}
+  staged:[HKDF_MAX_OUTPUT]u8;defer {secure_zero(staged[..]);#assert crypto_zeroed(staged[..]);}previous:[32]u8;defer {secure_zero(previous[..]);#assert crypto_zeroed(previous[..]);}previous_count:=0;
   // Complete blocks are staged, including a final partial block's unused
   // suffix. Only the requested prefix is copied to caller output afterward.
   for block:0..<hkdf_blocks(length) {
     work:=base;
+    defer {secure_zero(work[..]);#assert crypto_zeroed(work[..]);}
     status=hmac_sha256_update_checked(work[..],previous[0..<previous_count],false);if status!=SHA_OK {return status;}
     status=hmac_sha256_update_checked(work[..],info,false);if status!=SHA_OK {return status;}
     count:=[1]u8.[cast(u8)(block+1)];

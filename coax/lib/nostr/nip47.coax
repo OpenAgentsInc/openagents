@@ -531,7 +531,7 @@ n47_key :: (secret:[]u8,peer:[32]u8,out:[]u8)->int {
 n47_seal :: (key:[]u8,nonce:[]u8,plain:string,out:[]u8)->N47Out {
   o:N47Out;o.error=N47_LIMIT;
   if plain.count>N47_MAX_PLAIN {return o;}
-  work:[N47_WORK]u8;bytes:[N47_MAX_PLAIN]u8;
+  work:[N47_WORK]u8;defer {secure_zero(work[..]);#assert crypto_zeroed(work[..]);}bytes:[N47_MAX_PLAIN]u8;defer {secure_zero(bytes[..]);#assert crypto_zeroed(bytes[..]);}
   for i:0..<plain.count {bytes[i]=plain[i];}
   r:=nip44_encrypt_checked(NIP44_COMPAT,key,nonce,bytes[0..<plain.count],work[..],out,false);
   o.error=ifx r.error==NIP44_OK then N47_OK else N47_KEY;o.n=r.written;
@@ -542,7 +542,7 @@ n47_seal :: (key:[]u8,nonce:[]u8,plain:string,out:[]u8)->N47Out {
 n47_open :: (key:[]u8,payload:string,out:[]u8)->N47Out {
   o:N47Out;o.error=N47_ENCRYPTION;
   for c:payload {if c=='?' {return o;}}
-  work:[N47_WORK]u8;
+  work:[N47_WORK]u8;defer {secure_zero(work[..]);#assert crypto_zeroed(work[..]);}
   r:=nip44_decrypt_checked(NIP44_COMPAT,key,payload,work[..],out,false);
   o.error=ifx r.error==NIP44_OK then N47_OK else N47_CIPHER;o.n=r.written;
   return o;

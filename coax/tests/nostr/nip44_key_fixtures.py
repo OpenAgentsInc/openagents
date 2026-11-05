@@ -113,7 +113,7 @@ ck = v["valid"]["get_conversation_key"]
 CHUNK = 5
 for start in range(0, len(ck), CHUNK):
     part = ck[start:start + CHUNK]
-    emit('#test "NIP-44 get_conversation_key from two keys: upstream rows %d..%d of %d" {' % (start, start + len(part) - 1, len(ck)))
+    emit('#test "NIP-44 get_conversation_key from two keys: upstream rows %d..%d of %d" #steps 500000000 {' % (start, start + len(part) - 1, len(ck)))
     emit("  secs:=%s;" % rows_lit([r["sec1"] for r in part]))
     emit("  pubs:=%s;" % rows_lit([r["pub2"] for r in part]))
     emit("  expected:=%s;" % rows_lit([r["conversation_key"] for r in part]))
@@ -148,7 +148,7 @@ for i, r in enumerate(v["valid"]["encrypt_decrypt"]):
     payload = r["payload"].encode("utf-8")
     n, chars = len(plain), len(payload)
     ew = 2 * (65 + 2 + calc_padded(n)) - 65
-    emit('#test "NIP-44 encrypt_decrypt upstream row %d from sec1/pub2 and sec2/pub1" {' % i)
+    emit('#test "NIP-44 encrypt_decrypt upstream row %d from sec1/pub2 and sec2/pub1" #steps 200000000 {' % i)
     emit("  sec1:=%s;pub1:=%s;" % (hexlit(r["sec1"]), hexlit(pub1)))
     emit("  sec2:=%s;pub2:=%s;" % (hexlit(r["sec2"]), hexlit(pub2)))
     emit("  ck:=%s;nonce:=%s;" % (hexlit(r["conversation_key"]), hexlit(r["nonce"])))

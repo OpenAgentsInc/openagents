@@ -159,14 +159,14 @@ ssv_test_clear :: (work:[]SsvWork)->bool {
   expected_s:=ssv_load_scalar(sig[32..<64]);#assert sc_equal(work[0].s[0].value,expected_s.value);
   #assert sf32_equal(work[0].r[0].value,ssv_load_field(sig[0..<32]).value);
 }
-#test "stage 1 multiplies the stored peer by -e and keeps the binding" {
+#test "stage 1 multiplies the stored peer by -e and keeps the binding" #steps 100000000 {
   message:[32]u8;key:=SSV_KEY;sig:=SSV_SIG;work:[1]SsvWork;
   work[0].stage=1;work[0].bound=CB_MAX64;work[0].peer=sg_generator();work[0].negative_e=sc_small(2);
   for i:0..<32 {work[0].key[i]=key[i];}for j:0..<64 {work[0].candidate[j]=sig[j];}
   #assert ssv_step(message[..],key[..],sig[0..<32],sig[..],work[..],false)==SSV_MORE && work[0].stage==2 && work[0].bound==CB_MAX64;
   #assert sg_equal_mask(sg32_to_point(work[0].ep),sg_double_valid(sg_generator()))==CB_MAX64;
 }
-#test "stage 1 masks a candidate changed since stage 0" {
+#test "stage 1 masks a candidate changed since stage 0" #steps 100000000 {
   message:[32]u8;key:=SSV_KEY;sig:=SSV_SIG;work:[1]SsvWork;
   work[0].stage=1;work[0].bound=CB_MAX64;work[0].peer=sg_generator();work[0].negative_e=sc_small(1);
   for i:0..<32 {work[0].key[i]=key[i];}for j:0..<64 {work[0].candidate[j]=sig[j];}sig[63]^=1;

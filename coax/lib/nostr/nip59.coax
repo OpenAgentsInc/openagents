@@ -210,7 +210,7 @@ N59_RUMOR_FIXED :: 278;
 N59_SIG_FIELD :: ",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"";
 
 n59_back :: (now:int,r:u64)->int {return now-cast(int)(r%cast(u64)NIP59_WINDOW);}
-n59_zero :: (b:[]u8) {for i:0..<b.count {b[i]=0;}}
+n59_zero :: (b:[]u8) {secure_zero(b);}
 n59_same32 :: (a:[]u8,b:[]u8)->bool {for i:0..<32 {if a[i]!=b[i] {return false;}}return true;}
 
 // A ["p", <lowercase hex of recipient_x>] tag, as the wrap's routing tag.
@@ -275,7 +275,9 @@ n59_ck :: (secret:[]u8,pub:[]u8,out:[]u8)->u32 {
 }
 n59_wrapped :: (r:Nip59Wrapped,error:u32,fresh:[]Nip59Fresh,work:[]u8,out:[]u8)->Nip59Wrapped {
   w:=r;w.error=error;
-  clean:Nip59Fresh;fresh[0]=clean;n59_zero(work[0..<NIP59_WORK]);
+  secure_zero(fresh[0].wrap_key[..]);secure_zero(fresh[0].seal_nonce[..]);secure_zero(fresh[0].wrap_nonce[..]);
+  secure_zero(fresh[0].seal_aux[..]);secure_zero(fresh[0].wrap_aux[..]);
+  fresh[0].seal_back=0;fresh[0].wrap_back=0;n59_zero(work[0..<NIP59_WORK]);
   if error!=NIP59_OK {n59_zero(out);fail:Nip59Wrapped;fail.error=error;return fail;}
   return w;
 }
@@ -306,7 +308,7 @@ nip59_wrap_checked :: (author:[]u8,recipient_x:[]u8,now:int,kind:int,tags:string
   author_pub:=sw[0].pub;
   n:=n59_rumor(author_pub[..],now,kind,tags,content,pre,rumor,r.rumor_id[..]);
   if n<0 || n>NIP59_MAX_RUMOR {clear:NostrSignWork;sw[0]=clear;return n59_wrapped(r,NIP59_CAPACITY,fresh,work,out);}
-  ck:[32]u8;
+  ck:[32]u8;defer {secure_zero(ck[..]);#assert crypto_zeroed(ck[..]);}
   if n59_ck(author,recipient_x,ck[..])!=NIP44_OK {clear:NostrSignWork;sw[0]=clear;return n59_wrapped(r,NIP59_KEY,fresh,work,out);}
   p:=nip44_encrypt_checked(NIP44_COMPAT,ck[..],fresh[0].seal_nonce[..],rumor[0..<n],nwork,pay,false);
   n59_zero(ck[..]);
@@ -361,7 +363,7 @@ nip59_unwrap_checked :: (recipient:[]u8,recipient_x:[]u8,wrap:string,work:[]u8,o
   if !nostr_fast_verify_vartime(w.id[..],w.public_key[..],w.signature[..]) {return n59_opened(o,NIP59_WRAP_SIGNATURE,work,out);}
   if !n59_addressed(wrap[w.tags_from..<w.tags_to],recipient_x) {return n59_opened(o,NIP59_RECIPIENT,work,out);}
   o.wrap_key=w.public_key;
-  ck:[32]u8;
+  ck:[32]u8;defer {secure_zero(ck[..]);#assert crypto_zeroed(ck[..]);}
   c:=n59_ck(recipient,w.public_key[..],ck[..]);
   if c!=NIP44_OK {n59_zero(ck[..]);return n59_opened(o,ifx c==NIP44_SECRET then NIP59_KEY else NIP59_WRAP_PAYLOAD,work,out);}
   tn:=json_unescape(wrap[w.content_from..<w.content_to],text);

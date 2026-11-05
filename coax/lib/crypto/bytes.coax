@@ -3,6 +3,7 @@
 // lengths/alias facts and scan the full admitted length. The "ct" names state
 // the intended algorithm, not a platform side-channel or erasure guarantee.
 // Runtime pointer-range observations live only in bytes-memory.coax.
+#load "erasure.coax";
 #authority;
 CB_MAX_BYTES :: 1048576;
 CB_MAX64 :: cast(u64) 18446744073709551615;

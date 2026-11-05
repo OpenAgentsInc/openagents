@@ -12,9 +12,11 @@
 //                  within the local 1 MiB HMAC/ChaCha20/base64 ceilings.
 //
 // The conversation key here takes the raw, unhashed 32-byte shared x; from two
-// keys through ecdh.coax it is nip44-key.coax's. Work buffers hold
-// secret material after return; erasing them is the caller's platform
-// contract (zeroize.coax). No side-channel or erasure guarantee is implied.
+// keys through ecdh.coax it is nip44-key.coax's. Derived keys and padded
+// plaintext are erased with secure_zero before return, including errors
+// after decryption. Ciphertext scratch is retained. Caller-owned keys,
+// plaintext inputs and successful output remain the caller's responsibility;
+// hidden compiler/ABI copies and target timing remain separate qualifications.
 #load "../crypto/hkdf.coax";
 #load "../crypto/chacha20.coax";
 #load "base64.coax";
@@ -198,6 +200,23 @@ Nip44Span :: struct { at:int; count:int; error:u32; }
   #assert nip44_decrypt_checked(NIP44_EXTENDED,ck[..],cast(string)wide[0..<87476],work[..],out[..],false).error==NIP44_OUTPUT;
 }
 
+#test "padded plaintext is erased before successful or refused publication returns" {
+  key:[32]u8;nonce:[32]u8;plain:=[2]u8.[104,105];payload:[132]u8;
+  work:[134]u8;for i:0..<134 {work[i]=165;}
+  encrypted:=nip44_encrypt_checked(NIP44_COMPAT,key[..],nonce[..],plain[..],work[..],payload[..],false);
+  #assert encrypted.error==NIP44_OK;
+  for i:99..<133 {#assert work[i]==0;}#assert work[133]==165;
+  for i:0..<134 {work[i]=165;}
+  out:=[3]u8.[77,77,77];
+  opened:=nip44_decrypt_checked(NIP44_COMPAT,key[..],cast(string)payload[..],work[..],out[0..<1],false);
+  #assert opened.error==NIP44_OUTPUT && opened.written==0;
+  for i:99..<133 {#assert work[i]==0;}#assert work[133]==165;
+  for byte:out {#assert byte==77;}
+  opened=nip44_decrypt_checked(NIP44_COMPAT,key[..],cast(string)payload[..],work[..],out[..],false);
+  #assert opened.error==NIP44_OK && out[0]==104 && out[1]==105 && out[2]==77;
+  for i:99..<133 {#assert work[i]==0;}
+}
+
 nip44_fail :: (error:u32)->Nip44Result {return Nip44Result.{error=error};}
 
 // Spec calc_padded_len with 64-bit arithmetic. `power` is the smallest power
@@ -277,6 +296,7 @@ nip44_conversation_key_checked :: (shared_x:[]u8,out:[]u8,overlap:bool)->u32 {
 // HMAC-SHA256(hmac_key, aad || ciphertext); all views are admitted.
 nip44_mac :: (key:[]u8,aad:[]u8,ciphertext:[]u8,out:[]u8)->u32 {
   state:[224]u8;
+  defer {secure_zero(state[..]);#assert crypto_zeroed(state[..]);}
   if hmac_sha256_init_checked(state[..],key,false)!=SHA_OK {return NIP44_INTERNAL;}
   if hmac_sha256_update_checked(state[..],aad,false)!=SHA_OK {return NIP44_INTERNAL;}
   if hmac_sha256_update_checked(state[..],ciphertext,false)!=SHA_OK {return NIP44_INTERNAL;}
@@ -303,10 +323,12 @@ nip44_encrypt_checked :: (profile:u32,conversation_key:[]u8,nonce:[]u8,plaintext
   padded_len:=nip44_prefix_len(n)+nip44_calc_padded_len(n);
   raw_len:=NIP44_OVERHEAD+padded_len;
   raw:=work[0..<raw_len];padded:=work[raw_len..<raw_len+padded_len];
+  defer {secure_zero(padded);#assert crypto_zeroed(padded);}
   prefix:=nip44_write_prefix(n,padded);
   for i:0..<n {padded[prefix+i]=plaintext[i];}
   for i:prefix+n..<padded_len {padded[i]=0;}
   keys:[76]u8;
+  defer {secure_zero(keys[..]);#assert crypto_zeroed(keys[..]);}
   status=nip44_message_keys_checked(conversation_key,nonce,keys[..],false);
   if status!=NIP44_OK {return nip44_fail(status);}
   raw[0]=NIP44_VERSION_BYTE;
@@ -339,12 +361,14 @@ nip44_decrypt_checked :: (profile:u32,conversation_key:[]u8,payload:string,work:
   if raw[0]!=NIP44_VERSION_BYTE {return nip44_fail(NIP44_VERSION);}
   nonce:=raw[1..<33];ciphertext:=raw[33..<33+ct_len];
   keys:[76]u8;
+  defer {secure_zero(keys[..]);#assert crypto_zeroed(keys[..]);}
   status:=nip44_message_keys_checked(conversation_key,nonce,keys[..],false);
   if status!=NIP44_OK {return nip44_fail(status);}
   mac:[32]u8;
   status=nip44_mac(keys[44..<76],nonce,ciphertext,mac[..]);
   if status!=NIP44_OK {return nip44_fail(status);}
   if cb_ct_equal(mac[..],raw[33+ct_len..<dlen])!=CB_MAX64 {return nip44_fail(NIP44_MAC);}
+  defer {secure_zero(padded);#assert crypto_zeroed(padded);}
   if chacha20_xor_checked(keys[0..<32],keys[32..<44],0,ciphertext,padded,false).error!=CC_OK {return nip44_fail(NIP44_INTERNAL);}
   span:=nip44_unpad_span(padded);
   if span.error!=NIP44_OK {return nip44_fail(span.error);}

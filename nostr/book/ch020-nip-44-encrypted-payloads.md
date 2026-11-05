@@ -12,30 +12,34 @@ Part I, Shared secrets, encodings and encryption.
 
 ## Secret storage and cleanup
 
-This chapter qualifies payload bytes, admission and authentication order.
-Its helpers do not implement the complete erasure rule from
-[Bitcoin chapter 3](../../bitcoin/book/ch003-constant-time-rules.md#erasing-secrets).
-`nip44_encrypt_checked` and `nip44_decrypt_checked` derive message keys in
-local 76-byte arrays. Encryption leaves padded plaintext in `work`; successful
-decryption, and padding or output-capacity failures after authentication,
-can leave decrypted plaintext there too. The output-preservation checks say
-nothing about erasure of those temporaries.
+The payload helpers erase their local 76-byte message keys with
+`defer secure_zero(...)`. Encryption erases the padded plaintext region in
+`work`; authenticated decryption erases that region on success and on
+padding or output-capacity refusal. Before authentication no plaintext is
+produced, and refusal preserves the untouched plaintext-workspace sentinel.
+Ciphertext scratch is public and may remain. Cleanup postconditions verify
+zeroed explicit storage before completion.
 
-The caller must keep the conversation key, work and returned plaintext under
-its own lifetime policy and securely wipe identified storage when finished.
-That alone cannot wipe the callee's local message keys or deeper primitive
-temporaries. `nip44_conversation_key_from_keys_checked` clears its ECDH scratch
-with ordinary stores, and higher-level helpers such as
-[`n46_seal` and `n46_open`](../../coax/lib/nostr/nip46.coax) allocate further
-local work arrays without a secure cleanup effect. These paths are not
-qualified for end-to-end secret erasure.
+SHA-256, HMAC, HKDF and ChaCha20 erase their local arrays, and the ECDH path
+erases explicit scalar digits, field/point temporaries and inversion storage.
+The conversation-key helper erases its admitted ECDH scratch. NIP-46/NIP-47
+local workspaces and the browser/carry/gift-wrap cleanup helpers use the same
+observable primitive. The caller still owns its conversation key, plaintext
+input and successful plaintext output and must retire those buffers itself.
 
-Closing that gap requires owned workspaces for explicit secret temporaries,
-the host's observable wipe effect on every completion path, and native and
-browser checks of optimized execution and refused/failed cleanup. The
-[owned ECDH host](../../coax/lib/crypto/platform/ecdh_host.c) supplies a smaller
-existing pattern, not qualification of the full NIP-44 call graph. The examples
-below use published test keys.
+`coax/tests/nostr/hmac_hkdf.py` runs the NIP-44 cleanup fixture in checked and
+release native builds, ASan/UBSan and Wasm. It inspects actual bytes and guards,
+including an authenticated output-capacity refusal, across short payloads
+and both length-prefix forms. `coax/tests/constant_time.py` verifies that a
+dead local wipe survives optimization while an ordinary-store control does
+not. Mutation checks remove cleanup calls as well as changing arithmetic.
+
+The guarantee covers explicit source storage on normal exits after admission.
+It excludes abrupt process death, compiler/ABI register and spill copies,
+operating-system copies and platform side-channel approval. The
+[Bitcoin chapter 3 contract](../../bitcoin/book/ch003-constant-time-rules.md#erasing-secrets)
+distinguishes this local effect from the registered host lifecycle whose wipe
+can fail and be retried. Examples below use published test keys.
 
 ## What this chapter teaches
 

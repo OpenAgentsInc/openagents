@@ -65,6 +65,28 @@ class ConstantTime(unittest.TestCase):
                 else:
                     self.assertFalse(stores, f'broken control still stores: {body}')
 
+    def test_wasm_dead_local_erasure_survives_optimization(self):
+        import sys
+        sys.path.insert(0, str(ROOT/'tests/nostr'))
+        from wasm_toolchain import WASM_CLANG, WASM_SYSROOT, WASM_RESOURCES
+        optimizer = Path(os.environ.get('COAXIAL_TOOLCHAIN', Path.home()/'.cache/coax-wasm-toolchain'))/'bin/wasm-opt'
+        if not optimizer.exists():
+            optimizer = Path(shutil.which('wasm-opt') or '/nonexistent/wasm-opt')
+        self.assertTrue(optimizer.exists(), 'the qualified Wasm toolchain needs wasm-opt')
+        with tempfile.TemporaryDirectory() as directory:
+            d = Path(directory)
+            text = self.build(d, '--release')
+            for mode in ('real', 'broken'):
+                source = text if mode == 'real' else text.replace('volatile unsigned char *p=', 'unsigned char *p=')
+                (d/'zero.c').write_text(source)
+                subprocess.run([WASM_CLANG, '--target=wasm32-wasip1', '--sysroot='+WASM_SYSROOT,
+                                '-resource-dir='+WASM_RESOURCES, '-std=c11', '-O2', '-mexec-model=reactor',
+                                str(d/'zero.c'), '-Wl,--export=zero_dead,--gc-sections', '-o', str(d/'zero.wasm')], check=True, capture_output=True)
+                wat = subprocess.run([str(optimizer), str(d/'zero.wasm'), '--print', '-o', str(d/'printed.wasm')],
+                                     check=True, capture_output=True, text=True).stdout
+                if mode == 'real': self.assertIn('i32.store8', wat)
+                else: self.assertNotIn('i32.store8', wat)
+
     def build(self, d, *mode):
         src = d/'ct.coax'; src.write_text(SOURCE)
         r = subprocess.run([str(COMPILER), 'c', str(src), '--library', '--header', str(d/'ct.h'), *mode], capture_output=True, text=True)

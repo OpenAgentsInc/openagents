@@ -139,21 +139,33 @@ stack, or copies the operating system makes. Passing a secret by value
 makes such a copy. Caller-owned buffers let a host identify and wipe explicit
 storage, but that is not yet the contract of every later helper.
 
-For example, Nostr chapter 14's conversation-key helper zeroes its explicit
-ECDH scratch with ordinary Coax stores. Nostr chapter 20's NIP-44 helpers
-leave plaintext in work buffers and derive message keys in local arrays.
-The NIP-46 `n46_seal` and `n46_open` helpers also own local work arrays that
-their caller cannot register or securely erase after return. Their successful
-vector checks establish cryptographic results, not this chapter's erasure rule.
-See [Nostr chapter 20's cleanup boundary](../../nostr/book/ch020-nip-44-encrypted-payloads.md#secret-storage-and-cleanup).
+Coax also supplies `secure_zero(view)` for explicit numeric or bool storage.
+It writes through a volatile byte pointer in native and Wasm output, evaluates
+the view once, and runs in the evaluator too. A lexical `defer` covers every
+normal exit after the storage is admitted. It cannot run after an abrupt
+process death or trap, and it does not discover hidden copies.
 
-The native [ECDH host](../../coax/lib/crypto/platform/ecdh_host.c) is a concrete
-consumer of the secure-zero effect: it wipes its caller-owned scratch after
-the operation and reports pending cleanup if the effect fails. Extending
-that ownership to message keys and nested cryptographic temporaries, wiring
-it through native and browser consumers, and checking optimized failure and
-cancellation paths remain separate integration work. An ordinary zeroing loop
-or a host wipe of only the outer buffer does not establish that integration.
+The Nostr conversation-key helper now erases the numeric fields of its ECDH
+scratch before completion. NIP-44 erases its local message keys and padded
+plaintext, including authenticated padding and output-capacity refusals.
+Its SHA-256, HMAC, HKDF, ChaCha20 and ECDH paths erase their explicit local
+secret arrays. NIP-46/NIP-47 erase their local workspaces; the browser and
+carry/gift-wrap cleanup helpers use the same primitive. Cleanup boundaries
+check zeroed-storage postconditions before completing. Caller-owned keys,
+plaintext inputs and successful outputs retain their own lifetimes.
+
+The optimized-code check in `coax/tests/constant_time.py` compares a dead
+local wipe with a deliberately broken ordinary-store control. The NIP-44
+fixture checks actual plaintext-workspace bytes and guards on success and
+an authenticated capacity refusal, in checked/release native, ASan/UBSan
+and Wasm execution. These are explicit-storage guarantees, separate from
+constant-time approval or erasure of compiler and operating-system copies.
+See [Nostr chapter 20](../../nostr/book/ch020-nip-44-encrypted-payloads.md#secret-storage-and-cleanup).
+
+The native [ECDH host](../../coax/lib/crypto/platform/ecdh_host.c) also supports
+caller-owned registered buffers whose wipe effect can fail. Its lifecycle
+reports pending cleanup until each wipe is acknowledged; a local intrinsic
+has no asynchronous acknowledgement or retry phase.
 
 ## The example
 

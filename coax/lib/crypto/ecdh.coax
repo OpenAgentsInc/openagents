@@ -31,7 +31,7 @@ ECDH_TEST_PEER :: [32]u8.[0x79,0xbe,0x66,0x7e,0xf9,0xdc,0xbb,0xac,0x55,0xa0,0x62
   #assert ecdh_admit(32,32,32,true,false,false)==EC_METADATA;
   #assert ecdh_admit(32,32,32,true,true,true)==EC_METADATA;
 }
-#test "raw x of generator times one is generator x" {
+#test "raw x of generator times one is generator x" #steps 100000000 {
   key:[32]u8;key[31]=1;peer:=ECDH_TEST_PEER;
   work:[1]EcdhScratch;
   #assert ecdh_stage(key[..],peer[..],work[..])==EC_OK;
@@ -44,19 +44,26 @@ ECDH_TEST_PEER :: [32]u8.[0x79,0xbe,0x66,0x7e,0xf9,0xdc,0xbb,0xac,0x55,0xa0,0x62
 // disjoint caller-owned instance. All public validation precedes secret use.
 // Success and scalar refusal both compute a point and write masked staging.
 // No caller may publish staging before successful external wipe of work.
-#test "invalid zero scalar masks output and still selects the safe fallback" {
+#test "invalid zero scalar masks output and still selects the safe fallback" #steps 100000000 {
   key:[32]u8;peer:=ECDH_TEST_PEER;work:[1]EcdhScratch;
   #assert ecdh_stage(key[..],peer[..],work[..])==EC_SCALAR;
   #assert sc_equal(work[0].scalar,sc_small(1));for i:0..<32 {#assert work[0].staged[i]==0;}
 }
-#test "high scalar byte reaches the independently computed raw x" {
+#test "high scalar byte reaches the independently computed raw x" #steps 100000000 {
   key:[32]u8;key[0]=1;peer:=ECDH_TEST_PEER;
   want:=[4]u64.[0x8c28a97bf8298bc0,0xd23d8c749452a32e,0x694b65e30a9472a3,0x954ab30fe5324caa];work:[1]EcdhScratch;
   #assert ecdh_stage(key[..],peer[..],work[..])==EC_OK;for i:0..<4 {#assert cb_load_be64(work[0].staged[..],i*8).value==want[i];}
 }
-#test "admitted signed digit and higher window use the full schedule" {
+#test "admitted signed digit and higher window use the full schedule" #steps 100000000 {
   g:=sg_generator();expected:=g;for i:0..<3 {expected=sg_double_valid(expected);}
   got:=sg32_to_point(ecdh_multiply_admitted(sc_small(8),g));#assert sg_equal_mask(got,expected)==CB_MAX64;
+}
+#test "scalar n minus one is admitted and has the generator x" #steps 100000000 {
+  order:=SC_N;order.limbs[0]-=1;secret:[32]u8;
+  for i:0..<8 {stored:=cb_store_be32(secret[..],(7-i)*4,order.limbs[i]);}
+  peer:=ECDH_TEST_PEER;work:[1]EcdhScratch;
+  #assert ecdh_stage(secret[..],peer[..],work[..])==EC_OK;
+  #assert cb_ct_equal(work[0].staged[..],peer[..])==CB_MAX64;
 }
 // Pointer presence, alignment, representability and overlap are truthful host
 // observations; no pointer effects occur in this policy.
@@ -74,12 +81,12 @@ ecdh_table :: (point:Sg32)->[9]Sg32 {
   point:=sg32_from_point(sg_generator());table:=ecdh_table(point);inf:=sg32_infinity();
   #assert (sg32_mask_equal(table[0].x,inf.x)&sg32_mask_equal(table[0].y,inf.y)&sg32_mask_equal(table[0].z,inf.z)&sg32_mask_equal(table[1].x,point.x)&sg32_mask_equal(table[1].y,point.y)&sg32_mask_equal(table[1].z,point.z))==CB_MAX64;
 }
-#test "highest scalar window reaches its independent raw x" {
+#test "highest scalar window reaches its independent raw x" #steps 100000000 {
   key:[32]u8;key[0]=128;peer:=ECDH_TEST_PEER;
   want:=[4]u64.[0xb23790a42be63e1b,0x251ad6c94fdef072,0x71ec0aada31db6c3,0xe8bd32043f8be384];work:[1]EcdhScratch;
   #assert ecdh_stage(key[..],peer[..],work[..])==EC_OK;for i:0..<4 {#assert cb_load_be64(work[0].staged[..],i*8).value==want[i];}
 }
-#test "group order scalar refuses and masks the staged result" {
+#test "group order scalar refuses and masks the staged result" #steps 100000000 {
   key:[32]u8;for i:0..<8 {stored:=cb_store_be32(key[..],i*4,SC_N.limbs[7-i]);}peer:=ECDH_TEST_PEER;work:[1]EcdhScratch;
   #assert ecdh_stage(key[..],peer[..],work[..])==EC_SCALAR;
   #assert sc_equal(work[0].scalar,sc_small(1));for i:0..<32 {#assert work[0].staged[i]==0;}
@@ -87,28 +94,29 @@ ecdh_table :: (point:Sg32)->[9]Sg32 {
 // Private: peer is a canonical valid finite public lift; scalar is in 1..n-1.
 ecdh_multiply_admitted :: (input:ScScalar,peer:SgPoint)->Sg32 {
   point:=sg32_from_point(peer);table:=ecdh_table(point);
-  digits:=smc_recode(input);result:=smc_signed(smc_pick(table[..],digits.magnitude[64]),digits.negative[64]);
+  digits:=smc_recode(input);defer {secure_zero(digits.magnitude[..]);#assert crypto_zeroed(digits.magnitude[..]);}defer {secure_zero(digits.negative[..]);#assert crypto_zeroed(digits.negative[..]);}result:=smc_signed(smc_pick(table[..],digits.magnitude[64]),digits.negative[64]);defer {secure_zero(result.x.limb[..]);#assert crypto_zeroed(result.x.limb[..]);}defer {secure_zero(result.y.limb[..]);#assert crypto_zeroed(result.y.limb[..]);}defer {secure_zero(result.z.limb[..]);#assert crypto_zeroed(result.z.limb[..]);}
   for round:0..<64 {
     for bit:0..<4 {result=ef_double(result);}
-    selected:=smc_signed(smc_pick(table[..],digits.magnitude[63-round]),digits.negative[63-round]);
+    selected:=smc_signed(smc_pick(table[..],digits.magnitude[63-round]),digits.negative[63-round]);defer {secure_zero(selected.x.limb[..]);#assert crypto_zeroed(selected.x.limb[..]);}defer {secure_zero(selected.y.limb[..]);#assert crypto_zeroed(selected.y.limb[..]);}defer {secure_zero(selected.z.limb[..]);#assert crypto_zeroed(selected.z.limb[..]);}
     result=ef_add(result,selected);
   }
   return sg32_canonical_infinity(result);
 }
 // Private: a canonical finite public peer and a scalar in 1..n-1.
 ecdh_secret_math :: (input:ScScalar,peer:SgPoint)->EcdhMath {
-  result:EcdhMath;result.shared=ecdh_multiply_admitted(input,peer);
-  inverse:=ef_inverse(result.shared.z);
+  result:EcdhMath;defer {secure_zero(result.shared.x.limb[..]);#assert crypto_zeroed(result.shared.x.limb[..]);}defer {secure_zero(result.shared.y.limb[..]);#assert crypto_zeroed(result.shared.y.limb[..]);}defer {secure_zero(result.shared.z.limb[..]);#assert crypto_zeroed(result.shared.z.limb[..]);}defer {secure_zero(result.affine_x.limb[..]);#assert crypto_zeroed(result.affine_x.limb[..]);}result.shared=ecdh_multiply_admitted(input,peer);
+  inverse:=ef_inverse(result.shared.z);defer {secure_zero(inverse.limb[..]);#assert crypto_zeroed(inverse.limb[..]);}
   result.affine_x=ef_field_mul(result.shared.x,ef_field_mul(inverse,inverse));return result;
 }
 ecdh_stage :: (secret:[]u8,peer:[]u8,work:[]EcdhScratch)->u32 {
   if secret.count!=32 || peer.count!=32 || work.count!=1 {return EC_LENGTH;}
   point:=sg_lift_x_public(peer);if !point.ok {return EC_PEER;}
-  raw:ScScalar;wide:[9]u32;bits:u32;
-  for i:0..<8 {word:=cb_load_be32(secret,(7-i)*4).value;raw.limbs[i]=word;wide[i]=word;bits|=word;}
-  valid:=sc_subtract_n(wide).borrow & (sc_zero_bit(bits)^1);
-  work[0].scalar=sc_select(valid,raw,sc_small(1));
-  product:=ecdh_secret_math(work[0].scalar,point.value);work[0].shared=sg32_to_point(product.shared);
+  raw:ScScalar;defer {secure_zero(raw.limbs[..]);#assert crypto_zeroed(raw.limbs[..]);}bits:u32;borrow:u64;
+  for i:0..<8 {word:=cb_load_be32(secret,(7-i)*4).value;raw.limbs[i]=word;bits|=word;}
+  for i:0..<8 {wide:=SC_BASE+cast(u64)raw.limbs[i]-cast(u64)SC_N.limbs[i]-borrow;borrow=1-(wide>>32);}
+  valid:=borrow & (sc_zero_bit(bits)^1);fallback:=sc_small(1);mask32:=cast,trunc(u32)cb_mask(valid);
+  for i:0..<8 {work[0].scalar.limbs[i]=cb_ct_select32(mask32,raw.limbs[i],fallback.limbs[i]);}
+  product:=ecdh_secret_math(work[0].scalar,point.value);defer {secure_zero(product.shared.x.limb[..]);#assert crypto_zeroed(product.shared.x.limb[..]);}defer {secure_zero(product.shared.y.limb[..]);#assert crypto_zeroed(product.shared.y.limb[..]);}defer {secure_zero(product.shared.z.limb[..]);#assert crypto_zeroed(product.shared.z.limb[..]);}defer {secure_zero(product.affine_x.limb[..]);#assert crypto_zeroed(product.affine_x.limb[..]);}work[0].shared=sg32_to_point(product.shared);
   work[0].affine.x=sg32_to_field(product.affine_x);
   // The fixed public loop indices cover the 32 staged bytes exactly once.
   // Each source word is u32; no secret-dependent range check is needed.

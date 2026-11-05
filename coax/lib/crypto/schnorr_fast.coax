@@ -59,15 +59,15 @@ SFV_TEST_SIG :: [64]u8.[233,7,131,31,128,132,141,16,105,165,55,27,64,36,16,54,75
   #assert sfv_affine_match(sg32_from_field(expected.value.x),twice);
 }
 
-#test "official BIP-340 vector zero reaches real byte verification" {
+#test "official BIP-340 vector zero reaches real byte verification" #steps 100000000 {
   message:[32]u8;public_key:=SFV_TEST_KEY;signature:=SFV_TEST_SIG;
   #assert schnorr_fast_verify_vartime(message[..],public_key[..],signature[..]);
 }
-#test "modified message refuses after the full equation" {
+#test "modified message refuses after the full equation" #steps 100000000 {
   message:[32]u8;message[0]=1;public_key:=SFV_TEST_KEY;signature:=SFV_TEST_SIG;
   #assert !schnorr_fast_verify_vartime(message[..],public_key[..],signature[..]);
 }
-#test "modified in-range signature refuses after the full equation" {
+#test "modified in-range signature refuses after the full equation" #steps 100000000 {
   message:[32]u8;public_key:=SFV_TEST_KEY;signature:=SFV_TEST_SIG;signature[63]^=1;
   #assert !schnorr_fast_verify_vartime(message[..],public_key[..],signature[..]);
 }

@@ -182,7 +182,7 @@ sha256_tagged_init :: (state: [] u8, tag: string) -> u32 {
   if !sha256_tag_ok(tag.count) {return SHA_BAD_TAG;}
   if state.count != SHA_STATE_BYTES {return SHA_BAD_STATE;}
   digest:=S_hash(tag);if digest.error != 0 {return digest.error;}
-  tag_hash:[32]u8;status:=sha256_emit(digest.words[..],tag_hash[..]);if status != SHA_OK {return status;}
+  tag_hash:[32]u8;defer {secure_zero(tag_hash[..]);#assert crypto_zeroed(tag_hash[..]);}status:=sha256_emit(digest.words[..],tag_hash[..]);if status != SHA_OK {return status;}
   status=sha256_init(state);if status != SHA_OK {return status;}
   status=sha256_update_checked(state,tag_hash[..],false);if status != SHA_OK {return status;}
   return sha256_update_checked(state,tag_hash[..],false);

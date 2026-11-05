@@ -1,0 +1,26 @@
+// Postcondition for explicit scalar secret storage. A cleanup boundary
+// checks this after secure_zero and refuses completion by trapping if its
+// storage is not zero. The scan visits every word; it never exits early on
+// secret data. This verifies the contents, not compiler-created copies.
+#authority;
+
+#test "erasure postconditions include high bits and empty spans" {
+  bytes:[3]u8;words:[3]u32;wide:[3]u64;
+  #assert crypto_zeroed(bytes[..]) && crypto_zeroed(words[..]) && crypto_zeroed(wide[..]);
+  #assert crypto_zeroed(bytes[0..<0]);
+  flags:=[1]bool.[true];fraction:=[1]f32.[0.5];
+  #assert !crypto_zeroed(flags[..]) && !crypto_zeroed(fraction[..]);
+  secure_zero(flags[..]);secure_zero(fraction[..]);
+  #assert crypto_zeroed(flags[..]) && crypto_zeroed(fraction[..]);
+  for i:0..<3 {
+    bytes[i]=255;words[i]=4294967295;wide[i]=18446744073709551615;
+    #assert !crypto_zeroed(bytes[..]) && !crypto_zeroed(words[..]) && !crypto_zeroed(wide[..]);
+    secure_zero(bytes[..]);secure_zero(words[..]);secure_zero(wide[..]);
+    #assert crypto_zeroed(bytes[..]) && crypto_zeroed(words[..]) && crypto_zeroed(wide[..]);
+  }
+}
+crypto_zeroed :: (data:[]$T:equatable)->bool {
+  zero:$T;clean:=true;
+  for word:data {clean=(word==zero) && clean;}
+  return clean;
+}

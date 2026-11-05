@@ -24,6 +24,17 @@ erase_before_return :: (bytes: []u8) -> int {
   #assert bytes[0] == 0 && bytes[1] == 0;
 }
 
+return_then_erase :: () -> [2]u8 {
+  bytes := [2]u8.[81,92];
+  defer secure_zero(bytes[..]);
+  return bytes;
+}
+
+#test "a returned value is captured before its local storage is erased" {
+  got := return_then_erase();
+  #assert got[0] == 81 && got[1] == 92;
+}
+
 main :: () {
   bytes := [4]u8.[11,22,33,44];
   secure_zero(bytes[1..<3]);

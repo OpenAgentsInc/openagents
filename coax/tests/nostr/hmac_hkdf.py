@@ -78,7 +78,7 @@ class HmacHkdf(unittest.TestCase):
   for path in ['upstream/rfc/rfc4231.txt','upstream/rfc/rfc5869.txt','upstream/nip44/nip44.vectors.json']:
    data=(base/path).read_bytes();self.assertEqual(len(data),pins[path]['bytes'])
    self.assertEqual(hashlib.sha256(data).hexdigest(),pins[path]['sha256'])
-  self.assertEqual(hashlib.sha256((ROOT/'coax/lib/crypto/sha256-kernel.coax').read_bytes()+(ROOT/'coax/lib/proto/fingerprint.coax').read_bytes()).hexdigest(),'cbb06bc1439ca987d14de9addf60f6966bff9c291f80987c2b69f0bbe9db50a2')
+  self.assertEqual(hashlib.sha256((ROOT/'coax/lib/crypto/sha256-kernel.coax').read_bytes()+(ROOT/'coax/lib/proto/fingerprint.coax').read_bytes()).hexdigest(),'5e0e0900c30d91b670f14c4f3c47d07461936b6c07d22ca08dfa68bc26c2159a')
  def mac(self,lib,key,message):
   k=array(key);m=array(message);out=array([0xa5]*40)
   self.assertEqual(lib.hmac_sha256(view(k),view(m),view(out)),0)
@@ -168,6 +168,29 @@ int main(void){
 }''')
   run('cc','-std=c11','-O1','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer',self.dir/'checked.c',host,'-lm','-o',self.dir/'sanitized')
   run(self.dir/'sanitized')
+
+ def test_nip44_plaintext_cleanup_native_sanitized_and_wasm(self):
+  # The fixture inspects the caller's actual memory on success and on an
+  # authenticated output-capacity refusal. It also checks both span guards.
+  reference={}
+  for label,flags in [('checked',[]),('release',['--release'])]:
+   source=self.dir/(label+'-nip44.c')
+   source.write_text(run(COMPILER,'c',ROOT/'coax/lib/nostr/nip44-memory.coax','--library','--header',self.dir/'nip44.h',*flags).stdout)
+   fixture=ROOT/'coax/tests/nostr/nip44_native.c'
+   common=['-std=c11','-I'+str(self.dir),source,fixture,'-lm']
+   for mode,options in [('native',['-O2']),('sanitized',['-O1','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer'])]:
+    exe=self.dir/(label+'-nip44-'+mode)
+    run('cc',*common,*options,'-o',exe)
+    for length,profile in [(1,1),(33,1),(65535,1),(65536,2)]:
+     payload=run(exe,length,profile).stdout
+     key=(length,profile)
+     if key in reference:self.assertEqual(payload,reference[key])
+     else:reference[key]=payload
+   module=self.dir/(label+'-nip44.wasm')
+   run(WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,*common,'-O2','-Wl,-z,stack-size=1048576','-o',module)
+   for length,profile in [(1,1),(33,1),(65535,1),(65536,2)]:
+    observed=run('node',ROOT/'coax/tests/nostr/ecdh_host_wasm.cjs',module,'nip44',length,profile).stdout
+    self.assertEqual(observed,reference[length,profile]+'Wasm host cleanup fixture passed\n')
 
  def test_actual_wasm_rfc_and_nip44_vectors(self):
   clang=Path(WASM_CLANG);sysroot=Path(WASM_SYSROOT);resources=Path(WASM_RESOURCES)

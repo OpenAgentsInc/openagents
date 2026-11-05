@@ -143,19 +143,18 @@ does: it runs ECDH, derives the conversation key into `out`, and sets
 `work[0]` to zero on every path after the lengths are admitted, including
 both refusals. `out` is written only on success.
 
-These are plain stores. Erasure that the C compiler cannot remove is the
-host's job (`zeroize.coax`). `ecdh_lifecycle.coax` is the state model a
-host follows when it owns the scratch instead: a slot moves through free,
-ready, running, cleaning, output and done, and an error completes only
-after the dirty regions are wiped. The
-[owned lifecycle record](../../docs/verification/2026-10-29-ecdh-owned-lifecycle.md)
-maps every return of that host interface.
+The helper uses `secure_zero` for each explicit numeric scratch field, so
+its stores remain observable in optimized native and Wasm code. The secret
+arithmetic also defers erasure of its explicit local arrays. It retains no
+promise about compiler/ABI copies or target timing.
 
-That host interface is separate from the pure Coax conversation-key helper
-used in this chapter. Its ordinary stores, and the fact that the scratch
-reads as zero in a check, do not prove optimizer-resistant erasure. Message
-encryption adds other secret temporaries; see
-[chapter 20's cleanup boundary](ch020-nip-44-encrypted-payloads.md#secret-storage-and-cleanup).
+`ecdh_lifecycle.coax` models the separate host-owned lifecycle: a slot moves
+through free, ready, running, cleaning, output and done, and an error completes
+only after the dirty regions are wiped. The
+[owned lifecycle record](../../docs/verification/2026-10-29-ecdh-owned-lifecycle.md)
+maps every return of that host interface, including pending/failed cleanup.
+Message encryption's explicit-storage guarantees and actual execution checks
+are described in [chapter 20](ch020-nip-44-encrypted-payloads.md#secret-storage-and-cleanup).
 
 ## The example
 

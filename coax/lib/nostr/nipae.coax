@@ -87,7 +87,7 @@ AeSealed :: struct {error:u32=AE_INPUT; written:int;}
 AeWhen :: struct {error:u32; created_at:int;}
 // book:end record
 
-ae_zero :: (b:[]u8) {for i:0..<b.count {b[i]=0;}}
+ae_zero :: (b:[]u8) {secure_zero(b);}
 ae_clear :: (w:[]AeWork) {ae_zero(w[0].pre[..]);ae_zero(w[0].body[..]);ae_zero(w[0].cipher[..]);ae_zero(w[0].scratch[..]);ae_zero(w[0].ck[..]);}
 ae_keep :: (a:[]AeText,s:string)->string {
   from:=a[0].at;if from+s.count>a[0].buf.count {return "";}

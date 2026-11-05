@@ -93,12 +93,12 @@ hmac_sha256_commit :: (source:[]u8,out:[]u8)->u32 {
 }
 hmac_sha256_init_checked :: (state:[]u8,key:[]u8,overlap:bool)->u32 {
   status:=hmac_sha256_init_request(state.count,key.count,overlap);if status!=SHA_OK {return status;}
-  hashed:[32]u8;effective:=key;
+  hashed:[32]u8;defer {secure_zero(hashed[..]);#assert crypto_zeroed(hashed[..]);}effective:=key;
   if key.count>64 {status=sha256_hash_checked(key,hashed[..],false);if status!=SHA_OK {return status;}effective=hashed[..];}
-  block:[64]u8;for i:0..<effective.count {block[i]=effective[i];}
-  inner:[64]u8;outer:[64]u8;
+  block:[64]u8;defer {secure_zero(block[..]);#assert crypto_zeroed(block[..]);}for i:0..<effective.count {block[i]=effective[i];}
+  inner:[64]u8;defer {secure_zero(inner[..]);#assert crypto_zeroed(inner[..]);}outer:[64]u8;defer {secure_zero(outer[..]);#assert crypto_zeroed(outer[..]);}
   for i:0..<64 {inner[i]=block[i]^0x36;outer[i]=block[i]^0x5c;}
-  work:[224]u8;
+  work:[224]u8;defer {secure_zero(work[..]);#assert crypto_zeroed(work[..]);}
   status=sha256_init(work[0..<112]);if status!=SHA_OK {return status;}
   status=sha256_init(work[112..<224]);if status!=SHA_OK {return status;}
   status=sha256_update_checked(work[0..<112],inner[..],false);if status!=SHA_OK {return status;}
@@ -117,8 +117,8 @@ hmac_sha256_final_checked :: (state:[]u8,out:[]u8,overlap:bool)->u32 {
   if !cb_span(out.count,0,32) {return SHA_BAD_OUTPUT;}
   if overlap {return SHA_ALIAS;}
   if info.phase==SHA_FINAL {return sha256_final_checked(state[112..<224],out,false);}
-  work:[224]u8;for i:0..<224 {work[i]=state[i];}
-  digest:[32]u8;
+  work:[224]u8;defer {secure_zero(work[..]);#assert crypto_zeroed(work[..]);}for i:0..<224 {work[i]=state[i];}
+  digest:[32]u8;defer {secure_zero(digest[..]);#assert crypto_zeroed(digest[..]);}
   status:=sha256_final_checked(work[0..<112],digest[..],false);if status!=SHA_OK {return status;}
   status=sha256_update_checked(work[112..<224],digest[..],false);if status!=SHA_OK {return status;}
   status=sha256_final_checked(work[112..<224],out,false);if status!=SHA_OK {return status;}
@@ -126,7 +126,7 @@ hmac_sha256_final_checked :: (state:[]u8,out:[]u8,overlap:bool)->u32 {
 }
 hmac_sha256_checked :: (key:[]u8,input:[]u8,out:[]u8,overlap:bool)->u32 {
   status:=hmac_sha256_request(key.count,input.count,out.count,overlap);if status!=SHA_OK {return status;}
-  state:[224]u8;
+  state:[224]u8;defer {secure_zero(state[..]);#assert crypto_zeroed(state[..]);}
   status=hmac_sha256_init_checked(state[..],key,false);if status!=SHA_OK {return status;}
   status=hmac_sha256_update_checked(state[..],input,false);if status!=SHA_OK {return status;}
   return hmac_sha256_final_checked(state[..],out,false);
