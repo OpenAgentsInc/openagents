@@ -56,9 +56,9 @@ CheckpointRead :: struct {
 }
 // book:end checkpoint-format
 
-ck_sum :: (b: [] int, n: int) -> int {
+ck_sum :: (b: [] int) -> int {
   h := 2166136261;
-  for i: 0..<n { h = replay_mix_wide(h, b[i]); }
+  for i: 0..<b.count { h = replay_mix_wide(h, b[i]); }
   return h;
 }
 // Which slot the next checkpoint goes to: the one not holding the newest.
@@ -80,7 +80,7 @@ checkpoint_write :: (out: [] int, pins: CheckpointPins, owner: int, s: ReplaySes
     out[k] = ch.epoch; out[k + 1] = ch.last; out[k + 2] = ch.asked; out[k + 3] = ch.answered; k += CK_CHANNEL;
   }
   for i: 0..<state.count { out[k + i] = state[i]; }
-  out[n - 1] = ck_sum(out, n - 1);
+  out[n - 1] = ck_sum(out[0..<n - 1]);
   return n;
 }
 // book:end checkpoint-write
@@ -93,7 +93,7 @@ checkpoint_read :: (b: [] int, n: int, pins: CheckpointPins, fence: int) -> Chec
   if n <= 0 { out.status = CK_EMPTY; return out; }
   if n > b.count || n < CK_HEADER + REPLAY_SOURCES * CK_CHANNEL + 1 || b[0] != CHECKPOINT_MAGIC { out.status = CK_TORN; return out; }
   words := b[11];
-  if words < 0 || n != CK_HEADER + REPLAY_SOURCES * CK_CHANNEL + words + 1 || b[n - 1] != ck_sum(b, n - 1) { out.status = CK_TORN; return out; }
+  if n != CK_HEADER + REPLAY_SOURCES * CK_CHANNEL + words + 1 || b[n - 1] != ck_sum(b[0..<n - 1]) { out.status = CK_TORN; return out; }
   if b[1] != CHECKPOINT_SCHEMA { out.status = CK_SCHEMA; return out; }
   if b[2] != pins.engine || b[3] != pins.content || b[4] != pins.rules || b[5] != pins.profile { out.status = CK_BUILD; return out; }
   if b[6] < fence { out.status = CK_FENCED; return out; }
@@ -121,7 +121,7 @@ journal_put :: (j: [] int, at: int, kind: int, owner: int, e: ReplayEvent, mark:
   j[at] = kind; j[at + 1] = owner; j[at + 2] = e.tick; j[at + 3] = e.source; j[at + 4] = e.request; j[at + 5] = e.epoch;
   for w: 0..<REPLAY_WORDS { j[at + 6 + w] = e.words[w]; }
   j[at + 16] = mark;
-  j[at + 17] = ck_sum(j[at..<at + 17], 17);
+  j[at + 17] = ck_sum(j[at..<at + 17]);
   return JOURNAL_ENTRY;
 }
 // Appends an accepted event at word `at`: the words written, 0 if no room.
@@ -139,7 +139,7 @@ journal_read :: (j: [] int, n: int, fence: int, s: ReplaySession) -> JournalRead
   newest := fence;
   at := 0;
   while at + JOURNAL_ENTRY <= n && at + JOURNAL_ENTRY <= j.count {
-    if j[at + 17] != ck_sum(j[at..<at + 17], 17) || (j[at] != JOURNAL_EVENT && j[at] != JOURNAL_MARK) { out.torn = true; return out; }
+    if j[at + 17] != ck_sum(j[at..<at + 17]) || (j[at] != JOURNAL_EVENT && j[at] != JOURNAL_MARK) { out.torn = true; return out; }
     owner := j[at + 1];
     if owner < newest { out.fenced += 1; at += JOURNAL_ENTRY; continue; }
     newest = owner;
@@ -152,7 +152,7 @@ journal_read :: (j: [] int, n: int, fence: int, s: ReplaySession) -> JournalRead
       t := j[at + 2];
       if t < 0 || t >= s.marks.count { out.torn = true; return out; }
       s.marks[t] = j[at + 16];
-      if t + 1 > out.marks { out.marks = t + 1; }
+      if t >= out.marks { out.marks = t + 1; }   // the highest step marked, plus one
     }
     at += JOURNAL_ENTRY;
   }
@@ -171,7 +171,7 @@ checkpoint_resume :: (s: ReplaySession, b: [] int, r: CheckpointRead, j: Journal
     k := CK_HEADER + c * CK_CHANNEL;
     s.channels[c] = ReplayChannel.{epoch = b[k], last = b[k + 1], asked = b[k + 2], answered = b[k + 3]};
   }
-  for i: 0..<REPLAY_COUNTERS { s.n[i] = 0; }
+  for i: REPLAY_DIVERGED..<REPLAY_COUNTERS { s.n[i] = 0; }   // the counters below are all set here
   s.n[REPLAY_MODE] = REPLAY_PLAYING;
   s.n[REPLAY_TICK] = r.tick;
   s.n[REPLAY_EVENTS] = j.events;
@@ -205,6 +205,80 @@ checkpoint_op :: (owner: int, tick: int, k: int) -> int { return replay_mix_wide
   bad: [1] CoRestore; l: [1] CoLedger;
   co_restore(c[..], bad[..], c[0].journal_n, CO_PINS, 3, 3, true, l[..]);
   #assert !bad[0].matched && bad[0].diverged == 2 * CO_EVERY;
+}
+
+#test "checkpoint: every word of the format, the journal and a resume" {
+  // a session with its channels, step and counters set by hand
+  bk: [1] ReplayBacking; s := replay_backing(bk[..]);
+  replay_record(s, 52, 51);   // initial 52, seed 51
+  for c: 0..<REPLAY_SOURCES { s.channels[c] = ReplayChannel.{epoch = 10 + c, last = 20 + c, asked = 30 + c, answered = 40 + c}; }
+  s.n[REPLAY_TICK] = 7; s.n[REPLAY_EVENTS] = 2;
+  pins := CheckpointPins.{engine = 61, content = 62, rules = 63, profile = 64};
+  state := [3] int.[5, 6, 7];
+  n := CK_HEADER + REPLAY_SOURCES * CK_CHANNEL + 4;
+  out: [64] int;
+  #assert checkpoint_write(out[0..<n - 1], pins, 9, s, state[..]) == 0 && checkpoint_write(out[0..<n], pins, 9, s, state[..]) == n;
+  want := [CK_HEADER] int.[CHECKPOINT_MAGIC, CHECKPOINT_SCHEMA, 61, 62, 63, 64, 9, 7, 51, 52, 2, 3];
+  for i: 0..<CK_HEADER { #assert out[i] == want[i]; }
+  for c: 0..<REPLAY_SOURCES { for w: 0..<CK_CHANNEL { #assert out[CK_HEADER + c * CK_CHANNEL + w] == 10 * (w + 1) + c; } }
+  for i: 0..<3 { #assert out[n - 4 + i] == 5 + i; }
+  h := 2166136261;
+  for i: 0..<n - 1 { h = replay_mix_wide(h, out[i]); }
+  #assert out[n - 1] == h;
+  r := checkpoint_read(out[0..<n], n, pins, 9);
+  #assert r.status == CK_OK && r.owner == 9 && r.tick == 7 && r.seed == 51 && r.initial == 52 && r.cursor == 2 && r.state == n - 4 && r.words == 3;
+  // a checkpoint claiming more words than its buffer holds is torn, not read past
+  #assert checkpoint_read(out[0..<n - 1], n, pins, 0).status == CK_TORN;
+  // an empty state is the smallest checkpoint
+  e: [64] int; m := checkpoint_write(e[..], pins, 9, s, state[0..<0]);
+  #assert m == CK_HEADER + REPLAY_SOURCES * CK_CHANNEL + 1 && checkpoint_read(e[0..<m], m, pins, 9).status == CK_OK && checkpoint_read(e[..], m - 1, pins, 9).status == CK_TORN;
+  // picking: a whole one over a torn one, the newer of two, the first of equals
+  ok7 := CheckpointRead.{status = CK_OK, tick = 7}; ok9 := CheckpointRead.{status = CK_OK, tick = 9}; torn := CheckpointRead.{status = CK_TORN, tick = 99};
+  #assert checkpoint_pick(torn, ok7) == 1 && checkpoint_pick(ok7, torn) == 0 && checkpoint_pick(ok9, ok7) == 0 && checkpoint_pick(ok7, ok9) == 1 && checkpoint_pick(ok7, ok7) == 0;
+  // a journal entry, word by word
+  j: [64] int;
+  ev := ReplayEvent.{tick = 3, source = REPLAY_MODEL, request = 4, epoch = 5};
+  for w: 0..<REPLAY_WORDS { ev.words[w] = 100 + w; }
+  #assert journal_event(j[..], 0, 8, ev) == JOURNAL_ENTRY && journal_mark(j[..], JOURNAL_ENTRY, 8, 6, 777) == JOURNAL_ENTRY;
+  #assert j[0] == JOURNAL_EVENT && j[1] == 8 && j[2] == 3 && j[3] == REPLAY_MODEL && j[4] == 4 && j[5] == 5 && j[6] == 100 && j[15] == 109 && j[16] == 0;
+  #assert j[JOURNAL_ENTRY] == JOURNAL_MARK && j[JOURNAL_ENTRY + 2] == 6 && j[JOURNAL_ENTRY + 16] == 777;
+  hj := 2166136261;
+  for i: 0..<17 { hj = replay_mix_wide(hj, j[i]); }
+  #assert j[17] == hj && journal_event(j[..], -1, 8, ev) == 0 && journal_event(j[..], 64 - JOURNAL_ENTRY + 1, 8, ev) == 0 && journal_event(j[..], 64 - JOURNAL_ENTRY, 8, ev) == JOURNAL_ENTRY;
+  // read back: the event's every field and the mark; an exact fit; past the buffer is not read
+  bk2: [1] ReplayBacking; s2 := replay_backing(bk2[..]);
+  jr := journal_read(j[..], 2 * JOURNAL_ENTRY, 0, s2);
+  #assert jr.events == 1 && jr.marks == 7 && !jr.torn && s2.events[0].tick == 3 && s2.events[0].source == REPLAY_MODEL && s2.events[0].request == 4 && s2.events[0].epoch == 5 && s2.events[0].words[9] == 109 && s2.marks[6] == 777;
+  #assert journal_read(j[0..<JOURNAL_ENTRY], 2 * JOURNAL_ENTRY, 0, s2).torn;
+  exact := journal_read(j[0..<JOURNAL_ENTRY], JOURNAL_ENTRY, 0, s2);
+  #assert exact.events == 1 && !exact.torn && checkpoint_read(out[..], 1, pins, 0).status == CK_TORN;
+  // a mark for an earlier step after a later one keeps the count at the later
+  #assert journal_mark(j[..], 2 * JOURNAL_ENTRY, 8, 2, 5) == JOURNAL_ENTRY && journal_read(j[..], 3 * JOURNAL_ENTRY, 0, s2).marks == 7;
+  // a mark out of the session's range, and more events than the session holds, are torn
+  bad: [64] int;
+  #assert journal_mark(bad[..], 0, 8, -1, 5) == JOURNAL_ENTRY && journal_read(bad[..], JOURNAL_ENTRY, 0, s2).torn;
+  #assert journal_mark(bad[..], 0, 8, s2.marks.count, 5) == JOURNAL_ENTRY && journal_read(bad[..], JOURNAL_ENTRY, 0, s2).torn;
+  #assert journal_mark(bad[..], 0, 8, s2.marks.count - 1, 5) == JOURNAL_ENTRY && !journal_read(bad[..], JOURNAL_ENTRY, 0, s2).torn;
+  one_ev: [1] ReplayEvent; one_mk: [8] int; one_ch: [REPLAY_SOURCES] ReplayChannel; one_n: [REPLAY_COUNTERS] int;
+  small := ReplaySession.{events = one_ev[..], marks = one_mk[..], channels = one_ch[..], n = one_n[..]};
+  two: [64] int;
+  #assert journal_event(two[..], 0, 8, ev) == JOURNAL_ENTRY && journal_event(two[..], JOURNAL_ENTRY, 8, ev) == JOURNAL_ENTRY;
+  #assert !journal_read(two[..], JOURNAL_ENTRY, 0, small).torn && journal_read(two[..], 2 * JOURNAL_ENTRY, 0, small).torn;
+  // resume: every counter but the restored ones cleared, the channels as written
+  bk3: [1] ReplayBacking; s3 := replay_backing(bk3[..]);
+  for i: 0..<REPLAY_COUNTERS { s3.n[i] = 99; }
+  jr = journal_read(j[..], 2 * JOURNAL_ENTRY, 0, s3);
+  #assert checkpoint_resume(s3, out[..], r, JournalRead.{events = 2, marks = 7});
+  #assert s3.n[REPLAY_MODE] == REPLAY_PLAYING && s3.n[REPLAY_TICK] == 7 && s3.n[REPLAY_EVENTS] == 2 && s3.n[REPLAY_CURSOR] == 2 && s3.n[REPLAY_INITIAL] == 52;
+  #assert s3.n[REPLAY_SEED] == 51 && s3.n[REPLAY_MARKS] == 7 && s3.n[REPLAY_SEEN] == 2166136261 && s3.n[0] == REPLAY_PLAYING && s3.n[REPLAY_DIVERGED] == 0 && s3.n[REPLAY_COUNTERS - 1] == 0;
+  for c: 0..<REPLAY_SOURCES { #assert s3.channels[c].epoch == 10 + c && s3.channels[c].last == 20 + c && s3.channels[c].asked == 30 + c && s3.channels[c].answered == 40 + c; }
+  // and each reason it refuses
+  #assert !checkpoint_resume(s3, out[..], torn, jr) && !checkpoint_resume(s3, out[..], r, JournalRead.{events = 1});
+  short_n: [REPLAY_COUNTERS - 1] int; short_ch: [REPLAY_SOURCES - 1] ReplayChannel;
+  #assert !checkpoint_resume(ReplaySession.{events = s3.events, marks = s3.marks, channels = s3.channels, n = short_n[..]}, out[..], r, JournalRead.{events = 2});
+  #assert !checkpoint_resume(ReplaySession.{events = s3.events, marks = s3.marks, channels = short_ch[..], n = s3.n}, out[..], r, JournalRead.{events = 2});
+  // an outside effect's id, from its owner, step and index
+  #assert checkpoint_op(1, 2, 3) == replay_mix_wide(replay_mix_wide(replay_mix_wide(2166136261, 1), 2), 3);
 }
 
 #test "checkpoint: a torn newest checkpoint falls back to the older one and a longer journal" {
@@ -256,7 +330,7 @@ checkpoint_op :: (owner: int, tick: int, k: int) -> int { return replay_mix_wide
     #assert checkpoint_read(b, n, p, 2).status == CK_BUILD;
   }
   #assert checkpoint_read(b, n, CO_PINS, 3).status == CK_FENCED;
-  b[1] = CHECKPOINT_SCHEMA + 1; b[n - 1] = ck_sum(b, n - 1);
+  b[1] = CHECKPOINT_SCHEMA + 1; b[n - 1] = ck_sum(b[0..<n - 1]);
   #assert checkpoint_read(b, n, CO_PINS, 2).status == CK_SCHEMA;
   out: [1] CoRestore; l: [1] CoLedger;
   co_restore(c[..], out[..], c[0].journal_n, CO_PINS, 3, 3, false, l[..]);
