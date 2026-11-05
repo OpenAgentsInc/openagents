@@ -1,0 +1,470 @@
+coax/web/api/mesh-policy.coax: OK
+coax/lib/nostr/json.coax: OK
+coax/web/api/mesh-policy.generated.c: OK
+coax/web/api/mesh-policy.generated.h: OK
+coax/web/api/caller-policy.coax: OK
+coax/web/api/caller-policy.generated.c: OK
+coax/web/api/caller-policy.generated.h: OK
+coax/web/api/nip98.coax: OK
+coax/web/api/nip98_vectors.coax: OK
+coax/web/api/nip98_testkit.coax: OK
+coax/web/api/nip98.generated.c: OK
+coax/web/api/nip98.generated.h: OK
+/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/tmp.HSLxzGtha3/nip98.generated.c /Users/christopherdavid/work/oa-character-recovery/coax/web/api/nip98.generated.c differ: char 400, line 7
+nip98: regenerate the C cache from its Coax source
+nip98: the C cache differs from this compiler's output (the image builds from source; regenerate with nip98.sh --generate)
+coax: note[E0400]: compile-time steps: 15324890 of 20000000 used (76%), above three quarters of the limit; more than 20000000 fails with E0400
+  top users of compile-time steps:
+    3146231 steps  coax/web/api/nip98_testkit.coax:10:1  in 'n98t_run' (30 times)
+    2392350 steps  coax/lib/crypto/sha256-kernel.coax:63:1  in 'S_compress' (246 times)
+    2182669 steps  coax/web/api/nip98.coax:198:1  in 'n98_b64' (30 times)
+    2125440 steps  coax/lib/crypto/sha256-kernel.coax:52:1  in 'S_rotr' (141696 times)
+    1349628 steps  coax/web/api/nip98.coax:237:1  in 'n98_str' (491 times)
+  fix: do less work in 'n98t_run', split the check, or give it a larger budget with #steps N on the check (or coax test --steps N for every check)
+200 checks, 200 passed, 0 failed
+201 checks, 201 passed, 0 failed
+deployment command failures propagate; successful output filtering is non-fatal
+.....
+----------------------------------------------------------------------
+Ran 5 tests in 0.242s
+
+OK
+....
+----------------------------------------------------------------------
+Ran 4 tests in 8.417s
+
+OK
+....
+----------------------------------------------------------------------
+Ran 4 tests in 7.571s
+
+OK
+nip98 diff: 33286 cases (925 accepted by both, 16 numbers past the end), 0 disagreements
+/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/tmp.y8Zpm5PiSs/runner-sign.c:1929:9: warning: variable 'l_written' set but not used [-Wunused-but-set-variable]
+ 1929 |   _Bool l_written = coax_p_ss_write((l_challenge).value, coax_mkview_v_u8((((*coax_elem_v_t_SignWork(l_work, INT64_C(0), 492))).challenge).e, 32, 0, 32, 492));
+      |         ^
+1 warning generated.
+  ok    health answers with a database round trip
+  ok    health reports exact deployment identity
+  ok    every migration applied once
+  ok    an unknown path is a 404
+  ok    resume2: ticket issuance succeeds
+  ok    resume2: first join is an authenticated v4 envelope with no capture
+  ok    matrix2: an incomplete authenticated checkpoint is refused before durable acceptance
+  ok    resume2: unversioned reports are fenced from the first durable ticket, before its first capture
+  ok    resume2: full dead body and spent resources commit before the receipt
+  ok    resume2: a lost reply retry keeps its first acceptance
+  ok    matrix2: changing a body under the accepted operation identity conflicts
+  ok    resume2: a separate connection sees the complete committed state
+  ok    resume2: ticket issuance succeeds
+  ok    resume2: a newly owned ticket returns the complete durable dead capture
+  ok    resume2: obsolete process cannot save after the next ticket
+  ok    resume2: a new owner cannot reduce the cumulative XP floor
+  ok    resume2: the new owner starts a fresh process revision
+  ok    resume2: a newer legacy XP report cannot strand an immutable same-owner capture
+  ok    matrix2: a newer immutable revision may arrive ahead of an older report
+  ok    matrix2: a reordered older report cannot replace the accepted full body
+  ok    matrix2: a repeated latest report keeps its exact original acceptance
+  ok    resume2: ticket issuance succeeds
+  ok    resume2: account linking carries the durable body and fences its old owner
+  ok    resume2: the pre-link process cannot overwrite the account checkpoint
+fault-profile mmo-fault-v2 slice=checkpoint-runtime injection=before-COMMIT/after-COMMIT-before-reply/outage/old-owner/final-drain
+  ok    crash2: fault proxy starts on its own port
+  ok    resume2: ticket issuance succeeds
+  ok    resume2: ticket issuance succeeds
+  ok    crash2: before COMMIT initial gameplay stays gated
+  ok    resume2: ticket issuance succeeds
+  ok    crash2: a killed unaccepted room restores the last committed full body
+crash2 first_restore_socket_ms=170 first_restore_total_ms=1212 consumer=native-socket
+  ok    crash2: a changed place is committed independently while its HTTP reply is lost
+  ok    resume2: ticket issuance succeeds
+  ok    crash2: kill after COMMIT before reply restores the committed place
+crash2 after_commit_socket_ms=69 after_commit_total_ms=533
+  ok    crash2: real lost HTTP replies retry idempotently and gameplay resumes
+  ok    crash2: unavailable save store pauses authoritative gameplay inside the 30 second bound
+crash2 outage_observation_ms=38013 active_ticks=884 last_frame_ms=29439 loss_bound_ticks=901 rollback_meters=36.518
+  ok    crash2: the outage includes actual unsaved movement to roll back
+crash2 outage observed report:
+process generation=1793920547607
+capacity startup ready=1
+observation scope=process report window
+out scope=accepted application frames including websocket framing
+transport kernel bytes including upgrade and controls a second=626
+transport discarded queued bytes a second=0
+transport refused frame bytes a second=0
+transport refused frames a second=0.0
+observation counter overflow=0
+server ack scope=input heard to final D accepted by socket queue
+server queued ack p50 ms=10
+server queued ack p95 ms=36
+server queued ack samples=29
+shard=1
+players=1
+ticks a second=30.0
+tick p50 ms=0.01
+tick p95 ms=0.26
+tick p99 ms=0.30
+players p50 ms=0.01
+players p95 ms=0.02
+players p99 ms=0.03
+raiders p50 ms=0.01
+raiders p95 ms=0.01
+raiders p99 ms=0.02
+effects p50 ms=0.01
+effects p95 ms=0.02
+effects p99 ms=0.02
+folk p50 ms=0.01
+folk p95 ms=0.02
+folk p99 ms=0.02
+writing p50 ms=0.01
+writing p95 ms=0.02
+writing p99 ms=0.03
+sending p50 ms=0.01
+sending p95 ms=0.02
+sending p99 ms=0.03
+measuring % of tick=2.33
+queue bytes most=0
+queue age ms most=0
+relevant entities a seat=23.0
+relevant entities most=23
+interest scope=process latest picks
+interest aggregation us=0
+interest seats=1
+interest whole total=23
+interest whole most=23
+interest health only total=0
+interest health only most=0
+interest blocked total=0
+interest blocked most=0
+interest hidden total=0
+interest hidden most=0
+interest worst|checkpoint-test|0|23|0|0|0
+rows sent for their age a second=0.0
+row wait ticks most=0
+rows left for later most=0
+replication scope=process serialized output before relay admission
+rows serialized a second=22.6
+row text bytes serialized a second=517
+rows deferred a second=0.0
+rows latest serialized total=7
+rows latest deferred total=0
+replication worst|checkpoint-test|0|7|0
+checkpoint pending=1
+checkpoint flying=1
+checkpoint posts=19
+checkpoint retries=13
+checkpoint failures=14
+checkpoint applied=4
+checkpoint duplicates=1
+checkpoint late receipts=0
+checkpoint capacity refusals=0
+checkpoint stale owner refusals=0
+checkpoint resident=1
+checkpoint accepted=1
+checkpoint capture age ms most=38967
+checkpoint receipt age ms most=38951
+checkpoint paused rooms=1
+checkpoint finalizing=0
+legacy save pending=0
+legacy save flying=0
+legacy save posts=2
+legacy save retries=0
+legacy save failures=0
+legacy save applied=1
+legacy save duplicates=1
+legacy stale owner refusals=0
+legacy save abandoned=0
+legacy save evicted=0
+owner generation most=4
+owner ticket refusals=0
+checkpoint active loss bound ms=30000
+checkpoint healthy recovery target ms=60000
+capacity draining=0
+capacity native slots=16
+capacity live worlds=1
+capacity unused worlds=15
+capacity seated connections=1
+capacity grace holds=0
+capacity initial gates=0
+capacity scope=native world slots and seat state; API placement caps and reservations are separate
+removal bytes a second=0
+removals waiting a second=0.0
+player info bytes a second=0
+player info waiting a second=0.0
+join pieces bytes a second=0
+join pieces waiting a second=0.0
+cue bytes a second=0
+cues dropped a second=0.0
+outcome bytes a second=0
+outcomes lost a second=0.0
+snapshots after a stall a second=0.00
+towns sent again a second=0.00
+snapshots held for a slow page a second=0.0
+input to ack p50 ms=10
+input to ack p95 ms=36
+joins=0
+join burst bytes=0
+join burst bytes most=0
+join burst ms=0
+join burst ms most=0
+rejoins tried=0
+rejoins seated=0
+rejoins same seat=0
+old socket frames dropped=0
+refused no room=0
+refused ticket=0
+refused kicked=0
+refused shard=0
+refused full=0
+refused version=0
+refused engine=0
+refused rules=0
+refused content=0
+refused schema=0
+refused elsewhere=0
+build engine=1 rules=1 content=1 wire=4-4 schema=2
+out bytes a second=626
+out messages a second=4
+in bytes a second=930
+in messages a second=30
+out D bytes a second=599
+out D a second=3
+out t bytes a second=27
+out t a second=1
+out D o bytes a second=1
+out D o a second=0
+out D s players bytes a second=52
+out D s players a second=3
+out D s townsfolk bytes a second=464
+out D s townsfolk a second=19
+out D s made bytes a second=21
+out D s made a second=0
+out D header bytes a second=61
+out D header a second=3
+in I bytes a second=913
+in I a second=29
+in t bytes a second=17
+in t a second=1
+seat|checkpoint-test|0|0|0|23|10|36|-1
+queued ack|checkpoint-test|0|10|36
+saved|checkpoint-test|0|2|4|1793920547607|5|38967|38951|1793920559137|15|1|1
+report omitted lines=0
+report generation us=62
+observation measured wall share %=0.003
+observation timing scope=timed observer spans plus report; excludes inline serializer input and transport counters
+  ok    vitals2: real outage reports the exact accepted owner process revision, pending retries failures and pause
+  ok    resume2: ticket issuance succeeds
+  ok    crash2: crash during outage returns exactly the accepted place
+crash2 outage_restore_socket_ms=68 outage_restore_total_ms=511
+  ok    crash2: all healthy replacements restore within the 60 second total objective
+  ok    resume2: ticket issuance succeeds
+  ok    crash2: paused obsolete process resumes, loses its seat, and cannot overwrite its successor
+crash2 obsolete owner observed report:
+process generation=1793920598119
+capacity startup ready=1
+observation scope=process report window
+out scope=accepted application frames including websocket framing
+transport kernel bytes including upgrade and controls a second=354
+transport discarded queued bytes a second=0
+transport refused frame bytes a second=0
+transport refused frames a second=0.0
+observation counter overflow=0
+server ack scope=input heard to final D accepted by socket queue
+server queued ack p50 ms=16
+server queued ack p95 ms=18
+server queued ack samples=13
+shard=1
+players=0
+ticks a second=28.4
+tick p50 ms=0.01
+tick p95 ms=0.02
+tick p99 ms=0.30
+players p50 ms=0.01
+players p95 ms=0.01
+players p99 ms=0.03
+raiders p50 ms=0.01
+raiders p95 ms=0.01
+raiders p99 ms=0.02
+effects p50 ms=0.01
+effects p95 ms=0.01
+effects p99 ms=0.02
+folk p50 ms=0.01
+folk p95 ms=0.01
+folk p99 ms=0.02
+writing p50 ms=0.01
+writing p95 ms=0.01
+writing p99 ms=0.03
+sending p50 ms=0.01
+sending p95 ms=0.01
+sending p99 ms=0.04
+measuring % of tick=3.41
+queue bytes most=0
+queue age ms most=0
+relevant entities a seat=0.0
+relevant entities most=0
+interest scope=process latest picks
+interest aggregation us=1
+interest seats=0
+interest whole total=0
+interest whole most=0
+interest health only total=0
+interest health only most=0
+interest blocked total=0
+interest blocked most=0
+interest hidden total=0
+interest hidden most=0
+rows sent for their age a second=0.0
+row wait ticks most=0
+rows left for later most=0
+replication scope=process serialized output before relay admission
+rows serialized a second=10.7
+row text bytes serialized a second=285
+rows deferred a second=0.0
+rows latest serialized total=0
+rows latest deferred total=0
+checkpoint pending=0
+checkpoint flying=0
+checkpoint posts=2
+checkpoint retries=0
+checkpoint failures=0
+checkpoint applied=1
+checkpoint duplicates=0
+checkpoint late receipts=0
+checkpoint capacity refusals=0
+checkpoint stale owner refusals=1
+checkpoint resident=0
+checkpoint accepted=0
+checkpoint capture age ms most=0
+checkpoint receipt age ms most=0
+checkpoint paused rooms=0
+checkpoint finalizing=0
+legacy save pending=0
+legacy save flying=0
+legacy save posts=1
+legacy save retries=0
+legacy save failures=0
+legacy save applied=0
+legacy save duplicates=0
+legacy stale owner refusals=1
+legacy save abandoned=0
+legacy save evicted=0
+owner generation most=0
+owner ticket refusals=0
+checkpoint active loss bound ms=30000
+checkpoint healthy recovery target ms=60000
+capacity draining=0
+capacity native slots=16
+capacity live worlds=0
+capacity unused worlds=16
+capacity seated connections=0
+capacity grace holds=0
+capacity initial gates=0
+capacity scope=native world slots and seat state; API placement caps and reservations are separate
+removal bytes a second=0
+removals waiting a second=0.0
+player info bytes a second=6
+player info waiting a second=0.0
+join pieces bytes a second=0
+join pieces waiting a second=0.0
+cue bytes a second=0
+cues dropped a second=0.0
+outcome bytes a second=0
+outcomes lost a second=0.0
+snapshots after a stall a second=0.00
+towns sent again a second=0.00
+snapshots held for a slow page a second=0.0
+input to ack p50 ms=16
+input to ack p95 ms=18
+joins=1
+join burst bytes=1634
+join burst bytes most=1634
+join burst ms=65
+join burst ms most=65
+rejoins tried=0
+rejoins seated=0
+rejoins same seat=0
+old socket frames dropped=0
+refused no room=0
+refused ticket=0
+refused kicked=0
+refused shard=0
+refused full=0
+refused version=0
+refused engine=0
+refused rules=0
+refused content=0
+refused schema=0
+refused elsewhere=0
+build engine=1 rules=1 content=1 wire=4-4 schema=2
+out bytes a second=341
+out messages a second=2
+in bytes a second=44
+in messages a second=2
+out D bytes a second=329
+out D a second=1
+out W bytes a second=3
+out W a second=0
+out r bytes a second=1
+out r a second=0
+out t bytes a second=5
+out t a second=0
+out y bytes a second=2
+out y a second=0
+out D e bytes a second=1
+out D e a second=0
+out D g bytes a second=5
+out D g a second=0
+out D n bytes a second=6
+out D n a second=0
+out D o bytes a second=0
+out D o a second=0
+out D v bytes a second=3
+out D v a second=0
+out D w bytes a second=1
+out D w a second=0
+out D s players bytes a second=24
+out D s players a second=1
+out D s townsfolk bytes a second=240
+out D s townsfolk a second=8
+out D s made bytes a second=30
+out D s made a second=1
+out D header bytes a second=19
+out D header a second=1
+in H bytes a second=4
+in H a second=0
+in I bytes a second=35
+in I a second=1
+in P bytes a second=1
+in P a second=0
+in t bytes a second=3
+in t a second=0
+report omitted lines=0
+report generation us=159
+observation measured wall share %=0.003
+observation timing scope=timed observer spans plus report; excludes inline serializer input and transport counters
+  ok    vitals2: the actual obsolete process exposes its stale-owner receipt refusal
+crash2 final_exit=0 saved_x_mm=2932 saved_z_mm=-84000 observed_x=2.93 observed_z=-84.0
+  ok    crash2: planned termination accepts the final frozen body before successful exit
+  ok    resume2: ticket issuance succeeds
+  ok    crash2: unavailable final save exits with failure rather than claiming a successful drain
+fault-profile mmo-fault-v2 slice=checkpoint-capacity injection=256-unaccepted-captures/257th-refusal
+capacity2 batch=1 joined=16
+capacity2 batch=2 joined=32
+capacity2 batch=3 joined=48
+capacity2 batch=4 joined=64
+capacity2 batch=5 joined=80
+capacity2 batch=6 joined=96
+capacity2 batch=7 joined=112
+capacity2 batch=8 joined=128
+capacity2 batch=9 joined=144
+capacity2 batch=10 joined=160
+capacity2 batch=11 joined=176
+capacity2 batch=12 joined=192
+capacity2 batch=13 joined=208
+capacity2 batch=14 joined=224
+capacity2 batch=15 joined=240
+capacity2 batch=16 joined=256
+  ok    capacity2: all 256 unaccepted captures survive their sockets and grace bodies
+  ok    capacity2: the 257th character is refused by the outbox with a free simulation seat
+Character checkpoint profile 2: 44 checks, 0 failed
+api: checkpoint2 checks passed

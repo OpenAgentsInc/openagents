@@ -13,12 +13,25 @@ c2_ticket :: (t:[]Ap,key:string,out:[]u8)->string {
   st:=ap_call(t,"POST","/api/playtest/room-ticket/checkpoint-test?checkpoint=2","{}",headers[..]);
   ap_check(t,"resume2: ticket issuance succeeds",st==200,ap_body(t));return ap_member(ap_body(t),"ticket",out);
 }
+#test "fault matrix2: runtime, capacity and combined slices are explicit" {
+  #assert c2_slice(false,"")==0&&c2_slice(true,"runtime")==0;
+  #assert c2_slice(true,"capacity")==1&&c2_slice(true,"matrix")==2;
+  for bad:[4]string.["","all","Runtime","unknown"]{#assert c2_slice(true,bad)== -1;}
+}
+c2_slice::(asked:bool,value:string)->int {
+  if !asked||value=="runtime"{return 0;}
+  if value=="capacity"{return 1;}if value=="matrix"{return 2;}return -1;
+}
 tool_main :: ()->int #export_c {
   a:[1]Args;if !args_load(a[..]){return 2;}
   if args_count(a[..])==3&&args_at(a[..],0)=="proxy"{return c2_proxy(args_at(a[..],1),args_at(a[..],2));}
+  slice_b:[32]u8;slice:=c2_slice(proc_has_env("C2_FAULT_SLICE"),proc_getenv("C2_FAULT_SLICE",slice_b[..]));
+  if slice<0{tool_errln("C2_FAULT_SLICE: runtime, capacity or matrix");return 2;}
   t:[1]Ap;if !ap_open(t[..]){return 2;}p:[1]Player;_:=ap_player(t[..],p[..]);ticket:[RT_TEXT]u8;
   initial:=rt_read(t[0].room_key,c2_ticket(t[..],pl_key(p[..]),ticket[..]));
   ap_check(t[..],"resume2: first join is an authenticated v4 envelope with no capture",initial.ok&&!initial.capture.ok,"");
+  partial:=c2_signed_post(t[..],"/api/playtest/room-checkpoint-v2","{}");
+  ap_check(t[..],"matrix2: an incomplete authenticated checkpoint is refused before durable acceptance",partial==400,ap_body(t[..]));
   pid:=pl_id(p[..]);c:=cc_fixture();c.pid_n=pid.count;for i:0..<pid.count{c.pid[i]=pid[i];}c.room_n=15;room:="checkpoint-test";for i:0..<room.count{c.room[i]=room[i];}
   c.n[1]=1;c.n[2]=1001;c.n[3]=1;c.n[4]=cxproc_wall_us()/1000;c.n[5]=c.n[4];c.n[11]=100;c.state[7]=0;
   old:[1]Sb;sb(old[..],"t ");sb_int(old[..],c.n[4]);sb(old[..],"\n");sb(old[..],pid);sb(old[..]," 9 20 9999\n");
@@ -28,6 +41,8 @@ tool_main :: ()->int #export_c {
   ap_check(t[..],"resume2: full dead body and spent resources commit before the receipt",st==200&&ap_member_int(ap_body(t[..]),"v",0)==2&&ap_member(ap_body(t[..]),"status",ticket[..])=="applied"&&accepted>0,ap_body(t[..]));
   c.n[5]+=1;st=c2_post(t[..],c);
   ap_check(t[..],"resume2: a lost reply retry keeps its first acceptance",st==200&&ap_member(ap_body(t[..]),"status",ticket[..])=="duplicate"&&ap_member_int(ap_body(t[..]),"accepted_at",0)==accepted,ap_body(t[..]));
+  changed:=c;changed.n[13]+=1;st=c2_post(t[..],changed);
+  ap_check(t[..],"matrix2: changing a body under the accepted operation identity conflicts",st==200&&ap_member(ap_body(t[..]),"status",ticket[..])=="conflict",ap_body(t[..]));
   b:[4096]u8;q:[1]Sb;sb(q[..],"select (body->>'dead')||':'||(body->'state'->>7)||':'||(body->>'x_mm') from verse.character_checkpoints_v2 where who='");sb(q[..],pid);sb(q[..],"'");
   ap_check(t[..],"resume2: a separate connection sees the complete committed state",ap_sql(t[..],sb_text(q[..]),b[..])=="true:0:-1234","");
   restored:=rt_read(t[0].room_key,c2_ticket(t[..],pl_key(p[..]),ticket[..]));
@@ -41,6 +56,12 @@ tool_main :: ()->int #export_c {
   sb_clear(q[..]);sb(q[..],"update verse.room_vitals set xp=102 where who='");sb(q[..],pid);sb(q[..],"'");ap_do(t[..],sb_text(q[..]));
   c.n[3]=2;st=c2_post(t[..],c);
   ap_check(t[..],"resume2: a newer legacy XP report cannot strand an immutable same-owner capture",st==200&&ap_member(ap_body(t[..]),"status",b[..])=="applied",ap_body(t[..]));
+  older:=c;c.n[3]=4;st=c2_post(t[..],c);new_accept:=ap_member_int(ap_body(t[..]),"accepted_at",0);
+  ap_check(t[..],"matrix2: a newer immutable revision may arrive ahead of an older report",st==200&&ap_member(ap_body(t[..]),"status",b[..])=="applied"&&new_accept>0,ap_body(t[..]));
+  st=c2_post(t[..],older);
+  ap_check(t[..],"matrix2: a reordered older report cannot replace the accepted full body",st==200&&ap_member(ap_body(t[..]),"status",b[..])=="stale",ap_body(t[..]));
+  st=c2_post(t[..],c);
+  ap_check(t[..],"matrix2: a repeated latest report keeps its exact original acceptance",st==200&&ap_member(ap_body(t[..]),"status",b[..])=="duplicate"&&ap_member_int(ap_body(t[..]),"accepted_at",0)==new_accept,ap_body(t[..]));
   sb_clear(q[..]);sb(q[..],"insert into verse.accounts(id,created_ms) values('checkpoint-account',1);update verse.players set account='checkpoint-account' where id='");sb(q[..],pid);sb(q[..],"'");ap_do(t[..],sb_text(q[..]));
   restored=rt_read(t[0].room_key,c2_ticket(t[..],pl_key(p[..]),ticket[..]));
   ap_check(t[..],"resume2: account linking carries the durable body and fences its old owner",restored.ok&&restored.capture.ok&&restored.capture.dead&&restored.capture.n[11]==101,"");
@@ -48,8 +69,8 @@ tool_main :: ()->int #export_c {
   ap_check(t[..],"resume2: the pre-link process cannot overwrite the account checkpoint",st==200&&ap_member(ap_body(t[..]),"status",b[..])=="fenced",ap_body(t[..]));
   binb:[4200]u8;bin:=proc_getenv("ROOM_BIN",binb[..]);if bin!=""{
     if !fs_exists(bin){tool_errln("ROOM_BIN must name the completed native build");return 2;}
-    slice_b:[32]u8;slice:=proc_getenv("C2_FAULT_SLICE",slice_b[..]);
-    if slice=="capacity"{c2_capacity(t[..],bin);}else{c2_runtime(t[..],bin);}
+    if slice!=1{print("fault-profile mmo-fault-v2 slice=checkpoint-runtime injection=before-COMMIT/after-COMMIT-before-reply/outage/old-owner/final-drain\n");c2_runtime(t[..],bin);}
+    if slice!=0{print("fault-profile mmo-fault-v2 slice=checkpoint-capacity injection=256-unaccepted-captures/257th-refusal\n");c2_capacity(t[..],bin);}
   }
   return ap_done(t[..],"Character checkpoint profile 2");
 }

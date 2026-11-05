@@ -1,0 +1,14 @@
+room http://127.0.0.1:61252/realms/everglade/?relay=ws://127.0.0.1:61251&room=pair-2e5cc0d96b63-1 (desktop), mark pair-check-2e5cc0d96b63, DPR 1
+ok   both pages joined the room
+ok   each has the other's player and who it is (D's n) and draws its body
+ok   each has a name for the other's nameplate (not -)
+  A seat 1 sees 0, drawn 1; B seat 0 sees 1, drawn 1; names A {"0":"Cedar Otter","1":"Swift Otter"} B {"0":"Cedar Otter","1":"Swift Otter"}
+fault-profile mmo-fault-v2 slice=browser seed=1284201 barrier=both-seated-and-drawn
+FAIL accepted cast stops with left after its actual socket closes mid-bar
+ok   caster rejoins through a new socket within 15 seconds
+fault-cast sent=1 accepted=true closed=1 stopped=false sockets=2/3
+ok   incomplete snapshot crosses real producer frames without becoming a whole tick
+fault-snapshot payload='D 1005962 612 3 0 ' base=5962 ack=612 whole_after=5962 applied_frames=9
+ok   fresh full snapshot after reconnect restores exactly one other character on both pages
+fault-browser pass=false A_seat=1 B_seat=0 whole=6014/6014 drawn=1/1
+fails

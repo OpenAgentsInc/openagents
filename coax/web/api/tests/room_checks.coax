@@ -1906,6 +1906,7 @@ rc_region :: (t: [] Ap, api_bin: string, room_bin: string) {
 }
 #test "fault matrix: only named bounded slices are accepted" {
   #assert mf_slice("save")&&mf_slice("owner")&&mf_slice("travel");
+  #assert mf_slice("deploy");
   #assert !mf_slice("")&&!mf_slice("all")&&!mf_slice("Save")&&!mf_slice("region");
 }
 #test "fault matrix: explicit reproducible seed or a fixed default, never a malformed seed" {
@@ -1914,7 +1915,7 @@ rc_region :: (t: [] Ap, api_bin: string, room_bin: string) {
   #assert mf_config(false,"",false,"")&&mf_config(true,"save",false,"")&&mf_config(true,"owner",true,"17");
   #assert !mf_config(true,"",false,"")&&!mf_config(true,"all",false,"")&&!mf_config(true,"save",true,"")&&!mf_config(true,"save",true,"bad");
 }
-mf_slice :: (s:string)->bool{return s=="save"||s=="owner"||s=="travel";}
+mf_slice :: (s:string)->bool{return s=="save"||s=="owner"||s=="travel"||s=="deploy";}
 mf_seed :: (s:string)->int{if s==""{return 1284201;}n:=rc_num(s);return ifx n>=1&&n<=2147483647 then n else -1;}
 mf_config :: (asked:bool,slice:string,seed_set:bool,seed:string)->bool{return !asked||(mf_slice(slice)&&(!seed_set||seed.count>0)&&mf_seed(seed)>0);}
 // ---- the drain and the directory's fence (#12797) --------------------------------------------------
@@ -2032,6 +2033,14 @@ rc_deploy :: (t: [] Ap, room_bin_in: string) {
     sb(hps[..], v); sb(hps[..], " ");
   }
   ap_check(t, "deploy: the API accepted a save of every bot after the drain was asked, before the room ends", saved == BOTS, sb_text(hps[..]));
+  // The replacement becomes ready while the draining revision still lives.
+  // It receives new character owners only after the old revision has drained.
+  wb: [4096] u8; work_b := fs_temp("room-deploy-b", wb[..]);
+  lb: [1] FcLog; pb: [1] int;
+  room_b := ro_room(t, sb_text(binb[..]), work_b, pb[..], lb[..]);
+  next_ready := rd_http("GET", pb[0], "/ready", none[0..<0], hb[..], hn[..]);
+  old_health := rd_http("GET", pa[0], "/health", none[0..<0], hb[..], hn[..]);
+  ap_check(t, "deploy: ready replacement overlaps the live drained revision before SIGTERM", room_b >= 0 && next_ready == 200 && old_health == 200 && ap_has(cast(string) hb[0..<hn[0]], "drain done"), cast(string) hb[0..<hn[0]]);
   // the platform's SIGTERM: a drained room has nothing left to do
   ended := false; t1 := proc_now_ms();
   if room_a >= 0 {
@@ -2042,10 +2051,7 @@ rc_deploy :: (t: [] Ap, room_bin_in: string) {
     r := proc_release(room_a);
   }
   ap_check(t, "deploy: SIGTERM ends the drained room within 9 s", ended, "");
-  // the next revision
-  wb: [4096] u8; work_b := fs_temp("room-deploy-b", wb[..]);
-  lb: [1] FcLog; pb: [1] int;
-  room_b := ro_room(t, sb_text(binb[..]), work_b, pb[..], lb[..]);
+  // New tickets take the next owners on the already ready replacement.
   back := 0;
   for b: 0..<BOTS {
     q: [1] Sb; sb(q[..], "select verse.room_owner_next('"); sb(q[..], cast(string) pids[b][0..<pid_n[b]]); sb(q[..], "')");
@@ -2091,18 +2097,20 @@ tool_main :: () -> int #export_c {
   fb:[32]u8;fault:=proc_getenv("ROOM_FAULT_SLICE",fb[..]);
   fs:[32]u8;seedtext:=proc_getenv("ROOM_FAULT_SEED",fs[..]);seed:=mf_seed(seedtext);
   asked:=proc_has_env("ROOM_FAULT_SLICE");
-  if !mf_config(asked,fault,proc_has_env("ROOM_FAULT_SEED"),seedtext){tool_errln("ROOM_FAULT_SLICE: save, owner or travel; ROOM_FAULT_SEED: 1..2147483647");return 2;}
+  if !mf_config(asked,fault,proc_has_env("ROOM_FAULT_SEED"),seedtext){tool_errln("ROOM_FAULT_SLICE: save, owner, travel or deploy; ROOM_FAULT_SEED: 1..2147483647");return 2;}
   t: [1] Ap;
   if !ap_open(t[..]) { return 2; }
   if asked {
     bb:[4096]u8;bin:=proc_getenv("ROOM_BIN",bb[..]);buildb:[128]u8;build:=proc_getenv("ROOM_FAULT_BUILD",buildb[..]);
     if bin==""||build==""||t[0].room_key==""{tool_errln("fault slice requires ROOM_BIN, ROOM_FAULT_BUILD and ROOM_KEY");return 2;}
-    print("fault-profile mmo-fault-v1 slice=% source=% seed=% consumer=native-socket state=legacy-vitals\n",fault,build,seed);
+    profile:=ifx fault=="deploy" then "mmo-fault-v2" else "mmo-fault-v1";
+    print("fault-profile % slice=% source=% seed=% consumer=native-socket state=legacy-vitals\n",profile,fault,build,seed);
     at:=proc_now_ms();
     if fault=="save"{print("fault-injection: check+16s: HTTP500/30000ms; then two committed replies held7000ms; final SIGTERM drain\n");rc_fault_seeded(t[..],bin,seed);}
     if fault=="owner"{print("fault-injection: SIGSTOP owner g1 after first save; issue g2 and save; SIGCONT g1; reject old ticket\n");rc_owner(t[..],bin);}
     if fault=="travel"{print("fault-injection: SIGKILL source after route; SIGKILL destination after save; restart with next owner\n");rc_travel(t[..],bin);}
-    print("fault-profile mmo-fault-v1 slice=% elapsed_ms=%\n",fault,proc_now_ms()-at);
+    if fault=="deploy"{print("fault-injection: signed drain after seated barrier; replacement ready while drained old process lives; SIGTERM old; next-owner rejoin and durable save\n");rc_deploy(t[..],bin);}
+    print("fault-profile % slice=% elapsed_ms=%\n",profile,fault,proc_now_ms()-at);
     return ap_done(t[..],"MMO fault slice");
   }
   names := [15] string.["admission", "chat", "events", "invites", "parties", "items", "stats", "vitals", "owner", "travel", "builds", "checkpoints", "region", "drain", "deploy"];

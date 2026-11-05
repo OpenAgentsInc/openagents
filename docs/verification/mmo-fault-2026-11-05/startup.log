@@ -1,0 +1,2 @@
+mmo-fault-v2 slice=startup source_label=9b1-050-room-current-world-048 native_sha256=19456fe570906a245016d4a71d83f346b1005b34c9acf9ccfff1d7527b65ff21 seed=1284201 timeout_ms=120000
+mmo-fault-v2 slice=startup pass=true elapsed_ms=12205 status=0 timeout=false output_cut=false bytes=137/0 logs=/tmp/room-fault-12842/startup

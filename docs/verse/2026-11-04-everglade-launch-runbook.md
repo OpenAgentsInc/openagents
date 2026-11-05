@@ -30,6 +30,22 @@ All times are Chicago time.
   the key read it from Secret Manager into their own environment.
 - One person runs each step. The lead runs `release.sh`.
 
+### Local failure qualification before a release (#12842)
+
+Before release authorization, run the four bounded local `mmo-fault-v2`
+slices and the loopback pair `--faults` slice from the
+[fault matrix record](../verification/2026-11-05-mmo-fault-matrix.md#repeatable-local-and-pre-release-qualification).
+Use the candidate's source-identified native image and page artifacts, retain
+their hashes and complete stdout/stderr, and stop on any failed assertion,
+timeout or truncated report. The slices exercise scratch Postgres/API,
+commit/reply crashes, ownership and deploy overlap, failed readiness, saturated
+posters, slow clients and real browser reconnect/partial snapshots. Each
+command has a deadline below 15 minutes; run them individually.
+
+This local qualification accompanies the existing mandatory presentation-drift
+gate owned by #12778. Preserve passing evidence when its exact source/profile
+inputs are unchanged. It requires no production credentials or deployment.
+
 ### What production runs at the time of writing (2026-11-03, 20:30)
 
 | Service | Live revision | Built from |

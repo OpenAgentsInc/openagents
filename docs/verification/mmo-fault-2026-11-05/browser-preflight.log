@@ -1,0 +1,5 @@
+room http://127.0.0.1:61252/realms/everglade/?relay=ws://localhost:61251&room=pair-cef891eb7bab (desktop), mark pair-check-cef891eb7bab, DPR 1
+FAIL both pages joined the room
+A: {"net":3,"seat":-1,"ws":true,"wasm":true,"frames":4333}
+B: {"net":3,"seat":-1,"ws":true,"wasm":true,"frames":4333}
+fails

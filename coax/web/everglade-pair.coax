@@ -37,6 +37,7 @@
 // holds. Nothing opens on screen and no sound plays.
 #import "Basic";
 #load "../lib/net/cdp.coax";
+#load "room/browser-fault.coax";
 
 EP_SHOT :: 25165824;
 EP_TRIALS_MAX :: 16;
@@ -96,7 +97,12 @@ ep_sorted_mid :: (t: [] int, n: int, q: int) -> int {
   #assert ep_sorted_mid(t[..], 5, 50) == 400 && ep_sorted_mid(t[..], 5, 100) == 900 && ep_sorted_mid(t[..], 0, 50) == -1 && t[0] == 400;
   b: [1] Buf; bput(b[..], "__eg.mark('"); bput(b[..], "walk"); bput(b[..], "')"); bint(b[..], -12);
   #assert btext(b[..]) == "__eg.mark('walk')-12";
+  room:[1]Buf; ep_instance(room[..],"ab12"); #assert btext(room[..])=="pair-ab12-1";
 }
+
+// The API distinguishes a realm from its numbered instance. Even a local
+// pair must name the same instance in the ticket request and socket path.
+ep_instance::(out:[]Buf,hex:string){bput(out,"pair-");bput(out,hex);bput(out,"-1");}
 
 ep_int :: (c: [] Cdp, js: string, fallback: int) -> int {
   v := cdp_evaluate(c, js);
@@ -159,6 +165,8 @@ tool_main :: () -> int #export_c {
   shots := args_value(a[..], "--shots", "");
   trials_n := args_number(args_value(a[..], "--trials", "4"));
   origin := ep_origin(url);
+  faults := args_has(a[..], "--faults");
+  if faults && !ef_local(origin) { tool_errln("everglade-pair --faults requires an owned permitted loopback server"); return 2; }
   if !ok || !wh.ok || !trials_n.ok || origin.count == 0 || trials_n.value < 1.0 || trials_n.value > f64(EP_TRIALS_MAX) {
     tool_errln("usage: coax/web/tool.sh everglade-pair [URL] [--phone] [--size WxH] [--shots PREFIX] [--trials 1..16]"); return 2;
   }
@@ -171,7 +179,7 @@ tool_main :: () -> int #export_c {
   hx: [1] Buf;
   for b: rnd { h: [2] u8; h[0] = hex[b / 16]; h[1] = hex[b % 16]; bput(hx[..], cast(string) h[..]); }
   mb: [1] Buf; bput(mb[..], "pair-check-"); bput(mb[..], btext(hx[..]));
-  ub: [1] Buf; bput(ub[..], url); bput(ub[..], ifx ep_has_query(url) then "&room=pair-" else "?room=pair-"); bput(ub[..], btext(hx[..]));
+  ub: [1] Buf; bput(ub[..], url); bput(ub[..], ifx ep_has_query(url) then "&room=" else "?room="); ep_instance(ub[..],btext(hx[..]));
   ca: [1] Cdp; cb: [1] Cdp;
   if !cdp_launch(ca[..], wh.w, wh.h, "coax-egpair-a-") { tool_err("everglade-pair: "); tool_errln(cdp_error(ca[..])); return 1; }
   if !cdp_launch(cb[..], wh.w, wh.h, "coax-egpair-b-") { tool_err("everglade-pair: "); tool_errln(cdp_error(cb[..])); cdp_close(ca[..]); return 1; }
@@ -179,7 +187,7 @@ tool_main :: () -> int #export_c {
   // realm everyone plays unless --allow-public-edit says so
   ab: [4096] u8; admin := proc_getenv("OA_EVERGLADE_ADMIN_SESSION", ab[..]);
   if admin.count > 0 && !args_has(a[..], "--allow-public-edit") { tool_errln("everglade-pair: OA_EVERGLADE_ADMIN_SESSION publishes an edit to the realm everyone plays; add --allow-public-edit to mean it"); return 2; }
-  status := ep_run(ca[..], cb[..], btext(ub[..]), origin, btext(mb[..]), wh, phone, cast(string) js[0..<jn], cast(int) trials_n.value, shots, admin);
+  status := ep_run(ca[..], cb[..], btext(ub[..]), origin, btext(mb[..]), wh, phone, cast(string) js[0..<jn], cast(int) trials_n.value, shots, admin, faults);
   cdp_close(ca[..]); cdp_close(cb[..]);
   return status;
 }
@@ -187,7 +195,7 @@ tool_main :: () -> int #export_c {
 ep_fail :: (c: [] Cdp, what: string) -> int { tool_err("everglade-pair: "); tool_err(what); tool_err(": "); tool_errln(cdp_error(c)); print("fails\n"); return 1; }
 ep_check :: (ok: bool, what: string) -> bool { print("% %\n", ifx ok then "ok  " else "FAIL", what); return ok; }
 
-ep_run :: (ca: [] Cdp, cb: [] Cdp, url: string, origin: string, mark: string, wh: ArgsSize, phone: bool, script: string, trials: int, shots: string, admin: string) -> int {
+ep_run :: (ca: [] Cdp, cb: [] Cdp, url: string, origin: string, mark: string, wh: ArgsSize, phone: bool, script: string, trials: int, shots: string, admin: string, faults: bool) -> int {
   if admin.count > 0 {
     params: [8192] u8; o: [1] Jo;
     jo_start(o[..], params[..]); jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], "oa_session"); jo_key(o[..], "value"); jo_str(o[..], admin);
@@ -212,8 +220,8 @@ ep_run :: (ca: [] Cdp, cb: [] Cdp, url: string, origin: string, mark: string, wh
   all := ep_check(live, "both pages joined the room");
   if !live {
     dbg: [4096] u8;
-    print("A: %\nB: %\n", ep_str(ca, "JSON.stringify({net: __eg.probe(0), seat: __eg.seat, ws: !!__eg.ws, wasm: !!__eg.x, frames: __eg.fr.length})", dbg[..]),
-      ep_str(cb, "JSON.stringify({net: __eg.probe(0), seat: __eg.seat, ws: !!__eg.ws, wasm: !!__eg.x, frames: __eg.fr.length})", dbg[..]));
+    print("A: %\nB: %\n", ep_str(ca, "JSON.stringify({net:__eg.probe(0),seat:__eg.seat,ws:__eg.wsUrl,wasm:!!__eg.x,frames:__eg.fr.length,incoming:__eg.raw.filter(s=>s.startsWith('<')).slice(-8)})", dbg[..]),
+      ep_str(cb, "JSON.stringify({net:__eg.probe(0),seat:__eg.seat,ws:__eg.wsUrl,wasm:!!__eg.x,frames:__eg.fr.length,incoming:__eg.raw.filter(s=>s.startsWith('<')).slice(-8)})", dbg[..]));
     print("fails\n"); return 1;
   }
   join_ms := proc_now_ms() - t_open;
@@ -234,6 +242,7 @@ ep_run :: (ca: [] Cdp, cb: [] Cdp, url: string, origin: string, mark: string, wh
   _ := ep_escape(ca); _ = ep_escape(cb);
   ep_mark(ca, cb, "idle");
   proc_sleep(4000);
+  if faults { return ef_run(ca, cb, sa, sb, all); }
   // 2. near the spawn, before anyone walks off: A casts Conjure Animals; both hear it and have the pack
   ep_mark(ca, cb, "cast");
   went := ep_int(ca, "__eg.cast(32)", 0);

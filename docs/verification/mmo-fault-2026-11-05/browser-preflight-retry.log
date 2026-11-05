@@ -1,0 +1,5 @@
+room http://127.0.0.1:61252/realms/everglade/?relay=ws://127.0.0.1:61251&room=pair-a0d95272db13 (desktop), mark pair-check-a0d95272db13, DPR 1
+FAIL both pages joined the room
+A: {"net":3,"seat":-1,"ws":"ws://127.0.0.1:61252/api/room/relay/everglade/pair-a0d95272db13","wasm":true,"frames":2845,"incoming":[]}
+B: {"net":3,"seat":-1,"ws":"ws://127.0.0.1:61252/api/room/relay/everglade/pair-a0d95272db13","wasm":true,"frames":2845,"incoming":[]}
+fails

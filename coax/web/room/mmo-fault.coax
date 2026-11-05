@@ -1,0 +1,47 @@
+// Bounded local/release qualification. Run in an owned worktree, never a
+// production service. Native source labels are declared, not emission proofs.
+// tool.sh: tls
+#import "Basic";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/args.coax";
+#load "../../lib/sys/fs.coax";
+#load "../../lib/sys/proc.coax";
+#load "../../lib/sys/proc-raw.coax";
+#load "../../lib/json/json.coax";
+#load "../../lib/crypto/sha256-kernel.coax";
+#load "mmo-fault-policy.coax";
+
+#test "fault orchestration requires a complete nonempty success marker" {
+  #assert mq_has("before\napi: checks passed\nafter","api: checks passed");
+  #assert !mq_has("api: checks passe","api: checks passed")&&!mq_has("","")&&!mq_has("failed","api: checks passed");
+}
+mq_has::(text:string,part:string)->bool {
+  if part.count==0||part.count>text.count{return false;}
+  for i:0..<text.count-part.count+1{if text[i..<i+part.count]==part{return true;}}return false;
+}
+mq_env::(key:string,value:string,out:[]u8)->string {
+  j:[1]Jo;jo_start(j[..],out);jo_put(j[..],key);jo_put(j[..],"=");jo_put(j[..],value);return ifx j[0].bad then "" else jo_text(j[..]);
+}
+tool_main::()->int #export_c {
+  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=4{tool_errln("usage: mmo-fault BIN SOURCE_LABEL OUT_DIR durable|overlap|startup|isolation");return 2;}
+  kind:=mq_slice(args_at(a[..],3));binb:[FS_PATH_MAX]u8;bin:=fs_realpath(args_at(a[..],0),binb[..]);label:=args_at(a[..],1);out:=args_at(a[..],2);
+  if kind<0||bin==""||label.count==0||label.count>128||fs_kind(".git")!=1{tool_errln("An implemented slice, completed binary, source label and owned worktree are required.");return 2;}
+  if !fs_mkdir(out)&&fs_kind(out)!=2{tool_errln("Cannot create qualification output directory.");return 2;}
+  image:[33554432]u8;size:=fs_read(bin,image[..]);digest:[64]u8;
+  if size<0||size>=image.count||!S_hex(S_hash(cast(string)image[0..<size]),digest[..]){return 2;}
+  argv:[6]string;env:[5]string;eb:[5][4608]u8;argc:=1;envc:=0;
+  if kind<2 {
+    argv[0]="coax/web/api/test.sh";
+    env[0]=ifx kind==0 then "API_TESTS_ONLY=checkpoint2_checks.coax" else "API_TESTS_ONLY=room_checks.coax";
+    env[1]=ifx kind==0 then "C2_FAULT_SLICE=matrix" else "ROOM_FAULT_SLICE=deploy";
+    env[2]=mq_env("ROOM_BIN",bin,eb[2][..]);env[3]=mq_env("ROOM_FAULT_BUILD",label,eb[3][..]);env[4]="ROOM_FAULT_SEED=1284201";envc=5;
+  }else{
+    argv[0]="coax/web/tool.sh";argv[1]="coax/web/room/background-check.coax";argv[2]=ifx kind==2 then "startup" else "stress";argv[3]=bin;argv[4]="75";argc=ifx kind==2 then 4 else 5;
+  }
+  print("mmo-fault-v2 slice=% source_label=% native_sha256=% seed=1284201 timeout_ms=%\n",MQ_SLICES[kind],label,cast(string)digest[..],mq_timeout(kind));
+  stdout:[8388608]u8;stderr:[8388608]u8;start:=proc_now_ms();r:=proc_run_bytes(argv[0..<argc],env[0..<envc],mq_timeout(kind),stdout[..],stderr[..]);
+  paths:[2][FS_PATH_MAX]u8;ok_out:=fs_write(fs_join(out,"stdout.log",paths[0][..]),cast(string)stdout[0..<r.out_n]);ok_err:=fs_write(fs_join(out,"stderr.log",paths[1][..]),cast(string)stderr[0..<r.err_n]);
+  pass:=mq_pass(r.started,r.status,r.timed_out,r.cut,mq_has(cast(string)stdout[0..<r.out_n],mq_marker(kind)))&&ok_out&&ok_err;
+  print("mmo-fault-v2 slice=% pass=% elapsed_ms=% status=% timeout=% output_cut=% bytes=%/% logs=%\n",MQ_SLICES[kind],pass,proc_now_ms()-start,r.status,r.timed_out,r.cut,r.out_n,r.err_n,out);
+  return ifx pass then 0 else 1;
+}

@@ -1,0 +1,57 @@
+// Real page faults use the pair driver's existing muted headless browsers,
+// producer probes, socket hooks and room fixtures. No presentation-drift claim.
+#load "../../../apps/openagents-web/everglade-wire.coax";
+
+#test "browser faults require permitted loopback origins and encode an incomplete actual wire snapshot" {
+  #assert ef_local("http://127.0.0.1:61252") && ef_local("http://localhost:61252");
+  #assert !ef_local("https://openagents.com") && !ef_local("http://127.0.0.1:8830") && !ef_local("http://127.0.0.1.evil:1234");
+  out:[128]u8; #assert ef_partial(123,17,out[..])=="D 123 17 3 0 ";
+}
+ef_local::(origin:string)->bool {
+  prefix:=ifx origin.count>=17&&origin[0..<17]=="http://127.0.0.1:" then 17 else ifx origin.count>=17&&origin[0..<17]=="http://localhost:" then 17 else -1;
+  if prefix<0{return false;}n:=args_whole(origin[prefix..<origin.count]);
+  return n>0&&n<65536&&n!=8830&&n!=8843&&n!=8872&&n!=8876&&n!=8913;
+}
+ef_partial::(tick:int,ack:int,out:[]u8)->string {
+  n:=wire_put_d(out,0,WireD.{tick=tick,ack=ack,f=3,part=0});return ifx n<0||n>out.count then "" else cast(string)out[0..<n];
+}
+ef_run::(ca:[]Cdp,cb:[]Cdp,sa:int,sb:int,prior:bool)->int {
+  all:=prior;print("fault-profile mmo-fault-v2 slice=browser seed=1284201 barrier=both-seated-and-drawn\n");
+  // Close the actual socket only after the observer heard the server accept
+  // Meteor Swarm, whose bar lasts 2.5 seconds. Ticketed reconnect grace keeps
+  // an already accepted cast, its character and effects; it must not recast it.
+  _:=ep_int(cb,"__eg.casts=[];__eg.town=[];1",0);
+  casted:=ep_int(ca,"__eg.cast(0)",0);q:[1]Buf;
+  bput(q[..],"__eg.casts.some(c=>c[1]===");bint(q[..],sa);bput(q[..],"&&c[2]===0)?1:0");
+  deadline:=proc_now_ms()+3000;accepted:=false;
+  while !accepted&&proc_now_ms()<deadline{proc_sleep(30);accepted=ep_int(cb,btext(q[..]),0)==1;}
+  sockets:=ep_int(ca,"__eg.sockets",-1);closed:=0;
+  if accepted{closed=ep_int(ca,"__eg.ws.close(1000,'fault-cast');1",0);}
+  stop:[1]Buf;bput(stop[..],"(__eg.town||[]).some(t=>t[1]==='stop ");bint(stop[..],sa);bput(stop[..]," 0 left')?1:0");
+  deadline=proc_now_ms()+15000;rejoined:=false;closed_at:=proc_now_ms();
+  while !rejoined&&proc_now_ms()<deadline{proc_sleep(100);rejoined=ep_int(ca,"__eg.live()&&__eg.sockets",0)>sockets;}
+  if proc_now_ms()<closed_at+3000{proc_sleep(closed_at+3000-proc_now_ms());}
+  stopped:=ep_int(cb,btext(stop[..]),0)==1;
+  count:[1]Buf;bput(count[..],"__eg.casts.filter(c=>c[1]===");bint(count[..],sa);bput(count[..],"&&c[2]===0).length");
+  casts:=ep_int(cb,btext(count[..]),-1);
+  all=ep_check(casted==1&&accepted&&closed==1&&!stopped&&casts==1,"accepted cast survives reconnect grace with exactly one observed cast and no false departure")&&all;
+  all=ep_check(rejoined&&ep_int(ca,"__eg.seat",-1)==sa,"caster rejoins the same seat through a new socket within 15 seconds")&&all;
+  print("fault-cast sent=% accepted=% closed=% stopped=% accepted_casts=% sockets=%/%\n",casted,accepted,closed,stopped,casts,sockets,ep_int(ca,"__eg.sockets",-1));
+  if !accepted||!rejoined{return 1;}
+  // Feed a genuine first/more snapshot into the page's actual socket callback,
+  // then silence inbound traffic while the producer applies it. Its absent
+  // final part must never become the newest whole tick or an acknowledged tick.
+  base:=ep_int(ca,"__eg.probe(51)",-1);ack:=ep_int(ca,"__eg.probe(12)",-1);tick:=base+1000000;
+  payload:[128]u8;partial:=ef_partial(tick,ack,payload[..]);inject:[1]Buf;
+  bput(inject[..],"__eg.ws.dispatchEvent(new MessageEvent('message',{data:'");bput(inject[..],partial);bput(inject[..],"'}));__eg.ws.__muted=true;1");
+  before:=ep_int(ca,"__eg.fr.length",-1);injected:=ep_int(ca,btext(inject[..]),0);proc_sleep(400);
+  heard:=ep_int(ca,"__eg.probe(51)",-1);frames:=ep_int(ca,"__eg.fr.length",-1)-before;
+  all=ep_check(injected==1&&base>=0&&ack>=0&&frames>0&&heard>=base&&heard<tick,"incomplete snapshot crosses real producer frames without becoming a whole tick")&&all;
+  print("fault-snapshot payload='%' base=% ack=% whole_after=% applied_frames=%\n",partial,base,ack,heard,frames);
+  sockets=ep_int(ca,"__eg.sockets",-1);_ = ep_int(ca,"__eg.ws.__muted=false;__eg.ws.close(1000,'fault-partial');1",0);
+  deadline=proc_now_ms()+15000;rejoined=false;
+  while !rejoined&&proc_now_ms()<deadline{proc_sleep(100);rejoined=ep_int(ca,"__eg.live()&&__eg.sockets",0)>sockets&&ep_int(ca,"__eg.probe(51)",-1)<tick&&ep_int(ca,"__eg.probe(2)",-1)==1&&ep_int(cb,"__eg.probe(2)",-1)==1;}
+  all=ep_check(rejoined,"fresh full snapshot after reconnect restores exactly one other character on both pages")&&all;
+  print("fault-browser pass=% A_seat=% B_seat=% whole=%/% drawn=%/%\n",all,ep_int(ca,"__eg.seat",-1),sb,ep_int(ca,"__eg.probe(51)",-1),ep_int(cb,"__eg.probe(51)",-1),ep_int(ca,"__eg.probe(2)",-1),ep_int(cb,"__eg.probe(2)",-1));
+  print("%\n",ifx all then "holds" else "fails");return ifx all then 0 else 1;
+}
