@@ -760,6 +760,28 @@ So:
 - **Not saved at all:** the raid in progress, the town's broken pieces and
   where each player stood are in the room's memory only (#12797).
 
+### Owner generations: only the newest ticket's room saves (#12834)
+
+Each room ticket can carry the character's owner generation (`g` in its HP
+field). The API issues the next one with each ticket it signs
+(`verse.room_owner_next`, migration 0127), the room sends it at the end of
+each vitals line, and the API refuses a line whose generation is older than
+the character's newest (receipt letter `f`). So when a player opens a second
+tab, moves to another room, or a paused room process resumes, only the room
+that holds the newest ticket writes their HP, XP and WANTED. A line with no
+generation applies as before.
+
+A room from before #12834 refuses a ticket that carries a generation, so the
+API signs one only when `OA_ROOM_OWNER_GEN=1`:
+
+1. Deploy the API (migration 0127) and every oa-room shard from #12834 or
+   later. Nothing changes yet.
+2. Set `OA_ROOM_OWNER_GEN=1` on the API service and roll it.
+3. Check: a new ticket's HP field ends in `g` and a number, and the room's
+   minute log keeps counting applied vitals lines.
+
+To roll back, unset `OA_ROOM_OWNER_GEN` first, then roll back the rooms.
+
 ## Known gaps at launch
 
 - Smoothness while walking (#12731) belongs to the netcode work. The pair

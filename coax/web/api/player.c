@@ -420,10 +420,22 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
   struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts);
   long long expires = (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000 + TICKET_MS;
   char text[256];
-  char hps[24]; if (hp >= 0 && hp < 100000) snprintf(hps, sizeof hps, "%d", hp); else strcpy(hps, "-");
+  char hps[32]; if (hp >= 0 && hp < 100000) snprintf(hps, sizeof hps, "%d", hp); else strcpy(hps, "-");
   if (xp > 0) snprintf(hps + strlen(hps), sizeof hps - strlen(hps), "x%d", xp);
   /* the WANTED level the room saved, "w1" to "w5" (#12794; room-ticket.coax): the room seats it wanted */
   if (wanted >= 1 && wanted <= 5) { if (xp <= 0) snprintf(hps + strlen(hps), sizeof hps - strlen(hps), "x0"); snprintf(hps + strlen(hps), sizeof hps - strlen(hps), "w%d", wanted); }
+  /* the character's next owner generation (#12834, migrations/0127): "g" and it, last in the HP field, once
+     every shard reads it (OA_ROOM_OWNER_GEN=1; a room from before refuses a ticket with it). The room
+     sends it with its vitals lines, and a line below the character's newest generation is not kept. */
+  const char *og = getenv("OA_ROOM_OWNER_GEN");
+  if (og && !strcmp(og, "1")) {
+    const char *gv[1] = {pid};
+    PGresult *gr = PQexecParams(db, "SELECT verse.room_owner_next($1)", 1, NULL, gv, NULL, NULL, 0);
+    if (PQresultStatus(gr) == PGRES_TUPLES_OK && PQntuples(gr) == 1 && !PQgetisnull(gr, 0, 0)) {
+      snprintf(hps + strlen(hps), sizeof hps - strlen(hps), "g%s", PQgetvalue(gr, 0, 0));
+    } else if (PQresultStatus(gr) != PGRES_TUPLES_OK) api_log("room-owner: %s", PQerrorMessage(db));
+    PQclear(gr);
+  }
   /* ACCT 2: an account who is one of Everglade's admins, who may play its demo character (#12739) */
   int acct = account ? 1 : 0;
   if (account) {
@@ -522,7 +534,7 @@ static void room_state(const request *q, PGconn *db, const char *key, const char
 // A vitals post with operation IDs (#12793; room-vitals.coax rm_vitals_due, migrations/0124): each line
 // "PID HP MAX XP WANTED REV AT" applied once by (SHARD, GEN, PID, REV) in verse.room_vital_apply, its
 // own statement, so a line kept stays kept whatever happens to the next. The answer, text/plain:
-//   receipt GEN BATCH CODES      one letter a line, in order: a d s u (0124), x a line it couldn't read
+//   receipt GEN BATCH CODES      one letter a line, in order: a d s u (0124), f an older owner's (0127), x a line it couldn't read
 // A database failure is a 500 with no receipt: the room sends the post again, and the lines already
 // applied answer d. AT is when the room changed the values; it orders HP and WANTED, and is taken
 // within the outbox's 15 minutes before the post's time.
@@ -535,15 +547,18 @@ static void room_vitals_receipt(const request *q, PGconn *db, const char *o, int
     char one[160]; size_t ol = next ? (size_t)(next - line) : strlen(line);
     if (ol >= sizeof one) ol = sizeof one - 1;
     memcpy(one, line, ol); one[ol] = 0;
-    char pid[48]; int hp, max, xp, wanted; long long rev, when;
+    char pid[48]; int hp, max, xp, wanted; long long rev, when, owner = -1;
     char code = 'x';
-    if (sscanf(one, "%47s %d %d %d %d %lld %lld", pid, &hp, &max, &xp, &wanted, &rev, &when) == 7 && hp >= 0 && max > 0 && hp <= max && max < 100000 &&
+    /* an 8th field: the seat ticket's owner generation (#12834, migrations/0127) */
+    int got = sscanf(one, "%47s %d %d %d %d %lld %lld %lld", pid, &hp, &max, &xp, &wanted, &rev, &when, &owner);
+    if ((got == 7 || (got == 8 && owner > 0)) && hp >= 0 && max > 0 && hp <= max && max < 100000 &&
         xp >= 0 && xp <= 9999999 && wanted >= 0 && wanted <= 5 && rev > 0 && when <= at && when >= at - 900000) {
-      char ss[8], gs[24], hs[16], ms[16], xs[16], ws[8], rs[24], as[24];
+      char ss[8], gs[24], hs[16], ms[16], xs[16], ws[8], rs[24], as[24], os[24];
       snprintf(ss, sizeof ss, "%d", shard); snprintf(gs, sizeof gs, "%lld", gen); snprintf(hs, sizeof hs, "%d", hp); snprintf(ms, sizeof ms, "%d", max);
       snprintf(xs, sizeof xs, "%d", xp); snprintf(ws, sizeof ws, "%d", wanted); snprintf(rs, sizeof rs, "%lld", rev); snprintf(as, sizeof as, "%lld", when);
-      const char *v[9] = {ss, gs, pid, hs, ms, xs, ws, rs, as};
-      PGresult *r = PQexecParams(db, "SELECT verse.room_vital_apply($1::int, $2::bigint, $3, $4::int, $5::int, $6::int, $7::int, $8::bigint, $9::bigint)", 9, NULL, v, NULL, NULL, 0);
+      snprintf(os, sizeof os, "%lld", owner);
+      const char *v[10] = {ss, gs, pid, hs, ms, xs, ws, rs, as, got == 8 ? os : NULL};
+      PGresult *r = PQexecParams(db, "SELECT verse.room_vital_apply($1::int, $2::bigint, $3, $4::int, $5::int, $6::int, $7::int, $8::bigint, $9::bigint, $10::bigint)", 10, NULL, v, NULL, NULL, 0);
       if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
         api_log("room-vitals: %s", PQerrorMessage(db));
         PQclear(r);

@@ -10,7 +10,9 @@
 // EXPIRES wall-clock milliseconds, HP the hit points the player left with in the last 10 minutes
 // ("-" none: full; #12715, room-vitals.coax), optionally followed by "x" and the XP the player has
 // (#12739, room-events.coax: "14x320", "-x320"; none, 0 XP), then optionally "w" and the WANTED level
-// the room saved in the last 5 minutes (#12794, room-vitals.coax: "14x320w3"; none, 0), and MAC the lowercase hex HMAC-SHA256 of
+// the room saved in the last 5 minutes (#12794, room-vitals.coax: "14x320w3"; none, 0), then optionally "g" and the
+// character's owner generation the API issued with this ticket (#12834, migrations/0127: "14x320w3g12"; none, 0),
+// which the room's vitals lines carry so an older owner's can't overwrite a newer one's, and MAC the lowercase hex HMAC-SHA256 of
 // everything before ".MAC" under OA_ROOM_TICKET_KEY (Secret Manager
 // oa-room-ticket-key). A room joins only with a ticket for itself that has not
 // expired and whose MAC checks; the seat then carries the ticket's id, name and
@@ -39,6 +41,7 @@ Ticket :: struct {
   shard: int = 1;         // the oa-room shard it was signed for (v2: 1)
   xp: int;                // the XP it brings back (room-events.coax)
   wanted: int;            // the WANTED level it brings back (1 to 5; 0 none; #12794)
+  owner: int;             // the character's owner generation the API issued with it (#12834; 0 none): its vitals lines carry it
   schema: int = TICKET_SCHEMA;   // the format of what it brings back (HP, XP, WANTED): the room admits it only up to RV_SCHEMA (#12839)
 }
 // book:end seat-ticket
@@ -149,8 +152,17 @@ tk_check :: (key: string, ticket: string, room: string, now: int) -> Ticket {
   for c: f[5] { if c < '0' || c > '9' { return t; } ends = ends * 10 + cast(int) (c - '0'); }
   if now > ends || ends - now > TICKET_LIFE_MS + TICKET_SKEW_MS { return t; }
   // the HP it brings back
-  hp := -1; xp := 0; wanted := 0;
+  hp := -1; xp := 0; wanted := 0; owner := 0;
   hx := f[6];
+  // last, the character's owner generation (#12834): "g" and 1 to 10 digits, none 0
+  for i: 0..<hx.count {
+    if hx[i] != 'g' { continue; }
+    gs := hx[i + 1..<hx.count];
+    if gs.count == 0 || gs.count > 10 || gs[0] == '0' { return t; }
+    for c: gs { if c < '0' || c > '9' { return t; } owner = owner * 10 + cast(int) (c - '0'); }
+    hx = hx[0..<i];
+    break;
+  }
   for i: 0..<hx.count {
     if hx[i] != 'w' { continue; }
     if i + 2 != hx.count || hx[i + 1] < '1' || hx[i + 1] > '5' { return t; }
@@ -185,7 +197,7 @@ tk_check :: (key: string, ticket: string, room: string, now: int) -> Ticket {
   t.expires = ends;
   t.hp = hp;
   t.xp = xp;
-  t.wanted = wanted;
+  t.wanted = wanted; t.owner = owner;
   t.shard = shard;
   t.ok = true;
   return t;
@@ -232,6 +244,10 @@ tk_sign_xp :: (key: string, pid: string, account: bool, name: string, room: stri
 }
 // The same with the WANTED level it brings back (1 to 5; 0 none, as the API signs for a player not wanted).
 tk_sign_wanted :: (key: string, pid: string, account: bool, name: string, room: string, shard: int, expires: int, hp: int, xp: int, wanted: int, out: [] u8) -> int {
+  return tk_sign_owner(key, pid, account, name, room, shard, expires, hp, xp, wanted, 0, out);
+}
+// The same with the character's owner generation (#12834; 0 none), as the API signs with OA_ROOM_OWNER_GEN=1.
+tk_sign_owner :: (key: string, pid: string, account: bool, name: string, room: string, shard: int, expires: int, hp: int, xp: int, wanted: int, owner: int, out: [] u8) -> int {
   a := "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
   b: [TICKET_TEXT] u8; n := 0;
   if shard < 0 || shard > 99 { return 0; }
@@ -272,6 +288,12 @@ tk_sign_wanted :: (key: string, pid: string, account: bool, name: string, room: 
     for j: 0..<dn { if n < b.count { b[n] = d[dn - 1 - j]; n += 1; } }
   }
   if wanted >= 1 && wanted <= 5 { n = tk_add(b[..], n, "w"); if n < b.count { b[n] = cast(u8) ('0' + wanted); n += 1; } }
+  if owner > 0 {
+    n = tk_add(b[..], n, "g");
+    dn = 0; e = owner;
+    while e > 0 { d[dn] = cast(u8) ('0' + e % 10); dn += 1; e = e / 10; }
+    for j: 0..<dn { if n < b.count { b[n] = d[dn - 1 - j]; n += 1; } }
+  }
   if n + 65 > b.count || n + 65 > out.count { return 0; }
   mac: [64] u8;
   if !tk_mac(key, cast(string) b[0..<n], mac[..]) { return 0; }
@@ -334,6 +356,34 @@ tk_sign_wanted :: (key: string, pid: string, account: bool, name: string, room: 
   #assert tk_sign_on(key, "p-1", false, "", "dawn", 100, 1000000, -1, b[..]) == 0;
   #assert !tk_check(key, "v3.p-1.0.-.dawn.02.1000000.-.0000000000000000000000000000000000000000000000000000000000000000", "dawn", 990000).ok;
   #assert !tk_check(key, "v2.p-1.0.-.dawn.2.1000000.-.0000000000000000000000000000000000000000000000000000000000000000", "dawn", 990000).ok;
+}
+#test "ticket: the character's owner generation comes last, signed; a bad one refuses the ticket (#12834)" {
+  key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  b: [256] u8;
+  n := tk_sign_owner(key, "p-00112233aabbccdd", false, "", "dawn", 2, 1000000, 9, 320, 3, 4071, b[..]);
+  t := tk_check(key, cast(string) b[0..<n], "dawn", 990000);
+  #assert t.ok && t.owner == 4071 && t.hp == 9 && t.xp == 320 && t.wanted == 3;
+  n = tk_sign_owner(key, "p-00112233aabbccdd", false, "", "dawn", 2, 1000000, -1, -1, 0, 7, b[..]);
+  t = tk_check(key, cast(string) b[0..<n], "dawn", 990000);
+  #assert t.ok && t.owner == 7 && t.hp == -1 && t.xp == 0 && t.wanted == 0;
+  n = tk_sign_owner(key, "p-00112233aabbccdd", false, "", "dawn", 2, 1000000, 5, 0, 0, 2147483647, b[..]);
+  #assert tk_check(key, cast(string) b[0..<n], "dawn", 990000).owner == 2147483647;
+  // none: 0, as before
+  n = tk_sign_wanted(key, "p-00112233aabbccdd", false, "", "dawn", 2, 1000000, 5, 1, 2, b[..]);
+  #assert tk_check(key, cast(string) b[0..<n], "dawn", 990000).owner == 0;
+  // the generation raised in a signed ticket: the MAC no longer checks
+  n = tk_sign_owner(key, "p-00112233aabbccdd", false, "", "dawn", 2, 1000000, 9, 0, 0, 41, b[..]);
+  f: [256] u8; for i: 0..<n { f[i] = b[i]; }
+  #assert f[n - 66] == '1';
+  f[n - 66] = '9';
+  #assert !tk_check(key, cast(string) f[0..<n], "dawn", 990000).ok;
+  // g with no digits, a leading zero, eleven digits or another letter: refused even when signed
+  for bad: [4] string.["9g", "9g01", "9g12345678901", "9g1a"] {
+    m: [256] u8; k := tk_add(m[..], 0, "v3.p-1.0.-.dawn.2.1000000."); k = tk_add(m[..], k, bad);
+    mac: [64] u8; #assert tk_mac(key, cast(string) m[0..<k], mac[..]);
+    k = tk_add(m[..], k, "."); for j: 0..<64 { m[k + j] = mac[j]; }
+    #assert !tk_check(key, cast(string) m[0..<k + 64], "dawn", 990000).ok;
+  }
 }
 #test "ticket: t= comes out of the request line's query" {
   #assert tk_query("GET /api/room/relay/everglade/dawn?t=abc HTTP/1.1\r\n") == "abc";

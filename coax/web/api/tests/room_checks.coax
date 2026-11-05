@@ -497,6 +497,34 @@ rc_vitals_checks :: (t: [] Ap) {
   field := ifx e > 0 && s >= 0 then tk[s..<e - 1] else tk;
   no_w := true; for c: field { if c == 'w' { no_w = false; } }
   ap_check(t, "room-ticket: a WANTED level no room wrote (a page's, from before 0124) is not brought back", st == 200 && ap_kind(ap_body(t), "wanted") == 0 && no_w, ap_body(t));
+  no_g := true; for c: field { if c == 'g' { no_g = false; } }
+  ap_check(t, "room-ticket: the API runs without OA_ROOM_OWNER_GEN here: the ticket carries no generation (a room from before reads it)", st == 200 && no_g, ap_body(t));
+
+  // owner generations (#12834, migrations/0127): the newest ticket's owner saves; an older owner's line is f
+  sb_clear(q[..]); sb(q[..], "select verse.room_owner_next('"); sb(q[..], pid); sb(q[..], "')");
+  o1 := rc_num(ap_sql(t, sb_text(q[..]), out[..]));
+  o2 := rc_num(ap_sql(t, sb_text(q[..]), out[..]));
+  ap_check(t, "room-owner: each ticket takes the character's next generation", o1 > 0 && o2 == o1 + 1, "");
+  ap_check(t, "room-owner: no such player has none", ap_sql(t, "select verse.room_owner_next('p-nobody00000000') is null", out[..]) == "t", "");
+  a1: [1] Sb; sb(a1[..], pid); sb(a1[..], " 2 10 170 4 5 "); sb_int(a1[..], now - 200); sb(a1[..], " "); sb_int(a1[..], o1);
+  a2: [1] Sb; sb(a2[..], pid); sb(a2[..], " 5 10 165 4 6 "); sb_int(a2[..], now - 100); sb(a2[..], " "); sb_int(a2[..], o2);
+  two := [2] string.[sb_text(a1[..]), sb_text(a2[..])];
+  rv_body(b[..], gen, 8, two[..], 3); st = rc_vitals(t, sb_text(b[..]), "");
+  ok = st == 200 && rv_receipt(t, gen, 8, "fa"); sb_clear(why[..]); sb(why[..], ap_body(t));
+  sb_clear(q[..]); sb(q[..], "select hp || ' ' || xp from verse.room_vitals where who = '"); sb(q[..], pid); sb(q[..], "'");
+  ap_check(t, "room-vitals: a line from an older owner is refused (f) and changes nothing; the newest owner's is kept", ok && ap_sql(t, sb_text(q[..]), out[..]) == "5 165", sb_text(why[..]));
+  rv_line(a1[..], pid, "5 10 171 4 7", now - 50);
+  sb_clear(a2[..]); sb(a2[..], pid); sb(a2[..], " 5 10 172 4 8 "); sb_int(a2[..], now - 40); sb(a2[..], " 0");
+  two = [2] string.[sb_text(a1[..]), sb_text(a2[..])];
+  rv_body(b[..], gen, 9, two[..], 3); st = rc_vitals(t, sb_text(b[..]), "");
+  ap_check(t, "room-vitals: a line without a generation (a room from before) applies as before; generation 0 doesn't read", st == 200 && rv_receipt(t, gen, 9, "ax"), ap_body(t));
+}
+// A whole number's text as a number (-1: not one).
+rc_num :: (s: string) -> int {
+  if s.count == 0 || s.count > 18 { return -1; }
+  v := 0;
+  for c: s { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); }
+  return v;
 }
 
 // ---- the vitals fault check ---------------------------------------------------------------------------

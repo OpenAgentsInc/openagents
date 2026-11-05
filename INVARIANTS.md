@@ -601,6 +601,18 @@ rolled back below newer saved data reads none of it. The rule is
 `coax/web/room/room-everglade.coax` `eg_admit`. Checks: compat.coax and
 room-everglade.coax "a hello is admitted against its page's build" (#12839).
 
+## Only a character's newest owner saves its room state
+
+The API is the one directory of owner generations (`verse.room_owners`,
+migration 0127, #12834): each room ticket it signs takes the character's
+next generation, never wrapped, and the signed ticket carries it, so no
+client names one. A room sends the generation on each vitals line, and
+`verse.room_vital_apply` refuses (`f`) a line below the character's newest,
+writing nothing. A line without a generation applies as before 0127. This is
+the store-side fence of `aethyr/session/control.coax` (`control_fence`).
+Checks: `coax/web/api/tests/room_checks.coax` vitals (older owner refused, newest kept),
+`coax/web/room/room-ticket.coax` and `room-vitals.coax` (#12834 checks).
+
 ## Inverse physics differentiates the owned solver and exposes ambiguity
 
 `psionic/lib/physics/inverse-*.coax` unrolls chapter 109’s exact left-associated
