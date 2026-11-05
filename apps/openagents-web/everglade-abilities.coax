@@ -1356,12 +1356,15 @@ ab_thunder :: (s: [] Everglade) {
   else if moved + loosened > 0 { sp_say(s, "THUNDERWAVE", moved + loosened, "PUSHED"); }
   else { sp_say(s, "THUNDERWAVE", -1, ""); }
 }
-// Whether (x, y, z) is in the 15-foot cube that starts at your feet and runs the way f points.
+// Whether (x, y, z) is in the 15-foot cube that starts at your feet and runs the way f points. Whoever
+// stands at your shoulder is in it (a body's width back from your middle, #12930), as the rules' cube
+// from you holds your own square (aethyr/rules/srd/battle.coax rs_area).
+AB_TW_BACK :: 0.6;
 ab_in_cube :: (you: Point, f: Point, x: f32, z: f32, y: f32) -> bool {
   dx := x - you.x; dz := z - you.z;
   along := dx * f.x + dz * f.z;
   off := abs(dx * -f.z + dz * f.x);
-  return along >= -0.2 && along <= f32(AB_TW_CUBE) && off <= f32(AB_TW_CUBE) * 0.5 && y >= you.y - 0.5 && y <= you.y + f32(AB_TW_CUBE);
+  return along >= -f32(AB_TW_BACK) && along <= f32(AB_TW_CUBE) && off <= f32(AB_TW_CUBE) * 0.5 && y >= you.y - 0.5 && y <= you.y + f32(AB_TW_CUBE);
 }
 
 // Each frame: Levitate's and Feather Fall's clocks, the gust following you and blowing the smoke.

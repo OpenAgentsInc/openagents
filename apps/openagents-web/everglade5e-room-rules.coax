@@ -588,6 +588,26 @@ e5rr_test_people :: (r: [] E5rRoom) {
   folk[g] = 1; folk[g + 1] = 30; folk[g + 2] = 0; folk[g + 3] = 4; folk[g + 5] = 4; folk[g + 6] = 10; folk[g + 7] = f32(E5R_COMMONER);
   e5rr_people(r, folk[..], E5R_FOLK);
 }
+#test "Everglade 5E room: Thunderwave catches the townsperson at your shoulder and the one ahead, not the one behind (#12930)" #steps 2000000000 {
+  r: [1] E5rRoom;
+  e5rr_start(r[..], 7);
+  x0 := e5rr_test_m(20); z0 := e5rr_test_m(20); sq := f32(E5R_SQ);
+  folk: [E5R_FOLK * E5R_FOLK_FLOATS] f32;
+  xs := [3] f32.[x0, x0 + 3 * sq, x0 - sq];   // beside you (your square), 15 feet ahead, behind
+  zs := [3] f32.[z0 + 0.4, z0, z0];
+  for j: 0..<3 {
+    g := j * E5R_FOLK_FLOATS;
+    folk[g] = 1; folk[g + 1] = xs[j]; folk[g + 2] = zs[j]; folk[g + 3] = 40; folk[g + 5] = 40; folk[g + 6] = 10; folk[g + 7] = f32(E5R_COMMONER);
+  }
+  e5rr_people(r[..], folk[..], E5R_FOLK);
+  e5rr_join(r[..], 0, x0, z0);
+  #assert r[0].bar[9].sp == SP_THUNDERWAVE;
+  #assert e5rr_use(r[..], 0, 9, x0 + 6 * sq, z0, -1);
+  out: [E5RR_OUT_FLOATS] f32;
+  e5rr_folk_out(r[..], 0, out[..]); #assert out[0] < out[1];    // beside you: hurt (2d8, or half on a save)
+  e5rr_folk_out(r[..], 1, out[..]); #assert out[0] < out[1];    // ahead: hurt
+  e5rr_folk_out(r[..], 2, out[..]); #assert out[0] == out[1];   // behind: untouched
+}
 #test "Everglade 5E room: a scripted hold paralyzes the person nearest for 6 s with no save, and no one out of reach (#12886)" #steps 2000000000 {
   r: [1] E5rRoom;
   e5rr_start(r[..], 7);

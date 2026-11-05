@@ -189,11 +189,17 @@ rs_area :: (b: [] RsBattle, i: int, sp: RsSpell, tx: int, ty: int) -> RsZone {
   k := rs_max(sp.area_ft / RS_SQUARE, 1);
   cx := b[0].c[i].x; cy := b[0].c[i].y;
   if sp.area == RS_A_CUBE_SELF {
-    // a cube originating from you: on the side toward the point, against your space
+    // a cube originating from you: on the side toward the point, from your own space on. The squares
+    // beside you are in it (your space is never "other than you": rs_cast skips the caster), so whoever
+    // stands at your shoulder or shares your 5-foot square is caught, as the wave leaves your body in a
+    // world whose people stand anywhere in a square (owner playtest, #12930)
     ox_ := rs_sign(tx - cx); oy_ := rs_sign(ty - cy);
     if ox_ == 0 && oy_ == 0 { ox_ = 1; }
-    z.x0 = ifx ox_ > 0 then cx + 1 else ifx ox_ < 0 then cx - k else cx - k / 2;
-    z.y0 = ifx oy_ > 0 then cy + 1 else ifx oy_ < 0 then cy - k else cy - k / 2;
+    z.x0 = ifx ox_ > 0 then cx else ifx ox_ < 0 then cx - k else cx - k / 2;
+    z.y0 = ifx oy_ > 0 then cy else ifx oy_ < 0 then cy - k else cy - k / 2;
+    z.x1 = ifx ox_ > 0 then cx + k else ifx ox_ < 0 then cx else z.x0 + k - 1;
+    z.y1 = ifx oy_ > 0 then cy + k else ifx oy_ < 0 then cy else z.y0 + k - 1;
+    return z;
   } else if sp.area == RS_A_LINE {
     // a Line from you toward the point (straight ahead when it is your own square)
     ddx := f32(tx - cx); ddy := f32(ty - cy);
@@ -2047,6 +2053,23 @@ rs_dash :: (b: [] RsBattle, i: int) -> bool {
   #assert lost >= 1 && lost <= 16;
   #assert b[0].c[e].x == 3 || b[0].c[e].x == 5;          // stayed (saved) or pushed two squares
   #assert b[0].c[out].hp == b[0].c[out].hp_max;          // outside the cube
+}
+#test "Thunderwave: whoever stands beside you or in your square is in the cube from you; behind you isn't (#12930)" {
+  b: [1] RsBattle; b[0].w = 12; b[0].h = 8; b[0].dice[0].state = 3;
+  a := rs_add(b[..], rs_druid("Rowan", 0, 3), 4, 3);
+  same := rs_add(b[..], rs_druid("Wren", 1, 3), 4, 3);     // shares your square
+  side := rs_add(b[..], rs_druid("Ash", 1, 3), 4, 4);      // at your shoulder
+  behind := rs_add(b[..], rs_druid("Moss", 1, 3), 3, 3);   // behind you
+  ahead := rs_add(b[..], rs_druid("Fern", 1, 3), 7, 3);    // 15 feet ahead
+  rs_start_turn(b[..], a);
+  #assert rs_cast(b[..], a, SP_THUNDERWAVE, 1, 6, 3, -1);
+  #assert b[0].c[same].hp < b[0].c[same].hp_max && b[0].c[side].hp < b[0].c[side].hp_max && b[0].c[ahead].hp < b[0].c[ahead].hp_max;
+  #assert b[0].c[behind].hp == b[0].c[behind].hp_max && b[0].c[a].hp == b[0].c[a].hp_max;
+  z := rs_area(b[..], a, rs_spell(SP_THUNDERWAVE), 6, 3);
+  #assert z.x0 == 4 && z.x1 == 7 && z.y0 == 2 && z.y1 == 4;
+  // diagonal: the quadrant toward the point, your row and column in it
+  d := rs_area(b[..], a, rs_spell(SP_THUNDERWAVE), 1, 0);
+  #assert d.x0 == 1 && d.x1 == 4 && d.y0 == 0 && d.y1 == 3;
 }
 #test "Entangle restrains on a failed Strength save; concentration ends it and lets go" {
   b: [1] RsBattle; b[0].w = 14; b[0].h = 8; b[0].dice[0].state = 9;
