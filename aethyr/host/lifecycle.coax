@@ -1,0 +1,67 @@
+// Compose platform focus/visibility facts around the published session
+// lifecycle. The profile owns actions; this carrier owns admitted-frame time.
+#load "../session/lifecycle.coax";
+#load "../frame-pacing-policy.coax";
+#authority;
+HostLifecycle :: struct {profile:[1]LifeState;focused:bool=true;shown:bool=true;last_us:int=-1;}
+HostFrameOffer :: struct {admit:bool;dt:f64;}
+#test "host frame time starts at zero and keeps elapsed time across refused GPU offers" {
+  s:[1]HostLifecycle;
+  q:=htl_offer(s[..],0,0);#assert q.admit && q.dt==0 && s[0].last_us==0;
+  q=htl_offer(s[..],15625,1);#assert q.admit && q.dt==0.015625 && s[0].last_us==15625;
+  #assert !htl_offer(s[..],20000,2).admit && s[0].last_us==15625;
+  q=htl_offer(s[..],1015625,0);#assert q.admit && q.dt==1 && s[0].last_us==1015625;
+  q=htl_offer(s[..],1015625,0);#assert q.admit && q.dt==0;
+  #assert !htl_offer(s[..],1015624,0).admit && !htl_offer(s[..],2000000,-1).admit && !htl_offer(s[..],-1,0).admit && s[0].last_us==1015625;
+  q=htl_offer(s[..],9223372036854775807,0);#assert q.admit && q.dt>9000000000000.0;
+}
+#test "host focus and visibility compose without restarting a clock behind a hidden surface" {
+  s:[1]HostLifecycle;#assert htl_offer(s[..],1000,0).admit;s[0].profile[0].held=7;
+  a:=htl_event(s[..],LC_BLUR,10,0);#assert a.does==3 && a.released==7 && !s[0].focused && s[0].shown && s[0].last_us== -1;
+  q:=htl_offer(s[..],1000000,0);#assert q.admit && q.dt==0;
+  a=htl_event(s[..],LC_HIDDEN,11,0);#assert a.does==1 && !s[0].shown && s[0].last_us==1000000 && !htl_offer(s[..],1000100,0).admit;
+  a=htl_event(s[..],LC_FOCUS,12,0);#assert a.does==0 && s[0].focused && !s[0].profile[0].active;
+  a=htl_event(s[..],LC_SHOWN,13,0);#assert a.does==4 && s[0].shown && s[0].profile[0].active && s[0].last_us== -1;
+  q=htl_offer(s[..],3000000,0);#assert q.admit && q.dt==0;
+  #assert htl_event(s[..],LC_BLUR,14,0).does==3 && htl_event(s[..],LC_HIDDEN,15,0).does==1;
+  a=htl_event(s[..],LC_SHOWN,16,0);#assert a.does==0 && s[0].shown && !s[0].focused && !s[0].profile[0].active;
+  a=htl_event(s[..],LC_FOCUS,17,0);#assert a.does==4 && s[0].profile[0].active;
+  a=htl_event(s[..],LC_FOCUS,18,0);#assert a.does==0;
+}
+#test "host events preserve the session's accepted command and resource recovery actions" {
+  s:[1]HostLifecycle;#assert life_sent(s[0].profile[..],1,0) && life_sent(s[0].profile[..],2,100);
+  _:=htl_event(s[..],LC_ACK,101,1);a:=htl_event(s[..],LC_NET,102,0);#assert a.does==16 && a.resend_n==1 && a.resend[0]==2;
+  _=htl_event(s[..],LC_HIDDEN,103,0);a=htl_event(s[..],LC_SHOWN,1004,0);#assert a.does==12 && a.revoked==1;
+  #assert htl_offer(s[..],1000,0).admit;a=htl_event(s[..],LC_DEVICE_LOST,1005,0);#assert a.does==32 && !s[0].profile[0].drawing && !htl_offer(s[..],2000,0).admit;
+  a=htl_event(s[..],LC_DEVICE_NEW,1006,0);#assert a.does==64 && s[0].profile[0].drawing && s[0].last_us== -1;
+  #assert htl_offer(s[..],3000,0).dt==0;
+  a=htl_event(s[..],LC_RESIZE,1007,0);#assert a.does==256 && s[0].last_us==3000;
+  a=htl_event(s[..],LC_TRAP,1008,0);#assert a.does==136 && s[0].last_us== -1;
+  a=htl_event(s[..],LC_BLUR,-1,0);#assert a.does==0 && s[0].focused;
+  a=htl_event(s[..],LC_BLUR,0,0);#assert a.does==3 && !s[0].focused;
+}
+#forall "host focus visibility facts admit clock restart only when both are present" mask:0..<4 {
+  s:[1]HostLifecycle;s[0].focused=(mask&1)!=0;s[0].shown=(mask&2)!=0;s[0].profile[0].active=false;
+  a:=htl_event(s[..],LC_FOCUS,1,0);#assert ((a.does&LC_START_CLOCK)!=0)==((mask&2)!=0);
+  s[0]=HostLifecycle.{};s[0].focused=(mask&1)!=0;s[0].shown=(mask&2)!=0;s[0].profile[0].active=false;
+  a=htl_event(s[..],LC_SHOWN,1,0);#assert ((a.does&LC_START_CLOCK)!=0)==((mask&1)!=0);
+}
+#test "host microsecond clock maps to exact room tick boundaries without overflow" {
+  #assert htl_tick(0)==0 && htl_tick(33333)==0 && htl_tick(33334)==1 && htl_tick(500000)==15 && htl_tick(999999)==29 && htl_tick(1000000)==30 && htl_tick(1000001)==30;
+  #assert htl_tick(9223372036854775807)==276701161105643;
+}
+htl_tick :: (microseconds:int)->int #export_c {return microseconds/1000000*30+(microseconds%1000000)*30/1000000;}
+htl_event :: (s:[]HostLifecycle,kind:int,tick:int,arg:int)->LifeActions #export_c {
+  if tick<0 {return LifeActions.{};}
+  if kind==LC_BLUR {s[0].focused=false;}if kind==LC_HIDDEN {s[0].shown=false;}
+  if kind==LC_FOCUS {s[0].focused=true;if !s[0].shown {return LifeActions.{};}}
+  if kind==LC_SHOWN {s[0].shown=true;if !s[0].focused {return LifeActions.{};}}
+  a:=life_event(s[0].profile[..],kind,tick,arg);
+  if (a.does&(LC_STOP_CLOCK|LC_START_CLOCK|LC_RELOAD_GPU|LC_RESTART_MODULE))!=0 {s[0].last_us= -1;}
+  return a;
+}
+htl_offer :: (s:[]HostLifecycle,now_us:int,pending:int)->HostFrameOffer #export_c {
+  if !s[0].shown || !s[0].profile[0].drawing || !afp_submit_allowed(pending) || now_us<0 || now_us<s[0].last_us {return HostFrameOffer.{};}
+  dt:=0.0;if s[0].profile[0].active && s[0].last_us>=0 {dt=f64(now_us-s[0].last_us)/1000000.0;}
+  s[0].last_us=now_us;return HostFrameOffer.{admit=true,dt=dt};
+}

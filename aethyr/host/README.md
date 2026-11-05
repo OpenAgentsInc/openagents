@@ -85,6 +85,16 @@ and interpolation. A host never steps simulation to catch up with display
 refresh. The room's authoritative 30 Hz clock continues while the local
 world is covered or suspended.
 
+`aethyr/host/lifecycle.coax` composes focus and visibility around that
+published session policy and records an admitted-frame clock in monotonic
+microseconds. A hidden surface cannot restart its clock on focus alone.
+Repeated timestamps admit zero dt; negative/backward time and unfinished
+GPU work refuse without consuming elapsed time. The returned delta has no
+host clamp. `htl_event` returns the existing `LifeActions`, `htl_offer`
+returns admission/dt, and `htl_tick` converts the host clock to 30 Hz ticks
+without multiplication overflow. Adapter execution is recorded separately
+from these component checks.
+
 Display callbacks offer work. They are not submitted frames. The shared
 Coax frame admission consumes the observed number of unfinished
 submissions; a refusal does not run an extra producer update or overwrite
