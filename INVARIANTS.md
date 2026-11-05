@@ -757,9 +757,9 @@ logarithms and powers, and build every simulation unit with
 (`coax/web/room/build.sh`, `worker.sh`, the Dockerfile). The two towns parted
 otherwise: a fall on the edge of a 10-foot band downed a townsperson in one
 host and not the other (#12893). `build.sh` refuses an `oa-room` that still
-imports one of those functions. Checks: `coax/web/room/room-math-check.sh`
+imports one of those functions. Checks: `coax/web/room/room-math-check.coax`
 (room-math.c's results are bit-identical natively and in wasm, and close to
-Python's `math`) and the drift check's local profile
+the host C library's) and the drift check's local profile
 (`coax/web/tool.sh everglade-drift --no-raid`).
 
 ## Every walking realm asks one ground question

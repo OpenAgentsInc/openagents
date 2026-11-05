@@ -9,7 +9,7 @@
    two hosts compute the same bits. The hosts build with -ffp-contract=off and -fno-builtin-NAME for
    each of these, so no a * b + c is fused and no call is folded or merged (sin and cos into
    __sincos_stret) behind them. Each float function works in double and rounds once.
-   Checks: coax/web/room/room-math-check.sh (the same bits natively and in wasm, near the C library). */
+   Checks: coax/web/room/room-math-check.coax (the same bits natively and in wasm, near the C library). */
 #include <math.h>
 #include <stdint.h>
 #include <string.h>

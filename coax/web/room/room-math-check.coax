@@ -1,0 +1,215 @@
+// The room server's math (room-math.c, #12893): the same bits natively and in wasm, and near the
+// true values. It builds a driver (room-math-driver.c) with room-math.c for this machine and for wasm32 (run under node's
+// WASI), has both print sinf, cosf, tanf, expf, logf, powf and their double forms over 20000 inputs
+// and the edge cases, compares the two outputs bit for bit, and checks each against the host C
+// library's double functions (float forms within 1 ulp of the rounded value, double forms within
+// 1e-13 relative and 1e-15; an angle past 1e5 within x * 4e-17, as it is first taken modulo 2 pi).
+// The host's library is the reference: room-math.c stands in for it in the room, so the driver is
+// built with -fno-builtin for those functions and this tool calls the host's own.
+//   coax/web/tool.sh coax/web/room/room-math-check.coax      (from the repository's root)
+// Prints "same bits" and exits 0, or what differed and 1.
+#import "Basic";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+#load "../../lib/sys/proc.coax";
+
+atan :: (x: f64) -> f64 #foreign;
+
+// node's WASI host for the wasm driver
+RM_RUN :: "import { WASI } from \"node:wasi\"; import fs from \"node:fs\";\nconst w = new WASI({ version: \"preview1\" });\nw.start(await WebAssembly.instantiate(await WebAssembly.compile(fs.readFileSync(process.argv[2])), w.getImportObject()));\n";
+
+RM_OUT :: 33554432;
+
+// A text being built.
+Rm :: struct { b: [4096] u8; n: int; }
+rm_s :: (t: [] Rm, s: string) { for c: s { if t[0].n < t[0].b.count { t[0].b[t[0].n] = c; t[0].n += 1; } } }
+rm_text :: (t: [] Rm) -> string { return cast(string) t[0].b[0..<t[0].n]; }
+rm_path :: (dir: string, name: string, t: [] Rm) -> string { t[0].n = 0; rm_s(t, dir); rm_s(t, "/"); rm_s(t, name); return rm_text(t); }
+
+// Hex digits as a whole number; -1 when one is not a hex digit.
+rm_hex :: (s: string) -> u64 {
+  v: u64 = 0;
+  for c: s {
+    d: u64 = 0;
+    if c >= '0' && c <= '9' { d = cast(u64) (c - '0'); }
+    else if c >= 'a' && c <= 'f' { d = cast(u64) (c - 'a') + 10; }
+    else { return 0xffffffffffffffff; }
+    v = (v << 4) | d;
+  }
+  return v;
+}
+#test "hex bits" {
+  #assert rm_hex("3ff0000000000000") == 4607182418800017408;
+  #assert f64_from_bits(rm_hex("3ff0000000000000")) == 1.0f64;
+  #assert f32_from_bits(cast(u32) rm_hex("3fc00000")) == 1.5f32;
+}
+
+rm_isnan :: (v: f64) -> bool { return v != v; }
+rm_isinf :: (v: f64) -> bool { return !rm_isnan(v) && (v - v) != (v - v); }
+rm_abs :: (v: f64) -> f64 { return ifx v < 0.0f64 then -v else v; }
+#test "finite numbers are neither (a check can't make a non-finite one)" {
+  #assert !rm_isnan(1.0f64) && !rm_isinf(1.0f64) && !rm_isinf(-1e308) && rm_abs(-2.5f64) == 2.5f64;
+}
+
+// A float's place in order (sign and magnitude made one signed count), for ulps.
+rm_order :: (v: f32) -> int {
+  b := cast(int) f32_bits(v);
+  if b >= 2147483648 { return -(b & 2147483647); }
+  return b;
+}
+rm_ulps :: (u: f32, v: f32) -> int { d := rm_order(u) - rm_order(v); return ifx d < 0 then -d else d; }
+#test "ulps between floats" {
+  #assert rm_ulps(1.0f32, 1.0f32) == 0;
+  #assert rm_ulps(1.0f32, f32_from_bits(f32_bits(1.0f32) + 1)) == 1;
+  #assert rm_ulps(0.0f32, -0.0f32) == 0;
+}
+
+// The host's double function by the line's name (without its f); y only for pow.
+rm_ref :: (name: string, x: f64, y: f64) -> f64 {
+  if name == "sin" { return sin(x); }
+  if name == "cos" { return cos(x); }
+  if name == "tan" { return tan(x); }
+  if name == "exp" { return exp(x); }
+  if name == "log" { return log(x); }
+  return pow(x, y);
+}
+
+// Fails gathered: their count and the first 12 lines.
+RmBad :: struct { n: int; text: [12] [256] u8; len: [12] int; }
+rm_bad :: (b: [] RmBad, line: string) {
+  if b[0].n < 12 {
+    k := b[0].n; m := ifx line.count < 256 then line.count else 256;
+    for i: 0..<m { b[0].text[k][i] = line[i]; }
+    b[0].len[k] = m;
+  }
+  b[0].n += 1;
+}
+
+// One output line: whether it is within its tolerance of the host's value (true when it is a case
+// the bits check alone covers: an error, a NaN or an infinity).
+rm_close :: (name: string, x: f64, y: f64, got_bits: u64) -> bool {
+  fl := name.count > 0 && name[name.count - 1] == 'f';
+  base := ifx fl then name[0..<name.count - 1] else name;
+  got := ifx fl then cast(f64) f32_from_bits(cast(u32) got_bits) else f64_from_bits(got_bits);
+  want := rm_ref(base, x, y);
+  // C's NaN and infinity cases (a domain error, an overflow, a pole): the bits check covers them
+  if rm_isnan(want) || rm_isinf(want) || rm_isnan(got) || rm_isinf(got) { return true; }
+  far := rm_abs(x) > 100000.0f64;
+  if base == "tan" {   // by the angle it names: a step near the pole moves tan by 1 + tan^2
+    return rm_abs(atan(got) - atan(want)) <= (ifx far then rm_abs(x) * 4e-17 else 0.0f64) + (ifx fl then 1e-7 else 1e-13);
+  }
+  if fl {
+    if rm_abs(want) >= 3.4e38 || rm_abs(want) < 1e-37 { return true; }
+    w := cast(f32) want;
+    // past 1e5 an angle is taken modulo a double's 2 pi first: off by up to x * 4e-17
+    if far && base != "pow" && rm_abs(got - cast(f64) w) <= rm_abs(x) * 4e-17 + 1e-7 { return true; }
+    return rm_ulps(cast(f32) got, w) <= 1;
+  }
+  // (a power's e^(b ln a) carries b ln a's rounding: 2e-15 of it, relative)
+  rel := ifx base == "pow" && want != 0.0f64 then 1e-13 + 2e-15 * rm_abs(log(rm_abs(want))) else 1e-13;
+  return rm_abs(got - want) <= rel * rm_abs(want) + (ifx far && base != "pow" then rm_abs(x) * 4e-17 else 1e-15);
+}
+
+// The next space-separated field of line from at[0].
+rm_field :: (line: string, at: [] int) -> string {
+  i := at[0];
+  while i < line.count && line[i] == ' ' { i += 1; }
+  e := i;
+  while e < line.count && line[e] != ' ' { e += 1; }
+  at[0] = e;
+  return line[i..<e];
+}
+
+// Runs argv; its stdout into out (its count), or -1 after printing why it failed.
+rm_run :: (argv: [] string, out: [] u8) -> int {
+  err: [65536] u8;
+  r := proc_run(argv, 600000, out, err[..]);
+  if r.started != 0 || r.status != 0 || r.cut {
+    tool_err("room-math-check: "); tool_err(argv[0]); tool_errln(ifx r.cut then ": too much output" else " failed");
+    tool_err(cast(string) err[0..<r.err_n]);
+    return -1;
+  }
+  return r.out_n;
+}
+
+rm_check :: (dir: string) -> int {
+  // the toolchain as wasm.sh finds it
+  tc := [3] string.["bash", "-c", "source coax/web/toolchain.sh && printf '%s\\n%s\\n%s\\n%s\\n' \"$COAXIAL_CLANG\" \"$COAXIAL_SYSROOT\" \"$COAXIAL_RESOURCES\" \"$PATH\""];
+  tb: [16384] u8;
+  tn := rm_run(tc[..], tb[..]);
+  if tn < 0 { return 1; }
+  parts: [4] string; k := 0; i := 0;
+  while i <= tn && k < 4 { e := i; while e < tn && tb[e] != '\n' { e += 1; } parts[k] = cast(string) tb[i..<e]; k += 1; i = e + 1; }
+  if k < 4 { tool_errln("room-math-check: coax/web/toolchain.sh gave no toolchain (run it from the repository's root)"); return 1; }
+  sysroot: [1] Rm; rm_s(sysroot[..], "--sysroot="); rm_s(sysroot[..], parts[1]);
+  res: [1] Rm; rm_s(res[..], "-resource-dir="); rm_s(res[..], parts[2]);
+  pathenv: [1] Rm; rm_s(pathenv[..], "PATH="); rm_s(pathenv[..], parts[3]);
+  p1: [1] Rm; p2: [1] Rm; p3: [1] Rm; p4: [1] Rm;
+  driver := "coax/web/room/room-math-driver.c"; run := rm_path(dir, "run.mjs", p2[..]);
+  native := rm_path(dir, "native", p3[..]); wasm := rm_path(dir, "driver.wasm", p4[..]);
+  if !fs_write(run, RM_RUN) { tool_errln("room-math-check: can't write node's runner"); return 1; }
+  nb := "-fno-builtin-sin -fno-builtin-sinf -fno-builtin-cos -fno-builtin-cosf -fno-builtin-tan -fno-builtin-tanf -fno-builtin-exp -fno-builtin-expf -fno-builtin-log -fno-builtin-logf -fno-builtin-pow -fno-builtin-powf";
+  nobuiltin: [12] string; k = 0; i = 0;
+  while i < nb.count { e := i; while e < nb.count && nb[e] != ' ' { e += 1; } nobuiltin[k] = nb[i..<e]; k += 1; i = e + 1; }
+  none: [1] u8;
+  ca: [32] string; c := 0;
+  for s: [7] string.["/usr/bin/cc", "-std=c11", "-O2", "-ffp-contract=off", "-fno-fast-math", "-o", native] { ca[c] = s; c += 1; }
+  for s: nobuiltin { ca[c] = s; c += 1; }
+  ca[c] = driver; c += 1; ca[c] = "coax/web/room/room-math.c"; c += 1;
+  if rm_run(ca[0..<c], none[..]) < 0 { return 1; }
+  // wasm-ld comes from the toolchain's PATH
+  wa: [40] string; w := 0;
+  for s: [4] string.["env", rm_text(pathenv[..]), parts[0], "--target=wasm32-wasip1"] { wa[w] = s; w += 1; }
+  for s: [2] string.[rm_text(sysroot[..]), rm_text(res[..])] { wa[w] = s; w += 1; }
+  for s: [4] string.["-std=c11", "-O2", "-ffp-contract=off", "-fno-fast-math"] { wa[w] = s; w += 1; }
+  for s: nobuiltin { wa[w] = s; w += 1; }
+  for s: [4] string.["-o", wasm, driver, "coax/web/room/room-math.c"] { wa[w] = s; w += 1; }
+  if rm_run(wa[0..<w], none[..]) < 0 { return 1; }
+  a: [RM_OUT] u8; b: [RM_OUT] u8;
+  na := [1] string.[native];
+  an := rm_run(na[..], a[..]);
+  if an < 0 { return 1; }
+  nd := [4] string.["node", "--no-warnings", run, wasm];
+  bn := rm_run(nd[..], b[..]);
+  if bn < 0 { return 1; }
+  bad: [1] RmBad;
+  sa := cast(string) a[0..<an]; sb := cast(string) b[0..<bn];
+  ia := 0; ib := 0; la := 0; lb := 0;
+  while ia < sa.count || ib < sb.count {
+    ea := ia; while ea < sa.count && sa[ea] != '\n' { ea += 1; }
+    eb := ib; while eb < sb.count && sb[eb] != '\n' { eb += 1; }
+    x := sa[ia..<ea]; y := sb[ib..<eb];
+    if ia < sa.count { la += 1; }
+    if ib < sb.count { lb += 1; }
+    if ia < sa.count && ib < sb.count && x != y {
+      m: [1] Rm; rm_s(m[..], "native "); rm_s(m[..], x); rm_s(m[..], " | wasm "); rm_s(m[..], y); rm_bad(bad[..], rm_text(m[..]));
+    }
+    ia = ea + 1; ib = eb + 1;
+  }
+  if la != lb || la == 0 { print("% lines natively, % in wasm\n", la, lb); bad[0].n += 1; }
+  ia = 0;
+  while ia < sa.count {
+    ea := ia; while ea < sa.count && sa[ea] != '\n' { ea += 1; }
+    line := sa[ia..<ea]; ia = ea + 1;
+    at: [1] int;
+    name := rm_field(line, at[..]); xs := rm_field(line, at[..]); ys := rm_field(line, at[..]); bits := rm_field(line, at[..]);
+    x := f64_from_bits(rm_hex(xs)); y := f64_from_bits(rm_hex(ys));
+    if !rm_close(name, x, y, rm_hex(bits)) {
+      m: [1] Rm; rm_s(m[..], name); rm_s(m[..], " "); rm_s(m[..], xs); rm_s(m[..], " "); rm_s(m[..], ys); rm_s(m[..], " gave "); rm_s(m[..], bits);
+      rm_bad(bad[..], rm_text(m[..]));
+    }
+  }
+  for j: 0..<(ifx bad[0].n < 12 then bad[0].n else 12) { print("%\n", cast(string) bad[0].text[j][0..<bad[0].len[j]]); }
+  if bad[0].n == 0 { print("same bits\n"); return 0; }
+  print("fails: %\n", bad[0].n);
+  return 1;
+}
+
+tool_main :: () -> int #export_c {
+  tb: [FS_PATH_MAX] u8;
+  dir := fs_temp("room-math-check.", tb[..]);
+  if dir.count == 0 { tool_errln("room-math-check: no temporary directory"); return 1; }
+  rc := rm_check(dir);
+  gone := fs_remove(dir);
+  return rc;
+}

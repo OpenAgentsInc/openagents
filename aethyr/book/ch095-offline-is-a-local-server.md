@@ -77,7 +77,7 @@ next to the 60 FPS rule of chapter 83.
   (`?levels=off`, and `?raid=preview` as a room event).
 - `coax/web/room/room-tick.c`: the tick both hosts include.
 - `coax/web/room/room-math.c`: the sines, exponentials and powers both hosts
-  link, checked by `coax/web/room/room-math-check.sh`.
+  link, checked by `coax/web/room/room-math-check.coax`.
 - Deletion of the page's offline-only simulation paths, with the count of
   room branches before and after.
 
