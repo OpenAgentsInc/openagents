@@ -423,8 +423,8 @@ main :: () {
   r := nip44_encrypt_checked(NIP44_COMPAT, ck1[..], nonce[..], plain[..], work[..], payload[..], false);
   text := cast(string) payload[0..<r.written];
   print("encrypt: %, % characters\n", nip44_name(r.error), r.written);
-  // The encrypt work holds the 99 decoded payload bytes, then the padded plaintext.
-  show("padded plaintext", work[99..<133]);
+  // The 99 decoded payload bytes remain public; the padded plaintext scratch is erased.
+  show("erased plaintext scratch", work[99..<133]);
   show("version", work[0..<1]);
   show("nonce", work[1..<33]);
   show("ciphertext", work[33..<67]);
@@ -516,7 +516,7 @@ match the vector: true
 conversation key: c41c775356fd92eadc63ff5a0dc1da211b268cbea22316767095b2871ea1412d
 same from both sides: true
 encrypt: NIP44_OK, 132 characters
-padded plaintext: 00016100000000000000000000000000000000000000000000000000000000000000
+erased plaintext scratch: 00000000000000000000000000000000000000000000000000000000000000000000
 version: 02
 nonce: 0000000000000000000000000000000000000000000000000000000000000001
 ciphertext: 79ed06e5548ad3ff58ca920e6c0b4329f6040230f7e6e5641f20741780f0adc35a09
