@@ -5,8 +5,10 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#ifndef HF_EXTERNAL_TRANSPORT
 #define HOST_TRANSPORT_HEADER "fixture.h"
 #include "../../../coax/web/host-transport-face.c"
+#endif
 
 #if defined(__wasm__)
 #define HF_EXPORT(name) __attribute__((export_name(name)))

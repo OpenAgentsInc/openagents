@@ -6,7 +6,7 @@
 #load "../../../coax/lib/sys/proc.coax";
 #load "../../../coax/lib/net/socket_foreign.coax";
 #load "../../../coax/lib/net/ws_server.coax";
-HcnConnection :: struct {h:int=-1;phase:int;used:int;input:[8192]u8;reader:[1]WsReader;message:[4096]u8;due:int;body:[256]u8;body_n:int;}
+HcnConnection :: struct {h:int=-1;phase:int;used:int;input:[8192]u8;reader:[1]WsReader;message:[4096]u8;due:int;body:[256]u8;body_n:int;path:[128]u8;path_n:int;}
 #test "host network fixture takes only the exact HTTP request path" {
   #assert hcn_path("GET /api/host-contract/ok HTTP/1.1\r\n\r\n")=="/api/host-contract/ok";
   #assert hcn_path("GET /x?y HTTP/1.1\r\n")=="/x?y" && hcn_path("bad")=="";
@@ -48,6 +48,8 @@ hcn_step :: (c:[]HcnConnection) {
     raw:=cast(string)c[0].input[0..<c[0].used];if ws_find_end(raw)==0 {return;}
     hello:=wss_request(raw);
     if hello.status!=WSS_OK {hcn_http(c,hcn_path(raw));return;}
+    path:=hcn_path(raw);if path.count>c[0].path.count {hcn_close(c);return;}
+    for b,i:path {c[0].path[i]=b;}c[0].path_n=path.count;
     count:=wss_accept_write(raw[hello.key_from..<hello.key_to],out[..]);
     if count<0 || !hcn_write(c[0].h,cast(string)out[0..<count]) {hcn_close(c);return;}
     hcn_consume(c,hello.consumed);c[0].phase=1;
@@ -63,6 +65,7 @@ hcn_step :: (c:[]HcnConnection) {
       large:[129]u8;for i:0..<129 {large[i]='x';}
       if text=="large" {text=cast(string)large[..];}
       if text=="binary" {op=WS_OP_BINARY;}
+      if text=="route" {text=cast(string)c[0].path[0..<c[0].path_n];}
       count=wss_frame_write(op,text,out[..]);
       if count<0 || !hcn_write(c[0].h,cast(string)out[0..<count]) {hcn_close(c);return;}
     }

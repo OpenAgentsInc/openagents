@@ -4,6 +4,7 @@
 #module "aethyr.host.fixture";
 #load "transport.coax";
 #load "routes.coax";
+#load "local-socket-route.coax";
 #load "buffers.coax";
 
 HOST_FIXTURE_VERSION :: 1;

@@ -1,0 +1,8 @@
+// Prepare effects-only TCP/TLS sources for a shared-renderer realm build.
+#import "Basic";
+#load "native-network-build.coax";
+#load "../../coax/lib/sys/args.coax";
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {tool_errln("usage: prepare-native-network OUT COAX");return 2;}
+  return ifx hnp_prepare(args_at(a[..],1),args_at(a[..],0)) then 0 else 1;
+}

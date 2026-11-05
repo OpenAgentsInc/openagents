@@ -95,11 +95,28 @@ TLS; plaintext HTTP is admitted only for an explicitly configured
 Focused SDK clock probes also distinguish monotonic milliseconds from Unix
 wall seconds and preserve the explicit deterministic test clock override.
 
-This qualification links `host-sockets.c` through `build-vulkan.coax` and
-the real `realm-host.c` API. The ordinary Vulkan realm packager still needs
-to include the new SDK, and native `local:` room mapping remains an open
-integration exit. Loading the shared facade alone does not opt a legacy
-face into this transport contract.
+The ordinary shared-realm packager now includes the same SDK closure as
+the observer. `native-network-build.coax` emits the network/entropy units
+and selects/copies the SDK sources; the native and remote Vulkan wrappers
+only compile/link them with platform TLS. The resulting ordinary
+Hold-the-Stair build links on Linux and executes 90 golden frames. The
+same packaged transport passes the 79-row workload under ASan/UBSan with
+leak checking. Loading the shared facade alone does not opt a legacy face
+into this transport contract.
+
+The native SDK additionally resolves the one exact `local:` URI against
+an explicit immutable `VERSE_NATIVE_LOCAL_ROOM=ws://127.0.0.1:PORT`
+startup binding. `local-socket-route.coax` owns the path/origin composition;
+11 root mutants were killed, with no equivalents. A real loopback peer
+reports the exact `/api/room/relay/everglade/local-1` request path, then
+UTF-8 echo and deferred close. Its nine actual SDK rows are retained in
+`vulkan-local-route.json`; every row word participates in the 20-mutant
+local observer authority. The final mapping probe passes under ASan/UBSan
+and leak checking. `native-packager-artifacts.sha256` binds these inputs,
+generated units, executable and output. This echo probe qualifies route
+projection, not the room simulation. The configured endpoint must be the
+native Coax room process; its exact development/loopback/one-seat admission
+remains `native-local-policy.coax` and the separate room drift qualification.
 
 The complete frozen shared Everglade frame, all textures/media and actual
 browser/Vulkan readbacks are recorded in [shared-frame.md](shared-frame.md).
@@ -187,9 +204,9 @@ work, then closes its sockets/helpers and server on exit.
 The native Metal receipt/source record, shared lifecycle transitions and
 device-loss/replacement receipts, interactive producer/GPU parity, and
 muted/offline audio sample comparison remain to be recorded. Ordinary
-Vulkan SDK packaging, native-local socket mapping and audio execution are
-still required; the qualified transport observer does not substitute for
-these product integrations.
+Vulkan lifecycle/audio execution and HTTP URL normalization are still
+required. The ordinary SDK packaging and local routing probes do not
+substitute for complete interactive host qualification.
 Only a complete three-host result plus #12868's interactive parity allows
 native by default and the one-click web preview.
 

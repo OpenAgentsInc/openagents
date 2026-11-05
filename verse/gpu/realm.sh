@@ -224,7 +224,7 @@ nix-shell -p gcc pkg-config libdrm libglvnd libgbm vulkan-headers vulkan-loader 
      for s in \"\${sources[@]}\" \"\${renderer_units[@]}\" realm-host.c verse-panel.c verse-hands.c; do gcc \$flags -c \$s -o \${s%.c}.o & pids+=(\$!); done
      for pid in \"\${pids[@]}\"; do wait \$pid; done
      gcc \$flags -c ../wl/xdg-shell-protocol.c -o wl-xdg-shell.o && gcc \$flags -c ../wl/xdg-decoration-unstable-v1-protocol.c -o wl-xdg-decoration.o
-     gcc \$flags \"\${link_flags[@]}\" -Ikms -I../wl \$(pkg-config --cflags libdrm wayland-client) vk-realm.c vk-spec.c vks.c vkc.c vkp.c vkd.c *.o \$math \$(pkg-config --libs libdrm wayland-client) -lvulkan -lm -o vk-realm
+     gcc \$flags \"\${link_flags[@]}\" -Ikms -I../wl \$(pkg-config --cflags libdrm wayland-client) vk-realm.c vk-spec.c vks.c vkc.c vkp.c vkd.c *.o \$math \$(pkg-config --libs libdrm wayland-client openssl) -lpthread -lvulkan -lm -o vk-realm
      cp ../net .) & realm_pids+=(\$!)
   done
   for pid in \"\${realm_pids[@]}\"; do wait \$pid; done

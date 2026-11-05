@@ -93,6 +93,7 @@ if [[ -x "$coax" ]]; then
     owner_header="$out/$realm.h"
     [[ "$realm" == newland ]] && owner_header="$out/landing-browser.h"
     cp "$owner_header" "$out/RenderHost.h"
+    (cd "$root" && COAX="$coax" coax/web/tool.sh aethyr/host/prepare-native-network.coax "$out" "$coax")
     mkdir -p "$out/render-native"
     (cd "$root" && "$coax" c aethyr/render/native-texture.coax --library --header "$out/render-native/RenderTexture.h") > "$out/render-native/RenderTexture.c"
     cp "$here/render-host.c" "$here/render-host.h" "$here/render-realm.c" "$here/render-realm.h" "$here/render-textures.c" "$here/render-textures.h" "$here/render-media.c" "$here/render-media.h" "$root/aethyr/render/tests/frame-input.h" "$out/render-native/"
@@ -125,10 +126,13 @@ read -r -a sources < "$out/sources"
 # The browser's flags: no fast math and no contraction, so it computes what the checks computed.
 flags=(-std=gnu11 -O2 -no-pie -ffp-contract=off -fno-fast-math -Wno-attributes -Wno-unused-function -Wno-unused-variable
        -Wno-unused-but-set-variable -w -I "$out")
-link_flags=()
+link_flags=(); network_libs=()
 if [[ -n "$render_profile" ]]; then
   flags+=(-ffunction-sections -fdata-sections)
   link_flags+=(-Wl,--gc-sections)
+  read -r -a network_cflags < "$out/network.cflags" || true
+  read -r -a network_libs < "$out/network.libs" || true
+  flags+=("${network_cflags[@]}")
 fi
 objects=()
 pids=()
@@ -138,5 +142,5 @@ done
 for pid in "${pids[@]}"; do wait "$pid"; done
 # the wasm's math (musl's, verse/native/musl-math.sh) ahead of glibc's
 read -r -a math <<< "$("$here/musl-math.sh" "$out")"
-gcc "${flags[@]}" ${link_flags[@]+"${link_flags[@]}"} "$out/realm-run.c" "${objects[@]}" ${math[@]+"${math[@]}"} -lm -o "$out/realm-run"
+gcc "${flags[@]}" ${link_flags[@]+"${link_flags[@]}"} "$out/realm-run.c" "${objects[@]}" ${math[@]+"${math[@]}"} ${network_libs[@]+"${network_libs[@]}"} -lpthread -lm -o "$out/realm-run"
 echo "$out/realm-run"

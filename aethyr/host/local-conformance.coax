@@ -1,0 +1,17 @@
+// A native SDK mapping probe. This records the physical peer's path; it
+// does not claim that the echo peer is a room simulation.
+#load "transport-conformance.coax";
+#load "tests/local-route-observations.coax";
+#authority;
+#test "local route keeps all nine actual SDK rows and metadata" {
+  rows:=hcl_observed();#assert hcl_local_rows(rows[..],0) && !hcl_local_rows(rows[..],1) && !hcl_local_rows(rows[0..<8],0);
+  over:[10][8]int;for row,i:rows {over[i]=row;}#assert !hcl_local_rows(over[..],0);
+}
+#forall "every local SDK row word is required" at:0..<9 {
+  for field:0..<8 {rows:=hcl_observed();rows[at][field]+=1;#assert !hcl_local_rows(rows[..],0);}
+}
+hcl_local_rows :: (rows:[][8]int,dropped:int)->bool #export_c {
+  if rows.count!=9 || dropped!=0 {return false;}
+  expected:=[9][8]int.[htc_row(910,"local:/api/room/relay/everglade/local-1"),htc_result(1,0),htc_row(256,""),htc_row(911,"0 route"),htc_row(257,"/api/room/relay/everglade/local-1"),htc_row(911,"0 Aé🙂"),htc_row(257,"Aé🙂"),htc_row(912,"0"),htc_row(258,"")];
+  for row,i:rows {if !htc_equal(row,expected[i]) {return false;}}return true;
+}

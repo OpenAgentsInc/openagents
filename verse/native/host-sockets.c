@@ -30,6 +30,7 @@ static pthread_cond_t hn_finished=PTHREAD_COND_INITIALIZER;
 static HnSocket *hn_slots[4];static HnEvent *hn_head,*hn_tail;static int hn_running;
 static struct {int active;int64_t generation,engine;} hn_owners[4];
 extern uint8_t htr_http_path(coax_string) __attribute__((weak));
+extern int64_t htr_local_target(coax_string,coax_string,coax_v_u8) __attribute__((weak));
 int rhn_http_path(const char *bytes,size_t n) {return htr_http_path&&htr_http_path((coax_string){bytes,(int64_t)n});}
 int rhn_utf8(const char *bytes,size_t n) {return hns_utf8((coax_string){bytes,(int64_t)n});}
 void hni_lock(void) {pthread_mutex_lock(&hn_io);}
@@ -58,7 +59,12 @@ static void *hn_thread(void *context) {
   free(s->active);free(s->message);free(s->url);free(s);return NULL;
 }
 int32_t rhn_socket_open(const char *url,uint32_t n) {
-  if(!hns_uri((coax_string){url,n}))return -1;
+  uint8_t target[4096];
+  if(!hns_uri((coax_string){url,n})){
+    const char *bound=getenv("VERSE_NATIVE_LOCAL_ROOM");if(!bound||!htr_local_target)return -1;
+    int64_t bytes=htr_local_target((coax_string){url,n},(coax_string){bound,(int64_t)strlen(bound)},(coax_v_u8){target,sizeof target});
+    if(bytes<0)return -1;url=(const char *)target;n=(uint32_t)bytes;
+  }
   signal(SIGPIPE,SIG_IGN);
   HnSocket *s=calloc(1,sizeof *s);if(!s)return -1;
   s->url=malloc((size_t)n+1);s->capacity=coaxial_inbox_cap();s->message=malloc(s->capacity?s->capacity:1);

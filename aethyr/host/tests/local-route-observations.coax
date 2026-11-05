@@ -1,0 +1,5 @@
+// Frozen actual Linux SDK observations: a local URI, peer-observed request
+// path, UTF-8 echo and deferred close. The oracle below is independent data.
+hcl_observed :: ()->[9][8]int {
+  return [9][8]int.[[8]int.[4,910,0,0,0,0,39,4145370283],[8]int.[9,1,0,0,0,0,0,0],[8]int.[4,256,0,0,0,0,0,2166136261],[8]int.[4,911,0,0,0,0,7,4271488566],[8]int.[4,257,0,0,0,0,33,4132471270],[8]int.[4,911,0,0,0,0,9,191308854],[8]int.[4,257,0,0,0,0,7,2634860734],[8]int.[4,912,0,0,0,0,1,890022063],[8]int.[4,258,0,0,0,0,0,2166136261]];
+}

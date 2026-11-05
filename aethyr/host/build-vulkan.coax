@@ -6,6 +6,7 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/args.coax";
 #load "../../coax/lib/sys/proc.coax";
+#load "native-network-build.coax";
 hvb_run :: (argv:[]string,output:string)->bool {
   out:[16777216]u8;err:[8192]u8;r:=proc_run(argv,90000,out[..],err[..]);
   if r.started!=0 || r.status!=0 || r.timed_out || r.cut {tool_errln(cast(string)err[0..<r.err_n]);return false;}
@@ -26,13 +27,10 @@ tool_main :: ()->int #export_c {
   emit_fixture:=[7]string.[coax,"c","aethyr/host/fixture.coax","--library","--header",fixture_h,"--release"];
   emit_check:=[7]string.[coax,"c",ifx transport then "aethyr/host/check-vulkan-transport.coax" else "aethyr/host/check-vulkan.coax","--library","--header",check_h,"--release"];
   if !hvb_run(emit_fixture[..],fixture_c) || !hvb_run(emit_check[..],check_c) {return 1;}
-  net_c:=fs_join(dir,"HostNetwork.c",paths[6][..]);net_h:=fs_join(dir,"HostNetwork.h",paths[7][..]);entropy_c:=fs_join(dir,"entropy.c",paths[8][..]);entropy_h:=fs_join(dir,"entropy-policy.h",paths[9][..]);
-  emit_net:=[7]string.[coax,"c","aethyr/host/native-socket.coax","--library","--header",net_h,"--release"];
-  emit_entropy:=[6]string.[coax,"c","coax/lib/crypto/entropy.coax","--library","--header",entropy_h];
-  if !hvb_run(emit_net[..],net_c) || !hvb_run(emit_entropy[..],entropy_c) {return 1;}
-  base:=[28]string.["gcc","-std=gnu11","-O2","-no-pie","-ffp-contract=off","-fno-fast-math","-Wno-attributes","-I",dir,"-I","verse/native","-I","coax/platform",fixture_c,check_c,"aethyr/host/tests/fixture-face.c","aethyr/host/tests/vulkan-effects.c","verse/native/realm-host.c","coax/platform/tool-native.c","coax/platform/process-native.c","coax/platform/store-file-native.c","coax/platform/read-file-native.c","-lpthread","-lm","-o",bin,"-Wno-unused-function","-Wno-unused-variable"];
-  cc:[64]string;for i:0..<28 {cc[i]=base[i];}cn:=28;
-  extra:=[7]string.[net_c,"verse/native/host-sockets.c","coax/platform/socket-native.c","coax/platform/tls-native.c","coax/platform/entropy-native.c","coax/platform/entropy-foreign.c",entropy_c];for file:extra {cc[cn]=file;cn+=1;}
+  if !hnp_copy(fixture_h,fs_join(dir,"RenderHost.h",paths[6][..])) || !hnp_prepare(coax,dir) {return 1;}
+  base:=[29]string.["gcc","-std=gnu11","-O2","-no-pie","-ffp-contract=off","-fno-fast-math","-Wno-attributes","-DHF_EXTERNAL_TRANSPORT","-I",dir,"-I","verse/native","-I","coax/platform",fixture_c,check_c,"aethyr/host/tests/fixture-face.c","aethyr/host/tests/vulkan-effects.c","verse/native/realm-host.c","coax/platform/tool-native.c","coax/platform/process-native.c","coax/platform/store-file-native.c","coax/platform/read-file-native.c","-lpthread","-lm","-o",bin,"-Wno-unused-function","-Wno-unused-variable"];
+  cc:[64]string;for i:0..<29 {cc[i]=base[i];}cn:=29;
+  sdk_paths:[8][4096]u8;for file,i:[8]string.["HostNetwork.c","host-sockets.c","socket-native.c","tls-native.c","entropy-native.c","entropy-foreign.c","HostEntropy.c","host-transport.c"] {cc[cn]=fs_join(dir,file,sdk_paths[i][..]);cn+=1;}
   cf:[4096]u8;lf:[4096]u8;tls:[8192]u8;tls_err:[4096]u8;cflags:=proc_getenv("CXTLS_CFLAGS",cf[..]);libs:=proc_getenv("CXTLS_LIBS",lf[..]);
   if cflags!="" && libs!="" {cn=hvb_flags(cflags,cc[..],cn);if cn<0 {return 1;}cn=hvb_flags(libs,cc[..],cn);}else {
     // Reuse the repository's approved platform TLS selection even when

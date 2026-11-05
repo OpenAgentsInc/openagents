@@ -5,6 +5,7 @@
 #load "host-inputs.coax";
 #load "../host/transport.coax";
 #load "../host/routes.coax";
+#load "../host/local-socket-route.coax";
 #load "../host/buffers.coax";
 #authority;
 

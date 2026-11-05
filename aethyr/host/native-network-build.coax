@@ -1,0 +1,29 @@
+// Native SDK source closure shared by the ordinary realm packager and the
+// conformance build. Coax chooses every emitted/copied input and argument.
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+hnp_copy :: (source:string,destination:string)->bool {
+  bytes:[8388608]u8;n:=fs_read(source,bytes[..]);return n>=0 && fs_write(destination,cast(string)bytes[0..<n]);
+}
+hnp_emit :: (compiler:string,source:string,dir:string,name:string,header:string)->bool {
+  paths:[2][4096]u8;args:=[7]string.[compiler,"c",source,"--library","--header",fs_join(dir,header,paths[0][..]),"--release"];
+  out:[8388608]u8;err:[8192]u8;r:=proc_run(args[..],90000,out[..],err[..]);
+  if r.started!=0 || r.status!=0 || r.timed_out || r.cut {tool_errln(cast(string)err[0..<r.err_n]);return false;}
+  return fs_write(fs_join(dir,name,paths[1][..]),cast(string)out[0..<r.out_n]);
+}
+hnp_prepare :: (compiler:string,dir:string)->bool {
+  path:[4096]u8;if !fs_exists(fs_join(dir,"RenderHost.h",path[..])) {tool_errln("native network needs its owning shared RenderHost.h");return false;}
+  if !hnp_emit(compiler,"aethyr/host/native-socket.coax",dir,"HostNetwork.c","HostNetwork.h") || !hnp_emit(compiler,"coax/lib/crypto/entropy.coax",dir,"HostEntropy.c","entropy-policy.h") {return false;}
+  sources:=[12]string.["verse/native/host-sockets.c","coax/platform/socket-native.c","coax/platform/socket-native.h","coax/platform/tls-native.c","coax/platform/tls-native.h","coax/platform/tls-apple.inc","coax/platform/entropy-native.c","coax/platform/entropy-native.h","coax/platform/entropy-foreign.c","coax/platform/entropy-foreign.h","coax/web/host-transport-face.c","coax/platform/tls-env.sh"];
+  for source:sources {if !hnp_copy(source,fs_join(dir,fs_base(source),path[..])) {return false;}}
+  wrapper:="// Firm reason: 6 (scalar SDK projection of the owning Coax transport).\n#define HOST_TRANSPORT_HEADER \"RenderHost.h\"\n#include \"host-transport-face.c\"\n";
+  if !fs_write(fs_join(dir,"host-transport.c",path[..]),wrapper) {return false;}
+  // Platform TLS discovery stays in the existing approved SDK selector.
+  // The ordinary Linux compiler consumes these literal argument lists.
+  args:=[3]string.["bash","-c",". coax/platform/tls-env.sh && printf '%s\\n%s\\n' \"$CXTLS_CFLAGS\" \"$CXTLS_LIBS\""];
+  out:[8192]u8;err:[8192]u8;r:=proc_run(args[..],30000,out[..],err[..]);
+  if r.started!=0 || r.status!=0 || r.timed_out || r.cut {tool_errln(cast(string)err[0..<r.err_n]);return false;}
+  split:=0;while split<r.out_n && out[split]!='\n' {split+=1;}if split>=r.out_n {return false;}
+  return fs_write(fs_join(dir,"network.cflags",path[..]),cast(string)out[0..<split]) && fs_write(fs_join(dir,"network.libs",path[..]),cast(string)out[split+1..<r.out_n]);
+}
