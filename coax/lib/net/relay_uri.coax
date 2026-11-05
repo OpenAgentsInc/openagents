@@ -7,6 +7,13 @@
 // (DNS names only: no credentials, IP literals, fragments or trailing dots),
 // so a relay URL is refused exactly where uri_parse refuses its wss:// form.
 // Ranges borrow the caller's bytes; nothing is normalized.
+//
+// relay_uri is the admission check for relay URLs other people publish
+// (NIP-65 lists, NIP-17 inboxes, the outbox pool). relay_uri_dial is what a
+// client dials (relay_conn_open): relay_uri, plus a ws:// URL whose host is a
+// dotted-decimal IPv4 address (four parts 0-255, no leading zeros), so a local
+// server on 127.0.0.1 or a tailnet address can be dialed by its address.
+// wss:// stays DNS-only there too: TLS verifies a host name.
 #load "uri.coax";
 #authority;
 
@@ -47,6 +54,63 @@ RelayUri :: struct { ok: bool; tls: bool; host_from: int; host_to: int; port: in
   r := relay_uri(cast(string) data[0..<2047]); #assert r.target_from == 11 && r.target_to == 2047 && r.host_to == 11;
   wss := "wss://a.test/"; for i: 0..<wss.count { data[i] = wss[i]; }
   #assert relay_uri(cast(string) data[0..<2048]).ok && !relay_uri(cast(string) data[..]).ok;
+}
+
+#test "dialing takes a ws:// IPv4 literal; admission and wss:// do not" {
+  s := "ws://127.0.0.1:8830/api/room/x?t=1"; r := relay_uri_dial(s);
+  #assert r.ok && !r.tls && r.port == 8830 && s[r.host_from..<r.host_to] == "127.0.0.1" && s[r.target_from..<r.target_to] == "/api/room/x?t=1";
+  #assert !relay_uri(s).ok;
+  s = "ws://100.74.238.61"; r = relay_uri_dial(s); #assert r.ok && r.port == 80 && r.host_to == 18 && r.target_from == 18;
+  s = "ws://0.0.0.0:1?"; r = relay_uri_dial(s); #assert r.ok && r.port == 1 && r.target_from == 14 && r.target_to == 15;
+  s = "ws://localhost:8830"; r = relay_uri_dial(s); #assert r.ok && s[r.host_from..<r.host_to] == "localhost";
+  #assert !relay_uri_dial("wss://127.0.0.1").ok && !relay_uri_dial("ws://127.0.0.256").ok && !relay_uri_dial("ws://127.0.0.01").ok;
+  #assert !relay_uri_dial("ws://127.0.0").ok && !relay_uri_dial("ws://127.0.0.1.2").ok && !relay_uri_dial("ws://127..0.1").ok;
+  #assert !relay_uri_dial("ws://127.0.0.1:").ok && !relay_uri_dial("ws://127.0.0.1:0").ok && !relay_uri_dial("ws://127.0.0.1:65536").ok;
+  #assert !relay_uri_dial("ws://127.0.0.1#f").ok && !relay_uri_dial("ws://u@127.0.0.1").ok && !relay_uri_dial("ws://[::1]").ok;
+  #assert !relay_uri_dial("ws://0x7f.0.0.1").ok && !relay_uri_dial("ws://2130706433").ok && !relay_uri_dial("ws://127.0.0.1/%00").ok;
+  s = "ws://255.199.9.4?x"; r = relay_uri_dial(s); #assert r.ok && r.host_to == 16 && r.target_from == 16;
+  #assert !relay_uri_dial("ws://1.2.3.4x").ok && !relay_uri_dial("ws://1.2.3.1000").ok && !relay_uri_dial("ws://1.2.3.:80").ok;
+  #assert !relay_uri_dial("ws://1.2.3.4@x").ok && !relay_uri_dial("ws://1.2.3.4.").ok && !relay_uri_dial("ws://.1.2.3").ok;
+  data: [2048] u8; for i: 0..<2048 { data[i] = 'a'; }
+  u := "ws://1.2.3.4/"; for i: 0..<u.count { data[i] = u[i]; }
+  #assert relay_uri_dial(cast(string) data[0..<2047]).ok && !relay_uri_dial(cast(string) data[..]).ok;
+}
+
+// True when host is four dot-separated decimal parts, each 0-255 with no leading zero.
+relay_ipv4 :: (host: string) -> bool {
+  parts := 0; v := 0; digits := 0;
+  for i: 0..<host.count + 1 {
+    if i == host.count || host[i] == '.' {
+      if digits == 0 { return false; }
+      parts += 1; v = 0; digits = 0;
+      continue;
+    }
+    if !uri_digit(host[i]) || (digits == 1 && v == 0) { return false; }
+    v = v * 10 + cast(int) host[i] - 48; digits += 1;
+    if v > 255 { return false; }
+  }
+  return parts == 4;
+}
+
+// relay_uri, or a ws:// URL whose host is an IPv4 literal (see the top of this file).
+relay_uri_dial :: (text: string) -> RelayUri #export_c {
+  r := relay_uri(text);
+  if r.ok { return r; }
+  if !uri_prefix(text, "ws://") { return r; }
+  if text.count > RELAY_URI_MAX { return r; }
+  from := "ws://".count; at := from;
+  while at < text.count && text[at] != '/' && text[at] != '?' && text[at] != ':' { at += 1; }
+  if !relay_ipv4(text[from..<at]) { return r; }
+  // The same bytes with the address as one DNS label checks the port and the target.
+  buf: [2048] u8;
+  pre := "ws://a";
+  for i: 0..<pre.count { buf[i] = pre[i]; }
+  for i: at..<text.count { buf[pre.count + i - at] = text[i]; }
+  n := pre.count + text.count - at;
+  q := relay_uri(cast(string) buf[0..<n]);
+  if !q.ok { return r; }
+  shift := at - pre.count;
+  return RelayUri.{ok = true, tls = false, host_from = from, host_to = at, port = q.port, target_from = q.target_from + shift, target_to = text.count};
 }
 
 relay_uri :: (text: string) -> RelayUri #export_c {

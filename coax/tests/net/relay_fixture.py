@@ -255,7 +255,7 @@ class FixtureRelay:
             bad.append('expected 3 handshakes, saw %d' % len(hs))
         for e in hs:
             if e['request'] != 'GET / HTTP/1.1' or e['upgrade'] != 'websocket' or e['version'] != '13' \
-                    or e['connection'] != 'Upgrade' or e['host'] != 'localhost:%d' % self.port:
+                    or e['connection'] != 'Upgrade' or e['host'] not in ('localhost:%d' % self.port, '127.0.0.1:%d' % self.port):
                 bad.append('handshake request: %r' % e)
             if len(base64.b64decode(e['key'])) != 16:
                 bad.append('Sec-WebSocket-Key is not 16 bytes')

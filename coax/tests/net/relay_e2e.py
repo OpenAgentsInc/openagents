@@ -9,15 +9,15 @@ $RX_PORT and $RX_TLS), starts the local fixture relay (relay_fixture.py,
 127.0.0.1 only, standard library), runs the driver against it and checks
 both sides: the driver's own checks and what the relay saw on the wire.
 
-It runs the script twice: over ws://, then over wss:// with the same fixture
-behind Python's ssl module and a test CA and localhost leaf that openssl
+It runs the script over ws://localhost, ws://127.0.0.1, then wss:// with the
+same fixture behind Python's ssl module and a test CA and localhost leaf that openssl
 generates into the temp dir for this run (none is committed, and the driver
 trusts only that CA through CXTLS_TEST_CA). A third run leaves CXTLS_TEST_CA
 unset, so the system trust store applies, and checks that every connection is
 refused before the relay sees a WebSocket handshake. Tooling only; nothing
 here ships.
 
-  python3 coax/tests/net/relay_e2e.py          # ws:// and wss://
+  python3 coax/tests/net/relay_e2e.py          # ws:// (by name and by address) and wss://
   python3 coax/tests/net/relay_e2e.py --ws     # ws:// only
   COAX=... COAX_CC=... override the compiler and the C compiler (default gcc)
 """
@@ -120,11 +120,11 @@ def untrusted(exe):
     return [] if refused and hs == 0 else ['untrusted wss: refused=%s handshakes=%d' % (refused, hs)]
 
 
-def run_once(exe, tls):
-    """One run of the script, ws:// or wss://. Returns the list of problems."""
-    label = 'wss' if tls else 'ws'
+def run_once(exe, tls, ip=False):
+    """One run of the script, ws:// or wss:// (ip: ws://127.0.0.1). Returns the list of problems."""
+    label = 'wss' if tls else 'ws-ip' if ip else 'ws'
     relay = FixtureRelay()
-    env = {**os.environ, 'RX_PORT': str(relay.port), 'RX_TLS': '1' if tls else '0',
+    env = {**os.environ, 'RX_PORT': str(relay.port), 'RX_TLS': '1' if tls else '0', 'RX_IP': '1' if ip else '0',
            'ASAN_OPTIONS': 'abort_on_error=0:halt_on_error=1',
            'UBSAN_OPTIONS': 'print_stacktrace=1:halt_on_error=1'}
     env.pop('CXTLS_TEST_CA', None)
@@ -143,7 +143,7 @@ def run_once(exe, tls):
     finally:
         relay.stop()
     ran = time.monotonic() - t1
-    print('--- %s://' % label)
+    print('--- %s://%s' % ('wss' if tls else 'ws', '127.0.0.1' if ip else 'localhost'))
     sys.stdout.write(run.stdout)
     if run.stderr:
         sys.stderr.write(run.stderr)
@@ -175,6 +175,7 @@ def main():
         problems = []
         for tls in modes:
             problems += run_once(exe, tls)
+        problems += run_once(exe, False, ip=True)
         if True in modes:
             problems += untrusted(exe)
         for p in problems:

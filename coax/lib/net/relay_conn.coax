@@ -5,8 +5,8 @@
 // with relay_conn_open after a drop.
 //
 // It decides nothing itself. relay_uri.coax picks plain or TLS, the host and
-// port; ws.coax writes the request, admits the 101 response (its
-// Sec-WebSocket-Accept) and frames; relay_conn_rules.coax (#authority) says
+// port (relay_uri_dial: a ws:// URL may name an IPv4 address); ws.coax writes
+// the request, admits the 101 response (its Sec-WebSocket-Accept) and frames; relay_conn_rules.coax (#authority) says
 // what each server frame asks for and what a read result means. This file
 // moves bytes through the foreign effects and carries those answers out:
 // coax/platform/socket-native.c (TCP), coax/platform/tls-native.c (TLS,
@@ -118,7 +118,7 @@ rc_drop_front :: (c: [] RelayConn, k: int) {
 relay_conn_open :: (c: [] RelayConn, uri: string) -> bool {
   rc_shut(c);
   c[0].close_code = 0; c[0].eof = false; c[0].sent_close = false; c[0].text_n = 0; c[0].last_read = 0;
-  r := relay_uri(uri);
+  r := relay_uri_dial(uri);
   if !r.ok { return false; }
   host := uri[r.host_from..<r.host_to];
   deadline := cxsock_now_ms() + RC_IO_MS;

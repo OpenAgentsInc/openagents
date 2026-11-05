@@ -64,9 +64,10 @@ rx_jitter :: () -> int {
   if !rc_draw(4, b[..]) { return 0; }
   return (cast(int) b[0] << 24) | (cast(int) b[1] << 16) | (cast(int) b[2] << 8) | cast(int) b[3];
 }
-// ws://localhost:PORT or wss://localhost:PORT, with no path (relay_conn sends "/").
-rx_url :: (s: [] RxStats, tls: bool) {
-  u := ifx tls then "wss://localhost:" else "ws://localhost:";
+// ws://localhost:PORT or wss://localhost:PORT, with no path (relay_conn sends "/");
+// ws://127.0.0.1:PORT when ip (an address, not a name: relay_uri_dial).
+rx_url :: (s: [] RxStats, tls: bool, ip: bool) {
+  u := ifx tls then "wss://localhost:" else ifx ip then "ws://127.0.0.1:" else "ws://localhost:";
   for i: 0..<u.count { s[0].url[i] = u[i]; }
   n := ws_digits(s[0].url[..], u.count, s[0].port);
   s[0].url_n = n;
@@ -193,7 +194,7 @@ main :: () {
   s: [1] RxStats; r: [1] Relay; c: [1] RelayConn;
   s[0].port = rx_env_int("RX_PORT");
   if s[0].port < 1 || s[0].port > 65535 { print("relay e2e: FAIL set RX_PORT\n"); return; }
-  rx_url(s[..], rx_env_int("RX_TLS") == 1);
+  rx_url(s[..], rx_env_int("RX_TLS") == 1, rx_env_int("RX_IP") == 1);
   print("  relay %\n", cast(string) s[0].url[0..<s[0].url_n]);
   probe: [16] u8;
   rx_check(s[..], rc_draw(16, probe[..]) && !rc_draw(65, probe[..]), "entropy: 16 bytes drawn, a request past the bridge's 64 refused by the policy");

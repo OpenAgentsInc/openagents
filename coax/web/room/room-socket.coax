@@ -86,18 +86,9 @@ rs_url :: (out: [] u8, base: string, path: string, name: string, n: int) -> stri
   k := rs_put(out, 0, b); k = rs_put(out, k, path); k = rs_put(out, k, name); k = rs_int(out, k, n);
   return ifx k < 0 then "" else cast(string) out[0..<k];
 }
-// The base a check was given: a URL's 127.0.0.1 becomes localhost, because
-// relay_uri.coax takes DNS names only (the server listens on 127.0.0.1).
-rs_base :: (given: string, out: [] u8) -> string {
-  ip := "127.0.0.1";
-  for i: 0..<given.count {
-    if i + ip.count <= given.count && given[i..<i + ip.count] == ip {
-      k := rs_put(out, 0, given[0..<i]); k = rs_put(out, k, "localhost"); k = rs_put(out, k, given[i + ip.count..<given.count]);
-      return ifx k < 0 then given else cast(string) out[0..<k];
-    }
-  }
-  return given;
-}
+// The base a check was given, as given: relay_conn dials ws://127.0.0.1:PORT as
+// well as ws://localhost:PORT (relay_uri_dial). out is unused.
+rs_base :: (given: string, out: [] u8) -> string { return given; }
 rs_now :: () -> int { return proc_now_ms(); }
 // A name that differs from run to run (the wall clock), below 100000.
 rs_stamp :: () -> int { return (cxproc_wall_us() / 1000) % 100000; }

@@ -48,13 +48,17 @@ verification tools only. The shipped policy and ordinary builds need neither.
 `c[0].text[0..<c[0].text_n]`, or `RC_NONE`, `RC_CLOSED`, `RC_FAIL`),
 `relay_conn_ping`, `relay_conn_close(c, code)` and `relay_conn_drop(c)`. It
 does the I/O only, through `socket-native.c`, `tls-native.c` and the entropy
-bridge. `relay_uri.coax` picks the transport, `ws.coax` frames and checks the
+bridge. `relay_uri.coax` picks the transport (`relay_conn_open` dials through
+`relay_uri_dial`, which also takes a `ws://` URL whose host is a dotted-decimal
+IPv4 address such as `127.0.0.1`; `relay_uri`, the check for relay URLs other
+people publish, still refuses IP literals), `ws.coax` frames and checks the
 handshake, and `relay_conn_rules.coax` (`#authority`) decides what each server
 frame asks for: deliver text, answer a ping, echo a close, or refuse (binary
 data with 1003, violations with ws.coax's close codes, frames or messages over
 128 KiB with 1009). Reconnecting, backoff and resubscription belong to the
 caller, through `coax/lib/nostr/relay.coax`. `coax/tests/net/relay_e2e.py`
-runs the whole client against the scripted fixture over both transports.
+runs the whole client against the scripted fixture over both transports, and
+over `ws://127.0.0.1`.
 Evidence: [docs/verification/2026-10-30-relay-conn.md](../../../docs/verification/2026-10-30-relay-conn.md).
 
 Apple TLS now uses Network.framework and Security through the same
