@@ -1,0 +1,6 @@
+ok   #test Lab table and graph fit desktop and touch budgets with complete metadata (1 case, 76256259 steps, 1765 ms)
+ok   #test Lab table accessibility keeps exact amounts inside its status record (1 case, 18817625 steps, 851 ms)
+ok   #test Lab table wrapping is bounded and accounts for every public script byte (1 case, 71 steps, 0 ms)
+ok   #test Lab table wraps every public ASCII glyph inside the viewport using actual font metrics (1 case, 5462651 steps, 61 ms)
+4 of 1053 checks (--only 'Lab table'), 4 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

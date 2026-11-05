@@ -1,0 +1,22 @@
+new non-Coax tool with no Firm reason: line and not on the port list: coax/tests/job_budget.py
+new non-Coax tool with no Firm reason: line and not on the port list: coax/web/api/test_room_admission.py
+new non-Coax tool with no Firm reason: line and not on the port list: coax/web/api/test_room_chat.py
+new non-Coax tool with no Firm reason: line and not on the port list: coax/web/api/test_room_events.py
+new non-Coax tool with no Firm reason: line and not on the port list: coax/web/api/test_room_invites.py
+new non-Coax tool with no Firm reason: line and not on the port list: coax/web/api/test_room_stats.py
+new non-Coax tool with no Firm reason: line and not on the port list: coax/web/api/test_room_vitals.py
+new non-Coax tool with no Firm reason: line and not on the port list: coax/web/api/test_verse_packs.py
+new non-Coax tool with no Firm reason: line and not on the port list: coax/web/room/worker.sh
+new non-Coax tool with no Firm reason: line and not on the port list: coder/tui/resize_check.py
+new non-Coax tool with no Firm reason: line and not on the port list: psionic/tests/check_granite.sh
+new non-Coax tool with no Firm reason: line and not on the port list: psionic/tests/granite_fixture.py
+new non-Coax tool with no Firm reason: line and not on the port list: psionic/tests/granite_parity.py
+new non-Coax tool with no Firm reason: line and not on the port list: psionic/tests/granite_text.py
+new non-Coax tool with no Firm reason: line and not on the port list: verse/tools/fivemmo_hotbar.py
+new non-Coax tool with no Firm reason: line and not on the port list: verse/tools/humans/face_rig.py
+new non-Coax tool with no Firm reason: line and not on the port list: verse/tools/humans/metahuman.py
+new non-Coax tool with no Firm reason: line and not on the port list: verse/tools/humans/outfits.py
+new non-Coax tool with no Firm reason: line and not on the port list: verse/tools/humans/pack_human.py
+new non-Coax tool with no Firm reason: line and not on the port list: verse/tools/humans/shape.py
+new non-Coax tool with no Firm reason: line and not on the port list: verse/tools/humans/upload_packs.sh
+tools-check: 1789 tracked tool files (35 of them vendored upstream vectors), 21 new without a reason

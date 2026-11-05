@@ -1,0 +1,1 @@
+PASS: native API/file replacement, both reorg directions, same-height branch changes, stale cursor refusal, five torn files, corrupt frame, 256 MiB capacity refusal, unavailable bodies, recovery and genuine L origin retaining pow-only; no sanitizer diagnostics

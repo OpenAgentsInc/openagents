@@ -1,0 +1,3 @@
+ok   #test Lab graph edges appear only after expanding the exact transaction occurrence (1 case, 23455485 steps, 933 ms)
+1 of 1055 checks (--only 'Lab graph edges'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

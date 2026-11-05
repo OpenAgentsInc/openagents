@@ -1,0 +1,7 @@
+ok   #test native Aethyrforge releases walking when Return opens its shared composer (1 case, 7134306 steps, 947 ms)
+ok   #test native Aethyrforge owns only valid sessions emitted by its child (1 case, 7136257 steps, 923 ms)
+ok   #test native Aethyrforge lets Lab search consume Return before opening Coder (1 case, 7140634 steps, 902 ms)
+ok   #test native Aethyrforge reserves its composer and history without overwriting world vertices (1 case, 2747 steps, 0 ms)
+ok   #test native Aethyrforge lets Enter activate a focused Lab control (1 case, 7139466 steps, 907 ms)
+5 of 575 checks (--only 'native Aethyrforge'), 5 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

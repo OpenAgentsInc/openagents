@@ -1,0 +1,4 @@
+phase 0 height 102 detached 0 attached 102 durable bytes 71744
+phase 1 height 103 detached 2 attached 3 durable bytes 73991
+phase 2 height 104 detached 3 attached 4 durable bytes 74962
+PASS mined and fully validated height 105, 72 transactions, 40 inputs/outputs, 7167 bytes, table 157475 bytes

@@ -1,0 +1,11 @@
+54308753598854075405f995a04eb94f64eeb85f231ee6840a42e77afe6d2e80  coax/bin/coax
+2507325f3c990b3120747ce717026d7ecebaee7a794772c20d2215c03b46c9e6  apps/openagents-web/build/bitcoin-lab.wasm
+406dcb67a42d4e9e30cc9be3b76fb3b38d4537171e5a6278bc31a336f249d83a  proto/descriptors/owned.pb
+1a9af696b32be705f333bdde5f1a4ed95fb8a700e845ff508e78bcad63801f3b  /home/christopherdavid/.openagents/bin/aethyrforge-native
+a3b41c1d8452c98e0d8aad39031874548b5d90532c8b1c02a4e2c35093e60561  /home/christopherdavid/.openagents/bin/bitcoin-lab-api
+7e8e6098b5416bf40ea3804e70f2ffc7ec5954968e3f4302318cb6e834939499  /home/christopherdavid/.openagents/bin/bitcoin-lab-fetch
+6fff04d6bae0181e6923af3f70725343974873df7323c0a9966eaef1d54f3663  /tmp/lab4-scene/check
+297424e50895ec3b1d531f45697d9a0d592cca722f30523dcd27375e5015a9ab  /tmp/lab4-scene/scene.c
+6bb3a6c9d86d468aedf6d2fda774e02f4792e32f76a74a66391d1339c393046a  /tmp/lab4-stress-2/state.kv
+9d46f1de0255de4fa40737f254fdde0f479c2390215902e2bc8a23d4fa567c9e  /tmp/lab4-stress-2/blk00000.dat
+ff4dee6c1baf118453f5dd1f1f235dc0a310b0a372ca840a401f823861082ce9  bitcoin/fixtures/explorer-core-reorg/blk00000.dat

@@ -1,0 +1,3 @@
+ok   #test Lab fee colors use rounded virtual bytes and leave unavailable fees unknown (1 case, 129 steps, 0 ms)
+1 of 516 checks (--only 'Lab fee colors'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

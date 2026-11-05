@@ -1,0 +1,4 @@
+ok   #test Lab explorer shares exact selection, breadcrumbs and strict restore with the Grid (1 case, 24154334 steps, 1169 ms)
+ok   #test Lab explorer replay retains stale occurrences and changes geometry only after admission (1 case, 19711350 steps, 947 ms)
+2 of 1046 checks (--only 'Lab explorer'), 2 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

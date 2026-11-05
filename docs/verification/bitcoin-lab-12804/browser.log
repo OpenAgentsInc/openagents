@@ -1,0 +1,2 @@
+PASS desktop: exact graph/table/back/link/script/UTXO, real keyboard and pointer/touch, stale occurrence, both reorg directions, cancel/rescue/GPU recovery
+PASS phone: exact graph/table/back/link/script/UTXO, real keyboard and pointer/touch, stale occurrence, both reorg directions, cancel/rescue/GPU recovery

@@ -1,0 +1,10 @@
+ok   #test Bitcoin Lab has all 125 book states, separate from exercises (1 case, 5782 steps, 0 ms)
+ok   #test Bitcoin Lab station, chapter, source and exit navigation stay bounded (1 case, 4335548 steps, 514 ms)
+ok   #test Bitcoin Lab keyboard and touch selection never leave walking held (1 case, 4331072 steps, 472 ms)
+ok   #test Bitcoin Lab walks from spawn to chain and back on the replayable Grid session (1 case, 7594502 steps, 600 ms)
+ok   #test Bitcoin Lab desktop and phone frames fit declared buffers and touch targets (1 case, 19938536 steps, 711 ms)
+ok   #test Bitcoin Lab share routes and pasted searches retain exact occurrences across reorgs (1 case, 8671650 steps, 979 ms)
+ok   #test Bitcoin Lab solid meshes fit short phones and every reorg viewport (1 case, 43153744 steps, 1038 ms)
+ok   #test Bitcoin Lab script text stops at the inspector's visible bound (1 case, 7263637 steps, 546 ms)
+8 of 515 checks (--only 'Bitcoin Lab'), 8 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

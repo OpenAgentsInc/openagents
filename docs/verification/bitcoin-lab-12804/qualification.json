@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "implementation": "b4004c3fd5ad52d7e92f2065f1701e92e70a7c40",
+  "rebased_on": "8182e4f84e",
+  "date": "2026-11-05",
+  "machine": "coderos-4080 / Linux / NVIDIA RTX 4080",
+  "compiler_sha256": "54308753598854075405f995a04eb94f64eeb85f231ee6840a42e77afe6d2e80",
+  "new_authority_mutants": {
+    "total": 120,
+    "killed": 120,
+    "survived": 0
+  },
+  "retained_http_responses": 928,
+  "large_http_responses": 25,
+  "large_block": {
+    "height": 105,
+    "transactions": 72,
+    "wide_inputs": 40,
+    "wide_outputs": 40,
+    "script_outputs": 181,
+    "script_balance_sat": 10000000000
+  },
+  "sanitized_scene": {
+    "frames": 1633,
+    "peak_vertices": 33672,
+    "realm_bytes": 8690256,
+    "arena_bytes": 12146608
+  },
+  "native_vulkan": {
+    "frames": 2000,
+    "width": 1440,
+    "height": 900,
+    "passes": 3
+  },
+  "wasm_bytes": 344799,
+  "wasm_budget": 365000,
+  "browser": {
+    "muted": true,
+    "headless": true,
+    "viewports": [
+      [
+        1440,
+        900
+      ],
+      [
+        390,
+        844
+      ]
+    ],
+    "capture": "offscreen rgba8unorm"
+  },
+  "owner_scope": {
+    "retained": [
+      12803,
+      12804
+    ],
+    "canceled_open_numbered": "12805-12831",
+    "canceled_related": [
+      12895
+    ],
+    "historical_completed_foundation": 12802,
+    "epic": 12801
+  },
+  "limits": "Public regtest fixtures and bounded readers; no mainnet, Mac, physical phone, chapter promotion or public listing. Unknown own-node fees/parent receipts/work remain unknown.",
+  "qualified_implementation": "9fa70a625d92ca89f826531057643ef793e125bb",
+  "final_rebase": "1af44e813c",
+  "final_rebase_review": "Lab bytes unchanged; shared process wait additionally retains stderr; native harness checked."
+}
