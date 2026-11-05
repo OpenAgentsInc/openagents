@@ -1,0 +1,72 @@
+// Bounded native receive retention. SDK queues own immutable payloads only
+// while holding one exact lease; full queues stop reads rather than publish
+// a partial frame. Ownership of realm callbacks remains transport.coax's.
+#authority;
+HOST_INBOX_EVENTS :: 64;
+HOST_INBOX_CAPACITY :: 8388608;
+HostInboxStatus :: enum u8 {ok;full;invalid;retired;}
+HostInboxLease :: struct {slot:int=-1;serial:int;epoch:int;}
+HostInboxGrant :: struct {status:HostInboxStatus=HostInboxStatus.invalid;lease:HostInboxLease;}
+HostInboxEntry :: struct {live:bool;serial:int;bytes:int;}
+HostInboxQueue :: struct {valid:bool;capacity:int;limit:int;count:int;bytes:int;epoch:int=1;serial:int;retired:bool;entries:[HOST_INBOX_EVENTS]HostInboxEntry;}
+
+#test "inbox leases retain whole bounded payloads and reuse only after exact release" {
+ q:=[1]HostInboxQueue.[hiq_open(3)];leases:[4]HostInboxLease;
+ for i:0..<4 {g:=hiq_reserve(q[..],3);#assert g.status==HostInboxStatus.ok&&g.lease.slot==i&&g.lease.serial==i+1&&g.lease.epoch==1;leases[i]=g.lease;}
+ #assert q[0].count==4&&q[0].bytes==12&&q[0].limit==12&&hiq_reserve(q[..],1).status==HostInboxStatus.full;
+ #assert hiq_release(q[..],leases[0])&&q[0].count==3&&q[0].bytes==9;
+ g:=hiq_reserve(q[..],2);#assert g.status==HostInboxStatus.ok&&g.lease.slot==0&&g.lease.serial==5&&q[0].count==4&&q[0].bytes==11;
+ #assert !hiq_release(q[..],leases[0])&&q[0].count==4&&q[0].bytes==11;
+ #assert hiq_release(q[..],g.lease)&&hiq_release(q[..],leases[1])&&hiq_release(q[..],leases[2])&&hiq_release(q[..],leases[3])&&q[0].bytes==0&&q[0].count==0;
+}
+#test "zero-byte events still exhaust a finite event table including zero-sized inboxes" {
+ q:=[1]HostInboxQueue.[hiq_open(0)];leases:[64]HostInboxLease;#assert q[0].valid&&q[0].limit==0;
+ for i:0..<64 {g:=hiq_reserve(q[..],0);#assert g.status==HostInboxStatus.ok&&g.lease.slot==i;leases[i]=g.lease;}
+ #assert q[0].count==64&&q[0].bytes==0&&hiq_reserve(q[..],0).status==HostInboxStatus.full&&hiq_reserve(q[..],1).status==HostInboxStatus.invalid;
+ for lease:leases {#assert hiq_release(q[..],lease);}#assert q[0].count==0&&q[0].bytes==0;
+}
+#test "inbox capacity bounds are exact and invalid extents never alter retained leases" {
+ for capacity:[3]int.[-1,8388609,9223372036854775807] {q:=[1]HostInboxQueue.[hiq_open(capacity)];#assert !q[0].valid&&q[0].capacity==0&&q[0].limit==0&&hiq_reserve(q[..],0).status==HostInboxStatus.invalid;}
+ q:=[1]HostInboxQueue.[hiq_open(8388608)];#assert q[0].valid&&q[0].limit==33554432;
+ g:=hiq_reserve(q[..],8388608);#assert g.status==HostInboxStatus.ok&&q[0].bytes==8388608;
+ for bytes:[3]int.[-1,8388609,9223372036854775807] {#assert hiq_reserve(q[..],bytes).status==HostInboxStatus.invalid&&q[0].count==1&&q[0].bytes==8388608;}
+ #assert hiq_release(q[..],g.lease);
+}
+#forall "only the exact live inbox lease releases its owned bytes" which:0..<5 {
+ q:=[1]HostInboxQueue.[hiq_open(8)];g:=hiq_reserve(q[..],7);bad:=g.lease;
+ if which==0 {bad.slot=-1;}if which==1 {bad.slot=64;}if which==2 {bad.slot=1;}if which==3 {bad.serial+=1;}if which==4 {bad.epoch+=1;}
+ #assert !hiq_release(q[..],bad)&&q[0].count==1&&q[0].bytes==7&&hiq_release(q[..],g.lease)&&!hiq_release(q[..],g.lease)&&q[0].count==0&&q[0].bytes==0;
+}
+#test "inbox reset invalidates old leases before a new epoch can reuse slot and serial" {
+ q:=[1]HostInboxQueue.[hiq_open(1)];old:=hiq_reserve(q[..],1);#assert hiq_reset(q[..])&&q[0].epoch==2&&q[0].count==0&&q[0].bytes==0;
+ next:=hiq_reserve(q[..],1);#assert next.status==HostInboxStatus.ok&&next.lease.slot==0&&next.lease.serial==1&&next.lease.epoch==2&&!hiq_release(q[..],old.lease)&&q[0].bytes==1&&hiq_release(q[..],next.lease);
+}
+#test "inbox serial and epoch exhaustion retire without wrapping or hiding live bytes" {
+ q:=[1]HostInboxQueue.[hiq_open(1)];q[0].serial=9223372036854775806;g:=hiq_reserve(q[..],1);#assert g.status==HostInboxStatus.ok&&g.lease.serial==9223372036854775807;
+ #assert hiq_reserve(q[..],0).status==HostInboxStatus.retired&&q[0].retired&&q[0].count==1&&q[0].bytes==1&&hiq_release(q[..],g.lease);
+ #assert hiq_reset(q[..])&&!q[0].retired&&q[0].serial==0&&q[0].epoch==2&&hiq_reserve(q[..],0).status==HostInboxStatus.ok;
+ q[0].epoch=9223372036854775807;#assert !hiq_reset(q[..])&&q[0].retired&&q[0].count==0&&q[0].bytes==0&&hiq_reserve(q[..],0).status==HostInboxStatus.retired;
+}
+hiq_open :: (capacity:int)->HostInboxQueue #export_c {
+ if capacity<0||capacity>HOST_INBOX_CAPACITY {return HostInboxQueue.{};}
+ return HostInboxQueue.{valid=true,capacity=capacity,limit=capacity*4};
+}
+hiq_reserve :: (q:[]HostInboxQueue,bytes:int)->HostInboxGrant #export_c {
+ if !q[0].valid||bytes<0||bytes>q[0].capacity {return HostInboxGrant.{};}
+ if q[0].retired||q[0].serial==9223372036854775807 {q[0].retired=true;return HostInboxGrant.{status=HostInboxStatus.retired};}
+ if bytes>q[0].limit-q[0].bytes {return HostInboxGrant.{status=HostInboxStatus.full};}
+ for i:0..<HOST_INBOX_EVENTS {if !q[0].entries[i].live {
+  q[0].serial+=1;q[0].entries[i]=HostInboxEntry.{live=true,serial=q[0].serial,bytes=bytes};q[0].count+=1;q[0].bytes+=bytes;
+  return HostInboxGrant.{status=HostInboxStatus.ok,lease=HostInboxLease.{slot=i,serial=q[0].serial,epoch=q[0].epoch}};
+ }}return HostInboxGrant.{status=HostInboxStatus.full};
+}
+hiq_release :: (q:[]HostInboxQueue,lease:HostInboxLease)->bool #export_c {
+ if lease.slot<0||lease.slot>=HOST_INBOX_EVENTS||lease.epoch!=q[0].epoch {return false;}
+ entry:=q[0].entries[lease.slot];if !entry.live||entry.serial!=lease.serial {return false;}
+ q[0].count-=1;q[0].bytes-=entry.bytes;q[0].entries[lease.slot]=HostInboxEntry.{};return true;
+}
+hiq_reset :: (q:[]HostInboxQueue)->bool #export_c {
+ q[0].count=0;q[0].bytes=0;q[0].serial=0;for i:0..<HOST_INBOX_EVENTS {q[0].entries[i]=HostInboxEntry.{};}
+ if q[0].epoch==9223372036854775807 {q[0].retired=true;return false;}
+ q[0].epoch+=1;q[0].retired=false;return q[0].valid;
+}
