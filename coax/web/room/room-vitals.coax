@@ -293,7 +293,9 @@ rm_vitals_answer :: (v: [] RmServer, batch: int, status: int, body: string) #exp
           // generation or older go, each told "elsewhere" (room-relay.coax rl_owner_drop)
           if c == 'f' && v[0].vit.fly_owner[q] > 0 {
             e := v[0].vit.v[i];
-            if v[0].vit.fly_owner[q] + 1 > e.floor { v[0].vit.v[i].floor = v[0].vit.fly_owner[q] + 1; }   // that owner's tickets sit no more
+            // that owner's tickets sit no more: the floor is fenced up to one past it, never down
+            g: [1] ControlFence; g[0].gen[0] = e.floor;
+            if control_fence(g[..], 0, v[0].vit.fly_owner[q] + 1) == CONTROL_OK { v[0].vit.v[i].floor = g[0].gen[0]; }
             v[0].vit.dropped += rl_owner_drop(v, cast(string) e.pid[0..<e.pid_n], v[0].vit.fly_owner[q] + 1, -1);
           }
         }

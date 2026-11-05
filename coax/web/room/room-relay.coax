@@ -162,7 +162,7 @@ rl_join :: (v: [] RmServer, conn: int, request: string) -> int {
   // refused; a newer one drops their seats in this server's other rooms (each told "elsewhere")
   if v[0].relays[r].limited && tk.ok && tk.pid_n > 0 && tk.owner > 0 {
     pid := cast(string) tk.pid[0..<tk.pid_n];
-    if rl_owner_newest(v, pid) > tk.owner {
+    if rl_owner_fence(rl_owner_newest(v, pid), tk.owner) == CONTROL_STALE {
       if rl_people(v, r) == 0 { v[0].relays[r].live = false; }
       return st_refuse(v, ST_ELSEWHERE);
     }
@@ -264,6 +264,14 @@ rl_owner_newest :: (v: [] RmServer, pid: string) -> int {
     }
   }
   return best;
+}
+// The session contract's fence (aethyr/session/control.coax control_fence) on one character: a
+// ticket of owner generation `owner` against the newest this server holds for it. CONTROL_STALE
+// refuses; CONTROL_OK takes it, and its seats of older owners go (rl_owner_drop).
+rl_owner_fence :: (newest: int, owner: int) -> int {
+  f: [1] ControlFence;
+  f[0].gen[0] = newest;
+  return control_fence(f[..], 0, owner);
 }
 // Socket conn has lost its character to a newer ticket: it hears "r 0 elsewhere" (the host closes it).
 rl_elsewhere :: (v: [] RmServer, conn: int) {
