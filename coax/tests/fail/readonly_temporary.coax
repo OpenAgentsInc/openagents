@@ -1,0 +1,3 @@
+// expect: E0366
+make :: ()->[2]int {a:[2]int;return a;}
+main :: () {r:[] const int=make()[..];}

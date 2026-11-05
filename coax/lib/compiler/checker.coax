@@ -7,6 +7,7 @@
 #load "checker/records.coax";
 #load "checker/names.coax";
 #load "checker/types.coax";
+#load "checker/readonly.coax";
 #load "checker/expressions.coax";
 #load "checker/generics.coax";
 #load "checker/statements.coax";

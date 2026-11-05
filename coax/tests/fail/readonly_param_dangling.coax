@@ -1,0 +1,3 @@
+// expect: E0383
+bad :: (a:[2]int)->[] const int {return a[..];}
+main :: () {}

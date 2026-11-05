@@ -40,7 +40,7 @@ CK_expr :: (c:CK_Context,id:int,want:CK_Hint)->int {
   if id<2 {return CK_NONE;}if !CK_enter(c,c.nodes[id].loc) {return CK_NONE;}defer CK_leave(c);t:=CK_expr_inner(c,id,want);c.nodes[id].type=t;return t;
 }
 CK_prechecked :: (node:CK_Node)->bool {
- return (node.mark==1 && (node.kind==CK_Tag.expr_struct || node.kind==CK_Tag.expr_array)) || (node.mark==2 && node.kind==CK_Tag.expr_call && node.proc!=0);
+ return (node.mark==2 && node.kind==CK_Tag.expr_cast && node.d==0) || (node.mark==1 && (node.kind==CK_Tag.expr_struct || node.kind==CK_Tag.expr_array)) || (node.mark==2 && node.kind==CK_Tag.expr_call && node.proc!=0);
 }
 CK_expr_inner :: (c:CK_Context,id:int,want:CK_Hint)->int {
   e:=c.nodes[id];
@@ -89,7 +89,7 @@ CK_expr_inner :: (c:CK_Context,id:int,want:CK_Hint)->int {
     t:=CK_expr(c,e.a,CK_Hint.{});bounds_ok:=true;bounds:=[2] int.[e.b,e.c];
     for bound:bounds {bt:=CK_value(c,bound,CK_Hint.{type=11});if bt!=0 && !CK_integer(c,bt) {CK_error(c,c.nodes[bound].loc,"E0356",CK_join2(c,"a slice bound must be an integer, found ",c.types[bt].name),"");bounds_ok=false;}}
     if t==CK_NONE || !bounds_ok {return CK_NONE;}if t==3 || c.types[t].kind==CK_Kind.view {return t;}
-    if c.types[t].kind==CK_Kind.array {why:=CK_immutable(c,e.a);if why!="" {CK_error(c,e.loc,"E0366",CK_join2(c,"a view needs an array variable it may write through, and this is a ",why),"copy it into a local variable first");return CK_NONE;}return CK_intern(c,CK_Kind.view,c.types[t].elem,0);}
+    if c.types[t].kind==CK_Kind.array {why:=CK_immutable(c,e.a);if CK_readonly(c,want.type) && why!="temporary" {return CK_intern(c,CK_Kind.view,c.types[t].elem,1);}if why!="" {CK_error(c,e.loc,"E0366",CK_join2(c,"a view needs an array variable it may write through, and this is a ",why),"copy it into a local variable first");return CK_NONE;}return CK_intern(c,CK_Kind.view,c.types[t].elem,0);}
     CK_error(c,e.loc,"E0355",CK_join2(c,"cannot slice ",c.types[t].name),"only arrays, views and strings can be sliced");return CK_NONE;
   }
   if e.kind==CK_Tag.expr_struct {
@@ -122,6 +122,8 @@ CK_expr_inner :: (c:CK_Context,id:int,want:CK_Hint)->int {
     a:=CK_expr(c,e.b,want);b:=CK_expr(c,e.c,want);
     if CK_untyped(c,a) && !CK_untyped(c,b) {CK_coerce(c,e.b,b);}else if CK_untyped(c,b) && !CK_untyped(c,a) {CK_coerce(c,e.c,a);}
     else if CK_untyped(c,a) {t:=11;if CK_numeric(c,want.type) {t=want.type;}else if a==5 || b==5 {t=7;}CK_coerce(c,e.b,t);CK_coerce(c,e.c,t);}
+    if CK_readonly_conversion(c,a,b) {CK_readonly_coerce(c,e.b,b);}else if CK_readonly_conversion(c,b,a) {CK_readonly_coerce(c,e.c,a);}
+    CK_readonly_coerce(c,e.b,want.type);CK_readonly_coerce(c,e.c,want.type);
     a=c.nodes[e.b].type;b=c.nodes[e.c].type;if a==CK_NONE || b==CK_NONE {return CK_NONE;}
     if a!=b {parts:=[4] string.["ifx branches must have one type, found ",c.types[a].name," and ",c.types[b].name];CK_error(c,e.loc,"E0365",CK_text(c,parts[..]),"");return CK_NONE;}
     if a==1 {CK_error(c,e.loc,"E0365","ifx branches must produce values","");return CK_NONE;}return a;

@@ -661,6 +661,7 @@ struct Evaluator {
   Value do_cast(const Expr *e, Value v) {
     Type to = e->type, from = v.type;
     if (from == to) return v;
+    if (to->kind == TypeKind::view && from->kind == TypeKind::view) { v.type=to; return v; }
     if (to == &T_STRING) {
       // The string borrows the view's bytes, as the spec and emitted C have
       // it: later writes through the array show in the string. A frozen

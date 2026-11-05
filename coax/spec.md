@@ -1,7 +1,7 @@
 # Coax: language specification and implementation plan
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.48.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.49.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated: 2026-10-28. Status: **working bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
@@ -1382,7 +1382,18 @@ is private to its versioned runtime; independently built modules use explicit
 C ABI entry points and opaque handles. The current bootstrap has no
 implicit context convention yet.
 
-### 11.2 Lifetimes and allocation
+### 11.2 Read-only views, lifetimes and allocation
+
+The initial read-only profile is `[] const T`: a distinct counted descriptor
+with read-only element access, one-way restriction from `[] T`, and borrowing
+of immutable arrays in an expected read-only context. It preserves existing
+borrow provenance and does not add exclusive ownership or immutable backing.
+Read-only aggregate elements cannot contain writable view descriptors; concrete
+containment is checked after layout and generic instantiation. Temporary arrays
+cannot be borrowed without a local. The evaluator and C output support this
+profile; device output refuses with E0951. The precise access, conversion,
+containment and foreign-boundary contract is [readonly-views.md](readonly-views.md).
+
 
 | Storage | Owner and invalidation |
 | --- | --- |

@@ -1,0 +1,2 @@
+// expect: E0359
+main :: () { a:[2]int; r:[] const int=a[..]; r[0]=2; }

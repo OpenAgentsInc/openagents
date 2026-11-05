@@ -926,7 +926,7 @@ std::string tag(Type t) {
     case TypeKind::result: {std::string a=tag(t->elem),b=tag(t->sum_error);return "r_"+std::to_string(a.size())+"_"+a+"_"+std::to_string(b.size())+"_"+b;}
     case TypeKind::optional: {std::string a=tag(t->elem);return "o_"+std::to_string(a.size())+"_"+a;}
     case TypeKind::array: return "a" + std::to_string(t->length) + "_" + tag(t->elem);
-    case TypeKind::view: return "v_" + tag(t->elem);
+    case TypeKind::view: return std::string(t->length==1 ? "rv_" : "v_") + tag(t->elem);
     default: return "void";
   }
 }
@@ -1078,6 +1078,7 @@ bool is_place(const Expr *e) {
 struct Operand {
   const Expr *e;
   bool lvalue;
+  bool read_only = false;
 };
 
 std::string escape_path(const std::string &path);
@@ -1159,8 +1160,15 @@ struct Emitter {
   // The pointer type of a temporary holding the address of a place. Metal
   // pointers name their address space: a view's elements are device memory,
   // locals are thread memory.
-  std::string pointer_type(const Expr *place) {
-    if (!opts.metal_compute) return c_type(place->type) + " *";
+  std::string pointer_type(const Expr *place, bool read = false) {
+    if (!opts.metal_compute) {
+      const Expr *root=place;
+      while(root && (root->kind==ExprKind::index || root->kind==ExprKind::field)) {
+        if(root->lhs->type->kind==TypeKind::view && root->lhs->type->length==1) read=true;
+        root=root->lhs;
+      }
+      return std::string(read ? "const " : "") + c_type(place->type) + " *";
+    }
     const Expr *e = place;
     bool space_device = false;
     while (e && (e->kind == ExprKind::index || e->kind == ExprKind::field)) {
@@ -1223,7 +1231,7 @@ struct Emitter {
         continue;
       }
       if (o.lvalue) {
-        std::string t = new_temp(pointer_type(o.e));
+        std::string t = new_temp(pointer_type(o.e,o.read_only));
         prefix += t + " = &(" + ex(o.e) + "), ";
         texts.push_back("(*" + t + ")");
       } else {
@@ -1321,7 +1329,11 @@ struct Emitter {
     Type to = e->type, from = e->lhs->type;
     std::string x = ex(e->lhs), line = std::to_string(e->loc.line);
     if (from == to) return x;
-    if (to == &T_STRING) return "coax_string_of_bytes(" + x + ")";
+    if (to == &T_STRING) return std::string("coax_string_of_bytes") + (from->length==1 ? "_readonly" : "") + "(" + x + ")";
+    if (to->kind == TypeKind::view && from->kind == TypeKind::view) {
+      std::string v=new_temp(c_type(from));
+      return "(" + v + " = " + x + ", ((" + c_type(to) + "){" + v + ".data, " + v + ".count}))";
+    }
     if (opts.metal_compute && is_float(to)) {
       if (to == &T_F32 && from == &T_F64) return "coax_ff_to_f32(" + x + ", " + line + ")";
       if (to == &T_F64) {
@@ -1611,7 +1623,7 @@ struct Emitter {
       }
       case ExprKind::slice: {
         Type lt = e->lhs->type;
-        std::vector<Operand> ops = {{e->lhs, lt->kind == TypeKind::array}};
+        std::vector<Operand> ops = {{e->lhs, lt->kind == TypeKind::array, e->type->kind==TypeKind::view && e->type->length==1}};
         if (e->rhs) { ops.push_back({e->rhs, false}); ops.push_back({e->third, false}); }
         return ordered(ops, [&](const std::vector<std::string> &t) {
           std::string lo = e->rhs ? "(int64_t)(" + t[1] + ")" : "0", hi;
@@ -2446,7 +2458,7 @@ struct TypeWriter {
         if(is_sum(t->elem)){
           // The sum has a forward alias. Publish its pointer descriptor before
           // walking a recursive union's payloads, which may use this view.
-          std::string definition="typedef struct { "+c_type(t->elem)+" *data; int64_t count; } "+c_type(t)+";\n";
+          std::string definition="typedef struct { "+std::string(t->length==1 ? "const " : "")+c_type(t->elem)+" *data; int64_t count; } "+c_type(t)+";\n";
           out+=header ? header_type_definition(t,definition) : definition;
           need(t->elem);break;
         }
@@ -2456,7 +2468,7 @@ struct TypeWriter {
         {
           // A view of a scalar is the same in every library, so headers
           // from two libraries can be included together.
-          std::string def = "typedef struct { " + c_type(t->elem) + " *data; int64_t count; } " + c_type(t) + ";\n";
+          std::string def = "typedef struct { " + std::string(t->length==1 ? "const " : "") + c_type(t->elem) + " *data; int64_t count; } " + c_type(t) + ";\n";
           TypeKind k = t->elem->kind;
           bool shared = k == TypeKind::integer || k == TypeKind::floating || k == TypeKind::bool_;
           if (header) def = header_type_definition(t, def);
@@ -2643,9 +2655,9 @@ std::string view_helpers() {
   std::set<std::string> emitted;
   for (Type t : all_composite_types()) {
     if (t->kind != TypeKind::view || !emitted.insert(tag(t)).second) continue;
-    std::string c = c_type(t), e = c_type(t->elem), tg = tag(t);
+    std::string c = c_type(t), e = (t->length==1 ? "const " : "") + c_type(t->elem), tg = tag(t);
     if (t->elem == &T_U8)
-      s += "static coax_string coax_string_of_bytes(" + c + " v) { coax_string s = {(const char *)v.data, v.count}; return s; }\n";
+      s += "static coax_string coax_string_of_bytes" + std::string(t->length==1 ? "_readonly" : "") + "(" + c + " v) { coax_string s = {(const char *)v.data, v.count}; return s; }\n";
     s += "static " + e + " *coax_elem_" + tg + "(" + c + " v, int64_t i, int32_t l) { return &v.data[coax_index(i, v.count, l)]; }\n";
     s += "static " + c + " coax_mkview_" + tg + "(" + e + " *data, int64_t n, int64_t lo, int64_t hi, int32_t l) {\n"
          "  coax_slice_check(lo, hi, n, l);\n  " + c + " r = {data + lo, hi - lo};\n  return r;\n}\n";

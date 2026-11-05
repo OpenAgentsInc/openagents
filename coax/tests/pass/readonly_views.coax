@@ -1,0 +1,26 @@
+#import "Basic";
+Row :: struct { n:int; data:[2]int; }
+Carrier :: struct { data:[] const int; }
+TABLE :: [4]int.[3,5,7,9];
+sum :: (v:[] const $T: numeric)->$T { total:$T=0; for x:v {total+=x;} return total; }
+take :: (values:[]int,calls:[]int)->[]int {calls[0]+=1;return values;}
+static_view :: ()->[] const int {return TABLE[..];}
+read_param :: (v:[4]int)->int {return sum(v[..]);}
+part :: (v:[] const int)->Carrier {return Carrier.{data=v[1..<3]};}
+exercise :: ()->int {
+ values:[4]int; for i:0..<4 {values[i]=i+1;}
+ r:[] const int=values[..];
+ calls:[1]int;once:[] const int=take(values[..],calls[..]);
+ #assert calls[0]==1 && once[1]==2;
+ chosen:=ifx calls[0]==1 then r else values[..];#assert chosen[0]==1;
+ #assert sum(static_view())==24;
+ #assert sum(r)==10 && sum(TABLE[..])==24 && read_param(TABLE)==24;
+ #assert part(r).data[0]==2 && part(r).data.count==2;
+ values[0]=8; #assert r[0]==8;
+ rows:[1]Row;rows[0].n=12;rows[0].data[1]=6;
+ view:[] const Row=rows[..];copy:=view[0];copy.n=2;
+ #assert view[0].n==12 && copy.n==2 && view[0].data[1]==6;
+ return 0;
+}
+#test "read-only views preserve caller and static backing" {#assert exercise()==0;}
+main :: () { #assert exercise()==0; #assert read_param(TABLE)==24; print("readonly: %\n",sum(TABLE[..])); }

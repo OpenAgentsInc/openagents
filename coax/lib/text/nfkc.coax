@@ -114,18 +114,18 @@ un_admit :: (input:int,scratch:int,output:int,overlap:bool)->int {
   if input<0 || input>1024 || scratch<0 || scratch>18432 || output<0 || output>73728 {return UN_LIMIT;}
   if overlap {return UN_ALIAS;}return UN_OK;
 }
-un_find32 :: (keys:[]u32,key:u32)->int {
+un_find32 :: (keys:[] const u32,key:u32)->int {
   lo:=0;hi:=keys.count;
   while lo<hi {mid:=(lo+hi)/2;if keys[mid]<key {lo=mid+1;}else {hi=mid;}}
   if lo<keys.count && keys[lo]==key {return lo;}return -1;
 }
-un_find64 :: (keys:[]u64,key:u64)->int {
+un_find64 :: (keys:[] const u64,key:u64)->int {
   lo:=0;hi:=keys.count;
   while lo<hi {mid:=(lo+hi)/2;if keys[mid]<key {lo=mid+1;}else {hi=mid;}}
   if lo<keys.count && keys[lo]==key {return lo;}return -1;
 }
 un_class :: (cp:u32)->u32 {
-  keys:=UN_CCC_KEYS;at:=un_find32(keys[..],cp);if at<0 {return 0;}return UN_CCC_VALUES[at];
+  at:=un_find32(UN_CCC_KEYS[..],cp);if at<0 {return 0;}return UN_CCC_VALUES[at];
 }
 un_decode :: (text:string,at:int)->UnCode {
   if at<0 || at>=text.count {return UnCode.{};}
@@ -151,7 +151,7 @@ un_decompose :: (cp:u32,scratch:[]u32,at:int)->int {
     scratch[at]=0x1100+s/588;scratch[at+1]=0x1161+(s%588)/28;
     if t!=0 {scratch[at+2]=0x11a7+t;}return at+count;
   }
-  keys:=UN_DECOMP_KEYS;row:=un_find32(keys[..],cp);
+  row:=un_find32(UN_DECOMP_KEYS[..],cp);
   if row<0 {if at>=scratch.count {return -1;}scratch[at]=cp;return at+1;}
   begin:=cast(int)UN_DECOMP_OFFSETS[row];end:=cast(int)UN_DECOMP_OFFSETS[row+1];count:=end-begin;
   if scratch.count-at<count {return -1;}
@@ -166,7 +166,7 @@ un_order :: (scratch:[]u32,count:int) {
 un_pair :: (a:u32,b:u32)->u32 {
   if a>=0x1100 && a<=0x1112 && b>=0x1161 && b<=0x1175 {return 0xac00+(a-0x1100)*588+(b-0x1161)*28;}
   if a>=0xac00 && a<0xac00+11172 && (a-0xac00)%28==0 && b>0x11a7 && b<=0x11c2 {return a+b-0x11a7;}
-  key:=(cast(u64)a<<21)|cast(u64)b;keys:=UN_COMPOSE_KEYS;row:=un_find64(keys[..],key);
+  key:=(cast(u64)a<<21)|cast(u64)b;row:=un_find64(UN_COMPOSE_KEYS[..],key);
   if row<0 {return 0;}return UN_COMPOSE_VALUES[row];
 }
 un_compose :: (scratch:[]u32,count:int)->int {

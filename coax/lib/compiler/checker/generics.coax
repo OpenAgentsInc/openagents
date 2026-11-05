@@ -103,7 +103,7 @@ CK_same :: (c:CK_Context,x:int,y:int)->bool {
 CK_subst :: (c:CK_Context,inst:int,t:int)->int {
   r:=c.types[t];if r.kind==CK_Kind.param {return c.types[CK_param_record(c,inst,r.name)].elem;}
   if r.kind==CK_Kind.result || r.kind==CK_Kind.optional {return CK_sum_type(c,r.kind,CK_subst(c,inst,r.elem),CK_subst(c,inst,r.sum_error),CK_Loc.{});}
-  if r.kind==CK_Kind.view {return CK_intern(c,CK_Kind.view,CK_subst(c,inst,r.elem),0);}
+  if r.kind==CK_Kind.view {return CK_intern(c,CK_Kind.view,CK_subst(c,inst,r.elem),r.length);}
   if r.kind==CK_Kind.array {return CK_intern(c,CK_Kind.array,CK_subst(c,inst,r.elem),CK_subst_length(c,inst,r.length));}
   if r.kind==CK_Kind.struct_ && c.nodes[r.decl].generic {return CK_struct_subst(c,inst,r.decl);}
   return t;
@@ -181,9 +181,9 @@ CK_instance :: (c:CK_Context,id:int,proc:int)->int {
   // type they bound, or its default, as a generic struct literal's fields do.
   a:=e.head;param:=t.head;i:=0;
   while a!=CK_NONE {prm:=c.nodes[param];
-    if CK_has_param(c,prm.a) {at:=CK_expr(c,a,CK_Hint.{});
+    if CK_has_param(c,prm.a) {at:=CK_expr(c,a,CK_Hint.{type=prm.type});
       if !CK_untyped(c,at) || c.nodes[prm.a].kind!=CK_Tag.type_param {CK_coerce(c,a,CK_default(at));at=c.nodes[a].type;before:=c.state[0].error_count;CK_bind(c,inst,prm.a,at,a,i);
-        if c.state[0].error_count==before {CK_mismatch(c,proc,a,CK_subst(c,inst,prm.type),at,i);}}}
+        if c.state[0].error_count==before {to:=CK_subst(c,inst,prm.type);CK_readonly_coerce(c,a,to);CK_mismatch(c,proc,a,to,c.nodes[a].type,i);}}}
     else {CK_argument(c,proc,a,prm.type,i);}
     a=c.nodes[a].next;param=prm.next;i+=1;
   }
@@ -378,7 +378,7 @@ CK_deduce :: (c:CK_Context,id:int,d:int)->int {
 // An instance's C name: its template's, then each binding, length-prefixed.
 CK_mangle :: (c:CK_Context,t:int)->string {
   r:=c.types[t];
-  if r.kind==CK_Kind.view {return CK_join2(c,"v",CK_mangle(c,r.elem));}
+  if r.kind==CK_Kind.view {prefix:="v";if r.length==1 {prefix="rv";}return CK_join2(c,prefix,CK_mangle(c,r.elem));}
   if r.kind==CK_Kind.array {parts:=[4] string.["a",CK_count(c,r.length),"_",CK_mangle(c,r.elem)];return CK_text(c,parts[..]);}
   if r.kind==CK_Kind.optional {return CK_join2(c,"o",CK_mangle(c,r.elem));}if r.kind==CK_Kind.result {a:=CK_mangle(c,r.elem);b:=CK_mangle(c,r.sum_error);return CK_join3(c,CK_join3(c,"r",CK_count(c,a.count),a),CK_count(c,b.count),b);}
   if r.kind==CK_Kind.struct_ || r.kind==CK_Kind.enum_ || r.kind==CK_Kind.union_ {d:=c.nodes[r.decl];parts:=[5] string.["n",CK_count(c,d.scope),"_",d.name,d.key];return CK_text(c,parts[..]);}

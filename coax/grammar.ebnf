@@ -69,8 +69,10 @@ binding = identifier, ":", ( type | expression, "..<", expression ) ;
 type = type-base, { "?" } ;
 type-base = named-type | type-parameter | "(", type, ")"
           | "[", ( type-parameter | expression ), "]", type
-          | "[", "]", type ;
-(* Suffixes bind inside an array/view element: [] T? is a view of optionals;
+          | "[", "]", [ "const" ], type ;
+(* const is contextual immediately after [] and makes that view read-only.
+   It is not a globally reserved keyword. See readonly-views.md.
+   Suffixes bind inside an array/view element: [] T? is a view of optionals;
    ([] T)? is an optional view. Result(T,E) is an ordered compiler-owned type
    family, represented with named type arguments; Result remains an identifier
    token whose declaration is reserved by semantic admission. *)

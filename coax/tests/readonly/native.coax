@@ -1,0 +1,6 @@
+sum :: (v:[] const int)->int {answer:=0;for x:v {answer+=x;}return answer;}
+#test "read-only native scalar consumer" {
+ values:[3]int;values[0]=3;values[1]=5;values[2]=7;
+ reader:[] const int=values[..];#assert sum(reader)==15;
+ values[1]=2;#assert sum(reader[1..<3])==9;
+}

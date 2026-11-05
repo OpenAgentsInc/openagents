@@ -1,0 +1,1 @@
+main :: () {items:[2]int;reader:[] const int=items[..];reader[0]=1;}

@@ -1,7 +1,7 @@
 # Coax release and implementation status
 
 <!-- Generated from coax/release.coax; do not edit this snapshot. -->
-Current compiler: **coax0 0.48.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.49.0**. Status inventory schema: **1**.
 
 `works` means the bounded feature is implemented; `partial` records its limits.
 `reserved` is recognized and refused; `designed` is planned syntax. A status claim
@@ -124,6 +124,7 @@ schema. Keep signed protocol/schema identities in their own version domains.
 | `bool`, `string` |  | works | — |
 | structs and enums |  | works | — |
 | `[N] T` fixed arrays, `[] T` views |  | works | — |
+| `[] const T` read-only views | One-way restriction of writable views, immutable-array borrows in read-only contexts, preserved slicing and borrow lifetimes, const C descriptors; elements cannot contain writable views; device output refuses (E0950, E0951) | partial | 0.49.0 |
 | `[..] T` dynamic arrays | (E0301) | reserved | — |
 | `fixed32 fixed64` | (E0301) | reserved | — |
 | `v2 v3 v4 quat m3 m4` | (E0301) | reserved | — |

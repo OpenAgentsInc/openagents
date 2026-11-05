@@ -37,6 +37,46 @@ class NativeTests(unittest.TestCase):
             self.assertEqual(r.returncode,0,r.stderr)
             self.assertEqual(subprocess.run([str(d/'borrow')],env={**os.environ,'ASAN_OPTIONS':'detect_leaks=0'}).returncode,0)
 
+    def test_readonly_descriptors_and_static_backing_under_sanitizers(self):
+        source = '''TABLE :: [4]int.[3,5,7,9];
+        table :: ()->[] const int #export_c {return TABLE[..];}
+        tail :: (input:[] const int)->[] const int #export_c {return input[1..<input.count];}
+        total :: (input:[] const int)->int #export_c {answer:=0;for x:input {answer+=x;}return answer;}
+        bytes :: (input:[] const u8)->string #export_c {return cast(string)input;}
+        '''
+        with tempfile.TemporaryDirectory() as directory:
+            d=Path(directory); path=d/'readonly.coax'; path.write_text(source)
+            for mode in ((), ('--release',)):
+                r=subprocess.run([str(COMPILER),'c',str(path),'--library','--header',str(d/'readonly.h'),*mode],capture_output=True,text=True,timeout=30)
+                self.assertEqual(r.returncode,0,r.stderr); (d/'readonly.c').write_text(r.stdout)
+                header=(d/'readonly.h').read_text()
+                self.assertIn('const int64_t *data',header)
+                self.assertIn('const uint8_t *data',header)
+                (d/'host.c').write_text('''#include "readonly.h"
+                #include <assert.h>
+                int main(void){const int64_t a[]={2,4,6};coax_rv_s64 v={a,3};
+                  assert(total(v)==12);coax_rv_s64 t=tail(v);
+                  assert(t.data==a+1 && t.count==2);
+                  coax_rv_s64 first=table();coax_rv_s64 second=table();
+                  assert(first.data==second.data && total(first)==24);
+                  const uint8_t b[]={65,0,66};coax_rv_u8 bv={b,3};coax_string text=bytes(bv);
+                  assert(text.count==3 && text.data[2]==66);return 0;}
+                ''')
+                r=subprocess.run([os.environ.get('CC','cc'),'-std=c11','-O1','-g','-fsanitize=address,undefined',str(d/'readonly.c'),str(d/'host.c'),'-lm','-o',str(d/'host')],capture_output=True,text=True,timeout=30)
+                self.assertEqual(r.returncode,0,r.stderr)
+                r=subprocess.run([str(d/'host')],capture_output=True,text=True,env={**os.environ,'ASAN_OPTIONS':'detect_leaks=0'},timeout=15)
+                self.assertEqual(r.returncode,0,r.stderr)
+
+    def test_readonly_profiles_and_capability_refusals(self):
+        cases=[('fill :: (v:[]int) {v[0]=1;} main :: () {a:[1]int;r:[] const int=a[..];fill(r);}', 'E0317'),
+               ('Row :: struct {v:[]int;} Carrier :: struct {rows:[] const Row;} main :: () {}', 'E0950'),
+               ('main :: () {a:[1]int;r:[] const int=a[..];s:=cast([]int)r;}', 'E0362')]
+        for source,code in cases:
+            r=self.invoke(source,'check');self.assertNotEqual(r.returncode,0);self.assertIn(code,r.stderr)
+        source='run :: (index:int, data:[] const f32) #export_c {}'
+        for command in ('cuda','metal-compute','wgsl','spirv','metal'):
+            r=self.invoke(source,command);self.assertNotEqual(r.returncode,0);self.assertIn('E0951',r.stderr)
+
     def test_float_types_and_compile_time(self):
         source = '''#import "Basic";
         A :: #run sqrt(9.0f32); #assert A == 3.0f32;

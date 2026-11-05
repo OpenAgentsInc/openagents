@@ -1,0 +1,3 @@
+// expect: E0359
+Row :: struct { a:[2]int; }
+main :: () { a:[1]Row; r:[] const Row=a[..]; r[0].a[0]=2; }

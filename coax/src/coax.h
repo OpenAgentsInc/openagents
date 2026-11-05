@@ -225,7 +225,7 @@ struct TypeInfo {
   bool is_signed = false;
   const TypeInfo *elem = nullptr;  // array, view; enum: the underlying integer type
   int32_t scope = 0;         // struct/enum declared under one name by two modules: its C spelling's module scope
-  int64_t length = 0;        // array
+  int64_t length = 0;        // array count; view capability: 0 writable, 1 read-only
   StructDecl *struct_decl = nullptr;
   EnumDecl *enum_decl = nullptr;
   const TypeInfo *physical = nullptr; // compiler-selected transparent quantity carrier
@@ -347,6 +347,7 @@ struct TypeExpr {
   Loc loc;
   Str name;                  // named
   Expr *length = nullptr;    // array
+  bool read_only = false;    // contextual [] const T qualifier
   TypeExpr *elem = nullptr;  // array, view, dynamic
   Slice<TypeArgument> args;
 };

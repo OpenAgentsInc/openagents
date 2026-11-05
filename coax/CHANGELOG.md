@@ -13,6 +13,18 @@ These are compiler versions, separate from inventory, wire and protocol schema
 versions. [`STATUS.md`](STATUS.md) describes current support;
 [`RELEASE.md`](RELEASE.md) describes the release workflow.
 
+## 0.49.0 — Read-only Borrowed Views — 2026-11-05
+
+Commit: pending
+
+- Add `[] const T` with one-way access restriction, immutable-array borrowing
+  in read-only contexts, generic readers and preserved borrow lifetimes.
+- Emit distinct const-element C descriptors without changing existing writable
+  descriptor identities. Reject capability upgrades and writable descriptor
+  containment; device outputs retain an explicit unqualified-profile refusal.
+- Use immutable normalization tables directly and teach read-only borrowing
+  through runnable chapter-6 examples. See [the contract](readonly-views.md).
+
 ## 0.48.0 — Tagged Results and Cleanup — 2026-11-02
 
 Commit: [`1a11ccb6801a146741a7403e906489eeafb63ab1`](https://github.com/OpenAgentsInc/openagents/commit/1a11ccb6801a146741a7403e906489eeafb63ab1)

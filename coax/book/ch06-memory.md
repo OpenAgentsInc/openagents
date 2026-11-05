@@ -4,7 +4,7 @@
 > `coax0`. Heap memory, the context and temporary storage are design.
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.48.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.49.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Every value in a program lives somewhere in memory, and somebody decides
 when that memory is reused. In a garbage-collected language you rarely have
@@ -273,9 +273,49 @@ parameter says "I get my own copy of four ints". A `[] int` parameter says
 > length together. In Rust terms, a view is like `&mut [T]` without the
 > borrow checker: it may write, and nothing tracks how long it's valid.
 
-### What coax0 checks about views
+### Read-only views
 
-Because a view may write through to its storage, `coax0` makes you take one
+A reader can take `[] const T` instead of `[] T`. The descriptor still borrows
+the caller's storage; it gives no permission to write the elements. In an
+expected read-only context you can slice an immutable array constant or an
+array parameter directly:
+
+```jai
+TABLE :: [4] int.[3, 5, 7, 9];
+total :: (items: [] const int) -> int {
+  answer := 0;
+  for item: items { answer += item; }
+  return answer;
+}
+main :: () { print("%\n", total(TABLE[..])); }
+```
+
+This prints `24`. There is no authored copy of `TABLE`. A mutable view can be
+passed to the same reader, or restricted explicitly with `cast([] const int)`.
+A slice of a read-only view remains read-only. Neither assignment nor a cast
+can convert it back to `[] int`. Writing `items[0] = 1` is E0359.
+
+Read-only does not freeze the backing array: a writable alias can still change
+it. The caller remains responsible for avoiding concurrent conflicting access.
+The descriptor's lifetime is unchanged: returning a view of a local array or a
+by-value array parameter remains E0383. The array parameter itself is still a
+value copy; this feature avoids the additional local copy previously needed
+to borrow it for a reader. Bind temporary arrays to a local before borrowing.
+
+Inline aggregate fields are read-only through the view; an explicit element
+copy is an independent value. Elements containing writable view descriptors
+are refused with E0950, since copying those descriptors could expose write
+access. Strings and nested read-only descriptors are allowed. Device outputs
+currently refuse this profile with E0951. See the [full contract](https://github.com/OpenAgentsInc/openagents/blob/main/coax/readonly-views.md)
+for containment, conversions and generated C interfaces.
+
+The runnable example is `examples/ch06_readonly.coax`; its deliberately broken
+counterpart is `examples/ch06_readonly_refused.coax`. The complete compiler
+fixture also exercises generic readers and returned aggregate carriers.
+
+### What coax0 checks about writable views
+
+Because a writable `[] T` view may write through to its storage, `coax0` makes you take one
 only of an array variable that can be written. A parameter can't be written
 (parameters are immutable), so you can't take a view of a fixed-array
 parameter:

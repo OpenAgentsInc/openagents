@@ -1,7 +1,7 @@
 # Appendix B. Error codes
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.48.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.49.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 This appendix lists every error code the current compiler can report. The tables
 below are the output of `coax explain --all --markdown`, which prints the
@@ -275,7 +275,7 @@ severity, code, message, source span, notes and proposed fixes.
 | `E0704` | outside the SPIR-V lowering | coax spirv lowers what coax metal accepts (f32 and bool, if/else and acyclic calls) to SPIR-V 1.3 for Vulkan. --kernel NAME wraps one procedure of f32 parameters, returning f32 or bool, in a GLCompute entry point; without it the module is a library. A module has at most 256 procedures, 1024 locals in one procedure, 1024 constants and 32 arguments in one call. |
 | `E0705` | shader entry point not found | coax spirv --vertex NAME and --fragment NAME make entry points of procedures declared in the file or the units it loads. Name one of them, spelled as declared. |
 | `E0706` | outside the WGSL writer | coax wgsl writes a whole module the way lib/compiler/wgsl.coax does. The construct named in the message is one that writer doesn't accept; rewrite it with what coax spirv lowers, or keep it in the C library. |
-| `E0707` | outside the Metal graphics writer | coax metal --vertex V --fragment F writes the portable graphics subset through lib/compiler/metal-shader.coax. The diagnostic distinguishes malformed trees, capacity, missing names, stage interfaces, storage layout and resource slot limits. Compile admitted output as Metal 2.3 or later without fast math; bind the accompanying versioned reflection, including buffer 29 lengths and vertex stream 30. Scalar coax metal and metal-compute retain their existing profiles. |
+| `E0707` | outside the Metal graphics writer | coax metal --vertex/--fragment writes the checked graphics subset in lib/compiler/metal-shader.coax. Keep portable storage layouts, stage interfaces and the reported resource slot limits. |
 
 ## E08xx: generic structs
 
@@ -307,6 +307,8 @@ severity, code, message, source span, notes and proposed fixes.
 | `E0909` | Result handling paths do not agree | Continuing branches must agree on pending and consumed Results. An outer Result cannot be consumed in a loop or captured by a deferred block in the initial structured-flow profile. |
 | `E0910` | optional has no valid context or operation | null needs an expected optional type. Wrap explicitly with some(value); there is no implicit payload-to-optional conversion, truthiness or arbitrary sum equality. |
 | `E0911` | inspection profile has no tagged-value records | The requested published inspection profile cannot describe sums, propagation or exhaustive switches. Use an explicitly sum-capable profile when available; no partial successful inventory or cached query is produced. |
+| `E0950` | read-only element contains a writable descriptor | Read-only views may contain scalar values, inline aggregates, strings and read-only descriptors, but cannot expose an embedded writable view. Borrow individual fields or use read-only descriptors in the element. |
+| `E0951` | read-only view target is not qualified | Read-only views are supported by the evaluator and C output. Device output profiles refuse them until their access, layout and resource semantics are qualified. |
 | `E0940` | invalid or unsupported effect declaration | Use one well-formed #pure or #effects declaration with unique known names. Before effect admission is enabled these annotations are explicitly refused rather than trusted. |
 | `E0941` | declared effect bound is exceeded | A concrete procedure's direct or transitive capability exceeds its declared upper bound. Inspect the original site and call path; include the capability or remove its effect. |
 | `E0942` | effect admission is incomplete | Unknown or unreviewed foreign behavior cannot satisfy a checked purity or effect contract. Supply matching explicit boundary evidence or keep the obligation visible. |

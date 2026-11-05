@@ -149,7 +149,7 @@ PS_type_base :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int {
   id:=PS_new(n,s,out,PS_Tag.type_named,v.loc);
   if v.kind==12 {
     PS_skip(t,s);
-    if PS_at(t,s,13) {PS_skip(t,s);n[id].kind=PS_Tag.type_view;}
+    if PS_at(t,s,13) {PS_skip(t,s);n[id].kind=PS_Tag.type_view;qualifier:=PS_peek(t,s,0);if qualifier.kind==1 && qualifier.text=="const" {PS_skip(t,s);n[id].flag=true;}}
     else if PS_at(t,s,21) {PS_skip(t,s);PS_expect(t,s,out,13,"after '[..'");n[id].kind=PS_Tag.type_dynamic;}
     else {n[id].kind=PS_Tag.type_array;
       // [$N] T: a value parameter, bound by the checker (r4a-value-parameters).
@@ -5343,4 +5343,13 @@ PS_frame_test_tokens :: ()->[19]PS_Token {
 #test "R2 fallback recursion respects the remaining parser nesting budget" {
  tokens:[13]PS_Token;for i:0..<6 {tokens[i*2]=PS_Token.{kind=1,text="v"};tokens[i*2+1]=PS_Token.{kind=2,text="or_else"};}tokens[11]=PS_Token.{kind=1,text="last"};
  nodes:[64]PS_Node;state:=[1]PS_State.[PS_State.{depth=124}];message:[256]u8;r:=PS_expression(tokens[..],nodes[..],state[..],message[..]);#assert r==0 && state[0].code=="E0221" && state[0].depth==124;
+}
+
+#forall "read-only view qualifier is contextual and belongs to its descriptor" readonly:bool {
+ tokens:=[6]PS_Token.[PS_Token.{kind=12},PS_Token.{kind=13},PS_Token.{kind=1,text="const"},PS_Token.{kind=1,text="int"},PS_Token.{kind=0},PS_Token.{kind=0}];
+ if !readonly {tokens[2]=tokens[3];tokens[3]=tokens[4];}
+ nodes:[8]PS_Node;state:=[1]PS_State.[PS_State.{used=1}];out:[128]u8;
+ id:=PS_type(tokens[..],nodes[..],state[..],out[..]);
+ #assert state[0].code=="" && nodes[id].kind==PS_Tag.type_view && nodes[id].flag==readonly && nodes[nodes[id].b].name=="int";
+ #assert state[0].pos==(ifx readonly then 4 else 3);
 }

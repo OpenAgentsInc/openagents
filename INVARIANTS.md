@@ -4075,6 +4075,27 @@ random expressions, bounds/stack limits, actual native bridge and kernel under
 ASan/UBSan), plus the real iOS simulator tests from empty generated outputs.
 
 
+## Read-only views preserve access restriction and backing lifetime
+
+`[] const T` (#12924) is a distinct read-only descriptor in the evaluator and
+C output. Restricting `[] T` preserves element identity, backing and count and
+evaluates the operand once; no assignment, call or cast restores writable
+access. Slices and inline aggregate projections preserve the restriction.
+Array constants and immutable array parameters can be borrowed in a read-only
+expected context; array parameters retain their by-value calling convention.
+Temporary arrays still require a local, and ordinary returned-borrow and
+retained-store checks still govern every descriptor and carrier.
+
+Concrete element containment is validated after layouts and generic instances:
+writable or recursively unresolved descriptors are E0950, rather than an
+implicit way to recover write access by copying an element. Read-only views
+do not freeze other aliases or establish race freedom. Generated C descriptors
+have distinct names and const element pointers; existing writable descriptor
+identities are unchanged. Device output is explicitly unqualified (E0951).
+The contract is `coax/readonly-views.md`; checks cover the parser/checker policy,
+native ABI and sanitizers, refusal fixtures, chapter 6 and the normalization
+table consumer. Engine scheduling and resource policy remain Aethyr's.
+
 ## Type checking is Coax with no native semantic fallback
 
 `coax/lib/compiler/checker.coax` (with its parts in `checker/`, #12646) owns

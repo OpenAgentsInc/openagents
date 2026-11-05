@@ -73,7 +73,7 @@ them, break them on purpose, and read what the compiler says.
 Coax is young. Its first compiler, `coax0`, compiles a real but limited
 subset of the language: procedures, integers and floats, strings,
 structs, enums, the initial native LP64 profile of tagged unions, optionals and
-handled direct Results, exhaustive selection, fixed arrays and views, `defer`,
+handled direct Results, exhaustive selection, fixed arrays, writable and read-only views, `defer`,
 compile-time `#run` and
 `#assert`, checks with `#test` and `#forall`, logical modules and explicit
 exports, generic procedures and fixed-storage struct templates over type

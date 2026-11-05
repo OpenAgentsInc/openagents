@@ -436,6 +436,7 @@ CK_run :: (c:CK_Context,used:int,options:CK_Options)->bool #export_c {
   id=c.nodes[1].head;while id!=CK_NONE {if c.nodes[id].kind==CK_Tag.check {CK_check(c,id);}id=c.nodes[id].next;}
   CK_instantiate(c);
   if c.state[0].error_count==0 {if !c.state[0].fatal {CK_results(c);}}
+  if c.state[0].error_count==0 && !c.state[0].fatal {CK_readonly_validate(c);}
   if c.state[0].error_count==0 && !c.state[0].fatal {CK_borrow_returns(c);}
   if options.authority && c.state[0].error_count==0 {CK_coverage(c);}
   if options.metal && c.state[0].error_count==0 {CK_metal(c);}

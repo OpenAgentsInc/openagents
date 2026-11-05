@@ -1,0 +1,176 @@
+// Read-only descriptor capability policy (#12924). View length 0 is writable,
+// length 1 is read-only; physical count remains a runtime descriptor field.
+#authority;
+#forall "read-only conversion preserves element identity and never adds write access" source:0..<3, target:0..<3, same:bool {
+ types:[20]CK_Type;nodes:[8]CK_Node;state:=[1]CK_State.[CK_State.{type_count=20,used=2}];bytes:[256]u8;
+ c:=CK_Context.{types=types[..],nodes=nodes[..],state=state[..],bytes=bytes[..]};
+ types[16]=CK_Type.{kind=ifx source==2 then CK_Kind.array else CK_Kind.view,elem=11,length=source};
+ types[17]=CK_Type.{kind=ifx target==2 then CK_Kind.array else CK_Kind.view,elem=ifx same then 11 else 12,length=target};
+ #assert CK_readonly_conversion(c,16,17)==(source==0 && target==1 && same);
+ #assert CK_readonly(c,16)==(source==1);
+ nodes[2]=CK_Node.{kind=CK_Tag.expr_ident,name="input",type=16,next=7};
+ CK_readonly_coerce(c,2,17);
+ if source==0 && target==1 && same {#assert nodes[2].kind==CK_Tag.expr_cast && nodes[2].type==17 && nodes[2].next==7 && nodes[nodes[2].a].type==16 && nodes[nodes[2].a].name=="input" && nodes[nodes[2].a].next==0 && nodes[2].mark==2;}
+ else {#assert nodes[2].kind==CK_Tag.expr_ident && nodes[2].type==16 && state[0].used==2;}
+}
+#forall "read-only element admission cannot expose nested writable descriptors" kind:0..<6, readonly:bool {
+ nodes:[8]CK_Node;types:[20]CK_Type;state:=[1]CK_State.[CK_State.{type_count=20,used=7}];errors:[4]CK_Error;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],state=state[..],errors=errors[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.view,elem=11,length=ifx readonly then 1 else 0};
+ types[17]=CK_Type.{kind=CK_Kind.array,elem=16,length=2};
+ types[18]=CK_Type.{kind=CK_Kind.struct_,decl=2};nodes[2].head=3;nodes[3]=CK_Node.{kind=CK_Tag.field,type=16};
+ types[19]=CK_Type.{kind=CK_Kind.optional,elem=16};
+ t:=ifx kind==0 then 11 else ifx kind==1 then 3 else 14+kind;
+ #assert CK_readonly_element(c,t,CK_Loc.{})==(kind<2 || readonly);
+ #assert state[0].depth==0;
+}
+CK_readonly :: (c:CK_Context,type:int)->bool {return c.types[type].kind==CK_Kind.view && c.types[type].length==1;}
+CK_readonly_conversion :: (c:CK_Context,from:int,to:int)->bool {
+ return c.types[from].kind==CK_Kind.view && c.types[from].length==0 && CK_readonly(c,to) && c.types[from].elem==c.types[to].elem;
+}
+CK_readonly_coerce :: (c:CK_Context,id:int,to:int) {
+ if !CK_readonly_conversion(c,c.nodes[id].type,to) {return;}
+ original:=CK_new(c,c.nodes[id].kind,c.nodes[id].loc);if original==0 {return;}c.nodes[original]=c.nodes[id];c.nodes[original].next=0;
+ // Calls are indexed intrusively as soon as their expression is checked.
+ // Relocate that index along with the call; the wrapper is not a call.
+ owner:=c.nodes[original].borrow_owner;
+ if c.nodes[original].kind==CK_Tag.expr_call && owner!=0 {
+  previous:=c.nodes[original].borrow_previous;
+  if previous==0 {c.nodes[owner].borrow_calls=original;}else {c.nodes[previous].borrow_next=original;}
+  following:=c.nodes[original].borrow_next;if following!=0 {c.nodes[following].borrow_previous=original;}
+ }
+ next:=c.nodes[id].next;loc:=c.nodes[id].loc;c.nodes[id]=CK_Node.{kind=CK_Tag.expr_cast,loc=loc,a=original,type=to,next=next,mark=2};
+}
+// A read-only aggregate may be copied by value. It must not carry an embedded
+// writable descriptor, whose copy could otherwise recover a write capability.
+// Read-only descriptors and strings are allowed and keep ordinary borrow checks.
+CK_readonly_element :: (c:CK_Context,type:int,loc:CK_Loc)->bool {
+ if type==0 {return false;}cached:=c.types[type].readonly_state;
+ if cached!=0 {return cached==2;}
+ if !CK_enter(c,loc) {return false;}defer CK_leave(c);c.types[type].readonly_state=1;
+ t:=c.types[type];safe:=true;
+ if t.kind==CK_Kind.view {safe=t.length==1 && CK_readonly_element(c,t.elem,loc);}
+ else if t.kind==CK_Kind.array || t.kind==CK_Kind.optional {safe=CK_readonly_element(c,t.elem,loc);}
+ else if t.kind==CK_Kind.result {safe=CK_readonly_element(c,t.elem,loc) && CK_readonly_element(c,t.sum_error,loc);}
+ else if t.kind==CK_Kind.struct_ || t.kind==CK_Kind.union_ {field:=c.nodes[t.decl].head;while field!=0 {if !CK_readonly_element(c,c.nodes[field].type,loc) {safe=false;break;}field=c.nodes[field].next;}}
+ if safe {c.types[type].readonly_state=2;}return safe;
+}
+// Run after layouts and concrete generic instances are complete. In particular,
+// a forward-declared record's unresolved field must not look borrow-free.
+CK_readonly_validate :: (c:CK_Context) {
+ for t:1..<c.state[0].type_count {c.types[t].readonly_state=0;}
+ for t:16..<c.state[0].type_count {if CK_readonly(c,t) && !CK_readonly_element(c,c.types[t].elem,CK_Loc.{}) {CK_error(c,CK_Loc.{},"E0950","a read-only view element cannot contain writable or recursively unresolved descriptors","use read-only descriptors in the element, or borrow its individual fields");return;}}
+}
+
+#forall "read-only validation resets memo state and rejects hidden writable backing" safe:bool, poisoned:0..<4 {
+ nodes:[8]CK_Node;types:[19]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=7,type_count=19}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],state=state[..],errors=errors[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.view,elem=11,length=ifx safe then 1 else 0,readonly_state=cast(u8)poisoned};
+ types[17]=CK_Type.{kind=CK_Kind.struct_,decl=2,readonly_state=cast(u8)poisoned};nodes[2].head=3;nodes[3]=CK_Node.{kind=CK_Tag.field,type=16};
+ types[18]=CK_Type.{kind=CK_Kind.view,elem=17,length=1};
+ CK_readonly_validate(c);#assert state[0].error_count==(ifx safe then 0 else 1);
+ if !safe {#assert errors[0].code=="E0950";}#assert !state[0].fatal && state[0].depth==0;
+}
+
+#forall "read-only conversion relocates indexed calls without losing effects" head:bool, tail:bool {
+ nodes:[12]CK_Node;types:[18]CK_Type;state:=[1]CK_State.[CK_State.{used=6,type_count=18}];errors:[4]CK_Error;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],state=state[..],errors=errors[..]};
+ types[16]=CK_Type.{kind=CK_Kind.view,elem=11};types[17]=CK_Type.{kind=CK_Kind.view,elem=11,length=1};
+ nodes[2]=CK_Node.{kind=CK_Tag.proc,borrow_calls=ifx head then 3 else 4};nodes[3]=CK_Node.{kind=CK_Tag.expr_call,type=16,borrow_owner=2,borrow_previous=ifx head then 0 else 4,borrow_next=ifx tail then 0 else 5,proc=6};nodes[4].borrow_next=3;nodes[5].borrow_previous=3;
+ CK_readonly_coerce(c,3,17);moved:=nodes[3].a;
+ #assert nodes[moved].kind==CK_Tag.expr_call && nodes[moved].borrow_owner==2 && nodes[moved].borrow_next==(ifx tail then 0 else 5) && nodes[moved].proc==6;
+ #assert (ifx head then nodes[2].borrow_calls else nodes[4].borrow_next)==moved;
+ if !tail {#assert nodes[5].borrow_previous==moved;}
+ #assert !state[0].fatal && state[0].error_count==0 && nodes[0].borrow_previous==0;
+}
+#forall "read-only element policy covers sums invalid facts and recursive cycles" mode:0..<9 {
+ nodes:[8]CK_Node;types:[20]CK_Type;state:=[1]CK_State.[CK_State.{used=7,type_count=20}];errors:[4]CK_Error;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],state=state[..],errors=errors[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.view,elem=11};types[17]=CK_Type.{kind=CK_Kind.union_,decl=2};nodes[2].head=3;nodes[3]=CK_Node.{kind=CK_Tag.variant,type=11,next=4};nodes[4]=CK_Node.{kind=CK_Tag.variant,type=ifx mode==0 then 11 else 16};
+ types[18]=CK_Type.{kind=CK_Kind.result,elem=ifx mode==2 then 16 else 11,sum_error=ifx mode==3 then 16 else 12};
+ t:=ifx mode<2 then 17 else ifx mode<5 then 18 else ifx mode==5 then 0 else 19;
+ if mode==6 {types[19]=CK_Type.{kind=CK_Kind.view,elem=19,length=1};}
+ if mode==7 {state[0].depth=256;}if mode==8 {types[19].readonly_state=3;}
+ answer:=CK_readonly_element(c,t,CK_Loc.{line=7});
+ #assert answer==(mode==0 || mode==4);
+ if mode==7 {#assert state[0].fatal && errors[0].code=="E0381" && state[0].depth==256;}
+ else {#assert !state[0].fatal && state[0].depth==0;}
+}
+#forall "read-only conversion preserves unregistered calls and refuses exhausted storage" exhausted:bool {
+ nodes:[8]CK_Node;types:[18]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=ifx exhausted then 7 else 3,type_count=18}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],state=state[..],errors=errors[..]};types[16]=CK_Type.{kind=CK_Kind.view,elem=11};types[17]=CK_Type.{kind=CK_Kind.view,elem=11,length=1};
+ nodes[3]=CK_Node.{kind=CK_Tag.expr_call,type=16};
+ CK_readonly_coerce(c,3,17);
+ if exhausted {#assert state[0].fatal && errors[0].code=="E0381" && nodes[0].kind==CK_Tag.invalid && nodes[3].kind==CK_Tag.expr_call;}
+ else {#assert !state[0].fatal && state[0].error_count==0 && nodes[3].kind==CK_Tag.expr_cast && nodes[nodes[3].a].kind==CK_Tag.expr_call && nodes[0].borrow_calls==0;}
+}
+#forall "read-only validation checks first composite and clears builtin unit facts" bad:bool {
+ nodes:[8]CK_Node;types:[19]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=7,type_count=19}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],state=state[..],errors=errors[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[1].readonly_state=3;
+ types[16]=CK_Type.{kind=CK_Kind.view,elem=17,length=1};types[17]=CK_Type.{kind=CK_Kind.union_,decl=2};nodes[2].head=3;nodes[3]=CK_Node.{kind=CK_Tag.variant,type=ifx bad then 18 else 1};types[18]=CK_Type.{kind=CK_Kind.view,elem=11};
+ CK_readonly_validate(c);#assert state[0].error_count==(ifx bad then 1 else 0);
+}
+#test "read-only call registration keeps both intrusive directions" {
+ nodes:[8]CK_Node;state:=[1]CK_State.[CK_State.{used=7,current=2}];c:=CK_Context.{nodes=nodes[..],state=state[..]};nodes[3].kind=CK_Tag.expr_call;nodes[4].kind=CK_Tag.expr_call;nodes[4].borrow_previous=7;
+ CK_borrow_call(c,3);CK_borrow_call(c,4);#assert nodes[2].borrow_calls==4 && nodes[4].borrow_previous==0 && nodes[4].borrow_next==3 && nodes[3].borrow_previous==4 && nodes[3].borrow_next==0;
+}
+
+// Hand-authored typed-graph inputs for the source programs described here;
+// expected acceptance and access are fixed independently of CK_run output.
+#forall "read-only whole checker validates containment only after successful layout" earlier_error:bool, safe:bool {
+ nodes:[128]CK_Node;types:[64]CK_Type;locals:[16]CK_Local;errors:[16]CK_Error;bytes:[8192]u8;state:[1]CK_State;queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;effects:[128]CK_RetainEffect;reports:[128]CK_RetainObservation;work:[128]int;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..],borrow_queries=queries[..],borrow_origins=origins[..],retain_effects=effects[..],retain_reports=reports[..],result_work=work[..]};
+ // Row :: struct { data: [] int; } read :: (r: [] const Row) {}
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.struct_,name="Row",head=3,next=6};nodes[3]=CK_Node.{kind=CK_Tag.field,name="data",a=4};nodes[4]=CK_Node.{kind=ifx earlier_error then CK_Tag.type_named else CK_Tag.type_view,name="Missing",b=5,flag=safe};nodes[5]=CK_Node.{kind=CK_Tag.type_named,name="int"};
+ nodes[6]=CK_Node.{kind=CK_Tag.proc,name="read",head=7,b=10};nodes[7]=CK_Node.{kind=CK_Tag.param,name="r",a=8};nodes[8]=CK_Node.{kind=CK_Tag.type_view,flag=true,b=9};nodes[9]=CK_Node.{kind=CK_Tag.type_named,name="Row"};nodes[10].kind=CK_Tag.stmt_block;
+ ok:=CK_run(c,10,CK_Options.{library=true});#assert ok==(!earlier_error && safe);
+ if earlier_error {#assert state[0].error_count==1 && errors[0].code=="E0302";}
+ else if !safe {#assert state[0].error_count==1 && errors[0].code=="E0950";}
+}
+#test "read-only generic call restricts a mutable descriptor with distinct mangling" {
+ nodes:[128]CK_Node;types:[128]CK_Type;locals:[32]CK_Local;errors:[16]CK_Error;bytes:[16384]u8;state:[1]CK_State;queries:[256]CK_BorrowQuery;origins:[1024]BS_Origin;effects:[128]CK_RetainEffect;reports:[128]CK_RetainObservation;work:[256]int;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..],borrow_queries=queries[..],borrow_origins=origins[..],retain_effects=effects[..],retain_reports=reports[..],result_work=work[..]};
+ // read :: (v: [] const $T) {} main :: () {a:[1]int;v:=a[..];read(v);}
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,name="read",head=3,b=6,next=7};nodes[3]=CK_Node.{kind=CK_Tag.param,name="v",a=4};nodes[4]=CK_Node.{kind=CK_Tag.type_view,flag=true,b=5};nodes[5]=CK_Node.{kind=CK_Tag.type_param,name="T"};nodes[6].kind=CK_Tag.stmt_block;
+ nodes[7]=CK_Node.{kind=CK_Tag.proc,name="main",b=8};nodes[8]=CK_Node.{kind=CK_Tag.stmt_block,head=9};nodes[9]=CK_Node.{kind=CK_Tag.stmt_var,name="a",d=10,next=12};nodes[10]=CK_Node.{kind=CK_Tag.type_array,a=11,b=13};nodes[11]=CK_Node.{kind=CK_Tag.expr_int,value=1};nodes[13]=CK_Node.{kind=CK_Tag.type_named,name="int"};nodes[12]=CK_Node.{kind=CK_Tag.stmt_var,name="v",a=14,next=16};nodes[14]=CK_Node.{kind=CK_Tag.expr_slice,a=15};nodes[15]=CK_Node.{kind=CK_Tag.expr_ident,name="a"};nodes[16]=CK_Node.{kind=CK_Tag.stmt_expr,a=17};nodes[17]=CK_Node.{kind=CK_Tag.expr_call,name="read",head=18};nodes[18]=CK_Node.{kind=CK_Tag.expr_ident,name="v"};
+ ok:=CK_run(c,18,CK_Options.{});#assert ok;
+ #assert nodes[18].kind==CK_Tag.expr_cast && CK_readonly(c,nodes[18].type) && !CK_readonly(c,nodes[nodes[18].a].type);
+ #assert CK_mangle(c,nodes[18].type)=="rvint" && CK_mangle(c,nodes[nodes[18].a].type)=="vint";
+}
+
+#forall "read-only syntax resolves its capability name and target boundary" readonly:bool, device:bool {
+ nodes:[16]CK_Node;types:[24]CK_Type;state:=[1]CK_State.[CK_State.{used=4,type_count=16,quantity_device=device}];errors:[4]CK_Error;bytes:[1024]u8;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],state=state[..],errors=errors[..],bytes=bytes[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ nodes[2]=CK_Node.{kind=CK_Tag.type_view,flag=readonly,b=3};nodes[3]=CK_Node.{kind=CK_Tag.type_named,name="int"};
+ t:=CK_resolve(c,2,CK_Access.value);
+ if readonly && device {#assert t==0 && state[0].error_count==1 && errors[0].code=="E0951";}
+ else {#assert t>=16 && state[0].error_count==0 && types[t].length==(ifx readonly then 1 else 0) && types[t].name==(ifx readonly then "[] const int" else "[] int");}
+}
+#forall "read-only explicit casts and expected values use the same one-way rule" trunc:bool {
+ nodes:[24]CK_Node;types:[24]CK_Type;locals:=[1]CK_Local.[CK_Local.{name="v",type=16}];state:=[1]CK_State.[CK_State.{used=6,type_count=18,local_count=1}];errors:[4]CK_Error;bytes:[1024]u8;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],state=state[..],errors=errors[..],bytes=bytes[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=11};types[17]=CK_Type.{kind=CK_Kind.view,elem=11,length=1};
+ nodes[2]=CK_Node.{kind=CK_Tag.expr_ident,name="v"};nodes[3]=CK_Node.{kind=CK_Tag.expr_cast,a=2,d=4,flag=trunc};nodes[4]=CK_Node.{kind=CK_Tag.type_view,flag=true,b=5};nodes[5]=CK_Node.{kind=CK_Tag.type_named,name="int"};
+ t:=CK_expr(c,3,CK_Hint.{});
+ if trunc {#assert t==0 && errors[0].code=="E0362";}else {#assert t==17 && state[0].error_count==0;}
+ state[0].error_count=0;nodes[6]=CK_Node.{kind=CK_Tag.expr_ident,name="v"};
+ #assert CK_value(c,6,CK_Hint.{type=17})==17 && nodes[6].kind==CK_Tag.expr_cast && nodes[nodes[6].a].type==16;
+}
+
+#forall "read-only conditional branches converge to the restricted capability" left_read:bool, right_read:bool, expected:bool {
+ nodes:[24]CK_Node;types:[20]CK_Type;locals:=[2]CK_Local.[CK_Local.{name="a",type=ifx left_read then 17 else 16},CK_Local.{name="b",type=ifx right_read then 17 else 16}];state:=[1]CK_State.[CK_State.{used=6,type_count=18,local_count=2}];errors:[4]CK_Error;bytes:[1024]u8;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],state=state[..],errors=errors[..],bytes=bytes[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=11};types[17]=CK_Type.{kind=CK_Kind.view,elem=11,length=1};
+ nodes[2]=CK_Node.{kind=CK_Tag.expr_ifx,a=3,b=4,c=5};nodes[3]=CK_Node.{kind=CK_Tag.expr_bool,value=1};nodes[4]=CK_Node.{kind=CK_Tag.expr_ident,name="a"};nodes[5]=CK_Node.{kind=CK_Tag.expr_ident,name="b"};
+ target:=ifx expected then 17 else 0;t:=CK_expr(c,2,CK_Hint.{type=target});wanted:=ifx expected || left_read || right_read then 17 else 16;
+ #assert t==wanted && nodes[4].type==wanted && nodes[5].type==wanted && state[0].error_count==0;
+}
+#forall "read-only prechecked wrapper is distinct from authored cast syntax" mark:0..<4, syntax:bool {
+ #assert CK_prechecked(CK_Node.{kind=CK_Tag.expr_cast,mark=mark,d=ifx syntax then 5 else 0})==(mark==2 && !syntax);
+}
+#forall "read-only array context admits immutable backing without a copy" readonly:bool, immutable:bool {
+ nodes:[24]CK_Node;types:[24]CK_Type;locals:=[1]CK_Local.[CK_Local.{name="a",type=18,immutable=ifx immutable then "parameter" else ""}];state:=[1]CK_State.[CK_State.{used=5,type_count=19,local_count=1}];errors:[4]CK_Error;bytes:[1024]u8;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],state=state[..],errors=errors[..],bytes=bytes[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=11};types[17]=CK_Type.{kind=CK_Kind.view,elem=11,length=1};types[18]=CK_Type.{kind=CK_Kind.array,elem=11,length=2};
+ nodes[2]=CK_Node.{kind=CK_Tag.expr_slice,a=3};nodes[3]=CK_Node.{kind=CK_Tag.expr_ident,name="a"};
+ t:=CK_expr(c,2,CK_Hint.{type=ifx readonly then 17 else 0});
+ if immutable && !readonly {#assert t==0 && errors[0].code=="E0366";}
+ else {#assert t==(ifx readonly then 17 else 16) && state[0].error_count==0;}
+}

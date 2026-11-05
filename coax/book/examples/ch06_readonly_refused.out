@@ -1,0 +1,5 @@
+examples/ch06_readonly_refused.coax:1:65: error[E0359]: a read-only view cannot be assigned
+  main :: () {items:[2]int;reader:[] const int=items[..];reader[0]=1;}
+                                                                  ^
+  fix: copy it into a local variable
+1 error

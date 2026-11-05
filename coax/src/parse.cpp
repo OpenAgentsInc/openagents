@@ -171,7 +171,7 @@ bool parse(Arena *arena,const Source *src,const std::vector<Token> &all_tokens,F
   for(int64_t id=1;id<=state.used;id++) {
     const auto &v=nodes[(size_t)id];const auto loc=parser_loc(v.loc);const auto name=parser_str(v.name);
     if(parser_type_tag(v.kind)) {
-      auto *p=parser_ref<TypeExpr>(objects,id);p->kind=(TypeExpr::Kind)(v.kind-1);p->loc=loc;p->name=name;
+      auto *p=parser_ref<TypeExpr>(objects,id);p->kind=(TypeExpr::Kind)(v.kind-1);p->loc=loc;p->name=name;p->read_only=v.flag;
       p->length=v.a && nodes[(size_t)v.a].kind==COAX_PS_Tag_type_param?nullptr:parser_ref<Expr>(objects,v.a);p->elem=parser_ref<TypeExpr>(objects,v.b);
     }else if(parser_expr_tag(v.kind)) {
       auto *p=parser_ref<Expr>(objects,id);p->kind=(ExprKind)(v.kind-16);p->loc=loc;p->text=name;p->int_value=v.value;p->float_value=v.floating;

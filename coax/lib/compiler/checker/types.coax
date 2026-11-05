@@ -9,7 +9,7 @@ CK_intern :: (c:CK_Context,kind:CK_Kind,elem:int,length:int)->int {
   name:="";size:=16;alignment:=8;
   if kind==CK_Kind.array && length<0 {prefix:=CK_join3(c,"[",c.types[-length].name,"] ");name=CK_join2(c,prefix,c.types[elem].name);size=0;alignment=c.types[elem].alignment;}
   else if kind==CK_Kind.array {prefix:=CK_join3(c,"[",CK_count(c,length),"] ");name=CK_join2(c,prefix,c.types[elem].name);size=c.types[elem].size*length;alignment=c.types[elem].alignment;}
-  else {name=CK_join2(c,"[] ",c.types[elem].name);}
+  else {prefix:="[] ";if length==1 {prefix="[] const ";}name=CK_join2(c,prefix,c.types[elem].name);}
   id:=CK_new_type(c,CK_Type.{kind=kind,name=name,size=size,alignment=alignment,elem=elem,length=length,id=c.state[0].composite_count});c.state[0].composite_count+=1;return id;
 }
 CK_list_count :: (c:CK_Context,head:int)->int {count:=0;id:=head;while id!=CK_NONE {count+=1;id=c.nodes[id].next;}return count;}
@@ -85,9 +85,9 @@ CK_resolve :: (c:CK_Context,id:int,by_value:CK_Access)->int {
   }
   if e.kind==CK_Tag.type_param {return CK_type_param(c,id);}
   if e.kind==CK_Tag.type_dynamic {CK_error(c,e.loc,"E0301","dynamic arrays '[..] T' are not supported by coax0 yet","use a fixed array '[N] T' and a count");return CK_NONE;}
-  if e.kind==CK_Tag.type_view {elem:=CK_resolve(c,e.b,CK_Access.view);if elem==CK_NONE {return CK_NONE;}
+  if e.kind==CK_Tag.type_view {if e.flag && c.state[0].quantity_device {CK_error(c,e.loc,"E0951","read-only views are not yet qualified for device outputs","");return 0;}elem:=CK_resolve(c,e.b,CK_Access.view);if elem==CK_NONE {return CK_NONE;}
     if CK_sum_contains(c,elem,true) {CK_error(c,e.loc,"E0900","a view cannot contain Result","");return 0;}
-    if CK_nests(c,elem) {CK_nested(c,e.loc,false,elem);return CK_NONE;}return CK_intern(c,CK_Kind.view,elem,0);}
+    if CK_nests(c,elem) {CK_nested(c,e.loc,false,elem);return CK_NONE;}return CK_intern(c,CK_Kind.view,elem,ifx e.flag then 1 else 0);}
   if c.nodes[e.a].kind==CK_Tag.type_param {count:=CK_length_param(c,e.a);elem:=CK_resolve(c,e.b,CK_Access.value);
     if count==0 || c.types[elem].kind==CK_Kind.invalid {return CK_NONE;}if CK_sum_contains(c,elem,true) {CK_error(c,e.loc,"E0900","an array cannot contain Result","");return 0;}if CK_nests(c,elem) {CK_nested(c,e.loc,true,elem);return CK_NONE;}
     // a struct argument's length is bounded here, by the array's total size
@@ -251,7 +251,7 @@ CK_coerce :: (c:CK_Context,id:int,to:int) {
   if from==5 && CK_integer(c,to) {CK_error(c,c.nodes[id].loc,"E0350",CK_join2(c,"a float literal cannot become ",c.types[to].name),CK_join3(c,"write an integer, or cast(",c.types[to].name,") a float value"));c.nodes[id].type=0;}
 }
 CK_default :: (t:int)->int {if t==4 {return 11;}if t==5 {return 7;}return t;}
-CK_value :: (c:CK_Context,id:int,want:CK_Hint)->int {t:=CK_expr(c,id,want);if CK_untyped(c,t) {to:=CK_default(t);if CK_numeric(c,want.type) {to=want.type;}CK_coerce(c,id,to);}return c.nodes[id].type;}
+CK_value :: (c:CK_Context,id:int,want:CK_Hint)->int {t:=CK_expr(c,id,want);if CK_untyped(c,t) {to:=CK_default(t);if CK_numeric(c,want.type) {to=want.type;}CK_coerce(c,id,to);}CK_readonly_coerce(c,id,want.type);return c.nodes[id].type;}
 CK_fold_binary :: (c:CK_Context,id:int)->int {
   e:=c.nodes[id];any_float:=c.nodes[e.a].type==5 || c.nodes[e.b].type==5;
   if e.op>=44 && e.op<=49 {t:=11;if any_float {t=7;}CK_coerce(c,e.a,t);CK_coerce(c,e.b,t);return 2;}
@@ -292,7 +292,7 @@ CK_op :: (op:u32)->string {
 CK_immutable :: (c:CK_Context,id:int)->string {
   e:=c.nodes[id];if e.kind==CK_Tag.expr_ident {local:=CK_local(c,e.name);if local>=0 {return c.locals[local].immutable;}return "constant";}
   if e.kind==CK_Tag.expr_field {if c.types[c.nodes[e.a].type].kind==CK_Kind.struct_ {return CK_immutable(c,e.a);}return "count";}
-  if e.kind==CK_Tag.expr_index {kind:=c.types[c.nodes[e.a].type].kind;if kind==CK_Kind.view {return "";}if kind==CK_Kind.string_ {return "string byte";}return CK_immutable(c,e.a);}
+  if e.kind==CK_Tag.expr_index {kind:=c.types[c.nodes[e.a].type].kind;if kind==CK_Kind.view {if CK_readonly(c,c.nodes[e.a].type) {return "read-only view";}return "";}if kind==CK_Kind.string_ {return "string byte";}return CK_immutable(c,e.a);}
   return "temporary";
 }
 CK_mutable :: (c:CK_Context,id:int,loc:CK_Loc) {
@@ -344,6 +344,7 @@ CK_cast :: (c:CK_Context,id:int)->int {
   else if c.types[from].kind==CK_Kind.enum_ && CK_integer(c,to) {ok=!e.flag;}
   else if CK_integer(c,from) && c.types[to].kind==CK_Kind.enum_ {ok=!e.flag;}
   else if from==to {ok=!e.flag;}
+  else if CK_readonly_conversion(c,from,to) {ok=!e.flag;}
   else if to==3 && c.types[from].kind==CK_Kind.view && c.types[from].elem==12 {ok=!e.flag;}
   if !ok {
     mode:="cast ";fix:="cast converts numbers, enums to and from integers, and a [] u8 view to a string";if e.flag {mode="cast,trunc ";fix="cast,trunc converts between integer types";}

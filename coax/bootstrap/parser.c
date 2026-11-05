@@ -869,6 +869,12 @@ static int64_t coax_p_PS_type_base(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, 
     {
       coax_p_PS_skip(l_t, l_s);
       ((*coax_elem_v_t_PS_Node(l_n, l_id, 152))).kind = ((coax_t_PS_Tag)UINT64_C(3));
+      coax_t_PS_Token l_qualifier = coax_p_PS_peek(l_t, l_s, INT64_C(0));
+      if (((l_qualifier).kind == ((uint32_t)UINT64_C(1))) && (coax_string_eq((l_qualifier).text, COAX_STR("const", 5))))
+      {
+        coax_p_PS_skip(l_t, l_s);
+        ((*coax_elem_v_t_PS_Node(l_n, l_id, 152))).flag = 1;
+      }
     }
     else
     if (coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(21))))

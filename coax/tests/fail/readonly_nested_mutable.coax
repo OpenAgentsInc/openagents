@@ -1,0 +1,4 @@
+// expect: E0950
+Row :: struct { data:[]int; }
+read :: (r:[] const Row) {}
+main :: () {}

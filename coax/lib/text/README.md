@@ -40,12 +40,12 @@ validated internal values and the generated table invariants.
 The workspace ceiling follows the largest recursive decomposition of eighteen
 codepoints per input scalar, with at most four UTF-8 bytes per result scalar.
 The profile is a finite storage/work bound, not a latency guarantee. Canonical
-ordering uses insertion sort and can take quadratic work. Current Coax source
-also copies the 1,002/5,982/961-entry lookup-key arrays into locals because
-mutable views cannot borrow constants. The tested native `-O2` backend optimized
-those copies away (largest reported individual frame: 96 bytes); `-O0` reported
-a 24,192-byte frame. Those are compiler observations, not portable total-stack
-bounds. The actual Wasm tests reserve a 1 MiB stack.
+ordering uses insertion sort and can take quadratic work. Lookup helpers now take `[] const u32` / `[] const u64` and borrow the
+1,002/5,982/961-entry static key arrays directly, without authored local copies.
+The earlier native observations (96-byte largest individual frame at `-O2`,
+24,192 bytes at `-O0`) describe the pre-read-only implementation; they are not
+new measurements or portable total-stack bounds. Actual Wasm tests reserve a
+1 MiB stack.
 
 The measured 1,023-byte reverse combining-class case took about 2 ms in the
 named native run and 2.4–2.9 ms in Node/V8 Wasm. These are single warm observations

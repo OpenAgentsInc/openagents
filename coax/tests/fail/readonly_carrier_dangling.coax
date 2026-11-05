@@ -1,0 +1,4 @@
+// expect: E0383
+Carrier :: struct { data:[] const int; }
+bad :: ()->Carrier { a:[2]int; return Carrier.{data=a[..]}; }
+main :: () {}

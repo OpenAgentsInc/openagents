@@ -1,0 +1,4 @@
+#import "Basic";
+TABLE :: [4]int.[3,5,7,9];
+total :: (items:[] const int)->int {answer:=0;for item:items {answer+=item;}return answer;}
+main :: () {print("%\n",total(TABLE[..]));}
