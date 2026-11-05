@@ -1,0 +1,38 @@
+// Exercise the actual driver, shared tree, file effects and Apple compiler.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/proc.coax";
+mc_has :: (text:string,part:string)->bool {for i:0..<text.count-part.count+1{if text[i..<i+part.count]==part{return true;}}return false;}
+mc_tree_words :: (text:string)->string {for c,i:text{if c=='\n'{return text[0..<i];}}return text;}
+mc_run :: (cmd:[]string,ok:bool,stdout:[]u8,stderr:[]u8)->ProcRun {
+  r:=proc_run(cmd,60000,stdout,stderr);#assert r.started==0&&!r.cut&&!r.timed_out&&((r.status==0)==ok);return r;
+}
+tool_main :: ()->int #export_c {
+  args:[1]Args;if !args_load(args[..])||args_count(args[..])!=3{return 2;}
+  compiler:=args_at(args[..],0);dir:=args_at(args[..],1);root:=args_at(args[..],2);if !fs_mkdir(dir){return 1;}
+  paths:[8][4096]u8;source:=fs_join(dir,"graphics.coax",paths[0][..]);library:=fs_join(root,"verse/gpu/shader.coax",paths[1][..]);
+  #assert fs_write(source,"#load \"")&&fs_append(source,library)&&fs_append(source,"\";\nvs :: (vid:u32,iid:u32)->V4{return v4(0,0,0,1);}\nfs :: (pos:V4)->V4{a:=[2]f32.[1,2];return v4(a[0],a[1],0,1);}\n");
+  out:[8388608]u8;err:[65536]u8;
+  cmd:=[7]string.[compiler,"metal",source,"--vertex","vs","--fragment","fs"];r:=mc_run(cmd[..],true,out[..],err[..]);
+  metal:=fs_join(dir,"array.metal",paths[2][..]);#assert fs_write(metal,cast(string)out[0..<r.out_n]);
+  #assert mc_has(cast(string)out[0..<r.out_n],"array<float, 2>{")&&mc_has(cast(string)err[0..<r.err_n],"entry fragment fs");
+  air:=fs_join(dir,"array.air",paths[3][..]);sdk:=[8]string.["xcrun","metal","-std=metal3.2","-fno-fast-math","-c",metal,"-o",air];r=mc_run(sdk[..],true,out[..],err[..]);
+  trees:[3][65536]u8;counts:[3]int;
+  for backend,i:[3]string.["metal","spirv","wgsl"]{
+    tree:=[8]string.[compiler,backend,source,ifx i==2 then "--vertices" else "--vertex","vs",ifx i==2 then "--fragments" else "--fragment","fs","--tree"];
+    r=mc_run(tree[..],true,trees[i][..],err[..]);counts[i]=r.out_n;
+    saved:[4096]u8;#assert fs_write(fs_join(dir,backend,saved[..]),cast(string)trees[i][0..<r.out_n]);
+  }
+  #assert mc_tree_words(cast(string)trees[0][0..<counts[0]])==mc_tree_words(cast(string)trees[1][0..<counts[1]])&&cast(string)trees[0][0..<counts[0]]==cast(string)trees[2][0..<counts[2]];
+  missing:=[5]string.[compiler,"metal",source,"--vertex","absent"];r=mc_run(missing[..],false,out[..],err[..]);#assert r.out_n==0&&mc_has(cast(string)err[0..<r.err_n],"E0705");
+  no_entry:=[4]string.[compiler,"metal",source,"--tree"];r=mc_run(no_entry[..],false,out[..],err[..]);#assert r.out_n==0;
+  // Reflection admission happens before the output file is written.
+  bad:=fs_join(dir,"bad.coax",paths[4][..]);#assert fs_write(bad,"#load \"")&&fs_append(bad,library)&&fs_append(bad,"\";\nA :: struct {b:bool;}\nvs :: (vid:u32,iid:u32,a:A)->V4{return v4(0,0,0,1);}\n");
+  refused:=fs_join(dir,"refused.metal",paths[5][..]);bad_cmd:=[7]string.[compiler,"metal",bad,"--vertex","vs","-o",refused];r=mc_run(bad_cmd[..],false,out[..],err[..]);#assert r.out_n==0&&mc_has(cast(string)err[0..<r.err_n],"E0707")&&!fs_exists(refused);
+  // Scalar mode stays on its original profile, including its loop refusal.
+  scalar:=fs_join(dir,"scalar.coax",paths[6][..]);#assert fs_write(scalar,"f :: (x:f32)->f32{return x*2;}\n");
+  sc:=[3]string.[compiler,"metal",scalar];r=mc_run(sc[..],true,out[..],err[..]);#assert mc_has(cast(string)out[0..<r.out_n],"float coax_p_f(");
+  #assert fs_write(scalar,"f :: (x:f32)->f32 {for i:0..<2 {} return x;}\n");r=mc_run(sc[..],false,out[..],err[..]);#assert mc_has(cast(string)err[0..<r.err_n],"E0377");
+  print("Metal CLI: shared trees, array SDK compilation, reflection refusal, missing entries and scalar profile passed.\n");return 0;
+}

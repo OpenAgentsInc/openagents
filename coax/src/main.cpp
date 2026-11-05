@@ -1653,7 +1653,7 @@ static int usage() {
           "       coax header  file.coax [-o out.h]\n"
           "       coax c       file.coax [--release] [--library [--header out.h]]\n"
           "       coax checks-c file.coax [--verification-abi 1|2] [--only SUBSTR] [-o checks.c]  verification-only checked C\n"
-          "       coax metal   file.coax\n"
+          "       coax metal   file.coax [--vertex V --fragment F [--tree]] [-o out.metal]\n"
           "       coax cuda    file.coax [--release]\n"
           "       coax metal-compute file.coax [--release]\n"
           "       coax spirv   file.coax [--kernel NAME | --fill A[,B,C,D] | --stroke NAME | --vertex V --fragment F [--tree]] [-o out.spv]\n"
@@ -1988,14 +1988,14 @@ static int main_impl(int argc, char **argv) {
     else if (a == "--kernel" && i + 1 < argc && cmd == "spirv" && kernel.empty() && fill.empty() && stroke.empty()) kernel = argv[++i];
     else if (a == "--fill" && i + 1 < argc && cmd == "spirv" && kernel.empty() && fill.empty() && stroke.empty()) fill = argv[++i];
     else if (a == "--stroke" && i + 1 < argc && cmd == "spirv" && kernel.empty() && fill.empty() && stroke.empty()) stroke = argv[++i];
-    else if (a == "--vertex" && i + 1 < argc && cmd == "spirv" && kernel.empty() && fill.empty() && stroke.empty() && vertex.empty()) vertex = argv[++i];
-    else if (a == "--tree" && (cmd == "spirv" || cmd == "wgsl")) shader_tree = true;
+    else if (a == "--vertex" && i + 1 < argc && (cmd == "spirv" || cmd == "metal") && kernel.empty() && fill.empty() && stroke.empty() && vertex.empty()) vertex = argv[++i];
+    else if (a == "--tree" && (cmd == "spirv" || cmd == "wgsl" || cmd == "metal")) shader_tree = true;
     else if (a == "--functions" && i + 1 < argc && cmd == "wgsl" && functions.empty()) functions = argv[++i];
     else if (a == "--vertices" && i + 1 < argc && cmd == "wgsl" && vertices.empty()) vertices = argv[++i];
     else if (a == "--fragments" && i + 1 < argc && cmd == "wgsl" && fragments.empty()) fragments = argv[++i];
     else if (a == "--bindings" && i + 1 < argc && cmd == "wgsl" && bindings.empty()) bindings = argv[++i];
     else if (a == "--strip" && i + 1 < argc && cmd == "wgsl" && strip.empty()) strip = argv[++i];
-    else if (a == "--fragment" && i + 1 < argc && cmd == "spirv" && kernel.empty() && fill.empty() && stroke.empty() && fragment.empty()) fragment = argv[++i];
+    else if (a == "--fragment" && i + 1 < argc && (cmd == "spirv" || cmd == "metal") && kernel.empty() && fill.empty() && stroke.empty() && fragment.empty()) fragment = argv[++i];
     else if (a == "--root-only" && cmd == "mutate" && mutation.unit.empty()) mutation.root_only = true;
     else if (a == "--unit" && cmd == "mutate" && i + 1 < argc && mutation.unit.empty() && !mutation.root_only) mutation.unit = argv[++i];
     else if (a == "--killers" && cmd == "mutate" && i + 1 < argc && mutation.killers.empty()) mutation.killers = argv[++i];
@@ -2048,6 +2048,7 @@ static int main_impl(int argc, char **argv) {
   }
   if (cmd == "query" && (query.form.empty() || (query.form != "exports" && query.name.empty()))) return usage();
   if (!input || (!header.empty() && cmd != "c")) return usage();
+  if (cmd == "metal" && shader_tree && vertex.empty() && fragment.empty()) return usage();
   if (cmd == "deps" || cmd == "layout") {
     // Layout facts are qualified for one named target; any other refuses
     // instead of reporting the native LP64 values under another name.
@@ -2074,7 +2075,7 @@ static int main_impl(int argc, char **argv) {
   // one of the source commands admitted by the checked Coax resolver.
   if(cmd!="proto" || request.arithmetic_count || request.optimization_count || request.build_profile_count || request.debug_count || request.source_map || !g_semantic.path.empty()) {
     // coax wgsl takes the shader subset's profile, spirv's (lib/compiler/wgsl.coax)
-    const std::string profile_cmd=cmd=="wgsl"?"spirv":cmd=="query"?"deps":cmd;
+    const std::string profile_cmd=cmd=="wgsl" || (cmd=="metal" && (!vertex.empty() || !fragment.empty()))?"spirv":cmd=="query"?"deps":cmd;
     auto profile=CP_resolve({profile_cmd.data(),(int64_t)profile_cmd.size()},request);
     if(profile.error!=COAX_CP_Error_none) {
       auto message=CP_message(profile.error);fprintf(stderr,"coax: %.*s\n",(int)message.count,message.data);return 1;
@@ -2101,9 +2102,20 @@ static int main_impl(int argc, char **argv) {
     return 0;
   }
   opts.quantity_device=cmd=="metal" || cmd=="cuda" || cmd=="metal-compute" || cmd=="spirv" || cmd=="wgsl";
-  if (cmd == "metal") opts.library = opts.metal = true;
+  if (cmd == "metal") {opts.library = true; opts.metal = vertex.empty() && fragment.empty();}
   if (cmd == "cuda") opts.library = opts.cuda = true;
   if (cmd == "metal-compute") opts.library = opts.metal_compute = true;
+  if (cmd == "metal" && (!vertex.empty() || !fragment.empty())) {
+    Source src; Arena arena; File file; std::string text, report;
+    if (!front_end(input, &src, &arena, &file, opts, 1) ||
+        !emit_wgsl_module(&file, vertex, fragment, "", "", shader_tree, &text, true, &report)) {
+      if (g_error_count && !g_json_errors) fprintf(stderr,"%d error%s\n",g_error_count,g_error_count==1?"":"s");return 1;
+    }
+    fputs(report.c_str(),stderr);
+    if (out.empty()) fwrite(text.data(),1,text.size(),stdout);
+    else if (!write_file(out,text)) {fprintf(stderr,"coax: cannot write '%s'\n",out.c_str());return 1;}
+    return 0;
+  }
   if (cmd == "spirv") {
     // A shader (--vertex/--fragment): the ordinary rules, then the shader
     // subset's lowering. Otherwise the Metal scalar profile, checked as for

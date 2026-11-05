@@ -1,0 +1,11 @@
+Metal SDK accepts eg_bg_vs / eg_bg_fs
+Metal SDK accepts eg_shadow_vs / eg_shadow_fs
+Metal SDK accepts eg_scene_vs / eg_scene_fs
+Metal SDK accepts eg_grass_vs / eg_grass_fs
+Metal SDK accepts eg_water_vs / eg_water_transmit_fs
+Metal SDK accepts eg_water_vs / eg_water_emit_fs
+Metal SDK accepts eg_bg_vs / eg_bloom_fs
+Metal SDK accepts eg_bg_vs / eg_post_fs
+Metal SDK accepts eg_fx_vs / eg_fx_fs
+Metal SDK accepts egfx_particle_over_vs / egfx_particle_over_fs
+Metal SDK accepts egfx_particle_vs / egfx_particle_fs

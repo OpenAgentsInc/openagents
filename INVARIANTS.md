@@ -4769,6 +4769,25 @@ actual weights. Readout coefficients count even when there are no hidden
 gated layers. Parsing, identity and finite-case success confer no quality or
 deployment authority. Evidence: `docs/verification/psionic-ch254-2026-11-02.md`.
 
+## Metal graphics keeps the portable shader tree and binding layout
+
+`coax metal --vertex/--fragment` uses the same checked tree serializer as WGSL
+and SPIR-V. `coax/lib/compiler/metal-shader.coax` owns MSL and reflection;
+the C++ driver observes the tree and writes its results. Resource argument
+structs are passed by value, storage V3 fields retain the portable stride,
+buffer 29 carries element counts, and vertex stream 30 is reserved. Buffer,
+texture and sampler namespaces remain separate and bounded. Compile MSL 2.3+
+without fast math. Refused interfaces/layouts fail before an output file is
+written. Scalar Metal and Metal compute keep their existing profiles.
+
+The offscreen verification planner is Coax (`verse/gpu/metal-pass.coax` and
+its `metal-plan.coax` authority policy); Swift executes SDK effects and reads
+back pixels. Realm shader arithmetic stays in Coax. The seven G5 cases and
+eleven entry pairs are qualified in
+[the Metal record](docs/verification/everglade-metal-2026-11-05/README.md).
+An offscreen executor does not establish interactive host parity or authorize
+switching the desktop default before #12868/#12869 pass their own checks.
+
 ## A shared-renderer GPU object exists only with a live ledger handle
 
 `coax/web/render.js`, and the native Vulkan host (`verse/native/render-host.c`,

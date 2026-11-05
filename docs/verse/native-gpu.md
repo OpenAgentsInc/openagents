@@ -53,6 +53,14 @@ so they never disturb a session someone is using.
 The Mac desktop app follows the same host contract over Metal; `coax metal`
 already emits the shading for the iPhone. Windows comes after, over Vulkan.
 
+2026-11-05, #12867: `coax metal FILE --vertex V --fragment F` now writes
+complete graphics stages from that same portable checked tree. All eleven
+Everglade entry pairs compile with Apple's SDK; seven existing G5 cases pass
+on the Mac against WGSL and native Vulkan with the original tolerances.
+[Qualification, binding ABI and one-command rerun](../verification/everglade-metal-2026-11-05/README.md).
+This is the shader backend; the interactive Mac host is #12868, followed by
+the written three-host contract and native default in #12869.
+
 ## G4 and G5: the shader subset, and Everglade in it
 
 Everglade's shaders are 3,491 lines of WGSL (`everglade.wgsl`,

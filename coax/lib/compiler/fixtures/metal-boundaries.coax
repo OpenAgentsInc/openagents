@@ -1,0 +1,139 @@
+// Target ABI and malformed checked-tree boundary checks. No emitted shader math.
+#test "Metal work pool never overlaps its resource metadata" {
+  w:[MS_WORDS]u32;part:=ms_portable(w[..]);#assert part.count==12353;
+  part[12352]=71;#assert w[12352]==71&&w[12353]==0;
+}
+#test "Metal scalar and vector names reject unsupported kinds" {
+  tree:[8192]u32;n:=wg_parse(MS_TREE_EMPTY,tree[..]);w:[MS_WORDS]u32;st:[1]WgState;
+  #assert ms_prepare(st[..],tree[0..<n],w[..])==1;out:[1024]u8;
+  for k:0..<6{st[0].n=0;ms_type(st[..],tree[0..<n],w[..],out[..],cast(u32)k);#assert cast(string)out[0..<st[0].n]==MS_SCALAR[k];}
+  tree[cast(int)w[6]]=6;ms_type(st[..],tree[0..<n],w[..],out[..],6);#assert !st[0].ok&&st[0].reason==4;
+}
+#test "Metal constants keep exceptional low payload bits" {
+  st:[1]WgState;w:[MS_WORDS]u32;out:[1024]u8;st[0].ok=true;
+  ms_const(st[..],"",w[..],out[..],2,0x7F800001);#assert cast(string)out[0..<st[0].n]=="as_type<float>(0x7f800001u)";
+}
+#test "Metal class namespaces admit their last slot and refuse the next" {
+  // One resource parameter; collect is also checked before a stage is shaped.
+  // Limits are per class, regardless of the other classes' resource counts.
+  for c:0..<3{for slot:[2]int.[0,1]{
+    tree:=[17]u32.[2,7,0,1,2,3,4,5,9,2,1,0,1,6,0,2,1];w:[MS_WORDS]u32;st:[1]WgState;
+    // A minimal hand-indexed procedure and entry. Its only parameter is the resource.
+    tree[8]=cast(u32)(9+c);w[6]=8;w[WG_W_PROC]=11;w[WG_W_ENTRY]=14;tree[14]=1;tree[15]=0;tree[16]=0;
+    limits:=[3]u32.[29,128,16];st[0].ok=true;st[0].whole=true;st[0].types=7;st[0].procs=1;
+    w[WG_W_WORDS+1+c]=limits[c]-1+cast(u32)slot;ms_collect(st[..],tree[..],w[..],1);
+    if slot==0{#assert st[0].ok&&w[WG_W_WORDS]==1&&w[ms_meta(0,3)]==limits[c]-1;}
+    else{#assert !st[0].ok&&st[0].reason==10&&w[WG_W_WORDS]==0;}
+  }}
+}
+
+MS_ONE_BUFFER :: "2 8 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 2 1 6 2 6 7 2 6 7 5 1 1 4 18 0 1 1 0 0 1";
+MS_BUFFER_NAMES :: "fs pos u\npos\nu\n";
+MS_ATTRIBUTES :: "2 8 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 4 2 0 3 4 4 8 5 12 20 1 6 3 4 4 7 3 4 4 7 5 1 1 4 17 6 1 0 0 0 1 2";
+MS_ATTRIBUTE_NAMES :: "vs vid iid at\nvid\niid\nat\n";
+#test "Metal reflection covers scalar vertex formats and rejects nonnumeric attributes" {
+  tree:[8192]u32;n:=wg_parse(MS_ATTRIBUTES,tree[..]);w:[MS_WORDS]u32;out:[8192]u8;
+  k:=MS_reflection(tree[0..<n],MS_ATTRIBUTE_NAMES,out[..],w[..]);#assert k>0;
+  #assert cast(string)out[0..<k]=="metal-reflection 1\nlengths-buffer 29\nvertex-buffer 30\nentry vertex vs\nattribute vs 0 2 1 0 20\nattribute vs 1 3 1 4 20\nattribute vs 2 4 1 8 20\nattribute vs 3 3 1 12 20\n";
+  // bool and a nested aggregate are neither float nor an integer attribute.
+  f:=cast(int)w[7]+2;for kind:[2]u32.[1,7]{tree[f]=kind;#assert MS_reflection(tree[0..<n],MS_ATTRIBUTE_NAMES,out[..],w[..])==-4;}
+}
+#test "Metal resource names and mutable binding assignment refuse explicitly" {
+  out:[8192]u8;#assert ms_try(MS_ONE_BUFFER,"fs pos u\npos\n\n",out[..])==-6;
+  #assert ms_try("2 8 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 2 1 6 2 6 7 2 6 7 10 1 2 3 40 1 18 1 4 18 0 1 1 0 0 1",MS_BUFFER_NAMES,out[..])==-4;
+  #assert ms_try("2 8 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 2 1 6 2 6 7 2 6 7 20 1 1 4 31 6 4 29 2 32 40 1 16 2 0 16 2 0 16 2 1065353216 1 1 0 0 1",MS_BUFFER_NAMES,out[..])>0;
+  #assert wg_has(cast(string)out[..],"int(cx.coax_lengths[0])");
+}
+#test "Metal merges resource names only with consistent types" {
+  out:[8192]u8;
+  #assert ms_try("2 9 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 2 10 0 2 6 2 6 7 2 6 7 5 1 1 4 18 0 6 2 6 8 2 6 8 5 1 1 4 18 0 2 1 0 0 1 1 1 0 1","fs pos u\ngs pos u\npos\nu\n",out[..])==-7;
+}
+#test "Metal positive outputs ignore dirty work memory and earlier shader types" #steps 100000000 {
+  tree:[8192]u32;w:[MS_WORDS]u32;out:[65536]u8;for i:0..<MS_WORDS{w[i]=7;}
+  for pass:0..<2{n:=wg_parse(WG_SAMPLE_MOD,tree[..]);k:=MS_emit(tree[0..<n],WG_NAMES_MOD,out[..],w[..]);#assert k==MS_EXPECT_MOD.count&&cast(string)out[0..<k]==MS_EXPECT_MOD;
+    n=wg_parse(WG_SAMPLE_STORE,tree[..]);k=MS_emit(tree[0..<n],WG_NAMES_STORE,out[..],w[..]);#assert k==MS_EXPECT_STORE.count&&cast(string)out[0..<k]==MS_EXPECT_STORE;
+  }
+}
+#test "Metal internal readers refuse lost bindings and unsupported place codes" {
+  tree:[8192]u32;n:=wg_parse(MS_ONE_BUFFER,tree[..]);w:[MS_WORDS]u32;st:[1]WgState;out:[8192]u8;
+  #assert ms_prepare(st[..],tree[0..<n],w[..])==1;
+  st[0].proc=0;st[0].var=wg_entry_variant(st[..],tree[0..<n],ms_portable(w[..]),0);w[WG_W_WORDS]=0;
+  ms_ref_local(st[..],tree[0..<n],MS_BUFFER_NAMES,w[..],out[..],1);#assert !st[0].ok&&st[0].reason==7;
+  st[0].ok=true;st[0].reason=0;st[0].at=0;tree[0]=43;ms_place(st[..],tree[0..<n],MS_BUFFER_NAMES,w[..],out[..],false);#assert !st[0].ok&&st[0].reason==4;
+}
+#test "Metal procedure names include the procedure itself and all locals" {
+  out:[8192]u8;#assert ms_try("2 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 1 6 1 6 1 6 5 1 1 4 18 0 1 1 0 0"," pos\npos\n",out[..])==-6;
+}
+
+MsBadExpr :: struct {words:string;reason:u32;}
+MS_BAD_EXPRS :: [15]MsBadExpr.[
+  MsBadExpr.{words="19 0 16 2 0 16 2 0",reason=1},MsBadExpr.{words="19 19 16 2 0 16 2 0",reason=1},
+  MsBadExpr.{words="22 2 1 16 2 0",reason=1},MsBadExpr.{words="22 0 0",reason=1},
+  MsBadExpr.{words="23 0 1 16 2 0",reason=1},MsBadExpr.{words="23 10 1 16 2 0",reason=1},
+  MsBadExpr.{words="23 9 1 16 2 0",reason=1},MsBadExpr.{words="23 1 2 16 2 0 16 2 0",reason=1},
+  MsBadExpr.{words="29 1 16 2 0",reason=4},MsBadExpr.{words="30 1 16 2 0",reason=4},
+  MsBadExpr.{words="15",reason=4},MsBadExpr.{words="31 8 0",reason=1},MsBadExpr.{words="31 7 0",reason=1},
+  MsBadExpr.{words="22 2 7 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0",reason=1},
+  MsBadExpr.{words="23 10 1 16 2 1065353216 16 2 1077936128",reason=1}];
+#test "Metal expression readers diagnose invalid arithmetic, calls, casts and constructors" {
+  for c:MS_BAD_EXPRS{tree:[8192]u32;n:=wg_parse(MS_TREE_EMPTY,tree[..]);w:[MS_WORDS]u32;st:[1]WgState;out:[8192]u8;
+    #assert ms_prepare(st[..],tree[0..<n],w[..])==1;st[0].proc=0;st[0].at=n;
+    words:[64]u32;count:=wg_parse(c.words,words[..]);for i:0..<count{tree[n+i]=words[i];}
+    ms_expr(st[..],tree[0..<n+count],MS_NAMES_EMPTY,w[..],out[..]);#assert !st[0].ok&&st[0].reason==c.reason;
+  }
+}
+#test "Metal fine GPU operations require tree3 and their exact scalar result kinds" {
+  for g:15..<19{for ver:[2]u32.[2,3]{for t:[2]u32.[0,2]{
+    tree:[8192]u32;n:=wg_parse(MS_TREE_EMPTY,tree[..]);w:[MS_WORDS]u32;st:[1]WgState;out:[8192]u8;
+    #assert ms_prepare(st[..],tree[0..<n],w[..])==1;st[0].tree_version=ver;st[0].at=n;
+    words:=[8]u32.[cast(u32)g,t,ifx g==18 then cast(u32)0 else cast(u32)1,16,2,0,0,0];for i:0..<6{tree[n+i]=words[i];}
+    ms_gpu(st[..],tree[0..<n+6],MS_NAMES_EMPTY,w[..],out[..]);
+    valid:=ver==3&&((g==18&&t==0)||(g!=18&&t==2));#assert st[0].ok==valid;if !valid{#assert st[0].reason==1;}
+  }}}
+}
+#test "Metal scratch interfaces start empty before current entries mark them" {
+  tree:[8192]u32;n:=wg_parse(MS_TREE_EMPTY,tree[..]);w:[MS_WORDS]u32;st:[1]WgState;
+  for i:0..<MS_WORDS{w[i]=7;}#assert ms_prepare(st[..],tree[0..<n],w[..])==1;
+  for i:3585..<3592{#assert w[i]==0;}
+  tree[2]=1;st[0]=WgState.{};#assert ms_prepare(st[..],tree[0..<n],w[..])==-1;
+}
+#test "Metal emits the first aggregate type, even if it is not an interface" {
+  out:[8192]u8;
+  k:=ms_try("2 8 0 1 2 3 4 5 7 1 2 0 4 7 4 2 0 2 4 2 8 2 12 16 1 7 1 7 1 7 5 1 1 4 18 0 1 1 0 0","fs pos\npos\n",out[..]);
+  #assert k>0&&wg_has(cast(string)out[0..<k],"struct coax_t6 {\n  float x;\n};");
+}
+#test "Metal discovery collects helper variants without writing and leaves one balanced mute scope" {
+  tree:[8192]u32;n:=wg_parse(WG_SAMPLE_MOD,tree[..]);w:[MS_WORDS]u32;st:[1]WgState;out:[65536]u8;
+  entries:=ms_prepare(st[..],tree[0..<n],w[..]);#assert entries==6;
+  ms_discover(st[..],tree[0..<n],WG_NAMES_MOD,w[..],out[..],entries);
+  #assert st[0].ok&&st[0].n==0&&st[0].mute==1&&st[0].pool>0;
+}
+#test "Metal block and statement readers keep failure reasons and alias admission" {
+  for kind:[3]u32.[8,11,12]{tree:[8192]u32;n:=wg_parse(MS_TREE_EMPTY,tree[..]);w:[MS_WORDS]u32;st:[1]WgState;out:[8192]u8;
+    #assert ms_prepare(st[..],tree[0..<n],w[..])==1;st[0].proc=0;st[0].at=n;tree[n]=kind;tree[n+1]=0;tree[n+2]=9;
+    ms_stmt(st[..],tree[0..<n+3],MS_NAMES_EMPTY,w[..],out[..]);#assert !st[0].ok&&st[0].reason==(ifx kind==8 then cast(u32)4 else cast(u32)1);
+  }
+  for change:0..<2{tree:[8192]u32;n:=wg_parse(MS_TREE_EMPTY,tree[..]);w:[MS_WORDS]u32;st:[1]WgState;out:[8192]u8;
+    #assert ms_prepare(st[..],tree[0..<n],w[..])==1;at:=wg_locals_at(tree[..],w[..],0);body:=at+2+cast(int)tree[at];
+    if change==0{tree[body]=2;}else{tree[body-1]+=1;}
+    ms_proc(st[..],tree[0..<n],MS_NAMES_EMPTY,w[..],out[..],0,0,false);#assert !st[0].ok&&st[0].reason==1;
+  }
+}
+#test "Metal aliased binding stores remain local while storage counts require a buffer" {
+  tree:[8192]u32;n:=wg_parse(MS_ONE_BUFFER,tree[..]);w:[MS_WORDS]u32;st:[1]WgState;out:[8192]u8;
+  #assert ms_prepare(st[..],tree[0..<n],w[..])==1;st[0].proc=0;st[0].var=wg_entry_variant(st[..],tree[0..<n],ms_portable(w[..]),0);
+  w[WG_W_ALIAS+1]=1;st[0].at=n;tree[n]=40;tree[n+1]=1;
+  ms_place(st[..],tree[0..<n+2],MS_BUFFER_NAMES,w[..],out[..],true);#assert st[0].ok&&cast(string)out[0..<st[0].n]=="l_pos";
+  w[WG_W_ALIAS+1]=0;w[ms_meta(0,2)]=10;st[0].at=n;
+  ms_count(st[..],tree[0..<n+2],MS_BUFFER_NAMES,w[..],out[..]);#assert !st[0].ok&&st[0].reason==7;
+}
+#test "Metal an entry can call the first entry variant without losing its call" {
+  out:[8192]u8;k:=ms_try("2 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 2 6 1 6 1 6 5 1 1 4 18 0 6 1 6 1 6 8 1 1 4 22 0 1 18 0 2 1 0 0 1 1 0","fs pos\nfs2 pos\npos\n",out[..]);
+  #assert k>0&&wg_has(cast(string)out[0..<k],"coax_p_fs(cx, l_pos)");
+}
+#test "Metal explicit array construction uses aggregate initialization" {
+  tree:[8192]u32;n:=wg_parse(WG_SAMPLE_MOD,tree[..]);w:[MS_WORDS]u32;st:[1]WgState;out:[8192]u8;
+  #assert ms_prepare(st[..],tree[0..<n],w[..])==6;st[0].at=n;
+  words:=[9]u32.[31,19,2,16,2,1065353216,16,2,1073741824];for v,i:words{tree[n+i]=v;}
+  ms_expr(st[..],tree[0..<n+9],WG_NAMES_MOD,w[..],out[..]);#assert st[0].ok&&cast(string)out[0..<st[0].n]=="array<float, 2>{0x1.000000p0f, 0x1.000000p1f}";
+}

@@ -1,0 +1,9 @@
+wgsl everglade.wgsl
+size 320 180
+let all 217
+let scene 216
+let blades 13824
+let sparks 16
+let hud 1356
+buffer u u.bin
+pass bg_fs.spv bg_vs bg_fs 2 - 0 0 3

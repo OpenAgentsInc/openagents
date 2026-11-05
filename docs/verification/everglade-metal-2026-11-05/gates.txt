@@ -1,0 +1,14 @@
+Base: ff4bcffbda; source bytes named in artifacts.sha256.
+Initial GPU/compiler image: retained/compiler/coax.
+Final compiler image: retained/final-compiler/coax.
+All 11 final MSL files and reflection outputs match their qualified initial bytes.
+MSL offline compilation: 11 Everglade pairs + 13 target-contract modules + CLI array fixture accepted by Apple Metal SDK.
+Authority checks: baseline successful; 1,421/1,421 root Metal writer mutants killed, 169/169 plan-policy mutants killed. No equivalent annotations added.
+Compiler fixed point: complete header byte-identical, C byte-identical except terminal LF (process line capture vs direct stdout).
+Existing Metal compute: 13 tests passed on initial image; unchanged compute implementation.
+Final CLI: array initialization through driver and SDK, shared numeric tree, missing entry, invalid vertex format/no output file, scalar mode, scalar loop refusal passed.
+Seven G5 cases: both Metal/WGSL and Metal/SPIR-V comparisons passed existing allowances; all readbacks finite.
+Metal post validation: API and GPU layers enabled; no reported errors; instrumented readback passed with zero values outside WGSL tolerance.
+Vulkan validation: zero errors and warnings in all seven cases.
+Tools classification: five pre-existing missing reason headers in verse/tools/humans; none introduced here.
+No full unrelated compiler publication gates rerun or release cache overwritten. This is an iteration image qualified for the graphics backend.

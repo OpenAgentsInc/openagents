@@ -1,0 +1,34 @@
+wgsl everglade.wgsl
+size 320 180
+let all 217
+let scene 216
+let blades 13824
+let sparks 24
+let hud 1074
+buffer u u.bin
+buffer vertices vertices.bin
+buffer heights s0.bin
+buffer objects s1.bin
+buffer pose s2.bin
+buffer water_nodes s3.bin
+index index.bin
+draws draws.bin $all
+layers sheets layers.bin 512 512 38 10
+sampler sheet linear repeat mip none
+depth shadow_map 2048 2048
+sampler shadow_cmp linear clamp flat less
+pass shadow_fs.spv shadow_vs shadow_fs 0 shadow_map 2 2 draws:0:$scene
+target light
+target aux
+depth scene_depth frame
+target water_scene
+depth water_scene_depth frame
+pass bg_fs.spv bg_vs bg_fs light,aux scene_depth 0 0 3 always nowrite
+pass grass_fs.spv grass_vs grass_fs light,aux scene_depth 0 0 3:$blades keep
+pass scene_fs.spv scene_vs scene_fs light,aux scene_depth 0 0 draws:0:$scene keep
+copy light water_scene
+copy scene_depth water_scene_depth
+each draws:$scene:$all
+pass water_transmit_fs.spv water_vs water_transmit_fs light,aux scene_depth 0 0 draws:each keep nowrite blend=mul alpha=keep mask=1
+pass water_emit_fs.spv water_vs water_emit_fs light,aux scene_depth 0 0 draws:each keep nowrite blend=add alpha=keep mask=1
+end

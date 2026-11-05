@@ -1,0 +1,30 @@
+// Freeze target-language contracts only after Apple's SDK accepts each file.
+#import "Basic";
+#load "../lib/compiler/metal-shader.coax";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/proc.coax";
+#load "../lib/json/json.coax";
+MfCase :: struct {name:string;tree:string;names:string;}
+MF_CASES :: [13]MfCase.[
+  MfCase.{name="MOD",tree=WG_SAMPLE_MOD,names=WG_NAMES_MOD},MfCase.{name="STORE",tree=WG_SAMPLE_STORE,names=WG_NAMES_STORE},
+  MfCase.{name="DOT",tree=WG_SAMPLE_DOT,names=WG_NAMES_DOT},MfCase.{name="VCALL",tree=WG_SAMPLE_VCALL,names=WG_NAMES_VCALL},
+  MfCase.{name="DERIV",tree=WG_SAMPLE_DERIV,names="fs pos a\npos\n"},MfCase.{name="FINE",tree=WG_SAMPLE_DERIV_FINE,names="fs pos a\npos\n"},
+  MfCase.{name="DEMOTE",tree=WG_SAMPLE_DEMOTE,names="fs pos\npos\n"},MfCase.{name="DEPTH",tree=WG_SAMPLE_DEPTH,names="fs pos\npos\n"},
+  MfCase.{name="MIX",tree=MS_TREE_MIX,names=MS_NAMES_MIX},MfCase.{name="K",tree=MS_TREE_K,names=MS_NAMES_K},
+  MfCase.{name="EMPTY",tree=MS_TREE_EMPTY,names=MS_NAMES_EMPTY},MfCase.{name="BRANCH",tree=MS_TREE_BRANCH,names=MS_NAMES_BRANCH},
+  MfCase.{name="CONSTANTS",tree=MS_TREE_CONSTANTS,names=MS_NAMES_CONSTANTS}];
+tool_main :: ()->int #export_c {
+  args:[1]Args;if !args_load(args[..])||args_count(args[..])!=1{return 2;}dir:=args_at(args[..],0);if !fs_mkdir(dir){return 1;}
+  p:[4][4096]u8;expected:=fs_join(dir,"expected.coax",p[0][..]);if !fs_write(expected,"// SDK-accepted Metal graphics contracts; GPU parity is qualified separately.\n"){return 1;}
+  for c:MF_CASES {
+    source:=fs_join(dir,c.name,p[1][..]);tree:[8192]u32;n:=wg_parse(c.tree,tree[..]);work:[MS_WORDS]u32;out:[262144]u8;k:=MS_emit(tree[0..<n],c.names,out[..],work[..]);
+    if k<0||!fs_write(source,cast(string)out[0..<k]){return 1;}
+    air:=fs_join(dir,"test.air",p[2][..]);cmd:=[12]string.["xcrun","metal","-x","metal","-std=metal3.2","-fno-fast-math","-Wno-unused-variable","-Wno-parentheses-equality","-c",source,"-o",air];
+    stdout:[65536]u8;stderr:[65536]u8;r:=proc_run(cmd[..],60000,stdout[..],stderr[..]);if r.status!=0{tool_errln(cast(string)stderr[0..<r.err_n]);return 1;}
+    encoded:[524288]u8;o:[1]Jo;jo_start(o[..],encoded[..]);jo_str(o[..],cast(string)out[0..<k]);
+    if !fs_append(expected,"MS_EXPECT_")||!fs_append(expected,c.name)||!fs_append(expected," :: ")||!fs_append(expected,jo_text(o[..]))||!fs_append(expected,";\n"){return 1;}
+    k=MS_reflection(tree[0..<n],c.names,out[..],work[..]);if k<0{return 1;}jo_start(o[..],encoded[..]);jo_str(o[..],cast(string)out[0..<k]);
+    if !fs_append(expected,"MS_REFLECT_")||!fs_append(expected,c.name)||!fs_append(expected," :: ")||!fs_append(expected,jo_text(o[..]))||!fs_append(expected,";\n"){return 1;}
+  }return 0;
+}

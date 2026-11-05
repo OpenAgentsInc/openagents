@@ -10,12 +10,14 @@
 // same texels. The last pass's rgba16float targets are compared, failing
 // past an f16's rounding (|a-b| <= 2e-3 * max(1,|a|)) on more than N values.
 //   coax/web/tool.sh verse/gpu/pass-check.coax HOST DIR SPEC [--allow N] [--keep DIR2]
-//       [--against FILE]
+//       [--against FILE] [--golden SAVED_REFERENCE.f32]
 // --allow N passes with up to N values past the tolerance (pixels on an edge
 // whose test lands within the two sides' float rounding). --keep writes
 // golden.f32 and native.f32 (float32 RGBA rows, target after target) to DIR2.
 // --against compares the browser with FILE (as --keep writes them, e.g. the
 // pass run on the CPU) instead of drawing on HOST.
+// --golden reuses an explicitly saved reference; it never changes the comparator
+// or tolerance. Use it only when the fixture and reference inputs are unchanged.
 #import "Basic";
 #load "../../aethyr/render/emit.coax" as render_emit;
 #load "../../coax/lib/net/cdp.coax";
@@ -32,13 +34,14 @@ PcSpec :: struct { ok: bool; w: int; h: int; nt: int; }
 tool_main :: () -> int #export_c {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 3 {
-    tool_errln("usage: pass-check HOST DIR SPEC [--allow N] [--keep DIR2] [--against FILE]");
+    tool_errln("usage: pass-check HOST DIR SPEC [--allow N] [--keep DIR2] [--against FILE] [--golden FILE]");
     return 2;
   }
   host := args_at(a[..], 0); dir := args_at(a[..], 1); spec_name := args_at(a[..], 2);
   keep := args_value(a[..], "--keep", "");
   allow := args_whole(args_value(a[..], "--allow", "0"));
   against := args_value(a[..], "--against", "");
+  golden_file := args_value(a[..], "--golden", "");
   b: [1024] u8;
   text: [PC_FILE] u8;
   n := fs_read(fs_join(dir, spec_name, b[..]), text[..]);
@@ -48,7 +51,8 @@ tool_main :: () -> int #export_c {
   floats := spec.w * spec.h * 4 * spec.nt;
   if floats > PC_FLOATS { tool_errln("pass-check: the targets are too large"); return 2; }
   golden: [PC_FLOATS] f32;
-  if !browser(dir, spec_name, cast(string) text[0..<n], floats / spec.nt, golden[0..<floats]) { return 1; }
+  if golden_file.count>0 {if !read_f32(golden_file,golden[0..<floats]){return 1;}}
+  else if !browser(dir, spec_name, cast(string) text[0..<n], floats / spec.nt, golden[0..<floats]) { return 1; }
   native: [PC_FLOATS] f32;
   if against.count > 0 {
     if !read_f32(against, native[0..<floats]) { return 1; }

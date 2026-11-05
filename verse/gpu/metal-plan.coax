@@ -1,0 +1,67 @@
+// Bounded offscreen verification plan. The SDK host executes this plan only.
+#authority;
+MpDraw :: struct {ok:bool;indexed:bool;first:int;count:int;base:int;instances:int;}
+#test "Metal draw records retain first/count/base/instances and the non-indexed flag" {
+  a:=[16]u8.[4,0,0,0,6,0,0,0,9,0,0,0,2,0,0,0];d:=mp_draw(a[..],0,100);
+  #assert d.ok&&d.indexed&&d.first==4&&d.count==6&&d.base==9&&d.instances==2;
+  a[11]=128;d=mp_draw(a[..],0,0);#assert d.ok&&!d.indexed&&d.base==9;
+  a[11]=0;#assert !mp_draw(a[..],0,9).ok && !mp_draw(a[0..<15],0,100).ok;
+  #assert !mp_draw(a[..],-1,100).ok && !mp_draw(a[..],1,100).ok;
+  #assert mp_draw(a[..],0,10).ok;a[4]=0;#assert mp_draw(a[..],0,4).ok;
+  two:[32]u8;for k:0..<16{two[16+k]=a[k];}two[16]=2;two[20]=3;two[24]=5;two[28]=7;
+  d=mp_draw(two[..],1,10);#assert d.ok&&d.first==2&&d.count==3&&d.base==5&&d.instances==7;
+}
+mp_u32 :: (b:[]u8,at:int)->int {n:=0;for k:0..<4{n|=cast(int)b[at+k]<<(8*k);}return n;}
+mp_draw :: (bytes:[]u8,row:int,indices:int)->MpDraw {
+  d:MpDraw;if row<0||row>=bytes.count/16{return d;}at:=row*16;
+  d.first=mp_u32(bytes,at);d.count=mp_u32(bytes,at+4);base:=mp_u32(bytes,at+8);d.base=base&0x7FFFFFFF;d.instances=mp_u32(bytes,at+12);d.indexed=(base&0x80000000)==0;
+  d.ok=d.count<=1048576&&d.instances<=262144&&(!d.indexed||d.first<=indices&&d.count<=indices-d.first);return d;
+}
+#forall "Metal binding namespaces reserve lengths29 and vertex30" slot:0..<33 {
+  #assert mp_slot(1,slot)==(slot<29) && mp_slot(2,slot)==true && mp_slot(3,slot)==(slot<16);
+}
+#test "Metal verification refuses invalid slots, layouts and excessive resources" {
+  #assert !mp_slot(0,0)&&!mp_slot(4,0)&&!mp_slot(1,-1)&&!mp_slot(2,128);
+  #assert mp_buffer(0,4)&&mp_buffer(64,16)&&!mp_buffer(63,16)&&!mp_buffer(-1,4)&&!mp_buffer(64,0)&&!mp_buffer(67108865,4);
+  #assert mp_size(320,180)&&mp_size(8192,8192)&&!mp_size(0,1)&&!mp_size(1,8193);
+  #assert mp_copy(320,180,1,320,180,1)&&!mp_copy(320,180,1,320,180,2)&&!mp_copy(320,180,1,321,180,1);
+  #assert mp_slot(2,127)&&mp_buffer(67108864,4)&&!mp_buffer(64,-4);
+  #assert mp_buffer(1,1)&&!mp_buffer(67108865,1)&&!mp_buffer(67108868,4);
+  #assert !mp_size(8193,1)&&!mp_size(1,0)&&!mp_copy(320,180,1,320,181,1);
+}
+mp_slot :: (kind:int,slot:int)->bool {return slot>=0&&((kind==1&&slot<29)||(kind==2&&slot<128)||(kind==3&&slot<16));}
+mp_buffer :: (bytes:int,stride:int)->bool {return bytes>=0&&bytes<=67108864&&stride>0&&bytes%stride==0;}
+mp_size :: (w:int,h:int)->bool {return w>0&&w<=8192&&h>0&&h<=8192;}
+mp_copy :: (aw:int,ah:int,af:int,bw:int,bh:int,bf:int)->bool {return aw==bw&&ah==bh&&af==bf;}
+#test "Metal verification mip levels use level-major array slices, never implicit SDK mip generation" {
+  #assert mp_texels(4,2,3,3)==33 && mp_texels(1,1,1,1)==1;
+  #assert mp_texels(0,2,1,1)==-1&&mp_texels(4,2,0,1)==-1&&mp_texels(4,2,1,0)==-1&&mp_texels(4,2,1,4)==-1;
+  #assert mp_texels(8192,1,1,14)==16383&&mp_texels(8192,1,1,15)==-1;
+  #assert mp_texels(1,1,256,1)==256&&mp_texels(1,1,257,1)==-1;
+  #assert mp_texels(4096,4096,1,1)==16777216&&mp_texels(8192,8192,1,1)==-1&&mp_texels(5,3,1,3)==18;
+  #assert mp_texels(1,8,1,4)==15&&mp_texels(257,673,97,1)==-1;
+}
+ #test "Metal draw admission includes both exact workload ceilings and rejects either excess" {
+  a:=[16]u8.[0,0,0,0,0,0,16,0,0,0,0,128,0,0,4,0];#assert mp_draw(a[..],0,0).ok;
+  a[4]=1;#assert !mp_draw(a[..],0,0).ok;a[4]=0;a[12]=1;#assert !mp_draw(a[..],0,0).ok;
+}
+mp_texels :: (w:int,h:int,layers:int,levels:int)->int {
+  if !mp_size(w,h)||layers<1||layers>256||levels<1{return -1;}total:=0;lw:=w;lh:=h;i:=1;
+  while true{total+=lw*lh*layers;if i==levels{break;}if lw==1&&lh==1{return -1;}
+    lw=lw/2+(ifx lw==1 then 1 else 0);lh=lh/2+(ifx lh==1 then 1 else 0);i+=1;}
+  return ifx total<=16777216 then total else -1;
+}
+#test "Metal blend factors match the G5 Vulkan/WebGPU plan, including multiplicative alpha" {
+  modes:=[8]string.["none","add","alpha","mul","over","under","keep","max"];
+  for m:0..<8{#assert mp_mode(modes[m])==m;}
+  #assert mp_mode("wrong")==-1;
+  src:=[8]int.[1,1,2,0,1,0,0,1];dst:=[8]int.[0,1,3,4,3,3,1,1];
+  for m:0..<8{#assert mp_blend_factor(m,false)==src[m]&&mp_blend_factor(m,true)==dst[m];}
+  #assert mp_blend_factor(-1,false)==-1&&mp_blend_factor(8,true)==-1;
+}
+mp_mode :: (name:string)->int {for s,i:[8]string.["none","add","alpha","mul","over","under","keep","max"]{if s==name{return i;}}return -1;}
+// API-independent factor names: 0 zero,1 one,2 srcAlpha,3 oneMinusSrcAlpha,4 srcColor.
+mp_blend_factor :: (mode:int,destination:bool)->int {
+  src:=[8]int.[1,1,2,0,1,0,0,1];dst:=[8]int.[0,1,3,4,3,3,1,1];
+  if mode<0||mode>=8{return -1;}return ifx destination then dst[mode] else src[mode];
+}

@@ -1,0 +1,42 @@
+// One-command G5 qualification: the existing WGSL/SPIR-V oracle plus Metal.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/proc.coax";
+
+mgp_run :: (args:[]string,record:string)->bool {
+  out:[262144]u8;err:[65536]u8;r:=proc_run(args,180000,out[..],err[..]);
+  ok:=fs_write(record,cast(string)out[0..<r.out_n])&&fs_append(record,cast(string)err[0..<r.err_n]);
+  if r.status!=0||r.cut||r.timed_out||!ok{tool_errln(cast(string)out[0..<r.out_n]);tool_errln(cast(string)err[0..<r.err_n]);return false;}return true;
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..])||args_count(a[..])<4{tool_errln("usage: metal-parity.coax COMPILER ABS_WASM ABS_OUT REMOTE [--from N --reuse-reference --reuse-shaders]");return 2;}
+  compiler:=args_at(a[..],0);wasm:=args_at(a[..],1);dir:=args_at(a[..],2);remote:=args_at(a[..],3);from:=args_whole(args_value(a[..],"--from","0"));
+  if from<0||from>6||!fs_mkdir(dir){return 2;}p:[10][4096]u8;shaders:=fs_join(dir,"shaders",p[0][..]);image:=fs_join(dir,"metal-sdk",p[1][..]);
+  if !args_has(a[..],"--reuse-shaders"){
+    cmd:=[4]string.["coax/web/tool.sh","coax/tests/metal-graphics.coax",compiler,shaders];if !mgp_run(cmd[..],fs_join(dir,"sdk-compile.log",p[2][..])){return 1;}
+  }
+  if fs_mtime_ns(image)<fs_mtime_ns("verse/gpu/metal-sdk.swift"){
+    cmd:=[10]string.["xcrun","swiftc","-O","-target","arm64-apple-macos26.0","verse/gpu/metal-sdk.swift","-framework","Metal","-o",image];if !mgp_run(cmd[..],fs_join(dir,"sdk-host-build.log",p[2][..])){return 1;}
+  }
+  cases:=[7]string.["bg","scene","grass","water","fx","post","live"];limits:=[7]string.["40","400","400","2000","10000","2000","2000"];
+  for i:from..<7 {
+    case_root:=fs_join(dir,"cases",p[2][..]);if !fs_mkdir(case_root){return 1;}here:=fs_join(case_root,cases[i],p[3][..]);
+    if !fs_mkdir(here){return 1;}print("G5 Metal qualification: %\n",cases[i]);
+    if !args_has(a[..],"--reuse-reference"){
+      emit:=[9]string.["coax/web/tool.sh","verse/gpu/everglade-pass.coax",remote,cases[i],"--wasm",wasm,"--emit",here,""];
+      if !mgp_run(emit[0..<8],fs_join(here,"emit.log",p[4][..])){return 1;}
+      oracle:=[10]string.["coax/web/tool.sh","verse/gpu/pass-check.coax",remote,here,"spec.txt","--allow",limits[i],"--keep",here,""];
+      if !mgp_run(oracle[0..<9],fs_join(here,"reference.log",p[4][..])){return 1;}
+    }
+    plan:=fs_join(here,"metal.json",p[5][..]);rendered:=fs_join(here,"metal.f32",p[6][..]);report:=fs_join(here,"metal-result.json",p[7][..]);
+    planner:=[6]string.["coax/web/tool.sh","verse/gpu/metal-pass.coax",here,"spec.txt",shaders,plan];if !mgp_run(planner[..],fs_join(here,"metal-plan.log",p[4][..])){return 1;}
+    run:=[4]string.[image,plan,rendered,report];if !mgp_run(run[..],fs_join(here,"metal-run.log",p[4][..])){return 1;}
+    for ref:0..<2 {
+      golden:=fs_join(here,ifx ref==0 then "golden.f32" else "native.f32",p[8][..]);
+      compare:=[11]string.["coax/web/tool.sh","verse/gpu/pass-check.coax",remote,here,"spec.txt","--allow",limits[i],"--golden",golden,"--against",rendered];
+      if !mgp_run(compare[..],fs_join(here,ifx ref==0 then "metal-wgsl.log" else "metal-spirv.log",p[4][..])){return 1;}
+    }
+  }
+  print("Every requested G5 case agrees with WGSL and SPIR-V at its existing tolerance.\n");return 0;
+}

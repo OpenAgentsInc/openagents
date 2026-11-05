@@ -579,6 +579,18 @@ Each step lands on `main` working end to end.
 
 ## Not in this version
 
+Native rendering checkpoints, 2026-11-05: setup/status share the native renderer
+and pause the covered world after its required first frame (#12865); offline
+play uses the native room socket with network drift parity (#12866). The
+[three-host performance record](../verification/everglade-hosts-2026-11-05/README.md)
+and one-command harness cover Chrome, WKWebView and Vulkan (#12864). Coax now
+emits every Everglade graphics pass as Metal, with
+[G5 parity against WGSL and SPIR-V](../verification/everglade-metal-2026-11-05/README.md)
+(#12867). The interactive Metal host (#12868) and the written conformance
+contract/native default (#12869) follow that shader backend. The desktop world
+remains WKWebView until the host itself passes parity; no native-only HUD or
+gameplay may be introduced.
+
 - Windows or Linux.
 - Multiple people editing one local world. Use the web EDIT on a room for that.
 - Building new kinds of things the catalogue can't draw. Those go on the list

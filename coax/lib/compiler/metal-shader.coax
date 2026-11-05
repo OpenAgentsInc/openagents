@@ -1,0 +1,360 @@
+// MSL graphics from the same checked tree as WGSL and SPIR-V. No source translation.
+#authority;
+#load "wgsl.coax";
+#load "fixtures/metal-goldens.coax";
+#load "fixtures/metal-refusals.coax";
+#load "fixtures/metal-extra-trees.coax";
+#load "fixtures/metal-capacities.coax";
+#load "fixtures/metal-boundaries.coax";
+
+#test "SDK-qualified Metal target contracts keep every token and reflection field" {
+  trees:=[13]string.[WG_SAMPLE_MOD,WG_SAMPLE_STORE,WG_SAMPLE_DOT,WG_SAMPLE_VCALL,WG_SAMPLE_DERIV,WG_SAMPLE_DERIV_FINE,WG_SAMPLE_DEMOTE,WG_SAMPLE_DEPTH,MS_TREE_MIX,MS_TREE_K,MS_TREE_EMPTY,MS_TREE_BRANCH,MS_TREE_CONSTANTS];
+  names:=[13]string.[WG_NAMES_MOD,WG_NAMES_STORE,WG_NAMES_DOT,WG_NAMES_VCALL,"fs pos a\npos\n","fs pos a\npos\n","fs pos\npos\n","fs pos\npos\n",MS_NAMES_MIX,MS_NAMES_K,MS_NAMES_EMPTY,MS_NAMES_BRANCH,MS_NAMES_CONSTANTS];
+  expected:=[13]string.[MS_EXPECT_MOD,MS_EXPECT_STORE,MS_EXPECT_DOT,MS_EXPECT_VCALL,MS_EXPECT_DERIV,MS_EXPECT_FINE,MS_EXPECT_DEMOTE,MS_EXPECT_DEPTH,MS_EXPECT_MIX,MS_EXPECT_K,MS_EXPECT_EMPTY,MS_EXPECT_BRANCH,MS_EXPECT_CONSTANTS];
+  reflections:=[13]string.[MS_REFLECT_MOD,MS_REFLECT_STORE,MS_REFLECT_DOT,MS_REFLECT_VCALL,MS_REFLECT_DERIV,MS_REFLECT_FINE,MS_REFLECT_DEMOTE,MS_REFLECT_DEPTH,MS_REFLECT_MIX,MS_REFLECT_K,MS_REFLECT_EMPTY,MS_REFLECT_BRANCH,MS_REFLECT_CONSTANTS];
+  for i:0..<13{tree:[8192]u32;n:=wg_parse(trees[i],tree[..]);work:[MS_WORDS]u32;out:[262144]u8;
+    k:=MS_emit(tree[0..<n],names[i],out[..],work[..]);#assert k==expected[i].count && cast(string)out[0..<k]==expected[i];
+    k=MS_reflection(tree[0..<n],names[i],out[..],work[..]);#assert k==reflections[i].count && cast(string)out[0..<k]==reflections[i];
+  }
+  out:[32768]u8;#assert ms_text(WG_SAMPLE_MOD,WG_NAMES_MOD,out[..])==MS_EXPECT_MOD;
+}
+
+#test "Metal graphics keeps stage interfaces, opaque resources and local-array variants" {
+  out:[262144]u8;text:=ms_text(WG_SAMPLE_MOD,WG_NAMES_MOD,out[..]);
+  #assert wg_has(text,"#include <metal_stdlib>") && wg_has(text,"vertex coax_io_12 vs(") && wg_has(text,"fragment coax_out_24 fs(");
+  #assert wg_has(text,"[[vertex_id]]") && wg_has(text,"[[instance_id]]") && wg_has(text,"[[attribute(0)]]") && wg_has(text,"[[user(locn0)]]");
+  #assert wg_has(text,"[[front_facing]]") && wg_has(text,"[[flat]]") && wg_has(text,"[[color(1)]]");
+  #assert wg_has(text,"texture2d_array<float>") && wg_has(text,"depth2d<float>") && wg_has(text,"[[buffer(29)]]");
+  #assert wg_has(text,"thread array<float, 2>* p_w") && wg_has(text,"thread array<float, 3>* p_w");
+  #assert wg_has(text,"cx.r_u[") && wg_has(text,"cx.r_u2[") && wg_has(text,".sample_compare(");
+}
+#test "Metal graphics emits exact casts, derivatives and helper demotion" {
+  out:[32768]u8;t:=ms_text(WG_SAMPLE_DERIV_FINE,"fs pos a\npos\n",out[..]);
+  #assert wg_has(t,"dfdx(") && wg_has(t,"dfdy(") && wg_has(t,"fwidth(");
+  #assert wg_has(ms_text(WG_SAMPLE_DEMOTE,"fs pos\npos\n",out[..]),"discard_fragment()");
+  #assert ms_try(WG_SAMPLE_DERIV_INVALID,"fs pos a\npos\n",out[..])<0;
+}
+#test "Metal graphics preserves packed float3 storage and depth outputs" {
+  out:[32768]u8;t:=ms_text(WG_SAMPLE_STORE,WG_NAMES_STORE,out[..]);
+  #assert wg_has(t,"alignas(16) packed_float3 x;") && wg_has(t,"static_assert(sizeof(coax_t13) == 16");
+  #assert wg_has(ms_text(WG_SAMPLE_DEPTH,"fs pos\npos\n",out[..]),"[[depth(any)]]");
+}
+
+// Work after the shared tree/variant indexes: count, three class counts, and
+// (name id, type, resource class 9/10/11, slot, stage mask), at most 192 resources.
+MS_META :: WG_W_WORDS+8; MS_RESOURCES :: 192; MS_WORDS :: MS_META+MS_RESOURCES*5;
+MS_work_words :: ()->int #export_c {return MS_WORDS;}
+MS_out_bytes :: ()->int #export_c {return 8388608;}
+MS_reason_text :: (n:u32)->string #export_c {
+  reasons:=[11]string.["","malformed checked shader tree","MSL exceeds the output buffer","shader types/procedures/variants exceed capacity",
+    "operation outside the Metal graphics subset","unsupported entry stage","missing shader names","inconsistent resource declarations",
+    "invalid vertex/fragment interface","storage layout differs from the portable shader layout","Metal resource slot limit exceeded"];
+  return ifx n<11 then reasons[cast(int)n] else "unknown Metal emission failure";
+}
+ms_portable :: (w:[]u32)->[]u32 {return w[0..<WG_W_WORDS];}
+ms_meta :: (i:int,f:int)->int {return MS_META+5*i+f;}
+ms_find :: (w:[]u32,id:u32)->int {for i:0..<cast(int)w[WG_W_WORDS] {if w[ms_meta(i,0)]==id{return i;}}return -1;}
+ms_resource_name :: (s:[]WgState,names:string,out:[]u8,id:u32) {wg_put(s,out,"r_");wg_put(s,out,wg_word(wg_binding(s,names,id),0));}
+ms_collect :: (s:[]WgState,tree:[]u32,w:[]u32,entries:int) {
+  for e:0..<entries {at:=wg_entry_at(w,e);p:=wg_entry_proc(tree,w,e);sig:=wg_sig(w,p);
+    for i:wg_plain(s,tree,w,p)..<wg_params(tree,w,p) {
+      t:=tree[sig+2+i];kind:=wg_tk(tree,w,t);if kind<9{continue;}id:=tree[at+2+i];found:=ms_find(w,id);
+      if found>=0 {if w[ms_meta(found,1)]!=t{wg_fail(s,7);return;}w[ms_meta(found,4)]|=cast(u32)(1<<tree[at]);continue;}
+      // Class limits bound the union to 29+128+16 resources, within its 192 slots.
+      count:=cast(int)w[WG_W_WORDS];
+      c:=cast(int)kind-9;slot:=w[WG_W_WORDS+1+c];limit:=ifx c==0 then 29 else ifx c==1 then 128 else 16;
+      if cast(int)slot>=limit {wg_fail(s,10);return;}
+      w[ms_meta(count,0)]=id;w[ms_meta(count,1)]=t;w[ms_meta(count,2)]=kind;w[ms_meta(count,3)]=slot;w[ms_meta(count,4)]=cast(u32)(1<<tree[at]);
+      w[WG_W_WORDS]+=1;w[WG_W_WORDS+1+c]+=1;
+    }
+  }
+}
+MS_SCALAR :: [6]string.["void","bool","float","int","uint","int"];
+ms_type :: (s:[]WgState,tree:[]u32,w:[]u32,out:[]u8,t:u32) {
+  if cast(int)t>=s[0].types {wg_fail(s,1);return;}k:=wg_tk(tree,w,t);
+  if k<6 {wg_put(s,out,MS_SCALAR[cast(int)k]);return;}
+  if k==7 {n:=wg_vector(tree,w,t);if n!=0{wg_put(s,out,"float");wg_dec(s,out,cast(u32)n);}else{wg_put(s,out,"coax_t");wg_dec(s,out,t);}return;}
+  if k==8 {wg_put(s,out,"array<");ms_type(s,tree,w,out,wg_part(tree,w,t,1));wg_put(s,out,", ");wg_dec(s,out,wg_part(tree,w,t,2));wg_put(s,out,">");return;}
+  wg_fail(s,4);
+}
+ms_zero :: (s:[]WgState,tree:[]u32,w:[]u32,out:[]u8,t:u32) {ms_type(s,tree,w,out,t);wg_put(s,out,"{}");}
+ms_struct :: (s:[]WgState,tree:[]u32,w:[]u32,out:[]u8,t:u32,io:int) {
+  wg_put(s,out,"struct ");wg_put(s,out,WG_IO_NAME[io]);wg_dec(s,out,t);wg_put(s,out," {\n");n:=cast(int)wg_part(tree,w,t,1);loc:=0;
+  if n==0{wg_fail(s,4);return;}
+  for i:0..<n {f:=wg_part(tree,w,t,2+2*i);wg_put(s,out,"  ");
+    // WGSL's vec3 has size 12, alignment 16; Metal's float3 has size 16.
+    // Pack the value but retain its declared alignment in stored structs.
+    if io==0&&wg_vector(tree,w,f)==3 {wg_put(s,out,"alignas(16) packed_float3");}else{ms_type(s,tree,w,out,f);}
+    wg_put(s,out," ");wg_field(s,out,cast(u32)i);
+    if io==WG_IO&&i==0 {wg_put(s,out," [[position]]");}
+    else if io==WG_OUT&&wg_depth(tree,w,t,i){wg_put(s,out," [[depth(any)]]");}
+    else if io!=0 {
+      wg_put(s,out,ifx io==WG_IN then " [[attribute(" else ifx io==WG_OUT then " [[color(" else " [[user(locn");wg_dec(s,out,cast(u32)loc);wg_put(s,out,")]]");loc+=1;
+      k:=wg_tk(tree,w,f);if io==WG_IO&&(k==3||k==4||k==5||(wg_part(tree,w,t,3+2*i)>>31)!=0){wg_put(s,out," [[flat]]");}
+    }
+    wg_put(s,out,";\n");
+  }wg_put(s,out,"};\n");
+}
+ms_resources :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {
+  for i:0..<cast(int)w[WG_W_WORDS] {t:=w[ms_meta(i,1)];if wg_tk(tree,w,t)!=9{continue;}element:=wg_part(tree,w,t,1);
+    if !wg_stored(tree,w,element){wg_fail(s,9);return;}
+    wg_put(s,out,"static_assert(sizeof(");ms_type(s,tree,w,out,element);wg_put(s,out,") == ");wg_dec(s,out,cast(u32)wg_wsize(tree,w,element));wg_put(s,out,", \"portable storage stride\");\n");
+  }
+  wg_put(s,out,"struct CoaxResources {\n");
+  for i:0..<cast(int)w[WG_W_WORDS] {t:=w[ms_meta(i,1)];k:=wg_tk(tree,w,t);d:=wg_part(tree,w,t,1);id:=w[ms_meta(i,0)];
+    if wg_word(wg_binding(s,names,id),0).count==0{wg_fail(s,6);return;}
+    wg_put(s,out,"  ");
+    if k==9 {wg_put(s,out,"device const ");ms_type(s,tree,w,out,d);wg_put(s,out,"*");}
+    else if k==10&&d<3 {textures:=[3]string.["texture2d<float>","texture2d_array<float>","depth2d<float>"];wg_put(s,out,textures[cast(int)d]);}
+    else if k==11&&d<2 {wg_put(s,out,"sampler");}else{wg_fail(s,1);return;}
+    wg_put(s,out," ");ms_resource_name(s,names,out,id);wg_put(s,out,ifx k==9 then " [[buffer(" else ifx k==10 then " [[texture(" else " [[sampler(");
+    wg_dec(s,out,w[ms_meta(i,3)]);wg_put(s,out,")]];\n");
+  }
+  // One count per storage slot, in elements. Vertex attributes reserve slot30.
+  // A resource-only struct must be passed by value (MSL 2.12.2).
+  wg_put(s,out,"  constant uint* coax_lengths [[buffer(29)]];\n};\n");
+}
+ms_ref_local :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,i:int) {
+  if !wg_has_local(s,tree,w,i){return;}
+  if !wg_resource(s,tree,w,wg_local_type(tree,w,s[0].proc,i)){wg_local(s,names,out,i,false);return;}
+  alias:=w[WG_W_ALIAS+i];if alias>0{wg_local(s,names,out,cast(int)alias-1,false);return;}
+  id:=wg_bound(s,tree,w,i);if id==WG_NONE{wg_fail(s,4);return;}
+  if (id>>31)==0 {if ms_find(w,id)<0{wg_fail(s,7);return;}wg_put(s,out,"cx.");ms_resource_name(s,names,out,id);return;}
+  wg_put(s,out,"(*");wg_local(s,names,out,i,true);wg_put(s,out,")");
+}
+ms_place :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,store:bool) {
+  k:=wg_next(s,tree);
+  if k==40 {i:=cast(int)wg_next(s,tree);if !wg_has_local(s,tree,w,i){return;}
+    if store&&wg_resource(s,tree,w,wg_local_type(tree,w,s[0].proc,i))&&w[WG_W_ALIAS+i]==0&&(wg_bound(s,tree,w,i)>>31)==0 {wg_fail(s,4);return;}
+    ms_ref_local(s,tree,names,w,out,i);return;}
+  if k==41 {ms_place(s,tree,names,w,out,store);wg_put(s,out,".");wg_field(s,out,wg_next(s,tree));return;}
+  if k==42 {ms_place(s,tree,names,w,out,store);wg_put(s,out,"[");ms_expr(s,tree,names,w,out);wg_put(s,out,"]");return;}
+  wg_fail(s,4);
+}
+ms_const :: (s:[]WgState,names:string,w:[]u32,out:[]u8,k:u32,v:u32) {
+  if k==3 {if v<0x80000000{wg_dec(s,out,v);}else if v==0x80000000{wg_put(s,out,"(-2147483647 - 1)");}else{wg_put(s,out,"(-");wg_dec(s,out,cast(u32)(4294967296-cast(int)v));wg_put(s,out,")");}return;}
+  if k==2&&(v&0x7F800000)==0x7F800000 {wg_put(s,out,"as_type<float>(0x");wg_hex(s,out,v,8);wg_put(s,out,"u)");return;}
+  wg_const(s,names,w,out,k,v);
+}
+ms_expr_from :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,at:int) {s[0].at=at;ms_expr(s,tree,names,w,out);}
+ms_skip :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {s[0].mute+=1;ms_expr(s,tree,names,w,out);s[0].mute-=1;}
+ms_call :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,p:int,n:int) {
+  if n>WG_ARGS{wg_fail(s,3);return;}ids:[WG_ARGS]u32;sig:=wg_sig(w,p);at:=s[0].at;
+  for i:0..<n {ids[i]=WG_NONE;
+    if wg_resource(s,tree,w,tree[sig+2+i]) {
+      if wg_next(s,tree)!=18{wg_fail(s,4);return;}l:=cast(int)wg_next(s,tree);if !wg_has_local(s,tree,w,l){return;}a:=w[WG_W_ALIAS+l];
+      ids[i]=ifx a>0 then WG_PTR|wg_local_type(tree,w,s[0].proc,cast(int)a-1) else wg_bound(s,tree,w,l);
+    }else{ms_skip(s,tree,names,w,out);}
+  }
+  variant:=wg_variant(s,tree,ms_portable(w),p,ids[0..<n]);if variant<0{return;}wg_variant_name(s,names,w,out,variant);wg_put(s,out,"(cx");s[0].at=at;
+  for i:0..<n {if (ids[i]>>31)==0{s[0].at+=2;continue;}wg_put(s,out,", ");
+    if ids[i]==WG_NONE{ms_expr(s,tree,names,w,out);continue;}
+    s[0].at+=1;l:=cast(int)wg_next(s,tree);a:=w[WG_W_ALIAS+l];
+    if a>0{wg_put(s,out,"&");wg_local(s,names,out,cast(int)a-1,false);}else{wg_local(s,names,out,l,true);}
+  }wg_put(s,out,")");
+}
+ms_count :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {
+  if wg_next(s,tree)!=40{wg_fail(s,4);return;}i:=cast(int)wg_next(s,tree);if !wg_has_local(s,tree,w,i){return;}
+  a:=w[WG_W_ALIAS+i];if a>0{wg_dec(s,out,wg_part(tree,w,wg_local_type(tree,w,s[0].proc,cast(int)a-1),2));return;}
+  id:=wg_bound(s,tree,w,i);if id==WG_NONE{wg_fail(s,4);return;}
+  if (id>>31)!=0{wg_dec(s,out,wg_part(tree,w,id-WG_PTR,2));return;}
+  meta:=ms_find(w,id);if meta<0||w[ms_meta(meta,2)]!=9{wg_fail(s,7);return;}
+  wg_put(s,out,"int(cx.coax_lengths[");wg_dec(s,out,w[ms_meta(meta,3)]);wg_put(s,out,"])");
+}
+ms_gpu :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {
+  g:=cast(int)wg_next(s,tree);t:=wg_next(s,tree);n:=cast(int)wg_next(s,tree);
+  if g<1||g>18||n!=WG_GPU_ARGS[g]{wg_fail(s,1);return;}
+  if g>=15&&s[0].tree_version!=3{wg_fail(s,1);return;}
+  if (g>=15&&g<=17&&t!=2)||(g==18&&t!=0){wg_fail(s,1);return;}
+  if g==1||g==18{wg_put(s,out,"discard_fragment()");return;}
+  a:[8]int;for i:0..<n{a[i]=s[0].at;ms_skip(s,tree,names,w,out);}
+  if g>=12 {wg_put(s,out,ifx g==12||g==15 then "dfdx(" else ifx g==13||g==16 then "dfdy(" else "fwidth(");ms_expr_from(s,tree,names,w,out,a[0]);wg_put(s,out,")");return;}
+  wg_put(s,out,"(");ms_expr_from(s,tree,names,w,out,a[0]);wg_put(s,out,")");
+  if g==10||g==11{wg_put(s,out,ifx g==10 then ".get_width()" else ".get_height()");return;}
+  if g==7||g==8{
+    wg_put(s,out,".read(uint2(");ms_expr_from(s,tree,names,w,out,a[1]);wg_put(s,out,", ");ms_expr_from(s,tree,names,w,out,a[2]);
+    wg_put(s,out,"), uint(");ms_expr_from(s,tree,names,w,out,a[3]);wg_put(s,out,"))");return;
+  }
+  wg_put(s,out,ifx g==9 then ".sample_compare(" else ".sample(");
+  ms_expr_from(s,tree,names,w,out,a[1]);wg_put(s,out,", ");ms_expr_from(s,tree,names,w,out,a[2]);
+  if g==4||g==5||g==6{wg_put(s,out,", uint(");ms_expr_from(s,tree,names,w,out,a[3]);wg_put(s,out,")");}
+  if g==9{wg_put(s,out,", ");ms_expr_from(s,tree,names,w,out,a[3]);wg_put(s,out,", level(0.0f)");}
+  if g==3||g==5||g==6{wg_put(s,out,ifx g==6 then ", bias(" else ", level(");ms_expr_from(s,tree,names,w,out,a[n-1]);wg_put(s,out,")");}
+  wg_put(s,out,")");
+}
+ms_expr :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {
+  if !s[0].ok{return;}k:=wg_next(s,tree);
+  if k==16 {t:=wg_next(s,tree);v:=wg_next(s,tree);kind:=wg_scalar(s,tree,w,t);
+    if kind==5 {hi:=wg_next(s,tree);if hi!=(ifx v>=0x80000000 then cast(u32)0xFFFFFFFF else cast(u32)0){wg_fail(s,4);return;}kind=3;}
+    ms_const(s,names,w,out,kind,v);return;
+  }
+  if k==17{ms_zero(s,tree,w,out,wg_next(s,tree));return;}
+  if k==18{ms_ref_local(s,tree,names,w,out,cast(int)wg_next(s,tree));return;}
+  if k==27{ms_place(s,tree,names,w,out,false);return;}
+  if k==19{op:=cast(int)wg_next(s,tree);if op<1||op>18{wg_fail(s,1);return;}
+    wg_put(s,out,"(");ms_expr(s,tree,names,w,out);wg_put(s,out,WG_OPS[op]);if op>=17{wg_put(s,out,"uint(");}
+    ms_expr(s,tree,names,w,out);if op>=17{wg_put(s,out,")");}wg_put(s,out,")");return;
+  }
+  if k==20||k==21{wg_put(s,out,ifx k==20 then "(-" else "(!");ms_expr(s,tree,names,w,out);wg_put(s,out,")");return;}
+  if k==22{p:=cast(int)wg_next(s,tree);n:=cast(int)wg_next(s,tree);if p>=s[0].procs||n!=wg_params(tree,w,p){wg_fail(s,1);return;}
+    if wg_is_dot(tree,names,w,p){wg_put(s,out,"dot(");ms_expr(s,tree,names,w,out);wg_put(s,out,", ");ms_expr(s,tree,names,w,out);wg_put(s,out,")");return;}
+    ms_call(s,tree,names,w,out,p,n);return;
+  }
+  if k==23{f:=cast(int)wg_next(s,tree);n:=cast(int)wg_next(s,tree);if f<1||f>9||n!=(ifx f==9 then 2 else 1){wg_fail(s,1);return;}
+    if f<9{wg_put(s,out,WG_MATH[f]);ms_expr(s,tree,names,w,out);wg_put(s,out,")");return;}
+    x:=s[0].at;ms_skip(s,tree,names,w,out);y:=s[0].at;op:=wg_next(s,tree);s[0].at+=1;bits:=wg_next(s,tree);
+    if op==16&&bits==0x40000000 {wg_put(s,out,"(");ms_expr_from(s,tree,names,w,out,x);wg_put(s,out," * ");ms_expr_from(s,tree,names,w,out,x);wg_put(s,out,")");s[0].at=y+3;return;}
+    wg_put(s,out,"coax_metal_pow(");ms_expr_from(s,tree,names,w,out,x);wg_put(s,out,", ");ms_expr(s,tree,names,w,out);wg_put(s,out,")");return;
+  }
+  if k==24{wg_put(s,out,"(");ms_expr(s,tree,names,w,out);wg_put(s,out," ? ");ms_expr(s,tree,names,w,out);wg_put(s,out," : ");ms_expr(s,tree,names,w,out);wg_put(s,out,")");return;}
+  if k==25{wg_put(s,out,"(");ms_expr(s,tree,names,w,out);wg_put(s,out,").");wg_field(s,out,wg_next(s,tree));return;}
+  if k==31{t:=wg_next(s,tree);n:=cast(int)wg_next(s,tree);if cast(int)t>=s[0].types{wg_fail(s,1);return;}aggregate:=wg_tk(tree,w,t)==8||(wg_tk(tree,w,t)==7&&wg_vector(tree,w,t)==0);
+    ms_type(s,tree,w,out,t);wg_put(s,out,ifx aggregate then "{" else "(");
+    for i:0..<n{if i>0{wg_put(s,out,", ");}ms_expr(s,tree,names,w,out);}wg_put(s,out,ifx aggregate then "}" else ")");return;
+  }
+  if k==32{ms_count(s,tree,names,w,out);return;}
+  if k==33{ms_gpu(s,tree,names,w,out);return;}
+  if k==29||k==30{t:=wg_next(s,tree);if wg_scalar(s,tree,w,t)==1{wg_fail(s,4);return;}
+    if k==30{wg_put(s,out,"as_type<");}ms_type(s,tree,w,out,t);wg_put(s,out,ifx k==30 then ">(" else "(");ms_expr(s,tree,names,w,out);wg_put(s,out,")");return;
+  }
+  wg_fail(s,4);
+}
+ms_stmt :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {
+  if !s[0].ok{return;}k:=wg_next(s,tree);
+  if k==1 {n:=cast(int)wg_next(s,tree);wg_tab(s,out);wg_put(s,out,"{\n");s[0].indent+=1;for i:0..<n{ms_stmt(s,tree,names,w,out);}s[0].indent-=1;wg_tab(s,out);wg_put(s,out,"}\n");return;}
+  if k==2{wg_tab(s,out);ms_expr(s,tree,names,w,out);wg_put(s,out,";\n");return;}
+  if k==3{wg_tab(s,out);ms_place(s,tree,names,w,out,true);wg_put(s,out," = ");ms_expr(s,tree,names,w,out);wg_put(s,out,";\n");return;}
+  if k==4{wg_tab(s,out);wg_put(s,out,"return ");ms_expr(s,tree,names,w,out);wg_put(s,out,";\n");return;}
+  if k==5{wg_tab(s,out);wg_put(s,out,"return;\n");return;}
+  if k==6 {otherwise:=wg_next(s,tree)!=0;wg_tab(s,out);wg_put(s,out,"if (");ms_expr(s,tree,names,w,out);wg_put(s,out,")\n");ms_body(s,tree,names,w,out);
+    if otherwise{wg_tab(s,out);wg_put(s,out,"else\n");ms_body(s,tree,names,w,out);}return;}
+  if k==7{wg_tab(s,out);wg_put(s,out,"while (");ms_expr(s,tree,names,w,out);wg_put(s,out,")\n");ms_body(s,tree,names,w,out);return;}
+  if k==8{i:=cast(int)wg_next(s,tree);if !wg_has_local(s,tree,w,i){return;}t:=wg_local_type(tree,w,s[0].proc,i);kind:=wg_scalar(s,tree,w,t);if kind<3{wg_fail(s,4);return;}
+    wg_tab(s,out);wg_put(s,out,"{\n");s[0].indent+=1;
+    wg_tab(s,out);wg_put(s,out,"const ");ms_type(s,tree,w,out,t);wg_put(s,out," coax_from = ");ms_expr(s,tree,names,w,out);wg_put(s,out,";\n");
+    wg_tab(s,out);wg_put(s,out,"const ");ms_type(s,tree,w,out,t);wg_put(s,out," coax_to = ");ms_expr(s,tree,names,w,out);wg_put(s,out,";\n");
+    wg_tab(s,out);wg_put(s,out,"for (");wg_local(s,names,out,i,false);wg_put(s,out," = coax_from; ");wg_local(s,names,out,i,false);wg_put(s,out," < coax_to; ++");wg_local(s,names,out,i,false);wg_put(s,out,")\n");
+    ms_body(s,tree,names,w,out);s[0].indent-=1;wg_tab(s,out);wg_put(s,out,"}\n");return;
+  }
+  if k==9{wg_tab(s,out);wg_put(s,out,"break;\n");return;}
+  if k==10{wg_tab(s,out);wg_put(s,out,"continue;\n");return;}
+  if k==11{v:=cast(int)wg_next(s,tree);a:=cast(int)wg_next(s,tree);if wg_has_local(s,tree,w,v)&&wg_has_local(s,tree,w,a){w[WG_W_ALIAS+v]=cast(u32)a+1;}return;}
+  wg_fail(s,1);
+}
+ms_body :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {
+  if wg_peek(s,tree)==1{ms_stmt(s,tree,names,w,out);return;}
+  wg_tab(s,out);wg_put(s,out,"{\n");s[0].indent+=1;ms_stmt(s,tree,names,w,out);s[0].indent-=1;wg_tab(s,out);wg_put(s,out,"}\n");
+}
+ms_signature :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,p:int,variant:int) {
+  ms_type(s,tree,w,out,wg_ret(tree,w,p));wg_put(s,out," ");wg_variant_name(s,names,w,out,variant);wg_put(s,out,"(CoaxResources cx");sig:=wg_sig(w,p);
+  for i:0..<wg_params(tree,w,p) {t:=tree[sig+2+i];resource:=wg_resource(s,tree,w,t);if resource&&(wg_bound(s,tree,w,i)>>31)==0{continue;}
+    wg_put(s,out,", ");if resource{wg_put(s,out,"thread ");ms_type(s,tree,w,out,wg_bound(s,tree,w,i)-WG_PTR);wg_put(s,out,"*");}else{ms_type(s,tree,w,out,t);}
+    wg_put(s,out," ");wg_local(s,names,out,i,true);
+  }wg_put(s,out,")");
+}
+ms_proc :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,p:int,variant:int,declaration:bool) {
+  s[0].proc=p;s[0].var=variant;np:=wg_params(tree,w,p);ret:=wg_ret(tree,w,p);at:=wg_locals_at(tree,w,p);nl:=cast(int)tree[at];
+  if nl>WG_LOCALS{wg_fail(s,3);return;}for i:0..<nl+1{if wg_word(wg_line(names,p),i).count==0{wg_fail(s,6);return;}}
+  ms_signature(s,tree,names,w,out,p,variant);if declaration{wg_put(s,out,";\n");return;}
+  wg_put(s,out," {\n");s[0].indent=1;
+  for i:0..<nl{w[WG_W_ALIAS+i]=0;t:=tree[at+1+i];if wg_resource(s,tree,w,t){continue;}
+    wg_tab(s,out);ms_type(s,tree,w,out,t);wg_put(s,out," ");wg_local(s,names,out,i,false);
+    if i<np{wg_put(s,out," = ");wg_local(s,names,out,i,true);}else{wg_put(s,out,"{}");}wg_put(s,out,";\n");
+  }
+  size:=cast(int)tree[at+1+nl];body:=at+2+nl;s[0].at=body;if wg_next(s,tree)!=1{wg_fail(s,1);return;}
+  n:=cast(int)wg_next(s,tree);returns:=false;for i:0..<n{returns=wg_peek(s,tree)==4;ms_stmt(s,tree,names,w,out);}
+  if s[0].at!=body+size{wg_fail(s,1);return;}
+  if ret!=WG_VOID&&!returns{wg_put(s,out,"  return ");ms_zero(s,tree,w,out,ret);wg_put(s,out,";\n");}wg_put(s,out,"}\n");
+}
+ms_convert :: (s:[]WgState,tree:[]u32,w:[]u32,out:[]u8,prefix:string,t:u32,from:string) {
+  wg_put(s,out,prefix);wg_dec(s,out,t);wg_put(s,out,"{");
+  for i:0..<cast(int)wg_part(tree,w,t,1){if i>0{wg_put(s,out,", ");}wg_put(s,out,from);wg_put(s,out,".");wg_field(s,out,cast(u32)i);}wg_put(s,out,"}");
+}
+ms_wrapper :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,e:int) {
+  stage:=tree[wg_entry_at(w,e)];p:=wg_entry_proc(tree,w,e);sig:=wg_sig(w,p);ret:=wg_ret(tree,w,p);plain:=wg_plain(s,tree,w,p);vec:=wg_vector(tree,w,ret)==4;
+  variant:=wg_entry_variant(s,tree,ms_portable(w),e);i0:=tree[sig+2];
+  wg_put(s,out,ifx stage==0 then "vertex " else "fragment ");
+  if ret==0||vec{ms_type(s,tree,w,out,ret);}else{wg_put(s,out,ifx stage==0 then "coax_io_" else "coax_out_");wg_dec(s,out,ret);}
+  wg_put(s,out," ");wg_put(s,out,wg_word(wg_line(names,p),0));wg_put(s,out,"(");
+  if stage==0{wg_put(s,out,"uint coax_vid [[vertex_id]], uint coax_iid [[instance_id]]");
+    if plain==3{wg_put(s,out,", coax_in_");wg_dec(s,out,tree[sig+4]);wg_put(s,out," coax_in [[stage_in]]");}
+  }else{
+    if wg_vector(tree,w,i0)==4{wg_put(s,out,"float4 coax_pos [[position]]");}else{wg_put(s,out,"coax_io_");wg_dec(s,out,i0);wg_put(s,out," coax_in [[stage_in]]");}
+    if plain==2{wg_put(s,out,", bool coax_front [[front_facing]]");}
+  }
+  wg_put(s,out,", CoaxResources cx) {\n  ");if ret!=0{wg_put(s,out,"auto coax_r = ");}
+  wg_variant_name(s,names,w,out,variant);wg_put(s,out,"(cx, ");
+  if stage==0{wg_put(s,out,"coax_vid, coax_iid");if plain==3{wg_put(s,out,", ");ms_convert(s,tree,w,out,"coax_t",tree[sig+4],"coax_in");}}
+  else{if wg_vector(tree,w,i0)==4{wg_put(s,out,"coax_pos");}else{ms_convert(s,tree,w,out,"coax_t",i0,"coax_in");}if plain==2{wg_put(s,out,", coax_front");}}
+  wg_put(s,out,");\n");if ret!=0{wg_put(s,out,"  return ");if vec{wg_put(s,out,"coax_r");}else{ms_convert(s,tree,w,out,ifx stage==0 then "coax_io_" else "coax_out_",ret,"coax_r");}wg_put(s,out,";\n");}wg_put(s,out,"}\n");
+}
+ms_prepare :: (s:[]WgState,tree:[]u32,w:[]u32)->int {
+  if w.count<MS_WORDS{return -2;}head:=wg_head(s,tree,ms_portable(w));if head!=0{return -head;}s[0].whole=true;
+  // The portable tree fixes its first six type ids to the scalar kinds.
+  for t:0..<6{if wg_tk(tree,w,cast(u32)t)!=cast(u32)t{return -1;}}
+  entries:=cast(int)wg_next(s,tree);if entries<1{return -1;}if entries>WG_ENTRIES{return -3;}
+  for e:0..<entries{w[WG_W_ENTRY+e]=cast(u32)s[0].at;stage:=wg_next(s,tree);p:=cast(int)wg_next(s,tree);
+    if p>=s[0].procs{return -1;}if stage>1{return -5;}s[0].at+=wg_params(tree,w,p);}
+  if !s[0].ok||s[0].at!=tree.count{return -1;}
+  for t:0..<s[0].types{w[WG_W_IO+t]=0;}for e:0..<entries{if !wg_shape(s,tree,w,e){return -8;}}
+  w[WG_W_WORDS]=0;w[WG_W_WORDS+1]=0;w[WG_W_WORDS+2]=0;w[WG_W_WORDS+3]=0;ms_collect(s,tree,w,entries);
+  return ifx s[0].ok then entries else -cast(int)s[0].reason;
+}
+// Discovery leaves a single muted scope for its caller to end before writing.
+ms_discover :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,entries:int) {
+  for e:0..<entries{variant:=wg_entry_variant(s,tree,ms_portable(w),e);}
+  s[0].mute=1;r:=0;while r<s[0].pool&&s[0].ok{p:=cast(int)w[WG_W_POOL+r];ms_proc(s,tree,names,w,out,p,r,false);r+=2+wg_params(tree,w,p);}
+}
+MS_emit :: (tree:[]u32,names:string,out:[]u8,work:[]u32)->int #export_c {
+  st:[1]WgState;s:=st[..];w:=work;entries:=ms_prepare(s,tree,w);if entries<1{return entries;}
+  // Discover all specialized helper variants before emitting C++ prototypes.
+  ms_discover(s,tree,names,w,out,entries);s[0].mute=0;
+  if !s[0].ok{return -cast(int)s[0].reason;}
+  wg_put(s,out,"// Coax Metal graphics; compile as Metal 2.3 or later, without fast math.\n#include <metal_stdlib>\nusing namespace metal;\n");
+  for t:6..<s[0].types{if wg_tk(tree,w,cast(u32)t)!=7||wg_vector(tree,w,cast(u32)t)!=0{continue;}io:=w[WG_W_IO+t];
+    ms_struct(s,tree,w,out,cast(u32)t,0);for bit:[3]int.[WG_IN,WG_IO,WG_OUT]{if (io&cast(u32)bit)!=0{ms_struct(s,tree,w,out,cast(u32)t,bit);}}}
+  ms_resources(s,tree,names,w,out);
+  // Preserve C/Coax pow's zero and negative-base cases, exactly as WGSL's writer.
+  wg_put(s,out,"inline float coax_metal_pow(float x, float y) {\n  if (y == 0.0f) return 1.0f;\n  if (x == 0.0f) return y > 0.0f ? 0.0f : as_type<float>(0x7f800000u);\n  float r = pow(abs(x), y);\n  if (!(x < 0.0f)) return r;\n  if (floor(y) != y) return as_type<float>(0x7fc00000u);\n  return fract(y * 0.5f) != 0.0f ? -r : r;\n}\n");
+  for declaration:0..<2{r:=0;while r<s[0].pool&&s[0].ok{p:=cast(int)w[WG_W_POOL+r];ms_proc(s,tree,names,w,out,p,r,declaration==0);r+=2+wg_params(tree,w,p);}}
+  for e:0..<entries{ms_wrapper(s,tree,names,w,out,e);}
+  return ifx s[0].ok then s[0].n else -cast(int)s[0].reason;
+}
+MS_reflection :: (tree:[]u32,names:string,out:[]u8,work:[]u32)->int #export_c {
+  st:[1]WgState;s:=st[..];w:=work;entries:=ms_prepare(s,tree,w);if entries<1{return entries;}
+  wg_put(s,out,"metal-reflection 1\nlengths-buffer 29\nvertex-buffer 30\n");
+  for i:0..<cast(int)w[WG_W_WORDS]{t:=w[ms_meta(i,1)];kind:=w[ms_meta(i,2)];element:=wg_part(tree,w,t,1);
+    wg_put(s,out,"resource ");wg_put(s,out,ifx kind==9 then "buffer " else ifx kind==10 then "texture " else "sampler ");wg_dec(s,out,w[ms_meta(i,3)]);wg_put(s,out," ");
+    wg_dec(s,out,ifx kind==9 then cast(u32)0 else element);wg_put(s,out," ");wg_dec(s,out,ifx kind==9 then cast(u32)wg_wsize(tree,w,element) else cast(u32)0);wg_put(s,out," ");
+    wg_dec(s,out,w[ms_meta(i,4)]);wg_put(s,out," ");wg_put(s,out,wg_word(wg_binding(s,names,w[ms_meta(i,0)]),0));wg_put(s,out,"\n");
+  }
+  for e:0..<entries{stage:=tree[wg_entry_at(w,e)];p:=wg_entry_proc(tree,w,e);name:=wg_word(wg_line(names,p),0);
+    wg_put(s,out,"entry ");wg_put(s,out,ifx stage==0 then "vertex " else "fragment ");wg_put(s,out,name);wg_put(s,out,"\n");
+    if stage!=0||wg_plain(s,tree,w,p)!=3{continue;}t:=tree[wg_sig(w,p)+4];n:=cast(int)wg_part(tree,w,t,1);
+    for i:0..<n{f:=wg_part(tree,w,t,2+2*i);lanes:=wg_vector(tree,w,f);scalar:=ifx lanes!=0 then cast(u32)2 else wg_tk(tree,w,f);
+      if scalar!=2&&scalar!=3&&scalar!=4&&scalar!=5{return -4;}if scalar==5{scalar=3;}
+      wg_put(s,out,"attribute ");wg_put(s,out,name);wg_put(s,out," ");wg_dec(s,out,cast(u32)i);wg_put(s,out," ");wg_dec(s,out,scalar);wg_put(s,out," ");wg_dec(s,out,cast(u32)(ifx lanes!=0 then lanes else 1));wg_put(s,out," ");
+      wg_dec(s,out,wg_part(tree,w,t,3+2*i)&0x3FFFFFFF);wg_put(s,out," ");wg_dec(s,out,wg_part(tree,w,t,2+2*n));wg_put(s,out,"\n");
+    }
+  }
+  return ifx s[0].ok then s[0].n else -cast(int)s[0].reason;
+}
+// Unit-fixture decimal words are trusted literals; the actual API admits the tree.
+ms_try :: (text:string,names:string,out:[]u8)->int {tree:[8192]u32;n:=wg_parse(text,tree[..]);w:[MS_WORDS]u32;return MS_emit(tree[0..<n],names,out,w[..]);}
+ms_text :: (text:string,names:string,out:[]u8)->string {n:=ms_try(text,names,out);return cast(string)out[0..<n];}
+#test "Metal graphics refuses malformed trees, small output and absent names" {
+  out:[32768]u8;#assert ms_try("2 6 0 1 2 3 4 5 0 0","",out[..])<0;
+  #assert ms_try(WG_SAMPLE_MOD,"",out[..])<0 && ms_try(WG_SAMPLE_MOD,WG_NAMES_MOD,out[0..<12])==-2;
+}
+#test "Metal reflection keeps separate resource namespaces and the vertex stream's actual stride" {
+  tree:[8192]u32;n:=wg_parse(WG_SAMPLE_MOD,tree[..]);work:[MS_WORDS]u32;out:[32768]u8;
+  k:=MS_reflection(tree[0..<n],WG_NAMES_MOD,out[..],work[..]);#assert k>0;text:=cast(string)out[0..<k];
+  #assert wg_has(text,"metal-reflection 1\nlengths-buffer 29\nvertex-buffer 30\n");
+  #assert wg_has(text,"resource buffer 0 0 4 3 u\n") && wg_has(text,"resource texture 0 ") && wg_has(text,"resource sampler 0 ");
+  #assert wg_has(text,"attribute vs 0 2 4 0 24\n") && wg_has(text,"attribute vs 1 2 2 16 24\n");
+  #assert MS_emit(tree[0..<n],WG_NAMES_MOD,out[..],work[0..<MS_WORDS-1])==-2;
+  #assert MS_reflection(tree[0..<n],WG_NAMES_MOD,out[0..<1],work[..])==-2;
+  #assert MS_work_words()==13321 && MS_out_bytes()==8388608;
+  #assert ms_meta(0,0)==12361&&ms_meta(1,4)==12370&&ms_meta(191,4)==13320;
+  #assert MS_reason_text(0)=="" && MS_reason_text(10)=="Metal resource slot limit exceeded" && MS_reason_text(11)=="unknown Metal emission failure";
+}

@@ -1,0 +1,58 @@
+wgsl everglade.wgsl
+size 320 180
+let all 217
+let scene 216
+let blades 13824
+let sparks 16
+let hud 5544
+buffer u u.bin
+buffer vertices vertices.bin
+buffer heights s0.bin
+buffer objects s1.bin
+buffer pose s2.bin
+buffer water_nodes s3.bin
+index index.bin
+draws draws.bin $all
+layers sheets layers.bin 512 512 38 10
+sampler sheet linear repeat mip none
+depth shadow_map 2048 2048
+sampler shadow_cmp linear clamp flat less
+pass shadow_fs.spv shadow_vs shadow_fs 0 shadow_map 2 2 draws:0:$scene
+target light
+target aux
+depth scene_depth frame
+target water_scene
+depth water_scene_depth frame
+pass bg_fs.spv bg_vs bg_fs light,aux scene_depth 0 0 3 always nowrite
+pass grass_fs.spv grass_vs grass_fs light,aux scene_depth 0 0 3:$blades keep
+pass scene_fs.spv scene_vs scene_fs light,aux scene_depth 0 0 draws:0:$scene keep
+copy light water_scene
+copy scene_depth water_scene_depth
+each draws:$scene:$all
+pass water_transmit_fs.spv water_vs water_transmit_fs light,aux scene_depth 0 0 draws:each keep nowrite blend=mul alpha=keep mask=1
+pass water_emit_fs.spv water_vs water_emit_fs light,aux scene_depth 0 0 draws:each keep nowrite blend=add alpha=keep mask=1
+end
+wgsl everglade-fx.wgsl
+buffer puffs puffs.bin
+pass particle_over_fs.spv particle_over_vs particle_over_fs light,aux scene_depth 0 0 6:$sparks keep nowrite blend=over alpha=under mask=1 bind=particle_depth:water_scene_depth
+pass particle_fs.spv particle_vs particle_fs light,aux scene_depth 0 0 6:$sparks keep nowrite blend=add alpha=add mask=1 bind=particle_depth:water_scene_depth
+wgsl everglade.wgsl
+target q0 /4
+target q1 /4
+target e0 /8
+target e1 /8
+sampler bloom_lin linear clamp flat none
+sampler post_lin linear clamp flat none
+floats step0 0 0 0 4
+pass bloom_fs.spv bg_vs bloom_fs q0 - 0 0 3 bind=bloom_src:light bind=bloom_step:step0
+floats step1 1 0 1 1
+pass bloom_fs.spv bg_vs bloom_fs q1 - 0 0 3 bind=bloom_src:q0 bind=bloom_step:step1
+floats step2 0 1 1 1
+pass bloom_fs.spv bg_vs bloom_fs q0 - 0 0 3 bind=bloom_src:q1 bind=bloom_step:step2
+floats step3 1 0 1 2
+pass bloom_fs.spv bg_vs bloom_fs e1 - 0 0 3 bind=bloom_src:q0 bind=bloom_step:step3
+floats step4 0 1 1 1
+pass bloom_fs.spv bg_vs bloom_fs e0 - 0 0 3 bind=bloom_src:e1 bind=bloom_step:step4
+pass post_fs.spv bg_vs post_fs 1 - 0 0 3 bind=post_light:light bind=post_quarter:q0 bind=post_eighth:e0 bind=post_aux:aux bind=post_depth:scene_depth
+buffer hud hud.bin
+pass fx_fs.spv fx_vs fx_fs 1 - 0 0 $hud keep blend=max alpha=max vertices=hud:16

@@ -460,9 +460,10 @@ static std::vector<std::string> wgsl_list(const std::string &list) {
 }
 #endif
 bool emit_wgsl_module(const File *file, const std::string &vertices, const std::string &fragments, const std::string &bindings,
-                      const std::string &strip, bool tree_text, std::string *out) {
+                      const std::string &strip, bool tree_text, std::string *out, bool metal = false, std::string *report = nullptr) {
 #ifdef COAX_BOOTSTRAP_IMPORTER
   (void)file; (void)vertices; (void)fragments; (void)bindings; (void)strip; (void)tree_text; (void)out;
+  (void)metal; (void)report;
   fprintf(stderr, "coax: coax wgsl requires the final compiler, not build-only stage0\n");
   return false;
 #else
@@ -548,17 +549,24 @@ bool emit_wgsl_module(const File *file, const std::string &vertices, const std::
     *out += "\n" + names;
     return true;
   }
-  std::vector<uint8_t> text((size_t)WG_out_bytes());
-  std::vector<uint32_t> work((size_t)WG_work_words());
-  int64_t n = WG_module({tree.data(), (int64_t)tree.size()}, {names.data(), (int64_t)names.size()}, {text.data(), (int64_t)text.size()},
-                        {work.data(), (int64_t)work.size()});
+  std::vector<uint8_t> text((size_t)(metal ? MS_out_bytes() : WG_out_bytes()));
+  std::vector<uint32_t> work((size_t)(metal ? MS_work_words() : WG_work_words()));
+  int64_t n = metal ? MS_emit({tree.data(), (int64_t)tree.size()}, {names.data(), (int64_t)names.size()}, {text.data(), (int64_t)text.size()},
+                            {work.data(), (int64_t)work.size()})
+                    : WG_module({tree.data(), (int64_t)tree.size()}, {names.data(), (int64_t)names.size()}, {text.data(), (int64_t)text.size()},
+                                {work.data(), (int64_t)work.size()});
   if (n < 0) {
-    coax_string why = WG_reason_text((uint32_t)-n);
-    error_at(file->src, {1, 1, 0}, "E0706", std::string(why.data, (size_t)why.count) + " is outside the WGSL writer",
-             "coax wgsl writes modules as lib/compiler/wgsl.coax does");
+    coax_string why = metal ? MS_reason_text((uint32_t)-n) : WG_reason_text((uint32_t)-n);
+    error_at(file->src, {1, 1, 0}, metal ? "E0707" : "E0706", std::string(why.data, (size_t)why.count) + (metal ? " is outside the Metal graphics writer" : " is outside the WGSL writer"),
+             metal ? "coax metal --vertex/--fragment writes lib/compiler/metal-shader.coax's graphics subset" : "coax wgsl writes modules as lib/compiler/wgsl.coax does");
     return false;
   }
   out->assign((const char *)text.data(), (size_t)n);
+  if (metal && report) {
+    n = MS_reflection({tree.data(), (int64_t)tree.size()}, {names.data(), (int64_t)names.size()}, {text.data(), (int64_t)text.size()}, {work.data(), (int64_t)work.size()});
+    if (n < 0) { auto why = MS_reason_text((uint32_t)-n); error_at(file->src, {1,1,0}, "E0707", std::string(why.data,(size_t)why.count), "the Metal reflection must describe the complete admitted interface"); return false; }
+    report->assign((const char *)text.data(), (size_t)n);
+  }
   return true;
 #endif
 }

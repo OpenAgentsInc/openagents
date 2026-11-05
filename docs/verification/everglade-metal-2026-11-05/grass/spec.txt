@@ -1,0 +1,21 @@
+wgsl everglade.wgsl
+size 320 180
+let all 217
+let scene 216
+let blades 13824
+let sparks 16
+let hud 1356
+buffer u u.bin
+buffer vertices vertices.bin
+buffer heights s0.bin
+buffer objects s1.bin
+buffer pose s2.bin
+buffer water_nodes s3.bin
+index index.bin
+draws draws.bin $all
+layers sheets layers.bin 512 512 38 10
+sampler sheet linear repeat mip none
+depth shadow_map 2048 2048
+sampler shadow_cmp linear clamp flat less
+pass shadow_fs.spv shadow_vs shadow_fs 0 shadow_map 2 2 draws:0:$scene
+pass grass_fs.spv grass_vs grass_fs 2 own 0 0 3:$blades

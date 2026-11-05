@@ -1,0 +1,40 @@
+// Real SDK qualification of every Everglade graphics entry pair.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/proc.coax";
+MgPair :: struct {v:string;f:string;file:string;}
+MG_PAIRS :: [11]MgPair.[
+  MgPair.{v="eg_bg_vs",f="eg_bg_fs"},MgPair.{v="eg_shadow_vs",f="eg_shadow_fs"},
+  MgPair.{v="eg_scene_vs",f="eg_scene_fs"},MgPair.{v="eg_grass_vs",f="eg_grass_fs"},
+  MgPair.{v="eg_water_vs",f="eg_water_transmit_fs"},MgPair.{v="eg_water_vs",f="eg_water_emit_fs"},
+  MgPair.{v="eg_bg_vs",f="eg_bloom_fs"},MgPair.{v="eg_bg_vs",f="eg_post_fs"},MgPair.{v="eg_fx_vs",f="eg_fx_fs"},
+  MgPair.{v="egfx_particle_over_vs",f="egfx_particle_over_fs",file="verse/everglade/gpu-fx.coax"},
+  MgPair.{v="egfx_particle_vs",f="egfx_particle_fs",file="verse/everglade/gpu-fx.coax"}];
+#test "graphics qualification names every pass, including both water and particle layers" {
+  #assert MG_PAIRS.count==11 && mg_base(MG_PAIRS[4].f)=="water_transmit_fs" && mg_base(MG_PAIRS[5].f)=="water_emit_fs";
+  #assert mg_base(MG_PAIRS[9].f)=="particle_over_fs" && mg_base(MG_PAIRS[10].f)=="particle_fs";
+}
+mg_base :: (s:string)->string {return s[(ifx s.count>5&&s[0..<5]=="egfx_" then 5 else 3)..<s.count];}
+mg_suffix :: (a:string,b:string,buf:[]u8)->string {#assert a.count+b.count<=buf.count;for c,i:a{buf[i]=c;}for c,i:b{buf[a.count+i]=c;}return cast(string)buf[0..<a.count+b.count];}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..])||(args_count(a[..])!=2&&!(args_count(a[..])==4&&args_at(a[..],2)=="--compare")) {tool_errln("usage: metal-graphics.coax COMPILER ABS_OUT [--compare SDK_QUALIFIED_DIR]");return 2;}
+  compiler:=args_at(a[..],0);dir:=args_at(a[..],1);if !fs_mkdir(dir){return 1;}out:[65536]u8;err:[65536]u8;
+  for pair:MG_PAIRS {
+    p:[4][4096]u8;base:=fs_join(dir,mg_base(pair.f),p[0][..]);metal:=mg_suffix(base,".metal",p[1][..]);bindings:=mg_suffix(base,".metal.bindings",p[2][..]);air:=mg_suffix(base,".air",p[3][..]);
+    gen:=[9]string.[compiler,"metal",ifx pair.file=="" then "verse/everglade/gpu.coax" else pair.file,"--vertex",pair.v,"--fragment",pair.f,"-o",metal];
+    r:=proc_run(gen[..],60000,out[..],err[..]);if r.status!=0||r.cut||!fs_write(bindings,cast(string)err[0..<r.err_n]){tool_errln(cast(string)err[0..<r.err_n]);return 1;}
+    if args_count(a[..])==4 {
+      old_path:[4096]u8;old_base:[4096]u8;old_buf:[1048576]u8;new_buf:[1048576]u8;
+      prior:=fs_join(args_at(a[..],3),mg_base(pair.f),old_base[..]);
+      for suffix:[2]string.[".metal",".metal.bindings"]{
+        old:=fs_read(mg_suffix(prior,suffix,old_path[..]),old_buf[..]);fresh:=fs_read(ifx suffix==".metal" then metal else bindings,new_buf[..]);
+        if old<0||old!=fresh||cast(string)old_buf[0..<old]!=cast(string)new_buf[0..<fresh]{tool_errln("final emission differs from its qualified shader/reflection");return 1;}
+      }
+      print("Final compiler matches SDK/GPU-qualified bytes: % / %\n",pair.v,pair.f);continue;
+    }
+    sdk:=[10]string.["xcrun","metal","-std=metal3.2","-fno-fast-math","-Wno-unused-variable","-Wno-parentheses-equality","-c",metal,"-o",air];
+    s:=proc_run(sdk[..],120000,out[..],err[..]);log_path:[4096]u8;ok:=fs_write(mg_suffix(base,".sdk.log",log_path[..]),cast(string)err[0..<s.err_n]);
+    if s.status!=0||s.timed_out||!ok{tool_errln(cast(string)err[0..<s.err_n]);return 1;}print("Metal SDK accepts % / %\n",pair.v,pair.f);
+  }return 0;
+}

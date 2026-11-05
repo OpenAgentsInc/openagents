@@ -1,0 +1,3 @@
+pass-check: the browser drew the spec
+vk-passes: NVIDIA GeForce RTX 4080, 320x180, 2 passes, 2 targets, 432 draws; validation 0 errors, 0 warnings
+pass-check: 460800 values (2 targets of 320x180), 7 past the tolerance, 0 nonfinite; largest difference 0.0325927734375 at target 0, (133, 3) channel 0: golden 0.12011719 native 0.087524414

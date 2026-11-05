@@ -1,0 +1,1 @@
+pass-check: 460800 values (2 targets of 320x180), 0 past the tolerance, 0 nonfinite; largest difference 0.00048828125 at target 0, (131, 0) channel 0: golden 0.68652344 native 0.6870117

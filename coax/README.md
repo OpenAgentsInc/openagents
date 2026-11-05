@@ -68,7 +68,7 @@ coax/build.sh test
 | `coax header FILE [-o out.h]` | Write the C header for those procedures, with layout assertions |
 | `coax c FILE [--release] [--library [--header out.h]]` | Print the generated C, optionally as a library with its header |
 | `coax checks-c FILE [--verification-abi 1\|2] [--only SUBSTR] [-o checks.c]` | Emit original checked bodies and callees as verification-only C11: ordinary checks by default, finite properties with ABI 2; original metadata and no product main; emission does not execute checks |
-| `coax metal FILE` | Print the file's f32/bool procedures as Metal Shading Language |
+| `coax metal FILE [--vertex V --fragment F]` | Metal scalar functions, or complete graphics stages from the portable shader tree |
 | `coax cuda FILE` | Print the file's `#export_c` kernels, and what they call, as CUDA C for NVRTC |
 | `coax metal-compute FILE` | Print the same kernels as Metal Shading Language compute kernels for Apple GPUs |
 | `coax spirv FILE [--kernel NAME \| --fill A[,B,C,D] \| --stroke NAME] [-o out.spv]` | Write the file's f32/bool procedures as SPIR-V for Vulkan |
@@ -271,7 +271,17 @@ apps/openagents-ios/build.sh
 - `coax metal FILE` emits Metal Shading Language from the same checked tree:
   f32 and bool values, `if`/`else`, locals and acyclic calls. Loops, strings,
   integers, f64, `print` and `#foreign` calls are E0377. Native stages bind
-  textures and attributes; this is not a general GPU compiler.
+  textures and attributes in this scalar mode.
+- `coax metal FILE --vertex V --fragment F [-o shader.metal]` writes complete
+  graphics stages through `lib/compiler/metal-shader.coax`, using the same
+  portable checked tree as WGSL and SPIR-V. It supports the G4/G5 structs,
+  arrays, view specialization, integer operations, loops, textures, derivatives,
+  depth output and helper demotion. Compile as Metal 2.3 or later with fast
+  math disabled. Reflection version 1 goes to stderr: buffers, textures and
+  samplers have separate slot namespaces, with buffer 29 reserved for storage
+  element counts and vertex stream 30. `--tree` prints the serialized tree.
+  Refused graphics operations report E0707. See the
+  [Metal qualification and rerun command](../docs/verification/everglade-metal-2026-11-05/README.md).
 - `coax cuda FILE` emits CUDA C for NVRTC from the same checked tree (the
   compute subset, `lib/compiler/compute.coax`). Every `#export_c` procedure
   is a kernel: it returns nothing and its first parameter is its `int` work
