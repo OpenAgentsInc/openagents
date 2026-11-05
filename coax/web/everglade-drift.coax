@@ -108,11 +108,13 @@ DR_EXACT :: 0; DR_NEAR :: 1; DR_SHARE :: 2; DR_ANGLE :: 3; DR_PLACE :: 4; DR_ON 
 // read's resend more: a read lost on the way holds every read after it for TCP's resend (net-proxy.coax:
 // two round trips, 200 ms at least), so the room's word on it comes that much later, and no page can
 // draw it before it comes (#12890). The page draws those conditions as their row comes, unbuffered.
-// bystep: what your own presses move (your place, your camera, your lift), compared at the same page
-// step (C_ST) rather than the same wall moment: each press goes in at one step of both pages
-// (dr_both), and a page that stalls a moment under load draws every step after it that much later,
-// so the two pages' walks can stand 300 ms apart in wall time, step for step the same (#12778).
-DrProbe :: struct { name: string; col: int; how: int; tol: int; from: string; lossy: bool; bystep: bool; }
+// Each probe is compared on two clocks: the wall's, and the pages' steps (C_ST). Each press goes in at
+// one step of both pages (dr_both), and a page that stalls a moment draws every step after it that
+// much later: in a raid run the room page stalled 400 ms as the session began, and ran 380 ms behind
+// the offline page from then on, step for step the same. What your presses make (your place, camera,
+// lift, the abilities you cast, shown at your press) lines up by step; what the room decides (the
+// town) lines up by the wall. A frame holds when it matches on either clock (#12778).
+DrProbe :: struct { name: string; col: int; how: int; tol: int; from: string; lossy: bool; }
 // The verdict on one probe: whether it drifted, the first frame that did (wall ms and its step),
 // the values there and the smallest difference the window had.
 DrVerdict :: struct { drifted: bool; t: int; step: string; mine: int; other: int; by: int; frames: int; note: [200] u8; note_n: int; }
@@ -133,8 +135,7 @@ dr_tol :: (pr: DrProbe, a: int, b: int) -> int {
 }
 // Frame r of page a against page b's frames within `window` ms: the smallest difference, and whether
 // one was within the tolerance (closest b value in *other).
-dr_match :: (pr: DrProbe, a: [] DrPage, r: int, b: [] DrPage, window: int, lo: int, other: [] int) -> int {
-  tc := ifx pr.bystep then C_ST else C_T;
+dr_match :: (pr: DrProbe, a: [] DrPage, r: int, b: [] DrPage, window: int, lo: int, other: [] int, tc: int) -> int {
   t := dr_at(a, r, tc);
   va := dr_at(a, r, pr.col); va2 := ifx pr.how == DR_PLACE then dr_at(a, r, pr.col + ifx pr.col == C_X then 2 else 1) else 0;
   best := 1000000000; k := lo;
@@ -157,15 +158,16 @@ dr_match :: (pr: DrProbe, a: [] DrPage, r: int, b: [] DrPage, window: int, lo: i
 }
 // One way (a's frames against b's) of a probe, from wall ms t0 to t1.
 dr_way :: (pr: DrProbe, a: [] DrPage, b: [] DrPage, window: int, t0: int, t1: int, v: [] DrVerdict) {
-  run := 0; lo := 0;
+  run := 0; lo := 0; ls := 0;
   for r: 0..<a[0].n {
     t := dr_at(a, r, C_T);
     if t < t0 || t > t1 { continue; }
     if pr.col == C_COND && t >= a[0].hold_from && t <= a[0].hold_to { continue; }
-    tc := ifx pr.bystep then C_ST else C_T;
-    while lo < b[0].n && dr_at(b, lo, tc) < dr_at(a, r, tc) - window { lo += 1; }
-    other: [1] int;
-    by := dr_match(pr, a, r, b, window, lo, other[..]);
+    while lo < b[0].n && dr_at(b, lo, C_T) < t - window { lo += 1; }
+    while ls < b[0].n && dr_at(b, ls, C_ST) < dr_at(a, r, C_ST) - window { ls += 1; }
+    other: [1] int; other2: [1] int;
+    by := dr_match(pr, a, r, b, window, lo, other[..], C_T);
+    if by >= 0 { by2 := dr_match(pr, a, r, b, window, ls, other2[..], C_ST); if by2 < by { by = by2; other[0] = other2[0]; } }
     if by < 0 { run = 0; continue; }
     run += 1; v[0].frames += 1;
     if run == DR_RUN && !v[0].drifted {
@@ -489,9 +491,9 @@ dr_compare :: (a: [] DrPage, b: [] DrPage, rtt: int, rep: [] DrReport, worker: b
   t0 := dr_mark_t(a, "start"); t1 := dr_mark_t(a, "end");
   if t0 < 0 || t1 < 0 { t0 = 0; t1 = 1 << 50; }
   probes := [16] DrProbe.[
-    DrProbe.{name = "position (in your heading, since the step)", col = C_LX, how = DR_PLACE, tol = 350, bystep = true},
-    DrProbe.{name = "camera heading", col = C_YAW, how = DR_ANGLE, tol = 200, bystep = true},
-    DrProbe.{name = "lift height", col = C_LIFT, how = DR_NEAR, tol = 50, bystep = true},
+    DrProbe.{name = "position (in your heading, since the step)", col = C_LX, how = DR_PLACE, tol = 350},
+    DrProbe.{name = "camera heading", col = C_YAW, how = DR_ANGLE, tol = 200},
+    DrProbe.{name = "lift height", col = C_LIFT, how = DR_NEAR, tol = 50},
     DrProbe.{name = "Reverse Gravity shown", col = C_RG, how = DR_ON},
     DrProbe.{name = "Reverse Gravity particles", col = C_RG, how = DR_SHARE, tol = 12},
     DrProbe.{name = "Wind Wall shown", col = C_WW, how = DR_ON},
@@ -820,10 +822,15 @@ dr_raid :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] DrPag
   }
   // the LEVEL plate: LEVEL 1 to LEVEL 2 with the XP, never CAP 0; the bar a level's kit, changing with it
   {
+    // from the raid on: the paired session before it has levels off, and its plate may say LEVEL 1 over
+    // the whole bar; at the raid the plate's LEVEL 1 counts from the raid's mark
     v: [1] DrVerdict; l1 := -1; l2 := -1; cap0 := -1;
+    r0 := dr_mark_t(b, "raid");
+    at0 := dr_text_at(b, 0, r0);
+    if r0 >= 0 && at0.count >= 7 && at0[0..<7] == "LEVEL 1" { l1 = r0; }
     for k: 0..<b[0].texts_n {
       x := b[0].texts[k];
-      if x.which != 0 { continue; }
+      if x.which != 0 || x.t < r0 { continue; }
       s := cast(string) b[0].texts[k].text[0..<x.n];
       if s.count >= 7 && s[0..<7] == "LEVEL 1" && l1 < 0 { l1 = x.t; }
       if s.count >= 7 && s[0..<7] == "LEVEL 2" && l2 < 0 { l2 = x.t; }
@@ -839,7 +846,9 @@ dr_raid :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] DrPag
     dr_add(rep, "level up through XP", v[0]);
     w: [1] DrVerdict;
     full := dr_bar_at(a, dr_mark_t(a, "end"));
-    k1 := ifx l1 >= 0 then dr_bar_at(b, l1 + 1500) else 0; k2 := ifx l2 >= 0 then dr_bar_at(b, l2 + 1500) else 0;
+    // the room re-reads its control lines every 2 s: the level's bar once that has come, and before LEVEL 2
+    k1t := l1 + 3000; if l2 >= 0 && k1t > l2 - 200 { k1t = l2 - 200; }
+    k1 := ifx l1 >= 0 then dr_bar_at(b, k1t) else 0; k2 := ifx l2 >= 0 then dr_bar_at(b, l2 + 1500) else 0;
     if l1 >= 0 && (k1 == full || (l2 >= 0 && k2 == k1)) {
       w[0].drifted = true; w[0].t = l1; w[0].step = dr_step_at(b, l1); w[0].mine = full; w[0].other = k1;
       nq: [1] Buf; bput(nq[..], ifx k1 == full then "at LEVEL 1 the room's bar is the whole bar" else "the bar didn't change at LEVEL 2");
