@@ -61,3 +61,52 @@ Next exits are actual browser, Vulkan and Metal display-target readbacks
 through their normal interpreters, source/binary joins, recovery/ledger
 qualification and an explicit old-to-new visual comparison. No presentation
 policy is enabled by this checkpoint.
+
+## Actual display-target experiment
+
+The optional descriptor now has explicit diagnostic consumers in the normal
+browser and Vulkan SDK interpreters. Browser capture must request
+`coaxialRenderPresentation="float"`; the native frozen-frame tool must
+request `rgba8-present`. Neither ordinary path selects it. Metal consumes
+the same descriptor through its existing media entry, with no handwritten
+conversion kernel. Each executes 136 ordinary graph draws and one
+presentation draw. The following complete readbacks supersede the earlier
+CPU conversion as evidence about the actual display path:
+
+| Complete actual comparison | Channels beyond 0.002 | Nonfinite / masked | Existing live allowance |
+| --- | ---: | ---: | ---: |
+| Browser BGRA8–Metal BGRA8 | 5 / 230,400 | 0 / 0 | 2,000 |
+| Browser BGRA8–Vulkan RGBA8 | **2,611 / 230,400** | 0 / 0 | **FAIL: 2,000** |
+| Metal FP16 graph–Vulkan FP16 graph | 53 / 230,400 | 0 / 0 | 2,000 |
+
+The failed actual Vulkan display comparison is retained. It prevents
+promotion of this experiment. The exact same Vulkan FP16 graph, converted
+once by the existing CPU `rr_unorm8`, differs from the browser in 1,603
+channels; that CPU result differs from actual Vulkan presentation in 1,573
+one-step channels. Consequently the CPU conversion receipt cannot stand
+in for an actual GPU display receipt. Vulkan's float-to-UNORM rule permits
+either neighboring integer and recommends nearest rounding; it does not
+require round-to-nearest-even for every noninteger input. See the
+[Vulkan numeric conversion contract](https://docs.vulkan.org/spec/latest/chapters/fundamentals.html#fundamentals-fpfixedconv).
+No shader, format default, frame tolerance or live allowance was changed
+to make these results pass.
+
+The browser CPU/Wasm and native facade use the original admitted historical
+598 compiler, with original receipt verification before and after closed
+product overlays. The existing shader products keep their separate frozen
+qualification identity. Exact C/header/profile files, SDK copies, image,
+raw frames, payloads and original failed preparation attempts remain under
+`~/.openagents/aethyrforge/host-contract-12869/presentation-experiment/`.
+The actual Vulkan measurement retains complete downloaded SDK logs,
+validation enabled with zero errors/warnings, unchanged local/remote/SDK
+inputs and successful owned remote cleanup. Metal reports completed one,
+pending zero and closed ledger zero with API/GPU validation enabled.
+
+The first Vulkan execution refused its physical maximum extent of 32,768
+because the descriptor expected the portable 16,384 cap. The shared Coax
+device-limit intersection now handles that physical observation before
+viewport admission; it preserves refusal for nonpositive capacity. Its
+resource, host-policy and presentation root gates kill 194, 235 and 19
+mutants respectively, with zero survivors or equivalent annotations.
+The native measurement selector's 101-mutant policy gate also passes.
+This correction adds no compiler policy or display default.
