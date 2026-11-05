@@ -84,3 +84,18 @@ The earlier iteration records and withdrawn admission remain unchanged.
 No release/deploy command or production access was used. Lifecycle adapters,
 ordinary 8-bit presentation, Linux audio/output, interactive producer parity
 and the final desktop/default requirements remain open.
+
+## Complete SDK product preparation
+
+The shared native audio facade loads `psionic/lib/spectral.coax`; preparation
+now archives and overlays `psionic/` with the other separately pinned product
+roots. A fresh c224561457 worktree prepared from product commit 6a3c0e1338
+passes original compiler receipt verification before and after the overlay.
+Both compiler source digests remain
+`386db301954b87b24d07ea2d175643563eb437c613467d3adfd70f249071b598`.
+The archived, prepared and current spectral file hashes all equal
+`338e993e5334016c6c4fa09caab7af068ba8df5e7cc7c6b4e9e124e7cdf86e13`.
+The complete archive, copy logs and verification outputs are retained in
+`~/.openagents/aethyrforge/host-contract-12869/sdk-preparation-psionic/`.
+This adds product-source coverage without changing compiler sources,
+admission policy or the earlier retained capture's identity.

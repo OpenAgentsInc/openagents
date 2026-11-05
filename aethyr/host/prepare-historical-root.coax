@@ -20,9 +20,9 @@ tool_main :: ()->int #export_c {
   source:=[3]string.[compiler,"source-digest",root];if !hhr_run(source[..],record,"compiler-sources-before") {return 1;}
   historical:=[4]string.["git","-C",root,"rev-parse"];history:=[5]string.[historical[0],historical[1],historical[2],historical[3],"HEAD"];if !hhr_run(history[..],record,"historical-commit") {return 1;}
   product:=[6]string.["git","-C",repo,"rev-parse","--verify",commit];if !hhr_run(product[..],record,"product-commit") {return 1;}
-  pack:=[14]string.["git","-C",repo,"archive","--format=tar","--output",archive,commit,"aethyr","verse","apps","coax/web","coax/platform","coax/lib"];
+  pack:=[15]string.["git","-C",repo,"archive","--format=tar","--output",archive,commit,"aethyr","verse","apps","coax/web","coax/platform","coax/lib","psionic"];
   if !hhr_run(pack[..],record,"product-archive") || !fs_mkdir(snapshot) {return 1;}unpack:=[5]string.["tar","-xf",archive,"-C",snapshot];if !hhr_run(unpack[..],record,"product-extract") {return 1;}
-  for part:[5]string.["aethyr/","verse/","apps/","coax/web/","coax/platform/"] {
+  for part:[6]string.["aethyr/","verse/","apps/","coax/web/","coax/platform/","psionic/"] {
     from:=fs_join(snapshot,part,paths[6][..]);to:=fs_join(root,part,paths[7][..]);copy:=[5]string.["rsync","-a","--delete",from,to];label:[256]u8;o:[1]Jo;jo_start(o[..],label[..]);jo_put(o[..],"copy-");for c:part {if c!='/' {byte:=[1]u8.[c];jo_put(o[..],cast(string)byte[..]);}}if !hhr_run(copy[..],record,jo_text(o[..])) {return 1;}
   }
   from:=fs_join(snapshot,"coax/lib/",paths[6][..]);to:=fs_join(root,"coax/lib/",paths[7][..]);libraries:=[8]string.["rsync","-a","--delete","--exclude=compiler/","--exclude=proto/","--exclude=crypto/sha256-kernel.coax",from,to];if !hhr_run(libraries[..],record,"copy-product-libraries") || !hhr_run(verify[..],record,"original-receipt-after") || !hhr_run(source[..],record,"compiler-sources-after") {return 1;}
