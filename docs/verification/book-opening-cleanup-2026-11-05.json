@@ -235,5 +235,7 @@
     "compiler": "0.50.0 merged frontend",
     "budget": 2150000,
     "note": "Initial attempt stopped at 840-second command limit while limited to one worker. Completed bounded retry with COAX_JOBS=6, COAX_JOBS_LOAD=28; shared 19-worker budget unchanged."
-  }
+  },
+  "reconciled_main": "605d0293f885ca910119a4bbcb598cd888d64200",
+  "reconciliation": "Latest main changes do not intersect the merged world Coax closure or C face. Compiler provenance still verifies after rebase. All six books pass structure/navigation/source-listing checks; chapter 89 listing refreshed for the incoming room latency observation."
 }

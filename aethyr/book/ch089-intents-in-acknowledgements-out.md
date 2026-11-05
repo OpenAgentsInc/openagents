@@ -58,7 +58,7 @@ eg_heard_input :: (v: [] RmServer, k: int, seat: int, text: string) {
   st := v[0].eg[k].seat[seat..<seat + 1];
   seq := w.seq;
   n := st[0].q_n;
-  if seq <= st[0].ack || (n > 0 && seq <= st[0].q[n - 1].seq) { return; }   // old or repeated
+  if !life_room_takes(seq, st[0].ack, ifx n > 0 then st[0].q[n - 1].seq else st[0].ack) { return; }   // old or repeated (aethyr/session/lifecycle.coax)
   if n >= EG_INPUTS {
     for i: 1..<EG_INPUTS { st[0].q[i - 1] = st[0].q[i]; }
     n = EG_INPUTS - 1;
