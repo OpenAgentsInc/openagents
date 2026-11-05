@@ -1,0 +1,47 @@
+// Deterministic complete replies exercise the shared native/browser producer.
+#load "projection.coax";
+#load "../../apps/openagents-web/bitcoin-lab.coax";
+lab_check_pump :: (s:[]BitcoinLab)->bool {
+  r:=s[0].remote[..];bytes:[LAB_REPLY_MAX+4]u8;
+  for turn:0..<8 {any:=false;for slot:0..<2 {if r[0].effects[slot].wanted {any=true;route:=lr_route("GET",cast(string)r[0].effects[slot].path[0..<r[0].effects[slot].n]);o:[1]Jo;jo_start(o[..],bytes[4..<bytes.count]);code:=lj_fixture(route,o[..]);bytes[0]=cast(u8)(48+code/100);bytes[1]=cast(u8)(48+code/10%10);bytes[2]=cast(u8)(48+code%10);bytes[3]='\n';lr_dispatched(r,slot,slot);lr_receive(r,slot,cast(string)bytes[0..<o[0].n+4]);}}if !any {return r[0].model[0].ready;}}
+  return false;
+}
+#test "Lab explorer shares exact selection, breadcrumbs and strict restore with the Grid" #steps 100000000 {
+  s:[1]BitcoinLab;lab_start(s[..]);lab_do(s[..],221);#assert lab_check_pump(s[..]) && s[0].remote[0].wn==7;
+  b:=LAB_BLOCKS[lb_height(0,101)];lr_visit(s[0].remote[..],3,b.hash,0);#assert lab_check_pump(s[..]) && s[0].remote[0].has_block;
+  lab_do(s[..],2001);#assert lab_check_pump(s[..]) && s[0].remote[0].kind==4;tx:=lr_tx(s[0].remote[..],0);id:[64]u8;for i:0..<64 {id[i]=lr_text(s[0].remote[..],tx,"txid")[i];}
+  lab_do(s[..],231);#assert s[0].remote[0].table;lab_do(s[..],233);p:=lsp_read(lab_out(s[..]));#assert p.ok && p.kind==4 && p.table==1;
+  lab_do(s[..],231);#assert !s[0].remote[0].table && lr_text(s[0].remote[..],tx,"txid")==cast(string)id[..];
+  for i:0..<s[0].out_n {s[0].inbox[i]=s[0].outbox[i];}lab_hash(s[..],s[0].out_n);#assert lab_check_pump(s[..]) && s[0].remote[0].kind==4 && s[0].remote[0].table;
+  lab_do(s[..],226);#assert lab_check_pump(s[..]);lab_do(s[..],232);#assert lab_check_pump(s[..]) && s[0].remote[0].kind==4;
+  // A stale link must not silently restore the active occurrence in B.
+  p.cursor[0]='x';lr_restore(s[0].remote[..],p);#assert lab_check_pump(s[..]) && s[0].remote[0].notice==409 && s[0].remote[0].kind==2;
+  lab_do(s[..],220);#assert !s[0].remote[0].table && !s[0].remote[0].active;
+}
+#test "Lab explorer replay retains stale occurrences and changes geometry only after admission" #steps 100000000 {
+  s:[1]BitcoinLab;lab_start(s[..]);lab_do(s[..],221);#assert lab_check_pump(s[..]);b:=LAB_BLOCKS[lb_height(0,101)];lr_visit(s[0].remote[..],3,b.hash,0);#assert lab_check_pump(s[..]);lab_do(s[..],2001);#assert lab_check_pump(s[..]);
+  r:=s[0].remote[..];lab_do(s[..],201);#assert !r[0].model[0].ready && r[0].transition && r[0].replay[0].detached==0;
+  #assert lab_check_pump(s[..]) && r[0].kind==4 && r[0].replay[0].detached==2 && r[0].replay[0].attached==3;
+  #assert lr_text(r,lr_tx(r,0),"block")==b.hash && !jv_bool(lr_document(r),jv_get(lr_document(r),lr_tx(r,0),"active"));
+  lab_do(s[..],200);#assert lab_check_pump(s[..]) && r[0].replay[0].detached==3 && r[0].replay[0].attached==2;
+  lab_do(s[..],203);#assert r[0].replay[0].playing;lab_do(s[..],203);#assert !r[0].replay[0].playing;
+}
+#test "Lab table and graph fit desktop and touch budgets with complete metadata" #steps 100000000 {
+  s:[1]BitcoinLab;out:[LAB_VERTICES*12]f32;u:[LAB_UNIFORMS]f32;lab_start(s[..]);lab_do(s[..],221);#assert lab_check_pump(s[..]);b:=LAB_BLOCKS[lb_height(0,101)];lr_visit(s[0].remote[..],3,b.hash,0);#assert lab_check_pump(s[..]);
+  for action:[4]int.[238,2001,235,239] {lab_do(s[..],action);#assert lab_check_pump(s[..]);for screen:0..<3 {used:=lab_frame(s[..],out[..],u[..],[3]f32.[320,390,1440][screen],[3]f32.[568,844,900][screen],1,0,true);#assert used>0 && budget_ok(s[0].meter[0]) && s[0].mesh_n<=4096 && s[0].table_lines>0;for node:s[0].nodes[0..<s[0].count] {#assert node.box.width>=44 && node.box.height>=44;}}}
+}
+#test "Lab exact script stays selected between history and UTXO pages" #steps 100000000 {
+  s:[1]BitcoinLab;lab_start(s[..]);lab_do(s[..],221);#assert lab_check_pump(s[..]);b:=LAB_BLOCKS[lb_height(0,101)];lr_visit(s[0].remote[..],3,b.hash,0);#assert lab_check_pump(s[..]);lab_do(s[..],2001);#assert lab_check_pump(s[..]);lab_do(s[..],4001);lab_do(s[..],229);#assert lab_check_pump(s[..]);r:=s[0].remote[..];script:[256]u8;n:=r[0].kn;for i:0..<n {script[i]=r[0].key[i];}
+  lab_do(s[..],230);#assert lab_check_pump(s[..]) && r[0].kind==6 && lr_text(r,0,"script_hex")==cast(string)script[0..<n];lab_do(s[..],229);#assert lab_check_pump(s[..]) && r[0].kind==5 && lr_int(r,0,"balance_sat")==2999998000;
+}
+#test "Lab table accessibility keeps exact amounts inside its status record" #steps 100000000 {
+  s:[1]BitcoinLab;lab_start(s[..]);lab_do(s[..],221);#assert lab_check_pump(s[..]);b:=LAB_BLOCKS[lb_height(0,101)];lr_visit(s[0].remote[..],3,b.hash,0);#assert lab_check_pump(s[..]);lab_do(s[..],2001);#assert lab_check_pump(s[..]);lab_do(s[..],236);
+  out:[LAB_VERTICES*12]f32;u:[LAB_UNIFORMS]f32;n:=lab_frame(s[..],out[..],u[..],1440,900,1,0,true);text:[16384]u8;size:=lab_a11y(s[..],text[..]);line:=0;found:=false;
+  for i:0..<size {if text[i]=='\n' {line=i+1;}if i+10<=size && cast(string)text[i..<i+10]=="2000000000" {#assert cast(string)text[line..<line+13]=="100 status - ";found=true;}}
+  #assert n>0 && found;
+}
+#test "Lab graph edges appear only after expanding the exact transaction occurrence" #steps 100000000 {
+  s:[1]BitcoinLab;lab_start(s[..]);lab_do(s[..],221);#assert lab_check_pump(s[..]);b:=LAB_BLOCKS[lb_height(0,101)];lr_visit(s[0].remote[..],3,b.hash,0);#assert lab_check_pump(s[..]);v:[LAB_VERTICES*12]f32;u:[LAB_UNIFORMS]f32;n:=lab_frame(s[..],v[..],u[..],1440,900,1,0,true);
+  for node:s[0].nodes[0..<s[0].count] {#assert node.action<3000 || node.action>=5000;}
+  lab_do(s[..],2001);#assert lab_check_pump(s[..]) && s[0].remote[0].kind==4;n=lab_frame(s[..],v[..],u[..],1440,900,1,0,true);found:=false;for node:s[0].nodes[0..<s[0].count] {if node.action>=4000 && node.action<5000 {found=true;}}#assert n>0 && found;
+}

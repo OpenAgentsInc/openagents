@@ -1,0 +1,17 @@
+// Actual native Vulkan host, keyboard focus and C-face action dispatch.
+#load "linux-native.coax";
+#load "../../coax/lib/sys/tool.coax";
+tool_main :: ()->int #export_c {
+  env:[4096]u8;file:=proc_getenv("AETHYRFORGE_LAB_SELECTION_FILE",env[..]);if file=="" || fs_exists(file) {tool_errln("set AETHYRFORGE_LAB_SELECTION_FILE to a fresh test path");return 2;}
+  s:[1]ForgeNative;fgn_boot(s[..]);until:=proc_now_ms()+15000;
+  while !s[0].lab[0].remote[0].model[0].ready && proc_now_ms()<until {fgn_lab_tick(s[..]);proc_sleep(20);}
+  if !s[0].lab[0].remote[0].model[0].ready {fgn_close(s[..]);return 1;}
+  vertices:[LAB_VERTICES*12]f32;uniforms:[LAB_UNIFORMS]f32;used:=lab_frame(s[0].lab[..],vertices[..],uniforms[..],1440,900,1,0,false);
+  focus:= -1;tabs:=0;for i:0..<LAB_NODES {focus=ui_focus_next(s[0].lab[0].nodes[0..<s[0].lab[0].count],focus,false,UI_NONE);tabs+=1;if focus>=0 && s[0].lab[0].nodes[focus].action==233 {break;}}
+  fgn_close(s[..]);if tabs>=LAB_NODES {return 1;}
+  keys:[2048]u8;o:[1]Jo;jo_start(o[..],keys[..]);for i:0..<tabs {if i>0 {jo_put(o[..],",");}jo_int(o[..],950+i*2);jo_put(o[..],":-15:1,");jo_int(o[..],951+i*2);jo_put(o[..],":-15:0");}jo_put(o[..],",");jo_int(o[..],950+tabs*2);jo_put(o[..],":-2:1,");jo_int(o[..],951+tabs*2);jo_put(o[..],":-2:0");
+  home:[4096]u8;root:=proc_getenv("HOME",home[..]);p:[2][4096]u8;args:=[9]string.[fs_join(root,".openagents/bin/aethyrforge-native",p[0][..]),fs_join(root,".openagents/aethyrforge/native-linux",p[1][..]),"-","--headless","2000","--size","1440x900","--keys",jo_text(o[..])];
+  out:[1048576]u8;err:[65536]u8;r:=proc_run(args[..],120000,out[..],err[..]);tool_errln(cast(string)err[0..<r.err_n]);if r.started!=0 || r.status!=0 || r.timed_out {return 1;}
+  token:[1025]u8;n:=fs_read(file,token[..]);if n<=0 || n>1024 {tool_errln("native focused LINK produced no public selection");return 1;}place:=lsp_read(cast(string)token[0..<n]);if !place.ok || place.source!=1 || place.kind!=2 || place.offset!=96 {return 1;}
+  print("PASS actual native Vulkan host: 2000 frames, Tab/Enter activates focused LINK through C-face dispatch, public selection persists and owned processes exit\n");return 0;
+}

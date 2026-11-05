@@ -1,0 +1,53 @@
+// tool.sh: run-steps 100000000
+// Paging qualification only: a mined, fully validated regtest child of C.
+// Seventy chained spends then a 40-in/40-out transaction, no imported coins.
+#load "recorder.coax";
+LabStress :: struct {
+  raw:[65536]u8;n:int;ins:[64]TxIn;outs:[64]TxOut;items:[64]TxItem;
+  ids:[4096]u8;wids:[4096]u8;merkle:[4096]u8;coins:[64]TxcCoin;
+  spent:[64]ScriptSpent;ops:[64]SigopSpent;heights:[64]int;times:[64]int;
+  scripts:[8192]u8;sw:[1]ScriptWork;signet_ids:[4096]u8;signet_scratch:[8192]u8;
+  chain:[70][32]u8;live:[1048576]u8;stage:[1048576]u8;scratch:[1048576]u8;batch:[2097152]u8;temp:[1048576]u8;frame:[2097160]u8;
+}
+#test "Lab paging fixture transactions have exact bounded shapes and values" {
+  s:[1]LabStress;point:[32]u8;s[0].n=0;lab_stress_tx(s[..],point[..],0,1,5000000000,2,false);
+  t:=tx_parse_vartime(s[0].raw[0..<s[0].n],false,s[0].ins[..],s[0].outs[..],s[0].items[..]);#assert t.code==TX_OK && t.nin==1 && t.nout==2;
+  #assert tx_le_vartime(s[0].raw[..],s[0].outs[0].value,8)==4999998000 && tx_le_vartime(s[0].raw[..],s[0].outs[1].value,8)==1000;
+  s[0].n=0;lab_stress_tx(s[..],point[..],0,40,40000,40,false);t=tx_parse_vartime(s[0].raw[0..<s[0].n],false,s[0].ins[..],s[0].outs[..],s[0].items[..]);#assert t.code==TX_OK && t.nin==40 && t.nout==40;
+  for i:0..<40 {#assert tx_le_vartime(s[0].raw[..],s[0].outs[i].value,8)==900;}
+}
+lab_stress_tx :: (s:[]LabStress,parent:[]u8,vout:int,ni:int,value:int,no:int,coinbase:bool) {
+  at:=s[0].n;kv_put32(s[0].raw[..],at,2);at+=4;s[0].raw[at]=cast(u8)ni;at+=1;
+  for i:0..<ni {for k:0..<32 {s[0].raw[at+k]=ifx ni==40 then s[0].chain[i][k] else parent[k];}at+=32;kv_put32(s[0].raw[..],at,ifx coinbase then 0xffffffff else ifx ni==40 then 1 else vout);at+=4;
+    if coinbase {s[0].raw[at]=3;s[0].raw[at+1]=1;s[0].raw[at+2]=105;s[0].raw[at+3]=0;at+=4;}
+    else if value==5000000000 {s[0].raw[at]=2;s[0].raw[at+1]=1;s[0].raw[at+2]=0x51;at+=3;}
+    else {s[0].raw[at]=0;at+=1;}kv_put32(s[0].raw[..],at,0xffffffff);at+=4;
+  }
+  s[0].raw[at]=cast(u8)no;at+=1;for i:0..<no {amount:=ifx coinbase then value else ifx no==40 then 900 else ifx i==0 then value-2000 else 1000;kv_put64(s[0].raw[..],at,cast(u64)amount);at+=8;s[0].raw[at]=1;s[0].raw[at+1]=0x51;at+=2;}
+  kv_put32(s[0].raw[..],at,0);s[0].n=at+4;
+}
+lab_stress_work :: (s:[]LabStress)->ValidationWork {return ValidationWork.{ins=s[0].ins[..],outs=s[0].outs[..],items=s[0].items[..],ids=s[0].ids[..],wids=s[0].wids[..],merkle=s[0].merkle[..],coins=s[0].coins[..],spent=s[0].spent[..],sigops=s[0].ops[..],heights=s[0].heights[..],times=s[0].times[..],scripts=s[0].scripts[..],script=s[0].sw[..],signet_ids=s[0].signet_ids[..],signet_scratch=s[0].signet_scratch[..]};}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {return 2;}dir:=args_at(a[..],0);r:[1]LabRecorder;if lab_record_run(r[..],dir,false)!=0 {return 1;}d:=r[0].core[..];s:[1]LabStress;
+  previous:=cs_tip_vartime(d[0].live[..],d[0].used);parent:[32]u8;#assert tx_unhex("082ce8f5a122bbb144d35df07b05b9b2d77b745421b8168fac6725e5c9500675",parent[..]).count==32;for i:0..<16 {x:=parent[i];parent[i]=parent[31-i];parent[31-i]=x;}
+  s[0].n=81;zero:[32]u8;lab_stress_tx(s[..],zero[..],0,1,5000074000,1,true);
+  value:=5000000000;
+  for i:0..<70 {begin:=s[0].n;lab_stress_tx(s[..],parent[..],0,1,value,2,false);raw:=s[0].raw[begin..<s[0].n];t:=tx_parse_vartime(raw,false,s[0].ins[..],s[0].outs[..],s[0].items[..]);if t.code!=TX_OK || !tx_txid_vartime(raw,t,parent[..]) {return 1;}for k:0..<32 {s[0].chain[i][k]=parent[k];}value-=2000;}
+  lab_stress_tx(s[..],parent[..],0,40,40000,40,false);s[0].raw[80]=72;kv_put32(s[0].raw[..],0,0x20000000);for i:0..<32 {s[0].raw[4+i]=previous.hash[i];}
+  // Independent parsing of the assembled block supplies its Merkle leaves.
+  pos:=81;for i:0..<72 {raw:=s[0].raw[pos..<s[0].n];t:=tx_parse_vartime(raw,true,s[0].ins[..],s[0].outs[..],s[0].items[..]);if t.code!=TX_OK || !tx_txid_vartime(raw[0..<t.total],t,s[0].ids[32*i..<32*i+32]) {return 1;}pos+=t.total;}
+  root:[32]u8;if merkle_root_vartime(s[0].ids[0..<72*32],s[0].merkle[..],root[..]).code!=MERKLE_OK {return 1;}for i:0..<32 {s[0].raw[36+i]=root[i];}
+  index:=bi_find(d[0].tree[..],previous.hash[..]);kv_put32(s[0].raw[..],68,tx_le_vartime(r[0].bodies[index].bytes,68,4)+1);kv_put32(s[0].raw[..],72,0x207fffff);
+  found:=false;for nonce:0..<10000 {kv_put32(s[0].raw[..],76,nonce);if pow_header_check_vartime(s[0].raw[0..<80],CHAIN_REGTEST_PARAMS.retarget.pow_limit)==POW_OK {found=true;break;}}if !found {return 1;}
+  admitted:=bi_accept_header_vartime(d[0].tree[..],s[0].raw[0..<80],2000000000);if admitted.code!=BI_OK {return 1;}hash:[32]u8;#assert pow_block_hash_vartime(s[0].raw[0..<80],hash[..])==POW_OK;target:=bi_find(d[0].tree[..],hash[..]);bi_received_block_vartime(d[0].tree[..],target,72);
+  blocks:=[1]CrBlock.[CrBlock.{index=target,bytes=s[0].raw[0..<s[0].n]}];locs:=[1]TxiLoc.[TxiLoc.{pos=r[0].raw_n+8}];
+  for i:0..<d[0].used {s[0].live[i]=d[0].live[i];}
+  result:=vxi_reorg(d[0].tree[..],s[0].live[..],d[0].used,target,blocks[..],locs[..],s[0].stage[..],s[0].scratch[..],s[0].batch[..],s[0].temp[..],CrWork.{validate=lab_stress_work(s[..]),path=r[0].path[..]},d[0].undo[..]);
+  if result.code!=CS_OK {print("large block refused code % validator % detail % tx % input %\n",result.code,result.vcode,result.detail,result.tx,result.input);return 1;}
+  p:[4096]u8;if vxi_context(s[0].stage[..],result.used).code!=CS_OK {return 1;}
+  for i:0..<result.n {s[0].frame[8+i]=s[0].batch[i];}kv_seal_vartime(s[0].frame[..],result.n,r[0].seq+1,0);
+  if !fs_append_durable(fs_join(dir,"state.kv",p[..]),cast(string)s[0].frame[0..<result.n+8]) {return 1;}
+  frame:[65544]u8;kv_put32(frame[..],0,0xdab5bffa);kv_put32(frame[..],4,s[0].n);for i:0..<s[0].n {frame[8+i]=s[0].raw[i];}
+  path:=fs_join(dir,"blk00000.dat",p[..]);if !fs_write(path,cast(string)r[0].raw[0..<r[0].raw_n]) || !fs_append_durable(path,cast(string)frame[0..<s[0].n+8]) {return 1;}
+  print("PASS mined and fully validated height 105, 72 transactions, 40 inputs/outputs, % bytes, table % bytes\n",s[0].n,result.used);return 0;
+}

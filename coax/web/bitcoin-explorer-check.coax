@@ -1,0 +1,76 @@
+// Real muted browser effects against the allowlisted Lab adapter. Clip mode
+// controls the real renderer's clock; HTTP still uses actual bounded fetch.
+#import "Basic";
+#load "../lib/net/cdp.coax";
+bs_eval :: (c:[]Cdp,js:string)->bool {n:=cdp_evaluate(c,js);return n>=0 && jv_raw(c[0].doc[0],n)=="true";}
+bs_wait :: (c:[]Cdp,condition:string)->bool {
+  b:[8192]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_put(o[..],"(async()=>{if(!globalThis.coaxial?.ready)return false;await coaxialClipStep(1,60);return ");jo_put(o[..],condition);jo_put(o[..],"})()");until:=proc_now_ms()+45000;
+  while proc_now_ms()<until {if bs_eval(c,jo_text(o[..])) {return true;}proc_sleep(50);}tool_errln(condition);return false;
+}
+bs_click :: (c:[]Cdp,id:int)->bool {
+  b:[512]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_put(o[..],"(()=>{let b=document.querySelector('#coaxial-a11y [data-id=\"");jo_int(o[..],id);jo_put(o[..],"\"]');if(!b)return false;b.click();return true})()");return bs_wait(c,jo_text(o[..]));
+}
+bs_capture :: (c:[]Cdp,path:string)->bool {
+  if !bs_eval(c,"(async()=>{coaxial.renderCapture=null;coaxial.captureFrame();await coaxialClipStep(1,60);for(let i=0;i<100&&!coaxial.renderCapture;i++)await new Promise(r=>setTimeout(r,10));return coaxial.renderCapture?.format==='rgba8unorm'})()") {return false;}
+  n:=cdp_evaluate(c,"(async()=>{let r=coaxial.renderCapture,c=new OffscreenCanvas(r.width,r.height);c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(r.bytes),r.width,r.height),0,0);let b=new Uint8Array(await(await c.convertToBlob({type:'image/png'})).arrayBuffer()),s='';for(let i=0;i<b.length;i+=32768)s+=String.fromCharCode(...b.subarray(i,i+32768));return btoa(s)})()");
+  if n<0 {return false;}png:[16777216]u8;size:=b64_decode(jv_raw(c[0].doc[0],n),png[..]);return size>0 && fs_write(path,cast(string)png[0..<size]);
+}
+bs_until :: (c:[]Cdp,condition:string)->bool {until:=proc_now_ms()+45000;while proc_now_ms()<until {if bs_eval(c,condition) {return true;}proc_sleep(50);}tool_errln(condition);return false;}
+bs_recover :: (c:[]Cdp)->bool {
+  // Pause a real browser request, then save/reload with its effect id still
+  // pending. The new Wasm instance must discard it and fetch a coherent page.
+  paused:=cdp_call(c,"Fetch.enable","{\"patterns\":[{\"urlPattern\":\"*/api/lab/v1/window*\",\"requestStage\":\"Request\"}]}",30000);if paused<0 || !bs_click(c,226) {return false;}
+  if !bs_eval(c,"coaxialClipStep(60,60).then(()=>coaxial.guardProbe(21)===0)") || !bs_eval(c,"coaxial.trapNextFrame()") {return false;}
+  trapped:=cdp_evaluate(c,"coaxialClipStep(1,60)");if !bs_until(c,"globalThis.coaxial?.stopped?.saved===true") {return false;}
+  released:=cdp_call(c,"Fetch.disable","",30000);if released<0 || !bs_eval(c,"(setTimeout(()=>document.querySelector('#coaxial-load .la').click(),50),true)") {return false;}
+  if !bs_wait(c,"!!coaxial.rescued&&coaxial.guardProbe(21)===1&&coaxial.guardProbe(28)===2&&coaxial.guardProbe(24)===104") {return false;}
+  if !bs_eval(c,"coaxial.loseDevice()") || !bs_wait(c,"coaxial.gpuRecovery?.state==='recovered'&&coaxial.guardProbe(21)===1&&coaxial.guardProbe(28)===2") {return false;}
+  return bs_eval(c,"(()=>{let ok=labSourceErrors.every(s=>s.includes('GPU device lost'));labSourceErrors=[];return ok})()");
+}
+be_text :: (c:[]Cdp,value:string)->bool {
+  buf:[2048]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_put(o[..],"(async()=>{await coaxialClipStep(12,60);return document.querySelector('#coaxial-a11y-status').textContent.includes(");jo_str(o[..],value);jo_put(o[..],")})()");
+  for i:0..<20 {proc_sleep(200);if bs_eval(c,jo_text(o[..])) {return true;}if !bs_click(c,244) {return false;}}tool_errln(value);return false;
+}
+be_find :: (c:[]Cdp,text:string)->bool {
+  if !bs_click(c,205) || !bs_wait(c,"document.activeElement?.tagName==='INPUT'") {return false;}buf:[1024]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_obj(o[..]);jo_key(o[..],"text");jo_str(o[..],text);jo_end(o[..]);insert:=cdp_call(c,"Input.insertText",jo_text(o[..]),30000);
+  key:=cdp_call(c,"Input.dispatchKeyEvent","{\"type\":\"keyDown\",\"key\":\"Enter\",\"code\":\"Enter\",\"windowsVirtualKeyCode\":13}",30000);up:=cdp_call(c,"Input.dispatchKeyEvent","{\"type\":\"keyUp\",\"key\":\"Enter\",\"code\":\"Enter\",\"windowsVirtualKeyCode\":13}",30000);return insert>=0 && key>=0 && up>=0;
+}
+be_run :: (c:[]Cdp,url:string,phone:bool)->bool {
+  enable:=cdp_call(c,"Page.enable","",30000);metrics:=cdp_call(c,"Emulation.setDeviceMetricsOverride",ifx phone then "{\"width\":390,\"height\":844,\"deviceScaleFactor\":1,\"mobile\":true}" else "{\"width\":1440,\"height\":900,\"deviceScaleFactor\":1,\"mobile\":false}",30000);
+  init:=cdp_call(c,"Page.addScriptToEvaluateOnNewDocument","{\"source\":\"globalThis.coaxialClip=true;globalThis.coaxialRenderCapture=true;globalThis.coaxialRenderCaptureFormat='rgba8unorm';globalThis.labSourceErrors=[];addEventListener('error',e=>labSourceErrors.push(e.message));let ce=console.error;console.error=(...a)=>{labSourceErrors.push(a.map(String).join(' '));ce(...a)}\"}",30000);
+  b:[4096]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],url);jo_end(o[..]);nav:=cdp_call(c,"Page.navigate",jo_text(o[..]),30000);
+  if !bs_wait(c,"coaxial.sceneReady===true") || !bs_click(c,221) || !bs_wait(c,"coaxial.guardProbe(21)===1&&coaxial.guardProbe(25)===7") {return false;}
+  if !bs_capture(c,ifx phone then "/tmp/lab4-grid-phone.png" else "/tmp/lab4-grid-desktop.png") {return false;}
+  if !be_find(c,"101") || !bs_wait(c,"coaxial.guardProbe(21)===1&&coaxial.guardProbe(22)===3") || !bs_click(c,238) || !bs_wait(c,"coaxial.guardProbe(30)===1&&coaxial.guardProbe(32)>10") {return false;}
+  if !bs_capture(c,ifx phone then "/tmp/lab4-block-phone.png" else "/tmp/lab4-block-desktop.png") {return false;}
+  if !bs_click(c,2001) || !bs_wait(c,"coaxial.guardProbe(21)===1&&coaxial.guardProbe(22)===4") || !bs_click(c,233) || !bs_wait(c,"decodeURIComponent(location.hash.slice(1)).startsWith('lab1/')") {return false;}
+  if !bs_eval(c,"(globalThis.savedLabHash=location.hash,globalThis.savedLabStatus=document.querySelector('#coaxial-a11y-status').textContent,true)") {return false;}
+  // A real keyboard changes presentation without changing selected identity.
+  key:=cdp_call(c,"Input.dispatchKeyEvent","{\"type\":\"keyDown\",\"key\":\"t\",\"code\":\"KeyT\",\"windowsVirtualKeyCode\":84}",30000);up:=cdp_call(c,"Input.dispatchKeyEvent","{\"type\":\"keyUp\",\"key\":\"t\",\"code\":\"KeyT\",\"windowsVirtualKeyCode\":84}",30000);
+  if !bs_wait(c,"coaxial.guardProbe(30)===0&&document.querySelector('#coaxial-a11y-status').textContent.includes('e97304753dd67dc61b2f1ba8d782e19f0ae9b596729ed868428f076061267d35')") {return false;}
+  if !bs_capture(c,ifx phone then "/tmp/lab4-graph-phone.png" else "/tmp/lab4-graph-desktop.png") {return false;}
+  // Actual pointer/touch hit on the last bottom-row button returns to table.
+  if phone {start:=cdp_call(c,"Input.dispatchTouchEvent","{\"type\":\"touchStart\",\"touchPoints\":[{\"x\":338,\"y\":790}]}",30000);end:=cdp_call(c,"Input.dispatchTouchEvent","{\"type\":\"touchEnd\",\"touchPoints\":[]}",30000);}
+  else {down:=cdp_call(c,"Input.dispatchMouseEvent","{\"type\":\"mousePressed\",\"x\":1280,\"y\":845,\"button\":\"left\",\"clickCount\":1}",30000);up2:=cdp_call(c,"Input.dispatchMouseEvent","{\"type\":\"mouseReleased\",\"x\":1280,\"y\":845,\"button\":\"left\",\"clickCount\":1}",30000);}
+  if !bs_wait(c,"coaxial.guardProbe(30)===1") || !bs_click(c,235) {return false;}
+  if !bs_wait(c,"coaxial.guardProbe(32)>10") || !bs_click(c,3000) || !bs_wait(c,"coaxial.guardProbe(21)===1&&coaxial.guardProbe(22)===4&&document.querySelector('#coaxial-a11y-status').textContent.includes('9fa468ada3a3eab2189bebacde6ee10509eb63ec2e1fb723f563ec30262cdb8d')") {return false;}
+  if !bs_click(c,232) || !bs_wait(c,"coaxial.guardProbe(21)===1&&document.querySelector('#coaxial-a11y-status').textContent.includes('e97304753dd67dc61b2f1ba8d782e19f0ae9b596729ed868428f076061267d35')") || !bs_click(c,239) {return false;}
+  if !bs_click(c,234) || !bs_wait(c,"coaxial.guardProbe(21)===1&&document.querySelector('#coaxial-a11y-status').textContent.includes('8f1c571c5ce385fbd6250d92a8ad47f65acf9e1f72d0ef99567f12cc531c49b0')") || !bs_click(c,232) || !bs_wait(c,"coaxial.guardProbe(21)===1&&document.querySelector('#coaxial-a11y-status').textContent.includes('e97304753dd67dc61b2f1ba8d782e19f0ae9b596729ed868428f076061267d35')") {return false;}
+  if !bs_click(c,236) || !be_text(c,"2000000000") || !bs_click(c,4001) {return false;}
+  if !bs_capture(c,ifx phone then "/tmp/lab4-transaction-phone.png" else "/tmp/lab4-transaction-desktop.png") {return false;}
+  if !bs_click(c,229) || !bs_wait(c,"coaxial.guardProbe(21)===1&&coaxial.guardProbe(22)===5") || !be_text(c,"2999998000") || !bs_click(c,230) || !bs_wait(c,"coaxial.guardProbe(21)===1&&coaxial.guardProbe(22)===6") || !bs_click(c,6000) || !bs_wait(c,"coaxial.guardProbe(21)===1&&coaxial.guardProbe(22)===4") {return false;}
+  if !bs_eval(c,"(location.hash=savedLabHash,dispatchEvent(new HashChangeEvent('hashchange')),true)") || !bs_wait(c,"coaxial.guardProbe(21)===1&&coaxial.guardProbe(22)===4&&coaxial.guardProbe(30)===1") {return false;}
+  if !bs_click(c,240) || !bs_wait(c,"coaxial.guardProbe(40)===1") {return false;}
+  if !bs_click(c,201) || !bs_wait(c,"coaxial.guardProbe(21)===1&&coaxial.guardProbe(24)===103&&coaxial.guardProbe(37)===2&&coaxial.guardProbe(38)===3&&coaxial.guardProbe(41)===1000&&document.querySelector('#coaxial-a11y-status').textContent.includes('STALE')") {return false;}
+  if !bs_click(c,202) || !bs_wait(c,"coaxial.guardProbe(21)===1&&coaxial.guardProbe(37)===3&&coaxial.guardProbe(38)===4") || !bs_click(c,201) || !bs_wait(c,"coaxial.guardProbe(21)===1&&coaxial.guardProbe(37)===4&&coaxial.guardProbe(38)===3") || !bs_click(c,200) || !bs_wait(c,"coaxial.guardProbe(21)===1&&coaxial.guardProbe(37)===3&&coaxial.guardProbe(38)===2") {return false;}
+  if !bs_click(c,222) || !bs_wait(c,"coaxial.guardProbe(21)===1&&coaxial.guardProbe(28)===2&&coaxial.guardProbe(24)===104") || !bs_recover(c) {return false;}
+  if !bs_click(c,220) || !bs_wait(c,"coaxial.guardProbe(20)===0&&coaxial.guardProbe(30)===0&&labSourceErrors.length===0") {return false;}
+  print("PASS %: exact graph/table/back/link/script/UTXO, real keyboard and pointer/touch, stale occurrence, both reorg directions, cancel/rescue/GPU recovery\n",ifx phone then "phone" else "desktop");return true;
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {return 2;}
+  for phone:0..<2 {c:[1]Cdp;if !cdp_launch_background(c[..],1440,900,"bitcoin-explorer-") {return 1;}ok:=be_run(c[..],args_at(a[..],0),phone==1);
+    if !ok {n:=cdp_evaluate(c[..],"JSON.stringify({errors:globalThis.labSourceErrors,text:document.body.innerText.slice(0,300),status:document.querySelector('#coaxial-a11y-status')?.textContent?.slice(0,1200),probe:Array.from({length:20},(_,i)=>globalThis.coaxial?.guardProbe?.(i+20))})");if n>=0 {print("%\n",jv_raw(c[0].doc[0],n));}}
+    cdp_close(c[..]);if !ok {return 1;}
+  }return 0;
+}

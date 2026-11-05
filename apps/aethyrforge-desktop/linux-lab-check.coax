@@ -4,10 +4,16 @@
 tool_main :: ()->int #export_c {
   s:[1]ForgeNative;fgn_boot(s[..]);lab_start(s[0].lab[..]);lab_do(s[0].lab[..],221);
   good:=false;until:=proc_now_ms()+15000;
-  while proc_now_ms()<until {fgn_lab_tick(s[..]);if s[0].lab[0].remote[0].model[0].ready {good=s[0].lab[0].remote[0].wn==24;break;}proc_sleep(20);}
+  while proc_now_ms()<until {fgn_lab_tick(s[..]);if s[0].lab[0].remote[0].model[0].ready {good=s[0].lab[0].remote[0].wn==7;break;}proc_sleep(20);}
   if good {lab_do(s[0].lab[..],201);until=proc_now_ms()+15000;good=false;while proc_now_ms()<until {fgn_lab_tick(s[..]);r:=s[0].lab[0].remote[..];if r[0].model[0].ready {good=r[0].model[0].identity.height==103;break;}proc_sleep(20);}}
   if good {lab_do(s[0].lab[..],222);if s[0].lab[0].remote[0].model[0].ready {good=false;}else {until=proc_now_ms()+15000;good=false;while proc_now_ms()<until {fgn_lab_tick(s[..]);r:=s[0].lab[0].remote[..];if r[0].model[0].ready {good=r[0].model[0].identity.height==104 && r[0].model[0].identity.source==2;break;}proc_sleep(20);}}}
+  if good {
+    lab_do(s[0].lab[..],221);until=proc_now_ms()+15000;good=false;while proc_now_ms()<until {fgn_lab_tick(s[..]);if s[0].lab[0].remote[0].model[0].ready {good=true;break;}proc_sleep(20);}
+    if good {lab_do(s[0].lab[..],1005);until=proc_now_ms()+15000;good=false;while proc_now_ms()<until {fgn_lab_tick(s[..]);if s[0].lab[0].remote[0].model[0].ready {good=s[0].lab[0].remote[0].has_block;break;}proc_sleep(20);}}
+    if good {lab_do(s[0].lab[..],2001);until=proc_now_ms()+15000;good=false;while proc_now_ms()<until {fgn_lab_tick(s[..]);if s[0].lab[0].remote[0].model[0].ready {good=s[0].lab[0].remote[0].kind==4;break;}proc_sleep(20);}}
+    if good {lab_do(s[0].lab[..],231);lab_do(s[0].lab[..],233);fgn_selection_save(s[..]);path:[4096]u8;token:[1025]u8;n:=fs_read(fgn_selection_file(path[..]),token[..]);good=n>0 && n<=1024 && lsp_read(cast(string)token[0..<n]).ok && s[0].lab[0].action==0;}
+  }
   fgn_close(s[..]);if s[0].lab_service!= -1 || s[0].lab_fetch[0]!= -1 || s[0].lab_fetch[1]!= -1 {return 1;}
   if !good {tool_errln("native Lab fetch/source transition failed");return 1;}
-  print("PASS: native app's owned API and fetch children load fixtures, change branch, select configured live journal, clear amounts and reap every owned process\n");return 0;
+  print("PASS: native app's owned API and fetch children load fixtures, change branch, select configured live journal, clear amounts, persist/copy exact explorer selection and reap every owned process\n");return 0;
 }

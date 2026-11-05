@@ -61,8 +61,8 @@ def transaction(raw, at):
                 weight=3*len(stripped)+at-start, inputs=inputs, outputs=outputs), at
 
 
-def read_blocks():
-    raw = (FIXTURE / "blk00000.dat").read_bytes()
+def read_blocks(path=None):
+    raw = (FIXTURE / "blk00000.dat" if path is None else pathlib.Path(path)).read_bytes()
     blocks = {}
     at = 0
     while at < len(raw):
@@ -89,7 +89,8 @@ def read_blocks():
                                  time=int.from_bytes(body[68:72], "little"), size=n,
                                  weight=4*prefix+sum(t["weight"] for t in txs), transactions=txs)
         at += 8 + n
-    assert len(blocks) == 108
+    if path is None:
+        assert len(blocks) == 108
     return blocks
 
 

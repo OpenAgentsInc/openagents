@@ -24,7 +24,7 @@ BitcoinLab :: struct {
   selected:int;chapter:int;map:bool=true;focus:int=-1;
   nodes:[LAB_NODES]UiNode;count:int;
   pointers:[4]int;press:[4]int;active:[4]bool;
-  action:int;out_n:int;outbox:[256]u8;
+  action:int;out_n:int;outbox:[1024]u8;
   eye:Point;forward:Point;right:Point;up:Point;
   used:int;steps:int;world_vertices:int;
   meter:[1]BudgetMeter;
@@ -34,6 +34,7 @@ BitcoinLab :: struct {
   world_top:f32;world_bottom:f32;world_scale:f32;
   inbox:[LAB_REPLY_MAX]u8;field_box:[4]f32;
   shown:int;
+  table_rows:int;table_lines:int;table_text:[8192]u8;table_n:int;
 }
 
 #test "Bitcoin Lab has all 125 book states, separate from exercises" {
@@ -206,7 +207,7 @@ lab_node :: (s:[]BitcoinLab,b:HudBox,action:int) {
 lab_layout :: (s:[]BitcoinLab,w:f32,h:f32,d:f32) {
   s[0].w=w;s[0].h=h;s[0].d=d;s[0].count=0;
   cols:=ifx w<700 then 3 else 7;cw:=(w-32)/cast(f32)cols;
-  for i:0..<7 {lab_node(s,HudBox.{x=16+cast(f32)(i%cols)*cw,y=124+cast(f32)(i/cols)*48,width=cw-4,height=44},i+1);}
+  if !s[0].remote[0].active || s[0].map {for i:0..<7 {lab_node(s,HudBox.{x=16+cast(f32)(i%cols)*cw,y=124+cast(f32)(i/cols)*48,width=cw-4,height=44},i+1);}}
   for i:0..<3 {lab_node(s,HudBox.{x=16+cast(f32)i*(w-32)/3,y=76,width=(w-32)/3-4,height=44},220+i);}
   bottom:=h-194;
   if s[0].map {
@@ -216,9 +217,11 @@ lab_layout :: (s:[]BitcoinLab,w:f32,h:f32,d:f32) {
   lab_node(s,HudBox.{x=ifx w<360 then w-96 else w-180,y=ifx w<360 then h-230 else 16,width=76,height=44},12);
   if !s[0].map {
     if s[0].remote[0].active {
-      for i:0..<5 {lab_node(s,HudBox.{x=16+cast(f32)i*(w-32)/5,y=h-76,width=(w-32)/5-4,height=44},[5]int.[223,224,225,205,226][i]);}
-      for i:0..<5 {lab_node(s,HudBox.{x=16+cast(f32)i*(w-32)/5,y=h-124,width=(w-32)/5-4,height=44},[5]int.[227,228,212,229,230][i]);}
-      if s[0].remote[0].model[0].source==1 {for i:0..<3 {lab_node(s,HudBox.{x=16+cast(f32)i*(w-32)/3,y=h-172,width=(w-32)/3-4,height=44},200+i);}}
+      for row:0..<4 {if row==3 && h<700 {continue;}for i:0..<(ifx row==3 then 6 else 5) {action:=ifx i==5 then 240 else [20]int.[232,224,225,205,231,235,236,229,230,234,233,238,237,243,244,200,201,202,203,204][row*5+i];
+        if row==3 && i<5 && s[0].remote[0].model[0].source!=1 {action=[5]int.[226,223,227,228,239][i];}
+        row_cols:=ifx row==3 then 6.0f32 else 5.0f32;lab_node(s,HudBox.{x=16+cast(f32)i*(w-32)/row_cols,y=h-76-cast(f32)row*48,width=(w-32)/row_cols-4,height=44},action);
+      }}
+      for i:0..<5 {lab_node(s,HudBox.{x=16+cast(f32)i*(w-32)/5,y=124,width=(w-32)/5-4,height=44},[5]int.[226,223,227,228,239][i]);}
       return;
     }
     for i:0..<5 {lab_node(s,HudBox.{x=16+cast(f32)i*(w-32)/5,y=h-76,width=(w-32)/5-4,height=44},200+i);}
@@ -249,6 +252,14 @@ lab_key :: (s:[]BitcoinLab,key:int,down:bool,mods:int)->bool #export_c {
     if down && s[0].focus<0 {s[0].keys|=bit;}else {s[0].keys=(s[0].keys|bit)-bit;}return true;
   }
   if !down {return false;}
+  if s[0].remote[0].active && !s[0].map {
+    if key== -10 || key== -11 {lab_do(s,ifx key== -10 then 243 else 244);return true;}
+    if key== -3 || key==8 {lab_do(s,232);return true;}
+    if key==98 || key==66 {lab_do(s,238);return true;}
+    if key==116 || key==84 {lab_do(s,231);return true;}
+    if key==112 || key==80 {lab_do(s,203);return true;}
+    if key==118 || key==86 {lab_do(s,240);return true;}
+  }
   if key==47 {lab_do(s,205);return true;}
   if key==91 {lab_do(s,208);return true;}if key==93 {lab_do(s,209);return true;}
   if key==114 || key==82 {lab_do(s,204);return true;}
@@ -442,13 +453,19 @@ lab_frame :: (s:[]BitcoinLab,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:bo
   lab_start(s);if !(d>0) || !(w>0) || !(h>0) || u.count<LAB_UNIFORMS {return 0;}
   e:=s[0].explorer[..];
   lr_frame(s[0].remote[..],dt);
+  lbr_frame(s[0].remote[0].replay[..],dt);
+  if s[0].remote[0].active && s[0].remote[0].replay[0].playing && s[0].remote[0].model[0].ready {
+    s[0].remote[0].replay[0].clock+=lo(dt,0.25f32);if s[0].remote[0].replay[0].clock>=6 {lr_phase(s[0].remote[..],(s[0].remote[0].model[0].phase+1)%3);}
+  }
   if e[0].playing {e[0].clock+=lo(dt,0.25f32);if e[0].clock>=6 {lb_phase(e,(e[0].phase+1)%3);}}
+  if !s[0].remote[0].table {s[0].table_n=0;}
   lab_layout(s,w/d,h/d,d);
   s[0].world_top=ifx s[0].w<700 then 332.0f32 else 204.0f32;
   s[0].world_bottom=ifx s[0].map then s[0].h-246 else s[0].h-(ifx s[0].h<700 then 190.0f32 else ifx e[0].tx<0 then 364.0f32 else 430.0f32);
   if s[0].map && s[0].h<700 {s[0].world_bottom=s[0].h-190;}
   if s[0].w<700 && s[0].h>=700 {s[0].world_bottom+=48;}
   if s[0].remote[0].active && s[0].remote[0].kind!=2 && s[0].h>=700 {s[0].world_bottom-=66;}
+  if s[0].remote[0].active && !s[0].map {s[0].world_top=240;s[0].world_bottom=ifx s[0].h<700 then s[0].h-252 else s[0].h-440;}
   s[0].world_scale=lo(s[0].h*0.78,(s[0].world_bottom-s[0].world_top)*2.5);
   s[0].field_box=[4]f32.[16*d,(s[0].world_bottom+28)*d,(s[0].w-16)*d,(s[0].world_bottom+72)*d];
   keys:=s[0].keys;before:=s[0].session[0].you.clock.ticks;
@@ -462,6 +479,7 @@ lab_frame :: (s:[]BitcoinLab,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:bo
   floor_pen:=HdPen.{d=d,top=s[0].world_top,bottom=s[0].world_bottom,cyan=true,sans=false};
   u[80]=floor_pen.top*d;u[81]=floor_pen.bottom*d;s[0].mesh_n=0;
   n:=0;
+  if !s[0].remote[0].table {
   for i: -16..<37 {
     v:=cast(f32)i*2;
     n=lab_line(s,out,n,v3(-32,0,v),v3(32,0,v),floor_pen,3);
@@ -479,6 +497,7 @@ lab_frame :: (s:[]BitcoinLab,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:bo
   n=lab_draw_blocks(s,out,n,floor_pen);
   feet:=gw.gridwalk_feet(s[0].session[..]);
   n=lab_cube(s,out,n,feet.x,feet.y,feet.z,0.3,floor_pen,2);
+  }
   s[0].world_vertices=n;
   pen:=HdPen.{d=d,top=0,bottom=s[0].h,cyan=true,sans=false};
   thumbs:=s[0].session[0].thumbs;
@@ -486,9 +505,9 @@ lab_frame :: (s:[]BitcoinLab,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:bo
     n=hd_ring(out,n,thumbs.ox/d,thumbs.oy/d,44,44,0,6.2831853,pen,2);
     n=hd_ring(out,n,thumbs.ox/d+thumbs.pad_x*44,thumbs.oy/d-thumbs.pad_y*44,12,12,0,6.2831853,pen,0);
   }
-  n=hd_text(out,n,"BITCOIN LAB",16,34,18,pen,0);
+  n=hd_text(out,n,ifx s[0].remote[0].table then "BITCOIN EXPLORER" else "BITCOIN LAB",16,34,ifx s[0].remote[0].table then 14.0f32 else 18.0f32,pen,0);
   n=hd_text(out,n,lab_source_label(s),16,72,11,pen,2);
-  snap:=LAB_SNAPSHOTS[e[0].phase];sy:=ifx s[0].w<700 then 284.0f32 else 190.0f32;
+  snap:=LAB_SNAPSHOTS[e[0].phase];sy:=ifx s[0].remote[0].active && !s[0].map then 190.0f32 else ifx s[0].w<700 then 284.0f32 else 190.0f32;
   if s[0].remote[0].active {n=lab_remote_status(s,out,n,sy,pen);}else {
   n=hd_text(out,n,"TIP",16,sy,10,pen,1);n=lab_number_at(out,n,snap.height,42,sy,11,pen,0);
   n=hd_text_fit(out,n,ifx e[0].playing then "REPLAYING / OBSERVATION UNKNOWN" else "PAUSED / OBSERVATION UNKNOWN",90,sy,10,s[0].w-106,pen,1);
@@ -509,6 +528,10 @@ lab_frame :: (s:[]BitcoinLab,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:bo
     if node.action>=220 && node.action<=222 {active=active || node.action==220+(ifx s[0].remote[0].active then s[0].remote[0].model[0].source else 0);}
     if node.action==203 && e[0].playing {label="PAUSE";}
     if node.action==223 && s[0].remote[0].model[0].ready {label="STATUS";}
+    if node.action==231 && s[0].remote[0].table {label="GRID";}
+    if node.action==237 && s[0].remote[0].kind==3 {label="TXS";}
+    if node.action==240 {label=ifx s[0].remote[0].replay[0].reduced then "MOTION OFF" else "MOTION ON";}
+    if node.action==203 && s[0].remote[0].replay[0].playing {label="PAUSE";}
     n=hd_text_fit(out,n,label,b.x+8,b.y+27,12,b.width-16,pen,ifx active then 2 else 0);
   }
   if s[0].map {
@@ -522,7 +545,7 @@ lab_frame :: (s:[]BitcoinLab,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:bo
     n=hd_text(out,n,"BOOK:",16,y+51,12,pen,1);n=hd_text(out,n,chapter.status,64,y+51,12,pen,0);
     n=hd_text(out,n,"VISUAL EXERCISE: not available",16,y+75,12,pen,1);
     n=hd_text_fit(out,n,"Recorded validated regtest blocks. Visual exercises are tracked separately.",16,y+96,11,s[0].w-32,pen,1);
-  }else {n=lab_inspector(s,out,n,pen);}
+  }else {if s[0].remote[0].table {n=lab_table(s,out,n,pen);}else {n=lab_inspector(s,out,n,pen);}}
   n=hd_text_fit(out,n,ifx s[0].w<700 then "Left thumb: walk / right: look. Tap station." else "WASD walk / arrows look / 1-7 stations / N next / Tab + Enter / M map / Esc exit",16,s[0].h-18,11,s[0].w-32,pen,1);
   s[0].draws[0]=0;s[0].draws[1]=cast(u32)s[0].mesh_n;s[0].draws[2]=0x80000000;s[0].draws[3]=1;
   budget_measure(s[0].meter[..],n+s[0].mesh_n,3,budget_arena_bytes(size_of(BitcoinLab),LAB_VERTICES,12,LAB_UNIFORMS));
@@ -543,7 +566,8 @@ lab_label :: (action:int)->string {
   if action==206 {return "BLOCK";}if action==207 {return "TXS";}if action==208 {return "< BLK";}if action==209 {return "BLK >";}
   if action==210 {return "< TX";}if action==211 {return "TX >";}if action==212 {return "OUTPUT";}if action==213 {return "SPEND";}
   if action==214 {return "LINK";}
-  if action>=220 && action<=230 {return [11]string.["RECORDING","FIXTURE API","OWN NODE","RETRY","< PAGE","PAGE >","WINDOW","< TX","TX >","HISTORY","OUTPUTS"][action-220];}
+  if action>=220 && action<=230 {return [11]string.["RECORDING","FIXTURE API","OWN NODE","RETRY","< PAGE","PAGE >","WINDOW","< TX","TX >","HISTORY","UTXOS"][action-220];}
+  if action>=231 && action<=244 {return [14]string.["EXPLORER","BACK","LINK","SPEND","INPUTS","OUTPUTS","DETAILS","BLOCK","SCRIPT","MOTION","SCRUB B","SCRUB C","< ROWS","ROWS >"][action-231];}
   if action>=1000 {return "Select recorded block";}
   return "Show or hide chapter map";
 }
@@ -587,9 +611,11 @@ lab_a11y :: (s:[]BitcoinLab,out:[]u8)->int #export_c {
 lab_access :: (s:[]BitcoinLab,action:int,activate:bool) #export_c {
   lab_stop(s);s[0].focus=-1;
   for i:0..<s[0].count {if s[0].nodes[i].action==action {s[0].focus=i;break;}}
-  if activate && ((action>=1 && action<=12) || (action>=200 && action<=230) || action>=1000) {lab_do(s,action);}
+  if activate && ((action>=1 && action<=12) || (action>=200 && action<=244) || action>=1000) {lab_do(s,action);}
 }
 lab_guard :: (s:[]BitcoinLab,field:int)->int #export_c {
+  if field==40 {return ifx s[0].remote[0].replay[0].reduced then 1 else 0;}if field==41 {return cast(int)(s[0].remote[0].replay[0].anim*1000);}
+  if field>=30 && field<=39 {r:=s[0].remote[..];return [10]int.[ifx r[0].table then 1 else 0,r[0].table_page,s[0].table_lines,r[0].offset,r[0].returned,r[0].total,r[0].notice,r[0].replay[0].detached,r[0].replay[0].attached,r[0].history_n][field-30];}
   if field>=20 && field<=29 {r:=s[0].remote[..];return [10]int.[ifx r[0].active then 1 else 0,ifx r[0].model[0].ready then 1 else 0,r[0].kind,r[0].model[0].error,r[0].model[0].identity.height,r[0].wn,r[0].model[0].base[0].serial,r[0].selected,r[0].model[0].source,r[0].model[0].phase][field-20];}
   if field==0 {return s[0].selected;}if field==1 {return s[0].chapter+1;}
   if field>=2 && field<=4 {return cast(int)(gw.gridwalk_pose(s[0].session[..],field-2)*1000);}
@@ -608,9 +634,9 @@ lab_guard :: (s:[]BitcoinLab,field:int)->int #export_c {
   }
   return -1;
 }
-lab_scene_ready :: (s:[]BitcoinLab)->bool #export_c {return s[0].world_vertices>0 && s[0].world_vertices<=s[0].used;}
+lab_scene_ready :: (s:[]BitcoinLab)->bool #export_c {return s[0].used>0 && (s[0].remote[0].table || (s[0].world_vertices>0 && s[0].world_vertices<=s[0].used));}
 lab_message :: (s:[]BitcoinLab,kind:int,n:int) #export_c {
-  if kind==600 {if s[0].remote[0].active {r:=s[0].remote[..];lr_cancel(r);r[0].kind=2;r[0].window_offset=0;lr_queue(r,1);}return;}
+  if kind==600 {lr_rebind(s[0].remote[..]);return;}
   if kind>=512 && kind<520 && n>=0 && n<=LAB_REPLY_MAX {lr_receive(s[0].remote[..],kind-512,cast(string)s[0].inbox[0..<n]);return;}
   if kind==1 && s[0].remote[0].active && s[0].remote[0].search && n>=0 && n<=256-s[0].remote[0].qn {
     r:=s[0].remote[..];for c:s[0].inbox[0..<n] {if !((c>='a' && c<='z')||(c>='A' && c<='Z')||(c>='0' && c<='9')||c=='-'||c=='_') {return;}}
@@ -621,9 +647,12 @@ lab_message :: (s:[]BitcoinLab,kind:int,n:int) #export_c {
   for c:s[0].inbox[0..<n] {e[0].query[e[0].n]=c;e[0].n+=1;}
 }
 lab_hash :: (s:[]BitcoinLab,n:int) #export_c {
-  lab_start(s);if n!=74 && n!=139 {return;}text:=cast(string)s[0].inbox[0..<n];
+  lab_start(s);if n<0 || n>1024 {return;}text:=cast(string)s[0].inbox[0..<n];
+  if n>=5 && text[0..<5]=="lab1/" {p:=lsp_read(text);if p.ok {lr_restore(s[0].remote[..],p);s[0].map=false;}return;}
+  if n!=74 && n!=139 {return;}
   if text[0..<8]!="regtest/" || text[8]<'0' || text[8]>'2' || text[9]!='/' {return;}
   phase:=cast(int)(text[8]-'0');block:=lb_block(phase,text[10..<74]);if block<0 {return;}
+  lr_select(s[0].remote[..],0,0);
   lb_phase(s[0].explorer[..],phase);lb_select(s[0].explorer[..],block);s[0].map=false;
   if n==139 && text[74]=='/' {row:=LAB_BLOCKS[block];for t:row.tx..<row.tx+row.count {if LAB_TXS[t].txid==text[75..<139] {s[0].explorer[0].tx=t;}}}
 }
@@ -636,31 +665,39 @@ lab_source_label :: (s:[]BitcoinLab)->string {
 lab_remote_do :: (s:[]BitcoinLab,action:int)->bool {
   r:=s[0].remote[..];if action<200 {return false;}
   if action==205 {r[0].search=!r[0].search;r[0].qn=0;return true;}
-  if action==223 && r[0].model[0].ready {r[0].info=!r[0].info;return true;}
-  if action==223 || action==226 {r[0].info=false;lr_cancel(r);r[0].kind=2;r[0].window_offset=0;lr_queue(r,1);return true;}
-  if action>=200 && action<=204 {if r[0].model[0].source==1 {lr_select(r,1,ifx action<=202 then action-200 else (r[0].model[0].phase+1)%3);}return true;}
+  if action==240 {r[0].replay[0].reduced=!r[0].replay[0].reduced;if r[0].replay[0].reduced {r[0].replay[0].anim=1;}return true;}
+  if action==231 {r[0].table=!r[0].table;r[0].table_page=0;return true;}
+  if action==232 {lr_back(r);return true;}
+  if action==233 || action==214 {if !r[0].model[0].ready {r[0].notice=503;return true;}p:=lr_exact(r);n:=lsp_write(p,s[0].outbox[..]);if n>0 {s[0].out_n=n;s[0].action=3;}return true;}
+  if action==243 || action==244 {next:=r[0].table_page+(ifx action==243 then -1 else 1);if next>=0 && next*s[0].table_rows<s[0].table_lines {r[0].table_page=next;}return true;}
+  if action==235 || action==236 || action==237 || action==239 {r[0].detail=ifx action==235 then 1 else ifx action==236 then 2 else ifx action==239 then 3 else 0;r[0].table=true;r[0].table_page=0;return true;}
+  if action==223 && r[0].model[0].ready {r[0].info=!r[0].info;r[0].table=true;r[0].table_page=0;return true;}
+  if action==226 {lr_push(r);lr_cancel(r);r[0].info=false;r[0].kind=2;r[0].window_offset=ifx r[0].model[0].source==1 then ((LAB_SNAPSHOTS[r[0].model[0].phase].count-1)/24)*24 else 0;lr_queue(r,1);return true;}
+  if action>=200 && action<=204 {if r[0].model[0].source==1 {if action==203 {r[0].replay[0].playing=!r[0].replay[0].playing;}else {r[0].replay[0].playing=false;lr_phase(r,ifx action<=202 then action-200 else (r[0].model[0].phase+1)%3);}}return true;}
   if !r[0].model[0].ready {return true;}
   if action==224 || action==225 {
     cap:=ifx r[0].kind==2 then 24 else ifx r[0].kind==4 || r[0].kind==6 then 16 else 32;
     total:=ifx r[0].kind==2 then r[0].window_total else r[0].total;offset:=ifx r[0].kind==2 then r[0].window_offset else r[0].offset;
+    if r[0].kind==4 {tx:=lr_tx(r,0);ip:=jv_get(lr_document(r),tx,"input_page");inputs:=lr_int(r,ip,"total");if inputs>total {total=inputs;}}
     offset+=ifx action==224 then -cap else cap;if offset<0 {offset=0;}if offset>=total {return true;}
-    if r[0].kind==2 {r[0].window_offset=offset;}else {r[0].offset=offset;}lr_queue(r,1);return true;
+    if r[0].kind==2 {r[0].window_offset=offset;}else {r[0].offset=offset;}r[0].table_page=0;lr_queue(r,1);return true;
   }
-  if action>=1000 && action<2000 {i:=action-1000;if i<r[0].wn {b:=r[0].window[i];lr_query(r,3,cast(string)b.hash[..],0);}return true;}
-  count:=lr_size(r,0,"transactions");
-  if action>=2000 && action<3000 {i:=action-2000;if i<count {r[0].selected=i;r[0].output=0;}return true;}
-  if action==227 || action==228 {if count>0 {r[0].selected=(r[0].selected+(ifx action==227 then count-1 else 1))%count;r[0].output=0;}return true;}
-  if r[0].selected<0 {return true;}tx:=lr_tx(r,r[0].selected);
+  if action>=1000 && action<2000 {i:=action-1000;if i<r[0].wn {b:=r[0].window[i];lr_visit(r,3,cast(string)b.hash[..],0);}return true;}
+  count:=ifx r[0].kind==4 then 1 else ifx r[0].kind==6 then lr_size(r,0,"outputs") else lr_size(r,0,"transactions");
+  if action>=2000 && action<3000 {i:=action-2000;if i<count {tx:=lr_tx(r,i);lr_occurrence(r,lr_text(r,tx,"txid"),lr_text(r,tx,"block"),0);}return true;}
+  if action>=6000 && action<7000 {i:=action-6000;node:=lr_child(r,0,"outputs",i);output:=jv_get(lr_document(r),node,"output");if node>=0 {lr_occurrence(r,lr_text(r,node,"txid"),lr_text(r,node,"block"),lr_int(r,output,"vout"));}return true;}
+  if action==227 || action==228 {if count>0 {r[0].selected=(r[0].selected+(ifx action==227 then count-1 else 1))%count;r[0].output=0;r[0].table_page=0;}return true;}
+  if action==238 {if r[0].kind==3 {r[0].selected= -1;r[0].detail=4;r[0].table=true;r[0].table_page=0;}else if r[0].has_block {b:=r[0].block;lr_visit(r,3,cast(string)b.hash[..],0);}return true;}
+  if (action==229 || action==230) && (r[0].kind==5 || r[0].kind==6) {lr_visit(r,ifx action==229 then 5 else 6,cast(string)r[0].key[0..<r[0].kn],0);return true;}
+  if r[0].selected<0 || r[0].kind==6 {return true;}tx:=lr_tx(r,r[0].selected);
   if action==212 {count=lr_size(r,tx,"outputs");if count>0 {r[0].output=(r[0].output+1)%count;}return true;}
-  if action>=4000 {i:=action-4000;if i<lr_size(r,tx,"outputs") {r[0].output=i;}return true;}
+  if action>=4000 && action<5000 {i:=action-4000;if i<lr_size(r,tx,"outputs") {r[0].output=i;r[0].detail=2;r[0].table_page=0;}return true;}
   if action>=3000 && action<4000 {
-    input:=lr_child(r,tx,"inputs",action-3000);d:=lr_document(r);if input>=0 && !jv_bool(d,jv_get(d,input,"coinbase")) {
-      parent:=lr_text(r,input,"txid");block:=lr_text(r,input,"block");b:[256]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_put(o[..],parent);
-      if block.count==64 {jo_put(o[..],"-");jo_put(o[..],block);lr_query(r,4,jo_text(o[..]),0);}else {r[0].notice=404;}
-    }return true;
+    input:=lr_child(r,tx,"inputs",action-3000);d:=lr_document(r);if input>=0 && !jv_bool(d,jv_get(d,input,"coinbase")) {lr_occurrence(r,lr_text(r,input,"txid"),lr_text(r,input,"block"),lr_int(r,input,"vout"));}else {r[0].notice=404;}return true;
   }
   output:=lr_child(r,tx,"outputs",r[0].output);
-  if action==229 || action==230 {key:=lr_text(r,output,"script_hex");saved:[256]u8;if key.count>256 {r[0].notice=413;return true;}for i:0..<key.count {saved[i]=key[i];}lr_query(r,ifx action==229 then 5 else 6,cast(string)saved[0..<key.count],0);return true;}
+  if action==213 || action==234 {lr_occurrence(r,lr_text(r,output,"spender"),lr_text(r,output,"spend_block"),0);return true;}
+  if action==229 || action==230 {key:=lr_text(r,output,"script_hex");if key.count==0 || key.count>256 {r[0].notice=413;return true;}lr_visit(r,ifx action==229 then 5 else 6,key,0);return true;}
   return true;
 }
 lab_remote_status :: (s:[]BitcoinLab,out:[]f32,n:int,y:f32,pen:HdPen)->int {
@@ -668,7 +705,7 @@ lab_remote_status :: (s:[]BitcoinLab,out:[]f32,n:int,y:f32,pen:HdPen)->int {
   identity:=r[0].model[0].identity;
   at=hd_text(out,at,UX_CHAINS[identity.chain],16,y,10,pen,2);at=lab_number_at(out,at,identity.height,94,y,10,pen,0);
   at=hd_text_fit(out,at,"OBSERVATION TIME UNKNOWN",160,y,10,s[0].w-176,pen,1);
-  if s[0].w<700 {at=lab_identifier(s,out,at,cast(string)identity.hash[..],302,pen);}else {at=hd_text(out,at,cast(string)identity.hash[..],430,y,10,pen,0);}
+  if s[0].w<700 {at=lab_identifier(s,out,at,cast(string)identity.hash[..],y+18,pen);}else {at=hd_text(out,at,cast(string)identity.hash[..],430,y,10,pen,0);}
   return at;
 }
 lab_remote_tile :: (s:[]BitcoinLab,out:[]f32,n:int,x:f32,z:f32,label:string,index:int,action:int,selected:bool,pen:HdPen,colour:Point)->int {
@@ -678,21 +715,41 @@ lab_remote_tile :: (s:[]BitcoinLab,out:[]f32,n:int,x:f32,z:f32,label:string,inde
     at=hd_text(out,at,label,box.x+5,box.y+27,10,pen,1);at=lab_number_at(out,at,index,box.x+16,box.y+27,10,pen,0);
   }return at;
 }
+#test "Lab fee colors use rounded virtual bytes and leave unavailable fees unknown" {
+  #assert lab_fee_band(-1,40)==0 && lab_fee_band(1000,0)==0;
+  #assert lab_fee_band(11,41)==1 && lab_fee_band(110,41)==2 && lab_fee_band(111,41)==3;
+}
+lab_fee_band :: (fee:int,weight:int)->int {
+  if fee<0 || weight<=0 {return 0;}vbytes:=(weight+3)/4;if fee<=vbytes {return 1;}if fee<=10*vbytes {return 2;}return 3;
+}
 lab_remote_draw :: (s:[]BitcoinLab,out:[]f32,n:int,pen:HdPen)->int {
   at:=n;r:=s[0].remote[..];if !r[0].model[0].ready {return at;}
-  for i:0..<r[0].wn {b:=r[0].window[i];at=lab_remote_tile(s,out,at,(cast(f32)(i%12)-5.5)*1.4,1.8+cast(f32)(i/12)*2.5,"",b.height,1000+i,false,pen,ifx b.active then v3(0.1,0.53,0.72) else v3(0.55,0.24,0.08));}
+  min_height:=2147483647;max_height:=0;for i:0..<r[0].wn {height:=r[0].window[i].height;if height<min_height {min_height=height;}if height>max_height {max_height=height;}}
+  for i:0..<r[0].wn {b:=r[0].window[i];z:=ifx b.active then 1.8f32 else 4.8f32;
+    if r[0].model[0].source==1 && r[0].replay[0].anim<1 {old:=ifx lbr_active(r[0].replay[0].from,cast(string)b.hash[..]) then 1.8f32 else 4.8f32;z=old+(z-old)*r[0].replay[0].anim;}
+    at=lab_remote_tile(s,out,at,(cast(f32)b.height-cast(f32)(min_height+max_height)/2)*1.4,z,"",b.height,1000+i,false,pen,ifx b.active then v3(0.1,0.53,0.72) else v3(0.55,0.24,0.08));
+  }
   if r[0].kind!=3 && r[0].kind!=4 && r[0].kind!=5 {return at;}
-  count:=ifx r[0].kind==4 then 1 else lr_size(r,0,"transactions");
-  for i:0..<count {at=lab_remote_tile(s,out,at,(cast(f32)(i%16)-cast(f32)(lo(cast(f32)count,16)-1)/2)*1.2,-1.8-cast(f32)(i/16)*1.2,"T",r[0].offset+i,2000+i,i==r[0].selected,pen,v3(0.1,0.6,0.45));}
-  if r[0].selected<0 {return at;}tx:=lr_tx(r,r[0].selected);ni:=lr_size(r,tx,"inputs");no:=lr_size(r,tx,"outputs");
-  for i:0..<ni {x:=(cast(f32)i-cast(f32)(ni-1)/2)*1.4;at=lab_remote_tile(s,out,at,x,0.1,"I",i,3000+i,false,pen,v3(0.58,0.5,0.24));at=lab_line(s,out,at,v3(x,0.6,0),v3(0,0.6,-1.5),pen,2);}
-  for i:0..<no {x:=(cast(f32)i-cast(f32)(no-1)/2)*1.4;node:=lr_child(r,tx,"outputs",i);status:=lr_text(r,node,"status");at=lab_remote_tile(s,out,at,x,-4.8,"O",cast(int)lr_int(r,node,"vout"),4000+i,i==r[0].output,pen,ifx status=="unspent" then v3(0.1,0.65,0.35) else v3(0.5,0.25,0.3));at=lab_line(s,out,at,v3(0,0.6,-2.2),v3(x,0.6,-4.5),pen,2);}
+  count:=ifx r[0].kind==4 then 1 else lr_size(r,0,"transactions");largest:=1;for i:0..<count {weight:=lr_int(r,lr_tx(r,i),"weight");if weight>largest {largest=weight;}}
+  for i:0..<count {t:=lr_tx(r,i);ratio:=cast(f32)lr_int(r,t,"weight")/cast(f32)largest;if ratio<0.12 {ratio=0.12;}
+    x:=(cast(f32)(i%16)-cast(f32)(lo(cast(f32)count,16)-1)/2)*1.2;z:= -1.8-cast(f32)(i/16)*1.2;fee:=lr_int(r,t,"fee_sat");weight:=lr_int(r,t,"weight");band:=lab_fee_band(fee,weight);colour:=ifx band==0 then v3(0.36,0.4,0.44) else ifx band==1 then v3(0.1,0.6,0.45) else ifx band==2 then v3(0.65,0.44,0.13) else v3(0.75,0.15,0.1);
+    lab_slab(s,x,0.4,z,0.45*ratio,0.35,0.3,colour);pos:=lab_project(s,v3(x,1,z));
+    if pos.depth>0.2 && pos.x>=24 && pos.x<s[0].w-24 && pos.y>=pen.top+22 && pos.y<pen.bottom-22 {box:=HudBox.{x=pos.x-23,y=pos.y-22,width=46,height=44};lab_node(s,box,2000+i);at=hd_panel(out,at,box,pen,i==r[0].selected);at=lab_number_at(out,at,r[0].offset+i,box.x+5,box.y+27,10,pen,0);}
+  }
+  if r[0].kind!=4 || r[0].selected<0 {return at;}tx:=lr_tx(r,r[0].selected);ni:=lr_size(r,tx,"inputs");no:=lr_size(r,tx,"outputs");
+  for i:0..<ni {x:=(cast(f32)i-cast(f32)(ni-1)/2)*1.4;at=lab_remote_tile(s,out,at,x,0.1,"I",ifx r[0].kind==4 then r[0].offset+i else i,3000+i,false,pen,v3(0.58,0.5,0.24));at=lab_line(s,out,at,v3(x,0.6,0),v3(0,0.6,-1.5),pen,2);}
+  for i:0..<no {x:=(cast(f32)i-cast(f32)(no-1)/2)*1.4;node:=lr_child(r,tx,"outputs",i);status:=lr_text(r,node,"status");colour:=ifx status=="unspent" then v3(0.1,0.65,0.35) else ifx status=="immature" then v3(0.7,0.6,0.15) else ifx status=="unspendable" then v3(0.4,0.4,0.4) else ifx status=="stale" then v3(0.62,0.28,0.08) else ifx status=="replaced" then v3(0.6,0.2,0.6) else v3(0.5,0.25,0.3);
+    at=lab_remote_tile(s,out,at,x,-4.8,"O",lr_int(r,node,"vout"),4000+i,i==r[0].output,pen,colour);at=lab_line(s,out,at,v3(0,0.6,-2.2),v3(x,0.6,-4.5),pen,2);}
   return at;
 }
-lab_remote_inspector :: (s:[]BitcoinLab,out:[]f32,n:int,pen:HdPen)->int {
+lab_remote_inspector :: (s:[]BitcoinLab,out:[]f32,n:int,input_pen:HdPen)->int {
+  pen:=input_pen;pen.bottom=s[0].h-(ifx s[0].h<700 then 172.0f32 else 220.0f32)-4;
   at:=n;r:=s[0].remote[..];y:=s[0].world_bottom+24;
   if r[0].search {at=hd_text_fit(out,at,"FIND HEIGHT / HASH / TXID / EXACT SCRIPT / ADDRESS",16,y,11,s[0].w-32,pen,2);return hd_text_fit(out,at,cast(string)r[0].query[0..<r[0].qn],16,y+24,12,s[0].w-32,pen,0);}
   if !r[0].model[0].ready {return hd_text_fit(out,at,"No amounts admitted. RETRY or select RECORDING.",16,y,12,s[0].w-32,pen,1);}
+  if r[0].notice!=0 {at=hd_text(out,at,"EXACT SELECTION UNAVAILABLE",16,y,11,pen,2);at=lab_number_at(out,at,r[0].notice,260,y,11,pen,0);y+=22;}
+  at=hd_text_fit(out,at,"TILE WIDTH = PAGE-RELATIVE WEIGHT (12% FLOOR). FEE RATE: GRAY UNKNOWN / GREEN <=1 / AMBER <=10 / RED >10 SAT/VB.",16,y,10,s[0].w-32,pen,1);y+=22;
+  if r[0].model[0].source==1 {replay:=r[0].replay[0];at=hd_text(out,at,"DETACH / ATTACH",16,y,10,pen,1);at=lab_number_at(out,at,replay.detached,150,y,10,pen,0);at=lab_number_at(out,at,replay.attached,190,y,10,pen,0);at=hd_text_fit(out,at,ifx lbr_work(replay.from,replay.to)<0 then "WORK INCREASED" else ifx lbr_work(replay.from,replay.to)>0 then "WORK DECREASED" else "SAME WORK",230,y,10,s[0].w-246,pen,2);y+=22;}
   if r[0].info {
     identity:=r[0].model[0].identity;at=hd_text(out,at,"SNAPSHOT CURSOR",16,y,11,pen,2);at=lab_identifier(s,out,at,cast(string)identity.cursor[0..<identity.cn],y+20,pen);y+=ifx s[0].w<700 then 76 else 60;
     at=hd_text(out,at,"VALIDATED HEIGHT",16,y,11,pen,1);at=lab_number_at(out,at,identity.validated,160,y,11,pen,0);y+=22;
@@ -701,7 +758,7 @@ lab_remote_inspector :: (s:[]BitcoinLab,out:[]f32,n:int,pen:HdPen)->int {
   }
   at=hd_text(out,at,"PAGE",16,y,11,pen,1);offset:=ifx r[0].kind==2 then r[0].window_offset else r[0].offset;total:=ifx r[0].kind==2 then r[0].window_total else r[0].total;
   at=lab_number_at(out,at,offset,60,y,11,pen,0);at=hd_text(out,at,"OF",120,y,11,pen,1);at=lab_number_at(out,at,total,146,y,11,pen,0);y+=24;
-  if r[0].kind==2 {return hd_text_fit(out,at,"Select a block. Equal slabs = one block; blue active / amber stale.",16,y,11,s[0].w-32,pen,1);}
+  if r[0].kind==2 {return hd_text_fit(out,at,"One slab per block: blue active lane / amber stale lane. BLOCK shows full facts.",16,y,11,s[0].w-32,pen,1);}
   if r[0].kind==6 {
     count:=lr_size(r,0,"outputs");for i:0..<count {if y+22>s[0].h-132 {break;}node:=lr_child(r,0,"outputs",i);o:=jv_get(lr_document(r),node,"output");at=lab_number_at(out,at,lr_int(r,o,"value_sat"),16,y,11,pen,0);at=hd_text(out,at,"SAT",142,y,10,pen,1);at=hd_text(out,at,lr_text(r,o,"status"),180,y,11,pen,2);y+=22;}
     return at;
@@ -716,11 +773,16 @@ lab_remote_inspector :: (s:[]BitcoinLab,out:[]f32,n:int,pen:HdPen)->int {
   return at;
 }
 lab_remote_a11y :: (s:[]BitcoinLab,out:[]u8)->int {
-  n:=0;number:[32]u8;for action:220..<231 {digits:=lab_decimal(number[..],action);n=lab_text(out,n,cast(string)number[0..<digits]);n=lab_text(out,n," button - ");n=lab_text(out,n,lab_label(action));n=lab_text(out,n,"\n");}
-  for action:200..<203 {digits:=lab_decimal(number[..],action);n=lab_text(out,n,cast(string)number[0..<digits]);n=lab_text(out,n," button - ");n=lab_text(out,n,lab_label(action));n=lab_text(out,n,"\n");}
-  if s[0].remote[0].model[0].ready {for i:0..<s[0].remote[0].wn {digits:=lab_decimal(number[..],1000+i);n=lab_text(out,n,cast(string)number[0..<digits]);n=lab_text(out,n," button - Block ");digits=lab_decimal(number[..],s[0].remote[0].window[i].height);n=lab_text(out,n,cast(string)number[0..<digits]);n=lab_text(out,n,"\n");}}
-  for i:0..<s[0].count {action:=s[0].nodes[i].action;if action<2000 {continue;}digits:=lab_decimal(number[..],action);n=lab_text(out,n,cast(string)number[0..<digits]);n=lab_text(out,n," button - Select ");n=lab_text(out,n,ifx action<3000 then "transaction" else ifx action<4000 then "input" else "output");n=lab_text(out,n,"\n");}
-  n=lab_text(out,n,"100 status - ");n=lab_text(out,n,lab_source_label(s));r:=s[0].remote[..];
-  if r[0].model[0].ready {n=lab_text(out,n," Snapshot ");identity:=r[0].model[0].identity;n=lab_text(out,n,cast(string)identity.hash[..]);n=lab_text(out,n,". Data ");n=lab_text(out,n,cast(string)r[0].body[0..<r[0].n]);}
+  n:=0;number:[32]u8;for action:200..<245 {if action>214 && action<220 {continue;}digits:=lab_decimal(number[..],action);n=lab_text(out,n,cast(string)number[0..<digits]);n=lab_text(out,n," button - ");n=lab_text(out,n,lab_label(action));n=lab_text(out,n,"\n");}
+  r:=s[0].remote[..];if r[0].model[0].ready {
+    for i:0..<r[0].wn {digits:=lab_decimal(number[..],1000+i);n=lab_text(out,n,cast(string)number[0..<digits]);n=lab_text(out,n," button - Block ");digits=lab_decimal(number[..],r[0].window[i].height);n=lab_text(out,n,cast(string)number[0..<digits]);n=lab_text(out,n," ");n=lab_text(out,n,cast(string)r[0].window[i].hash[..]);n=lab_text(out,n,"\n");}
+    if r[0].kind==3 || r[0].kind==5 {for i:0..<lr_size(r,0,"transactions") {digits:=lab_decimal(number[..],2000+i);n=lab_text(out,n,cast(string)number[0..<digits]);n=lab_text(out,n," button - Transaction ");n=lab_text(out,n,lr_text(r,lr_tx(r,i),"txid"));n=lab_text(out,n,"\n");}}
+    if r[0].kind==6 {for i:0..<lr_size(r,0,"outputs") {digits:=lab_decimal(number[..],6000+i);n=lab_text(out,n,cast(string)number[0..<digits]);n=lab_text(out,n," button - Output occurrence ");node:=lr_child(r,0,"outputs",i);n=lab_text(out,n,lr_text(r,node,"txid"));n=lab_text(out,n,"\n");}}
+    if r[0].selected>=0 && r[0].kind!=6 {tx:=lr_tx(r,r[0].selected);for name,side:[2]string.["inputs","outputs"] {for i:0..<lr_size(r,tx,name) {digits:=lab_decimal(number[..],(ifx side==0 then 3000 else 4000)+i);n=lab_text(out,n,cast(string)number[0..<digits]);n=lab_text(out,n,ifx side==0 then " button - Previous outpoint " else " button - Select output ");node:=lr_child(r,tx,name,i);n=lab_text(out,n,ifx side==0 then lr_text(r,node,"txid") else lr_text(r,node,"status"));digits=lab_decimal(number[..],lr_int(r,node,"vout"));n=lab_text(out,n," VOUT ");n=lab_text(out,n,cast(string)number[0..<digits]);n=lab_text(out,n,"\n");}}}
+  }
+  n=lab_text(out,n,"100 status - ");n=lab_text(out,n,lab_source_label(s));n=lab_text(out,n,". ");
+  if r[0].model[0].ready {id:=r[0].model[0].identity;n=lab_text(out,n,"Snapshot ");n=lab_text(out,n,cast(string)id.hash[..]);if r[0].selected>=0 && r[0].kind!=6 {tx:=lr_tx(r,r[0].selected);n=lab_text(out,n," Transaction ");n=lab_text(out,n,lr_text(r,tx,"txid"));n=lab_text(out,n," Block ");n=lab_text(out,n,lr_text(r,tx,"block"));n=lab_text(out,n,ifx jv_bool(lr_document(r),jv_get(lr_document(r),tx,"active")) then " ACTIVE" else " STALE / RETAINED OCCURRENCE");}n=lab_text(out,n,". Visible table rows: ");for c:s[0].table_text[0..<s[0].table_n] {if c=='\n' {n=lab_text(out,n,"; ");}else {if n<out.count {out[n]=c;n+=1;}}}}
   return lab_text(out,n,"\n");
 }
+
+#load "bitcoin-lab-table.coax";

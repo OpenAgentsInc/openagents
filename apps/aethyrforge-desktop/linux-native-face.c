@@ -27,7 +27,7 @@ uint32_t coaxial_store_cap(int32_t k){(void)k;return 32768*4;}
 uint32_t coaxial_store(uint32_t p,int32_t k){(void)k;return (uint32_t)(uintptr_t)at(p)->lab.e[0].mesh.e;}
 uint32_t coaxial_store_bytes(uint32_t p,int32_t k){(void)k;return at(p)->lab.e[0].mesh_n*8*4;}
 uint32_t coaxial_store_version(uint32_t p,int32_t k){(void)k;return at(p)->frame;}
-int32_t coaxial_action(uint32_t p){return at(p)->lab.e[0].action;}
+int32_t coaxial_action(uint32_t p){fgn_selection_save(view(p));return at(p)->lab.e[0].action;}
 uint32_t coaxial_outbox(uint32_t p){return (uint32_t)(uintptr_t)at(p)->lab.e[0].outbox.e;}
 uint32_t coaxial_outbox_len(uint32_t p){return at(p)->lab.e[0].out_n;}
 void coaxial_action_done(uint32_t p){at(p)->lab.e[0].action=0;at(p)->lab.e[0].out_n=0;}

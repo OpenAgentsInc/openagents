@@ -81,6 +81,7 @@ message TransactionPage {
   string block = 3;
   repeated Transaction transactions = 4;
   Counts page = 5;
+  Block block_info = 6;
 }
 message ScriptHistory {
   string ticket = 1;
@@ -94,6 +95,7 @@ message TransactionEnvelope {
   string ticket = 1;
   Snapshot snapshot = 2;
   Transaction transaction = 3;
+  Block block_info = 4;
 }
 message OutputOccurrence {
   string txid = 1;

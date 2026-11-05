@@ -1,0 +1,78 @@
+// The ordinary table and the Grid share admitted objects, selection and history.
+// Only visible wrapped rows are drawn. Long public scripts consume row counts,
+// never unbounded geometry; PAGE changes API pages and ROWS changes text rows.
+LabTablePen :: struct {row:int;first:int;limit:int;y:f32;step:int;}
+#test "Lab table wrapping is bounded and accounts for every public script byte" {
+  #assert lab_table_wrap(64,32)==2 && lab_table_wrap(65,32)==3;
+  #assert lab_table_wrap(20000,32)==625 && lab_table_wrap(0,32)==1;
+}
+#test "Lab table wraps every public ASCII glyph inside the viewport using actual font metrics" {
+  pen:=HdPen.{d=1,cyan=true,sans=false};text:[128]u8;
+  for width:[3]f32.[320,390,1440] {step:=lab_table_step(width,pen);#assert step>=16 && step<=100;for c:32..<127 {for i:0..<step {text[i]=cast(u8)c;}#assert ink_width(cast(string)text[0..<step],10,0.22,0.72,hd_ink(pen,0))<=width-40;}}
+}
+lab_table_step :: (width:f32,pen:HdPen)->int {
+  widest:=1.0f32;glyph:[1]u8;for c:32..<127 {glyph[0]=cast(u8)c;advance:=ink_width(cast(string)glyph[..],10,0.22,0.72,hd_ink(pen,0))+2.2;if advance>widest {widest=advance;}}
+  step:=cast(int)((width-40)/widest);if step<16 {step=16;}if step>100 {step=100;}return step;
+}
+lab_table_wrap :: (n:int,step:int)->int {return ifx n==0 then 1 else (n+step-1)/step;}
+lab_table_line :: (s:[]BitcoinLab,out:[]f32,n:int,p:[]LabTablePen,text:string,action:int,pen:HdPen)->int {
+  at:=n;rows:=lab_table_wrap(text.count,p[0].step);if action>0 && rows<3 {rows=3;}
+  begin:=p[0].row;end:=begin+rows;lo_row:=ifx begin>p[0].first then begin else p[0].first;hi_row:=ifx end<p[0].first+p[0].limit then end else p[0].first+p[0].limit;
+  if action>0 && hi_row-lo_row>=3 {box:=HudBox.{x=16,y=p[0].y+cast(f32)(lo_row-p[0].first)*20-14,width=s[0].w-32,height=cast(f32)(hi_row-lo_row)*20};lab_node(s,box,action);at=hd_panel(out,at,box,pen,false);}
+  for row:lo_row..<hi_row {i:=(row-begin)*p[0].step;if i<text.count {stop:=i+p[0].step;if stop>text.count {stop=text.count;}chunk:=text[i..<stop];at=hd_text(out,at,chunk,20,p[0].y+cast(f32)(row-p[0].first)*20,10,pen,ifx action>0 then 2 else 0);s[0].table_n=lab_text(s[0].table_text[..],s[0].table_n,chunk);s[0].table_n=lab_text(s[0].table_text[..],s[0].table_n,"\n");}}
+  p[0].row=end;return at;
+}
+lab_table_field :: (s:[]BitcoinLab,out:[]f32,n:int,p:[]LabTablePen,name:string,value:string,pen:HdPen)->int {
+  at:=lab_table_line(s,out,n,p,name,0,pen);return lab_table_line(s,out,at,p,ifx value.count==0 then "UNKNOWN / UNAVAILABLE" else value,0,pen);
+}
+lab_table_number :: (s:[]BitcoinLab,out:[]f32,n:int,p:[]LabTablePen,name:string,value:int,pen:HdPen)->int {
+  b:[64]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_put(o[..],name);jo_put(o[..],": ");if value<0 {jo_put(o[..],"UNKNOWN");}else {jo_int(o[..],value);}return lab_table_line(s,out,n,p,jo_text(o[..]),0,pen);
+}
+lab_table_block :: (s:[]BitcoinLab,out:[]f32,n:int,p:[]LabTablePen,block:LrBlock,pen:HdPen)->int {
+  b:=block;
+  at:=lab_table_field(s,out,n,p,"BLOCK HASH",cast(string)b.hash[..],pen);
+  at=lab_table_field(s,out,at,p,"PREVIOUS BLOCK",cast(string)b.previous[..],pen);
+  at=lab_table_number(s,out,at,p,"HEIGHT",b.height,pen);at=lab_table_line(s,out,at,p,ifx b.active then "ACTIVE BRANCH" else "STALE BRANCH",0,pen);
+  at=lab_table_number(s,out,at,p,"BLOCK HEADER UNIX TIME",b.time,pen);at=lab_table_line(s,out,at,p,"OBSERVATION TIME: UNKNOWN",0,pen);
+  at=lab_table_number(s,out,at,p,"TRANSACTIONS",b.count,pen);at=lab_table_number(s,out,at,p,"BYTES",b.size,pen);at=lab_table_number(s,out,at,p,"WEIGHT UNITS",b.weight,pen);
+  at=lab_table_number(s,out,at,p,"FEES SAT",b.fees,pen);at=lab_table_number(s,out,at,p,"SUBSIDY SAT",b.subsidy,pen);return lab_table_field(s,out,at,p,"CUMULATIVE WORK",cast(string)b.work[0..<b.work_n],pen);
+}
+lab_table :: (s:[]BitcoinLab,out:[]f32,n:int,pen:HdPen)->int {
+  r:=s[0].remote[..];p:[1]LabTablePen;p[0].step=lab_table_step(s[0].w,pen);
+  p[0].y=250;footer:=s[0].h-(ifx s[0].h<700 then 172.0f32 else 220.0f32);p[0].limit=cast(int)((footer-p[0].y)/20);if p[0].limit<3 {p[0].limit=3;}if p[0].limit>24 {p[0].limit=24;}
+  s[0].table_rows=p[0].limit-2;p[0].first=r[0].table_page*s[0].table_rows;s[0].table_n=0;at:=n;
+  if r[0].notice!=0 {at=lab_table_number(s,out,at,p[..],"SELECTION UNAVAILABLE / STATUS",r[0].notice,pen);}
+  if !r[0].model[0].ready {at=lab_table_number(s,out,at,p[..],"SOURCE UNAVAILABLE / STATUS",r[0].model[0].error,pen);}
+  else if r[0].info {
+    id:=r[0].model[0].identity;at=lab_table_field(s,out,at,p[..],"SNAPSHOT CURSOR",cast(string)id.cursor[0..<id.cn],pen);at=lab_table_number(s,out,at,p[..],"VALIDATED HEIGHT",id.validated,pen);at=lab_table_number(s,out,at,p[..],"BACKGROUND HEIGHT",id.background,pen);at=lab_table_line(s,out,at,p[..],"COMPLETE ACKNOWLEDGED VIEW; OBSERVATION TIME UNKNOWN",0,pen);
+    if r[0].model[0].source==1 {replay:=r[0].replay[0];at=lab_table_field(s,out,at,p[..],"PREVIOUS TIP CUMULATIVE WORK",LAB_BLOCKS[lb_height(replay.from,LAB_SNAPSHOTS[replay.from].height)].chainwork,pen);at=lab_table_field(s,out,at,p[..],"ADMITTED TIP CUMULATIVE WORK",LAB_BLOCKS[lb_height(replay.to,LAB_SNAPSHOTS[replay.to].height)].chainwork,pen);at=lab_table_number(s,out,at,p[..],"DETACHED",replay.detached,pen);at=lab_table_number(s,out,at,p[..],"ATTACHED",replay.attached,pen);}
+  }else if r[0].kind==2 {
+    at=lab_table_number(s,out,at,p[..],"RETAINED BLOCKS",r[0].window_total,pen);at=lab_table_number(s,out,at,p[..],"PAGE OFFSET",r[0].window_offset,pen);at=lab_table_number(s,out,at,p[..],"RETURNED (CAP 24)",r[0].wn,pen);at=lab_table_number(s,out,at,p[..],"OMITTED / USE PAGE",r[0].window_total-r[0].wn,pen);
+    for i:0..<r[0].wn {b:=r[0].window[i];at=lab_table_number(s,out,at,p[..],ifx b.active then "ACTIVE HEIGHT" else "STALE HEIGHT",b.height,pen);at=lab_table_line(s,out,at,p[..],cast(string)b.hash[..],1000+i,pen);}
+  }else if r[0].kind==6 {
+    at=lab_table_field(s,out,at,p[..],"EXACT SCRIPT / NO OWNERSHIP INFERENCE",lr_text(r,0,"script_hex"),pen);at=lab_table_number(s,out,at,p[..],"OUTPUT OCCURRENCES",r[0].total,pen);
+    at=lab_table_number(s,out,at,p[..],"EXACT SCRIPT BALANCE SAT (INCLUDES IMMATURE)",lr_int(r,0,"balance_sat"),pen);
+    for group:0..<2 {at=lab_table_line(s,out,at,p[..],ifx group==0 then "UNSPENT / IMMATURE COINS ON THIS PAGE" else "HISTORICAL / UNSPENDABLE OUTPUTS ON THIS PAGE",0,pen);
+    for i:0..<lr_size(r,0,"outputs") {entry:=lr_child(r,0,"outputs",i);o:=jv_get(lr_document(r),entry,"output");status:=lr_text(r,o,"status");coin:=status=="unspent" || status=="immature";if coin!=(group==0) {continue;}at=lab_table_line(s,out,at,p[..],lr_text(r,entry,"txid"),6000+i,pen);at=lab_table_number(s,out,at,p[..],"VOUT",lr_int(r,o,"vout"),pen);at=lab_table_number(s,out,at,p[..],"VALUE SAT",lr_int(r,o,"value_sat"),pen);at=lab_table_line(s,out,at,p[..],lr_text(r,o,"status"),0,pen);at=lab_table_field(s,out,at,p[..],"OCCURRENCE BLOCK",lr_text(r,entry,"block"),pen);}}
+  }else {
+    if r[0].has_block && r[0].detail==4 {at=lab_table_block(s,out,at,p[..],r[0].block,pen);}
+    else {
+      if r[0].kind==5 {at=lab_table_field(s,out,at,p[..],"EXACT SCRIPT / NO OWNERSHIP INFERENCE",lr_text(r,0,"script_hex"),pen);for key:[1]string.["balance_sat"] {at=lab_table_number(s,out,at,p[..],key,lr_int(r,0,key),pen);}}
+      if r[0].kind!=4 {at=lab_table_number(s,out,at,p[..],"TRANSACTION OCCURRENCES",r[0].total,pen);at=lab_table_number(s,out,at,p[..],"PAGE OFFSET",r[0].offset,pen);at=lab_table_number(s,out,at,p[..],"RETURNED",r[0].returned,pen);at=lab_table_number(s,out,at,p[..],"OMITTED / USE PAGE",r[0].total-r[0].returned,pen);for i:0..<lr_size(r,0,"transactions") {t:=lr_tx(r,i);at=lab_table_line(s,out,at,p[..],lr_text(r,t,"txid"),2000+i,pen);at=lab_table_number(s,out,at,p[..],"WEIGHT UNITS",lr_int(r,t,"weight"),pen);at=lab_table_number(s,out,at,p[..],"FEE SAT",lr_int(r,t,"fee_sat"),pen);}}
+      else {
+        tx:=lr_tx(r,0);at=lab_table_line(s,out,at,p[..],ifx jv_bool(lr_document(r),jv_get(lr_document(r),tx,"active")) then "ACTIVE OCCURRENCE" else "STALE / RETAINED OCCURRENCE",0,pen);at=lab_table_field(s,out,at,p[..],"TRANSACTION ID",lr_text(r,tx,"txid"),pen);at=lab_table_field(s,out,at,p[..],"EXACT OCCURRENCE BLOCK",lr_text(r,tx,"block"),pen);at=lab_table_line(s,out,at,p[..],ifx jv_bool(lr_document(r),jv_get(lr_document(r),tx,"active")) then "ACTIVE" else "STALE / RETAINED OCCURRENCE",0,pen);
+        at=lab_table_number(s,out,at,p[..],"WEIGHT UNITS",lr_int(r,tx,"weight"),pen);at=lab_table_number(s,out,at,p[..],"BYTES",lr_int(r,tx,"size"),pen);at=lab_table_number(s,out,at,p[..],"FEE SAT",lr_int(r,tx,"fee_sat"),pen);
+        for name,side:[2]string.["inputs","outputs"] {
+          if (r[0].detail==1 && side==1) || (r[0].detail==2 && side==0) || r[0].detail==3 {continue;}
+          page:=jv_get(lr_document(r),tx,ifx side==0 then "input_page" else "output_page");at=lab_table_number(s,out,at,p[..],ifx side==0 then "INPUT TOTAL" else "OUTPUT TOTAL",lr_int(r,page,"total"),pen);at=lab_table_number(s,out,at,p[..],"OMITTED / USE PAGE",lr_int(r,page,"omitted"),pen);
+          for i:0..<lr_size(r,tx,name) {o:=lr_child(r,tx,name,i);at=lab_table_number(s,out,at,p[..],ifx side==0 then "INPUT INDEX" else "OUTPUT INDEX",r[0].offset+i,pen);
+            if side==0 {at=lab_table_line(s,out,at,p[..],ifx jv_bool(lr_document(r),jv_get(lr_document(r),o,"coinbase")) then "COINBASE / NO PREVOUT" else lr_text(r,o,"txid"),3000+i,pen);at=lab_table_number(s,out,at,p[..],"PREVIOUS VOUT",lr_int(r,o,"vout"),pen);}else {at=lab_table_line(s,out,at,p[..],lr_text(r,o,"status"),4000+i,pen);}
+            at=lab_table_number(s,out,at,p[..],"VALUE SAT",lr_int(r,o,"value_sat"),pen);at=lab_table_field(s,out,at,p[..],"SCRIPT HEX",lr_text(r,o,"script_hex"),pen);
+          }
+        }
+        if r[0].detail==3 {o:=lr_child(r,tx,"outputs",r[0].output);at=lab_table_number(s,out,at,p[..],"SELECTED VOUT",lr_int(r,o,"vout"),pen);at=lab_table_field(s,out,at,p[..],"EXACT SCRIPT HEX",lr_text(r,o,"script_hex"),pen);at=lab_table_field(s,out,at,p[..],"ADDRESS (WHEN STANDARD)",lr_text(r,o,"address"),pen);at=lab_table_field(s,out,at,p[..],"SPENDING TRANSACTION",lr_text(r,o,"spender"),pen);at=lab_table_field(s,out,at,p[..],"SPENDING OCCURRENCE BLOCK",lr_text(r,o,"spend_block"),pen);at=lab_table_line(s,out,at,p[..],"NO PERSON, OWNERSHIP, CHANGE OR SATOSHI FLOW IS INFERRED",0,pen);}
+      }
+    }
+  }
+  s[0].table_lines=p[0].row;return at;
+}

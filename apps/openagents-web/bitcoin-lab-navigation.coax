@@ -1,0 +1,52 @@
+// Bounded navigation over admitted Lab pages. Places own bytes, never JSON views.
+lr_capture :: (s:[]LabRemote)->LabPlace {
+  p:LabPlace;id:=s[0].model[0].identity;p.ok=s[0].active && id.code==0;p.source=s[0].model[0].source;p.phase=s[0].model[0].phase;p.chain=id.chain;p.kind=s[0].kind;p.offset=ifx p.kind==2 then s[0].window_offset else s[0].offset;p.row=s[0].selected+1;p.vout=ifx p.kind==4 then s[0].offset+s[0].output else s[0].output;p.table=ifx s[0].table then 1 else 0;
+  p.cn=id.cn;for i:0..<p.cn {p.cursor[i]=id.cursor[i];}p.kn=s[0].kn;for i:0..<p.kn {p.key[i]=s[0].key[i];}return p;
+}
+lr_exact :: (s:[]LabRemote)->LabPlace {
+  p:=lr_capture(s);if p.kind!=3 && p.kind!=5 {return p;}if s[0].selected<0 {return p;}
+  tx:=lr_tx(s,s[0].selected);id:=lr_text(s,tx,"txid");block:=lr_text(s,tx,"block");if id.count!=64 || block.count!=64 {p.ok=false;return p;}
+  o:[1]Jo;jo_start(o[..],p.key[..]);jo_put(o[..],id);jo_put(o[..],"-");jo_put(o[..],block);p.kn=o[0].n;p.kind=4;p.row=1;p.offset=0;return p;
+}
+lr_push :: (s:[]LabRemote) {
+  p:=lr_capture(s);if !p.ok {return;}if s[0].history_n==12 {for i:0..<11 {s[0].history[i]=s[0].history[i+1];}s[0].history_n=11;}
+  s[0].history[s[0].history_n]=p;s[0].history_n+=1;
+}
+lr_visit :: (s:[]LabRemote,kind:int,key:string,offset:int) {saved:[256]u8;if key.count>256 {s[0].notice=413;return;}for i:0..<key.count {saved[i]=key[i];}lr_push(s);lr_query(s,kind,cast(string)saved[0..<key.count],offset);}
+lr_apply :: (s:[]LabRemote,place:LabPlace) {
+  p:=place;
+  s[0].restore=p;s[0].restore_stage=2;s[0].restore_strict=false;
+  if p.kind==2 {s[0].kind=2;s[0].window_offset=p.offset;lr_queue(s,1);}else {lr_query(s,p.kind,cast(string)p.key[0..<p.kn],p.offset);}
+}
+lr_back :: (s:[]LabRemote) {
+  if s[0].history_n==0 {s[0].table=false;return;}s[0].history_n-=1;p:=s[0].history[s[0].history_n];id:=s[0].model[0].identity;
+  if cast(string)p.cursor[0..<p.cn]!=cast(string)id.cursor[0..<id.cn] {s[0].notice=409;return;}lr_apply(s,p);
+}
+lr_restore :: (s:[]LabRemote,p:LabPlace) {
+  if !p.ok {return;}lr_select(s,p.source,p.phase);s[0].restore=p;s[0].restore_stage=1;s[0].restore_strict=true;
+}
+lr_rebind :: (s:[]LabRemote) {
+  if !s[0].active {return;}p:=ifx s[0].restore_stage>0 then s[0].restore else lr_capture(s);lr_cancel(s);s[0].kind=2;lr_queue(s,1);
+  if p.ok {s[0].restore=p;s[0].restore_stage=1;s[0].restore_strict=true;}
+}
+lr_phase :: (s:[]LabRemote,phase:int) {
+  if s[0].model[0].source!=1 {s[0].notice=400;return;}p:=lr_exact(s);before:=s[0].model[0].phase;playing:=s[0].replay[0].playing;
+  lr_select(s,1,phase);s[0].replay[0].playing=playing;s[0].replay[0].clock=0;s[0].phase_before=before;s[0].transition=before!=phase;
+  if p.ok {p.phase=phase;s[0].restore=p;s[0].restore_stage=1;s[0].restore_strict=false;}
+}
+lr_after_place :: (s:[]LabRemote) {
+  stage:=s[0].restore_stage;if stage==0 {return;}p:=s[0].restore;id:=s[0].model[0].identity;
+  if s[0].restore_strict && (id.chain!=p.chain || cast(string)id.cursor[0..<id.cn]!=cast(string)p.cursor[0..<p.cn]) {s[0].restore_stage=0;s[0].notice=409;return;}
+  if stage==1 {
+    if p.kind!=2 || p.offset!=s[0].window_offset {lr_apply(s,p);return;}
+  }
+  s[0].restore_stage=0;s[0].table=p.table==1;
+  if p.kind!=2 {count:=ifx p.kind==4 then 1 else lr_size(s,0,ifx p.kind==6 then "outputs" else "transactions");s[0].selected=ifx p.row>0 && p.row<=count then p.row-1 else -1;
+    s[0].output=ifx p.kind==4 then p.vout-p.offset else p.vout;
+    if p.kind!=6 && s[0].selected>=0 {tx:=lr_tx(s,s[0].selected);if s[0].output<0 || s[0].output>=lr_size(s,tx,"outputs") {s[0].output= -1;s[0].notice=404;}}
+  }
+}
+lr_occurrence :: (s:[]LabRemote,id:string,block:string,vout:int) {
+  if id.count!=64 || block.count!=64 {s[0].notice=404;return;}key:[256]u8;o:[1]Jo;jo_start(o[..],key[..]);jo_put(o[..],id);jo_put(o[..],"-");jo_put(o[..],block);
+  lr_visit(s,4,jo_text(o[..]),(vout/16)*16);p:=lr_capture(s);p.ok=true;p.row=1;p.vout=vout;s[0].restore=p;s[0].restore_stage=2;
+}

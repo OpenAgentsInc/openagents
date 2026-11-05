@@ -74,9 +74,9 @@ lj_fixture :: (route:LabRoute,o:[]Jo)->int {
   if r.kind==2 {
     jo_key(o,"blocks");jo_arr(o);for i:r.offset..<s.count {if i-r.offset>=LAB_WINDOW_MAX {break;}lj_block(o,r.phase,s.first+i);}jo_end(o);lj_count(o,"page",s.count,r.offset,LAB_WINDOW_MAX,c);
   }else if r.kind==3 {
-    b:=LAB_BLOCKS[e[0].block];jo_key(o,"block");jo_str(o,b.hash);jo_key(o,"transactions");jo_arr(o);
+    b:=LAB_BLOCKS[e[0].block];jo_key(o,"block_info");lj_block(o,r.phase,e[0].block);jo_key(o,"block");jo_str(o,b.hash);jo_key(o,"transactions");jo_arr(o);
     for i:r.offset..<b.count {if i-r.offset>=LAB_TX_MAX {break;}lj_transaction(o,r.phase,b.tx+i,0);}jo_end(o);lj_count(o,"page",b.count,r.offset,LAB_TX_MAX,c);
-  }else if r.kind==4 {jo_key(o,"transaction");lj_transaction(o,r.phase,e[0].tx,r.offset);}
+  }else if r.kind==4 {jo_key(o,"block_info");lj_block(o,r.phase,LAB_TXS[e[0].tx].block);jo_key(o,"transaction");lj_transaction(o,r.phase,e[0].tx,r.offset);}
   else if r.kind==5 || r.kind==6 {
     script:="";total:=0;outputs:=0;balance:=0;
     for b:s.first..<s.first+s.count {row:=LAB_BLOCKS[b];for t:row.tx..<row.tx+row.count {

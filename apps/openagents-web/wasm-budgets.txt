@@ -63,4 +63,6 @@ waterlab 190000
 # The acknowledged three-phase block/transaction recording adds 156 KiB of data.
 # Snapshot admission, bounded HTTP pages, source controls and graph paging add
 # 33 KiB to the recorded-only realm (302,889 bytes measured on Linux).
-bitcoin-lab 315000
+# Virtual ordinary explorer tables, exact selection links and admitted reorg
+# geometry add 38 KiB (340,930 bytes measured before final link persistence).
+bitcoin-lab 365000

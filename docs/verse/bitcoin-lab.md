@@ -8,34 +8,35 @@ Direct route: **`/worlds/bitcoin-lab`**. Module and save-slot identity:
 `bitcoin-lab`. The world is **`listed:false`**. Finishing this work does not
 authorize listing it.
 
-This is a **recorded regtest / validated-v1** explorer with seven stations
-and all 125 Bitcoin book chapters. The retained Core recording is rebuilt
-from genesis through our complete validator, not relabeled from the old
-pow-only index. Blocks, transactions, scripts, satoshi amounts, output states
-and exact spend occurrences come from acknowledged commits. Observation time
-was not retained and is explicitly unknown. It has no live connection, keys,
-signing, custody or ownership inference. Every chapter's visual exercise
-remains unavailable; this scene promotes no book chapter. The published
-explorer keeps its separate pow-only contract.
+The default native source is **Fixture API / regtest / validated-v1**, rebuilt
+from genesis through our full validator. Recording remains the offline fallback;
+Own Node reads only explicitly configured committed journals and authenticated
+block files, preserving their original validation profile. Every view carries
+network, source/profile, exact snapshot identity and unknown observation time.
+The seven stations and all 125 chapter statuses remain available in MAP; no
+chapter or unavailable visual exercise is promoted.
 
-Select a solid block slab, or use the block arrows (`[` / `]`). TXS opens its
-transactions; T tiles show relative transaction weight with a 12% minimum
-width, I tiles navigate exact input outpoints, and O tiles select outputs.
-OUTPUT cycles outputs and SPEND follows the exact spending block/transaction.
-FIND (`/`) accepts a height, block hash, txid, address or bounded script; it
-selects a matching occurrence, preferring the active chain. It is not an
-address ownership/history report. LINK puts phase/block/transaction in the
-URL fragment. The snapshot tip hash and selected block hash remain distinct.
+Selectable blocks open bounded, weight-scaled transaction tiles. Exact input
+outpoints lead to creating occurrences, outputs retain integer amounts,
+scripts/addresses/status, and SPEND follows the exact spending occurrence.
+FIND accepts height/hash/txid/address/exact script. HISTORY and UTXOS use the
+complete script without inferring people, change or individual satoshi paths.
 
-A/B/C select acknowledged states at heights 102/103/104. STEP (`R`) advances
-and PLAY toggles six-second replay. B detaches two A blocks and attaches
-three B blocks; C detaches three B blocks and attaches four A blocks. A
-selected detached block remains stale rather than silently changing identity.
-All shown facts change together; there are no asynchronous fixture reads.
-Blue slabs are active, brown stale and orange selected. Each equal-sized
-slab represents one block. Exact size, weight, chainwork, header time,
-subsidy and known fees are inspector values. Window/retained/omitted counts
-describe the bounded recording, not a claim of mainnet completeness.
+EXPLORER is the ordinary table inside the native app, over the same admitted
+objects as the Grid. GRID and BACK preserve selection and bounded navigation;
+BLOCK, TXS/DETAILS, INPUTS, OUTPUTS and SCRIPT expose full facts. PAGE moves
+24/32/16-element HTTP pages; ROWS moves bounded wrapped text, including complete
+hashes and scripts. LINK preserves exact source/network/cursor/occurrence and
+page, using a browser fragment or the native public selection file/clipboard.
+See [the source guide](../../bitcoin/lab/README.md) for commands and shortcuts.
+
+A/B/C scrubs acknowledged fixture states, STEP advances once and PLAY/PAUSE
+advances every six seconds. Active/stale lanes animate detach/attach only after
+complete admission; integer amounts change atomically. STATUS compares full
+cumulative work. MOTION (V) disables interpolation. A detached selected object
+remains stale; absent objects and incompatible saved cursors are unavailable.
+The published explorer v1 keeps its existing pow-only contract; the in-app
+table uses the separate Lab projection.
 
 ## Walk and select
 
@@ -122,7 +123,7 @@ temporary GPU buffer.
   The scene has a separate 4,096-vertex mesh store, included in arena and
   vertex accounting. The Wasm release budget is 270,000 bytes, including the
   immutable block/transaction recording. Native and browser evidence is
-  recorded below; live source selection remains future work.
+  recorded below; explicit own-node selection is qualified in #12803.
 
 The registry filters normal Worlds, homepage/Start galaxy selection and
 galaxy picking; `?realms=all` remains deliberate diagnostics. CLI discovery
@@ -132,13 +133,14 @@ every unlisted realm directory, including child pages, from `sitemap.xml`
 and `llms-full.txt`; listed:false alone previously did not do that. This is
 discovery exclusion, not authentication. Direct HTML and Markdown still ship.
 
-## Qualification and remaining work
+## Qualification and scope
 
-See [the recorded Linux checks and screenshots](../verification/bitcoin-lab-12802.md).
-See also [the block-view evidence](../verification/bitcoin-lab-blocks.md).
-#12803 and #12804 stay open: the alpha HTTP contract still needs a same-origin
-allowlisted live adapter, bounded graph paging, source/ticket invalidation
-and live-source recovery. Full script-history pages, the ordinary explorer
-handoff, general expansion/cancellation and reorg animation/restore gates
-remain. The immutable fixture viewer does not claim those criteria are done.
-Keep the realm unlisted.
+See [the foundation checks](../verification/bitcoin-lab-12802.md),
+[recorded blocks](../verification/bitcoin-lab-blocks.md),
+[own-node snapshots](../verification/bitcoin-lab-12803.md) and
+[explorer/replay qualification](../verification/bitcoin-lab-12804.md).
+The owner reduced the epic to original 02/30 and 03/30. Other open Bitcoin Lab
+work is canceled as not planned; book chapter state is unchanged. Qualification
+is Linux/native and muted headless desktop/phone, public regtest fixtures and
+bounded readers. It does not claim mainnet, Mac or physical-phone validation.
+The realm remains unlisted.

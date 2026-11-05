@@ -112,7 +112,15 @@ The query table is bounded to 64 MiB, the journal to 256 MiB and a response to
 2 MiB. Exceeding any local bound refuses rather than returning a partial page.
 
 `transaction` accepts `TXID-BLOCKHASH` for an exact archived occurrence. Plain
-txids retain active-first search semantics. Fixture inputs name their exact
+txids retain active-first search semantics. Transaction pages/envelopes also
+carry `block_info`, the authenticated selected block's exact metadata. The
+in-app ordinary explorer is a table presentation of these same admitted
+pages, with an explicit return to the Grid and unchanged source/profile.
+Shared `lab1/` selection fragments encode source, phase, network, query kind,
+page ordinal, row/output selection, table mode, exact cursor and public key.
+Restoring a fragment first admits current metadata, then requires its exact
+cursor/network; a stale or unavailable selection is explicit and never
+substitutes an active occurrence. Fixture inputs name their exact
 known parent occurrence. A node input whose receipt is unavailable remains
 unknown and is not followed to a different active occurrence. Node fees and
 cumulative work remain unknown when the journal does not retain them. Script

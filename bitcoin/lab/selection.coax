@@ -1,0 +1,45 @@
+// Closed public deep links, shared by native and browser views. A fragment
+// cannot name an upstream, filesystem path, secret or unbounded expansion.
+#load "request.coax";
+#authority;
+LabPlace :: struct {ok:bool;source:int;phase:int;chain:int;kind:int;offset:int;row:int;vout:int;table:int;cursor:[128]u8;cn:int;key:[256]u8;kn:int;}
+#test "Lab selection links bind a complete query and reject ambiguous fields" {
+  good:="lab1/1/2/5/4/16/1/19/1/fixture-a/abcd";p:=lsp_read(good);
+  #assert p.ok && p.source==1 && p.phase==2 && p.chain==5 && p.kind==4 && p.offset==16 && p.row==1 && p.vout==19 && p.table==1;
+  #assert cast(string)p.cursor[0..<p.cn]=="fixture-a" && cast(string)p.key[0..<p.kn]=="abcd";
+  #assert lsp_read("lab1/2/0/1/2/0/0/0/0/node-a/-").ok;
+  for bad:[15]string.["","lab1/","lab2/1/2/5/4/16/1/19/1/fixture-a/abcd","lab1/0/2/5/4/16/1/19/1/a/b","lab1/3/2/5/4/16/1/19/1/a/b","lab1/1/3/5/4/16/1/19/1/a/b","lab1/2/1/5/4/16/1/19/1/a/b","lab1/1/0/0/4/16/1/19/1/a/b","lab1/1/0/5/1/16/1/19/1/a/b","lab1/1/0/5/7/16/1/19/1/a/b","lab1/1/0/5/4/-1/1/19/1/a/b","lab1/1/0/5/4/0/33/19/1/a/b","lab1/1/0/5/4/0/1/19/2/a/b","lab1/1/0/5/4/0/1/19/1/a%20/b","lab1/1/0/5/4/0/1/19/1/a/b/extra"] {#assert !lsp_read(bad).ok;}
+  out:[1024]u8;n:=lsp_write(p,out[..]);#assert n==good.count && cast(string)out[0..<n]==good;
+  #assert lsp_write(p,out[0..<good.count-1])== -1;
+}
+#test "Lab selection number limits and fields are exact" {
+  #assert lsp_read("lab1/1/0/1/6/2147483647/32/2147483647/0/a/51").ok;
+  for bad:[6]string.["lab1/1/0/6/4/0/1/0/0/a/b","lab1/1/0/5/4/2147483648/1/0/0/a/b","lab1/1/0/5/4/0/1/2147483648/0/a/b","lab1/1/0/5/4/0/1/0/0//b","lab1/1/0/5/4/0/1/0/0/a/","lab1/1/0/5/2/0/1/0/0/a/abcd"] {#assert !lsp_read(bad).ok;}
+  for good:[2]string.["lab1/2/0/1/2/0/0/0/0/node-a/-","lab1/1/0/5/3/0/0/0/0/a/abcd"] {out:[1024]u8;p:=lsp_read(good);n:=lsp_write(p,out[..]);#assert p.ok && n==good.count && cast(string)out[0..<n]==good;}
+  long:[257]u8;for i:0..<257 {long[i]='a';}out:[1024]u8;o:[1]Jo;
+  for extra:0..<2 {for which:0..<2 {jo_start(o[..],out[..]);jo_put(o[..],"lab1/1/0/5/4/0/0/0/0/");jo_put(o[..],ifx which==0 then cast(string)long[0..<128+extra] else "a");jo_put(o[..],"/");jo_put(o[..],ifx which==1 then cast(string)long[0..<256+extra] else "b");#assert lsp_read(jo_text(o[..])).ok==(extra==0);}}
+}
+#test "Lab selection splitting preserves empty fields and refuses excess fields" {
+  parts:[2]string;#assert lsp_parts("/",parts[..])==2 && parts[0]=="" && parts[1]=="";
+  #assert lsp_parts("a/b",parts[..])==2 && parts[0]=="a" && parts[1]=="b";
+  #assert lsp_parts("a/b/c",parts[..])== -1 && lsp_parts("",parts[0..<0])== -1;
+}
+lsp_parts :: (text:string,parts:[]string)->int {
+  start:=0;count:=0;for i:0..<text.count+1 {if i==text.count || text[i]=='/' {if count==parts.count {return -1;}parts[count]=text[start..<i];count+=1;start=i+1;}}return count;
+}
+lsp_read :: (text:string)->LabPlace #export_c {
+  p:LabPlace;parts:[11]string;count:=lsp_parts(text,parts[..]);
+  if count!=11 || parts[0]!="lab1" {return p;}
+  p.source=lr_number(parts[1],2);p.phase=lr_number(parts[2],2);p.chain=lr_number(parts[3],5);p.kind=lr_number(parts[4],6);p.offset=lr_number(parts[5],2147483647);p.row=lr_number(parts[6],32);p.vout=lr_number(parts[7],2147483647);p.table=lr_number(parts[8],1);
+  if p.source<1 || p.phase<0 || p.chain<1 || p.kind<2 || p.offset<0 || p.row<0 || p.vout<0 || p.table<0 || (p.source==2 && p.phase!=0) {return p;}
+  if !lr_token(parts[9],128) || !lr_token(parts[10],256) {return p;}
+  if p.kind==2 && parts[10]!="-" {return p;}
+  p.cn=parts[9].count;for i:0..<p.cn {p.cursor[i]=parts[9][i];}
+  if p.kind!=2 {p.kn=parts[10].count;for i:0..<p.kn {p.key[i]=parts[10][i];}}
+  p.ok=true;return p;
+}
+lsp_write :: (place:LabPlace,out:[]u8)->int {
+  p:=place;o:[1]Jo;jo_start(o[..],out);jo_put(o[..],"lab1");
+  for value:[8]int.[p.source,p.phase,p.chain,p.kind,p.offset,p.row,p.vout,p.table] {jo_put(o[..],"/");jo_int(o[..],value);}
+  jo_put(o[..],"/");jo_put(o[..],cast(string)p.cursor[0..<p.cn]);jo_put(o[..],"/");jo_put(o[..],ifx p.kind==2 then "-" else cast(string)p.key[0..<p.kn]);return ifx o[0].bad then -1 else o[0].n;
+}

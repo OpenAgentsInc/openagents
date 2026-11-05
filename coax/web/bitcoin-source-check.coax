@@ -33,7 +33,7 @@ bs_run :: (c:[]Cdp,url:string,phone:bool)->bool {
   b:[4096]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],url);jo_end(o[..]);nav:=cdp_call(c,"Page.navigate",jo_text(o[..]),30000);
   if !bs_wait(c,"coaxial.sceneReady===true") {return false;}
   if !bs_wait(c,"!!document.querySelector('#coaxial-a11y [data-id=\"221\"]')") || !bs_click(c,221) {return false;}
-  if !bs_wait(c,"coaxial.guardProbe(21)===1&&coaxial.guardProbe(24)===102&&coaxial.guardProbe(25)===24") {return false;}
+  if !bs_wait(c,"coaxial.guardProbe(21)===1&&coaxial.guardProbe(24)===102&&coaxial.guardProbe(25)===7") {return false;}
   if !bs_wait(c,"!!document.querySelector('#coaxial-a11y [data-id=\"201\"]')") || !bs_click(c,201) || !bs_wait(c,"coaxial.guardProbe(21)===1&&coaxial.guardProbe(24)===103&&coaxial.guardProbe(29)===1") {return false;}
   if !bs_click(c,225) || !bs_wait(c,"coaxial.guardProbe(21)===1&&document.querySelector('#coaxial-a11y-status').textContent.includes('fixture-1-')") {return false;}
   if !bs_wait(c,"!!document.querySelector('#coaxial-a11y [data-id=\"1000\"]')") || !bs_click(c,1000) || !bs_wait(c,"coaxial.guardProbe(21)===1&&coaxial.guardProbe(22)===3&&coaxial.guardProbe(27)===0") {return false;}

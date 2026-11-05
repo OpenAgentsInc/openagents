@@ -1,0 +1,25 @@
+// Geometry playback over acknowledged snapshots. Amounts are never interpolated.
+#load "bitcoin-lab-blocks.coax";
+LabReplay :: struct {playing:bool;clock:f32;from:int;to:int;anim:f32=1;detached:int;attached:int;reduced:bool;}
+#test "Lab replay compares complete active sets in both reorg directions" {
+  s:[1]LabReplay;lbr_admitted(s[..],0,1);#assert s[0].detached==2 && s[0].attached==3 && s[0].anim==0;
+  lbr_admitted(s[..],1,2);#assert s[0].detached==3 && s[0].attached==4;
+  lbr_admitted(s[..],2,1);#assert s[0].detached==4 && s[0].attached==3;
+  lbr_admitted(s[..],1,0);#assert s[0].detached==3 && s[0].attached==2;
+  s[0].reduced=true;lbr_admitted(s[..],0,1);#assert s[0].anim==1;
+}
+#test "Lab replay work is a full-width hexadecimal comparison and geometry settles" {
+  #assert lbr_work(0,1)== -1 && lbr_work(1,2)== -1 && lbr_work(2,0)==1 && lbr_work(0,0)==0;
+  s:[1]LabReplay;lbr_admitted(s[..],0,1);lbr_frame(s[..],0.25);#assert s[0].anim>0 && s[0].anim<1;
+  for i:0..<20 {lbr_frame(s[..],0.25);}#assert s[0].anim==1;
+}
+lbr_active :: (phase:int,hash:string)->bool {b:=lb_block(phase,hash);return b>=0 && LAB_BLOCKS[b].active;}
+lbr_admitted :: (s:[]LabReplay,from:int,to:int) #export_c {
+  s[0].from=from;s[0].to=to;s[0].anim=ifx s[0].reduced then 1.0f32 else 0.0f32;s[0].detached=0;s[0].attached=0;
+  for phase,i:[2]int.[from,to] {snap:=LAB_SNAPSHOTS[phase];for b:snap.first..<snap.first+snap.count {row:=LAB_BLOCKS[b];if row.active && !lbr_active(ifx i==0 then to else from,row.hash) {if i==0 {s[0].detached+=1;}else {s[0].attached+=1;}}}}
+}
+lbr_frame :: (s:[]LabReplay,dt:f32) {step:=dt;if step<0 {step=0;}if step>0.25 {step=0.25;}s[0].anim+=step/1.5;if s[0].anim>1 || s[0].reduced {s[0].anim=1;}}
+lbr_work :: (from:int,to:int)->int {
+  a:=LAB_BLOCKS[lb_height(from,LAB_SNAPSHOTS[from].height)].chainwork;b:=LAB_BLOCKS[lb_height(to,LAB_SNAPSHOTS[to].height)].chainwork;
+  for i:0..<64 {if a[i]<b[i] {return -1;}if a[i]>b[i] {return 1;}}return 0;
+}

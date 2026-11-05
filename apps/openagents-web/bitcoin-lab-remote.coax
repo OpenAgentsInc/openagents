@@ -2,6 +2,8 @@
 // slot outbox; platform hosts execute only the URLs/cancels supplied here.
 #load "../../bitcoin/lab/model.coax";
 #load "../../bitcoin/lab/page.coax";
+#load "../../bitcoin/lab/selection.coax";
+#load "bitcoin-lab-replay.coax";
 LrEffect :: struct {wanted:bool;cancel:int=-1;path:[1024]u8;n:int;}
 LrBlock :: struct {hash:[64]u8;previous:[64]u8;work:[64]u8;work_n:int;height:int;time:int;size:int;weight:int;count:int;active:bool;fees:int=-1;subsidy:int=-1;}
 LabRemote :: struct {
@@ -10,9 +12,13 @@ LabRemote :: struct {
   body:[LAB_REPLY_MAX]u8;n:int;nodes:[32768]JvNode;node_n:int;scratch:[32768]JvNode;
   kind:int=2;key:[256]u8;kn:int;offset:int;total:int;returned:int;selected:int=-1;output:int;
   page_next:[256]u8;pn:int;poll:f32;elapsed:int;clock:f64;query:[256]u8;qn:int;search:bool;notice:int;
+  block:LrBlock;has_block:bool;table:bool;detail:int;table_page:int;
+  history:[12]LabPlace;history_n:int;restore:LabPlace;restore_stage:int;restore_strict:bool;
+  replay:[1]LabReplay;transition:bool;phase_before:int;auto_tail:bool;
 }
 #test "Lab remote source selection cancels both effects and emits only allowlisted URLs" {
   s:[1]LabRemote;lr_select(s[..],2,0);#assert s[0].active && s[0].effects[1].wanted;
+
   route:=lr_route("GET",cast(string)s[0].effects[1].path[0..<s[0].effects[1].n]);#assert route.code==200 && route.source==2 && route.kind==2 && route.ticket==1;
   lr_dispatched(s[..],1,7);lr_select(s[..],1,2);#assert s[0].effects[1].cancel==7 && s[0].model[0].phase==2 && !s[0].model[0].ready;
   lr_select(s[..],0,0);#assert !s[0].active && !s[0].effects[1].wanted;
@@ -34,13 +40,15 @@ LabRemote :: struct {
   s:[1]LabRemote;s[0].active=true;#assert lm_begin(s[0].model[..],1,7)==1;lr_receive(s[..],7,"503\n{}");#assert s[0].model[0].retry_at==500;
   s[0].elapsed=10;#assert lm_begin(s[0].model[..],1,7)==2;lr_receive(s[..],7,"503\n{}");#assert s[0].model[0].retry_at==1010 && s[0].model[0].failures==2;
 }
+#test "Lab own-node links normalize the fixture-only phase" {s:[1]LabRemote;lr_select(s[..],2,2);#assert s[0].model[0].phase==0;}
 lr_document :: (s:[]LabRemote)->Jv {return Jv.{text=cast(string)s[0].body[0..<s[0].n],nodes=s[0].nodes[..],count=s[0].node_n,ok=true};}
 lr_cancel :: (s:[]LabRemote) {
   for i:0..<2 {id:=s[0].model[0].base[0].pending[i].id;if id>=0 && id<8 {s[0].effects[i].cancel=id;}s[0].effects[i].wanted=false;s[0].model[0].base[0].pending[i].id= -1;}
 }
 lr_select :: (s:[]LabRemote,source:int,phase:int) {
-  lr_cancel(s);s[0].active=source!=0;s[0].info=false;s[0].wn=0;s[0].n=0;s[0].selected= -1;s[0].search=false;s[0].kn=0;s[0].offset=0;s[0].window_offset=0;s[0].kind=2;
-  if source==0 {return;}lm_select(s[0].model[..],source,phase);lr_queue(s,1);
+  lr_cancel(s);s[0].active=source!=0;s[0].info=false;s[0].wn=0;s[0].n=0;s[0].selected= -1;s[0].search=false;s[0].kn=0;s[0].offset=0;s[0].window_offset=ifx source==1 then ((LAB_SNAPSHOTS[phase].count-1)/24)*24 else 0;s[0].kind=2;
+  s[0].has_block=false;s[0].notice=0;s[0].table=false;s[0].detail=0;s[0].table_page=0;s[0].history_n=0;s[0].restore_stage=0;s[0].transition=false;s[0].replay[0].playing=false;s[0].auto_tail=source==2;
+  if source==0 {return;}lm_select(s[0].model[..],source,ifx source==2 then 0 else phase);lr_queue(s,1);
 }
 lr_queue :: (s:[]LabRemote,slot:int) {
   id:=s[0].model[0].base[0].pending[slot].id;if id>=0 && id<8 {s[0].effects[slot].cancel=id;}
@@ -64,7 +72,7 @@ lr_dispatched :: (s:[]LabRemote,slot:int,id:int) #export_c {
 }
 lr_query :: (s:[]LabRemote,kind:int,key:string,offset:int) {
   if !lr_token(key,256) || kind<3 || kind>7 || offset<0 {return;}
-  s[0].info=false;s[0].kind=kind;s[0].kn=key.count;for i:0..<key.count {s[0].key[i]=key[i];}s[0].offset=offset;s[0].selected= -1;s[0].output=0;s[0].n=0;
+  s[0].info=false;s[0].has_block=false;s[0].notice=0;s[0].table_page=0;s[0].kind=kind;s[0].kn=key.count;for i:0..<key.count {s[0].key[i]=key[i];}s[0].offset=offset;s[0].selected= -1;s[0].output=0;s[0].n=0;
   lr_queue(s,1);
 }
 lr_tx :: (s:[]LabRemote,index:int)->int {
@@ -95,12 +103,10 @@ lr_receive :: (s:[]LabRemote,id:int,text:string) {
     if !lp_counts(v,page,count,LAB_WINDOW_MAX,s[0].window_offset,cast(string)identity.cursor[0..<identity.cn]) {lr_fail(s,502);return;}
     s[0].wn=count;s[0].window_total=jv_int(v,jv_get(v,page,"total"),-1);s[0].next_n=jv_str(v,jv_get(v,page,"next"),s[0].window_next[..]);
     for i:0..<count {
-      at:=jv_at(v,array,i);b:=s[0].window[i];
-      if jv_str(v,jv_get(v,at,"hash"),b.hash[..])!=64 || jv_str(v,jv_get(v,at,"previous"),b.previous[..])!=64 {lr_fail(s,502);return;}
-      b.work_n=jv_str(v,jv_get(v,at,"chainwork"),b.work[..]);b.height=jv_int(v,jv_get(v,at,"height"),-1);b.time=jv_int(v,jv_get(v,at,"time"),-1);b.size=jv_int(v,jv_get(v,at,"size"),-1);b.weight=jv_int(v,jv_get(v,at,"weight"),-1);b.count=jv_int(v,jv_get(v,at,"tx_count"),-1);
-      b.active=jv_bool(v,jv_get(v,at,"active"));b.fees=jv_int(v,jv_get(v,at,"fees_sat"),-1);b.subsidy=jv_int(v,jv_get(v,at,"subsidy_sat"),-1);
-      if b.height<0 || b.time<0 || b.size<0 || b.size>4000000 || b.weight<0 || b.weight>4000000 || b.count<1 || b.count>1000000 {lr_fail(s,502);return;}s[0].window[i]=b;
+      b:=lr_block(v,jv_at(v,array,i));if b.height<0 {lr_fail(s,502);return;}s[0].window[i]=b;
     }s[0].selected= -1;
+    if s[0].auto_tail {s[0].auto_tail=false;if s[0].window_total>24 {s[0].window_offset=((s[0].window_total-1)/24)*24;lr_queue(s,1);return;}}
+    if s[0].transition {lbr_admitted(s[0].replay[..],s[0].phase_before,s[0].model[0].phase);s[0].transition=false;}
   }else if s[0].kind==7 {
     kind:=jv_raw(v,jv_get(v,0,"kind"));key:=jv_raw(v,jv_get(v,0,"key"));target:=ifx kind=="block" then 3 else ifx kind=="transaction" then 4 else ifx kind=="script" then 5 else 0;
     if target==0 {lr_fail(s,502);return;}saved:[256]u8;n:=key.count;if n>256 {lr_fail(s,502);return;}for i:0..<n {saved[i]=key[i];}lr_query(s,target,cast(string)saved[0..<n],0);
@@ -111,19 +117,31 @@ lr_receive :: (s:[]LabRemote,id:int,text:string) {
     s[0].total=jv_int(v,jv_get(v,page,"total"),-1);s[0].returned=jv_int(v,jv_get(v,page,"returned"),-1);s[0].pn=jv_str(v,jv_get(v,page,"next"),s[0].page_next[..]);
     if s[0].kind==3 || s[0].kind==5 {if lr_size(s,0,"transactions")>LAB_TX_MAX {lr_fail(s,502);return;}s[0].selected=ifx lr_size(s,0,"transactions")>0 then 0 else -1;}
     if s[0].kind==4 {s[0].selected=0;}
+    if s[0].kind==6 {s[0].selected=ifx length>0 then 0 else -1;}
     txs:=ifx s[0].kind==4 then 1 else ifx s[0].kind==6 then 0 else length;
     for i:0..<txs {tx:=lr_tx(s,i);for name:[2]string.["inputs","outputs"] {
       array:=jv_get(v,tx,name);page=jv_get(v,tx,ifx name=="inputs" then "input_page" else "output_page");size:=jv_len(v,array);
       if !lp_counts(v,page,size,16,ifx s[0].kind==4 then s[0].offset else 0,cast(string)identity.cursor[0..<identity.cn]) {lr_fail(s,502);return;}
     }}
+    bi:=jv_get(v,0,"block_info");if bi>=0 {s[0].block=lr_block(v,bi);if s[0].block.height<0 {lr_fail(s,502);return;}s[0].has_block=true;}
   }
+  lr_after_place(s);
 }
 lr_frame :: (s:[]LabRemote,dt:f32) {
   if !s[0].active {return;}s[0].clock+=cast(f64)dt*1000;s[0].elapsed=cast(int)s[0].clock;s[0].poll+=dt;
   pending:=s[0].model[0].base[0].pending;
   if pending[0].id>=0 || pending[1].id>=0 || s[0].effects[0].wanted || s[0].effects[1].wanted {return;}
   if s[0].model[0].error!=0 {
+    if s[0].model[0].error==404 {return;}
     if s[0].elapsed>=s[0].model[0].retry_at {s[0].kind=2;lr_queue(s,1);}return;
   }
   if s[0].poll>=5 {lr_queue(s,0);}
 }
+lr_block :: (v:Jv,at:int)->LrBlock {
+  b:LrBlock;b.height= -1;
+  if jv_str(v,jv_get(v,at,"hash"),b.hash[..])!=64 || jv_str(v,jv_get(v,at,"previous"),b.previous[..])!=64 {return b;}
+  b.work_n=jv_str(v,jv_get(v,at,"chainwork"),b.work[..]);height:=jv_int(v,jv_get(v,at,"height"),-1);b.time=jv_int(v,jv_get(v,at,"time"),-1);b.size=jv_int(v,jv_get(v,at,"size"),-1);b.weight=jv_int(v,jv_get(v,at,"weight"),-1);b.count=jv_int(v,jv_get(v,at,"tx_count"),-1);
+  if height<0 || b.time<0 || b.size<0 || b.size>4000000 || b.weight<0 || b.weight>4000000 || b.count<1 || b.count>1000000 {return b;}
+  b.height=height;b.active=jv_bool(v,jv_get(v,at,"active"));b.fees=jv_int(v,jv_get(v,at,"fees_sat"),-1);b.subsidy=jv_int(v,jv_get(v,at,"subsidy_sat"),-1);return b;
+}
+#load "bitcoin-lab-navigation.coax";

@@ -121,6 +121,15 @@ using the exact end iterator of either table representation. Receipt and
 active-membership checks remain mandatory. The explorer-store root gate
 kills all 128 mutants; its checks cover packed and indexed representations.
 
+The separate Lab projection (`bitcoin/lab/`) retains that snapshot boundary in
+both Grid and ordinary table views. Public `lab1/` selections are closed,
+bounded and bound to source/network/cursor/exact occurrence; a stale cursor
+never selects a replacement active transaction. The browser fragment and native
+selection file use the same parser. Tables virtualize complete public text;
+24/32/16-element pages never imply whole-chain completeness. Fixture detach/attach
+geometry starts after complete admission and never interpolates amounts. Evidence:
+[Bitcoin Lab #12804](docs/verification/bitcoin-lab-12804.md).
+
 ## Address histories and spend links share the light chain's cursor
 
 `coax/lib/bitcoin/addrindex.coax`, `addrindex-stage.coax` and

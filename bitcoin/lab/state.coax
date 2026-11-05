@@ -97,6 +97,7 @@ ls_data :: (s:[]LabState,store:string,p:ChainParams,route:LabRoute,o:[]Jo)->int 
     jo_end(o);lj_count(o,"page",total,r.offset,LAB_WINDOW_MAX,cursor);
   }else if r.kind==3 {
     b:=ex_block_key(a[0].table,a[0].used,key,a[0].genesis[..]);if b.code!=LC_OK {return ifx b.code==TXI_MISS then 404 else 503;}
+    jo_key(o,"block_info");if ls_block(s,store,p,b,o)!=200 {return 503;}
     if !api_block_read(a,store,p,b) {return 503;}ids:[1024]u8;n:=a[0].count;returned:=0;
     for i:r.offset..<n {if returned>=LAB_TX_MAX {break;}for j:0..<32 {ids[returned*32+j]=a[0].ids[i*32+j];}returned+=1;}
     hash:=b.hash;jo_key(o,"block");ex_json_hex(o,hash[..],true);jo_key(o,"transactions");jo_arr(o);
@@ -105,6 +106,10 @@ ls_data :: (s:[]LabState,store:string,p:ChainParams,route:LabRoute,o:[]Jo)->int 
     id:[32]u8;hash:[32]u8;bn:=0;wanted:=key;
     if key.count==129 && key[64]=='-' {wanted=key[0..<64];if !ex_id(key[65..<129],hash[..]) {return 400;}bn=32;}
     if !ex_id(wanted,id[..]) {return 400;}jo_key(o,"transaction");status:=ls_transaction(s,store,p,id[..],hash[0..<bn],r.offset,o);if status!=200 {return status;}
+    hit:=ifx bn==32 then txi_occurrence_vartime(a[0].table,a[0].used,id[..],hash[..]) else txi_find_vartime(a[0].table,a[0].used,id[..],false);
+    b:=ExBlock.{active=true,hash=a[0].genesis,record=TxiBlock.{file=-1}};
+    if hit.code==LC_OK {bh:=hit.block;b=ex_block_hash(a[0].table,a[0].used,bh[..]);if b.code!=LC_OK {return 503;}}
+    jo_key(o,"block_info");if ls_block(s,store,p,b,o)!=200 {return 503;}
   }else if r.kind==5 || r.kind==6 {
     script:[128]u8;decoded:=hex_decode_checked(key,script[..],false);size:=-1;
     if decoded.error==NC_OK {size=decoded.written;}else {address:=address_decode_vartime(p.network,key,script[..]);size=address.length;}
