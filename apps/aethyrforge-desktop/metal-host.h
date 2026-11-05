@@ -28,6 +28,8 @@ void mf_message(void *host,int32_t kind,const uint8_t *bytes,size_t count);
 bool mf_key(void *host,int32_t key,bool down,int32_t mods);
 bool mf_pointer(void *host,float x,float y,int32_t phase,int32_t kind,int32_t id);
 void mf_wheel(void *host,float dy);
+// Coax projection of observed AppKit pixel/Cocoa-tick travel to CSS units.
+float hmi_appkit_wheel(float delta,bool precise);
 void mf_focus(void *host,bool focused);
 int32_t mf_action(void *host);
 const uint8_t *mf_outbox(void *host,size_t *count);
@@ -47,7 +49,9 @@ void mf_socket_event(void *host,int64_t id,int64_t generation,int64_t engine,int
 bool mf_snapshot(void *host,const char *path);
 // Disabled-by-default full-graph FP16 to actual UNORM display experiment.
 bool mf_presentation_experiment(void *host);
+bool mf_presentation_experiment_v1(void *host);
 bool mf_snapshot_presented(void *host,const char *path);
+bool mf_snapshot_presented_raw(void *host,const char *path);
 // Test-only source upload and one presentation pass; never calls the producer.
 // Quantized requires the separately linked private Coax v1 descriptor.
 bool mf_present_probe(void *host,const uint8_t *bytes,size_t count,int64_t width,int64_t height,int64_t format,bool quantized);

@@ -1,0 +1,13 @@
+// AppKit's upward-positive pixel/Cocoa-tick observations projected to the
+// contract's downward-positive CSS travel. A Cocoa tick is forty CSS pixels,
+// matching the browser's native Mac adapter rather than DOM line-mode input.
+#authority;
+#forall "AppKit wheel units and direction match independently tabulated CSS travel" which:0..<10 {
+ raw:=[5]f32.[-32,-2,0,1,12.5];expected:=[10]f32.[1280,80,0,-40,-500,32,2,0,-1,-12.5];
+ #assert hmi_appkit_wheel(raw[which%5],which>=5)==expected[which];
+}
+#test "AppKit precise travel retains subpixel values and reverses signed zero" {
+ #assert hmi_appkit_wheel(0.125,true)==(-0.125) && hmi_appkit_wheel(-0.125,false)==5;
+ #assert f32_bits(hmi_appkit_wheel(0,true))==0x80000000;
+}
+hmi_appkit_wheel :: (delta:f32,precise:bool)->f32 #export_c {return -delta*(ifx precise then 1.0f32 else 40.0f32);}

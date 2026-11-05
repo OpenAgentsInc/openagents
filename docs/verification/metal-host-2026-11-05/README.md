@@ -30,6 +30,7 @@ Coder and voice bridge remain desktop services around that world.
 | Section | Retained observation | Result and scope |
 | --- | --- | --- |
 | Core dispatch | `conformance-current/metal-core.json` | Common Coax checker accepts the actual fixture defaults, assets, two frames and input/message event words. |
+| Actual AppKit event projection | `appkit-green/appkit.json` | Real NSEvents pass through the production ForgeMetalWorld view to the recording face: Control-A key 97/modifiers 2, precise wheel travel 32 and -8, nonprecise wheel travel 80 CSS pixels, Shift down/up and final blur/held zero. Option/Command flag-only events complete without accessing their unavailable character payload. The original wrong key scalar and wheel signs are retained in `appkit-red/`. |
 | Socket/HTTP ownership | `conformance-current/metal-transport.json` | Actual loopback workload passes all 79 common rows, including slot exhaustion, UTF-8, overflow, cancellation and stale-owner fencing. |
 | HTTP normalization | `conformance-http/metal-http-target.json` | All 30 physical peer targets pass the common checker. |
 | Lifecycle | `conformance-current-hidden/metal-lifecycle.json` | Ten actual rows include a held key followed by hidden release. Negative, backward and hidden frame offers do not advance the producer. Final lifecycle is `[1,1,1,1,4015625]`, held input is zero. |
@@ -254,3 +255,64 @@ shared resource-limit refactoring on main.
 Ordinary Vulkan 8-bit parity, the complete common-host services and final
 packaging remain open. The presentation experiment stays disabled and WK
 stays the default. Neither #12868 nor #12869 is closed by this checkpoint.
+
+## AppKit input and optional quantized presentation
+
+The AppKit regression constructs actual NSEvents and calls the production
+view's methods, rather than calling the scalar face directly. Control keys
+use the printable value with Control removed; flag-only events never read
+`characters`. AppKit's upward-positive travel is converted in the standalone
+Coax `appkit-input.coax` authority. Precise deltas use pixel units; ordinary
+Cocoa ticks use forty CSS pixels. This follows the native Mac projection in
+[WebKit's event factory](https://github.com/WebKit/WebKit/blob/main/Source/WebCore/platform/mac/PlatformEventFactoryMac.mm),
+[DOM wheel conversion](https://github.com/WebKit/WebKit/blob/main/Source/WebCore/dom/WheelEvent.cpp)
+and [line-step definition](https://github.com/WebKit/WebKit/blob/main/Source/WebCore/platform/Scrollbar.h).
+Its two checks precede implementation; the root mutation gate kills 1/1
+mutant with no equivalents. The actual event regression passes with no
+dropped events or held keys. The separate input object is linked into the
+desktop shell; the producer and its already passed GPU/audio gates are unchanged.
+
+`presentation-probe/` retains a separate private shader package and a source
+joined 76-input facade emitted by the admitted 598 image in a genuine c224
+root with pinned 6f product sources and the frozen descriptor overlay. The
+original compiler receipt verifies before and after. New media MSL comes
+from the explicitly identified c056 graphics iteration image, not a newly
+released compiler. The SDK accepts this MSL with safe/precise arithmetic.
+
+The independent fixture covers every finite binary16 encoding across RGB
+permutations (nonfinite encodings are supplied as zero). Actual Metal BGRA8
+and RGBA8 targets each match all 262,144 oracle bytes exactly. The BGRA8 bytes
+also exactly match the real browser canvas readback; RGBA8 exactly matches
+Vulkan. Producer frames remain zero, one presentation completes and the
+closed ledger is zero. API/GPU validation is enabled with no reported errors.
+The legacy-descriptor Metal control also matches this fixture; no claim is
+made that the new mode changes Apple's old conversion on these inputs.
+
+`finite-probe-sdk/`, the immutable input files and manifests retain the exact
+probe binary/source/object join. The `metal-build manifest` task hashes an
+existing product set without recompiling unchanged shaders; its unchanged
+package output is byte-identical to the earlier manifest.
+
+`presentation-v1-full/` uses the new actual browser RFI, full canonical bank
+and versioned quantized descriptor. It preserves both the complete FP16
+graph readback and the actual presented BGRA8 output. Four of 230,400 channels
+exceed the unchanged per-channel rule, maximum one UNORM step, with zero
+nonfinite values or masks. Both outputs remain byte-identical after GPU
+resource recovery; two submissions complete, pending is zero, and old/closed
+ledger counts are zero. Validation is enabled with no reported errors.
+The matched Vulkan output has 1,920 outliers against both browser and Metal.
+All pass the inherited 2,000-channel live allowance, and all strict failures
+are retained. This close-to-bound result is scoped to that exact RFI.
+
+The current native producer's actual 48 WAVs and canonical decoded PCM are
+also re-exported at `audio-qualified-current/`; their complete file contents
+equal the previously qualified bank, so unchanged audio ranges are not rerun.
+Actual native producer/assets through the new display policy fail their
+separate composition check: `handoff-presentation-v1/actual-native-vs-wasm.json`
+records 2,213 channels outside the unchanged rule, above the 2,000 allowance,
+with zero nonfinite values or masks. The exact native producer, actual asset
+path and matched Wasm handoff are retained, without adding outlier counts.
+This is a blocker. The new `host-image.coax` canonical PNG/JPEG base decoder
+kills all 47 root mutants; its native/browser upload migration is pending.
+The policy and shader stay private/disabled; ordinary target selection and
+the desktop default remain unchanged.

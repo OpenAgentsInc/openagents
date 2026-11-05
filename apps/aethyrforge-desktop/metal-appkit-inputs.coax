@@ -1,0 +1,22 @@
+// Deliver actual NSEvents through ForgeMetalWorld to the recording realm.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/json/json.coax";
+mai_s :: (o:[]Jo,k:string,v:string) {jo_key(o,k);jo_str(o,v);}
+mai_i :: (o:[]Jo,k:string,v:int) {jo_key(o,k);jo_int(o,v);}
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])<3 {tool_errln("usage: metal-appkit-inputs ROOT RESOURCES NEW_OUTPUT [--basic]");return 2;}
+ root:=args_at(a[..],0);res:=args_at(a[..],1);dir:=args_at(a[..],2);basic:=args_has(a[..],"--basic");if !fs_mkdir(dir) {return 1;}paths:[6][4096]u8;plan:=fs_join(dir,"plan.json",paths[0][..]);report:=fs_join(dir,"appkit.json",paths[1][..]);
+ bytes:[16384]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);mai_s(o[..],"schema","aethyr.metal.appkit-events.v1");jo_key(o[..],"operations");jo_arr(o[..]);
+ control:=[1]u8.[1];for down:0..<2 {jo_obj(o[..]);mai_s(o[..],"op","key");mai_i(o[..],"code",0);mai_i(o[..],"flags",262144);mai_s(o[..],"text",cast(string)control[..]);mai_s(o[..],"plain","a");jo_key(o[..],"down");jo_bool(o[..],down==0);jo_end(o[..]);}
+ for i:0..<3 {jo_obj(o[..]);mai_s(o[..],"op","wheel");mai_i(o[..],"delta",[3]int.[-32,8,-2][i]);jo_key(o[..],"precise");jo_bool(o[..],i<2);jo_end(o[..]);}
+ if !basic {for i:0..<4 {jo_obj(o[..]);mai_s(o[..],"op","flags");mai_i(o[..],"code",[4]int.[58,55,56,56][i]);mai_i(o[..],"flags",[4]int.[524288,1048576,131072,0][i]);jo_end(o[..]);}}
+ jo_obj(o[..]);mai_s(o[..],"op","blur");jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);if o[0].bad||!fs_write(plan,jo_text(o[..])) {return 1;}
+ run:=[5]string.[fs_join(root,"apps/aethyrforge-desktop/build/metal/MetalAppKitInputs",paths[2][..]),res,fs_join(root,"apps/aethyrforge-desktop/build/metal/libfixture.dylib",paths[3][..]),plan,report];out:[65536]u8;err:[65536]u8;r:=proc_run(run[..],30000,out[..],err[..]);if !fs_write(fs_join(dir,"sdk-stderr.txt",paths[4][..]),cast(string)err[0..<r.err_n])||r.started!=0||r.status!=0||r.cut||r.timed_out {return 1;}
+ text:[16384]u8;n:=fs_read(report,text[..]);d:[1]Jv;nodes:[512]JvNode;if n<1||!jv_parse(d[..],cast(string)text[0..<n],nodes[..]) {return 1;}events:=jv_get(d[0],0,"events");count:=ifx basic then 6 else 8;passed:=jv_len(d[0],events)==count&&jv_int(d[0],jv_get(d[0],0,"dropped"),-1)==0&&jv_int(d[0],jv_get(d[0],0,"held"),-1)==0;
+ expected:=[8][4]int.[[4]int.[2,97,2,1],[4]int.[2,97,2,0],[4]int.[6,int(f32_bits(32)),0,0],[4]int.[6,int(f32_bits(-8)),0,0],[4]int.[6,int(f32_bits(80)),0,0],[4]int.[2,-13,1,1],[4]int.[2,-13,0,0],[4]int.[5,0,0,0]];
+ for i:0..<count {row:=jv_at(d[0],events,i);pick:=ifx basic&&i==5 then 7 else i;for k:0..<4 {if jv_int(d[0],jv_at(d[0],row,k),-1)!=expected[pick][k] {passed=false;}}}
+ print("Actual AppKit key/modifier/precise+line wheel dispatch pass:%\n",passed);return ifx passed then 0 else 1;
+}

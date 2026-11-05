@@ -102,8 +102,8 @@ af_native_stamp :: (root:string,source:string,deadline:int)->int {
 }
 af_native :: (root:string,here:string,work:string,coax:string,out:[]u8,deadline:int)->bool {
  paths:[8][4096]u8;metal:=fs_join(work,"metal",paths[0][..]);if !fs_mkdir(metal) {return false;}
- names:=[8]string.["everglade5e","Everglade-step","Grid","River","Guard-guide-policy","Everglade5e-rules","MetalRender","RenderTexture"];
- sources:=[8]string.["apps/aethyrforge-desktop/metal-world.coax","apps/openagents-web/everglade-step.coax","verse/grid.coax","verse/everglade/river.coax","verse/everglade/guard-guide-policy.coax","apps/openagents-web/everglade5e-rules.coax","apps/aethyrforge-desktop/metal-render.coax","aethyr/render/native-texture.coax"];
+ names:=[9]string.["everglade5e","Everglade-step","Grid","River","Guard-guide-policy","Everglade5e-rules","MetalRender","RenderTexture","AppKitInput"];
+ sources:=[9]string.["apps/aethyrforge-desktop/metal-world.coax","apps/openagents-web/everglade-step.coax","verse/grid.coax","verse/everglade/river.coax","verse/everglade/guard-guide-policy.coax","apps/openagents-web/everglade5e-rules.coax","apps/aethyrforge-desktop/metal-render.coax","aethyr/render/native-texture.coax","aethyr/host/appkit-input.coax"];
  compiler_stamp:=fs_mtime_ns(coax);producer_stamp:=0;
  for name,i:names {stamp:=af_native_stamp(root,sources[i],deadline);if stamp<0 {return false;}if compiler_stamp>stamp {stamp=compiler_stamp;}
   text:[128]u8;j:[1]Jo;jo_start(j[..],text[..]);jo_put(j[..],name);jo_put(j[..],".o");object:=fs_join(metal,jo_text(j[..]),paths[1][..]);
@@ -196,8 +196,8 @@ tool_main :: () -> int #export_c {
   if af_run(cbc[..],out[..],deadline)<0 {return 1;}
   hud_copy := [3]string.["ditto",af_path(p[..],here,"HUD.metal"),af_path(p[..],res,"HUD.metal")];
   if af_run(hud_copy[..],out[..],deadline)<0 {return 1;}
-  sw := [43] string.["xcrun", "swiftc", "-O", "-target", "arm64-apple-macos26.0", "-import-objc-header", af_path(p[..], here, "face.h"),
-    af_path(p[..], here, "Sources/main.swift"), af_path(p[..], here, "Sources/Setup.swift"), af_path(p[..],here,"Sources/Chat.swift"), af_path(p[..],here,"Sources/SetupProfile.swift"), af_path(p[..],here,"Sources/Offline.swift"), af_path(p[..],here,"Sources/Benchmark.swift"), af_path(p[..],root,"apps/shared/zeron/MetalUI.swift"),af_path(p[..],here,"Sources/MetalWorld.swift"),af_path(p[..],here,"Sources/MetalNetwork.swift"),af_path(p[..],here,"Sources/MetalAudio.swift"),af_path(p[..],here,"Sources/MetalBridge.swift"),object,bridge,chat_o,chat_face,af_path(p[..],work,"metal/MetalRealm.o"),af_path(p[..],work,"metal/MetalRender.o"),af_path(p[..],work,"metal/RenderTexture.o"),"-Xlinker","-export_dynamic","-framework","MetalKit", "-framework", "AppKit", "-framework", "WebKit", "-framework", "AVFoundation","-framework","QuartzCore","-framework","ImageIO","-framework","CoreGraphics", "-o", af_path(p[..], mac, "Aethyrforge")];
+  sw := [44] string.["xcrun", "swiftc", "-O", "-target", "arm64-apple-macos26.0", "-import-objc-header", af_path(p[..], here, "face.h"),
+    af_path(p[..], here, "Sources/main.swift"), af_path(p[..], here, "Sources/Setup.swift"), af_path(p[..],here,"Sources/Chat.swift"), af_path(p[..],here,"Sources/SetupProfile.swift"), af_path(p[..],here,"Sources/Offline.swift"), af_path(p[..],here,"Sources/Benchmark.swift"), af_path(p[..],root,"apps/shared/zeron/MetalUI.swift"),af_path(p[..],here,"Sources/MetalWorld.swift"),af_path(p[..],here,"Sources/MetalNetwork.swift"),af_path(p[..],here,"Sources/MetalAudio.swift"),af_path(p[..],here,"Sources/MetalBridge.swift"),object,bridge,chat_o,chat_face,af_path(p[..],work,"metal/MetalRealm.o"),af_path(p[..],work,"metal/MetalRender.o"),af_path(p[..],work,"metal/RenderTexture.o"),af_path(p[..],work,"metal/AppKitInput.o"),"-Xlinker","-export_dynamic","-framework","MetalKit", "-framework", "AppKit", "-framework", "WebKit", "-framework", "AVFoundation","-framework","QuartzCore","-framework","ImageIO","-framework","CoreGraphics", "-o", af_path(p[..], mac, "Aethyrforge")];
   if af_run(sw[..], out[..], deadline) < 0 { return 1; }
   for name:[3]string.["Zeron.metal","fonts","NOTICE"] {
     copy:=[3]string.["ditto",af_path(p[..],af_path(p[..],root,"apps/shared/zeron"),name),af_path(p[..],res,name)];

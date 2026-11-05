@@ -167,11 +167,16 @@ final class ForgeMetalWorld: NSView, @preconcurrency NSTextInputClient {
     override func rightMouseDown(with e: NSEvent) { setCaptured(true); pointer(e, phase: 0) }
     override func rightMouseDragged(with e: NSEvent) { pointer(e, phase: 1) }
     override func rightMouseUp(with e: NSEvent) { pointer(e, phase: 2); setCaptured(false) }
-    override func scrollWheel(with e: NSEvent) { if let h = host { mf_wheel(h, Float(e.scrollingDeltaY)); drain() } }
+    override func scrollWheel(with e: NSEvent) {
+        if let h = host { mf_wheel(h,hmi_appkit_wheel(Float(e.hasPreciseScrollingDeltas ? e.scrollingDeltaY:e.deltaY),e.hasPreciseScrollingDeltas)); drain() }
+    }
     func mods(_ e: NSEvent) -> Int32 { (e.modifierFlags.contains(.shift) ? 1:0) | (e.modifierFlags.contains(.control) ? 2:0) | (e.modifierFlags.contains(.option) ? 4:0) | (e.modifierFlags.contains(.command) ? 8:0) }
     func key(_ e: NSEvent) -> Int32 {
         let named: [UInt16: Int32] = [53:-1,36:-2,76:-2,51:-3,123:-4,124:-5,126:-6,125:-7,115:-8,119:-9,116:-10,121:-11,117:-12,56:-13,60:-13,59:-14,62:-14,48:-15]
-        return named[e.keyCode] ?? e.characters?.unicodeScalars.first.map { Int32($0.value) } ?? 0
+        if let key = named[e.keyCode] { return key }
+        guard e.type != .flagsChanged else { return 0 }
+        let characters = e.modifierFlags.contains(.control) ? e.charactersIgnoringModifiers:e.characters
+        return characters?.unicodeScalars.first.map { Int32($0.value) } ?? 0
     }
     override func keyDown(with e: NSEvent) {
         guard let h = host else { return }; audio?.start()

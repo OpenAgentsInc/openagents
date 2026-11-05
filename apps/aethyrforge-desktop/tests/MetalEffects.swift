@@ -37,6 +37,7 @@ func runEffects() throws {
         switch op["op"] as? String {
         case "bgra8": guard mf_offscreen_bgra8(host) else { throw MetalEffectFailure.failed("offscreen format must precede rendering") }
         case "presentation": guard mf_presentation_experiment(host) else { throw MetalEffectFailure.failed("presentation experiment must precede rendering") }
+        case "presentation-v1": guard mf_presentation_experiment_v1(host) else { throw MetalEffectFailure.failed("private Coax v1 presentation descriptor is absent") }
         case "present-probe":
             let source = try Data(contentsOf:URL(fileURLWithPath:try required(op["file"] as? String,"presentation source")))
             let accepted = source.withUnsafeBytes { mf_present_probe(host,$0.bindMemory(to:UInt8.self).baseAddress,$0.count,Int64(integer(op["width"])),Int64(integer(op["height"])),Int64(integer(op["format"])),op["quantized"] as? Bool ?? false) }
@@ -44,6 +45,10 @@ func runEffects() throws {
         case "presented":
             let path = try required(op["file"] as? String,"presented snapshot")
             guard mf_snapshot_presented(host,path) else { throw MetalEffectFailure.failed("actual UNORM presentation readback") }
+            snapshots.append(path)
+        case "presented-raw":
+            let path = try required(op["file"] as? String,"raw display snapshot")
+            guard mf_snapshot_presented_raw(host,path) else { throw MetalEffectFailure.failed("raw UNORM display readback") }
             snapshots.append(path)
         case "replay":
             let path = try required(op["file"] as? String, "frame config")

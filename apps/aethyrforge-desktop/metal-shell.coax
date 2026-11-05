@@ -15,7 +15,7 @@ tool_main :: ()->int #export_c {
   argv[n]=fs_join(root,cast(string)text[0..<i],paths[p][..]);n+=1;p+=1;
  }
  argv[n]=fs_join(root,"apps/shared/zeron/MetalUI.swift",paths[p][..]);n+=1;p+=1;
- for object:[7]string.["session.o","setup-face.o","chat.o","chat-face.o","metal/MetalRealm.o","metal/MetalRender.o","metal/RenderTexture.o"] {
+ for object:[8]string.["session.o","setup-face.o","chat.o","chat-face.o","metal/MetalRealm.o","metal/MetalRender.o","metal/RenderTexture.o","metal/AppKitInput.o"] {
   text:[256]u8;i:=0;for c:"apps/aethyrforge-desktop/build/" {text[i]=c;i+=1;}for c:object {text[i]=c;i+=1;}
   argv[n]=fs_join(root,cast(string)text[0..<i],paths[p][..]);n+=1;p+=1;
  }

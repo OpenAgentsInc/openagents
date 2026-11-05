@@ -30,7 +30,7 @@ typedef struct {int64_t slot,generation;} MFHandle;
  NSString *directory,*error,*pageOrigin,*localOrigin;BOOL fixture,golden,still,closed,replay,wantsRecovery,clockedFrame,slotBusy[2];int slot,pending;
  uint64_t frames,draws,completedFrames,lastGpuNS,gpuEpoch,recoveries;uint32_t lastHud;int64_t recoveryReleasedLive;NSMutableArray<NSDictionary*> *effects;NSData *lastEffect;
  id<MTLDevice> device;id<MTLCommandQueue> queue;CAMetalLayer *layer;
- BOOL presentationExperiment;id<MTLTexture> presentedTexture;MFHandle presentedHandle;
+ BOOL presentationExperiment,presentationQuantized;id<MTLTexture> presentedTexture;MFHandle presentedHandle;
  NSMutableArray<id<MTLCommandBuffer>> *inflight;
  NSMutableDictionary<NSNumber*,id<MTLTexture>> *targets;
  NSMutableDictionary<NSNumber*,NSValue*> *targetHandles;
@@ -84,6 +84,8 @@ static BOOL live(MFRealm *r,MFHandle h){return aethyr_render_registry_live(ledge
 static NSString *text(coax_string s){return [[NSString alloc]initWithBytes:s.data length:(NSUInteger)s.count encoding:NSUTF8StringEncoding];}
 static NSData *file(NSString *dir,coax_string name){return [NSData dataWithContentsOfFile:[dir stringByAppendingPathComponent:text(name)]];}
 static BOOL same(coax_string a,coax_string b){return a.count==b.count&&!memcmp(a.data,b.data,(size_t)a.count);}
+typedef coax_t_RenderPresentation(*MFPresentationPolicy)(int64_t,int64_t,int64_t,int64_t,int64_t);
+static MFPresentationPolicy presentationPolicy(BOOL quantized){return quantized?(MFPresentationPolicy)dlsym(RTLD_DEFAULT,"render_presentation_quantized_v1"):render_presentation;}
 static MTLPixelFormat pixel(coax_t_RenderTextureFormat f){switch(f){case COAX_RenderTextureFormat_rgba8:return MTLPixelFormatRGBA8Unorm;case COAX_RenderTextureFormat_bgra8:return MTLPixelFormatBGRA8Unorm;case COAX_RenderTextureFormat_rgba16f:return MTLPixelFormatRGBA16Float;case COAX_RenderTextureFormat_depth32:return MTLPixelFormatDepth32Float;default:return MTLPixelFormatInvalid;}}
 static MTLPixelFormat texel(coax_t_RenderTexelFormat f){switch(f){case COAX_RenderTexelFormat_rgba8:return MTLPixelFormatRGBA8Unorm;case COAX_RenderTexelFormat_rgba8_srgb:return MTLPixelFormatRGBA8Unorm_sRGB;case COAX_RenderTexelFormat_bgra8:return MTLPixelFormatBGRA8Unorm;case COAX_RenderTexelFormat_bgra8_srgb:return MTLPixelFormatBGRA8Unorm_sRGB;case COAX_RenderTexelFormat_rgba16f:return MTLPixelFormatRGBA16Float;case COAX_RenderTexelFormat_rgba32f:return MTLPixelFormatRGBA32Float;case COAX_RenderTexelFormat_depth32f:return MTLPixelFormatDepth32Float;default:return MTLPixelFormatInvalid;}}
 static coax_t_RenderHostWordView wordView(const void *p,size_t capacity,size_t bytes){uint64_t a=(uintptr_t)p;return aethyr_render_words(a,a,capacity,bytes);}
@@ -221,7 +223,8 @@ static void blend(MTLRenderPipelineColorAttachmentDescriptor *a,coax_t_RenderBle
  NSError *failure=nil;pipeline=[device newRenderPipelineStateWithDescriptor:d error:&failure];if(!pipeline){[self fail:failure.localizedDescription];return nil;}pipelines[key]=pipeline;return pipeline;
 }
 - (BOOL)present:(id<MTLCommandBuffer>)command drawable:(id<CAMetalDrawable>)drawable width:(int64_t)width height:(int64_t)height {
- coax_t_RenderPresentation p=render_presentation(2,width,height,COAX_RenderTextureFormat_bgra8,16384);
+ MFPresentationPolicy policy=presentationPolicy(presentationQuantized);if(!policy)return [self fail:@"Private Coax presentation descriptor is absent"];
+ coax_t_RenderPresentation p=policy(2,width,height,COAX_RenderTextureFormat_bgra8,16384);
  return [self present:command drawable:drawable descriptor:p];
 }
 - (BOOL)present:(id<MTLCommandBuffer>)command drawable:(id<CAMetalDrawable>)drawable descriptor:(coax_t_RenderPresentation)p {
@@ -395,12 +398,12 @@ void mf_observe_reset(void *host){MFRealm *r=(__bridge MFRealm*)host;void(*reset
 void mf_layer(void *host,void *raw){MFRealm *r=(__bridge MFRealm*)host;r->layer=(__bridge CAMetalLayer*)raw;if(r->layer){r->layer.device=r->device;r->layer.pixelFormat=MTLPixelFormatBGRA8Unorm;r->layer.framebufferOnly=NO;r->layer.displaySyncEnabled=YES;r->screenFormat=r->presentationExperiment?COAX_RenderTextureFormat_rgba16f:COAX_RenderTextureFormat_bgra8;}else r->screenFormat=COAX_RenderTextureFormat_rgba16f;}
 bool mf_offscreen_bgra8(void *host){MFRealm *r=(__bridge MFRealm*)host;if(r->frames||r->pending||r->layer)return false;r->screenFormat=COAX_RenderTextureFormat_bgra8;return true;}
 bool mf_presentation_experiment(void *host){MFRealm *r=(__bridge MFRealm*)host;if(r->frames||r->pending||r->fixture)return false;r->presentationExperiment=YES;r->screenFormat=COAX_RenderTextureFormat_rgba16f;return true;}
+bool mf_presentation_experiment_v1(void *host){if(!presentationPolicy(YES)||!mf_presentation_experiment(host))return false;((__bridge MFRealm*)host)->presentationQuantized=YES;return true;}
 bool mf_present_probe(void *host,const uint8_t *bytes,size_t count,int64_t width,int64_t height,int64_t format,bool quantized){
  MFRealm *r=(__bridge MFRealm*)host;if(r->frames||r->pending||r->layer||r->fixture)return false;
  // The optional private product supplies its own checked Coax descriptor.
  // Its absence cannot silently fall back to the legacy quantization path.
- typedef coax_t_RenderPresentation(*MFPresentationPolicy)(int64_t,int64_t,int64_t,int64_t,int64_t);
- MFPresentationPolicy policy=quantized?(MFPresentationPolicy)dlsym(RTLD_DEFAULT,"render_presentation_quantized_v1"):render_presentation;
+ MFPresentationPolicy policy=presentationPolicy(quantized);
  if(!policy)return [r fail:@"Private Coax presentation descriptor is absent"];
  coax_t_RenderPresentation p=policy(2,width,height,format,16384);if(p.status!=COAX_RenderResourceStatus_ok)return [r fail:@"Coax refused presentation probe extent/format"];
  int64_t size=aethyr_render_format_words(p.draw.format,p.draw.width,p.draw.height,1,1)*4;
@@ -442,6 +445,11 @@ static bool snapshotTexture(MFRealm *r,id<MTLTexture> t,const char *path){
 }
 bool mf_snapshot(void *host,const char *path){MFRealm *r=(__bridge MFRealm*)host;return snapshotTexture(r,r->targets[@(COAX_RenderTarget_screen)],path);}
 bool mf_snapshot_presented(void *host,const char *path){MFRealm *r=(__bridge MFRealm*)host;return r->presentationExperiment&&snapshotTexture(r,r->presentedTexture,path);}
+bool mf_snapshot_presented_raw(void *host,const char *path){
+ MFRealm *r=(__bridge MFRealm*)host;id<MTLTexture> t=r->presentedTexture;if(!r->presentationExperiment||!t||(t.pixelFormat!=MTLPixelFormatBGRA8Unorm&&t.pixelFormat!=MTLPixelFormatRGBA8Unorm))return false;
+ id<MTLCommandBuffer> end=[r->queue commandBuffer];[end commit];[end waitUntilCompleted];if(end.error)return false;
+ NSMutableData *raw=[NSMutableData dataWithLength:t.width*t.height*4];[t getBytes:raw.mutableBytes bytesPerRow:t.width*4 fromRegion:MTLRegionMake2D(0,0,t.width,t.height) mipmapLevel:0];return [raw writeToFile:[NSString stringWithUTF8String:path] atomically:YES];
+}
 const uint8_t *mf_frame_jpeg(void *host,size_t *count){
  *count=0;MFRealm *r=(__bridge MFRealm*)host;id<MTLTexture> t=r->targets[@(COAX_RenderTarget_screen)];if(!t||t.pixelFormat!=MTLPixelFormatBGRA8Unorm)return NULL;
  id<MTLCommandBuffer> end=[r->queue commandBuffer];[end commit];[end waitUntilCompleted];if(end.error)return NULL;
