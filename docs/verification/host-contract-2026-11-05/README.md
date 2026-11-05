@@ -54,6 +54,13 @@ and observed version/default/dropped/held metadata are required. It admits
 the browser receipt here. Root mutation killed all 190 semantic checker
 and 60 JSON adapter mutants, with no survivors or equivalents. This shared
 core check does not imply that unrecorded sections or hosts passed.
+The same tool admits the actual browser transport receipt through
+`transport-conformance.coax` and `receipt-transport.coax`. It compares all
+commands, import results, callback bytes and per-kind order while permitting
+cross-connection scheduling. It also checks open delivery follows the
+reservation's return. All 277 transport semantic and 20 JSON adapter root
+mutants were killed, with no survivors or equivalents; every word of all
+79 actual rows is perturbed by the quantified check.
 
 The Linux Vulkan realm adapter (`verse/native/realm-host.c`) also admits
 the same core receipt on coderos-4080. `check-vulkan.coax` drives the real
@@ -95,7 +102,8 @@ coax/web/tool.sh aethyr/host/check-transport.coax \
 coax/web/tool.sh aethyr/host/check-browser.coax \
   "$HOME/.openagents/aethyrforge/host-contract-12869"
 coax/web/tool.sh aethyr/host/check-observations.coax \
-  "$HOME/.openagents/aethyrforge/host-contract-12869/browser-core.json"
+  "$HOME/.openagents/aethyrforge/host-contract-12869/browser-core.json" \
+  "$HOME/.openagents/aethyrforge/host-contract-12869/browser-transport.json"
 ```
 
 Each command takes seconds, not a whole-model or release gate. The browser

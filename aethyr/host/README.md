@@ -317,6 +317,14 @@ Each JSON receipt has `schema: "aethyr.host.observations.v1"`, `scope:
 `[kind,a,b,c,d,e,byteCount,FNV32]` order. The shared `conformance.coax`
 checks the authored core sequence and `receipt.coax` adapts JSON. A core
 receipt cannot substitute for any other section.
+The same checker accepts `scope: "transport"` receipts with the 79 actual
+rows from `check-browser.coax`'s authored loopback script plus observed
+`dropped: 0`. It requires all 32 commands, 21 import results and 26 callback
+positions. Different connections may complete in a different order; each
+message-kind stream retains its exact payload order, and socket open may
+only appear after the corresponding import result. The fixture uses
+`ws://127.0.0.1:9170/echo` and `/api/host-contract/*` in every adapter so
+command bytes and hashes identify the same workload.
 
 A passing result must identify source, compiler, host executable/module,
 fixture, shader and asset identities and retain raw observations. A missing

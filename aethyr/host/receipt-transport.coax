@@ -1,0 +1,25 @@
+#load "receipt.coax";
+#load "transport-conformance.coax";
+#authority;
+#test "transport receipt admits each host and rejects incomplete metadata and rows" {
+  rows:=htc_test_rows();buf:[16384]u8;o:[1]Jo;d:[1]Jv;nodes:[1024]JvNode;
+  for host:[3]string.["web","vulkan","metal"] {for bad:0..<8 {
+    jo_start(o[..],buf[..]);jo_obj(o[..]);
+    jo_key(o[..],"schema");jo_str(o[..],ifx bad==1 then "bad" else "aethyr.host.observations.v1");
+    jo_key(o[..],"scope");jo_str(o[..],ifx bad==2 then "core" else "transport");
+    jo_key(o[..],"host");jo_str(o[..],ifx bad==3 then "other" else host);
+    if bad!=4 {jo_key(o[..],"dropped");jo_int(o[..],ifx bad==5 then 1 else 0);}
+    jo_key(o[..],"events");
+    if bad==6 {jo_null(o[..]);} else {
+      jo_arr(o[..]);for i:0..<(ifx bad==7 then 78 else 79) {jo_arr(o[..]);for v:rows[i] {jo_int(o[..],v);}jo_end(o[..]);}jo_end(o[..]);
+    }
+    jo_end(o[..]);#assert !o[0].bad && jv_parse(d[..],jo_text(o[..]),nodes[..]) && hcr_transport(d[0])==(bad==0);
+  }}
+  #assert jv_parse(d[..],"[]",nodes[..]) && !hcr_transport(d[0]);
+}
+hcr_transport :: (d:Jv)->bool {
+  if jv_kind(d,0)!=JV_OBJECT || jv_raw(d,jv_get(d,0,"schema"))!="aethyr.host.observations.v1" || jv_raw(d,jv_get(d,0,"scope"))!="transport" {return false;}
+  host:=jv_raw(d,jv_get(d,0,"host"));if host!="web" && host!="vulkan" && host!="metal" {return false;}
+  rows:[79][8]int;n:=hcr_rows(d,jv_get(d,0,"events"),rows[..]);
+  return n==79 && htc_transport(rows[..],jv_int(d,jv_get(d,0,"dropped"),-1));
+}

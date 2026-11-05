@@ -28,6 +28,9 @@ version/default/dropped/held metadata through `conformance.coax` and its
 `receipt.coax` JSON adapter (190 and 60 root mutants killed, no equivalents).
 The Linux realm SDK exposes explicit still-frame and measured asset-copy
 effects, so its fixture uses the same production dispatch as a realm.
+Transport receipt admission checks the actual command/result/callback
+streams and callback-after-reservation ordering, allowing only independent
+connection scheduling (277 semantic and 20 JSON adapter root mutants killed).
 
 ## The indexed KV arena preserves the durable v1 contract
 
