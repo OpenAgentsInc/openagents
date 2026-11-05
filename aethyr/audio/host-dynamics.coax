@@ -1,0 +1,53 @@
+// Portable feed-forward stereo dynamics for the native carrier. These use
+// the existing host.js bus's authored threshold/knee/ratio/attack/release.
+// Web Audio's compressor implementation is platform-defined; its parameter
+// semantics, stereo linking and the native arithmetic are explicit here.
+#module "aethyr.audio.host.dynamics";
+#load "host-convolution.coax";
+#authority;
+AudioDynamics :: struct {reduction:f64;delay:[576]f64;head:int;}
+AudioDynamicsFrame :: struct {left:f64;right:f64;}
+#test "each native dynamics stage has the observed six millisecond lookahead with independent stereo samples" {
+ s:[1]AudioDynamics;q:=apc_frame(s[..],0.03125,0.015625,false);#assert q.left==0 && q.right==0;
+ for i:1..<288 {q=apc_frame(s[..],0,0,false);#assert q.left==0 && q.right==0;}
+ #assert s[0].head==0;q=apc_frame(s[..],0,0,false);#assert q.left==0.03125 && q.right==0.015625 && s[0].head==1;
+ q=apc_frame(s[..],0,0,false);#assert q.left==0 && q.right==0;
+ pair:[2]AudioDynamics;#assert apc_frame(pair[..],1,1,true).left==0 && apc_frame(pair[0..<0],1,1,true).right==0;
+}
+#test "the wall's instantaneous ceiling catches a delayed transient and preserves its stereo ratio" {
+ s:[1]AudioDynamics;q:=apc_frame(s[..],3,1.5,true);for i:1..<289 {q=apc_frame(s[..],0,0,true);}
+ ceiling:=pow(10.0,-1.0/20);#assert abs(q.left-ceiling)<0.000000000001 && abs(q.right-ceiling/2)<0.000000000001;
+ s[0]=AudioDynamics.{};q=apc_frame(s[..],-1.5,-3,true);for i:1..<289 {q=apc_frame(s[..],0,0,true);}#assert abs(q.right+ceiling)<0.000000000001 && abs(q.left+ceiling/2)<0.000000000001;
+}
+apc_reduction :: (db:f64,wall:bool)->f64 {
+ if wall {return (1.0/20-1)*audio_max(db+1,0);}
+ over:=audio_max(db+24,0);knee:=audio_min(over,12);return (1.0/3-1)*(knee*knee/24+audio_max(over-12,0));
+}
+#test "bus compression has the authored soft knee and three-to-one slope; the wall starts at minus one" {
+ #assert apc_reduction(-25,false)==0 && apc_reduction(-24,false)==0;
+ #assert abs(apc_reduction(-18,false)+1)<0.00000001 && abs(apc_reduction(-12,false)+4)<0.00000001 && abs(apc_reduction(0,false)+12)<0.00000001;
+ #assert apc_reduction(-1,true)==0 && apc_reduction(-2,true)==0 && abs(apc_reduction(0,true)+0.95)<0.00000001 && abs(apc_reduction(19,true)+19)<0.00000001;
+}
+#test "stereo-linked dynamics use the faster attack and recover with the authored release" {
+ s:[1]AudioDynamics;g:=apc_gain(s[..],1,false);want:= -12*(1-exp(-1.0/480));#assert abs(s[0].reduction-want)<0.00000000001 && abs(g-pow(10.0,want/20))<0.00000000001;
+ before:=s[0].reduction;g=apc_gain(s[..],0,false);#assert abs(s[0].reduction-(before-before*(1-exp(-1.0/12000))))<0.00000000001;
+ s[0].reduction=0;g=apc_gain(s[..],1,true);#assert abs(s[0].reduction-(-0.95*(1-exp(-1.0/48))))<0.00000000001;
+ before=s[0].reduction;g=apc_gain(s[..],0,true);#assert abs(s[0].reduction-(before-before*(1-exp(-1.0/3840))))<0.00000000001;
+ #assert g>0 && g<1;
+ s[0].reduction=0;g=apc_gain(s[..],0.5,false);db:=20*log(0.5)/log(10.0);#assert abs(s[0].reduction-apc_reduction(db,false)*(1-exp(-1.0/480)))<0.00000000001;
+ pair:[2]AudioDynamics;#assert apc_gain(pair[..],1,false)==1 && apc_gain(pair[0..<0],1,false)==1 && pair[0].reduction==0;
+}
+apc_gain :: (s:[]AudioDynamics,peak:f64,wall:bool)->f64 {
+ if s.count!=1 {return 1;}
+ db:=20*log(audio_max(peak,0.000000000001))/log(10.0);target:=apc_reduction(db,wall);delta:=target-s[0].reduction;
+ attack:=1-exp(-1.0/(ifx wall then 48.0 else 480.0));release:=1-exp(-1.0/(ifx wall then 3840.0 else 12000.0));
+ s[0].reduction+=audio_min(delta,0)*attack+audio_max(delta,0)*release;return pow(10.0,s[0].reduction/20);
+}
+apc_frame :: (s:[]AudioDynamics,left:f64,right:f64,wall:bool)->AudioDynamicsFrame {
+ if s.count!=1 {return AudioDynamicsFrame.{};}gain:=apc_gain(s,audio_max(abs(left),abs(right)),wall);at:=s[0].head*2;
+ q:=AudioDynamicsFrame.{left=s[0].delay[at]*gain,right=s[0].delay[at+1]*gain};
+ // A true final ceiling also catches isolated transients whose detector
+ // envelope has already released during lookahead; scale stereo together.
+ if wall {ceiling:=pow(10.0,-1.0/20);scale:=ceiling/audio_max(ceiling,audio_max(abs(q.left),abs(q.right)));q.left*=scale;q.right*=scale;}
+ s[0].delay[at]=left;s[0].delay[at+1]=right;s[0].head=(s[0].head+1)%288;return q;
+}

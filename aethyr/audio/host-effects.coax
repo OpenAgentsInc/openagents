@@ -1,0 +1,61 @@
+// Decode the existing mixer text into portable playback effects. CoreAudio
+// and Web Audio execute these parameters; the mixer still chooses all cues.
+#module "aethyr.audio.host.effects";
+#load "../render/media-commands.coax" as audio_numbers;
+#load "../points.coax";
+#authority;
+AudioHostEffect :: struct {kind:int;name:string;id:string;gain:f32;pan:f32;delay:f32;lowpass:f32;rate:f32=1;wet:f32;}
+AudioHostWords :: struct {ok:bool;count:int;words:[8]string;}
+#test "audio host preserves all eight mixer voice fields and applies the shared playback clamps" {
+ q:=audio_host_parse("fire-cast-e1 0.5 -0.25 0.125 8000 1.05 0.2 37");
+ #assert q.kind==1 && q.name=="fire-cast-e1" && q.id=="37" && q.gain==0.5 && q.pan== -0.25 && q.delay==0.125 && q.lowpass==8000 && q.rate==f32(1.05) && q.wet==f32(0.2);
+ q=audio_host_parse("x 0.75 -2 3 -1 4 2 id");#assert q.kind==1 && q.pan== -1 && q.delay==2 && q.lowpass== -1 && q.rate==2 && q.wet==1;
+ q=audio_host_parse("x -0.5 2 -1 0 0 -1 id");#assert q.kind==1 && q.gain== -0.5 && q.pan==1 && q.delay==0 && q.rate==1 && q.wet==0;
+ q=audio_host_parse("x 1 0 0 0 -2 0 id");#assert q.kind==1 && q.rate==0.5;
+}
+#test "audio host preserves beds bus room fetch stop and the legacy voice forms" {
+ q:=audio_host_parse("~ambient-e1 0.4 0.3");#assert q.kind==2 && q.name=="ambient-e1" && q.gain==f32(0.4) && q.pan==f32(0.3);
+ q=audio_host_parse("!bus 2");#assert q.kind==4 && q.gain==1;
+ q=audio_host_parse("!bus -1");#assert q.kind==4 && q.gain==0;
+ q=audio_host_parse("!room room");#assert q.kind==5 && q.name=="room";
+ q=audio_host_parse("!fetch fire-hit-e2");#assert q.kind==6 && q.name=="fire-hit-e2";
+ q=audio_host_parse("-37");#assert q.kind==3 && q.id=="37";
+ q=audio_host_parse("-x");#assert q.kind==3 && q.id=="x";
+ q=audio_host_parse("~x 1 0");#assert q.kind==2 && q.name=="x";
+ q=audio_host_parse("cast 0.5 0");#assert q.kind==1 && q.gain==0.5 && q.delay==0 && q.lowpass==0;
+ q=audio_host_parse("cast 0.5 0 0.25");#assert q.kind==1 && q.delay==0.25;
+ q=audio_host_parse("cast 0.5 0 0.25 1000");#assert q.kind==1 && q.lowpass==1000;
+}
+#test "audio host ignores malformed unknown and nonfinite packets without partial playback" {
+ for line:[15]string.["","x","!other x","!room","-","-1 extra","x 1","x 1 0 0 0 1","x 1 0 0 0 1 0","x bad 0","x 1 NaN","x 1 0 Infinity","x 1 0 0 1e300","x 1 0 0 0 1 0 id extra","~x 1 0 2"] {#assert audio_host_parse(line).kind==0;}
+ #assert audio_host_words(" x\ty \r").ok && audio_host_words(" x\ty \r").count==2;
+ #assert audio_host_words("a b c d e f g h").ok && !audio_host_words("a b c d e f g h i").ok;
+ long:[1025]u8;for i:0..<long.count {long[i]='a';}#assert !audio_host_words(cast(string)long[..]).ok;
+ #assert audio_host_words(cast(string)long[0..<1024]).ok;
+ #assert audio_host_words("a\rb").count==2 && audio_host_words("a\tb").count==2;
+ #assert audio_host_parse("!x 1 0").kind==0 && audio_host_parse("~ 1 0").kind==0;
+ #assert audio_host_parse("x 16777216 0").gain==16777216 && audio_host_parse("x 16777217 0").kind==0;
+}
+audio_host_words :: (line:string)->AudioHostWords {
+ q:AudioHostWords;if line.count>1024 {return q;}at:=0;
+ while at!=line.count {
+  while at!=line.count && (line[at]==' ' || line[at]=='\t' || line[at]=='\r') {at+=1;}
+  if at==line.count {break;}if q.count==8 {return AudioHostWords.{};}
+  start:=at;while at!=line.count && line[at]!=' ' && line[at]!='\t' && line[at]!='\r' {at+=1;}
+  q.words[q.count]=line[start..<at];q.count+=1;
+ }
+ q.ok=q.count>0;return q;
+}
+audio_host_parse :: (line:string)->AudioHostEffect #export_c {
+ w:=audio_host_words(line);if !w.ok {return AudioHostEffect.{};}name:=w.words[0];q:AudioHostEffect;
+ if name[0]=='-' {if name.count==1 || w.count!=1 {return q;}return AudioHostEffect.{kind=3,id=name[1..<name.count]};}
+ if name=="!room" || name=="!fetch" {if w.count!=2 {return q;}return AudioHostEffect.{kind=ifx name=="!room" then 5 else 6,name=w.words[1]};}
+ if name=="!bus" {if w.count!=2 {return q;}v:=audio_numbers.rmc_number(w.words[1]);if !v.ok {return q;}return AudioHostEffect.{kind=4,gain=clamp(f32(v.value),0,1)};}
+ if name[0]=='!' {return q;}
+ bed:=name[0]=='~';if (bed && (name.count==1 || w.count!=3)) || (!bed && w.count!=3 && w.count!=4 && w.count!=5 && w.count!=8) {return q;}
+ values:=[6]f32.[0,0,0,0,1,0];end:=ifx w.count==8 then 7 else w.count;
+ // Mixer controls use exactly representable scalar magnitudes, bounded well
+ // above authored Hertz, gains and delays before converting to SDK floats.
+ for word,i:w.words[1..<end] {v:=audio_numbers.rmc_number(word);if !v.ok || abs(v.value)>16777216 {return q;}values[i]=f32(v.value);}
+ q.kind=ifx bed then 2 else 1;q.name=ifx bed then name[1..<name.count] else name;q.gain=values[0];q.pan=clamp(values[1],-1,1);q.delay=clamp(values[2],0,2);q.lowpass=values[3];q.rate=clamp(ifx values[4]==0 then 1.0f32 else values[4],0.5,2);q.wet=clamp(values[5],0,1);if w.count==8 {q.id=w.words[7];}return q;
+}

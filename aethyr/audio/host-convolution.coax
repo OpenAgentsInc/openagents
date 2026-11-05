@@ -1,0 +1,111 @@
+// Portable partitioned stereo convolution. The host supplies decoded PCM
+// and measured workspace; arithmetic and normalized impulse semantics are
+// shared Coax. SDKs only feed/receive whole planar blocks.
+#module "aethyr.audio.host.convolution";
+#load "../../psionic/lib/spectral.coax";
+#load "host-level.coax";
+#authority;
+AudioConvolution :: struct {block:int;parts:int;head:int;ready:bool;}
+AudioConvolutionLayout :: struct {valid:bool;words:int;history:int;}
+ac_block_size :: (block:int)->bool {
+ blocks:=[11]int.[1,2,4,8,16,32,64,128,256,512,1024];found:=false;for b:blocks {if block==b {found=true;}}
+ return found;
+}
+ac_layout :: (block:int,parts:int)->AudioConvolutionLayout {
+ if !ac_block_size(block) || parts<1 || parts>128 {return AudioConvolutionLayout.{};}
+ return AudioConvolutionLayout.{valid=true,words=8*parts*(2*block)+6*block,history=4*parts*(2*block)};
+}
+ac_words :: (block:int,parts:int)->int #export_c {return ac_layout(block,parts).words;}
+ac_plane :: (w:[]f64,start:int,n:int)->[]f64 {return w[start..<start+n];}
+#test "audio convolution admits exact measured workspace and refuses unsupported block or partition extents" {
+ #assert ac_words(4,3)==216 && ac_words(1024,66)==1087488;
+ #assert ac_layout(4,3).history==96 && ac_layout(1024,66).history==540672;
+ #assert ac_words(0,1)==0 && ac_words(3,1)==0 && ac_words(2048,1)==0 && ac_words(4,0)==0 && ac_words(4,129)==0;
+ s:[1]AudioConvolution;w:[216]f64;imp:=[18]f32.[1,0,0.5,0,0,0,0,0,0.25,0,0,0,0,0,0,0,0,1];
+ #assert !ac_open(s[..],w[0..<215],4,imp[..],2,false) && !s[0].ready;
+ #assert ac_open(s[..],w[..],4,imp[..],2,false) && s[0].ready && s[0].parts==3;
+}
+#test "audio convolution agrees with a direct stereo impulse across partition and block boundaries" {
+ s:[1]AudioConvolution;w:[216]f64;imp:=[18]f32.[1,0,0.5,0,0,0,0,0,0.25,0,0,0,0,0,0,0,0,1];
+ #assert ac_open(s[..],w[..],4,imp[..],2,false);input:[8]f32;output:[8]f32;input[0]=1;input[4]=1;
+ #assert ac_block(s[..],w[..],input[..],output[..]);
+ #assert abs(output[0]-1)<0.000001 && abs(output[1]-0.5)<0.000001 && abs(output[2])<0.000001 && abs(output[7])<0.000001;
+ for i:0..<8 {input[i]=0;}#assert ac_block(s[..],w[..],input[..],output[..]);#assert abs(output[0]-0.25)<0.000001 && abs(output[7])<0.000001;
+ #assert ac_block(s[..],w[..],input[..],output[..]);#assert abs(output[4]-1)<0.000001 && abs(output[0])<0.000001;
+ #assert ac_block(s[..],w[..],input[..],output[..]);for x:output {#assert abs(x)<0.000001;}
+}
+#test "normalized room impulse uses the Web Audio RMS calibration and preserves unnormalized data" {
+ one:=[2]f32.[1,1];#assert ac_scale(one[..],2,false)==1;
+ #assert abs(ac_scale(one[..],2,true)-0.00125*44100.0/48000.0)<0.00000000001;
+ silence:[2]f32;#assert abs(ac_scale(silence[..],1,true)-0.00125/0.000125*44100.0/48000.0)<0.00000000001;
+ s:[1]AudioConvolution;w:[24]f64;#assert !ac_open(s[..],w[..],1,one[..],0,false) && !ac_open(s[..],w[..],1,one[..],3,false);
+ #assert !ac_block(s[..],w[..],one[..],one[..]);
+}
+#test "audio convolution validates every view before touching caller memory" {
+ states:[2]AudioConvolution;w:[216]f64;imp:=[18]f32.[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+ #assert !ac_open(states[0..<0],w[..],4,imp[..],2,false) && !ac_open(states[..],w[..],4,imp[..],2,false);
+ #assert !ac_open(states[0..<1],w[..],3,imp[..],2,false) && !ac_open(states[0..<1],w[..],0,imp[..],2,false);
+ #assert !ac_open(states[0..<1],w[..],4,imp[0..<0],1,false) && !ac_open(states[0..<1],w[..],4,imp[0..<3],2,false);
+ imp[0]=1.1;#assert !ac_open(states[0..<1],w[..],4,imp[..],2,false);imp[0]=0.0f32/0.0f32;#assert !ac_open(states[0..<1],w[..],4,imp[..],2,false);imp[0]=1;
+ imp[0]= -1;#assert ac_open(states[0..<1],w[..],4,imp[..],2,false);imp[0]=1.0000001;#assert !ac_open(states[0..<1],w[..],4,imp[..],2,false);imp[0]=1;
+ #assert ac_words(1,1)==22 && ac_words(1024,128)>0 && ac_words(1025,1)==0;
+ for b:[11]int.[1,2,4,8,16,32,64,128,256,512,1024] {#assert ac_words(b,1)>0;}
+ for i:0..<w.count {w[i]=7;}#assert ac_open(states[0..<1],w[..],4,imp[0..<16],2,false) && states[0].parts==2;
+ in:[8]f32;out:[8]f32;
+ #assert !ac_block(states[0..<0],w[..],in[..],out[..]) && !ac_block(states[..],w[..],in[..],out[..]);
+ #assert !ac_block(states[0..<1],w[0..<143],in[..],out[..]);
+ #assert !ac_block(states[0..<1],w[..],in[0..<7],out[..]) && !ac_block(states[0..<1],w[..],in[..],out[0..<7]);
+ keep:=states[0];states[0].head=-1;#assert !ac_block(states[0..<1],w[..],in[..],out[..]);states[0].head=2;#assert !ac_block(states[0..<1],w[..],in[..],out[..]);states[0]=keep;
+ states[0].block=3;#assert !ac_block(states[0..<1],w[..],in[..],out[..]);states[0]=keep;in[0]=0.0f32/0.0f32;#assert !ac_block(states[0..<1],w[..],in[..],out[..]);
+ in[0]=f32_from_bits(0x4e800001);#assert !ac_block(states[0..<1],w[..],in[..],out[..]);in[0]=f32_from_bits(0x4e800000);#assert ac_block(states[0..<1],w[..],in[..],out[..]);
+ #assert ac_open(states[0..<1],w[..],4,imp[0..<16],2,false);in[0]= -f32_from_bits(0x4e800000);#assert ac_block(states[0..<1],w[..],in[..],out[..]);
+ many:[129]f32;large:[2060]f64;many[0]=1;#assert !ac_open(states[0..<1],large[..],1,many[..],1,false) && ac_open(states[0..<1],large[..],1,many[0..<128],1,false);
+ one:=[2]f32.[1,-1];#assert ac_open(states[0..<1],w[..],1,one[..],2,false);#assert ac_block(states[0..<1],w[..],one[..],out[0..<2]);#assert out[0]==1 && out[1]==1;
+}
+#test "audio convolution matches the independent time-domain sum for a dense stereo stream including overlap tails" {
+ s:[1]AudioConvolution;w:[400]f64;imp:[26]f32;source:[80]f32;input:[16]f32;output:[16]f32;
+ for i:0..<13 {imp[2*i]=f32((i*7)%11-5)/8;imp[2*i+1]=f32((i*3)%7-3)/8;}
+ for i:0..<40 {source[2*i]=f32((i*5)%13-6)/16;source[2*i+1]=f32((i*11)%17-8)/16;}
+ for i:0..<w.count {w[i]=17;}#assert ac_open(s[..],w[..],8,imp[..],2,false);
+ for part:0..<7 {for channel:0..<2 {for i:0..<8 {frame:=part*8+i;input[channel*8+i]=ifx frame<40 then source[frame*2+channel] else 0;}}
+  #assert ac_block(s[..],w[..],input[..],output[..]);
+  for channel:0..<2 {for i:0..<8 {frame:=part*8+i;want:=0.0;for tap:0..<13 {at:=frame-tap;if at>=0 && at<40 {want+=f64(source[at*2+channel])*f64(imp[2*tap+channel]);}}#assert abs(f64(output[channel*8+i])-want)<0.000001;}}
+ }
+ mono:=[3]f32.[0.5,-0.25,0.125];#assert ac_open(s[..],w[..],4,mono[..],1,false);for i:0..<8 {input[i]=0;}input[0]=1;input[4]=1;#assert ac_block(s[..],w[..],input[0..<8],output[0..<8]);#assert output[0]==0.5 && output[1]== -0.25 && output[2]==0.125 && output[4]==0.5;
+}
+#test "audio convolution sanitizes scratch before transforms and initializes every retained history word" {
+ s:[1]AudioConvolution;w:[400]f64;imp:=[2]f32.[0.5,-0.25];input:=[8]f32.[1,0,0,0,1,0,0,0];output:[8]f32;
+ for i:0..<w.count {w[i]=sf_nan();}#assert ac_open(s[..],w[..],4,imp[..],2,false);for i:32..<88 {#assert w[i]==0;}
+ // Input imaginary planes and scratch are overwritten before use, regardless
+ // of prior scratch content. The immutable IR and retained old histories stay.
+ for i:40..<48 {w[i]=sf_nan();}for i:56..<64 {w[i]=sf_nan();}for i:64..<80 {w[i]=sf_nan();}
+ #assert ac_block(s[..],w[..],input[..],output[..]);#assert output[0]==0.5 && output[4]== -0.25;
+}
+// https://www.w3.org/TR/webaudio/#dom-convolvernode-normalize, 48kHz
+// carrier profile. True-stereo four-channel IRs are explicitly unsupported.
+ac_scale :: (impulse:[]f32,channels:int,normalize:bool)->f64 {
+ if !normalize {return 1;}power:=0.0;for x:impulse {power+=f64(x)*f64(x);}power=audio_max(sqrt(power/f64(impulse.count)),0.000125);return 0.00125*44100.0/48000.0/power;
+}
+ac_open :: (s:[]AudioConvolution,w:[]f64,block:int,impulse:[]f32,channels:int,normalize:bool)->bool #export_c {
+ if s.count!=1 || !ac_block_size(block) || (channels!=1 && channels!=2) || impulse.count<channels || impulse.count%channels!=0 {return false;}
+ frames:=impulse.count/channels;parts:=(frames-1)/block+1;layout:=ac_layout(block,parts);if !layout.valid || w.count<layout.words {return false;}
+ for x:impulse {if (f32_bits(x)&0x7fffffff)>0x3f800000 {return false;}}
+ n:=2*block;for i:layout.history..<layout.words {w[i]=0;}scale:=ac_scale(impulse,channels,normalize);
+ for channel:0..<2 {for part:0..<parts {base:=(channel*2*parts+2*part)*n;re:=ac_plane(w,base,n);im:=ac_plane(w,base+n,n);for i:0..<n {at:=part*block+i;re[i]=ifx i<block && at<frames then f64(impulse[at*channels+(ifx channels==1 then 0 else channel)])*scale else 0;im[i]=0;}sf_radix2(re,im);}}
+ s[0]=AudioConvolution.{block=block,parts=parts,ready=true};return true;
+}
+ac_block :: (s:[]AudioConvolution,w:[]f64,input:[]f32,output:[]f32)->bool #export_c {
+ if s.count!=1 || !s[0].ready {return false;}q:=s[0];b:=q.block;p:=q.parts;layout:=ac_layout(b,p);if !layout.valid {return false;}n:=2*b;
+ if w.count<layout.words || input.count!=2*b || output.count!=2*b || q.head<0 || q.head>=p {return false;}
+ for x:input {if (f32_bits(x)&0x7fffffff)>0x4e800000 {return false;}}
+ // Four groups of p complex spectra: stereo impulse, stereo input history.
+ for channel:0..<2 {hist:=(4*p+channel*2*p+2*q.head)*n;re:=ac_plane(w,hist,n);im:=ac_plane(w,hist+n,n);for i:0..<n {re[i]=ifx i<b then f64(input[channel*b+i]) else 0;im[i]=0;}sf_radix2(re,im);}
+ // The two scratch planes share the head's input spectrum only after both
+ // channels have been transformed. Scratch follows all retained spectra.
+ scratch:=8*p*n;re:=ac_plane(w,scratch,n);im:=ac_plane(w,scratch+n,n);
+ for channel:0..<2 {for i:0..<n {re[i]=0;im[i]=0;}
+  for part:0..<p {ir:=(channel*2*p+2*part)*n;old:=(q.head-part+p)%p;hist:=(4*p+channel*2*p+2*old)*n;for i:0..<n {re[i]+=w[ir+i]*w[hist+i]-w[ir+n+i]*w[hist+n+i];im[i]-=w[ir+i]*w[hist+n+i]+w[ir+n+i]*w[hist+i];}}
+  sf_radix2(re,im);overlap:=scratch+2*n+channel*b;for i:0..<b {output[channel*b+i]=f32(re[i]/f64(n)+w[overlap+i]);w[overlap+i]=re[b+i]/f64(n);}
+ }
+ s[0].head=(q.head+1)%p;return true;
+}

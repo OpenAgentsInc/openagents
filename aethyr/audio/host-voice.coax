@@ -1,0 +1,95 @@
+// The native 48kHz PCM voice interpreter. The shared mixer chooses cues;
+// decoded PCM is an immutable SDK-owned allocation for the voice's lifetime.
+#module "aethyr.audio.host.voice";
+#load "host-effects.coax";
+#authority;
+AudioPcmVoice :: struct {
+ pcm:[]f32;channels:int;position:f64;delay:int;active:bool;bed:bool;mixed:bool;
+ gain:f64;target_gain:f64;pan:f64;target_pan:f64;ease:f64;rate:f64=1;wet:f64;
+ coefficient:f64=1;left:f64;right:f64;fade:f64=1;stop:int= -1;
+}
+AudioPcmFrame :: struct {left:f64;right:f64;wet_left:f64;wet_right:f64;}
+apv_asset_name :: (name:string)->bool #export_c {
+ if name.count<1 || name.count>48 {return false;}
+ for c:name {if !((c>='a' && c<='z') || (c>='0' && c<='9') || c=='-') {return false;}}
+ return true;
+}
+#test "PCM voices preserve a mono impulse's equal power pan, gain and exact delayed start" {
+ pcm:=[3]f32.[1,0,0];e:=audio_host_parse("tap 0.5 -1 0.00004166666666666667 0 1 0.25 id");
+ v:=[1]AudioPcmVoice.[apv_open(pcm[..],1,e)];#assert v[0].active && v[0].delay==2;
+ #assert apv_frame(v[..]).left==0 && apv_frame(v[..]).right==0;
+ q:=apv_frame(v[..]);#assert abs(q.left-0.5)<0.000001 && abs(q.right)<0.000001 && q.wet_left==0.125 && q.wet_right==0.125;
+ #assert apv_frame(v[..]).left==0 && apv_frame(v[..]).left==0 && !v[0].active;
+ e=audio_host_parse("tap 1 0");v[0]=apv_open(pcm[..],1,e);q=apv_frame(v[..]);#assert abs(q.left-sqrt(0.5))<0.000001 && abs(q.right-sqrt(0.5))<0.000001 && q.wet_left==0;
+ e=audio_host_parse("tap 1 1");v[0]=apv_open(pcm[..],1,e);q=apv_frame(v[..]);#assert abs(q.left)<0.000001 && abs(q.right-1)<0.000001;
+}
+#test "stereo PCM preserves centre channels and follows the Web Audio cross-channel pan matrix" {
+ pcm:=[4]f32.[0.25,0.75,-0.5,0.5];e:=audio_host_parse("tap 1 0");v:=[1]AudioPcmVoice.[apv_open(pcm[..],2,e)];q:=apv_frame(v[..]);#assert abs(q.left-0.25)<0.000001 && q.right==0.75;
+ e=audio_host_parse("tap 1 -1");v[0]=apv_open(pcm[..],2,e);q=apv_frame(v[..]);#assert q.left==1 && abs(q.right)<0.000001;
+ e=audio_host_parse("tap 1 1");v[0]=apv_open(pcm[..],2,e);q=apv_frame(v[..]);#assert abs(q.left)<0.000001 && q.right==1;
+ e=audio_host_parse("tap 1 -0.5");v[0]=apv_open(pcm[..],2,e);q=apv_frame(v[..]);#assert abs(q.left-(0.25+0.75*sqrt(0.5)))<0.000001 && abs(q.right-0.75*sqrt(0.5))<0.000001;
+ e=audio_host_parse("tap 0.25 0");v[0]=apv_open(pcm[..],2,e);q=apv_frame(v[..]);#assert q.left==0.0625 && q.right==0.1875; q=apv_frame(v[..]);#assert q.left== -0.125 && q.right==0.125 && !v[0].active;
+ centre:=[2]f32.[0,1];e=audio_host_parse("tap 1 0");v[0]=apv_open(centre[..],2,e);q=apv_frame(v[..]);#assert q.left==0 && q.right==1;
+ e=audio_host_parse("tap 0.5 0.5");v[0]=apv_open(pcm[..],2,e);q=apv_frame(v[..]);#assert abs(q.left-0.125*sqrt(0.5))<0.000001 && abs(q.right-(0.375+0.125*sqrt(0.5)))<0.000001;
+}
+#test "PCM rate interpolates decoded samples before the one-pole dry filter and raw room send" {
+ pcm:=[4]f32.[1,0,-1,0];e:=audio_host_parse("tap 1 -1 0 1000 0.5 0.5 id");v:=[1]AudioPcmVoice.[apv_open(pcm[..],1,e)];c:=1-exp(-2*PI*1000/48000);q:=apv_frame(v[..]);#assert abs(q.left-c)<0.000001 && q.wet_left==0.5;
+ q=apv_frame(v[..]);#assert abs(q.left-(c+c*(0.5-c)))<0.000001 && q.wet_left==0.25;
+ e=audio_host_parse("tap 1 -1 0 24000 2 0 id");v[0]=apv_open(pcm[..],1,e);#assert apv_frame(v[..]).left==1 && apv_frame(v[..]).left== -1 && !v[0].active;
+ e=audio_host_parse("tap 1 -1 0 0.5 1 0 id");#assert apv_open(pcm[..],1,e).coefficient==1;
+ e=audio_host_parse("tap 1 -1 0 1 1 0 x");#assert apv_open(pcm[..],1,e).coefficient<1 && apv_open(pcm[..],1,e).mixed;
+ stereo:=[4]f32.[0.25,0.75,0.75,-0.25];e=audio_host_parse("tap 1 0 0 1000 0.5 0 x");v[0]=apv_open(stereo[..],2,e);q=apv_frame(v[..]);q=apv_frame(v[..]);#assert abs(q.left-(0.25*c+c*(0.5-0.25*c)))<0.000001 && abs(q.right-(0.75*c+c*(0.25-0.75*c)))<0.000001;
+ e=audio_host_parse("tap 1 -1 0 0 0.5 0 x");v[0]=apv_open(stereo[..],1,e);q=apv_frame(v[..]);q=apv_frame(v[..]);#assert q.left==0.5;
+}
+#test "looping beds ease gain and pan with authored first and subsequent time constants" {
+ pcm:=[2]f32.[1,0.5];e:=audio_host_parse("~wind 0.8 -1");v:=[1]AudioPcmVoice.[apv_open(pcm[..],1,e)];#assert v[0].bed && !v[0].mixed && v[0].gain==0 && v[0].ease==24000;
+ q:=apv_frame(v[..]);#assert q.left==0 && abs(v[0].gain-f64(e.gain)*(1-exp(-1.0/24000)))<0.000000000001;
+ first:=v[0].gain;q=apv_frame(v[..]);#assert abs(v[0].gain-(first+(f64(e.gain)-first)*(1-exp(-1.0/24000))))<0.000000000001;
+ for i:0..<2 {q=apv_frame(v[..]);}#assert v[0].active && v[0].position==0;
+ e=audio_host_parse("~wind 0.2 1");apv_bed(v[..],e);#assert v[0].target_gain==f64(e.gain) && v[0].target_pan==1 && v[0].ease==12000;
+ before:=v[0].pan;q=apv_frame(v[..]);#assert v[0].pan>before && v[0].pan<1;
+}
+#test "stopping a mixed voice fades its dry branch for fifteen milliseconds and ends after eighty" {
+ pcm:[4000]f32;for i:0..<pcm.count {pcm[i]=1;}e:=audio_host_parse("tap 1 -1 0 0 1 0.5 id");v:=[1]AudioPcmVoice.[apv_open(pcm[..],1,e)];apv_stop(v[..]);q:=apv_frame(v[..]);#assert q.left==1 && q.wet_left==0.5 && v[0].stop==3839;
+ for i:0..<3839 {q=apv_frame(v[..]);}#assert !v[0].active && apv_frame(v[..]).left==0;
+ v[0]=apv_open(pcm[..],1,e);apv_stop(v[..]);q=apv_frame(v[..]);#assert v[0].active;v[0].stop=1;q=apv_frame(v[..]);#assert !v[0].active && v[0].stop==0 && abs(q.left-exp(-1.0/720))<0.000001;
+}
+#test "PCM creation refuses malformed views and unsupported effects without reading them" {
+ pcm:=[3]f32.[0,1,0];e:=audio_host_parse("tap 1 0");
+ #assert !apv_open(pcm[0..<0],1,e).active && !apv_open(pcm[..],0,e).active && !apv_open(pcm[..],3,e).active && !apv_open(pcm[..],2,e).active;
+ #assert !apv_open(pcm[..],1,AudioHostEffect.{}).active;
+ pcm[0]=f32_from_bits(0x4e800001);#assert !apv_open(pcm[..],1,e).active;pcm[0]=0.0f32/0.0f32;#assert !apv_open(pcm[..],1,e).active;pcm[0]= -f32_from_bits(0x4e800000);#assert apv_open(pcm[..],1,e).active;
+ #assert apv_asset_name("a-09") && apv_asset_name("a") && !apv_asset_name("{") && !apv_asset_name(":") && !apv_asset_name("") && !apv_asset_name("../x") && !apv_asset_name("A") && !apv_asset_name("x_y");
+ names:[49]u8;for i:0..<49 {names[i]='z';}#assert apv_asset_name(cast(string)names[0..<48]) && !apv_asset_name(cast(string)names[..]);
+ empty:[2]AudioPcmVoice;#assert apv_frame(empty[0..<0]).left==0 && apv_frame(empty[..]).left==0;apv_bed(empty[0..<0],e);apv_stop(empty[0..<0]);
+ v:[1]AudioPcmVoice;apv_bed(v[..],e);apv_stop(v[..]);#assert !v[0].active;
+ one:=[1]f32.[1];e=audio_host_parse("~wind 3 0");v[0]=apv_open(one[..],1,e);#assert v[0].target_gain==1;
+ v[0].rate=2;q:=apv_frame(v[..]);#assert v[0].position==0 && q.left==0 && v[0].gain>0;
+}
+apv_open :: (pcm:[]f32,channels:int,e:AudioHostEffect)->AudioPcmVoice #export_c {
+ if (channels!=1 && channels!=2) || pcm.count<channels || pcm.count%channels!=0 || (e.kind!=1 && e.kind!=2) {return AudioPcmVoice.{};}
+ // Audio decoders can produce finite overshoots above full scale. Preserve
+ // them; the carrier's dynamics still owns output gain.
+ for x:pcm {if (f32_bits(x)&0x7fffffff)>0x4e800000 {return AudioPcmVoice.{};}}
+ bed:=e.kind==2;v:=AudioPcmVoice.{pcm=pcm,channels=channels,active=true,bed=bed,mixed=e.id.count>0,delay=int(f64(e.delay)*48000+0.5),gain=ifx bed then 0 else f64(e.gain),target_gain=f64(e.gain),pan=f64(e.pan),target_pan=f64(e.pan),ease=ifx bed then 24000 else 0,rate=f64(e.rate),wet=f64(e.wet)};
+ if bed {v.target_gain=f64(clamp(e.gain,0,1));}if e.lowpass>=1 && e.lowpass<24000 {v.coefficient=1-exp(-2*PI*f64(e.lowpass)/48000);}return v;
+}
+apv_bed :: (s:[]AudioPcmVoice,e:AudioHostEffect) #export_c {if s.count!=1 || !s[0].active || !s[0].bed {return;}s[0].target_gain=f64(clamp(e.gain,0,1));s[0].target_pan=f64(e.pan);s[0].ease=12000;}
+apv_stop :: (s:[]AudioPcmVoice) #export_c {if s.count!=1 || !s[0].active {return;}s[0].stop=3840;}
+apv_frame :: (s:[]AudioPcmVoice)->AudioPcmFrame #export_c {
+ if s.count!=1 || !s[0].active {return AudioPcmFrame.{};}v:=s[0];if v.delay>0 {s[0].delay-=1;return AudioPcmFrame.{};}
+ n:=v.pcm.count/v.channels;at:=int(v.position);next:=ifx at+1<n then at+1 else ifx v.bed then 0 else at;t:=v.position-f64(at);
+ left:=f64(v.pcm[at*v.channels])*(1-t)+f64(v.pcm[next*v.channels])*t;
+ right:=ifx v.channels==1 then left else f64(v.pcm[at*v.channels+1])*(1-t)+f64(v.pcm[next*v.channels+1])*t;
+ q:=AudioPcmFrame.{wet_left=left*v.gain*v.wet,wet_right=right*v.gain*v.wet};v.left+=v.coefficient*(left-v.left);v.right+=v.coefficient*(right-v.right);
+ left=v.left*v.gain*v.fade;right=v.right*v.gain*v.fade;
+ if v.channels==1 {angle:=(v.pan+1)*PI/4;q.left=left*cos(angle);q.right=right*sin(angle);}
+ else if v.pan<0 {angle:=(v.pan+1)*PI/2;q.left=left+right*cos(angle);q.right=right*sin(angle);}
+ else {angle:=v.pan*PI/2;q.left=left*cos(angle);q.right=right+left*sin(angle);}
+ // setTargetAtTime observes the current value at t=0; advance automation
+ // only after publishing this sample's dry and raw room branches.
+ if v.bed {v.gain+=(v.target_gain-v.gain)*(1-exp(-1/v.ease));v.pan+=(v.target_pan-v.pan)*(1-exp(-1.0/12000));}
+ if v.stop!= -1 {v.fade*=exp(-1.0/720);v.stop-=1;if v.stop==0 {v.active=false;}}
+ v.position+=v.rate;if v.bed {while v.position>=f64(n) {v.position-=f64(n);}}else if v.position>=f64(n) {v.active=false;}
+ s[0]=v;return q;
+}
