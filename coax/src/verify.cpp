@@ -22,9 +22,6 @@
 #include <sched.h>
 #include <csignal>
 #include <sys/mman.h>
-#ifdef __linux__
-#include <sys/prctl.h>
-#endif
 #include <sys/wait.h>
 #include <poll.h>
 #include <fcntl.h>
@@ -1124,6 +1121,7 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
   size_t next = 0;
   fflush(stdout);
   fflush(stderr);
+  const pid_t parent = getpid();
   auto start = [&](size_t index) -> bool {
     if (prefilled[index]) return true;
     int pipe_fds[2];
@@ -1132,7 +1130,7 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
     if (pid < 0) { close(pipe_fds[0]); close(pipe_fds[1]); return false; }
     if (pid == 0) {
       close(pipe_fds[0]);
-      job_child();
+      job_child(parent);
       int null = open("/dev/null", O_WRONLY);
       if (null >= 0) { dup2(null, 1); dup2(null, 2); }
       memory.peak_slots = memory.slots;
@@ -1341,11 +1339,7 @@ static bool evaluate_parallel(MutationRun run, const std::vector<size_t> &owned,
   auto start_worker = [&]() -> bool {
     pid_t pid = fork();
     if (pid == 0) {
-      job_child();
-      // A worker never outlives the run that started it.
-#ifdef __linux__
-      prctl(PR_SET_PDEATHSIG, SIGKILL);
-#endif
+      job_child(parent);  // a worker never outlives the run that started it
       for (;;) {
         if (getppid() != parent) _exit(1);
         uint64_t k = next->fetch_add(1);

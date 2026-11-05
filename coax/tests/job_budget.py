@@ -7,7 +7,8 @@ budget and no load backoff, so it is the same on a busy machine:
     on stderr; `coax status --jobs [--json]` prints the budget alone;
   - three compiles at once never hold more tokens than the budget, each runs
     at least one worker, and a compile that waits says so once;
-  - a compile killed while it holds tokens frees them at once;
+  - a compile killed while it holds tokens frees them at once, and its
+    forked check workers end within a second, mid-check;
   - `coax c` output and the `coax mutate` report are byte-identical at 1, 4
     and all cores;
   - without a usable token directory a compile still runs, and status says so.
@@ -31,6 +32,11 @@ CORES = os.cpu_count() or 1
 SLOW = '#authority;\nspin :: (n: int, k: int) -> int { s := 0; for i: 0..<n { s += (i * k) % 7; } return s; }\n' + ''.join(
     f'#test "spin {k}" #steps 400000000 {{ #assert spin(4000000, {k}) >= 0; }}\n' for k in range(1, 9)) + 'main :: () { }\n'
 
+# Three #authority checks of several seconds each: a worker still runs one
+# long after its compile is killed unless it ends with its parent.
+LONG = '#authority;\nspin :: (n: int, k: int) -> int { s := 0; for i: 0..<n { s += (i * k) % 7; } return s; }\n' + ''.join(
+    f'#test "long {k}" #steps 20000000000 {{ #assert spin(100000000, {k}) >= 0; }}\n' for k in range(1, 4)) + 'main :: () { }\n'
+
 MUTATE = '''
 f :: (x:int)->int { return x+1; }
 g :: (x:int)->int { return x*2; }
@@ -50,6 +56,7 @@ class JobBudget(unittest.TestCase):
         self.pool = self.dir / 'pool'
         (self.dir / 'slow.coax').write_text(SLOW)
         (self.dir / 'mutate.coax').write_text(MUTATE)
+        (self.dir / 'long.coax').write_text(LONG)
         self.env = {k: v for k, v in os.environ.items() if not k.startswith('COAX_JOBS') and k not in ('COAX_CHECK_JOBS', 'COAX_MUTATE_JOBS')}
         self.env.update(COAX_JOBS_DIR=str(self.pool), COAX_JOBS_BUDGET='3', COAX_JOBS_LOAD='0')
         self.caches = 0
@@ -129,7 +136,31 @@ class JobBudget(unittest.TestCase):
             self.assertNotIn('waiting', r.stderr)
         finally:
             try: os.killpg(p.pid, signal.SIGKILL)  # its orphaned check children: this test's own process group
-            except ProcessLookupError: pass
+            except (ProcessLookupError, PermissionError): pass  # gone, or only zombies left (macOS)
+
+    def test_a_killed_compile_ends_its_check_workers(self):
+        # Its own session, so its process group holds only this compile and
+        # its workers, and the test signals no process it didn't start.
+        p = subprocess.Popen([str(COMPILER), 'check', 'long.coax'], cwd=self.dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             env=dict(self.env, COAX_CHECK_CACHE=self.cache()), start_new_session=True)
+        def group_alive():
+            # Live members only: macOS refuses killpg(0) with EPERM on a group of
+            # zombies, workers that have ended but are not reaped yet.
+            ps = subprocess.run(['ps', '-A', '-o', 'pgid=,stat='], capture_output=True, text=True).stdout.split('\n')
+            return any(f[0] == str(p.pid) and not f[1].startswith('Z') for f in (line.split() for line in ps) if len(f) == 2)
+        try:
+            deadline = time.monotonic() + 30
+            while self.status()['held'] < 3 and time.monotonic() < deadline: time.sleep(0.02)
+            self.assertEqual(self.status()['held'], 3)
+            time.sleep(0.3)  # the workers are inside their checks
+            os.kill(p.pid, signal.SIGKILL)
+            p.wait()
+            killed = time.monotonic()
+            while group_alive() and time.monotonic() - killed < 1: time.sleep(0.02)
+            self.assertFalse(group_alive(), 'check workers still running a second after their coax was killed')
+        finally:
+            try: os.killpg(p.pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError): pass  # gone, or only zombies left (macOS)
 
     def test_results_are_the_same_for_every_worker_count(self):
         everything = dict(COAX_JOBS_BUDGET=str(CORES))

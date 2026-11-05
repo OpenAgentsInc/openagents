@@ -48,11 +48,15 @@
 #include <sys/file.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <csignal>
+#include <thread>
 #ifdef __APPLE__
+#include <sys/event.h>
 #include <sys/sysctl.h>
 #endif
 #ifdef __linux__
 #include <sched.h>
+#include <sys/prctl.h>
 #endif
 
 namespace coax {
@@ -213,10 +217,52 @@ static void job_give(int fd) {
   close(fd);  // the last descriptor on the file: the flock goes with it
 }
 
-// In a forked worker: drop the copies of this process's token descriptors
-// (the parent gives each back when its worker ends), and run any fan-out
-// of its own under the token its parent holds for it.
-static void job_child() {
+// A forked worker never outlives the process that forked it (`parent`, its
+// pid from before the fork): a killed coax frees its tokens at once, and its
+// workers stop within a moment instead of finishing their current check.
+// Linux asks the kernel for SIGKILL on the parent's death. macOS has no such
+// call, so a thread waits on a kqueue for the parent's exit (EVFILT_PROC
+// NOTE_EXIT), or, where that can't be set up, polls getppid() every 100 ms.
+// Each then ends the worker; its own workers watch it in turn.
+static void job_die_with_parent(pid_t parent) {
+#ifdef __linux__
+  prctl(PR_SET_PDEATHSIG, SIGKILL);
+#else
+#ifdef __APPLE__
+  int kq = kqueue();
+  if (kq >= 0) {
+    struct kevent watch;
+    EV_SET(&watch, parent, EVFILT_PROC, EV_ADD | EV_ONESHOT, NOTE_EXIT, 0, nullptr);
+    if (kevent(kq, &watch, 1, nullptr, 0, nullptr) == 0) {
+      std::thread([kq] {
+        struct kevent fired;
+        while (kevent(kq, nullptr, 0, &fired, 1, nullptr) < 0 && errno == EINTR) {}
+        _exit(1);
+      }).detach();
+    } else if (errno == ESRCH) {
+      _exit(1);  // the parent is already gone
+    } else {
+      close(kq);
+      kq = -1;
+    }
+  }
+  if (kq < 0)
+#endif
+    std::thread([parent] {
+      while (getppid() == parent) usleep(100000);
+      _exit(1);
+    }).detach();
+#endif
+  // The parent may have died before the watch was set.
+  if (getppid() != parent) _exit(1);
+}
+
+// In a forked worker: end with `parent` (above), drop the copies of this
+// process's token descriptors (the parent gives each back when its worker
+// ends), and run any fan-out of its own under the token its parent holds
+// for it.
+static void job_child(pid_t parent) {
+  job_die_with_parent(parent);
   for (int fd : g_jobs.held) close(fd);
   g_jobs.held.clear();
   g_jobs.inherited = true;

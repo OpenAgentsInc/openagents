@@ -1186,11 +1186,12 @@ static pid_t library_check_start(const Source *src, int32_t at, const EmitOption
   fcntl(fds[1], F_SETFD, FD_CLOEXEC);
   fflush(stdout);
   fflush(stderr);
+  const pid_t parent = getpid();
   pid_t pid = fork();
   if (pid < 0) { close(fds[0]); close(fds[1]); return -1; }
   if (pid == 0) {
     close(fds[0]);
-    job_child();
+    job_child(parent);
     int null = open("/dev/null", O_WRONLY);
     if (null >= 0) { dup2(null, 1); dup2(null, 2); }
     g_timings.path.clear();
