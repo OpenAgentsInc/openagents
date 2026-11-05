@@ -1091,6 +1091,7 @@ async function loadShadersOnce() {
       url: renderUrl, profile: Number(script.dataset.renderProfile), coarse: matchMedia("(pointer: coarse)").matches, capture: captureRequested,
       presentation: captureRequested && ["float","unorm8-v1"].includes(globalThis.coaxialRenderPresentation) ? globalThis.coaxialRenderPresentation : false,
       canonicalLayers: Boolean(hostTransport) || (captureRequested && globalThis.coaxialCanonicalLayers === true),
+      canonicalMedia: Boolean(hostTransport) || (captureRequested && globalThis.coaxialCanonicalMedia === true),
       onMedia: (rows) => send(MEDIA_KIND, rows.filter((m) => m.ready || m.failed).map((m) => `${m.url} ${m.failed ? 0 : m.width} ${m.failed ? 0 : m.height}`).join("\n")) });
     await candidate.initialize(previous);
     for (const asset of candidate.assetRows) asset.renderOwner = candidate;

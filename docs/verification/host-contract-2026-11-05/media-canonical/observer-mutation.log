@@ -1,0 +1,3 @@
+coax jobs: the load average is 12.3, at or above 12 ($COAX_JOBS_LOAD); running 1 build worker, not up to 2, until it drops
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+87 mutants, 87 killed, 0 survived

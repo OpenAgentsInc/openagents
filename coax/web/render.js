@@ -2,6 +2,7 @@
 // Effects adapter for admitted Coax package/frame/binding plans. Numeric
 // selectors below are renderer transport ABI1; no realm table lives here.
 import {canonicalLayerSide,decodeCanonicalLayer} from './layers-host.js';
+import {decodeCanonicalMedia} from './media-host.js';
 const number = (x) => Number(x);
 class RenderRefusal extends Error {}
 // The ledger handle (registry.coax) of a GPU object this host created: its
@@ -17,8 +18,8 @@ const blendComponent = (mode, alpha) => {
 };
 
 export class RenderHost {
-  constructor({ device, context, format, memory, exports, arena, url, profile, coarse, capture = false, presentation = false, presentationOnly = false, canonicalLayers = false, onMedia = null }) {
-    Object.assign(this, { device, context, format, displayFormat: format, memory, x: exports, arena, url, profile, coarse, capture, presentationRequested: presentation, presentationOnly, canonicalLayers, onMedia });
+  constructor({ device, context, format, memory, exports, arena, url, profile, coarse, capture = false, presentation = false, presentationOnly = false, canonicalLayers = false, canonicalMedia = false, onMedia = null }) {
+    Object.assign(this, { device, context, format, displayFormat: format, memory, x: exports, arena, url, profile, coarse, capture, presentationRequested: presentation, presentationOnly, canonicalLayers, canonicalMedia, onMedia });
     this.modules = new Map(); this.pipelines = new Map(); this.groups = new Map(); this.shaderMessages = [];this.ready = false;this.samplers = new Map();this.textureCaptures = [];this.layouts = new Map();this.requests = new Map();this.targets = new Map();this.generatedBuffers = new Map();this.buffers = [];this.pendingEffects = new Set();
   }
   info(field) { return number(this.x.coaxial_render_frame_info(field)); }
@@ -372,7 +373,15 @@ export class RenderHost {
     this.mediaCache.set(key, object);
     const current = () => !this.mediaCache.retiring && this.mediaCache.get(key) === object;
     const fail = (error) => { if (current()) { object.failed = true;object.ready = false;object.error = String(error?.stack ?? error ?? "media decode failed");this.mediaNotify(); } };
-    if (kind === this.ids.media.image) {
+    if (kind === this.ids.media.image && this.canonicalMedia) {
+      fetch(url, { credentials: "same-origin" }).then((r) => { if (!r.ok) throw Error(`media: ${r.status}`);return r.arrayBuffer(); })
+        .then((bytes) => decodeCanonicalMedia(new Uint8Array(bytes))).then((image) => {
+          if (!current()) return;
+          const [w,h]=this.mediaAllocate(object,null,image.width,image.height);
+          if(w!==image.width||h!==image.height)throw new RenderRefusal("canonical media extent differs from Coax decode");
+          object.pixels=image.data;this.mediaNotify();
+        }).catch(fail);
+    } else if (kind === this.ids.media.image) {
       fetch(url, { credentials: "same-origin" }).then((r) => { if (!r.ok) throw Error(`media: ${r.status}`);return r.blob(); })
         .then((b) => createImageBitmap(b)).then(async (image) => {
           if (!current()) { image.close();return; }
@@ -679,9 +688,12 @@ export class RenderHost {
       for (let i = 0; i < this.info(1); i++) if (this.op(i, 0) === 2) prepared.set(i, this.makeGroups(this.op(i, 1), i));
       const mediaGroups = new Map(media.draws.map((draw) => [draw.row, this.makeGroups(13, -1, draw)]));
       const presentationGroups = this.presentationRequested ? this.presentationGroups() : null;
-      for (const object of this.mediaCache?.values() ?? []) if (object.ready && object.source) {
-        device.queue.copyExternalImageToTexture({ source: object.source }, { texture: object.texture, premultipliedAlpha: this.mediaEffects.premultipliedAlpha }, [object.width, object.height]);
-        if (!object.element) { object.source.close?.();object.source = null; }
+      for (const object of this.mediaCache?.values() ?? []) if (object.ready) {
+        if(object.pixels){device.queue.writeTexture({texture:object.texture},object.pixels,{bytesPerRow:object.width*4,rowsPerImage:object.height},[object.width,object.height]);object.pixels=null;}
+        else if(object.source){
+          device.queue.copyExternalImageToTexture({ source: object.source }, { texture: object.texture, premultipliedAlpha: this.mediaEffects.premultipliedAlpha }, [object.width, object.height]);
+          if (!object.element) { object.source.close?.();object.source = null; }
+        }
       }
       if (vertexBytes) device.queue.writeBuffer(this.vertexBuffer, 0, new Uint8Array(memory.buffer, this.info(9), vertexBytes));
       if (uniformBytes) device.queue.writeBuffer(this.uniformBuffer, 0, new Uint8Array(memory.buffer, this.info(10), uniformBytes));

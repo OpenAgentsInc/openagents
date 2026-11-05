@@ -294,6 +294,21 @@ bank and actual GPU byte receipts are in
 [`layers-canonical.md`](../../docs/verification/host-contract-2026-11-05/layers-canonical.md);
 the new v1 path deliberately has its own visual reference.
 
+Version 1 still media uses `render/host-image.coax` for PNG/baseline-JPEG
+decode at natural rectangular dimensions, each axis at most 2048. Its
+measured plan bounds compressed input to 8 MiB, workspace to 32 MiB and
+complete straight RGBA8 output to 16 MiB. It performs one premultiplied byte
+round trip, no mip generation and no SDK resize/colour conversion. Hosts
+upload those exact bytes directly to the shared media texture descriptor.
+Unsupported or malformed input refuses explicitly, with no SDK fallback
+or published partial output. That image becomes failed/not-ready and its
+607 notice is `URL 0 0`; unrelated world rendering continues. Successful
+notices are `URL WIDTH HEIGHT`, pending images are omitted and rows retain
+request order without a final newline. Retired asynchronous work cannot
+allocate a texture or notify the replacement engine. Pre-v1 media retains
+its established SDK path. Complete authored-image and actual GPU receipts
+are in [`media-canonical.md`](../../docs/verification/host-contract-2026-11-05/media-canonical.md).
+
 WGSL, SPIR-V and MSL come from the same checked Coax shader tree. Metal
 reflection version 1 uses separate buffer 0–28, texture 0–127 and sampler
 0–15 namespaces; buffer 29 supplies element counts and buffer 30 is the

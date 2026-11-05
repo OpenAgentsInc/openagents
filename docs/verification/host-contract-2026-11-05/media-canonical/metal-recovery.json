@@ -1,0 +1,25 @@
+{
+  "closedLedgerLive" : 0,
+  "closedLedgerWords" : 0,
+  "completed" : 2,
+  "draws" : 136,
+  "frames" : 2,
+  "images" : [
+
+  ],
+  "ledgerEpoch" : 3,
+  "ledgerLive" : 37,
+  "ledgerWords" : 23529063,
+  "pending" : 0,
+  "recoveries" : 1,
+  "recoveryReleasedLive" : 0,
+  "schema" : "aethyr.metal.effects-result.v1",
+  "seconds" : 1.2855995416175574,
+  "snapshots" : [
+    "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/media-canonical\/replay-browser\/metal.f32",
+    "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/media-canonical\/replay-browser\/presented.f32",
+    "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/media-canonical\/replay-browser\/recovered.f32",
+    "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/media-canonical\/replay-browser\/recovered-presented.f32"
+  ],
+  "stateAddress" : 24964497408
+}

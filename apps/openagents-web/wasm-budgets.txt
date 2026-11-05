@@ -70,3 +70,5 @@ bitcoin-lab 365000
 host-audio 140000
 # Canonical PNG/JPEG layer decode and complete mip generation (55,132 measured).
 host-layers 70000
+# Canonical natural PNG/JPEG media decode without SDK conversion (51,577 measured).
+host-media 70000

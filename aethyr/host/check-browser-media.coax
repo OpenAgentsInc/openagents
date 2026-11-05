@@ -1,0 +1,47 @@
+// Actual browser Wasm decoder against every byte of the native authored media.
+#load "../../coax/web/wasm-chrome.coax";
+#load "../render/tests/qualification-files.coax";
+#load "media-conformance.coax";
+hmc_line :: (text:string,wanted:int)->string {start:=0;line:=0;for c,i:text {if c=='\n' {if line==wanted {return rtq_trim(text[start..<i]);}line+=1;start=i+1;}}return ifx line==wanted then rtq_trim(text[start..<text.count]) else "";}
+hmc_spawn :: (argv:[]string)->int {h:=proc_new();if h<0 {return -1;}for arg:argv {if !proc_arg(h,arg){_:=proc_release(h);return -1;}}if proc_start(h)!=0 {_:=proc_release(h);return -1;}return h;}
+// Retain exact observer/reactor/effects source bytes, so later source edits
+// cannot leave a passing receipt with only hashes of unavailable inputs.
+hmc_sources :: (inputs:[]RtqInputs,out:string)->bool {
+ paths:[2][4096]u8;directory:=fs_join(out,"sources",paths[0][..]);if !fs_mkdir(directory) {return false;}bytes:[2097152]u8;name:[80]u8;o:[1]Jo;
+ for i:0..<inputs[0].count {row:=inputs[0].rows[i];path:=cast(string)row.path[0..<row.count];n:=path.count;
+  source:=(n>=5&&path[n-5..<n]==".coax")||(n>=3&&path[n-3..<n]==".js")||(n>=2&&(path[n-2..<n]==".c"||path[n-2..<n]==".h"));if !source {continue;}
+  count:=fs_read(path,bytes[..]);if count<0 {return false;}jo_start(o[..],name[..]);jo_put(o[..],cast(string)row.hash[..]);jo_put(o[..],".source");if !fs_write(fs_join(directory,jo_text(o[..]),paths[1][..]),cast(string)bytes[0..<count]) {return false;}
+ }return rtq_inputs_match(inputs);
+}
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])<3||args_count(a[..])>4||(args_count(a[..])==4&&args_at(a[..],3)!="refusal") {tool_errln("usage: check-browser-media REACTOR.wasm NATIVE_FIXTURE_DIR NEW_OUT [refusal]");return 2;}
+ paths:[10][4096]u8;wasm:=args_at(a[..],0);fixture:=args_at(a[..],1);out:=args_at(a[..],2);if !fs_mkdir(out) {return 2;}listing:[1]FsList;if fs_list(out,listing[..])!=0 {return 2;}
+ site:=fs_join(out,"site",paths[0][..]);if !fs_mkdir(site) {return 1;}binary:[2097152]u8;n:=fs_read(wasm,binary[..]);if n<1||!fs_write(fs_join(site,"host-media.wasm",paths[1][..]),cast(string)binary[0..<n])||!fs_write(fs_join(site,"index.html",paths[1][..]),"<!doctype html><title>Canonical authored media fixture</title>") {return 1;}
+ inputs:[1]RtqInputs;for file:[4]string.[wasm,"coax/web/media-bridge.js","coax/web/media-face.c","aethyr/host/tests/media-effects.js"] {if !rtq_input_add(inputs[..],file) {return 1;}}
+ compiler_buf:[4096]u8;compiler:=proc_getenv("COAX",compiler_buf[..]);if !rtq_input_add(inputs[..],compiler)||!rtq_deps(inputs[..],compiler,"aethyr/host/check-browser-media.coax",proc_now_ms()+30000,out,"observer-dependencies")||!rtq_deps(inputs[..],compiler,"aethyr/host/media-carrier.coax",proc_now_ms()+30000,out,"reactor-dependencies") {return 1;}
+ self:[4096]u8;self_n:=cxproc_self_path(self[..]);if self_n<1||!rtq_input_add(inputs[..],cast(string)self[0..<self_n])||!hmc_sources(inputs[..],out) {return 1;}
+ list:[65536]u8;listpath:=fs_join(fixture,"media.list",paths[1][..]);ln:=fs_read(listpath,list[..]);if ln<1||!rtq_input_add(inputs[..],listpath) {return 1;}
+ root:=fs_cwd(paths[4][..]);host:=fs_join(root,"coax/web",paths[5][..]);argv:=[9]string.["coax/web/serve.sh",site,"--host-dir",host,"--listen","127.0.0.1:9181","--static","--cache","0"];
+ server:=hmc_spawn(argv[..]);if server<0 {return 1;}defer {k:=proc_kill(server,PROC_SIGTERM);w:=proc_wait(server,2000);r:=proc_release(server);}
+ waiting:[1]Cdp;body:[4096]u8;ready:=false;for attempt:0..<100 {if cdp_get(waiting[..],9181,"/",body[..])>0 {ready=true;break;}proc_sleep(50);}if !ready {return 1;}
+ c:[1]Cdp;if !cdp_launch(c[..],160,90,"coax-media-bank-") {return 1;}defer {cdp_close(c[..]);}
+ nav:=cdp_call(c[..],"Page.navigate","{\"url\":\"http://127.0.0.1:9181/\"}",30000);ready=false;for attempt:0..<100 {if wc_eval(c[..],"document.readyState==='complete'&&location.hostname==='127.0.0.1'")=="true" {ready=true;break;}proc_sleep(50);}if !ready {return 1;}
+ glue:[65536]u8;gn:=fs_read(WC_HOST_FILE,glue[..]);if gn<1||wc_eval(c[..],cast(string)glue[0..<gn])!="ready" {return 1;}gn=fs_read("aethyr/host/tests/media-effects.js",glue[..]);if gn<1||wc_eval(c[..],cast(string)glue[0..<gn])!="ready" {return 1;}
+ if wc_eval(c[..],"hostMediaEffects.open()")!="true" {tool_errln(cdp_error(c[..]));return 1;}
+ if args_count(a[..])==4 {
+  if !wc_file(c[..],"invalid.img","not an image") {return 1;}v:=cdp_evaluate(c[..],"hostMediaEffects.refuse('invalid.img')");values:[6]int;if v<0||jv_len(cdp_doc(c[..]),v)!=6 {return 1;}for i:0..<6 {values[i]=jv_int(cdp_doc(c[..]),jv_at(cdp_doc(c[..]),v,i),-1);}
+  closed:=wc_eval(c[..],"hostMediaEffects.close()")=="true";same:=rtq_inputs_match(inputs[..]);passed:=hmc_refused(values[..])&&closed&&same;record:[262144]u8;r:[1]Jo;jo_start(r[..],record[..]);jo_obj(r[..]);jo_key(r[..],"schema");jo_str(r[..],"aethyr.host.media-refusal.v1");jo_key(r[..],"passed");jo_bool(r[..],passed);jo_key(r[..],"observations");jo_arr(r[..]);for value:values {jo_int(r[..],value);}jo_end(r[..]);jo_key(r[..],"source_fence_unchanged");jo_bool(r[..],same);jo_key(r[..],"inputs");rtq_inputs_json(r[..],inputs[..],"");jo_end(r[..]);if r[0].bad||!fs_write(fs_join(out,"refusal.json",paths[9][..]),jo_text(r[..])) {return 1;}return ifx passed then 0 else 1;
+ }
+ source:[8388608]u8;native:[16777216]u8;raw:[16777216]u8;encoded:[65536]u8;js:[4096]u8;name_bytes:[512]u8;o:[1]Jo;report:[262144]u8;r:[1]Jo;jo_start(r[..],report[..]);jo_obj(r[..]);jo_key(r[..],"schema");jo_str(r[..],"aethyr.host.media-bank.v1");jo_key(r[..],"images");jo_arr(r[..]);count:=0;different:=0;total:=0;
+ while true {
+  name:=hmc_line(cast(string)list[0..<ln],count);if name=="" {break;}if name=="."||name==".." {return 1;}for letter:name {if letter=='/'||letter=='\\' {return 1;}}
+  input:=fs_join(fixture,name,paths[6][..]);sn:=fs_read(input,source[..]);if sn<1||!rtq_input_add(inputs[..],input)||!wc_file(c[..],"input.img",cast(string)source[0..<sn]) {return 1;}
+  p:=htm_plan(source[0..<sn]);if p.status!=0 {return 1;}values:[6]int;v:=cdp_evaluate(c[..],"hostMediaEffects.decode('input.img')");if v<0 {tool_errln(cdp_error(c[..]));return 1;}d:=cdp_doc(c[..]);if jv_len(d,v)!=6 {return 1;}for i:0..<6 {values[i]=jv_int(d,jv_at(d,v,i),-1);}if !hmc_plan(values[..],p) {return 1;}
+  at:=0;while at<p.bytes {chunk:=ifx p.bytes-at<16384 then p.bytes-at else 16384;jo_start(o[..],js[..]);jo_put(o[..],"hostMediaEffects.read(");jo_int(o[..],at);jo_put(o[..],",");jo_int(o[..],chunk);jo_put(o[..],")");v=cdp_evaluate(c[..],jo_text(o[..]));if v<0 {return 1;}en:=jv_str(cdp_doc(c[..]),v,encoded[..]);if en<1||b64_decode(cast(string)encoded[0..<en],raw[at..<at+chunk])!=chunk {return 1;}at+=chunk;}
+  jo_start(o[..],name_bytes[..]);jo_put(o[..],name);jo_put(o[..],".rgba");decoded:=fs_join(fixture,jo_text(o[..]),paths[7][..]);nn:=fs_read(decoded,native[..]);if !rtq_input_add(inputs[..],decoded) {return 1;}delta:=hmc_bytes(raw[0..<p.bytes],native[0..<(ifx nn<0 then 0 else nn)]);if delta<0 {return 1;}
+  if !fs_write(fs_join(out,jo_text(o[..]),paths[8][..]),cast(string)raw[0..<p.bytes]) {return 1;}
+  different+=delta;total+=p.bytes;count+=1;jo_obj(r[..]);jo_key(r[..],"source");jo_str(r[..],name);jo_key(r[..],"width");jo_int(r[..],p.width);jo_key(r[..],"height");jo_int(r[..],p.height);jo_key(r[..],"bytes");jo_int(r[..],p.bytes);jo_key(r[..],"different");jo_int(r[..],delta);jo_end(r[..]);print("Canonical media %: % bytes, % different.\n",count,p.bytes,delta);
+ }
+ closed:=wc_eval(c[..],"hostMediaEffects.close()")=="true";cdp_close(c[..]);same:=rtq_inputs_match(inputs[..]);passed:=hmc_complete(count,different,total)&&same&&closed;
+ jo_end(r[..]);jo_key(r[..],"passed");jo_bool(r[..],passed);jo_key(r[..],"count");jo_int(r[..],count);jo_key(r[..],"bytes");jo_int(r[..],total);jo_key(r[..],"different");jo_int(r[..],different);jo_key(r[..],"source_fence_unchanged");jo_bool(r[..],same);jo_key(r[..],"inputs");rtq_inputs_json(r[..],inputs[..],"");jo_end(r[..]);if r[0].bad||!fs_write(fs_join(out,"comparison.json",paths[9][..]),jo_text(r[..])) {return 1;}return ifx passed then 0 else 1;
+}

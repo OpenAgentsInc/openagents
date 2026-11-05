@@ -1,0 +1,65 @@
+// Exact natural-image bridge observations for the authored seven-image bank.
+#load "../render/host-image.coax";
+#authority;
+#forall "media observer compares every plan field and actual decode status" changed:0..<6 {
+ p:=HostMediaPlan.{status=0,width=48,height=48,bytes=9216,work=123,source_bytes=87};
+ values:=[6]int.[48,48,9216,123,87,0];#assert hmc_plan(values[..],p);
+ values[changed]+=1;#assert !hmc_plan(values[..],p);
+}
+#test "media observer requires an exact shape and an admitted expected plan" {
+ p:=HostMediaPlan.{status=0};values:[7]int;
+ #assert hmc_plan(values[0..<6],p) && !hmc_plan(values[0..<5],p) && !hmc_plan(values[..],p);
+ p.status=3;#assert !hmc_plan(values[0..<6],p);
+}
+#forall "media byte comparison checks all positions and rejects partial output" changed:0..<32 {
+ a:[32]u8;b:[33]u8;for i:0..<32 {a[i]=cast(u8)(i*7);b[i]=a[i];}
+ #assert hmc_bytes(a[..],b[0..<32])==0 && hmc_bytes(a[..],b[..]) == -1 && hmc_bytes(a[0..<0],b[0..<0]) == -1;
+ b[changed]^=1;#assert hmc_bytes(a[..],b[0..<32])==1;
+}
+#test "media byte comparison admits a single byte and counts all differences" {
+ a:=[2]u8.[3,7];b:=[2]u8.[3,7];#assert hmc_bytes(a[0..<1],b[0..<1])==0;
+ b[0]=4;#assert hmc_bytes(a[0..<1],b[0..<1])==1;b[1]=8;#assert hmc_bytes(a[..],b[..])==2;
+}
+#forall "whole authored media qualification needs seven complete decoded images" count:0..<9 {
+ #assert hmc_complete(count,0,64512)==(count==7);
+ #assert !hmc_complete(count,1,64512) && !hmc_complete(count,0,64511) && !hmc_complete(count,0,64513);
+}
+#forall "GPU media layout observes every physical field and exact transfer padding" changed:0..<9 {
+ for width:[5]int.[1,63,64,65,193] {
+  pitch:=(width*4+255)/256*256;values:=[9]int.[0,1,1,width,3,0,pitch,pitch*3,pitch*3];
+  #assert hmc_gpu_layout(values[..],width,3);values[changed]+=1;#assert !hmc_gpu_layout(values[..],width,3);
+ }
+}
+#test "GPU media layout refuses truncated metadata and invalid natural extents" {
+ values:=[10]int.[0,1,1,48,48,0,256,12288,12288,0];
+ #assert hmc_gpu_layout(values[0..<9],48,48) && !hmc_gpu_layout(values[..],48,48) && !hmc_gpu_layout(values[0..<8],48,48);
+ for side:[3]int.[0,-1,2049] {
+  pitch:=(side*4+255)/256*256;wide:=[9]int.[0,1,1,side,48,0,pitch,pitch*48,pitch*48];tall:=[9]int.[0,1,1,48,side,0,256,256*side,256*side];
+  #assert !hmc_gpu_layout(wide[..],side,48) && !hmc_gpu_layout(tall[..],48,side);
+ }
+ smallest:=[9]int.[0,1,1,1,1,0,256,256,256];#assert hmc_gpu_layout(smallest[..],1,1);
+ maximum:=[9]int.[0,1,1,2048,2048,0,8192,16777216,16777216];#assert hmc_gpu_layout(maximum[..],2048,2048);
+}
+#forall "malformed browser media has an observed refusal and no partial plan" changed:0..<6 {
+ values:=[7]int.[1,0,0,0,0,0,0];#assert hmc_refused(values[0..<6]);
+ values[changed]+=1;#assert !hmc_refused(values[0..<6]);values[changed]-=1;
+ #assert !hmc_refused(values[..]) && !hmc_refused(values[0..<5]);
+}
+hmc_plan :: (values:[]int,p:HostMediaPlan)->bool {
+ if values.count!=6 || p.status!=0 {return false;}
+ expected:=[6]int.[p.width,p.height,p.bytes,p.work,p.source_bytes,0];
+ for i:0..<6 {if values[i]!=expected[i] {return false;}}return true;
+}
+hmc_bytes :: (a:[]u8,b:[]u8)->int {
+ if a.count<1 || a.count!=b.count {return -1;}different:=0;for i:0..<a.count {if a[i]!=b[i] {different+=1;}}return different;
+}
+hmc_complete :: (count:int,different:int,bytes:int)->bool {return count==7 && different==0 && bytes==64512;}
+hmc_gpu_layout :: (values:[]int,width:int,height:int)->bool {
+ if values.count!=9 || width<1 || height<1 || width>2048 || height>2048 {return false;}
+ pitch:=(width*4+255)/256*256;expected:=[9]int.[0,1,1,width,height,0,pitch,pitch*height,pitch*height];
+ for i:0..<9 {if values[i]!=expected[i] {return false;}}return true;
+}
+hmc_refused :: (values:[]int)->bool {
+ if values.count!=6 {return false;}expected:=[6]int.[1,0,0,0,0,0];
+ for i:0..<6 {if values[i]!=expected[i] {return false;}}return true;
+}

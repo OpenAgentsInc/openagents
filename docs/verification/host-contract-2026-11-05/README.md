@@ -11,9 +11,11 @@ pinned current product inputs. Its new half-float comparisons pass; ordinary
 
 The disabled [explicit display quantization iteration](display-quantized-iteration.md)
 has byte-exact conversion probes on all three GPUs and a frozen full-frame
-comparison within the inherited live allowance. Actual native composition
-still fails that allowance (2,213 channels); no ordinary selector or default
-is promoted by this component evidence.
+comparison within the inherited live allowance. Its 2,213-channel native
+composition failure is retained. The subsequent [canonical still-media
+component](media-canonical.md) corrects native decoding and measures matched
+native/Wasm/Vulkan composition directly within the same allowance. No ordinary
+selector or desktop default is promoted by this component evidence.
 
 This is an **incomplete** conformance record. The normative boundary is
 [`aethyr/host/README.md`](../../../aethyr/host/README.md). Aethyrforge's world

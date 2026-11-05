@@ -1,0 +1,31 @@
+// Every logical RGBA byte of the production renderer's actual media readbacks.
+#import "Basic";
+#load "../render/tests/qualification-files.coax";
+#load "../../coax/lib/sys/args.coax";
+#load "media-conformance.coax";
+hmr_line :: (text:string,wanted:int)->string {start:=0;line:=0;for byte,i:text {if byte=='\n' {if line==wanted {return rtq_trim(text[start..<i]);}line+=1;start=i+1;}}return ifx line==wanted then rtq_trim(text[start..<text.count]) else "";}
+hmr_name :: (name:string)->bool {if name==""||name=="."||name==".." {return false;}for byte:name {if byte=='/'||byte=='\\' {return false;}}return true;}
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])!=3 {tool_errln("usage: check-media-readback CAPTURE_DIR NATIVE_FIXTURE_DIR REPORT.json");return 2;}
+ capture:=args_at(a[..],0);fixture:=args_at(a[..],1);report:=args_at(a[..],2);paths:[8][4096]u8;
+ receipt:=fs_join(capture,"receipt.json",paths[0][..]);listpath:=fs_join(fixture,"media.list",paths[1][..]);urlspath:=fs_join(fixture,"media.urls",paths[2][..]);inputs:[1]RtqInputs;
+ for file:[3]string.[receipt,listpath,urlspath] {if !rtq_input_add(inputs[..],file) {return 1;}}
+ json:[1048576]u8;nodes:[16384]JvNode;doc:[1]Jv;if !rtq_json_file(receipt,json[..],nodes[..],doc[..]) {return 1;}d:=doc[0];status:=jv_get(d,0,"status");frame:=jv_get(d,status,"capture");textures:=jv_get(d,frame,"textures");images:=jv_get(d,frame,"media_images");
+ list:[65536]u8;urls:[65536]u8;ln:=fs_read(listpath,list[..]);un:=fs_read(urlspath,urls[..]);if ln<1||un<1||hmr_line(cast(string)list[0..<ln],7)!=""||hmr_line(cast(string)urls[0..<un],7)!="" {return 1;}
+ source:[8388608]u8;expected:[16777216]u8;actual:[8192]u8;name_bytes:[512]u8;url_bytes:[4096]u8;file_bytes:[4096]u8;o:[1]Jo;different:=0;compared:=0;physical:=0;rows:=0;count:=0;output:[262144]u8;r:[1]Jo;jo_start(r[..],output[..]);jo_obj(r[..]);jo_key(r[..],"schema");jo_str(r[..],"aethyr.host.media-gpu-readback.v1");jo_key(r[..],"images");jo_arr(r[..]);
+ for index:0..<7 {
+  name:=hmr_line(cast(string)list[0..<ln],index);url:=hmr_line(cast(string)urls[0..<un],index);if !hmr_name(name)||url=="" {return 1;}
+  sourcepath:=fs_join(fixture,name,paths[3][..]);sn:=fs_read(sourcepath,source[..]);if sn<1||!rtq_input_add(inputs[..],sourcepath) {return 1;}p:=htm_plan(source[0..<sn]);if p.status!=0 {return 1;}
+  image:=-1;for i:0..<jv_len(d,images) {row:=jv_at(d,images,i);n:=jv_str(d,jv_get(d,row,"url"),url_bytes[..]);if n==url.count&&cast(string)url_bytes[0..<n]==url {if image>=0 {return 1;}image=i;}}
+  if image<0 {return 1;}observation:=jv_at(d,images,image);if jv_int(d,jv_get(d,observation,"kind"),-1)!=1||jv_int(d,jv_get(d,observation,"ready"),-1)!=1||jv_int(d,jv_get(d,observation,"width"),-1)!=p.width||jv_int(d,jv_get(d,observation,"height"),-1)!=p.height {return 1;}
+  jo_start(o[..],name_bytes[..]);jo_put(o[..],"media_image-");jo_int(o[..],image);texture_name:=jo_text(o[..]);texture:=-1;
+  for i:0..<jv_len(d,textures) {row:=jv_at(d,textures,i);n:=jv_str(d,jv_get(d,row,"name"),file_bytes[..]);if n==texture_name.count&&cast(string)file_bytes[0..<n]==texture_name {if texture>=0 {return 1;}texture=row;}}
+  if texture<0 {return 1;}nn:=jv_str(d,jv_get(d,texture,"file"),file_bytes[..]);if nn<1||!hmr_name(cast(string)file_bytes[0..<nn]) {return 1;}gpu:=fs_join(capture,cast(string)file_bytes[0..<nn],paths[4][..]);if !rtq_input_add(inputs[..],gpu) {return 1;}
+  levels:=jv_get(d,texture,"levels");level:=jv_at(d,levels,0);fields:=[9]int.[ifx jv_raw(d,jv_get(d,texture,"format"))=="rgba8unorm" then 0 else -1,jv_int(d,jv_get(d,texture,"layers"),-1),jv_len(d,levels),jv_int(d,jv_get(d,level,"width"),-1),jv_int(d,jv_get(d,level,"height"),-1),jv_int(d,jv_get(d,level,"offset"),-1),jv_int(d,jv_get(d,level,"row_bytes"),-1),jv_int(d,jv_get(d,level,"layer_bytes"),-1),fs_size(gpu)];
+  if !hmc_gpu_layout(fields[..],p.width,p.height) {return 1;}
+  jo_start(o[..],name_bytes[..]);jo_put(o[..],name);jo_put(o[..],".rgba");native:=fs_join(fixture,jo_text(o[..]),paths[5][..]);en:=fs_read(native,expected[..]);if en!=p.bytes||!rtq_input_add(inputs[..],native) {return 1;}
+  delta:=0;for y:0..<p.height {if fs_read_at(gpu,y*fields[6],actual[0..<p.width*4])!=p.width*4 {return 1;}difference:=hmc_bytes(actual[0..<p.width*4],expected[y*p.width*4..<(y+1)*p.width*4]);if difference<0 {return 1;}delta+=difference;rows+=1;}
+  different+=delta;compared+=p.bytes;physical+=fields[8];count+=1;jo_obj(r[..]);jo_key(r[..],"url");jo_str(r[..],url);jo_key(r[..],"file");jo_str(r[..],gpu);jo_key(r[..],"logical_bytes");jo_int(r[..],p.bytes);jo_key(r[..],"different");jo_int(r[..],delta);jo_end(r[..]);
+ }
+ same:=rtq_inputs_match(inputs[..]);passed:=hmc_complete(count,different,compared)&&same;jo_end(r[..]);jo_key(r[..],"passed");jo_bool(r[..],passed);jo_key(r[..],"count");jo_int(r[..],count);jo_key(r[..],"logical_bytes");jo_int(r[..],compared);jo_key(r[..],"logical_rows");jo_int(r[..],rows);jo_key(r[..],"physical_readback_bytes");jo_int(r[..],physical);jo_key(r[..],"different");jo_int(r[..],different);jo_key(r[..],"source_fence_unchanged");jo_bool(r[..],same);jo_key(r[..],"inputs");rtq_inputs_json(r[..],inputs[..],"");jo_end(r[..]);if r[0].bad||!fs_write(report,jo_text(r[..])) {return 1;}print("Actual GPU canonical media: % logical bytes, % different, passed %.\n",compared,different,passed);return ifx passed then 0 else 1;
+}
