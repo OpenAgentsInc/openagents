@@ -54,6 +54,32 @@ after a seated socket loss remains an integrated host gate.
 Raw attempts, all source snapshots, emitted C/header, original receipt
 checks and corrected observations are retained under
 `~/.openagents/aethyrforge/host-contract-12869/http-redirect/`.
-This checkpoint qualifies the browser HTTP adapter and shared policy.
-Actual native helper/URLSession adoption, ordinary Vulkan services,
-production web opt-in and complete host/default qualification remain open.
+The ordinary Linux `verse/native/net.coax` helper now passes a separate
+physical peer workload normally and under ASan/UBSan. Thirty v1 requests
+cross the same five statuses, three destinations and GET/POST methods.
+Every answer is exactly `0\n`; the peer sees every original path, method,
+POST body and two headers, with no destination request. Five pre-v1
+no-Location controls retain their original status instead of becoming a
+v1 failure. A 200 control returns `200\nok`. All 12 observations pass
+`[30,30,15,15,15,15,0,0,5,1,1,1]`; the new native receipt authority kills
+50/50 root mutants, with no survivors or equivalents. All 52 helper unit
+checks also pass. Only the helper and its linked SDK effects are sanitizer
+instrumented; the independent peer/observer remains a normal executable.
+This is plaintext private loopback, not an HTTP TLS or authenticated-session
+claim. The existing approved TLS implementation is linked unchanged.
+
+The Linux compiler is the originally checked 0.50 image SHA
+`5cc82481bf6db529e919a404134b6d18b02c984f443809af7426767af869af9c`,
+with its original receipt verifying against the genuine 9b1 compiler root
+before/after the separately recorded product overlay and after execution.
+The emitted helper source table joins its complete source closure exactly
+to the retained snapshot. Build records bind compiler, source/header,
+approved OpenSSL selection, C flags, actual executable and source hashes.
+Normal/instrumented raw physical requests, responses and complete SDK
+records are retained under
+`~/.openagents/aethyrforge/host-contract-12869/linux-http/` on both machines.
+
+This checkpoint qualifies the browser and ordinary Linux HTTP helper
+adapters and shared policy. Actual URLSession adoption, complete ordinary
+Vulkan services, production web opt-in and complete host/default
+qualification remain open.

@@ -266,8 +266,11 @@ Pre-v1 browser behavior remains version-scoped. Actual 45-request physical
 observations, the retained JSON-projection failure and corrected immutable
 receipt pass the 54-mutant checker; policy kills 17 mutants. The exact
 existing local-room `?re=1` reconnect spelling is admitted by the 60/11
-route gates; other queries refuse. Native/integrated adoption remains
-separate. See `docs/verification/host-contract-2026-11-05/http-redirect.md`.
+route gates; other queries refuse. The ordinary Linux helper separately
+passes exact original headers/bodies, 30 v1 failures, five legacy controls
+and zero follow-ups normally and under ASan/UBSan; its receipt authority
+kills 50 root mutants. Complete integrated adoption remains separate. See
+`docs/verification/host-contract-2026-11-05/http-redirect.md`.
 
 ## The indexed KV arena preserves the durable v1 contract
 
