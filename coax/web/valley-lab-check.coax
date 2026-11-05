@@ -14,9 +14,13 @@ vl_key :: (c:[]Cdp,key:string,code:string,down:bool)->bool {
   jo_key(o[..],"type");jo_str(o[..],ifx down then "keyDown" else "keyUp");jo_key(o[..],"key");jo_str(o[..],key);
   jo_key(o[..],"code");jo_str(o[..],code);jo_end(o[..]);return cdp_call(c,"Input.dispatchKeyEvent",jo_text(o[..]),30000)>=0;
 }
+vl_capture :: (c:[]Cdp)->bool {
+  return vl_eval(c,"(async()=>{coaxial.renderCapture=null;if(!coaxial.captureFrame())return false;await coaxialClipStep(1,60);for(let i=0;i<100&&!coaxial.renderCapture;i++)await new Promise(r=>setTimeout(r,10));let r=coaxial.renderCapture;if(r?.format!=='rgba8unorm')return false;let b=new Uint8Array(16*16*4),x=Math.floor(r.width/2)-8,y=Math.floor(r.height/2)-8;for(let j=0;j<16;j++)b.set(r.bytes.slice(((y+j)*r.width+x)*4,((y+j)*r.width+x+16)*4),j*64);let h=new Uint8Array(await crypto.subtle.digest('SHA-256',b));valleyPixels.push(Array.from(h,x=>x.toString(16).padStart(2,'0')).join(''));return true})()");
+}
 vl_run :: (c:[]Cdp,url:string,phone:bool)->bool {
   _:=cdp_call(c,"Page.enable","",30000);
-  if !vl_param(c,"Page.addScriptToEvaluateOnNewDocument","source","globalThis.coaxialClip=true;globalThis.valleyErrors=[];const ce=console.error;console.error=(...a)=>{valleyErrors.push(a.map(String).join(' '));ce(...a)}") {return false;}
+  if !vl_param(c,"Page.addScriptToEvaluateOnNewDocument","source","globalThis.coaxialClip=true;globalThis.coaxialRenderCapture=true;globalThis.coaxialRenderCaptureFormat='rgba8unorm';globalThis.valleyPixels=[];globalThis.valleyErrors=[];const ce=console.error;console.error=(...a)=>{valleyErrors.push(a.map(String).join(' '));ce(...a)}") {return false;}
+  if !phone {desktop_metrics:=cdp_call(c,"Emulation.setDeviceMetricsOverride","{\"width\":1280,\"height\":800,\"deviceScaleFactor\":1,\"mobile\":false}",30000);}
   if phone {
     metrics:=cdp_call(c,"Emulation.setDeviceMetricsOverride","{\"width\":390,\"height\":844,\"deviceScaleFactor\":1,\"mobile\":true}",30000);
     touch_enabled:=cdp_call(c,"Emulation.setTouchEmulationEnabled","{\"enabled\":true,\"maxTouchPoints\":5}",30000);}
@@ -37,6 +41,28 @@ vl_run :: (c:[]Cdp,url:string,phone:bool)->bool {
     if !vl_eval(c,"coaxialClipStep(32,60).then(()=>coaxial.guardProbe(2)>-11000)") {return false;}
     if cdp_call(c,"Input.dispatchTouchEvent","{\"type\":\"touchEnd\",\"touchPoints\":[]}",30000)<0 {return false;}
   }
+  if !vl_key(c,"2","Digit2",true) || !vl_key(c,"2","Digit2",false) || !vl_eval(c,"coaxialClipStep(1,60).then(()=>coaxial.guardProbe(6)===1 && coaxial.guardProbe(11)===1 && location.hash==='#assets')") {return false;}
+  if !vl_capture(c) {return false;}
+  if !vl_eval(c,"Array.from({length:8},(_,i)=>(coaxial.guardProbe(20+i)>>>0).toString(16).padStart(8,'0')).join('')==='3669c50bede0c4da9f611f4c658620ffc906ad6839984107838ab73aba37550b'") {return false;}
+  if !vl_key(c,"v","KeyV",true) || !vl_key(c,"v","KeyV",false) || !vl_eval(c,"coaxialClipStep(1,60).then(()=>coaxial.guardProbe(7)===1)") || !vl_capture(c) {return false;}
+  if !vl_key(c,"v","KeyV",true) || !vl_key(c,"v","KeyV",false) || !vl_eval(c,"coaxialClipStep(1,60).then(()=>coaxial.guardProbe(7)===2)") || !vl_capture(c) {return false;}
+  if !vl_key(c,"3","Digit3",true) || !vl_key(c,"3","Digit3",false) || !vl_eval(c,"coaxialClipStep(1,60).then(()=>coaxial.guardProbe(6)===2 && coaxial.guardProbe(7)===3 && coaxial.guardProbe(12)===10944 && coaxial.guardProbe(5)===3462)") || !vl_capture(c) {return false;}
+  if !vl_key(c,"l","KeyL",true) || !vl_key(c,"l","KeyL",false) || !vl_eval(c,"coaxialClipStep(1,60).then(()=>coaxial.guardProbe(8)===12288 && coaxial.guardProbe(11)===1 && Array.from({length:8},(_,i)=>(coaxial.guardProbe(20+i)>>>0).toString(16).padStart(8,'0')).join('')==='4e2053348a34e5a363ee5451b54412daba41bd41813c40d0cd6d8559f2ddd56c')") {return false;}
+  if !vl_key(c,"l","KeyL",true) || !vl_key(c,"l","KeyL",false) || !vl_eval(c,"coaxialClipStep(1,60).then(()=>coaxial.guardProbe(8)===768 && coaxial.guardProbe(11)===1 && Array.from({length:8},(_,i)=>(coaxial.guardProbe(20+i)>>>0).toString(16).padStart(8,'0')).join('')==='c39ef513e76cfb373abbb2185e35120cf4a02e13db13f80f92c82e05449bbf64')") {return false;}
+  if phone {
+    if cdp_call(c,"Input.dispatchTouchEvent","{\"type\":\"touchStart\",\"touchPoints\":[{\"x\":160,\"y\":103,\"id\":5}]}",30000)<0 {return false;}
+    if cdp_call(c,"Input.dispatchTouchEvent","{\"type\":\"touchEnd\",\"touchPoints\":[]}",30000)<0 {return false;}
+    if !vl_eval(c,"coaxialClipStep(1,60).then(()=>coaxial.guardProbe(6)===1)") {return false;}
+    if cdp_call(c,"Input.dispatchTouchEvent","{\"type\":\"touchStart\",\"touchPoints\":[{\"x\":270,\"y\":780,\"id\":6}]}",30000)<0 {return false;}
+    if cdp_call(c,"Input.dispatchTouchEvent","{\"type\":\"touchEnd\",\"touchPoints\":[]}",30000)<0 {return false;}
+    if !vl_eval(c,"coaxialClipStep(1,60).then(()=>coaxial.guardProbe(8)===3072 && coaxial.guardProbe(11)===1)") {return false;}
+  }
+  if !vl_key(c,"3","Digit3",true) || !vl_key(c,"3","Digit3",false) {return false;}
+  if !vl_key(c,"v","KeyV",true) || !vl_key(c,"v","KeyV",false) || !vl_eval(c,"coaxialClipStep(1,60).then(()=>coaxial.guardProbe(7)===4)") || !vl_capture(c) {return false;}
+  if !vl_eval(c,"new Set(valleyPixels).size===5 && (()=>{let r=coaxial.renderCapture,i=(Math.floor(r.height/2)*r.width+Math.floor(r.width/2))*4,b=r.bytes;return b[i]===b[i+1]&&b[i]===b[i+2]&&b[i]>0&&b[i]<255})()") {return false;}
+  perf:=cdp_evaluate(c,"(async()=>{let samples=[];for(let i=0;i<30;i++){let t=performance.now();await coaxialClipStep(1,60);samples.push(performance.now()-t)}samples.sort((a,b)=>a-b);return JSON.stringify({scope:'30 static depth-view frames, CPU submission plus GPU queue completion, not GPU timestamps or route FPS',viewport:[innerWidth,innerHeight],triangles:coaxial.guardProbe(8),medianMs:samples[15],p95Ms:samples[28],p99Ms:samples[29]})})()");
+  if perf<0 {return false;}print("Valley fenced frame observation: %\n",jv_raw(c[0].doc[0],perf));
+  print("PASS Valley asset/geometry %: stations, actual index pulling, view modes, three native/Wasm SHA256 matches, bounded replacement and %\n",ifx phone then "phone" else "desktop",ifx phone then "touch station/detail controls" else "keyboard controls");
   if !vl_eval(c,"document.querySelector('meta[name=robots]')?.content==='noindex, nofollow' && valleyErrors.length===0 && coaxial.guardProbe(5)>600") {return false;}
   print("PASS Valley Lab %: direct route, rendered geometry, WASD, jump/land, reset, %, noindex, no console errors\n",ifx phone then "phone" else "desktop",ifx phone then "actual touch movement" else "keyboard controls");return true;
 }

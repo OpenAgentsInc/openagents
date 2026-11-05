@@ -1,0 +1,112 @@
+// Original sandstone asset. No external art, parser, SDK or platform effects.
+// Cube-face seams share the same position function, units are metres, +Y is up.
+#load "../../aethyr/render/geometry/indexed.coax";
+#load "../../aethyr/rand.coax";
+#load "../../aethyr/assets.coax";
+#load "../../aethyr/render/light.coax";
+ROCK_MAX_VERTICES :: 6534;
+ROCK_MAX_INDICES :: 36864;
+ROCK_MAX_BYTES :: 24+ROCK_MAX_VERTICES*24+ROCK_MAX_INDICES*4;
+ROCK_SOURCE :: "OpenAgents original / verse/valley/rock.coax / generator v1";
+ROCK_LICENCE :: "Apache-2.0";
+ROCK_MATERIAL :: Material.{r=0.74,g=0.48,b=0.28,style=MATERIAL_LOWPOLY};
+Rock :: struct {
+  p:[ROCK_MAX_VERTICES]Point;n:[ROCK_MAX_VERTICES]Point;i:[ROCK_MAX_INDICES]u32;
+  vertices:int;indices:int;divisions:int;seed:int;
+  encoded:[ROCK_MAX_BYTES]u8;bytes:int;hash:[64]u8;id:AssetId;
+  measured:IndexedRead;
+}
+
+#test "rock cube basis has known outward winding on all six faces" {
+  for face:0..<6 {a:=rock_cube(face,-1,-1);b:=rock_cube(face,1,-1);c:=rock_cube(face,-1,1);
+    #assert dot(cross(sub(b,a),sub(c,a)),rock_cube(face,0,0))==4;}
+}
+#test "rock generates identical indexed bytes bounds and hashes for a pinned source" #steps 100000000 {
+  a:[1]Rock;b:[1]Rock;#assert rock_build(a[..],4,12609) && rock_build(b[..],4,12609);
+  #assert a[0].vertices==150 && a[0].indices==576 && a[0].bytes==5928;
+  #assert a[0].measured.low.y==0 && a[0].measured.high.y>2 && a[0].measured.high.x>1;
+  #assert asset_same(a[0].id,b[0].id);
+  for k:0..<a[0].bytes {#assert a[0].encoded[k]==b[0].encoded[k];}
+  #assert rock_build(b[..],4,12610) && !asset_same(a[0].id,b[0].id);
+  #assert !rock_build(b[..],1,12609) && b[0].bytes==0 && b[0].vertices==0;
+  #assert !rock_build(b[..],33,12609);
+}
+#test "rock shared identity refuses changed bytes and a byte over budget without retention" #steps 100000000 {
+  r:[1]Rock;#assert rock_build(r[..],2,1);
+  content:=[1]string.[cast(string)r[0].encoded[0..<r[0].bytes]];ids:=[1]AssetId.[r[0].id];reg:[1]AssetRegistry;
+  reg[0]=asset_registry(r[0].bytes-1);#assert asset_admit(reg[..],content[..],ids[..])==ASSET_OVER_BYTES && reg[0].held==0;
+  reg[0]=asset_registry(r[0].bytes);r[0].encoded[24]^=1;
+  #assert asset_admit(reg[..],content[..],ids[..])==ASSET_MISMATCH && reg[0].held==0;
+  r[0].encoded[24]^=1;#assert asset_admit(reg[..],content[..],ids[..])==ASSET_OK && reg[0].used==r[0].bytes;
+  #assert asset_release(reg[..],r[0].id) && reg[0].used==0;
+}
+#test "rock lighting diagnostics retain material albedo normals and analytic light values" {
+  up:=v3(0,1,0);c:=rock_colour(up,0,0);#assert abs(c.x-0.54168)<0.00001;
+  a:=rock_colour(up,1,0);#assert a.x==0.74 && a.y==0.48 && a.z==0.28;
+  n:=rock_colour(v3(-1,0,0),2,0);#assert n.x==0 && n.y==0.5 && n.z==0.5;
+}
+rock_cube :: (face:int,u:f32,v:f32)->Point {
+  if face==0 {return v3(1,u,v);}if face==1 {return v3(-1,v,u);}
+  if face==2 {return v3(v,1,u);}if face==3 {return v3(u,-1,v);}
+  if face==4 {return v3(u,v,1);}return v3(v,u,-1);
+}
+rock_noise :: (p:Point,seed:int)->f32 {
+  x:=cast(int)floor(p.x);y:=cast(int)floor(p.y);z:=cast(int)floor(p.z);
+  fx:=p.x-cast(f32)x;fy:=p.y-cast(f32)y;fz:=p.z-cast(f32)z;
+  sx:=fx*fx*(3-2*fx);sy:=fy*fy*(3-2*fy);sz:=fz*fz*(3-2*fz);sum:=0.0f32;
+  for k:0..<8 {
+    dx:=k&1;dy:=(k>>1)&1;dz:=(k>>2)&1;
+    weight:=(ifx dx==0 then 1-sx else sx)*(ifx dy==0 then 1-sy else sy)*(ifx dz==0 then 1-sz else sz);
+    counter:=(x+dx+64)+(y+dy+64)*128+(z+dz+64)*16384;
+    sum+=(rand_unit(seed,1,counter)*2-1)*weight;
+  }return sum;
+}
+rock_surface :: (p:Point,seed:int)->Point {
+  d:=unit_or(p,v3(0,1,0));
+  radius:=1+0.24*rock_noise(times(d,2),seed)+0.075*rock_noise(times(d,8),seed)+0.025*rock_noise(times(d,20),seed);
+  return v3(d.x*radius*2.4,d.y*radius*1.5,d.z*radius*1.8);
+}
+rock_normal :: (p:Point,seed:int)->Point {
+  d:=unit_or(p,v3(0,1,0));axis:=ifx abs(d.y)<0.9 then v3(0,1,0) else v3(1,0,0);
+  t:=times(unit_or(cross(axis,d),v3(1,0,0)),0.001);b:=cross(d,t);
+  du:=sub(rock_surface(add(d,t),seed),rock_surface(sub(d,t),seed));
+  dv:=sub(rock_surface(add(d,b),seed),rock_surface(sub(d,b),seed));return unit_or(cross(du,dv),d);
+}
+rock_word :: (out:[]u8,at:int,value:u32) {
+  for k:0..<4 {out[at+k]=cast(u8)((value>>(k*8))&255);}
+}
+rock_build :: (r:[]Rock,divisions:int,seed:int)->bool {
+  r[0].vertices=0;r[0].indices=0;r[0].bytes=0;
+  if divisions<2 || divisions>32 {return false;}
+  materials:=[1]Material.[ROCK_MATERIAL];if material_admit(materials[..],0,1<<MATERIAL_LOWPOLY).reason!=MATERIAL_OK {return false;}
+  r[0].divisions=divisions;r[0].seed=seed;side:=divisions+1;
+  for face:0..<6 {for y:0..<side {for x:0..<side {
+    q:=rock_cube(face,cast(f32)x*2/cast(f32)divisions-1,cast(f32)y*2/cast(f32)divisions-1);
+    k:=r[0].vertices;r[0].p[k]=rock_surface(q,seed);r[0].n[k]=rock_normal(q,seed);r[0].vertices+=1;
+  }}}
+  bottom:=r[0].p[0].y;for k:1..<r[0].vertices {bottom=lo(bottom,r[0].p[k].y);}
+  for k:0..<r[0].vertices {r[0].p[k].y-=bottom;}
+  for face:0..<6 {for y:0..<divisions {for x:0..<divisions {
+    a:=face*side*side+y*side+x;quad:=[6]int.[a,a+1,a+side,a+1,a+side+1,a+side];
+    for i:quad {r[0].i[r[0].indices]=cast(u32)i;r[0].indices+=1;}
+  }}}
+  measured:=indexed_read(r[0].p[0..<r[0].vertices],r[0].n[0..<r[0].vertices],r[0].i[0..<r[0].indices],ROCK_MAX_BYTES,ROCK_SOURCE,ROCK_LICENCE);
+  r[0].measured=measured;if measured.status!=IndexedStatus.ok {return false;}
+  // Internal canonical content bytes, v1: VRO1, generator, divisions, seed low32, counts;
+  // then packed f32 position/normal words and u32 indices, all little endian.
+  out:=r[0].encoded[..];rock_word(out,0,0x314f5256);rock_word(out,4,1);rock_word(out,8,cast(u32)divisions);
+  rock_word(out,12,cast(u32)(seed&4294967295));rock_word(out,16,cast(u32)r[0].vertices);rock_word(out,20,cast(u32)r[0].indices);
+  at:=24;for k:0..<r[0].vertices {p:=r[0].p[k];n:=r[0].n[k];
+    for v:[6]f32.[p.x,p.y,p.z,n.x,n.y,n.z] {rock_word(out,at,f32_bits(v));at+=4;}}
+  for k:0..<r[0].indices {rock_word(out,at,r[0].i[k]);at+=4;}
+  r[0].bytes=at;r[0].id=asset_id(cast(string)out[0..<at]);return asset_hex(r[0].id,r[0].hash[..]);
+}
+rock_colour :: (normal:Point,mode:int,height:f32)->Point {
+  if mode==2 {return times(add(normal,v3(1,1,1)),0.5);}
+  albedo:=v3(ROCK_MATERIAL.r,ROCK_MATERIAL.g,ROCK_MATERIAL.b);if mode==1 {return albedo;}
+  // Pin a unit sun vector and use shared chapter 12/13 lighting arithmetic.
+  direct:=hi(0,dot(normal,v3(-0.48,0.8,-0.36)));
+  ambient:=verse_style_ambient(normal.y,0.22,0.08,1);
+  strata:=0.94+0.06*abs((height*3-floor(height*3))*2-1);
+  return times(albedo,(ambient+direct*0.64)*strata);
+}

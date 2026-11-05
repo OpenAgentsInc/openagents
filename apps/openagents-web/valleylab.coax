@@ -4,10 +4,12 @@
 #load "../../aethyr/points.coax";
 #load "../../aethyr/ui/draw.coax";
 #load "../../aethyr/budget.coax";
+#load "../../verse/valley/rock.coax";
 
-VALLEY_VERTICES :: 16000;
-VALLEY_MESH :: 12288;
-VALLEY_BUDGET :: FrameBudget.{steps=8,vertices=15000,draws=3,bytes=2000000};
+VALLEY_VERTICES :: 65536;
+VALLEY_MESH :: 16384;
+VALLEY_INDICES :: 65536;
+VALLEY_BUDGET :: FrameBudget.{steps=8,vertices=64000,draws=3,bytes=6000000};
 ValleyLab :: struct {
   ready:bool; you:pc.Player; thumbs:Sticks;
   keys:int; look_x:f32; look_y:f32; zoom:f32;
@@ -16,6 +18,12 @@ ValleyLab :: struct {
   eye:Point; forward:Point; right:Point; up:Point; scale:f32;
   mesh:[VALLEY_MESH*8]f32; mesh_n:int; draws:[4]u32;
   meter:[1]BudgetMeter;
+  rock:[1]Rock;registry:[1]AssetRegistry;rock_ready:bool;divisions:int=16;
+  index:[VALLEY_INDICES]u32;index_n:int;
+  stage:int;mode:int;orbit:f32=0.65;tilt:f32=0.28;distance:f32=9;
+  inbox:[128]u8;action:int;outbox:[16]u8;out_n:int;
+  drag:bool;drag_id:int;drag_x:f32;drag_y:f32;
+
 }
 // A single source for drawn boxes AND collision. min x/y/z, max x/y/z.
 VALLEY_BOXES :: [19*6]f32.[
@@ -32,7 +40,34 @@ VALLEY_BOXES :: [19*6]f32.[
 ];
 
 // Checks precede behavior: real movement, jump, collision, reset and bounded drawing.
-#test "Valley walker moves, jumps, lands and releases input on blur" {
+#test "Valley stations stop held movement and expose one content identified indexed rock" #steps 1000000000 {
+  s:[1]ValleyLab;valley_start(s[..]);s[0].keys=1;valley_station(s[..],1);
+  #assert s[0].stage==1 && s[0].keys==0 && s[0].registry[0].held==1;
+  #assert s[0].rock[0].vertices==1734 && s[0].rock[0].indices==9216 && s[0].rock[0].bytes==78504;
+  tick:=s[0].you.clock.ticks;valley_step(s[..],0.1,false);#assert s[0].you.clock.ticks==tick;
+  s[0].width=390;s[0].height=844;
+  #assert valley_pointer(s[..],20,700,0,1,5) && s[0].mode==0 && s[0].drag;
+  #assert valley_pointer(s[..],20,700,2,1,5) && !s[0].drag;
+  #assert valley_pointer(s[..],50,780,0,1,6) && s[0].mode==1 && !s[0].drag;
+  old:=s[0].rock[0].id;#assert !valley_load_rock(s[..],33) && asset_same(old,s[0].rock[0].id);
+  #assert valley_load_rock(s[..],8) && s[0].registry[0].held==1 && s[0].registry[0].used==20904;
+  for i:0..<6 {s[0].inbox[i]="assets"[i];}valley_hash(s[..],6);#assert s[0].stage==1;
+  for i:0..<8 {s[0].inbox[i]="geometry"[i];}valley_hash(s[..],8);#assert s[0].stage==2;
+  #assert valley_key(s[..],118,true) && s[0].mode==4;
+  #assert valley_key(s[..],49,true) && s[0].stage==0 && s[0].keys==0;
+}
+#test "Valley full detail GPU index pulling covers the source without expansion" #steps 2000000000 {
+  s:[1]ValleyLab;out:[VALLEY_VERTICES*12]f32;u:[88]f32;valley_start(s[..]);valley_station(s[..],2);
+  for detail:[3]int.[8,16,32] {
+    #assert valley_load_rock(s[..],detail);
+    n:=valley_frame(s[..],out[..],u[..],390,844,1,0,true);
+    #assert n>0 && budget_ok(s[0].meter[0]);
+    #assert s[0].mesh_n==1728+s[0].rock[0].vertices && s[0].index_n==1728+s[0].rock[0].indices;
+    for k:0..<s[0].rock[0].indices {#assert s[0].index[1296+k]==cast(u32)1296+s[0].rock[0].i[k];}
+    #assert s[0].draws[1]==cast(u32)s[0].index_n && s[0].registry[0].held==1;
+  }
+}
+#test "Valley walker moves, jumps, lands and releases input on blur" #steps 1000000000 {
   s:[1]ValleyLab;valley_start(s[..]);
   #assert valley_key(s[..],119,true);
   for i:0..<64 {valley_step(s[..],1.0/64.0,false);}
@@ -44,7 +79,7 @@ VALLEY_BOXES :: [19*6]f32.[
   #assert s[0].you.on_ground && abs(s[0].you.pos.y)<0.1;
   #assert valley_key(s[..],114,true) && s[0].you.pos.z== -12;
 }
-#test "Valley drawn gate stops the capsule and its low steps can be climbed" {
+#test "Valley drawn gate stops the capsule and its low steps can be climbed" #steps 1000000000 {
   s:[1]ValleyLab;valley_start(s[..]);s[0].you=pc.walk_place(-10,0,18,0);s[0].keys=1;
   for i:0..<128 {valley_step(s[..],1.0/64.0,false);}
   #assert s[0].you.pos.z<21 && s[0].you.pos.z>19;
@@ -52,13 +87,13 @@ VALLEY_BOXES :: [19*6]f32.[
   for i:0..<40 {valley_step(s[..],1.0/64.0,false);}
   #assert s[0].you.pos.y>0.2 && s[0].you.pos.z>8;
 }
-#test "Valley keyboard and touch controls drive the same shared walker" {
+#test "Valley keyboard and touch controls drive the same shared walker" #steps 1000000000 {
   a:[1]ValleyLab;b:[1]ValleyLab;valley_start(a[..]);valley_start(b[..]);
   a[0].keys=1;b[0].thumbs.pad_y=1;
   for i:0..<64 {valley_step(a[..],1.0/64.0,false);valley_step(b[..],1.0/64.0,false);}
   #assert a[0].you.pos.z==b[0].you.pos.z && a[0].you.pos.x==b[0].you.pos.x;
 }
-#test "Valley frames fit desktop and phone buffers and freeze for goldens" #steps 100000000 {
+#test "Valley frames fit desktop and phone buffers and freeze for goldens" #steps 1000000000 {
   #assert budget_declared(VALLEY_BUDGET,VALLEY_VERTICES)==BUDGET_NONE;
   s:[1]ValleyLab;out:[VALLEY_VERTICES*12]f32;u:[88]f32;
   for screen:0..<3 {
@@ -74,20 +109,29 @@ valley_start :: (s:[]ValleyLab) {
   if s[0].ready {return;}s[0].ready=true;
   s[0].you=pc.walk_place(0,0,-12,0);s[0].you.phi=1.12;
   s[0].you.max_dist=7;s[0].you.dist=7;s[0].you.prev_dist=7;
+  if !s[0].rock_ready {#assert valley_load_rock(s,16);}
 }
 valley_blur :: (s:[]ValleyLab) #export_c {
-  s[0].keys=0;s[0].look_x=0;s[0].look_y=0;s[0].zoom=0;s[0].thumbs=Sticks.{};
+  s[0].drag=false;s[0].keys=0;s[0].look_x=0;s[0].look_y=0;s[0].zoom=0;s[0].thumbs=Sticks.{};
   for i:0..<4 {s[0].active[i]=false;}
   s[0].you=pc.walk_input(s[0].you,0,0,0,0,false,false,0,0);
 }
 valley_key :: (s:[]ValleyLab,key:int,down:bool)->bool #export_c {
   valley_start(s);bit:=0;
+  if down && key>=49 && key<=51 {valley_station(s,key-49);return true;}
+  if down && (key==118 || key==86) {s[0].mode=(s[0].mode+1)%5;return true;}
+  if down && (key==108 || key==76) {#assert valley_load_rock(s,ifx s[0].divisions==8 then 16 else ifx s[0].divisions==16 then 32 else 8);return true;}
+  if s[0].stage!=0 && bit==0 {
+    if down && (key== -4 || key== -5) {s[0].orbit+=ifx key== -4 then 0.12f32 else -0.12f32;return true;}
+    if down && (key== -6 || key== -7) {s[0].tilt=clamp(s[0].tilt+(ifx key== -6 then 0.08f32 else -0.08f32),-0.1,1.2);return true;}
+  }
+
   if key==119 || key==87 {bit=1;}if key==115 || key==83 {bit=2;}
   if key==97 || key==65 {bit=4;}if key==100 || key==68 {bit=8;}
   if key==32 {bit=16;}if key== -13 {bit=32;}
   if bit!=0 {if down {s[0].keys|=bit;}else {s[0].keys=(s[0].keys|bit)-bit;}return true;}
   if !down {return false;}
-  if key==114 || key==82 {valley_blur(s);s[0].ready=false;valley_start(s);return true;}
+  if key==114 || key==82 {s[0].orbit=0.65;s[0].tilt=0.28;s[0].distance=9;valley_blur(s);s[0].ready=false;valley_start(s);return true;}
   if key== -4 {s[0].look_x+=0.12;return true;}if key== -5 {s[0].look_x-=0.12;return true;}
   if key== -6 {s[0].look_y-=0.08;return true;}if key== -7 {s[0].look_y+=0.08;return true;}
   if key== -1 {valley_blur(s);return true;}return false;
@@ -96,23 +140,42 @@ valley_pointer :: (s:[]ValleyLab,x:f32,y:f32,phase:int,kind:int,id:int)->bool #e
   valley_start(s);slot:=-1;
   for i:0..<4 {if s[0].active[i] && s[0].ids[i]==id {slot=i;}}
   if phase==0 {
-    if y<92*s[0].d {if x>s[0].width-100*s[0].d {valley_blur(s);s[0].ready=false;valley_start(s);}return true;}
+    if y<132*s[0].d {
+      cx:=x/s[0].d;cy:=y/s[0].d;
+      if cy>=82 && cy<=126 && cx>=16 && cx<322 {valley_station(s,cast(int)((cx-16)/102));}
+      else if cy<70 && cx>s[0].width/s[0].d-100 {_:=valley_key(s,114,true);}
+      return true;
+    }
+    if s[0].stage!=0 && s[0].width/s[0].d<700 && y>=s[0].height-88*s[0].d && y<=s[0].height-44*s[0].d {
+      cx:=x/s[0].d;w:=s[0].width/s[0].d;
+      if cx>=16 && cx<=w*0.5-16 {s[0].mode=(s[0].mode+1)%5;return true;}
+      if cx>=w*0.5+16 && cx<=w-16 {#assert valley_load_rock(s,ifx s[0].divisions==8 then 16 else ifx s[0].divisions==16 then 32 else 8);return true;}
+    }
+    if s[0].stage!=0 {s[0].drag=true;s[0].drag_id=id;s[0].drag_x=x;s[0].drag_y=y;return true;}
+
     for i:0..<4 {if !s[0].active[i] {slot=i;break;}}
     if slot<0 {return false;}s[0].active[slot]=true;s[0].ids[slot]=id;
+  }
+  if s[0].stage!=0 && s[0].drag && s[0].drag_id==id {
+    if phase==1 {s[0].orbit-=(x-s[0].drag_x)/s[0].d*0.006;s[0].tilt=clamp(s[0].tilt+(y-s[0].drag_y)/s[0].d*0.006,-0.1,1.2);s[0].drag_x=x;s[0].drag_y=y;}
+    if phase>=2 {s[0].drag=false;}return true;
   }
   if slot<0 {return false;}
   s[0].thumbs=sticks_touch(s[0].thumbs,slot,phase,x,y,s[0].width,s[0].height,s[0].d,s[0].now,false);
   if phase==2 || phase==3 {s[0].active[slot]=false;}return true;
 }
-valley_wheel :: (s:[]ValleyLab,delta:f32) #export_c {s[0].zoom+=delta*0.01;}
+valley_wheel :: (s:[]ValleyLab,delta:f32) #export_c {if s[0].stage==0 {s[0].zoom+=delta*0.01;}else {s[0].distance=clamp(s[0].distance+delta*0.01,4,18);}}
 valley_step :: (s:[]ValleyLab,dt:f32,still:bool) {
-  valley_start(s);if still {return;}
+  valley_start(s);if still || s[0].stage!=0 {return;}
   k:=s[0].keys;t:=s[0].thumbs;
   p:=pc.walk_input(s[0].you,cast(f32)((ifx (k&8)!=0 then 1 else 0)-(ifx (k&4)!=0 then 1 else 0)),
     cast(f32)((ifx (k&1)!=0 then 1 else 0)-(ifx (k&2)!=0 then 1 else 0)),t.pad_x,t.pad_y,
     (k&32)!=0 || t.run,(k&16)!=0 || t.jump,s[0].look_x+t.dyaw,s[0].look_y+t.dpitch);
   p=pc.walk_zoom(p,s[0].zoom+t.zoom*0.01);
-  empty:[]f32;walls:=VALLEY_BOXES;
+  empty:[]f32;walls:[20*6]f32;for i:0..<19*6 {walls[i]=VALLEY_BOXES[i];}
+  a:=s[0].rock[0].measured.low;b:=s[0].rock[0].measured.high;
+  walls[114]=a.x-8;walls[115]=a.y;walls[116]=a.z;walls[117]=b.x-8;walls[118]=b.y;walls[119]=b.z;
+
   s[0].you=pc.walk_advance_in_realm(p,dt,empty,walls[..],empty,"valley-lab");
   s[0].look_x=0;s[0].look_y=0;s[0].zoom=0;s[0].thumbs=verse_sticks_used(t);s[0].now+=cast(f64)dt;
 }
@@ -122,7 +185,8 @@ valley_vertex :: (s:[]ValleyLab,p:Point,c:Point) {
   s[0].mesh[at]=2*dot(r,s[0].right)*s[0].scale/s[0].width;
   s[0].mesh[at+1]=2*dot(r,s[0].up)*s[0].scale/s[0].height;
   s[0].mesh[at+2]=300.0/299.8*(z-0.2);s[0].mesh[at+3]=z;
-  s[0].mesh[at+4]=c.x;s[0].mesh[at+5]=c.y;s[0].mesh[at+6]=c.z;s[0].mesh[at+7]=1;s[0].mesh_n+=1;
+  s[0].mesh[at+4]=c.x;s[0].mesh[at+5]=c.y;s[0].mesh[at+6]=c.z;s[0].mesh[at+7]=1;
+  #assert s[0].index_n<VALLEY_INDICES;s[0].index[s[0].index_n]=cast(u32)s[0].mesh_n;s[0].index_n+=1;s[0].mesh_n+=1;
 }
 valley_box :: (s:[]ValleyLab,x:f32,y:f32,z:f32,rx:f32,ry:f32,rz:f32,c:Point) {
   corners:[8]Point;for i:0..<8 {corners[i]=v3(x+(ifx (i&1)==0 then -rx else rx),y+(ifx (i&2)==0 then 0.0f32 else ry),z+(ifx (i&4)==0 then -rz else rz));}
@@ -133,10 +197,12 @@ valley_frame :: (s:[]ValleyLab,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:
   valley_start(s);if !(w>0) || !(h>0) || !(d>0) || u.count<88 || out.count<VALLEY_VERTICES*12 {return 0;}
   s[0].width=w;s[0].height=h;s[0].d=d;valley_step(s,dt,still);
   eye:=pc.walk_eye(s[0].you);at:=pc.walk_at(s[0].you);s[0].eye=v3(eye.x,eye.y,eye.z);
+  if s[0].stage!=0 {s[0].eye=v3(sin(s[0].orbit)*cos(s[0].tilt)*s[0].distance,1.6+sin(s[0].tilt)*s[0].distance,cos(s[0].orbit)*cos(s[0].tilt)*s[0].distance);at=pc.Vec3.{x=0,y=1.6,z=0};}
   s[0].forward=unit_or(sub(v3(at.x,at.y,at.z),s[0].eye),v3(0,0,1));
-  s[0].right=unit_or(cross(s[0].forward,v3(0,1,0)),v3(-1,0,0));s[0].up=cross(s[0].right,s[0].forward);s[0].scale=h*0.85;
-  for i:0..<88 {u[i]=0;}u[0]=w;u[1]=h;u[3]=1;u[80]=0;u[81]=h;s[0].mesh_n=0;
+  s[0].right=unit_or(cross(s[0].forward,v3(0,1,0)),v3(-1,0,0));s[0].up=cross(s[0].right,s[0].forward);s[0].scale=ifx s[0].stage!=0 && w<h then w*1.2 else h*0.85;
+  for i:0..<88 {u[i]=0;}u[0]=w;u[1]=h;u[3]=1;u[80]=0;u[81]=h;u[82]=cast(f32)s[0].mode;s[0].mesh_n=0;s[0].index_n=0;
   // Tiled sand gives movement a readable metre scale. Every top is the shared flat floor.
+  if s[0].stage==0 {
   for x: -7..<7 {for z: -7..<9 {
     tone:=ifx ((x+z)&1)==0 then 1.0f32 else 0.96f32;
     valley_box(s,cast(f32)x*6+3,-0.12,cast(f32)z*6+3,3,0.12,3,times(v3(0.60,0.42,0.25),tone));
@@ -152,19 +218,94 @@ valley_frame :: (s:[]ValleyLab,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:
   gait:=ifx pc.flat_speed(s[0].you)>0.1 then sin(cast(f32)s[0].now*10)*0.15 else 0.0f32;
   valley_box(s,feet.x-0.15,feet.y,feet.z+gait,0.10,0.65,0.12,body);
   valley_box(s,feet.x+0.15,feet.y,feet.z-gait,0.10,0.65,0.12,body);
-  s[0].draws=[4]u32.[0,cast(u32)s[0].mesh_n,0x80000000,1];
+  }else {
+    for x: -3..<3 {for z: -3..<3 {valley_box(s,cast(f32)x*2+1,-0.12,cast(f32)z*2+1,1,0.12,1,v3(0.26,0.29,0.30));}}
+  }
+  valley_rock_mesh(s,ifx s[0].stage==0 then -8.0f32 else 0.0f32);
+  if s[0].stage!=0 && s[0].mode==3 {valley_bounds_mesh(s);}
+  s[0].draws=[4]u32.[0,cast(u32)s[0].index_n,0x80000000,1];
   pen:=HdPen.{d=d,top=0,bottom=h/d,cyan=false,sans=false};n:=0;
   n=hd_text(out,n,"VALLEY LAB",20,34,18,pen,0);
-  n=hd_text_fit(out,n,"01 / WALKABLE GRAYBOX",20,59,11,w/d-125,pen,1);
+  n=hd_text_fit(out,n,[3]string.["01 / WALKABLE BASIN","02 / ASSET INSPECTOR","03 / INDEXED GEOMETRY"][s[0].stage],20,59,11,w/d-125,pen,1);
   n=hd_text(out,n,"RESET",w/d-84,36,12,pen,0);
-  if w/d>=700 {n=hd_text(out,n,"WASD MOVE  /  SHIFT RUN  /  SPACE JUMP  /  ARROWS LOOK  /  R RESET",20,h/d-22,11,pen,0);}
-  else {n=hd_text_fit(out,n,"LEFT DRAG MOVE / RIGHT DRAG LOOK / TAP JUMP",16,h/d-22,10,w/d-32,pen,0);}
+  for tab:0..<3 {b:=HudBox.{x=16+cast(f32)tab*102,y=82,width=96,height=44};n=hd_panel(out,n,b,pen,s[0].stage==tab);n=hd_text_fit(out,n,[3]string.["1 WALK","2 ASSETS","3 MESH"][tab],b.x+7,109,11,82,pen,0);}
+  if s[0].stage!=0 {n=valley_inspector(s,out,n,pen);}
+  if w/d>=700 {n=hd_text(out,n,ifx s[0].stage==0 then "WASD MOVE / SHIFT RUN / SPACE JUMP / 1-3 STATIONS" else "DRAG OR ARROWS ORBIT / WHEEL ZOOM / V VIEW / L DETAIL",20,h/d-22,11,pen,0);}
+  else {n=hd_text_fit(out,n,ifx s[0].stage==0 then "LEFT DRAG MOVE / RIGHT DRAG LOOK / TAP JUMP" else "DRAG ORBIT / TAP VIEW OR DETAIL",16,h/d-22,10,w/d-32,pen,0);}
   if s[0].thumbs.move_on {t:=s[0].thumbs;n=hd_ring(out,n,t.ox/d,t.oy/d,44,44,0,6.2831853,pen,2);n=hd_ring(out,n,t.ox/d+t.pad_x*44,t.oy/d-t.pad_y*44,12,12,0,6.2831853,pen,0);}
-  s[0].meter[0]=budget_meter(VALLEY_BUDGET);budget_measure(s[0].meter[..],n+s[0].mesh_n,3,budget_arena_bytes(size_of(ValleyLab),VALLEY_VERTICES,12,88));
-  _:=budget_take(s[0].meter[..],BUDGET_STEPS,s[0].you.clock.ran);#assert budget_ok(s[0].meter[0]);return n;
+  s[0].meter[0]=budget_meter(VALLEY_BUDGET);budget_measure(s[0].meter[..],n+s[0].index_n,3,budget_arena_bytes(size_of(ValleyLab),VALLEY_VERTICES,12,88));
+  _:=budget_take(s[0].meter[..],BUDGET_STEPS,ifx s[0].stage==0 then s[0].you.clock.ran else 0);#assert budget_ok(s[0].meter[0]);return n;
 }
 valley_probe :: (s:[]ValleyLab,field:int)->int #export_c {
   if field==0 {return cast(int)(s[0].you.pos.x*1000);}if field==1 {return cast(int)(s[0].you.pos.y*1000);}
   if field==2 {return cast(int)(s[0].you.pos.z*1000);}if field==3 {return s[0].you.clock.ticks;}
-  if field==4 {return s[0].keys;}return s[0].mesh_n;
+  if field==4 {return s[0].keys;}if field==5 {return s[0].mesh_n;}
+  if field==6 {return s[0].stage;}if field==7 {return s[0].mode;}if field==8 {return s[0].rock[0].indices/3;}
+  if field==9 {return s[0].rock[0].vertices;}if field==10 {return s[0].rock[0].bytes;}
+  if field==11 {return s[0].registry[0].held;}if field==12 {return s[0].index_n;}if field>=20 && field<28 {return cast(int)s[0].rock[0].id.words[field-20];}return s[0].divisions;
+}
+
+valley_load_rock :: (s:[]ValleyLab,divisions:int)->bool {
+  if divisions!=8 && divisions!=16 && divisions!=32 {return false;}
+  if s[0].rock_ready && s[0].divisions==divisions {return true;}
+  next:[1]Rock;if !rock_build(next[..],divisions,12609) {return false;}
+  if !s[0].rock_ready {s[0].registry[0]=asset_registry(ROCK_MAX_BYTES*2);}
+  content:=[1]string.[cast(string)next[0].encoded[0..<next[0].bytes]];ids:=[1]AssetId.[next[0].id];
+  if asset_admit(s[0].registry[..],content[..],ids[..])!=ASSET_OK {return false;}
+  if s[0].rock_ready {_:=asset_release(s[0].registry[..],s[0].rock[0].id);}
+  s[0].rock[0]=next[0];s[0].divisions=divisions;s[0].rock_ready=true;return true;
+}
+valley_station :: (s:[]ValleyLab,stage:int) {
+  valley_start(s);if stage<0 || stage>2 || stage==s[0].stage {return;}
+  valley_blur(s);s[0].stage=stage;s[0].orbit=0.65;s[0].tilt=0.28;s[0].distance=9;
+  s[0].mode=ifx stage==2 then 3 else 0;
+  name:=[3]string.["walk","assets","geometry"][stage];
+  for c,k:name {s[0].outbox[k]=c;}s[0].out_n=name.count;s[0].action=3;
+}
+valley_hash :: (s:[]ValleyLab,n:int) #export_c {
+  if n<0 || n>s[0].inbox.count {return;}h:=cast(string)s[0].inbox[0..<n];
+  if h=="walk" {valley_station(s,0);}if h=="assets" {valley_station(s,1);}if h=="geometry" {valley_station(s,2);}
+}
+valley_rock_mesh :: (s:[]ValleyLab,x:f32) {
+  start:=s[0].mesh_n;first:=s[0].index_n;r:=s[0].rock[..];
+  for k:0..<r[0].vertices {
+    p:=r[0].p[k];valley_vertex(s,add(p,v3(x,0,0)),rock_colour(r[0].n[k],s[0].mode,p.y));
+    s[0].mesh[(s[0].mesh_n-1)*8+7]=0;
+  }
+  // Vertex shader pulls the original index table; positions stay shared on the GPU.
+  s[0].index_n=first;
+  for k:0..<r[0].indices {#assert s[0].index_n<VALLEY_INDICES;s[0].index[s[0].index_n]=cast(u32)start+r[0].i[k];s[0].index_n+=1;}
+}
+valley_bounds_mesh :: (s:[]ValleyLab) {
+  a:=s[0].rock[0].measured.low;b:=s[0].rock[0].measured.high;c:=v3(0.18,0.72,0.66);
+  for i:0..<8 {p:=v3(ifx (i&1)==0 then a.x else b.x,ifx (i&2)==0 then a.y else b.y,ifx (i&4)==0 then a.z else b.z);
+    if (i&1)==0 {valley_box(s,(a.x+b.x)*0.5,p.y-0.0125,p.z,(b.x-a.x)*0.5,0.025,0.0125,c);}
+    if (i&2)==0 {valley_box(s,p.x,a.y,p.z,0.0125,b.y-a.y,0.0125,c);}
+    if (i&4)==0 {valley_box(s,p.x,p.y-0.0125,(a.z+b.z)*0.5,0.0125,0.025,(b.z-a.z)*0.5,c);}
+  }
+}
+valley_digits :: (out:[]u8,at:int,value:int)->int {
+  n:=at;if value>=10 {n=valley_digits(out,n,value/10);}out[n]=cast(u8)('0'+value%10);return n+1;
+}
+valley_number :: (out:[]f32,n:int,label:string,value:int,x:f32,y:f32,pen:HdPen)->int {
+  text:[128]u8;at:=0;for c:label {text[at]=c;at+=1;}at=valley_digits(text[..],at,value);
+  return hd_text(out,n,cast(string)text[0..<at],x,y,11,pen,0);
+}
+valley_inspector :: (s:[]ValleyLab,out:[]f32,n:int,pen:HdPen)->int {
+  width:=s[0].width/s[0].d;height:=s[0].height/s[0].d;y:=ifx width<700 then height-310 else 160.0f32;at:=n;
+  r:=s[0].rock[..];at=hd_text_fit(out,at,"ORIGINAL SANDSTONE / APACHE-2.0",20,y,11,width-40,pen,0);
+  at=valley_number(out,at,"VERTICES ",r[0].vertices,20,y+22,pen);
+  at=valley_number(out,at,"TRIANGLES ",r[0].indices/3,190,y+22,pen);
+  at=valley_number(out,at,"CONTENT BYTES ",r[0].bytes,20,y+44,pen);
+  at=valley_number(out,at,"HEIGHT mm ",cast(int)((r[0].measured.high.y-r[0].measured.low.y)*1000),20,y+66,pen);
+  at=valley_number(out,at,"WIDTH mm ",cast(int)((r[0].measured.high.x-r[0].measured.low.x)*1000),20,y+88,pen);
+  at=valley_number(out,at,"DEPTH mm ",cast(int)((r[0].measured.high.z-r[0].measured.low.z)*1000),20,y+110,pen);
+  at=hd_text(out,at,[5]string.["VIEW / LIT","VIEW / ALBEDO","VIEW / NORMALS","VIEW / TRIANGLE EDGES","VIEW / DEPTH 0-20m"][s[0].mode],20,y+132,11,pen,0);
+  at=hd_text(out,at,"SHA256 / CANONICAL ASSET",20,y+154,10,pen,1);
+  for line:0..<4 {at=hd_text(out,at,cast(string)r[0].hash[line*16..<(line+1)*16],20,y+170+cast(f32)line*13,10,pen,0);}
+  if width<700 {
+    for k:0..<2 {b:=HudBox.{x=16+cast(f32)k*(width*0.5),y=height-88,width=width*0.5-32,height=44};
+      at=hd_panel(out,at,b,pen,false);at=hd_text_fit(out,at,ifx k==0 then "V / VIEW" else "L / DETAIL",b.x+8,b.y+28,11,b.width-16,pen,0);}
+  }else {at=hd_text(out,at,"FULL DETAIL / NO LOD",20,y+244,11,pen,1);}
+  return at;
 }

@@ -1,0 +1,7 @@
+coax jobs: the load average is 24.5, at or above 12 ($COAX_JOBS_LOAD); running 1 build worker, not up to 12, until it drops
+coax jobs: the load average is 24.5, at or above 12 ($COAX_JOBS_LOAD); running 1 build worker, not up to 12, until it drops
+coax: note[E0400]: compile-time steps: 20700304 of 26000000 used (79%), above three quarters of the limit; more than 26000000 fails with E0400
+  top users of compile-time steps:
+    20700304 steps  aethyr/walk.coax:718:1  #forall 'speed never passes the top, and changes no faster than ACCEL'
+  fix: run coax test --only 'speed never passes the top, and changes no faster than ACCEL' for what inside the check uses the most; then do less work in it, split it, or give it a larger #steps N
+wasm.sh: valleylab.wasm: 37.7 s: Coax to C 37.1 s (0/1 cached), clang 0.3 s (2/2 cached), link 0.0 s, wasm-opt 0.0 s; 77221 bytes; report /Users/christopherdavid/work/oa-valley-rock/apps/openagents-web/build/.c/valleylab.timings.json

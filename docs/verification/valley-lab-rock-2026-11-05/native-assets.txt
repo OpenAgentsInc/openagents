@@ -1,0 +1,6 @@
+rock-v1 seed=12609 divisions=8 vertices=486 triangles=768 bytes=20904 sha256=c39ef513e76cfb373abbb2185e35120cf4a02e13db13f80f92c82e05449bbf64
+bounds metres: -2.7029927 0.0 -1.9310334 to 2.5302384 3.485426 1.8425361 / source: OpenAgents original / verse/valley/rock.coax / generator v1 / licence: Apache-2.0
+rock-v1 seed=12609 divisions=16 vertices=1734 triangles=3072 bytes=78504 sha256=3669c50bede0c4da9f611f4c658620ffc906ad6839984107838ab73aba37550b
+bounds metres: -2.7029927 0.0 -2.0572314 to 2.5302384 3.4984612 1.877158 / source: OpenAgents original / verse/valley/rock.coax / generator v1 / licence: Apache-2.0
+rock-v1 seed=12609 divisions=32 vertices=6534 triangles=12288 bytes=304296 sha256=4e2053348a34e5a363ee5451b54412daba41bd41813c40d0cd6d8559f2ddd56c
+bounds metres: -2.7029927 0.0 -2.0572314 to 2.5924866 3.5148149 1.9225707 / source: OpenAgents original / verse/valley/rock.coax / generator v1 / licence: Apache-2.0

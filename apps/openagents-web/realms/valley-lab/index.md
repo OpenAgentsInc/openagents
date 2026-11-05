@@ -1,17 +1,26 @@
 # Valley Lab
 
 An unlisted Aethyr workbench at `/worlds/valley-lab`, written in Coax.
-The first scene is an original sandstone graybox: a basin, an arch, stone
-steps and a visible block traveller. It uses Aethyr's shared fixed-step
-character controller, capsule collision, follow camera and touch sticks.
+Three stations build toward the full valley from independently checked pieces.
 
-- WASD moves; Shift runs; Space jumps.
-- Arrow keys turn and tilt the camera; the wheel changes camera distance.
-- On touch screens, drag on the left to move, drag on the right to look,
-  and tap on the right to jump. Push the movement stick fully to run.
-- Press R or tap RESET to return to the starting point. Escape releases input.
+- **1 WALK** (`#walk`): the sandstone basin, arch, steps and block traveller,
+  with Aethyr's fixed-step walker, capsule collision, camera and touch sticks.
+- **2 ASSETS** (`#assets`): one original procedural rock, its provenance,
+  licence, measured bounds, content hash, byte size and geometry counts.
+- **3 MESH** (`#geometry`): the same indexed asset, triangle edges and bounds.
+  It is the full-detail baseline for future virtualized geometry work.
 
-The boxes drawn in the scene are the same boxes used by collision. The
-traveller is a placeholder, and this first scene has no imported assets,
-virtualized geometry, streaming or encounter yet. The implementation plan
-is `docs/verse/2026-11-05-valley-lab.md` in the repository.
+WASD moves; Shift runs; Space jumps. Arrows turn the camera and the wheel
+zooms. Left/right touch drags move/look, and a right tap jumps. R or RESET
+returns to spawn; Escape releases input. The rock's walkable collision proxy
+is its conservative measured bounding box.
+
+Use the station tabs or keys 1–3. In inspection views drag or use arrows to
+orbit, wheel to zoom, **V** to cycle lit/albedo/normals/edges/view-depth, and
+**L** to change tessellation (768 / 3,072 / 12,288 triangles). On phones tap
+VIEW or DETAIL. The same canonical native and Wasm mesh hashes are checked.
+
+All art here is generated from original Coax source under Apache-2.0. No
+Unreal assets are used. No cluster LOD, geometry paging, scene streaming or
+encounter is implemented yet. The roadmap is
+`docs/verse/2026-11-05-valley-lab.md` in the repository.

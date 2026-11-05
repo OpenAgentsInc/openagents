@@ -1,0 +1,7 @@
+coax jobs: the load average is 17.1, at or above 12 ($COAX_JOBS_LOAD); running 1 build worker, not up to 12, until it drops
+Valley fenced frame observation: {\"scope\":\"30 static depth-view frames, CPU submission plus GPU queue completion, not GPU timestamps or route FPS\",\"viewport\":[1280,800],\"triangles\":768,\"medianMs\":0.7000000476837158,\"p95Ms\":1.0749999284744263,\"p99Ms\":1.0800000429153442}
+PASS Valley asset/geometry desktop: stations, actual index pulling, view modes, three native/Wasm SHA256 matches, bounded replacement and keyboard controls
+PASS Valley Lab desktop: direct route, rendered geometry, WASD, jump/land, reset, keyboard controls, noindex, no console errors
+Valley fenced frame observation: {\"scope\":\"30 static depth-view frames, CPU submission plus GPU queue completion, not GPU timestamps or route FPS\",\"viewport\":[390,844],\"triangles\":3072,\"medianMs\":0.7450000047683716,\"p95Ms\":1.3200000524520874,\"p99Ms\":1.4100000858306885}
+PASS Valley asset/geometry phone: stations, actual index pulling, view modes, three native/Wasm SHA256 matches, bounded replacement and touch station/detail controls
+PASS Valley Lab phone: direct route, rendered geometry, WASD, jump/land, reset, actual touch movement, noindex, no console errors

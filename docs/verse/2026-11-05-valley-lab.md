@@ -1,6 +1,7 @@
 # Valley Lab: build a valley from checked Aethyr primitives
 
-Status: implementation plan, 2026-11-05. This change adds the plan only.
+Status: active implementation roadmap, updated 2026-11-05. The initial
+walkable world and the first procedural asset/geometry stations now run locally.
 
 Build **Valley Lab**, an unlisted world at `/worlds/valley-lab`, where a
 visitor can inspect each engine system alone and then watch those same
@@ -14,6 +15,63 @@ project is a reference for scale, composition and system decomposition.
 The first useful release is a walkable graybox plus a station holding one
 rock. The final destination is the complete valley experience, reached by
 small, independently reviewable steps rather than one scene-sized rewrite.
+
+## Landed: graybox, one rock and its full-detail baseline
+
+The initial controller/graybox landed in `640adf8deb`. The next slice adds
+three actual stations using the same original source asset:
+
+- `#walk`: the basin, character, shared walking/collision/follow camera and
+  one rock beside the path. The rock uses its measured AABB as an explicit
+  conservative collision proxy; exact triangle collision is still future work.
+- `#assets`: a stationary orbit view, original source/licence, measured bounds
+  in metres (HUD dimensions in millimetres), vertex/triangle counts, canonical
+  byte count and SHA-256. Lit, albedo, normal, triangle-edge and 0–20 m view-depth
+  modes inspect separate parts of the asset. The full hex identity is shown.
+- `#geometry`: the same mesh with triangle edges and its measured bounds.
+  `L` cycles 8, 16 and 32 subdivisions: 768, 3,072 and 12,288 triangles.
+  These are independently generated full-detail tessellations, not an LOD
+  hierarchy. Positions/normals stay shared; the vertex shader pulls their
+  original indices from a separate GPU storage buffer. This uses ordinary
+  triangle draws with index pulling, not a new host `drawIndexed` interface.
+
+`1`/`2`/`3` and the touch tabs select stations; `V` cycles inspection views;
+`L` changes detail; drag/arrows orbit, wheel zooms, and reset restores the
+view. Station changes clear held input and freeze walking while inspecting.
+Only one rock identity remains retained after a detail replacement.
+
+The reusable admission primitive is
+[`aethyr/render/geometry/indexed.coax`](../../aethyr/render/geometry/indexed.coax):
+finite positions, matching near-unit normals, nonempty triangle-aligned
+indices, valid index ranges, positive triangle area, provenance and byte
+limits. Its authority root mutation gate has zero survivors. The original
+source is [`verse/valley/rock.coax`](../../verse/valley/rock.coax), which uses
+shared random streams, material admission and lighting functions, plus the
+existing content-hash asset registry. Canonical bytes include generator
+version, seed, subdivision count, little-endian f32 geometry and u32 indices.
+The source and generated art use the repository's Apache-2.0 licence.
+
+| Tessellation | Vertices, including face-seam duplicates | Triangles | Canonical bytes |
+| --- | --- | --- | --- |
+| 8 | 486 | 768 | 20,904 |
+| 16 (default) | 1,734 | 3,072 | 78,504 |
+| 32 | 6,534 | 12,288 | 304,296 |
+
+Generate the identical native assets and import-style provenance report with
+`coax/web/tool.sh aethyr/tools/valley-rock.coax OUTPUT_DIRECTORY`.
+Browser tests compare all three hashes to the native writer and check actual
+GPU readback differences between inspection views. Test/build records and
+pictures are in the [rock slice receipt](../verification/valley-lab-rock-2026-11-05/README.md).
+
+Milestone 0's playable shell and milestone 1's procedural asset/indexed
+baseline are implemented. Their remaining exits include a saved replay/fixed
+walkthrough, external source import with unit conversion, broader material/
+light fixtures and a qualified shared GPU renderer profile. The current
+renderer remains explicitly tracked on the initial scene/HUD path. No GPU
+ledger/native-host parity, hero-quality imported art, texture streaming,
+cluster hierarchy, error-based LOD or Nanite parity is claimed by this slice.
+The 6 MB arena and 64,000 submitted-vertex budget now include index traffic
+and the highest tessellation; the physical HUD buffer has 65,536 vertices.
 
 ## What the book gives us
 
@@ -245,12 +303,18 @@ chapter, example inventory and registry only as each teaching profile becomes
 real; run the Aethyr book checker when those files change. Do not upgrade a
 draft's status on the strength of a roadmap.
 
-## First implementation task
+## Next implementation task
 
-Implement milestone 0 and the procedural half of milestone 1: unlisted
-Valley Lab, an empty court, a walkable graybox, a single original rock and
-asset/geometry station links, shared resource accounting, one pinned replay,
-one headless golden and discovery exclusion checks. Keep full-detail indexed
-drawing as the honest baseline. Then build cluster partitioning with its
-checks before adding hierarchy selection. This provides something visible
-immediately and a concrete baseline for every later “our Nanite” claim.
+Build **bounded cluster partitioning** over the current indexed rock. Add a
+cluster-ID view beside the full-detail baseline and a deterministic Coax
+builder with at most 64 local vertices and 124 triangles per leaf. Prove
+that decoding the clusters covers every source triangle exactly once,
+remaps indices correctly, encloses every referenced vertex and refuses
+capacity overflow without publishing a partial mesh. Test tiny hand-worked
+meshes before the 12,288-triangle rock. Keep the current baseline and its
+hashes unchanged. Hierarchy simplification, screen-error selection and
+paging come only after that leaf representation is checked and visible.
+
+Continue the remaining milestone 0/1 exits alongside that step: saved
+walkthrough/replay, bounded source import and shared-renderer qualification.
+A working station does not upgrade a book chapter's completion status.

@@ -1,6 +1,15 @@
 // The existing HUD projection and Filament stroke renderer. No texture atlas.
 // All world geometry, projection, labels and input are decided by valleylab.coax.
 #load "splash.coax";
+#test "Valley vertex pulls a hand worked permuted index and carries view depth" {
+  mesh:=[6]V4.[v4(1,2,3,4),v4(0.2,0.3,0.4,0),v4(5,6,7,8),v4(0.5,0.6,0.7,0),v4(9,10,11,12),v4(0.8,0.9,1,0)];
+  indices:=[3]u32.[2,0,1];u:[88]f32;
+  a:=valley_lab_scene_vs(0,0,u[..],mesh[..],indices[..]);b:=valley_lab_scene_vs(1,0,u[..],mesh[..],indices[..]);
+  #assert a.pos.x==9 && a.pos.w==12 && a.colour.x==0.8 && a.edge.x==1 && a.edge.w==12;
+  #assert b.pos.x==1 && b.pos.w==4 && b.colour.x==0.2 && b.edge.y==1;
+  u[81]=100;u[82]=4;c:=valley_lab_scene_fs(LabScene.{pos=v4(0,50,0,1),colour=v4(1,0,0,0),edge=v4(0,0,0,10)},u[..]);
+  #assert c.x==0.5 && c.y==0.5 && c.z==0.5 && c.w==1;
+}
 valley_lab_bg_vs :: (i:u32,j:u32)->V4 {return splash_bg_vs(i,j);}
 valley_lab_bg_fs :: (pos:V4,u:[]f32)->V4 {return v4(0.48f32,0.60f32,0.65f32,1.0f32);}
 valley_lab_vertex :: struct {a:V4;b:V4;c:V4;}
@@ -10,10 +19,16 @@ valley_lab_fx_vs :: (i:u32,j:u32,a:valley_lab_vertex,u:[]f32)->SplashV {
 valley_lab_fx_fs :: (v:SplashV,u:[]f32)->V4 {return splash_fx_fs(v,u);}
 // A bounded native mesh in the shared scene pass and depth buffer. CPU Coax
 // supplies homogeneous clip vertices from the same follow camera as labels.
-LabScene :: struct {pos:V4;colour:V4;}
-valley_lab_scene_vs :: (i:u32,j:u32,u:[]f32,mesh:[]V4)->LabScene {
-  return LabScene.{pos=mesh[cast(int)i*2],colour=mesh[cast(int)i*2+1]};
+LabScene :: struct {pos:V4;colour:V4;edge:V4;}
+valley_lab_scene_vs :: (i:u32,j:u32,u:[]f32,mesh:[]V4,indices:[]u32)->LabScene {
+  vertex:=cast(int)indices[cast(int)i];corner:=i%3;
+  return LabScene.{pos=mesh[vertex*2],colour=mesh[vertex*2+1],edge=v4(ifx corner==0 then 1.0f32 else 0.0f32,ifx corner==1 then 1.0f32 else 0.0f32,ifx corner==2 then 1.0f32 else 0.0f32,mesh[vertex*2].w)};
 }
 valley_lab_scene_fs :: (v:LabScene,u:[]f32)->V4 {
-  if v.pos.y<u[80] || v.pos.y>u[81] {return v4(0.48f32,0.60f32,0.65f32,1.0f32);}return v.colour;
+  if v.pos.y<u[80] || v.pos.y>u[81] {return v4(0.48f32,0.60f32,0.65f32,1.0f32);}
+  if u[82]>3.5f32 && v.colour.w<0.5f32 {d:=v.edge.w/20.0f32;if d>1.0f32 {d=1.0f32;}return v4(d,d,d,1.0f32);}
+  if u[82]>2.5f32 && v.colour.w<0.5f32 {
+    if v.edge.x>0.025f32 && v.edge.y>0.025f32 && v.edge.z>0.025f32 {gpu_discard();}
+  }
+  return v4(v.colour.x,v.colour.y,v.colour.z,1.0f32);
 }

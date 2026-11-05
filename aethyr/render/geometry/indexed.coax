@@ -1,0 +1,69 @@
+// Bounded indexed mesh admission, independent of packing or GPU effects.
+#load "../../points.coax";
+#authority;
+IndexedStatus :: enum u8 { ok; shape; source; budget; position; normal; index; degenerate; }
+IndexedRead :: struct { status:IndexedStatus; vertices:int; indices:int; bytes:int; low:Point; high:Point; }
+
+#test "indexed mesh measures extrema after the first vertex and visits every triangle" {
+  p:=[4]Point.[v3(0,0,0),v3(1,-1,-1),v3(-2,1,0),v3(0,1,2)];n:=[4]Point.[v3(0,0,1),v3(0,0,1),v3(0,0,1),v3(0,0,1)];i:=[6]u32.[0,1,2,2,1,3];
+  r:=indexed_read(p[..],n[..],i[..],120,"a","b");
+  #assert r.status==IndexedStatus.ok && r.vertices==4 && r.indices==6 && r.bytes==120;
+  #assert r.low.x== -2 && r.low.y== -1 && r.low.z== -1 && r.high.x==1 && r.high.y==1 && r.high.z==2;
+  i[5]=1;#assert indexed_read(p[..],n[..],i[..],120,"a","b").status==IndexedStatus.degenerate;
+  i[5]=3;p[0]=v3(-10,-10,-10);r=indexed_read(p[..],n[..],i[..],120,"a","b");
+  #assert r.low.x== -10 && r.low.y== -10 && r.low.z== -10;
+  p[0]=v3(10,10,10);r=indexed_read(p[..],n[..],i[..],120,"a","b");
+  #assert r.high.x==10 && r.high.y==10 && r.high.z==10;
+}
+#test "indexed normals include their exact squared length boundaries and tiny positive areas" {
+  p:=[3]Point.[v3(0,0,0),v3(0.000001,0,0),v3(0,1,0)];n:=[3]Point.[v3(0.1,0,1),v3(0.7,0.5,0.5),v3(0,0,1)];i:=[3]u32.[0,1,2];
+  #assert dot(n[0],n[0])==1.01 && dot(n[1],n[1])==0.99;
+  #assert indexed_read(p[..],n[..],i[..],84,"a","b").status==IndexedStatus.ok;
+}
+
+#test "indexed mesh admission measures a hand worked triangle and exact byte boundary" {
+  p:=[3]Point.[v3(0,0,0),v3(2,0,0),v3(0,3,0)];n:=[3]Point.[v3(0,0,1),v3(0,0,1),v3(0,0,1)];i:=[3]u32.[0,1,2];
+  r:=indexed_read(p[..],n[..],i[..],84,"original","Apache-2.0");
+  #assert r.status==IndexedStatus.ok && r.vertices==3 && r.indices==3 && r.bytes==84;
+  #assert r.low.x==0 && r.low.y==0 && r.low.z==0 && r.high.x==2 && r.high.y==3 && r.high.z==0;
+  #assert indexed_read(p[..],n[..],i[..],83,"original","Apache-2.0").status==IndexedStatus.budget;
+  #assert indexed_read(p[..],n[..],i[..],-1,"original","Apache-2.0").status==IndexedStatus.budget;
+  #assert indexed_read(p[..],n[..],i[..],85,"","Apache-2.0").status==IndexedStatus.source;
+  #assert indexed_read(p[..],n[..],i[..],85,"original","").status==IndexedStatus.source;
+}
+#test "indexed mesh admission refuses malformed views values indices and zero area" {
+  p:=[3]Point.[v3(-2,-3,-4),v3(0,0,0),v3(3,2,1)];n:=[3]Point.[v3(0,0,1),v3(0,0,1),v3(0,0,1)];i:=[3]u32.[0,1,2];
+  r:=indexed_read(p[..],n[..],i[..],84,"original","Apache-2.0");
+  #assert r.status==IndexedStatus.ok && r.low.x== -2 && r.low.y== -3 && r.low.z== -4;
+  #assert r.high.x==3 && r.high.y==2 && r.high.z==1;
+  #assert indexed_read(p[0..<0],n[0..<0],i[..],84,"a","b").status==IndexedStatus.shape;
+  #assert indexed_read(p[..],n[0..<2],i[..],84,"a","b").status==IndexedStatus.shape;
+  #assert indexed_read(p[..],n[..],i[0..<0],84,"a","b").status==IndexedStatus.shape;
+  #assert indexed_read(p[..],n[..],i[0..<2],84,"a","b").status==IndexedStatus.shape;
+  for axis:0..<3 {q:=p;if axis==0 {q[2].x=1000000;}if axis==1 {q[2].y=1000000;}if axis==2 {q[2].z=1000000;}
+    #assert indexed_read(q[..],n[..],i[..],84,"a","b").status==IndexedStatus.position;}
+  for axis:0..<3 {q:=n;if axis==0 {q[2].x=1000000;}if axis==1 {q[2].y=1000000;}if axis==2 {q[2].z=1000000;}
+    #assert indexed_read(p[..],q[..],i[..],84,"a","b").status==IndexedStatus.normal;}
+  n[2]=v3(0,0,0.9);#assert indexed_read(p[..],n[..],i[..],84,"a","b").status==IndexedStatus.normal;
+  n[2]=v3(0,0,1.1);#assert indexed_read(p[..],n[..],i[..],84,"a","b").status==IndexedStatus.normal;n[2]=v3(0,0,1);
+  for k:0..<3 {bad:=i;bad[k]=3;#assert indexed_read(p[..],n[..],bad[..],84,"a","b").status==IndexedStatus.index;}
+  i[2]=1;#assert indexed_read(p[..],n[..],i[..],84,"a","b").status==IndexedStatus.degenerate;
+}
+indexed_read :: (p:[]Point,n:[]Point,indices:[]u32,budget:int,source:string,licence:string)->IndexedRead {
+  if p.count==0 || p.count!=n.count || indices.count==0 || indices.count%3!=0 {return IndexedRead.{status=IndexedStatus.shape};}
+  if source=="" || licence=="" {return IndexedRead.{status=IndexedStatus.source};}
+  bytes:=p.count*24+indices.count*4;
+  if bytes>budget {return IndexedRead.{status=IndexedStatus.budget};}
+  low:=p[0];high:=p[0];
+  for v,k:p {
+    if !finite3(v) {return IndexedRead.{status=IndexedStatus.position};}
+    squared:=dot(n[k],n[k]);if !finite3(n[k]) || squared<0.99 || squared>1.01 {return IndexedRead.{status=IndexedStatus.normal};}
+  }
+  for v:p[1..<p.count] {low=v3(lo(low.x,v.x),lo(low.y,v.y),lo(low.z,v.z));high=v3(hi(high.x,v.x),hi(high.y,v.y),hi(high.z,v.z));}
+  for i:indices {if cast(int)i>=p.count {return IndexedRead.{status=IndexedStatus.index};}}
+  for k:0..<indices.count/3 {
+    a:=p[cast(int)indices[k*3]];b:=p[cast(int)indices[k*3+1]];c:=p[cast(int)indices[k*3+2]];
+    area:=cross(sub(b,a),sub(c,a));if dot(area,area)==0 {return IndexedRead.{status=IndexedStatus.degenerate};}
+  }
+  return IndexedRead.{vertices=p.count,indices=indices.count,bytes=bytes,low=low,high=high};
+}
