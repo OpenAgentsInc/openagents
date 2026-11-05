@@ -103,6 +103,29 @@ checks with real text in that script.
   picked thing from the keyboard. `realm_pad` takes a controller's stick and
   first button through `aethyr/input.coax` (its dead zone, a junk number
   counted as no push, a held button one press).
+- [aethyr/ui/settings.coax](../../aethyr/ui/settings.coax): the versioned
+  settings record (`s1 k=... p=... t=... m=... c=...`): a key and a pad
+  button for each action, with no code doing two actions; text size 100 to
+  200 percent; reduced motion; captions. A record of another version, or one
+  that doesn't read whole, gives the defaults whole.
+- [apps/openagents-web/everglade-access.coax](../../apps/openagents-web/everglade-access.coax):
+  Everglade on that record (#12857). Every key it reads for play goes
+  through the record, and so does a controller (its stick walks, a held
+  direction or Jump holds, any other button presses its action once).
+  SETTINGS, over SOUND, opens TEXT SIZE, REDUCED MOTION, CAPTIONS and KEYS
+  (press a row, then the key or the pad button); this browser keeps the
+  record (`verse.settings`). Text size scales the whole HUD as a zoom does,
+  up to the most the screen takes (the HUD keeps a phone's 360 by 640 CSS
+  pixels), and the pane names that limit. The pane sits above the bar, and
+  one too wide for the screen stacks its rows, then draws smaller rather
+  than cut off. Reduced motion stops the camera's shake.
+  Captions name the sounds that matter and the side they came from. Every
+  HUD control (MAP, SETTINGS and its pane, SOUND, INVITE, CHARACTER, PARTY,
+  the bar's slots) is a line of the accessible layer, pressed on the canvas
+  where it is drawn, and the control with the layer's focus is ringed. The
+  live status says what the room, the party and the bar last said. The
+  pane's words are a table of ids; `?pseudo=1` lengthens each by half again
+  in brackets. Everglade is in English only.
 - [coax/web/host.js](../../coax/web/host.js) `a11yMirror` and `padPoll`: the
   host only mirrors. It keeps the module's order, moving only a control that
   is out of place (a control moved in the DOM loses focus, so the one being
