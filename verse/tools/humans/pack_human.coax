@@ -65,7 +65,7 @@
 // and "%.nf"; ph_core.coax: its dict and set orders), so for the same inputs the packs are the
 // same: the catalog, vertices, indices and JPEG layers byte for byte, a PNG layer's pixels (its
 // zlib stream is pillow.coax's, not Pillow's).
-// tool.sh: stack-gib 4
+// tool.sh: stack-gib 8
 // tool.sh: release
 #load "../../../coax/lib/sys/tool.coax";
 #load "../../../coax/lib/sys/proc.coax";
@@ -73,6 +73,7 @@
 #load "ph_outfits.coax";
 #load "ph_face.coax";
 #load "ph_metahuman.coax";
+#load "ph_portrait.coax";
 #import "Basic";
 
 QUATERNIUS :: "/Downloads/Universal Base Characters[Standard]";
@@ -82,7 +83,7 @@ OUTFITS_REL :: "/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports
 World :: struct {
   home: string; homeb: [1024] u8;
   txt: [1] Txt; st: [1] Store; g: [1] Gltf; pk: [1] Pack; iw: []ImgWork; wr: [1] Writer; rd: [1] Reduce;
-  h1: [1] Hmap; h2: [1] Hmap; lw: [1] LidWork; fr: []FaceRig; ow: []OutfitWork; mw: []MhWork;
+  h1: [1] Hmap; h2: [1] Hmap; lw: [1] LidWork; fr: []FaceRig; ow: []OutfitWork; mw: []MhWork; pt: []PortWork;
   cl: [1] Clips; ps: [1] Poses; ew: [1] EdgeWork; pw: []PeekWork; u: [1] Under; mats: [1] OutMats;
   bflag: [TG_MAX] bool; leg: [TG_MAX] bool; thigh: [TG_MAX] bool; force: [TG_MAX] bool; gid: [GL_VERTS * 2] int; cnt: [UGROUPS] int;
   kept: [GL_VERTS * 2][3] int; under_t: [GL_VERTS * 2][3] int;
@@ -230,8 +231,8 @@ tool_main :: () -> int #export_c {
   a: [1] Args;
   if !args_load(a[..]) { ph_die("pack_human: arguments past the port's buffer"); }
   w: [1] World;
-  iw: [1] ImgWork; ow: [1] OutfitWork; pw: [1] PeekWork; fr: [1] FaceRig; mw: [1] MhWork;
-  w[0].iw = iw[..]; w[0].ow = ow[..]; w[0].pw = pw[..]; w[0].fr = fr[..]; w[0].mw = mw[..];
+  iw: [1] ImgWork; ow: [1] OutfitWork; pw: [1] PeekWork; fr: [1] FaceRig; mw: [1] MhWork; pt: [1] PortWork;
+  w[0].iw = iw[..]; w[0].ow = ow[..]; w[0].pw = pw[..]; w[0].fr = fr[..]; w[0].mw = mw[..]; w[0].pt = pt[..];
   w[0].home = proc_getenv("HOME", w[0].homeb[..]);
   pos: [8] string; npos := 0; size := 1024; size_given := false; phone := false; outfit := -1;
   i := 0;

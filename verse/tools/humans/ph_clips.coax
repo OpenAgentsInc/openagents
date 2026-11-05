@@ -1,4 +1,4 @@
-// The lab's clips as the pack's checks pose a figure (metahuman.py's clip_poses and edge_check,
+// The lab's clips as the pack's checks pose a figure (the Python tool's clip_poses and edge_check,
 // people.py's clips, channel and thin): verse/packs/everglade.json's people clips, sampled the way
 // metahumanlab.coax's palette poses the mesh, and a garment's edges skinned into them. Checks
 // only: what they find stops the tool, they change no byte of a pack.

@@ -2,7 +2,7 @@
 // the rig's rest pose, binds, material tints, layer images) and VPK1 out of it, with the lower
 // levels of detail (reduce), tangents, the vertex format, the eyes' blended layers (eye_layers,
 // lid_coords) and the layers' images (resized LANCZOS, JPEG at quality 92 or PNG with alpha), as
-// pack_human.py wrote them. The catalog's lines and the docs are pack_human.coax's header.
+// the Python tool wrote them. The catalog's lines and the docs are pack_human.coax's header.
 #load "ph_gltf.coax";
 #load "../../../coax/lib/image/pillow.coax";
 #load "../../../coax/lib/image/jpeg_enc.coax";
@@ -64,7 +64,7 @@ pack_piece :: (pk: []Pack, name: string, vf: int, vn: int, tf: int, tn: int, mat
 }
 
 // ---- images
-IW_FILE :: 67108864; IW_WORK :: 134217728; IW_PX :: 67108864; IW_MID :: 33554432; IW_RES :: 16777216; IW_OUT :: 16777216;
+IW_FILE :: 67108864; IW_WORK :: 134217728; IW_PX :: 67108864; IW_MID :: 33554432; IW_RES :: 16777216; IW_OUT :: 67108864;
 ImgWork :: struct {
   file: [IW_FILE] u8; work: [IW_WORK] u8; px: [IW_PX] u8; mid: [IW_MID] u8; res: [IW_RES] u8; out: [IW_OUT] u8;
   r: [1] PiResample; z: [1] PiZ;

@@ -1,0 +1,1124 @@
+// The portrait's clothes, grooms and skin maps for pack_human.coax's metahuman path, and a female
+// body's figure: an export with a portrait (its latest/mh.neutral.glb, metres, the DNA's bind
+// space) and the lower garments beside it (the film's world/*_lower.glb, the same space). Hair
+// cards and eyebrow cards ride the head; the clothes were fitted to the body with its arms lowered
+// (the export's rig-body-down, the DNA body posed by dna_dump), so each one is skinned against that
+// body and moved back to the bind pose before it goes to the T pose with the body. Their own head,
+// eyes and teeth are the DNA's already; the strand-dense hair (1.5M vertices), the blended layers
+// (cornea, wet edges) and the skin patch at the waist wait.
+//
+// Here: dressed() and its weights (waisted, fitted_garment, surface_normals, loose, spread,
+// hanging, armpit, sleeve_sides, sleeves), skin_maps() with body_tint(), scalp(), and the figure
+// (figure() and moved(): her trunk sculpted, the garments moved with the skin under them). The
+// numbers follow the Python's order of operations (sum() is Neumaier's, x ** 2 is pow(), dicts
+// and sets iterate as CPython's), and the images Pillow 13's (pillow.coax: polygons, rank filters,
+// the Gaussian blur, bicubic resizes).
+//
+// The data is private (a MetaHuman's): never committed, never used to train AI models.
+
+GROOM_NAMES :: [2] string.["groom_Hair_S_UpdoBuns", "groom_Eyebrows_M_Natural"];
+// The film's open gown and its hood were cut round a caster with her hands clasped in front, the
+// sleeves' bell cuffs hanging round them: with the hands at her sides no weighting keeps them
+// whole, so the student wears what is under it: the shirt, collar and tie, the sweater, the
+// pleated skirt, tights and shoes.
+GOWN :: [4] string.["robe", "robe_lower", "hood", "hood_lining"];
+SKIP_MATS :: [9] string.["draconia_skin", "mh_eye", "mh_cornea", "mh_wet", "mh_teeth", "mh_lashes", "draconia_hair", "draconia_brow", "draconia_body_skin"];
+HAND_CM :: 1.5;          // cloth this near the hands' skin is a glove's
+GLOVE_CM :: 3.0;         // the body suit's (GLOVED) cloth this near the arms' or hands' skin is left out
+// GLOVED: lower_body (the film's tights, whose arms end in gloves). HANDS_REST: skirt and sweater
+// (only the hands resting against them in the bind). BARE_FOREARM: shirt (its sleeves showed below
+// the sweater's only as torn strips). WAISTED: skirt (drawn in from its top to the widest hips).
+// FITTED and SLEEVED: sweater.
+pt_gloved :: (n: string) -> bool { return n == "lower_body"; }
+pt_hands_rest :: (n: string) -> bool { return n == "skirt" || n == "sweater"; }
+pt_bare_forearm :: (n: string) -> bool { return n == "shirt"; }
+pt_waisted :: (n: string) -> bool { return n == "skirt"; }
+pt_fitted :: (n: string) -> bool { return n == "sweater"; }
+pt_sleeved :: (n: string) -> bool { return n == "sweater"; }
+WAIST_CM :: 1.0; WAIST_TOP :: 92.0; WAIST_LOW :: 74.0;
+SWEATER_CM :: 1.2; SWEATER_SLEEVE_CM :: 1.4; SWEATER_KEEP :: 0.2;
+ARMPIT_LOW :: 118.0;     // cm (the bind): the armpit's band reaches no lower
+SURE_CM :: 5.0;
+// Toned by the head's line the body still reads pinker than the face: below the shoulders its
+// colour takes BODY_TINT; the neck, where it meets the head, keeps the line's.
+BODY_TINT :: [3] f64.[1.02, 0.99, 0.86];
+BODY_TINT_TOP :: 138.0; BODY_TINT_LOW :: 126.0;   // cm: none above, all below (the bind's A pose)
+SCALP_CM :: 1.6;         // a head point with hair cards this near, outward, is scalp under the hair
+SCALP_CARDS :: 10;       // and at least this many solid card samples (every third) that near
+SCALP_COVER :: 0.7;      // how much of the hair's colour the scalp takes
+// shape.py's bands along the height: (centre y, half-width, how much)
+BELLY :: [3] f64.[100.0, 16.0, 0.45];
+WAIST_BAND :: [3] f64.[106.0, 11.0, 0.13];
+HIPS_BAND :: [3] f64.[78.0, 8.0, 0.035];
+GLUTES :: [3] f64.[84.0, 10.0, 0.16];
+
+PR_R :: 240000; PR_V :: 64000; PR_T :: 128000; PR_PR :: 8; PR_G :: 240000; PR_C :: 64000; PR_S :: 200000;
+PR_IMG :: 16777216; PR_L :: 4194304; PR_HAIR :: 400000; PR_OT :: 33554432; PR_HEAP :: 1048576;
+PortWork :: struct {
+  // the reference surface: the arms-down body and the head
+  nr: int; rx: [PR_R][3] f64; rn: [PR_R][3] f64; rw: [PR_R] Wl; rarm: [PR_R] int; rhand: [PR_R] bool;
+  near: [1] Near; gnear: [1] Near; onear: [1] Near; q: [1] Nq; q2: [1] Nq;
+  // the figure: each body point's move, and the arms-down body it was cut on
+  moved: bool; mv: [MB_P][3] f64; old: [MB_P][3] f64;
+  // a node: its primitives' vertices (pv), triangles (ptr), materials
+  nprim: int; pv: [PR_PR + 1] int; ptr: [PR_PR + 1] int; pmat: [PR_PR] int;
+  pos: [PR_V][3] f64; nor: [PR_V][3] f64; uv: [PR_V][2] f64; ks: [PR_V] int; tri: [PR_T][3] int; fb: [PR_V * 3] f64;
+  // its welded vertices (keys) and their weights
+  nk: int; kx: [PR_V][3] f64; kw: [PR_V] Wd; kw2: [PR_V] Wd; kc: [PR_V] Wd; kcn: [PR_V] bool; cand: [PR_V] int;
+  gap: [PR_V] f64; gs: [PR_V] f64; gt: [PR_V] f64; sn: [PR_V][3] f64; sf: [PR_V] bool;
+  nbr: [1] Nbr; kh: [1] Hmap;
+  fw: [PR_V] Wl; onh: [PR_V] bool; kt: [PR_T][3] int;
+  side: [PR_V] int; dist: [PR_V] f64; seen: [PR_V] bool; run: [PR_V] int; stk: [PR_V] int; band: [PR_V] bool; bnew: [PR_V] bool;
+  hd: [PR_HEAP] f64; hi: [PR_HEAP] int;
+  // spread(): the cells' sums and their smoothed values
+  ch: [1] Hmap; cn: [PR_C] int; cw: [PR_C] Wd; sh: [1] Hmap; sw: [PR_S] Wd;
+  // the garments' points and weights, for the body they cover
+  ng: int; gx: [PR_G][3] f64; gw: [PR_G] Wl;
+  nh: int; hair: [PR_HAIR][3] f64; h3: [PR_HAIR][3] f64; under: [MB_P] bool;
+  i1: [PR_IMG] u8; i2: [PR_IMG] u8; i3: [PR_IMG] u8; l1: [PR_L] u8; l2: [PR_L] u8; l3: [PR_L] u8; lo: [16384] int;
+  ot: [PR_OT] u8; ft: [PR_OT] u8;
+  nrep: int; rep_name: [64] string; rep: [64] EdgeRes;
+  nwant: int; want: [64] string; npacked: int; packed: [64] string;
+  ncl: int; cl_rgb: [17][3] f64; cl_r: [17] f64;
+}
+PtSkin :: struct { ok: bool; head: [3] string; body: [3] string; }
+
+pt_dump :: (w: []World) -> string { return txt_cat(w[0].txt[..], w[0].home, MH_DUMP); }
+pt_in :: (s: string, list: []string) -> bool { for x: list { if x == s { return true; } } return false; }
+pt_skip :: (s: string) -> bool { for x: SKIP_MATS { if x == s { return true; } } return false; }
+pt_gown :: (s: string) -> bool { for x: GOWN { if x == s { return true; } } return false; }
+pt_groom :: (s: string) -> bool { for x: GROOM_NAMES { if x == s { return true; } } return false; }
+// limb_side(), arm_side(): 0 none, 1 left, 2 right
+pt_lr :: (k: int) -> int { n := MH_NAMES[k]; return ifx n[n.count - 1] == 'l' then 1 else 2; }
+pt_limb_side :: (k: int) -> int { if mh_armhand(part(MH_NAMES[k], 0)) { return pt_lr(k); } return 0; }
+pt_arm_side :: (k: int) -> int { p := part(MH_NAMES[k], 0); if p == "upperarm" || p == "lowerarm" { return pt_lr(k); } return 0; }
+pt_is_hand :: (k: int) -> bool { p := part(MH_NAMES[k], 0); for h: MH_HAND { if p == h { return true; } } return false; }
+// sum(v for k, v in w.items() if LOWER[k].split("_")[0] in HAND)
+pt_hand_share :: (w: Wl) -> f64 { s: [1] PnSum; for e: 0..<w.n { if pt_is_hand(w.j[e]) { pn_add(s[..], w.w[e]); } } return pn_total(s[0]); }
+pt_side_name :: (b: []u8, base: string, sd: int) -> string { return cat2(b, base, ifx sd == 1 then "_l" else "_r"); }
+// keep only the results whose reference point is on arm side sd (0: off the arms)
+pt_keep_side :: (q: []Nq, rarm: []int, sd: int) {
+  n := 0;
+  for e: 0..<q[0].n { if rarm[q[0].i[e]] == sd { q[0].d[n] = q[0].d[e]; q[0].i[n] = q[0].i[e]; n += 1; } }
+  q[0].n = n;
+}
+pt_line :: (o: []Sb) { sb_line(o); }
+
+// ---- the glb's images: an embedded image by name, kept once under the private dump
+pt_glb_image :: (w: []World, g: []Gltf, name: string, out_dir: string) -> string {
+  txt := w[0].txt[..];
+  for k: 0..<g[0].nx[GA_IMG] {
+    im := g[0].ix[GA_IMG][k];
+    if !gl_has(g, im, "name") || gl_str(g, im, "name") != name { continue; }
+    path := txt_cat3(txt, out_dir, "/", txt_cat(txt, name, ".png"));
+    if !fs_exists(path) {
+      // (Pillow saved it again; the same pixels)
+      bv := gl_at(g, GA_VIEW, gl_int(g, im, "bufferView", 0));
+      o := gl_int(g, bv, "byteOffset", 0); n := gl_int(g, bv, "byteLength", 0);
+      mh_mkdirs(out_dir);
+      if !fs_write(path, cast(string) g[0].bin[o..<o + n]) { ph_die2("metahuman: can't write ", path); }
+    }
+    return path;
+  }
+  return "";
+}
+// a material's texture (its texture-info node) as an image path, "" for none
+pt_tex :: (w: []World, g: []Gltf, t: int, out_dir: string) -> string {
+  if t < 0 { return ""; }
+  im := gl_at(g, GA_IMG, gl_int(g, gl_at(g, GA_TEX, gl_int(g, t, "index", 0)), "source", 0));
+  name := ifx gl_has(g, im, "name") then gl_str(g, im, "name") else "image";
+  return pt_glb_image(w, g, name, out_dir);
+}
+
+// ---- shape.py: her figure
+pt_bump :: (y: f64, c: f64, h: f64) -> f64 { t := abs(y - c) / h; return ifx t < 1.0 then 0.5 + 0.5 * cos(PH_PI * t) else 0.0; }
+pt_trunk :: (p: string) -> bool { return p == "pelvis" || p == "spine" || p == "thigh"; }
+pt_out_of :: (p: string) -> bool { return mh_armhand(p) || p == "clavicle" || p == "neck" || p == "head"; }
+pt_offset :: (x: [3] f64, spine_z: f64) -> [3] f64 {
+  px := x[0]; py := x[1]; pz := x[2];
+  dz := 0.0; dx := 0.0;
+  front := pz - spine_z;
+  if front > 0.0 {
+    mid := vmax(0.0, 1.0 - pow(px / 16.0, 2.0));
+    dz -= ((front * BELLY[2]) * pt_bump(py, BELLY[0], BELLY[1])) * mid;
+  } else {
+    dz -= (front * GLUTES[2]) * pt_bump(py, GLUTES[0], GLUTES[1]);
+  }
+  dx -= (px * WAIST_BAND[2]) * pt_bump(py, WAIST_BAND[0], WAIST_BAND[1]);
+  dx += (px * HIPS_BAND[2]) * pt_bump(py, HIPS_BAND[0], HIPS_BAND[1]);
+  return [3] f64.[dx, 0.0, dz];
+}
+// normals(): each OBJ normal index's normal from its positions' faces (area weighted), into out
+pt_normals :: (o: []Obj, vs: [][3] f64, out: [][3] f64) {
+  for i: 0..<o[0].nn { out[i] = vzero(); }
+  for f: 0..<o[0].nf {
+    a := o[0].fs[f]; b := o[0].fs[f + 1];
+    for k: a + 1..<b - 1 {
+      p0 := vs[o[0].c[a][0]]; p1 := vs[o[0].c[k][0]]; p2 := vs[o[0].c[k + 1][0]];
+      n := vcross(vsub(p1, p0), vsub(p2, p0));
+      for e: [3] int.[a, k, k + 1] { ni := o[0].c[e][2]; out[ni] = vadd(out[ni], n); }
+    }
+  }
+  for i: 0..<o[0].nn {
+    a := out[i]; l := sqrt(pn_sum3(a[0] * a[0], a[1] * a[1], a[2] * a[2]));
+    out[i] = ifx l > 0.000000000001 then [3] f64.[a[0] / l, a[1] / l, a[2] / l] else o[0].vn[i];
+  }
+}
+// write_obj(): src's OBJ with its positions and normals replaced ("%.5f")
+pt_write_obj :: (P: []PortWork, src: string, dst: string, vs: [][3] f64, vns: [][3] f64) {
+  n := fs_read(src, P[0].ft[..]);
+  if n < 0 || n >= PR_OT { ph_die2("metahuman: can't read ", src); }
+  o: [1] Sb; o[0] = sb(P[0].ot[..]);
+  l: [1] Lines; l[0].text = cast(string) P[0].ft[0..<n];
+  vi := 0; ni := 0;
+  while !lines_done(l[0]) {
+    line := lines_next(l[..]);
+    if starts(line, "v ") {
+      x := vs[vi]; vi += 1;
+      sb_put(o[..], "v "); sb_fixed(o[..], x[0], 5); sb_byte(o[..], ' '); sb_fixed(o[..], x[1], 5); sb_byte(o[..], ' '); sb_fixed(o[..], x[2], 5);
+    } else if starts(line, "vn ") {
+      x := vns[ni]; ni += 1;
+      sb_put(o[..], "vn "); sb_fixed(o[..], x[0], 5); sb_byte(o[..], ' '); sb_fixed(o[..], x[1], 5); sb_byte(o[..], ' '); sb_fixed(o[..], x[2], 5);
+    } else { sb_put(o[..], line); }
+    sb_byte(o[..], '\n');
+  }
+  if o[0].n >= PR_OT { ph_die2("metahuman: an OBJ past the port's buffer: ", dst); }
+  if !fs_write(dst, sb_text(o[..])) { ph_die2("metahuman: can't write ", dst); }
+}
+pt_copy :: (P: []PortWork, src: string, dst: string) {
+  n := fs_read(src, P[0].ft[..]);
+  if n < 0 || n >= PR_OT { ph_die2("metahuman: can't read ", src); }
+  if !fs_write(dst, cast(string) P[0].ft[0..<n]) { ph_die2("metahuman: can't write ", dst); }
+}
+// figure(): the sculpted body (its bind mesh, skin and joints, and the arms-down mesh) written to
+// the dump's body-shaped; each body point's move in P.mv; the new body directory
+pt_figure :: (w: []World, m: []MhWork, P: []PortWork, body: string, down_path: string, spine_z: f64) -> string {
+  txt := w[0].txt[..];
+  out := txt_cat(txt, pt_dump(w), "/body-shaped"); mh_mkdirs(out);
+  ob := m[0].ob[2..<3];
+  obj_read(txt_cat(txt, body, "/body_lod0_mesh.obj"), ob, m[0].text[..]);
+  skin_read(txt_cat(txt, body, "/body_lod0_mesh.skin.txt"), m[0].sk[0..<1], m[0].text[..]);
+  nv := ob[0].nv;
+  if nv > MB_P || ob[0].nn > PR_R { ph_die("metahuman: a body past the port's points"); }
+  far := 0.0; moved := 0;
+  for i: 0..<nv {
+    wl := folded_weights(m[0].sk[0..<1], m[0].JB[..], i);
+    t: [1] PnSum; u: [1] PnSum;
+    for e: 0..<wl.n { p := part(MH_NAMES[wl.j[e]], 0); if pt_trunk(p) { pn_add(t[..], wl.w[e]); } if pt_out_of(p) { pn_add(u[..], wl.w[e]); } }
+    k := pn_total(t[0]) * (1.0 - vmin(1.0, pn_total(u[0]) * 2.0));
+    d := pt_offset(ob[0].v[i], spine_z);
+    P[0].mv[i] = [3] f64.[d[0] * k, d[1] * k, d[2] * k];
+  }
+  for i: 0..<nv { ob[0].v[i] = vadd(ob[0].v[i], P[0].mv[i]); }
+  pt_normals(ob, ob[0].v[0..<nv], P[0].rn[..]);
+  pt_write_obj(P, txt_cat(txt, body, "/body_lod0_mesh.obj"), txt_cat(txt, out, "/body_lod0_mesh.obj"), ob[0].v[0..<nv], P[0].rn[0..<ob[0].nn]);
+  pt_copy(P, txt_cat(txt, body, "/body_lod0_mesh.skin.txt"), txt_cat(txt, out, "/body_lod0_mesh.skin.txt"));
+  pt_copy(P, txt_cat(txt, body, "/joints.txt"), txt_cat(txt, out, "/joints.txt"));
+  down_out := txt_cat(txt, out, "/body_down_lod0_mesh.obj");
+  if fs_exists(down_path) {
+    obj_read(down_path, ob, m[0].text[..]);
+    if ob[0].nv != nv || ob[0].nn > PR_R { ph_die("metahuman: the arms-down body doesn't match the bind body's vertices"); }
+    for i: 0..<nv { ob[0].v[i] = vadd(ob[0].v[i], P[0].mv[i]); }
+    pt_normals(ob, ob[0].v[0..<nv], P[0].rn[..]);
+    pt_write_obj(P, down_path, down_out, ob[0].v[0..<nv], P[0].rn[0..<ob[0].nn]);
+  }
+  for i: 0..<nv {
+    d := P[0].mv[i];
+    far = vmax(far, sqrt(pn_sum3(d[0] * d[0], d[1] * d[1], d[2] * d[2])));
+    if abs(d[0]) > 0.05 || abs(d[1]) > 0.05 || abs(d[2]) > 0.05 { moved += 1; }
+  }
+  lb: [512] u8; lo: [1] Sb; lo[0] = sb(lb[..]);
+  sb_put(lo[..], "figure: the trunk sculpted, "); sb_int(lo[..], moved); sb_put(lo[..], " of "); sb_int(lo[..], nv);
+  sb_put(lo[..], " body points moved, up to "); sb_fixed(lo[..], far, 1); sb_put(lo[..], " cm"); sb_line(lo[..]);
+  return out;
+}
+// moved(): a garment point (cm, the arms-down pose) moved as the body points near it moved
+pt_moved :: (P: []PortWork, x: [3] f64) -> [3] f64 {
+  q := P[0].q2[..];
+  near_within(P[0].onear[..], x, 8.0, q);
+  if q[0].n == 0 { return x; }
+  nq_sort(q);
+  s := vmax(1.0, q[0].d[0]);
+  acc := vzero(); tot := 0.0;
+  for e: 0..<imin(q[0].n, 32) {
+    f := exp(0.0 - pow(q[0].d[e] / (1.5 * s), 2.0));
+    tot += f;
+    d := P[0].mv[q[0].i[e]];
+    for c: 0..<3 { acc[c] += f * d[c]; }
+  }
+  if tot > 0.000000001 { return [3] f64.[x[0] + acc[0] / tot, x[1] + acc[1] / tot, x[2] + acc[2] / tot]; }
+  return x;
+}
+
+// ---- the skin's layers as the film shot them (skin_maps)
+// an image's pixels copied into buf (its size checked)
+pt_hold :: (im: PiImg, buf: []u8) -> PiImg {
+  n := im.w * im.h * im.c;
+  if n > buf.count { ph_die("metahuman: an image past the port's buffers"); }
+  for i: 0..<n { buf[i] = im.px[i]; }
+  return pi_img(buf, im.w, im.h, im.c);
+}
+pt_skin_maps :: (w: []World, m: []MhWork, P: []PortWork, portrait: string, maps: string) -> PtSkin {
+  txt := w[0].txt[..]; iw := w[0].iw[..]; g := w[0].g[..];
+  r: PtSkin;
+  out := txt_cat(txt, pt_dump(w), "/portrait");
+  gl_load(g, portrait);
+  base := pt_glb_image(w, g, "mh_skin_base", out); orm := pt_glb_image(w, g, "mh_skin_orm", out); normal := pt_glb_image(w, g, "mh_skin_normal", out);
+  if base.count == 0 || orm.count == 0 || normal.count == 0 { return r; }
+  // the head's per-channel line: the portrait's base over the export's (128 a side)
+  A := pt_hold(img_resize(img_to(img_load(base, iw), 3), 128, 128, PI_BICUBIC, iw), P[0].l1[..]);
+  H := pt_hold(img_resize(img_to(img_load(txt_cat(txt, maps, "/Head_Basecolor.png"), iw), 3), 128, 128, PI_BICUBIC, iw), P[0].l2[..]);
+  line: [3][2] f64;
+  n := 128 * 128;
+  for c: 0..<3 {
+    sx := 0; sy := 0;
+    for i: 0..<n { sx += cast(int) H.px[i * 3 + c]; sy += cast(int) A.px[i * 3 + c]; }
+    mx := cast(f64) sx / cast(f64) n; my := cast(f64) sy / cast(f64) n;
+    num: [1] PnSum; den: [1] PnSum;
+    for i: 0..<n {
+      x := cast(f64) H.px[i * 3 + c]; y := cast(f64) A.px[i * 3 + c];
+      pn_add(num[..], (x - mx) * (y - my)); pn_add(den[..], pow(x - mx, 2.0));
+    }
+    k := pn_total(num[0]) / vmax(pn_total(den[0]), 0.000000001);
+    line[c] = [2] f64.[k, my - k * mx];
+  }
+  head_base := txt_cat(txt, out, "/head_base_ao.png");
+  if !fs_exists(head_base) {
+    b := pt_hold(img_to(img_load(base, iw), 3), P[0].i1[..]);
+    o := img_to(img_load(orm, iw), 3);
+    if o.w != b.w || o.h != b.h { ph_die("metahuman: the portrait's skin maps differ in size"); }
+    rgba := pi_img(P[0].i2[..], b.w, b.h, 4);
+    if b.w * b.h * 4 > PR_IMG { ph_die("metahuman: an image past the port's buffers"); }
+    for i: 0..<b.w * b.h { for c: 0..<3 { rgba.px[i * 4 + c] = b.px[i * 3 + c]; } rgba.px[i * 4 + 3] = o.px[i * 3]; }
+    mh_save(w, rgba, head_base);
+  }
+  body_base := txt_cat(txt, out, "/body_base_toned3.png");
+  if !fs_exists(body_base) {
+    im := pt_hold(img_to(img_load(txt_cat(txt, maps, "/Body_Basecolor.png"), iw), 3), P[0].i1[..]);
+    for c: 0..<3 {
+      lut: [256] u8;
+      for x: 0..<256 { lut[x] = cast(u8) imax(0, imin(255, pn_round(line[c][0] * cast(f64) x + line[c][1]))); }
+      for i: 0..<im.w * im.h { im.px[i * 3 + c] = lut[cast(int) im.px[i * 3 + c]]; }
+    }
+    t := pt_body_tint(w, m, P, im, txt_cat(txt, pt_dump(w), "/body/body_lod0_mesh.obj"));
+    mh_save(w, t, body_base);
+  }
+  // the body's roughness: the head's mean (64 a side)
+  o := img_to(img_load(orm, iw), 3);
+  if o.w * o.h > PR_L { ph_die("metahuman: an image past the port's buffers"); }
+  G := pi_img(P[0].l1[..], o.w, o.h, 1); pi_channel(o, 1, G);
+  small := img_resize(G, 64, 64, PI_BICUBIC, iw);
+  s := 0; for i: 0..<4096 { s += cast(int) small.px[i]; }
+  g_mean := pn_round(cast(f64) s / 4096.0);
+  body_rough := txt_cat(txt, out, "/body_rough.png");
+  if !fs_exists(body_rough) {
+    im := pi_img(P[0].l2[..], 64, 64, 3);
+    for i: 0..<4096 { im.px[i * 3] = 255; im.px[i * 3 + 1] = cast(u8) g_mean; im.px[i * 3 + 2] = 0; }
+    mh_save(w, im, body_rough);
+  }
+  r.ok = true;
+  r.head = [3] string.[head_base, normal, orm];
+  r.body = [3] string.[body_base, txt_cat(txt, maps, "/Body_Normal.png"), body_rough];
+  return r;
+}
+// body_tint(): below the shoulders the body's colour times BODY_TINT (a mask drawn from the body's
+// faces by their height, grown and feathered); img is RGB, the result in P.i3
+pt_body_tint :: (w: []World, m: []MhWork, P: []PortWork, img: PiImg, body_obj: string) -> PiImg {
+  if !fs_exists(body_obj) { return img; }
+  ob := m[0].ob[2..<3];
+  obj_read(body_obj, ob, m[0].text[..]);
+  W := img.w; H := img.h;
+  if W * H > PR_L { ph_die("metahuman: an image past the port's buffers"); }
+  mask := pi_img(P[0].l1[..], W, H, 1); for i: 0..<W * H { mask.px[i] = 0; }
+  pts: [64][2] f64;
+  for f: 0..<ob[0].nf {
+    a := ob[0].fs[f]; b := ob[0].fs[f + 1];
+    s: [1] PnSum; for e: a..<b { pn_add(s[..], ob[0].v[ob[0].c[e][0]][1]); }
+    y := pn_total(s[0]) / cast(f64) (b - a);
+    k := vmin(1.0, vmax(0.0, (BODY_TINT_TOP - y) / (BODY_TINT_TOP - BODY_TINT_LOW)));
+    if k <= 0.0 { continue; }
+    if b - a > 64 { ph_die("metahuman: a face past the port's corners"); }
+    for e: a..<b { t := ob[0].vt[ob[0].c[e][1]]; pts[e - a] = [2] f64.[t[0] * cast(f64) W, (1.0 - t[1]) * cast(f64) H]; }
+    ok := pi_polygon(mask, pts[0..<b - a], pn_round(255.0 * k));
+  }
+  grown := pi_img(P[0].l2[..], W, H, 1); pi_rank(mask, 5, true, grown);
+  pi_gaussian(grown, cast(f64) W / 512.0, P[0].lo[..]);
+  tinted := pi_img(P[0].i2[..], W, H, 3);
+  for c: 0..<3 {
+    lut: [256] u8; for x: 0..<256 { lut[x] = cast(u8) imin(255, pn_round(cast(f64) x * BODY_TINT[c])); }
+    for i: 0..<W * H { tinted.px[i * 3 + c] = lut[cast(int) img.px[i * 3 + c]]; }
+  }
+  out := pi_img(P[0].i3[..], W, H, 3);
+  pi_composite(tinted, img, grown, out);
+  return out;
+}
+// scalp(): the head's base map with the scalp under the hair cards painted the hair's root colour
+// (the occlusion in its alpha kept); the new map's path
+pt_scalp :: (w: []World, m: []MhWork, P: []PortWork, base: string, flip_v: bool) -> string {
+  txt := w[0].txt[..]; iw := w[0].iw[..]; st := w[0].st[..]; pk := w[0].pk[..];
+  out := txt_cat(txt, pt_dump(w), "/portrait/head_base_scalp.png");
+  ob := m[0].ob[1..<2];
+  nv := ob[0].nv;
+  nrm := P[0].rn[0..<nv]; position_normals(ob, nrm);
+  // the hair's card points where its atlas is solid
+  first := -1;
+  for k: 0..<pk[0].np { if pk[0].pieces[k].material == MAT_HAIR { first = k; break; } }
+  src := "";
+  if first >= 0 && pk[0].pieces[first].layers[0] != NONE { src = pk[0].images[pk[0].pieces[first].layers[0]].path; }
+  alpha: PiImg; has_alpha := src.count > 0;
+  if has_alpha {
+    a := img_to(img_load(src, iw), 4);
+    if a.w * a.h > 16777216 { ph_die("metahuman: an image past the port's buffers"); }
+    A := pi_img(m[0].a0[..], a.w, a.h, 1); pi_channel(a, 3, A);
+    alpha = pt_hold(img_resize(A, 512, 512, PI_BICUBIC, iw), P[0].l3[..]);
+  }
+  bary := [6][2] f64.[[2] f64.[0.25, 0.25], [2] f64.[0.25, 0.5], [2] f64.[0.25, 0.75], [2] f64.[0.5, 0.25], [2] f64.[0.5, 0.5], [2] f64.[0.75, 0.25]];
+  nh := 0;
+  for k: 0..<pk[0].np {
+    pc := pk[0].pieces[k];
+    if pc.material != MAT_HAIR { continue; }
+    for e: pc.tf..<pc.tf + pc.tn {
+      t := st[0].t[e];
+      A := st[0].v[pc.vf + t[0]]; B := st[0].v[pc.vf + t[1]]; C := st[0].v[pc.vf + t[2]];
+      for ab: bary {
+        a := ab[0]; b := ab[1]; c := 1.0 - a - b;
+        u0 := a * A.uv[0] + b * B.uv[0] + c * C.uv[0]; u1 := a * A.uv[1] + b * B.uv[1] + c * C.uv[1];
+        solid := true;
+        if has_alpha {
+          x := imin(511, imax(0, cast(int) (pn_mod(u0, 1.0) * 512.0))); y := imin(511, imax(0, cast(int) (pn_mod(u1, 1.0) * 512.0)));
+          solid = alpha.px[y * 512 + x] > 128;
+        }
+        if solid {
+          if nh >= PR_HAIR { ph_die("metahuman: hair points past the port's table"); }
+          P[0].hair[nh] = [3] f64.[100.0 * (a * A.p[0] + b * B.p[0] + c * C.p[0]), 100.0 * (a * A.p[1] + b * B.p[1] + c * C.p[1]), 100.0 * (a * A.p[2] + b * B.p[2] + c * C.p[2])];
+          nh += 1;
+        }
+      }
+    }
+  }
+  n3 := 0; i := 0; while i < nh { P[0].h3[n3] = P[0].hair[i]; n3 += 1; i += 3; }
+  near_build(P[0].gnear[..], P[0].h3[0..<n3], 2.0);
+  q := P[0].q[..];
+  nunder := 0;
+  for v: 0..<nv {
+    x := ob[0].v[v];
+    near_within(P[0].gnear[..], x, SCALP_CM, q);
+    cnt := 0;
+    for e: 0..<q[0].n { if q[0].d[e] < SCALP_CM && vdot(vsub(P[0].hair[3 * q[0].i[e]], x), nrm[v]) > -0.3 { cnt += 1; } }
+    P[0].under[v] = cnt >= SCALP_CARDS;
+    if P[0].under[v] { nunder += 1; }
+  }
+  img := pt_hold(img_to(img_load(base, iw), 4), P[0].i1[..]);
+  W := img.w; H := img.h;
+  if W * H > PR_L { ph_die("metahuman: an image past the port's buffers"); }
+  mask := pi_img(P[0].l1[..], W, H, 1); for e: 0..<W * H { mask.px[e] = 0; }
+  pts: [64][2] f64;
+  for f: 0..<ob[0].nf {
+    a := ob[0].fs[f]; b := ob[0].fs[f + 1];
+    s := 0; for e: a..<b { if P[0].under[ob[0].c[e][0]] { s += 1; } }
+    if s * 2 < b - a { continue; }
+    if b - a > 64 { ph_die("metahuman: a face past the port's corners"); }
+    for e: a..<b {
+      t := ob[0].vt[ob[0].c[e][1]];
+      vv := ifx flip_v then 1.0 - t[1] else t[1];
+      pts[e - a] = [2] f64.[t[0] * cast(f64) W, vv * cast(f64) H];
+    }
+    ok := pi_polygon(mask, pts[0..<b - a], 255);
+  }
+  // shrunk from its edge and feathered, so the hairline fades into the skin
+  shrunk := pi_img(P[0].l2[..], W, H, 1); pi_rank(mask, 15, false, shrunk);
+  pi_gaussian(shrunk, cast(f64) W / 160.0, P[0].lo[..]);
+  // the hair's colour under it: its atlas's solid texels' mean, a little darker (the roots)
+  root := [3] int.[96, 82, 60];
+  if has_alpha {
+    small := img_resize(img_to(img_load(src, iw), 4), 256, 256, PI_BICUBIC, iw);
+    sum := [3] int.[0, 0, 0]; cnt := 0;
+    for e: 0..<256 * 256 { if small.px[4 * e + 3] > 160 { for c: 0..<3 { sum[c] += cast(int) small.px[4 * e + c]; } cnt += 1; } }
+    if cnt > 0 { for c: 0..<3 { root[c] = cast(int) (0.8 * cast(f64) sum[c] / cast(f64) cnt); } }
+  }
+  cover: [256] u8; for x: 0..<256 { cover[x] = cast(u8) cast(int) (cast(f64) x * SCALP_COVER); }
+  pi_point(shrunk, cover);
+  rgb := pi_img(P[0].i2[..], W, H, 3); tint := pi_img(P[0].i3[..], W, H, 3);
+  for e: 0..<W * H { for c: 0..<3 { rgb.px[e * 3 + c] = img.px[e * 4 + c]; tint.px[e * 3 + c] = cast(u8) root[c]; } }
+  pi_composite(tint, rgb, shrunk, rgb);
+  for e: 0..<W * H { for c: 0..<3 { img.px[e * 4 + c] = rgb.px[e * 3 + c]; } }
+  mh_save(w, img, out);
+  lb: [512] u8; lo: [1] Sb; lo[0] = sb(lb[..]);
+  sb_put(lo[..], "scalp: "); sb_int(lo[..], nunder); sb_put(lo[..], " of "); sb_int(lo[..], nv); sb_put(lo[..], " head points under the hair, painted (");
+  sb_int(lo[..], root[0]); sb_put(lo[..], ", "); sb_int(lo[..], root[1]); sb_put(lo[..], ", "); sb_int(lo[..], root[2]); sb_put(lo[..], ")"); sb_line(lo[..]);
+  return out;
+}
+
+// ---- a garment's points drawn in to her
+// waisted(): the skirt from its top to the widest hips drawn in to WAIST_CM off the skin
+pt_waist :: (P: []PortWork, x: [3] f64) -> [3] f64 {
+  t := vmin(1.0, vmax(0.0, (x[1] - WAIST_LOW) / (WAIST_TOP - WAIST_LOW)));
+  t = t * t * (3.0 - 2.0 * t);
+  hit := -1; q := P[0].q[..];
+  if t > 0.0 {
+    for r: [4] f64.[4.0, 8.0, 16.0, 24.0] {
+      near_within(P[0].near[..], x, r, q); pt_keep_side(q, P[0].rarm[..], 0); nq_sort(q);
+      for e: 0..<imin(q[0].n, 48) { i := q[0].i[e]; if vdot(vsub(x, P[0].rx[i]), P[0].rn[i]) > 0.3 * q[0].d[e] { hit = i; break; } }
+      if hit >= 0 { break; }
+    }
+  }
+  if hit < 0 { return x; }
+  n := P[0].rn[hit]; sd := vdot(vsub(x, P[0].rx[hit]), n);
+  want := ifx sd > WAIST_CM then sd + (WAIST_CM - sd) * t else sd;
+  return vadd(x, [3] f64.[n[0] * (want - sd), n[1] * (want - sd), n[2] * (want - sd)]);
+}
+// fitted_garment(): the sweater's points past SWEATER_CM off the skin they lie over most of the way in
+pt_fit :: (P: []PortWork, x: [3] f64) -> [3] f64 {
+  q := P[0].q[..];
+  near_within_sorted(P[0].near[..], x, 24.0, q);
+  if q[0].n == 0 { return x; }
+  cl := 0; cr := 0; ns := imin(q[0].n, 8);
+  for e: 0..<ns { s := P[0].rarm[q[0].i[e]]; if s == 1 { cl += 1; } if s == 2 { cr += 1; } }
+  arm := ifx cr > cl then 2 else 1;
+  sleeve := (ifx arm == 1 then cl else cr) * 2 > ns;
+  hit := -1;
+  for e: 0..<imin(q[0].n, 64) {
+    i := q[0].i[e];
+    ok := ifx sleeve then P[0].rarm[i] == arm else P[0].rarm[i] == 0;
+    if ok && vdot(vsub(x, P[0].rx[i]), P[0].rn[i]) > 0.3 * q[0].d[e] { hit = i; break; }
+  }
+  if hit < 0 { return x; }
+  n := P[0].rn[hit]; sd := vdot(vsub(x, P[0].rx[hit]), n);
+  cm := ifx sleeve then SWEATER_SLEEVE_CM else SWEATER_CM;
+  want := ifx sd > cm then cm + (sd - cm) * SWEATER_KEEP else sd;
+  return vadd(x, [3] f64.[n[0] * (want - sd), n[1] * (want - sd), n[2] * (want - sd)]);
+}
+
+// ---- weights
+// seg(): a point's distance to the segment a-b, and how far along it its foot falls
+pt_seg :: (x: [3] f64, a: [3] f64, b: [3] f64) -> [2] f64 {
+  ab := vsub(b, a); l2 := vdot(ab, ab); if l2 == 0.0 { l2 = 0.000000001; }
+  t := vdot(vsub(x, a), ab) / l2;
+  c := vmin(vmax(t, 0.0), 1.0);
+  f := vadd(a, [3] f64.[ab[0] * c, ab[1] * c, ab[2] * c]);
+  return [2] f64.[pn_dist3(x, f), t];
+}
+// wraps(): how many of 12 sectors around the bone a-b the points along its middle fill
+pt_wraps :: (P: []PortWork, run: []int, a: [3] f64, b: [3] f64) -> int {
+  axis := mh_unit(vsub(b, a)); e1 := vcross(axis, [3] f64.[0.0, 0.0, 1.0]);
+  if sqrt(vdot(e1, e1)) < 0.1 { e1 = vcross(axis, [3] f64.[1.0, 0.0, 0.0]); }
+  e1 = mh_unit(e1); e2 := vcross(axis, e1);
+  hit := 0;
+  ba := vsub(b, a);
+  for j: run {
+    x := P[0].kx[j];
+    t := pt_seg(x, a, b)[1];
+    if 0.15 <= t && t <= 0.85 {
+      v := vsub(x, vadd(a, [3] f64.[ba[0] * t, ba[1] * t, ba[2] * t]));
+      s := cast(int) ((atan2(vdot(v, e2), vdot(v, e1)) + PH_PI) / (2.0 * PH_PI) * 12.0) % 12;
+      hit = hit | (1 << s);
+    }
+  }
+  n := 0; for s: 0..<12 { if (hit >> s) & 1 == 1 { n += 1; } }
+  return n;
+}
+// the arm's bones where the clothes' pose has them: (upperarm, lowerarm), (lowerarm, hand)
+pt_bone :: (m: []MhWork, name: string) -> [3] f64 { k := mh_lower(name); return vadd(mv3(m[0].MR[k], m[0].p[k]), m[0].Mt[k]); }
+pt_arm_bone :: (m: []MhWork, sd: int, which: int) -> [2][3] f64 {
+  b1: [32] u8; b2: [32] u8;
+  if which == 0 { return [2][3] f64.[pt_bone(m, pt_side_name(b1[..], "upperarm", sd)), pt_bone(m, pt_side_name(b2[..], "lowerarm", sd))]; }
+  return [2][3] f64.[pt_bone(m, pt_side_name(b1[..], "lowerarm", sd)), pt_bone(m, pt_side_name(b2[..], "hand", sd))];
+}
+// loose(): cloth past 3 cm off the body hangs from the hip: its calf, foot and toe weight to the thigh
+pt_loose :: (P: []PortWork, all: bool) {
+  b: [32] u8;
+  for i: 0..<P[0].nk {
+    if !all && P[0].gap[i] <= 3.0 { continue; }
+    w := P[0].kw[i]; acc: [1] Wd;
+    for e: 0..<w.n {
+      k := cast(int) w.k[e]; n := MH_NAMES[k];
+      if starts(n, "calf_") || starts(n, "foot_") || starts(n, "ball_") { k = mh_lower(pt_side_name(b[..], "thigh", pt_lr(k))); }
+      wd_add(acc[..], k, w.v[e]);
+    }
+    P[0].kw[i] = acc[0];
+  }
+}
+// hanging(): half of each point's thigh weight to the pelvis, more on a long hem
+pt_hanging :: (P: []PortWork) {
+  pelvis := mh_lower("pelvis"); tl := mh_lower("thigh_l"); tr := mh_lower("thigh_r");
+  for i: 0..<P[0].nk {
+    share := vmin(0.85, 0.5 + vmax(0.0, 70.0 - P[0].kx[i][1]) / 100.0);
+    w := P[0].kw[i]; acc: [1] Wd;
+    for e: 0..<w.n {
+      k := cast(int) w.k[e]; v := w.v[e];
+      if k == tl || k == tr { wd_add(acc[..], pelvis, share * v); v *= 1.0 - share; }
+      wd_add(acc[..], k, v);
+    }
+    P[0].kw[i] = acc[0];
+  }
+}
+// spread(): weights blended in space: averaged per 2 cm cell, the cells smoothed with a Gaussian,
+// each point given its cell field's value at it (trilinear). The smoothed cells are made as the
+// points ask for them (each is the same sum whenever it is made).
+pt_cellf :: (v: f64) -> int { return pn_floor(v / 2.0); }
+pt_smooth :: (P: []PortWork, c: [3] int, sigma: f64, reach: int) -> int {
+  key := hm4(c[0], c[1], c[2], 0);
+  k := hm_get(P[0].sh[..], key);
+  if k >= 0 { return k; }
+  k = hm_put(P[0].sh[..], key);
+  if k >= PR_S { ph_die("metahuman: smoothed cells past the port's table"); }
+  acc: [1] Wd; tot := 0.0;
+  for dx: 0 - reach..<reach + 1 { for dy: 0 - reach..<reach + 1 { for dz: 0 - reach..<reach + 1 {
+    m := hm_get(P[0].ch[..], hm4(c[0] + dx, c[1] + dy, c[2] + dz, 0));
+    if m < 0 { continue; }
+    f := exp((0.0 - (cast(f64) (dx * dx + dy * dy + dz * dz) * 2.0 * 2.0)) / (sigma * sigma));
+    tot += f;
+    mw := P[0].cw[m];
+    for e: 0..<mw.n { wd_add(acc[..], cast(int) mw.k[e], f * mw.v[e]); }
+  } } }
+  // (tot > 0: the cell is next to one with points)
+  P[0].sw[k] = wd_div(acc[0], tot);
+  return k;
+}
+pt_spread :: (P: []PortWork, sigma: f64, reach: int) {
+  hm_clear(P[0].sh[..]);
+  // the cells' sums, in the points' order (a new cell starts empty)
+  hm_clear(P[0].ch[..]);
+  for i: 0..<P[0].nk {
+    x := P[0].kx[i];
+    before := P[0].ch[0].n;
+    k := hm_put(P[0].ch[..], hm4(pt_cellf(x[0]), pt_cellf(x[1]), pt_cellf(x[2]), 0));
+    if k >= PR_C { ph_die("metahuman: cells past the port's table"); }
+    if P[0].ch[0].n != before { P[0].cn[k] = 0; P[0].cw[k].n = 0; }
+    P[0].cn[k] += 1;
+    w := P[0].kw[i];
+    acc: [1] Wd; acc[0] = P[0].cw[k];
+    for e: 0..<w.n { wd_add(acc[..], cast(int) w.k[e], w.v[e]); }
+    P[0].cw[k] = acc[0];
+  }
+  for k: 0..<P[0].ch[0].n { P[0].cw[k] = wd_div(P[0].cw[k], cast(f64) P[0].cn[k]); }
+  for i: 0..<P[0].nk {
+    x := P[0].kx[i];
+    g: [3] f64; b: [3] int; f: [3] f64;
+    for c: 0..<3 { g[c] = x[c] / 2.0 - 0.5; b[c] = pn_floor(g[c]); f[c] = g[c] - cast(f64) b[c]; }
+    acc: [1] Wd; tot := 0.0;
+    for d: 0..<8 {
+      o := [3] int.[d & 1, (d >> 1) & 1, (d >> 2) & 1];
+      cc := [3] int.[b[0] + o[0], b[1] + o[1], b[2] + o[2]];
+      // smooth.get(): a corner is always next to the point's own cell
+      s := pt_smooth(P, cc, sigma, reach);
+      a := 1.0;
+      for c: 0..<3 { a *= ifx o[c] == 1 then f[c] else 1.0 - f[c]; }
+      tot += a;
+      m := P[0].sw[s];
+      for e: 0..<m.n { wd_add(acc[..], cast(int) m.k[e], a * m.v[e]); }
+    }
+    if tot > 0.000000001 { P[0].kw2[i] = wd_div(acc[0], tot); } else { P[0].kw2[i] = P[0].kw[i]; }
+  }
+  for i: 0..<P[0].nk { P[0].kw[i] = P[0].kw2[i]; }
+}
+// smoothing over the cloth's own neighbours (all points, or the band's)
+pt_smooth_nbr :: (P: []PortWork, only_band: bool) {
+  nbr := P[0].nbr[..];
+  for i: 0..<P[0].nk {
+    if only_band && !P[0].band[i] { continue; }
+    if nb_count(nbr, i) == 0 { P[0].kw2[i] = P[0].kw[i]; continue; }
+    acc: [1] Wd;
+    w := P[0].kw[i];
+    for c: 0..<w.n { wd_set(acc[..], cast(int) w.k[c], 0.5 * w.v[c]); }
+    f := 0.5 / cast(f64) nb_count(nbr, i);
+    for e: nbr[0].start[i]..<nbr[0].start[i + 1] {
+      ko := P[0].kw[nbr[0].list[e]];
+      for c: 0..<ko.n { wd_add(acc[..], cast(int) ko.k[c], f * ko.v[c]); }
+    }
+    P[0].kw2[i] = acc[0];
+  }
+  for i: 0..<P[0].nk { if !only_band || P[0].band[i] { P[0].kw[i] = P[0].kw2[i]; } }
+}
+// armpit(): where the weights mix the arm with the trunk, and two rings round that, 30 smoothings more
+pt_armpit :: (P: []PortWork) {
+  nbr := P[0].nbr[..]; n := P[0].nk;
+  for i: 0..<n {
+    w := P[0].kw[i];
+    a: [1] PnSum; t: [1] PnSum;
+    for e: 0..<w.n { if mh_armhand(part(MH_NAMES[w.k[e]], 0)) { pn_add(a[..], w.v[e]); } pn_add(t[..], w.v[e]); }
+    share := pn_total(a[0]) / vmax(pn_total(t[0]), 0.000000001);
+    P[0].band[i] = 0.02 < share && share < 0.98 && P[0].kx[i][1] >= ARMPIT_LOW;
+  }
+  for ring: 0..<2 {
+    for i: 0..<n { P[0].bnew[i] = P[0].band[i]; }
+    for i: 0..<n {
+      if !P[0].band[i] { continue; }
+      for e: nbr[0].start[i]..<nbr[0].start[i + 1] { j := nbr[0].list[e]; if P[0].kx[j][1] >= ARMPIT_LOW { P[0].bnew[j] = true; } }
+    }
+    for i: 0..<n { P[0].band[i] = P[0].bnew[i]; }
+  }
+  for iter: 0..<30 { pt_smooth_nbr(P, true); }
+}
+// sleeve_sides(): for a SLEEVED garment each point's side from the cloth itself (seeds sure to be a
+// sleeve's or the body's, every other point the side of the seed nearest along the cloth)
+pt_sleeve_sides :: (w: []World, m: []MhWork, P: []PortWork) {
+  n := P[0].nk; q := P[0].q[..]; nbr := P[0].nbr[..];
+  nh := 0;
+  for i: 0..<n {
+    P[0].side[i] = 0; P[0].dist[i] = 1.0e300 * 1.0e300;
+    x := P[0].kx[i];
+    near_within_sorted(P[0].near[..], x, 12.0, q);
+    if q[0].n == 0 { continue; }
+    seen := 0;                      // the set of the first six's sides: bits 1 none, 2 left, 4 right
+    for e: 0..<imin(q[0].n, 6) { seen = seen | (1 << P[0].rarm[q[0].i[e]]); }
+    trunk := 99.0; arm := 99.0; ft := false; fa := false;
+    for e: 0..<q[0].n {
+      s := P[0].rarm[q[0].i[e]];
+      if s == 0 && !ft { trunk = q[0].d[e]; ft = true; }
+      if s != 0 && !fa { arm = q[0].d[e]; fa = true; }
+    }
+    label := 0;
+    if (seen == 2 || seen == 4) && trunk > SURE_CM {
+      sd := ifx seen == 2 then 1 else 2;
+      for bi: 0..<2 {
+        bb := pt_arm_bone(m, sd, bi);
+        s := pt_seg(x, bb[0], bb[1]);
+        if s[0] < 8.0 && -0.05 <= s[1] && s[1] <= 1.05 { label = sd; break; }
+      }
+    } else if arm > SURE_CM { label = 3; }
+    if label != 0 {
+      P[0].side[i] = label; P[0].dist[i] = 0.0;
+      if nh >= PR_HEAP { ph_die("metahuman: a heap past the port's table"); }
+      heap_push(P[0].hd[..], P[0].hi[..], nh, 0.0, i); nh += 1;
+    }
+  }
+  while nh > 0 {
+    d := P[0].hd[0]; i := P[0].hi[0];
+    nh = heap_pop(P[0].hd[..], P[0].hi[..], nh);
+    if d > P[0].dist[i] { continue; }
+    for e: nbr[0].start[i]..<nbr[0].start[i + 1] {
+      j := nbr[0].list[e];
+      nd := d + pn_dist3(P[0].kx[i], P[0].kx[j]);
+      if nd < P[0].dist[j] {
+        P[0].dist[j] = nd; P[0].side[j] = P[0].side[i];
+        if nh >= PR_HEAP { ph_die("metahuman: a heap past the port's table"); }
+        heap_push(P[0].hd[..], P[0].hi[..], nh, nd, j); nh += 1;
+      }
+    }
+  }
+  nsl := 0; nany := 0; nseed := 0;
+  for i: 0..<n {
+    if P[0].side[i] != 0 { nany += 1; }
+    if P[0].dist[i] == 0.0 { nseed += 1; }
+    sd := ifx P[0].side[i] == 1 || P[0].side[i] == 2 then P[0].side[i] else 0;
+    P[0].cand[i] = sd;
+    if sd == 0 { continue; }
+    nsl += 1;
+    near_within(P[0].near[..], P[0].kx[i], 16.0, q); pt_keep_side(q, P[0].rarm[..], sd); nq_sort(q);
+    if q[0].n == 0 { continue; }
+    acc: [1] Wd; s := vmax(1.0, 1.5 * q[0].d[0]);
+    for e: 0..<imin(q[0].n, 24) {
+      f := exp(0.0 - pow(q[0].d[e] / s, 2.0));
+      rw := P[0].rw[q[0].i[e]];
+      for c: 0..<rw.n { wd_add(acc[..], rw.j[c], f * rw.w[c]); }
+    }
+    t := wd_total(acc[0]); if t == 0.0 { t = 1.0; }
+    P[0].kw[i] = wd_div(acc[0], t);
+  }
+  lb: [512] u8; lo: [1] Sb; lo[0] = sb(lb[..]);
+  sb_put(lo[..], "sleeves: "); sb_int(lo[..], nsl); sb_put(lo[..], " of "); sb_int(lo[..], n); sb_put(lo[..], " points a sleeve's (seeded ");
+  sb_int(lo[..], ifx nany == 0 then 0 else nseed); sb_put(lo[..], ")"); sb_line(lo[..]);
+}
+// sleeves(): cloth follows the arm only along a sleeve (a big connected run of a side's points
+// wrapping the upper arm); hands give their weight to the forearm; a sleeve never follows the legs
+pt_sleeves :: (m: []MhWork, P: []PortWork) {
+  n := P[0].nk; nbr := P[0].nbr[..];
+  for i: 0..<n { P[0].side[i] = P[0].cand[i]; P[0].seen[i] = false; }
+  keep := imax(200, n / 50);
+  for i: 0..<n {
+    if P[0].seen[i] || P[0].side[i] == 0 { continue; }
+    nr := 0; sp := 0; P[0].stk[sp] = i; sp += 1; P[0].seen[i] = true;
+    while sp > 0 {
+      sp -= 1; j := P[0].stk[sp]; P[0].run[nr] = j; nr += 1;
+      for e: nbr[0].start[j]..<nbr[0].start[j + 1] {
+        k := nbr[0].list[e];
+        if !P[0].seen[k] && P[0].side[k] == P[0].side[i] { P[0].seen[k] = true; P[0].stk[sp] = k; sp += 1; }
+      }
+    }
+    bb := pt_arm_bone(m, P[0].side[i], 0);
+    if nr < keep || pt_wraps(P, P[0].run[0..<nr], bb[0], bb[1]) < 10 { for r: 0..<nr { P[0].side[P[0].run[r]] = 0; } }
+  }
+  b: [32] u8;
+  for j: 0..<n {
+    sd := P[0].side[j];
+    w := ifx sd != 0 || !P[0].kcn[j] then P[0].kw[j] else P[0].kc[j];
+    src: [1] Wd;
+    for e: 0..<w.n {
+      k := cast(int) w.k[e];
+      if pt_is_hand(k) { k = mh_lower(pt_side_name(b[..], "lowerarm", pt_lr(k))); }
+      wd_add(src[..], k, w.v[e]);
+    }
+    if sd != 0 {
+      f: [1] Wd;
+      for e: 0..<src[0].n {
+        k := cast(int) src[0].k[e]; p := part(MH_NAMES[k], 0);
+        if MH_NAMES[k] == "pelvis" || p == "thigh" || p == "calf" || p == "foot" || p == "ball" { continue; }
+        wd_set(f[..], k, src[0].v[e]);
+      }
+      if f[0].n == 0 { wd_set(f[..], mh_lower(pt_side_name(b[..], "lowerarm", sd)), 1.0); }
+      src[0] = f[0];
+    }
+    core: [1] Wd;
+    for e: 0..<src[0].n { k := cast(int) src[0].k[e]; a := pt_arm_side(k); if a == 0 || a == sd { wd_set(core[..], k, src[0].v[e]); } }
+    t := wd_total(core[0]);
+    if t > 0.0 { P[0].kw[j] = wd_div(core[0], t); } else { P[0].kw[j] = wd_one(mh_lower("spine_03"), 1.0); }
+  }
+}
+
+// ---- dressed(): packs each source's grooms and garments (the bind pose is theirs); the body
+// positions tight cloth covers in m.hide. keep_mode 1 packs only the brows' groom, and the hair's
+// when keep_hair (an outfit wears the portrait's brows and hair).
+pt_list :: (o: []Sb, names: []string) {
+  // sorted(set(names)), as Python prints a list
+  s: [64] string; n := 0;
+  for x: names { dup := false; for k: 0..<n { if s[k] == x { dup = true; } } if !dup { s[n] = x; n += 1; } }
+  for i: 1..<n { x := s[i]; j := i - 1; while j >= 0 && str_less(x, s[j]) { s[j + 1] = s[j]; j -= 1; } s[j + 1] = x; }
+  sb_byte(o, '[');
+  for i: 0..<n { if i > 0 { sb_put(o, ", "); } sb_byte(o, '\''); sb_put(o, s[i]); sb_byte(o, '\''); }
+  sb_byte(o, ']');
+}
+pt_dressed :: (w: []World, m: []MhWork, P: []PortWork, sources: []string, keep_mode: int, keep_hair: bool, female: bool) {
+  txt := w[0].txt[..]; st := w[0].st[..]; pk := w[0].pk[..]; iw := w[0].iw[..]; g := w[0].g[..];
+  q := P[0].q[..]; q2 := P[0].q2[..];
+  nb := m[0].nbody;
+  // the head: its weights and normals
+  skin_read(txt_cat(txt, pt_dump(w), "/head/head_lod0_mesh.skin.txt"), m[0].sk[1..<2], m[0].text[..]);
+  nh := m[0].ob[1].nv;
+  for i: 0..<nh { m[0].hw[i] = folded_weights(m[0].sk[1..<2], m[0].JH[..], i); }
+  position_normals(m[0].ob[1..<2], m[0].hn[0..<nh]);
+  clips_load(w[0].cl[..], female, g, txt, w[0].home);
+  clip_poses(w[0].cl[..], pk[0].binds[..], 7, female, w[0].ps[..]);
+  // the reference surface: the arms-down body and the head (which the pose leaves alone)
+  nr := nb + nh; P[0].nr = nr;
+  if nr > PR_R { ph_die("metahuman: a body past the port's points"); }
+  for i: 0..<nr {
+    P[0].rx[i] = ifx i < nb then m[0].ob[3].v[i] else m[0].ob[1].v[i - nb];
+    P[0].rn[i] = ifx i < nb then m[0].bn[i] else m[0].hn[i - nb];
+    P[0].rw[i] = ifx i < nb then m[0].bw[i] else m[0].hw[i - nb];
+    wl := P[0].rw[i]; al := 0.0; ar := 0.0;
+    for e: 0..<wl.n { sd := pt_limb_side(wl.j[e]); if sd == 1 { al += wl.w[e]; } else if sd == 2 { ar += wl.w[e]; } }
+    P[0].rarm[i] = ifx al > 0.5 then 1 else ifx ar > 0.5 then 2 else 0;
+    P[0].rhand[i] = pt_hand_share(wl) > 0.5;
+  }
+  near_build(P[0].near[..], P[0].rx[0..<nr], 2.0);
+  head_joint := mh_lower("head"); spine3 := mh_lower("spine_03");
+  out := txt_cat(txt, pt_dump(w), "/portrait");
+  P[0].nrep = 0; P[0].nwant = 0; P[0].npacked = 0; P[0].ncl = 0; P[0].ng = 0;
+  for src: sources {
+    gl_load(g, src);
+    for ni: 0..<g[0].nx[GA_NODE] {
+      node := g[0].ix[GA_NODE][ni];
+      if !gl_has(g, node, "mesh") { continue; }
+      mesh := gl_at(g, GA_MESH, gl_int(g, node, "mesh", 0));
+      prs := gl_get(g, mesh, "primitives");
+      P[0].nprim = 0;
+      for k: 0..<gl_len(g, prs) {
+        pr := gl_item(g, prs, k);
+        mat := gl_at(g, GA_MAT, gl_int(g, pr, "material", 0));
+        if pt_skip(gl_str(g, mat, "name")) { continue; }
+        if P[0].nprim >= PR_PR { ph_die("metahuman: a node past the port's primitives"); }
+        P[0].pmat[P[0].nprim] = pr; P[0].nprim += 1;
+      }
+      name := txt_keep(txt, gl_str(g, node, "name"));
+      if P[0].nprim == 0 || pt_gown(name) { continue; }
+      first_mat := gl_str(g, gl_at(g, GA_MAT, gl_int(g, P[0].pmat[0], "material", 0)), "name");
+      if keep_mode == 1 && !(first_mat == GROOM_NAMES[1] || (keep_hair && first_mat == GROOM_NAMES[0])) { continue; }
+      if P[0].nwant >= 64 { ph_die("metahuman: more garments than the port holds"); }
+      P[0].want[P[0].nwant] = name; P[0].nwant += 1;
+      groom := pt_groom(first_mat);
+      // the node's vertices welded by position, so weights smooth across its uv seams
+      hm_clear(P[0].kh[..]); P[0].nk = 0;
+      nv := 0; ntr := 0;
+      for pi: 0..<P[0].nprim {
+        pr := P[0].pmat[pi];
+        a := gl_get(g, pr, "attributes");
+        P[0].pv[pi] = nv; P[0].ptr[pi] = ntr;
+        r := gl_acc(g, gl_int(g, a, "POSITION", 0), P[0].fb[..]);
+        if nv + r.count > PR_V { ph_die("metahuman: a garment past the port's vertices"); }
+        for i: 0..<r.count {
+          x := [3] f64.[P[0].fb[3 * i] * 100.0, P[0].fb[3 * i + 1] * 100.0, P[0].fb[3 * i + 2] * 100.0];
+          if !groom && P[0].moved { x = pt_moved(P, x); }   // cut on the old figure: moved as the skin under it
+          if pt_waisted(name) { x = pt_waist(P, x); }
+          if pt_fitted(name) { x = pt_fit(P, x); }
+          P[0].pos[nv + i] = x;
+        }
+        rn := gl_acc(g, gl_int(g, a, "NORMAL", 0), P[0].fb[..]);
+        for i: 0..<rn.count { P[0].nor[nv + i] = [3] f64.[P[0].fb[3 * i], P[0].fb[3 * i + 1], P[0].fb[3 * i + 2]]; }
+        ru := gl_acc(g, gl_int(g, a, "TEXCOORD_0", 0), P[0].fb[..]);
+        for i: 0..<ru.count { P[0].uv[nv + i] = [2] f64.[P[0].fb[2 * i], P[0].fb[2 * i + 1]]; }
+        ri := gl_acc(g, gl_int(g, pr, "indices", 0), P[0].fb[..]);
+        if ntr + ri.count / 3 > PR_T { ph_die("metahuman: a garment past the port's triangles"); }
+        for t: 0..<ri.count / 3 { P[0].tri[ntr + t] = [3] int.[cast(int) P[0].fb[3 * t], cast(int) P[0].fb[3 * t + 1], cast(int) P[0].fb[3 * t + 2]]; }
+        for i: 0..<r.count {
+          x := P[0].pos[nv + i];
+          before := P[0].kh[0].n;
+          k := hm_put(P[0].kh[..], hm4(pn_round(x[0] * 20.0), pn_round(x[1] * 20.0), pn_round(x[2] * 20.0), 0));
+          if P[0].kh[0].n != before { P[0].kx[k] = x; }
+          P[0].ks[nv + i] = k;
+        }
+        nv += r.count; ntr += ri.count / 3;
+      }
+      P[0].pv[P[0].nprim] = nv; P[0].ptr[P[0].nprim] = ntr;
+      nk := P[0].kh[0].n; P[0].nk = nk;
+      if groom {
+        for k: 0..<nk { P[0].kw[k] = wd_one(head_joint, 1.0); }
+      } else {
+        // per welded vertex: weights from the body points near it (all of them, and those off the
+        // arms), and the body part it lies outside of (its sleeve's arm or none)
+        for k: 0..<nk {
+          x := P[0].kx[k];
+          r := 4.0; q[0].n = 0;
+          while q[0].n == 0 && r <= 64.0 { near_within(P[0].near[..], x, r, q); r *= 2.0; }
+          P[0].kcn[k] = false; P[0].cand[k] = 0;
+          if q[0].n == 0 { P[0].gap[k] = 99.0; P[0].kw[k] = wd_one(spine3, 1.0); continue; }
+          nq_sort(q);
+          P[0].gap[k] = q[0].d[0];
+          sigma := vmax(1.0, 1.5 * q[0].d[0]);
+          acc: [1] Wd; core: [1] Wd;
+          for e: 0..<imin(q[0].n, 24) {
+            d := q[0].d[e]; i := q[0].i[e];
+            f := exp(0.0 - pow(d / sigma, 2.0));
+            if vdot(vsub(x, P[0].rx[i]), P[0].rn[i]) < -0.3 { f *= 0.25; }
+            rw := P[0].rw[i];
+            for c: 0..<rw.n { wd_add(acc[..], rw.j[c], f * rw.w[c]); }
+            if P[0].rarm[i] == 0 { for c: 0..<rw.n { wd_add(core[..], rw.j[c], f * rw.w[c]); } }
+          }
+          t := wd_total(acc[0]); if t == 0.0 { t = 1.0; }
+          P[0].kw[k] = wd_div(acc[0], t);
+          if wd_total(core[0]) < 0.000001 {
+            // by a hand: the nearest body points off the arms, farther out
+            near_within(P[0].near[..], x, 16.0, q2); pt_keep_side(q2, P[0].rarm[..], 0); nq_sort(q2);
+            for e: 0..<imin(q2[0].n, 24) {
+              f := exp(0.0 - pow(q2[0].d[e] / vmax(1.0, 1.5 * q2[0].d[0]), 2.0));
+              rw := P[0].rw[q2[0].i[e]];
+              for c: 0..<rw.n { wd_add(core[..], rw.j[c], f * rw.w[c]); }
+            }
+          }
+          tc := wd_total(core[0]);
+          if tc > 0.000001 { P[0].kc[k] = wd_div(core[0], tc); P[0].kcn[k] = true; }
+          // the nearest body point the cloth lies outside of
+          out_of := -1;
+          for e: 0..<imin(q[0].n, 48) {
+            d := q[0].d[e]; i := q[0].i[e];
+            if d < 0.3 || vdot(vsub(x, P[0].rx[i]), P[0].rn[i]) > 0.2 * d { out_of = i; break; }
+          }
+          sd := P[0].rarm[ifx out_of >= 0 then out_of else q[0].i[0]];
+          // and a sleeve ends at the wrist: its foot falls on the upper arm or forearm
+          if sd != 0 {
+            on := false;
+            for bi: 0..<2 { bb := pt_arm_bone(m, sd, bi); s := pt_seg(x, bb[0], bb[1]); if -0.05 <= s[1] && s[1] <= 1.15 { on = true; } }
+            if !on { sd = 0; }
+          }
+          P[0].cand[k] = sd;
+        }
+        nbr := P[0].nbr[..];
+        nb_start(nbr, nk);
+        for pi: 0..<P[0].nprim {
+          v0 := P[0].pv[pi];
+          for t: P[0].ptr[pi]..<P[0].ptr[pi + 1] {
+            tt := P[0].tri[t];
+            a := P[0].ks[v0 + tt[0]]; b := P[0].ks[v0 + tt[1]]; c := P[0].ks[v0 + tt[2]];
+            nb_ins(nbr, a, b); nb_ins(nbr, a, c); nb_ins(nbr, b, a); nb_ins(nbr, b, c); nb_ins(nbr, c, a); nb_ins(nbr, c, b);
+          }
+        }
+        nb_finish(nbr);
+        if pt_sleeved(name) { pt_sleeve_sides(w, m, P); }
+        pt_sleeves(m, P);
+        for k: 0..<nk { P[0].gs[k] = P[0].gap[k]; }
+        sort_f64(P[0].gs[0..<nk], P[0].gt[0..<nk]);
+        lb: [512] u8; lo: [1] Sb; lo[0] = sb(lb[..]);
+        sb_put(lo[..], "gap "); sb_put(lo[..], name); sb_put(lo[..], ": cm off the body 25/50/75/95%");
+        for qq: [4] f64.[0.25, 0.5, 0.75, 0.95] { sb_byte(lo[..], ' '); sb_fixed(lo[..], P[0].gs[cast(int) (cast(f64) nk * qq)], 1); }
+        sb_line(lo[..]);
+        mid := P[0].gs[nk / 2];
+        close := mid <= 1.0;
+        if !close { pt_loose(P, true); pt_hanging(P); pt_spread(P, 6.0, 3); }
+        else {
+          pt_loose(P, false);
+          if mid > 0.5 && !pt_sleeved(name) { pt_spread(P, 3.0, 2); }
+        }
+        for iter: 0..<6 { pt_smooth_nbr(P, false); }
+        if close { pt_armpit(P); }
+        // a small piece moves as one
+        lo3 := P[0].kx[0]; hi3 := P[0].kx[0];
+        for k: 1..<nk { x := P[0].kx[k]; for c: 0..<3 { lo3[c] = vmin(lo3[c], x[c]); hi3[c] = vmax(hi3[c], x[c]); } }
+        if vmax(vmax(hi3[0] - lo3[0], hi3[1] - lo3[1]), hi3[2] - lo3[2]) < 40.0 {
+          acc: [1] Wd;
+          for k: 0..<nk { wk := P[0].kw[k]; for e: 0..<wk.n { wd_add(acc[..], cast(int) wk.k[e], wk.v[e] / cast(f64) nk); } }
+          for k: 0..<nk { P[0].kw[k] = acc[0]; }
+        }
+      }
+      for pi: 0..<P[0].nprim {
+        pr := P[0].pmat[pi];
+        mat := gl_at(g, GA_MAT, gl_int(g, pr, "material", 0));
+        mname := gl_str(g, mat, "name");
+        pbr := gl_get(g, mat, "pbrMetallicRoughness");
+        v0 := P[0].pv[pi]; vn := P[0].pv[pi + 1] - v0;
+        t0 := P[0].ptr[pi]; tn := P[0].ptr[pi + 1] - t0;
+        material := "";
+        if groom { material = ifx has(mname, "Eyebrows") then "brow" else "hair"; }
+        else {
+          rgb := [3] f64.[1.0, 1.0, 1.0];
+          if pbr >= 0 { f: [8] f64; c := gl_nums(g, pbr, "baseColorFactor", f[..]); if c >= 3 { rgb = [3] f64.[f[0], f[1], f[2]]; } }
+          rough := pn_round_n(ifx pbr >= 0 then gl_numk(g, pbr, "roughnessFactor", 0.8) else 0.8, 3);
+          id := -1;
+          for c: 0..<P[0].ncl { if P[0].cl_rgb[c][0] == rgb[0] && P[0].cl_rgb[c][1] == rgb[1] && P[0].cl_rgb[c][2] == rgb[2] && P[0].cl_r[c] == rough { id = c; } }
+          if id < 0 {
+            if P[0].ncl >= 17 { ph_die("metahuman: more cloths than the pack's materials"); }
+            id = P[0].ncl; P[0].cl_rgb[id] = rgb; P[0].cl_r[id] = rough; P[0].ncl += 1;
+            cb: [16] u8; co: [1] Sb; co[0] = sb(cb[..]); sb_put(co[..], "cloth"); sb_int(co[..], id);
+            pack_tint(pk, txt_keep(txt, sb_text(co[..])), [4] f64.[rgb[0], rgb[1], rgb[2], rough]);
+          }
+          cb: [16] u8; co: [1] Sb; co[0] = sb(cb[..]); sb_put(co[..], "cloth"); sb_int(co[..], id);
+          material = txt_keep(txt, sb_text(co[..]));
+        }
+        if pt_fitted(name) {
+          // surface_normals(): each vertex's normal from the triangles round its position
+          for k: 0..<nk { P[0].sf[k] = false; P[0].sn[k] = vzero(); }
+          for t: t0..<t0 + tn {
+            tt := P[0].tri[t];
+            a := P[0].pos[v0 + tt[0]]; b := P[0].pos[v0 + tt[1]]; c := P[0].pos[v0 + tt[2]];
+            nn := vcross(vsub(b, a), vsub(c, a));
+            for j: 0..<3 { k := P[0].ks[v0 + tt[j]]; P[0].sf[k] = true; P[0].sn[k] = vadd(P[0].sn[k], nn); }
+          }
+          for i: 0..<vn { k := P[0].ks[v0 + i]; P[0].nor[v0 + i] = mh_unit(ifx P[0].sf[k] then P[0].sn[k] else [3] f64.[0.0, 1.0, 0.0]); }
+        }
+        vf := st[0].nv;
+        for i: 0..<vn {
+          x := P[0].pos[v0 + i];
+          wl := wl_top4(P[0].kw[P[0].ks[v0 + i]]);
+          ws: [4] f64; jj: [4] int;
+          for z: 0..<4 { if z < wl.n { ws[z] = wl.w[z]; jj[z] = wl.j[z]; } else { ws[z] = 0.0; jj[z] = 0; } }
+          v: PV;
+          v.p = [3] f64.[x[0] / 100.0, x[1] / 100.0, x[2] / 100.0];
+          v.n = mh_unit(P[0].nor[v0 + i]); v.uv = P[0].uv[v0 + i]; v.pt = i;
+          qw := quantize4(ws);
+          for z: 0..<4 { v.j[z] = cast(u8) (ifx ws[z] > 0.0 then jj[z] else 0); v.w[z] = cast(u8) qw[z]; }
+          st[0].v[st_vert(st)] = v;
+          P[0].fw[i] = wl;
+          if !groom {
+            if P[0].ng >= PR_G { ph_die("metahuman: garment points past the port's table"); }
+            P[0].gx[P[0].ng] = x; P[0].gw[P[0].ng] = wl; P[0].ng += 1;
+          }
+        }
+        // the triangles kept, in kt
+        nkt := tn;
+        for t: 0..<tn { P[0].kt[t] = P[0].tri[t0 + t]; }
+        base_image := pt_tex(w, g, ifx pbr >= 0 then gl_get(g, pbr, "baseColorTexture") else -1, out);
+        if groom && material == "hair" && base_image.count > 0 {
+          a := img_to(img_load(base_image, iw), 4);
+          if a.w * a.h > 16777216 { ph_die("metahuman: an image past the port's buffers"); }
+          A := pi_img(m[0].a0[..], a.w, a.h, 1); pi_channel(a, 3, A);
+          al := img_resize(A, 1024, 1024, PI_BICUBIC, iw);
+          for i: 0..<1024 * 1024 { m[0].al[i] = al.px[i]; }
+          alpha := pi_img(m[0].al[..], 1024, 1024, 1);
+          if vn > CV || tn > CT { ph_die("metahuman: cards past the port's table"); }
+          m[0].ncv = vn; m[0].nct = tn;
+          for i: 0..<vn { m[0].cuv[i] = P[0].uv[v0 + i]; }
+          for t: 0..<tn { m[0].ct[t] = P[0].tri[t0 + t]; }
+          kept := sparse_cards(m, alpha);
+          nthin := 0; ncomp := 0;
+          for i: 0..<vn { if m[0].par[i] == i && m[0].cov_n[i] > 0 { ncomp += 1; if m[0].thin[i] { nthin += 1; } } }
+          nkt = 0; for t: 0..<tn { if m[0].keep[t] { P[0].kt[nkt] = m[0].ct[t]; nkt += 1; } }
+          lb: [256] u8; lo: [1] Sb; lo[0] = sb(lb[..]);
+          sb_put(lo[..], "hair: "); sb_int(lo[..], nthin); sb_put(lo[..], " of "); sb_int(lo[..], ncomp); sb_put(lo[..], " cards nearly empty (flyaways) left out"); sb_line(lo[..]);
+          base_image = hair_atlas(w, m, base_image, txt_cat3(txt, out, "/", txt_cat(txt, stem(base_image), "_thick.png")));
+        }
+        if !groom {
+          // cloth over the hands: her own hands show
+          for i: 0..<vn {
+            x := P[0].pos[v0 + i]; h := false;
+            if pt_gloved(name) {
+              near_within(P[0].near[..], x, GLOVE_CM, q);
+              for e: 0..<q[0].n { if q[0].d[e] < GLOVE_CM && P[0].rarm[q[0].i[e]] != 0 { h = true; } }
+            } else if !pt_hands_rest(name) {
+              near_within(P[0].near[..], x, HAND_CM, q);
+              for e: 0..<q[0].n { if q[0].d[e] < HAND_CM && P[0].rhand[q[0].i[e]] { h = true; } }
+            }
+            if pt_bare_forearm(name) || pt_gloved(name) {
+              fl := P[0].fw[i]; s: [1] PnSum;
+              for e: 0..<fl.n {
+                p := part(MH_NAMES[fl.j[e]], 0);
+                fore := p == "lowerarm" || p == "hand" || (pt_gloved(name) && p == "upperarm");
+                if fore { pn_add(s[..], fl.w[e]); }
+              }
+              h = h || pn_total(s[0]) > 0.5;
+            }
+            P[0].onh[i] = h;
+          }
+          n0 := nkt; nkt = 0;
+          for t: 0..<n0 { tt := P[0].kt[t]; if !(P[0].onh[tt[0]] && P[0].onh[tt[1]] && P[0].onh[tt[2]]) { P[0].kt[nkt] = tt; nkt += 1; } }
+          if nkt < n0 {
+            lb: [256] u8; lo: [1] Sb; lo[0] = sb(lb[..]);
+            sb_put(lo[..], name); sb_put(lo[..], ": "); sb_int(lo[..], n0 - nkt); sb_put(lo[..], " triangles over the hands left out"); sb_line(lo[..]);
+          }
+          if P[0].nrep >= 64 { ph_die("metahuman: more garments than the port holds"); }
+          P[0].rep_name[P[0].nrep] = name;
+          P[0].rep[P[0].nrep] = edge_check(P[0].pos[v0..<v0 + vn], P[0].fw[0..<vn], P[0].kt[0..<nkt], w[0].ps[..], P[0].pos[v0..<v0 + vn], w[0].ew[..], w[0].h2[..]);
+          P[0].nrep += 1;
+        }
+        tf := st[0].nt;
+        for t: 0..<nkt { tt := P[0].kt[t]; y := st_tri(st, tt[0], tt[1], tt[2]); }
+        normal := pt_tex(w, g, gl_get(g, mat, "normalTexture"), out);
+        rough_image := pt_tex(w, g, ifx pbr >= 0 then gl_get(g, pbr, "metallicRoughnessTexture") else -1, out);
+        pack_piece(pk, name, vf, vn, tf, nkt, material, base_image, normal, rough_image, iw);
+        if P[0].npacked >= 64 { ph_die("metahuman: more garments than the port holds"); }
+        P[0].packed[P[0].npacked] = name; P[0].npacked += 1;
+      }
+    }
+  }
+  // the checks a render can't be looked at for
+  lb: [16384] u8; lo: [1] Sb; lo[0] = sb(lb[..]);
+  missing: [64] string; nm := 0;
+  for i: 0..<P[0].nwant { if !pt_in(P[0].want[i], P[0].packed[0..<P[0].npacked]) { missing[nm] = P[0].want[i]; nm += 1; } }
+  sb_put(lo[..], "garments: source "); pt_list(lo[..], P[0].want[0..<P[0].nwant]);
+  sb_put(lo[..], " packed "); pt_list(lo[..], P[0].packed[0..<P[0].npacked]);
+  sb_put(lo[..], " missing "); pt_list(lo[..], missing[0..<nm]); sb_line(lo[..]);
+  if nm > 0 { pt_list(lo[..], missing[0..<nm]); ph_die2("metahuman: garments not packed: ", sb_text(lo[..])); }
+  bad: [64] string; nbad := 0;
+  for r: 0..<P[0].nrep {
+    res := P[0].rep[r]; ps := w[0].ps[..];
+    sb_put(lo[..], "edges "); sb_put(lo[..], P[0].rep_name[r]); sb_put(lo[..], " (share past 1.5x / worst ratio, share past 1.5x and 1 cm / most grown): ");
+    spike := false;
+    for p: 0..<ps[0].n {
+      if p > 0 { sb_put(lo[..], "  "); }
+      v := res.v[p];
+      sb_put(lo[..], ps[0].p[p].name); sb_byte(lo[..], ' '); sb_pct(lo[..], v[0], 2); sb_byte(lo[..], '/'); sb_fixed(lo[..], v[1], 0); sb_put(lo[..], "x ");
+      sb_pct(lo[..], v[2], 2); sb_byte(lo[..], '/'); sb_fixed(lo[..], v[3], 1); sb_put(lo[..], "cm");
+      if (starts(ps[0].p[p].name, "idle") || starts(ps[0].p[p].name, "walk")) && (v[2] > 0.005 || v[3] > 4.0) { spike = true; }
+    }
+    sb_line(lo[..]);
+    if spike { bad[nbad] = P[0].rep_name[r]; nbad += 1; }
+  }
+  if nbad > 0 {
+    sb_byte(lo[..], '[');
+    for i: 0..<nbad { if i > 0 { sb_put(lo[..], ", "); } sb_byte(lo[..], '\''); sb_put(lo[..], bad[i]); sb_byte(lo[..], '\''); }
+    sb_byte(lo[..], ']');
+    ph_die2("metahuman: torn cloth (edge outliers) in ", sb_text(lo[..]));
+  }
+  // the body under tight cloth: positions with a garment within 2 cm outward that moves with them
+  // (most of their weights shared)
+  near_build(P[0].gnear[..], P[0].gx[0..<P[0].ng], 2.0);
+  ncov := 0; nhands := 0; shown := 0;
+  for i: 0..<nb {
+    x := m[0].ob[3].v[i]; n := m[0].bn[i]; wb := m[0].bw[i];
+    m[0].hide[i] = false;
+    near_within(P[0].gnear[..], x, 2.0, q);
+    for e: 0..<q[0].n {
+      j := q[0].i[e];
+      if vdot(vsub(P[0].gx[j], x), n) <= -0.2 { continue; }
+      s: [1] PnSum; gw := P[0].gw[j];
+      for c: 0..<wb.n {
+        gv := 0.0; for z: 0..<gw.n { if gw.j[z] == wb.j[c] { gv = gw.w[z]; break; } }
+        pn_add(s[..], vmin(wb.w[c], gv));
+      }
+      if pn_total(s[0]) >= 0.5 { m[0].hide[i] = true; break; }
+    }
+    if m[0].hide[i] { ncov += 1; }
+    if pt_hand_share(wb) > 0.5 { nhands += 1; if !m[0].hide[i] { shown += 1; } }
+  }
+  sb_put(lo[..], "body positions under tight cloth: "); sb_int(lo[..], ncov); sb_put(lo[..], " of "); sb_int(lo[..], nb);
+  sb_put(lo[..], "; hand positions shown: "); sb_int(lo[..], shown); sb_put(lo[..], " of "); sb_int(lo[..], nhands); sb_line(lo[..]);
+  if nhands > 0 && cast(f64) shown < 0.9 * cast(f64) nhands { ph_die("metahuman: the hands are hidden under cloth"); }
+}

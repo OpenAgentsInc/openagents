@@ -8,7 +8,7 @@
 #load "../../../coax/lib/json/json.coax";
 #load "../../../coax/lib/sys/fs.coax";
 
-GL_FILE :: 16777216; GL_BIN :: 16777216; GL_NODES :: 1048576; GL_ARR :: 16384;
+GL_FILE :: 201326592; GL_BIN :: 16777216; GL_NODES :: 1048576; GL_ARR :: 16384;
 // the arrays a glTF's top level holds that the tool reads, indexed once
 GA_ACC :: 0; GA_VIEW :: 1; GA_NODE :: 2; GA_MESH :: 3; GA_MAT :: 4; GA_TEX :: 5; GA_IMG :: 6; GA_SKIN :: 7; GA_ANIM :: 8; GA_BUF :: 9;
 GA_NAMES :: [10] string.["accessors", "bufferViews", "nodes", "meshes", "materials", "textures", "images", "skins", "animations", "buffers"];

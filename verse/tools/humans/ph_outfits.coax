@@ -34,7 +34,7 @@
 // its angle round the hips. covered() finds the skin under the outfit by casting each body
 // point's normal against the garments' triangles.
 //
-// The port keeps outfits.py's numbers and orders (ph_core.coax), so a fitted outfit is the same to
+// The port keeps the Python tool's numbers and orders (ph_core.coax), so a fitted outfit is the same to
 // the bit. The one exception is robe_cloth()'s noise: Pillow's effect_noise draws on C's rand(),
 // so a wool image made here has the same weave, braid and noise statistics but other noise; it is
 // made once and cached (~/.openagents/verse/build/cloth), like the Python tool's.
@@ -244,7 +244,7 @@ outfit_source :: (o: int, ow: []OutfitWork, st: []Store, txt: []Txt, g: []Gltf, 
 add_piece :: (ow: []OutfitWork, pc: OPiece) { if ow[0].np >= OW_P { ph_die("pack_human: more garments than the port holds"); } ow[0].p[ow[0].np] = pc; ow[0].np += 1; }
 HAND :: [6] string.["hand", "index", "middle", "ring", "pinky", "thumb"];
 hand_joint :: (ow: []OutfitWork, j: int) -> bool { p := part(ow[0].lower[j], 0); for h: HAND { if p == h { return true; } } return false; }
-// a texture's image path (no fallback, as outfits.py's img()); "" for none
+// a texture's image path (no fallback, as the Python tool's img()); "" for none
 src_tex :: (g: []Gltf, txt: []Txt, t: int) -> string {
   if t < 0 { return ""; }
   img := gl_at(g, GA_IMG, gl_int(g, gl_at(g, GA_TEX, gl_int(g, t, "index", 0)), "source", 0));

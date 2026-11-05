@@ -24,10 +24,9 @@
 // A fantasy outfit (--outfit, ph_outfits.coax) is fitted onto the body in the T pose and moved
 // into the bind.
 //
-// Not here yet (the Python tool had them; no export on hand has them to check against): a
-// portrait's clothes and grooms (the export's latest/mh.neutral.glb), its skin maps and scalp,
-// and the female figure's sculpt (shape.py). An export with a portrait, or a female body, stops
-// with a message naming that.
+// With a portrait (the export's latest/mh.neutral.glb), ph_portrait.coax dresses the body in the
+// portrait's clothes and grooms, makes its skin maps and paints the scalp under the hair; a female
+// body is sculpted first (ph_portrait.coax's pt_figure, the Python tool's shape.py).
 //
 // Nothing this reads or writes goes into git or is used to train AI models (the export's
 // NO-TRAINING.txt).
@@ -280,8 +279,8 @@ MhWork :: struct {
   par: [CV] int; cov_n: [CV] int; cov_s: [CV] f64; thin: [CV] bool; keep: [CT] bool; renum: [CV] int;
   mp: [CV][3] f64; mk: [CV] int; md: [CV] f64;
   hjw: [MB_P][8] u8; hseen: [MB_P] bool;
-  a0: [16777216] u8; al: [1048576] u8; a2: [4194304] u8; rgba: [16777216] u8; fill: [12582912] u8; blur: [12582912] u8;
-  m1: [4194304] u8; m2: [4194304] u8; grown: [4194304] u8; lifted: [4194304] u8; lo: [16384] int;
+  a0: [16777216] u8; al: [1048576] u8; a2: [16777216] u8; rgba: [67108864] u8; fill: [50331648] u8; blur: [50331648] u8;
+  m1: [16777216] u8; m2: [16777216] u8; grown: [16777216] u8; lifted: [16777216] u8; lo: [16384] int;
 }
 // folded_weights(): per point its weights folded onto the rig, over their sum (insertion order)
 folded_weights :: (sk: []Skin, J: []MhJoints, i: int) -> Wl {
@@ -448,13 +447,30 @@ mh_build :: (w: []World, export: string, outfit: int) {
   obj_read(txt_cat(txt, head, "/head_lod0_mesh.obj"), m[0].ob[1..<2], m[0].text[..]);
   flip_v := lips_v(w, m, m[0].ob[1..<2], txt_cat(txt, maps, "/Head_Basecolor.png"));
   portrait := txt_cat(txt, dir_name(export), "/latest/mh.neutral.glb");
-  if fs_exists(portrait) { ph_die2("metahuman: an export with a portrait (its clothes, grooms and skin maps) isn't ported to Coax yet: ", portrait); }
+  has_portrait := fs_exists(portrait);
+  P := w[0].pt[..];
+  skin: PtSkin;
+  if has_portrait { skin = pt_skin_maps(w, m, P, portrait, maps); }
+  // her figure (ph_portrait.coax): the trunk sculpted in both the bind and the arms-down pose; a
+  // female body's sculpt, so a male body keeps Creator's own trunk
   female := body_female(w, m);
   rig_rest(w, m, false);
-  if female { ph_die("metahuman: a female body's figure (shape.py) isn't ported to Coax yet"); }
+  down_path := txt_cat(txt, dir_name(export), "/rig-body-down/body_lod0_mesh.obj");
+  P[0].moved = false;
+  if female {
+    old := m[0].ob[2..<3];
+    obj_read(ifx fs_exists(down_path) then down_path else txt_cat(txt, body, "/body_lod0_mesh.obj"), old, m[0].text[..]);
+    if old[0].nv > MB_P { ph_die("metahuman: a body past the port's points"); }
+    for i: 0..<old[0].nv { P[0].old[i] = old[0].v[i]; }
+    nold := old[0].nv;
+    spine_z := m[0].JB[0].p[m[0].JB[0].of[mh_lower("pelvis")]][2];
+    body = pt_figure(w, m, P, body, down_path, spine_z);
+    down_path = txt_cat(txt, body, "/body_down_lod0_mesh.obj");
+    near_build(P[0].onear[..], P[0].old[0..<nold], 2.0);
+    P[0].moved = true;
+  }
   // the bind body (ob[0]) and the arms-down body (ob[3]): the clothes' own pose
   obj_read(txt_cat(txt, body, "/body_lod0_mesh.obj"), m[0].ob[0..<1], m[0].text[..]);
-  down_path := txt_cat(txt, dir_name(export), "/rig-body-down/body_lod0_mesh.obj");
   if fs_exists(down_path) { obj_read(down_path, m[0].ob[3..<4], m[0].text[..]); } else { m[0].ob[3] = m[0].ob[0]; }
   skin_read(txt_cat(txt, body, "/body_lod0_mesh.skin.txt"), m[0].sk[0..<1], m[0].text[..]);
   nb := m[0].ob[3].nv; m[0].nbody = nb;
@@ -472,8 +488,24 @@ mh_build :: (w: []World, export: string, outfit: int) {
   for i: 0..<nb { m[0].hide[i] = false; }
   under := false;
   if outfit >= 0 {
+    // a fantasy outfit in place of the portrait's clothes: the portrait gives its brows, and its
+    // hair unless a hood covers it
+    if has_portrait { s1: [1] string; s1[0] = portrait; pt_dressed(w, m, P, s1[..], 1, OUTFIT_HAIR[outfit], female); }
     mh_fitted(w, m, outfit, female);
     under = true;
+  } else if has_portrait {
+    // the portrait's clothes and the lower garments beside it (world/*_lower.glb, sorted)
+    srcs: [32] string; ns := 0;
+    srcs[0] = portrait; ns = 1;
+    wdir := txt_cat(txt, dir_name(dir_name(export)), "/world");
+    l: [1] FsList; n := fs_list(wdir, l[..]);
+    for i: 0..<n { e := fs_entry(l[..], i); if ends(e, "_lower.glb") && ns < 32 { srcs[ns] = txt_cat3(txt, wdir, "/", e); ns += 1; } }
+    for i: 2..<ns { x := srcs[i]; j := i - 1; while j >= 1 && str_less(x, srcs[j]) { srcs[j + 1] = srcs[j]; j -= 1; } srcs[j + 1] = x; }
+    pt_dressed(w, m, P, srcs[0..<ns], 0, false, female);
+  }
+  if skin.ok {
+    any_hair := false; for k: 0..<pk[0].np { if pk[0].pieces[k].material == MAT_HAIR { any_hair = true; } }
+    if any_hair { skin.head[0] = pt_scalp(w, m, P, skin.head[0], flip_v); }
   }
   // the head mesh reaches down over the collarbones: under a closed collar the head's skin below
   // the collar's foot is the cloth's
@@ -530,16 +562,18 @@ mh_build :: (w: []World, export: string, outfit: int) {
     base := ifx MH_BASE[mi].count > 0 then txt_cat3(txt, maps, "/", MH_BASE[mi]) else "";
     normal := ifx MH_NORMAL[mi].count > 0 then txt_cat3(txt, maps, "/", MH_NORMAL[mi]) else "";
     rough := ifx MH_ROUGH[mi].count > 0 then txt_cat3(txt, maps, "/", MH_ROUGH[mi]) else "";
+    // the portrait's skin maps for the body and the head
+    if skin.ok && mi <= 1 { L := ifx mi == 0 then skin.body else skin.head; base = L[0]; normal = L[1]; rough = L[2]; }
     if blended(mat_of(MH_MAT[mi])) { lid_coords(st, vf, vn, tf, tn, w[0].lw[..], w[0].h1[..]); }
     short := name[0..<name.count - 10];
     pack_piece(pk, short, vf, vn, tf, tn, MH_MAT[mi], base, normal, rough, iw);
     if !is_body { for z: 0..<7 { if FACE_MESHES[z] == name { pk[0].pieces[pk[0].np - 1].face = name; } } }
     if mi == 1 { head_piece = pk[0].np - 1; }
   }
-  // the export's own hair cards
+  // no portrait (whose grooms ride the head already): the export's own hair cards
   gdir := txt_cat(txt, export, "/grooms");
-  if fs_kind(gdir) == 2 && head_piece >= 0 { mh_cards(w, m, gdir, head, head_piece, dump_dir); }
-  else if fs_exists(gdir) && head_piece >= 0 && fs_kind(gdir) != 1 { mh_cards(w, m, gdir, head, head_piece, dump_dir); }
+  if !has_portrait && fs_kind(gdir) == 2 && head_piece >= 0 { mh_cards(w, m, gdir, head, head_piece, dump_dir); }
+  else if !has_portrait && fs_exists(gdir) && head_piece >= 0 && fs_kind(gdir) != 1 { mh_cards(w, m, gdir, head, head_piece, dump_dir); }
   // the face rig
   if face_load(w[0].fr, head, txt, m[0].ob[2..<3], m[0].sk[1..<2], m[0].frt[..]) {
     W: [1] FrPose; W0: [1] FrPose;
@@ -979,7 +1013,7 @@ hair_atlas :: (w: []World, m: []MhWork, path: string, out: string) -> string {
   iw := w[0].iw[..];
   src := img_to(img_load(path, iw), 4);
   W := src.w; H := src.h; n := W * H;
-  if n > 4194304 { ph_die("metahuman: a hair atlas past the port's buffers"); }
+  if n > 16777216 { ph_die("metahuman: a hair atlas past the port's buffers"); }
   im := pi_img(m[0].rgba[..], W, H, 4); for i: 0..<n * 4 { im.px[i] = src.px[i]; }
   a := pi_img(m[0].a2[..], W, H, 1); pi_channel(im, 3, a);
   grown := pi_img(m[0].grown[..], W, H, 1); pi_rank(a, HAIR_GROW, true, grown);
