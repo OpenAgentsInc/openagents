@@ -10,14 +10,14 @@ A slow camera flight through the Grid, at https://openagents.com/worlds/penultim
 
 ## Playing
 
-- There is nothing to play. For its first minute the world draws the opening of [Episode 292](https://github.com/OpenAgentsInc/openagents/blob/main/docs/transcripts/292.md) as line art: the trees build up, a trail climbs to a sun and its orbits, people gather, old towers fall, and a bright new tree grows with the people ringing it.
+- There is nothing to play. For its first minute the world draws the opening of [Episode 292](https://github.com/OpenAgentsInc/openagents/blob/main/docs/transcripts/292.md) as line art: the trees build up, a trail climbs to a sun, two starships duel over it, the solar system of [Belt 2200](/worlds/belt-2200) fills the sky with wireframe worlds, the Belt's rocks and torch ships on their transfers, people gather, a capitol, a tower and an exchange collapse into rubble, and a bright new tree grows with the people ringing it.
 - Then the camera flies a lap of the projects every 80 seconds.
 - To walk the same scene yourself, go to [The Grid](/worlds/the-grid).
 - Without WebGPU (a current Chrome, Edge or Safari) the page shows only its name and a link here.
 
 ## How it is made
 
-- It is the homepage's own module: `apps/openagents-web/newland.coax` draws the scene (`land_scene`), and the page asks for it with `data-page="2"`. `newland-frontier.coax` draws the story and its camera, then eases onto the lap (`wk_fly_path` in `newland-walk.coax`); there is no walker, HUD or text.
+- It is the homepage's own module: `apps/openagents-web/newland.coax` draws the scene (`land_scene`), and the page asks for it with `data-page="2"`. `newland-frontier.coax` draws the story and its camera (the sky in `newland-frontier-sky.coax` on `aethyr/orbit.coax`, the falling buildings in `newland-frontier-ruins.coax`), then eases onto the lap (`wk_fly_path` in `newland-walk.coax`); there is no walker, HUD or text.
 - Nobody is posted to the Grid's room from here, so watching it never adds a walker to the Grid.
 
 ## Make your own world

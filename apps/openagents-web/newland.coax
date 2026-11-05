@@ -22,6 +22,8 @@
 #load "newland-walk.coax";   // the Grid, /worlds/the-grid: this scene, walked (data-page 1)
 #load "../../aethyr/orbit.coax";   // Belt 2200's space, for Penultimate Frontier's sky
 #load "newland-frontier.coax";   // Penultimate Frontier: this scene, flown, with its story (data-page 2)
+#load "newland-frontier-sky.coax";
+#load "newland-frontier-ruins.coax";
 #load "newland-boot.coax";   // Verse OS's boot sequence over it, when the machine's session asks
 #load "newland-local.coax";  // and the agents on that machine, standing by the spawn
 #load "../../aethyr/budget.coax";

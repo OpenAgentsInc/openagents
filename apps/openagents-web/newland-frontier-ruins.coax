@@ -1,0 +1,198 @@
+// Penultimate Frontier's old world (newland-frontier.coax): "the old world's power structures
+// languish in decay." Three buildings stand behind the people: a domed capitol with its columns,
+// a glass tower of floors and windows, and a columned exchange with its pediment. Each is built
+// of pieces, as Everglade's town is (verse/demolish.coax): a piece is a box (a column, a slab, a
+// quarter of a floor, a section of the dome) that rises in its place as the building goes up,
+// bottom first. At FR_DECAY each building shudders, then lets go: every piece falls on its own
+// arc, thrown out from the building's middle and tumbling, strikes the floor with a short
+// bounce and a puff of dust, slides a little and settles flat, on the pile, as rubble. The
+// rubble stays, faint, for the new world to grow among. It is a function of the clock, so
+// every frame of a recording is the same.
+
+FR_PIECES :: 96;
+FR_G :: 5.0;            // grid units/s^2: two metres a unit
+FrPiece :: struct { c: Fv; h: Fv; win: int; dome: bool; peak: bool; b: int; }
+FR_BUILT :: [3] Fv.[Fv.{x = -4.4, y = 0, z = -2.6}, Fv.{x = -1.2, y = 0, z = -5.2}, Fv.{x = -6.4, y = 0, z = 0.8}];
+FR_HEIGHT :: [3] f32.[3.5, 7.9, 2.3];
+
+fr_put :: (ps: [] FrPiece, n: int, b: int, c: Fv, h: Fv, win: int, dome: bool, peak: bool) -> int {
+  if n >= ps.count { return n; }
+  ps[n] = FrPiece.{c = fv_add(fv_add(FR_S, FR_BUILT[b]), c), h = h, win = win, dome = dome, peak = peak, b = b};
+  return n + 1;
+}
+// The three buildings' pieces, in a fixed order.
+fr_pieces :: (ps: [] FrPiece) -> int {
+  n := 0;
+  // the capitol: podium, steps, two rows of columns, the entablature, the drum and the dome
+  n = fr_put(ps, n, 0, fv(0, 0.2, 0), fv(1.3, 0.2, 0.85), 0, false, false);
+  n = fr_put(ps, n, 0, fv(1.42, 0.1, 0), fv(0.14, 0.1, 0.6), 0, false, false);
+  for row: 0..<2 { for i: 0..<6 {
+    x := ifx row == 0 then 1.05f32 else -1.05f32;
+    n = fr_put(ps, n, 0, fv(x, 1.0, -0.7 + 0.28 * f32(i)), fv(0.06, 0.6, 0.06), 0, false, false);
+  } }
+  n = fr_put(ps, n, 0, fv(0, 1.72, 0), fv(1.25, 0.12, 0.8), 0, false, false);
+  n = fr_put(ps, n, 0, fv(0, 2.1, 0), fv(0.5, 0.26, 0.5), 2, false, false);
+  n = fr_put(ps, n, 0, fv(0, 2.55, 0), fv(0.45, 0.18, 0.45), 0, true, false);
+  n = fr_put(ps, n, 0, fv(0, 2.85, 0), fv(0.34, 0.12, 0.34), 0, true, false);
+  n = fr_put(ps, n, 0, fv(0, 3.05, 0), fv(0.2, 0.08, 0.2), 0, true, false);
+  n = fr_put(ps, n, 0, fv(0, 3.3, 0), fv(0.06, 0.18, 0.06), 0, true, false);
+  // the tower: twelve floors of four quarters with windows, and its spire
+  for k: 0..<12 { for q: 0..<4 {
+    x := ifx q % 2 == 0 then -0.36f32 else 0.36f32; z := ifx q < 2 then -0.36f32 else 0.36f32;
+    n = fr_put(ps, n, 1, fv(x, 0.3 + 0.6 * f32(k), z), fv(0.36, 0.3, 0.36), 2, false, false);
+  } }
+  n = fr_put(ps, n, 1, fv(0, 7.7, 0), fv(0.04, 0.5, 0.04), 0, false, false);
+  // the exchange: two steps, five columns, the hall behind them, the entablature and the pediment
+  n = fr_put(ps, n, 2, fv(0, 0.1, 0), fv(1.0, 0.1, 0.78), 0, false, false);
+  n = fr_put(ps, n, 2, fv(0.05, 0.27, 0), fv(0.9, 0.07, 0.7), 0, false, false);
+  for i: 0..<5 { n = fr_put(ps, n, 2, fv(0.72, 1.0, -0.6 + 0.3 * f32(i)), fv(0.07, 0.66, 0.07), 0, false, false); }
+  n = fr_put(ps, n, 2, fv(-0.3, 1.0, 0), fv(0.5, 0.66, 0.6), 3, false, false);
+  n = fr_put(ps, n, 2, fv(0, 1.78, 0), fv(0.92, 0.12, 0.72), 0, false, false);
+  n = fr_put(ps, n, 2, fv(0, 2.05, 0), fv(0.92, 0.15, 0.72), 0, false, true);
+  return n;
+}
+
+FR_FALL_AT :: [3] f32.[0.0, 0.55, 1.0];   // s after FR_DECAY each building lets go
+FrAt :: struct { c: Fv; axis: Fv; ang: f32; free: bool; landed: f32; land: Fv; }   // landed: s since it struck, or -1
+// Where piece i is at t.
+fr_piece_at :: (pc: FrPiece, i: int, t: f32) -> FrAt {
+  r := FrAt.{c = pc.c, axis = fv(0, 1, 0), ang = 0, free = false, landed = -1, land = pc.c};
+  let_go := FR_DECAY + FR_FALL_AT[pc.b];
+  // the shudder before it goes
+  if t > let_go - 0.7 && t < let_go + 0.2 {
+    a := 0.035 * fr_in(t, let_go - 0.7, 0.6);
+    r.c = fv_add(r.c, fv(a * sin(t * 53 + f32(i)), 0, a * cos(t * 47 + f32(i) * 1.3)));
+  }
+  release := let_go + 0.18 * hash01(f32(i) * 2.13) + 0.04 * (pc.c.y / FR_HEIGHT[pc.b]);
+  if t < release { return r; }
+  tau := t - release;
+  mid := fv_add(FR_S, FR_BUILT[pc.b]);
+  out_dir := fv(pc.c.x - mid.x, 0, pc.c.z - mid.z);
+  ol := sqrt(out_dir.x * out_dir.x + out_dir.z * out_dir.z);
+  if ol < 0.05 { a := FR_TAU * hash01(f32(i) * 4.1); out_dir = fv(cos(a), 0, sin(a)); } else { out_dir = fv_times(out_dir, 1 / ol); }
+  yn := pc.c.y / FR_HEIGHT[pc.b];
+  speed := (0.4 + 1.3 * hash01(f32(i) * 3.7)) * (0.35 + yn);
+  turn := (hash01(f32(i) * 5.9) - 0.5) * 0.8;
+  dx := out_dir.x * cos(turn) - out_dir.z * sin(turn); dz := out_dir.x * sin(turn) + out_dir.z * cos(turn);
+  vx := dx * speed; vz := dz * speed; vy := 0.6 * hash01(f32(i) * 6.7);
+  low := lo(pc.h.x, lo(pc.h.y, pc.h.z));
+  pile := (0.05 + 0.5 * hash01(f32(i) * 8.9)) * clamp(FR_HEIGHT[pc.b] / 5, 0.4, 1.2);
+  rest := low + pile * (1 - clamp(sqrt(vx * vx + vz * vz) / 2.2, 0, 0.8));
+  rest = lo(rest, pc.c.y);   // a low piece (the podium) settles where it is, never higher
+  drop := hi(pc.c.y - rest, 0);
+  land_t := (vy + sqrt(vy * vy + 2 * FR_G * drop)) / FR_G;
+  r.free = true;
+  r.axis = unit3(fv(hash01(f32(i) * 7.3) - 0.5, hash01(f32(i) * 9.1) - 0.5, hash01(f32(i) * 1.7) - 0.5));
+  spin := (2 + 5 * hash01(f32(i) * 2.9)) * (ifx hash01(f32(i)) > 0.5 then 1.0f32 else -1.0f32);
+  r.land = fv(pc.c.x + vx * land_t, rest, pc.c.z + vz * land_t);
+  if tau < land_t {
+    r.c = fv(pc.c.x + vx * tau, pc.c.y + vy * tau - 0.5 * FR_G * tau * tau, pc.c.z + vz * tau);
+    r.ang = spin * tau;
+    return r;
+  }
+  after := tau - land_t;
+  r.landed = after;
+  slide := (1 - exp(-5 * after)) / 5 * 0.6;
+  bounce := ifx after < 0.32 then 0.12 * sqrt(drop + 0.1) * sin(3.1415926 * after / 0.32) else 0.0f32;
+  r.c = fv(r.land.x + vx * slide, rest + bounce, r.land.z + vz * slide);
+  // it settles flat: the nearest quarter turn
+  a := spin * land_t;
+  flat := 1.5707963 * floor(a / 1.5707963 + 0.5);
+  r.ang = a + (flat - a) * ease(after / 0.45);
+  return r;
+}
+// A piece's box, turned: its twelve edges, its windows while it stands, a pediment's gable.
+fr_box :: (out: [] f32, at: int, c: Cam, pc: FrPiece, w: FrAt, k: Ink, wk: Ink, light: f32) -> int {
+  v := at;
+  q: [8] Fv;
+  for j: 0..<8 {
+    sx := ifx (j & 1) != 0 then 1.0f32 else -1.0f32; sy := ifx (j & 2) != 0 then 1.0f32 else -1.0f32; sz := ifx (j & 4) != 0 then 1.0f32 else -1.0f32;
+    off := fv(pc.h.x * sx, pc.h.y * sy, pc.h.z * sz);
+    if pc.peak && sy > 0 { off = fv(off.x, off.y, 0); }   // the gable: its top edge a ridge
+    q[j] = fv_add(w.c, ifx w.ang != 0 then fr_rot(off, w.axis, w.ang) else off);
+  }
+  edges := [24] int.[0, 1, 2, 3, 4, 5, 6, 7, 0, 2, 1, 3, 4, 6, 5, 7, 0, 4, 1, 5, 2, 6, 3, 7];
+  for e: 0..<12 { v = seg(out, v, c, q[edges[e * 2]], q[edges[e * 2 + 1]], k, light); }
+  if pc.win > 0 && !w.free {
+    // mullions down each face, and a sill across
+    for f: 0..<4 {
+      a := ifx f == 0 then 0 else ifx f == 1 then 1 else ifx f == 2 then 5 else 4;
+      b := ifx f == 0 then 1 else ifx f == 1 then 5 else ifx f == 2 then 4 else 0;
+      for m: 1..<pc.win + 1 {
+        u := f32(m) / f32(pc.win + 1);
+        lo_p := fv_mix(q[a], q[b], u); hi_p := fv_mix(q[a + 2], q[b + 2], u);
+        v = seg(out, v, c, fv_mix(lo_p, hi_p, 0.12), fv_mix(lo_p, hi_p, 0.88), wk, light * 0.55);
+      }
+      v = seg(out, v, c, fv_mix(q[a], q[a + 2], 0.5), fv_mix(q[b], q[b + 2], 0.5), wk, light * 0.35);
+    }
+  }
+  if w.free { v = seg(out, v, c, q[0], q[7], wk, light * 0.4); }   // the break across it
+  return v;
+}
+fr_towers :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
+  if t < FR_OLD { return at; }
+  v := at;
+  ps: [FR_PIECES] FrPiece;
+  n := fr_pieces(ps[..]);
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); pale := ink(p, INK_PALE);
+  quiet := 1 - 0.45 * fr_in(t, FR_NEW, 2.0);   // the rubble stays, quieter, under the new world
+  for i: 0..<n {
+    pc := ps[i];
+    // the building goes up, bottom first
+    yn := pc.c.y / FR_HEIGHT[pc.b];
+    up := fr_in(t, FR_OLD + 0.35 * f32(pc.b) + 1.1 * yn, 0.35);
+    if up <= 0 { continue; }
+    w := fr_piece_at(pc, i, t);
+    standing := !w.free;
+    if pc.dome && standing { continue; }   // the dome is drawn whole while it stands (below)
+    if standing && up < 1 { w.c = fv(w.c.x, w.c.y - (1 - up) * 0.4, w.c.z); }
+    light := up * (ifx standing then 0.85f32 else (ifx w.landed >= 0 then 0.55f32 else 0.8f32)) * quiet;
+    v = fr_box(out, v, c, pc, w, ifx standing then white else pale, dim, light);
+    // dust where it strikes: a ring on the floor and a puff that drifts up and out
+    if w.landed >= 0 && w.landed < 1.4 && i % 2 == 0 {
+      d := w.landed / 1.4;
+      v = loop3(out, v, c, w.land.x, 0.02, w.land.z, 0.15 + 0.9 * d, dim, 0.5 * (1 - d) * quiet);
+      for j: 0..<5 {
+        a := FR_TAU * (f32(j) / 5 + hash01(f32(i * 5 + j)));
+        r := 0.1 + 0.7 * d * (0.5 + hash01(f32(i * 3 + j)));
+        q := spot(c, fv(w.land.x + r * cos(a), 0.05 + 0.6 * d * hash01(f32(j * 7 + i)), w.land.z + r * sin(a)));
+        if q.ok && inside(c.clip, q.x, q.y) { v = diamond(out, v, q.x, q.y, (1 + 2.5 * d) * p.d, dim, 0.5 * (1 - d) * quiet); }
+      }
+    }
+  }
+  // the capitol's dome while it stands: a hemisphere of rings and ribs on the drum
+  lantern := fr_piece_at(ps[16], 16, t);
+  up := fr_in(t, FR_OLD + 1.1 * 2.55 / FR_HEIGHT[0], 0.35);
+  if !lantern.free && up > 0 {
+    o := fv_add(fv_add(FR_S, FR_BUILT[0]), fv(0, 2.36, 0));
+    o = fv_add(o, fv(lantern.c.x - ps[16].c.x, 0, lantern.c.z - ps[16].c.z));   // it shudders with the rest
+    for k: 0..<5 {
+      lat := 1.4 * f32(k) / 5;
+      v = loop3(out, v, c, o.x, o.y + 0.55 * sin(lat), o.z, 0.55 * cos(lat), white, 0.7 * up * quiet);
+    }
+    for k: 0..<10 {
+      a := FR_TAU * f32(k) / 10; prev := fv(o.x + 0.55 * cos(a), o.y, o.z + 0.55 * sin(a));
+      for j: 1..<7 {
+        lat := 1.4 * f32(j) / 6;
+        q := fv(o.x + 0.55 * cos(lat) * cos(a), o.y + 0.55 * sin(lat), o.z + 0.55 * cos(lat) * sin(a));
+        v = seg(out, v, c, prev, q, pale, 0.55 * up * quiet); prev = q;
+      }
+    }
+  }
+  return v;
+}
+
+#test "the old buildings stand, fall and settle into rubble on the floor" {
+  ps: [FR_PIECES] FrPiece;
+  n := fr_pieces(ps[..]);
+  #assert n > 70 && n <= FR_PIECES;
+  for i: 0..<n {
+    before := fr_piece_at(ps[i], i, FR_OLD + 1);
+    #assert !before.free && fv_length(fv_sub(before.c, ps[i].c)) < 0.001;
+    after := fr_piece_at(ps[i], i, FR_DECAY + 6);
+    // down and still: on the floor (or the pile), no lower than half its least side, and flat
+    #assert after.free && after.landed > 0 && after.c.y < ps[i].c.y + 0.001 && after.c.y >= lo(ps[i].h.x, lo(ps[i].h.y, ps[i].h.z)) - 0.001;
+    later := fr_piece_at(ps[i], i, FR_DECAY + 8);
+    #assert fv_length(fv_sub(later.c, after.c)) < 0.01;
+  }
+}

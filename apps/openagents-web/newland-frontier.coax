@@ -6,9 +6,11 @@
 //
 //   FR_FRONTIER  "the penultimate frontier"  the projects' trees build up
 //   FR_SPACE     "we'll go to space"         a trail climbs from the open ground into the sky
-//   FR_PLANETS   "Earth or Mars or belt..."  a sun, then each orbit as it is named, over the Grid
+//   FR_TREK...   "Trek or Wars, Earth or Mars or belt or outer planets": two ships duel, then the
+//                solar system as Belt 2200 draws it (newland-frontier-sky.coax)
 //   FR_HUMANS    "care for humans on Earth"  people stand on the open ground
-//   FR_OLD       "the old world's power..."  rigid towers stand behind them, then sag and fall
+//   FR_OLD       "the old world's power..."  a capitol, a tower and an exchange rise, then fall to rubble
+//                (newland-frontier-ruins.coax)
 //   FR_NEW       "a bright new world..."     a bright tree struggles up among them
 //   FR_MIDWIVES  "we are its midwives"       the people walk to it and ring it, hands up
 //
@@ -22,23 +24,30 @@ FR_S :: Fv.{x = 15, y = 0, z = 3};         // the open ground east of the places
 FR_SKY :: Fv.{x = 15, y = 20, z = 3};      // the sun, straight up from the open ground: the orbits' middle
 FR_PEOPLE :: 9;
 FR_TOWERS :: 3;
-FR_KEYS :: 10;
+FR_KEYS :: 14;
 
 // ---- the camera: a smooth path through keys (Catmull-Rom), eye and aim, in grid units
 FrKey :: struct { t: f32; eye: Fv; at: Fv; }
 fr_key :: (i: int) -> FrKey {
+  j := clamp_i(i, 0, FR_KEYS - 1);
+  // the worlds' keys follow the worlds: Earth and Mars where they are at their beats
+  if j == 6 { e := fr_body_sky(BODY_EARTH, FR_EARTH + 0.5); return FrKey.{t = FR_EARTH + 0.5, eye = fv_add(e, fv(1.1, 0.55, 1.25)), at = e}; }
+  if j == 7 { m := fr_body_sky(BODY_MARS, FR_MARS + 0.95); return FrKey.{t = FR_MARS + 0.95, eye = fv_add(m, fv(0.85, 0.45, 1.0)), at = m}; }
+  if j == 8 { ce := fr_body_sky(BODY_CERES, FR_BELT + 0.6); return FrKey.{t = FR_BELT + 0.6, eye = fv_add(ce, fv(0.9, 0.5, 1.3)), at = fv_mix(ce, FR_SKY, 0.25)}; }
   k := [FR_KEYS] FrKey.[
     FrKey.{t = 0,           eye = Fv.{x = 32, y = 17, z = 32}, at = Fv.{x = 0, y = 0, z = 0}},
     FrKey.{t = 14,          eye = Fv.{x = 28, y = 13, z = 31}, at = Fv.{x = 2, y = 0, z = 2}},
     FrKey.{t = FR_FRONTIER, eye = Fv.{x = 20, y = 6.5, z = 22}, at = Fv.{x = -1, y = 1.5, z = 1}},
     FrKey.{t = FR_SPACE + 0.8, eye = Fv.{x = 24, y = 3, z = 15}, at = Fv.{x = 15, y = 9, z = 3}},
-    FrKey.{t = FR_SUN + 1.5, eye = Fv.{x = 25, y = 17, z = 15}, at = Fv.{x = 15, y = 19, z = 3}},
-    FrKey.{t = FR_OUTER + 0.6, eye = Fv.{x = 26, y = 31, z = 18}, at = Fv.{x = 15, y = 20, z = 3}},
-    FrKey.{t = FR_HUMANS + 1.5, eye = Fv.{x = 25, y = 3.2, z = 11}, at = Fv.{x = 14, y = 1.2, z = 2.5}},
-    FrKey.{t = FR_DECAY,    eye = Fv.{x = 27, y = 5, z = 13}, at = Fv.{x = 13, y = 2.6, z = 1}},
+    FrKey.{t = 33.4,        eye = Fv.{x = 20, y = 21.5, z = 12.5}, at = Fv.{x = 15, y = 20.6, z = 3}},
+    FrKey.{t = 35.5,        eye = Fv.{x = 16.2, y = 21.8, z = 9.6}, at = Fv.{x = 15, y = 21, z = 3.4}},
+    FrKey.{}, FrKey.{}, FrKey.{},
+    FrKey.{t = FR_OUTER + 0.9, eye = Fv.{x = 26, y = 30, z = 17}, at = Fv.{x = 15, y = 20, z = 3}},
+    FrKey.{t = FR_HUMANS + 1.7, eye = Fv.{x = 25, y = 3.2, z = 11}, at = Fv.{x = 14, y = 1.2, z = 2.5}},
+    FrKey.{t = FR_DECAY,    eye = Fv.{x = 27.5, y = 5.5, z = 13.5}, at = Fv.{x = 12.5, y = 2.6, z = 0.5}},
     FrKey.{t = FR_MIDWIVES - 0.5, eye = Fv.{x = 24, y = 3.6, z = 10}, at = Fv.{x = 15, y = 2.3, z = 3}},
     FrKey.{t = FR_END,      eye = Fv.{x = 23, y = 5.5, z = 7.5}, at = Fv.{x = 15, y = 2.0, z = 3}}];
-  return k[clamp_i(i, 0, FR_KEYS - 1)];
+  return k[j];
 }
 clamp_i :: (v: int, a: int, b: int) -> int { if v < a { return a; } if v > b { return b; } return v; }
 fr_cr :: (p0: Fv, p1: Fv, p2: Fv, p3: Fv, u: f32) -> Fv {
@@ -126,150 +135,6 @@ fr_orbit :: (out: [] f32, at: int, c: Cam, o: Fv, r: f32, round: f32, n: int, k:
   return v;
 }
 FR_TAU :: 6.2831853;
-// ---- the sky: Belt 2200's space (aethyr/orbit.coax, as belt.coax draws it), over the Grid
-// The real solar system from the engine's J2000 ephemeris, from 1 January 2200 on, FR_DAYS a
-// second: each orbit as it is named, the Belt's rocks on their own Kepler orbits, and ships on
-// Lambert transfers drawn the Belt's way, the coast brightening toward arrival, a tick every
-// 30 days and a crosshair where ship and target meet. A distance r AU from the Sun is drawn
-// FR_AU * r^FR_POW grid units out, so Saturn fits in the sky and Earth is not lost at the Sun.
-FR_DAYS :: 30.0;
-FR_AU :: 2.2; FR_POW :: 0.55;
-FR_ROCKS :: 64;
-FR_PTS :: 56;
-fr_sim :: (t: f32) -> f64 { return ORBIT_2200 + f64(t - FR_SUN) * FR_DAYS * DAY; }
-fr_sky_of :: (r: D3) -> Fv {
-  au := d3_len(r) / AU;
-  if au <= 0.000001 { return FR_SKY; }
-  k := FR_AU * pow(au, FR_POW) / au / AU;
-  return fv(FR_SKY.x + f32(r.x * k), FR_SKY.y + f32(r.z * k), FR_SKY.z - f32(r.y * k));
-}
-// An orbit's ellipse round the Sun, drawn as far round as `round`, dotted for the Belt.
-fr_ellipse :: (out: [] f32, at: int, c: Cam, o: Orbit, round: f32, k: Ink, light: f32) -> int {
-  v := at;
-  cn := cos(o.node); sn := sin(o.node); ci := cos(o.i); si := sin(o.i); cw := cos(o.peri); sw := sin(o.peri);
-  pp := d3(cn * cw - sn * sw * ci, sn * cw + cn * sw * ci, sw * si);
-  qq := d3(-cn * sw - sn * cw * ci, -sn * sw + cn * cw * ci, cw * si);
-  bb := o.a * sqrt(1.0 - o.e * o.e);
-  n := 96; prev := FR_SKY;
-  for i: 0..<n + 1 {
-    f := f32(i) / f32(n);
-    if f > round { break; }
-    ea := TAU_D * f64(f);
-    q := fr_sky_of(d3_add(d3_scale(pp, o.a * (cos(ea) - o.e)), d3_scale(qq, bb * sin(ea))));
-    if i > 0 { v = seg(out, v, c, prev, q, k, light); }
-    prev = q;
-  }
-  return v;
-}
-fr_body_at :: (out: [] f32, at: int, c: Cam, body: int, ts: f64, size: f32, k: Ink, light: f32) -> int {
-  q := spot(c, fr_sky_of(orbit_body_position(body, ts)));
-  if !q.ok || !inside(c.clip, q.x, q.y) { return at; }
-  return ring(out, at, q.x, q.y, hi(size * c.focal / q.z, 2), k, light * vignette(c, q.x, q.y));
-}
-// A rock of the Belt: its orbit from its index, as belt.coax's field_orbit lays them (2.15-3.25 AU).
-fr_rock :: (i: int) -> Orbit {
-  o: Orbit; o.mu = GM_SUN;
-  h := f64(hash01(f32(i) * 1.37 + 0.11)); g := f64(hash01(f32(i) * 2.91 + 0.53));
-  o.a = (2.15 + 1.1 * h) * AU;
-  o.e = 0.2 * g * h;
-  o.i = 0.25 * g * g;
-  o.node = TAU_D * f64(hash01(f32(i) * 4.13 + 0.7));
-  o.peri = TAU_D * f64(hash01(f32(i) * 5.71 + 0.2));
-  o.m0 = TAU_D * f64(hash01(f32(i) * 6.29 + 0.9));
-  return o;
-}
-// A ship's transfer from one body to another, leaving at tl (sim s), tof long: drawn in as it is
-// planned (shown 0 to 1), the ship riding it on the sim clock.
-fr_transfer :: (out: [] f32, at: int, c: Cam, p: Pen, from: int, to: int, tl: f64, tof: f64, ts: f64, shown: f32, light: f32) -> int {
-  if shown <= 0 || light <= 0.003 { return at; }
-  tr := orbit_transfer(orbit_body_state(from, tl), orbit_body(to), tl, tof, GM_SUN);
-  if !tr.ok { return at; }
-  v := at;
-  arc := orbit_from_state(tr.depart, GM_SUN, tr.t0);
-  coast := ink(p, INK_BRIGHT); coast.core = 0.9 * p.d; coast.glow = 2.2 * p.d * 2;
-  prev := fr_sky_of(tr.depart.r);
-  for i: 1..<FR_PTS {
-    f := f32(i) / f32(FR_PTS - 1);
-    if f > shown { break; }
-    q := fr_sky_of(orbit_position(arc, tr.t0 + tr.tof * f64(f)));
-    v = seg(out, v, c, prev, q, coast, light * (0.35 + 0.65 * f));
-    prev = q;
-  }
-  // a tick every 30 days, across the line
-  tick := ink(p, INK_PALE);
-  tt := 30.0 * DAY;
-  while tt < tr.tof * f64(shown) - 5.0 * DAY {
-    a := spot(c, fr_sky_of(orbit_position(arc, tr.t0 + tt))); b := spot(c, fr_sky_of(orbit_position(arc, tr.t0 + tt + DAY)));
-    if a.ok && b.ok {
-      dx := b.x - a.x; dy := b.y - a.y; ln := sqrt(dx * dx + dy * dy);
-      if ln > 0.0001 { nx := -dy / ln * 4 * p.d; ny := dx / ln * 4 * p.d; v = rule(out, v, a.x - nx, a.y - ny, a.x + nx, a.y + ny, tick, 0.7 * light); }
-    }
-    tt += 30.0 * DAY;
-  }
-  // the crosshair where ship and target meet
-  if shown >= 1 {
-    x := spot(c, fr_sky_of(tr.arrive.r));
-    if x.ok {
-      k := 1.0 * p.d; hair := ink(p, INK_BRIGHT);
-      v = rule(out, v, x.x - 7 * k, x.y, x.x - 2.5 * k, x.y, hair, light); v = rule(out, v, x.x + 2.5 * k, x.y, x.x + 7 * k, x.y, hair, light);
-      v = rule(out, v, x.x, x.y - 7 * k, x.x, x.y - 2.5 * k, hair, light); v = rule(out, v, x.x, x.y + 2.5 * k, x.x, x.y + 7 * k, hair, light);
-      v = ring(out, v, x.x, x.y, 10 * k, hair, 0.8 * light);
-    }
-  }
-  // the ship, on the sim clock, with its plume while it burns at either end
-  f := clamp(f32((ts - tr.t0) / tr.tof), 0, 1);
-  if ts >= tr.t0 && f < 1 {
-    sq := spot(c, fr_sky_of(orbit_position(arc, tr.t0 + tr.tof * f64(f))));
-    if sq.ok && inside(c.clip, sq.x, sq.y) {
-      v = diamond(out, v, sq.x, sq.y, 2.6 * p.d, ink(p, INK_BLUE), light);
-      if f < 0.06 { v = ring(out, v, sq.x, sq.y, 6 * p.d, ink(p, INK_BLUE), light * (1 - f / 0.06)); }
-    }
-  }
-  return v;
-}
-// "Trek or Wars, Earth or Mars or belt or outer planets": the Sun, then each orbit as it is named,
-// with a ship leaving for it.
-fr_planets :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
-  if t < FR_SUN || t > FR_HUMANS + 3 { return at; }
-  v := at;
-  fade := fr_out(t, FR_HUMANS, 2.2);
-  ts := fr_sim(t);
-  pale := ink(p, INK_PALE); dim := ink(p, INK_DIM); bright := ink(p, INK_BRIGHT);
-  sun := fr_in(t, FR_SUN, 1.0) * fade;
-  q := spot(c, FR_SKY);
-  if q.ok {
-    v = ring(out, v, q.x, q.y, hi(0.7 * c.focal / q.z, 3), bright, sun);
-    v = diamond(out, v, q.x, q.y, hi(0.4 * c.focal / q.z, 2), bright, sun * (0.7 + 0.3 * sin(t * 4)));
-  }
-  // the inner worlds come with the Sun, faint; each named one brightens as it's said
-  bodies := [5] int.[BODY_EARTH, BODY_MARS, BODY_CERES, BODY_JUPITER, BODY_SATURN];
-  named := [5] f32.[FR_EARTH, FR_MARS, FR_BELT, FR_OUTER, FR_OUTER + 0.45];
-  sizes := [5] f32.[0.26, 0.22, 0.16, 0.5, 0.42];
-  for i: 0..<5 {
-    g := fr_in(t, named[i] - (ifx i < 2 then 2.6f32 else 0.0f32), 1.2);   // Earth and Mars are drawn in with the Sun
-    if g <= 0 { continue; }
-    lit_up := fr_in(t, named[i], 0.5);
-    k := ifx i == 2 then dim else pale;
-    v = fr_ellipse(out, v, c, orbit_body(bodies[i]), g, k, (0.3 + 0.45 * lit_up) * fade);
-    v = fr_body_at(out, v, c, bodies[i], ts, sizes[i], bright, (0.4 + 0.6 * lit_up) * g * fade);
-  }
-  // the Belt's rocks, each on its own orbit
-  belt := fr_in(t, FR_BELT, 1.2) * fade;
-  if belt > 0 {
-    for i: 0..<FR_ROCKS {
-      if f32(i) / f32(FR_ROCKS) > belt { break; }
-      bq := spot(c, fr_sky_of(orbit_position(fr_rock(i), ts)));
-      if bq.ok && inside(c.clip, bq.x, bq.y) { v = diamond(out, v, bq.x, bq.y, 1.2 * p.d, pale, 0.65 * belt * vignette(c, bq.x, bq.y)); }
-    }
-  }
-  // ships: Earth to Mars, Mars to Ceres, Ceres to Jupiter, each leaving as its world is named
-  t_em := fr_sim(FR_MARS); t_mc := fr_sim(FR_BELT); t_cj := fr_sim(FR_OUTER);
-  v = fr_transfer(out, v, c, p, BODY_EARTH, BODY_MARS, t_em, 230.0 * DAY, ts, fr_in(t, FR_MARS, 1.0), fade);
-  v = fr_transfer(out, v, c, p, BODY_MARS, BODY_CERES, t_mc, 330.0 * DAY, ts, fr_in(t, FR_BELT, 1.0), fade);
-  v = fr_transfer(out, v, c, p, BODY_CERES, BODY_JUPITER, t_cj, 620.0 * DAY, ts, fr_in(t, FR_OUTER, 1.2), fade);
-  return v;
-}
-
 // The people on the open ground: where each stands at first, and where it stands round the new tree.
 fr_crowd :: (i: int) -> Fv {
   a := cast(f32) i * 2.399 + 0.6;   // a loose sunflower, open toward the camera (+x +z)
@@ -309,66 +174,6 @@ fr_people :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
     top: [1] Spot;
     light := seen * fr_in(t, FR_HUMANS + 0.12 * cast(f32) i, 0.8);
     v = figure(out, v, c, k, pose, w.x, w.z, yaw, pale, light, p, top[0..<0]);
-  }
-  return v;
-}
-
-// The old world's power structures: rigid towers that stand, then sag, lean and fall.
-fr_tower_at :: (i: int) -> Fv {
-  at := [FR_TOWERS] Fv.[Fv.{x = -3.6, y = 0, z = -2.4}, Fv.{x = -1.2, y = 0, z = -4.6}, Fv.{x = -5.4, y = 0, z = 0.6}];
-  return fv_add(FR_S, at[i]);
-}
-fr_towers :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
-  if t < FR_OLD { return at; }
-  v := at;
-  dim := ink(p, INK_DIM); white := ink(p, INK_WHITE);
-  heights := [FR_TOWERS] f32.[5.2, 6.4, 4.2];
-  for i: 0..<FR_TOWERS {
-    b := fr_tower_at(i);
-    up := fr_in(t, FR_OLD + 0.35 * cast(f32) i, 1.1);
-    rot := fr_in(t, FR_DECAY + 0.4 * cast(f32) i, 2.4);   // 0 standing, 1 fallen
-    gone := fr_out(t, FR_NEW + 1.0, 2.5);
-    light := up * (1 - 0.7 * rot) * gone;
-    if light <= 0.003 { continue; }
-    h := heights[i] * up;
-    floors := 9;
-    half: f32 = 0.75;
-    lean := ifx i == 1 then -1.0f32 else 1.0f32;
-    // a floor j's corners: sinking, leaning and spreading as it rots
-    for j: 0..<floors + 1 {
-      f := cast(f32) j / cast(f32) floors;
-      y := h * f * (1 - 0.82 * rot * (0.4 + 0.6 * f));
-      dx := lean * rot * f * f * 2.2; dz := rot * f * 0.9 * hash01(cast(f32) (i * 13 + j)) - 0.3 * rot * f;
-      wob := rot * 0.25 * (hash01(cast(f32) (i * 7 + j * 3)) - 0.5);
-      hx := half * (1 - 0.25 * f) + wob; hz := half * (1 - 0.25 * f) - wob;
-      cx := b.x + dx; cz := b.z + dz;
-      corners := [4] Fv.[fv(cx - hx, y, cz - hz), fv(cx + hx, y, cz - hz), fv(cx + hx, y, cz + hz), fv(cx - hx, y, cz + hz)];
-      for q: 0..<4 {
-        // pieces drop out of the rotting floors
-        if rot > 0.2 && hash01(cast(f32) (i * 31 + j * 5 + q)) < rot * 0.55 { continue; }
-        v = seg(out, v, c, corners[q], corners[(q + 1) % 4], ifx j == floors then white else dim, light * (ifx j == floors then 0.8f32 else 0.55f32));
-      }
-      if j < floors {
-        f1 := cast(f32) (j + 1) / cast(f32) floors;
-        y1 := h * f1 * (1 - 0.82 * rot * (0.4 + 0.6 * f1));
-        dx1 := lean * rot * f1 * f1 * 2.2; dz1 := rot * f1 * 0.9 * hash01(cast(f32) (i * 13 + j + 1)) - 0.3 * rot * f1;
-        hx1 := half * (1 - 0.25 * f1); hz1 := hx1;
-        cx1 := b.x + dx1; cz1 := b.z + dz1;
-        uppers := [4] Fv.[fv(cx1 - hx1, y1, cz1 - hz1), fv(cx1 + hx1, y1, cz1 - hz1), fv(cx1 + hx1, y1, cz1 + hz1), fv(cx1 - hx1, y1, cz1 + hz1)];
-        for q: 0..<4 {
-          if rot > 0.35 && hash01(cast(f32) (i * 17 + j * 7 + q)) < rot * 0.5 { continue; }
-          v = seg(out, v, c, corners[q], uppers[q], white, light * 0.7);
-        }
-      }
-    }
-    // debris on the floor as they fall
-    if rot > 0.1 {
-      for d: 0..<10 {
-        a := FR_TAU * hash01(cast(f32) (i * 41 + d)); r := 0.4 + 2.2 * hash01(cast(f32) (i * 43 + d)) * rot;
-        e := fv(b.x + r * cos(a), 0.02, b.z + r * sin(a));
-        v = seg(out, v, c, e, fv_add(e, fv(0.35 * cos(a * 3), 0, 0.35 * sin(a * 3))), dim, 0.5 * rot * gone);
-      }
-    }
   }
   return v;
 }

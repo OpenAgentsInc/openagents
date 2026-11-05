@@ -1,0 +1,479 @@
+// Penultimate Frontier's sky (newland-frontier.coax): "we'll go to space. We'll debate Trek or
+// Wars, Earth or Mars or belt or outer planets." Line art over the Grid, round FR_SKY.
+//
+// - Trek or Wars: two ships fly in over the Grid and face off, a saucer-and-nacelles cruiser and
+//   a wedge-shaped destroyer. On "Trek" the cruiser holds a beam on the wedge's shield; on
+//   "Wars" the wedge answers with bolts. Then the cruiser stretches into warp and the wedge
+//   jumps through streaking stars, and the sky is the solar system's.
+// - Earth or Mars or belt or outer planets: Belt 2200's space (aethyr/orbit.coax, as belt.coax
+//   draws it): the real solar system from 1 January 2200 at FR_DAYS a second, each world a
+//   wireframe globe on its J2000 orbit (its far side faint), Earth with the Moon, Jupiter
+//   banded, Saturn ringed, Ceres with a spinning ring station, the Belt's rocks tumbling on their
+//   own Kepler orbits, and torch ships on Lambert transfers, their drives' plumes long and blue,
+//   the coast drawn the Belt's way: brightening toward arrival, a tick every 30 days and a
+//   crosshair where ship and target meet. The camera goes to Earth, to Mars, through the Belt
+//   and out over it all (fr_key).
+
+FR_DAYS :: 6.0;
+FR_AU :: 2.2; FR_POW :: 0.55;
+FR_ROCKS :: 110;
+FR_PTS :: 56;
+FR_TREK :: 34.4; FR_WARS :: 35.2; FR_JUMP :: 36.0;
+FR_SHIP_IN :: 33.2;
+
+fr_sim :: (t: f32) -> f64 { return ORBIT_2200 + f64(t - FR_SUN) * FR_DAYS * DAY; }
+fr_sky_of :: (r: D3) -> Fv {
+  au := d3_len(r) / AU;
+  if au <= 0.000001 { return FR_SKY; }
+  k := FR_AU * pow(au, FR_POW) / au / AU;
+  return fv(FR_SKY.x + f32(r.x * k), FR_SKY.y + f32(r.z * k), FR_SKY.z - f32(r.y * k));
+}
+fr_body_sky :: (body: int, t: f32) -> Fv { return fr_sky_of(orbit_body_position(body, fr_sim(t))); }
+
+// ---- small geometry
+
+// v about a unit axis by angle a (Rodrigues).
+fr_rot :: (v: Fv, axis: Fv, a: f32) -> Fv {
+  c := cos(a); s := sin(a);
+  return fv_add(fv_add(fv_times(v, c), fv_times(cross3(axis, v), s)), fv_times(axis, dot3(axis, v) * (1 - c)));
+}
+// A ring round centre o in the plane of unit vectors u and w.
+fr_ring3 :: (out: [] f32, at: int, c: Cam, o: Fv, u: Fv, w: Fv, r: f32, n: int, k: Ink, light: f32) -> int {
+  v := at; prev := fv_add(o, fv_times(u, r));
+  for i: 1..<n + 1 {
+    a := FR_TAU * f32(i) / f32(n);
+    q := fv_add(o, fv_add(fv_times(u, r * cos(a)), fv_times(w, r * sin(a))));
+    v = seg(out, v, c, prev, q, k, light); prev = q;
+  }
+  return v;
+}
+// How much of a globe's line at p shows: its near side whole, its far side faint.
+fr_vis :: (p: Fv, o: Fv, eye: Fv) -> f32 { n := fv_sub(p, o); return ifx dot3(n, fv_sub(eye, p)) > 0 then 1.0f32 else 0.18f32; }
+// A wireframe globe: bands of latitude and meridians turning with spin, the far side faint, and
+// its outline. Its axis is tilted by tilt about x.
+fr_globe :: (out: [] f32, at: int, c: Cam, o: Fv, r: f32, spin: f32, bands: int, meridians: int, tilt: f32, k: Ink, light: f32) -> int {
+  if light <= 0.003 { return at; }
+  v := at;
+  ax := fr_rot(fv(0, 1, 0), fv(1, 0, 0), tilt);
+  ux := fr_rot(fv(1, 0, 0), fv(1, 0, 0), tilt); uz := cross3(ux, ax);
+  // latitude bands
+  for b: 1..<bands {
+    lat := -1.5707963 + 3.1415926 * f32(b) / f32(bands);
+    y := r * sin(lat); rr := r * cos(lat);
+    n := 32; prev := fv_add(o, fv_add(fv_times(ax, y), fv_times(ux, rr)));
+    for i: 1..<n + 1 {
+      a := FR_TAU * f32(i) / f32(n);
+      q := fv_add(o, fv_add(fv_times(ax, y), fv_add(fv_times(ux, rr * cos(a)), fv_times(uz, rr * sin(a)))));
+      m := fv_mix(prev, q, 0.5);
+      v = seg(out, v, c, prev, q, k, light * 0.6 * fr_vis(m, o, c.eye)); prev = q;
+    }
+  }
+  // meridians
+  for j: 0..<meridians {
+    lon := spin + FR_TAU * f32(j) / f32(meridians);
+    dir := fv_add(fv_times(ux, cos(lon)), fv_times(uz, sin(lon)));
+    n := 20; prev := fv_add(o, fv_times(ax, -r));
+    for i: 1..<n + 1 {
+      lat := -1.5707963 + 3.1415926 * f32(i) / f32(n);
+      q := fv_add(o, fv_add(fv_times(ax, r * sin(lat)), fv_times(dir, r * cos(lat))));
+      m := fv_mix(prev, q, 0.5);
+      v = seg(out, v, c, prev, q, k, light * 0.5 * fr_vis(m, o, c.eye)); prev = q;
+    }
+  }
+  // the outline, as the eye sees it
+  e := unit3(fv_sub(c.eye, o));
+  side := unit3(cross3(e, fv(0, 1, 0))); up := cross3(side, e);
+  return fr_ring3(out, v, c, o, side, up, r, 40, k, light);
+}
+// A line of a ship: a and b in its own frame (forward +x, up +y), turned by yaw, scaled, at o.
+fr_ship_pt :: (o: Fv, yaw: f32, s: f32, a: Fv) -> Fv {
+  cy := cos(yaw); sy := sin(yaw);
+  return fv(o.x + s * (a.x * cy - a.z * sy), o.y + s * a.y, o.z + s * (a.x * sy + a.z * cy));
+}
+fr_sl :: (out: [] f32, at: int, c: Cam, o: Fv, yaw: f32, s: f32, a: Fv, b: Fv, k: Ink, light: f32) -> int {
+  return seg(out, at, c, fr_ship_pt(o, yaw, s, a), fr_ship_pt(o, yaw, s, b), k, light);
+}
+// A ring in the ship's frame round local centre m, across its x axis (a hull's section) or level.
+fr_sring :: (out: [] f32, at: int, c: Cam, o: Fv, yaw: f32, s: f32, m: Fv, r: f32, level: bool, n: int, k: Ink, light: f32) -> int {
+  v := at; prev: Fv;
+  for i: 0..<n + 1 {
+    a := FR_TAU * f32(i) / f32(n);
+    q := ifx level then fv(m.x + r * cos(a), m.y, m.z + r * sin(a)) else fv(m.x, m.y + r * cos(a), m.z + r * sin(a));
+    if i > 0 { v = fr_sl(out, v, c, o, yaw, s, prev, q, k, light); }
+    prev = q;
+  }
+  return v;
+}
+// A hull section's cylinder along x from x0 to x1, its rings and its lines.
+fr_cyl :: (out: [] f32, at: int, c: Cam, o: Fv, yaw: f32, s: f32, x0: f32, x1: f32, y: f32, z: f32, r0: f32, r1: f32, k: Ink, light: f32) -> int {
+  v := fr_sring(out, at, c, o, yaw, s, fv(x0, y, z), r0, false, 16, k, light);
+  v = fr_sring(out, v, c, o, yaw, s, fv((x0 + x1) * 0.5, y, z), (r0 + r1) * 0.5, false, 16, k, light * 0.6);
+  v = fr_sring(out, v, c, o, yaw, s, fv(x1, y, z), r1, false, 16, k, light);
+  for i: 0..<6 {
+    a := FR_TAU * f32(i) / 6;
+    v = fr_sl(out, v, c, o, yaw, s, fv(x0, y + r0 * cos(a), z + r0 * sin(a)), fv(x1, y + r1 * cos(a), z + r1 * sin(a)), k, light * 0.7);
+  }
+  return v;
+}
+
+// ---- Trek: a saucer, its neck, the engineering hull and two nacelles on pylons (forward +x)
+fr_cruiser :: (out: [] f32, at: int, c: Cam, p: Pen, o: Fv, yaw: f32, s: f32, light: f32) -> int {
+  if light <= 0.003 { return at; }
+  white := ink(p, INK_WHITE); pale := ink(p, INK_PALE); blue := ink(p, INK_BLUE);
+  v := at;
+  // the saucer: its rim, its upper and lower faces, the bridge, and ribs out to the rim
+  v = fr_sring(out, v, c, o, yaw, s, fv(0.55, 0.2, 0), 0.62, true, 40, white, light);
+  v = fr_sring(out, v, c, o, yaw, s, fv(0.55, 0.27, 0), 0.42, true, 32, pale, light * 0.7);
+  v = fr_sring(out, v, c, o, yaw, s, fv(0.55, 0.13, 0), 0.4, true, 32, pale, light * 0.6);
+  v = fr_sring(out, v, c, o, yaw, s, fv(0.55, 0.33, 0), 0.12, true, 16, white, light);
+  for i: 0..<12 {
+    a := FR_TAU * f32(i) / 12;
+    v = fr_sl(out, v, c, o, yaw, s, fv(0.55 + 0.12 * cos(a), 0.33, 0.12 * sin(a)), fv(0.55 + 0.62 * cos(a), 0.2, 0.62 * sin(a)), pale, light * 0.45);
+    v = fr_sl(out, v, c, o, yaw, s, fv(0.55 + 0.4 * cos(a), 0.13, 0.4 * sin(a)), fv(0.55 + 0.62 * cos(a), 0.2, 0.62 * sin(a)), pale, light * 0.35);
+  }
+  // the neck
+  for zz: 0..<2 {
+    z := ifx zz == 0 then -0.05f32 else 0.05f32;
+    v = fr_sl(out, v, c, o, yaw, s, fv(0.3, 0.13, z), fv(-0.02, -0.12, z), white, light * 0.8);
+    v = fr_sl(out, v, c, o, yaw, s, fv(0.12, 0.13, z), fv(-0.25, -0.12, z), white, light * 0.8);
+  }
+  // the engineering hull and its deflector dish
+  v = fr_cyl(out, v, c, o, yaw, s, 0.06, -0.95, -0.2, 0, 0.13, 0.09, white, light);
+  v = fr_sring(out, v, c, o, yaw, s, fv(0.08, -0.2, 0), 0.07, false, 12, blue, light);
+  // pylons and nacelles, their bussard caps lit
+  for side: 0..<2 {
+    z := ifx side == 0 then -0.46f32 else 0.46f32;
+    v = fr_sl(out, v, c, o, yaw, s, fv(-0.5, -0.12, z * 0.18), fv(-0.62, 0.3, z), white, light * 0.8);
+    v = fr_sl(out, v, c, o, yaw, s, fv(-0.72, -0.12, z * 0.18), fv(-0.86, 0.3, z), white, light * 0.8);
+    v = fr_cyl(out, v, c, o, yaw, s, -0.3, -1.5, 0.3, z, 0.075, 0.06, white, light);
+    v = fr_sring(out, v, c, o, yaw, s, fv(-0.29, 0.3, z), 0.06, false, 12, blue, light);
+  }
+  return v;
+}
+// ---- Wars: a wedge with its keel, ribs over its top, the bridge tower and three engines (forward +x)
+fr_wedge :: (out: [] f32, at: int, c: Cam, p: Pen, o: Fv, yaw: f32, s: f32, light: f32) -> int {
+  if light <= 0.003 { return at; }
+  white := ink(p, INK_WHITE); pale := ink(p, INK_PALE); blue := ink(p, INK_BLUE);
+  v := at;
+  tip := fv(1.45, 0, 0); l := fv(-0.9, 0, -0.85); r := fv(-0.9, 0, 0.85);
+  ridge0 := fv(0.95, 0.1, 0); ridge1 := fv(-0.9, 0.36, 0); keel := fv(-0.9, -0.24, 0);
+  v = fr_sl(out, v, c, o, yaw, s, tip, l, white, light); v = fr_sl(out, v, c, o, yaw, s, tip, r, white, light);
+  v = fr_sl(out, v, c, o, yaw, s, l, r, white, light * 0.8);
+  v = fr_sl(out, v, c, o, yaw, s, tip, ridge0, white, light); v = fr_sl(out, v, c, o, yaw, s, ridge0, ridge1, white, light);
+  v = fr_sl(out, v, c, o, yaw, s, ridge1, l, white, light * 0.8); v = fr_sl(out, v, c, o, yaw, s, ridge1, r, white, light * 0.8);
+  v = fr_sl(out, v, c, o, yaw, s, tip, keel, pale, light * 0.6);
+  v = fr_sl(out, v, c, o, yaw, s, keel, l, pale, light * 0.6); v = fr_sl(out, v, c, o, yaw, s, keel, r, pale, light * 0.6);
+  // ribs across the top faces, and a trench down each side
+  for i: 1..<7 {
+    f := f32(i) / 7;
+    x := 1.45 - 2.35 * f;
+    half := 0.85 * f; top := 0.1 + 0.26 * f;
+    v = fr_sl(out, v, c, o, yaw, s, fv(x, top, 0), fv(x, 0, -half), pale, light * 0.45);
+    v = fr_sl(out, v, c, o, yaw, s, fv(x, top, 0), fv(x, 0, half), pale, light * 0.45);
+  }
+  for side: 0..<2 {
+    z := ifx side == 0 then -1.0f32 else 1.0f32;
+    v = fr_sl(out, v, c, o, yaw, s, fv(1.1, 0.03, 0.12 * z), fv(-0.85, 0.12, 0.65 * z), pale, light * 0.5);
+  }
+  // the bridge tower and its bar with two domes
+  for i: 0..<4 {
+    a := fv(-0.62, 0.36, 0); b := fv(-0.85, 0.36, 0);
+    zz := ifx i < 2 then -0.2f32 else 0.2f32; yy := ifx i % 2 == 0 then 0.36f32 else 0.6f32;
+    v = fr_sl(out, v, c, o, yaw, s, fv(a.x, yy, zz), fv(b.x, yy, zz), white, light * 0.8);
+    v = fr_sl(out, v, c, o, yaw, s, fv(-0.62, 0.36, zz), fv(-0.62, 0.6, zz), white, light * 0.7);
+  }
+  v = fr_sl(out, v, c, o, yaw, s, fv(-0.66, 0.66, -0.42), fv(-0.66, 0.66, 0.42), white, light);
+  v = fr_sl(out, v, c, o, yaw, s, fv(-0.8, 0.66, -0.42), fv(-0.8, 0.66, 0.42), white, light);
+  v = fr_sl(out, v, c, o, yaw, s, fv(-0.66, 0.66, -0.42), fv(-0.8, 0.66, -0.42), white, light);
+  v = fr_sl(out, v, c, o, yaw, s, fv(-0.66, 0.66, 0.42), fv(-0.8, 0.66, 0.42), white, light);
+  v = fr_sring(out, v, c, o, yaw, s, fv(-0.73, 0.72, -0.32), 0.06, true, 12, pale, light);
+  v = fr_sring(out, v, c, o, yaw, s, fv(-0.73, 0.72, 0.32), 0.06, true, 12, pale, light);
+  for i: 0..<3 {
+    v = fr_sring(out, v, c, o, yaw, s, fv(-0.92, 0.08, -0.35 + 0.35 * f32(i)), ifx i == 1 then 0.11f32 else 0.08f32, false, 14, blue, light);
+  }
+  return v;
+}
+
+// Where each ship is: flying in, holding, then gone into its jump. The cruiser comes from the
+// west, the wedge from the east, over the Sun.
+FrShip :: struct { o: Fv; yaw: f32; light: f32; stretch: f32; }
+fr_cruiser_at :: (t: f32) -> FrShip {
+  in := fr_in(t, FR_SHIP_IN, 1.6);
+  hold := fv_add(FR_SKY, fv(-2.3, 1.3, 1.1));
+  o := fv_mix(fv_add(hold, fv(-9, 1.5, 3)), hold, in);
+  o = fv_add(o, fv(0, 0.05 * sin(t * 1.7), 0));
+  jump := clamp((t - FR_JUMP) / 0.5, 0, 1);
+  o = fv_add(o, fv(-30 * jump * jump, 0, 0));   // warp: away the way it came, stretched
+  return FrShip.{o = o, yaw = 0.28, light = ifx jump >= 1 then 0.0f32 else in, stretch = jump};
+}
+fr_wedge_at :: (t: f32) -> FrShip {
+  in := fr_in(t, FR_SHIP_IN + 0.3, 1.6);
+  hold := fv_add(FR_SKY, fv(2.6, 0.8, -0.7));
+  o := fv_mix(fv_add(hold, fv(9, 1.0, -3)), hold, in);
+  o = fv_add(o, fv(0, 0.04 * sin(t * 1.3 + 1), 0));
+  jump := clamp((t - FR_JUMP - 0.15) / 0.45, 0, 1);
+  o = fv_add(o, fv(26 * jump * jump, 0.5 * jump, 0));
+  return FrShip.{o = o, yaw = 3.1415926 + 0.28, light = ifx jump >= 1 then 0.0f32 else in, stretch = jump};
+}
+FR_SHIP_SCALE :: 0.9;
+fr_duel :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
+  if t < FR_SHIP_IN || t > FR_JUMP + 1 { return at; }
+  v := at;
+  a := fr_cruiser_at(t); b := fr_wedge_at(t);
+  blue := ink(p, INK_BLUE); bright := ink(p, INK_BRIGHT); pale := ink(p, INK_PALE);
+  // Trek: the cruiser's beam, held on the wedge's shield, which flares where it lands
+  if t >= FR_TREK && t < FR_WARS - 0.05 {
+    from := fr_ship_pt(a.o, a.yaw, FR_SHIP_SCALE, fv(0.5, 0.1, 0));
+    to := fr_ship_pt(b.o, b.yaw, FR_SHIP_SCALE, fv(0.3, 0.15, 0.25));
+    hit := fv_add(to, fv_times(unit3(fv_sub(from, to)), 0.5));
+    beam := bright; beam.core = 1.6 * p.d; beam.glow = 7 * p.d;
+    on := fr_in(t, FR_TREK, 0.12) * (0.8 + 0.2 * sin(t * 47));
+    v = seg(out, v, c, from, hit, beam, on);
+    e := unit3(fv_sub(from, to)); side := unit3(cross3(e, fv(0, 1, 0))); up := cross3(side, e);
+    v = fr_ring3(out, v, c, hit, side, up, 0.35 + 0.05 * sin(t * 30), 24, blue, 0.8 * on);
+    v = fr_ring3(out, v, c, hit, side, up, 0.65, 32, blue, 0.35 * on);
+  }
+  // Wars: the wedge answers with bolts, short and fast, flaring on the cruiser's hull
+  if t >= FR_WARS && t < FR_JUMP {
+    for i: 0..<10 {
+      t0 := FR_WARS + 0.07 * f32(i);
+      f := (t - t0) / 0.32;
+      if f < 0 || f > 1.15 { continue; }
+      gun := fr_ship_pt(b.o, b.yaw, FR_SHIP_SCALE, fv(0.2 - 0.12 * f32(i % 3), 0.1, -0.4 + 0.4 * f32(i % 3)));
+      aim := fr_ship_pt(a.o, a.yaw, FR_SHIP_SCALE, fv(-0.3 + 0.3 * hash01(f32(i) * 3.3), 0.1, 0.2 * (hash01(f32(i) * 1.9) - 0.5)));
+      if f <= 1 {
+        head := fv_mix(gun, aim, f); tail := fv_mix(gun, aim, hi(f - 0.12, 0));
+        bolt := bright; bolt.core = 1.5 * p.d; bolt.glow = 6 * p.d;
+        v = seg(out, v, c, tail, head, bolt, 1);
+      } else {
+        q := spot(c, aim);
+        if q.ok { v = ring(out, v, q.x, q.y, (4 + 40 * (f - 1)) * p.d, bright, 1 - (f - 1) / 0.15); }
+      }
+    }
+  }
+  // the ships, and their jumps: the cruiser streaks into warp, the wedge through streaking stars
+  v = fr_cruiser(out, v, c, p, a.o, a.yaw, FR_SHIP_SCALE, a.light * (1 - 0.6 * a.stretch));
+  v = fr_wedge(out, v, c, p, b.o, b.yaw, FR_SHIP_SCALE, b.light * (1 - 0.6 * b.stretch));
+  if a.stretch > 0 && a.stretch < 1 {
+    for i: 0..<5 {
+      y := -0.2 + 0.12 * f32(i);
+      v = seg(out, v, c, fv_add(a.o, fv(0, y, 0)), fv_add(a.o, fv(14 * a.stretch, y, 0.3 * f32(i - 2))), blue, 0.8 * (1 - a.stretch));
+    }
+    q := spot(c, a.o);
+    if q.ok && a.stretch < 0.3 { v = ring(out, v, q.x, q.y, 30 * p.d * a.stretch / 0.3, bright, 1 - a.stretch / 0.3); }
+  }
+  if b.stretch > 0 && b.stretch < 1 {
+    for i: 0..<18 {
+      ang := FR_TAU * f32(i) / 18;
+      rr := 0.6 + 1.2 * hash01(f32(i) * 2.7);
+      start := fv_add(b.o, fv(-2, rr * cos(ang), rr * sin(ang)));
+      v = seg(out, v, c, start, fv_add(start, fv(-1.5 - 9 * b.stretch, 0, 0)), pale, 0.7 * (1 - b.stretch));
+    }
+  }
+  return v;
+}
+
+// ---- the solar system
+
+// An orbit's ellipse round the Sun, drawn as far round as `round`.
+fr_ellipse :: (out: [] f32, at: int, c: Cam, o: Orbit, round: f32, k: Ink, light: f32) -> int {
+  v := at;
+  cn := cos(o.node); sn := sin(o.node); ci := cos(o.i); si := sin(o.i); cw := cos(o.peri); sw := sin(o.peri);
+  pp := d3(cn * cw - sn * sw * ci, sn * cw + cn * sw * ci, sw * si);
+  qq := d3(-cn * sw - sn * cw * ci, -sn * sw + cn * cw * ci, cw * si);
+  bb := o.a * sqrt(1.0 - o.e * o.e);
+  n := 120; prev := FR_SKY;
+  for i: 0..<n + 1 {
+    f := f32(i) / f32(n);
+    if f > round { break; }
+    ea := TAU_D * f64(f);
+    q := fr_sky_of(d3_add(d3_scale(pp, o.a * (cos(ea) - o.e)), d3_scale(qq, bb * sin(ea))));
+    if i > 0 { v = seg(out, v, c, prev, q, k, light); }
+    prev = q;
+  }
+  return v;
+}
+// A rock of the Belt: its orbit from its index, as belt.coax's field_orbit lays them (2.15-3.25 AU).
+fr_rock :: (i: int) -> Orbit {
+  o: Orbit; o.mu = GM_SUN;
+  h := f64(hash01(f32(i) * 1.37 + 0.11)); g := f64(hash01(f32(i) * 2.91 + 0.53));
+  o.a = (2.15 + 1.1 * h) * AU;
+  o.e = 0.2 * g * h;
+  o.i = 0.25 * g * g;
+  o.node = TAU_D * f64(hash01(f32(i) * 4.13 + 0.7));
+  o.peri = TAU_D * f64(hash01(f32(i) * 5.71 + 0.2));
+  o.m0 = TAU_D * f64(hash01(f32(i) * 6.29 + 0.9));
+  return o;
+}
+// A rock: an octahedron with its corners pushed in and out, tumbling.
+fr_rock_draw :: (out: [] f32, at: int, c: Cam, o: Fv, i: int, size: f32, t: f32, k: Ink, light: f32) -> int {
+  axis := unit3(fv(hash01(f32(i) * 7.1) - 0.5, hash01(f32(i) * 8.3) - 0.5 + 0.01, hash01(f32(i) * 9.7) - 0.5));
+  spin := t * (0.6 + 1.4 * hash01(f32(i) * 3.9));
+  dirs := [6] Fv.[fv(1, 0, 0), fv(-1, 0, 0), fv(0, 1, 0), fv(0, -1, 0), fv(0, 0, 1), fv(0, 0, -1)];
+  pts: [6] Fv;
+  for j: 0..<6 {
+    r := size * (0.6 + 0.8 * hash01(f32(i * 6 + j) * 1.31));
+    pts[j] = fv_add(o, fr_rot(fv_times(dirs[j], r), axis, spin));
+  }
+  v := at;
+  // each of the four equator corners to the poles and its neighbours
+  eq := [4] int.[0, 4, 1, 5];
+  for j: 0..<4 {
+    v = seg(out, v, c, pts[eq[j]], pts[eq[(j + 1) % 4]], k, light);
+    v = seg(out, v, c, pts[eq[j]], pts[2], k, light * 0.8);
+    v = seg(out, v, c, pts[eq[j]], pts[3], k, light * 0.6);
+  }
+  return v;
+}
+// A torch ship on its transfer: a slim hull with fins, its drive's plume long behind it.
+fr_torch :: (out: [] f32, at: int, c: Cam, p: Pen, o: Fv, dir: Fv, size: f32, t: f32, light: f32) -> int {
+  v := at;
+  white := ink(p, INK_WHITE); blue := ink(p, INK_BLUE);
+  side := unit3(cross3(dir, fv(0, 1, 0))); up := cross3(side, dir);
+  nose := fv_add(o, fv_times(dir, size)); tail := fv_sub(o, fv_times(dir, size));
+  v = seg(out, v, c, nose, tail, white, light);
+  for i: 0..<3 {
+    a := FR_TAU * f32(i) / 3;
+    fin := fv_add(fv_times(side, cos(a)), fv_times(up, sin(a)));
+    v = seg(out, v, c, fv_sub(o, fv_times(dir, size * 0.3)), fv_add(tail, fv_times(fin, size * 0.45)), white, light * 0.8);
+    v = seg(out, v, c, fv_add(tail, fv_times(fin, size * 0.45)), tail, white, light * 0.6);
+  }
+  // the plume: a long blue line fading out, flickering
+  plume := blue; plume.core = 1.3 * p.d; plume.glow = 6 * p.d;
+  n := 10; reach := size * 14;
+  for i: 0..<n {
+    a := fv_sub(tail, fv_times(dir, reach * f32(i) / f32(n))); b := fv_sub(tail, fv_times(dir, reach * f32(i + 1) / f32(n)));
+    v = seg(out, v, c, a, b, plume, light * (1 - f32(i) / f32(n)) * (0.85 + 0.15 * sin(t * 40 + f32(i))));
+  }
+  return v;
+}
+// A ship's transfer from one body to another, leaving at tl (sim s), tof long: drawn in as it is
+// planned (shown 0 to 1), the ship riding it on the sim clock.
+fr_transfer :: (out: [] f32, at: int, c: Cam, p: Pen, from: int, to: int, tl: f64, tof: f64, ts: f64, t: f32, shown: f32, light: f32) -> int {
+  if shown <= 0 || light <= 0.003 { return at; }
+  tr := orbit_transfer(orbit_body_state(from, tl), orbit_body(to), tl, tof, GM_SUN);
+  if !tr.ok { return at; }
+  v := at;
+  arc := orbit_from_state(tr.depart, GM_SUN, tr.t0);
+  coast := ink(p, INK_BRIGHT); coast.core = 0.8 * p.d;
+  prev := fr_sky_of(tr.depart.r);
+  for i: 1..<FR_PTS {
+    f := f32(i) / f32(FR_PTS - 1);
+    if f > shown { break; }
+    q := fr_sky_of(orbit_position(arc, tr.t0 + tr.tof * f64(f)));
+    v = seg(out, v, c, prev, q, coast, light * (0.25 + 0.55 * f));
+    prev = q;
+  }
+  tick := ink(p, INK_PALE);
+  tt := 30.0 * DAY;
+  while tt < tr.tof * f64(shown) - 5.0 * DAY {
+    a := spot(c, fr_sky_of(orbit_position(arc, tr.t0 + tt))); b := spot(c, fr_sky_of(orbit_position(arc, tr.t0 + tt + DAY)));
+    if a.ok && b.ok {
+      dx := b.x - a.x; dy := b.y - a.y; ln := sqrt(dx * dx + dy * dy);
+      if ln > 0.0001 { nx := -dy / ln * 4 * p.d; ny := dx / ln * 4 * p.d; v = rule(out, v, a.x - nx, a.y - ny, a.x + nx, a.y + ny, tick, 0.6 * light); }
+    }
+    tt += 30.0 * DAY;
+  }
+  if shown >= 1 {
+    x := spot(c, fr_sky_of(tr.arrive.r));
+    if x.ok {
+      k := p.d; hair := ink(p, INK_BRIGHT);
+      v = rule(out, v, x.x - 7 * k, x.y, x.x - 2.5 * k, x.y, hair, light); v = rule(out, v, x.x + 2.5 * k, x.y, x.x + 7 * k, x.y, hair, light);
+      v = rule(out, v, x.x, x.y - 7 * k, x.x, x.y - 2.5 * k, hair, light); v = rule(out, v, x.x, x.y + 2.5 * k, x.x, x.y + 7 * k, hair, light);
+      v = ring(out, v, x.x, x.y, 10 * k, hair, 0.8 * light);
+    }
+  }
+  // the ship, on the sim clock
+  f := clamp(f32((ts - tr.t0) / tr.tof), 0, 1);
+  if ts >= tr.t0 && f < 1 {
+    here := fr_sky_of(orbit_position(arc, tr.t0 + tr.tof * f64(f)));
+    ahead := fr_sky_of(orbit_position(arc, tr.t0 + tr.tof * f64(f) + DAY));
+    dir := unit3(fv_sub(ahead, here));
+    v = fr_torch(out, v, c, p, here, dir, 0.05, t, light);
+  }
+  return v;
+}
+// The Sun: rings and a slow-turning corona.
+fr_sun :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32, light: f32) -> int {
+  if light <= 0.003 { return at; }
+  v := at;
+  bright := ink(p, INK_BRIGHT); bright.glow = 8 * p.d; pale := ink(p, INK_PALE);
+  e := unit3(fv_sub(c.eye, FR_SKY)); side := unit3(cross3(e, fv(0, 1, 0))); up := cross3(side, e);
+  v = fr_ring3(out, v, c, FR_SKY, side, up, 0.42, 36, bright, light);
+  v = fr_ring3(out, v, c, FR_SKY, side, up, 0.3, 28, bright, light * 0.8);
+  v = fr_ring3(out, v, c, FR_SKY, side, up, 0.58 + 0.04 * sin(t * 2), 40, pale, light * 0.4);
+  for i: 0..<16 {
+    a := FR_TAU * f32(i) / 16 + t * 0.15;
+    r0: f32 = 0.5; r1 := 0.75 + 0.25 * hash01(f32(i) * 2.1) + 0.08 * sin(t * 3 + f32(i));
+    d := fv_add(fv_times(side, cos(a)), fv_times(up, sin(a)));
+    v = seg(out, v, c, fv_add(FR_SKY, fv_times(d, r0)), fv_add(FR_SKY, fv_times(d, r1)), pale, light * 0.5);
+  }
+  return v;
+}
+fr_planets :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
+  if t < FR_SUN || t > FR_HUMANS + 3 { return at; }
+  v := at;
+  fade := fr_out(t, FR_HUMANS, 2.2);
+  ts := fr_sim(t);
+  pale := ink(p, INK_PALE); dim := ink(p, INK_DIM); white := ink(p, INK_WHITE);
+  v = fr_sun(out, v, c, p, t, fr_in(t, FR_SUN, 1.0) * fade);
+  v = fr_duel(out, v, c, p, t);
+  // the orbits: Earth's and Mars's come faint with the Sun; each brightens as it's named
+  bodies := [5] int.[BODY_EARTH, BODY_MARS, BODY_CERES, BODY_JUPITER, BODY_SATURN];
+  named := [5] f32.[FR_EARTH, FR_MARS, FR_BELT, FR_OUTER, FR_OUTER + 0.45];
+  for i: 0..<5 {
+    g := fr_in(t, named[i] - (ifx i < 2 then 2.6f32 else 0.4f32), 1.2);
+    if g <= 0 { continue; }
+    lit_up := fr_in(t, named[i], 0.5);
+    v = fr_ellipse(out, v, c, orbit_body(bodies[i]), g, ifx i == 2 then dim else pale, (0.2 + 0.4 * lit_up) * fade);
+  }
+  // the worlds
+  if t >= FR_EARTH - 2.6 {
+    g := fr_in(t, FR_EARTH - 2.6, 1.0) * fade; lit_up := 0.4 + 0.6 * fr_in(t, FR_EARTH, 0.5);
+    e := fr_body_sky(BODY_EARTH, t);
+    v = fr_globe(out, v, c, e, 0.32, t * 0.6, 7, 10, 0.41, white, g * lit_up);
+    m := fv_add(e, fv(0.7 * cos(t * 0.9), 0.05, 0.7 * sin(t * 0.9)));
+    v = fr_ring3(out, v, c, e, fv(1, 0, 0), fv(0, 0, 1), 0.7, 48, dim, 0.4 * g * lit_up);
+    v = fr_globe(out, v, c, m, 0.08, 0, 3, 4, 0, pale, g * lit_up);
+  }
+  if t >= FR_MARS - 2.6 {
+    g := fr_in(t, FR_MARS - 2.6, 1.0) * fade; lit_up := 0.4 + 0.6 * fr_in(t, FR_MARS, 0.5);
+    v = fr_globe(out, v, c, fr_body_sky(BODY_MARS, t), 0.22, t * 0.55, 6, 8, 0.44, pale, g * lit_up);
+  }
+  if t >= FR_BELT - 0.4 {
+    g := fr_in(t, FR_BELT - 0.4, 1.0) * fade;
+    ce := fr_body_sky(BODY_CERES, t);
+    v = fr_globe(out, v, c, ce, 0.09, t, 3, 5, 0, pale, g);
+    // the ring station over it, turning, its spokes
+    hub := fv_add(ce, fv(0, 0.22, 0));
+    v = fr_ring3(out, v, c, hub, fv(1, 0, 0), fv(0, 0, 1), 0.26, 32, white, g);
+    v = fr_ring3(out, v, c, fv_add(hub, fv(0, 0.03, 0)), fv(1, 0, 0), fv(0, 0, 1), 0.26, 32, white, 0.6 * g);
+    for i: 0..<6 {
+      a := FR_TAU * f32(i) / 6 + t * 0.8;
+      v = seg(out, v, c, hub, fv_add(hub, fv(0.26 * cos(a), 0.015, 0.26 * sin(a))), pale, 0.7 * g);
+    }
+    // the Belt's rocks, each on its own orbit, tumbling
+    for i: 0..<FR_ROCKS {
+      if f32(i) / f32(FR_ROCKS) > g * 1.05 { break; }
+      rp := fr_sky_of(orbit_position(fr_rock(i), ts));
+      size := 0.025 + 0.06 * hash01(f32(i) * 5.3);
+      v = fr_rock_draw(out, v, c, rp, i, size, t, pale, 0.75 * g);
+    }
+  }
+  if t >= FR_OUTER - 0.4 {
+    g := fr_in(t, FR_OUTER - 0.4, 1.0) * fade;
+    j := fr_body_sky(BODY_JUPITER, t);
+    v = fr_globe(out, v, c, j, 0.62, t * 1.2, 11, 12, 0.05, white, g);
+    g2 := fr_in(t, FR_OUTER + 0.05, 1.0) * fade;
+    sa := fr_body_sky(BODY_SATURN, t);
+    v = fr_globe(out, v, c, sa, 0.5, t, 9, 10, 0.47, pale, g2);
+    ru := fr_rot(fv(1, 0, 0), fv(1, 0, 0), 0.47); rw := fr_rot(fv(0, 0, 1), fv(1, 0, 0), 0.47);
+    for k: 0..<3 { v = fr_ring3(out, v, c, sa, ru, rw, 0.75 + 0.18 * f32(k), 48, ifx k == 1 then white else pale, g2 * (0.8 - 0.2 * f32(k))); }
+  }
+  // torch ships, each leaving as its world is named, Earth's lighting its drive as the camera arrives
+  v = fr_transfer(out, v, c, p, BODY_EARTH, BODY_MARS, fr_sim(FR_EARTH - 0.6), 230.0 * DAY, ts, t, fr_in(t, FR_EARTH - 0.6, 1.6), fade);
+  v = fr_transfer(out, v, c, p, BODY_MARS, BODY_CERES, fr_sim(FR_MARS - 0.4), 330.0 * DAY, ts, t, fr_in(t, FR_MARS - 0.4, 1.4), fade);
+  v = fr_transfer(out, v, c, p, BODY_CERES, BODY_JUPITER, fr_sim(FR_BELT - 0.2), 620.0 * DAY, ts, t, fr_in(t, FR_BELT, 1.6), fade);
+  v = fr_transfer(out, v, c, p, BODY_EARTH, BODY_CERES, fr_sim(FR_EARTH - 1.4), 300.0 * DAY, ts, t, fr_in(t, FR_OUTER, 1.2), fade * 0.8);
+  return v;
+}
