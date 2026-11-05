@@ -1145,11 +1145,12 @@ rc_fault_seeded :: (t: [] Ap, room_bin_in: string, seed:int) {
   // the raid: START NOW 6 s in, the faults from 16 s. The seats fight (raid-check's fight mode: each goes
   // into range of the nearest raider and casts at it), since the raid is a siege on the south road
   // (#12860) that never reaches the square where square mode's seats wait, so they would cast nothing and
-  // earn nothing to post.
+  // earn nothing to post. They play Everglade's own druid (raid-check's demo class): a level 1 druid at
+  // the front falls again and again, and runs where most seats earned nothing failed this check.
   url: [1] Sb; sb(url[..], "ws://127.0.0.1:"); sb_int(url[..], port);
   kb: [1] Sb; sb(kb[..], "OA_ROOM_TICKET_KEY="); sb(kb[..], t[0].room_key);
   nn: [8] u8; secs: [32] u8;
-  ca := [8] string.["coax/web/tool.sh", "coax/web/room/raid-check.coax", sb_text(url[..]), ap_num(FC_N, nn[..]), "100", ap_num(seed, secs[..]), "druid", "fight"];
+  ca := [8] string.["coax/web/tool.sh", "coax/web/room/raid-check.coax", sb_text(url[..]), ap_num(FC_N, nn[..]), "100", ap_num(seed, secs[..]), "demo", "fight"];
   cenv := [1] string.[sb_text(kb[..])];
   check := ifx room >= 0 then fc_start(ca[..], cenv[..], "") else -1;
   begun := proc_now_ms(); pressed := false; raided := false; stopped := false;
@@ -1228,8 +1229,8 @@ rc_fault_seeded :: (t: [] Ap, room_bin_in: string, seed:int) {
   for i: 0..<FC_N { if have[i] < 0 { continue; } if pairs[0].b[pairs[0].n - 1] != '{' { sb(pairs[..], ", "); } sb(pairs[..], "'p-raidcheck-"); sb_int(pairs[..], i); sb(pairs[..], "': '"); sb_int(pairs[..], have[i]); sb(pairs[..], "'"); }
   sb(pairs[..], "}, proxy "); fp_text(fst, pairs[..]);
   print("  fault check: heard XP %\n", sb_text(pairs[..]));
-  total := 0; for i: 0..<seats { total += want[i]; }
-  ap_check(t, "vitals fault: the raid ran with every seat, and they earned XP", seats == FC_N && total > 0, sb_text(tail[..]));
+  every := seats == FC_N; for i: 0..<seats { if want[i] <= 0 { every = false; } }
+  ap_check(t, "vitals fault: the raid ran with every seat, and each earned XP", every, sb_text(tail[..]));
   st: [1] Sb; fp_text(fst, st[..]);
   ap_check(t, "vitals fault: the API refused and then held posts mid-raid", fst.failed > 0 && fst.held > 0, sb_text(st[..]));
   exact := true; for i: 0..<seats { if have[i] != want[i] { exact = false; } }
