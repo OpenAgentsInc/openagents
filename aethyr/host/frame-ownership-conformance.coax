@@ -1,0 +1,15 @@
+// Observations of real SDK queue fences, independently held after completion.
+#authority;
+#test "frame ownership requires every producer, GPU and retirement observation" {
+  v:=[13]int.[1,1,1,1,0,1,1,1,1,0,1,1,1];#assert hfo_pass(v[..]);
+  for i:0..<13 {saved:=v[i];v[i]=saved+1;#assert !hfo_pass(v[..]);v[i]=saved;}
+  #assert !hfo_pass(v[0..<12]);long:[14]int;for x,i:v {long[i]=x;}#assert !hfo_pass(long[..]);
+}
+// held pending; producer unchanged; ledger epoch unchanged; submissions
+// unchanged; released pending; recovery drew; new pending; old release kept
+// new pending; old release kept new upload prefixes; final pending; resumed
+// producer changed; old ledger handles retired; observed nonempty uploads.
+hfo_pass :: (v:[]int)->bool #export_c {
+  expected:=[13]int.[1,1,1,1,0,1,1,1,1,0,1,1,1];
+  if v.count!=13 {return false;}for x,i:expected {if v[i]!=x {return false;}}return true;
+}

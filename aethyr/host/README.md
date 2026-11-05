@@ -88,8 +88,9 @@ world is covered or suspended.
 `aethyr/host/lifecycle.coax` composes focus and visibility around that
 published session policy and records an admitted-frame clock in monotonic
 microseconds. A hidden surface cannot restart its clock on focus alone.
-Repeated timestamps admit zero dt; negative/backward time and unfinished
-GPU work refuse without consuming elapsed time. The returned delta has no
+Repeated timestamps admit zero dt; negative/backward time, a full submission
+budget and unavailable physical frame resources refuse without consuming
+elapsed time. The returned delta has no
 host clamp. `htl_event` returns the existing `LifeActions`, `htl_offer`
 returns admission/dt, and `htl_tick` converts the host clock to 30 Hz ticks
 without multiplication overflow. Adapter execution is recorded separately
@@ -355,7 +356,7 @@ Lifecycle checks use the versioned shared authority. GPU checks compare
 admitted draws and readbacks at the existing G5 tolerances. Audio checks
 capture muted/offline PCM, including asynchronous decode/voice ownership.
 
-`check-observations.coax CORE.json...` is the common core receipt checker.
+`check-observations.coax RECEIPT.json...` is the common receipt checker.
 Each JSON receipt has `schema: "aethyr.host.observations.v1"`, `scope:
 "core"`, `host: "web" | "vulkan" | "metal"`, observed integer `version`,
 `constructed`, `dropped` and `held` metadata, and `assets`, `frames` and
@@ -371,6 +372,13 @@ message-kind stream retains its exact payload order, and socket open may
 only appear after the corresponding import result. The fixture uses
 `ws://127.0.0.1:9170/echo` and `/api/host-contract/*` in every adapter so
 command bytes and hashes identify the same workload.
+
+The checker also accepts `scope: "lifecycle"`: all ten actual frame/key/blur
+rows and the five final focus/visibility/clock words are required. Negative,
+backward and hidden frame offers produce no row; hidden releases the held
+key, focus behind hidden cannot restart the clock, and first/resumed deltas
+are zero. These normalized adapter observations are separate from physical
+window visibility, GPU recovery and session replay qualification.
 
 A passing result must identify source, compiler, host executable/module,
 fixture, shader and asset identities and retain raw observations. A missing

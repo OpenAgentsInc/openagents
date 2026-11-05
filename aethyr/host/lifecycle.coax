@@ -50,6 +50,15 @@ HostFrameOffer :: struct {admit:bool;dt:f64;}
   #assert htl_tick(0)==0 && htl_tick(33333)==0 && htl_tick(33334)==1 && htl_tick(500000)==15 && htl_tick(999999)==29 && htl_tick(1000000)==30 && htl_tick(1000001)==30;
   #assert htl_tick(9223372036854775807)==276701161105643;
 }
+#test "host microsecond events preserve zero and refuse negative time before conversion" {
+  s:[1]HostLifecycle;#assert htl_event_us(s[..],LC_BLUR,-1,0).does==0 && s[0].focused;
+  #assert htl_event_us(s[..],LC_BLUR,0,0).does==3 && !s[0].focused;
+  #assert htl_event_us(s[..],LC_FOCUS,33334,0).does==4 && s[0].profile[0].active;
+  #assert htl_event_us(s[..],LC_HIDDEN,1000000,0).does==3 && s[0].profile[0].away_since==30;
+}
+htl_event_us :: (s:[]HostLifecycle,kind:int,now_us:int,arg:int)->LifeActions #export_c {
+  return htl_event(s,kind,ifx now_us<0 then -1 else htl_tick(now_us),arg);
+}
 htl_tick :: (microseconds:int)->int #export_c {return microseconds/1000000*30+(microseconds%1000000)*30/1000000;}
 htl_event :: (s:[]HostLifecycle,kind:int,tick:int,arg:int)->LifeActions #export_c {
   if tick<0 {return LifeActions.{};}

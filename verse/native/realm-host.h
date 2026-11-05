@@ -51,6 +51,12 @@ void rh_send(RealmHost *h, int kind, const char *text, size_t length);
 uint32_t rh_frame(RealmHost *h, float w, float ht, float scale, float dt);
 // The explicit still-frame form used by deterministic host probes/previews.
 uint32_t rh_frame_input(RealmHost *h, float w, float ht, float scale, float dt, int still);
+// Version1 clock offer: -1 unsupported,0 refused,1 produced (even zero vertices).
+// The SDK caller reports actual affordability before offering producer time.
+int rh_frame_at(RealmHost *h,float w,float ht,float scale,int64_t monotonic_us,int64_t pending,int still,uint32_t *vertices);
+// Shared lifecycle actions; released input is applied to the actual producer.
+int64_t rh_lifecycle_event(RealmHost *h,int kind,int64_t monotonic_us,int64_t arg);
+int64_t rh_lifecycle_info(int field);
 // Copy a complete declared data asset, then deliver readiness. Contract v1
 // faces use the shared measured-span authority; refusal delivers zero bytes.
 int rh_asset_data(RealmHost *h, int index, const void *bytes, size_t length);

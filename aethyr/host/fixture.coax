@@ -7,6 +7,7 @@
 #load "local-socket-route.coax";
 #load "http-target.coax";
 #load "buffers.coax";
+#load "lifecycle.coax";
 
 HOST_FIXTURE_VERSION :: 1;
 HOST_FIXTURE_EVENTS :: 96;

@@ -1,6 +1,7 @@
 // Firm reason: 6 (Linux native realm SDK effects; Coax writes probes,
 // expectations, JSON and admission). Uses the production realm-host API.
 #include "HostCheck.h"
+#include "fixture.h"
 #include "realm-host.h"
 #include "face.h"
 #include <string.h>
@@ -12,6 +13,9 @@ int64_t hvn_observe(int64_t event,int64_t field) {return coaxial_host_probe(host
 void hvn_reset(void) {coaxial_host_reset(host.state);}
 void hvn_asset(int64_t index,coax_v_u8 bytes) {rh_asset_data(&host,(int)index,bytes.data,(size_t)bytes.count);}
 void hvn_frame(float w,float h,float dpr,float dt,int64_t still) {rh_frame_input(&host,w,h,dpr,dt,(int)still);rh_after(&host,0);}
+int64_t hvn_frame_at(int64_t us,int64_t pending){uint32_t n;int result=rh_frame_at(&host,320,180,1,us,pending,0,&n);if(result==1)rh_after(&host,0);return result;}
+int64_t hvn_life_event(int64_t kind,int64_t us){return rh_lifecycle_event(&host,(int)kind,us,0);}
+int64_t hvn_life_info(int64_t field){return rh_lifecycle_info((int)field);}
 void hvn_key(int64_t key,int64_t mods,int64_t down) {rh_key(&host,(int)key,(int)mods,(int)down);}
 void hvn_pointer(float x,float y,int64_t phase,int64_t kind,int64_t id) {rh_pointer(&host,x,y,(int)phase,(int)kind,(int)id);}
 void hvn_wheel(float dy) {rh_wheel(&host,dy);}

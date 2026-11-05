@@ -17,15 +17,15 @@ hvb_flags :: (text:string,argv:[]string,at:int)->int {
   return n;
 }
 tool_main :: ()->int #export_c {
-  a:[1]Args;if !args_load(a[..]) || args_count(a[..])<2 || args_count(a[..])>4 {tool_errln("usage: build-vulkan OUT COAX [--sanitize] [--transport]");return 2;}
-  for i:2..<args_count(a[..]) {if args_at(a[..],i)!="--sanitize" && args_at(a[..],i)!="--transport" {return 2;}}
-  sanitize:=args_has(a[..],"--sanitize");transport:=args_has(a[..],"--transport");
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])<2 || args_count(a[..])>4 {tool_errln("usage: build-vulkan OUT COAX [--sanitize] [--transport|--lifecycle]");return 2;}
+  for i:2..<args_count(a[..]) {if args_at(a[..],i)!="--sanitize" && args_at(a[..],i)!="--transport" && args_at(a[..],i)!="--lifecycle" {return 2;}}
+  sanitize:=args_has(a[..],"--sanitize");transport:=args_has(a[..],"--transport");lifecycle:=args_has(a[..],"--lifecycle");if transport&&lifecycle {return 2;}
   if cxtool_os()!=2 {tool_errln("build-vulkan: the low-4G realm ABI runs on Linux");return 2;}
   paths:[12][4096]u8;dir:=args_at(a[..],0);coax:=args_at(a[..],1);if !fs_mkdir(dir) {return 1;}dir=fs_realpath(dir,paths[0][..]);
   fixture_c:=fs_join(dir,"fixture.c",paths[1][..]);fixture_h:=fs_join(dir,"fixture.h",paths[2][..]);
   check_c:=fs_join(dir,"HostCheck.c",paths[3][..]);check_h:=fs_join(dir,"HostCheck.h",paths[4][..]);bin:=fs_join(dir,"check-vulkan",paths[5][..]);
   emit_fixture:=[7]string.[coax,"c","aethyr/host/fixture.coax","--library","--header",fixture_h,"--release"];
-  emit_check:=[7]string.[coax,"c",ifx transport then "aethyr/host/check-vulkan-transport.coax" else "aethyr/host/check-vulkan.coax","--library","--header",check_h,"--release"];
+  emit_check:=[7]string.[coax,"c",ifx lifecycle then "aethyr/host/check-vulkan-lifecycle.coax" else ifx transport then "aethyr/host/check-vulkan-transport.coax" else "aethyr/host/check-vulkan.coax","--library","--header",check_h,"--release"];
   if !hvb_run(emit_fixture[..],fixture_c) || !hvb_run(emit_check[..],check_c) {return 1;}
   if !hnp_copy(fixture_h,fs_join(dir,"RenderHost.h",paths[6][..])) || !hnp_prepare(coax,dir) {return 1;}
   base:=[29]string.["gcc","-std=gnu11","-O2","-no-pie","-ffp-contract=off","-fno-fast-math","-Wno-attributes","-DHF_EXTERNAL_TRANSPORT","-I",dir,"-I","verse/native","-I","coax/platform",fixture_c,check_c,"aethyr/host/tests/fixture-face.c","aethyr/host/tests/vulkan-effects.c","verse/native/realm-host.c","coax/platform/tool-native.c","coax/platform/process-native.c","coax/platform/store-file-native.c","coax/platform/read-file-native.c","-lpthread","-lm","-o",bin,"-Wno-unused-function","-Wno-unused-variable"];

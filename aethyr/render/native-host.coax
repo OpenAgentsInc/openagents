@@ -8,6 +8,7 @@
 #load "../host/local-socket-route.coax";
 #load "../host/http-target.coax";
 #load "../host/buffers.coax";
+#load "../host/lifecycle.coax";
 #authority;
 
 aethyr_native_resource_limit :: ()->int #export_c {return RENDER_RESOURCES;}

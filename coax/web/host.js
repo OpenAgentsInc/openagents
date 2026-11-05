@@ -221,6 +221,7 @@ import { startGpui } from "./gpui.js";
 import { startLoading, readBytes } from "./loader.js";
 import { makeHttpRequests } from "./http-requests.js";
 import { makeHostTransport } from "./host-transport.js";
+import { makeHostLifecycle } from "./host-lifecycle.js";
 import { openCoaxAudio, renderCoaxAudio } from "./audio-host.js";
 import { RenderHost } from "./render.js";
 
@@ -262,7 +263,8 @@ const probeDo = probe ? new URLSearchParams(location.search).get("do") || "" : "
 // Grown at load to whatever the app's module declares (importedMemoryPages).
 const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024 }); // 8 MiB, at most 64 MiB
 let engine = null;   // { exports, layout }
-let hostTransport = null, reconnectAfterEngine = false;
+let hostTransport = null, hostLifecycle = null, reconnectAfterEngine = false;
+function hostLifeEvent(kind,nowUs=Math.floor(performance.now()*1000),arg=0){const actions=hostLifecycle?.event(kind,nowUs,arg)??0;if(actions&1)call("coaxial_blur");return actions;}
 let engineBytes = null;   // the running engine's wasm: a rescue save names it (rescueIdentity)
 let engineInstalling = false;
 let arena = null;    // { state, vertices, uniforms, floats, uniformFloats, maxVertices }
@@ -314,7 +316,7 @@ function beginEngine() {
 }
 function retireTransport() {
   if(hostTransport)retireContractAudio();
-  httpRequests.reset();resetSockets();hostTransport?.reset();hostTransport=null;
+  httpRequests.reset();resetSockets();hostTransport?.reset();hostTransport=null;hostLifecycle=null;
 }
 const randomScratch = {}; // lazily reserved once, shared by synchronous engine calls
 
@@ -383,6 +385,7 @@ async function loadEngine(bytes, generation) {
   random.bind(x);
   x._initialize?.();
   hostTransport=makeHostTransport(x,memory);
+  hostLifecycle=makeHostLifecycle(x);
   if(hostTransport && sockets.some(Boolean)){reconnectAfterEngine=true;resetSockets();}
   if(frameTrace)x.coaxial_frame_parts?.(0,-1);
   const layout = x.coaxial_layout();
@@ -812,10 +815,10 @@ function pageFacts() {
     fork: script?.dataset.fork || "", rules: script?.dataset.rules || "", ...styleFacts() })
     .map(([k, v]) => `${k}=${clean(v)}`).join("\n");
 }
-addEventListener("visibilitychange", () => send(document.hidden ? HIDDEN_KIND : SHOWN_KIND));
+addEventListener("visibilitychange", () => {hostLifeEvent(document.hidden?4:5);send(document.hidden ? HIDDEN_KIND : SHOWN_KIND);});
 const NET_KIND = 612;
-addEventListener("online", () => send(NET_KIND, "1"));
-addEventListener("offline", () => send(NET_KIND, "0"));
+addEventListener("online", () => {hostLifeEvent(6);send(NET_KIND, "1");});
+addEventListener("offline", () => {hostLifeEvent(6);send(NET_KIND, "0");});
 let leaving = false;   // the page is going: a device lost now is not replaced
 addEventListener("pagehide", () => { leaving = true;send(LEAVE_KIND); httpRequests.reset(); });
 addEventListener("pageshow", () => { leaving = false; });
@@ -881,6 +884,7 @@ async function deviceLost(device, info) {
   if (dev) globalThis.coaxial.renderDeviceLost = { reason: info.reason, message: info.message };
   if (!gpu || gpu.device !== device || leaving || !engine) return;
   const t0 = performance.now();
+  hostLifeEvent(8,Math.floor(t0*1000));
   losses = losses.filter((t) => t0 - t < LOSSES_WINDOW_MS);losses.push(t0);
   say(`GPU device lost (${info.reason}${info.message ? `: ${info.message}` : ""}); taking a new one`, true);
   gpu.bg = null;
@@ -913,6 +917,7 @@ async function deviceLost(device, info) {
     return;
   }
   new Uint8Array(memory.buffer, arena.state, held.length).set(held);
+  hostLifeEvent(9);
   last = 0;
   const ms = Math.round(performance.now() - t0);
   globalThis.coaxial.gpuRecovery = { state: "recovered", reason: info.reason, losses: losses.length, ms, waited: waiting?.length ?? 0 };
@@ -2122,6 +2127,7 @@ let clipNow = 0;
 let worldPaused = false, frameRequest = 0, worldFrames = 0, worldSubmissions = 0;
 function setWorldPaused(paused) {
   worldPaused = !!paused;
+  hostLifeEvent(worldPaused?4:5);
   if (worldPaused) {
     cancelAnimationFrame(frameRequest); frameRequest = 0;
     audio?.suspend().catch(() => {});
@@ -2240,11 +2246,14 @@ function draw(now) {
   const f = drawn(dw) * SUPERSAMPLE, w = Math.max(1, Math.round(dw * f)), h = Math.max(1, Math.round(dh * f));
   const pending = gpu.device.__coaxialFrames || 0;
   if (traceRow) {traceRow[5]=w;traceRow[6]=h;traceRow[10]=pending;}
+  if (gpu.renderer && !gpu.renderer.available()) return;
   if (!gpu.renderer && engine.exports.coaxial_frame_admit && !engine.exports.coaxial_frame_admit(pending)) {
     if(traceRow){traceRow[7]=0;traceRow[8]=gpu.device.__coaxialCompletionMs||0;}return;
   }
-  const dt = last ? (now - last) / 1000 : 0; last = now;
-  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  const offer=hostLifecycle?.offer(Math.floor(now*1000),pending);
+  if(hostLifecycle&&!offer)return;
+  const dt = offer?offer.dt:(last ? (now - last) / 1000 : 0); last = now;
+  if (canvas.width !== w || canvas.height !== h) {hostLifeEvent(1,Math.floor(now*1000));canvas.width = w; canvas.height = h; }
   const dpr = scale();
   if (traceRow) {traceRow[5]=w;traceRow[6]=h;}
   let n = 0;
@@ -2411,7 +2420,7 @@ function draw(now) {
   device.queue.submit([encoder.finish()]);
   globalThis.__evergladeBenchmark?.submitted(device.queue);
   worldSubmissions++;
-  if (x.coaxial_frame_admit) {
+  if (x.coaxial_frame_admit || hostLifecycle) {
     device.__coaxialFrames=(device.__coaxialFrames||0)+1;
     const began=frameTrace?performance.now():0;
     device.queue.onSubmittedWorkDone().then(()=>{if(began)device.__coaxialCompletionMs=performance.now()-began;}).catch(()=>{}).finally(()=>{device.__coaxialFrames--;});
@@ -2611,6 +2620,8 @@ if (dev) {
     bus: soundBus, busVoice, busLine,
     offlineCoax: renderCoaxAudio,
     offline: (lines, frames, buffers) => renderSoundLines(lines.map(([frame,line])=>[frame*1000/48000,line]), frames / 48000, 0, 48000, name => ({name}), a => Promise.resolve(buffers[a.name])) };
+  globalThis.coaxial.hostLifecycle = {event:(kind,nowUs,arg)=>hostLifeEvent(kind,nowUs,arg),offer:(nowUs,pending)=>hostLifecycle?.offer(nowUs,pending),info:()=>hostLifecycle?.info(),reset:()=>hostLifecycle?.reset()};
+  globalThis.coaxial.hostFrameAt = async nowUs => {draw(nowUs/1000);await gpu?.device.queue.onSubmittedWorkDone();};
   globalThis.coaxial.renderLedger = () => gpu?.renderer?.ready ? gpu.renderer.ledger() : null;
   globalThis.coaxial.renderLedgerLive = (slot, generation) => engine?.exports.coaxial_render_live?.(slot, generation) ?? -1;
   globalThis.coaxial.renderLedgerRelease = (slot, generation) => engine?.exports.coaxial_render_release?.(slot, generation) ?? -1;
@@ -2795,9 +2806,9 @@ addEventListener("keyup", (e) => {
   const key = keyOf(e);
   if (key && call("coaxial_key_up", key, modsOf(e))) e.preventDefault();
 });
-addEventListener("blur", () => call("coaxial_blur"));
-addEventListener("focus", () => call("coaxial_focus"));
-addEventListener("visibilitychange", () => { if (document.hidden) call("coaxial_blur"); });
+addEventListener("blur", () => {if(hostLifecycle)hostLifeEvent(3);else call("coaxial_blur");});
+addEventListener("focus", () => {hostLifeEvent(2);call("coaxial_focus");});
+addEventListener("visibilitychange", () => { if (document.hidden&&!hostLifecycle) call("coaxial_blur"); });
 canvas.addEventListener("wheel", (e) => {
   if (!engine?.exports.coaxial_wheel) return;
   e.preventDefault();

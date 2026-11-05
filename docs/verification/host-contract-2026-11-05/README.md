@@ -237,11 +237,16 @@ Vulkan lifecycle/audio execution and the Metal HTTP target receipt are
 still required. The ordinary SDK packaging and local routing probes do not
 substitute for complete interactive host qualification.
 
-The new host lifecycle carrier passes 77/77 root mutants, with no
+The [shared lifecycle SDK trace](lifecycle.md) now passes the same actual
+ten rows in web, sanitized Linux and Metal. Its semantic and JSON receipt
+gates kill 104/104 and 39/39 root mutants. Physical window integration,
+complete session recovery and ordinary Vulkan display behavior remain exits.
+
+The new host lifecycle carrier passes 80/80 root mutants, with no
 equivalents, around the unchanged published session policy. It composes
 focus/visibility, preserves skipped-frame elapsed time, emits first/restart
 dt zero, and retains device/session actions. These are component checks;
-the actual browser/Vulkan/Metal event adapters remain an exit. The original
+the normalized browser/Vulkan/Metal event adapters pass the trace above. The original
 five frame-admission mutants now live in a private policy module so native
 producer and renderer libraries can share the rule without duplicate C
 exports; its scalar exported wrapper retains its focused checks and has

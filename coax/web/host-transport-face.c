@@ -5,6 +5,7 @@
 #define HOST_TRANSPORT_HEADER "Render.h"
 #endif
 #include HOST_TRANSPORT_HEADER
+#include "host-lifecycle-face.c"
 #include <stdint.h>
 #ifdef __wasm__
 #define HOST_EXPORT(name) __attribute__((export_name(name)))

@@ -49,6 +49,23 @@ The word comparator kills 103/103 root mutants, with no equivalents. These
 audio receipts remain separate from Linux output and complete three-host
 qualification; the desktop default remains web.
 
+The shared lifecycle adapter records monotonic microseconds before handing
+the unchanged delta to the producer. Actual browser, sanitized Linux realm
+SDK and Metal SDK receipts admit the same ten frame/key/blur rows, including
+held-input release while hidden. Its clock, semantic and JSON root gates
+kill 80, 104 and 39 mutants, with no equivalents. This normalized SDK trace
+does not substitute for ordinary window integration or session recovery.
+
+The shared WebGPU renderer has one physical mutable frame-buffer set. Its
+availability is checked before producer advancement, and its busy state
+waits for both validation and actual queue completion. Completion counts
+belong to their GPUDevice; retired renderers cannot acknowledge replacement
+uploads. The real held-fence/device-recovery receipt preserves producer
+state across skipped offers and a nonempty new upload prefix across a late
+old completion. All 21 receipt-authority mutants are killed; source fencing
+passes. Ordinary 8-bit Vulkan parity and complete host qualification remain
+open, so the desktop default remains web.
+
 ## The indexed KV arena preserves the durable v1 contract
 
 `coax/lib/bitcoin/kvskip.coax` is an optional native representation behind

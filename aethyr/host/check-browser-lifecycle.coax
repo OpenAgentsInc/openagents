@@ -1,0 +1,22 @@
+// The actual browser host, normalized lifecycle effects and completed GPU
+// offers. Synthetic DOM focus events exercise the production DOM handlers.
+#load "../../coax/web/wasm-chrome.coax";
+#load "receipt-lifecycle.coax";
+hbl_copy :: (source:string,target:string)->bool {bytes:[8388608]u8;n:=fs_read(source,bytes[..]);return n>=0&&fs_write(target,cast(string)bytes[0..<n]);}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=1 {tool_errln("usage: check-browser-lifecycle PREPARED_DIR");return 2;}
+  paths:[7][4096]u8;dir:=fs_realpath(args_at(a[..],0),paths[0][..]);site:=fs_join(dir,"browser-site",paths[1][..]);root:=fs_cwd(paths[2][..]);if dir==""||!fs_mkdir(site) {return 1;}
+  for file:[2]string.["fixture.wasm","fixture.wgsl"] {if !hbl_copy(fs_join(dir,file,paths[3][..]),fs_join(site,file,paths[4][..])) {return 1;}}
+  page:="<!doctype html><meta charset=utf-8><style>html,body{margin:0;width:320px;height:180px}canvas{display:block;width:320px;height:180px}</style><canvas id=coaxial></canvas><script>globalThis.coaxialClip=true</script><script type=module src=/coaxial/host.js data-app=host-contract data-wasm=/fixture.wasm data-wgsl=/fixture.wgsl></script>";
+  if !fs_write(fs_join(site,"index.html",paths[3][..]),page) {return 1;}host:=fs_join(root,"coax/web",paths[3][..]);argv:=[9]string.["coax/web/serve.sh",site,"--host-dir",host,"--listen","127.0.0.1:9169","--static","--cache","0"];
+  p:=proc_new();if p<0 {return 1;}for v:argv {if !proc_arg(p,v) {return 1;}}if proc_start(p)!=0 {return 1;}defer {killed:=proc_kill(p,PROC_SIGTERM);waited:=proc_wait(p,2000);released:=proc_release(p);}
+  waiting:[1]Cdp;bytes:[65536]u8;deadline:=proc_now_ms()+10000;listening:=false;while proc_now_ms()<deadline {if cdp_get(waiting[..],9169,"/",bytes[..])>0 {listening=true;break;}proc_sleep(50);}if !listening {return 1;}
+  c:[1]Cdp;if !cdp_launch(c[..],320,180,"coax-host-lifecycle-") {return 1;}defer {cdp_close(c[..]);}
+  nav:=cdp_call(c[..],"Page.navigate","{\"url\":\"http://127.0.0.1:9169/\"}",CDP_CALL_MS);deadline=proc_now_ms()+30000;ready:=false;
+  while proc_now_ms()<deadline {if wc_eval(c[..],"!!coaxial?.ready&&coaxial.hostLifecycle.info()?.length===5")=="true" {ready=true;break;}proc_sleep(50);}if !ready {tool_errln("lifecycle fixture not ready");return 1;}
+  operations:="(async()=>{await coaxialClipStep(1,64);coaxial.hostLifecycle.reset();coaxial.hostReset();await coaxial.hostFrameAt(-1);await coaxial.hostFrameAt(0);await coaxial.hostFrameAt(15625);await coaxial.hostFrameAt(10000);dispatchEvent(new KeyboardEvent('keydown',{key:'w'}));coaxial.setWorldPaused(true);await coaxial.hostFrameAt(1000000);dispatchEvent(new Event('blur'));dispatchEvent(new Event('focus'));await coaxial.hostFrameAt(1100000);coaxial.setWorldPaused(false);await coaxial.hostFrameAt(2000000);dispatchEvent(new Event('blur'));await coaxial.hostFrameAt(3000000);dispatchEvent(new Event('focus'));await coaxial.hostFrameAt(4000000);await coaxial.hostFrameAt(4015625);return true})()";
+  if wc_eval(c[..],operations)!="true" {tool_errln(cdp_error(c[..]));return 1;}
+  v:=cdp_evaluate(c[..],"({schema:'aethyr.host.observations.v1',host:'web',scope:'lifecycle',version:Number(coaxial.hostProbe(-1,0)),constructed:Number(coaxial.hostProbe(-1,1)),dropped:Number(coaxial.hostProbe(-1,3)),held:Number(coaxial.hostProbe(-1,5)),lifecycle:coaxial.hostLifecycle.info(),events:Array.from({length:Number(coaxial.hostProbe(-1,2))},(_,i)=>Array.from({length:8},(_,f)=>Number(coaxial.hostProbe(i,f))))})");
+  if v<0 {return 1;}o:[1]Jo;jo_start(o[..],bytes[..]);jv_write(cdp_doc(c[..]),v,o[..]);if o[0].bad||!fs_write(fs_join(dir,"browser-lifecycle.json",paths[4][..]),jo_text(o[..])) {return 1;}
+  nodes:[2048]JvNode;d:[1]Jv;passed:=jv_parse(d[..],jo_text(o[..]),nodes[..])&&hcr_lifecycle(d[0]);print("Actual browser lifecycle frame/input receipt: %\n",passed);return ifx passed then 0 else 1;
+}

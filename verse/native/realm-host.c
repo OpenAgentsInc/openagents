@@ -19,6 +19,12 @@
 extern char **environ;
 static int golden_mode;
 extern uint32_t coaxial_host_contract_version(void) __attribute__((weak));
+extern uint32_t coaxial_host_lifecycle_version(void) __attribute__((weak));
+extern void coaxial_host_lifecycle_reset(void) __attribute__((weak));
+extern int64_t coaxial_host_lifecycle_event(int32_t,int64_t,int64_t) __attribute__((weak));
+extern uint32_t coaxial_host_frame_offer(int64_t,int64_t) __attribute__((weak));
+extern double coaxial_host_frame_dt(void) __attribute__((weak));
+extern int64_t coaxial_host_lifecycle_info(int32_t) __attribute__((weak));
 extern uint32_t coaxial_host_copy_span(uint64_t, uint64_t, uint64_t, uint64_t) __attribute__((weak));
 extern int32_t rhn_socket_open(const char *,uint32_t) __attribute__((weak));
 extern void rhn_socket_send(int32_t,const void *,uint32_t) __attribute__((weak));
@@ -61,6 +67,7 @@ void rh_open(RealmHost *h, int golden) {
   h->vertices = h->state + state;
   h->uniforms = h->vertices + (uint32_t)(h->max_vertices * h->floats * 4);
   coaxial_state_init(h->state);   // its struct defaults, as host.js has them applied
+  if(coaxial_host_contract_version&&coaxial_host_contract_version()==1&&coaxial_host_lifecycle_reset)coaxial_host_lifecycle_reset();
   if (golden) coaxial_golden(1);
 }
 
@@ -139,6 +146,16 @@ uint32_t rh_frame_input(RealmHost *h, float w, float ht, float scale, float dt, 
   uint32_t n = coaxial_frame(h->state, h->vertices, h->uniforms, w, ht, scale, dt, still!=0);
   return n > (uint32_t)h->max_vertices ? (uint32_t)h->max_vertices : n;
 }
+int rh_frame_at(RealmHost *h,float w,float ht,float scale,int64_t us,int64_t pending,int still,uint32_t *vertices){
+  if(!coaxial_host_contract_version||coaxial_host_contract_version()!=1||!coaxial_host_lifecycle_version||coaxial_host_lifecycle_version()!=1||!coaxial_host_frame_offer||!coaxial_host_frame_dt)return -1;
+  if(!coaxial_host_frame_offer(us,pending))return 0;
+  *vertices=rh_frame_input(h,w,ht,scale,(float)coaxial_host_frame_dt(),still);return 1;
+}
+int64_t rh_lifecycle_event(RealmHost *h,int kind,int64_t us,int64_t arg){
+  if(!coaxial_host_contract_version||coaxial_host_contract_version()!=1||!coaxial_host_lifecycle_event)return 0;
+  int64_t actions=coaxial_host_lifecycle_event(kind,us,arg);if(actions&1)rh_blur(h);return actions;
+}
+int64_t rh_lifecycle_info(int field){return coaxial_host_lifecycle_info?coaxial_host_lifecycle_info(field):-1;}
 int rh_asset_data(RealmHost *h, int index, const void *bytes, size_t length) {
   uint32_t n=length<=UINT32_MAX?(uint32_t)length:0;
   uint32_t at=n?coaxial_asset(h->state,index,n):0;

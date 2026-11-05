@@ -523,13 +523,17 @@ export class RenderHost {
     }
     return { groups: layouts.map((layout, group) => device.createBindGroup({ layout, entries: entries[group] })), writes };
   }
+  // This adapter has one physical set of mutable frame buffers. Its slot is
+  // affordable only after validation and the actual queue completion both
+  // belong to the completed submission. Check before advancing the producer.
+  available() { return this.ready && !this.busy && !this.suspended; }
   frame(count, width, height, observe) {
     try { return this.frameChecked(count, width, height, observe); }
     catch (error) { if (error instanceof RenderRefusal) { this.lastRefusal = { phase: "resources", message: error.message };return false; }throw error; }
   }
   frameChecked(count, width, height, observe) {
     this.observation = null;
-    if (!this.ready || this.busy || this.suspended) return false;
+    if (!this.available()) return false;
     if (this.error) throw this.error;
     const { x, device, arena, memory } = this;
     if (x.coaxial_render_advance() !== 1) { this.lastRefusal = { phase: "ledger" };return false; }
@@ -635,11 +639,13 @@ export class RenderHost {
       this.observation = observe?.(encoder, this.lastTexture);
       if (this.observation) this.observation.rendererSnapshot = sourceSnapshot;
       device.queue.submit([encoder.finish()]);
-      this.settled = device.popErrorScope().then((error) => {
+      device.__coaxialFrames = (device.__coaxialFrames || 0) + 1;
+      const completion = device.queue.onSubmittedWorkDone().finally(() => { device.__coaxialFrames--; });
+      this.settled = Promise.all([device.popErrorScope(), completion]).then(([error]) => {
         if (error) this.error = error;
-        else { for (const record of active) x.coaxial_render_upload_ack(record.id, 1);x.coaxial_render_index_ack(1); }
+        else if (this.ready && !this.suspended) { for (const record of active) x.coaxial_render_upload_ack(record.id, 1);x.coaxial_render_index_ack(1); }
         return { ok: !error, error: error?.message ?? null };
-      }).finally(() => { this.busy = false; });
+      }, (error) => { this.error = error;return { ok: false, error: error?.message ?? String(error) }; }).finally(() => { this.busy = false; });
       if (this.observation) {
         this.observation.validation = this.settled;
         this.observation.textureCapture = Promise.all(media.draws.map((draw) => this.captureTexture(draw.object.texture, draw.textureName, draw.object.texture.format, [{ width: draw.object.width, height: draw.object.height }])));
