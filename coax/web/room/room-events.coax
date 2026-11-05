@@ -751,7 +751,7 @@ ev_raid_step :: (v: [] RmServer, k: int) {
   e := v[0].ev[k..<k + 1];
   r := ev_rules(v, k);
   w := r[0].raid[..];
-  if e[0].phase == EV_IDLE { w[0].cast_n = 0; w[0].down_n = 0; return; }
+  if e[0].phase == EV_IDLE { ev_raid_flush(v,k);return; }
   d := v[0].evc.d;
   w[0].aggr = d.aggr; w[0].harm = d.harm;
   ev_raid_downs(v, k);
@@ -764,9 +764,13 @@ ev_raid_step :: (v: [] RmServer, k: int) {
       else if e[0].arch == EV_ARCH_EXPOSED && hp[0] * 2 <= hp[1] + 1 { _ := e5rd_withdraw(r); e[0].arch = EV_ARCH_GONE; }
     }
   }
-  for c: 0..<w[0].cast_n { ev_raid_cast(v, k, w[0].casts[c]); }
-  w[0].cast_n = 0;
-  if v[0].eg[k].strike_n + RT_HOUSE_BLASTS <= EG_CASTS && e5rd_house_falls(r) { ev_house_fall(v, k); }   // the next tick when the strikes are full
+  ev_raid_flush(v,k);
+  if v[0].eg[k].strike_n + RT_HOUSE_BLASTS <= EG_WORLD_STRIKES-EG_PLAYER_STRIKES && (!v[0].eg[k].effect_known||v[0].eg[k].house_free>=RT_HOUSE_BLASTS) && e5rd_house_falls(r) { ev_house_fall(v, k); }
+}
+ev_raid_flush::(v:[]RmServer,k:int){
+  w:=ev_rules(v,k)[0].raid[..];taken:=0;
+  while taken<w[0].cast_n{if !ev_raid_cast(v,k,w[0].casts[taken]){break;}taken+=1;}
+  total:=w[0].cast_n;for n:taken..<total{w[0].casts[n-taken]=w[0].casts[n];}w[0].cast_n=total-taken;
 }
 // The stables fall (everglade5e-room-raid.coax e5rd_house_hurt; #12769): RT_HOUSE_BLASTS Fireballs
 // across them bring down what still stands in the server's town, and every page hears it break.
@@ -776,10 +780,10 @@ ev_house_fall :: (v: [] RmServer, k: int) {
   y := r[0].raid[0].house_y;
   o: [2] f32;
   for n: 0..<RT_HOUSE_BLASTS {
-    if v[0].eg[k].strike_n >= EG_CASTS { return; }
+    if v[0].eg[k].strike_n >= EG_WORLD_STRIKES-EG_PLAYER_STRIKES { return; }
     rt_house_blast(n, o[..]);
     seed := rs_roll(r[0].b[0].dice[..], 999983);
-    v[0].eg[k].strikes[v[0].eg[k].strike_n] = EgStrike.{by = -1, slot = EG_WL_BLAST + RT_K_FIREBALL, fx = o[0], fy = y + 9, fz = o[1] - 2, ax = o[0], ay = y + 1.5, az = o[1], seed = seed};
+    v[0].eg[k].strikes[v[0].eg[k].strike_n] = EgStrike.{by = -1, source=EFFECT_HOUSE, slot = EG_WL_BLAST + RT_K_FIREBALL, fx = o[0], fy = y + 9, fz = o[1] - 2, ax = o[0], ay = y + 1.5, az = o[1], seed = seed};
     v[0].eg[k].strike_n += 1;
   }
 }
@@ -788,11 +792,14 @@ ev_house_fall :: (v: [] RmServer, k: int) {
 // page that doesn't hold the caster still draws it fly from there; K: everglade-raid-spells.coax RT_K_*),
 // and the strike on the server's town of a spell that harms
 // objects: Eldritch Blast, Fire Bolt, Fireball, Lightning Bolt.
-ev_raid_cast :: (v: [] RmServer, k: int, c: E5rdCast) {
-  q := ev_slot_of(v, k, c.id);
-  if q < 0 { return; }
+ev_raid_cast :: (v: [] RmServer, k: int, c: E5rdCast) -> bool {
+  q := ifx c.q>=0 then c.q else ev_slot_of(v, k, c.id);
+  if q < 0||q>=E5RR_BEASTS { return true; }
   bt := v[0].eg[k].rules[0].beasts[q];
-  ay := bt.y + 1.0;
+  fx:=ifx c.q>=0 then c.fx else bt.x;fy:=ifx c.q>=0 then c.fy else bt.y+1.5;fz:=ifx c.q>=0 then c.fz else bt.z;
+  harm:=ifx c.q>=0 then c.harm else v[0].evc.d.harm&&effect_physical(EG_WL_BLAST+c.k);
+  if harm&&v[0].eg[k].strike_n>=EG_WORLD_STRIKES-EG_PLAYER_STRIKES-E5RR_BEASTS-RT_HOUSE_BLASTS{return false;}
+  ay := fy-0.5;
   if c.to >= E5RR_SEAT && c.to < E5RR_SEAT + EG_SEATS && v[0].eg[k].seat[c.to - E5RR_SEAT].live {
     p := v[0].eg[k].seat[c.to - E5RR_SEAT].pose;
     ay = p.y + 1.0;
@@ -802,13 +809,14 @@ ev_raid_cast :: (v: [] RmServer, k: int, c: E5rdCast) {
   n = wire_int(b[..], n, c.id); n = wire_int(b[..], n, c.k);
   n = wire_m(b[..], n, c.ax); n = wire_m(b[..], n, ay); n = wire_m(b[..], n, c.az);
   n = wire_int(b[..], n, c.seed);
-  n = wire_m(b[..], n, bt.x); n = wire_m(b[..], n, bt.y + 1.5); n = wire_m(b[..], n, bt.z);
+  n = wire_m(b[..], n, fx); n = wire_m(b[..], n, fy); n = wire_m(b[..], n, fz);
   aimed := ifx c.to >= E5RR_SEAT && c.to < E5RR_SEAT + EG_SEATS then 1 << (c.to - E5RR_SEAT) else 0;
-  eg_event_who(v, k, cast(string) b[0..<n], bt.x, bt.z, false, aimed);   // (aimed: a seat that blocks it isn't told, #12789)
-  if v[0].evc.d.harm && (c.k == RT_K_BLAST || c.k == RT_K_FIREBALL || c.k == RT_K_FIRE_BOLT || c.k == RT_K_LIGHTNING) && v[0].eg[k].strike_n < EG_CASTS {
-    v[0].eg[k].strikes[v[0].eg[k].strike_n] = EgStrike.{by = -1, slot = EG_WL_BLAST + c.k, fx = bt.x, fy = bt.y + 1.5, fz = bt.z, ax = c.ax, ay = ay, az = c.az, seed = c.seed};
+  eg_event_who(v, k, cast(string) b[0..<n], fx, fz, false, aimed);
+  if harm {
+    v[0].eg[k].strikes[v[0].eg[k].strike_n] = EgStrike.{by = -1,source=EFFECT_SEATS+q, slot = EG_WL_BLAST + c.k, fx = fx, fy = fy, fz = fz, ax = c.ax, ay = ay, az = c.az, seed = c.seed};
     v[0].eg[k].strike_n += 1;
   }
+  return true;
 }
 // The wire's F for summoned creature q: a raider's level in its bits 8 and up (the page draws it).
 ev_beast_f :: (v: [] RmServer, k: int, q: int) -> int {

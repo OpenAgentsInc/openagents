@@ -34,7 +34,7 @@ rc_hear :: (v: [] RmServer, k: int, seat: int, seq: int, slot: int, ax: f32, ay:
     if !c.on && free < 0 { free = q; }
     if c.on && c.seat == seat { owned += 1; }
   }
-  if free < 0 || !cb_admit(owned) { return false; }
+  if free < 0 || !cb_admit(owned) || !re_may_start(v,k,seat,slot,-1) { return false; }
   v[0].eg[k].cast_order += 1;
   v[0].eg[k].casts[free] = EgCast.{on = true, seat = seat, slot = slot, x = ax, y = ay, z = az, tgt = tgt, seq = seq, mode = mode,
                                    phase = RC_WAIT, heard = v[0].eg[k].tick, queued_ms=v[0].mono_ms, order = v[0].eg[k].cast_order};
@@ -153,6 +153,7 @@ rc_start :: (v: [] RmServer, k: int, q: int) {
     }
   }
   if why != CR_OK { v[0].eg[k].casts[q].on = false; eg_refuse(v, k, seat, seq, cr_word(why)); return; }
+  if !re_may_start(v,k,seat,slot,q){v[0].eg[k].casts[q].on=false;eg_refuse(v,k,seat,seq,"busy");return;}
   mode := c.mode;
   // an ability the world runs whole (room-abilities.coax) has no roll of the rules'
   if ra_whole(slot) {
@@ -187,7 +188,7 @@ hi_i :: (a: int, b: int) -> int { return ifx a > b then a else b; }
 // Cast c's strike on the world's town (it breaks and burns the pieces): Everglade's four and the
 // Warlock's Eldritch Blast and Fireball, from the same seed the pages play it from.
 rc_world_strike :: (v: [] RmServer, k: int, c: EgCast) {
-  if v[0].eg[k].strike_n >= EG_CASTS { return; }
+  if v[0].eg[k].strike_n >= EG_WORLD_STRIKES { return; }
   me := v[0].eg[k].seat[c.seat].pose;
   v[0].eg[k].strikes[v[0].eg[k].strike_n] = EgStrike.{by = c.seat, slot = c.slot, fx = me.x, fy = me.y + 1.6, fz = me.z, ax = c.x, ay = c.y, az = c.z, seed = c.seed};
   v[0].eg[k].strike_n += 1;
@@ -232,7 +233,7 @@ rc_strike :: (v: [] RmServer, k: int, q: int) {
   ok := e5rr_use(v[0].eg[k].rules[..], cs.seat, cs.slot, at.x, at.z, tgt);
   // Dimension Door: the world puts the seat where the engine teleported it (a rooftop: the aim's height)
   at2: [2] f32;
-  if ok && cs.slot == EG_WL_DOOR && v[0].eg[k].strike_n < EG_CASTS && e5rr_seat_at(v[0].eg[k].rules[..], cs.seat, at2[..]) {
+  if ok && cs.slot == EG_WL_DOOR && v[0].eg[k].strike_n < EG_WORLD_STRIKES && e5rr_seat_at(v[0].eg[k].rules[..], cs.seat, at2[..]) {
     me := v[0].eg[k].seat[cs.seat].pose;
     ax := ifx abs(at2[0] - cs.x) < 1.6 then cs.x else at2[0]; az := ifx abs(at2[1] - cs.z) < 1.6 then cs.z else at2[1];
     v[0].eg[k].strikes[v[0].eg[k].strike_n] = EgStrike.{by = cs.seat, slot = cs.slot, fx = me.x, fy = me.y, fz = me.z, ax = ax, ay = cs.y, az = az, seed = 1};

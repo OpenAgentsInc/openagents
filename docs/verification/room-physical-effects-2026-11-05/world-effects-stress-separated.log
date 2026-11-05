@@ -1,0 +1,12 @@
+stress initial: actor=0 seat=0 position=0.0/-84.0 slot=32
+stress initial: actor=2 seat=2 position=0.0/-84.0 slot=32
+stress initial: actor=4 seat=4 position=0.0/-84.0 slot=20
+stress initial: actor=6 seat=6 position=0.0/-84.0 slot=20
+stress health:
+ok 10 players, fanout p50 100 us p95 100 us over 4718 reads, 5 rate-limited, 1 slow closed, shard 1, everglade tick p50 700 us at the 95th 1400 us over 461 ticks, waiting 0 bytes most, 0 ms oldest, 2 world events running, drain none
+checkpoints pending 0, flying 0, refused 0, applied 0, duplicates 0
+background pending 0/6, offered 55, refused 15, expired 0, late 1, failed 12
+work process rooms 2, lowest credit 2552 us, largest last tick 448 us room 0, deferred ticks 2, refused new work 0, retired rooms 0
+world preparation max 19686 us room 13, startup preparation 299765 us, last publication 454 us
+stress: seconds=75 opened=true casts_sent=1040 busy=58 peak_pets=8 peak_zones=4 peak_raiders=37 break_frames=210 raid_cast_frames=24
+stress: healthy_frames=2250 healthy_gap_max_ms=77 slow_tick_before=450 slow_tick_after=1650 slow_closed=1 slow_rejoined=true waiting_max_bytes=254489 closed=0 health_ok=150 health_failed=0 pending_max=4/6 recovered=true publication=true

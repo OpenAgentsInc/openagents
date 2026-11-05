@@ -247,16 +247,17 @@ void world_hold(int k, int s) { if (world_of(k)) everglade_room_hold(at(k), s); 
 void world_dice(int k, bool fixed) { if (world_of(k)) everglade_room_dice(at(k), fixed); }
 float world_cond_left(int k, int s, int cause) { return world_of(k) ? everglade_room_cond_left(at(k), s, cause) : 0.0f; }
 
-void world_strike(int k, int by, int slot, const float from[3], const float to[3], int seed) {
-  if (!world_of(k)) return;
+int world_effect_free(int k,int source) { return world_of(k) ? (int)everglade_room_effect_free(at(k),source) : 0; }
+bool world_strike(int k, int source, int by, int slot, const float from[3], const float to[3], int seed) {
+  if (!world_of(k)) return false;
   /* the Warlock's Dimension Door (room-everglade.coax EG_WL_DOOR): the seat stands where it teleported */
   if (slot == 69 && by >= 0 && by < WORLD_SEATS) {
     seat_ashore(k, by);
     seat_p[k][by] = verse_player_place(to[0], to[1], to[2], verse_player_face(seat_p[k][by])); seat_cut[k][by] = true;
     if (river[k]) { seat_dry(k, by); seat_w[k][by].breath = river[k]->breath; }
-    return;
+    return true;
   }
-  everglade_room_strike(at(k), by, slot, from[0], from[1], from[2], to[0], to[1], to[2], seed);
+  return everglade_room_strike_try(at(k),source,by,slot,from[0],from[1],from[2],to[0],to[1],to[2],seed);
 }
 int world_spells(int k, float dt) { return world_of(k) ? (int)everglade_room_spells(at(k), dt) : 0; }
 bool world_event(int k, int q, float out[WORLD_EVENT]) { return world_of(k) && everglade_room_event(at(k), q, (coax_v_f32){out, WORLD_EVENT}); }

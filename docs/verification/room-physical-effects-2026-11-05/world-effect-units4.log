@@ -1,0 +1,4 @@
+ok   #test room effects: one seat's full reservation cannot evict another seat or the raid (1 case, 1262386 steps, 177 ms)
+ok   #test room effects: classic casts retain their own impacts and release exactly once at their deadlines (1 case, 4698905 steps, 163 ms)
+2 of 753 checks (--only 'room effects:'), 2 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

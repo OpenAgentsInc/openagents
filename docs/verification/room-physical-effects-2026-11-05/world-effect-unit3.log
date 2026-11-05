@@ -1,0 +1,3 @@
+ok   #test room effects: one seat's full reservation cannot evict another seat or the raid (1 case, 1262386 steps, 243 ms)
+1 of 752 checks (--only 'room effects:'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

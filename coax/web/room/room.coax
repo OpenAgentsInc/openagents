@@ -28,6 +28,7 @@
 #load "room-everglade.coax";
 #load "room-oldwire.coax";   // pages from before wire 3, for the week after it ships
 #load "room-casts.coax";   // casts under latency: their phases and a tick's order (#12790)
+#load "room-effects.coax"; // physical effects own capacity before cast resources
 #load "../../../apps/openagents-web/everglade-cast-rules.coax";
 #load "room-abilities.coax";
 #load "room-sky.coax";

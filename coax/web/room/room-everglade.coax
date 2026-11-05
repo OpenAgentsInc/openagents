@@ -85,6 +85,8 @@ EG_META_BUDGET :: 900;
 EG_JOIN_BUDGET :: 2000;
 EG_CHUNK :: 3740;               // a D frame's entries at most (WIRE_SERVER_FRAME with its header); past it, F 2
 EG_CASTS :: 32;                 // casts heard and on their way, from the press to the strike (room-casts.coax)
+EG_PLAYER_STRIKES :: EFFECT_SEATS * EFFECT_PLAYER_CAP;
+EG_WORLD_STRIKES :: EG_PLAYER_STRIKES + E5RD_CASTS + E5RR_BEASTS + RT_HOUSE_BLASTS;
 EG_CAST_GAP :: 8;               // ticks between a seat's casts at least (about 4 a second)
 EG_NAME :: 24; EG_LOOK :: 32;
 // A tick's events (e entries) at most. An outcome (eg_ev_outcome: the town's pieces, a rebuild, an edit:
@@ -225,7 +227,8 @@ EgRoom :: struct {
   folk_save: [E5R_FOLK] int;
   // the town's pieces: Everglade's four spells' strikes for the world (it breaks and burns the pieces),
   // the rebuild asked for, and what is broken and burning now (a seat's snapshot names them)
-  strikes: [EG_CASTS] EgStrike; strike_n: int;
+  strikes: [EG_WORLD_STRIKES] EgStrike; strike_n: int;
+  effect_known: bool; effect_free: [EG_SEATS] int; house_free: int;
   rebuild: bool;
   broke_at: int = -100000; rebuilt_at: int = -100000;   // the ticks of the last spell on the town and the last rebuild (R's rules)
   fresh: bool;                   // a new room in this slot: the world's town starts whole
@@ -242,7 +245,7 @@ EgRoom :: struct {
   // who may receive what (room-interest.coax, #12789), and each seat's blocks by player id (K)
   im: [1] Interest; im_blk: [EG_SEATS] ImBlockList;
 }
-EgStrike :: struct { by: int; slot: int; fx: f32; fy: f32; fz: f32; ax: f32; ay: f32; az: f32; seed: int; }
+EgStrike :: struct { by: int; source: int = -1; slot: int; fx: f32; fy: f32; fz: f32; ax: f32; ay: f32; az: f32; seed: int; }
 EgCrime :: struct { by: int; x: f32; z: f32; }
 
 // ---- text
@@ -293,6 +296,7 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
     if v[0].eg[q].live { continue; }
     v[0].eg[q].live = true; v[0].eg[q].relay = r; v[0].eg[q].tick = 0; v[0].eg[q].cache_tick = -1;
     v[0].eg[q].work[0]=WorkBudget.{};
+    v[0].eg[q].effect_known=false;v[0].eg[q].house_free=0;for s:0..<EG_SEATS{v[0].eg[q].effect_free[s]=0;}
     for t: 0..<WIRE_BASES { v[0].eg[q].hist[0].tick[t] = -1; }
     // its entities' lives numbered its own (a restart, or this slot's last room, never repeats one: #12835)
     wire_hist_scope(v[0].eg[q].hist[..], v[0].wall_ms + r * 7919);
@@ -983,9 +987,10 @@ rm_eg_gates :: (v: [] RmServer, k: int, shut: int) #export_c { if rm_eg_live(v, 
 // The strikes since the world last heard: q's BY SLOT FX FY FZ AX AY AZ SEED.
 rm_eg_strikes :: (v: [] RmServer, k: int) -> int #export_c { return ifx rm_eg_live(v, k) then v[0].eg[k].strike_n else 0; }
 rm_eg_strike :: (v: [] RmServer, k: int, q: int, out: [] f32) #export_c {
-  if !rm_eg_live(v, k) || q < 0 || q >= v[0].eg[k].strike_n || out.count < 9 { return; }
+  if !rm_eg_live(v, k) || q < 0 || q >= v[0].eg[k].strike_n || out.count < 10 { return; }
   c := v[0].eg[k].strikes[q];
   out[0] = f32(c.by); out[1] = f32(c.slot); out[2] = c.fx; out[3] = c.fy; out[4] = c.fz; out[5] = c.ax; out[6] = c.ay; out[7] = c.az; out[8] = f32(c.seed);
+  out[9]=f32(ifx c.source>=0 then c.source else ifx c.by>=0 then c.by else EFFECT_HOUSE);
 }
 rm_eg_strikes_heard :: (v: [] RmServer, k: int) #export_c { if rm_eg_live(v, k) { v[0].eg[k].strike_n = 0; } }
 // Whether a rebuild was asked for since the world last heard.

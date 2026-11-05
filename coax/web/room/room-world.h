@@ -67,7 +67,8 @@ float world_cond_left(int k, int s, int cause);   /* seconds left of seat s's wa
    fire, the count of its events; event q: KIND PIECE A B C X Z (KIND 1 a break thrown at A B C m/s, 2
    alight: A 1 on); the rebuild. */
 #define WORLD_EVENT 7
-void world_strike(int k, int by, int slot, const float from[3], const float to[3], int seed);
+bool world_strike(int k, int source, int by, int slot, const float from[3], const float to[3], int seed);
+int world_effect_free(int k,int source);
 int world_spells(int k, float dt);
 bool world_event(int k, int q, float out[WORLD_EVENT]);
 int world_pieces(int k);              /* the town's pieces, and whether piece i stands whole (a Repair's) */

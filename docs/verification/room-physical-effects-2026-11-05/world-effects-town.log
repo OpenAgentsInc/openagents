@@ -1,0 +1,16 @@
+ok   #test room town: thirty two simultaneous authoritative beams match their serial destruction (#12841) (1 case, 1362153703 steps, 12222 ms)
+ok   #test room town: the raid's Fireball (by no seat) setting the town alight is no player's crime; a seat's is that seat's (#12916) (1 case, 1098423966 steps, 7341 ms)
+FAIL #test room town: the raid's fire, still spreading after seat 0 casts, is not seat 0's crime (#12920) (5891 ms)
+apps/openagents-web/everglade-watch.coax:1407:3: error[E0406]: assertion failed
+    #assert c[0] == 0 && c[1] == 0;
+    ^
+  note: in #test room town: the raid's fire, still spreading after seat 0 casts, is not seat 0's crime (#12920)
+ok   #test room town: seat 0's fire, still spreading after the raid casts, is still seat 0's crime (#12920) (1 case, 863640546 steps, 5967 ms)
+ok   #test room town: a seat talks to a townsperson only within reach, they face that seat, and walking off lets them go (1 case, 430867342 steps, 2438 ms)
+ok   #test room town: a Wall of Fire burning on after another seat casts is its caster's crime, not the last caster's (#12923) (1 case, 625846896 steps, 4626 ms)
+ok   #test room town: seat 0's fire burning a guard after seat 1 casts raises seat 0's heat, not seat 1's (#12923) (1 case, 546539816 steps, 3037 ms)
+7 of 753 checks (--only 'room town:'), 6 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: this compiler is out of date: /Users/christopherdavid/work/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/work/openagents/coax/build.sh

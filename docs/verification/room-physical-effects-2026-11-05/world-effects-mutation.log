@@ -1,0 +1,19 @@
+coax: this compiler is out of date: /Users/christopherdavid/work/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/work/openagents/coax/build.sh
+aethyr/session/effect-reservation.coax:31:15: mutant survived: '&&' became '||'
+    return cap>0&&free>=0&&free<=cap&&held>=0&&held<=cap&&needed>0&&needed<=cap&&held<=free-needed;
+                ^
+aethyr/session/effect-reservation.coax:31:13: mutant survived: '>' became '>='
+    return cap>0&&free>=0&&free<=cap&&held>=0&&held<=cap&&needed>0&&needed<=cap&&held<=free-needed;
+              ^
+aethyr/session/effect-reservation.coax:31:21: mutant survived: '>=' became '>'
+    return cap>0&&free>=0&&free<=cap&&held>=0&&held<=cap&&needed>0&&needed<=cap&&held<=free-needed;
+                      ^
+aethyr/session/effect-reservation.coax:31:23: mutant survived: 0 became 1
+    return cap>0&&free>=0&&free<=cap&&held>=0&&held<=cap&&needed>0&&needed<=cap&&held<=free-needed;
+                        ^
+aethyr/session/effect-reservation.coax:31:50: mutant survived: '<=' became '<'
+    return cap>0&&free>=0&&free<=cap&&held>=0&&held<=cap&&needed>0&&needed<=cap&&held<=free-needed;
+                                                   ^
+70 mutants, 65 killed, 5 survived

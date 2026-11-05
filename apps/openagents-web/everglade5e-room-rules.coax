@@ -29,6 +29,7 @@
 #load "everglade-raid-scale.coax";   // the raid's waves for the players present (room-events.coax, the EVENTS pane)
 #load "../../aethyr/forge/npc-document.coax";
 #load "../../aethyr/session/outcome-slot.coax";
+#load "../../aethyr/session/effect-reservation.coax";
 #load "everglade5e-forge.coax";
 
 E5RR_SEATS :: 16;

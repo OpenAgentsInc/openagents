@@ -1,0 +1,9 @@
+ok   #test room town: thirty two simultaneous authoritative beams match their serial destruction (#12841) (1 case, 1364905333 steps, 9245 ms)
+ok   #test room town: the raid's Fireball (by no seat) setting the town alight is no player's crime; a seat's is that seat's (#12916) (1 case, 1099448655 steps, 6177 ms)
+ok   #test room town: the raid's fire, still spreading after seat 0 casts, is not seat 0's crime (#12920) (1 case, 862646564 steps, 5654 ms)
+ok   #test room town: seat 0's fire, still spreading after the raid casts, is still seat 0's crime (#12920) (1 case, 863933886 steps, 7222 ms)
+ok   #test room town: a seat talks to a townsperson only within reach, they face that seat, and walking off lets them go (1 case, 430885342 steps, 2264 ms)
+ok   #test room town: a Wall of Fire burning on after another seat casts is its caster's crime, not the last caster's (#12923) (1 case, 626030458 steps, 4422 ms)
+ok   #test room town: seat 0's fire burning a guard after seat 1 casts raises seat 0's heat, not seat 1's (#12923) (1 case, 546832326 steps, 4356 ms)
+7 of 754 checks (--only 'room town:'), 7 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

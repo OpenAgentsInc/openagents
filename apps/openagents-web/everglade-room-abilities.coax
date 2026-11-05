@@ -17,7 +17,9 @@
 // one gone is ended, one far from where the server has it is cast again there. They draw, lift your
 // step and move the page's debris as the server's; the saves, lifts and harm are the server's.
 
-EG_RA_HURTS :: 16;
+// Each copy calls hp_back once for every actor; reserve that complete matrix.
+#load "everglade-room-effects.coax";
+EG_RA_HURTS :: EG_RA_SEATS * WATCH_ACTORS;
 EG_RA_PAD :: 1000000;     // Hit Points the watch's people hold while a copy runs (the rules deal the harm)
 EG_RA_LATER :: 16;        // strikes waiting on their cast bars
 EG_RA_SEATS :: 16;        // a copy a seat (room-everglade.coax EG_SEATS)
@@ -240,6 +242,24 @@ eg_ra_set_mode :: (s: [] Everglade, k: int, mode: int) {
 // The watch's people's Hit Points through a copy's step: held far over 0 (the watch kills no one), and
 // what it took is put back, the rules' to deal; with `keep`, what each lost is kept as a hurt of seat q.
 EgRaHp :: struct { hp: [WATCH_ACTORS] int; }
+#test "room abilities: simultaneous falls retain every seat and person's authoritative damage (#12841)" #steps 3000000000 {
+  g:[1]Everglade;dm:[1]DemoWorld;g[0].sp.on=true;g[0].sp.ready=true;g[0].sp.dm=dm[..];g[0].wt[0].on=true;
+  #assert sp_on(g[..]);
+  for i:0..<WATCH_ACTORS{g[0].wt[0].actors[i].hp=100;g[0].wt[0].actors[i].mode=WM_CALM;}
+  for seat:0..<EG_RA_SEATS{
+    hp:=eg_ra_hp_pad(g[..]);
+    for i:0..<WATCH_ACTORS{g[0].wt[0].actors[i].hp-=seat+i+1;}
+    eg_ra_hp_back(g[..],hp,true,seat);
+    for i:0..<WATCH_ACTORS{#assert g[0].wt[0].actors[i].hp==100;}
+  }
+  #assert everglade_room_hurts(g[..])==EG_RA_SEATS*WATCH_ACTORS;
+  seen:[EG_RA_SEATS*WATCH_ACTORS]bool;out:[3]f32;
+  for q:0..<everglade_room_hurts(g[..]){
+    #assert everglade_room_hurt(g[..],q,out[..]);i:=cast(int)out[0];seat:=cast(int)out[2];key:=seat*WATCH_ACTORS+i;
+    #assert i>=0&&i<WATCH_ACTORS&&seat>=0&&seat<EG_RA_SEATS&&!seen[key]&&cast(int)out[1]==seat+i+1;
+    seen[key]=true;
+  }
+}
 eg_ra_hp_pad :: (s: [] Everglade) -> EgRaHp {
   h: EgRaHp;
   if !watch_on(s) { return h; }
@@ -324,6 +344,7 @@ everglade_room_rise :: (s: [] Everglade, q: int, up: bool, sink: bool, x: f32, z
 // on from the room before, and no strike of its falls here. A copy left running (a moonbeam, a fire, a
 // wall up for EG_RA_REST s) burnt the next room's town and its players.
 eg_ra_fresh :: (s: [] Everglade) {
+  eg_effects_fresh(s);
   r := s[0].sp.room_ab[..];
   r[0].later_n = 0; r[0].hurts = 0;
   for q: 0..<EG_RA_SEATS {
@@ -775,7 +796,7 @@ eg_ra_test_three :: (s: [] Everglade, dm: [] DemoWorld, who: [] int) {
   #assert w[0].actors[who[1]].body.on && !w[0].actors[who[0]].body.on;
 }
 
-#test "room abilities: Everglade's four strike the server's town at the step after the room hands them over (their cast bar done: room-casts.coax)" #steps 3000000000 {
+#test "room abilities: classic impacts advance with the world after handoff and release their reservation on completion" #steps 3000000000 {
   s: [1] Everglade;
   dm: [1] DemoWorld;
   everglade_room_spells_start(s[..], dm[..], "");
@@ -783,10 +804,12 @@ eg_ra_test_three :: (s: [] Everglade, dm: [] DemoWorld, who: [] int) {
   for m: 0..<SP_METEORS * 2 { if s[0].sp.meteors[m].live { live = true; } }
   #assert !live;
   everglade_room_strike(s[..], 0, SP_METEOR, 0, 2, 0, 10, 0, 10, 7);
-  #assert s[0].sp.room_ab[0].later_n == 1;
+  #assert everglade_room_effect_free(s[..],0)==EFFECT_PLAYER_CAP-1&&s[0].sp.effects[0].landed==0;
   _ := everglade_room_spells(s[..], 1.0 / 30);   // the meteors fall
   for m: 0..<SP_METEORS * 2 { if s[0].sp.meteors[m].live { live = true; } }
-  #assert live && s[0].sp.room_ab[0].later_n == 0;
+  #assert !live&&everglade_room_effect_free(s[..],0)==EFFECT_PLAYER_CAP-1&&s[0].sp.effects[0].landed==0;
+  ignored_completed_impacts:=everglade_room_spells(s[..],2);
+  #assert everglade_room_effect_free(s[..],0)==EFFECT_PLAYER_CAP&&s[0].sp.effects[0].landed==SP_METEORS;
 }
 #test "room abilities: Levitate and Feather Fall run in their caster's copy, rise and sink with the keys the input sends, and lift only their caster" #steps 3000000000 {
   s: [1] Everglade;

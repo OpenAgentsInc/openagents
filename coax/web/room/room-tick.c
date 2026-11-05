@@ -62,12 +62,14 @@ static void everglade_town(int k) {
   rm_eg_gates(view(), k, world_gates(k));   /* the gates shut at WANTED 4 (#12794): the doors row's FORM */
   /* the town's pieces: the rebuild, the strikes cast since, then what broke and caught for every page */
   if (rm_eg_rebuild(view(), k)) world_rebuild(k);
-  float sk[9], ev[WORLD_EVENT]; coax_v_f32 skv = {sk, 9};
+  float sk[10], ev[WORLD_EVENT]; coax_v_f32 skv = {sk, 10};
   int64_t sn = rm_eg_strikes(view(), k);
-  for (int64_t q = 0; q < sn; q++) { rm_eg_strike(view(), k, q, skv); world_strike(k, (int)sk[0], (int)sk[1], sk + 2, sk + 5, (int)sk[8]); }
-  rm_eg_strikes_heard(view(), k);
+  int64_t taken=0;
+  for (;taken<sn;taken++) { rm_eg_strike(view(),k,taken,skv);if(!world_strike(k,(int)sk[9],(int)sk[0],(int)sk[1],sk+2,sk+5,(int)sk[8]))break; }
+  rm_eg_strikes_taken(view(),k,taken);
   int64_t t2 = now_us();
   int en = world_spells(k, 1.0f / WORLD_HZ);
+  for(int source=0;source<rm_effect_sources();source++)rm_effect_free(view(),k,source,world_effect_free(k,source));
   for (int q = 0; q < en; q++)
     if (world_event(k, q, ev)) {
       /* a Repair (KIND 3): the pieces it stood up are whole for the pages that join later too */

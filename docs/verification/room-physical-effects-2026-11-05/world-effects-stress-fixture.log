@@ -1,0 +1,3 @@
+ok   #test background fixture reads an entire CRLF request before stalling it (1 case, 2209 steps, 0 ms)
+1 of 231 checks (--only 'background fixture'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

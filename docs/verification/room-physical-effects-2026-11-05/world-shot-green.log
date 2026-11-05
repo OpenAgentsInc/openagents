@@ -1,0 +1,3 @@
+ok   #test room town: thirty two simultaneous authoritative beams match their serial destruction (#12841) (1 case, 1362153703 steps, 20318 ms)
+1 of 752 checks (--only 'thirty two simultaneous authoritative'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

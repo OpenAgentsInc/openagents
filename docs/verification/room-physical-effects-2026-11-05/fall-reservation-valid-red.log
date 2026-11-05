@@ -1,0 +1,10 @@
+FAIL #test room abilities: simultaneous falls retain every seat and person's authoritative damage (#12841) (220 ms)
+apps/openagents-web/everglade-room-abilities.coax:255:3: error[E0406]: assertion failed
+    #assert everglade_room_hurts(g[..])==EG_RA_SEATS*WATCH_ACTORS;
+    ^
+  note: in #test room abilities: simultaneous falls retain every seat and person's authoritative damage (#12841)
+1 of 752 checks (--only 'simultaneous falls retain'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: this compiler is out of date: /Users/christopherdavid/work/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/work/openagents/coax/build.sh

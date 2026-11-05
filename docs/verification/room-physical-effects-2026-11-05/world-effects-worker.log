@@ -1,0 +1,2 @@
+wasm-size: everglade-room-effects is 1029169 bytes and has no size budget: add a line "everglade-room-effects BYTES" to apps/openagents-web/wasm-budgets.txt
+built /private/tmp/overload-12841/everglade-room-effects.wasm (1029169 bytes)

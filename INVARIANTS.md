@@ -822,6 +822,23 @@ The room settles deaths before reinforcements, drains once and releases each
 reservation; deliberate event clear settles pending results first. Checks:
 outcome-slot's mutation gate and room-events' full-capacity death/reuse/XP case.
 
+Accepted town impacts keep physical reservations independent of visual pools
+(`aethyr/session/effect-reservation.coax`, #12841): four per admitted player,
+two per physical raid slot and eight for the house. Admission subtracts already
+accepted waiting/staged work before cast order, cooldown or resources. The
+shared native/worker adapter acknowledges only a consumed prefix; a refused
+handoff remains queued. Player staging has a reserved region which NPC, forge
+and house work cannot consume. NPC work defers before spending resources when
+its reservation is full. Released impacts retain their source, position, seed,
+damage and ownership through caster removal, raid clear and later dial changes.
+Classic casts retain every meteor/bolt/orb until its deadline; a visual pool
+cannot evict their gameplay. Each completed impact releases once. New broken
+pieces retain their individual origin through later outcome collection. Fall
+damage reserves every seat/person pair in one step, rather than truncating at
+sixteen copies. Checks: independent authority mutation; room-effects' refusal,
+prefix and raid-clear cases; world effect concurrency/deadline/ownership and
+full fall-matrix regressions.
+
 The native room's background HTTP effects use six independent lanes
 (`background-budget.coax`): control, world, legacy vitals, complete checkpoints,
 directory and statistics. Each has one serial SDK helper and one admitted Coax

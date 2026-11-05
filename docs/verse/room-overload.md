@@ -1,9 +1,10 @@
 # Everglade room overload profile
 
 Issue #12841. This records the single-owner room's work classes and the bounds
-enforced so far. A bound on storage is separate from CPU isolation; measured
-work and startup/content-warming receipts are in the room-work record. Remaining
-downstream effects and integrated gameplay qualification stay open.
+enforced for the single-owner profile. A bound on storage is separate from CPU
+isolation; measured work and startup/content-warming receipts are in the room-work
+record. Retained impacts and integrated gameplay qualification are recorded in
+`docs/verification/2026-11-05-room-physical-effects.md`; fleet capacity is #12843.
 
 | Work | Admission and reservation | Full/late/outage outcome |
 | --- | --- | --- |
@@ -13,7 +14,9 @@ downstream effects and integrated gameplay qualification stay open.
 | Door/talk/boat interactions | One nonnegative-ID and one negative-ID request per seat, 32 entries | Existing `r SEQ busy` for extras; positive-ID floods cannot consume the talk release/boat nearest-toggle class or another seat's work |
 | Simulation/serialization | Each room earns 45 us/ms, with a 3,000 us burst; a tick requires 1,500 us credit | Charge actual wall duration; an indebted room defers itself, counts/discards queued movement and earns no deferred movement; new casts/seats receive busy/full before order or fencing |
 | Waiting cast intents | Two per seat and a 533 ms monotonic deadline | Busy refusal before start/cooldown even if simulation time is deferred; bars/flight and accepted lifecycle work are retained |
-| World damage input | One aggregate per seat per tick, 16 reserved mailboxes | Repeated complete reports replace their seat's snapshot; resolved once after heals; no overflow-to-immediate-damage path |
+| World damage input | One aggregate per seat per tick, 16 reserved mailboxes; physical fall results reserve every seat/person pair | Repeated complete reports replace their seat's snapshot; resolved once after heals; no overflow-to-immediate-damage path or truncated fall matrix |
+| Physical town impacts | Four reserved slots per player, two per physical NPC slot, eight for the house; accepted waiting/staged work counts against admission | Extra player casts return busy before order/resources; NPC turns defer before cost; refused SDK handoffs retain the unconsumed prefix; released impacts survive source removal/dial changes and complete once |
+| Impact presentation | Existing finite visual pools remain disposable | Visual replacement cannot evict a retained gameplay impact; per-piece break ownership survives later collection |
 | Raid deaths and XP | One reserved result per physical creature slot, 96; pending result fences raid reuse | Consume once before reinforcements; preserve the dead source for retry if recording cannot reserve space; explicit event clear settles results first |
 | Entity state | Bounded row budget and maximum-age selection | Replace/coalesce; old slow-link state is skipped; resnapshot after catch-up |
 | Lifecycle and outcomes | Separate lifecycle allowance and reserved outcome storage | Lifecycle deferred; missed town outcomes counted and repaired by complete town state |

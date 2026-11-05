@@ -1,0 +1,10 @@
+FAIL #test room town: thirty two simultaneous authoritative beams match their serial destruction (#12841) (11277 ms)
+apps/openagents-web/everglade-watch.coax:1157:32: error[E0406]: assertion failed
+      if run==1{for i:0..<w[0].n{#assert states[0][i]==states[1][i];}}
+                                 ^
+  note: in #test room town: thirty two simultaneous authoritative beams match their serial destruction (#12841)
+1 of 748 checks (--only 'thirty two simultaneous authoritative'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: this compiler is out of date: /Users/christopherdavid/work/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/work/openagents/coax/build.sh

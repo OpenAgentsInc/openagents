@@ -1,0 +1,45 @@
+// Physical world effects are independent of disposable visual pools.
+#authority;
+EFFECT_SEATS::16;EFFECT_NPCS::96;EFFECT_PLAYER_CAP::4;EFFECT_NPC_CAP::2;EFFECT_HOUSE_CAP::8;
+EFFECT_HOUSE::EFFECT_SEATS+EFFECT_NPCS;
+EFFECT_TOTAL::EFFECT_SEATS*EFFECT_PLAYER_CAP+EFFECT_NPCS*EFFECT_NPC_CAP+EFFECT_HOUSE_CAP;
+EffectSpan::struct{first:int;count:int;ok:bool;}
+#test "effect reservations: every source owns a disjoint span and invalid sources own none" {
+  seen:[EFFECT_TOTAL]bool;
+  for source:0..<EFFECT_HOUSE+1{
+    s:=effect_span(source);#assert s.ok;
+    #assert s.count==(ifx source<EFFECT_SEATS then 4 else ifx source<EFFECT_HOUSE then 2 else 8);
+    for q:s.first..<s.first+s.count{#assert q>=0&&q<EFFECT_TOTAL&&!seen[q];seen[q]=true;}
+  }
+  for on:seen{#assert on;}
+  #assert !effect_span(-1).ok&&!effect_span(EFFECT_HOUSE+1).ok&&!effect_span(9223372036854775807).ok;
+}
+effect_span::(source:int)->EffectSpan #export_c{
+  if source<0||source>EFFECT_HOUSE{return EffectSpan.{};}
+  if source<EFFECT_SEATS{return EffectSpan.{first=source*EFFECT_PLAYER_CAP,count=EFFECT_PLAYER_CAP,ok=true};}
+  if source<EFFECT_HOUSE{return EffectSpan.{first=EFFECT_SEATS*EFFECT_PLAYER_CAP+(source-EFFECT_SEATS)*EFFECT_NPC_CAP,count=EFFECT_NPC_CAP,ok=true};}
+  return EffectSpan.{first=EFFECT_SEATS*EFFECT_PLAYER_CAP+EFFECT_NPCS*EFFECT_NPC_CAP,count=EFFECT_HOUSE_CAP,ok=true};
+}
+#test "effect reservations: available slots also cover all already accepted waiting work" {
+  for cap:1..<9{for free:-1..<cap+2{for held:-1..<cap+2{for needed:0..<cap+2{
+    want:=free>=0&&free<=cap&&held>=0&&held<=cap&&needed>0&&needed<=cap&&held+needed<=free;
+    #assert effect_admit(free,held,needed,cap)==want;
+  }}}}
+  #assert !effect_admit(0,0,1,0)&&!effect_admit(0,0,1,-1);
+  #assert !effect_admit(-9223372036854775807-1,0,9223372036854775807,8);
+  #assert !effect_admit(8,-9223372036854775807-1,1,8);
+  #assert !effect_admit(8,9223372036854775807,1,8);
+}
+effect_admit::(free:int,held:int,needed:int,cap:int)->bool #export_c{
+  // The last guard also makes the subtraction safe for every signed input.
+  if free>cap||held<0||needed<=0||needed>free{return false;}
+  return held<=free-needed;
+}
+#test "effect reservations: only delayed world transitions need physical service" {
+  for slot:[8]int.[0,1,2,3,47,64,65,70]{#assert effect_physical(slot);}
+  #assert effect_physical(73)&&effect_physical(76);
+  for slot:[13]int.[-1,4,46,48,63,66,69,71,72,74,75,77,500]{#assert !effect_physical(slot);}
+}
+effect_physical::(slot:int)->bool #export_c{
+  return (slot>=0&&slot<4)||slot==47||slot==70||slot==64||slot==65||slot==73||slot==76;
+}

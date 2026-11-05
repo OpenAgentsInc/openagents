@@ -188,7 +188,7 @@ rm_forge_moved :: (v:[]RmServer,k:int,q:int,out:[]f32) #export_c {
 }
 fg_hits :: (v:[]RmServer,k:int) {
   r:=v[0].eg[k].rules[..];
-  for q:0..<E5RR_BEASTS {bt:=r[0].beasts[q..<q+1];if bt[0].forge_hit<=0 || v[0].eg[k].strike_n>=EG_CASTS {continue;}
+  for q:0..<E5RR_BEASTS {bt:=r[0].beasts[q..<q+1];if bt[0].forge_hit<=0 || v[0].eg[k].strike_n>=EG_WORLD_STRIKES-EG_PLAYER_STRIKES-RT_HOUSE_BLASTS {continue;}
     v[0].eg[k].strikes[v[0].eg[k].strike_n]=EgStrike.{by=-1,slot=E5RF_HIT_SLOT,fx=bt[0].x,fy=bt[0].y+1,fz=bt[0].z,ax=bt[0].goal_x,ay=bt[0].y+1,az=bt[0].goal_z,seed=bt[0].forge_hit};v[0].eg[k].strike_n+=1;bt[0].forge_hit=0;
   }
 }

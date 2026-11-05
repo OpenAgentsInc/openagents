@@ -1,0 +1,3 @@
+ok   #test room abilities: simultaneous falls retain every seat and person's authoritative damage (#12841) (1 case, 1470405 steps, 251 ms)
+1 of 752 checks (--only 'simultaneous falls retain'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

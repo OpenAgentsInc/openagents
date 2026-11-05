@@ -1,0 +1,115 @@
+// Authoritative impacts own physical slots; visual shot pools cannot evict them.
+#load "../../aethyr/session/effect-reservation.coax";
+EgWorldEffect::struct{
+  on:bool;by:int;source:int;slot:int;from:Point;at:Point;seed:int;
+  dmg:SrdDamage;parts:[SP_METEORS]SpMeteor;part_n:int;shot:WlShot;
+}
+EgWorldEffects::struct{active:[EFFECT_TOTAL]EgWorldEffect;refused:int;landed:int;}
+eg_effects_fresh::(s:[]Everglade){for q:0..<EFFECT_TOTAL{s[0].sp.effects[0].active[q].on=false;}}
+everglade_room_effect_free::(s:[]Everglade,source:int)->int #export_c{
+  span:=effect_span(source);if !span.ok{return 0;}n:=0;
+  for q:span.first..<span.first+span.count{if !s[0].sp.effects[0].active[q].on{n+=1;}}
+  return n;
+}
+#test "room effects: one seat's full reservation cannot evict another seat or the raid" #steps 3000000000 {
+  g:[1]Everglade;dm:[1]DemoWorld;g[0].sp.on=true;g[0].sp.ready=true;g[0].sp.dm=dm[..];
+  for n:0..<EFFECT_PLAYER_CAP{#assert everglade_room_strike_try(g[..],0,0,WL_SLOT0+WL_BLAST,0,1,0,2,1,0,n+1);}
+  #assert !everglade_room_strike_try(g[..],0,0,WL_SLOT0+WL_BLAST,0,1,0,2,1,0,99);
+  #assert everglade_room_effect_free(g[..],0)==0&&everglade_room_effect_free(g[..],1)==EFFECT_PLAYER_CAP;
+  #assert everglade_room_strike_try(g[..],1,1,WL_SLOT0+WL_BLAST,0,1,0,3,1,0,100);
+  #assert everglade_room_strike_try(g[..],EFFECT_SEATS,-1,WL_SLOT0+WL_BLAST,0,1,0,4,1,0,101);
+  span:=effect_span(0);for n:0..<EFFECT_PLAYER_CAP{#assert g[0].sp.effects[0].active[span.first+n].seed==n+1;}
+}
+#test "room effects: classic casts retain their own impacts and release exactly once at their deadlines" #steps 4000000000 {
+  g:[1]Everglade;dm:[1]DemoWorld;g[0].sp.on=true;g[0].sp.ready=true;g[0].sp.dm=dm[..];
+  g[0].sp.dice[0]=srd_dice(42);
+  #assert everglade_room_strike_try(g[..],0,0,SP_METEOR,0,1,0,0,0,0,17);
+  #assert everglade_room_strike_try(g[..],1,1,SP_MEGA,0,1,0,40,0,0,19);
+  eg_effects_step(g[..],0.1);#assert g[0].sp.effects[0].landed==1&&everglade_room_effect_free(g[..],1)==EFFECT_PLAYER_CAP&&everglade_room_effect_free(g[..],0)==EFFECT_PLAYER_CAP-1;
+  eg_effects_step(g[..],2);#assert g[0].sp.effects[0].landed==1+SP_METEORS&&everglade_room_effect_free(g[..],0)==EFFECT_PLAYER_CAP;
+  eg_effects_step(g[..],2);#assert g[0].sp.effects[0].landed==1+SP_METEORS;
+}
+// Additive private SDK: false leaves the producer's accepted effect queued.
+everglade_room_strike_try::(s:[]Everglade,source:int,by:int,slot:int,fx:f32,fy:f32,fz:f32,ax:f32,ay:f32,az:f32,seed:int)->bool #export_c{
+  if !sp_on(s){return false;}
+  if !effect_physical(slot){
+    // Editor melee is immediate; other nonphysical looks have no town effect.
+    if slot==500{
+      at:=v3(ax,ay,az);s[0].wv.net=true;s[0].wv.room_hit=at;s[0].wv.room_by=by;fell:=sp_dm(s)[0].fell;
+      wl_break(s,at,1.5,SrdDamage.{amount=seed,kind=DMG_BLUDGEONING},false);
+      if sp_dm(s)[0].fell!=fell{eg_effect_breaks_on(s,by,at,s[0].wv.room_break_step+1);}
+    }
+    return true;
+  }
+  span:=effect_span(source);q:=-1;
+  if span.ok{for n:span.first..<span.first+span.count{if q<0&&!s[0].sp.effects[0].active[n].on{q=n;}}}
+  if q<0{s[0].sp.effects[0].refused+=1;return false;}
+  c:=s[0].sp.effects[0].active[q..<q+1];
+  c[0]=EgWorldEffect.{on=true,by=by,source=source,slot=slot,from=v3(fx,fy,fz),at=v3(ax,ay,az),seed=seed};
+  s[0].wv.net=true;
+  if cr_repair(slot){return true;}
+  if slot>=WL_SLOT0{
+    k:=slot-WL_SLOT0;c[0].shot=WlShot.{live=true,k=k,from=c[0].from,at=c[0].at,t=-WL_DELAY[k],seed=seed};return true;
+  }
+  eg_effect_classic(s,q);return true;
+}
+// Borrow the classic generator's transient state; retain its arithmetic,
+// seed/shape and rolled damage, then keep each cast's resulting impacts.
+eg_effect_classic::(s:[]Everglade,q:int){
+  c:=s[0].sp.effects[0].active[q..<q+1];
+  old_bolt:=s[0].sp.bolt;old_meteors:=s[0].sp.meteors;
+  old_from:=s[0].sp.orb_from;old_to:=s[0].sp.orb_to;old_t:=s[0].sp.orb_t;old_live:=s[0].sp.orb_live;old_orb_remote:=s[0].sp.orb_remote;
+  old_dmg:=s[0].sp.dmg;old_at:=s[0].sp.cast_at;old_n:=s[0].sp.cast_n;old_cast_from:=s[0].sp.cast_from;
+  old_seed:=s[0].sp.cast_seed;old_remote:=s[0].sp.remote;old_broke:=s[0].sp.broke;old_pushed:=s[0].sp.pushed;
+  s[0].sp.cast_at=c[0].at;s[0].sp.cast_n=v3(0,1,0);s[0].sp.cast_from=c[0].from;
+  s[0].sp.cast_seed=cast(u64)hi_w(c[0].seed,1);s[0].sp.remote=false;
+  sp_release(s,c[0].slot);c[0].dmg=s[0].sp.dmg;
+  if c[0].slot==SP_METEOR{c[0].part_n=SP_METEORS;for m:0..<SP_METEORS{c[0].parts[m]=s[0].sp.meteors[m];}}
+  else{
+    c[0].part_n=1;
+    c[0].parts[0]=SpMeteor.{live=true,to=c[0].at,n=v3(0,1,0),t= -(ifx c[0].slot==SP_ORB then 0.7f32 else f32(SP_BOLT_LEAD))};
+  }
+  s[0].sp.bolt=old_bolt;s[0].sp.meteors=old_meteors;
+  s[0].sp.orb_from=old_from;s[0].sp.orb_to=old_to;s[0].sp.orb_t=old_t;s[0].sp.orb_live=old_live;s[0].sp.orb_remote=old_orb_remote;
+  s[0].sp.dmg=old_dmg;s[0].sp.cast_at=old_at;s[0].sp.cast_n=old_n;s[0].sp.cast_from=old_cast_from;
+  s[0].sp.cast_seed=old_seed;s[0].sp.remote=old_remote;s[0].sp.broke=old_broke;s[0].sp.pushed=old_pushed;
+}
+eg_effects_step::(s:[]Everglade,dt:f32){
+  old_by:=s[0].wv.room_by;old_hit:=s[0].wv.room_hit;old_nobody:=s[0].wv.room_nobody;me:=watch_w(s)[0].me;
+  old_dmg:=s[0].sp.dmg;old_remote:=s[0].sp.remote;
+  for q:0..<EFFECT_TOTAL{
+    c:=s[0].sp.effects[0].active[q..<q+1];if !c[0].on{continue;}
+    s[0].wv.room_by=c[0].by;s[0].wv.room_hit=c[0].at;s[0].wv.room_nobody=c[0].by<0;
+    watch_w(s)[0].me=clamp_w(c[0].by,0,WATCH_YOUS-1);
+    if cr_repair(c[0].slot){eg_room_repair(s,c[0].from,c[0].at);c[0].on=false;s[0].sp.effects[0].landed+=1;continue;}
+    if c[0].slot>=WL_SLOT0{
+      c[0].shot.t+=dt;if c[0].shot.t>=0{
+        fell:=sp_dm(s)[0].fell;wl_land(s,c[0].shot);if sp_dm(s)[0].fell!=fell{eg_effect_breaks(s,c[0].by,c[0].at);}
+        c[0].on=false;s[0].sp.effects[0].landed+=1;}continue;
+    }
+    live:=false;
+    for m:0..<c[0].part_n{
+      p:=c[0].parts[m..<m+1];if !p[0].live{continue;}p[0].t+=dt;
+      if p[0].t>=p[0].fall{
+        p[0].live=false;s[0].sp.dmg=c[0].dmg;s[0].sp.remote=false;
+        at:=ifx sp_wall(p[0].n) then add(p[0].to,times(p[0].n,0.5)) else p[0].to;
+        s[0].wv.room_hit=at;fell:=sp_dm(s)[0].fell;sp_blast(s,at,c[0].slot);
+        if sp_dm(s)[0].fell!=fell{eg_effect_breaks(s,c[0].by,at);}s[0].sp.effects[0].landed+=1;
+      }else{live=true;}
+    }
+    c[0].on=live;
+  }
+  s[0].wv.room_by=old_by;s[0].wv.room_hit=old_hit;s[0].wv.room_nobody=old_nobody;watch_w(s)[0].me=me;
+  s[0].sp.dmg=old_dmg;s[0].sp.remote=old_remote;
+}
+// Collection happens after all casts and fire; keep each new break's origin.
+eg_effect_breaks::(s:[]Everglade,by:int,at:Point){
+  eg_effect_breaks_on(s,by,at,s[0].wv.room_break_step);
+}
+eg_effect_breaks_on::(s:[]Everglade,by:int,at:Point,step:int){
+  w:=sp_dm(s);for i:0..<w[0].n{
+    if s[0].wv.room_stood[i]&&w[0].pieces[i].state!=DP_STANDING&&s[0].wv.room_break_at[i]!=step{
+      s[0].wv.room_break_at[i]=step;s[0].wv.room_break_by[i]=by;s[0].wv.room_break_hit[i]=at;
+    }
+  }
+}
