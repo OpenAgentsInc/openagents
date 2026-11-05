@@ -1,0 +1,214 @@
+// A page on a 64 kbit/s link beside a healthy one, through the room server's real socket path (#12903,
+// follow-up of #12837): two players join one everglade room of a running room server, one straight to
+// it and one through coax/web/room/net-proxy.coax, which reads what the room sends that player at
+// RATE bytes a second while the file SLOW exists. Each plays as a page does: an input every 1/30 s (a
+// walk that turns) with HEARD from its mirror of the rows (everglade-wire.coax WireMirror).
+//   coax/web/tool.sh coax/web/room/throttle-check.coax ROOM_PORT PROXY_PORT SLOW [SECONDS_SLOW] [SECONDS_AFTER] [ROOM]
+// ROOM N plays in pair-drift-N, so coax/web/room/drift-bots.coax's bots (ROOM N) fill the room beside
+// the two pages; without it the room is pair-throttle-STAMP, the two pages alone.
+// The proxy runs first: coax/web/tool.sh coax/web/room/net-proxy.coax PROXY_PORT ROOM_PORT 0 0 0 600 8000 SLOW
+// It plays 5 s, makes SLOW for SECONDS_SLOW (default 10), removes it, and plays SECONDS_AFTER more
+// (default 10). Meanwhile it reads the server's /health every 250 ms: the most bytes waiting on one
+// socket and the oldest wait, and the slow sockets it closed. It prints, then holds or fails:
+//   - the slow page while slow: the most bytes and the oldest wait on the server's side, whether the
+//     server closed its socket, and how far behind the healthy page's tick its newest tick fell;
+//   - after: the ms from the release until its page holds the room as the healthy page does (its
+//     newest tick within 2 of the healthy page's and the healthy player within 0.5 m of where the
+//     healthy page has it), joining again first if its socket was closed;
+//   - the healthy page throughout: the longest gap between its ticks heard, and its input to ACK at
+//     the 95th percentile and the most.
+// Holds when the healthy page's gap stays under 250 ms and its input to ACK under 250 ms at the 95th,
+// and the slow page holds the room within 1 s of the release (or of its rejoin, when it was closed).
+#load "room-socket.coax";
+#load "../../lib/sys/fs.coax";
+
+TC_ACKS :: 8192;
+TcPage :: struct {
+  c: [1] RelayConn; m: [1] WireMirror; seat: int = -1; seq: int; open: bool; closed: bool;
+  tick: int;                       // the newest tick heard
+  bytes: int;                      // the bytes of text heard while measured
+  snaps: int; got: int;            // snapshot frames (F 1) and bytes it heard in all
+  last_d: int; gap: int;           // when a D came last (ms), and the longest gap between them
+  sent: [TC_ACKS] int;             // when input SEQ went (ms), by SEQ % TC_ACKS
+  acked: int; lat: [TC_ACKS] int; lat_n: int;   // the last ACK, and input to ACK times
+}
+
+tc_open :: (p: [] TcPage, url: string, pid: string, name: string) -> bool {
+  ub: [1024] u8;
+  ui := rs_ticketed(ub[..], url, pid, name);
+  p[0] = TcPage.{};
+  if ui.count == 0 || !relay_conn_open(p[0].c[..], ui) { return false; }
+  hm: [96] u8;
+  hn := rs_put(hm[..], rs_put(hm[..], 0, "H 4 ranger.0.0.0 druid 0 "), name);
+  p[0].open = relay_conn_send(p[0].c[..], cast(string) hm[0..<hn]);
+  p[0].last_d = rs_now();
+  return p[0].open;
+}
+// Everything p has heard now; whether its socket is still open.
+tc_hear :: (p: [] TcPage, now: int, measure: bool) -> bool {
+  while true {
+    k := relay_conn_poll(p[0].c[..], 0);
+    if k == RC_TEXT {
+      t := cast(string) p[0].c[0].text[0..<p[0].c[0].text_n];
+      if measure { p[0].bytes += t.count; }
+      p[0].got += t.count;
+      if rs_starts(t, "y ") { p[0].seat = rs_num(rs_field(t, 1)); continue; }
+      if !rs_starts(t, "D ") { continue; }
+      r: [1] WireRd; r[0] = wire_rd(t, 1);
+      d := wire_read_d(t, r[..]);
+      if !r[0].ok { continue; }
+      if (d.f & 1) != 0 { p[0].snaps += 1; }
+      _ := wire_mirror_frame(p[0].m[..], t);
+      if d.tick > p[0].tick {
+        if measure && p[0].tick > 0 && now - p[0].last_d > p[0].gap { p[0].gap = now - p[0].last_d; }
+        p[0].tick = d.tick; p[0].last_d = now;
+      }
+      // input to ACK: each input up to the ACK, the first time it is acknowledged
+      if d.ack > p[0].acked {
+        for q: p[0].acked + 1..<d.ack + 1 {
+          at := p[0].sent[q % TC_ACKS];
+          if measure && at > 0 && q > p[0].seq - TC_ACKS && p[0].lat_n < TC_ACKS { p[0].lat[p[0].lat_n] = now - at; p[0].lat_n += 1; }
+        }
+        p[0].acked = d.ack;
+      }
+      continue;
+    }
+    if k == RC_CLOSED || k == RC_FAIL { p[0].open = false; p[0].closed = true; return false; }
+    return true;
+  }
+  return true;
+}
+// One input: a walk round a circle that turns, as the drift bots walk.
+tc_step :: (p: [] TcPage, n: int, now: int) {
+  if !p[0].open { return; }
+  p[0].seq += 1;
+  yaw := f32(n) * 0.02;
+  m: [128] u8;
+  k := rs_put(m[..], rs_int(m[..], rs_put(m[..], 0, "I "), p[0].seq), " 0 100 0 0 ");
+  k = rs_int(m[..], k, cast(int) (yaw * 10000)); k = rs_put(m[..], k, " 0 "); k = rs_int(m[..], k, p[0].m[0].heard);
+  p[0].sent[p[0].seq % TC_ACKS] = now;
+  _ := relay_conn_send(p[0].c[..], cast(string) m[0..<k]);
+}
+// Whether the slow page holds the room as the healthy one does: its tick within 2 of the healthy
+// page's, and the healthy player within 0.5 m of where the healthy page has it.
+tc_holds :: (slow: [] TcPage, well: [] TcPage) -> bool {
+  if !slow[0].open || slow[0].tick < well[0].tick - 2 || well[0].seat < 0 { return false; }
+  a := wire_mirror_of(well[0].m[..], well[0].seat);
+  b := wire_mirror_of(slow[0].m[..], well[0].seat);
+  if a.id < 0 || b.id < 0 { return false; }
+  return (a.x - b.x) * (a.x - b.x) + (a.z - b.z) * (a.z - b.z) < 0.25;
+}
+// The k-th of n sorted (an insertion sort: n is a few thousand at most).
+tc_sort :: (v: [] int, n: int) { for i: 1..<n { x := v[i]; j := i - 1; while j >= 0 && v[j] > x { v[j + 1] = v[j]; j -= 1; } v[j + 1] = x; } }
+#test "the slow page holds when its tick and the healthy player's place are the healthy page's" {
+  v := [5] int.[5, 1, 4, 2, 3];
+  tc_sort(v[..], 5);
+  #assert v[0] == 1 && v[4] == 5;
+}
+// The server's /health numbers: [waiting bytes most, oldest wait ms, slow closed]; false unread.
+tc_health :: (port: int, out: [] int) -> bool {
+  u: [96] u8; un := rs_int(u[..], rs_put(u[..], 0, "http://127.0.0.1:"), port); un = rs_put(u[..], un, "/health");
+  h := proc_new();
+  if h < 0 { return false; }
+  ok := proc_arg(h, "curl") && proc_arg(h, "-s") && proc_arg(h, "--max-time") && proc_arg(h, "1") && proc_arg(h, cast(string) u[0..<un]);
+  if !ok || proc_start(h) != 0 { r := proc_release(h); return false; }
+  line: [1024] u8; got := 0; text: [1024] u8;
+  while true {
+    k := proc_line(h, -1, line[..]);
+    if k == PROC_EOF || k == PROC_ERROR { break; }
+    for i: 0..<k { if got < text.count { text[got] = line[i]; got += 1; } }
+  }
+  st := proc_wait(h, -1); r := proc_release(h);
+  t := cast(string) text[0..<got];
+  // "..., N slow closed, ..., waiting N bytes most, N ms oldest"
+  out[0] = tc_before(t, " bytes most"); out[1] = tc_before(t, " ms oldest"); out[2] = tc_before(t, " slow closed");
+  return st == 0 && out[0] >= 0;
+}
+// The number just before `tail` in t, -1 none.
+tc_before :: (t: string, tail: string) -> int {
+  for i: 0..<t.count - tail.count + 1 {
+    if t[i..<i + tail.count] != tail { continue; }
+    j := i; while j > 0 && t[j - 1] >= '0' && t[j - 1] <= '9' { j -= 1; }
+    return ifx j < i then rs_num(t[j..<i]) else -1;
+  }
+  return -1;
+}
+#test "the health line's numbers" {
+  t := "ok 2 players, 0 rate-limited, 1 slow closed, shard 1, everglade tick p50 90 us, waiting 51234 bytes most, 2400 ms oldest";
+  #assert tc_before(t, " bytes most") == 51234 && tc_before(t, " ms oldest") == 2400 && tc_before(t, " slow closed") == 1 && tc_before(t, " nothing") == -1;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 3 { tool_errln("usage: coax/web/tool.sh coax/web/room/throttle-check.coax ROOM_PORT PROXY_PORT SLOW [SECONDS_SLOW] [SECONDS_AFTER] [ROOM]"); return 2; }
+  room := rs_num(args_at(a[..], 0)); proxy := rs_num(args_at(a[..], 1)); slow_file := args_at(a[..], 2);
+  slow_s := ifx args_count(a[..]) > 3 then rs_num(args_at(a[..], 3)) else 10;
+  after_s := ifx args_count(a[..]) > 4 then rs_num(args_at(a[..], 4)) else 10;
+  _ := fs_remove(slow_file);
+  code: [32] u8; cn := rs_int(code[..], rs_put(code[..], 0, "pair-throttle-"), rs_stamp());
+  if args_count(a[..]) > 5 { cn = rs_int(code[..], rs_put(code[..], 0, "pair-drift-"), rs_num(args_at(a[..], 5))); }
+  urls: [2] [256] u8; un: [2] int;
+  for i: 0..<2 {
+    b: [64] u8; bn := rs_int(b[..], rs_put(b[..], 0, "ws://127.0.0.1:"), ifx i == 0 then room else proxy);
+    un[i] = rs_put(urls[i][..], rs_put(urls[i][..], rs_put(urls[i][..], 0, cast(string) b[0..<bn]), "/api/room/relay/everglade/"), cast(string) code[0..<cn]);
+  }
+  well: [1] TcPage; slow: [1] TcPage;
+  if !tc_open(well[..], cast(string) urls[0][0..<un[0]], "p-throttle-0", "Healthy") || !tc_open(slow[..], cast(string) urls[1][0..<un[1]], "p-throttle-1", "Slow") {
+    tool_errln("throttle-check: can't open the room's sockets"); return 1;
+  }
+  print("throttle-check: room %, the slow page through %\n", cast(string) code[0..<cn], proxy);
+  t0 := rs_now(); n := 0;
+  slow_at := t0 + 5000; fast_at := slow_at + slow_s * 1000; end := fast_at + after_s * 1000;
+  health_at := 0; hv: [3] int;
+  wait_most := 0; wait_oldest := 0; closed0 := -1; closed1 := 0; behind := 0;
+  held_ms := -1; rejoined_at := -1; was_slow := false;
+  while rs_now() < end {
+    now := rs_now();
+    n += 1;
+    measure := now >= slow_at - 2000;
+    _ = tc_hear(well[..], now, measure);
+    if slow[0].open { _ = tc_hear(slow[..], now, false); }
+    tc_step(well[..], n, now); tc_step(slow[..], n, now);
+    is_slow := now >= slow_at && now < fast_at;
+    if is_slow && !was_slow { _ = fs_write(slow_file, "slow\n"); }
+    if !is_slow && was_slow { _ = fs_remove(slow_file); }
+    was_slow = is_slow;
+    if is_slow {
+      if slow[0].open && well[0].tick - slow[0].tick > behind { behind = well[0].tick - slow[0].tick; }
+    }
+    if now >= health_at {
+      health_at = now + 250;
+      if tc_health(room, hv[..]) {
+        if closed0 < 0 { closed0 = hv[2]; }
+        closed1 = hv[2];
+        if is_slow { if hv[0] > wait_most { wait_most = hv[0]; } if hv[1] > wait_oldest { wait_oldest = hv[1]; } }
+      }
+    }
+    // after the release: closed, it joins again; then the ms until it holds the room
+    if now >= fast_at {
+      if !slow[0].open && rejoined_at < 0 {
+        rejoined_at = now;
+        if !tc_open(slow[..], cast(string) urls[1][0..<un[1]], "p-throttle-1", "Slow") { tool_errln("throttle-check: the slow page can't join again"); return 1; }
+      }
+      if held_ms < 0 && tc_holds(slow[..], well[..]) { held_ms = now - fast_at; }
+    }
+    while rs_now() - t0 < n * 1000 / 30 { proc_sleep(2); }
+  }
+  _ = fs_remove(slow_file);
+  tc_sort(well[0].lat[..], well[0].lat_n);
+  p95 := ifx well[0].lat_n > 0 then well[0].lat[well[0].lat_n * 95 / 100] else -1;
+  most := ifx well[0].lat_n > 0 then well[0].lat[well[0].lat_n - 1] else -1;
+  closed := rejoined_at >= 0;
+  print("slow page: % snapshot frames and % bytes heard in all\n", slow[0].snaps, slow[0].got);
+  print("slow page while slow: % bytes waiting most, % ms the oldest wait, % ticks behind at most, socket closed by the server: %\n",
+        wait_most, wait_oldest, behind, ifx closed then "yes" else "no");
+  print("after the release: holds the room in % ms%\n", held_ms, ifx closed then " (from the release, joining again first)" else "");
+  print("the room sends the healthy page % bytes a second\n", well[0].bytes * 1000 / (end - (slow_at - 2000)));
+  print("healthy page: longest gap between ticks % ms, input to ACK p95 % ms, most % ms over % inputs; slow sockets closed %\n", well[0].gap, p95, most, well[0].lat_n, closed1 - closed0);
+  limit := ifx closed then 1000 + (rejoined_at - fast_at) else 1000;
+  holds := well[0].gap < 250 && p95 >= 0 && p95 < 250 && held_ms >= 0 && held_ms <= limit;
+  _ = relay_conn_close(well[0].c[..], 1000);
+  if slow[0].open { _ = relay_conn_close(slow[0].c[..], 1000); }
+  print("%\n", ifx holds then "holds" else "fails");
+  return ifx holds then 0 else 1;
+}

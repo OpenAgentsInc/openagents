@@ -415,9 +415,16 @@ static void opening(int i) {
     const int64_t *th = tick_now;
     if (tn < 100) { int64_t ln; int64_t lp = fan_at(tick_last, 950, &ln); if (ln > tn) { tp95 = lp; tn = ln; th = tick_last; } }
     int64_t tp50 = fan_at(th, 500, &tm);
-    char body[320]; snprintf(body, sizeof body, "ok %lld players, fanout p50 %lld us p95 %lld us over %lld reads, %lld rate-limited, %lld slow closed, shard %lld, everglade tick p50 %lld us at the 95th %lld us over %lld ticks\n",
+    /* the socket with the most output waiting now, and the oldest wait (a slow link's, #12903) */
+    int64_t wait_most = 0, wait_ms = 0, t_now = now_ms();
+    for (int j = 0; j < CONNS; j++) {
+      if (conns[j].fd < 0 || !conns[j].on) continue;
+      if ((int64_t)conns[j].on > wait_most) wait_most = (int64_t)conns[j].on;
+      if (t_now - conns[j].since > wait_ms) wait_ms = t_now - conns[j].since;
+    }
+    char body[400]; snprintf(body, sizeof body, "ok %lld players, fanout p50 %lld us p95 %lld us over %lld reads, %lld rate-limited, %lld slow closed, shard %lld, everglade tick p50 %lld us at the 95th %lld us over %lld ticks, waiting %lld bytes most, %lld ms oldest\n",
                              (long long)rm_players(view()), (long long)p50, (long long)p95, (long long)n, (long long)rm_relay_dropped(view()), (long long)slow_closed,
-                             (long long)server->shard, (long long)tp50, (long long)tp95, (long long)tn);
+                             (long long)server->shard, (long long)tp50, (long long)tp95, (long long)tn, (long long)wait_most, (long long)wait_ms);
     http(i, "200 OK", "text/plain", body); return;
   }
   /* --dev: the API's stand-in (local.coax): the world document the room laid, byte for byte */

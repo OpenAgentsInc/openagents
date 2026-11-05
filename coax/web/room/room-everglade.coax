@@ -21,6 +21,12 @@
 // clock moves on, and each tick each seat gets its D frame.
 
 EG_BEHIND :: 4096;        // bytes waiting on a seat's socket at a tick's start past which its rows wait that tick
+// ticks (1 s) the newest one a page says it heard (HEARD) may trail the room's while it sends, past
+// which it is behind too: on a slow link the bytes wait in the kernel's socket buffers, not the
+// host's queue, so EG_BEHIND never saw them; a 64 kbit/s page fell 35 s behind with 0 bytes waiting
+// in the host (coax/web/room/throttle-check.coax, #12903)
+EG_HEARD_BEHIND :: 30;
+EG_SNAP_WAIT :: 90;   // ticks (3 s) a page still sending waits for its next snapshot, its last unheard
 // What each class of a seat's state is owed, and by when (#12837). A seat is behind while more than
 // EG_BEHIND bytes wait on its socket at a tick's start (the host's word, rm_conn_waiting).
 //   - Replaceable state (rows): only the newest matters, so nothing old is queued for it. Not behind,
@@ -148,6 +154,8 @@ EgSeat :: struct {
   // and its tick; and an e town owed once the pieces have all gone: every seat's first, and one its page
   // asked for (O: it heard fewer outcomes than o said), so what the page holds and the room doesn't stands
   out_n: int; out_said: int; out_t: int; town_end: bool = true;
+  said_heard: int; said_ms: int;   // the HEARD its page's last input said, and when (EG_HEARD_BEHIND)
+  snap_at: int;                    // the tick its last snapshot went (EG_SNAP_WAIT)
   old: bool;                                          // a page from before wire 3: its state on the old wire (room-oldwire.coax)
   pins: WirePins; pinned: bool;                       // the build its page said in P before its hello (#12839; none: WIRE_PINS_FIRST)
   fresh: bool;                                        // just sat: the world's watch meets a new player
@@ -563,6 +571,7 @@ eg_heard_input :: (v: [] RmServer, k: int, seat: int, text: string) {
   w := wire_read_in(text, r[..]);
   if !r[0].ok || eg_fields(text) != 9 { return; }
   eg_seat_heard(v, k, seat, w.heard);
+  if w.heard > 0 { v[0].eg[k].seat[seat].said_heard = w.heard; v[0].eg[k].seat[seat].said_ms = v[0].mono_ms; }
   st := v[0].eg[k].seat[seat..<seat + 1];
   seq := w.seq;
   n := st[0].q_n;
@@ -1199,9 +1208,11 @@ eg_send :: (v: [] RmServer, k: int, s: int) {
   // behind long enough that what the page holds is too old to build on: a snapshot once it catches up
   c := st[0].conn;
   late := c >= 0 && c < CONNS && v[0].conns[c].waiting > EG_BEHIND;
+  // or its page's inputs, still coming, say it heard a tick more than EG_HEARD_BEHIND old
+  if !st[0].full && st[0].said_ms > 0 && v[0].mono_ms - st[0].said_ms < WIRE_AWAY_MS && now - st[0].said_heard > EG_HEARD_BEHIND { late = true; }
   if late && st[0].behind_t == 0 { st[0].behind_t = now; }
   if !late && st[0].behind_t != 0 {
-    if now - st[0].behind_t >= EG_RESNAP && !st[0].full { st[0].full = true; st[0].full_t = 0; v[0].st.resnaps += 1; }
+    if now - st[0].behind_t >= EG_RESNAP && !st[0].full { st[0].full = true; st[0].full_t = 0; st[0].snap_at = 0; v[0].st.resnaps += 1; }
     st[0].behind_t = 0;
   }
   full := st[0].full;
@@ -1210,6 +1221,12 @@ eg_send :: (v: [] RmServer, k: int, s: int) {
     wire_seat_reset(st[0].rep[..]);
     for q: 0..<EG_SEATS { st[0].heard_n[q] = 0; st[0].heard_w[q] = 0; st[0].n_bits[q] = 0; st[0].w_bits[q] = 0; st[0].n_ok[q] = false; st[0].w_ok[q] = false; }
     if st[0].full_t == 0 { st[0].full_t = now; }
+    // a page still sending what it hears gets its next snapshot once it has heard the last (its
+    // snapshots then end) or EG_SNAP_WAIT ticks on, not each tick: on a slow link a whole snapshot a
+    // tick never catches up (#12903). (A page that hasn't said a HEARD yet, a joining one, has them
+    // every tick, as before.)
+    if st[0].said_ms > 0 && v[0].mono_ms - st[0].said_ms < WIRE_AWAY_MS && st[0].snap_at > 0 && now - st[0].snap_at < EG_SNAP_WAIT { v[0].st.snaps_held += 1; return; }
+    st[0].snap_at = now;
   }
   o: [1] EgOut;
   me := st[0].pose;
@@ -1556,6 +1573,75 @@ eg_test_input :: (v: [] RmServer, seq: int) {
   rm_conn_waiting(v[..], 1, 0);
   eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
   #assert eg_test_has(eg_test_of(box[..], 1), "s 0 ") && eg_test_ent(box[..], 1, 0).z == eg_test_ent(box[..], 0, 0).z;
+}
+// Conn c's input SEQ standing still, saying it heard tick `heard`.
+eg_test_input_on :: (v: [] RmServer, c: int, seq: int, heard: int) {
+  t: [64] u8; n := put(t[..], 0, "I"); n = eg_n(t[..], n, seq); n = put(t[..], n, " 0 0 0 0 0 1"); n = eg_n(t[..], n, heard);
+  rm_heard(v, c, cast(string) t[0..<n]);
+}
+#test "everglade room: a seat whose page's HEARD trails the room's tick by more than a second is behind too, with nothing waiting in the host (#12903)" #steps 2000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  rm_control(v[..], "levels 0 2\n");
+  rm_clock(v[..], 0, 1762190000000);
+  ev := "GET /api/room/relay/everglade/pair-heard-behind HTTP/1.1\r\n\r\n";
+  box: [1] EgInbox;
+  #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  rm_heard(v[..], 0, "H 4 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 4 ranger.0.0.0 druid 0 -");
+  for t: 0..<3 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
+  // seat 1's page goes on sending, but what it hears comes later and later: its HEARD stays put
+  box[0].deaf[1] = true;
+  seq := 0; said := box[0].m[1].heard;
+  #assert said > 0;
+  for t: 0..<EG_HEARD_BEHIND {
+    seq += 1; eg_test_input(v[..], seq);
+    eg_test_input_on(v[..], 1, seq, said);
+    eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
+  }
+  #assert v[0].eg[k].behind_n == 0 && eg_test_has(eg_test_of(box[..], 1), "s 0 ");
+  seq += 1; eg_test_input(v[..], seq); eg_test_input_on(v[..], 1, seq, said);
+  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
+  seq += 1; eg_test_input(v[..], seq); eg_test_input_on(v[..], 1, seq, said);
+  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
+  #assert v[0].conns[1].waiting == 0 && v[0].eg[k].behind_n >= 1;
+  #assert eg_test_has(eg_test_of(box[..], 1), "s 1 ") && !eg_test_has(eg_test_of(box[..], 1), "s 0 ");
+  // it hears again: seat 0's row comes back
+  box[0].deaf[1] = false;
+  for t: 0..<3 { seq += 1; eg_test_input(v[..], seq); eg_test_input_on(v[..], 1, seq, box[0].m[1].heard); eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
+  #assert eg_test_has(eg_test_of(box[..], 1), "s 0 ");
+}
+#test "everglade room: a page still sending that hasn't heard its snapshot gets the next one EG_SNAP_WAIT ticks on, not every tick (#12903)" #steps 2000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  rm_control(v[..], "levels 0 2\n");
+  rm_clock(v[..], 0, 1762190000000);
+  ev := "GET /api/room/relay/everglade/pair-snap-held HTTP/1.1\r\n\r\n";
+  box: [1] EgInbox;
+  #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  rm_heard(v[..], 0, "H 4 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 4 ranger.0.0.0 druid 0 -");
+  seq := 0;
+  for t: 0..<3 { seq += 1; eg_test_input_on(v[..], 1, seq, box[0].m[1].heard); eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
+  // seat 1's page goes on sending, but hears nothing in time, and the room snapshots it (as after a stall)
+  box[0].deaf[1] = true;
+  said := box[0].m[1].heard;
+  #assert said > 0 && !v[0].eg[k].seat[1].full;
+  v[0].eg[k].seat[1].full = true; v[0].eg[k].seat[1].full_t = 0; v[0].eg[k].seat[1].snap_at = 0;
+  frames := 0; mine := 0;
+  for t: 0..<EG_SNAP_WAIT + 1 {
+    seq += 1; eg_test_input_on(v[..], 1, seq, said);
+    eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
+    if box[0].n[1] > 0 { frames += 1; }
+    if box[0].n[0] > 0 { mine += 1; }
+  }
+  // one snapshot, then the next EG_SNAP_WAIT ticks on; the page that hears gets every tick's
+  #assert frames == 2 && mine >= EG_SNAP_WAIT - 1 && v[0].st.snaps_held > 0;
+  #assert v[0].eg[k].seat[1].full;
+  // it hears one: its snapshots end
+  box[0].deaf[1] = false;
+  for t: 0..<EG_HEARD_BEHIND + 2 { seq += 1; eg_test_input_on(v[..], 1, seq, box[0].m[1].heard); eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
+  #assert !v[0].eg[k].seat[1].full;
 }
 // A page's town as everglade-net.coax keeps it, for the checks (#12902): the pieces it holds broken (the
 // first EG_TEST_PIECES; a Repair's code q stands pieces 8q to 8q + 7), its count of outcomes, and the

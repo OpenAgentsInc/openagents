@@ -6,10 +6,14 @@
 //   coax/web/tool.sh coax/web/room/net-proxy.coax LISTEN ROOM [LATENCY_MS] [JITTER_MS] [LOSS_PERMILLE] [SECONDS]
 // LATENCY_MS 0 forwards at once. It runs SECONDS (default 3600), up to NP_PAIRS sockets at once, and
 // prints a line a minute: the reads each way, those it lost and the longest hold.
+//   ... [SECONDS] RATE FILE        a slow link (#12903): while FILE exists, what the room sends is read
+// from it at RATE bytes a second at most (64 kbit/s: 8000), so the bytes wait in the room server's
+// socket as they would behind a slow link, and the page hears them that late. A line says each change.
 #import "Basic";
 #load "../../lib/net/socket_foreign.coax";
 #load "../../lib/sys/tool.coax";
 #load "../../lib/sys/proc.coax";
+#load "../../lib/sys/fs.coax";
 
 NP_PAIRS :: 6;              // sockets through it at once (the socket table holds 16)
 NP_BUF :: 1048576;          // bytes held each way, a socket
@@ -23,7 +27,24 @@ NpWay :: struct {
   last_due: int;
 }
 NpPair :: struct { live: bool; down: int; up: int; closing: bool; ways: [2] NpWay; }
-NpNet :: struct { latency: int; jitter: int; loss: int; seed: int; reads: [2] int; lost: int; most: int; }
+NpNet :: struct { latency: int; jitter: int; loss: int; seed: int; reads: [2] int; lost: int; most: int; rate: int; tokens: int; refill_at: int; slow: bool; }
+// Whether the room's side may be read now, the link at net.rate bytes a second (0: no limit): its
+// tokens (bytes) refill with the time, up to a tenth of a second's; a read spends what it took.
+np_may_read :: (net: [] NpNet, now: int) -> bool {
+  if !net[0].slow || net[0].rate <= 0 { return true; }
+  dt := now - net[0].refill_at; net[0].refill_at = now;
+  if dt > 0 { net[0].tokens += dt * net[0].rate / 1000; }
+  if net[0].tokens > net[0].rate / 10 { net[0].tokens = net[0].rate / 10; }
+  return net[0].tokens > 0;
+}
+#test "the slow link reads the room's side at its rate" {
+  net: [1] NpNet; net[0].rate = 8000; net[0].slow = true; net[0].refill_at = 0;
+  got := 0;
+  for t: 1..<2001 { if np_may_read(net[..], t) { net[0].tokens -= 100; got += 100; } }
+  #assert got >= 15000 && got <= 17000;   // 2 s at 8000 bytes a second
+  net[0].slow = false;
+  #assert np_may_read(net[..], 3000);
+}
 
 // A number in [0, n) from the generator (an LCG mod 2^31, its high bits).
 np_rand :: (net: [] NpNet, n: int) -> int {
@@ -71,6 +92,7 @@ np_take :: (net: [] NpNet, p: [] NpPair, side: int, now: int) -> bool {
   r := cxsock_read(h, 0);
   if r == NP_TIMEOUT { return true; }
   if r <= 0 { return false; }
+  if side == 1 && net[0].slow { net[0].tokens -= r; }
   if w[0].n + r > NP_BUF || w[0].c_n >= NP_CHUNKS { tool_errln("net-proxy: more held than it keeps; the socket closes"); return false; }
   for i: 0..<r { w[0].buf[(w[0].head + w[0].n + i) % NP_BUF] = cast(u8) cxsock_byte(h, i); }
   w[0].n += r;
@@ -119,8 +141,10 @@ tool_main :: () -> int #export_c {
   net[0].jitter = ifx args_count(a[..]) > 3 then args_whole(args_at(a[..], 3)) else 0;
   net[0].loss = ifx args_count(a[..]) > 4 then args_whole(args_at(a[..], 4)) else 0;
   seconds := ifx args_count(a[..]) > 5 then args_whole(args_at(a[..], 5)) else 3600;
+  net[0].rate = ifx args_count(a[..]) > 6 then args_whole(args_at(a[..], 6)) else 0;
+  slow_file := ifx args_count(a[..]) > 7 then args_at(a[..], 7) else "";
   if !ok || listen <= 0 || room <= 0 || net[0].latency < 0 || net[0].jitter < 0 || net[0].loss < 0 || net[0].loss > 1000 || seconds <= 0 {
-    tool_errln("usage: coax/web/tool.sh coax/web/room/net-proxy.coax LISTEN ROOM [LATENCY_MS] [JITTER_MS] [LOSS_PERMILLE] [SECONDS]"); return 2;
+    tool_errln("usage: coax/web/tool.sh coax/web/room/net-proxy.coax LISTEN ROOM [LATENCY_MS] [JITTER_MS] [LOSS_PERMILLE] [SECONDS] [RATE FILE]"); return 2;
   }
   net[0].seed = (cxsock_now_ms() % 2147483648) + listen;
   l := cxsock_listen(listen);
@@ -132,6 +156,8 @@ tool_main :: () -> int #export_c {
   while cxsock_now_ms() - start < seconds * 1000 {
     now := cxsock_now_ms();
     busy := false;
+    slow := net[0].rate > 0 && (slow_file.count == 0 || fs_exists(slow_file));
+    if slow != net[0].slow { net[0].slow = slow; net[0].tokens = 0; net[0].refill_at = now; print("net-proxy: % at % ms\n", ifx slow then "slow" else "fast", now); }
     c := cxsock_accept(l, 0);
     if c >= 0 {
       slot := -1;
@@ -149,7 +175,7 @@ tool_main :: () -> int #export_c {
       p := pairs[k..<k + 1];
       if !p[0].closing {
         held := p[0].ways[0].c_n + p[0].ways[1].c_n;
-        if !np_take(net[..], p, 0, now) || !np_take(net[..], p, 1, now) { p[0].closing = true; }
+        if !np_take(net[..], p, 0, now) || (np_may_read(net[..], now) && !np_take(net[..], p, 1, now)) { p[0].closing = true; }
         if p[0].ways[0].c_n + p[0].ways[1].c_n > held { busy = true; }
       }
       if !np_give(p, 0, now) || !np_give(p, 1, now) { np_shut(p); continue; }
