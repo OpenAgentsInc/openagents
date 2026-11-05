@@ -28,7 +28,8 @@ everglade5e 2040000
 everglade-room 1260000
 fairy 660000
 fivelab 590000
-fivemmo 1540000
+# loads everglade.coax, so carries its growth: 1,461,096 measured (c580b0be3f); 1,549,370 after the rooms' WANTED responders, incoming casts and downed bodies, Long Rest, status words, doors and talk (#12892)
+fivemmo 1630000
 fixture 190000
 garden 270000
 gridcrowd 60000
