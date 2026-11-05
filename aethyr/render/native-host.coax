@@ -3,10 +3,12 @@
 // do not import the CPU codec or reference rasterizer.
 #load "host.coax";
 #load "host-inputs.coax";
+#load "presentation-host.coax";
 #load "../host/transport.coax";
 #load "../host/routes.coax";
 #load "../host/local-socket-route.coax";
 #load "../host/http-target.coax";
+#load "../host/bundled-media.coax";
 #load "../host/buffers.coax";
 #load "../host/lifecycle.coax";
 #authority;
