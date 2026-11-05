@@ -21,6 +21,7 @@ PlacedFire :: struct {
   kind: [CR_PLACED_MAX] int; x: [CR_PLACED_MAX] f32; z: [CR_PLACED_MAX] f32;   // the thing each state is for
   t: [CR_PLACED_MAX] f32;          // s alight (-1 not)
   spread: [CR_PLACED_MAX] f32;     // its next try at what touches it
+  by: [CR_PLACED_MAX] int;         // the seat that set it alight (everglade-fire.coax fi_owner)
   soot: [CR_PLACED_MAX] f32;       // 0 to 1, how black it has burnt
   gone: [CR_PLACED_MAX] bool;      // burnt through and broken apart
   any: bool;                       // one burns or is sooty or gone (so most frames skip it all)
@@ -83,7 +84,7 @@ pf_ignite :: (s: [] Everglade, i: int) -> bool {
   pf_sync(s);
   v := pf_of(s);
   if i < 0 || i >= s[0].ev.edits.n || v[0].gone[i] || v[0].t[i] >= 0 || pf_fuel(s[0].ev.edits.things[i]) <= 0 { return false; }
-  v[0].t[i] = 0; v[0].spread[i] = f32(FI_SPREAD) * (0.6 + 0.8 * sp_rand(s)); v[0].any = true;
+  v[0].t[i] = 0; v[0].spread[i] = f32(FI_SPREAD) * (0.6 + 0.8 * sp_rand(s)); v[0].by[i] = fi_owner(s); v[0].any = true;
   return true;
 }
 pf_out :: (s: [] Everglade, i: int) { if i >= 0 && i < CR_PLACED_MAX { pf_of(s)[0].t[i] = -1; } }
@@ -177,9 +178,12 @@ pf_frame :: (s: [] Everglade, dt: f32) {
     if v[0].t[i] >= v[0].spread[i] {
       v[0].spread[i] += f32(FI_SPREAD) * (0.6 + 0.8 * sp_rand(s)) * (1 + 3 * rain);
       b := pf_box(s, t);
-      // what touches it: the town's pieces and the other things (fi_catch lights both), the grass at its foot
+      // what touches it: the town's pieces and the other things (fi_catch lights both), the grass at its foot,
+      // as whoever set it alight
+      was_by := fi_acting(s); fi_as(s, v[0].by[i]);
       _ := fi_catch(s, v3(t.x, b.y0 + 0.3, t.z), hi(b.x1 - b.x0, b.z1 - b.z0) * 0.5 + f32(FI_NEAR), FI_EMBER);
       if sp_rand(s) < f32(FI_TO_GRASS) { wd_light(s, v3(t.x + (sp_rand(s) - 0.5) * 1.4, b.y0, t.z + (sp_rand(s) - 0.5) * 1.4), WD_GEN - 3); }
+      fi_as(s, was_by);
     }
     if rain > 0.05 && sp_rand(s) < 0.002 * rain { pf_out(s, i); }
   }

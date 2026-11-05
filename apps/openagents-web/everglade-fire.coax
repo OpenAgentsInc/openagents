@@ -49,7 +49,7 @@ FI_SHARDS :: 14;
 FI_SHARD_HURT :: 4.0;      // m/s: a slab moving faster than this hurts who it strikes
 FI_RUBBLE_SPEED :: 4.0;    // m/s: debris striking the dome this fast wears it
 
-FiBurn :: struct { piece: int; t: f32; tick: f32; spread: f32; }
+FiBurn :: struct { piece: int; t: f32; tick: f32; spread: f32; by: int; }   // by: the seat that started it (fi_owner)
 FiShard :: struct { live: bool; at: Point; vel: Point; yaw: f32; tilt: f32; spin: f32; sx: f32; sy: f32; sz: f32; still: bool; struck: bool; }
 Fire :: struct {
   time: f32;
@@ -57,12 +57,25 @@ Fire :: struct {
   soot: [DEMO_PIECES] f32; sooty: bool;   // how black each piece has burnt, 0 to 1; whether any has
   lit: int;                               // pieces caught so far (the checks count them)
   crime_at: f32;                          // when its spreading last made a crime
+  broke_by: int = -2;                     // this frame: the starter of the last fire that broke a piece (FI_CASTER none)
   next: [WATCH_ACTORS] f32; you_next: f32;
   embers_t: f32;
   dome_dmg: int; dome_gone: bool; dome_cool: f32;
   shards: [FI_SHARDS] FiShard;
 }
 fi_of :: (s: [] Everglade) -> [] Fire { return s[0].sp.fi[..]; }
+// Whose a fire starting now is, in a room: the seat whose fire spreads to it (fi_as), else the
+// step's caster, none (-1) when the raid cast it. On a page every fire is yours (0). Each fire keeps it,
+// and what it does later (catching more, breaking the town) is that seat's crime alone (#12920).
+FI_CASTER :: -2;
+fi_owner :: (s: [] Everglade) -> int {
+  if !s[0].wv.net { return 0; }
+  if s[0].wv.fire_own { return s[0].wv.fire_by; }
+  return ifx s[0].wv.room_nobody then -1 else watch_w(s)[0].me;
+}
+// What follows acts as seat by's fire (FI_CASTER: as the step's caster again).
+fi_as :: (s: [] Everglade, by: int) { s[0].wv.fire_own = by != FI_CASTER; s[0].wv.fire_by = by; }
+fi_acting :: (s: [] Everglade) -> int { return ifx s[0].wv.fire_own then s[0].wv.fire_by else FI_CASTER; }
 fi_cap :: (s: [] Everglade) -> int { return ifx phone(s) then FI_MAX / 2 else FI_MAX; }
 
 // Whether piece i burns, and how readily (the plaster walls are timber frames filled with plaster:
@@ -89,7 +102,7 @@ fi_ignite :: (s: [] Everglade, i: int) -> bool {
   p := w[0].pieces[i];
   if p.state != DP_STANDING || fi_fuel(p) <= 0 || fi_burning(s, i) { return false; }
   if fr_wet(s, p.cx, p.cz) && p.y0 < ground_at(s, p.cx, p.cz) + 0.5 { return false; }   // stood in water
-  v[0].burn[v[0].n] = FiBurn.{piece = i, t = 0, tick = f32(FI_KINDLE), spread = f32(FI_SPREAD) * (0.6 + 0.8 * sp_rand(s))};
+  v[0].burn[v[0].n] = FiBurn.{piece = i, t = 0, tick = f32(FI_KINDLE), spread = f32(FI_SPREAD) * (0.6 + 0.8 * sp_rand(s)), by = fi_owner(s)};
   v[0].n += 1;
   v[0].lit += 1;
   return true;
@@ -186,7 +199,7 @@ fi_char_chunks :: (s: [] Everglade, burning: bool) {
     if w[0].meta[b].kind == 0 || w[0].meta[b].born != w[0].clock { continue; }
     k := 0.25 + 0.2 * sp_rand(s);
     w[0].meta[b].cr *= k; w[0].meta[b].cg *= k * 0.92; w[0].meta[b].cb *= k * 0.85;
-    if burning && sp_rand(s) < 0.6 { s[0].sp.burn[b] = hi(s[0].sp.burn[b], f32(FI_BURN_DEBRIS) * (0.5 + sp_rand(s))); }
+    if burning && sp_rand(s) < 0.6 { s[0].sp.burn[b] = hi(s[0].sp.burn[b], f32(FI_BURN_DEBRIS) * (0.5 + sp_rand(s))); s[0].sp.burn_by[b] = fi_owner(s); }
   }
 }
 
@@ -230,12 +243,16 @@ fi_frame :: (s: [] Everglade, dt: f32) {
   d := s[0].sp.dice[..];
   k := 0;
   broke := false;
+  // each fire acts as its starter's (fi_owner): what it catches is theirs, what it breaks their crime
+  was_by := fi_acting(s);
+  v[0].broke_by = FI_CASTER;
   while k < v[0].n {
     i := v[0].burn[k].piece;
     p := w[0].pieces[i];
+    fi_as(s, v[0].burn[k].by);
     if p.state != DP_STANDING {
       // it fell whole: it burns on as debris
-      if p.state == DP_LOOSE && p.body >= 0 && p.body < DEMO_BODIES { s[0].sp.burn[p.body] = hi(s[0].sp.burn[p.body], f32(FI_BURN_DEBRIS)); }
+      if p.state == DP_LOOSE && p.body >= 0 && p.body < DEMO_BODIES { s[0].sp.burn[p.body] = hi(s[0].sp.burn[p.body], f32(FI_BURN_DEBRIS)); s[0].sp.burn_by[p.body] = v[0].burn[k].by; }
       fi_drop(s, k); continue;
     }
     v[0].burn[k].t += dt;
@@ -252,6 +269,7 @@ fi_frame :: (s: [] Everglade, dt: f32) {
         fi_char_chunks(s, true);
         s[0].sp.broke += 1;
         broke = true;
+        v[0].broke_by = e.by;
         fi_drop(s, k); continue;
       }
       // the dome by it wears in the heat
@@ -266,11 +284,12 @@ fi_frame :: (s: [] Everglade, dt: f32) {
     k += 1;
   }
   if broke {
+    fi_as(s, v[0].broke_by);   // what that dropped burns on as theirs
     _ := demo_settle(w);
     fi_char_chunks(s, true);   // what that dropped
     s[0].sp.walls_dirty = true;
   }
-  // burning debris lying against a piece may set it alight
+  // burning debris lying against a piece may set it alight (as whoever set the debris alight)
   v[0].embers_t += dt;
   if v[0].embers_t >= 1 {
     v[0].embers_t = 0;
@@ -279,9 +298,11 @@ fi_frame :: (s: [] Everglade, dt: f32) {
     for b: 0..<DEMO_BODIES {
       if tried >= 6 || s[0].sp.burn[b] <= 0 || !demo_chunk_box(w, b, box[..]) { continue; }
       tried += 1;
+      fi_as(s, s[0].sp.burn_by[b]);
       _ := fi_catch(s, box[0].at, 0.5, FI_EMBER);
     }
   }
+  fi_as(s, was_by);
   pf_frame(s, dt);   // the placed things burning (everglade-placed-fire.coax)
   fi_people(s);
   fi_dome_frame(s, dt);

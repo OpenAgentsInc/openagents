@@ -195,6 +195,7 @@ Spells :: struct {
   puffs: [SP_PUFFS] SpPuff;
   flames: [SP_FLAMES] SpFlame;
   burn: [DEMO_BODIES] f32;   // s each piece of debris has left to burn (fire breaks some alight)
+  burn_by: [DEMO_BODIES] int;   // the seat that set each alight (everglade-fire.coax fi_owner)
   sprites: [SP_FX * SP_FX_FLOATS] f32; sprite_n: int;   // this frame's puffs, for everglade-fx.wgsl (everglade-face.c coaxial_particles)
   stage: [SP_FX_STAGE * SP_FX_FLOATS] f32; stage_n: int;   // while drawing; sp_fx_close sorts them into `sprites`
   fx_far: [SP_FX_STAGE] f32; bucket: [SP_FX_BUCKETS + 1] int;
@@ -929,6 +930,7 @@ sp_blast :: (s: [] Everglade, at: Point, slot: int) {
     w[0].meta[b].cr *= burn; w[0].meta[b].cg *= burn * 0.94; w[0].meta[b].cb *= burn * 0.88;
     // a meteor sets some of what it broke alight, a bolt a few: it burns as it flies and where it lands
     s[0].sp.burn[b] = ifx kind == 0 && sp_rand(s) < 0.45 then 2.5 + 3.5 * sp_rand(s) else ifx kind == 1 && sp_rand(s) < 0.5 then 2.0 + 3.0 * sp_rand(s) else 0.0f32;   // a bolt, some
+    s[0].sp.burn_by[b] = fi_owner(s);
   }
   // (a splash bursts on what is under the point: the ground or a roof, not in the air against a wall)
   floor_y := sp_surface(s, at.x, at.z, at.y + 0.5);

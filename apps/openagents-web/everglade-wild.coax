@@ -519,7 +519,7 @@ wd_debris_catch_by :: (s: [] Everglade, at: Point, r: f32, how: int) {
   box: [1] DemoBox;
   for b: 0..<DEMO_BODIES {
     if w[0].meta[b].kind == 0 || !demo_chunk_box(w, b, box[..]) || flat_gap(box[0].at, at) > r || box[0].at.y > at.y + 2 { continue; }
-    s[0].sp.burn[b] = hi(s[0].sp.burn[b], f32(GV_BURN));
+    s[0].sp.burn[b] = hi(s[0].sp.burn[b], f32(GV_BURN)); s[0].sp.burn_by[b] = fi_owner(s);
   }
 }
 wd_fires_frame :: (s: [] Everglade, dt: f32) {
