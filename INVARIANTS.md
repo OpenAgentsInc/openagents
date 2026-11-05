@@ -81,6 +81,14 @@ owner cells are separate scalar retention from the 64 leased event nodes;
 kernel/browser/SDK buffers remain separate observations. Browser queue
 adoption and complete world/default qualification remain open.
 
+Version 1 browser bank and packet consumers call the shared span/registry
+authorities through a separate service reactor before forming byte views.
+Actual six-mode metadata/source/packet failures retain later valid assets,
+drain once after message handoff and leave no pending packet; all 54
+observer words pass and all 62 root mutants are killed without equivalents.
+Pre-contract adapters retain their existing behavior. Global browser PCM
+retention and socket pressure remain separate qualification exits.
+
 The shared lifecycle adapter records monotonic microseconds before handing
 the unchanged delta to the producer. Actual browser, sanitized Linux realm
 SDK and Metal SDK receipts admit the same ten frame/key/blur rows, including

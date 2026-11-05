@@ -1,0 +1,165 @@
+coax jobs: the load average is 29.9, at or above 12 ($COAX_JOBS_LOAD); running 1 build worker, not up to 2, until it drops
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+aethyr/host/audio-bank-browser-conformance.coax:13:18: mutant survived: 0 became 1
+   return [54]int.[0,0,2,60,60,1,1,1,0, 1,-1,0,0,0,1,1,1,0,
+                   ^
+aethyr/host/audio-bank-browser-conformance.coax:13:20: mutant survived: 0 became 1
+   return [54]int.[0,0,2,60,60,1,1,1,0, 1,-1,0,0,0,1,1,1,0,
+                     ^
+aethyr/host/audio-bank-browser-conformance.coax:13:22: mutant survived: 2 became 3
+   return [54]int.[0,0,2,60,60,1,1,1,0, 1,-1,0,0,0,1,1,1,0,
+                       ^
+aethyr/host/audio-bank-browser-conformance.coax:13:24: mutant survived: 60 became 61
+   return [54]int.[0,0,2,60,60,1,1,1,0, 1,-1,0,0,0,1,1,1,0,
+                         ^
+aethyr/host/audio-bank-browser-conformance.coax:13:27: mutant survived: 60 became 61
+   return [54]int.[0,0,2,60,60,1,1,1,0, 1,-1,0,0,0,1,1,1,0,
+                            ^
+aethyr/host/audio-bank-browser-conformance.coax:13:30: mutant survived: 1 became 2
+   return [54]int.[0,0,2,60,60,1,1,1,0, 1,-1,0,0,0,1,1,1,0,
+                               ^
+aethyr/host/audio-bank-browser-conformance.coax:13:32: mutant survived: 1 became 2
+   return [54]int.[0,0,2,60,60,1,1,1,0, 1,-1,0,0,0,1,1,1,0,
+                                 ^
+aethyr/host/audio-bank-browser-conformance.coax:13:34: mutant survived: 1 became 2
+   return [54]int.[0,0,2,60,60,1,1,1,0, 1,-1,0,0,0,1,1,1,0,
+                                   ^
+aethyr/host/audio-bank-browser-conformance.coax:13:36: mutant survived: 0 became 1
+   return [54]int.[0,0,2,60,60,1,1,1,0, 1,-1,0,0,0,1,1,1,0,
+                                     ^
+aethyr/host/audio-bank-browser-conformance.coax:13:39: mutant survived: 1 became 2
+   return [54]int.[0,0,2,60,60,1,1,1,0, 1,-1,0,0,0,1,1,1,0,
+                                        ^
+aethyr/host/audio-bank-browser-conformance.coax:13:41: mutant survived: -1 became 0
+   return [54]int.[0,0,2,60,60,1,1,1,0, 1,-1,0,0,0,1,1,1,0,
+                                          ^
+aethyr/host/audio-bank-browser-conformance.coax:13:44: mutant survived: 0 became 1
+   return [54]int.[0,0,2,60,60,1,1,1,0, 1,-1,0,0,0,1,1,1,0,
+                                             ^
+aethyr/host/audio-bank-browser-conformance.coax:13:46: mutant survived: 0 became 1
+   return [54]int.[0,0,2,60,60,1,1,1,0, 1,-1,0,0,0,1,1,1,0,
+                                               ^
+aethyr/host/audio-bank-browser-conformance.coax:13:48: mutant survived: 0 became 1
+   return [54]int.[0,0,2,60,60,1,1,1,0, 1,-1,0,0,0,1,1,1,0,
+                                                 ^
+aethyr/host/audio-bank-browser-conformance.coax:13:50: mutant survived: 1 became 2
+   return [54]int.[0,0,2,60,60,1,1,1,0, 1,-1,0,0,0,1,1,1,0,
+                                                   ^
+aethyr/host/audio-bank-browser-conformance.coax:13:52: mutant survived: 1 became 2
+   return [54]int.[0,0,2,60,60,1,1,1,0, 1,-1,0,0,0,1,1,1,0,
+                                                     ^
+aethyr/host/audio-bank-browser-conformance.coax:13:54: mutant survived: 1 became 2
+   return [54]int.[0,0,2,60,60,1,1,1,0, 1,-1,0,0,0,1,1,1,0,
+                                                       ^
+aethyr/host/audio-bank-browser-conformance.coax:13:56: mutant survived: 0 became 1
+   return [54]int.[0,0,2,60,60,1,1,1,0, 1,-1,0,0,0,1,1,1,0,
+                                                         ^
+aethyr/host/audio-bank-browser-conformance.coax:14:3: mutant survived: 2 became 3
+    2,-1,1,0,60,1,1,1,0, 3,0,2,60,60,-1,1,1,0,
+    ^
+aethyr/host/audio-bank-browser-conformance.coax:14:5: mutant survived: -1 became 0
+    2,-1,1,0,60,1,1,1,0, 3,0,2,60,60,-1,1,1,0,
+      ^
+aethyr/host/audio-bank-browser-conformance.coax:14:8: mutant survived: 1 became 2
+    2,-1,1,0,60,1,1,1,0, 3,0,2,60,60,-1,1,1,0,
+         ^
+aethyr/host/audio-bank-browser-conformance.coax:14:10: mutant survived: 0 became 1
+    2,-1,1,0,60,1,1,1,0, 3,0,2,60,60,-1,1,1,0,
+           ^
+aethyr/host/audio-bank-browser-conformance.coax:14:12: mutant survived: 60 became 61
+    2,-1,1,0,60,1,1,1,0, 3,0,2,60,60,-1,1,1,0,
+             ^
+aethyr/host/audio-bank-browser-conformance.coax:14:15: mutant survived: 1 became 2
+    2,-1,1,0,60,1,1,1,0, 3,0,2,60,60,-1,1,1,0,
+                ^
+aethyr/host/audio-bank-browser-conformance.coax:14:17: mutant survived: 1 became 2
+    2,-1,1,0,60,1,1,1,0, 3,0,2,60,60,-1,1,1,0,
+                  ^
+aethyr/host/audio-bank-browser-conformance.coax:14:19: mutant survived: 1 became 2
+    2,-1,1,0,60,1,1,1,0, 3,0,2,60,60,-1,1,1,0,
+                    ^
+aethyr/host/audio-bank-browser-conformance.coax:14:21: mutant survived: 0 became 1
+    2,-1,1,0,60,1,1,1,0, 3,0,2,60,60,-1,1,1,0,
+                      ^
+aethyr/host/audio-bank-browser-conformance.coax:14:24: mutant survived: 3 became 4
+    2,-1,1,0,60,1,1,1,0, 3,0,2,60,60,-1,1,1,0,
+                         ^
+aethyr/host/audio-bank-browser-conformance.coax:14:26: mutant survived: 0 became 1
+    2,-1,1,0,60,1,1,1,0, 3,0,2,60,60,-1,1,1,0,
+                           ^
+aethyr/host/audio-bank-browser-conformance.coax:14:28: mutant survived: 2 became 3
+    2,-1,1,0,60,1,1,1,0, 3,0,2,60,60,-1,1,1,0,
+                             ^
+aethyr/host/audio-bank-browser-conformance.coax:14:30: mutant survived: 60 became 61
+    2,-1,1,0,60,1,1,1,0, 3,0,2,60,60,-1,1,1,0,
+                               ^
+aethyr/host/audio-bank-browser-conformance.coax:14:33: mutant survived: 60 became 61
+    2,-1,1,0,60,1,1,1,0, 3,0,2,60,60,-1,1,1,0,
+                                  ^
+aethyr/host/audio-bank-browser-conformance.coax:14:36: mutant survived: -1 became 0
+    2,-1,1,0,60,1,1,1,0, 3,0,2,60,60,-1,1,1,0,
+                                     ^
+aethyr/host/audio-bank-browser-conformance.coax:14:39: mutant survived: 1 became 2
+    2,-1,1,0,60,1,1,1,0, 3,0,2,60,60,-1,1,1,0,
+                                        ^
+aethyr/host/audio-bank-browser-conformance.coax:14:41: mutant survived: 1 became 2
+    2,-1,1,0,60,1,1,1,0, 3,0,2,60,60,-1,1,1,0,
+                                          ^
+aethyr/host/audio-bank-browser-conformance.coax:14:43: mutant survived: 0 became 1
+    2,-1,1,0,60,1,1,1,0, 3,0,2,60,60,-1,1,1,0,
+                                            ^
+aethyr/host/audio-bank-browser-conformance.coax:15:3: mutant survived: 4 became 5
+    4,0,2,60,60,-1,1,1,0, 5,0,2,60,60,-1,1,1,0];
+    ^
+aethyr/host/audio-bank-browser-conformance.coax:15:5: mutant survived: 0 became 1
+    4,0,2,60,60,-1,1,1,0, 5,0,2,60,60,-1,1,1,0];
+      ^
+aethyr/host/audio-bank-browser-conformance.coax:15:7: mutant survived: 2 became 3
+    4,0,2,60,60,-1,1,1,0, 5,0,2,60,60,-1,1,1,0];
+        ^
+aethyr/host/audio-bank-browser-conformance.coax:15:9: mutant survived: 60 became 61
+    4,0,2,60,60,-1,1,1,0, 5,0,2,60,60,-1,1,1,0];
+          ^
+aethyr/host/audio-bank-browser-conformance.coax:15:12: mutant survived: 60 became 61
+    4,0,2,60,60,-1,1,1,0, 5,0,2,60,60,-1,1,1,0];
+             ^
+aethyr/host/audio-bank-browser-conformance.coax:15:15: mutant survived: -1 became 0
+    4,0,2,60,60,-1,1,1,0, 5,0,2,60,60,-1,1,1,0];
+                ^
+aethyr/host/audio-bank-browser-conformance.coax:15:18: mutant survived: 1 became 2
+    4,0,2,60,60,-1,1,1,0, 5,0,2,60,60,-1,1,1,0];
+                   ^
+aethyr/host/audio-bank-browser-conformance.coax:15:20: mutant survived: 1 became 2
+    4,0,2,60,60,-1,1,1,0, 5,0,2,60,60,-1,1,1,0];
+                     ^
+aethyr/host/audio-bank-browser-conformance.coax:15:22: mutant survived: 0 became 1
+    4,0,2,60,60,-1,1,1,0, 5,0,2,60,60,-1,1,1,0];
+                       ^
+aethyr/host/audio-bank-browser-conformance.coax:15:25: mutant survived: 5 became 6
+    4,0,2,60,60,-1,1,1,0, 5,0,2,60,60,-1,1,1,0];
+                          ^
+aethyr/host/audio-bank-browser-conformance.coax:15:27: mutant survived: 0 became 1
+    4,0,2,60,60,-1,1,1,0, 5,0,2,60,60,-1,1,1,0];
+                            ^
+aethyr/host/audio-bank-browser-conformance.coax:15:29: mutant survived: 2 became 3
+    4,0,2,60,60,-1,1,1,0, 5,0,2,60,60,-1,1,1,0];
+                              ^
+aethyr/host/audio-bank-browser-conformance.coax:15:31: mutant survived: 60 became 61
+    4,0,2,60,60,-1,1,1,0, 5,0,2,60,60,-1,1,1,0];
+                                ^
+aethyr/host/audio-bank-browser-conformance.coax:15:34: mutant survived: 60 became 61
+    4,0,2,60,60,-1,1,1,0, 5,0,2,60,60,-1,1,1,0];
+                                   ^
+aethyr/host/audio-bank-browser-conformance.coax:15:37: mutant survived: -1 became 0
+    4,0,2,60,60,-1,1,1,0, 5,0,2,60,60,-1,1,1,0];
+                                      ^
+aethyr/host/audio-bank-browser-conformance.coax:15:40: mutant survived: 1 became 2
+    4,0,2,60,60,-1,1,1,0, 5,0,2,60,60,-1,1,1,0];
+                                         ^
+aethyr/host/audio-bank-browser-conformance.coax:15:42: mutant survived: 1 became 2
+    4,0,2,60,60,-1,1,1,0, 5,0,2,60,60,-1,1,1,0];
+                                           ^
+aethyr/host/audio-bank-browser-conformance.coax:15:44: mutant survived: 0 became 1
+    4,0,2,60,60,-1,1,1,0, 5,0,2,60,60,-1,1,1,0];
+                                             ^
+62 mutants, 8 killed, 54 survived

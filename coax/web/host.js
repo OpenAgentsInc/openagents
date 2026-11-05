@@ -222,6 +222,7 @@ import { startLoading, readBytes } from "./loader.js";
 import { makeHttpRequests } from "./http-requests.js";
 import { makeHostTransport } from "./host-transport.js";
 import { makeHostLifecycle } from "./host-lifecycle.js";
+import { openHostServices } from "./services-host.js";
 import { openCoaxAudio, renderCoaxAudio } from "./audio-host.js";
 import { RenderHost } from "./render.js";
 
@@ -265,7 +266,7 @@ const probeDo = probe ? new URLSearchParams(location.search).get("do") || "" : "
 // Grown at load to whatever the app's module declares (importedMemoryPages).
 const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024 }); // 8 MiB, at most 64 MiB
 let engine = null;   // { exports, layout }
-let hostTransport = null, hostLifecycle = null, reconnectAfterEngine = false;
+let hostTransport = null, hostLifecycle = null, hostServices = null, reconnectAfterEngine = false;
 function hostLifeEvent(kind,nowUs=Math.floor(performance.now()*1000),arg=0){const actions=hostLifecycle?.event(kind,nowUs,arg)??0;if(actions&1)call("coaxial_blur");return actions;}
 let engineBytes = null;   // the running engine's wasm: a rescue save names it (rescueIdentity)
 let engineInstalling = false;
@@ -318,7 +319,7 @@ function beginEngine() {
 }
 function retireTransport() {
   if(hostTransport)retireContractAudio();
-  httpRequests.reset();resetSockets();hostTransport?.reset();hostTransport=null;hostLifecycle=null;
+  httpRequests.reset();resetSockets();hostTransport?.reset();hostTransport=null;hostLifecycle=null;hostServices=null;
 }
 const randomScratch = {}; // lazily reserved once, shared by synchronous engine calls
 
@@ -388,6 +389,7 @@ async function loadEngine(bytes, generation) {
   x._initialize?.();
   hostTransport=makeHostTransport(x,memory);
   hostLifecycle=makeHostLifecycle(x);
+  if(hostTransport){const services=await openHostServices();if(generation!==wanted)return false;hostServices=services;}
   if(hostTransport && sockets.some(Boolean)){reconnectAfterEngine=true;resetSockets();}
   if(frameTrace)x.coaxial_frame_parts?.(0,-1);
   const layout = x.coaxial_layout();
@@ -1802,10 +1804,11 @@ function drawMedia(x, pass, w, h, depth, over = false) {
 // ---- sounds: Web Audio, started by the first touch or key (browsers wait for one)
 let audio = null, audioOut = null;
 let contractAudio = null, contractAudioReady = null, audioOwner = 0, audioStarted = false, audioFailure = null;
+let audioBankStatus = 0, audioPacketStatus = 0;
 const bankSounds = new Map();
 function retireContractAudio() {
   ++audioOwner;contractAudio?.close();contractAudio=null;contractAudioReady=null;
-  audio?.close().catch(()=>{});audio=null;audioOut=null;banked=false;bankSounds.clear();sounds.clear();audioFailure=null;
+  audio?.close().catch(()=>{});audio=null;audioOut=null;banked=false;bankSounds.clear();sounds.clear();audioFailure=null;audioBankStatus=0;audioPacketStatus=0;
 }
 function prepareContractAudio() {
   if(contractAudioReady || !audio)return;
@@ -1825,7 +1828,21 @@ function soundBank() {
   const x = engine?.exports;
   if (banked || !x?.coaxial_sound_bank_len) return;
   banked = true;
-  const n = x.coaxial_sound_bank_len(arena.state);
+  const n = x.coaxial_sound_bank_len(arena.state)>>>0;
+  if(!n)return;
+  if(hostTransport){
+    const p=x.coaxial_sound_bank?.(arena.state)>>>0,capacity=x.coaxial_sound_bank_capacity?.(arena.state)>>>0;
+    const base=x.coaxial_sound_bank_storage?.(arena.state)>>>0,storage=x.coaxial_sound_bank_storage_bytes?.(arena.state)>>>0;
+    if(!hostServices||!hostServices.span(p,capacity,n,memory.buffer.byteLength)||!hostServices.span(base,storage,storage,memory.buffer.byteLength)){audioBankStatus=-1;return;}
+    const text=new TextDecoder().decode(new Uint8Array(memory.buffer,p,n));
+    for(const line of text.split("\n")){
+      const source=hostServices.bankLine(line,base,storage);
+      if(!source){audioBankStatus=-1;continue;}
+      const bytes=new Uint8Array(memory.buffer,source.address,source.bytes).slice();
+      bankSounds.set(source.name,{i:assets.length,kind:"sound",name:source.name,bytes,done:true,canonical:true});
+    }
+    return;
+  }
   const text = n ? new TextDecoder().decode(new Uint8Array(memory.buffer, x.coaxial_sound_bank(arena.state), n).slice()) : "";
   for (const line of text.split("\n")) {
     const [name, at, bytes] = line.split(" ");
@@ -1916,8 +1933,13 @@ function busLine(ctx, b, line, at, decode) {
 }
 let playing = 0, mixed = 0;
 function playSounds(x) {
-  const n = x.coaxial_sounds_len(arena.state);
-  if(n&&hostTransport&&!audio)startAudio(false);
+  const n = x.coaxial_sounds_len(arena.state)>>>0;
+  if(hostTransport){
+    if(!n)return;
+    const p=x.coaxial_sounds(arena.state)>>>0,capacity=x.coaxial_sounds_capacity?.(arena.state)>>>0;
+    if(!hostServices?.span(p,capacity,n,memory.buffer.byteLength)){audioPacketStatus=-1;return;}
+    audioPacketStatus=1;playSoundText(new TextDecoder().decode(new Uint8Array(memory.buffer,p,n)));return;
+  }
   if (!n || !audio) return;
   playSoundText(new TextDecoder().decode(new Uint8Array(memory.buffer, x.coaxial_sounds(arena.state), n).slice()));
 }
@@ -2300,7 +2322,7 @@ function draw(now) {
       document.documentElement.classList.add("gpu");
       if (loading.on) loading.frame(globalThis.coaxial.sceneReady);
       if (gpu.renderer.observation) report(gpu.renderer.observation, gpu.renderer.lastTexture);
-      if (engine.exports.coaxial_sounds) playSounds(engine.exports);
+      if (!hostTransport&&engine.exports.coaxial_sounds) playSounds(engine.exports);
       after(false);
     } catch (e) { say(`${app} renderer: ${e.message}`, true);loading.fail(`RENDERER STOPPED: ${e.message}`);gpu.bg = null; }
     return;
@@ -2466,7 +2488,7 @@ function draw(now) {
   document.documentElement.classList.add("gpu");
   if (loading.on) loading.frame(globalThis.coaxial.sceneReady);
   if (readback) report(readback, texture);
-  if (x.coaxial_sounds) playSounds(x);
+  if (!hostTransport&&x.coaxial_sounds) playSounds(x);
   after(false);
 }
 
@@ -2648,6 +2670,8 @@ if (dev) {
     heard: () => heard.slice(), probe: (slot, right, ahead, up) => engine?.exports.coaxial_sound_probe?.(arena.state, slot, right, ahead, up) ?? -1, beds: () => [...beds].map(([name, b]) => `${name} ${b.gain.gain.value.toFixed(3)} ${b.pan.pan.value.toFixed(3)}`),
     decode: (name) => decoded(soundAsset(name)), voice: soundVoice, mixed: () => mixed,
     contract: async () => ({version:hostTransport?1:0,owner:audioOwner,started:audioStarted,state:audio?.state??"absent",failure:audioFailure,worklet:await contractAudio?.info()}),
+    bank: () => {soundBank();return {status:audioBankStatus,count:bankSounds.size,bytes:Object.fromEntries([...bankSounds].map(([name,asset])=>[name,asset.bytes.length])),packet:audioPacketStatus};},
+    fixtureMode: mode => engine?.exports.coaxial_audio_fixture_mode?.(mode),fixtureProbe: field => Number(engine?.exports.coaxial_audio_fixture_probe?.(field)??-1n),
     bus: soundBus, busVoice, busLine,
     offlineCoax: renderCoaxAudio,
     offline: (lines, frames, buffers) => renderSoundLines(lines.map(([frame,line])=>[frame*1000/48000,line]), frames / 48000, 0, 48000, name => ({name}), a => Promise.resolve(buffers[a.name])) };
@@ -2750,6 +2774,7 @@ addEventListener("hashchange", sendHash);
 function after(gesture, tap = false) {
   if (!engine) return;
   const x = engine.exports;
+  if(hostTransport&&x.coaxial_sounds)playSounds(x);
   const want = call("coaxial_wants_text") === 1;
   if (want && document.activeElement !== field ? gesture || !touched : want && tap && touched) focusField();
   else if (!want && field && document.activeElement === field) field.blur();

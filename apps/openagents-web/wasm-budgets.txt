@@ -77,3 +77,5 @@ host-audio 140000
 host-layers 70000
 # Canonical natural PNG/JPEG media decode and shared607 notices (53,580 measured).
 host-media 70000
+# Physical host-service spans, synthesized-bank registry and PCM reservations.
+host-services 32000

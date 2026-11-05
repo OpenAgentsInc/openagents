@@ -17,6 +17,12 @@
 #define HF_EXPORT(name)
 #define HF_IMPORT(name)
 #endif
+#ifndef HF_INIT_EXPORT
+#define HF_INIT_EXPORT(name) HF_EXPORT(name)
+#endif
+#ifndef HF_MESSAGE_EXPORT
+#define HF_MESSAGE_EXPORT(name) HF_EXPORT(name)
+#endif
 #if defined(COAXIAL_NATIVE_ADDRESS)
 typedef uintptr_t HfAddress;
 #else
@@ -43,7 +49,7 @@ static void drain(HfAddress p) {
 HF_EXPORT("coaxial_layout") uint32_t coaxial_layout(void) { return 0x48464331u; }
 HF_EXPORT("coaxial_host_contract_version") uint32_t coaxial_host_contract_version(void) { return 1; }
 HF_EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return sizeof(coax_t_HostFixture); }
-HF_EXPORT("coaxial_state_init") void coaxial_state_init(HfAddress p) { coax_default_t_HostFixture(game(p)); }
+HF_INIT_EXPORT("coaxial_state_init") void coaxial_state_init(HfAddress p) { coax_default_t_HostFixture(game(p)); }
 HF_EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return 3; }
 HF_EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return 12; }
 HF_EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return 16; }
@@ -58,7 +64,7 @@ HF_EXPORT("coaxial_blur") void coaxial_blur(HfAddress p) { hf_blur(view(p)); }
 HF_EXPORT("coaxial_wheel") void coaxial_wheel(HfAddress p,float dy) { hf_wheel(view(p),dy); }
 HF_EXPORT("coaxial_inbox") HfAddress coaxial_inbox(HfAddress p) { return (HfAddress)(uintptr_t)game(p)->inbox.e; }
 HF_EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return 128; }
-HF_EXPORT("coaxial_message") void coaxial_message(HfAddress p,int32_t kind,uint32_t n) {
+HF_MESSAGE_EXPORT("coaxial_message") void coaxial_message(HfAddress p,int32_t kind,uint32_t n) {
   hf_message(view(p),kind,(coax_string){(const char *)game(p)->inbox.e,n});
   drain(p);
 }

@@ -357,6 +357,13 @@ plan and a shared `audio-memory.coax` ticket. An admitted name alone does
 not admit a source view or decoded allocation. See
 [`audio-bank.md`](audio-bank.md) and the Linux SDK's
 [`audio-linux.md`](audio-linux.md) for measured ownership APIs.
+The v1 browser loads the separate `host-services.wasm` reactor before it
+admits any producer view. Its bank registry consumes bounded metadata rows
+through the same `hab_*` authority; a refused row sets aggregate failure
+while later independently admitted assets remain available. A refused
+metadata allocation produces no bank view. Pre-contract pages retain their
+existing adapter. Browser PCM retention and queue admission have separate
+integration receipts; this bank-span check does not qualify them.
 Pack sounds and declared sound-directory
 assets share the same name lookup; missing/failed data produces silence,
 not a substituted sound. Audio activation needs the platform's gesture or
@@ -368,7 +375,11 @@ its audio graph. Tests never use the owner's speakers.
 draining length twice and then play nothing. Version 1 packet readers use
 `coaxial_sounds_capacity(state)` and the measured-span authority before
 forming that view; the reported length alone is insufficient. This export
-does not drain or mutate the packet. Lines are the existing
+does not drain or mutate the packet. Version 1 consumes the packet once after each completed
+producer handoff, including messages and input while drawing is covered;
+packet delivery does not wait for another GPU frame. Invalid packet spans
+are refused before a byte view is formed and do not consume unrelated
+producer work. Lines are the existing
 `aethyr/audio/mix.coax` protocol: `NAME GAIN PAN [DELAY LOWPASS]`, or the
 eight-field mixed voice `NAME GAIN PAN DELAY LOWPASS RATE WET ID`;
 `~NAME GAIN PAN` updates a looping bed; `!bus`, `!room`, `!fetch` and `-ID`

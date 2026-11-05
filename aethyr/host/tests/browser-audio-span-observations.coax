@@ -1,0 +1,6 @@
+// Independently authored result of the six recording-producer commands.
+hpbb_fixture :: ()->[54]int {
+ return [54]int.[0,0,2,60,60,1,1,1,0, 1,-1,0,0,0,1,1,1,0,
+  2,-1,1,0,60,1,1,1,0, 3,0,2,60,60,-1,1,1,0,
+  4,0,2,60,60,-1,1,1,0, 5,0,2,60,60,-1,1,1,0];
+}

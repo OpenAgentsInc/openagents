@@ -1,6 +1,8 @@
 // Firm reason: 5 (thin face ABI projection: actual pointers and scalars from the Coax recording realm).
 #define coaxial_state_init audio_base_state_init
 #define coaxial_message audio_base_message
+#define HF_INIT_EXPORT(name)
+#define HF_MESSAGE_EXPORT(name)
 #include "fixture-face.c"
 #undef coaxial_state_init
 #undef coaxial_message
@@ -19,5 +21,5 @@ HF_EXPORT("coaxial_sound_bank") HfAddress coaxial_sound_bank(HfAddress p){(void)
 HF_EXPORT("coaxial_sound_bank_capacity") uint32_t coaxial_sound_bank_capacity(HfAddress p){(void)p;return sizeof listing;}
 HF_EXPORT("coaxial_sound_bank_storage") HfAddress coaxial_sound_bank_storage(HfAddress p){(void)p;return(HfAddress)(uintptr_t)wave;}
 HF_EXPORT("coaxial_sound_bank_storage_bytes") uint32_t coaxial_sound_bank_storage_bytes(HfAddress p){(void)p;return sizeof wave;}
-void coaxial_audio_fixture_mode(int mode){audio_fixture.mode=mode;}
-int64_t coaxial_audio_fixture_probe(int field){switch(field){case 0:return audio_fixture.reads;case 1:return audio_fixture.drains;case 2:return audio_fixture.count;}return -1;}
+HF_EXPORT("coaxial_audio_fixture_mode") void coaxial_audio_fixture_mode(int mode){audio_fixture.mode=mode;}
+HF_EXPORT("coaxial_audio_fixture_probe") int64_t coaxial_audio_fixture_probe(int field){switch(field){case 0:return audio_fixture.reads;case 1:return audio_fixture.drains;case 2:return audio_fixture.count;}return -1;}

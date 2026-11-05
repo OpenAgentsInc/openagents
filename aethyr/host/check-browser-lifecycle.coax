@@ -7,6 +7,7 @@ tool_main :: ()->int #export_c {
   a:[1]Args;if !args_load(a[..])||args_count(a[..])!=1 {tool_errln("usage: check-browser-lifecycle PREPARED_DIR");return 2;}
   paths:[7][4096]u8;dir:=fs_realpath(args_at(a[..],0),paths[0][..]);site:=fs_join(dir,"browser-site",paths[1][..]);root:=fs_cwd(paths[2][..]);if dir==""||!fs_mkdir(site) {return 1;}
   for file:[2]string.["fixture.wasm","fixture.wgsl"] {if !hbl_copy(fs_join(dir,file,paths[3][..]),fs_join(site,file,paths[4][..])) {return 1;}}
+  build:=fs_join(site,"build",paths[3][..]);if !fs_mkdir(build)||!hbl_copy(fs_join(dir,"host-services.wasm",paths[4][..]),fs_join(build,"host-services.wasm",paths[5][..])) {tool_errln("Prepared host-services.wasm is required beside the fixture.");return 1;}
   page:="<!doctype html><meta charset=utf-8><style>html,body{margin:0;width:320px;height:180px}canvas{display:block;width:320px;height:180px}</style><canvas id=coaxial></canvas><script>globalThis.coaxialClip=true</script><script type=module src=/coaxial/host.js data-app=host-contract data-wasm=/fixture.wasm data-wgsl=/fixture.wgsl></script>";
   if !fs_write(fs_join(site,"index.html",paths[3][..]),page) {return 1;}host:=fs_join(root,"coax/web",paths[3][..]);argv:=[9]string.["coax/web/serve.sh",site,"--host-dir",host,"--listen","127.0.0.1:9169","--static","--cache","0"];
   p:=proc_new();if p<0 {return 1;}for v:argv {if !proc_arg(p,v) {return 1;}}if proc_start(p)!=0 {return 1;}defer {killed:=proc_kill(p,PROC_SIGTERM);waited:=proc_wait(p,2000);released:=proc_release(p);}

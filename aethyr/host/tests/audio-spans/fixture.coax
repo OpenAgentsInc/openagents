@@ -1,0 +1,2 @@
+// The recording audio producer under the ordinary fixture face's header name.
+#load "../../audio-fixture.coax";

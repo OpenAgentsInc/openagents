@@ -1,0 +1,12 @@
+// Build separate host-service admission without publishing or rebuilding a realm.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/proc.coax";
+#load "../lib/sys/args.coax";
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])!=2 {tool_errln("usage: build-services ROOT OUT.wasm");return 2;}
+ root:=args_at(a[..],0);paths:[3][4096]u8;script:=fs_join(root,"coax/web/wasm.sh",paths[0][..]);source:=fs_join(root,"aethyr/host/services-carrier.coax",paths[1][..]);face:=fs_join(root,"coax/web/services-face.c",paths[2][..]);
+ argv:=[5]string.["bash",script,source,face,args_at(a[..],1)];out:[1048576]u8;err:[1048576]u8;r:=proc_run(argv[..],180000,out[..],err[..]);
+ if r.started!=0||r.status!=0||r.timed_out||r.cut {tool_errln(cast(string)err[0..<r.err_n]);return 1;}print("Shared host services reactor: %\n",args_at(a[..],1));return 0;
+}

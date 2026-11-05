@@ -1,0 +1,2 @@
+coax jobs: the load average is 99.9, at or above 12 ($COAX_JOBS_LOAD); running 1 build worker, not up to 2, until it drops
+(async()=>{const q=await coaxial.audio.contract();return q.version===1&&q.state==='suspended'&&!q.started&&!q.failure&&q.worklet?.accepted===1&&q.worklet?.frames===0})()

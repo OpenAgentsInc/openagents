@@ -1,6 +1,6 @@
 // The actual host.js, a real Coax fixture realm and real WebGPU. No visible
 // browser, room/model service, owner clipboard or speaker is used.
-// Prepared directory contains fixture.wasm and fixture.wgsl.
+// Prepared directory contains fixture.wasm, fixture.wgsl and host-services.wasm.
 #load "../../coax/web/wasm-chrome.coax";
 #load "../../coax/lib/crypto/sha256-kernel.coax";
 #load "receipt-http.coax";
@@ -17,6 +17,7 @@ tool_main :: ()->int #export_c {
   paths:[10][4096]u8;dir:=fs_realpath(args_at(a[..],0),paths[0][..]);root:=fs_realpath(".",paths[1][..]);site:=fs_join(dir,"browser-site",paths[2][..]);
   if dir=="" || root=="" || !fs_mkdir(site) {return 1;}
   for file:[2]string.["fixture.wasm","fixture.wgsl"] {if !cb_copy(fs_join(dir,file,paths[3][..]),fs_join(site,file,paths[4][..])){return 1;}}
+  build:=fs_join(site,"build",paths[3][..]);if !fs_mkdir(build)||!cb_copy(fs_join(dir,"host-services.wasm",paths[4][..]),fs_join(build,"host-services.wasm",paths[5][..])) {tool_errln("Prepared host-services.wasm is required beside the fixture.");return 1;}
   big:[65]u8;for i:0..<65 {big[i]='z';}
   page:="<!doctype html><meta charset=utf-8><style>html,body{margin:0;width:160px;height:90px;overflow:hidden}canvas{display:block;width:160px;height:90px;touch-action:none}</style><canvas id=coaxial></canvas><script>globalThis.coaxialClip=true</script><script type=module src=/coaxial/host.js data-app=host-contract data-wasm=/fixture.wasm data-wgsl=/fixture.wgsl data-assets='data:/asset.bin data:/too-big.bin'></script>";
   if !fs_write(fs_join(site,"index.html",paths[3][..]),page) || !fs_write(fs_join(site,"asset.bin",paths[3][..]),"ABCD") || !fs_write(fs_join(site,"too-big.bin",paths[3][..]),cast(string)big[..]) {return 1;}

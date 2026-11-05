@@ -1,0 +1,19 @@
+// Observe the real host.js consumer with the recording producer's six modes.
+#load "../../coax/web/wasm-chrome.coax";
+#load "audio-bank-browser-conformance.coax";
+hpas_wait :: (c:[]Cdp,expression:string)->bool {until:=proc_now_ms()+15000;while proc_now_ms()<until {if wc_eval(c,expression)=="true" {return true;}proc_sleep(50);}tool_errln(expression);tool_errln(cdp_error(c));return false;}
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])!=2 {tool_errln("usage: check-browser-audio-spans LOCAL_URL OUT.json");return 2;}
+ url:=args_at(a[..],0);if url.count<17||url[0..<17]!="http://127.0.0.1:" {return 2;}
+ c:[1]Cdp;if !cdp_launch(c[..],160,90,"coax-host-audio-spans-") {return 1;}defer {cdp_close(c[..]);}
+ bytes:[16384]u8;js:[8192]u8;o:[1]Jo;rows:[54]int;jo_start(o[..],js[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],url);jo_end(o[..]);nav:=cdp_call(c[..],"Page.navigate",jo_text(o[..]),CDP_CALL_MS);
+ for mode:0..<6 {
+  if mode>0&&wc_eval(c[..],"coaxial.reloadEngine()")!="true" {return 1;}
+  if !hpas_wait(c[..],"!!globalThis.coaxial?.ready&&typeof coaxial.audio?.fixtureMode==='function'&&coaxial.audio.fixtureProbe(2)===0") {return 1;}
+  jo_start(o[..],js[..]);jo_put(o[..],"(()=>{coaxial.audio.fixtureMode(");jo_int(o[..],mode);jo_put(o[..],");const b=coaxial.audio.bank();const r=coaxial.audio.fixtureProbe(0),d=coaxial.audio.fixtureProbe(1);let threw=false;try{coaxial.send(930,'pulse 0.125 0')}catch{threw=true}const p=coaxial.audio.bank();return [");jo_int(o[..],mode);jo_put(o[..],",b.status,b.count,b.bytes.pulse??0,b.bytes.pulse2??0,threw?-999:p.packet,coaxial.audio.fixtureProbe(0)-r,coaxial.audio.fixtureProbe(1)-d,coaxial.audio.fixtureProbe(2)]})()");
+  value:=cdp_evaluate(c[..],jo_text(o[..]));doc:=cdp_doc(c[..]);if value<0||jv_len(doc,value)!=9 {tool_errln(cdp_error(c[..]));return 1;}
+  for field:0..<9 {rows[mode*9+field]=jv_int(doc,jv_at(doc,value,field),-999);}
+ }
+ jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.host.browser-audio-spans.v1");jo_key(o[..],"rows");jo_arr(o[..]);for value:rows {jo_int(o[..],value);}jo_end(o[..]);jo_key(o[..],"passed");jo_bool(o[..],hpbb_accept(rows[..]));jo_end(o[..]);if o[0].bad||!fs_write(args_at(a[..],1),jo_text(o[..])) {return 1;}
+ if !hpbb_accept(rows[..]) {tool_errln("Actual browser bank/packet observations differ; raw rows retained.");return 1;}print("Actual browser bank/packet spans: all 54 observed words admitted.\n");return 0;
+}

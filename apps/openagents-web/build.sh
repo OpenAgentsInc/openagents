@@ -35,6 +35,9 @@ host_layers=$!
 # Canonical v1 still-media bytes (PNG/JPEG) share the native Coax decoder.
 "$here/../../coax/web/tool.sh" "$here/../../coax/web/build-media.coax" "$here/../.." "$here/build/host-media.wasm" &
 host_media=$!
+# Physical bank/packet spans use the shared host-service authorities.
+"$here/../../coax/web/tool.sh" "$here/../../coax/web/build-services.coax" "$here/../.." "$here/build/host-services.wasm" &
+host_services=$!
 # The HUD bar's light, the same function the iOS stages draw (verse/light.coax).
 # (splash.wgsl loads verse/light.coax in its Coax: gpu/splash.coax.)
 "$here/../../coax/web/wasm.sh" "$here/splash.coax" "$here/face.c" "$here/build/splash.wasm" &
@@ -305,6 +308,7 @@ wait "$everglade_room"
 wait "$host_audio"
 wait "$host_layers"
 wait "$host_media"
+wait "$host_services"
 wait "$fairy"
 wait "$villa"
 wait "$animelab"

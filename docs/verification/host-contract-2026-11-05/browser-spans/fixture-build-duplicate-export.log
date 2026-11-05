@@ -1,0 +1,4 @@
+coax jobs: the load average is 27.5, at or above 12 ($COAX_JOBS_LOAD); running 1 build worker, not up to 2, until it drops
+coax jobs: the load average is 28.5, at or above 12 ($COAX_JOBS_LOAD); running 1 build worker, not up to 2, until it drops
+[parse exception: duplicate export name (at 0:2046)]
+Fatal: error parsing wasm (try --debug for more info)
