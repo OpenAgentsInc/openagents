@@ -1,0 +1,16 @@
+// Startup/cover/resume of a newly linked isolated bundle. No FPS remeasurement.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/json/json.coax";
+mss_int :: (d:Jv,n:int,key:string)->int {return jv_int(d,jv_get(d,n,key),-1);}
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])<3 {tool_errln("usage: metal-stage-smoke ISOLATED_APP PERSISTED_DATA NEW_OUTPUT [--existing]");return 2;}
+ app:=args_at(a[..],0);data:=args_at(a[..],1);dir:=args_at(a[..],2);paths:[4][4096]u8;if !fs_mkdir(dir) {return 1;}report:=fs_join(dir,"window.json",paths[0][..]);input:=fs_join(dir,"plan.json",paths[1][..]);bytes:[16384]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.metal.window-plan.v1");jo_key(o[..],"report");jo_str(o[..],report);jo_key(o[..],"operations");jo_arr(o[..]);
+ for op,i:[10]string.["resize","reset","wait","observe","status","wait","observe","world","wait","observe"] {jo_obj(o[..]);jo_key(o[..],"op");jo_str(o[..],op);if op=="resize" {jo_key(o[..],"width");jo_int(o[..],640);jo_key(o[..],"height");jo_int(o[..],360);}if op=="wait" {jo_key(o[..],"ms");jo_int(o[..],ifx i==2 then 1000 else 500);}if op=="observe" {jo_key(o[..],"label");jo_str(o[..],ifx i==3 then "play" else ifx i==6 then "covered" else "resumed");}jo_end(o[..]);}
+ jo_end(o[..]);jo_end(o[..]);if o[0].bad||!fs_write(input,jo_text(o[..])) {return 1;}if !args_has(a[..],"--existing") {argv:=[10]string.[fs_join(app,"Contents/MacOS/Aethyrforge",paths[2][..]),"--world","metal","--mute-audio","--data-dir",data,"--metal-measure-plan",input,"--test-window-title","Metal12868Check"];out:[65536]u8;err:[65536]u8;r:=proc_run(argv[..],120000,out[..],err[..]);if !fs_write(fs_join(dir,"sdk.stderr",paths[3][..]),cast(string)err[0..<r.err_n])||r.started!=0||r.status!=0||r.cut||r.timed_out {tool_errln(cast(string)err[0..<r.err_n]);return 1;}}
+ raw:[1048576]u8;n:=fs_read(report,raw[..]);d:[1]Jv;nodes:[32768]JvNode;if n<1||!jv_parse(d[..],cast(string)raw[0..<n],nodes[..]) {return 1;}rows:=jv_get(d[0],0,"observations");if jv_len(d[0],rows)!=3 {return 1;}play:=jv_at(d[0],rows,0);covered:=jv_at(d[0],rows,1);resumed:=jv_at(d[0],rows,2);ok:=mss_int(d[0],play,"frames")>0&&mss_int(d[0],resumed,"frames")>mss_int(d[0],play,"frames")&&jv_bool(d[0],jv_get(d[0],covered,"paused"))&&!jv_bool(d[0],jv_get(d[0],resumed,"paused"));
+ for row:[2]int.[play,resumed] {ok=ok&&mss_int(d[0],row,"net")==2&&mss_int(d[0],row,"seat")>=0&&!jv_bool(d[0],jv_get(d[0],row,"setup"));}ok=ok&&mss_int(d[0],0,"closedLedgerLive")==0&&mss_int(d[0],0,"closedLedgerWords")==0;
+ print("Updated isolated Metal bundle: nativeframes, localroomseat, cover/resume andcleanclose:%\n",ok);return ifx ok then 0 else 1;
+}

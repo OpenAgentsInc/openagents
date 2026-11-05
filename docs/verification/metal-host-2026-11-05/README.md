@@ -386,3 +386,28 @@ and layer reactors. The new display shader products remain experimental
 under the frozen iteration backend. These component receipts do not replace
 compiler build/load admission or qualify a current compiler release; ordinary
 presentation selection and the desktop default remain unchanged.
+
+## Updated isolated bundle smoke
+
+`window-media-smoke/` retains a caught Metal validation assertion in the
+desktop transparent HUD: Coax correctly emitted zero vertices, but the SDK
+requested a zero-length buffer. `ForgeHUD.draw` now encodes the clear/present
+without a buffer or draw for that empty stream. No gameplay or realm HUD
+geometry changed. The room/serve children orphaned by that assertion were
+terminated by their exact isolated-bundle PIDs.
+
+`window-media-smoke-fixed/` records the newly linked/signed isolated app with
+the canonical decoder/notice SDK and staged 51,577-byte media reactor. Under
+explicit API/GPU validation it renders, joins the local room, pauses behind
+status, resumes and closes with zero live ledger objects/words. No validation
+error is reported. The initial reducer incorrectly expected seat1; the actual
+engine reports a valid seat0 (as in the earlier window record). The corrected
+reducer requires an admitted nonnegative seat and reuses the same actual
+receipt, without relaunching the passing app workload. This loaded-machine
+startup/cover/resume check is not a new FPS qualification. The earlier display
+rate/latency numbers remain scoped to their frozen binary and surface.
+
+The exact updated executable and shell/renderer inputs are frozen under its
+`sdk/`. The media reactor SHA256 is
+`8a044816e38ac651fa9c29af9dfdcba5218dbbb637a3daa98b4261d3d20a6998`.
+The canonical app was untouched; the isolated app and owned children are closed.

@@ -77,11 +77,15 @@ final class ForgeHUD: MTKView, MTKViewDelegate {
         // Coax's point-space layout is window-relative. The native Metal view
         // covers only its HUD component, so WebKit can see the world around it.
         let (vertices, n) = vertexStream(scale: d)
-        guard let buffer = vertices.withUnsafeBytes({ device.makeBuffer(bytes: $0.baseAddress!, length: Int(n) * 48) }), let encoder = cmd.makeRenderCommandEncoder(descriptor: pass) else { return }
-        var size = SIMD2<Float>(Float(drawableSize.width), Float(drawableSize.height))
-        encoder.setRenderPipelineState(pipeline); encoder.setVertexBuffer(buffer, offset: 0, index: 0)
-        encoder.setVertexBytes(&size, length: MemoryLayout.size(ofValue: size), index: 1)
-        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: Int(n)); encoder.endEncoding()
+        guard let encoder = cmd.makeRenderCommandEncoder(descriptor: pass) else { return }
+        if n > 0 {
+            guard let buffer = vertices.withUnsafeBytes({ device.makeBuffer(bytes: $0.baseAddress!, length: n * 48) }) else { encoder.endEncoding(); return }
+            var size = SIMD2<Float>(Float(drawableSize.width), Float(drawableSize.height))
+            encoder.setRenderPipelineState(pipeline); encoder.setVertexBuffer(buffer, offset: 0, index: 0)
+            encoder.setVertexBytes(&size, length: MemoryLayout.size(ofValue: size), index: 1)
+            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: n)
+        }
+        encoder.endEncoding()
         cmd.present(drawable); cmd.commit()
     }
     // Offscreen SDK acceptance uses the exact production stream and pipeline.
