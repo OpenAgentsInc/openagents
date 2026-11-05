@@ -24,12 +24,18 @@ EG_HURTS :: 32;                 // the world's harm to seats a tick holds until 
 EgHurt :: struct { s: int; amount: int; by: int; }
 
 // ---- hearing
+#load "cast-budget.coax";
 
 // A cast that passed its first checks: it waits for the inputs before it. False: no room for it.
 rc_hear :: (v: [] RmServer, k: int, seat: int, seq: int, slot: int, ax: f32, ay: f32, az: f32, tgt: int, mode: int) -> bool {
   free := -1;
-  for q: 0..<EG_CASTS { if !v[0].eg[k].casts[q].on && free < 0 { free = q; } }
-  if free < 0 { return false; }
+  owned := 0;
+  for q: 0..<EG_CASTS {
+    c := v[0].eg[k].casts[q];
+    if !c.on && free < 0 { free = q; }
+    if c.on && c.seat == seat { owned += 1; }
+  }
+  if free < 0 || !cb_admit(owned) { return false; }
   v[0].eg[k].cast_order += 1;
   v[0].eg[k].casts[free] = EgCast.{on = true, seat = seat, slot = slot, x = ax, y = ay, z = az, tgt = tgt, seq = seq, mode = mode,
                                    phase = RC_WAIT, heard = v[0].eg[k].tick, order = v[0].eg[k].cast_order};
@@ -310,6 +316,37 @@ rc_cutover :: (v: [] RmServer, k: int, s: int) {
 }
 
 // ---- checks (coax test --library coax/web/room/room.coax --only "casts:")
+
+#test "casts: a flooding sender cannot take another admitted seat's reservation (#12841)" #steps 2000000000 {
+  v:[1]RmServer;box:[1]EgInbox;k:=rc_test_room(v[..],"pair-cast-budget",EG_SEATS,false);
+  #assert EG_CASTS>=2*EG_SEATS;
+  eg_test_drain(v[..],box[..]);
+  before:=v[0].eg[k].seat[0].last_cast;
+  for seq:1..<12 {b:[64]u8;n:=put_int(b[..],put(b[..],0,"C "),seq);n=put(b[..],n," 1 3000 0 0 -1");rm_heard(v[..],0,cast(string)b[0..<n]);}
+  eg_test_drain(v[..],box[..]);
+  #assert v[0].eg[k].cast_order==2&&v[0].eg[k].seat[0].last_cast==before;
+  #assert eg_test_has(eg_test_of(box[..],0),"r 3 busy");
+  for s:1..<EG_SEATS {rm_heard(v[..],s,"C 1 1 3000 0 0 -1");rm_heard(v[..],s,"C 2 1 3000 0 0 -1");}
+  active:=0;for c:v[0].eg[k].casts {if c.on {active+=1;}}
+  #assert active==2*EG_SEATS&&v[0].eg[k].cast_order==2*EG_SEATS;
+  // A consumed reservation is reusable; refusal never spends an order/cooldown.
+  v[0].eg[k].casts[0].on=false;
+  rm_heard(v[..],0,"C 12 1 3000 0 0 -1");
+  #assert v[0].eg[k].casts[0].on&&v[0].eg[k].casts[0].seq==12;
+  #assert v[0].eg[k].cast_order==2*EG_SEATS+1;
+}
+
+#test "casts: a full room leaves another room's cast queue available (#12841)" #steps 2000000000 {
+  v:[1]RmServer;k:=rc_test_room(v[..],"pair-cast-full",EG_SEATS,false);
+  for s:0..<EG_SEATS {#assert rc_hear(v[..],k,s,1,1,30,0,0,-1,0)&&rc_hear(v[..],k,s,2,1,30,0,0,-1,0);}
+  #assert !rc_hear(v[..],k,0,3,1,30,0,0,-1,0);
+  #assert rm_join(v[..],EG_SEATS,"GET /api/room/relay/everglade/pair-cast-other HTTP/1.1\r\n\r\n")>=0;
+  other:=eg_room_at(v[..],v[0].conns[EG_SEATS].relay);
+  #assert other>=0&&other!=k;
+  rm_heard(v[..],EG_SEATS,"H 4 ranger.0.0.0 druid 0 -");
+  rm_heard(v[..],EG_SEATS,"C 1 1 3000 0 0 -1");
+  #assert v[0].eg[other].cast_order==1&&v[0].eg[k].cast_order==EG_CASTS;
+}
 
 // eg_test_tick with the host's line of sight: every question answered `clear`.
 rc_test_tick :: (v: [] RmServer, k: int, clear: bool) {

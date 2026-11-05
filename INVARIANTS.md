@@ -636,6 +636,18 @@ the engine's script (`data-served`), so a pin carries them; `engine-served
 check` holds a record to a site's bytes. `realm_walkthrough.coax` checks the
 whole route: edit, publish, reload, a later release, fork, refusals.
 
+## An admitted Everglade seat keeps a cast reservation
+
+`coax/web/room/cast-budget.coax` (#12841, `#authority`, mutation-checked)
+admits at most two outstanding casts per seat, across waiting, bar and flight
+phases. `rc_hear` enforces this before recording the cast or spending its
+cooldown/order; refusal returns the existing `r SEQ busy`. The room's 32 slots
+cover two for every admitted seat, so a sender cannot consume another seat's
+reservation. Releasing a cast frees its reservation. The bound is local to
+each room; it does not qualify CPU isolation, hurt ordering, durable queues
+or dependency outages. Checks: room-casts.coax's flooding, full-room and
+separate-room cases; cast-budget.coax's independent boundaries.
+
 ## An Everglade room seats only a page of its own build
 
 A room admits a hello only when the page's engine, rules and world numbers
