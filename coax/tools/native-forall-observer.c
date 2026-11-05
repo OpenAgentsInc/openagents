@@ -1,9 +1,14 @@
 /* Verification ABI2 host effects. Coax owns table admission, finite traversal,
  * frame bytes and progress meaning; this adapter owns allocation, mmap, stdio,
  * atomic publication and the original checked procedure's function-pointer call. */
-/* O_NOFOLLOW is POSIX.1-2008; -std=c11 hides it on glibc. */
+/* O_NOFOLLOW is POSIX.1-2008; -std=c11 hides it on glibc. Darwin's
+ * <fcntl.h> declares it only at its full C level, which a strict
+ * _POSIX_C_SOURCE turns off unless _DARWIN_C_SOURCE is also set. */
 #ifndef _POSIX_C_SOURCE
 #define _POSIX_C_SOURCE 200809L
+#endif
+#if defined(__APPLE__) && !defined(_DARWIN_C_SOURCE)
+#define _DARWIN_C_SOURCE 1
 #endif
 #include <errno.h>
 #include <fcntl.h>
