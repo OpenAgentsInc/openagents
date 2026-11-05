@@ -1314,6 +1314,12 @@ everglade_room_fresh :: (s: [] Everglade) #export_c {
 // The room server steps seat p's movement next (room-world.c world_step): the conditions, the slow and
 // the throw everglade_move_world reads are theirs.
 everglade_room_seat :: (s: [] Everglade, p: int) #export_c { s[0].wt[0].me = clamp_w(p, 0, WATCH_YOUS - 1); }
+// Seat p held by the watch's Hold Person (a scripted hold: oa-room room-control.coax "hold", #12886):
+// HOLD_FOR seconds and its saves already made, so it ends then in every room it is laid in.
+everglade_room_hold :: (s: [] Everglade, p: int) #export_c {
+  if !s[0].wv.started || p < 0 || p >= WATCH_YOUS || s[0].wt[0].yous[p].dead { return; }
+  s[0].wt[0].yous[p].held_t = f32(HOLD_FOR); s[0].wt[0].yous[p].held_saves = HOLD_SAVES;
+}
 // Seat p's conditions from the watch (WC_*): Hold Person's hold, Ray of Frost's slow.
 // Seat p's watch effect's seconds left, by its cause (everglade-wire.coax WE_*: Hold Person, Earthbind,
 // Ray of Frost); 0 when it holds none (the room's WK_EFFECT rows, room-everglade.coax).

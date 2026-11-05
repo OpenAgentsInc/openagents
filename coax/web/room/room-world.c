@@ -205,6 +205,7 @@ int world_wanted(int k, int s) { return world_of(k) ? (int)everglade_room_wanted
 int world_gates(int k) { return world_of(k) ? (int)everglade_room_gates(at(k)) : 0; }
 void world_seed_wanted(int k, int s, int level) { if (world_of(k)) everglade_room_seed_wanted(at(k), s, level); }
 int world_cond(int k, int s) { return world_of(k) ? (int)everglade_room_cond(at(k), s) : 0; }
+void world_hold(int k, int s) { if (world_of(k)) everglade_room_hold(at(k), s); }
 float world_cond_left(int k, int s, int cause) { return world_of(k) ? everglade_room_cond_left(at(k), s, cause) : 0.0f; }
 
 void world_strike(int k, int by, int slot, const float from[3], const float to[3], int seed) {

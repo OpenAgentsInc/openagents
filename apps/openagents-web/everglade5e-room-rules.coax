@@ -440,6 +440,17 @@ e5rr_folk_near :: (r: [] E5rRoom, x: f32, z: f32, reach: f32) -> int {
   }
   return best;
 }
+// A scripted Hold Person on the living person nearest (x, z) within `reach` (oa-room room-control.coax
+// "hold", the drift check's held step, #12886): Paralyzed for E5RR_HOLD_S with no save, so every room
+// it is laid in holds them alike. The creature, or -1 for none near.
+E5RR_HOLD_S :: 6.0;
+e5rr_hold_folk :: (r: [] E5rRoom, x: f32, z: f32, reach: f32) -> int #export_c {
+  i := e5rr_folk_near(r, x, z, reach);
+  if i < 0 { return -1; }
+  b := r[0].b[..];
+  rs_put_effect(b, i, RsEffect.{kind = EF_COND, cond = RS_PARALYZED, by = -1, spell = SP_HOLD_PERSON, until = b[0].clock + E5RR_HOLD_S, save = -1, dc = 0});
+  return i;
+}
 // Each summoned creature's dt seconds (everglade5e-beasts.coax e5b_step).
 e5rr_beasts_step :: (r: [] E5rRoom, dt: f32) { e5b_step(r[0].b[..], r[0].beasts[..], E5RR_BEAST0, E5RR_FOLK0, r[0].folk_x[..], r[0].folk_z[..], dt); }
 // A summoned creature at 0 Hit Points, or whose caster's Concentration on its spell ended, is gone.
@@ -571,6 +582,19 @@ e5rr_test_people :: (r: [] E5rRoom) {
   g = 2 * E5R_FOLK_FLOATS;
   folk[g] = 1; folk[g + 1] = 30; folk[g + 2] = 0; folk[g + 3] = 4; folk[g + 5] = 4; folk[g + 6] = 10; folk[g + 7] = f32(E5R_COMMONER);
   e5rr_people(r, folk[..], E5R_FOLK);
+}
+#test "Everglade 5E room: a scripted hold paralyzes the person nearest for 6 s with no save, and no one out of reach (#12886)" #steps 2000000000 {
+  r: [1] E5rRoom;
+  e5rr_start(r[..], 7);
+  e5rr_test_people(r[..]);
+  e5rr_join(r[..], 0, 0, 0);
+  #assert e5rr_hold_folk(r[..], 29, 0, 30) == e5rr_folk(2) && e5rr_hold_folk(r[..], -80, 0, 30) == -1;
+  out: [E5RR_OUT_FLOATS] f32;
+  e5rr_folk_out(r[..], 2, out[..]); #assert (cast(int) out[3] & RS_PARALYZED) != 0 && out[7] == f32(SP_HOLD_PERSON);
+  e5rr_folk_out(r[..], 0, out[..]); #assert (cast(int) out[3] & RS_PARALYZED) == 0;
+  t := r[0].b[0].clock;
+  e5rr_step(r[..], t + 5.5); e5rr_folk_out(r[..], 2, out[..]); #assert (cast(int) out[3] & RS_PARALYZED) != 0;
+  e5rr_step(r[..], t + 6.5); e5rr_folk_out(r[..], 2, out[..]); #assert (cast(int) out[3] & RS_PARALYZED) == 0;
 }
 #test "Everglade 5E room: sixteen players, each its own caster; a blast hurts the town, never another player" #steps 2000000000 {
   r: [1] E5rRoom;

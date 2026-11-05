@@ -7,7 +7,8 @@
 // realm's world document, as room-host.c does over TCP. Every rule is the server's Coax.
 //   localRoomSocket("local:/api/room/relay/everglade/local-1", wasmUrl) -> a WebSocket-shaped object
 // The worker posts its cost once a second: {t: "cost", ticks, us, parts}, kept for the drift check
-// and the phone-throttle measurement as globalThis.coaxial.roomHost.
+// and the phone-throttle measurement as globalThis.coaxial.roomHost; roomHost.control(LINES) gives
+// the room control lines as the API's answer does (the drift check's held step).
 
 // The worker's body, run from its own source text (a Blob: no second script for a release to name).
 function roomWorkerMain() {
@@ -111,6 +112,7 @@ function roomWorkerMain() {
         if (!timer) { next = performance.now(); beat(); }
       } else if (m.t === "frame" && conns.has(m.id)) { x.rw_heard(m.id, put(m.text)); flush(); }
       else if (m.t === "close" && conns.has(m.id)) { conns.delete(m.id); x.rw_left(m.id); flush(); }
+      else if (m.t === "control") { x.rw_control(put(m.text)); flush(); }   // roomHost.control
     };
     if (x) run(); else waiting.push(run);
   };
@@ -133,6 +135,9 @@ function roomWorker(wasmUrl) {
   const control = levels + (raid ? raid + " 0 0\n" : "");
   worker.postMessage({ t: "boot", wasm: href(wasmUrl), world: href("/api/playtest/world/everglade"), control, start: raid ? levels + raid + " 1 0\n" : "" });
   const host = (globalThis.coaxial ||= {}).roomHost = { ticks: 0, us: 0, ms: 0, parts: [], failed: "" };
+  // Control lines for the room (room-control.coax), as the API's answer is to oa-room: the drift
+  // check's scripted Hold Person ("hold CODE SEAT STAMP", #12886) reaches this room as it does its own.
+  host.control = (text) => { worker.postMessage({ t: "control", text: String(text) }); return 1; };
   worker.onmessage = (e) => {
     const m = e.data, s = sockets.get(m.id);
     if (m.t === "cost") { Object.assign(host, m); host.tickUs = m.ticks ? m.us / m.ticks : 0; return; }

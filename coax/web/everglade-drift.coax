@@ -20,8 +20,8 @@
 // only a localhost relay):
 //   start, crate (W into the crate the world puts 1.5 m ahead of the spawn), strafe (W and D: along
 //   it), walk, jump, rg (Reverse Gravity from the bar, 5, and again to end it), wos (Wall of Stone,
-//   Shift+1), ww (Wind Wall, 6), held (Hold Person on you: a bot's cast in the room, the watch's on
-//   the offline page, net_probe 59; then W, which mustn't move you), folk (standing, the town's people
+//   Shift+1), ww (Wind Wall, 6), held (Hold Person on you and the townsperson nearest you, one scripted
+//   spell on both pages: dr_hold; then W, which mustn't move you), folk (standing, the town's people
 //   walking), end.
 // Then the raid (unless --no-raid): the offline page's preview raid (?raid=preview) and the room's
 // own (the siege on the south road at size 8, Darian at his camp, harm on, levels on to cap 2, reward
@@ -173,7 +173,9 @@ dr_str :: (c: [] Cdp, js: string, out: [] u8) -> string {
   n := jv_str(cdp_doc(c), v, out);
   return ifx n > 0 then cast(string) out[0..<n] else "";
 }
-DrPair :: struct { a: [] Cdp; b: [] Cdp; shots: string; }
+// ctl: the room's control file (the held step's scripted Hold Person); room: the room page's room
+// code; worker: the offline page plays on the local host (?offline=worker)
+DrPair :: struct { a: [] Cdp; b: [] Cdp; shots: string; ctl: string; room: int; worker: bool; }
 DR_SHOT :: 8388608;
 // Both pages as they look now, into SHOTS-NAME-offline.png and -room.png (no SHOTS: none).
 dr_shots :: (p: DrPair, name: string) {
@@ -194,6 +196,39 @@ dr_mark :: (p: DrPair, name: string) {
   q: [1] Buf; bput(q[..], "__dr.mark('"); bput(q[..], name); bput(q[..], "')");
   _ := dr_int(p.a, btext(q[..]), 0); _ = dr_int(p.b, btext(q[..]), 0);
   print("  step %\n", name);
+}
+
+// The held step's Hold Person, one spell on both pages (#12886): room-control.coax's "hold" line,
+// the watch's hold on you (3 s, no save) and the rules' on the townsperson nearest you (6 s, no save).
+// The room page's room reads it from its control file (re-read every 2 s); the offline page's local
+// host gets the same line (roomHost.control) the moment the room page shows you held, so the two
+// holds start as one. With --offline page, the offline page is held by its own watch (net_probe 59).
+DR_HELD :: "((__dr.probe(52) & 3) || __dr.probe(53) > 0) ? 1 : 0";
+dr_hold :: (p: DrPair) {
+  took := false; tries := 0; asked := 0; stamp := 0;
+  while tries < 3 && !took {
+    if proc_now_ms() - asked > 6500 {
+      seat := dr_int(p.b, "__dr.probe(1)", -1);
+      stamp = proc_now_ms(); asked = stamp; tries += 1;
+      c: [1] Buf; bput(c[..], DR_CONTROL_PAIR); bput(c[..], "hold pair-drift-"); bint(c[..], p.room); bput(c[..], " "); bint(c[..], seat); bput(c[..], " "); bint(c[..], stamp); bput(c[..], "\n");
+      _ := fs_write(p.ctl, btext(c[..]));
+    }
+    took = dr_int(p.b, DR_HELD, 0) == 1;
+    if !took { proc_sleep(20); }
+  }
+  held := 0;
+  if p.worker {
+    q: [1] Buf; bput(q[..], "coaxial.roomHost.control('hold local-1 ' + __dr.probe(1) + ' "); bint(q[..], stamp); bput(q[..], "\\n')");
+    held = dr_int(p.a, btext(q[..]), 0);
+    w := proc_now_ms();
+    while held == 1 && dr_int(p.a, DR_HELD, 0) != 1 && proc_now_ms() - w < 2000 { proc_sleep(20); }
+    held = dr_int(p.a, DR_HELD, 0);
+  } else {
+    held = dr_int(p.a, "__dr.probe(59)", 0);
+  }
+  _ := fs_write(p.ctl, DR_CONTROL_PAIR);
+  if !took { print("  (the room page was never held: % asks)\n", tries); }
+  if held != 1 { print("  (the offline page did not take the hold: %)\n", held); }
 }
 
 dr_script :: (p: DrPair, dir: string) {
@@ -219,19 +254,7 @@ dr_script :: (p: DrPair, dir: string) {
   dr_mark(p, "ww");
   dr_tap(p, "6", "Digit6", 54); proc_sleep(6500);
   dr_mark(p, "held");
-  // the room page: bot 0's cast on you, again each round (6 s) you save, up to 10; the offline page:
-  // the watch's Hold Person (net_probe 59) the moment the room page shows you held, so they start as one
-  hb: [1024] u8; hold := fs_join(dir, "hold", hb[..]);
-  took := false; tries := 0; asked := 0;
-  while tries < 10 && !took {
-    if proc_now_ms() - asked > 6500 { _ = fs_write(hold, "1"); asked = proc_now_ms(); tries += 1; }
-    took = dr_int(p.b, "((__dr.probe(52) & 3) || __dr.probe(53) > 0) ? 1 : 0", 0) == 1;
-    if !took { proc_sleep(50); }
-  }
-  _ = fs_remove(hold);
-  held := dr_int(p.a, "__dr.probe(59)", 0);
-  if !took { print("  (the room page was never held: % casts)\n", tries); }
-  if held != 1 { print("  (the offline page did not take the hold: %)\n", held); }
+  dr_hold(p);
   proc_sleep(1200);
   dr_both_key(p, true, "w", "KeyW", 87); proc_sleep(2000); dr_both_key(p, false, "w", "KeyW", 87); proc_sleep(2500);
   dr_mark(p, "folk"); proc_sleep(6000);
@@ -308,11 +331,11 @@ DR_PROBES :: 32;
 DrReport :: struct { r: [DR_PROBES] DrResult; n: int; }
 dr_add :: (rep: [] DrReport, name: string, v: DrVerdict) { if rep[0].n < DR_PROBES { rep[0].r[rep[0].n] = DrResult.{name = name, v = v}; rep[0].n += 1; } }
 
-// The held step's two holds are not one spell yet: offline it is the watch's own (net_probe 59, the
-// Watch Mage's 3 s hold), in the room a bot's SRD Hold Person (paralyzed, a Wisdom save each 6 s
-// round). Until the offline page runs the room's rules (#12784) and can be held by the same spell,
-// only the hold's start is compared: what holds you and the status lines are not compared from 1 s
-// after the later page shows you held to 1 s after the later page shows you free.
+// With --offline page the held step's two holds are not one spell: offline it is the page's own
+// watch (net_probe 59, a Watch Mage's hold that may last another round), in the room the scripted
+// one (dr_hold). Then only the hold's start is compared: what holds you and the status lines are not
+// compared from 1 s after the later page shows you held to 1 s after the later page shows you free.
+// On the local host (the default) both pages are held by the one line, and all of it is compared.
 dr_hold_window :: (a: [] DrPage, b: [] DrPage) {
   on: [2] int; off: [2] int;
   for side: 0..<2 {
@@ -352,9 +375,9 @@ dr_local :: (p: [] DrPage) {
 }
 
 // Every probe of the paired session, offline (a) against the room (b) and back.
-dr_compare :: (a: [] DrPage, b: [] DrPage, rtt: int, rep: [] DrReport) {
+dr_compare :: (a: [] DrPage, b: [] DrPage, rtt: int, rep: [] DrReport, worker: bool) {
   window := 250 + rtt;
-  dr_hold_window(a, b);
+  if !worker { dr_hold_window(a, b); }
   dr_local(a); dr_local(b);
   t0 := dr_mark_t(a, "start"); t1 := dr_mark_t(a, "end");
   if t0 < 0 || t1 < 0 { t0 = 0; t1 = 1 << 50; }
@@ -450,6 +473,23 @@ dr_compare :: (a: [] DrPage, b: [] DrPage, rtt: int, rep: [] DrReport) {
     dr_add(rep, "corrections", v[0]);
   }
   {
+    // the held step's Hold Person reached the town (#12886): each page draws a held townsperson,
+    // or the town's people's conditions above had nothing to compare (--offline page: its own game
+    // has no room to hold one in, so the room page's alone)
+    v: [1] DrVerdict; first := ifx worker then 0 else 1;
+    for side: first..<2 {
+      p := ifx side == 0 then a else b;
+      h := dr_mark_t(p, "held"); most := 0;
+      for r: 0..<p[0].n { if h >= 0 && dr_at(p, r, C_T) >= h && dr_at(p, r, C_FCOND) > most { most = dr_at(p, r, C_FCOND); } }
+      if most == 0 && !v[0].drifted {
+        v[0].drifted = true; v[0].t = h; v[0].step = "held";
+        q: [1] Buf; bput(q[..], "no townsperson held on the "); bput(q[..], ifx side == 0 then "offline" else "room"); bput(q[..], " page");
+        for i: 0..<q[0].n { v[0].note[i] = q[0].b[i]; } v[0].note_n = q[0].n;
+      }
+    }
+    dr_add(rep, "a townsperson held", v[0]);
+  }
+  {
     // walking in place: a walking clip drawn where it was; and how fast those walking go
     wa := 0; sa := 0; ma := 0; wb := 0; sb := 0; mb := 0;
     for r: 0..<a[0].n { t := dr_at(a, r, C_T); if t >= t0 && t <= t1 { wa += dr_at(a, r, C_WALK); sa += dr_at(a, r, C_STALL); ma += dr_at(a, r, C_MOVED); } }
@@ -514,7 +554,7 @@ dr_open :: (c: [] Cdp, url: string, script: string) -> bool {
 }
 
 DR_DEV_KEY :: "local-development-room-ticket-key-not-a-secret";   // room-dev.coax DEV_KEY, the bots' tickets
-// the paired session's control lines: PvP on (bot 0's Hold Person), levels off (the whole bar on both
+// the paired session's control lines: PvP on, levels off (the whole bar on both
 // pages), no raid
 DR_CONTROL_PAIR :: "pvp 1\nedit 1\nlevels 0 2\nevent 0 0 3 12 6 1 3 3 31 1 2 1 100 15 0 0\n";
 // worker: the offline page plays on the room server's local host (?offline=worker, #12784); false its own game
@@ -543,7 +583,7 @@ dr_session :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] Dr
       if dr_open(ca[..], btext(ua[..]), run.script) && dr_open(cb[..], btext(ub[..]), run.script) && dr_ready(ca[..], false) && dr_ready(cb[..], true) {
         proc_sleep(2500);
         sh: [1] Buf; bput(sh[..], run.dir); bput(sh[..], "/shot-"); bput(sh[..], profile);
-        dr_script(DrPair.{a = ca[..], b = cb[..], shots = btext(sh[..])}, run.dir);
+        dr_script(DrPair.{a = ca[..], b = cb[..], shots = btext(sh[..]), ctl = run.ctl, room = code, worker = run.worker}, run.dir);
         ok = dr_pull(ca[..], a) && dr_pull(cb[..], b);
       } else {
         da: [2048] u8; db: [2048] u8; js := "JSON.stringify({rows: window.__dr && __dr.count(), net: window.__dr && __dr.probe(0), seat: window.__dr && __dr.probe(1), wasm: !!(window.__dr && __dr.x), title: document.title, url: location.href})";
@@ -554,7 +594,7 @@ dr_session :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] Dr
     cdp_close(ca[..]);
   }
   dr_stop(hb); dr_stop(hp);
-  if ok { dr_compare(a, b, rtt, rep); }
+  if ok { dr_compare(a, b, rtt, rep, run.worker); }
   return ok;
 }
 

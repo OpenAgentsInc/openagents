@@ -101,6 +101,7 @@ EgSeat :: struct {
   old: bool;                                          // a page from before wire 3: its state on the old wire (room-oldwire.coax)
   fresh: bool;                                        // just sat: the world's watch meets a new player
   want_seed: int;                                     // the WANTED level it comes back with, for the world's town (rv_join; 0 none)
+  hold_due: bool;                                     // a scripted Hold Person (room-control.coax "hold"): the host's world holds it on the next tick
   back_hp: int = -1; back_dead: bool;                 // the Hit Points it came back with until its hello built it (rv_join; -1 none)
   wcond: int;                                         // the world's conditions on it (WC_*), with the rules' in p's COND
   fx_left: [WE_WATCH] f32; fx_t0: [WE_WATCH] int; fx_dur: [WE_WATCH] int;   // its watch effects (WE_*): seconds left, start tick, ticks
@@ -841,6 +842,13 @@ rm_eg_cond_left :: (v: [] RmServer, k: int, s: int, cause: int, left: f32) #expo
   if left > 0 && (was <= 0 || left > was + 0.1) { st[0].fx_t0[cause] = v[0].eg[k].tick; st[0].fx_dur[cause] = cast(int) floor(left * f32(WIRE_HZ) + 0.5); }
   st[0].fx_left[cause] = ifx left > 0 then left else 0;
 }
+// Whether seat s is to be held by a scripted Hold Person (room-control.coax "hold"), once: the host
+// lays the watch's hold on it in the world (room-tick.c everglade_town, room-world.c world_hold).
+rm_eg_hold_take :: (v: [] RmServer, k: int, s: int) -> bool #export_c {
+  if !rm_eg_seat_live(v, k, s) || !v[0].eg[k].seat[s].hold_due { return false; }
+  v[0].eg[k].seat[s].hold_due = false;
+  return true;
+}
 rm_eg_wanted :: (v: [] RmServer, k: int, s: int, level: int) #export_c { if rm_eg_seat_live(v, k, s) { v[0].eg[k].wanted[s] = level; } }
 // The WANTED level seat s comes back with (rv_join, #12794), once: the host lays it on the world's town
 // when the town first steps the seat. 0 none.
@@ -1270,6 +1278,25 @@ eg_test_input :: (v: [] RmServer, seq: int) {
   rm_eg_cond_left(v[..], k, 1, WE_HOLD_PERSON, 0);
   for t: 0..<2 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
   #assert eg_test_ent(box[..], 0, id).id < 0 && eg_test_ent(box[..], 1, id).id < 0;
+}
+#test "everglade room: a control hold line holds its seat in its room once a stamp, and none in another room (#12886)" #steps 2000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  rm_clock(v[..], 0, 1762190000000);
+  box: [1] EgInbox;
+  #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-hold HTTP/1.1\r\n\r\n") == 0 && rm_join(v[..], 1, "GET /api/room/relay/everglade/pair-hold HTTP/1.1\r\n\r\n") == 1;
+  #assert rm_join(v[..], 2, "GET /api/room/relay/everglade/pair-other HTTP/1.1\r\n\r\n") == 0;
+  k := eg_room_at(v[..], v[0].conns[0].relay); o := eg_room_at(v[..], v[0].conns[2].relay);
+  for c: 0..<3 { rm_heard(v[..], c, "H 4 ranger.0.0.0 druid 0 -"); }
+  for t: 0..<3 { eg_test_tick(v[..], k); eg_test_tick(v[..], o); eg_test_drain(v[..], box[..]); }
+  rm_control(v[..], "levels 0 2\nhold pair-hold 1 77\n");
+  #assert !rm_eg_hold_take(v[..], k, 0) && rm_eg_hold_take(v[..], k, 1) && !rm_eg_hold_take(v[..], k, 1) && !rm_eg_hold_take(v[..], o, 1);
+  // the control is asked again with the same line: laid once
+  rm_control(v[..], "levels 0 2\nhold pair-hold 1 77\n");
+  #assert !rm_eg_hold_take(v[..], k, 1);
+  // a new stamp, a seat not there, a word short: only the first holds
+  rm_control(v[..], "hold pair-hold 1 78\nhold pair-hold 9 79\nhold pair-hold 0\n");
+  #assert rm_eg_hold_take(v[..], k, 1) && !rm_eg_hold_take(v[..], k, 0);
 }
 #test "everglade room: a page that stalls spends the steps it is owed, and its inputs wait no tick after (#12731)" #steps 2000000000 {
   v: [1] RmServer;
