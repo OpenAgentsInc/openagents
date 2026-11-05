@@ -3,7 +3,8 @@
 // both hear boat 0's row (WK_BOAT) name A as its rower, and A's own row says G 4 (in a boat). B's E
 // at the same boat is refused: the row still names A, and B's G has no 4. A rows (W) for 5 s: both
 // hear the boat move over a metre, and B hears A where the boat is. A steps ashore (E again): the row
-// says moored, and B, put beside the boat again, boards it.
+// says moored, and B, put beside the boat again, boards it. B hears A's moves onto the thwart and
+// ashore as jumps (WARP, #12835), of A's one life.
 //   coax/web/tool.sh coax/web/room/boat-check.coax ws://127.0.0.1:PORT DIR/room-control.txt
 // Run it against a local room (room --dev DIR, with OA_ROOM_TICKET_KEY its key): it writes its place
 // lines after DIR/room-control.txt's own and puts the file back as it was. Prints one JSON line, then
@@ -16,7 +17,7 @@ BC_BOAT :: 0;
 BcSeat :: struct {
   c: [1] RelayConn; m: [1] WireMirror; seq: int; me: int = -1;
   x: f32; z: f32; g: int; seen: bool;
-  other: int = -1; ox: f32; oz: f32; og: int;     // the other seat's row as heard
+  other: int = -1; ox: f32; oz: f32; og: int; olife: int; owarp: int;   // the other seat's row as heard
   bx: f32; bz: f32; by: int = -2; bf: int = -1;   // boat BC_BOAT's row: where, its rower (-1 none; -2 none heard), its float
 }
 bc_hear :: (s: [] BcSeat, t: string) {
@@ -29,7 +30,7 @@ bc_hear :: (s: [] BcSeat, t: string) {
   }
   if s[0].other >= 0 {
     o := wire_mirror_of(s[0].m[..], s[0].other);
-    if o.id >= 0 && o.kind == WK_PLAYER { s[0].ox = o.x; s[0].oz = o.z; s[0].og = o.g; }
+    if o.id >= 0 && o.kind == WK_PLAYER { s[0].ox = o.x; s[0].oz = o.z; s[0].og = o.g; s[0].olife = o.life; s[0].owarp = o.warp; }
   }
   b := wire_mirror_of(s[0].m[..], WIRE_ID_MADE + WIRE_BOAT_EID + BC_BOAT);
   if b.id >= 0 && b.kind == WK_BOAT { s[0].bx = b.x; s[0].bz = b.z; s[0].by = b.owner; s[0].bf = b.p1; }
@@ -121,10 +122,13 @@ tool_main :: () -> int #export_c {
   placed := bc_placed(sa[..], sb[..], true, true, 8000);
   float := sa[0].bf;
   moored0 := sa[0].by == -1 && sb[0].by == -1;
-  // A boards it: the room names A its rower on both, A's G says in a boat
+  // A boards it: the room names A its rower on both, A's G says in a boat, and B hears A's move onto
+  // the thwart as a jump (a WARP of the same life, #12835)
+  life0 := sb[0].olife; warp0 := sb[0].owarp;
   ok = bc_use(sa[..], float) && ok;
   ok = bc_steps(sa[..], sb[..], false, false, 1500) && ok;
   ag0 := sa[0].g;
+  warped := sb[0].olife == life0 && sb[0].owarp > warp0;
   rower_a := sa[0].by == sa[0].me && sb[0].by == sa[0].me;
   a_boat := (sa[0].g & WG_BOAT) != 0;
   b_og := sb[0].og;
@@ -144,6 +148,7 @@ tool_main :: () -> int #export_c {
   // A steps ashore: moored; B, put beside it again, boards it
   ok = bc_use(sa[..], -1) && ok;
   ok = bc_steps(sa[..], sb[..], false, false, 1500) && ok;
+  ashore_warp := sb[0].owarp > warp0 + 1 && sb[0].olife == life0;
   ashore := sa[0].by == -1 && sb[0].by == -1 && (sa[0].g & WG_BOAT) == 0;
   ok = bc_place(ctl, own, code, -1, sb[0].me, 20) && ok;
   placed_b := bc_placed(sa[..], sb[..], false, true, 8000);
@@ -151,7 +156,7 @@ tool_main :: () -> int #export_c {
   ok = bc_steps(sa[..], sb[..], false, false, 1500) && ok;
   rower_b := sa[0].by == sb[0].me && sb[0].by == sb[0].me && (sb[0].g & WG_BOAT) != 0;
   _ := fs_write(ctl, own);
-  pass := ok && sa[0].seen && sb[0].seen && placed && float >= 0 && moored0 && rower_a && a_boat && held && rowed > 1.0 && rowed_a > 1.0 && a_in < 0.8 && b_sees_boat && ashore && placed_b && rower_b;
+  pass := ok && sa[0].seen && sb[0].seen && placed && float >= 0 && moored0 && rower_a && a_boat && warped && ashore_warp && held && rowed > 1.0 && rowed_a > 1.0 && a_in < 0.8 && b_sees_boat && ashore && placed_b && rower_b;
   out: [1024] u8; o: [1] Jo;
   jo_start(o[..], out[..]);
   jo_obj(o[..]);
@@ -161,6 +166,7 @@ tool_main :: () -> int #export_c {
   jo_key(o[..], "moored_first"); jo_bool(o[..], moored0);
   jo_key(o[..], "a_rows_it"); jo_bool(o[..], rower_a);
   jo_key(o[..], "a_g"); jo_arr(o[..]); jo_int(o[..], ag0); jo_int(o[..], b_og); jo_end(o[..]);
+  jo_key(o[..], "b_hears_warps"); jo_arr(o[..]); jo_bool(o[..], warped); jo_bool(o[..], ashore_warp); jo_end(o[..]);
   jo_key(o[..], "b_refused"); jo_bool(o[..], held);
   jo_key(o[..], "rowed_cm"); jo_arr(o[..]); jo_int(o[..], cast(int) (rowed_a * 100)); jo_int(o[..], cast(int) (rowed * 100)); jo_end(o[..]);
   jo_key(o[..], "a_from_boat_cm"); jo_int(o[..], cast(int) (a_in * 100));

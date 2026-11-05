@@ -108,6 +108,8 @@ EgSeat :: struct {
   fresh: bool;                                        // just sat: the world's watch meets a new player
   want_seed: int;                                     // the WANTED level it comes back with, for the world's town (rv_join; 0 none)
   hold_due: bool;                                     // a scripted Hold Person (room-control.coax "hold"): the host's world holds it on the next tick
+  born: bool;                                         // a new player in the seat: its next row is a new life (wire_hist_born, #12835)
+  cut: bool;                                          // the world moved it in one jump (rm_eg_cut): its next row is a WARP (#12835)
   place_due: int;                                     // a place line (room-control.coax "place"): beside rowboat place_due - 1 on the next tick (0 none)
   back_hp: int = -1; back_dead: bool;                 // the Hit Points it came back with until its hello built it (rv_join; -1 none)
   wcond: int;                                         // the world's conditions on it (WC_*), with the rules' in p's COND
@@ -260,7 +262,7 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
 eg_join :: (v: [] RmServer, r: int, conn: int, seat: int) {
   k := eg_room_of(v, r);
   if k < 0 || seat < 0 || seat >= EG_SEATS { return; }
-  v[0].eg[k].seat[seat] = EgSeat.{live = true, conn = conn, full = true, bank = EG_JOIN_BANK, fresh = true, gen = v[0].conns[conn].gen};
+  v[0].eg[k].seat[seat] = EgSeat.{live = true, conn = conn, full = true, bank = EG_JOIN_BANK, fresh = true, born = true, gen = v[0].conns[conn].gen};
   v[0].eg[k].tk[seat] = v[0].conns[conn].ticket;
   v[0].eg[k].wanted[seat] = 0;
   e5rr_join(v[0].eg[k].rules[..], seat, 0, 0);
@@ -937,6 +939,9 @@ rm_eg_hold_take :: (v: [] RmServer, k: int, s: int) -> bool #export_c {
   v[0].eg[k].seat[s].hold_due = false;
   return true;
 }
+// Seat s moved in one jump this tick (room-world.c world_cut_take: placed, teleported, into or out of a
+// boat): its next row is a WARP, so no page draws it between (#12835).
+rm_eg_cut :: (v: [] RmServer, k: int, s: int) #export_c { if rm_eg_seat_live(v, k, s) { v[0].eg[k].seat[s].cut = true; } }
 // The rowboat seat s is to be put beside (room-control.coax "place", #12861), once: -1 none. The host
 // puts it there in the world (room-tick.c everglade_town, room-world.c world_place_boat).
 rm_eg_place_take :: (v: [] RmServer, k: int, s: int) -> int #export_c {
@@ -1002,6 +1007,8 @@ eg_table :: (v: [] RmServer, k: int) {
     e5rr_seat_out(rm[0].rules[..], q, out[..]);
     p := other.pose;
     g := p.g | (ifx out[4] > 0.5 then WG_DEAD else 0) | (ifx v[0].mono_ms - other.heard_ms > WIRE_AWAY_MS then WG_AWAY else 0);
+    if other.born { wire_hist_born(h, q); rm[0].seat[q].born = false; }
+    if other.cut { wire_hist_cut(h, q); rm[0].seat[q].cut = false; }
     wire_hist_put(h, q, WireS.{id = q, kind = WK_PLAYER, x = p.x, y = p.y, z = p.z, yaw = p.yaw, vx = p.vx, vy = p.vy, vz = p.vz, g = g, clip = p.clip,
                                hp = cast(int) out[0], max = cast(int) out[1], temp = cast(int) out[2], cond = cast(int) out[3] | other.wcond,
                                owner = q, carry = f32(p.carry) / 10000.0}, wire_rel(WK_PLAYER), true, false);
@@ -1401,6 +1408,32 @@ eg_test_input :: (v: [] RmServer, seq: int) {
   // a new stamp, a seat not there, a word short: only the first holds
   rm_control(v[..], "hold pair-hold 1 78\nhold pair-hold 9 79\nhold pair-hold 0\n");
   #assert rm_eg_hold_take(v[..], k, 1) && !rm_eg_hold_take(v[..], k, 0);
+}
+#test "everglade room: a player new to a seat is a new life of its row, and a jump the world says is a WARP (#12835)" #steps 2000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  rm_clock(v[..], 0, 1762190000000);
+  box: [1] EgInbox;
+  ev := "GET /api/room/relay/everglade/pair-life HTTP/1.1\r\n\r\n";
+  #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  for c: 0..<2 { rm_heard(v[..], c, "H 4 ranger.0.0.0 druid 0 -"); }
+  for t: 0..<2 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
+  a0 := eg_test_ent(box[..], 1, 0);
+  #assert a0.kind == WK_PLAYER && a0.life >= 1;
+  // the world moved seat 0 in one jump: B hears a WARP of the same life, once
+  rm_eg_cut(v[..], k, 0);
+  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
+  a1 := eg_test_ent(box[..], 1, 0);
+  #assert a1.life == a0.life && a1.warp == a0.warp + 1;
+  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
+  #assert eg_test_ent(box[..], 1, 0).warp == a1.warp;
+  // seat 0's player leaves and another sits in seat 0 before a tick: the same id and slot, a new life
+  rm_left(v[..], 0);
+  #assert rm_join(v[..], 2, ev) == 0;
+  rm_heard(v[..], 2, "H 4 ranger.0.0.0 druid 0 -");
+  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
+  #assert eg_test_ent(box[..], 1, 0).life == a1.life + 1;
 }
 #test "everglade room: a control place line puts its seat beside a rowboat once a stamp, in a local room only (#12861)" #steps 2000000000 {
   for local: 0..<2 {

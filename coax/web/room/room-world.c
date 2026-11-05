@@ -46,6 +46,14 @@ static void seat_dry(int k, int s) {
   seat_swim[k][s] = (coax_t_Swim){0}; seat_swim[k][s].pace = 1; seat_swim[k][s].breath = 1; seat_swim[k][s].surface = -1000;
 }
 
+/* Each seat moved in one jump since the room last asked (placed, teleported, come to on the bank, into
+   or out of a boat): its next row is a WARP however short the jump (world_cut_take, #12835). */
+static bool seat_cut[WORLD_ROOMS][WORLD_SEATS];
+bool world_cut_take(int k, int s) {
+  if (k < 0 || k >= WORLD_ROOMS || s < 0 || s >= WORLD_SEATS || !seat_cut[k][s]) return false;
+  seat_cut[k][s] = false;
+  return true;
+}
 static coax_v_t_Everglade at(int k) { return (coax_v_t_Everglade){world[k], 1}; }
 static coax_v_f32 heights_of(int k) { return (coax_v_f32){world[k]->heights.e, (EG_GRID + 1) * (EG_GRID + 1)}; }
 /* seat s out of the boat it rows, where it is (a seat placed again, gone, or teleported): tied up there */
@@ -140,7 +148,7 @@ bool world_place(int k, int s, float out[WORLD_POSE]) {
   if (!world_of(k) || s < 0 || s >= WORLD_SEATS) return false;
   coax_t_Point spawn = everglade_spawn(at(k));
   seat_ashore(k, s);
-  seat_p[k][s] = verse_player_place(spawn.x, spawn.y, spawn.z, everglade_spawn_face(at(k)));
+  seat_p[k][s] = verse_player_place(spawn.x, spawn.y, spawn.z, everglade_spawn_face(at(k))); seat_cut[k][s] = true;
   if (river[k]) { seat_dry(k, s); seat_w[k][s].breath = river[k]->breath; }
   pose_of(seat_p[k][s], false, out);
   return true;
@@ -150,7 +158,7 @@ bool world_place_at(int k, int s, float x, float y, float z, float yaw, float ou
   if (!world_of(k) || s < 0 || s >= WORLD_SEATS) return false;
   if (!(x == x) || !(y == y) || !(z == z) || !(yaw == yaw)) return world_place(k, s, out);
   seat_ashore(k, s);
-  seat_p[k][s] = verse_player_place(x, y, z, yaw);
+  seat_p[k][s] = verse_player_place(x, y, z, yaw); seat_cut[k][s] = true;
   if (river[k]) { seat_dry(k, s); seat_w[k][s].breath = river[k]->breath; }
   pose_of(seat_p[k][s], false, out);
   return true;
@@ -199,7 +207,7 @@ bool world_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE])
                                                   p.pos.y + everglade_ice_lift(at(k), p.pos.x, p.pos.z), (in[6] & 4) != 0, dt, river_now[k]);
     }
     if (seat_swim[k][s].defeated) {   /* the sixth level of Exhaustion: it comes to on the nearer bank */
-      p = verse_player_place(seat_swim[k][s].bank_x, 0, seat_swim[k][s].bank_z, verse_player_face(p));
+      p = verse_player_place(seat_swim[k][s].bank_x, 0, seat_swim[k][s].bank_z, verse_player_face(p)); seat_cut[k][s] = true;
       seat_swim[k][s].medium = 0; seat_swim[k][s].pace = 1;
     }
     *me = (seat_water){r->medium, r->feet, r->afloat, r->breath, r->out, r->levels};
@@ -242,7 +250,7 @@ void world_strike(int k, int by, int slot, const float from[3], const float to[3
   /* the Warlock's Dimension Door (room-everglade.coax EG_WL_DOOR): the seat stands where it teleported */
   if (slot == 69 && by >= 0 && by < WORLD_SEATS) {
     seat_ashore(k, by);
-    seat_p[k][by] = verse_player_place(to[0], to[1], to[2], verse_player_face(seat_p[k][by]));
+    seat_p[k][by] = verse_player_place(to[0], to[1], to[2], verse_player_face(seat_p[k][by])); seat_cut[k][by] = true;
     if (river[k]) { seat_dry(k, by); seat_w[k][by].breath = river[k]->breath; }
     return;
   }
@@ -264,6 +272,7 @@ bool world_use(int k, int kind, int s, int i) {
       coax_t_Seat off = everglade_river_crew_leave(rv_of(k), heights_of(k), river_now[k], b);
       seat_boat[k][s] = 0;
       if (off.on) seat_p[k][s] = verse_player_place(off.x, 0, off.z, off.yaw);
+      seat_cut[k][s] = true;
       seat_dry(k, s); seat_w[k][s].breath = river[k]->breath;
       return true;
     }
@@ -271,6 +280,7 @@ bool world_use(int k, int kind, int s, int i) {
     if (near < 0 || (i >= 0 && near != i) || !everglade_river_crew_board(rv_of(k), near, s + 1)) return false;
     seat_boat[k][s] = near + 1;
     seat_aboard(k, s);
+    seat_cut[k][s] = true;   /* onto the thwart in one move */
     return true;
   }
   return false;
@@ -301,7 +311,7 @@ bool world_place_boat(int k, int s, int n) {
   coax_t_Seat at_bank = everglade_river_beside(rv_of(k), heights_of(k), river_now[k], (int64_t)bt[6]);
   if (!at_bank.on) return false;
   seat_ashore(k, s);
-  seat_p[k][s] = verse_player_place(at_bank.x, at_bank.y, at_bank.z, at_bank.yaw);
+  seat_p[k][s] = verse_player_place(at_bank.x, at_bank.y, at_bank.z, at_bank.yaw); seat_cut[k][s] = true;
   seat_dry(k, s); seat_w[k][s].breath = river[k]->breath;
   return true;
 }

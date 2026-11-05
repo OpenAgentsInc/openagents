@@ -23,6 +23,8 @@ bool world_boat(int k, int n, float out[WORLD_BOAT]);
 void world_gone(int k, int s);
 /* seat s of room k on the bank beside its n-th rowboat (room-control.coax "place"): false none there */
 bool world_place_boat(int k, int s, int n);
+/* whether seat s of room k moved in one jump since last asked (placed, teleported, into or out of a boat), once */
+bool world_cut_take(int k, int s);
 /* The ground's height at (x, z) in room k's world. */
 float world_ground(int k, float x, float z);
 bool world_forge_open(int k, float x, float z);

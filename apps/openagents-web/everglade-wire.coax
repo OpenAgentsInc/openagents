@@ -544,8 +544,15 @@ WireHist :: struct {
   // now's: where each is (m), its weight, and whether every seat hears it however far (a player)
   x: [WIRE_SLOTS] f32; y: [WIRE_SLOTS] f32; z: [WIRE_SLOTS] f32; w: [WIRE_SLOTS] f32; all: [WIRE_SLOTS] bool;
   life: [WIRE_SLOTS] s32; warp: [WIRE_SLOTS] s32;   // each slot's entity's LIFE and WARP now
+  // the next row of each slot is a new life (born: a new player in the seat, its id the same) or a
+  // jump (cut: a teleport, a placing, a seat into or out of a boat, however short), as its world says (#12835)
+  born: [WIRE_SLOTS] bool; cut: [WIRE_SLOTS] bool;
   now: int;
 }
+// Slot q's next row begins a new life of its entity, though the id and the slot are the same (#12835).
+wire_hist_born :: (h: [] WireHist, q: int) { if q >= 0 && q < WIRE_SLOTS { h[0].born[q] = true; } }
+// Slot q's next row is a jump (WARP), however short: a page draws nothing between it and the last (#12835).
+wire_hist_cut :: (h: [] WireHist, q: int) { if q >= 0 && q < WIRE_SLOTS { h[0].cut[q] = true; } }
 // A new tick's table: empty until wire_hist_put fills it.
 wire_hist_begin :: (h: [] WireHist, tick: int) {
   row := tick % WIRE_BASES;
@@ -563,10 +570,11 @@ wire_hist_put :: (h: [] WireHist, q: int, e: WireS, w: f32, all: bool, moved: bo
   was := (now - 1 + WIRE_BASES) % WIRE_BASES;
   same := now > 0 && h[0].tick[was] == now - 1 && cast(int) h[0].id[was * WIRE_SLOTS + q] == e.id + 1;
   dx := e.x - h[0].x[q]; dy := e.y - h[0].y[q]; dz := e.z - h[0].z[q];
-  jump := same && dx * dx + dy * dy + dz * dz > WIRE_WARP_M * WIRE_WARP_M;
-  if !same { h[0].life[q] = cast(s32) ((cast(int) h[0].life[q] + 1) % 1000000); h[0].warp[q] = 0; }
+  jump := same && (h[0].cut[q] || dx * dx + dy * dy + dz * dz > WIRE_WARP_M * WIRE_WARP_M);
+  if !same || h[0].born[q] { same = false; jump = false; h[0].life[q] = cast(s32) ((cast(int) h[0].life[q] + 1) % 1000000); h[0].warp[q] = 0; }
   else if jump { h[0].warp[q] = cast(s32) ((cast(int) h[0].warp[q] + 1) % 1000000); }
   m.life = cast(int) h[0].life[q]; m.warp = cast(int) h[0].warp[q];
+  h[0].born[q] = false; h[0].cut[q] = false;
   if moved && same && !jump {
     m.vx = wire_tenth(dx * f32(WIRE_HZ)); m.vy = wire_tenth(dy * f32(WIRE_HZ)); m.vz = wire_tenth(dz * f32(WIRE_HZ));
   }
@@ -970,6 +978,28 @@ wire_test_row :: (h: [] WireHist, q: int, t: int) -> WireS {
   // a different id in the slot is its own entity, a life of its own
   wire_hist_begin(h[..], 6); wire_hist_put(h[..], 7, WireS.{id = WIRE_ID_MADE + 10, kind = WK_BEAST, x = 11.1}, 3, false, true);
   #assert wire_test_row(h[..], 7, 6).life == 3 && wire_test_row(h[..], 7, 6).warp == 0;
+}
+#test "wire: the world's word makes a new LIFE with the same id and slot, and a WARP of a short jump; each once (#12835)" {
+  h: [1] WireHist;
+  wire_hist_begin(h[..], 1); wire_hist_put(h[..], 3, WireS.{id = 3, kind = WK_PLAYER, x = 1}, 4, true, true);
+  // tick 2: another player sits in seat 3 within the tick: a new life, though id and slot are the same
+  wire_hist_born(h[..], 3);
+  wire_hist_begin(h[..], 2); wire_hist_put(h[..], 3, WireS.{id = 3, kind = WK_PLAYER, x = 1.1}, 4, true, true);
+  #assert wire_test_row(h[..], 3, 1).life == 1 && wire_test_row(h[..], 3, 2).life == 2 && wire_test_row(h[..], 3, 2).warp == 0 && wire_test_row(h[..], 3, 2).vx == 0;
+  // tick 3: a walk (no word), the same life, its velocity from the move
+  wire_hist_begin(h[..], 3); wire_hist_put(h[..], 3, WireS.{id = 3, kind = WK_PLAYER, x = 1.2}, 4, true, true);
+  #assert wire_test_row(h[..], 3, 3).life == 2 && wire_test_row(h[..], 3, 3).warp == 0 && wire_test_row(h[..], 3, 3).vx == 3;
+  // tick 4: into a boat 1.5 m off (cut): a WARP below WIRE_WARP_M, no velocity drawn through it
+  wire_hist_cut(h[..], 3);
+  wire_hist_begin(h[..], 4); wire_hist_put(h[..], 3, WireS.{id = 3, kind = WK_PLAYER, x = 2.7}, 4, true, true);
+  #assert wire_test_row(h[..], 3, 4).life == 2 && wire_test_row(h[..], 3, 4).warp == 1 && wire_test_row(h[..], 3, 4).vx == 0;
+  // tick 5: the word was used: a walk again
+  wire_hist_begin(h[..], 5); wire_hist_put(h[..], 3, WireS.{id = 3, kind = WK_PLAYER, x = 2.8}, 4, true, true);
+  #assert wire_test_row(h[..], 3, 5).life == 2 && wire_test_row(h[..], 3, 5).warp == 1 && wire_test_row(h[..], 3, 5).vx == 3;
+  // both words in one tick: the new life wins, its WARP 0
+  wire_hist_born(h[..], 3); wire_hist_cut(h[..], 3);
+  wire_hist_begin(h[..], 6); wire_hist_put(h[..], 3, WireS.{id = 3, kind = WK_PLAYER, x = 2.8}, 4, true, true);
+  #assert wire_test_row(h[..], 3, 6).life == 3 && wire_test_row(h[..], 3, 6).warp == 0;
 }
 #test "wire: an input's heading goes to 0.1 mrad (#12718)" {
   buf: [WIRE_FRAME] u8;

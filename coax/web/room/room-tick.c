@@ -154,6 +154,8 @@ static bool everglade_room_tick(int k) {
   int64_t sn = rm_eg_sights(view(), k);
   for (int64_t q = 0; q < sn; q++) if (rm_eg_sight(view(), k, q, sgv)) rm_eg_sight_is(view(), k, q, world_sight(k, sg, sg + 3));
   rm_eg_rules(view(), k);
+  /* the seats the world moved in one jump: their next row is a WARP (#12835) */
+  for (int s = 0; s < WORLD_SEATS; s++) if (world_cut_take(k, s)) rm_eg_cut(view(), k, s);
   int64_t tw = now_us(); part_us[PART_RULES] += tw - te;
   rm_eg_send(view(), k);
   part_us[PART_WRITE] += now_us() - tw;
