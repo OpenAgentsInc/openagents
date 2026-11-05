@@ -68,6 +68,7 @@ fi_of :: (s: [] Everglade) -> [] Fire { return s[0].sp.fi[..]; }
 // step's caster, none (-1) when the raid cast it. On a page every fire is yours (0). Each fire keeps it,
 // and what it does later (catching more, breaking the town) is that seat's crime alone (#12920).
 FI_CASTER :: -2;
+FI_NONE :: -3;             // no fire there (fi_fire_by)
 fi_owner :: (s: [] Everglade) -> int {
   if !s[0].wv.net { return 0; }
   if s[0].wv.fire_own { return s[0].wv.fire_by; }
@@ -315,28 +316,45 @@ fi_people :: (s: [] Everglade) {
   w := watch_w(s);
   d := s[0].sp.dice[..];
   you := ab_you(s);
+  me := w[0].me; foe := w[0].enemy_fire;
   for i: 0..<WATCH_ACTORS {
     if !ab_person_ok(s, i) || v[0].time < v[0].next[i] { continue; }
-    if !fi_by_fire(s, wd_feet(s, i)) { continue; }
+    by := fi_fire_by(s, wd_feet(s, i));
+    if by == FI_NONE { continue; }
     v[0].next[i] = v[0].time + f32(FI_ROUND);
+    // in a room the burn is the fire's starter's doing, not the step's last caster's: their heat, and
+    // the one the hurt turn on; the raid's fire is no player's (#12923)
+    if s[0].wv.net {
+      w[0].enemy_fire = foe || by < 0;
+      w[0].me = clamp_w(by, 0, WATCH_YOUS - 1);
+      you = s[0].wv.room_at[w[0].me];
+    }
     watch_harm(w, i, srd_sum(d, FI_PEOPLE_DICE, FI_PEOPLE_SIDES), you);
+    w[0].me = me; w[0].enemy_fire = foe;
   }
+  you = ab_you(s);
   if !watch_you(w[..])[0].dead && v[0].time >= v[0].you_next && fi_by_fire(s, you) {
     v[0].you_next = v[0].time + f32(FI_ROUND);
     wd_hurt_you(s, srd_sum(d, FI_PEOPLE_DICE, FI_PEOPLE_SIDES), "THE FIRE BURNS YOU · 1D10 FIRE");
   }
 }
-fi_by_fire :: (s: [] Everglade, at: Point) -> bool {
-  if tf_by_fire(s, at) || pf_by_fire(s, at) { return true; }   // a burning tree or placed thing
+fi_by_fire :: (s: [] Everglade, at: Point) -> bool { return fi_fire_by(s, at) != FI_NONE; }
+// Whose fire `at` stands in or against (a burning tree, placed thing or piece): the seat that set it
+// alight, -1 the raid's, FI_NONE none.
+fi_fire_by :: (s: [] Everglade, at: Point) -> int {
+  t := tf_fire_by(s, at);
+  if t != FI_NONE { return t; }
+  t = pf_fire_by(s, at);
+  if t != FI_NONE { return t; }
   w := sp_dm(s);
   v := fi_of(s);
   for k: 0..<v[0].n {
     p := w[0].pieces[v[0].burn[k].piece];
     if v[0].burn[k].t < 1 || at.y + f32(BODY_TALL) < p.y0 - 0.2 || at.y > p.y1 + 0.2 { continue; }
     dx := clamp(at.x, p.x0, p.x1) - at.x; dz := clamp(at.z, p.z0, p.z1) - at.z;
-    if dx * dx + dz * dz <= (f32(EG_RADIUS) + 0.5) * (f32(EG_RADIUS) + 0.5) { return true; }
+    if dx * dx + dz * dz <= (f32(EG_RADIUS) + 0.5) * (f32(EG_RADIUS) + 0.5) { return v[0].burn[k].by; }
   }
-  return false;
+  return FI_NONE;
 }
 
 // R, a long rest, or a building growing back (everglade-spells.coax sp_restore): group g's (every

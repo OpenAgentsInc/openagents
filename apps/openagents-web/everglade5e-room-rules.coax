@@ -925,3 +925,30 @@ e5rr_test_ring :: (r: [] E5rRoom, px: int, py: int) {
   e5rr_zombies_clear(r[..]);
   #assert e5rr_beast(r[..], zq, bf[..]) == 0;
 }
+#test "Everglade 5E room: Wall of Fire's rounds are its caster's harm, though another seat cast since (#12923)" #steps 4000000000 {
+  r: [1] E5rRoom;
+  e5rr_start(r[..], 5);
+  e5rr_join(r[..], 0, 0, 0); e5rr_join(r[..], 1, 0, 0);
+  e5rr_test_ring(r[..], 60, 60);
+  e5rr_place(r[..], 1, e5rr_test_m(100), e5rr_test_m(60));
+  #assert r[0].bar[31].sp == SP_WALL_OF_FIRE;
+  #assert e5rr_use(r[..], 0, 31, e5rr_test_m(60), e5rr_test_m(60), -1);
+  ev: [256 * E5RR_EV_FLOATS] f32;
+  _ := e5rr_events(r[..], ev[..]);
+  // seat 1 strikes the far guard with the Thunderbolt after it
+  #assert e5rr_use(r[..], 1, 1, e5rr_test_m(100), e5rr_test_m(60), -1);
+  _ = e5rr_events(r[..], ev[..]);
+  burns := 0;
+  t := r[0].b[0].clock;
+  for f: 0..<40 {
+    t += 0.25; e5rr_step(r[..], t);
+    n := e5rr_events(r[..], ev[..]);
+    for q: 0..<n {
+      o := q * E5RR_EV_FLOATS;
+      if ev[o] != f32(RS_EV_DAMAGE) || ev[o + 1] != f32(SP_WALL_OF_FIRE) { continue; }
+      #assert ev[o + 2] == f32(E5RR_TGT_SEAT);
+      burns += 1;
+    }
+  }
+  #assert burns > 0;
+}

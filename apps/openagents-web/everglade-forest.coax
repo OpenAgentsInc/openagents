@@ -79,7 +79,7 @@ TF_CHAR :: Point.{x = 0.085, y = 0.075, z = 0.065};
 TF_RIME :: Point.{x = 1.3, y = 1.42, z = 1.6};
 TF_LEAF :: Point.{x = 0.32, y = 0.46, z = 0.16};
 
-TfBurn :: struct { tree: int; t: f32; tick: f32; spread: f32; out: f32; gen: int; }
+TfBurn :: struct { tree: int; t: f32; tick: f32; spread: f32; out: f32; gen: int; by: int; }   // by: the seat that set it alight (everglade-fire.coax fi_owner)
 Timber :: struct {
   time: f32;
   touched: bool;                         // a tree is off how it was planted (else the forest draws as it always did)
@@ -367,7 +367,7 @@ tf_ignite_gen :: (s: [] Everglade, t: int, gen: int) -> bool {
   if v[0].soot[tf_k(s, t)] >= 1 && v[0].bare[tf_k(s, t)] >= 1 { return false; }
   o := t * TREE_FLOATS;
   if fr_wet(s, s[0].trees[o], s[0].trees[o + 1]) || !tf_own(s, t) { return false; }
-  v[0].burn[v[0].n] = TfBurn.{tree = t, t = 0, tick = f32(TF_KINDLE), spread = f32(TF_SPREAD) * (0.6 + 0.8 * sp_rand(s)), out = f32(TF_BURN_OUT) * (0.8 + 0.4 * sp_rand(s)), gen = gen};
+  v[0].burn[v[0].n] = TfBurn.{tree = t, t = 0, tick = f32(TF_KINDLE), spread = f32(TF_SPREAD) * (0.6 + 0.8 * sp_rand(s)), out = f32(TF_BURN_OUT) * (0.8 + 0.4 * sp_rand(s)), gen = gen, by = fi_owner(s)};
   v[0].n += 1;
   v[0].lit += 1;
   v[0].frost[tf_k(s, t)] = 0;
@@ -469,14 +469,16 @@ tf_frost :: (s: [] Everglade, at: Point, r: f32, amount: f32) {
   }
 }
 // Whether `at` (someone's feet) is in or against a burning tree.
-tf_by_fire :: (s: [] Everglade, at: Point) -> bool {
+tf_by_fire :: (s: [] Everglade, at: Point) -> bool { return tf_fire_by(s, at) != FI_NONE; }
+// Whose burning tree `at` stands against (FI_NONE none).
+tf_fire_by :: (s: [] Everglade, at: Point) -> int {
   v := tf_of(s);
   for k: 0..<v[0].n {
     e := v[0].burn[k];
     if e.t < 1 { continue; }
-    if tf_gap(s, e.tree, add(at, v3(0, 0.9, 0))) <= f32(EG_RADIUS) + 0.4 { return true; }
+    if tf_gap(s, e.tree, add(at, v3(0, 0.9, 0))) <= f32(EG_RADIUS) + 0.4 { return e.by; }
   }
-  return false;
+  return FI_NONE;
 }
 
 // Burning tree k tries to catch a tree whose crown it touches, and the grass at its foot.

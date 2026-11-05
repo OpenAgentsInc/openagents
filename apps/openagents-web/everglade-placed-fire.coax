@@ -190,17 +190,19 @@ pf_frame :: (s: [] Everglade, dt: f32) {
   v[0].any = any;
 }
 // Whoever stands against a burning thing burns (everglade-fire.coax fi_by_fire).
-pf_by_fire :: (s: [] Everglade, at: Point) -> bool {
+pf_by_fire :: (s: [] Everglade, at: Point) -> bool { return pf_fire_by(s, at) != FI_NONE; }
+// Whose burning thing `at` stands against (FI_NONE none).
+pf_fire_by :: (s: [] Everglade, at: Point) -> int {
   v := pf_of(s);
-  if !v[0].any { return false; }
+  if !v[0].any { return FI_NONE; }
   for i: 0..<s[0].ev.edits.n {
     if v[0].t[i] < 1 { continue; }
     b := pf_box(s, s[0].ev.edits.things[i]);
     if at.y + f32(BODY_TALL) < b.y0 - 0.2 || at.y > b.y1 + 0.2 { continue; }
     dx := clamp(at.x, b.x0, b.x1) - at.x; dz := clamp(at.z, b.z0, b.z1) - at.z;
-    if dx * dx + dz * dz <= (f32(EG_RADIUS) + 0.5) * (f32(EG_RADIUS) + 0.5) { return true; }
+    if dx * dx + dz * dz <= (f32(EG_RADIUS) + 0.5) * (f32(EG_RADIUS) + 0.5) { return v[0].by[i]; }
   }
-  return false;
+  return FI_NONE;
 }
 // Drawn with the houses' fire (everglade-fire.coax fi_draw): the same licks, glow, billows and smoke.
 pf_draw :: (s: [] Everglade, budget: int) -> int {

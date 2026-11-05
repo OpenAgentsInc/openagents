@@ -1471,3 +1471,72 @@ eg_fire_blame :: (by: int, next_by: int, out: [] int) {
   #assert st_head_word(WC_PRONE | WC_UNCONSCIOUS) == POP_DOWN && st_head_word(WC_BOUND | WC_PRONE) == POP_ROOTED && st_head_word(WC_STUNNED | WC_BOUND) == POP_STUNNED;
   #assert st_head_word(WC_PARALYZED | WC_STUNNED) == POP_HELD && st_head_word(16) == POP_FRIGHTENED && st_head_word(0) == -1;
 }
+// Seat 0 raises a Wall of Fire across a guard, then seat 1 casts (the step's last caster): each round
+// the wall burns the guard is seat 0's doing, its crimes and heat, never seat 1's (#12923).
+#test "room town: a Wall of Fire burning on after another seat casts is its caster's crime, not the last caster's (#12923)" #steps 20000000000 {
+  g: [1] Everglade; dm: [1] DemoWorld;
+  walled := everglade_walls(g[..]);
+  everglade_room_spells_start(g[..], dm[..], "");
+  seats: [EG_ROOM_SEAT_FLOATS * 2] f32; took: [WATCH_YOUS * 2] f32;
+  everglade_room_town(g[..], 1.0 / 30.0, 1000.0, seats[..], 0, took[..]);
+  w := watch_w(g[..]);
+  i := -1;
+  for q: 0..<WATCH_ACTORS { if i < 0 && watch_is_guard(q) && watch_here(w, q) && w[0].actors[q].mode != WM_DEAD { i = q; } }
+  #assert walled >= 0 && i >= 0;
+  at := wd_feet(g[..], i);
+  // seat 0 stands 12 m off the guard; seat 1 far off across the town
+  seats[0] = at.x + 12; seats[1] = ground_at(g[..], at.x + 12, at.z); seats[2] = at.z; seats[3] = 2; seats[4] = 100000; seats[5] = 100000;
+  seats[7] = at.x - 80; seats[8] = ground_at(g[..], at.x - 80, at.z); seats[9] = at.z; seats[10] = 2; seats[11] = 100000; seats[12] = 100000;
+  everglade_room_town(g[..], 1.0 / 30.0, 1000.1, seats[..], 2, took[..]);
+  #assert g[0].wv.room_live[0] && g[0].wv.room_live[1];
+  everglade_room_ability_mode(g[..], 0, AB_WALLFIRE, seats[0], seats[1], seats[2], 0, true, at.x, at.y, at.z, 0);
+  #assert g[0].sp.room_ab[0].seat[0].wd[0].wf_on && w[0].yous[0].heat > 0;
+  w[0].yous[0].crimes = 0; w[0].yous[0].heat = 0; w[0].yous[1].crimes = 0; w[0].yous[1].heat = 0;
+  g[0].wv.room_by = 1;   // seat 1 casts after it
+  h0 := 0; h1 := 0; c0 := 0; c1 := 0;
+  for t: 0..<120 {
+    everglade_room_town(g[..], 0.1, 1000.2 + f64(t) * 0.1, seats[..], 2, took[..]);
+    // the guard stays in the flames
+    w[0].actors[i].x = at.x; w[0].actors[i].z = at.z;
+    if i < EG_SPOTS { g[0].folk[i].x = at.x; g[0].folk[i].z = at.z; g[0].folk[i].indoors = false; }
+    everglade_room_abilities(g[..], 0.1);
+    _ := everglade_room_spells(g[..], 0.1);
+    h0 = hi_w(h0, w[0].yous[0].heat); h1 = hi_w(h1, w[0].yous[1].heat); c0 = hi_w(c0, w[0].yous[0].crimes); c1 = hi_w(c1, w[0].yous[1].crimes);
+  }
+  #assert g[0].sp.room_ab[0].seat[0].wd[0].wf_next[i] > 7;   // it burned them again
+  #assert h0 > 0 && c0 > 0 && h1 == 0 && c1 == 0;
+}
+// A fire seat 0 set (what its Wall of Fire, Fireball or any fire spell lights), burning a guard who
+// stands against it after seat 1 casts: the burn's heat is seat 0's, not the step's last caster's (#12923).
+#test "room town: seat 0's fire burning a guard after seat 1 casts raises seat 0's heat, not seat 1's (#12923)" #steps 20000000000 {
+  g: [1] Everglade; dm: [1] DemoWorld;
+  walled := everglade_walls(g[..]);
+  everglade_room_spells_start(g[..], dm[..], "");
+  seats: [EG_ROOM_SEAT_FLOATS * 2] f32; took: [WATCH_YOUS * 2] f32;
+  everglade_room_town(g[..], 1.0 / 30.0, 1000.0, seats[..], 0, took[..]);
+  w := watch_w(g[..]);
+  d := sp_dm(g[..]);
+  at := v3(0, 0, 0); pc := -1;
+  for q: 0..<d[0].n { p := d[0].pieces[q]; if pc < 0 && p.state == DP_STANDING && fi_fuel(p) > 0.5 { at = v3(p.cx, p.y0 + 1, p.cz); pc = q; } }
+  i := -1;
+  for q: 0..<WATCH_ACTORS { if i < 0 && watch_is_guard(q) && watch_here(w, q) && w[0].actors[q].mode != WM_DEAD { i = q; } }
+  #assert walled >= 0 && pc >= 0 && i >= 0;
+  seats[0] = at.x + 15; seats[1] = ground_at(g[..], at.x + 15, at.z); seats[2] = at.z; seats[3] = 2; seats[4] = 100000; seats[5] = 100000;
+  seats[7] = at.x - 80; seats[8] = ground_at(g[..], at.x - 80, at.z); seats[9] = at.z; seats[10] = 2; seats[11] = 100000; seats[12] = 100000;
+  everglade_room_town(g[..], 1.0 / 30.0, 1000.1, seats[..], 2, took[..]);
+  everglade_room_strike(g[..], 0, WL_SLOT0 + WL_FIREBALL, at.x, at.y + 9, at.z - 2, at.x, at.y, at.z, 7);
+  for t: 0..<20 { _ := everglade_room_spells(g[..], 0.1); }
+  #assert fi_count(g[..]) > 0;
+  g[0].wv.room_by = 1;   // seat 1 casts: the step's last caster
+  w[0].yous[0].heat = 0; w[0].yous[1].heat = 0;
+  h0 := 0; h1 := 0;
+  p := d[0].pieces[fi_of(g[..])[0].burn[0].piece];
+  for t: 0..<60 {
+    // the guard stands against the burning piece
+    if i < EG_SPOTS { g[0].folk[i].x = p.cx; g[0].folk[i].z = p.cz; g[0].folk[i].indoors = false; }
+    w[0].actors[i].x = p.cx; w[0].actors[i].z = p.cz;
+    _ := everglade_room_spells(g[..], 0.1);
+    h0 = hi_w(h0, w[0].yous[0].heat); h1 = hi_w(h1, w[0].yous[1].heat);
+  }
+  #assert h0 > 0 && h1 == 0;
+}
