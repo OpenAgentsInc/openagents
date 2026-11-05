@@ -1,0 +1,318 @@
+// Numbers as Python computes them, for the human pack's tools (pack_human.coax): the port keeps
+// the Python's results bit for bit where it can, so its packs can be compared with the old tool's
+// byte for byte. Python's float(text) (correctly rounded), "%.Nf" (correctly rounded, a half to
+// even on the exact binary value), round(x) and round(x, n), sum() of floats (Neumaier's
+// compensated sum, CPython 3.12 and later), math.dist and math.hypot (CPython's vector_norm:
+// a lossless scaled sum of squares and one correction step), float % and floor division.
+
+// ---- big naturals, 32 bits a limb, least significant first (for the exact decimal conversions)
+PN_LIMBS :: 160;   // 5120 bits: past any double times 10^40 or a 120-digit decimal
+PnBig :: struct { d: [PN_LIMBS] int; n: int; }
+pn_big :: (v: int) -> PnBig { b: PnBig; x := v; while x > 0 { b.d[b.n] = x & 4294967295; b.n += 1; x = x >> 32; } return b; }
+pn_zero :: (b: PnBig) -> bool { return b.n == 0; }
+// b * m + a (m, a under 2^30)
+pn_muladd :: (b: []PnBig, m: int, a: int) {
+  carry := a;
+  for i: 0..<b[0].n { t := b[0].d[i] * m + carry; b[0].d[i] = t & 4294967295; carry = t >> 32; }
+  if carry > 0 { b[0].d[b[0].n] = carry; b[0].n += 1; }
+}
+// b / m (m under 2^31), the remainder back
+pn_divsmall :: (b: []PnBig, m: int) -> int {
+  r := 0; i := b[0].n - 1;
+  while i >= 0 { t := (r << 32) + b[0].d[i]; b[0].d[i] = t / m; r = t % m; i -= 1; }
+  while b[0].n > 0 && b[0].d[b[0].n - 1] == 0 { b[0].n -= 1; }
+  return r;
+}
+pn_shl :: (b: []PnBig, s: int) {
+  if b[0].n == 0 { return; }
+  w := s / 32; k := s % 32;
+  src: PnBig = b[0];
+  for j: 0..<PN_LIMBS { b[0].d[j] = 0; }
+  for j: 0..<src.n {
+    v := src.d[j] << k;
+    b[0].d[j + w] = b[0].d[j + w] | (v & 4294967295);
+    b[0].d[j + w + 1] = b[0].d[j + w + 1] | (v >> 32);
+  }
+  b[0].n = src.n + w + 1;
+  while b[0].n > 0 && b[0].d[b[0].n - 1] == 0 { b[0].n -= 1; }
+}
+pn_bits :: (b: PnBig) -> int {
+  if b.n == 0 { return 0; }
+  top := b.d[b.n - 1]; k := 0; while top > 0 { k += 1; top = top >> 1; }
+  return (b.n - 1) * 32 + k;
+}
+pn_bit :: (b: PnBig, i: int) -> int { if i < 0 || i / 32 >= b.n { return 0; } return (b.d[i / 32] >> (i % 32)) & 1; }
+// whether any bit below i is set
+pn_below :: (b: PnBig, i: int) -> bool {
+  if i <= 0 { return false; }
+  w := i / 32; k := i % 32;
+  for j: 0..<w { if j < b.n && b.d[j] != 0 { return true; } }
+  if w < b.n && k > 0 && (b.d[w] & ((1 << k) - 1)) != 0 { return true; }
+  return false;
+}
+// the bits from i up, as an int (under 63 of them)
+pn_from :: (b: PnBig, i: int, count: int) -> int { v := 0; for j: 0..<count { v = v | (pn_bit(b, i + j) << j); } return v; }
+
+// A double from an integer mantissa q (a big natural, nonzero), its value q * 2^e, with sticky
+// bits below it: rounded to 53 bits, a half to even. Normal doubles only (the tools' numbers are).
+pn_double :: (q: PnBig, e: int, sticky: bool, neg: bool) -> f64 {
+  L := pn_bits(q);
+  shift := L - 53;
+  m := 0; ex := e;
+  if shift <= 0 {
+    m = pn_from(q, 0, L) << (0 - shift); ex = e + shift;
+  } else {
+    m = pn_from(q, shift, 53);
+    guard := pn_bit(q, shift - 1);
+    rest := sticky || pn_below(q, shift - 1);
+    if guard == 1 && (rest || (m & 1) == 1) { m += 1; }
+    if m == 9007199254740992 { m = 4503599627370496; shift += 1; }
+    ex = e + shift;
+  }
+  // m * 2^exp, m in [2^52, 2^53)
+  be := ex + 52 + 1023;
+  if be <= 0 || be >= 2047 { return ifx neg then -0.0 else 0.0; }
+  bits := (cast(u64) be << 52) | (cast(u64) m & 4503599627370495);
+  if neg { bits = bits | 9223372036854775808; }
+  return f64_from_bits(bits);
+}
+
+// Python's float(text) for a plain decimal ("-12.5", "3e-05", "1E+2"); ok false when it isn't one.
+PnFloat :: struct { v: f64; ok: bool; }
+pn_parse :: (s: string) -> PnFloat {
+  r: PnFloat;
+  i := 0; neg := false;
+  while i < s.count && (s[i] == ' ' || s[i] == '\t') { i += 1; }
+  if i < s.count && (s[i] == '-' || s[i] == '+') { neg = s[i] == '-'; i += 1; }
+  big: [1] PnBig; digits := 0; exp10 := 0; seen := false; dot := false;
+  while i < s.count {
+    c := s[i];
+    if c >= '0' && c <= '9' {
+      seen = true;
+      if big[0].n > 0 || c != '0' { pn_muladd(big[..], 10, cast(int) c - 48); digits += 1; }
+      if dot { exp10 -= 1; }
+      i += 1;
+    } else if c == '.' && !dot { dot = true; i += 1; }
+    else { break; }
+  }
+  if !seen { return r; }
+  if i < s.count && (s[i] == 'e' || s[i] == 'E') {
+    i += 1; en := false; ev := 0; any := false;
+    if i < s.count && (s[i] == '-' || s[i] == '+') { en = s[i] == '-'; i += 1; }
+    while i < s.count && s[i] >= '0' && s[i] <= '9' { ev = ev * 10 + cast(int) s[i] - 48; any = true; i += 1; if ev > 100000 { return r; } }
+    if !any { return r; }
+    exp10 += ifx en then -ev else ev;
+  }
+  while i < s.count && (s[i] == ' ' || s[i] == '\t' || s[i] == '\r') { i += 1; }
+  if i != s.count { return r; }
+  r.ok = true;
+  if big[0].n == 0 { r.v = ifx neg then -0.0 else 0.0; return r; }
+  if exp10 >= 0 {
+    if exp10 > 330 { return r; }
+    for k: 0..<exp10 { pn_muladd(big[..], 10, 0); }
+    r.v = pn_double(big[0], 0, false, neg);
+    return r;
+  }
+  n := 0 - exp10;
+  if n > 400 { r.v = ifx neg then -0.0 else 0.0; return r; }
+  // q = floor(D * 2^s / 5^n), then the value is q * 2^(-s-n)
+  s5 := (n * 2322 + 999) / 1000 + 1;           // bits of 5^n, rounded up
+  sh := 58 + s5 - pn_bits(big[0]); if sh < 0 { sh = 0; }
+  pn_shl(big[..], sh);
+  sticky := false; left := n;
+  while left > 0 {
+    k := ifx left >= 13 then 13 else left;
+    p := 1; for j: 0..<k { p *= 5; }
+    if pn_divsmall(big[..], p) != 0 { sticky = true; }
+    left -= k;
+  }
+  r.v = pn_double(big[0], 0 - sh - n, sticky, neg);
+  return r;
+}
+pn_f :: (s: string) -> f64 { return pn_parse(s).v; }
+// an integer's text (Python int()), 0 when it isn't one
+pn_int :: (s: string) -> int {
+  i := 0; neg := false; v := 0;
+  if i < s.count && (s[i] == '-' || s[i] == '+') { neg = s[i] == '-'; i += 1; }
+  while i < s.count && s[i] >= '0' && s[i] <= '9' { v = v * 10 + cast(int) s[i] - 48; i += 1; }
+  return ifx neg then -v else v;
+}
+
+// A double's exact value times 10^n, rounded to an integer (a half to even), as a big natural,
+// and its sign. (Python's "%.nf" and round(x, n) both round this way.)
+PnScaled :: struct { q: PnBig; neg: bool; }
+pn_scaled :: (x: f64, n: int) -> PnScaled {
+  r: PnScaled;
+  bits := f64_bits(x);
+  r.neg = (bits >> 63) != 0;
+  be := cast(int) ((bits >> 52) & 2047);
+  frac := cast(int) (bits & 4503599627370495);
+  if be == 0 && frac == 0 { return r; }
+  m := ifx be == 0 then frac else frac | 4503599627370496;
+  e := ifx be == 0 then -1074 else be - 1075;
+  b: [1] PnBig; b[0] = pn_big(m);
+  for k: 0..<n { pn_muladd(b[..], 10, 0); }
+  if e >= 0 { pn_shl(b[..], e); r.q = b[0]; return r; }
+  s := 0 - e;
+  half := pn_bit(b[0], s - 1) == 1;
+  rest := pn_below(b[0], s - 1);
+  // q = b >> s
+  q: [1] PnBig;
+  L := pn_bits(b[0]);
+  if L > s {
+    nb := L - s;
+    for j: 0..<nb { if pn_bit(b[0], s + j) == 1 { q[0].d[j / 32] = q[0].d[j / 32] | (1 << (j % 32)); } }
+    q[0].n = (nb + 31) / 32;
+    while q[0].n > 0 && q[0].d[q[0].n - 1] == 0 { q[0].n -= 1; }
+  }
+  if half && (rest || pn_bit(q[0], 0) == 1) {
+    // q += 1
+    carry := 1; j := 0;
+    while carry > 0 {
+      if j >= q[0].n { q[0].d[j] = 0; q[0].n = j + 1; }
+      t := q[0].d[j] + carry; q[0].d[j] = t & 4294967295; carry = t >> 32; j += 1;
+    }
+  }
+  r.q = q[0];
+  return r;
+}
+
+// Text written into a caller's buffer.
+PnOut :: struct { buf: []u8; n: int; }
+pn_put :: (o: []PnOut, s: string) { for c: s { if o[0].n < o[0].buf.count { o[0].buf[o[0].n] = c; o[0].n += 1; } } }
+pn_byte :: (o: []PnOut, c: u8) { if o[0].n < o[0].buf.count { o[0].buf[o[0].n] = c; o[0].n += 1; } }
+pn_text :: (o: []PnOut) -> string { return cast(string) o[0].buf[0..<o[0].n]; }
+pn_putint :: (o: []PnOut, v: int) {
+  if v < 0 { pn_byte(o, '-'); pn_putint(o, 0 - v); return; }
+  t: [24] u8; k := 0; x := v;
+  while true { t[k] = cast(u8) (48 + x % 10); k += 1; x = x / 10; if x == 0 { break; } }
+  while k > 0 { k -= 1; pn_byte(o, t[k]); }
+}
+// Python's "%.nf" % x (finite x).
+pn_fixed :: (o: []PnOut, x: f64, n: int) {
+  s := pn_scaled(x, n);
+  if s.neg { pn_byte(o, '-'); }
+  // the digits of q, at least n + 1 of them
+  q: [1] PnBig; q[0] = s.q;
+  dig: [1600] u8; k := 0;
+  while !pn_zero(q[0]) || k < n + 1 { dig[k] = cast(u8) (48 + pn_divsmall(q[..], 10)); k += 1; }
+  i := k - 1;
+  while i >= 0 { pn_byte(o, dig[i]); if i == n && n > 0 { pn_byte(o, '.'); } i -= 1; }
+}
+pn_fixed_text :: (x: f64, n: int, buf: []u8) -> string { o: [1] PnOut; o[0].buf = buf; pn_fixed(o[..], x, n); return pn_text(o[..]); }
+
+// Python's round(x): the nearest integer, a half to the even one.
+pn_round :: (x: f64) -> int {
+  f := floor(x); d := x - f; i := cast(int) f;
+  if d > 0.5 { return i + 1; }
+  if d < 0.5 { return i; }
+  return ifx i % 2 == 0 then i else i + 1;
+}
+// x * 10^n rounded half to even, as an integer (round(x, n)'s value times 10^n; a key for
+// comparing rounded values, which round(x, n) is through its decimal text).
+pn_round_key :: (x: f64, n: int) -> int {
+  s := pn_scaled(x, n);
+  v := 0; for j: 0..<s.q.n { v = v | (s.q.d[j] << (32 * j)); }
+  if s.q.n > 2 || (s.q.n == 2 && s.q.d[1] >= 2147483648) { v = 9223372036854775807; }
+  return ifx s.neg then -v else v;
+}
+// round(x, n) as a float: its "%.nf" text read back.
+pn_round_n :: (x: f64, n: int) -> f64 { t: [512] u8; return pn_f(pn_fixed_text(x, n, t[..])); }
+
+// math.floor and int() of a float, and Python's float % and //.
+pn_floor :: (x: f64) -> int { return cast(int) floor(x); }
+fmod :: (x: f64, y: f64) -> f64 #foreign;
+copysign :: (x: f64, y: f64) -> f64 #foreign;
+pn_mod :: (x: f64, w: f64) -> f64 {
+  m := fmod(x, w);
+  if m != 0.0 { if (w < 0.0) != (m < 0.0) { m += w; } }
+  else { m = copysign(0.0, w); }
+  return m;
+}
+
+// sum() of floats: Neumaier's compensated sum (CPython's builtin sum for a float start).
+PnSum :: struct { s: f64; c: f64; n: int; }
+pn_add :: (a: []PnSum, x: f64) {
+  if a[0].n == 0 { a[0].s = 0.0 + x; a[0].n = 1; return; }
+  t := a[0].s + x;
+  if abs(a[0].s) >= abs(x) { a[0].c += (a[0].s - t) + x; } else { a[0].c += (x - t) + a[0].s; }
+  a[0].s = t; a[0].n += 1;
+}
+pn_total :: (a: PnSum) -> f64 { if a.c != 0.0 && a.c - a.c == 0.0 { return a.s + a.c; } return a.s; }
+pn_sum3 :: (a: f64, b: f64, c: f64) -> f64 { s: [1] PnSum; pn_add(s[..], a); pn_add(s[..], b); pn_add(s[..], c); return pn_total(s[0]); }
+pn_sum2 :: (a: f64, b: f64) -> f64 { s: [1] PnSum; pn_add(s[..], a); pn_add(s[..], b); return pn_total(s[0]); }
+pn_sum4 :: (a: f64, b: f64, c: f64, d: f64) -> f64 { s: [1] PnSum; pn_add(s[..], a); pn_add(s[..], b); pn_add(s[..], c); pn_add(s[..], d); return pn_total(s[0]); }
+pn_dot3 :: (a: [3] f64, b: [3] f64) -> f64 { return pn_sum3(a[0] * b[0], a[1] * b[1], a[2] * b[2]); }
+
+// ---- math.dist and math.hypot: CPython's vector_norm
+frexp_e :: (x: f64) -> int { b := f64_bits(x); return cast(int) ((b >> 52) & 2047) - 1022; }
+pn_norm :: (v: []f64, mx: f64) -> f64 {
+  if mx == 0.0 || v.count <= 1 { return mx; }
+  me := frexp_e(mx);
+  scale := f64_from_bits(cast(u64) (1023 - me) << 52);
+  csum := 1.0; frac1 := 0.0; frac2 := 0.0;
+  for i: 0..<v.count {
+    x := v[i] * scale;
+    hi := x * x; lo := fma(x, x, 0.0 - hi);
+    s := csum + hi; z := s - csum; slo := hi - z;
+    csum = s; frac1 += lo; frac2 += slo;
+  }
+  h := sqrt(csum - 1.0 + (frac1 + frac2));
+  hi := (0.0 - h) * h; lo := fma(0.0 - h, h, 0.0 - hi);
+  s := csum + hi; z := s - csum; slo := hi - z;
+  csum = s; frac1 += lo; frac2 += slo;
+  x := csum - 1.0 + (frac1 + frac2);
+  h += x / (2.0 * h);
+  return h / scale;
+}
+pn_dist3 :: (p: [3] f64, q: [3] f64) -> f64 {
+  v: [3] f64; mx := 0.0;
+  for i: 0..<3 { d := abs(p[i] - q[i]); v[i] = d; if d > mx { mx = d; } }
+  return pn_norm(v[..], mx);
+}
+pn_dist2 :: (p: [2] f64, q: [2] f64) -> f64 {
+  v: [2] f64; mx := 0.0;
+  for i: 0..<2 { d := abs(p[i] - q[i]); v[i] = d; if d > mx { mx = d; } }
+  return pn_norm(v[..], mx);
+}
+pn_hypot :: (a: f64, b: f64) -> f64 { v := [2] f64.[abs(a), abs(b)]; mx := ifx v[0] > v[1] then v[0] else v[1]; return pn_norm(v[..], mx); }
+
+// ---- stable sorting of indices by (key, then position), as Python's sorted with a key
+// idx is sorted in place; tmp is as long as idx. Ascending keys; equal keys keep their order.
+pn_sort :: (idx: []int, key: []f64, tmp: []int) {
+  n := idx.count; w := 1;
+  while w < n {
+    lo := 0;
+    while lo < n {
+      mid := ifx lo + w < n then lo + w else n; hi := ifx lo + 2 * w < n then lo + 2 * w else n;
+      a := lo; b := mid; k := lo;
+      while a < mid && b < hi { if key[idx[b]] < key[idx[a]] { tmp[k] = idx[b]; b += 1; } else { tmp[k] = idx[a]; a += 1; } k += 1; }
+      while a < mid { tmp[k] = idx[a]; a += 1; k += 1; }
+      while b < hi { tmp[k] = idx[b]; b += 1; k += 1; }
+      lo += 2 * w;
+    }
+    for i: 0..<n { idx[i] = tmp[i]; }
+    w = w * 2;
+  }
+}
+// pairs (d, i) sorted as Python sorts tuples: by d, then by i
+pn_sort_pairs :: (d: []f64, i: []int, n: int, td: []f64, ti: []int) {
+  w := 1;
+  while w < n {
+    lo := 0;
+    while lo < n {
+      mid := ifx lo + w < n then lo + w else n; hi := ifx lo + 2 * w < n then lo + 2 * w else n;
+      a := lo; b := mid; k := lo;
+      while a < mid && b < hi {
+        take_b := d[b] < d[a] || (d[b] == d[a] && i[b] < i[a]);
+        if take_b { td[k] = d[b]; ti[k] = i[b]; b += 1; } else { td[k] = d[a]; ti[k] = i[a]; a += 1; }
+        k += 1;
+      }
+      while a < mid { td[k] = d[a]; ti[k] = i[a]; a += 1; k += 1; }
+      while b < hi { td[k] = d[b]; ti[k] = i[b]; b += 1; k += 1; }
+      lo += 2 * w;
+    }
+    for x: 0..<n { d[x] = td[x]; i[x] = ti[x]; }
+    w = w * 2;
+  }
+}

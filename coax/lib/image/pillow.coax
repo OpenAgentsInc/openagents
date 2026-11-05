@@ -1,0 +1,499 @@
+// Image operations as Pillow 13 computes them, for tools ported from Python that must make the
+// same pixels (verse/tools/humans/pack_human.coax, #12859). Each follows Pillow's C
+// (src/libImaging): Resample.c (BICUBIC and LANCZOS: double coefficients, normalized, then
+// 22-bit fixed point; two passes, the order Pillow picks), Convert.c (L from RGB by its 16-bit
+// luma, RGBA to and from premultiplied RGBa, which Image.resize uses for RGBA), BoxBlur.c
+// (GaussianBlur: three extended box passes, each axis), RankFilter.c with Image.expand
+// (MinFilter and MaxFilter, edges repeated), Paste.c and Chops.c (composite, lighter: BLEND and
+// DIV255), and Effects.c's Gaussian noise (with a stated generator: Pillow draws from the C
+// library's rand(), whose state is the process's, so noise is checked by its statistics, not
+// its bytes). Pixels are kept one byte a channel, c channels together, rows top down.
+//
+// Also here: TGA (uncompressed and RLE true colour, the Unreal exports' attribute maps) to RGB,
+// and PNG writing (zlib: LZ77 with hash chains and dynamic Huffman blocks; a filter per row as
+// libpng's heuristic picks). A PNG written here decodes to the same pixels as Pillow's, not to
+// the same bytes. Nothing is allocated: the caller gives every buffer.
+#load "png.coax";
+
+// An image in a caller's buffer: w * h * c bytes.
+PiImg :: struct { px: []u8; w: int; h: int; c: int; }
+pi_img :: (px: []u8, w: int, h: int, c: int) -> PiImg { r: PiImg; r.px = px[0..<w * h * c]; r.w = w; r.h = h; r.c = c; return r; }
+
+PI_BICUBIC :: 3;
+PI_LANCZOS :: 1;
+PI_KMAX :: 262144;     // coefficients one axis may hold (out size times kernel size)
+PI_SIDE :: 16384;
+PiResample :: struct {
+  kh: [PI_KMAX] f64; ih: [PI_KMAX] int; bh: [2 * PI_SIDE] int; kszh: int;
+  kv: [PI_KMAX] f64; iv: [PI_KMAX] int; bv: [2 * PI_SIDE] int; kszv: int;
+}
+
+pi_bicubic :: (x_in: f64) -> f64 {
+  a := -0.5; x := x_in;
+  if x < 0.0 { x = 0.0 - x; }
+  if x < 1.0 { return ((a + 2.0) * x - (a + 3.0)) * x * x + 1.0; }
+  if x < 2.0 { return (((x - 5.0) * x + 8.0) * x - 4.0) * a; }
+  return 0.0;
+}
+PI_PI :: 3.141592653589793;
+pi_sinc :: (x_in: f64) -> f64 { if x_in == 0.0 { return 1.0; } x := x_in * PI_PI; return sin(x) / x; }
+pi_lanczos :: (x: f64) -> f64 { if -3.0 <= x && x < 3.0 { return pi_sinc(x) * pi_sinc(x / 3.0); } return 0.0; }
+pi_filter :: (f: int, x: f64) -> f64 { return ifx f == PI_BICUBIC then pi_bicubic(x) else pi_lanczos(x); }
+
+// precompute_coeffs and normalize_coeffs_8bpc: per output pixel its first input and count, and
+// its weights in 22-bit fixed point. Returns the kernel size, 0 when the buffers are too small.
+pi_coeffs :: (in_size: int, out_size: int, f: int, kk: []f64, ik: []int, bounds: []int) -> int {
+  scale := cast(f64) in_size / cast(f64) out_size;
+  filterscale := ifx scale < 1.0 then 1.0 else scale;
+  support := (ifx f == PI_BICUBIC then 2.0 else 3.0) * filterscale;
+  ks := cast(int) support; if cast(f64) ks < support { ks += 1; }
+  ksize := ks * 2 + 1;
+  if out_size * ksize > kk.count || out_size > PI_SIDE { return 0; }
+  inv := 1.0 / filterscale;
+  for ox: 0..<out_size {
+    center := (cast(f64) ox + 0.5) * scale;
+    ww := 0.0;
+    xmin := cast(int) (center - support + 0.5); if xmin < 0 { xmin = 0; }
+    xmax := cast(int) (center + support + 0.5); if xmax > in_size { xmax = in_size; }
+    xmax -= xmin;
+    for x: 0..<xmax {
+      w := pi_filter(f, (cast(f64) (x + xmin) - center + 0.5) * inv);
+      kk[ox * ksize + x] = w; ww += w;
+    }
+    if ww != 0.0 { for x: 0..<xmax { kk[ox * ksize + x] = kk[ox * ksize + x] / ww; } }
+    for x: xmax..<ksize { kk[ox * ksize + x] = 0.0; }
+    bounds[2 * ox] = xmin; bounds[2 * ox + 1] = xmax;
+  }
+  for i: 0..<out_size * ksize {
+    p := kk[i];
+    ik[i] = ifx p < 0.0 then cast(int) (-0.5 + p * 4194304.0) else cast(int) (0.5 + p * 4194304.0);
+  }
+  return ksize;
+}
+pi_clip8 :: (v: int) -> int { s := v >> 22; return ifx s < 0 then 0 else (ifx s > 255 then 255 else s); }
+
+// Image.resize(size, filter) of an L, RGB or RGBa image (an RGBA one: pi_premul first, then
+// pi_unpremul, as Pillow does). tmp holds the first pass: w_out * h_in * c bytes (or w_in * h_out).
+pi_resize :: (src: PiImg, dst: PiImg, f: int, r: []PiResample, tmp: []u8) -> bool {
+  if dst.c != src.c { return false; }
+  if dst.w == src.w && dst.h == src.h { for i: 0..<src.px.count { dst.px[i] = src.px[i]; } return true; }
+  c := src.c;
+  need_h := dst.w != src.w; need_v := dst.h != src.h;
+  horizontal_first := !((src.h - dst.h) > 0 && (src.h - dst.h) > (src.w - dst.w) * 2);
+  if need_v || (need_h && horizontal_first) {
+    r[0].kszv = pi_coeffs(src.h, dst.h, f, r[0].kv[..], r[0].iv[..], r[0].bv[..]);
+    if r[0].kszv == 0 { return false; }
+  }
+  if need_h {
+    r[0].kszh = pi_coeffs(src.w, dst.w, f, r[0].kh[..], r[0].ih[..], r[0].bh[..]);
+    if r[0].kszh == 0 { return false; }
+  }
+  if horizontal_first {
+    // the rows the vertical pass reads
+    y0 := 0; y1 := src.h;
+    if need_v { y0 = r[0].bv[0]; y1 = r[0].bv[2 * dst.h - 2] + r[0].bv[2 * dst.h - 1]; }
+    mid := src;
+    if need_h {
+      if dst.w * (y1 - y0) * c > tmp.count { return false; }
+      mid = pi_img(tmp, dst.w, y1 - y0, c);
+      pi_pass_h(src, y0, mid, r);
+    } else { y0 = 0; }
+    if need_v { pi_pass_v(mid, 0 - y0, dst, r); }
+    else { for i: 0..<dst.px.count { dst.px[i] = mid.px[i]; } }
+  } else {
+    mid := src;
+    if need_v {
+      if src.w * dst.h * c > tmp.count { return false; }
+      mid = pi_img(tmp, src.w, dst.h, c);
+      pi_pass_v(src, 0, mid, r);
+    }
+    if need_h { pi_pass_h(mid, 0, dst, r); }
+    else { for i: 0..<dst.px.count { dst.px[i] = mid.px[i]; } }
+  }
+  return true;
+}
+// out's row y from src's row y + offset
+pi_pass_h :: (src: PiImg, offset: int, out: PiImg, r: []PiResample) {
+  c := src.c; ks := r[0].kszh;
+  for yy: 0..<out.h {
+    row := (yy + offset) * src.w * c;
+    for ox: 0..<out.w {
+      xmin := r[0].bh[2 * ox]; xmax := r[0].bh[2 * ox + 1];
+      for ch: 0..<c {
+        ss := 2097152;
+        for x: 0..<xmax { ss += cast(int) src.px[row + (x + xmin) * c + ch] * r[0].ih[ox * ks + x]; }
+        out.px[(yy * out.w + ox) * c + ch] = cast(u8) pi_clip8(ss);
+      }
+    }
+  }
+}
+// out's row yy from src's rows at the vertical bounds, shifted by shift
+pi_pass_v :: (src: PiImg, shift: int, out: PiImg, r: []PiResample) {
+  c := src.c; ks := r[0].kszv;
+  for yy: 0..<out.h {
+    ymin := r[0].bv[2 * yy] + shift; ymax := r[0].bv[2 * yy + 1];
+    for ox: 0..<out.w {
+      for ch: 0..<c {
+        ss := 2097152;
+        for y: 0..<ymax { ss += cast(int) src.px[((y + ymin) * src.w + ox) * c + ch] * r[0].iv[yy * ks + y]; }
+        out.px[(yy * out.w + ox) * c + ch] = cast(u8) pi_clip8(ss);
+      }
+    }
+  }
+}
+
+// DIV255 and BLEND (ImagingUtils.h)
+pi_muldiv255 :: (a: int, b: int) -> int { t := a * b + 128; return ((t >> 8) + t) >> 8; }
+pi_blend :: (m: int, a: int, b: int) -> int { t := a * (255 - m) + b * m + 128; return ((t >> 8) + t) >> 8; }
+// RGBA to RGBa and back (Convert.c rgbA2rgba, rgba2rgbA), in place.
+pi_premul :: (im: PiImg) {
+  for i: 0..<im.w * im.h {
+    a := cast(int) im.px[4 * i + 3];
+    for k: 0..<3 { im.px[4 * i + k] = cast(u8) pi_muldiv255(cast(int) im.px[4 * i + k], a); }
+  }
+}
+pi_unpremul :: (im: PiImg) {
+  for i: 0..<im.w * im.h {
+    a := cast(int) im.px[4 * i + 3];
+    if a == 255 || a == 0 { continue; }
+    for k: 0..<3 { v := (255 * cast(int) im.px[4 * i + k]) / a; im.px[4 * i + k] = cast(u8) (ifx v > 255 then 255 else v); }
+  }
+}
+// The RGBA resize: premultiplied, resized, back.
+pi_resize_rgba :: (src: PiImg, dst: PiImg, f: int, r: []PiResample, tmp: []u8, copy: []u8) -> bool {
+  if dst.w == src.w && dst.h == src.h { for i: 0..<src.px.count { dst.px[i] = src.px[i]; } return true; }
+  pre := pi_img(copy, src.w, src.h, 4);
+  for i: 0..<src.px.count { pre.px[i] = src.px[i]; }
+  pi_premul(pre);
+  if !pi_resize(pre, dst, f, r, tmp) { return false; }
+  pi_unpremul(dst);
+  return true;
+}
+// convert("L") of RGB or RGBA (rgb2l: L24 >> 16), into a one-channel image.
+pi_luma :: (src: PiImg, dst: PiImg) {
+  for i: 0..<src.w * src.h {
+    o := i * src.c;
+    v := cast(int) src.px[o] * 19595 + cast(int) src.px[o + 1] * 38470 + cast(int) src.px[o + 2] * 7471 + 32768;
+    dst.px[i] = cast(u8) (v >> 16);
+  }
+}
+// One channel of an image as an L image.
+pi_channel :: (src: PiImg, k: int, dst: PiImg) { for i: 0..<src.w * src.h { dst.px[i] = src.px[i * src.c + k]; } }
+// convert between channel counts as Pillow does from an image's own mode: L to RGB repeats it,
+// RGB to RGBA adds 255, RGBA to RGB drops alpha (rgba2rgb), L to RGBA repeats and adds 255.
+pi_convert :: (src: PiImg, dst: PiImg) {
+  for i: 0..<src.w * src.h {
+    for k: 0..<dst.c {
+      v: u8 = 255;
+      if k < 3 { v = ifx src.c >= 3 then src.px[i * src.c + k] else src.px[i * src.c]; }
+      else if src.c == 4 { v = src.px[i * 4 + 3]; }
+      else if src.c == 2 { v = src.px[i * 2 + 1]; }
+      dst.px[i * dst.c + k] = v;
+    }
+  }
+}
+
+// MinFilter(size) and MaxFilter(size) of an L image (rank 0 or size*size-1 over the window,
+// the image's edge pixels repeated past it). out is another buffer.
+pi_rank :: (src: PiImg, size: int, top: bool, out: PiImg) {
+  m := size / 2;
+  for y: 0..<src.h {
+    for x: 0..<src.w {
+      best := ifx top then 0 else 255;
+      for dy: 0 - m..<m + 1 {
+        yy := y + dy; if yy < 0 { yy = 0; } if yy >= src.h { yy = src.h - 1; }
+        for dx: 0 - m..<m + 1 {
+          ox := x + dx; if ox < 0 { ox = 0; } if ox >= src.w { ox = src.w - 1; }
+          v := cast(int) src.px[yy * src.w + ox];
+          if top { if v > best { best = v; } } else { if v < best { best = v; } }
+        }
+      }
+      out.px[y * src.w + x] = cast(u8) best;
+    }
+  }
+}
+
+// GaussianBlur(radius): BoxBlur.c's three passes along x, then three along y.
+pi_blur_radius :: (radius: f32, passes: int) -> f32 {
+  sigma2 := radius * radius / cast(f32) passes;
+  L := cast(f32) sqrt(12.0 * cast(f64) sigma2 + 1.0);
+  l := cast(f32) floor((cast(f64) L - 1.0) / 2.0);
+  a := (2.0f32 * l + 1.0f32) * (l * (l + 1.0f32) - 3.0f32 * sigma2);
+  a = a / (6.0f32 * (sigma2 - (l + 1.0f32) * (l + 1.0f32)));
+  return l + a;
+}
+// one line of n values at line[0], line[step], ... in place (lo: a copy of the line's input)
+pi_box_line :: (line: []u8, at: int, step: int, n: int, lo: []int, radius: int, ww: int, fw: int) {
+  for x: 0..<n { lo[x] = cast(int) line[at + x * step]; }
+  lastx := n - 1;
+  edgeA := ifx radius + 1 < n then radius + 1 else n;
+  edgeB := ifx n - radius - 1 > 0 then n - radius - 1 else 0;
+  acc := lo[0] * (radius + 1);
+  for x: 0..<edgeA - 1 { acc += lo[x]; }
+  acc += lo[lastx] * (radius - edgeA + 1);
+  if edgeA <= edgeB {
+    for x: 0..<edgeA { acc += lo[x + radius] - lo[0]; b := acc * ww + (lo[0] + lo[x + radius + 1]) * fw; line[at + x * step] = cast(u8) ((b + 8388608) >> 24); }
+    for x: edgeA..<edgeB { acc += lo[x + radius] - lo[x - radius - 1]; b := acc * ww + (lo[x - radius - 1] + lo[x + radius + 1]) * fw; line[at + x * step] = cast(u8) ((b + 8388608) >> 24); }
+    for x: edgeB..<lastx + 1 { acc += lo[lastx] - lo[x - radius - 1]; b := acc * ww + (lo[x - radius - 1] + lo[lastx]) * fw; line[at + x * step] = cast(u8) ((b + 8388608) >> 24); }
+  } else {
+    for x: 0..<edgeB { acc += lo[x + radius] - lo[0]; b := acc * ww + (lo[0] + lo[x + radius + 1]) * fw; line[at + x * step] = cast(u8) ((b + 8388608) >> 24); }
+    for x: edgeB..<edgeA { acc += lo[lastx] - lo[0]; b := acc * ww + (lo[0] + lo[lastx]) * fw; line[at + x * step] = cast(u8) ((b + 8388608) >> 24); }
+    for x: edgeA..<lastx + 1 { acc += lo[lastx] - lo[x - radius - 1]; b := acc * ww + (lo[x - radius - 1] + lo[lastx]) * fw; line[at + x * step] = cast(u8) ((b + 8388608) >> 24); }
+  }
+}
+// in place; lo holds a line (the longer side)
+pi_gaussian :: (im: PiImg, radius_in: f64, lo: []int) {
+  fr := pi_blur_radius(cast(f32) radius_in, 3);
+  if fr == 0.0f32 { return; }
+  radius := cast(int) fr;
+  ww := cast(int) (16777216.0f32 / (fr * 2.0f32 + 1.0f32));
+  fw := (16777216 - (radius * 2 + 1) * ww) / 2;
+  c := im.c;
+  for p: 0..<3 { for y: 0..<im.h { for k: 0..<c { pi_box_line(im.px, y * im.w * c + k, c, im.w, lo, radius, ww, fw); } } }
+  for p: 0..<3 { for x: 0..<im.w { for k: 0..<c { pi_box_line(im.px, x * c + k, im.w * c, im.h, lo, radius, ww, fw); } } }
+}
+
+// Image.composite(a, b, mask): b with a pasted through mask (L), into out (may be b).
+pi_composite :: (a: PiImg, b: PiImg, mask: PiImg, out: PiImg) {
+  c := a.c;
+  for i: 0..<a.w * a.h {
+    m := cast(int) mask.px[i];
+    for k: 0..<c { out.px[i * c + k] = cast(u8) pi_blend(m, cast(int) b.px[i * c + k], cast(int) a.px[i * c + k]); }
+  }
+}
+// ImageChops.lighter, into out (may be a or b)
+pi_lighter :: (a: PiImg, b: PiImg, out: PiImg) { for i: 0..<a.px.count { out.px[i] = ifx a.px[i] > b.px[i] then a.px[i] else b.px[i]; } }
+// Image.point(lut) on every channel, in place
+pi_point :: (im: PiImg, lut: [256] u8) { for i: 0..<im.px.count { im.px[i] = lut[cast(int) im.px[i]]; } }
+
+// ---- TGA (true colour, uncompressed or RLE; 24 or 32 bits) to RGB or RGBA, top row first
+PiTga :: struct { ok: bool; w: int; h: int; c: int; }
+pi_tga :: (src: []u8, out: []u8) -> PiTga {
+  r: PiTga;
+  if src.count < 18 { return r; }
+  idlen := cast(int) src[0]; cmap := cast(int) src[1]; kind := cast(int) src[2];
+  w := cast(int) src[12] | (cast(int) src[13] << 8); h := cast(int) src[14] | (cast(int) src[15] << 8);
+  bpp := cast(int) src[16]; desc := cast(int) src[17];
+  if cmap != 0 || (kind != 2 && kind != 10) || (bpp != 24 && bpp != 32) { return r; }
+  c := bpp / 8;
+  if w * h * c > out.count { return r; }
+  at := 18 + idlen; n := 0; total := w * h;
+  top := (desc & 32) != 0;
+  while n < total {
+    count := 1; raw := true;
+    if kind == 10 {
+      if at >= src.count { return r; }
+      hdr := cast(int) src[at]; at += 1;
+      count = (hdr & 127) + 1; raw = (hdr & 128) == 0;
+    } else { count = total; }
+    for k: 0..<count {
+      if n >= total { break; }
+      if raw || k == 0 { if at + c > src.count { return r; } }
+      row := n / w; col := n % w;
+      y := ifx top then row else h - 1 - row;
+      o := (y * w + col) * c;
+      out[o] = src[at + 2]; out[o + 1] = src[at + 1]; out[o + 2] = src[at];
+      if c == 4 { out[o + 3] = src[at + 3]; }
+      if raw { at += c; }
+      n += 1;
+    }
+    if !raw { at += c; }
+  }
+  r.ok = true; r.w = w; r.h = h; r.c = c;
+  return r;
+}
+
+// ---- PNG writing
+PI_WIN :: 32768;
+PiZ :: struct {
+  out: []u8; n: int; acc: int; nacc: int; over: bool;
+  head: [65536] int; prev: [PI_WIN] int;
+  sym: [65536] int; dst: [65536] int; ns: int;     // a block's symbols: literal/length, distance
+  lf: [286] int; df: [30] int;
+  ll: [286] int; dl: [30] int; lc: [286] int; dc: [30] int;
+}
+pi_zbyte :: (z: []PiZ, b: int) { if z[0].n < z[0].out.count { z[0].out[z[0].n] = cast(u8) b; z[0].n += 1; } else { z[0].over = true; } }
+pi_zbits :: (z: []PiZ, v: int, k: int) {
+  z[0].acc = z[0].acc | (v << z[0].nacc); z[0].nacc += k;
+  while z[0].nacc >= 8 { pi_zbyte(z, z[0].acc & 255); z[0].acc = z[0].acc >> 8; z[0].nacc -= 8; }
+}
+pi_rev :: (code: int, ln: int) -> int { r := 0; c := code; for i: 0..<ln { r = (r << 1) | (c & 1); c = c >> 1; } return r; }
+// Huffman code lengths for counts, none longer than limit (counts scaled down until they fit)
+pi_lengths :: (freq: []int, n: int, limit: int, lens: []int) {
+  f: [320] int; for i: 0..<n { f[i] = freq[i]; lens[i] = 0; }
+  while true {
+    // nodes: leaves 0..<n, inner n.. ; a simple O(n^2) build
+    w: [640] int; par: [640] int; alive: [640] bool; cnt := 0;
+    for i: 0..<n { if f[i] > 0 { w[i] = f[i]; alive[i] = true; cnt += 1; } }
+    if cnt == 0 { return; }
+    if cnt == 1 { for i: 0..<n { if f[i] > 0 { lens[i] = 1; } } return; }
+    nodes := n;
+    for i: 0..<640 { par[i] = -1; }
+    left := cnt;
+    while left > 1 {
+      a := -1; b := -1;
+      for i: 0..<nodes { if alive[i] { if a < 0 || w[i] < w[a] { b = a; a = i; } else if b < 0 || w[i] < w[b] { b = i; } } }
+      alive[a] = false; alive[b] = false;
+      w[nodes] = w[a] + w[b]; alive[nodes] = true; par[a] = nodes; par[b] = nodes; nodes += 1; left -= 1;
+    }
+    worst := 0;
+    for i: 0..<n {
+      if f[i] == 0 { lens[i] = 0; continue; }
+      d := 0; j := i; while par[j] >= 0 { d += 1; j = par[j]; }
+      lens[i] = d; if d > worst { worst = d; }
+    }
+    if worst <= limit { return; }
+    for i: 0..<n { if f[i] > 0 { f[i] = (f[i] + 1) / 2; } }
+  }
+}
+pi_codes :: (lens: []int, n: int, codes: []int) {
+  count: [16] int; next: [16] int;
+  for i: 0..<n { count[lens[i]] += 1; }
+  count[0] = 0; c := 0;
+  for b: 1..<16 { c = (c + count[b - 1]) << 1; next[b] = c; }
+  for i: 0..<n { if lens[i] > 0 { codes[i] = pi_rev(next[lens[i]], lens[i]); next[lens[i]] += 1; } }
+}
+PI_LBASE :: [29] int.[3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258];
+PI_LEXTRA :: [29] int.[0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0];
+PI_DBASE :: [30] int.[1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577];
+PI_DEXTRA :: [30] int.[0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13];
+pi_lcode :: (ln: int) -> int { k := 28; while PI_LBASE[k] > ln { k -= 1; } return k; }
+pi_dcode :: (d: int) -> int { k := 29; while PI_DBASE[k] > d { k -= 1; } return k; }
+// one dynamic block of the gathered symbols
+pi_block :: (z: []PiZ, last: bool) {
+  for i: 0..<286 { z[0].lf[i] = 0; } for i: 0..<30 { z[0].df[i] = 0; }
+  for s: 0..<z[0].ns { v := z[0].sym[s]; if v < 256 { z[0].lf[v] += 1; } else { z[0].lf[257 + pi_lcode(v - 256)] += 1; z[0].df[pi_dcode(z[0].dst[s])] += 1; } }
+  z[0].lf[256] = 1;
+  if z[0].df[0] == 0 { z[0].df[0] = 1; }
+  pi_lengths(z[0].lf[..], 286, 15, z[0].ll[..]); pi_lengths(z[0].df[..], 30, 15, z[0].dl[..]);
+  pi_codes(z[0].ll[..], 286, z[0].lc[..]); pi_codes(z[0].dl[..], 30, z[0].dc[..]);
+  hlit := 286; while hlit > 257 && z[0].ll[hlit - 1] == 0 { hlit -= 1; }
+  hdist := 30; while hdist > 1 && z[0].dl[hdist - 1] == 0 { hdist -= 1; }
+  // the code lengths, run-length coded
+  all: [316] int; na := 0;
+  for i: 0..<hlit { all[na] = z[0].ll[i]; na += 1; } for i: 0..<hdist { all[na] = z[0].dl[i]; na += 1; }
+  rs: [316] int; rx: [316] int; nr := 0; i := 0;
+  while i < na {
+    v := all[i]; run := 1; while i + run < na && all[i + run] == v { run += 1; }
+    if v == 0 && run >= 3 {
+      k := ifx run > 138 then 138 else run;
+      if k >= 11 { rs[nr] = 18; rx[nr] = k - 11; } else { rs[nr] = 17; rx[nr] = k - 3; }
+      nr += 1; i += k;
+    } else if v != 0 && run >= 4 {
+      rs[nr] = v; nr += 1; k := run - 1; if k > 6 { k = 6; }
+      rs[nr] = 16; rx[nr] = k - 3; nr += 1; i += 1 + k;
+    } else { rs[nr] = v; nr += 1; i += 1; }
+  }
+  cf: [19] int; for q: 0..<nr { cf[rs[q]] += 1; }
+  cl: [19] int; cc: [19] int; pi_lengths(cf[..], 19, 7, cl[..]); pi_codes(cl[..], 19, cc[..]);
+  ord := [19] int.[16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15];
+  hclen := 19; while hclen > 4 && cl[ord[hclen - 1]] == 0 { hclen -= 1; }
+  pi_zbits(z, ifx last then 1 else 0, 1); pi_zbits(z, 2, 2);
+  pi_zbits(z, hlit - 257, 5); pi_zbits(z, hdist - 1, 5); pi_zbits(z, hclen - 4, 4);
+  for q: 0..<hclen { pi_zbits(z, cl[ord[q]], 3); }
+  for q: 0..<nr {
+    s := rs[q]; pi_zbits(z, cc[s], cl[s]);
+    if s == 16 { pi_zbits(z, rx[q], 2); } else if s == 17 { pi_zbits(z, rx[q], 3); } else if s == 18 { pi_zbits(z, rx[q], 7); }
+  }
+  for s: 0..<z[0].ns {
+    v := z[0].sym[s];
+    if v < 256 { pi_zbits(z, z[0].lc[v], z[0].ll[v]); continue; }
+    ln := v - 256; lk := pi_lcode(ln);
+    pi_zbits(z, z[0].lc[257 + lk], z[0].ll[257 + lk]); pi_zbits(z, ln - PI_LBASE[lk], PI_LEXTRA[lk]);
+    d := z[0].dst[s]; dk := pi_dcode(d);
+    pi_zbits(z, z[0].dc[dk], z[0].dl[dk]); pi_zbits(z, d - PI_DBASE[dk], PI_DEXTRA[dk]);
+  }
+  pi_zbits(z, z[0].lc[256], z[0].ll[256]);
+  z[0].ns = 0;
+}
+pi_hash :: (d: []u8, i: int) -> int { return ((cast(int) d[i] << 10) ^ (cast(int) d[i + 1] << 5) ^ cast(int) d[i + 2]) & 65535; }
+// zlib of data into z.out from z.n
+pi_zlib :: (z: []PiZ, data: []u8) {
+  pi_zbyte(z, 120); pi_zbyte(z, 218);
+  for i: 0..<65536 { z[0].head[i] = -1; }
+  z[0].ns = 0;
+  n := data.count; i := 0;
+  while i < n {
+    best := 0; bd := 0;
+    if i + 2 < n {
+      h := pi_hash(data, i); cand := z[0].head[h]; chain := 0;
+      while cand >= 0 && i - cand <= 32768 && chain < 48 {
+        if data[cand + best] == data[i + best] || best == 0 {
+          l := 0; lim := ifx n - i < 258 then n - i else 258;
+          while l < lim && data[cand + l] == data[i + l] { l += 1; }
+          if l > best { best = l; bd = i - cand; if l >= lim { break; } }
+        }
+        cand = z[0].prev[cand % PI_WIN]; chain += 1;
+      }
+    }
+    if best >= 3 {
+      z[0].sym[z[0].ns] = 256 + best; z[0].dst[z[0].ns] = bd; z[0].ns += 1;
+      for k: 0..<best { if i + k + 2 < n { h := pi_hash(data, i + k); z[0].prev[(i + k) % PI_WIN] = z[0].head[h]; z[0].head[h] = i + k; } }
+      i += best;
+    } else {
+      z[0].sym[z[0].ns] = cast(int) data[i]; z[0].ns += 1;
+      if i + 2 < n { h := pi_hash(data, i); z[0].prev[i % PI_WIN] = z[0].head[h]; z[0].head[h] = i; }
+      i += 1;
+    }
+    if z[0].ns >= 65000 { pi_block(z, false); }
+  }
+  pi_block(z, true);
+  if z[0].nacc > 0 { pi_zbyte(z, z[0].acc & 255); z[0].acc = 0; z[0].nacc = 0; }
+  a := 1; b := 0;
+  for x: data { a = (a + cast(int) x) % 65521; b = (b + a) % 65521; }
+  pi_zbyte(z, (b >> 8) & 255); pi_zbyte(z, b & 255); pi_zbyte(z, (a >> 8) & 255); pi_zbyte(z, a & 255);
+}
+pi_be32 :: (b: []u8, at: int, v: int) { b[at] = cast(u8) ((v >> 24) & 255); b[at + 1] = cast(u8) ((v >> 16) & 255); b[at + 2] = cast(u8) ((v >> 8) & 255); b[at + 3] = cast(u8) (v & 255); }
+pi_paeth :: (a: int, b: int, c: int) -> int {
+  p := a + b - c; pa := pi_iabs(p - a); pb := pi_iabs(p - b); pc := pi_iabs(p - c);
+  if pa <= pb && pa <= pc { return a; }
+  return ifx pb <= pc then b else c;
+}
+// A PNG of im (L, RGB or RGBA) into out; its length, or -1. filtered: h * (1 + w * c) bytes.
+pi_png :: (im: PiImg, z: []PiZ, filtered: []u8, out: []u8) -> int {
+  c := im.c; stride := im.w * c;
+  if im.h * (1 + stride) > filtered.count { return -1; }
+  for y: 0..<im.h {
+    best := -1; bestf := 0;
+    for f: 0..<5 {
+      s := 0;
+      for x: 0..<stride {
+        v := cast(int) im.px[y * stride + x];
+        a := ifx x >= c then cast(int) im.px[y * stride + x - c] else 0;
+        b := ifx y > 0 then cast(int) im.px[(y - 1) * stride + x] else 0;
+        cc := ifx x >= c && y > 0 then cast(int) im.px[(y - 1) * stride + x - c] else 0;
+        p := ifx f == 0 then 0 else (ifx f == 1 then a else (ifx f == 2 then b else (ifx f == 3 then (a + b) / 2 else pi_paeth(a, b, cc))));
+        d := (v - p) & 255; s += ifx d < 128 then d else 256 - d;
+      }
+      if best < 0 || s < best { best = s; bestf = f; }
+    }
+    o := y * (1 + stride); filtered[o] = cast(u8) bestf;
+    for x: 0..<stride {
+      v := cast(int) im.px[y * stride + x];
+      a := ifx x >= c then cast(int) im.px[y * stride + x - c] else 0;
+      b := ifx y > 0 then cast(int) im.px[(y - 1) * stride + x] else 0;
+      cc := ifx x >= c && y > 0 then cast(int) im.px[(y - 1) * stride + x - c] else 0;
+      p := ifx bestf == 0 then 0 else (ifx bestf == 1 then a else (ifx bestf == 2 then b else (ifx bestf == 3 then (a + b) / 2 else pi_paeth(a, b, cc))));
+      filtered[o + 1 + x] = cast(u8) ((v - p) & 255);
+    }
+  }
+  sig := [8] u8.[137, 80, 78, 71, 13, 10, 26, 10];
+  for i: 0..<8 { out[i] = sig[i]; }
+  // IHDR
+  pi_be32(out, 8, 13); out[12] = 'I'; out[13] = 'H'; out[14] = 'D'; out[15] = 'R';
+  pi_be32(out, 16, im.w); pi_be32(out, 20, im.h); out[24] = 8;
+  out[25] = cast(u8) (ifx c == 1 then 0 else (ifx c == 3 then 2 else (ifx c == 2 then 4 else 6)));
+  out[26] = 0; out[27] = 0; out[28] = 0;
+  pi_be32(out, 29, png_crc(out[12..<29]));
+  // IDAT
+  z[0].out = out[41..<out.count]; z[0].n = 0; z[0].acc = 0; z[0].nacc = 0; z[0].over = false;
+  pi_zlib(z, filtered[0..<im.h * (1 + stride)]);
+  if z[0].over || 41 + z[0].n + 24 > out.count { return -1; }
+  pi_be32(out, 33, z[0].n); out[37] = 'I'; out[38] = 'D'; out[39] = 'A'; out[40] = 'T';
+  e := 41 + z[0].n;
+  pi_be32(out, e, png_crc(out[37..<e])); e += 4;
+  pi_be32(out, e, 0); out[e + 4] = 'I'; out[e + 5] = 'E'; out[e + 6] = 'N'; out[e + 7] = 'D';
+  pi_be32(out, e + 8, png_crc(out[e + 4..<e + 8]));
+  return e + 12;
+}
+pi_iabs :: (v: int) -> int { return ifx v < 0 then -v else v; }
