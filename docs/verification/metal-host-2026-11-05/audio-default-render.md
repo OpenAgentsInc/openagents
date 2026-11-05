@@ -4,7 +4,8 @@
 render through the production native audio adapter. The SDK is the qualified
 audio adoption at `802ceffdbc`; the unchanged frozen packet-capacity producer is
 used only to expose its authored room WAV bank. No world GPU or audio device is
-opened. This is a new rendered fixture, not yet a browser comparison verdict.
+opened. The real browser AudioWorklet subsequently passes the same fixture
+at the unchanged sample bound, as recorded below.
 
 Immutable inputs and outputs live in
 `~/.openagents/aethyrforge/metal-host-12868/audio-default-render/`:
@@ -34,6 +35,13 @@ other stops return 128. Actual final observations are 131,072 Coax frames,
 three SDK decodes and three companion decodes. Callback/device frames stay zero.
 
 The independent browser workstream consumes these actual source identities
-and command schedule through the real AudioWorklet, preserving the unchanged
-2^-20 sample bound and the separate eleven synth/DSP fixtures. Current primary,
+and command schedule through the real OfflineAudioContext/AudioWorklet. All
+262,144 samples pass the unchanged 2^-20 bound, with zero nonfinite values,
+no shifts and no masks. Maximum errors for the four ranges are respectively
+4.470348358154297e-8, 2.561137080192566e-8, 7.450580596923828e-9 and
+3.725290298461914e-9. Actual callbacks total1,024, rendered/device frames
+131,072, accepted commands14, refused1 and room partitions66. The source joins
+and complete receipts are published at `573be05473` in the
+[common default-audio record](../host-contract-2026-11-05/browser-opus.md).
+The eleven synth/DSP fixtures retain their separate scope. Current primary,
 graphics and default-host admission remain separate.

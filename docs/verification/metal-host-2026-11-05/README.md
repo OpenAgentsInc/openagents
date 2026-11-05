@@ -773,10 +773,11 @@ failures remain retained; their frozen images are not relabelled current.
 Complete current producer/face packaging still needs the matching admitted
 graphics and integrated display/room snapshot.
 
-The quantized FP16 presentation matrix remains experimental under its exact
-frozen graphics iteration backend. No admitted current graphics compiler or
-replacement build/load receipt has been published here. Existing shader
-admission is preserved. Complete qualification needs the admitted product,
+The earlier quantized FP16 presentation matrix retains its exact frozen
+iteration-backend scope. A new original-receipt-verified compiler now emits
+the same shader bytes under its own admitted identity, with every product and
+source joined in [Admitted graphics products](graphics-admitted.md).
+Existing shader admission is preserved. Complete qualification needs that product's
 matching producer/assets and real display-rate/per-pass evidence joined to
 one packaged snapshot. The passing frozen comparisons and earlier display
 timing remain separately scoped. Shared browser/Vulkan service work and
