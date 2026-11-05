@@ -1,0 +1,318 @@
+From 55bc4be823fbd30eac04802dbefa618de19f3883 Mon Sep 17 00:00:00 2001
+From: AtlantisPleb <chris@openagents.com>
+Date: Thu, 5 Nov 2026 08:48:14 -0600
+Subject: [PATCH] nostr-relay: skip a stored event that fails the read check
+ instead of exiting (#12909)
+
+A kind 31990 handler stored before the read check tightened made any REQ
+that matched it stop the production relay: decode_event_row returned
+CorruptRow and the database worker treated it as fatal. Reads now leave
+such a row out and log its id and reason; the row stays in the table.
+CorruptRow fails only its own request, and a history read that skipped a
+row reports NIP-67 "more" instead of "finish". The gateway test stores
+a 31990 with that shape and reads it twice; without the fix the worker
+fails exactly as in production.
+
+Built on 58d642e708, the commit the live image relay-58d642e708 was
+built from; the relay crates left main in 0b401561a0.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ crates/nostr-relay/src/gateway/db.rs         | 10 +++
+ crates/nostr-relay/src/store/mod.rs          | 73 ++++++++++++++---
+ crates/nostr-relay/tests/gateway_postgres.rs | 84 ++++++++++++++++++++
+ 3 files changed, 157 insertions(+), 10 deletions(-)
+
+diff --git a/crates/nostr-relay/src/gateway/db.rs b/crates/nostr-relay/src/gateway/db.rs
+index ca1e7982ee..0cabb93a42 100644
+--- a/crates/nostr-relay/src/gateway/db.rs
++++ b/crates/nostr-relay/src/gateway/db.rs
+@@ -852,6 +852,9 @@ async fn query_history(
+     // overflow means the relay holds matching stored events it did not
+     // send, which the EOSE carries as "more" instead of "finish".
+     let mut complete = true;
++    // A read leaves out a stored event that fails the read check (#12909);
++    // the relay then holds a matching event it did not send.
++    let skipped_before = store.skipped_rows();
+     for filter in filters {
+         // The store applies the client's own `limit`, so probing past
+         // the smaller of it and this filter's budget share is what
+@@ -891,6 +894,9 @@ async fn query_history(
+         complete = false;
+         events.truncate(max_results);
+     }
++    if store.skipped_rows() != skipped_before {
++        complete = false;
++    }
+     Ok(HistoryResult {
+         high_water,
+         events,
+@@ -926,5 +932,9 @@ fn is_fatal(error: &StoreError) -> bool {
+             | StoreError::EphemeralTooLarge(_)
+             | StoreError::Management(_)
+             | StoreError::Media(_)
++            // A stored row that fails the read check fails only the request
++            // that read it; the connection is fine (#12909). Ordinary reads
++            // skip such a row; a read that promises a complete cut refuses.
++            | StoreError::CorruptRow(_)
+     )
+ }
+diff --git a/crates/nostr-relay/src/store/mod.rs b/crates/nostr-relay/src/store/mod.rs
+index 895e3be953..b043f2fe31 100644
+--- a/crates/nostr-relay/src/store/mod.rs
++++ b/crates/nostr-relay/src/store/mod.rs
+@@ -15,7 +15,7 @@ use std::{
+     pin::Pin,
+     sync::{
+         Arc, Mutex,
+-        atomic::{AtomicBool, Ordering},
++        atomic::{AtomicBool, AtomicU64, Ordering},
+     },
+     task::Poll,
+ };
+@@ -290,6 +290,9 @@ pub struct Store {
+     statements: Statements,
+     connection_current: Arc<AtomicBool>,
+     connection_task: JoinHandle<()>,
++    /// Stored events a read left out because they fail the current read
++    /// check (#12909). See [`Store::skipped_rows`].
++    skipped_rows: AtomicU64,
+ }
+ 
+ #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+@@ -314,6 +317,7 @@ impl Store {
+                 statements,
+                 connection_current,
+                 connection_task,
++                skipped_rows: AtomicU64::new(0),
+             },
+             migration_report,
+         ))
+@@ -331,6 +335,7 @@ impl Store {
+             statements,
+             connection_current,
+             connection_task,
++            skipped_rows: AtomicU64::new(0),
+         })
+     }
+ 
+@@ -338,6 +343,41 @@ impl Store {
+         self.connection_current.load(Ordering::Acquire)
+     }
+ 
++    /// How many stored events this connection's reads have left out because
++    /// they fail the read check (#12909). A row admitted under an older,
++    /// looser check stays in the table; a read skips it and logs it instead
++    /// of failing the whole read, so one bad row cannot stop the relay. A
++    /// caller that promises completeness compares this count before and
++    /// after its reads.
++    pub fn skipped_rows(&self) -> u64 {
++        self.skipped_rows.load(Ordering::Relaxed)
++    }
++
++    /// Decode a read's rows, leaving out (and logging) each row that fails
++    /// the read check. Any other failure still fails the read.
++    fn decode_readable(&self, rows: Vec<Row>) -> Result<Vec<StoredEvent>, StoreError> {
++        let mut events = Vec::with_capacity(rows.len());
++        for row in rows {
++            if let Some(stored) = self.decode_readable_one(row)? {
++                events.push(stored);
++            }
++        }
++        Ok(events)
++    }
++
++    fn decode_readable_one(&self, row: Row) -> Result<Option<StoredEvent>, StoreError> {
++        let id = row.try_get::<_, String>(0).unwrap_or_default();
++        match decode_event_row(row) {
++            Ok(stored) => Ok(Some(stored)),
++            Err(StoreError::CorruptRow(reason)) => {
++                self.skipped_rows.fetch_add(1, Ordering::Relaxed);
++                log_skipped_row(&id, &reason);
++                Ok(None)
++            }
++            Err(error) => Err(error),
++        }
++    }
++
+     fn ensure_current(&self) -> Result<(), StoreError> {
+         if self.is_current() {
+             Ok(())
+@@ -1167,8 +1207,7 @@ impl Store {
+         self.client
+             .query_opt(&self.statements.event_by_id, &[&id, &now])
+             .await?
+-            .map(decode_event_row)
+-            .transpose()
++            .map_or(Ok(None), |row| self.decode_readable_one(row))
+     }
+ 
+     pub async fn latest_ingest_seq(&self) -> Result<i64, StoreError> {
+@@ -1306,9 +1345,11 @@ impl Store {
+                 &[&now, &limit],
+             )
+             .await?;
+-        rows.into_iter()
+-            .map(|row| decode_event_row(row).map(|stored| stored.event))
+-            .collect()
++        Ok(self
++            .decode_readable(rows)?
++            .into_iter()
++            .map(|stored| stored.event)
++            .collect())
+     }
+ 
+     pub async fn set_workspace_icon(
+@@ -1521,8 +1562,7 @@ impl Store {
+         self.client
+             .query_opt(&self.statements.event_by_ingest, &[&ingest_seq, &now])
+             .await?
+-            .map(decode_event_row)
+-            .transpose()
++            .map_or(Ok(None), |row| self.decode_readable_one(row))
+     }
+ 
+     /// Read a bounded, stable catch-up page through a previously sampled
+@@ -1544,7 +1584,7 @@ impl Store {
+                 &[&after, &through, &now, &limit],
+             )
+             .await?;
+-        rows.into_iter().map(decode_event_row).collect()
++        self.decode_readable(rows)
+     }
+ 
+     /// Complete own-author read state from one writer MVCC statement cut.
+@@ -1751,7 +1791,7 @@ impl Store {
+                 .query(&self.statements.query_filter, params)
+                 .await?
+         };
+-        rows.into_iter().map(decode_event_row).collect()
++        self.decode_readable(rows)
+     }
+ 
+     pub async fn count_filters(
+@@ -3467,6 +3507,19 @@ async fn apply_deletion(
+     Ok(())
+ }
+ 
++/// One JSON warning line on stderr for a stored event a read left out. The
++/// row stays in the table: the relay never deletes or rewrites it.
++fn log_skipped_row(id: &str, reason: &str) {
++    use std::io::Write;
++    let line = json!({
++        "level": "warn",
++        "message": "a read skipped a stored event that fails the read check",
++        "id": id,
++        "reason": reason,
++    });
++    let _ = writeln!(std::io::stderr().lock(), "{line}");
++}
++
+ fn decode_event_row(row: Row) -> Result<StoredEvent, StoreError> {
+     let created_at = row.get::<_, i64>(2);
+     let created_at = u64::try_from(created_at)
+diff --git a/crates/nostr-relay/tests/gateway_postgres.rs b/crates/nostr-relay/tests/gateway_postgres.rs
+index 546dfbefd9..f8804917d0 100644
+--- a/crates/nostr-relay/tests/gateway_postgres.rs
++++ b/crates/nostr-relay/tests/gateway_postgres.rs
+@@ -81,6 +81,9 @@ async fn m3_gateway_contract_against_postgres() {
+     tokio::task::spawn_blocking(move || malformed_legacy_wrap_contract(address_two))
+         .await
+         .unwrap();
++    tokio::task::spawn_blocking(move || stored_row_failing_read_check_contract(address_two))
++        .await
++        .unwrap();
+ 
+     stop_one.shutdown();
+     stop_two.shutdown();
+@@ -1947,6 +1950,87 @@ fn protected_and_private_contract(address_one: SocketAddr, address_two: SocketAd
+     publisher.close(None).unwrap();
+ }
+ 
++/// #12909: a kind 31990 handler stored before the read check tightened. Its
++/// `alt` tag is read as a platform link without the bech32 placeholder, so
++/// decoding it fails. A REQ that matches it must still answer with the other
++/// events and end with EOSE, and the relay must keep serving: before the fix
++/// the database worker treated the row as fatal and the process exited.
++fn stored_row_failing_read_check_contract(address: SocketAddr) {
++    let good = signed_event(113, now() - 20, 1, Vec::new(), "a readable note");
++    let bad = signed_event(
++        113,
++        now() - 10,
++        31_990,
++        vec![
++            Tag::new(vec!["d".into(), "app".into()]),
++            Tag::new(vec!["k".into(), "1".into()]),
++            Tag::new(vec!["alt".into(), "Nostr app handler".into()]),
++            Tag::new(vec![
++                "web".into(),
++                "https://example.com/e/<bech32>".into(),
++                "nevent".into(),
++            ]),
++        ],
++        "",
++    );
++    assert!(
++        bad.validate_structure().is_err(),
++        "the fixture fails the read check"
++    );
++    insert_raw_event(&good, None);
++    insert_raw_event(&bad, Some("app"));
++
++    for round in 0..2 {
++        let mut reader = connect_client(address);
++        let challenge = expect_auth_challenge(&mut reader);
++        authenticate(&mut reader, 21, &challenge);
++        let id = format!("skip-corrupt-{round}");
++        send_json(
++            &mut reader,
++            json!(["REQ", id, {"authors": [pubkey(113)], "kinds": [1, 31_990], "limit": 127}]),
++        );
++        let mut seen = Vec::new();
++        loop {
++            let message = read_json(&mut reader);
++            if is_eose_for(&message, &id) {
++                break;
++            }
++            assert_eq!(message[0], "EVENT", "unexpected message: {message}");
++            seen.push(message[2]["id"].as_str().unwrap().to_owned());
++        }
++        assert!(
++            seen.contains(&good.id),
++            "the readable event is still served"
++        );
++        assert!(!seen.contains(&bad.id), "the unreadable row is left out");
++        send_json(&mut reader, json!(["REQ", "by-id", {"ids": [bad.id]}]));
++        assert!(is_eose_for(&read_json(&mut reader), "by-id"));
++        reader.close(None).unwrap();
++    }
++}
++
++fn insert_raw_event(event: &Event, identifier: Option<&str>) {
++    let database_url = std::env::var("NOSTR_RELAY_TEST_DATABASE_URL").unwrap();
++    let event = event.clone();
++    let identifier = identifier.map(str::to_owned);
++    tokio::runtime::Builder::new_current_thread()
++        .enable_all()
++        .build()
++        .unwrap()
++        .block_on(async move {
++            let (client, connection) = tokio_postgres::connect(&database_url, NoTls).await.unwrap();
++            tokio::spawn(async move { connection.await.unwrap() });
++            let tags = serde_json::to_string(&event.tags).unwrap();
++            client
++                .execute(
++                    "INSERT INTO nostr_event (id, pubkey, created_at, kind, tags, content, sig, replacement_identifier) VALUES ($1, $2, $3, $4, $5::text::jsonb, $6, $7, $8)",
++                    &[&event.id, &event.pubkey, &i64::try_from(event.created_at).unwrap(), &i32::from(event.kind), &tags, &event.content, &event.sig, &identifier],
++                )
++                .await
++                .unwrap();
++        });
++}
++
+ fn insert_legacy_wrap(event: &Event) {
+     let database_url = std::env::var("NOSTR_RELAY_TEST_DATABASE_URL").unwrap();
+     let event = event.clone();
+-- 
+2.50.1 (Apple Git-155)
+
