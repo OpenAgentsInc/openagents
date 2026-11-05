@@ -8,6 +8,10 @@ completed the language roadmap. Proposed APIs below are requirements, not
 accepted syntax. No language, protocol, authority, or deployment changes are
 made by this audit.
 
+Boundary clarification: revised after the initial audit commit `0aee22574d` to
+separate Coax work from Aethyr, Aethyrforge, realm and service work. The source
+baseline and compiler observations below remain the original dated assessment.
+
 ## 1. Assessment
 
 I would build an MMORPG in Coax, but I would budget substantial language and
@@ -21,8 +25,8 @@ The largest risk is **making every subsystem hand-maintain the same lifetime,
 storage, schema, and scheduling conventions**. Those conventions can work in a
 small bounded room; hundreds of interacting gameplay systems and years of live
 content make them an expensive safety boundary. I would prioritize enforceable
-ownership and read access, useful storage libraries, composable error states,
-incremental compilation, and a small deterministic job model before broader
+ownership and read access, domain-independent storage libraries, composable
+error states, incremental compilation, and enforceable job effects before broader
 syntax or a new machine-code backend.
 
 An entire MMORPG does not require every proposed feature before its first
@@ -30,7 +34,11 @@ release. One authoritative process per bounded instance is a good starting
 architecture. The priority changes when that process must host dense encounters,
 stream persistent world cells, or keep player transactions correct across crashes
 and ownership transfers. Cross-process consistency cannot be supplied by a
-language keyword.
+language keyword. Aethyr owns the reusable world machinery: entity/component
+storage, simulation scheduling, replay, streaming, rendering and multiplayer
+lifecycle. Aethyrforge owns the world-authoring workflow. Realms and services
+own game rules and durable business policy. Writing any of these in Coax does
+not make them Coax language features or prerequisites for compiler completion.
 
 ## 2. Scope, evidence, and what “MMORPG” means here
 
@@ -106,29 +114,76 @@ a live GitHub issue-state check.
   validated query cache, source locations/debugging, compile budgets, provenance,
   native check emission and mutation support already provide a strong base.
 
-## 4. Prioritized gap map
+## 4. Ownership boundaries and prioritized gap map
+
+### 4.1 The ownership test
+
+**Coax** owns general language semantics, checking, lowering, ABI and target
+contracts, diagnostics, compiler performance and domain-independent libraries.
+A language change should explain a general program it makes safer or more
+expressive, even if an Aethyr workload is its first demonstration.
+
+**Aethyr** owns reusable engine behavior and its runtime contracts: entities,
+component stores, simulation jobs, resource graphs, world cells, replay,
+network replication, session ownership and recovery integration. It is a Coax
+consumer. Its modules may implement these contracts today using explicit views,
+handles and checks; a missing compiler convenience is not automatically an engine
+blocker. [Aethyr's own scope](../../aethyr/README.md) is the reference boundary.
+
+**Aethyrforge and realm/services code** own authoring and product policy.
+Aethyrforge builds editors and content workflows over Aethyr. Realms supply
+abilities, items, quests and encounter rules. Protocol/storage services supply
+versioned wire/durable contracts, authentication, transactional persistence and
+deployment policy, sharing reusable mechanisms with Aethyr where appropriate.
+Platform hosts perform effects; their SDK bindings do not decide game policy.
+
+Two distinctions matter throughout this audit:
+
+* “A library written in Coax” names its implementation language, not its owner.
+  A generic map can belong in `coax/lib/`; an entity registry, cell cache or
+  replication scheduler belongs to Aethyr even when built from that map.
+* A compiler can enforce borrowing/effects or emit a checked artifact. Aethyr
+  still chooses job order, tick boundaries, cancellation policy and state
+  publication. Passing compiler checks does not qualify those engine decisions.
+
+### 4.2 Coax backlog, with Aethyr consumers
 
 P0 means I would tackle it during the first serious MMO vertical slice; P1 means
 before increasing density or the pace of live content; P2 is conditional on a
-demonstrated bottleneck. Priority is an ordering recommendation, not a claim
-that the current product is blocked.
+demonstrated bottleneck. These are audit recommendations, not adopted roadmap
+gates. Only the Coax column below is a proposed language/toolchain backlog.
 
-| Gap | Primary home | Priority | First useful consumer |
-| --- | --- | --- | --- |
-| Read-only/exclusive regions and explicit retention contracts | Language + checker | P0 | Asset tables and queued network/world work |
-| Controlled owners, pools and reusable collections | Language + library + host allocation effects | P0 | Region state and streamed cells |
-| Stored fallible outcomes and generic borrowed carriers | Language + checker | P0 | Save/request queues and content loading |
-| Nominal IDs and consistent critical integer semantics | Language + runtime | P0 | Character, item, owner and request identities |
-| Content schemas and canonical generated operations | Compiler + Coax tools + protocol | P0 | Item/ability definitions and character saves |
-| Measured incremental builds and capacity diagnostics | Compiler/tooling | P0 | Whole region server and content editor |
-| Structured task scope, cancellation and backpressure | Library first; checker support | P0 | Disconnect, asset load and save lifecycles |
-| Deterministic jobs, reductions and numerical profiles | Language + scheduler | P1 | NPC sensing, movement and combat batches |
-| Data layout, copy visibility and portable SIMD | Compiler + library | P1 | Entity columns, animation and broad phase |
-| Safe local content/code reload | Build/editor + engine | P1 | Quest and ability iteration |
-| More complete target/debug/profile qualification | Compiler + hosts | P0/P1 | Same gameplay on Linux, mobile and browser |
-| Native backend, broad reflection/macros, general atomics | Compiler | P2 | Only a measured consumer justifies them |
+| Proposed Coax work | Priority | Aethyr or other consumer; separate responsibility |
+| --- | --- | --- |
+| Read-only/exclusive borrows and explicit retention/effect contracts | P0 | Aethyr selects asset ownership, job access and publication lifecycles. |
+| Owner/region primitives and domain-independent collections | P0 | Aethyr builds entity/component pools and streamed-cell storage; hosts allocate memory. |
+| Stored fallible outcomes and generic borrowed carriers | P0 | Aethyr builds load/save request queues and decides completion/cancellation policy. |
+| Nominal integer wrappers and stable explicit arithmetic operations | P0 | Aethyr defines handle domains; realms/services define item identities, invariants and transactions. |
+| General metadata/code-generation inputs and reliable artifact manifests | P0, only as a consumer proves need | Aethyr/Aethyrforge own engine schemas and content tooling; protocol owners own wire/durable versions. A standalone Coax tool may suffice without compiler changes. |
+| Incremental compilation, capacity/copy/stack diagnostics | P0 | Aethyrforge integrates the edit/build/run workflow and measures end-to-end latency. |
+| Enforceable job effects, alias checks and numerical profiles | P1 | Aethyr implements simulation scheduling, deterministic command merging and replay; generic execution utilities may be shared. |
+| General layout inspection, lowering and measured SIMD support | P1 | Aethyr chooses component columns, animation layout and runtime access patterns. |
+| Reloadable code identity, ABI/effect compatibility and artifact support | P1/P2, after measured need | Aethyr owns safe points, resource retention, migration and rollback; Aethyrforge initiates local reload. Data reload need not wait for code replacement. |
+| Type/ABI/math/debug qualification for supported targets | P0/P1 | Aethyr and platform hosts separately qualify gameplay, rendering, lifecycle and device recovery. |
+| Native backend, broad reflection/macros, general atomics | P2 | Require a measured consumer; none is justified merely by an MMO feature list. |
 
-## 5. Storage and lifetimes: the first structural problem
+### 4.3 Engine and product work, not missing Coax features
+
+| Owner | Work discussed later in this audit | Coax contribution, if needed |
+| --- | --- | --- |
+| Aethyr | ECS indexes, bounded component pools, navigation, world transforms and streamed-cell lifecycles | Generic storage, nominal types and borrow/effect checking; no entity/cell/navigation keyword. |
+| Aethyr | Simulation scheduler, PRNG stream assignment, command ordering, replay snapshots and field diffs | Checked effects and numerical semantics; no compiler-selected combat or tick order. |
+| Aethyr | Task scopes, stale-completion fencing, resource graphs, queue age/backpressure and device recovery | Retention checking and general ownership primitives; engine policy stays in engine modules. |
+| Aethyr multiplayer/session layer, protocol and services | Replication, interest, transport choices, character handoff, recovery and durable receipts | General codecs, types and checks; distributed guarantees require actual protocol/storage evidence. |
+| Aethyrforge, Aethyr and realms | Asset/content schemas, inspectors, localization integration and safe content reload | Metadata/code-generation and general text primitives; game fields and editor behavior are not compiler semantics. |
+| Realms and storage/services | Inventory, trade, guild banks, expiry, authentication and deploy policy | Stable arithmetic and verification tools; conservation, authorization and atomic commit are application contracts. |
+
+The remainder retains engine scenarios as motivating consumers and integration
+checks. A passing game scenario is adoption evidence; it is not itself a Coax
+conformance test. Conversely, an unfinished engine feature is not evidence of a
+compiler defect.
+
+## 5. Coax storage and lifetime primitives; Aethyr storage policy
 
 ### 5.1 Read-only views and exclusive write regions
 
@@ -169,12 +224,14 @@ I would add a narrow region/arena owner before arbitrary pointer graphs:
 fallible reserve, explicit byte and element capacity, stable allocation identity,
 reset only after borrows end, and transfer of ownership at explicit boundaries.
 Growth must state whether views relocate or are forbidden while borrowed.
-Host C performs allocation effects; Coax decides capacity, reuse and refusal.
+Host C performs allocation effects. Generic Coax owners specify memory validity
+and fallibility; Aethyr decides engine capacities, reuse and admission policy.
 No hidden heap allocation in an ordinary collection operation.
 
-Build reusable Coax libraries for bounded rings, queues, sparse sets, maps,
-priority queues, bitsets, string builders and pools. Existing specialized stores
-and `Bounded(T,N)` are starting points, not evidence of a universal container
+Build domain-independent libraries in `coax/lib/` for bounded rings, queues, maps,
+priority queues, bitsets, string builders and generic pools. Aethyr owns sparse
+component stores, entity indexes and resource pools built on them. Existing
+specialized stores and `Bounded(T,N)` are starting points, not evidence of a universal container
 API. Include collision/adversarial-input policy, stable iteration options,
 full-capacity behavior, scratch requirements, invalidation and complexity in
 every contract. A hash table's iteration must not accidentally define combat
@@ -193,6 +250,10 @@ exclude general async retention, complete recursive fixed points and some
 helper-store composition. Copying an owner-shaped struct does not make it a
 linear owner. The book's typed System One ownership protocol is useful evidence
 for a library discipline, not a general compiler guarantee.
+
+Aethyr owns concrete request/resource tokens, generation/epoch fencing and
+release lifecycles; Coax should enforce the general transfer/borrow rules where
+they can be expressed. These are complementary contracts.
 
 Network sends, database replies, pathfinding requests and GPU completions all
 outlive a call. Require an explicit retained owner/token with generation and
@@ -241,8 +302,9 @@ are not a replacement for integer identity domains.
 
 Add lightweight nominal integer wrappers with explicit construction, equality,
 selected ordering and codec conversion. Put checked generation handles and
-world/region namespaces in libraries over those types. Deserializing an integer
-does not prove a handle is live or that the caller has permission to use it.
+world/region namespaces in Aethyr libraries over those types. Realms/services
+define their own quest, item and transaction identity domains. Deserializing an
+integer does not prove a handle is live or that the caller has permission to use it.
 Persistent IDs need cross-region uniqueness; the entity store's session-local
 counter is not a global ID service. Measure the linear `entity_find` scan and
 add an indexed lookup where needed rather than assuming generic syntax fixes it.
@@ -277,12 +339,17 @@ and exceptions are lower priority. Exhaustiveness is especially valuable when
 a new quest state or ability event must update all consumers. Avoid convenience
 features that hide allocation, effects or a forgotten authority decision.
 
-## 7. Parallel simulation and deterministic execution
+## 7. Coax effects and numeric semantics; Aethyr scheduling and replay
 
 [Chapter 14](../book/ch14-jobs.md) correctly explains the missing alias proof:
 two named views can refer to overlapping storage. `job`, `pure` and capture
 lists remain reserved/design. `src/jobs.cpp` concerns the machine-wide compiler
 worker budget; its existence does not mean gameplay jobs have shipped.
+
+Ownership: Coax checks general access/effects and defines numerical semantics.
+Aethyr owns the simulation scheduler, command ordering, PRNG use and replay
+format. A generic executor may be reusable outside the engine, but a world tick
+graph is an Aethyr contract.
 
 For a dense region I want field/region read-write summaries propagated through
 calls, disjoint chunk writes, bounded command buffers for structural changes,
@@ -319,7 +386,7 @@ cannot change the state. Cross-target bit equality is claimed only for a
 qualified named profile. A server-authoritative MMO need not use global client
 lockstep to benefit from reproducible server replays.
 
-## 8. Schemas, content, persistence and authority
+## 8. Aethyr/Aethyrforge and product contracts consuming Coax
 
 ### 8.1 A shared authored model needs several explicit layouts
 
@@ -329,8 +396,12 @@ macros and compiler plugins remain planned. A large MMO needs definitions of
 items, spells, quests, factions and components to drive validation, editing,
 canonical saves and replication without maintaining each field list by hand.
 
-Start with a restricted, checked schema tool written in Coax. Generate versioned
-codecs, validators, inspector metadata, canonical hashing, field-level diffs,
+Start with an Aethyr/Aethyrforge schema tool written in Coax; realm authors
+supply game definitions and protocol owners supply wire/durable identities.
+Coax owns only general metadata, generation interfaces and emitted-code
+correctness. Do not require a compiler extension when an ordinary checked tool
+can express the schema. Generate versioned codecs, validators, inspector
+metadata, canonical hashing, field-level diffs,
 and replication descriptors from explicit annotations. Prefer this constrained
 workflow over an unrestricted macro system. All generated inputs and tool
 versions belong in a manifest; malformed annotations must fail atomically.
@@ -356,7 +427,9 @@ operation ID, expected revisions, conserved item/value transitions, durable
 result recording, retry semantics and an explicit commit point. A receipt must
 mean committed state, not merely successful transport.
 
-Implement these as Coax authorities plus storage effects, with server-derived
+Realms/services own transaction rules and durable commit; Aethyr supplies
+reusable identity, ownership, command and recovery integration. Implement these
+as authority modules written in Coax plus storage effects, with server-derived
 identity and capability checks. Model check duplicate, reordered, conflicting
 and stale-owner requests; inject a crash at every durable transition. Avoid an
 “exactly once network” claim: retryable operations can have one recorded effect
@@ -369,6 +442,10 @@ validated scope and runtime policy.
 
 ### 8.3 Untrusted content needs an execution boundary
 
+Aethyr/Aethyrforge own the allowed content execution profile and its host
+capabilities. Coax may supply a separately qualified restricted target or VM
+format, but ordinary native compilation is not a sandbox.
+
 First-party compiled content and player-authored scripts have different trust
 requirements. Compile-time evaluation has budgets, but that does not establish
 a runtime sandbox for arbitrary native content. A future player script profile
@@ -377,10 +454,14 @@ deterministic host imports and a validated format. Prefer declarative quest
 graphs or a small bounded VM until a real scripting consumer needs more. A
 single malformed mod must not trap the authoritative server process.
 
-## 9. Async work, networking and streaming
+## 9. Aethyr task lifecycles, networking and streaming
 
-I would introduce a structured scope library before `async`/`await` syntax:
-request identity, parent scope, deadline, cancellation reason, generation/epoch,
+I would introduce an Aethyr structured scope library over its host/resource
+contracts before proposing general Coax `async`/`await` syntax. A future
+domain-independent task utility can be extracted if other consumers need it;
+that does not move cell/seat/GPU lifecycle policy into the language. The engine
+scope carries request identity, parent scope, deadline, cancellation reason,
+generation/epoch,
 owned result and a bounded completion mailbox. Cancelling a scope must define
 what happens to physical work, its output and its reservation. At minimum a late
 completion cannot publish into a replacement owner. A syntax transformation is
@@ -397,8 +478,8 @@ World streaming needs a cell lifecycle: requested, loading, validated, resident,
 retiring and released. Navigation, rendering, audio and simulation may pin
 different resources. A cell can unload only after those owners release it;
 callbacks from its previous generation must be harmless. Content-addressed
-immutable assets and bounded decode work belong in libraries and host effects,
-not in a new language-level world-cell keyword.
+immutable assets and bounded decode work belong in Aethyr asset/streaming
+libraries and host effects, not in a new language-level world-cell keyword.
 
 WebSocket framing and interest policies already exist. Alternate datagram
 transport, compression, baseline windows, adjacent-region authority and
@@ -430,7 +511,11 @@ after profiling movement, skinning, collision or navigation. Benchmark cache
 misses, memory bandwidth, allocations and p95/p99 tick cost, not just arithmetic
 throughput on one friendly kernel.
 
-### 10.2 GPU work needs resource graphs more than new shader syntax
+### 10.2 Aethyr resource graphs over Coax shader compilation
+
+Coax owns shader semantics, lowering, layout/reflection correctness and generic
+device-code facilities. Aethyr owns render/compute pass scheduling, resource
+residency, upload budgets and actual fence/device-loss behavior.
 
 The shipped shader emitters and reflection are substantial. The remaining MMO
 pressure is reliable resource lifetime, upload/streaming budgets, compute-to-draw
@@ -489,7 +574,11 @@ within 2 minutes. These are targets for measurement, not observed current
 failures. Record source size, machine, build profile and cache state with them.
 Split any individual check command above the repository's 15-minute limit.
 
-Hot reload should arrive in this order:
+Aethyr owns safe reload and migration; Aethyrforge owns the authoring command
+and feedback. Coax supplies code artifacts and any general replacement/ABI
+support. Asset/data reload is engine/tool work that can proceed without a
+resident compiler or new language syntax. The integration should arrive in
+this order:
 
 1. Immutable asset replacement under versioned handles, with old readers pinned.
 2. Validated quest/ability data replacement at a tick boundary.
@@ -512,7 +601,7 @@ An MMO also needs a wide reusable library surface. Audit and consolidate existin
 subsystems before creating replacements; the following are expansion requirements,
 not assertions that every primitive is absent:
 
-| Subsystem | What I would require from its Coax interface |
+| Aethyr/Aethyrforge or service subsystem | What I would require from its engine/tool interface, written in Coax |
 | --- | --- |
 | Navigation and NPC work | Incremental, cancellable searches with bounded expansions, stable tie breaks, cell/version ownership and explicit partial/no-route results; behavior trees or state machines can remain ordinary data. |
 | Large-world coordinates | Typed local/global frames, checked cell transitions, floating-origin conversion and unit-aware transforms; current native affine types are a start, not a complete streamed-world transform graph. |
@@ -531,21 +620,21 @@ language extension. Do not put navmeshes, guilds or UI widgets into the grammar.
 Keep check-first development and zero-survivor mutation for new authorities.
 However, exhaustive finite `#forall` does not explore arbitrary distributed
 schedules, real storage commit behavior, native memory use or target numerical
-differences. Introduce reusable scenario testing and minimized event traces;
-build them in Coax under the repository's tools rule. Independent oracles remain
+differences. Aethyr and services should introduce reusable scenario testing and
+minimized event traces; build them in Coax under the repository's tools rule. Independent oracles remain
 independent, with a documented firm reason where a non-Coax harness is necessary.
 
-| Scenario | Required observation |
-| --- | --- |
-| Entity/component churn and exhausted generations | No stale reference revival, deterministic structural flush, bounded memory |
-| Duplicate trade, concurrent withdrawal, owner transfer | One durable recorded result, conservation, stale writer refusal |
-| Crash before/after append, sync, commit and receipt | Replay yields an admitted whole state; lost response retries safely |
-| Loss, reorder, duplication, long stall, reconnect | Correct baseline recovery; no old owner/socket input; bounded queue age |
-| Cancel/unload/device loss with late completions | No stale publish, use-after-free, leaked reservation or duplicate release |
-| 1/2/4/8 simulation workers | Matching canonical state and stable command/reduction order |
-| Debug/release/evaluator/native and supported targets | Matching specified acceptance and numeric behavior; unsupported forms refuse |
-| Large content and generated type graphs | Measured cold/warm latency, capacity headroom, comprehensible bounded refusal |
-| Dense encounter and login surge | p99 tick, memory, bytes, queue age and refusal metrics stay within named budgets |
+| Owner | Scenario | Required observation |
+| --- | --- | --- |
+| Aethyr | Entity/component churn and exhausted generations | No stale reference revival, deterministic structural flush, bounded memory |
+| Realms/services | Duplicate trade, concurrent withdrawal, owner transfer | One durable recorded result, conservation, stale writer refusal |
+| Aethyr + storage/services | Crash before/after append, sync, commit and receipt | Replay yields an admitted whole state; lost response retries safely |
+| Aethyr multiplayer + hosts | Loss, reorder, duplication, long stall, reconnect | Correct baseline recovery; no old owner/socket input; bounded queue age |
+| Aethyr + hosts | Cancel/unload/device loss with late completions | No stale publish, use-after-free, leaked reservation or duplicate release |
+| Aethyr over Coax numerical/effect contracts | 1/2/4/8 simulation workers | Matching canonical state and stable command/reduction order |
+| Coax conformance; Aethyr adoption separately | Debug/release/evaluator/native and supported targets | Matching specified acceptance and numeric behavior; unsupported forms refuse |
+| Coax compiler costs; Aethyrforge generation costs | Large content and generated type graphs | Measured cold/warm latency, capacity headroom, comprehensible bounded refusal |
+| Aethyr + admission/services | Dense encounter and login surge | p99 tick, memory, bytes, queue age and refusal metrics stay within named budgets |
 
 Use sanitizers on native ownership boundaries and original-source native checks
 where supported; retain the evaluator baseline and evidence identity. Add
@@ -554,9 +643,13 @@ storage and state machines, and crash/fault tests for adapters. A passing mutati
 score is not a substitute for these dimensions. Keep functional refusals,
 inconclusive budget exhaustion and infrastructure failures distinct.
 
-## 13. A delivery sequence with concrete exits
+## 13. A joint delivery sequence with separate owners and exits
 
 ### Slice A: one durable adventurer, one streamed region
+
+Coax owns the general ID/arithmetic, borrow, storage and outcome support.
+Aethyr owns region storage, request queues and streaming; Aethyrforge owns the
+content tooling; realm/services code owns the inventory transaction.
 
 Build on current room/checkpoint contracts. Add nominal IDs, stable checked
 critical arithmetic, immutable borrowed content, owner-backed bounded storage,
@@ -571,6 +664,9 @@ state. This exposes language needs before a general runtime is designed.
 
 ### Slice B: a reproducible crowded encounter
 
+Coax owns effect admission and numeric-profile conformance. Aethyr owns the
+scheduler, component layouts, command merging, replay and encounter benchmarks.
+
 Add read/write region contracts and the reference job scheduler, then parallel
 chunks and deterministic merging. Introduce the first qualified strict numeric
 profile and component-level replay diagnostics. Optimize column access and
@@ -583,6 +679,10 @@ rooms remain supported; the stress target is not a reason to overcomplicate them
 
 ### Slice C: content production and deploy recovery
 
+Coax owns warm compilation and artifact compatibility support. Aethyrforge
+owns content authoring; Aethyr owns local reload, task scopes and handoff;
+realms/services own transaction migration and deployment/storage coordination.
+
 Add schema compatibility/migration tooling, warm compile reuse, staged local
 reload, bounded task scopes, and coherent version manifests. Extend durable
 gameplay operations to two players and ownership handoff. Test actual storage
@@ -594,37 +694,46 @@ recorded outcome. Recovery objectives state the outage/capacity assumptions.
 
 ### Slice D: expand only at a measured limit
 
+Aethyr/services own capacity expansion. Coax work requires a separately measured
+compiler, code-generation or type-system need rather than a player-count goal.
+
 Scale region placement, shared services and cross-region semantics separately.
 Add portable SIMD, more complete target support, direct backends or a resident
 compiler only where the data supports them. Leave general atomics, arbitrary
 compile-time plugins and unrestricted player scripting out until their safety
 and maintenance costs have a specific consumer.
 
-## 14. Book changes I would want alongside implementation
+## 14. Separate Coax teaching from Aethyr teaching
 
-The current book is careful about status, and its registry separates source,
-target qualification and adoption. Preserve that discipline. Its next useful
-MMO route should connect those small contracts into a durable region:
+The Coax book should teach transferable language/compiler guarantees with
+small runnable examples: immutable/exclusive borrows and owner invalidation
+(chapter 6), stored Results and borrowed generics (5/7/8), effect and numerical
+rules (13–16), general ABI/metadata contracts (18/20/21), and compilation,
+cache, diagnostic and replacement-artifact behavior (19/22/41/45/46). Its registry
+should keep source, target qualification and adoption separate as it does now.
 
-* Chapter 6: immutable/mutable borrows, owner-backed allocations, invalidation,
-  stack/copy reports, and an async request that survives the submitting frame.
-* Chapters 5/7/8: stored fallible outcomes, borrowed generic carriers and the
-  negative examples that explain their limits.
-* Chapters 13–16: one shared component store, effect-checked jobs, deterministic
-  merges, a qualified math profile and a replay that identifies its first drift.
-* Chapters 18/20/21: explicit wire/save/GPU/CPU identities, version migration and
-  observed Linux/Apple/wasm32 boundaries.
-* Chapters 19/22/41/45/46: measured cold/warm edit loops, cache invalidation,
-  capacity diagnostics and failed transactional reload with rollback.
-* A new worked capstone: **a crash-safe two-player item exchange while a region
-  unloads**. Show the durable commit, lost receipt, retry, owner replacement,
-  cancellation and restore. Include a hand trace, native adapter observations,
-  an independent model, deliberate refusals and fault injection.
+The Aethyr book should own entity/component storage, simulation scheduling,
+PRNG stream discipline, replay field diffs, cell/resource/task lifecycles,
+replication, character recovery and engine-safe reload. Aethyrforge teaching
+should cover inspectors, schema-driven content workflows and local authoring.
+The books can link one language feature to its first engine adoption without
+making the engine implementation part of the language's completion gate.
+
+The proposed **crash-safe two-player item exchange while a region unloads**
+belongs as a joint Aethyr/realm/services capstone, not a required Coax language
+chapter. Show commit, lost receipt, retry, owner replacement, cancellation and
+restore, with a hand trace, adapter observations, an independent model and
+fault injection. Coax chapters can link to the capstone as consumer evidence;
+their own tests should isolate the borrow, Result, arithmetic and effect rules.
 
 An MMORPG need not wait for all planned robot, spacecraft, tensor or derivative
 chapters. The most valuable language extension is the one that removes an unsafe
 or repeatedly hand-written contract from an actual game subsystem, demonstrates
 its cost, and keeps its limits visible to the next author.
+
+Each slice therefore has two exits: Coax conformance/diagnostic tests for any
+new general facility, and separately owned engine/service integration evidence.
+The provisional player-count, tick and recovery goals above apply to the latter.
 
 ## 15. Audit validation scope
 
@@ -649,3 +758,11 @@ tracked tool files, including 35 vendored vector files, and zero new files
 without a firm reason. No new gameplay, concurrency, durability or performance
 qualification is asserted. The cited baseline identifies the inspected code;
 later merges can advance implementation beyond this dated assessment.
+
+### Boundary-clarification validation
+
+This revision changes documentation ownership and planning only. The compiler
+probe results above are retained from `0aee22574d`; unchanged probes and compiler
+gates are not rerun. Local links and staged whitespace are checked again for
+the edited document, and the required tools check runs before push. No work is
+moved between source directories, and no new engine or language behavior is claimed.
