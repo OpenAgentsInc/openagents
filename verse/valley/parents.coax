@@ -1,0 +1,19 @@
+// Original irregular convex fans, with matching x=+/-2 boundary edges.
+#load "../../aethyr/render/geometry/parent.coax";
+parent_source :: (height:f32)->ParentMesh {
+  m:=ParentMesh.{vertices=7,indices=18};
+  p:=[7]Point.[v3(-2,0,-1),v3(-1,0,-2),v3(1,0,-2),v3(2,0,-1),v3(2,0,1),v3(-2,0,1),v3(0,height,0)];
+  for v,k:p {m.p[k]=v;}for k:0..<6 {m.i[k*3]=cast(u32)k;m.i[k*3+1]=6;m.i[k*3+2]=cast(u32)((k+1)%6);}return m;
+}
+#test "irregular parent surfaces keep the shared edge at mixed resolution and bound every source sample" {
+  a:=parent_source(0);b:=parent_source(0.75);coarse:[1]ParentMesh;
+  #assert parent_reduce(coarse[..],b.p[0..<b.vertices],b.i[0..<b.indices],0) && coarse[0].indices==12;
+  for k:0..<17 {t:=cast(f32)k/16;
+    left:=add(times(a.p[3],1-t),times(a.p[4],t));right:=add(v3(4,0,0),add(times(b.p[0],1-t),times(b.p[5],t)));
+    #assert left.x==right.x && left.y==right.y && left.z==right.z;
+  }
+  for triangle:0..<6 {for u:0..<9 {for v:0..<9-u {
+    p:=add(times(b.p[cast(int)b.i[triangle*3]],1-cast(f32)(u+v)/8),add(times(b.p[cast(int)b.i[triangle*3+1]],cast(f32)u/8),times(b.p[cast(int)b.i[triangle*3+2]],cast(f32)v/8)));
+    #assert abs(p.y)<=coarse[0].error;
+  }}}
+}
