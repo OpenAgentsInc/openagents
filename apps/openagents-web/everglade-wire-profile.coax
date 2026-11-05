@@ -5,7 +5,15 @@
 //   - every message's values, written with the codec's writer, are its frame byte for byte;
 //   - every message with a reader ("read": true) reads its frame back to the same values, field by
 //     field, with the reader's ok set;
-//   - every "malformed" frame (a field missing, or not a whole number) leaves its reader's ok unset.
+//   - every "malformed" frame (a field missing, or not a whole number) leaves its reader's ok unset;
+//   - the row's fields ("row") are the codec's WS_* in order, and each row fixture (s) names its MASK's
+//     fields: written from its base (zeros, or "base") it is the frame, and read onto that base it is
+//     the row again ("expect": fields after the delta);
+//   - the relay's own frames (y, j, l, t) are whole numbers, as the page reads them;
+//   - the seat ticket (owner generation and the rest, room-ticket.coax tk_check) reads to "expect" under
+//     its key, and each of "refused" is refused;
+//   - each named ACK, baseline and lifecycle field ("ack", "lifecycle") is a field of a message above,
+//     of the row, or of the ticket.
 // The file is the independent expected result: its frames are written by hand, not by this codec.
 // Prints a line per message and "profile holds" (exit 0), or what differs and "profile fails" (exit 1).
 //   coax/web/tool.sh apps/openagents-web/everglade-wire-profile.coax proto/verse/everglade-session-v4.json
@@ -15,8 +23,81 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/args.coax";
 #load "../../coax/lib/sys/fs.coax";
+#load "../../coax/web/room/room-ticket.coax";   // the seat ticket's reader (owner generation, #12834)
 
-WP_FIELDS :: 8;
+WP_FIELDS :: 24;
+// The row's fields by name, each the codec's WS_* (everglade-wire.coax): the profile's "row" must list
+// them in the codec's order.
+WP_ROW :: [WIRE_SF] string.["kind", "x", "y", "z", "yaw", "vx", "vy", "vz", "g", "clip", "hp", "max", "cond", "owner", "p1", "p2", "temp", "form", "carry", "t0", "dur", "life", "warp"];
+WP_ROW_IX :: [WIRE_SF] int.[WS_KIND, WS_X, WS_Y, WS_Z, WS_YAW, WS_VX, WS_VY, WS_VZ, WS_G, WS_CLIP, WS_HP, WS_MAX, WS_COND, WS_OWNER, WS_P1, WS_P2, WS_TEMP, WS_FORM, WS_CARRY, WS_T0, WS_DUR, WS_LIFE, WS_WARP];
+wp_row_ix :: (name: string) -> int { for i: 0..<WIRE_SF { if WP_ROW[i] == name { return WP_ROW_IX[i]; } } return -1; }
+// A row object's members (row field name: whole number) onto row.
+wp_row_obj :: (d: Jv, at: int, row: [] s32) -> bool {
+  if at < 0 { return true; }
+  for k: 0..<jv_len(d, at) {
+    m := jv_at(d, at, k);
+    ix := wp_row_ix(jv_key(d, m));
+    if ix < 0 { return false; }
+    row[ix] = wire_s32(wp_int(jv_raw(d, m)));
+  }
+  return true;
+}
+// A row fixture (s ID BACK MASK V ...): its fields after MASK are row fields by name, each a delta
+// on its base. Written from the base it is the frame; read onto the base it is the row again.
+wp_row_msg :: (d: Jv, e: int, frame: string, f: WpVals) -> bool {
+  fl := jv_get(d, e, "fields");
+  base: [WIRE_SF] s32; now: [WIRE_SF] s32;
+  if f.n < 3 || !wp_row_obj(d, jv_get(d, e, "base"), base[..]) { print("      %: a base field isn't the row's\n", frame); return false; }
+  for q: 0..<WIRE_SF { now[q] = base[q]; }
+  mask := 0;
+  for k: 3..<f.n {
+    nb: [16] u8; nn := jv_str(d, jv_at(d, fl, k), nb[..]);
+    ix := ifx nn < 0 then -1 else wp_row_ix(cast(string) nb[0..<nn]);
+    if ix < 0 { print("      %: field % isn't the row's\n", frame, k); return false; }
+    now[ix] = wire_s32(cast(int) base[ix] + wp_int(f.v[k])); mask = mask | (1 << ix);
+  }
+  if mask != wp_int(f.v[2]) { print("      %: MASK % names other fields than the profile's (%)\n", frame, wp_int(f.v[2]), mask); return false; }
+  out: [WIRE_ROW] u8;
+  wn := wire_put_s(out[..], 0, wp_int(f.v[0]), wp_int(f.v[1]), base[..], now[..]);
+  if cast(string) out[0..<wn] != frame { print("      %: the writer makes %\n", frame, cast(string) out[0..<wn]); return false; }
+  r: [1] WireRd; r[0] = wire_rd(frame, 1);
+  h := wire_read_s_head(frame, r[..]);
+  got: [WIRE_SF] s32;
+  wire_read_s_body(frame, r[..], base[..], got[..]);
+  same := r[0].ok && h.id == wp_int(f.v[0]) && h.back == wp_int(f.v[1]);
+  for q: 0..<WIRE_SF { if got[q] != now[q] { same = false; } }
+  want: [WIRE_SF] s32; for q: 0..<WIRE_SF { want[q] = got[q]; }
+  if !wp_row_obj(d, jv_get(d, e, "expect"), want[..]) { return false; }
+  for q: 0..<WIRE_SF { if want[q] != got[q] { same = false; print("      %: row field % reads %, the profile expects %\n", frame, WP_ROW[q], cast(int) got[q], cast(int) want[q]); } }
+  return same;
+}
+// A relay frame (y, j, l, t): its head and whole numbers, written and read as the page reads them.
+wp_relay_msg :: (head: string, f: WpVals, frame: string) -> bool {
+  out: [WIRE_FRAME] u8;
+  wn := wire_put(out[..], 0, head);
+  for k: 0..<f.n { wn = wire_int(out[..], wn, wp_int(f.v[k])); }
+  if cast(string) out[0..<wn] != frame { print("      %: written as %\n", frame, cast(string) out[0..<wn]); return false; }
+  r: [1] WireRd; r[0] = wire_rd(frame, head.count);
+  for k: 0..<f.n { if wire_num(frame, r[..]) != wp_int(f.v[k]) { r[0].ok = false; } }
+  return r[0].ok && !wire_more(frame, r[..]);
+}
+// Whether HEAD.FIELD names a field of a message of the profile, of the row (s.NAME) or of the ticket.
+wp_names :: (d: Jv, ref: string) -> bool {
+  dot := 0; while dot < ref.count && ref[dot] != '.' { dot += 1; }
+  if dot == 0 || dot >= ref.count - 1 { return false; }
+  head := ref[0..<dot]; field := ref[dot + 1..<ref.count];
+  if head == "s" && wp_row_ix(field) >= 0 { return true; }
+  if head == "ticket" { return jv_get(d, jv_get(d, jv_get(d, 0, "ticket"), "expect"), field) >= 0; }
+  ms := jv_get(d, 0, "messages");
+  for m: 0..<jv_len(d, ms) {
+    e := jv_at(d, ms, m);
+    hb: [16] u8; hn := jv_str(d, jv_get(d, e, "head"), hb[..]);
+    if hn < 0 || cast(string) hb[0..<hn] != head { continue; }
+    fl := jv_get(d, e, "fields");
+    for k: 0..<jv_len(d, fl) { fb: [32] u8; fnn := jv_str(d, jv_at(d, fl, k), fb[..]); if fnn >= 0 && cast(string) fb[0..<fnn] == field { return true; } }
+  }
+  return false;
+}
 // One message's values as the file has them: each a string's text or a number's digits.
 WpVals :: struct { v: [WP_FIELDS] string; n: int; }
 wp_int :: (s: string) -> int {
@@ -46,6 +127,14 @@ wp_write :: (head: string, f: WpVals, out: [] u8) -> int {
   if head == "O" { return wire_put_missed(out, 0, wp_int(f.v[0])); }      // (#12902)
   if head == "o" { return wire_put_outcomes(out, 0, wp_int(f.v[0])); }
   if head == "e town" { return wire_put_town(out, 0); }
+  if head == "x" { return wire_put_x(out, 0, wp_int(f.v[0])); }
+  if head == "n" { return wire_put_n(out, 0, WireN.{ss = wp_int(f.v[0]), id = f.v[1], look = f.v[2], kind = f.v[3], flags = wp_int(f.v[4]), name = f.v[5]}); }
+  if head == "K" {
+    n := wire_put_blocks(out, 0);
+    if f.n == 0 { return wire_text(out, n, ""); }
+    for k: 0..<f.n { n = wire_text(out, n, f.v[k]); }
+    return n;
+  }
   return -1;
 }
 // A field read: text, or a number written out in num (from at[0] on).
@@ -68,6 +157,7 @@ wp_read :: (head: string, t: string, got: [] WpVals, num: [] u8) -> bool {
   else if head == "D" { d := wire_read_d(t, r[..]); wp_n(got, num, at[..], d.tick); wp_n(got, num, at[..], d.ack); wp_n(got, num, at[..], d.f); wp_n(got, num, at[..], d.part); }
   else if head == "e cast" { c := wire_read_cast_e(t, r[..]); wp_n(got, num, at[..], c.ss); wp_n(got, num, at[..], c.slot); wp_n(got, num, at[..], wire_cm(c.ax)); wp_n(got, num, at[..], wire_cm(c.ay)); wp_n(got, num, at[..], wire_cm(c.az)); wp_n(got, num, at[..], c.seed); if c.mode != 0 { wp_n(got, num, at[..], c.mode); } }
   else if head == "e hit" { h := wire_read_hit(t, r[..]); wp_n(got, num, at[..], h.who); wp_n(got, num, at[..], h.by); wp_n(got, num, at[..], h.amt); wp_n(got, num, at[..], h.kind); }
+  else if head == "n" { w := wire_read_n(t, r[..]); wp_n(got, num, at[..], w.ss); wp_s(got, w.id); wp_s(got, w.look); wp_s(got, w.kind); wp_n(got, num, at[..], w.flags); wp_s(got, w.name); }
   else { return false; }
   return r[0].ok;
 }
@@ -115,6 +205,13 @@ tool_main :: () -> int #export_c {
         f.v[k] = ifx w < 0 then "" else cast(string) strs[sk..<sk + w]; sk += ifx w < 0 then 0 else w;
       } else { f.v[k] = jv_raw(d, x); }
     }
+    db: [8] u8; dn := jv_str(d, jv_get(d, e, "dir"), db[..]);
+    if head == "s" || (dn > 0 && cast(string) db[0..<dn] == "relay") {
+      held := ifx head == "s" then wp_row_msg(d, e, frame, f) else wp_relay_msg(head, f, frame);
+      print("%  % %\n", ifx held then "ok  " else "FAIL", head, frame);
+      if !held { bad += 1; }
+      continue;
+    }
     out: [WIRE_SERVER_FRAME] u8;
     wn := wp_write(head, f, out[..]);
     wrote := wn >= 0 && cast(string) out[0..<wn] == frame;
@@ -137,6 +234,49 @@ tool_main :: () -> int #export_c {
     refused := !wp_read(head, t, got[..], nb[..]);
     print("%  malformed: %\n", ifx refused then "ok  " else "FAIL", t);
     if !refused { bad += 1; }
+  }
+  // the row: the codec's fields, in its order
+  rw := jv_get(d, jv_get(d, 0, "row"), "fields");
+  rows_ok := jv_len(d, rw) == WIRE_SF;
+  for q: 0..<jv_len(d, rw) { rb: [16] u8; rn := jv_str(d, jv_at(d, rw, q), rb[..]); if rn < 0 || wp_row_ix(cast(string) rb[0..<rn]) != q { rows_ok = false; } }
+  print("%  row: % fields in the codec's order\n", ifx rows_ok then "ok  " else "FAIL", WIRE_SF);
+  if !rows_ok { bad += 1; }
+  // the seat ticket
+  tk := jv_get(d, 0, "ticket");
+  kb: [128] u8; kn := jv_str(d, jv_get(d, tk, "key"), kb[..]);
+  key := ifx kn < 0 then "" else cast(string) kb[0..<kn];
+  rmb: [32] u8; rmn := jv_str(d, jv_get(d, tk, "room"), rmb[..]);
+  ttb: [TICKET_TEXT] u8; ttn := jv_str(d, jv_get(d, tk, "text"), ttb[..]);
+  now := jv_int(d, jv_get(d, tk, "now"), 0);
+  tc := tk_check(key, ifx ttn < 0 then "" else cast(string) ttb[0..<ttn], ifx rmn < 0 then "" else cast(string) rmb[0..<rmn], now);
+  ex := jv_get(d, tk, "expect");
+  nb2: [64] u8; nn2 := jv_str(d, jv_get(d, ex, "pid"), nb2[..]);
+  mb: [64] u8; mn := jv_str(d, jv_get(d, ex, "name"), mb[..]);
+  tk_ok := tc.ok && nn2 >= 0 && cast(string) tc.pid[0..<tc.pid_n] == cast(string) nb2[0..<nn2] && mn >= 0 && cast(string) tc.name[0..<tc.name_n] == cast(string) mb[0..<mn]
+           && (ifx tc.admin then 2 else ifx tc.account then 1 else 0) == jv_int(d, jv_get(d, ex, "account"), -1) && tc.shard == jv_int(d, jv_get(d, ex, "shard"), -1)
+           && tc.expires == jv_int(d, jv_get(d, ex, "expires"), -1) && tc.hp == jv_int(d, jv_get(d, ex, "hp"), -2) && tc.xp == jv_int(d, jv_get(d, ex, "xp"), -1)
+           && tc.wanted == jv_int(d, jv_get(d, ex, "wanted"), -1) && tc.owner == jv_int(d, jv_get(d, ex, "owner"), -1);
+  print("%  ticket: owner generation %, shard %, HP %, XP %, WANTED %\n", ifx tk_ok then "ok  " else "FAIL", tc.owner, tc.shard, tc.hp, tc.xp, tc.wanted);
+  if !tk_ok { bad += 1; }
+  rf := jv_get(d, tk, "refused");
+  for m: 0..<jv_len(d, rf) {
+    e := jv_at(d, rf, m);
+    tb2: [TICKET_TEXT] u8; tn2 := jv_str(d, jv_get(d, e, "text"), tb2[..]);
+    rb2: [32] u8; rn2 := jv_str(d, jv_get(d, e, "room"), rb2[..]);
+    wb: [64] u8; wn2 := jv_str(d, jv_get(d, e, "why"), wb[..]);
+    x := tk_check(key, ifx tn2 < 0 then "" else cast(string) tb2[0..<tn2], ifx rn2 < 0 then "" else cast(string) rb2[0..<rn2], jv_int(d, jv_get(d, e, "now"), 0));
+    print("%  ticket refused: %\n", ifx !x.ok then "ok  " else "FAIL", ifx wn2 < 0 then "" else cast(string) wb[0..<wn2]);
+    if x.ok { bad += 1; }
+  }
+  // the named ACK, baseline and lifecycle fields
+  for sec: [2] string.["ack", "lifecycle"] {
+    o := jv_get(d, 0, sec);
+    for m: 0..<jv_len(d, o) {
+      ref := jv_key(d, jv_at(d, o, m));
+      named := wp_names(d, ref);
+      print("%  %: %\n", ifx named then "ok  " else "FAIL", sec, ref);
+      if !named { bad += 1; }
+    }
   }
   print("%\n", ifx bad == 0 then "profile holds" else "profile fails");
   return ifx bad == 0 then 0 else 1;
