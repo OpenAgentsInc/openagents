@@ -48,6 +48,16 @@ EG_TICK_STEPS :: 4;
 EG_KEEP :: 4;                   // ticks of input a seat may hold past what it may step now (rm_eg_begin)
 EG_JOIN_BANK :: 3;              // what a seat that just sat is owed (its first tick's step on top)
 EG_VIEW :: 120.0;               // m: what a seat hears of creatures, zones and events
+// The allowances beside the wire's (everglade-wire.coax WIRE_BUDGET, WIRE_AGED_BUDGET,
+// WIRE_LIFE_BUDGET; #12836), each a tick's bytes of entries for one seat, framing aside:
+//   - EG_META_BUDGET: who each seat is (n) and its WANTED level (w), on change and on resend. One that
+//     doesn't fit waits for the next tick, as unsent; 16 players' n's (about 90 bytes each) go in 2 ticks.
+//   - EG_JOIN_BUDGET: the town's broken, burning and placed pieces a joining page is told of, from its
+//     first snapshot on, in their order; the rest go on the ticks after. 6000 broken pieces (about 19
+//     bytes each, "e break 2999 0 0 0;") go in about 1.9 s.
+// The host reports the bytes each sent and the entries each left waiting (room-stats.coax rm_st_alloc).
+EG_META_BUDGET :: 900;
+EG_JOIN_BUDGET :: 2000;
 EG_CHUNK :: 3740;               // a D frame's entries at most (WIRE_SERVER_FRAME with its header); past it, F 2
 EG_CASTS :: 32;                 // casts heard and on their way, from the press to the strike (room-casts.coax)
 EG_CAST_GAP :: 8;               // ticks between a seat's casts at least (about 4 a second)
@@ -64,6 +74,7 @@ EG_FOLK_FLOATS :: 12;           // a townsperson as the world hands them (evergl
 EG_CRIMES :: 16;
 EG_REBUILD_QUIET :: 10; EG_REBUILD_EVERY :: 30;   // s: R stands the town up once no spell struck it for 10 s, once in 30 s at most
 EG_PIECES :: 6000;              // the town's pieces at most: verse/demolish.coax DEMO_PIECES, which wave 1 raised (the bridge's are past 4000)
+EG_PIECES_ALL :: EG_PIECES + CR_PLACED_MAX;   // a joining page's pieces: the town's, then the placed things
 EG_ENT :: 192;                  // bytes of one cached n entry (eg_table) at most
 // the table's slots (everglade-wire.coax WIRE_SLOTS): the seats' players, the townsfolk, the summoned
 // creatures, the rules' zones, then the world's abilities' entities as they come and go
@@ -102,8 +113,9 @@ EgSeat :: struct {
   n_t: [EG_SEATS] int; n_bits: [EG_SEATS] int; n_ok: [EG_SEATS] bool;
   w_t: [EG_SEATS] int; w_bits: [EG_SEATS] int; w_ok: [EG_SEATS] bool;
   // its D's are snapshots (F 1: the page forgets everything first) from its first, until its page
-  // says it heard one (full_t: the first's tick); the town's broken pieces go with the first (pieces)
-  full: bool; full_t: int; pieces: bool;
+  // says it heard one (full_t: the first's tick); the town's broken pieces go from the first on,
+  // EG_JOIN_BUDGET bytes a tick (pieces: how many of the EG_PIECES_ALL have gone through)
+  full: bool; full_t: int; pieces: int;
   old: bool;                                          // a page from before wire 3: its state on the old wire (room-oldwire.coax)
   pins: WirePins; pinned: bool;                       // the build its page said in P before its hello (#12839; none: WIRE_PINS_FIRST)
   fresh: bool;                                        // just sat: the world's watch meets a new player
@@ -1146,16 +1158,24 @@ eg_send :: (v: [] RmServer, k: int, s: int) {
   o: [1] EgOut;
   me := st[0].pose;
   e: [320] u8;
-  if full && !st[0].pieces {
-    st[0].pieces = true;
-    for q: 0..<EG_PIECES {
-      if v[0].eg[k].broken[q] { n := eg_put_break(e[..], q, 0, 0, 0); eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<n]); }
-      else if v[0].eg[k].burning[q] { n := eg_put_burn(e[..], q, true); eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<n]); }
+  // the town's pieces, from the first snapshot on, EG_JOIN_BUDGET bytes a tick
+  if (full || st[0].pieces > 0) && st[0].pieces < EG_PIECES_ALL {
+    jb := 0;
+    while st[0].pieces < EG_PIECES_ALL {
+      q := st[0].pieces;
+      n := 0;
+      if q < EG_PIECES {
+        if v[0].eg[k].broken[q] { n = eg_put_break(e[..], q, 0, 0, 0); } else if v[0].eg[k].burning[q] { n = eg_put_burn(e[..], q, true); }
+      } else {
+        p := q - EG_PIECES;
+        if v[0].eg[k].placed_gone[p] { n = eg_put_placed(e[..], 5, p, false); } else if v[0].eg[k].placed_burn[p] { n = eg_put_placed(e[..], 4, p, true); }
+      }
+      if n > 0 && jb + n + 1 > EG_JOIN_BUDGET { break; }
+      if n > 0 { eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<n]); jb += n + 1; }
+      st[0].pieces = q + 1;
     }
-    for q: 0..<CR_PLACED_MAX {
-      if v[0].eg[k].placed_gone[q] { n := eg_put_placed(e[..], 5, q, false); eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<n]); }
-      else if v[0].eg[k].placed_burn[q] { n := eg_put_placed(e[..], 4, q, true); eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<n]); }
-    }
+    v[0].st.join_b += jb;
+    if st[0].pieces < EG_PIECES_ALL { v[0].st.join_wait += 1; }
   }
   eg_table(v, k);
   rm := v[0].eg[k..<k + 1];
@@ -1172,31 +1192,44 @@ eg_send :: (v: [] RmServer, k: int, s: int) {
   for q: 0..<wire_entries(cast(string) rows[0..<n], 0) {
     en := wire_entry(cast(string) rows[0..<n], 0, q);
     if en.count > 0 { eg_out_entry(o[..], v, k, s, f, en); }
+    if en.count > 1 && en[0] == 'x' && en[1] == ' ' { v[0].st.life_b += en.count + 1; }
   }
+  for q: 0..<WIRE_SLOTS { if st[0].rep[0].gone[q] != 0 && st[0].rep[0].gone_t[q] == 0 { v[0].st.life_wait += 1; } }   // x's past WIRE_LIFE_BUDGET
   // who each seat is and its WANTED level: on change, and again WIRE_RESEND ticks on until a tick that
   // held it is acknowledged (a frame the relay's queue had no room for)
   keep := ((1 << WIRE_ACKS) - 1) ^ (1 << (now % WIRE_ACKS));
   unseen := eg_im_unseen(v, k, s, pick[..]);
+  meta := 0;
   for q: 0..<EG_SEATS {
     st[0].n_bits[q] = st[0].n_bits[q] & keep; st[0].w_bits[q] = st[0].w_bits[q] & keep;
     other := v[0].eg[k].seat[q..<q + 1];   // a view: no copy of the seat (its rep is large)
     // (outside this seat's interest or blocked: nothing of them, sent again when they come in, #12789)
     if !other[0].live || !other[0].placed || ((unseen >> q) & 1) != 0 { st[0].heard_n[q] = 0; st[0].heard_w[q] = 0; continue; }
+    // (each from EG_META_BUDGET: one past it waits, unsent, for the next tick)
     h := rm[0].cn_h[q];
     if h != st[0].heard_n[q] || (!st[0].n_ok[q] && now - st[0].n_t[q] >= WIRE_RESEND) {
-      if h != st[0].heard_n[q] { st[0].n_bits[q] = 0; st[0].n_ok[q] = false; }
       a := q * EG_ENT;
-      eg_out_entry(o[..], v, k, s, f, cast(string) rm[0].cn[a..<a + rm[0].cn_n[q]]);
-      st[0].heard_n[q] = h; st[0].n_t[q] = now; st[0].n_bits[q] = st[0].n_bits[q] | (1 << (now % WIRE_ACKS));
+      if meta + rm[0].cn_n[q] + 1 > EG_META_BUDGET { v[0].st.meta_wait += 1; }
+      else {
+        if h != st[0].heard_n[q] { st[0].n_bits[q] = 0; st[0].n_ok[q] = false; }
+        eg_out_entry(o[..], v, k, s, f, cast(string) rm[0].cn[a..<a + rm[0].cn_n[q]]);
+        meta += rm[0].cn_n[q] + 1;
+        st[0].heard_n[q] = h; st[0].n_t[q] = now; st[0].n_bits[q] = st[0].n_bits[q] | (1 << (now % WIRE_ACKS));
+      }
     }
     w1 := v[0].eg[k].wanted[q] + 1;
     if w1 != st[0].heard_w[q] || (!st[0].w_ok[q] && now - st[0].w_t[q] >= WIRE_RESEND) {
-      if w1 != st[0].heard_w[q] { st[0].w_bits[q] = 0; st[0].w_ok[q] = false; }
       m := wire_put(e[..], 0, "w"); m = wire_int(e[..], m, q); m = wire_int(e[..], m, v[0].eg[k].wanted[q]);
-      eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<m]);
-      st[0].heard_w[q] = w1; st[0].w_t[q] = now; st[0].w_bits[q] = st[0].w_bits[q] | (1 << (now % WIRE_ACKS));
+      if meta + m + 1 > EG_META_BUDGET { v[0].st.meta_wait += 1; }
+      else {
+        if w1 != st[0].heard_w[q] { st[0].w_bits[q] = 0; st[0].w_ok[q] = false; }
+        eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<m]);
+        meta += m + 1;
+        st[0].heard_w[q] = w1; st[0].w_t[q] = now; st[0].w_bits[q] = st[0].w_bits[q] | (1 << (now % WIRE_ACKS));
+      }
     }
   }
+  v[0].st.meta_b += meta;
   ev_send(v, k, s, full, unseen, o[..]);   // the world event and the level of everyone in view (room-events.coax)
   // the events since the last state, near you
   for q: 0..<v[0].eg[k].ev_n {
@@ -1427,6 +1460,38 @@ eg_test_input :: (v: [] RmServer, seq: int) {
   rm_conn_waiting(v[..], 1, 0);
   eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
   #assert eg_test_has(eg_test_of(box[..], 1), "s 0 ") && eg_test_ent(box[..], 1, 0).z == eg_test_ent(box[..], 0, 0).z;
+}
+#test "everglade room: a joining page hears the town's broken pieces from their own allowance over the ticks after its first snapshot, every one once (#12836)" #steps 4000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  rm_control(v[..], "levels 0 2\n");
+  rm_clock(v[..], 0, 1762190000000);
+  ev := "GET /api/room/relay/everglade/pair-pieces HTTP/1.1\r\n\r\n";
+  box: [1] EgInbox;
+  #assert rm_join(v[..], 0, ev) == 0;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  rm_heard(v[..], 0, "H 4 ranger.0.0.0 druid 0 -");
+  for t: 0..<3 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
+  // a raid broke 3000 of the town's pieces and set one alight; then seat 1 joins
+  for q: 0..<3000 { v[0].eg[k].broken[q * 2] = true; }
+  v[0].eg[k].burning[5999] = true;
+  #assert rm_join(v[..], 1, ev) == 1;
+  rm_heard(v[..], 1, "H 4 ranger.0.0.0 druid 0 -");
+  was := v[0].st.join_b;
+  breaks := 0; burns := 0; ticks := 0;
+  for t: 0..<60 {
+    eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
+    c := eg_test_of(box[..], 1);
+    n := 0; at := 0;
+    while at + 8 <= c.count { if c[at..<at + 8] == "e break " { n += 1; } if c[at..<at + 7] == "e burn " { burns += 1; } at += 1; }
+    #assert n * 15 <= EG_JOIN_BUDGET;   // a tick's pieces within the allowance (each 15 bytes or more)
+    #assert !eg_test_has(eg_test_of(box[..], 0), "e break ");   // the seat that was there hears none again
+    breaks += n;
+    if n > 0 { ticks += 1; }
+  }
+  // all 3000 and the fire, once each, over about 25 ticks rather than in the join's first
+  #assert breaks == 3000 && burns == 1 && ticks >= 20 && ticks <= 35;
+  #assert v[0].eg[k].seat[1].pieces == EG_PIECES_ALL && v[0].st.join_b - was >= 3000 * 15 && v[0].st.join_wait > 0;
 }
 #test "everglade room: the watch's Hold Person on a seat is an effect entity on every page, its start and length the rules' time left, gone when it ends" #steps 2000000000 {
   v: [1] RmServer;

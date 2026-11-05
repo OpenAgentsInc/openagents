@@ -47,6 +47,9 @@ RmStats :: struct {
   re_seat: int;                   // joins that took back their player's held seat (room-relay.coax rl_take_back, #12792)
   held: int; held_out: int;       // seats held for their player when the socket closed, and those that left at the grace's end
   stale: int;                     // frames dropped from a socket that is no longer its seat's (an older generation)
+  // the allowances beside the rows' (#12836): bytes of x's (WIRE_LIFE_BUDGET), of n and w entries
+  // (EG_META_BUDGET) and of a joining page's pieces (EG_JOIN_BUDGET), and the entries each left waiting
+  life_b: int; life_wait: int; meta_b: int; meta_wait: int; join_b: int; join_wait: int;
 }
 
 st_refuse :: (v: [] RmServer, why: int) -> int {
@@ -104,6 +107,13 @@ rm_st_wire :: (v: [] RmServer, k: int, s: int, out: [] int) -> bool #export_c {
   r := v[0].eg[k].seat[s].rep[0];
   out[0] = r.aged_all; out[1] = r.oldest; out[2] = r.left; out[3] = r.bytes;
   return true;
+}
+
+// The allowances' totals so far (#12836) into out: x bytes, x's left waiting (a seat a tick each), n and
+// w bytes, those left waiting, joining pages' piece bytes, and the seat ticks with pieces still to go.
+rm_st_alloc :: (v: [] RmServer, out: [] int) #export_c {
+  if out.count < 6 { return; }
+  out[0] = v[0].st.life_b; out[1] = v[0].st.life_wait; out[2] = v[0].st.meta_b; out[3] = v[0].st.meta_wait; out[4] = v[0].st.join_b; out[5] = v[0].st.join_wait;
 }
 
 // The X-Room-Mac of body (64 hex into out), with the seat-ticket key; false without one.

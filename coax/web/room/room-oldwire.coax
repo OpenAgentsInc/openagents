@@ -20,7 +20,7 @@ eg_old_open :: (v: [] RmServer) -> bool { return !v[0].ctl.old_shut && v[0].wall
 eg_old_seat :: (v: [] RmServer, k: int, seat: int) {
   st := v[0].eg[k].seat[seat..<seat + 1];
   if st[0].old { return; }
-  st[0].old = true; st[0].full = true; st[0].full_t = 0; st[0].pieces = false;
+  st[0].old = true; st[0].full = true; st[0].full_t = 0; st[0].pieces = 0;
   v[0].eg[k].old_n += 1;
 }
 
@@ -145,7 +145,7 @@ eg_old_send :: (v: [] RmServer, k: int, s: int) {
   if full {
     wire_seat_reset(st[0].rep[..]);
     for q: 0..<EG_SEATS { st[0].heard_n[q] = 0; st[0].heard_w[q] = 0; }
-    st[0].full = false; st[0].pieces = true;
+    st[0].full = false; st[0].pieces = EG_PIECES_ALL;
     for q: 0..<EG_PIECES {
       if v[0].eg[k].broken[q] { n := eg_put_break(e[..], q, 0, 0, 0); eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<n]); }
       else if v[0].eg[k].burning[q] { n := eg_put_burn(e[..], q, true); eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<n]); }
