@@ -633,3 +633,63 @@ to play reaches12 frames, then closes with ledger0/0. This includes the
 updated sound packet reader and its additive physical face export. It is a
 continuity check under load, not a replacement for the frozen display-rate
 measurement. The canonical app and production services remain untouched.
+
+## Shared audio-session ownership
+
+The CoreAudio source now consumes `audio-session.coax` under the same lock
+as commands and PCM blocks. Gesture, cover/uncover and terminal retirement
+come from the shared Coax offer. Inactive or retired callbacks clear the
+actual supplied device planes before returning and do not advance PCM.
+Commands capture gesture state when offered. Retirement detaches the device
+node before freeing PCM; retained callbacks keep their session allocation
+until their last source reference. Canonical decode and mixer arithmetic
+are unchanged. A refused bank entry reports failure while independently
+admitted assets remain usable.
+
+The initial actual pre-gesture callback in `audio-session-red/` advanced
+1,024 Coax frames and17 device frames. The corrected callback holds both at
+zero and clears a deliberately nonzero supplied buffer. The full real-device
+trace in `audio-session-product-second/` and `audio-session-product-asan/`
+passes the same32-word `hpa_accept` authority used by Linux. Its published
+93-mutant gate and the session's33-mutant gate are unchanged from
+`e2c4a49a34`; neither is repeated here. The actual receipts are copied as
+[normal](audio-session.json) and [instrumented](audio-session-asan.json).
+They cover controls before gesture, refused stale cue, gesture while covered,
+exact pause holds, resume, exactly-once drains, terminal callbacks, malformed
+metadata, one refused source with another usable source, and three hostile
+packet spans while unrelated producer frames continue.
+
+The retained first full trace, `audio-session-product/`, caught missing
+partial-bank failure status and a harness observation taken after only one
+512-frame CoreAudio callback. That callback consumed the remaining half of
+an existing1,024-frame Coax block. The corrected harness waits for both an
+actual callback and block-clock advancement; it does not alter audio pacing
+or weaken the common receipt. Normal and instrumented final traces observe
+pause at1,024 Coax frames/one callback and resume at2,048/three callbacks.
+Device-buffer nonzero samples remain zero. ASan instruments the MF reader,
+Swift device adapter, generated renderer/texture C and recording producer;
+leak detection is disabled on this Mac. An initial sanitizer staging attempt
+omitted `RenderTexture.c`; its build failure is retained, then corrected by
+copying the already frozen source without repeating the successful renderer
+compilation.
+
+`audio-session-window/` opens the newly linked isolated ordinary app, actual
+local room and muted CoreAudio device with API/GPU validation enabled.
+Cover holds renderer frames/completions at8/8 and audio at49,152 Coax frames/
+96 callbacks while room messages increase34→64. Returning to play reaches
+14 renderer frames and145 audio callbacks; the final Coax block clock is
+74,752, with74,240 consumed device frames. The retained half-block explains
+that difference. Actual device planes remain zero, terminal audio is
+inactive/retired, and closed ledger objects/words are0/0. This is a continuity
+gate on the frozen producer/room, not a new display-rate or current-room
+qualification. The canonical app is untouched and owned children exit.
+
+`audio-session-sdk/artifacts.sha256` joins SDK/fixture sources, generated C/
+headers, objects, both test executables and the signed isolated app. Actual
+emission source tables join79 renderer inputs and14 fixture inputs with zero
+differences. The original598 receipt verifies before and after emission in
+the genuine historical root plus separately recorded product overlays. The
+fixture includes the public pointer-width-aware hostile-span export from
+`3a4ef4a0b8`. Existing sample gates were not repeated. These CPU/device checks
+do not admit the experimental presentation product, qualify current primary
+packaging, close either issue, or change the desktop default.

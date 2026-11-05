@@ -37,6 +37,9 @@ void mf_action_done(void *host);
 int32_t mf_probe(void *host,int32_t field);
 int64_t mf_observe(void *host,int64_t event,int64_t field);
 void mf_observe_reset(void *host);
+// Test-only effect lookups; absent from ordinary producer faces.
+bool mf_audio_fixture_mode(void *host,int32_t mode);
+int64_t mf_audio_fixture_probe(void *host,int32_t field);
 int64_t mf_info(void *host,int32_t field);
 typedef struct {uint64_t frame,start_ns,submit_ns,complete_ns,gpu_ns,input_sequence,input_ns;int64_t x_mm,z_mm,width,height;float scale;} MFFrameObservation;
 void mf_measure_reset(void *host);
@@ -88,6 +91,11 @@ int32_t mf_sound_probe(void *host,int32_t slot,float right,float ahead,float up)
 typedef struct {int64_t kind;const uint8_t *name;size_t name_count;const uint8_t *voice_id;size_t id_count;float gain,pan,delay,lowpass,rate,wet;} MFAudioEffect;
 bool mf_audio_decode(const uint8_t *bytes,size_t count,MFAudioEffect *out);
 bool mf_audio_asset_name(const uint8_t *bytes,size_t count);
+typedef struct {bool active,started,retired;} MFAudioSessionOffer;
+void *mf_audio_session_open(void);
+MFAudioSessionOffer mf_audio_session_offer(void *session);
+MFAudioSessionOffer mf_audio_session_event(void *session,int64_t kind);
+void mf_audio_session_close(void *session);
 void *mf_pcm_open(void);
 int64_t mf_pcm_command(void *pcm,const uint8_t *line,size_t count,const float *samples,size_t sample_count,int64_t channels,bool started);
 const float *mf_pcm_block(void *pcm,size_t *samples);

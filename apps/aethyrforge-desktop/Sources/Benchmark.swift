@@ -42,7 +42,9 @@ extension ForgeApp {
         }
         let seconds = ProcessInfo.processInfo.systemUptime-started
         var result: [String:Any] = ["schema":"aethyr.metal.window-result.v1","observations":observations,"seconds":seconds,"cpuPercentOfOneCore":Double(forge_process_cpu_ns(ProcessInfo.processInfo.processIdentifier)-cpu)/1e9/seconds*100,"residentBytes":forge_process_resident_bytes(ProcessInfo.processInfo.processIdentifier),"displayFPS":window.screen?.maximumFramesPerSecond ?? 0,"preferredFPS":view.preferredHz,"visible":window.isVisible && window.occlusionState.contains(.visible),"thermal":ProcessInfo.processInfo.thermalState.rawValue,"lowPower":ProcessInfo.processInfo.isLowPowerModeEnabled,"firstFrameSeconds":firstFrameSeconds]
+        let closedAudio = view.audio?.source
         view.close(); result["closedLedgerLive"] = mf_closed_info(0); result["closedLedgerWords"] = mf_closed_info(1)
+        result["closedAudio"] = closedAudio?.observations() ?? [:]
         try JSONSerialization.data(withJSONObject:result,options:[.prettyPrinted,.sortedKeys]).write(to:URL(fileURLWithPath:report),options:.atomic)
         stopChildren(); NSApp.terminate(nil)
     }

@@ -58,18 +58,35 @@ final class ForgeDecodedPCM {
 // whole Coax blocks to device planes without allocating memory.
 final class ForgePCMSource: @unchecked Sendable {
     let lock = NSLock()
+    private let session = mf_audio_session_open()
     var pcm = mf_pcm_open()
+    var muted = false
     var block: UnsafePointer<Float>?
     var cursor = 1024
     var callbacks = 0
     var rendered = 0
-    func command(_ bytes: UnsafeBufferPointer<UInt8>, _ decoded: ForgeDecodedPCM?, started: Bool = true) -> Int64 {
+    var attempts = 0
+    var nonzeroDeviceSamples = 0
+    private var retiredInfo: [String:Int64] = [:]
+    func sessionOffer() -> MFAudioSessionOffer {
+        lock.lock(); defer { lock.unlock() }; return mf_audio_session_offer(session)
+    }
+    @discardableResult
+    func sessionEvent(_ kind: Int64) -> MFAudioSessionOffer {
+        lock.lock(); defer { lock.unlock() }; return mf_audio_session_event(session,kind)
+    }
+    func command(_ bytes: UnsafeBufferPointer<UInt8>, _ decoded: ForgeDecodedPCM?, started: Bool? = nil) -> Int64 {
         lock.lock(); defer { lock.unlock() }
-        return mf_pcm_command(pcm,bytes.baseAddress,bytes.count,decoded?.samples,decoded?.count ?? 0,decoded?.channels ?? 0,started)
+        return mf_pcm_command(pcm,bytes.baseAddress,bytes.count,decoded?.samples,decoded?.count ?? 0,decoded?.channels ?? 0,started ?? mf_audio_session_offer(session).started)
     }
     func render(_ frames: AVAudioFrameCount, _ audio: UnsafeMutablePointer<AudioBufferList>) -> OSStatus {
         lock.lock(); defer { lock.unlock() }
         let buffers = UnsafeMutableAudioBufferListPointer(audio)
+        attempts += 1
+        guard mf_audio_session_offer(session).active else {
+            for buffer in buffers { if let p = buffer.mData { memset(p,0,Int(buffer.mDataByteSize)) } }
+            return noErr
+        }
         var offset = 0
         while offset < Int(frames) {
             if cursor == 1024 {
@@ -84,10 +101,11 @@ final class ForgePCMSource: @unchecked Sendable {
             let count = min(1024-cursor,Int(frames)-offset)
             for channel in 0..<buffers.count {
                 guard let destination = buffers[channel].mData?.assumingMemoryBound(to:Float.self) else { continue }
-                for i in 0..<count { destination[offset+i] = block![(cursor+i)*2+channel] }
+                for i in 0..<count { destination[offset+i] = muted ? 0:block![(cursor+i)*2+channel] }
             }
             offset += count; cursor += count
         }
+        for buffer in buffers { if let bytes=buffer.mData?.assumingMemoryBound(to:Float.self) { for i in 0..<(Int(buffer.mDataByteSize)/MemoryLayout<Float>.stride) { if bytes[i] != 0 { nonzeroDeviceSamples += 1 } } } }
         callbacks += 1; rendered += Int(frames)
         return noErr
     }
@@ -99,13 +117,20 @@ final class ForgePCMSource: @unchecked Sendable {
     }
     func observations() -> [String:Int64] {
         lock.lock(); defer { lock.unlock() }
-        return ["frames":mf_pcm_info(pcm,0),"accepted":mf_pcm_info(pcm,1),"refused":mf_pcm_info(pcm,2),"roomPartitions":mf_pcm_info(pcm,3),"voices":mf_pcm_info(pcm,4),"callbacks":Int64(callbacks),"deviceFrames":Int64(rendered)]
+        var info = pcm == nil ? retiredInfo:pcmInfo()
+        let offer = mf_audio_session_offer(session)
+        info["callbacks"]=Int64(callbacks);info["deviceFrames"]=Int64(rendered);info["attemptedCallbacks"]=Int64(attempts)
+        info["active"]=offer.active ? 1:0;info["started"]=offer.started ? 1:0;info["retired"]=offer.retired ? 1:0
+        info["nonzeroDeviceSamples"]=Int64(nonzeroDeviceSamples)
+        return info
     }
+    private func pcmInfo() -> [String:Int64] { ["frames":mf_pcm_info(pcm,0),"accepted":mf_pcm_info(pcm,1),"refused":mf_pcm_info(pcm,2),"roomPartitions":mf_pcm_info(pcm,3),"voices":mf_pcm_info(pcm,4)] }
     func close() {
         lock.lock(); defer { lock.unlock() }
-        if let pcm { mf_pcm_close(pcm) }; pcm = nil; block = nil
+        _ = mf_audio_session_event(session,4)
+        if let pcm { retiredInfo=pcmInfo(); mf_pcm_close(pcm) }; pcm = nil; block = nil
     }
-    deinit { if let pcm { mf_pcm_close(pcm) } }
+    deinit { if let pcm { mf_pcm_close(pcm) };mf_audio_session_close(session) }
 }
 
 @MainActor
@@ -116,17 +141,22 @@ final class ForgeMetalAudio {
     let source = ForgePCMSource()
     let muted: Bool
     let memory: ForgeAudioMemory
+    let bankDirectory: URL
     let wav = mf_wav_open()
     var node: AVAudioSourceNode?
-    var started = false
+    var started: Bool { source.sessionOffer().started }
     var banked = false
     var buffers: [String:ForgeDecodedPCM] = [:]
     var bankWav: [String:Data] = [:]
     var packets = 0
     var scheduled = 0
-    init(host: UnsafeMutableRawPointer, resources: URL, muted: Bool, memory: ForgeAudioMemory = ForgeAudioMemory()) {
+    var lastResult: Int64 = -1
+    var bankStatus: Int64 = -1
+    init(host: UnsafeMutableRawPointer, resources: URL, muted: Bool, memory: ForgeAudioMemory = ForgeAudioMemory(), bankDirectory: URL? = nil) {
         self.host = host; self.resources = resources; self.muted = muted; self.memory = memory
+        self.bankDirectory = bankDirectory ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/aethyrforge/audio-bank")
         let source = self.source
+        source.muted = muted
         let format = AVAudioFormat(standardFormatWithSampleRate:48000,channels:2)!
         let node = AVAudioSourceNode(format:format) { _, _, frames, audio in source.render(frames,audio) }
         self.node = node
@@ -134,28 +164,30 @@ final class ForgeMetalAudio {
         engine.mainMixerNode.outputVolume = muted ? 0:1
     }
     func start() {
-        guard !started else { return }
+        guard !source.sessionOffer().retired else { return }
         bank()
-        do { try engine.start(); started = true } catch { return }
+        if source.sessionEvent(1).active && !engine.isRunning { try? engine.start() }
     }
     func bank() {
         guard !banked else { return }; banked = true
         var n = 0, capacity = 0
         guard let p = mf_sound_bank(host,&n), let base = mf_sound_bank_storage(host,&capacity),
               let registry = mf_audio_bank_open(base,capacity) else { return }
+        bankStatus = 0
         defer { mf_audio_bank_close(registry) }
-        let root = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/aethyrforge/audio-bank")
+        let root = bankDirectory
         try? FileManager.default.createDirectory(at:root,withIntermediateDirectories:true)
         for line in Data(bytes:p,count:n).split(separator:10) {
             var asset = MFAudioBankAsset()
             let accepted = line.withUnsafeBytes { mf_audio_bank_register(registry,$0.bindMemory(to:UInt8.self).baseAddress,$0.count,&asset) }
-            guard accepted, let nameBytes = asset.name, let bytes = asset.bytes else { continue }
+            guard accepted, let nameBytes = asset.name, let bytes = asset.bytes else { bankStatus = -1; continue }
             let name = String(decoding:UnsafeBufferPointer(start:nameBytes,count:asset.name_count),as:UTF8.self)
             let path = root.appendingPathComponent("\(name).wav")
             let data = Data(bytes:bytes,count:asset.byte_count)
             try? data.write(to:path,options:.atomic)
             bankWav[name] = data
             buffers[name] = decodeCanonical(data)
+            if buffers[name] == nil { bankStatus = -1 }
         }
     }
     func decodeCanonical(_ bytes: Data) -> ForgeDecodedPCM? {
@@ -206,7 +238,8 @@ final class ForgeMetalAudio {
             guard mf_audio_decode(bytes.baseAddress,bytes.count,&effect) else { return -1 }
             let name = effect.name.map { String(decoding:UnsafeBufferPointer(start:$0,count:effect.name_count),as:UTF8.self) } ?? ""
             let pcm = name.isEmpty ? nil:buffer(name)
-            let result = source.command(bytes,pcm,started:contextStarted ?? started)
+            let result = source.command(bytes,pcm,started:contextStarted)
+            lastResult = result
             packets += 1; if result >= 0 && effect.kind <= 2 { scheduled += 1 }
             return result
         }
@@ -219,11 +252,16 @@ final class ForgeMetalAudio {
         guard let p = mf_sound_commands(host,&n), n > 0 else { return }
         for line in Data(bytes:p,count:n).split(separator:10) { execute(Data(line)) }
     }
-    func setPaused(_ value: Bool) { if value { engine.pause() } else if started { try? engine.start() } }
-    func close() {
-        engine.stop(); source.close()
+    func setPaused(_ value: Bool) {
+        if source.sessionEvent(value ? 2:3).active { if !engine.isRunning { try? engine.start() } } else { engine.pause() }
+    }
+    func retire() {
+        source.sessionEvent(4);engine.stop()
         if let node { engine.detach(node) }; node = nil
-        buffers.removeAll(); started = false
+    }
+    func close() {
+        retire(); source.close()
+        buffers.removeAll()
         bankWav.removeAll()
     }
     deinit { mf_wav_close(wav) }

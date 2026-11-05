@@ -425,6 +425,8 @@ void mf_action_done(void *host){MFRealm *r=(__bridge MFRealm*)host;if(r->face.ac
 int32_t mf_probe(void *host,int32_t field){MFRealm *r=(__bridge MFRealm*)host;return r->face.field_probe?r->face.field_probe(r->state,field):-1;}
 int64_t mf_observe(void *host,int64_t event,int64_t field){MFRealm *r=(__bridge MFRealm*)host;int64_t(*probe)(uintptr_t,int32_t,int32_t)=dlsym(r->image,"coaxial_host_probe");return probe?probe(r->state,(int32_t)event,(int32_t)field):-1;}
 void mf_observe_reset(void *host){MFRealm *r=(__bridge MFRealm*)host;void(*reset)(uintptr_t)=dlsym(r->image,"coaxial_host_reset");if(reset)reset(r->state);}
+bool mf_audio_fixture_mode(void *host,int32_t mode){MFRealm *r=(__bridge MFRealm*)host;if(!r->fixture)return false;void(*set)(int)=dlsym(r->image,"coaxial_audio_fixture_mode");if(!set)return false;set(mode);return true;}
+int64_t mf_audio_fixture_probe(void *host,int32_t field){MFRealm *r=(__bridge MFRealm*)host;if(!r->fixture)return -1;int64_t(*probe)(int)=dlsym(r->image,"coaxial_audio_fixture_probe");return probe?probe(field):-1;}
 void mf_layer(void *host,void *raw){MFRealm *r=(__bridge MFRealm*)host;r->layer=(__bridge CAMetalLayer*)raw;if(r->layer){r->layer.device=r->device;r->layer.pixelFormat=MTLPixelFormatBGRA8Unorm;r->layer.framebufferOnly=NO;r->layer.displaySyncEnabled=YES;r->screenFormat=r->presentationExperiment?COAX_RenderTextureFormat_rgba16f:COAX_RenderTextureFormat_bgra8;}else r->screenFormat=COAX_RenderTextureFormat_rgba16f;}
 bool mf_offscreen_bgra8(void *host){MFRealm *r=(__bridge MFRealm*)host;if(r->frames||r->pending||r->layer)return false;r->screenFormat=COAX_RenderTextureFormat_bgra8;return true;}
 bool mf_presentation_experiment(void *host){MFRealm *r=(__bridge MFRealm*)host;if(r->frames||r->pending||r->fixture)return false;r->presentationExperiment=YES;r->screenFormat=COAX_RenderTextureFormat_rgba16f;return true;}
@@ -526,6 +528,11 @@ int32_t mf_sound_probe(void *host,int32_t slot,float right,float ahead,float up)
 bool mf_audio_decode(const uint8_t *bytes,size_t n,MFAudioEffect *out){coax_t_AudioHostEffect e=audio_host_parse((coax_string){(const char*)bytes,(int64_t)n});*out=(MFAudioEffect){e.kind,(const uint8_t*)e.name.data,(size_t)e.name.count,(const uint8_t*)e.id.data,(size_t)e.id.count,e.gain,e.pan,e.delay,e.lowpass,e.rate,e.wet};return e.kind!=0;}
 bool mf_audio_asset_name(const uint8_t *bytes,size_t n){return apv_asset_name((coax_string){(const char*)bytes,(int64_t)n});}
 typedef struct {coax_t_AudioPcmHost state;double *workspace;int64_t words;float block[2048];} MFAudioPCM;
+void *mf_audio_session_open(void){coax_t_HostAudioSession *s=malloc(sizeof*s);if(s)*s=has_open();return s;}
+static MFAudioSessionOffer audioOffer(coax_t_HostAudioSessionOffer q){return(MFAudioSessionOffer){q.active,q.started,q.retired};}
+MFAudioSessionOffer mf_audio_session_offer(void *session){if(!session)return(MFAudioSessionOffer){0};return audioOffer(has_offer((coax_v_t_HostAudioSession){session,1}));}
+MFAudioSessionOffer mf_audio_session_event(void *session,int64_t kind){if(!session)return(MFAudioSessionOffer){0};return audioOffer(has_event((coax_v_t_HostAudioSession){session,1},kind));}
+void mf_audio_session_close(void *session){free(session);}
 void *mf_pcm_open(void){MFAudioPCM *p=calloc(1,sizeof*p);if(!p)return NULL;coax_default_t_AudioPcmHost(&p->state);p->words=ac_words(1024,128);p->workspace=calloc((size_t)p->words,sizeof(double));if(!p->workspace){free(p);return NULL;}return p;}
 int64_t mf_pcm_command(void *pcm,const uint8_t *line,size_t n,const float *samples,size_t count,int64_t channels,bool started){MFAudioPCM *p=pcm;if(!p)return -1;return ap_context_command((coax_v_t_AudioPcmHost){&p->state,1},(coax_v_f64){p->workspace,p->words},(coax_string){(const char*)line,(int64_t)n},(coax_v_f32){(float*)samples,(int64_t)count},channels,started);}
 const float *mf_pcm_block(void *pcm,size_t *samples){MFAudioPCM *p=pcm;*samples=0;if(!p||!ap_block((coax_v_t_AudioPcmHost){&p->state,1},(coax_v_f64){p->workspace,p->words},(coax_v_f32){p->block,2048}))return NULL;*samples=2048;return p->block;}
