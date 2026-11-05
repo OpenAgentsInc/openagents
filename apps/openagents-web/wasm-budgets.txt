@@ -22,9 +22,10 @@ chat 200000
 connect-pylon 80000
 deadgears 450000
 droprealm 180000
-# /worlds/everglade-legacy page (everglade.coax): 1,813,705 measured 2026-11-04 after the day's room work (#12794, #12862, #12877, #12887); about 5% room
+# everglade.coax (the base world everglade5e and fivemmo build on): 1,813,705 measured 2026-11-04 after the day's room work (#12794, #12862, #12877, #12887); about 5% room
 everglade 1910000
-everglade5e 2040000
+# /worlds/everglade (everglade5e.coax): 2,032,230 measured 2026-11-04 after #12887; about 5% room
+everglade5e 2140000
 # the room server's simulation for offline play's local host (coax/web/room/worker.sh, #12784): 1,191,635 measured; 1,206,472 after the WANTED ladder and the rules saves (45bcccd674, a1381c7131)
 everglade-room 1260000
 fairy 660000
