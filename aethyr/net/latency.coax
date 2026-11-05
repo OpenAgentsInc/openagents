@@ -1,0 +1,209 @@
+// Optional observation only: proto/verse/everglade-latency-v1.json. This never
+// admits gameplay, owns a gameplay queue, or substitutes a simulation clock.
+#module "aethyr.net.latency";
+#authority;
+#load "../../apps/openagents-web/everglade-wire.coax";
+
+LAT_MAX :: 9007199254740991;
+LAT_FRAME :: 256;
+LAT_INPUT_US :: 250000;
+LAT_PING_US :: 1000000;
+LAT_DEADLINE_US :: 2000000;
+LatMessage :: struct {ok:bool;kind:int;count:int;v:[11]int;}
+LatServer :: struct {
+  id:int;seq:int;client:int;requested:int;received:int;
+  step_begin:int;step_end:int;simulation_end:int;serialize_begin:int;serialize_end:int;
+  last_id:int;last_input:int;last_ping:int;
+  refused:int;expired:int;completed:int;overflow:bool;
+}
+
+#test "latency v1 codec keeps its independent identity and complete bounded field shape" {
+  p:=lat_decode("@1 p 1 1000000",false);#assert p.ok&&p.kind==1&&p.count==2&&p.v[0]==1&&p.v[1]==1000000;
+  #assert !lat_decode("@1 p 1 1000000",true).ok;
+  p=lat_decode("@1 p 1 1000000 2000010 2000020",true);#assert p.ok&&p.count==4&&p.v[2]==2000010&&p.v[3]==2000020;
+  p=lat_decode("@1 i 2 7 1000100",false);#assert p.ok&&p.kind==2&&p.v[1]==7;
+  p=lat_decode("@1 d 2 7 42 1000100 2000110 2000120 2000125 2000130 2000131 2000135 2000140",true);
+  #assert p.ok&&p.kind==3&&p.count==11&&p.v[10]==2000140;
+  b:[LAT_FRAME]u8;n:=lat_encode(p,b[..]);#assert n>0&&cast(string)b[0..<n]=="@1 d 2 7 42 1000100 2000110 2000120 2000125 2000130 2000131 2000135 2000140";
+  b[0]=99;#assert lat_encode(p,b[0..<1])==0&&b[0]==99;
+}
+#test "latency v1 refuses malformed, wrong-direction and inexact numbers" {
+  for text:[14]string.["","@2 p 1 2","@1 x 1 2","@1 p 1","@1 p 1 2 3","@1 p 1 2 3 4 5","@1 i 1 2","@1 p -1 2","@1 p 0 2","@1 p 1 0","@1 p 1 9007199254740992","@1 p 1 1x","@1 p 1 2\0","@1 p 1 9999999999999999999"] {
+    #assert !lat_decode(text,false).ok;
+  }
+  #assert lat_decode("@1 p 1 9007199254740991",false).ok;
+  #assert !lat_decode("@1 i 1 2 3",true).ok&&!lat_decode("@1 d 1 2 3 4 5 6 7 8 9 10 11",false).ok;
+  m:=lat_decode("@1 p 1 2",false);m.ok=false;b:[LAT_FRAME]u8;b[0]=55;#assert lat_encode(m,b[..])==0&&b[0]==55;
+}
+#test "latency server observes only a newly accepted and exactly stepped sequence" {
+  s:[1]LatServer;b:[LAT_FRAME]u8;
+  #assert lat_request(s[..],"@1 i 2 7 1000100",2000000,2000001,b[..])==0&&s[0].id==2;
+  lat_received(s[..],7,7,2000010);#assert s[0].received==0;
+  lat_received(s[..],6,8,2000010);#assert s[0].received==0;
+  lat_received(s[..],6,7,2000010);#assert s[0].received==2000010;
+  lat_step(s[..],8,2000020,2000025);#assert s[0].step_end==0;
+  lat_step(s[..],7,2000020,2000025);#assert s[0].step_begin==2000020&&s[0].step_end==2000025;
+  lat_serialized(s[..],2000030,2000031,2000035);#assert s[0].simulation_end==2000030&&s[0].serialize_end==2000035;
+  #assert lat_queued(s[..],6,42,2000040,b[..])==0&&s[0].completed==0;
+  n:=lat_queued(s[..],7,42,2000040,b[..]);#assert n>0&&s[0].completed==1&&s[0].id==0;
+  m:=lat_decode(cast(string)b[0..<n],true);#assert m.ok&&m.v[0]==2&&m.v[1]==7&&m.v[2]==42&&m.v[3]==1000100&&m.v[4]==2000010&&m.v[10]==2000040;
+  #assert lat_queued(s[..],7,42,2000041,b[..])==0&&s[0].completed==1;
+}
+#test "latency requests have no retry queue and preserve pending ownership under duplicates and pressure" {
+  s:[1]LatServer;b:[LAT_FRAME]u8;
+  #assert lat_request(s[..],"@1 p 1 1000000",2000000,2000010,b[..])>0;
+  #assert lat_request(s[..],"@1 p 2 1000001",2999999,3000000,b[..])==0&&s[0].refused==1;
+  #assert lat_request(s[..],"@1 p 2 1000001",3000000,3000010,b[..])>0;
+  #assert lat_request(s[..],"@1 i 3 7 1000100",3000020,3000021,b[..])==0&&s[0].id==3;
+  ignored:=lat_request(s[..],"@1 i 4 8 1000200",3000030,3000031,b[..]);#assert s[0].id==3&&s[0].refused==2;
+  lat_expire(s[..],5000020);#assert s[0].id==0&&s[0].expired==1;
+  ignored=lat_request(s[..],"@1 i 5 9 1000300",5000021,5000022,b[..]);#assert s[0].id==5;
+  ignored=lat_request(s[..],"@1 i 5 9 1000300",6000021,6000022,b[..]);#assert s[0].id==5&&s[0].refused==3;
+  s[0].refused=LAT_MAX;lat_count(s[..],0);#assert s[0].overflow&&s[0].refused==LAT_MAX;
+}
+#test "latency cannot report missing, backwards, expired or unencoded timing stages" {
+  s:[1]LatServer;b:[LAT_FRAME]u8;
+  ignored:=lat_request(s[..],"@1 i 1 7 1",1000000,1000001,b[..]);
+  lat_step(s[..],7,1000010,1000020);#assert s[0].step_end==0;
+  lat_received(s[..],6,7,1000010);lat_step(s[..],7,1000009,1000020);#assert s[0].step_end==0;
+  lat_step(s[..],7,1000011,1000010);#assert s[0].step_end==0;
+  lat_step(s[..],7,1000011,1000020);lat_serialized(s[..],1000019,1000030,1000040);#assert s[0].serialize_end==0;
+  lat_serialized(s[..],1000020,1000019,1000040);#assert s[0].serialize_end==0;
+  lat_serialized(s[..],1000020,1000030,1000029);#assert s[0].serialize_end==0;
+  lat_serialized(s[..],1000020,1000030,1000040);
+  #assert lat_queued(s[..],7,42,1000039,b[..])==0;
+  b[0]=99;#assert lat_queued(s[..],7,42,1000050,b[0..<1])==0&&s[0].id==1&&b[0]==99;
+  #assert lat_queued(s[..],7,42,3000000,b[..])==0&&s[0].expired==1;
+}
+#test "latency first identifiers and same-microsecond effects complete without inventing duration" {
+  s:[1]LatServer;b:[LAT_FRAME]u8;
+  ignored:=lat_request(s[..],"@1 i 1 1 1",1,1,b[..]);#assert s[0].id==1;
+  lat_received(s[..],0,1,1);lat_step(s[..],1,1,1);lat_serialized(s[..],1,1,1);
+  #assert s[0].received==1&&s[0].step_begin==1&&s[0].step_end==1&&s[0].simulation_end==1&&s[0].serialize_begin==1&&s[0].serialize_end==1;
+  n:=lat_queued(s[..],1,1,1,b[..]);#assert n>0&&s[0].completed==1&&s[0].id==0;
+  m:=lat_decode(cast(string)b[0..<n],true);#assert m.ok;for i:0..<11{#assert m.v[i]==1;}
+  lat_received(s[..],0,1,2);lat_step(s[..],1,2,2);lat_serialized(s[..],2,2,2);#assert s[0].received==1&&s[0].step_end==1&&s[0].serialize_end==1;
+  idle:[1]LatServer;lat_expire(idle[..],LAT_DEADLINE_US);#assert idle[0].expired==0;
+  lat_step(idle[..],0,1,1);lat_serialized(idle[..],1,1,1);#assert idle[0].step_end==0&&idle[0].serialize_end==0;
+}
+#test "latency format boundaries preserve exact canonical messages and refuse excessive or invalid shapes" {
+  b:[LAT_FRAME]u8;
+  for text:[3]string.["@1 p 1 1","@1 p 1 1 1 1","@1 i 1 1 1"] {
+    m:=lat_decode(text,text.count==12);n:=lat_encode(m,b[..]);#assert n==text.count&&cast(string)b[0..<n]==text;
+  }
+  m:=lat_decode("@1 i 1 1 1",false);
+  for count:[6]int.[-1,0,2,4,11,12]{bad:=m;bad.count=count;#assert !lat_shape(bad)&&lat_encode(bad,b[..])==0;}
+  for kind:[4]int.[-1,0,3,4]{bad:=m;bad.kind=kind;#assert !lat_shape(bad);}
+  bad:=m;bad.v[1]=0;#assert !lat_shape(bad);bad=m;bad.v[1]=LAT_MAX+1;#assert !lat_shape(bad);
+  for text:[5]string.["@1 p","@1 p ","!1 p 1 2","@1 xp 1 2","@1xp 1 2"]{#assert !lat_decode(text,false).ok;}
+  long:[257]u8;for i:0..<long.count{long[i]=' ';}ignored:=wire_put(long[..],0,"@1 p 1 2");
+  #assert lat_decode(cast(string)long[0..<256],false).ok&&!lat_decode(cast(string)long[..],false).ok;
+}
+#test "latency clocks, request-rate boundaries and automatic expiry never retain an older sample's stamps" {
+  b:[LAT_FRAME]u8;s:[1]LatServer;
+  for clock:[4]int.[-1,0,LAT_MAX+1,LAT_MAX+2]{s[0]=LatServer.{};#assert lat_request(s[..],"@1 p 1 1",clock,clock,b[..])==0&&s[0].refused==1;}
+  s[0]=LatServer.{};#assert lat_request(s[..],"@1 p 1 1",2,1,b[..])==0&&s[0].refused==1;
+  s[0]=LatServer.{};#assert lat_request(s[..],"@1 p 1 1",LAT_MAX,LAT_MAX,b[..])>0&&s[0].last_ping==LAT_MAX;
+  s[0]=LatServer.{};ignored:=lat_request(s[..],"@1 i 1 1 1",1000000,1000000,b[..]);s[0].id=0;
+  ignored=lat_request(s[..],"@1 i 2 2 2",1249999,1249999,b[..]);#assert s[0].id==0&&s[0].refused==1;
+  ignored=lat_request(s[..],"@1 i 2 2 2",1250000,1250000,b[..]);#assert s[0].id==2&&s[0].last_input==1250000;
+  lat_received(s[..],1,2,1250000);lat_step(s[..],2,1250000,1250000);lat_serialized(s[..],1250000,1250000,1250000);
+  ignored=lat_request(s[..],"@1 i 3 3 3",3250000,3250000,b[..]);
+  #assert s[0].id==3&&s[0].expired==1&&s[0].received==0&&s[0].step_begin==0&&s[0].step_end==0&&s[0].simulation_end==0&&s[0].serialize_begin==0&&s[0].serialize_end==0;
+  lat_received(s[..],2,3,3249999);#assert s[0].received==0;lat_received(s[..],2,3,3250000);lat_received(s[..],2,3,3250001);#assert s[0].received==3250000;
+}
+#test "latency observation counters saturate without wrapping or aliasing kinds" {
+  s:[1]LatServer;lat_count(s[..],-1);lat_count(s[..],3);#assert s[0].refused==0&&s[0].expired==0&&s[0].completed==0&&!s[0].overflow;
+  for kind:0..<3{s[0]=LatServer.{refused=LAT_MAX-1,expired=LAT_MAX-1,completed=LAT_MAX-1};lat_count(s[..],kind);
+    #assert !s[0].overflow&&s[0].refused==LAT_MAX-(ifx kind==0 then 0 else 1)&&s[0].expired==LAT_MAX-(ifx kind==1 then 0 else 1)&&s[0].completed==LAT_MAX-(ifx kind==2 then 0 else 1);
+    lat_count(s[..],kind);#assert s[0].overflow;
+  }
+}
+#test "latency response encoding, nonce ownership and the first microsecond obey the same limits" {
+  s:[1]LatServer;b:[LAT_FRAME]u8;
+  #assert lat_request(s[..],"unknown",1,1,b[..])==0&&s[0].last_id==0;
+  #assert lat_request(s[..],"@1 p 1 1",1,1,b[0..<1])==0&&s[0].last_ping==0&&s[0].last_id==0;
+  n:=lat_request(s[..],"@1 p 1 1",1,2,b[..]);m:=lat_decode(cast(string)b[0..<n],true);
+  #assert n>0&&m.ok&&m.v[2]==1&&m.v[3]==2&&s[0].last_ping==1&&s[0].last_id==1;
+  #assert lat_request(s[..],"@1 p 2 2",2,2,b[..])==0&&s[0].refused==1;
+  #assert lat_request(s[..],"@1 p 1 1",1000001,1000001,b[..])==0&&s[0].refused==2&&s[0].last_id==1;
+  s[0]=LatServer.{};#assert lat_request(s[..],"@1 i 1 1 1",1,1,b[..])==0&&s[0].last_id==1;
+  lat_serialized(s[..],2,2,2);#assert s[0].serialize_end==0;
+  #assert lat_request(s[..],"@1 i 2 2 2",250001,250001,b[..])==0&&s[0].id==1&&s[0].refused==1;
+  s[0].id=0;#assert lat_request(s[..],"@1 i 2 2 2",250000,250000,b[..])==0&&s[0].id==0&&s[0].refused==2;
+  #assert lat_request(s[..],"@1 i 2 2 2",250001,250001,b[..])==0&&s[0].id==2&&s[0].last_id==2;
+  s[0].id=0;#assert lat_request(s[..],"@1 i 2 2 2",500001,500001,b[..])==0&&s[0].id==0&&s[0].refused==3;
+  bad:=lat_decode("@1 i 1 2 3",true);#assert !bad.ok&&bad.count==0;
+  valid:=lat_decode("@1 i 1 2 3",false);n=lat_encode(valid,b[..]);#assert n>0&&lat_encode(valid,b[0..<n])==n;
+}
+#test "each asynchronous timing boundary expires its own active observation" {
+  b:[LAT_FRAME]u8;
+  for stage:0..<3{s:[1]LatServer;ignored:=lat_request(s[..],"@1 i 1 1 1",1000000,1000000,b[..]);
+    if stage>0{lat_received(s[..],0,1,1000000);}if stage>1{lat_step(s[..],1,1000000,1000000);}
+    if stage==0{lat_received(s[..],0,1,3000000);}if stage==1{lat_step(s[..],1,3000000,3000000);}if stage==2{lat_serialized(s[..],3000000,3000000,3000000);}
+    #assert s[0].id==0&&s[0].expired==1;
+  }
+  retired:[1]LatServer;retired[0].seq=1;lat_received(retired[..],0,1,1);#assert retired[0].received==0;
+}
+#test "latency nonces remain independent of echoed client clock values" {
+  s:[1]LatServer;b:[LAT_FRAME]u8;
+  #assert lat_request(s[..],"@1 p 7 10000",1,1,b[..])>0&&s[0].last_id==7;
+  #assert lat_request(s[..],"@1 p 7 10001",1000001,1000001,b[..])==0&&s[0].last_id==7&&s[0].refused==1;
+  n:=lat_request(s[..],"@1 p 8 1",1000001,1000001,b[..]);m:=lat_decode(cast(string)b[0..<n],true);
+  #assert m.ok&&m.v[0]==8&&m.v[1]==1&&s[0].last_id==8;
+}
+
+lat_shape::(m:LatMessage)->bool {
+  if !m.ok{return false;}
+  if !((m.kind==1&&(m.count==2||m.count==4))||(m.kind==2&&m.count==3)||(m.kind==3&&m.count==11)){return false;}
+  for i:0..<m.count{if m.v[i]<=0||m.v[i]>LAT_MAX{return false;}}return true;
+}
+lat_decode::(text:string,server:bool)->LatMessage {
+  m:=LatMessage.{};if text.count>LAT_FRAME||!wire_is(text,"@1"){return m;}
+  // Prefix and kind are exact; ordinary gameplay and other versions are ignored.
+  r:[1]WireRd;r[0]=wire_rd(text,2);kind:=wire_word(text,r[..]);
+  m.kind=ifx kind=="p" then 1 else ifx kind=="i" then 2 else ifx kind=="d" then 3 else 0;
+  m.count=ifx m.kind==1 then (ifx server then 4 else 2) else ifx m.kind==2&&!server then 3 else ifx m.kind==3&&server then 11 else 0;
+  for i:0..<m.count{m.v[i]=wire_num(text,r[..]);}
+  m.ok=r[0].ok&&!wire_more(text,r[..]);m.ok=lat_shape(m);return m;
+}
+lat_encode::(m:LatMessage,out:[]u8)->int {
+  if !lat_shape(m){return 0;}tmp:[LAT_FRAME]u8;n:=wire_put(tmp[..],0,ifx m.kind==1 then "@1 p" else ifx m.kind==2 then "@1 i" else "@1 d");
+  for i:0..<m.count{n=wire_int(tmp[..],n,m.v[i]);}
+  if n>out.count{return 0;}for i:0..<n{out[i]=tmp[i];}return n;
+}
+lat_count::(s:[]LatServer,kind:int) {
+  if kind==0{if s[0].refused<LAT_MAX{s[0].refused+=1;}else{s[0].overflow=true;}}
+  if kind==1{if s[0].expired<LAT_MAX{s[0].expired+=1;}else{s[0].overflow=true;}}
+  if kind==2{if s[0].completed<LAT_MAX{s[0].completed+=1;}else{s[0].overflow=true;}}
+}
+lat_expire::(s:[]LatServer,now:int) #export_c {
+  if s[0].id>0&&now-s[0].requested>=LAT_DEADLINE_US{s[0].id=0;lat_count(s,1);}
+}
+lat_request::(s:[]LatServer,text:string,received:int,encoded:int,out:[]u8)->int #export_c {
+  m:=lat_decode(text,false);if !m.ok{return 0;}lat_expire(s,received);
+  if received<=0||encoded<received||encoded>LAT_MAX||m.v[0]<=s[0].last_id{lat_count(s,0);return 0;}
+  if m.kind==1{
+    if s[0].last_ping>0&&received-s[0].last_ping<LAT_PING_US{lat_count(s,0);return 0;}
+    reply:=m;reply.count=4;reply.v[2]=received;reply.v[3]=encoded;n:=lat_encode(reply,out);
+    if n!=0{s[0].last_ping=received;s[0].last_id=m.v[0];}return n;
+  }
+  if s[0].id>0||(s[0].last_input>0&&received-s[0].last_input<LAT_INPUT_US){lat_count(s,0);return 0;}
+  s[0].id=m.v[0];s[0].last_id=m.v[0];s[0].seq=m.v[1];s[0].client=m.v[2];s[0].requested=received;s[0].last_input=received;
+  s[0].received=0;s[0].step_begin=0;s[0].step_end=0;s[0].simulation_end=0;s[0].serialize_begin=0;s[0].serialize_end=0;return 0;
+}
+lat_received::(s:[]LatServer,old_tail:int,new_tail:int,now:int) #export_c {
+  lat_expire(s,now);if s[0].id>0&&s[0].received==0&&new_tail>old_tail&&new_tail==s[0].seq&&now>=s[0].requested{s[0].received=now;}
+}
+lat_step::(s:[]LatServer,seq:int,began:int,ended:int) #export_c {
+  lat_expire(s,ended);if s[0].id>0&&s[0].received>0&&seq==s[0].seq&&began>=s[0].received&&ended>=began{s[0].step_begin=began;s[0].step_end=ended;}
+}
+lat_serialized::(s:[]LatServer,simulation_end:int,began:int,ended:int) #export_c {
+  lat_expire(s,ended);if s[0].id>0&&s[0].step_end>0&&simulation_end>=s[0].step_end&&began>=simulation_end&&ended>=began{s[0].simulation_end=simulation_end;s[0].serialize_begin=began;s[0].serialize_end=ended;}
+}
+lat_queued::(s:[]LatServer,ack:int,tick:int,now:int,out:[]u8)->int #export_c {
+  lat_expire(s,now);if ack<s[0].seq||now<s[0].serialize_end{return 0;}
+  m:=LatMessage.{ok=true,kind=3,count=11};m.v[0]=s[0].id;m.v[1]=s[0].seq;m.v[2]=tick;m.v[3]=s[0].client;m.v[4]=s[0].received;
+  m.v[5]=s[0].step_begin;m.v[6]=s[0].step_end;m.v[7]=s[0].simulation_end;m.v[8]=s[0].serialize_begin;m.v[9]=s[0].serialize_end;m.v[10]=now;
+  n:=lat_encode(m,out);if n!=0{s[0].id=0;lat_count(s,2);}return n;
+}

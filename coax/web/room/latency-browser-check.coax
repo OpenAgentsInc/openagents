@@ -1,0 +1,26 @@
+// Actual Everglade page and native room, in headless muted Chrome. Unlike a
+// screenshot's golden capture this keeps the real session enabled. The caller
+// owns the local page/room servers; every browser/profile belongs to this run.
+#load "../wasm-chrome.coax";
+#load "../../lib/sys/proc.coax";
+
+lb_snapshot::(c:[]Cdp,out:[]u8)->int {
+  v:=cdp_evaluate(c,"JSON.stringify({scope:'actual-browser-room-smoke',sceneReady:globalThis.coaxial?.sceneReady||false,net:[0,12,51,84].map(x=>globalThis.coaxial?.netProbe?.(x)??-1),title:document.title,errors:globalThis.__latencyErrors||[]})");
+  return ifx v<0 then -1 else jv_str(cdp_doc(c),v,out);
+}
+tool_main::()->int #export_c {
+  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=2 {tool_errln("usage: latency-browser-check LOCAL_URL OUTPUT.json");return 2;}
+  c:[1]Cdp;if !cdp_launch(c[..],960,540,"room-latency-"){return 1;}defer{cdp_close(c[..]);}
+  if cdp_call(c[..],"Page.enable","",CDP_CALL_MS)<0||cdp_call(c[..],"Runtime.enable","",CDP_CALL_MS)<0{return 1;}
+  init:="{\"source\":\"globalThis.__latencyErrors=[];addEventListener('error',e=>__latencyErrors.push(String(e.message)));addEventListener('unhandledrejection',e=>__latencyErrors.push(String(e.reason)));Object.defineProperty(Navigator.prototype,'sendBeacon',{value:()=>false});\"}";
+  if cdp_call(c[..],"Page.addScriptToEvaluateOnNewDocument",init,CDP_CALL_MS)<0{return 1;}
+  p:[4096]u8;o:[1]Jo;jo_start(o[..],p[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],args_at(a[..],0));jo_end(o[..]);
+  if o[0].bad||cdp_call(c[..],"Page.navigate",jo_text(o[..]),CDP_CALL_MS)<0{return 1;}
+  deadline:=proc_now_ms()+60000;ready:=false;
+  while proc_now_ms()<deadline {
+    ready=wc_eval(c[..],"!!(globalThis.coaxial?.sceneReady&&coaxial.netProbe(84)===1&&coaxial.netProbe(12)>0&&coaxial.netProbe(51)>0)")=="true";
+    if ready{break;}proc_sleep(50);
+  }
+  out:[65536]u8;n:=lb_snapshot(c[..],out[..]);if n<0||!fs_write(args_at(a[..],1),cast(string)out[0..<n]){return 1;}
+  print("browser smoke: actual room ACK/state and rendered scene ready=%\n%\n",ready,cast(string)out[0..<n]);return ifx ready then 0 else 1;
+}

@@ -1,0 +1,50 @@
+// Observe wasm.sh's exact six-unit Everglade5e C-cache selection and freeze
+// its C/headers. This neither creates compiler provenance nor infers the
+// missing original emission profile of a cache hit. Run in the pinned root.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc-raw.coax";
+#load "../../coax/lib/crypto/sha256-kernel.coax";
+#load "../../coax/lib/json/json.coax";
+
+#test "cache source lists preserve the final path with or without a final newline" {
+  paths:[2]string;#assert opc_paths("a.coax\nb.coax\n",paths[..])==2&&paths[0]=="a.coax"&&paths[1]=="b.coax";
+  #assert opc_paths("a.coax\nb.coax",paths[..])==2&&paths[1]=="b.coax";
+  #assert opc_paths("a.coax\nb.coax",paths[0..<1])== -1&&opc_paths("",paths[..])==0;
+}
+opc_paths::(text:string,out:[]string)->int {
+  n:=0;start:=0;for i:0..<text.count+1{if i==text.count||text[i]=='\n'{if i>start{if n==out.count{return -1;}out[n]=text[start..<i];n+=1;}start=i+1;}}return n;
+}
+opc_run::(argv:[]string,deadline:int,out:[]u8,err:[]u8)->ProcRun {
+  left:=deadline-proc_now_ms();if left<=0{return ProcRun.{timed_out=true};}
+  none:[1]string;return proc_run_bytes(argv,none[0..<0],ifx left<60000 then left else 60000,out,err);
+}
+tool_main::()->int #export_c {
+  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=3 {tool_errln("usage: observe-page-cache COMPILER_SHA256 CACHE_DIRECTORY EMPTY_OUTPUT_DIRECTORY");return 2;}
+  compiler:=args_at(a[..],0);cache:=args_at(a[..],1);dir:=args_at(a[..],2);files:[1]FsList;deadline:=proc_now_ms()+780000;
+  if compiler.count!=64||!fs_mkdir(dir)||fs_list(dir,files[..])!=0{return 2;}
+  units:=[6]string.["aethyr/render/carriers/everglade5e.coax","apps/openagents-web/everglade-step.coax","verse/grid.coax","verse/everglade/river.coax","verse/everglade/guard-guide-policy.coax","apps/openagents-web/everglade5e-rules.coax"];
+  bases:=[6]string.["everglade5e","Everglade-step","Grid","River","Guard-guide-policy","Everglade5e-rules"];
+  print("scope=exact wasm.sh cache-key observation and frozen bytes; not original emission profile or graphics/default admission\n");
+  for unit,k:units {
+    source:[65536]u8;err:[65536]u8;cmd:=[4]string.["coax/web/tool.sh","wasm-size","sources",unit];r:=opc_run(cmd[..],deadline,source[..],err[..]);
+    if r.status!=0||r.cut||r.timed_out||r.out_n<1{return 1;}
+    args:[515]string;args[0]="/usr/bin/shasum";args[1]="-a";args[2]="256";
+    paths:=opc_paths(cast(string)source[0..<r.out_n],args[3..<args.count]);if paths<=0{return 1;}count:=paths+3;
+    hashes:[131072]u8;r=opc_run(args[0..<count],deadline,hashes[..],err[..]);if r.status!=0||r.cut||r.timed_out{return 1;}hash_n:=r.out_n;
+    material:[262144]u8;o:[1]Jo;jo_start(o[..],material[..]);
+    for row:[6]string.["coax-wasm-c-1",compiler,unit,bases[k],"--run-steps","128000"]{jo_put(o[..],row);jo_put(o[..],"\n");}
+    jo_put(o[..],cast(string)hashes[0..<r.out_n]);key:[64]u8;if o[0].bad||!S_hex(S_hash(jo_text(o[..])),key[..]){return 1;}
+    print("unit=% header=% sources=% key=%\n",unit,bases[k],count-3,cast(string)key[..]);
+    for suffix:[2]string.[".c",".h"] {
+      name:[256]u8;j:[1]Jo;jo_start(j[..],name[..]);jo_put(j[..],cast(string)key[..]);jo_put(j[..],suffix);from:[4096]u8;src:=fs_join(cache,jo_text(j[..]),from[..]);
+      jo_start(j[..],name[..]);jo_put(j[..],bases[k]);jo_put(j[..],suffix);to:[4096]u8;dst:=fs_join(dir,jo_text(j[..]),to[..]);
+      copy:=[3]string.["cp",src,dst];out:[4096]u8;r=opc_run(copy[..],deadline,out[..],err[..]);if r.status!=0||r.timed_out||r.cut{return 1;}
+      sum:=[4]string.["/usr/bin/shasum","-a","256",dst];r=opc_run(sum[..],deadline,out[..],err[..]);if r.status!=0||r.out_n<64||r.cut||r.timed_out{return 1;}
+      print("frozen=% bytes=% sha256=%\n",dst,fs_size(dst),cast(string)out[0..<64]);
+    }
+    name:[256]u8;j:[1]Jo;jo_start(j[..],name[..]);jo_put(j[..],bases[k]);jo_put(j[..],".sources.sha256");path:[4096]u8;
+    if !fs_write(fs_join(dir,jo_text(j[..]),path[..]),cast(string)hashes[0..<hash_n]){return 1;}
+  }return 0;
+}

@@ -1,0 +1,19 @@
+scope=exact wasm.sh cache-key observation and frozen bytes; not original emission profile or graphics/default admission
+unit=aethyr/render/carriers/everglade5e.coax header=everglade5e sources=188 key=ad45f1b5552b763a01bf3232001db5c7603b28642a51787e924ad355909effd8
+frozen=/tmp/room-latency-12840/page-c-units-exact/everglade5e.c bytes=8256509 sha256=3c28fc13d88f151ff1e113e95fe4f6f576cdbe8153dae20f7f95eab1f14f824d
+frozen=/tmp/room-latency-12840/page-c-units-exact/everglade5e.h bytes=1132199 sha256=f73e5ca9bc75e34413d48f0a6f75984dc6c1a34a0b69b64af72001dac9f9f6cc
+unit=apps/openagents-web/everglade-step.coax header=Everglade-step sources=30 key=7b8b01bc861ba8ed8b20dbca8edf2f03870c957e56ca579ea2845eb04ea69ade
+frozen=/tmp/room-latency-12840/page-c-units-exact/Everglade-step.c bytes=373836 sha256=889b0006581b1b7041041abffd31b4f84bb954c7cc3dc25e1604804c37042642
+frozen=/tmp/room-latency-12840/page-c-units-exact/Everglade-step.h bytes=36964 sha256=66b5bfd443e4839c559f8ecdaef473d6037783c397e0e7e983edc30d161809ff
+unit=verse/grid.coax header=Grid sources=7 key=44ab7852775141eae3282b210c60dd964aee601a920970ba2d4ab4cc64c36f60
+frozen=/tmp/room-latency-12840/page-c-units-exact/Grid.c bytes=105777 sha256=ef536d3bcbaa1835012fcfb0c0c6099574a856f164225d445d4353f076a03e30
+frozen=/tmp/room-latency-12840/page-c-units-exact/Grid.h bytes=9887 sha256=67456a463b1c9d4aa7d7802241aa91b84fc3e96c220811dddaced69febf21c8c
+unit=verse/everglade/river.coax header=River sources=6 key=042474fef2bf5f78034f5fc7f8211b34c22b44c0b17458bd2c72053c8b911943
+frozen=/tmp/room-latency-12840/page-c-units-exact/River.c bytes=389399 sha256=f41443c5ccc0948b5c851d4295a6b1b10779cb8865d73fc43b8ad3605c2c00db
+frozen=/tmp/room-latency-12840/page-c-units-exact/River.h bytes=70803 sha256=7e11a0a437fdfd1463c105e425fa12abc81fee15d97de39c4d6023019b23ce7c
+unit=verse/everglade/guard-guide-policy.coax header=Guard-guide-policy sources=19 key=99397f77ac0314721cc9f164bca8fb7fb9069bb5d885d4f743a9b29eb87718ce
+frozen=/tmp/room-latency-12840/page-c-units-exact/Guard-guide-policy.c bytes=227367 sha256=1533b4530e689908b30909d93a523a570c9ece08a7bd06a2e2f9dd3f37de9057
+frozen=/tmp/room-latency-12840/page-c-units-exact/Guard-guide-policy.h bytes=59923 sha256=c892f6a173461c8a3e9d1fbd03d092106474f7b48df321c0cb3d5cfcdce1b9fe
+unit=apps/openagents-web/everglade5e-rules.coax header=Everglade5e-rules sources=10 key=874192f02c06167a5b36d458f40fa8a61cc9bfbae6eac3f5c1866608e621a5a7
+frozen=/tmp/room-latency-12840/page-c-units-exact/Everglade5e-rules.c bytes=628820 sha256=7c493a623ede1c0086ec5baae314df042a1057c618a3938558ffc92e382c1f1f
+frozen=/tmp/room-latency-12840/page-c-units-exact/Everglade5e-rules.h bytes=68856 sha256=629ada76d6673659f887a1fcc099d27bfce3ed888f13ac04a3a55f2d6527f52a

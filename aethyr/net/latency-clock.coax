@@ -1,0 +1,67 @@
+// Clock intervals for optional latency observations. These describe a declared
+// constant-offset/drift model, never a guarantee about a remote machine clock.
+#module "aethyr.net.latency.clock";
+#authority;
+LC_MAX :: 9007199254740991;
+LC_FRESH_US :: 5000000;
+LatClock :: struct {ok:bool;at:int;lo:int;hi:int;quantum:int;ppm:int;}
+
+#test "four timestamp sync preserves asymmetric transit uncertainty" {
+  c:=lc_sync(1000000,2000010,2000020,1000100,1,100);
+  #assert c.ok&&c.at==1000100&&c.lo==999918&&c.hi==1000012;
+  o:[2]int;#assert lc_bounds(c,1000100,o[..])&&o[0]==999918&&o[1]==1000012;
+  #assert lc_bounds(c,2000100,o[..])&&o[0]==999818&&o[1]==1000112;
+  #assert lc_bounds(c,6000100,o[..])&&o[0]==999418&&o[1]==1000512;
+  #assert !lc_bounds(c,6000101,o[..])&&!lc_bounds(c,1000099,o[..]);
+}
+#test "clock sync refuses missing backwards inexact and impossible turnaround" {
+  #assert !lc_sync(0,2,3,4,1,100).ok&&!lc_sync(-1,2,3,4,1,100).ok;
+  #assert !lc_sync(1,0,3,4,1,100).ok&&!lc_sync(1,2,1,4,1,100).ok;
+  #assert !lc_sync(4,2,3,1,1,100).ok&&!lc_sync(1,2,9,4,1,100).ok;
+  #assert !lc_sync(10,20,23,12,1,100).ok;
+  #assert !lc_sync(1,2,3,4,0,100).ok&&!lc_sync(1,2,3,4,1000001,100).ok;
+  #assert !lc_sync(1,2,3,4,1,-1).ok&&!lc_sync(1,2,3,4,1,1000001).ok;
+  #assert !lc_sync(1,2,3,LC_MAX+1,1,100).ok&&!lc_sync(1,2,LC_MAX+1,LC_MAX,1,100).ok;
+  c:=lc_sync(LC_MAX,LC_MAX,LC_MAX,LC_MAX,1000000,1000000);#assert c.ok&&c.lo== -2000000&&c.hi==2000000;
+}
+#test "one-way times remain intervals and never use missing clocks as zero" {
+  c:=lc_sync(1000000,2000010,2000020,1000100,1,0);o:[2]int;
+  #assert lc_uplink(c,1000100,2000110,1000100,o[..])&&o[0]== -2&&o[1]==92;
+  #assert lc_downlink(c,2000140,1000300,1000300,o[..])&&o[0]==78&&o[1]==172;
+  o[0]=99;#assert !lc_uplink(LatClock.{},1,2,3,o[..])&&o[0]==99;
+  #assert !lc_uplink(c,2000000,2000000,1000100,o[..]);
+  #assert !lc_downlink(c,4000000,1000300,1000300,o[..]);
+  #assert !lc_bounds(c,1000100,o[0..<1]);
+}
+#test "zero transit and drift rounding retain their complete signed uncertainty interval" {
+  c:=lc_sync(1,1,1,1,1,1);#assert c.ok&&c.lo== -2&&c.hi==2;o:[2]int;
+  #assert lc_bounds(c,1000002,o[..])&&o[0]== -4&&o[1]==4;
+  #assert lc_uplink(c,3,1,1,o[..])&&o[0]== -4&&o[1]==0;
+  o[0]=99;#assert lc_uplink(c,1,6,1,o[..])&&o[0]==3&&o[1]==7;
+  #assert lc_downlink(c,3,1,1,o[..])&&o[0]== -4&&o[1]==0;
+  #assert lc_downlink(c,1,6,1,o[..])&&o[0]==3&&o[1]==7;
+  o[0]=99;#assert !lc_downlink(LatClock.{},1,2,3,o[..])&&o[0]==99;
+  #assert !lc_uplink(c,1,2,1,o[0..<1])&&!lc_downlink(c,1,2,1,o[0..<1]);
+}
+
+lc_sync::(c0:int,s1:int,s2:int,c3:int,quantum:int,ppm:int)->LatClock {
+  if c0<=0||s1<=0||s2<s1||c3<c0||c3>LC_MAX||s2>LC_MAX||quantum<1||quantum>1000000||ppm<0||ppm>1000000{return LatClock.{};}
+  if s2-s1>c3-c0{return LatClock.{};}
+  return LatClock.{ok=true,at=c3,lo=s2-c3-2*quantum,hi=s1-c0+2*quantum,quantum=quantum,ppm=ppm};
+}
+lc_bounds::(c:LatClock,now:int,out:[]int)->bool {
+  if !c.ok||out.count<2||now<c.at||now-c.at>LC_FRESH_US{return false;}
+  extra:=((now-c.at)*c.ppm+999999)/1000000;out[0]=c.lo-extra;out[1]=c.hi+extra;return true;
+}
+lc_uplink::(c:LatClock,client_send:int,server_receive:int,now:int,out:[]int)->bool {
+  b:[2]int;if out.count<2||!lc_bounds(c,now,b[..]){return false;}
+  low:=server_receive-client_send-b[1];high:=server_receive-client_send-b[0];if high<0{return false;}
+  // Preserve a negative lower bound: it exposes clock uncertainty across zero,
+  // rather than asserting a physically negative transit or a precise zero.
+  out[0]=low;out[1]=high;return true;
+}
+lc_downlink::(c:LatClock,server_queue:int,client_receive:int,now:int,out:[]int)->bool {
+  b:[2]int;if out.count<2||!lc_bounds(c,now,b[..]){return false;}
+  low:=client_receive+b[0]-server_queue;high:=client_receive+b[1]-server_queue;if high<0{return false;}
+  out[0]=low;out[1]=high;return true;
+}

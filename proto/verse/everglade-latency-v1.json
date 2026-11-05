@@ -1,0 +1,31 @@
+{
+  "profile": "openagents.everglade.latency",
+  "version": 1,
+  "transport": "optional WebSocket text frames beside an unchanged Everglade session",
+  "prefix": "@1",
+  "clock_unit": "integer monotonic microseconds",
+  "integer_max": 9007199254740991,
+  "frame_max": 256,
+  "messages": [
+    {"direction": "client", "kind": "p", "fields": ["id", "client_send"], "text": "@1 p 1 1000000"},
+    {"direction": "server", "kind": "p", "fields": ["id", "client_send", "server_receive", "server_encode"], "text": "@1 p 1 1000000 2000010 2000020"},
+    {"direction": "client", "kind": "i", "fields": ["id", "input_seq", "client_send"], "text": "@1 i 2 7 1000100"},
+    {"direction": "server", "kind": "d", "fields": ["id", "input_seq", "state_tick", "client_send", "input_receive", "step_begin", "step_end", "simulation_end", "serialize_begin", "serialize_end", "accepted_D_queue"], "text": "@1 d 2 7 42 1000100 2000110 2000120 2000125 2000130 2000131 2000135 2000140"}
+  ],
+  "limits": {
+    "inflight_per_socket": 1,
+    "input_sample_interval_us": 250000,
+    "clock_sample_interval_us": 1000000,
+    "inflight_deadline_us": 2000000,
+    "client_history": 64
+  },
+  "semantics": [
+    "The client explicitly opts in. Unknown @1 frames are ignored by existing sessions. No gameplay message changes.",
+    "An i request precedes the unchanged I input. Only an actual newly accepted input and that exact successfully stepped sequence qualify.",
+    "A d report follows a complete D whose ack covers the sampled input and whose bytes were accepted by the socket output queue.",
+    "Queue acceptance is neither kernel delivery nor client presentation. Failed or missing samples remain missing.",
+    "The client records WebSocket receipt, application delivery, render submission and GPU completion separately; GPU completion is not physical display scanout.",
+    "Clock offset lies in [server_encode-client_receive, server_receive-client_send] under nonnegative transport and a constant-offset clock model. Quantization and declared drift allowances expand this interval.",
+    "Telemetry refusal, timeout, saturation and retirement cannot admit, reject, delay or mutate gameplay. No telemetry retry queue exists."
+  ]
+}

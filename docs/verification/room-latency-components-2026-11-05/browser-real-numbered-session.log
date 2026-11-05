@@ -1,0 +1,2 @@
+browser smoke: actual room ACK/state and rendered scene ready=true
+{"scope":"actual-browser-room-smoke","sceneReady":true,"net":[2,1,3851,1],"title":"Everglade · OpenAgents","errors":[]}

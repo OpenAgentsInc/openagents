@@ -857,6 +857,17 @@ transaction has a 50 ms server statement budget and rolls back on failure;
 the local timeout cannot leak into ticket issuance. This is not a network
 deadline for an unavailable database connection.
 
+The separate opt-in latency observation v1 has no gameplay queue or authority.
+Its bounded kernel observes only a newly queued, exactly stepped input and a
+complete D accepted by the socket queue. Clock synchronization retains an
+offset interval with explicit quantization, drift and freshness assumptions;
+unknown time is never zero. The codec/kernel and clock components are checked
+and mutation-checked (`aethyr/net/latency*.coax`). Client SDK timing hooks and
+complete presentation qualification are still pending; a rendered room smoke
+test alone does not establish end-to-end latency. See
+`docs/protocol/everglade-latency-v1.md` and the pinned candidate record in
+`docs/verification/2026-11-05-room-latency-components.md`.
+
 ## An admitted Everglade seat keeps a cast reservation
 
 `coax/web/room/cast-budget.coax` (#12841, `#authority`, mutation-checked)
