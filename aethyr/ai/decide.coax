@@ -1,0 +1,347 @@
+// A model's decisions for shared actors, as expiring intents the simulation admits (GitHub #12855,
+// book chapters 75 and 77). The realm asks without waiting: decide_ask opens a ticket for one
+// actor, from what that actor senses (its Memory, a digest of it), with a deadline in ticks, and
+// refuses past a per-actor and a fleet quota. The model's answer comes back as an ordinary
+// REPLAY_MODEL event through aethyr/replay.coax's gate, which already refuses duplicates, answers
+// never asked for and answers from an old epoch, and records what it accepts. At the start of a
+// step the realm hands each event it takes to decide_admit, which checks it against the ticket:
+// the same actor, its owner then and now, the context it was asked with, the deadline, an intent
+// from the actor's catalogue with bounded arguments, and a target the actor has sensed. Only then
+// is it a DecideIntent the realm's own rules apply. A ticket past its deadline closes
+// (decide_expire) and the actor takes decide_fallback, a deterministic local choice, so a late or
+// absent model never holds a step. Every verdict depends only on the record and the step, so a
+// replay reaches the same intents without asking a model.
+//   coax/bin/coax test aethyr/ai/decide.coax --library
+//   coax/bin/coax mutate aethyr/ai/decide.coax --library
+
+#module "aethyr.ai.decide";
+#authority;
+#load "stimulus.coax";
+#load "../replay.coax";
+
+// book:begin decide-profile
+DECIDE_ACTORS :: 16;         // actors one table decides for
+DECIDE_FLEET :: 8;           // tickets open at once across them: the most answers one step admits
+DECIDE_WAIT_MAX :: 640;      // ticks a ticket may wait: 10 s at 64 a second
+DECIDE_REACH :: 10000;       // cm: a place an answer names is this near the origin on each axis, at most
+DECIDE_LINES :: 32;          // lines an actor may say
+
+// The intents a model may answer with. An actor's catalogue is a mask of 1 << kind.
+DECIDE_NONE :: 0;
+DECIDE_HOLD :: 1;            // stay where it is
+DECIDE_GO :: 2;              // walk to (x, z)
+DECIDE_CHASE :: 3;           // go after `target`, an entity it has sensed
+DECIDE_FLEE :: 4;            // go away from `target`, an entity it has sensed
+DECIDE_SAY :: 5;             // say line `target` of its realm's lines
+DECIDE_KINDS :: 6;
+DECIDE_ALL :: 62;            // every kind but none
+
+// What decide_ask and decide_admit say, and the table's counter for each.
+DECIDE_OK :: 0;
+DECIDE_BAD :: 1;             // a broken call: no such actor, a wait out of range
+DECIDE_ACTOR_BUSY :: 2;      // the actor already waits on a ticket
+DECIDE_FLEET_FULL :: 3;      // DECIDE_FLEET tickets are open
+DECIDE_UNASKED :: 4;         // no open ticket has that request: never asked, cancelled, expired or answered
+DECIDE_STALE :: 5;           // another actor, an earlier owner, or another context than the ticket's
+DECIDE_LATE :: 6;            // taken after the ticket's deadline
+DECIDE_FORBIDDEN :: 7;       // a kind outside the catalogue, or arguments out of bounds
+DECIDE_UNSENSED :: 8;        // a target the actor does not know of: the model may not use hidden state
+DECIDE_EXPIRED :: 9;         // tickets closed at their deadline (decide_expire)
+DECIDE_CANCELLED :: 10;      // tickets closed by the realm (decide_cancel, decide_transfer)
+DECIDE_COUNTERS :: 11;
+
+// The words of an answer's REPLAY_MODEL event.
+DECIDE_W_ACTOR :: 0; DECIDE_W_OWNER :: 1; DECIDE_W_CONTEXT :: 2; DECIDE_W_KIND :: 3;
+DECIDE_W_TARGET :: 4; DECIDE_W_X :: 5; DECIDE_W_Z :: 6;
+
+// One open question: the model request (aethyr/replay.coax's number), whose it is, who owned the
+// actor when it was asked, what the actor sensed then, and the last tick an answer may apply.
+DecideTicket :: struct { live: bool; request: int; actor: int; owner: int; context: int; due: int; }
+DecideTable :: struct {
+  tickets: [DECIDE_FLEET] DecideTicket;
+  owner: [DECIDE_ACTORS] int;       // each actor's owner epoch: a new owner makes old answers stale
+  catalogue: [DECIDE_ACTORS] int;   // each actor's allowed kinds
+  counts: [DECIDE_COUNTERS] int;
+}
+// An intent the simulation may apply: x and z in metres.
+DecideIntent :: struct { kind: int; actor: int; target: int = -1; x: f32; z: f32; }
+DecideAsk :: struct { status: int; request: int; epoch: int; live: bool; }
+DecideAdmit :: struct { status: int; intent: DecideIntent; }
+// book:end decide-profile
+
+decide_table :: (t: [] DecideTable) { t[0] = DecideTable.{}; for a: 0..<DECIDE_ACTORS { t[0].catalogue[a] = DECIDE_ALL; } }
+decide_count :: (t: [] DecideTable, status: int) -> int { return t[0].counts[status]; }
+decide_actor_ok :: (actor: int) -> bool { return actor >= 0 && actor < DECIDE_ACTORS; }
+decide_open :: (t: [] DecideTable) -> int { n := 0; for k: 0..<DECIDE_FLEET { if t[0].tickets[k].live { n += 1; } } return n; }
+decide_waiting :: (t: [] DecideTable, actor: int) -> bool {
+  for k: 0..<DECIDE_FLEET { if t[0].tickets[k].live && t[0].tickets[k].actor == actor { return true; } }
+  return false;
+}
+
+// book:begin decide-context
+// What an actor senses, as one number: each remembered stimulus's kind, source, place and tick.
+// The ticket keeps it, and the answer must name it: an answer is to the question asked.
+decide_context :: (m: Memory) -> int {
+  h := replay_mix(2166136261, m.count);
+  for i: 0..<m.count {
+    st := m.items[i];
+    h = replay_mix(replay_mix(replay_mix(h, cast(int) st.kind), st.source), st.tick);
+    h = replay_mix(replay_mix(replay_mix(h, replay_bits(st.at.x)), replay_bits(st.at.y)), replay_bits(st.at.z));
+  }
+  return h & 4294967295;
+}
+// book:end decide-context
+
+// book:begin decide-ask
+// A question for the model about `actor` on tick `now`, to be answered within `wait` ticks. It
+// takes a request number from the session (in a replay too, so the numbers match; a replay sends
+// nothing: `live` is false). A refusal takes no number.
+decide_ask :: (t: [] DecideTable, s: ReplaySession, actor: int, now: int, wait: int, context: int) -> DecideAsk {
+  out: DecideAsk;
+  if !decide_actor_ok(actor) || wait < 1 || wait > DECIDE_WAIT_MAX || now < 0 { out.status = DECIDE_BAD; }
+  else if decide_waiting(t, actor) { out.status = DECIDE_ACTOR_BUSY; }
+  else if decide_open(t) >= DECIDE_FLEET { out.status = DECIDE_FLEET_FULL; }
+  if out.status != DECIDE_OK { t[0].counts[out.status] += 1; return out; }
+  a := replay_ask(s, REPLAY_MODEL);
+  slot := 0;
+  while t[0].tickets[slot].live { slot += 1; }
+  t[0].tickets[slot] = DecideTicket.{live = true, request = a.request, actor = actor, owner = t[0].owner[actor], context = context, due = now + wait};
+  t[0].counts[DECIDE_OK] += 1;
+  return DecideAsk.{status = DECIDE_OK, request = a.request, epoch = a.epoch, live = a.live};
+}
+// book:end decide-ask
+
+// The model adapter's side: its answer to ticket `ask` as the event the gate takes. x and z in cm.
+decide_answer :: (ask: DecideAsk, actor: int, owner: int, context: int, kind: int, target: int, x: int, z: int) -> ReplayEvent {
+  e := ReplayEvent.{source = REPLAY_MODEL, request = ask.request, epoch = ask.epoch};
+  e.words[DECIDE_W_ACTOR] = actor; e.words[DECIDE_W_OWNER] = owner; e.words[DECIDE_W_CONTEXT] = context;
+  e.words[DECIDE_W_KIND] = kind; e.words[DECIDE_W_TARGET] = target; e.words[DECIDE_W_X] = x; e.words[DECIDE_W_Z] = z;
+  return e;
+}
+
+// Whether an intent's kind is in the catalogue and its arguments in bounds.
+decide_allowed :: (catalogue: int, kind: int, target: int, x: int, z: int) -> bool {
+  if kind <= DECIDE_NONE || kind >= DECIDE_KINDS || ((catalogue >> kind) & 1) == 0 { return false; }
+  if kind == DECIDE_GO { return x >= -DECIDE_REACH && x <= DECIDE_REACH && z >= -DECIDE_REACH && z <= DECIDE_REACH && target == -1; }
+  if kind == DECIDE_CHASE || kind == DECIDE_FLEE { return target >= 0 && x == 0 && z == 0; }
+  if kind == DECIDE_SAY { return target >= 0 && target < DECIDE_LINES && x == 0 && z == 0; }
+  return target == -1 && x == 0 && z == 0;   // hold
+}
+
+// book:begin decide-admit
+// An answer the step took from the record (replay_take) on tick `now`, judged against its ticket
+// and what the actor senses now (m, s). An admitted answer closes its ticket and becomes an intent;
+// a refused one changes nothing in the world, and a refusal past its ticket's checks (forbidden,
+// unsensed) closes the ticket too, so the actor falls back rather than wait for a second answer.
+decide_admit :: (t: [] DecideTable, e: ReplayEvent, now: int, m: Memory, s: Senses) -> DecideAdmit {
+  out: DecideAdmit;
+  slot := -1;
+  if e.source == REPLAY_MODEL {
+    for k: 0..<DECIDE_FLEET { if t[0].tickets[k].live && t[0].tickets[k].request == e.request { slot = k; } }
+  }
+  if slot < 0 { out.status = DECIDE_UNASKED; t[0].counts[out.status] += 1; return out; }
+  tk := t[0].tickets[slot];
+  w := e.words;
+  if w[DECIDE_W_ACTOR] != tk.actor || w[DECIDE_W_OWNER] != tk.owner || tk.owner != t[0].owner[tk.actor] || w[DECIDE_W_CONTEXT] != tk.context {
+    out.status = DECIDE_STALE;
+  } else if now > tk.due { out.status = DECIDE_LATE; }
+  else if !decide_allowed(t[0].catalogue[tk.actor], w[DECIDE_W_KIND], w[DECIDE_W_TARGET], w[DECIDE_W_X], w[DECIDE_W_Z]) { out.status = DECIDE_FORBIDDEN; }
+  else if (w[DECIDE_W_KIND] == DECIDE_CHASE || w[DECIDE_W_KIND] == DECIDE_FLEE) && !memory_recall(m, s, w[DECIDE_W_TARGET], now).known { out.status = DECIDE_UNSENSED; }
+  t[0].counts[out.status] += 1;
+  if out.status == DECIDE_STALE { return out; }   // someone else's answer: the ticket still waits for its own
+  t[0].tickets[slot].live = false;
+  if out.status != DECIDE_OK { return out; }
+  out.intent = DecideIntent.{kind = w[DECIDE_W_KIND], actor = tk.actor, target = w[DECIDE_W_TARGET], x = f32(w[DECIDE_W_X]) / 100.0, z = f32(w[DECIDE_W_Z]) / 100.0};
+  if out.intent.kind != DECIDE_CHASE && out.intent.kind != DECIDE_FLEE && out.intent.kind != DECIDE_SAY { out.intent.target = -1; }
+  return out;
+}
+// book:end decide-admit
+
+// book:begin decide-expire
+// After the step's answers: every ticket whose deadline has passed closes. The result has bit `a`
+// set for each actor whose ticket closed, so the realm gives each its fallback this step.
+decide_expire :: (t: [] DecideTable, now: int) -> int {
+  out := 0;
+  for k: 0..<DECIDE_FLEET {
+    tk := t[0].tickets[k];
+    if !tk.live || now <= tk.due { continue; }
+    t[0].tickets[k].live = false; t[0].counts[DECIDE_EXPIRED] += 1;
+    out = out | (1 << tk.actor);
+  }
+  return out;
+}
+// The realm withdraws an actor's question (it died, the encounter ended): its answer will be unasked.
+decide_cancel :: (t: [] DecideTable, actor: int) {
+  for k: 0..<DECIDE_FLEET {
+    if t[0].tickets[k].live && t[0].tickets[k].actor == actor { t[0].tickets[k].live = false; t[0].counts[DECIDE_CANCELLED] += 1; }
+  }
+}
+// The actor changes owner (another simulation owner, another controller): its question is
+// withdrawn and anything decided for the old owner is stale.
+decide_transfer :: (t: [] DecideTable, actor: int) {
+  if !decide_actor_ok(actor) { return; }
+  decide_cancel(t, actor);
+  t[0].owner[actor] += 1;
+}
+// What an actor does without a model: go after the newest thing it remembers sensing, at the place
+// it sensed it (not where it is now), else hold. The same memory gives the same choice.
+decide_fallback :: (actor: int, m: Memory) -> DecideIntent {
+  best := -1;
+  for i: 0..<m.count { if best < 0 || m.items[i].tick > m.items[best].tick { best = i; } }
+  if best < 0 { return DecideIntent.{kind = DECIDE_HOLD, actor = actor}; }
+  st := m.items[best];
+  return DecideIntent.{kind = DECIDE_GO, actor = actor, x = st.at.x, z = st.at.z};
+}
+// book:end decide-expire
+
+// The table as one number, for the realm's step digest.
+decide_digest :: (h: int, t: [] DecideTable) -> int {
+  out := h;
+  for k: 0..<DECIDE_FLEET {
+    tk := t[0].tickets[k];
+    out = replay_mix(out, replay_flag(tk.live));
+    if tk.live { out = replay_mix(replay_mix(replay_mix(replay_mix(replay_mix(out, tk.request), tk.actor), tk.owner), tk.context), tk.due); }
+  }
+  for a: 0..<DECIDE_ACTORS { out = replay_mix(out, t[0].owner[a]); }
+  return out;
+}
+
+// ---- checks
+#load "../tests/decide-oracle.coax";
+
+dc_session :: (b: [] ReplayBacking) -> ReplaySession { s := replay_backing(b); replay_record(s, 1, 1); return s; }
+dc_seen :: (source: int, x: f32, tick: int) -> Memory {
+  s: Senses;
+  return memory_note(Memory.{}, s, Stimulus.{kind = StimulusKind.sight, source = source, at = world_point(x, 0, 2), tick = tick}).memory;
+}
+
+#test "decide: a question is a ticket, one an actor and DECIDE_FLEET at once" {
+  b: [1] ReplayBacking; s := dc_session(b[..]);
+  t: [1] DecideTable; decide_table(t[..]);
+  a := decide_ask(t[..], s, 0, 10, 64, 5);
+  #assert a.status == DECIDE_OK && a.request == 1 && a.live && decide_open(t[..]) == 1;
+  #assert decide_ask(t[..], s, 0, 11, 64, 5).status == DECIDE_ACTOR_BUSY;
+  for k: 1..<DECIDE_FLEET { #assert decide_ask(t[..], s, k, 10, 64, 5).status == DECIDE_OK; }
+  #assert decide_ask(t[..], s, DECIDE_FLEET, 10, 64, 5).status == DECIDE_FLEET_FULL && decide_open(t[..]) == DECIDE_FLEET;
+  #assert decide_ask(t[..], s, -1, 10, 64, 5).status == DECIDE_BAD && decide_ask(t[..], s, DECIDE_ACTORS, 10, 64, 5).status == DECIDE_BAD;
+  decide_cancel(t[..], 3);
+  #assert decide_ask(t[..], s, 9, 10, 0, 5).status == DECIDE_BAD && decide_ask(t[..], s, 9, 10, DECIDE_WAIT_MAX + 1, 5).status == DECIDE_BAD;
+  #assert decide_ask(t[..], s, 9, -1, 64, 5).status == DECIDE_BAD;
+  last := decide_ask(t[..], s, 9, 10, DECIDE_WAIT_MAX, 5);
+  #assert last.status == DECIDE_OK && last.request == DECIDE_FLEET + 1;   // refusals took no number
+  #assert decide_count(t[..], DECIDE_OK) == DECIDE_FLEET + 1 && decide_count(t[..], DECIDE_ACTOR_BUSY) == 1 && decide_count(t[..], DECIDE_FLEET_FULL) == 1;
+  #assert decide_count(t[..], DECIDE_BAD) == 5 && decide_count(t[..], DECIDE_CANCELLED) == 1;
+}
+
+#test "decide: an answer in time, for the ticket's actor, owner and context, is an intent" {
+  b: [1] ReplayBacking; s := dc_session(b[..]);
+  t: [1] DecideTable; decide_table(t[..]);
+  m := dc_seen(40, 3, 10); sn: Senses; ctx := decide_context(m);
+  a := decide_ask(t[..], s, 2, 10, 64, ctx);
+  go := decide_admit(t[..], decide_answer(a, 2, 0, ctx, DECIDE_GO, -1, 250, -125), 74, m, sn);
+  #assert go.status == DECIDE_OK && go.intent.kind == DECIDE_GO && go.intent.actor == 2 && go.intent.x == 2.5 && go.intent.z == -1.25 && go.intent.target == -1;
+  #assert decide_open(t[..]) == 0;
+  // the same answer again: its ticket is closed
+  #assert decide_admit(t[..], decide_answer(a, 2, 0, ctx, DECIDE_GO, -1, 250, -125), 74, m, sn).status == DECIDE_UNASKED;
+  c := decide_ask(t[..], s, 2, 20, 64, ctx);
+  ch := decide_admit(t[..], decide_answer(c, 2, 0, ctx, DECIDE_CHASE, 40, 0, 0), 20, m, sn);
+  #assert ch.status == DECIDE_OK && ch.intent.kind == DECIDE_CHASE && ch.intent.target == 40;
+  say := decide_ask(t[..], s, 2, 20, 64, ctx);
+  sy := decide_admit(t[..], decide_answer(say, 2, 0, ctx, DECIDE_SAY, DECIDE_LINES - 1, 0, 0), 21, m, sn);
+  #assert sy.status == DECIDE_OK && sy.intent.target == DECIDE_LINES - 1;
+  h := decide_ask(t[..], s, 2, 20, 64, ctx);
+  #assert decide_admit(t[..], decide_answer(h, 2, 0, ctx, DECIDE_HOLD, -1, 0, 0), 21, m, sn).intent.kind == DECIDE_HOLD;
+}
+
+#test "decide: stale, late, forbidden and unsensed answers change nothing in the world" {
+  b: [1] ReplayBacking; s := dc_session(b[..]);
+  t: [1] DecideTable; decide_table(t[..]);
+  m := dc_seen(40, 3, 10); sn: Senses; ctx := decide_context(m);
+  a := decide_ask(t[..], s, 1, 10, 64, ctx);
+  // another actor's, an old owner's, another context's: stale, and the ticket waits for its own
+  #assert decide_admit(t[..], decide_answer(a, 2, 0, ctx, DECIDE_HOLD, -1, 0, 0), 11, m, sn).status == DECIDE_STALE;
+  #assert decide_admit(t[..], decide_answer(a, 1, 1, ctx, DECIDE_HOLD, -1, 0, 0), 11, m, sn).status == DECIDE_STALE;
+  #assert decide_admit(t[..], decide_answer(a, 1, 0, ctx + 1, DECIDE_HOLD, -1, 0, 0), 11, m, sn).status == DECIDE_STALE;
+  #assert decide_open(t[..]) == 1;
+  // past the deadline, on the last tick
+  #assert decide_admit(t[..], decide_answer(a, 1, 0, ctx, DECIDE_HOLD, -1, 0, 0), 75, m, sn).status == DECIDE_LATE && decide_open(t[..]) == 0;
+  a2 := decide_ask(t[..], s, 1, 10, 64, ctx);
+  #assert decide_admit(t[..], decide_answer(a2, 1, 0, ctx, DECIDE_HOLD, -1, 0, 0), 74, m, sn).status == DECIDE_OK;
+  // out of the catalogue, and out of bounds
+  bad := [12] int.[DECIDE_NONE, -1, 0, 0,  DECIDE_KINDS, -1, 0, 0,  DECIDE_GO, -1, DECIDE_REACH + 1, 0];
+  for k: 0..<3 {
+    q := decide_ask(t[..], s, 1, 10, 64, ctx);
+    #assert decide_admit(t[..], decide_answer(q, 1, 0, ctx, bad[k * 4], bad[k * 4 + 1], bad[k * 4 + 2], bad[k * 4 + 3]), 11, m, sn).status == DECIDE_FORBIDDEN;
+  }
+  #assert !decide_allowed(DECIDE_ALL, DECIDE_GO, -1, 0, -DECIDE_REACH - 1) && decide_allowed(DECIDE_ALL, DECIDE_GO, -1, -DECIDE_REACH, DECIDE_REACH);
+  #assert !decide_allowed(DECIDE_ALL, DECIDE_GO, 3, 0, 0) && !decide_allowed(DECIDE_ALL, DECIDE_CHASE, -1, 0, 0) && !decide_allowed(DECIDE_ALL, DECIDE_FLEE, 3, 1, 0);
+  #assert !decide_allowed(DECIDE_ALL, DECIDE_FLEE, 3, 0, 1) && decide_allowed(DECIDE_ALL, DECIDE_FLEE, 0, 0, 0);
+  #assert !decide_allowed(DECIDE_ALL, DECIDE_SAY, DECIDE_LINES, 0, 0) && !decide_allowed(DECIDE_ALL, DECIDE_SAY, -1, 0, 0) && !decide_allowed(DECIDE_ALL, DECIDE_SAY, 1, 1, 0) && !decide_allowed(DECIDE_ALL, DECIDE_SAY, 1, 0, 1);
+  #assert !decide_allowed(DECIDE_ALL, DECIDE_HOLD, -1, 1, 0) && !decide_allowed(DECIDE_ALL, DECIDE_HOLD, -1, 0, 1) && !decide_allowed(DECIDE_ALL, DECIDE_HOLD, 0, 0, 0);
+  t[0].catalogue[1] = (1 << DECIDE_HOLD);
+  q := decide_ask(t[..], s, 1, 10, 64, ctx);
+  #assert decide_admit(t[..], decide_answer(q, 1, 0, ctx, DECIDE_GO, -1, 0, 0), 11, m, sn).status == DECIDE_FORBIDDEN;
+  t[0].catalogue[1] = DECIDE_ALL;
+  // a target it never sensed, and one it has forgotten: hidden state
+  u := decide_ask(t[..], s, 1, 10, 64, ctx);
+  #assert decide_admit(t[..], decide_answer(u, 1, 0, ctx, DECIDE_CHASE, 41, 0, 0), 11, m, sn).status == DECIDE_UNSENSED;
+  u2 := decide_ask(t[..], s, 1, 200, 64, ctx);
+  #assert decide_admit(t[..], decide_answer(u2, 1, 0, ctx, DECIDE_FLEE, 40, 0, 0), 10 + sn.forget + 1, m, sn).status == DECIDE_UNSENSED;
+  #assert decide_open(t[..]) == 0 && decide_count(t[..], DECIDE_STALE) == 3 && decide_count(t[..], DECIDE_LATE) == 1;
+  #assert decide_count(t[..], DECIDE_FORBIDDEN) == 4 && decide_count(t[..], DECIDE_UNSENSED) == 2;
+  // not a model's event at all
+  w := decide_ask(t[..], s, 1, 10, 64, ctx);
+  e := decide_answer(w, 1, 0, ctx, DECIDE_HOLD, -1, 0, 0); e.source = REPLAY_NETWORK;
+  #assert decide_admit(t[..], e, 11, m, sn).status == DECIDE_UNASKED && decide_open(t[..]) == 1;
+}
+
+#test "decide: a ticket closes at its deadline, by cancel and by a new owner" {
+  b: [1] ReplayBacking; s := dc_session(b[..]);
+  t: [1] DecideTable; decide_table(t[..]);
+  m: Memory; sn: Senses;
+  a := decide_ask(t[..], s, 3, 100, 10, 0); c := decide_ask(t[..], s, 5, 100, 20, 0);
+  #assert decide_expire(t[..], 110) == 0 && decide_open(t[..]) == 2;
+  #assert decide_expire(t[..], 111) == (1 << 3) && decide_open(t[..]) == 1 && decide_count(t[..], DECIDE_EXPIRED) == 1;
+  #assert decide_admit(t[..], decide_answer(a, 3, 0, 0, DECIDE_HOLD, -1, 0, 0), 111, m, sn).status == DECIDE_UNASKED;
+  decide_transfer(t[..], 5);
+  #assert decide_open(t[..]) == 0 && t[0].owner[5] == 1 && decide_count(t[..], DECIDE_CANCELLED) == 1;
+  #assert decide_admit(t[..], decide_answer(c, 5, 0, 0, DECIDE_HOLD, -1, 0, 0), 101, m, sn).status == DECIDE_UNASKED;
+  // asked again under the new owner: the old owner's answer is stale, the new one's admitted
+  n := decide_ask(t[..], s, 5, 102, 20, 0);
+  #assert decide_admit(t[..], decide_answer(n, 5, 0, 0, DECIDE_HOLD, -1, 0, 0), 103, m, sn).status == DECIDE_STALE;
+  #assert decide_admit(t[..], decide_answer(n, 5, 1, 0, DECIDE_HOLD, -1, 0, 0), 103, m, sn).status == DECIDE_OK;
+  // the owner changes while the answer is on its way
+  q := decide_ask(t[..], s, 6, 102, 20, 0);
+  t[0].owner[6] += 1;
+  #assert decide_admit(t[..], decide_answer(q, 6, 0, 0, DECIDE_HOLD, -1, 0, 0), 103, m, sn).status == DECIDE_STALE;
+  decide_transfer(t[..], -1); decide_transfer(t[..], DECIDE_ACTORS);
+  #assert decide_expire(t[..], 10000) == (1 << 6) && decide_expire(t[..], 10001) == 0;
+}
+
+#test "decide: the fallback goes where the actor last sensed something, else holds" {
+  #assert decide_fallback(4, Memory.{}).kind == DECIDE_HOLD && decide_fallback(4, Memory.{}).actor == 4;
+  s: Senses;
+  m := dc_seen(40, 3, 10);
+  m = memory_note(m, s, Stimulus.{kind = StimulusKind.sound, source = 41, at = world_point(-7, 0, 1), tick = 12}).memory;
+  m = memory_note(m, s, Stimulus.{kind = StimulusKind.touch, source = 42, at = world_point(9, 0, 9), tick = 12}).memory;
+  f := decide_fallback(4, m);
+  #assert f.kind == DECIDE_GO && f.x == -7 && f.z == 1 && f.actor == 4;
+  #assert decide_context(m) != decide_context(dc_seen(40, 3, 10)) && decide_context(dc_seen(40, 3, 10)) == decide_context(dc_seen(40, 3, 10));
+  #assert decide_context(dc_seen(40, 3, 10)) != decide_context(dc_seen(40, 4, 10)) && decide_context(dc_seen(40, 3, 10)) != decide_context(dc_seen(39, 3, 10));
+  #assert decide_context(dc_seen(40, 3, 10)) != decide_context(dc_seen(40, 3, 11)) && decide_context(Memory.{}) != decide_context(dc_seen(40, 3, 10));
+}
+
+#test "decide: a fleet under a slow, failing, repeating, malicious model keeps its step and replays to the same digest" {
+  for profile: 0..<DO_PROFILES {
+    live: [1] DoRun; do_run(live[..], profile, false);
+    #assert live[0].steps == DO_STEPS && live[0].most_admitted <= DECIDE_FLEET;
+    #assert live[0].sent > 0 && live[0].intents > 0;
+    if profile == DO_OUTAGE { #assert live[0].from_model == 0 && live[0].fallbacks > 0; }
+    if profile == DO_PROMPT { #assert live[0].fallbacks == 0 && live[0].from_model > 0; }
+    if profile == DO_HOSTILE { #assert live[0].refused > 0 && live[0].unsensed > 0 && live[0].forbidden > 0 && live[0].duplicates > 0; }
+    if profile == DO_SLOW { #assert live[0].late + live[0].expired > 0 && live[0].from_model > 0; }
+    if profile == DO_TRANSFER { #assert live[0].stale > 0 && live[0].cancelled > 0; }
+    again: [1] DoRun; do_replay(live[..], again[..]);
+    #assert again[0].matched && again[0].sent == 0 && again[0].digest == live[0].digest && again[0].intents == live[0].intents;
+  }
+}
