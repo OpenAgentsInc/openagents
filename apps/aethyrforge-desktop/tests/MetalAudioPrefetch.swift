@@ -36,9 +36,12 @@ struct MetalAudioPrefetch {
         audio.bank()
         let registered=audio.bankWav.count,bankAssets=audio.buffers.count,bankWords=memory.total
         var rows: [[String:Any]]=[]
-        if plan["phase"] as? String == "decode" {
+        if plan["phase"] as? String == "decode" || plan["phase"] as? String == "picked" {
             for name in plan["assets"] as? [String] ?? [] {
-                var pcm=audio.buffer(name)
+                // Whole-bank codec observation owns one decoded asset at a
+                // time, independently of the production demand-cache receipt.
+                let picked=plan["phase"] as? String == "picked"
+                var pcm=picked ? audio.decode(resources.appendingPathComponent("web/realms/everglade/sfx/\(name).ogg")):audio.buffer(name)
                 var row: [String:Any]=["name":name,"samples":pcm?.count ?? 0,"channels":pcm?.channels ?? 0,"rate":48000,"memory":memory.total]
                 let compressed=resources.appendingPathComponent("web/realms/everglade/sfx/\(name).ogg")
                 let original=report.deletingLastPathComponent().appendingPathComponent(name+".ogg")
@@ -49,7 +52,7 @@ struct MetalAudioPrefetch {
                     try Data(bytes:decoded.samples,count:decoded.count*4).write(to:output,options:.atomic)
                     row["file"]=output.path
                 }
-                rows.append(row);pcm=nil
+                pcm=nil;row["releasedWords"]=memory.total;rows.append(row)
             }
         } else {
             for frame in 0..<16 {

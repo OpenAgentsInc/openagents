@@ -886,13 +886,16 @@ hashes are retained in `audio-lazy-sources/{normal,asan}-artifacts.sha256` besid
 frozen Swift and Coax sources. These use the earlier admitted frozen 5E producer
 and additive physical face exports, not a current-main primary emission.
 
-Actual default codec samples remain a separate failed gate. The contract sibling
+Actual supported codec samples remain a separate failed gate. The contract sibling
 compares the exact three exported compressed inputs and every decoded word without
 alignment or masks: fire-cast-e2 and ambient-e1 pass 2^-20, but fire-hit-e2 has 745
 words beyond it, maximum absolute residual 0.0252900571. The input-only SDK export
 in `audio-default-input-second` is byte-identical to the final native fire-hit PCM,
 locating that residual before AVAudioConverter. The original bytes, raw outputs
-and comparison remain under the sibling's `audio-default-first`. This memory fix
+and comparison remain under the sibling's `audio-default-first`. This candidate
+is not the current default fire-hit pick: `SFXB_PICK` selects fire-hit-e3, and the
+actual startup trace fetches e3 only. The three-file probe therefore does not
+establish a complete selected-default-bank verdict. This memory fix
 does not qualify default codec parity, current packaging, graphics admission or a
 desktop-default change.
 
@@ -905,3 +908,12 @@ retained in `worklet-memory-desktop-deps.txt`; no manual dependency-list change
 is necessary. The copied bytes retain the sibling's original compiler/source
 admission and actual Worklet ownership/retirement scope. This resource fixture
 is not a runnable current application or default Ogg parity receipt.
+
+The `picked` phase of the actual SDK observer exports the complete Coax
+`SFXB_PICK` set to `audio-picked-bank/`: 122 immutable compressed files and
+9,524,761 interleaved decoded words, including ambient-e1 and ambient-e3. Each
+row owns one PCM allocation independently, records zero retained words after
+its export, and starts no device or GPU. The exact plan, metadata, decoder
+sources/executable and SHA256 manifest are retained beside the raw bytes for
+the sibling's complete browser comparison. This is a codec observation, not
+a claim that both ambient candidates fit resident alongside every variant.
