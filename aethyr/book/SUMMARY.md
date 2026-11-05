@@ -31,7 +31,7 @@
 **IV. Physics**
 
 - [17. A scene owns the state](ch017-a-scene-owns-the-state.md) — partly implemented
-- [18. Rigid bodies and time steps](ch018-rigid-bodies-and-time-steps.md) — design draft
+- [18. Rigid bodies and time steps](ch018-rigid-bodies-and-time-steps.md) — partly implemented
 - [19. Joints in generalized coordinates](ch019-joints-in-generalized-coordinates.md) — design draft
 - [20. Find the pairs that might touch](ch020-find-the-pairs-that-might-touch.md) — design draft
 - [21. Find where they touch](ch021-find-where-they-touch.md) — design draft

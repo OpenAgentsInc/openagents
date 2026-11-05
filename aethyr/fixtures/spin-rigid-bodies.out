@@ -1,0 +1,13 @@
+ballistic throw, 2 s at dt 0.01, height minus x0 + v0 t + g t^2 / 2 (g dt t / 2 = 0.0981):
+  rigid-explicit-f64-v1: 0.0981 m
+  rigid-semi-implicit-f64-v1: -0.0981 m
+  rigid-implicit-gyro-f64-v1: -0.0981 m
+symmetric top I = (1, 1, 2), w3 = 1 rad/s, 1 s at dt 0.001: precession angle (want 1 rad)
+  rigid-explicit-f64-v1: 0.999999667 rad
+  rigid-semi-implicit-f64-v1: 0.999999667 rad
+  rigid-implicit-gyro-f64-v1: 0.999999667 rad
+box I = (1, 2, 3) spun at w = (0, 1, 0.05): w2 flips every 2 K / lambda = 13.258606867 s
+  10^5 steps at dt 0.001 (100 s):
+  rigid-explicit-f64-v1: flip 13.258607508 s (6.41e-07 off), energy 0.008916824, |L| 0.004417573
+  rigid-semi-implicit-f64-v1: flip 13.258607508 s (6.41e-07 off), energy 0.008916824, |L| 0.004417573
+  rigid-implicit-gyro-f64-v1: flip 13.258606937 s (7e-08 off), energy -0.008798216, |L| -0.004377387

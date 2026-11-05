@@ -390,6 +390,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "aethyr/examples/spin-rigid-bodies.coax",
+      "chapter": "aethyr/book/ch018-rigid-bodies-and-time-steps.md",
+      "stdout": "aethyr/fixtures/spin-rigid-bodies.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }
