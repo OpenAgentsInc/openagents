@@ -734,6 +734,7 @@ net_record :: (s: [] Everglade, n: [] EgNet, t: string) {
     why := wire_word(t, r[..]);
     if why == WIRE_REFUSE_VERSION { net_stale(s, n); return; }
     if why == WIRE_REFUSE_ELSEWHERE { net_elsewhere(s, n); return; }
+    if why == WIRE_REFUSE_RESTARTING { net_restarting(s, n); return; }
     n[0].said_n = 0;
     for ch: "CAN'T · " { n[0].said[n[0].said_n] = ch; n[0].said_n += 1; }
     for ch: why { if n[0].said_n >= 48 { break; } n[0].said[n[0].said_n] = ifx ch >= 'a' && ch <= 'z' then ch - 32 else ch; n[0].said_n += 1; }
@@ -768,6 +769,14 @@ net_elsewhere :: (s: [] Everglade, n: [] EgNet) {
   if n[0].elsewhere { return; }
   n[0].elsewhere = true; n[0].want = false;
   net_tell(s, n, "YOU'RE PLAYING ELSEWHERE · RELOAD TO PLAY HERE");
+}
+// The room drains before a release (#12797): it says so, and the page joins again a second on, asking
+// the directory for a seat, which it now gives on another shard. Not a loss: no LOST line after.
+net_restarting :: (s: [] Everglade, n: [] EgNet) {
+  if n[0].sock >= 0 { _ := pipe_close(n[0].pipe[..], n[0].sock); }
+  net_tell(s, n, "RESTARTING · BACK IN A MOMENT");
+  n[0].ticket_n = 0; n[0].tries = 0;
+  net_down(n);
 }
 // The reload, when its time comes: this page's path and query with reload=1, to the host (action 1).
 net_reload :: (s: [] Everglade, n: [] EgNet) {
@@ -3062,6 +3071,23 @@ net_test_rooms :: (s: [] Everglade) {
   net_opened(a[..], 1);
   for k: 0..<101 { t += 100; net_step(a[..], t, 0, 0, 0, 0, 0, 0, false, 0, false, 0); }
   #assert na[0].state == NET_DOWN;
+}
+#test "net: a room that drains says restarting; the page closes, asks for a new seat and joins again a second on (#12797)" {
+  a: [1] Everglade; na: [1] EgNet;
+  #assert net_test_page(a[..], na[..], 0, "pa", 100);
+  #assert net_test_hear(a[..], 0, "y 0 1 5000100") && net_live(a[..]);
+  t := 200;
+  net_step(a[..], t, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  pipe_drained(na[0].pipe[..]);
+  #assert net_test_hear(a[..], 0, "r 0 restarting");
+  #assert !net_open(a[..]) && na[0].state == NET_DOWN && !na[0].lost && na[0].ticket_n == 0;
+  #assert cast(string) na[0].said[0..<na[0].said_n] == "RESTARTING · BACK IN A MOMENT";
+  #assert na[0].pipe[0].n == 1 && na[0].pipe[0].op[0] == PIPE_CLOSE && na[0].pipe[0].id[0] == 0;
+  pipe_drained(na[0].pipe[..]);
+  // the room's close of the old socket is no longer the page's, and says nothing more
+  #assert !net_event(a[..], SOCKET_KIND + SOCKET_CLOSED, "") && !na[0].lost;
+  // within about a second it asks again
+  #assert na[0].retry - na[0].mono <= 1250;
 }
 #test "net: a tab shown after a long time hidden replaces its socket at once; a short one keeps it (#12856)" {
   a: [1] Everglade; na: [1] EgNet;

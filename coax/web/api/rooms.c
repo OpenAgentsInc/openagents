@@ -100,6 +100,7 @@ static void report(const request *q, PGconn *db) {
   if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) named = atoi(PQgetvalue(r, 0, 0));
   else api_log("room-directory: %s", PQerrorMessage(db));
   PQclear(r);
+  if (named == -2) { api_json(q->fd, 409, "{\"error\":\"a newer process has this shard\"}"); return; }   /* fenced (#12797) */
   if (named < 0) { api_json(q->fd, 400, "{\"error\":\"not a report\"}"); return; }
   char out[48]; snprintf(out, sizeof out, "{\"rooms\":%d}", named);
   api_json(q->fd, 200, out);

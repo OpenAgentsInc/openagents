@@ -75,6 +75,7 @@
 WIRE_VERSION :: 4;   // 4: I's THETA in 0.1 mrad (WIRE_FINE), #12718
 WIRE_REFUSE_VERSION :: "version";   // r 0 version: the room speaks another WIRE_VERSION than the hello's (the page reloads)
 WIRE_REFUSE_ELSEWHERE :: "elsewhere";   // r 0 elsewhere: a newer seat ticket has your character, in another tab or room (#12834); the page stops rejoining
+WIRE_REFUSE_RESTARTING :: "restarting";   // r 0 restarting: the room drains before a release (#12797); the page joins again at once, on another shard
 // The oldest wire the room still speaks: a page cached from the release before still joins while its
 // hello's version is in WIRE_MIN..WIRE_VERSION. Keep WIRE_MIN below WIRE_VERSION only while the room
 // still writes what that older page reads.

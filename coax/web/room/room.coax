@@ -86,6 +86,8 @@ RmServer :: struct {
   ctl: RmControl;                        // the API's word on pvp, edits and kicks (room-control.coax)
   shard: int = 1;                        // which oa-room shard this is (rm_shard; room-directory.coax)
   dir: RmDirectory;                      // what it last told the API's instance directory
+  drain: bool;                           // draining: no new seats, the directory told (room-directory.coax rm_drain_ask, #12797)
+  dir_gen: bool;                         // the directory report names this process's generation (OA_ROOM_DIR_GEN=1, #12797)
   evc: RmEvents;                         // the realm's world-event dials (room-events.coax)
   ev: [EG_ROOMS] EvRoom;                 // each everglade room's event, XP and levels (room-events.coax)
   dev: RmDev;                            // --dev: the API's stand-in for local development (room-dev.coax)

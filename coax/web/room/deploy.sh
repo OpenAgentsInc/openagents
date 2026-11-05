@@ -17,7 +17,15 @@
 # A deploy waits for no world event: when a shard's /health says one is running (a live instance
 # with players and its raid under way), it stops before building, unless OA_ROOM_DEPLOY_FORCE=1
 # (#12797). Shards are replaced one at a time, each healthy before the next, so at most one shard's
-# rooms restart at once.
+# rooms restart at once. Before its replacement each shard is drained (#12797, room-directory.coax
+# rm_drain_ask): a signed POST /api/room/sK/drain, after which it seats nobody new and the directory
+# places nobody on it; it waits up to OA_ROOM_DRAIN_WAIT seconds (300; 0 with OA_ROOM_DEPLOY_FORCE=1)
+# for its world events to end, tells every page "restarting" (each sits again on another shard), and
+# saves every seat; the deploy waits for its health to say "drain done". The new revision takes traffic
+# only once its startup probe, GET /ready, answers: the room's start check held, the realm's world came
+# from the API and a room's world built from it. OA_ROOM_DIR_GEN=1 (the default here) has each process
+# name its generation in its directory reports, so the API refuses an old process's (migration 0133:
+# the API must be deployed with it first).
 #
 # Everglade's instances run on shards (#12717): oa-room is shard 1 (with Orbit League's rooms and
 # every other game's relay rooms), oa-room-2 to oa-room-$shards shards 2 to $shards, the same image with
@@ -45,6 +53,28 @@ for k in $(seq 1 "$shards"); do
   fi
 done
 g() { gcloud "$@" --project "$project" --quiet; }
+# The checks and the drains sign with the seat-ticket key, which stays in this process's environment and
+# is never printed or put in an argument list.
+OA_ROOM_TICKET_KEY="$(g secrets versions access latest --secret oa-room-ticket-key)"; export OA_ROOM_TICKET_KEY
+drain_wait="${OA_ROOM_DRAIN_WAIT:-300}"; [[ "${OA_ROOM_DEPLOY_FORCE:-0}" == 1 ]] && drain_wait=0
+# Drains shard K (#12797): asks it, signed, then waits for its health to say "drain done". A shard that
+# doesn't answer the ask (none running behind it) has nothing to drain.
+drain() {
+  local k="$1" at mac code h
+  at="$(python3 -I -c 'import time; print(int(time.time() * 1000))')"
+  mac="$(python3 -I -c 'import hashlib, hmac, os, sys; print(hmac.new(os.environ["OA_ROOM_TICKET_KEY"].encode(), sys.argv[1].encode(), hashlib.sha256).hexdigest())' "drain $k $at $drain_wait")"
+  code="$(curl -s -o /dev/null -w '%{http_code}' -m 30 -X POST -H "X-Room-At: $at" -H "X-Room-Wait: $drain_wait" -H "X-Room-Mac: $mac" \
+    "https://openagents.com/api/room/s$k/drain" || true)"
+  if [[ "$code" == 403 ]]; then echo "room: shard $k refused the drain (its key or clock): stopping" >&2; return 1; fi
+  if [[ "$code" != 200 ]]; then echo "room: shard $k: nothing to drain (answered $code)"; return 0; fi
+  local until=$((SECONDS + drain_wait + 60))
+  while (( SECONDS < until )); do
+    h="$(curl -s -m 20 "https://openagents.com/api/room/s$k/health" || true)"
+    if [[ "$h" == *"drain done"* || "$h" != ok* ]]; then echo "room: shard $k drained"; return 0; fi
+    sleep 2
+  done
+  echo "room: shard $k didn't finish its drain in $((drain_wait + 60)) s: stopping before replacing it" >&2; return 1
+}
 stage="$(mktemp -d)"; trap 'rm -rf "$stage"' EXIT
 mkdir -p "$stage/src"
 coax="${COAX:-coax/bin/coax}"
@@ -69,11 +99,13 @@ gcloud builds submit "$stage" --project "$project" --region "$region" --tag "$im
 svc() { if [[ "$1" == 1 ]]; then echo "$service"; else echo "$service-$1"; fi; }
 # one shard at a time, each answering its health before the next is replaced (#12797)
 for k in $(seq 1 "$shards"); do
+  drain "$k" || exit 1
   out="$(g run deploy "$(svc "$k")" --image "$image" --region "$region" \
     --allow-unauthenticated --port 8080 --cpu 1 --memory 512Mi \
+    --startup-probe "httpGet.path=/ready,httpGet.port=8080,periodSeconds=2,timeoutSeconds=2,failureThreshold=60" \
     --min-instances 0 --max-instances 1 --concurrency 1000 --timeout 3600 --session-affinity --no-cpu-throttling \
     --set-secrets OA_ROOM_TICKET_KEY=oa-room-ticket-key:latest \
-    --set-env-vars "OA_ROOM_TICKET_REQUIRED=${OA_ROOM_TICKET_REQUIRED:-1},OA_ROOM_SHARD=$k" 2>&1)" ||
+    --set-env-vars "OA_ROOM_TICKET_REQUIRED=${OA_ROOM_TICKET_REQUIRED:-1},OA_ROOM_SHARD=$k,OA_ROOM_DIR_GEN=${OA_ROOM_DIR_GEN:-1}" 2>&1)" ||
     { sed "s/^/shard $k: /" <<<"$out" >&2; echo "room: shard $k's deploy failed: stopping before the next shard" >&2; exit 1; }
   { grep -E "ERROR|revision" <<<"$out" || true; } | sed "s/^/shard $k: /"
   url="$(g run services describe "$(svc "$k")" --region "$region" --format 'value(status.url)')"
@@ -133,8 +165,7 @@ g compute url-maps validate --global --source "$tmp" --format 'value(result.load
   { echo "room: the new url map doesn't validate" >&2; exit 1; }
 g compute url-maps import "$map" --global --source "$tmp" 2>&1 | grep -E "ERROR" && exit 1
 # The checks join everglade rooms, which need seat tickets (room-ticket.coax): they sign their own
-# with the key, which stays in this process's environment and is never printed.
-OA_ROOM_TICKET_KEY="$(g secrets versions access latest --secret oa-room-ticket-key)"; export OA_ROOM_TICKET_KEY
+# with the key (above).
 # load.coax signs its own tickets for /api/room/relay, so every room it opens lands on shard 1:
 # it loads one shard with 32 players (two rooms, the directory's rooms_cap), and fanout-check.coax
 # is the load across shards through the directory.

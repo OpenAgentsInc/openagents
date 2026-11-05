@@ -597,6 +597,12 @@ eg_heard_hello :: (v: [] RmServer, k: int, seat: int, text: string) {
   // the page reloads (#12788)
   // a page of another build (#12839): its engine, rules, world, wire or saved data not this room's
   // (eg_admit). Both are told "version", so the page reloads into the build that is out, and counted by why.
+  // a draining room seats nobody new (#12797): told why, and its socket closed; the page sits elsewhere
+  if v[0].drain {
+    eg_refuse(v, k, seat, 0, WIRE_REFUSE_RESTARTING);
+    if st[0].conn >= 0 && st[0].conn < CONNS { v[0].conns[st[0].conn].kicked = true; }
+    return;
+  }
   if h.version == WIRE_OLD_HELLO && eg_old_open(v) { eg_old_seat(v, k, seat); }
   else {
     why := eg_admit(v, k, seat, h.version);
@@ -1468,6 +1474,47 @@ eg_test_has :: (t: string, part: string) -> bool {
   #assert eg_test_has(eg_test_of(box[..], 0), "r 0 version") && rm_relay_kicked(v[..], 0);
   #assert !eg_test_has(eg_test_of(box[..], 1), "r 0 version") && !rm_relay_kicked(v[..], 1);
   #assert v[0].eg[k].stale_n == 1 && cast(string) v[0].eg[k].seat[1].name[0..<v[0].eg[k].seat[1].name_n] == "New";
+}
+#test "everglade room: a drain seats nobody new and tells every seated page restarting, closing its socket (#12797)" {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  rm_clock(v[..], 0, 1762190000000);
+  key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  rm_ticket_key(v[..], key, false);
+  rm_shard(v[..], 3);
+  ev := "GET /api/room/relay/everglade/pair-drain HTTP/1.1\r\n\r\n";
+  box: [1] EgInbox;
+  #assert rm_join(v[..], 0, ev) == 0;
+  eg_test_drain(v[..], box[..]);
+  rm_heard(v[..], 0, "H 4 ranger.0.0.0 druid 0 Before");
+  eg_test_drain(v[..], box[..]);
+  // a drain ask: only this shard's, signed with the key, near this server's clock
+  at := 1762190000000;
+  mac := "0000000000000000000000000000000000000000000000000000000000000000";   // not its MAC
+  #assert !rm_drain_ask(v[..], at, 30, mac) && !v[0].drain;
+  good: [64] u8; dr_mac(key, "drain 3 1762190000000 30", good[..]);
+  #assert !rm_drain_ask(v[..], at - 61000, 30, cast(string) good[..]);    // an old ask
+  #assert !rm_drain_ask(v[..], at, 31, cast(string) good[..]);            // another wait than signed
+  #assert rm_drain_ask(v[..], at, 30, cast(string) good[..]) && v[0].drain;
+  // a page joining now is told restarting and closed
+  #assert rm_join(v[..], 1, ev) == 1;
+  eg_test_drain(v[..], box[..]);
+  rm_heard(v[..], 1, "H 4 ranger.0.0.0 druid 0 After");
+  eg_test_drain(v[..], box[..]);
+  #assert eg_test_has(eg_test_of(box[..], 1), "r 0 restarting") && rm_relay_kicked(v[..], 1);
+  #assert !eg_test_has(eg_test_of(box[..], 0), "r 0 restarting") && !rm_relay_kicked(v[..], 0);
+  // the seated page is told when the host tells them all
+  #assert rm_drain_tell(v[..]) == 1;
+  eg_test_drain(v[..], box[..]);
+  #assert eg_test_has(eg_test_of(box[..], 0), "r 0 restarting") && rm_relay_kicked(v[..], 0);
+}
+// The hex HMAC-SHA256 of text under key, as a drain ask is signed (deploy.sh signs it in Python).
+dr_mac :: (key: string, text: string, out: [] u8) {
+  h: [32] u8; kb: [128] u8; tb: [128] u8;
+  for i: 0..<key.count { kb[i] = key[i]; }
+  for i: 0..<text.count { tb[i] = text[i]; }
+  _ := hmac_sha256_checked(kb[0..<key.count], tb[0..<text.count], h[..], false);
+  for i: 0..<32 { out[i * 2] = tk_hex(cast(int) (h[i] >> 4)); out[i * 2 + 1] = tk_hex(cast(int) (h[i] & 15)); }
 }
 #test "everglade room: a hello is admitted against its page's build; another engine, rules, world or newer saved data is refused and counted (#12839)" {
   v: [1] RmServer;

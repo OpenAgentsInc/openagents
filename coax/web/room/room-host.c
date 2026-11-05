@@ -326,6 +326,63 @@ static void reap(void) {
     for (int i = 0; i < CONNS; i++) if (conns[i].fd >= 0 && conns[i].doomed) { shut(i); again = true; }
   }
 }
+/* "METHOD /api/room/sN/REST" for a shard N (1 to 3 digits); rest begins with '/' and ends with ' '. */
+static bool is_shard_path(const char *in, const char *method, const char *rest) {
+  size_t m = strlen(method);
+  if (strncmp(in, method, m) || strncmp(in + m, "/api/room/s", 11)) return false;
+  const char *p = in + m + 11; int digits = 0;
+  while (*p >= '0' && *p <= '9' && digits < 3) { p++; digits++; }
+  return digits > 0 && !strncmp(p, rest, strlen(rest));
+}
+/* A request header's value (name with its colon, any case), trimmed, into out. */
+static bool header_of(const uint8_t *in, const uint8_t *end, const char *name, char *out, size_t cap) {
+  size_t nn = strlen(name);
+  for (const uint8_t *p = in; p + nn < end; p++) {
+    if (p != in && p[-1] != '\n') continue;
+    if (strncasecmp((const char *)p, name, nn)) continue;
+    const uint8_t *v = p + nn; while (v < end && *v == ' ') v++;
+    size_t k = 0; while (v < end && *v != '\r' && *v != '\n' && k + 1 < cap) out[k++] = (char)*v++;
+    out[k] = 0;
+    return k > 0;
+  }
+  return false;
+}
+/* The drain (#12797): asked by the deploy, then each loop: WAITING for the world events under way (up
+   to the ask's wait), TELLING every page "restarting" (rm_drain_tell; their sockets close, their seats
+   end), SAVING every seat's vitals until the API has them all (DRAIN_SAVE_MS at most), DONE. The deploy
+   reads the phase in /health ("drain done") before it replaces the shard. */
+enum { DRAIN_NONE, DRAIN_WAITING, DRAIN_TELLING, DRAIN_SAVING, DRAIN_DONE };
+#define DRAIN_SAVE_MS 20000
+static int drain_phase; static int64_t drain_asked, drain_wait_ms, drain_step_at, drain_told;
+static bool started_ok;
+static const char *drain_word(void) {
+  static const char *w[] = {"drain none\n", "drain waiting\n", "drain telling\n", "drain saving\n", "drain done\n"};
+  return w[drain_phase];
+}
+static void drain_begin(int64_t wait_ms) {
+  if (drain_phase != DRAIN_NONE) return;
+  drain_phase = DRAIN_WAITING; drain_asked = now_ms(); drain_wait_ms = wait_ms;
+  printf("room: drain asked: no new seats; waiting up to %lld s for %lld world events\n", (long long)(wait_ms / 1000), (long long)rm_events_running(view()));
+}
+static void drain_step(void) {
+  int64_t now = now_ms();
+  if (drain_phase == DRAIN_WAITING && (rm_events_running(view()) == 0 || now - drain_asked >= drain_wait_ms)) {
+    drain_told = rm_drain_tell(view());
+    relay_flush();   /* the word goes out before the main loop closes the kicked sockets */
+    drain_phase = DRAIN_TELLING; drain_step_at = now;
+    printf("room: drain: told %lld pages restarting after %lld ms (%lld world events still running)\n", (long long)drain_told, (long long)(now - drain_asked), (long long)rm_events_running(view()));
+  } else if (drain_phase == DRAIN_TELLING && now - drain_step_at >= 500) {
+    /* their sockets closed, their seats ended: every seat's vitals noted and sent */
+    rm_vitals_flush(view());
+    drain_phase = DRAIN_SAVING; drain_step_at = now;
+  } else if (drain_phase == DRAIN_SAVING) {
+    int64_t left = rm_vitals_pending(view());
+    if ((left == 0 && !server->vit.fly) || now - drain_step_at >= DRAIN_SAVE_MS) {
+      drain_phase = DRAIN_DONE;
+      printf("room: drain done after %lld ms: %lld players' vitals with no receipt\n", (long long)(now - drain_asked), (long long)left);
+    }
+  }
+}
 // A short answer on a fresh socket (its send buffer is empty), then the close.
 static void http(int i, const char *status, const char *type, const char *body) {
   static char out[1 << 17];
@@ -341,6 +398,25 @@ static void opening(int i) {
   if (!end) { if (c->n >= IN_CAP) http(i, "431 Request Header Fields Too Large", "text/plain", "too big"); return; }
   size_t len = (size_t)(end - c->in);
   coax_string req = {(const char *)c->in, (int64_t)len};
+  /* a drain before a deploy (#12797, room-directory.coax rm_drain_ask): POST /drain or a shard's
+     POST /api/room/sN/drain, signed (X-Room-At, X-Room-Wait, X-Room-Mac) */
+  if (is_shard_path((char *)c->in, "POST ", "/drain ") || !strncmp((char *)c->in, "POST /drain ", 12)) {
+    char at[24], wait[8], mac[72];
+    bool have = header_of(c->in, end, "X-Room-At:", at, sizeof at) && header_of(c->in, end, "X-Room-Mac:", mac, sizeof mac);
+    if (!header_of(c->in, end, "X-Room-Wait:", wait, sizeof wait)) snprintf(wait, sizeof wait, "0");
+    if (!have || !rm_drain_ask(view(), strtoll(at, NULL, 10), strtoll(wait, NULL, 10), (coax_string){mac, (int64_t)strlen(mac)})) {
+      http(i, "403 Forbidden", "text/plain", "not a drain\n"); return;
+    }
+    drain_begin(strtoll(wait, NULL, 10) * 1000);
+    http(i, "200 OK", "text/plain", drain_word()); return;
+  }
+  /* readiness (#12797): 200 once the start check held, the realm's world is laid, and a room's world
+     builds (room-world.c world_ready); the deploy's startup probe, so a revision takes no traffic before */
+  if (!strncmp((char *)c->in, "GET /ready ", 11) || is_shard_path((char *)c->in, "GET ", "/ready ")) {
+    if (started_ok && world_ready()) http(i, "200 OK", "text/plain", "ready\n");
+    else http(i, "503 Service Unavailable", "text/plain", started_ok ? "no world yet\n" : "start check failed\n");
+    return;
+  }
   /* --dev: the API's stand-in answers the page's /api/playtest/ requests (room-dev.coax), the body whole */
   if (dev_dir && (!strncmp((char *)c->in, "POST /api/", 10) || !strncmp((char *)c->in, "GET /api/playtest/", 18) || !strncmp((char *)c->in, "GET /api/auth/viewer", 20))) {
     size_t want = 0;
@@ -422,9 +498,9 @@ static void opening(int i) {
       if ((int64_t)conns[j].on > wait_most) wait_most = (int64_t)conns[j].on;
       if (t_now - conns[j].since > wait_ms) wait_ms = t_now - conns[j].since;
     }
-    char body[440]; snprintf(body, sizeof body, "ok %lld players, fanout p50 %lld us p95 %lld us over %lld reads, %lld rate-limited, %lld slow closed, shard %lld, everglade tick p50 %lld us at the 95th %lld us over %lld ticks, waiting %lld bytes most, %lld ms oldest, %lld world events running\n",
+    char body[520]; snprintf(body, sizeof body, "ok %lld players, fanout p50 %lld us p95 %lld us over %lld reads, %lld rate-limited, %lld slow closed, shard %lld, everglade tick p50 %lld us at the 95th %lld us over %lld ticks, waiting %lld bytes most, %lld ms oldest, %lld world events running, %s",
                              (long long)rm_players(view()), (long long)p50, (long long)p95, (long long)n, (long long)rm_relay_dropped(view()), (long long)slow_closed,
-                             (long long)server->shard, (long long)tp50, (long long)tp95, (long long)tn, (long long)wait_most, (long long)wait_ms, (long long)rm_events_running(view()));
+                             (long long)server->shard, (long long)tp50, (long long)tp95, (long long)tn, (long long)wait_most, (long long)wait_ms, (long long)rm_events_running(view()), drain_word());
     http(i, "200 OK", "text/plain", body); return;
   }
   /* --dev: the API's stand-in (local.coax): the world document the room laid, byte for byte */
@@ -795,7 +871,9 @@ int main(int argc, char **argv) {
   poster_start();   /* before the server's memory (vitals_post) */
   server = server_new();
   if (!server) { fprintf(stderr, "room: out of memory\n"); return 1; }
+  started_ok = rm_start_check(view()) == 0;   /* readiness needs the started server to hold its defaults (#12797) */
   rm_vitals_gen(view(), wall_ms());   /* this process's generation, in every vitals operation ID (#12793) */
+  { const char *dg = getenv("OA_ROOM_DIR_GEN"); if (dg && !strcmp(dg, "1")) rm_dir_gen(view(), true); }   /* the directory's fence (#12797) */
   signal(SIGTERM, on_term);
   if (dev_dir) { rm_dev_start(view()); const char *da = getenv("OA_ROOM_DEV_ADMIN"); if (da && !strcmp(da, "0")) rm_dev_admin(view(), false); printf("room: --dev %s: the API's stand-in (seat tickets checked and required)\n", dev_dir); }
   if (native_local && !rm_native_local(view(), (coax_string){address,(int64_t)strlen(address)})) {
@@ -831,7 +909,16 @@ int main(int argc, char **argv) {
   double next = (double)now_ms();
   int64_t ticks = 0, last_report = now_ms(), last_vitals = now_ms(), last_stats = now_ms(), drain_at = 0;
   for (;;) {
-    if (term_asked && !drain_at) { drain_at = now_ms(); rm_vitals_flush(view()); last_vitals = 0; printf("room: SIGTERM: saving %lld players' vitals before exit\n", (long long)rm_vitals_pending(view())); }
+    if (drain_phase > DRAIN_NONE && drain_phase < DRAIN_DONE && !term_asked) drain_step();
+    /* SIGTERM: bounded final work only (Cloud Run kills at 10 s). A drained room has nothing left; one
+       that wasn't drained tells its pages "restarting" (they sit elsewhere at once, not after a silent
+       socket's wait), and every seat's vitals go out as the last step before exit. */
+    if (term_asked && !drain_at) {
+      drain_at = now_ms();
+      if (drain_phase < DRAIN_TELLING) { int64_t told = rm_drain_tell(view()); relay_flush(); printf("room: SIGTERM before a drain: told %lld pages restarting\n", (long long)told); }
+      rm_vitals_flush(view()); last_vitals = 0;
+      printf("room: SIGTERM: saving %lld players' vitals before exit\n", (long long)rm_vitals_pending(view()));
+    }
     if (drain_at) {
       int64_t left = rm_vitals_pending(view());
       if ((left == 0 && !server->vit.fly) || now_ms() - drain_at > DRAIN_MS) {

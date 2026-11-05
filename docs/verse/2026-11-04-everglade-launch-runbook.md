@@ -238,7 +238,20 @@ Wait for the raid to end, or set `OA_ROOM_DEPLOY_FORCE=1` to deploy anyway.
 
 It builds one image and deploys it to `oa-room` and `oa-room-2` to `oa-room-6`
 one shard at a time. Each shard must answer its health before the next is
-replaced, so only one shard's rooms restart at once. It then checks the load
+replaced, so only one shard's rooms restart at once.
+
+Before it replaces a shard, the script drains it (#12797). The shard stops
+taking new seats, and the API's directory places nobody on it. It waits up to
+`OA_ROOM_DRAIN_WAIT` seconds (300 by default, 0 with `OA_ROOM_DEPLOY_FORCE=1`)
+for a raid under way to end. Then it shows every player `RESTARTING · BACK IN A
+MOMENT`, and their pages join again on another shard about a second later. It
+saves every seat's HP, XP and WANTED, and its health says `drain done` once the
+API has them all. The script prints `room: shard K drained` and deploys the new
+revision. That revision takes traffic only after its startup probe, `GET
+/ready`, answers: the room's start check held, the realm's world came from the
+API, and a room's world was built from it. Run the API deploy first: the rooms
+name their process generation in the directory reports (`OA_ROOM_DIR_GEN=1`),
+which needs migration 0133. It then checks the load
 balancer rules,
 and runs its own checks through `wss://openagents.com`, retrying for up to
 5 minutes while the rule reaches every edge. Those checks are the room load
@@ -805,10 +818,15 @@ So:
 - **A crash while the API is down** can lose everything since the last
   accepted save. There is no finite bound during an unbounded outage; the
   outbox's 15-minute expiry does not cap the amount of gameplay lost.
-- **A deploy (SIGTERM)** waits up to 8 s. Only accepted final receipts prove
-  saves survived; a timely HTTP answer alone does not prove acceptance.
-- **Not saved at all:** the raid in progress, the town's broken pieces and
-  where each player stood are in the room's memory only (#12797).
+- **A deploy** drains the shard first: it saves every seat and waits until
+  the API has accepted each save (its receipts) before the shard is replaced.
+  A SIGTERM without a drain tells the pages and waits up to 8 s. Only accepted
+  final receipts prove saves survived; a timely HTTP answer alone does not
+  prove acceptance.
+- **Not saved at all:** the raid in progress and the town's broken pieces are
+  in the room's memory only. A deploy waits for a raid to end, up to
+  `OA_ROOM_DRAIN_WAIT`. Where each player stood is #12838's character
+  checkpoints.
 
 The additive [checkpoint-v1 receiver](character-checkpoints-v1.md) (#12838)
 persists whole captures, but no room producer or restore ticket uses it yet.

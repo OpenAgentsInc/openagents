@@ -1799,6 +1799,169 @@ rc_region :: (t: [] Ap, api_bin: string, room_bin: string) {
 mf_slice :: (s:string)->bool{return s=="save"||s=="owner"||s=="travel";}
 mf_seed :: (s:string)->int{if s==""{return 1284201;}n:=rc_num(s);return ifx n>=1&&n<=2147483647 then n else -1;}
 mf_config :: (asked:bool,slice:string,seed_set:bool,seed:string)->bool{return !asked||(mf_slice(slice)&&(!seed_set||seed.count>0)&&mf_seed(seed)>0);}
+// ---- the drain and the directory's fence (#12797) --------------------------------------------------
+
+BOTS :: 2;   // the deploy check's bots
+
+rd_report :: (t: [] Ap, shard: int, gen_line: string, rooms: string) -> int {
+  b: [1] Sb; sb(b[..], "t "); sb_int(b[..], rc_wall_ms()); sb(b[..], "\ns "); sb_int(b[..], shard); sb(b[..], " 3\n");
+  sb(b[..], gen_line); sb(b[..], rooms);
+  return rc_room_post(t, "/api/playtest/room-directory", sb_text(b[..]), "");
+}
+rd_pick :: (t: [] Ap, pid: string, out: [] u8) -> string {
+  q: [1] Sb; sb(q[..], "select code || ' ' || shard from verse.room_pick('evdrn', 'evdrn', '"); sb(q[..], pid); sb(q[..], "', 16, '', '')");
+  return ap_sql(t, sb_text(q[..]), out);
+}
+rc_drain :: (t: [] Ap) {
+  out: [4096] u8; o2: [4096] u8;
+  ap_do(t, "update verse.room_shards set gen = null, draining = null");
+  st := rd_report(t, 2, "g 5000\n", "r evdrn-1 1 p-drn1\n");
+  ap_check(t, "drain: a report with its process's generation is kept, and the shard takes players", st == 200 && rd_pick(t, "p-drn2", out[..]) == "evdrn-1 2", ap_body(t));
+  st = rd_report(t, 2, "g 5000 d\n", "r evdrn-1 2 p-drn1 p-drn2\n");
+  p3 := rd_pick(t, "p-drn3", out[..]);
+  ap_check(t, "drain: once the shard says it drains, a new player is placed on another shard", st == 200 && p3 != "" && !ap_has(p3, " 2") && !ap_has(p3, "evdrn-1"), p3);
+  back := rd_pick(t, "p-drn1", o2[..]);
+  ap_check(t, "drain: a player of the draining shard who joins again is placed on another shard", back != "" && !ap_has(back, "evdrn-1"), back);
+  st = rd_report(t, 2, "g 4000\n", "r evdrn-1 5 p-drn1\n");
+  ap_check(t, "drain: a report from an older process of the shard is refused whole (409) and changes nothing",
+           st == 409 && ap_sql(t, "select gen || ' ' || draining || ' ' || (select players from verse.room_instances where code = 'evdrn-1') from verse.room_shards where shard = 2", out[..]) == "5000 5000 2",
+           ap_sql(t, "select gen || ' ' || coalesce(draining, 0) from verse.room_shards where shard = 2", o2[..]));
+  // the new process: a newer generation, not draining, no rooms yet
+  st = rd_report(t, 2, "g 6000\n", "");
+  ap_check(t, "drain: the replacement's first report clears the drain, and the shard takes players again",
+           st == 200 && ap_sql(t, "select gen || ' ' || coalesce(draining, 0) || ' ' || verse.room_fits(2, '', verse.room_now()) from verse.room_shards where shard = 2", out[..]) == "6000 0 true", ap_body(t));
+  st = rd_report(t, 2, "", "");
+  ap_check(t, "drain: a report with no generation (a room from before) is kept as before", st == 200, ap_body(t));
+  st = rd_report(t, 2, "g 7000 x\n", "");
+  ap_check(t, "drain: a malformed generation line is not a report", st == 400, ap_body(t));
+  ap_do(t, "update verse.room_shards set gen = null, draining = null");
+  ap_do(t, "delete from verse.room_instances where realm = 'evdrn'");
+  ap_do(t, "delete from verse.room_holds where code like 'evdrn%'");
+}
+
+// GET or POST on a local room's HTTP port: the status, its body in out (as text).
+rd_http :: (method: string, port: int, path: string, headers: [] string, out: [] u8, n_out: [] int) -> int {
+  w: [1] HttpWork; u: [1] Sb; sb(u[..], "http://127.0.0.1:"); sb_int(u[..], port); sb(u[..], path);
+  got := http_do(w[..], method, sb_text(u[..]), headers, "", 5000, 0, out);
+  n_out[0] = ifx got.error == HTTP_OK then got.n else 0;
+  return ifx got.error == HTTP_OK then got.code else 0;
+}
+// A deploy over a room with bots in it (#12797), as deploy.sh does it to a shard: two bots sit in a room
+// process (their tickets bring back HP 7). The deploy drains it (POST /drain, signed): the bots hear
+// "restarting" and their sockets close, the room saves both (the API accepts a save of each after the
+// ask), and its health says "drain done". SIGTERM
+// then ends it at once. A new process (the next revision) takes the room's code; each bot's next ticket
+// (the next owner, the HP the API holds) sits there, and the new process's saves keep each bot's HP.
+// Where each stood is the character checkpoints' (#12838).
+rc_deploy :: (t: [] Ap, room_bin_in: string) {
+  out: [4096] u8; none: [1] string;
+  rootb: [4096] u8; root := fs_cwd(rootb[..]);
+  binb: [1] Sb;
+  if room_bin_in.count > 0 && room_bin_in[0] != '/' { sb(binb[..], root); sb(binb[..], "/"); }
+  sb(binb[..], room_bin_in);
+  ps: [BOTS] Player; pids: [BOTS] [64] u8; pid_n: [BOTS] int;
+  for b: 0..<BOTS { r := ap_player(t, ps[b..<b + 1]); id := pl_id(ps[b..<b + 1]); for i: 0..<id.count { pids[b][i] = id[i]; } pid_n[b] = id.count; }
+  wa: [4096] u8; work_a := fs_temp("room-deploy-a", wa[..]);
+  la: [1] FcLog; pa: [1] int;
+  room_a := ro_room(t, sb_text(binb[..]), work_a, pa[..], la[..]);
+  // the ready check: the start check held and the world is built from the realm's
+  hb: [4096] u8; hn: [1] int;
+  ready := rd_http("GET", pa[0], "/ready", none[0..<0], hb[..], hn[..]);
+  ap_check(t, "deploy: a fresh room process answers ready once its world is built", room_a >= 0 && ready == 200, cast(string) hb[0..<hn[0]]);
+  // the bots sit, brought back with HP 7
+  u: [1] Sb; secs: [16] u8; bots: [BOTS] int;
+  for b: 0..<BOTS {
+    q: [1] Sb; sb(q[..], "select verse.room_owner_next('"); sb(q[..], cast(string) pids[b][0..<pid_n[b]]); sb(q[..], "')");
+    g := rc_num(ap_sql(t, sb_text(q[..]), out[..]));
+    sa := [4] string.["coax/web/tool.sh", "coax/web/room/owner-seat.coax", ro_url_hp(t, u[..], pa[0], cast(string) pids[b][0..<pid_n[b]], "pair-deploy", "7", g), ap_num(60, secs[..])];
+    bots[b] = ifx room_a >= 0 then fc_start(sa[..], none[0..<0], "") else -1;
+  }
+  t0 := proc_now_ms(); while proc_now_ms() - t0 < 6000 { fc_drain(room_a, la[..]); proc_sleep(100); }
+  // the drain, signed as deploy.sh signs it
+  at := rc_wall_ms();
+  text: [1] Sb; sb(text[..], "drain 1 "); sb_int(text[..], at); sb(text[..], " 30");
+  mac: [64] u8; m := ap_room_mac(t, sb_text(text[..]), mac[..]);
+  h1: [1] Sb; sb(h1[..], "X-Room-At: "); sb_int(h1[..], at);
+  h3: [1] Sb; sb(h3[..], "X-Room-Mac: "); sb(h3[..], m);
+  bad := [3] string.[sb_text(h1[..]), "X-Room-Wait: 30", "X-Room-Mac: 0000000000000000000000000000000000000000000000000000000000000000"];
+  refused := rd_http("POST", pa[0], "/drain", bad[..], hb[..], hn[..]);
+  hs := [3] string.[sb_text(h1[..]), "X-Room-Wait: 30", sb_text(h3[..])];
+  asked := rd_http("POST", pa[0], "/drain", hs[..], hb[..], hn[..]);
+  ap_check(t, "deploy: an unsigned drain is refused; a signed one is taken", refused == 403 && asked == 200, cast(string) hb[0..<hn[0]]);
+  done := false; t0 = proc_now_ms();
+  while room_a >= 0 && !done && proc_now_ms() - t0 < 40000 {
+    fc_drain(room_a, la[..]);
+    st := rd_http("GET", pa[0], "/health", none[0..<0], hb[..], hn[..]);
+    done = st == 200 && ap_has(cast(string) hb[0..<hn[0]], "drain done");
+    if !done { proc_sleep(250); }
+  }
+  ap_check(t, "deploy: the room says its drain is done (every bot told, every save received) within 40 s", done, cast(string) hb[0..<hn[0]]);
+  told := 0; sj: [4096] u8; said: [1] Sb;
+  for b: 0..<BOTS {
+    js := ro_seat_json(bots[b], 20000, sj[..]);
+    sb(said[..], js); sb(said[..], " ");
+    if ap_member_int(js, "seat", -1) >= 0 && rc_truthy(js, "restarting") && rc_truthy(js, "closed") { told += 1; }
+  }
+  ap_check(t, "deploy: every bot was seated, heard restarting, and its socket closed", told == BOTS, sb_text(said[..]));
+  kept: [BOTS] [64] u8; kept_n: [BOTS] int; saved := 0; hps: [1] Sb;
+  for b: 0..<BOTS {
+    vq: [1] Sb; sb(vq[..], "select hp || 'x' || xp from verse.room_vitals where who = '"); sb(vq[..], cast(string) pids[b][0..<pid_n[b]]); sb(vq[..], "'");
+    v := ap_sql(t, sb_text(vq[..]), out[..]);
+    for i: 0..<v.count { kept[b][i] = v[i]; } kept_n[b] = v.count;
+    oq: [1] Sb; ob: [64] u8;
+    sb(oq[..], "select count(*) from verse.room_vital_ops where pid = '"); sb(oq[..], cast(string) pids[b][0..<pid_n[b]]); sb(oq[..], "' and at >= "); sb_int(oq[..], at);
+    if v.count > 1 && rc_num(ap_sql(t, sb_text(oq[..]), ob[..])) > 0 { saved += 1; }
+    sb(hps[..], v); sb(hps[..], " ");
+  }
+  ap_check(t, "deploy: the API accepted a save of every bot after the drain was asked, before the room ends", saved == BOTS, sb_text(hps[..]));
+  // the platform's SIGTERM: a drained room has nothing left to do
+  ended := false; t1 := proc_now_ms();
+  if room_a >= 0 {
+    k := proc_kill(room_a, PROC_SIGTERM);
+    w := proc_wait(room_a, 9000);
+    ended = w != PROC_RUNNING;
+    if !ended { k = proc_kill(room_a, PROC_SIGKILL); w = proc_wait(room_a, 2000); }
+    r := proc_release(room_a);
+  }
+  ap_check(t, "deploy: SIGTERM ends the drained room within 9 s", ended, "");
+  // the next revision
+  wb: [4096] u8; work_b := fs_temp("room-deploy-b", wb[..]);
+  lb: [1] FcLog; pb: [1] int;
+  room_b := ro_room(t, sb_text(binb[..]), work_b, pb[..], lb[..]);
+  back := 0;
+  for b: 0..<BOTS {
+    q: [1] Sb; sb(q[..], "select verse.room_owner_next('"); sb(q[..], cast(string) pids[b][0..<pid_n[b]]); sb(q[..], "')");
+    g := rc_num(ap_sql(t, sb_text(q[..]), out[..]));
+    sa := [4] string.["coax/web/tool.sh", "coax/web/room/owner-seat.coax", ro_url_hp(t, u[..], pb[0], cast(string) pids[b][0..<pid_n[b]], "pair-deploy", cast(string) kept[b][0..<kept_n[b]], g), ap_num(12, secs[..])];
+    bots[b] = ifx room_b >= 0 then fc_start(sa[..], none[0..<0], "") else -1;
+  }
+  for b: 0..<BOTS {
+    js := ro_seat_json(bots[b], 40000, sj[..]);
+    if ap_member_int(js, "seat", -1) >= 0 && !rc_truthy(js, "restarting") && !rc_truthy(js, "elsewhere") { back += 1; }
+  }
+  ap_check(t, "deploy: every bot sits again in pair-deploy on the new process", back == BOTS, "");
+  same := 0; deadline := proc_now_ms() + 20000;
+  while room_b >= 0 && same < BOTS && proc_now_ms() < deadline {
+    fc_drain(room_b, lb[..]);
+    same = 0;
+    for b: 0..<BOTS {
+      ops: [1] Sb; sb(ops[..], "select count(*) || ' ' || (select hp || 'x' || xp from verse.room_vitals where who = '"); sb(ops[..], cast(string) pids[b][0..<pid_n[b]]);
+      sb(ops[..], "') from verse.room_vital_ops where pid = '"); sb(ops[..], cast(string) pids[b][0..<pid_n[b]]); sb(ops[..], "' and gen > "); sb_int(ops[..], at);
+      v := ap_sql(t, sb_text(ops[..]), out[..]);
+      w: [1] Sb; sb(w[..], " "); sb(w[..], cast(string) kept[b][0..<kept_n[b]]);
+      if v.count > 2 && v[0] != '0' && ap_has(v, sb_text(w[..])) { same += 1; }
+    }
+    if same < BOTS { proc_sleep(500); }
+  }
+  ap_check(t, "deploy: the new process saves every bot with the HP and XP it had before the deploy", same == BOTS, "");
+  if room_b >= 0 {
+    k := proc_kill(room_b, PROC_SIGTERM);
+    w := proc_wait(room_b, 15000);
+    if w == PROC_RUNNING { k = proc_kill(room_b, PROC_SIGKILL); w = proc_wait(room_b, 2000); }
+    r := proc_release(room_b);
+  }
+  g := fs_remove(work_a); g = fs_remove(work_b);
+}
 
 tool_main :: () -> int #export_c {
   a: [1] Args;
@@ -1824,7 +1987,7 @@ tool_main :: () -> int #export_c {
     print("fault-profile mmo-fault-v1 slice=% elapsed_ms=%\n",fault,proc_now_ms()-at);
     return ap_done(t[..],"MMO fault slice");
   }
-  names := [13] string.["admission", "chat", "events", "invites", "parties", "items", "stats", "vitals", "owner", "travel", "builds", "checkpoints", "region"];
+  names := [15] string.["admission", "chat", "events", "invites", "parties", "items", "stats", "vitals", "owner", "travel", "builds", "checkpoints", "region", "drain", "deploy"];
   for name: names {
     run := args_count(a[..]) == 0;
     for i: 0..<args_count(a[..]) { if args_at(a[..], i) == name { run = true; } }
@@ -1849,6 +2012,11 @@ tool_main :: () -> int #export_c {
       if bin != "" { rc_fault(t[..], bin); }
     }
     if name == "builds" { rc_builds(t[..]); }
+    if name == "drain" { rc_drain(t[..]); }
+    if name == "deploy" {
+      bb: [4096] u8; bin := proc_getenv("ROOM_BIN", bb[..]);
+      if bin != "" { rc_deploy(t[..], bin); }
+    }
     if name == "travel" {
       bb: [4096] u8; bin := proc_getenv("ROOM_BIN", bb[..]);
       if bin != "" { rc_travel(t[..], bin); rc_travel_crash(t[..], bin); }

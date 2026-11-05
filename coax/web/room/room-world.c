@@ -343,3 +343,15 @@ bool world_hurt(int k, int q, float out[3]) { return world_of(k) && everglade_ro
 void host_line(int64_t h, double ax, double ay, double bx, double by, double la, double lb, double w) { (void)h; (void)ax; (void)ay; (void)bx; (void)by; (void)la; (void)lb; (void)w; }
 void host_dot(int64_t h, double x, double y, double size, double light, double soft, double crisp) { (void)h; (void)x; (void)y; (void)size; (void)light; (void)soft; (void)crisp; }
 void host_slot(int64_t h, double x, double y, double w, double hh, double press, double flash, double sel, double icon) { (void)h; (void)x; (void)y; (void)w; (void)hh; (void)press; (void)flash; (void)sel; (void)icon; }
+
+/* Readiness (#12797): the realm's published world is laid (world_edits), and a room's world builds from
+   it: slot 0's (kept for the room that next takes it), its town peopled and its ground finite. */
+bool world_ready(void) {
+  static bool ready;
+  if (ready) return true;
+  if (!edits_text || room_catalog_n <= 0 || !world_of(0) || !river[0] || !pieces[0]) return false;
+  static float people[WORLD_FOLK * WORLD_PEOPLE];
+  float g = world_ground(0, 0.0f, 0.0f);
+  ready = world_people(0, people) > 0 && g == g && g > -1000.0f && g < 1000.0f;
+  return ready;
+}

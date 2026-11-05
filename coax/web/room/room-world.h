@@ -11,6 +11,8 @@
 /* Seat s of room k stands at the gate: its pose. */
 /* The realm's published world (its JSON answer), laid over every room's plan and each new room's. */
 void world_edits(const char *text, int64_t n);
+/* readiness: the published world laid and a room's world built from it (#12797) */
+bool world_ready(void);
 bool world_place(int k, int s, float out[WORLD_POSE]);
 /* seat s of room k where its player stood (x, y, z, facing yaw), as world_place does at the gate */
 bool world_place_at(int k, int s, float x, float y, float z, float yaw, float out[WORLD_POSE]);

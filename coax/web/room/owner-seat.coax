@@ -3,7 +3,7 @@
 // sending an input each 1/30 s. Every 2 s it says its hello again, as a druid and then as a warlock in
 // turn: each change of class changes its Hit Points, so the room has a new vitals line for it to post.
 // It stops when the room closes its socket or SECONDS pass, and prints one JSON line: the seat, the D
-// frames heard, whether the room said "r 0 elsewhere", and whether the socket closed. With TO, 3 s in
+// frames heard, whether the room said "r 0 elsewhere" or "r 0 restarting" (a drain, #12797), and whether the socket closed. With TO, 3 s in
 // it asks to travel there (T, #12850) and stops as soon as the room sends it on (g TO: "go").
 //   coax/web/tool.sh coax/web/room/owner-seat.coax ws://localhost:PORT/api/room/relay/everglade/CODE?t=TICKET SECONDS [TO]
 #load "room-socket.coax";
@@ -19,7 +19,7 @@ tool_main :: () -> int #export_c {
   if !relay_conn_open(c[..], url) { tool_err("owner-seat: can't open "); tool_errln(url); print("{\"open\":false}\n"); return 1; }
   hellos := [2] string.["H 4 ranger.1.0.0 druid 0 Owner", "H 4 ranger.1.0.0 warlock 0 Owner"];
   sent := relay_conn_send(c[..], hellos[0]);
-  seat := -1; d := 0; elsewhere := false; closed := false; said := 1;
+  seat := -1; d := 0; elsewhere := false; restarting := false; closed := false; said := 1;
   seq := 0; m: [96] u8;
   t0 := rs_now(); n := 0; hello_at := t0;
   while !closed && rs_now() - t0 < secs * 1000 {
@@ -40,6 +40,7 @@ tool_main :: () -> int #export_c {
         if rs_starts(t, "y ") { seat = rs_num(rs_field(t, 1)); }
         if rs_starts(t, "D ") { d += 1; }
         if t == "r 0 elsewhere" { elsewhere = true; }
+        if t == "r 0 restarting" { restarting = true; }
         if to.count > 0 && rs_starts(t, "g ") && t[2..<t.count] == to { go = true; closed = true; }
         r = relay_conn_poll(c[..], 0);
       }
@@ -56,6 +57,7 @@ tool_main :: () -> int #export_c {
   jo_key(o[..], "d"); jo_int(o[..], d);
   jo_key(o[..], "hellos"); jo_int(o[..], said);
   jo_key(o[..], "elsewhere"); jo_bool(o[..], elsewhere);
+  jo_key(o[..], "restarting"); jo_bool(o[..], restarting);
   jo_key(o[..], "closed"); jo_bool(o[..], closed);
   jo_key(o[..], "go"); jo_bool(o[..], go);
   jo_end(o[..]);
