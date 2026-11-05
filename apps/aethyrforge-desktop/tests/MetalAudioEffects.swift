@@ -54,10 +54,10 @@ struct MetalAudioEffects {
                 let buffer = AVAudioPCMBuffer(pcmFormat:format,frameCapacity:AVAudioFrameCount(bytes.count/4/Int(channels)))!
                 buffer.frameLength = buffer.frameCapacity
                 bytes.withUnsafeBytes { buffer.floatChannelData![0].initialize(from:$0.bindMemory(to:Float.self).baseAddress!,count:bytes.count/4) }
-                audio.buffers[op["name"] as! String] = ForgeDecodedPCM(buffer)
+                audio.buffers[op["name"] as! String] = ForgeDecodedPCM(buffer,memory:audio.memory)
             case "reset":
-                let assets = audio.buffers, wav = audio.bankWav
-                audio.close(); audio = ForgeMetalAudio(host:host,resources:res,muted:true)
+                let assets = audio.buffers, wav = audio.bankWav, memory = audio.memory
+                audio.close(); audio = ForgeMetalAudio(host:host,resources:res,muted:true,memory:memory)
                 audio.buffers = assets; audio.bankWav = wav; audio.banked = true
             case "drain":
                 var count = 0

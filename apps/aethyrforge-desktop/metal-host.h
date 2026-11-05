@@ -65,6 +65,20 @@ int64_t mf_http_image(const uint8_t *body,size_t body_count,const uint8_t *image
 void mf_network_config(void *host,const char *page_origin,const char *local_origin);
 void mf_network_reset(void *host);
 const uint8_t *mf_sound_bank(void *host,size_t *count);
+const uint8_t *mf_sound_bank_storage(void *host,size_t *capacity);
+typedef struct {const uint8_t *name;size_t name_count;const uint8_t *bytes;size_t byte_count;} MFAudioBankAsset;
+void *mf_audio_bank_open(const uint8_t *base,size_t capacity);
+bool mf_audio_bank_register(void *bank,const uint8_t *line,size_t count,MFAudioBankAsset *out);
+int64_t mf_audio_bank_count(void *bank);
+void mf_audio_bank_close(void *bank);
+// The shared authority admits exact extents before every PCM allocation.
+int64_t mf_audio_extent(int64_t frames,int64_t channels);
+void *mf_audio_memory_open(void);
+int64_t mf_audio_memory_reserve(void *memory,int64_t words);
+int64_t mf_audio_memory_words(void *memory,int64_t ticket);
+bool mf_audio_memory_release(void *memory,int64_t ticket);
+int64_t mf_audio_memory_total(void *memory);
+void mf_audio_memory_close(void *memory);
 const uint8_t *mf_sound_commands(void *host,size_t *count);
 int32_t mf_sound_probe(void *host,int32_t slot,float right,float ahead,float up);
 typedef struct {int64_t kind;const uint8_t *name;size_t name_count;const uint8_t *voice_id;size_t id_count;float gain,pan,delay,lowpass,rate,wet;} MFAudioEffect;

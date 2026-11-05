@@ -1,0 +1,29 @@
+// Exact observations from the real native allocator and shared bank adapter.
+#authority;
+#test "native PCM memory and pointer-span receipt requires every observed boundary" {
+ memory:=[20]int.[1,1,1,1,1,1,0,8388608,8388608,1,0,128,128,1,129,0,6,6,1,0];bank:[50]int;
+ first:=[5]int.[1,1,44,120,37];last:=[5]int.[1,2,1,121,80];for value,i:first {bank[i]=value;}for i:1..<9 {bank[i*5+1]=1;}for value,i:last {bank[45+i]=value;}
+ #assert mamm_accept(memory[..],bank[..]);
+ for i:0..<20 {memory[i]+=1;#assert !mamm_accept(memory[..],bank[..]);memory[i]-=1;}
+ for i:0..<50 {bank[i]+=1;#assert !mamm_accept(memory[..],bank[..]);bank[i]-=1;}
+ #assert !mamm_accept(memory[0..<19],bank[..])&&!mamm_accept(memory[..],bank[0..<49]);
+}
+mamm_accept :: (memory:[]int,bank:[]int)->bool #export_c {
+ if memory.count!=20||bank.count!=50 {return false;}
+ expected:=[20]int.[1,1,1,1,1,1,0,8388608,8388608,1,0,128,128,1,129,0,6,6,1,0];
+ for value,i:expected {if memory[i]!=value {return false;}}
+ first:=[5]int.[1,1,44,120,37];last:=[5]int.[1,2,1,121,80];
+ for value,i:first {if bank[i]!=value {return false;}}
+ for i:1..<9 {for j:0..<5 {if bank[i*5+j]!=(ifx j==1 then 1 else 0) {return false;}}}
+ for value,i:last {if bank[45+i]!=value {return false;}}return true;
+}
+#test "physical forty eight asset bank holds decoded tickets through retirement and refuses exhausted allocation" {
+ q:=[15]int.[1,3145728,48,48,2042394,2042394,2042394,0,48,0,1,0,24960,24960,0];
+ #assert mamm_bank(q[..]);q[0]=4096;#assert mamm_bank(q[..]);q[0]=4097;#assert !mamm_bank(q[..]);q[0]=0;#assert !mamm_bank(q[..]);q[0]=1;
+ for i:1..<15 {q[i]+=1;#assert !mamm_bank(q[..]);q[i]-=1;}#assert !mamm_bank(q[0..<14]);
+}
+mamm_bank :: (q:[]int)->bool #export_c {
+ if q.count!=15 {return false;}if q[0]<1||q[0]>4096 {return false;}
+ expected:=[14]int.[3145728,48,48,2042394,2042394,2042394,0,48,0,1,0,24960,24960,0];
+ for value,i:expected {if q[i+1]!=value {return false;}}return true;
+}

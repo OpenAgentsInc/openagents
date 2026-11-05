@@ -15,6 +15,7 @@
  F(uintptr_t,particles,(uintptr_t)) F(uint32_t,particle_cap,(void)) F(uint32_t,particle_bytes,(uintptr_t)) F(uint32_t,particle_instances,(uintptr_t)) F(uint32_t,grass_instances,(uintptr_t)) \
  F(int32_t,action,(uintptr_t)) F(uintptr_t,outbox,(uintptr_t)) F(uint32_t,outbox_len,(uintptr_t)) F(void,action_done,(uintptr_t)) \
  F(uintptr_t,sounds,(uintptr_t)) F(uint32_t,sounds_len,(uintptr_t)) F(uintptr_t,sound_bank,(uintptr_t)) F(uint32_t,sound_bank_len,(uintptr_t)) F(int32_t,sound_probe,(uintptr_t,int32_t,float,float,float)) \
+ F(uint32_t,sound_bank_capacity,(uintptr_t)) F(uintptr_t,sound_bank_storage,(uintptr_t)) F(uint32_t,sound_bank_storage_bytes,(uintptr_t)) \
  F(uintptr_t,media,(uintptr_t)) F(uint32_t,media_len,(uintptr_t)) F(int32_t,field_probe,(uintptr_t,int32_t)) F(int32_t,net_probe,(uintptr_t,int32_t)) \
  F(int32_t,wants_text,(uintptr_t)) F(int32_t,frame_admit,(int32_t)) F(uint32_t,pixel_budget,(void))
 typedef struct {

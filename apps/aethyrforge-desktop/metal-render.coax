@@ -8,6 +8,8 @@
 #load "../../aethyr/audio/host-effects.coax";
 #load "../../aethyr/audio/host-pcm.coax";
 #load "../../aethyr/audio/host-wav.coax";
+#load "../../aethyr/host/audio-bank.coax";
+#load "../../aethyr/host/audio-memory.coax";
 #load "../../aethyr/host/lifecycle.coax";
 #load "../../aethyr/host/http-image.coax";
 metal_pack_read :: (bytes:string,out:[]PackRead)->bool #export_c {return pack_read(bytes,out);}

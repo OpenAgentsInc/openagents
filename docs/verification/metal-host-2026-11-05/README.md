@@ -411,3 +411,58 @@ The exact updated executable and shell/renderer inputs are frozen under its
 `sdk/`. The media reactor SHA256 is
 `8a044816e38ac651fa9c29af9dfdcba5218dbbb637a3daa98b4261d3d20a6998`.
 The canonical app was untouched; the isolated app and owned children are closed.
+
+## Native audio allocation and bank-span admission
+
+`audio-memory/receipt.json` and `audio-memory-asan/receipt.json` are identical
+actual native observations. The Swift PCM owner reserves through
+`ham_extent`/`ham_reserve` before allocating samples. Converter input and
+output buffers hold separate reservations through conversion. A ticket stays
+alive with its allocation, including assets retained across context replacement;
+the engine stops borrowing before its decoded buffers are released.
+
+The workload observes invalid/overflowing extents refusing, the complete
+8,388,608-word budget refusing another sample, all 128 tickets filling and a
+released ticket being reused. An actual interleaved SDK buffer copies all six
+samples correctly and returns its reservation on release. Bank adapter calls
+observe duplicate, malformed and out-of-allocation rows refusing with empty
+returned pointers before any source copy. The first and final bytes of admitted
+physical storage remain accessible. Its exact observation authority kills all
+96 root mutants, including the earlier 63-mutant allocator/span component,
+with no equivalents. The shared extent authority kills all
+64 root mutants; the existing bank authority's 92-mutant gate is cited rather
+than repeated.
+
+Both executions start no GPU or audio device. ASan instruments the Objective-C
+adapter, generated renderer/texture facade and Swift allocator fixture; leak
+detection is disabled. The loaded producer in the bank workload is not ASan
+instrumented.
+
+`audio-bank-memory/` additionally observes all 48 real synthesized assets
+through the new physical exports and native adapter. Its entire 10,193,456 WAV
+and PCM bytes equal the independently frozen canonical bank. The 2,042,394
+decoded words stay reserved while references survive context close, then drop
+to zero. Filling the word budget first still admits the 48 physical WAV spans
+but refuses every PCM allocation; a known unavailable cue stays unavailable.
+A separate optional SDK converter returns 24,960 samples, releasing temporary
+reservations and finally its retained allocation to zero. Its resampled PCM
+does not claim canonical sample parity.
+
+The producer is the exact previously qualified `a0f3f8b518` face and matching
+generated headers/objects, relinked with only three additive physical
+capacity/storage exports. Those source bytes and the narrow patch are retained
+under `audio-bank-producer/`. This is explicitly a frozen producer plus new SDK
+qualification. Sibling work's fresh current-source primary emission reached its
+840-second child deadline with status137/timeouttrue and no admitted C/header;
+that failure remains separate and is not replaced by these older source inputs.
+
+The original admitted598 compiler emits the facade from genuine historical
+`c224561457` plus pinned product `56117fe1aa` and the two explicit bank/memory
+loads. Its original receipt verifies before and after preparation and after
+the overlay. `audio-memory-sdk/compiled-source-observation.json` records all
+78 actual emitted source inputs matching the separately checked working
+snapshot, with zero differences. The C SHA256 is
+`92b7c5bc1b0e03533846f102b8f98a6c6384553537e2504b8436caf99fe539ec`.
+This source join does not publish a compiler release or admit experimental
+shader products. The receive queue's 106-mutant authority is a separate landed
+component; physical native receive backpressure remains an outstanding SDK gate.

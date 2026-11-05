@@ -2,22 +2,56 @@
 import AVFoundation
 import Foundation
 
+// Tickets live as long as the allocations they admit, including SDK converter
+// scratch and samples borrowed by a retiring audio context.
+final class ForgeAudioMemory {
+    private let lock = NSLock()
+    private let state = mf_audio_memory_open()
+    func reserve(frames: Int64, channels: Int64) -> ForgeAudioReservation? {
+        let words = mf_audio_extent(frames,channels)
+        lock.lock(); defer { lock.unlock() }
+        let ticket = mf_audio_memory_reserve(state,words)
+        guard ticket >= 0 else { return nil }
+        return ForgeAudioReservation(memory:self,ticket:ticket,words:mf_audio_memory_words(state,ticket))
+    }
+    fileprivate func release(_ ticket: Int64) {
+        lock.lock(); defer { lock.unlock() }
+        _ = mf_audio_memory_release(state,ticket)
+    }
+    var total: Int64 {
+        lock.lock(); defer { lock.unlock() }
+        return mf_audio_memory_total(state)
+    }
+    deinit { mf_audio_memory_close(state) }
+}
+final class ForgeAudioReservation {
+    let memory: ForgeAudioMemory
+    let ticket: Int64
+    let words: Int64
+    fileprivate init(memory: ForgeAudioMemory, ticket: Int64, words: Int64) {
+        self.memory = memory; self.ticket = ticket; self.words = words
+    }
+    deinit { memory.release(ticket) }
+}
+
 // Stable decoded memory. Coax borrows it until engine retirement.
 final class ForgeDecodedPCM {
     let samples: UnsafeMutablePointer<Float>
     let count: Int
     let channels: Int64
-    init(count: Int, channels: Int64) {
-        self.count = count; self.channels = channels
-        samples = .allocate(capacity:count)
+    private let reservation: ForgeAudioReservation
+    init?(frames: Int64, channels: Int64, memory: ForgeAudioMemory) {
+        guard let receipt = memory.reserve(frames:frames,channels:channels),
+              let bytes = calloc(Int(receipt.words),MemoryLayout<Float>.stride) else { return nil }
+        reservation = receipt; count = Int(receipt.words); self.channels = channels
+        samples = bytes.assumingMemoryBound(to:Float.self)
     }
-    init(_ buffer: AVAudioPCMBuffer) {
-        channels = Int64(buffer.format.channelCount)
-        count = Int(buffer.frameLength) * Int(channels)
-        samples = .allocate(capacity:count)
-        samples.initialize(from:buffer.floatChannelData![0],count:count)
+    convenience init?(_ buffer: AVAudioPCMBuffer, memory: ForgeAudioMemory) {
+        guard buffer.format.isInterleaved, let source = buffer.floatChannelData?[0] else { return nil }
+        self.init(frames:Int64(buffer.frameLength),channels:Int64(buffer.format.channelCount),memory:memory)
+        samples.update(from:source,count:count)
     }
-    deinit { samples.deallocate() }
+    deinit { free(samples) }
 }
 
 // Serialize command delivery with the CoreAudio callback. The callback copies
@@ -81,6 +115,7 @@ final class ForgeMetalAudio {
     let engine = AVAudioEngine()
     let source = ForgePCMSource()
     let muted: Bool
+    let memory: ForgeAudioMemory
     let wav = mf_wav_open()
     var node: AVAudioSourceNode?
     var started = false
@@ -89,8 +124,8 @@ final class ForgeMetalAudio {
     var bankWav: [String:Data] = [:]
     var packets = 0
     var scheduled = 0
-    init(host: UnsafeMutableRawPointer, resources: URL, muted: Bool) {
-        self.host = host; self.resources = resources; self.muted = muted
+    init(host: UnsafeMutableRawPointer, resources: URL, muted: Bool, memory: ForgeAudioMemory = ForgeAudioMemory()) {
+        self.host = host; self.resources = resources; self.muted = muted; self.memory = memory
         let source = self.source
         let format = AVAudioFormat(standardFormatWithSampleRate:48000,channels:2)!
         let node = AVAudioSourceNode(format:format) { _, _, frames, audio in source.render(frames,audio) }
@@ -105,16 +140,19 @@ final class ForgeMetalAudio {
     }
     func bank() {
         guard !banked else { return }; banked = true
-        var n = 0
-        guard let p = mf_sound_bank(host,&n) else { return }
-        let text = String(decoding:UnsafeBufferPointer(start:p,count:n),as:UTF8.self)
+        var n = 0, capacity = 0
+        guard let p = mf_sound_bank(host,&n), let base = mf_sound_bank_storage(host,&capacity),
+              let registry = mf_audio_bank_open(base,capacity) else { return }
+        defer { mf_audio_bank_close(registry) }
         let root = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/aethyrforge/audio-bank")
         try? FileManager.default.createDirectory(at:root,withIntermediateDirectories:true)
-        for line in text.split(separator:"\n") {
-            let columns = line.split(separator:" ")
-            guard columns.count == 3, let address = UInt(columns[1]), let count = Int(columns[2]), let bytes = UnsafeRawPointer(bitPattern:address), count > 0 else { continue }
-            let name = String(columns[0]), path = root.appendingPathComponent("\(name).wav")
-            let data = Data(bytes:bytes,count:count)
+        for line in Data(bytes:p,count:n).split(separator:10) {
+            var asset = MFAudioBankAsset()
+            let accepted = line.withUnsafeBytes { mf_audio_bank_register(registry,$0.bindMemory(to:UInt8.self).baseAddress,$0.count,&asset) }
+            guard accepted, let nameBytes = asset.name, let bytes = asset.bytes else { continue }
+            let name = String(decoding:UnsafeBufferPointer(start:nameBytes,count:asset.name_count),as:UTF8.self)
+            let path = root.appendingPathComponent("\(name).wav")
+            let data = Data(bytes:bytes,count:asset.byte_count)
             try? data.write(to:path,options:.atomic)
             bankWav[name] = data
             buffers[name] = decodeCanonical(data)
@@ -123,32 +161,38 @@ final class ForgeMetalAudio {
     func decodeCanonical(_ bytes: Data) -> ForgeDecodedPCM? {
         bytes.withUnsafeBytes { raw in
             let input = raw.bindMemory(to:UInt8.self)
-            let count = mf_wav_info(input.baseAddress,input.count,0)
+            let frames = mf_wav_info(input.baseAddress,input.count,2)
             let channels = mf_wav_info(input.baseAddress,input.count,1)
-            guard count > 0, channels > 0 else { return nil }
-            let pcm = ForgeDecodedPCM(count:Int(count),channels:channels)
+            guard let pcm = ForgeDecodedPCM(frames:frames,channels:channels,memory:memory) else { return nil }
             guard mf_wav_decode(wav,input.baseAddress,input.count,pcm.samples,pcm.count) else { return nil }
             return pcm
         }
     }
     func decode(_ url: URL) -> ForgeDecodedPCM? {
-        guard let file = try? AVAudioFile(forReading:url), file.length > 0, file.length <= Int64(UInt32.max),
+        guard let file = try? AVAudioFile(forReading:url),
+              let inputTicket = memory.reserve(frames:file.length,channels:Int64(file.processingFormat.channelCount)),
               let input = AVAudioPCMBuffer(pcmFormat:file.processingFormat,frameCapacity:AVAudioFrameCount(file.length)),
-              let format = AVAudioFormat(commonFormat:.pcmFormatFloat32,sampleRate:48000,channels:min(2,file.processingFormat.channelCount),interleaved:true),
+              let format = AVAudioFormat(commonFormat:.pcmFormatFloat32,sampleRate:48000,channels:file.processingFormat.channelCount,interleaved:true),
               let converter = AVAudioConverter(from:file.processingFormat,to:format) else { return nil }
         do { try file.read(into:input) } catch { return nil }
         let capacity = ceil(Double(input.frameLength)*48000/file.processingFormat.sampleRate)+1024
-        guard capacity <= Double(UInt32.max), let output = AVAudioPCMBuffer(pcmFormat:format,frameCapacity:AVAudioFrameCount(capacity)) else { return nil }
+        guard let outputFrames = Int64(exactly:capacity),
+              let outputTicket = memory.reserve(frames:outputFrames,channels:Int64(format.channelCount)),
+              let output = AVAudioPCMBuffer(pcmFormat:format,frameCapacity:AVAudioFrameCount(capacity)) else { return nil }
+        defer { withExtendedLifetime(inputTicket) {}; withExtendedLifetime(outputTicket) {} }
         var supplied = false, error: NSError?
         let status = converter.convert(to:output,error:&error) { _, state in
             if supplied { state.pointee = .endOfStream; return nil }
             supplied = true; state.pointee = .haveData; return input
         }
         guard status != .error, error == nil, output.frameLength > 0 else { return nil }
-        return ForgeDecodedPCM(output)
+        return ForgeDecodedPCM(output,memory:memory)
     }
     func buffer(_ name: String) -> ForgeDecodedPCM? {
         if let pcm = buffers[name] { return pcm }
+        // An admitted canonical WAV that refused decoding/allocation stays
+        // unavailable; it must not acquire platform-resampled substitute PCM.
+        if bankWav[name] != nil { return nil }
         let bytes = Data(name.utf8)
         guard bytes.withUnsafeBytes({ mf_audio_asset_name($0.bindMemory(to:UInt8.self).baseAddress,$0.count) }) else { return nil }
         let pcm = decode(resources.appendingPathComponent("web/realms/everglade/sfx/\(name).ogg"))

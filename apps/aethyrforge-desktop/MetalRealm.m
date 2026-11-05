@@ -482,7 +482,20 @@ void mf_close(void *host){MFRealm *r=CFBridgingRelease(host);[r shutdown];if(act
 int64_t mf_closed_info(int32_t field){return field==0?lastClosedLive:field==1?lastClosedWords:-1;}
 void mf_network_config(void *host,const char *page,const char *local){MFRealm *r=(__bridge MFRealm*)host;r->pageOrigin=page?[NSString stringWithUTF8String:page]:nil;r->localOrigin=local?[NSString stringWithUTF8String:local]:nil;}
 void mf_network_reset(void *host){ht_reset(net((__bridge MFRealm*)host));}
-const uint8_t *mf_sound_bank(void *host,size_t *n){MFRealm *r=(__bridge MFRealm*)host;*n=r->face.sound_bank_len?r->face.sound_bank_len(r->state):0;return r->face.sound_bank?(void*)r->face.sound_bank(r->state):NULL;}
+const uint8_t *mf_sound_bank(void *host,size_t *n){MFRealm *r=(__bridge MFRealm*)host;*n=0;if(!r->face.sound_bank||!r->face.sound_bank_len||!r->face.sound_bank_capacity)return NULL;size_t count=r->face.sound_bank_len(r->state),capacity=r->face.sound_bank_capacity(r->state);uintptr_t p=r->face.sound_bank(r->state);if(!htb_copy_span(p,capacity,count,UINT64_MAX))return NULL;*n=count;return(void*)p;}
+const uint8_t *mf_sound_bank_storage(void *host,size_t *n){MFRealm *r=(__bridge MFRealm*)host;*n=0;if(!r->face.sound_bank_storage||!r->face.sound_bank_storage_bytes)return NULL;uintptr_t p=r->face.sound_bank_storage(r->state);size_t capacity=r->face.sound_bank_storage_bytes(r->state);if(!htb_copy_span(p,capacity,0,UINT64_MAX))return NULL;*n=capacity;return(void*)p;}
+typedef struct {coax_t_HostAudioBank state;uintptr_t base;size_t capacity;} MFAudioBank;
+void *mf_audio_bank_open(const uint8_t *base,size_t capacity){MFAudioBank *p=calloc(1,sizeof*p);if(p){hab_reset((coax_v_t_HostAudioBank){&p->state,1});p->base=(uintptr_t)base;p->capacity=capacity;}return p;}
+bool mf_audio_bank_register(void *bank,const uint8_t *line,size_t count,MFAudioBankAsset *out){MFAudioBank *p=bank;*out=(MFAudioBankAsset){0};if(!p||count>INT64_MAX)return false;coax_v_t_HostAudioBank s={&p->state,1};int64_t id=hab_insert(s,(coax_string){(const char*)line,(int64_t)count},p->base,p->capacity);if(id<0)return false;coax_t_HostAudioBankSpan q=hab_source(s,id);if(!q.valid)return false;*out=(MFAudioBankAsset){(const uint8_t*)q.name.data,(size_t)q.name.count,(const uint8_t*)(uintptr_t)q.address,(size_t)q.bytes};return true;}
+int64_t mf_audio_bank_count(void *bank){MFAudioBank *p=bank;return p?p->state.count:0;}
+void mf_audio_bank_close(void *bank){free(bank);}
+int64_t mf_audio_extent(int64_t frames,int64_t channels){return ham_extent(frames,channels);}
+void *mf_audio_memory_open(void){return calloc(1,sizeof(coax_t_HostAudioMemory));}
+int64_t mf_audio_memory_reserve(void *memory,int64_t words){return memory?ham_reserve((coax_v_t_HostAudioMemory){memory,1},words):-1;}
+int64_t mf_audio_memory_words(void *memory,int64_t ticket){return memory?ham_words((coax_v_t_HostAudioMemory){memory,1},ticket):-1;}
+bool mf_audio_memory_release(void *memory,int64_t ticket){return memory&&ham_release((coax_v_t_HostAudioMemory){memory,1},ticket);}
+int64_t mf_audio_memory_total(void *memory){return memory?((coax_t_HostAudioMemory*)memory)->total:0;}
+void mf_audio_memory_close(void *memory){free(memory);}
 const uint8_t *mf_sound_commands(void *host,size_t *n){MFRealm *r=(__bridge MFRealm*)host;*n=r->face.sounds_len?r->face.sounds_len(r->state):0;return r->face.sounds?(void*)r->face.sounds(r->state):NULL;}
 int32_t mf_sound_probe(void *host,int32_t slot,float right,float ahead,float up){MFRealm *r=(__bridge MFRealm*)host;return r->face.sound_probe?r->face.sound_probe(r->state,slot,right,ahead,up):0;}
 bool mf_audio_decode(const uint8_t *bytes,size_t n,MFAudioEffect *out){coax_t_AudioHostEffect e=audio_host_parse((coax_string){(const char*)bytes,(int64_t)n});*out=(MFAudioEffect){e.kind,(const uint8_t*)e.name.data,(size_t)e.name.count,(const uint8_t*)e.id.data,(size_t)e.id.count,e.gain,e.pan,e.delay,e.lowpass,e.rate,e.wet};return e.kind!=0;}
