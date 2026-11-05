@@ -35,6 +35,34 @@ class Debugging(unittest.TestCase):
   self.assertGreater(t['checks'][0]['steps'],0);self.assertEqual(t['libraries'],[])
   self.assertIn('coax timings:',r.stderr);self.assertIn('check.checker',r.stderr);self.assertIn('#test doubles (authority)',r.stderr)
   quiet=self.call('check',source);self.assertEqual(quiet.returncode,0,quiet.stderr);self.assertNotIn('coax timings',quiet.stderr)
+ def test_declaration_costs_name_the_costly_declarations(self):
+  # #12925: per-declaration seconds and work units, a generic's instances charged to it.
+  source=self.d/'costs.coax';source.write_text(
+   'pick :: (a: $T, b: $T, first: bool) -> $T {if first {return a;} return b;}\n'
+   'table :: () -> int {t:=0;for i: 0..<500 {t+=i;} return t;}\n'
+   'TOTAL :: #run table();\n'
+   'Pair :: struct {a: int; b: int;}\n'
+   'main :: () {x:=pick(1,2,true);y:=pick(1.5,2.5,false);p:=Pair.{a=TOTAL,b=x};#assert p.a==124750 && y==2.5;}\n')
+  plain=self.call('c',source);self.assertEqual(plain.returncode,0,plain.stderr)
+  report=self.d/'d.json';r=self.call('c',source,'--timings',report,'--timings-table')
+  self.assertEqual(r.returncode,0,r.stderr);self.assertEqual(r.stdout,plain.stdout)  # the report never changes the C
+  t=json.loads(report.read_text());d=t['declarations'];self.assertEqual(d['top'],20)
+  rows={x['name']:x for x in d['by_work']}
+  self.assertEqual(rows['pick']['instances'],2);self.assertGreater(rows['pick']['instance_nodes'],0);self.assertEqual(rows['pick']['line'],1)
+  self.assertEqual(rows['pick']['path'],rows['main']['path']);self.assertTrue(rows['pick']['path'].endswith('costs.coax'))
+  self.assertGreater(rows['TOTAL']['evaluated_steps'],500);self.assertEqual(rows['TOTAL']['kind'],'constant')
+  self.assertGreater(rows['main']['c_bytes'],0);self.assertGreater(rows['main']['nodes'],0)
+  self.assertEqual(rows['Pair']['kind'],'struct')
+  self.assertEqual(d['by_work'][0]['name'],'TOTAL')  # its steps outweigh every tree
+  self.assertEqual(sorted(x['name'] for x in d['by_seconds']),sorted(rows))
+  for k in ['checker_nodes','generic_instances','borrow_work']:self.assertIn(k,t['work'])
+  self.assertGreaterEqual(t['work']['generic_instances'],2);self.assertGreater(t['work']['checker_nodes'],0)
+  self.assertIn('declarations:',r.stderr);self.assertIn('most work:',r.stderr)
+  one=self.call('c',source,'--timings',self.d/'one.json','--timings-top','1');self.assertEqual(one.returncode,0,one.stderr)
+  d1=json.loads((self.d/'one.json').read_text())['declarations']
+  self.assertEqual(len(d1['by_work']),1);self.assertEqual(len(d1['by_seconds']),1);self.assertEqual(d1['by_work'][0]['name'],'TOTAL')
+  for bad in ['0','x','100001']:
+   b=self.call('c',source,'--timings-top',bad);self.assertEqual(b.returncode,1);self.assertIn('--timings-top',b.stderr)
  @MAC_LLDB
  def test_loaded_function_source_step_values_and_stack(self):
   source=self.d/'main.coax';helper=self.d/'helper.coax';mapping=self.d/'map.json';exe=self.d/'app'

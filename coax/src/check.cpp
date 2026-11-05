@@ -220,6 +220,10 @@ bool check(Arena *arena,File *file,bool mutation_lowering){
   capacity_use("borrow origins","E0381",(uint64_t)state.borrow_origins,(uint64_t)borrow_origins.size());
   capacity_use("borrow analysis, all declarations","E0381",(uint64_t)state.borrow_work,borrow_limit*(uint64_t)std::max<int64_t>(state.borrow_units,1));
   laps.lap("check.checker");
+  // --timings "work": the checker pass's own counts (type checking, generic
+  // instantiation and borrow/retain analysis run in one Coax pass, CK_run).
+  if(g_timings.on()){auto &w=g_timings.work;w["checker_nodes"]+=(uint64_t)state.used;w["generic_instances"]+=(uint64_t)state.instance_count;
+    w["borrow_work"]+=(uint64_t)state.borrow_work;w["borrow_units"]+=(uint64_t)state.borrow_units;w["borrow_queries"]+=(uint64_t)state.borrow_queries;w["borrow_origins"]+=(uint64_t)state.borrow_origins;}
   if(ok && mutation_lowering){ok=CK_prepare_spatial_mutations(context);laps.lap("check.mutation_lowering");}
   if(ok){CK_lower_effects(context);laps.lap("check.effects");}
   for(int64_t i=0;i<state.error_count;i++){const auto &d=errors[(size_t)i];error_at(file->src,checked_loc(d.loc),checked_text(d.code).c_str(),checked_text(d.message),checked_text(d.fix));}

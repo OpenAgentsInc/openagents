@@ -1506,13 +1506,20 @@ struct Evaluator {
   }
 
   bool run() {
+    // --timings: each declaration's evaluation seconds and steps (g_decl_costs).
+    auto charge = [&](const void *decl, const char *kind, Str name, Loc loc, auto &&work) {
+      DeclCost *cost = g_decl_costs.at(file, decl, kind, name, loc);
+      const uint64_t before = steps;
+      { DeclClock clock{cost ? &cost->eval_seconds : nullptr}; work(); }
+      if (cost) cost->eval_steps += steps - before;
+    };
     for (StructDecl *d : file->structs) {
       if (failed) break;
-      field_defaults(d);
+      charge(d->origin ? (const void *)d->origin : d, "struct", (d->origin ? d->origin : d)->name, (d->origin ? d->origin : d)->loc, [&] { field_defaults(d); });
     }
     for (ConstDecl *c : file->constants) {
       if (failed) break;
-      if (!is_untyped(c->type)) constant(c);  // untyped constants were inlined as literals
+      if (!is_untyped(c->type)) charge(c, "constant", c->name, c->loc, [&] { constant(c); });  // untyped constants were inlined as literals
     }
     for (Expr *a : file->assertions) {
       if (failed) break;
@@ -1520,7 +1527,10 @@ struct Evaluator {
       Value condition = expr(a, empty, false);
       if (!failed && !condition.bits) err(a->loc, "E0406", "compile-time assertion failed");
     }
-    for (ProcDecl *p : file->procs) fold_stmt(p->body);
+    for (ProcDecl *p : file->procs) {
+      const ProcDecl *o = p->origin ? p->origin : p;
+      charge(o, "procedure", o->name, o->loc, [&] { fold_stmt(p->body); });
+    }
     for (CheckDecl *c : file->checks) fold_stmt(c->proc->body);
     return !failed;
   }

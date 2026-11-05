@@ -70,8 +70,9 @@ work, using the native C symbols and types.
 | --- | --- |
 | `--debug-info` | Add escaped `#line` directives for physical Coax files. Supported by `c`, `build`, `lib`, `run`. |
 | `--source-map FILE` | Also write schema-1 JSON: canonical source paths, SHA-256 source hashes, procedure names, physical locations and parameter/local/loop variable names and Coax type labels. Implies `--debug-info`. |
-| `--timings FILE`, `--timings-json FILE` | Write schema-1 JSON with status, generated C byte count, observed phase wall times (`seconds`), the parts of a phase (`detail_seconds`), each check run (`checks`) and each library check (`libraries`). Does not change stdout or grant clocks to `#run`. |
-| `--timings-table` | Print the same phase, check and library times as a table on stderr. |
+| `--timings FILE`, `--timings-json FILE` | Write schema-1 JSON with status, generated C byte count, observed phase wall times (`seconds`), the parts of a phase (`detail_seconds`), the checker's work units (`work`), each check run (`checks`), each library check (`libraries`) and the costliest declarations (`declarations`). Does not change stdout or grant clocks to `#run`. |
+| `--timings-table` | Print the same phase, check, library and declaration times as a table on stderr. |
+| `--timings-top N` | List the N costliest declarations (default 20) in those reports. |
 | `--keep-c` | Preserve the emitted C beside an executable/object for inspection. |
 
 `build`, `lib` and `run` enable line mapping in the default debug profile.
@@ -123,6 +124,27 @@ and `parse` describe the later combined program passes. `emit` includes map
 hashing/writing and output preparation. `total` includes remaining driver
 overhead and, for `run`, child program execution. It ends before serializing
 and writing the timing report itself.
+
+Parts of a phase, in `detail_seconds`: `check.storage`, `check.checker`
+(type checking, generic instantiation and borrow/retain analysis, which run
+in one pass of the Coax checker), `check.effects`, `check.transfer`;
+`authority.reuse` (finding the checks that passed before with the same
+inputs), `authority.run` (the checks run in parallel children),
+`authority.record`, and `authority.verdicts` or `authority.sequential`;
+`emit.instances`, `emit.functions`, `emit.inits`, `emit.shows`, `emit.types`,
+`emit.values` (aggregates computed at compile time), `emit.assemble` and
+`emit.header`. Since the checker's parts share one pass, `work` gives their
+counts instead: `checker_nodes`, `generic_instances`, `borrow_units`,
+`borrow_work`, `borrow_queries` and `borrow_origins`.
+
+`declarations` (#12925) has `count`, `top` and two lists of at most `top`
+rows, `by_seconds` and `by_work`. A row names a procedure, constant or struct
+(`kind`, `name`, `path`, `line`) and gives its `seconds` (`evaluate_seconds`
+plus `emit_seconds`) and its `work` (`nodes`, the checked tree of its own
+declaration, plus `instance_nodes`, those of its generic `instances`, plus
+`evaluated_steps`), and `c_bytes`, the C emitted for it and its instances. A
+generic's instances are charged to it; a constant another constant needed
+first is charged to the one that asked. Check runs are in `checks`.
 
 Times are observations, not deterministic compiler values. A failed operation
 records a failing status when a report can be written. An unwritable timing

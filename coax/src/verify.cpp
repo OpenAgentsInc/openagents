@@ -1066,6 +1066,7 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
   // Checks that passed before with the same inputs (ax-check-reuse): their
   // recorded reports stand in for a child's.
   std::vector<bool> prefilled(n, false);
+  TimedLaps laps;  // --timings: authority.reuse, authority.run, authority.record (parallel #authority checks)
   ReuseIndex index;
   ReuseRecord record;
   std::string record_path, head;
@@ -1118,6 +1119,7 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
     }
   }
   if (g_check_reuse.on) g_check_reuse.ran += n - (size_t)std::count(prefilled.begin(), prefilled.end(), true);
+  laps.lap("authority.reuse");
   size_t next = 0;
   fflush(stdout);
   fflush(stderr);
@@ -1215,6 +1217,7 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
     for (Child &c : running) { kill(c.pid, SIGKILL); close(c.fd); int status; waitpid(c.pid, &status, 0); }
     return sequential("a child process could not start");
   }
+  laps.lap("authority.run");
   // Record each check that passed in a child, and every procedure it ran, for
   // the next compile; drop the records of checks this program no longer has.
   if (reuse) {
@@ -1251,6 +1254,7 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
     }
     if (changed || kept.entries.size() != record.entries.size()) kept.save(g_check_reuse.dir, record_path);
   }
+  laps.lap("authority.record");
   times->clear();
   for (size_t i = 0; i < n; i++)
     if (!reports[i].empty()) {

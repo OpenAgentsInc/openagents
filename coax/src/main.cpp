@@ -49,6 +49,7 @@ struct NativeTimings {
   std::string path,source_map;
   bool table=false;
   std::map<std::string,double> seconds,detail;  // detail: parts of a phase (check.checker ...), never summed with seconds
+  std::map<std::string,uint64_t> work;            // work units of a phase (checker_nodes, generic_instances, borrow_work ...)
   std::vector<TimedCheck> checks;                // each #test/#forall run (coax test, or an #authority file's checks)
   std::vector<TimedLibrary> libraries;           // each loaded unit's standalone check (cached or run)
   const char *check_phase="test";
@@ -70,6 +71,37 @@ struct TimedLaps {
   bool timed=g_timings.on();
   std::chrono::steady_clock::time_point last=timed?std::chrono::steady_clock::now():std::chrono::steady_clock::time_point{};
   void lap(const char *name) {if(!timed)return;auto now=std::chrono::steady_clock::now();g_timings.detail[name]+=std::chrono::duration<double>(now-last).count();last=now;}
+};
+// Per-declaration costs (--timings, #12925): the "declarations" report names
+// what a slow compile spent its time and work on. A generic instance's work
+// is its template's. Work units: checked tree nodes of the declaration's own
+// body (instances: their bodies), compile-time steps and generated C bytes.
+// Seconds: compile-time evaluation (a constant another constant needed first
+// is charged to the one that asked) and C emission. #authority/#test check
+// runs are in "checks", with their own seconds and steps.
+struct DeclCost {
+  std::string kind,name,path;int32_t line=0;
+  double eval_seconds=0,emit_seconds=0;
+  uint64_t nodes=0,instances=0,instance_nodes=0,eval_steps=0,c_bytes=0;
+  double seconds() const {return eval_seconds+emit_seconds;}
+  uint64_t work() const {return nodes+instance_nodes+eval_steps;}
+};
+struct DeclCosts {
+  std::map<const void*,DeclCost> by_decl;
+  size_t top=20;  // --timings-top N
+  // The record for decl (created with its kind, name and place on first use); null when timings are off.
+  DeclCost *at(const File *file,const void *decl,const char *kind,Str name,Loc loc) {
+    if(!g_timings.on() || !decl)return nullptr;
+    auto [it,fresh]=by_decl.try_emplace(decl);
+    if(fresh){it->second.kind=kind;it->second.name=std::string(name.data,(size_t)name.count);it->second.line=loc.line;
+      if(file && file->src){SourcePoint p=source_point(file->src,loc);it->second.path=p.path;it->second.line=p.loc.line;}}
+    return &it->second;
+  }
+} g_decl_costs;
+struct DeclClock {  // adds the seconds since it started to *into, when timings are on
+  double *into;std::chrono::steady_clock::time_point start;
+  explicit DeclClock(double *into):into(into),start(into?std::chrono::steady_clock::now():std::chrono::steady_clock::time_point{}) {}
+  ~DeclClock(){if(into)*into+=seconds_since(start);}
 };
 }  // namespace coax
 
@@ -396,6 +428,34 @@ static std::string timed_path(const std::string &path) {
   const auto rel=std::filesystem::path(path).lexically_relative(std::filesystem::current_path(ec));
   return ec || rel.empty() || *rel.begin()==".." ? path : rel.string();
 }
+// The top --timings-top declarations by seconds, then by work units.
+static std::vector<const DeclCost *> top_declarations(bool by_work) {
+  std::vector<const DeclCost *> rows;
+  for (const auto &[decl, cost] : g_decl_costs.by_decl) if (cost.seconds() > 0 || cost.work() > 0 || cost.c_bytes > 0) rows.push_back(&cost);
+  std::sort(rows.begin(), rows.end(), [&](const DeclCost *a, const DeclCost *b) {
+    if (by_work ? a->work() != b->work() : a->seconds() != b->seconds()) return by_work ? a->work() > b->work() : a->seconds() > b->seconds();
+    if (a->path != b->path) return a->path < b->path;
+    return a->line != b->line ? a->line < b->line : a->name < b->name;
+  });
+  if (rows.size() > g_decl_costs.top) rows.resize(g_decl_costs.top);
+  return rows;
+}
+static std::string declarations_json() {
+  std::ostringstream out;out<<std::setprecision(17);
+  out<<"{\"count\":"<<g_decl_costs.by_decl.size()<<",\"top\":"<<g_decl_costs.top;
+  for (bool by_work : {false, true}) {
+    out<<(by_work?",\"by_work\":[":",\"by_seconds\":[");bool first=true;
+    for (const DeclCost *c : top_declarations(by_work)) {
+      out<<(first?"":",")<<"{\"kind\":"<<json_string(c->kind)<<",\"name\":"<<json_string(c->name)<<",\"path\":"<<json_string(timed_path(c->path))<<",\"line\":"<<c->line
+         <<",\"seconds\":"<<c->seconds()<<",\"evaluate_seconds\":"<<c->eval_seconds<<",\"emit_seconds\":"<<c->emit_seconds<<",\"work\":"<<c->work()<<",\"nodes\":"<<c->nodes
+         <<",\"instances\":"<<c->instances<<",\"instance_nodes\":"<<c->instance_nodes<<",\"evaluated_steps\":"<<c->eval_steps<<",\"c_bytes\":"<<c->c_bytes<<"}";
+      first=false;
+    }
+    out<<"]";
+  }
+  out<<"}";
+  return out.str();
+}
 static void timings_table(double total) {
   std::vector<std::string> order(std::begin(TIMED_PHASES),std::end(TIMED_PHASES));
   for(const auto &[phase,duration]:g_timings.seconds)if(std::find(order.begin(),order.end(),phase)==order.end())order.push_back(phase);
@@ -431,6 +491,14 @@ static void timings_table(double total) {
     fprintf(stderr,"  libraries: %zu checked alone (%.3f s), %zu cached (%.3f s); slowest:\n",n_ran,ran,g_timings.libraries.size()-n_ran,cached);
     slowest(g_timings.libraries,[](const TimedLibrary &l){fprintf(stderr,"    %9.3f s %-7s %s\n",l.seconds,l.cached?"cached":"checked",timed_path(l.path).c_str());});
   }
+  if(!g_decl_costs.by_decl.empty()){
+    const size_t keep=g_decl_costs.top;g_decl_costs.top=std::min<size_t>(keep,10);
+    fprintf(stderr,"  declarations: %zu; slowest (evaluate + emit seconds, work = nodes + instance nodes + steps):\n",g_decl_costs.by_decl.size());
+    for(const DeclCost *c:top_declarations(false))fprintf(stderr,"    %9.3f s %12llu work %4llu inst  %s %s (%s:%d)\n",c->seconds(),(unsigned long long)c->work(),(unsigned long long)c->instances,c->kind.c_str(),c->name.c_str(),timed_path(c->path).c_str(),c->line);
+    fprintf(stderr,"  most work:\n");
+    for(const DeclCost *c:top_declarations(true))fprintf(stderr,"    %9.3f s %12llu work %4llu inst  %s %s (%s:%d)\n",c->seconds(),(unsigned long long)c->work(),(unsigned long long)c->instances,c->kind.c_str(),c->name.c_str(),timed_path(c->path).c_str(),c->line);
+    g_decl_costs.top=keep;
+  }
 }
 static int finish_profile(int status) {
   capacity_notes();
@@ -443,11 +511,13 @@ static int finish_profile(int status) {
   bool first=true;for(const auto &[phase,duration]:g_timings.seconds) {out<<(first?"":",")<<json_string(phase)<<":"<<duration;first=false;}
   out<<(first?"":",")<<"\"total\":"<<total<<"},\"detail_seconds\":{";
   first=true;for(const auto &[part,duration]:g_timings.detail) {out<<(first?"":",")<<json_string(part)<<":"<<duration;first=false;}
+  out<<"},\"work\":{";
+  first=true;for(const auto &[part,units]:g_timings.work) {out<<(first?"":",")<<json_string(part)<<":"<<units;first=false;}
   out<<"},\"checks\":[";
   first=true;for(const auto &c:g_timings.checks) {out<<(first?"":",")<<"{\"kind\":"<<json_string(c.kind)<<",\"name\":"<<json_string(c.name)<<",\"phase\":"<<json_string(c.phase)<<",\"seconds\":"<<c.seconds<<",\"steps\":"<<c.steps<<",\"cases\":"<<c.cases<<",\"passed\":"<<(c.passed?"true":"false")<<",\"reused\":"<<(c.reused?"true":"false")<<"}";first=false;}
   out<<"],\"capacities\":[";
   first=true;for(const auto &[name,c]:g_capacity) {out<<(first?"":",")<<"{\"name\":"<<json_string(name)<<",\"code\":"<<json_string(c.code)<<",\"used\":"<<c.used<<",\"limit\":"<<c.limit<<",\"near\":"<<(CB_near(c.used,c.limit)?"true":"false")<<"}";first=false;}
-  out<<"],\"libraries\":[";
+  out<<"],\"declarations\":"<<declarations_json()<<",\"libraries\":[";
   first=true;for(const auto &l:g_timings.libraries) {out<<(first?"":",")<<"{\"path\":"<<json_string(timed_path(l.path))<<",\"seconds\":"<<l.seconds<<",\"cached\":"<<(l.cached?"true":"false")<<",\"checks_alone\":"<<(l.checks?"true":"false")<<"}";first=false;}
   out<<"]}\n";
   if(!write_file(g_timings.path,out.str())) {fprintf(stderr,"coax: cannot write timing report '%s'\n",g_timings.path.c_str());return 1;}return status;
@@ -1172,8 +1242,11 @@ static bool run_compilation_checks(File *file) {
       if (name.find('\n') == std::string::npos) { snprintf(seconds, sizeof seconds, "%.3f\t", value); record += seconds + name + "\n"; }
     cache_record(dir, sha, record);
   }
-  if (parallel) return run_all_checks(file, TEST_STEPS, false, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, false, &passed);
-  return run_all_checks(file, TEST_STEPS, false);
+  TimedLaps laps;  // --timings: authority.verdicts, the checks' results in order (and any check run here)
+  const bool ok = parallel ? run_all_checks(file, TEST_STEPS, false, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, false, &passed)
+                           : run_all_checks(file, TEST_STEPS, false);
+  laps.lap(parallel ? "authority.verdicts" : "authority.sequential");
+  return ok;
 }
 
 // Starts unit `at`'s standalone check in a forked child, which exits 0 when
@@ -1513,6 +1586,39 @@ static bool legacy_sum_procedure(const ProcDecl *proc) {
   inventory.proc(proc);
   return inventory.found;
 }
+// Checked tree nodes under a declaration (--timings "declarations" work units).
+static uint64_t tree_nodes(const Expr *e) {
+  if (!e) return 0;
+  uint64_t n = 1 + tree_nodes(e->lhs) + tree_nodes(e->rhs) + tree_nodes(e->third);
+  for (const Expr *a : e->args) n += tree_nodes(a);
+  for (const FieldInit &f : e->fields) n += tree_nodes(f.value);
+  return n;
+}
+static uint64_t tree_nodes(const Stmt *s) {
+  if (!s) return 0;
+  uint64_t n = 1 + tree_nodes(s->expr) + tree_nodes(s->expr2) + tree_nodes(s->target) + tree_nodes(s->then_) + tree_nodes(s->else_);
+  for (const Stmt *c : s->body) n += tree_nodes(c);
+  for (const SwitchCase *c : s->cases) if (c) n += 1 + tree_nodes(c->body);
+  return n;
+}
+// Each checked declaration's own nodes; an instance's go to its template.
+static void record_tree_costs(const File *file) {
+  if (!g_timings.on()) return;
+  for (const ProcDecl *p : file->procs) {
+    const ProcDecl *o = p->origin ? p->origin : p;
+    DeclCost *cost = g_decl_costs.at(file, o, "procedure", o->name, o->loc);
+    const uint64_t n = 1 + p->params.count + tree_nodes(p->body);
+    if (p->origin) { cost->instances++; cost->instance_nodes += n; } else cost->nodes += n;
+  }
+  for (const ProcDecl *p : file->generics) if (!p->origin) g_decl_costs.at(file, p, "procedure", p->name, p->loc)->nodes += 1 + p->params.count + tree_nodes(p->body);
+  for (const ConstDecl *c : file->constants) g_decl_costs.at(file, c, "constant", c->name, c->loc)->nodes += 1 + tree_nodes(c->expr);
+  for (const StructDecl *d : file->structs) {
+    if (d->origin) { DeclCost *cost = g_decl_costs.at(file, d->origin, "struct", d->origin->name, d->origin->loc); cost->instances++; cost->instance_nodes += 1 + d->fields.count; continue; }
+    uint64_t n = 1 + d->fields.count;
+    for (const Field &f : d->fields) n += tree_nodes(f.init);
+    g_decl_costs.at(file, d, "struct", d->name, d->loc)->nodes += n;
+  }
+}
 static bool front_end(const char *path, Source *src, Arena *arena, File *file, const EmitOptions &opts, int library,
                       bool run_checks = true, bool mutation_lowering = false, QueryParsed *parsed = nullptr);
 static bool front_end(const char *path, Source *src, Arena *arena, File *file, const EmitOptions &opts, int library,
@@ -1547,6 +1653,7 @@ static bool front_end(const char *path, Source *src, Arena *arena, File *file, c
     file->quantity_device=opts.quantity_device;
     file->execution_profile=std::to_string(opts.profile_identity);
     {TimedPhase phase{"check"};ok=check(arena,file,mutation_lowering);}
+    if(ok)record_tree_costs(file);
     // --run-steps overrides the entry file's #run_steps; either replaces the default.
     if(opts.run_steps_given || !file->run_steps) file->run_steps=opts.run_steps;
     if(ok && !parsed) {TimedPhase phase{"evaluate"};g_timings.run_steps=file->run_steps;ok=evaluate(file,file->run_steps,&g_timings.evaluated_steps,&g_timings.traversal_work);g_timings.peak_slots=file->ct_memory->peak_slots;g_timings.peak_containers=file->ct_memory->peak_containers;g_timings.peak_string_bytes=file->ct_memory->string_peak_bytes;}
@@ -1595,10 +1702,12 @@ static bool compile(const char *path, const EmitOptions &opts, Output what, std:
   if (what == Output::c || what == Output::header) *text = provenance + *text;
   if (what==Output::c)g_timings.generated_bytes=text->size();
   if(!g_semantic.path.empty() && what!=Output::none)g_semantic.emitted=debug_source_hash(*text);
+  TimedLaps header_lap;  // --timings: emit.header, the --header file
   if (header_path && !write_file(*header_path, provenance + emit_header(&file))) {
     fprintf(stderr, "coax: cannot write '%s'\n", header_path->c_str());
     return false;
   }
+  if (header_path) header_lap.lap("emit.header");
   return true;
 }
 
@@ -1691,7 +1800,7 @@ static int usage() {
           "       coax version\n"
           "       coax source-digest ROOT          (the hash of ROOT/coax's compiler sources)\n"
           "       coax status [--json] | --jobs [--json]   (the build-worker budget: on stderr, or alone with --jobs)\n"
-          "options: --arithmetic checked|wrapping selects runtime integer arithmetic\n       --target native-lp64 names the layout target for layout/deps (others: E0612)\n       --opt 0|1|2|3 selects native optimization for run/build/lib\n       --build-profile development|release selects BUILD_DEBUG source/layout\n       --release retains the legacy wrapping/O2/release/no-debug bundle\n       --profile-report FILE records the resolved profile and source/artifact hashes\n       --run-steps N sets the bounded aggregate compile-time work limit\n       --json prints diagnostics as JSON lines\n       --diagnostics json prints coax.diagnostic.v1 lines: spans, notes and fixes\n       --debug-info maps native code to original Coax source\n       --no-debug-info omits native source debugging independently\n       --source-map FILE writes debugger names/locations (implies --debug-info)\n       --timings FILE writes phase wall times and generated byte count (JSON; --timings-json FILE is the same)\n       --timings-table prints phase, check and library times on stderr\n       --jobs N runs at most N parallel check workers; every coax process shares one build-worker budget (coax status --jobs)\n");
+          "options: --arithmetic checked|wrapping selects runtime integer arithmetic\n       --target native-lp64 names the layout target for layout/deps (others: E0612)\n       --opt 0|1|2|3 selects native optimization for run/build/lib\n       --build-profile development|release selects BUILD_DEBUG source/layout\n       --release retains the legacy wrapping/O2/release/no-debug bundle\n       --profile-report FILE records the resolved profile and source/artifact hashes\n       --run-steps N sets the bounded aggregate compile-time work limit\n       --json prints diagnostics as JSON lines\n       --diagnostics json prints coax.diagnostic.v1 lines: spans, notes and fixes\n       --debug-info maps native code to original Coax source\n       --no-debug-info omits native source debugging independently\n       --source-map FILE writes debugger names/locations (implies --debug-info)\n       --timings FILE writes phase wall times and generated byte count (JSON; --timings-json FILE is the same)\n       --timings-table prints phase, check, library and declaration times on stderr\n       --timings-top N lists the N costliest declarations in those reports (default 20)\n       --jobs N runs at most N parallel check workers; every coax process shares one build-worker budget (coax status --jobs)\n");
   return 2;
 }
 
@@ -1937,6 +2046,7 @@ static int main_impl(int argc, char **argv) {
     }
     else if((a=="--timings" || a=="--timings-json") && i+1<argc)g_timings.path=argv[++i];
     else if(a=="--timings-table")g_timings.table=true;
+    else if(a=="--timings-top" && i+1<argc){char *end=nullptr;const unsigned long long n=strtoull(argv[++i],&end,10);if(!end || *end || n==0 || n>100000){fprintf(stderr,"coax: --timings-top needs a count from 1 to 100000\n");return 1;}g_decl_costs.top=(size_t)n;}
     else if (a == "--run-steps") {
       if (run_steps_seen || i + 1 >= argc || cmd == "proto") {
         fprintf(stderr, "coax: --run-steps requires one positive decimal value at most 250000000\n");
