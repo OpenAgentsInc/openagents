@@ -40,6 +40,29 @@ lifecycle. Aethyrforge owns the world-authoring workflow. Realms and services
 own game rules and durable business policy. Writing any of these in Coax does
 not make them Coax language features or prerequisites for compiler completion.
 
+### Order of work adopted on 2026-11-05
+
+Everglade's multiplayer work that day showed where the language costs the most
+time now. A release build of `everglade5e.wasm` took 325 s, 314 s of it Coax
+to C. Agents hit compile-time capacity limits with no guidance on what to
+shrink. And the room's generation, life and outcome counters and the item
+ledger all depend on integer behavior that differs between debug and release.
+So the P0 items in §4.2 are taken in this order:
+
+1. Read-only views ([#12924](https://github.com/OpenAgentsInc/openagents/issues/12924)),
+   already in progress: land the checker, the C backend and one real consumer
+   first, and refuse unsupported profiles explicitly.
+2. Per-phase build timing and per-declaration costs, then reuse across edits
+   ([#12925](https://github.com/OpenAgentsInc/openagents/issues/12925), §11).
+3. Capacity refusals that name the exhausted resource, its top consumers and a
+   fix ([#12926](https://github.com/OpenAgentsInc/openagents/issues/12926), §11).
+4. Named checked, wrapping and saturating integer operations with the same
+   behavior in every profile
+   ([#12927](https://github.com/OpenAgentsInc/openagents/issues/12927), §6.3).
+
+Items 2 to 4 run in parallel with item 1. The other P0 items in §4.2 follow
+once these land.
+
 ## 2. Scope, evidence, and what “MMORPG” means here
 
 The hypothetical product includes persistent characters, inventory and crafting,
