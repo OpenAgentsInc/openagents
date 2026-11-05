@@ -108,6 +108,11 @@ for k in $(seq 1 "$shards"); do
     --set-env-vars "OA_ROOM_TICKET_REQUIRED=${OA_ROOM_TICKET_REQUIRED:-1},OA_ROOM_SHARD=$k,OA_ROOM_DIR_GEN=${OA_ROOM_DIR_GEN:-1}" 2>&1)" ||
     { sed "s/^/shard $k: /" <<<"$out" >&2; echo "room: shard $k's deploy failed: stopping before the next shard" >&2; exit 1; }
   { grep -E "ERROR|revision" <<<"$out" || true; } | sed "s/^/shard $k: /"
+  # a rollback pins traffic to a named revision (the runbook's update-traffic --to-revisions), and a
+  # deploy after it would leave the new revision at 0 % with every check passing on the old one (#12936)
+  g run services update-traffic "$(svc "$k")" --region "$region" --to-latest >/dev/null 2>&1 ||
+    { echo "room: shard $k's traffic didn't move to its new revision: stopping before the next shard" >&2; exit 1; }
+  echo "room: shard $k serves $(g run services describe "$(svc "$k")" --region "$region" --format 'value(status.latestReadyRevisionName)') (latest)"
   url="$(g run services describe "$(svc "$k")" --region "$region" --format 'value(status.url)')"
   [[ "$(curl -s -m 20 "$url/health")" == ok*"shard $k,"* ]] || { echo "room: $url/health is not shard $k's: stopping before the next shard" >&2; exit 1; }
   echo "room: $url/health ok"
