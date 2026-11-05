@@ -772,6 +772,7 @@ EXPORT("coaxial_store_version") uint32_t coaxial_store_version(cx_face_addr stat
 // ---- sound (everglade-sound.coax): this frame's lines for the host (NAME GAIN PAN [DELAY], ~ the bed),
 // and the effects themselves, rendered by Aethyr's synthesizer once the host starts audio (aethyr/audio/sfx.coax)
 EXPORT("coaxial_sounds") cx_face_addr coaxial_sounds(cx_face_addr state) { return (cx_face_addr)(uintptr_t)city(state)->snd.e[0].lines.e; }
+EXPORT("coaxial_sounds_capacity") uint32_t coaxial_sounds_capacity(cx_face_addr state) { return sizeof city(state)->snd.e[0].lines.e; }
 EXPORT("coaxial_sounds_len") uint32_t coaxial_sounds_len(cx_face_addr state) { (void)state; uint32_t n = sound_n; sound_n = 0; return n; }
 #define SOUND_BANK (3u << 20)   /* the effects' WAV bytes and the room's: everglade_sound_bytes() is under this (a check, everglade-sound.coax) */
 static uint8_t sound_bank[SOUND_BANK];

@@ -350,7 +350,10 @@ its audio graph. Tests never use the owner's speakers.
 
 `coaxial_sounds_len(state)` drains the current command packet once;
 `coaxial_sounds(state)` identifies its bytes. Hosts must not poll the
-draining length twice and then play nothing. Lines are the existing
+draining length twice and then play nothing. Version 1 packet readers use
+`coaxial_sounds_capacity(state)` and the measured-span authority before
+forming that view; the reported length alone is insufficient. This export
+does not drain or mutate the packet. Lines are the existing
 `aethyr/audio/mix.coax` protocol: `NAME GAIN PAN [DELAY LOWPASS]`, or the
 eight-field mixed voice `NAME GAIN PAN DELAY LOWPASS RATE WET ID`;
 `~NAME GAIN PAN` updates a looping bed; `!bus`, `!room`, `!fetch` and `-ID`

@@ -20,6 +20,7 @@ uint32_t coaxial_sound_bank_capacity(uint32_t state);
 uint32_t coaxial_sound_bank_storage(uint32_t state);
 uint32_t coaxial_sound_bank_storage_bytes(uint32_t state);
 uint32_t coaxial_sounds(uint32_t state);
+uint32_t coaxial_sounds_capacity(uint32_t state);
 uint32_t coaxial_sounds_len(uint32_t state);
 void coaxial_golden(uint32_t on);
 uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, float w, float h, float scale, float dt, uint32_t still);
