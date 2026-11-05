@@ -554,6 +554,99 @@ Compile-time evaluation only runs on a program the checker accepted. If
 your file has type errors and a failing `#assert`, you'll see the type
 errors first, and the assertion once they're fixed.
 
+## When a limit runs out
+
+The compiler's work is bounded, so a program can't make it run forever or
+use all the machine's memory. Each bound is a fixed amount of one resource:
+
+| Resource | Limit | Error | How to raise it |
+| --- | --- | --- | --- |
+| Compile-time steps | 100,000 per compile; 20,000,000 per check | `E0400` | `#run_steps N;`, `--run-steps N`; `#steps N` on a check, `coax test --steps N` |
+| Compile-time traversal work | 134,217,728 value and field visits per compile or check | `E0400` | `--traversal N`; `#traversal N` on a check |
+| Compile-time value slots | 1,572,864 per compile; 33,554,432 for checks | `E0400` | Fixed; `coax test --slots N` only lowers it |
+| Generic instances | 256, or one per 8 syntax nodes in a larger program | `E0339` | Fixed |
+| Checker node store | 16 times the program's own nodes | `E0381` | Fixed |
+
+When one runs out, the error names the resource, how much was needed and
+the limit, the parts of your program that used the most of it, and one
+change that would use less. Here's a check that passes a whole `Game`
+struct by value on every step of a loop:
+
+Filename: page.coax
+
+```jai
+Game :: struct { cells: [1024] int; tick: int; }
+
+step :: (g: Game) -> int { return g.tick + 1; }
+
+#test "a page frame" {
+  g: Game;
+  t := 0;
+  for i: 0..<200000 { t += step(g); }
+  #assert t == 200000;
+}
+
+main :: () {}
+```
+
+```shell
+$ coax test page.coax
+FAIL #test a page frame (1884 ms)
+1 check, 0 passed, 1 failed
+page.coax:8:33: error[E0400]: compile-time aggregate traversal limit exceeded: 134217729 value and field visits needed, the limit is 134217728
+    for i: 0..<200000 { t += step(g); }
+                                  ^
+  compile-time traversal work: 134217729 visits needed, the limit is 134217728
+  top users of compile-time traversal work:
+    134216702 visits  page.coax:8:28  copying arguments into 'step' (130689 calls)
+    1026 visits  page.coax:5:1  #test 'a page frame' itself
+  fix: pass a view, an index or only the fields it needs instead of copying arguments into 'step' by value; or split the check (each check has its own traversal budget), or raise its budget with #traversal N on the check (or --traversal N for every check)
+  note: in #test a page frame
+```
+
+Each call copies the struct's 1,025 values, so the copies at line 8, column
+28, used almost the whole budget. The `top users` lines list at most five,
+largest first, each with its amount, where it is and what it is:
+
+- For steps and traversal work, a procedure's own use (`in 'build'`, at its
+  declaration; what its calls use is counted against them), the argument
+  copies at a call site (`copying arguments into 'step'`, at the call), and
+  the top-level work of a constant, a `#run` or a check.
+- For value slots, the arrays and structs that were alive when the limit
+  was reached, by the expression that made them, and the request that went
+  over.
+- For generic instances, each generic procedure or struct with its number of
+  instances, at its declaration; for the node store, the nodes its
+  instances copied.
+
+The `fix:` line is one practical reduction, chosen from the top user: pass
+less by value, compute a table at run time or load it as data, split a
+check, bind a generic to fewer distinct types, or raise a budget that can
+be raised.
+
+### Near-limit notes
+
+A command that uses more than three quarters of a limit still succeeds, and
+ends with a note that gives the same breakdown, so you can act before the
+next change crosses the limit:
+
+```shell
+$ coax test page.coax --traversal 300000000 --near-limit 60
+ok   #test a page frame (1 case, 2201035 steps, 2846 ms)
+1 check, 1 passed, 0 failed
+coax: note[E0400]: compile-time traversal work: 205401026 of 300000000 used (68%), above the near-limit threshold of 60%; more than 300000000 fails with E0400
+  top users of compile-time traversal work:
+    205400000 visits  page.coax:8:28  copying arguments into 'step' (200000 calls)
+    1026 visits  page.coax:5:1  #test 'a page frame' itself
+  fix: pass a view, an index or only the fields it needs instead of copying arguments into 'step' by value; or split the check (each check has its own traversal budget), or raise its budget with #traversal N on the check (or --traversal N for every check)
+```
+
+`--near-limit P` sets the threshold to P percent of each limit, from 1 to
+100; the `COAX_NEAR_LIMIT` environment variable sets it for every command
+that doesn't pass the option. The default is 75. A check's own steps and
+traversal work, and the value slots the checks hold at their peak, are
+reported the same way as the compile's.
+
 ## Errors while the program runs
 
 Round 5 showed a runtime error. `coax0` turns the operations that C
@@ -602,7 +695,8 @@ $ coax check pantry.coax --json
 
 Each object has the same six fields: `file`, `line` and `col` (both
 counted from 1), `code`, `message`, and `fix`, which is an empty string
-when there's no suggestion. There's no count line at the end; count the
+when there's no suggestion. A limit that ran out adds a seventh,
+`capacity`, described below. There's no count line at the end; count the
 lines instead. The exit status is the same as without `--json`: 0 for a
 clean file and 1 for errors. Like the text form, the JSON goes to
 standard error.
@@ -612,6 +706,21 @@ to `file:line:col`, decide by `code` what kind of edit is needed, apply
 the `fix` when there is one, then run `coax check` again. Because codes
 are stable, that logic doesn't break when the wording of a message
 improves. Chapter 22 looks at how agents use this.
+
+A capacity refusal's object carries the breakdown from
+[When a limit runs out](#when-a-limit-runs-out) in its `capacity` field:
+
+```json
+"capacity": {"resource": "compile-time traversal work", "unit": "visits", "used": 134217729, "limit": 134217728,
+  "near_percent": 75, "consumers": [{"what": "copying arguments into 'step' (130689 calls)", "amount": 134216702,
+  "file": "page.coax", "line": 8, "col": 28}, ...], "suggestion": "pass a view, an index or ..."}
+```
+
+`--diagnostics json` prints the richer `coax.diagnostic.v1` records, where
+the same object has a `span` for each consumer in place of `file`, `line`
+and `col`, and each near-limit note is a record with severity `note`, a null
+`span` and the same `capacity` object. `--timings FILE` keeps every limit's
+highest use in its `capacities` array, each row with that `capacity` object.
 
 > Note: Two things don't come out as JSON yet. A compile-time error's
 > `note:` lines are printed after its JSON object as plain text, in the

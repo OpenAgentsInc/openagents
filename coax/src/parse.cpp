@@ -199,7 +199,7 @@ bool parse(Arena *arena,const Source *src,const std::vector<Token> &all_tokens,F
       case COAX_PS_Tag_case_binding:{auto *p=parser_ref<CaseBinding>(objects,id);p->name=name;p->loc=loc;break;}
       case COAX_PS_Tag_effect_name:{auto *p=parser_ref<EffectName>(objects,id);p->name=name;p->loc=loc;break;}
       case COAX_PS_Tag_decl_import_:{auto *p=parser_ref<Import>(objects,id);p->loc=loc;p->module=name;break;}
-      case COAX_PS_Tag_decl_check:{auto *p=parser_ref<CheckDecl>(objects,id);p->loc=loc;p->name=name;p->forall=v.flag;p->steps=v.value;p->proc=parser_ref<ProcDecl>(objects,v.a);
+      case COAX_PS_Tag_decl_check:{auto *p=parser_ref<CheckDecl>(objects,id);p->loc=loc;p->name=name;p->forall=v.flag;p->steps=v.value;p->traversal=(uint64_t)v.width;p->proc=parser_ref<ProcDecl>(objects,v.a);
         std::vector<Binding> domains;for(auto b=nodes[(size_t)v.a].head;b;b=nodes[(size_t)b].next) domains.push_back({parser_ref<Expr>(objects,nodes[(size_t)b].b),parser_ref<Expr>(objects,nodes[(size_t)b].c)});
         p->domains=to_slice(arena,domains);break;}
     }

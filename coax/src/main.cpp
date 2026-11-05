@@ -247,32 +247,136 @@ static void diagnostic_json(const char *severity, const char *code, const std::s
 }
 
 static bool g_quiet_errors = false;  // a library's standalone check counts its errors and prints none
-struct CapacityUse {std::string code;uint64_t used=0,limit=0;};
+struct CapacityUse {std::string code;uint64_t used=0,limit=0;CapacityDetail detail;};
+// The refusal the next error_at reports (capacity_refusal), if any, and every resource refused.
+static std::unique_ptr<CapacityRefusal> g_pending_capacity;
+static std::set<std::string> g_refused;
 static std::map<std::string,CapacityUse> g_capacity;  // by limit name: its use nearest the limit
-void capacity_use(const char *name, const char *code, uint64_t used, uint64_t limit) {
+// The near-limit fraction, in percent of a limit: --near-limit P, else
+// COAX_NEAR_LIMIT, else 75 (0: not chosen yet).
+static uint32_t g_near_percent = 0;
+static bool parse_near_percent(const char *text, uint32_t *out) {
+  if (!text || !*text) return false;
+  uint32_t v = 0;
+  for (const char *p = text; *p; p++) {
+    if (*p < '0' || *p > '9' || v > 100) return false;
+    v = v * 10 + (uint32_t)(*p - '0');
+  }
+  if (v < 1 || v > 100) return false;
+  *out = v;
+  return true;
+}
+uint32_t capacity_near_percent() {
+  if (!g_near_percent) {
+    uint32_t v = 75;
+    if (const char *env = getenv("COAX_NEAR_LIMIT")) {
+      if (!parse_near_percent(env, &v)) {
+        fprintf(stderr, "coax: COAX_NEAR_LIMIT must be a whole percent from 1 to 100; using 75\n");
+        v = 75;
+      }
+    }
+    g_near_percent = v;
+  }
+  return g_near_percent;
+}
+bool capacity_near(uint64_t used, uint64_t limit) {
+  if (!limit) return false;
+  const uint32_t p = capacity_near_percent();
+  // 75 is CB_near exactly: used*4 > limit*3.
+  if (p == 75) return CB_near(used, limit);
+  if (p == 100) return used >= limit;
+  return (unsigned __int128)used * 100 > (unsigned __int128)limit * p;
+}
+void capacity_rank(std::vector<CapacityConsumer> *consumers) {
+  std::stable_sort(consumers->begin(), consumers->end(), [](const CapacityConsumer &a, const CapacityConsumer &b) {
+    if (a.amount != b.amount) return a.amount > b.amount;
+    return a.loc.offset < b.loc.offset;
+  });
+  consumers->erase(std::remove_if(consumers->begin(), consumers->end(), [](const CapacityConsumer &c) { return !c.amount; }), consumers->end());
+  if (consumers->size() > CAPACITY_TOP) consumers->resize(CAPACITY_TOP);
+}
+// Resolves each consumer's location now: the source may be gone when the report prints.
+static void freeze_detail(CapacityDetail *d) {
+  for (CapacityConsumer &c : d->consumers) {
+    if (!c.has_loc || !d->src) { c.span_json = "null"; c.place_json = "\"file\":null,\"line\":0,\"col\":0"; continue; }
+    const SourcePoint at = source_point(d->src, c.loc);
+    c.at = at.path + ":" + std::to_string(at.loc.line) + ":" + std::to_string(at.loc.col);
+    c.span_json = span_json(file_span(d->src, c.loc));
+    c.place_json = "\"file\":" + json_string(at.path) + ",\"line\":" + std::to_string(at.loc.line) + ",\"col\":" + std::to_string(at.loc.col);
+  }
+  d->src = nullptr;
+}
+void capacity_use(const char *name, const char *code, uint64_t used, uint64_t limit, CapacityDetail detail) {
   if (!limit) return;
+  freeze_detail(&detail);
   auto &c = g_capacity[name];
   // Keep the use nearest its limit (used/limit largest): a limit can differ between uses.
-  if (!c.limit || (unsigned __int128)used * c.limit > (unsigned __int128)c.used * limit) c = {code, used, limit};
+  if (!c.limit || (unsigned __int128)used * c.limit > (unsigned __int128)c.used * limit) c = {code, used, limit, std::move(detail)};
 }
+void capacity_use(const char *name, const char *code, uint64_t used, uint64_t limit) { capacity_use(name, code, used, limit, CapacityDetail{}); }
 static std::string capacity_text(const std::string &name, const CapacityUse &c) {
   const uint64_t percent = (uint64_t)((unsigned __int128)c.used * 100 / c.limit);
+  const uint32_t near = capacity_near_percent();
+  const std::string threshold = near == 75 ? "above three quarters of the limit" : "above the near-limit threshold of " + std::to_string(near) + "%";
   return name + ": " + std::to_string(c.used) + " of " + std::to_string(c.limit) + " used (" + std::to_string(percent) +
-         "%), above three quarters of the limit; more than " + std::to_string(c.limit) + " fails with " + c.code;
+         "%), " + threshold + "; more than " + std::to_string(c.limit) + " fails with " + c.code;
+}
+// A consumer as text: "60000 steps  a.coax:3:1  in 'build_table'".
+static std::string consumer_text(const CapacityDetail &d, const CapacityConsumer &c) {
+  return std::to_string(c.amount) + " " + d.unit + "  " + (c.at.empty() ? "" : c.at + "  ") + c.what;
+}
+static void capacity_detail_text(const char *resource, const CapacityDetail &d, bool with_fix) {
+  if (!d.consumers.empty()) {
+    fprintf(stderr, "  top users of %s:\n", resource);
+    for (const CapacityConsumer &c : d.consumers) fprintf(stderr, "    %s\n", consumer_text(d, c).c_str());
+  }
+  if (with_fix && !d.fix.empty()) fprintf(stderr, "  fix: %s\n", d.fix.c_str());
+}
+// {"resource","unit","used","limit","near_percent","consumers":[{"what","amount","span"}],"suggestion"}.
+// spans: coax.diagnostic.v1 spans; otherwise the one-line format's file, line and col.
+static std::string capacity_json(const std::string &resource, uint64_t used, uint64_t limit, const CapacityDetail &d, bool spans) {
+  std::string out = "{\"resource\":" + json_string(resource) + ",\"unit\":" + json_string(d.unit) + ",\"used\":" + std::to_string(used) +
+                    ",\"limit\":" + std::to_string(limit) + ",\"near_percent\":" + std::to_string(capacity_near_percent()) + ",\"consumers\":[";
+  bool first = true;
+  for (const CapacityConsumer &c : d.consumers) {
+    out += (first ? "" : ",") + std::string("{\"what\":") + json_string(c.what) + ",\"amount\":" + std::to_string(c.amount) +
+           (spans ? ",\"span\":" + c.span_json : "," + c.place_json) + "}";
+    first = false;
+  }
+  return out + "],\"suggestion\":" + json_string(d.fix) + "}";
 }
 // The near-limit report, once, when the command ends. A library's quiet
 // standalone check and the one-line --json format print none.
 static void capacity_notes() {
   if (g_quiet_errors || (g_json_errors && !g_diagnostics_json)) return;
   for (const auto &[name, c] : g_capacity) {
-    if (!CB_near(c.used, c.limit)) continue;
-    if (g_diagnostics_json) diagnostic_json("note", c.code.c_str(), capacity_text(name, c), "null", "", "[]");
-    else fprintf(stderr, "coax: note[%s]: %s\n", c.code.c_str(), capacity_text(name, c).c_str());
+    if (!capacity_near(c.used, c.limit)) continue;
+    // A refused resource's error already listed its consumers and reduction.
+    const bool refused = g_refused.count(name) != 0;
+    if (g_diagnostics_json) {
+      const std::string fixes = c.detail.fix.empty() ? "[]" : "[{\"message\":" + json_string(c.detail.fix) + ",\"edits\":[]}]";
+      fprintf(stderr, "{\"schema\":\"coax.diagnostic.v1\",\"severity\":\"note\",\"code\":%s,\"message\":%s,\"span\":null,\"notes\":[],\"fixes\":%s,\"capacity\":%s}\n",
+              json_string(c.code).c_str(), json_string(capacity_text(name, c)).c_str(), fixes.c_str(),
+              capacity_json(name, c.used, c.limit, c.detail, true).c_str());
+    } else {
+      fprintf(stderr, "coax: note[%s]: %s\n", c.code.c_str(), capacity_text(name, c).c_str());
+      if (!refused) capacity_detail_text(name.c_str(), c.detail, true);
+    }
   }
 }
-void error_at(const Source *src, Loc loc, const char *code, const std::string &message, const std::string &fix) {
+
+void capacity_refusal(const CapacityRefusal &refusal) {
+  g_pending_capacity = std::make_unique<CapacityRefusal>(refusal);
+  g_refused.insert(refusal.resource);
+  freeze_detail(&g_pending_capacity->detail);
+}
+void error_at(const Source *src, Loc loc, const char *code, const std::string &message, const std::string &given_fix) {
   g_error_count++;
+  std::unique_ptr<CapacityRefusal> capacity = std::move(g_pending_capacity);
   if (g_quiet_errors) { g_pending_notes.clear(); return; }
+  // A capacity refusal's reduction joins the error's own fix.
+  std::string fix = given_fix;
+  if (capacity && !capacity->detail.fix.empty()) fix = fix.empty() ? capacity->detail.fix : fix + "; or " + capacity->detail.fix;
   std::string reported = message;
   for (const GeneratedRegion &region : src->generated)
     if (loc.offset >= region.start && loc.offset < region.end)
@@ -285,20 +389,34 @@ void error_at(const Source *src, Loc loc, const char *code, const std::string &m
                (note.has_loc ? span_json(file_span(note.src, note.loc)) : "null") + "}";
     g_pending_notes.clear();
     std::string fixes = fix.empty() ? "[]" : "[{\"message\":" + json_string(fix) + ",\"edits\":" + fix_edits(span, fix) + "}]";
-    diagnostic_json("error", code, reported, span_json(span), notes, fixes);
+    if (capacity)
+      fprintf(stderr, "{\"schema\":\"coax.diagnostic.v1\",\"severity\":\"error\",\"code\":%s,\"message\":%s,\"span\":%s,\"notes\":[%s],\"fixes\":%s,\"capacity\":%s}\n",
+              json_string(code).c_str(), json_string(reported).c_str(), span_json(span).c_str(), notes.c_str(), fixes.c_str(),
+              capacity_json(capacity->resource, capacity->used, capacity->limit, capacity->detail, true).c_str());
+    else diagnostic_json("error", code, reported, span_json(span), notes, fixes);
     return;
   }
   Loc joined = diagnostic_loc(src, loc);
   auto point = source_point(src, joined);
   loc = point.loc;
   if (g_json_errors) {
-    fprintf(stderr, "{\"file\": %s, \"line\": %d, \"col\": %d, \"code\": \"%s\", \"message\": %s, \"fix\": %s}\n",
-            json_string(point.path).c_str(), loc.line, loc.col, code, json_string(reported).c_str(),
-            json_string(fix).c_str());
+    if (capacity)
+      fprintf(stderr, "{\"file\": %s, \"line\": %d, \"col\": %d, \"code\": \"%s\", \"message\": %s, \"fix\": %s, \"capacity\": %s}\n",
+              json_string(point.path).c_str(), loc.line, loc.col, code, json_string(reported).c_str(), json_string(fix).c_str(),
+              capacity_json(capacity->resource, capacity->used, capacity->limit, capacity->detail, false).c_str());
+    else
+      fprintf(stderr, "{\"file\": %s, \"line\": %d, \"col\": %d, \"code\": \"%s\", \"message\": %s, \"fix\": %s}\n",
+              json_string(point.path).c_str(), loc.line, loc.col, code, json_string(reported).c_str(),
+              json_string(fix).c_str());
     return;
   }
   fprintf(stderr, "%s:%d:%d: error[%s]: %s\n", point.path.c_str(), loc.line, loc.col, code, reported.c_str());
   show_source(stderr, src, joined);
+  if (capacity) {
+    fprintf(stderr, "  %s: %llu%s%s needed, the limit is %llu\n", capacity->resource.c_str(), (unsigned long long)capacity->used,
+            capacity->detail.unit.empty() ? "" : " ", capacity->detail.unit.c_str(), (unsigned long long)capacity->limit);
+    capacity_detail_text(capacity->resource.c_str(), capacity->detail, false);
+  }
   if (!fix.empty()) fprintf(stderr, "  fix: %s\n", fix.c_str());
 }
 
@@ -373,6 +491,7 @@ static int run_process(const std::vector<std::string> &args,bool *started=nullpt
 
 static size_t g_library_cached = 0, g_library_checked = 0;  // library checks reused and run (ax-library-check-cache)
 static size_t g_authority_cached = 0, g_authority_checked = 0;
+uint64_t g_traversal_limit = 0;
 static uint64_t g_check_slots = 0;  // --slots N on a compile: a smaller value-slot limit for its checks (0: the test limit)  // #authority check runs reused and run (ax-authority-check-cache)
 
 // Observations of the checked Coax selection and host I/O. Hashing uses the
@@ -481,7 +600,7 @@ static void timings_table(double total) {
   }
   if(!g_capacity.empty()){
     fprintf(stderr,"  capacities: highest use of each limit\n");
-    for(const auto &[name,c]:g_capacity)fprintf(stderr,"    %-34s %12llu of %-12llu %5.1f%%%s\n",name.c_str(),(unsigned long long)c.used,(unsigned long long)c.limit,100.0*(double)c.used/(double)c.limit,CB_near(c.used,c.limit)?"  near the limit":"");
+    for(const auto &[name,c]:g_capacity)fprintf(stderr,"    %-34s %12llu of %-12llu %5.1f%%%s\n",name.c_str(),(unsigned long long)c.used,(unsigned long long)c.limit,100.0*(double)c.used/(double)c.limit,capacity_near(c.used,c.limit)?"  near the limit":"");
   }
   if(g_authority_cached)fprintf(stderr,"  authority: every check passed in an earlier compile of these sources; reused, none run\n");
   else if(!g_timings.parallel.empty())fprintf(stderr,"  authority checks: %s\n",g_timings.parallel.c_str());
@@ -516,7 +635,7 @@ static int finish_profile(int status) {
   out<<"},\"checks\":[";
   first=true;for(const auto &c:g_timings.checks) {out<<(first?"":",")<<"{\"kind\":"<<json_string(c.kind)<<",\"name\":"<<json_string(c.name)<<",\"phase\":"<<json_string(c.phase)<<",\"seconds\":"<<c.seconds<<",\"steps\":"<<c.steps<<",\"cases\":"<<c.cases<<",\"passed\":"<<(c.passed?"true":"false")<<",\"reused\":"<<(c.reused?"true":"false")<<"}";first=false;}
   out<<"],\"capacities\":[";
-  first=true;for(const auto &[name,c]:g_capacity) {out<<(first?"":",")<<"{\"name\":"<<json_string(name)<<",\"code\":"<<json_string(c.code)<<",\"used\":"<<c.used<<",\"limit\":"<<c.limit<<",\"near\":"<<(CB_near(c.used,c.limit)?"true":"false")<<"}";first=false;}
+  first=true;for(const auto &[name,c]:g_capacity) {out<<(first?"":",")<<"{\"name\":"<<json_string(name)<<",\"code\":"<<json_string(c.code)<<",\"used\":"<<c.used<<",\"limit\":"<<c.limit<<",\"near\":"<<(capacity_near(c.used,c.limit)?"true":"false")<<",\"capacity\":"<<capacity_json(name,c.used,c.limit,c.detail,false)<<"}";first=false;}
   out<<"],\"declarations\":"<<declarations_json()<<",\"libraries\":[";
   first=true;for(const auto &l:g_timings.libraries) {out<<(first?"":",")<<"{\"path\":"<<json_string(timed_path(l.path))<<",\"seconds\":"<<l.seconds<<",\"cached\":"<<(l.cached?"true":"false")<<",\"checks_alone\":"<<(l.checks?"true":"false")<<"}";first=false;}
   out<<"]}\n";
@@ -1190,7 +1309,8 @@ static std::string library_key(const Source *src, int32_t at, const EmitOptions 
           " wrapping=" + std::to_string(opts.wrapping) + " profile=" + std::to_string(opts.profile_identity) +
           " metal=" + std::to_string(opts.metal) + " cuda=" + std::to_string(opts.cuda) + " metal_compute=" +
           std::to_string(opts.metal_compute) + " quantity_device=" + std::to_string(opts.quantity_device) +
-          (g_check_slots ? " check_slots=" + std::to_string(g_check_slots) : std::string()) + "\n";
+          (g_check_slots ? " check_slots=" + std::to_string(g_check_slots) : std::string()) +
+          (g_traversal_limit ? " traversal=" + std::to_string(g_traversal_limit) : std::string()) + "\n";
   // Each unit's SHA-256 once a process (a child inherits them): a unit is in
   // many closures. The text is kept beside it, so an edited unit hashes again.
   static std::map<std::string, std::pair<std::string, std::string>> hashes;  // canonical -> (text, SHA-256)
@@ -1314,7 +1434,8 @@ static std::string authority_options(const File *file, const EmitOptions &opts) 
          " library=" + std::to_string(file->library) + " metal=" + std::to_string(opts.metal) + " cuda=" +
          std::to_string(opts.cuda) + " metal_compute=" + std::to_string(opts.metal_compute) +
          " quantity_device=" + std::to_string(opts.quantity_device) + " check_slots=" +
-         std::to_string(g_check_slots ? g_check_slots : CB_test_slot_limit()) + "\n";
+         std::to_string(g_check_slots ? g_check_slots : CB_test_slot_limit()) +
+         (g_traversal_limit ? " traversal=" + std::to_string(g_traversal_limit) : std::string()) + "\n";
 }
 static std::string authority_key(const Source *src, const File *file, const EmitOptions &opts, const std::vector<bool> &dropped) {
   const std::string options = authority_options(file, opts);
@@ -1690,7 +1811,7 @@ static bool compile(const char *path, const EmitOptions &opts, Output what, std:
   else if (what == Output::lowering) *text = lowering_report(&src, &file, opts);
   else if (what == Output::effects) {if(!effects_report(&src,&file,opts,g_lower_proc,text))return false;}
   else if (what == Output::deps) {
-    *text="{\"schema_version\":1,\"run_steps\":" + std::to_string(file.run_steps) + ",\"aggregate_slot_limit\":" + std::to_string(CtMemory::max_slots()) + ",\"aggregate_container_limit\":" + std::to_string(CtMemory::max_containers()) + ",\"aggregate_traversal_limit\":" + std::to_string(CB_traversal_limit()) + ",\"string_live_byte_limit\":" + std::to_string(CB_string_live_limit()) + ",\"string_materialization_work_limit\":" + std::to_string(CB_string_work_limit()) + ",\"sources\":[";
+    *text="{\"schema_version\":1,\"run_steps\":" + std::to_string(file.run_steps) + ",\"aggregate_slot_limit\":" + std::to_string(CtMemory::max_slots()) + ",\"aggregate_container_limit\":" + std::to_string(CtMemory::max_containers()) + ",\"aggregate_traversal_limit\":" + std::to_string(g_traversal_limit ? g_traversal_limit : CB_traversal_limit()) + ",\"string_live_byte_limit\":" + std::to_string(CB_string_live_limit()) + ",\"string_materialization_work_limit\":" + std::to_string(CB_string_work_limit()) + ",\"sources\":[";
     bool first=true;
     for (const auto &unit:src.units) {*text+=(first?"":",")+json_string(unit->canonical);first=false;}
     *text+="],\"descriptors\":[";first=true;
@@ -1800,7 +1921,7 @@ static int usage() {
           "       coax version\n"
           "       coax source-digest ROOT          (the hash of ROOT/coax's compiler sources)\n"
           "       coax status [--json] | --jobs [--json]   (the build-worker budget: on stderr, or alone with --jobs)\n"
-          "options: --arithmetic checked|wrapping selects runtime integer arithmetic\n       --target native-lp64 names the layout target for layout/deps (others: E0612)\n       --opt 0|1|2|3 selects native optimization for run/build/lib\n       --build-profile development|release selects BUILD_DEBUG source/layout\n       --release retains the legacy wrapping/O2/release/no-debug bundle\n       --profile-report FILE records the resolved profile and source/artifact hashes\n       --run-steps N sets the bounded aggregate compile-time work limit\n       --json prints diagnostics as JSON lines\n       --diagnostics json prints coax.diagnostic.v1 lines: spans, notes and fixes\n       --debug-info maps native code to original Coax source\n       --no-debug-info omits native source debugging independently\n       --source-map FILE writes debugger names/locations (implies --debug-info)\n       --timings FILE writes phase wall times and generated byte count (JSON; --timings-json FILE is the same)\n       --timings-table prints phase, check, library and declaration times on stderr\n       --timings-top N lists the N costliest declarations in those reports (default 20)\n       --jobs N runs at most N parallel check workers; every coax process shares one build-worker budget (coax status --jobs)\n");
+          "options: --arithmetic checked|wrapping selects runtime integer arithmetic\n       --target native-lp64 names the layout target for layout/deps (others: E0612)\n       --opt 0|1|2|3 selects native optimization for run/build/lib\n       --build-profile development|release selects BUILD_DEBUG source/layout\n       --release retains the legacy wrapping/O2/release/no-debug bundle\n       --profile-report FILE records the resolved profile and source/artifact hashes\n       --run-steps N sets the bounded aggregate compile-time work limit\n       --traversal N sets the aggregate traversal limit of the compilation and of each check without #traversal\n       --json prints diagnostics as JSON lines\n       --near-limit P notes each limit used above P percent (1 to 100; default 75, or COAX_NEAR_LIMIT)\n       --diagnostics json prints coax.diagnostic.v1 lines: spans, notes and fixes\n       --debug-info maps native code to original Coax source\n       --no-debug-info omits native source debugging independently\n       --source-map FILE writes debugger names/locations (implies --debug-info)\n       --timings FILE writes phase wall times and generated byte count (JSON; --timings-json FILE is the same)\n       --timings-table prints phase, check, library and declaration times on stderr\n       --timings-top N lists the N costliest declarations in those reports (default 20)\n       --jobs N runs at most N parallel check workers; every coax process shares one build-worker budget (coax status --jobs)\n");
   return 2;
 }
 
@@ -2147,6 +2268,30 @@ static int main_impl(int argc, char **argv) {
     else if (a == "--proc" && (lowering || effects) && i + 1 < argc) g_lower_proc = argv[++i];
     else if (a == "--target" && (cmd == "deps" || cmd == "layout") && i + 1 < argc) g_target = argv[++i];
     else if (a == "--json") g_json_errors = true;
+    else if (a == "--traversal" && cmd != "proto") {
+      // The aggregate traversal budget, as --run-steps is the step budget (#12926).
+      const char *value = i + 1 < argc ? argv[i + 1] : "";
+      bool digits = *value != '\0';
+      for (const char *p = value; *p; p++) digits = digits && *p >= '0' && *p <= '9';
+      errno = 0;
+      const unsigned long long parsed = digits ? strtoull(value, nullptr, 10) : 0;
+      if (!digits || errno == ERANGE || !parsed || parsed > MAX_TRAVERSAL_LIMIT || g_traversal_limit) {
+        fprintf(stderr, "coax: --traversal requires one positive count at most %llu\n", (unsigned long long)MAX_TRAVERSAL_LIMIT);
+        return 1;
+      }
+      g_traversal_limit = parsed;
+      ++i;
+    }
+    else if (a == "--near-limit") {
+      // The near-limit report's threshold, a whole percent of each limit (#12926).
+      uint32_t percent = 0;
+      if (i + 1 >= argc || !parse_near_percent(argv[i + 1], &percent)) {
+        fprintf(stderr, "coax: --near-limit requires a whole percent from 1 to 100\n");
+        return 1;
+      }
+      g_near_percent = percent;
+      ++i;
+    }
     else if (a == "--diagnostics" && i + 1 < argc && (std::string(argv[i + 1]) == "json" || std::string(argv[i + 1]) == "text")) {
       g_diagnostics_json = std::string(argv[++i]) == "json";
       g_json_errors = g_diagnostics_json;   // no text trailers or notes between the JSON lines

@@ -673,6 +673,22 @@ PS_enum :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,name:PS_Token)->i
   PS_expect(t,s,out,11,"to close the enum");return PS_valid(s,id);
 }
 PS_trim_name :: (source:string,start:int,stop:int)->string {end:=stop;while end>start && (source[end-1]==32 || source[end-1]==10) {end-=1;}return source[start..<end];}
+// One budget directive after a check's name, if there is one; a malformed one fails the parse.
+// #steps N: the check's own step budget, which replaces the file's (value).
+// #traversal N: its own aggregate traversal budget, which replaces the default (width).
+PS_check_budget :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,id:int) {
+  at:=PS_peek(t,s,0);if at.kind!=6 {return;}
+  if at.text=="steps" && n[id].value==0 {
+    PS_skip(t,s);v:=PS_peek(t,s,0);
+    if v.kind!=3 || v.value==0 {PS_fail(s,out,v.loc,"E0220","#steps needs a positive whole number of steps","#test \"the world builds\" #steps 150000000 { ... }");return;}
+    PS_skip(t,s);n[id].value=v.value;
+  }
+  else if at.text=="traversal" && n[id].width==0 {
+    PS_skip(t,s);v:=PS_peek(t,s,0);
+    if v.kind!=3 || v.value==0 || v.value>PS_TRAVERSAL_MAX {PS_fail(s,out,v.loc,"E0220","#traversal needs a whole number of value and field visits from 1 through 68719476736","#test \"the world builds\" #traversal 1000000000 { ... }");return;}
+    PS_skip(t,s);n[id].width=cast(int)v.value;
+  }
+}
 PS_check :: (source:string,t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,d:PS_Token)->int {
   id:=PS_new(n,s,out,PS_Tag.decl_check,d.loc);n[id].flag=d.text=="forall";p:=PS_new(n,s,out,PS_Tag.decl_proc,d.loc);n[id].a=p;
   if PS_at(t,s,5) {n[id].name=PS_take(t,s).text;}
@@ -689,12 +705,8 @@ PS_check :: (source:string,t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,d:
   if n[id].flag && n[id].name.count==0 {
     n[id].name=PS_trim_name(source,start,PS_peek(t,s,0).loc.offset);
   }
-  // #steps N: the check's own step budget, which replaces the file's.
-  if PS_peek(t,s,0).kind==6 && PS_peek(t,s,0).text=="steps" {
-    PS_skip(t,s);v:=PS_peek(t,s,0);
-    if v.kind!=3 || v.value==0 {PS_fail(s,out,v.loc,"E0220","#steps needs a positive whole number of steps","#test \"the world builds\" #steps 150000000 { ... }");return 0;}
-    PS_skip(t,s);n[id].value=v.value;
-  }
+  // #steps N and #traversal N, in either order: the check's own budgets.
+  PS_check_budget(t,n,s,out,id);PS_check_budget(t,n,s,out,id);
   n[p].name=n[id].name;n[p].b=PS_block(t,n,s,out);return PS_valid(s,id);
 }
 // Tokens for `#test "a" #steps N {}` with the budget token's kind and value.
@@ -720,11 +732,38 @@ PS_steps_tokens :: (kind:u32,value:u64,steps:string)->[7] PS_Token {
   id=PS_check("\"a\" steps 9 {}",t[0..<6],nodes[..],state[..],message[..],PS_Token.{kind=6,text="test",raw_count=4});
   #assert id==0 && state[0].code!="" && state[0].code!="E0220";
 }
+PS_TRAVERSAL_MAX :: 68719476736;
+#test "#traversal N gives a check its own traversal budget, before or after #steps" {
+  nodes:[64] PS_Node;state:[1] PS_State;message:[4096] u8;
+  t:=PS_steps_tokens(3,9,"traversal");
+  id:=PS_check("\"a\" #traversal 9 {}",t[0..<6],nodes[..],state[..],message[..],PS_Token.{kind=6,text="test",raw_count=4});
+  #assert state[0].code=="" && id!=0 && nodes[id].width==9 && nodes[id].value==0 && state[0].pos==5;
+  for limit:[3]u64.[0,68719476736,68719476737] {
+    t=PS_steps_tokens(3,limit,"traversal");state[0]=PS_State.{};
+    id=PS_check("\"a\" #traversal N {}",t[0..<6],nodes[..],state[..],message[..],PS_Token.{kind=6,text="test",raw_count=4});
+    if limit==68719476736 {#assert state[0].code=="" && nodes[id].width==68719476736;}
+    else {#assert id==0 && state[0].code=="E0220" && state[0].loc.column==12;}
+  }
+  t=PS_steps_tokens(1,9,"traversal");state[0]=PS_State.{};
+  id=PS_check("\"a\" #traversal x {}",t[0..<6],nodes[..],state[..],message[..],PS_Token.{kind=6,text="test",raw_count=4});
+  #assert id==0 && state[0].code=="E0220";
+  both:=[9] PS_Token.[PS_Token.{kind=5,text="a"},PS_Token.{kind=6,text="traversal"},PS_Token.{kind=3,value=7},PS_Token.{kind=6,text="steps"},PS_Token.{kind=3,value=5},
+    PS_Token.{kind=10,text="{"},PS_Token.{kind=11,text="}"},PS_Token.{},PS_Token.{}];
+  state[0]=PS_State.{};
+  id=PS_check("\"a\" #traversal 7 #steps 5 {}",both[0..<8],nodes[..],state[..],message[..],PS_Token.{kind=6,text="test",raw_count=4});
+  #assert state[0].code=="" && id!=0 && nodes[id].width==7 && nodes[id].value==5 && state[0].pos==7;
+  both[1].text="steps";both[3].text="traversal";state[0]=PS_State.{};
+  id=PS_check("\"a\" #steps 7 #traversal 5 {}",both[0..<8],nodes[..],state[..],message[..],PS_Token.{kind=6,text="test",raw_count=4});
+  #assert state[0].code=="" && id!=0 && nodes[id].width==5 && nodes[id].value==7;
+  both[3].text="steps";state[0]=PS_State.{};
+  id=PS_check("\"a\" #steps 7 #steps 5 {}",both[0..<8],nodes[..],state[..],message[..],PS_Token.{kind=6,text="test",raw_count=4});
+  #assert id==0 && state[0].code!="";
+}
 #test "a check without #steps keeps the file's budget" {
   nodes:[64] PS_Node;state:[1] PS_State;message:[4096] u8;
   t:=PS_steps_tokens(3,9,"steps");t[1]=t[3];t[2]=t[4];t[3]=t[5];
   id:=PS_check("\"a\" {}",t[0..<4],nodes[..],state[..],message[..],PS_Token.{kind=6,text="test",raw_count=4});
-  #assert state[0].code=="" && id!=0 && nodes[id].value==0;
+  #assert state[0].code=="" && id!=0 && nodes[id].value==0 && nodes[id].width==0;
 }
 // #run_steps N; declares the compilation's compile-time step budget, as
 // --run-steps N does (which overrides it). The file node keeps N (value) and

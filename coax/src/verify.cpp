@@ -144,6 +144,14 @@ static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::ve
     if (g_timings.on())
       g_timings.checks.push_back({c->forall ? "#forall" : "#test", to_std(c->name), g_timings.check_phase, seconds, r.steps, r.cases, r.passed, child && child->reused});
     if (paths) paths->push_back(r.executed);
+    // The check's use of its own budgets, with consumers when near (#12926).
+    // A check a child ran reports its steps only.
+    bool steps_near = false;
+    for (auto &[resource, use] : r.near) {
+      capacity_use(resource.c_str(), "E0400", use.used, use.limit, use.detail);
+      steps_near = steps_near || resource == "compile-time steps";
+    }
+    if (!steps_near && r.budget && r.passed) capacity_use("compile-time steps", "E0400", r.steps, r.budget);
     if (unstable && MS_storage_changed(slots, containers, file->ct_memory->slots, file->ct_memory->containers)) *unstable = true;
     if (steps) steps->push_back(r.steps);
     executed.insert(executed.end(), r.executed.begin(), r.executed.end());
@@ -181,11 +189,18 @@ static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::ve
       message += " [" + std::string(kind) + " " + name + "]";
       if (!r.counterexample.empty()) message += "; counterexample: " + r.counterexample;
     }
+    if (r.capacity) capacity_refusal(*r.capacity);
     error_at(file->src, r.loc, r.code.c_str(), message);
     if (!g_json_errors) {
       fprintf(stderr, "  note: in %s %s\n", kind, name.c_str());
       if (!r.counterexample.empty()) fprintf(stderr, "  counterexample: %s\n", r.counterexample.c_str());
     }
+  }
+  // The checks' value slots at their peak, with who held them (#12926).
+  if (const auto &m = file->ct_memory) {
+    CapacityDetail holders;
+    if (capacity_near(m->peak_slots, m->slot_limit) && m->at_peak_slots == m->peak_slots) holders = check_slot_holders(file, m->at_peak);
+    capacity_use("compile-time value slots", "E0400", m->peak_slots, m->slot_limit, holders);
   }
   if (file->authority) {
     // Execution coverage is a claim of its own: it needs every check to pass.

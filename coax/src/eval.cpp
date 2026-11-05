@@ -93,10 +93,49 @@ void CtMemory::clear_cycles() noexcept {
 }
 File::~File() { if (ct_memory) ct_memory->clear_cycles(); }
 
+std::vector<CtMemory::Holder> CtMemory::holders(bool by_storages, uint64_t request) const {
+  std::map<int32_t, Holder> at;  // by origin offset
+  if (request && where) {
+    Holder &h = at[where->offset];
+    h.origin = *where;
+    h.proc = active && !active->empty() ? active->back() : nullptr;
+    if (by_storages) h.storages += request; else h.slots += request;
+  }
+  for (const CtStorage *s = live; s; s = s->live_next) {
+    Holder &h = at[s->origin.offset];
+    h.origin = s->origin;
+    if (!h.proc) h.proc = s->origin_proc;
+    h.slots += s->capacity();
+    h.storages++;
+  }
+  std::vector<Holder> out;
+  for (auto &[offset, h] : at) out.push_back(h);
+  std::stable_sort(out.begin(), out.end(), [by_storages](const Holder &a, const Holder &b) {
+    return by_storages ? a.storages > b.storages : a.slots > b.slots;
+  });
+  if (out.size() > CAPACITY_TOP) out.resize(CAPACITY_TOP);
+  return out;
+}
 void CtMemory::take_slots(size_t n) {
-  if (!CB_admit(slots, n, slot_limit)) throw CtLimit{"value slots", slots + (uint64_t)n, slot_limit};
+  if (!CB_admit(slots, n, slot_limit)) {
+    try { at_failure = holders(false, n); } catch (...) { at_failure.clear(); }
+    throw CtLimit{"value slots", slots + (uint64_t)n, slot_limit};
+  }
   slots += n;
-  if (slots > peak_slots) peak_slots = slots;
+  if (slots > peak_slots) {
+    peak_slots = slots;
+    // The holders near the peak, for the near-limit report: once the use
+    // passes the threshold, then at each further 1/32 of the limit.
+    if (!snapshot_from) {
+      uint64_t lo = 0, hi = slot_limit;  // the least use capacity_near reports
+      while (lo < hi) { const uint64_t mid = lo + (hi - lo) / 2; if (capacity_near(mid, slot_limit)) hi = mid; else lo = mid + 1; }
+      snapshot_from = lo ? lo : 1;
+    }
+    if (peak_slots >= snapshot_from) {
+      try { at_peak = holders(false, n); at_peak_slots = peak_slots; } catch (...) {}
+      snapshot_from = peak_slots + std::max<uint64_t>(slot_limit / 32, 1);
+    }
+  }
 }
 void CtMemory::take_string(size_t n) {
   if (!CB_admit(string_bytes, n, CB_string_live_limit())) throw CtStringLimit{};
@@ -104,7 +143,10 @@ void CtMemory::take_string(size_t n) {
   if (string_bytes > string_peak_bytes) string_peak_bytes = string_bytes;
 }
 void CtMemory::take_container() {
-  if (!CB_admit(containers, 1, container_limit)) throw CtLimit{"arrays and structs", containers + 1, container_limit};
+  if (!CB_admit(containers, 1, container_limit)) {
+    try { at_failure = holders(true, 1); } catch (...) { at_failure.clear(); }
+    throw CtLimit{"arrays and structs", containers + 1, container_limit};
+  }
   ++containers;
   if (containers > peak_containers) peak_containers = containers;
 }
@@ -211,7 +253,7 @@ struct Evaluator {
   File *file;
   uint64_t steps = 0, max_steps = CB_default_steps();
   uint64_t string_work = 0;
-  uint64_t traversal_work = 0, traversal_limit = CB_traversal_limit();
+  uint64_t traversal_work = 0, traversal_limit = g_traversal_limit ? g_traversal_limit : CB_traversal_limit();
   uint32_t dependency_depth = 0;
   Loc current_loc{};
   bool failed = false;
@@ -236,7 +278,167 @@ struct Evaluator {
   bool profile = false;
   std::vector<const ProcDecl *> frames;
   std::map<const ProcDecl *, StepProfileRow> profiled;
-
+  // ---- capacity attribution (#12926) ----
+  // Where the steps and the aggregate traversal went: each procedure's own
+  // (charged while it is the innermost call), each call site's argument
+  // copies, and each top-level site's own (a constant, an assertion, a check's
+  // body). Kept at call boundaries, so an ordinary step costs nothing more.
+  struct CostRow { std::string what; Loc loc; uint64_t steps = 0, traversal = 0, calls = 0; bool copies = false; };
+  std::vector<CostRow> costs;
+  std::map<const void *, uint32_t> cost_index;  // call sites and top-level sites
+  struct Open { uint64_t steps = 0, traversal = 0; };  // the active call's callees, inclusive
+  std::vector<Open> open;
+  std::vector<const ProcDecl *> active;  // procedures being evaluated, innermost last
+  const void *site = nullptr;            // the top-level site being evaluated
+  uint64_t site_steps = 0, site_traversal = 0;  // its start
+  Open site_inner;                       // its callees, inclusive
+  const uint64_t cost_mark = ++cost_marks;
+  static inline uint64_t cost_marks = 0;
+  // The file's memory attributes requests to this evaluator while it runs.
+  bool memory_attached = attach_memory();
+  bool attach_memory() {
+    if (file && file->ct_memory) { file->ct_memory->where = &current_loc; file->ct_memory->active = &active; }
+    return true;
+  }
+  ~Evaluator() {
+    if (file && file->ct_memory && file->ct_memory->where == &current_loc) { file->ct_memory->where = nullptr; file->ct_memory->active = nullptr; }
+  }
+  uint32_t cost_row(ProcDecl *p) {
+    if (p->ct_cost_mark != cost_mark) {
+      p->ct_cost_mark = cost_mark;
+      p->ct_cost_row = (uint32_t)costs.size();
+      costs.push_back({"'" + to_std(p->name) + "'", p->loc});
+    }
+    return p->ct_cost_row;
+  }
+  uint32_t cost_row(const void *key, const std::string &what, Loc loc, bool copies = false) {
+    auto [at, made] = cost_index.emplace(key, (uint32_t)costs.size());
+    if (made) costs.push_back({what, loc, 0, 0, 0, copies});
+    return at->second;
+  }
+  void charge_parent(uint64_t ds, uint64_t dt) {
+    Open &o = open.empty() ? site_inner : open.back();
+    o.steps += ds;
+    o.traversal += dt;
+  }
+  // Ends the current top-level site (its own cost is what its callees did not use) and starts key.
+  void begin_site(const void *key, const std::string &what, Loc loc) {
+    end_site();
+    site = key;
+    site_steps = steps;
+    site_traversal = traversal_work;
+    site_inner = {};
+    if (key) cost_row(key, what, loc);
+  }
+  void end_site() noexcept {
+    if (!site) return;
+    auto at = cost_index.find(site);
+    if (at != cost_index.end()) {
+      CostRow &r = costs[at->second];
+      r.steps += steps - site_steps - std::min(site_inner.steps, steps - site_steps);
+      r.traversal += traversal_work - site_traversal - std::min(site_inner.traversal, traversal_work - site_traversal);
+      r.calls++;
+    }
+    site = nullptr;
+  }
+  // A call's cost, charged when it returns or unwinds (a limit throws through it).
+  struct CallCost {
+    Evaluator &e;
+    uint32_t row;
+    uint64_t steps, traversal;
+    CallCost(Evaluator &e, ProcDecl *p) : e(e), row(e.cost_row(p)), steps(e.steps), traversal(e.traversal_work) {
+      e.open.push_back({});
+      e.active.push_back(p);
+    }
+    ~CallCost() {
+      const Open inner = e.open.back();
+      e.open.pop_back();
+      e.active.pop_back();
+      const uint64_t ds = e.steps - steps, dt = e.traversal_work - traversal;
+      CostRow &r = e.costs[row];
+      r.steps += ds - std::min(inner.steps, ds);
+      r.traversal += dt - std::min(inner.traversal, dt);
+      r.calls++;
+      e.charge_parent(ds, dt);
+    }
+  };
+  // The consumers of steps (traversal: of aggregate traversal), largest first.
+  CapacityDetail cost_detail(bool traversal, const CostRow **top = nullptr) {
+    end_site();
+    CapacityDetail d;
+    d.src = file->src;
+    d.unit = traversal ? "visits" : "steps";
+    std::vector<std::pair<uint64_t, const CostRow *>> rows;
+    for (const CostRow &r : costs)
+      if (const uint64_t amount = traversal ? r.traversal : r.steps) rows.push_back({amount, &r});
+    std::stable_sort(rows.begin(), rows.end(), [](const auto &a, const auto &b) { return a.first > b.first; });
+    if (top) *top = rows.empty() ? nullptr : rows[0].second;
+    for (const auto &[amount, r] : rows) {
+      std::string what = r->what[0] == '\'' ? "in " + r->what : r->what;
+      if (r->calls > 1) what += " (" + std::to_string(r->calls) + (r->copies ? " calls" : " times") + ")";
+      d.consumers.push_back({what, r->loc, true, amount});
+      if (d.consumers.size() == CAPACITY_TOP) break;
+    }
+    return d;
+  }
+  // A step-budget refusal or near-limit use: check is a #test/#forall (own: it has its own #steps).
+  CapacityRefusal steps_capacity(bool check, bool own) {
+    const CostRow *top = nullptr;
+    CapacityRefusal r{"compile-time steps", steps_exceeded && steps_needed > steps ? steps_needed : steps, max_steps, cost_detail(false, &top)};
+    const std::string name = top ? top->what : "";
+    if (check)
+      r.detail.fix = (top ? "do less work " + std::string(top->what[0] == '\'' ? "in " : "") + name + ", " : std::string()) +
+                     "split the check, or give it a larger budget with " +
+                     (own ? "a larger #steps N on the check" : "#steps N on the check (or coax test --steps N for every check)");
+    else
+      r.detail.fix = (top ? "compute " + name + " at run time or load it as data instead of at compile time, or " : std::string()) +
+                     "raise the compilation's budget with #run_steps N; in the entry file (or --run-steps N)";
+    return r;
+  }
+  CapacityRefusal traversal_capacity(bool check) {
+    const CostRow *top = nullptr;
+    CapacityRefusal r{"compile-time traversal work", traversal_exceeded ? traversal_work + 1 : traversal_work, traversal_limit, cost_detail(true, &top)};
+    std::string fix;
+    if (top && top->copies)
+      fix = "pass a view, an index or only the fields it needs instead of " + top->what + " by value";
+    else if (top)
+      fix = "copy fewer whole arrays and structs " + std::string(top->what[0] == '\'' ? "in " : "") + top->what +
+            " (pass a view or an index, assign single fields)";
+    else fix = "copy fewer whole arrays and structs (pass a view or an index, assign single fields)";
+    r.detail.fix = fix + (check ? "; or split the check (each check has its own traversal budget), or raise its budget with #traversal N on the check (or --traversal N for every check)"
+                                : "; or raise the compilation's traversal budget with --traversal N");
+    return r;
+  }
+  // An aggregate storage refusal: what was asked for, and who held the storage then.
+  CapacityRefusal storage_capacity(const CtLimit &l, bool check) {
+    const bool slots = std::string(l.what) == "value slots";
+    CapacityRefusal r{slots ? "compile-time value slots" : "compile-time arrays and structs", l.needed, l.limit, {}};
+    r.detail = storage_detail(file->ct_memory->at_failure, slots);
+    r.detail.fix = storage_fix(r.detail, slots, check);
+    return r;
+  }
+  CapacityDetail storage_detail(const std::vector<CtMemory::Holder> &holders, bool slots) {
+    CapacityDetail d;
+    d.src = file->src;
+    d.unit = slots ? "slots" : "arrays and structs";
+    for (const CtMemory::Holder &h : holders) {
+      std::string what = h.storages == 0 ? std::string("requested here")
+                         : std::string(h.storages == 1 ? "1 array or struct" : std::to_string(h.storages) + " arrays and structs") + " made here";
+      if (h.proc) what += " in '" + to_std(h.proc->name) + "'";
+      d.consumers.push_back({what, h.origin, true, slots ? h.slots : h.storages});
+    }
+    capacity_rank(&d.consumers);
+    return d;
+  }
+  static std::string storage_fix(const CapacityDetail &d, bool slots, bool check) {
+    std::string where = "the values";
+    if (!d.consumers.empty()) {
+      const SourcePoint at = source_point(d.src, d.consumers[0].loc);
+      where = "the " + std::string(slots ? "array" : "values") + " made at " + at.path + ":" + std::to_string(at.loc.line);
+    }
+    if (check) return "make " + where + " smaller, or split the check so fewer values are live at once (each value slot is one array element or field)";
+    return "make " + where + " smaller, or build the table at run time (or load it as data) instead of at compile time";
+  }
   void err(Loc loc, const char *code, const std::string &message) {
     if (failed) return;
     failed = true;
@@ -244,21 +446,29 @@ struct Evaluator {
     fail_code = code;
     fail_message = message;
     if (quiet) return;
-    error_at(file->src, loc, code, message);
+    print_failure(calls);
+  }
+  void print_failure(const std::vector<Loc> &trace) {
+    error_at(file->src, fail_loc, fail_code.c_str(), fail_message);
     // A bounded call trace refers to source, not generated C or interpreter code.
     // A loaded file's call is named by its own path and line (GitHub #12660).
-    for (size_t i = calls.size(); i-- > 0;) {
-      const SourcePoint at = source_point(file->src, calls[i]);
+    for (size_t i = trace.size(); i-- > 0;) {
+      const SourcePoint at = source_point(file->src, trace[i]);
       fprintf(stderr, "  note: compile-time call at %s:%d:%d\n", at.path.c_str(), at.loc.line, at.loc.col);
     }
   }
+  // An exhausted step budget outside a check is printed once the calls have
+  // unwound and charged their steps, with its consumers (held_failure).
+  bool held_failure = false;
+  std::vector<Loc> held_trace;
+  uint64_t steps_needed = 0;
 
   // Gives back one step a caller charged twice, and the profile's with it.
   void refund() {
     steps--;
     if (profile) profiled[frames.empty() ? nullptr : frames.back()].own--;
   }
-  bool steps_exceeded = false;
+  bool steps_exceeded = false, traversal_exceeded = false;
   // One step (or cost steps) for a node. The common case, no failure, budget
   // left and no profile, stays inline; the rest is tick_slow.
   __attribute__((always_inline)) bool tick(Loc loc, uint32_t cost = 1) {
@@ -273,7 +483,12 @@ struct Evaluator {
     if (failed) return false;
     if (steps > max_steps || cost > max_steps - steps) {
       steps_exceeded = true;
+      steps_needed = steps + cost;
+      if (!quiet) { held_failure = true; held_trace = calls; }
+      const bool was_quiet = quiet;
+      quiet = true;
       err(loc, "E0400", "compile-time evaluation exceeded " + std::to_string(max_steps) + " steps");
+      quiet = was_quiet;
       return false;
     }
     steps += cost;
@@ -284,7 +499,7 @@ struct Evaluator {
   // A separate finite meter for aggregate traversal; it never changes the
   // expression/statement step budget. Admit before visiting the next value.
   void traverse() {
-    if (!CB_admit(traversal_work, 1, traversal_limit)) throw CtTraversalLimit{};
+    if (!CB_admit(traversal_work, 1, traversal_limit)) { traversal_exceeded = true; throw CtTraversalLimit{}; }
     ++traversal_work;
   }
 
@@ -341,12 +556,16 @@ struct Evaluator {
       for (Value &e : *v.agg) { traverse(); own_text(e); }
   }
 
-  std::shared_ptr<CtStorage> storage() {
+  std::shared_ptr<CtStorage> storage() { return storage(current_loc); }
+  // at: the expression or declaration that makes it, for the slot report (#12926).
+  std::shared_ptr<CtStorage> storage(Loc at) {
     auto memory = file->ct_memory;
     memory->take_container();
     CtStorage *raw;
     try { raw = new CtStorage(memory); }
     catch (...) { memory->release_container(); throw; }
+    raw->origin = at;
+    raw->origin_proc = active.empty() ? nullptr : active.back();
     // If control-block allocation fails, shared_ptr invokes this deleter.
     std::shared_ptr<CtStorage> result(raw, [memory](CtStorage *p) { memory->dispose(p); });
     memory->remember(result);
@@ -371,7 +590,7 @@ struct Evaluator {
   }
   Value sum_value(Type t,uint32_t tag,Value payload,Loc loc) {
     Value v;v.type=t;v.sum_tag=tag;Type p=payload_type(t,tag,loc);if(failed)return v;
-    if(p!=&T_VOID){if(payload.type!=p){err(loc,"E0401","sum payload disagrees with checked type");return v;}v.agg=storage();v.agg->push_back(std::move(payload));}
+    if(p!=&T_VOID){if(payload.type!=p){err(loc,"E0401","sum payload disagrees with checked type");return v;}v.agg=storage(loc);v.agg->push_back(std::move(payload));}
     return v;
   }
 
@@ -399,7 +618,7 @@ struct Evaluator {
     if (t->kind == TypeKind::struct_) {
       StructDecl *d = t->struct_decl;
       field_defaults(d);
-      v.agg = storage();
+      v.agg = storage(loc);
       for (const Field &f : d->fields) {
         traverse();
         if (failed) return v;
@@ -407,7 +626,7 @@ struct Evaluator {
       }
     } else if (t->kind == TypeKind::array) {
       if (!tick(loc, (uint32_t)t->length)) return v;
-      v.agg = storage();
+      v.agg = storage(loc);
       v.agg->reserve((size_t)t->length);
       Value element = zero(t->elem, loc);
       for (int64_t i = 0; i < t->length && !failed; i++) v.agg->push_back(clone(element, true));
@@ -436,7 +655,7 @@ struct Evaluator {
     if(is_sum(v.type) && !valid_sum(v,current_loc))return {};
     Value c = v;
     if ((is_aggregate(v.type) || is_sum(v.type)) && v.agg) {
-      c.agg = storage();
+      c.agg = storage(current_loc);
       c.agg->reserve(v.agg->size());
       for (const Value &e : *v.agg) c.agg->push_back(clone(e, true));
     }
@@ -1111,6 +1330,26 @@ struct Evaluator {
           std::vector<CtLocal> &locals;
           ~ReturnLocals() { locals.clear(); pool[depth].swap(locals); }
         } return_locals{local_pool, depth, callee.locals};
+        // Argument copies are charged to this call site, not to the caller (#12926).
+        const uint64_t args_traversal = traversal_work;
+        const uint64_t args_inner = open.empty() ? site_inner.traversal : open.back().traversal;
+        struct ArgsCost {
+          Evaluator &ev; const Expr *call; uint64_t traversal, inner; bool done = false;
+          ~ArgsCost() { finish(); }
+          void finish() noexcept {
+            if (done) return;
+            done = true;
+            const uint64_t dt = ev.traversal_work - traversal;
+            const uint64_t nested = (ev.open.empty() ? ev.site_inner.traversal : ev.open.back().traversal) - inner;
+            if (dt <= nested) return;
+            try {
+              CostRow &r = ev.costs[ev.cost_row(call, "copying arguments into '" + to_std(call->proc->name) + "'", call->loc, true)];
+              r.traversal += dt - nested;
+              r.calls++;
+              ev.charge_parent(0, dt - nested);
+            } catch (...) {}
+          }
+        } args_cost{*this, e, args_traversal, args_inner};
         for (int i = 0; i < e->args.count; i++) {
           if (scalar_type(e->args[i]->type)) {
             Scalar v;
@@ -1125,10 +1364,12 @@ struct Evaluator {
           if (failed) return {};
           callee.locals.push_back({e->proc->params[i].name, std::move(value), true});
         }
+        args_cost.finish();
         if (quiet && e->proc->ct_executed_mark != executed_mark) { e->proc->ct_executed_mark = executed_mark; executed.push_back(e->proc); }
         calls.push_back(e->loc);
         peak_calls = std::max(peak_calls, calls.size());
         Value result;
+        CallCost call_cost{*this, e->proc};
         const uint64_t before = steps;
         const bool recursive = profile && std::find(frames.begin(), frames.end(), e->proc) != frames.end();
         if (profile) frames.push_back(e->proc);
@@ -1234,7 +1475,7 @@ struct Evaluator {
         Value v;
         if(!inline_sum(e->type))v=zero(e->type,e->loc);
         else {
-          v.type=e->type;v.agg=storage();
+          v.type=e->type;v.agg=storage(e->loc);
           StructDecl *decl=e->type->struct_decl;field_defaults(decl);
           for(int32_t i=0;i<decl->fields.count;i++){
             traverse();bool supplied=false;
@@ -1256,7 +1497,7 @@ struct Evaluator {
       case ExprKind::array_lit: {
         Value v;
         v.type = e->type;
-        v.agg = storage();
+        v.agg = storage(e->loc);
         for (Expr *a : e->args) {
           if (failed) return {};
           traverse();
@@ -1484,6 +1725,7 @@ struct Evaluator {
   void fold(Expr *e) {
     if (!e || failed) return;
     if (e->kind == ExprKind::run) {
+      begin_site(e, "#run" + (fold_owner ? " in '" + to_std(fold_owner->name) + "'" : std::string()), e->loc);
       CtFrame empty;
       expr(e, empty, true);
       return;
@@ -1506,6 +1748,7 @@ struct Evaluator {
     for(SwitchCase *arm:s->cases)fold_stmt(arm->body);
   }
 
+  const ProcDecl *fold_owner = nullptr;  // the procedure whose #run sites are being folded
   bool run() {
     // --timings: each declaration's evaluation seconds and steps (g_decl_costs).
     auto charge = [&](const void *decl, const char *kind, Str name, Loc loc, auto &&work) {
@@ -1516,23 +1759,29 @@ struct Evaluator {
     };
     for (StructDecl *d : file->structs) {
       if (failed) break;
+      begin_site(d, "field defaults of '" + to_std(d->name) + "'", d->loc);
       charge(d->origin ? (const void *)d->origin : d, "struct", (d->origin ? d->origin : d)->name, (d->origin ? d->origin : d)->loc, [&] { field_defaults(d); });
     }
     for (ConstDecl *c : file->constants) {
       if (failed) break;
+      begin_site(c, "constant '" + to_std(c->name) + "'", c->loc);
       if (!is_untyped(c->type)) charge(c, "constant", c->name, c->loc, [&] { constant(c); });  // untyped constants were inlined as literals
     }
     for (Expr *a : file->assertions) {
       if (failed) break;
+      begin_site(a, "#assert", a->loc);
       CtFrame empty;
       Value condition = expr(a, empty, false);
       if (!failed && !condition.bits) err(a->loc, "E0406", "compile-time assertion failed");
     }
     for (ProcDecl *p : file->procs) {
       const ProcDecl *o = p->origin ? p->origin : p;
+      fold_owner = p;
       charge(o, "procedure", o->name, o->loc, [&] { fold_stmt(p->body); });
     }
+    fold_owner = nullptr;
     for (CheckDecl *c : file->checks) fold_stmt(c->proc->body);
+    end_site();
     return !failed;
   }
 
@@ -1621,6 +1870,7 @@ struct Evaluator {
   CheckOutcome check(CheckDecl *c) {
     CheckOutcome out;
     ProcDecl *p = c->proc;
+    begin_site(c, std::string(c->forall ? "#forall" : "#test") + " '" + to_std(c->name) + "' itself", c->loc);
     std::vector<Domain> bound;
     uint64_t total = 1;
     domains(c, &bound, &total);
@@ -1672,17 +1922,55 @@ static std::string storage_limit_message(const CtLimit &l) {
   return m;
 }
 
+// A failed evaluation's exception as an E0400, with the capacity it exhausted (#12926).
+static void limit_failure(Evaluator &evaluator, std::exception_ptr failure, bool check, std::shared_ptr<CapacityRefusal> *capacity) {
+  try { std::rethrow_exception(failure); }
+  catch (const CtTraversalLimit &) {
+    *capacity = std::make_shared<CapacityRefusal>(evaluator.traversal_capacity(check));
+    evaluator.err(evaluator.current_loc, "E0400", "compile-time aggregate traversal limit exceeded: " + std::to_string((*capacity)->used) +
+                                                    " value and field visits needed, the limit is " + std::to_string((*capacity)->limit));
+  }
+  catch (const CtStringLimit &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time string storage or work limit exceeded"); }
+  catch (const CtLimit &l) {
+    *capacity = std::make_shared<CapacityRefusal>(evaluator.storage_capacity(l, check));
+    evaluator.err(evaluator.current_loc, "E0400", storage_limit_message(l));
+  }
+  catch (const std::bad_alloc &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time allocation failed"); }
+}
+
+// A check's use of its steps and traversal budgets, for the near-limit report.
+static void check_near(Evaluator &evaluator, CheckOutcome *out, bool own) {
+  try {
+    if (capacity_near(evaluator.steps, evaluator.max_steps))
+      out->near.push_back({"compile-time steps", evaluator.steps_capacity(true, own)});
+    if (capacity_near(evaluator.traversal_work, evaluator.traversal_limit))
+      out->near.push_back({"compile-time traversal work", evaluator.traversal_capacity(true)});
+  } catch (const std::bad_alloc &) {}
+}
+
+CapacityDetail check_slot_holders(File *file, const std::vector<CtMemory::Holder> &holders) {
+  Evaluator evaluator{file};
+  CapacityDetail d = evaluator.storage_detail(holders, true);
+  d.fix = Evaluator::storage_fix(d, true, true);
+  return d;
+}
+
 CheckOutcome run_check(File *file, CheckDecl *check, uint64_t max_steps, bool profile) {
   Evaluator evaluator{file};
   evaluator.quiet = true;
   evaluator.profile = profile;
   evaluator.max_steps = max_steps;
-  try { return evaluator.check(check); }
-  catch (const CtTraversalLimit &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time aggregate traversal limit exceeded"); }
-  catch (const CtStringLimit &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time string storage or work limit exceeded"); }
-  catch (const CtLimit &l) { evaluator.err(evaluator.current_loc, "E0400", storage_limit_message(l)); }
-  catch (const std::bad_alloc &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time allocation failed"); }
-  CheckOutcome out; out.passed = false; out.loc = evaluator.fail_loc; out.steps = evaluator.steps; out.budget = evaluator.max_steps;
+  if (check->traversal) evaluator.traversal_limit = check->traversal;
+  std::exception_ptr failure;
+  try {
+    CheckOutcome out = evaluator.check(check);
+    if (out.over_budget) out.capacity = std::make_shared<CapacityRefusal>(evaluator.steps_capacity(true, check->steps != 0));
+    if (out.passed) check_near(evaluator, &out, check->steps != 0);
+    return out;
+  } catch (...) { failure = std::current_exception(); }
+  CheckOutcome out; out.passed = false;
+  limit_failure(evaluator, failure, true, &out.capacity);
+  out.loc = evaluator.fail_loc; out.steps = evaluator.steps; out.budget = evaluator.max_steps;
   out.code = evaluator.fail_code; out.message = evaluator.fail_message; evaluator.profile_rows(&out); return out;
 }
 
@@ -1698,20 +1986,24 @@ bool prepare_native_check_domains(File *file, NativeCheckCPlan *plan, uint64_t s
     CheckDecl *check = file->checks[(int32_t)entry.declaration_index];
     Evaluator evaluator{file};
     evaluator.max_steps = check->steps ? check->steps : steps;
+    if (check->traversal) evaluator.traversal_limit = check->traversal;
     std::vector<Evaluator::Domain> domains;
     uint64_t total = 1;
+    evaluator.quiet = true;  // printed below, with any capacity it exhausted
+    std::exception_ptr failure;
+    bool admitted = false;
     try {
-      if (!evaluator.domains(check, &domains, &total)) return false;
-    } catch (const CtTraversalLimit &) {
-      evaluator.err(evaluator.current_loc, "E0400", "compile-time aggregate traversal limit exceeded");
-    } catch (const CtStringLimit &) {
-      evaluator.err(evaluator.current_loc, "E0400", "compile-time string storage or work limit exceeded");
-    } catch (const CtLimit &limit) {
-      evaluator.err(evaluator.current_loc, "E0400", storage_limit_message(limit));
-    } catch (const std::bad_alloc &) {
-      evaluator.err(evaluator.current_loc, "E0400", "compile-time allocation failed");
+      admitted = evaluator.domains(check, &domains, &total);
+    } catch (...) { failure = std::current_exception(); }
+    if (!failure && !admitted && !evaluator.failed) return false;
+    std::shared_ptr<CapacityRefusal> capacity;
+    if (failure) limit_failure(evaluator, failure, true, &capacity);
+    else if (evaluator.steps_exceeded) capacity = std::make_shared<CapacityRefusal>(evaluator.steps_capacity(true, check->steps != 0));
+    if (evaluator.failed) {
+      if (capacity) capacity_refusal(*capacity);
+      evaluator.print_failure(evaluator.calls);
+      return false;
     }
-    if (evaluator.failed) return false;
     entry.domains.clear();
     entry.case_count = total;
     for (auto &domain : domains) {
@@ -1732,31 +2024,48 @@ bool prepare_native_check_domains(File *file, NativeCheckCPlan *plan, uint64_t s
 bool evaluate(File *file, uint64_t max_steps, uint64_t *used, uint64_t *traversed) {
   Evaluator evaluator{file};
   evaluator.max_steps = max_steps;
-  // The compilation's use of each compile-time limit, for the near-limit report.
+  // The compilation's use of each compile-time limit, for the near-limit
+  // report, with the consumers of a use near its limit (#12926).
   struct Uses {
     Evaluator &e;
     ~Uses() {
-      capacity_use("compile-time call depth", "E0403", e.peak_calls, Evaluator::MAX_DEPTH);
-      capacity_use("compile-time dependency depth", "E0403", e.peak_dependencies, Evaluator::MAX_DEPTH);
-      capacity_use("compile-time steps", "E0400", e.steps, e.max_steps);
-      capacity_use("compile-time traversal work", "E0400", e.traversal_work, e.traversal_limit);
-      if (const auto &m = e.file->ct_memory) {
-        capacity_use("compile-time value slots", "E0400", m->peak_slots, m->slot_limit);
-        capacity_use("compile-time arrays and structs", "E0400", m->peak_containers, m->container_limit);
-        capacity_use("compile-time string bytes", "E0400", m->string_peak_bytes, CB_string_live_limit());
-      }
+      try {
+        capacity_use("compile-time call depth", "E0403", e.peak_calls, Evaluator::MAX_DEPTH);
+        capacity_use("compile-time dependency depth", "E0403", e.peak_dependencies, Evaluator::MAX_DEPTH);
+        capacity_use("compile-time steps", "E0400", e.steps, e.max_steps,
+                     capacity_near(e.steps, e.max_steps) ? e.steps_capacity(false, false).detail : CapacityDetail{});
+        capacity_use("compile-time traversal work", "E0400", e.traversal_work, e.traversal_limit,
+                     capacity_near(e.traversal_work, e.traversal_limit) ? e.traversal_capacity(false).detail : CapacityDetail{});
+        if (const auto &m = e.file->ct_memory) {
+          CapacityDetail slots;
+          if (capacity_near(m->peak_slots, m->slot_limit) && m->at_peak_slots == m->peak_slots) {
+            slots = e.storage_detail(m->at_peak, true);
+            slots.fix = Evaluator::storage_fix(slots, true, false);
+          }
+          capacity_use("compile-time value slots", "E0400", m->peak_slots, m->slot_limit, slots);
+          capacity_use("compile-time arrays and structs", "E0400", m->peak_containers, m->container_limit);
+          capacity_use("compile-time string bytes", "E0400", m->string_peak_bytes, CB_string_live_limit());
+        }
+      } catch (const std::bad_alloc &) {}
     }
   } uses{evaluator};
-  try { bool ok = evaluator.run(); if (used) *used = evaluator.steps;
-    if (traversed) *traversed = evaluator.traversal_work;
-    return ok; }
-  catch (const CtTraversalLimit &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time aggregate traversal limit exceeded"); }
-  catch (const CtStringLimit &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time string storage or work limit exceeded"); }
-  catch (const CtLimit &l) { evaluator.err(evaluator.current_loc, "E0400", storage_limit_message(l)); }
-  catch (const std::bad_alloc &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time allocation failed"); }
+  std::exception_ptr failure;
+  bool ok = false;
+  try { ok = evaluator.run(); } catch (...) { failure = std::current_exception(); }
+  if (failure) {
+    evaluator.quiet = true;  // printed here, with the capacity it exhausted
+    std::shared_ptr<CapacityRefusal> capacity;
+    limit_failure(evaluator, failure, false, &capacity);
+    if (capacity) capacity_refusal(*capacity);
+    evaluator.print_failure(evaluator.calls);
+    ok = false;
+  } else if (evaluator.held_failure) {
+    capacity_refusal(evaluator.steps_capacity(false, false));
+    evaluator.print_failure(evaluator.held_trace);
+  }
   if (used) *used = evaluator.steps;
   if (traversed) *traversed = evaluator.traversal_work;
-  return false;
+  return ok && !evaluator.failed;
 }
 
 }  // namespace coax

@@ -725,7 +725,7 @@ the limits and the errors that go with them:
 | --- | --- | --- |
 | Evaluation work in one compile | 100,000 steps by default; `--run-steps N` selects up to 250,000,000 | `E0400` |
 | Live aggregate storage | 1,572,864 vector capacity slots and 131,072 containers | `E0400` |
-| Aggregate traversal | 134,217,728 value/field visits per frontend evaluation or individual check | `E0400` |
+| Aggregate traversal | 134,217,728 value/field visits per frontend evaluation or individual check; `--traversal N`, or `#traversal N` on a check, selects up to 68,719,476,736 | `E0400` |
 | Owned cast-string storage | 67,108,864 live bytes per compile; 268,435,456 materialized bytes per frontend evaluation or individual check | `E0400` |
 | Nested compile-time calls | 64 | `E0403` |
 | Constants depending on constants | 64 deep | `E0403` |
@@ -764,7 +764,10 @@ coax: note[E0400]: compile-time steps: 80000 of 100000 used (80%), above three q
 
 Raise it with `#run_steps N;` before a later change crosses it. The same
 note covers the call and dependency depths (above 48 of 64) and the storage
-limits; `--timings FILE` has the use of each in its `capacities` array.
+limits; `--timings FILE` has the use of each in its `capacities` array. A
+note or an error for steps, traversal work or value slots also lists what
+used the most of it and one way to use less; [Chapter 4](ch04-reading-errors.md#when-a-limit-runs-out)
+shows one, and `--near-limit P` moves the threshold.
 
 The limits count work, not seconds. A program that compiles on a fast
 laptop compiles on a slow CI machine too, and a build never passes or

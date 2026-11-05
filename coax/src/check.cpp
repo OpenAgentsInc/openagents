@@ -208,8 +208,6 @@ bool check(Arena *arena,File *file,bool mutation_lowering){
     // A fresh zeroed store: the failed run's records past the input must not survive.
     capacity=next;input->nodes=zvec<coax_t_CK_Node>((size_t)capacity);std::copy(original.begin(),original.end(),input->nodes.begin());
   }
-  capacity_use("checker node store","E0381",(uint64_t)state.used+1,(uint64_t)(original.empty()?first:CK_node_bound(first)));
-  capacity_use("generic instances","E0339",(uint64_t)state.instance_count,(uint64_t)std::max<int64_t>(state.instance_limit,0));
   capacity_use("checker nesting","E0381",(uint64_t)state.peak_depth,(uint64_t)CK_depth_limit());
   // Borrow analysis: each declaration's own budget (the three that used the
   // most), and the whole run against the sum of those budgets (#12644).
@@ -226,7 +224,37 @@ bool check(Arena *arena,File *file,bool mutation_lowering){
     w["borrow_work"]+=(uint64_t)state.borrow_work;w["borrow_units"]+=(uint64_t)state.borrow_units;w["borrow_queries"]+=(uint64_t)state.borrow_queries;w["borrow_origins"]+=(uint64_t)state.borrow_origins;}
   if(ok && mutation_lowering){ok=CK_prepare_spatial_mutations(context);laps.lap("check.mutation_lowering");}
   if(ok){CK_lower_effects(context);laps.lap("check.effects");}
-  for(int64_t i=0;i<state.error_count;i++){const auto &d=errors[(size_t)i];error_at(file->src,checked_loc(d.loc),checked_text(d.code).c_str(),checked_text(d.message),checked_text(d.fix));}
+  // Generic instances and the instance part of the node store, by template (#12926).
+  auto instance_detail=[&](bool by_nodes){
+    CapacityDetail d;d.src=file->src;d.unit=by_nodes?"nodes":"instances";
+    std::vector<int64_t> chain;for(int64_t i=state.instances;i>0 && i<=state.used && chain.size()<(size_t)state.used;i=input->nodes[(size_t)i].chain)chain.push_back(i);
+    std::vector<int64_t> sorted=chain;std::sort(sorted.begin(),sorted.end());
+    std::map<int64_t,CapacityConsumer> by_origin;std::map<int64_t,uint64_t> uses;
+    for(size_t k=0;k<sorted.size();k++){
+      const auto &n=input->nodes[(size_t)sorted[k]];const int64_t o=n.origin;if(o<=0 || o>state.used)continue;
+      auto &c=by_origin[o];
+      if(!c.has_loc){c.what="'"+checked_text(input->nodes[(size_t)o].name)+"'";c.loc=checked_loc(input->nodes[(size_t)o].loc);c.has_loc=true;}
+      // Its nodes: up to the next instance, or the end of the store.
+      c.amount+=by_nodes?(uint64_t)((k+1<sorted.size()?sorted[k+1]:state.used+1)-sorted[k]):1;uses[o]++;
+    }
+    for(auto &[o,c]:by_origin){if(by_nodes)c.what+=" ("+std::to_string(uses[o])+" instance"+(uses[o]==1?"":"s")+")";d.consumers.push_back(c);}
+    capacity_rank(&d.consumers);
+    const std::string top=d.consumers.empty()?"the generic with the most":d.consumers[0].what.substr(0,d.consumers[0].what.find(' '));
+    d.fix=by_nodes?"make "+top+"'s body smaller (move the work that does not depend on its parameters into a concrete helper), or instantiate it with fewer distinct bindings"
+                  :"bind "+top+" to fewer distinct types or sizes (one capacity for every use, or a concrete type where the binding does not matter)";
+    return d;
+  };
+  const uint64_t node_limit=(uint64_t)(original.empty()?first:CK_node_bound(first));
+  const bool node_store_full=!ok && state.fatal && state.used+1>=(int64_t)input->nodes.size();
+  const uint64_t instance_limit=(uint64_t)std::max<int64_t>(state.instance_limit,0);
+  capacity_use("generic instances","E0339",(uint64_t)state.instance_count,instance_limit,
+               capacity_near((uint64_t)state.instance_count,instance_limit)?instance_detail(false):CapacityDetail{});
+  capacity_use("checker node store","E0381",(uint64_t)state.used+1,node_limit,
+               !original.empty() && capacity_near((uint64_t)state.used+1,node_limit)?instance_detail(true):CapacityDetail{});
+  for(int64_t i=0;i<state.error_count;i++){const auto &d=errors[(size_t)i];const std::string code=checked_text(d.code);
+    if(code=="E0339")capacity_refusal({"generic instances",(uint64_t)state.instance_count+1,instance_limit,instance_detail(false)});
+    else if(code=="E0381" && node_store_full)capacity_refusal({"checker node store",(uint64_t)state.used+2,node_limit,instance_detail(true)});
+    error_at(file->src,checked_loc(d.loc),code.c_str(),checked_text(d.message),checked_text(d.fix));}
   if(!ok){if(!state.error_count)error_at(file->src,{1,1,0},"E0381","type checker storage budget rejected");return false;}
   auto &nodes=input->nodes;auto &objects=input->objects;const size_t old_size=objects.size();objects.resize((size_t)state.used+1,nullptr);
   for(size_t id=old_size;id<objects.size();id++){const auto k=nodes[id].kind;if(checked_type_tag(k))objects[id]=make<TypeExpr>(arena);else if(checked_expr_tag(k))objects[id]=make<Expr>(arena);else if(checked_stmt_tag(k))objects[id]=make<Stmt>(arena);else if(k==COAX_CK_Tag_proc)objects[id]=make<ProcDecl>(arena);else if(k==COAX_CK_Tag_param)objects[id]=make<Param>(arena);else if(k==COAX_CK_Tag_struct_)objects[id]=make<StructDecl>(arena);else if(k==COAX_CK_Tag_field)objects[id]=make<Field>(arena);else if(k==COAX_CK_Tag_field_init)objects[id]=make<FieldInit>(arena);else if(k==COAX_CK_Tag_union_)objects[id]=make<UnionDecl>(arena);else if(k==COAX_CK_Tag_variant)objects[id]=make<UnionVariant>(arena);else if(k==COAX_CK_Tag_switch_case)objects[id]=make<SwitchCase>(arena);else if(k==COAX_CK_Tag_case_binding)objects[id]=make<CaseBinding>(arena);else if(k==COAX_CK_Tag_effect_name)objects[id]=make<EffectName>(arena);}

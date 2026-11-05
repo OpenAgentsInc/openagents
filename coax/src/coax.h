@@ -163,6 +163,40 @@ void error_after(const Source *src, Loc loc, const char *code, const std::string
 // --timings, so the limit is raised before a build fails on it. CODE is the
 // error the limit reports when it is exceeded.
 void capacity_use(const char *name, const char *code, uint64_t used, uint64_t limit);
+// What uses a capacity (#12926): the top consumers, each with where it is (a
+// declaration, a call site, an allocation or a check) and how much of the
+// resource it took, in `unit`; and one practical reduction. A near-limit note
+// and a capacity refusal print them, and both JSON formats carry them.
+struct CapacityConsumer {
+  std::string what; Loc loc; bool has_loc = false; uint64_t amount = 0;
+  // Its location resolved while the source is alive (capacity_use keeps a
+  // detail until the command ends): "path:line:col" and the JSON forms.
+  std::string at, span_json, place_json;
+};
+struct CapacityDetail {
+  const Source *src = nullptr;
+  std::string unit;
+  std::vector<CapacityConsumer> consumers;  // largest first, at most CAPACITY_TOP
+  std::string fix;
+};
+constexpr size_t CAPACITY_TOP = 5;
+// Sorts consumers largest first (ties by source position) and keeps CAPACITY_TOP.
+void capacity_rank(std::vector<CapacityConsumer> *consumers);
+// Whether used is past the near-limit fraction of limit: --near-limit PERCENT,
+// else COAX_NEAR_LIMIT, else 75 (CB_near, three quarters).
+bool capacity_near(uint64_t used, uint64_t limit);
+uint32_t capacity_near_percent();
+// capacity_use with the consumers of that use, kept when it is the use nearest its limit.
+void capacity_use(const char *name, const char *code, uint64_t used, uint64_t limit, CapacityDetail detail);
+// A refusal of a capacity: the next error_at prints the resource, its limit,
+// the use, the top consumers and the reduction (its fix, unless it has one),
+// and both JSON formats carry them in a "capacity" object.
+struct CapacityRefusal { std::string resource; uint64_t used = 0, limit = 0; CapacityDetail detail; };
+void capacity_refusal(const CapacityRefusal &refusal);
+// --traversal N: the aggregate traversal budget of the compilation and of
+// each check without its own #traversal (0: CB_traversal_limit()).
+extern uint64_t g_traversal_limit;
+constexpr uint64_t MAX_TRAVERSAL_LIMIT = UINT64_C(68719476736);  // 2^36, 512 times the default
 // True once the lexer and parser have reported PS_report_limit() errors; says
 // once that reporting stopped there.
 bool error_limit();
@@ -280,6 +314,19 @@ struct CtMemory {
   void remember(const std::shared_ptr<CtStorage> &storage);
   void forget(CtStorage *storage) noexcept;
   void clear_cycles() noexcept;
+  // Who holds the slots (#12926): the live storages grouped by where they
+  // were made, largest first. at_peak is taken as the peak passes the
+  // near-limit threshold (then every 1/32 of the limit above it); at_failure
+  // as a request is refused, before anything is released.
+  struct Holder { Loc origin; const struct ProcDecl *proc = nullptr; uint64_t slots = 0, storages = 0; };
+  std::vector<Holder> at_peak, at_failure;
+  uint64_t at_peak_slots = 0, snapshot_from = 0;  // snapshot_from: 0 until the threshold is known
+  // The evaluator using this memory: where it is and the procedures it is in
+  // (innermost last), so a request is attributed to its expression.
+  const Loc *where = nullptr;
+  const std::vector<const struct ProcDecl *> *active = nullptr;
+  // request: slots being requested now (counted at *where), or containers when by_storages.
+  std::vector<Holder> holders(bool by_storages, uint64_t request) const;
   void take_slots(size_t n);
   void release_slots(size_t n) noexcept { slots -= n; }
   void take_container();
@@ -318,6 +365,8 @@ struct CtStorage : std::vector<Value, CtAllocator<Value>>, std::enable_shared_fr
   CtStorage *pending_next = nullptr;
   CtStorage *live_prev = nullptr, *live_next = nullptr;  // CtMemory::live
   bool linked = false;
+  Loc origin;                                  // the expression that made it (#12926)
+  const struct ProcDecl *origin_proc = nullptr; // the procedure evaluating it, if any
   explicit CtStorage(std::shared_ptr<CtMemory> memory);
   ~CtStorage();
 };
@@ -453,6 +502,8 @@ struct EffectName { Str name; Loc loc; };
 
 struct ProcDecl {
   uint64_t ct_executed_mark = 0;  // the evaluator that last recorded entering it (Evaluator::executed)
+  uint64_t ct_cost_mark = 0;      // the evaluator whose cost row ct_cost_row is (Evaluator::costs, #12926)
+  uint32_t ct_cost_row = 0;
   Str name;
   int32_t scope = 0;  // a name two modules declare: its C spelling's module scope (0: the plain name)
   Loc loc;
@@ -557,6 +608,7 @@ struct CheckDecl {
   Slice<Binding> domains;  // one per parameter of proc
   ProcDecl *proc = nullptr;
   uint64_t steps = 0;      // #steps N: this check's own step budget (0: the file's, coax test --steps)
+  uint64_t traversal = 0;  // #traversal N: this check's own aggregate traversal budget (0: --traversal, else the default)
 };
 
 struct CheckInput;
@@ -669,10 +721,17 @@ struct CheckOutcome {
   std::string code, message;   // the failure's error code and message
   std::string counterexample;  // #forall: "a = 3, b = true"
   std::vector<const ProcDecl *> executed; // procedures actually entered by this check
+  // A capacity the check exhausted (#12926): resource, limit, use, consumers, fix.
+  std::shared_ptr<CapacityRefusal> capacity;
+  // The check's use of its steps, traversal and value slots, with their consumers,
+  // for the near-limit report (filled when the use is near its limit).
+  std::vector<std::pair<std::string, CapacityRefusal>> near;
 };
 // Runs one check in the evaluator with a budget of max_steps (the caller picks
 // the check's own #steps, the file's budget or a mutant's). Never prints.
 CheckOutcome run_check(File *file, CheckDecl *check, uint64_t max_steps, bool profile = false);
+// The consumers of the checks' value slots at their peak, with a reduction.
+CapacityDetail check_slot_holders(File *file, const std::vector<CtMemory::Holder> &holders);
 // The source line and a caret under loc, as diagnostics print them.
 void show_source(FILE *out, const Source *src, Loc loc);
 

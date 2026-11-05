@@ -93,7 +93,7 @@ unit_native_checks() {
 }
 unit_lexer() { python3 tests/lexer.py; }
 unit_parser() { python3 tests/parser.py; }
-unit_budget() { python3 tests/run_budget.py; }
+unit_budget() { python3 tests/run_budget.py && python3 tests/capacity_refusals.py; }
 unit_strings() { python3 tests/ct_strings.py; }
 unit_traversal() { python3 tests/traversal_work.py; }
 unit_provenance() { python3 tests/provenance.py && web/tool.sh tests/stale-compiler.coax "$PWD" "$COAX_ABS"; }
