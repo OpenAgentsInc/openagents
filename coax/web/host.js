@@ -1095,7 +1095,8 @@ async function loadShadersOnce() {
     const previous = gpu.renderer;
     const candidate = new RenderHost({ device, context: gpu.context, format, memory, exports: engine.exports, arena,
       url: renderUrl, profile: Number(script.dataset.renderProfile), coarse: matchMedia("(pointer: coarse)").matches, capture: captureRequested,
-      presentation: captureRequested && ["float","unorm8-v1"].includes(globalThis.coaxialRenderPresentation) ? globalThis.coaxialRenderPresentation : false,
+      presentation: hostServices?.presentation(engine.exports.coaxial_host_contract_version?.()??0,Number(script.dataset.renderProfile)) ? "unorm8-v1" :
+        captureRequested && ["float","unorm8-v1"].includes(globalThis.coaxialRenderPresentation) ? globalThis.coaxialRenderPresentation : false,
       canonicalLayers: Boolean(hostTransport) || (captureRequested && globalThis.coaxialCanonicalLayers === true),
       canonicalMedia: Boolean(hostTransport) || (captureRequested && globalThis.coaxialCanonicalMedia === true),
       onMedia: (rows) => {
@@ -2693,6 +2694,9 @@ if (dev) {
   globalThis.coaxial.hostLifecycle = {event:(kind,nowUs,arg)=>hostLifeEvent(kind,nowUs,arg),offer:(nowUs,pending)=>hostLifecycle?.offer(nowUs,pending),info:()=>hostLifecycle?.info(),reset:()=>hostLifecycle?.reset()};
   globalThis.coaxial.hostFrameAt = async nowUs => {draw(nowUs/1000);await gpu?.device.queue.onSubmittedWorkDone();};
   globalThis.coaxial.renderLedger = () => gpu?.renderer?.ready ? gpu.renderer.ledger() : null;
+  globalThis.coaxial.renderPresentation = () => ({version:engine?.exports.coaxial_host_contract_version?.()??0,
+    mode:gpu?.renderer?.presentationRequested??false,drawFormat:gpu?.renderer?.format??null,displayFormat:gpu?.renderer?.displayFormat??null,
+    canonicalLayers:gpu?.renderer?.canonicalLayers??false,canonicalMedia:gpu?.renderer?.canonicalMedia??false,override:globalThis.coaxialRenderPresentation??null});
   globalThis.coaxial.renderLedgerLive = (slot, generation) => engine?.exports.coaxial_render_live?.(slot, generation) ?? -1;
   globalThis.coaxial.renderLedgerRelease = (slot, generation) => engine?.exports.coaxial_render_release?.(slot, generation) ?? -1;
   globalThis.coaxial.renderFixture = (kind) => kind === "video" ? engine?.exports.coaxial_render_fixture_video?.(arena.state) : engine?.exports.coaxial_render_fixture?.(arena.state);

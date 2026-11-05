@@ -247,6 +247,17 @@ refuse rather than fall back. No ordinary adapter or realm is opted in by
 loading that standalone policy. Exact source/SDK scope is recorded in
 `docs/verification/host-contract-2026-11-05/graphics-admitted.md`.
 
+The ordinary browser renderer now projects the shared v1/profile2
+presentation decision through its separate services reactor. An explicit
+current17a v1 face fixture selects FP16 graph, quantized BGRA8 display and
+canonical image paths with no capture override. Actual 20-case mode and
+13-word held-completion/recovery observations pass, with exact media notice
+delivery and unchanged served inputs. The new observer kills 34 root
+mutants without equivalents; the six C/header pairs remain byte-identical
+to the admitted current17a cache. This qualifies adapter selection, not the
+remaining ordinary services, public web opt-in or desktop default. See
+`docs/verification/host-contract-2026-11-05/presentation-v1.md`.
+
 ## The indexed KV arena preserves the durable v1 contract
 
 `coax/lib/bitcoin/kvskip.coax` is an optional native representation behind

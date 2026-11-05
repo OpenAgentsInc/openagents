@@ -244,6 +244,14 @@ work, then closes its sockets/helpers and server on exit.
 
 ## Required exits still open
 
+The ordinary browser presentation selector now passes its explicit current
+v1 fixture, actual scalar mode matrix and held-completion/device-recovery
+workload without asset or presentation overrides. Exact resource, compiler
+and failed-attempt scope is in [presentation-v1.md](presentation-v1.md).
+The public web face remains pre-contract. Ordinary Vulkan presentation,
+Linux default-audio composition, remaining socket/HTTP/stream/clip services
+and the final complete three-host/default/preview decision remain open.
+
 HTTP request-target normalization is now shared Coax policy. The root gate
 for `http-target.coax` kills 192/192 mutants; its physical-observation
 checker and JSON adapter kill 54/54 and 23/23, with no equivalents.

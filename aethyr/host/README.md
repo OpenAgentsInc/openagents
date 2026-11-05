@@ -466,7 +466,11 @@ The standalone `render_host_presentation` selector and its small shared
 `hrm_presentation` mode admit only version 1/profile 2. An eligible invalid
 display/extent returns an enabled but refused typed plan, never a legacy
 fallback. Unsupported profiles and pre-contract faces retain their existing
-path. This policy is not yet loaded by ordinary adapters; the admitted
+path. The ordinary browser adapter projects that scalar through the services
+reactor. Its explicit v1 realm fixture selects the complete path without
+overrides and passes actual mode, held-completion and device-recovery
+observations. The public web face's opt-in remains separate. See
+`docs/verification/host-contract-2026-11-05/presentation-v1.md`; the admitted
 graphics/current-realm observations and remaining integration exits are in
 `docs/verification/host-contract-2026-11-05/graphics-admitted.md`.
 

@@ -1,0 +1,11 @@
+// Complete actual host projection of the selected typed presentation path.
+#authority;
+#test "ordinary v1 presentation retains version mode formats assets and no capture override" {
+ q:=[7]int.[1,1,2,1,1,1,0];#assert hps_host(q[..]);q[3]=0;#assert hps_host(q[..]);q[3]=1;
+ for i:0..<7 {if i==3 {continue;}q[i]+=1;#assert !hps_host(q[..]);q[i]-=2;#assert !hps_host(q[..]);q[i]+=1;}
+ q[3]=-1;#assert !hps_host(q[..]);q[3]=2;#assert !hps_host(q[..]);
+ #assert !hps_host(q[0..<6]);extra:[8]int;#assert !hps_host(extra[..]);
+}
+hps_host :: (q:[]int)->bool #export_c {
+ return q.count==7&&q[0]==1&&q[1]==1&&q[2]==2&&(q[3]==0||q[3]==1)&&q[4]==1&&q[5]==1&&q[6]==0;
+}

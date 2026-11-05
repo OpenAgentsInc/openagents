@@ -4,3 +4,4 @@
 #load "audio-memory.coax";
 #load "audio-session.coax";
 #load "inbox-queue.coax";
+#load "render-mode.coax";
