@@ -4,7 +4,11 @@ Source: `cast-budget.coax`, `room-casts.coax`; contract and remaining scope:
 [`room-overload.md`](../verse/2026-11-05-room-overload.md). This qualifies
 per-seat cast queue reservations, not complete room overload isolation.
 
-Local isolated worktree, builds at nice 15, one Coax check/build worker:
+Local isolated worktree, builds at nice 15, one Coax check/build worker.
+The measured native/worker artifacts use `2f88ce4f12` plus the cast reservation
+patch. Rebase subsequently includes `2f95eb8979` (rig tables as literals);
+these measurements do not claim to rebuild that later asset-source change.
+The room/cast sources and their 543 passing checks are unchanged by it.
 
 - Full room suite: **543/543 passed**, including a flood before a tick,
   all 16 seats taking two reservations, explicit busy refusal without spending
