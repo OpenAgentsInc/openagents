@@ -794,3 +794,48 @@ The sibling's original598/c224 receipt and12-input exact source join qualify
 that reactor. Coax checks the updated desktop build source. This leaf build/
 copy hook does not claim a successful complete current desktop build or
 repeat the already passing browser service observations.
+
+The subsequent queue reactor at `6bc5ec9ab2` is 19,919 bytes, SHA256
+`71834393855de2a1f5ff38a6c7eeda855ed1d74218fb86f514a7d01e428fc56c`.
+It is copied unchanged to the separate scoped resource fixture
+`services-queue-desktop-bundle/`, preserving the earlier artifact.
+`services-queue-desktop-deps.txt` observes all 13 source paths, including
+`aethyr/host/inbox-queue.coax`. The desktop stamp already follows the full
+carrier load graph through `wasm-size sources`; it automatically includes
+this new dependency without maintaining a second manual list. The sibling's
+actual generated-source join is 13/13 exact. This is a resource-copy check,
+not a runnable current-desktop or new browser conformance claim.
+
+## Ordinary default audio scope
+
+The 48 canonical WAV assets qualify the synthesized set and room impulse.
+Ordinary Everglade selects `egs_mixed` unless its URL requests `?sfx=synth`.
+Its `SFXB_PICK` variants emit `NAME-CAND` cues and fetches, backed by the
+Opus/Ogg files described in [the authored sound record](../../../aethyr/audio/SOURCES.md).
+The native adapter's SDK fallback therefore serves ordinary v1 audio.
+It is preserved; restricting v1 to the 48 exported WAV names would omit
+default selected sounds.
+
+Actual AVAudioFile metadata observations in `audio-default-ogg-observation.txt`
+read `fire-cast-e2.ogg` as 32,652 mono frames, `fire-hit-e2.ogg` as 42,240 mono
+frames and `ambient-e1.ogg` as 960,000 stereo frames, all at 48 kHz. These reads
+open no audio device and establish no decoded-sample parity. `voice.js`
+replies use their separate Int16 PCM stream, rather than this asset codec.
+Default compressed metadata/codec qualification and allocation-pressure
+behavior remain distinct from the successful 48-bank sample comparisons.
+
+The CPU primary blocker is specifically the missing bounded current 5E
+emission, not lack of a usable admitted CPU image. Original598 remains
+admitted against genuine `c224561457` compiler inputs plus separately pinned
+pure product inputs. `metal-build` emits the native primary with `--library
+--run-steps 128000 --header everglade5e.h` and the existing default aggregate/
+string limits, then compiles natively with `-O2 -ffp-contract=off
+-fno-fast-math`. The two 840-second failures publish no successful C/header
+or emission profile. Existing `wasm.sh` caches C/headers by compiler SHA,
+unit/header-base/options and every loaded source hash. A producer-only
+cache with the exact admitted image/profile and frozen current source join
+could feed `metal-build generated --generated` and `producer
+--producer-object` without repeating emission. No eligible current entry
+has been established here; source paths alone do not prove that join.
+Shared-carrier C and the parent's classic room C are not substitutes for
+the matching 5E producer closure. Graphics admission remains a separate gate.
