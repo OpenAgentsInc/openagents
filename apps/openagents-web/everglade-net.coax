@@ -2124,9 +2124,10 @@ net_probe :: (s: [] Everglade, field: int) -> int #export_c {
   if field == 64 { return ifx n[0].fix.ok then cast(int) (wrap_angle(n[0].fix.yaw) * 1000) else -999999; }
   if field == 61 { return s[0].sp.sprite_n; }
   if field == 62 { return s[0].sp.fx_seen; }
-  // 63 you play in a room (its kit, level and rules), 64 rejoining a room that dropped, 65 the level's kit on the bar, 66 your level
-  if field == 63 { return ifx net_live(s) then 1 else 0; }
-  if field == 64 { return ifx net_rejoining(s) then 1 else 0; }
+  // 84 you play in a room (its kit, level and rules), 85 rejoining a room that dropped (63 and 64 are
+  // your facing's, above), 65 the level's kit on the bar, 66 your level
+  if field == 84 { return ifx net_live(s) then 1 else 0; }
+  if field == 85 { return ifx net_rejoining(s) then 1 else 0; }
   if field == 65 { return ifx ege_kit_on(s) then 1 else 0; }
   if field == 66 { return ege_of(s)[0].level; }
   if field == 67 { return s[0].doors.near; }                            // the door you stand at (-1 none)
@@ -3292,4 +3293,10 @@ net_test_walk :: (jitter: int, lose: int, jump: bool, resend: int) -> NetTestWal
   #assert cast(string) nb[0].said[0..<nb[0].said_n] == "A NEW VERSION IS OUT · RELOAD THE PAGE";
   net_step(b[..], 5000, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
   #assert b[0].action == 0;
+}
+#test "net probes: 63 is your facing and 84 whether you play in a room, each field once" {
+  g: [1] Everglade; gn: [1] EgNet;
+  everglade_attach_net(g[..], gn[..]);
+  g[0].face = 0.5;
+  #assert net_probe(g[..], 63) == 500 && net_probe(g[..], 84) == 0 && net_probe(g[..], 85) == 0;
 }
