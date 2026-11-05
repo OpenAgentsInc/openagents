@@ -1,0 +1,39 @@
+// The checks' side of aethyr/session/control.coax: two rooms and one character over 1,200
+// directory ticks. Room 10 owns it first, renews every 100 of its own clock's ticks, pauses from
+// tick 400 to 1,000 (no renewals, no writes), then resumes believing it still owns the character
+// and keeps saving. Room 20 asks for the character every 50 ticks from tick 200 and saves once it
+// owns it. Each room's clock is the directory's plus `skew`. Only the checks call it.
+CoRun :: struct {
+  owners_at_once: int;       // most rooms whose saves the store accepted on one tick
+  stale_writes: int;         // saves the store refused
+  accepted_after_loss: int;  // room 10's saves accepted after room 20's first
+  digest: int;
+}
+co_run :: (r: [] CoRun, skew: int) {
+  d: [1] ControlDirectory; store: [1] ControlFence;
+  a := control_acquire(d[..], 1, 10);
+  a_renewed := d[0].now + skew;
+  b_gen := 0; b_first := -1;
+  for t: 0..<1200 {
+    a_clock := d[0].now + skew;
+    paused := t >= 400 && t < 1000;
+    accepted := 0;
+    if !paused {
+      if a_clock - a_renewed >= 100 { _ := control_renew(d[..], 1, 10, a.gen); a_renewed = a_clock; }
+      if control_fence(store[..], 1, a.gen) == CONTROL_OK { accepted += 1; if b_first >= 0 { r[0].accepted_after_loss += 1; } }
+      else { r[0].stale_writes += 1; }
+    }
+    if b_gen == 0 && t >= 200 && t % 50 == 0 {
+      g := control_acquire(d[..], 1, 20);
+      if g.status == CONTROL_OK { b_gen = g.gen; }
+    }
+    if b_gen > 0 {
+      if control_fence(store[..], 1, b_gen) == CONTROL_OK { accepted += 1; if b_first < 0 { b_first = t; } }
+      else { r[0].stale_writes += 1; }
+    }
+    if accepted > r[0].owners_at_once { r[0].owners_at_once = accepted; }
+    control_tick(d[..], 1);
+  }
+  r[0].digest = (((store[0].gen[1] * 1009 + d[0].entries[1].room) * 1009 + b_first) * 1009 + r[0].stale_writes) * 1009 + d[0].entries[1].gen;
+}
+co_reference :: () -> int { r: [1] CoRun; co_run(r[..], 0); return r[0].digest; }
