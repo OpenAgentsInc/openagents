@@ -53,6 +53,8 @@ Ticket :: struct {
   shard: int = 1;         // the oa-room shard it was signed for (v2: 1)
   xp: int;                // the XP it brings back (room-events.coax)
   wanted: int;            // the WANTED level it brings back (1 to 5; 0 none; #12794)
+  owner: int;             // the character's owner generation the API issued with it (#12834; 0 none): its vitals lines carry it
+  schema: int = TICKET_SCHEMA;   // the format of what it brings back (HP, XP, WANTED): the room admits it only up to RV_SCHEMA (#12839)
 }
 ```
 

@@ -3,7 +3,7 @@
 > **Status: partly implemented.** Senses and knowledge are shared:
 > [aethyr/ai/stimulus.coax](../../aethyr/ai/stimulus.coax) (`#authority`)
 > gives sight, sound and touch as typed stimuli, sight through
-> [chapter 7](ch007-ask-the-world-where-things-are.md)'s `query_ray`, and
+> [chapter 7](ch007-ask-the-world-where-things-are.md)'s `query_clear`, and
 > keeps a creature's knowledge in a bounded `Memory` that forgets after a
 > stated number of ticks and counts what it refuses. Following on the
 > realm's fixed step is shared too:
@@ -49,6 +49,7 @@ SENSE_MEMORY :: 8;             // stimuli one creature remembers at most
 SENSE_REACH :: 1000.0;         // metres: a longer range is not one
 SENSE_EYE_MAX :: 100.0;        // metres: and a higher eye
 SENSE_FORGET_MAX :: 230400;    // ticks: an hour at 64 a second
+SENSE_SHORT_OF_ONE :: 0.99999994;   // the largest f32 below 1: what is on the target itself doesn't hide it
 
 StimulusKind :: enum u8 { none; sight; sound; touch; }
 SenseStatus :: enum u8 { sensed; out_of_range; hidden; invalid; }
@@ -74,9 +75,10 @@ an hour. Senses outside it sense nothing and say `invalid`.
 
 Sight is the watch's rule: near enough on the flat (`watch_sees` uses
 `flat_gap`), and nothing between the eyes and the point seen. The line of
-sight is one `query_ray` from the eye to the target with `far` 1, so the
-direction is the whole segment and a hit before t = 1 means something is in
-the way. Boxes, capsules and heightfields all hide, because they are all in
+sight is one `query_clear` from the eye to the target with `far` just
+under 1 (`SENSE_SHORT_OF_ONE`, the largest `f32` below 1), so the direction
+is the whole segment and a hit before t = 1 means something is in the way.
+`query_clear` is `query_ray`'s hit or miss without the hit's point or normal. Boxes, capsules and heightfields all hide, because they are all in
 chapter 7's `Colliders`. A ray that starts inside a box hits it at t = 0, so
 an eye inside a wall sees nothing. A query the colliders refuse (more than
 16 heightfields, a broken mesh, a search that ran out) senses nothing and
@@ -92,9 +94,9 @@ sense_sight :: (s: Senses, c: Colliders, feet: WorldPoint, target: WorldPoint, s
   if !senses_ok(s) || !sense_point_ok(feet) || !sense_point_ok(target) || now < 0 { out.status = SenseStatus.invalid; return out; }
   if sense_flat(feet, target) > s.sight { out.status = SenseStatus.out_of_range; return out; }
   eye := world_point(feet.x, feet.y + s.eye, feet.z);
-  hit := query_ray(c, eye, world_sub(target, eye), 1);
-  if hit.status != QueryStatus.ok { out.status = SenseStatus.invalid; return out; }
-  if hit.hit && hit.t < 1 { out.status = SenseStatus.hidden; return out; }
+  line := query_clear(c, eye, world_sub(target, eye), SENSE_SHORT_OF_ONE);   // a hit at t < 1 hides it
+  if line.status != QueryStatus.ok { out.status = SenseStatus.invalid; return out; }
+  if !line.clear { out.status = SenseStatus.hidden; return out; }
   out.stimulus = Stimulus.{kind = StimulusKind.sight, source = source, at = target, tick = now};
   return out;
 }
@@ -397,7 +399,7 @@ would change Everglade's companion, so it is left as it is (see below).
   forgetting; and every refusal of the memory.
 - The independent check, `aethyr/tests/stimulus-oracle.coax`, walks each
   segment in 1,000 even samples and asks whether a sample is strictly inside
-  a box. It shares no code with `query_ray`. Of 300 random scenes of three
+  a box. It shares no code with `query_ray` or `query_clear`. Of 300 random scenes of three
   boxes, it judges 292 (the other 8 graze an edge: the boxes grown and shrunk
   by 5 cm disagree), 39 hidden and 253 seen, and `sense_sight` agrees on all
   292.

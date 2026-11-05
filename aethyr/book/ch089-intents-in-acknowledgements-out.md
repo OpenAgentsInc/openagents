@@ -54,6 +54,7 @@ eg_heard_input :: (v: [] RmServer, k: int, seat: int, text: string) {
   w := wire_read_in(text, r[..]);
   if !r[0].ok || eg_fields(text) != 9 { return; }
   eg_seat_heard(v, k, seat, w.heard);
+  if w.heard > 0 { v[0].eg[k].seat[seat].said_heard = w.heard; v[0].eg[k].seat[seat].said_ms = v[0].mono_ms; }
   st := v[0].eg[k].seat[seat..<seat + 1];
   seq := w.seq;
   n := st[0].q_n;
