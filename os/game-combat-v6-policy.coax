@@ -1,0 +1,40 @@
+#authority;
+#load "game-combat-v5-policy.coax";
+#test "recorded error 51 against the attacking troll admits one turn per new failure, within the encounter cap" {
+  s:=CombatSample.{ok=true,flags=7,class_id=9,level=5,health=99,health_max=103,target_flags=67,target_level=4,target_health=40,target_max=86,npc=706,spawn=7062936,target_epoch=319,extra=2,error_serial=22,error_type=51};
+  s.slots[1]=CombatSlot.{flags=27,id=686};
+  #assert c6_ready(s) && c6_needed(s,21,0) && !c6_needed(s,22,0);
+  #assert c6_needed(s,21,11) && !c6_needed(s,21,12) && !c6_needed(s,21,-1);
+  d:=c6_turn(); #assert d.ok && d.action==CT_LEFT && d.key==30 && d.milliseconds==100;
+  #assert c6_recheck(s,s,CT_LEFT) && !c6_recheck(s,s,CT_BACK) && !c6_recheck(s,s,CT_BOLT);
+  t:=s; t.ok=false; #assert !c6_ready(t) && !c6_recheck(t,s,CT_LEFT) && !c6_recheck(s,t,CT_LEFT);
+  for flags:[4] int.[3,15,23,5] { t=s; t.flags=flags; #assert !c6_ready(t); }
+  t=s; t.health=0; #assert !c6_ready(t);
+  t=s; t.health=1; #assert c6_ready(t);
+  t=s; t.health=104; #assert !c6_ready(t);
+  t=s; t.health=103; #assert c6_ready(t);
+  t=s; t.health_max=0; #assert !c6_ready(t);
+  t=s; t.class_id=1; #assert !c6_ready(t);
+  t=s; t.extra=0; #assert !c6_ready(t);
+  t=s; t.extra=1; #assert !c6_ready(t);
+  t=s; t.error_type=50; #assert !c6_ready(t);
+  t=s; t.error_type=52; #assert !c6_ready(t);
+  t=s; t.slots[1].id=687; #assert !c6_ready(t);
+  t=s; t.slots[1].flags=1; #assert !c6_ready(t);
+  t=s; t.target_flags=71; #assert !c6_ready(t);
+  t=s; t.target_epoch=320; #assert !c6_recheck(s,t,CT_LEFT);
+  t=s; t.npc=707; #assert !c6_recheck(s,t,CT_LEFT);
+  t=s; t.spawn=7062937; #assert !c6_recheck(s,t,CT_LEFT);
+  t=s; t.target_health=39; #assert !c6_recheck(s,t,CT_LEFT);
+  t=s; t.health_max=104; #assert !c6_recheck(s,t,CT_LEFT);
+  t=s; t.error_serial=23; #assert !c6_recheck(s,t,CT_LEFT);
+}
+c6_ready :: (s: CombatSample) -> bool {
+  return s.ok && cb_eligible(s) && (s.flags&31)==7 && s.class_id==9 && s.health>0 && s.health<=s.health_max && (s.extra&2)!=0 && s.error_type==51 && cb_slot(s.slots[1],686);
+}
+c6_needed :: (s: CombatSample,consumed_error: int,used: int) -> bool { return c6_ready(s) && s.error_serial!=consumed_error && used>=0 && used<12; }
+c6_turn :: () -> CombatDecision { d:=cb_action(CT_LEFT); d.milliseconds=100; return d; }
+c6_recheck :: (before: CombatSample,after: CombatSample,action: int) -> bool {
+  return c6_ready(before) && c6_ready(after) && before.npc==after.npc && before.spawn==after.spawn && before.target_epoch==after.target_epoch
+    && before.target_health==after.target_health && before.health_max==after.health_max && before.error_serial==after.error_serial && action==CT_LEFT;
+}

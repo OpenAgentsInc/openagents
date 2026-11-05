@@ -1,0 +1,9 @@
+syntax = "proto3";
+package openagents.engine.combat.control.v6;
+import "openagents/engine/combat/control/v5/control.proto";
+message DefensiveFacingProfile {
+  openagents.engine.combat.control.v5.EfficientHuntProfile hunt = 1;
+  uint32 turn_ms = 2;
+  uint32 maximum_turns = 3;
+  uint32 observed_cast_error = 4;
+}

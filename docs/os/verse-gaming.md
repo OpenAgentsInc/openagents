@@ -222,6 +222,14 @@ batch returns there after combat/looting. This avoids ending a normal batch
 on a hostile spawn. A 768 MiB free-disk reserve requests drain and parking;
 never rely on this against another writer filling the disk concurrently.
 
+`--defensive --efficient` explicitly selects
+[control V6](../protocol/external-combat-control-v6.md). A new observed
+facing failure during qualified defense permits one freshly rechecked
+100 ms left turn; the same error is consumed once, with at most twelve
+corrections per encounter. Damage consumes the current failure without a turn.
+The ordinary deadlines remain. The recorded-case SDK/sanitizer fixture passes;
+live recovery and general terminal-failure escape are not yet qualified.
+
 Each corpse records a receipt, empty result, full inventory, lost identity
 or timeout. Zero empty bag slots is separate from an actual inventory-full
 error, since stacks and coins may still fit. No inventory is deleted or sold.
@@ -230,6 +238,12 @@ area. These heuristics and the short easy-kill flag are retained for analysis.
 
 For a second, passive video stream, start this in another terminal before
 the hunt, using a new directory:
+
+Use a fresh clip immediately before each batch and verify its first frame.
+Clips are capped at 660 seconds: an old final JSONL row is not live status.
+During a run, compare the latest controller observation's monotonic timestamp
+with the current clock before relying on its health. Start the next clip before
+the current one expires. Controller captures continue independently of video.
 
 ```sh
 "$d/verse-game-video" --out /absolute/recordings/run-01.video --seconds 600

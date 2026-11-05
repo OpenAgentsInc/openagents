@@ -339,3 +339,71 @@ all three candidate actions with/without selection and active travel. Final
 V5 policy: 227/227 mutants; controller: 191 checks. The boar audit contains no
 observed unbound new pull; the follow-up closes that code path before the
 next hostile trial.
+
+## Further hostile trial, facing diagnosis and final state
+
+`troll-05`, final V5 acquisition gate, surveyed the northern edge of the
+observed troll patch (anchor 17400,51000). It recorded four own XP kills
+(42,56,56,56; total 210), four matching loot receipts, and three water
+actions. Thus water drops were consumed normally; a final zero action count
+must not be misdiagnosed as an unavailable inventory count. Empty slots
+reached two, then three after consumption. No actual inventory-full error
+occurred.
+
+Its archive audit passes: 291 observations, 227 rechecks, 518 images,
+216,220,439 bytes, zero sample mismatches and clock errors. The final
+controller observation is 73 HP and 298 mana, not the eventual death state.
+The passive `troll-05.video` ended before `troll-06.video` began, leaving an
+explicit 105,600 ms video gap. The controller's images/sensor/wire record
+continued during that gap. `troll-06.video` retains the later stall and death.
+Operator monitoring now checks observation age, rather than treating the
+last row of an expired passive clip as current state.
+
+The fifth attempted fight reached 40/86 target HP, then repeatedly emitted
+UI error 51 while the creature still publicly targeted Foob. The 20-second
+no-damage deadline stopped the controller at 73 HP. The operator's rescue
+arrived after Foob had died at (17328,51450). This is the fourth death in this
+pass. The saved original `observe-284.webp` visibly says “Target needs to be
+in front of you.” A proposed sidestep recovery was therefore superseded
+before publication by an explicit facing correction; its prototype binary,
+generated C and SDK-fixture record remain locally for analysis.
+
+V6 (`--defensive --efficient`) turns left for 100 ms on a new error-51
+instance against an eligible attacking target, after a fresh identity/life/
+cast/health/error recheck. It consumes each failure once and allows at most
+twelve turns per encounter. New damage consumes the current error without
+turning. Neither progress nor encounter deadlines are reset. Its authority
+gate kills 52/52 mutants; controller checks: 192/192. The independent SDK
+peer replays original lossless sensor strips 275 onward against the emitted
+controller with both under ASan/UBSan: ordinary defense, one fresh facing turn,
+release and explicit cancellation pass. It invents no damage or recovered
+world state. Live facing recovery remains unqualified. V6 descriptors compile.
+
+Recovered the fourth corpse through ordinary bounded movement, accepting at
+(17313,50943), backing away, then returning to (17651,50554). During offline
+qualification the client returned to character selection through inactivity;
+reentered with the selected Foob and moved north to (17915,49504), heading
+61767, beside neutral wolves. `operator-captures/final.ppm` and its PNG retain
+that final state; `parking-final.video` sealed 720 frames with encoder status 0.
+Verified full
+103 HP / 298 mana, alive/OOC, 1399/2800 XP, three free / 26 slots and 27 copper.
+Total this pass: 25 verified XP kills, +1180 XP and four deaths. Level 6 is
+unfinished. No quest turn-in, spirit-healer resurrection, item sale or
+inventory deletion was used. The game remains visible at native 2548×1428
+on desk 2; there is no unattended controller left running.
+
+Storage fell below the 768 MiB recording reserve. Further hostile trials are
+stopped until capacity is available, with the owner action in `NEEDS_OWNER.md`.
+The remaining navigation RGB captures were round-trip-verified into lossless
+PNG with original/archive hashes, except the three original fire frames kept
+raw for reproducible SDK tests. Rehydrate an archived raw PPM with
+`ffmpeg -i ARCHIVE.png -frames:v 1 -pix_fmt rgb24 ORIGINAL.ppm` and verify its
+manifest SHA-256 before using a V1 journal's original image path. The four
+earlier scouting directories already contained PPM.zst, so the later attempted
+raw-packing pass changed no files there. All unique RGB evidence remains.
+
+Final tools-check read the complete tracked script catalog despite the sparse
+worktree and reports the same 29 existing missing reason headers; this work
+adds Coax tools and independent SDK C oracles with declared reasons. Temporary
+catalog materialization preserved repository executable modes and introduced
+no content or mode changes outside this task's files.
