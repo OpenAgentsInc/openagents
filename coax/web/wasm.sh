@@ -140,15 +140,26 @@ fi
 # closure (coax/web/tool.sh wasm-size sources), so a unit whose closure didn't
 # change since an earlier build, in any checkout or release tree, isn't compiled
 # again (Everglade's C takes ten minutes or more: its closure has an #authority
-# unit, aethyr/ground.coax, so its compile runs every check in it). Objects are
-# also keyed by clang's version and flags. A unit with an #import_proto isn't
-# cached. COAXIAL_WASM_CACHE names the folder (default ~/.cache/coax-wasm); set
-# it empty to build everything afresh. Entries unused for 14 days go.
+# unit, aethyr/ground.coax, so its compile runs every check in it). A unit with
+# an #import_proto isn't cached. An object is kept under what its compile reads:
+# clang's version and flags and the bytes of every file the preprocessor opens
+# for it (clang -M: the C, its headers, the sysroot's), so the same C compiles
+# once however it was made (an edit to a #test, a comment or a library its C
+# doesn't change). A linked module is kept under its objects' keys, the link
+# and wasm-opt flags, which wasm-ld and wasm-opt ran (each tool by its resolved
+# path and version) and which sysroot and runtime libraries it links (by the
+# paths they resolve to: a Nix store or Homebrew Cellar path names its build)
+# (#12925). COAXIAL_WASM_CACHE names the
+# folder (default ~/.cache/coax-wasm); set it empty to build everything afresh.
+# Entries unused for 14 days go.
 cache="${COAXIAL_WASM_CACHE-$HOME/.cache/coax-wasm}"
 if [[ -n "$cache" ]]; then
   mkdir -p "$cache"
   compiler_sum="$(shasum -a 256 < "$coax_driver" | cut -c1-64)"
-  flags_sum="$({ "$clang" --version; printf '%s\n' "${cflags[@]}"; } | shasum -a 256 | cut -c1-16)"
+  # A tool is known by its version and the file it resolves to (a Nix store or
+  # Homebrew Cellar path names its build), not by hashing its bytes each build.
+  tool_id() { local at; at="$(command -v "$1")" && printf '%s\n' "$(realpath "$at")" && "$at" --version; }
+  flags_sum="$({ tool_id "$clang"; printf '%s\n' "${cflags[@]}"; } | shasum -a 256 | cut -c1-16)"
   find "$cache" -maxdepth 1 -type f -mtime +14 -delete 2> /dev/null || true
 fi
 unit_key() {   # unit header-base: the cache key, or nothing (not cacheable)
@@ -164,23 +175,40 @@ keep() {   # file entry: into the cache whole (a rename), never half-written
 from_cache() {   # entry file: copied out (and marked used) when it's there
   [[ -f "$1" ]] && cp "$1" "$2" && touch "$1"
 }
+# The build report (#12925): each step's wall time in microseconds, and whether
+# the cache supplied it, as "base step cache start end" lines in $work/steps;
+# each compiler run's own phase report (coax --timings) in $work/BASE.coax.json.
+now() { [[ -n "${EPOCHREALTIME:-}" ]] && echo "${EPOCHREALTIME//[.,]/}" || echo $(( $(date +%s) * 1000000 )); }   # microseconds
+step() { printf '%s %s %s %s %s\n' "$1" "$2" "$3" "$4" "$(now)" >> "$work/steps"; }
 emit() {   # unit header-base: its C and header into $work, from the cache or the compiler
-  local key=""
+  local key="" began; began="$(now)"
   [[ -z "$cache" ]] || key="$(unit_key "$1" "$2")"
   printf '%s' "$key" > "$work/$2.key"
   if [[ -n "$key" && -f "$cache/$key.h" ]] && from_cache "$cache/$key.c" "$work/$2.c" && from_cache "$cache/$key.h" "$work/$2.h"; then
-    return 0
+    step "$2" coax_to_c hit "$began"; return 0
   fi
-  (cd "$repo" && "$coax_driver" c "$1" --library --header "$work/$2.h" ${run_steps[@]+"${run_steps[@]}"}) > "$work/$2.c"
+  (cd "$repo" && "$coax_driver" c "$1" --library --header "$work/$2.h" ${run_steps[@]+"${run_steps[@]}"} --timings "$work/$2.coax.json") > "$work/$2.c"
   [[ -z "$key" ]] || { keep "$work/$2.h" "$cache/$key.h"; keep "$work/$2.c" "$cache/$key.c"; }
+  step "$2" coax_to_c "$([[ -n "$key" ]] && echo miss || echo off)" "$began"
 }
-compile() {   # header-base: its object, from the cache or clang
-  local key; key="$(< "$work/$1.key")"
-  [[ -n "$key" ]] && from_cache "$cache/$key.$flags_sum.o" "$work/$1.o" && return 0
-  "$clang" "${cflags[@]}" -I"$work" -c "$work/$1.c" -o "$work/$1.o"
-  [[ -z "$key" ]] || keep "$work/$1.o" "$cache/$key.$flags_sum.o"
+object_key() {   # source [flags...]: the SHA-256 of clang, its flags and every file compiling source reads
+  local deps
+  deps="$("$clang" "${cflags[@]}" "$@" -M -MT o)" || return 0
+  deps="${deps#o:}"; deps="${deps//\\/ }"
+  # $work's name is new each build: a file in it is keyed by its name inside.
+  { printf '%s\n' coax-wasm-object-1 "$flags_sum"; shasum -a 256 $deps | sed "s|  $work/|  |"; } | shasum -a 256 | cut -c1-64
 }
-started=$SECONDS
+compile() {   # name source [flags...]: $work/name.o from the cache or clang, and its key in $work/name.okey
+  local name="$1" key="" began; shift; began="$(now)"
+  [[ -z "$cache" ]] || key="$(object_key "$@")"
+  printf '%s' "$key" > "$work/$name.okey"
+  [[ -n "$key" ]] && from_cache "$cache/$key.o" "$work/$name.o" && { step "$name" clang hit "$began"; return 0; }
+  "$clang" "${cflags[@]}" "$@" -c -o "$work/$name.o"
+  [[ -z "$key" ]] || keep "$work/$name.o" "$cache/$key.o"
+  step "$name" clang "$([[ -n "$key" ]] && echo miss || echo off)" "$began"
+}
+: > "$work/steps"
+started=$SECONDS; started_us="$(now)"
 for unit in "${units[@]}"; do
   emit "${unit%%:*}" "${unit##*:}" & gen+=($!)
 done
@@ -195,44 +223,88 @@ if [[ -n "${COAXIAL_ADMITTED_DIR:-}" ]]; then
   mkdir -p "$COAXIAL_ADMITTED_DIR"
   cp "$work/"*.c "$work/"*.h "$COAXIAL_ADMITTED_DIR/"
 fi
-c_done=$SECONDS
 # Struct defaults come from the compiler: each unit's header declares
 # coax_default_T for its types with declared defaults, and the face calls
 # them for a new state (coaxial_state_init) and its own globals.
-objects=("$work/$name.face.o"); pids=()
+objects=("$name.face"); pids=()
 for unit in "${units[@]}"; do
-  compile "${unit##*:}" & pids+=($!)
-  objects+=("$work/${unit##*:}.o")
+  compile "${unit##*:}" -I"$work" "$work/${unit##*:}.c" & pids+=($!)
+  objects+=("${unit##*:}")
 done
-"$clang" "${cflags[@]}" -I"$work" -I"$(dirname "$face")" -c "$face" -o "$work/$name.face.o"
+compile "$name.face" -I"$work" -I"$(dirname "$face")" "$face" & pids+=($!)
 if [[ "$render" == 1 ]]; then
-  "$clang" "${cflags[@]}" -I"$work" -c "$repo/coax/web/render-face.c" -o "$work/Render.face.o"
-  objects+=("$work/Render.face.o")
+  compile Render.face -I"$work" "$repo/coax/web/render-face.c" & pids+=($!)
+  objects+=(Render.face)
 fi
 for pid in "${pids[@]}"; do wait "$pid"; done
-objects_done=$SECONDS
 # The bounded package parser's 16,384 JSON nodes alone occupy 1 MiB.
 # Its measured wasm32 admission frame is 1,057,936 bytes; renderer frames
 # and shader validation also use bounded scratch. Keep their stack inside
 # the same 64 MiB imported-memory limit, with room for the measured chain.
 stack_bytes=1048576
 [[ "$render" == 1 ]] && stack_bytes=4194304
-# Linked without -O, so clang doesn't run a wasm-opt of its own choosing (a
-# release's objects are bitcode: the link optimizes them together).
-"$clang" --target=wasm32-wasip1 --sysroot="$sysroot" -resource-dir="$resources" \
-  -mexec-model=reactor -o "$work/output.wasm" "${objects[@]}" \
-  -Wl,--import-memory,--max-memory=67108864,-z,stack-size="$stack_bytes",--export=__heap_base,--gc-sections,--strip-debug
-if [[ "$mode" != dev ]]; then
-  wasm_opt="${COAXIAL_WASM_OPT:-$(command -v wasm-opt || true)}"
-  if [[ -n "$wasm_opt" ]]; then
-    "$wasm_opt" "$work/output.wasm" -O2 -o "$work/optimized.wasm" && mv "$work/optimized.wasm" "$work/output.wasm"
-  else
-    echo "wasm.sh: no wasm-opt (brew install binaryen, or set COAXIAL_WASM_OPT): $(basename "$out") is about 6% larger" >&2
-  fi
+link=(--target=wasm32-wasip1 --sysroot="$sysroot" -resource-dir="$resources" -mexec-model=reactor
+      -Wl,--import-memory,--max-memory=67108864,-z,stack-size="$stack_bytes",--export=__heap_base,--gc-sections,--strip-debug)
+object_files=(); for o in "${objects[@]}"; do object_files+=("$work/$o.o"); done
+wasm_opt=""; [[ "$mode" == dev ]] || wasm_opt="${COAXIAL_WASM_OPT:-$(command -v wasm-opt || true)}"
+module_key=""
+if [[ -n "$cache" ]]; then
+  module_key="$({ printf '%s\n' coax-wasm-module-1 "$flags_sum" "${link[@]}" "$mode" "$wasm_opt"
+    for o in "${objects[@]}"; do k="$(< "$work/$o.okey")"; [[ -n "$k" ]] || exit 1; printf '%s\n' "$k"; done
+    tool_id wasm-ld; [[ -z "$wasm_opt" ]] || tool_id "$wasm_opt"
+    for d in "$sysroot" "$resources"; do realpath "$d"; find "$(realpath "$d")" -type l -exec realpath {} + 2> /dev/null || true; done | sort
+  } | shasum -a 256 | cut -c1-64)" || module_key=""
 fi
-# A module that took over a minute says where the time went (or every module, with COAXIAL_WASM_TIMES=1).
-if (( SECONDS - started > 60 )) || [[ "${COAXIAL_WASM_TIMES:-}" == 1 ]]; then
-  echo "wasm.sh: $(basename "$out"): $((SECONDS - started)) s: Coax to C $((c_done - started)) s, clang $((objects_done - c_done)) s, link and wasm-opt $((SECONDS - objects_done)) s; $(wc -c < "$work/output.wasm" | tr -d ' ') bytes" >&2
+began="$(now)"
+if [[ -n "$module_key" ]] && from_cache "$cache/$module_key.wasm" "$work/output.wasm"; then
+  step module link hit "$began"
+else
+  # Linked without -O, so clang doesn't run a wasm-opt of its own choosing (a
+  # release's objects are bitcode: the link optimizes them together).
+  "$clang" "${link[@]}" -o "$work/output.wasm" "${object_files[@]}"
+  step module link "$([[ -n "$module_key" ]] && echo miss || echo off)" "$began"
+  if [[ "$mode" != dev ]]; then
+    if [[ -n "$wasm_opt" ]]; then
+      began="$(now)"
+      "$wasm_opt" "$work/output.wasm" -O2 -o "$work/optimized.wasm" && mv "$work/optimized.wasm" "$work/output.wasm"
+      step module wasm_opt off "$began"
+    else
+      echo "wasm.sh: no wasm-opt (brew install binaryen, or set COAXIAL_WASM_OPT): $(basename "$out") is about 6% larger" >&2
+    fi
+  fi
+  [[ -z "$module_key" ]] || keep "$work/output.wasm" "$cache/$module_key.wasm"
+fi
+# Every module says where its time went in one line, and writes the whole
+# report as JSON: COAXIAL_WASM_REPORT, else .c/MODULE.timings.json beside the
+# output. Each step's wall time (steps run in parallel, so they overlap), the
+# cache's part in it, each compiler run's phases, checks, capacities and its
+# costliest declarations (coax --timings), and the machine and its load.
+# COAXIAL_WASM_TIMES=0 keeps the line quiet; the report is still written.
+report="${COAXIAL_WASM_REPORT:-$work_root/$(basename "$out" .wasm).timings.json}"
+seconds() { printf '%d.%06d' $(( $1 / 1000000 )) $(( $1 % 1000000 )); }
+{
+  ended="$(now)"; bytes="$(wc -c < "$work/output.wasm" | tr -d ' ')"
+  load="$( { cat /proc/loadavg 2> /dev/null || sysctl -n vm.loadavg 2> /dev/null; } | tr -d '{}' | awk '{print $1}')"
+  cores="$(getconf _NPROCESSORS_ONLN 2> /dev/null || echo 0)"
+  printf '{"schema_version":1,"module":"%s","source":"%s","mode":"%s","render":%s,"output_bytes":%s,"seconds":%s,' \
+    "$(basename "$out" .wasm)" "$coax_file" "$mode" "$render" "$bytes" "$(seconds $(( ended - started_us )))"
+  printf '"machine":{"host":"%s","os":"%s","cores":%s,"load":%s},"compiler_sha256":"%s","cache":"%s","steps":[' \
+    "$(hostname -s 2> /dev/null || hostname)" "$(uname -sm)" "${cores:-0}" "${load:-null}" "$(shasum -a 256 < "$coax_driver" | cut -c1-64)" "$([[ -n "$cache" ]] && echo on || echo off)"
+  first=1
+  while read -r unit what hit from to; do
+    [[ $first == 1 ]] || printf ','; first=0
+    printf '{"unit":"%s","step":"%s","cache":"%s","start":%s,"seconds":%s' "$unit" "$what" "$hit" "$(seconds $(( from - started_us )))" "$(seconds $(( to - from )))"
+    if [[ "$what" == coax_to_c && -s "$work/$unit.coax.json" ]]; then printf ',"coax":'; tr -d '\n' < "$work/$unit.coax.json"; fi
+    printf '}'
+  done < "$work/steps"
+  printf ']}\n'
+} > "$report.tmp" && mv -f "$report.tmp" "$report"
+if [[ "${COAXIAL_WASM_TIMES:-}" != 0 ]]; then
+  summary="$(awk -v total="$(( $(now) - started_us ))" '
+    { s = ($5 - $4) / 1e6; if (s > most[$2]) most[$2] = s; if ($3 == "hit") hits[$2]++; n[$2]++ }
+    END { printf "%.1f s: Coax to C %.1f s (%d/%d cached), clang %.1f s (%d/%d cached), link %.1f s, wasm-opt %.1f s", total / 1e6,
+          most["coax_to_c"], hits["coax_to_c"], n["coax_to_c"], most["clang"], hits["clang"], n["clang"], most["link"], most["wasm_opt"] }' "$work/steps")"
+  echo "wasm.sh: $(basename "$out"): $summary; $(wc -c < "$work/output.wasm" | tr -d ' ') bytes; report $report" >&2
 fi
 # The size budget: apps/openagents-web/wasm-budgets.txt (beside the app's Coax)
 # gives each module its most bytes (coax/web/tool.sh wasm-size budget). A
@@ -246,7 +318,7 @@ if [[ "$mode" != dev && -f "$budgets" ]]; then
   (cd "$repo" && coax/web/tool.sh wasm-size budget "${budgets#"$repo"/}" "$module" "$work/output.wasm") || status=$?
   if [[ "$status" == 1 ]]; then
     echo "wasm.sh: $module's biggest parts:" >&2
-    "$clang" --target=wasm32-wasip1 --sysroot="$sysroot" -resource-dir="$resources" -mexec-model=reactor -o "$work/named.wasm" "${objects[@]}" \
+    "$clang" --target=wasm32-wasip1 --sysroot="$sysroot" -resource-dir="$resources" -mexec-model=reactor -o "$work/named.wasm" "${object_files[@]}" \
       -Wl,--import-memory,--max-memory=67108864,-z,stack-size="$stack_bytes",--export=__heap_base,--gc-sections || true
     (cd "$repo" && coax/web/tool.sh wasm-size report "$work/named.wasm" 25) >&2 || true
     echo "wasm.sh: (sizes before wasm-opt, by name.) Make it smaller, or raise its budget in the same commit and say why." >&2

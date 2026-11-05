@@ -153,3 +153,29 @@ benefit from OS caches; they are not incremental compilation.
 
 See [the real engine harness](../verse/benchmarks/README.md) and
 [R0 evidence](../docs/verification/coax-r0-2026-10-28.md) for the measured scope.
+
+## Browser module build reports
+
+`coax/web/wasm.sh` prints one line per module: its total time, the slowest
+Coax-to-C and clang step and how many of each the cache supplied, the link and
+wasm-opt times, and the size. It writes the whole report as JSON to
+`COAXIAL_WASM_REPORT`, else `.c/MODULE.timings.json` beside the module:
+schema 1 with the module, mode, output bytes, total seconds, the machine
+(host, OS, cores, load average) and the compiler's SHA-256, and one row per
+step (`coax_to_c`, `clang`, `link`, `wasm_opt`) with its unit, `cache`
+(`hit`, `miss` or `off`), start and seconds. Each Coax-to-C row that ran the
+compiler carries that run's `--timings` report as `coax`, so a slow module
+names its slow phase, check and declarations. `COAXIAL_WASM_TIMES=0` silences
+the line.
+
+The cache (`COAXIAL_WASM_CACHE`, default `~/.cache/coax-wasm`) reuses a step
+only when its complete inputs match. A unit's C: the compiler binary, the
+unit, its `#load` closure's bytes and the compile-time step budget (a unit
+that imports a descriptor is not cached; a compile is skipped only when one
+with the same inputs passed every check). An object: clang's resolved path,
+version and flags, and the bytes of every file its compile reads (`clang
+-M`). A module: its objects' keys, the link and wasm-opt flags, which wasm-ld
+and wasm-opt ran and which sysroot and runtime libraries it links.
+`coax/web/tool.sh coax/tests/wasm-cache.coax COMPILER` changes each input in
+turn and checks that the step reruns and that the bytes match a build without
+the cache.

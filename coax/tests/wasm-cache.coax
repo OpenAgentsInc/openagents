@@ -1,0 +1,123 @@
+// coax/web/wasm.sh's build cache and report (#12925): a cache hit stands in
+// only for a step whose complete inputs match, and the module it makes is the
+// one a build without the cache makes.
+//   coax/web/tool.sh coax/tests/wasm-cache.coax COMPILER
+// Run from the repository root; needs the Wasm toolchain (coax/web/toolchain.sh).
+// A tiny app (one Coax unit and a C face that includes a header beside it) is
+// built again and again into one cache, each step changing one input. Each
+// build's report (COAXIAL_WASM_REPORT) says which steps the cache supplied:
+//   - a cold build misses everything; the same build again hits everything
+//     and writes the same bytes;
+//   - a comment appended to the Coax compiles it again, but its C is the same,
+//     so its object and the module are reused;
+//   - a changed constant compiles the unit, its object and the link again; the
+//     face's object is reused; putting it back reuses everything, same bytes;
+//   - a changed face, or a header only the face includes (clang -M), compiles
+//     the face again and links again;
+//   - release mode (other clang flags, and wasm-opt) compiles every object and
+//     links again, reusing the C; the same release again reuses the module;
+//   - another compiler (a wrapper) compiles the Coax again; another clang
+//     compiles every object again; another wasm-opt links again;
+//     COAXIAL_RUN_STEPS compiles the Coax again;
+//   - with the cache off, a build writes the bytes the cached builds wrote.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/args.coax";
+#load "../lib/sys/proc.coax";
+
+check :: (ok: bool, what: string) -> int {
+  if ok { print("  ok   %\n", what); return 0; }
+  print("  FAIL %\n", what);
+  return 1;
+}
+
+// Whether part occurs anywhere in text.
+has :: (text: string, part: string) -> bool {
+  for at: 0..<text.count - part.count + 1 {
+    same := true;
+    for j: 0..<part.count { if text[at + j] != part[j] { same = false; break; } }
+    if same { return true; }
+  }
+  return false;
+}
+#test "has finds a part anywhere and nothing that is not there" {
+  #assert has("abc", "a") && has("abc", "bc") && has("abc", "abc") && has("abc", "");
+  #assert !has("abc", "abcd") && !has("abc", "cb") && !has("", "a") && !has("ab", "bb");
+}
+
+// Runs body in sh with C the compiler, D a scratch directory and the shell
+// functions (FUNCTIONS); out gets stdout and stderr.
+run :: (compiler: string, dir: string, body: string, out: [] u8) -> ProcRun {
+  argv := [8] string.["sh", "-c", "C=$1; D=$2; eval \"$3\"; eval \"$4\"", "sh", compiler, dir, FUNCTIONS, body];
+  err: [4096] u8;
+  return proc_run(argv[..], 900000, out, err[..]);
+}
+
+// b NAME [VAR=VALUE...]: builds the app into $D/out/NAME.wasm with the cache
+// $D/cache (and the variables given) and prints one line: NAME, the exit
+// status and each step's cache use (STEP:UNIT=hit|miss|off), sorted.
+// same A B: prints "same A B" when the two modules have the same bytes.
+FUNCTIONS :: "b() { n=$1; shift; env COAXIAL_WASM_CACHE=\"$D/cache\" COAX_CHECK_CACHE=\"$D/check\" COAXIAL_WASM_REPORT=\"$D/$n.json\" COAXIAL_WASM_TIMES=0 COAXIAL_MODE=dev COAX=\"$C\" \"$@\" coax/web/wasm.sh \"$D/app/tiny.coax\" \"$D/app/tiny-face.c\" \"$D/out/$n.wasm\" > \"$D/$n.log\" 2>&1; s=$?; [ $s = 0 ] || cat \"$D/$n.log\"; echo \"$n status=$s $(grep -o '\"unit\":\"[^\"]*\",\"step\":\"[^\"]*\",\"cache\":\"[^\"]*\"' \"$D/$n.json\" | sed 's/\"unit\":\"\\([^\"]*\\)\",\"step\":\"\\([^\"]*\\)\",\"cache\":\"\\([^\"]*\\)\"/\\2:\\1=\\3/' | sort | tr '\\n' ' ')\"; }; same() { cmp -s \"$D/out/$1.wasm\" \"$D/out/$2.wasm\" && echo \"same $1 $2\"; }; wrap() { printf '#!/bin/sh\\nexec \"%s\" \"$@\"\\n' \"$2\" > \"$D/$1\" && chmod +x \"$D/$1\"; }";
+
+SETUP :: "mkdir -p \"$D/app\" \"$D/out\" && printf '#import \"Basic\";\\nSCALE :: 3;\\ntiny_scale :: (x: s32) -> s32 #export_c { return x * SCALE; }\\n' > \"$D/app/tiny.coax\" && printf '#define TINY_EXTRA 1\\n' > \"$D/app/tiny-extra.h\" && printf '#include \"tiny.h\"\\n#include \"tiny-extra.h\"\\n__attribute__((export_name(\\\"tiny_face\\\"))) int tiny_face(int x) { return tiny_scale(x) + TINY_EXTRA; }\\n' > \"$D/app/tiny-face.c\"";
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: wasm-cache.coax COMPILER"); return 2; }
+  compiler := args_at(a[..], 0);
+  bad := 0;
+  out: [65536] u8;
+  dir_out: [4096] u8;
+  r := run(compiler, "", "mktemp -d \"${TMPDIR:-/tmp}/coax-wasm-cache.XXXXXX\"", dir_out[..]);
+  if r.status != 0 || r.out_n < 2 { tool_errln("wasm-cache: cannot make a scratch directory"); return 1; }
+  dir := cast(string) dir_out[0..<r.out_n];
+  if dir[dir.count - 1] == '\n' { dir = cast(string) dir_out[0..<r.out_n - 1]; }
+
+  r = run(compiler, dir, SETUP, out[..]);
+  if r.status != 0 { tool_errln("wasm-cache: cannot write the app"); return 1; }
+
+  r = run(compiler, dir, "b cold; b again; same cold again; grep -c '\"seconds\"' \"$D/cold.json\"; grep -o '\"machine\":{[^}]*}' \"$D/cold.json\"", out[..]);
+  t := cast(string) out[0..<r.out_n];
+  bad += check(has(t, "cold status=0 clang:tiny.face=miss clang:tiny=miss coax_to_c:tiny=miss link:module=miss \n"), "a cold build misses every step");
+  bad += check(has(t, "again status=0 clang:tiny.face=hit clang:tiny=hit coax_to_c:tiny=hit link:module=hit \nsame cold again"), "the same build again reuses every step and writes the same bytes");
+  bad += check(has(t, "\"machine\":{\"host\":") && has(t, "\"cores\":"), "the report records the machine and its load");
+
+  r = run(compiler, dir, "printf '// a comment\\n' >> \"$D/app/tiny.coax\" && b comment && same cold comment", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "comment status=0 clang:tiny.face=hit clang:tiny=hit coax_to_c:tiny=miss link:module=hit \nsame cold comment"), "a comment compiles the Coax again; the same C reuses the object and the module");
+
+  r = run(compiler, dir, "sed 's/^SCALE :: 3;$/SCALE :: 4;/' \"$D/app/tiny.coax\" > \"$D/t\" && mv \"$D/t\" \"$D/app/tiny.coax\" && b scale; same cold scale || echo differs; sed 's/^SCALE :: 4;$/SCALE :: 3;/' \"$D/app/tiny.coax\" > \"$D/t\" && mv \"$D/t\" \"$D/app/tiny.coax\" && b back && same cold back", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "scale status=0 clang:tiny.face=hit clang:tiny=miss coax_to_c:tiny=miss link:module=miss \ndiffers"), "a changed constant compiles its unit and links again; the face's object is reused");
+  bad += check(has(t, "back status=0 clang:tiny.face=hit clang:tiny=hit coax_to_c:tiny=hit link:module=hit \nsame cold back"), "putting it back reuses every step, with the same bytes");
+
+  r = run(compiler, dir, "printf '/* a face comment */\\n' >> \"$D/app/tiny-face.c\" && b face && same cold face; printf '#define TINY_EXTRA 2\\n' > \"$D/app/tiny-extra.h\" && b header; same cold header || echo differs", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "face status=0 clang:tiny.face=miss clang:tiny=hit coax_to_c:tiny=hit link:module=miss \nsame cold face"), "a changed face compiles the face and links again, to the same bytes");
+  bad += check(has(t, "header status=0 clang:tiny.face=miss clang:tiny=hit coax_to_c:tiny=hit link:module=miss \ndiffers"), "a header only the face includes is one of its inputs");
+
+  r = run(compiler, dir, "b release COAXIAL_MODE=release; b release2 COAXIAL_MODE=release && same release release2", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "release status=0 clang:tiny.face=miss clang:tiny=miss coax_to_c:tiny=hit link:module=miss "), "release flags compile every object and link again, reusing the C");
+  bad += check(has(t, "release2 status=0 clang:tiny.face=hit clang:tiny=hit coax_to_c:tiny=hit link:module=hit \nsame release release2"), "the same release build reuses the optimized module");
+
+  r = run(compiler, dir, "wrap coax-wrapper \"$C\" && b compiler COAX=\"$D/coax-wrapper\" && same header compiler; b steps COAXIAL_RUN_STEPS=200000 && same header steps", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "compiler status=0 clang:tiny.face=hit clang:tiny=hit coax_to_c:tiny=miss link:module=hit \nsame header compiler"), "another compiler compiles the Coax again; its same C reuses the rest");
+  bad += check(has(t, "steps status=0 clang:tiny.face=hit clang:tiny=hit coax_to_c:tiny=miss link:module=hit \nsame header steps"), "a compile-time step budget compiles the Coax again");
+
+  r = run(compiler, dir, ". coax/web/toolchain.sh && wrap clang-wrapper \"$COAXIAL_CLANG\" && b clang COAXIAL_CLANG=\"$D/clang-wrapper\" && same header clang; o=\"${COAXIAL_WASM_OPT:-$(command -v wasm-opt || true)}\"; if [ -n \"$o\" ]; then wrap opt-wrapper \"$o\" && b opt COAXIAL_MODE=release COAXIAL_WASM_OPT=\"$D/opt-wrapper\" && same release opt; else echo 'no wasm-opt'; fi", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "clang status=0 clang:tiny.face=miss clang:tiny=miss coax_to_c:tiny=hit link:module=miss \nsame header clang"), "another clang compiles every object and links again, to the same bytes");
+  if has(t, "no wasm-opt") { print("  skip another wasm-opt links again (no wasm-opt here)\n"); }
+  else { bad += check(has(t, "opt status=0 clang:tiny.face=hit clang:tiny=hit coax_to_c:tiny=hit link:module=miss wasm_opt:module=off \nsame release opt"), "another wasm-opt links again, to the same bytes"); }
+
+  r = run(compiler, dir, "b off COAXIAL_WASM_CACHE= && same header off", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "off status=0 clang:tiny.face=off clang:tiny=off coax_to_c:tiny=off link:module=off \nsame header off"), "a build without the cache writes the bytes the cached builds wrote");
+
+  r = run(compiler, dir, "rm -rf \"$D\"", out[..]);
+  if bad == 0 { print("wasm-cache: ok\n"); return 0; }
+  print("wasm-cache: % failed\n", bad);
+  return 1;
+}
