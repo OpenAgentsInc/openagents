@@ -11,6 +11,7 @@
 
 #include <cmath>
 #include <algorithm>
+#include <unordered_map>
 #include <functional>
 #include <map>
 #include <set>
@@ -2593,14 +2594,42 @@ std::string show_functions(const File *file, Emitter &em, const std::string *use
           return true;
       return false;
     };
+    // The same answer in one pass over each text (#12925: searching the
+    // whole program's C once per helper name took seconds): every identifier
+    // that starts where no identifier character precedes it and is followed
+    // by '(' is a call; a helper is kept when one of its names is called.
+    auto ident = [](char c) { return isalnum((unsigned char)c) || c == '_'; };
+    std::unordered_map<std::string, std::vector<size_t>> named;
+    bool plain = true;
+    for (size_t i = 0; i < items.size(); i++)
+      for (const std::string &name : items[i].names) {
+        plain = plain && !name.empty() && std::all_of(name.begin(), name.end(), ident);
+        named[name].push_back(i);
+      }
     std::vector<const std::string *> pending{uses};
     while (!pending.empty()) {
       const std::string *text = pending.back();
       pending.pop_back();
-      for (size_t i = 0; i < items.size(); i++) {
-        if (kept[i]) continue;
-        for (const std::string &name : items[i].names)
-          if (calls(*text, name)) { kept[i] = true; pending.push_back(&items[i].bodies); break; }
+      if (!plain) {
+        for (size_t i = 0; i < items.size(); i++) {
+          if (kept[i]) continue;
+          for (const std::string &name : items[i].names)
+            if (calls(*text, name)) { kept[i] = true; pending.push_back(&items[i].bodies); break; }
+        }
+        continue;
+      }
+      const std::string &t = *text;
+      for (size_t at = 0; at < t.size();) {
+        if (!ident(t[at]) || (at > 0 && ident(t[at - 1]))) { at++; continue; }
+        size_t end = at;
+        while (end < t.size() && ident(t[end])) end++;
+        if (end < t.size() && t[end] == '(') {
+          auto found = named.find(t.substr(at, end - at));
+          if (found != named.end())
+            for (size_t i : found->second)
+              if (!kept[i]) { kept[i] = true; pending.push_back(&items[i].bodies); }
+        }
+        at = end;
       }
     }
   }
@@ -3682,28 +3711,24 @@ std::string emit_header(const File *file) {
   types.header = true;
   for(const UnionDecl *d:file->unions)types.out+="typedef struct "+c_type(d->type)+" "+c_type(d->type)+";\n";
   for(Type t:all_composite_types())if(is_sum(t))types.out+="typedef struct "+c_type(t)+" "+c_type(t)+";\n";
-  for (const StructDecl *d : file->structs) {
-    bool used = false;
-    std::vector<Type> visiting;
-    std::function<bool(Type)> uses = [&](Type t) -> bool {
-      if (t == d->type) return true;
-      for (Type v : visiting) if (v == t) return false;
-      visiting.push_back(t);
-      bool found = false;
-      if(is_sum(t))for(int32_t i=0;i<sum_count(t);i++)found=found || uses(sum_payload(t,i));
-      if (t->kind == TypeKind::array || t->kind == TypeKind::view) found = uses(t->elem);
-      if (t->kind == TypeKind::struct_)
-        for (const Field &f : t->struct_decl->fields) found = found || uses(f.type);
-      visiting.pop_back();
-      return found;
-    };
-    for (const ProcDecl *p : file->procs) {
-      if (!p->export_c && !p->foreign) continue;
-      used = used || uses(p->ret);
-      for (const Param &prm : p->params) used = used || uses(prm.type);
-    }
-    if (used && !d->type->physical) types.out += "typedef struct coax_" + tag(d->type) + " coax_" + tag(d->type) + ";\n";
+  // Every type an exported or foreign procedure's signature reaches through
+  // sum payloads, elements and fields, found once (#12925: searched again
+  // for each struct, it took seconds for a large program).
+  std::set<Type> reached;
+  std::function<void(Type)> reach = [&](Type t) {
+    if (!reached.insert(t).second) return;
+    if(is_sum(t))for(int32_t i=0;i<sum_count(t);i++)reach(sum_payload(t,i));
+    if (t->kind == TypeKind::array || t->kind == TypeKind::view) reach(t->elem);
+    if (t->kind == TypeKind::struct_)
+      for (const Field &f : t->struct_decl->fields) reach(f.type);
+  };
+  for (const ProcDecl *p : file->procs) {
+    if (!p->export_c && !p->foreign) continue;
+    reach(p->ret);
+    for (const Param &prm : p->params) reach(prm.type);
   }
+  for (const StructDecl *d : file->structs)
+    if (reached.count(d->type) && !d->type->physical) types.out += "typedef struct coax_" + tag(d->type) + " coax_" + tag(d->type) + ";\n";
   {
     TypeWriter used = header_types(file);
     types.out += used.out;
