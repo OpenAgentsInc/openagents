@@ -114,8 +114,7 @@ rl_queue :: (v: [] RmServer, r: int, only: int, but: int, head: string, body: st
   if v[0].q_n >= RELAY_QUEUE { v[0].q_full += 1; return; }
   k := (v[0].q_head + v[0].q_n) % RELAY_QUEUE;
   for i: 0..<CONNS {
-    c := v[0].conns[i];
-    v[0].q[k].to[i] = ifx only >= 0 then i == only else (c.live && c.relay == r && i != but);
+    v[0].q[k].to[i] = ifx only >= 0 then i == only else (v[0].conns[i].live && v[0].conns[i].relay == r && i != but);
   }
   for i: 0..<head.count { v[0].q[k].text[i] = head[i]; }
   for i: 0..<body.count { v[0].q[k].text[head.count + i] = body[i]; }
@@ -184,6 +183,10 @@ rl_join :: (v: [] RmServer, conn: int, request: string) -> int {
   if !back { seat = rl_seat(v, r); }
   if seat < 0 {
     // full: a room nobody is in yet stays closed
+    if rl_people(v, r) == 0 { v[0].relays[r].live = false; }
+    return st_refuse(v, ST_FULL);
+  }
+  if v[0].relays[r].limited && !ck_reserve(v, tk) {
     if rl_people(v, r) == 0 { v[0].relays[r].live = false; }
     return st_refuse(v, ST_FULL);
   }

@@ -40,6 +40,7 @@ RmTravel :: struct {
   until: int;             // mono ms the reservation lapses
   k: int; seat: int;      // where the player sits until routed
   rev: int;               // the vitals revision that must be saved before the route
+  checkpoint_rev: int;    // profile 2 also waits for its complete capture
   routed: bool;
   // what the rules spend, captured at the cutover (trv_carry lays it on the arrival's build)
   temp: int; slots: [10] int; slots_max: [10] int; uses: [RS_USES] int; uses_max: [RS_USES] int;
@@ -131,6 +132,8 @@ eg_heard_travel :: (v: [] RmServer, k: int, seat: int, text: string) {
   rv_note_seat(v, k, seat); v[0].vit.flush = true;
   i := rv_find(v, pid);
   v[0].trv.t[slot].rev = ifx i >= 0 then v[0].vit.v[i].rev else 0;
+  ci:=ck_slot_seat(v,k,seat);
+  if ci>=0 { v[0].trv.t[slot].checkpoint_rev=v[0].ck.slot[ci].latest.n[3]; }
   // 3. route, when that is saved
   trv_route_due(v);
 }
@@ -142,6 +145,8 @@ trv_route_due :: (v: [] RmServer) {
     if !trv_live(v, j) || e.routed { continue; }
     i := rv_find(v, cast(string) e.pid[0..<e.pid_n]);
     if v[0].tkey_n > 0 && i >= 0 && v[0].vit.v[i].acked < e.rev { continue; }
+    ci:=ck_find(v,cast(string)e.pid[0..<e.pid_n]);
+    if e.checkpoint_rev>0 && (ci<0 || v[0].ck.slot[ci].acked<e.checkpoint_rev) { continue; }
     v[0].trv.t[j].routed = true;
     if !v[0].eg[e.k].live || !eg_travelling(v, e.k, e.seat) { continue; }
     b: [64] u8;

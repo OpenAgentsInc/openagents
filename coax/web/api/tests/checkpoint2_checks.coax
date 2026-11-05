@@ -1,0 +1,55 @@
+// Scratch-store acceptance and resume checks for character profile 2.
+// tool.sh: tls
+#load "api_harness.coax";
+#load "../../../../aethyr/session/resume-envelope.coax";
+#load "checkpoint2-runtime.coax";
+c2_signed_post :: (t:[]Ap,path:string,body:string)->int {
+  mac:[64]u8;_:=rt_mac(t[0].room_key,body,mac[..]);h:[1]Sb;sb(h[..],"X-Room-Mac: ");sb(h[..],cast(string)mac[..]);
+  headers:=[2]string.["Content-Type: application/json",sb_text(h[..])];return ap_call(t,"POST",path,body,headers[..]);
+}
+c2_post :: (t:[]Ap,c:CharacterCapture)->int {b:[CC_BODY]u8;return c2_signed_post(t,"/api/playtest/room-checkpoint-v2",cc_write(c,b[..]));}
+c2_ticket :: (t:[]Ap,key:string,out:[]u8)->string {
+  h:[1]Sb;sb(h[..],"X-Verse-Player: ");sb(h[..],key);headers:=[2]string.["Content-Type: application/json",sb_text(h[..])];
+  st:=ap_call(t,"POST","/api/playtest/room-ticket/checkpoint-test?checkpoint=2","{}",headers[..]);
+  ap_check(t,"resume2: ticket issuance succeeds",st==200,ap_body(t));return ap_member(ap_body(t),"ticket",out);
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]){return 2;}
+  if args_count(a[..])==3&&args_at(a[..],0)=="proxy"{return c2_proxy(args_at(a[..],1),args_at(a[..],2));}
+  t:[1]Ap;if !ap_open(t[..]){return 2;}p:[1]Player;_:=ap_player(t[..],p[..]);ticket:[RT_TEXT]u8;
+  initial:=rt_read(t[0].room_key,c2_ticket(t[..],pl_key(p[..]),ticket[..]));
+  ap_check(t[..],"resume2: first join is an authenticated v4 envelope with no capture",initial.ok&&!initial.capture.ok,"");
+  pid:=pl_id(p[..]);c:=cc_fixture();c.pid_n=pid.count;for i:0..<pid.count{c.pid[i]=pid[i];}c.room_n=15;room:="checkpoint-test";for i:0..<room.count{c.room[i]=room[i];}
+  c.n[1]=1;c.n[2]=1001;c.n[3]=1;c.n[4]=cxproc_wall_us()/1000;c.n[5]=c.n[4];c.n[11]=100;c.state[7]=0;
+  old:[1]Sb;sb(old[..],"t ");sb_int(old[..],c.n[4]);sb(old[..],"\n");sb(old[..],pid);sb(old[..]," 9 20 9999\n");
+  legacy:=c2_signed_post(t[..],"/api/playtest/room-vitals",sb_text(old[..]));
+  ap_check(t[..],"resume2: unversioned reports are fenced from the first durable ticket, before its first capture",legacy==200&&ap_member_int(ap_body(t[..]),"kept",-1)==0,ap_body(t[..]));
+  st:=c2_post(t[..],c);accepted:=ap_member_int(ap_body(t[..]),"accepted_at",0);
+  ap_check(t[..],"resume2: full dead body and spent resources commit before the receipt",st==200&&ap_member_int(ap_body(t[..]),"v",0)==2&&ap_member(ap_body(t[..]),"status",ticket[..])=="applied"&&accepted>0,ap_body(t[..]));
+  c.n[5]+=1;st=c2_post(t[..],c);
+  ap_check(t[..],"resume2: a lost reply retry keeps its first acceptance",st==200&&ap_member(ap_body(t[..]),"status",ticket[..])=="duplicate"&&ap_member_int(ap_body(t[..]),"accepted_at",0)==accepted,ap_body(t[..]));
+  b:[4096]u8;q:[1]Sb;sb(q[..],"select (body->>'dead')||':'||(body->'state'->>7)||':'||(body->>'x_mm') from verse.character_checkpoints_v2 where who='");sb(q[..],pid);sb(q[..],"'");
+  ap_check(t[..],"resume2: a separate connection sees the complete committed state",ap_sql(t[..],sb_text(q[..]),b[..])=="true:0:-1234","");
+  restored:=rt_read(t[0].room_key,c2_ticket(t[..],pl_key(p[..]),ticket[..]));
+  ap_check(t[..],"resume2: a newly owned ticket returns the complete durable dead capture",restored.ok&&restored.capture.ok&&restored.capture.dead&&restored.capture.state[7]==0&&restored.capture.n[13]==-1234,"");
+  c.n[3]=2;st=c2_post(t[..],c);
+  ap_check(t[..],"resume2: obsolete process cannot save after the next ticket",st==200&&ap_member(ap_body(t[..]),"status",b[..])=="fenced",ap_body(t[..]));
+  c.n[1]=2;c.n[2]=1002;c.n[3]=1;c.n[11]=99;st=c2_post(t[..],c);
+  ap_check(t[..],"resume2: a new owner cannot reduce the cumulative XP floor",st==200&&ap_member(ap_body(t[..]),"status",b[..])=="regression",ap_body(t[..]));
+  c.n[11]=101;st=c2_post(t[..],c);
+  ap_check(t[..],"resume2: the new owner starts a fresh process revision",st==200&&ap_member(ap_body(t[..]),"status",b[..])=="applied",ap_body(t[..]));
+  sb_clear(q[..]);sb(q[..],"update verse.room_vitals set xp=102 where who='");sb(q[..],pid);sb(q[..],"'");ap_do(t[..],sb_text(q[..]));
+  c.n[3]=2;st=c2_post(t[..],c);
+  ap_check(t[..],"resume2: a newer legacy XP report cannot strand an immutable same-owner capture",st==200&&ap_member(ap_body(t[..]),"status",b[..])=="applied",ap_body(t[..]));
+  sb_clear(q[..]);sb(q[..],"insert into verse.accounts(id,created_ms) values('checkpoint-account',1);update verse.players set account='checkpoint-account' where id='");sb(q[..],pid);sb(q[..],"'");ap_do(t[..],sb_text(q[..]));
+  restored=rt_read(t[0].room_key,c2_ticket(t[..],pl_key(p[..]),ticket[..]));
+  ap_check(t[..],"resume2: account linking carries the durable body and fences its old owner",restored.ok&&restored.capture.ok&&restored.capture.dead&&restored.capture.n[11]==101,"");
+  c.n[3]=3;st=c2_post(t[..],c);
+  ap_check(t[..],"resume2: the pre-link process cannot overwrite the account checkpoint",st==200&&ap_member(ap_body(t[..]),"status",b[..])=="fenced",ap_body(t[..]));
+  binb:[4200]u8;bin:=proc_getenv("ROOM_BIN",binb[..]);if bin!=""{
+    if !fs_exists(bin){tool_errln("ROOM_BIN must name the completed native build");return 2;}
+    slice_b:[32]u8;slice:=proc_getenv("C2_FAULT_SLICE",slice_b[..]);
+    if slice=="capacity"{c2_capacity(t[..],bin);}else{c2_runtime(t[..],bin);}
+  }
+  return ap_done(t[..],"Character checkpoint profile 2");
+}

@@ -55,7 +55,12 @@ XP ordering, takeover fencing, and a separate connection reading the full
 committed dead/place/build state. Policy checks precede implementation and
 root-only authority mutation must have zero survivors.
 
-Remaining before #12838 can close:
+The implemented companion [character resume profile 2](../protocol/character-checkpoint-v2.md)
+adds the live producer, restore and bounded-loss policy without changing this
+inactive v1 contract. Its qualification record is
+[character recovery](../verification/2026-11-05-character-recovery.md).
+
+The integration requirements originally tracked for #12838 were:
 
 - Versioned room producer, bounded outbox behavior under a full queue, and
   receipts that acknowledge every required field instead of legacy vitals.

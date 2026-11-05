@@ -7,7 +7,7 @@
 // A ticket brings it back for 10 minutes (its HP field); this server's own note, newer than any
 // post, wins when the same player sits again here.
 VITALS :: 128;
-RV_SCHEMA :: 1;   // the newest format of saved vitals this room reads and the one it writes (TICKET_SCHEMA's; #12839)
+RV_SCHEMA :: 2;   // legacy vitals plus character-checkpoint-v2's signed resume envelope
 VITALS_KEEP_MS :: 600000;
 // Where the player stood is kept too, by the room's code, so a socket that dropped (a phone between
 // networks, a tab that slept past the server's silence check) or a reload puts them back where they
@@ -109,6 +109,7 @@ rv_slot :: (v: [] RmServer) -> int {
 }
 // Seat s of everglade room k: its HP noted, and where it stands, when its ticket names a player.
 rv_note_seat :: (v: [] RmServer, k: int, s: int) {
+  ck_capture(v,k,s);
   tk := eg_ticket(v, k, s);
   if !tk.ok { return; }
   c := v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + s];

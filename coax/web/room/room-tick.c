@@ -113,18 +113,27 @@ static void everglade_abilities(int k) {
 // Room k's tick (room-everglade.coax, 30 Hz): each seat at the gate when it sits, then its queued
 // inputs through the movement step in its room's world (room-world.c), the hotbar abilities, the
 // town, the casts' sight, the rolls, and every seat's D frame queued: false when room k is closed.
+static void everglade_place(int k, int s, float *pose) {
+  if (rm_eg_unplaced(view(), k, s) &&
+      (rm_eg_back(view(), k, s, 0) > 0 ? world_place_at(k, s, rm_eg_back(view(), k, s, 1), rm_eg_back(view(), k, s, 2), rm_eg_back(view(), k, s, 3), rm_eg_back(view(), k, s, 4), pose)
+                                        : world_place(k, s, pose)))
+    rm_eg_moved(view(), k, s, 0, pose[0], pose[1], pose[2], pose[3], pose[4], pose[5], pose[6], (int64_t)pose[7], (int64_t)pose[8], (int64_t)pose[9]);
+}
 static bool everglade_room_tick(int k) {
   int64_t in[WORLD_IN]; float pose[WORLD_POSE];
   coax_v_s64 inv = {in, WORLD_IN};
-  if (!rm_eg_begin(view(), k)) return false;
+  if (!rm_eg_begin(view(), k)) {
+    /* Placement resolves the capture's standing height, without advancing a
+       paused encounter. The initial durable capture must precede gameplay. */
+    if (rm_checkpoint_paused(view(), k))
+      for (int s = 0; s < WORLD_SEATS; s++) everglade_place(k, s, pose);
+    return false;
+  }
   world_dice(k, rm_eg_dice_fixed(view(), k));   /* a local room told "dice fixed": the world's too (room-control.coax) */
   everglade_ability_casts(k);
   int64_t tm = now_us();
   for (int s = 0; s < WORLD_SEATS; s++) {
-    if (rm_eg_unplaced(view(), k, s) &&
-        (rm_eg_back(view(), k, s, 0) > 0 ? world_place_at(k, s, rm_eg_back(view(), k, s, 1), rm_eg_back(view(), k, s, 2), rm_eg_back(view(), k, s, 3), rm_eg_back(view(), k, s, 4), pose)
-                                          : world_place(k, s, pose)))
-      rm_eg_moved(view(), k, s, 0, pose[0], pose[1], pose[2], pose[3], pose[4], pose[5], pose[6], (int64_t)pose[7], (int64_t)pose[8], (int64_t)pose[9]);
+    everglade_place(k, s, pose);
     while (rm_eg_input(view(), k, s, inv)) {
       if (!world_step(k, s, in, pose)) break;
       rm_eg_moved(view(), k, s, in[0], pose[0], pose[1], pose[2], pose[3], pose[4], pose[5], pose[6], (int64_t)pose[7], (int64_t)pose[8], (int64_t)pose[9]);

@@ -351,12 +351,12 @@ static bool header_of(const uint8_t *in, const uint8_t *end, const char *name, c
    to the ask's wait), TELLING every page "restarting" (rm_drain_tell; their sockets close, their seats
    end), SAVING every seat's vitals until the API has them all (DRAIN_SAVE_MS at most), DONE. The deploy
    reads the phase in /health ("drain done") before it replaces the shard. */
-enum { DRAIN_NONE, DRAIN_WAITING, DRAIN_TELLING, DRAIN_SAVING, DRAIN_DONE };
+enum { DRAIN_NONE, DRAIN_WAITING, DRAIN_TELLING, DRAIN_SAVING, DRAIN_DONE, DRAIN_FAILED };
 #define DRAIN_SAVE_MS 20000
 static int drain_phase; static int64_t drain_asked, drain_wait_ms, drain_step_at, drain_told;
 static bool started_ok;
 static const char *drain_word(void) {
-  static const char *w[] = {"drain none\n", "drain waiting\n", "drain telling\n", "drain saving\n", "drain done\n"};
+  static const char *w[] = {"drain none\n", "drain waiting\n", "drain telling\n", "drain saving\n", "drain done\n", "drain failed\n"};
   return w[drain_phase];
 }
 static void drain_begin(int64_t wait_ms) {
@@ -377,9 +377,9 @@ static void drain_step(void) {
     drain_phase = DRAIN_SAVING; drain_step_at = now;
   } else if (drain_phase == DRAIN_SAVING) {
     int64_t left = rm_vitals_pending(view());
-    if ((left == 0 && !server->vit.fly) || now - drain_step_at >= DRAIN_SAVE_MS) {
-      drain_phase = DRAIN_DONE;
-      printf("room: drain done after %lld ms: %lld players' vitals with no receipt\n", (long long)(now - drain_asked), (long long)left);
+    if ((left == 0 && !server->vit.fly && rm_checkpoint_clean(view())) || now - drain_step_at >= DRAIN_SAVE_MS) {
+      drain_phase = left == 0 && !server->vit.fly && rm_checkpoint_clean(view()) ? DRAIN_DONE : DRAIN_FAILED;
+      printf("room: %s after %lld ms: %lld legacy saves, %lld checkpoints with no receipt\n",drain_phase==DRAIN_DONE?"drain done":"drain failed", (long long)(now - drain_asked), (long long)left,(long long)rm_checkpoint_pending(view()));
     }
   }
 }
@@ -498,9 +498,10 @@ static void opening(int i) {
       if ((int64_t)conns[j].on > wait_most) wait_most = (int64_t)conns[j].on;
       if (t_now - conns[j].since > wait_ms) wait_ms = t_now - conns[j].since;
     }
-    char body[520]; snprintf(body, sizeof body, "ok %lld players, fanout p50 %lld us p95 %lld us over %lld reads, %lld rate-limited, %lld slow closed, shard %lld, everglade tick p50 %lld us at the 95th %lld us over %lld ticks, waiting %lld bytes most, %lld ms oldest, %lld world events running, %s",
+    char body[768]; snprintf(body, sizeof body, "ok %lld players, fanout p50 %lld us p95 %lld us over %lld reads, %lld rate-limited, %lld slow closed, shard %lld, everglade tick p50 %lld us at the 95th %lld us over %lld ticks, waiting %lld bytes most, %lld ms oldest, %lld world events running, %s",
                              (long long)rm_players(view()), (long long)p50, (long long)p95, (long long)n, (long long)rm_relay_dropped(view()), (long long)slow_closed,
                              (long long)server->shard, (long long)tp50, (long long)tp95, (long long)tn, (long long)wait_most, (long long)wait_ms, (long long)rm_events_running(view()), drain_word());
+    snprintf(body+strlen(body),sizeof body-strlen(body),"checkpoints pending %lld, flying %d, refused %lld, applied %lld, duplicates %lld\n",(long long)rm_checkpoint_pending(view()),server->ck.fly?1:0,(long long)server->ck.refused,(long long)server->ck.applied,(long long)server->ck.duplicates);
     http(i, "200 OK", "text/plain", body); return;
   }
   /* --dev: the API's stand-in (local.coax): the world document the room laid, byte for byte */
@@ -604,6 +605,9 @@ static void poster_vitals(const char *req, size_t n, int out) {
   _exit(0);
 }
 static void poster_run(int in, int back, int receipts) {
+  /* A process-group SIGTERM asks the room to drain. Its network helper must
+     keep delivering the final saves until the room closes this input pipe. */
+  signal(SIGTERM, SIG_IGN);
   static char cfg[16384], got[16384];
   FILE *f = fdopen(in, "r");
   for (;;) {
@@ -616,6 +620,7 @@ static void poster_run(int in, int back, int receipts) {
     if (kind == 'G' && pipe(o)) { close(p[0]); close(p[1]); continue; }
     pid_t pid = fork();
     if (pid == 0) {
+      signal(SIGTERM, SIG_DFL);
       dup2(p[0], 0);
       if (o[1] >= 0) dup2(o[1], 1);
       for (int fd = 3; fd < 1024; fd++) close(fd);
@@ -718,17 +723,17 @@ static bool post_report(const char *url, const uint8_t *mac, const uint8_t *body
   static char cfg[16384];
   if (poster_fd < 0) return false;
   size_t k = 0;
-  if (batch >= 0) k = (size_t)snprintf(cfg, sizeof cfg, "%lld\n", (long long)batch);
+  if (batch != -1) k = (size_t)snprintf(cfg, sizeof cfg, "%lld\n", (long long)batch);
   k += (size_t)snprintf(cfg + k, sizeof cfg - k, "url = \"%s\"\nheader = \"X-Room-Mac: %.64s\"\nheader = \"Content-Type: text/plain\"\nsilent\nshow-error\n%s",
                         url, (const char *)mac,
-                        batch >= 0 ? "max-time = 5\nwrite-out = \"\\n#HTTP %{http_code}\"\ndata-binary = \"" : "max-time = 10\noutput = \"/dev/null\"\ndata-binary = \"");
+                        batch != -1 ? "max-time = 5\nwrite-out = \"\\n#HTTP %{http_code}\"\ndata-binary = \"" : "max-time = 10\noutput = \"/dev/null\"\ndata-binary = \"");
   for (int64_t i = 0; i < n && k + 4 < sizeof cfg; i++) {
     char ch = (char)body[i];
-    if (ch == '\n') { cfg[k++] = '\\'; cfg[k++] = 'n'; } else cfg[k++] = ch;
+    if (ch == '\n') { cfg[k++] = '\\'; cfg[k++] = 'n'; } else { if(ch=='\"'||ch=='\\') cfg[k++]='\\'; cfg[k++]=ch; }
   }
   if (k + 4 >= sizeof cfg) { fprintf(stderr, "room: a report too long to post\n"); return false; }
   k += (size_t)snprintf(cfg + k, sizeof cfg - k, "\"\n");
-  return poster_send(batch >= 0 ? 'V' : 'P', cfg, k);
+  return poster_send(batch != -1 ? 'V' : 'P', cfg, k);
 }
 static void post_signed(const char *url, const uint8_t *mac, const uint8_t *body, int64_t n) { (void)post_report(url, mac, body, n, -1); }
 static const char *api_url(const char *env, const char *path, char *buf, size_t cap) {
@@ -752,6 +757,14 @@ static void vitals_post(void) {
   if (!post_report(api_url("OA_ROOM_VITALS_URL", "/api/playtest/room-vitals", buf, sizeof buf), server->vit.mac.e, server->vit.out.e, n, batch))
     rm_vitals_answer(view(), batch, 0, (coax_string){"", 0});
 }
+static void checkpoint_post(void) {
+  const char *dev_url=getenv("OA_ROOM_CHECKPOINT_URL");
+  if (dev_dir && !(dev_url && *dev_url)) return;
+  int64_t n=rm_checkpoint_due(view()); if(n<=0)return;
+  char buf[512];int64_t request=server->ck.request;
+  if(!post_report(api_url("OA_ROOM_CHECKPOINT_URL","/api/playtest/room-checkpoint-v2",buf,sizeof buf),server->ck.mac.e,server->ck.out.e,n,-request-2))
+    rm_checkpoint_answer(view(),request,0,(coax_string){"",0});
+}
 static void receipt_hear(void) {
   static char buf[8192]; static size_t have;
   if (receipt_fd < 0) return;
@@ -765,7 +778,8 @@ static void receipt_hear(void) {
     size_t head = (size_t)(nl - buf) + 1;
     if (have < head + len) break;
     if (status < 200 || status >= 300) fprintf(stderr, "room: vitals: post %lld answered %d\n", batch, status);
-    rm_vitals_answer(view(), batch, status, (coax_string){buf + head, (int64_t)len});
+    if(batch<=-2) rm_checkpoint_answer(view(),-batch-2,status,(coax_string){buf+head,(int64_t)len});
+    else rm_vitals_answer(view(), batch, status, (coax_string){buf + head, (int64_t)len});
     memmove(buf, buf + head + len, have - head - len); have -= head + len;
   }
   if (have == sizeof buf) have = 0;
@@ -921,9 +935,10 @@ int main(int argc, char **argv) {
     }
     if (drain_at) {
       int64_t left = rm_vitals_pending(view());
-      if ((left == 0 && !server->vit.fly) || now_ms() - drain_at > DRAIN_MS) {
+      if ((left == 0 && !server->vit.fly && rm_checkpoint_clean(view())) || now_ms() - drain_at > DRAIN_MS) {
         printf("room: exit after %lld ms, %lld players' vitals with no receipt\n", (long long)(now_ms() - drain_at), (long long)left);
-        return 0;
+        fprintf(stderr,"room: exit: %lld unacknowledged character checkpoints\n",(long long)rm_checkpoint_pending(view()));
+        return rm_checkpoint_clean(view()) ? 0 : 1;
       }
     }
     struct pollfd fds[CONNS + 1]; int map[CONNS + 1], n = 0;
@@ -985,7 +1000,7 @@ int main(int argc, char **argv) {
       }
       if (now - last_vitals >= 1000) { last_vitals = now; vitals_post(); directory_post(); stats_sample(); }
       if (now - last_stats >= ST_WINDOW_MS) { stats_window((now - last_stats) / 1000.0); last_stats = now; }
-      control_ask(); control_hear(); receipt_hear();
+      control_ask(); control_hear(); receipt_hear(); checkpoint_post();
       if (now - last_report >= 60000) { printf("room: %lld ticks in %.1f s, %lld players, %lld frames over the rate limits, %lld queue full, %lld slow sockets closed, %lld bytes the most waiting\n", (long long)ticks, (now - last_report) / 1000.0, (long long)rm_players(view()), (long long)rm_relay_dropped(view()), (long long)rm_relay_queue_full(view()), (long long)slow_closed, (long long)out_peak);
         printf("room: everglade tick parts over the minute (ms):"); for (int q = 0; q < PARTS; q++) { printf(" %s %lld", part_name[q], (long long)(part_us[q] / 1000)); part_us[q] = 0; }
         printf(", %lld events with no room in their tick\n", (long long)rm_eg_dropped(view()));

@@ -1,0 +1,205 @@
+// Real native room / scratch API faults. This is a socket consumer, never an
+// in-process simulation stand-in. Every child and temporary file is ours.
+#load "../../../lib/net/relay_conn.coax";
+#load "../../../lib/sys/args.coax";
+#load "../../../../apps/openagents-web/everglade-wire.coax";
+cxproc_wall_us :: ()->int #foreign;
+c2_word :: (text:string,which:int)->string {
+  at:=0;field:=0;while at<=text.count{end:=at;while end<text.count&&text[end]!=' '{end+=1;}if field==which{return text[at..<end];}field+=1;at=end+1;}return "";
+}
+
+C2Client :: struct {
+  conn:[1]RelayConn; mirror:[1]WireMirror; seat:int=-1; seq:int;
+  frames:int; tick:int; first_ms:int; last_ms:int; opened_ms:int; ping_ms:int;
+  closed:bool; elsewhere:bool; own:WireS;
+}
+c2_start :: (argv:[]string,env:[]string)->int {
+  h:=proc_new();if h<0{return -1;}ok:=true;for a:argv{ok=ok&&proc_arg(h,a);}for e:env{ok=ok&&proc_env(h,e);}
+  if !ok||proc_start(h)!=0{ignored_1:=proc_release(h);return -1;}return h;
+}
+c2_reap :: (h:int,sig:int)->int {
+  if h<0{return -1;}if sig>0{ignored_2:=proc_kill(h,sig);}status:=PROC_RUNNING;until:=proc_now_ms()+12000;b:[8192]u8;
+  while status==PROC_RUNNING&&proc_now_ms()<until{ignored_3:=proc_line(h,20,b[..]);status=proc_wait(h,0);}
+  if status==PROC_RUNNING{ignored_4:=proc_kill(h,PROC_SIGKILL);status=proc_wait(h,2000);}ignored_5:=proc_release(h);return status;
+}
+c2_connect :: (v:[]C2Client,url:string)->bool {
+  v[0]=C2Client.{};v[0].opened_ms=proc_now_ms();if !relay_conn_open(v[0].conn[..],url){v[0].closed=true;return false;}
+  b:[64]u8;ignored_6:=relay_conn_send(v[0].conn[..],cast(string)b[0..<wire_put_pins(b[..],0,WirePins.{})]);
+  return relay_conn_send(v[0].conn[..],"H 4 ranger.0.0.0 druid 0 Checkpoint");
+}
+c2_input :: (seq:int,move:bool,heard:int,b:[]u8)->string {
+  n:=wire_put_in(b,0,WireIn.{seq=seq,kx=ifx move then 100 else 0,heard=heard});return cast(string)b[0..<n];
+}
+#test "checkpoint fault consumer: movement has the exact nine-field gameplay input" {
+  b:[128]u8;#assert c2_input(1,true,7,b[..])=="I 1 100 0 0 0 0 0 7";
+}
+c2_pump :: (v:[]C2Client,ms:int,move:bool) {
+  until:=proc_now_ms()+ms;next:=proc_now_ms();b:[128]u8;
+  while !v[0].closed&&proc_now_ms()<until{
+    now:=proc_now_ms();if now>=next{next=now+33;v[0].seq+=1;ignored_7:=relay_conn_send(v[0].conn[..],c2_input(v[0].seq,move,v[0].mirror[0].heard,b[..]));}
+    if now-v[0].ping_ms>=1000{v[0].ping_ms=now;n:=wire_int(b[..],wire_put(b[..],0,"t"),now);ignored_8:=relay_conn_send(v[0].conn[..],cast(string)b[0..<n]);}
+    code:=relay_conn_poll(v[0].conn[..],0);
+    while code==RC_TEXT{
+      text:=cast(string)v[0].conn[0].text[0..<v[0].conn[0].text_n];
+      if ap_starts(text,"y "){v[0].seat=ap_whole(c2_word(text,1));}
+      if ap_starts(text,"D "){d:=wire_mirror_frame(v[0].mirror[..],text);if d.tick>=0{v[0].frames+=1;v[0].tick=d.tick;v[0].last_ms=proc_now_ms();if v[0].first_ms==0{v[0].first_ms=v[0].last_ms-v[0].opened_ms;}v[0].own=wire_mirror_of(v[0].mirror[..],v[0].seat);}}
+      if text=="r 0 elsewhere"{v[0].elsewhere=true;}
+      code=relay_conn_poll(v[0].conn[..],0);
+    }
+    if code==RC_FAIL||code==RC_CLOSED{v[0].closed=true;}proc_sleep(2);
+  }
+}
+c2_close :: (v:[]C2Client){if !v[0].closed{ignored_9:=relay_conn_close(v[0].conn[..],1000);}v[0].closed=true;}
+c2_saved :: (t:[]Ap,pid:string)->CharacterCapture {
+  q:[1]Sb;b:[CC_BODY]u8;sb(q[..],"select body::text from verse.character_checkpoints_v2 where who=coalesce((select account from verse.players where id='");sb(q[..],pid);sb(q[..],"'),'");sb(q[..],pid);sb(q[..],"')");return cc_read(ap_sql(t,sb_text(q[..]),b[..]),false);
+}
+c2_file :: (dir:string,name:string,text:string)->bool {b:[4200]u8;return fs_write(fs_join(dir,name,b[..]),text);}
+c2_read :: (dir:string,name:string,out:[]u8)->string {b:[4200]u8;n:=fs_read(fs_join(dir,name,b[..]),out);return ifx n>=0 then cast(string)out[0..<n] else "";}
+c2_room :: (t:[]Ap,bin:string,dir:string,proxy_port:int,port:[]int)->int {
+  b:[65536]u8;n:=fs_read("coax/web/room/dev/world-everglade.json",b[..]);
+  if n<=0||!c2_file(dir,"world-everglade.json",cast(string)b[0..<n])||!c2_file(dir,"room-control.txt","levels 1 2\n"){return -1;}
+  l:=cxsock_listen(0);port[0]=cxsock_port(l);ignored_10:=cxsock_close(l);ps:[24]u8;
+  cp:[1]Sb;sb(cp[..],"OA_ROOM_CHECKPOINT_URL=http://127.0.0.1:");sb_int(cp[..],proxy_port);sb(cp[..],"/checkpoint");
+  vit:[1]Sb;sb(vit[..],"OA_ROOM_VITALS_URL=");sb(vit[..],t[0].api);sb(vit[..],"/api/playtest/room-vitals");
+  argv:=[7]string.[bin,"--port",ap_num(port[0],ps[..]),"--listen","127.0.0.1","--dev",dir];env:=[2]string.[sb_text(cp[..]),sb_text(vit[..])];h:=c2_start(argv[..],env[..]);
+  until:=proc_now_ms()+5000;w:[1]HttpWork;out:[2048]u8;url:[1]Sb;sb(url[..],"http://127.0.0.1:");sb_int(url[..],port[0]);sb(url[..],"/health");none:[1]string;
+  while h>=0&&proc_now_ms()<until{r:=http_do(w[..],"GET",sb_text(url[..]),none[0..<0],"",100,0,out[..]);if r.error==HTTP_OK&&r.code==200{return h;}ignored_11:=proc_line(h,20,out[..]);}return h;
+}
+c2_url :: (port:int,ticket:string,out:[]Sb)->string {sb_clear(out);sb(out,"ws://localhost:");sb_int(out,port);sb(out,"/api/room/relay/everglade/checkpoint-test?t=");sb(out,ticket);return sb_text(out);}
+c2_ready :: (v:[]C2Client)->bool {until:=proc_now_ms()+10000;while !v[0].closed&&v[0].frames==0&&proc_now_ms()<until{c2_pump(v,50,false);}return v[0].frames>0&&v[0].own.id>=0;}
+c2_near :: (a:f32,b:f32)->bool {d:=a-b;return d>=-0.03&&d<=0.03;}
+c2_place_matches :: (v:[]C2Client,c:CharacterCapture)->bool {return c.ok&&c2_near(v[0].own.x,f32(c.n[13])/1000)&&c2_near(v[0].own.z,f32(c.n[15])/1000);}
+c2_signal :: (h:int,signal:string)->bool {
+  pid:[24]u8;word:[16]u8;n:=wire_put(word[..],0,"-");n=wire_put(word[..],n,signal);
+  argv:=[3]string.["/bin/kill",cast(string)word[0..<n],ap_num(cxproc_pid(h),pid[..])];none:[1]string;child:=c2_start(argv[..],none[0..<0]);return c2_reap(child,0)==0;
+}
+
+// A controllable HTTP boundary: before refuses without forwarding; after lets
+// Postgres commit and then loses the reply; pass returns the actual receipt.
+c2_head :: (s:string)->int {for i:0..<s.count-3{if s[i..<i+4]=="\r\n\r\n"{return i+4;}}return -1;}
+c2_header :: (s:string,name:string)->string {
+  at:=0;for i:0..<s.count{if s[i]!='\n'{continue;}line:=s[at..<i];at=i+1;
+    if line.count>0&&line[line.count-1]=='\r'{line=line[0..<line.count-1];}
+    if line.count>name.count&&line[name.count]==':'&&http_same(line[0..<name.count],name){return http_trim(line[name.count+1..<line.count]);}}
+  return "";
+}
+#test "checkpoint proxy: CRLF header values are whole numbers and exact MAC bytes" {
+  head:="POST /checkpoint HTTP/1.1\r\nContent-Length: 123\r\nX-Room-Mac: abc\r\n\r\n";
+  #assert c2_header(head,"Content-Length")=="123"&&ap_whole(c2_header(head,"Content-Length"))==123&&c2_header(head,"X-Room-Mac")=="abc";
+}
+c2_request :: (h:int,b:[]u8,total:[]int)->int {
+  used:=0;end:=-1;want:=-1;until:=proc_now_ms()+5000;
+  while proc_now_ms()<until&&(want<0||used<want){n:=cxsock_read(h,100);if n==-2{continue;}if n<0||used+n>b.count{return -1;}
+    for i:0..<n{b[used+i]=cast,trunc(u8)cxsock_byte(h,i);}used+=n;if end<0&&used>=4{end=c2_head(cast(string)b[0..<used]);}
+    if end>=0&&want<0{size:=ap_whole(c2_header(cast(string)b[0..<end],"Content-Length"));if size<0{return -1;}want=end+size;if want>b.count{return -1;}}}
+  if used!=want{return -1;}total[0]=used;return end;
+}
+c2_response :: (h:int,code:int,body:string) {
+  s:[1]Sb;sb(s[..],"HTTP/1.1 ");sb_int(s[..],code);sb(s[..]," Test\r\nConnection: close\r\nContent-Length: ");sb_int(s[..],body.count);sb(s[..],"\r\n\r\n");sb(s[..],body);
+  for c:sb_text(s[..]){ignored_12:=cxsock_write(h,cast(int)c);}ignored_13:=cxsock_flush(h,2000);ignored_14:=cxsock_close(h);
+}
+c2_proxy :: (dir:string,api:string)->int {
+  listener:=cxsock_listen(0);if listener<0{return 1;}nb:[24]u8;ignored_15:=c2_file(dir,"port",ap_num(cxsock_port(listener),nb[..]));
+  req:[8192]u8;answer:[2048]u8;w:[1]HttpWork;url:[1]Sb;sb(url[..],api);sb(url[..],"/api/playtest/room-checkpoint-v2");duplicates:=0;
+  stop:[4200]u8;stopfile:=fs_join(dir,"stop",stop[..]);
+  while !fs_exists(stopfile){h:=cxsock_accept(listener,20);if h<0{continue;}total:[1]int;end:=c2_request(h,req[..],total[..]);if end<0{ignored_16:=cxsock_close(h);continue;}
+    mb:[16]u8;mode:=ap_trim(c2_read(dir,"mode",mb[..]));body:=cast(string)req[end..<total[0]];ignored_17:=c2_file(dir,"capture",body);
+    if mode=="before"{ignored_18:=c2_file(dir,"blocked",body);c2_response(h,503,"{}");continue;}
+    headers:[1]Sb;sb(headers[..],"X-Room-Mac: ");sb(headers[..],c2_header(cast(string)req[0..<end],"X-Room-Mac"));hs:=[2]string.[sb_text(headers[..]),"Content-Type: application/json"];
+    r:=http_do(w[..],"POST",sb_text(url[..]),hs[..],body,5000,0,answer[..]);reply:=cast(string)answer[0..<r.n];
+    ignored_19:=c2_file(dir,"receipt",reply);
+    if ap_has(reply,"\"duplicate\""){duplicates+=1;ignored_20:=c2_file(dir,"duplicates",ap_num(duplicates,nb[..]));}
+    if mode=="after"{ignored_21:=c2_file(dir,"committed",body);ignored_22:=cxsock_close(h);}else{c2_response(h,ifx r.error==HTTP_OK then r.code else 502,reply);}
+  }
+  ignored_23:=cxsock_close(listener);return 0;
+}
+
+c2_runtime :: (t:[]Ap,bin:string) {
+  wb:[4200]u8;dir:=fs_temp("character-faults-",wb[..]);none:[1]string;ignored_24:=c2_file(dir,"mode","pass");
+  pa:=[5]string.["coax/web/tool.sh","coax/web/api/tests/checkpoint2_checks.coax","proxy",dir,t[0].api];proxy:=c2_start(pa[..],none[0..<0]);
+  pb:[32]u8;deadline:=proc_now_ms()+60000;proxy_port:=-1;
+  while proxy>=0&&proxy_port<=0&&proc_now_ms()<deadline{proxy_port=ap_whole(ap_trim(c2_read(dir,"port",pb[..])));proc_sleep(20);}
+  ap_check(t,"crash2: fault proxy starts on its own port",proxy_port>0,"");
+  p:[1]Player;ignored_25:=ap_player(t,p[..]);pid:=pl_id(p[..]);tb:[4096]u8;ignored_26:=c2_ticket(t,pl_key(p[..]),tb[..]);
+  c:=cc_fixture();c.pid_n=pid.count;for i:0..<pid.count{c.pid[i]=pid[i];}room:="checkpoint-test";c.room_n=room.count;for i:0..<room.count{c.room[i]=room[i];}
+  pins:=WirePins.{};c.n[1]=1;c.n[2]=1001;c.n[3]=1;c.n[4]=cxproc_wall_us()/1000;c.n[5]=c.n[4];c.n[6]=pins.engine;c.n[7]=pins.rules;c.n[8]=pins.content;c.n[9]=7;c.n[11]=100;c.n[12]=0;c.dead=false;c.state[0]=0;c.state[5]=0;
+  c.n[13]=0;c.n[14]=2000;c.n[15]=-84000;ignored_27:=c2_post(t,c);
+  ignored_28:=c2_file(dir,"mode","before");port:[1]int;server:=c2_room(t,bin,dir,proxy_port,port[..]);client:[1]C2Client;url:[1]Sb;
+  opened:=c2_connect(client[..],c2_url(port[0],c2_ticket(t,pl_key(p[..]),tb[..]),url[..]));c2_pump(client[..],1500,true);before:=c2_saved(t,pid);
+  ap_check(t,"crash2: before COMMIT initial gameplay stays gated",opened&&client[0].frames==0&&before.n[1]==1,"");
+  ignored_29:=c2_reap(server,PROC_SIGKILL);c2_close(client[..]);
+  first_restart_at:=proc_now_ms();ignored_30:=c2_file(dir,"mode","pass");server=c2_room(t,bin,dir,proxy_port,port[..]);
+  opened=c2_connect(client[..],c2_url(port[0],c2_ticket(t,pl_key(p[..]),tb[..]),url[..]));ready:=c2_ready(client[..]);
+  ap_check(t,"crash2: a killed unaccepted room restores the last committed full body",opened&&ready&&client[0].own.hp==7&&client[0].own.temp==4&&c2_place_matches(client[..],c),"");
+  first_total:=client[0].opened_ms+client[0].first_ms-first_restart_at;
+  print("crash2 first_restore_socket_ms=% first_restore_total_ms=% consumer=native-socket\n",client[0].first_ms,first_total);
+  ignored_31:=c2_file(dir,"mode","after");c2_pump(client[..],5500,true);committed:=c2_saved(t,pid);
+  moved:=committed.n[13]!=c.n[13]||committed.n[15]!=c.n[15];
+  ap_check(t,"crash2: a changed place is committed independently while its HTTP reply is lost",committed.ok&&committed.n[1]==3&&committed.n[3]>1&&moved,"");
+  ignored_32:=c2_reap(server,PROC_SIGKILL);c2_close(client[..]);
+  second_restart_at:=proc_now_ms();ignored_33:=c2_file(dir,"mode","pass");server=c2_room(t,bin,dir,proxy_port,port[..]);
+  opened=c2_connect(client[..],c2_url(port[0],c2_ticket(t,pl_key(p[..]),tb[..]),url[..]));ready=c2_ready(client[..]);
+  ap_check(t,"crash2: kill after COMMIT before reply restores the committed place",opened&&ready&&c2_place_matches(client[..],committed),"");
+  second_total:=client[0].opened_ms+client[0].first_ms-second_restart_at;
+  print("crash2 after_commit_socket_ms=% after_commit_total_ms=%\n",client[0].first_ms,second_total);
+  ignored_34:=c2_file(dir,"mode","after");c2_pump(client[..],5500,false);lost:=c2_saved(t,pid);ignored_35:=c2_file(dir,"mode","pass");c2_pump(client[..],6000,false);
+  duplicate:=ap_whole(ap_trim(c2_read(dir,"duplicates",pb[..])));
+  ap_check(t,"crash2: real lost HTTP replies retry idempotently and gameplay resumes",duplicate>0&&!client[0].closed&&client[0].frames>30&&lost.ok,"");
+  ignored_36:=c2_file(dir,"mode","before");base_tick:=client[0].tick;outage_at:=proc_now_ms();c2_pump(client[..],36000,true);paused:=client[0].tick;stopped_at:=client[0].last_ms;c2_pump(client[..],2000,true);
+  ap_check(t,"crash2: unavailable save store pauses authoritative gameplay inside the 30 second bound",!client[0].closed&&paused==client[0].tick&&paused-base_tick<=901&&paused>base_tick,"");
+  durable:=c2_saved(t,pid);dx:=client[0].own.x-f32(durable.n[13])/1000;dz:=client[0].own.z-f32(durable.n[15])/1000;
+  print("crash2 outage_observation_ms=% active_ticks=% last_frame_ms=% loss_bound_ticks=901 rollback_meters=%\n",proc_now_ms()-outage_at,paused-base_tick,stopped_at-outage_at,sqrt(dx*dx+dz*dz));
+  ap_check(t,"crash2: the outage includes actual unsaved movement to roll back",dx*dx+dz*dz>0.01,"");
+  ignored_37:=c2_reap(server,PROC_SIGKILL);c2_close(client[..]);third_restart_at:=proc_now_ms();ignored_38:=c2_file(dir,"mode","pass");server=c2_room(t,bin,dir,proxy_port,port[..]);
+  opened=c2_connect(client[..],c2_url(port[0],c2_ticket(t,pl_key(p[..]),tb[..]),url[..]));ready=c2_ready(client[..]);
+  ap_check(t,"crash2: crash during outage returns exactly the accepted place",opened&&ready&&c2_place_matches(client[..],durable),"");
+  third_total:=client[0].opened_ms+client[0].first_ms-third_restart_at;
+  print("crash2 outage_restore_socket_ms=% outage_restore_total_ms=%\n",client[0].first_ms,third_total);
+  ap_check(t,"crash2: all healthy replacements restore within the 60 second total objective",first_total>0&&first_total<=60000&&second_total>0&&second_total<=60000&&third_total>0&&third_total<=60000,"");
+  stopped:=c2_signal(server,"STOP");old_server:=server;other:[1]C2Client;
+  server=c2_room(t,bin,dir,proxy_port,port[..]);opened=c2_connect(other[..],c2_url(port[0],c2_ticket(t,pl_key(p[..]),tb[..]),url[..]));ready=c2_ready(other[..]);newer:=c2_saved(t,pid);
+  resumed:=c2_signal(old_server,"CONT");c2_pump(client[..],7000,false);kept:=c2_saved(t,pid);
+  ap_check(t,"crash2: paused obsolete process resumes, loses its seat, and cannot overwrite its successor",stopped&&resumed&&opened&&ready&&client[0].closed&&client[0].elsewhere&&kept.n[1]==newer.n[1],"");
+  ignored_old:=c2_reap(old_server,PROC_SIGKILL);c2_close(client[..]);client[0]=other[0];
+  c2_pump(client[..],500,true);c2_pump(client[..],400,false);final_x:=client[0].own.x;final_z:=client[0].own.z;
+  ignored_39:=proc_kill(server,PROC_SIGTERM);c2_pump(client[..],500,false);exit:=c2_reap(server,0);final:=c2_saved(t,pid);
+  print("crash2 final_exit=% saved_x_mm=% saved_z_mm=% observed_x=% observed_z=%\n",exit,final.n[13],final.n[15],final_x,final_z);
+  ap_check(t,"crash2: planned termination accepts the final frozen body before successful exit",exit==0&&final.ok&&c2_near(f32(final.n[13])/1000,final_x)&&c2_near(f32(final.n[15])/1000,final_z),"");c2_close(client[..]);
+  server=c2_room(t,bin,dir,proxy_port,port[..]);opened=c2_connect(client[..],c2_url(port[0],c2_ticket(t,pl_key(p[..]),tb[..]),url[..]));ready=c2_ready(client[..]);ignored_mode:=c2_file(dir,"mode","before");c2_pump(client[..],500,true);
+  ignored_signal:=proc_kill(server,PROC_SIGTERM);c2_pump(client[..],500,false);failed_exit:=c2_reap(server,0);
+  ap_check(t,"crash2: unavailable final save exits with failure rather than claiming a successful drain",opened&&ready&&failed_exit==1,"");c2_close(client[..]);
+  ignored_40:=c2_file(dir,"stop","1");ignored_41:=c2_reap(proxy,0);ignored_42:=fs_remove(dir);
+}
+
+// The transport has 16 handles. Fill 16 pending characters at a time, close
+// their sockets, and let their live grace bodies end before the next batch.
+// The 257th admission therefore has a free room seat: only the outbox is full.
+c2_capacity :: (t:[]Ap,bin:string) {
+  wb:[4200]u8;dir:=fs_temp("character-capacity-",wb[..]);none:[1]string;mode:=c2_file(dir,"mode","before");
+  pa:=[5]string.["coax/web/tool.sh","coax/web/api/tests/checkpoint2_checks.coax","proxy",dir,t[0].api];proxy:=c2_start(pa[..],none[0..<0]);
+  pb:[32]u8;deadline:=proc_now_ms()+60000;proxy_port:=-1;
+  while proxy>=0&&proxy_port<=0&&proc_now_ms()<deadline{proxy_port=ap_whole(ap_trim(c2_read(dir,"port",pb[..])));proc_sleep(20);}
+  ap_do(t,"insert into verse.players(id,key_sha256,created_ms) select 'p-cap2-'||g,'cap2-'||g,1 from generate_series(0,256) g;insert into verse.room_owners(who,gen,at) select 'p-cap2-'||g,1,1 from generate_series(0,256) g");
+  port:[1]int;server:=c2_room(t,bin,dir,proxy_port,port[..]);c:[1]RelayConn;joined:=0;refused:=false;tx:[1]Sb;url:[1]Sb;mac:[64]u8;ticket:[4096]u8;
+  for batch:0..<16{
+    for seat:0..<16{
+      id:=batch*16+seat;sb_clear(tx[..]);sb(tx[..],"v2.p-cap2-");sb_int(tx[..],id);sb(tx[..],".0.-.checkpoint-test.");sb_int(tx[..],cxproc_wall_us()/1000+600000);sb(tx[..],".-g1");
+      sig:=ap_room_mac(t,sb_text(tx[..]),mac[..]);sb(tx[..],".");sb(tx[..],sig);tk:=resume_ticket_wrap(t[0].room_key,sb_text(tx[..]),"-",ticket[..]);
+      if relay_conn_open(c[..],c2_url(port[0],tk,url[..])){
+        pin:[64]u8;sent:=relay_conn_send(c[..],cast(string)pin[0..<wire_put_pins(pin[..],0,WirePins.{})]);hello:=relay_conn_send(c[..],"H 4 ranger.0.0.0 druid 0 Capacity");
+        until:=proc_now_ms()+200;got_y:=false;
+        while proc_now_ms()<until{code:=relay_conn_poll(c[..],5);if code==RC_TEXT{msg:=cast(string)c[0].text[0..<c[0].text_n];if ap_starts(msg,"y "){got_y=true;}}}
+        if got_y&&sent&&hello{joined+=1;}rc_shut(c[..]);
+      }
+    }
+    // Native rm_eg_begin reaps held seats even while checkpoint-gated.
+    proc_sleep(16000);print("capacity2 batch=% joined=%\n",batch+1,joined);
+  }
+  sb_clear(tx[..]);sb(tx[..],"v2.p-cap2-256.0.-.checkpoint-test.");sb_int(tx[..],cxproc_wall_us()/1000+600000);sb(tx[..],".-g1");sig:=ap_room_mac(t,sb_text(tx[..]),mac[..]);sb(tx[..],".");sb(tx[..],sig);tk:=resume_ticket_wrap(t[0].room_key,sb_text(tx[..]),"-",ticket[..]);
+  admitted:=relay_conn_open(c[..],c2_url(port[0],tk,url[..]));refused=!admitted;
+  if admitted{rc_shut(c[..]);}
+  w:[1]HttpWork;body:[2048]u8;health:[1]Sb;sb(health[..],"http://127.0.0.1:");sb_int(health[..],port[0]);sb(health[..],"/health");r:=http_do(w[..],"GET",sb_text(health[..]),none[0..<0],"",2000,0,body[..]);text:=cast(string)body[0..<r.n];
+  ap_check(t,"capacity2: all 256 unaccepted captures survive their sockets and grace bodies",joined==256&&ap_has(text,"checkpoints pending 256"),text);
+  ap_check(t,"capacity2: the 257th character is refused by the outbox with a free simulation seat",refused&&ap_has(text,"refused 1"),text);
+  status:=c2_reap(server,PROC_SIGKILL);stop:=c2_file(dir,"stop","1");done:=c2_reap(proxy,0);gone:=fs_remove(dir);
+}

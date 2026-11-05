@@ -19,6 +19,7 @@
 // account bit, so a page cannot claim another player's id. SHARD (1 to 99) is the oa-room service that
 // holds the room (room-relay.coax: a shard seats only its own tickets); a v2 ticket is shard 1's.
 #load "../../lib/crypto/hmac.coax";
+#load "../../../aethyr/session/resume-envelope.coax";
 
 TICKET_KEY :: 128;        // the key's most bytes
 TICKET_TEXT :: 256;       // a ticket's most bytes
@@ -43,6 +44,7 @@ Ticket :: struct {
   wanted: int;            // the WANTED level it brings back (1 to 5; 0 none; #12794)
   owner: int;             // the character's owner generation the API issued with it (#12834; 0 none): its vitals lines carry it
   schema: int = TICKET_SCHEMA;   // the format of what it brings back (HP, XP, WANTED): the room admits it only up to RV_SCHEMA (#12839)
+  capture: CharacterCapture;     // ticket v4's signed durable resume profile (schema 2)
 }
 // book:end seat-ticket
 
@@ -111,6 +113,11 @@ tk_mac :: (key: string, text: string, out: [] u8) -> bool {
 // The ticket checked against key, the room's code and now (wall ms): ok false unless all of it holds.
 tk_check :: (key: string, ticket: string, room: string, now: int) -> Ticket {
   t := Ticket.{};
+  if ticket.count>=3&&ticket[0..<3]=="v4." {
+    e:=rt_read(key,ticket);if !e.ok{return t;}
+    inner:=tk_check(key,cast(string)e.legacy[0..<e.legacy_n],room,now);
+    if !inner.ok||inner.owner<1{return t;}inner.schema=2;inner.capture=e.capture;return inner;
+  }
   if key.count < 32 || ticket.count == 0 || ticket.count > TICKET_TEXT { return t; }
   // the eight fields (v2), or nine (v3: the shard after the room)
   at: [10] int; n := 1; at[0] = 0;
@@ -201,6 +208,16 @@ tk_check :: (key: string, ticket: string, room: string, now: int) -> Ticket {
   t.shard = shard;
   t.ok = true;
   return t;
+}
+
+#test "ticket v4: the original ticket and the durable capture both authenticate before a schema 2 join" {
+  key:="profile-check-key-not-a-secret-0123456789";now:=1762190000000;
+  core:[256]u8;n:=tk_sign_owner(key,"p-a",false,"Ash","pair-a",1,now+60000,7,350,2,7,core[..]);
+  c:=cc_fixture();saved:[CC_BODY]u8;out:[RT_TEXT]u8;ticket:=resume_ticket_wrap(key,cast(string)core[0..<n],cc_stored(c,saved[..]),out[..]);
+  t:=tk_check(key,ticket,"pair-a",now);#assert t.ok&&t.schema==2&&t.owner==7&&t.hp==7&&t.xp==350&&t.capture.dead&&t.capture.n[13]==-1234;
+  #assert !tk_check(key,ticket,"pair-b",now).ok&&!tk_check(key,ticket,"pair-a",now+60001).ok;
+  core[n-1]=ifx core[n-1]=='a' then 'b' else 'a';ticket=resume_ticket_wrap(key,cast(string)core[0..<n],"-",out[..]);#assert !tk_check(key,ticket,"pair-a",now).ok;
+  n=tk_sign_owner(key,"p-a",false,"Ash","pair-a",1,now+60000,7,350,2,0,core[..]);ticket=resume_ticket_wrap(key,cast(string)core[0..<n],"-",out[..]);#assert !tk_check(key,ticket,"pair-a",now).ok;
 }
 
 tk_add :: (b: [] u8, n: int, s: string) -> int {

@@ -30,6 +30,7 @@
 #load "room-sky.coax";
 #load "room-ticket.coax";
 #load "room-vitals.coax";
+#load "room-checkpoint.coax";
 #load "room-control.coax";
 #load "room-travel.coax";   // a player's travel between two rooms (#12850)
 #load "native-local-policy.coax";
@@ -84,6 +85,7 @@ RmServer :: struct {
   tkey: [TICKET_KEY] u8; tkey_n: int;   // the seat-ticket key (rm_ticket_key): set, an everglade join's ticket must check
   tkey_must: bool;
   vit: RmVitals;                         // players' HP between visits (room-vitals.coax)
+  ck: RmCheckpoints;                     // schema 2's bounded durable captures and exact receipts
   ctl: RmControl;                        // the API's word on pvp, edits and kicks (room-control.coax)
   shard: int = 1;                        // which oa-room shard this is (rm_shard; room-directory.coax)
   dir: RmDirectory;                      // what it last told the API's instance directory

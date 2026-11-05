@@ -1,0 +1,22 @@
+// Profile selection is explicit. Existing durable characters cannot downgrade
+// when the operator disables issuance during a rollback.
+#authority;
+#load "../../../aethyr/session/resume-payload.coax";
+#test "resume profile: opt in only when enabled, and never downgrade an existing capture" {
+  #assert checkpoint2_profile(false,false,false)==0;
+  #assert checkpoint2_profile(false,true,false)==0;
+  #assert checkpoint2_profile(true,false,false)==0;
+  #assert checkpoint2_profile(true,true,false)==1;
+  for b:0..<4{#assert checkpoint2_profile((b&1)!=0,(b&2)!=0,true)==(ifx b==3 then 1 else 2);}
+}
+checkpoint2_profile :: (asked:bool,enabled:bool,exists:bool)->int #export_c {
+  if exists&&(!asked||!enabled){return 2;}return ifx asked&&enabled then 1 else 0;
+}
+#test "resume profile: the captured class supplies the page's matching controls" {
+  c:=cc_fixture();b:[CC_BODY]u8;#assert checkpoint2_class(cc_stored(c,b[..]))=="warlock";
+  c.state[0]=0;#assert checkpoint2_class(cc_stored(c,b[..]))=="druid";
+  #assert checkpoint2_class("-")==""&&checkpoint2_class("{}")=="";
+}
+checkpoint2_class :: (saved:string)->string #export_c {
+  c:=cc_read(saved,false);if !c.ok{return "";}return ifx c.state[0]==1 then "warlock" else "druid";
+}

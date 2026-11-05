@@ -782,6 +782,43 @@ acknowledge checkpoint fields. No room producer or ticket restore uses this
 receiver yet; it supplies no new live crash-loss guarantee. The remaining
 integration gates are in `docs/verse/character-checkpoints-v1.md`.
 
+Character resume profile 2 (#12838, `docs/protocol/character-checkpoint-v2.md`)
+is additive: checkpoint v1 and legacy gameplay tickets keep their identity.
+Its v4 signed envelope carries the newly issued owner and the entire accepted
+v2 capture. Both signatures and the saved engine/rules/content are checked;
+an incompatible build or an unavailable store never falls back to a fresh body.
+The profile becomes sticky when its first ticket is issued, before the first
+capture: old unversioned vitals cannot write it. Identity and owner stay locked
+through both legacy writes and checkpoint acceptance. Owner transfer reconciles
+the cumulative XP maximum across all stores; within one owner the checkpoint
+chain is monotone, independently of asynchronous legacy reports. Linking an
+account carries its accepted body and advances both ownership fences.
+
+Each admitted profile-2 character reserves a bounded save entry. Pending and
+in-flight captures are not evicted or expired; a newly issued owner supersedes
+the fenced owner's unsent captures. One immutable capture retries independently
+of the latest mailbox. A generic success or legacy receipt cannot acknowledge
+it. The initial body cannot play before its first complete durable acceptance.
+Thereafter an encounter advances only while every profile-2 seat's accepted
+capture is less than 30 monotonic seconds old. A pause clears queued movement
+and accrual, takes no mutating intents, and keeps retrying. Crash loss is at
+most 30 seconds of authoritative gameplay plus one tick; an unavailable store
+has no finite wall-clock restore objective. Normal capture cadence is 5 seconds;
+the healthy first-socket-state objective is 60 seconds under the profile's
+declared scheduling, capacity and API latency assumptions.
+
+Restart restores HP (including explicit zero/dead), temporary HP, WANTED,
+XP, same-room place, class, slots, uses, cooldowns and the down timer. Counts
+are constrained to the actual build and timers gain no offline credit. World
+effects and encounter contributions end with the lost world; ordinary fresh
+town/raid rules apply. Same-process grace preserves the live body. Placement
+waits for the restoring hello, which applies once. Travel waits for both the
+legacy receipt and its complete checkpoint. Final drain freezes once and awaits
+the final acceptance; timeout reports failure. Its network helper survives a
+process-group SIGTERM until the room closes its pipe. Checks: shared character
+codec, flow, envelope and profile authorities; room checkpoint checks; scratch
+`checkpoint2_checks.coax` native commit-edge, queue, outage and drain faults.
+
 ## Only a character's newest owner saves its room state
 
 The API is the one directory of owner generations (`verse.room_owners`,

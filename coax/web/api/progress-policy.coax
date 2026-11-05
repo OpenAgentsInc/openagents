@@ -17,6 +17,7 @@
 //   bad revision   a revision that is not a whole number (or is negative) is a 400.
 #authority;
 #load "checkpoint-policy.coax";
+#load "checkpoint-resume-policy.coax";
 
 PP_KEEP :: 0;
 PP_CHANGED :: 1;

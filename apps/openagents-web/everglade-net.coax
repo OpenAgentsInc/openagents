@@ -51,7 +51,7 @@ NET_HIST :: 64;            // your inputs kept for the server's ACK
 NET_FX :: 8;               // casts waiting for their time
 NET_MINE :: 8;             // your casts sent, kept to read a refusal of them by (r SEQ WHY)
 NET_ID :: 24; NET_NAME :: 40; NET_LOOK :: 32; NET_CODE :: 24; NET_URL :: 200;
-NET_TICKET :: 256;   // a seat ticket's most bytes (coax/web/room/room-ticket.coax)
+NET_TICKET :: 4096;  // profile 2's v4 envelope (legacy core remains 256 bytes)
 NET_PIPE_STATE :: 5;    // the pipe's save of what you bring back into a room: its bytes the JSON to POST to /api/playtest/room-state (#12715)
 NET_STATE_EVERY :: 2000;   // ms: a changed look is saved at most this often (WANTED is the room's to save, #12794)
 NET_PIPE_TICKET :: 4;   // the pipe's ask for a seat ticket: its bytes the API path to POST, a newline, the body (the face carries it)
@@ -1247,6 +1247,7 @@ net_ask_ticket :: (n: [] EgNet) {
   k = pt_ticket_with(n, t[..], k);   // the party member whose room you join (everglade-party.coax, #12911)
   // this page's build: the directory places it on a shard that runs it (#12839, migrations/0128_room_builds.sql)
   if n[0].realm_n > 0 { k = net_put_build(t[..], wire_put(t[..], k, "&build=")); }
+  k = wire_put(t[..],k,ifx n[0].realm_n>0 then "&checkpoint=2" else "?checkpoint=2");
   k = wire_put(t[..], k, "\n"); k += jn_ticket_body(n, t[k..<t.count]);
   if pipe_put(n[0].pipe[..], NET_PIPE_TICKET, -1, cast(string) t[0..<k]) { n[0].ticket_asked = true; }
 }
@@ -2377,6 +2378,18 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   return ok && net_test_hear(a, 0, net_test_frame(room)) && net_test_hear(b, 1, net_test_frame(room));
 }
 
+#test "net: profile 2 requests durable recovery and preserves the complete bounded ticket" {
+  a:[1]Everglade;na:[1]EgNet;everglade_attach_net(a[..],na[..]);
+  net_facts(a[..],"url=https://openagents.com/worlds/everglade?room=pair-a\nplayer=pa\nnow=5000000\nnav=0\n","everglade",false);
+  net_step(a[..],100,0,0,0,0,0,0,false,0,false,0);
+  #assert jn_has(pipe_bytes(na[0].pipe[..],0),"&checkpoint=2");pipe_drained(na[0].pipe[..]);
+  answer:[4200]u8;n:=wire_put(answer[..],0,"200\n{\"ticket\":\"");for i:0..<4096{answer[n+i]='a';}n+=4096;n=wire_put(answer[..],n,"\"}");
+  net_ticket(a[..],cast(string)answer[0..<n]);#assert na[0].ticket_n==4096;
+  net_step(a[..],132,0,0,0,0,0,0,false,0,false,0);#assert na[0].pipe[0].op[0]==PIPE_OPEN;
+  opened:=pipe_bytes(na[0].pipe[..],0);#assert opened.count>4096&&opened[opened.count-1]=='a';
+  na[0].ticket_n=0;n=wire_put(answer[..],0,"200\n{\"ticket\":\"");for i:0..<4097{answer[n+i]='a';}n+=4097;n=wire_put(answer[..],n,"\"}");
+  net_ticket(a[..],cast(string)answer[0..<n]);#assert na[0].ticket_n==0;
+}
 #test "net: a page asks the API for a seat ticket before each open and opens with it once; a refusal waits and asks again" {
   a: [1] Everglade; na: [1] EgNet;
   everglade_attach_net(a[..], na[..]);

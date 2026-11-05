@@ -137,6 +137,7 @@ EgSeat :: struct {
   back: bool; back_x: f32; back_y: f32; back_z: f32; back_yaw: f32;   // where its player stood in this room (rv_back)
   look: [EG_LOOK] u8; look_n: int; klass: [EG_NAME] u8; klass_n: int; flags: int; name: [EG_NAME] u8; name_n: int;
   last_cast: int = -1000;
+  checkpoint_hello: bool;        // a schema 2 character is built/restored once, not reset by repeated H
   repaired: int = -100000;       // the tick of its last Repair (CR_REPAIR_EVERY from one to the next)
   heard_ms: int;                 // when its page last sent a frame (G's AWAY bit after WIRE_AWAY_MS)
   heard_n: [EG_SEATS] int;                            // a hash of who it last heard each seat is (0 nothing)
@@ -355,6 +356,7 @@ eg_rejoin :: (v: [] RmServer, r: int, conn: int, seat: int) {
   n.back = o.back; n.back_x = o.back_x; n.back_y = o.back_y; n.back_z = o.back_z; n.back_yaw = o.back_yaw;
   n.look = o.look; n.look_n = o.look_n; n.klass = o.klass; n.klass_n = o.klass_n; n.flags = o.flags; n.name = o.name; n.name_n = o.name_n;
   n.last_cast = o.last_cast; n.repaired = o.repaired;
+  n.checkpoint_hello = o.checkpoint_hello;
   n.want_seed = o.want_seed; n.hold_due = o.hold_due; n.back_hp = o.back_hp; n.back_dead = o.back_dead;
   n.wcond = o.wcond; n.fx_left = o.fx_left; n.fx_t0 = o.fx_t0; n.fx_dur = o.fx_dur;
   n.heard_ms = v[0].mono_ms;
@@ -452,7 +454,7 @@ eg_heard :: (v: [] RmServer, r: int, seat: int, text: string) {
   v[0].eg[k].seat[seat].heard_ms = v[0].mono_ms;
   c := text[0];
   // a seat cut over for travel takes no intents while its page goes (room-travel.coax, #12850)
-  if (c == 'I' || c == 'C' || c == 'E' || c == 'L' || c == 'R' || c == 'T') && eg_travel_drops(v, k, seat) { return; }
+  if (c == 'I' || c == 'C' || c == 'E' || c == 'L' || c == 'R' || c == 'T') && (eg_travel_drops(v, k, seat) || rm_checkpoint_paused(v, k) || !ck_can_play(v, k, seat)) { return; }
   if c == 'T' { eg_heard_travel(v, k, seat, text); return; }
   if c == 'I' { eg_heard_input(v, k, seat, text); return; }
   if c == 'C' { eg_heard_cast(v, k, seat, text); return; }
@@ -614,15 +616,30 @@ eg_heard_hello :: (v: [] RmServer, k: int, seat: int, text: string) {
       return;
     }
   }
+  tk := eg_ticket(v, k, seat);
+  if tk.schema == 2 {
+    if st[0].checkpoint_hello { return; }
+    cap := tk.capture;
+    if cap.ok && compat_admit(eg_server(), CompatPins.{engine=cap.n[6],rules=cap.n[7],content=cap.n[8],wire=h.version,schema=2}) != CP_OK {
+      eg_refuse(v,k,seat,0,WIRE_REFUSE_VERSION);
+      if st[0].conn>=0 && st[0].conn<CONNS { v[0].conns[st[0].conn].kicked=true; }
+      return;
+    }
+  }
   st[0].look_n = eg_word(h.look, st[0].look[..]);
-  st[0].klass_n = eg_word(h.kind, st[0].klass[..]);
+  kind := h.kind;
+  if tk.schema == 2 && tk.capture.ok { kind = ifx tk.capture.state[0] == 1 then "warlock" else "druid"; }
+  st[0].klass_n = eg_word(kind, st[0].klass[..]);
   // CLASS warlock: the seat's caster is the level 17 Warlock (fivebar.coax fb_warlock_hero), else the druid
   wl := ifx cast(string) st[0].klass[0..<st[0].klass_n] == "warlock" then 1 else 0;
   if v[0].eg[k].rules[0].klass[seat] != wl { e5rr_join_as(v[0].eg[k].rules[..], seat, st[0].pose.x, st[0].pose.z, wl); ev_class(v, k, seat); }
   st[0].flags = eg_clamp(h.flags, 0, 255);
+  if tk.schema == 2 && tk.capture.ok { st[0].flags = (st[0].flags & (255-EV_DEMO_FLAG)) | (ifx tk.capture.state[1]==1 && tk.admin then EV_DEMO_FLAG else 0); }
   ev_hello(v, k, seat, st[0].flags);   // an admin's demo character (room-events.coax)
   rv_hp_back(v, k, seat); st[0].back_hp = -1;   // built: the HP its player came back with, once (#12883)
   trv_carry(v, k, seat);   // arrived by travel: what the rules spend, as it left (room-travel.coax, #12850)
+  ck_restore(v,k,seat);
+  if tk.schema == 2 { st[0].checkpoint_hello=true; v[0].ck.force=true; }
   // the name: letters, digits, spaces, '-' and '_' ("-" none)
   m := 0;
   for ch: h.name {
@@ -633,7 +650,6 @@ eg_heard_hello :: (v: [] RmServer, k: int, seat: int, text: string) {
   while m > 0 && st[0].name[m - 1] == ' ' { m -= 1; }
   st[0].name_n = ifx m == 1 && st[0].name[0] == '-' then 0 else m;
   // a seat ticket's name and account bit outrank the hello's (room-ticket.coax, #12712)
-  tk := eg_ticket(v, k, seat);
   if tk.ok {
     st[0].flags = (st[0].flags & 253) | (ifx tk.account then 2 else 0);
     // only the ticket's name, which the API filtered (verse.name_ok, #12714); none: "-"
@@ -707,6 +723,7 @@ rm_eg_begin :: (v: [] RmServer, k: int) -> bool #export_c {
   if k < 0 || k >= EG_ROOMS || !v[0].eg[k].live { return false; }
   eg_grace_ends(v, k);   // held seats whose player did not come back in time leave (#12792)
   if !v[0].eg[k].live { return false; }
+  if rm_checkpoint_paused(v,k) { ck_pause(v,k); return false; }
   v[0].eg[k].tick += 1;
   now := v[0].mono_ms;
   for s: 0..<EG_SEATS {
@@ -748,12 +765,13 @@ rm_eg_moved :: (v: [] RmServer, k: int, s: int, seq: int, x: f32, y: f32, z: f32
   st := v[0].eg[k].seat[s..<s + 1];
   st[0].pose = EgPose.{x = x, y = y, z = z, yaw = yaw, vx = vx, vy = vy, vz = vz, g = g, clip = clip, carry = carry};
   if seq > st[0].ack { st[0].ack = seq; st[0].ack_at = st[0].step_at; }
+  if !st[0].placed && st[0].checkpoint_hello { v[0].ck.force=true; }
   st[0].placed = true;
   e5rr_place(v[0].eg[k].rules[..], s, x, z);
 }
 // Whether seat s sits and is still to be put in the world.
 rm_eg_unplaced :: (v: [] RmServer, k: int, s: int) -> bool #export_c {
-  return k >= 0 && k < EG_ROOMS && s >= 0 && s < EG_SEATS && v[0].eg[k].live && v[0].eg[k].seat[s].live && !v[0].eg[k].seat[s].placed;
+  return k >= 0 && k < EG_ROOMS && s >= 0 && s < EG_SEATS && v[0].eg[k].live && v[0].eg[k].seat[s].live && !v[0].eg[k].seat[s].placed && (v[0].eg[k].seat[s].checkpoint_hello || eg_ticket(v,k,s).schema!=2);
 }
 rm_eg_rooms :: () -> int #export_c { return EG_ROOMS; }
 rm_eg_seats :: () -> int #export_c { return EG_SEATS; }

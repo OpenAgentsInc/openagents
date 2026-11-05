@@ -318,6 +318,39 @@ static void room_count(PGconn *db, const char *reason) {
   if (PQresultStatus(r) == PGRES_TUPLES_OK) room_rate_n = 0;
   PQclear(r);
 }
+// SDK transaction adapter: choose the checked profile, lock identity/owner,
+// read the complete accepted capture, and issue its successor before COMMIT.
+static int ticket_resume(const request *q, PGconn *db, const char *pid, char saved[2049], int *xp, long long *owner) {
+  const char *pv[1]={pid}; PGresult *r=NULL; char who[96], asked[8];
+  const char *enabled=getenv("OA_ROOM_CHECKPOINTS");
+  bool wants=api_query(q,"checkpoint",asked,sizeof asked)&&!strcmp(asked,"2");
+  if (!progress_run(db,"BEGIN")) return -1;
+  r=PQexecParams(db,"SELECT coalesce(account,id) FROM verse.players WHERE id=$1 FOR SHARE",1,NULL,pv,NULL,NULL,0);
+  if (PQresultStatus(r)!=PGRES_TUPLES_OK||PQntuples(r)!=1) goto fail;
+  snprintf(who,sizeof who,"%s",PQgetvalue(r,0,0));PQclear(r);r=NULL;
+  const char *wv[1]={who};
+  r=PQexecParams(db,"SELECT gen FROM verse.room_owners WHERE who=$1 FOR UPDATE",1,NULL,wv,NULL,NULL,0);
+  if (PQresultStatus(r)!=PGRES_TUPLES_OK) goto fail;PQclear(r);r=NULL;
+  r=PQexecParams(db,"SELECT EXISTS(SELECT 1 FROM verse.character_profiles_v2 WHERE who=$1)",1,NULL,wv,NULL,NULL,0);
+  if (PQresultStatus(r)!=PGRES_TUPLES_OK||PQntuples(r)!=1) goto fail;
+  int profile=(int)checkpoint2_profile(wants,enabled&&!strcmp(enabled,"1"),PQgetvalue(r,0,0)[0]=='t');PQclear(r);r=NULL;
+  if (profile==2) goto fail;
+  if (profile==1) {
+    if (!progress_run(db,"SET LOCAL synchronous_commit=on")) goto fail;
+    r=PQexecParams(db,"SELECT verse.room_owner_next($1),current_setting('fsync')='on'",1,NULL,pv,NULL,NULL,0);
+    if (PQresultStatus(r)!=PGRES_TUPLES_OK||PQntuples(r)!=1||PQgetisnull(r,0,0)||PQgetvalue(r,0,1)[0]!='t') goto fail;
+    *owner=atoll(PQgetvalue(r,0,0));PQclear(r);r=NULL;
+    r=PQexecParams(db,"INSERT INTO verse.character_profiles_v2(who) VALUES($1) ON CONFLICT DO NOTHING",1,NULL,wv,NULL,NULL,0);
+    if(PQresultStatus(r)!=PGRES_COMMAND_OK)goto fail;PQclear(r);r=NULL;
+    r=PQexecParams(db,"SELECT coalesce((SELECT body::text FROM verse.character_checkpoints_v2 WHERE who=$1),'-'),greatest(coalesce((SELECT xp FROM verse.room_vitals WHERE who=$1),0),coalesce((SELECT (body->>'xp')::bigint FROM verse.character_checkpoints_v1 WHERE who=$1),0),coalesce((SELECT (body->>'xp')::bigint FROM verse.character_checkpoints_v2 WHERE who=$1),0))",1,NULL,wv,NULL,NULL,0);
+    if (PQresultStatus(r)!=PGRES_TUPLES_OK||PQntuples(r)!=1||strlen(PQgetvalue(r,0,0))>2048) goto fail;
+    snprintf(saved,2049,"%s",PQgetvalue(r,0,0));*xp=atoi(PQgetvalue(r,0,1));PQclear(r);r=NULL;
+  }
+  if (!progress_run(db,"COMMIT")) goto fail;
+  return profile;
+fail:
+  if(r)PQclear(r);progress_run(db,"ROLLBACK");return -1;
+}
 static void room_ticket(const request *q, PGconn *db, const char *key, bool site, const char *room, const char *body) {
   if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a ticket\"}"); return; }
   const char *secret = getenv("OA_ROOM_TICKET_KEY");
@@ -450,6 +483,13 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
   }
   struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts);
   long long expires = (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000 + TICKET_MS;
+  char saved[2049]="-"; long long checkpoint_owner=0;
+  int resume=ticket_resume(q,db,pid,saved,&xp,&checkpoint_owner);
+  if (resume<0) {api_json(q->fd,503,"{\"error\":\"character recovery unavailable\"}");return;}
+  if (resume==1) {
+    coax_string cls=checkpoint2_class((coax_string){saved,(int64_t)strlen(saved)});
+    if(cls.count)snprintf(klass,sizeof klass,"%.*s",(int)cls.count,cls.data);
+  }
   char text[256];
   char hps[32]; if (hp >= 0 && hp < 100000) snprintf(hps, sizeof hps, "%d", hp); else strcpy(hps, "-");
   if (xp > 0) snprintf(hps + strlen(hps), sizeof hps - strlen(hps), "x%d", xp);
@@ -459,7 +499,8 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
      every shard reads it (OA_ROOM_OWNER_GEN=1; a room from before refuses a ticket with it). The room
      sends it with its vitals lines, and a line below the character's newest generation is not kept. */
   const char *og = getenv("OA_ROOM_OWNER_GEN");
-  if (og && !strcmp(og, "1")) {
+  if (resume==1) snprintf(hps+strlen(hps),sizeof hps-strlen(hps),"g%lld",checkpoint_owner);
+  else if (og && !strcmp(og, "1")) {
     const char *gv[1] = {pid};
     PGresult *gr = PQexecParams(db, "SELECT verse.room_owner_next($1)", 1, NULL, gv, NULL, NULL, 0);
     if (PQresultStatus(gr) == PGRES_TUPLES_OK && PQntuples(gr) == 1 && !PQgetisnull(gr, 0, 0)) {
@@ -482,7 +523,13 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
   if (!HMAC(EVP_sha256(), secret, (int)strlen(secret), (const unsigned char *)text, (size_t)tn, mac, &ml) || ml != 32) { api_json(q->fd, 500, "{\"error\":\"no ticket\"}"); return; }
   text[tn++] = '.';
   for (unsigned i = 0; i < 32; i++) tn += snprintf(text + tn, sizeof text - (size_t)tn, "%02x", mac[i]);
-  char out[1600], en[48], st[960] = "";
+  char resumed[4097]; const char *ticket=text;
+  if (resume==1) {
+    coax_string prefix=resume_ticket_prefix((coax_string){text,tn},(coax_string){saved,(int64_t)strlen(saved)},(coax_v_u8){(uint8_t *)resumed,4031});
+    if (!prefix.count || !HMAC(EVP_sha256(),secret,(int)strlen(secret),(const unsigned char *)resumed,(size_t)prefix.count,mac,&ml) || ml!=32) {api_json(q->fd,503,"{\"error\":\"character recovery unavailable\"}");return;}
+    int pos=(int)prefix.count;resumed[pos++]='.';for(unsigned i=0;i<32;i++)pos+=snprintf(resumed+pos,sizeof resumed-(size_t)pos,"%02x",mac[i]);ticket=resumed;
+  }
+  char out[6144], en[48], st[960] = "";
   esc(en, sizeof en, name);
   int sn = 0;
   if (hp >= 0) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"hp\":%d", hp);
@@ -506,7 +553,7 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
     sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"asked\":\"%s\"%s%s%s", asked, by[0] ? ",\"by\":\"" : "", eb, by[0] ? "\"" : "");
   }
   if (blocked[0]) snprintf(st + sn, sizeof st - (size_t)sn, ",\"blocked\":\"%s\"", blocked);
-  snprintf(out, sizeof out, "{\"ticket\":\"%s\",\"id\":\"%s\",\"account\":%s,\"admin\":%s,\"name\":\"%s\",\"expires\":%lld%s}", text, pid, account ? "true" : "false", acct == 2 ? "true" : "false", en, expires, st);
+  snprintf(out, sizeof out, "{\"ticket\":\"%s\",\"id\":\"%s\",\"account\":%s,\"admin\":%s,\"name\":\"%s\",\"expires\":%lld%s}", ticket, pid, account ? "true" : "false", acct == 2 ? "true" : "false", en, expires, st);
   api_json(q->fd, 200, out);
 }
 
@@ -681,7 +728,7 @@ static void room_items(const request *q, PGconn *db) {
 // character-checkpoint-v1: SDK authentication, locked database facts, then the
 // Coax policy's transaction effects. A receipt follows a WAL-flushed commit.
 // This receiver is additive: no room producer or ticket restore uses it yet.
-static void room_checkpoint(const request *q, PGconn *db) {
+static void room_checkpoint(const request *q, PGconn *db, int version) {
   if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a checkpoint\"}"); return; }
   const char *secret = getenv("OA_ROOM_TICKET_KEY");
   if (!secret || strlen(secret) < 32) { api_json(q->fd, 503, "{\"error\":\"no ticket key\"}"); return; }
@@ -694,7 +741,7 @@ static void room_checkpoint(const request *q, PGconn *db) {
   if (diff) { api_json(q->fd, 401, "{\"error\":\"bad mac\"}"); return; }
   struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts);
   int64_t now = (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
-  if (!room_checkpoint_input((coax_string){.data = (const char *)q->body, .count = q->body_len}, now)) {
+  if (!(version == 2 ? checkpoint2_input((coax_string){(const char *)q->body, q->body_len}, now) : room_checkpoint_input((coax_string){(const char *)q->body, q->body_len}, now))) {
     api_json(q->fd, 400, "{\"error\":\"bad checkpoint\"}"); return;
   }
   char body[4097]; memcpy(body, q->body, q->body_len); body[q->body_len] = 0;
@@ -722,7 +769,7 @@ static void room_checkpoint(const request *q, PGconn *db) {
   int64_t owner = atoll(PQgetvalue(r,0,0)), process = atoll(PQgetvalue(r,0,1)), rev = atoll(PQgetvalue(r,0,2)), xp = atoll(PQgetvalue(r,0,3));
   bool durable = PQgetvalue(r,0,4)[0] == 't';
   PQclear(r);
-  r = PQexecParams(db, "SELECT owner,process,rev,(body->>'xp')::bigint,body=($1::jsonb-'sent'),accepted_at FROM verse.character_checkpoints_v1 WHERE who=$2 FOR UPDATE", 2, NULL, v, NULL, NULL, 0);
+  r = PQexecParams(db, version == 2 ? "SELECT owner,process,rev,(body->>'xp')::bigint,body=($1::jsonb-'sent'),accepted_at FROM verse.character_checkpoints_v2 WHERE who=$2 FOR UPDATE" : "SELECT owner,process,rev,(body->>'xp')::bigint,body=($1::jsonb-'sent'),accepted_at FROM verse.character_checkpoints_v1 WHERE who=$2 FOR UPDATE", 2, NULL, v, NULL, NULL, 0);
   if (PQresultStatus(r) != PGRES_TUPLES_OK) { free(who); goto failed; }
   bool old = PQntuples(r) == 1;
   int64_t old_owner = old ? atoll(PQgetvalue(r,0,0)) : 0, old_process = old ? atoll(PQgetvalue(r,0,1)) : 0;
@@ -730,17 +777,26 @@ static void room_checkpoint(const request *q, PGconn *db) {
   bool same = old && PQgetvalue(r,0,4)[0] == 't';
   int64_t accepted = old ? atoll(PQgetvalue(r,0,5)) : 0;
   PQclear(r); r = NULL;
+  if (version == 2 && old_owner != owner) {
+    r = PQexecParams(db, "SELECT greatest(coalesce((SELECT xp FROM verse.room_vitals WHERE who=$1),0),coalesce((SELECT (body->>'xp')::bigint FROM verse.character_checkpoints_v1 WHERE who=$1),0),coalesce((SELECT (body->>'xp')::bigint FROM verse.character_checkpoints_v2 WHERE who=$1),0))", 1,NULL,wv,NULL,NULL,0);
+    if (PQresultStatus(r)!=PGRES_TUPLES_OK || PQntuples(r)!=1) { free(who); goto failed; }
+    old_xp=atoll(PQgetvalue(r,0,0)); PQclear(r); r=NULL;
+  }
   int64_t code = room_checkpoint_decide(durable,known,owner,directory,process,rev,xp,old_owner,old_process,old_rev,old_xp,same);
   if (code == 0) {
-    r = PQexecParams(db, "INSERT INTO verse.character_checkpoints_v1 AS c (who,owner,process,rev,body,accepted_at) SELECT $2,(j->>'owner')::bigint,(j->>'process')::bigint,(j->>'rev')::bigint,j-'sent',verse.now_ms() FROM (SELECT $1::jsonb j) s ON CONFLICT (who) DO UPDATE SET owner=EXCLUDED.owner,process=EXCLUDED.process,rev=EXCLUDED.rev,body=EXCLUDED.body,accepted_at=EXCLUDED.accepted_at RETURNING accepted_at", 2, NULL, v, NULL, NULL, 0);
+    r = PQexecParams(db, version == 2 ? "INSERT INTO verse.character_checkpoints_v2 AS c (who,owner,process,rev,body,accepted_at) SELECT $2,(j->>'owner')::bigint,(j->>'process')::bigint,(j->>'rev')::bigint,j-'sent',verse.now_ms() FROM (SELECT $1::jsonb j) s ON CONFLICT (who) DO UPDATE SET owner=EXCLUDED.owner,process=EXCLUDED.process,rev=EXCLUDED.rev,body=EXCLUDED.body,accepted_at=EXCLUDED.accepted_at RETURNING accepted_at" : "INSERT INTO verse.character_checkpoints_v1 AS c (who,owner,process,rev,body,accepted_at) SELECT $2,(j->>'owner')::bigint,(j->>'process')::bigint,(j->>'rev')::bigint,j-'sent',verse.now_ms() FROM (SELECT $1::jsonb j) s ON CONFLICT (who) DO UPDATE SET owner=EXCLUDED.owner,process=EXCLUDED.process,rev=EXCLUDED.rev,body=EXCLUDED.body,accepted_at=EXCLUDED.accepted_at RETURNING accepted_at", 2, NULL, v, NULL, NULL, 0);
     if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { free(who); goto failed; }
     accepted = atoll(PQgetvalue(r,0,0)); PQclear(r); r = NULL;
+    if (version==2) {
+      r=PQexecParams(db,"INSERT INTO verse.room_vitals AS x(who,hp,hp_max,hp_at,xp,wanted,wanted_at,at) SELECT $2,(j->>'hp')::int,(j->>'max')::int,(j->>'at')::bigint,(j->>'xp')::int,(j->>'wanted')::int,(j->>'at')::bigint,(j->>'at')::bigint FROM (SELECT $1::jsonb j) s ON CONFLICT(who) DO UPDATE SET hp=EXCLUDED.hp,hp_max=EXCLUDED.hp_max,hp_at=EXCLUDED.hp_at,xp=greatest(x.xp,EXCLUDED.xp),wanted=EXCLUDED.wanted,wanted_at=EXCLUDED.wanted_at,at=greatest(x.at,EXCLUDED.at)",2,NULL,v,NULL,NULL,0);
+      if (PQresultStatus(r)!=PGRES_COMMAND_OK) {free(who);goto failed;}PQclear(r);r=NULL;
+    }
   }
   free(who);
   if (!progress_run(db, "COMMIT")) goto failed;
   coax_string status = room_checkpoint_status(code);
   char out[256];
-  snprintf(out,sizeof out,"{\"v\":1,\"status\":\"%.*s\",\"owner\":%lld,\"process\":%lld,\"rev\":%lld,\"accepted_at\":%lld}", (int)status.count,status.data,(long long)owner,(long long)process,(long long)rev,(long long)((code==0||code==1)?accepted:0));
+  snprintf(out,sizeof out,"{\"v\":%d,\"status\":\"%.*s\",\"owner\":%lld,\"process\":%lld,\"rev\":%lld,\"accepted_at\":%lld}", version,(int)status.count,status.data,(long long)owner,(long long)process,(long long)rev,(long long)((code==0||code==1)?accepted:0));
   api_json(q->fd, 200, out); return;
 failed:
   if (r) PQclear(r);
@@ -790,15 +846,8 @@ static void room_vitals(const request *q, PGconn *db) {
       snprintf(xs, sizeof xs, "%d", xp);
       const char *v[5] = {pid, hs, ms, as, xs};
       /* XP only rises: the larger of the kept and the reported (a -1 reports none) */
-      PGresult *r = PQexecParams(db,
-        "INSERT INTO verse.room_vitals (who, hp, hp_max, hp_at, at, xp) "
-        "SELECT coalesce(account, id), $2::int, $3::int, $4::bigint, $4::bigint, nullif(greatest($5::int, -1), -1) FROM verse.players WHERE id = $1 "
-        "ON CONFLICT (who) DO UPDATE SET hp = CASE WHEN verse.room_vitals.hp_at IS NULL OR verse.room_vitals.hp_at <= EXCLUDED.hp_at THEN EXCLUDED.hp ELSE verse.room_vitals.hp END, "
-        "  hp_max = CASE WHEN verse.room_vitals.hp_at IS NULL OR verse.room_vitals.hp_at <= EXCLUDED.hp_at THEN EXCLUDED.hp_max ELSE verse.room_vitals.hp_max END, "
-        "  hp_at = greatest(verse.room_vitals.hp_at, EXCLUDED.hp_at), at = greatest(verse.room_vitals.at, EXCLUDED.at), "
-        "  xp = greatest(verse.room_vitals.xp, EXCLUDED.xp) "
-        "WHERE verse.room_vitals.hp_at IS NULL OR verse.room_vitals.hp_at <= EXCLUDED.hp_at OR EXCLUDED.xp > coalesce(verse.room_vitals.xp, -1)", 5, NULL, v, NULL, NULL, 0);
-      if (PQresultStatus(r) == PGRES_COMMAND_OK) kept += atoi(PQcmdTuples(r));
+      PGresult *r=PQexecParams(db,"SELECT verse.room_vital_legacy($1,$2::int,$3::int,$5::int,$4::bigint)",5,NULL,v,NULL,NULL,0);
+      if(PQresultStatus(r)==PGRES_TUPLES_OK&&PQntuples(r)==1)kept+=atoi(PQgetvalue(r,0,0));
       else api_log("room-vitals: %s", PQerrorMessage(db));
       PQclear(r);
     }
@@ -927,7 +976,8 @@ bool player_route(const request *q) {
   // oa-room's HP report (#12715): signed with the seat-ticket key, not a player's
   if (!strcmp(rest, "room-vitals")) { room_vitals(q, db); return true; }
   if (!strcmp(rest, "room-items")) { room_items(q, db); return true; }   // the item ledger (#12849)
-  if (!strcmp(rest, "room-checkpoint")) { room_checkpoint(q, db); return true; } // character-checkpoint-v1 (#12838)
+  if (!strcmp(rest, "room-checkpoint-v2")) { room_checkpoint(q,db,2); return true; }
+  if (!strcmp(rest, "room-checkpoint")) { room_checkpoint(q, db, 1); return true; } // character-checkpoint-v1 (#12838)
   if (!strcmp(rest, "room-control")) { room_control(q, db); return true; }
   // the Everglade instance directory (rooms.c, #12717): a shard's report, and the instances' list
   if (rooms_route(q, db, rest)) return true;
