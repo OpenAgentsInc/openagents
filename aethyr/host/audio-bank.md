@@ -9,6 +9,9 @@ existing 3 MiB `sound_bank`; no bytes, synthesis or layout change. The
 metadata list remains `NAME ADDRESS BYTES` lines. Pointer exports use the
 face's established address width. Legacy faces without a bank remain valid;
 a v1 bank consumer must not infer physical capacity from its reported count.
+Before constructing a metadata view, it also checks the reported list length
+against `coaxial_sound_bank_capacity(state)`, the actual existing 4096-byte
+list allocation. The shared measured-span authority admits that complete view.
 
 `audio-bank.coax` exports:
 

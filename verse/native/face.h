@@ -16,6 +16,7 @@ uint32_t coaxial_uniform_floats(void);
 // allocation before any NAME ADDRESS BYTES metadata span is copied.
 uint32_t coaxial_sound_bank(uint32_t state);
 uint32_t coaxial_sound_bank_len(uint32_t state);
+uint32_t coaxial_sound_bank_capacity(uint32_t state);
 uint32_t coaxial_sound_bank_storage(uint32_t state);
 uint32_t coaxial_sound_bank_storage_bytes(uint32_t state);
 uint32_t coaxial_sounds(uint32_t state);

@@ -799,6 +799,7 @@ EXPORT("coaxial_sound_bank_len") uint32_t coaxial_sound_bank_len(cx_face_addr st
   return n;
 }
 EXPORT("coaxial_sound_bank") cx_face_addr coaxial_sound_bank(cx_face_addr state) { (void)state; return (cx_face_addr)(uintptr_t)sound_list; }
+EXPORT("coaxial_sound_bank_capacity") uint32_t coaxial_sound_bank_capacity(cx_face_addr state) { (void)state; return sizeof sound_list; }
 // Physical borrowed bank storage. V1 hosts admit every metadata span against
 // this measured allocation before copying or decoding its WAV bytes.
 EXPORT("coaxial_sound_bank_storage") cx_face_addr coaxial_sound_bank_storage(cx_face_addr state) { (void)state; return (cx_face_addr)(uintptr_t)sound_bank; }
