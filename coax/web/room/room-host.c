@@ -869,6 +869,7 @@ int main(int argc, char **argv) {
       ticks++;
       next += tick;
       if ((double)now - next > 250.0) {   // a stall: start the beat again (each seat earns its steps by the clock: rm_eg_begin)
+        printf("room: a stall of %.0f ms, the beat started again\n", (double)now - next);
         next = (double)now + tick;
       }
       if (now - last_vitals >= 1000) { last_vitals = now; vitals_post(); directory_post(); stats_sample(); }

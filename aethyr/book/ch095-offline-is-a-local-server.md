@@ -55,6 +55,13 @@ simulation is deleted, not kept as a fallback.
 other host misses it. Both hosts start the server with its declared defaults
 and `rm_init` (chapter 86), never with state set in a host's `main`.
 
+**Shared math.** One tick is not enough if the two hosts round floats
+differently. macOS's libm and wasi-libc give different last bits for some
+sines, exponentials and powers, and the town's falls and sight checks turn
+those bits into different outcomes. Both hosts link `room-math.c` in place
+of the C library's functions and build with `-ffp-contract=off`, so the
+native step and the wasm step compute the same bits (#12893).
+
 **Measure the cost.** A phone now runs the simulation as well as the
 drawing. The worker's tick time is measured on a phone-class CPU throttle,
 next to the 60 FPS rule of chapter 83.
@@ -66,6 +73,8 @@ next to the 60 FPS rule of chapter 83.
   the 30 Hz beat, and stands in for the API's control lines
   (`?levels=off`, and `?raid=preview` as a room event).
 - `coax/web/room/room-tick.c`: the tick both hosts include.
+- `coax/web/room/room-math.c`: the sines, exponentials and powers both hosts
+  link, checked by `coax/web/room/room-math-check.sh`.
 - Deletion of the page's offline-only simulation paths, with the count of
   room branches before and after.
 

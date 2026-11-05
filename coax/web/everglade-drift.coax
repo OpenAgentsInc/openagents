@@ -16,7 +16,8 @@
 //   - for each network profile, the network between the room page and the room
 //     (coax/web/room/net-proxy.coax): local is none, 100 and 250 are that round trip with 30 ms of
 //     jitter and 2% of reads lost; and BOTS players in the room (coax/web/room/drift-bots.coax).
-// The session, sent to both pages at the same moments (the room page at ?relay=ws://localhost:PROXY&room=pair-drift-N: the page takes
+// The session, sent to both pages at the same moments, each press at the same step of both pages
+// (dr_both: so both rooms hear the same inputs, #12893) (the room page at ?relay=ws://localhost:PROXY&room=pair-drift-N: the page takes
 // only a localhost relay):
 //   start, crate (W into the crate the world puts 1.5 m ahead of the spawn), strafe (W and D: along
 //   it), walk, jump, rg (Reverse Gravity from the bar, 5, and again to end it), wos (Wall of Stone,
@@ -39,8 +40,10 @@
 // second, none over 0.5 m), and the town's people (walking in place: a walking clip drawn where it
 // was the frame before, on no more than DR_STALL more of the frames than offline).
 // Output: one line per probe and profile, a table, and holds or fails (exit 0 or 1). The rows, both
-// pages' screenshots as each step ends (shot-PROFILE-STEP-offline.png, -room.png) and the servers'
-// logs go to DIR (default coax/web/build/everglade-drift/STAMP).
+// pages' screenshots as each step ends (shot-PROFILE-STEP-offline.png, -room.png), when each press
+// reached each page (keys-PROFILE-offline.txt, -room.txt) and the servers' logs go to DIR (default
+// coax/web/build/everglade-drift/STAMP). The offline page's room host says the stalls that dropped its
+// beat, and room.log oa-room's ("a stall of"): a town a stall set back is not the two simulations parting.
 #import "Basic";
 #load "../lib/net/cdp.coax";
 
@@ -168,11 +171,14 @@ dr_way :: (pr: DrProbe, a: [] DrPage, b: [] DrPage, window: int, t0: int, t1: in
 }
 
 // The session's script: each step's name, then its keys. Both pages get each at once.
+dr_key_js :: (q: [] Buf, down: bool, key: string, code: string, vk: int, shift: bool) {
+  bput(q, "dispatchEvent(new KeyboardEvent('"); bput(q, ifx down then "keydown" else "keyup");
+  bput(q, "', {key: '"); bput(q, key); bput(q, "', code: '"); bput(q, code); bput(q, "', keyCode: "); bint(q, vk);
+  bput(q, ifx shift then ", shiftKey: true" else ""); bput(q, ", bubbles: true}))");
+}
 dr_press :: (c: [] Cdp, down: bool, key: string, code: string, vk: int, shift: bool) -> bool {
   q: [1] Buf;
-  bput(q[..], "dispatchEvent(new KeyboardEvent('"); bput(q[..], ifx down then "keydown" else "keyup");
-  bput(q[..], "', {key: '"); bput(q[..], key); bput(q[..], "', code: '"); bput(q[..], code); bput(q[..], "', keyCode: "); bint(q[..], vk);
-  bput(q[..], ifx shift then ", shiftKey: true" else ""); bput(q[..], ", bubbles: true})); 1");
+  dr_key_js(q[..], down, key, code, vk, shift); bput(q[..], "; 1");
   return dr_int(c, btext(q[..]), 0) == 1;
 }
 dr_int :: (c: [] Cdp, js: string, fallback: int) -> int {
@@ -187,7 +193,8 @@ dr_str :: (c: [] Cdp, js: string, out: [] u8) -> string {
 }
 // ctl: the room's control file (the held step's scripted Hold Person); room: the room page's room
 // code; worker: the offline page plays on the local host (?offline=worker)
-DrPair :: struct { a: [] Cdp; b: [] Cdp; shots: string; ctl: string; room: int; worker: bool; }
+// at: the step the last press went in at (dr_both); empty, each page takes a press as it comes
+DrPair :: struct { a: [] Cdp; b: [] Cdp; shots: string; ctl: string; room: int; worker: bool; at: [] int; }
 DR_SHOT :: 8388608;
 // Both pages as they look now, into SHOTS-NAME-offline.png and -room.png (no SHOTS: none).
 dr_shots :: (p: DrPair, name: string) {
@@ -199,9 +206,21 @@ dr_shots :: (p: DrPair, name: string) {
     if n > 0 { _ := fs_write(btext(q[..]), cast(string) png[0..<n]); }
   }
 }
-dr_both_key :: (p: DrPair, down: bool, key: string, code: string, vk: int) {
-  _ := dr_press(p.a, down, key, code, vk, false); _ = dr_press(p.b, down, key, code, vk, false);
+// A press on both pages at one step of each (everglade-drift.js __dr.at, #12893): DR_AHEAD steps past
+// the later page's step now, and after the last press's, so the two rooms hear the same inputs.
+DR_AHEAD :: 3;
+dr_both :: (p: DrPair, down: bool, key: string, code: string, vk: int, shift: bool) {
+  sa := dr_int(p.a, "__dr.sstep()", -1); sb := dr_int(p.b, "__dr.sstep()", -1);
+  if p.at.count == 0 || sa < 0 || sb < 0 { _ := dr_press(p.a, down, key, code, vk, shift); _ = dr_press(p.b, down, key, code, vk, shift); return; }
+  t := (ifx sa > sb then sa else sb) + DR_AHEAD;
+  if t <= p.at[0] { t = p.at[0] + 1; }
+  p.at[0] = t;
+  for side: 0..<2 {
+    q: [1] Buf; bput(q[..], "__dr.at("); bint(q[..], t); bput(q[..], ", () => "); dr_key_js(q[..], down, key, code, vk, shift); bput(q[..], ")");
+    _ := dr_int(ifx side == 0 then p.a else p.b, btext(q[..]), 0);
+  }
 }
+dr_both_key :: (p: DrPair, down: bool, key: string, code: string, vk: int) { dr_both(p, down, key, code, vk, false); }
 dr_tap :: (p: DrPair, key: string, code: string, vk: int) { dr_both_key(p, true, key, code, vk); proc_sleep(80); dr_both_key(p, false, key, code, vk); }
 dr_mark :: (p: DrPair, name: string) {
   if p.shots.count > 0 && name != "start" && name != "raid" { dr_shots(p, name); }
@@ -245,8 +264,7 @@ dr_hold :: (p: DrPair) {
 
 dr_script :: (p: DrPair, dir: string) {
   dr_mark(p, "start");
-  _ := dr_press(p.a, true, "Escape", "Escape", 27, false); _ = dr_press(p.b, true, "Escape", "Escape", 27, false);
-  _ = dr_press(p.a, false, "Escape", "Escape", 27, false); _ = dr_press(p.b, false, "Escape", "Escape", 27, false);
+  dr_both_key(p, true, "Escape", "Escape", 27); dr_both_key(p, false, "Escape", "Escape", 27);
   proc_sleep(1500);
   dr_mark(p, "crate");
   dr_both_key(p, true, "w", "KeyW", 87); proc_sleep(2500);
@@ -259,8 +277,8 @@ dr_script :: (p: DrPair, dir: string) {
   // a round (6 s) between casts: the rules' one action a round
   dr_tap(p, "5", "Digit5", 53); proc_sleep(6000); dr_tap(p, "5", "Digit5", 53); proc_sleep(6500);
   dr_mark(p, "wos");
-  _ = dr_press(p.a, true, "!", "Digit1", 49, true); _ = dr_press(p.b, true, "!", "Digit1", 49, true); proc_sleep(80);
-  _ = dr_press(p.a, false, "!", "Digit1", 49, true); _ = dr_press(p.b, false, "!", "Digit1", 49, true); proc_sleep(6500);
+  dr_both(p, true, "!", "Digit1", 49, true); proc_sleep(80);
+  dr_both(p, false, "!", "Digit1", 49, true); proc_sleep(6500);
   // a step aside first, so the Wind Wall (4 m ahead) isn't laid into the Wall of Stone
   dr_both_key(p, true, "a", "KeyA", 65); proc_sleep(1500); dr_both_key(p, false, "a", "KeyA", 65); proc_sleep(500);
   dr_mark(p, "ww");
@@ -610,14 +628,22 @@ dr_session :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] Dr
         dr_dice(ca[..], run.worker);
         proc_sleep(2500);
         sh: [1] Buf; bput(sh[..], run.dir); bput(sh[..], "/shot-"); bput(sh[..], profile);
-        dr_script(DrPair.{a = ca[..], b = cb[..], shots = btext(sh[..]), ctl = run.ctl, room = code, worker = run.worker}, run.dir);
+        at: [1] int;
+        dr_script(DrPair.{a = ca[..], b = cb[..], shots = btext(sh[..]), ctl = run.ctl, room = code, worker = run.worker, at = at[..]}, run.dir);
         ok = dr_pull(ca[..], a) && dr_pull(cb[..], b);
+        if run.worker { print("  (offline room host: % stalls, % ms of its beat dropped)\n", dr_int(ca[..], "coaxial.roomHost ? coaxial.roomHost.stalls | 0 : -1", -1), dr_int(ca[..], "coaxial.roomHost ? coaxial.roomHost.lost | 0 : -1", -1)); }
         // the town's people's conditions as each page drew them (wall ms, then PERSON:BITS), a note
         // for a drift of "conditions on the town's people": conds-PROFILE-offline.txt, -room.txt
         for side: 0..<2 {
           cn: [1] Buf; bput(cn[..], run.dir); bput(cn[..], "/conds-"); bput(cn[..], profile); bput(cn[..], ifx side == 0 then "-offline.txt" else "-room.txt");
           ct: [65536] u8;
           _ := fs_write(btext(cn[..]), dr_str(ifx side == 0 then ca[..] else cb[..], "__dr.conds.join('\\n') + '\\n'", ct[..]));
+        }
+        // when each key reached each page (wall ms CODE down|up): keys-PROFILE-offline.txt, -room.txt
+        for side: 0..<2 {
+          kn: [1] Buf; bput(kn[..], run.dir); bput(kn[..], "/keys-"); bput(kn[..], profile); bput(kn[..], ifx side == 0 then "-offline.txt" else "-room.txt");
+          kt: [16384] u8;
+          _ := fs_write(btext(kn[..]), dr_str(ifx side == 0 then ca[..] else cb[..], "__dr.keys.join('\\n') + '\\n'", kt[..]));
         }
       } else {
         da: [2048] u8; db: [2048] u8; js := "JSON.stringify({rows: window.__dr && __dr.count(), net: window.__dr && __dr.probe(0), seat: window.__dr && __dr.probe(1), wasm: !!(window.__dr && __dr.x), title: document.title, url: location.href})";

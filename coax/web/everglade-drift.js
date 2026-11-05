@@ -10,12 +10,24 @@
   const D = (window.__dr = { x: null, state: 0, rows: null, fr: [], marks: [], texts: [], bars: [], pageT: 0, folk: null, look: 0, conds: [], fcond: null });
   // a pointer move this frame (1): the camera may turn only then (the drift check's camera probe)
   addEventListener("pointermove", (e) => { if (e.buttons || document.pointerLockElement) D.look = 1; }, true);
+  // each key as the page heard it (wall ms, its code, down or up): when the driver's press reached this page
+  D.keys = [];
+  addEventListener("keydown", (e) => { if (!e.repeat) D.keys.push(Math.round(now()) + " " + e.code + " down"); }, true);
+  addEventListener("keyup", (e) => D.keys.push(Math.round(now()) + " " + e.code + " up"), true);
   // a row's columns, in order (the driver reads them by these names)
   D.cols = ["t", "page_ms", "feet_x_mm", "feet_y_mm", "feet_z_mm", "yaw_mrad", "lift_cm", "reruns", "fix_mm",
     "sprites", "fx_rg", "fx_ww", "fx_wos", "fx_spells", "bar", "cond_you", "cond_server", "cond_others", "cond_folk",
     "cond_engine", "stables_down", "stables_all", "act", "clip", "net", "folk_walking", "folk_stalled", "folk_moved_mm", "face_mrad", "server_yaw_mrad", "look"];
   const FOLK = 28;   // EG_SPOTS
-  D.mark = (name) => { D.marks.push([name, D.fr.length, Math.round(now())]); return 1; };
+  D.mark = (name) => { if (name === "start") D.origin = D.probe(15); D.marks.push([name, D.fr.length, Math.round(now())]); return 1; };
+  // The session's presses by the page's steps (#12893): the driver gives both pages one step (since
+  // the start mark: the input sequence, net_probe 15) for each press, and each page makes it just
+  // before the frame that takes that step. A press made at the same moment on both pages fell on
+  // either side of a step by its own frames, so a 3 s hold was 90 steps on one page and 91 on the
+  // other: the two players stood 17 cm apart, and the two towns played out differently round them.
+  D.origin = null; D.pend = [];
+  D.sstep = () => (D.origin == null || !D.x || !D.state ? -1 : D.probe(15) - D.origin);
+  D.at = (step, press) => { D.pend.push([D.origin + step, press]); return 1; };
   let mem = null;
   const text = (ex, state, which) => {
     if (!ex.coaxial_drift_text || !mem) return null;
@@ -38,6 +50,11 @@
     if (!mem) for (const ns of Object.values(imports || {})) for (const v of Object.values(ns || {})) if (v instanceof WebAssembly.Memory) mem = v;
     ex.coaxial_frame = function (state, ...rest) {
       D.pageT += (Number(rest[5]) || 0) * 1000;
+      if (D.pend.length && state > 0) {
+        // a press due at the next step goes in now (a frame takes at most one step but on a stall)
+        const seq = real.exports.coaxial_net_probe(state, 15);
+        while (D.pend.length && D.pend[0][0] - 1 <= seq) D.pend.shift()[1]();
+      }
       const n = frame.call(this, state, ...rest);
       if (state > 0 && D.fr.length < 30000) {
         D.state = state;

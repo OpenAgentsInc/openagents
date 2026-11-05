@@ -19,12 +19,16 @@ for u in "${units[@]}"; do
   n="$(basename "$u" .coax)"
   (cd "$root" && "$coax" c "$u" --library --header "$work/$n.h" > "$work/$n.c")
 done
+# The simulation's floats as the browser's local host computes them (worker.sh, #12893): no fused
+# a * b + c, and the C library's sines, exponentials and powers left to room-math.c, which both hosts link.
+strict=(-ffp-contract=off -fno-fast-math)
+for f in sin cos tan exp log pow; do strict+=("-fno-builtin-$f" "-fno-builtin-${f}f"); done
 objs=("$work/room.o")
-cc -std=c11 -O2 -w -c "$work/room.c" -o "$work/room.o" &
+cc -std=c11 -O2 "${strict[@]}" -w -c "$work/room.c" -o "$work/room.o" &
 for u in "${units[@]}"; do
   n="$(basename "$u" .coax)"
   # at -O2, as the image builds them (Dockerfile): the tick runs them for every room 30 times a second
-  cc -std=c11 -O2 -w -c "$work/$n.c" -o "$work/$n.o" &
+  cc -std=c11 -O2 "${strict[@]}" -w -c "$work/$n.c" -o "$work/$n.o" &
   objs+=("$work/$n.o")
 done
 wait
@@ -41,12 +45,15 @@ if [[ -s "$work/both.syms" ]]; then
   fi
   objs[0]="$work/room-own.o"
 fi
-cc -std=c11 -O2 -w -I"$work" -c "$here/room-world.c" -o "$work/room-world.o"
+cc -std=c11 -O2 "${strict[@]}" -w -I"$work" -c "$here/room-world.c" -o "$work/room-world.o"
+cc -std=c11 -O2 "${strict[@]}" -Wall -Wextra -c "$here/room-math.c" -o "$work/room-math.o"
 # the pack's catalog, the bounds the world's pieces break with (room-catalog.py)
 python3 "$here/room-catalog.py" "$root/apps/openagents-web/realms/everglade/assets/everglade.pack" "$work/room-catalog.c"
 cc -std=c11 -O2 -w -c "$work/room-catalog.c" -o "$work/room-catalog.o"
-cc -std=c11 -O2 -Wall -Wextra -D_DEFAULT_SOURCE -I"$work" -I"$here" -I"$root/verse/voice-host" "$here/room-host.c" "$root/verse/voice-host/ws.c" \
-  "$work/room-world.o" "$work/room-catalog.o" "${objs[@]}" -lm -o "$out"
+cc -std=c11 -O2 "${strict[@]}" -Wall -Wextra -D_DEFAULT_SOURCE -I"$work" -I"$here" -I"$root/verse/voice-host" "$here/room-host.c" "$root/verse/voice-host/ws.c" \
+  "$work/room-world.o" "$work/room-catalog.o" "$work/room-math.o" "${objs[@]}" -lm -o "$out"
+# the simulation calls none of the C library's (room-math.c's in their place)
+if nm -u "$out" | grep -E '^_?_*(sin|cos|tan|exp|log|pow)f?$|sincos'; then echo "build.sh: $out calls the C library's math above (room-math.c, #12893)" >&2; exit 1; fi
 # the started server holds every declared default (room-host.c --start-check, room.coax rm_start_check)
 "$out" --start-check
 echo "built $out"

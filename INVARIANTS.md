@@ -748,6 +748,20 @@ sharp: each steers while turning through angles where the two C libraries
 round `sinf` and `cosf` differently, so a step that calls `sin` or `cos`
 fails them.
 
+The room server's step runs in two hosts (oa-room natively and the
+browser's local host in wasm), and Everglade's town, lifts and falls still
+call Coax's `sin`, `cos`, `tan`, `exp` and `pow`. So both hosts link
+`coax/web/room/room-math.c` in place of the C library's sines, exponentials,
+logarithms and powers, and build every simulation unit with
+`-ffp-contract=off -fno-fast-math` and `-fno-builtin-NAME` for each
+(`coax/web/room/build.sh`, `worker.sh`, the Dockerfile). The two towns parted
+otherwise: a fall on the edge of a 10-foot band downed a townsperson in one
+host and not the other (#12893). `build.sh` refuses an `oa-room` that still
+imports one of those functions. Checks: `coax/web/room/room-math-check.sh`
+(room-math.c's results are bit-identical natively and in wasm, and close to
+Python's `math`) and the drift check's local profile
+(`coax/web/tool.sh everglade-drift --no-raid`).
+
 ## Every walking realm asks one ground question
 
 The walking controller's floor comes from `aethyr/query.coax`:

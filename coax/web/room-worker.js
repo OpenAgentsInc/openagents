@@ -6,7 +6,8 @@
 // This file decides nothing: it moves frames, keeps the 30 Hz beat, gives the clock and fetches the
 // realm's world document, as room-host.c does over TCP. Every rule is the server's Coax.
 //   localRoomSocket("local:/api/room/relay/everglade/local-1", wasmUrl) -> a WebSocket-shaped object
-// The worker posts its cost once a second: {t: "cost", ticks, us, parts}, kept for the drift check
+// The worker posts its cost once a second: {t: "cost", ticks, us, parts, lost, stalls} (lost: the ms
+// of its beat the stalls over 250 ms dropped, as room-host.c prints them), kept for the drift check
 // and the phone-throttle measurement as globalThis.coaxial.roomHost; roomHost.control(LINES) gives
 // the room control lines as the API's answer does (the drift check's held step).
 
@@ -16,7 +17,7 @@ function roomWorkerMain() {
   let x = null, mem = null, booting = null, next = 0, timer = 0, start = "";
   const waiting = [], conns = new Set();
   const enc = new TextEncoder(), dec = new TextDecoder();
-  let costTicks = 0, costUs = 0, costAt = performance.now(), partsWas = new Array(PARTS).fill(0);
+  let costTicks = 0, costUs = 0, costAt = performance.now(), partsWas = new Array(PARTS).fill(0), lost = 0, stalls = 0;
   const view = () => new DataView(mem.buffer);
   // WASI, as little as the C runtime asks for: clocks, randomness, stdout to the console, nothing else.
   const wasi = {
@@ -58,7 +59,7 @@ function roomWorkerMain() {
   function beat() {
     timer = 0;
     const now = performance.now();
-    if (now - next > 250) next = now;
+    if (now - next > 250) { lost += now - next; stalls++; next = now; }
     while (now >= next) {
       const t0 = performance.now();
       clock(); x.rw_tick(); flush();
@@ -69,7 +70,7 @@ function roomWorkerMain() {
       x.rw_vitals();
       const parts = [];
       for (let q = 0; q < PARTS; q++) { const v = x.rw_part_us(q); parts.push(v - partsWas[q]); partsWas[q] = v; }
-      postMessage({ t: "cost", ticks: costTicks, us: Math.round(costUs), ms: Math.round(now - costAt), parts });
+      postMessage({ t: "cost", ticks: costTicks, us: Math.round(costUs), ms: Math.round(now - costAt), parts, lost: Math.round(lost), stalls });
       costTicks = 0; costUs = 0; costAt = now;
     }
     if (conns.size) timer = setTimeout(beat, Math.max(0, next - performance.now()));

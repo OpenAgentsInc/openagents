@@ -49,8 +49,13 @@ opt=-Os; lto=(-flto)
 if [[ "$mode" == dev ]]; then opt=-O1; lto=(); fi
 cflags=(--target=wasm32-wasip1 --sysroot="$COAXIAL_SYSROOT" -resource-dir="$COAXIAL_RESOURCES" -std=c11 "$opt" ${lto[@]+"${lto[@]}"}
         -ffp-contract=off -fno-fast-math -w)
+# the C library's sines, exponentials and powers left to room-math.c, which oa-room links too (build.sh, #12893)
+for f in sin cos tan exp log pow; do cflags+=("-fno-builtin-$f" "-fno-builtin-${f}f"); done
 objs=()
-"$clang" "${cflags[@]}" ${renames[@]+"${renames[@]}"} -I"$work" -c "$work/room.c" -o "$work/room.o" & pids=($!); objs+=("$work/room.o")
+# (no LTO for it: it stands in for the C library's functions, which the link resolves after the bitcode)
+mflags=(); for f in "${cflags[@]}"; do [[ "$f" == -flto ]] || mflags+=("$f"); done
+"$clang" "${mflags[@]}" -c "$here/room-math.c" -o "$work/room-math.o" & pids=($!); objs+=("$work/room-math.o")
+"$clang" "${cflags[@]}" ${renames[@]+"${renames[@]}"} -I"$work" -c "$work/room.c" -o "$work/room.o" & pids+=($!); objs+=("$work/room.o")
 for u in "${units[@]:1}"; do
   n="$(basename "$u" .coax)"
   "$clang" "${cflags[@]}" -I"$work" -c "$work/$n.c" -o "$work/$n.o" & pids+=($!); objs+=("$work/$n.o")
