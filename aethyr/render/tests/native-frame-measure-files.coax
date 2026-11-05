@@ -10,7 +10,7 @@ NfmPrepared :: struct {profile:int;width:int;height:int;format:int;package_path:
 nfm_layer_library :: (file:string,out:[]u8)->int {
  bytes:[131072]u8;nodes:[4096]JvNode;d:[1]Jv;if !rtq_json_file(file,bytes[..],nodes[..],d[..]) {return -1;}return jv_str(d[0],jv_path(d[0],0,"layer.library_path"),out);
 }
-nfm_format :: (p:[]NfmPrepared)->string {return ifx p[0].format==1 then "rgba8" else ifx p[0].format==2 then "rgba16f" else "";}
+nfm_format :: (p:[]NfmPrepared)->string {return ifx p[0].format==1 then "rgba8" else ifx p[0].format==2 then "rgba16f" else ifx p[0].format==3 then "rgba8-present" else "";}
 nfm_hash_large :: (file:string,out:[]u8)->bool {
  n:=fs_size(file);if n<0 || n>1073741824 {return false;}state:[112]u8;raw:[32]u8;bytes:[65536]u8;if sha256_init(state[..])!=SHA_OK {return false;}at:=0;
  while at<n {take:=ifx n-at<bytes.count then n-at else bytes.count;if fs_read_at(file,at,bytes[0..<take])!=take || sha256_update_checked(state[..],bytes[0..<take],false)!=SHA_OK {return false;}at+=take;}if sha256_final_checked(state[..],raw[..],false)!=SHA_OK {return false;}digest:S_Digest;for k:0..<8 {digest.words[k]=cb_load_be32(raw[..],4*k).value;}return S_hex(digest,out);

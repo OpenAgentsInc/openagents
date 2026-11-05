@@ -30,6 +30,7 @@ struct RhgRenderer {
   const coax_t_RenderRuntimeFrame *receipt;const RhgFrame *frame;
   coax_t_RenderDecodedDraw *decoded;uint64_t draw_commands;
   RhgDraw *media_draws;int64_t media_count;
+  VksImage presentation;RhgHandle presentation_handle;int presentation_open;
 };
 static int rhg_error(char *error,size_t size,const char *text){if(size)snprintf(error,size,"%s",text);return 0;}
 static VkFormat rhg_format(coax_t_RenderTextureFormat format){
@@ -49,6 +50,7 @@ static void rhg_frame_close(RhgRenderer *r){
 void rhg_close(RhgRenderer *r){
   if(!r)return;rhg_frame_close(r);
   for(size_t i=0;i<COAX_RenderTarget_invalid;i++)if(r->target_open[i]){vks_image_free(r->v,&r->targets[i]);rhg_ledger_release(&r->target_handles[i]);}
+  if(r->presentation_open){vks_image_free(r->v,&r->presentation);rhg_ledger_release(&r->presentation_handle);}
   if(r->shaders)for(size_t i=0;i<r->shader_count;i++)free((void*)r->shaders[i].data);
   free(r->shaders);free(r->json);free(r);
 }
@@ -185,5 +187,51 @@ int rhg_execute(RhgRenderer *r,const coax_t_RenderRuntimeFrame *receipt,const Rh
   return 1;
 }
 VksImage *rhg_screen(RhgRenderer *r){return r->target_open[COAX_RenderTarget_screen]?&r->targets[COAX_RenderTarget_screen]:NULL;}
+typedef struct {VksPipe pipe;VksPass pass;} RhgPresentationEffects;
+static void rhg_record_presentation(VkCommandBuffer cmd,void *user){RhgPresentationEffects *effects=user;vks_pipe_record(&effects->pipe,cmd,&effects->pass);}
+VksImage *rhg_present_float(RhgRenderer *r,int format,char *error,size_t size){
+  VksImage *screen=rhg_screen(r);if(!screen){rhg_error(error,size,"presentation has no completed screen");return NULL;}
+  coax_t_RenderPresentation p=render_presentation(r->profile,screen->w,screen->h,format,r->v->props.limits.maxImageDimension2D);
+  if(p.status!=COAX_RenderResourceStatus_ok){rhg_error(error,size,"experimental presentation refused by Coax");return NULL;}
+  VksImage *source=rhg_target_image(r,p.source);
+  if(!source||!rhg_ledger_live(&r->target_handles[p.source])||source->format!=rhg_format(p.draw.format)||source->w!=p.draw.width||source->h!=p.draw.height){rhg_error(error,size,"actual presentation source differs from Coax descriptor");return NULL;}
+  if(r->presentation_open&&(r->presentation.w!=p.display.width||r->presentation.h!=p.display.height||r->presentation.format!=rhg_format(p.display.format))){
+    vks_image_free(r->v,&r->presentation);rhg_ledger_release(&r->presentation_handle);r->presentation_open=0;
+  }
+  if(!r->presentation_open){
+    int64_t words=aethyr_render_format_words(p.display.format,p.display.width,p.display.height,1,1);
+    if(!rhg_ledger_acquire(RHG_COLOR,words,&r->presentation_handle)){rhg_error(error,size,"presentation allocation refused by ledger");return NULL;}
+    r->presentation=vks_image(r->v,(uint32_t)p.display.width,(uint32_t)p.display.height,1,0,rhg_format(p.display.format),VKS_TARGET);r->presentation_open=1;
+  }
+  RhgHandle uniform_handle={0};size_t bytes=sizeof p.uniforms.e;
+  coax_t_RenderBufferObserved observed={.source_capacity=bytes,.upload_bytes=bytes,.gpu_bytes=bytes,.alignment=4};
+  coax_t_RenderBufferView view=aethyr_render_buffer_view(p.uniform.binding,p.uniform.source.buffer_mode,observed);
+  if(view.status!=COAX_RenderResourceStatus_ok||!rhg_ledger_acquire(RHG_UNIFORM,aethyr_render_buffer_words((int64_t)bytes),&uniform_handle)){rhg_error(error,size,"presentation uniform refused by Coax");return NULL;}
+  VkcBuffer uniform=vkc_buffer(r->v,bytes);memcpy(uniform.map,p.uniforms.e,bytes);
+  coax_t_RenderSamplerDescriptor s=p.sampler;
+  VkSamplerCreateInfo sampler_info={.sType=VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,.magFilter=s.mag_linear?VK_FILTER_LINEAR:VK_FILTER_NEAREST,.minFilter=s.min_linear?VK_FILTER_LINEAR:VK_FILTER_NEAREST,
+    .mipmapMode=s.mip_linear?VK_SAMPLER_MIPMAP_MODE_LINEAR:VK_SAMPLER_MIPMAP_MODE_NEAREST,
+    .addressModeU=s.address_u==COAX_RenderSamplerAddress_repeat?VK_SAMPLER_ADDRESS_MODE_REPEAT:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+    .addressModeV=s.address_v==COAX_RenderSamplerAddress_repeat?VK_SAMPLER_ADDRESS_MODE_REPEAT:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,.addressModeW=VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+    .anisotropyEnable=s.physical_anisotropy>1,.maxAnisotropy=(float)s.physical_anisotropy,.compareEnable=s.compare!=COAX_RenderSamplerCompare_none,.compareOp=VK_COMPARE_OP_LESS,.maxLod=VK_LOD_CLAMP_NONE};
+  VkSampler sampler;VkResult created=vkCreateSampler(r->v->dev,&sampler_info,NULL,&sampler);
+  if(created!=VK_SUCCESS){vkc_free(r->v,&uniform);rhg_ledger_release(&uniform_handle);rhg_error(error,size,"presentation sampler SDK failure");return NULL;}
+  VksBinding bindings[3]={0};coax_t_RenderHostUse uses[3]={p.uniform,p.image,p.sample};
+  bindings[p.uniform.use.slot]=(VksBinding){.buffer=&uniform,.offset=view.offset,.range=view.bytes};
+  bindings[p.image.use.slot]=(VksBinding){.image=source};bindings[p.sample.use.slot]=(VksBinding){.sampler=sampler};
+  for(size_t i=0;i<3;i++){bindings[uses[i].use.slot].kind=(int)uses[i].use.native_kind;bindings[uses[i].use.slot].stages=((uses[i].use.stages&1)?VK_SHADER_STAGE_VERTEX_BIT:0)|((uses[i].use.stages&2)?VK_SHADER_STAGE_FRAGMENT_BIT:0);}
+  RhgPresentationEffects effects={0};effects.pass=(VksPass){.words=(const uint32_t*)r->shaders[p.entry].data,.count=r->shaders[p.entry].bytes/4,.bindings=bindings,.nb=3,
+    .targets={&r->presentation},.ntargets=(uint32_t)p.state.outputs,.vertex_count=(uint32_t)p.vertices,.instance_count=1,
+    .blend=rhg_blend(p.state.colour),.alpha_blend=rhg_blend(p.state.alpha),.depth_test=p.state.depth!=COAX_RenderDepth_none,.depth_always=p.state.depth==COAX_RenderDepth_always,.depth_write=p.state.depth_write,
+    .depth_bias=(float)p.state.bias,.depth_slope=(float)p.state.slope};
+  coax_t_RenderHostClear clear=aethyr_render_clear();memcpy(effects.pass.clear,clear.colour.e,sizeof effects.pass.clear);
+  int errors=vkc_validation_errors,warnings=vkc_validation_warnings;
+  vks_pipe_open(r->v,&effects.pipe,&effects.pass);
+  int valid=rhg_ledger_live(&uniform_handle)&&rhg_ledger_live(&r->presentation_handle)&&rhg_ledger_live(&r->target_handles[p.source])&&vkc_validation_errors==errors&&vkc_validation_warnings==warnings;
+  if(valid){vks_submit(r->v,rhg_record_presentation,&effects);r->draw_commands++;valid=vkc_validation_errors==errors&&vkc_validation_warnings==warnings;}
+  vks_pipe_close(r->v,&effects.pipe);vkDestroySampler(r->v->dev,sampler,NULL);vkc_free(r->v,&uniform);rhg_ledger_release(&uniform_handle);
+  if(!valid){rhg_error(error,size,"presentation validation or physical resource check failed");return NULL;}
+  return &r->presentation;
+}
 VksImage *rhg_target_image(RhgRenderer *r,coax_t_RenderTarget target){return target<COAX_RenderTarget_invalid&&r->target_open[target]?&r->targets[target]:NULL;}
 uint64_t rhg_draw_commands(const RhgRenderer *r){return r->draw_commands;}

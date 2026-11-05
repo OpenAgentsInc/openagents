@@ -29,6 +29,9 @@ RhgRenderer *rhg_open(Vkc *device,int64_t expected_profile,coax_string json,RhgR
 int rhg_execute(RhgRenderer *renderer,const coax_t_RenderRuntimeFrame *receipt,const RhgFrame *frame,
   int coarse,coax_t_RenderTextureFormat screen_format,char *error,size_t error_bytes);
 VksImage *rhg_screen(RhgRenderer *renderer);
+// Optional diagnostic only. Execute the shared RenderPresentation descriptor
+// after a complete float-screen frame. No ordinary caller selects this path.
+VksImage *rhg_present_float(RhgRenderer *renderer,int display_format,char *error,size_t error_bytes);
 VksImage *rhg_target_image(RhgRenderer *renderer,coax_t_RenderTarget target);
 uint64_t rhg_draw_commands(const RhgRenderer *renderer);
 // The GPU resource ledger (aethyr/render/registry.coax), one per process as in

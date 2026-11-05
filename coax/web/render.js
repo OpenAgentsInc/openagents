@@ -16,8 +16,8 @@ const blendComponent = (mode, alpha) => {
 };
 
 export class RenderHost {
-  constructor({ device, context, format, memory, exports, arena, url, profile, coarse, capture = false, onMedia = null }) {
-    Object.assign(this, { device, context, format, memory, x: exports, arena, url, profile, coarse, capture, onMedia });
+  constructor({ device, context, format, memory, exports, arena, url, profile, coarse, capture = false, presentation = false, onMedia = null }) {
+    Object.assign(this, { device, context, format, displayFormat: format, memory, x: exports, arena, url, profile, coarse, capture, presentationRequested: presentation, onMedia });
     this.modules = new Map(); this.pipelines = new Map(); this.groups = new Map(); this.shaderMessages = [];this.ready = false;this.samplers = new Map();this.textureCaptures = [];this.layouts = new Map();this.requests = new Map();this.targets = new Map();this.generatedBuffers = new Map();this.buffers = [];this.pendingEffects = new Set();
   }
   info(field) { return number(this.x.coaxial_render_frame_info(field)); }
@@ -74,6 +74,10 @@ export class RenderHost {
     // Only consume these observations after the compiled policy admitted all
     // fields against the actual catalog, shader interface and device profile.
     this.package = JSON.parse(new TextDecoder().decode(bytes));
+    if (this.presentationRequested) {
+      this.configurePresentation(1, 1);
+      this.format = this.formats[this.presentationInfo(0)];
+    }
     const effect = (field) => number(x.coaxial_render_media_effects(field));
     this.mediaEffects = { format: this.mediaText(effect(0), effect(1)), premultipliedAlpha: Boolean(effect(2)), resizeQuality: this.mediaText(effect(3), effect(4)) };
     if (this.reuses) {
@@ -111,6 +115,7 @@ export class RenderHost {
       await this.makePipeline(entry);
       if (x.coaxial_render_candidate_pipeline(entry.entry_index, 1) !== 0) throw new RenderRefusal("Coax refused pipeline readiness");
     }
+    if (this.presentationRequested) await this.makePresentationPipeline();
     if (x.coaxial_render_commit() !== 0) throw new RenderRefusal("Coax refused renderer transaction commit");
     this.ready = true;
   }
@@ -472,7 +477,7 @@ export class RenderHost {
   }
   target(id) {
     if (!id) return null;
-    if (id === 1) return this.lastTexture;
+    if (id === 1 && !this.presentationRequested) return this.lastTexture;
     const { x, device } = this;
     if (x.coaxial_render_target(id, this.width, this.height, this.coarse, this.formatCodes[this.format] ?? this.ids.format.invalid, device.limits.maxTextureDimension2D) !== 1) throw new RenderRefusal("Coax refused frame attachment extent");
     const width = number(x.coaxial_render_target_info(0)), height = number(x.coaxial_render_target_info(1)), format = this.formats[number(x.coaxial_render_target_info(2))];
@@ -481,6 +486,44 @@ export class RenderHost {
     const texture = this.texture(format === "depth32float" ? this.ids.own.texture : this.ids.own.color,
       { size: [width, height], format, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST });
     this.free(previous);this.targets.set(id, texture);return texture;
+  }
+  presentationInfo(field) { return number(this.x.coaxial_render_presentation_info(field)); }
+  configurePresentation(width, height) {
+    const code = this.formatCodes[this.displayFormat] ?? this.ids.format.invalid;
+    if (!this.x.coaxial_render_presentation || this.x.coaxial_render_presentation(width, height, code, this.device.limits.maxTextureDimension2D) !== 1) throw new RenderRefusal("Coax refused experimental presentation");
+  }
+  async makePresentationPipeline() {
+    const { device } = this, entry = this.presentationInfo(2), item = this.package.entries.find((p) => p.entry_index === entry);
+    const module = this.modules.get(item.binding_set), targets = Array.from({ length: this.presentationInfo(11) }, () => ({
+      format: this.formats[this.presentationInfo(1)], blend: { color: blendComponent(this.presentationInfo(9), false), alpha: blendComponent(this.presentationInfo(10), true) } }));
+    device.pushErrorScope("validation");
+    try {
+      this.presentationPipeline = await device.createRenderPipelineAsync({ layout: device.createPipelineLayout({ bindGroupLayouts: this.layouts.get(entry) }),
+        vertex: { module, entryPoint: item.wgsl_vertex }, fragment: { module, entryPoint: item.wgsl_fragment, targets }, primitive: { topology: "triangle-list" } });
+    } finally { const error = await device.popErrorScope();if (error) throw Error(error.message); }
+    this.presentationSampler = device.createSampler({ addressModeU: ["clamp-to-edge", "repeat"][this.presentationInfo(12)], addressModeV: ["clamp-to-edge", "repeat"][this.presentationInfo(13)],
+      minFilter: this.presentationInfo(14) ? "linear" : "nearest", magFilter: this.presentationInfo(15) ? "linear" : "nearest", mipmapFilter: this.presentationInfo(16) ? "linear" : "nearest", maxAnisotropy: this.presentationInfo(17) });
+  }
+  presentationGroups() {
+    const { x, device, memory } = this, index = this.presentationInfo(2), entries = this.layouts.get(index).map(() => []);
+    for (const request of this.requests.get(index)) {
+      const { set, resource, group, binding, kind } = request;let physical;
+      if (kind === this.ids.kind.uniform) {
+        let buffer = this.generatedBuffers.get("presentation");
+        if (!buffer) {
+          if (x.coaxial_render_buffer_recipe(set, resource, 0n, 0n, BigInt(device.limits.maxBufferSize)) !== 1) throw new RenderRefusal("Coax refused presentation uniform allocation");
+          buffer = this.buffer(this.ids.own.uniform, { size: number(x.coaxial_render_buffer_view_info(1)), usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });this.generatedBuffers.set("presentation", buffer);
+        }
+        const address = number(x.coaxial_render_presentation_uniforms()), bytes = number(x.coaxial_render_presentation_uniform_bytes());
+        if (x.coaxial_render_generated_buffer(set, resource, address, bytes, memory.buffer.byteLength, BigInt(buffer.size)) !== 1) throw new RenderRefusal("Coax refused presentation uniform view");
+        this.held(buffer);device.queue.writeBuffer(buffer, 0, new Uint8Array(memory.buffer, address, bytes));physical = { buffer, size: bytes };
+      } else if (kind === this.ids.kind.image2d) {
+        const texture = this.target(this.presentationInfo(3));this.held(texture);physical = texture.createView();
+      } else if (kind === this.ids.kind.sampler) physical = this.presentationSampler;
+      else throw new RenderRefusal("unsupported admitted presentation binding effect");
+      entries[group].push({ binding, resource: physical });
+    }
+    return this.layouts.get(index).map((layout, group) => device.createBindGroup({ layout, entries: entries[group] }));
   }
   makeGroups(index, operationIndex, media = null) {
     const { x, device, memory } = this, layouts = this.layouts.get(index), entries = layouts.map(() => []), writes = [];
@@ -557,6 +600,7 @@ export class RenderHost {
       this.vertexBuffer.size, this.uniformBuffer.size, this.indexRecord?.gpu.size ?? 0, readiness, particlesReady);
     if (status !== 1) { this.lastRefusal = { phase: "frame", status, frame: this.info(2), geometry: this.info(3), requested: counts };return false; }
     const media = this.prepareMedia(width, height);
+    if (this.presentationRequested) this.configurePresentation(width, height);
     this.lastRefusal = null;
     // No GPU writes or commands precede the complete admitted receipt.
     const vertexBytes = this.info(7), uniformBytes = this.info(8), active = this.buffers.slice();
@@ -571,6 +615,9 @@ export class RenderHost {
         source_capacity: record.sourceCapacity, logical_payload: record.logical, initialized_highwater: 0,
         upload_bytes: record.source === this.ids.source.main_uniform ? 0 : number(x.coaxial_render_upload_pending(record.id)), gpu_bytes: record.gpu.size, zero_initialized: 1 })),
       package: this.package, shader_messages: this.shaderMessages.slice(), textures: this.textureCaptures.slice(), media_text: media.text, media_images: media.images,
+      presentation: this.presentationRequested ? { experimental: true, draw_format: this.format, display_format: this.displayFormat,
+        entry: this.presentationInfo(2), source: this.presentationInfo(3), vertices: this.presentationInfo(4),
+        uniforms: Array.from(new Float32Array(memory.buffer, number(x.coaxial_render_presentation_uniforms()), number(x.coaxial_render_presentation_uniform_bytes()) / 4)) } : null,
     } : null;
     device.pushErrorScope("validation");this.busy = true;
     try {
@@ -584,6 +631,7 @@ export class RenderHost {
       const prepared = new Map();
       for (let i = 0; i < this.info(1); i++) if (this.op(i, 0) === 2) prepared.set(i, this.makeGroups(this.op(i, 1), i));
       const mediaGroups = new Map(media.draws.map((draw) => [draw.row, this.makeGroups(13, -1, draw)]));
+      const presentationGroups = this.presentationRequested ? this.presentationGroups() : null;
       for (const object of this.mediaCache?.values() ?? []) if (object.ready && object.source) {
         device.queue.copyExternalImageToTexture({ source: object.source }, { texture: object.texture, premultipliedAlpha: this.mediaEffects.premultipliedAlpha }, [object.width, object.height]);
         if (!object.element) { object.source.close?.();object.source = null; }
@@ -635,6 +683,10 @@ export class RenderHost {
             pass.draw(x.coaxial_render_media_vertices());
           }
         } else throw Error(`unknown admitted operation ${kind}`);
+      }
+      if (presentationGroups) {
+        const display = encoder.beginRenderPass({ colorAttachments: [{ view: this.lastTexture.createView(), loadOp: "clear", storeOp: "store", clearValue: clear }] });
+        display.setPipeline(this.presentationPipeline);presentationGroups.forEach((group, slot) => display.setBindGroup(slot, group));display.draw(this.presentationInfo(4));display.end();
       }
       this.observation = observe?.(encoder, this.lastTexture);
       if (this.observation) this.observation.rendererSnapshot = sourceSnapshot;

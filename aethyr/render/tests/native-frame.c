@@ -78,10 +78,11 @@ static int native_binding(void *user,coax_t_RenderHostUse use,coax_t_RenderOp op
   return 0;
 }
 int main(int argc,char **argv){
-  if(argc!=5&&argc!=6){fprintf(stderr,"usage: native-frame FRAME.CONFIG RENDER.JSON OUT.RAW RECORD.JSON [rgba8|rgba16f]\n");return 2;}
+  if(argc!=5&&argc!=6){fprintf(stderr,"usage: native-frame FRAME.CONFIG RENDER.JSON OUT.RAW RECORD.JSON [rgba8|rgba16f|rgba8-present]\n");return 2;}
   const char *format_name=argc==6?argv[5]:"rgba8";coax_t_RenderTextureFormat screen_format;size_t screen_pixel_bytes;
   if(!strcmp(format_name,"rgba8")){screen_format=COAX_RenderTextureFormat_rgba8;screen_pixel_bytes=4;}
   else if(!strcmp(format_name,"rgba16f")){screen_format=COAX_RenderTextureFormat_rgba16f;screen_pixel_bytes=8;}
+  else if(!strcmp(format_name,"rgba8-present")){screen_format=COAX_RenderTextureFormat_rgba16f;screen_pixel_bytes=4;}
   else{fprintf(stderr,"unsupported readback format\n");return 2;}
   NativeFrame frame={0};char error[256];if(!rfi_load(argv[1],&frame.input,error,sizeof error)){fprintf(stderr,"%s\n",error);return 2;}
   coax_t_RenderHostBool coarse=aethyr_render_bool(frame.input.counts[12]);
@@ -128,7 +129,9 @@ int main(int argc,char **argv){
   if(frame.input.indices.size)memcpy(frame.index.map,frame.input.indices.data,frame.input.indices.size);
   RhgFrame effects={.media_receipt=frame.media.receipt,.media_rects={frame.media.rects,frame.media.receipt.count},.hud=&frame.hud,.index=frame.index.buf?&frame.index:NULL,.draw_words=draws,.binding=native_binding,.user=&frame};
   if(!rhg_execute(frame.renderer,&receipt,&effects,coarse.value,screen_format,error,sizeof error)){fprintf(stderr,"%s\n",error);return 5;}
-  VksImage *screen=rhg_screen(frame.renderer);assert(screen);size_t bytes=(size_t)screen->w*screen->h*screen_pixel_bytes;unsigned char *pixels=malloc(bytes);assert(pixels);vks_read(&frame.device,screen,pixels,bytes);
+  VksImage *screen=rhg_screen(frame.renderer);
+  if(!strcmp(format_name,"rgba8-present")){screen=rhg_present_float(frame.renderer,COAX_RenderTextureFormat_rgba8,error,sizeof error);if(!screen){fprintf(stderr,"%s\n",error);return 5;}}
+  assert(screen);size_t bytes=(size_t)screen->w*screen->h*screen_pixel_bytes;unsigned char *pixels=malloc(bytes);assert(pixels);vks_read(&frame.device,screen,pixels,bytes);
   FILE *image=fopen(argv[3],"wb");assert(image&&fwrite(pixels,1,bytes,image)==bytes&&!fclose(image));
   FILE *record=fopen(argv[4],"w");assert(record);fprintf(record,"{\"status\":\"rendered\",\"profile\":%" PRId64 ",\"resource\":%u,\"width\":%u,\"height\":%u,\"format\":\"%s\",\"bytes\":%zu,\"draw_commands\":%" PRIu64 ",\"device\":\"%s\",\"subPixelPrecisionBits\":%u,\"validation_errors\":%d,\"validation_warnings\":%d}\n",c[0],COAX_RenderTarget_screen,screen->w,screen->h,format_name,bytes,rhg_draw_commands(frame.renderer),frame.device.props.deviceName,frame.device.props.limits.subPixelPrecisionBits,vkc_validation_errors,vkc_validation_warnings);assert(!fclose(record));
   int failed=vkc_validation_errors||vkc_validation_warnings;
