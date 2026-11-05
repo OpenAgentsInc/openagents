@@ -283,6 +283,17 @@ GPU object first acquires its Coax registry handle; freeing it releases
 that handle. A frame validates every handle before writes. Device loss
 retires all handles, preserving generations so stale handles never revive.
 
+For v1 Everglade layers, `render/host-layers.coax` owns compressed PNG/JPEG
+decode, the profile's 512-pixel side, doubling, alpha-weighted mips and the
+canonical premultiplication round trip. Every host uploads the resulting
+complete per-layer level-major straight RGBA8 bytes directly; SDK image
+resizing or another premultiplication conversion changes the asset identity.
+The browser's separate `host-layers.wasm` reactor uses that same authority.
+Pinned pre-v1 browser engines keep their established SDK path. Complete
+bank and actual GPU byte receipts are in
+[`layers-canonical.md`](../../docs/verification/host-contract-2026-11-05/layers-canonical.md);
+the new v1 path deliberately has its own visual reference.
+
 WGSL, SPIR-V and MSL come from the same checked Coax shader tree. Metal
 reflection version 1 uses separate buffer 0–28, texture 0–127 and sampler
 0–15 namespaces; buffer 29 supplies element counts and buffer 30 is the

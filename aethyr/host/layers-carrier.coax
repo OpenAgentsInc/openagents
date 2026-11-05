@@ -1,0 +1,4 @@
+// Browser reactor for the same canonical compressed-image authority as native.
+#load "../render/host-layers.coax";
+HostLayerSource :: struct {bytes:[HOST_LAYER_SOURCE_BYTES]u8;}
+hl_source_storage :: (bank:[]HostLayerSource)->[]u8 #export_c {return bank[0].bytes[..];}

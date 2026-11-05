@@ -1,0 +1,30 @@
+// Compare every logical texel of an actual GPU array readback, including mips.
+#import "Basic";
+#load "../render/tests/qualification-files.coax";
+#load "layers-conformance.coax";
+#load "../../coax/lib/sys/args.coax";
+hlr_line :: (text:string,wanted:int)->string {start:=0;line:=0;for c,i:text {if c=='\n' {if line==wanted {return rtq_trim(text[start..<i]);}line+=1;start=i+1;}}return ifx line==wanted then rtq_trim(text[start..<text.count]) else "";}
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])!=3 {tool_errln("usage: check-layer-readback CAPTURE_DIR NATIVE_FIXTURE_DIR REPORT.json");return 2;}
+ capture:=args_at(a[..],0);fixture:=args_at(a[..],1);report:=args_at(a[..],2);paths:[6][4096]u8;
+ receipt:=fs_join(capture,"receipt.json",paths[0][..]);config:=fs_join(fixture,"textures.config",paths[1][..]);bank:=fs_join(fixture,"layers.rgba",paths[2][..]);
+ inputs:[1]RtqInputs;for file:[3]string.[receipt,config,bank] {if !rtq_input_add(inputs[..],file) {return 1;}}
+ json:[1048576]u8;nodes:[16384]JvNode;doc:[1]Jv;if !rtq_json_file(receipt,json[..],nodes[..],doc[..]) {return 1;}d:=doc[0];status:=jv_get(d,0,"status");frame:=jv_get(d,status,"capture");textures:=jv_get(d,frame,"textures");layer:=-1;
+ for i:0..<jv_len(d,textures) {row:=jv_at(d,textures,i);if jv_raw(d,jv_get(d,row,"name"))=="layers" {if layer>=0 {return 1;}layer=row;}}
+ if layer<0||jv_raw(d,jv_get(d,layer,"format"))!="rgba8unorm-srgb"||jv_int(d,jv_get(d,layer,"layers"),0)!=38 {return 1;}
+ name:[4096]u8;nn:=jv_str(d,jv_get(d,layer,"file"),name[..]);if nn<1 {return 1;}gpu:=fs_join(capture,cast(string)name[0..<nn],paths[3][..]);if !rtq_input_add(inputs[..],gpu) {return 1;}
+ text:[65536]u8;cn:=fs_read(config,text[..]);if cn<1 {return 1;}levels:=jv_get(d,layer,"levels");if jv_len(d,levels)!=10 {return 1;}
+ actual:[1048576]u8;expected:[1048576]u8;different:=0;compared:=0;gpu_extent:=0;bank_extent:=0;rows:=0;
+ for level:0..<10 {
+  row:=jv_at(d,levels,level);width:=jv_int(d,jv_get(d,row,"width"),0);height:=jv_int(d,jv_get(d,row,"height"),0);offset:=jv_int(d,jv_get(d,row,"offset"),-1);pitch:=jv_int(d,jv_get(d,row,"row_bytes"),0);slice:=jv_int(d,jv_get(d,row,"layer_bytes"),0);
+  line:=hlr_line(cast(string)text[0..<cn],level+2);nw:=args_whole(rtq_word(line,0));nh:=args_whole(rtq_word(line,1));no:=args_whole(rtq_word(line,2));np:=args_whole(rtq_word(line,3));ns:=args_whole(rtq_word(line,4));
+  if width!=img_side(htx_profile(2).side,level)||height!=width||nw!=width||nh!=height||np!=width*4||ns!=np*height||pitch!=(np+255)/256*256||slice!=pitch*height||offset!=gpu_extent||no!=bank_extent {return 1;}
+  for z:0..<38 {
+   if fs_read_at(gpu,offset+z*slice,actual[0..<slice])!=slice||fs_read_at(bank,no+z*ns,expected[0..<ns])!=ns {return 1;}
+   for y:0..<height {delta:=hlc_bytes(actual[y*pitch..<y*pitch+np],expected[y*np..<(y+1)*np]);if delta<0 {return 1;}different+=delta;compared+=np;rows+=1;}
+  }
+  gpu_extent+=38*slice;bank_extent+=38*ns;
+ }
+ same:=rtq_inputs_match(inputs[..]);passed:=hlc_complete(38,different,512,10)&&fs_size(gpu)==gpu_extent&&fs_size(bank)==bank_extent&&compared==bank_extent&&same;
+ output:[65536]u8;o:[1]Jo;jo_start(o[..],output[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.host.layer-gpu-readback.v1");jo_key(o[..],"passed");jo_bool(o[..],passed);jo_key(o[..],"layers");jo_int(o[..],38);jo_key(o[..],"levels");jo_int(o[..],10);jo_key(o[..],"logical_bytes");jo_int(o[..],compared);jo_key(o[..],"logical_rows");jo_int(o[..],rows);jo_key(o[..],"different");jo_int(o[..],different);jo_key(o[..],"physical_readback_bytes");jo_int(o[..],gpu_extent);jo_key(o[..],"source_fence_unchanged");jo_bool(o[..],same);jo_key(o[..],"inputs");rtq_inputs_json(o[..],inputs[..],"");jo_end(o[..]);if o[0].bad||!fs_write(report,jo_text(o[..])) {return 1;}print("Actual GPU canonical bank: % logical bytes, % different, passed %.\n",compared,different,passed);return ifx passed then 0 else 1;
+}

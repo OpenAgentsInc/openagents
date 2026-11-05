@@ -76,6 +76,17 @@ presentation, unused-reservation teardown and validation enabled with zero
 errors/warnings; all 18 receipt mutants are killed. Full production window
 and room-continuity qualification remains separate.
 
+Version 1 Everglade layer decode and mip arithmetic belong to the shared
+`aethyr/render/host-layers.coax` authority. Browser/native compare all 38
+complete chains bit-identically; actual WebGPU readback matches every one
+of 53,127,800 logical bytes across ten mip levels. SDK transfer padding is
+separate from logical texels. Hosts upload canonical raw bytes without
+another image resize or premultiplication conversion. Pinned pre-v1 browser
+images retain their earlier SDK path; the material old/new visual difference
+is recorded explicitly. The layer/profile and observer root gates kill 75
+and 38 mutants, with no survivors or equivalents. This asset receipt does
+not qualify the remaining display/default decision.
+
 ## The indexed KV arena preserves the durable v1 contract
 
 `coax/lib/bitcoin/kvskip.coax` is an optional native representation behind

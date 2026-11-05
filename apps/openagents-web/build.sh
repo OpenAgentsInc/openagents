@@ -29,6 +29,9 @@ fi
 # Host-contract v1 uses the same Coax PCM interpreter as native audio.
 "$here/../../coax/web/tool.sh" "$here/../../coax/web/build-audio.coax" "$here/../.." "$here/build/host-audio.wasm" &
 host_audio=$!
+# Canonical v1 image decode and mip bytes share the native Coax authority.
+"$here/../../coax/web/tool.sh" "$here/../../coax/web/build-layers.coax" "$here/../.." "$here/build/host-layers.wasm" &
+host_layers=$!
 # The HUD bar's light, the same function the iOS stages draw (verse/light.coax).
 # (splash.wgsl loads verse/light.coax in its Coax: gpu/splash.coax.)
 "$here/../../coax/web/wasm.sh" "$here/splash.coax" "$here/face.c" "$here/build/splash.wasm" &
@@ -297,6 +300,7 @@ wait "$fivemmo"
 wait "$everglade5e"
 wait "$everglade_room"
 wait "$host_audio"
+wait "$host_layers"
 wait "$fairy"
 wait "$villa"
 wait "$animelab"

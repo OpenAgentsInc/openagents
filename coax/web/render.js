@@ -1,6 +1,7 @@
 // Firm reason: 1 (browser WebGPU resource and submission effects for admitted Coax render plans).
 // Effects adapter for admitted Coax package/frame/binding plans. Numeric
 // selectors below are renderer transport ABI1; no realm table lives here.
+import {canonicalLayerSide,decodeCanonicalLayer} from './layers-host.js';
 const number = (x) => Number(x);
 class RenderRefusal extends Error {}
 // The ledger handle (registry.coax) of a GPU object this host created: its
@@ -16,8 +17,8 @@ const blendComponent = (mode, alpha) => {
 };
 
 export class RenderHost {
-  constructor({ device, context, format, memory, exports, arena, url, profile, coarse, capture = false, presentation = false, onMedia = null }) {
-    Object.assign(this, { device, context, format, displayFormat: format, memory, x: exports, arena, url, profile, coarse, capture, presentationRequested: presentation, onMedia });
+  constructor({ device, context, format, memory, exports, arena, url, profile, coarse, capture = false, presentation = false, canonicalLayers = false, onMedia = null }) {
+    Object.assign(this, { device, context, format, displayFormat: format, memory, x: exports, arena, url, profile, coarse, capture, presentationRequested: presentation, canonicalLayers, onMedia });
     this.modules = new Map(); this.pipelines = new Map(); this.groups = new Map(); this.shaderMessages = [];this.ready = false;this.samplers = new Map();this.textureCaptures = [];this.layouts = new Map();this.requests = new Map();this.targets = new Map();this.generatedBuffers = new Map();this.buffers = [];this.pendingEffects = new Set();
   }
   info(field) { return number(this.x.coaxial_render_frame_info(field)); }
@@ -246,8 +247,34 @@ export class RenderHost {
     return { ...receipt, bytes: Array.from(bytes) };
   }
   makeLayers(images) {
-    const effect = this.makeLayersEffect(images);this.pendingEffects.add(effect);
+    const effect = this.canonicalLayers ? this.makeCanonicalLayersEffect(images) : this.makeLayersEffect(images);this.pendingEffects.add(effect);
     effect.finally(() => this.pendingEffects.delete(effect)).catch(() => {});return effect;
+  }
+  async makeCanonicalLayersEffect(sources) {
+    const {x,device}=this,side=await canonicalLayerSide(this.profile);
+    if (!side) throw new RenderRefusal("Coax has no qualified canonical layer profile");
+    const mip=level=>x.coaxial_render_mip(side,side,sources.length,level,device.limits.maxTextureDimension2D,device.limits.maxTextureArrayLayers);
+    if (!mip(0)) throw new RenderRefusal("Coax refused canonical layer device extent");
+    const count=number(x.coaxial_render_mip_info(2));x.coaxial_render_layers_begin();
+    const format=this.mediaText(x.coaxial_render_layers_text(0),x.coaxial_render_layers_text_bytes(0));
+    const texture=this.texture(this.ids.own.texture,{size:[side,side,sources.length],format,mipLevelCount:count,
+      usage:GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.COPY_DST|(this.capture?GPUTextureUsage.COPY_SRC:0)});
+    const levels=[];
+    try {
+      for (const [layer,source] of sources.entries()) {
+        const decoded=await decodeCanonicalLayer(source,side);let offset=0;
+        if (decoded.levels!==count) throw new RenderRefusal("canonical layer level observation differs from Coax");
+        for (let level=0;level<count;level++) {
+          if (!mip(level)) throw new RenderRefusal("Coax refused canonical layer mip");
+          const width=number(x.coaxial_render_mip_info(0)),height=number(x.coaxial_render_mip_info(1)),bytes=width*height*4;
+          device.queue.writeTexture({texture,mipLevel:level,origin:[0,0,layer]},decoded.data.subarray(offset,offset+bytes),{bytesPerRow:width*4,rowsPerImage:height},[width,height]);
+          if (layer===0) levels.push({width,height});offset+=bytes;
+        }
+        if (offset!==decoded.bytes) throw new RenderRefusal("canonical layer physical byte observation differs from Coax");
+      }
+      if (this.capture) this.textureCaptures.push(await this.captureTexture(texture,this.sourceName(this.layerRequest.set,this.layerRequest.resource,true),format,levels,sources.length));
+    } catch(error) {this.free(texture);throw error;}
+    this.free(this.layerTexture);this.layerTexture=texture;return texture;
   }
   async makeLayersEffect(images) {
     const { x, device, memory } = this, width = images[0]?.width ?? 0, height = images[0]?.height ?? 0;

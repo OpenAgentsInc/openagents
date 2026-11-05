@@ -1,0 +1,35 @@
+// Complete authored Everglade bank receipt; no tolerance or image mask.
+#load "../render/host-layers.coax";
+#authority;
+#forall "layer observer compares every plan field and actual decode status" changed:0..<9 {
+ p:=HostLayerPlan.{status=0,side=512,width=256,height=256,levels=10,bytes=1398100,work=123,base_offset=1048576,source_bytes=87};
+ values:=[9]int.[512,256,256,10,1398100,123,1048576,87,0];
+ #assert hlc_plan(values[..],p);values[changed]+=1;#assert !hlc_plan(values[..],p);
+}
+#test "layer observer requires complete shape and an admitted expected plan" {
+ p:=HostLayerPlan.{status=0};values:[10]int;
+ #assert hlc_plan(values[0..<9],p) && !hlc_plan(values[0..<8],p) && !hlc_plan(values[..],p);
+ p.status=3;#assert !hlc_plan(values[0..<9],p);
+}
+#forall "layer byte comparison visits every byte and refuses partial shapes" changed:0..<32 {
+ a:[32]u8;b:[33]u8;for i:0..<32 {a[i]=cast(u8)(i*7);b[i]=a[i];}
+ #assert hlc_bytes(a[..],b[0..<32])==0 && hlc_bytes(a[..],b[..]) == -1 && hlc_bytes(a[0..<0],b[0..<0]) == -1;
+ b[changed]^=1;#assert hlc_bytes(a[..],b[0..<32])==1;
+}
+#test "layer byte comparison admits the smallest complete segment and counts all differences" {
+ a:=[2]u8.[3,7];b:=[2]u8.[3,7];#assert hlc_bytes(a[0..<1],b[0..<1])==0;
+ b[0]=4;#assert hlc_bytes(a[0..<1],b[0..<1])==1;b[1]=8;#assert hlc_bytes(a[..],b[..])==2;
+}
+#forall "whole layer bank qualification requires all authored slices and every comparison" count:0..<40 {
+ #assert hlc_complete(count,0,512,10)==(count==38);
+ #assert !hlc_complete(count,1,512,10) && !hlc_complete(count,0,511,10) && !hlc_complete(count,0,512,9);
+}
+hlc_plan :: (values:[]int,p:HostLayerPlan)->bool {
+ if values.count!=9 || p.status!=0 {return false;}
+ expected:=[9]int.[p.side,p.width,p.height,p.levels,p.bytes,p.work,p.base_offset,p.source_bytes,0];
+ for i:0..<9 {if values[i]!=expected[i] {return false;}}return true;
+}
+hlc_bytes :: (a:[]u8,b:[]u8)->int {
+ if a.count<1 || a.count!=b.count {return -1;}different:=0;for i:0..<a.count {if a[i]!=b[i] {different+=1;}}return different;
+}
+hlc_complete :: (count:int,different:int,side:int,levels:int)->bool {return count==38 && different==0 && side==512 && levels==10;}

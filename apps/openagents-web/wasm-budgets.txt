@@ -68,3 +68,5 @@ waterlab 190000
 bitcoin-lab 365000
 # Shared PCM interpreter, authored-room FFT and canonical WAV resampling.
 host-audio 140000
+# Canonical PNG/JPEG layer decode and complete mip generation (55,132 measured).
+host-layers 70000

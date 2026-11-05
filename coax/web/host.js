@@ -1090,6 +1090,7 @@ async function loadShadersOnce() {
     const candidate = new RenderHost({ device, context: gpu.context, format, memory, exports: engine.exports, arena,
       url: renderUrl, profile: Number(script.dataset.renderProfile), coarse: matchMedia("(pointer: coarse)").matches, capture: captureRequested,
       presentation: captureRequested && globalThis.coaxialRenderPresentation === "float",
+      canonicalLayers: Boolean(hostTransport) || (captureRequested && globalThis.coaxialCanonicalLayers === true),
       onMedia: (rows) => send(MEDIA_KIND, rows.filter((m) => m.ready || m.failed).map((m) => `${m.url} ${m.failed ? 0 : m.width} ${m.failed ? 0 : m.height}`).join("\n")) });
     await candidate.initialize(previous);
     for (const asset of candidate.assetRows) asset.renderOwner = candidate;
@@ -1428,8 +1429,9 @@ async function loadPack(pack) {
       device.queue.writeBuffer(a.buffer, 0, whole); a.size = e.bytes.length;
     }
     loading.textures(0, 2 * of(PACK_LAYER).length);   // each layer decoded, then on the GPU
-    const images = await Promise.all(of(PACK_LAYER).map((e) => createImageBitmap(new Blob([e.bytes])).then((b) => (loading.textures(1, 0), b))));
     if (renderUrl) await renderReload;if (!parts.every(currentAsset)) return;
+    const images = gpu.renderer?.canonicalLayers ? of(PACK_LAYER).map(e=>e.bytes)
+      : await Promise.all(of(PACK_LAYER).map((e) => createImageBitmap(new Blob([e.bytes])).then((b) => (loading.textures(1, 0), b))));
     if (images.length) { layers.texture = await layerTexture(images);if (renderUrl) await renderReload;if (!parts.every(currentAsset)) return;if (gpu.renderer) gpu.renderer.layerTexture = layers.texture;layers.size = images.length; }
     else layers.failed = true;
     for (const e of of(PACK_SOUND)) if (!assets.some((a) => a.kind === "sound" && a.name === e.name)) assets.push({ i: assets.length, kind: "sound", name: e.name, bytes: e.bytes, done: true });
@@ -1495,10 +1497,14 @@ async function loadAsset(a) {
   try {
     if (a.kind === "layers") {
       loading.textures(0, 2 * a.urls.length);
+      if (renderUrl) await renderReload;if (!currentAsset(a)) return;
+      const canonical = Boolean(gpu.renderer?.canonicalLayers);
       const images = await Promise.all(a.urls.map(async (u) => {
         const r = await fetch(u);
         if (!r.ok) throw new Error(`${u}: ${r.status}`);
-        const b = await createImageBitmap(new Blob([await readBytes(r, (l, t) => loading.bytes(u, l, t))]));
+        const bytes = await readBytes(r, (l, t) => loading.bytes(u, l, t));
+        if (canonical) return bytes;
+        const b = await createImageBitmap(new Blob([bytes]));
         loading.textures(1, 0);
         return b;
       }));
@@ -1540,7 +1546,7 @@ function fetchedOnce(url) {
 }
 // A 2D-array texture, an image a layer, sRGB, mipmapped (every image at the first one's size).
 async function layerTexture(images) {   // the loading screen counts each layer as it goes up
-  if (gpu.renderer) { const texture = await gpu.renderer.makeLayers(images);loading.textures(images.length, 0);return texture; }
+  if (gpu.renderer) { const renderer=gpu.renderer,texture = await renderer.makeLayers(images);loading.textures(images.length*(renderer.canonicalLayers?2:1), 0);return texture; }
   const { device } = gpu, [w, h] = [images[0].width, images[0].height];
   const levels = Math.floor(Math.log2(Math.max(w, h))) + 1;
   const texture = device.createTexture({ size: [w, h, images.length], format: "rgba8unorm-srgb", mipLevelCount: levels,
