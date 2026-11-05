@@ -1,14 +1,12 @@
 # 1. The simplest loop
 
-> **Status: partly implemented.** The smallest agent loop runs on the CPU
-> over Psionic chapter 126's engine and Psionic chapter 136's calculator tool: a model turn,
-> a typed tool call, the result appended, and again, until the model answers
-> or a budget stops the turn. Every turn ends with one typed stop, every
-> request's input is a prefix of the transcript, and every step replays from
-> its seed. Still to come: a model served through Psionic chapters 20, 22 and 79
-> instead of one called in process, a deadline on the wall clock instead of
-> a logical clock, and cancellation that interrupts a running model stream
-> and running tools instead of acting between steps.
+> **Status: implemented.** In the named CPU and native profiles, The finite
+> calculator loop below runs against Psionic's in-process engine. The
+> [owned native loop](../../docs/coder/owned-loop-v1.md) composes served-model
+> requests, typed shell/view tools, a private durable journal, scoped
+> approvals, budgets and selected Linux confinement. Its integration checks
+> use recorded HTTP responses and real process/file effects; they establish
+> the wiring, not the quality or cache behavior of a hosted model.
 
 For the same loop applied to a failing repository check, an edit and
 continuation, start with the [offline repository journey](../../docs/coder/repository-pilot.md).
@@ -19,22 +17,20 @@ the reply, runs the tool the reply asks for, appends the tool's output and
 asks again. It also decides when to stop: when the model gives a final
 answer, or when the turn has used up what it was allowed to spend. This
 chapter builds the smallest loop that does that. Later chapters in Parts I–V
-develop additional mechanisms as separately checked experiments. They do not
-yet all compose into this loop or the live Coder application.
+develop additional mechanisms as separately checked experiments. The first
+five also have a composed native path in Microcoder and the Psionic engine.
 
 The implementation boundaries are concrete:
 
-| Chapters | What composes today | Remaining join |
+| Profile | What composes | Evidence |
 | --- | --- | --- |
-| 1–2 | `lg_run` logs the calculator loop, and checks compare it with `hl_run`. | The hash-chained token log remains in memory, separate from Coder's durable JSONL reporting. |
-| 3 | `px_assemble` reads chapter 2's logged history and checks stable prefixes. | It is not the live engine's prompt assembler; its cache times are modeled. |
-| 4–5 | The sandbox wraps `ht_call` and logs simulated calls/approvals through chapter 2's log. | The registry's constrained calls are not wired into chapter 1's model loop, and the three-room policy does not confine native processes. |
+| Finite CPU | Calculator loop, token-log reconstruction, prefix checks, declared finite tools and the three-room policy | The examples below and in chapters 2–5 |
+| Owned native v1 | Actual translated requests, durable intent/result records, typed shell/view actions, proposal tickets and selected native confinement | [`journal-live.coax`](../tests/journal-live.coax), [`journal-worker.coax`](../tests/journal-worker.coax) and [`native-profile.coax`](../tests/native-profile.coax) |
 
-The [live coverage matrix](CONTRACT.md#coverage-by-execution-path) governs
-which properties each engine actually has. Joining these experiments requires
-an end-to-end check of the same model request, admitted tool effect, durable
-intent/result and cancellation path; passing the separate examples does not
-establish that join. The chapter status remains partly implemented.
+The [live coverage matrix](CONTRACT.md#coverage-by-execution-path) distinguishes
+these profiles from driven engines. The finite registry and automaton remain
+the small teaching implementation; the native loop uses its declared
+`next_action` schema and concrete process/file tools.
 
 Everything here lives in one `#authority` file,
 [harness/loop.coax](../../psionic/lib/harness/loop.coax), because the loop decides
@@ -486,7 +482,7 @@ advance while the engine still does the real forward pass.
 
 Mutation of `harness/loop.coax` leaves no survivors.
 
-## What remains
+## Extending the finite profile
 
 - A model served through Psionic chapter 20's API, Psionic chapter 22's live service and
   Psionic chapter 79's Responses server, and a run against a pinned resident model
@@ -497,8 +493,9 @@ Mutation of `harness/loop.coax` leaves no survivors.
   late responses.
 - Cancellation that stops a model stream mid-reply and every running tool
   together. Here a cancel takes effect only at a step boundary.
-- More than one tool, typed schemas and constrained arguments (chapter4),
-  a durable session log (chapter2) and a sandbox (chapter5).
+- The native integration is documented in [owned loop v1](../../docs/coder/owned-loop-v1.md).
+  Token-level constrained generation and model/cache qualification keep their
+  separate profiles in chapters 3–5 and 9–12.
 
 ## Sources
 

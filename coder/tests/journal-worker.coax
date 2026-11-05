@@ -45,6 +45,22 @@ tool_main :: ()->int #export_c {
   }
   if !ended {err:[8192]u8;error:=proc_stderr(h,err[..]);tool_errln(error);return 1;}
   #assert asked && command && view && nj>0;
+  // A later approval cannot widen the next turn's frozen read ceiling.
+  p=fs_join(dir,"3.http",pb[..]);jw_reply(p,"{\"rationale\":\"forbidden\",\"commands\":[\"printf unsafe > forbidden.txt\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}");
+  n=json_raw(message[..],0,"{\"task\":\"read only\",\"local\":true,\"gated\":true,\"sandbox\":\"workspace-write\",\"policy\":{\"enabled\":true,\"ceiling\":0},\"cwd\":");
+  n=json_write_string(message[..],n,dir);n=json_raw(message[..],n,"}\n");jw_send(h,cast(string)message[0..<n]);
+  refused:=false;started=proc_now_ms();
+  while proc_now_ms()-started<120000 {
+    k:=proc_line(h,1000,line[..]);if k==PROC_TIMEOUT {continue;}#assert k>=0;
+    text:=cast(string)line[0..<k];ar[0].at=0;ar[0].full=false;kind:=cl_str(ar[..],text,"kind");
+    if kind=="ask" {
+      ticket:=cl_int(text,"ticket");#assert ticket.ok;
+      n=json_raw(message[..],0,"{\"answer\":true,\"ticket\":");n=json_write_int(message[..],n,ticket.value);n=json_raw(message[..],n,"}\n");jw_send(h,cast(string)message[0..<n]);
+    }
+    #assert kind!="command";
+    if kind=="ended" {#assert cl_str(ar[..],text,"ending")=="failed";refused=true;break;}
+  }
+  effectbuf:[1200]u8;forbidden:=fs_join(dir,"forbidden.txt",effectbuf[..]);#assert refused && !fs_exists(forbidden);
   closed:=proc_close_stdin(h);#assert proc_wait(h,5000)==0;
   bytes:[1048576]u8;nb:=fs_read(cast(string)journal_path[0..<nj],bytes[..]);#assert nb>0;
   state:AfState;at:=0;models:=0;tools:=0;decisions:=0;
@@ -55,7 +71,7 @@ tool_main :: ()->int #export_c {
     if r.kind==AjKind.decision {decisions+=1;}
     move:=af_recover(state,bytes[at..<at+r.consumed]);#assert move.ok;state=move.state;at+=r.consumed;
   }
-  #assert state.phase==AfPhase.closed && !state.unknown && models==2 && tools==2 && decisions==2;
+  #assert state.phase==AfPhase.closed && !state.unknown && models==3 && tools==2 && decisions>=2;
   // A physical JSONL append refusal must not publish or dispatch the task.
   badpath:[1500]u8;bn:=json_raw(badpath[..],0,home);bn=json_raw(badpath[..],bn,"/.openagents/coder/sessions/storage-test.jsonl");
   #assert fs_mkdir(cast(string)badpath[0..<bn]);

@@ -1,23 +1,17 @@
 # 5. A sandbox and approvals
 
-> **Status: partly implemented.** A sandbox runs on the CPU around chapter
-> 4's tools. Its policy is data: an effect ceiling and the rooms of the
-> world a session may ever touch, the effect, rooms and cost that run
-> without asking, and limits on calls, call bytes, ticks per call and the
-> session's clock. The policy decides before every run. A call between what
-> runs freely and the ceiling pauses the session until a typed answer
-> arrives: approve, deny or expire, for one call or as a pattern of tool
-> and room. Approval cannot pass the ceiling or a limit. Every call, request
-> and answer is an event in chapter2's log, and a replay of the log
-> rebuilds the same events and the same world. Still to come: real
-> processes and files (declared roots on disk, memory and process-count
-> limits, stopping a process that overruns), the repeated-failure guard,
-> approvals from a person through a client, and policies and answers as
-> messages in `proto/`.
+> **Status: implemented in named profiles.** The three-room CPU sandbox
+> below checks policy, budgets and approval semantics. The
+> [owned native profile](../../docs/coder/owned-loop-v1.md) adds real shell
+> and file effects, durable proposal/answer records, stale-answer fencing,
+> deadlines and Linux x86-64 workspace confinement. Its selected profile
+> refuses unavailable sandbox support. Process-wide quotas and broader
+> platform/protocol qualifications remain separately scoped below.
 
 See [policy and actual confinement](CONTRACT.md#plugin-and-tool-trust) for
 the live engine boundaries and defaults. The three-room experiment below
-checks admission decisions; it does not confine native processes.
+checks admission decisions; the native profile exercises the same sequence
+of proposal, decision, durable intent, effect and result with real tools.
 
 Chapter4's grant answers whether a tool may be called in a turn. It does
 not say which parts of the world the tool may touch, how much a session may
@@ -496,14 +490,16 @@ that event's digest differs from the forged one.
 
 ## What remains
 
-- Real processes and real files. Declared roots on disk, memory and
-  process-count limits, and stopping a process that overruns a limit need
-  operating-system confinement. Here the clock knows each body's ticks in
-  advance, so the sandbox refuses before running instead of stopping a run.
+- Additional native platform profiles and cgroup-wide memory/descendant
+  quotas. The implemented Linux profile mounts the declared workspace,
+  refuses sockets and escaping symlinks, enforces per-process resource
+  limits and stops overlong commands. The finite experiment knows each
+  body's ticks in advance.
 - The repeated-failure guard: stopping the same failing call repeated with
   the same arguments.
-- Approvals from a person through a client, and a timer that expires a
-  request without being asked.
+- Richer approval patterns and independent approval-expiry timers. The
+  native client already answers owned proposal tickets, and late answers
+  cannot authorize a later command.
 - Policies, requests and answers as versioned messages in `proto/`.
 
 ## Sources

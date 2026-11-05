@@ -28,12 +28,16 @@ cd_micro_send :: (a: [] App, msg: string) {
     if !ok || cxproc_spawn(h) != 0 { r := cxproc_release(h); cd_finish(a, END_FAILED, "Microcoder's worker did not start."); return; }
     a[0].mc_h = h;
   }
-  ob: [20000] u8;
+  ob: [32768] u8;
   n := json_raw(ob[..], 0, "{\"task\":"); n = json_write_string(ob[..], n, msg);
   n=json_raw(ob[..],n,",\"session\":");n=json_write_string(ob[..],n,cs_id(a[0].log));
   n = json_raw(ob[..], n, ",\"cwd\":"); n = json_write_string(ob[..], n, a[0].cwd);
   if a[0].engine == ENGINE_PSIONIC { n = json_raw(ob[..], n, ",\"local\":true"); }
   n=json_raw(ob[..],n,",\"sandbox\":");n=json_write_string(ob[..],n,cd_codex_sandbox(a[0].pol[..],a[0].ask_first));
+  n=json_raw(ob[..],n,",\"policy\":{\"enabled\":");n=json_raw(ob[..],n,ifx a[0].pol[0].on then "true" else "false");
+  n=json_raw(ob[..],n,",\"allow\":");n=json_write_int(ob[..],n,a[0].pol[0].allow);
+  n=json_raw(ob[..],n,",\"ceiling\":");n=json_write_int(ob[..],n,a[0].pol[0].ceiling);
+  n=json_raw(ob[..],n,",\"roots\":");n=json_write_string(ob[..],n,cast(string)a[0].pol[0].roots[0..<a[0].pol[0].nroots]);n=json_raw(ob[..],n,"}");
   // hooks and approvals see each command first (chapter 15)
   if cd_has_hook(a, "tool_call") || a[0].pol[0].on || a[0].ask_first { n = json_raw(ob[..], n, ",\"gated\":true"); }
   n = json_raw(ob[..], n, "}\n");

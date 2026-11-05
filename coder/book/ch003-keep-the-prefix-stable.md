@@ -9,6 +9,13 @@
 > named host and model, real tokenized system prompts and tool schemas, and
 > a long session of more than 16 requests remain.
 
+The [owned native profile](../../docs/coder/owned-loop-v1.md) records its real
+system prompt, action schema and complete translated request bodies. It
+also measures common request-byte prefixes for the same configured attempt.
+Those byte observations and frozen client fields are checked in the composed
+loop; tokenizer and server-cache claims remain specific to the CPU profile
+below.
+
 A server with a prefix cache reuses work only when a request starts with
 the same tokens as an earlier one. [Psionic chapter 176](../../psionic/book/ch176-paged-state-and-a-tiered-prefix-cache.md)
 keeps finished prompt blocks in a trie keyed by the model and the exact

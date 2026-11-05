@@ -6,14 +6,14 @@
 //        {"task":...,"local":true}        the same on the model server on this machine (psionic)
 //        {"stop":true}                    STOP the run
 //        {"forget":true}                  forget the conversation
-//        {"task":...,"gated":true}        each command waits for an answer: {"answer":true} or {"answer":false,"why":"..."}
+//        {"task":...,"gated":true}        each command waits for an answer: {"answer":true,"ticket":N} or {"answer":false,"ticket":N,"why":"..."}
 //        {"embed":"TEXT","query":true}    a Vertex embedding of TEXT (a query's when query is set, else a document's)
 //   out  {"kind":"ready"}
 //        {"kind":"reply","text":"..."}    more of the reply as it streams
 //        {"kind":"attempt","gateway":"vertex","model":"...","outcome":"done","status":200,"usd_micros":717}
 //        {"kind":"command","command":"ls","exit":0,"timed_out":false,"output":"..."}
 //        {"kind":"view","path":"a.txt","found":true}
-//        {"kind":"ask","command":"rm -rf build"}   a gated run's command, waiting for its answer
+//        {"kind":"ask","command":"rm -rf build","ticket":N}   a gated run's command, waiting for its answer
 //        {"kind":"ended","ending":"finished","text":"..."}
 //        {"kind":"embedding","values":[...]} or {"kind":"embedding","error":"..."}
 //
@@ -217,8 +217,10 @@ tool_main :: () -> int #export_c {
     }
     t := cl_str(ar[..], msg, "task");
     if t.count == 0 || running { continue; }
+    incoming_cwd:=cl_str(ar[..],msg,"cwd");
+    if t.count>task.count || incoming_cwd.count==0 || incoming_cwd.count>cwd.count {mw_ended(out[..],"failed","task or workspace exceeds the declared worker bounds");continue;}
     tn := mk_keep(task[..], t);
-    cn := mk_keep(cwd[..], cl_str(ar[..], msg, "cwd"));
+    cn := mk_keep(cwd[..], incoming_cwd);
     tk := cast(string) task[0..<tn]; cd := cast(string) cwd[0..<cn];
     mk_keys(k[..]);
     local := cl_bool(msg, "local");
@@ -237,9 +239,16 @@ tool_main :: () -> int #export_c {
     profile:=cl_str(ar[..],msg,"sandbox");
     if profile.count==0 {profile="danger-full-access";}
     np:=mk_keep(profilebuf[..],profile);run[0].profile=cast(string)profilebuf[0..<np];
+    run[0].ceiling=3;policy_on:=cl_bool(msg,"policy.enabled");
+    if policy_on.ok && policy_on.value {
+      ceiling:=cl_int(msg,"policy.ceiling");
+      if !ceiling.ok || ceiling.value<0 || ceiling.value>3 {mw_ended(out[..],"failed","invalid frozen effect ceiling");continue;}
+      run[0].ceiling=ceiling.value;
+    }
     if profile!="danger-full-access" && profile!="read-only" && profile!="workspace-write" {mw_ended(out[..],"failed","unknown sandbox profile");continue;}
     context:[32768]u8;nc:=json_raw(context[..],0,"{\"profile\":\"coder-owned-v1\",\"cwd\":");nc=json_write_string(context[..],nc,cd);
     nc=json_raw(context[..],nc,",\"session\":");nc=json_write_string(context[..],nc,cl_str(ar[..],msg,"session"));
+    nc=json_raw(context[..],nc,",\"policy\":");policy:=cl_raw(msg,"policy");nc=json_raw(context[..],nc,ifx policy.count>0 then policy else "null");
     nc=json_raw(context[..],nc,",\"sandbox\":");nc=json_write_string(context[..],nc,run[0].profile);
     nc=json_raw(context[..],nc,",\"system\":");nc=json_write_string(context[..],nc,MC_SYSTEM);
     nc=json_raw(context[..],nc,",\"schema\":");nc=json_write_string(context[..],nc,MC_SCHEMA);

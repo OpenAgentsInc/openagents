@@ -14,6 +14,16 @@ np_root :: (root:string,home:string)->bool {
 NP_DENY :: [23]u32.[41,42,53,425,426,427,101,310,311,438,304,321,323,165,272,308,250,248,249,169,175,176,246];
 NP_FILTER_BYTES :: (7+23*2)*8;
 
+np_tool_admit :: (ceiling:int,command:bool)->bool {
+  effect:=ifx command then 3 else 0;
+  return ceiling>=0 && ceiling<=3 && effect<=ceiling;
+}
+#forall "approval cannot widen the frozen read or shell effect ceiling" ceiling:-1..<5,command:bool {
+  expected:=ceiling>=0 && ceiling<=3;
+  if command {expected=ceiling==3;}
+  #assert np_tool_admit(ceiling,command)==expected;
+}
+
 // Both profiles that confine a workspace and the explicit full-access
 // profile retain the owned loop's model/effect/time budgets.
 np_budget :: (model:bool,used:int,now:int,deadline:int)->bool {

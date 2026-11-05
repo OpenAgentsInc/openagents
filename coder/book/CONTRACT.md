@@ -9,27 +9,29 @@ named scope runs; it is not a security audit or a performance comparison.
 
 | Property | Bounded harness experiments | Microcoder and Psionic engine | Claude Code engine | Codex engine |
 | --- | --- | --- | --- | --- |
-| Request reconstruction | Every experimental token request is rebuilt from the experiment's log | Coder reconstructs turn input; pruning and every internal model step are not yet fully recorded | Coder reconstructs the input it submits; internal model history belongs to Claude Code | Coder reconstructs the input it submits; internal model history belongs to Codex |
-| Prefix and condensation | Chapters 3 and 7 check logged transformations on finite token arrays | Bounded state is rebuilt and old actions/output are pruned; these transformations are not yet logged as chapter 7 events | Engine owns compaction and cache behavior | Engine owns compaction and cache behavior |
+| Request reconstruction | Every experimental token request is rebuilt from the experiment's log | AJR1 reconstructs each actual translated request, including the result of pruning | Coder reconstructs the input it submits; internal model history belongs to Claude Code | Coder reconstructs the input it submits; internal model history belongs to Codex |
+| Prefix and condensation | Chapters 3 and 7 check logged transformations on finite token arrays | Frozen system/schema and exact post-pruning bodies are recorded; byte-prefix observations do not imply token-cache hits | Engine owns compaction and cache behavior | Engine owns compaction and cache behavior |
 | Durable reporting | Chapter 2's hash-chain experiment is in memory | Coder JSONL lines sync before publication | Coder JSONL lines sync before publication | Coder JSONL lines sync before publication |
-| Durable intent before tool effects | Policy experiments log decisions before simulated effects | Live result reporting can follow an effect; complete intent/result recovery remains open | Engine runs its tools; Coder may learn of the effect afterward | Engine runs its tools; Coder may learn of the effect afterward |
-| Approval and confinement | Chapter 5 decides access to three simulated rooms; this is not an OS sandbox | Coder can gate commands under selected policy; this alone is not native process confinement | Policy uses permission control and PreToolUse hooks; process confinement still depends on engine/platform configuration | Policy answers engine approvals; Codex also enforces its selected sandbox |
+| Durable intent before tool effects | Policy experiments log decisions before simulated effects | Command/view intent is durable before execution; outputs/results before feedback; recovery never retries an unknown effect | Engine runs its tools; Coder may learn of the effect afterward | Engine runs its tools; Coder may learn of the effect afterward |
+| Approval and confinement | Chapter 5 decides access to three simulated rooms; this is not an OS sandbox | Owned proposal tickets gate commands; selected Linux workspace profiles mount/confine real tools and refuse unavailable support | Policy uses permission control and PreToolUse hooks; process confinement still depends on engine/platform configuration | Policy answers engine approvals; Codex also enforces its selected sandbox |
 | Default local execution | Explicit experiment grant and budgets | Commands run unless a selected policy or hook gates them | Permission bypass unless options select a policy or asking | Approval `never` and full access unless options select another mode |
 | Provenance gate | Chapter 6 checks explicit source labels and planner/reader views | Experimental gate is not integrated through every native tool path | Live Router containment uses ceilings, not the experimental provenance gate | No equivalent live corpus qualification is established by chapter 6 |
 | Consent ledger | Chapter 18 checks labelled sends, grants and revocation | Gates remembered facts; ordinary conversation/tool output are not universally ledger-gated | Gates remembered facts; ordinary conversation/tool output are not universally ledger-gated | Gates remembered facts; ordinary conversation/tool output are not universally ledger-gated |
-| Crash recovery | Experimental replay rebuilds simulated state | Coder reads complete JSONL lines; arbitrary tool effects may be unknown | Router launch/delivery recovery is checked; engine tool effects remain engine-owned | Router launch/delivery recovery is checked; engine tool effects remain engine-owned |
+| Crash recovery | Experimental replay rebuilds simulated state | AJR1 verifies complete frames; interrupted intents are unknown and recovery has no effect capability | Router launch/delivery recovery is checked; engine tool effects remain engine-owned | Router launch/delivery recovery is checked; engine tool effects remain engine-owned |
 
 Microcoder and Psionic emit [versioned request-attempt observations](../../docs/protocol/coder-observability-v2.md).
 They identify the configured model and requested effort, preserve missing usage
-as null, and separate provider cost from the static estimate. These records do
-not make the internal request history reconstructible or prove resolved model
-identity. Codex's cumulative snapshots remain a different scope.
+as null, and separate provider cost from the static estimate. The separate private AJR1 journal reconstructs owned-worker requests.
+Neither record proves resolved model identity. Codex's cumulative snapshots remain a different scope.
 
 The Psionic path currently shares Microcoder's loop on a Chat Completions
 server. It does not inherit server prefix-cache or constrained-generation
 qualification merely by selecting `--engine psionic`. See chapters 9–12
 for named engine versions, recorded protocol fixtures and live limitations.
 The same permission names across engines do not imply identical enforcement.
+
+The complete format, bounds, defaults and executable integration checks are
+in [owned loop v1](../../docs/coder/owned-loop-v1.md).
 
 ## What replay means
 

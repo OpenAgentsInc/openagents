@@ -37,11 +37,11 @@ checks from measurements of real coding outcomes.
 
 ## Status
 
-Written 2026-11-01; counts as of 2026-11-02. Of the 37 chapters, 4 are
-implemented, 21 are partly implemented and 12 are written surveys. Chapters 1–8
-and 14–22 moved here from Part XXI of the Psionic book on 2026-11-01. Their
-code is still under `psionic/lib/harness/`, and the [registry](chapters.json)
-names it.
+Written 2026-11-01; counts as of 2026-11-05. Of the 38 chapters, 8 are
+implemented, 18 are partly implemented and 12 are written surveys. The
+opening native profile composes the owned worker, durable journal and Linux
+confinement; the finite teaching examples remain under `psionic/lib/harness/`.
+The [registry](chapters.json) names each chapter’s sources and qualified targets.
 
 | Status | Meaning |
 | --- | --- |
@@ -55,11 +55,11 @@ names it.
 
 | Chapter | Status |
 | --- | --- |
-| [1. The simplest loop](ch001-the-simplest-loop.md) | Partly implemented: cpu-harness-loop-v1, bounded CPU |
-| [2. Model-visible means logged](ch002-model-visible-means-logged.md) | Partly implemented: sha256-harness-log-v1, bounded CPU |
+| [1. The simplest loop](ch001-the-simplest-loop.md) | Implemented: cpu-harness-loop-v1, bounded CPU; coder-owned-v1, native Linux x86_64 |
+| [2. Model-visible means logged](ch002-model-visible-means-logged.md) | Implemented: sha256-harness-log-v1, bounded CPU; coder-owned-v1, native Linux x86_64 |
 | [3. Keep the prefix stable](ch003-keep-the-prefix-stable.md) | Partly implemented: px-prefix-v1, bounded CPU |
-| [4. Tools as typed capabilities](ch004-tools-as-typed-capabilities.md) | Partly implemented: cpu-harness-tools-v1, bounded CPU |
-| [5. A sandbox and approvals](ch005-a-sandbox-and-approvals.md) | Partly implemented: cpu-harness-sandbox-v1, bounded CPU |
+| [4. Tools as typed capabilities](ch004-tools-as-typed-capabilities.md) | Implemented: cpu-harness-tools-v1, bounded CPU; coder-owned-v1, native Linux x86_64 |
+| [5. A sandbox and approvals](ch005-a-sandbox-and-approvals.md) | Implemented: cpu-harness-sandbox-v1, bounded CPU; coder-owned-v1, native Linux x86_64 |
 | [6. A document tries to become the system prompt](ch006-a-document-tries-to-become-the-system-prompt.md) | Partly implemented: ij-inject-v1, bounded CPU, deterministic stand-in agent |
 | [7. Condense the history](ch007-condense-the-history.md) | Partly implemented: cd-condense-v1, bounded CPU |
 | [8. Programs as tool calls](ch008-programs-as-tool-calls.md) | Partly implemented: cpu-harness-program-v1, bounded CPU |

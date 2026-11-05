@@ -1,22 +1,15 @@
 # 2. Model-visible means logged
 
-> **Status: partly implemented.** A session log runs on the CPU over chapter
-> 1's loop: an append-only, SHA-256 hash-chained list of typed events, in
-> which every token a request holds is an event before the request is sent,
-> and the request is read from the log's own token store. A verifier
-> rebuilds every turn and step from the events and refuses a log or a
-> request they do not explain, redaction keeps the chain, and a rebuilt turn
-> replays through chapter1's `hl_replay`. Still to come: the event
-> schemas in `proto/`, a byte format on disk with readers kept for older
-> versions, and a write that is durable before its effect is reported.
-> Coder's session logs recover from a cut at any byte offset, and each line
-> is on storage before it is printed (see [In Coder](#in-coder)); this
-> chapter's hash-chained log does neither yet.
+> **Status: implemented in named profiles.** The finite token log below
+> rebuilds the calculator loop. The owned native worker uses a private AJR1
+> byte journal: complete translated model requests, one-use starts, tool
+> intents, outputs, results and approval decisions are durable before their
+> corresponding publication or effect. Recovery has no execution capability.
+> See [owned loop v1](../../docs/coder/owned-loop-v1.md) for format and checks.
 
 The [coverage matrix and replay definitions](CONTRACT.md) distinguish this
-experiment's token log from Coder's live engine-input log. Driven engines
-own their internal model requests; syncing a reported result does not prove
-that Coder recorded intent before the effect.
+experiment's token log from the owned worker's exact request journal and
+from driven-engine reports. Claude Code and Codex own their internal requests.
 
 The model sees only what the harness sends it. Chapter1's loop already
 keeps that small: step `k`'s request is a prefix of one token array. This
@@ -650,25 +643,28 @@ are in `ID.jsonl.cut`.
   loss. On an Apple-silicon Mac this costs about 3 ms a line: a five-line
   `coder run` went from 26 ms to 42 ms.
 
-What this does not give: Claude Code and Codex run their own tools and
-report them afterward, so a tool line is durable before Coder reports it,
-not before the tool's effect happens. Microcoder and `$ ` commands are
-logged when their results come back for the same reason.
+Microcoder and Psionic additionally write the [owned worker journal](../../docs/coder/owned-loop-v1.md).
+It records each translated internal model request and command/view intent
+before starting it, then its output and result before feeding the loop.
+A storage failure stops dispatch; the process fixture forces that refusal.
+The session JSONL includes the journal path. Claude Code, Codex and direct
+`$ ` commands retain their separately described reporting boundaries.
 
 ## What remains
 
 - Event schemas in `proto/`, each a versioned message, and the log's
   content as protobuf rather than this chapter's fixed encoding.
-- A byte format on disk, with a version, and readers kept for older
-  versions so an old session still opens.
+- The token-only experiment could adopt the AJR1 storage adapter too. AJR1
+  already has a versioned reader for owned-worker records.
 - Recovery of this chapter's hash-chained log truncated at any byte offset
   to its last complete event, with the truncation reported. Here a log can
   be cut only between events, where it verifies with its last turn open.
-  Coder's session logs already do this (see [In Coder](#in-coder)).
+  Coder's JSONL reader takes complete lines; the AJR1 reader takes complete,
+  verified frames (see [In Coder](#in-coder)).
 - Durability for this chapter's log: each event written to storage before
   its effect is reported, so a crash leaves a log that ends at a known
-  boundary. Coder's session log does the first half (see
-  [In Coder](#in-coder)).
+  boundary. The owned worker already has this behavior; the finite token
+  experiment remains an in-memory proof.
 - Text added inside a turn (a user interjecting, or context injected
   between steps). Here text comes only between turns.
 

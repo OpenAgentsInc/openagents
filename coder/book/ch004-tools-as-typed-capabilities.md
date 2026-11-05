@@ -1,18 +1,12 @@
 # 4. Tools as typed capabilities
 
-> **Status: partly implemented.** Tools run on the CPU as typed
-> capabilities: each one declares a name, typed arguments, a typed result,
-> an effect class and a cost. A grant for the turn names the tools, a call
-> budget for each, a cost budget and an effect ceiling. The declarations
-> compile to Psionic chapter 53's byte automaton, so masked sampling cannot produce
-> an ungranted tool or arguments of the wrong type. Every call goes through
-> before, run and after stages, and every refusal is a typed error that
-> names the reason, the tool, the field and the byte. Still to come:
-> declarations as versioned messages in `proto/`; filesystem and process
-> tools (the shared world here is three light switches); these calls
-> inside chapter1's token loop on Psionic chapter 126's engine (the turns here
-> come from a stand-in model and contain only calls); and logging each
-> event through chapter2.
+> **Status: implemented in named profiles.** The CPU registry below has
+> declared argument/result types, grants, costs and constrained sampling.
+> The [owned native loop](../../docs/coder/owned-loop-v1.md) composes its
+> `next_action` schema, bounded shell/view tools, durable intent/result
+> records and selected native confinement in the same model loop. The finite
+> automaton is a separate generation profile; it does not claim to constrain
+> every provider's decoder.
 
 Chapter1's loop has one tool, the calculator, and its grammar is written
 into the loop. A harness needs more than one tool, and it needs to answer
@@ -574,5 +568,5 @@ before it reached 12 steps. The last line limits a call to 3 pieces, so
   and guided sampling.
 - [Psionic chapter 77](../../psionic/book/ch077-call-a-tool.md): granted tools and a finite schema on
   gpt-oss.
-- [Chapter1](ch001-the-simplest-loop.md): the loop these calls will
-  run inside.
+- [Chapter1](ch001-the-simplest-loop.md): the loop, and the composed native
+  profile with real tools and durable records.

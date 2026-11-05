@@ -128,6 +128,7 @@ McRun :: struct {
   logged: int;                   // plan log entries handed out this step
   ended: bool;
   profile:string="danger-full-access";
+  ceiling:int=3;
   journal: [] JfWriter;
   deadline: int;
   effects: int;
@@ -231,6 +232,7 @@ mc_run_poll :: (r: [] McRun, out: [] McRunEvent) -> int {
 // The live journal owns every effect ticket. Any uncertain completion ends
 // the run; a later call never silently retries the pending operation.
 mc_run_intent :: (r:[]McRun,kind:AjKind,target:string)->bool {
+  if !np_tool_admit(r[0].ceiling,kind==AjKind.command_intent) {return false;}
   if r[0].journal.count==0 {return true;}
   now:=cxproc_now_ms();
   if !np_budget(false,r[0].effects,now,r[0].deadline) || r[0].deadline-now<1000 {return false;}
@@ -239,7 +241,7 @@ mc_run_intent :: (r:[]McRun,kind:AjKind,target:string)->bool {
 }
 mc_run_failed :: (r:[]McRun,out:[]McRunEvent,k:int)->int {
   r[0].l[0].ending=MC_END_FAILED;
-  r[0].l[0].why="journal or run budget refused; an outstanding effect may have happened; inspect before retrying";
+  r[0].l[0].why="frozen capability, journal or run budget refused; an outstanding effect may have happened; inspect before retrying";
   r[0].asking=false;return mc_run_end(r,out,k);
 }
 

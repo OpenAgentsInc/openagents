@@ -7,11 +7,11 @@
 
 ## I. The loop
 
-- [1. The simplest loop](ch001-the-simplest-loop.md) — partly implemented
-- [2. Model-visible means logged](ch002-model-visible-means-logged.md) — partly implemented
+- [1. The simplest loop](ch001-the-simplest-loop.md) — implemented
+- [2. Model-visible means logged](ch002-model-visible-means-logged.md) — implemented
 - [3. Keep the prefix stable](ch003-keep-the-prefix-stable.md) — partly implemented
-- [4. Tools as typed capabilities](ch004-tools-as-typed-capabilities.md) — partly implemented
-- [5. A sandbox and approvals](ch005-a-sandbox-and-approvals.md) — partly implemented
+- [4. Tools as typed capabilities](ch004-tools-as-typed-capabilities.md) — implemented
+- [5. A sandbox and approvals](ch005-a-sandbox-and-approvals.md) — implemented
 - [6. A document tries to become the system prompt](ch006-a-document-tries-to-become-the-system-prompt.md) — partly implemented
 - [7. Condense the history](ch007-condense-the-history.md) — partly implemented
 - [8. Programs as tool calls](ch008-programs-as-tool-calls.md) — partly implemented
