@@ -1,7 +1,8 @@
 # Observed WebSocket opening context
 
 `ws_context.coax` adds bounded, atomic field/request writers. It performs no
-network effects and is not yet selected by an ordinary connection adapter.
+network effects. `relay_conn_open_context` consumes the observed values;
+`relay_conn_open` preserves the context-free interface.
 
 - `ws_context_admit(origin, cookie) -> bool` admits the world's explicitly
   bound, already serialized platform Origin and the platform cookie jar's
@@ -9,6 +10,8 @@ network effects and is not yet selected by an ordinary connection adapter.
   bytes without spaces; Cookie is at most8192 visible ASCII bytes including
   spaces. Controls, DEL and non-ASCII refuse. `null` is preserved. Both empty
   values retain a context-free legacy request; cookies require a bound Origin.
+- `ws_context_sizes(origin_bytes, cookie_bytes) -> bool` admits nonnegative
+  observed UTF-8 extents with those same bounds before retaining a copy.
 - `ws_context_fields(origin, cookie, out[]) -> int` writes exactly `Origin`
   and, when present, `Cookie`, each with CRLF. It requires at most10260 bytes.
 - `ws_request_context(host, port, path, key, origin, cookie, out[]) -> int`
@@ -25,6 +28,7 @@ URI admission, TLS trust and response/upgrade admission remain their existing
 authorities. HTTP redirects and authenticated remote behavior need actual
 adapter fixtures separately.
 
-The new root gate kills70/70 mutants without equivalent annotations. It
+The new root gate kills77/77 mutants without equivalent annotations. It
 covers exact field bytes, empty context, each byte/capacity boundary, header
-injection and atomic refusal. No existing transport/default changes here.
+injection and atomic refusal. Actual native adapter receipts are described in
+the Metal host verification record; this does not alter a renderer default.

@@ -1,0 +1,20 @@
+// Independently authored input fixture for the semantic reducer's mutation
+// gate. Actual SDK/physical-peer receipts are retained separately.
+hsc_fixture_peer :: ()->[6]HostOpeningObservation {
+ return [6]HostOpeningObservation.[
+  HostOpeningObservation.{path="/auth/before",origin="http://127.0.0.1:9172",cookie="",accepted=0},
+  HostOpeningObservation.{path="/seed",origin="",cookie="",accepted=2},
+  HostOpeningObservation.{path="/auth/after",origin="http://127.0.0.1:9172",cookie="auth=one",accepted=1},
+  HostOpeningObservation.{path="/other",origin="http://127.0.0.1:9172",cookie="other=two",accepted=1},
+  HostOpeningObservation.{path="/host",origin="http://127.0.0.1:9172",cookie="",accepted=1},
+  HostOpeningObservation.{path="/auth/after",origin="http://other.invalid",cookie="auth=one",accepted=0}];
+}
+hsc_fixture_rows :: ()->[26][8]int {
+ return [26][8]int.[
+  htc_row(910,"ws://127.0.0.1:9172/auth/before"),htc_result(1,0),htc_row(259,""),htc_row(258,""),
+  htc_row(920,"/seed"),htc_result(4,0),htc_row(512,"200\nseed"),
+  htc_row(910,"ws://127.0.0.1:9172/auth/after"),htc_result(1,0),htc_row(256,""),htc_row(257,"authenticated"),htc_row(258,""),
+  htc_row(910,"ws://127.0.0.1:9172/other"),htc_result(1,0),htc_row(256,""),htc_row(257,"authenticated"),htc_row(258,""),
+  htc_row(910,"ws://localhost:9172/host"),htc_result(1,0),htc_row(256,""),htc_row(257,"authenticated"),htc_row(258,""),
+  htc_row(910,"ws://127.0.0.1:9172/auth/after"),htc_result(1,0),htc_row(259,""),htc_row(258,"")];
+}

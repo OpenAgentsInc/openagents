@@ -10,7 +10,7 @@
 typedef struct MNContext MNContext;
 typedef struct MNCommand {struct MNCommand *next;coax_t_HostInboxLease lease;size_t count;uint8_t bytes[];} MNCommand;
 typedef struct MNEvent {struct MNEvent *next;MNContext *context;coax_t_HostInboxLease lease;MNSocketOwner owner;int64_t event;size_t count;uint8_t bytes[];} MNEvent;
-typedef struct MNJob {MNContext *context;MNSocketOwner owner;char *url;size_t url_count;bool stop,failure,suppress;MNCommand *head,*tail,*active;} MNJob;
+typedef struct MNJob {MNContext *context;MNSocketOwner owner;char *url,*origin,*cookie;size_t url_count,origin_count,cookie_count;bool stop,failure,suppress;MNCommand *head,*tail,*active;} MNJob;
 typedef struct {MNSocketOwner owner;int64_t first,last;} MNTerminal;
 struct MNContext {
  coax_t_HostSocketQueuePlan plan;coax_t_HostInboxQueue incoming,outgoing;
@@ -25,6 +25,8 @@ static MNSlot mn_slots[4];static bool mn_ready,mn_stopping;
 static int64_t mn_contexts,mn_jobs,mn_running,mn_message_bytes;
 uint32_t mn_api_version(void){return 1;}
 bool mn_uri(const uint8_t *bytes,size_t count){return count<=INT64_MAX&&hns_uri((coax_string){(const char*)bytes,(int64_t)count});}
+bool mn_opening_sizes(int64_t origin_bytes,int64_t cookie_bytes){return ws_context_sizes(origin_bytes,cookie_bytes);}
+bool mn_opening_context(const uint8_t *origin,size_t origin_count,const uint8_t *cookie,size_t cookie_count){return origin_count<=INT64_MAX&&cookie_count<=INT64_MAX&&ws_context_admit((coax_string){(const char*)origin,(int64_t)origin_count},(coax_string){(const char*)cookie,(int64_t)cookie_count});}
 bool mn_poll_more(int64_t handled,int64_t started_ms,int64_t now_ms){return htd_continue(handled,started_ms,now_ms);}
 static bool owner_equal(MNSocketOwner a,MNSocketOwner b){return a.id==b.id&&a.generation==b.generation&&a.engine==b.engine;}
 static coax_v_t_HostInboxQueue incoming(MNContext *c){return(coax_v_t_HostInboxQueue){&c->incoming,1};}
@@ -32,7 +34,7 @@ static coax_v_t_HostInboxQueue outgoing(MNContext *c){return(coax_v_t_HostInboxQ
 static void unref(MNContext *c){if(--c->references==0){mn_contexts--;free(c);}}
 static void command_free(MNJob *j,MNCommand *p){if(p){hiq_release(outgoing(j->context),p->lease);free(p);}}
 static void clear_commands(MNJob *j){MNCommand *p=j->head;j->head=j->tail=NULL;while(p){MNCommand *next=p->next;command_free(j,p);p=next;}}
-static void job_free(MNJob *j){if(!j)return;clear_commands(j);command_free(j,j->active);free(j->url);mn_jobs--;unref(j->context);free(j);}
+static void job_free(MNJob *j){if(!j)return;clear_commands(j);command_free(j,j->active);free(j->url);free(j->origin);free(j->cookie);mn_jobs--;unref(j->context);free(j);}
 static void terminal_failure(MNContext *c,MNSocketOwner o){coax_t_HostSocketSend f=hsq_failure();c->terminal[o.id]=(MNTerminal){o,f.error,f.close};}
 static MNJob *job_for(MNContext *c,MNSocketOwner o){if(o.id<0||o.id>=4)return NULL;MNSlot *s=&mn_slots[o.id];if(s->pending&&s->pending->context==c&&owner_equal(s->pending->owner,o))return s->pending;if(s->current&&s->current->context==c&&owner_equal(s->current->owner,o))return s->current;return NULL;}
 void hni_lock(void){pthread_mutex_lock(&mn_io);}
@@ -65,7 +67,7 @@ static void *worker(void *slot){
   size_t capacity=(size_t)j->context->plan.input_bytes;pthread_mutex_unlock(&mn_queue);
   uint8_t *message=malloc(capacity?capacity:1);
   if(message){pthread_mutex_lock(&mn_queue);mn_message_bytes+=(int64_t)capacity;pthread_mutex_unlock(&mn_queue);
-   hns_worker((int64_t)(uintptr_t)j,(coax_string){j->url,(int64_t)j->url_count},(coax_v_u8){message,(int64_t)capacity});
+   hns_worker_context((int64_t)(uintptr_t)j,(coax_string){j->url,(int64_t)j->url_count},(coax_string){j->origin,(int64_t)j->origin_count},(coax_string){j->cookie,(int64_t)j->cookie_count},(coax_v_u8){message,(int64_t)capacity});
    free(message);pthread_mutex_lock(&mn_queue);mn_message_bytes-=(int64_t)capacity;
   }else{pthread_mutex_lock(&mn_queue);if(!j->context->closed)terminal_failure(j->context,j->owner);}
   s->current=NULL;mn_running--;job_free(j);pthread_cond_broadcast(&mn_changed);
@@ -83,11 +85,16 @@ void *mn_open(int64_t capacity){
  MNContext *c=calloc(1,sizeof*c);if(c){c->plan=p;c->incoming=hiq_open(p.input_bytes);c->outgoing=hiq_open(p.output_bytes);c->references=1;mn_contexts++;}pthread_mutex_unlock(&mn_queue);return c;
 }
 bool mn_start(void *context,MNSocketOwner o,const uint8_t *url,size_t count){
- MNContext *c=context;if(!c||o.id<0||o.id>=4||count>INT64_MAX||!hns_uri((coax_string){(const char*)url,(int64_t)count}))return false;
+ return mn_start_context(context,o,url,count,NULL,0,NULL,0);
+}
+bool mn_start_context(void *context,MNSocketOwner o,const uint8_t *url,size_t count,const uint8_t *origin,size_t origin_count,const uint8_t *cookie,size_t cookie_count){
+ MNContext *c=context;if(!c||o.id<0||o.id>=4||!mn_uri(url,count)||!mn_opening_context(origin,origin_count,cookie,cookie_count))return false;
  pthread_mutex_lock(&mn_queue);if(c->closed||mn_stopping){pthread_mutex_unlock(&mn_queue);return false;}
- MNJob *j=calloc(1,sizeof*j);if(j)j->url=malloc(count+1);
- if(!j||!j->url){if(j)free(j);terminal_failure(c,o);pthread_mutex_unlock(&mn_queue);return false;}
+ MNJob *j=calloc(1,sizeof*j);if(j){j->url=malloc(count+1);j->origin=malloc(origin_count+1);j->cookie=malloc(cookie_count+1);}
+ if(!j||!j->url||!j->origin||!j->cookie){if(j){free(j->url);free(j->origin);free(j->cookie);free(j);}terminal_failure(c,o);pthread_mutex_unlock(&mn_queue);return false;}
  memcpy(j->url,url,count);j->url[count]=0;j->url_count=count;j->context=c;j->owner=o;c->references++;mn_jobs++;
+ if(origin_count)memcpy(j->origin,origin,origin_count);j->origin[origin_count]=0;j->origin_count=origin_count;
+ if(cookie_count)memcpy(j->cookie,cookie,cookie_count);j->cookie[cookie_count]=0;j->cookie_count=cookie_count;
  MNSlot *s=&mn_slots[o.id];if(s->current)s->current->stop=true;job_free(s->pending);s->pending=j;
  pthread_cond_broadcast(&mn_changed);pthread_mutex_unlock(&mn_queue);return true;
 }

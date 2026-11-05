@@ -45,6 +45,8 @@ verification tools only. The shipped policy and ordinary builds need neither.
 The additive [opening-context writers](ws_context.md) retain an explicitly
 observed world Origin and target-selected cookies without header injection.
 Their pure component gate is separate from native adapter adoption.
+`relay_conn_open_context(c, uri, origin, cookie)` uses those checked fields;
+the original `relay_conn_open(c, uri)` keeps its exact context-free request.
 
 `relay_conn.coax` is the reusable client connection to a Nostr relay over
 `ws://` or `wss://`: `relay_conn_open(c, uri)`, `relay_conn_send(c, text)`,

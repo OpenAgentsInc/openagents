@@ -63,6 +63,7 @@ bool mf_present_probe(void *host,const uint8_t *bytes,size_t count,int64_t width
 const uint8_t *mf_frame_jpeg(void *host,size_t *count);
 int64_t mf_http_image(const uint8_t *body,size_t body_count,const uint8_t *image,size_t image_count,uint8_t *out,size_t out_count);
 void mf_network_config(void *host,const char *page_origin,const char *local_origin);
+void mf_network_cookie_storage(void *host,void *storage);
 void mf_network_reset(void *host);
 // Nonblocking raw SDK delivery, independent of world render offers.
 int64_t mf_network_poll(void *host);

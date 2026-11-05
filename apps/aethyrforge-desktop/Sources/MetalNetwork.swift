@@ -25,6 +25,7 @@ final class ForgeMetalNetwork: NSObject, @preconcurrency URLSessionDataDelegate 
         super.init()
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpShouldSetCookies = true
+        if let jar = configuration.httpCookieStorage { mf_network_cookie_storage(host,Unmanaged.passUnretained(jar).toOpaque()) }
         session = URLSession(configuration: configuration, delegate: self, delegateQueue: .main)
         let timer = Timer(timeInterval:0.005,repeats:true) { [weak self] _ in
             MainActor.assumeIsolated {

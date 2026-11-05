@@ -1,0 +1,27 @@
+// Actual ephemeral HTTP cookie jar -> Coax opening bytes -> physical peer.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/net/cdp.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../aethyr/host/socket-context-conformance.coax";
+msc_text :: (d:Jv,node:int,key:string,out:[]u8)->string {n:=jv_str(d,jv_get(d,node,key),out);return ifx n>=0 then cast(string)out[0..<n] else "";}
+msc_op :: (o:[]Jo,name:string,kind:int,text:string) {jo_obj(o);jo_key(o,"op");jo_str(o,name);if kind>=0{jo_key(o,"kind");jo_int(o,kind);}jo_key(o,"text");jo_str(o,text);jo_end(o);}
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])<3{tool_errln("usage: metal-socket-context ROOT SDK NEW_OUTPUT [--existing]");return 2;}
+ root:=args_at(a[..],0);sdk:=args_at(a[..],1);dir:=args_at(a[..],2);if !fs_mkdir(dir){return 1;}paths:[8][4096]u8;
+ plan:=fs_join(dir,"plan.json",paths[0][..]);result:=fs_join(dir,"client.json",paths[1][..]);peer:=fs_join(dir,"peer.json",paths[2][..]);bytes:[16384]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.host.effects.v1");jo_key(o[..],"scope");jo_str(o[..],"socket-context");jo_key(o[..],"origin");jo_str(o[..],"http://127.0.0.1:9172");jo_key(o[..],"operations");jo_arr(o[..]);
+ for text,i:[6]string.["ws://127.0.0.1:9172/auth/before","/seed","ws://127.0.0.1:9172/auth/after","ws://127.0.0.1:9172/other","ws://localhost:9172/host","ws://127.0.0.1:9172/auth/after"] {
+  if i==5{msc_op(o[..],"origin",-1,"http://other.invalid");}msc_op(o[..],"message",ifx i==1 then 920 else 910,text);jo_obj(o[..]);jo_key(o[..],"op");jo_str(o[..],"wait");jo_key(o[..],"ms");jo_int(o[..],400);jo_end(o[..]);
+ }jo_obj(o[..]);jo_key(o[..],"op");jo_str(o[..],"observe");jo_key(o[..],"name");jo_str(o[..],"events");jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);if o[0].bad||!fs_write(plan,jo_text(o[..])){return 1;}
+ if !args_has(a[..],"--existing") {
+  server:=proc_new();if server<0{return 1;}defer{killed:=proc_kill(server,PROC_SIGTERM);waited:=proc_wait(server,2000);released:=proc_release(server);}
+  for arg:[3]string.[fs_join(root,"coax/web/tool.sh",paths[3][..]),fs_join(root,"aethyr/host/tests/socket-context-peer.coax",paths[4][..]),peer]{if !proc_arg(server,arg){return 1;}}quiet:=proc_quiet(server);if !quiet||proc_start(server)!=0{return 1;}
+  probe:[1]Cdp;health:[4096]u8;deadline:=proc_now_ms()+15000;ready:=false;while proc_now_ms()<deadline{if cdp_get(probe[..],9172,"/health",health[..])>0{ready=true;break;}proc_sleep(50);}if !ready{tool_errln("Opening-context fixture did not start");return 1;}
+  run:=[5]string.[fs_join(sdk,"HostEffects",paths[3][..]),fs_join(sdk,"resources",paths[4][..]),fs_join(sdk,"libfixture.dylib",paths[5][..]),plan,result];out:[65536]u8;err:[65536]u8;r:=proc_run(run[..],60000,out[..],err[..]);if !fs_write(fs_join(dir,"sdk.stderr",paths[6][..]),cast(string)err[0..<r.err_n])||r.started!=0||r.status!=0||r.cut||r.timed_out{tool_errln(cast(string)err[0..<r.err_n]);return 1;}
+ }
+ raw:[65536]u8;n:=fs_read(result,raw[..]);nodes:[2048]JvNode;doc:[1]Jv;if n<1||!jv_parse(doc[..],cast(string)raw[0..<n],nodes[..]){return 1;}d:=doc[0];events:=jv_get(d,0,"events");rows:[26][8]int;if jv_len(d,events)!=26{tool_errln("Opening-context callback count differs; raw retained");return 1;}for i:0..<26{row:=jv_at(d,events,i);if jv_len(d,row)!=8{return 1;}for j:0..<8{rows[i][j]=jv_int(d,jv_at(d,row,j),-1);}}if !hsc_client(rows[..],jv_int(d,jv_get(d,0,"dropped"),-1)){tool_errln("Opening-context callback words differ; raw retained");return 1;}
+ n=fs_read(peer,raw[..]);if n<1||!jv_parse(doc[..],cast(string)raw[0..<n],nodes[..]){return 1;}d=doc[0];if jv_len(d,0)!=6{return 1;}storage:[6][3][4096]u8;observed:[6]HostOpeningObservation;for i:0..<6{row:=jv_at(d,0,i);observed[i]=HostOpeningObservation.{path=msc_text(d,row,"path",storage[i][0][..]),origin=msc_text(d,row,"origin",storage[i][1][..]),cookie=msc_text(d,row,"cookie",storage[i][2][..]),accepted=jv_int(d,jv_get(d,row,"accepted"),-1)};}
+ ok:=hsc_peer(observed[..]);print("Actual opening Origin, target cookie selection and deferred authenticated callbacks:%\n",ok);return ifx ok then 0 else 1;
+}

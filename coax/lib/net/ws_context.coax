@@ -6,6 +6,11 @@
 WS_CONTEXT_ORIGIN_MAX :: 2048;
 WS_CONTEXT_COOKIE_MAX :: 8192;
 WS_CONTEXT_FIELDS_MAX :: 10260;
+#test "SDK observed byte extents are refused before retaining field copies" {
+ #assert ws_context_sizes(0,0)&&ws_context_sizes(1,0)&&ws_context_sizes(1,1)&&ws_context_sizes(2048,8192);
+ #assert !ws_context_sizes(-1,0)&&!ws_context_sizes(0,-1)&&!ws_context_sizes(0,1);
+ #assert !ws_context_sizes(2049,0)&&!ws_context_sizes(1,8193);
+}
 #test "opening context emits exact bounded Origin and selected Cookie fields" {
  out:[13000]u8;
  n:=ws_context_fields("https://world.example","sid=one; path=two",out[..]);
@@ -38,9 +43,11 @@ WS_CONTEXT_FIELDS_MAX :: 10260;
  #assert ws_request_context("h",80,"/","k","bad\norigin","",out[..])== -1;
  for b:out {#assert b==72;}
 }
+ws_context_sizes :: (origin_bytes:int,cookie_bytes:int)->bool #export_c {
+ return origin_bytes>=0&&origin_bytes<=WS_CONTEXT_ORIGIN_MAX&&cookie_bytes>=0&&cookie_bytes<=WS_CONTEXT_COOKIE_MAX&&(origin_bytes>0||cookie_bytes==0);
+}
 ws_context_admit :: (origin:string,cookie:string)->bool #export_c {
- if origin.count>WS_CONTEXT_ORIGIN_MAX||cookie.count>WS_CONTEXT_COOKIE_MAX {return false;}
- if origin.count==0 {return cookie.count==0;}
+ if !ws_context_sizes(origin.count,cookie.count) {return false;}
  for b:origin {if b<33||b>126 {return false;}}
  for b:cookie {if b<32||b>126 {return false;}}
  return true;

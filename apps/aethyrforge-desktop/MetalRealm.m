@@ -51,6 +51,7 @@ typedef struct {int64_t slot,generation;} MFHandle;
  coax_t_PackRead pack;coax_t_RenderTextureFormat screenFormat;
  coax_t_HostTransport transport;coax_t_HostOwner socketOwners[4];
  void *socketContext;
+ NSHTTPCookieStorage *cookieJar;
  NSMutableData *measureRows;NSData *frameImage;uint64_t measureEpoch,inputSequence,inputNS;size_t measureDropped;
 }
 - (BOOL)fail:(NSString*)message;
@@ -74,8 +75,8 @@ static __weak MFRealm *activeRealm;
 static NSString *lastFailure;
 static int64_t lastClosedLive=-1,lastClosedWords=-1;
 typedef struct {
- uint32_t(*version)(void);bool(*uri)(const uint8_t*,size_t);bool(*poll_more)(int64_t,int64_t,int64_t);
- void*(*open)(int64_t);bool(*start)(void*,MNSocketOwner,const uint8_t*,size_t);bool(*send)(void*,MNSocketOwner,const uint8_t*,size_t);
+ uint32_t(*version)(void);bool(*uri)(const uint8_t*,size_t);bool(*opening_sizes)(int64_t,int64_t);bool(*opening_context)(const uint8_t*,size_t,const uint8_t*,size_t);bool(*poll_more)(int64_t,int64_t,int64_t);
+ void*(*open)(int64_t);bool(*start_context)(void*,MNSocketOwner,const uint8_t*,size_t,const uint8_t*,size_t,const uint8_t*,size_t);bool(*send)(void*,MNSocketOwner,const uint8_t*,size_t);
  void(*socket_close)(void*,MNSocketOwner);bool(*next)(void*,MNSocketEvent*);void(*done)(void*);void(*close)(void*);int64_t(*info)(void*,int32_t);
 } MFNetworkAPI;
 static MFNetworkAPI networkAPI;static void *networkImage;
@@ -85,7 +86,7 @@ static BOOL socketSDK(MFRealm *r){
  if(r->socketContext)return YES;
  if(!networkImage){NSString *path=[r->directory stringByAppendingPathComponent:@"metal/libnetwork.dylib"];void *image=dlopen(path.fileSystemRepresentation,RTLD_NOW|RTLD_LOCAL);if(!image)return [r fail:@"Missing packaged native socket SDK"];
 #define MN_LOAD(field,name) networkAPI.field=(__typeof__(networkAPI.field))dlsym(image,"mn_"name);if(!networkAPI.field){dlclose(image);memset(&networkAPI,0,sizeof networkAPI);return [r fail:@"Native socket SDK ABI is incomplete"];}
-  MN_LOAD(version,"api_version") MN_LOAD(uri,"uri") MN_LOAD(poll_more,"poll_more") MN_LOAD(open,"open") MN_LOAD(start,"start") MN_LOAD(send,"send") MN_LOAD(socket_close,"socket_close") MN_LOAD(next,"next") MN_LOAD(done,"done") MN_LOAD(close,"close") MN_LOAD(info,"info")
+  MN_LOAD(version,"api_version") MN_LOAD(uri,"uri") MN_LOAD(opening_sizes,"opening_sizes") MN_LOAD(opening_context,"opening_context") MN_LOAD(poll_more,"poll_more") MN_LOAD(open,"open") MN_LOAD(start_context,"start_context") MN_LOAD(send,"send") MN_LOAD(socket_close,"socket_close") MN_LOAD(next,"next") MN_LOAD(done,"done") MN_LOAD(close,"close") MN_LOAD(info,"info")
 #undef MN_LOAD
   if(networkAPI.version()!=1){dlclose(image);memset(&networkAPI,0,sizeof networkAPI);return [r fail:@"Native socket SDK ABI differs"];}networkImage=image;
  }
@@ -501,7 +502,8 @@ int64_t mf_http_image(const uint8_t *body,size_t body_count,const uint8_t *image
 void mf_close(void *host){MFRealm *r=CFBridgingRelease(host);[r shutdown];if(activeRealm==r)activeRealm=nil;}
 int64_t mf_closed_info(int32_t field){return field==0?lastClosedLive:field==1?lastClosedWords:-1;}
 void mf_network_config(void *host,const char *page,const char *local){MFRealm *r=(__bridge MFRealm*)host;r->pageOrigin=page?[NSString stringWithUTF8String:page]:nil;r->localOrigin=local?[NSString stringWithUTF8String:local]:nil;}
-void mf_network_reset(void *host){MFRealm *r=(__bridge MFRealm*)host;ht_reset(net(r));if(r->socketContext){networkAPI.close(r->socketContext);r->socketContext=NULL;}}
+void mf_network_cookie_storage(void *host,void *storage){MFRealm *r=(__bridge MFRealm*)host;r->cookieJar=(__bridge NSHTTPCookieStorage*)storage;}
+void mf_network_reset(void *host){MFRealm *r=(__bridge MFRealm*)host;ht_reset(net(r));r->cookieJar=nil;if(r->socketContext){networkAPI.close(r->socketContext);r->socketContext=NULL;}}
 int64_t mf_network_poll(void *host){MFRealm *r=(__bridge MFRealm*)host;if(!r->socketContext)return 0;int64_t handled=0,start=milliseconds();MNSocketEvent e;
  while(networkAPI.poll_more(handled,start,milliseconds())&&networkAPI.next(r->socketContext,&e)){mf_socket_event(host,e.owner.id,e.owner.generation,e.owner.engine,(int32_t)e.event,e.bytes,e.count);networkAPI.done(e.token);handled++;}return handled;}
 int64_t mf_network_info(void *host,int32_t field){MFRealm *r=(__bridge MFRealm*)host;return r->socketContext?networkAPI.info(r->socketContext,field):0;}
@@ -542,7 +544,14 @@ double coaxial_measure_ms(void){struct timespec t;clock_gettime(CLOCK_MONOTONIC,
 int32_t coaxial_socket_open(uintptr_t address,uint32_t length){MFRealm *r=activeRealm;if(!r)return -1;NSString *url=[[NSString alloc]initWithBytes:(void*)address length:length encoding:NSUTF8StringEncoding];if(!url)return -1;
  if([url hasPrefix:@"local:"]){uint8_t target[8192];int64_t n=htr_local_target(cs(url),cs(r->localOrigin?:@""),(coax_v_u8){target,sizeof target});if(n<0)return -1;url=[[NSString alloc]initWithBytes:target length:(NSUInteger)n encoding:NSUTF8StringEncoding];}
  NSURL *base=r->pageOrigin?[NSURL URLWithString:r->pageOrigin]:nil,*resolved=[NSURL URLWithString:url relativeToURL:base];if(!resolved)return -1;NSURLComponents *parts=[NSURLComponents componentsWithURL:resolved resolvingAgainstBaseURL:YES];if([parts.scheme isEqual:@"http"])parts.scheme=@"ws";if([parts.scheme isEqual:@"https"])parts.scheme=@"wss";if(!parts.host.length||parts.fragment||(![parts.scheme isEqual:@"ws"]&&![parts.scheme isEqual:@"wss"])||!parts.URL)return -1;
- if(!socketSDK(r))return -1;NSData *target=[parts.URL.absoluteString dataUsingEncoding:NSUTF8StringEncoding];if(!networkAPI.uri(target.bytes,target.length))return -1;coax_t_HostOwner o=ht_socket_reserve(net(r));if(o.id<0)return -1;r->socketOwners[o.id]=o;networkAPI.start(r->socketContext,(MNSocketOwner){o.id,o.generation,o.engine},target.bytes,target.length);return(int32_t)o.id;}
+ if(!socketSDK(r)||!r->pageOrigin)return -1;NSData *target=[parts.URL.absoluteString dataUsingEncoding:NSUTF8StringEncoding];if(!networkAPI.uri(target.bytes,target.length))return -1;
+ NSURLComponents *http=[parts copy];http.scheme=[parts.scheme isEqual:@"ws"]?@"http":@"https";
+ NSDictionary *fields=[NSHTTPCookie requestHeaderFieldsWithCookies:[r->cookieJar cookiesForURL:http.URL]?:@[]];NSString *cookie=fields[@"Cookie"]?:@"";
+ size_t originBytes=[r->pageOrigin lengthOfBytesUsingEncoding:NSUTF8StringEncoding],cookieBytes=[cookie lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
+ if(originBytes>INT64_MAX||cookieBytes>INT64_MAX||!networkAPI.opening_sizes(originBytes,cookieBytes))return -1;
+ const uint8_t *origin=(const uint8_t*)r->pageOrigin.UTF8String,*selected=(const uint8_t*)cookie.UTF8String;
+ if(!networkAPI.opening_context(origin,originBytes,selected,cookieBytes))return -1;
+ coax_t_HostOwner o=ht_socket_reserve(net(r));if(o.id<0)return -1;r->socketOwners[o.id]=o;networkAPI.start_context(r->socketContext,(MNSocketOwner){o.id,o.generation,o.engine},target.bytes,target.length,origin,originBytes,selected,cookieBytes);return(int32_t)o.id;}
 void coaxial_socket_send(int32_t id,uintptr_t address,uint32_t length){MFRealm *r=activeRealm;if(!r||!r->socketContext||id<0||id>=4)return;coax_t_HostOwner o=r->socketOwners[id];if(ht_socket_send(net(r),o))networkAPI.send(r->socketContext,(MNSocketOwner){o.id,o.generation,o.engine},(void*)address,length);}
 void coaxial_socket_close(int32_t id){MFRealm *r=activeRealm;if(!r||!r->socketContext||id<0||id>=4)return;coax_t_HostOwner o=r->socketOwners[id];if(ht_socket_close(net(r),o))networkAPI.socket_close(r->socketContext,(MNSocketOwner){o.id,o.generation,o.engine});}
 static int32_t http_import(uintptr_t address,uint32_t length,uintptr_t body,uint32_t bodyLength,int32_t flags,int64_t timeout,BOOL bounded){MFRealm *r=activeRealm;if(!r)return -1;NSString *path=[[NSString alloc]initWithBytes:(void*)address length:length encoding:NSUTF8StringEncoding],*payload=[[NSString alloc]initWithBytes:(void*)body length:bodyLength encoding:NSUTF8StringEncoding];if(!path||!payload||!r->pageOrigin)return -1;

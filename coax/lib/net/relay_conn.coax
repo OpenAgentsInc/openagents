@@ -28,6 +28,7 @@
 #load "relay_uri.coax";
 #load "relay_conn_rules.coax";
 #load "relay_poll_budget.coax";
+#load "ws_context.coax";
 
 #load "transport.coax";
 #load "../crypto/rand_foreign.coax";
@@ -116,10 +117,15 @@ rc_drop_front :: (c: [] RelayConn, k: int) {
 // False on any failure, with the connection left closed. An open connection
 // is dropped first.
 relay_conn_open :: (c: [] RelayConn, uri: string) -> bool {
+  return relay_conn_open_context(c,uri,"","");
+}
+// Additive observed opening fields. The caller retains actual world/target
+// context; the shared writer bounds values and refuses header injection.
+relay_conn_open_context :: (c: [] RelayConn, uri: string, origin:string, cookie:string) -> bool {
   rc_shut(c);
   c[0].close_code = 0; c[0].eof = false; c[0].sent_close = false; c[0].text_n = 0; c[0].last_read = 0;
   r := relay_uri_dial(uri);
-  if !r.ok { return false; }
+  if !r.ok || !ws_context_admit(origin,cookie) { return false; }
   host := uri[r.host_from..<r.host_to];
   deadline := cxsock_now_ms() + RC_IO_MS;
   // A refused byte makes the connect itself fail (the effect remembers it).
@@ -131,11 +137,11 @@ relay_conn_open :: (c: [] RelayConn, uri: string) -> bool {
   if h < 0 { return false; }
   c[0].h = h;
   c[0].tls = r.tls;
-  nonce: [16] u8; key: [24] u8; target: [2049] u8; req: [2600] u8;
+  nonce: [16] u8; key: [24] u8; target: [2049] u8; req: [2600+WS_CONTEXT_FIELDS_MAX] u8;
   if !rc_draw(16, nonce[..]) || !ws_key(nonce[..], key[..]) { rc_shut(c); return false; }
   tn := rc_target(uri[r.target_from..<r.target_to], target[..]);
   if tn < 0 { rc_shut(c); return false; }
-  n := ws_request(host, r.port, cast(string) target[0..<tn], cast(string) key[..], req[..]);
+  n := ws_request_context(host, r.port, cast(string) target[0..<tn], cast(string) key[..],origin,cookie,req[..]);
   if n < 0 || !rc_put(c, cast(string) req[0..<n]) { rc_shut(c); return false; }
   while true {
     hello := ws_response(cast(string) c[0].inb[0..<c[0].used], cast(string) key[..]);

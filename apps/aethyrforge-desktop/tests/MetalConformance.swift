@@ -41,6 +41,7 @@ struct HostEffects {
             func n(_ k: String) -> Int64 { (op[k] as? NSNumber)?.int64Value ?? 0 }
             func f(_ k: String) -> Float { (op[k] as? NSNumber)?.floatValue ?? 0 }
             switch op["op"] as? String {
+            case "origin": mf_network_config(host,op["text"] as? String ?? "",nil)
             case "drawable-unavailable":
                 let layer = HostUnavailableLayer(), before = mf_info(host,0), clock = mf_lifecycle_info(host,4)
                 mf_layer(host,Unmanaged.passUnretained(layer).toOpaque())

@@ -45,7 +45,10 @@ hns_input :: (context:int,c:[]RelayConn,s:[]HostSocketStream,input:string,out:[]
   return true;
 }
 hns_worker :: (context:int,uri:string,out:[]u8) #export_c {
-  c:[1]RelayConn;hni_lock();ok:=relay_conn_open(c[..],uri);hni_unlock();
+  hns_worker_context(context,uri,"","",out);
+}
+hns_worker_context :: (context:int,uri:string,origin:string,cookie:string,out:[]u8) #export_c {
+  c:[1]RelayConn;hni_lock();ok:=relay_conn_open_context(c[..],uri,origin,cookie);hni_unlock();
   if !ok {hni_emit(context,3,out[0..<0]);hni_emit(context,2,out[0..<0]);return;}
   hni_emit(context,0,out[0..<0]);s:[1]HostSocketStream;
   live:=hns_input(context,c[..],s[..],cast(string)c[0].inb[0..<c[0].used],out);c[0].used=0;

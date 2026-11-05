@@ -583,3 +583,53 @@ reader, Swift probe and generated renderer/texture C; the frozen primary and
 fixture Coax object are uninstrumented, and leak detection is disabled. These
 checks open no GPU or audio device. Existing DSP/sample gates are unchanged
 and were not repeated.
+
+## Observed Origin and target-selected cookies
+
+The raw socket SDK now consumes `relay_conn_open_context` and the shared
+`ws_context.coax` writer. The world supplies its explicitly bound Origin;
+the actual ephemeral URLSession cookie jar selects cookies for the concrete
+target, using HTTP for `ws` and HTTPS for `wss`. Coax first admits measured
+UTF-8 extents, then byte values, before the worker retains copies. Each job
+owns its URI/Origin/Cookie bytes until final retirement, independently of
+later host configuration or cookie changes. Empty context retains the old
+relay request bytes. There is no TLS trust or redirect change.
+
+`socket-context/` and `socket-context-asan/` observe the actual physical
+loopback upgrade bytes and26 delivered recording-realm rows. Before seeding,
+the peer refuses the upgrade. A real HTTP response sets an HttpOnly auth
+cookie, a different-path cookie, a Secure cookie and an expired cookie. The
+`/auth` upgrade includes only `auth=one`; `/other` includes only `other=two`;
+the target spelled `localhost` receives no `127.0.0.1` cookies. The world
+Origin stays explicit, including on that different target spelling. Changing
+the world configuration's Origin makes the peer refuse despite the target's
+correct cookie. These are synthetic fixture credentials, with no production
+access. The unchanged TLS gate remains separate; this plaintext workload
+does not establish a fresh authenticated remote TLS session.
+
+The field authority kills77 root mutants and the actual receipt authority
+kills82, with zero equivalents. An initial mutation run exposed a shared
+input/expectation constructor; the reducer now tests independently authored
+input rows from a separate fixture file. Actual SDK/peer records are separate
+from both. `socket-context-transport/` and its ASan counterpart pass the common
+79-row regression. Because job storage changed, `socket-context-pressure-asan/`
+also repeats the changed ownership path:512 held payload bytes,64-command
+overflow,27 FIFO frames,1,000 replacements and zero final owners after the
+physical peer reports flush backpressure.
+
+ASan instruments the raw SDK/platform effects, MF reader, generated renderer/
+texture C and Swift driver. The recording producer remains uninstrumented;
+leak detection is disabled. `socket-context-sdk/compiled-source-observation.json`
+joins all17 actual emitted inputs with zero differences. The original598
+receipt verifies before/after its genuine historical root plus the recorded
+product overlays. The frozen C/header, SDK sources, objects and programs are
+joined by `socket-context-sdk/artifacts.sha256`. No compiler release or
+experimental graphics admission is inferred from these CPU/service gates.
+
+`socket-context-window/` observes the same newly linked/signed isolated app
+joining its actual local room with API/GPU validation. While covered, frames
+and completions stay7/7, pending reaches0 and callbacks rise51→83. Returning
+to play reaches12 frames, then closes with ledger0/0. This includes the
+updated sound packet reader and its additive physical face export. It is a
+continuity check under load, not a replacement for the frozen display-rate
+measurement. The canonical app and production services remain untouched.
