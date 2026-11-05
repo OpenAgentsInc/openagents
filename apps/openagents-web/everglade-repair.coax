@@ -3,7 +3,7 @@
 // streets (a 16 m cell: sp_group), a tree, or an admin's placed thing; after its bar (CR_REPAIR_BAR)
 // it stands whole again, its fire out, its soot gone, in a short golden mending as its pieces fly back.
 // Moving or getting hurt on the bar stops it; then it waits CR_REPAIR_EVERY. Nothing there to repair,
-// nothing happens.
+// or a stop or a refusal, says why over the bar in plain words.
 //
 // In a room the server owns it (coax/web/room/room-casts.coax: its reach, sight, bar, interrupt and
 // wait): the page sends a cast of its R slot at what it faces, runs the bar, and every page stands the
@@ -168,16 +168,20 @@ mend_glow :: (s: [] Everglade, at: Point, size: f32) {
 }
 
 // R pressed: what you face, mended after its bar; nothing there, nothing happens.
+// A press that does nothing says why, in plain words over the bar (owner playtest, #12929: R did
+// nothing and said nothing).
 mend_press :: (s: [] Everglade, slot: int) {
   v := mend_of(s);
-  if v[0].slot >= 0 || v[0].time < v[0].next || s[0].sp.casting >= 0 || watch_you(watch_w(s)[..])[0].dead { return; }
+  if v[0].slot >= 0 || watch_you(watch_w(s)[..])[0].dead { return; }   // on its bar already; or dead
+  if v[0].time < v[0].next { sp_say(s, "REPAIR · READY IN", hi_int(1, cast(int) (v[0].next - v[0].time + 0.999)), "S"); return; }
+  if s[0].sp.casting >= 0 { sp_say(s, "REPAIR · FINISH YOUR SPELL FIRST", -1, ""); return; }
   code := mend_faced(s);
-  if code < 0 { return; }
+  if code < 0 { sp_say(s, "NOTHING BROKEN HERE TO REPAIR", -1, ""); return; }
   at := mend_aim(s, code, ab_you(s));
   sent := false;
   if net_live(s) {
     // the server checks its reach and sight, runs the bar, and says what stood up (e mend)
-    if !net_cast(s, slot, at, -1) { return; }
+    if !net_cast(s, slot, at, -1) { sp_say(s, "REPAIR · NOT NOW, TRY AGAIN", -1, ""); return; }
     sent = true;
   }
   v[0].slot = slot; v[0].code = code; v[0].at = at; v[0].t = 0; v[0].sent = sent;
@@ -186,16 +190,36 @@ mend_press :: (s: [] Everglade, slot: int) {
 }
 // How much of Repair's wait is left, 1 to 0 (its icon's sweep).
 mend_wait :: (s: [] Everglade) -> f32 { v := mend_of(s); return clamp((v[0].next - v[0].time) / f32(CR_REPAIR_EVERY), 0, 1); }
-// Its bar stopped: moved, hurt, or the server's word.
-mend_cancel :: (s: [] Everglade) { v := mend_of(s); if v[0].slot >= 0 { v[0].slot = -1; v[0].next = v[0].time + 1; } }
+// Its bar stopped: moved, hurt, or the server's word (why, a CR_* reason): said in plain words.
+mend_cancel :: (s: [] Everglade, why: int) {
+  v := mend_of(s);
+  if v[0].slot < 0 { return; }
+  dx := s[0].feet.x - v[0].x; dz := s[0].feet.z - v[0].z;
+  moved := dx * dx + dz * dz > f32(CR_REPAIR_MOVE) * f32(CR_REPAIR_MOVE);
+  hurt := watch_on(s) && watch_you(watch_w(s)[..])[0].hp < v[0].hp;
+  v[0].slot = -1; v[0].next = v[0].time + 1;
+  sp_say(s, mend_why(why, moved, hurt), -1, "");
+}
+// What stopped a Repair, as the player reads it.
+mend_why :: (why: int, moved: bool, hurt: bool) -> string {
+  if why == CR_RANGE { return "REPAIR · TOO FAR AWAY, GET CLOSER"; }
+  if why == CR_SIGHT { return "REPAIR · YOU CAN'T SEE IT FROM HERE"; }
+  if why == CR_COOLDOWN { return "REPAIR · NOT READY YET"; }
+  if why == CR_BUSY { return "REPAIR · BUSY, TRY AGAIN"; }
+  if why == CR_DEAD { return "REPAIR · YOU ARE DOWN"; }
+  if hurt { return "REPAIR STOPPED · YOU WERE HIT"; }
+  if moved { return "REPAIR STOPPED · YOU MOVED"; }
+  return "REPAIR STOPPED";
+}
 mend_frame :: (s: [] Everglade, dt: f32) {
   v := mend_of(s);
   v[0].time += dt;
   if v[0].slot < 0 { return; }
   v[0].t += dt;
   dx := s[0].feet.x - v[0].x; dz := s[0].feet.z - v[0].z;
-  if dx * dx + dz * dz > f32(CR_REPAIR_MOVE) * f32(CR_REPAIR_MOVE) || watch_you(watch_w(s)[..])[0].hp < v[0].hp || watch_you(watch_w(s)[..])[0].dead {
-    mend_cancel(s); return;
+  if watch_you(watch_w(s)[..])[0].dead { v[0].slot = -1; v[0].next = v[0].time + 1; return; }
+  if dx * dx + dz * dz > f32(CR_REPAIR_MOVE) * f32(CR_REPAIR_MOVE) || watch_you(watch_w(s)[..])[0].hp < v[0].hp {
+    mend_cancel(s, CR_NO); return;
   }
   // the hammer's work: a fleck or two at it as the bar fills
   if s[0].started && sp_rand(s) < 0.5 { sp_add_spark(s, add(v[0].at, v3((sp_rand(s) - 0.5) * 1.5, (sp_rand(s) - 0.5) * 1.5, (sp_rand(s) - 0.5) * 1.5)), v3(0, 0.8, 0), 0.5, 0.06, v3(1.3, 0.95, 0.4), -0.2); }
@@ -220,4 +244,29 @@ mend_bar :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, tray: f32) -> int
   if f > 0 { sp_plate(s, u, Box.{x0 = x + sp_round(un), y0 = y + sp_round(un), x1 = x + sp_round(un) + sp_round((cw - 2 * sp_round(un)) * f), y1 = y + ch - sp_round(un)}, PLATE_FILL, 0); }
   ts := 8 * k;
   return draw_text(out, at, "REPAIR", floor((w - text_width("REPAIR", ts)) / 2), y - 7 * k, ts, GAP, SPACE, ink(k, 1.0, HB_CAST_TEXT.x, HB_CAST_TEXT.y, HB_CAST_TEXT.z), false, false);
+}
+
+#test "repair: a press or a stop that does nothing says why in plain words (#12929)" {
+  s: [1] Everglade;
+  v := mend_of(s[..]);
+  // waiting
+  v[0].time = 2; v[0].next = 5.5;
+  mend_press(s[..], SP_REBUILD);
+  #assert cast(string) s[0].sp.news[0..<s[0].sp.news_n] == "REPAIR · READY IN · 4 S" && v[0].slot < 0;
+  // nothing broken in a town that isn't there
+  v[0].next = 0; s[0].sp.news_n = 0; s[0].sp.casting = -1;
+  mend_press(s[..], SP_REBUILD);
+  #assert cast(string) s[0].sp.news[0..<s[0].sp.news_n] == "NOTHING BROKEN HERE TO REPAIR" && v[0].slot < 0;
+  // a spell on its bar
+  s[0].sp.casting = 0; s[0].sp.news_n = 0;
+  mend_press(s[..], SP_REBUILD);
+  #assert cast(string) s[0].sp.news[0..<s[0].sp.news_n] == "REPAIR · FINISH YOUR SPELL FIRST";
+  // the room's stops, said
+  v[0].slot = SP_REBUILD; s[0].sp.news_n = 0;
+  mend_cancel(s[..], CR_RANGE);
+  #assert v[0].slot < 0 && cast(string) s[0].sp.news[0..<s[0].sp.news_n] == "REPAIR · TOO FAR AWAY, GET CLOSER";
+  v[0].slot = SP_REBUILD; v[0].x = 0; v[0].z = 0; s[0].feet.x = 3;
+  mend_cancel(s[..], CR_NO);
+  #assert cast(string) s[0].sp.news[0..<s[0].sp.news_n] == "REPAIR STOPPED · YOU MOVED";
+  #assert mend_why(CR_NO, false, true) == "REPAIR STOPPED · YOU WERE HIT" && mend_why(CR_SIGHT, false, false) == "REPAIR · YOU CAN'T SEE IT FROM HERE";
 }

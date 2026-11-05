@@ -745,7 +745,7 @@ net_record :: (s: [] Everglade, n: [] EgNet, t: string) {
       if n[0].mine_seq[q] != seq || seq <= 0 { continue; }
       n[0].mine_seq[q] = 0;
       if seq == n[0].rg_open { n[0].rg_open = 0; n[0].rg_close = 0; }   // your Reverse Gravity never stood
-      if cr_repair(n[0].mine_slot[q]) { mend_cancel(s); }   // a Repair the server refused: its bar stops (everglade-repair.coax)
+      if cr_repair(n[0].mine_slot[q]) { mend_cancel(s, cr_why(why)); }   // a Repair the server refused: its bar stops, said why (everglade-repair.coax)
       else if s[0].started { cr_refused(s, n[0].mine_slot[q], cr_why(why)); }
       return;
     }
@@ -875,7 +875,7 @@ net_entry :: (s: [] Everglade, n: [] EgNet, t: string, d: WireD) {
     if !r[0].ok { return; }
     for q: 0..<NET_FX { if n[0].fx[q].live && n[0].fx[q].caster == ss && n[0].fx[q].slot == slot { n[0].fx[q].live = false; } }
     n[0].stops += 1;
-    if ss == n[0].seat && cr_repair(slot) { mend_cancel(s); return; }   // your Repair stopped: moved, hurt, too far (everglade-repair.coax)
+    if ss == n[0].seat && cr_repair(slot) { mend_cancel(s, cr_why(why)); return; }   // your Repair stopped: moved, hurt, too far, said (everglade-repair.coax)
     if ss == n[0].seat && s[0].started { cr_refused(s, slot, cr_why(why)); }
     return;
   }
