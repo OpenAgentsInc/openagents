@@ -2,7 +2,7 @@
 
 Measured the installed native AppKit/WKWebView app on the owner's built-in
 120 Hz Retina display, with a 1280 × 800 point window and the saved Everglade
-world (version 24, including the individually enlarged middle crate). The
+world (initially version 24, including the individually enlarged middle crate). The
 baseline source was `e6086f93c5`. Low Power Mode was off. The room's observed
 95th-percentile tick cost was about 0.2 ms; its queues were empty. No compiler
 or build-load changes are part of this work.
@@ -97,3 +97,7 @@ measurements; zero fields on other rendering paths mean unobserved work.
 
 Reproduce using the desktop README's frame-profile command. Keep native
 measurement runs separate from browser/GPU smoke checks.
+
+The final installed app was reopened without profiling flags. Its local scene
+CLI returned `ok:true`, version 25 and the owner's current 15 objects, including
+the middle crate at 150%. Owner edits made during the session were preserved.
