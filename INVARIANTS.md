@@ -612,8 +612,9 @@ last saved it (`room_vitals.build`). Checks: `room_checks.coax` builds.
 A player's travel to another room (`T`, `coax/web/room/room-travel.coax`,
 #12850) never puts two bodies in play. When the destination runs on the same
 server, a seat is set aside for that player there first, or the travel is
-refused and the player plays on. The source seat then takes no intents. The
-room sends the page on (`g CODE`) only after the API's receipt covers the
+refused and the player plays on. The source seat then takes no intents, and
+its casts still on their bars stop (`e stop SS SLOT left`); a cast already
+released lands. The room sends the page on (`g CODE`) only after the API's receipt covers the
 seat's state at the cutover, so a crash after the route loses nothing. A
 travelling seat's close ends it at once (no seat is held). The destination's
 ticket takes the next owner generation, so the source can't save over it.
@@ -621,7 +622,7 @@ Each step before the destination's join is undone by time: after
 `TRAVEL_MS` without the page leaving, the seat takes commands again and the
 set-aside seat lapses. Checks: `room.coax` "travel (#12850)", `everglade.coax`
 "net: travel", and `room_checks.coax` travel, which kills the source room
-process right after the route.
+process right after the route and then the destination's after the arrival.
 
 ## Only a character's newest owner saves its room state
 
