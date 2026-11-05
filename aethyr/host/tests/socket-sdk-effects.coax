@@ -1,0 +1,45 @@
+// Execute the same finite Coax-authored plan as the native Metal SDK fixture.
+// JSON, sequencing and observations stay in Coax; C projects actual effects.
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/proc.coax";
+#load "../../../coax/lib/json/json.coax";
+hse_open :: (capacity:int)->int #foreign;
+hse_start :: (context:int,id:int,generation:int,engine:int,url:[]u8)->bool #foreign;
+hse_send :: (context:int,id:int,generation:int,engine:int,text:[]u8)->bool #foreign;
+hse_next :: (context:int)->bool #foreign;
+hse_field :: (field:int)->int #foreign;
+hse_bytes :: (out:[]u8)->int #foreign;
+hse_token :: ()->int #foreign;
+hse_done :: (token:int) #foreign;
+hse_close :: (context:int) #foreign;
+hse_info :: (context:int,field:int)->int #foreign;
+hse_pool :: (field:int)->int #foreign;
+hse_shutdown :: () #foreign;
+hses_key :: (o:[]Jo,key:string,value:string){jo_key(o,key);jo_str(o,value);}
+hses_fields :: (o:[]Jo,key:string,context:int,pool:bool){jo_key(o,key);jo_arr(o);for i:0..<(ifx pool then 5 else 10) {jo_int(o,ifx pool then hse_pool(i) else hse_info(context,i));}jo_end(o);}
+hses_event :: (o:[]Jo)->bool {
+ bytes:[8388608]u8;n:=hse_bytes(bytes[..]);if n<0 {return false;}jo_obj(o);jo_key(o,"owner");jo_arr(o);for i:0..<3 {jo_int(o,hse_field(i));}jo_end(o);jo_key(o,"event");jo_int(o,hse_field(3));jo_key(o,"bytes");jo_arr(o);for b:bytes[0..<n] {jo_int(o,int(b));}jo_end(o);jo_end(o);return true;
+}
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])!=2 {return 2;}text:[65536]u8;n:=fs_read(args_at(a[..],0),text[..]);nodes:[8192]JvNode;doc:[1]Jv;if n<1||!jv_parse(doc[..],cast(string)text[0..<n],nodes[..]) {return 2;}d:=doc[0];ops:=jv_get(d,0,"operations");if jv_len(d,ops)<1 {return 2;}
+ names:[16]string;contexts:[16]int;used:=0;held:[64]int;held_n:=0;record:[1048576]u8;o:[1]Jo;jo_start(o[..],record[..]);jo_obj(o[..]);hses_key(o[..],"schema","aethyr.metal.socket-effects.v1");hses_key(o[..],"platform","linux");jo_key(o[..],"observations");jo_arr(o[..]);
+ defer {for token:held[0..<held_n] {hse_done(token);}for c:contexts {if c!=0 {hse_close(c);}}hse_shutdown();}
+ for i:0..<jv_len(d,ops) {
+  op:=jv_at(d,ops,i);kind:=jv_raw(d,jv_get(d,op,"op"));name:=jv_raw(d,jv_get(d,op,"name"));if name=="" {name="main";}at:=-1;for candidate,j:names[0..<used] {if candidate==name {at=j;}}
+  if at<0 {if used==16 {return 2;}at=used;names[at]=name;used+=1;}context:=contexts[at];id:=jv_int(d,jv_get(d,op,"id"),0);generation:=jv_int(d,jv_get(d,op,"generation"),0);engine:=jv_int(d,jv_get(d,op,"engine"),0);count:=jv_int(d,jv_get(d,op,"count"),0);ms:=jv_int(d,jv_get(d,op,"ms"),0);if count<0||count>1000||ms<0||ms>10000 {return 2;}
+  jo_obj(o[..]);hses_key(o[..],"op",kind);hses_key(o[..],"name",name);hses_key(o[..],"label",jv_raw(d,jv_get(d,op,"label")));bytes:[8192]u8;
+  if kind=="new" {if context!=0 {return 2;}contexts[at]=hse_open(jv_int(d,jv_get(d,op,"capacity"),0));jo_key(o[..],"accepted");jo_bool(o[..],contexts[at]!=0);}
+  else if kind=="start"||kind=="send" {bn:=jv_str(d,jv_get(d,op,ifx kind=="start" then "url" else "text"),bytes[..]);if bn<0 {return 2;}jo_key(o[..],"accepted");jo_bool(o[..],ifx kind=="start" then hse_start(context,id,generation,engine,bytes[0..<bn]) else hse_send(context,id,generation,engine,bytes[0..<bn]));}
+  else if kind=="send-burst" {bn:=jv_str(d,jv_get(d,op,"text"),bytes[..]);if bn<0 {return 2;}max:[2]int;jo_key(o[..],"accepted");jo_arr(o[..]);for j:0..<count {jo_bool(o[..],hse_send(context,id,generation,engine,bytes[0..<bn]));for k:0..<2 {value:=hse_info(context,k+2);if value>max[k] {max[k]=value;}}}jo_end(o[..]);jo_key(o[..],"maxima");jo_arr(o[..]);for value:max {jo_int(o[..],value);}jo_end(o[..]);}
+  else if kind=="stall" {proc_sleep(ms);}
+  else if kind=="info" {hses_fields(o[..],"fields",context,false);hses_fields(o[..],"pool",context,true);}
+  else if kind=="drain"||kind=="drain-until-close" {hold:=jv_bool(d,jv_get(d,op,"hold"));deadline:=proc_now_ms()+ms;closed:=false;jo_key(o[..],"events");jo_arr(o[..]);for j:0..<count {found:=hse_next(context);if kind=="drain-until-close" {while !found&&proc_now_ms()<deadline {proc_sleep(1);found=hse_next(context);}}if !found {break;}if !hses_event(o[..]) {hse_done(hse_token());return 1;}closed=hse_field(3)==2;token:=hse_token();if hold&&token!=0 {if held_n==64 {hse_done(token);return 2;}held[held_n]=token;held_n+=1;}else {hse_done(token);}if closed&&kind=="drain-until-close" {break;}}jo_end(o[..]);if kind=="drain-until-close" {jo_key(o[..],"closed");jo_bool(o[..],closed);}}
+  else if kind=="close" {if context!=0 {hse_close(context);contexts[at]=0;}}
+  else if kind=="release" {for token:held[0..<held_n] {hse_done(token);}held_n=0;}
+  else if kind=="replace" {bn:=jv_str(d,jv_get(d,op,"url"),bytes[..]);if bn<0 {return 2;}max:[5]int;for j:0..<count {c:=hse_open(jv_int(d,jv_get(d,op,"capacity"),0));if c==0 {return 1;}started:=hse_start(c,id,generation,engine,bytes[0..<bn]);for k:0..<5 {value:=hse_pool(k);if value>max[k] {max[k]=value;}}hse_close(c);}jo_key(o[..],"maxima");jo_arr(o[..]);for value:max {jo_int(o[..],value);}jo_end(o[..]);}
+  else if kind=="shutdown" {hse_shutdown();hses_fields(o[..],"pool",0,true);}
+  else {return 2;}jo_end(o[..]);if o[0].bad {return 1;}
+ }jo_end(o[..]);jo_end(o[..]);return ifx o[0].bad||!fs_write(args_at(a[..],1),jo_text(o[..])) then 1 else 0;
+}

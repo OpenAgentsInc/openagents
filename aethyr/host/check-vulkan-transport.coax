@@ -56,11 +56,14 @@ tool_main :: ()->int #export_c {
     if fake!="" {n:=args_whole(fake);return ifx ms==n && seconds==n/1000 then 0 else 1;}
     return ifx ms>=0 && seconds>=1000000000 && ms/1000<seconds then 0 else 1;
   }
-  local:=args_count(a[..])==4 && args_at(a[..],3)=="--local";
-  urls:=args_count(a[..])==4 && args_at(a[..],3)=="--http-target";
-  if args_count(a[..])!=3 && !local && !urls {tool_errln("usage: check-vulkan-transport OUT.json HTTP_HELPER STATE_DIR [--local | --http-target] | --clocks");return 2;}
+  server_exe:=args_value(a[..],"--server","");count:=args_count(a[..])-(ifx server_exe=="" then 0 else 2);
+  local:=count==4 && args_at(a[..],3)=="--local";
+  urls:=count==4 && args_at(a[..],3)=="--http-target";
+  if count!=3 && !local && !urls {tool_errln("usage: check-vulkan-transport OUT.json HTTP_HELPER STATE_DIR [--local | --http-target] [--server EXECUTABLE] | --clocks");return 2;}
   server:=proc_new();if server<0 {return 1;}defer {killed:=proc_kill(server,PROC_SIGTERM);waited:=proc_wait(server,2000);released:=proc_release(server);}
-  if !proc_arg(server,"coax/web/tool.sh") || !proc_arg(server,"aethyr/host/tests/network.coax") || !proc_arg(server,"9170") || proc_start(server)!=0 {return 1;}
+  if server_exe=="" {if !proc_arg(server,"coax/web/tool.sh")||!proc_arg(server,"aethyr/host/tests/network.coax") {return 1;}}
+  else {if !proc_arg(server,server_exe) {return 1;}}
+  if !proc_arg(server,"9170") || proc_start(server)!=0 {return 1;}
   health:[1]HttpWork;body:[128]u8;headers:[]string;until:=proc_now_ms()+15000;ready:=false;
   while proc_now_ms()<until {r:=http_do(health[..],"GET","http://127.0.0.1:9170/health",headers,"",250,0,body[..]);if r.error==HTTP_OK && r.code==200 && cast(string)body[0..<r.n]=="ok" {ready=true;break;}proc_sleep(25);}
   if !ready || hvn_open()!=1 {tool_errln("loopback fixture did not become ready");return 1;}defer {hvn_close();}

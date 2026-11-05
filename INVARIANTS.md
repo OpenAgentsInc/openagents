@@ -67,9 +67,19 @@ shared `audio-session.coax` gesture/coverage/terminal-owner offer; a cue
 captures gesture state when offered. Actual normal and instrumented realm
 SDK traces cover packet draining, hostile spans, pre-gesture refusal,
 covered gestures, pause/resume and retirement while unrelated producer
-frames continue. Session and observer root gates kill 33 and93 mutants
+frames continue. Session and observer root gates kill 33 and 93 mutants
 without equivalents. This recording-face/device trace does not qualify
 the ordinary Vulkan window, realm/room integration or desktop default.
+
+Linux and Metal compile the same portable native socket workers. Shared
+Coax leases precede retained event/command copies; a full inbound queue
+blocks its reader, and outbound refusal produces error/close. Engine
+contexts fence callback bytes through their final lease; the four physical
+workers are process-owned. Actual Linux physical-pressure and ordinary
+realm 79-row transport traces pass normally and instrumented. Fixed terminal
+owner cells are separate scalar retention from the 64 leased event nodes;
+kernel/browser/SDK buffers remain separate observations. Browser queue
+adoption and complete world/default qualification remain open.
 
 The shared lifecycle adapter records monotonic microseconds before handing
 the unchanged delta to the producer. Actual browser, sanitized Linux realm

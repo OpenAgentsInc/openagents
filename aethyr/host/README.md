@@ -222,6 +222,21 @@ budget and continues while hidden, so rendering cannot indefinitely block
 room delivery. FIFO describes received transport order, not simulation
 application: the replay/session gate owns the application tick.
 
+Native application payload storage is admitted before allocation/copy by
+`inbox-queue.coax` and `socket-queue.coax`. The process has four workers;
+each socket slot has at most one executing and one pending immutable job.
+An engine context leases at most 64 inbound event nodes and four inboxes of
+payload bytes. Four separate terminal-owner cells retain only scalar
+error/close outcomes. Outbound retention is at most 64 commands/32 MiB,
+at most 8 MiB each. A native reader waits on a full inbound lease queue;
+command/SDK allocation refusal yields explicit error/close. Close/replacement
+wakes retired readers and keeps already executing bytes alive only for
+their concrete owner. These are application storage limits, not a claim
+about kernel, browser or SDK hidden buffers. Browser adapters that cannot
+apply native read backpressure must refuse/close explicitly instead of
+retaining an unbounded callback/encoding queue. Current Linux observations
+and remaining integration scope are in [socket-linux.md](socket-linux.md).
+
 `local:/api/room/relay/everglade/local-1` chooses the same Coax room simulation: a browser
 Worker, or Aethyrforge's existing native room process on explicit development
 IPv4 loopback. Ticketless native admission remains the authority in

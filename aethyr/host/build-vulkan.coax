@@ -30,7 +30,7 @@ tool_main :: ()->int #export_c {
   if !hnp_copy(fixture_h,fs_join(dir,"RenderHost.h",paths[6][..])) || !hnp_prepare(coax,dir) {return 1;}
   base:=[29]string.["gcc","-std=gnu11","-O2","-no-pie","-ffp-contract=off","-fno-fast-math","-Wno-attributes","-DHF_EXTERNAL_TRANSPORT","-I",dir,"-I","verse/native","-I","coax/platform",fixture_c,check_c,"aethyr/host/tests/fixture-face.c","aethyr/host/tests/vulkan-effects.c","verse/native/realm-host.c","coax/platform/tool-native.c","coax/platform/process-native.c","coax/platform/store-file-native.c","coax/platform/read-file-native.c","-lpthread","-lm","-o",bin,"-Wno-unused-function","-Wno-unused-variable"];
   cc:[96]string;for i:0..<29 {cc[i]=base[i];}cn:=29;
-  sdk_paths:[8][4096]u8;for file,i:[8]string.["HostNetwork.c","host-sockets.c","socket-native.c","tls-native.c","entropy-native.c","entropy-foreign.c","HostEntropy.c","host-transport.c"] {cc[cn]=fs_join(dir,file,sdk_paths[i][..]);cn+=1;}
+  sdk_paths:[9][4096]u8;for file,i:[9]string.["HostNetwork.c","host-sockets.c","socket-native.c","tls-native.c","entropy-native.c","entropy-foreign.c","HostEntropy.c","host-transport.c","MetalSockets.c"] {cc[cn]=fs_join(dir,file,sdk_paths[i][..]);cn+=1;}
   cf:[4096]u8;lf:[4096]u8;tls:[8192]u8;tls_err:[4096]u8;cflags:=proc_getenv("CXTLS_CFLAGS",cf[..]);libs:=proc_getenv("CXTLS_LIBS",lf[..]);
   if cflags!="" && libs!="" {cn=hvb_flags(cflags,cc[..],cn);if cn<0 {return 1;}cn=hvb_flags(libs,cc[..],cn);}else {
     // Reuse the repository's approved platform TLS selection even when

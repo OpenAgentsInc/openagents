@@ -156,7 +156,7 @@ void rh_deliver(RealmHost *h, int extra, const uint32_t *extra_sizes) {
 void rh_send(RealmHost *h, int kind, const char *text, size_t length) {
   uint32_t cap = coaxial_inbox_cap();
   if (length > cap) length = cap;
-  memcpy(rh_ptr(coaxial_inbox(h->state)), text, length);
+  if(length)memcpy(rh_ptr(coaxial_inbox(h->state)), text, length);
   coaxial_message(h->state, kind, (uint32_t)length);
   rh_after(h, 0);
 }

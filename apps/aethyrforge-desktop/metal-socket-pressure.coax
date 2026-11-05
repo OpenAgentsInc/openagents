@@ -31,7 +31,7 @@ msp_check :: (report:string,peer:string)->bool {
  print("Native raw SDK: held512payload bytes,64command/fullerror+close,FIFO%frames,1000replacements,fourworkers andzero finalowners; physicalpeer flush timeout observed\n",count-3);return true;
 }
 tool_main :: ()->int #export_c {
- a:[1]Args;if !args_load(a[..])||args_count(a[..])<3 {tool_errln("usage: metal-socket-pressure ROOT SDK OUTPUT [--existing]");return 2;}root:=args_at(a[..],0);sdk:=args_at(a[..],1);dir:=args_at(a[..],2);if !fs_mkdir(dir) {return 1;}paths:[10][4096]u8;plan:=fs_join(dir,"plan.json",paths[0][..]);report:=fs_join(dir,"receipt.json",paths[1][..]);peer_report:=fs_join(dir,"peer.json",paths[2][..]);ready:=fs_join(dir,"peer.ready",paths[3][..]);
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])<3 {tool_errln("usage: metal-socket-pressure ROOT SDK OUTPUT [--existing] [--peer EXECUTABLE] [--echo EXECUTABLE]");return 2;}root:=args_at(a[..],0);sdk:=args_at(a[..],1);dir:=args_at(a[..],2);if !fs_mkdir(dir) {return 1;}paths:[10][4096]u8;plan:=fs_join(dir,"plan.json",paths[0][..]);report:=fs_join(dir,"receipt.json",paths[1][..]);peer_report:=fs_join(dir,"peer.json",paths[2][..]);ready:=fs_join(dir,"peer.ready",paths[3][..]);
  if !args_has(a[..],"--existing") {if fs_exists(report)||fs_exists(ready) {tool_errln("Fresh physical workload requires a new output directory");return 2;}
   bytes:[16384]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],"operations");jo_arr(o[..]);
   msp_op(o[..],"new","main","");msp_i(o[..],"capacity",128);jo_end(o[..]);msp_op(o[..],"start","main","");msp_owner(o[..],0);msp_s(o[..],"url","ws://127.0.0.1:9171/flood");jo_end(o[..]);msp_stall(o[..],1500);
@@ -43,7 +43,9 @@ tool_main :: ()->int #export_c {
   msp_op(o[..],"send","final","");msp_owner(o[..],0);msp_s(o[..],"text","replacement");jo_end(o[..]);msp_stall(o[..],200);msp_op(o[..],"drain","final","replacement-echo");msp_i(o[..],"count",16);jo_end(o[..]);msp_op(o[..],"release","final","");jo_end(o[..]);msp_op(o[..],"info","final","released");jo_end(o[..]);msp_op(o[..],"close","final","");jo_end(o[..]);msp_op(o[..],"shutdown","final","closed");jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);if o[0].bad||!fs_write(plan,jo_text(o[..])) {return 1;}
   tool:=fs_join(root,"coax/web/tool.sh",paths[4][..]);peer_source:=fs_join(root,"aethyr/host/tests/socket-pressure-peer.coax",paths[5][..]);echo_source:=fs_join(root,"aethyr/host/tests/network.coax",paths[6][..]);peer:=-1;echo:=-1;
   defer {for handle:[2]int.[peer,echo] {if handle>=0 {killed:=proc_kill(handle,PROC_SIGTERM);waited:=proc_wait(handle,2000);released:=proc_release(handle);}}}
-  peer_cmd:=[5]string.[tool,peer_source,"9171",peer_report,ready];echo_cmd:=[3]string.[tool,echo_source,"9170"];peer=msp_start(peer_cmd[..]);echo=msp_start(echo_cmd[..]);if peer<0||echo<0 {return 1;}
+  peer_exe:=args_value(a[..],"--peer","");echo_exe:=args_value(a[..],"--echo","");
+  peer_cmd:=[5]string.[tool,peer_source,"9171",peer_report,ready];echo_cmd:=[3]string.[tool,echo_source,"9170"];direct_peer:=[4]string.[peer_exe,"9171",peer_report,ready];direct_echo:=[2]string.[echo_exe,"9170"];
+  peer=msp_start(ifx peer_exe=="" then peer_cmd[..] else direct_peer[..]);echo=msp_start(ifx echo_exe=="" then echo_cmd[..] else direct_echo[..]);if peer<0||echo<0 {return 1;}
   cdp:[1]Cdp;health:[4096]u8;deadline:=proc_now_ms()+30000;up:=false;while proc_now_ms()<deadline {if fs_exists(ready)&&cdp_get(cdp[..],9170,"/health",health[..])>0 {up=true;break;}proc_sleep(50);}if !up {tool_errln("Private peer did not become ready");return 1;}
   program:=fs_join(sdk,"MetalSocketEffects",paths[7][..]);out:[1048576]u8;err:[65536]u8;run:=[3]string.[program,plan,report];r:=proc_run(run[..],30000,out[..],err[..]);if r.started!=0||r.status!=0||r.timed_out||r.cut {tool_errln(cast(string)err[0..<r.err_n]);return 1;}
  }
