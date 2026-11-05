@@ -726,6 +726,15 @@ each room; it does not qualify CPU isolation, hurt ordering, durable queues
 or dependency outages. Checks: room-casts.coax's flooding, full-room and
 separate-room cases; cast-budget.coax's independent boundaries.
 
+The native and worker tick's world-damage input is one aggregate per seat,
+held in a reserved mailbox (`hurt-budget.coax`, #12841). Repeated delivery
+replaces that seat's whole-tick snapshot; it cannot occupy another seat's
+space, multiply a hit or apply damage before the tick's heals. Resolution
+takes and clears each mailbox once after due heals. Actual individual spell
+and ability hits keep their existing rules path; they are not coalesced by
+this adapter. Checks cover every seat, repeated reports, invalid inputs,
+take-once behavior and the integrated heal-before-harm order.
+
 ## An Everglade room seats only a page of its own build
 
 A room admits a hello only when the page's engine, rules and world numbers

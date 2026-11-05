@@ -1,0 +1,32 @@
+// The world's aggregate damage snapshot has one reserved mailbox per seat.
+// A duplicate/revised report replaces that seat's snapshot before resolution.
+#authority;
+HB_SEATS::16;
+HbHit::struct{amount:int;by:int;}
+HbBatch::struct{hit:[HB_SEATS]HbHit;}
+
+#test "world hurt snapshots reserve every seat and take each aggregate once" {
+  b:[1]HbBatch;
+  for s:0..<HB_SEATS{#assert hb_put(b[..],s,1+s,100+s);}
+  for q:0..<65{#assert hb_put(b[..],0,6,9);}
+  #assert hb_put(b[..],0,7,10);
+  a:=hb_take(b[..],0);#assert a.amount==7&&a.by==10;
+  a=hb_take(b[..],0);#assert a.amount==0&&a.by==0;
+  for s:1..<HB_SEATS{a=hb_take(b[..],s);#assert a.amount==1+s&&a.by==100+s;}
+}
+#test "invalid world hurt snapshots cannot change a reserved aggregate" {
+  b:[1]HbBatch;#assert hb_put(b[..],15,8,-1);
+  #assert !hb_put(b[..],-1,2,9)&&!hb_put(b[..],16,2,9);
+  #assert !hb_put(b[..],15,0,9)&&!hb_put(b[..],15,-1,9);
+  #assert hb_take(b[..],-1).amount==0&&hb_take(b[..],16).amount==0;
+  a:=hb_take(b[..],15);#assert a.amount==8&&a.by== -1;
+}
+
+hb_put::(b:[]HbBatch,seat:int,amount:int,by:int)->bool #export_c{
+  if seat<0||seat>=HB_SEATS||amount<=0{return false;}
+  b[0].hit[seat]=HbHit.{amount=amount,by=by};return true;
+}
+hb_take::(b:[]HbBatch,seat:int)->HbHit #export_c{
+  if seat<0||seat>=HB_SEATS{return HbHit.{};}
+  a:=b[0].hit[seat];b[0].hit[seat]=HbHit.{};return a;
+}

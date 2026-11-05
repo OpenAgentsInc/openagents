@@ -20,8 +20,7 @@
 // one is clear (a check with no world).
 
 RC_WAIT :: 1; RC_BAR :: 2; RC_FLIGHT :: 3;
-EG_HURTS :: 32;                 // the world's harm to seats a tick holds until the heals are in
-EgHurt :: struct { s: int; amount: int; by: int; }
+#load "hurt-budget.coax";
 
 // ---- hearing
 #load "cast-budget.coax";
@@ -270,11 +269,10 @@ rc_tick_first :: (v: [] RmServer, k: int) {
   }
   rc_strikes(v, k, true);
   // the world's harm this tick (a guard's blade, a fall), after the heals
-  for h: 0..<v[0].eg[k].hurt_n {
-    u := v[0].eg[k].hurts[h];
-    if rm_eg_seat_live(v, k, u.s) { e5rr_hurt(v[0].eg[k].rules[..], EG_TGT_SEAT + u.s, u.amount, u.by); }
+  for s: 0..<EG_SEATS {
+    u := hb_take(v[0].eg[k].hurts[..],s);
+    if rm_eg_seat_live(v, k, s) { e5rr_hurt(v[0].eg[k].rules[..], EG_TGT_SEAT + s, u.amount, u.by); }
   }
-  v[0].eg[k].hurt_n = 0;
 }
 // After the rules' step: casts whose caster fell or is held stop, bars that are done release, and
 // the harm due strikes.
@@ -531,6 +529,21 @@ rc_test_at :: (t: string, part: string) -> int {
   rc_test_tick(v[..], k, true);
   eg_test_drain(v[..], box[..]);
   #assert eg_test_has(eg_test_of(box[..], 1), "e stop 0 0 left");
+}
+
+#test "casts: world damage has a reserved snapshot for every seat, even after repeated delivery (#12841)" #steps 3000000000 {
+  v:[1]RmServer;box:[1]EgInbox;k:=rc_test_room(v[..],"pair-hurt-budget",2,false);out:[E5RR_OUT_FLOATS]f32;
+  e5rr_hurt(v[0].eg[k].rules[..],EG_TGT_SEAT+1,55,-1);
+  rm_heard(v[..],0,"C 1 28 100 0 0 1001");
+  // The world reports a whole tick's damage per seat, not a stream of hits.
+  // Re-delivery cannot spend another seat's slot or apply harm before heals.
+  for q:0..<65{rm_eg_hurt(v[..],k,1,6,-1);}
+  e5rr_seat_out(v[0].eg[k].rules[..],1,out[..]);#assert out[0]==2;
+  rc_test_tick(v[..],k,true);e5rr_seat_out(v[0].eg[k].rules[..],1,out[..]);
+  eg_test_drain(v[..],box[..]);a:=eg_test_of(box[..],1);h:=rc_test_at(a,"e heal 1001 ");#assert h>=0;
+  amt:=0;i:=h+12;while i<a.count&&a[i]>='0'&&a[i]<='9'{amt=amt*10+cast(int)(a[i]-'0');i+=1;}
+  #assert amt>0&&out[0]==f32(2+amt-6)&&out[4]<0.5;
+  hp:=out[0];rc_test_tick(v[..],k,true);e5rr_seat_out(v[0].eg[k].rules[..],1,out[..]);#assert out[0]==hp;
 }
 
 #test "casts: a heal and a killing blow in one tick, the heal first; the world's harm waits for it" #steps 3000000000 {

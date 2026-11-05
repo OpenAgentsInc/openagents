@@ -195,7 +195,7 @@ EgRoom :: struct {
   seat: [EG_SEATS] EgSeat;
   tk: [EG_SEATS] Ticket;         // who each seat's ticket says its player is, kept while the seat is held (#12792)
   casts: [EG_CASTS] EgCast; cast_order: int;
-  hurts: [EG_HURTS] EgHurt; hurt_n: int;   // the world's harm to seats this tick, dealt after the heals (room-casts.coax)
+  hurts: [1] HbBatch;   // one whole-tick world damage snapshot per seat, dealt after heals
   rules: [1] E5rRoom;
   // the events since the last D, as entry text, each with where it happened
   ev: [EG_EV_BYTES + EG_EV_KEEP_BYTES] u8; ev_bytes: int; ev_n: int;
@@ -298,7 +298,7 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
     v[0].eg[q].seed = 1 + (v[0].wall_ms / 7 + r * 7919) % 999999937;
     for s: 0..<EG_SEATS { v[0].eg[q].seat[s] = EgSeat.{}; }
     for c: 0..<EG_CASTS { v[0].eg[q].casts[c].on = false; }
-    v[0].eg[q].cast_order = 0; v[0].eg[q].hurt_n = 0;
+    v[0].eg[q].cast_order = 0; v[0].eg[q].hurts[0] = HbBatch.{};
     v[0].eg[q].ev_n = 0; v[0].eg[q].ev_bytes = 0;
     // the town as new: the world's (the host's) is made whole again on rm_eg_fresh
     v[0].eg[q].folk_on = false; v[0].eg[q].crime_n = 0; v[0].eg[q].use_ask_n = 0; for w: 0..<WIRE_DOOR_WORDS { v[0].eg[q].doors[w] = 0; } for b: 0..<EG_BOATS { v[0].eg[q].boat_on[b] = false; } v[0].eg[q].place_stamp = 0; v[0].eg[q].strike_n = 0; v[0].eg[q].rebuild = false; v[0].eg[q].fresh = true;
@@ -1004,13 +1004,12 @@ eg_put_burn :: (e: [] u8, piece: int, on: bool) -> int {
   n := wire_put(e, 0, "e burn"); n = wire_int(e, n, piece); n = wire_int(e, n, ifx on then 1 else 0);
   return n;
 }
-// What the watch's blows took from seat s this tick, and who dealt them (a watch actor, -1 none).
+// What all the watch's blows took from seat s this tick, and who dealt them
+// (a watch actor, -1 none). The producer supplies a whole-tick aggregate once
+// per seat; a repeated report replaces that snapshot, never adds a new hit.
 rm_eg_hurt :: (v: [] RmServer, k: int, s: int, amount: int, by: int) #export_c {
-  // dealt at the tick's end, after its heals (room-casts.coax rc_tick_first); a full tick's at once
-  if !rm_eg_seat_live(v, k, s) || amount <= 0 { return; }
-  if v[0].eg[k].hurt_n >= EG_HURTS { e5rr_hurt(v[0].eg[k].rules[..], EG_TGT_SEAT + s, amount, by); return; }
-  v[0].eg[k].hurts[v[0].eg[k].hurt_n] = EgHurt.{s = s, amount = amount, by = by};
-  v[0].eg[k].hurt_n += 1;
+  if !rm_eg_seat_live(v, k, s) { return; }
+  _ := hb_put(v[0].eg[k].hurts[..],s,amount,by);
 }
 // Person i as pages hear them (X Z YAW CLIP MODE HP SHOWN CASTING KIND FOE), and seat s's WANTED level.
 // A new mode starts its clock (T0), a new spell its own.
