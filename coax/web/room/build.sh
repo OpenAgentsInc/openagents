@@ -32,19 +32,29 @@ for u in "${units[@]}"; do
   objs+=("$work/$n.o")
 done
 wait
-# The room's unit and the city's both carry apps/openagents-web/analytics.coax's exports (Orbit League
-# loads it too): the room's copies become local to it, so the city's are the program's.
-nm -g --defined-only "$work/room.o" | awk '{print $3}' | sort > "$work/room.syms"
-nm -g --defined-only "$work/everglade.o" | awk '{print $3}' | sort > "$work/city.syms"
-comm -12 "$work/room.syms" "$work/city.syms" > "$work/both.syms"
-if [[ -s "$work/both.syms" ]]; then
-  if [[ "$(uname)" == Darwin ]]; then
-    ld -r "$work/room.o" -o "$work/room-own.o" -unexported_symbols_list "$work/both.syms"
-  else
-    objcopy --localize-symbols="$work/both.syms" "$work/room.o" "$work/room-own.o"
+# Units that load the same Coax module each carry its #export_c procedures (the room's unit and the
+# city's both carry apps/openagents-web/analytics.coax's; since 010c25bbed guard-guide-policy carries
+# aethyr/input.coax's input_runs, coax.json's S_hash/S_hex and the crypto bytes' cb_* that the city and
+# the room have too). The same source makes the same code, so one copy is the program's: the city's
+# units in order, then the room's, each defining globally only what no unit before it did; a unit's
+# later copies are made local to it (the Dockerfile does the same).
+seen="$work/seen.syms"; : > "$seen"
+own=("$work/everglade.o")
+for u in "${units[@]:1}"; do own+=("$work/$(basename "$u" .coax).o"); done
+own+=("$work/room.o")
+objs=()
+for o in "${own[@]}"; do
+  nm -g --defined-only "$o" | awk '{print $3}' | sort -u > "$o.syms"
+  comm -12 "$o.syms" "$seen" > "$o.dup"
+  t="$o"
+  if [[ -s "$o.dup" ]]; then
+    t="${o%.o}-own.o"
+    if [[ "$(uname)" == Darwin ]]; then ld -r "$o" -o "$t" -unexported_symbols_list "$o.dup"
+    else objcopy --localize-symbols="$o.dup" "$o" "$t"; fi
   fi
-  objs[0]="$work/room-own.o"
-fi
+  objs+=("$t")
+  sort -u "$seen" "$o.syms" -o "$seen"
+done
 cc -std=c11 -O2 "${strict[@]}" -w -I"$work" -c "$here/room-world.c" -o "$work/room-world.o"
 cc -std=c11 -O2 "${strict[@]}" -Wall -Wextra -c "$here/room-math.c" -o "$work/room-math.o"
 # the pack's catalog, the bounds the world's pieces break with (room-catalog.coax)

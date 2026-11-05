@@ -358,7 +358,11 @@ wk_build :: (root: string, coax: string, clang: string, sysroot_dir: string, res
   for s: [5] string.[clang, "--target=wasm32-wasip1", wk_text(sr[..]), wk_text(rd[..]), "-mexec-model=reactor"] { la[c] = s; c += 1; }
   la[c] = "-o"; c += 1; la[c] = wk_text(outw[..]); c += 1;
   for i: 0..<10 { la[c] = wk_text(objs[i][..]); c += 1; }
-  la[c] = "-Wl,--import-memory,--max-memory=268435456,-z,stack-size=4194304,--export=__heap_base,--gc-sections,--strip-debug"; c += 1;
+  // Units that load the same Coax module each carry its #export_c procedures: since 010c25bbed
+  // guard-guide-policy carries aethyr/input.coax's input_runs (as everglade-step does) and coax.json's
+  // S_hash/S_hex (as the room does), which the header renames above don't name. The same source made
+  // the same code, so the first in the link's order is the program's (build.sh localizes them likewise).
+  la[c] = "-Wl,--import-memory,--max-memory=268435456,-z,stack-size=4194304,--export=__heap_base,--gc-sections,--strip-debug,--allow-multiple-definition"; c += 1;
   nb: [1] u8;
   if wk_run(la[0..<c], "", env, nb[..]) < 0 { tool_errln("worker: the link failed"); return 1; }
   if !dev {
