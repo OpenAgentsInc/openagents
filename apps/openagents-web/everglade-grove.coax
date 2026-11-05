@@ -193,7 +193,7 @@ gv_struck_town :: (s: [] Everglade, at: Point) -> bool {
   return false;
 }
 gv_crime :: (s: [] Everglade, at: Point, heard: f32) {
-  if !watch_on(s) { return; }
+  if !watch_on(s) || (s[0].wv.net && s[0].wv.room_nobody) { return; }   // the room's own strikes (the raid's) are no seat's
   w := watch_w(s);
   you := ifx s[0].wv.net then s[0].wv.room_at[clamp_w(w[0].me, 0, WATCH_YOUS - 1)] else ab_you(s);   // the room server's: the player it is
   _ := watch_crime(w, at, heard, you, s[0].boxes[..], s[0].box_n, s[0].heights[..]);
