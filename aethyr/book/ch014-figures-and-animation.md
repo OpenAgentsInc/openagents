@@ -125,6 +125,12 @@ shoulder past its limit:
 
 <!-- source: aethyr/examples/pose-a-ranger.coax example -->
 ```jai
+// The digest recorded before the pose moved out of aethyr/skin.coax. slerp's sin is the host
+// C library's, and glibc and macOS's libm round some results a step apart, so each has its
+// own recording; glibc rounds sin(4) to 0xbfe837b9dddc1eae, macOS to the next double.
+RECORDED :: [2] int.[3351927923, 1971473565];
+LIBM :: #run ifx f64_bits(sin(4.0)) == 0xbfe837b9dddc1eae then 0 else 1;
+
 // FNV-1a over 32-bit words, kept in 32 bits.
 mix32 :: (h: int, v: int) -> int { return ((h ^ (v & 4294967295)) * 16777619) & 4294967295; }
 
@@ -173,7 +179,7 @@ main :: () {
     faded := (s[0].clock - s[0].changed) / SKIN_FADE;
     print("after % frames of % at % m/s: % s into the clip, its fade % done\n", frames[k], RANGER_CLIP_NAME[clips[k]], speeds[k], r4(s[0].time), ifx faded >= 1 then "all" else "not");
   }
-  print("% frames, % joints: palette digest %\n", n, r.joints, h);
+  print("% frames, % joints: palette digest equals its recording for this C library: %\n", n, r.joints, h == RECORDED[LIBM]);
   print("bones outside their two poses' lengths: at most % m (frame %, joint %)\n", worst, worst_frame, worst_joint);
   // A motion that turns a joint past its limit is refused with the line and the range, not bent.
   m: [1] Motion;
@@ -194,7 +200,7 @@ after 60 frames of walk at 1.3 m/s: 0.0 s into the clip, its fade all done
 after 30 frames of run at 6.0 m/s: 0.56 s into the clip, its fade all done
 after 30 frames of jump at 6.0 m/s: 0.5 s into the clip, its fade all done
 after 30 frames of idle at 0.0 m/s: 0.5 s into the clip, its fade all done
-180 frames, 75 joints: palette digest 3351927923
+180 frames, 75 joints: palette digest equals its recording for this C library: true
 bones outside their two poses' lengths: at most 2.3841858e-07 m (frame 38, joint 17)
 a wave past the shoulder's limit read false: line 6: right_shoulder roll is outside -190..40
 clip for 0.05 m/s idle, 1.3 m/s walk, 6 m/s run, in the air jump
@@ -202,7 +208,11 @@ clip for 0.05 m/s idle, 1.3 m/s walk, 6 m/s run, in the air jump
 
 The digest is the independent check of the move. It was recorded with
 `aethyr/skin.coax` as it was before the pose moved out of it, and it is the
-same after, in debug and release builds. Each bone stays within its two
+same after, in debug and release builds. `slerp` calls the C library's
+`sin`, and glibc and macOS's libm round a few results a step apart, so the
+digest has one recording for each: 3351927923 with glibc and 1971473565 with
+macOS's libm. The example compares the digest with the recording for the C
+library it runs on ([#12912](https://github.com/OpenAgentsInc/openagents/issues/12912)). Each bone stays within its two
 poses' lengths to 2.4 × 10⁻⁷ m, one rounding step of a 32-bit float at that
 size, through every fade.
 
