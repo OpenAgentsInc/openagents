@@ -1,0 +1,53 @@
+{
+  "schema": "aethyrforge.linux.qualification.v1",
+  "date": "2026-11-04",
+  "host": "coderos-4080",
+  "base_main": "8f19bf8993",
+  "implementation_commit": "78b5a0ea021827446d0e5701ab6223771a70526f",
+  "scope": "Initial native Wayland/Vulkan Bitcoin Lab and shared Coax Coder HUD. No browser runtime. No Mac feature-parity, live Bitcoin node or canonical-renderer adoption claim.",
+  "compiler_sha256": "54308753598854075405f995a04eb94f64eeb85f231ee6840a42e77afe6d2e80",
+  "native_elf_sha256": "099d4e31117a9381c6e77008d1c51b2305dba70e67f2248ca7bf48007469f7ca",
+  "checks": {
+    "native_model": {"passed": 3, "failed": 0, "selection": "native Aethyrforge"},
+    "coder_integration": {
+      "status": "passed",
+      "engine": "echo",
+      "isolated_coder_home": true,
+      "covers": ["Bitcoin Lab geometry", "shared HUD buffers", "real Coder child", "durable fork parent", "Stop", "New", "Reload", "Quit"],
+      "live_provider_request": false
+    },
+    "admission_mutation": {
+      "source": "linux-policy.coax",
+      "source_sha256": "2bcb70276e0f013a6f0665785d892eddb334a33a86b82d7508087ee34970f02f",
+      "scope": "root-only; dependency checks retained",
+      "mutants": 82,
+      "killed": 82,
+      "survived": 0,
+      "equivalent_annotations": 0,
+      "reuse": "Passing result retained on byte-identical policy; not repeated after native host integration."
+    },
+    "vulkan": {
+      "status": "passed",
+      "adapter": "NVIDIA GeForce RTX 4080",
+      "size": [1440, 900],
+      "frames": 90,
+      "passes": 3,
+      "composer_opened_by_key_sequence": true,
+      "gpu_readback": "Actual RGBA16F native render target; reviewed after conversion to PNG.",
+      "validation_errors": 0,
+      "validation_warnings": 0,
+      "presentation_rate_claim": false
+    },
+    "tools_check": {
+      "status": "existing repository failures",
+      "missing_reason_headers": 29,
+      "failures_in_changed_files": 0
+    }
+  },
+  "shader_sha256": {
+    "bg_fs.spv": "e69224869c18966754d83b3d31dbf6cbd975784868253ac59a73f48b1cb47a5c",
+    "scene_fs.spv": "136375e991630a71c2731fe97fcea4e952ce62965aa0d49b946c30470c91baa5",
+    "fx_fs.spv": "40e3fc74c2449449d8f2014dfaf80af993a89a78a6fa88064f9d4c58e0f67785"
+  },
+  "remaining": ["Native clipboard/IME", "Microphone/model setup", "Everglade editing service", "Live provider turn qualification"]
+}
