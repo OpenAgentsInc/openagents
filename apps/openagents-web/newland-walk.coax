@@ -275,22 +275,21 @@ wk_dive :: (s: [] LandState, f: LandFrame, to: Cam, width: f32, height: f32) -> 
   return wk_cam(eye, at, scale * fv_length(fv_sub(at, eye)), from.cx + (to.cx - from.cx) * e, from.cy + (to.cy - from.cy) * e, width, height);
 }
 
-// Penultimate Frontier: the camera flies a slow loop through the places, no one walking. It
+// Penultimate Frontier's lap: after its story the camera flies a slow loop through the places. It
 // sweeps in from high and far, passes low between the trees, and climbs out again, once a lap.
 FLY_LAP :: 80.0;            // s a lap of the places takes
 FLY_TAU :: 6.2831853;
 FLY_FAR :: 34.0; FLY_NEAR :: 10.0;   // m from the places' middle at the lap's widest and closest
 FLY_HIGH :: 14.0; FLY_LOW :: 4.5;   // m up at the lap's widest and closest
 FLY_START :: 0.785398;      // rad round from the south-east, where the homepage looks from
-wk_fly :: (mid: Fv, t: f32, width: f32, height: f32) -> Cam {
+// The lap's eye and aim t seconds in (the story's camera eases onto it, newland-frontier.coax).
+wk_fly_path :: (mid: Fv, t: f32) -> FrPose {
   a := FLY_START + FLY_TAU * t / FLY_LAP;
   in := 0.5 - 0.5 * cos(FLY_TAU * t / (FLY_LAP * 0.5));   // 0 wide, 1 close: in and out twice a lap
   r := FLY_FAR + (FLY_NEAR - FLY_FAR) * in;
   y := FLY_HIGH + (FLY_LOW - FLY_HIGH) * in;
   ar := r * 0.45; aa := a + 0.5;   // looking ahead along the turn, toward the middle
-  eye := wk_at(mid, r * sin(a), y, r * cos(a));
-  at := wk_at(mid, ar * sin(aa), 1.6 + y * 0.1, ar * cos(aa));
-  return wk_cam(eye, at, wk_focal(width, height), width * 0.5, height * 0.5, width, height);
+  return FrPose.{eye = wk_at(mid, r * sin(a), y, r * cos(a)), at = wk_at(mid, ar * sin(aa), 1.6 + y * 0.1, ar * cos(aa))};
 }
 #test "Penultimate Frontier flies the Grid's scene with nobody and no HUD in it" #steps 50000000 {
   s: [1] LandState; u: [UNIFORM_FLOATS] f32;
@@ -572,13 +571,17 @@ coaxial_walk_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
   w[0].placed = true; w[0].feet = feet; w[0].face = face; w[0].act = act;
   if !s[0].golden { wk_gate_step(s, fx, fz, f.step); }   // who walks with you, and the gate
   c := wk_cam(wk_at(mid, ex, ey, ez), wk_at(mid, ax, ay, az), wk_focal(width, height), width * 0.5, height * 0.5, width, height);
-  if s[0].flying { c = wk_fly(mid, f.t, width, height); } else { c = wk_dive(s, f, c, width, height); }
+  if s[0].flying { c = fr_cam(mid, f.t, width, height); } else { c = wk_dive(s, f, c, width, height); }
   s[0].view = c; s[0].clip = c.clip; s[0].zoom = 0.4;   // close: the Pylons' labels say what they run
   // the homepage's boxes are not on this page
   none := Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
   s[0].playtest = none; s[0].network_box = none; s[0].walk_box = none; s[0].gal_box = none; s[0].gal_open = none; s[0].gal_over = -1;
+  if s[0].flying {   // nobody in it, no names and no HUD: the scene and its story (newland-frontier.coax)
+    look := fv(c.eye.x + c.ahead.x * 12, 0, c.eye.z + c.ahead.z * 12);
+    uniforms[5] = 0;
+    return fr_scene(out, 0, s, c, look, f.p, f.t);
+  }
   v := land_scene(out, 0, s, c, feet, f.p, f.t, f.motion);
-  if s[0].flying { uniforms[5] = 0; return v; }   // nobody in it and no HUD: the scene alone
   you_from := v;   // (the occluders were counted from zero in land_scene, the places first)
   v = wk_you(out, v, s, c, f.p, f.motion);
   v = wk_gate_draw(out, v, s, c, mid, f.p, f.motion);   // the Everglade gate

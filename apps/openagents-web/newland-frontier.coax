@@ -1,0 +1,347 @@
+// Penultimate Frontier (/worlds/penultimate-frontier, data-page 2): the Grid's scene, flown, with
+// the opening of Episode 292 (docs/transcripts/292.md) drawn in it as line art. The page's clock
+// is the reading's: T seconds from the page's start, the narration's beats at FR_* below. Nothing
+// here is text: the trees, the Pylons and the floor are the homepage's, without their names, and
+// the story's things are lines, rings, diamonds and figures in the same inks.
+//
+//   FR_FRONTIER  "the penultimate frontier"  the projects' trees build up
+//   FR_SPACE     "we'll go to space"         a trail climbs from the open ground into the sky
+//   FR_PLANETS   "Earth or Mars or belt..."  a sun, then each orbit as it is named, over the Grid
+//   FR_HUMANS    "care for humans on Earth"  people stand on the open ground
+//   FR_OLD       "the old world's power..."  rigid towers stand behind them, then sag and fall
+//   FR_NEW       "a bright new world..."     a bright tree struggles up among them
+//   FR_MIDWIVES  "we are its midwives"       the people walk to it and ring it, hands up
+//
+// After the story the camera eases onto the slow lap (wk_fly_path) and stays on it.
+
+FR_FRONTIER :: 27.4; FR_SPACE :: 30.3; FR_SUN :: 32.8; FR_EARTH :: 36.4; FR_MARS :: 36.9; FR_BELT :: 38.2;
+FR_OUTER :: 39.2; FR_HUMANS :: 40.3; FR_OLD :: 44.1; FR_DECAY :: 46.4; FR_NEW :: 48.3; FR_MIDWIVES :: 52.1;
+FR_END :: 56.0;      // the story's last key: the lap takes over after it
+FR_JOIN :: 5.0;      // s the camera takes to ease onto the lap
+FR_S :: Fv.{x = 15, y = 0, z = 3};         // the open ground east of the places, where the story stands
+FR_SKY :: Fv.{x = 15, y = 20, z = 3};      // the sun, straight up from the open ground: the orbits' middle
+FR_PEOPLE :: 9;
+FR_TOWERS :: 3;
+FR_KEYS :: 10;
+
+// ---- the camera: a smooth path through keys (Catmull-Rom), eye and aim, in grid units
+FrKey :: struct { t: f32; eye: Fv; at: Fv; }
+fr_key :: (i: int) -> FrKey {
+  k := [FR_KEYS] FrKey.[
+    FrKey.{t = 0,           eye = Fv.{x = 32, y = 17, z = 32}, at = Fv.{x = 0, y = 0, z = 0}},
+    FrKey.{t = 14,          eye = Fv.{x = 28, y = 13, z = 31}, at = Fv.{x = 2, y = 0, z = 2}},
+    FrKey.{t = FR_FRONTIER, eye = Fv.{x = 20, y = 6.5, z = 22}, at = Fv.{x = -1, y = 1.5, z = 1}},
+    FrKey.{t = FR_SPACE + 0.8, eye = Fv.{x = 24, y = 3, z = 15}, at = Fv.{x = 15, y = 9, z = 3}},
+    FrKey.{t = FR_SUN + 1.5, eye = Fv.{x = 25, y = 17, z = 15}, at = Fv.{x = 15, y = 19, z = 3}},
+    FrKey.{t = FR_OUTER + 0.6, eye = Fv.{x = 26, y = 31, z = 18}, at = Fv.{x = 15, y = 20, z = 3}},
+    FrKey.{t = FR_HUMANS + 1.5, eye = Fv.{x = 25, y = 3.2, z = 11}, at = Fv.{x = 14, y = 1.2, z = 2.5}},
+    FrKey.{t = FR_DECAY,    eye = Fv.{x = 27, y = 5, z = 13}, at = Fv.{x = 13, y = 2.6, z = 1}},
+    FrKey.{t = FR_MIDWIVES - 0.5, eye = Fv.{x = 24, y = 3.6, z = 10}, at = Fv.{x = 15, y = 2.3, z = 3}},
+    FrKey.{t = FR_END,      eye = Fv.{x = 23, y = 5.5, z = 7.5}, at = Fv.{x = 15, y = 2.0, z = 3}}];
+  return k[clamp_i(i, 0, FR_KEYS - 1)];
+}
+clamp_i :: (v: int, a: int, b: int) -> int { if v < a { return a; } if v > b { return b; } return v; }
+fr_cr :: (p0: Fv, p1: Fv, p2: Fv, p3: Fv, u: f32) -> Fv {
+  u2 := u * u; u3 := u2 * u;
+  a := fv_times(p1, 2);
+  b := fv_times(fv_sub(p2, p0), u);
+  c := fv_times(fv_add(fv_sub(fv_times(p0, 2), fv_times(p1, 5)), fv_sub(fv_times(p2, 4), p3)), u2);
+  d := fv_times(fv_add(fv_sub(fv_times(p1, 3), p0), fv_sub(p3, fv_times(p2, 3))), u3);
+  return fv_times(fv_add(fv_add(a, b), fv_add(c, d)), 0.5);
+}
+FrPose :: struct { eye: Fv; at: Fv; }
+fr_story_pose :: (t: f32) -> FrPose {
+  i := 0;
+  while i < FR_KEYS - 2 && t >= fr_key(i + 1).t { i += 1; }
+  a := fr_key(i); b := fr_key(i + 1);
+  u := clamp((t - a.t) / (b.t - a.t), 0, 1);
+  e := fr_cr(fr_key(i - 1).eye, a.eye, b.eye, fr_key(i + 2).eye, u);
+  at := fr_cr(fr_key(i - 1).at, a.at, b.at, fr_key(i + 2).at, u);
+  return FrPose.{eye = e, at = at};
+}
+// The page's camera: the story's path, then onto the lap.
+fr_cam :: (mid: Fv, t: f32, width: f32, height: f32) -> Cam {
+  q := fr_story_pose(t);
+  if t > FR_END {
+    lap := wk_fly_path(mid, t - FR_END);
+    j := smooth01((t - FR_END) / FR_JOIN);
+    q = FrPose.{eye = fv_mix(q.eye, lap.eye, j), at = fv_mix(q.at, lap.at, j)};
+  }
+  return wk_cam(q.eye, q.at, wk_focal(width, height), width * 0.5, height * 0.5, width, height);
+}
+
+// ---- the scene
+
+// The Grid's own things, nameless: the floor, the roads, the trees (built up at FR_FRONTIER) and the Pylons.
+fr_scene :: (out: [] f32, at: int, s: [] LandState, c: Cam, look: Fv, p: Pen, t: f32) -> int {
+  v := floor_grid(out, at, s, c, look, p);
+  grow := p; grow.time = p.time - FR_FRONTIER + 1.3;   // place's grown(): the first tree starts at FR_FRONTIER
+  if grow.time > 0 {
+    v = roads(out, v, s, c, grow);
+    for k: 0..<s[0].plots { v = place(out, v, s, c, k, grow); }
+    v = pylon_bay(out, v, s, c, grow, t);
+  }
+  for k: 0..<s[0].plots { s[0].plot[k].hit = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}; s[0].plot[k].tag = s[0].plot[k].hit; }
+  v = fr_space(out, v, c, p, t);
+  v = fr_planets(out, v, c, p, t);
+  v = fr_towers(out, v, c, p, t);
+  v = fr_new_world(out, v, c, p, t);
+  v = fr_people(out, v, c, p, t);
+  return v;
+}
+fr_in :: (t: f32, from: f32, take: f32) -> f32 { return ease((t - from) / take); }
+fr_out :: (t: f32, from: f32, take: f32) -> f32 { return 1 - ease((t - from) / take); }
+
+// "We'll go to space": a bright head climbs from the open ground, its trail behind it.
+fr_space :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
+  if t < FR_SPACE || t > FR_HUMANS + 1 { return at; }
+  v := at;
+  rise := fr_in(t, FR_SPACE, 2.6);
+  fade := fr_out(t, FR_SUN + 2.5, 2.5);
+  head := fv_mix(FR_S, fv(FR_SKY.x, FR_SKY.y - 1.0, FR_SKY.z), rise);
+  trail := ink(p, INK_BRIGHT); trail.core = 1.0 * p.d; trail.glow = 6 * p.d;
+  n := 24;
+  for i: 0..<n {
+    a := fv_mix(FR_S, head, cast(f32) i / cast(f32) n); b := fv_mix(FR_S, head, cast(f32) (i + 1) / cast(f32) n);
+    v = seg(out, v, c, a, b, trail, (0.25 + 0.75 * cast(f32) (i + 1) / cast(f32) n) * fade);
+  }
+  h := spot(c, head);
+  if h.ok && rise < 1 { v = diamond(out, v, h.x, h.y, 4 * p.d, ink(p, INK_BRIGHT), fade); }
+  // a ring where it left the ground
+  r := 0.4 + 2.5 * fract((t - FR_SPACE) * 0.5);
+  v = loop3(out, v, c, FR_S.x, 0.02, FR_S.z, r, ink(p, INK_PALE), 0.5 * (1 - fract((t - FR_SPACE) * 0.5)) * fade * fr_out(t, FR_SPACE + 2, 0.4));
+  return v;
+}
+
+// A level circle of n pieces, drawn as far round as `round` (0 to 1).
+fr_orbit :: (out: [] f32, at: int, c: Cam, o: Fv, r: f32, round: f32, n: int, k: Ink, light: f32, dotted: bool) -> int {
+  v := at;
+  for i: 0..<n {
+    s0 := cast(f32) i / cast(f32) n; s1 := cast(f32) (i + 1) / cast(f32) n;
+    if s0 >= round { break; }
+    if dotted && i % 2 == 1 { continue; }
+    a0 := FR_TAU * s0; a1 := FR_TAU * lo(s1, round);
+    v = seg(out, v, c, fv(o.x + r * cos(a0), o.y, o.z + r * sin(a0)), fv(o.x + r * cos(a1), o.y, o.z + r * sin(a1)), k, light);
+  }
+  return v;
+}
+FR_TAU :: 6.2831853;
+// A planet: a small ring on its orbit, going round.
+fr_planet :: (out: [] f32, at: int, c: Cam, o: Fv, r: f32, size: f32, speed: f32, t: f32, k: Ink, light: f32) -> int {
+  a := t * speed;
+  q := spot(c, fv(o.x + r * cos(a), o.y, o.z + r * sin(a)));
+  if !q.ok || !inside(c.clip, q.x, q.y) { return at; }
+  return ring(out, at, q.x, q.y, hi(size * c.focal / q.z, 2), k, light * vignette(c, q.x, q.y));
+}
+// "Trek or Wars, Earth or Mars or belt or outer planets": the sun, then each orbit as it's named.
+fr_planets :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
+  if t < FR_SUN || t > FR_HUMANS + 3 { return at; }
+  v := at;
+  fade := fr_out(t, FR_HUMANS, 2.2);
+  o := FR_SKY;
+  pale := ink(p, INK_PALE); dim := ink(p, INK_DIM); bright := ink(p, INK_BRIGHT);
+  sun := fr_in(t, FR_SUN, 1.0) * fade;
+  q := spot(c, o);
+  if q.ok {
+    v = ring(out, v, q.x, q.y, hi(0.9 * c.focal / q.z, 3), bright, sun);
+    v = diamond(out, v, q.x, q.y, hi(0.5 * c.focal / q.z, 2), bright, sun * (0.7 + 0.3 * sin(t * 4)));
+  }
+  orbits := [5] f32.[1.9, 2.9, 4.3, 6.1, 8.0];
+  starts := [5] f32.[FR_EARTH, FR_MARS, FR_BELT, FR_OUTER, FR_OUTER + 0.45];
+  speeds := [5] f32.[0.9, 0.7, 0.0, 0.35, 0.25];
+  for i: 0..<5 {
+    g := fr_in(t, starts[i], 0.9);
+    if g <= 0 { continue; }
+    belt := i == 2;
+    v = fr_orbit(out, v, c, o, orbits[i], g, 72, ifx belt then dim else pale, (ifx belt then 0.5f32 else 0.6f32) * fade, belt);
+    if belt {
+      // the belt: a scatter of small diamonds round it
+      for j: 0..<40 {
+        a := FR_TAU * cast(f32) j / 40 + t * 0.15;
+        rr := orbits[i] + 0.5 * (hash01(cast(f32) j * 3.1) - 0.5);
+        if cast(f32) j / 40 > g { break; }
+        bq := spot(c, fv(o.x + rr * cos(a), o.y + 0.2 * (hash01(cast(f32) j * 1.7) - 0.5), o.z + rr * sin(a)));
+        if bq.ok && inside(c.clip, bq.x, bq.y) { v = diamond(out, v, bq.x, bq.y, 1.3 * p.d, pale, 0.6 * fade); }
+      }
+    } else {
+      v = fr_planet(out, v, c, o, orbits[i], ifx i >= 3 then 0.55f32 else 0.32f32, speeds[i], t + cast(f32) i * 1.7, bright, g * fade);
+    }
+  }
+  return v;
+}
+
+// The people on the open ground: where each stands at first, and where it stands round the new tree.
+fr_crowd :: (i: int) -> Fv {
+  a := cast(f32) i * 2.399 + 0.6;   // a loose sunflower, open toward the camera (+x +z)
+  r := 1.9 + 1.3 * sqrt(cast(f32) i / cast(f32) FR_PEOPLE);
+  return fv(FR_S.x + r * cos(a) * 1.1, 0, FR_S.z + r * sin(a) * 0.9 + 0.6);
+}
+fr_ring_at :: (i: int) -> Fv {
+  a := FR_TAU * cast(f32) i / cast(f32) FR_PEOPLE + 0.3;
+  return fv(FR_S.x + 1.45 * cos(a), 0, FR_S.z + 1.45 * sin(a));
+}
+// "Care for humans on Earth", then "we are its midwives": they stand, then walk in and ring the new tree.
+fr_people :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
+  if t < FR_HUMANS { return at; }
+  v := at;
+  seen := fr_in(t, FR_HUMANS, 1.4);
+  pale := ink(p, INK_PALE);
+  sh: Shape; sh.size = 0.95;
+  k := verse_figure_skeleton(sh);
+  for i: 0..<FR_PEOPLE {
+    start := FR_MIDWIVES + 0.12 * cast(f32) i;
+    go := fr_in(t, start, 1.8);
+    from := fr_crowd(i); to := fr_ring_at(i);
+    w := fv_mix(from, to, go);
+    walking := go > 0 && go < 1;
+    // facing: toward the new tree once it's up, the camera's way before
+    face_x := ifx t >= FR_NEW then FR_S.x - w.x else 1.0f32;
+    face_z := ifx t >= FR_NEW then FR_S.z - w.z else 1.0f32;
+    if walking { face_x = to.x - from.x; face_z = to.z - from.z; }
+    yaw := angle_of(face_x, face_z);
+    pose := verse_figure_gait(Rig.person, ifx walking then Gait.walk else Gait.stand, fract(t * 1.3 + cast(f32) i * 0.31), t * 1.4 + cast(f32) i);
+    if go >= 1 {
+      // round it, hands up to it
+      lift := fr_in(t, start + 1.8, 0.7);
+      pose.turn[P_R_SHOULDER] = fv(-2.4 * lift, 0, -0.15 * lift);
+      pose.turn[P_L_SHOULDER] = fv(-2.4 * lift, 0, 0.15 * lift);
+    }
+    top: [1] Spot;
+    light := seen * fr_in(t, FR_HUMANS + 0.12 * cast(f32) i, 0.8);
+    v = figure(out, v, c, k, pose, w.x, w.z, yaw, pale, light, p, top[0..<0]);
+  }
+  return v;
+}
+
+// The old world's power structures: rigid towers that stand, then sag, lean and fall.
+fr_tower_at :: (i: int) -> Fv {
+  at := [FR_TOWERS] Fv.[Fv.{x = -3.6, y = 0, z = -2.4}, Fv.{x = -1.2, y = 0, z = -4.6}, Fv.{x = -5.4, y = 0, z = 0.6}];
+  return fv_add(FR_S, at[i]);
+}
+fr_towers :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
+  if t < FR_OLD { return at; }
+  v := at;
+  dim := ink(p, INK_DIM); white := ink(p, INK_WHITE);
+  heights := [FR_TOWERS] f32.[5.2, 6.4, 4.2];
+  for i: 0..<FR_TOWERS {
+    b := fr_tower_at(i);
+    up := fr_in(t, FR_OLD + 0.35 * cast(f32) i, 1.1);
+    rot := fr_in(t, FR_DECAY + 0.4 * cast(f32) i, 2.4);   // 0 standing, 1 fallen
+    gone := fr_out(t, FR_NEW + 1.0, 2.5);
+    light := up * (1 - 0.7 * rot) * gone;
+    if light <= 0.003 { continue; }
+    h := heights[i] * up;
+    floors := 9;
+    half: f32 = 0.75;
+    lean := ifx i == 1 then -1.0f32 else 1.0f32;
+    // a floor j's corners: sinking, leaning and spreading as it rots
+    for j: 0..<floors + 1 {
+      f := cast(f32) j / cast(f32) floors;
+      y := h * f * (1 - 0.82 * rot * (0.4 + 0.6 * f));
+      dx := lean * rot * f * f * 2.2; dz := rot * f * 0.9 * hash01(cast(f32) (i * 13 + j)) - 0.3 * rot * f;
+      wob := rot * 0.25 * (hash01(cast(f32) (i * 7 + j * 3)) - 0.5);
+      hx := half * (1 - 0.25 * f) + wob; hz := half * (1 - 0.25 * f) - wob;
+      cx := b.x + dx; cz := b.z + dz;
+      corners := [4] Fv.[fv(cx - hx, y, cz - hz), fv(cx + hx, y, cz - hz), fv(cx + hx, y, cz + hz), fv(cx - hx, y, cz + hz)];
+      for q: 0..<4 {
+        // pieces drop out of the rotting floors
+        if rot > 0.2 && hash01(cast(f32) (i * 31 + j * 5 + q)) < rot * 0.55 { continue; }
+        v = seg(out, v, c, corners[q], corners[(q + 1) % 4], ifx j == floors then white else dim, light * (ifx j == floors then 0.8f32 else 0.55f32));
+      }
+      if j < floors {
+        f1 := cast(f32) (j + 1) / cast(f32) floors;
+        y1 := h * f1 * (1 - 0.82 * rot * (0.4 + 0.6 * f1));
+        dx1 := lean * rot * f1 * f1 * 2.2; dz1 := rot * f1 * 0.9 * hash01(cast(f32) (i * 13 + j + 1)) - 0.3 * rot * f1;
+        hx1 := half * (1 - 0.25 * f1); hz1 := hx1;
+        cx1 := b.x + dx1; cz1 := b.z + dz1;
+        uppers := [4] Fv.[fv(cx1 - hx1, y1, cz1 - hz1), fv(cx1 + hx1, y1, cz1 - hz1), fv(cx1 + hx1, y1, cz1 + hz1), fv(cx1 - hx1, y1, cz1 + hz1)];
+        for q: 0..<4 {
+          if rot > 0.35 && hash01(cast(f32) (i * 17 + j * 7 + q)) < rot * 0.5 { continue; }
+          v = seg(out, v, c, corners[q], uppers[q], white, light * 0.7);
+        }
+      }
+    }
+    // debris on the floor as they fall
+    if rot > 0.1 {
+      for d: 0..<10 {
+        a := FR_TAU * hash01(cast(f32) (i * 41 + d)); r := 0.4 + 2.2 * hash01(cast(f32) (i * 43 + d)) * rot;
+        e := fv(b.x + r * cos(a), 0.02, b.z + r * sin(a));
+        v = seg(out, v, c, e, fv_add(e, fv(0.35 * cos(a * 3), 0, 0.35 * sin(a * 3))), dim, 0.5 * rot * gone);
+      }
+    }
+  }
+  return v;
+}
+
+// "A bright new world struggles to be born": a tree of light climbs from the open ground, faltering
+// as it goes, its newest nodes pulsing; rings go out from its foot.
+fr_new_world :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
+  if t < FR_NEW { return at; }
+  v := at;
+  raw := clamp((t - FR_NEW) / 3.6, 0, 1);
+  // the struggle: it climbs in fits, slipping back a little, then holds
+  g := clamp(ease(raw) - 0.06 * sin(raw * 19) * (1 - raw), 0, 1);
+  bright := ink(p, INK_BRIGHT); bright.glow = 6 * p.d;
+  white := ink(p, INK_WHITE);
+  n := 34;
+  shown := cast(int) (cast(f32) n * g);
+  height: f32 = 4.6;
+  nodes: [34] Fv;
+  for i: 0..<n {
+    f := cast(f32) i / cast(f32) (n - 1);
+    r := 0.3 + 1.2 * (1 - f);
+    a := cast(f32) i * 0.62 + t * 0.25;
+    nodes[i] = fv(FR_S.x + r * cos(a), 0.3 + height * f, FR_S.z + r * sin(a));
+  }
+  if shown <= 0 { return v; }
+  trunk := bright; trunk.core = 1.4 * p.d;
+  v = seg(out, v, c, FR_S, fv(FR_S.x, nodes[shown - 1].y + 0.3, FR_S.z), trunk, 0.9);
+  for i: 1..<shown {
+    v = seg(out, v, c, nodes[i - 1], nodes[i], ifx i >= shown - 4 then bright else white, ifx i >= shown - 4 then 0.95f32 else 0.6f32);
+    if i % 3 == 0 { v = seg(out, v, c, fv(FR_S.x, nodes[i].y, FR_S.z), nodes[i], white, 0.3); }
+  }
+  for i: 0..<shown {
+    q := spot(c, nodes[i]);
+    if !q.ok || !inside(c.clip, q.x, q.y) { continue; }
+    recent := i >= shown - 4;
+    pulse := 0.6 + 0.4 * sin(t * 3.0 + cast(f32) i);
+    v = diamond(out, v, q.x, q.y, (ifx recent then 3.2f32 else 2.0f32) * p.d, ifx recent then bright else white, (ifx recent then pulse else 0.6f32) * vignette(c, q.x, q.y));
+  }
+  // rings out from its foot, and its plot taking shape round it
+  for k: 0..<3 {
+    ph := fract((t - FR_NEW) * 0.45 + cast(f32) k / 3);
+    v = loop3(out, v, c, FR_S.x, 0.02, FR_S.z, 0.5 + 3.5 * ph, ink(p, INK_PALE), 0.45 * (1 - ph) * fr_in(t, FR_NEW, 0.6));
+  }
+  edge_in := fr_in(t, FR_NEW + 1.2, 2.2);
+  if edge_in > 0 {
+    v = fr_orbit(out, v, c, fv(FR_S.x, 0.02, FR_S.z), 2.3, edge_in, 48, bright, 0.8, false);
+  }
+  return v;
+}
+
+#test "the story's camera passes every key and moves smoothly between them" {
+  for i: 0..<FR_KEYS - 1 {
+    k := fr_key(i);
+    q := fr_story_pose(k.t);
+    #assert fv_length(fv_sub(q.eye, k.eye)) < 0.01 && fv_length(fv_sub(q.at, k.at)) < 0.01;
+    #assert fr_key(i + 1).t > k.t;
+  }
+  // no jump frame to frame (a 60 Hz step moves the eye far less than a unit)
+  last := fr_story_pose(0).eye;
+  t: f32 = 0;
+  while t < FR_END + FR_JOIN + 2 {
+    t += 1.0 / 60;
+    e := fr_cam(fv(0, 0, 0), t, 1280, 720).eye;
+    #assert fv_length(fv_sub(e, last)) < 0.6;
+    last = e;
+  }
+}
+#test "the people stand apart, then ring the new tree" {
+  for i: 0..<FR_PEOPLE {
+    for j: i + 1..<FR_PEOPLE {
+      #assert fv_length(fv_sub(fr_crowd(i), fr_crowd(j))) > 0.45;
+      #assert fv_length(fv_sub(fr_ring_at(i), fr_ring_at(j))) > 0.6;
+    }
+    #assert abs(fv_length(fv_sub(fr_ring_at(i), FR_S)) - 1.45) < 0.01;
+  }
+}
