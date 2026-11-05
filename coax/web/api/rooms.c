@@ -11,6 +11,7 @@
 //                                         is full and no invite of theirs holds a seat, #12795)
 // player.c room_ticket asks rooms_pick for the instance and shard when the page names its realm.
 #include "api.h"
+#include "progress-policy.generated.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -39,6 +40,30 @@ static bool build_ok(const char *s) {
   }
   return dots == 2 && s[n - 1] != '.';
 }
+// A completed database-request observation. Failure to persist this metric is
+// logged separately and cannot change the placement result already obtained.
+static void reservation_observed(PGconn *db,int64_t event) {
+  coax_string label=rsv_observe_name(event);char name[64];
+  if(label.count<=0||label.count>=(int64_t)sizeof name)return;
+  memcpy(name,label.data,(size_t)label.count);name[label.count]=0;
+  if(PQtransactionStatus(db)!=PQTRANS_IDLE){api_log("room reservation observation lost: caller transaction active");return;}
+  char begin[96];snprintf(begin,sizeof begin,"BEGIN; SET LOCAL statement_timeout='%lldms'",(long long)rsv_observe_store_ms());
+  PGresult *r=PQexec(db,begin);
+  bool started=PQresultStatus(r)==PGRES_COMMAND_OK;PQclear(r);
+  if(!started){
+    api_log("room reservation observation lost: %s",PQerrorMessage(db));
+    if(PQtransactionStatus(db)==PQTRANS_INTRANS||PQtransactionStatus(db)==PQTRANS_INERROR){r=PQexec(db,"ROLLBACK");PQclear(r);}
+    return;
+  }
+  const char *values[1]={name};
+  r=PQexecParams(db,"SELECT verse.room_admit_count($1,1)",1,NULL,values,NULL,NULL,0);
+  bool kept=PQresultStatus(r)==PGRES_TUPLES_OK;
+  if(!kept)api_log("room reservation observation lost: %s",PQerrorMessage(db));
+  PQclear(r);
+  r=PQexec(db,kept?"COMMIT":"ROLLBACK");
+  if(PQresultStatus(r)!=PGRES_COMMAND_OK)api_log("room reservation observation lost: commit failed");
+  PQclear(r);
+}
 bool rooms_pick(PGconn *db, const char *realm, const char *asked, const char *pid, const char *via, const char *build, char *code, size_t cap, int *shard, bool *full) {
   if (!code_ok(realm, 20) || !code_ok(asked, 24)) return false;
   if (via && via[0] && !code_ok(via, 40)) via = "";
@@ -47,6 +72,9 @@ bool rooms_pick(PGconn *db, const char *realm, const char *asked, const char *pi
   const char *v[6] = {realm, asked, pid, seats, via ? via : "", build};
   PGresult *r = PQexecParams(db, "SELECT code, shard, was_full FROM verse.room_pick($1, $2, $3, $4::int, $5, $6)", 6, NULL, v, NULL, NULL, 0);
   bool ok = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !PQgetisnull(r, 0, 0) && strlen(PQgetvalue(r, 0, 0)) < cap;
+  bool shaped=PQresultStatus(r)==PGRES_TUPLES_OK&&PQntuples(r)==1;
+  bool named=shaped&&!PQgetisnull(r,0,0);
+  int64_t event=rsv_observe_pick(PQresultStatus(r)==PGRES_TUPLES_OK,PQntuples(r),named,named?(int64_t)strlen(PQgetvalue(r,0,0)):0,(int64_t)cap,shaped&&PQgetvalue(r,0,2)[0]=='t');
   if (PQresultStatus(r) != PGRES_TUPLES_OK) api_log("rooms: %s", PQerrorMessage(db));
   if (ok) {
     snprintf(code, cap, "%s", PQgetvalue(r, 0, 0));
@@ -54,6 +82,7 @@ bool rooms_pick(PGconn *db, const char *realm, const char *asked, const char *pi
     *full = PQgetvalue(r, 0, 2)[0] == 't';
   }
   PQclear(r);
+  reservation_observed(db,event);
   return ok;
 }
 
@@ -70,6 +99,7 @@ int rooms_invite(PGconn *db, const char *room, const char *pid, long long *until
     else out = !strcmp(PQgetvalue(r, 0, 1), "full") ? 2 : 1;
   } else api_log("room-invite: %s", PQerrorMessage(db));
   PQclear(r);
+  reservation_observed(db,rsv_observe_invite(out));
   return out;
 }
 

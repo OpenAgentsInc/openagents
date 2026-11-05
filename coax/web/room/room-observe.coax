@@ -1,5 +1,15 @@
 // Read production state; never substitute HTTP success, expiry or an ACK for
 // durable acceptance. These exports have no admission or persistence effects.
+#test "capacity observations distinguish native slots, connected seats, grace holds and initial gates (#12840)" #steps 2000000000 {
+  v:[1]RmServer;k:=rc_test_room(v[..],"pair-capacity-observe",3,false);o:[6]int;
+  v[0].eg[k].seat[1].conn= -1;v[0].eg[k].seat[1].held=true;
+  v[0].eg[k].seat[2].placed=false;
+  rm_st_capacity(v[..],o[..]);
+  #assert o[0]==EG_ROOMS&&o[1]==1&&o[2]==EG_ROOMS-1&&o[3]==2&&o[4]==1&&o[5]==1;
+  v[0].eg[k].seat[1].live=false;rm_st_capacity(v[..],o[..]);#assert o[3]==2&&o[4]==0&&o[5]==1;
+  v[0].eg[k].live=false;rm_st_capacity(v[..],o[..]);#assert o[1]==0&&o[2]==EG_ROOMS&&o[3]==0&&o[4]==0&&o[5]==0;
+  o[0]=99;rm_st_capacity(v[..],o[0..<5]);#assert o[0]==99;
+}
 #test "vitals: failed and late checkpoint posts cannot advance accepted revision or age (#12840)" #steps 4000000000 {
   v:[1]RmServer;ck_test_init(v[..]);k:=ck_test_join(v[..],0,7,CharacterCapture.{});ck_test_place(v[..],k);out:[12]int;
   #assert rm_st_saved(v[..],k,0,out[..])&&out[0]==2&&out[1]==7&&out[3]==0&&out[4]== -1&&out[11]==0;
@@ -87,4 +97,12 @@ rm_st_rows::(v:[]RmServer,out:[]int) #export_c{
     at:=k*EG_SEATS+s;n:=v[0].st.rows_last[at];left:=v[0].st.left_last[at];out[3]+=n;out[4]+=left;
     if out[5]<0||n+left>out[7]+out[8]{out[5]=k;out[6]=s;out[7]=n;out[8]=left;}
   }}
+}
+rm_st_capacity::(v:[]RmServer,out:[]int) #export_c{
+  if out.count<6{return;}for q:0..<6{out[q]=0;}out[0]=EG_ROOMS;
+  for k:0..<EG_ROOMS{if !v[0].eg[k].live{out[2]+=1;continue;}out[1]+=1;
+    for s:0..<EG_SEATS{st:=v[0].eg[k].seat[s];if !st.live{continue;}
+      if st.conn>=0{out[3]+=1;}if eg_held(v,k,s){out[4]+=1;}if !st.placed{out[5]+=1;}
+    }
+  }
 }

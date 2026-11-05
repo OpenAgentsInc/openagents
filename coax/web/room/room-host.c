@@ -795,6 +795,8 @@ static void stats_window(double secs) {
   body[0] = 0;
   st_line(&o, "t %lld", (long long)wall_ms());
   size_t head = o.n;
+  st_line(&o,"process generation=%lld",(long long)server->vit.gen);
+  st_line(&o,"capacity startup ready=%d",started_ok&&rooms_warmed?1:0);
   double cost = st_tick_us > 0 ? 100.0 * (double)st_cost_us / (double)st_tick_us : 0;
   int64_t p95 = st_hist_at(&st_work[STW_ALL], 950), ack95 = st_ack_q(NULL, st_ack_all, st_ack_all_n, 950);
   st_report(&o, view(), rm_players(view()), server->shard, secs, true);

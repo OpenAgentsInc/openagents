@@ -232,6 +232,10 @@ static void st_report(st_buf *o, coax_v_t_RmServer v, int64_t players, int64_t s
   for(int q=0;q<28;q++)st_line(o,"%s=%lld",save_names[q],(long long)saves[q]);
   st_line(o,"checkpoint active loss bound ms=30000");st_line(o,"checkpoint healthy recovery target ms=60000");
   st_line(o,"capacity draining=%d",server->drain?1:0);
+  int64_t capacity[6];rm_st_capacity(v,(coax_v_s64){capacity,6});
+  static const char *capacity_names[6]={"native slots","live worlds","unused worlds","seated connections","grace holds","initial gates"};
+  for(int q=0;q<6;q++)st_line(o,"capacity %s=%lld",capacity_names[q],(long long)capacity[q]);
+  st_line(o,"capacity scope=native world slots and seat state; API placement caps and reservations are separate");
   /* the allowances beside the rows' (#12836): their bytes a second, and the entries each left waiting */
   int64_t al[13] = {0}; rm_st_alloc(v, (coax_v_s64){al, 13});
   st_line(o, "removal bytes a second=%.0f", (al[0] - st_alloc_was[0]) / secs);

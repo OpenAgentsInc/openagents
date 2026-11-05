@@ -826,6 +826,21 @@ accepted by the socket queue; it excludes estimated network RTT. The older
 input-to-ACK estimate retains its historical RTT term. Client presentation
 remains a separate measured boundary. Report truncation is explicitly counted.
 
+Capacity observations distinguish native world slots, connected seats, grace
+holds and initial gates from API placement caps and outstanding player/invite
+reservations. Startup readiness is the condition used by `/ready`. The admin
+placement view credits it only from a report younger than 30 seconds whose
+process generation matches the directory; missing, obsolete and expired
+reports mean unknown. A draining process may be startup-ready while placement
+refuses it. Reservation counters count completed database requests, including
+retries, at their returned outcome. They neither change placement nor imply
+unique players or durable gameplay acceptance. Failure to persist an
+observation is logged and never replaces the original reservation result;
+persisted counts cannot account for an unavailable database. Its independent
+transaction has a 50 ms server statement budget and rolls back on failure;
+the local timeout cannot leak into ticket issuance. This is not a network
+deadline for an unavailable database connection.
+
 ## An admitted Everglade seat keeps a cast reservation
 
 `coax/web/room/cast-budget.coax` (#12841, `#authority`, mutation-checked)

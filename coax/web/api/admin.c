@@ -530,12 +530,24 @@ static void rooms(const request *q, PGconn *db) {
     "SELECT reason, n::text FROM verse.room_admission "
     "UNION ALL SELECT 'waiting now', count(*)::text FROM verse.room_waiting WHERE last_ms > verse.room_now() - 60000 "
     "UNION ALL SELECT 'last wait s', round(wait_ms / 1000.0)::text FROM verse.room_wait_last", 0, NULL);
+  section(&o,db,"PLACEMENT CAPACITY","w","SHARD|CONFIGURED WORLDS|DIRECTORY AGE MS|GENERATION|DRAINING|LIVE WORLDS|REPORTED SEATS|PLAYER HOLDS|INVITE HOLDS|REPORTED READY|STATS AGE MS|BUILD",
+    "WITH t AS (SELECT verse.room_now() AS ms) "
+    "SELECT s.shard::text,s.rooms_cap::text,CASE WHEN s.at IS NULL THEN '-1' ELSE greatest(0,t.ms-s.at)::text END,coalesce(s.gen,0)::text,"
+    "verse.room_draining(s.shard,t.ms)::text,i.worlds::text,coalesce(i.seats,0)::text,h.players::text,h.invites::text,"
+    "coalesce(substring(b.body FROM E'\\ncapacity startup ready=([01])\\n'),'unknown'),"
+    "CASE WHEN b.at IS NULL THEN '-1' ELSE greatest(0,t.ms-(extract(epoch FROM b.at)*1000)::bigint)::text END,coalesce(s.build,'unknown') "
+    "FROM verse.room_shards s CROSS JOIN t "
+    "LEFT JOIN LATERAL (SELECT count(*) AS worlds,sum(x.players) AS seats FROM verse.room_instances x WHERE x.shard=s.shard AND verse.room_live(x,t.ms)) i ON true "
+    "LEFT JOIN LATERAL (SELECT count(*) FILTER(WHERE h.pid NOT LIKE 'i-%') AS players,count(*) FILTER(WHERE h.pid LIKE 'i-%') AS invites "
+    "FROM verse.room_holds h JOIN verse.room_instances x ON x.code=h.code WHERE x.shard=s.shard AND h.until_ms>t.ms AND NOT(h.pid=ANY(x.pids))) h ON true "
+    "LEFT JOIN LATERAL (SELECT b.at,b.body FROM verse.room_stats b WHERE b.shard=s.shard AND b.at>now()-interval '30 seconds' "
+    "AND substring(b.body FROM E'\\nprocess generation=([0-9]{1,15})\\n')::bigint=s.gen ORDER BY b.at DESC LIMIT 1) b ON true ORDER BY s.shard",0,NULL);
   PGresult *r = PQexec(db, "SELECT DISTINCT shard FROM verse.room_stats WHERE at > now() - interval '10 minutes' ORDER BY shard");
   int n = PQresultStatus(r) == PGRES_TUPLES_OK ? PQntuples(r) : 0;
   if (PQresultStatus(r) != PGRES_TUPLES_OK) api_log("rooms: %s", PQerrorMessage(db));
   if (n == 0) puts_(&o, "#ROOMS||NUMBER|NOW\n");
   static const struct { const char *group, *match; } groups[] = {
-    {"TICK", "^(ticks a second|tick |players p|raiders |effects |folk |writing |sending |measuring|report |observation measured)"},
+    {"TICK", "^(ticks a second|tick |players p|raiders |effects |folk |writing |sending |measuring|report |observation measured|process generation)"},
     {"PLAYERS", "^(players$|queue |relevant |input to ack|server queued ack|join|rejoins |refused )"},
     {"BYTES", "^(out|in) .*a second$|^transport "},
     {"REPLICATION", "^(interest (seats|whole |health only |blocked |hidden |aggregation)|rows |row text |row wait |removal |removals |player info |join pieces |cue |cues |outcome |outcomes |snapshots |towns |observation counter)"},

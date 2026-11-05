@@ -5,6 +5,15 @@ It qualifies native frame accounting and durable-save observations. It does
 not qualify end-to-end browser presentation, clock-offset uncertainty, the
 complete reservation/capacity view, or total instrumentation overhead.
 
+Source-scope correction: the reused world unit in these component artifacts
+has an older Fire layout than a later fresh emission. Its retained source key
+is listed below; the native and worker artifacts agree with each other, but
+this record does not qualify the current integrated world source. Queue/save
+boundary unit checks and the explicitly pinned artifact observations remain
+separate evidence. The subsequent
+[capacity build](2026-11-05-room-capacity-vitals.md) emits the world afresh and
+reruns the affected native checks.
+
 The older native counter sampled every fourth D frame and multiplied its
 entries by four. It also counted intended recipients after a socket queue
 refused the frame. `frame-observe.coax` now accounts for every accepted copy.

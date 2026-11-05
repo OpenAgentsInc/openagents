@@ -1,0 +1,11 @@
+stress health:
+ok 7 players, fanout p50 100 us p95 5300 us over 14 reads, 0 rate-limited, 0 slow closed, shard 1, everglade tick p50 100 us at the 95th 1700 us over 11 ticks, waiting 0 bytes most, 0 ms oldest, 0 world events running, drain none
+checkpoints pending 0, flying 0, refused 0, applied 0, duplicates 0
+background pending 0/6, offered 3, refused 0, expired 0, late 1, failed 0
+work process rooms 2, lowest credit 1548 us, largest last tick 1632 us room 0, deferred ticks 0, refused new work 3, retired rooms 0
+world preparation max 19913 us room 0, startup preparation 277066 us, last publication 9 us
+stress observed report:
+no window yet
+stress report profile: exact-observer accepted=false
+stress: seconds=75 opened=false casts_sent=0 busy=0 peak_pets=0 peak_zones=0 peak_raiders=0 break_frames=0 raid_cast_frames=0
+stress: healthy_frames=0 healthy_gap_max_ms=0 slow_tick_before=0 slow_tick_after=0 slow_closed=0 slow_rejoined=false waiting_max_bytes=0 closed=0 health_ok=0 health_failed=0 pending_max=0/6 recovered=false publication=false

@@ -1,0 +1,48 @@
+// Observations of completed reservation database requests. These classifications
+// never change placement, HTTP responses or reservation lifetime. Request counts
+// include retries; they are not unique characters or durable gameplay saves.
+#authority;
+#test "reservation observations distinguish a returned hold, full redirect and no capacity" {
+  #assert rsv_observe_pick(true,1,true,12,64,false)==1;
+  #assert rsv_observe_pick(true,1,true,12,64,true)==2;
+  #assert rsv_observe_pick(true,1,false,0,64,false)==3;
+  #assert rsv_observe_name(1)=="reservation requests accepted"&&rsv_observe_name(2)=="reservation requests redirected"&&rsv_observe_name(3)=="reservation requests full";
+}
+#test "reservation observations never call database failures or invalid result shapes capacity exhaustion" {
+  #assert rsv_observe_pick(false,1,false,0,64,false)==4;
+  #assert rsv_observe_pick(true,0,false,0,64,false)==4&&rsv_observe_pick(true,2,true,12,64,false)==4;
+  #assert rsv_observe_pick(true,1,true,0,64,false)==4&&rsv_observe_pick(true,1,true,64,64,false)==4;
+  #assert rsv_observe_pick(true,1,true,63,64,false)==1;
+  #assert rsv_observe_pick(true,1,false,0,1,false)==3&&rsv_observe_pick(true,1,false,0,0,false)==4;
+  #assert rsv_observe_pick(true,1,false,-1,64,false)==4;
+  #assert rsv_observe_name(4)=="reservation requests failed";
+}
+#test "invite observations retain actual acceptance full absence and database failure boundaries" {
+  #assert rsv_observe_invite(0)==5&&rsv_observe_invite(2)==6&&rsv_observe_invite(1)==7;
+  #assert rsv_observe_invite(-1)==4&&rsv_observe_invite(3)==4;
+  #assert rsv_observe_name(5)=="invite requests accepted"&&rsv_observe_name(6)=="invite requests full"&&rsv_observe_name(7)=="invite requests not in room";
+  #assert rsv_observe_name(0)==""&&rsv_observe_name(8)==""&&rsv_observe_name(-1)=="";
+}
+#test "reservation observation storage gets a fixed 50 millisecond server budget, outside the placement transaction" {
+  #assert !rsv_observe_late(1000,1049)&&rsv_observe_late(1000,1050)&&rsv_observe_late(1000,1051);
+}
+rsv_observe_store_ms::()->int #export_c{return 50;}
+rsv_observe_late::(began:int,now:int)->bool{return now-began>=rsv_observe_store_ms();}
+rsv_observe_pick::(database_ok:bool,rows:int,has_code:bool,code_n:int,cap:int,redirected:bool)->int #export_c{
+  if !database_ok||rows!=1||cap<1||code_n<0{return 4;}
+  if !has_code{return 3;}
+  if code_n==0||code_n>=cap{return 4;}
+  return ifx redirected then 2 else 1;
+}
+rsv_observe_invite::(result:int)->int #export_c{
+  if result==0{return 5;}if result==2{return 6;}if result==1{return 7;}return 4;
+}
+rsv_observe_name::(event:int)->string #export_c{
+  if event==1{return "reservation requests accepted";}
+  if event==2{return "reservation requests redirected";}
+  if event==3{return "reservation requests full";}
+  if event==4{return "reservation requests failed";}
+  if event==5{return "invite requests accepted";}
+  if event==6{return "invite requests full";}
+  if event==7{return "invite requests not in room";}return "";
+}

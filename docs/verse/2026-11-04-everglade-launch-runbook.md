@@ -839,8 +839,39 @@ wall share %` includes timed path hooks and report generation as a share of
 the reporting interval, including descheduling; it is not CPU utilization or
 the total overhead. `observation timing scope` declares that inline serializer,
 input and transport counters are outside those spans.
-The older `measuring % of tick` retains its existing denominator. Representative
-overhead and the remaining client/reservation coverage stay open in #12840.
+The older `measuring % of tick` retains its existing denominator. The paired
+queue/save-observer workload is recorded in
+`docs/verification/2026-11-05-room-observer-overhead.md`; its complete-harness
+CPU measurement has a different scope and denominator. Client presentation
+and its clock uncertainty remain open in #12840.
+
+The capacity series reports native world slots, live/unused worlds, seated
+connections, grace holds, initial placement gates and startup readiness.
+Startup readiness is the actual `/ready` condition; check `capacity draining`
+separately. These are native process gauges, not the API placement ceiling.
+`process generation` names their producer, including during a deployment.
+
+The admin `PLACEMENT CAPACITY` table reads the actual directory, configured
+world caps and outstanding reservations. Holds already included among a
+room's reported players and expired holds do not count again. Player and
+invite holds stay separate. A startup-ready report is credited only within
+30 seconds and only when its process generation matches the current directory.
+Otherwise readiness is `unknown` and its sample age is `-1`; a directory or
+build report alone cannot certify it. A current drain blocks placement even
+when startup readiness remains true. Compare directory age, generation, drain,
+build and native ready state together before admitting more traffic.
+
+`ADMISSION` also shows completed reservation database requests: accepted,
+redirected after the asked room was full, no capacity, and failed; invites
+show returned holds, full rooms and absence from the room. These count requests,
+including retries, rather than distinct players or HTTP ticket successes.
+They are observations of the original returned operation, which they cannot
+change. A failed observation write logs `room reservation observation lost`;
+the persisted series cannot count an unavailable database. Native save failures
+and the API service's availability must be checked alongside it. The counter's
+independent transaction has a 50 ms PostgreSQL statement timeout and rolls back
+on failure, preserving the already committed reservation and the caller's
+session settings. This bounds a server statement, not network connection time.
 
 ## What a crash may lose
 

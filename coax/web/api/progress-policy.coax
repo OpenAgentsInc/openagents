@@ -18,6 +18,7 @@
 #authority;
 #load "checkpoint-policy.coax";
 #load "checkpoint-resume-policy.coax";
+#load "reservation-observe.coax";
 
 PP_KEEP :: 0;
 PP_CHANGED :: 1;
