@@ -917,3 +917,14 @@ its export, and starts no device or GPU. The exact plan, metadata, decoder
 sources/executable and SHA256 manifest are retained beside the raw bytes for
 the sibling's complete browser comparison. This is a codec observation, not
 a claim that both ambient candidates fit resident alongside every variant.
+
+A fresh bounded primary attempt pins product `8c312f9649` in a new genuine
+`c224561457` compiler root. Original598 receipt verification succeeds before
+and after the product overlay, and again after emission. The exact absolute
+entry, argv, actual working directory and requested profile are retained in
+`current-8c312-primary/execution.json` (copied as `current-primary-8c312.json`
+here). The process reaches its 840,050 ms bound with status 137, timeout true,
+zero stdout and no C, header or profile published. Its workers exit. This third
+scoped current-source failure is not retried with unchanged inputs, and does
+not invalidate the earlier separately pinned component receipts. No current
+primary or graphics admission is claimed.
