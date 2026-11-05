@@ -2471,6 +2471,7 @@ const call = (name, ...args) => {
 // IndexedDB coaxial-rescue, store saves, keyed by the save slot. Not in a golden walk.
 const HOLD_BYTES = 2 * 1048576, HOLD_EVERY = 30, RESCUE_SETTLE = 300;
 let frameHeld = null, heldFrames = 0, restoredFrames = -1, pendingRescue = null, rescueTaken = false, trapArmed = false;
+let framesStarted = 0, heldAt = -1;   // checks: frame starts so far, and the one the held copy is from
 const rescueDb = realmId && !golden ? new Promise((ok) => {
   try { const r = indexedDB.open("coaxial-rescue", 1); r.onupgradeneeded = () => r.result.createObjectStore("saves"); r.onsuccess = () => ok(r.result); r.onerror = r.onblocked = () => ok(null); }
   catch { ok(null); }
@@ -2509,18 +2510,24 @@ function frameStart() {
     say(`${app}: back where it stopped`);
   }
   if (restoredFrames >= 0) restoredFrames += 1;
+  framesStarted += 1;
   if (!realmId || golden) return;
   const size = arena.stateSize;
   if (size > HOLD_BYTES && heldFrames++ % HOLD_EVERY) return;
   if (frameHeld?.length !== size) frameHeld = new Uint8Array(size);
   frameHeld.set(new Uint8Array(memory.buffer, arena.state, size));
+  heldAt = framesStarted;
 }
 function trapped(e) {
   if (!engine) return;
   say(`${app} trapped: ${e.message}`, true);
   const again = restoredFrames >= 0 && restoredFrames < RESCUE_SETTLE;
   retireTransport();engine = null;globalThis.coaxial.ready = false;
-  stopped(`THE WORLD STOPPED: ${e.message}`, again ? null : frameHeld?.slice() ?? null, again ? "START OVER" : "");
+  const bytes = again ? null : frameHeld?.slice() ?? null;
+  stopped(`THE WORLD STOPPED: ${e.message}`, bytes, again ? "START OVER" : "");
+  // checks: the saved state's digest, and how many frame starts before the trapping one it was held
+  // (0: that frame's own start; a state over HOLD_BYTES is held every HOLD_EVERY-th frame)
+  if (dev && bytes) { globalThis.coaxial.stopped.held = rescueIdentity(bytes); globalThis.coaxial.stopped.heldAge = framesStarted - heldAt; }
 }
 // The reload message: what stopped, and one action. With the state to save, the save goes first
 // and the reload puts it back; without, the realm starts over.

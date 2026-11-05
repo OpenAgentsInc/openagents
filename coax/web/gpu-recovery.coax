@@ -7,7 +7,11 @@
 //      rebuild (socket events, fetch answers) waited and is delivered after that frame.
 //   2. Trap: N frames more, the digest, then a real trap in the next frame (its state pointer out
 //      of bounds). The reload message shows and the rescue save is written; its action reloads the
-//      page, which puts the save back: the same digest, and the next frame draws.
+//      page, which puts the save back: the saved state's digest, and the next frame draws. The save
+//      is the state the host held at a frame's start (host.js frameStart): the trapping frame's own,
+//      or, for a state over its HOLD_BYTES, one at most GR_HOLD_EVERY - 1 frames before it. A page
+//      with a room hears the room's messages between frames, so the state just before the trap can
+//      differ from the one held at the trapping frame's start; the check prints whether it did.
 //   COAX=... coax/web/tool.sh coax/web/gpu-recovery.coax http://127.0.0.1:PORT/realms/the-grid/ [--within MS] [--size WxH] [--require-hardware]
 // Headless and muted; never a window. It prints the WebGPU adapter the realm got (cdp_adapter);
 // --require-hardware fails the check unless that is a GPU's, not SwiftShader. CDP_WEBGPU=swiftshader
@@ -18,6 +22,7 @@
 #load "../lib/net/cdp.coax";
 
 GR_FRAMES :: 30;
+GR_HOLD_EVERY :: 30;   // host.js HOLD_EVERY: a large state is held every this many frames
 GR_WAIT_MS :: 120000;
 GR_SETUP :: "globalThis.coaxialClip=true;globalThis.coaxialRenderCapture=true;globalThis.coaxialRenderCaptureFormat='rgba16float'";
 // The page is in, its world drawn, on one more zero-time frame.
@@ -29,6 +34,7 @@ GpuRecovery :: struct {
   ms: int; recovered: bool; drew_after_loss: bool; waited: int; released: bool;
   digest_trap: [80] u8; trap_n: int;
   stopped: bool; saved: bool; offered: bool;
+  digest_held: [80] u8; held_n: int; held_age: int = -1;   // the saved state's digest; frames between its hold and the trap
   digest_rescued: [80] u8; rescued_n: int;
   drew_after_rescue: bool;
   hardware: bool;                                   // the realm's WebGPU adapter is a GPU's (cdp_adapter_hardware)
@@ -42,7 +48,8 @@ gr_passed :: (r: [] GpuRecovery, within: int) -> bool {
   return r[0].recovered && r[0].ms >= 0 && r[0].ms <= within && r[0].drew_after_loss && r[0].released &&
     gr_same(r[0].digest_before[..], r[0].before_n, r[0].digest_after[..], r[0].after_n) &&
     r[0].stopped && r[0].saved && r[0].offered && r[0].drew_after_rescue &&
-    gr_same(r[0].digest_trap[..], r[0].trap_n, r[0].digest_rescued[..], r[0].rescued_n);
+    r[0].held_age >= 0 && r[0].held_age < GR_HOLD_EVERY &&
+    gr_same(r[0].digest_held[..], r[0].held_n, r[0].digest_rescued[..], r[0].rescued_n);
 }
 gr_put :: (out: [] u8, s: string) -> int {
   n := ifx s.count < out.count then s.count else out.count;
@@ -55,6 +62,7 @@ gr_put :: (out: [] u8, s: string) -> int {
   r: [1] GpuRecovery;
   r[0].before_n = gr_put(r[0].digest_before[..], d); r[0].after_n = gr_put(r[0].digest_after[..], d);
   r[0].trap_n = gr_put(r[0].digest_trap[..], e); r[0].rescued_n = gr_put(r[0].digest_rescued[..], e);
+  r[0].held_n = gr_put(r[0].digest_held[..], e); r[0].held_age = 0;
   r[0].ms = 2400; r[0].recovered = true; r[0].drew_after_loss = true; r[0].released = true;
   r[0].stopped = true; r[0].saved = true; r[0].offered = true; r[0].drew_after_rescue = true;
   #assert gr_passed(r[..], 3000);
@@ -62,6 +70,11 @@ gr_put :: (out: [] u8, s: string) -> int {
   r[0].after_n = gr_put(r[0].digest_after[..], e); #assert !gr_passed(r[..], 3000); r[0].after_n = gr_put(r[0].digest_after[..], d);
   r[0].rescued_n = gr_put(r[0].digest_rescued[..], d); #assert !gr_passed(r[..], 3000); r[0].rescued_n = gr_put(r[0].digest_rescued[..], e);
   r[0].rescued_n = gr_put(r[0].digest_rescued[..], ""); #assert !gr_passed(r[..], 3000); r[0].rescued_n = gr_put(r[0].digest_rescued[..], e);
+  // what is put back is what was saved, held at most GR_HOLD_EVERY - 1 frames before the trap
+  r[0].held_n = gr_put(r[0].digest_held[..], d); #assert !gr_passed(r[..], 3000); r[0].held_n = gr_put(r[0].digest_held[..], e);
+  r[0].trap_n = gr_put(r[0].digest_trap[..], d); #assert gr_passed(r[..], 3000); r[0].trap_n = gr_put(r[0].digest_trap[..], e);
+  r[0].held_age = GR_HOLD_EVERY - 1; #assert gr_passed(r[..], 3000);
+  r[0].held_age = GR_HOLD_EVERY; #assert !gr_passed(r[..], 3000); r[0].held_age = -1; #assert !gr_passed(r[..], 3000); r[0].held_age = 0;
   r[0].recovered = false; #assert !gr_passed(r[..], 3000); r[0].recovered = true;
   r[0].drew_after_loss = false; #assert !gr_passed(r[..], 3000); r[0].drew_after_loss = true;
   r[0].released = false; #assert !gr_passed(r[..], 3000); r[0].released = true;
@@ -133,6 +146,10 @@ gr_run :: (c: [] Cdp, url: string, r: [] GpuRecovery) -> bool {
   stepped := cdp_evaluate(c, "coaxialClipStep(1,60)");
   r[0].stopped = gr_until(c, "globalThis.coaxial.stopped?.saved!=null && globalThis.coaxial.ready===false");
   r[0].saved = gr_true(c, "coaxial.stopped.saved===true");
+  at = cdp_evaluate(c, "coaxial.stopped.held ?? ''");
+  r[0].held_n = ifx at >= 0 then gr_put(r[0].digest_held[..], jv_raw(c[0].doc[0], at)) else 0;
+  at = cdp_evaluate(c, "coaxial.stopped.heldAge ?? -1");
+  r[0].held_age = ifx at >= 0 then jv_int(c[0].doc[0], at, -1) else -1;
   r[0].offered = gr_true(c, "document.querySelector('#coaxial-load[data-state=fail] .la')?.textContent==='RELOAD WHERE YOU WERE'");
   if !r[0].offered {return false;}
   // The card's own action: it reloads the page (a new document; this evaluation returns first).
@@ -142,8 +159,11 @@ gr_run :: (c: [] Cdp, url: string, r: [] GpuRecovery) -> bool {
   at = cdp_evaluate(c, "coaxial.rescued");
   r[0].rescued_n = ifx at >= 0 then gr_put(r[0].digest_rescued[..], jv_raw(c[0].doc[0], at)) else 0;
   r[0].drew_after_rescue = gr_drew(c);
-  print("gpu-recovery: saved %, put back % -> %\n", r[0].saved,
-    cast(string) r[0].digest_trap[0..<r[0].trap_n], cast(string) r[0].digest_rescued[0..<r[0].rescued_n]);
+  print("gpu-recovery: saved % (held % frames before the trap), put back % -> %\n", r[0].saved, r[0].held_age,
+    cast(string) r[0].digest_held[0..<r[0].held_n], cast(string) r[0].digest_rescued[0..<r[0].rescued_n]);
+  print("gpu-recovery: the state just before the trap % the saved one (%)\n",
+    ifx gr_same(r[0].digest_trap[..], r[0].trap_n, r[0].digest_held[..], r[0].held_n) then "is" else "differs from",
+    cast(string) r[0].digest_trap[0..<r[0].trap_n]);
   return true;
 }
 tool_main :: () -> int #export_c {
