@@ -127,3 +127,8 @@
  o:=RenderBufferObserved.{source_capacity=18446744073709551615,gpu_bytes=18446744073709551615,zero_initialized=true};
  r:=render_buffer_view(b,RenderBufferMode.legacy_capacity,o);#assert r.status==RenderResourceStatus.capacity;
 }
+#forall "actual device dimensions intersect the renderer profile without signed wrap" i:0..<11 {
+ actual:=[11]int.[-9223372036854775807,-1,0,1,16383,16384,16385,32768,2147483647,9223372036854775807,-9223372036854775807-1];
+ expected:=[11]int.[0,0,0,1,16383,16384,16384,16384,16384,16384,0];
+ #assert render_device_limit(actual[i])==expected[i];
+}

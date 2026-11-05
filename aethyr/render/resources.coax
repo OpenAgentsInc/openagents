@@ -5,6 +5,7 @@
 #load "passes.coax" as passes;
 #load "bindings.coax" as bindings;
 #load "frame.coax" as ranges;
+#load "types.coax" as target_limits;
 
 RenderResourceStatus :: enum u8 { invalid; ok; capacity; uninitialized; }
 RenderTextureFormat :: enum u8 { rgba8; bgra8; rgba16f; depth32; invalid; }
@@ -27,6 +28,12 @@ RenderBufferObserved :: struct {
 RenderBufferView :: struct {status:RenderResourceStatus;offset:u64;bytes:u64;elements:u64;}
 #load "tests/resources-checks.coax";
 
+render_device_limit :: (actual:int)->int {
+ // Same exact signed positive-part intersection used by raw host targets.
+ positive:=actual&((actual>>63)^(-1));
+ excess:=positive-target_limits.RenderFrameLimits.{}.max_width;
+ return positive-(excess&((excess>>63)^(-1)));
+}
 render_viewport_desc :: (w:int,h:int,max_dimension:int)->RenderTargetDescriptor {
  if w<1 || h<1 || max_dimension<1 || max_dimension>16384 {return RenderTargetDescriptor.{};}
  if w>max_dimension || h>max_dimension {return RenderTargetDescriptor.{status=RenderResourceStatus.capacity};}

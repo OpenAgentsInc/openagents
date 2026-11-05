@@ -46,7 +46,7 @@ RenderPresentation :: struct {
   #assert p.draw.width==0 && p.display.height==0 && !p.uniform.valid && !p.image.valid && !p.sample.valid;
 }
 #forall "presentation shares device extent refusal and publishes no partial draw" which:0..<8 {
-  width:=[8]int.[0,-1,1,1,17,1,1,1][which];height:=[8]int.[1,1,0,-1,1,17,1,1][which];limit:=[8]int.[16,16,16,16,16,16,0,16385][which];
+  width:=[8]int.[0,-1,1,1,17,1,1,1][which];height:=[8]int.[1,1,0,-1,1,17,1,1][which];limit:=[8]int.[16,16,16,16,16,16,0,-1][which];
   p:=render_presentation(2,width,height,cast(int)presentation_resources.RenderTextureFormat.bgra8,limit);
   expected:=ifx which==4 || which==5 then presentation_resources.RenderResourceStatus.capacity else presentation_resources.RenderResourceStatus.invalid;
   #assert p.status==expected && p.entry == -1 && p.vertices==0 && !p.state.valid && p.draw.width==0 && p.display.height==0;
@@ -54,6 +54,11 @@ RenderPresentation :: struct {
 #test "presentation exact device limit and other media profile are supported" {
   p:=render_presentation(13,1,1,cast(int)presentation_resources.RenderTextureFormat.rgba8,1);
   #assert p.status==presentation_resources.RenderResourceStatus.ok && p.draw.width==1 && p.display.height==1 && p.entry==13;
+}
+#test "presentation intersects actual large device limits with the shared target profile" {
+ p:=render_presentation(2,320,180,1,32768);#assert p.status==presentation_resources.RenderResourceStatus.ok && p.draw.width==320 && p.display.height==180;
+ p=render_presentation(2,16384,16384,0,9223372036854775807);#assert p.status==presentation_resources.RenderResourceStatus.ok && p.draw.width==16384 && p.display.height==16384;
+ p=render_presentation(2,16385,1,0,32768);#assert p.status==presentation_resources.RenderResourceStatus.capacity && p.vertices==0;
 }
 #forall "presentation scalar format refuses truncation and preserves the two admitted orders" raw:0..<10 {
   values:=[10]int.[-1,0,1,2,4,255,256,4294967296,-256,512];value:=values[raw];
@@ -64,7 +69,7 @@ RenderPresentation :: struct {
 
 render_presentation :: (profile:int,width:int,height:int,format:int,maximum:int)->RenderPresentation #export_c {
   if !render_catalog(profile).features.media || (format!=cast(int)presentation_resources.RenderTextureFormat.rgba8 && format!=cast(int)presentation_resources.RenderTextureFormat.bgra8) {return RenderPresentation.{};}
-  draw:=presentation_resources.render_viewport_desc(width,height,maximum);
+  draw:=presentation_resources.render_viewport_desc(width,height,presentation_resources.render_device_limit(maximum));
   if draw.status!=presentation_resources.RenderResourceStatus.ok {return RenderPresentation.{status=draw.status};}
   display:=draw;display.format=ifx format==cast(int)presentation_resources.RenderTextureFormat.rgba8 then presentation_resources.RenderTextureFormat.rgba8 else presentation_resources.RenderTextureFormat.bgra8;
   return RenderPresentation.{status=presentation_resources.RenderResourceStatus.ok,draw=draw,display=display,

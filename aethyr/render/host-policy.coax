@@ -167,9 +167,7 @@ render_host_target_raw :: (rh_target:int,rh_width:int,rh_height:int,rh_coarse:bo
  if rh_target<0 || rh_target>cast(int)RenderTarget.invalid {return host_target.RenderTargetDescriptor.{status=host_target.RenderResourceStatus.capacity};}
  if rh_format<0 || rh_format>=cast(int)host_target.RenderTextureFormat.depth32 {return host_target.RenderTargetDescriptor.{};}
  if rh_device_max<=0 {return host_target.RenderTargetDescriptor.{status=host_target.RenderResourceStatus.capacity};}
- // Exact signed positive-part caps the platform extent without a tie branch.
- rh_profile_max:=RenderFrameLimits.{}.max_width;rh_excess:=rh_device_max-rh_profile_max;
- rh_positive:=rh_excess&((rh_excess>>63)^(-1));rh_limit:=rh_device_max-rh_positive;
+ rh_limit:=host_target.render_device_limit(rh_device_max);
  return host_target.render_target_desc_with_limit(cast(RenderTarget)rh_target,rh_width,rh_height,rh_coarse,cast(host_target.RenderTextureFormat)rh_format,rh_limit);
 }
 
