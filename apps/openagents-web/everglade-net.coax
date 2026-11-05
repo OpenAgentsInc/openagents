@@ -130,7 +130,7 @@ EgNet :: struct {
   // loopback to it that speaks the same frames; it seats without a ticket and has no list or shard
   local_host: bool;
   // local_ok: this page plays on the local host from its first frame while Everglade's rooms are asked
-  // for a seat, and goes to the room when one comes (#12882): not a golden page, not ?offline=page, not
+  // for a seat, and goes to the room when one comes (#12882): not a golden page, not
   // a test's room or a local room server's, only Everglade. away: the room's address meanwhile (the local
   // host's while you sit in the room); asking: the room is being asked (ask_at the next try, ask_tries
   // in a row refused); room_sock: the room's socket, opening beside the local host's until its seat
@@ -287,7 +287,7 @@ net_facts :: (s: [] Everglade, facts: string, room: string, golden: bool) #expor
   n[0].want = !golden && start < k && (n[0].code_n > 0 || n[0].join[0].list_due);
   // ?offline=worker: the local host only, the rooms never asked (the drift check's side)
   only := !golden && net_query(url, "offline") == "worker" && !n[0].local_relay && n[0].join[0].list_due;
-  n[0].local_ok = !golden && net_query(url, "offline") != "page" && !n[0].local_relay && !n[0].join[0].test && room == "everglade";
+  n[0].local_ok = !golden && !n[0].local_relay && !n[0].join[0].test && room == "everglade";
   n[0].local_host = false; n[0].asking = false; n[0].ask_at = 0; n[0].ask_tries = 0; n[0].room_sock = -1; n[0].room_wait = false;
   if only { net_local_host(n); n[0].local_host = true; }
   else if n[0].local_ok {
@@ -2871,14 +2871,11 @@ net_test_rooms :: (s: [] Everglade) {
   net_facts(l[..], "url=https://openagents.com/worlds/everglade?offline=worker\n", "everglade", true);
   #assert !nl[0].local_host;
   // Everglade from the first frame on the local host (#12882), the room asked meanwhile and gone to once
-  // a ticket comes; a close before its seat brings you back. Not with ?offline=page, not another realm's
-  for q: 1..<3 {
-    o: [1] Everglade; no: [1] EgNet;
-    everglade_attach_net(o[..], no[..]);
-    net_facts(o[..], ifx q == 1 then "url=https://openagents.com/worlds/everglade?offline=page\n" else "url=https://openagents.com/worlds/made-moss\n",
-              ifx q == 2 then "made-moss" else "everglade", false);
-    #assert !no[0].local_host && !no[0].asking && no[0].join[0].list_due;
-  }
+  // a ticket comes; a close before its seat brings you back. Not another realm's
+  m: [1] Everglade; mn: [1] EgNet;
+  everglade_attach_net(m[..], mn[..]);
+  net_facts(m[..], "url=https://openagents.com/worlds/made-moss\n", "made-moss", false);
+  #assert !mn[0].local_host && !mn[0].asking && mn[0].join[0].list_due;
   o: [1] Everglade; no: [1] EgNet;
   everglade_attach_net(o[..], no[..]);
   net_facts(o[..], "url=https://openagents.com/worlds/everglade\nplayer=p1\n", "everglade", false);

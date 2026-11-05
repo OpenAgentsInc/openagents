@@ -674,7 +674,7 @@ dr_session :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] Dr
   bput(q[..], " 150 "); bint(q[..], code); bput(q[..], " "); bput(q[..], run.dir); bput(q[..], " > "); bput(q[..], run.dir); bput(q[..], "/bots-"); bput(q[..], profile); bput(q[..], ".log 2>&1");
   hb := dr_spawn(btext(q[..]));
   proc_sleep(2500);
-  ua: [1] Buf; bput(ua[..], "http://127.0.0.1:"); bint(ua[..], run.port + 3); bput(ua[..], ifx run.worker then "/worlds/everglade?offline=worker&levels=off" else "/worlds/everglade?offline=page");
+  ua: [1] Buf; bput(ua[..], "http://127.0.0.1:"); bint(ua[..], run.port + 3); bput(ua[..], "/worlds/everglade?offline=worker&levels=off");
   ub: [1] Buf; bput(ub[..], "http://127.0.0.1:"); bint(ub[..], page); bput(ub[..], "/worlds/everglade?relay=ws://localhost:"); bint(ub[..], proxy); bput(ub[..], "&room=pair-drift-"); bint(ub[..], code);
   ca: [1] Cdp; cb: [1] Cdp; ok := false;
   if cdp_launch(ca[..], 1280, 800, "coax-drift-a-") {
@@ -739,7 +739,7 @@ dr_raid :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] DrPag
   bput(q[..], " druid fight > "); bput(q[..], run.dir); bput(q[..], "/raid-bots-"); bput(q[..], profile); bput(q[..], ".log 2>&1");
   hb := dr_spawn(btext(q[..]));
   proc_sleep(3000);
-  ua: [1] Buf; bput(ua[..], "http://127.0.0.1:"); bint(ua[..], run.port + 3); bput(ua[..], ifx run.worker then "/worlds/everglade?raid=preview&offline=worker" else "/worlds/everglade?raid=preview&offline=page");
+  ua: [1] Buf; bput(ua[..], "http://127.0.0.1:"); bint(ua[..], run.port + 3); bput(ua[..], "/worlds/everglade?raid=preview&offline=worker");
   ub: [1] Buf; bput(ub[..], "http://127.0.0.1:"); bint(ub[..], page); bput(ub[..], "/worlds/everglade?relay=ws://localhost:"); bint(ub[..], proxy); bput(ub[..], "&room=pair-raid-"); bint(ub[..], code);
   ca: [1] Cdp; cc: [1] Cdp; ok := false;
   if cdp_launch(ca[..], 1280, 800, "coax-drift-a-") {

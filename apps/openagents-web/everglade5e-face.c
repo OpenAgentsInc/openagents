@@ -5,9 +5,8 @@
 // way, in the same order: the player's controller and camera, the river, the room, the characters'
 // chat, the guards' and guide's requests, the kept place and the bar's arrangement. Added, each frame:
 // before Everglade's frame the page takes the rules' numbers for the bar and for you (e5_before); after
-// it, what Everglade's dice did is put back and handed to the engine, the casts that land go to the
-// engine, and the engine's Hit Points, conditions and log come back to the page (e5_after, e5r_*,
-// e5_take), which draws its HUD over Everglade's (e5_finish). No bar key or tap is ever held back.
+// it, your Hit Points and class go to the bar's rules and the room's conditions to the page (e5_frame:
+// the room rolls every cast, #12908), which draws its HUD over Everglade's (e5_finish). No bar key or tap is ever held back.
 // While nothing moves you of your own (held, your pace taken to nothing) your body stands, and walking
 // into a wall it doesn't run in place (show_vx). The room is the realm's: its server's world comes
 // over one socket (everglade-net.coax), whose commands this face carries to the host (net_drain), and
@@ -131,9 +130,9 @@ static coax_t_E5 e5_view;
 static coax_t_E5r e5_rules;
 static coax_v_t_E5 e5v(void) { return (coax_v_t_E5){&e5_view, 1}; }
 static coax_v_t_E5r e5r(void) { return (coax_v_t_E5r){&e5_rules, 1}; }
-static float e5_bar_buf[49 * 6], e5_hero_buf[32], e5_me_buf[8], e5_folk_buf[48 * 8], e5_others_buf[16 * 4], e5_out_buf[48 * 4], e5_pass[64];
+static float e5_bar_buf[49 * 6], e5_hero_buf[32], e5_me_buf[8];
 static int64_t e5_bar_n, e5_hero_n;
-static uint8_t e5_lines_buf[4096], e5_card_buf[200];
+static uint8_t e5_card_buf[200];
 static void e5_frame(cx_face_addr state);
 static coax_v_t_River rv(void) { return (coax_v_t_River){&river, 1}; }
 // The walls' round bodies, then each rowboat's hull as a capsule along its keel (river.coax W6): so
@@ -459,8 +458,9 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
       step_acc -= STEP;
     }
   } else {
-    step_acc = 0; step_jump = false;
-    move_once(state, g, input, seat, hulls, dt, frame, &show_vx, &show_vz);
+    // before your seat (a golden page, the first frames on the local host) you stand where you are put:
+    // only a room steps you (#12908)
+    step_acc = 0; step_jump = false; show_vx = 0; show_vz = 0;
     step_from = eg_step_feet(player);
   }
   // the river: what water you are in, on the bridge's deck none
@@ -597,40 +597,15 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
   return n < 0 ? 0u : (uint32_t)n;
 }
 
-// Everglade 5E, after Everglade's frame: what its dice did goes back and to the engine, the casts that
-// land are the engine's, and its numbers come back to the page.
+// Everglade 5E, after Everglade's frame: the room resolves every cast and harm (the local host's
+// offline), so the page's rules keep only your bar (#12908): your Hit Points (at 0 it can't be used),
+// your class, each slot's state and the card; the town's conditions come from the room (e5_take).
 static void e5_frame(cx_face_addr state) {
   coax_v_t_Everglade g = at(state);
   e5_after(g, e5v());
-  int64_t mn = e5_me(g, (coax_v_f32){e5_me_buf, 8});
-  int64_t fn = e5_folk(g, (coax_v_f32){e5_folk_buf, 48 * 8});
-  int64_t on = e5_others(g, e5v(), (coax_v_f32){e5_others_buf, 16 * 4});
-  if (mn > 0) e5r_sync(e5r(), (coax_v_f32){e5_me_buf, 8}, (coax_v_f32){e5_folk_buf, 48 * 8}, fn, (coax_v_f32){e5_others_buf, 16 * 4}, on);
-  int64_t hn = e5_hurts(e5v(), (coax_v_f32){e5_pass, 64});
-  for (int64_t q = 0; q < hn; q++) e5r_hurt(e5r(), (int64_t)e5_pass[q * 2], (int64_t)e5_pass[q * 2 + 1]);
-  int64_t en = e5_ends(e5v(), (coax_v_f32){e5_pass, 64});
-  for (int64_t q = 0; q < en; q++) e5r_end_conc(e5r(), (int64_t)e5_pass[q]);
+  if (e5_me(g, (coax_v_f32){e5_me_buf, 8}) > 0) e5r_you(e5r(), e5_me_buf[2], e5_me_buf[3]);
   e5r_class(e5r(), everglade_class(g));   /* the druid or the Warlock (everglade-warlock.coax) */
-  e5r_step(e5r(), (float)now);
-  int64_t dn = e5_due(e5v(), (coax_v_f32){e5_pass, 63});
-  for (int64_t q = 0; q < dn; q++) {
-    int64_t slot = (int64_t)e5_pass[q * 3];
-    if (e5r_use(e5r(), slot, e5_pass[q * 3 + 1], e5_pass[q * 3 + 2])) {
-      int64_t cn = e5r_spell_name(e5r(), slot, (coax_v_u8){e5_card_buf, sizeof e5_card_buf});
-      e5_used(e5v(), slot, (coax_string){(const char *)e5_card_buf, cn});
-    }
-  }
-  /* your Zombies (Finger of Death's dead, the room's rules: everglade5e-beasts.coax): R or a room ends them; the page draws them */
-  if (everglade_rebuilt_take(g) || net_live(g)) e5r_zombies_clear(e5r());
-  for (int64_t q = 0; q < 8; q++) {
-    static float zb[6];
-    int64_t id = e5r_beast(e5r(), q, (coax_v_f32){zb, 6});
-    everglade_zombie(g, q, id, zb[0], zb[1], zb[2], id > 0 && zb[5] > 0.5f);
-  }
-  /* the saves its rules rolled against your abilities' spells: the page's pushes follow them (#12884) */
-  int64_t outn = e5r_out(e5r(), (coax_v_f32){e5_out_buf, 48 * 4});
-  int64_t ln = e5r_lines(e5r(), (coax_v_u8){e5_lines_buf, sizeof e5_lines_buf});
-  e5_take(g, e5v(), (coax_v_f32){e5_out_buf, 48 * 4}, outn, (coax_v_u8){e5_lines_buf, sizeof e5_lines_buf}, ln);
+  e5_take(g, e5v());
   e5_bar_n = e5r_bar(e5r(), (coax_v_f32){e5_bar_buf, 49 * 6});
   e5_hero_n = e5r_hero(e5r(), (coax_v_f32){e5_hero_buf, 32});
   int64_t ck = e5_card_slot(g);

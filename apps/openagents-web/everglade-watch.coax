@@ -75,9 +75,6 @@ WatchView :: struct {
   // each person's save the room's rules rolled against a seat's ability this step (the room server's:
   // everglade_room_folk_save), 0 none: that ability's copy takes it (ab_rules_save, #12874)
   rules_save: [WATCH_ACTORS] int;
-  // offline, the page's own rules roll your spells (Everglade 5E's: e5_take): the abilities' pushes
-  // follow their saves, a frame late (e5_saves, ab_rules_late, #12884)
-  rules_page: bool;
 }
 
 watch_cap :: (group: int) -> int {
@@ -934,7 +931,7 @@ eg_room_nearest :: (s: [] Everglade, x: f32, z: f32, n: int) -> int {
   return best;
 }
 // The people for the room's rules: E5R_FOLK_FLOATS each (here, x, z, Hit Points, Temporary, most, AC,
-// stat block), as the page's everglade5e.coax e5_folk hands them. How many.
+// stat block). How many.
 everglade_room_people :: (s: [] Everglade, out: [] f32) -> int #export_c {
   if !s[0].started || !s[0].wv.started { return 0; }
   w := watch_w(s);

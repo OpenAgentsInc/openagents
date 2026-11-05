@@ -727,41 +727,6 @@ eg_ra_test_three :: (s: [] Everglade, dm: [] DemoWorld, who: [] int) {
     w[0].actors[i].x = x; w[0].actors[i].z = -28; w[0].actors[i].body.on = false;
   }
 }
-#test "abilities offline: Thunderwave and Gust push whom the page's rules' save failed, the frame after the cast, rolling none of their own (#12884)" #steps 6000000000 {
-  ks := [2] int.[AB_THUNDER, AB_GUST];
-  pats := [4] int.[0b010, 0b101, 0b001, 0b110];
-  for c: 0..<4 {
-    k := ks[c / 2];
-    s: [1] Everglade;
-    dm: [1] DemoWorld;
-    who: [3] int;
-    eg_ra_test_three(s[..], dm[..], who[..]);
-    // the page offline, its own rules rolling your spells (Everglade 5E: e5_take, e5_saves)
-    s[0].sp.room_ab[0].server = false; s[0].wv.server = false; s[0].wv.rules_page = true;
-    #assert ab_rules_live(s[..]) && ab_rules_late(s[..]);
-    w := watch_w(s[..]);
-    s[0].feet = v3(0, 0, -30); s[0].face = 0;
-    ab_press(s[..], k);
-    // the rules roll it after this frame: no one is thrown yet
-    for q: 0..<3 { #assert !w[0].actors[who[q]].body.on; }
-    for q: 0..<3 { everglade_room_folk_save(s[..], who[q], k, 0, (pats[c] & (1 << q)) != 0); }
-    ab_frame(s[..], 1.0 / 60);
-    for q: 0..<3 {
-      #assert w[0].actors[who[q]].body.on == ((pats[c] & (1 << q)) == 0);
-      #assert s[0].wv.rules_save[who[q]] == 0;
-    }
-    if k != AB_GUST { continue; }
-    // a round on, no save of the page's own for the ones still in the line; the rules' next save on one
-    // that ends its turn in it throws them
-    keep := -1;
-    for q: 0..<3 { if keep < 0 && (pats[c] & (1 << q)) != 0 { keep = who[q]; } }
-    for f: 0..<420 { s[0].feet = v3(0, 0, -30); ab_frame(s[..], 1.0 / 60); }
-    #assert ab_of(s[..])[0].gust_on && !w[0].actors[keep].body.on;
-    everglade_room_folk_save(s[..], keep, AB_GUST, 0, false);
-    ab_frame(s[..], 1.0 / 60);
-    #assert w[0].actors[keep].body.on;
-  }
-}
 #test "room abilities: Gust of Wind rolls no round's save of its own, and pushes on the rules' save for one who ends their turn in it (#12884)" #steps 6000000000 {
   s: [1] Everglade;
   dm: [1] DemoWorld;
@@ -781,51 +746,33 @@ eg_ra_test_three :: (s: [] Everglade, dm: [] DemoWorld, who: [] int) {
   everglade_room_abilities(s[..], 1.0 / 30);
   #assert w[0].actors[who[1]].body.on && !w[0].actors[who[0]].body.on;
 }
-#test "abilities: Gust of Wind's line keeps the way it was cast when its caster turns, as the rules' Line does, offline and in a room (#12888)" #steps 6000000000 {
-  for room: 0..<2 {
-    s: [1] Everglade;
-    dm: [1] DemoWorld;
-    who: [3] int;
-    eg_ra_test_three(s[..], dm[..], who[..]);
-    w := watch_w(s[..]);
-    g := walk_at(s[..], 0, -30);
-    a: [] Abilities;
-    if room == 1 {
-      for q: 0..<3 { everglade_room_folk_save(s[..], who[q], AB_GUST, 2, true); }
-      everglade_room_ab_pose(s[..], 2, 0, g, -30, 0);
-      everglade_room_ability(s[..], 2, AB_GUST, 0, g, -30, 0, true, 0, g, -24);
-      a = s[0].sp.room_ab[0].seat[2].ab[..];
-    } else {
-      // the page offline, its own rules rolling your spells (Everglade 5E), every save a success
-      s[0].sp.room_ab[0].server = false; s[0].wv.server = false; s[0].wv.rules_page = true;
-      s[0].feet = v3(0, 0, -30); s[0].face = 0;
-      ab_press(s[..], AB_GUST);
-      for q: 0..<3 { everglade_room_folk_save(s[..], who[q], AB_GUST, 0, true); }
-      ab_frame(s[..], 1.0 / 60);
-      a = ab_of(s[..]);
-    }
-    #assert a[0].gust_on && abs(a[0].gust_dir.z - 1) < 0.01;
-    for q: 0..<3 { #assert !w[0].actors[who[q]].body.on; }
-    // the caster turns a quarter (to +x) and steps a metre back: the line still points +z, the way the
-    // rules' Line was cast (toward the cast point), and blasts from where they stand
-    for f: 0..<30 {
-      if room == 1 {
-        everglade_room_ab_pose(s[..], 2, 0, g, -31, f32(TAU) / 4);
-        everglade_room_abilities(s[..], 1.0 / 30);
-      } else {
-        s[0].feet = v3(0, 0, -31); s[0].face = f32(TAU) / 4;
-        ab_frame(s[..], 1.0 / 60);
-      }
-    }
-    #assert a[0].gust_on && abs(a[0].gust_dir.z - 1) < 0.01 && abs(a[0].gust_dir.x) < 0.01 && abs(a[0].gust_at.z + 31) < 0.01;
-    y := a[0].gust_at.y + 1;
-    #assert ab_in_gust(a, v3(0, y, -26)) && !ab_in_gust(a, v3(5, y, -31));
-    for q: 0..<3 { #assert !w[0].actors[who[q]].body.on; }
-    // the rules' next save fails for the one straight ahead of the cast: the page throws them, in its line
-    everglade_room_folk_save(s[..], who[1], AB_GUST, ifx room == 1 then 2 else 0, false);
-    if room == 1 { everglade_room_abilities(s[..], 1.0 / 30); } else { ab_frame(s[..], 1.0 / 60); }
-    #assert w[0].actors[who[1]].body.on && !w[0].actors[who[0]].body.on;
+#test "abilities: Gust of Wind's line keeps the way it was cast when its caster turns, as the rules' Line does (#12888)" #steps 6000000000 {
+  s: [1] Everglade;
+  dm: [1] DemoWorld;
+  who: [3] int;
+  eg_ra_test_three(s[..], dm[..], who[..]);
+  w := watch_w(s[..]);
+  g := walk_at(s[..], 0, -30);
+  for q: 0..<3 { everglade_room_folk_save(s[..], who[q], AB_GUST, 2, true); }
+  everglade_room_ab_pose(s[..], 2, 0, g, -30, 0);
+  everglade_room_ability(s[..], 2, AB_GUST, 0, g, -30, 0, true, 0, g, -24);
+  a := s[0].sp.room_ab[0].seat[2].ab[..];
+  #assert a[0].gust_on && abs(a[0].gust_dir.z - 1) < 0.01;
+  for q: 0..<3 { #assert !w[0].actors[who[q]].body.on; }
+  // the caster turns a quarter (to +x) and steps a metre back: the line still points +z, the way the
+  // rules' Line was cast (toward the cast point), and blasts from where they stand
+  for f: 0..<30 {
+    everglade_room_ab_pose(s[..], 2, 0, g, -31, f32(TAU) / 4);
+    everglade_room_abilities(s[..], 1.0 / 30);
   }
+  #assert a[0].gust_on && abs(a[0].gust_dir.z - 1) < 0.01 && abs(a[0].gust_dir.x) < 0.01 && abs(a[0].gust_at.z + 31) < 0.01;
+  y := a[0].gust_at.y + 1;
+  #assert ab_in_gust(a, v3(0, y, -26)) && !ab_in_gust(a, v3(5, y, -31));
+  for q: 0..<3 { #assert !w[0].actors[who[q]].body.on; }
+  // the rules' next save fails for the one straight ahead of the cast: the page throws them, in its line
+  everglade_room_folk_save(s[..], who[1], AB_GUST, 2, false);
+  everglade_room_abilities(s[..], 1.0 / 30);
+  #assert w[0].actors[who[1]].body.on && !w[0].actors[who[0]].body.on;
 }
 
 #test "room abilities: Everglade's four strike the server's town at the step after the room hands them over (their cast bar done: room-casts.coax)" #steps 3000000000 {

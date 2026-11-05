@@ -176,7 +176,7 @@ e5rr_place :: (r: [] E5rRoom, s: int, x: f32, z: f32) #export_c {
   i := E5RR_SEAT + s;
   r[0].b[0].c[i].x = e5r_sq(x); r[0].b[0].c[i].y = e5r_sq(z);
 }
-// Everglade's people, E5R_FOLK_FLOATS each as e5r_sync takes them (here, x, z, hp, temp, max, ac,
+// Everglade's people, E5R_FOLK_FLOATS each (here, x, z, hp, temp, max, ac,
 // block): the town's step owns where they are; the engine keeps their Hit Points once they are in.
 // A person seen for the first time (or with a new block) takes the given Hit Points.
 e5rr_people :: (r: [] E5rRoom, folk: [] f32, folk_n: int) #export_c {
@@ -269,7 +269,7 @@ e5rr_use :: (r: [] E5rRoom, s: int, k: int, x: f32, z: f32, tgt: int) -> bool #e
   if a.kind == FB_WORLD { return true; }
   if b[0].c[me].dead || b[0].c[me].hp <= 0 || !rs_can_act(b[0].c[me]) { return false; }
   if a.kind == FB_SPELL && a.sp == SP_CONJURE_ANIMALS { return e5rr_conjure(r, s, x, z); }
-  // nothing on the bar runs out (everglade5e-rules.coax e5r_free): a fresh turn, every slot back
+  // nothing on the bar runs out: a fresh turn, every slot back
   c := b[0].c[me..<me + 1];
   for l: 0..<10 { c[0].slots[l] = c[0].slots_max[l]; }
   for u: 0..<RS_USES { c[0].uses[u] = c[0].uses_max[u]; }
