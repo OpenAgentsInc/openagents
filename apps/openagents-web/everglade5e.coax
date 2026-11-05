@@ -205,7 +205,9 @@ e5_after :: (s: [] Everglade, v: [] E5) #export_c {
     }
     k := b - SP_SLOTS;
     if k < 0 { continue; }
-    if ab_active(s, k) { if !ab_aimed(k) { you := ab_you(s); e5_pend(v, b, you.x, you.z); } }
+    // one cast round you lands 2 m ahead, as a room's (everglade-net.coax net_press): the rules' cube
+    // or Line from you points the way you face (Thunderwave, Gust of Wind)
+    if ab_active(s, k) { if !ab_aimed(k) { at := add(ab_you(s), times(ab_forward(s), 2)); e5_pend(v, b, at.x, at.z); } }
     else if v[0].end_n < E5_ENDS { v[0].end_slot[v[0].end_n] = b; v[0].end_n += 1; }
   }
 }
@@ -312,6 +314,7 @@ e5_take :: (s: [] Everglade, v: [] E5, out: [] f32, n: int, lines: [] u8, lines_
   // in a room the town's conditions are the server's (each person's row's COND, #12876): this page's
   // rules resolve no cast there (e5_after), so theirs would leave every townsperson free
   if net_live(s) { for i: 0..<WATCH_ACTORS { v[0].cond[1 + i] = net_folk(s, i).cond; } }
+  s[0].wv.rules_page = !net_live(s) && n > 0;
   if s[0].wv.started && n > 0 {
     w := watch_w(s);
     you := ab_you(s);
@@ -369,6 +372,17 @@ e5_take :: (s: [] Everglade, v: [] E5, out: [] f32, n: int, lines: [] u8, lines_
     if lines[q] != 10 { continue; }
     e5_log(v, lines[start..<q]);
     start = q + 1;
+  }
+}
+// The saves the page's rules rolled this frame against your spells (everglade5e-rules.coax e5r_saves:
+// person, bar slot, 1 a success, 3 floats each): offline each is the page's copy of that slot's
+// ability's to take (Thunderwave's push, Gust of Wind's: everglade-abilities.coax ab_rules_save), as a
+// room's server hands its own (#12884). In a room the server's rules are the ones that count.
+e5_saves :: (s: [] Everglade, saves: [] f32, n: int) #export_c {
+  if !s[0].started || !s[0].wv.started || net_live(s) { return; }
+  for q: 0..<lo_int(n, saves.count / 3) {
+    k := cast(int) saves[q * 3 + 1] - SP_SLOTS;
+    if k >= 0 { everglade_room_folk_save(s, cast(int) saves[q * 3], k, 0, saves[q * 3 + 2] > 0.5); }
   }
 }
 e5_log :: (v: [] E5, line: [] u8) {

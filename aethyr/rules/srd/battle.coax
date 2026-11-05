@@ -22,7 +22,7 @@ RS_MAX :: 216;
 RS_SQUARES :: 8192;
 RS_ZONES :: 8;
 RsZone :: struct { on: bool; spell: int; by: int; x0: int; y0: int; x1: int; y1: int; until: f32; difficult: bool; round: bool; cx: int; cy: int; r_ft: int;
-                  line: bool; dx: f32; dy: f32; }   // a Line: from (cx, cy) along (dx, dy), a unit, r_ft long
+                  line: bool; dx: f32; dy: f32; half: f32; }   // a Line: from (cx, cy) along (dx, dy), a unit, r_ft long, half (squares) each side
 // A turn's economy and what has happened in it: moved (Steady Aim needs none), aimed (Steady Aim's
 // Advantage waiting) and anchored (its Speed 0 after), last_hit (1 + whom its last melee weapon
 // attack hit, 0 none: Divine Smite follows it) and last_crit, the once-a-turn Sneak Attack and
@@ -134,12 +134,13 @@ rs_reset :: (b: [] RsBattle) {
 rs_inside :: (z: RsZone, x: int, y: int) -> bool {
   if !z.on || x < z.x0 || x > z.x1 || y < z.y0 || y > z.y1 { return false; }
   if z.line {
-    // a square ahead whose middle is within 2.5 feet (half a square) of the Line, within its length
-    // as the grid counts it (rs_feet)
+    // a square ahead whose middle is within half the Line's width of it (2.5 feet, half a square, for
+    // a 5-foot Line), within its length as the grid counts it (rs_feet)
     px := f32(x - z.cx); py := f32(y - z.cy);
     along := px * z.dx + py * z.dy;
     across := px * z.dy - py * z.dx;
-    return along > 0 && rs_feet(x, y, z.cx, z.cy) <= z.r_ft && across <= 0.5 && across >= -0.5;
+    h := ifx z.half > 0 then z.half else 0.5f32;
+    return along > 0 && rs_feet(x, y, z.cx, z.cy) <= z.r_ft && across <= h && across >= -h;
   }
   return !z.round || rs_feet(x, y, z.cx, z.cy) <= z.r_ft;
 }
@@ -171,6 +172,16 @@ rs_threatened :: (b: [] RsBattle, i: int) -> bool {
   return false;
 }
 
+// A Line's bounds: from (cx, cy) to its far end (the length out along the longer axis), and its
+// width each side.
+rs_line_box :: (z0: RsZone) -> RsZone {
+  z := z0;
+  n := f32(z.r_ft) / f32(RS_SQUARE) / (ifx abs(z.dx) > abs(z.dy) then abs(z.dx) else abs(z.dy));
+  ex := z.cx + cast(int) floor(z.dx * n + 0.5); ey := z.cy + cast(int) floor(z.dy * n + 0.5);
+  pad := 1 + cast(int) floor(z.half);
+  z.x0 = rs_min(z.cx, ex) - pad; z.y0 = rs_min(z.cy, ey) - pad; z.x1 = rs_max(z.cx, ex) + pad; z.y1 = rs_max(z.cy, ey) + pad;
+  return z;
+}
 // The squares a spell's area covers from caster i toward the point (tx, ty).
 rs_area :: (b: [] RsBattle, i: int, sp: RsSpell, tx: int, ty: int) -> RsZone {
   z: RsZone;
@@ -189,11 +200,8 @@ rs_area :: (b: [] RsBattle, i: int, sp: RsSpell, tx: int, ty: int) -> RsZone {
     dl := sqrt(ddx * ddx + ddy * ddy);
     if dl < 0.01 { ddx = 1; ddy = 0; dl = 1; }
     z.line = true; z.cx = cx; z.cy = cy; z.r_ft = sp.area_ft; z.dx = ddx / dl; z.dy = ddy / dl;
-    // its far end, the length out along the longer axis
-    n := f32(sp.area_ft) / f32(RS_SQUARE) / (ifx abs(z.dx) > abs(z.dy) then abs(z.dx) else abs(z.dy));
-    ex := cx + cast(int) floor(z.dx * n + 0.5); ey := cy + cast(int) floor(z.dy * n + 0.5);
-    z.x0 = rs_min(cx, ex) - 1; z.y0 = rs_min(cy, ey) - 1; z.x1 = rs_max(cx, ex) + 1; z.y1 = rs_max(cy, ey) + 1;
-    return z;
+    z.half = f32(rs_max(sp.wide_ft, RS_SQUARE)) / f32(2 * RS_SQUARE);
+    return rs_line_box(z);
   } else if sp.area == RS_A_SPHERE {
     // a sphere: every square whose centre is within its radius of the point's
     z.round = true; z.cx = tx; z.cy = ty; z.r_ft = sp.area_ft;
@@ -1170,9 +1178,31 @@ rs_start_turn :: (b: [] RsBattle, i: int) {
     b[0].turn.move_left = b[0].turn.move_left / 2;
   }
 }
+// Creature i ends its turn: in a lasting area whose spell says so (Gust of Wind's Line), it makes the
+// spell's save again, once a round, and takes what a failure brings. A Line from you blasts from
+// where its caster stands now; it points where it was cast (changing it is a Bonus Action the world
+// doesn't send).
+rs_turn_saves :: (b: [] RsBattle, i: int) {
+  if !b[0].turn.new_round || !rs_up(b[0].c[i]) { return; }
+  for k: 0..<RS_ZONES {
+    z := b[0].zone[k];
+    if !z.on || z.spell < 0 || z.by == i || z.by < 0 || z.by >= b[0].n || b[0].c[z.by].conc != z.spell { continue; }
+    sp := rs_spell(z.spell);
+    if !sp.turn_save { continue; }
+    if z.line && (z.cx != b[0].c[z.by].x || z.cy != b[0].c[z.by].y) {
+      z.cx = b[0].c[z.by].x; z.cy = b[0].c[z.by].y;
+      z = rs_line_box(z);
+      b[0].zone[k] = z;
+    }
+    if !rs_inside(z, b[0].c[i].x, b[0].c[i].y) { continue; }
+    rs_affect(b, z.by, i, z.spell, sp.level, k);
+  }
+}
 rs_end_turn :: (b: [] RsBattle, i: int) {
   // ending its turn in a foe's Spirit Guardians
   if b[0].guards > 0 { rs_guardians(b, i); }
+  // ending it in a Gust of Wind
+  rs_turn_saves(b, i);
   // the saves it repeats at the end of its turns
   for k: 0..<RS_EFFECTS {
     e := b[0].c[i].eff[k];
@@ -2945,6 +2975,66 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   rs_fresh(b[..], w);
   #assert rs_cast(b[..], w, SP_BURNING_HANDS, 2, 3, 2, -1);
   #assert b[0].c[near].hp < 200 && 200 - b[0].c[near].hp <= 24 && b[0].c[off].hp == 200;
+}
+
+// The saves against spell sp told since `seq` (the log's count then): each one's creature in to[], how
+// many in all.
+rs_test_saves :: (b: [] RsBattle, seq: int, sp: int, to: [] int) -> int {
+  n := 0;
+  m := rs_min(b[0].book[0].seq - seq, RS_EVENTS);
+  for q: 0..<m {
+    e := rs_recent_at(b[0].book[..], q);
+    if e.kind == RS_EV_SAVE && e.spell == sp && n < to.count { to[n] = e.to; n += 1; }
+  }
+  return n;
+}
+#test "Gust of Wind: a 60-foot Line 10 feet wide from you, a Strength save or pushed 15 feet, and again for one that ends its turn in it (#12884)" {
+  b: [1] RsBattle; b[0].w = 40; b[0].h = 20; b[0].dice[0].state = 31;
+  d := rs_add(b[..], rs_druid("Rowan", 0, 5), 2, 10);
+  on := rs_add(b[..], rs_skeleton("Skeleton", 2), 8, 10);      // on the Line
+  edge := rs_add(b[..], rs_skeleton("Skeleton", 2), 9, 11);    // 5 feet off its middle: in (10 feet wide)
+  side := rs_add(b[..], rs_skeleton("Skeleton", 2), 9, 12);    // 10 feet off: out
+  end := rs_add(b[..], rs_skeleton("Skeleton", 2), 13, 9);     // 55 feet along: in (past a 15-foot cube)
+  past := rs_add(b[..], rs_skeleton("Skeleton", 2), 15, 10);   // 65 feet: past its end
+  for k: 1..<6 { b[0].c[k].hp = 200; b[0].c[k].hp_max = 200; b[0].c[k].score[RS_STR] = 1; }
+  b[0].c[d].score[rs_max(b[0].c[d].spell_ability, 0)] = 30;   // DC 21: the -5 saves all fail
+  rs_start_turn(b[..], d);
+  seq := b[0].book[0].seq;
+  #assert rs_cast(b[..], d, SP_GUST_OF_WIND, 2, 30, 10, -1) && b[0].c[d].conc == SP_GUST_OF_WIND;
+  to: [16] int;
+  n := rs_test_saves(b[..], seq, SP_GUST_OF_WIND, to[..]);
+  #assert n == 3;
+  seen := [6] bool.[false, false, false, false, false, false];
+  for q: 0..<n { seen[to[q]] = true; }
+  #assert seen[on] && seen[edge] && seen[end] && !seen[side] && !seen[past];
+  // pushed 15 feet away from the caster
+  #assert b[0].c[on].x == 11 && b[0].c[on].y == 10 && b[0].c[edge].x == 12 && b[0].c[edge].y == 14;
+  rs_end_turn(b[..], d);
+  // a later round: the one it pushed to 45 feet along ends its turn in the Line and saves again (and
+  // is pushed again); the one beside it that never was in it doesn't
+  seq = b[0].book[0].seq;
+  rs_start_turn(b[..], on); #assert b[0].turn.new_round; rs_end_turn(b[..], on);
+  rs_start_turn(b[..], side); rs_end_turn(b[..], side);
+  n = rs_test_saves(b[..], seq, SP_GUST_OF_WIND, to[..]);
+  #assert n == 1 && to[0] == on && b[0].c[on].x == 14;
+  // the Line blasts from where its caster stands: stepped back to x 0, 55 feet along is past its end;
+  // stepped on to x 4, 65 feet from where it was cast is in
+  rs_place(b[..], d, 0, 10);
+  b[0].c[end].x = 13; b[0].c[end].y = 10;
+  seq = b[0].book[0].seq;
+  rs_start_turn(b[..], end); rs_end_turn(b[..], end);
+  #assert rs_test_saves(b[..], seq, SP_GUST_OF_WIND, to[..]) == 0;
+  rs_place(b[..], d, 4, 10);
+  seq = b[0].book[0].seq;
+  rs_start_turn(b[..], past); rs_end_turn(b[..], past);
+  #assert rs_test_saves(b[..], seq, SP_GUST_OF_WIND, to[..]) == 1 && to[0] == past;
+  // its concentration ends: no save after
+  rs_end_concentration(b[..], d, "");
+  seq = b[0].book[0].seq;
+  b[0].c[on].x = 5; b[0].c[on].y = 10;
+  b[0].c[on].round_at = b[0].c[on].turn_at;
+  rs_start_turn(b[..], on); rs_end_turn(b[..], on);
+  #assert rs_test_saves(b[..], seq, SP_GUST_OF_WIND, to[..]) == 0;
 }
 
 #test "Spirit Guardians: foes ending their turn within 15 feet save or take 3d8 Radiant, once a turn, at half Speed" {

@@ -590,6 +590,10 @@ static void e5_frame(uint32_t state) {
       while (e5r_raid_cast(e5r(), (coax_v_f32){rb, 10})) everglade_raid_cast(g, (int64_t)rb[0], rb[1], rb[2], rb[3], rb[4], (int64_t)rb[5], (int64_t)rb[6]);
     }
   }
+  /* the saves its rules rolled against your abilities' spells: the page's pushes follow them (#12884) */
+  static float e5_saves_buf[48 * 3];
+  int64_t sn = e5r_saves(e5r(), (coax_v_f32){e5_saves_buf, 48 * 3});
+  e5_saves(g, (coax_v_f32){e5_saves_buf, 48 * 3}, sn);
   int64_t outn = e5r_out(e5r(), (coax_v_f32){e5_out_buf, 48 * 4});
   int64_t ln = e5r_lines(e5r(), (coax_v_u8){e5_lines_buf, sizeof e5_lines_buf});
   e5_take(g, e5v(), (coax_v_f32){e5_out_buf, 48 * 4}, outn, (coax_v_u8){e5_lines_buf, sizeof e5_lines_buf}, ln);

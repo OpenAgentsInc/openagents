@@ -75,6 +75,9 @@ WatchView :: struct {
   // each person's save the room's rules rolled against a seat's ability this step (the room server's:
   // everglade_room_folk_save), 0 none: that ability's copy takes it (ab_rules_save, #12874)
   rules_save: [WATCH_ACTORS] int;
+  // offline, the page's own rules roll your spells (Everglade 5E's: e5_take): the abilities' pushes
+  // follow their saves, a frame late (e5_saves, ab_rules_late, #12884)
+  rules_page: bool;
 }
 
 watch_cap :: (group: int) -> int {
