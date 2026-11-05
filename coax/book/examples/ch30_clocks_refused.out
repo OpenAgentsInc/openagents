@@ -1,0 +1,5 @@
+examples/ch30_clocks_refused.coax:7:36: error[E0348]: '$C' is Steady from another argument of 'elapsed', but argument 2 is Sim
+    print("%\n", clock.elapsed(wall, sim));   // refused: two clocks
+                                     ^
+  fix: pass the same type, or convert it: cast(Steady) value
+1 error

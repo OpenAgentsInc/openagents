@@ -53,7 +53,7 @@
 ## Part VII. The physical world
 
 * [29. Units and coordinate frames](ch29-units-and-frames.md) — partly implemented
-* [30. Typed clocks and multirate ticks](ch30-clocks-and-ticks.md) — planned
+* [30. Typed clocks and multirate ticks](ch30-clocks-and-ticks.md) — partly implemented
 * [31. Bounded control](ch31-bounded-control.md) — planned
 * [32. Strict math, integrators and deterministic jobs](ch32-strict-math-and-integrators.md) — planned
 * [33. Replay and snapshots](ch33-replay-and-snapshots.md) — planned

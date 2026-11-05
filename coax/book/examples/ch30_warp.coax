@@ -1,0 +1,28 @@
+#import "Basic";
+#load "../../lib/clock.coax" as clock;
+
+// A burn starts at 3.5 ms, a signal arrives at 10 ms and its echo 1 ns
+// later, and a contact happens at 2 s of simulated time.
+EVENTS :: [4] s64.[3500000, 10000000, 10000001, 2000000000];
+
+run :: (warp: s64) {
+  now := clock.sim_at(0);
+  seen := 0;
+  steps := 0;
+  print("warp %:", warp);
+  while seen < 4 {
+    // One host frame is 1 ms of steady time.
+    now = clock.advance(now, clock.warp_step(now, 1000000, warp, clock.sim_at(EVENTS[seen])));
+    steps += 1;
+    while seen < 4 && now.ns == EVENTS[seen] {
+      print(" event % at % ns,", seen, now.ns);
+      seen += 1;
+    }
+  }
+  print(" % steps\n", steps);
+}
+
+main :: () {
+  run(1);
+  run(1000000);
+}

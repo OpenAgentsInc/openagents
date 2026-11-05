@@ -1,0 +1,2 @@
+warp 1: event 0 at 3500000 ns, event 1 at 10000000 ns, event 2 at 10000001 ns, event 3 at 2000000000 ns, 2002 steps
+warp 1000000: event 0 at 3500000 ns, event 1 at 10000000 ns, event 2 at 10000001 ns, event 3 at 2000000000 ns, 4 steps

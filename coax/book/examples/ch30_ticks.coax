@@ -1,0 +1,32 @@
+#import "Basic";
+#load "../../lib/clock.coax" as clock;
+
+// Physics at 1 kHz, control at 500 Hz, telemetry at 100 Hz starting 1 ms in.
+NAMES :: [3] string.["physics", "control", "telemetry"];
+
+main :: () {
+  tasks := [3] clock.Rate_Task.[
+    clock.Rate_Task.{period_ns = 1000000, phase_ns = 0},
+    clock.Rate_Task.{period_ns = 2000000, phase_ns = 0},
+    clock.Rate_Task.{period_ns = 10000000, phase_ns = 1000000}];
+  // Control reads the joint angle physics wrote, at most 4 ms old.
+  angle: clock.Hold(f64, clock.Sim) = clock.Hold.{max_age_ns = 4000000};
+  due: [3] s64;
+  for tick: 0..<4 {
+    now := clock.sim_at(tick * 1000000);
+    count := clock.schedule_due(tasks[..], now, due[..]);
+    print("t=% ms:", tick);
+    for i: 0..<count { print(" %", NAMES[due[i]]); }
+    print("\n");
+    for i: 0..<count {
+      if due[i] == 0 { angle = clock.hold_put(angle, 0.1 * cast(f64) tick, now); }
+      if due[i] == 1 {
+        r := clock.hold_get(angle, now);
+        print("  control reads % (age % ns, %)\n", r.value, r.age_ns, r.error);
+      }
+    }
+  }
+  // Pause the simulation: physics stops writing, and control's read goes stale.
+  late := clock.hold_get(angle, clock.sim_at(8000000));
+  print("after a pause, control at 8 ms reads % (age % ns, %)\n", late.value, late.age_ns, late.error);
+}

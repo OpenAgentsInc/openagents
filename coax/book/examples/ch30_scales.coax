@@ -1,0 +1,25 @@
+#import "Basic";
+#load "../../lib/clock.coax" as clock;
+
+NS :: 1000000000;
+
+show :: (label: string, utc_seconds: s64) {
+  tai := clock.utc_to_tai(clock.utc_at(utc_seconds * NS));
+  if tai.error != clock.Scale_Error.none {
+    print("%: refused, %\n", label, tai.error);
+    return;
+  }
+  tt := clock.tai_to_tt(tai.at);
+  tdb := clock.tt_to_tdb(tt);
+  print("%: TAI-UTC % ns, TT-UTC % ns, TDB-TT % ns\n", label,
+        tai.at.ns - utc_seconds * NS, tt.ns - utc_seconds * NS, clock.elapsed(tdb, clock.tdb_at(tt.ns)));
+}
+
+main :: () {
+  print("leap-second table %\n", clock.LEAP_TABLE_ID);
+  show("2016-12-31T23:59:59Z", 1483228799);
+  show("2017-01-01T00:00:00Z", 1483228800);
+  show("2026-01-01T00:00:00Z", 1767225600);
+  show("1971-12-31T00:00:00Z", 63072000 - 86400);
+  show("2026-07-01T00:00:00Z", 1782864000);
+}

@@ -1,0 +1,8 @@
+#import "Basic";
+#load "../../lib/clock.coax" as clock;
+
+main :: () {
+  sim := clock.sim_at(5000);
+  wall := clock.steady_at(9000);
+  print("%\n", clock.elapsed(wall, sim));   // refused: two clocks
+}

@@ -1,0 +1,7 @@
+t=0 ms: physics control
+  control reads 0.0 (age 0 ns, none)
+t=1 ms: physics telemetry
+t=2 ms: physics control
+  control reads 0.2 (age 0 ns, none)
+t=3 ms: physics
+after a pause, control at 8 ms reads 0.0 (age 5000000 ns, stale)
