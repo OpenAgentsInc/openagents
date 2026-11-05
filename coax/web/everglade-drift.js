@@ -17,9 +17,11 @@
   // a row's columns, in order (the driver reads them by these names)
   D.cols = ["t", "page_ms", "feet_x_mm", "feet_y_mm", "feet_z_mm", "yaw_mrad", "lift_cm", "reruns", "fix_mm",
     "sprites", "fx_rg", "fx_ww", "fx_wos", "fx_spells", "bar", "cond_you", "cond_server", "cond_others", "cond_folk",
-    "cond_engine", "stables_down", "stables_all", "act", "clip", "net", "folk_walking", "folk_stalled", "folk_moved_mm", "face_mrad", "server_yaw_mrad", "look"];
+    "cond_engine", "stables_down", "stables_all", "act", "clip", "net", "folk_walking", "folk_stalled", "folk_moved_mm", "face_mrad", "server_yaw_mrad", "look", "step"];
   const FOLK = 28;   // EG_SPOTS
-  D.mark = (name) => { if (name === "start") D.origin = D.probe(15); D.marks.push([name, D.fr.length, Math.round(now())]); return 1; };
+  // a mark: its name, first row, wall ms and the page's step then (the driver measures each step's
+  // walk from one step on both pages, not one wall moment: dr_local)
+  D.mark = (name) => { if (name === "start") D.origin = D.probe(15); D.marks.push([name, D.fr.length, Math.round(now()), D.sstep()]); return 1; };
   // The session's presses by the page's steps (#12893): the driver gives both pages one step (since
   // the start mark: the input sequence, net_probe 15) for each press, and each page makes it just
   // before the frame that takes that step. A press made at the same moment on both pages fell on
@@ -75,7 +77,8 @@
         D.folk = folk;
         D.fr.push([t, Math.round(D.pageT), fp(0), fp(1), fp(2), np(60), np(21) - np(22), np(14), Math.round(Math.sqrt(Math.max(0, fp(7)))),
           np(61), np(45), np(46), np(47), np(48), np(49), held(np(52)), np(53), np(55), fp(8),
-          fp(9), np(57), np(58), np(29), np(30), np(0), walking, stalled, Math.round(moved), np(63), np(64), D.look]);
+          fp(9), np(57), np(58), np(29), np(30), np(0), walking, stalled, Math.round(moved), np(63), np(64), D.look,
+          D.origin == null ? -1 : np(15) - D.origin]);
         D.look = 0;
         // the conditions (E5_CONDITION bits) on each of the town's people and its watch, and your
         // WANTED level, as they change: the notes beside the rows (conds-*.txt)

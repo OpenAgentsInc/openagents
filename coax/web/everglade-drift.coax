@@ -47,8 +47,8 @@
 #import "Basic";
 #load "../lib/net/cdp.coax";
 
-DR_JS_COLS :: 31;         // everglade-drift.js D.cols
-DR_COLS :: 33;            // those, then C_LX and C_LZ (dr_local)
+DR_JS_COLS :: 32;         // everglade-drift.js D.cols
+DR_COLS :: 35;            // those, then C_LX, C_LZ and C_ST (dr_local)
 DR_ROWS :: 20000;         // frames kept a page (5 minutes at 60 a second)
 DR_PART :: 300;           // rows read back at once
 // book:begin drift-bounds
@@ -66,7 +66,7 @@ DR_PROFILES :: 6;
 C_T :: 0; C_X :: 2; C_Y :: 3; C_Z :: 4; C_YAW :: 5; C_LIFT :: 6; C_RERUNS :: 7; C_FIX :: 8; C_SPRITES :: 9;
 C_RG :: 10; C_WW :: 11; C_WOS :: 12; C_SPELLS :: 13; C_BAR :: 14; C_COND :: 15; C_SCOND :: 16; C_OCOND :: 17;
 C_FCOND :: 18; C_ECOND :: 19; C_SDOWN :: 20; C_SALL :: 21; C_ACT :: 22; C_CLIP :: 23; C_NET :: 24;
-C_WALK :: 25; C_STALL :: 26; C_MOVED :: 27; C_FACE :: 28; C_SYAW :: 29; C_LOOK :: 30; C_LX :: 31; C_LZ :: 32;
+C_WALK :: 25; C_STALL :: 26; C_MOVED :: 27; C_FACE :: 28; C_SYAW :: 29; C_LOOK :: 30; C_STEP :: 31; C_LX :: 32; C_LZ :: 33; C_ST :: 34;
 
 Buf :: struct { b: [16384] u8; n: int; bad: bool; }
 bput :: (o: [] Buf, s: string) {
@@ -84,7 +84,7 @@ bint :: (o: [] Buf, v: int) {
 btext :: (o: [] Buf) -> string { return cast(string) o[0].b[0..<o[0].n]; }
 
 // One page's record: its rows, its marks (name, first row, wall ms) and its words as they changed.
-DrMark :: struct { name: [24] u8; name_n: int; row: int; t: int; }
+DrMark :: struct { name: [24] u8; name_n: int; row: int; t: int; step: int; }
 DrText :: struct { t: int; which: int; text: [160] u8; n: int; }
 DrPage :: struct {
   rows: [DR_ROWS * DR_COLS] int; n: int;
@@ -108,7 +108,11 @@ DR_EXACT :: 0; DR_NEAR :: 1; DR_SHARE :: 2; DR_ANGLE :: 3; DR_PLACE :: 4; DR_ON 
 // read's resend more: a read lost on the way holds every read after it for TCP's resend (net-proxy.coax:
 // two round trips, 200 ms at least), so the room's word on it comes that much later, and no page can
 // draw it before it comes (#12890). The page draws those conditions as their row comes, unbuffered.
-DrProbe :: struct { name: string; col: int; how: int; tol: int; from: string; lossy: bool; }
+// bystep: what your own presses move (your place, your camera, your lift), compared at the same page
+// step (C_ST) rather than the same wall moment: each press goes in at one step of both pages
+// (dr_both), and a page that stalls a moment under load draws every step after it that much later,
+// so the two pages' walks can stand 300 ms apart in wall time, step for step the same (#12778).
+DrProbe :: struct { name: string; col: int; how: int; tol: int; from: string; lossy: bool; bystep: bool; }
 // The verdict on one probe: whether it drifted, the first frame that did (wall ms and its step),
 // the values there and the smallest difference the window had.
 DrVerdict :: struct { drifted: bool; t: int; step: string; mine: int; other: int; by: int; frames: int; note: [200] u8; note_n: int; }
@@ -130,17 +134,18 @@ dr_tol :: (pr: DrProbe, a: int, b: int) -> int {
 // Frame r of page a against page b's frames within `window` ms: the smallest difference, and whether
 // one was within the tolerance (closest b value in *other).
 dr_match :: (pr: DrProbe, a: [] DrPage, r: int, b: [] DrPage, window: int, lo: int, other: [] int) -> int {
-  t := dr_at(a, r, C_T);
+  tc := ifx pr.bystep then C_ST else C_T;
+  t := dr_at(a, r, tc);
   va := dr_at(a, r, pr.col); va2 := ifx pr.how == DR_PLACE then dr_at(a, r, pr.col + ifx pr.col == C_X then 2 else 1) else 0;
   best := 1000000000; k := lo;
-  while k < b[0].n && dr_at(b, k, C_T) < t - window { k += 1; }
-  while k < b[0].n && dr_at(b, k, C_T) <= t + window {
+  while k < b[0].n && dr_at(b, k, tc) < t - window { k += 1; }
+  while k < b[0].n && dr_at(b, k, tc) <= t + window {
     vb := dr_at(b, k, pr.col); vb2 := ifx pr.how == DR_PLACE then dr_at(b, k, pr.col + ifx pr.col == C_X then 2 else 1) else 0;
     d := dr_diff(pr.how, va, vb, va2, vb2);
     // a value that moves fast (a fall, a lift) passes between two of b's frames: b had it then. Two
     // pages draw at their own instants, and under load a frame is 50-80 ms, so a fall at 4 cm/ms
     // moves past the tolerance between frames (#12887). Not the counts (tolerance 0): they step
-    if pr.how == DR_NEAR && pr.tol > 0 && k > 0 && dr_at(b, k - 1, C_T) >= t - window {
+    if pr.how == DR_NEAR && pr.tol > 0 && k > 0 && dr_at(b, k - 1, tc) >= t - window {
       vp := dr_at(b, k - 1, pr.col);
       if (vp <= va && va <= vb) || (vb <= va && va <= vp) { d = 0; }
     }
@@ -157,7 +162,8 @@ dr_way :: (pr: DrProbe, a: [] DrPage, b: [] DrPage, window: int, t0: int, t1: in
     t := dr_at(a, r, C_T);
     if t < t0 || t > t1 { continue; }
     if pr.col == C_COND && t >= a[0].hold_from && t <= a[0].hold_to { continue; }
-    while lo < b[0].n && dr_at(b, lo, C_T) < t - window { lo += 1; }
+    tc := ifx pr.bystep then C_ST else C_T;
+    while lo < b[0].n && dr_at(b, lo, tc) < dr_at(a, r, tc) - window { lo += 1; }
     other: [1] int;
     by := dr_match(pr, a, r, b, window, lo, other[..]);
     if by < 0 { run = 0; continue; }
@@ -335,6 +341,7 @@ dr_pull :: (c: [] Cdp, pg: [] DrPage) -> bool {
     while e != -1 && pg[0].marks_n < DR_MARKS {
       m := pg[0].marks[pg[0].marks_n..<pg[0].marks_n + 1];
       m[0].name_n = jv_str(d, jv_at(d, e, 0), m[0].name[..]); m[0].row = jv_int(d, jv_at(d, e, 1), 0); m[0].t = jv_int(d, jv_at(d, e, 2), 0);
+      m[0].step = jv_int(d, jv_at(d, e, 3), -1);
       pg[0].marks_n += 1; e = d.nodes[e].next;
     }
   }
@@ -412,15 +419,65 @@ dr_hold_window :: (a: [] DrPage, b: [] DrPage) {
 // in turn, so one page's camera can come to rest a frame's turn (about 13 mrad) from the other's;
 // over a 26 m walk that alone opens 36 cm between the places. In each page's own heading the
 // walks agree; a real snap shows in the corrections.
-dr_local :: (p: [] DrPage) {
-  m := 0;
-  for r: 0..<p[0].n {
-    t := dr_at(p, r, C_T);
-    for k: 0..<p[0].marks_n { if p[0].marks[k].t <= t && (r == 0 || p[0].marks[k].t > dr_at(p, r - 1, C_T)) { m = r; } }
-    dx := f64(dr_at(p, r, C_X) - dr_at(p, m, C_X)); dz := f64(dr_at(p, r, C_Z) - dr_at(p, m, C_Z));
-    th := f64(dr_at(p, r, C_YAW)) / 1000.0;
-    p[0].rows[r * DR_COLS + C_LX] = cast(int) (dx * cos(th) - dz * sin(th));
-    p[0].rows[r * DR_COLS + C_LZ] = cast(int) (dx * sin(th) + dz * cos(th));
+// A step begins at one page step on both pages (C_STEP, since the start mark): the later of the two
+// pages' steps at its mark, moved on to the first step both pages drew a frame at. The driver marks
+// the two pages one after the other, and their steps run on their own clocks, so a mark falls a few
+// steps apart on the two: with W held that began the walk 406 mm apart, and where the walk then
+// stopped at a wall the two stood "406 mm" apart, wherever they stood (#12778).
+dr_first_at :: (p: [] DrPage, step: int) -> int {
+  for r: 0..<p[0].n { if dr_at(p, r, C_STEP) >= step { return r; } }
+  return -1;
+}
+dr_begin :: (a: [] DrPage, b: [] DrPage, k: int, out: [] int) -> bool {
+  name := dr_mark_name(a, k); j := -1;
+  for i: 0..<b[0].marks_n { if dr_mark_name(b, i) == name { j = i; } }
+  if j < 0 || a[0].marks[k].step < 0 || b[0].marks[j].step < 0 { return false; }
+  s := ifx a[0].marks[k].step > b[0].marks[j].step then a[0].marks[k].step else b[0].marks[j].step;
+  for tries: 0..<60 {
+    ra := dr_first_at(a, s); rb := dr_first_at(b, s);
+    if ra < 0 || rb < 0 { return false; }
+    sa := dr_at(a, ra, C_STEP); sb := dr_at(b, rb, C_STEP);
+    if sa == sb { out[0] = ra; out[1] = rb; return true; }
+    s = ifx sa > sb then sa else sb;
+  }
+  return false;
+}
+dr_local :: (a: [] DrPage, b: [] DrPage) {
+  // each page's rows that begin a step, in order (one marks; -1 a mark with no shared step: its wall moment)
+  ba: [DR_MARKS] int; bb: [DR_MARKS] int;
+  for k: 0..<DR_MARKS { ba[k] = -1; bb[k] = -1; }
+  for k: 0..<a[0].marks_n {
+    rr: [2] int;
+    if dr_begin(a, b, k, rr[..]) {
+      name := dr_mark_name(a, k);
+      ba[k] = rr[0];
+      for i: 0..<b[0].marks_n { if dr_mark_name(b, i) == name { bb[i] = rr[1]; } }
+    }
+  }
+  // each frame's step as a time (C_ST): the offline page's start mark, and a step every 1/30 s after it
+  base := dr_mark_t(a, "start");
+  for side: 0..<2 {
+    p := ifx side == 0 then a else b;
+    for r: 0..<p[0].n {
+      st := dr_at(p, r, C_STEP);
+      p[0].rows[r * DR_COLS + C_ST] = ifx st >= 0 && base >= 0 then base + st * 1000 / 30 else dr_at(p, r, C_T);
+    }
+  }
+  for side: 0..<2 {
+    p := ifx side == 0 then a else b;
+    m := 0;
+    for r: 0..<p[0].n {
+      t := dr_at(p, r, C_T);
+      for k: 0..<p[0].marks_n {
+        at := ifx side == 0 then ba[k] else bb[k];
+        if at >= 0 { if at == r { m = r; } }
+        else if p[0].marks[k].t <= t && (r == 0 || p[0].marks[k].t > dr_at(p, r - 1, C_T)) { m = r; }
+      }
+      dx := f64(dr_at(p, r, C_X) - dr_at(p, m, C_X)); dz := f64(dr_at(p, r, C_Z) - dr_at(p, m, C_Z));
+      th := f64(dr_at(p, r, C_YAW)) / 1000.0;
+      p[0].rows[r * DR_COLS + C_LX] = cast(int) (dx * cos(th) - dz * sin(th));
+      p[0].rows[r * DR_COLS + C_LZ] = cast(int) (dx * sin(th) + dz * cos(th));
+    }
   }
 }
 
@@ -428,13 +485,13 @@ dr_local :: (p: [] DrPage) {
 dr_compare :: (a: [] DrPage, b: [] DrPage, rtt: int, rep: [] DrReport, worker: bool) {
   window := 250 + rtt;
   if !worker { dr_hold_window(a, b); }
-  dr_local(a); dr_local(b);
+  dr_local(a, b);
   t0 := dr_mark_t(a, "start"); t1 := dr_mark_t(a, "end");
   if t0 < 0 || t1 < 0 { t0 = 0; t1 = 1 << 50; }
   probes := [16] DrProbe.[
-    DrProbe.{name = "position (in your heading, since the step)", col = C_LX, how = DR_PLACE, tol = 350},
-    DrProbe.{name = "camera heading", col = C_YAW, how = DR_ANGLE, tol = 200},
-    DrProbe.{name = "lift height", col = C_LIFT, how = DR_NEAR, tol = 50},
+    DrProbe.{name = "position (in your heading, since the step)", col = C_LX, how = DR_PLACE, tol = 350, bystep = true},
+    DrProbe.{name = "camera heading", col = C_YAW, how = DR_ANGLE, tol = 200, bystep = true},
+    DrProbe.{name = "lift height", col = C_LIFT, how = DR_NEAR, tol = 50, bystep = true},
     DrProbe.{name = "Reverse Gravity shown", col = C_RG, how = DR_ON},
     DrProbe.{name = "Reverse Gravity particles", col = C_RG, how = DR_SHARE, tol = 12},
     DrProbe.{name = "Wind Wall shown", col = C_WW, how = DR_ON},
