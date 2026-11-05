@@ -26,7 +26,24 @@ The initial record incorrectly called all three probes picked defaults.
 The current fire-hit row is `[55,-1,-1,-1]`, selecting `fire-hit-e3`;
 `fire-hit-e2` is an available candidate. Its supported-codec failure is
 preserved, but cannot decide default-profile conformance. The complete
-122-pick comparison remains required before a default-bank verdict.
+122-pick comparison below supplies the actual default-bank verdict.
+
+The complete current pick set has now been compared: **99 pass and 23
+fail**, across all 122 files and 9,524,761 words. Every frame/channel shape
+and 48 kHz rate matches, with zero nonfinite samples and no omitted words.
+The failing files contain 964,394 words in total; their sample differences
+are preserved in `audio-picked-codec/comparison.json`. Examples include
+4,469 samples beyond the bound in frost-hit-e2, 1,574 in ice-e3, and a
+maximum absolute error of 0.04402640461921692 in splash-e1. This is a
+complete failing default-codec result, with no inferred addition of probe
+counts or changes to the 2^-20 gate.
+
+Both ambient picks were decoded in separate native reservation owners,
+which returned to zero after each file. The inventory is not a claim that
+all picks fit simultaneously. Ordinary demand loading and its actual
+120-fetch/first-bed/room workload have separate receipts. Complete browser
+and native raw `.ogg`/`.f32` files and exact SDK sources remain under the
+respective `audio-picked-bank/` durable artifact directories.
 
 `check-browser-codec.coax` is an observation harness, not ordinary decoder
 admission. Its SDK glue decodes frozen files and exports every measured
