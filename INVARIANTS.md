@@ -101,9 +101,14 @@ failure is retained. Pre-contract faces retain their earlier SDK path. The
 render media composition authority remains `host-media.coax`; this decoder
 does not replace its readiness, URL, extent or physical texture admission.
 The browser observer root gate kills 87 mutants, with no equivalents.
-Image byte parity and the
-separately measured disabled presentation path do not enable a desktop
-default or substitute for the remaining complete host services.
+The checked `aethyr/host/media-notice.coax` formatter atomically creates the
+existing607 ready/failed message and kills all 131 root mutants. Native
+dispatch follows the producer/encoder return. A missing or refused image
+becomes not-ready with zero notification dimensions, publishes no partial
+texture and leaves unrelated world rendering active through recovery.
+Image byte parity and the separately measured disabled presentation path do
+not enable a desktop default or substitute for the remaining complete host
+services.
 
 ## The indexed KV arena preserves the durable v1 contract
 

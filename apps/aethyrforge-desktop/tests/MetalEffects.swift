@@ -54,6 +54,13 @@ func runEffects() throws {
             let path = try required(op["file"] as? String,"media snapshot"), url = try required(op["url"] as? String,"media URL")
             guard mf_media_snapshot(host,url,path) else { throw MetalEffectFailure.failed("actual ready media texture readback") }
             snapshots.append(path)
+        case "media-notice":
+            var count = 0
+            let p = try required(mf_media_notice(host,&count),"delivered media notice")
+            try Data(bytes:p,count:count).write(to:URL(fileURLWithPath:try required(op["file"] as? String,"media notice path")),options:.atomic)
+        case "media-state":
+            let rows = (op["urls"] as? [String] ?? []).map { url in (0..<5).map { mf_media_info(host,url,Int32($0)) } }
+            try JSONSerialization.data(withJSONObject:rows).write(to:URL(fileURLWithPath:try required(op["file"] as? String,"media state path")),options:.atomic)
         case "replay":
             let path = try required(op["file"] as? String, "frame config")
             guard mf_replay(host,path) else { throw MetalEffectFailure.failed(mf_error(host).map { String(cString:$0) } ?? "frozen frame refused") }

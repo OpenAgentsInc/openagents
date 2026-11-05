@@ -20,7 +20,7 @@ typedef struct {int64_t slot,generation;} MFHandle;
 }
 @end
 @implementation MFBuffer @end
-@interface MFMedia:NSObject {@public id<MTLTexture> texture;MFHandle handle;NSInteger width,height;NSData *rgba;}
+@interface MFMedia:NSObject {@public id<MTLTexture> texture;MFHandle handle;NSInteger width,height;NSData *rgba;BOOL failed;}
 @end
 @implementation MFMedia @end
 
@@ -39,7 +39,7 @@ typedef struct {int64_t slot,generation;} MFHandle;
  NSMutableDictionary<NSString*,id<MTLSamplerState>> *samplers;
  NSMutableArray<MFBuffer*> *buffers;id<MTLBuffer> indices;MFHandle indexHandle;
  NSArray<id<MTLBuffer>> *hud;MFHandle hudHandles[2];NSData *packBytes,*packageBytes,*metalBytes;
- NSMutableDictionary<NSString*,MFMedia*> *mediaCache;
+ NSMutableDictionary<NSString*,MFMedia*> *mediaCache;NSData *mediaNotice,*lastMediaNotice;
  NSMutableArray<NSData*> *reflectionBytes;NSMutableDictionary<NSNumber*,id<MTLLibrary>> *libraries;
  NSMutableDictionary<NSNumber*,NSData*> *shaderSources;coax_t_HostLifecycle life;int64_t frameTime;
  coax_t_RenderHostPackageState packageState;coax_t_RenderHostEntryBank entryBank;
@@ -58,6 +58,7 @@ typedef struct {int64_t slot,generation;} MFHandle;
 - (id<MTLRenderPipelineState>)pipeline:(int)entry;
 - (BOOL)bind:(id<MTLRenderCommandEncoder>)encoder entry:(int)entry op:(coax_t_RenderOp)op media:(const coax_t_RenderMediaRect*)media images:(NSDictionary<NSNumber*,MFMedia*>*)images;
 - (void)message:(int32_t)kind data:(NSData*)data;
+- (void)deliverMediaNotice;
 - (void)shutdown;
 - (BOOL)createTextures;
 - (BOOL)loadReplay:(const char*)path;
@@ -205,6 +206,7 @@ static void blend(MTLRenderPipelineColorAttachmentDescriptor *a,coax_t_RenderBle
  return [self createTextures];
 }
 - (void)message:(int32_t)kind data:(NSData*)data {size_t n=MIN(data.length,face.inbox_cap());memcpy((void*)face.inbox(state),data.bytes,n);face.message(state,kind,(uint32_t)n);}
+- (void)deliverMediaNotice {if(mediaNotice){NSData *notice=mediaNotice;mediaNotice=nil;[self message:(int32_t)htn_kind() data:notice];lastMediaNotice=notice;}}
 - (BOOL)ensureTarget:(coax_t_RenderTarget)t width:(int64_t)width height:(int64_t)height {
  if(t==COAX_RenderTarget_none)return YES;coax_t_RenderTargetDescriptor d=aethyr_render_target_raw(t,width,height,false,screenFormat,16384);if(d.status!=COAX_RenderResourceStatus_ok)return [self fail:@"Coax refused the target extent"];
  id<MTLTexture> old=targets[@(t)];if(old&&(old.width!=(NSUInteger)d.width||old.height!=(NSUInteger)d.height||old.pixelFormat!=pixel(d.format))){MFHandle h;[targetHandles[@(t)]getValue:&h size:sizeof h];releaseHandle(self,&h);[targets removeObjectForKey:@(t)];[targetHandles removeObjectForKey:@(t)];old=nil;}
@@ -311,11 +313,13 @@ static void blend(MTLRenderPipelineColorAttachmentDescriptor *a,coax_t_RenderBle
   if(replay){char scratch[32];coax_string name=aethyr_render_texture_name((coax_t_RenderBindingSource){.kind=COAX_RenderSourceKind_media_image,.index=request.line,.valid=true},(coax_v_u8){(uint8_t*)scratch,32});for(size_t k=0;k<textureInput.texture_count;k++)if(same(name,textureNames[k].name)){m=[MFMedia new];m->texture=textureImages[k];m->handle=textureHandles[k];m->width=m->texture.width;m->height=m->texture.height;}}
   if(!replay&&!m&&request.kind==COAX_RenderMediaKind_image){
    NSString *relative=[url hasPrefix:@"/worlds/"]?[@"/realms/" stringByAppendingString:[url substringFromIndex:8]]:url;NSString *base=[[directory stringByAppendingPathComponent:@"web"]stringByStandardizingPath];NSString *path=[[base stringByAppendingPathComponent:[relative substringFromIndex:1]]stringByStandardizingPath];
-   if([path hasPrefix:[base stringByAppendingString:@"/"]]){if(face.host_contract_version&&face.host_contract_version()==1){NSData *source=[NSData dataWithContentsOfFile:path];if(source){coax_t_HostMediaPlan p=htm_plan(cv(source));if(p.status!=0)return [self fail:@"Coax refused canonical media metadata"];
-     NSMutableData *work=[NSMutableData dataWithLength:(NSUInteger)p.work],*rgba=[NSMutableData dataWithLength:(NSUInteger)p.bytes];if(!work||!rgba)return [self fail:@"Canonical media allocation"];if(htm_decode(cv(source),cv(work),cv(rgba))!=0)return [self fail:@"Coax refused canonical media pixels"];
-     m=[MFMedia new];m->width=p.width;m->height=p.height;m->rgba=rgba;MTLTextureDescriptor *d=[MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm width:m->width height:m->height mipmapped:NO];d.usage=MTLTextureUsageShaderRead;d.storageMode=MTLStorageModeShared;
-     if(!acquire(self,5,aethyr_render_texture_words(m->width,m->height,1,1,4),&m->handle))return [self fail:@"Canonical media ledger capacity"];m->texture=[device newTextureWithDescriptor:d];if(!m->texture){releaseHandle(self,&m->handle);return [self fail:@"Canonical media texture allocation"];}[m->texture replaceRegion:MTLRegionMake2D(0,0,m->width,m->height) mipmapLevel:0 withBytes:rgba.bytes bytesPerRow:m->width*4];mediaCache[url]=m;
-    }}else{CGImageSourceRef source=CGImageSourceCreateWithURL((__bridge CFURLRef)[NSURL fileURLWithPath:path],NULL);CGImageRef cg=source?CGImageSourceCreateImageAtIndex(source,0,NULL):NULL;if(source)CFRelease(source);
+   if([path hasPrefix:[base stringByAppendingString:@"/"]]){if(face.host_contract_version&&face.host_contract_version()==1){NSData *source=[NSData dataWithContentsOfFile:path];m=[MFMedia new];m->failed=YES;mediaCache[url]=m;
+     if(source){coax_t_HostMediaPlan p=htm_plan(cv(source));if(p.status==0){NSMutableData *work=[NSMutableData dataWithLength:(NSUInteger)p.work],*rgba=[NSMutableData dataWithLength:(NSUInteger)p.bytes];if(work&&rgba&&htm_decode(cv(source),cv(work),cv(rgba))==0){
+       m->width=p.width;m->height=p.height;MTLTextureDescriptor *d=[MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm width:m->width height:m->height mipmapped:NO];d.usage=MTLTextureUsageShaderRead;d.storageMode=MTLStorageModeShared;
+       if(acquire(self,5,aethyr_render_texture_words(m->width,m->height,1,1,4),&m->handle)){m->texture=[device newTextureWithDescriptor:d];if(m->texture){[m->texture replaceRegion:MTLRegionMake2D(0,0,m->width,m->height) mipmapLevel:0 withBytes:rgba.bytes bytesPerRow:m->width*4];m->rgba=rgba;m->failed=NO;}else releaseHandle(self,&m->handle);}
+       if(m->failed){m->width=0;m->height=0;}
+     }}}
+    }else{CGImageSourceRef source=CGImageSourceCreateWithURL((__bridge CFURLRef)[NSURL fileURLWithPath:path],NULL);CGImageRef cg=source?CGImageSourceCreateImageAtIndex(source,0,NULL):NULL;if(source)CFRelease(source);
     if(cg){coax_t_RenderMediaExtent extent=aethyr_render_media_extent(request.kind,CGImageGetWidth(cg),CGImageGetHeight(cg));if(extent.ok){m=[MFMedia new];m->width=extent.width;m->height=extent.height;NSMutableData *rgba=[NSMutableData dataWithLength:(NSUInteger)m->width*m->height*4];CGColorSpaceRef colour=CGColorSpaceCreateWithName(kCGColorSpaceSRGB);CGContextRef context=CGBitmapContextCreate(rgba.mutableBytes,m->width,m->height,8,m->width*4,colour,kCGImageAlphaPremultipliedLast|kCGBitmapByteOrder32Big);CGColorSpaceRelease(colour);if(context){CGContextSetInterpolationQuality(context,kCGInterpolationHigh);CGContextDrawImage(context,CGRectMake(0,0,m->width,m->height),cg);CGContextRelease(context);
        if(!render_image_straight(cv(rgba))){CGImageRelease(cg);return [self fail:@"Decoded media is not premultiplied RGBA8"];}
        MTLTextureDescriptor *d=[MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm width:m->width height:m->height mipmapped:NO];d.usage=MTLTextureUsageShaderRead;d.storageMode=MTLStorageModeShared;
@@ -324,6 +328,7 @@ static void blend(MTLRenderPipelineColorAttachmentDescriptor *a,coax_t_RenderBle
   if(!duplicate){coax_t_RenderHostMediaImage observation={.kind=request.kind,.url=request.url,.ready=m&&m->texture,.width=m?m->width:0,.height=m?m->height:0};if(replay)for(size_t k=0;k<textureInput.media_image_count;k++){RfiMediaImage *raw=&textureInput.media_images[k];if(same(request.url,(coax_string){raw->url,(int64_t)strlen(raw->url)})){coax_t_RenderHostMediaObserved q=aethyr_render_media_observe(raw->kind,(coax_string){raw->url,(int64_t)strlen(raw->url)},raw->ready,raw->width,raw->height);if(q.status!=COAX_RenderHostMediaStatus_ok)return [self fail:@"Coax refused frozen media observation"];observation=q.image;}}observed[imageCount++]=observation;}
   if(m&&m->texture){[mediaByLine setObject:m forKey:@(request.line)];coax_string name=aethyr_render_texture_name((coax_t_RenderBindingSource){.kind=COAX_RenderSourceKind_media_image,.index=request.line,.valid=true},(coax_v_u8){(uint8_t*)mediaNames[physicalCount],32});physical[physicalCount++]=(coax_t_RenderHostMediaTexture){.name=name,.width=m->width,.height=m->height,.layers=1};}
  }
+ if(!replay&&face.host_contract_version&&face.host_contract_version()==1){coax_t_HostMediaNotice rows[112];for(int i=0;i<imageCount;i++){coax_t_RenderHostMediaImage o=observed[i];MFMedia *m=mediaCache[text(o.url)];rows[i]=(coax_t_HostMediaNotice){.url=o.url,.ready=o.ready,.failed=m&&m->failed,.width=o.width,.height=o.height};}NSMutableData *raw=[NSMutableData dataWithLength:face.inbox_cap()];int64_t n=htn_format((coax_v_t_HostMediaNotice){rows,imageCount},cv(raw));if(n<0)return [self fail:@"Coax refused media notice capacity or observations"];raw.length=(NSUInteger)n;if(n&&![raw isEqualToData:lastMediaNotice])mediaNotice=raw;}
  coax_t_RenderHostMediaReceipt media=aethyr_render_media_draws(2,(coax_v_t_RenderMediaRequest){requests,parsed.count},(coax_v_t_RenderHostMediaImage){observed,imageCount},counts.width,counts.height,(coax_v_t_RenderHostMediaTexture){physical,physicalCount},(coax_v_t_RenderMediaRect){mediaRects,112});if(media.status!=COAX_RenderHostMediaStatus_ok)return [self fail:@"Coax refused media composition"];
  for(int64_t i=0;i<receipt.plan.count;i++){coax_t_RenderOp op=receipt.plan.ops.e[i];if(op.kind==COAX_RenderOpKind_begin){if(![self ensureTarget:op.colour0 width:counts.width height:counts.height]||![self ensureTarget:op.colour1 width:counts.width height:counts.height]||![self ensureTarget:op.depth width:counts.width height:counts.height])return NO;}if(op.kind==COAX_RenderOpKind_copy){if(![self ensureTarget:op.source width:counts.width height:counts.height]||![self ensureTarget:op.target width:counts.width height:counts.height])return NO;}}
  if(!aethyr_render_registry_advance(ledger(self)))return [self fail:@"Coax ledger epochs exhausted"];
@@ -373,7 +378,7 @@ static void blend(MTLRenderPipelineColorAttachmentDescriptor *a,coax_t_RenderBle
  if(!acquire(self,4,aethyr_render_buffer_words(indexBytes.length),&indexHandle))return [self fail:@"Recovery index ledger capacity"];indices=[device newBufferWithBytes:indexBytes.bytes length:indexBytes.length options:MTLResourceStorageModeShared];if(!indices)return [self fail:@"Recovery index allocation"];
  for(MFBuffer *b in buffers){NSMutableArray *pair=[NSMutableArray array];for(int i=0;i<2;i++){if(!acquire(self,b->source.kind==COAX_RenderSourceKind_main_uniform?0:1,aethyr_render_buffer_words(b->retained.length),&b->handles[i]))return [self fail:@"Recovery buffer ledger capacity"];id<MTLBuffer> gpu=[device newBufferWithLength:b->retained.length options:MTLResourceStorageModeShared];if(!gpu)return [self fail:@"Recovery buffer allocation"];[pair addObject:gpu];}b->gpu=pair;}
  if(![self createTextures])return NO;
- for(MFMedia *m in mediaCache.allValues){if(!acquire(self,5,aethyr_render_texture_words(m->width,m->height,1,1,4),&m->handle))return [self fail:@"Recovery media ledger capacity"];MTLTextureDescriptor *d=[MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm width:m->width height:m->height mipmapped:NO];d.usage=MTLTextureUsageShaderRead;d.storageMode=MTLStorageModeShared;m->texture=[device newTextureWithDescriptor:d];if(!m->texture)return [self fail:@"Recovery media allocation"];[m->texture replaceRegion:MTLRegionMake2D(0,0,m->width,m->height) mipmapLevel:0 withBytes:m->rgba.bytes bytesPerRow:m->width*4];}
+ for(MFMedia *m in mediaCache.allValues){if(m->failed)continue;if(!acquire(self,5,aethyr_render_texture_words(m->width,m->height,1,1,4),&m->handle))return [self fail:@"Recovery media ledger capacity"];MTLTextureDescriptor *d=[MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm width:m->width height:m->height mipmapped:NO];d.usage=MTLTextureUsageShaderRead;d.storageMode=MTLStorageModeShared;m->texture=[device newTextureWithDescriptor:d];if(!m->texture)return [self fail:@"Recovery media allocation"];[m->texture replaceRegion:MTLRegionMake2D(0,0,m->width,m->height) mipmapLevel:0 withBytes:m->rgba.bytes bytesPerRow:m->width*4];}
  if(layer)layer.device=device;wantsRecovery=NO;recoveries++;return YES;
 }
 - (void)shutdown {
@@ -417,8 +422,8 @@ bool mf_present_probe(void *host,const uint8_t *bytes,size_t count,int64_t width
  id<MTLCommandBuffer> command=[r->queue commandBuffer];if(!command||![r present:command drawable:nil descriptor:p])return false;
  [command commit];[command waitUntilCompleted];if(command.error)return [r fail:command.error.localizedDescription];r->completedFrames++;r->draws=1;return true;
 }
-bool mf_frame(void *host,float width,float height,float scale,float dt){return [(__bridge MFRealm*)host render:width height:height scale:scale dt:dt];}
-bool mf_frame_at(void *host,float width,float height,float scale,int64_t monotonic_us){MFRealm *r=(__bridge MFRealm*)host;r->frameTime=monotonic_us;r->clockedFrame=YES;BOOL ok=[r render:width height:height scale:scale dt:0];r->clockedFrame=NO;return ok;}
+bool mf_frame(void *host,float width,float height,float scale,float dt){MFRealm *r=(__bridge MFRealm*)host;BOOL ok=[r render:width height:height scale:scale dt:dt];if(ok)[r deliverMediaNotice];return ok;}
+bool mf_frame_at(void *host,float width,float height,float scale,int64_t monotonic_us){MFRealm *r=(__bridge MFRealm*)host;r->frameTime=monotonic_us;r->clockedFrame=YES;BOOL ok=[r render:width height:height scale:scale dt:0];r->clockedFrame=NO;if(ok)[r deliverMediaNotice];return ok;}
 void mf_shown(void *host,bool shown){MFRealm *r=(__bridge MFRealm*)host;coax_t_LifeActions a=htl_event((coax_v_t_HostLifecycle){&r->life,1},shown?5:4,htl_tick((int64_t)(nanoseconds()/1000)),0);if((a.does&1)&&r->face.blur)r->face.blur(r->state);}
 int64_t mf_lifecycle_info(void *host,int32_t field){MFRealm *r=(__bridge MFRealm*)host;switch(field){case 0:return r->life.profile.e[0].active;case 1:return r->life.profile.e[0].drawing;case 2:return r->life.shown;case 3:return r->life.focused;case 4:return r->life.last_us;default:return -1;}}
 bool mf_replay(void *host,const char *path){return [(__bridge MFRealm*)host loadReplay:path];}
@@ -459,6 +464,8 @@ bool mf_media_snapshot(void *host,const char *url,const char *path){
  id<MTLCommandBuffer> end=[r->queue commandBuffer];[end commit];[end waitUntilCompleted];if(end.error)return false;
  NSMutableData *raw=[NSMutableData dataWithLength:m->texture.width*m->texture.height*4];[m->texture getBytes:raw.mutableBytes bytesPerRow:m->texture.width*4 fromRegion:MTLRegionMake2D(0,0,m->texture.width,m->texture.height) mipmapLevel:0];return [raw writeToFile:[NSString stringWithUTF8String:path] atomically:YES];
 }
+const uint8_t *mf_media_notice(void *host,size_t *count){MFRealm *r=(__bridge MFRealm*)host;*count=r->lastMediaNotice.length;return r->lastMediaNotice.bytes;}
+int64_t mf_media_info(void *host,const char *url,int32_t field){MFRealm *r=(__bridge MFRealm*)host;MFMedia *m=r->mediaCache[[NSString stringWithUTF8String:url]];if(!m)return 0;switch(field){case 0:return 1;case 1:return m->texture&&!m->failed;case 2:return m->failed;case 3:return m->width;case 4:return m->height;default:return -1;}}
 const uint8_t *mf_frame_jpeg(void *host,size_t *count){
  *count=0;MFRealm *r=(__bridge MFRealm*)host;id<MTLTexture> t=r->targets[@(COAX_RenderTarget_screen)];if(!t||t.pixelFormat!=MTLPixelFormatBGRA8Unorm)return NULL;
  id<MTLCommandBuffer> end=[r->queue commandBuffer];[end commit];[end waitUntilCompleted];if(end.error)return NULL;

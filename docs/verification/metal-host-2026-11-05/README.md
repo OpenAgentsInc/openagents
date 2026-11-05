@@ -360,8 +360,29 @@ pass the original 2,000 allowance, with validation clean and owned cleanup
 observed. The common records are in `host-contract-12869/media-bridge/`.
 These are actual composed comparisons, without adding component counts.
 
-`aethyr/host/media-notice.coax` adds the existing607 ready/failed row formatter
+`aethyr/host/media-notice.coax` owns the existing607 ready/failed row formatter
 (131/131 root mutants killed). It atomically emits exact ready dimensions,
-failed zero dimensions and no pending rows. Deferred native delivery and
-per-image refusal without stopping unrelated rendering are the next adapter
-step; no complete error-path or default claim is made at this checkpoint.
+failed zero dimensions and no pending rows. Native dispatch occurs after
+the producer and frame encoder return, and identical notices are not
+repeated. Actual malformed metadata, missing file and late PNG decode
+failure each leave that image failed/not-ready with zero dimensions while
+the other six images remain ready at 48×48. Each workload completes six
+world frames across recovery, delivers the complete expected notice and
+closes with zero pending/old/closed resources. API/GPU validation is enabled
+with no reported errors. Raw receipts are `media-canonical/refusal-{metadata,
+missing,late}/`; the source/executable join is `notice-sdk/`.
+
+ASan instruments the Objective-C interpreter, generated renderer and new
+decoder/notice facade plus Swift driver. Its actual seven-image GPU/recovery
+and late-failure workloads pass, without ASan reports; leak detection is
+disabled and the loaded producer library is not instrumented. These are
+`notice-asan-bank/` and `notice-asan-late/`. A fresh native90 run with notice
+dispatch preserves the prior uniforms, FP16 graph and actual UNORM display
+bytes exactly (`cpu-media-notice-v1/`), so the direct 1,723/1,697 composed
+receipts remain applicable without rerunning unchanged Vulkan work.
+
+Desktop packaging builds/stages `build/host-media.wasm` alongside the audio
+and layer reactors. The new display shader products remain experimental
+under the frozen iteration backend. These component receipts do not replace
+compiler build/load admission or qualify a current compiler release; ordinary
+presentation selection and the desktop default remain unchanged.
