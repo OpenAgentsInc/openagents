@@ -46,6 +46,8 @@
 #load "../../aethyr/budget.coax";
 #load "myrealm-a11y.coax";   // the page's controls as real ones (host.js mirrors them): keyboard and screen reader
 #load "../../aethyr/input.coax";   // a controller's stick and buttons: the engine's one input path (realm_pad)
+#load "../../aethyr/loop.coax";    // the walking's fixed steps: Aethyr's one clock (aethyr/book ch001)
+#load "../../aethyr/walk.coax" as pc;   // the shared walker's capsule push out of what stands (aethyr/collide.coax)
 #load "myrealm-room.coax";   // who else is here (/api/playtest/presence/made-<slug>), an agent's seat tagged AGENT
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
@@ -184,6 +186,14 @@ MyRealm :: struct {
   stick: bool; stick_id: int; stick_x0: f32; stick_y0: f32; stick_dx: f32; stick_dy: f32;
   turning: bool; turn_id: int; turn_x: f32;
   walked: f32; you_walked: f32; you_pace: f32;
+  // The walking's fixed steps (aethyr/loop.coax): where the last step left you (sim_*) and where the
+  // one before did (prev_*); x, y, z and yaw above are drawn between them, and shown_* is what was
+  // drawn, so a move made outside the steps (a drag, a teleport) carries into them.
+  clock: FrameClock;
+  sim_x: f32; sim_y: f32; sim_z: f32; sim_yaw: f32;
+  prev_x: f32; prev_y: f32; prev_z: f32; prev_yaw: f32;
+  shown_x: f32; shown_y: f32; shown_z: f32; shown_yaw: f32;
+  walk_body: [SOLIDS * 7] f32;   // the solids near you as the walker's capsules (pc.BODY numbers each)
   // which realm
   slug: [SLUG] u8; slug_n: int; asked_spec: bool; spec_ready: bool; spec_failed: bool; facts: bool; entered: bool;
   // the spec
@@ -652,7 +662,7 @@ nearest_ent :: (s: [] MyRealm) -> int {
   return best;
 }
 // Where thing e is on the screen (EK_HIGH up it), or not in view.
-ent_seen :: (s: [] MyRealm, e: int) -> Seen { c := ent_at(s, e); return seen(s, c.x, EK_HIGH[s[0].ent_kind[e]], c.z); }
+ent_seen :: (s: [] MyRealm, e: int) -> OnScreen { c := ent_at(s, e); return seen(s, c.x, EK_HIGH[s[0].ent_kind[e]], c.z); }
 // The thing a tap is on (within PICK_PX of it on the screen), or -1.
 ent_tapped :: (s: [] MyRealm, x: f32, y: f32) -> int {
   best := -1; bd := PICK_PX * s[0].dpr;
@@ -1582,17 +1592,34 @@ walk_to :: (s: [] MyRealm, x: f32, z: f32, dx: f32, dz: f32) -> Spot {
   p := Spot.{x = x + dx, z = z + dz};
   if s[0].flying { return kept_in(p); }
   if s[0].y > 1.2 { return kept_in(seg_push(s, p)); }   // a jump clears what is low, never a wall
+  // The shared walker pushes you out of the solids (aethyr/walk.coax move_across), then the walls
+  // and the ground's edge hold you; twice, for a push that lands you in another.
+  from := Spot.{x = x, z = z}; mx := dx; mz := dz;
   for pass: 0..<2 {
-    for i: 0..<s[0].solid_n {
-      ox := p.x - s[0].solid_x[i]; oz := p.z - s[0].solid_z[i];
-      d := sqrt(ox * ox + oz * oz); room := s[0].solid_r[i] + BODY_R;
-      if d >= room { continue; }
-      if d < 0.0001 { ox = 0; oz = 1; d = 1; }
-      p.x = s[0].solid_x[i] + ox / d * room; p.z = s[0].solid_z[i] + oz / d * room;
-    }
-    p = kept_in(seg_push(s, p));
+    m := pc.move_across(walk_world(s, from.x, from.z, sqrt(mx * mx + mz * mz)), pc.walk_place(from.x, s[0].y, from.z, 0), mx, mz);
+    p = kept_in(seg_push(s, Spot.{x = m.pos.x, z = m.pos.z}));
+    from = p; mx = 0; mz = 0;
   }
   return p;
+}
+// The solids near (x, z) as the walker's world, those a move of up to `reach` could touch: each a
+// capsule standing from below the ground to above your head, so it holds you at any height a walk
+// or a low jump reaches, as a circle on the ground did.
+walk_world :: (s: [] MyRealm, x: f32, z: f32, reach: f32) -> pc.World {
+  n := 0;
+  for i: 0..<s[0].solid_n {
+    ox := x - s[0].solid_x[i]; oz := z - s[0].solid_z[i]; near := s[0].solid_r[i] + BODY_R + reach + 0.1;
+    if ox * ox + oz * oz > near * near { continue; }
+    k := n * 7;
+    s[0].walk_body[k] = s[0].solid_x[i]; s[0].walk_body[k + 1] = -1; s[0].walk_body[k + 2] = s[0].solid_z[i];
+    s[0].walk_body[k + 3] = s[0].solid_x[i]; s[0].walk_body[k + 4] = 4; s[0].walk_body[k + 5] = s[0].solid_z[i];
+    s[0].walk_body[k + 6] = s[0].solid_r[i];
+    n += 1;
+  }
+  w: pc.World;
+  w.collision.radius = BODY_R;
+  w.bodies = s[0].walk_body[0..<n * 7];
+  return w;
 }
 kept_in :: (p: Spot) -> Spot {
   r := sqrt(p.x * p.x + p.z * p.z); e: f32 = GROUND_R - BODY_R;
@@ -1610,9 +1637,31 @@ water_in :: (s: [] MyRealm, x: f32, z: f32) -> f32 {
   return s[0].water_r - sqrt(wx * wx + wz * wz);
 }
 
+// One frame of walking on Aethyr's clock (aethyr/loop.coax): the frame's time is clamped and owed,
+// the steps due run (eight at most), and you are drawn between the last two, so where you walk
+// depends on the time walked, never on the frame rate.
 realm_step :: (s: [] MyRealm, dt: f32) {
-  step := clamp(dt, 0, 0.1);
-  s[0].time += step;
+  // a move made outside the steps since the last frame (a drag turns you, a check puts you somewhere)
+  ex := s[0].x - s[0].shown_x; ey := s[0].y - s[0].shown_y; ez := s[0].z - s[0].shown_z; eyaw := s[0].yaw - s[0].shown_yaw;
+  s[0].sim_x += ex; s[0].prev_x += ex; s[0].sim_y += ey; s[0].prev_y += ey;
+  s[0].sim_z += ez; s[0].prev_z += ez; s[0].sim_yaw += eyaw; s[0].prev_yaw += eyaw;
+  s[0].x = s[0].sim_x; s[0].y = s[0].sim_y; s[0].z = s[0].sim_z; s[0].yaw = s[0].sim_yaw;
+  s[0].clock = loop_accept(s[0].clock, cast(f64) dt);
+  for i: 0..<loop_due(s[0].clock) {
+    s[0].prev_x = s[0].x; s[0].prev_y = s[0].y; s[0].prev_z = s[0].z; s[0].prev_yaw = s[0].yaw;
+    walk_step(s, cast(f32) loop_step(s[0].clock));
+  }
+  s[0].clock = loop_ran(s[0].clock);
+  s[0].time += cast(f32) loop_counted(s[0].clock);
+  s[0].sim_x = s[0].x; s[0].sim_y = s[0].y; s[0].sim_z = s[0].z; s[0].sim_yaw = s[0].yaw;
+  a := loop_alpha(s[0].clock);
+  s[0].x = loop_mix(s[0].prev_x, s[0].sim_x, a); s[0].y = loop_mix(s[0].prev_y, s[0].sim_y, a);
+  s[0].z = loop_mix(s[0].prev_z, s[0].sim_z, a);
+  s[0].yaw = s[0].prev_yaw + pc.wrap_angle(s[0].sim_yaw - s[0].prev_yaw) * a;
+  s[0].shown_x = s[0].x; s[0].shown_y = s[0].y; s[0].shown_z = s[0].z; s[0].shown_yaw = s[0].yaw;
+}
+// One fixed step of walking, flying and falling.
+walk_step :: (s: [] MyRealm, step: f32) {
   // the flock drifts after the spot ahead of you
   f := flock_target(s); ease_k := clamp(step * 0.6, 0, 1);
   s[0].flock_x += (f.x - s[0].flock_x) * ease_k; s[0].flock_z += (f.z - s[0].flock_z) * ease_k;
@@ -1757,16 +1806,16 @@ view_rows :: (s: [] MyRealm) {
   s[0].right[0] = rx / sx; s[0].right[1] = 0; s[0].right[2] = rz / sx;
   s[0].up[0] = ux / sy; s[0].up[1] = uy / sy; s[0].up[2] = uz / sy;
 }
-Seen :: struct { x: f32; y: f32; ok: bool; far: f32; }
-seen :: (s: [] MyRealm, x: f32, y: f32, z: f32) -> Seen {
+OnScreen :: struct { x: f32; y: f32; ok: bool; far: f32; }
+seen :: (s: [] MyRealm, x: f32, y: f32, z: f32) -> OnScreen {
   v := s[0].view[..];
   cx := v[0] * x + v[1] * y + v[2] * z + v[3];
   cy := v[4] * x + v[5] * y + v[6] * z + v[7];
   cw := v[12] * x + v[13] * y + v[14] * z + v[15];
-  if cw < 0.3 { return Seen.{x = 0, y = 0, ok = false, far = 0}; }
+  if cw < 0.3 { return OnScreen.{x = 0, y = 0, ok = false, far = 0}; }
   // 2D: things are as big as at the distance a perspective view would show this much
   far := ifx s[0].ortho then SIDE_HALF / tan(cast(f32) FOV * 0.5) else cw;
-  return Seen.{x = (cx / cw * 0.5 + 0.5) * s[0].width, y = (0.5 - cy / cw * 0.5) * s[0].height, ok = true, far = far};
+  return OnScreen.{x = (cx / cw * 0.5 + 0.5) * s[0].width, y = (0.5 - cy / cw * 0.5) * s[0].height, ok = true, far = far};
 }
 
 // ---- input
@@ -2183,9 +2232,9 @@ realm_probe :: (s: [] MyRealm, f: int) -> int #export_c {
   if f == 16 { return s[0].forge_what; }
   // the scene, for an agent's seat (docs/verse/realm-seat.md): facing in hundredths of a degree,
   // the camera, how many entities and characters there are, the talk and the tools on
-  if f == 17 { return cast(int) (s[0].yaw * 18000.0f32 / PI + (ifx s[0].yaw < 0 then -0.5f32 else 0.5f32)); }
+  if f == 17 { return cast(int) (s[0].yaw * 18000.0f32 / pc.PI + (ifx s[0].yaw < 0 then -0.5f32 else 0.5f32)); }
   if f == 18 { return s[0].camera; }
-  if f == 19 { return cast(int) (s[0].pitch * 18000.0f32 / PI + (ifx s[0].pitch < 0 then -0.5f32 else 0.5f32)); }
+  if f == 19 { return cast(int) (s[0].pitch * 18000.0f32 / pc.PI + (ifx s[0].pitch < 0 then -0.5f32 else 0.5f32)); }
   if f >= 2400 && f < 2500 { return redit_probe(s[0].ed[..], f - 2400); }   // the edit layer (verse/edit/edit.coax)
   if f == 64 { return ifx s[0].laid then s[0].ent_n else 0; }
   if f == 65 { return s[0].people; }
@@ -3134,6 +3183,47 @@ edit_opened :: (s: [] MyRealm) { redit_requested(s[0].ed[..], 6); used := redit_
   #assert cast(string) r[0].note[0..<r[0].note_n] == "Sent to the owner.";
 }
 
+// book:begin rates
+// Walking on Aethyr's clock: held keys walk you the same way whatever the frame rate. Five seconds
+// of W and D (walking and turning, into the realm's trees and rocks) in frames of 30, 60, 120 or
+// 144 a second, topped up to the same 320 steps, leave you in the same place to the bit.
+#forall "the walk is the same at 30, 60, 120 and 144 frames a second" r: 0..<4 #steps 120000000 {
+  fps := ifx r == 0 then 30 else ifx r == 1 then 60 else ifx r == 2 then 120 else 144;
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "moonlit-marsh", SPEC);
+  s[0].clock = loop_clock(0);   // from a paid clock: opening drew frames
+  w := realm_key(s[..], t[..], 'w', true); d := realm_key(s[..], t[..], 'd', true);
+  fed := 0.0f64;
+  for f: 0..<fps * 5 { realm_step(s[..], 1.0f32 / cast(f32) fps); fed += cast(f64) (1.0f32 / cast(f32) fps); }
+  realm_step(s[..], cast(f32) (5.005 - fed));
+  #assert s[0].clock.ticks == 320 && s[0].clock.stalls == 0 && s[0].clock.dropped_ns == 0;
+  #assert s[0].walked > 10;
+  // what 60 frames a second leaves, held to the bit by every rate
+  q: [1] MyRealm; u: [1] Track;
+  opened(q[..], u[..], "moonlit-marsh", SPEC);
+  q[0].clock = loop_clock(0);
+  w2 := realm_key(q[..], u[..], 'w', true); d2 := realm_key(q[..], u[..], 'd', true);
+  for i: 0..<320 { realm_step(q[..], cast(f32) loop_step(q[0].clock)); }
+  #assert q[0].clock.ticks == 320;
+  #assert s[0].sim_x == q[0].sim_x && s[0].sim_z == q[0].sim_z && s[0].sim_yaw == q[0].sim_yaw && s[0].sim_y == q[0].sim_y;
+  #assert s[0].walked == q[0].walked;
+}
+// book:end rates
+
+#test "a frame runs at most eight steps, and a stall's backlog is dropped" {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "moonlit-marsh", SPEC);
+  w := realm_key(s[..], t[..], 'w', true);
+  realm_step(s[..], 3.0);
+  #assert s[0].clock.ran == LOOP_MAX_STEPS && s[0].clock.stalls == 1;
+  #assert s[0].walked <= WALK * LOOP_MAX_STEPS * cast(f32) loop_step(s[0].clock) + 0.001;
+  // a move made outside the steps (a check, a drag) carries into them
+  s[0].x = 1.5; s[0].z = 2.5;
+  realm_step(s[..], 0);
+  #assert abs(s[0].x - 1.5) < 0.0001 && abs(s[0].z - 2.5) < 0.0001;
+  #assert abs(s[0].sim_x - 1.5) < WALK * 0.016 && abs(s[0].sim_z - 2.5) < WALK * 0.016;
+}
+
 #test "JUMP rises and falls back; FLY lifts you and lands you; the walls still hold on the ground" {
   s: [1] MyRealm; t: [1] Track;
   opened(s[..], t[..], "moonlit-marsh", SPEC);
@@ -3382,9 +3472,9 @@ action_text :: (s: [] MyRealm) -> string { return cast(string) s[0].outbox[0..<s
   #assert realm_probe(s[..], 1700) == cm_of(s[0].person_x[0]) && realm_probe(s[..], 1701) == cm_of(s[0].person_z[0]);
   #assert realm_probe(s[..], 1700 + 2 * s[0].people) == PROBE_NONE;
   #assert (realm_probe(s[..], 69) & (1 << TOOL_TALK)) != 0;
-  s[0].yaw = PI / 2;
+  s[0].yaw = pc.PI / 2;
   #assert realm_probe(s[..], 17) == 9000;
-  s[0].yaw = -PI;
+  s[0].yaw = -pc.PI;
   #assert realm_probe(s[..], 17) == -18000;
   k := realm_key(s[..], t[..], 'e', true);
   realm_message(s[..], t[..], MSG_TEXT, "who are you?");

@@ -12,8 +12,8 @@
 > each realm engine's `#load` closure and fails a realm that no longer loads
 > a shared module it is recorded to run on. The cross-realm checks hold the
 > camera, the feet and replay to one rule in all seven walking realms. The
-> example below runs natively in debug and release. Not done: made realms
-> still walk on their own per-frame step, the space games and Hold the
+> example below runs natively in debug and release. Made realms walk on the
+> clock and the shared walker's push (#12721). Not done: the space games and Hold the
 > Stair have their own cameras and input, iOS's Metal host allocates on its
 > own, and no recorded session per realm replays in the browser yet. See
 > [Still to do](#still-to-do).
@@ -92,7 +92,7 @@ InvRealm :: struct { slug: string; want: string; units: string; }
 INV_REALMS :: [15] InvRealm.[
   InvRealm.{slug = "the-grid", want = "loop input replay rand query ground walk follow flight",
     units = "apps/openagents-web/newland.coax verse/gridwalk.coax"},
-  InvRealm.{slug = "made realms", want = "input",
+  InvRealm.{slug = "made realms", want = "loop input query ground walk follow flight",
     units = "apps/openagents-web/myrealm.coax verse/edit/computer-wire.coax coax/lib/crypto/entropy.coax"},
   InvRealm.{slug = "haunted-house", want = "loop input query ground walk player follow flight",
     units = "apps/openagents-web/realm.coax verse/haunt.coax verse/haunt-buffer.coax aethyr/player.coax verse/grid.coax aethyr/particles.coax aethyr/cinematic.coax verse/setpiece.coax"},
@@ -206,11 +206,18 @@ ok   drop (1 unit): none
 realm-inventory: 15 of 15 realms keep their record
 ```
 
+Since #12721 made realms' line reads
+`ok   made realms (3 units): loop input query ground walk follow flight`.
+
 Read across, the gaps are the remaining migration. Every walker loads
 `flight.coax`, because the walker owns the per-step flight hook, and Fairy
-Forest is the only realm whose profile turns it on. Made realms load only
-the input rules: `realm_step` in `apps/openagents-web/myrealm.coax` clamps
-the frame to 0.1 s and moves you once a frame with its own `walk_to`. The
+Forest is the only realm whose profile turns it on. Made realms keep their
+own controls (W and S walk, A and D turn) but, since #12721, `realm_step` in
+`apps/openagents-web/myrealm.coax` runs them in `aethyr/loop.coax`'s fixed
+1/64 s steps (eight at most a frame) and draws you between the last two, and
+`walk_to` is pushed out of what stands by `aethyr/walk.coax`'s `move_across`.
+`aethyr/tests/cross-realm-made.coax` holds its feet and replay, and
+`myrealm.coax` checks the same walk at 30, 60, 120 and 144 FPS. The
 space games, Hold the Stair and Watchtower have the clock and nothing else.
 Drop's realm has no fixed steps.
 
@@ -304,7 +311,7 @@ profiles.
 | Realm | Remaining migration |
 | --- | --- |
 | The Grid | Other people as chapter 6 entities, and the Grid's content apart from the homepage's scene ([chapter 56](ch056-the-grid.md)). |
-| Made realms | Walking on `aethyr/walk.coax` and `aethyr/loop.coax` in place of `realm_step`'s per-frame move. Then camera modes, side-view collision and the drop realm's walk and follow. |
+| Made realms | Camera modes, side-view collision and the drop realm's walk and follow. The fixed steps and the walker's push landed in #12721. |
 | Everglade | Forest-specific spatial and body adapters, the edge hold, effect plumbing and a complete recorded session. The owner is changing it now (#12705–#12718), so it is left alone here. |
 | Dead Gears | Rule and input adapters, and the arena's spatial representation. |
 | Ice Cream Man | Its own action controls (sprint, fire, use, tools). Approving its new camera look waits for the owner (NEEDS_OWNER.md). |

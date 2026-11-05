@@ -89,6 +89,7 @@ coax/bin/coax mutate aethyr/loop.coax
 coax/web/tool.sh aethyr/refusals.coax      # mixing spaces fails to compile
 coax/bin/coax test aethyr/tests/cross-realm.coax         # every walking realm: camera, feet, replay
 coax/bin/coax test aethyr/tests/cross-realm-floor.coax   # the floor grid from any position
+coax/bin/coax test aethyr/tests/cross-realm-made.coax    # made realms: feet and replay on the clock
 python3 psionic/tests/book.py --book aethyr --coax coax/bin/coax   # the book and its examples
 ```
 

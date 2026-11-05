@@ -28,7 +28,7 @@ InvRealm :: struct { slug: string; want: string; units: string; }
 INV_REALMS :: [15] InvRealm.[
   InvRealm.{slug = "the-grid", want = "loop input replay rand query ground walk follow flight",
     units = "apps/openagents-web/newland.coax verse/gridwalk.coax"},
-  InvRealm.{slug = "made realms", want = "input",
+  InvRealm.{slug = "made realms", want = "loop input query ground walk follow flight",
     units = "apps/openagents-web/myrealm.coax verse/edit/computer-wire.coax coax/lib/crypto/entropy.coax"},
   InvRealm.{slug = "haunted-house", want = "loop input query ground walk player follow flight",
     units = "apps/openagents-web/realm.coax verse/haunt.coax verse/haunt-buffer.coax aethyr/player.coax verse/grid.coax aethyr/particles.coax aethyr/cinematic.coax verse/setpiece.coax"},

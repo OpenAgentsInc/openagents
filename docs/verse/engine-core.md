@@ -371,6 +371,14 @@ and a 0.4 m step up and off, at 60 FPS against the 64 Hz steps.
   exactly the world's 4 m lattice lines within the fog's reach inside the
   edge, the pieces cover them on the 8 m segments, and a step to the side
   keeps the same lines and pieces.
+- **Made realms** (`cross-realm-made.coax`, its own file because
+  `apps/openagents-web/myrealm.coax` declares names the walker's modules also
+  use; #12721): a made realm keeps its own controls but steps on
+  `aethyr/loop.coax` and is pushed out of what stands by the walker's
+  `move_across`. A walk, a turn and two jumps at 60 FPS draw you between the
+  last two steps, on the ground at 0; the session replays bit for bit with a
+  0.25 s stall every 97 frames, and a frame changed at 150 is found at 150.
+  `myrealm.coax` checks the same walk at 30, 60, 120 and 144 FPS.
 
 ## The Grid on the engine core (`verse/gridwalk.coax`)
 
