@@ -4531,8 +4531,8 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   ranger_load(d[..]);
   rig := ranger_rig(d[..]);
   worst := 0.0f32;
-  check: [1152] f32;   // RANGER_CHECK, packed (9 a row)
-  skin_unhex_f32(check[..], RANGER_CHECK);
+  check: [RANGER_CHECK_N] f32;
+  ranger_check(check[..]);
   for row: 0..<check.count / 9 {
     c := check[row * 9];
     clip := cast(int) c; at := check[row * 9 + 1]; j := cast(int) check[row * 9 + 2];

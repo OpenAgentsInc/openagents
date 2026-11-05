@@ -674,25 +674,26 @@ def f9(x):
     return t if any(c in t for c in ".en") else t + ".0"
 
 
-# A table longer than this is packed as text, 8 hex digits a value (its 32 bits: an f32's as its
-# literal parses, an int's two's complement), and unpacked at load (aethyr/skin.coax skin_unhex_*):
-# a literal array costs the compiler a compile-time step an element, a string none (#12904).
-PACK_OVER = 100
+# A table longer than this is no constant (#12904): the compiler evaluates a constant array an element a
+# compile-time step, and every unit that loads the rig paid for its tables. The rig's load function
+# assigns it as a literal instead (the same 4 bytes a value in the program's data), and a check table
+# is a function that fills an array (P_CHECK_N values).
+LONG = 100
 
 
-def packed(name, kind, values, fmt):
-    import struct
-    if kind == "f32":
-        hexes = [struct.pack(">f", float(fmt(v))).hex() for v in values]
-    else:
-        hexes = [struct.pack(">I", int(v) & 0xFFFFFFFF).hex() for v in values]
-    return f"{name} :: \"" + "".join(hexes) + "\";   // " + f"{len(values)} {kind}, packed (aethyr/skin.coax skin_unhex_{kind})"
+def literal(kind, values, per_line, fmt):
+    lines = [", ".join(fmt(v) for v in values[i:i + per_line]) for i in range(0, len(values), per_line)]
+    return f"[{len(values)}] {kind}.[\n    " + ",\n    ".join(lines) + "\n  ]"
 
 
-def load_line(field, name, kind, n):
-    if n > PACK_OVER:
-        return f"  skin_unhex_{kind}(d[0].{field}[..], {name});"
-    return f"  d[0].{field} = {name};"
+def check_fn(name, values, per_line, fmt):
+    n = len(values)
+    return "\n".join([f"{name}_N :: {n};",
+                      f"{name.lower()} :: (out: [] f32) {{",
+                      f"  t: [1] [{n}] f32;",
+                      f"  t[0] = {literal('f32', values, per_line, fmt)};",
+                      f"  for i: 0..<out.count {{ if i < {n} {{ out[i] = t[0][i]; }} }}",
+                      "}"])
 
 
 def bind_rows(sk):
@@ -745,9 +746,13 @@ def rig_coax(manifest, rig, parts, prefix):
             if j == pel:
                 keys_t["male"] += [(t,) + tuple(v) for t, v in c["move"]["male"]]
                 keys_t["female"] += [(t,) + tuple(v) for t, v in c["move"]["female"]]
+    long = {}   # the tables the load assigns as literals (LONG)
     def arr(name, kind, values, per_line, fmt):
-        if len(values) > PACK_OVER:
-            return packed(name, kind, values, fmt)
+        if len(values) > LONG:
+            if name.endswith("_CHECK"):
+                return check_fn(name, values, per_line, fmt)
+            long[name] = literal(kind, values, per_line, fmt)
+            return f"// {name}: {len(values)} {kind}, assigned by {prefix.lower()}_load (no constant: #12904)"
         lines = [", ".join(fmt(v) for v in values[i:i + per_line]) for i in range(0, len(values), per_line)]
         return f"{name} :: [{len(values)}] {kind}.[\n  " + ",\n  ".join(lines) + "\n];"
     flat = lambda rows: [v for row in rows for v in row]
@@ -802,11 +807,8 @@ def rig_coax(manifest, rig, parts, prefix):
            f"  keys_t_m: [{4 * len(keys_t['male'])}] f32; keys_t_f: [{4 * len(keys_t['female'])}] f32; keys_r: [{5 * len(kr)}] f32;",
            "}",
            f"{P.lower()}_load :: (d: [] {P.title()}) {{",
-           *[load_line(n, f"{P}_{n.upper()}", k, len(v)) for n, k, v in (
-               ("parent", "int", m.parent), ("rest_m", "f32", [0] * 7 * J), ("rest_f", "f32", [0] * 7 * J),
-               ("bind_m", "f32", [0] * 12 * J), ("bind_f", "f32", [0] * 12 * J), ("duration", "f32", cl), ("distance", "f32", cl),
-               ("track_t", "int", tt), ("track_r", "int", tr), ("keys_t_m", "f32", [0] * 4 * len(keys_t["male"])),
-               ("keys_t_f", "f32", [0] * 4 * len(keys_t["female"])), ("keys_r", "f32", [0] * 5 * len(kr)))],
+           *[f"  d[0].{n} = {long.get(f'{P}_{n.upper()}', f'{P}_{n.upper()}')};" for n in ("parent", "rest_m", "rest_f", "bind_m", "bind_f", "duration", "distance",
+                                                        "track_t", "track_r", "keys_t_m", "keys_t_f", "keys_r")],
            "}",
            "// Body 0 is the male skeleton, 1 the female; they share the clips' rotations.",
            f"{P.lower()}_rig :: (d: [] {P.title()}, female: bool) -> SkinRig {{",

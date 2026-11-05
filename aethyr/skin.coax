@@ -55,31 +55,6 @@ Skin :: struct {
   now: [SKIN_JOINTS_MAX] SkinLocal;    // the pose now
 }
 
-// A rig's long table as its generator packs it (verse/tools/people.py packed, #12904): 8 hex digits a
-// value, its 32 bits (an f32's, or an int's two's complement), unpacked at load. A literal array costs
-// the compiler a compile-time step an element; a string costs none.
-skin_hex_bits :: (hex: string, i: int) -> u32 {
-  v: u32 = 0;
-  for k: 0..<8 { c := cast(u32) hex[i * 8 + k]; v = (v << 4) | (ifx c <= 57 then c - 48 else c - 87); }
-  return v;
-}
-skin_unhex_f32 :: (out: [] f32, hex: string) {
-  for i: 0..<out.count { if (i + 1) * 8 > hex.count { return; } out[i] = f32_from_bits(skin_hex_bits(hex, i)); }
-}
-skin_unhex_int :: (out: [] int, hex: string) {
-  for i: 0..<out.count {
-    if (i + 1) * 8 > hex.count { return; }
-    v := cast(int) skin_hex_bits(hex, i);
-    out[i] = ifx v >= 2147483648 then v - 4294967296 else v;
-  }
-}
-#test "skin: a packed table unpacks to its values" {
-  f: [3] f32; skin_unhex_f32(f[..], "3f800000bf0000000000000c");
-  #assert f[0] == 1 && f[1] == -0.5 && f[2] > 0 && f[2] < 0.000001;
-  n: [2] int; skin_unhex_int(n[..], "ffffffff0000002a");
-  #assert n[0] == -1 && n[1] == 42;
-}
-
 // The clip a character moving at speed m/s plays, on the ground or not (Motion::of).
 skin_motion :: (speed: f32, airborne: bool) -> int {
   if airborne { return SKIN_JUMP; }

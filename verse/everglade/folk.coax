@@ -370,8 +370,8 @@ folk_pose :: (r: SkinRig, f: [] Folk, sk: [] Skin, dt: f32, out: [] f32) {
   d: [1] People;
   people_load(d[..]);
   worst := 0.0f32;
-  check: [1596] f32;   // PEOPLE_CHECK, packed (7 a row)
-  skin_unhex_f32(check[..], PEOPLE_CHECK);
+  check: [PEOPLE_CHECK_N] f32;
+  people_check(check[..]);
   for row: 0..<check.count / 7 {
     body := cast(int) check[row * 7]; clip := cast(int) check[row * 7 + 1];
     at := check[row * 7 + 2]; j := cast(int) check[row * 7 + 3];
