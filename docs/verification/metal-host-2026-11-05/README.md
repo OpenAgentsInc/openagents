@@ -550,3 +550,36 @@ Generated CPU-source joins remain the earlier78-input renderer and16-input
 network receipts. This checkpoint does not qualify remote authenticated
 upgrade headers/cookies or claim SDK/kernel buffers share application bounds.
 The experimental presentation/compiler/default gates remain unchanged.
+
+## Draining sound packet capacity
+
+The MF reader now requires the producer's additive
+`coaxial_sounds_capacity` observation and calls the unchanged shared
+`htb_copy_span` authority before publishing its pointer/length to Swift.
+Refusal returns no pointer and zero bytes. Reading the logical length still
+drains exactly once. No packet parser or mixer arithmetic changes.
+
+`audio-packet-red/` catches the prior reader returning lengths5 and
+4,294,967,295 against a four-byte allocation, a logical length with a null
+address, and a wrapping complete allocation. `audio-packet-final/` and
+`audio-packet-final-asan/` pass the actual eight-case fault workload, including
+valid empty/full packets and recovery after every refusal. The observer
+authority kills68 root mutants without equivalents; an earlier mutation run
+caught missing exact-capacity/prefix cases, which are now explicit checks.
+
+`audio-packet-production/` and `audio-packet-production-asan/` observe the
+real frozen producer's443-byte startup packet, preserve every byte including
+`!room room`, fetch/cue/bus/bed commands, and observe an empty second drain.
+`audio-packet-producer/` retains the exact matching `a0f3f8b518` face and unit
+objects with only the earlier three bank observations plus this fourth
+additive `sizeof` export. No new primary emission or header substitution is
+used. The first test-face compile exposed its old header's missing optional
+browser lifecycle declarations; the native-only fixture explicitly excludes
+that unused browser wrapper. The caught compile log is retained.
+
+`audio-packet-sdk/artifacts.sha256` joins the final reader/fixture/probe source,
+objects, generated inputs and normal/instrumented programs. ASan covers the
+reader, Swift probe and generated renderer/texture C; the frozen primary and
+fixture Coax object are uninstrumented, and leak detection is disabled. These
+checks open no GPU or audio device. Existing DSP/sample gates are unchanged
+and were not repeated.

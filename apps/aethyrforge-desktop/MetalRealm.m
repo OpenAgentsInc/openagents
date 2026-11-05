@@ -519,7 +519,7 @@ int64_t mf_audio_memory_words(void *memory,int64_t ticket){return memory?ham_wor
 bool mf_audio_memory_release(void *memory,int64_t ticket){return memory&&ham_release((coax_v_t_HostAudioMemory){memory,1},ticket);}
 int64_t mf_audio_memory_total(void *memory){return memory?((coax_t_HostAudioMemory*)memory)->total:0;}
 void mf_audio_memory_close(void *memory){free(memory);}
-const uint8_t *mf_sound_commands(void *host,size_t *n){MFRealm *r=(__bridge MFRealm*)host;*n=r->face.sounds_len?r->face.sounds_len(r->state):0;return r->face.sounds?(void*)r->face.sounds(r->state):NULL;}
+const uint8_t *mf_sound_commands(void *host,size_t *n){MFRealm *r=(__bridge MFRealm*)host;*n=0;if(!r->face.sounds||!r->face.sounds_len||!r->face.sounds_capacity)return NULL;size_t count=r->face.sounds_len(r->state),capacity=r->face.sounds_capacity(r->state);uintptr_t p=r->face.sounds(r->state);if(!htb_copy_span(p,capacity,count,UINT64_MAX))return NULL;*n=count;return(void*)p;}
 int32_t mf_sound_probe(void *host,int32_t slot,float right,float ahead,float up){MFRealm *r=(__bridge MFRealm*)host;return r->face.sound_probe?r->face.sound_probe(r->state,slot,right,ahead,up):0;}
 bool mf_audio_decode(const uint8_t *bytes,size_t n,MFAudioEffect *out){coax_t_AudioHostEffect e=audio_host_parse((coax_string){(const char*)bytes,(int64_t)n});*out=(MFAudioEffect){e.kind,(const uint8_t*)e.name.data,(size_t)e.name.count,(const uint8_t*)e.id.data,(size_t)e.id.count,e.gain,e.pan,e.delay,e.lowpass,e.rate,e.wet};return e.kind!=0;}
 bool mf_audio_asset_name(const uint8_t *bytes,size_t n){return apv_asset_name((coax_string){(const char*)bytes,(int64_t)n});}

@@ -1,0 +1,15 @@
+// Author and admit actual packet-span observations, separately from audio DSP.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../aethyr/host/audio-packet-conformance.coax";
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])<3 {tool_errln("usage: metal-audio-packet ROOT SDK NEW_OUTPUT [--existing] [--producer DYLIB]");return 2;}
+ root:=args_at(a[..],0);sdk:=args_at(a[..],1);dir:=args_at(a[..],2);if !fs_mkdir(dir){return 1;}paths:[5][4096]u8;
+ production:=args_has(a[..],"--producer");plan:=fs_join(dir,"plan.json",paths[0][..]);receipt:=fs_join(dir,"receipt.json",paths[1][..]);bytes:[4096]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],"copyCapacity");jo_int(o[..],ifx production then 4096 else 4);jo_key(o[..],"operations");jo_arr(o[..]);
+ if production {jo_obj(o[..]);jo_key(o[..],"frame");jo_bool(o[..],true);jo_end(o[..]);jo_obj(o[..]);jo_end(o[..]);}else {for length,i:[8]int.[0,4,5,4294967295,1,0,4,-1] {jo_obj(o[..]);if length>=0 {jo_key(o[..],"kind");jo_int(o[..],ifx i==4 then 931 else ifx i==5 then 932 else 930);jo_key(o[..],"length");jo_int(o[..],length);}jo_end(o[..]);}}jo_end(o[..]);jo_end(o[..]);if o[0].bad||!fs_write(plan,jo_text(o[..])){return 1;}
+ if !args_has(a[..],"--existing") {argv:=[5]string.[fs_join(sdk,"MetalAudioPacket",paths[2][..]),dir,args_value(a[..],"--producer",fs_join(sdk,"libpacketfixture.dylib",paths[3][..])),plan,receipt];out:[65536]u8;err:[65536]u8;r:=proc_run(argv[..],60000,out[..],err[..]);if !fs_write(fs_join(dir,"sdk.stderr",paths[4][..]),cast(string)err[0..<r.err_n])||r.started!=0||r.status!=0||r.timed_out||r.cut {tool_errln(cast(string)err[0..<r.err_n]);return 1;}}
+ raw:[16384]u8;n:=fs_read(receipt,raw[..]);nodes:[256]JvNode;doc:[1]Jv;if n<1||!jv_parse(doc[..],cast(string)raw[0..<n],nodes[..]){return 1;}d:=doc[0];list:=jv_get(d,0,"observations");rows:[24]int;count:=ifx production then 6 else 24;if jv_len(d,list)!=count{return 1;}for i:0..<count {rows[i]=jv_int(d,jv_at(d,list,i),-1);}packet:[4096]u8;pn:=jv_str(d,jv_at(d,jv_get(d,0,"packets"),0),packet[..]);ok:=ifx production then pn>0&&happ_producer(rows[0..<6],cast(string)packet[0..<pn]) else happ_accept(rows[..]);print("Actual Metal draining packet measured spans:%\n",ok);return ifx ok then 0 else 1;
+}

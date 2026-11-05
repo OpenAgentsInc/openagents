@@ -1,0 +1,32 @@
+// Measured draining-packet spans from an actual native face/reader.
+#authority;
+#test "packet reader observations include full spans, empty drains and each refusal" {
+  rows:=[24]int.[1,0,0, 1,4,261, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 1,4,261, 1,0,0];
+  #assert happ_accept(rows[..]);
+  for i:0..<rows.count {changed:=rows;changed[i]+=1;#assert !happ_accept(changed[..]);}
+  #assert !happ_accept(rows[0..<23]);
+}
+#test "a real startup packet retains its bytes and drains once" {
+  packet:="!room room\n!fetch fire-cast-a\n";sum:=0;for b:packet {sum+=int(b);}
+  rows:=[6]int.[1,packet.count,sum,1,0,0];
+  #assert happ_producer(rows[..],packet);
+  for i:0..<rows.count {changed:=rows;changed[i]+=1;#assert !happ_producer(changed[..],packet);}
+  #assert !happ_producer(rows[0..<5],packet) && !happ_producer(rows[..],"?room room\n!fetch fire-cast-a\n");
+  empty:=[6]int.[1,0,0,1,0,0];#assert !happ_producer(empty[..],"");
+  prefix:="!room room\n";small_sum:=0;for b:prefix {small_sum+=int(b);}small:=[6]int.[1,prefix.count,small_sum,1,0,0];#assert happ_producer(small[..],prefix);
+  short:=[6]int.[1,1,33,1,0,0];#assert !happ_producer(short[..],"!");
+  large:[4097]u8;for i:0..<large.count {large[i]='x';}for c,i:"!room room\n" {large[i]=c;}total:=0;for b:large {total+=int(b);}
+  big:=[6]int.[1,4097,total,1,0,0];#assert !happ_producer(big[..],cast(string)large[..]);
+  edge:=[6]int.[1,4096,total-int(large[4096]),1,0,0];#assert happ_producer(edge[..],cast(string)large[0..<4096]);
+}
+happ_accept :: (rows:[]int)->bool #export_c {
+  want:=[24]int.[1,0,0, 1,4,261, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 1,4,261, 1,0,0];
+  if rows.count!=want.count {return false;}
+  for value,i:want {if rows[i]!=value {return false;}}
+  return true;
+}
+happ_producer :: (rows:[]int,packet:string)->bool #export_c {
+  if rows.count!=6||rows[0]!=1||rows[1]>4096||rows[1]!=packet.count||rows[3]!=1||rows[4]!=0||rows[5]!=0 {return false;}
+  prefix:="!room room\n";if packet.count<prefix.count||packet[0..<prefix.count]!=prefix {return false;}
+  sum:=0;for b:packet {sum+=int(b);}return sum==rows[2];
+}
