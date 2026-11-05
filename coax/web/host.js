@@ -1946,35 +1946,28 @@ function wavSeconds(a) {
   const v = new DataView(b.buffer, b.byteOffset, b.byteLength), rate = v.getUint32(24, true), frame = v.getUint16(32, true);
   return rate > 0 && frame > 0 ? (b.length - 44) / frame / rate : 2;
 }
-if (globalThis.coaxialClip === true) {
-  // the recording starts after the frame drawn now: its first frame is the next step's
-  globalThis.coaxialClipMark = () => { clipMark = clipNow; return !!audio; };
-  // The clip's sound from its mark for `seconds`, `fps` frames a second (its first frame
-  // drawn one step after the mark), as a 16-bit stereo WAV at `rate`, base64; and the lines
-  // heard in it, their peak and RMS (dBFS) in clipAudioFacts.
-  globalThis.coaxialClipMix = async (seconds, fps, rate = 48000) => {
-    if (!audio) return "";
-    const n = Math.round(seconds * rate), o = new OfflineAudioContext(2, n, rate), zero = clipMark + 1000 / fps;
+async function renderSoundLines(lines, seconds, zero, rate, asset = soundAsset, decode = decoded) {
+    const n = Math.round(seconds * rate), o = new OfflineAudioContext(2, n, rate);
     const out = o.createGain(); out.connect(o.destination);
     const bedsAt = new Map(), cb = soundBus(o, out);
-    for (const [ms, line] of clipHeard) {
+    for (const [ms, line] of lines) {
       const at = (ms - zero) / 1000;
       if (line[0] === "!" || line[0] === "-") {
         const [word, arg] = line.split(" ");
-        if (word === "!room" && !cb.roomed) { const a = soundAsset(arg); if (a) { try { cb.room.buffer = await decoded(a); cb.roomed = true; } catch {} } }
-        else if (word !== "!room" && word !== "!fetch") busLine(o, cb, line, Math.max(0, at), decoded);
+        if (word === "!room" && !cb.roomed) { const a = asset(arg); if (a) { try { cb.room.buffer = await decode(a); cb.roomed = true; } catch {} } }
+        else if (word !== "!room" && word !== "!fetch") busLine(o, cb, line, Math.max(0, at), decode);
         continue;
       }
       if (line[0] === "~") {
         const [name, gain, pan] = line.slice(1).split(" ");
-        const a = soundAsset(name);
+        const a = asset(name);
         if (!a) continue;
         let b = bedsAt.get(name);
         const g = Math.max(0, Math.min(1, Number(gain) || 0)), p = Math.max(-1, Math.min(1, Number(pan) || 0));
         if (!b) {
           b = { gain: o.createGain(), pan: o.createStereoPanner() }; bedsAt.set(name, b);
           b.gain.gain.value = 0; b.pan.pan.value = p; b.gain.connect(b.pan).connect(out);
-          const s = o.createBufferSource(); s.buffer = await decoded(a); s.loop = true; s.connect(b.gain); s.start(0, Math.max(0, -at) % s.buffer.duration);
+          const s = o.createBufferSource(); s.buffer = await decode(a); s.loop = true; s.connect(b.gain); s.start(0, Math.max(0, -at) % s.buffer.duration);
         }
         // as bedLine eases them: a first line over 0.5 s, the next over 0.25 s
         const tc = b.started ? 0.25 : 0.5; b.started = true;
@@ -1982,9 +1975,9 @@ if (globalThis.coaxialClip === true) {
         continue;
       }
       const [name, gain, pan, delay, lowpass] = line.split(" ");
-      const a = soundAsset(name);
+      const a = asset(name);
       if (!a) continue;
-      const b = await decoded(a), start = at + Math.max(0, Math.min(2, Number(delay) || 0));
+      const b = await decode(a), start = at + Math.max(0, Math.min(2, Number(delay) || 0));
       if (start + b.duration <= 0 || start >= seconds) continue;
       const f = line.split(" ");
       if (f.length === 8) {
@@ -1996,7 +1989,16 @@ if (globalThis.coaxialClip === true) {
       const s = soundVoice(o, b, gain, pan, out, lowpass);
       if (start >= 0) s.start(start); else s.start(0, -start);
     }
-    const r = await o.startRendering(), l = r.getChannelData(0), ri = r.getChannelData(1);
+    return await o.startRendering();
+}
+if (globalThis.coaxialClip === true) {
+  // the recording starts after the frame drawn now: its first frame is the next step's
+  globalThis.coaxialClipMark = () => { clipMark = clipNow; return !!audio; };
+  // The same offline graph used by conformance, serialized as the clip's WAV.
+  globalThis.coaxialClipMix = async (seconds, fps, rate = 48000) => {
+    if (!audio) return "";
+    const n = Math.round(seconds * rate), zero = clipMark + 1000 / fps;
+    const r = await renderSoundLines(clipHeard, seconds, zero, rate), l = r.getChannelData(0), ri = r.getChannelData(1);
     let peak = 0, sum = 0;
     const bytes = new Uint8Array(44 + n * 4), v = new DataView(bytes.buffer);
     const tag = (at, t) => { for (let i = 0; i < 4; i++) v.setUint8(at + i, t.charCodeAt(i)); };
@@ -2577,7 +2579,9 @@ if (dev) {
   globalThis.coaxial.audio = { add: (name, bytes) => { assets.push({ i: assets.length, kind: "sound", name, bytes, done: true }); },
     start: () => { startAudio(); return audio; }, play: (text) => playSoundText(text), playing: () => playing,
     heard: () => heard.slice(), probe: (slot, right, ahead, up) => engine?.exports.coaxial_sound_probe?.(arena.state, slot, right, ahead, up) ?? -1, beds: () => [...beds].map(([name, b]) => `${name} ${b.gain.gain.value.toFixed(3)} ${b.pan.pan.value.toFixed(3)}`),
-    decode: (name) => decoded(soundAsset(name)), voice: soundVoice, mixed: () => mixed };
+    decode: (name) => decoded(soundAsset(name)), voice: soundVoice, mixed: () => mixed,
+    bus: soundBus, busVoice, busLine,
+    offline: (lines, frames, buffers) => renderSoundLines(lines.map(([frame,line])=>[frame*1000/48000,line]), frames / 48000, 0, 48000, name => ({name}), a => Promise.resolve(buffers[a.name])) };
   globalThis.coaxial.renderLedger = () => gpu?.renderer?.ready ? gpu.renderer.ledger() : null;
   globalThis.coaxial.renderLedgerLive = (slot, generation) => engine?.exports.coaxial_render_live?.(slot, generation) ?? -1;
   globalThis.coaxial.renderLedgerRelease = (slot, generation) => engine?.exports.coaxial_render_release?.(slot, generation) ?? -1;

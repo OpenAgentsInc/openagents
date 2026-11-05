@@ -1,0 +1,33 @@
+// Read retained outputs without rerunning the browser or native SDK. A time
+// shift is a labelled diagnostic only, never applied to the raw sample gate.
+#import "Basic";
+#load "pcm-compare.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/args.coax";
+#load "../../coax/lib/json/json.coax";
+hpa_measure :: (o:[]Jo,q:HostPcmCompare) {
+  jo_key(o,"samples");jo_int(o,q.samples);jo_key(o,"shape");jo_bool(o,q.shape);jo_key(o,"over_2pow_minus20");jo_int(o,q.over);jo_key(o,"nonfinite");jo_int(o,q.nonfinite);
+  jo_key(o,"max_abs_f64_bits");jo_int(o,cast(int)f64_bits(q.max_abs));jo_key(o,"browser_peak_f64_bits");jo_int(o,cast(int)f64_bits(q.peak_a));jo_key(o,"native_peak_f64_bits");jo_int(o,cast(int)f64_bits(q.peak_b));
+  jo_key(o,"browser_squares_f64_bits");jo_int(o,cast(int)f64_bits(q.squares_a));jo_key(o,"native_squares_f64_bits");jo_int(o,cast(int)f64_bits(q.squares_b));jo_key(o,"first_browser_frame");jo_int(o,q.first_a);jo_key(o,"first_native_frame");jo_int(o,q.first_b);
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=4 {tool_errln("usage: compare-audio-frames BROWSER_DIR NATIVE_DIR OUT.json DIAGNOSTIC_DELAY_FRAMES");return 2;}
+  delay:=args_whole(args_at(a[..],3));if delay<0 || delay>48000 {return 2;}
+  report:[32768]u8;o:[1]Jo;jo_start(o[..],report[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.host.audio-comparison.v1");jo_key(o[..],"rate");jo_int(o[..],48000);jo_key(o[..],"cases");jo_arr(o[..]);
+  left:[2097152]u8;right:[2097152]u8;paths:[2][4096]u8;passed:=true;
+  for name:[11]string.["legacy-left.f32","legacy-right.f32","legacy-filter-delay.f32","stereo-pan.f32","rate.f32","room.f32","bed.f32","bed-update.f32","stop.f32","stop-tail.f32","loud.f32"] {
+    an:=fs_read(fs_join(args_at(a[..],0),name,paths[0][..]),left[..]);bn:=fs_read(fs_join(args_at(a[..],1),name,paths[1][..]),right[..]);if an<0 || bn<0 {return 1;}
+    q:=hpcm_compare(left[0..<an],right[0..<bn]);simple:=(name.count>=7 && name[0..<7]=="legacy-") || name=="stereo-pan.f32";
+    passed=passed && q.shape && q.nonfinite==0 && (!simple || q.over==0);
+    jo_obj(o[..]);jo_key(o[..],"file");jo_str(o[..],name);jo_key(o[..],"simple_voice_gate");jo_bool(o[..],simple);jo_key(o[..],"sample_gate_passed");if simple {jo_bool(o[..],q.shape && q.nonfinite==0 && q.over==0);}else {jo_null(o[..]);}
+    jo_key(o[..],"raw");jo_obj(o[..]);hpa_measure(o[..],q);jo_end(o[..]);
+    print("Raw %: maxabs %, over %, peak browser/native %/%, first %/%.\n",name,q.max_abs,q.over,q.peak_a,q.peak_b,q.first_a,q.first_b);
+    if !simple && name!="bed.f32" && name!="bed-update.f32" && an==bn && an>delay*8 {
+      d:=hpcm_compare(left[delay*8..<an],right[0..<bn-delay*8]);jo_key(o[..],"diagnostic");jo_obj(o[..]);jo_key(o[..],"browser_skip_frames");jo_int(o[..],delay);jo_key(o[..],"native_omitted_tail_frames");jo_int(o[..],delay);hpa_measure(o[..],d);jo_end(o[..]);
+      print("Diagnostic % (browser +% frames, not a gate): maxabs %, over %.\n",name,delay,d.max_abs,d.over);
+    }
+    jo_end(o[..]);
+  }
+  jo_end(o[..]);jo_end(o[..]);if o[0].bad || !fs_write(args_at(a[..],2),jo_text(o[..])) {return 1;}return ifx passed then 0 else 1;
+}
