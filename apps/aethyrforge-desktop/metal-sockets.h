@@ -1,0 +1,22 @@
+// Platform effects over the shared Coax socket/retained-storage authorities.
+#ifndef FORGE_METAL_SOCKETS_H
+#define FORGE_METAL_SOCKETS_H
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+typedef struct {int64_t id,generation,engine;} MNSocketOwner;
+typedef struct {MNSocketOwner owner;int64_t event;const uint8_t *bytes;size_t count;void *token;} MNSocketEvent;
+void *mn_open(int64_t inbox_capacity);
+bool mn_start(void *context,MNSocketOwner owner,const uint8_t *url,size_t count);
+bool mn_send(void *context,MNSocketOwner owner,const uint8_t *bytes,size_t count);
+void mn_socket_close(void *context,MNSocketOwner owner);
+bool mn_next(void *context,MNSocketEvent *event);
+void mn_done(void *token);
+// Returns immediately; fixed workers retain old effects until they stop.
+void mn_close(void *context);
+// Application-owned storage observations, separate from SDK/kernel buffers.
+int64_t mn_info(void *context,int32_t field);
+int64_t mn_pool_info(int32_t field);
+// Process teardown / test-only join. No further contexts may open afterward.
+void mn_shutdown(void);
+#endif

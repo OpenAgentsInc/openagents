@@ -20,8 +20,8 @@ mb_check_runner :: ()->bool {
  n:=mb_run(cmd[..],out[..]);return n==line.count && cast(string)out[..]==cast(string)line[..];
 }
 mb_unit :: (root:string,work:string,compiler:string,name:string)->bool {
- names:=[10]string.["everglade5e","Everglade-step","Grid","River","Guard-guide-policy","Everglade5e-rules","MetalRender","RenderTexture","fixture","AppKitInput"];
- sources:=[10]string.["apps/aethyrforge-desktop/metal-world.coax","apps/openagents-web/everglade-step.coax","verse/grid.coax","verse/everglade/river.coax","verse/everglade/guard-guide-policy.coax","apps/openagents-web/everglade5e-rules.coax","apps/aethyrforge-desktop/metal-render.coax","aethyr/render/native-texture.coax","aethyr/host/fixture.coax","aethyr/host/appkit-input.coax"];
+ names:=[12]string.["everglade5e","Everglade-step","Grid","River","Guard-guide-policy","Everglade5e-rules","MetalRender","RenderTexture","fixture","AppKitInput","HostNetwork","entropy-policy"];
+ sources:=[12]string.["apps/aethyrforge-desktop/metal-world.coax","apps/openagents-web/everglade-step.coax","verse/grid.coax","verse/everglade/river.coax","verse/everglade/guard-guide-policy.coax","apps/openagents-web/everglade5e-rules.coax","apps/aethyrforge-desktop/metal-render.coax","aethyr/render/native-texture.coax","aethyr/host/fixture.coax","aethyr/host/appkit-input.coax","aethyr/host/native-socket.coax","coax/lib/crypto/entropy.coax"];
  found:=-1;for n,i:names {if n==name {found=i;}}if found<0 {return false;}
  text:[256]u8;o:[1]Jo;jo_start(o[..],text[..]);jo_put(o[..],name);jo_put(o[..],".h");paths:[5][4096]u8;header:=fs_join(work,jo_text(o[..]),paths[0][..]);
  o[0]=Jo.{};jo_start(o[..],text[..]);jo_put(o[..],name);jo_put(o[..],".c");code:=fs_join(work,jo_text(o[..]),paths[1][..]);
@@ -44,6 +44,23 @@ mb_sdk :: (root:string,work:string,sanitize:bool)->bool {
  paths:[2][4096]u8;out:[1048576]u8;
  cc:=[12]string.["/usr/bin/clang","-fobjc-arc","-O2","-ffp-contract=off","-fno-fast-math",ifx sanitize then "-fsanitize=address" else "-g0","-I",work,"-c",fs_join(root,"apps/aethyrforge-desktop/MetalRealm.m",paths[0][..]),"-o",fs_join(work,"MetalRealm.o",paths[1][..])];
  return mb_run(cc[..],out[..])>=0;
+}
+mb_socket_sdk :: (root:string,work:string,sanitize:bool)->bool {
+ paths:[4][4096]u8;out:[1048576]u8;
+ for source,i:[7]string.["HostNetwork.c","entropy-policy.c","apps/aethyrforge-desktop/MetalSockets.c","coax/platform/socket-native.c","coax/platform/tls-native.c","coax/platform/entropy-native.c","coax/platform/entropy-foreign.c"] {
+  object:=[7]string.["HostNetwork.o","entropy-policy.o","MetalSockets.o","socket-native.o","tls-native.o","entropy-native.o","entropy-foreign.o"];
+  cmd:=[16]string.["/usr/bin/clang","-std=gnu11","-O2","-ffp-contract=off","-fno-fast-math","-fblocks",ifx sanitize then "-fsanitize=address" else "-g0","-I",work,"-I",fs_join(root,"coax/platform",paths[0][..]),"-c",fs_join(ifx i<2 then work else root,source,paths[1][..]),"-o",fs_join(work,object[i],paths[2][..]),"-Wno-unused-function"];
+  if mb_run(cmd[..],out[..])<0 {return false;}
+ }return true;
+}
+mb_socket_probe :: (root:string,work:string,sanitize:bool)->bool {
+ paths:[11][4096]u8;out:[1048576]u8;cmd:[40]string;n:=0;
+ for arg:[8]string.["xcrun","swiftc","-O","-parse-as-library","-target","arm64-apple-macos26.0","-import-objc-header",fs_join(root,"apps/aethyrforge-desktop/metal-sockets.h",paths[0][..])] {cmd[n]=arg;n+=1;}
+ if sanitize {cmd[n]="-sanitize=address";n+=1;}
+ cmd[n]=fs_join(root,"apps/aethyrforge-desktop/tests/MetalSocketEffects.swift",paths[1][..]);n+=1;
+ for object,i:[7]string.["HostNetwork.o","entropy-policy.o","MetalSockets.o","socket-native.o","tls-native.o","entropy-native.o","entropy-foreign.o"] {cmd[n]=fs_join(work,object,paths[2+i][..]);n+=1;}
+ for name:[3]string.["Network","Security","CoreFoundation"] {cmd[n]="-framework";cmd[n+1]=name;n+=2;}
+ cmd[n]="-o";cmd[n+1]=fs_join(work,"MetalSocketEffects",paths[9][..]);n+=2;return mb_run(cmd[0..<n],out[..])>=0;
 }
 mb_generated :: (work:string,source:string)->bool {
  if source=="" {return false;}paths:[1][4096]u8;out:[1048576]u8;cc:=[11]string.["/usr/bin/clang","-std=c11","-O2","-ffp-contract=off","-fno-fast-math","-Wno-unused-function","-Wno-unused-variable","-c",source,"-o",fs_join(work,"everglade5e.o",paths[0][..])];return mb_run(cc[..],out[..])>=0;
@@ -139,6 +156,8 @@ tool_main :: ()->int #export_c {
  face_path:[4096]u8;face:=args_value(a[..],"--face",fs_join(root,"apps/openagents-web/everglade5e-face.c",face_path[..]));
  primary_path:[4096]u8;primary:=args_value(a[..],"--producer-object",fs_join(work,"everglade5e.o",primary_path[..]));
  if task=="instrument-render" {return ifx mb_instrument_render(work) then 0 else 1;}
+ if task=="socket-sdk" {return ifx mb_socket_sdk(root,work,args_has(a[..],"--sanitize")) then 0 else 1;}
+ if task=="socket-probe" {return ifx mb_socket_probe(root,work,args_has(a[..],"--sanitize")) then 0 else 1;}
  ok:=ifx task=="check-runner" then mb_check_runner() else ifx task=="manifest" then mb_manifest(work) else ifx task=="shaders" then mb_shaders(root,work,compiler) else ifx task=="generated" then mb_generated(work,args_value(a[..],"--generated","")) else ifx task=="producer" then mb_producer(root,work,face,primary) else ifx task=="fixture-producer" then mb_fixture(root,work) else ifx task=="conformance" then mb_conformance(root,work) else ifx task=="appkit" then mb_appkit(root,work) else ifx task=="effects" then mb_effects(root,work,args_has(a[..],"--sanitize")) else ifx task=="sdk" then mb_sdk(root,work,args_has(a[..],"--sanitize")) else mb_unit(root,work,compiler,task);
  return ifx ok then 0 else 1;
 }

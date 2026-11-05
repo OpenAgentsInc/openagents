@@ -1,0 +1,12 @@
+// Exact finite, UTF-8 source bytes used by the physical loopback pressure peer.
+#authority;
+#test "pressure source payload keeps all decimal digits and every padding byte" {
+ out:[128]u8;#assert hsp_payload(123456,out[..]);#assert cast(string)out[0..<6]=="123456";for i:6..<128 {#assert out[i]=='x';}
+ #assert hsp_payload(0,out[..])&&cast(string)out[0..<6]=="000000";
+ #assert hsp_payload(999999,out[..])&&cast(string)out[0..<6]=="999999";
+ for i:0..<128 {out[i]=17;}#assert !hsp_payload(-1,out[..])&&!hsp_payload(1000000,out[..])&&!hsp_payload(0,out[0..<127]);for byte:out {#assert byte==17;}
+}
+hsp_payload :: (index:int,out:[]u8)->bool #export_c {
+ if index<0||index>999999||out.count<128 {return false;}value:=index;
+ for i:0..<6 {out[5-i]=u8('0'+value%10);value/=10;}for i:6..<128 {out[i]='x';}return true;
+}

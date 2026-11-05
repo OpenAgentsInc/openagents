@@ -1,0 +1,51 @@
+// Finite physical-peer backpressure and exact raw native SDK observations.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/net/cdp.coax";
+#load "../../aethyr/host/tests/socket-pressure-conformance.coax";
+msp_s :: (o:[]Jo,key:string,value:string){jo_key(o,key);jo_str(o,value);}
+msp_i :: (o:[]Jo,key:string,value:int){jo_key(o,key);jo_int(o,value);}
+msp_op :: (o:[]Jo,kind:string,name:string,label:string){jo_obj(o);msp_s(o,"op",kind);msp_s(o,"name",name);msp_s(o,"label",label);}
+msp_owner :: (o:[]Jo,id:int){msp_i(o,"id",id);msp_i(o,"generation",1);msp_i(o,"engine",1);}
+msp_stall :: (o:[]Jo,ms:int){msp_op(o,"stall","main","");msp_i(o,"ms",ms);jo_end(o);}
+msp_start :: (cmd:[]string)->int {h:=proc_new();if h<0 {return -1;}for arg:cmd {if !proc_arg(h,arg) {released:=proc_release(h);return -1;}}if proc_start(h)!=0 {released:=proc_release(h);return -1;}return h;}
+msp_label :: (d:Jv,rows:int,label:string)->int {for i:0..<jv_len(d,rows) {row:=jv_at(d,rows,i);if jv_raw_eq(jv_raw(d,jv_get(d,row,"label")),label) {return row;}}return -1;}
+msp_array :: (d:Jv,node:int,out:[]int)->bool {if jv_len(d,node)!=out.count {return false;}for i:0..<out.count {out[i]=jv_int(d,jv_at(d,node,i),-1);}return true;}
+msp_event :: (d:Jv,node:int,kind:int,id:int)->bool {owner:=jv_get(d,node,"owner");return jv_len(d,owner)==3&&jv_int(d,jv_at(d,owner,0),-1)==id&&jv_int(d,jv_at(d,owner,1),-1)==1&&jv_int(d,jv_at(d,owner,2),-1)==1&&jv_int(d,jv_get(d,node,"event"),-1)==kind;}
+msp_body :: (d:Jv,node:int,out:[]u8)->bool {bytes:=jv_get(d,node,"bytes");if jv_len(d,bytes)!=out.count {return false;}for i:0..<out.count {value:=jv_int(d,jv_at(d,bytes,i),-1);if value<0||value>255 {return false;}out[i]=u8(value);}return true;}
+msp_check :: (report:string,peer:string)->bool {
+ text:[1048576]u8;nodes:[131072]JvNode;doc:[1]Jv;n:=fs_read(report,text[..]);if n<1||!jv_parse(doc[..],cast(string)text[0..<n],nodes[..]) {return false;}d:=doc[0];if !jv_raw_eq(jv_raw(d,jv_get(d,0,"schema")),"aethyr.metal.socket-effects.v1") {return false;}rows:=jv_get(d,0,"observations");
+ a:[10]int;b:[10]int;if !msp_array(d,jv_get(d,msp_label(d,rows,"held-a"),"fields"),a[..])||!msp_array(d,jv_get(d,msp_label(d,rows,"held-b"),"fields"),b[..])||!hspc_hold(a[..],b[..]) {tool_errln("Stalled native queue observation refused");return false;}
+ commands:=msp_label(d,rows,"commands");accepted:=jv_get(d,commands,"accepted");yes:[65]int;max:[2]int;if jv_len(d,accepted)!=65||!msp_array(d,jv_get(d,commands,"maxima"),max[..]) {return false;}for i:0..<65 {raw:=jv_raw(d,jv_at(d,accepted,i));if raw!="true"&&raw!="false" {return false;}yes[i]=ifx raw=="true" then 1 else 0;}if !hspc_commands(yes[..],max[..]) {tool_errln("Physical empty command queue/refusal differed");return false;}
+ no_bytes:[]u8;held:=jv_get(d,msp_label(d,rows,"held-open"),"events");if jv_len(d,held)!=1||!msp_event(d,jv_at(d,held,0),0,0)||!msp_body(d,jv_at(d,held,0),no_bytes) {return false;}
+ stream_row:=msp_label(d,rows,"stream");stream:=jv_get(d,stream_row,"events");count:=jv_len(d,stream);if !jv_bool(d,jv_get(d,stream_row,"closed"))||count<7||count>1000 {tool_errln("Physical stream never completed its error/close");return false;}
+ for i:0..<count {event:=jv_at(d,stream,i);kind:=ifx i==0||i==count-2 then 3 else ifx i==count-1 then 2 else 1;if !msp_event(d,event,kind,0) {return false;}if kind==1 {body:[128]u8;if !msp_body(d,event,body[..])||!hspc_payload(i-1,body[..]) {tool_errln("Physical payload FIFO bytes differ");return false;}}else if !msp_body(d,event,no_bytes) {return false;}}
+ opens:=jv_get(d,msp_label(d,rows,"replacement-open"),"events");ids:[4]int;if jv_len(d,opens)!=4 {tool_errln("All four physical replacement opens were not observed");return false;}for i:0..<4 {event:=jv_at(d,opens,i);ids[i]=jv_int(d,jv_at(d,jv_get(d,event,"owner"),0),-1);if !msp_event(d,event,0,ids[i])||!msp_body(d,event,no_bytes) {return false;}}if !hspc_opens(ids[..]) {return false;}
+ echo:=jv_get(d,msp_label(d,rows,"replacement-echo"),"events");body:[11]u8;if jv_len(d,echo)!=1||!msp_event(d,jv_at(d,echo,0),1,0)||!msp_body(d,jv_at(d,echo,0),body[..])||cast(string)body[..]!="replacement" {return false;}
+ maxima:[5]int;closed:[5]int;if !msp_array(d,jv_get(d,msp_label(d,rows,"replacement"),"maxima"),maxima[..])||!msp_array(d,jv_get(d,msp_label(d,rows,"closed"),"pool"),closed[..])||!hspc_pool(maxima[..],closed[..]) {tool_errln("Fixed worker/context teardown bound refused");return false;}
+ active:[5]int;released:[5]int;if !msp_array(d,jv_get(d,msp_label(d,rows,"active"),"pool"),active[..])||!msp_array(d,jv_get(d,msp_label(d,rows,"released"),"pool"),released[..]) {return false;}for value,i:[5]int.[2,4,4,512,4] {if active[i]!=value||released[i]!=(ifx i==0 then 1 else value) {tool_errln("Concrete context/held lease retirement differed");return false;}}
+ peer_text:[4096]u8;pn:=fs_read(peer,peer_text[..]);pd:[1]Jv;peer_nodes:[64]JvNode;if pn<1||!jv_parse(pd[..],cast(string)peer_text[0..<pn],peer_nodes[..]) {return false;}p:=pd[0];if !hspc_peer(jv_int(p,jv_get(p,0,"frames"),0),jv_int(p,jv_get(p,0,"failure"),0),jv_int(p,jv_get(p,0,"elapsed_ms"),0)) {tool_errln("Physical peer did not report the required flush backpressure");return false;}
+ print("Native raw SDK: held512payload bytes,64command/fullerror+close,FIFO%frames,1000replacements,fourworkers andzero finalowners; physicalpeer flush timeout observed\n",count-3);return true;
+}
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])<3 {tool_errln("usage: metal-socket-pressure ROOT SDK OUTPUT [--existing]");return 2;}root:=args_at(a[..],0);sdk:=args_at(a[..],1);dir:=args_at(a[..],2);if !fs_mkdir(dir) {return 1;}paths:[10][4096]u8;plan:=fs_join(dir,"plan.json",paths[0][..]);report:=fs_join(dir,"receipt.json",paths[1][..]);peer_report:=fs_join(dir,"peer.json",paths[2][..]);ready:=fs_join(dir,"peer.ready",paths[3][..]);
+ if !args_has(a[..],"--existing") {if fs_exists(report)||fs_exists(ready) {tool_errln("Fresh physical workload requires a new output directory");return 2;}
+  bytes:[16384]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],"operations");jo_arr(o[..]);
+  msp_op(o[..],"new","main","");msp_i(o[..],"capacity",128);jo_end(o[..]);msp_op(o[..],"start","main","");msp_owner(o[..],0);msp_s(o[..],"url","ws://127.0.0.1:9171/flood");jo_end(o[..]);msp_stall(o[..],1500);
+  msp_op(o[..],"info","main","held-a");jo_end(o[..]);msp_stall(o[..],200);msp_op(o[..],"info","main","held-b");jo_end(o[..]);
+  msp_op(o[..],"send-burst","main","commands");msp_owner(o[..],0);msp_i(o[..],"count",65);msp_s(o[..],"text","");jo_end(o[..]);msp_op(o[..],"drain","main","held-open");msp_i(o[..],"count",1);jo_key(o[..],"hold");jo_bool(o[..],true);jo_end(o[..]);
+  msp_op(o[..],"drain-until-close","main","stream");msp_i(o[..],"count",1000);msp_i(o[..],"ms",5000);jo_end(o[..]);msp_op(o[..],"close","main","");jo_end(o[..]);
+  msp_op(o[..],"replace","main","replacement");msp_i(o[..],"count",1000);msp_i(o[..],"capacity",128);msp_owner(o[..],0);msp_s(o[..],"url","ws://127.0.0.1:9170/echo");jo_end(o[..]);msp_op(o[..],"new","final","");msp_i(o[..],"capacity",128);jo_end(o[..]);
+  for i:0..<4 {msp_op(o[..],"start","final","");msp_owner(o[..],i);msp_s(o[..],"url","ws://127.0.0.1:9170/echo");jo_end(o[..]);}msp_stall(o[..],1000);msp_op(o[..],"info","final","active");jo_end(o[..]);msp_op(o[..],"drain","final","replacement-open");msp_i(o[..],"count",16);jo_end(o[..]);
+  msp_op(o[..],"send","final","");msp_owner(o[..],0);msp_s(o[..],"text","replacement");jo_end(o[..]);msp_stall(o[..],200);msp_op(o[..],"drain","final","replacement-echo");msp_i(o[..],"count",16);jo_end(o[..]);msp_op(o[..],"release","final","");jo_end(o[..]);msp_op(o[..],"info","final","released");jo_end(o[..]);msp_op(o[..],"close","final","");jo_end(o[..]);msp_op(o[..],"shutdown","final","closed");jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);if o[0].bad||!fs_write(plan,jo_text(o[..])) {return 1;}
+  tool:=fs_join(root,"coax/web/tool.sh",paths[4][..]);peer_source:=fs_join(root,"aethyr/host/tests/socket-pressure-peer.coax",paths[5][..]);echo_source:=fs_join(root,"aethyr/host/tests/network.coax",paths[6][..]);peer:=-1;echo:=-1;
+  defer {for handle:[2]int.[peer,echo] {if handle>=0 {killed:=proc_kill(handle,PROC_SIGTERM);waited:=proc_wait(handle,2000);released:=proc_release(handle);}}}
+  peer_cmd:=[5]string.[tool,peer_source,"9171",peer_report,ready];echo_cmd:=[3]string.[tool,echo_source,"9170"];peer=msp_start(peer_cmd[..]);echo=msp_start(echo_cmd[..]);if peer<0||echo<0 {return 1;}
+  cdp:[1]Cdp;health:[4096]u8;deadline:=proc_now_ms()+30000;up:=false;while proc_now_ms()<deadline {if fs_exists(ready)&&cdp_get(cdp[..],9170,"/health",health[..])>0 {up=true;break;}proc_sleep(50);}if !up {tool_errln("Private peer did not become ready");return 1;}
+  program:=fs_join(sdk,"MetalSocketEffects",paths[7][..]);out:[1048576]u8;err:[65536]u8;run:=[3]string.[program,plan,report];r:=proc_run(run[..],30000,out[..],err[..]);if r.started!=0||r.status!=0||r.timed_out||r.cut {tool_errln(cast(string)err[0..<r.err_n]);return 1;}
+ }
+ return ifx msp_check(report,peer_report) then 0 else 1;
+}

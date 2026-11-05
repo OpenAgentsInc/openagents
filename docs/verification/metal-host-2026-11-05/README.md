@@ -465,4 +465,51 @@ snapshot, with zero differences. The C SHA256 is
 `92b7c5bc1b0e03533846f102b8f98a6c6384553537e2504b8436caf99fe539ec`.
 This source join does not publish a compiler release or admit experimental
 shader products. The receive queue's 106-mutant authority is a separate landed
-component; physical native receive backpressure remains an outstanding SDK gate.
+component; ordinary native receive wiring remains an outstanding SDK gate.
+
+## Bounded raw socket SDK component
+
+`socket-pressure/` and `socket-pressure-asan/` exercise the new native raw
+socket effects directly, separately from ordinary realm wiring. The existing
+Coax RFC6455/UTF-8/fragment reader runs on four persistent SDK workers. Each
+logical slot retains at most one current and one replacement job. A concrete
+engine context stays alive with its actual jobs/events, so repeated transport
+IDs cannot redirect an older callback to a replacement context. Main-thread
+close returns without joining connecting workers.
+
+The workload stalls delivery for1.7seconds. Both observations retain exactly
+six leased events and512 payload bytes: the open, one empty oversized-frame
+error, and four complete128-byte text frames. A binary frame is drained without
+delivery. The worker waits before another callback copy/read. The normal
+physical peer reaches its100ms flush timeout after4,163 complete frames;
+the instrumented run reaches101ms after4,152. These observations establish
+actual peer backpressure, without attributing application counters to SDK or
+kernel buffers.
+
+While the reader is blocked,64 empty outgoing commands fill their shared
+tickets. The next refuses and causes the Coax-selected error/close. Complete
+received text stays byte-exact and in FIFO order (13 normal/8 instrumented
+frames before that explicit close). The test then replaces1,000 engine
+contexts using the same transport owner numbers. Normal maxima are three
+contexts/two jobs; all four replacement workers open and echo correctly.
+An old held event survives context close, then releases only its own owner.
+Final contexts/jobs/workers/message-storage counters are all zero after
+process teardown. A small fixed per-slot terminal table retains only control
+observations when no payload allocation is available.
+
+The shared queue/control authority kills35 root mutants; pressure payload and
+semantic receipt authorities kill26 and125, with no equivalents. ASan covers
+the C worker/queue, all generated Coax networking/entropy code, Apple socket/TLS
+and entropy effects, and the Swift probe; leak detection is disabled. The test
+uses private loopback ports9170/9171, starts no GPU/audio device, and terminates
+its owned peers. TLS trust behavior is unchanged and its prior gate is cited,
+not repeated by this plaintext fixture.
+
+`socket-sdk/compiled-source-observation.json` joins all16 actual emitted Coax
+inputs with zero differences. They use the original admitted598 CPU image and
+unchanged protected historical compiler root; the separately pinned product
+snapshot has only the recorded native-socket/socket-queue overlays. C SHA256:
+`691fcdf953527a6e50151d28a686cbd6401afa3408319ef7f836819449409025`.
+The SDK sources, objects, executable and hashes are retained alongside it.
+This component is not yet the ordinary Metal host's receive adapter; its
+79-row transport and interactive room gates must run after that wiring.

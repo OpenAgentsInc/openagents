@@ -1,0 +1,19 @@
+// Private finite SDK-pressure fixture; protocol bytes remain checked Coax.
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/net/socket_foreign.coax";
+#load "../../../coax/lib/net/ws_server.coax";
+#load "../../../coax/lib/json/json.coax";
+#load "socket-pressure-payload.coax";
+hspp_write :: (h:int,bytes:string,timeout:int)->int {for byte:bytes {if cxsock_write(h,int(byte))!=0 {return -9;}}return cxsock_flush(h,timeout);}
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])!=3 {return 2;}port:=args_whole(args_at(a[..],0));if port<1024||port>65535 {return 2;}listener:=cxsock_listen(port);if listener<0 {return 1;}defer {done:=cxsock_close(listener);}if !fs_write(args_at(a[..],2),"ready") {return 1;}
+ h:=cxsock_accept(listener,10000);if h<0 {return 1;}defer {done:=cxsock_close(h);}raw:[4096]u8;used:=0;deadline:=cxsock_now_ms()+5000;
+ while ws_find_end(cast(string)raw[0..<used])==0&&cxsock_now_ms()<deadline {n:=cxsock_read(h,100);if n< -2||n== -1||n>raw.count-used {return 1;}if n>0 {for i:0..<n {raw[used+i]=u8(cxsock_byte(h,i));}used+=n;}}
+ request:=cast(string)raw[0..<used];hello:=wss_request(request);if hello.status!=WSS_OK {return 1;}wire:[4096]u8;n:=wss_accept_write(request[hello.key_from..<hello.key_to],wire[..]);if n<0||hspp_write(h,cast(string)wire[0..<n],100)!=0 {return 1;}
+ oversized:[129]u8;for i:0..<129 {oversized[i]='L';}n=wss_frame_write(WS_OP_TEXT,cast(string)oversized[..],wire[..]);if n<0||hspp_write(h,cast(string)wire[0..<n],100)!=0 {return 1;}
+ binary:=[3]u8.[255,0,255];n=wss_frame_write(WS_OP_BINARY,cast(string)binary[..],wire[..]);if n<0||hspp_write(h,cast(string)wire[0..<n],100)!=0 {return 1;}
+ payload:[128]u8;sent:=0;failure:=0;elapsed:=0;for i:0..<100000 {ok:=hsp_payload(i,payload[..]);n=wss_frame_write(WS_OP_TEXT,cast(string)payload[..],wire[..]);if !ok||n<0 {return 1;}start:=cxsock_now_ms();result:=hspp_write(h,cast(string)wire[0..<n],100);elapsed=cxsock_now_ms()-start;if result!=0 {failure=result;break;}sent+=1;}
+ text:[4096]u8;o:[1]Jo;jo_start(o[..],text[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.host.socket-pressure-peer.v1");jo_key(o[..],"frames");jo_int(o[..],sent);jo_key(o[..],"failure");jo_int(o[..],failure);jo_key(o[..],"elapsed_ms");jo_int(o[..],elapsed);jo_end(o[..]);return ifx fs_write(args_at(a[..],1),jo_text(o[..])) then 0 else 1;
+}
