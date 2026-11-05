@@ -102,8 +102,8 @@ af_native_stamp :: (root:string,source:string,deadline:int)->int {
 }
 af_native :: (root:string,here:string,work:string,coax:string,out:[]u8,deadline:int)->bool {
  paths:[8][4096]u8;metal:=fs_join(work,"metal",paths[0][..]);if !fs_mkdir(metal) {return false;}
- names:=[9]string.["everglade5e","Everglade-step","Grid","River","Guard-guide-policy","Everglade5e-rules","MetalRender","RenderTexture","AppKitInput"];
- sources:=[9]string.["apps/aethyrforge-desktop/metal-world.coax","apps/openagents-web/everglade-step.coax","verse/grid.coax","verse/everglade/river.coax","verse/everglade/guard-guide-policy.coax","apps/openagents-web/everglade5e-rules.coax","apps/aethyrforge-desktop/metal-render.coax","aethyr/render/native-texture.coax","aethyr/host/appkit-input.coax"];
+ names:=[11]string.["everglade5e","Everglade-step","Grid","River","Guard-guide-policy","Everglade5e-rules","MetalRender","RenderTexture","AppKitInput","HostNetwork","entropy-policy"];
+ sources:=[11]string.["apps/aethyrforge-desktop/metal-world.coax","apps/openagents-web/everglade-step.coax","verse/grid.coax","verse/everglade/river.coax","verse/everglade/guard-guide-policy.coax","apps/openagents-web/everglade5e-rules.coax","apps/aethyrforge-desktop/metal-render.coax","aethyr/render/native-texture.coax","aethyr/host/appkit-input.coax","aethyr/host/native-socket.coax","coax/lib/crypto/entropy.coax"];
  compiler_stamp:=fs_mtime_ns(coax);producer_stamp:=0;
  for name,i:names {stamp:=af_native_stamp(root,sources[i],deadline);if stamp<0 {return false;}if compiler_stamp>stamp {stamp=compiler_stamp;}
   text:[128]u8;j:[1]Jo;jo_start(j[..],text[..]);jo_put(j[..],name);jo_put(j[..],".o");object:=fs_join(metal,jo_text(j[..]),paths[1][..]);
@@ -112,8 +112,10 @@ af_native :: (root:string,here:string,work:string,coax:string,out:[]u8,deadline:
  }
  for name:[5]string.["apps/openagents-web/everglade5e-face.c","apps/openagents-web/face-address.h","apps/openagents-web/edit-face.h","apps/openagents-web/place-face.h","apps/openagents-web/analytics-face.h"] {stamp:=fs_mtime_ns(fs_join(root,name,paths[1][..]));if stamp>producer_stamp {producer_stamp=stamp;}}
  if fs_mtime_ns(fs_join(metal,"libeverglade.dylib",paths[1][..]))<producer_stamp {cmd:=[4]string.[fs_join(root,"coax/web/tool.sh",paths[2][..]),fs_join(here,"metal-build.coax",paths[3][..]),root,"producer"];if af_run(cmd[..],out,deadline)<0 {return false;}}
- sdk_stamp:=fs_mtime_ns(fs_join(here,"MetalRealm.m",paths[1][..]));for name:[4]string.["metal-host.h","metal-producer.h","build/metal/MetalRender.h","build/metal/RenderTexture.h"] {stamp:=fs_mtime_ns(fs_join(here,name,paths[1][..]));if stamp>sdk_stamp {sdk_stamp=stamp;}}
+ sdk_stamp:=fs_mtime_ns(fs_join(here,"MetalRealm.m",paths[1][..]));for name:[5]string.["metal-host.h","metal-producer.h","metal-sockets.h","build/metal/MetalRender.h","build/metal/RenderTexture.h"] {stamp:=fs_mtime_ns(fs_join(here,name,paths[1][..]));if stamp>sdk_stamp {sdk_stamp=stamp;}}
  if fs_mtime_ns(fs_join(metal,"MetalRealm.o",paths[1][..]))<sdk_stamp {cmd:=[4]string.[fs_join(root,"coax/web/tool.sh",paths[2][..]),fs_join(here,"metal-build.coax",paths[3][..]),root,"sdk"];if af_run(cmd[..],out,deadline)<0 {return false;}}
+ network_stamp:=af_newest(fs_join(root,"coax/platform",paths[1][..]));for name:[5]string.["MetalSockets.c","metal-sockets.h","metal-build.coax","build/metal/HostNetwork.o","build/metal/entropy-policy.o"] {stamp:=fs_mtime_ns(fs_join(here,name,paths[1][..]));if stamp>network_stamp {network_stamp=stamp;}}
+ if fs_mtime_ns(fs_join(metal,"libnetwork.dylib",paths[1][..]))<network_stamp {cmd:=[4]string.[fs_join(root,"coax/web/tool.sh",paths[2][..]),fs_join(here,"metal-build.coax",paths[3][..]),root,"socket-library"];if af_run(cmd[..],out,deadline)<0 {return false;}}
  shader_stamp:=af_newest(fs_join(root,"verse/gpu",paths[1][..]));for dir:[2]string.["aethyr/render","apps/openagents-web"] {stamp:=af_newest(fs_join(root,dir,paths[1][..]));if stamp>shader_stamp {shader_stamp=stamp;}}
  if fs_mtime_ns(fs_join(metal,"render/metal.json",paths[1][..]))<shader_stamp {env:[4096]u8;graphics:=proc_getenv("COAX_GRAPHICS",env[..]);if graphics=="" {tool_errln("Metal shader products need a graphics-qualified compiler: set COAX_GRAPHICS to its executable, then resume build.sh. The cached tool compiler is never replaced.");return false;}cmd:=[6]string.[fs_join(root,"coax/web/tool.sh",paths[2][..]),fs_join(here,"metal-build.coax",paths[3][..]),root,"shaders","--coax",graphics];if af_run(cmd[..],out,deadline)<0 {return false;}}
  pack:=fs_join(root,"apps/openagents-web/realms/everglade/assets/everglade.pack",paths[1][..]);asset_stamp:=af_native_stamp(root,"apps/aethyrforge-desktop/metal-assets.coax",deadline);if fs_mtime_ns(pack)>asset_stamp {asset_stamp=fs_mtime_ns(pack);}
@@ -209,7 +211,7 @@ tool_main :: () -> int #export_c {
     copy:=[3]string.["ditto",af_path(p[..],af_path(p[..],root,"apps/shared/zeron"),name),af_path(p[..],res,name)];
     if af_run(copy[..],out[..],deadline)<0 {return 1;}
   }
-  for name:[3]string.["render","assets","libeverglade.dylib"] {cmd:=[3]string.["ditto",af_path(p[..],af_path(p[..],work,"metal"),name),af_path(p[..],af_path(p[..],res,"metal"),name)];if af_run(cmd[..],out[..],deadline)<0 {return 1;}}
+  for name:[4]string.["render","assets","libeverglade.dylib","libnetwork.dylib"] {cmd:=[3]string.["ditto",af_path(p[..],af_path(p[..],work,"metal"),name),af_path(p[..],af_path(p[..],res,"metal"),name)];if af_run(cmd[..],out[..],deadline)<0 {return 1;}}
   // Keep a compact self-contained page tree: the exact engine, shaders and pack
   // the website uses, plus all generic browser host modules.
   web := af_path(p[..], res, "web"); host := af_path(p[..], res, "host"); seed := af_path(p[..], res, "seed");

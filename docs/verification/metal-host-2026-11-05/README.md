@@ -511,5 +511,42 @@ unchanged protected historical compiler root; the separately pinned product
 snapshot has only the recorded native-socket/socket-queue overlays. C SHA256:
 `691fcdf953527a6e50151d28a686cbd6401afa3408319ef7f836819449409025`.
 The SDK sources, objects, executable and hashes are retained alongside it.
-This component is not yet the ordinary Metal host's receive adapter; its
-79-row transport and interactive room gates must run after that wiring.
+The ordinary adapter's subsequent qualification is recorded below.
+
+## Ordinary bounded socket adapter
+
+The native realm now loads its packaged `libnetwork.dylib` and dispatches
+socket imports directly through the bounded SDK. The library and four idle
+workers are process-owned; concrete contexts retire independently and retain
+their jobs/events through their last references. A main-run-loop timer polls
+the same Coax drain budget independently of rendering. The SDK never queues
+a payload-bearing main-thread closure. Shared transport ownership is checked
+again at actual delivery, then its exact incoming lease is released.
+
+`socket-wired-transport/` and `socket-wired-transport-asan/` both pass the
+common79-row transport checker using the real MF/Swift adapter and unchanged
+recording producer. ASan instruments Objective-C, Swift, generated renderer/
+texture/networking C and Apple socket/TLS effects; the recording producer
+dylib is uninstrumented and leak detection is disabled. The earlier raw
+pressure gate remains the physical-backpressure/storage evidence and was not
+repeated. HTTP still uses the existing URLSession adapter.
+
+`socket-wired-window-second/` exercises the newly linked muted isolated app
+and its actual local room with API/GPU validation. While status covers the
+world, producer/completion counts remain fixed and room callbacks increase;
+returning to play advances rendering, with a valid local seat and zero live
+ledger objects/words on close. This is a continuity gate, not a new FPS or
+latency measurement. The initial `socket-wired-window/` copied an incomplete
+staging stub and trapped on the missing `Zeron.metal` resource before world
+startup; its crash is retained. Correcting the staged resources required no
+product-code change. The canonical app was untouched and owned children exit.
+
+`socket-wired-sdk/artifacts.sha256` joins the exact source, C/header, objects,
+normal/instrumented executables, packaged library and isolated app. The two
+previous archived objects accidentally overwritten during staging were
+rebuilt from their original source paths and verified against every original
+manifest hash before new output moved into this separate directory.
+Generated CPU-source joins remain the earlier78-input renderer and16-input
+network receipts. This checkpoint does not qualify remote authenticated
+upgrade headers/cookies or claim SDK/kernel buffers share application bounds.
+The experimental presentation/compiler/default gates remain unchanged.

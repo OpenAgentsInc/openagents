@@ -44,7 +44,7 @@ mc_transport :: (o:[]Jo) {
  for id:[4]string.["0","1","2","3"] {mc_message(o,912,id);}mc_wait(o,150);mc_observe(o,"events");
 }
 tool_main :: ()->int #export_c {
- a:[1]Args;if !args_load(a[..]) || args_count(a[..])<3 {tool_errln("usage: metal-conformance ROOT RESOURCES OUTPUT [--transport]");return 2;}
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])<3 {tool_errln("usage: metal-conformance ROOT RESOURCES OUTPUT [--transport] [--sdk DIRECTORY]");return 2;}
  root:=args_at(a[..],0);res:=args_at(a[..],1);dir:=args_at(a[..],2);if !fs_mkdir(dir) {return 1;}
  transport:=args_has(a[..],"--transport");http:=args_has(a[..],"--http-target");lifecycle:=args_has(a[..],"--lifecycle");scope:=ifx lifecycle then "lifecycle" else ifx http then "http-target" else ifx transport then "transport" else "core";bytes:[65536]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);mc_str(o[..],"schema","aethyr.host.effects.v1");mc_str(o[..],"scope",scope);jo_key(o[..],"operations");jo_arr(o[..]);
  if lifecycle {mc_lifecycle(o[..]);}else if http {for q:htu_cases() {mc_message(o[..],920,q.input);mc_wait(o[..],150);}mc_observe(o[..],"events");}else if transport {mc_transport(o[..]);}else {
@@ -68,7 +68,8 @@ tool_main :: ()->int #export_c {
   while proc_now_ms()<deadline {if cdp_get(probe[..],9170,"/health",health[..])>0 {ready=true;break;}proc_sleep(50);}
   if !ready {tool_errln("Host fixture server did not become ready.");return 1;}
  }
- run:=[5]string.[fs_join(root,"apps/aethyrforge-desktop/build/metal/HostEffects",paths[2][..]),res,fs_join(root,"apps/aethyrforge-desktop/build/metal/libfixture.dylib",paths[3][..]),plan,result];out:[1048576]u8;err:[65536]u8;r:=proc_run(run[..],60000,out[..],err[..]);if r.started!=0 || r.status!=0 || r.cut || r.timed_out {tool_errln(cast(string)err[0..<r.err_n]);return 1;}
+ sdk_path:[4096]u8;sdk:=args_value(a[..],"--sdk",fs_join(root,"apps/aethyrforge-desktop/build/metal",sdk_path[..]));
+ run:=[5]string.[fs_join(sdk,"HostEffects",paths[2][..]),res,fs_join(sdk,"libfixture.dylib",paths[3][..]),plan,result];out:[1048576]u8;err:[65536]u8;r:=proc_run(run[..],60000,out[..],err[..]);if r.started!=0 || r.status!=0 || r.cut || r.timed_out {tool_errln(cast(string)err[0..<r.err_n]);return 1;}
  if lifecycle {if !mc_lifecycle_check(result) {tool_errln("Actual native lifecycle/clock observations differ; raw receipt retained.");return 1;}print("Actual Metal lifecycle: six exact admitted frame clocks; negative/backward/hidden offers refused, focus/shown composed, first/resume dt zero.\n");return 0;}
  check:=[4]string.[fs_join(root,"coax/web/tool.sh",paths[2][..]),fs_join(root,"aethyr/host/check-observations.coax",paths[4][..]),result,""];
  q:=proc_run(check[0..<3],60000,out[..],err[..]);if q.started!=0 || q.status!=0 || q.cut || q.timed_out {tool_errln(cast(string)out[0..<q.out_n]);tool_errln(cast(string)err[0..<q.err_n]);return 1;}print("%",cast(string)out[0..<q.out_n]);return 0;

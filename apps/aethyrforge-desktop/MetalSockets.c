@@ -23,6 +23,9 @@ static pthread_mutex_t mn_queue=PTHREAD_MUTEX_INITIALIZER,mn_io=PTHREAD_MUTEX_IN
 static pthread_cond_t mn_changed=PTHREAD_COND_INITIALIZER;
 static MNSlot mn_slots[4];static bool mn_ready,mn_stopping;
 static int64_t mn_contexts,mn_jobs,mn_running,mn_message_bytes;
+uint32_t mn_api_version(void){return 1;}
+bool mn_uri(const uint8_t *bytes,size_t count){return count<=INT64_MAX&&hns_uri((coax_string){(const char*)bytes,(int64_t)count});}
+bool mn_poll_more(int64_t handled,int64_t started_ms,int64_t now_ms){return htd_continue(handled,started_ms,now_ms);}
 static bool owner_equal(MNSocketOwner a,MNSocketOwner b){return a.id==b.id&&a.generation==b.generation&&a.engine==b.engine;}
 static coax_v_t_HostInboxQueue incoming(MNContext *c){return(coax_v_t_HostInboxQueue){&c->incoming,1};}
 static coax_v_t_HostInboxQueue outgoing(MNContext *c){return(coax_v_t_HostInboxQueue){&c->outgoing,1};}

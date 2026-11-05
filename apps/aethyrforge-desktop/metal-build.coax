@@ -62,6 +62,13 @@ mb_socket_probe :: (root:string,work:string,sanitize:bool)->bool {
  for name:[3]string.["Network","Security","CoreFoundation"] {cmd[n]="-framework";cmd[n+1]=name;n+=2;}
  cmd[n]="-o";cmd[n+1]=fs_join(work,"MetalSocketEffects",paths[9][..]);n+=2;return mb_run(cmd[0..<n],out[..])>=0;
 }
+mb_socket_library :: (root:string,work:string,sanitize:bool)->bool {
+ if !mb_socket_sdk(root,work,sanitize) {return false;}paths:[8][4096]u8;out:[1048576]u8;cmd:[24]string;n:=0;
+ for arg:[4]string.["/usr/bin/clang","-dynamiclib","-Wl,-install_name,@rpath/libnetwork.dylib",ifx sanitize then "-fsanitize=address" else "-g0"] {cmd[n]=arg;n+=1;}
+ for object,i:[7]string.["HostNetwork.o","entropy-policy.o","MetalSockets.o","socket-native.o","tls-native.o","entropy-native.o","entropy-foreign.o"] {cmd[n]=fs_join(work,object,paths[i][..]);n+=1;}
+ for name:[3]string.["Network","Security","CoreFoundation"] {cmd[n]="-framework";cmd[n+1]=name;n+=2;}
+ cmd[n]="-o";cmd[n+1]=fs_join(work,"libnetwork.dylib",paths[7][..]);n+=2;return mb_run(cmd[0..<n],out[..])>=0;
+}
 mb_generated :: (work:string,source:string)->bool {
  if source=="" {return false;}paths:[1][4096]u8;out:[1048576]u8;cc:=[11]string.["/usr/bin/clang","-std=c11","-O2","-ffp-contract=off","-fno-fast-math","-Wno-unused-function","-Wno-unused-variable","-c",source,"-o",fs_join(work,"everglade5e.o",paths[0][..])];return mb_run(cc[..],out[..])>=0;
 }
@@ -81,9 +88,10 @@ mb_fixture :: (root:string,work:string)->bool {
  link:=[8]string.["/usr/bin/clang","-dynamiclib","-Wl,-undefined,dynamic_lookup",fs_join(work,"fixture.o",paths[2][..]),face,"-o",fs_join(work,"libfixture.dylib",paths[3][..]),"-lm"];
  return mb_run(link[..],out[..])>=0;
 }
-mb_conformance :: (root:string,work:string)->bool {
+mb_conformance :: (root:string,work:string,sanitize:bool)->bool {
  paths:[8][4096]u8;out:[1048576]u8;cmd:[40]string;n:=0;
  for s:[8]string.["xcrun","swiftc","-O","-parse-as-library","-target","arm64-apple-macos26.0","-import-objc-header",fs_join(root,"apps/aethyrforge-desktop/metal-host.h",paths[0][..])] {cmd[n]=s;n+=1;}
+ if sanitize {cmd[n]="-sanitize=address";n+=1;}
  cmd[n]=fs_join(root,"apps/aethyrforge-desktop/tests/MetalConformance.swift",paths[1][..]);n+=1;
  cmd[n]=fs_join(root,"apps/aethyrforge-desktop/Sources/MetalNetwork.swift",paths[2][..]);n+=1;
  for name,i:[3]string.["MetalRealm.o","MetalRender.o","RenderTexture.o"] {cmd[n]=fs_join(work,name,paths[3+i][..]);n+=1;}
@@ -158,6 +166,7 @@ tool_main :: ()->int #export_c {
  if task=="instrument-render" {return ifx mb_instrument_render(work) then 0 else 1;}
  if task=="socket-sdk" {return ifx mb_socket_sdk(root,work,args_has(a[..],"--sanitize")) then 0 else 1;}
  if task=="socket-probe" {return ifx mb_socket_probe(root,work,args_has(a[..],"--sanitize")) then 0 else 1;}
- ok:=ifx task=="check-runner" then mb_check_runner() else ifx task=="manifest" then mb_manifest(work) else ifx task=="shaders" then mb_shaders(root,work,compiler) else ifx task=="generated" then mb_generated(work,args_value(a[..],"--generated","")) else ifx task=="producer" then mb_producer(root,work,face,primary) else ifx task=="fixture-producer" then mb_fixture(root,work) else ifx task=="conformance" then mb_conformance(root,work) else ifx task=="appkit" then mb_appkit(root,work) else ifx task=="effects" then mb_effects(root,work,args_has(a[..],"--sanitize")) else ifx task=="sdk" then mb_sdk(root,work,args_has(a[..],"--sanitize")) else mb_unit(root,work,compiler,task);
+ if task=="socket-library" {return ifx mb_socket_library(root,work,args_has(a[..],"--sanitize")) then 0 else 1;}
+ ok:=ifx task=="check-runner" then mb_check_runner() else ifx task=="manifest" then mb_manifest(work) else ifx task=="shaders" then mb_shaders(root,work,compiler) else ifx task=="generated" then mb_generated(work,args_value(a[..],"--generated","")) else ifx task=="producer" then mb_producer(root,work,face,primary) else ifx task=="fixture-producer" then mb_fixture(root,work) else ifx task=="conformance" then mb_conformance(root,work,args_has(a[..],"--sanitize")) else ifx task=="appkit" then mb_appkit(root,work) else ifx task=="effects" then mb_effects(root,work,args_has(a[..],"--sanitize")) else ifx task=="sdk" then mb_sdk(root,work,args_has(a[..],"--sanitize")) else mb_unit(root,work,compiler,task);
  return ifx ok then 0 else 1;
 }

@@ -6,8 +6,9 @@
 #load "../../coax/lib/sys/proc.coax";
 ms_run :: (argv:[]string)->bool {out:[1048576]u8;err:[1048576]u8;r:=proc_run(argv,840000,out[..],err[..]);if r.started!=0 || r.status!=0 || r.cut || r.timed_out {tool_errln(cast(string)err[0..<r.err_n]);return false;}return true;}
 tool_main :: ()->int #export_c {
- a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {tool_errln("usage: metal-shell ROOT STAGED_APP");return 2;}
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])<2 {tool_errln("usage: metal-shell ROOT STAGED_APP [--sdk DIRECTORY]");return 2;}
  root:=args_at(a[..],0);app:=args_at(a[..],1);paths:[64][4096]u8;p:=0;argv:[96]string;n:=0;
+ sdk_path:[4096]u8;sdk:=args_value(a[..],"--sdk",fs_join(root,"apps/aethyrforge-desktop/build/metal",sdk_path[..]));
  for s:[8]string.["xcrun","swiftc","-O","-target","arm64-apple-macos26.0","-import-objc-header","",""] {if s!="" {argv[n]=s;n+=1;}}
  argv[n]=fs_join(root,"apps/aethyrforge-desktop/face.h",paths[p][..]);p+=1;n+=1;
  for source:[10]string.["main","Setup","Chat","SetupProfile","Offline","Benchmark","MetalWorld","MetalAudio","MetalNetwork","MetalBridge"] {
@@ -15,17 +16,17 @@ tool_main :: ()->int #export_c {
   argv[n]=fs_join(root,cast(string)text[0..<i],paths[p][..]);n+=1;p+=1;
  }
  argv[n]=fs_join(root,"apps/shared/zeron/MetalUI.swift",paths[p][..]);n+=1;p+=1;
- for object:[8]string.["session.o","setup-face.o","chat.o","chat-face.o","metal/MetalRealm.o","metal/MetalRender.o","metal/RenderTexture.o","metal/AppKitInput.o"] {
+ for object:[4]string.["session.o","setup-face.o","chat.o","chat-face.o"] {
   text:[256]u8;i:=0;for c:"apps/aethyrforge-desktop/build/" {text[i]=c;i+=1;}for c:object {text[i]=c;i+=1;}
   argv[n]=fs_join(root,cast(string)text[0..<i],paths[p][..]);n+=1;p+=1;
  }
+ for object:[4]string.["MetalRealm.o","MetalRender.o","RenderTexture.o","AppKitInput.o"] {argv[n]=fs_join(sdk,object,paths[p][..]);n+=1;p+=1;}
  for s:[2]string.["-Xlinker","-export_dynamic"] {argv[n]=s;n+=1;}
  for framework:[7]string.["MetalKit","AppKit","WebKit","AVFoundation","QuartzCore","ImageIO","CoreGraphics"] {argv[n]="-framework";argv[n+1]=framework;n+=2;}
  argv[n]="-o";argv[n+1]=fs_join(app,"Contents/MacOS/Aethyrforge",paths[p][..]);n+=2;p+=1;
  if !ms_run(argv[0..<n]) {return 1;}
- for name:[3]string.["render","assets","libeverglade.dylib"] {
-  work:=fs_join(root,"apps/aethyrforge-desktop/build/metal",paths[p][..]);p+=1;
-  from:=fs_join(work,name,paths[p][..]);p+=1;metal:=fs_join(app,"Contents/Resources/metal",paths[p][..]);p+=1;to:=fs_join(metal,name,paths[p][..]);p+=1;
+ for name:[4]string.["render","assets","libeverglade.dylib","libnetwork.dylib"] {
+  from:=fs_join(sdk,name,paths[p][..]);p+=1;metal:=fs_join(app,"Contents/Resources/metal",paths[p][..]);p+=1;to:=fs_join(metal,name,paths[p][..]);p+=1;
   cp:=[3]string.["ditto",from,to];if !ms_run(cp[..]) {return 1;}
  }
  cp:=[3]string.["ditto",fs_join(root,"apps/aethyrforge-desktop/metal-voice.html",paths[p][..]),fs_join(app,"Contents/Resources/web/metal-voice.html",paths[p+1][..])];if !ms_run(cp[..]) {return 1;}

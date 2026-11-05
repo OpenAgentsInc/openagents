@@ -1,8 +1,8 @@
-// Firm reason: 6 (URLSession tasks and FIFO delivery; Coax owns all admission).
+// Firm reason: 6 (URLSession HTTP tasks and main-loop raw socket delivery).
 import Foundation
 
 @MainActor
-final class ForgeMetalNetwork: NSObject, @preconcurrency URLSessionDataDelegate, @preconcurrency URLSessionWebSocketDelegate {
+final class ForgeMetalNetwork: NSObject, @preconcurrency URLSessionDataDelegate {
     struct Owner: Equatable { let id, generation, engine: Int64 }
     final class Request {
         let owner: Owner
@@ -12,18 +12,11 @@ final class ForgeMetalNetwork: NSObject, @preconcurrency URLSessionDataDelegate,
         var failed = false
         init(_ owner: Owner, _ task: URLSessionDataTask, _ capacity: Int) { self.owner = owner; self.task = task; self.capacity = capacity }
     }
-    final class Socket {
-        let owner: Owner
-        let task: URLSessionWebSocketTask
-        var receiver: Task<Void, Never>?
-        init(_ owner: Owner, _ task: URLSessionWebSocketTask) { self.owner = owner; self.task = task }
-    }
     var host: UnsafeMutableRawPointer?
     var session: URLSession!
     var requests: [Int: Request] = [:]
-    var sockets: [Int: Socket] = [:]
+    var poller: Timer?
     var delivered = 0
-    var sent = 0
     var changed: (() -> Void)?
     var frame: (() async -> String?)?
     var playerKey = ""
@@ -33,56 +26,23 @@ final class ForgeMetalNetwork: NSObject, @preconcurrency URLSessionDataDelegate,
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpShouldSetCookies = true
         session = URLSession(configuration: configuration, delegate: self, delegateQueue: .main)
+        let timer = Timer(timeInterval:0.005,repeats:true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, let host = self.host else { return }
+                let count = mf_network_poll(host)
+                if count > 0 { self.delivered += Int(count); self.changed?() }
+            }
+        }
+        poller = timer; RunLoop.main.add(timer,forMode:.common)
     }
     func owner(_ effect: [String: Any]) -> Owner {
         func n(_ key: String) -> Int64 { (effect[key] as? NSNumber)?.int64Value ?? 0 }
         return Owner(id: n("id"), generation: n("generation"), engine: n("engine"))
     }
-    func receive(_ socket: Socket) {
-        socket.receiver = Task { [weak self, weak socket] in
-            guard let socket else { return }
-            while !Task.isCancelled {
-                do {
-                    let message = try await socket.task.receive()
-                    guard let self, let host = self.host, sockets[socket.task.taskIdentifier] === socket else { return }
-                    let bytes: Data
-                    switch message { case .string(let text): bytes = Data(text.utf8); case .data: continue; @unknown default: continue }
-                    bytes.withUnsafeBytes { mf_socket_event(host, socket.owner.id, socket.owner.generation, socket.owner.engine, 1, $0.bindMemory(to: UInt8.self).baseAddress, $0.count) }
-                    delivered += 1; changed?()
-                } catch {
-                    guard let self, let host = self.host, sockets[socket.task.taskIdentifier] === socket else { return }
-                    mf_socket_event(host, socket.owner.id, socket.owner.generation, socket.owner.engine, 3, nil, 0)
-                    mf_socket_event(host, socket.owner.id, socket.owner.generation, socket.owner.engine, 2, nil, 0)
-                    sockets.removeValue(forKey: socket.task.taskIdentifier); changed?(); return
-                }
-            }
-        }
-    }
     func execute(_ effect: [String: Any]) {
         guard let host else { return }
         let o = owner(effect)
         switch effect["kind"] as? String {
-        case "socket-open":
-            guard let text = effect["url"] as? String, let url = URL(string: text) else { return }
-            let task = session.webSocketTask(with: url), socket = Socket(o, task)
-            sockets[task.taskIdentifier] = socket; task.resume(); receive(socket)
-        case "socket-send":
-            guard let socket = sockets.values.first(where: { $0.owner == o }), let text = effect["body"] as? String else { return }
-            sent += 1
-            Task { [weak self, weak socket] in
-                guard let socket else { return }
-                do { try await socket.task.send(.string(text)) }
-                catch {
-                    guard let self, let host = self.host, sockets[socket.task.taskIdentifier] === socket else { return }
-                    mf_socket_event(host, o.id, o.generation, o.engine, 3, nil, 0); changed?()
-                }
-            }
-        case "socket-close":
-            if let socket = sockets.values.first(where: { $0.owner == o }) {
-                socket.receiver?.cancel(); socket.task.cancel(with: .normalClosure, reason: nil); sockets.removeValue(forKey: socket.task.taskIdentifier)
-            }
-            // The import has returned before this FIFO terminal event runs.
-            Task { [weak self] in guard let self, let host = self.host else { return }; mf_socket_event(host, o.id, o.generation, o.engine, 2, nil, 0); changed?() }
         case "http":
             let flags = (effect["flags"] as? NSNumber)?.intValue ?? 0
             let timeout = (effect["timeout"] as? NSNumber)?.int64Value ?? 0
@@ -137,14 +97,6 @@ final class ForgeMetalNetwork: NSObject, @preconcurrency URLSessionDataDelegate,
             if o.id >= 0 { requests[task.taskIdentifier] = Request(o, task, (effect["capacity"] as? NSNumber)?.intValue ?? 0) }
             task.resume()
     }
-    func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
-        guard let host, let socket = sockets[webSocketTask.taskIdentifier] else { return }
-        let o = socket.owner; mf_socket_event(host, o.id, o.generation, o.engine, 0, nil, 0); changed?()
-    }
-    func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
-        guard let host, let socket = sockets.removeValue(forKey: webSocketTask.taskIdentifier) else { return }
-        let o = socket.owner; socket.receiver?.cancel(); mf_socket_event(host, o.id, o.generation, o.engine, 2, nil, 0); changed?()
-    }
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse, completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
         guard let host, let r = requests[dataTask.taskIdentifier] else { completionHandler(.allow); return }
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0, prefix = Data("\(status)\n".utf8)
@@ -169,9 +121,10 @@ final class ForgeMetalNetwork: NSObject, @preconcurrency URLSessionDataDelegate,
         completionHandler(same ? request:nil)
     }
     func close() {
+        poller?.invalidate(); poller = nil
+        if let host { mf_network_reset(host) }
         host = nil
-        for socket in sockets.values { socket.receiver?.cancel(); socket.task.cancel(with: .goingAway, reason: nil) }
         for r in requests.values { r.task.cancel() }
-        sockets.removeAll(); requests.removeAll(); session.invalidateAndCancel()
+        requests.removeAll(); session.invalidateAndCancel()
     }
 }

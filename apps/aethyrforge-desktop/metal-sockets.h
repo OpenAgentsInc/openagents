@@ -6,6 +6,9 @@
 #include <stdint.h>
 typedef struct {int64_t id,generation,engine;} MNSocketOwner;
 typedef struct {MNSocketOwner owner;int64_t event;const uint8_t *bytes;size_t count;void *token;} MNSocketEvent;
+uint32_t mn_api_version(void);
+bool mn_uri(const uint8_t *bytes,size_t count);
+bool mn_poll_more(int64_t handled,int64_t started_ms,int64_t now_ms);
 void *mn_open(int64_t inbox_capacity);
 bool mn_start(void *context,MNSocketOwner owner,const uint8_t *url,size_t count);
 bool mn_send(void *context,MNSocketOwner owner,const uint8_t *bytes,size_t count);
