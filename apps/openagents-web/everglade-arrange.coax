@@ -22,6 +22,62 @@ AR_TEXT :: 400;
 AR_SLOT :: 32;
 AR_PICK :: 6.0;             // CSS px the pointer moves before the icon follows it
 
+#test "the bar: a room kit swaps rendered positions and keys, saves the complete arrangement, and survives kit changes" {
+  g:[1]Everglade; nn:[1]EgNet;
+  everglade_attach_net(g[..],nn[..]);
+  nn[0].state=NET_OPEN; nn[0].seat=0; nn[0].want=true;
+  e:=ege_of(g[..]);e[0].mine=true;e[0].level=1;
+  kit:=(1<<21)|(1<<22)|(1<<43)|(1<<28)|(1<<9)|(1<<26)|(1<<13)|(1<<47);
+  e[0].lo=kit;
+  g[0].width=1280;g[0].height=800;g[0].dpr=1;g[0].now_s=1793000000;g[0].sp.armed=-1;
+  u:[UNIFORM_FLOATS]f32;out:[1]f32;
+  _:=sp_bar(g[..],out[..],u[..],0);
+  a:=g[0].sp.boxes[21];b:=g[0].sp.boxes[13];
+  #assert a.x1>a.x0 && b.x1>b.x0 && sp_place(g[..],21)==0 && sp_place(g[..],13)==6;
+  g[0].held=HOLD_RUN;
+  #assert ar_pointer(g[..],a.x0+5,a.y0+5,0,0,1);
+  #assert ar_pointer(g[..],b.x0+5,b.y0+5,1,0,1) && ar_target(g[..])==13;
+  #assert ar_pointer(g[..],b.x0+5,b.y0+5,2,0,1) && !g[0].sp.ar.held;
+  #assert sp_place(g[..],21)==6;
+  #assert sp_place(g[..],13)==0;
+  #assert g[0].sp.armed==-1;
+  #assert sp_at_place(g[..],sp_key_place('1',0))==13 && sp_at_place(g[..],sp_key_place('7',0))==21;
+  g[0].plate_n=0;g[0].sp.media_n=0;
+  _=sp_bar(g[..],out[..],u[..],0);
+  #assert g[0].sp.boxes[21].x0==b.x0 && g[0].sp.boxes[13].x0==a.x0;
+  #assert sp_place(g[..],SP_REBUILD)==7 && sp_place(g[..],SP_METEOR)==-1;
+  text:[AR_TEXT]u8;n:=everglade_bar_keep(g[..],text[..]);
+  places:[AR_SLOTS]int;at:[1]f64;
+  #assert n>0 && ar_read(cast(string)text[0..<n],places[..],at[..]);
+  g[0].sp.ar=Arrange.{};
+  #assert ar_take(g[..],cast(string)text[0..<n]) && sp_at_place(g[..],0)==13 && sp_at_place(g[..],6)==21;
+  // A saved permutation can pass through an unavailable spell. Removing that
+  // spell from the kit must retain a bijection over just the available slots.
+  ar_swap(g[..],21,SP_METEOR);
+  #assert sp_place(g[..],21)==6 && sp_place(g[..],13)==0 && sp_place(g[..],SP_METEOR)==-1;
+  e[0].lo=(1<<21)|(1<<47);
+  #assert sp_place(g[..],21)==0 && sp_place(g[..],13)==-1 && sp_place(g[..],SP_REBUILD)==1;
+  e[0].lo=kit;
+  #assert sp_place(g[..],21)==6 && sp_place(g[..],13)==0;
+  for p:0..<8 { b0:=sp_at_place(g[..],p);#assert b0>=0;for q:0..<p {#assert sp_at_place(g[..],q)!=b0;} }
+}
+
+#test "the bar: offline swaps retain their keys and saved places; cancel and fixed Repair do not swap" {
+  g:[1]Everglade;g[0].now_s=1793000000;g[0].held=HOLD_RUN;
+  g[0].sp.boxes[SP_METEOR]=Box.{x0=10,y0=10,x1=50,y1=50};
+  g[0].sp.boxes[SP_ORB]=Box.{x0=60,y0=10,x1=100,y1=50};
+  g[0].sp.boxes[SP_REBUILD]=Box.{x0=110,y0=10,x1=150,y1=50};
+  #assert ar_pointer(g[..],15,15,0,0,1) && ar_pointer(g[..],65,15,1,0,1) && ar_pointer(g[..],65,15,2,0,1);
+  #assert sp_at_place(g[..],sp_key_place('1',0))==SP_ORB && sp_at_place(g[..],sp_key_place('4',0))==SP_METEOR;
+  #assert ar_pointer(g[..],65,15,0,0,1) && ar_pointer(g[..],15,15,3,0,1);
+  #assert sp_place(g[..],SP_METEOR)==3 && sp_place(g[..],SP_ORB)==0;
+  #assert ar_pointer(g[..],65,15,0,0,1) && ar_pointer(g[..],115,15,2,0,1);
+  #assert sp_place(g[..],SP_METEOR)==3 && sp_place(g[..],SP_REBUILD)==10;
+  text:[AR_TEXT]u8;n:=everglade_bar_keep(g[..],text[..]);
+  g[0].sp.ar=Arrange.{};
+  #assert ar_take(g[..],cast(string)text[0..<n]) && sp_at_place(g[..],0)==SP_ORB && sp_at_place(g[..],3)==SP_METEOR;
+}
+
 Arrange :: struct {
   on: bool;                    // a slot was moved: `place` holds where each one is
   place: [AR_SLOTS] int;
@@ -43,12 +99,53 @@ sp_place_default :: (b: int) -> int {
   if b < SP_REBUILD { return AB_PLACE[b - SP_SLOTS]; }
   return -1;
 }
+// Inverse of the full bar's fixed places, computed once rather than searched
+// for every icon/key lookup. Repair's fixed place is not part of the permutation.
+ar_default_slots :: () -> [HB_ROWS * HB_COLS]int {
+  slots:[HB_ROWS * HB_COLS]int;
+  for p:0..<slots.count {slots[p]=-1;}
+  for b:0..<AR_SLOTS {slots[sp_place_default(b)]=b;}
+  return slots;
+}
+AR_DEFAULT_SLOT :: #run ar_default_slots();
+// Persistent places always describe the complete bar, regardless of the kit
+// currently visible. Saving a reduced kit would lose the other spells' places.
+ar_stored_place :: (s:[]Everglade,b:int)->int {
+  if b>=0 && b<AR_SLOTS && s[0].sp.ar.on {return s[0].sp.ar.place[b];}
+  return sp_place_default(b);
+}
+// Restrict the saved permutation to the available spells: follow each cycle
+// past absent spells to the next present one. This keeps the kit compact and
+// one-to-one, preserves its default order, and never adds an unavailable spell.
+ar_kit_place :: (s:[]Everglade,b:int)->int {
+  original:=ege_kit_place(s,b);
+  if original<0 || !ar_moves(b) || !s[0].sp.ar.on {return original;}
+  next:=b;
+  for step:0..<AR_SLOTS {
+    p:=ar_stored_place(s,next);
+    if p<0 || p>=AR_DEFAULT_SLOT.count {return original;}
+    next=AR_DEFAULT_SLOT[p];
+    if next<0 {return original;}
+    place:=ege_kit_place(s,next);
+    if place>=0 {return place;}
+  }
+  return original;
+}
 // Slot b's place on the bar, as its player arranged it.
 sp_place :: (s: [] Everglade, b: int) -> int {
   if ege_kit_wait(s) { return -1; }   // a room's kit not yet heard: nothing (everglade-events.coax)
-  if net_on(s) && ege_kit_on(s) { return ege_kit_place(s, b); }   // a level's kit: what the character has (everglade-events.coax)
-  if b >= 0 && b < AR_SLOTS && s[0].sp.ar.on { return s[0].sp.ar.place[b]; }
-  return sp_place_default(b);
+  if net_on(s) && ege_kit_on(s) { return ar_kit_place(s, b); }   // what the character has, in the player's order
+  return ar_stored_place(s,b);
+}
+// Read-only observation of the actual bar for local browser/native input checks.
+everglade_bar_probe :: (s:[]Everglade,b:int,field:int)->int #export_c {
+  if field==5 {return s[0].sp.armed;}
+  if b<0 || b>SP_REBUILD {return -1;}
+  if field==0 {return sp_place(s,b);}
+  box:=s[0].sp.boxes[b];
+  if field==1 {return cast(int)box.x0;} if field==2 {return cast(int)box.y0;}
+  if field==3 {return cast(int)box.x1;} if field==4 {return cast(int)box.y1;}
+  return -1;
 }
 ar_moves :: (b: int) -> bool { return b >= 0 && b < AR_SLOTS; }
 ar_now :: (s: [] Everglade) -> f64 { return ifx s[0].now_s > 0 then (s[0].now_s + (s[0].time - s[0].day_from)) * 1000 else 0.0; }
@@ -69,7 +166,7 @@ ar_text :: (s: [] Everglade, out: [] u8) -> int {
   n := sp_put(out, 0, AR_HEAD);
   n = sp_put(out, n, "at="); n = put_digits(out, n, cast(int) s[0].sp.ar.at);
   n = sp_put(out, n, "\nplaces=");
-  for b: 0..<AR_SLOTS { if b > 0 { n = sp_put(out, n, ","); } n = put_digits(out, n, sp_place(s, b)); }
+  for b: 0..<AR_SLOTS { if b > 0 { n = sp_put(out, n, ","); } n = put_digits(out, n, ar_stored_place(s, b)); }
   n = sp_put(out, n, "\n");
   return ifx n < out.count then n else 0;
 }

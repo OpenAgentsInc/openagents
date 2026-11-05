@@ -312,6 +312,7 @@ EXPORT("coaxial_pixel_budget") uint32_t coaxial_pixel_budget(void) {
   return px > 0 ? (uint32_t)px : 0u;
 }
 EXPORT("coaxial_quality_probe") int32_t coaxial_quality_probe(uint32_t state, int32_t field) { return (int32_t)everglade_quality_probe(at(state), field); }
+EXPORT("coaxial_hotbar_probe") int32_t coaxial_hotbar_probe(uint32_t state, int32_t slot, int32_t field) { return (int32_t)everglade_bar_probe(at(state), slot, field); }
 EXPORT("coaxial_golden") void coaxial_golden(uint32_t on) { golden = on != 0; }
 // Where you stand, for a headless walk (globalThis.coaxial.probe()): x and z to a tenth of a metre,
 // as (x + 500) * 10 * 10000 + (z + 500) * 10.

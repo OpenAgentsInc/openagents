@@ -742,6 +742,12 @@ owners who want it. A duel invitation is a later phase.
 | Inventory | Yes | The account's progress; a guest's save slot |
 | Spawned creatures and zones | No | They end when their effect ends |
 | Destruction | No | The room starts whole when it empties |
+
+Shift-drag swaps the spell and its number-key assignment in both the full bar
+and level-based room kits. The saved `eg-bar 1` permutation always contains all
+movable spells, independently of the current kit. A kit restricts its cycles to
+available spells, retaining compact, unique positions as the kit changes;
+Repair stays fixed. Drawing and key lookup use the same arrangement.
 | Admin edits | Yes | The published world doc, as today |
 
 The room server keeps the 10-minute and 5-minute records in memory (lost on

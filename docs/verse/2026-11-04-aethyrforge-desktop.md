@@ -91,6 +91,11 @@ page server, the voice Wasm and a local Parakeet voice host. This is the same
   parakeet --json` verifies Parakeet; `models migrate --json` moves the legacy
   caches and leaves compatibility symlinks, refusing conflicting copies. The CLI,
   Coder dictation, Mac dictation and voice host use the shared model defaults.
+- Everglade's hotbar uses the shared Coax arrangement in room kits as well as
+  offline play. Shift-drag swaps rendered positions and number-key assignments;
+  the complete saved permutation survives reloads and changes in available
+  spells, with Repair fixed. `--hotbar-smoke REPORT.json` checks the actual
+  WKWebView input listeners, positions, number keys, cancellation and reload.
 - Microphone capture works through the page's TALK/V gesture after leaving
   EDIT with DONE/B. The native shell declares its microphone usage and requests
   macOS consent for audio from its own loopback main frame. Startup prepares a

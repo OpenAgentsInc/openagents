@@ -2491,6 +2491,7 @@ globalThis.coaxial = { send, ready: false, sceneReady: false, facts: () => pageF
   fieldProbe: (field = 0) => engine?.exports.coaxial_field_probe?.(arena.state, field) ?? -1 };
 // Headless verification observes effects without exposing renderer policy.
 if (dev) {
+  globalThis.coaxial.hotbarProbe = (slot, field = 0) => engine?.exports.coaxial_hotbar_probe?.(arena.state, slot, field) ?? -1;
   // Read-only transport from the real Grid face for headless journeys.
   // The exported Coax procedures define every observed field.
   globalThis.coaxial.netProbe = (field = 0) => engine?.exports.coaxial_net_probe?.(arena.state, field) ?? -1;   // everglade-net.coax net_probe

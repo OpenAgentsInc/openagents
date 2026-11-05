@@ -90,6 +90,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     let voiceWarmSmoke = CommandLine.arguments.contains("--voice-warm-smoke")
     let chatSmoke = CommandLine.arguments.contains("--chat-smoke")
     let inputSmoke = CommandLine.arguments.contains("--input-smoke")
+    let hotbarSmoke = CommandLine.arguments.contains("--hotbar-smoke")
     let sceneSmoke = CommandLine.arguments.contains("--scene-smoke")
     let npcSmoke = CommandLine.arguments.contains("--npc-smoke")
     let audioSmoke = CommandLine.arguments.contains("--audio-smoke")
@@ -105,9 +106,9 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         guard let i = CommandLine.arguments.firstIndex(of: "--frame-profile"), i + 1 < CommandLine.arguments.count else { return nil }
         return URL(fileURLWithPath: CommandLine.arguments[i + 1])
     }
-    var smoke: Bool { voiceWarmSmoke || audioSmoke || npcSmoke || sceneSmoke || inputSmoke || chatSmoke || setupSmoke || voiceSmoke || CommandLine.arguments.contains("--smoke-test") }
+    var smoke: Bool { hotbarSmoke || voiceWarmSmoke || audioSmoke || npcSmoke || sceneSmoke || inputSmoke || chatSmoke || setupSmoke || voiceSmoke || CommandLine.arguments.contains("--smoke-test") }
     var report: URL? {
-        guard let i = CommandLine.arguments.firstIndex(of: voiceWarmSmoke ? "--voice-warm-smoke" : audioSmoke ? "--audio-smoke" : npcSmoke ? "--npc-smoke" : sceneSmoke ? "--scene-smoke" : inputSmoke ? "--input-smoke" : chatSmoke ? "--chat-smoke" : voiceSmoke ? "--voice-smoke" : setupSmoke ? "--setup-smoke" : "--smoke-test"), i + 1 < CommandLine.arguments.count else { return nil }
+        guard let i = CommandLine.arguments.firstIndex(of: hotbarSmoke ? "--hotbar-smoke" : voiceWarmSmoke ? "--voice-warm-smoke" : audioSmoke ? "--audio-smoke" : npcSmoke ? "--npc-smoke" : sceneSmoke ? "--scene-smoke" : inputSmoke ? "--input-smoke" : chatSmoke ? "--chat-smoke" : voiceSmoke ? "--voice-smoke" : setupSmoke ? "--setup-smoke" : "--smoke-test"), i + 1 < CommandLine.arguments.count else { return nil }
         return URL(fileURLWithPath: CommandLine.arguments[i + 1])
     }
 
@@ -348,7 +349,10 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
                     }
                 }
             }
-            if voiceWarmSmoke {
+            if hotbarSmoke {
+                await inventoryTask?.value
+                try await hotbarSmokeCheck()
+            } else if voiceWarmSmoke {
                 await inventoryTask?.value
                 try await voiceWarmSmokeCheck()
             } else if audioSmoke {
@@ -902,6 +906,57 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
 
     // Real AppKit key dispatch over the packaged realm, with no visible window.
     // The staged events separately exercise presentation while the CLI waits.
+    // Hidden WKWebView acceptance uses the same keyboard/pointer listeners and
+    // room kit as normal play, with its own world and local storage.
+    func hotbarSmokeCheck() async throws {
+        guard let report else { throw ShellError.failed("--hotbar-smoke needs a report path.") }
+        enterWorld()
+        var results: [[String:Any]] = []
+        for stage in 0..<2 {
+            let result = try await web.callAsyncJavaScript("""
+            const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+            const wait=async f=>{const end=performance.now()+10000;while(!f()&&performance.now()<end)await sleep(20);if(!f())throw Error('Hotbar did not reach the expected state');};
+            const key=(type,key,shiftKey=false)=>dispatchEvent(new KeyboardEvent(type,{key,shiftKey,bubbles:true}));
+            const press=k=>{key('keydown',k);key('keyup',k);};
+            const p=(b,f=0)=>coaxial.hotbarProbe(b,f);
+            const box=b=>[p(b,1),p(b,2),p(b,3),p(b,4)];
+            const pointer=(type,b)=>{const v=box(b),c=document.querySelector('canvas'),scale=c.width/c.clientWidth;dispatchEvent(new PointerEvent(type,{pointerType:'mouse',pointerId:7,clientX:(v[0]+v[2])/2/scale,clientY:(v[1]+v[3])/2/scale,button:0,buttons:type==='pointerup'?0:1,bubbles:true}));};
+            try {
+              await wait(()=>coaxial.sceneReady&&p(21)>=0&&p(22)>=0);
+              if(p(21,3)<=p(21,1))press('b');
+              await wait(()=>p(21,3)>p(21,1)&&p(22,3)>p(22,1));
+              const before={a:p(21),b:p(22),boxes:[box(21),box(22)]};
+              if(stage===0){
+                if(before.a!==0||before.b!==1)throw Error('Expected a fresh room kit');
+                key('keydown','Shift',true);pointer('pointerdown',21);pointer('pointermove',22);pointer('pointerup',22);key('keyup','Shift');
+              }
+              await wait(()=>p(21)===1&&p(22)===0&&box(21)[0]>box(22)[0]);
+              if(p(21,5)!==-1)throw Error('Dragging cast a spell');
+              // The actual number keys must select the newly assigned spells.
+              press('1');const on1=p(21,5);press('1');press('2');const on2=p(21,5);press('2');
+              if(on1!==22||on2!==21)throw Error('Number keys did not follow the swapped icons: '+on1+','+on2);
+              key('keydown','Shift',true);pointer('pointerdown',21);pointer('pointermove',22);pointer('pointercancel',22);key('keyup','Shift');
+              if(p(21)!==1||p(22)!==0)throw Error('Cancelled drag changed assignment');
+              await wait(()=>!!localStorage.getItem('coaxial.everglade.bar'));
+              const saved=localStorage.getItem('coaxial.everglade.bar');
+              const places=saved.split('places=')[1].trim().split(',').map(Number);
+              if(places.length!==47||new Set(places).size!==47||places.some(v=>v<0))throw Error('Reduced kit corrupted the saved arrangement');
+              return {ok:true,stage,before,after:{a:p(21),b:p(22),boxes:[box(21),box(22)]},on1,on2,cancelled:true,saved};
+            } catch(e) {return {ok:false,stage,error:String(e)};}
+            """, arguments: ["stage":stage], in: nil, contentWorld: .page) as? [String:Any] ?? [:]
+            guard result["ok"] as? Bool == true else { throw ShellError.failed("Hotbar input regression: \(result)") }
+            results.append(result)
+            if stage == 0 {
+                reloadWorld()
+                try await Task.sleep(for: .milliseconds(300))
+                try await waitForScene()
+            }
+        }
+        try await captureCanvas(report)
+        try JSONSerialization.data(withJSONObject:["ok":true,"webkit":true,"shiftDragAndNumberKeys":true,"reloadPreservesAssignment":true,"stages":results],options:[.prettyPrinted,.sortedKeys]).write(to:report,options:.atomic)
+        stopChildren();NSApp.terminate(nil)
+    }
+
     func inputSmokeCheck() async throws {
         guard let report else { throw ShellError.failed("--input-smoke needs a report path.") }
         enterWorld()

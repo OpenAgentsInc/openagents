@@ -80,6 +80,10 @@ and skips the first-visit character picker that would otherwise consume EDIT's
 keys while hidden behind its panels. Its servers bind only `127.0.0.1`, on two free ports, and stop on app quit or
 when either server fails. A lock prevents two instances writing the same world.
 View → Reload Everglade reloads the page. Closing the window quits the app.
+After leaving EDIT, Shift-drag one hotbar spell onto another to swap their
+positions and number keys. This uses Everglade's shared bar code, including
+level-based room kits. The saved arrangement describes the full bar; the current
+kit applies those swaps among its available spells, with Repair fixed.
 The relay uses `localhost`, the existing room client's required local override,
 so the WebSocket connects straight to the room and leaves the HTTP page proxy
 free to serve saves.
@@ -361,6 +365,17 @@ apps/aethyrforge-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge --setu
 ```
 
 Reports include the first-frame time and child PIDs; matching PNGs show the frame.
+`--hotbar-smoke REPORT.json` uses an isolated world and hidden WKWebView to
+Shift-drag two actual room-kit slots, check their rendered bounds, press their
+new number keys, cancel a drag and reload the page to check persistence. It uses
+the normal DOM input listeners and read-only Coax hotbar probes, with audio muted.
+The 2026-11-04 check passed before and after reload: slots 21/22 exchanged
+their rendered bounds, keys 1/2 selected 22/21, a cancelled drag changed nothing,
+and the saved 47-slot permutation remained valid. Two scoped Coax checks cover
+room-kit changes, hidden spells, offline layout, cancellation and fixed Repair;
+the new room-kit regression failed against the previous implementation. Reports
+and the frame are in `/tmp/forge-hotbar/native/`; the 2,033,168-byte game build
+passed. `tools-check` reports the repository's 29 existing missing reason headers.
 Use a fresh directory for a new edit test. This is milestone one's shell/save
 check, not the future voice acceptance suite.
 
