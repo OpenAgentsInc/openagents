@@ -1,0 +1,5 @@
+PASS fixture a: 103 blocks, raw transactions/weights/outputs, exact occurrences, paged script histories and Core/Electrs balances
+PASS fixture b: 106 blocks, raw transactions/weights/outputs, exact occurrences, paged script histories and Core/Electrs balances
+PASS fixture c: 108 blocks, raw transactions/weights/outputs, exact occurrences, paged script histories and Core/Electrs balances
+PASS own-node c: 108 blocks, raw transactions/weights/outputs, exact occurrences, paged script histories and Core/Electrs balances
+PASS 928 bounded no-store HTTP responses; no Core/Electrs process required

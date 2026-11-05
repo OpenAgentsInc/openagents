@@ -1,0 +1,10 @@
+{
+  "bitcoind": {
+    "exit_code": 1,
+    "matching_processes": 0
+  },
+  "electrs": {
+    "exit_code": 1,
+    "matching_processes": 0
+  }
+}

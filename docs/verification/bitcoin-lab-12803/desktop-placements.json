@@ -1,0 +1,40 @@
+[
+  {
+    "handle": "0x60",
+    "app_id": "com.openagents.aethyrforge",
+    "title": "Aethyrforge \u00b7 Bitcoin Lab",
+    "pid": 261250,
+    "screen": "DP-1",
+    "desk": 3,
+    "at": {
+      "x": 6,
+      "y": 6
+    },
+    "size": {
+      "width": 2548,
+      "height": 1428
+    },
+    "floating": false,
+    "pinned": false,
+    "fullscreen": false
+  },
+  {
+    "handle": "0x59",
+    "app_id": "com.openagents.verse",
+    "title": "Verse",
+    "pid": 4134706,
+    "screen": "DP-1",
+    "desk": 4,
+    "at": {
+      "x": 6,
+      "y": 6
+    },
+    "size": {
+      "width": 2548,
+      "height": 1428
+    },
+    "floating": false,
+    "pinned": false,
+    "fullscreen": false
+  }
+]

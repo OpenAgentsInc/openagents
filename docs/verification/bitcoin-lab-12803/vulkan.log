@@ -1,0 +1,4 @@
+vk-realm: NVIDIA GeForce RTX 4080, 3 passes at 1440x900, made in 3 ms
+vk-realm: step median 0.14 ms, 99th 0.25 ms, longest 2.13 ms
+vk-realm: gpu median 0.45 ms, 99th 0.57 ms, longest 0.67 ms
+vk-realm: NVIDIA GeForce RTX 4080, 1440x900, 600 frames, 1 draws the last; it ended because it drew its frames

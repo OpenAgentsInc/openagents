@@ -1,0 +1,2 @@
+PASS desktop: real fetch, fixture/node selection, reorg, page, transaction graph, synchronous invalidation, pending-request trap/rescue, device recovery, return to offline recording
+PASS phone: real fetch, fixture/node selection, reorg, page, transaction graph, synchronous invalidation, pending-request trap/rescue, device recovery, return to offline recording
