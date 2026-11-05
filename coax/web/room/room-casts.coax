@@ -164,6 +164,7 @@ rc_start :: (v: [] RmServer, k: int, q: int) {
     eg_event(v, k, cast(string) eb[0..<en], me.x, me.z, false);
     return;
   }
+  if ra_world_slot(slot)&&!ra_may_queue(v,k,seat,true){v[0].eg[k].casts[q].on=false;eg_refuse(v,k,seat,seq,"busy");return;}
   st[0].last_cast = t;
   bar := cr_bar_ticks(slot, EG_HZ);
   cs := v[0].eg[k].casts[q..<q + 1];

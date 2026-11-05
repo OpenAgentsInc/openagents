@@ -9,6 +9,8 @@ receipts are recorded.
 | --- | --- | --- |
 | Movement intents | Per-socket frame/byte token buckets, fixed input queue and authoritative time credit | Extra input is discarded/counted; sustained abuse closes that socket; a faster sender earns no faster movement |
 | Cast intents | Two outstanding reservations per seat, 32 per room | Existing `r SEQ busy` before cast order/cooldown is spent |
+| World ability service | Two starts and four ends per seat, 96 entries | Refuse extra starts before cooldown/resources; refuse extra ends before ending concentration; preserve movement/end ordering |
+| Door/talk/boat interactions | One interaction and one release per seat, 32 entries | Existing `r SEQ busy` for extras; starting an interaction cannot consume its release reservation or another seat's work |
 | World damage input | One aggregate per seat per tick, 16 reserved mailboxes | Repeated complete reports replace their seat's snapshot; resolved once after heals; no overflow-to-immediate-damage path |
 | Entity state | Bounded row budget and maximum-age selection | Replace/coalesce; old slow-link state is skipped; resnapshot after catch-up |
 | Lifecycle and outcomes | Separate lifecycle allowance and reserved outcome storage | Lifecycle deferred; missed town outcomes counted and repaired by complete town state |

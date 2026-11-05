@@ -1,0 +1,10 @@
+FAIL #test overload: one seat cannot consume another seat's door talk or boat work (#12841) (422 ms)
+coax/web/room/room-everglade.coax:556:3: error[E0406]: assertion failed
+    #assert v[0].eg[k].use_ask_n==3&&rm_eg_use_ask(v[..],k,2)==eg_use_code(WE_TALK,0,-1);
+    ^
+  note: in #test overload: one seat cannot consume another seat's door talk or boat work (#12841)
+1 of 594 checks (--only 'one seat cannot consume'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: this compiler is out of date: /Users/christopherdavid/work/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/work/openagents/coax/build.sh

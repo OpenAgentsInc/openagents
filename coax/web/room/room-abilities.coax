@@ -13,7 +13,8 @@
 // world_abilities, then rm_ra_live for each seat's every ability, rm_ra_air for each person and
 // rm_ra_hurt for what the falls dealt.
 
-RA_CASTS :: 32;
+#load "effect-budget.coax";
+RA_CASTS :: EG_SEATS*(EF_STARTS+EF_ENDS);
 RA_CAST_FLOATS :: 11;           // BY AB X Y Z YAW ON AX AY AZ (and a spare)
 RA_ID0 :: 900000;               // the abilities' entity ids, past the rules' zones and creatures
 RA_ABS :: 48;                   // abilities a seat, room for everglade-abilities.coax AB_N
@@ -46,11 +47,29 @@ ra_fresh :: (v: [] RmServer, k: int) {
   v[0].ab[k] = RaRoom.{};
   v[0].ab[k].next_id = 1;
 }
+#test "overload: every seat keeps two ability starts and four ordered ends (#12841)" #steps 3000000000 {
+  v:[1]RmServer;k:=rc_test_room(v[..],"pair-ability-budget",16,false);
+  for s:0..<EG_SEATS{
+    for q:0..<4{#assert ra_queue(v[..],k,RaCast.{by=s,on=false});}
+    for q:0..<2{#assert ra_queue(v[..],k,RaCast.{by=s,on=true});}
+    #assert !ra_queue(v[..],k,RaCast.{by=s,on=true})&&!ra_queue(v[..],k,RaCast.{by=s,on=false});
+  }
+  #assert v[0].ab[k].q_n==96;
+  #assert !ra_queue(v[..],k,RaCast.{by=0,on=true})&&!ra_queue(v[..],k,RaCast.{by=15,on=false});
+  rm_ra_heard(v[..],k);#assert ra_queue(v[..],k,RaCast.{by=15,on=true});
+  #assert !ra_queue(v[..],k,RaCast.{by= -1,on=true})&&!ra_queue(v[..],k,RaCast.{by=16,on=true});
+}
 ra_queue :: (v: [] RmServer, k: int, c: RaCast) -> bool {
   r := v[0].ab[k..<k + 1];
-  if r[0].q_n >= RA_CASTS { return false; }
+  if !ra_may_queue(v,k,c.by,c.on) { return false; }
   r[0].q[r[0].q_n] = c; r[0].q_n += 1;
   return true;
+}
+ra_may_queue :: (v:[]RmServer,k:int,seat:int,start:bool)->bool {
+  if seat<0||seat>=EG_SEATS||v[0].ab[k].q_n>=RA_CASTS{return false;}
+  starts:=0;ends:=0;
+  for q:0..<v[0].ab[k].q_n{c:=v[0].ab[k].q[q];if c.by!=seat{continue;}if c.on{starts+=1;}else{ends+=1;}}
+  return ef_admit(start,starts,ends);
 }
 // A cast of bar slot `slot` from seat `seat` standing at `me`, at the aim (room-everglade.coax
 // eg_heard_cast, once it is checked): an ability the world runs goes to it (pressed again, one that

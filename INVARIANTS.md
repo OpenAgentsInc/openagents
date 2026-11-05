@@ -746,6 +746,15 @@ and ability hits keep their existing rules path; they are not coalesced by
 this adapter. Checks cover every seat, repeated reports, invalid inputs,
 take-once behavior and the integrated heal-before-harm order.
 
+World ability service reserves two starts and four ends per seat independently
+(`effect-budget.coax`, #12841). Its 96-entry queue covers all sixteen seats;
+one seat cannot consume another's service or let its ends consume its starts.
+An overloaded start is refused before cooldown or rule resources are spent. An
+ordered end queue refuses its fifth waiting request as busy rather than ending
+an ability ahead of preceding movement. Doors/talks/boats reserve one interaction
+and one release per seat per tick, with explicit busy refusal of extras. No full queue silently
+accepts those commands. Checks: room-abilities and room-everglade overload cases.
+
 The native room's background HTTP effects use six independent lanes
 (`background-budget.coax`): control, world, legacy vitals, complete checkpoints,
 directory and statistics. Each has one serial SDK helper and one admitted Coax

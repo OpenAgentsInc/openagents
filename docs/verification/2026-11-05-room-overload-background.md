@@ -54,6 +54,9 @@ exits 1. The native startup-default check passes with zero fields wrong.
 The complete room suite passes 589/589. `tools-check` passes with no new tool
 missing a reason. Raw receipts are in
 [`room-overload-background-2026-11-05/`](room-overload-background-2026-11-05/).
+The later completed release worker build for that unchanged background part
+is 1,022,517 / 1,060,000 bytes. The ability-reservation follow-up records its
+newer worker separately.
 
 The first current-world build generated its Coax units but failed at the SDK
 link compile because Darwin's POSIX namespace lacks `MSG_DONTWAIT`. Both ends

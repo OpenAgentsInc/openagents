@@ -1,0 +1,20 @@
+FAIL #test overload: a full ordered end queue refuses before ending an ability ahead of its inputs (#12841) (476 ms)
+coax/web/room/room-everglade.coax:542:3: error[E0406]: assertion failed
+    #assert v[0].eg[k].seat[0].ends_n==EG_ENDS&&v[0].ab[k].q_n==0;
+    ^
+  note: in #test overload: a full ordered end queue refuses before ending an ability ahead of its inputs (#12841)
+FAIL #test overload: one seat cannot consume another seat's door talk or boat work (#12841) (384 ms)
+coax/web/room/room-everglade.coax:550:3: error[E0406]: assertion failed
+    #assert v[0].eg[k].use_ask_n==2;
+    ^
+  note: in #test overload: one seat cannot consume another seat's door talk or boat work (#12841)
+FAIL #test overload: every seat keeps two ability starts and four ordered ends (#12841) (524 ms)
+coax/web/room/room-abilities.coax:52:17: error[E0406]: assertion failed
+      for q:0..<4{#assert ra_queue(v[..],k,RaCast.{by=s,on=false});}
+                  ^
+  note: in #test overload: every seat keeps two ability starts and four ordered ends (#12841)
+3 of 592 checks (--only 'overload:'), 0 passed, 3 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: this compiler is out of date: /Users/christopherdavid/work/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/work/openagents/coax/build.sh

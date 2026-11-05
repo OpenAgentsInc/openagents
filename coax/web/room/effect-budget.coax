@@ -1,0 +1,23 @@
+// Fixed per-seat service reservations for world ability starts and ends.
+#authority;
+EF_STARTS::2;EF_ENDS::4;
+#test "interaction releases cannot be crowded out by interaction starts" {
+  #assert ef_use_admit(false,0,1)&&!ef_use_admit(false,1,0);
+  #assert ef_use_admit(true,1,0)&&!ef_use_admit(true,0,1);
+  #assert !ef_use_admit(false,-1,0)&&!ef_use_admit(false,0,-1)&&!ef_use_admit(false,2,0)&&!ef_use_admit(false,0,2);
+  #assert !ef_use_admit(true,-1,0)&&!ef_use_admit(true,0,-1)&&!ef_use_admit(true,2,0)&&!ef_use_admit(true,0,2);
+}
+ef_use_admit::(release:bool,uses:int,releases:int)->bool #export_c {
+  if uses<0||uses>1||releases<0||releases>1{return false;}
+  return ifx release then releases<1 else uses<1;
+}
+#test "ability service reservations keep starts and ends independent" {
+  #assert ef_admit(true,0,4)&&ef_admit(true,1,4)&&!ef_admit(true,2,0);
+  #assert ef_admit(false,2,0)&&ef_admit(false,2,3)&&!ef_admit(false,0,4);
+  #assert !ef_admit(true,-1,0)&&!ef_admit(true,0,-1)&&!ef_admit(true,3,0)&&!ef_admit(true,0,5);
+  #assert !ef_admit(false,-1,0)&&!ef_admit(false,0,-1)&&!ef_admit(false,3,0)&&!ef_admit(false,0,5);
+}
+ef_admit::(start:bool,starts:int,ends:int)->bool #export_c {
+  if starts<0||starts>EF_STARTS||ends<0||ends>EF_ENDS{return false;}
+  return ifx start then starts<EF_STARTS else ends<EF_ENDS;
+}
