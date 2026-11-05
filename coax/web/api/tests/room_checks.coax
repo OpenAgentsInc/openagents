@@ -9,12 +9,11 @@
 //   owner      one owner per character through a room process's pause and resume (#12834; ROOM_BIN only)
 //   builds     each shard's build in the directory, placement by the page's build, builds in saves (#12839)
 //   travel     a player's travel between two room processes, the first crashing after the route (#12850; ROOM_BIN only)
-// Admission, invites, stats, vitals and oa-room's side of the event need the seat-ticket key: run test.sh
-// with ROOM_KEY and OA_ROOM_TICKET_KEY set to the same key. With ROOM_BIN (a room server built by
+// Admission, invites, stats, vitals and oa-room's side of the event need the seat-ticket key: test.sh sets
+// ROOM_KEY and OA_ROOM_TICKET_KEY to a local key unless they are set. With ROOM_BIN (a room server built by
 // coax/web/room/build.sh) it also runs the vitals fault check: a raid in a room --dev whose vitals go to
 // the API through a proxy (this program's `proxy` mode) that answers 500 for 30 s mid-raid and then holds
 // two answers past the room's timeout; the API's XP must end exactly the XP each seat earned.
-//   ROOM_KEY=local-development-room-ticket-key-not-a-secret OA_ROOM_TICKET_KEY=$ROOM_KEY \
 //   ROOM_BIN=coax/web/room/bin/room coax/web/api/test.sh
 //   API=... PGURL=... PSQL=... SIGN=... ADMIN_KEY=... [ROOM_KEY=...] [ROOM_BIN=...] \
 //     coax/web/tool.sh coax/web/api/tests/room_checks.coax [admission|chat|events|invites|stats|vitals|owner|travel|builds ...]
@@ -1021,6 +1020,8 @@ ro_room :: (t: [] Ap, bin: string, work: string, port: [] int, flog: [] FcLog) -
 // another process). A posts P's state and sends the page on only once the API has it; then A is
 // killed at once (a crash right after the route). P's ticket for pair-b (the next owner generation, the
 // HP the API holds) sits on B, and B's own save of P is applied as the new owner, the HP unchanged.
+// Then B is killed too (the destination's crash after the arrival) and a new process serves pair-b: P's
+// next ticket sits there, and that process's save is applied as the next owner with the same HP and XP.
 rc_travel :: (t: [] Ap, room_bin_in: string) {
   out: [4096] u8; q: [1] Sb; none: [1] string;
   p: [1] Player; r := ap_player(t, p[..]);
@@ -1057,13 +1058,27 @@ rc_travel :: (t: [] Ap, room_bin_in: string) {
   deadline := proc_now_ms() + 20000; n_ops := 0;
   while proc_now_ms() < deadline { fc_drain(room_b, lb[..]); n_ops = rc_num(ap_sql(t, sb_text(ops[..]), out[..])); if n_ops >= 2 { break; } proc_sleep(500); }
   ap_check(t, "travel: room B's save of P is applied, as the new owner, with the HP and XP P left A with", n_ops >= 2 && ap_sql(t, sb_text(vq[..]), hv[..]) == kept, ap_sql(t, sb_text(vq[..]), hv[..]));
-  if room_b >= 0 {
-    k := proc_kill(room_b, PROC_SIGTERM);
-    w := proc_wait(room_b, 15000);
-    if w == PROC_RUNNING { k = proc_kill(room_b, PROC_SIGKILL); w = proc_wait(room_b, 2000); }
-    r = proc_release(room_b);
+  // the destination crashes after the arrival, and a new room process takes pair-b: P's next ticket
+  // (the next owner, the HP the API holds) sits there, and its save is applied with that HP
+  if room_b >= 0 { k := proc_kill(room_b, PROC_SIGKILL); w := proc_wait(room_b, 5000); r = proc_release(room_b); }
+  wc: [4096] u8; work_c := fs_temp("room-travel-c", wc[..]);
+  lc: [1] FcLog; pc: [1] int;
+  room_c := ro_room(t, sb_text(binb[..]), work_c, pc[..], lc[..]);
+  g3 := rc_num(ap_sql(t, sb_text(q[..]), out[..]));
+  sa[2] = ro_url_hp(t, u[..], pc[0], pid, "pair-b", kept, g3);
+  ops_before := rc_num(ap_sql(t, sb_text(ops[..]), out[..]));
+  sc_seat := ifx room_c >= 0 then ro_seat_json(fc_start(sa[0..<4], none[0..<0], ""), 40000, sj[..]) else "";
+  ap_check(t, "travel: after the destination crashes, P sits in pair-b on its replacement", ap_member_int(sc_seat, "seat", -1) >= 0 && !rc_truthy(sc_seat, "elsewhere"), sc_seat);
+  deadline = proc_now_ms() + 20000; n_ops = 0;
+  while room_c >= 0 && proc_now_ms() < deadline { fc_drain(room_c, lc[..]); n_ops = rc_num(ap_sql(t, sb_text(ops[..]), out[..])); if n_ops > ops_before { break; } proc_sleep(500); }
+  ap_check(t, "travel: the replacement's save of P is applied as the next owner, the HP and XP unchanged", g3 == g2 + 1 && n_ops > ops_before && ap_sql(t, sb_text(vq[..]), hv[..]) == kept, ap_sql(t, sb_text(vq[..]), hv[..]));
+  if room_c >= 0 {
+    k := proc_kill(room_c, PROC_SIGTERM);
+    w := proc_wait(room_c, 15000);
+    if w == PROC_RUNNING { k = proc_kill(room_c, PROC_SIGKILL); w = proc_wait(room_c, 2000); }
+    r = proc_release(room_c);
   }
-  g := fs_remove(work_a); g = fs_remove(work_b);
+  g := fs_remove(work_a); g = fs_remove(work_b); g = fs_remove(work_c);
 }
 
 tool_main :: () -> int #export_c {

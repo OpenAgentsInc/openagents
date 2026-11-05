@@ -6,6 +6,7 @@
 //      (no one else's join takes it); a full one refuses with "r SEQ full", and the player plays on.
 //      An instance on another shard is the API directory's to place (room_pick, rooms.c).
 //   2. prepare: the seat stops taking intents (the cutover: I, C, E, L and R are dropped and counted),
+//      its casts still on their bars stop ("e stop SS SLOT left"; one already released lands),
 //      and the player's HP, XP and WANTED are noted and posted (room-vitals.coax), so the destination
 //      starts from the last command this room accepted.
 //   3. route, once the API's receipt covers that note (it is durable, so a crash of this room after
@@ -114,6 +115,7 @@ eg_heard_travel :: (v: [] RmServer, k: int, seat: int, text: string) {
   v[0].trv.t[slot] = e;
   // 2. prepare: the cutover, and what the destination starts from
   v[0].eg[k].seat[seat].travel_until = v[0].mono_ms + TRAVEL_MS;
+  rc_cutover(v, k, seat);
   rv_note_seat(v, k, seat); v[0].vit.flush = true;
   i := rv_find(v, pid);
   v[0].trv.t[slot].rev = ifx i >= 0 then v[0].vit.v[i].rev else 0;

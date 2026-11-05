@@ -819,6 +819,37 @@ rl_test_heard2 :: (v: [] RmServer, a: int, ba: [] u8, na: [] int, b: int, bb: []
   s := rm_join(v[..], 5, rl_test_owned(r[..], t[..], key, a, "pair-b", 4, now));
   #assert s == 1 && rm_travel_stat(v[..], 4) == 1 && v[0].eg[kb].rules[0].b[0].c[E5RR_SEAT + 1].hp == hp;
 }
+#test "travel (#12850): a cast on its bar stops at the cutover, and the room hears why; one released before lands" #steps 3000000000 {
+  v: [1] RmServer; box: [1] EgInbox;
+  rm_init(v[..]);
+  rm_control(v[..], "levels 0 2\n");
+  now := 1762190000000;
+  rm_clock(v[..], 0, now);
+  key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  rm_ticket_key(v[..], key, true);
+  t: [256] u8; r: [512] u8;
+  #assert rm_join(v[..], 0, rl_test_owned(r[..], t[..], key, "p-0011223344556677", "pair-a", 3, now)) == 0;
+  #assert rm_join(v[..], 1, rl_test_owned(r[..], t[..], key, "p-8899aabbccddeeff", "pair-a", 2, now)) == 1;
+  #assert rm_join(v[..], 2, rl_test_owned(r[..], t[..], key, "p-c0ffeec0ffeec0ff", "pair-b", 2, now)) == 0;
+  ka := eg_room_at(v[..], v[0].conns[0].relay);
+  for q: 0..<10 { rc_test_tick(v[..], ka, true); }
+  rm_heard(v[..], 0, "C 1 0 3000 0 0 -1");   // Meteor Swarm's 2.5 s bar
+  for q: 0..<20 { rc_test_tick(v[..], ka, true); }
+  eg_test_drain(v[..], box[..]);
+  #assert !eg_test_has(eg_test_of(box[..], 1), "e stop");
+  rm_heard(v[..], 0, "T 2 pair-b");
+  rc_test_tick(v[..], ka, true);
+  eg_test_drain(v[..], box[..]);
+  #assert eg_travelling(v[..], ka, 0);
+  #assert eg_test_has(eg_test_of(box[..], 1), "e stop 0 0 left");
+  on := 0; for c: 0..<EG_CASTS { if v[0].eg[ka].casts[c].on && v[0].eg[ka].casts[c].seat == 0 { on += 1; } }
+  #assert on == 0;
+  // released: a cast in flight is left alone
+  v[0].eg[ka].casts[0] = EgCast.{on = true, seat = 1, phase = RC_FLIGHT};
+  v[0].eg[ka].casts[1] = EgCast.{on = true, seat = 1, phase = RC_BAR};
+  rc_cutover(v[..], ka, 1);
+  #assert v[0].eg[ka].casts[0].on && !v[0].eg[ka].casts[1].on;
+}
 #test "travel (#12850): unsaved, no route; a page that never leaves gets its commands back after TRAVEL_MS, and the set-aside seat lapses" #steps 2000000000 {
   v: [1] RmServer;
   rm_init(v[..]);

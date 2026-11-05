@@ -300,6 +300,15 @@ rc_left :: (v: [] RmServer, k: int, s: int) {
   }
 }
 
+// Seat s cuts over for travel (room-travel.coax, #12850): its casts not yet released stop (everyone near
+// hears "left", as when it leaves); one already on its way was accepted, and lands.
+rc_cutover :: (v: [] RmServer, k: int, s: int) {
+  for c: 0..<EG_CASTS {
+    cs := v[0].eg[k].casts[c];
+    if cs.on && cs.seat == s && cs.phase != RC_FLIGHT { rc_stop(v, k, c, CR_LEFT); }
+  }
+}
+
 // ---- checks (coax test --library coax/web/room/room.coax --only "casts:")
 
 // eg_test_tick with the host's line of sight: every question answered `clear`.
