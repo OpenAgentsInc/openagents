@@ -30,6 +30,9 @@ typedef struct {
   RhEntry *entries;
   int entry_count;
   int layers;   // how many texture layers the pack has
+  struct RhAudio *audio;
+  struct RhAudioDevice *audio_device;
+  int64_t audio_status,audio_command;
 } RealmHost;
 
 // A pointer the face handed back (a 32-bit offset), and the offset of one of ours.
@@ -58,6 +61,16 @@ int rh_host_version(void);
 // Shared lifecycle actions; released input is applied to the actual producer.
 int64_t rh_lifecycle_event(RealmHost *h,int kind,int64_t monotonic_us,int64_t arg);
 int64_t rh_lifecycle_info(int field);
+// Optional v1 audio SDK. Device starts inactive; actual input gestures start
+// this engine's clock. Muting changes only the concrete output samples.
+int rh_audio_enable(RealmHost *h,int muted);
+void rh_audio_gesture(RealmHost *h);
+void rh_audio_pause(RealmHost *h,int paused);
+void rh_audio_retire(RealmHost *h);
+void rh_audio_close(RealmHost *h);
+// Fields0..10 are core observations,20..30 device observations,40 bank
+// admission status,41 last command,42 device closed,43 context closed.
+int64_t rh_audio_info(RealmHost *h,int field);
 // Copy a complete declared data asset, then deliver readiness. Contract v1
 // faces use the shared measured-span authority; refusal delivers zero bytes.
 int rh_asset_data(RealmHost *h, int index, const void *bytes, size_t length);

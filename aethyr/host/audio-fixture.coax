@@ -1,0 +1,31 @@
+// A recording realm with one authored PCM16 pulse and a draining audio packet.
+#load "fixture.coax";
+#load "../audio/wav.coax";
+HostAudioFixture :: struct {line:[1024]u8;count:int;reads:int;drains:int;mode:int;}
+HostAudioFixtureBank :: struct {extra:int;offset:int;bytes:int=60;}
+HostAudioFixturePacket :: struct {address:u64;capacity:int=1024;extra:int;}
+#test "audio fixture creates one complete canonical pulse without writing a short destination" {
+ bytes:[61]u8;for i:0..<61 {bytes[i]=17;}#assert hfa_wave(bytes[0..<59])== -1;for b:bytes {#assert b==17;}
+ #assert hfa_wave(bytes[..])==60&&bytes[60]==17&&bytes[0]=='R'&&bytes[36]=='d'&&bytes[22]==1&&bytes[24]==128&&bytes[25]==187&&bytes[40]==16&&bytes[58]==0&&bytes[59]==224;
+}
+#test "audio fixture packet length drains once while its bytes remain borrowed" {
+ s:=[1]HostAudioFixture.[hfa_open()];#assert hfa_offer(s[..],"pulse 0.25 0")&&hfa_take(s[..])==12&&hfa_take(s[..])==0&&s[0].reads==2&&s[0].drains==1&&cast(string)s[0].line[0..<12]=="pulse 0.25 0";
+ long:[1025]u8;#assert !hfa_offer(s[..],cast(string)long[..])&&s[0].count==0;#assert hfa_offer(s[..],"")&&hfa_take(s[..])==0&&s[0].drains==1;
+}
+#test "audio fixture describes actual bad metadata and final-byte source offers separately" {
+ s:[1]HostAudioFixture;q:=hfa_bank(s[..]);#assert q.extra==0&&q.offset==0&&q.bytes==60;
+ s[0].mode=1;q=hfa_bank(s[..]);#assert q.extra==256&&q.offset==0&&q.bytes==60;
+ s[0].mode=2;q=hfa_bank(s[..]);#assert q.extra==0&&q.offset==60&&q.bytes==1;
+}
+#test "audio fixture exposes oversized null and wrapping physical packet offers without moving bytes" {
+ s:[1]HostAudioFixture;q:=hfa_packet(s[..],4096);#assert q.address==4096&&q.capacity==1024&&q.extra==0;
+ s[0].mode=3;q=hfa_packet(s[..],4096);#assert q.address==4096&&q.capacity==1024&&q.extra==1024;
+ s[0].mode=4;q=hfa_packet(s[..],4096);#assert q.address==0&&q.capacity==1024&&q.extra==0;
+ s[0].mode=5;q=hfa_packet(s[..],4096);#assert q.address==4294967280&&q.capacity==1024&&q.extra==0;
+}
+hfa_open :: ()->HostAudioFixture #export_c {return HostAudioFixture.{};}
+hfa_wave :: (out:[]u8)->int #export_c {pcm:=[8]int.[0,8192,16384,8192,0,-8192,-16384,-8192];return wav_write(pcm[..],1,48000,out);}
+hfa_offer :: (s:[]HostAudioFixture,text:string)->bool #export_c {if text.count>1024 {return false;}for b,i:text {s[0].line[i]=b;}s[0].count=text.count;return true;}
+hfa_take :: (s:[]HostAudioFixture)->int #export_c {s[0].reads+=1;n:=s[0].count;s[0].count=0;if n>0 {s[0].drains+=1;}return n;}
+hfa_bank :: (s:[]HostAudioFixture)->HostAudioFixtureBank #export_c {return HostAudioFixtureBank.{extra=ifx s[0].mode==1 then 256 else 0,offset=ifx s[0].mode==2 then 60 else 0,bytes=ifx s[0].mode==2 then 1 else 60};}
+hfa_packet :: (s:[]HostAudioFixture,base:u64)->HostAudioFixturePacket #export_c {return HostAudioFixturePacket.{address=ifx s[0].mode==4 then 0 else ifx s[0].mode==5 then 4294967280 else base,extra=ifx s[0].mode==3 then 1024 else 0};}

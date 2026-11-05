@@ -1,0 +1,31 @@
+// Gesture is captured when a command is offered. Cover stops only the
+// concrete audio clock; retirement permanently fences this engine owner.
+#authority;
+HostAudioSession :: struct {started:bool;covered:bool;retired:bool;}
+HostAudioSessionOffer :: struct {active:bool;started:bool;retired:bool;}
+#test "audio starts only after a gesture and cover retains that fact without advancing its clock" {
+ s:=[1]HostAudioSession.[has_open()];q:=has_offer(s[..]);#assert !q.active&&!q.started&&!q.retired;
+ q=has_event(s[..],2);#assert !q.active&&!q.started&&s[0].covered;
+ q=has_event(s[..],1);#assert !q.active&&q.started&&!q.retired;
+ q=has_event(s[..],3);#assert q.active&&q.started&&!q.retired&&!s[0].covered;
+ q=has_event(s[..],2);#assert !q.active&&q.started;
+ q=has_event(s[..],3);#assert q.active&&q.started;
+}
+#test "a retired audio owner never restarts or accepts a later gesture or cover change" {
+ s:[1]HostAudioSession;q:=has_event(s[..],4);#assert q.retired&&!q.active&&!q.started;
+ for kind:[7]int.[-1,0,1,2,3,4,5] {q=has_event(s[..],kind);#assert q.retired&&!q.active&&!q.started&&!s[0].covered;}
+ s[0]=HostAudioSession.{};q=has_event(s[..],1);q=has_event(s[..],2);q=has_event(s[..],4);#assert q.started&&q.retired&&!q.active&&s[0].covered;
+ q=has_event(s[..],3);#assert !q.active&&s[0].covered;
+}
+#test "audio offers admit only a live started uncovered owner and unknown events preserve it" {
+ for flags:0..<8 {s:=[1]HostAudioSession.[HostAudioSession.{started=(flags&1)!=0,covered=(flags&2)!=0,retired=(flags&4)!=0}];q:=has_offer(s[..]);#assert q.started==((flags&1)!=0)&&q.retired==((flags&4)!=0)&&q.active==(flags==1);
+  for kind:[4]int.[-1,0,5,9223372036854775807] {q=has_event(s[..],kind);#assert q.started==((flags&1)!=0)&&q.retired==((flags&4)!=0)&&q.active==(flags==1)&&s[0].covered==((flags&2)!=0);}
+ }
+}
+has_open :: ()->HostAudioSession #export_c {return HostAudioSession.{};}
+has_offer :: (s:[]HostAudioSession)->HostAudioSessionOffer #export_c {return HostAudioSessionOffer.{active=s[0].started&&!s[0].covered&&!s[0].retired,started=s[0].started,retired=s[0].retired};}
+// 1 actual gesture, 2 covered, 3 uncovered, 4 engine retired.
+has_event :: (s:[]HostAudioSession,kind:int)->HostAudioSessionOffer #export_c {
+ if !s[0].retired {if kind==1 {s[0].started=true;}if kind==2 {s[0].covered=true;}if kind==3 {s[0].covered=false;}if kind==4 {s[0].retired=true;}}
+ return has_offer(s);
+}

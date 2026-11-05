@@ -13,6 +13,8 @@ admits each producer-reported source span against the producer's physical
 WAV allocation before reading it. Its caller must separately admit the
 metadata view against the face's physical metadata capacity before calling
 this API. A logical length alone is insufficient.
+An invalid row reports failure while later, independently admitted rows
+remain usable; it never licenses a platform decoder fallback.
 
 `rha_command` passes the complete packet and the registered asset view to
 `ap_context_command`. The `started` bit is the actual gesture state.
@@ -20,6 +22,11 @@ this API. A logical length alone is insufficient.
 `rha_render` copies partial device requests while retaining that block's
 cursor. A failed Coax block publishes silence and a terminal core error.
 `rha_reset` is a diagnostic fresh DSP state that retains decoded assets.
+Product calls use `rha_command_current`, which captures this owner's shared
+[`audio-session.coax`](audio-session.md) offer. `rha_session_event` reports
+actual gesture, coverage and retirement facts. `rha_render` leaves the Coax
+clock and cursor held while the shared offer is inactive. Explicit
+`rha_command(..., started)` remains an offline diagnostic API.
 
 `rham_*` owns a Coax `HostAudioMemory`. `rhas_open` applies `ham_extent`
 and reserves before allocating, `rhas_copy` copies into that exact measured
@@ -47,6 +54,25 @@ source hashes and executable identity. `--sanitize` instruments the generated
 Coax C, adapter, fixture and checker; `--memory` selects the actual allocator
 fixture. Runtime sample/fixture comparison, command sequencing, receipt
 acceptance and source fencing remain Coax.
+
+`realm-host.c` now exposes an explicit optional `rh_audio_enable` effect.
+It requires all v1 metadata/WAV/packet physical-capacity exports, admits
+complete allocations through `htb_copy_span`, then forms borrowed views.
+The bank length is read once before its pointer, and each draining packet
+length is read once before its measured span. `rh_after` handles sounds
+even without a navigation action. Key-down, pointer-down and wheel input
+report real gestures; hidden/shown lifecycle events cover/uncover audio.
+`rh_audio_retire` quiesces the concrete device while retaining the terminal
+core for observation; `rh_audio_close` frees it before realm memory unmaps.
+Weak SDK links preserve non-audio fixtures and legacy faces.
+
+`build-linux-audio --product` and `check-linux-audio-product.coax` drive this
+same ordinary realm dispatcher with a Coax recording face and an actual
+muted device. Their receipt covers complete bank spans, one refused row
+followed by a valid asset, exactly-once packets, pre-gesture refusal, covered
+gesture, pause/resume, retirement, and oversize/null/wrapping packet spans.
+The product observer kills 93/93 mutants. This trace contains no Vulkan
+window or room and does not substitute for that remaining integration.
 
 These are SDK component APIs and observations. Ordinary Vulkan world/audio
 integration, production producer admission, complete three-host service

@@ -1,0 +1,31 @@
+// Actual realm-face packet draining, measured source admission and device ownership.
+#authority;
+HostAudioProductObserved :: struct {
+ assets:int;words:int;control:int;pre_cue:int;pre_frames:int;pre_callbacks:int;
+ covered_frames:int;covered_callbacks:int;started:int;running_frames:int;running_callbacks:int;
+ cue:int;accepted:int;repeat_accepted:int;hidden_frames:int;hidden_callbacks:int;
+ resumed_frames:int;resumed_callbacks:int;retired:int;retired_frames:int;late_frames:int;
+ device_closed:int;context_closed:int;nonzero:int;bad_metadata:int;bad_source:int;
+ remaining_assets:int;unavailable:int;remaining_cue:int;world_frames:int;drains:int;packet_refusals:int;
+}
+#test "realm audio receipt requires complete admission exactly-once cues cover resume and retirement" {
+ q:=HostAudioProductObserved.{assets=2,words=16,control=128,pre_cue=-2,started=1,running_frames=1024,running_callbacks=1,cue=0,accepted=2,repeat_accepted=2,hidden_frames=1024,hidden_callbacks=1,resumed_frames=2048,resumed_callbacks=2,retired=1,retired_frames=2048,late_frames=2048,device_closed=1,context_closed=1,bad_metadata=-1,bad_source=-1,remaining_assets=1,unavailable=-1,remaining_cue=0,world_frames=2,drains=3,packet_refusals=3};
+ #assert hpa_accept(q);
+ q.running_frames=1;q.hidden_frames=1;q.resumed_frames=2;q.retired_frames=2;q.late_frames=2;#assert hpa_accept(q);q.running_frames=1024;q.hidden_frames=1024;q.resumed_frames=2048;q.retired_frames=2048;q.late_frames=2048;
+ q.assets=1;#assert !hpa_accept(q);q.assets=2;q.words=15;#assert !hpa_accept(q);q.words=16;q.control=127;#assert !hpa_accept(q);q.control=128;q.pre_cue=-1;#assert !hpa_accept(q);q.pre_cue=-2;
+ q.pre_frames=1;#assert !hpa_accept(q);q.pre_frames=0;q.pre_callbacks=1;#assert !hpa_accept(q);q.pre_callbacks=0;q.covered_frames=1;#assert !hpa_accept(q);q.covered_frames=0;q.covered_callbacks=1;#assert !hpa_accept(q);q.covered_callbacks=0;
+ q.started=0;#assert !hpa_accept(q);q.started=1;q.running_frames=0;q.hidden_frames=0;#assert !hpa_accept(q);q.running_frames=1024;q.hidden_frames=1024;q.running_callbacks=0;q.hidden_callbacks=0;#assert !hpa_accept(q);q.running_callbacks=1;q.hidden_callbacks=1;
+ q.cue=1;#assert !hpa_accept(q);q.cue=0;q.accepted=3;#assert !hpa_accept(q);q.accepted=2;q.repeat_accepted=3;#assert !hpa_accept(q);q.repeat_accepted=2;
+ q.hidden_frames=1025;#assert !hpa_accept(q);q.hidden_frames=1024;q.hidden_callbacks=2;#assert !hpa_accept(q);q.hidden_callbacks=1;
+ q.resumed_frames=1024;q.retired_frames=1024;q.late_frames=1024;#assert !hpa_accept(q);q.resumed_frames=2048;q.retired_frames=2048;q.late_frames=2048;
+ q.resumed_callbacks=1;#assert !hpa_accept(q);q.resumed_callbacks=2;q.retired=0;#assert !hpa_accept(q);q.retired=1;q.retired_frames=2049;#assert !hpa_accept(q);q.retired_frames=2048;q.late_frames=2049;#assert !hpa_accept(q);q.late_frames=2048;
+ q.device_closed=0;#assert !hpa_accept(q);q.device_closed=1;q.context_closed=0;#assert !hpa_accept(q);q.context_closed=1;q.nonzero=1;#assert !hpa_accept(q);q.nonzero=0;q.packet_refusals=2;#assert !hpa_accept(q);q.packet_refusals=3;
+ q.bad_metadata=0;#assert !hpa_accept(q);q.bad_metadata=-1;q.bad_source=0;#assert !hpa_accept(q);q.bad_source=-1;q.remaining_assets=0;#assert !hpa_accept(q);q.remaining_assets=1;q.unavailable=0;#assert !hpa_accept(q);q.unavailable=-1;q.remaining_cue=1;#assert !hpa_accept(q);q.remaining_cue=0;q.world_frames=1;#assert !hpa_accept(q);q.world_frames=2;q.drains=4;#assert !hpa_accept(q);
+}
+hpa_accept :: (q:HostAudioProductObserved)->bool #export_c {
+ if q.assets!=2||q.words!=16||q.control!=128||q.pre_cue!= -2||q.pre_frames!=0||q.pre_callbacks!=0||q.covered_frames!=0||q.covered_callbacks!=0||q.started!=1 {return false;}
+ if q.running_frames<1||q.running_callbacks<1||q.cue!=0||q.accepted!=2||q.repeat_accepted!=2 {return false;}
+ if q.hidden_frames!=q.running_frames||q.hidden_callbacks!=q.running_callbacks||q.resumed_frames<=q.hidden_frames||q.resumed_callbacks<=q.hidden_callbacks {return false;}
+ if q.retired!=1||q.retired_frames!=q.resumed_frames||q.late_frames!=q.retired_frames||q.device_closed!=1||q.context_closed!=1||q.nonzero!=0 {return false;}
+ return q.bad_metadata== -1&&q.bad_source== -1&&q.remaining_assets==1&&q.unavailable== -1&&q.remaining_cue==0&&q.world_frames==2&&q.drains==3&&q.packet_refusals==3;
+}

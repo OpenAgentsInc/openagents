@@ -60,6 +60,17 @@ samples. The device and retention observer root gates kill 59 and 11 mutants
 without equivalents. These SDK components do not substitute for ordinary
 Vulkan world integration or the complete host/default gates.
 
+The Linux realm dispatcher admits physical bank metadata, WAV storage and
+draining sound packet spans before forming views. A refused asset does not
+silence later independently admitted assets. Its audio clock consumes the
+shared `audio-session.coax` gesture/coverage/terminal-owner offer; a cue
+captures gesture state when offered. Actual normal and instrumented realm
+SDK traces cover packet draining, hostile spans, pre-gesture refusal,
+covered gestures, pause/resume and retirement while unrelated producer
+frames continue. Session and observer root gates kill 33 and93 mutants
+without equivalents. This recording-face/device trace does not qualify
+the ordinary Vulkan window, realm/room integration or desktop default.
+
 The shared lifecycle adapter records monotonic microseconds before handing
 the unchanged delta to the producer. Actual browser, sanitized Linux realm
 SDK and Metal SDK receipts admit the same ten frame/key/blur rows, including

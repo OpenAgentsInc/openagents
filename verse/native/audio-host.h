@@ -32,6 +32,9 @@ RhAudio *rha_open(void);
 int64_t rha_add_wav(RhAudio *,const uint8_t *name,size_t name_bytes,const uint8_t *wav,size_t wav_bytes);
 int64_t rha_bank(RhAudio *,const uint8_t *listing,size_t listing_bytes,const uint8_t *storage,size_t storage_bytes);
 int64_t rha_command(RhAudio *,const uint8_t *line,size_t bytes,bool started);
+// Product calls capture this owner's actual gesture/cover/retirement facts.
+bool rha_session_event(RhAudio *,int event);
+int64_t rha_command_current(RhAudio *,const uint8_t *line,size_t bytes);
 // Already decoded immutable PCM uses the same bounded allocation tickets.
 int64_t rha_pcm_load(RhAudio *,const float *source,size_t samples,int64_t channels);
 int64_t rha_command_asset(RhAudio *,const uint8_t *line,size_t bytes,int64_t ticket,int64_t channels,bool started);

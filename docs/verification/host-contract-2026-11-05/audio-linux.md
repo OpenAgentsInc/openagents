@@ -80,3 +80,50 @@ All device checks are muted; no GPU window or audible output was opened.
 Ordinary Vulkan integration, bounded queue adoption, remaining service exits
 and presentation/compiler admission are still open. The desktop default
 remains web and both follow-up issues remain open.
+
+## Ordinary realm dispatcher audio trace
+
+The shared `audio-session.coax` authority now owns gesture, coverage and
+terminal retirement. Its root gate kills 33/33 mutants. The actual Linux
+PCM callback and PipeWire adapter consume its offer; inactive owners retain
+their exact Coax clock and partial-block cursor. The existing 59-mutant
+device checker passes with this adapter under ASan/UBSan/LeakSanitizer.
+
+`check-linux-audio-product.coax` drives the ordinary `realm-host.c` API with
+a Coax recording realm and actual muted PipeWire. Normal and instrumented
+runs observe two assets/16 retained sample words; startup control result 128;
+pre-gesture cue result -2; zero pre-gesture and covered clocks; a covered
+gesture remembered without starting callbacks; one running callback/1024
+Coax frames; the same clocks while hidden; two callbacks/2048 frames after
+resume; and unchanged 2,048 frames after terminal device retirement. The
+device and context are explicitly closed. Actual output planes contain
+zero nonzero samples. Exactly three nonempty sound packets drain; repeated
+`rh_after` does not replay their accepted commands.
+
+The metadata length exceeds its physical list allocation in one workload,
+which refuses before forming a borrowed view. Another offers its first WAV
+at the physical storage end: that row refuses, its cue is unavailable, and
+the following valid asset remains playable. Two real producer frames
+continue in each failure workload. Oversized, null and wrapping sound
+packet spans each drain once, publish no command, and leave two producer
+frames able to advance. The semantic observer kills 93/93 root mutants,
+without equivalent annotations. The recording realm's 67 checks pass.
+
+`linux-audio/product/` retains both actual receipts, the exact field order
+from `HostAudioProductObserved`, mutation logs and source observations.
+Generated native audio, fixture and checker source tables join 21,14 and11
+files respectively with zero differences. The original admitted 598 image
+emitted each from the genuine c224 compiler root with pure product inputs
+overlaid separately. These are explicit development product overlays, not
+a new compiler source receipt or release. Frozen C/headers, SDK source,
+profiles and actual executable/build manifests remain in
+`~/.openagents/aethyrforge/host-contract-12869/linux-audio/` under
+`product-sdk-sources`, `sdk-product-packets{,-asan}` and
+`product-packets{,-asan}`. Earlier 31-field trace and build failures remain
+separate historical artifacts.
+
+Build with `build-linux-audio ... --product [--sanitize]`, then run
+`NEW_SDK/check-linux-audio NEW_REPORT ROOT`. `--product` is exclusive with
+`--memory`. This qualifies ordinary realm dispatch, physical memory views
+and device ownership using a recording face. It contains no Vulkan window,
+current Everglade producer or room and does not close those remaining gates.

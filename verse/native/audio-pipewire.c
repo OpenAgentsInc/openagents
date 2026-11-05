@@ -6,7 +6,7 @@
 #include <stdlib.h>
 struct RhAudioDevice {
  RhAudio *audio;struct pw_thread_loop *loop;struct pw_stream *stream;
- bool muted,started,paused,active;int state,format_ok,node_id;
+ bool muted,active;int state,format_ok,node_id;
  int64_t offers,callbacks,frames,failures,nonzero;uint32_t rate,channels,format;
 };
 static void state_changed(void *data,enum pw_stream_state old,enum pw_stream_state state,const char *error){
@@ -33,7 +33,7 @@ static void process(void *data){
 static const struct pw_stream_events events={PW_VERSION_STREAM_EVENTS,.state_changed=state_changed,.param_changed=param_changed,.process=process};
 RhAudioDevice *rhap_open(RhAudio *audio,bool muted){
  if(!audio)return NULL;
- pw_init(NULL,NULL);RhAudioDevice *d=calloc(1,sizeof*d);if(!d){pw_deinit();return NULL;}d->audio=audio;d->muted=muted;d->paused=false;d->node_id=-1;
+ pw_init(NULL,NULL);RhAudioDevice *d=calloc(1,sizeof*d);if(!d){pw_deinit();return NULL;}d->audio=audio;d->muted=muted;d->node_id=-1;
  d->loop=pw_thread_loop_new("Aethyr Coax audio",NULL);if(!d->loop){free(d);pw_deinit();return NULL;}
  // This locked callback deliberately does not request RT_PROCESS. Do not
  // load the unused realtime/RTKit scheduling module into this context.
@@ -48,11 +48,11 @@ RhAudioDevice *rhap_open(RhAudio *audio,bool muted){
 }
 bool rhap_start(RhAudioDevice *d){
  if(!d)return false;
- pw_thread_loop_lock(d->loop);d->started=true;d->active=!d->paused;int status=pw_stream_set_active(d->stream,d->active);pw_thread_loop_unlock(d->loop);return status>=0;
+ pw_thread_loop_lock(d->loop);d->active=rha_session_event(d->audio,1);int status=pw_stream_set_active(d->stream,d->active);pw_thread_loop_unlock(d->loop);return status>=0;
 }
 bool rhap_pause(RhAudioDevice *d,bool paused){
  if(!d)return false;
- pw_thread_loop_lock(d->loop);d->paused=paused;d->active=d->started&&!paused;int status=pw_stream_set_active(d->stream,d->active);pw_thread_loop_unlock(d->loop);return status>=0;
+ pw_thread_loop_lock(d->loop);d->active=rha_session_event(d->audio,paused?2:3);int status=pw_stream_set_active(d->stream,d->active);pw_thread_loop_unlock(d->loop);return status>=0;
 }
 int64_t rhap_info(RhAudioDevice *d,int field){
  if(!d)return -1;
