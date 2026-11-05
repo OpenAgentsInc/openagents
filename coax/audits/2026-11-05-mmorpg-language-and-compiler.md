@@ -50,8 +50,7 @@ ledger all depend on integer behavior that differs between debug and release.
 So the P0 items in §4.2 are taken in this order:
 
 1. Read-only views ([#12924](https://github.com/OpenAgentsInc/openagents/issues/12924)),
-   already in progress: land the checker, the C backend and one real consumer
-   first, and refuse unsupported profiles explicitly.
+   already in progress, to its full acceptance in the issue.
 2. Per-phase build timing and per-declaration costs, then reuse across edits
    ([#12925](https://github.com/OpenAgentsInc/openagents/issues/12925), §11).
 3. Capacity refusals that name the exhausted resource, its top consumers and a
