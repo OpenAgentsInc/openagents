@@ -49,6 +49,7 @@
 // default 100000. Loaded, this is ignored: the loading program declares its own.
 #run_steps 100000000;
 #load "../nip44-key.coax";
+#load "browser/cleanup.coax";
 #load "../event.coax";
 #load "../event_sign.coax";
 #load "../envelope.coax";
@@ -596,8 +597,6 @@ hb_reply_filter :: (browser:string,request:string,out:[]u8)->int {
 
 // ---------------------------------------------------------------- sealing and opening
 
-hb_zero :: (b:[]u8) {secure_zero(b);}
-hb_clear :: (w:[]HbWork) {hb_zero(w[0].pre[..]);hb_zero(w[0].body[..]);hb_zero(w[0].cipher[..]);hb_zero(w[0].scratch[..]);hb_zero(w[0].ck[..]);}
 // 64 lowercase hex for 32 bytes.
 hb_hex :: (bytes:[]u8,out:[]u8)->bool {
   if bytes.count!=32 || out.count<64 {return false;}

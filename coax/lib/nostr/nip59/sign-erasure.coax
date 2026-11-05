@@ -1,0 +1,288 @@
+// Explicit named signing workspace cleanup for NIP-59 ownership. Numeric
+// arrays use observable erasure; public stage/validity counters reset to zero.
+#load "../event_sign.coax";
+#authority;
+
+#forall "every signing workspace field is erased on retirement" field:0..<91 {
+  work:[1]NostrSignWork;#assert n59_sign_zeroed(work[..]);
+  if field==0 {work[0].stage=1;}
+  if field==1 {work[0].sign[0].stage=1;}
+  if field==2 {work[0].sign[0].prep[0].key[0].raw.limbs[7]=1;}
+  if field==3 {work[0].sign[0].prep[0].key[0].safe.limbs[7]=1;}
+  if field==4 {work[0].sign[0].prep[0].key[0].wide[8]=1;}
+  if field==5 {work[0].sign[0].prep[0].key[0].valid=1;}
+  if field==6 {work[0].sign[0].prep[0].point[0].projective.x.limb[7]=1;}
+  if field==7 {work[0].sign[0].prep[0].point[0].projective.y.limb[7]=1;}
+  if field==8 {work[0].sign[0].prep[0].point[0].projective.z.limb[7]=1;}
+  if field==9 {work[0].sign[0].prep[0].point[0].inverse.limb[7]=1;}
+  if field==10 {work[0].sign[0].prep[0].point[0].z2.limb[7]=1;}
+  if field==11 {work[0].sign[0].prep[0].point[0].z3.limb[7]=1;}
+  if field==12 {work[0].sign[0].prep[0].point[0].x.limb[7]=1;}
+  if field==13 {work[0].sign[0].prep[0].point[0].y.limb[7]=1;}
+  if field==14 {work[0].sign[0].prep[0].point[0].finite=1;}
+  if field==15 {work[0].sign[0].prep[0].point[0].odd=1;}
+  if field==16 {work[0].sign[0].prep[0].public_key[31]=1;}
+  if field==17 {work[0].sign[0].prep[0].normalized[31]=1;}
+  if field==18 {work[0].sign[0].prep[0].valid=1;}
+  if field==19 {work[0].sign[0].nonce[0].hash_work[0].sha[0].h[7]=1;}
+  if field==20 {work[0].sign[0].nonce[0].hash_work[0].sha[0].block[63]=1;}
+  if field==21 {work[0].sign[0].nonce[0].hash_work[0].sha[0].schedule[63]=1;}
+  if field==22 {work[0].sign[0].nonce[0].hash_work[0].sha[0].total=1;}
+  if field==23 {work[0].sign[0].nonce[0].hash_work[0].sha[0].used=1;}
+  if field==24 {work[0].sign[0].nonce[0].hash_work[0].sha[0].phase=1;}
+  if field==25 {work[0].sign[0].nonce[0].hash_work[0].tag[31]=1;}
+  if field==26 {work[0].sign[0].nonce[0].hash_work[0].digest[31]=1;}
+  if field==27 {work[0].sign[0].nonce[0].hash_work[0].t[31]=1;}
+  if field==28 {work[0].sign[0].nonce[0].point[0].projective.x.limb[7]=1;}
+  if field==29 {work[0].sign[0].nonce[0].point[0].projective.y.limb[7]=1;}
+  if field==30 {work[0].sign[0].nonce[0].point[0].projective.z.limb[7]=1;}
+  if field==31 {work[0].sign[0].nonce[0].point[0].inverse.limb[7]=1;}
+  if field==32 {work[0].sign[0].nonce[0].point[0].z2.limb[7]=1;}
+  if field==33 {work[0].sign[0].nonce[0].point[0].z3.limb[7]=1;}
+  if field==34 {work[0].sign[0].nonce[0].point[0].x.limb[7]=1;}
+  if field==35 {work[0].sign[0].nonce[0].point[0].y.limb[7]=1;}
+  if field==36 {work[0].sign[0].nonce[0].point[0].finite=1;}
+  if field==37 {work[0].sign[0].nonce[0].point[0].odd=1;}
+  if field==38 {work[0].sign[0].nonce[0].hash[31]=1;}
+  if field==39 {work[0].sign[0].nonce[0].safe.limbs[7]=1;}
+  if field==40 {work[0].sign[0].nonce[0].r[31]=1;}
+  if field==41 {work[0].sign[0].nonce[0].nonce_valid=1;}
+  if field==42 {work[0].sign[0].nonce[0].valid=1;}
+  if field==43 {work[0].sign[0].math[0].key[0].raw.limbs[7]=1;}
+  if field==44 {work[0].sign[0].math[0].key[0].safe.limbs[7]=1;}
+  if field==45 {work[0].sign[0].math[0].key[0].wide[8]=1;}
+  if field==46 {work[0].sign[0].math[0].key[0].valid=1;}
+  if field==47 {work[0].sign[0].math[0].nonce.limbs[7]=1;}
+  if field==48 {work[0].sign[0].math[0].challenge.limbs[7]=1;}
+  if field==49 {work[0].sign[0].math[0].adjusted_key.limbs[7]=1;}
+  if field==50 {work[0].sign[0].math[0].adjusted_nonce.limbs[7]=1;}
+  if field==51 {work[0].sign[0].math[0].result.limbs[7]=1;}
+  if field==52 {work[0].sign[0].math[0].valid=1;}
+  if field==53 {work[0].sign[0].challenge[31]=1;}
+  if field==54 {work[0].sign[0].sig[63]=1;}
+  if field==55 {work[0].sign[0].check[0].stage=1;}
+  if field==56 {work[0].sign[0].check[0].bound=1;}
+  if field==57 {work[0].sign[0].check[0].key[31]=1;}
+  if field==58 {work[0].sign[0].check[0].candidate[63]=1;}
+  if field==59 {work[0].sign[0].check[0].peer.x.limb[9]=1;}
+  if field==60 {work[0].sign[0].check[0].peer.y.limb[9]=1;}
+  if field==61 {work[0].sign[0].check[0].peer.z.limb[9]=1;}
+  if field==62 {work[0].sign[0].check[0].tag[31]=1;}
+  if field==63 {work[0].sign[0].check[0].sha[0].h[7]=1;}
+  if field==64 {work[0].sign[0].check[0].sha[0].block[63]=1;}
+  if field==65 {work[0].sign[0].check[0].sha[0].schedule[63]=1;}
+  if field==66 {work[0].sign[0].check[0].sha[0].total=1;}
+  if field==67 {work[0].sign[0].check[0].sha[0].used=1;}
+  if field==68 {work[0].sign[0].check[0].sha[0].phase=1;}
+  if field==69 {work[0].sign[0].check[0].digest[31]=1;}
+  if field==70 {work[0].sign[0].check[0].r[0].value.limb[7]=1;}
+  if field==71 {work[0].sign[0].check[0].r[0].below=1;}
+  if field==72 {work[0].sign[0].check[0].s[0].value.limbs[7]=1;}
+  if field==73 {work[0].sign[0].check[0].s[0].below=1;}
+  if field==74 {work[0].sign[0].check[0].negative_e.limbs[7]=1;}
+  if field==75 {work[0].sign[0].check[0].sg.x.limb[7]=1;}
+  if field==76 {work[0].sign[0].check[0].sg.y.limb[7]=1;}
+  if field==77 {work[0].sign[0].check[0].sg.z.limb[7]=1;}
+  if field==78 {work[0].sign[0].check[0].ep.x.limb[7]=1;}
+  if field==79 {work[0].sign[0].check[0].ep.y.limb[7]=1;}
+  if field==80 {work[0].sign[0].check[0].ep.z.limb[7]=1;}
+  if field==81 {work[0].sign[0].check[0].sum.x.limb[7]=1;}
+  if field==82 {work[0].sign[0].check[0].sum.y.limb[7]=1;}
+  if field==83 {work[0].sign[0].check[0].sum.z.limb[7]=1;}
+  if field==84 {work[0].sign[0].check[0].affine[0].x.limb[7]=1;}
+  if field==85 {work[0].sign[0].check[0].affine[0].finite=1;}
+  if field==86 {work[0].sign[0].check[0].affine[0].even=1;}
+  if field==87 {work[0].sign[0].message[31]=1;}
+  if field==88 {work[0].pub[31]=1;}
+  if field==89 {work[0].id[31]=1;}
+  if field==90 {work[0].sig[63]=1;}
+  #assert !n59_sign_zeroed(work[..]);n59_erase_sign(work[..]);#assert n59_sign_zeroed(work[..]);
+}
+n59_sign_zeroed :: (work:[]NostrSignWork)->bool {
+  clean:=true;
+  clean=(work[0].stage==0) && clean;
+  clean=(work[0].sign[0].stage==0) && clean;
+  clean=crypto_zeroed(work[0].sign[0].prep[0].key[0].raw.limbs[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].prep[0].key[0].safe.limbs[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].prep[0].key[0].wide[..]) && clean;
+  clean=(work[0].sign[0].prep[0].key[0].valid==0) && clean;
+  clean=crypto_zeroed(work[0].sign[0].prep[0].point[0].projective.x.limb[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].prep[0].point[0].projective.y.limb[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].prep[0].point[0].projective.z.limb[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].prep[0].point[0].inverse.limb[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].prep[0].point[0].z2.limb[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].prep[0].point[0].z3.limb[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].prep[0].point[0].x.limb[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].prep[0].point[0].y.limb[..]) && clean;
+  clean=(work[0].sign[0].prep[0].point[0].finite==0) && clean;
+  clean=(work[0].sign[0].prep[0].point[0].odd==0) && clean;
+  clean=crypto_zeroed(work[0].sign[0].prep[0].public_key[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].prep[0].normalized[..]) && clean;
+  clean=(work[0].sign[0].prep[0].valid==0) && clean;
+  clean=crypto_zeroed(work[0].sign[0].nonce[0].hash_work[0].sha[0].h[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].nonce[0].hash_work[0].sha[0].block[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].nonce[0].hash_work[0].sha[0].schedule[..]) && clean;
+  clean=(work[0].sign[0].nonce[0].hash_work[0].sha[0].total==0) && clean;
+  clean=(work[0].sign[0].nonce[0].hash_work[0].sha[0].used==0) && clean;
+  clean=(work[0].sign[0].nonce[0].hash_work[0].sha[0].phase==0) && clean;
+  clean=crypto_zeroed(work[0].sign[0].nonce[0].hash_work[0].tag[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].nonce[0].hash_work[0].digest[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].nonce[0].hash_work[0].t[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].nonce[0].point[0].projective.x.limb[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].nonce[0].point[0].projective.y.limb[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].nonce[0].point[0].projective.z.limb[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].nonce[0].point[0].inverse.limb[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].nonce[0].point[0].z2.limb[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].nonce[0].point[0].z3.limb[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].nonce[0].point[0].x.limb[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].nonce[0].point[0].y.limb[..]) && clean;
+  clean=(work[0].sign[0].nonce[0].point[0].finite==0) && clean;
+  clean=(work[0].sign[0].nonce[0].point[0].odd==0) && clean;
+  clean=crypto_zeroed(work[0].sign[0].nonce[0].hash[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].nonce[0].safe.limbs[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].nonce[0].r[..]) && clean;
+  clean=(work[0].sign[0].nonce[0].nonce_valid==0) && clean;
+  clean=(work[0].sign[0].nonce[0].valid==0) && clean;
+  clean=crypto_zeroed(work[0].sign[0].math[0].key[0].raw.limbs[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].math[0].key[0].safe.limbs[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].math[0].key[0].wide[..]) && clean;
+  clean=(work[0].sign[0].math[0].key[0].valid==0) && clean;
+  clean=crypto_zeroed(work[0].sign[0].math[0].nonce.limbs[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].math[0].challenge.limbs[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].math[0].adjusted_key.limbs[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].math[0].adjusted_nonce.limbs[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].math[0].result.limbs[..]) && clean;
+  clean=(work[0].sign[0].math[0].valid==0) && clean;
+  clean=crypto_zeroed(work[0].sign[0].challenge[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].sig[..]) && clean;
+  clean=(work[0].sign[0].check[0].stage==0) && clean;
+  clean=(work[0].sign[0].check[0].bound==0) && clean;
+  clean=crypto_zeroed(work[0].sign[0].check[0].key[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].check[0].candidate[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].check[0].peer.x.limb[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].check[0].peer.y.limb[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].check[0].peer.z.limb[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].check[0].tag[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].check[0].sha[0].h[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].check[0].sha[0].block[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].check[0].sha[0].schedule[..]) && clean;
+  clean=(work[0].sign[0].check[0].sha[0].total==0) && clean;
+  clean=(work[0].sign[0].check[0].sha[0].used==0) && clean;
+  clean=(work[0].sign[0].check[0].sha[0].phase==0) && clean;
+  clean=crypto_zeroed(work[0].sign[0].check[0].digest[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].check[0].r[0].value.limb[..]) && clean;
+  clean=(work[0].sign[0].check[0].r[0].below==0) && clean;
+  clean=crypto_zeroed(work[0].sign[0].check[0].s[0].value.limbs[..]) && clean;
+  clean=(work[0].sign[0].check[0].s[0].below==0) && clean;
+  clean=crypto_zeroed(work[0].sign[0].check[0].negative_e.limbs[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].check[0].sg.x.limb[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].check[0].sg.y.limb[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].check[0].sg.z.limb[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].check[0].ep.x.limb[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].check[0].ep.y.limb[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].check[0].ep.z.limb[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].check[0].sum.x.limb[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].check[0].sum.y.limb[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].check[0].sum.z.limb[..]) && clean;
+  clean=crypto_zeroed(work[0].sign[0].check[0].affine[0].x.limb[..]) && clean;
+  clean=(work[0].sign[0].check[0].affine[0].finite==0) && clean;
+  clean=(work[0].sign[0].check[0].affine[0].even==0) && clean;
+  clean=crypto_zeroed(work[0].sign[0].message[..]) && clean;
+  clean=crypto_zeroed(work[0].pub[..]) && clean;
+  clean=crypto_zeroed(work[0].id[..]) && clean;
+  clean=crypto_zeroed(work[0].sig[..]) && clean;
+  return clean;
+}
+n59_erase_sign :: (work:[]NostrSignWork) {
+  work[0].stage=0;
+  work[0].sign[0].stage=0;
+  secure_zero(work[0].sign[0].prep[0].key[0].raw.limbs[..]);
+  secure_zero(work[0].sign[0].prep[0].key[0].safe.limbs[..]);
+  secure_zero(work[0].sign[0].prep[0].key[0].wide[..]);
+  work[0].sign[0].prep[0].key[0].valid=0;
+  secure_zero(work[0].sign[0].prep[0].point[0].projective.x.limb[..]);
+  secure_zero(work[0].sign[0].prep[0].point[0].projective.y.limb[..]);
+  secure_zero(work[0].sign[0].prep[0].point[0].projective.z.limb[..]);
+  secure_zero(work[0].sign[0].prep[0].point[0].inverse.limb[..]);
+  secure_zero(work[0].sign[0].prep[0].point[0].z2.limb[..]);
+  secure_zero(work[0].sign[0].prep[0].point[0].z3.limb[..]);
+  secure_zero(work[0].sign[0].prep[0].point[0].x.limb[..]);
+  secure_zero(work[0].sign[0].prep[0].point[0].y.limb[..]);
+  work[0].sign[0].prep[0].point[0].finite=0;
+  work[0].sign[0].prep[0].point[0].odd=0;
+  secure_zero(work[0].sign[0].prep[0].public_key[..]);
+  secure_zero(work[0].sign[0].prep[0].normalized[..]);
+  work[0].sign[0].prep[0].valid=0;
+  secure_zero(work[0].sign[0].nonce[0].hash_work[0].sha[0].h[..]);
+  secure_zero(work[0].sign[0].nonce[0].hash_work[0].sha[0].block[..]);
+  secure_zero(work[0].sign[0].nonce[0].hash_work[0].sha[0].schedule[..]);
+  work[0].sign[0].nonce[0].hash_work[0].sha[0].total=0;
+  work[0].sign[0].nonce[0].hash_work[0].sha[0].used=0;
+  work[0].sign[0].nonce[0].hash_work[0].sha[0].phase=0;
+  secure_zero(work[0].sign[0].nonce[0].hash_work[0].tag[..]);
+  secure_zero(work[0].sign[0].nonce[0].hash_work[0].digest[..]);
+  secure_zero(work[0].sign[0].nonce[0].hash_work[0].t[..]);
+  secure_zero(work[0].sign[0].nonce[0].point[0].projective.x.limb[..]);
+  secure_zero(work[0].sign[0].nonce[0].point[0].projective.y.limb[..]);
+  secure_zero(work[0].sign[0].nonce[0].point[0].projective.z.limb[..]);
+  secure_zero(work[0].sign[0].nonce[0].point[0].inverse.limb[..]);
+  secure_zero(work[0].sign[0].nonce[0].point[0].z2.limb[..]);
+  secure_zero(work[0].sign[0].nonce[0].point[0].z3.limb[..]);
+  secure_zero(work[0].sign[0].nonce[0].point[0].x.limb[..]);
+  secure_zero(work[0].sign[0].nonce[0].point[0].y.limb[..]);
+  work[0].sign[0].nonce[0].point[0].finite=0;
+  work[0].sign[0].nonce[0].point[0].odd=0;
+  secure_zero(work[0].sign[0].nonce[0].hash[..]);
+  secure_zero(work[0].sign[0].nonce[0].safe.limbs[..]);
+  secure_zero(work[0].sign[0].nonce[0].r[..]);
+  work[0].sign[0].nonce[0].nonce_valid=0;
+  work[0].sign[0].nonce[0].valid=0;
+  secure_zero(work[0].sign[0].math[0].key[0].raw.limbs[..]);
+  secure_zero(work[0].sign[0].math[0].key[0].safe.limbs[..]);
+  secure_zero(work[0].sign[0].math[0].key[0].wide[..]);
+  work[0].sign[0].math[0].key[0].valid=0;
+  secure_zero(work[0].sign[0].math[0].nonce.limbs[..]);
+  secure_zero(work[0].sign[0].math[0].challenge.limbs[..]);
+  secure_zero(work[0].sign[0].math[0].adjusted_key.limbs[..]);
+  secure_zero(work[0].sign[0].math[0].adjusted_nonce.limbs[..]);
+  secure_zero(work[0].sign[0].math[0].result.limbs[..]);
+  work[0].sign[0].math[0].valid=0;
+  secure_zero(work[0].sign[0].challenge[..]);
+  secure_zero(work[0].sign[0].sig[..]);
+  work[0].sign[0].check[0].stage=0;
+  work[0].sign[0].check[0].bound=0;
+  secure_zero(work[0].sign[0].check[0].key[..]);
+  secure_zero(work[0].sign[0].check[0].candidate[..]);
+  secure_zero(work[0].sign[0].check[0].peer.x.limb[..]);
+  secure_zero(work[0].sign[0].check[0].peer.y.limb[..]);
+  secure_zero(work[0].sign[0].check[0].peer.z.limb[..]);
+  secure_zero(work[0].sign[0].check[0].tag[..]);
+  secure_zero(work[0].sign[0].check[0].sha[0].h[..]);
+  secure_zero(work[0].sign[0].check[0].sha[0].block[..]);
+  secure_zero(work[0].sign[0].check[0].sha[0].schedule[..]);
+  work[0].sign[0].check[0].sha[0].total=0;
+  work[0].sign[0].check[0].sha[0].used=0;
+  work[0].sign[0].check[0].sha[0].phase=0;
+  secure_zero(work[0].sign[0].check[0].digest[..]);
+  secure_zero(work[0].sign[0].check[0].r[0].value.limb[..]);
+  work[0].sign[0].check[0].r[0].below=0;
+  secure_zero(work[0].sign[0].check[0].s[0].value.limbs[..]);
+  work[0].sign[0].check[0].s[0].below=0;
+  secure_zero(work[0].sign[0].check[0].negative_e.limbs[..]);
+  secure_zero(work[0].sign[0].check[0].sg.x.limb[..]);
+  secure_zero(work[0].sign[0].check[0].sg.y.limb[..]);
+  secure_zero(work[0].sign[0].check[0].sg.z.limb[..]);
+  secure_zero(work[0].sign[0].check[0].ep.x.limb[..]);
+  secure_zero(work[0].sign[0].check[0].ep.y.limb[..]);
+  secure_zero(work[0].sign[0].check[0].ep.z.limb[..]);
+  secure_zero(work[0].sign[0].check[0].sum.x.limb[..]);
+  secure_zero(work[0].sign[0].check[0].sum.y.limb[..]);
+  secure_zero(work[0].sign[0].check[0].sum.z.limb[..]);
+  secure_zero(work[0].sign[0].check[0].affine[0].x.limb[..]);
+  work[0].sign[0].check[0].affine[0].finite=0;
+  work[0].sign[0].check[0].affine[0].even=0;
+  secure_zero(work[0].sign[0].message[..]);
+  secure_zero(work[0].pub[..]);
+  secure_zero(work[0].id[..]);
+  secure_zero(work[0].sig[..]);
+}

@@ -44,6 +44,7 @@
 #load "nip44-key.coax";
 #load "event_sign.coax";
 #load "../../tests/nostr/nip59_keys.coax";
+#load "nip59/sign-erasure.coax";
 #authority;
 
 NIP59_OK :: cast(u32)0;
@@ -116,6 +117,26 @@ Nip59Opened :: struct {
   #assert !n59_addressed("[[\"x\",\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]]",me[..]);
   #assert !n59_addressed("[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba65\"]]",me[..]);
 }
+#test "routing refuses malformed and oversized strings but skips empty tags" #steps 20000000 {
+  me:=N59_BOB_PUB;good:="[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]";
+  #assert !n59_addressed("{}",me[..]) && !n59_addressed("[[1]]",me[..]);
+  #assert !n59_addressed("[[\"\\ud800\"]]",me[..]);
+  #assert !n59_addressed("[]",me[0..<31]);
+  b:[NIP59_REGION+256]u8;n:=json_raw(b[..],0,"[[\"\",\"x\"],");n=json_raw(b[..],n,good);n=json_raw(b[..],n,"]");
+  #assert n59_addressed(cast(string)b[0..<n],me[..]);
+  n=json_raw(b[..],0,"[[\"");for i:0..<NIP59_REGION+1 {b[n]='x';n+=1;}n=json_raw(b[..],n,"\"]]");
+  #assert !n59_addressed(cast(string)b[0..<n],me[..]);
+}
+#test "the copy helper trims every JSON whitespace byte and retains a lone closing brace" {
+  b:[32]u8;out:[256]u8;
+  for space:[4]u8.[32,9,10,13] {
+    n:=json_raw(b[..],0,"{}");b[n]=space;n+=1;
+    k:=n59_signed_copy(cast(string)b[0..<n],out[..]);#assert k==N59_SIG_FIELD.count+3;
+    #assert out[0]=='{' && out[k-2]=='}' && out[k-1]==space;
+    b[0]=space;#assert n59_signed_copy(cast(string)b[0..<1],out[..])==-1;
+  }
+  #assert n59_signed_copy("}",out[..])==N59_SIG_FIELD.count+1;
+}
 #test "a rumor gets a zero signature appended before its last brace" {
   out:[256]u8;
   n:=n59_signed_copy("{\"a\":1} \n",out[..]);
@@ -141,7 +162,7 @@ Nip59Opened :: struct {
 #test "content over the largest rumor refuses before any key work, clearing work, out and fresh" {
   alice:=n59_alice();bob:=N59_BOB_PUB;fresh:=n59_fresh(1);work:[NIP59_WORK]u8;out:[NIP59_REGION]u8;
   big:[NIP59_MAX_RUMOR+1]u8;for i:0..<64 {work[i]=7;out[i]=7;} work[NIP59_WORK-1]=7;
-  w:=nip59_wrap_checked(alice[..],bob[..],N59_NOW,14,"[]",cast(string)big[..],NIP59_WRAP_KIND,fresh[..],work[..],out[..],false);
+  w:=nip59_wrap_checked(alice[..],bob[..],NIP59_WINDOW,14,"[]",cast(string)big[..],NIP59_WRAP_KIND,fresh[..],work[..],out[..],false);
   #assert w.error==NIP59_CAPACITY && w.written==0 && w.seal_at==0;
   for i:0..<64 {#assert work[i]==0 && out[i]==0;} #assert work[NIP59_WORK-1]==0;
   for i:0..<32 {#assert fresh[0].wrap_key[i]==0 && fresh[0].seal_nonce[i]==0 && fresh[0].wrap_aux[i]==0;} #assert fresh[0].seal_back==0;
@@ -200,6 +221,36 @@ Nip59Opened :: struct {
   #assert nip59_wrap_checked(alice[..],bob[..],N59_NOW,14,"[]","x",NIP59_WRAP_KIND,fresh[..],work[..],out[..],true).error==NIP59_ALIAS;
   for i:0..<64 {#assert work[i]==7 && out[i]==7;} #assert fresh[0].wrap_key[0]!=0;
 }
+// The seven-region workspace has two layouts. Return named views so their
+// exact extents, disjoint roles and relative origin can be checked directly.
+N59WrapBuffers :: struct {rumor:[]u8;pre:[]u8;crypto:[]u8;payload:[]u8;scratch:[]u8;seal:[]u8;}
+N59OpenBuffers :: struct {wire:[]u8;crypto:[]u8;seal:[]u8;text:[]u8;copy:[]u8;pre:[]u8;}
+n59_wrap_buffers :: (work:[]u8)->N59WrapBuffers {
+  return N59WrapBuffers.{rumor=work[0..<NIP59_REGION],pre=work[NIP59_REGION..<2*NIP59_REGION],
+    crypto=work[2*NIP59_REGION..<4*NIP59_REGION],payload=work[4*NIP59_REGION..<5*NIP59_REGION],
+    scratch=work[5*NIP59_REGION..<6*NIP59_REGION],seal=work[6*NIP59_REGION..<7*NIP59_REGION]};
+}
+n59_open_buffers :: (work:[]u8)->N59OpenBuffers {
+  return N59OpenBuffers.{wire=work[0..<NIP59_REGION],crypto=work[NIP59_REGION..<3*NIP59_REGION],
+    seal=work[3*NIP59_REGION..<4*NIP59_REGION],text=work[4*NIP59_REGION..<5*NIP59_REGION],
+    copy=work[5*NIP59_REGION..<6*NIP59_REGION],pre=work[6*NIP59_REGION..<7*NIP59_REGION]};
+}
+#forall "workspace layouts preserve each exact region and both external guards" opening:bool {
+  storage:[NIP59_WORK+2]u8;storage[0]=165;storage[NIP59_WORK+1]=165;
+  work:=storage[1..<NIP59_WORK+1];parts:[6][]u8;at:[6]int;count:[6]int;
+  if opening {
+    b:=n59_open_buffers(work);parts=[6][]u8.[b.wire,b.crypto,b.seal,b.text,b.copy,b.pre];
+    at=[6]int.[0,65536,196608,262144,327680,393216];count=[6]int.[65536,131072,65536,65536,65536,65536];
+  } else {
+    b:=n59_wrap_buffers(work);parts=[6][]u8.[b.rumor,b.pre,b.crypto,b.payload,b.scratch,b.seal];
+    at=[6]int.[0,65536,131072,262144,327680,393216];count=[6]int.[65536,65536,131072,65536,65536,65536];
+  }
+  for part,i:parts {
+    view:=part;#assert view.count==count[i];view[0]=cast(u8)(i+1);view[view.count-1]=cast(u8)(i+11);
+  }
+  for i:0..<6 {#assert work[at[i]]==cast(u8)(i+1) && work[at[i]+count[i]-1]==cast(u8)(i+11);}
+  #assert storage[0]==165 && storage[NIP59_WORK+1]==165;
+}
 // ---- the implementation
 
 // {"id":"<64>","pubkey":"<64>","created_at":<10>,"kind":13,"tags":[],"content":"","sig":"<128>"}
@@ -215,12 +266,13 @@ n59_same32 :: (a:[]u8,b:[]u8)->bool {for i:0..<32 {if a[i]!=b[i] {return false;}
 
 // A ["p", <lowercase hex of recipient_x>] tag, as the wrap's routing tag.
 n59_addressed :: (tags:string,recipient_x:[]u8)->bool {
-  want:[64]u8;h:=hex_encode_checked(cast(string)recipient_x,want[..],false);if h.error!=NC_OK {return false;}
+  if recipient_x.count!=32 {return false;}
+  want:[64]u8;h:=hex_encode_checked(cast(string)recipient_x,want[..],false);#assert h.error==NC_OK;
   decoded:[NIP59_REGION]u8;
   j:[1]Json;json_start(j[..],tags);if json_next(j[..])!=JSON_ARRAY {return false;}
   t:=json_next(j[..]);
   while t==JSON_ARRAY {
-    k:=0;name_p:=false;found:=false;
+    k:=0;name_p:bool;found:=false;
     v:=json_next(j[..]);
     while v==JSON_STRING {
       n:=json_unescape(json_text(j[..]),decoded[..]);if n<0 {return false;}
@@ -239,11 +291,26 @@ n59_addressed :: (tags:string,recipient_x:[]u8)->bool {
 // "sig" (signed, which NIP-59 forbids) then repeats the key and is refused.
 // Returns the copy's length, or -1.
 n59_signed_copy :: (rumor:string,out:[]u8)->int {
-  end:=rumor.count-1;
-  while end>=0 && (rumor[end]==' ' || rumor[end]==9 || rumor[end]==10 || rumor[end]==13) {end-=1;}
+  end:=n59_rumor_end(rumor);
   if end<0 || rumor[end]!='}' {return -1;}
   n:=json_raw(out,0,rumor[0..<end]);n=json_raw(out,n,N59_SIG_FIELD);
   return json_raw(out,n,rumor[end..<rumor.count]);
+}
+// Index of the final non-whitespace byte, or -1 for an empty rumor.
+n59_rumor_end :: (rumor:string)->int {
+  end:=rumor.count-1;
+  while end>=0 && (rumor[end]==' ' || rumor[end]==9 || rumor[end]==10 || rumor[end]==13) {end-=1;}
+  return end;
+}
+#test "rumor trimming reports the boundary even when the whole string is whitespace" {
+  #assert n59_rumor_end("")==-1 && n59_rumor_end("}")==0;
+  for space:[4]u8.[32,9,10,13] {b:=[1]u8.[space];#assert n59_rumor_end(cast(string)b[..])==-1;}
+  #assert n59_rumor_end("} \t\n\r")==0;
+}
+n59_decimal_digits :: (value:int)->int {out:[24]u8;return json_write_int(out[..],0,value);}
+#test "timestamp digit extents include the earliest and largest admitted time" {
+  #assert n59_decimal_digits(1)==1 && n59_decimal_digits(10)==2 && n59_decimal_digits(1793300000)==10;
+  #assert n59_decimal_digits(9223372036854775807)==19;
 }
 // Signs one event to the end. The work starts where the caller left it.
 n59_sign :: (key:[]u8,aux:[]u8,at:int,kind:int,tags:string,content:string,sw:[]NostrSignWork,scratch:[]u8,out:[]u8)->int {
@@ -253,14 +320,16 @@ n59_sign :: (key:[]u8,aux:[]u8,at:int,kind:int,tags:string,content:string,sw:[]N
 }
 // The rumor's JSON into out (its NIP-01 preimage in pre first), its id in id.
 n59_rumor :: (pub:[]u8,at:int,kind:int,tags:string,content:string,pre:[]u8,out:[]u8,id:[]u8)->int {
-  decoded:[NIP59_REGION]u8;hex:[64]u8;idhex:[64]u8;
+  decoded:[NIP59_REGION]u8;defer {secure_zero(decoded[..]);#assert crypto_zeroed(decoded[..]);}
+  hex:[64]u8;idhex:[64]u8;
   h:=hex_encode_checked(cast(string)pub,hex[..],false);
   n:=json_raw(pre,ne_writer_start(h.error),"[0,");n=json_write_string(pre,n,cast(string)hex[..]);
   n=json_raw(pre,n,",");n=json_write_int(pre,n,at);n=json_raw(pre,n,",");n=json_write_int(pre,n,kind);
   n=json_raw(pre,n,",");n=ne_write_tags(tags,pre,n,decoded[..]);n=json_raw(pre,n,",");
   n=json_write_string(pre,n,content);n=json_raw(pre,n,"]");
   if n==NE_WRITE_FAILED {return -1;}
-  if sha256_hash_checked(pre[0..<n],id,false)!=SHA_OK {return -1;}
+  #assert id.count==32;
+  #assert sha256_hash_checked(pre[0..<n],id,false)==SHA_OK;
   hi:=hex_encode_checked(cast(string)id,idhex[..],false);
   m:=json_raw(out,ne_writer_start(hi.error),"{\"id\":");m=json_write_string(out,m,cast(string)idhex[..]);
   m=json_raw(out,m,",\"pubkey\":");m=json_write_string(out,m,cast(string)hex[..]);
@@ -291,45 +360,52 @@ n59_wrapped :: (r:Nip59Wrapped,error:u32,fresh:[]Nip59Fresh,work:[]u8,out:[]u8)-
 nip59_wrap_checked :: (author:[]u8,recipient_x:[]u8,now:int,kind:int,tags:string,content:string,wrap_kind:int,fresh:[]Nip59Fresh,work:[]u8,out:[]u8,overlap:bool)->Nip59Wrapped #export_c {
   r:Nip59Wrapped;
   if author.count!=32 || recipient_x.count!=32 || fresh.count!=1 {return r;}
-  if !es_inputs(now,kind,tags) || now<NIP59_WINDOW || (wrap_kind!=NIP59_WRAP_KIND && wrap_kind!=NIP59_EPHEMERAL_KIND) {return r;}
+  if !es_inputs(now,kind,tags) || now<NIP59_WINDOW || now>JA_SAFE || (wrap_kind!=NIP59_WRAP_KIND && wrap_kind!=NIP59_EPHEMERAL_KIND) {return r;}
   if work.count<NIP59_WORK || out.count==0 {r.error=NIP59_OUTPUT;return r;}
   if overlap {r.error=NIP59_ALIAS;return r;}
-  if content.count>NIP59_MAX_RUMOR {return n59_wrapped(r,NIP59_CAPACITY,fresh,work,out);}
-  rumor:=work[0..<NIP59_REGION];pre:=work[NIP59_REGION..<2*NIP59_REGION];
-  nwork:=work[2*NIP59_REGION..<4*NIP59_REGION];pay:=work[4*NIP59_REGION..<5*NIP59_REGION];
-  scratch:=work[5*NIP59_REGION..<6*NIP59_REGION];seal:=work[6*NIP59_REGION..<7*NIP59_REGION];
+  buffers:=n59_wrap_buffers(work);rumor:=buffers.rumor;pre:=buffers.pre;nwork:=buffers.crypto;
+  pay:=buffers.payload;scratch:=buffers.scratch;seal:=buffers.seal;
+  // Public-size preflight before curve work. Both fixed-width hex fields
+  // have the same length for every author/id; escaped content and tags
+  // determine the remaining size. This also catches the exact largest rumor.
+  probe_pub:[32]u8;probe_id:[32]u8;defer {secure_zero(probe_id[..]);#assert crypto_zeroed(probe_id[..]);}
+  probe:=n59_rumor(probe_pub[..],now,kind,tags,content,pre,rumor,probe_id[..]);
+  if probe==NE_WRITE_FAILED || probe>NIP59_MAX_RUMOR {return n59_wrapped(r,NIP59_CAPACITY,fresh,work,out);}
+  // Validate the generated rumor as NIP-01 before signing. This admits
+  // only Unicode-scalar content and protocol-safe integer timestamps.
+  probe_copy:=n59_signed_copy(cast(string)rumor[0..<probe],scratch);
+  #assert probe_copy==probe+N59_SIG_FIELD.count;
+  if ne_parse(cast(string)scratch[0..<probe_copy]).error!=NE_OK {return n59_wrapped(r,NIP59_INPUT,fresh,work,out);}
   r.seal_at=n59_back(now,fresh[0].seal_back);r.wrap_at=n59_back(now,fresh[0].wrap_back);
   // The seal's key stage gives the author's public key for the rumor; the
   // message is not read until the next stage.
-  sw:[1]NostrSignWork;
-  if nostr_event_sign_step(author,fresh[0].seal_aux[..],r.seal_at,NIP59_SEAL_KIND,"[]","",sw[..],scratch,out,false)!=EVENT_MORE {
+  sw:[1]NostrSignWork;defer {n59_erase_sign(sw[..]);#assert n59_sign_zeroed(sw[..]);}
+  if es_key(author,fresh[0].seal_aux[..],sw[..])!=EVENT_MORE {
     return n59_wrapped(r,NIP59_KEY,fresh,work,out);
   }
   author_pub:=sw[0].pub;
   n:=n59_rumor(author_pub[..],now,kind,tags,content,pre,rumor,r.rumor_id[..]);
-  if n<0 || n>NIP59_MAX_RUMOR {clear:NostrSignWork;sw[0]=clear;return n59_wrapped(r,NIP59_CAPACITY,fresh,work,out);}
+  #assert n==probe;
   ck:[32]u8;defer {secure_zero(ck[..]);#assert crypto_zeroed(ck[..]);}
-  if n59_ck(author,recipient_x,ck[..])!=NIP44_OK {clear:NostrSignWork;sw[0]=clear;return n59_wrapped(r,NIP59_KEY,fresh,work,out);}
+  if n59_ck(author,recipient_x,ck[..])!=NIP44_OK {return n59_wrapped(r,NIP59_KEY,fresh,work,out);}
   p:=nip44_encrypt_checked(NIP44_COMPAT,ck[..],fresh[0].seal_nonce[..],rumor[0..<n],nwork,pay,false);
-  n59_zero(ck[..]);
-  if p.error!=NIP44_OK {clear:NostrSignWork;sw[0]=clear;return n59_wrapped(r,NIP59_INTERNAL,fresh,work,out);}
+  #assert p.error==NIP44_OK;
   s:=n59_sign(author,fresh[0].seal_aux[..],r.seal_at,NIP59_SEAL_KIND,"[]",cast(string)pay[0..<p.written],sw[..],scratch,seal);
-  if s<=0 || s>NIP59_MAX_SEAL {return n59_wrapped(r,NIP59_INTERNAL,fresh,work,out);}
+  #assert s==p.written+N59_SEAL_FIXED-10+n59_decimal_digits(r.seal_at);
   // The one-time key: valid, and never the author's.
-  ww:[1]NostrSignWork;
-  if nostr_event_sign_step(fresh[0].wrap_key[..],fresh[0].wrap_aux[..],r.wrap_at,wrap_kind,"[]","",ww[..],scratch,out,false)!=EVENT_MORE {
+  ww:[1]NostrSignWork;defer {n59_erase_sign(ww[..]);#assert n59_sign_zeroed(ww[..]);}
+  if es_key(fresh[0].wrap_key[..],fresh[0].wrap_aux[..],ww[..])!=EVENT_MORE {
     return n59_wrapped(r,NIP59_FRESH,fresh,work,out);
   }
-  if n59_same32(ww[0].pub[..],author_pub[..]) {clear:NostrSignWork;ww[0]=clear;return n59_wrapped(r,NIP59_FRESH,fresh,work,out);}
-  if n59_ck(fresh[0].wrap_key[..],recipient_x,ck[..])!=NIP44_OK {clear:NostrSignWork;ww[0]=clear;return n59_wrapped(r,NIP59_INTERNAL,fresh,work,out);}
+  if n59_same32(ww[0].pub[..],author_pub[..]) {return n59_wrapped(r,NIP59_FRESH,fresh,work,out);}
+  #assert n59_ck(fresh[0].wrap_key[..],recipient_x,ck[..])==NIP44_OK;
   q:=nip44_encrypt_checked(NIP44_COMPAT,ck[..],fresh[0].wrap_nonce[..],seal[0..<s],nwork,pay,false);
-  n59_zero(ck[..]);
-  if q.error!=NIP44_OK {clear:NostrSignWork;ww[0]=clear;return n59_wrapped(r,NIP59_INTERNAL,fresh,work,out);}
+  #assert q.error==NIP44_OK;
   hex:[64]u8;h:=hex_encode_checked(cast(string)recipient_x,hex[..],false);
   routing:[80]u8;t:=json_raw(routing[..],ne_writer_start(h.error),"[[\"p\",\"");t=json_raw(routing[..],t,cast(string)hex[..]);t=json_raw(routing[..],t,"\"]]");
-  if t<0 {clear:NostrSignWork;ww[0]=clear;return n59_wrapped(r,NIP59_INTERNAL,fresh,work,out);}
+  #assert t==74;
   k:=n59_sign(fresh[0].wrap_key[..],fresh[0].wrap_aux[..],r.wrap_at,wrap_kind,cast(string)routing[0..<t],cast(string)pay[0..<q.written],ww[..],scratch,out);
-  if k<=0 {return n59_wrapped(r,NIP59_OUTPUT,fresh,work,out);}
+  if k==EVENT_REFUSED {return n59_wrapped(r,NIP59_OUTPUT,fresh,work,out);}
   r.written=k;return n59_wrapped(r,NIP59_OK,fresh,work,out);
 }
 
@@ -355,9 +431,8 @@ nip59_unwrap_checked :: (recipient:[]u8,recipient_x:[]u8,wrap:string,work:[]u8,o
   if work.count<NIP59_WORK || out.count==0 {o.error=NIP59_OUTPUT;return o;}
   if overlap {o.error=NIP59_ALIAS;return o;}
   if wrap.count>NIP59_MAX_WRAP {return n59_opened(o,NIP59_CAPACITY,work,out);}
-  wpre:=work[0..<NIP59_REGION];nwork:=work[NIP59_REGION..<3*NIP59_REGION];
-  seal:=work[3*NIP59_REGION..<4*NIP59_REGION];text:=work[4*NIP59_REGION..<5*NIP59_REGION];
-  copy:=work[5*NIP59_REGION..<6*NIP59_REGION];rpre:=work[6*NIP59_REGION..<7*NIP59_REGION];
+  buffers:=n59_open_buffers(work);wpre:=buffers.wire;nwork:=buffers.crypto;seal:=buffers.seal;
+  text:=buffers.text;copy:=buffers.copy;rpre:=buffers.pre;
   w:=nostr_event_read(wrap,wpre,false);
   if w.error!=NE_OK || (w.kind!=NIP59_WRAP_KIND && w.kind!=NIP59_EPHEMERAL_KIND) {return n59_opened(o,NIP59_WRAP,work,out);}
   if !nostr_fast_verify_vartime(w.id[..],w.public_key[..],w.signature[..]) {return n59_opened(o,NIP59_WRAP_SIGNATURE,work,out);}
@@ -365,30 +440,37 @@ nip59_unwrap_checked :: (recipient:[]u8,recipient_x:[]u8,wrap:string,work:[]u8,o
   o.wrap_key=w.public_key;
   ck:[32]u8;defer {secure_zero(ck[..]);#assert crypto_zeroed(ck[..]);}
   c:=n59_ck(recipient,w.public_key[..],ck[..]);
-  if c!=NIP44_OK {n59_zero(ck[..]);return n59_opened(o,ifx c==NIP44_SECRET then NIP59_KEY else NIP59_WRAP_PAYLOAD,work,out);}
+  if c!=NIP44_OK {return n59_opened(o,ifx c==NIP44_SECRET then NIP59_KEY else NIP59_WRAP_PAYLOAD,work,out);}
   tn:=json_unescape(wrap[w.content_from..<w.content_to],text);
-  if tn<0 {n59_zero(ck[..]);return n59_opened(o,NIP59_WRAP_PAYLOAD,work,out);}
+  #assert tn>=0;
   d:=nip44_decrypt_checked(NIP44_COMPAT,ck[..],cast(string)text[0..<tn],nwork,seal,false);
-  n59_zero(ck[..]);
   if d.error!=NIP44_OK {return n59_opened(o,n59_payload(d.error,NIP59_WRAP_PAYLOAD),work,out);}
   sealed:=cast(string)seal[0..<d.written];
   s:=nostr_event_read(sealed,copy,false);
   if s.error!=NE_OK || s.kind!=NIP59_SEAL_KIND || s.tags!=0 {return n59_opened(o,NIP59_SEAL,work,out);}
   if !nostr_fast_verify_vartime(s.id[..],s.public_key[..],s.signature[..]) {return n59_opened(o,NIP59_SEAL_SIGNATURE,work,out);}
   c=n59_ck(recipient,s.public_key[..],ck[..]);
-  if c!=NIP44_OK {n59_zero(ck[..]);return n59_opened(o,NIP59_SEAL_PAYLOAD,work,out);}
+  if c!=NIP44_OK {return n59_opened(o,NIP59_SEAL_PAYLOAD,work,out);}
   tn=json_unescape(sealed[s.content_from..<s.content_to],text);
-  if tn<0 {n59_zero(ck[..]);return n59_opened(o,NIP59_SEAL_PAYLOAD,work,out);}
+  #assert tn>=0;
   e:=nip44_decrypt_checked(NIP44_COMPAT,ck[..],cast(string)text[0..<tn],nwork,out,false);
-  n59_zero(ck[..]);
   if e.error!=NIP44_OK {return n59_opened(o,n59_payload(e.error,NIP59_SEAL_PAYLOAD),work,out);}
   rumor:=cast(string)out[0..<e.written];
   m:=n59_signed_copy(rumor,copy);
-  if m<0 {return n59_opened(o,NIP59_RUMOR,work,out);}
+  if m==NE_WRITE_FAILED {return n59_opened(o,NIP59_RUMOR,work,out);}
   r:=nostr_event_read(cast(string)copy[0..<m],rpre,false);
   if r.error!=NE_OK {return n59_opened(o,NIP59_RUMOR,work,out);}
   if !n59_same32(r.public_key[..],s.public_key[..]) {return n59_opened(o,NIP59_IDENTITY,work,out);}
   o.written=e.written;o.author=s.public_key;o.rumor_id=r.id;o.kind=r.kind;o.created_at=r.created_at;
   o.tags_from=r.tags_from;o.tags_to=r.tags_to;o.tags=r.tags;o.content_from=r.content_from;o.content_to=r.content_to;
   return n59_opened(o,NIP59_OK,work,out);
+}
+
+#test "wrap timestamps are admitted through the NIP-01 safe-integer boundary" #steps 100000000 {
+  invalid:[32]u8;peer:=N59_BOB_PUB;fresh:=n59_fresh(1);work:[NIP59_WORK]u8;out:[NIP59_REGION]u8;
+  #assert nip59_wrap_checked(invalid[..],peer[..],JA_SAFE,14,"[]","x",NIP59_WRAP_KIND,fresh[..],work[..],out[..],false).error==NIP59_KEY;
+  fresh=n59_fresh(1);out[0]=165;
+  #assert nip59_wrap_checked(invalid[..],peer[..],JA_SAFE+1,14,"[]","x",NIP59_WRAP_KIND,fresh[..],work[..],out[..],false).error==NIP59_INPUT && out[0]==165;
+  fresh=n59_fresh(1);bad:=[1]u8.[255];
+  #assert nip59_wrap_checked(invalid[..],peer[..],N59_NOW,14,"[]",cast(string)bad[..],NIP59_WRAP_KIND,fresh[..],work[..],out[..],false).error==NIP59_INPUT;
 }

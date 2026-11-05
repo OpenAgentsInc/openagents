@@ -24,6 +24,7 @@
 #load "event_sign.coax";
 #load "../crypto/schnorr_fast.coax";
 #load "envelope.coax";
+#load "nipkeys_carry/cleanup.coax";
 #authority;
 
 // book:begin carry
@@ -48,8 +49,6 @@ KcWork :: struct {pre:[KC_REGION]u8;body:[KC_REGION]u8;cipher:[2*KC_REGION]u8;sc
 KcOpened :: struct {error:u32=KC_INPUT;signer:[32]u8;id:[32]u8;n:int;}
 // book:end carry
 
-kc_zero :: (b:[]u8) {secure_zero(b);}
-kc_clear :: (w:[]KcWork) {kc_zero(w[0].pre[..]);kc_zero(w[0].body[..]);kc_zero(w[0].cipher[..]);kc_zero(w[0].scratch[..]);kc_zero(w[0].ck[..]);}
 kc_hex64 :: (s:string)->bool {
   if s.count!=64 {return false;}
   for c:s {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}

@@ -1,0 +1,18 @@
+// Actual runtime observation, shared by optimized native, sanitizers and Wasm.
+#run_steps 250000000;
+#load "../../lib/nostr/nip59.coax";
+nip59_cleanup_check :: ()->int #export_c {
+  work:[NIP59_WORK]u8;wrap:[NIP59_REGION]u8;plain:[NIP59_REGION]u8;fresh:=n59_fresh(1);
+  for i:0..<work.count {work[i]=165;}for i:0..<plain.count {plain[i]=165;}
+  written:=n59_wrap_text(fresh[..],"private runtime cleanup",work[..],wrap[..]);
+  #assert written.error==NIP59_OK && written.written>0 && crypto_zeroed(work[..]);
+  #assert crypto_zeroed(fresh[0].wrap_key[..]) && crypto_zeroed(fresh[0].seal_nonce[..]) && crypto_zeroed(fresh[0].wrap_nonce[..]);
+  #assert crypto_zeroed(fresh[0].seal_aux[..]) && crypto_zeroed(fresh[0].wrap_aux[..]) && fresh[0].seal_back==0 && fresh[0].wrap_back==0;
+  opened:=n59_open(cast(string)wrap[0..<written.written],work[..],plain[..]);
+  #assert opened.error==NIP59_OK && cast(string)plain[opened.content_from..<opened.content_to]=="private runtime cleanup";
+  #assert crypto_zeroed(work[..]);
+  refused:=n59_open(cast(string)wrap[0..<written.written],work[..],plain[0..<1]);
+  #assert refused.error==NIP59_OUTPUT && plain[0]==0 && crypto_zeroed(work[..]);
+  bad:=n59_open("{}",work[..],plain[..]);#assert bad.error==NIP59_WRAP && crypto_zeroed(work[..]) && crypto_zeroed(plain[..]);
+  return 1;
+}

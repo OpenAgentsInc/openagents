@@ -1,0 +1,19 @@
+// Loaded by the owning codec; its work type and constants stay in that owner.
+#authority;
+#test "hb cleanup erases every owned field through its exact last byte" {
+  w:[1]HbWork;
+  w[0].pre[0]=17;w[0].pre[w[0].pre.count-1]=231;
+  w[0].body[0]=17;w[0].body[w[0].body.count-1]=231;
+  w[0].cipher[0]=17;w[0].cipher[w[0].cipher.count-1]=231;
+  w[0].scratch[0]=17;w[0].scratch[w[0].scratch.count-1]=231;
+  w[0].ck[0]=17;w[0].ck[w[0].ck.count-1]=231;
+  hb_clear(w[..]);
+  #assert crypto_zeroed(w[0].pre[..]);
+  #assert crypto_zeroed(w[0].body[..]);
+  #assert crypto_zeroed(w[0].cipher[..]);
+  #assert crypto_zeroed(w[0].scratch[..]);
+  #assert crypto_zeroed(w[0].ck[..]);
+}
+
+hb_zero :: (b:[]u8) {secure_zero(b);}
+hb_clear :: (w:[]HbWork) {hb_zero(w[0].pre[..]);hb_zero(w[0].body[..]);hb_zero(w[0].cipher[..]);hb_zero(w[0].scratch[..]);hb_zero(w[0].ck[..]);}
