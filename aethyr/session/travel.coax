@@ -1,0 +1,253 @@
+// Travel between authoritative room owners that survives a crash at any point (GitHub #12850).
+// A character goes from room `from` to room `to` in five steps, each safe to repeat:
+// 1. reserve: `to` sets aside a place while `from` stays authoritative, and the travel record
+//    says so; a full or unready destination refuses, and the character plays on where it is.
+// 2. prepare: `from` stops taking commands for the character (the cutover), captures its state
+//    (HP, effect and its end, cooldown, progression, group, the last command it accepted) into the
+//    travel record, and keeps it. Commands that arrive after the cutover are refused and told so;
+//    none is applied twice, because the destination starts from the last accepted command.
+// 3. commit: the one decision. The directory moves the owner to `to` at the next generation
+//    (control_transfer) and marks the record committed, in one write. From here the source's
+//    writes are stale everywhere.
+// 4. activate: `to` loads the captured state under the new generation and fences the store with it.
+// 5. route: the client is sent to `to`, and only then does `from` drop its copy.
+// The record and the directory are durable; a room's reservations and cutover flag are not. After
+// a crash, travel_recover decides from the record alone: reserved or prepared means abort
+// (the source keeps the character and takes commands again); committed means activate and route.
+// Either way one room has the character, it is the directory's owner, and the client is routed
+// there, within TRAVEL_RECOVERY steps. Cancellation is an abort before commit; after commit, travel
+// only goes forward. Transferable assets are not part of this profile (they need the transactional
+// ledger first).
+//   coax/bin/coax test aethyr/session/travel.coax --library
+//   coax/bin/coax mutate aethyr/session/travel.coax --library --root-only
+
+#module "aethyr.session.travel";
+#authority;
+#load "control.coax";
+
+// book:begin travel-profile
+TRAVEL_RECOVERY :: 2;   // steps travel_recover takes at most to settle
+
+TRAVEL_NONE :: 0; TRAVEL_RESERVED :: 1; TRAVEL_PREPARED :: 2; TRAVEL_COMMITTED :: 3; TRAVEL_DONE :: 4; TRAVEL_ABORTED :: 5;
+
+TRAVEL_OK :: 0;
+TRAVEL_FULL :: 1;        // the destination has no place
+TRAVEL_UNREADY :: 2;     // the destination is down or not ready
+TRAVEL_NOT_OWNER :: 3;   // the source doesn't own the character
+TRAVEL_WRONG_STEP :: 4;  // the record isn't at the step this needs
+TRAVEL_DOWN :: 5;        // the room this step runs in is down
+
+// What travels: the character's declared profile.
+TravelBody :: struct { here: bool; gen: int; hp: int; effect: int; effect_until: int; cooldown: int; xp: int; group: int; last_cmd: int; }
+TravelRoom :: struct {
+  id: int; up: bool = true; ready: bool = true; capacity: int = 4;
+  used: int; reserved: int;              // reserved: volatile, lost in a crash
+  cutover: [CONTROL_CHARACTERS] bool;    // volatile: commands for the character are refused
+  bodies: [CONTROL_CHARACTERS] TravelBody;
+  refused: int;                          // commands refused (cutover, not the owner, or old)
+}
+TravelRecord :: struct { status: int; c: int; from: int; to: int; gen: int; state: TravelBody; }
+TravelWorld :: struct {
+  dir: [1] ControlDirectory; store: [1] ControlFence;
+  rooms: [2] TravelRoom;                 // room index 0 and 1, ids 10 and 20
+  rec: [1] TravelRecord;
+  route: [CONTROL_CHARACTERS] int;       // the room index each character's client talks to
+}
+// book:end travel-profile
+
+travel_world :: (w: [] TravelWorld) {
+  w[0] = TravelWorld.{};
+  w[0].rooms[0].id = 10; w[0].rooms[1].id = 20;
+}
+// Character c joins room r (index) with body b: the directory grants it, and the store is fenced.
+travel_join :: (w: [] TravelWorld, r: int, c: int, b: TravelBody) -> bool {
+  g := control_acquire(w[0].dir[..], c, w[0].rooms[r].id);
+  if g.status != CONTROL_OK { return false; }
+  body := b; body.here = true; body.gen = g.gen;
+  w[0].rooms[r].bodies[c] = body; w[0].rooms[r].used += 1;
+  w[0].route[c] = r;
+  return control_fence(w[0].store[..], c, g.gen) == CONTROL_OK;
+}
+// Room r runs command `seq` for character c (it adds `xp`): only its owner, outside a cutover, and
+// only commands newer than the last it accepted.
+travel_command :: (w: [] TravelWorld, r: int, c: int, seq: int, xp: int) -> bool {
+  b := w[0].rooms[r].bodies[c];
+  ok := w[0].rooms[r].up && b.here && !w[0].rooms[r].cutover[c] && seq > b.last_cmd &&
+        control_holds(w[0].dir[..], c, w[0].rooms[r].id, b.gen) == CONTROL_OK && control_fence(w[0].store[..], c, b.gen) == CONTROL_OK;
+  if !ok { w[0].rooms[r].refused += 1; return false; }
+  w[0].rooms[r].bodies[c].last_cmd = seq; w[0].rooms[r].bodies[c].xp += xp;
+  return true;
+}
+
+// book:begin travel-steps
+// One journey at a time: a record that is settled (none, done or aborted) can start another.
+travel_settled :: (w: [] TravelWorld) -> bool { st := w[0].rec[0].status; return st == TRAVEL_NONE || st == TRAVEL_DONE || st == TRAVEL_ABORTED; }
+travel_reserve :: (w: [] TravelWorld, c: int, from: int, to: int) -> int {
+  if !travel_settled(w) { return TRAVEL_WRONG_STEP; }
+  d := w[0].rooms[to];
+  if !d.up || !d.ready { return TRAVEL_UNREADY; }
+  if d.used + d.reserved >= d.capacity { return TRAVEL_FULL; }
+  w[0].rooms[to].reserved += 1;
+  w[0].rec[0] = TravelRecord.{status = TRAVEL_RESERVED, c = c, from = from, to = to};
+  return TRAVEL_OK;
+}
+travel_prepare :: (w: [] TravelWorld) -> int {
+  rec := w[0].rec[0];
+  if rec.status != TRAVEL_RESERVED { return TRAVEL_WRONG_STEP; }
+  if !w[0].rooms[rec.from].up { return TRAVEL_DOWN; }
+  b := w[0].rooms[rec.from].bodies[rec.c];
+  if !b.here || control_holds(w[0].dir[..], rec.c, w[0].rooms[rec.from].id, b.gen) != CONTROL_OK { return TRAVEL_NOT_OWNER; }
+  w[0].rooms[rec.from].cutover[rec.c] = true;
+  w[0].rec[0].status = TRAVEL_PREPARED; w[0].rec[0].gen = b.gen; w[0].rec[0].state = b;
+  return TRAVEL_OK;
+}
+// Repeating a commit that went through (its answer was lost) says OK again.
+travel_commit :: (w: [] TravelWorld) -> int {
+  rec := w[0].rec[0];
+  if rec.status == TRAVEL_COMMITTED { return TRAVEL_OK; }
+  if rec.status != TRAVEL_PREPARED { return TRAVEL_WRONG_STEP; }
+  g := control_transfer(w[0].dir[..], rec.c, w[0].rooms[rec.from].id, rec.gen, w[0].rooms[rec.to].id);
+  if g.status != CONTROL_OK { w[0].rec[0].status = TRAVEL_ABORTED; return TRAVEL_NOT_OWNER; }
+  w[0].rec[0].status = TRAVEL_COMMITTED; w[0].rec[0].gen = g.gen;
+  return TRAVEL_OK;
+}
+travel_activate :: (w: [] TravelWorld) -> int {
+  rec := w[0].rec[0];
+  if rec.status != TRAVEL_COMMITTED { return TRAVEL_WRONG_STEP; }
+  if !w[0].rooms[rec.to].up { return TRAVEL_DOWN; }
+  if !w[0].rooms[rec.to].bodies[rec.c].here {
+    b := rec.state; b.gen = rec.gen;   // captured while here
+    w[0].rooms[rec.to].bodies[rec.c] = b; w[0].rooms[rec.to].used += 1;
+    if w[0].rooms[rec.to].reserved > 0 { w[0].rooms[rec.to].reserved -= 1; }
+    _ := control_fence(w[0].store[..], rec.c, rec.gen);
+  }
+  return TRAVEL_OK;
+}
+travel_route :: (w: [] TravelWorld) -> int {
+  rec := w[0].rec[0];
+  if rec.status != TRAVEL_COMMITTED || !w[0].rooms[rec.to].bodies[rec.c].here { return TRAVEL_WRONG_STEP; }
+  w[0].route[rec.c] = rec.to;
+  w[0].rec[0].status = TRAVEL_DONE;
+  travel_drop(w, rec.from, rec.c);
+  return TRAVEL_OK;
+}
+// The source lets its copy go once it no longer owns the character; a down room does it on restart.
+travel_drop :: (w: [] TravelWorld, r: int, c: int) {
+  b := w[0].rooms[r].bodies[c];
+  if !w[0].rooms[r].up || !b.here || control_holds(w[0].dir[..], c, w[0].rooms[r].id, b.gen) == CONTROL_OK { return; }
+  w[0].rooms[r].bodies[c].here = false; w[0].rooms[r].used -= 1; w[0].rooms[r].cutover[c] = false;
+}
+// Before commit only: the travel is called off, and the source takes commands again.
+travel_abort :: (w: [] TravelWorld) -> int {
+  rec := w[0].rec[0];
+  if rec.status != TRAVEL_RESERVED && rec.status != TRAVEL_PREPARED { return TRAVEL_WRONG_STEP; }
+  w[0].rec[0].status = TRAVEL_ABORTED;
+  w[0].rooms[rec.from].cutover[rec.c] = false;
+  if w[0].rooms[rec.to].reserved > 0 { w[0].rooms[rec.to].reserved -= 1; }
+  return TRAVEL_OK;
+}
+// book:end travel-steps
+
+// book:begin travel-recover
+// Room r crashes: its reservations are gone; its bodies are durable. A cutover it held is settled
+// by the restart (an abort lifts it; a committed journey drops the body).
+travel_crash :: (w: [] TravelWorld, r: int) { w[0].rooms[r].up = false; w[0].rooms[r].reserved = 0; }
+// Room r restarts, and the travel record settles what was in flight. Returns the steps it took.
+travel_recover :: (w: [] TravelWorld, r: int) -> int {
+  w[0].rooms[r].up = true;
+  rec := w[0].rec[0];
+  steps := 0;
+  if rec.status == TRAVEL_RESERVED || rec.status == TRAVEL_PREPARED { _ := travel_abort(w); steps += 1; }
+  if w[0].rec[0].status == TRAVEL_COMMITTED && w[0].rooms[rec.to].up && w[0].rooms[rec.from].up {
+    _ := travel_activate(w); _ = travel_route(w); steps += 1;   // routing drops the source's copy
+  }
+  return steps;
+}
+// book:end travel-recover
+
+// ---- checks
+#load "../tests/travel-oracle.coax";
+
+#test "travel: a journey moves the character once, with its profile, and its old commands are refused" {
+  w: [1] TravelWorld;
+  w[0].rooms[0].used = 9; w[0].rec[0].status = TRAVEL_PREPARED;
+  travel_world(w[..]);
+  #assert w[0].rooms[0].id == 10 && w[0].rooms[1].id == 20 && w[0].rooms[0].used == 0 && travel_settled(w[..]);
+  #assert travel_join(w[..], 0, 3, TO_BODY) && !travel_join(w[..], 1, 3, TO_BODY) && w[0].route[3] == 0;
+  #assert travel_join(w[..], 1, 4, TO_BODY) && w[0].route[4] == 1;
+  #assert travel_command(w[..], 0, 3, 1, 10) && !travel_command(w[..], 0, 3, 1, 10) && !travel_command(w[..], 1, 3, 2, 10);
+  #assert travel_prepare(w[..]) == TRAVEL_WRONG_STEP;
+  #assert travel_reserve(w[..], 3, 0, 1) == TRAVEL_OK && w[0].rooms[1].reserved == 1 && w[0].rec[0].status == TRAVEL_RESERVED;
+  #assert travel_reserve(w[..], 3, 0, 1) == TRAVEL_WRONG_STEP && w[0].rooms[1].reserved == 1;
+  #assert travel_prepare(w[..]) == TRAVEL_OK && w[0].rec[0].state.last_cmd == 1 && w[0].rec[0].state.xp == 15 && w[0].rec[0].gen == 1;
+  #assert !travel_command(w[..], 0, 3, 2, 10);   // after the cutover: refused, and told
+  #assert travel_prepare(w[..]) == TRAVEL_WRONG_STEP && travel_reserve(w[..], 3, 0, 1) == TRAVEL_WRONG_STEP;
+  #assert travel_commit(w[..]) == TRAVEL_OK && travel_commit(w[..]) == TRAVEL_OK && w[0].rec[0].gen == 2 && w[0].dir[0].entries[3].room == 20;
+  #assert travel_reserve(w[..], 3, 0, 1) == TRAVEL_WRONG_STEP && travel_abort(w[..]) == TRAVEL_WRONG_STEP;
+  #assert travel_activate(w[..]) == TRAVEL_OK && travel_activate(w[..]) == TRAVEL_OK && w[0].rooms[1].used == 2 && w[0].rooms[1].reserved == 0;
+  b := w[0].rooms[1].bodies[3];
+  #assert b.here && b.gen == 2 && b.hp == 70 && b.effect == 2 && b.effect_until == 900 && b.cooldown == 40 && b.xp == 15 && b.group == 8 && b.last_cmd == 1;
+  #assert w[0].rooms[0].bodies[3].here && w[0].route[3] == 0;   // still there until routed
+  #assert travel_route(w[..]) == TRAVEL_OK && w[0].route[3] == 1 && !w[0].rooms[0].bodies[3].here && w[0].rooms[0].used == 0 && !w[0].rooms[0].cutover[3];
+  #assert w[0].rec[0].status == TRAVEL_DONE && travel_settled(w[..]);
+  #assert travel_route(w[..]) == TRAVEL_WRONG_STEP && travel_commit(w[..]) == TRAVEL_WRONG_STEP && travel_activate(w[..]) == TRAVEL_WRONG_STEP && travel_abort(w[..]) == TRAVEL_WRONG_STEP;
+  // the old room's commands are stale; the new room takes the next command, once
+  #assert !travel_command(w[..], 0, 3, 2, 10) && travel_command(w[..], 1, 3, 2, 10) && w[0].rooms[1].bodies[3].xp == 25;
+  #assert w[0].rooms[0].refused == 3 && w[0].rooms[1].refused == 1 && travel_one_owner(w[..], 3);
+  // a room that is down takes no command
+  w[0].rooms[1].up = false;
+  #assert !travel_command(w[..], 1, 3, 3, 10);
+}
+
+#test "travel: a full or unready destination refuses, and the character plays on" {
+  w: [1] TravelWorld; travel_world(w[..]);
+  #assert travel_join(w[..], 0, 1, TO_BODY);
+  w[0].rooms[1].capacity = 1; w[0].rooms[1].reserved = 1;
+  #assert travel_reserve(w[..], 1, 0, 1) == TRAVEL_FULL;
+  w[0].rooms[1].reserved = 0; w[0].rooms[1].used = 1;
+  #assert travel_reserve(w[..], 1, 0, 1) == TRAVEL_FULL;
+  w[0].rooms[1].used = 0; w[0].rooms[1].ready = false;
+  #assert travel_reserve(w[..], 1, 0, 1) == TRAVEL_UNREADY;
+  w[0].rooms[1].ready = true; w[0].rooms[1].up = false;
+  #assert travel_reserve(w[..], 1, 0, 1) == TRAVEL_UNREADY && travel_command(w[..], 0, 1, 1, 1) && travel_settled(w[..]);
+  w[0].rooms[1].up = true;
+  travel_drop(w[..], 0, 1);   // the owner keeps its body
+  #assert w[0].rooms[0].bodies[1].here;
+  // not the owner, a body not here, or down: no prepare
+  #assert travel_reserve(w[..], 2, 0, 1) == TRAVEL_OK && travel_prepare(w[..]) == TRAVEL_NOT_OWNER && travel_abort(w[..]) == TRAVEL_OK && w[0].rooms[1].reserved == 0;
+  #assert travel_reserve(w[..], 1, 0, 1) == TRAVEL_OK;
+  w[0].rooms[0].bodies[1].here = false;
+  #assert travel_prepare(w[..]) == TRAVEL_NOT_OWNER;
+  w[0].rooms[0].bodies[1].here = true; w[0].rooms[0].up = false;
+  #assert travel_prepare(w[..]) == TRAVEL_DOWN;
+  w[0].rooms[0].up = true;
+  #assert travel_commit(w[..]) == TRAVEL_WRONG_STEP && travel_activate(w[..]) == TRAVEL_WRONG_STEP;
+  // abort before commit gives commands back and frees the place
+  #assert travel_prepare(w[..]) == TRAVEL_OK && !travel_command(w[..], 0, 1, 2, 1);
+  #assert travel_abort(w[..]) == TRAVEL_OK && w[0].rooms[1].reserved == 0 && travel_command(w[..], 0, 1, 2, 1) && w[0].rec[0].status == TRAVEL_ABORTED;
+  // a source that lost the character before commit: the commit aborts
+  #assert travel_reserve(w[..], 1, 0, 1) == TRAVEL_OK && travel_prepare(w[..]) == TRAVEL_OK;
+  w[0].dir[0].entries[1].gen += 1;
+  #assert travel_commit(w[..]) == TRAVEL_NOT_OWNER && w[0].rec[0].status == TRAVEL_ABORTED;
+  // a destination down at activation waits
+  v: [1] TravelWorld; travel_world(v[..]);
+  #assert travel_join(v[..], 0, 2, TO_BODY) && travel_reserve(v[..], 2, 0, 1) == TRAVEL_OK && travel_prepare(v[..]) == TRAVEL_OK && travel_commit(v[..]) == TRAVEL_OK;
+  v[0].rooms[1].up = false;
+  #assert travel_activate(v[..]) == TRAVEL_DOWN && travel_route(v[..]) == TRAVEL_WRONG_STEP;
+  // a down room keeps its copy until it restarts
+  v[0].rooms[0].up = false;
+  travel_drop(v[..], 0, 2);
+  #assert v[0].rooms[0].bodies[2].here;
+  v[0].rooms[0].up = true;
+  travel_drop(v[..], 0, 2);
+  #assert !v[0].rooms[0].bodies[2].here;
+}
+
+#test "travel: a crash or lost answer at every step ends in one owner, one body and the right route" {
+  for point: 0..<TRAVEL_POINTS { for who: 0..<2 { for lost: 0..<2 {
+    w: [1] TravelWorld;
+    o := to_journey(w[..], point, who, lost == 1);
+    #assert o.owners == 1 && o.bodies == 1 && o.routed && o.profile_kept && o.settled && o.next_ok && o.other_refused && o.places_free && o.down_refused;
+    #assert o.moved == (point >= TO_COMMITTED) && o.recovery_steps == to_steps(point) && o.recovery_steps <= TRAVEL_RECOVERY;
+  } } }
+}
