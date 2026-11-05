@@ -1,0 +1,50 @@
+// book:begin example
+#load "../sim/scene.coax";
+#import "Basic";
+
+// A plane, a 1 m box of density 500 at 2 m, and a 0.5 m sphere of particles at 4 m.
+three_shapes :: () -> Scene_Spec {
+  spec: Scene_Spec;
+  spec.count = 3;
+  spec.entities[0] = Entity.{shape = Shape.{kind = Shape_Kind.plane}, material = Material.{solver = Solver.ground}};
+  spec.entities[1] = Entity.{shape = Shape.{kind = Shape_Kind.box, size = SV3.{x = 1, y = 1, z = 1}, at = SV3.{y = 2}},
+                             material = Material.{solver = Solver.rigid, density = 500}, appearance = Appearance.{rgba = 0xd04020ff}};
+  spec.entities[2] = Entity.{shape = Shape.{kind = Shape_Kind.sphere, size = SV3.{x = 0.5}, at = SV3.{x = 3, y = 4}},
+                             material = Material.{solver = Solver.particles}, appearance = Appearance.{rgba = 0x2060d0ff}};
+  return spec;
+}
+
+main :: () {
+  // Admission names the first unsupported pair before anything is built.
+  on_gpu := three_shapes();
+  on_gpu.backend = Backend.cuda;
+  learn := three_shapes();
+  learn.gradients = true;
+  print("cuda: %, gradients: %\n", scene_admit(on_gpu), scene_admit(learn));
+
+  s: [1] Scene;
+  print("build: %\n", scene_build(three_shapes(), s[..]));
+  box := s[0].handles[1];
+  ball := s[0].handles[2];
+  print("box: % [%, %), ball: % [%, %)\n", box.solver, box.first, box.first + box.count,
+        ball.solver, ball.first, ball.first + ball.count);
+  for step: 1..<4 {
+    scene_step(s[..]);
+    print("step %: box y %, ball's lowest point y %, digest %\n", step,
+          scene_body_y(s[0], box, 0), scene_body_y(s[0], ball, 0), scene_digest(s[0]));
+  }
+
+  // Repaint everything and run both to 1,000 steps: the digests agree.
+  painted := three_shapes();
+  painted.entities[1].appearance.rgba = 0xffffffff;
+  painted.entities[2].appearance.rgba = 0x000000ff;
+  a: [1] Scene;
+  b: [1] Scene;
+  built_a := scene_build(three_shapes(), a[..]);
+  built_b := scene_build(painted, b[..]);
+  print("built: %, %\n", built_a, built_b);
+  for i: 0..<1000 { scene_step(a[..]); scene_step(b[..]); }
+  print("1000 steps: box y %, digest %, repainted digest %\n", scene_body_y(a[0], box, 0),
+        scene_digest(a[0]), scene_digest(b[0]));
+}
+// book:end example

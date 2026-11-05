@@ -370,6 +370,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "aethyr/examples/scene-three-shapes.coax",
+      "chapter": "aethyr/book/ch017-a-scene-owns-the-state.md",
+      "stdout": "aethyr/fixtures/scene-three-shapes.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

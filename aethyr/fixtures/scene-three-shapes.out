@@ -1,0 +1,8 @@
+cuda: backend_not_built, gradients: no_backward_pass
+build: none
+box: rigid [0, 1), ball: particles [0, 8)
+step 1: box y 1.999019, ball's lowest point y 3.749019, digest 13588535490896844969
+step 2: box y 1.997057, ball's lowest point y 3.7470570000000003, digest 16207048614719290469
+step 3: box y 1.9941140000000002, ball's lowest point y 3.744114, digest 17612693945783445760
+built: none, none
+1000 steps: box y 0.5, digest 16248280601224408613, repainted digest 16248280601224408613
