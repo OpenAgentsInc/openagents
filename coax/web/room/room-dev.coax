@@ -25,6 +25,12 @@
 //   coax test --library coax/web/room/room.coax --steps 4000000000 --only "dev:"
 
 DEV_KEY :: "local-development-room-ticket-key-not-a-secret";   // the stand-in's ticket key (>= 32 bytes)
+// Whether a room code names an instance: it ends in -N ("everglade-1"), not a realm ("everglade").
+dv_numbered :: (room: string) -> bool {
+  k := room.count;
+  while k > 0 && room[k - 1] >= '0' && room[k - 1] <= '9' { k -= 1; }
+  return k < room.count && k > 1 && room[k - 1] == '-';
+}
 DEV_OUT :: 1024;
 // Everglade's realm as migrations/0050_realm_edit.sql seeds it: the tools its code honours, the things a
 // visitor may propose, and the board's rows (KEY, LABEL).
@@ -129,6 +135,14 @@ rm_dev_api :: (v: [] RmServer, req: string) -> int #export_c {
     room := req[at..<e];
     if room.count == 0 || room.count > 24 { return dv_answer(v, "404", "{\"error\":\"unknown\"}"); }
     for c: room { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return dv_answer(v, "404", "{\"error\":\"unknown\"}"); } }
+    // a ticket for the realm itself (?realm=, everglade-party.coax): the API's directory places it in a
+    // room; the stand-in has one, the realm's first (its rooms list's "join"), so the ticket is for that
+    // room, whose socket the page opens (a ticket for "everglade" was refused at "everglade-1")
+    rb: [32] u8;
+    if !dv_numbered(room) {
+      rn := dv_put(rb[..], 0, room); rn = dv_put(rb[..], rn, "-1");
+      room = cast(string) rb[0..<rn];
+    }
     key := dv_header(req, "x-verse-player");
     if key.count == 0 { return dv_answer(v, "401", "{\"error\":\"a player key\"}"); }
     pb: [TICKET_PID] u8; pn := dv_pid(key, pb[..]);
@@ -284,6 +298,16 @@ dv_json_at :: (t: string, name: string) -> int {
   ticket := net_field_dev(ans, "ticket");
   tk := tk_check(DEV_KEY, ticket, "everglade-1", v[0].wall_ms);
   #assert tk.ok && tk.name_n > 0 && net_field_dev(ans, "name").count > 0;
+  // a ticket asked for the realm (as the page asks one from the rooms list, #12852) is for the room its
+  // socket opens, the realm's first: a page with no ?room= sits in the local room
+  qb: [256] u8;
+  m2 := dv_put(qb[..], 0, "POST /api/playtest/room-ticket/everglade?realm=everglade&build=1.1.1 HTTP/1.1\r\nX-Verse-Player: ");
+  m2 = dv_put(qb[..], m2, cast(string) kb[0..<key.count]); m2 = dv_put(qb[..], m2, "\r\n\r\n{}");
+  t3 := rm_dev_api(v[..], cast(string) qb[0..<m2]);
+  ans3 := cast(string) v[0].dev.out[0..<t3];
+  #assert ans3[0..<4] == "200\n" && net_field_dev(ans3, "room") == "everglade-1";
+  #assert tk_check(DEV_KEY, net_field_dev(ans3, "ticket"), "everglade-1", v[0].wall_ms).ok;
+  #assert dv_numbered("everglade-1") && dv_numbered("pair-ab12-3") && !dv_numbered("everglade") && !dv_numbered("-1") && !dv_numbered("x-");
   // the same key, the same player
   t2 := rm_dev_api(v[..], cast(string) rb[0..<m]);
   #assert net_field_dev(cast(string) v[0].dev.out[0..<t2], "id") == cast(string) tk.pid[0..<tk.pid_n];

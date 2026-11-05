@@ -15,7 +15,8 @@
 //
 // --api PORT sends every /api/ request to 127.0.0.1:PORT and its answer back, as the load balancer
 // sends /api/ to the API: a local room's stand-in for the API (coax/web/room/local.coax), so a page
-// asks the same paths it asks in production.
+// asks the same paths it asks in production. A WebSocket there (the room's socket) is carried both
+// ways, so a page with no ?relay= still sits in the local room.
 //
 // --static is production: no building, no watching, no live channel; files
 // are served as they are, cacheable for five minutes (--cache SECONDS; 0
@@ -192,6 +193,40 @@ static void broadcast(const char *json) {
   (void)sent;
 }
 
+// Whether the request asks for a WebSocket (an Upgrade: websocket header).
+static bool is_upgrade(const client *c) {
+  const char *end = strstr(c->buf, "\r\n\r\n");
+  if (!end) return false;
+  for (const char *p = c->buf; p + 8 < end; p++)
+    if ((p == c->buf || p[-1] == '\n') && !strncasecmp(p, "Upgrade:", 8)) {
+      const char *v = p + 8;
+      while (*v == ' ' || *v == '\t') v++;
+      return !strncasecmp(v, "websocket", 9);
+    }
+  return false;
+}
+// A WebSocket to the --api stand-in (the room's socket, /api/room/relay/...): carried both ways until
+// either side closes, as the load balancer carries it in production. A child process carries it, so
+// the server goes on answering other requests meanwhile; the child holds only these two sockets.
+static void tunnel(int page, int api) {
+  pid_t pid = fork();
+  if (pid != 0) return;   // the server (or a failed fork: the socket closes, the page asks again)
+  for (int f = 3; f < 1024; f++) if (f != page && f != api) close(f);
+  struct pollfd p[2] = {{.fd = page, .events = POLLIN}, {.fd = api, .events = POLLIN}};
+  char tmp[16384];
+  for (;;) {
+    if (poll(p, 2, -1) < 0) { if (errno == EINTR) continue; break; }
+    bool done = false;
+    for (int i = 0; i < 2; i++) {
+      if (!(p[i].revents & (POLLIN | POLLHUP | POLLERR))) continue;
+      ssize_t k = recv(p[i].fd, tmp, sizeof tmp, 0);
+      if (k <= 0) { done = true; break; }
+      send_all(p[1 - i].fd, tmp, (size_t)k);
+    }
+    if (done) break;
+  }
+  _exit(0);
+}
 // An /api/ request, its body whole, to the --api stand-in and the answer back to the page.
 static void proxy_api(client *c) {
   int fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -203,6 +238,7 @@ static void proxy_api(client *c) {
     respond(c->fd, 502, "Bad Gateway", "application/json", "{\"error\":\"the local API is not running\"}", 40); drop(c); return;
   }
   send_all(fd, c->buf, c->n);
+  if (is_upgrade(c)) { tunnel(c->fd, fd); close(fd); drop(c); return; }
   char tmp[16384]; ssize_t k;
   while ((k = recv(fd, tmp, sizeof tmp, 0)) > 0) send_all(c->fd, tmp, (size_t)k);
   close(fd);
@@ -388,6 +424,7 @@ int main(int argc, char **argv) {
   const char *colon = strrchr(listen_spec, ':');
   if (colon) { snprintf(host, sizeof host, "%.*s", (int)(colon - listen_spec), listen_spec); port = atoi(colon + 1); }
   signal(SIGPIPE, SIG_IGN);
+  signal(SIGCHLD, SIG_IGN);   // the WebSocket tunnels' children (tunnel) reap themselves
   int lfd = socket(AF_INET, SOCK_STREAM, 0);
   int one = 1; setsockopt(lfd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
   struct sockaddr_in a = {.sin_family = AF_INET, .sin_port = htons((uint16_t)port)};
