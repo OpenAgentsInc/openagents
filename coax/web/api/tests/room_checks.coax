@@ -1101,6 +1101,9 @@ fc_start :: (argv: [] string, env: [] string, cwd: string) -> int {
 }
 // The repository's root (where coax/web/tool.sh is): the working directory, as test.sh runs this.
 rc_fault :: (t: [] Ap, room_bin_in: string) {
+  rc_fault_seeded(t,room_bin_in,rc_wall_ms()/1000);
+}
+rc_fault_seeded :: (t: [] Ap, room_bin_in: string, seed:int) {
   none: [1] string;
   out: [65536] u8; q: [1] Sb;
   rootb: [4096] u8; root := fs_cwd(rootb[..]);
@@ -1144,14 +1147,15 @@ rc_fault :: (t: [] Ap, room_bin_in: string) {
   url: [1] Sb; sb(url[..], "ws://127.0.0.1:"); sb_int(url[..], port);
   kb: [1] Sb; sb(kb[..], "OA_ROOM_TICKET_KEY="); sb(kb[..], t[0].room_key);
   nn: [8] u8; secs: [32] u8;
-  ca := [8] string.["coax/web/tool.sh", "coax/web/room/raid-check.coax", sb_text(url[..]), ap_num(FC_N, nn[..]), "100", ap_num(rc_wall_ms() / 1000, secs[..]), "druid", "fight"];
+  ca := [8] string.["coax/web/tool.sh", "coax/web/room/raid-check.coax", sb_text(url[..]), ap_num(FC_N, nn[..]), "100", ap_num(seed, secs[..]), "druid", "fight"];
   cenv := [1] string.[sb_text(kb[..])];
   check := ifx room >= 0 then fc_start(ca[..], cenv[..], "") else -1;
   begun := proc_now_ms(); pressed := false; raided := false; stopped := false;
   rb: [4200] u8; raid_path := fs_join(work, "raid", rb[..]);
   json: [65536] u8; json_n := 0; tail: [1] Sb;
   line: [65536] u8;
-  while check >= 0 {
+  // A stalled checker must fail this slice instead of keeping its room alive forever.
+  while check >= 0 && proc_now_ms() - begun < 300000 {
     n := proc_line(check, 100, line[..]);
     if n == PROC_EOF || n == PROC_ERROR { break; }
     if n >= 0 {
@@ -1168,7 +1172,7 @@ rc_fault :: (t: [] Ap, room_bin_in: string) {
     // raider one hurt and the watch felled later would still pay its held seat: room-events.coax ev_fell)
     if !stopped && e >= 90000 { sb_clear(ctl[..]); sb(ctl[..], dials); sb(ctl[..], " 1 1\nlevels 1 2\n"); w := fs_write(control, sb_text(ctl[..])); stopped = true; }
   }
-  if check >= 0 { w := proc_wait(check, 5000); r := proc_release(check); }
+  if check >= 0 { w := proc_wait(check, 5000); if w == PROC_RUNNING { k := proc_kill(check, PROC_SIGKILL); w = proc_wait(check, 2000); } r := proc_release(check); }
   // each seat's XP as raid-check heard it ("xp_seats": "x10+20 x5 ...")
   heard := ap_member(cast(string) json[0..<json_n], "xp_seats", out[..]);
   want: [FC_N] int; seats := 0; at := 0;
@@ -1682,6 +1686,20 @@ rc_region :: (t: [] Ap, api_bin: string, room_bin: string) {
   st1[2] = replica; x = rg_run(st1[..], 30000);
   gone := fs_remove(work);
 }
+#test "fault matrix: only named bounded slices are accepted" {
+  #assert mf_slice("save")&&mf_slice("owner")&&mf_slice("travel");
+  #assert !mf_slice("")&&!mf_slice("all")&&!mf_slice("Save")&&!mf_slice("region");
+}
+#test "fault matrix: explicit reproducible seed or a fixed default, never a malformed seed" {
+  #assert mf_seed("")==1284201&&mf_seed("1")==1&&mf_seed("2147483647")==2147483647;
+  #assert mf_seed("0")==-1&&mf_seed("-1")==-1&&mf_seed("2147483648")==-1&&mf_seed("bad")==-1;
+  #assert mf_config(false,"",false,"")&&mf_config(true,"save",false,"")&&mf_config(true,"owner",true,"17");
+  #assert !mf_config(true,"",false,"")&&!mf_config(true,"all",false,"")&&!mf_config(true,"save",true,"")&&!mf_config(true,"save",true,"bad");
+}
+mf_slice :: (s:string)->bool{return s=="save"||s=="owner"||s=="travel";}
+mf_seed :: (s:string)->int{if s==""{return 1284201;}n:=rc_num(s);return ifx n>=1&&n<=2147483647 then n else -1;}
+mf_config :: (asked:bool,slice:string,seed_set:bool,seed:string)->bool{return !asked||(mf_slice(slice)&&(!seed_set||seed.count>0)&&mf_seed(seed)>0);}
+
 tool_main :: () -> int #export_c {
   a: [1] Args;
   if !args_load(a[..]) { return 2; }
@@ -1689,8 +1707,23 @@ tool_main :: () -> int #export_c {
     if args_count(a[..]) != 3 { tool_errln("room_checks proxy DIR API"); return 2; }
     return fp_main(args_at(a[..], 1), args_at(a[..], 2));
   }
+  fb:[32]u8;fault:=proc_getenv("ROOM_FAULT_SLICE",fb[..]);
+  fs:[32]u8;seedtext:=proc_getenv("ROOM_FAULT_SEED",fs[..]);seed:=mf_seed(seedtext);
+  asked:=proc_has_env("ROOM_FAULT_SLICE");
+  if !mf_config(asked,fault,proc_has_env("ROOM_FAULT_SEED"),seedtext){tool_errln("ROOM_FAULT_SLICE: save, owner or travel; ROOM_FAULT_SEED: 1..2147483647");return 2;}
   t: [1] Ap;
   if !ap_open(t[..]) { return 2; }
+  if asked {
+    bb:[4096]u8;bin:=proc_getenv("ROOM_BIN",bb[..]);buildb:[128]u8;build:=proc_getenv("ROOM_FAULT_BUILD",buildb[..]);
+    if bin==""||build==""||t[0].room_key==""{tool_errln("fault slice requires ROOM_BIN, ROOM_FAULT_BUILD and ROOM_KEY");return 2;}
+    print("fault-profile mmo-fault-v1 slice=% source=% seed=% consumer=native-socket state=legacy-vitals\n",fault,build,seed);
+    at:=proc_now_ms();
+    if fault=="save"{print("fault-injection: check+16s: HTTP500/30000ms; then two committed replies held7000ms; final SIGTERM drain\n");rc_fault_seeded(t[..],bin,seed);}
+    if fault=="owner"{print("fault-injection: SIGSTOP owner g1 after first save; issue g2 and save; SIGCONT g1; reject old ticket\n");rc_owner(t[..],bin);}
+    if fault=="travel"{print("fault-injection: SIGKILL source after route; SIGKILL destination after save; restart with next owner\n");rc_travel(t[..],bin);}
+    print("fault-profile mmo-fault-v1 slice=% elapsed_ms=%\n",fault,proc_now_ms()-at);
+    return ap_done(t[..],"MMO fault slice");
+  }
   names := [13] string.["admission", "chat", "events", "invites", "parties", "items", "stats", "vitals", "owner", "travel", "builds", "checkpoints", "region"];
   for name: names {
     run := args_count(a[..]) == 0;
