@@ -1,0 +1,24 @@
+// A private copy of the pinned public page/assets, with shared-renderer
+// selection and the ordinary /worlds -> /realms static path alias.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#test "private shared page adds only its renderer selector and refuses missing or short input" {
+  out:[256]u8;s:="before data-app=\"everglade5e\" after";n:=hps_page(s,out[..]);#assert n>0 && cast(string)out[0..<n]=="before data-app=\"everglade5e\" data-render=\"/package/render.json\" data-render-profile=\"2\" after";
+  #assert hps_page("no selector",out[..])== -1 && hps_page(s,out[0..<8])== -1;
+}
+hps_page :: (source:string,out:[]u8)->int {
+  needle:="data-app=\"everglade5e\"";extra:=" data-render=\"/package/render.json\" data-render-profile=\"2\"";at:=-1;for i:0..<source.count-needle.count+1 {if source[i..<i+needle.count]==needle {at=i+needle.count;break;}}
+  if at<0 || source.count+extra.count>out.count {return -1;}for i:0..<at {out[i]=source[i];}for c,i:extra {out[at+i]=c;}for i:at..<source.count {out[i+extra.count]=source[i];}return source.count+extra.count;
+}
+hps_run :: (argv:[]string)->bool {out:[65536]u8;err:[65536]u8;r:=proc_run(argv,60000,out[..],err[..]);if r.started!=0||r.status!=0||r.cut||r.timed_out {tool_errln(cast(string)err[0..<r.err_n]);return false;}return true;}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=2 {tool_errln("usage: prepare-shared-surface PINNED_ROOT NEW_SURFACE");return 2;}
+  root:=args_at(a[..],0);surface:=args_at(a[..],1);files:[1]FsList;if !fs_mkdir(surface)||fs_list(surface,files[..])!=0 {return 2;}
+  paths:[7][4096]u8;source:=fs_join(root,"apps/openagents-web/",paths[0][..]);dest:=fs_join(surface,"apps/openagents-web/",paths[1][..]);if !fs_mkdir(dest) {return 1;}
+  copy:=[6]string.["rsync","-a","--exclude=build/","--exclude=.dev/",source,dest];if !hps_run(copy[..])||!fs_mkdir(fs_join(surface,"coax",paths[2][..])) {return 1;}
+  host:=fs_join(root,"coax/web",paths[3][..]);link:=[4]string.["ln","-s",host,fs_join(surface,"coax/web",paths[4][..])];alias:=[4]string.["ln","-s","realms",fs_join(dest,"worlds",paths[5][..])];if !hps_run(link[..])||!hps_run(alias[..]) {return 1;}
+  bytes:[65536]u8;page:[65536]u8;n:=fs_read(fs_join(source,"realms/everglade/index.html",paths[2][..]),bytes[..]);pn:=ifx n>0 then hps_page(cast(string)bytes[0..<n],page[..]) else -1;
+  if pn<0||!fs_write(fs_join(surface,"page.html",paths[6][..]),cast(string)page[0..<pn]) {return 1;}print("Private pinned shared-render surface: %\n",surface);return 0;
+}

@@ -1,9 +1,13 @@
 # Host contract qualification (#12869)
 
-The shared-frame GPU records currently retain iteration observations only:
+The earlier shared-frame GPU records retain iteration observations only:
 their reconstructed compiler source digest is not a trusted receipt. See
 the provenance correction in `shared-frame.md`. Admitted host preparation
-must replace that step before these comparisons can support a default switch.
+must replace that step before those comparisons can support a default switch.
+The subsequent [original-provenance preparation](qualified-shared-frame.md)
+supplies a genuinely matching admitted historical CPU compiler and separately
+pinned current product inputs. Its new half-float comparisons pass; ordinary
+8-bit Vulkan presentation fails the unchanged gate and remains an explicit exit.
 
 This is an **incomplete** conformance record. The normative boundary is
 [`aethyr/host/README.md`](../../../aethyr/host/README.md). Aethyrforge's world
