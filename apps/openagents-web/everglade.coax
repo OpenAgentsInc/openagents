@@ -1073,6 +1073,10 @@ everglade_pack_failed :: (s: [] Everglade) #export_c { if !s[0].pack_ready { s[0
 everglade_message :: (s: [] Everglade, kind: int, text: string) #export_c {
   everglade_guard_message(s, kind, text);
   if kind == 601 || kind == 603 { s[0].guide.asked=false; s[0].guide.help_requested=false; s[0].guide.key_down=false; s[0].guide.finger= -1; }
+  // hidden and shown, through the shared lifecycle profile (everglade-net.coax net_life, #12856); a blur
+  // isn't reported, since the host says no focus to end it (everglade_blur releases the inputs itself)
+  if kind == 601 { _ := net_life(s, LC_HIDDEN); }
+  if kind == 602 { _ := net_life(s, LC_SHOWN); }
   if fork_message(s, kind, text) { return; }
   if everglade_voice_message(s, kind, text) { return; }
   if kind == MSG_TEXT { talk_typed(s, text); return; }

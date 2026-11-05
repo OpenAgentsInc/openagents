@@ -39,6 +39,7 @@
 
 #load "socket.coax";
 #load "everglade-wire.coax";
+#load "../../aethyr/session/lifecycle.coax";   // focus, hiding and the socket, as every host does them (#12856)
 #load "everglade-join.coax";   // which instance, who you are in it, INVITE (#12716)
 #load "everglade-moderate.coax";   // BLOCK, REPORT and KICK from a nameplate (#12714)
 #load "everglade-events.coax";     // the raid's banner, your level and kit, the admin's EVENTS (#12737)
@@ -172,6 +173,7 @@ EgNet :: struct {
   lost: bool;                // the room's socket closed under you: said again when you're back
   sat: bool;                 // you sat in a room this load: the page plays in rooms from then (net_live)
   quiet_frames: int; quiet_since: int; quiet_fresh: bool = true; stepped_at: int;   // the quiet socket's watch (NET_SILENT_MS)
+  life: [1] LifeState;       // the page's lifecycle (aethyr/session/lifecycle.coax, #12856)
   drawn_at: int;             // the last frame's monotonic ms (the world's ease)
   hello_due: bool;
   pipe: [1] Pipe;
@@ -505,6 +507,22 @@ net_quiet :: (s: [] Everglade, n: [] EgNet, mono: int) {
   net_down(n);
 }
 // book:end quiet-socket
+// The page's lifecycle (#12856): the host's hidden and shown go through the shared profile
+// (aethyr/session/lifecycle.coax), which says what to do. Hidden stops the clock (the host's blur
+// on hiding releases held inputs: everglade_blur). Shown after LIFECYCLE_RESYNC ticks away replaces the
+// socket at once, so the room sends the whole state on the rejoin, rather than waiting NET_SILENT_MS to
+// find a socket the long suspension broke. Nothing the page sent before is sent again.
+net_life :: (s: [] Everglade, kind: int) -> LifeActions {
+  if !net_on(s) { return LifeActions.{}; }
+  n := net_of(s);
+  a := life_event(n[0].life[..], kind, n[0].mono * WIRE_HZ / 1000, 0);
+  if (a.does & LC_FULL_STATE) != 0 && n[0].sock >= 0 && (n[0].state == NET_OPEN || n[0].state == NET_OPENING) && !n[0].stale {
+    _ := pipe_close(n[0].pipe[..], n[0].sock);
+    net_down(n);
+    n[0].retry = 0;   // at once: the tab is back
+  }
+  return a;
+}
 // A socket event (message kind 256 + 4 * id + event, its text in the inbox): true when it was ours.
 net_event :: (s: [] Everglade, kind: int, text: string) -> bool #export_c {
   if !net_on(s) { return false; }
@@ -2694,6 +2712,32 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   net_opened(a[..], 1);
   for k: 0..<101 { t += 100; net_step(a[..], t, 0, 0, 0, 0, 0, 0, false, 0, false, 0); }
   #assert na[0].state == NET_DOWN;
+}
+#test "net: a tab shown after a long time hidden replaces its socket at once; a short one keeps it (#12856)" {
+  a: [1] Everglade; na: [1] EgNet;
+  #assert net_test_page(a[..], na[..], 0, "pa", 100);
+  #assert net_test_hear(a[..], 0, "y 0 1 5000100") && net_live(a[..]);
+  t := 200;
+  net_step(a[..], t, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  pipe_drained(na[0].pipe[..]);
+  // hidden 10 s: the same socket
+  _h := net_life(a[..], LC_HIDDEN);
+  t += 10000; net_step(a[..], t, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  sh := net_life(a[..], LC_SHOWN);
+  #assert sh.does == LC_START_CLOCK && net_open(a[..]) && na[0].sock == 0;
+  for k: 0..<na[0].pipe[0].n { #assert na[0].pipe[0].op[k] != PIPE_CLOSE; }
+  // hidden past LIFECYCLE_RESYNC ticks: shown closes it and opens a new one on the next step, unsaid
+  _h2 := net_life(a[..], LC_HIDDEN);
+  t += LIFECYCLE_RESYNC * 1000 / WIRE_HZ + 100; net_step(a[..], t, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  sh = net_life(a[..], LC_SHOWN);
+  #assert (sh.does & LC_FULL_STATE) != 0 && na[0].state == NET_DOWN && !na[0].lost;
+  closed := false;
+  for k: 0..<na[0].pipe[0].n { if na[0].pipe[0].op[k] == PIPE_CLOSE && na[0].pipe[0].id[k] == 0 { closed = true; } }
+  #assert closed;
+  pipe_drained(na[0].pipe[..]);
+  na[0].ticket_n = net_copy(na[0].ticket[..], "tk2");
+  t += 20; net_step(a[..], t, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  #assert na[0].state == NET_OPENING && na[0].pipe[0].n >= 1 && na[0].pipe[0].op[0] == PIPE_OPEN;
 }
 #test "net: a room lost under you is said, and so is getting back; you stay in the room's game meanwhile, and nothing goes out" {
   a: [1] Everglade; na: [1] EgNet;
