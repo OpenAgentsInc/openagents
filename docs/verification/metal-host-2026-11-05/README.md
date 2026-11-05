@@ -766,12 +766,12 @@ current-main packaging qualification.
 
 ## Remaining complete-host gates
 
-Current producer/face packaging still needs a successful bounded emission
-under an admitted CPU compiler and an exact source/object join. Two sibling
-current5E attempts hit their840-second bound without C/header output;
-unchanged attempts are not repeated. The earlier137-input primary closure
-differs from the `b6e12743cd` snapshot in15 product files; its frozen image
-cannot be relabeled current.
+The source-qualified current six-unit cache/native-constructor route is now
+observed in [Current native constructor](current-c64-native.md), including
+normal and fully instrumented producer execution. Earlier bounded emission
+failures remain retained; their frozen images are not relabelled current.
+Complete current producer/face packaging still needs the matching admitted
+graphics and integrated display/room snapshot.
 
 The quantized FP16 presentation matrix remains experimental under its exact
 frozen graphics iteration backend. No admitted current graphics compiler or
@@ -824,7 +824,7 @@ replies use their separate Int16 PCM stream, rather than this asset codec.
 Default compressed metadata/codec qualification and allocation-pressure
 behavior remain distinct from the successful 48-bank sample comparisons.
 
-The CPU primary blocker is specifically the missing bounded current 5E
+The earlier CPU primary blocker was the missing bounded current 5E
 emission, not lack of a usable admitted CPU image. Original598 remains
 admitted against genuine `c224561457` compiler inputs plus separately pinned
 pure product inputs. `metal-build` emits the native primary with `--library
@@ -835,10 +835,13 @@ or emission profile. Existing `wasm.sh` caches C/headers by compiler SHA,
 unit/header-base/options and every loaded source hash. A producer-only
 cache with the exact admitted image/profile and frozen current source join
 could feed `metal-build generated --generated` and `producer
---producer-object` without repeating emission. No eligible current entry
-has been established here; source paths alone do not prove that join.
-Shared-carrier C and the parent's classic room C are not substitutes for
-the matching 5E producer closure. Graphics admission remains a separate gate.
+--producer-object` without repeating emission. The subsequent genuine
+`bfe8dfefb1`/originalc64 route establishes exact current shared5E cache keys,
+six complete source joins and actual native ABI/constructor execution
+([record](current-c64-native.md)). It is explicitly qualified as a shared
+carrier; source paths or basenames alone do not establish that join. The
+parent's classic room C remains a different producer. Graphics admission
+remains a separate gate.
 
 ## Default audio demand allocation
 

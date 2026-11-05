@@ -31,12 +31,12 @@ mb_unit :: (root:string,work:string,compiler:string,name:string)->bool {
  cc:=[11]string.["/usr/bin/clang","-std=c11","-O2","-ffp-contract=off","-fno-fast-math","-Wno-unused-function","-Wno-unused-variable","-c",code,"-o",object];
  return mb_run(cc[..],out[..])>=0;
 }
-mb_producer :: (root:string,work:string,face:string,primary:string)->bool {
+mb_producer :: (root:string,work:string,face:string,primary:string,sanitize:bool)->bool {
  paths:[10][4096]u8;out:[1048576]u8;
  bridge:=fs_join(work,"producer-face.o",paths[0][..]);
- cc:=[13]string.["/usr/bin/clang","-std=gnu11","-O2","-ffp-contract=off","-fno-fast-math","-DCOAXIAL_NATIVE_ADDRESS","-Wno-unknown-attributes","-I",work,"-c",face,"-o",bridge];
+ cc:=[14]string.["/usr/bin/clang","-std=gnu11","-O2","-ffp-contract=off","-fno-fast-math","-DCOAXIAL_NATIVE_ADDRESS","-Wno-unknown-attributes",ifx sanitize then "-fsanitize=address" else "-g0","-I",work,"-c",face,"-o",bridge];
  if mb_run(cc[..],out[..])<0 {return false;}
- link:=[13]string.["/usr/bin/clang","-dynamiclib","-Wl,-undefined,dynamic_lookup","-Wl,-install_name,@rpath/libeverglade.dylib",
+ link:=[14]string.["/usr/bin/clang","-dynamiclib",ifx sanitize then "-fsanitize=address" else "-g0","-Wl,-undefined,dynamic_lookup","-Wl,-install_name,@rpath/libeverglade.dylib",
  primary,fs_join(work,"Everglade-step.o",paths[2][..]),fs_join(work,"Grid.o",paths[3][..]),fs_join(work,"River.o",paths[4][..]),fs_join(work,"Guard-guide-policy.o",paths[5][..]),fs_join(work,"Everglade5e-rules.o",paths[6][..]),bridge,"-o",fs_join(work,"libeverglade.dylib",paths[7][..])];
  return mb_run(link[..],out[..])>=0;
 }
@@ -213,6 +213,6 @@ tool_main :: ()->int #export_c {
  if task=="audio-packet" {return ifx mb_audio_packet(root,work,args_has(a[..],"--sanitize")) then 0 else 1;}
  if task=="audio-session" {return ifx mb_audio_session(root,work,args_has(a[..],"--sanitize")) then 0 else 1;}
  if task=="audio-fixture" {return ifx mb_audio_fixture(root,work,args_has(a[..],"--sanitize")) then 0 else 1;}
- ok:=ifx task=="check-runner" then mb_check_runner() else ifx task=="manifest" then mb_manifest(work) else ifx task=="shaders" then mb_shaders(root,work,compiler) else ifx task=="generated" then mb_generated(work,args_value(a[..],"--generated","")) else ifx task=="producer" then mb_producer(root,work,face,primary) else ifx task=="fixture-producer" then mb_fixture(root,work) else ifx task=="conformance" then mb_conformance(root,work,args_has(a[..],"--sanitize")) else ifx task=="appkit" then mb_appkit(root,work) else ifx task=="effects" then mb_effects(root,work,args_has(a[..],"--sanitize")) else ifx task=="sdk" then mb_sdk(root,work,args_has(a[..],"--sanitize")) else mb_unit(root,work,compiler,task);
+ ok:=ifx task=="check-runner" then mb_check_runner() else ifx task=="manifest" then mb_manifest(work) else ifx task=="shaders" then mb_shaders(root,work,compiler) else ifx task=="generated" then mb_generated(work,args_value(a[..],"--generated","")) else ifx task=="producer" then mb_producer(root,work,face,primary,args_has(a[..],"--sanitize")) else ifx task=="fixture-producer" then mb_fixture(root,work) else ifx task=="conformance" then mb_conformance(root,work,args_has(a[..],"--sanitize")) else ifx task=="appkit" then mb_appkit(root,work) else ifx task=="effects" then mb_effects(root,work,args_has(a[..],"--sanitize")) else ifx task=="sdk" then mb_sdk(root,work,args_has(a[..],"--sanitize")) else mb_unit(root,work,compiler,task);
  return ifx ok then 0 else 1;
 }
