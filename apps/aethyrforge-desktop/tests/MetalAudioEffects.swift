@@ -9,13 +9,15 @@ struct MetalAudioEffects {
         guard CommandLine.arguments.count == 5 else { fatalError("MetalAudioEffects RESOURCES PRODUCER PLAN REPORT") }
         let res = URL(fileURLWithPath:CommandLine.arguments[1])
         let plan = try JSONSerialization.jsonObject(with:Data(contentsOf:URL(fileURLWithPath:CommandLine.arguments[3]))) as! [String:Any]
-        guard plan["schema"] as? String == "aethyr.metal.audio-effects.v1", let host = mf_open(res.path,CommandLine.arguments[2],true,false) else { fatalError("audio producer open") }
+        guard plan["schema"] as? String == "aethyr.metal.audio-effects.v1", let host = mf_open(res.path,CommandLine.arguments[2],true,plan["fixture"] as? Bool ?? false) else { fatalError("audio producer open") }
         var audio = ForgeMetalAudio(host:host,resources:res,muted:true)
         defer { audio.close(); mf_close(host) }
         var events: [[String:Any]] = []
         for op in plan["operations"] as? [[String:Any]] ?? [] {
             let kind = op["op"] as? String ?? ""
             switch kind {
+            case "register":
+                audio.bank();events.append(["op":kind,"registered":audio.bankWav.count])
             case "frame":
                 var lines = Data(), results: [Int64] = []
                 for _ in 0..<((op["count"] as? NSNumber)?.intValue ?? 1) {
@@ -45,6 +47,10 @@ struct MetalAudioEffects {
                     if let wav = audio.bankWav[name] {
                         let source = directory.appendingPathComponent(name+".wav")
                         try wav.write(to:source,options:.atomic); asset["wav"] = source.path
+                    } else {
+                        let source = directory.appendingPathComponent(name+".ogg")
+                        try Data(contentsOf:res.appendingPathComponent("web/realms/everglade/sfx/\(name).ogg")).write(to:source,options:.atomic)
+                        asset["source"] = source.path
                     }
                     assets.append(asset)
                 }
@@ -100,7 +106,7 @@ struct MetalAudioEffects {
             default: fatalError("unknown audio effect")
             }
         }
-        let report: [String:Any] = ["schema":"aethyr.metal.audio-result.v1","events":events,"observed":audio.source.observations()]
+        let report: [String:Any] = ["schema":"aethyr.metal.audio-result.v1","events":events,"observed":audio.source.observations(),"sdkDecodes":audio.sdkDecodes,"companionDecodes":audio.companionDecodes]
         try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys,.prettyPrinted]).write(to:URL(fileURLWithPath:CommandLine.arguments[4]),options:.atomic)
     }
 }
