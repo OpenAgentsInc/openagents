@@ -166,6 +166,11 @@ EgNet :: struct {
   wanted: int = -1;          // your WANTED level (w; -1 none heard: the server runs no town)
   breaks_heard: int; burns_heard: int;   // the town's pieces the server broke and lit (e break, e burn)
   mends_heard: int;                      // and stood up (e mend: everglade-repair.coax)
+  // the town's outcomes heard (WIRE_OUTCOMES), against the room's count of them (o N, #12902); and the
+  // check of the town the room sends from the first piece: begun at a snapshot or an O, each piece,
+  // fire and placed thing it names marked, ended by e town (net_town_end); towns_asked: Os sent
+  out_got: int; was_snap: bool; town_check: bool; towns_asked: int; towns_fixed: int;
+  town_seen: [DEMO_PIECES] bool; burn_seen: [DEMO_PIECES] bool; placed_seen: [CR_PLACED_MAX] bool;
   fx: [NET_FX] NetFx;
   mine_seq: [NET_MINE] int; mine_slot: [NET_MINE] int; mine_at: int;   // your last casts: each SEQ and slot
   said: [48] u8; said_n: int; said_t: f32;   // the last refusal's reason, or what became of the room
@@ -492,6 +497,7 @@ net_down :: (n: [] EgNet) {
 net_forget :: (n: [] EgNet) {
   for e: 0..<WIRE_MIRROR { n[0].mir[0].ents[e].live = false; }
   n[0].mir[0].heard = 0; n[0].mir[0].tick = 0; n[0].mir[0].part = 0; n[0].mir[0].whole = false;
+  n[0].out_got = 0; n[0].was_snap = false; n[0].town_check = false;   // a new seat's count starts again (#12902)
 }
 // book:begin quiet-socket
 // The quiet socket's watch, each frame (NET_SILENT_MS): an open socket that heard nothing for that
@@ -616,7 +622,11 @@ net_record :: (s: [] Everglade, n: [] EgNet, t: string) {
       n[0].ticks += 1;
     }
     n[0].tick = d.tick; n[0].tick_t = clock;
-    // a snapshot's first part: the mirror forgets everything, and what the snapshot doesn't hold goes
+    // a snapshot's first part: the mirror forgets everything, and what the snapshot doesn't hold goes;
+    // the town's pieces come again from the first, which the page checks its town against (#12902)
+    snap := (d.f & 1) != 0;
+    if snap && !n[0].was_snap { net_town_begin(n); }
+    n[0].was_snap = snap;
     _ := wire_mirror_d(n[0].mir[..], d);
     from := r[0].at;
     for k: 0..<wire_entries(t, from) { net_entry(s, n, wire_entry(t, from, k), d); }
@@ -691,6 +701,15 @@ net_entry :: (s: [] Everglade, n: [] EgNet, t: string, d: WireD) {
   if t.count < 1 { return; }
   r: [1] WireRd; r[0] = wire_rd(t, 1);
   c := t[0];
+  if c == 'e' && wire_outcome(t) { n[0].out_got += 1; }
+  if c == 'o' {
+    // the room's count of the outcomes it sent this seat: fewer heard, a frame was lost (#12902)
+    m := wire_num(t, r[..]);
+    if !r[0].ok { return; }
+    if m > n[0].out_got { net_missed(s, n); }
+    n[0].out_got = m;
+    return;
+  }
   if c == 's' {
     e := wire_mirror_s(n[0].mir[..], d.tick, t);
     if e >= 0 { net_row(s, n, wire_mirror_get(n[0].mir[..], e), d); }
@@ -776,14 +795,12 @@ net_entry :: (s: [] Everglade, n: [] EgNet, t: string, d: WireD) {
     r[0] = wire_rd(t, 7);
     pc := wire_num(t, r[..]); ix := wire_f(t, r[..]); iy := wire_f(t, r[..]); iz := wire_f(t, r[..]);
     if !r[0].ok || !sp_on(s) || pc < 0 || pc >= sp_dm(s)[0].n { return; }
-    // the piece breaks here as the server says, thrown by its impulse (the debris is this page's)
-    c0 := demo_centre(sp_dm(s)[0].pieces[pc]);
-    if sp_dm(s)[0].pieces[pc].state != DP_BROKEN { egs_break(s, sp_dm(s)[0].pieces[pc]); }   // a wall's or a tower's stone (everglade-sound.coax)
-    m := sqrt(ix * ix + iy * iy + iz * iz);
-    from := ifx m > 0.01 then sub(c0, v3(ix / m, iy / m, iz / m)) else sub(c0, v3(0, 1, 0));
-    demo_break(sp_dm(s), pc, from, hi(m, 2));
-    n[0].breaks_heard += 1;
-    s[0].sp.walls_dirty = true;
+    if n[0].town_check {
+      // the town sent again: a piece this page has broken stays where it lies (#12902)
+      n[0].town_seen[pc] = true;
+      if sp_dm(s)[0].pieces[pc].state == DP_BROKEN { return; }
+    }
+    net_break_piece(s, n, pc, ix, iy, iz);
     return;
   }
   if wire_is(t, "e die") {
@@ -804,12 +821,14 @@ net_entry :: (s: [] Everglade, n: [] EgNet, t: string, d: WireD) {
     if !r[0].ok || !sp_on(s) || pc < 0 || pc >= sp_dm(s)[0].n { return; }
     // alight or out as the server says (its burning down and spreading are the server's: fi_frame)
     v := fi_of(s);
+    if on == 1 && n[0].town_check { n[0].burn_seen[pc] = true; }
     if on == 1 { if !fi_burning(s, pc) { _ := fi_ignite(s, pc); } }
     else { for q: 0..<v[0].n { if v[0].burn[q].piece == pc { fi_drop(s, q); break; } } }
     n[0].burns_heard += 1;
     return;
   }
   if t == "e rebuild" { if sp_on(s) { _ := sp_restore(s, -1); } return; }
+  if t == "e town" { net_town_end(s, n); return; }
   if wire_is(t, "e mend") {
     // a Repair: the server stood it up (everglade-repair.coax), its pieces whole on every page
     r[0] = wire_rd(t, 6);
@@ -821,15 +840,78 @@ net_entry :: (s: [] Everglade, n: [] EgNet, t: string, d: WireD) {
     // an admin's placed thing alight or out, as the server's world says (everglade-placed-fire.coax)
     r[0] = wire_rd(t, 7);
     i := wire_num(t, r[..]); on := wire_num(t, r[..]);
+    if r[0].ok && on == 1 && n[0].town_check && i >= 0 && i < CR_PLACED_MAX { n[0].placed_seen[i] = true; }
     if r[0].ok { pf_heard(s, i, ifx on == 1 then 1 else 0); }
     return;
   }
   if wire_is(t, "e pgone") {
     r[0] = wire_rd(t, 7);
     i := wire_num(t, r[..]);
+    if r[0].ok && n[0].town_check && i >= 0 && i < CR_PLACED_MAX { n[0].placed_seen[i] = true; }
     if r[0].ok { pf_heard(s, i, 2); }
     return;
   }
+}
+// Piece pc breaks as the server says, thrown by its impulse (the debris is this page's).
+net_break_piece :: (s: [] Everglade, n: [] EgNet, pc: int, ix: f32, iy: f32, iz: f32) {
+  c0 := demo_centre(sp_dm(s)[0].pieces[pc]);
+  if sp_dm(s)[0].pieces[pc].state != DP_BROKEN { egs_break(s, sp_dm(s)[0].pieces[pc]); }   // a wall's or a tower's stone (everglade-sound.coax)
+  m := sqrt(ix * ix + iy * iy + iz * iz);
+  from := ifx m > 0.01 then sub(c0, v3(ix / m, iy / m, iz / m)) else sub(c0, v3(0, 1, 0));
+  demo_break(sp_dm(s), pc, from, hi(m, 2));
+  n[0].breaks_heard += 1;
+  s[0].sp.walls_dirty = true;
+}
+// The town the room sends from its first piece (a snapshot's, or one an O asked for), checked: nothing
+// named yet (#12902).
+net_town_begin :: (n: [] EgNet) {
+  n[0].town_check = true;
+  for i: 0..<DEMO_PIECES { n[0].town_seen[i] = false; n[0].burn_seen[i] = false; }
+  for i: 0..<CR_PLACED_MAX { n[0].placed_seen[i] = false; }
+}
+// An o said more outcomes than this page heard: a frame was lost on the way. It says O, checks the town
+// the room sends again, and asks for the world again too (a lost e edit) (#12902).
+net_missed :: (s: [] Everglade, n: [] EgNet) {
+  net_send(n, wire_put_missed(n[0].out[..], 0, n[0].out_got));
+  n[0].towns_asked += 1;
+  net_town_begin(n);
+  n[0].edit_due = true;
+  if s[0].ev.ed.count > 0 { s[0].ev.ed[0].spec_due = true; }
+}
+// e town: the town sent again has all come. What this page holds broken, burning or burnt through that
+// it didn't name stands again: a building with such a piece stands up whole, and the pieces and fires
+// it named break and catch again where they were; a fire or a placed thing it didn't name goes out or
+// stands (#12902).
+net_town_end :: (s: [] Everglade, n: [] EgNet) {
+  if !n[0].town_check { return; }
+  n[0].town_check = false;
+  if !sp_on(s) { return; }
+  w := sp_dm(s);
+  fixed := 0;
+  v := fi_of(s);
+  k := 0;
+  while k < v[0].n {
+    pc := v[0].burn[k].piece;
+    if pc >= 0 && pc < DEMO_PIECES && !n[0].burn_seen[pc] { fi_drop(s, k); fixed += 1; continue; }
+    k += 1;
+  }
+  for i: 0..<w[0].n {
+    if w[0].pieces[i].state != DP_BROKEN || n[0].town_seen[i] { continue; }
+    g := w[0].pieces[i].group;   // (-1: in no building, the whole town)
+    stood := sp_restore(s, g);
+    fixed += 1;
+    for j: 0..<w[0].n {
+      if g >= 0 && w[0].pieces[j].group != g { continue; }
+      if n[0].town_seen[j] { net_break_piece(s, n, j, 0, 0, 0); }
+      if n[0].burn_seen[j] && !fi_burning(s, j) { lit := fi_ignite(s, j); }
+    }
+  }
+  for i: 0..<CR_PLACED_MAX {
+    if n[0].placed_seen[i] || !(pf_gone(s, i) || pf_burning(s, i)) { continue; }
+    back := pf_restore(s, i);
+    fixed += 1;
+  }
+  if fixed > 0 { s[0].sp.walls_dirty = true; n[0].towns_fixed += fixed; }
 }
 // An entity's row (s), now its newest state: into its ring at the tick's time. Your own row is also
 // where the server has you after input ACK, for the face to start again from.
@@ -2289,6 +2371,47 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   pipe_drained(na[0].pipe[..]);
   net_step(a[..], 9000, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
   for k: 0..<na[0].pipe[0].n { #assert na[0].pipe[0].op[k] != NET_PIPE_STATE; }
+}
+#test "net: a page that missed an outcome says O; the town sent again keeps what it names where it lies and stands the rest: a broken piece, a fire (#12902)" #steps 6000000000 {
+  a: [1] Everglade; na: [1] EgNet; dm: [1] DemoWorld;
+  sp_ready_city(a[..], dm[..]);
+  #assert net_test_page(a[..], na[..], 0, "pa", 100) && net_test_hear(a[..], 0, "y 0 1 5000100") && sp_on(a[..]);
+  w: [1] NetTestRoom;
+  net_test_world(w[..], 0);
+  #assert net_test_hear(a[..], 0, net_test_frame(w[..]));
+  // three pieces of three buildings
+  d := sp_dm(a[..]);
+  p1 := -1; p2 := -1; p3 := -1;
+  for i: 0..<d[0].n {
+    g := d[0].pieces[i].group;
+    if g < 0 { continue; }
+    if p1 < 0 { p1 = i; } else if p2 < 0 && g != d[0].pieces[p1].group { p2 = i; }
+    else if p2 >= 0 && p3 < 0 && g != d[0].pieces[p1].group && g != d[0].pieces[p2].group { p3 = i; }
+  }
+  #assert p3 >= 0;
+  // tick 1: p1 and p2 break, p3 catches; the room says 3 outcomes, as heard
+  net_test_tick(w[..], 1, 0);
+  net_test_sep(w[..]); w[0].n = wire_put_break(w[0].buf[..], w[0].n, p1, 0, 0, 0);
+  net_test_sep(w[..]); w[0].n = wire_put_break(w[0].buf[..], w[0].n, p2, 0, 0, 0);
+  net_test_sep(w[..]); w[0].n = wire_put_burn(w[0].buf[..], w[0].n, p3, true);
+  net_test_sep(w[..]); w[0].n = wire_put_outcomes(w[0].buf[..], w[0].n, 3);
+  #assert net_test_hear(a[..], 0, net_test_frame(w[..]));
+  #assert d[0].pieces[p1].state == DP_BROKEN && d[0].pieces[p2].state == DP_BROKEN && fi_burning(a[..], p3) && na[0].towns_asked == 0;
+  // tick 3: the room says 5 (tick 2's frame, a Repair of p2 and the fire out, was lost): the page says O
+  net_test_tick(w[..], 3, 0);
+  net_test_sep(w[..]); w[0].n = wire_put_outcomes(w[0].buf[..], w[0].n, 5);
+  #assert net_test_hear(a[..], 0, net_test_frame(w[..]));
+  o: [64] u8;
+  #assert na[0].towns_asked == 1 && na[0].town_check && net_test_sent(na[..], 'O', o[..]) == "O 3";
+  // tick 4: the town again, p1 its only broken piece, then e town: p1 lies where it fell, p2 stands, the fire is out
+  breaks := na[0].breaks_heard;
+  net_test_tick(w[..], 4, 0);
+  net_test_sep(w[..]); w[0].n = wire_put_break(w[0].buf[..], w[0].n, p1, 0, 0, 0);
+  net_test_sep(w[..]); w[0].n = wire_put_town(w[0].buf[..], w[0].n);
+  net_test_sep(w[..]); w[0].n = wire_put_outcomes(w[0].buf[..], w[0].n, 7);
+  #assert net_test_hear(a[..], 0, net_test_frame(w[..]));
+  #assert !na[0].town_check && na[0].towns_asked == 1 && na[0].breaks_heard == breaks;
+  #assert d[0].pieces[p1].state == DP_BROKEN && d[0].pieces[p2].state == DP_STANDING && !fi_burning(a[..], p3) && na[0].towns_fixed == 2;
 }
 #test "net: the server's e edit asks the face for the world again, and the board too, once" {
   a: [1] Everglade; na: [1] EgNet;

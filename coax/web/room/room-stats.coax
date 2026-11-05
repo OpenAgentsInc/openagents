@@ -54,6 +54,7 @@ RmStats :: struct {
   // and aimed bytes, and outcomes lost past their own room (a room each)
   cue_b: int; cue_drop: int; out_b: int; ev_lost: int;
   resnaps: int;   // snapshots to a seat that was behind EG_RESNAP ticks or more (#12837)
+  towns: int;     // towns sent again from the start, a page having missed an outcome (O, #12902)
 }
 
 st_refuse :: (v: [] RmServer, why: int) -> int {
@@ -115,11 +116,12 @@ rm_st_wire :: (v: [] RmServer, k: int, s: int, out: [] int) -> bool #export_c {
 
 // The allowances' totals so far (#12836) into out: x bytes, x's left waiting (a seat a tick each), n and
 // w bytes, those left waiting, joining pages' piece bytes, the seat ticks with pieces still to go, cue
-// bytes, cues dropped, outcome and aimed bytes, outcomes lost, and snapshots after a long time behind.
+// bytes, cues dropped, outcome and aimed bytes, outcomes lost, snapshots after a long time behind, and
+// towns sent again.
 rm_st_alloc :: (v: [] RmServer, out: [] int) #export_c {
-  if out.count < 11 { return; }
+  if out.count < 12 { return; }
   out[0] = v[0].st.life_b; out[1] = v[0].st.life_wait; out[2] = v[0].st.meta_b; out[3] = v[0].st.meta_wait; out[4] = v[0].st.join_b; out[5] = v[0].st.join_wait;
-  out[6] = v[0].st.cue_b; out[7] = v[0].st.cue_drop; out[8] = v[0].st.out_b; out[9] = v[0].st.ev_lost; out[10] = v[0].st.resnaps;
+  out[6] = v[0].st.cue_b; out[7] = v[0].st.cue_drop; out[8] = v[0].st.out_b; out[9] = v[0].st.ev_lost; out[10] = v[0].st.resnaps; out[11] = v[0].st.towns;
 }
 
 // The X-Room-Mac of body (64 hex into out), with the seat-ticket key; false without one.

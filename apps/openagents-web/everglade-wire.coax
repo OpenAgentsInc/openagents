@@ -29,6 +29,8 @@
 //                                  ("K -" none): the room sends you nothing of them (#12789)
 //   t MS                           a clock ping
 //   T SEQ CODE                     go to the instance CODE of this realm (#12850, coax/web/room/room-travel.coax)
+//   O N                            the page heard N outcomes, fewer than an o said: the room sends the town again
+//                                  from the start, then e town (#12902)
 // Server to page (the relay's own first: y SS N T, j SS, l SS, t MS T):
 //   W TICK HZ SEED DAY WEATHER BUDGET  the world header, after y, and again to everyone when the weather
 //                                  turns (#12709): the tick now, the tick rate, the room's seed, ms into the
@@ -47,6 +49,10 @@
 //     e stop SS SLOT WHY          a cast the server took ended before its strike (WHY: range, sight, gone,
 //                                  held, dead, left: everglade-cast-rules.coax, #12790); pages drop its strike
 //     w SS LEVEL                   a seat's WANTED level
+//     e town                       the town's pieces sent again from the start have all come: what the page has
+//                                  broken, burning or gone that they didn't name stands again (#12902)
+//     o N                          the outcomes (WIRE_OUTCOMES) the room has sent this seat, this entry's
+//                                  frame's among them: a page that heard fewer missed a frame and says O
 //   r SEQ REASON                   an intent of yours refused (a cast: everglade-cast-rules.coax CR_WORDS; R: breaking;
 //                                  T: full, room, ticket, busy)
 //   g CODE                         your T was taken: leave this room and join the instance CODE (#12850)
@@ -267,6 +273,18 @@ wire_put_break :: (out: [] u8, at: int, pc: int, ix: f32, iy: f32, iz: f32) -> i
 }
 wire_put_burn :: (out: [] u8, at: int, pc: int, on: bool) -> int { return wire_int(out, wire_int(out, wire_put(out, at, "e burn"), pc), ifx on then 1 else 0); }
 wire_put_rebuilt :: (out: [] u8, at: int) -> int { return wire_put(out, at, "e rebuild"); }
+// The e entries that change the town for good (a page that misses one is wrong until the room sends the
+// town again), as against cues, shown and gone (#12836, #12902).
+WIRE_OUTCOMES :: [8] string.["break", "burn", "mend", "pgone", "pburn", "rebuild", "edit", "town"];
+wire_outcome :: (t: string) -> bool {
+  if t.count < 3 || t[0] != 'e' || t[1] != ' ' { return false; }
+  j := 2; while j < t.count && t[j] != ' ' { j += 1; }
+  for i: 0..<WIRE_OUTCOMES.count { if cast(string) t[2..<j] == WIRE_OUTCOMES[i] { return true; } }
+  return false;
+}
+wire_put_town :: (out: [] u8, at: int) -> int { return wire_put(out, at, "e town"); }
+wire_put_outcomes :: (out: [] u8, at: int, n: int) -> int { return wire_int(out, wire_put(out, at, "o"), n); }
+wire_put_missed :: (out: [] u8, at: int, n: int) -> int { return wire_int(out, wire_put(out, at, "O"), n); }
 wire_put_rested :: (out: [] u8, at: int, seat: int) -> int { return wire_int(out, wire_put(out, at, "e rest"), seat); }
 wire_put_edit :: (out: [] u8, at: int, version: int) -> int { return wire_int(out, wire_put(out, at, "e edit"), version); }
 wire_put_wanted :: (out: [] u8, at: int, ss: int, level: int) -> int { return wire_int(out, wire_int(out, wire_put(out, at, "w"), ss), level); }
