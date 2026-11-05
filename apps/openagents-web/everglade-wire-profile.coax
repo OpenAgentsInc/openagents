@@ -1,0 +1,140 @@
+// The Everglade session profile's field-level check (#12844): proto/verse/everglade-session-v4.json
+// names each text-wire message, its fields in order, a canonical value for each and the exact frame
+// those values make. This program holds the codec (everglade-wire.coax) to that file:
+//   - the profile's version, oldest version and pins are the codec's WIRE_VERSION, WIRE_MIN and WIRE_PINS;
+//   - every message's values, written with the codec's writer, are its frame byte for byte;
+//   - every message with a reader ("read": true) reads its frame back to the same values, field by
+//     field, with the reader's ok set;
+//   - every "malformed" frame (a field missing, or not a whole number) leaves its reader's ok unset.
+// The file is the independent expected result: its frames are written by hand, not by this codec.
+// Prints a line per message and "profile holds" (exit 0), or what differs and "profile fails" (exit 1).
+//   coax/web/tool.sh apps/openagents-web/everglade-wire-profile.coax proto/verse/everglade-session-v4.json
+#import "Basic";
+#load "everglade-wire.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/args.coax";
+#load "../../coax/lib/sys/fs.coax";
+
+WP_FIELDS :: 8;
+// One message's values as the file has them: each a string's text or a number's digits.
+WpVals :: struct { v: [WP_FIELDS] string; n: int; }
+wp_int :: (s: string) -> int {
+  r: [1] WireRd; r[0] = WireRd.{at = 0, ok = true};
+  return wire_num(s, r[..]);
+}
+// The whole number at key of the object at `at`.
+wp_key :: (d: Jv, at: int, key: string) -> int { return wp_int(jv_raw(d, jv_get(d, at, key))); }
+// v's fields as written by the codec's writer for head: the frame's length in out, -1 for an unknown head.
+wp_write :: (head: string, f: WpVals, out: [] u8) -> int {
+  if head == "P" { return wire_put_pins(out, 0, WirePins.{engine = wp_int(f.v[0]), rules = wp_int(f.v[1]), content = wp_int(f.v[2])}); }
+  if head == "H" { return wire_put_hello(out, 0, WireHello.{version = wp_int(f.v[0]), look = f.v[1], kind = f.v[2], flags = wp_int(f.v[3]), name = f.v[4]}); }
+  if head == "I" { return wire_put_in(out, 0, WireIn.{seq = wp_int(f.v[0]), kx = wp_int(f.v[1]), ky = wp_int(f.v[2]), px = wp_int(f.v[3]), py = wp_int(f.v[4]), theta = f32(wp_int(f.v[5])) / f32(WIRE_FINE), b = wp_int(f.v[6]), heard = wp_int(f.v[7])}); }
+  if head == "C" { return wire_put_cast(out, 0, WireCast.{seq = wp_int(f.v[0]), slot = wp_int(f.v[1]), ax = f32(wp_int(f.v[2])) / 100, ay = f32(wp_int(f.v[3])) / 100, az = f32(wp_int(f.v[4])) / 100, tgt = wp_int(f.v[5]), mode = ifx f.n > 6 then wp_int(f.v[6]) else 0}); }
+  if head == "E" { return wire_put_use(out, 0, WireUse.{seq = wp_int(f.v[0]), kind = wp_int(f.v[1]), id = wp_int(f.v[2])}); }
+  if head == "R" { return wire_put_rebuild(out, 0, wp_int(f.v[0])); }
+  if head == "L" { return wire_put_rest(out, 0, wp_int(f.v[0])); }
+  if head == "T" { return wire_put_travel(out, 0, wp_int(f.v[0]), f.v[1]); }
+  if head == "W" { return wire_put_world(out, 0, WireWorld.{tick = wp_int(f.v[0]), hz = wp_int(f.v[1]), seed = wp_int(f.v[2]), day = wp_int(f.v[3]), weather = wp_int(f.v[4]), budget = wp_int(f.v[5])}); }
+  if head == "D" { return wire_put_d(out, 0, WireD.{tick = wp_int(f.v[0]), ack = wp_int(f.v[1]), f = wp_int(f.v[2]), part = wp_int(f.v[3])}); }
+  if head == "e cast" { return wire_put_cast_e(out, 0, WireCastE.{ss = wp_int(f.v[0]), slot = wp_int(f.v[1]), ax = f32(wp_int(f.v[2])) / 100, ay = f32(wp_int(f.v[3])) / 100, az = f32(wp_int(f.v[4])) / 100, seed = wp_int(f.v[5]), mode = ifx f.n > 6 then wp_int(f.v[6]) else 0}); }
+  if head == "e hit" { return wire_put_hit(out, 0, WireHit.{who = wp_int(f.v[0]), by = wp_int(f.v[1]), amt = wp_int(f.v[2]), kind = wp_int(f.v[3])}); }
+  if head == "e stop" { return wire_put_stop(out, 0, wp_int(f.v[0]), wp_int(f.v[1]), f.v[2]); }
+  if head == "w" { return wire_put_wanted(out, 0, wp_int(f.v[0]), wp_int(f.v[1])); }
+  if head == "r" { return wire_put_refused(out, 0, wp_int(f.v[0]), f.v[1]); }
+  if head == "g" { return wire_put_go(out, 0, f.v[0]); }
+  return -1;
+}
+// A field read: text, or a number written out in num (from at[0] on).
+wp_s :: (got: [] WpVals, t: string) { if got[0].n < WP_FIELDS { got[0].v[got[0].n] = t; got[0].n += 1; } }
+wp_n :: (got: [] WpVals, num: [] u8, at: [] int, x: int) {
+  k := wire_int(num, at[0], x);   // " N"
+  if k > at[0] + 1 { wp_s(got, cast(string) num[at[0] + 1..<k]); at[0] = k; } else { wp_s(got, ""); }
+}
+// The frame t read by head's reader: its fields as text into got (numbers written out in `num`), and
+// whether the reader's ok stayed set. False too for a head with no reader.
+wp_read :: (head: string, t: string, got: [] WpVals, num: [] u8) -> bool {
+  got[0].n = 0; at: [1] int;
+  r: [1] WireRd; r[0] = wire_rd(t, head.count);
+  if head == "P" { p := wire_read_pins(t, r[..]); wp_n(got, num, at[..], p.engine); wp_n(got, num, at[..], p.rules); wp_n(got, num, at[..], p.content); }
+  else if head == "H" { h := wire_read_hello(t, r[..]); wp_n(got, num, at[..], h.version); wp_s(got, h.look); wp_s(got, h.kind); wp_n(got, num, at[..], h.flags); wp_s(got, h.name); }
+  else if head == "I" { x := wire_read_in(t, r[..]); wp_n(got, num, at[..], x.seq); wp_n(got, num, at[..], x.kx); wp_n(got, num, at[..], x.ky); wp_n(got, num, at[..], x.px); wp_n(got, num, at[..], x.py); wp_n(got, num, at[..], wire_fine(x.theta)); wp_n(got, num, at[..], x.b); wp_n(got, num, at[..], x.heard); }
+  else if head == "C" { c := wire_read_cast(t, r[..]); wp_n(got, num, at[..], c.seq); wp_n(got, num, at[..], c.slot); wp_n(got, num, at[..], wire_cm(c.ax)); wp_n(got, num, at[..], wire_cm(c.ay)); wp_n(got, num, at[..], wire_cm(c.az)); wp_n(got, num, at[..], c.tgt); if c.mode != 0 { wp_n(got, num, at[..], c.mode); } }
+  else if head == "E" { u := wire_read_use(t, r[..]); wp_n(got, num, at[..], u.seq); wp_n(got, num, at[..], u.kind); wp_n(got, num, at[..], u.id); }
+  else if head == "W" { w := wire_read_world(t, r[..]); wp_n(got, num, at[..], w.tick); wp_n(got, num, at[..], w.hz); wp_n(got, num, at[..], w.seed); wp_n(got, num, at[..], w.day); wp_n(got, num, at[..], w.weather); wp_n(got, num, at[..], w.budget); }
+  else if head == "D" { d := wire_read_d(t, r[..]); wp_n(got, num, at[..], d.tick); wp_n(got, num, at[..], d.ack); wp_n(got, num, at[..], d.f); wp_n(got, num, at[..], d.part); }
+  else if head == "e cast" { c := wire_read_cast_e(t, r[..]); wp_n(got, num, at[..], c.ss); wp_n(got, num, at[..], c.slot); wp_n(got, num, at[..], wire_cm(c.ax)); wp_n(got, num, at[..], wire_cm(c.ay)); wp_n(got, num, at[..], wire_cm(c.az)); wp_n(got, num, at[..], c.seed); if c.mode != 0 { wp_n(got, num, at[..], c.mode); } }
+  else if head == "e hit" { h := wire_read_hit(t, r[..]); wp_n(got, num, at[..], h.who); wp_n(got, num, at[..], h.by); wp_n(got, num, at[..], h.amt); wp_n(got, num, at[..], h.kind); }
+  else { return false; }
+  return r[0].ok;
+}
+// The head a malformed frame names: its first word, or its first two for "e ...".
+wp_head :: (t: string) -> string {
+  e := 0;
+  while e < t.count && t[e] != ' ' { e += 1; }
+  if e == 1 && t[0] == 'e' && e < t.count { e += 1; while e < t.count && t[e] != ' ' { e += 1; } }
+  return t[0..<e];
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("everglade-wire-profile PROFILE.json"); return 2; }
+  text: [65536] u8;
+  n := fs_read(args_at(a[..], 0), text[..]);
+  if n <= 0 { tool_errln("everglade-wire-profile: can't read the profile"); return 2; }
+  nodes: [4096] JvNode; j: [1] Jv;
+  if !jv_parse(j[..], cast(string) text[0..<n], nodes[..]) { tool_errln("everglade-wire-profile: the profile isn't JSON"); return 2; }
+  d := j[0];
+  bad := 0;
+  // the identity: the version, the oldest version and the pins the codec speaks
+  pins := jv_get(d, 0, "pins");
+  fm := jv_get(d, 0, "frame_most");
+  same := wp_key(d, 0, "version") == WIRE_VERSION && wp_key(d, 0, "min") == WIRE_MIN
+          && wp_key(d, pins, "engine") == WIRE_ENGINE && wp_key(d, pins, "rules") == WIRE_RULES && wp_key(d, pins, "content") == WIRE_CONTENT
+          && wp_key(d, fm, "page") == WIRE_FRAME && wp_key(d, fm, "server") == WIRE_SERVER_FRAME;
+  print("%  identity: version %, min %, pins %.%.%\n", ifx same then "ok  " else "FAIL", WIRE_VERSION, WIRE_MIN, WIRE_ENGINE, WIRE_RULES, WIRE_CONTENT);
+  if !same { bad += 1; }
+  strs: [8192] u8; sk := 0;
+  ms := jv_get(d, 0, "messages");
+  for m: 0..<jv_len(d, ms) {
+    e := jv_at(d, ms, m);
+    hb: [16] u8; hn := jv_str(d, jv_get(d, e, "head"), hb[..]);
+    tb: [WIRE_SERVER_FRAME] u8; tn := jv_str(d, jv_get(d, e, "text"), tb[..]);
+    if hn < 0 || tn < 0 { print("FAIL  message %: no head or text\n", m); bad += 1; continue; }
+    head := cast(string) hb[0..<hn]; frame := cast(string) tb[0..<tn];
+    vs := jv_get(d, e, "values");
+    f: WpVals; f.n = jv_len(d, vs);
+    if f.n > WP_FIELDS || f.n != jv_len(d, jv_get(d, e, "fields")) { print("FAIL  %: values and fields differ in number\n", frame); bad += 1; continue; }
+    for k: 0..<f.n {
+      x := jv_at(d, vs, k);
+      if jv_kind(d, x) == JV_STRING {
+        w := jv_str(d, x, strs[sk..<strs.count]);
+        f.v[k] = ifx w < 0 then "" else cast(string) strs[sk..<sk + w]; sk += ifx w < 0 then 0 else w;
+      } else { f.v[k] = jv_raw(d, x); }
+    }
+    out: [WIRE_SERVER_FRAME] u8;
+    wn := wp_write(head, f, out[..]);
+    wrote := wn >= 0 && cast(string) out[0..<wn] == frame;
+    read_ok := true;
+    if jv_bool(d, jv_get(d, e, "read")) {
+      got: [1] WpVals; nb: [256] u8;
+      read_ok = wp_read(head, frame, got[..], nb[..]) && got[0].n == f.n;
+      for k: 0..<f.n { if read_ok && got[0].v[k] != f.v[k] { read_ok = false; print("      %: field % reads %, the profile says %\n", frame, k, got[0].v[k], f.v[k]); } }
+    }
+    if !wrote { print("      %: the writer makes %\n", frame, ifx wn < 0 then "nothing" else cast(string) out[0..<wn]); }
+    print("%  % %\n", ifx wrote && read_ok then "ok  " else "FAIL", head, frame);
+    if !wrote || !read_ok { bad += 1; }
+  }
+  mal := jv_get(d, 0, "malformed");
+  for m: 0..<jv_len(d, mal) {
+    tb: [WIRE_SERVER_FRAME] u8; tn := jv_str(d, jv_at(d, mal, m), tb[..]);
+    t := ifx tn < 0 then "" else cast(string) tb[0..<tn];
+    got: [1] WpVals; nb: [256] u8;
+    head := wp_head(t);
+    refused := !wp_read(head, t, got[..], nb[..]);
+    print("%  malformed: %\n", ifx refused then "ok  " else "FAIL", t);
+    if !refused { bad += 1; }
+  }
+  print("%\n", ifx bad == 0 then "profile holds" else "profile fails");
+  return ifx bad == 0 then 0 else 1;
+}

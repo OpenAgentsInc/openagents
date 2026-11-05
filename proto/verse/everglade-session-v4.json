@@ -1,0 +1,43 @@
+{
+  "profile": "openagents.everglade.session",
+  "version": 4,
+  "min": 4,
+  "pins": {"engine": 1, "rules": 1, "content": 1},
+  "source": "apps/openagents-web/everglade-wire.coax",
+  "check": "coax/web/tool.sh apps/openagents-web/everglade-wire-profile.coax proto/verse/everglade-session-v4.json",
+  "transport": "WebSocket text frames on /api/room/relay/everglade/CODE; fields one space apart; whole numbers",
+  "frame_most": {"page": 1024, "server": 3800},
+  "messages": [
+    {"dir": "page", "head": "P", "read": true, "fields": ["engine", "rules", "content"], "values": [1, 1, 1], "text": "P 1 1 1"},
+    {"dir": "page", "head": "H", "read": true, "fields": ["version", "look", "kind", "flags", "name"], "values": [4, "ranger.2.1.0", "druid", 2, "Ash"], "text": "H 4 ranger.2.1.0 druid 2 Ash"},
+    {"dir": "page", "head": "I", "read": true, "fields": ["seq", "kx", "ky", "px", "py", "theta_fine", "b", "heard"], "values": [7, 0, 100, -50, 0, 15708, 1, 42], "text": "I 7 0 100 -50 0 15708 1 42"},
+    {"dir": "page", "head": "C", "read": true, "fields": ["seq", "slot", "ax_cm", "ay_cm", "az_cm", "tgt"], "values": [3, 1, 1250, -20, 300, 1005], "text": "C 3 1 1250 -20 300 1005"},
+    {"dir": "page", "head": "C", "read": true, "fields": ["seq", "slot", "ax_cm", "ay_cm", "az_cm", "tgt", "mode"], "values": [4, 2, 0, 0, -100, -1, 2], "text": "C 4 2 0 0 -100 -1 2"},
+    {"dir": "page", "head": "E", "read": true, "fields": ["seq", "kind", "id"], "values": [4, 2, 17], "text": "E 4 2 17"},
+    {"dir": "page", "head": "R", "fields": ["seq"], "values": [5], "text": "R 5"},
+    {"dir": "page", "head": "L", "fields": ["seq"], "values": [6], "text": "L 6"},
+    {"dir": "page", "head": "T", "fields": ["seq", "code"], "values": [8, "everglade-2"], "text": "T 8 everglade-2"},
+    {"dir": "server", "head": "W", "read": true, "fields": ["tick", "hz", "seed", "day", "weather", "budget"], "values": [900, 30, 59365, 120000, 3, 1400], "text": "W 900 30 59365 120000 3 1400"},
+    {"dir": "server", "head": "D", "read": true, "fields": ["tick", "ack", "f", "part"], "values": [900, 7, 1, 0], "text": "D 900 7 1 0 "},
+    {"dir": "server", "head": "e cast", "read": true, "fields": ["ss", "slot", "ax_cm", "ay_cm", "az_cm", "seed"], "values": [0, 1, 1250, -20, 300, 77], "text": "e cast 0 1 1250 -20 300 77"},
+    {"dir": "server", "head": "e hit", "read": true, "fields": ["who", "by", "amt", "kind"], "values": [1003, 2005, 7, 1], "text": "e hit 1003 2005 7 1"},
+    {"dir": "server", "head": "e stop", "fields": ["ss", "slot", "why"], "values": [0, 0, "left"], "text": "e stop 0 0 left"},
+    {"dir": "server", "head": "w", "fields": ["ss", "level"], "values": [2, 3], "text": "w 2 3"},
+    {"dir": "server", "head": "r", "fields": ["seq", "reason"], "values": [8, "full"], "text": "r 8 full"},
+    {"dir": "server", "head": "g", "fields": ["code"], "values": ["everglade-2"], "text": "g everglade-2"}
+  ],
+  "malformed": ["P 1 1", "H", "I 7 0 100 -50 0 15708 1", "C 3 1 1250 -20 300", "E 4 2", "W 900 30 59365 120000 3", "D 900 7 1", "e hit 1003 2005 7", "I 7 0 x -50 0 15708 1 42", "C 3 1 12.5 -20 300 1005"],
+  "trailing": "a reader ignores fields past its last; C and e cast read one optional MODE there",
+  "refusals": {
+    "hello": ["version", "elsewhere"],
+    "cast": ["range", "sight", "gone", "held", "dead", "busy", "cooldown", "left", "aim", "no"],
+    "rebuild": ["breaking"],
+    "travel": ["full", "room", "ticket", "busy"]
+  },
+  "admission": "eg_admit (coax/web/room/room-everglade.coax): a hello whose version is below min or above version, or a P whose pins differ, is refused with r 0 version",
+  "unsupported": [
+    "H 1, the wire before version 3: seated on the old wire only until 2026-11-12 (room-oldwire.coax), then refused",
+    "the realm.v1 chamber messages of docs/verse/openagents-verse-protocol.md (ActorAppear, ActorUpdate, SpatialDelta, transfer): not spoken by Everglade rooms",
+    "protobuf framing: this profile is text frames only"
+  ]
+}
