@@ -1,5 +1,10 @@
 # Host contract qualification (#12869)
 
+The shared-frame GPU records currently retain iteration observations only:
+their reconstructed compiler source digest is not a trusted receipt. See
+the provenance correction in `shared-frame.md`. Admitted host preparation
+must replace that step before these comparisons can support a default switch.
+
 This is an **incomplete** conformance record. The normative boundary is
 [`aethyr/host/README.md`](../../../aethyr/host/README.md). Aethyrforge's world
 default remains web. Metal's interactive host is #12868; neither these

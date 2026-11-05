@@ -1,4 +1,12 @@
-# Complete shared Everglade frame
+# Complete shared Everglade frame — iteration observations
+
+**Provenance correction:** these retained executions used an iteration
+compiler without a trusted recorded source receipt. Supplying a reconstructed
+digest made the measurement tool's source comparison pass, but did not
+establish compiler provenance. These results are numerical/SDK diagnostics,
+not admitted host qualification or permission to change the desktop default.
+The raw reports and hashes remain unchanged for audit. Preparation with an
+actually admitted compiler and its original provenance is still required.
 
 This freezes one real Everglade 5E producer frame, all of its physical
 inputs and the complete final image. It exercises the shared renderer;
@@ -26,7 +34,7 @@ input archive and before/after source fences are retained under
 `shared-vulkan-half.json` is the execution record, and
 `shared-vulkan-browser.json` is the inherited G5 comparison verdict.
 
-The qualified iteration compiler is SHA256
+The iteration compiler is SHA256
 `c0561aaa7b630175f7e8efc1718c76397ea4584dac04acfacaa6d9cc6ab36b7a`.
 Its original retained folder has no source-digest sidecar. The sidecar for
 this replay is explicitly reconstructed from the published #12867
@@ -34,9 +42,11 @@ provenance and the unchanged compiler sources: `git diff 4fa20ba31b
 a6fd79666a -- coax/src coax/bootstrap coax/lib/compiler coax/lib/proto`
 is empty. The compiler-source digest is
 `11c8cc08d42efc3f9dc61054f3dcbd3f256e4fabd1cef951b5f8359b05267d50`.
-The existing native preparation gate verifies current emission profiles,
-compiler bytes and each recorded input; this is still an iteration image,
-not a published compiler release.
+That reconstruction is not a trusted source-digest receipt and must not be
+reused for admission. The native preparation gate's matching-source fields
+in the retained raw JSON record only the supplied comparison; they do not
+prove this image passed the compiler release gates. No compiler release
+was published by #12867.
 
 ## Numerical scope
 
@@ -46,7 +56,7 @@ nonfinite fatal. That allowance is unchanged in
 `coax/tests/metal-parity.coax`; `aethyr/render/emit.coax` remains the
 comparison authority. The full frame has 230,400 channel values.
 
-| Readbacks | Beyond per-value tolerance | Nonfinite | Existing G5 live result |
+| Readbacks | Beyond per-value tolerance | Nonfinite | Iteration numerical result |
 | --- | ---: | ---: | --- |
 | browser–Vulkan | 53 | 0 | pass |
 | Metal–Vulkan | 53 | 0 | pass |
@@ -76,8 +86,10 @@ interactive producer, input, room, lifecycle or audio parity.
 
 ## Reproduction
 
-Use the recorded source revision and compiler, retain the package's source
-and shader identities, and run the existing observer with the new carrier:
+For a qualifying replacement, use an actually admitted compiler with its
+original recorded source provenance, retain the package's source and shader
+identities, and run the existing observer with the new carrier. The iteration
+compiler and reconstructed digest above cannot supply that admission:
 
 ```sh
 coax/web/tool.sh aethyr/tests/check-render-host.coax \
@@ -101,7 +113,7 @@ Pre-emit `aethyr/render/native-host.coax` and
 ```sh
 coax/web/tool.sh aethyr/render/tests/measure-native-frame.coax \
   --work-dir NEW_VULKAN --coax QUALIFIED_COMPILER \
-  --compiler-source-digest RECORDED_SOURCE_DIGEST \
+  --compiler-source-digest TRUSTED_RECORDED_SOURCE_DIGEST \
   --frame CAPTURE/frame.config --capture-root CAPTURE \
   --package PACKAGE_DIR --native-dir PREEMITTED_NATIVE \
   --measure --host coderos-4080 --format rgba16f
