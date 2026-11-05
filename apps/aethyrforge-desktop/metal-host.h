@@ -46,6 +46,10 @@ void mf_measure_reset(void *host);
 const MFFrameObservation *mf_measure_rows(void *host,size_t *count,size_t *dropped);
 const char *mf_take_effect(void *host);
 bool mf_http_chunk(void *host,int64_t id,int64_t generation,int64_t engine,int64_t count);
+bool mf_http_follow(void *host);
+bool mf_http_response(void *host,int64_t status);
+// Diagnostic entry through the same import used by the producer face.
+int32_t mf_http_request(void *host,const uint8_t *path,size_t path_count,const uint8_t *body,size_t body_count,int32_t flags,int64_t timeout);
 void mf_http_finish(void *host,int64_t id,int64_t generation,int64_t engine,const uint8_t *bytes,size_t count,bool ok,bool utf8);
 void mf_http_timeout(void *host,int64_t id,int64_t generation,int64_t engine);
 void mf_socket_event(void *host,int64_t id,int64_t generation,int64_t engine,int32_t event,const uint8_t *bytes,size_t count);

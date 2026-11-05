@@ -8,6 +8,7 @@
 #load "../../coax/lib/json/json.coax";
 #load "../../coax/lib/net/cdp.coax";
 #load "../../aethyr/host/http-conformance.coax";
+#load "../../aethyr/host/local-reconnect-conformance.coax";
 mc_op :: (o:[]Jo,name:string) {jo_obj(o);jo_key(o,"op");jo_str(o,name);}
 mc_int :: (o:[]Jo,key:string,v:int) {jo_key(o,key);jo_int(o,v);}
 mc_str :: (o:[]Jo,key:string,v:string) {jo_key(o,key);jo_str(o,v);}
@@ -46,8 +47,8 @@ mc_transport :: (o:[]Jo) {
 tool_main :: ()->int #export_c {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])<3 {tool_errln("usage: metal-conformance ROOT RESOURCES OUTPUT [--transport] [--sdk DIRECTORY]");return 2;}
  root:=args_at(a[..],0);res:=args_at(a[..],1);dir:=args_at(a[..],2);if !fs_mkdir(dir) {return 1;}
- transport:=args_has(a[..],"--transport");http:=args_has(a[..],"--http-target");lifecycle:=args_has(a[..],"--lifecycle");scope:=ifx lifecycle then "lifecycle" else ifx http then "http-target" else ifx transport then "transport" else "core";bytes:[65536]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);mc_str(o[..],"schema","aethyr.host.effects.v1");mc_str(o[..],"scope",scope);jo_key(o[..],"operations");jo_arr(o[..]);
- if lifecycle {mc_lifecycle(o[..]);}else if http {for q:htu_cases() {mc_message(o[..],920,q.input);mc_wait(o[..],150);}mc_observe(o[..],"events");}else if transport {mc_transport(o[..]);}else {
+ transport:=args_has(a[..],"--transport");http:=args_has(a[..],"--http-target");lifecycle:=args_has(a[..],"--lifecycle");reconnect:=args_has(a[..],"--local-reconnect");scope:=ifx reconnect then "local-reconnect" else ifx lifecycle then "lifecycle" else ifx http then "http-target" else ifx transport then "transport" else "core";bytes:[65536]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);mc_str(o[..],"schema","aethyr.host.effects.v1");mc_str(o[..],"scope",scope);jo_key(o[..],"operations");jo_arr(o[..]);
+ if reconnect {mc_message(o[..],910,"local:/api/room/relay/everglade/local-1?re=1");mc_wait(o[..],300);mc_message(o[..],911,"0 route");mc_wait(o[..],200);mc_message(o[..],911,"0 Aé🙂");mc_wait(o[..],200);mc_message(o[..],912,"0");mc_wait(o[..],150);mc_observe(o[..],"events");}else if lifecycle {mc_lifecycle(o[..]);}else if http {for q:htu_cases() {mc_message(o[..],920,q.input);mc_wait(o[..],150);}mc_observe(o[..],"events");}else if transport {mc_transport(o[..]);}else {
  big:[129]u8;for i:0..<big.count {big[i]='z';}
  for i:0..<2 {mc_op(o[..],"asset");mc_int(o[..],"index",i);mc_str(o[..],"text",ifx i==0 then "ABCD" else cast(string)big[0..<65]);jo_end(o[..]);}
  mc_observe(o[..],"assets");mc_op(o[..],"reset");jo_end(o[..]);
@@ -58,10 +59,10 @@ tool_main :: ()->int #export_c {
  for kind:0..<2 {for phase:[2]int.[0,2] {mc_op(o[..],"pointer");mc_int(o[..],"kind",kind);mc_int(o[..],"id",ifx kind==0 then 17 else 19);mc_int(o[..],"phase",phase);mc_int(o[..],"x",ifx kind==0 then 25 else 14);jo_key(o[..],"y");jo_raw(o[..],ifx kind==0 then "68.5" else "18");jo_end(o[..]);}}
  mc_message(o[..],901,"Aé🙂");for i:0..<big.count {big[i]='x';}mc_message(o[..],901,cast(string)big[..]);mc_message(o[..],900,"hash");mc_observe(o[..],"events");}
  jo_end(o[..]);jo_end(o[..]);
- paths:[6][4096]u8;plan:=fs_join(dir,ifx lifecycle then "lifecycle-plan.json" else ifx http then "http-target-plan.json" else ifx transport then "transport-plan.json" else "core-plan.json",paths[0][..]);result:=fs_join(dir,ifx lifecycle then "metal-lifecycle.json" else ifx http then "metal-http-target.json" else ifx transport then "metal-transport.json" else "metal-core.json",paths[1][..]);if o[0].bad || !fs_write(plan,jo_text(o[..])) {return 1;}
+ paths:[6][4096]u8;plan:=fs_join(dir,ifx reconnect then "reconnect-plan.json" else ifx lifecycle then "lifecycle-plan.json" else ifx http then "http-target-plan.json" else ifx transport then "transport-plan.json" else "core-plan.json",paths[0][..]);result:=fs_join(dir,ifx reconnect then "metal-reconnect.json" else ifx lifecycle then "metal-lifecycle.json" else ifx http then "metal-http-target.json" else ifx transport then "metal-transport.json" else "metal-core.json",paths[1][..]);if o[0].bad || !fs_write(plan,jo_text(o[..])) {return 1;}
  server:=-1;
  defer {if server>=0 {killed:=proc_kill(server,PROC_SIGTERM);waited:=proc_wait(server,2000);released:=proc_release(server);}}
- if transport || http {
+ if transport || http || reconnect {
   server=proc_new();if server<0 {return 1;}for arg:[3]string.[fs_join(root,"coax/web/tool.sh",paths[2][..]),fs_join(root,"aethyr/host/tests/network.coax",paths[5][..]),"9170"] {if !proc_arg(server,arg) {return 1;}}
   if proc_start(server)!=0 {return 1;}
   probe:[1]Cdp;health:[4096]u8;deadline:=proc_now_ms()+10000;ready:=false;
@@ -71,6 +72,7 @@ tool_main :: ()->int #export_c {
  sdk_path:[4096]u8;sdk:=args_value(a[..],"--sdk",fs_join(root,"apps/aethyrforge-desktop/build/metal",sdk_path[..]));
  run:=[5]string.[fs_join(sdk,"HostEffects",paths[2][..]),res,fs_join(sdk,"libfixture.dylib",paths[3][..]),plan,result];out:[1048576]u8;err:[65536]u8;r:=proc_run(run[..],60000,out[..],err[..]);if r.started!=0 || r.status!=0 || r.cut || r.timed_out {tool_errln(cast(string)err[0..<r.err_n]);return 1;}
  if lifecycle {if !mc_lifecycle_check(result) {tool_errln("Actual native lifecycle/clock observations differ; raw receipt retained.");return 1;}print("Actual Metal lifecycle: six exact admitted frame clocks; negative/backward/hidden offers refused, focus/shown composed, first/resume dt zero.\n");return 0;}
+ if reconnect {raw:[65536]u8;nodes:[4096]JvNode;d:[1]Jv;rows:[9][8]int;n:=fs_read(result,raw[..]);if n<1||!jv_parse(d[..],cast(string)raw[0..<n],nodes[..])||hcr_rows(d[0],jv_get(d[0],0,"events"),rows[..])!=9||!hlr_reconnect_rows(rows[..],jv_int(d[0],jv_get(d[0],0,"dropped"),-1)){return 1;}print("Actual Metal local reconnect: exact physical ?re=1 peer route and all nine callback rows pass.\n");return 0;}
  check:=[4]string.[fs_join(root,"coax/web/tool.sh",paths[2][..]),fs_join(root,"aethyr/host/check-observations.coax",paths[4][..]),result,""];
  q:=proc_run(check[0..<3],60000,out[..],err[..]);if q.started!=0 || q.status!=0 || q.cut || q.timed_out {tool_errln(cast(string)out[0..<q.out_n]);tool_errln(cast(string)err[0..<q.err_n]);return 1;}print("%",cast(string)out[0..<q.out_n]);return 0;
 }

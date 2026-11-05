@@ -23,7 +23,8 @@ struct HostEffects {
         defer { network.close(); mf_close(host) }
         mf_network_config(host, plan["origin"] as? String ?? "http://127.0.0.1:9170", "ws://127.0.0.1:9170")
         var result: [String: Any] = ["schema":"aethyr.host.observations.v1","host":"metal","scope":plan["scope"] as? String ?? "core"]
-        var actions: [[Any]] = []
+        var actions: [[Any]] = [], httpRequests: [Int32] = []
+        network.playerKey = plan["player"] as? String ?? ""
         func rows() -> [[Int64]] { (0..<mf_observe(host,-1,2)).map { event in (0..<8).map { mf_observe(host,event,Int64($0)) } } }
         func drain() {
             while let p = mf_take_effect(host) {
@@ -68,6 +69,9 @@ struct HostEffects {
             case "message":
                 let data = Data((op["text"] as? String ?? "").utf8)
                 data.withUnsafeBytes { mf_message(host,Int32(n("kind")),$0.bindMemory(to:UInt8.self).baseAddress,$0.count) }
+            case "http":
+                let path = Data((op["path"] as? String ?? "").utf8), body = Data((op["body"] as? String ?? "").utf8)
+                httpRequests.append(path.withUnsafeBytes { p in body.withUnsafeBytes { b in mf_http_request(host,p.bindMemory(to:UInt8.self).baseAddress,p.count,b.bindMemory(to:UInt8.self).baseAddress,b.count,Int32(n("flags")),n("timeout")) } })
             case "wait": try await Task.sleep(for: .milliseconds(n("ms")))
             case "observe": result[op["name"] as? String ?? "events"] = rows()
             default: throw HostEffectError.failed("unknown SDK effect")
@@ -76,6 +80,8 @@ struct HostEffects {
         }
         for (key,field) in [("version",0),("constructed",1),("dropped",3),("held",5)] { result[key] = mf_observe(host,-1,Int64(field)) }
         result["actions"] = actions
+        result["httpRequests"] = httpRequests
+        result["httpPolicy"] = [mf_http_follow(host),mf_http_response(host,302),mf_http_response(host,200)]
         result["lifecycle"] = (0..<5).map { mf_lifecycle_info(host,Int32($0)) }
         try JSONSerialization.data(withJSONObject:result,options:[.sortedKeys]).write(to:URL(fileURLWithPath:CommandLine.arguments[4]),options:.atomic)
     }

@@ -99,8 +99,11 @@ final class ForgeMetalNetwork: NSObject, @preconcurrency URLSessionDataDelegate 
             task.resume()
     }
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse, completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
-        guard let host, let r = requests[dataTask.taskIdentifier] else { completionHandler(.allow); return }
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 0, prefix = Data("\(status)\n".utf8)
+        guard let host else { completionHandler(.cancel); return }
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard mf_http_response(host,Int64(status)) else { requests[dataTask.taskIdentifier]?.failed = true; completionHandler(.cancel); return }
+        guard let r = requests[dataTask.taskIdentifier] else { completionHandler(.allow); return }
+        let prefix = Data("\(status)\n".utf8)
         guard mf_http_chunk(host, r.owner.id, r.owner.generation, r.owner.engine, Int64(prefix.count)) else { r.failed = true; completionHandler(.cancel); return }
         r.bytes = prefix; completionHandler(.allow)
     }
@@ -117,6 +120,7 @@ final class ForgeMetalNetwork: NSObject, @preconcurrency URLSessionDataDelegate 
         changed?()
     }
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
+        guard let host, mf_http_follow(host) else { requests[task.taskIdentifier]?.failed = true; completionHandler(nil); return }
         let a = task.originalRequest?.url, b = request.url
         let same = a?.scheme == b?.scheme && a?.host?.lowercased() == b?.host?.lowercased() && a?.port == b?.port
         completionHandler(same ? request:nil)

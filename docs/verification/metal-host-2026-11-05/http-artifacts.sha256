@@ -1,0 +1,12 @@
+43d7db48a8284737c340207cbe142d810a2d44c4eb5f21ffe9bb63714c69bc55  /Users/christopherdavid/.openagents/aethyrforge/metal-host-12868/graphics-admitted-3f8/http-sdk/MetalRender.c
+c3e5d135085a113c1c99322b5b156c296173b771d248418a0f7517a746f95002  /Users/christopherdavid/.openagents/aethyrforge/metal-host-12868/graphics-admitted-3f8/http-sdk/MetalRender.h
+607444f690285d8b2561b408310624af86e0a08e4e3495e55b456e72345107de  /Users/christopherdavid/.openagents/aethyrforge/metal-host-12868/graphics-admitted-3f8/http-sdk/MetalRender.o
+a1a7802d4847c248869cee6f8ac164e9087c07bd498739f13d2309b6d972e719  /Users/christopherdavid/.openagents/aethyrforge/metal-host-12868/graphics-admitted-3f8/http-sdk/MetalRealm.o
+ae2b5f37723215ccb537ee632c5a2a7a1d2c3a49349738ff8358d9eddce12528  /Users/christopherdavid/.openagents/aethyrforge/metal-host-12868/graphics-admitted-3f8/http-sdk/HostEffects
+4a617be6e951eabc97a2ddfbfe084152648e0326ff510525d6abbf8f6afb13be  /Users/christopherdavid/.openagents/aethyrforge/metal-host-12868/graphics-admitted-3f8/http-sdk/fixture.c
+9ab61ff558f86da34089dfa31ec31754857945800822c950e1ca76cca5d8e2f6  /Users/christopherdavid/.openagents/aethyrforge/metal-host-12868/graphics-admitted-3f8/http-sdk/fixture.h
+33c8149d52ba6555bde17f099aa114f33500c71745ba6e2b2d91e35e2e1e6364  /Users/christopherdavid/.openagents/aethyrforge/metal-host-12868/graphics-admitted-3f8/http-sdk/libfixture.dylib
+e0099a822ba9bcc14602323e589c90435785e75857c1beac6da748ad976dd693  /Users/christopherdavid/.openagents/aethyrforge/metal-host-12868/graphics-admitted-3f8/http-asan-sdk/MetalRender.o
+0df9ca5dd698bc5d06f9becbe771e2b24d37484716362d889af9b01a9f3595cf  /Users/christopherdavid/.openagents/aethyrforge/metal-host-12868/graphics-admitted-3f8/http-asan-sdk/MetalRealm.o
+e834a3e25cc3ff9fb521e7233401bed83fc56d2ca6b36309a09b41c80bd921c2  /Users/christopherdavid/.openagents/aethyrforge/metal-host-12868/graphics-admitted-3f8/http-asan-sdk/HostEffects
+514fcbe52c379f1e51f420f9033c99aa8496a68c0c17bd56580397afcaf249aa  /Users/christopherdavid/.openagents/aethyrforge/metal-host-12868/graphics-admitted-3f8/http-asan-sdk/libfixture.dylib
