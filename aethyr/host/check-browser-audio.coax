@@ -8,12 +8,17 @@ hpa_install :: (c:[]Cdp,name:string,file:string,channels:int)->bool {
   js:[1024]u8;o:[1]Jo;jo_start(o[..],js[..]);jo_put(o[..],"hostAudioEffects.install(");jo_str(o[..],name);jo_put(o[..],",");o[0].depth=0;jo_str(o[..],name);jo_put(o[..],",");jo_int(o[..],channels);jo_put(o[..],")");
   return !o[0].bad && wc_parse(wc_eval(c,jo_text(o[..])))==n/4;
 }
-hpa_group :: (c:[]Cdp,commands:[]string,times:[]int,renders:[]HpaRender,total:int,dir:string,report:[]Jo)->bool {
+hpa_group :: (c:[]Cdp,commands:[]string,times:[]int,renders:[]HpaRender,total:int,dir:string,report:[]Jo,common:bool)->bool {
   if total==0 {return true;}
   js:[16384]u8;o:[1]Jo;jo_start(o[..],js[..]);jo_put(o[..],"hostAudioEffects.render(");jo_arr(o[..]);
   for command,i:commands {jo_arr(o[..]);jo_int(o[..],times[i]);jo_str(o[..],command);jo_end(o[..]);}jo_end(o[..]);jo_put(o[..],",");jo_int(o[..],total);jo_put(o[..],")");
-  if o[0].bad || wc_parse(wc_eval(c,jo_text(o[..])))!=total {tool_errln(cdp_error(c));return false;}
-  passed:=true;raw:[8388608]u8;native:[8388608]u8;text:[131072]u8;path:[4096]u8;
+  if o[0].bad || wc_parse(wc_eval(c,jo_text(o[..])))!=total {tool_errln(cdp_error(c));tool_errln(wc_eval(c,"JSON.stringify(hostAudioEffects.failure)"));return false;}
+  passed:=true;raw:[8388608]u8;native:[8388608]u8;text:[131072]u8;path:[4096]u8;receipt:[8192]u8;receipt_n:=0;
+  if common {
+    value:=cdp_evaluate(c,"hostAudioEffects.receipt()");if value<0 {return false;}d:=cdp_doc(c);
+    jo_start(o[..],receipt[..]);jv_write(d,value,o[..]);receipt_n=o[0].n;
+    if o[0].bad || jv_int(d,jv_get(d,value,"frames"),-1)!=total || jv_int(d,jv_get(d,value,"deviceFrames"),-1)!=total || jv_int(d,jv_get(d,value,"callbacks"),0)<1 || jv_int(d,jv_get(d,value,"errors"),-1)!=0 {tool_errln("actual worklet callback receipt differs");return false;}
+  }
   for output:renders {
     if output.frames>1048576 {return false;}at:=0;
     while at<output.frames {
@@ -25,18 +30,19 @@ hpa_group :: (c:[]Cdp,commands:[]string,times:[]int,renders:[]HpaRender,total:in
     bytes:=output.frames*8;file:=fs_join(dir,fs_base(output.file),path[..]);
     if !fs_write(file,cast(string)raw[0..<bytes]) {return false;}
     nn:=fs_read(output.file,native[..]);if nn<0 {return false;}q:=hpcm_compare(raw[0..<bytes],native[0..<nn]);name:=fs_base(file);
-    simple_gate:=(name.count>=7 && name[0..<7]=="legacy-") || name=="stereo-pan.f32";
+    simple_gate:=common || (name.count>=7 && name[0..<7]=="legacy-") || name=="stereo-pan.f32";
     ok:=q.shape && q.nonfinite==0 && (!simple_gate || q.over==0);passed=passed&&ok;
     jo_obj(report);jo_key(report,"file");jo_str(report,name);jo_key(report,"frames");jo_int(report,output.frames);jo_key(report,"shape");jo_bool(report,q.shape);jo_key(report,"simple_voice_gate");jo_bool(report,simple_gate);jo_key(report,"sample_gate_passed");if simple_gate {jo_bool(report,ok);}else {jo_null(report);}
     jo_key(report,"samples");jo_int(report,q.samples);jo_key(report,"over_2pow_minus20");jo_int(report,q.over);jo_key(report,"nonfinite");jo_int(report,q.nonfinite);jo_key(report,"max_abs_f64_bits");jo_int(report,cast(int)f64_bits(q.max_abs));
     jo_key(report,"first_browser_frame");jo_int(report,q.first_a);jo_key(report,"first_native_frame");jo_int(report,q.first_b);jo_key(report,"browser_peak_f64_bits");jo_int(report,cast(int)f64_bits(q.peak_a));jo_key(report,"native_peak_f64_bits");jo_int(report,cast(int)f64_bits(q.peak_b));
-    jo_key(report,"browser_squares_f64_bits");jo_int(report,cast(int)f64_bits(q.squares_a));jo_key(report,"native_squares_f64_bits");jo_int(report,cast(int)f64_bits(q.squares_b));jo_end(report);
+    jo_key(report,"browser_squares_f64_bits");jo_int(report,cast(int)f64_bits(q.squares_a));jo_key(report,"native_squares_f64_bits");jo_int(report,cast(int)f64_bits(q.squares_b));if common {jo_key(report,"worklet");jo_raw(report,cast(string)receipt[0..<receipt_n]);}jo_end(report);
     print("Audio %: % samples, maxabs %, % past2^-20, first browser/native %/%, simple gate %.\n",name,q.samples,q.max_abs,q.over,q.first_a,q.first_b,simple_gate);
   }
   return passed;
 }
 tool_main :: ()->int #export_c {
-  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=4 {tool_errln("usage: check-browser-audio LOCAL_URL PLAN.json AUDIO.json OUT_DIR");return 2;}
+  a:[1]Args;if !args_load(a[..]) || (args_count(a[..])!=4 && args_count(a[..])!=5) {tool_errln("usage: check-browser-audio LOCAL_URL PLAN.json AUDIO.json OUT_DIR [--coax]");return 2;}
+  common:=args_count(a[..])==5;if common && args_at(a[..],4)!="--coax" {return 2;}
   url:=args_at(a[..],0);if url.count<17 || url[0..<17]!="http://127.0.0.1:" {return 2;}
   dir:=args_at(a[..],3);if !fs_mkdir(dir) {return 1;}
   plan_text:[65536]u8;metadata:[65536]u8;plan_nodes:[2048]JvNode;meta_nodes:[8192]JvNode;p:[1]Jv;m:[1]Jv;
@@ -44,9 +50,16 @@ tool_main :: ()->int #export_c {
   if pn<0 || mn<0 || !jv_parse(p[..],cast(string)plan_text[0..<pn],plan_nodes[..]) || !jv_parse(m[..],cast(string)metadata[0..<mn],meta_nodes[..]) {return 1;}
   c:[1]Cdp;if !cdp_launch(c[..],160,90,"coax-host-audio-") {return 1;}defer {cdp_close(c[..]);}
   params:[8192]u8;o:[1]Jo;jo_start(o[..],params[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],url);jo_end(o[..]);nav:=cdp_call(c[..],"Page.navigate",jo_text(o[..]),CDP_CALL_MS);
-  deadline:=proc_now_ms()+30000;ready:=false;while proc_now_ms()<deadline {if wc_eval(c[..],"typeof coaxial?.audio?.offline==='function'")=="true" {ready=true;break;}proc_sleep(50);}if !ready {tool_errln("actual browser audio graph did not become ready");return 1;}
+  deadline:=proc_now_ms()+30000;ready:=false;while proc_now_ms()<deadline {
+    if common {
+      if wc_eval(c[..],"document.readyState==='complete'&&location.hostname==='127.0.0.1'")=="true" {
+        if wc_eval(c[..],"(async()=>{const a=await import('/coaxial/audio-host.js');globalThis.coaxial={audio:{offlineCoax:a.renderCoaxAudio}};return true})()")!="true" {tool_errln(cdp_error(c[..]));return 1;}ready=true;break;
+      }
+    }else if wc_eval(c[..],"typeof globalThis.coaxial?.audio?.offline==='function'")=="true" {ready=true;break;}proc_sleep(50);
+  }if !ready {tool_errln("actual browser audio graph did not become ready");return 1;}
   glue:[65536]u8;gn:=fs_read(WC_HOST_FILE,glue[..]);if gn<0 || wc_eval(c[..],cast(string)glue[0..<gn])!="ready" {return 1;}
   gn=fs_read("aethyr/host/tests/audio-effects.js",glue[..]);if gn<0 || wc_eval(c[..],cast(string)glue[0..<gn])!="ready" {return 1;}
+  if common && wc_eval(c[..],"hostAudioEffects.mode='coax';true")!="true" {return 1;}
   events:=jv_get(m[0],0,"events");installed:=0;
   for i:0..<jv_len(m[0],events) {
     event:=jv_at(m[0],events,i);if jv_raw(m[0],jv_get(m[0],event,"op"))!="export" {continue;}assets:=jv_get(m[0],event,"assets");
@@ -63,14 +76,14 @@ tool_main :: ()->int #export_c {
   operations:=jv_get(p[0],0,"operations");
   for i:0..<jv_len(p[0],operations) {
     op:=jv_at(p[0],operations,i);kind:=jv_raw(p[0],jv_get(p[0],op,"op"));
-    if kind=="reset" {passed=hpa_group(c[..],commands[0..<cn],times[0..<cn],renders[0..<rn],total,dir,r[..])&&passed;cn=0;rn=0;total=0;}
+    if kind=="reset" {passed=hpa_group(c[..],commands[0..<cn],times[0..<cn],renders[0..<rn],total,dir,r[..],common)&&passed;cn=0;rn=0;total=0;}
     else if kind=="command" {if cn>=64 {return 1;}commands[cn]=jv_raw(p[0],jv_get(p[0],op,"line"));times[cn]=total;cn+=1;}
     else if kind=="render" {
       blocks:=jv_int(p[0],jv_get(p[0],op,"blocks"),0);if rn>=32 || blocks<1 || blocks>1024 || total>1048576-blocks*1024 {return 1;}
       n:=jv_str(p[0],jv_get(p[0],op,"file"),files[rn][..]);if n<0 {return 1;}renders[rn]=HpaRender.{file=cast(string)files[rn][0..<n],at=total,frames=blocks*1024};total+=blocks*1024;rn+=1;
     }
   }
-  passed=hpa_group(c[..],commands[0..<cn],times[0..<cn],renders[0..<rn],total,dir,r[..])&&passed;jo_end(r[..]);jo_end(r[..]);path:[4096]u8;
+  passed=hpa_group(c[..],commands[0..<cn],times[0..<cn],renders[0..<rn],total,dir,r[..],common)&&passed;jo_end(r[..]);jo_end(r[..]);path:[4096]u8;
   if r[0].bad || !fs_write(fs_join(dir,"comparison.json",path[..]),jo_text(r[..])) {return 1;}
   return ifx passed then 0 else 1;
 }

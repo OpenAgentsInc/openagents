@@ -7,7 +7,8 @@ globalThis.hostAudioEffects = {
     for(let c=0;c<channels;c++){const p=b.getChannelData(c);for(let i=0;i<p.length;i++)p[i]=pcm[i*channels+c];}
     this.buffers[name]=b;return pcm.length;
   },
-  async render(lines,frames) {this.output=await coaxial.audio.offline(lines,frames,this.buffers);return this.output.length;},
+  async render(lines,frames) {try{this.output=await (this.mode==='coax'?coaxial.audio.offlineCoax:coaxial.audio.offline)(lines,frames,this.buffers);return this.output.length;}catch(error){this.failure=String(error.stack||error);throw error;}},
+  receipt(){return this.output.coaxWorkletReceipt??null;},
   read(at,frames) {
     const l=this.output.getChannelData(0),r=this.output.getChannelData(1),interleaved=new Float32Array(frames*2);
     for(let i=0;i<frames;i++){interleaved[2*i]=l[at+i];interleaved[2*i+1]=r[at+i];}

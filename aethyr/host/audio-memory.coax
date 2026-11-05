@@ -1,0 +1,29 @@
+// Immutable PCM allocations borrowed by the shared audio interpreter. SDKs
+// allocate only after reservation; failed allocation releases that ticket.
+#authority;
+HOST_AUDIO_ASSETS :: 128;
+HOST_AUDIO_WORDS :: 8388608;
+HostAudioMemory :: struct {words:[HOST_AUDIO_ASSETS]int;total:int;}
+#test "audio PCM reservations own exact extents and a released ticket can be reused" {
+  s:[1]HostAudioMemory;#assert ham_reserve(s[..],3)==0 && ham_reserve(s[..],7)==1 && s[0].total==10 && ham_words(s[..],0)==3 && ham_words(s[..],1)==7;
+  #assert ham_release(s[..],0) && s[0].total==7 && ham_words(s[..],0)==0 && !ham_release(s[..],0);
+  #assert ham_reserve(s[..],5)==0 && s[0].total==12 && ham_release(s[..],1) && s[0].total==5;
+  #assert !ham_release(s[..],-1) && !ham_release(s[..],128) && ham_words(s[..],-1)== -1 && ham_words(s[..],128)== -1;
+}
+#test "audio PCM complete allocations fit the shared word budget without overflow" {
+  s:[1]HostAudioMemory;
+  #assert ham_reserve(s[..],0)== -1 && ham_reserve(s[..],-1)== -1 && ham_reserve(s[..],9223372036854775807)== -1 && s[0].total==0;
+  #assert ham_reserve(s[..],8388608)==0 && s[0].total==8388608 && ham_reserve(s[..],1)== -1;
+  #assert ham_release(s[..],0) && s[0].total==0 && ham_reserve(s[..],8388609)== -1;
+  for i:0..<128 {#assert ham_reserve(s[..],1)==i;}#assert s[0].total==128 && ham_reserve(s[..],1)== -1;
+  for i:0..<128 {#assert ham_release(s[..],i);}#assert s[0].total==0;
+}
+ham_reserve :: (s:[]HostAudioMemory,words:int)->int #export_c {
+  if words<1 || words>HOST_AUDIO_WORDS-s[0].total {return -1;}
+  for i:0..<HOST_AUDIO_ASSETS {if s[0].words[i]==0 {s[0].words[i]=words;s[0].total+=words;return i;}}return -1;
+}
+ham_words :: (s:[]HostAudioMemory,id:int)->int #export_c {if id<0 || id>=HOST_AUDIO_ASSETS {return -1;}return s[0].words[id];}
+ham_release :: (s:[]HostAudioMemory,id:int)->bool #export_c {
+  if id<0 || id>=HOST_AUDIO_ASSETS || s[0].words[id]==0 {return false;}
+  s[0].total-=s[0].words[id];s[0].words[id]=0;return true;
+}
