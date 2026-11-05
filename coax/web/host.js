@@ -536,8 +536,9 @@ const socketImports = {
     if (id < 0) return -1;
     let ws;
     // local:PATH is the room server's local host, a loopback over postMessage (room-worker.js, #12784)
-    const url = utf8(ptr, len);
+    let url;
     try {
+      url=policy ? new TextDecoder('utf-8',{fatal:true}).decode(new Uint8Array(memory.buffer,ptr,len)) : utf8(ptr,len);
       if(policy && url.startsWith("local:") && !policy.localUri(url))throw Error("local route refused");
       ws = url.startsWith("local:") ? localRoomSocket(url, script?.dataset.roomWasm || "/build/everglade-room.wasm") : new WebSocket(url);
     } catch { if(owner)policy.socketClose(owner);return -1; }
@@ -576,7 +577,10 @@ function answer(id, text) {
 const httpRequests = makeHttpRequests({emit: answer, capacity: () => engine?.exports.coaxial_inbox_cap() ?? 0,
   policy:()=>hostTransport,player, origin: location.origin, frame: () => frameJpeg(), sendBeacon: navigator.sendBeacon ? (url, body) => navigator.sendBeacon(url, body) : undefined});
 function httpRequest(urlPtr, urlLen, bodyPtr, bodyLen, flags, timeoutMs) {
-  return httpRequests.request(utf8(urlPtr, urlLen), bodyLen ? new Uint8Array(memory.buffer, bodyPtr, bodyLen) : null, flags, timeoutMs);
+  let url;
+  try {url=hostTransport ? new TextDecoder('utf-8',{fatal:true}).decode(new Uint8Array(memory.buffer,urlPtr,urlLen)) : utf8(urlPtr,urlLen);}
+  catch {return -1;}
+  return httpRequests.request(url, bodyLen ? new Uint8Array(memory.buffer, bodyPtr, bodyLen) : null, flags, timeoutMs);
 }
 const httpImports = {
   coaxial_http: (urlPtr, urlLen, bodyPtr, bodyLen, flags) => httpRequest(urlPtr, urlLen, bodyPtr, bodyLen, flags),

@@ -15,6 +15,7 @@ static coax_t_HostTransport host_transport;
 static coax_t_HostOwner host_owner;
 static coax_t_HostDelivery host_delivery;
 static uint8_t host_route[4096];
+static uint8_t host_target[12288];
 static coax_v_t_HostTransport host_transport_view(void) { return (coax_v_t_HostTransport){&host_transport,1}; }
 static coax_t_HostOwner host_owned(int32_t id,int64_t generation,int64_t engine) { return (coax_t_HostOwner){id,generation,engine}; }
 __attribute__((constructor)) static void host_transport_defaults(void) { coax_default_t_HostTransport(&host_transport); }
@@ -34,6 +35,8 @@ HOST_EXPORT("coaxial_host_http_cancel") uint32_t coaxial_host_http_cancel(int32_
 HOST_EXPORT("coaxial_host_route_storage") uint32_t coaxial_host_route_storage(void) { return (uint32_t)(uintptr_t)host_route; }
 HOST_EXPORT("coaxial_host_route_capacity") uint32_t coaxial_host_route_capacity(void) { return sizeof host_route; }
 HOST_EXPORT("coaxial_host_http_path") uint32_t coaxial_host_http_path(uint32_t n) { return n<=sizeof host_route && htr_http_path((coax_string){(const char *)host_route,n}); }
+HOST_EXPORT("coaxial_host_http_target") int32_t coaxial_host_http_target(uint32_t n) { return n<=sizeof host_route ? (int32_t)htr_http_target((coax_string){(const char *)host_route,n},(coax_v_u8){host_target,sizeof host_target}) : -1; }
+HOST_EXPORT("coaxial_host_target_storage") uint32_t coaxial_host_target_storage(void) { return (uint32_t)(uintptr_t)host_target; }
 HOST_EXPORT("coaxial_host_local_uri") uint32_t coaxial_host_local_uri(uint32_t n) { return n<=sizeof host_route && htr_local_uri((coax_string){(const char *)host_route,n}); }
 HOST_EXPORT("coaxial_host_local_origin") uint32_t coaxial_host_local_origin(uint32_t n) { return n<=sizeof host_route && htr_local_origin((coax_string){(const char *)host_route,n}); }
 HOST_EXPORT("coaxial_host_copy_span") uint32_t coaxial_host_copy_span(uint64_t address,uint64_t capacity,uint64_t bytes,uint64_t memory_bytes) { return htb_copy_span(address,capacity,bytes,memory_bytes); }

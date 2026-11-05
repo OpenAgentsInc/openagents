@@ -5,6 +5,7 @@
 #load "transport.coax";
 #load "routes.coax";
 #load "local-socket-route.coax";
+#load "http-target.coax";
 #load "buffers.coax";
 
 HOST_FIXTURE_VERSION :: 1;

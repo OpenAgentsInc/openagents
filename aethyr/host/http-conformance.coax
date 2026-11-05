@@ -1,0 +1,40 @@
+// Observed request/return/callback bytes from the actual host adapters.
+// Expected physical peer paths are authored independently of the normalizer.
+#load "tests/http-target-observations.coax";
+#authority;
+HtuCase :: struct {input:string;target:string;}
+htu_cases :: ()->[10]HtuCase {
+  return [10]HtuCase.[
+    HtuCase.{input="/api/host-contract/target/a/../b?x=é#gone",target="/api/host-contract/target/b?x=%C3%A9"},
+    HtuCase.{input="/api/host-contract/target/a b",target="/api/host-contract/target/a%20b"},
+    HtuCase.{input="/api/host-contract/target/a/.?",target="/api/host-contract/target/a/?"},
+    HtuCase.{input="/api/host-contract/target/a/%2e%2e/b",target="/api/host-contract/target/b"},
+    HtuCase.{input="/api/host-contract/target/a//../b",target="/api/host-contract/target/a/b"},
+    HtuCase.{input="/api/host-contract/target/a?",target="/api/host-contract/target/a?"},
+    HtuCase.{input="/api/host-contract/target/a?#gone",target="/api/host-contract/target/a?"},
+    HtuCase.{input="/api/host-contract/target/a?x=  #gone",target="/api/host-contract/target/a?x=%20%20"},
+    HtuCase.{input="/api/host-contract/target/a?x=  ",target="/api/host-contract/target/a?x="},
+    HtuCase.{input="/api/host-contract/target/a/..//b",target="/api/host-contract/target//b"}];
+}
+htu_hash :: (s:string)->int {h:u32=2166136261;for c:s {h=mul_wrap(h^cast(u32)c,cast(u32)16777619);}return cast(int)h;}
+htu_expected :: ()->[30][8]int {
+  rows:[30][8]int;
+  for q,i:htu_cases() {
+    rows[3*i]=[8]int.[4,920,0,0,0,0,q.input.count,htu_hash(q.input)];
+    rows[3*i+1]=[8]int.[9,4,0,0,0,0,0,0];
+    bytes:[128]u8;for c,k:"200\n" {bytes[k]=c;}for c,k:q.target {bytes[4+k]=c;}
+    rows[3*i+2]=[8]int.[4,512,0,0,0,0,4+q.target.count,htu_hash(cast(string)bytes[0..<4+q.target.count])];
+  }
+  return rows;
+}
+#test "HTTP physical target checker admits only complete observed rows" {
+  rows:=htu_observed();#assert htu_rows(rows[..]) && !htu_rows(rows[0..<29]);
+  longer:[31][8]int;for row,i:rows {longer[i]=row;}#assert !htu_rows(longer[..]);
+}
+#forall "every HTTP physical request result and callback word participates" row:0..<30 {
+  for word:0..<8 {rows:=htu_observed();rows[row][word]+=1;#assert !htu_rows(rows[..]);}
+}
+htu_rows :: (rows:[][8]int)->bool #export_c {
+  if rows.count!=30 {return false;}want:=htu_expected();
+  for row,i:rows {for word,k:row {if word!=want[i][k] {return false;}}}return true;
+}

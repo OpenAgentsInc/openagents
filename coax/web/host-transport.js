@@ -16,6 +16,13 @@ export function makeHostTransport(x,memory) {
   };
   return {
     httpPath: text => route(x.coaxial_host_http_path,text),
+    httpTarget: x.coaxial_host_http_target ? text => {
+      const bytes=new TextEncoder().encode(text);
+      if(bytes.length>x.coaxial_host_route_capacity())return null;
+      new Uint8Array(memory.buffer,x.coaxial_host_route_storage(),bytes.length).set(bytes);
+      const n=x.coaxial_host_http_target(bytes.length);
+      return n<0 ? null : new TextDecoder('utf-8',{fatal:true}).decode(new Uint8Array(memory.buffer,x.coaxial_host_target_storage(),n));
+    } : undefined,
     localUri: text => route(x.coaxial_host_local_uri,text),
     localOrigin: text => route(x.coaxial_host_local_origin,text),
     reset: () => !!x.coaxial_host_transport_reset(),

@@ -69,6 +69,13 @@ export function makeHttpRequests({
     // different origin. Credentials and explicit auth headers stay same-origin.
     try { if (origin && new URL(url, origin).origin !== origin) return -1; }
     catch { return -1; }
+    if(shared?.httpTarget) {
+      const target=shared.httpTarget(url);
+      if(target===null || (!origin && target.startsWith('//')))return -1;
+      // Concatenation retains the bound origin even when dot-segment removal
+      // leaves a pathname beginning //. Do not parse that path as an authority.
+      url=origin ? origin+target : target;
+    }
     const post = (flags & 1) !== 0, wanted = (flags & 4) !== 0;
     const bounded = timeoutMs !== undefined;
     const cap = bounded ? capacity() : 0;

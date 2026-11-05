@@ -3,6 +3,7 @@
 // Prepared directory contains fixture.wasm and fixture.wgsl.
 #load "../../coax/web/wasm-chrome.coax";
 #load "../../coax/lib/crypto/sha256-kernel.coax";
+#load "receipt-http.coax";
 cb_expect :: (c:[]Cdp,expr:string)->bool {
   if wc_eval(c,expr)=="true" {return true;}
   tool_err("browser host differs for ");tool_errln(expr);tool_errln(cdp_error(c));return false;
@@ -77,6 +78,11 @@ tool_main :: ()->int #export_c {
   if !cb_expect(c[..],"for(let i=0;i<4;i++)coaxial.send(912,String(i));true") || !cb_wait(c[..],"[258,262,266,270].every(k=>rows().some(r=>r[0]===4&&r[1]===k))") || !cb_expect(c[..],"coaxial.hostProbe(-1,3)==='0'") {return 1;}
   n=cb_text(c[..],"JSON.stringify({schema:'aethyr.host.observations.v1',host:'web',scope:'transport',events:rows(),dropped:Number(coaxial.hostProbe(-1,3))})",out[..]);
   if n<0 || !fs_write(fs_join(dir,"browser-transport.json",paths[4][..]),cast(string)out[0..<n]) {return 1;}
+  if !cb_expect(c[..],"(async()=>{coaxial.hostReset();for(const url of ['/api/host-contract/target/a/../b?x=é#gone','/api/host-contract/target/a b','/api/host-contract/target/a/.?','/api/host-contract/target/a/%2e%2e/b','/api/host-contract/target/a//../b','/api/host-contract/target/a?','/api/host-contract/target/a?#gone','/api/host-contract/target/a?x=  #gone','/api/host-contract/target/a?x=  ','/api/host-contract/target/a/..//b']){const before=rows().filter(r=>r[0]===4&&r[1]===512).length;coaxial.send(920,url);let tries=0;while(rows().filter(r=>r[0]===4&&r[1]===512).length===before&&tries++<1000)await new Promise(r=>setTimeout(r,5));if(tries>=1000)return false;}return true})()") {return 1;}
+  n=cb_text(c[..],"JSON.stringify({schema:'aethyr.host.observations.v1',host:'web',scope:'http-target',events:rows(),dropped:Number(coaxial.hostProbe(-1,3))})",out[..]);
+  if n<0 || !fs_write(fs_join(dir,"browser-http-target.json",paths[4][..]),cast(string)out[0..<n]) {return 1;}
+  url_doc:[1]Jv;url_nodes:[2048]JvNode;
+  if !jv_parse(url_doc[..],cast(string)out[0..<n],url_nodes[..]) || !hcr_http_target(url_doc[0]) {tool_errln("actual browser HTTP target observations differ; raw rows retained");return 1;}
   if !cb_expect(c[..],"coaxial.hostReset();coaxial.send(910,'ws://127.0.0.1:9170/echo');true") || !cb_wait(c[..],"rows().some(r=>r[0]===4&&r[1]===256)") {return 1;}
   if !cb_expect(c[..],"(async()=>{coaxial.send(920,'/api/host-contract/slow');return await coaxial.reloadEngine()})()") {return 1;}
   proc_sleep(350);

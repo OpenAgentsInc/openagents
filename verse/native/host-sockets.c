@@ -30,8 +30,9 @@ static pthread_cond_t hn_finished=PTHREAD_COND_INITIALIZER;
 static HnSocket *hn_slots[4];static HnEvent *hn_head,*hn_tail;static int hn_running;
 static struct {int active;int64_t generation,engine;} hn_owners[4];
 extern uint8_t htr_http_path(coax_string) __attribute__((weak));
+extern int64_t htr_http_target(coax_string,coax_v_u8) __attribute__((weak));
 extern int64_t htr_local_target(coax_string,coax_string,coax_v_u8) __attribute__((weak));
-int rhn_http_path(const char *bytes,size_t n) {return htr_http_path&&htr_http_path((coax_string){bytes,(int64_t)n});}
+int rhn_http_path(const char *bytes,size_t n) {uint8_t target[12288];return htr_http_target&&htr_http_target((coax_string){bytes,(int64_t)n},(coax_v_u8){target,sizeof target})>=0;}
 int rhn_utf8(const char *bytes,size_t n) {return hns_utf8((coax_string){bytes,(int64_t)n});}
 void hni_lock(void) {pthread_mutex_lock(&hn_io);}
 void hni_unlock(void) {pthread_mutex_unlock(&hn_io);}

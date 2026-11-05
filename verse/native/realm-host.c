@@ -335,7 +335,7 @@ static int64_t request(uint32_t url, uint32_t url_len, uint32_t body, uint32_t b
   snprintf(cap, sizeof cap, "%u", coaxial_inbox_cap());
   snprintf(to, sizeof to, "%lld", (long long)(timeout >= 0 ? timeout : 0));
   if (flags & 8) player_key(key, sizeof key); else key[0] = 0;
-  char *argv[] = {net.helper, r->out, net.host, port, fl, path, body_len ? r->body : "-", key[0] ? key : "-", cap, to, NULL};
+  char *argv[] = {net.helper, r->out, net.host, port, fl, path, body_len ? r->body : "-", key[0] ? key : "-", cap, to, contract ? "--host-v1" : NULL, NULL};
   posix_spawn_file_actions_t fa;
   posix_spawn_file_actions_init(&fa);
   posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);

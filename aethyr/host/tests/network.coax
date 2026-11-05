@@ -20,7 +20,7 @@ hcn_close :: (c:[]HcnConnection) {if c[0].h>=0 {closed:=cxsock_close(c[0].h);}c[
 hcn_write :: (h:int,bytes:string)->bool {for c:bytes {if cxsock_write(h,cast(int)c)!=0 {return false;}}return cxsock_flush(h,100)==0;}
 hcn_consume :: (c:[]HcnConnection,n:int) {for i:n..<c[0].used {c[0].input[i-n]=c[0].input[i];}c[0].used-=n;}
 hcn_http :: (c:[]HcnConnection,path:string) {
-  text:="";delay:=0;
+  text:=path;delay:=0;
   if path=="/health" {text="ok";}
   if path=="/api/host-contract/ok" {text="Aé🙂";}
   if path=="/api/host-contract/slow" {text="late";delay=250;}

@@ -12,9 +12,14 @@ the complete request, never publishes a successful prefix, and bounded
 failure is exactly `0\n`. Deadline and whole-response capacity include the
 status line. Generations and epochs retire rather than wrap.
 
-`routes.coax` admits canonical root-relative HTTP paths and the exact
-development native-local URI/IPv4-loopback origin; SDK normalization must
-still preserve the site's actual origin. `buffers.coax` admits the complete
+`routes.coax` admits bounded root-relative HTTP inputs and the exact
+development native-local URI/IPv4-loopback origin. `http-target.coax` owns
+UTF-8 percent encoding, fragment removal, empty queries and dot segments;
+its 192-mutant root gate has no survivors or equivalents. A normalized
+pathname beginning `//` remains on the separately bound site origin.
+Actual browser and sanitized Linux SDK receipts retain every physical peer
+path and callback word (54 semantic and 23 JSON adapter mutants killed).
+`buffers.coax` admits the complete
 measured allocation before copying. The shared renderer carrier loads these
 authorities; C/JavaScript project scalars and execute platform effects. Their
 root gates at `3f1396f5a2` kill 292, 59 and 9 mutants, with zero survivors and

@@ -188,7 +188,8 @@ adapters. The browser's scalar bridge is `coax/web/host-transport-face.c`;
 native SDKs call the same `ht_*` functions. A `HostOwner` is its returned
 slot, generation and engine epoch together. Do not reconstruct it from the
 slot at callback time. `routes.coax` admits bounded root-relative HTTP
-paths and the exact native-local URI/origin. `buffers.coax` admits the
+inputs and the exact native-local URI/origin. `http-target.coax` normalizes
+the HTTP target. `buffers.coax` admits the
 complete measured destination before copying. These authorities are loaded
 by the shared renderer carrier, without making transport depend on the GPU.
 
@@ -222,6 +223,17 @@ capacity/route refusal. Requests are same-site. Flags are 1 POST (else
 GET), 2 beacon (no callback), 4 answer wanted, 8 attach the stored playtest
 key, 16 consume the body's first line as Authorization. Credentials never
 enter logs or public page facts.
+
+The URL is valid UTF-8, 1–4096 bytes, begins with one slash, and contains no
+backslash, control or DEL byte. Coax removes the fragment, retains the query
+(including an empty `?`), removes literal and percent-encoded dot segments,
+and applies the browser's path/special-query percent encoding. Trailing
+ASCII spaces are stripped before parsing. Existing percent escapes keep
+their spelling. A normalized target has at most 12288 bytes. Normalization
+does not select an origin: `/a/..//b` becomes the pathname `//b` on the
+already bound site. Browser/Apple URL effects concatenate the bound origin
+and target; a native HTTP request writes the target with its separately
+bound Host header. A refused or short destination receives no prefix.
 
 Answers arrive as message `512+id`, ASCII `STATUS\n` followed by raw body
 bytes. Bounded requests want an answer, cannot be beacons and fit the

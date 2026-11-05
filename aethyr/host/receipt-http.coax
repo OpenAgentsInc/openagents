@@ -1,0 +1,24 @@
+#load "receipt-transport.coax";
+#load "http-conformance.coax";
+#authority;
+#test "HTTP target receipt binds the host scope metadata and complete actual rows" {
+  rows:=htu_observed();buf:[16384]u8;o:[1]Jo;d:[1]Jv;nodes:[1024]JvNode;
+  for host:[3]string.["web","vulkan","metal"] {for bad:0..<8 {
+    jo_start(o[..],buf[..]);jo_obj(o[..]);
+    jo_key(o[..],"schema");jo_str(o[..],ifx bad==1 then "bad" else "aethyr.host.observations.v1");
+    jo_key(o[..],"scope");jo_str(o[..],ifx bad==2 then "transport" else "http-target");
+    jo_key(o[..],"host");jo_str(o[..],ifx bad==3 then "other" else host);
+    if bad!=4 {jo_key(o[..],"dropped");jo_int(o[..],ifx bad==5 then 1 else 0);}
+    jo_key(o[..],"events");if bad==6 {jo_null(o[..]);}else {
+      jo_arr(o[..]);for i:0..<(ifx bad==7 then 29 else 30) {jo_arr(o[..]);for v:rows[i] {jo_int(o[..],v);}jo_end(o[..]);}jo_end(o[..]);
+    }
+    jo_end(o[..]);#assert !o[0].bad && jv_parse(d[..],jo_text(o[..]),nodes[..]) && hcr_http_target(d[0])==(bad==0);
+  }}
+  #assert jv_parse(d[..],"[]",nodes[..]) && !hcr_http_target(d[0]);
+}
+hcr_http_target :: (d:Jv)->bool {
+  if jv_kind(d,0)!=JV_OBJECT || jv_raw(d,jv_get(d,0,"schema"))!="aethyr.host.observations.v1" || jv_raw(d,jv_get(d,0,"scope"))!="http-target" {return false;}
+  host:=jv_raw(d,jv_get(d,0,"host"));if host!="web" && host!="vulkan" && host!="metal" {return false;}
+  rows:[30][8]int;n:=hcr_rows(d,jv_get(d,0,"events"),rows[..]);
+  return n==30 && jv_int(d,jv_get(d,0,"dropped"),-1)==0 && htu_rows(rows[..]);
+}

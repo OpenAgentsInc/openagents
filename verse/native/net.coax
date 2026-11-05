@@ -10,6 +10,8 @@
 // "STATUS\n" then the body, is cut to it, or with TIMEOUT_MS > 0 (coaxial_http_bounded) one
 // over it is no answer at all. OUT gets the answer; "0\n" when there was none (the name not
 // verified, a refused or broken connection, a malformed reply, the deadline).
+// The optional --host-v1 normalizes PATH through the shared origin-bound
+// HTTP target authority. Nine-argument pre-contract callers retain their path rules.
 // Redirects are not followed (the realm's API answers where it is asked). VERSE_AUTOMATION, when
 // set, goes as X-Verse-Automation, so the site's analytics and presence leave an automated run
 // out (coax/web/api/player.c); a person playing has none.
@@ -21,6 +23,7 @@
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/net/transport.coax";
 #load "../../aethyr/host/local-http-site.coax";
+#load "../../aethyr/host/http-target.coax";
 
 NET_MAX :: 2162688;     // a reply's bytes: the largest inbox (2 MB) and its headers
 NET_REQ :: 1114112;     // a request's bytes: a body of up to 1 MB and its headers
@@ -30,10 +33,20 @@ NET_DEADLINE :: 30000;  // an unbounded request's own deadline (ms)
 // (in place for a Content-Length or an EOF-ended body; decoded into out for chunks).
 NetReply :: struct { state: int; status: int; at: int; n: int; }
 
+#test "host v1 request uses the normalized target and keeps double slash on the bound host" {
+  out:[2048]u8;
+  n:=net_request_host(out[..],"contract.invalid","/a/..//b?x=é#gone",0,"","","");
+  prefix:="GET //b?x=%C3%A9 HTTP/1.1\r\nHost: contract.invalid\r\n";
+  #assert n>prefix.count && cast(string)out[0..<prefix.count]==prefix;
+  #assert net_request_host(out[..],"contract.invalid","//foreign/x",0,"","","")== -1;
+  #assert net_request_host(out[..],"contract.invalid","/a b",0,"","","")>0;
+  #assert net_request(out[..],"contract.invalid","/a b",0,"","","")== -1;
+}
+
 tool_main :: () -> int #export_c {
   a: [1] Args;
-  if !args_load(a[..]) || args_count(a[..]) != 9 {
-    tool_errln("usage: net OUT HOST PORT FLAGS PATH BODY PLAYER CAP TIMEOUT_MS");
+  if !args_load(a[..]) || (args_count(a[..]) != 9 && args_count(a[..]) != 10) {
+    tool_errln("usage: net OUT HOST PORT FLAGS PATH BODY PLAYER CAP TIMEOUT_MS [--host-v1]");
     return 2;
   }
   outp := args_at(a[..], 0);
@@ -43,6 +56,8 @@ tool_main :: () -> int #export_c {
   port := args_whole(args_at(a[..], 2));
   flags := args_whole(args_at(a[..], 3));
   path := args_at(a[..], 4);
+  v1:=args_count(a[..])==10;
+  if v1 && args_at(a[..],9)!="--host-v1" {return 2;}
   cap := args_whole(args_at(a[..], 7));
   timeout := args_whole(args_at(a[..], 8));
   if port < 1 || port > 65535 || flags < 0 || cap < 2 || timeout < 0 { tool_errln("net: bad numbers"); return 2; }
@@ -55,7 +70,7 @@ tool_main :: () -> int #export_c {
   am: [128] u8;
   auto := net_env("VERSE_AUTOMATION", am[..]);
   req: [NET_REQ] u8;
-  rn := net_request(req[..], host, path, flags, cast(string) body[0..<bn], player, auto);
+  rn := ifx v1 then net_request_host(req[..],host,path,flags,cast(string)body[0..<bn],player,auto) else net_request(req[..], host, path, flags, cast(string) body[0..<bn], player, auto);
   if rn < 0 { return net_none(outp); }
   deadline := ifx timeout > 0 then timeout else NET_DEADLINE;
   start := cxproc_now_ms();
@@ -139,7 +154,15 @@ net_path_ok :: (p: string) -> bool {
 }
 // The request's bytes into out: their count, or -1 (a path, host, header or size it refuses).
 net_request :: (out: [] u8, host: string, path: string, flags: int, input: string, player: string, auto: string) -> int {
-  if !net_path_ok(path) || host.count < 1 || !net_plain(host) || !net_plain(player) || !net_plain(auto) { return -1; }
+  if !net_path_ok(path) {return -1;}
+  return net_request_bytes(out,host,path,flags,input,player,auto);
+}
+net_request_host :: (out:[]u8,host:string,url:string,flags:int,input:string,player:string,auto:string)->int {
+  target:[12288]u8;n:=htr_http_target(url,target[..]);if n<0 {return -1;}
+  return net_request_bytes(out,host,cast(string)target[0..<n],flags,input,player,auto);
+}
+net_request_bytes :: (out: [] u8, host: string, path: string, flags: int, input: string, player: string, auto: string) -> int {
+  if host.count < 1 || !net_plain(host) || !net_plain(player) || !net_plain(auto) { return -1; }
   for c: host { if c == ' ' || c == '/' { return -1; } }
   body := input; auth := "";
   if (flags & 16) != 0 && body.count > 0 {

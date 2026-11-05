@@ -201,11 +201,25 @@ work, then closes its sockets/helpers and server on exit.
 
 ## Required exits still open
 
+HTTP request-target normalization is now shared Coax policy. The root gate
+for `http-target.coax` kills 192/192 mutants; its physical-observation
+checker and JSON adapter kill 54/54 and 23/23, with no equivalents.
+`check-transport.coax` passes 24 real browser/Wasm ABI probes and 10 HTTP
+effect probes, including comparison with Chrome's URL parser over the
+authored cases and printable ASCII. The actual host.js and actual Linux
+realm SDK each pass the same 30 physical peer observation rows: percent-dot
+segments, UTF-8 and spaces, fragments, empty query markers and repeated
+slashes. The Linux image runs under ASan/UBSan with leak detection.
+Raw receipts are `browser-http-target.json` and `vulkan-http-target.json`;
+`http-target-artifacts.sha256` joins their source, fixture and executable.
+The private Linux helper's optional `--host-v1` uses the new authority;
+nine-argument pre-contract callers keep their original path behavior.
+
 The native Metal receipt/source record, shared lifecycle transitions and
 device-loss/replacement receipts, interactive producer/GPU parity, and
 muted/offline audio sample comparison remain to be recorded. Ordinary
-Vulkan lifecycle/audio execution and HTTP URL normalization are still
-required. The ordinary SDK packaging and local routing probes do not
+Vulkan lifecycle/audio execution and the Metal HTTP target receipt are
+still required. The ordinary SDK packaging and local routing probes do not
 substitute for complete interactive host qualification.
 Only a complete three-host result plus #12868's interactive parity allows
 native by default and the one-click web preview.
