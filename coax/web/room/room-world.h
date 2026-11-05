@@ -16,6 +16,11 @@ bool world_place(int k, int s, float out[WORLD_POSE]);
 bool world_place_at(int k, int s, float x, float y, float z, float yaw, float out[WORLD_POSE]);
 /* Seat s of room k steps one input (1 / WORLD_HZ s): its pose after it. */
 bool world_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE]);
+/* the rowboats (#12861): the room's floats a tick on; the n-th boat (WORLD_BOAT: x y z yaw rower oars float); a seat gone */
+#define WORLD_BOAT 7
+void world_floats(int k, float dt);
+bool world_boat(int k, int n, float out[WORLD_BOAT]);
+void world_gone(int k, int s);
 /* The ground's height at (x, z) in room k's world. */
 float world_ground(int k, float x, float z);
 bool world_forge_open(int k, float x, float z);

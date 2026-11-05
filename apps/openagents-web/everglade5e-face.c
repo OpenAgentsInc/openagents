@@ -460,6 +460,14 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   // the spells' fields over the floats (Reverse Gravity, the Wind Walls: everglade-abilities.coax), as last frame left them
   static float spell_fields[16 * 10];
   everglade_river_fields(rv(), (coax_v_f32){spell_fields, 16 * 10}, everglade_spell_fields(at(state), (coax_v_f32){spell_fields, 16 * 10}));
+  /* in a room, the rowboats where the room has them (#12861): another seat's rowed, or tied up where
+     it left them; the one you row your own page rows (everglade-net.coax net_boat_row) */
+  if (net_live(at(state)))
+    for (int b = 0; b < 3; b++) {
+      float br[7];
+      if (!net_boat_row(at(state), b, (coax_v_f32){br, 7})) continue;
+      if (br[1] >= 0) everglade_river_pin(rv(), (int64_t)br[0], (int64_t)br[1], br[2], br[3], br[4], br[5], br[6]);
+    }
   int64_t floats = everglade_river_floats(rv(), dt, (coax_v_f32){river_floats, 28 * 8});
   // a rowboat near you to board, or E (the prompt) to board it or step ashore
   everglade_boat_near(at(state), swim.medium == 3 || swim.aloft || busy ? -1 : everglade_river_boat_near(rv(), player.pos.x, player.pos.z));

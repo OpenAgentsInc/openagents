@@ -33,6 +33,14 @@ static void everglade_town(int k) {
   rm_eg_use_asks_heard(view(), k);
   for (int w = 0; w < 2; w++) rm_eg_doors(view(), k, w, world_doors(k, w));
   for (int s = 0; s < WORLD_SEATS; s++) rm_eg_seat_town(view(), k, s, (coax_v_f32){seats + s * WORLD_SEAT_TOWN, WORLD_SEAT_TOWN});
+  /* the rowboats (#12861): a seat gone leaves its boat tied up; the floats a tick on; each boat for the pages */
+  for (int s = 0; s < WORLD_SEATS; s++) if (seats[s * WORLD_SEAT_TOWN + 3] < 0.5f) world_gone(k, s);
+  world_floats(k, 1.0f / WORLD_HZ);
+  float bt[WORLD_BOAT];
+  for (int n = 0; n < 3; n++) {
+    if (!world_boat(k, n, bt)) break;
+    rm_eg_boat(view(), k, n, (coax_v_f32){bt, WORLD_BOAT});
+  }
   /* a scripted Hold Person (room-control.coax "hold", #12886): the watch's hold on the seat, before the town steps */
   for (int s = 0; s < WORLD_SEATS; s++) if (rm_eg_hold_take(view(), k, s)) world_hold(k, s);
   int64_t t0 = now_us();

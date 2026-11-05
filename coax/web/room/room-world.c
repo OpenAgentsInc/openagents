@@ -5,9 +5,9 @@
    A seat's input is stepped by the movement step the page predicts with, in the order written at the
    top of everglade-step.coax, so the page and the server put the player in the same place.
    The town runs here too (world_town): everyone's day, the watch against every seat, crimes and WANTED.
-   Not yet the server's: the river (everglade-river: you walk its bed here, where a page swims), and
-   the page's per-player states the world half reads (a blast's throw, held, slowed, the ice). Those
-   stay at rest until the world's step owns them per seat.
+   The river is the room's too: each seat swims in it, and rows a rowboat in it (world_use WE_BOAT,
+   world_floats, #12861). Not yet the server's: the page's per-player states the world half reads (a
+   blast's throw, held, slowed, the ice). Those stay at rest until the world's step owns them per seat.
    This file includes only the Everglade units' headers; room-host.c calls it with plain numbers. */
 #include "everglade.h"
 #include <stdlib.h>
@@ -31,6 +31,12 @@ typedef struct { int64_t medium; float feet; bool afloat; double breath, out; in
 static seat_water seat_w[WORLD_ROOMS][WORLD_SEATS];
 static coax_t_Swim seat_swim[WORLD_ROOMS][WORLD_SEATS];
 static double river_now[WORLD_ROOMS];
+/* The rowboats (#12861): the float each seat rows (+ 1, 0 none), and the floats as the last tick left
+   them (everglade_river_floats' 8 numbers each: x y z yaw tilt lean oars kind) */
+static int seat_boat[WORLD_ROOMS][WORLD_SEATS];
+#define WORLD_FLOATS 28
+static float floats_out[WORLD_ROOMS][WORLD_FLOATS * 8];
+static int floats_n[WORLD_ROOMS];
 /* the ground's grid as the page's (everglade5e-face.c): EG_GRID cells of 2 m a side from -EG_HALF */
 #define EG_GRID 176
 #define EG_HALF 176
@@ -41,6 +47,16 @@ static void seat_dry(int k, int s) {
 }
 
 static coax_v_t_Everglade at(int k) { return (coax_v_t_Everglade){world[k], 1}; }
+static coax_v_f32 heights_of(int k) { return (coax_v_f32){world[k]->heights.e, (EG_GRID + 1) * (EG_GRID + 1)}; }
+/* seat s out of the boat it rows, where it is (a seat placed again, gone, or teleported): tied up there */
+static void seat_ashore(int k, int s) {
+  int b = seat_boat[k][s] - 1;
+  seat_boat[k][s] = 0;
+  if (b >= 0 && river[k] && everglade_river_crew_of(rv_of(k), b) == s + 1) everglade_river_crew_free(rv_of(k), b);
+}
+static void seat_aboard(int k, int s) {
+  seat_swim[k][s] = (coax_t_Swim){0}; seat_swim[k][s].medium = 4; seat_swim[k][s].pace = 1; seat_swim[k][s].breath = 1; seat_swim[k][s].surface = -1000;
+}
 
 /* Room k's world, made (and its city built) the first time; kept for the next room in that slot. */
 /* The realm's published world (an admin's placed things: GET /api/playtest/world/everglade), laid over
@@ -114,7 +130,7 @@ static int walls_near(const float *walls, int n, float x, float z, float *near) 
 static void pose_of(coax_t_Player p, bool moved, float out[WORLD_POSE]) {
   out[0] = p.pos.x; out[1] = p.pos.y; out[2] = p.pos.z; out[3] = verse_player_face(p);
   out[4] = p.vel.x; out[5] = p.vel.y; out[6] = p.vel.z;
-  out[7] = p.on_ground ? 1 : 0;            /* G: 1 on the ground, 2 swimming (world_step adds it), 4 in a boat (not yet) */
+  out[7] = p.on_ground ? 1 : 0;            /* G: 1 on the ground, 2 swimming, 4 in a boat (world_step adds them) */
   out[8] = (float)p.act;                   /* CLIP: the controller's act (aethyr/walk.coax Act) */
   out[9] = (float)(p.clock.carry_ns / 100000);   /* CARRY: the fixed step's leftover, tenths of a ms */
   (void)moved;
@@ -123,6 +139,7 @@ static void pose_of(coax_t_Player p, bool moved, float out[WORLD_POSE]) {
 bool world_place(int k, int s, float out[WORLD_POSE]) {
   if (!world_of(k) || s < 0 || s >= WORLD_SEATS) return false;
   coax_t_Point spawn = everglade_spawn(at(k));
+  seat_ashore(k, s);
   seat_p[k][s] = verse_player_place(spawn.x, spawn.y, spawn.z, everglade_spawn_face(at(k)));
   if (river[k]) { seat_dry(k, s); seat_w[k][s].breath = river[k]->breath; }
   pose_of(seat_p[k][s], false, out);
@@ -132,6 +149,7 @@ bool world_place(int k, int s, float out[WORLD_POSE]) {
 bool world_place_at(int k, int s, float x, float y, float z, float yaw, float out[WORLD_POSE]) {
   if (!world_of(k) || s < 0 || s >= WORLD_SEATS) return false;
   if (!(x == x) || !(y == y) || !(z == z) || !(yaw == yaw)) return world_place(k, s, out);
+  seat_ashore(k, s);
   seat_p[k][s] = verse_player_place(x, y, z, yaw);
   if (river[k]) { seat_dry(k, s); seat_w[k][s].breath = river[k]->breath; }
   pose_of(seat_p[k][s], false, out);
@@ -149,7 +167,16 @@ bool world_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE])
   everglade_room_seat(at(k), s);   /* its conditions, slow and throw are what the step reads */
   everglade_room_rise(at(k), s, (in[6] & 8) != 0, (in[6] & 16) != 0, p.pos.x, p.pos.z, p.pos.y);   /* its Levitate's keys */
   coax_t_Swim sw = seat_swim[k][s];
-  coax_t_EgMoveWorld mw = everglade_move_world(at(k), p.pos.x, p.pos.y, p.pos.z, sw.medium, sw.pace, sw.flow_x, sw.flow_z, false, 0, 0, 0, (coax_v_f32){NULL, 0});
+  /* in a rowboat: W and S row, A and D turn (a stick too), and it sits where the boat takes it, as the
+     page's (everglade5e-face.c); the boat steps with the room's floats (world_floats) */
+  int boat = river[k] && seat_boat[k][s] > 0 && everglade_river_crew_of(rv_of(k), seat_boat[k][s] - 1) == s + 1 ? seat_boat[k][s] - 1 : -1;
+  coax_t_Seat seat = {0};
+  if (boat >= 0) {
+    everglade_river_crew_row(rv_of(k), boat, input.key_y + input.pad_y, input.key_x + input.pad_x);
+    seat = everglade_river_crew_seat(rv_of(k), boat);
+    seat_aboard(k, s); sw = seat_swim[k][s];
+  }
+  coax_t_EgMoveWorld mw = everglade_move_world(at(k), p.pos.x, p.pos.y, p.pos.z, sw.medium, sw.pace, sw.flow_x, sw.flow_z, boat >= 0, seat.x, seat.z, seat.yaw, (coax_v_f32){NULL, 0});
   p = eg_step_begin(p, input, mw, dt);
   coax_t_EgBody before = eg_step_body(p);
   coax_v_f32 near = everglade_move_bodies(at(k));
@@ -159,7 +186,7 @@ bool world_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE])
   coax_t_EgBody moved = everglade_move_after(at(k), mw, before, eg_step_body(p), dt);
   p = eg_step_put(p, moved);
   /* the river after the step: the water this seat is in now, for its next step */
-  if (river[k]) {
+  if (river[k] && boat < 0) {
     coax_t_River *r = river[k];
     seat_water *me = &seat_w[k][s];
     r->medium = me->medium; r->feet = me->feet; r->afloat = me->afloat; r->breath = me->breath; r->out = me->out; r->levels = me->levels;
@@ -180,6 +207,7 @@ bool world_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE])
   seat_p[k][s] = p;
   pose_of(p, true, out);
   if (seat_swim[k][s].medium >= 2 && seat_swim[k][s].medium <= 3) out[7] = (float)(((int)out[7]) | 2);   /* G: swimming */
+  if (boat >= 0) out[7] = (float)(((int)out[7]) | 4);   /* G: in a boat */
   return true;
 }
 
@@ -213,6 +241,7 @@ void world_strike(int k, int by, int slot, const float from[3], const float to[3
   if (!world_of(k)) return;
   /* the Warlock's Dimension Door (room-everglade.coax EG_WL_DOOR): the seat stands where it teleported */
   if (slot == 69 && by >= 0 && by < WORLD_SEATS) {
+    seat_ashore(k, by);
     seat_p[k][by] = verse_player_place(to[0], to[1], to[2], verse_player_face(seat_p[k][by]));
     if (river[k]) { seat_dry(k, by); seat_w[k][by].breath = river[k]->breath; }
     return;
@@ -229,8 +258,43 @@ bool world_use(int k, int kind, int s, int i) {
   float x = seat_p[k][s].pos.x, z = seat_p[k][s].pos.z;
   if (kind == 2) return everglade_room_door(at(k), i, x, z);      /* WE_DOOR */
   if (kind == 1) return everglade_room_talk(at(k), s, i, x, z);   /* WE_TALK */
+  if (kind == 3 && river[k]) {                                       /* WE_BOAT: into a free boat in reach, or out of yours */
+    int b = seat_boat[k][s] - 1;
+    if (b >= 0) {
+      coax_t_Seat off = everglade_river_crew_leave(rv_of(k), heights_of(k), river_now[k], b);
+      seat_boat[k][s] = 0;
+      if (off.on) seat_p[k][s] = verse_player_place(off.x, 0, off.z, off.yaw);
+      seat_dry(k, s); seat_w[k][s].breath = river[k]->breath;
+      return true;
+    }
+    int near = everglade_river_crew_near(rv_of(k), x, z);
+    if (near < 0 || (i >= 0 && near != i) || !everglade_river_crew_board(rv_of(k), near, s + 1)) return false;
+    seat_boat[k][s] = near + 1;
+    seat_aboard(k, s);
+    return true;
+  }
   return false;
 }
+/* The room's floats one tick on (ducks, pads, the rowed and moored boats), once a tick before the steps. */
+void world_floats(int k, float dt) {
+  if (!world_of(k) || !river[k]) return;
+  floats_n[k] = (int)everglade_river_floats(rv_of(k), dt, (coax_v_f32){floats_out[k], WORLD_FLOATS * 8});
+}
+/* The n-th rowboat as the last tick left it: x y z yaw, its rower (a seat, -1 none), the oars' stroke (-1 shipped). */
+bool world_boat(int k, int n, float out[WORLD_BOAT]) {
+  if (!world_of(k) || !river[k]) return false;
+  for (int i = 0, m = 0; i < floats_n[k]; i++) {
+    const float *f = floats_out[k] + i * 8;
+    if ((int)f[7] != 2) continue;
+    if (m++ != n) continue;
+    out[0] = f[0]; out[1] = f[1]; out[2] = f[2]; out[3] = f[3];
+    out[4] = (float)(everglade_river_crew_of(rv_of(k), i) - 1); out[5] = f[6]; out[6] = (float)i;
+    return true;
+  }
+  return false;
+}
+/* Seat s, gone from the room: out of any boat it rowed. */
+void world_gone(int k, int s) { if (world_of(k) && s >= 0 && s < WORLD_SEATS) seat_ashore(k, s); }
 int world_doors(int k, int w) { return world_of(k) ? (int)everglade_room_doors(at(k), w) : 0; }
 void world_rebuild(int k) { if (world_of(k)) everglade_room_rebuild(at(k)); }
 int world_pieces(int k) { return world_of(k) ? (int)everglade_room_pieces(at(k)) : 0; }

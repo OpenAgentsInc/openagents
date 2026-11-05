@@ -637,6 +637,13 @@ everglade_boat_near :: (s: [] Everglade, i: int) #export_c { s[0].near_boat = i;
 everglade_boat_start :: (s: [] Everglade) -> bool #export_c { a := s[0].boat_start; s[0].boat_start = false; return a; }
 // True once when E (or the prompt) asked to board the boat near you or step ashore from yours.
 everglade_boat_take :: (s: [] Everglade) -> bool #export_c { a := s[0].boat_ask; s[0].boat_ask = false; return a; }
+// E at a rowboat: the face boards it (or steps you ashore) on your page; in a room the room is asked
+// too (WE_BOAT, #12861), so its world rows the boat with your inputs as your page does and every page
+// sees it move (the boat's row).
+boat_use :: (s: [] Everglade) {
+  s[0].boat_ask = true;
+  if s[0].water != WATER_BOAT { if net_boat(s, s[0].near_boat) {} } else { if net_boat(s, -1) {} }
+}
 // Whether a boat prompt shows: one near, or you sit in one, and no one else to talk to.
 boat_prompt_on :: (s: [] Everglade) -> bool {
   return !s[0].above && s[0].talk < 0 && !s[0].board && s[0].near < 0 && !s[0].near_board && s[0].doors.near < 0 && (s[0].near_boat >= 0 || s[0].water == WATER_BOAT);
@@ -1387,7 +1394,7 @@ everglade_key :: (s: [] Everglade, key: int, mods: int) -> bool #export_c {
   if (key == 'e' || key == 'E') && door_prompt_on(s) { door_use(s, s[0].doors.near); return true; }
   if (key == 'e' || key == 'E') && s[0].near < 0 && rest_on(s) { rest_take(s); return true; }
   if (key == 'e' || key == 'E') && s[0].near_board && !s[0].above { open_board(s); return true; }
-  if (key == 'e' || key == 'E') && boat_prompt_on(s) { s[0].boat_ask = true; return true; }
+  if (key == 'e' || key == 'E') && boat_prompt_on(s) { boat_use(s); return true; }
   if key == '+' || key == '=' { s[0].orbit = verse_orbit_zoom(s[0].orbit, -0.8); return true; }
   if key == '-' || key == '_' { s[0].orbit = verse_orbit_zoom(s[0].orbit, 0.8); return true; }
   if key == 'm' || key == 'M' { everglade_guard_invalidate(s); s[0].above = !s[0].above; return true; }
@@ -1775,7 +1782,7 @@ talk_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
     else if door_prompt_on(s) && in_box(s[0].talk_button, x, y) { door_use(s, s[0].doors.near); }
     else if s[0].near < 0 && rest_on(s) && in_box(s[0].talk_button, x, y) { rest_take(s); }
     else if s[0].talk < 0 && s[0].near_board && in_box(s[0].talk_button, x, y) { open_board(s); }
-    else if boat_prompt_on(s) && in_box(s[0].talk_button, x, y) { s[0].boat_ask = true; }
+    else if boat_prompt_on(s) && in_box(s[0].talk_button, x, y) { boat_use(s); }
   }
   if phase >= 2 { s[0].talk_finger = -1; }
   return true;

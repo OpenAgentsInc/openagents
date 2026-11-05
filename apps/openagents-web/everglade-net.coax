@@ -1151,6 +1151,15 @@ net_door :: (s: [] Everglade, i: int) -> bool {
   net_send(n, wire_put_use(n[0].out[..], 0, WireUse.{seq = n[0].seq, kind = WE_DOOR, id = i}));
   return true;
 }
+// E at rowboat i (its float; -1 out of yours): the room seats you in it or takes you out (WE_BOAT,
+// #12861). False when the socket is down.
+net_boat :: (s: [] Everglade, i: int) -> bool {
+  if !net_open(s) || i < -1 || i >= 999 { return false; }
+  n := net_of(s);
+  n[0].seq += 1;
+  net_send(n, wire_put_use(n[0].out[..], 0, WireUse.{seq = n[0].seq, kind = WE_BOAT, id = i}));
+  return true;
+}
 // Talking to townsperson i (-1: done): the room stops them and turns them to you on every page.
 net_talk :: (s: [] Everglade, i: int) -> bool {
   if !net_open(s) { return false; }
@@ -1180,6 +1189,24 @@ net_gates :: (s: [] Everglade) -> int {
     if en.live && en.kind == WK_DOORS { return en.form; }
   }
   return -1;
+}
+// The n-th rowboat the room has (its WK_BOAT row, #12861), for the face to put on your river: false
+// none heard. out: the float, who rows it (a seat + 1, 0 moored; you: -1, your own page rows it),
+// x y z yaw, the oars' share (-1 shipped).
+net_boat_row :: (s: [] Everglade, b: int, out: [] f32) -> bool #export_c {
+  if !net_live(s) || out.count < 7 { return false; }
+  n := net_of(s);
+  for e: 0..<NET_ENTS {
+    en := n[0].ents[e];
+    if !en.live || en.kind != WK_BOAT || en.eid != NET_MADE_ID + WIRE_BOAT_EID + b || en.ring_n == 0 { continue; }
+    st := en.ring[en.ring_n - 1];
+    out[0] = f32(en.p1);
+    out[1] = ifx en.owner < 0 then 0.0f32 else ifx en.owner == n[0].seat then -1.0f32 else f32(en.owner + 1);
+    out[2] = st.x; out[3] = st.y; out[4] = st.z; out[5] = st.yaw;
+    out[6] = ifx en.p2 < 0 then -1.0f32 else f32(en.p2) / 1000;
+    return true;
+  }
+  return false;
 }
 net_rebuild :: (s: [] Everglade) -> bool {
   if !net_open(s) { return false; }

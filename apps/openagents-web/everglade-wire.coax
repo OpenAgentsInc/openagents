@@ -89,6 +89,8 @@ WK_ZONE :: 24;             // a lingering zone (Moonbeam, Sleet Storm, Fog Cloud
 WK_DOORS :: 31;            // the town's doors the room has open: one row always, P1 doors 0 to 30, P2 31 to 61 (a bit each; WIRE_DOOR_WORD)
 WIRE_DOOR_WORD :: 31; WIRE_DOOR_WORDS :: 2;
 WIRE_DOORS_EID :: 960000;   // the doors row's id: WIRE_ID_MADE + WIRE_DOORS_EID
+WK_BOAT :: 25;             // a rowboat (#12861): one row each always; OWNER the seat that rows it (-1 moored), P1 its float (river.coax), P2 the oars' stroke in thousandths (-1 shipped)
+WIRE_BOAT_EID :: 961000;   // the n-th boat row's id: WIRE_ID_MADE + WIRE_BOAT_EID + n
 WK_EFFECT :: 30;           // a condition, buff or hold that lasts: OWNER the TGT code it is on, P1 the slot or ability, P2 its WC_* bit, T0 and DUR
 // an effect's cause (WK_EFFECT's P1) for the watch's spells on a player (everglade-status.coax ST_*)
 WE_HOLD_PERSON :: 0; WE_EARTHBIND :: 1; WE_RAY_OF_FROST :: 2; WE_WATCH :: 3;

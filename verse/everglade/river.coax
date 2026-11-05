@@ -161,6 +161,9 @@ River :: struct {
   float_tick: u64; float_clock: FrameClock;   // the floats' steps: 1/120 s, 0.25 s frames at most, 8 steps
   // the rowboat you sit in (a float's index, -1 none), the stroke's clock and what you ask of it
   aboard: int; oar_t: f32; row_on: f32; row_ahead: f32; row_turn: f32; oar_wet: bool;
+  // a room's rowers (#12861): who rows each float (a seat + 1, 0 none), its stroke's clock and what they
+  // ask of it; the room server's river has many rowers, a page's only you (aboard)
+  crew: [FLOATS] int; crew_t: [FLOATS] f32; crew_a: [FLOATS] f32; crew_r: [FLOATS] f32;
   // the wakes: each mover's trail (x, z, when, speed; the newest first), and when it last laid a point
   trail: [TRAIL_FLOATS] f32; trail_t: [WAKE_MOVERS] f32;
   // the particles (FX_FLOATS each): spray, mist, drips, steam
@@ -630,11 +633,13 @@ everglade_river_floats :: (r: [] River, dt: f32, out: [] f32) -> int #export_c {
     n := water_apply(w, r[0].colliders[0..<r[0].float_n], r[0].set, w.tick, FLOAT_STEP, water_settings(), every[0..<0], r[0].pushes[..]);
     for i: 0..<r[0].float_n {
       if i == r[0].aboard { r[0].floats[i] = boat_row(r, r[0].floats[i], FLOAT_STEP); continue; }
+      if r[0].crew[i] > 0 { r[0].floats[i] = crew_row(r, i); continue; }
       r[0].floats[i] = float_steer(r[0].floats[i], i, r[0].kinds[i], r[0].homes[i * 3], r[0].homes[i * 3 + 1], r[0].homes[i * 3 + 2], r[0].float_tick);
       if r[0].field_n > 0 { r[0].floats[i] = float_field(r, r[0].floats[i], i, FLOAT_STEP); }
     }
     w = rigid_step(w, gravity);
     boat_shore(r, r[0].aboard);
+    for i: 0..<r[0].float_n { if r[0].crew[i] > 0 { boat_shore(r, i); } }
     r[0].float_tick = w.tick;
   }
   r[0].float_clock = loop_ran(c);
@@ -649,7 +654,7 @@ everglade_river_floats :: (r: [] River, dt: f32, out: [] f32) -> int #export_c {
     up := dq_rotate(b.orientation, D3_Y);
     out[k + 4] = cast(f32) acos_d(fclamp(up.y, -1.0, 1.0)); out[k + 5] = cast(f32) atan_d2(up.x, up.z); out[k + 6] = 0;
     // a rowboat's oars: the stroke's share while you row it (everglade.coax rowboat), -1 shipped
-    if r[0].kinds[i] == FLOAT_BOAT { out[k + 6] = ifx i == r[0].aboard then oar_phase(r[0].oar_t) else -1.0f32; }
+    if r[0].kinds[i] == FLOAT_BOAT { out[k + 6] = ifx i == r[0].aboard then oar_phase(r[0].oar_t) else ifx r[0].crew[i] > 0 then oar_phase(r[0].crew_t[i]) else -1.0f32; }
     out[k + 7] = f32(r[0].kinds[i]);
     count += 1;
   }
@@ -739,7 +744,7 @@ everglade_river_boat_near :: (r: [] River, x: f32, z: f32) -> int #export_c {
   if !r[0].ready || r[0].aboard >= 0 { return -1; }
   best := -1; near := BOAT_REACH;
   for i: 0..<r[0].float_n {
-    if r[0].kinds[i] != FLOAT_BOAT { continue; }
+    if r[0].kinds[i] != FLOAT_BOAT || r[0].crew[i] > 0 { continue; }   // another seat rows it (a room's, everglade_river_pin)
     d := boat_gap(r[0].floats[i], f64(x), f64(z));
     if d < near { near = d; best = i; }
   }
@@ -786,6 +791,15 @@ everglade_river_leave :: (r: [] River, heights: [] f32, time: f64) -> Seat #expo
   out: Seat; out.boat = -1;
   i := r[0].aboard;
   if !r[0].ready || i < 0 { return out; }
+  out = boat_off(r, heights, time, i);
+  r[0].aboard = -1; r[0].row_ahead = 0; r[0].row_turn = 0;
+  r[0].medium = MEDIUM_GROUND; r[0].afloat = false; r[0].splashed = false;
+  return out;
+}
+// Where you step out of boat i (the bank or shallows within 2.5 m of its hull, else the water beside
+// it), the boat tied up where it is.
+boat_off :: (r: [] River, heights: [] f32, time: f64, i: int) -> Seat {
+  out: Seat; out.boat = -1;
   b := r[0].floats[i];
   yaw := yaw_of_q(b.orientation);
   ax := sin(yaw); az := cos(yaw);
@@ -806,12 +820,89 @@ everglade_river_leave :: (r: [] River, heights: [] f32, time: f64) -> Seat #expo
     if d < best { best = d; bx = px; bz = pz; }
   }
   r[0].homes[i * 3] = b.pos.x; r[0].homes[i * 3 + 1] = b.pos.z; r[0].homes[i * 3 + 2] = yaw;
-  r[0].aboard = -1; r[0].row_ahead = 0; r[0].row_turn = 0;
-  r[0].medium = MEDIUM_GROUND; r[0].afloat = false; r[0].splashed = false;
   out.on = true; out.boat = i;
   out.x = cast(f32) bx; out.z = cast(f32) bz; out.y = river_bed(r, heights, cast(f32) bx, cast(f32) bz);
   out.yaw = cast(f32) yaw;
   return out;
+}
+
+// ---- a room's rowers (#12861): each seat rows its own boat in the room server's one river
+
+// The free rowboat (no one rows it) within BOAT_REACH of (x, z), -1 none.
+everglade_river_crew_near :: (r: [] River, x: f32, z: f32) -> int #export_c {
+  if !r[0].ready { return -1; }
+  best := -1; near := BOAT_REACH;
+  for i: 0..<r[0].float_n {
+    if r[0].kinds[i] != FLOAT_BOAT || r[0].crew[i] > 0 { continue; }
+    d := boat_gap(r[0].floats[i], f64(x), f64(z));
+    if d < near { near = d; best = i; }
+  }
+  return best;
+}
+// Who rows float i (a seat + 1, 0 none).
+everglade_river_crew_of :: (r: [] River, i: int) -> int #export_c { return ifx i >= 0 && i < r[0].float_n then r[0].crew[i] else 0; }
+// Rower WHO (a seat + 1) into rowboat i, when no one rows it.
+everglade_river_crew_board :: (r: [] River, i: int, who: int) -> bool #export_c {
+  if !r[0].ready || who <= 0 || i < 0 || i >= r[0].float_n || r[0].kinds[i] != FLOAT_BOAT || r[0].crew[i] > 0 { return false; }
+  r[0].crew[i] = who; r[0].crew_t[i] = 0; r[0].crew_a[i] = 0; r[0].crew_r[i] = 0;
+  return true;
+}
+// What boat i's rower asks of the oars this step (as everglade_river_row).
+everglade_river_crew_row :: (r: [] River, i: int, ahead: f32, turn: f32) #export_c {
+  if i < 0 || i >= r[0].float_n || r[0].crew[i] <= 0 { return; }
+  r[0].crew_a[i] = ifx ahead == ahead then clamp_f(ahead, -1, 1) else 0.0f32;
+  r[0].crew_r[i] = ifx turn == turn then clamp_f(turn, -1, 1) else 0.0f32;
+}
+// Boat i's rower's seat (as everglade_river_seat).
+everglade_river_crew_seat :: (r: [] River, i: int) -> Seat #export_c {
+  out: Seat; out.boat = -1;
+  if !r[0].ready || i < 0 || i >= r[0].float_n || r[0].crew[i] <= 0 { return out; }
+  b := r[0].floats[i];
+  out.on = true; out.boat = i;
+  out.x = cast(f32) b.pos.x; out.z = cast(f32) b.pos.z; out.y = cast(f32) (b.pos.y + BOAT_SEAT);
+  out.yaw = cast(f32) yaw_of_q(b.orientation);
+  out.speed = cast(f32) sqrt(b.vel.x * b.vel.x + b.vel.z * b.vel.z);
+  return out;
+}
+// Boat i's rower out of it (as everglade_river_leave): where their feet go; the boat is free.
+everglade_river_crew_leave :: (r: [] River, heights: [] f32, time: f64, i: int) -> Seat #export_c {
+  out: Seat; out.boat = -1;
+  if !r[0].ready || i < 0 || i >= r[0].float_n || r[0].crew[i] <= 0 { return out; }
+  out = boat_off(r, heights, time, i);
+  r[0].crew[i] = 0; r[0].crew_a[i] = 0; r[0].crew_r[i] = 0;
+  return out;
+}
+// Boat i, its rower gone (a seat that left the room): tied up where it is, free.
+everglade_river_crew_free :: (r: [] River, i: int) #export_c {
+  if i < 0 || i >= r[0].float_n || r[0].crew[i] <= 0 { return; }
+  b := r[0].floats[i];
+  r[0].homes[i * 3] = b.pos.x; r[0].homes[i * 3 + 1] = b.pos.z; r[0].homes[i * 3 + 2] = yaw_of_q(b.orientation);
+  r[0].crew[i] = 0; r[0].crew_a[i] = 0; r[0].crew_r[i] = 0;
+}
+// A page in a room: rowboat i where the room has it, rowed by another seat (stroke: the oars' share,
+// -1 shipped) or moored (who 0): put there, tied up there, and not yours to board while rowed.
+everglade_river_pin :: (r: [] River, i: int, who: int, x: f32, y: f32, z: f32, yaw: f32, stroke: f32) #export_c {
+  if !r[0].ready || i < 0 || i >= r[0].float_n || r[0].kinds[i] != FLOAT_BOAT || i == r[0].aboard { return; }
+  if !(x == x) || !(z == z) || !(yaw == yaw) { return; }
+  r[0].homes[i * 3] = f64(x); r[0].homes[i * 3 + 1] = f64(z); r[0].homes[i * 3 + 2] = f64(yaw);
+  r[0].crew[i] = ifx who > 0 then who else 0;
+  r[0].crew_a[i] = 0; r[0].crew_r[i] = 0;
+  r[0].crew_t[i] = ifx stroke >= 0 then stroke * f32(BOAT_STROKE) else 0.0f32;
+  if who <= 0 { return; }   // moored: its line pulls it to where the room tied it up
+  b := r[0].floats[i];
+  b.pos = d3(f64(x), b.pos.y, f64(z));
+  b.orientation = dq_y(f64(yaw));
+  b.vel = d3(0.0, b.vel.y, 0.0); b.omega = d3(0.0, 0.0, 0.0);
+  r[0].floats[i] = b;
+}
+// One fixed step of boat i under its rower: the same stroke as yours (boat_row), on its own clock.
+crew_row :: (r: [] River, i: int) -> RigidBody {
+  t := r[0].oar_t; a := r[0].row_ahead; tr := r[0].row_turn;
+  r[0].oar_t = r[0].crew_t[i]; r[0].row_ahead = r[0].crew_a[i]; r[0].row_turn = r[0].crew_r[i];
+  b := boat_row(r, r[0].floats[i], FLOAT_STEP);
+  r[0].crew_t[i] = r[0].oar_t;
+  r[0].oar_t = t; r[0].row_ahead = a; r[0].row_turn = tr;
+  return b;
 }
 
 // ---- the shore: a rowed boat runs aground at the water's edge, its bow never on the grass
@@ -1595,6 +1686,38 @@ test_pond :: (heights: [] f32, all: [] f32) {
   gx := f64(off.x) - b2.pos.x; gz := f64(off.z) - b2.pos.z;
   #assert sqrt(gx * gx + gz * gz) < 5;
   #assert abs(r[0].homes[boat * 3] - b2.pos.x) < 0.001 && everglade_river_boat_near(r[..], cast(f32) b2.pos.x + 9, cast(f32) b2.pos.z + 9) == -1;
+}
+
+#test "a room's rowers: a seat boards a free boat, rows it on its own clock, holds it from others, and leaves it tied up (#12861)" {
+  heights: [(TEST_N + 1) * (TEST_N + 1)] f32;
+  all: [TEST_N + 1 + PONDS * 4] f32;
+  test_pond(heights[..], all[..]);
+  r: [1] River;
+  everglade_river_start(r[..], heights[..], all[..], TEST_N, 2, -176, -176);
+  out: [FLOATS * 8] f32;
+  for q: 0..<30 { fl := everglade_river_floats(r[..], 1.0 / 60.0, out[..]); }
+  boat := everglade_river_first_boat(r[..]);
+  b0 := r[0].floats[boat];
+  bx := cast(f32) b0.pos.x; bz := cast(f32) b0.pos.z;
+  #assert everglade_river_crew_near(r[..], bx, bz) == boat && everglade_river_crew_near(r[..], bx + 9, bz + 9) == -1;
+  #assert everglade_river_crew_board(r[..], boat, 4) && everglade_river_crew_of(r[..], boat) == 4;
+  // held: no one else boards it, and it is no longer anyone's near boat
+  #assert !everglade_river_crew_board(r[..], boat, 7) && everglade_river_crew_near(r[..], bx, bz) == -1;
+  // a page's aboard is not touched: the room's river has no "you"
+  #assert r[0].aboard == -1;
+  yaw0 := yaw_of_q(b0.orientation);
+  everglade_river_crew_row(r[..], boat, 1, 0);
+  oars := false;
+  for q: 0..<120 { fl := everglade_river_floats(r[..], 1.0 / 60.0, out[..]); if out[boat * 8 + 6] > 0.1 { oars = true; } }
+  b1 := r[0].floats[boat];
+  ahead := (b1.pos.x - b0.pos.x) * sin(yaw0) + (b1.pos.z - b0.pos.z) * cos(yaw0);
+  st := everglade_river_crew_seat(r[..], boat);
+  #assert oars && ahead > 0.4 && st.on && st.boat == boat && st.speed > 0.2 && abs(st.y - cast(f32) (b1.pos.y + BOAT_SEAT)) < 0.01;
+  off := everglade_river_crew_leave(r[..], heights[..], 10, boat);
+  #assert off.on && everglade_river_crew_of(r[..], boat) == 0 && abs(r[0].homes[boat * 3] - r[0].floats[boat].pos.x) < 0.001;
+  #assert everglade_river_crew_board(r[..], boat, 7);
+  everglade_river_crew_free(r[..], boat);
+  #assert everglade_river_crew_of(r[..], boat) == 0;
 }
 
 #test "rowed into the bank, the boat stops at the water's edge: no corner of its hull over the grass" {
