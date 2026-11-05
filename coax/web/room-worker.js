@@ -181,6 +181,18 @@ function roomWorker(wasmUrl) {
   worker.onerror = (e) => { host.failed = e.message || "the room worker failed"; for (const k of sockets.values()) k.closed(); };
   return worker;
 }
+// The page left the local host for a room (#12882): with no socket to it for IDLE_MS, the worker
+// stops, so a page in a room spends nothing on it. A page back on it boots a fresh one.
+const IDLE_MS = 10000;
+let idleTimer = 0;
+function idle() {
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => {
+    if (sockets.size || !worker) return;
+    worker.terminate(); worker = null;
+    if (globalThis.coaxial?.roomHost) globalThis.coaxial.roomHost.stopped = true;
+  }, IDLE_MS);
+}
 // A socket to the local host: readyState, send, close and the four handlers, as a WebSocket's.
 export function localRoomSocket(url, wasmUrl) {
   const path = url.slice("local:".length);
@@ -190,7 +202,7 @@ export function localRoomSocket(url, wasmUrl) {
   const s = {
     readyState: 0,
     send(text) { if (s.readyState === 1) w.postMessage({ t: "frame", id, text }); },
-    close() { if (s.readyState > 1) return; w.postMessage({ t: "close", id }); s.readyState = 3; sockets.delete(id); },
+    close() { if (s.readyState > 1) return; w.postMessage({ t: "close", id }); s.readyState = 3; sockets.delete(id); idle(); },
     closed() { if (s.readyState === 3) return; s.readyState = 3; sockets.delete(id); s.onclose?.(); },
   };
   sockets.set(id, s);
