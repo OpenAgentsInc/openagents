@@ -50,6 +50,10 @@ func runEffects() throws {
             let path = try required(op["file"] as? String,"raw display snapshot")
             guard mf_snapshot_presented_raw(host,path) else { throw MetalEffectFailure.failed("raw UNORM display readback") }
             snapshots.append(path)
+        case "media-raw":
+            let path = try required(op["file"] as? String,"media snapshot"), url = try required(op["url"] as? String,"media URL")
+            guard mf_media_snapshot(host,url,path) else { throw MetalEffectFailure.failed("actual ready media texture readback") }
+            snapshots.append(path)
         case "replay":
             let path = try required(op["file"] as? String, "frame config")
             guard mf_replay(host,path) else { throw MetalEffectFailure.failed(mf_error(host).map { String(cString:$0) } ?? "frozen frame refused") }

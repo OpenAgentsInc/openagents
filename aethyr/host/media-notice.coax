@@ -1,0 +1,47 @@
+// Still-image ready/failed facts use the existing607 message envelope.
+// Hosts defer this payload until outside the producer call. No partial row
+// or truncated message is published; pending rows are omitted.
+#authority;
+HostMediaNotice :: struct {url:string;ready:bool;failed:bool;width:int;height:int;}
+htn_kind :: ()->int #export_c {return 607;}
+#test "media notices preserve exact ready dimensions failed zeros and pending omission" {
+ rows:=[4]HostMediaNotice.[HostMediaNotice.{url="/first",ready=true,width=48,height=13},HostMediaNotice.{url="/pending"},HostMediaNotice.{url="/bad",failed=true,width=81,height=82},HostMediaNotice.{url="/last",ready=true,width=2048,height=1}];out:[128]u8;
+ n:=htn_format(rows[..],out[..]);#assert htn_kind()==607&&n==34&&cast(string)out[0..<n]=="/first 48 13\n/bad 0 0\n/last 2048 1";
+ for cap:0..<34 {for i:0..<out.count {out[i]=217;}#assert htn_format(rows[..],out[0..<cap])== -1;for b:out {#assert b==217;}}
+ #assert htn_format(rows[..],out[0..<34])==34&&out[34]==217;
+}
+#test "media notice capacity is atomic including separator and every decimal digit" {
+ rows:=[1]HostMediaNotice.[HostMediaNotice.{url="/x",ready=true,width=100,height=999}];out:[16]u8;for i:0..<out.count {out[i]=173;}
+ #assert htn_format(rows[..],out[0..<9])== -1;for b:out {#assert b==173;}
+ #assert htn_format(rows[..],out[0..<10])==10&&cast(string)out[0..<10]=="/x 100 999"&&out[10]==173;
+}
+#forall "media notice invalid facts refuse before any output write" which:0..<12 {
+ rows:=[2]HostMediaNotice.[HostMediaNotice.{url="/ok",ready=true,width=1,height=1},HostMediaNotice.{url="/bad",ready=true,width=1,height=1}];
+ if which==0 {rows[1].url="";}if which==1 {rows[1].url="relative";}if which==2 {rows[1].url="//cross";}if which==3 {rows[1].url="/line\nnext";}if which==4 {rows[1].url="/space here";}if which==5 {rows[1].url="/tab\tstop";}if which==6 {rows[1].ready=true;rows[1].failed=true;}if which==7 {rows[1].width=0;}if which==8 {rows[1].height=-1;}if which==9 {rows[1].width=2049;}if which==10 {rows[1].height=2049;}if which==11 {rows[1].url="/ok";}
+ out:[128]u8;for i:0..<out.count {out[i]=197;}#assert htn_format(rows[..],out[..])== -1;for b:out {#assert b==197;}
+}
+#test "media notice empty or entirely pending input emits no bytes and the context bound is exact" {
+ rows:[113]HostMediaNotice;urls:[113][4]u8;out:[4096]u8;
+ for i:0..<rows.count {urls[i][0]='/';urls[i][1]=cast(u8)('0'+i/100);urls[i][2]=cast(u8)('0'+(i/10)%10);urls[i][3]=cast(u8)('0'+i%10);rows[i].url=cast(string)urls[i][..];}
+ out[0]=71;#assert htn_format(rows[0..<0],out[..])==0&&out[0]==71&&htn_format(rows[0..<112],out[..])==0&&htn_format(rows[..],out[..])== -1;
+ rows[0].ready=true;rows[0].width=10;rows[0].height=99;#assert htn_format(rows[0..<112],out[..])==10&&cast(string)out[0..<10]=="/000 10 99";
+}
+#test "media notice root URL punctuation and DEL retain exact published token boundaries" {
+ rows:=[1]HostMediaNotice.[HostMediaNotice.{url="/",ready=true,width=1,height=2048}];out:[16]u8;#assert htn_format(rows[..],out[..])==8&&cast(string)out[0..<8]=="/ 1 2048";
+ rows[0].url="/!";#assert htn_format(rows[..],out[..])==9&&cast(string)out[0..<9]=="/! 1 2048";
+ del:=[2]u8.[47,127];rows[0].url=cast(string)del[..];#assert htn_format(rows[..],out[..])== -1;
+ rows[0].url="//";#assert htn_format(rows[..],out[..])== -1;
+}
+htn_digits :: (value:int)->int {v:=value;n:=1;while v>=10 {v/=10;n+=1;}return n;}
+htn_number :: (out:[]u8,at:int,value:int)->int {digits:[4]u8;n:=0;v:=value;while true {digits[n]=cast(u8)('0'+v%10);n+=1;v/=10;if v==0 {break;}}for i:0..<n {out[at+i]=digits[n-1-i];}return at+n;}
+htn_format :: (rows:[]HostMediaNotice,out:[]u8)->int #export_c {
+ if rows.count>112 {return -1;}need:=0;first:=true;
+ for row,i:rows {
+  if row.url.count<1||row.url[0]!='/'||(row.url.count>1&&row.url[1]=='/')||(row.ready&&row.failed) {return -1;}
+  for c:row.url {if c<=32||c==127 {return -1;}}for j:0..<i {if rows[j].url==row.url {return -1;}}
+  if row.ready&&(row.width<1||row.height<1||row.width>2048||row.height>2048) {return -1;}
+  if row.ready||row.failed {fixed:=ifx row.ready then 2+htn_digits(row.width)+htn_digits(row.height) else 4;separator:=ifx first then 0 else 1;if row.url.count>out.count-need-fixed-separator {return -1;}need+=row.url.count+fixed+separator;first=false;}
+ }
+ at:=0;first=true;for row:rows {if row.ready||row.failed {if !first {out[at]='\n';at+=1;}for c:row.url {out[at]=c;at+=1;}out[at]=' ';at+=1;at=htn_number(out,at,ifx row.ready then row.width else 0);out[at]=' ';at+=1;at=htn_number(out,at,ifx row.ready then row.height else 0);first=false;}}
+ return at;
+}

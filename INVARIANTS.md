@@ -87,6 +87,18 @@ is recorded explicitly. The layer/profile and observer root gates kill 75
 and 38 mutants, with no survivors or equivalents. This asset receipt does
 not qualify the remaining display/default decision.
 
+Version 1 native still-image media consumes the original compressed bytes
+through `aethyr/render/host-image.coax`, retaining natural rectangular extent
+and exactly one shared premultiplied byte round trip. Metadata bounds source,
+workspace and output before the SDK allocates them; a failed decode never
+publishes a successful prefix or falls back to a platform decoder. The SDK
+uploads the returned RGBA bytes directly and retains them for recovery.
+All 47 decoder root mutants are killed without equivalents; actual native
+readback matches all 64,512 bytes of the seven authored JPEGs before and
+after recovery. Pre-contract faces retain their earlier ImageIO path. The
+render media composition authority remains `host-media.coax`; this decoder
+does not replace its readiness, URL, extent or physical texture admission.
+
 ## The indexed KV arena preserves the durable v1 contract
 
 `coax/lib/bitcoin/kvskip.coax` is an optional native representation behind

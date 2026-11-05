@@ -1,0 +1,43 @@
+// Actual native media GPU bytes compared with the shared compressed decoder.
+// The SDK executes the authored workload and reads back logical RGBA rows.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/crypto/sha256-kernel.coax";
+#load "../../aethyr/render/host-image.coax";
+mmb_names :: [7]string.["meteor-swarm-48.jpg","thunderbolt-48.jpg","mega-thunderbolt-48.jpg","water-orb-48.jpg","reverse-gravity-48.jpg","wind-wall-48.jpg","next-row-48.jpg"];
+mmb_field :: (o:[]Jo,key:string,value:string) {jo_key(o,key);jo_str(o,value);}
+mmb_hash :: (o:[]Jo,key:string,bytes:[]u8) {hash:[64]u8;if S_hex(S_hash(cast(string)bytes),hash[..]) {mmb_field(o,key,cast(string)hash[..]);}}
+mmb_suffix :: (name:string,suffix:string,out:[]u8)->string {o:[1]Jo;jo_start(o[..],out);jo_put(o[..],name);jo_put(o[..],suffix);return jo_text(o[..]);}
+mmb_differences :: (left:[]u8,right:[]u8)->int {if left.count!=right.count {return -1;}n:=0;for i:0..<left.count {if left[i]!=right[i] {n+=1;}}return n;}
+#test "media GPU byte comparison counts every differing lane and rejects wrong extents" {
+ left:=[5]u8.[0,1,2,3,255];right:=[5]u8.[0,2,2,4,0];#assert mmb_differences(left[..],left[..])==0&&mmb_differences(left[..],right[..])==3&&mmb_differences(left[..],right[0..<4])== -1;
+}
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])!=4 {tool_errln("usage: metal-media-bank ROOT RESOURCES EFFECTS NEW_OUTPUT");return 2;}
+ root:=args_at(a[..],0);res:=args_at(a[..],1);effects:=args_at(a[..],2);dir:=args_at(a[..],3);paths:[10][4096]u8;
+ if !fs_mkdir(dir) {return 1;}sourceDir:=fs_join(res,"web/realms/everglade/hotbar",paths[0][..]);facts:[65536]u8;fn:=fs_read(fs_join(root,"verse/native/everglade.facts",paths[1][..]),facts[..]);if fn<1 {return 1;}while fn>0&&facts[fn-1]=='\n' {fn-=1;}
+ plan:[65536]u8;o:[1]Jo;jo_start(o[..],plan[..]);jo_obj(o[..]);mmb_field(o[..],"schema","aethyr.metal.effects.v1");jo_key(o[..],"golden");jo_bool(o[..],true);jo_key(o[..],"operations");jo_arr(o[..]);
+ for kind:[2]int.[600,606] {jo_obj(o[..]);mmb_field(o[..],"op","message");jo_key(o[..],"kind");jo_int(o[..],kind);mmb_field(o[..],"text",ifx kind==600 then cast(string)facts[0..<fn] else "");jo_end(o[..]);}
+ for i:0..<2 {jo_obj(o[..]);mmb_field(o[..],"op","frame");for key,k:[4]string.["width","height","scale","dt"] {jo_key(o[..],key);if k==3 {jo_raw(o[..],"0.016666666666666666");}else {jo_int(o[..],ifx k==0 then 320 else ifx k==1 then 180 else 1);}}jo_end(o[..]);}
+ names:[7][256]u8;urls:[7][256]u8;
+ for name,i:mmb_names {raw:=mmb_suffix(name,".rgba",names[i][..]);u:[1]Jo;jo_start(u[..],urls[i][..]);jo_put(u[..],"/worlds/everglade/hotbar/");jo_put(u[..],name);jo_obj(o[..]);mmb_field(o[..],"op","media-raw");mmb_field(o[..],"url",jo_text(u[..]));mmb_field(o[..],"file",fs_join(dir,raw,paths[2][..]));jo_end(o[..]);}
+ jo_obj(o[..]);mmb_field(o[..],"op","recover");jo_end(o[..]);
+ jo_obj(o[..]);mmb_field(o[..],"op","frame");for key,k:[4]string.["width","height","scale","dt"] {jo_key(o[..],key);if k==3 {jo_raw(o[..],"0.016666666666666666");}else {jo_int(o[..],ifx k==0 then 320 else ifx k==1 then 180 else 1);}}jo_end(o[..]);
+ for name,i:mmb_names {raw:=mmb_suffix(name,".recovered.rgba",names[i][..]);u:[1]Jo;jo_start(u[..],urls[i][..]);jo_put(u[..],"/worlds/everglade/hotbar/");jo_put(u[..],name);jo_obj(o[..]);mmb_field(o[..],"op","media-raw");mmb_field(o[..],"url",jo_text(u[..]));mmb_field(o[..],"file",fs_join(dir,raw,paths[2][..]));jo_end(o[..]);}
+ jo_end(o[..]);jo_end(o[..]);input:=fs_join(dir,"plan.json",paths[3][..]);report:=fs_join(dir,"sdk.json",paths[4][..]);if o[0].bad||!fs_write(input,jo_text(o[..])) {return 1;}
+ run:=[5]string.[effects,res,fs_join(res,"metal/libeverglade.dylib",paths[5][..]),input,report];stdout:[1048576]u8;stderr:[65536]u8;r:=proc_run(run[..],60000,stdout[..],stderr[..]);
+ if !fs_write(fs_join(dir,"sdk-stdout.txt",paths[6][..]),cast(string)stdout[0..<r.out_n])||!fs_write(fs_join(dir,"sdk-stderr.txt",paths[7][..]),cast(string)stderr[0..<r.err_n]) {return 1;}if r.started!=0||r.status!=0||r.cut||r.timed_out {tool_errln(cast(string)stderr[0..<r.err_n]);return 1;}
+ source:[1048576]u8;work:[262144]u8;decoded:[65536]u8;actual:[65536]u8;receipt:[32768]u8;jo_start(o[..],receipt[..]);jo_obj(o[..]);mmb_field(o[..],"schema","aethyr.metal.canonical-media.v1");jo_key(o[..],"images");jo_arr(o[..]);different:=0;total:=0;recovered:=0;list:[4096]u8;l:[1]Jo;jo_start(l[..],list[..]);
+ for name,i:mmb_names {n:=fs_read(fs_join(sourceDir,name,paths[8][..]),source[..]);if n<1 {return 1;}p:=htm_plan(source[0..<n]);if p.status!=IMG_OK||p.width!=48||p.height!=48||p.bytes>decoded.count||p.work>work.count||htm_decode(source[0..<n],work[0..<p.work],decoded[0..<p.bytes])!=IMG_OK {return 1;}
+  if !fs_write(fs_join(dir,name,paths[8][..]),cast(string)source[0..<n]) {return 1;}raw:=mmb_suffix(name,".rgba",names[i][..]);rn:=fs_read(fs_join(dir,raw,paths[8][..]),actual[..]);if rn!=p.bytes {return 1;}delta:=mmb_differences(decoded[0..<p.bytes],actual[0..<rn]);different+=delta;total+=rn;
+  canonical:[256]u8;if !fs_write(fs_join(dir,mmb_suffix(name,".expected.rgba",canonical[..]),paths[8][..]),cast(string)decoded[0..<p.bytes]) {return 1;}
+  jo_put(l[..],name);jo_put(l[..],"\n");jo_obj(o[..]);mmb_field(o[..],"file",name);for key,k:[4]string.["width","height","bytes","different"] {jo_key(o[..],key);jo_int(o[..],ifx k==0 then p.width else ifx k==1 then p.height else ifx k==2 then p.bytes else delta);}mmb_hash(o[..],"source_sha256",source[0..<n]);mmb_hash(o[..],"expected_rgba_sha256",decoded[0..<p.bytes]);mmb_hash(o[..],"gpu_rgba_sha256",actual[0..<rn]);rn=fs_read(fs_join(dir,mmb_suffix(name,".recovered.rgba",canonical[..]),paths[8][..]),actual[..]);if rn!=p.bytes {return 1;}delta=mmb_differences(decoded[0..<p.bytes],actual[0..<rn]);recovered+=delta;jo_key(o[..],"recovered_different");jo_int(o[..],delta);mmb_hash(o[..],"recovered_rgba_sha256",actual[0..<rn]);jo_end(o[..]);
+ }
+ sn:=fs_read(report,plan[..]);d:[1]Jv;nodes:[512]JvNode;if sn<1||!jv_parse(d[..],cast(string)plan[0..<sn],nodes[..]) {return 1;}closed:=true;for key,k:[6]string.["frames","completed","pending","recoveries","closedLedgerLive","closedLedgerWords"] {if jv_int(d[0],jv_get(d[0],0,key),-1)!=(ifx k<2 then 3 else ifx k==3 then 1 else 0) {closed=false;}}
+ jo_end(o[..]);jo_key(o[..],"bytes");jo_int(o[..],total);jo_key(o[..],"different");jo_int(o[..],different);jo_key(o[..],"recovered_different");jo_int(o[..],recovered);jo_key(o[..],"completed_and_closed");jo_bool(o[..],closed);mmb_field(o[..],"status",ifx different==0&&recovered==0&&closed then "pass" else "fail");jo_end(o[..]);if o[0].bad||l[0].bad||!fs_write(fs_join(dir,"media.list",paths[9][..]),jo_text(l[..]))||!fs_write(fs_join(dir,"comparison.json",paths[9][..]),jo_text(o[..])) {return 1;}
+ jo_start(l[..],list[..]);for name:mmb_names {jo_put(l[..],"/worlds/everglade/hotbar/");jo_put(l[..],name);jo_put(l[..],"\n");}if l[0].bad||!fs_write(fs_join(dir,"media.urls",paths[9][..]),jo_text(l[..])) {return 1;}
+ print("Actual media GPU: %/% byte differences across7 authored images; recovered:%; completed/closed:%\n",different,total,recovered,closed);return ifx different==0&&recovered==0&&closed then 0 else 1;
+}

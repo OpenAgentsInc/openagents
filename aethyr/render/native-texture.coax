@@ -2,6 +2,7 @@
 // decoder as the reference frame. The C adapter only uploads the original
 // admitted bytes into the corresponding Vulkan format.
 #load "reference-texture.coax";
+#load "host-image.coax";
 aethyr_native_texture_require :: (rnt_name:string,rnt_layers:int,rnt_levels:[]RenderTextureLevel)->RFTextureNeed #export_c {
   return rf_texture_require(rnt_name,rnt_layers,rnt_levels);
 }

@@ -312,7 +312,56 @@ separate composition check: `handoff-presentation-v1/actual-native-vs-wasm.json`
 records 2,213 channels outside the unchanged rule, above the 2,000 allowance,
 with zero nonfinite values or masks. The exact native producer, actual asset
 path and matched Wasm handoff are retained, without adding outlier counts.
-This is a blocker. The new `host-image.coax` canonical PNG/JPEG base decoder
-kills all 47 root mutants; its native/browser upload migration is pending.
+That receipt retains the caught blocker. The new `host-image.coax` canonical
+PNG/JPEG base decoder kills all 47 root mutants. Its subsequent native asset
+migration and matched composition observations are recorded below.
 The policy and shader stay private/disabled; ordinary target selection and
 the desktop default remain unchanged.
+
+## Canonical native media boundary
+
+`media-canonical/red/` reproduces 3,830 differing bytes out of 64,512 actual
+GPU bytes across all seven authored 48×48 hotbar JPEGs when native uses
+ImageIO. `media-canonical/green/` records zero differing bytes after v1 native
+uploads use `htm_plan`/`htm_decode` from `host-image.coax`. It retains each
+original compressed file, same-index `media.list`/`media.urls`, canonical
+expected RGBA and actual GPU readback. Every byte also matches after resource
+recovery. Three frames complete, pending is zero and the closed ledger is
+zero. API/GPU validation is explicitly enabled with no reported errors.
+Pre-contract faces keep their previous ImageIO path; the canonical path has
+no platform-decoder fallback after a decode refusal.
+
+The new `RenderTexture` facade was emitted with admitted 598 from the genuine
+c224 compiler root plus separately pinned dbd product inputs and a retained
+one-line `native-texture.coax` load overlay. Original provenance verification
+passes before preparation, after preparation and after emission. All 23
+emitted source rows match the retained snapshot plus that explicit overlay.
+`media-canonical/sdk/` and `sdk-artifacts.sha256` freeze the actual interpreter,
+generated C/header/object, executable and loaded producer join. This does not
+promote the private iteration graphics products or publish a compiler release.
+
+`cpu-media-v1/` captures the same actual native 90-frame producer with the
+canonical layers/media and private versioned display policy. Its uniforms
+and 128 scalar fields are byte-identical to the earlier native capture.
+Against the existing matched Wasm-to-Metal frozen handoff, 27 of 230,400
+presented channels exceed the original `.002 * max(1,abs(reference))` rule,
+with zero nonfinite values and no mask. This is within the unchanged 2,000
+live allowance; the strict comparator failure remains retained. The earlier
+2,213-channel failure is preserved.
+
+The new production-browser canonical-media RFI replays through Metal with
+four outliers, zero nonfinite values or masks, and exact graph/display bytes
+after recovery (`media-canonical/replay-browser/`). The complete native90 RFI
+under `handoff-media-v1/native/` also replays byte-identically to the actual
+native graph and display outputs. Direct actual native90 display versus
+Vulkan rendering the matched Wasm90 RFI has 1,723 outliers; using the same
+native RFI on Vulkan has 1,697. Both have zero nonfinite values or masks and
+pass the original 2,000 allowance, with validation clean and owned cleanup
+observed. The common records are in `host-contract-12869/media-bridge/`.
+These are actual composed comparisons, without adding component counts.
+
+`aethyr/host/media-notice.coax` adds the existing607 ready/failed row formatter
+(131/131 root mutants killed). It atomically emits exact ready dimensions,
+failed zero dimensions and no pending rows. Deferred native delivery and
+per-image refusal without stopping unrelated rendering are the next adapter
+step; no complete error-path or default claim is made at this checkpoint.

@@ -3,6 +3,7 @@
 #define FORGE_METAL_PRODUCER_H
 #include <stdint.h>
 #define MF_FACE(F) \
+ F(uint32_t,host_contract_version,(void)) \
  F(uint32_t,state_size,(void)) F(uint32_t,max_vertices,(void)) F(uint32_t,vertex_floats,(void)) F(uint32_t,uniform_floats,(void)) \
  F(void,state_init,(uintptr_t)) F(void,golden,(uint32_t)) F(uint32_t,frame,(uintptr_t,uintptr_t,uintptr_t,float,float,float,float,uint32_t)) \
  F(uint32_t,key,(uintptr_t,int32_t,int32_t)) F(uint32_t,key_up,(uintptr_t,int32_t,int32_t)) \

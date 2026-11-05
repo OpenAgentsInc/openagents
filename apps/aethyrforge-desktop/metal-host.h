@@ -52,6 +52,8 @@ bool mf_presentation_experiment(void *host);
 bool mf_presentation_experiment_v1(void *host);
 bool mf_snapshot_presented(void *host,const char *path);
 bool mf_snapshot_presented_raw(void *host,const char *path);
+// Diagnostic readback of an actually uploaded ready media texture.
+bool mf_media_snapshot(void *host,const char *url,const char *path);
 // Test-only source upload and one presentation pass; never calls the producer.
 // Quantized requires the separately linked private Coax v1 descriptor.
 bool mf_present_probe(void *host,const uint8_t *bytes,size_t count,int64_t width,int64_t height,int64_t format,bool quantized);
