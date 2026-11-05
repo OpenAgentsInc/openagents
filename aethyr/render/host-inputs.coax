@@ -13,11 +13,11 @@ RenderHostBufferReceipt :: struct {
 RenderHostGeometryBuffers :: struct {status:RenderResourceStatus;count:int;}
 // Checks stay here so the complete Everglade carrier fits its source-unit budget.
 #test "shared host inputs retain independent main and particle uniform extents" {
- rhi_words:[2304]u32;rhi_words[27]=27;rhi_words[28]=28;rhi_words[2299]=2299;
- rhi_files:=[1]RenderHostNamedBuffer.[RenderHostNamedBuffer.{name="u.bin",words=rhi_words[..],observed=RenderBufferObserved.{source_capacity=9216,logical_payload=9216,initialized_highwater=9216,gpu_bytes=9216}}];
+ rhi_words:[2436]u32;rhi_words[27]=27;rhi_words[28]=28;rhi_words[2431]=2431;
+ rhi_files:=[1]RenderHostNamedBuffer.[RenderHostNamedBuffer.{name="u.bin",words=rhi_words[..],observed=RenderBufferObserved.{source_capacity=9744,logical_payload=9744,initialized_highwater=9744,gpu_bytes=9744}}];
  rhi_q:=render_host_resolve_buffer(2,0,0,rhi_files[..],RenderHostNamedBuffer.{});
- #assert rhi_q.status==RenderResourceStatus.ok && rhi_q.named_index==0 && rhi_q.view.bytes==9200 && rhi_q.view.elements==2300 && rhi_q.stride==4;
- #assert rhi_q.words.count==2300 && rhi_q.words[2299]==2299;
+ #assert rhi_q.status==RenderResourceStatus.ok && rhi_q.named_index==0 && rhi_q.view.bytes==9728 && rhi_q.view.elements==2432 && rhi_q.stride==4;
+ #assert rhi_q.words.count==2432 && rhi_q.words[2431]==2431;
  rhi_q=render_host_resolve_buffer(2,1,0,rhi_files[..],RenderHostNamedBuffer.{});
  #assert rhi_q.status==RenderResourceStatus.ok && rhi_q.view.bytes==112 && rhi_q.view.elements==28 && rhi_q.words.count==28 && rhi_q.words[27]==27;
 }

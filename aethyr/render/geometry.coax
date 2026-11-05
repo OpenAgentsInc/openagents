@@ -65,7 +65,7 @@ RenderGeometryResult :: struct {
   #assert q.status==RenderGeometryStatus.bad_draw;
 }
 #test "render geometry checks every packed skin joint against the initialized pose" {
-  u:[2300]f32;u[32]=1;h:[4]u32;v:[8]u32;o:[16]u32;o[15]=f32_bits(6.0f32);p:[12]u32;rg_hud_payload:[16]f32;indices:[1]u32;
+  u:[2432]f32;u[32]=1;h:[4]u32;v:[8]u32;o:[16]u32;o[15]=f32_bits(6.0f32);p:[12]u32;rg_hud_payload:[16]f32;indices:[1]u32;
   b:=[4]RenderGeometryBuffer.[RenderGeometryBuffer.{resource=1,words=v[..]},RenderGeometryBuffer.{resource=2,words=h[..]},RenderGeometryBuffer.{resource=3,words=o[..]},RenderGeometryBuffer.{resource=4,words=p[..]}];
   rg_local_words:=[4]u32.[0,1,0x80000001,1];domains:[1]RenderDrawDomain;c:=FrameCounts.{width=1,height=1,vertex_stride=16,draw_count=1};
   good:=render_geometry_admit(2,c,rg_local_words[..],indices[0..<0],u[..],b[..],rg_hud_payload[..],domains[..],64);
@@ -84,7 +84,7 @@ RenderGeometryResult :: struct {
   #assert q.status==RenderGeometryStatus.bad_resources;
 }
 #test "render geometry derives river grid vertices and all Everglade water piece classes" {
-  u:[2300]f32;u[32]=1;u[1072]=2;u[1073]=2;u[1074]=2;u[1075]=3;u[1076]=1;u[1077]=1;
+  u:[2432]f32;u[32]=1;u[1072]=2;u[1073]=2;u[1074]=2;u[1075]=3;u[1076]=1;u[1077]=1;
   h:[4]u32;nodes:[32]u32;rg_hud_payload:[16]f32;indices:[1]u32;
   b:=[2]RenderGeometryBuffer.[RenderGeometryBuffer.{resource=2,words=h[..]},RenderGeometryBuffer.{resource=5,words=nodes[..]}];
   rg_local_words:=[4]u32.[0,36,0x80000000,1];domains:[1]RenderDrawDomain;c:=FrameCounts.{width=1,height=1,vertex_stride=16,draw_count=1,water_draws=1};
@@ -113,7 +113,7 @@ RenderGeometryResult :: struct {
 #forall "render geometry procedural shape limits follow each realm's actual encoding" realm:0..<4, kind:0..<8 {
   profiles:=[4]int.[16,13,3,2];
   limits:=[4][8]u64.[[8]u64.[96,36,960,192,96,96,96,96],[8]u64.[48,36,240,96,48,240,48,48],[8]u64.[96,36,960,192,96,96,96,96],[8]u64.[96,36,960,192,96,2,3,1008]];
-  u:[2300]f32;u[32]=1;u[168]=1;u[238]=1;u[239]=4;h:[12]u32;o:[16]u32;o[15]=f32_bits(f32(kind));v:[24]u32;p:[12]u32;rg_hud_payload:[16]f32;indices:[]u32;
+  u:[2432]f32;u[32]=1;u[168]=1;u[238]=1;u[239]=4;h:[12]u32;o:[16]u32;o[15]=f32_bits(f32(kind));v:[24]u32;p:[12]u32;rg_hud_payload:[16]f32;indices:[]u32;
   b:[4]RenderGeometryBuffer;b[0]=RenderGeometryBuffer.{resource=1,words=h[..]};b[1]=RenderGeometryBuffer.{resource=2,words=o[..]};nb:=2;
   if realm==3 {nb=4;b[0]=RenderGeometryBuffer.{resource=1,words=v[..]};b[1]=RenderGeometryBuffer.{resource=2,words=h[..]};b[2]=RenderGeometryBuffer.{resource=3,words=o[..]};b[3]=RenderGeometryBuffer.{resource=4,words=p[..]};}
   rg_local_words:=[4]u32.[0,1,0x80000001,1];domains:[1]RenderDrawDomain;
@@ -211,6 +211,18 @@ RenderGeometryResult :: struct {
   o[30]=f32_bits(1.5f32);g.pose=p[0..<12];w[0]=RGWork.{left=1};d.first=0;d.count=1;
   #assert rg_skin(g,d,1,w[..]).status==RenderGeometryStatus.ok;
 }
+#forall "render geometry remote Ranger keeps its own pose base and both appearance rows" variant:0..<15 {
+ v:[16]u32;v[4]=0xffffffff;v[6]=0x00010000;o:[16]u32;o[13]=f32_bits(2.0f32);o[14]=f32_bits(3.0f32);o[15]=f32_bits(1542.0f32);p:[32]u32;
+ if variant==1 {o[14]=f32_bits(4.0f32);}if variant==2 {o[14]=f32_bits(-1.0f32);}if variant==3 {o[14]=0x7fc00000;}
+ if variant==4 {o[13]=f32_bits(-1.0f32);}if variant==5 {o[13]=f32_bits(2.5f32);}if variant==6 {o[13]=f32_bits(3.0f32);}
+ if variant==7 {v[6]=2;}if variant==8 {o[15]=f32_bits(1798.0f32);}if variant==9 {o[15]=f32_bits(-1.0f32);}if variant==10 {o[15]=0x7fc00000;}
+ if variant==11 {o[14]=f32_bits(2.5f32);o[13]=f32_bits(-1.0f32);o[15]=f32_bits(-1.0f32);}
+ if variant==12 {o[14]=f32_bits(2.499f32);}
+ if variant==13 {o[13]=0;}if variant==14 {o[15]=0;}
+ g:=RGContext.{vertices=v[..],objects=o[..],pose=p[..]};w:=[1]RGWork.[RGWork.{left=1}];d:=RenderDecodedDraw.{kind=RenderDrawKind.nonindexed,count=1,instances=1};r:=rg_skin(g,d,0,w[..]);
+ #assert r.status==(ifx variant==0 || variant==11 || variant==13 || variant==14 then RenderGeometryStatus.ok else RenderGeometryStatus.bad_resources);
+ if r.status==RenderGeometryStatus.ok {#assert r.domain.vertices==2 && w[0].used==1;}
+}
 #forall "render geometry checks all four joint bytes even when weights are zero" rg_local_person:0..<2, byte:0..<4 {
   v:[8]u32;o:[16]u32;p:[792]u32;
   o[14]=f32_bits(f32(rg_local_person*2));slot:=ifx rg_local_person==1 then 4 else 6;
@@ -219,17 +231,22 @@ RenderGeometryResult :: struct {
   w:=[1]RGWork.[RGWork.{left=1}];d:=RenderDecodedDraw.{kind=RenderDrawKind.nonindexed,count=1,instances=1};
   #assert rg_skin(g,d,0,w[..]).status==RenderGeometryStatus.bad_resources;
 }
+#test "render geometry remote Ranger metadata comes from the selected sixteen-word object" {
+ v:[8]u32;v[6]=1;o:[48]u32;o[29]=f32_bits(2.0f32);o[30]=f32_bits(3.0f32);o[31]=f32_bits(1542.0f32);o[32]=0x7fc00000;p:[32]u32;
+ g:=RGContext.{vertices=v[..],objects=o[..],pose=p[..]};w:=[1]RGWork.[RGWork.{left=1}];d:=RenderDecodedDraw.{kind=RenderDrawKind.nonindexed,count=1,instances=1};
+ #assert rg_skin(g,d,1,w[..]).status==RenderGeometryStatus.ok;
+}
 #test "render geometry skin refusals distinguish malformed metadata out of bounds fetch and work" {
   v:[16]u32;o:[16]u32;p:[792]u32;g:=RGContext.{vertices=v[..],objects=o[..],pose=p[..]};
   d:=RenderDecodedDraw.{kind=RenderDrawKind.nonindexed,count=1,instances=1};w:=[1]RGWork.[RGWork.{left=1}];
   o[12]=f32_bits(-1.0f32);#assert rg_skin(g,d,0,w[..]).status==RenderGeometryStatus.bad_resources;
-  o[12]=0;o[14]=f32_bits(3.0f32);#assert rg_skin(g,d,0,w[..]).status==RenderGeometryStatus.bad_resources;
+  o[12]=0;o[14]=f32_bits(4.0f32);#assert rg_skin(g,d,0,w[..]).status==RenderGeometryStatus.bad_resources;
   o[14]=f32_bits(2.0f32);o[13]=f32_bits(-1.0f32);#assert rg_skin(g,d,0,w[..]).status==RenderGeometryStatus.bad_resources;
   o[13]=0;w[0]=RGWork.{};#assert rg_skin(g,d,0,w[..]).status==RenderGeometryStatus.work_budget;
   w[0]=RGWork.{left=1};d.first=3;#assert rg_skin(g,d,0,w[..]).status==RenderGeometryStatus.bad_draw;
 }
 #forall "render geometry water metadata rejects each malformed dimension before resource reads" variant:0..<15 {
-  u:[2300]f32;u[1072]=2;u[1073]=3;u[1074]=1;u[1075]=1;u[1076]=1;nodes:[48]u32;
+  u:[2432]f32;u[1072]=2;u[1073]=3;u[1074]=1;u[1075]=1;u[1076]=1;nodes:[48]u32;
   if variant==0 {u[1072]=1;}if variant==1 {u[1073]=1;}if variant==2 {u[1072]=32768;}if variant==3 {u[1073]=32768;}
   if variant==4 {u[1074]=0;}if variant==5 {u[1075]=0;}if variant==6 {u[1074]=4097;}if variant==7 {u[1075]=4097;}
   if variant==8 {u[1076]=0;}if variant==9 {u[1076]=4294967296.0f32;}if variant==10 {u[1076]=0.00048828125f32;}
@@ -239,13 +256,13 @@ RenderGeometryResult :: struct {
 #forall "render geometry retains Everglade's three reserved spray slots at both river tiers" rg_spray_case:0..<8 {
   rg_per:=[8]int.[1,2,21,22,24,32,64,96];
   rg_expected:=[8]u64.[181,149,121,120,120,120,120,120];
-  rg_u:[2300]f32;rg_nodes:[32]u32;
+  rg_u:[2432]f32;rg_nodes:[32]u32;
   rg_u[1072]=2;rg_u[1073]=2;rg_u[1074]=f32(rg_per[rg_spray_case]);rg_u[1075]=1;rg_u[1076]=1;rg_u[1077]=52;
   rg_q:=rg_water(RGContext.{app="everglade",u=rg_u[..],water=rg_nodes[..]});
   #assert rg_q.status==RenderGeometryStatus.ok && rg_q.domain.vertices==u64(rg_per[rg_spray_case]*6) && rg_q.domain.instances==rg_expected[rg_spray_case];
 }
 #test "render geometry admits the actual desktop river tail and refuses its first excess instance" {
-  rg_u:[2300]f32;rg_u[32]=104;
+  rg_u:[2432]f32;rg_u[32]=104;
   rg_u[1072]=13;rg_u[1073]=209;rg_u[1074]=12;rg_u[1075]=8;rg_u[1076]=4;rg_u[1077]=52;
   rg_heights:[11025]u32;rg_nodes:[21736]u32;rg_hud:[]f32;
   rg_spray_buffers:=[2]RenderGeometryBuffer.[RenderGeometryBuffer.{resource=2,words=rg_heights[..]},RenderGeometryBuffer.{resource=5,words=rg_nodes[..]}];
@@ -267,7 +284,7 @@ RenderGeometryResult :: struct {
   #assert rg_q.status==RenderGeometryStatus.bad_resources && rg_domains[0].vertices==999;
 }
 #test "render geometry water dimensions preserve exact and fractional piece counts" {
-  u:[2300]f32;nodes:[48]u32;g:=RGContext.{app="everglade",u=u[..],water=nodes[..]};
+  u:[2432]f32;nodes:[48]u32;g:=RGContext.{app="everglade",u=u[..],water=nodes[..]};
   u[1072]=2;u[1073]=3;u[1074]=1;u[1075]=1;u[1076]=0.0009765625;u[1077]=0;
   r:=rg_water(g);#assert r.status==RenderGeometryStatus.ok && r.domain.vertices==6 && r.domain.instances==129;
   u[1074]=8;u[1075]=8;r=rg_water(g);#assert r.status==RenderGeometryStatus.ok && r.domain.vertices==384 && r.domain.instances==68;
@@ -293,7 +310,7 @@ RenderGeometryResult :: struct {
   d.instances=2;#assert rg_record(g,d,w[..]).status==RenderGeometryStatus.bad_draw;
 }
 #test "render geometry grass near rings retain phone threshold and checked u32 arithmetic" {
-  u:[2300]f32;u[1172]=1;u[1173]=0.5;u[1191]=3;
+  u:[2432]f32;u[1172]=1;u[1173]=0.5;u[1191]=3;
   f:=RenderFeatures.{scene=true,grass=true};c:=FrameCounts.{grass_instances=1};g:=RGContext.{app="everglade",u=u[..]};
   r:=rg_direct(g,f,c);#assert r.status==RenderGeometryStatus.ok && r.direct.grass_instances==589;
   u[1210]=0.5;r=rg_direct(g,f,c);#assert r.status==RenderGeometryStatus.ok && r.direct.grass_instances==589;
@@ -305,7 +322,7 @@ RenderGeometryResult :: struct {
   u[1172]=65535;u[1173]=128;r=rg_direct(g,f,c);#assert r.status==RenderGeometryStatus.ok && r.direct.grass_instances==4294901760;
 }
 #forall "render geometry rejects each invalid grass parameter without overflowing products" variant:0..<9 {
-  u:[2300]f32;u[1172]=1;u[1173]=0.5;
+  u:[2432]f32;u[1172]=1;u[1173]=0.5;
   if variant==0 {u[1172]=0;}if variant==1 {u[1173]=0;}if variant==2 {u[1172]=65536;}
   if variant==3 {u[1191]=-1;}if variant==4 {u[1191]=65536;}if variant==5 {u[1210]=-1;}if variant==6 {u[1210]=2;}
   if variant==7 {u[1173]=2147483648.0f32;}if variant==8 {u[1172]=2;u[1173]=32767.5;}
@@ -365,7 +382,7 @@ RenderGeometryResult :: struct {
   g.pose=p[..];w[0]=RGWork.{left=1};#assert rg_skin(g,d,0,w[..]).status==RenderGeometryStatus.ok;
 }
 #test "render geometry overflow checks precede a grass product and a near-ring sum" {
-  u:[2300]f32;u[1172]=65535;u[1173]=2147483520.0f32;
+  u:[2432]f32;u[1172]=65535;u[1173]=2147483520.0f32;
   f:=RenderFeatures.{scene=true,grass=true};c:=FrameCounts.{grass_instances=1};g:=RGContext.{app="everglade",u=u[..]};
   #assert rg_direct(g,f,c).status==RenderGeometryStatus.bad_uniforms;
   u[1172]=65535;u[1173]=128;u[1191]=65535;#assert rg_direct(g,f,c).status==RenderGeometryStatus.bad_uniforms;
@@ -395,7 +412,7 @@ RenderGeometryResult :: struct {
   c.draw_count=0;r=render_geometry_admit(0,c,rg_local_words[..],none,u[..],b[0..<0],rg_hud_payload,out[..],8);#assert r.status==RenderGeometryStatus.ok;
 }
 #test "render geometry Everglade puffs are one twelve-word record per instance" {
-  u:[2300]f32;p:[24]u32;rg_hud_payload:[]f32;none:[]u32;out:[]RenderDrawDomain;
+  u:[2432]f32;p:[24]u32;rg_hud_payload:[]f32;none:[]u32;out:[]RenderDrawDomain;
   b:=[1]RenderGeometryBuffer.[RenderGeometryBuffer.{binding_set=1,resource=1,words=p[..]}];
   r:=render_geometry_admit(2,FrameCounts.{width=1,height=1,vertex_stride=16},none,none,u[..],b[..],rg_hud_payload,out,1);
   #assert r.status==RenderGeometryStatus.ok && r.direct.particle_instances==2;
@@ -421,7 +438,7 @@ RenderGeometryResult :: struct {
   if which>=4 {#assert rg_integer_word(rg_local_words[which],10)==-1 && rg_code_word(rg_local_words[which])==-1;}
 }
 #test "render geometry a single grass draw still validates its ground payload" {
-  u:[2300]f32;u[32]=1;u[1172]=1;u[1173]=0.5;h:[4]u32;rg_hud_payload:[]f32;none:[]u32;out:[]RenderDrawDomain;
+  u:[2432]f32;u[32]=1;u[1172]=1;u[1173]=0.5;h:[4]u32;rg_hud_payload:[]f32;none:[]u32;out:[]RenderDrawDomain;
   b:=[1]RenderGeometryBuffer.[RenderGeometryBuffer.{resource=2,words=h[..]}];c:=FrameCounts.{width=1,height=1,vertex_stride=16,grass_instances=1};
   #assert render_geometry_admit(2,c,none,none,u[..],b[..],rg_hud_payload,out,8).status==RenderGeometryStatus.ok;
   u[32]=0;#assert render_geometry_admit(2,c,none,none,u[..],b[..],rg_hud_payload,out,8).status==RenderGeometryStatus.bad_resources;
@@ -433,7 +450,7 @@ RenderGeometryResult :: struct {
   o[15]=f32_bits(709.0f32);w[0]=RGWork.{left=1};#assert rg_record(g,d,w[..]).status==RenderGeometryStatus.bad_resources;
 }
 #test "render geometry active river shading validates nodes without requiring a water draw" {
-  u:[2300]f32;u[32]=1;u[1072]=2;u[1073]=2;u[1074]=1;u[1075]=1;u[1076]=1;u[1083]=1;
+  u:[2432]f32;u[32]=1;u[1072]=2;u[1073]=2;u[1074]=1;u[1075]=1;u[1076]=1;u[1083]=1;
   h:[4]u32;nodes:[32]u32;rg_hud_payload:[]f32;none:[]u32;out:[1]RenderDrawDomain;
   b:=[2]RenderGeometryBuffer.[RenderGeometryBuffer.{resource=2,words=h[..]},RenderGeometryBuffer.{resource=5,words=nodes[..]}];
   rg_local_words:=[4]u32.[0,6,0x80000000,1];c:=FrameCounts.{width=1,height=1,vertex_stride=16,draw_count=1};
@@ -448,7 +465,7 @@ RenderGeometryResult :: struct {
   o[15]=f32_bits(50629.0f32);w[0]=RGWork.{left=1};#assert rg_record(g,d,w[..]).status==RenderGeometryStatus.ok;
 }
 #forall "render geometry river spacing is finite bounded and may disable node reads" variant:0..<4 {
-  u:[2300]f32;u[32]=1;u[1072]=2;u[1073]=2;u[1074]=1;u[1075]=1;u[1076]=1;u[1083]=1;
+  u:[2432]f32;u[32]=1;u[1072]=2;u[1073]=2;u[1074]=1;u[1075]=1;u[1076]=1;u[1083]=1;
   if variant==0 {u[1083]=-1;}if variant==1 {u[1083]=4294967296.0f32;}if variant==2 {z:=0.0f32;u[1083]=z/z;}if variant==3 {u[1072]=1;}
   h:[4]u32;nodes:[32]u32;rg_hud_payload:[]f32;none:[]u32;out:[1]RenderDrawDomain;
   b:=[2]RenderGeometryBuffer.[RenderGeometryBuffer.{resource=2,words=h[..]},RenderGeometryBuffer.{resource=5,words=nodes[..]}];
@@ -550,14 +567,22 @@ rg_skin :: (g:RGContext,d:RenderDecodedDraw,row:int,w:[]RGWork)->RGDomain {
   marker_word:=g.objects[row*16+14];
   if !rg_finite_word(marker_word) {return r;}
   marker:=f32_from_bits(marker_word);
-  if !(marker>=0 && marker<=2) {return r;}
-  rg_local_person:=marker>1.5;stride:=ifx rg_local_person then 6 else 8;
+  if !(marker>=0 && marker<=3) {return r;}
+  rg_local_person:=marker>1.5 && marker<2.5;stride:=ifx rg_local_person then 6 else 8;
   offset:=rg_integer_word(g.objects[row*16+12],g.vertices.count-stride);
   if offset<0 {return r;}
   pose_rows:=g.pose.count/4;
   if rg_local_person {
     pose_base:=rg_integer_word(g.objects[row*16+13],pose_rows-198);
     if pose_base<0 {return r;}
+  }
+  // The live room's other Rangers use the same eight-word vertex as yours,
+  // their own pose base and two appearance rows selected by the shape code.
+  remote_base:=0;
+  if marker>2.5 {
+    remote_base=rg_integer_word(g.objects[row*16+13],pose_rows);
+    look:=rg_code_word(g.objects[row*16+15]);
+    if remote_base<0 || look<0 || look/256+2>pose_rows {return r;}
   }
   r.domain.vertices=cast(u64)((g.vertices.count-offset)/stride);
   for j:0..<cast(int)d.count {
@@ -569,7 +594,7 @@ rg_skin :: (g:RGContext,d:RenderDecodedDraw,row:int,w:[]RGWork)->RGDomain {
     for k:0..<4 {
       joint:=cast(int)((joints>>u32(8*k))&255);
       if rg_local_person {if joint>=65 {return r;}}
-      else if joint*3+2>=pose_rows {return r;}
+      else if remote_base+joint*3+2>=pose_rows {return r;}
     }
   }
   r.status=RenderGeometryStatus.ok;return r;
