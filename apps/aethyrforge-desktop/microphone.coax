@@ -15,6 +15,18 @@
 fm_permission :: (trusted:bool,audio:bool,authorized:bool)->bool #export_c {
   return trusted && audio && authorized;
 }
+
+#test "setup preflights unknown microphone permission only in a visible foreground setup session" {
+  for bits:0..<64 {for status:-1..<5 {
+    visible:=bits%2==1;active:=bits/2%2==1;shown:=bits/4%2==1;completed:=bits/8%2==1;pending:=bits/16%2==1;interactive:=bits/32%2==1;
+    #assert fm_setup_request(visible,active,shown,completed,status,pending,interactive)==(visible && active && (shown || completed) && status==0 && !pending && interactive);
+  }}
+}
+// AVAuthorizationStatus: 0 not determined, 1 restricted, 2 denied, 3 authorized.
+// Existing saved setup is eligible without displaying the setup pane again.
+fm_setup_request :: (visible:bool,active:bool,shown:bool,completed:bool,status:int,pending:bool,interactive:bool)->bool #export_c {
+  return visible && active && (shown || completed) && status==0 && !pending && interactive;
+}
 fm_capture :: (ready:bool,visible:bool,active:bool)->bool #export_c {
   return ready && visible && active;
 }

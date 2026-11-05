@@ -4,6 +4,7 @@
 
 ForgeSetup :: struct {
   completed: bool;
+  microphone:int;microphone_pending:bool;
   cli: bool; agents: bool; models: bool; voice: bool; verified: bool; text_model: bool;
   counts: [4] int; total: int; selected: int = -1;
   version: [64] u8; version_n: int;
@@ -49,6 +50,18 @@ FSU_IDS :: [4] string.["claude", "codex", "coder", "cursor"];
   #assert !fsu_read(s[..], 0, "not json") && !s[0].cli;
   fsu_choose(s[..], 99); #assert s[0].selected == -1;
   #assert fsu_text_byte(s[..], 0, 0) == 'S' && fsu_text_byte(s[..], 0, -1) == -1;
+}
+
+#test "setup shows current microphone permission independently of model discovery and saved setup" {
+  s:[1]ForgeSetup;fsu_reset(s[..]);
+  #assert fsu_text(s[..],14)=="Microphone permission requested during setup" && fsu_text(s[..],15)=="Allow microphone" && fsu_status(s[..],3)==1;
+  fsu_microphone(s[..],0,true);#assert fsu_text(s[..],14)=="Waiting for macOS microphone permission…" && fsu_status(s[..],3)==0;
+  fsu_microphone(s[..],3,false);#assert fsu_text(s[..],14)=="Microphone allowed · Ready for TALK / V" && fsu_text(s[..],15)=="Allowed" && fsu_status(s[..],3)==0;
+  for status:1..<3 {fsu_microphone(s[..],status,false);#assert fsu_text(s[..],14)=="Microphone blocked in macOS Settings" && fsu_text(s[..],15)=="Open Settings" && fsu_status(s[..],3)==2;}
+  fsu_microphone(s[..],99,false);#assert fsu_text(s[..],14)=="Microphone status unavailable" && fsu_status(s[..],3)==0;
+  #assert !s[0].voice && !fsu_completed(s[..]);
+  b:[512]u8;#assert fsu_read(s[..],3,fsu_settings(s[..],b[..]));
+  fsu_microphone(s[..],0,false);#assert fsu_completed(s[..]) && fsu_status(s[..],3)==1;
 }
 
 fsu_reset :: (s: [] ForgeSetup) #export_c { s[0] = ForgeSetup.{}; }
@@ -108,15 +121,28 @@ fsu_read :: (s: [] ForgeSetup, kind: int, text: string) -> bool #export_c {
 }
 fsu_can_enter :: (s: [] ForgeSetup, scene: bool) -> bool #export_c { return scene && s[0].cli && s[0].agents && s[0].models; }
 fsu_completed :: (s: [] ForgeSetup) -> bool #export_c { return s[0].completed; }
+fsu_microphone :: (s:[]ForgeSetup,status:int,pending:bool) #export_c {s[0].microphone=status;s[0].microphone_pending=pending;}
 fsu_choose :: (s: [] ForgeSetup, kind: int) #export_c { if kind == -1 || (kind >= 0 && kind < 4 && s[0].counts[kind] > 0) { s[0].selected = kind; } }
 fsu_count :: (s: [] ForgeSetup, kind: int) -> int #export_c { return ifx kind >= 0 && kind < 4 then s[0].counts[kind] else s[0].total; }
 fsu_selected :: (s: [] ForgeSetup) -> int #export_c { return s[0].selected; }
 fsu_status :: (s: [] ForgeSetup, kind: int) -> int #export_c {
+  if kind==3 {
+    if s[0].microphone_pending {return 0;}
+    if s[0].microphone==0 {return 1;}
+    return ifx s[0].microphone==1 || s[0].microphone==2 then 2 else 0;
+  }
   if kind == 0 { return ifx s[0].cli then 1 else 0; }
   if kind == 1 { return ifx s[0].models then (ifx s[0].verified then 2 else ifx s[0].voice then 1 else 0) else -1; }
   return ifx s[0].agents then 1 else 0;
 }
 fsu_text :: (s: [] ForgeSetup, field: int) -> string {
+  if field==14 {
+    if s[0].microphone_pending {return "Waiting for macOS microphone permission…";}
+    if s[0].microphone==0 {return "Microphone permission requested during setup";}
+    if s[0].microphone==3 {return "Microphone allowed · Ready for TALK / V";}
+    return ifx s[0].microphone==1 || s[0].microphone==2 then "Microphone blocked in macOS Settings" else "Microphone status unavailable";
+  }
+  if field==15 {return ifx fsu_status(s[..],3)==2 then "Open Settings" else ifx s[0].microphone==3 then "Allowed" else "Allow microphone";}
   if field == 0 { return "Set up Aethyrforge"; }
   if field == 1 { return "Local tools. Shared models. Your world."; }
   if field == 2 { return ifx s[0].cli then cast(string) s[0].version[0..<s[0].version_n] else "CLI unavailable"; }

@@ -15,6 +15,7 @@ int64_t fgs_accept(int64_t kind, int64_t n) {
 }
 bool fgs_can_enter(bool scene) { return fsu_can_enter(view(), scene); }
 bool fgs_completed(void) { return fsu_completed(view()); }
+void fgs_microphone(int64_t status, bool pending) { fsu_microphone(view(), status, pending); }
 void fgs_choose(int64_t kind) { fsu_choose(view(), kind); }
 int64_t fgs_count(int64_t kind) { return fsu_count(view(), kind); }
 int64_t fgs_selected(void) { return fsu_selected(view()); }

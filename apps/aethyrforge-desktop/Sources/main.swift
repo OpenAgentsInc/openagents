@@ -53,6 +53,10 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     var voiceReservation: (Int32, Int)?
     var voicePort = 0
     var microphonePrompt = false
+    var microphonePermissionTask: Task<Bool, Never>?
+    // SDK transports may be replaced only by the isolated setup smoke.
+    var microphoneAuthorization: (() -> AVAuthorizationStatus)?
+    var microphoneAccessRequest: (() async -> Bool)?
     var voiceCaptureRequest: Int?
     var voiceCaptureEpoch = 0
     var microphoneDecisions = 0
@@ -207,12 +211,14 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
             if stopping { restartStartup() } else { refreshSetup(verify: false) }
         }
         setupPane.verifyAction = { [weak self] in self?.refreshSetup(verify: true) }
+        setupPane.microphoneAction = { [weak self] in self?.microphoneSetupPressed() }
         setupPane.folderAction = { NSWorkspace.shared.open(FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".openagents")) }
         content.addSubview(setupPane)
         if !smoke {
             if launchReport != nil || microphoneReport != nil { window.level = .floating }
             window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
         }
+        refreshMicrophoneSetup()
     }
 
     func startChild(_ name: String, _ arguments: [String], resources: URL, fatal: Bool = true) throws -> Process {
@@ -832,6 +838,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         guard fgs_accept(kind, Int64(data.count)) == 1 else { throw ShellError.failed("The local CLI returned an invalid setup report.") }
     }
     func refreshSetup(verify: Bool) {
+        refreshMicrophoneSetup()
         guard !setupPane.verifying && (inventoryTask == nil || !setupPane.checking) else { return }
         setupPane.errorMessage = nil
         setupPane.checking = true; setupPane.verifying = false; setupPane.update()
@@ -868,7 +875,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
             setupPane.isHidden = true; window.makeFirstResponder(web)
         } catch { setupPane.errorMessage = "Could not save setup: \(error.localizedDescription)"; setupPane.update() }
     }
-    @objc func showSetup() { cancelVoice(); chatPane.closeComposer(); setupPane.isHidden = false; setupPane.sceneReady = sceneReady; setupPane.update() }
+    @objc func showSetup() { cancelVoice(); chatPane.closeComposer(); setupPane.isHidden = false; setupPane.sceneReady = sceneReady; setupPane.update(); refreshMicrophoneSetup() }
     @objc func focusChat() { guard setupPane.isHidden else { return }; chatPane.openComposer() }
     func routeCoderKey(_ event: NSEvent) -> Bool {
         guard event.type == .keyDown || event.type == .keyUp else { return false }
@@ -1065,10 +1072,47 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     }
     // Permission sheets and other AppKit panels take key focus. Only leaving
     // the app (or explicit hide/minimize/setup) cancels its live capture.
+    func applicationDidBecomeActive(_ notification: Notification) { refreshMicrophoneSetup() }
+    func windowDidBecomeKey(_ notification: Notification) { refreshMicrophoneSetup() }
     func applicationDidResignActive(_ notification: Notification) { if !microphonePrompt { cancelVoice() } }
     func applicationDidHide(_ notification: Notification) { cancelVoice() }
     func windowDidResignKey(_ notification: Notification) { coderHeldKeys.removeAll() }
     func windowDidMiniaturize(_ notification: Notification) { cancelVoice() }
+    func microphoneStatus() -> AVAuthorizationStatus {
+        microphoneAuthorization?() ?? AVCaptureDevice.authorizationStatus(for: .audio)
+    }
+    func updateMicrophoneSetup() {
+        guard setupPane != nil else { return }
+        fgs_microphone(Int64(microphoneStatus().rawValue), microphonePrompt)
+        setupPane.update()
+    }
+    func refreshMicrophoneSetup() {
+        guard setupPane != nil, window != nil else { return }
+        updateMicrophoneSetup()
+        let interactive = !smoke && launchReport == nil && microphoneReport == nil && frameProfileURL == nil
+        guard fm_setup_request(!stopping && window.isVisible && !window.isMiniaturized, NSApp.isActive,
+                               !setupPane.isHidden, fgs_completed(), Int64(microphoneStatus().rawValue), microphonePrompt, interactive) else { return }
+        Task { _ = await authorizeMicrophone() }
+    }
+    func authorizeMicrophone() async -> Bool {
+        if let pending = microphonePermissionTask { let granted = await pending.value; return granted && microphoneStatus() == .authorized }
+        guard microphoneStatus() == .notDetermined else {
+            updateMicrophoneSetup(); return microphoneStatus() == .authorized
+        }
+        microphonePrompt = true; updateMicrophoneSetup()
+        let task = Task { @MainActor in
+            if let request = microphoneAccessRequest { return await request() }
+            return await AVCaptureDevice.requestAccess(for: .audio)
+        }
+        microphonePermissionTask = task
+        let granted = await task.value
+        microphonePermissionTask = nil; microphonePrompt = false; updateMicrophoneSetup()
+        return granted && microphoneStatus() == .authorized
+    }
+    func microphoneSetupPressed() {
+        if fgs_status(3) == 1 { refreshMicrophoneSetup() }
+        else if fgs_status(3) == 2, let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") { NSWorkspace.shared.open(url) }
+    }
     var voiceAvailable: Bool {
         fm_capture(!stopping && sceneReady && setupPane.isHidden,
                    window.isVisible && !window.isMiniaturized, NSApp.isActive)
@@ -1114,6 +1158,11 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     func microphoneCheck() async throws {
         guard let microphoneReport else { return }
         do {
+            showSetup()
+            let prepared = await authorizeMicrophone()
+            guard prepared, setupPane.microphoneStatus.stringValue.contains("Microphone allowed"), voiceHost == nil, microphoneDecisions == 0 else {
+                throw ShellError.failed("Microphone permission was not ready during setup before the first V capture.")
+            }
             enterWorld()
             guard setupPane.isHidden else { throw ShellError.failed("Microphone check needs the ready world.") }
             window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
@@ -1159,7 +1208,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
                 "realMicrophone": true, "noKeyWindow": withoutKey, "tracksClosed": true,
                 "repeatCapture": true, "freshTickets": [one,two], "startupFailureRecovered": true,
                 "cancelledPreparation": cancelled, "permissionDecisions": microphoneDecisions,
-                "audioRecordedOrSent": false]
+                "audioRecordedOrSent": false, "authorizedBeforeCapture": true]
             try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]).write(to: microphoneReport)
         } catch {
             try? Data(error.localizedDescription.utf8).write(to: microphoneReport.appendingPathExtension("error"))
@@ -1303,6 +1352,30 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
 
     func setupSmokeCheck() async throws {
         guard let report, fgs_can_enter(sceneReady), fgs_status(1) == 1 else { throw ShellError.failed("Setup did not discover the CLI and installed shared voice model without hashing.") }
+        // Fake only the macOS authorization transport, never the Coax policy or
+        // a microphone stream. Exercise the first-run sheet and a racing V check.
+        var status = AVAuthorizationStatus.notDetermined
+        var requests = 0
+        microphoneAuthorization = { status }
+        microphoneAccessRequest = {
+            requests += 1
+            try? await Task.sleep(for: .milliseconds(80))
+            status = .authorized; return true
+        }
+        refreshMicrophoneSetup()
+        guard setupPane.microphone.isEnabled, fgs_status(3) == 1 else { throw ShellError.failed("Setup has no microphone permission action.") }
+        let first = Task { await authorizeMicrophone() }
+        try await Task.sleep(for: .milliseconds(20))
+        guard microphonePrompt, !setupPane.microphone.isEnabled else { throw ShellError.failed("Setup must show an in-flight permission request.") }
+        let second = await authorizeMicrophone()
+        let granted = await first.value
+        guard granted, second, requests == 1, setupPane.microphoneStatus.stringValue.contains("Microphone allowed"), voiceHost == nil, microphoneDecisions == 0 else {
+            throw ShellError.failed("Setup did not acquire permission before voice, or duplicated the system request.")
+        }
+        status = .denied; refreshMicrophoneSetup()
+        let denied = await authorizeMicrophone()
+        guard !denied, requests == 1, setupPane.microphone.isEnabled, setupPane.microphone.title == "Open Settings" else { throw ShellError.failed("Denied permission must link to Settings without asking again.") }
+        microphoneAuthorization = nil; microphoneAccessRequest = nil; refreshMicrophoneSetup()
         let skipped = setupPane.isHidden
         guard skipped == fgs_completed(), setupPane.enter.isEnabled else { throw ShellError.failed("Launch did not respect the saved setup completion.") }
         enterWorld()
@@ -1313,7 +1386,9 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         let result: [String: Any] = ["ready": sceneReady, "cli": fgs_status(0) == 1, "voiceInstalled": fgs_status(1) > 0, "voiceVerified": fgs_status(1) == 2,
             "localAgents": fgs_count(-1), "selectedAgent": fgs_selected(), "voicePath": setupText(6),
             "setupVisible": !setupPane.isHidden, "setupSkippedOnLaunch": skipped, "settingsSaved": true, "firstFrameSeconds": firstFrameSeconds,
-            "roomPID": room!.processIdentifier, "pagePID": page!.processIdentifier]
+            "roomPID": room!.processIdentifier, "pagePID": page!.processIdentifier,
+            "microphoneBeforeVoice": true, "permissionRequests": requests, "concurrentPermissionShared": true,
+            "deniedPermissionSettings": true, "microphoneOpened": false, "microphoneStatus": setupPane.microphoneStatus.stringValue]
         try await captureCanvas(report)
         try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]).write(to: report, options: .atomic)
         stopChildren(); NSApp.terminate(nil)
@@ -1358,13 +1433,8 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         traceVoice("microphone request: main=\(frame.isMainFrame) local=\(origin.host == "127.0.0.1" && origin.port == pageURL?.port) key=\(window.isKeyWindow) setup=\(!setupPane.isHidden) authorization=\(AVCaptureDevice.authorizationStatus(for: .audio).rawValue)")
         guard type == .microphone, trustedVoiceFrame(frame), !smoke, !stopping else { decisionHandler(.deny); return }
         Task {
-            if AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined {
-                microphonePrompt = true
-                _ = await AVCaptureDevice.requestAccess(for: .audio)
-                microphonePrompt = false
-            }
-            let allowed = fm_permission(trustedVoiceFrame(frame), type == .microphone,
-                                       AVCaptureDevice.authorizationStatus(for: .audio) == .authorized)
+            let authorized = await authorizeMicrophone()
+            let allowed = fm_permission(trustedVoiceFrame(frame), type == .microphone, authorized)
             microphoneDecisions += 1
             traceVoice("microphone permission: \(allowed) key=\(window.isKeyWindow)")
             decisionHandler(allowed ? .grant : .deny)

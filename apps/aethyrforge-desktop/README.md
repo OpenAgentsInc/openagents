@@ -39,6 +39,27 @@ Refresh repeats discovery; only pressing Verify voice model hashes the pinned
 complete weight/tokenizer files. No model is loaded
 and no microphone or agent session starts during setup.
 
+Setup automatically requests macOS microphone permission while its window is
+visible and the app is active. Its microphone row shows Allowed, a pending
+request, or Open Settings after denial. Permission is read from macOS each time;
+it is not inferred from saved setup. Existing completed installations still
+skip the setup screen and preflight missing permission at foreground launch.
+This requests consent only: it never opens a microphone stream or loads Parakeet.
+V/TALK rechecks the grant and shares an in-flight setup request if necessary.
+Automated setup tests use a fake permission transport and do not show a system
+sheet; the explicit microphone acceptance check exercises the real WebKit path.
+
+The setup permission checks passed on 2026-11-04: 78 setup/JSON checks, three
+permission checks and all 12 permission-policy mutants killed. The hidden native
+setup check simulated first approval plus a concurrent capture permission check:
+one system request, ready status before voice, and Settings after denial, without
+opening a microphone or model. The real WebKit acceptance also recorded
+`authorizedBeforeCapture:true`, three closed captures, fresh tickets and successful
+cancellation/startup-failure recovery. Its passing capture was run under LLDB;
+two earlier direct runs ended without reports and a separate Launch Services run
+reported a JavaScript exception. These diagnostic artifacts are retained under
+`/tmp/forge-setup-microphone/`; the passing report is `microphone-debug/result.json`.
+
 The Metal HUD views cover only the bottom composer and the floating message
 component; both are explicitly transparent, so WebKit keeps rendering the world. Startup's
 60-second budget counts visible rendering time, pausing while the window or
@@ -182,8 +203,9 @@ peak of 0.312 with test output gain 0. No microphone was requested. Logs and
 before/after reports are retained in `/tmp/forge-audio/` (2026-11-04).
 
 Leave EDIT with DONE/B, then hold TALK/V while speaking.
-The first request asks for macOS microphone permission and starts the local
-Parakeet service on a reserved loopback port. macOS permission is checked
+Permission should already be approved in setup. The first hold rechecks macOS
+permission and starts the local Parakeet service on a reserved loopback port;
+if permission is still undetermined, it requests it then as a fallback. Consent is checked
 separately from model startup; system dialogs taking key focus do not turn an
 existing grant into a cached WebKit denial. Every hold prepares its own native
 capture ticket, including when WebKit reuses its site grant. If the permission

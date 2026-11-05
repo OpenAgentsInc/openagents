@@ -3587,6 +3587,16 @@ WebSocket binary message, encoded and decoded only by the generated Coax codec
   report cancel an open request and send nothing; any other key cancels it
   and then acts as usual. Nothing on this path calls the send path.
 
+Aethyrforge for Mac preflights OS microphone authorization in visible foreground
+setup, or at foreground launch for an existing setup receipt. Its
+`apps/aethyrforge-desktop/microphone.coax` authority requests only an undetermined
+grant, never from automated background checks or while another request is pending.
+Setup opens no microphone stream or model. V/TALK checks the current OS grant
+again, sharing any pending authorization request; capture still requires the
+visible foreground world and a current native ticket. Denied/restricted permission
+offers Settings. Permission is never inferred from saved setup. The permission
+gate kills all 12 mutants; setup and native WebKit evidence is in the desktop README.
+
 Coder dictation's `apps/shared/dictation-policy.coax` is `#authority`: it gates
 readiness/consent, 450 ms pre-roll, 300 ms minimum hold, 200 ms tail, a 60-second
 capture cap, silence and current-ticket final publication. `dictation.coax`

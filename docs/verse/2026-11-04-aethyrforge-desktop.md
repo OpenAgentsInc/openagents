@@ -67,6 +67,15 @@ page server, the voice Wasm and a local Parakeet voice host. This is the same
   never hash model contents. The explicit Verify voice model button checks the
   pinned complete Parakeet weights and tokenizer SHA-256. Missing voice weights
   do not prevent manual editing. Models remain unloaded during setup.
+  Setup requests macOS microphone consent as soon as its window is visible and
+  foreground, showing Allowed, pending or Open Settings. Existing completed
+  installations keep skipping the pane and preflight missing consent at launch.
+  This opens no microphone stream or model. V/TALK rechecks the current grant,
+  sharing any pending setup request; it can ask as a fallback if still undecided.
+  Denied/restricted grants offer Settings instead of repeating the system sheet.
+  Verification: 78 setup/JSON checks, three permission checks, 12/12 permission
+  mutants killed, native first-approval/concurrent-request/denial checks, and a
+  real WebKit acceptance with `authorizedBeforeCapture:true` (under LLDB).
 - Uses `~/.openagents/` for app-owned files across OpenAgents apps. The app bundle
   and world/settings/logs live in `aethyrforge/`, shared executables in `bin/`
   with retained versions in `versions/`, and reusable model checkpoints in

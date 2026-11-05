@@ -9,6 +9,8 @@ int64_t fgs_input_byte(int64_t index, int64_t value);
 int64_t fgs_accept(int64_t kind, int64_t length);
 bool fgs_can_enter(bool scene);
 bool fgs_completed(void);
+void fgs_microphone(int64_t status, bool pending);
+bool fm_setup_request(bool visible, bool active, bool shown, bool completed, int64_t status, bool pending, bool interactive);
 bool forge_high_refresh(int64_t display_hz);
 void fgs_choose(int64_t kind);
 int64_t fgs_count(int64_t kind);

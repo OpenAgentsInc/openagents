@@ -17,6 +17,8 @@ final class ForgeSetupPane: NSView {
     let voiceStatus = NSTextField(labelWithString: "Checking shared model files…")
     let modelPath = NSTextField(labelWithString: "~/.openagents/models")
     let editModel = NSTextField(labelWithString: "Checking edit model…")
+    let microphoneStatus = NSTextField(labelWithString: "")
+    let microphone = NSButton(title: "Allow microphone", target: nil, action: nil)
     let agentStatus = NSTextField(labelWithString: "Looking for local agents…")
     let routerStatus = NSTextField(labelWithString: "Automatic routing · agent, model and effort chosen per task")
     let verify = NSButton(title: "Verify voice model", target: nil, action: nil)
@@ -27,6 +29,7 @@ final class ForgeSetupPane: NSView {
     var refreshAction: (() -> Void)?
     var verifyAction: (() -> Void)?
     var folderAction: (() -> Void)?
+    var microphoneAction: (() -> Void)?
     var sceneReady = false
     var checking = true
     var verifying = false
@@ -42,7 +45,7 @@ final class ForgeSetupPane: NSView {
         panel.translatesAutoresizingMaskIntoConstraints = false; addSubview(panel)
         NSLayoutConstraint.activate([
             panel.centerXAnchor.constraint(equalTo: centerXAnchor), panel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            panel.widthAnchor.constraint(equalToConstant: 630), panel.heightAnchor.constraint(equalToConstant: 610)
+            panel.widthAnchor.constraint(equalToConstant: 630), panel.heightAnchor.constraint(equalToConstant: 650)
         ])
         let stack = NSStackView(); stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 12
         stack.translatesAutoresizingMaskIntoConstraints = false; panel.addSubview(stack)
@@ -73,6 +76,11 @@ final class ForgeSetupPane: NSView {
         style(modelPath, size: 11, secondary: true); modelPath.lineBreakMode = .byTruncatingMiddle; modelPath.maximumNumberOfLines = 1
         voice.addArrangedSubview(modelPath); modelPath.widthAnchor.constraint(equalToConstant: 560).isActive = true
         style(editModel, size: 12, secondary: true); voice.addArrangedSubview(editModel)
+        let permission = NSStackView(); permission.orientation = .horizontal; permission.spacing = 12
+        style(microphoneStatus, size: 12); permission.addArrangedSubview(microphoneStatus)
+        microphone.bezelStyle = .rounded; microphone.controlSize = .small
+        microphone.target = self; microphone.action = #selector(microphonePressed)
+        permission.addArrangedSubview(microphone); voice.addArrangedSubview(permission)
         stack.addArrangedSubview(voice)
 
         let agents = NSStackView(); agents.orientation = .vertical; agents.alignment = .leading; agents.spacing = 7
@@ -119,6 +127,8 @@ final class ForgeSetupPane: NSView {
         modelPath.stringValue = setupText(6).isEmpty ? "~/.openagents/models" : setupText(6)
         modelPath.toolTip = modelPath.stringValue
         editModel.stringValue = setupText(5)
+        microphoneStatus.stringValue = setupText(14)
+        microphone.title = setupText(15); microphone.isEnabled = fgs_status(3) != 0
         agentStatus.stringValue = setupText(7)
         refresh.isEnabled = !checking && !verifying
         verify.isEnabled = !checking && !verifying && fgs_status(1) > 0
@@ -130,6 +140,7 @@ final class ForgeSetupPane: NSView {
     @objc private func refreshPressed() { refreshAction?() }
     @objc private func verifyPressed() { verifyAction?() }
     @objc private func folderPressed() { folderAction?() }
+    @objc private func microphonePressed() { microphoneAction?() }
 }
 
 struct ForgeCLI {
