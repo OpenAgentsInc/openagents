@@ -1,0 +1,24 @@
+#load "../reference-half.coax" as dq_half;
+#forall "explicit display conversion agrees with an integer rational oracle for every finite half" bits:0..<65536 {
+ decoded:=dq_half.rh_half_decode(cast(u32)bits);
+ if decoded.ok {
+  expected:u32;
+  if bits<32768 {
+   if bits>=15360 {expected=255;}else {
+    exponent:=(bits>>10)&31;mantissa:=(bits&1023)+(ifx exponent==0 then 0 else 1024);
+    shift:=ifx exponent==0 then 24 else 25-exponent;denominator:=cast(u32)1<<cast(u32)shift;
+    numerator:=cast(u32)mantissa*255;expected=numerator/denominator;remainder:=numerator%denominator;
+    if remainder*2>denominator || (remainder*2==denominator && expected%2==1) {expected+=1;}
+   }
+  }
+  actual:=render_display_unorm8_v1(decoded.value);
+  #assert f32_bits(actual)==f32_bits(cast(f32)expected/255.0f32);
+ }
+}
+#test "explicit display conversion keeps clamping both tie directions and complete byte centres" {
+ #assert render_display_unorm8_v1(-1)==0 && render_display_unorm8_v1(2)==1;
+ #assert render_display_unorm8_v1(0.5f32/255.0f32)==0;
+ #assert render_display_unorm8_v1(1.5f32/255.0f32)==2.0f32/255.0f32;
+ #assert render_display_unorm8_v1(0.5f32)==128.0f32/255.0f32;
+ for byte:0..<256 {value:=cast(f32)byte/255.0f32;#assert render_display_unorm8_v1(value)==value;}
+}

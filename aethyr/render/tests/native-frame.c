@@ -77,14 +77,33 @@ static int native_binding(void *user,coax_t_RenderHostUse use,coax_t_RenderOp op
   if(use.use.native_kind==VKS_SAMPLER){out->sampler=native_sampler(frame,use.source.sampler_name);return 1;}
   return 0;
 }
+// A reserved diagnostic fixture replaces realm production with measured FP16
+// source bytes, then executes the same typed presentation interpreter only.
+static int native_presentation_probe(RfiFrame *input,const char *package_path,const char *out_path,const char *record_path){
+  const char *slash=strrchr(package_path,'/');size_t directory_size=slash?(size_t)(slash-package_path):1;
+  PackageFiles files={.directory=calloc(directory_size+1,1)};assert(files.directory);if(slash)memcpy(files.directory,package_path,directory_size);else files.directory[0]='.';
+  const char *base=slash?slash+1:package_path;RhgBytes package=native_file(&files,(coax_string){base,(int64_t)strlen(base)});
+  Vkc device;vkc_open(&device);char error[256];RhgRenderer *renderer=rhg_open(&device,input->counts[0],(coax_string){(char*)package.data,(int64_t)package.bytes},native_read,&files,error,sizeof error);
+  if(!renderer){fprintf(stderr,"%s\n",error);return 3;}
+  VksImage *display=rhg_probe_presentation(renderer,input->counts[1],input->counts[2],input->buffers[0].bytes.data,input->buffers[0].bytes.size,COAX_RenderTextureFormat_rgba8,1,error,sizeof error);
+  if(!display){fprintf(stderr,"%s\n",error);rhg_close(renderer);vkc_close(&device);return 3;}
+  size_t bytes=(size_t)display->w*display->h*4;unsigned char *raw=malloc(bytes);assert(raw);vks_read(&device,display,raw,bytes);
+  FILE *f=fopen(out_path,"wb");assert(f&&fwrite(raw,1,bytes,f)==bytes&&!fclose(f));free(raw);uint64_t draws=rhg_draw_commands(renderer);uint32_t width=display->w,height=display->h;rhg_close(renderer);
+  int64_t live=rhg_ledger_info(1),words=rhg_ledger_info(2);vkc_close(&device);f=fopen(record_path,"wb");assert(f);
+  fprintf(f,"{\"status\":\"rendered\",\"scope\":\"private_presentation_probe_v1\",\"profile\":%lld,\"resource\":1,\"width\":%u,\"height\":%u,\"format\":\"rgba8\",\"bytes\":%zu,\"draw_commands\":%llu,\"validation_errors\":%d,\"validation_warnings\":%d,\"closed_live\":%lld,\"closed_words\":%lld}\n",(long long)input->counts[0],width,height,bytes,(unsigned long long)draws,vkc_validation_errors,vkc_validation_warnings,(long long)live,(long long)words);assert(!fclose(f));
+  free(files.last);free(files.directory);return live||words||vkc_validation_errors||vkc_validation_warnings?3:0;
+}
 int main(int argc,char **argv){
-  if(argc!=5&&argc!=6){fprintf(stderr,"usage: native-frame FRAME.CONFIG RENDER.JSON OUT.RAW RECORD.JSON [rgba8|rgba16f|rgba8-present]\n");return 2;}
+  if(argc!=5&&argc!=6){fprintf(stderr,"usage: native-frame FRAME.CONFIG RENDER.JSON OUT.RAW RECORD.JSON [rgba8|rgba16f|rgba8-present|rgba8-present-v1]\n");return 2;}
   const char *format_name=argc==6?argv[5]:"rgba8";coax_t_RenderTextureFormat screen_format;size_t screen_pixel_bytes;
   if(!strcmp(format_name,"rgba8")){screen_format=COAX_RenderTextureFormat_rgba8;screen_pixel_bytes=4;}
   else if(!strcmp(format_name,"rgba16f")){screen_format=COAX_RenderTextureFormat_rgba16f;screen_pixel_bytes=8;}
-  else if(!strcmp(format_name,"rgba8-present")){screen_format=COAX_RenderTextureFormat_rgba16f;screen_pixel_bytes=4;}
+  else if(!strcmp(format_name,"rgba8-present")||!strcmp(format_name,"rgba8-present-v1")){screen_format=COAX_RenderTextureFormat_rgba16f;screen_pixel_bytes=4;}
   else{fprintf(stderr,"unsupported readback format\n");return 2;}
   NativeFrame frame={0};char error[256];if(!rfi_load(argv[1],&frame.input,error,sizeof error)){fprintf(stderr,"%s\n",error);return 2;}
+  if(frame.input.buffer_count==1&&!strcmp(frame.input.buffers[0].name,"presentation-probe")){
+    int result=native_presentation_probe(&frame.input,argv[2],argv[3],argv[4]);rfi_close(&frame.input);return result;
+  }
   coax_t_RenderHostBool coarse=aethyr_render_bool(frame.input.counts[12]);
   if(!coarse.ok){fprintf(stderr,"raw coarse flag refused by Coax\n");return 2;}
   for(size_t i=0;i<frame.input.buffer_count;i++)if(!aethyr_render_bool(frame.input.buffers[i].zero_initialized).ok){fprintf(stderr,"raw buffer initialization flag refused by Coax\n");return 2;}
@@ -131,6 +150,7 @@ int main(int argc,char **argv){
   if(!rhg_execute(frame.renderer,&receipt,&effects,coarse.value,screen_format,error,sizeof error)){fprintf(stderr,"%s\n",error);return 5;}
   VksImage *screen=rhg_screen(frame.renderer);
   if(!strcmp(format_name,"rgba8-present")){screen=rhg_present_float(frame.renderer,COAX_RenderTextureFormat_rgba8,error,sizeof error);if(!screen){fprintf(stderr,"%s\n",error);return 5;}}
+  if(!strcmp(format_name,"rgba8-present-v1")){screen=rhg_present_quantized_v1(frame.renderer,COAX_RenderTextureFormat_rgba8,error,sizeof error);if(!screen){fprintf(stderr,"%s\n",error);return 5;}}
   assert(screen);size_t bytes=(size_t)screen->w*screen->h*screen_pixel_bytes;unsigned char *pixels=malloc(bytes);assert(pixels);vks_read(&frame.device,screen,pixels,bytes);
   FILE *image=fopen(argv[3],"wb");assert(image&&fwrite(pixels,1,bytes,image)==bytes&&!fclose(image));
   FILE *record=fopen(argv[4],"w");assert(record);fprintf(record,"{\"status\":\"rendered\",\"profile\":%" PRId64 ",\"resource\":%u,\"width\":%u,\"height\":%u,\"format\":\"%s\",\"bytes\":%zu,\"draw_commands\":%" PRIu64 ",\"device\":\"%s\",\"subPixelPrecisionBits\":%u,\"validation_errors\":%d,\"validation_warnings\":%d}\n",c[0],COAX_RenderTarget_screen,screen->w,screen->h,format_name,bytes,rhg_draw_commands(frame.renderer),frame.device.props.deviceName,frame.device.props.limits.subPixelPrecisionBits,vkc_validation_errors,vkc_validation_warnings);assert(!fclose(record));

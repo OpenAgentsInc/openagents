@@ -32,6 +32,9 @@ VksImage *rhg_screen(RhgRenderer *renderer);
 // Optional diagnostic only. Execute the shared RenderPresentation descriptor
 // after a complete float-screen frame. No ordinary caller selects this path.
 VksImage *rhg_present_float(RhgRenderer *renderer,int display_format,char *error,size_t error_bytes);
+// Private diagnostic selectors; neither changes an ordinary host's format.
+VksImage *rhg_present_quantized_v1(RhgRenderer *renderer,int display_format,char *error,size_t error_bytes);
+VksImage *rhg_probe_presentation(RhgRenderer *renderer,int64_t width,int64_t height,const void *source,size_t bytes,int display_format,int quantized,char *error,size_t error_bytes);
 VksImage *rhg_target_image(RhgRenderer *renderer,coax_t_RenderTarget target);
 uint64_t rhg_draw_commands(const RhgRenderer *renderer);
 // The GPU resource ledger (aethyr/render/registry.coax), one per process as in

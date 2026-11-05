@@ -1,0 +1,9 @@
+// Compare a saved complete physical display image to the finite-HALF oracle.
+#import "Basic";
+#load "display-probe-receipt.coax";
+#load "qualification-files.coax";
+#load "../../../coax/lib/sys/args.coax";
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])!=3 {tool_errln("usage: compare-display-probe RAW rgba8|bgra8 NEW_RECEIPT");return 2;}file:=args_at(a[..],0);name:=args_at(a[..],1);out:=args_at(a[..],2);format:=ifx name=="rgba8" then 0 else ifx name=="bgra8" then 1 else -1;if format<0||fs_exists(out) {return 2;}
+ bytes:[262145]u8;n:=fs_read(file,bytes[..]);if n<0 {return 1;}hash:[64]u8;again:[64]u8;if !rtq_hash_file(file,hash[..]) {return 1;}different:=dpqr_bytes(bytes[0..<n],format);same:=rtq_hash_file(file,again[..])&&cast(string)hash[..]==cast(string)again[..];text:[4096]u8;o:[1]Jo;jo_start(o[..],text[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.render.display-probe-exact.v1");jo_key(o[..],"private_iteration_only");jo_bool(o[..],true);jo_key(o[..],"status");jo_str(o[..],ifx different==0&&same then "pass" else "fail");jo_key(o[..],"file");jo_str(o[..],file);jo_key(o[..],"format");jo_str(o[..],name);jo_key(o[..],"channels");jo_int(o[..],n);jo_key(o[..],"different");jo_int(o[..],different);jo_key(o[..],"sha256");jo_str(o[..],cast(string)hash[..]);jo_key(o[..],"source_fence_unchanged");jo_bool(o[..],same);jo_key(o[..],"scope");jo_str(o[..],"Every byte of supplied complete256x256 image; enclosing SDK receipts establish source/binary/GPU/validation/lifecycle identity.");jo_end(o[..]);if o[0].bad||!fs_write(out,jo_text(o[..])) {return 1;}print("Exact display probe: % bytes, % differences.\n",n,different);return ifx different==0&&same then 0 else 1;
+}

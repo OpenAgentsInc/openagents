@@ -1,0 +1,10 @@
+// Closed RFI transport for the presentation-only diagnostic SDK seam.
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/args.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/json/json.coax";
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])!=3 {tool_errln("usage: make-display-probe-frame PROBE_DIR PACKAGE_DIR NEW_FRAME");return 2;}
+ paths:[2][4096]u8;source:=fs_join(args_at(a[..],0),"source.rgba16f",paths[0][..]);manifest:=fs_join(args_at(a[..],1),"render.json",paths[1][..]);if fs_size(source)!=524288||fs_size(manifest)<1||fs_exists(args_at(a[..],2)) {return 2;}
+ text:[16384]u8;o:[1]Jo;jo_start(o[..],text[..]);jo_put(o[..],"2 256 256 0 16 0 0 0 0 0 0 0 0\n-\n-\n-\n-\n");jo_put(o[..],manifest);jo_put(o[..],"\n0\n1\npresentation-probe ");jo_put(o[..],source);jo_put(o[..]," 524288 524288 0 524288 524288 1\ntextures 0\n");return ifx !o[0].bad&&fs_write(args_at(a[..],2),jo_text(o[..])) then 0 else 1;
+}

@@ -67,6 +67,19 @@ RenderPresentation :: struct {
   else {#assert p.status==presentation_resources.RenderResourceStatus.invalid && p.entry == -1 && p.vertices==0 && !p.state.valid;}
 }
 
+#test "versioned quantized presentation keeps the legacy descriptor and owns only its explicit selector" {
+ old:=render_presentation(2,320,180,1,16384);p:=render_presentation_quantized_v1(2,320,180,1,16384);
+ #assert p.status==presentation_resources.RenderResourceStatus.ok && p.draw.width==old.draw.width && p.display.format==old.display.format && p.entry==old.entry && p.vertices==old.vertices;
+ for i:0..<8 {#assert p.uniforms[i]==(ifx i==5 then 1 else old.uniforms[i]);}#assert old.uniforms[5]==0;
+ #assert render_presentation_quantized_v1(2,0,180,1,16384).uniforms[5]==0;
+ #assert render_presentation_quantized_v1(1,320,180,1,16384).entry == -1;
+}
+render_presentation_quantized_v1 :: (profile:int,width:int,height:int,format:int,maximum:int)->RenderPresentation #export_c {
+ p:=render_presentation(profile,width,height,format,maximum);
+ if p.status==presentation_resources.RenderResourceStatus.ok {p.uniforms[5]=1;}
+ return p;
+}
+
 render_presentation :: (profile:int,width:int,height:int,format:int,maximum:int)->RenderPresentation #export_c {
   if !render_catalog(profile).features.media || (format!=cast(int)presentation_resources.RenderTextureFormat.rgba8 && format!=cast(int)presentation_resources.RenderTextureFormat.bgra8) {return RenderPresentation.{};}
   draw:=presentation_resources.render_viewport_desc(width,height,presentation_resources.render_device_limit(maximum));

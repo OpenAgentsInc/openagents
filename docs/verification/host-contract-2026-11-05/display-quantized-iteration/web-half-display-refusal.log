@@ -1,0 +1,5 @@
+coax jobs: waiting for 1 of 12 build workers held by 16 other coax processes; running 1 now (coax status shows them)
+coax jobs: the load average is 31.2, at or above 12 ($COAX_JOBS_LOAD); running 1 build worker, not up to 2, until it drops
+(async()=>{try{await coaxialClipStep(1,60);await coaxial.renderSettled();return !!coaxial.renderLedger()&&coaxial.renderStatus?.submitted===true&&coaxial.renderStatus?.readiness===2}catch(e){console.error(e);return false}})()
+
+{\"ready\":true,\"phase\":\"renderer-fetch-package\",\"note\":\"everglade5e: Coax refused experimental presentation\",\"errors\":[\"Coax renderer initialization Error: Coax refused experimental presentation\\n    at RenderHost.configurePresentation (http://127.0.0.1:60759/coaxial/render.js:522:103)\\n    at RenderHost.initializeChecked (http://127.0.0.1:60759/coaxial/render.js:79:12)\\n    at async RenderHost.initialize (http://127.0.0.1:60759/coaxial/render.js:38:89)\\n    at async loadShadersOnce (http://127.0.0.1:60759/coaxial/host.js:1095:5)\",\"coaxial: everglade5e: Coax refused experimental presentation\"]}

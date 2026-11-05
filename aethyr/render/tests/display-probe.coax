@@ -1,0 +1,55 @@
+// Exhaustive finite-binary16 input fixture and independent integer byte oracle.
+#load "../display-quantize.coax";
+#authority;
+DISPLAY_PROBE_SIDE :: 256;
+DISPLAY_PROBE_PIXELS :: 65536;
+#test "display probe keeps each source permutation and makes nonfinite encodings finite" {
+ #assert dpq_bits(0,0)==0 && dpq_bits(1,0)==1 && dpq_bits(0,1)==21845 && dpq_bits(0,2)==65535 && dpq_bits(8,3)==0x3000;
+ #assert dpq_bits(10,2)==65525;
+ #assert dpq_finite(0x7bff)==0x7bff && dpq_finite(0x7c00)==0 && dpq_finite(0xfc00)==0 && dpq_finite(0xffff)==0;
+ #assert dpq_expected(0,3)==255 && dpq_expected(65535,3)==255;
+}
+#forall "integer byte oracle independently agrees for every finite half input" bits:0..<65536 #steps 80000000 {
+ decoded:=dq_half.rh_half_decode(cast(u32)bits);
+ if decoded.ok {#assert f32_bits(render_display_unorm8_v1(decoded.value))==f32_bits(cast(f32)dpq_byte(bits)/255.0f32);}
+}
+#test "integer display byte oracle covers sign exponent rounding ties and clamps" {
+ #assert dpq_byte(0)==0 && dpq_byte(0x8000)==0 && dpq_byte(0x3c00)==255 && dpq_byte(0x7bff)==255;
+ #assert dpq_byte(0x3800)==128 && dpq_byte(0x3400)==64 && dpq_byte(0x3a00)==191;
+ #assert dpq_byte(1)==0 && dpq_byte(0x3bff)==255 && dpq_byte(0xb800)==0;
+}
+#forall "display fixture expected bytes project each complete RGB source word" pixel:0..<65536 #steps 80000000 {
+ for channel:0..<3 {bits:=dpq_bits(pixel,channel);#assert dpq_expected(pixel,channel)==(ifx (bits&0x7c00)==0x7c00 then 0 else dpq_byte(bits));}
+ #assert dpq_expected(pixel,3)==255;
+}
+#test "independent rational rounding includes both exact tie directions and integral values" {
+ #assert dpq_round(1,2)==0 && dpq_round(3,2)==2 && dpq_round(4,2)==2 && dpq_round(5,2)==2;
+ #assert dpq_round(0,7)==0 && dpq_round(5,7)==1 && dpq_round(1,7)==0;
+}
+#test "display fixture emits both little endian source bytes" {
+ #assert dpq_source(2)==0x55 && dpq_source(3)==0x55 && dpq_source(6)==0 && dpq_source(7)==0x30;
+ #assert dpq_source(8)==1 && dpq_source(9)==0 && dpq_source(10)==0x54 && dpq_source(11)==0x55;
+}
+dpq_bits :: (pixel:int,channel:int)->int {
+ if channel==3 {return 0x3000;}
+ return ifx channel==0 then pixel else ifx channel==1 then pixel^21845 else 65535-pixel;
+}
+dpq_finite :: (bits:int)->int {return ifx (bits&0x7c00)==0x7c00 then 0 else bits;}
+dpq_byte :: (bits:int)->int {
+ // Treating subnormals as an exponent-zero normalized mantissa still rounds
+ // every one to byte zero. No underflowing fractional term affects a bin.
+ exponent:=(bits>>10)&31;mantissa:=(bits&1023)+1024;
+ // Exponents at least 25 are already above byte full scale, so a unit
+ // denominator suffices before the final integer saturation.
+ right:=25-exponent;right=right&((right>>63)^(-1));
+ value:=dpq_round(mantissa*255,1<<right);excess:=value-255;
+ return (value-(excess&((excess>>63)^(-1))))*(1-(bits>>15));
+}
+dpq_round :: (numerator:int,denominator:int)->int {
+ value:=numerator/denominator;remainder:=numerator%denominator;
+ if remainder*2>denominator || (remainder*2==denominator && (value&1)!=0) {value+=1;}return value;
+}
+dpq_source :: (at:int)->u8 #export_c {
+ bits:=dpq_finite(dpq_bits(at/8,at/2%4));return cast,trunc(u8)(bits>>((at%2)*8));
+}
+dpq_expected :: (pixel:int,channel:int)->int #export_c {return ifx channel==3 then 255 else dpq_byte(dpq_finite(dpq_bits(pixel,channel)));}

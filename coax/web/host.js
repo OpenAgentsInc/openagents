@@ -1089,7 +1089,7 @@ async function loadShadersOnce() {
     const previous = gpu.renderer;
     const candidate = new RenderHost({ device, context: gpu.context, format, memory, exports: engine.exports, arena,
       url: renderUrl, profile: Number(script.dataset.renderProfile), coarse: matchMedia("(pointer: coarse)").matches, capture: captureRequested,
-      presentation: captureRequested && globalThis.coaxialRenderPresentation === "float",
+      presentation: captureRequested && ["float","unorm8-v1"].includes(globalThis.coaxialRenderPresentation) ? globalThis.coaxialRenderPresentation : false,
       canonicalLayers: Boolean(hostTransport) || (captureRequested && globalThis.coaxialCanonicalLayers === true),
       onMedia: (rows) => send(MEDIA_KIND, rows.filter((m) => m.ready || m.failed).map((m) => `${m.url} ${m.failed ? 0 : m.width} ${m.failed ? 0 : m.height}`).join("\n")) });
     await candidate.initialize(previous);

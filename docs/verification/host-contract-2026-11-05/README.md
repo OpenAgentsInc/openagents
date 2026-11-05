@@ -9,6 +9,12 @@ supplies a genuinely matching admitted historical CPU compiler and separately
 pinned current product inputs. Its new half-float comparisons pass; ordinary
 8-bit Vulkan presentation fails the unchanged gate and remains an explicit exit.
 
+The disabled [explicit display quantization iteration](display-quantized-iteration.md)
+has byte-exact conversion probes on all three GPUs and a frozen full-frame
+comparison within the inherited live allowance. Actual native composition
+still fails that allowance (2,213 channels); no ordinary selector or default
+is promoted by this component evidence.
+
 This is an **incomplete** conformance record. The normative boundary is
 [`aethyr/host/README.md`](../../../aethyr/host/README.md). Aethyrforge's world
 default remains web. Metal's interactive host is #12868; neither these

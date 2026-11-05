@@ -1,0 +1,10 @@
+// Explicit finite-colour conversion for the optional display experiment.
+// A normalized GPU attachment's final conversion still needs actual probes.
+#load "../../verse/gpu/shader.coax";
+#authority;
+#load "tests/display-quantize-checks.coax";
+render_display_unorm8_v1 :: (value:f32)->f32 #export_c {
+ scaled:=clampf(value,0,1)*255.0f32;low:=floor(scaled);fraction:=scaled-low;integer:=cast(u32)low;
+ if fraction>0.5f32 || (fraction==0.5f32 && (integer&1)!=0) {integer+=1;}
+ return cast(f32)integer/255.0f32;
+}

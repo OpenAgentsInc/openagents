@@ -1,6 +1,9 @@
 // Scalar browser transport for the admitted Coax renderer. Input storage is
 // statically owned; C projects typed receipts and performs no render policy.
-#include "Render.h"
+#ifndef RENDER_HOST_HEADER
+#define RENDER_HOST_HEADER "Render.h"
+#endif
+#include RENDER_HOST_HEADER
 #include "host-transport-face.c"
 #include <stddef.h>
 #include <stdint.h>
@@ -317,6 +320,9 @@ RENDER_EXPORT("coaxial_render_target_info") int64_t coaxial_render_target_info(i
 }
 RENDER_EXPORT("coaxial_render_presentation") uint32_t coaxial_render_presentation(int32_t width,int32_t height,int32_t format,int32_t maximum){
   render_presentation_value=render_presentation(render_descriptor_profile,width,height,format,maximum);return render_presentation_value.status;
+}
+RENDER_EXPORT("coaxial_render_presentation_v1") uint32_t coaxial_render_presentation_v1(int32_t width,int32_t height,int32_t format,int32_t maximum){
+  render_presentation_value=render_presentation_quantized_v1(render_descriptor_profile,width,height,format,maximum);return render_presentation_value.status;
 }
 RENDER_EXPORT("coaxial_render_presentation_info") int64_t coaxial_render_presentation_info(int32_t field){
   const coax_t_RenderPresentation *p=&render_presentation_value;

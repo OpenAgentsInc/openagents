@@ -189,9 +189,7 @@ int rhg_execute(RhgRenderer *r,const coax_t_RenderRuntimeFrame *receipt,const Rh
 VksImage *rhg_screen(RhgRenderer *r){return r->target_open[COAX_RenderTarget_screen]?&r->targets[COAX_RenderTarget_screen]:NULL;}
 typedef struct {VksPipe pipe;VksPass pass;} RhgPresentationEffects;
 static void rhg_record_presentation(VkCommandBuffer cmd,void *user){RhgPresentationEffects *effects=user;vks_pipe_record(&effects->pipe,cmd,&effects->pass);}
-VksImage *rhg_present_float(RhgRenderer *r,int format,char *error,size_t size){
-  VksImage *screen=rhg_screen(r);if(!screen){rhg_error(error,size,"presentation has no completed screen");return NULL;}
-  coax_t_RenderPresentation p=render_presentation(r->profile,screen->w,screen->h,format,r->v->props.limits.maxImageDimension2D);
+static VksImage *rhg_present_descriptor(RhgRenderer *r,coax_t_RenderPresentation p,char *error,size_t size){
   if(p.status!=COAX_RenderResourceStatus_ok){rhg_error(error,size,"experimental presentation refused by Coax");return NULL;}
   VksImage *source=rhg_target_image(r,p.source);
   if(!source||!rhg_ledger_live(&r->target_handles[p.source])||source->format!=rhg_format(p.draw.format)||source->w!=p.draw.width||source->h!=p.draw.height){rhg_error(error,size,"actual presentation source differs from Coax descriptor");return NULL;}
@@ -232,6 +230,22 @@ VksImage *rhg_present_float(RhgRenderer *r,int format,char *error,size_t size){
   vks_pipe_close(r->v,&effects.pipe);vkDestroySampler(r->v->dev,sampler,NULL);vkc_free(r->v,&uniform);rhg_ledger_release(&uniform_handle);
   if(!valid){rhg_error(error,size,"presentation validation or physical resource check failed");return NULL;}
   return &r->presentation;
+}
+VksImage *rhg_present_float(RhgRenderer *r,int format,char *error,size_t size){
+  VksImage *screen=rhg_screen(r);if(!screen){rhg_error(error,size,"presentation has no completed screen");return NULL;}
+  return rhg_present_descriptor(r,render_presentation(r->profile,screen->w,screen->h,format,r->v->props.limits.maxImageDimension2D),error,size);
+}
+VksImage *rhg_present_quantized_v1(RhgRenderer *r,int format,char *error,size_t size){
+  VksImage *screen=rhg_screen(r);if(!screen){rhg_error(error,size,"presentation has no completed screen");return NULL;}
+  return rhg_present_descriptor(r,render_presentation_quantized_v1(r->profile,screen->w,screen->h,format,r->v->props.limits.maxImageDimension2D),error,size);
+}
+VksImage *rhg_probe_presentation(RhgRenderer *r,int64_t width,int64_t height,const void *bytes,size_t count,int format,int quantized,char *error,size_t size){
+  coax_t_RenderPresentation p=quantized?render_presentation_quantized_v1(r->profile,width,height,format,r->v->props.limits.maxImageDimension2D):render_presentation(r->profile,width,height,format,r->v->props.limits.maxImageDimension2D);
+  if(p.status!=COAX_RenderResourceStatus_ok||!bytes||count!=(uint64_t)p.draw.width*p.draw.height*8){rhg_error(error,size,"probe source does not cover admitted FP16 extent");return NULL;}
+  coax_t_FrameCounts counts={.width=p.draw.width,.height=p.draw.height};
+  if(!rhg_target(r,p.source,&counts,0,p.draw.format,error,size))return NULL;
+  vks_upload(r->v,&r->targets[p.source],bytes,count);
+  return rhg_present_descriptor(r,p,error,size);
 }
 VksImage *rhg_target_image(RhgRenderer *r,coax_t_RenderTarget target){return target<COAX_RenderTarget_invalid&&r->target_open[target]?&r->targets[target]:NULL;}
 uint64_t rhg_draw_commands(const RhgRenderer *r){return r->draw_commands;}

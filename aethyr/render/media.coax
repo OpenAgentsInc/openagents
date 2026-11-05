@@ -1,7 +1,15 @@
 // The production media rectangle shader, formerly inline in host.js.
 #load "../../verse/gpu/shader.coax";
 #load "media-profile.coax";
+#load "display-quantize.coax";
 MediaVaryings :: struct {position:V4;uv:V2;}
+#test "media display conversion v1 is explicit and leaves ordinary rectangles unchanged" {
+ u:=[8]f32.[-1,1,1,-1,1,0,0,0];pixels:=[1]V4.[v4(0.5,0.25,0.75,0.125)];v:=media_vs(0,0,u[..]);image:=Tex2D.{width=1,height=1,texels=pixels[..]};
+ plain:=media_fs(v,u[..],image,Sampler.{});#assert plain.x==0.5 && plain.y==0.25 && plain.z==0.75 && plain.w==1;
+ u[5]=1;converted:=media_fs(v,u[..],image,Sampler.{});#assert converted.x==128.0f32/255.0f32 && converted.y==64.0f32/255.0f32 && converted.z==191.0f32/255.0f32 && converted.w==1;
+ u[4]=0.5;dim:=media_fs(v,u[..],image,Sampler.{});#assert dim.x==64.0f32/255.0f32 && dim.y==32.0f32/255.0f32 && dim.z==96.0f32/255.0f32 && dim.w==1;u[4]=1;
+ u[5]=2;other:=media_fs(v,u[..],image,Sampler.{});#assert other.x==plain.x && other.y==plain.y && other.z==plain.z && other.w==1;
+}
 #test "media rectangles preserve corners texture coordinates brightness and opaque output" {
   u:=[8]f32.[-0.75,0.5,0.25,-0.5,0.5,0,0,0];
   a:=media_vs(0,0,u[..]);b:=media_vs(5,0,u[..]);
@@ -17,6 +25,7 @@ media_vs :: (vertex:u32,instance:u32,u:[]f32)->MediaVaryings {
 }
 media_fs :: (v:MediaVaryings,u:[]f32,media_image:Tex2D,media_sampler:Sampler)->V4 {
   c:=gpu_sample(media_image,media_sampler,v.uv);
+  if u[5]==1 {return v4(render_display_unorm8_v1(c.x*u[4]),render_display_unorm8_v1(c.y*u[4]),render_display_unorm8_v1(c.z*u[4]),1);}
   return v4(c.x*u[4],c.y*u[4],c.z*u[4],1);
 }
 

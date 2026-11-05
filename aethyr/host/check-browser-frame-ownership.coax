@@ -6,7 +6,7 @@
 hfo_wait :: (c:[]Cdp,text:string)->bool {until:=proc_now_ms()+60000;while proc_now_ms()<until {if wc_eval(c,text)=="true" {return true;}proc_sleep(50);}tool_errln(text);tool_errln(cdp_error(c));tool_errln(wc_eval(c,"JSON.stringify({ready:coaxial?.ready,status:coaxial?.renderStatus,phase:coaxial?.renderLifecyclePhase,note:document.querySelector('pre[role=status]')?.textContent,errors:globalThis.ownershipErrors})"));return false;}
 hfo_eval :: (c:[]Cdp,text:string)->bool {if wc_eval(c,text)=="true" {return true;}tool_errln(text);tool_errln(cdp_error(c));return false;}
 tool_main :: ()->int #export_c {
-  a:[1]Args;if !args_load(a[..]) {return 2;}child:=rto_child(a[..]);if child>=0 {return child;}if args_count(a[..])!=2 {tool_errln("usage: check-browser-frame-ownership PREVIOUS_CAPTURE NEW_OUT");return 2;}
+  a:[1]Args;if !args_load(a[..]) {return 2;}child:=rto_child(a[..]);if child>=0 {return child;}if args_count(a[..])<2 || args_count(a[..])>3 || (args_count(a[..])==3 && args_at(a[..],2)!="bgra8unorm") {tool_errln("usage: check-browser-frame-ownership PREVIOUS_CAPTURE NEW_OUT [bgra8unorm]");return 2;}
   paths:[8][4096]u8;previous:=args_at(a[..],0);dir:=args_at(a[..],1);if !fs_mkdir(dir) {return 1;}dir=fs_realpath(dir,paths[0][..]);config:=fs_join(dir,"origin-config.json",paths[1][..]);portfile:=fs_join(dir,"port",paths[2][..]);ledger:=fs_join(dir,"origin",paths[3][..]);
   bytes:[131072]u8;nodes:[32768]JvNode;d:[1]Jv;n:=fs_read(fs_join(previous,"origin-config.json",paths[4][..]),bytes[..]);if n<1||!jv_parse(d[..],cast(string)bytes[0..<n],nodes[..]) {return 1;}
   root:=fs_cwd(paths[4][..]);host:=fs_join(root,"coax/web",paths[5][..]);out:[131072]u8;o:[1]Jo;jo_start(o[..],out[..]);jo_obj(o[..]);at:=d[0].nodes[0].first;
@@ -20,6 +20,10 @@ tool_main :: ()->int #export_c {
   if cdp_call(c[..],"Emulation.setDeviceMetricsOverride","{\"width\":320,\"height\":180,\"deviceScaleFactor\":1,\"mobile\":false}",30000)<0 {return 1;}
   preload:="globalThis.coaxialClip=true;globalThis.coaxialRenderCapture=true;globalThis.coaxialRenderCaptureFormat='rgba16float';globalThis.ownershipErrors=[];{const original=console.error;console.error=(...args)=>{ownershipErrors.push(args.map(x=>String(x?.stack??x)).join(' '));original(...args)}}globalThis.fenceHold=false;globalThis.fenceRelease=[];{const original=GPUQueue.prototype.onSubmittedWorkDone;GPUQueue.prototype.onSubmittedWorkDone=function(){const done=original.call(this);if(!fenceHold)return done;const gate=new Promise(resolve=>fenceRelease.push(resolve));return done.then(()=>gate)}}";
   jo_start(o[..],out[..]);jo_obj(o[..]);jo_key(o[..],"source");jo_str(o[..],preload);jo_end(o[..]);if cdp_call(c[..],"Page.addScriptToEvaluateOnNewDocument",jo_text(o[..]),30000)<0 {return 1;}
+  // Preserve the old half-float workload by default. A presentation capture
+  // requires the actual UNORM canvas; install its explicit fixture override
+  // after the common preload, before any realm or host code executes.
+  if args_count(a[..])==3 && cdp_call(c[..],"Page.addScriptToEvaluateOnNewDocument","{\"source\":\"globalThis.coaxialRenderCaptureFormat='bgra8unorm'\"}",30000)<0 {return 1;}
   url:[512]u8;u:[1]Jo;jo_start(u[..],url[..]);jo_put(u[..],"http://127.0.0.1:");jo_int(u[..],port);jo_put(u[..],"/?golden&probe-manual");jo_start(o[..],out[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],jo_text(u[..]));jo_end(o[..]);if cdp_call(c[..],"Page.navigate",jo_text(o[..]),30000)<0 {return 1;}
   if !hfo_wait(c[..],"!!coaxial?.ready&&typeof coaxial.renderSettled==='function'") {return 1;}
   for kind:[2]string.["keyDown","keyUp"] {jo_start(o[..],out[..]);jo_obj(o[..]);jo_key(o[..],"type");jo_str(o[..],kind);jo_key(o[..],"key");jo_str(o[..],"Enter");jo_key(o[..],"code");jo_str(o[..],"Enter");jo_key(o[..],"windowsVirtualKeyCode");jo_int(o[..],13);jo_end(o[..]);if cdp_call(c[..],"Input.dispatchKeyEvent",jo_text(o[..]),30000)<0 {return 1;}}

@@ -17,8 +17,8 @@ const blendComponent = (mode, alpha) => {
 };
 
 export class RenderHost {
-  constructor({ device, context, format, memory, exports, arena, url, profile, coarse, capture = false, presentation = false, canonicalLayers = false, onMedia = null }) {
-    Object.assign(this, { device, context, format, displayFormat: format, memory, x: exports, arena, url, profile, coarse, capture, presentationRequested: presentation, canonicalLayers, onMedia });
+  constructor({ device, context, format, memory, exports, arena, url, profile, coarse, capture = false, presentation = false, presentationOnly = false, canonicalLayers = false, onMedia = null }) {
+    Object.assign(this, { device, context, format, displayFormat: format, memory, x: exports, arena, url, profile, coarse, capture, presentationRequested: presentation, presentationOnly, canonicalLayers, onMedia });
     this.modules = new Map(); this.pipelines = new Map(); this.groups = new Map(); this.shaderMessages = [];this.ready = false;this.samplers = new Map();this.textureCaptures = [];this.layouts = new Map();this.requests = new Map();this.targets = new Map();this.generatedBuffers = new Map();this.buffers = [];this.pendingEffects = new Set();
   }
   info(field) { return number(this.x.coaxial_render_frame_info(field)); }
@@ -81,7 +81,8 @@ export class RenderHost {
     }
     const effect = (field) => number(x.coaxial_render_media_effects(field));
     this.mediaEffects = { format: this.mediaText(effect(0), effect(1)), premultipliedAlpha: Boolean(effect(2)), resizeQuality: this.mediaText(effect(3), effect(4)) };
-    if (this.reuses) {
+    if (this.presentationOnly) {this.assetRows=[];this.resourceRecords=new Map();}
+    else if (this.reuses) {
       // The compiled catalog/profile is fixed. Keep initialized GPU resources,
       // retained upload prefixes and effectful producer retry state on reload.
       for (const key of ["assetRows","indexAssetRow","vertexBuffer","uniformBuffer","resourceRecords","indexRecord","layerTexture","layerRequest","sansTexture","textureCaptures","buffers","stageCursor","targets","generatedBuffers","samplers","mediaCache"]) this[key] = this.reuses[key];
@@ -517,7 +518,26 @@ export class RenderHost {
   presentationInfo(field) { return number(this.x.coaxial_render_presentation_info(field)); }
   configurePresentation(width, height) {
     const code = this.formatCodes[this.displayFormat] ?? this.ids.format.invalid;
-    if (!this.x.coaxial_render_presentation || this.x.coaxial_render_presentation(width, height, code, this.device.limits.maxTextureDimension2D) !== 1) throw new RenderRefusal("Coax refused experimental presentation");
+    const effect=this.presentationRequested==="unorm8-v1"?this.x.coaxial_render_presentation_v1:this.x.coaxial_render_presentation;
+    if (!effect || effect(width, height, code, this.device.limits.maxTextureDimension2D) !== 1) throw new RenderRefusal("Coax refused experimental presentation");
+  }
+  recordPresentation(encoder,groups,texture) {
+    const x=this.x,clear={r:x.coaxial_render_clear(0),g:x.coaxial_render_clear(1),b:x.coaxial_render_clear(2),a:x.coaxial_render_clear(3)};
+    const display=encoder.beginRenderPass({colorAttachments:[{view:texture.createView(),loadOp:"clear",storeOp:"store",clearValue:clear}]});
+    display.setPipeline(this.presentationPipeline);groups.forEach((group,slot)=>display.setBindGroup(slot,group));display.draw(this.presentationInfo(4));display.end();
+  }
+  async probePresentation(source,width,height) {
+    if(!this.presentationOnly||!this.ready)throw new RenderRefusal("presentation-only fixture is not ready");
+    this.configurePresentation(width,height);
+    this.width=this.presentationInfo(5);this.height=this.presentationInfo(6);
+    if(source.byteLength!==width*height*8||this.x.coaxial_render_counts(width,height,0,16,0,0,0,0,0,0,0)!==1)throw new RenderRefusal("probe source does not cover admitted extent");
+    const texture=this.target(this.presentationInfo(3)),device=this.device;this.held(texture);device.pushErrorScope("validation");
+    try {
+      device.queue.writeTexture({texture},source,{bytesPerRow:width*8,rowsPerImage:height},[width,height]);
+      const groups=this.presentationGroups(),display=this.context.getCurrentTexture(),encoder=device.createCommandEncoder();this.recordPresentation(encoder,groups,display);device.queue.submit([encoder.finish()]);
+      // Copy the concrete drawable before yielding to canvas presentation.
+      const readback=this.captureTexture(display,"presentation-probe",this.displayFormat,[{width,height}],1);await device.queue.onSubmittedWorkDone();return await readback;
+    } finally {const error=await device.popErrorScope();if(error)throw Error(error.message);}
   }
   async makePresentationPipeline() {
     const { device } = this, entry = this.presentationInfo(2), item = this.package.entries.find((p) => p.entry_index === entry);
@@ -642,7 +662,7 @@ export class RenderHost {
         source_capacity: record.sourceCapacity, logical_payload: record.logical, initialized_highwater: 0,
         upload_bytes: record.source === this.ids.source.main_uniform ? 0 : number(x.coaxial_render_upload_pending(record.id)), gpu_bytes: record.gpu.size, zero_initialized: 1 })),
       package: this.package, shader_messages: this.shaderMessages.slice(), textures: this.textureCaptures.slice(), media_text: media.text, media_images: media.images,
-      presentation: this.presentationRequested ? { experimental: true, draw_format: this.format, display_format: this.displayFormat,
+      presentation: this.presentationRequested ? { experimental: true, mode:this.presentationRequested, draw_format: this.format, display_format: this.displayFormat,
         entry: this.presentationInfo(2), source: this.presentationInfo(3), vertices: this.presentationInfo(4),
         uniforms: Array.from(new Float32Array(memory.buffer, number(x.coaxial_render_presentation_uniforms()), number(x.coaxial_render_presentation_uniform_bytes()) / 4)) } : null,
     } : null;
@@ -712,8 +732,7 @@ export class RenderHost {
         } else throw Error(`unknown admitted operation ${kind}`);
       }
       if (presentationGroups) {
-        const display = encoder.beginRenderPass({ colorAttachments: [{ view: this.lastTexture.createView(), loadOp: "clear", storeOp: "store", clearValue: clear }] });
-        display.setPipeline(this.presentationPipeline);presentationGroups.forEach((group, slot) => display.setBindGroup(slot, group));display.draw(this.presentationInfo(4));display.end();
+        this.recordPresentation(encoder,presentationGroups,this.lastTexture);
       }
       this.observation = observe?.(encoder, this.lastTexture);
       if (this.observation) this.observation.rendererSnapshot = sourceSnapshot;

@@ -10,5 +10,7 @@
 #test "native frame source draw count binds the whole16byte packet span" {#assert nfm_draw_span(0,0) && nfm_draw_span(190,3040) && nfm_draw_span(4194304,67108864);#assert !nfm_draw_span(67,3040) && !nfm_draw_span(190,3039) && !nfm_draw_span(0,1) && !nfm_draw_span(-1,16) && !nfm_draw_span(4194305,67108880);}
 #test "native frame float-presentation experiment has an explicit distinct format identity" {
  #assert nfm_bpp("rgba8-present")==4 && nfm_raw_bytes(320,180,"rgba8-present")==230400;
+ #assert nfm_bpp("rgba8-present-v1")==4 && nfm_raw_bytes(320,180,"rgba8-present-v1")==230400;
+ #assert nfm_bpp("rgba8-present-v2") == -1 && nfm_bpp("bgra8-present-v1") == -1;
  #assert nfm_bpp("rgba16f-present")== -1 && nfm_bpp("bgra8-present")== -1;
 }
