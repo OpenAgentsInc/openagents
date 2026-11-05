@@ -112,7 +112,7 @@ CK_readonly_validate :: (c:CK_Context) {
 }
 #test "read-only call registration keeps both intrusive directions" {
  nodes:[8]CK_Node;state:=[1]CK_State.[CK_State.{used=7,current=2}];c:=CK_Context.{nodes=nodes[..],state=state[..]};nodes[3].kind=CK_Tag.expr_call;nodes[4].kind=CK_Tag.expr_call;nodes[4].borrow_previous=7;
- CK_borrow_call(c,3);CK_borrow_call(c,4);#assert nodes[2].borrow_calls==4 && nodes[4].borrow_previous==0 && nodes[4].borrow_next==3 && nodes[3].borrow_previous==4 && nodes[3].borrow_next==0;
+ CK_borrow_call(c,3);CK_borrow_call(c,4);#assert nodes[2].borrow_calls==4 && nodes[4].borrow_previous==0 && nodes[4].borrow_next==3 && nodes[3].borrow_previous==4 && nodes[3].borrow_next==0 && nodes[0].borrow_previous==0;
 }
 
 // Hand-authored typed-graph inputs for the source programs described here;

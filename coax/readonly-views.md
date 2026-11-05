@@ -65,5 +65,5 @@ readers, carriers, alias observation, conditional unification and single operand
 evaluation. `tests/fail/readonly_*.coax` reject writes, capability upgrades,
 unsafe containment and escaping/temporary backing. Checker and parser source
 include direct policy/grammar checks. Native interface and sanitizer evidence
-is recorded with the implementation verification record; source support alone
+is recorded in [the verification record](../docs/verification/coax-readonly-views-2026-11-05.md); source support alone
 is not a new target qualification.
