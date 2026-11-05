@@ -13,6 +13,7 @@
 // at most 1024 bytes, a server's at most 3800.
 //
 // Page to server:
+//   P ENGINE RULES CONTENT         the build this page is (WIRE_PINS), just before its hello (#12839)
 //   H 4 LOOK CLASS FLAGS NAME      hello, after y: look ("ranger.SKIN.DYE.TRIM"), class ("druid"), FLAGS
 //                                  (1 touch, 2 logged in), the name shown ("-" none)
 //   I SEQ KX KY PX PY THETA B HEARD  one step's input (everglade-move-types.coax EgMoveIn), every step at
@@ -64,6 +65,20 @@
 
 WIRE_VERSION :: 4;   // 4: I's THETA in 0.1 mrad (WIRE_FINE), #12718
 WIRE_REFUSE_VERSION :: "version";   // r 0 version: the room speaks another WIRE_VERSION than the hello's (the page reloads)
+// The oldest wire the room still speaks: a page cached from the release before still joins while its
+// hello's version is in WIRE_MIN..WIRE_VERSION. Keep WIRE_MIN below WIRE_VERSION only while the room
+// still writes what that older page reads.
+WIRE_MIN :: 4;
+// The build a page and a room are, beside the wire (#12839, aethyr/session/compat.coax): one encounter
+// never mixes two engines, two rule sets or two worlds. Raise WIRE_ENGINE when the shared movement or
+// world step changes what a page predicts, WIRE_RULES when the room's rules (everglade5e-room-rules.coax,
+// everglade-cast-rules.coax) change what a cast or a hit does, and WIRE_CONTENT when the world the page
+// draws (the city, its pieces, its people) changes. A page says them in P before its hello; a page
+// from before P is WIRE_PINS_FIRST's build. A room refuses a hello whose build differs ("r 0 version":
+// the page reloads into the new one).
+WIRE_ENGINE :: 1; WIRE_RULES :: 1; WIRE_CONTENT :: 1;
+WirePins :: struct { engine: int = WIRE_ENGINE; rules: int = WIRE_RULES; content: int = WIRE_CONTENT; }
+WIRE_PINS_FIRST :: WirePins.{engine = 1, rules = 1, content = 1};
 // a page from before wire 3 says hello "H 1"; the room seats it on the old wire until WIRE_OLD_UNTIL_MS
 // (coax/web/room/room-oldwire.coax), since nothing in such a page reloads it
 WIRE_OLD_HELLO :: 1; WIRE_OLD_UNTIL_MS :: 1794463200000;   // 2026-11-12 00:00 Chicago (06:00 UTC)
@@ -179,6 +194,9 @@ wire_put_hello :: (out: [] u8, at: int, h: WireHello) -> int {
   n := wire_int(out, wire_put(out, at, "H"), h.version);
   n = wire_text(out, n, h.look); n = wire_text(out, n, h.kind); n = wire_int(out, n, h.flags); n = wire_name(out, n, h.name);
   return n;
+}
+wire_put_pins :: (out: [] u8, at: int, p: WirePins) -> int {
+  return wire_int(out, wire_int(out, wire_int(out, wire_put(out, at, "P"), p.engine), p.rules), p.content);
 }
 wire_put_in :: (out: [] u8, at: int, i: WireIn) -> int {
   n := wire_put(out, at, "I");
@@ -299,6 +317,11 @@ wire_read_hello :: (t: string, r: [] WireRd) -> WireHello {
   h.version = wire_num(t, r);
   h.look = wire_word(t, r); h.kind = wire_word(t, r); h.flags = wire_num(t, r); h.name = wire_rest(t, r);
   return h;
+}
+wire_read_pins :: (t: string, r: [] WireRd) -> WirePins {
+  p: WirePins;
+  p.engine = wire_num(t, r); p.rules = wire_num(t, r); p.content = wire_num(t, r);
+  return p;
 }
 wire_read_in :: (t: string, r: [] WireRd) -> WireIn {
   i: WireIn;
@@ -1017,6 +1040,14 @@ wire_test_send :: (st: [] WireSeat, h: [] WireHist, m: [] WireMirror, me: int, b
   r[0] = wire_rd(t, 1);
   h := wire_read_hello(t, r[..]);
   #assert r[0].ok && h.version == WIRE_VERSION && h.look == "ranger.2.1.0" && h.flags == 2 && h.name == "Ash Woodx";
+  // the build before the hello: this source's own unless told
+  n = wire_put_pins(buf[..], 0, WirePins.{}); t = cast(string) buf[0..<n];
+  #assert t == "P 1 1 1";
+  n = wire_put_pins(buf[..], 0, WirePins.{engine = 3, rules = 12, content = 7}); t = cast(string) buf[0..<n];
+  r[0] = wire_rd(t, 1);
+  pp := wire_read_pins(t, r[..]);
+  #assert t == "P 3 12 7" && r[0].ok && pp.engine == 3 && pp.rules == 12 && pp.content == 7;
+  r[0] = wire_rd("P 3 12", 1); _p := wire_read_pins("P 3 12", r[..]); #assert !r[0].ok;
   n = wire_put_cast(buf[..], 0, WireCast.{seq = 13, slot = 32, ax = 5, ay = 0, az = 6}); t = cast(string) buf[0..<n];
   #assert t == "C 13 32 500 0 600 -1";
   // a spell's mode goes last, and only when it has one; the reader takes it, or 0 when none

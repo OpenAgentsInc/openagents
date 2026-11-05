@@ -290,6 +290,44 @@ page says its version in its hello (`H 3 ...`) and the room checks it (#12788):
   rolled-back room predates the check: it ignores the new page's hello rather
   than refusing it, so the new page stays joined and draws no one.
 
+### A page's build, beside its wire (#12839)
+
+A page also says which build it is, in a `P ENGINE RULES CONTENT` frame just
+before its hello. The room admits the hello only when all of these hold
+(`aethyr/session/compat.coax`, `coax/web/room/room-everglade.coax`
+`eg_admit`):
+
+- The engine, rules and world numbers equal the room's (`WIRE_ENGINE`,
+  `WIRE_RULES` and `WIRE_CONTENT` in `everglade-wire.coax`). A page from
+  before `P` counts as build 1 1 1.
+- The hello's wire is from `WIRE_MIN` to `WIRE_VERSION`.
+- The saved data its ticket brings back (HP, XP, WANTED) is a format the room
+  reads: `Ticket.schema` up to `RV_SCHEMA`.
+
+Any other page gets `r 0 version`, as a page on another wire does, and
+reloads into the build that is out. The room counts each refusal by its
+reason (`refused engine`, `refused rules`, `refused content`,
+`refused schema`, `refused version`), and its stats show the build it is
+(`build engine=1 rules=1 content=1 wire=4-4 schema=1`).
+
+Supported pairs and rollback limits:
+
+| Page | Room | Result |
+|---|---|---|
+| same engine, rules and world; wire in the room's range | any | plays |
+| from before `P`, wire 4 | build 1 1 1, wire 4 | plays |
+| another engine, rules or world | any | refused, reloads |
+| any | rolled back below the ticket's saved-data format | refused; roll forward |
+
+- When you change what a page predicts, raise `WIRE_ENGINE`; what a cast or
+  hit does, `WIRE_RULES`; the world the page draws, `WIRE_CONTENT`. Pages of
+  the old build then reload once the new rooms are out.
+- To let pages cached from the last release keep playing over a wire change,
+  keep `WIRE_MIN` at the old version, and only while the room still writes
+  what that page reads.
+- Don't roll a room back past a change to `RV_SCHEMA`: every player whose
+  ticket carries the newer format is refused until you roll forward.
+
 After step 3, the vitals next to FPS show `NET x OF y KB/S`: what
 the room sends you a second, against its byte budget (`WIRE_BUDGET`, 1000
 bytes of rows a tick, about 29 KB/s). Locally, a 16-player room measured

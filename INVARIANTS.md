@@ -587,6 +587,20 @@ the engine's script (`data-served`), so a pin carries them; `engine-served
 check` holds a record to a site's bytes. `realm_walkthrough.coax` checks the
 whole route: edit, publish, reload, a later release, fork, refusals.
 
+## An Everglade room seats only a page of its own build
+
+A room admits a hello only when the page's engine, rules and world numbers
+(its `P` frame; a page from before `P` is build 1 1 1) equal the room's, its
+wire is in `WIRE_MIN..WIRE_VERSION`, and the saved data its ticket brings
+back is a format the room reads (`Ticket.schema` up to `RV_SCHEMA`). Any
+other hello gets `r 0 version`, its socket is closed, and the refusal is
+counted by its reason; the old-wire window (`room-oldwire.coax`) is the
+only exception. One encounter never mixes two rule sets or worlds, and a room
+rolled back below newer saved data reads none of it. The rule is
+`aethyr/session/compat.coax` (`#authority`, mutation-checked) applied by
+`coax/web/room/room-everglade.coax` `eg_admit`. Checks: compat.coax and
+room-everglade.coax "a hello is admitted against its page's build" (#12839).
+
 ## Inverse physics differentiates the owned solver and exposes ambiguity
 
 `psionic/lib/physics/inverse-*.coax` unrolls chapter 109’s exact left-associated

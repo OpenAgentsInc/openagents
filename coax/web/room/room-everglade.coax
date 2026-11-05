@@ -105,6 +105,7 @@ EgSeat :: struct {
   // says it heard one (full_t: the first's tick); the town's broken pieces go with the first (pieces)
   full: bool; full_t: int; pieces: bool;
   old: bool;                                          // a page from before wire 3: its state on the old wire (room-oldwire.coax)
+  pins: WirePins; pinned: bool;                       // the build its page said in P before its hello (#12839; none: WIRE_PINS_FIRST)
   fresh: bool;                                        // just sat: the world's watch meets a new player
   want_seed: int;                                     // the WANTED level it comes back with, for the world's town (rv_join; 0 none)
   hold_due: bool;                                     // a scripted Hold Person (room-control.coax "hold"): the host's world holds it on the next tick
@@ -389,6 +390,12 @@ eg_heard :: (v: [] RmServer, r: int, seat: int, text: string) {
   c := text[0];
   if c == 'I' { eg_heard_input(v, k, seat, text); return; }
   if c == 'C' { eg_heard_cast(v, k, seat, text); return; }
+  if c == 'P' {   // the page's build, for its hello's admission (#12839)
+    rp: [1] WireRd; rp[0] = wire_rd(text, 1);
+    pins := wire_read_pins(text, rp[..]);
+    if rp[0].ok && eg_fields(text) == 4 { v[0].eg[k].seat[seat].pins = pins; v[0].eg[k].seat[seat].pinned = true; }
+    return;
+  }
   if c == 'H' { eg_heard_hello(v, k, seat, text); return; }
   if c == 'K' { im_heard_blocks(v, k, seat, text); return; }   // who it blocks (room-interest.coax, #12789)
   if c == 'E' {
@@ -520,12 +527,18 @@ eg_heard_hello :: (v: [] RmServer, k: int, seat: int, text: string) {
   // a page from before wire 3 (H 1): seated on the old wire while its window is open (room-oldwire.coax);
   // a page on any other wire: told why, and its socket closed (the host closes a kicked one), and
   // the page reloads (#12788)
+  // a page of another build (#12839): its engine, rules, world, wire or saved data not this room's
+  // (eg_admit). Both are told "version", so the page reloads into the build that is out, and counted by why.
   if h.version == WIRE_OLD_HELLO && eg_old_open(v) { eg_old_seat(v, k, seat); }
-  else if h.version != WIRE_VERSION {
-    eg_refuse(v, k, seat, 0, WIRE_REFUSE_VERSION);
-    if st[0].conn >= 0 && st[0].conn < CONNS { v[0].conns[st[0].conn].kicked = true; }
-    v[0].eg[k].stale_n += 1;
-    return;
+  else {
+    why := eg_admit(v, k, seat, h.version);
+    if why != CP_OK {
+      eg_refuse(v, k, seat, 0, WIRE_REFUSE_VERSION);
+      if st[0].conn >= 0 && st[0].conn < CONNS { v[0].conns[st[0].conn].kicked = true; }
+      v[0].eg[k].stale_n += 1;
+      _ := st_refuse(v, st_compat(why));
+      return;
+    }
   }
   st[0].look_n = eg_word(h.look, st[0].look[..]);
   st[0].klass_n = eg_word(h.kind, st[0].klass[..]);
@@ -553,6 +566,22 @@ eg_heard_hello :: (v: [] RmServer, k: int, seat: int, text: string) {
     st[0].name_n = tk.name_n;
   }
 }
+// Sessions pinned to a build (#12839, aethyr/session/compat.coax). The room is one server of the
+// profile: its engine, rules and world (WIRE_PINS), the wires WIRE_MIN..WIRE_VERSION, and the newest
+// saved-data schema it reads (RV_SCHEMA). A seat's pins are its page's P (a page from before P is
+// WIRE_PINS_FIRST's build), its hello's wire, and the schema of the data its ticket brings back.
+eg_server :: () -> CompatServer {
+  p := WirePins.{};
+  return CompatServer.{pins = CompatPins.{engine = p.engine, rules = p.rules, content = p.content, wire = WIRE_VERSION, schema = RV_SCHEMA},
+                       wire_min = WIRE_MIN, up = true, ready = true, room = 1};
+}
+eg_pins :: (v: [] RmServer, k: int, seat: int, wire: int) -> CompatPins {
+  st := v[0].eg[k].seat[seat];
+  p := ifx st.pinned then st.pins else WIRE_PINS_FIRST;
+  return CompatPins.{engine = p.engine, rules = p.rules, content = p.content, wire = wire, schema = eg_ticket(v, k, seat).schema};
+}
+// Whether seat s's hello on wire `wire` may play in this room: CP_OK, else why not (CP_*).
+eg_admit :: (v: [] RmServer, k: int, seat: int, wire: int) -> int { return compat_admit(eg_server(), eg_pins(v, k, seat, wire)); }
 // The seat's ticket (ok false: none, in a room that needs none).
 eg_ticket :: (v: [] RmServer, k: int, seat: int) -> Ticket {
   c := v[0].eg[k].seat[seat].conn;
@@ -1292,6 +1321,41 @@ eg_test_has :: (t: string, part: string) -> bool {
   #assert eg_test_has(eg_test_of(box[..], 0), "r 0 version") && rm_relay_kicked(v[..], 0);
   #assert !eg_test_has(eg_test_of(box[..], 1), "r 0 version") && !rm_relay_kicked(v[..], 1);
   #assert v[0].eg[k].stale_n == 1 && cast(string) v[0].eg[k].seat[1].name[0..<v[0].eg[k].seat[1].name_n] == "New";
+}
+#test "everglade room: a hello is admitted against its page's build; another engine, rules, world or newer saved data is refused and counted (#12839)" {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  rm_clock(v[..], 0, 1762190000000);
+  ev := "GET /api/room/relay/everglade/pair-pin HTTP/1.1\r\n\r\n";
+  box: [1] EgInbox;
+  for i: 0..<7 { #assert rm_join(v[..], i, ev) == i; }
+  eg_test_drain(v[..], box[..]);
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  b: [64] u8;
+  same := cast(string) b[0..<wire_put_pins(b[..], 0, WirePins.{})];
+  rm_heard(v[..], 0, same); rm_heard(v[..], 0, "H 4 ranger.0.0.0 druid 0 Same");
+  rm_heard(v[..], 1, "H 4 ranger.0.0.0 druid 0 Before");             // a page from before P: the first build's
+  rm_heard(v[..], 2, "P 1 2 1"); rm_heard(v[..], 2, "H 4 ranger.0.0.0 druid 0 Rules");
+  rm_heard(v[..], 3, "P 2 1 1"); rm_heard(v[..], 3, "H 4 ranger.0.0.0 druid 0 Engine");
+  rm_heard(v[..], 4, "P 1 1 2"); rm_heard(v[..], 4, "H 4 ranger.0.0.0 druid 0 World");
+  rm_heard(v[..], 5, "P 1 2"); rm_heard(v[..], 5, "H 4 ranger.0.0.0 druid 0 Short");   // a P that doesn't read is no build
+  v[0].conns[6].ticket.schema = RV_SCHEMA + 1;                         // saved by a newer room: a rollback past its limit
+  rm_heard(v[..], 6, same); rm_heard(v[..], 6, "H 4 ranger.0.0.0 druid 0 Saved");
+  eg_test_drain(v[..], box[..]);
+  for i: 0..<7 {
+    refused := i >= 2 && i != 5;
+    #assert rm_relay_kicked(v[..], i) == refused;
+    if i < 4 { #assert eg_test_has(eg_test_of(box[..], i), "r 0 version") == refused; }   // (the test inbox keeps 4 sockets)
+  }
+  #assert v[0].eg[k].seat[0].pinned && !v[0].eg[k].seat[1].pinned && !v[0].eg[k].seat[5].pinned;
+  #assert cast(string) v[0].eg[k].seat[1].name[0..<v[0].eg[k].seat[1].name_n] == "Before" && v[0].eg[k].stale_n == 4;
+  #assert rm_st_refused(v[..], ST_RULES) == 1 && rm_st_refused(v[..], ST_ENGINE) == 1 && rm_st_refused(v[..], ST_CONTENT) == 1;
+  #assert rm_st_refused(v[..], ST_SCHEMA) == 1 && rm_st_refused(v[..], ST_VERSION) == 0 && rm_st_reason(ST_SCHEMA) == "schema";
+  // the wire alone: below the room's oldest or past its newest, counted as version
+  #assert eg_admit(v[..], k, 0, WIRE_MIN - 1) == CP_WIRE_OLD && eg_admit(v[..], k, 0, WIRE_VERSION + 1) == CP_WIRE_NEW && eg_admit(v[..], k, 0, WIRE_VERSION) == CP_OK;
+  #assert st_compat(CP_WIRE_OLD) == ST_VERSION && st_compat(CP_WIRE_NEW) == ST_VERSION;
+  // the build the room view shows
+  #assert rm_st_pin(0) == WIRE_ENGINE && rm_st_pin(1) == WIRE_RULES && rm_st_pin(2) == WIRE_CONTENT && rm_st_pin(3) == WIRE_MIN && rm_st_pin(4) == WIRE_VERSION && rm_st_pin(5) == RV_SCHEMA;
 }
 #test "everglade room: the world's header on joining, each seat's inputs stepped no faster than the tick, everyone's players and names in D" #steps 2000000000 {
   v: [1] RmServer;

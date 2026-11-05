@@ -7,6 +7,7 @@
 // A ticket brings it back for 10 minutes (its HP field); this server's own note, newer than any
 // post, wins when the same player sits again here.
 VITALS :: 128;
+RV_SCHEMA :: 1;   // the newest format of saved vitals this room reads and the one it writes (TICKET_SCHEMA's; #12839)
 VITALS_KEEP_MS :: 600000;
 // Where the player stood is kept too, by the room's code, so a socket that dropped (a phone between
 // networks, a tab that slept past the server's silence check) or a reload puts them back where they

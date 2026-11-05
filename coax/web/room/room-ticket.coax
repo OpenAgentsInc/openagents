@@ -25,6 +25,7 @@ TICKET_PID :: 40;
 TICKET_NAME :: 24;
 TICKET_LIFE_MS :: 600000; // what the API signs (player.c TICKET_MS)
 TICKET_SKEW_MS :: 60000;  // clocks may differ this much
+TICKET_SCHEMA :: 1;       // v2 and v3 tickets' saved data: HP, then x XP and w WANTED
 
 // book:begin seat-ticket
 Ticket :: struct {
@@ -38,6 +39,7 @@ Ticket :: struct {
   shard: int = 1;         // the oa-room shard it was signed for (v2: 1)
   xp: int;                // the XP it brings back (room-events.coax)
   wanted: int;            // the WANTED level it brings back (1 to 5; 0 none; #12794)
+  schema: int = TICKET_SCHEMA;   // the format of what it brings back (HP, XP, WANTED): the room admits it only up to RV_SCHEMA (#12839)
 }
 // book:end seat-ticket
 

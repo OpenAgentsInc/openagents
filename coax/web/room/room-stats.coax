@@ -10,14 +10,35 @@
 //   - the signature over the host's report (rm_st_sign), with the seat-ticket key, as room-vitals is.
 // Every counter here is a total since the start; the host takes differences for its window.
 
-ST_REASONS :: 6;
+ST_REASONS :: 10;
 ST_NO_ROOM :: 0;     // no such room, or no free simulation for a new one
 ST_TICKET :: 1;      // a seat ticket missing, forged or expired
 ST_KICKED :: 2;      // the player is kicked (room-control.coax)
 ST_SHARD :: 3;       // the ticket or the path is another shard's
 ST_FULL :: 4;        // every seat taken
 ST_VERSION :: 5;     // a page on another wire (#12788)
-ST_REASON_NAMES :: [6] string.["no room", "ticket", "kicked", "shard", "full", "version"];
+// a page of another build (#12839, room-everglade.coax eg_admit): its engine, its rules, its world, or
+// saved data newer than this room reads (a rollback past its limit)
+ST_ENGINE :: 6; ST_RULES :: 7; ST_CONTENT :: 8; ST_SCHEMA :: 9;
+ST_REASON_NAMES :: [10] string.["no room", "ticket", "kicked", "shard", "full", "version", "engine", "rules", "content", "schema"];
+// The reason a compatibility refusal (CP_*) is counted under.
+st_compat :: (why: int) -> int {
+  if why == CP_ENGINE { return ST_ENGINE; }
+  if why == CP_RULES { return ST_RULES; }
+  if why == CP_CONTENT { return ST_CONTENT; }
+  if why == CP_SCHEMA { return ST_SCHEMA; }
+  return ST_VERSION;
+}
+// This room's build, for the admins' room view: engine, rules, world, oldest and newest wire, schema.
+rm_st_pin :: (i: int) -> int #export_c {
+  s := eg_server();
+  if i == 0 { return s.pins.engine; }
+  if i == 1 { return s.pins.rules; }
+  if i == 2 { return s.pins.content; }
+  if i == 3 { return s.wire_min; }
+  if i == 4 { return s.pins.wire; }
+  return s.pins.schema;
+}
 
 RmStats :: struct {
   refused: [ST_REASONS] int;

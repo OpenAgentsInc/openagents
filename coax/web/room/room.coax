@@ -18,6 +18,7 @@
 #load "room-relay.coax";
 #load "../../../apps/openagents-web/everglade5e-room-rules.coax";
 #load "../../../apps/openagents-web/everglade-wire.coax";
+#load "../../../aethyr/session/compat.coax";   // sessions pinned to a build (#12839)
 #load "room-interest.coax";   // who may receive what, each tick (#12789)
 #load "room-blocks.coax";     // and who each seat blocks
 #load "room-everglade.coax";
