@@ -1,0 +1,61 @@
+// Browser-style opening context supplied by platform observations. Cookie
+// selection remains the target URL's platform jar; the origin is explicitly
+// bound by the world host, never taken from the socket import's payload.
+#load "ws.coax";
+#authority;
+WS_CONTEXT_ORIGIN_MAX :: 2048;
+WS_CONTEXT_COOKIE_MAX :: 8192;
+WS_CONTEXT_FIELDS_MAX :: 10260;
+#test "opening context emits exact bounded Origin and selected Cookie fields" {
+ out:[13000]u8;
+ n:=ws_context_fields("https://world.example","sid=one; path=two",out[..]);
+ #assert n>0&&cast(string)out[0..<n]=="Origin: https://world.example\r\nCookie: sid=one; path=two\r\n";
+ n=ws_context_fields("null","",out[..]);#assert n==14&&cast(string)out[0..<n]=="Origin: null\r\n";
+ #assert ws_context_fields("null","",out[0..<14])==14&&ws_context_fields("null","",out[0..<13])== -1;
+ #assert ws_context_fields("","",out[0..<0])==0&&!ws_context_admit("","a=b");
+ for bad:[5]string.["a\r\nb","a\nb","a\tb","a b","a\0b"] {#assert !ws_context_admit(bad,"");}
+ for bad:[4]string.["a\r\nb","a\nb","a\tb","a\0b"] {#assert !ws_context_admit("null",bad);}
+ byte:[1]u8;for value:127..<256 {byte[0]=u8(value);#assert !ws_context_admit(cast(string)byte[..],"")&&!ws_context_admit("null",cast(string)byte[..]);}
+ #assert ws_context_admit("!~"," !~");
+ origin:[2049]u8;cookie:[8193]u8;for i:0..<origin.count {origin[i]='o';}for i:0..<cookie.count {cookie[i]='c';}
+ #assert ws_context_admit(cast(string)origin[0..<2048],cast(string)cookie[0..<8192]);
+ #assert !ws_context_admit(cast(string)origin[..],"")&&!ws_context_admit("null",cast(string)cookie[..]);
+ n=ws_context_fields(cast(string)origin[0..<2048],cast(string)cookie[0..<8192],out[..]);#assert n==WS_CONTEXT_FIELDS_MAX;
+ for i:0..<out.count {out[i]=71;}
+ #assert ws_context_fields("null","x",out[0..<24])== -1;
+ for b:out {#assert b==71;}
+ #assert ws_context_fields("null","x",out[0..<25])==25;
+}
+#test "context request keeps the original handshake exact and refuses atomically" {
+ out:[13000]u8;base:[2600]u8;
+ n:=ws_request("h",80,"/x?y","k",base[..]);q:=ws_request_context("h",80,"/x?y","k","","",out[..]);#assert n==q&&cast(string)base[0..<n]==cast(string)out[0..<q];
+ q=ws_request_context("h",80,"/x?y","k","null","a=b",out[..]);
+ #assert q==n+27&&cast(string)out[n-2..<q]=="Origin: null\r\nCookie: a=b\r\n\r\n";
+ size:=q;#assert ws_request_context("h",80,"/x?y","k","null","a=b",out[0..<size])==size;
+ for i:0..<out.count {out[i]=72;}
+ #assert ws_request_context("h",80,"/x?y","k","null","a=b",out[0..<size-1])== -1;
+ #assert ws_request_context("",80,"/","k","null","",out[..])== -1;
+ #assert ws_request_context("h",80,"/","k","bad\norigin","",out[..])== -1;
+ for b:out {#assert b==72;}
+}
+ws_context_admit :: (origin:string,cookie:string)->bool #export_c {
+ if origin.count>WS_CONTEXT_ORIGIN_MAX||cookie.count>WS_CONTEXT_COOKIE_MAX {return false;}
+ if origin.count==0 {return cookie.count==0;}
+ for b:origin {if b<33||b>126 {return false;}}
+ for b:cookie {if b<32||b>126 {return false;}}
+ return true;
+}
+ws_context_fields :: (origin:string,cookie:string,out:[]u8)->int #export_c {
+ if !ws_context_admit(origin,cookie) {return -1;}if origin.count==0 {return 0;}
+ needed:=origin.count+10;if cookie.count>0 {needed+=cookie.count+10;}
+ if out.count<needed {return -1;}
+ n:=ws_put(out,0,"Origin: ");n=ws_put(out,n,origin);n=ws_put(out,n,"\r\n");
+ if cookie.count>0 {n=ws_put(out,n,"Cookie: ");n=ws_put(out,n,cookie);n=ws_put(out,n,"\r\n");}
+ return n;
+}
+ws_request_context :: (host:string,port:int,path:string,key:string,origin:string,cookie:string,out:[]u8)->int #export_c {
+ base:[2600]u8;fields:[WS_CONTEXT_FIELDS_MAX]u8;
+ n:=ws_request(host,port,path,key,base[..]);f:=ws_context_fields(origin,cookie,fields[..]);
+ if n== -1||f<0||out.count<n+f {return -1;}
+ at:=ws_put(out,0,cast(string)base[0..<n-2]);at=ws_put(out,at,cast(string)fields[0..<f]);return ws_put(out,at,"\r\n");
+}
