@@ -79,6 +79,9 @@ named. Paths are relative to the repository root.
   on Cloud Run, which takes no UDP, and the research doc (section 9) asks
   for browser support to be verified first. Newest-state replication and
   age-bounded queues (#12783) limit the cost of a stall instead.
+  Measured and modelled in the
+  [WebTransport evaluation](../../docs/verse/2026-11-05-aethyr-webtransport-evaluation.md)
+  (#12858): no-go for now, with the conditions that would change it.
 - **A login queue with positions.** At 192 seats, a rate limit and a
   jittered retry that says how many are waiting cover the launch (#12796).
 - **Idempotent operation IDs for an economy.** There is no economy. The first

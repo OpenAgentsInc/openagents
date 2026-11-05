@@ -1,0 +1,236 @@
+// The room's state stream over two transports, on one trace of the network (#12858): what a page's
+// newest state is worth, ms by ms, over TCP (the WebSocket today: bytes in order, so a lost packet
+// holds every frame behind it until it is resent) and over unreliable datagrams (WebTransport: a lost
+// frame is gone and the next one replaces it). The same packets are lost and delayed in both, so
+// the difference is head-of-line blocking alone. It also models the page's inputs going up: over TCP
+// in order, over datagrams each packet carrying the last DG_REDUNDANT inputs.
+//   coax/web/tool.sh coax/web/room/transport-model.coax RTT_MS JITTER_MS LOSS_PERMILLE [BURST] [PACKETS] [SECONDS] [SEED]
+// BURST: a loss's mean run in packets (1: each packet on its own; more: Gilbert-Elliott bursts at the
+// same mean loss). PACKETS: packets a state frame takes (1 for a small room; a raid's 1.1 Mbit/s is
+// about 4). Prints one JSON line. It is a model, not a measurement: TCP's resend is the earlier of a
+// fast retransmit (three later packets heard, then a round trip) and the timeout (the round trip plus
+// 200 ms, doubled on each loss of the resend), as Linux's are.
+#import "Basic";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/args.coax";
+
+TM_HZ :: 30;                  // the room's tick, and the page's inputs, a second
+TM_FRAMES :: 18000;           // 10 minutes of ticks at most
+TM_HIST :: 5001;              // ms buckets, the last "5 s or more"
+TM_WARM :: 1000;              // ms left out at the start
+TM_BUFFER :: 300;             // the page's jitter buffer at its deepest (everglade-net.coax NET_HIGH)
+TM_SILENT :: 6000;            // ms of nothing heard after which the page rejoins (everglade-net.coax NET_SILENT_MS)
+TM_MIN_RTO :: 200;            // Linux's least retransmit timeout
+DG_REDUNDANT :: 3;            // inputs each datagram carries: its own and the two before
+
+TmNet :: struct { rtt: int; jitter: int; loss: int; burst: int; seed: int; bad: bool; lost: int; sent: int; }
+
+tm_rand :: (n: [] TmNet, m: int) -> int {
+  n[0].seed = (n[0].seed % 2147483648 * 1103515245 + 12345) % 2147483648;
+  if m <= 0 { return 0; }
+  return (n[0].seed / 32768) % m;
+}
+// The way one packet takes, in ms: half the round trip, give or take half the jitter.
+tm_way :: (n: [] TmNet) -> int {
+  d := n[0].rtt / 2;
+  if n[0].jitter > 0 { d += tm_rand(n, n[0].jitter + 1) - n[0].jitter / 2; }
+  return ifx d < 0 then 0 else d;
+}
+// Whether the next packet is lost: Bernoulli at LOSS per thousand, or in bursts of BURST packets on
+// average at the same mean (a good and a bad state; the bad loses every packet).
+tm_lost :: (n: [] TmNet) -> bool {
+  n[0].sent += 1;
+  if n[0].loss <= 0 { return false; }
+  lost := false;
+  if n[0].burst <= 1 { lost = tm_rand(n, 1000) < n[0].loss; }
+  else {
+    // good to bad at p / (B (1 - p)) a packet, bad to good at 1 / B: the bad state's share is p
+    if n[0].bad { if tm_rand(n, n[0].burst) == 0 { n[0].bad = false; } }
+    else { if tm_rand(n, 65536) < n[0].loss * 65536 / (n[0].burst * (1000 - n[0].loss)) { n[0].bad = true; } }   // the generator's 16 bits
+    lost = n[0].bad;
+  }
+  if lost { n[0].lost += 1; }
+  return lost;
+}
+tm_rto :: (n: [] TmNet) -> int { return n[0].rtt + TM_MIN_RTO; }
+
+// One direction's packets: when each was sent, whether it was lost, and when it (or its resend) arrives.
+TmTrace :: struct {
+  sent: [TM_FRAMES * 4] int; way: [TM_FRAMES * 4] int; lost: [TM_FRAMES * 4] bool; resent_at: [TM_FRAMES * 4] int;
+  n: int;
+}
+// Fills packets at `per` a frame, TM_HZ frames a second, and each lost packet's resend arrival.
+tm_trace :: (n: [] TmNet, t: [] TmTrace, frames: int, per: int) {
+  t[0].n = frames * per;
+  for k: 0..<t[0].n {
+    t[0].sent[k] = (k / per) * 1000 / TM_HZ;
+    t[0].way[k] = tm_way(n);
+    t[0].lost[k] = tm_lost(n);
+  }
+  for k: 0..<t[0].n {
+    if !t[0].lost[k] { t[0].resent_at[k] = t[0].sent[k] + t[0].way[k]; continue; }
+    // fast retransmit: the third packet after it arrives, its ACK comes back (half a round trip), the resend goes
+    fast := -1;
+    if k + 3 < t[0].n { fast = t[0].sent[k + 3] + t[0].way[k + 3] + n[0].rtt / 2; }
+    rto := tm_rto(n);
+    at := t[0].sent[k] + rto;
+    if fast >= 0 && fast < at { at = fast; }
+    // a resend lost too waits the timeout again, doubled each time; it goes a timeout or more after the
+    // loss, out of the burst that took it, so it is lost at the mean rate on its own
+    while tm_rand(n, 1000) < n[0].loss { n[0].lost += 1; rto *= 2; at += rto; }
+    t[0].resent_at[k] = at + tm_way(n);
+  }
+}
+
+// When each frame is whole at the page: over TCP the bytes come in order (each packet no sooner than the
+// one before it); over datagrams a frame with a lost packet never comes (-1).
+tm_tcp_frames :: (t: [] TmTrace, per: int, at: [] int) {
+  last := 0;
+  for k: 0..<t[0].n {
+    a := t[0].resent_at[k];
+    if a < last { a = last; }
+    last = a;
+    if k % per == per - 1 { at[k / per] = a; }
+  }
+}
+tm_dg_frames :: (t: [] TmTrace, per: int, at: [] int) {
+  for f: 0..<t[0].n / per {
+    a := 0;
+    for j: 0..<per { k := f * per + j; if t[0].lost[k] { a = -1; break; } if t[0].sent[k] + t[0].way[k] > a { a = t[0].sent[k] + t[0].way[k]; } }
+    at[f] = a;
+  }
+}
+
+TmAge :: struct { hist: [TM_HIST] int; samples: int; over: int; events: int; worst: int; silent: int; }
+tm_hist_add :: (h: [] int, ms: int) { k := ifx ms < 0 then 0 else (ifx ms >= TM_HIST then TM_HIST - 1 else ms); h[k] += 1; }
+tm_hist_at :: (h: [] int, q: int) -> int {
+  n := 0; for i: 0..<h.count { n += h[i]; }
+  if n == 0 { return -1; }
+  want := (n * q + 999) / 1000; k := 0;
+  for i: 0..<h.count { k += h[i]; if k >= want { return i; } }
+  return h.count - 1;
+}
+// Each ms from TM_WARM on: the age of the newest frame the page holds (its send time to now). `limit`:
+// an age past it is a freeze the page draws (the state is older than its jitter buffer covers);
+// `events` counts each run of such ms once.
+tm_ages :: (at: [] int, frames: int, limit: int, out: [] TmAge) {
+  newest := -1; over := false;
+  end := (frames - 1) * 1000 / TM_HZ;
+  for now: 0..<end {
+    // frames already sent by now, newer than the newest held, that have arrived
+    top := now * TM_HZ / 1000;
+    if top >= frames { top = frames - 1; }
+    k := top;
+    while k > newest { if at[k] >= 0 && at[k] <= now { newest = k; break; } k -= 1; }
+    if now < TM_WARM || newest < 0 { continue; }
+    age := now - newest * 1000 / TM_HZ;
+    tm_hist_add(out[0].hist[..], age); out[0].samples += 1;
+    if age > out[0].worst { out[0].worst = age; }
+    if age == TM_SILENT { out[0].silent += 1; }   // the page closes the socket and joins again
+    if age > limit { out[0].over += 1; if !over { out[0].events += 1; } over = true; } else { over = false; }
+  }
+}
+// The page's inputs going up: when each arrives at the room. TCP: in order; datagrams: in the first
+// arriving packet of the DG_REDUNDANT that carry it (none: -1, the input is lost).
+tm_inputs :: (t: [] TmTrace, tcp: [] int, dg: [] int) {
+  last := 0;
+  for k: 0..<t[0].n {
+    a := t[0].resent_at[k]; if a < last { a = last; } last = a; tcp[k] = a;
+    best := -1;
+    for j: 0..<DG_REDUNDANT {
+      q := k + j;
+      if q >= t[0].n || t[0].lost[q] { continue; }
+      arr := t[0].sent[q] + t[0].way[q];
+      if best < 0 || arr < best { best = arr; }
+    }
+    dg[k] = best;
+  }
+}
+
+#test "transport model: with no loss both transports hold the same frames at the same time" {
+  n: [1] TmNet; n[0].rtt = 100; n[0].seed = 7;
+  t: [1] TmTrace; tm_trace(n[..], t[..], 600, 2);
+  a: [600] int; b: [600] int;
+  tm_tcp_frames(t[..], 2, a[..]); tm_dg_frames(t[..], 2, b[..]);
+  for f: 0..<600 { #assert a[f] == b[f] && a[f] == f * 1000 / TM_HZ + 50; }
+}
+#test "transport model: a lost packet holds TCP's later frames, and datagrams only lose that frame" {
+  n: [1] TmNet; n[0].rtt = 100; n[0].seed = 7;
+  t: [1] TmTrace; tm_trace(n[..], t[..], 60, 1);
+  t[0].lost[40] = true; t[0].resent_at[40] = t[0].sent[40] + 400;   // resent 400 ms later
+  a: [60] int; b: [60] int;
+  tm_tcp_frames(t[..], 1, a[..]); tm_dg_frames(t[..], 1, b[..]);
+  #assert b[40] == -1 && a[40] == t[0].sent[40] + 400;
+  #assert a[41] == a[40] && b[41] == t[0].sent[41] + 50;   // TCP's next frame waits for the resend
+  ta: [1] TmAge; da: [1] TmAge;
+  tm_ages(a[..], 60, 120, ta[..]); tm_ages(b[..], 60, 120, da[..]);
+  #assert ta[0].worst > 400 && da[0].worst <= 50 + 2 * 34 && ta[0].events == 1 && da[0].events == 0;
+}
+#test "transport model: datagrams' newest frame is never older than TCP's, on any trace" {
+  for seed: 1..<4 {
+    n: [1] TmNet; n[0].rtt = 250; n[0].jitter = 30; n[0].loss = 50; n[0].burst = seed; n[0].seed = seed;
+    t: [1] TmTrace; tm_trace(n[..], t[..], 240, 2);
+    a: [240] int; b: [240] int;
+    tm_tcp_frames(t[..], 2, a[..]); tm_dg_frames(t[..], 2, b[..]);
+    ta: [1] TmAge; da: [1] TmAge;
+    tm_ages(a[..], 240, 400, ta[..]); tm_ages(b[..], 240, 400, da[..]);
+    #assert da[0].worst <= ta[0].worst && da[0].over <= ta[0].over && n[0].lost > 0;
+  }
+}
+#test "transport model: bursts keep the mean loss" {
+  n: [1] TmNet; n[0].loss = 20; n[0].burst = 4; n[0].seed = 3;
+  for k: 0..<100000 { _ := tm_lost(n[..]); }
+  #assert n[0].lost > 100000 * 15 / 1000 && n[0].lost < 100000 * 25 / 1000;
+}
+#test "transport model: a redundant datagram input survives one lost packet, and TCP's waits" {
+  n: [1] TmNet; n[0].rtt = 100; n[0].seed = 9;
+  t: [1] TmTrace; tm_trace(n[..], t[..], 30, 1);
+  t[0].lost[5] = true; t[0].resent_at[5] = t[0].sent[5] + 300;
+  tcp: [30] int; dg: [30] int;
+  tm_inputs(t[..], tcp[..], dg[..]);
+  #assert dg[5] == t[0].sent[6] + 50 && tcp[5] == t[0].sent[5] + 300 && tcp[6] == tcp[5];
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  ok := args_load(a[..]);
+  n: [1] TmNet;
+  if !ok || args_count(a[..]) < 3 {
+    tool_errln("usage: coax/web/tool.sh coax/web/room/transport-model.coax RTT_MS JITTER_MS LOSS_PERMILLE [BURST] [PACKETS] [SECONDS] [SEED]"); return 2;
+  }
+  n[0].rtt = args_whole(args_at(a[..], 0)); n[0].jitter = args_whole(args_at(a[..], 1)); n[0].loss = args_whole(args_at(a[..], 2));
+  n[0].burst = ifx args_count(a[..]) > 3 then args_whole(args_at(a[..], 3)) else 1;
+  per := ifx args_count(a[..]) > 4 then args_whole(args_at(a[..], 4)) else 1;
+  seconds := ifx args_count(a[..]) > 5 then args_whole(args_at(a[..], 5)) else 600;
+  n[0].seed = ifx args_count(a[..]) > 6 then args_whole(args_at(a[..], 6)) else 1;
+  frames := seconds * TM_HZ;
+  if n[0].rtt < 0 || n[0].jitter < 0 || n[0].loss < 0 || n[0].loss >= 1000 || n[0].burst < 1 || per < 1 || per > 4 || frames < 60 || frames > TM_FRAMES {
+    tool_errln("transport-model: RTT, JITTER >= 0; LOSS 0-999; BURST >= 1; PACKETS 1-4; SECONDS 2-600"); return 2;
+  }
+  // down: the room's state frames; up: the page's inputs, one packet each
+  down: [1] TmTrace; tm_trace(n[..], down[..], frames, per);
+  lost_down := n[0].lost;
+  up: [1] TmTrace; tm_trace(n[..], up[..], frames, 1);
+  tcp_at: [TM_FRAMES] int; dg_at: [TM_FRAMES] int;
+  tm_tcp_frames(down[..], per, tcp_at[..]); tm_dg_frames(down[..], per, dg_at[..]);
+  // a freeze: older than the way here plus the deepest jitter buffer
+  limit := n[0].rtt / 2 + TM_BUFFER;
+  ta: [1] TmAge; da: [1] TmAge;
+  tm_ages(tcp_at[..], frames, limit, ta[..]); tm_ages(dg_at[..], frames, limit, da[..]);
+  in_tcp: [TM_FRAMES * 4] int; in_dg: [TM_FRAMES * 4] int;
+  tm_inputs(up[..], in_tcp[..], in_dg[..]);
+  ht: [TM_HIST] int; hd: [TM_HIST] int; in_lost := 0;
+  for k: 0..<frames {
+    if up[0].sent[k] < TM_WARM { continue; }
+    tm_hist_add(ht[..], in_tcp[k] - up[0].sent[k]);
+    if in_dg[k] < 0 { in_lost += 1; } else { tm_hist_add(hd[..], in_dg[k] - up[0].sent[k]); }
+  }
+  minutes := (seconds * 1000 - TM_WARM) / 60000; if minutes < 1 { minutes = 1; }
+  print("{\"rtt\":%,\"jitter\":%,\"loss_permille\":%,\"burst\":%,\"packets\":%,\"seconds\":%,\"down_lost\":%,", n[0].rtt, n[0].jitter, n[0].loss, n[0].burst, per, seconds, lost_down);
+  print("\"freeze_after_ms\":%,", limit);
+  print("\"tcp\":{\"age_p50\":%,\"age_p99\":%,\"age_p999\":%,\"age_max\":%,\"freeze_ms_per_min\":%,\"freezes_per_min\":%,\"rejoins\":%,\"input_p99\":%,\"input_max\":%},",
+    tm_hist_at(ta[0].hist[..], 500), tm_hist_at(ta[0].hist[..], 990), tm_hist_at(ta[0].hist[..], 999), ta[0].worst, ta[0].over / minutes, ta[0].events / minutes, ta[0].silent, tm_hist_at(ht[..], 990), tm_hist_at(ht[..], 1000));
+  print("\"datagram\":{\"age_p50\":%,\"age_p99\":%,\"age_p999\":%,\"age_max\":%,\"freeze_ms_per_min\":%,\"freezes_per_min\":%,\"rejoins\":%,\"input_p99\":%,\"input_max\":%,\"inputs_lost\":%}}\n",
+    tm_hist_at(da[0].hist[..], 500), tm_hist_at(da[0].hist[..], 990), tm_hist_at(da[0].hist[..], 999), da[0].worst, da[0].over / minutes, da[0].events / minutes, da[0].silent, tm_hist_at(hd[..], 990), tm_hist_at(hd[..], 1000), in_lost);
+  return 0;
+}

@@ -174,11 +174,14 @@ EgPlayer :: struct {
   d: int; d_counted: int;     // D frames, and those inside the measured window
   bytes: int;                 // the bytes of every frame heard inside the measured window
   d_tick: int; dropped: int; refused: int;   // the last D's tick; ticks missed past it; r frames
+  d_at: int;                  // when the last new tick's D arrived (its gap to the next is a stall's length)
   next_i: int; next_c: int; next_t: int; steps: int;   // steps: the inputs sent (I), for their 30 Hz clock
   x: f32; z: f32;             // where the server has it
   m: [1] WireMirror;          // the rows its D's left, as the page's (its I's HEARD)
 }
-EgRun :: struct { lat: [EG_HIST] int; rtt: [EG_HIST] int; m0: int; m1: int; }
+// lat: input to ACK; rtt: the clock ping; gap: from one new tick's D to the next (33 ms at 30 Hz; a
+// lost packet on TCP holds every frame behind it, so the long gaps are what the network stalled, #12858)
+EgRun :: struct { lat: [EG_HIST] int; rtt: [EG_HIST] int; gap: [EG_HIST] int; m0: int; m1: int; }
 
 eg_hist_add :: (h: [] int, ms: int) { k := ifx ms < 0 then 0 else (ifx ms >= EG_HIST then EG_HIST - 1 else ms); h[k] += 1; }
 // The ms at which q (in thousandths) of the counts lie at or below.
@@ -208,7 +211,10 @@ eg_hear :: (p: [] EgPlayer, r: [] EgRun, t: string, now: int) {
   tick := rs_num(rs_field(t, 1));
   // a D a tick (F 2: more of this tick follows) every EG_SEND ticks: more than that past the last is a drop
   if p[0].d_tick > 0 && tick > p[0].d_tick + EG_SEND && now >= r[0].m0 && now < r[0].m1 { p[0].dropped += (tick - p[0].d_tick) / EG_SEND - 1; }
-  if tick > p[0].d_tick { p[0].d_tick = tick; }
+  if tick > p[0].d_tick {
+    if p[0].d_at > 0 && now >= r[0].m0 && now < r[0].m1 { eg_hist_add(r[0].gap[..], now - p[0].d_at); }
+    p[0].d_tick = tick; p[0].d_at = now;
+  }
   if now >= r[0].m0 && now < r[0].m1 { p[0].d_counted += 1; }
   ack := rs_num(rs_field(t, 2));
   if ack < p[0].ack { p[0].back += 1; }
@@ -370,6 +376,8 @@ eg_room :: (base: string, players: int, seconds: int, stamp: int, room: int, hz:
   p95 := eg_hist_at(run[0].lat[..], 950); p50 := eg_hist_at(run[0].lat[..], 500); rtt := eg_hist_at(run[0].rtt[..], 500);
   p99 := eg_hist_at(run[0].lat[..], 990); rtt95 := eg_hist_at(run[0].rtt[..], 950); rtt99 := eg_hist_at(run[0].rtt[..], 990);
   pings := 0; for b: 0..<EG_HIST { pings += run[0].rtt[b]; }
+  gap99 := eg_hist_at(run[0].gap[..], 990); gap_max := -1; stalls := 0;
+  for b: 0..<EG_HIST { if run[0].gap[b] > 0 { gap_max = b; if b >= 100 { stalls += run[0].gap[b]; } } }
   out: [4096] u8; o: [1] Jo; tx: [32] u8;
   jo_start(o[..], out[..]);
   jo_obj(o[..]);
@@ -392,6 +400,10 @@ eg_room :: (base: string, players: int, seconds: int, stamp: int, room: int, hz:
   jo_key(o[..], "ping_rtt_p99_ms"); jo_int(o[..], rtt99);
   jo_key(o[..], "pings"); jo_int(o[..], pings);
   jo_key(o[..], "d_dropped"); jo_int(o[..], dropped);
+  // the state's arrival gaps, all players: p99, the longest (2000: 2 s or more) and those of 100 ms or more
+  jo_key(o[..], "d_gap_p99_ms"); jo_int(o[..], gap99);
+  jo_key(o[..], "d_gap_max_ms"); jo_int(o[..], gap_max);
+  jo_key(o[..], "d_stalls_100ms"); jo_int(o[..], stalls);
   jo_key(o[..], "refused"); jo_int(o[..], refused);
   // what a player hears: the room's frames' bytes a second, each player's mean
   jo_key(o[..], "bytes_per_s"); jo_int(o[..], ifx window > 0 && players > 0 then bytes * 1000 / window / players else 0);
