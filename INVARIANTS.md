@@ -708,9 +708,15 @@ travelling seat's close ends it at once (no seat is held). The destination's
 ticket takes the next owner generation, so the source can't save over it.
 Each step before the destination's join is undone by time: after
 `TRAVEL_MS` without the page leaving, the seat takes commands again and the
-set-aside seat lapses. Checks: `room.coax` "travel (#12850)", `everglade.coax`
-"net: travel", and `room_checks.coax` travel, which kills the source room
-process right after the route and then the destination's after the arrival.
+set-aside seat lapses. HP, XP and WANTED travel through the saved note. To a
+room on the same server, the character's Temporary Hit Points, spent spell
+slots and limited uses (onto the same build only) and its Repair wait travel
+too, laid on once after its hello there; conditions, auras and zones belong
+to the source room's world and end with it. Checks: `room.coax` "travel
+(#12850)", `everglade.coax` "net: travel", and `room_checks.coax` travel,
+which kills the source room process right after the route and then the
+destination's after the arrival, kills a source before any travel, and loses
+every vitals answer to a source so it never routes before it is killed.
 
 ## Versioned character checkpoints acknowledge a committed whole capture
 

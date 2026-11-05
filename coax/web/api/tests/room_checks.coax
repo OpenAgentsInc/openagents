@@ -994,6 +994,7 @@ fp_main :: (dir: string, api: string) -> int {
   url: [1] Sb; sb(url[..], api); sb(url[..], "/api/playtest/room-vitals");
   stop: [1100] u8; stop_path := fs_join(dir, "stop", stop[..]);
   rf: [1100] u8; raid_path := fs_join(dir, "raid", rf[..]);
+  lf: [1100] u8; lose_path := fs_join(dir, "lose", lf[..]);   // the API keeps each post; its answer is lost (travel)
   sp: [1100] u8; state_path := fs_join(dir, "proxy", sp[..]);
   last_state := -1;
   while !fs_exists(stop_path) {
@@ -1019,7 +1020,8 @@ fp_main :: (dir: string, api: string) -> int {
         got := http_do(w[..], "POST", sb_text(url[..]), hs[..], cast(string) req[end..<tot[0]], 30000, 0, answer[..]);
         code := ifx got.error == HTTP_OK then got.code else 502;
         n := ifx got.error == HTTP_OK then got.n else 0;
-        if mode == 2 {   // the API kept it; the answer comes after the room has given up on it
+        if fs_exists(lose_path) { held += 1; c := cxsock_close(h); }
+        else if mode == 2 {   // the API kept it; the answer comes after the room has given up on it
           held += 1;
           slot := -1; for i: 0..<FP_HELD { if slot < 0 && pending[i].h < 0 { slot = i; } }
           if slot < 0 { c := cxsock_close(h); } else {
@@ -1437,6 +1439,104 @@ rc_travel :: (t: [] Ap, room_bin_in: string) {
   g := fs_remove(work_a); g = fs_remove(work_b); g = fs_remove(work_c);
 }
 
+// Crashes around travel's prepare and commit, in real processes (#12850; room-travel.coax):
+//   - before prepare: P sits in pair-a on room A, which saves P and is SIGKILLed before any T. P's next
+//     ticket (the next owner, the HP the API holds) sits on room B, whose save is applied with that HP;
+//   - between the save and the route: room C's vitals posts reach the API through a proxy that loses
+//     every answer. P asks for pair-b: the API keeps P's captured state, but no receipt comes back, so
+//     C never sends P on. C is SIGKILLed; P's next ticket sits on room B with the HP the API kept.
+// One outcome either way: P plays in one room, with the last state the API accepted.
+rc_travel_crash :: (t: [] Ap, room_bin_in: string) {
+  out: [4096] u8; q: [1] Sb; none: [1] string;
+  p: [1] Player; r := ap_player(t, p[..]);
+  pid := pl_id(p[..]);
+  rootb: [4096] u8; root := fs_cwd(rootb[..]);
+  binb: [1] Sb;
+  if room_bin_in.count > 0 && room_bin_in[0] != '/' { sb(binb[..], root); sb(binb[..], "/"); }
+  sb(binb[..], room_bin_in);
+  wa: [4096] u8; work_a := fs_temp("room-crash-a", wa[..]);
+  wb: [4096] u8; work_b := fs_temp("room-crash-b", wb[..]);
+  wc: [4096] u8; work_c := fs_temp("room-crash-c", wc[..]);
+  la: [1] FcLog; lb: [1] FcLog; lc: [1] FcLog; pa: [1] int; pb: [1] int;
+  room_a := ro_room(t, sb_text(binb[..]), work_a, pa[..], la[..]);
+  room_b := ro_room(t, sb_text(binb[..]), work_b, pb[..], lb[..]);
+  sb(q[..], "select verse.room_owner_next('"); sb(q[..], pid); sb(q[..], "')");
+  hv: [256] u8; vq: [1] Sb; sb(vq[..], "select hp || 'x' || xp from verse.room_vitals where who = '"); sb(vq[..], pid); sb(vq[..], "'");
+  ops: [1] Sb; sb(ops[..], "select coalesce(sum(applied + dups), 0) from verse.room_vital_ops where pid = '"); sb(ops[..], pid); sb(ops[..], "'");
+  // before prepare: A saves P, and dies with no T asked
+  g1 := rc_num(ap_sql(t, sb_text(q[..]), out[..]));
+  u: [1] Sb; secs: [16] u8;
+  sa := [4] string.["coax/web/tool.sh", "coax/web/room/owner-seat.coax", ro_url(t, u[..], pa[0], pid, "pair-a", g1), ap_num(30, secs[..])];
+  seat := ifx room_a >= 0 && room_b >= 0 then fc_start(sa[..], none[0..<0], "") else -1;
+  deadline := proc_now_ms() + 30000; saved := "";
+  while seat >= 0 && saved == "" && proc_now_ms() < deadline { fc_drain(room_a, la[..]); saved = ap_sql(t, sb_text(vq[..]), hv[..]); if saved == "" { proc_sleep(300); } }
+  if room_a >= 0 { k := proc_kill(room_a, PROC_SIGKILL); w := proc_wait(room_a, 5000); r = proc_release(room_a); }
+  sj: [4096] u8; js := ro_seat_json(seat, 20000, sj[..]);
+  kb: [256] u8; kept := ap_sql(t, sb_text(vq[..]), kb[..]);
+  hp_kept := kept; i := 0; while i < kept.count && kept[i] != 'x' { i += 1; } hp_kept = kept[0..<i];
+  g2 := rc_num(ap_sql(t, sb_text(q[..]), out[..]));
+  ops_before := rc_num(ap_sql(t, sb_text(ops[..]), out[..]));
+  sa[2] = ro_url_hp(t, u[..], pb[0], pid, "pair-b", hp_kept, g2); sa[3] = ap_num(6, secs[..]);
+  b1 := ro_seat_json(fc_start(sa[..], none[0..<0], ""), 40000, sj[..]);
+  n_ops := 0; deadline = proc_now_ms() + 20000;
+  while proc_now_ms() < deadline { fc_drain(room_b, lb[..]); n_ops = rc_num(ap_sql(t, sb_text(ops[..]), out[..])); if n_ops > ops_before { break; } proc_sleep(500); }
+  ap_check(t, "travel crash: room A dies before any travel; P sits in pair-b with the HP A saved, and B's save of it is applied", kept.count > 1 && !rc_truthy(js, "go") && ap_member_int(b1, "seat", -1) >= 0 && n_ops > ops_before && ap_sql(t, sb_text(vq[..]), hv[..]) == kept, b1);
+  // between the save and the route: room C's answers are lost
+  pa2 := [5] string.["coax/web/tool.sh", "coax/web/api/tests/room_checks.coax", "proxy", work_c, t[0].api];
+  lp: [4200] u8; lost := fs_write(fs_join(work_c, "lose", lp[..]), "1\n");
+  proxy := fc_start(pa2[..], none[0..<0], "");
+  pp: [4200] u8; portb: [32] u8; pport := -1; deadline = proc_now_ms() + 300000;
+  while lost && proxy >= 0 && pport < 0 && proc_now_ms() < deadline {
+    n := fs_read(fs_join(work_c, "port", pp[..]), portb[..]);
+    if n > 0 { pport = ap_whole(cast(string) portb[0..<n]); } else { proc_sleep(100); }
+  }
+  wf: [65536] u8; cb: [4200] u8; fb: [4200] u8;
+  world_n := fs_read("coax/web/room/dev/world-everglade.json", wf[..]);
+  ok := pport > 0 && world_n > 0 && fs_write(fs_join(work_c, "world-everglade.json", fb[..]), cast(string) wf[0..<world_n]);
+  ok = ok && fs_write(fs_join(work_c, "room-control.txt", cb[..]), "levels 1 2\n");
+  l := cxsock_listen(0); pc := cxsock_port(l); c := cxsock_close(l);
+  env: [1] Sb; sb(env[..], "OA_ROOM_VITALS_URL=http://127.0.0.1:"); sb_int(env[..], pport); sb(env[..], "/api/playtest/room-vitals");
+  envs := [1] string.[sb_text(env[..])];
+  ps: [32] u8;
+  ra := [5] string.[sb_text(binb[..]), "--port", ap_num(pc, ps[..]), "--dev", work_c];
+  room_c := ifx ok then fc_start(ra[..], envs[..], "") else -1;
+  t0 := proc_now_ms();
+  while room_c >= 0 && proc_now_ms() - t0 < 2000 { fc_drain(room_c, lc[..]); proc_sleep(50); }
+  g3 := rc_num(ap_sql(t, sb_text(q[..]), out[..]));
+  ops_before = rc_num(ap_sql(t, sb_text(ops[..]), out[..]));
+  st := [5] string.["coax/web/tool.sh", "coax/web/room/owner-seat.coax", ro_url(t, u[..], pc, pid, "pair-c", g3), ap_num(12, secs[..]), "pair-d"];
+  seat = ifx room_c >= 0 then fc_start(st[..], none[0..<0], "") else -1;
+  // the API keeps what C posts after the T (3 s in), with no answer back; then C dies
+  deadline = proc_now_ms() + 30000; n_ops = ops_before;
+  while seat >= 0 && proc_now_ms() < deadline {
+    fc_drain(room_c, lc[..]);
+    n_ops = rc_num(ap_sql(t, sb_text(ops[..]), out[..]));
+    if n_ops > ops_before && proc_now_ms() - t0 > 2000 + 6000 { break; }
+    proc_sleep(300);
+  }
+  if room_c >= 0 { k := proc_kill(room_c, PROC_SIGKILL); w := proc_wait(room_c, 5000); r = proc_release(room_c); }
+  jc := ro_seat_json(seat, 20000, sj[..]);
+  kept = ap_sql(t, sb_text(vq[..]), kb[..]);
+  i = 0; while i < kept.count && kept[i] != 'x' { i += 1; } hp_kept = kept[0..<i];
+  ap_check(t, "travel crash: the API keeps C's posts but no answer reaches C, so C never sends P on", n_ops > ops_before && !rc_truthy(jc, "go") && ap_member_int(jc, "seat", -1) >= 0, jc);
+  g4 := rc_num(ap_sql(t, sb_text(q[..]), out[..]));
+  ops_before = rc_num(ap_sql(t, sb_text(ops[..]), out[..]));
+  // (the same HP as B noted before is no new revision: B's line for P goes again as a seated owner's,
+  // each 30 s, and the API takes it as a repeat, not refused as an older owner's)
+  sa[2] = ro_url_hp(t, u[..], pb[0], pid, "pair-b", hp_kept, g4); sa[3] = ap_num(36, secs[..]);
+  seat = fc_start(sa[..], none[0..<0], "");
+  deadline = proc_now_ms() + 40000;
+  while seat >= 0 && proc_now_ms() < deadline { fc_drain(room_b, lb[..]); n_ops = rc_num(ap_sql(t, sb_text(ops[..]), out[..])); if n_ops > ops_before { break; } proc_sleep(500); }
+  b2 := ro_seat_json(seat, 45000, sj[..]);
+  why: [1] Sb; sb(why[..], b2); sb(why[..], " g3 "); sb_int(why[..], g3); sb(why[..], " g4 "); sb_int(why[..], g4); sb(why[..], " saves "); sb_int(why[..], ops_before); sb(why[..], " to "); sb_int(why[..], n_ops);
+  sb(why[..], " kept "); sb(why[..], kept); sb(why[..], " now "); sb(why[..], ap_sql(t, sb_text(vq[..]), hv[..]));
+  ap_check(t, "travel crash: C gone, P sits in pair-b with the HP the API kept, and B's line for P is taken as the next owner's", ap_member_int(b2, "seat", -1) >= 0 && g4 == g3 + 1 && n_ops > ops_before && ap_sql(t, sb_text(vq[..]), hv[..]) == kept, sb_text(why[..]));
+  sp: [4200] u8; stopped := fs_write(fs_join(work_c, "stop", sp[..]), "1\n");
+  if proxy >= 0 { x := proc_wait(proxy, 5000); if x == PROC_RUNNING { k := proc_kill(proxy, PROC_SIGTERM); x = proc_wait(proxy, 2000); } r = proc_release(proxy); }
+  rp_stop(room_b, PROC_SIGTERM);
+  g := fs_remove(work_a); g = fs_remove(work_b); g = fs_remove(work_c);
+}
+
 // ---- versioned checkpoint receiver (#12838; producer/restore are separate) ----------------------------
 rc_checkpoint_body :: (out:[]u8,pid:string,owner:int,process:int,rev:int,at:int,sent:int,xp:int,x:int)->string {
   keys:=[17]string.["v","owner","process","rev","at","sent","engine","rules","content","hp","max","xp","wanted","x_mm","y_mm","z_mm","yaw_mrad"];
@@ -1751,7 +1851,7 @@ tool_main :: () -> int #export_c {
     if name == "builds" { rc_builds(t[..]); }
     if name == "travel" {
       bb: [4096] u8; bin := proc_getenv("ROOM_BIN", bb[..]);
-      if bin != "" { rc_travel(t[..], bin); }
+      if bin != "" { rc_travel(t[..], bin); rc_travel_crash(t[..], bin); }
     }
     if name == "region" {
       ab: [4096] u8; api_bin := proc_getenv("API_BIN", ab[..]);

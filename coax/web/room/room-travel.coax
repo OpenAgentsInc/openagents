@@ -17,6 +17,13 @@
 //      the character's next owner generation (#12834), so a write of this room's after it is refused
 //      (f) and a seat of the player's still here ends (room-relay.coax rl_owner_drop); a seat that
 //      joins here takes the reservation and its HP from this server's note (rv_back).
+// What travels. HP, XP and WANTED go through the note (the API holds them for a destination on another
+// shard). To a room on this server the character also keeps what the rules count down or spend:
+// its Temporary Hit Points, spell slots and limited uses (when its build there is the same), and the
+// wait until its next Repair, captured at the cutover and laid on its new seat once its hello has
+// built it there (trv_carry). Conditions, auras and zones are the source room's world's and end there,
+// as when a player leaves; a cast on its bar stops (step 2). To another shard's room these go as on any
+// join: the destination's build, full.
 // Recovery. Every step before the destination's join is undone by time: a page that never leaves
 // (it crashed, or its close was lost) gets its commands back after TRAVEL_MS, and the reservation
 // lapses. A page that left and can't sit at CODE (full, or its room gone) joins again as on any
@@ -34,6 +41,10 @@ RmTravel :: struct {
   k: int; seat: int;      // where the player sits until routed
   rev: int;               // the vitals revision that must be saved before the route
   routed: bool;
+  // what the rules spend, captured at the cutover (trv_carry lays it on the arrival's build)
+  temp: int; slots: [10] int; slots_max: [10] int; uses: [RS_USES] int; uses_max: [RS_USES] int;
+  repair_left: int;       // ticks until the seat's next Repair
+  landed: bool; landed_at: int; carried: bool;   // arrived (mono ms), and its capture laid on
 }
 RmTravels :: struct {
   t: [TRAVELS] RmTravel;
@@ -116,6 +127,7 @@ eg_heard_travel :: (v: [] RmServer, k: int, seat: int, text: string) {
   // 2. prepare: the cutover, and what the destination starts from
   v[0].eg[k].seat[seat].travel_until = v[0].mono_ms + TRAVEL_MS;
   rc_cutover(v, k, seat);
+  trv_capture(v, slot, k, seat);
   rv_note_seat(v, k, seat); v[0].vit.flush = true;
   i := rv_find(v, pid);
   v[0].trv.t[slot].rev = ifx i >= 0 then v[0].vit.v[i].rev else 0;
@@ -152,11 +164,51 @@ eg_travel_drops :: (v: [] RmServer, k: int, seat: int) -> bool {
   v[0].eg[k].seat[seat].travel_until = 0; v[0].trv.aborted += 1;
   return false;
 }
-// A join of player pid in the room called code took its seat: its reservation is used.
+// A join of player pid in the room called code took its seat: its reservation is used, and what it
+// carries waits for the seat's build (trv_carry).
 trv_arrived :: (v: [] RmServer, code: string, pid: string) {
   for j: 0..<TRAVELS {
     e := v[0].trv.t[j];
-    if trv_live(v, j) && cast(string) e.to[0..<e.to_n] == code && cast(string) e.pid[0..<e.pid_n] == pid { v[0].trv.t[j].live = false; v[0].trv.arrived += 1; }
+    if trv_live(v, j) && cast(string) e.to[0..<e.to_n] == code && cast(string) e.pid[0..<e.pid_n] == pid {
+      v[0].trv.t[j].live = false; v[0].trv.arrived += 1;
+      v[0].trv.t[j].landed = true; v[0].trv.t[j].landed_at = v[0].mono_ms; v[0].trv.t[j].carried = false;
+    }
+  }
+}
+// The Repair wait in ticks (room-casts.coax, less its third of a second's grace).
+trv_repair_ticks :: () -> int { return cast(int) (f32(CR_REPAIR_EVERY) * f32(EG_HZ)) - EG_HZ / 3; }
+// Journey j's capture of seat `seat` of room k at its cutover.
+trv_capture :: (v: [] RmServer, j: int, k: int, seat: int) {
+  c := v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + seat];
+  e := v[0].trv.t[j..<j + 1];
+  e[0].temp = c.temp; e[0].slots = c.slots; e[0].slots_max = c.slots_max; e[0].uses = c.uses; e[0].uses_max = c.uses_max;
+  e[0].repair_left = rs_max(0, trv_repair_ticks() - (v[0].eg[k].tick - v[0].eg[k].seat[seat].repaired));
+  e[0].landed = false; e[0].carried = false;
+}
+// Seat s of room k was just built by its hello: a journey that landed it here lays on what it carried
+// (once, within TRAVEL_MS of the arrival). Slots and uses only onto the same build (the same maxima),
+// and never more than the build has.
+trv_carry :: (v: [] RmServer, k: int, s: int) {
+  tk := eg_ticket(v, k, s);
+  r := v[0].eg[k].relay;
+  if !tk.ok || r < 0 { return; }
+  pid := cast(string) tk.pid[0..<tk.pid_n];
+  here := cast(string) v[0].relays[r].code[0..<v[0].relays[r].code_n];
+  for j: 0..<TRAVELS {
+    e := v[0].trv.t[j];
+    if !e.landed || e.carried || v[0].mono_ms - e.landed_at > TRAVEL_MS { continue; }
+    if cast(string) e.pid[0..<e.pid_n] != pid || cast(string) e.to[0..<e.to_n] != here { continue; }
+    v[0].trv.t[j].carried = true;
+    c := v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + s..<E5RR_SEAT + s + 1];
+    c[0].temp = e.temp;
+    same := true;
+    for i: 0..<10 { if c[0].slots_max[i] != e.slots_max[i] { same = false; } }
+    for i: 0..<RS_USES { if c[0].uses_max[i] != e.uses_max[i] { same = false; } }
+    if same {
+      for i: 0..<10 { c[0].slots[i] = rs_min(c[0].slots[i], e.slots[i]); }
+      for i: 0..<RS_USES { c[0].uses[i] = rs_min(c[0].uses[i], e.uses[i]); }
+    }
+    if e.repair_left > 0 { v[0].eg[k].seat[s].repaired = v[0].eg[k].tick - (trv_repair_ticks() - e.repair_left); }
   }
 }
 // The counts for the minute log: 0 asked, 1 routed, 2 full, 3 refused, 4 arrived, 5 aborted, 6 intents dropped in a cutover.

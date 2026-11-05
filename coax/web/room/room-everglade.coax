@@ -616,6 +616,7 @@ eg_heard_hello :: (v: [] RmServer, k: int, seat: int, text: string) {
   st[0].flags = eg_clamp(h.flags, 0, 255);
   ev_hello(v, k, seat, st[0].flags);   // an admin's demo character (room-events.coax)
   rv_hp_back(v, k, seat); st[0].back_hp = -1;   // built: the HP its player came back with, once (#12883)
+  trv_carry(v, k, seat);   // arrived by travel: what the rules spend, as it left (room-travel.coax, #12850)
   // the name: letters, digits, spaces, '-' and '_' ("-" none)
   m := 0;
   for ch: h.name {
