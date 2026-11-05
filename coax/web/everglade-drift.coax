@@ -720,7 +720,7 @@ dr_session :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] Dr
         dr_script(DrPair.{a = ca[..], b = cb[..], shots = btext(sh[..]), ctl = run.ctl, room = code, worker = run.worker, native=run.native, at = at[..]}, run.dir);
         ok = dr_pull(ca[..], a) && dr_pull(cb[..], b);
         if run.worker { print("  (offline room host: % stalls, % ms of its beat dropped)\n", dr_int(ca[..], "coaxial.roomHost ? coaxial.roomHost.stalls | 0 : -1", -1), dr_int(ca[..], "coaxial.roomHost ? coaxial.roomHost.lost | 0 : -1", -1)); }
-        // the town's people's conditions as each page drew them (wall ms, then PERSON:BITS), a note
+        // the town's people's conditions as each page drew them (wall ms, WANTED, the rows held, then PERSON:BITS), a note
         // for a drift of "conditions on the town's people": conds-PROFILE-offline.txt, -room.txt
         for side: 0..<2 {
           cn: [1] Buf; bput(cn[..], run.dir); bput(cn[..], "/conds-"); bput(cn[..], profile); bput(cn[..], ifx side == 0 then "-offline.txt" else "-room.txt");

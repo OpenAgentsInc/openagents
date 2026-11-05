@@ -1857,6 +1857,7 @@ net_probe :: (s: [] Everglade, field: int) -> int #export_c {
   // other players with a condition, 57 and 58 the stables' pieces down and in all, 59 (offline) Hold
   // Person on you, 400 + P the bar
   // slot at place P (-1 none), 600 + 3 I + 0, 1, 2 townsperson I's drawn x and z (cm) and clip
+  // 700 + I: 1 while this page holds the room's row of person I (net_folk), else 0 (offline, out of view, or gone)
   if field == 60 { return cast(int) (s[0].orbit.yaw * 1000); }
   // 63 your body's facing as drawn and 64 the server's for you in its last word (mrad; -999999 none yet)
   if field == 63 { return cast(int) (wrap_angle(s[0].face) * 1000); }
@@ -2009,6 +2010,7 @@ net_probe :: (s: [] Everglade, field: int) -> int #export_c {
     if f == 2 { return s[0].folk[i].clip; }
     return wire_cm(ifx f == 0 then s[0].folk[i].x else s[0].folk[i].z);
   }
+  if field >= 700 && field < 700 + WATCH_ACTORS { return ifx net_folk(s, field - 700).ok then 1 else 0; }
   if field == 44 { return n[0].budget; }
   if field == 50 { return n[0].mir[0].bad; }
   if field == 51 { return n[0].mir[0].heard; }

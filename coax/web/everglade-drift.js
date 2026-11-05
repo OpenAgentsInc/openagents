@@ -82,7 +82,11 @@
         D.look = 0;
         // the conditions (E5_CONDITION bits) on each of the town's people and its watch, and your
         // WANTED level, as they change: the notes beside the rows (conds-*.txt)
-        const fc = ["w" + np(24)];
+        // and which people's rows the page holds (net_probe 700 + I), as two hex masks (people 0 to 23,
+        // 24 to 46): a row gone reads as no conditions too, so the mask tells the two apart (#12898)
+        let r0 = 0, r1 = 0;
+        for (let i = 0; i < 47; i++) if (np(700 + i) === 1) { if (i < 24) r0 |= 1 << i; else r1 |= 1 << (i - 24); }
+        const fc = ["w" + np(24), "r" + r0.toString(16) + "." + r1.toString(16)];
         for (let i = 0, c; i < 96 && (c = fp(100 + i)) >= 0; i++) if (c > 0) fc.push(i + ":" + c);
         const fcs = fc.join(" ");
         if (fcs !== D.fcond) { D.fcond = fcs; if (D.conds.length < 2000) D.conds.push(t + " " + fcs); }
