@@ -1,0 +1,236 @@
+// aethyr-host-v1 asynchronous operation ownership. Hosts execute sockets and
+// HTTP; this authority owns admission, generations, byte bounds and terminal
+// delivery. A callback carries the exact HostOwner returned at reservation.
+#module "aethyr.host.transport";
+#authority;
+
+HOST_TRANSPORT_VERSION :: 1;
+HOST_SOCKETS :: 4;
+HOST_REQUESTS :: 8;
+HOST_OWNER_MAX :: 9223372036854775807;
+HostOwner :: struct {id:int=-1;generation:int;engine:int;}
+HostSocket :: struct {generation:int;phase:int;close_pending:bool;}
+HostRequest :: struct {generation:int;active:bool;bounded:bool;deadline:int;capacity:int;received:int;failed:bool;}
+HostTransport :: struct {
+  engine:int=1;retired:bool;
+  sockets:[HOST_SOCKETS]HostSocket;requests:[HOST_REQUESTS]HostRequest;
+}
+HostDelivery :: struct {deliver:bool;kind:int=-1;bytes:int;failure:bool;}
+
+#test "host transport reserves four socket owners and sends only after opened" {
+  s:[1]HostTransport;o:[4]HostOwner;
+  for i:0..<4 {o[i]=ht_socket_reserve(s[..]);#assert o[i].id==i && o[i].generation==1 && o[i].engine==1 && !ht_socket_send(s[..],o[i]);}
+  #assert ht_socket_reserve(s[..]).id== -1;
+  a:=ht_socket_deliver(s[..],o[0],0,0,128);
+  #assert a.deliver && a.kind==256 && a.bytes==0 && !a.failure && ht_socket_send(s[..],o[0]);
+  #assert !ht_socket_deliver(s[..],o[0],0,0,128).deliver;
+  #assert !ht_socket_deliver(s[..],o[1],1,1,128).deliver;
+  #assert !ht_socket_send(s[..],HostOwner.{id=4,generation=1,engine=1}) && !ht_socket_send(s[..],HostOwner.{});
+}
+#test "host transport socket events retain bytes and overflow is an error without partial frame" {
+  s:[1]HostTransport;o:=ht_socket_reserve(s[..]);_:=ht_socket_deliver(s[..],o,0,0,128);
+  a:=ht_socket_deliver(s[..],o,1,128,128);#assert a.deliver && a.kind==257 && a.bytes==128 && !a.failure;
+  a=ht_socket_deliver(s[..],o,1,129,128);#assert a.deliver && a.kind==259 && a.bytes==0 && a.failure && ht_socket_send(s[..],o);
+  a=ht_socket_deliver(s[..],o,1,0,0);#assert a.deliver && a.kind==257 && a.bytes==0;
+  a=ht_socket_deliver(s[..],o,3,0,128);#assert a.deliver && a.kind==259 && a.bytes==0 && !a.failure;
+  #assert !ht_socket_deliver(s[..],o,1,-1,128).deliver && !ht_socket_deliver(s[..],o,1,1,-1).deliver;
+  #assert !ht_socket_deliver(s[..],o,-1,0,128).deliver && !ht_socket_deliver(s[..],o,4,0,128).deliver;
+  #assert ht_socket_deliver(s[..],o,2,0,128).kind==258 && !ht_socket_send(s[..],o);
+  #assert !ht_socket_deliver(s[..],o,2,0,128).deliver;
+}
+#test "host transport local close is deferred once and cannot close a replacement owner" {
+  s:[1]HostTransport;o:=ht_socket_reserve(s[..]);
+  #assert ht_socket_close(s[..],o) && !ht_socket_close(s[..],o) && !ht_socket_send(s[..],o);
+  #assert !ht_socket_deliver(s[..],o,0,0,128).deliver && !ht_socket_deliver(s[..],o,1,1,128).deliver;
+  #assert ht_socket_deliver(s[..],o,2,0,128).deliver && !ht_socket_deliver(s[..],o,2,0,128).deliver;
+  p:=ht_socket_reserve(s[..]);#assert p.id==0 && p.generation==2;
+  #assert ht_socket_close(s[..],p);q:=ht_socket_reserve(s[..]);#assert q.id==0 && q.generation==3;
+  #assert !ht_socket_deliver(s[..],p,2,0,128).deliver && !ht_socket_close(s[..],p);
+  #assert ht_socket_deliver(s[..],q,0,0,128).deliver && ht_socket_send(s[..],q);
+}
+#test "host transport requests share eight slots and release before the caller observes completion" {
+  s:[1]HostTransport;o:[8]HostOwner;
+  for i:0..<8 {o[i]=ht_http_reserve(s[..],4,false,0,0,0);#assert o[i].id==i && o[i].generation==1 && o[i].engine==1;}
+  #assert ht_http_reserve(s[..],4,false,0,0,0).id== -1;
+  #assert ht_http_chunk(s[..],o[3],7) && ht_http_chunk(s[..],o[3],0);
+  a:=ht_http_finish(s[..],o[3],0,true,true);#assert a.deliver && a.kind==515 && a.bytes==7 && !a.failure;
+  p:=ht_http_reserve(s[..],4,false,0,0,0);#assert p.id==3 && p.generation==2;
+  #assert !ht_http_finish(s[..],o[3],0,true,true).deliver && !ht_http_chunk(s[..],o[3],1);
+  #assert ht_http_cancel(s[..],3) && !ht_http_cancel(s[..],3);
+  #assert !ht_http_cancel(s[..],-1) && !ht_http_cancel(s[..],8);
+}
+#test "host transport bounded requests preflight flags clocks timeouts and minimum failure inbox" {
+  s:[1]HostTransport;
+  for flags:[4]int.[0,1,2,6] {#assert ht_http_reserve(s[..],flags,true,1,0,2).id== -1;}
+  #assert ht_http_reserve(s[..],4,true,0,0,2).id== -1 && ht_http_reserve(s[..],4,true,2147483648,0,2).id== -1;
+  #assert ht_http_reserve(s[..],4,true,1,0,1).id== -1 && ht_http_reserve(s[..],4,true,1,-1,2).id== -1;
+  #assert ht_http_reserve(s[..],4,true,1,HOST_OWNER_MAX,2).id== -1;
+  o:=ht_http_reserve(s[..],4,true,2147483647,HOST_OWNER_MAX-2147483647,2);
+  #assert o.id==0 && ht_http_capacity(s[..],o)==2 && s[0].requests[0].deadline==HOST_OWNER_MAX;
+  #assert ht_http_reserve(s[..],0,false,0,0,0).id== -1;
+  #assert ht_http_capacity(s[..],HostOwner.{id=8})== -1;
+}
+#test "host transport response capacity includes header and every chunk; failure replies once" {
+  s:[1]HostTransport;o:=ht_http_reserve(s[..],4,true,50,10,8);
+  #assert ht_http_chunk(s[..],o,4) && ht_http_chunk(s[..],o,4) && s[0].requests[0].received==8;
+  a:=ht_http_finish(s[..],o,59,true,true);#assert a.deliver && !a.failure && a.bytes==8 && a.kind==512;
+  p:=ht_http_reserve(s[..],4,true,50,10,8);#assert ht_http_chunk(s[..],p,8) && !ht_http_chunk(s[..],p,1);
+  #assert s[0].requests[0].received==8 && s[0].requests[0].failed && !ht_http_chunk(s[..],p,0);
+  a=ht_http_finish(s[..],p,20,true,true);#assert a.deliver && a.failure && a.bytes==2;
+  p=ht_http_reserve(s[..],4,true,50,10,8);#assert ht_http_chunk(s[..],p,8);
+  a=ht_http_finish(s[..],p,60,true,true);#assert a.deliver && a.failure && a.bytes==2;
+  #assert !ht_http_finish(s[..],p,60,true,true).deliver;
+  p=ht_http_reserve(s[..],4,true,50,10,8);#assert ht_http_chunk(s[..],p,4);
+  a=ht_http_finish(s[..],p,20,true,false);#assert a.deliver && a.failure && a.bytes==2;
+  p=ht_http_reserve(s[..],4,false,0,0,0);a=ht_http_finish(s[..],p,0,false,true);#assert a.deliver && a.failure && a.bytes==2;
+  p=ht_http_reserve(s[..],4,true,50,10,8);#assert ht_http_chunk(s[..],p,1);
+  a=ht_http_finish(s[..],p,20,true,true);#assert a.failure && a.bytes==2;
+  p=ht_http_reserve(s[..],4,true,50,10,8);#assert !ht_http_chunk(s[..],p,-1);
+  a=ht_http_finish(s[..],p,20,true,true);#assert a.deliver && a.failure && a.bytes==2;
+}
+#test "host transport timeout and cancellation fence every old callback" {
+  s:[1]HostTransport;o:=ht_http_reserve(s[..],4,true,10,20,128);
+  #assert !ht_http_timeout(s[..],o,29).deliver;
+  a:=ht_http_timeout(s[..],o,30);#assert a.deliver && a.failure && a.kind==512 && a.bytes==2;
+  #assert !ht_http_timeout(s[..],o,31).deliver;
+  p:=ht_http_reserve(s[..],4,false,0,0,0);#assert !ht_http_timeout(s[..],p,HOST_OWNER_MAX).deliver;
+  #assert ht_http_cancel(s[..],p.id) && !ht_http_finish(s[..],p,0,true,true).deliver;
+  q:=ht_http_reserve(s[..],4,true,1,0,2);#assert q.id==0 && q.generation==3;
+  #assert !ht_http_chunk(s[..],p,2) && ht_http_capacity(s[..],p)== -1;
+  #assert !ht_http_finish(s[..],HostOwner.{id=-1},0,true,true).deliver;
+}
+#test "host transport reset invalidates socket and request epochs before effects abort" {
+  s:[1]HostTransport;o:=ht_socket_reserve(s[..]);p:=ht_http_reserve(s[..],4,true,100,0,128);
+  #assert ht_reset(s[..]) && s[0].engine==2 && !s[0].retired;
+  #assert !ht_socket_deliver(s[..],o,0,0,128).deliver && !ht_socket_close(s[..],o);
+  #assert !ht_http_finish(s[..],p,1,true,true).deliver && ht_http_capacity(s[..],p)== -1;
+  q:=ht_socket_reserve(s[..]);r:=ht_http_reserve(s[..],4,true,100,0,128);
+  #assert q.id==0 && q.engine==2 && q.generation==2 && r.id==0 && r.engine==2 && r.generation==2;
+  #assert ht_socket_deliver(s[..],q,0,0,128).deliver && ht_http_chunk(s[..],r,2);
+}
+#test "host transport exhausting generations retires a slot and exhausting epoch retires the transport" {
+  s:[1]HostTransport;s[0].sockets[0].generation=HOST_OWNER_MAX;s[0].requests[0].generation=HOST_OWNER_MAX;
+  #assert ht_socket_reserve(s[..]).id==1 && ht_http_reserve(s[..],4,false,0,0,0).id==1;
+  s[0].engine=HOST_OWNER_MAX;
+  #assert !ht_reset(s[..]) && s[0].retired;
+  #assert ht_socket_reserve(s[..]).id== -1 && ht_http_reserve(s[..],4,false,0,0,0).id== -1 && !ht_reset(s[..]);
+  #assert !ht_socket_deliver(s[..],HostOwner.{id=1,generation=1,engine=HOST_OWNER_MAX},0,0,128).deliver;
+  #assert !ht_http_finish(s[..],HostOwner.{id=1,generation=1,engine=HOST_OWNER_MAX},0,true,true).deliver;
+}
+#forall "host transport callbacks use the actual slot in every event kind" id:0..<4 {
+  s:[1]HostTransport;o:HostOwner;for i:0..<id+1 {o=ht_socket_reserve(s[..]);}
+  #assert ht_socket_deliver(s[..],o,0,0,16).kind==256+4*id;
+  #assert ht_socket_deliver(s[..],o,1,16,16).kind==257+4*id;
+  #assert ht_socket_deliver(s[..],o,1,17,16).kind==259+4*id;
+  #assert ht_socket_close(s[..],o);
+  a:=ht_socket_deliver(s[..],o,2,0,16);#assert a.deliver && a.kind==258+4*id && a.bytes==0 && !a.failure;
+}
+#test "host transport owner checks refuse every invalid field independently" {
+  s:[1]HostTransport;
+  #assert !ht_socket_owner(s[..],HostOwner.{id=0,generation=0,engine=1});
+  #assert !ht_http_owner(s[..],HostOwner.{id=0,generation=0,engine=1});
+  s[0].requests[0].active=true;
+  #assert !ht_http_owner(s[..],HostOwner.{id=0,generation=0,engine=1});
+  s[0].requests[0].active=false;
+  o:=ht_socket_reserve(s[..]);p:=ht_http_reserve(s[..],4,false,0,0,0);
+  #assert ht_socket_owner(s[..],o) && ht_http_owner(s[..],p);
+  for id:[3]int.[-1,4,8] {#assert !ht_socket_owner(s[..],HostOwner.{id=id,generation=1,engine=1});}
+  for id:[2]int.[-1,8] {#assert !ht_http_owner(s[..],HostOwner.{id=id,generation=1,engine=1});}
+  #assert !ht_socket_owner(s[..],HostOwner.{id=0,generation=2,engine=1}) && !ht_socket_owner(s[..],HostOwner.{id=0,generation=1,engine=2});
+  #assert !ht_http_owner(s[..],HostOwner.{id=0,generation=2,engine=1}) && !ht_http_owner(s[..],HostOwner.{id=0,generation=1,engine=2});
+  s[0].retired=true;#assert !ht_socket_owner(s[..],o) && !ht_http_owner(s[..],p);
+}
+#test "host transport reusable state is freshly initialized and integer counters do not wrap" {
+  s:[1]HostTransport;o:=ht_socket_reserve(s[..]);#assert ht_socket_close(s[..],o);
+  p:=ht_socket_reserve(s[..]);#assert !s[0].sockets[0].close_pending && ht_socket_close(s[..],p);
+  #assert ht_reset(s[..]) && !s[0].sockets[0].close_pending;
+  q:=ht_http_reserve(s[..],5,true,1,0,2);#assert q.id==0 && ht_http_chunk(s[..],q,2);
+  a:=ht_http_finish(s[..],q,0,true,true);#assert a.deliver && !a.failure && a.bytes==2;
+  r:=ht_http_reserve(s[..],4,false,0,0,99);#assert r.id==0 && ht_http_capacity(s[..],r)==0 && s[0].requests[0].deadline==0;
+  #assert ht_http_chunk(s[..],r,HOST_OWNER_MAX-1) && ht_http_chunk(s[..],r,1) && s[0].requests[0].received==HOST_OWNER_MAX;
+  #assert ht_http_chunk(s[..],r,0) && !ht_http_chunk(s[..],r,1) && !ht_http_chunk(s[..],r,0);
+}
+#forall "host transport timeout reports the request slot rather than socket zero" id:0..<8 {
+  s:[1]HostTransport;o:HostOwner;
+  for i:0..<id+1 {o=ht_http_reserve(s[..],4,true,1,0,2);}
+  a:=ht_http_timeout(s[..],o,1);#assert a.deliver && a.kind==512+id && a.bytes==2 && a.failure;
+}
+
+ht_socket_owner :: (s:[]HostTransport,o:HostOwner)->bool {
+  return !s[0].retired && o.id>=0 && o.id<HOST_SOCKETS && o.engine==s[0].engine && o.generation>0 && o.generation==s[0].sockets[o.id].generation;
+}
+ht_socket_reserve :: (s:[]HostTransport)->HostOwner #export_c {
+  if s[0].retired {return HostOwner.{};}
+  for i:0..<HOST_SOCKETS {
+    if s[0].sockets[i].phase!=0 || s[0].sockets[i].generation==HOST_OWNER_MAX {continue;}
+    s[0].sockets[i].generation+=1;s[0].sockets[i].phase=1;s[0].sockets[i].close_pending=false;
+    return HostOwner.{id=i,generation=s[0].sockets[i].generation,engine=s[0].engine};
+  }
+  return HostOwner.{};
+}
+ht_socket_send :: (s:[]HostTransport,o:HostOwner)->bool #export_c {return ht_socket_owner(s,o) && s[0].sockets[o.id].phase==2;}
+ht_socket_close :: (s:[]HostTransport,o:HostOwner)->bool #export_c {
+  if !ht_socket_owner(s,o) || s[0].sockets[o.id].phase==0 {return false;}
+  s[0].sockets[o.id].phase=0;s[0].sockets[o.id].close_pending=true;return true;
+}
+ht_socket_deliver :: (s:[]HostTransport,o:HostOwner,event:int,bytes:int,capacity:int)->HostDelivery #export_c {
+  if !ht_socket_owner(s,o) || event<0 || event>3 || bytes<0 || capacity<0 {return HostDelivery.{};}
+  phase:=s[0].sockets[o.id].phase;
+  if event==2 && phase==0 && s[0].sockets[o.id].close_pending {
+    s[0].sockets[o.id].close_pending=false;return HostDelivery.{deliver=true,kind=258+4*o.id};
+  }
+  if phase==0 || (event==0 && phase!=1) || (event==1 && phase!=2) {return HostDelivery.{};}
+  if event==0 {s[0].sockets[o.id].phase=2;}
+  if event==2 {s[0].sockets[o.id].phase=0;}
+  if bytes>capacity {return HostDelivery.{deliver=true,kind=259+4*o.id,failure=true};}
+  return HostDelivery.{deliver=true,kind=256+4*o.id+event,bytes=bytes};
+}
+
+ht_http_owner :: (s:[]HostTransport,o:HostOwner)->bool {
+  return !s[0].retired && o.id>=0 && o.id<HOST_REQUESTS && o.engine==s[0].engine && o.generation>0 && o.generation==s[0].requests[o.id].generation && s[0].requests[o.id].active;
+}
+// Only response-bearing requests reserve a slot. Beacon/fire-and-forget
+// effects return0 at the import boundary after route/header preflight.
+ht_http_reserve :: (s:[]HostTransport,flags:int,bounded:bool,timeout_ms:int,now:int,capacity:int)->HostOwner #export_c {
+  if s[0].retired || (flags&4)==0 {return HostOwner.{};}
+  if bounded && ((flags&2)!=0 || timeout_ms<1 || timeout_ms>2147483647 || capacity<2 || now<0 || now>HOST_OWNER_MAX-timeout_ms) {return HostOwner.{};}
+  for i:0..<HOST_REQUESTS {
+    if s[0].requests[i].active || s[0].requests[i].generation==HOST_OWNER_MAX {continue;}
+    generation:=s[0].requests[i].generation+1;
+    s[0].requests[i]=HostRequest.{generation=generation,active=true,bounded=bounded,deadline=ifx bounded then now+timeout_ms else 0,capacity=ifx bounded then capacity else 0};
+    return HostOwner.{id=i,generation=generation,engine=s[0].engine};
+  }
+  return HostOwner.{};
+}
+ht_http_capacity :: (s:[]HostTransport,o:HostOwner)->int #export_c {
+  if !ht_http_owner(s,o) {return -1;}return s[0].requests[o.id].capacity;
+}
+// Header bytes are a chunk too. Preflight before retaining streamed bytes.
+ht_http_chunk :: (s:[]HostTransport,o:HostOwner,bytes:int)->bool #export_c {
+  if !ht_http_owner(s,o) {return false;}
+  r:=s[0].requests[o.id];
+  if r.failed {return false;}
+  if bytes<0 || bytes>HOST_OWNER_MAX-r.received || (r.bounded && bytes>r.capacity-r.received) {s[0].requests[o.id].failed=true;return false;}
+  s[0].requests[o.id].received+=bytes;return true;
+}
+ht_http_finish :: (s:[]HostTransport,o:HostOwner,now:int,ok:bool,utf8_valid:bool)->HostDelivery #export_c {
+  if !ht_http_owner(s,o) {return HostDelivery.{};}
+  r:=s[0].requests[o.id];s[0].requests[o.id].active=false;
+  failed:=!ok || r.failed || r.received<2 || (r.bounded && (!utf8_valid || now>=r.deadline));
+  return HostDelivery.{deliver=true,kind=512+o.id,bytes=ifx failed then 2 else r.received,failure=failed};
+}
+ht_http_timeout :: (s:[]HostTransport,o:HostOwner,now:int)->HostDelivery #export_c {
+  if !ht_http_owner(s,o) || !s[0].requests[o.id].bounded || now<s[0].requests[o.id].deadline {return HostDelivery.{};}
+  s[0].requests[o.id].active=false;
+  return HostDelivery.{deliver=true,kind=512+o.id,bytes=2,failure=true};
+}
+ht_http_cancel :: (s:[]HostTransport,id:int)->bool #export_c {
+  if id<0 || id>=HOST_REQUESTS || !s[0].requests[id].active {return false;}
+  s[0].requests[id].active=false;return true;
+}
+ht_reset :: (s:[]HostTransport)->bool #export_c {
+  for i:0..<HOST_SOCKETS {s[0].sockets[i].phase=0;s[0].sockets[i].close_pending=false;}
+  for i:0..<HOST_REQUESTS {s[0].requests[i].active=false;}
+  if s[0].retired || s[0].engine==HOST_OWNER_MAX {s[0].retired=true;return false;}
+  s[0].engine+=1;return true;
+}

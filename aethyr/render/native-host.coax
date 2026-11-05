@@ -3,6 +3,9 @@
 // do not import the CPU codec or reference rasterizer.
 #load "host.coax";
 #load "host-inputs.coax";
+#load "../host/transport.coax";
+#load "../host/routes.coax";
+#load "../host/buffers.coax";
 #authority;
 
 aethyr_native_resource_limit :: ()->int #export_c {return RENDER_RESOURCES;}

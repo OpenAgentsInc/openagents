@@ -1,0 +1,33 @@
+// aethyr-host-v1 route admission, before platform URI parsing/effects.
+// A successful SDK parse must still retain the page's actual HTTP origin.
+#module "aethyr.host.routes";
+#authority;
+
+#test "host HTTP paths are bounded root relative and cannot normalize into a foreign authority" {
+  for path:[5]string.["/","/api/x","/api/x?as=lines","/a%20b","/x#fragment"] {#assert htr_http_path(path);}
+  #assert htr_http_path("/ ") && !htr_http_path("//");
+  for path:[10]string.["","relative","https://example.com/x","//example.com/x","/\\example.com/x","/a\\b","/\n/example.com/x","/x\r","/x\t","/x\0"] {#assert !htr_http_path(path);}
+  b:[4097]u8;for i:0..<b.count {b[i]='a';}b[0]='/';
+  #assert htr_http_path(cast(string)b[0..<4096]) && !htr_http_path(cast(string)b[..]);
+  b[17]=31;#assert !htr_http_path(cast(string)b[0..<18]);b[17]=127;#assert !htr_http_path(cast(string)b[0..<18]);
+}
+#test "host native local transport has one exact URI and one explicit IPv4 loopback origin" {
+  #assert htr_local_uri("local:/api/room/relay/everglade/local-1");
+  for uri:[6]string.["local:everglade/local-1","local:/api/room/relay/everglade/local-2","local:/api/room/relay/other/local-1","local:/api/room/relay/everglade/local-1?x","local:/api/room/relay/everglade/local-1/",""] {#assert !htr_local_uri(uri);}
+  for origin:[4]string.["ws://127.0.0.1:1","ws://127.0.0.1:1024","ws://127.0.0.1:9999","ws://127.0.0.1:65535"] {#assert htr_local_origin(origin);}
+  for origin:[12]string.["ws://127.0.0.1:0","ws://127.0.0.1:65536","ws://127.0.0.1:100000","ws://127.0.0.1:","ws://localhost:1234","ws://127.0.0.2:1234","wss://127.0.0.1:1234","ws://0.0.0.0:1234","ws://127.0.0.1:01234","ws://127.0.0.1:1234/x","ws://127.0.0.1:1234?x","ws://127.0.0.1:12x4"] {#assert !htr_local_origin(origin);}
+  #assert !htr_local_origin("ws://127.0.0.1:12:4");
+}
+htr_http_path :: (url:string)->bool #export_c {
+  if url.count<1 || url.count>4096 || url[0]!='/' {return false;}
+  if url.count>1 && url[1]=='/' {return false;}
+  for c:url {if c<32 || c==127 || c=='\\' {return false;}}
+  return true;
+}
+htr_local_uri :: (url:string)->bool #export_c {return url=="local:/api/room/relay/everglade/local-1";}
+htr_local_origin :: (origin:string)->bool #export_c {
+  prefix:="ws://127.0.0.1:";
+  if origin.count<prefix.count+1 || origin[0..<prefix.count]!=prefix || origin[prefix.count]=='0' {return false;}
+  port:=0;for c:origin[prefix.count..<origin.count] {if c<'0' || c>'9' {return false;}port=port*10+cast(int)c-'0';if port>65535 {return false;}}
+  return true;
+}
