@@ -1411,7 +1411,9 @@ ab_frame_more :: (s: [] Everglade, dt: f32) {
   if a[0].gust_on {
     a[0].gust_t += dt;
     if a[0].gust_t >= f32(AB_GUST_LIFE) { a[0].gust_on = false; return; }
-    a[0].gust_at = ab_you(s); a[0].gust_dir = ab_forward(s);
+    // the line blasts from where you stand now and points the way it was cast, as the rules' Line does
+    // (aethyr/rules/srd/battle.coax rs_turn_saves: turning it is a Bonus Action they don't model, #12888)
+    a[0].gust_at = ab_you(s);
     _ := ab_gust_people(s);
     for i: 0..<SP_PUFFS {
       if !s[0].sp.puffs[i].live || !ab_in_gust(a, s[0].sp.puffs[i].at) { continue; }
