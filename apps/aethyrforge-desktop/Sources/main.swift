@@ -359,7 +359,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
             }
             var bytes: [UInt8] = []
             for i in 0..<256 {
-                let c = benchmarkReportURL != nil ? forge_benchmark_url_byte(Int64(p.1),Int64(i)) : offlineMode ? forge_offline_url_byte(Int64(p.1),Int64(i)) : forge_url_byte(Int64(p.1), Int64(r.1), Int64(i))
+                let c = benchmarkReportURL != nil ? forge_benchmark_url_byte(Int64(p.1),Int64(i)) : offlineMode ? forge_offline_url_byte(Int64(p.1),Int64(i)) : nativeWorld ? forge_native_url_byte(Int64(p.1),Int64(i)) : forge_url_byte(Int64(p.1), Int64(r.1), Int64(i))
                 if c < 0 { break }; bytes.append(UInt8(c))
             }
             close(r.0); close(p.0)

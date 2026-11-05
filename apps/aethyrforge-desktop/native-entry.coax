@@ -1,0 +1,39 @@
+// The native host supplies the existing realm's ordinary local-first entry.
+// An explicit relay query would bypass that realm-owned local admission.
+#authority;
+#test "native entry preserves ordinary room selection without a relay override" {
+  out:[128]u8;
+  #assert forge_native_url(49152,out[..])=="http://127.0.0.1:49152/worlds/everglade?forge=play#gate";
+  #assert forge_native_url(1024,out[..])=="http://127.0.0.1:1024/worlds/everglade?forge=play#gate";
+  #assert forge_native_url(65535,out[..])=="http://127.0.0.1:65535/worlds/everglade?forge=play#gate";
+  #assert forge_native_url(49152,out[0..<55])=="http://127.0.0.1:49152/worlds/everglade?forge=play#gate";
+}
+#test "native entry refuses ports and short storage atomically" {
+  out:[128]u8;for i:0..<out.count {out[i]=42;}
+  for port:[8]int.[-1,0,1023,65536,8830,8843,8872,8876] {
+    #assert forge_native_url(port,out[..])=="";
+    for b:out {#assert b==42;}
+  }
+  #assert forge_native_url(8913,out[..])=="";
+  #assert forge_native_url(49152,out[0..<54])=="";
+  for b:out {#assert b==42;}
+}
+#test "native scalar entry retains every byte and refuses exterior offsets" {
+  out:[128]u8;url:=forge_native_url(49152,out[..]);
+  for c,i:url {#assert forge_native_url_byte(49152,i)==cast(int)c;}
+  #assert forge_native_url_byte(49152,-1)==-1;
+  #assert forge_native_url_byte(49152,url.count)==-1;
+  #assert forge_native_url_byte(8830,0)==-1;
+}
+forge_native_url :: (port:int,out:[]u8)->string {
+  if port<1024||port>65535||port==8830||port==8843||port==8872||port==8876||port==8913||out.count<55 {return "";}
+  n:=0;for c:"http://127.0.0.1:" {out[n]=c;n+=1;}
+  digits:[5]u8;k:=0;v:=port;while v>0 {digits[k]=cast(u8)('0'+v%10);v/=10;k+=1;}
+  for i:0..<k {out[n]=digits[k-i-1];n+=1;}
+  for c:"/worlds/everglade?forge=play#gate" {out[n]=c;n+=1;}
+  return cast(string)out[0..<n];
+}
+forge_native_url_byte :: (port:int,index:int)->int #export_c {
+  out:[128]u8;url:=forge_native_url(port,out[..]);
+  return ifx index>=0&&index<url.count then cast(int)url[index] else -1;
+}

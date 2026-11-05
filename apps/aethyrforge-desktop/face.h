@@ -5,6 +5,7 @@
 int64_t forge_world_backend_bytes(const uint8_t *bytes,int64_t count);
 int64_t forge_url_byte(int64_t page, int64_t room, int64_t index);
 int64_t forge_offline_url_byte(int64_t page,int64_t index);
+int64_t forge_native_url_byte(int64_t page,int64_t index);
 int64_t forge_startup_budget(int64_t remaining, int64_t elapsed, bool visible);
 int64_t forge_startup_phase(int64_t remaining, int64_t elapsed, bool visible);
 bool forge_world_paused(bool ready, bool setup, bool visible, bool minimized, bool occluded);
