@@ -1,14 +1,17 @@
 # 104. Agent treasuries and a network of keys
 
 > **Status: partly implemented.** The pure contracts (NIP-KEYS step 1) and
-> the signing loop's local half (step 2) run: the signer's checks, ECDSA
-> partial signatures over BIP-143 digests, the PSBT with them, and the
-> coordinator's 2-of-3 transaction, with worked examples, refusals and
-> independent checks (BIP-143's and BIP-341's published vectors,
-> libsecp256k1, a Python reference). The 3188 transport over a Coax relay,
-> a spend broadcast on signet, and recovery with an independent wallet
-> tool are not built, so the chapter's "Done means" line doesn't hold yet.
-> See [Not built](#not-built).
+> the signing loop (step 2) run: the signer's checks, ECDSA partial
+> signatures over BIP-143 digests, the PSBT with them, and the coordinator's
+> 2-of-3 transaction, with worked examples, refusals and independent checks
+> (BIP-143's and BIP-341's published vectors, libsecp256k1, a Python
+> reference). Requests and receipts travel as 3188 artifacts over a Coax
+> relay between three key agents and a coordinator; Bitcoin Core accepts and
+> confirms the spend in regtest, and recovers the coins with its own
+> descriptor wallet ([Over the network](#over-the-network)). One part of
+> "Done means" is open: the spend has not been broadcast on signet, because
+> signet coins come only from a captcha-gated faucet. See
+> [Not built](#not-built).
 
 The chapter qualifies checking contracts on native CPU. It records no
 external treasury consumer and no Wasm qualification. Those claims stay
@@ -73,6 +76,9 @@ checked, for the `tr` wallets that come next.
 | [coax/tests/nostr/keys_fixtures.coax](../../coax/tests/nostr/keys_fixtures.coax) | The treasury's records, written by an independent Python reference |
 | [coax/tests/nostr/keys_sign_fixtures.coax](../../coax/tests/nostr/keys_sign_fixtures.coax) | The treasury's signed spend, written by [keys_sign_reference.py](../../coax/tests/nostr/keys_sign_reference.py) |
 | [coax/tests/bitcoin/sighash_vectors.coax](../../coax/tests/bitcoin/sighash_vectors.coax) | BIP-143's examples and BIP-341's wallet vectors, copied by [make_sighash_vectors.py](../../coax/tests/bitcoin/make_sighash_vectors.py) |
+| [coax/lib/nostr/nipkeys_carry.coax](../../coax/lib/nostr/nipkeys_carry.coax) | KEYS records sealed into, and opened from, 3188 private artifacts. `#authority` |
+| [nostr/tools/treasury.coax](../tools/treasury.coax) | The key agent and the coordinator as a command-line tool over a relay |
+| [coax/tests/nostr/treasury_regtest.py](../../coax/tests/nostr/treasury_regtest.py) | The network run against Bitcoin Core in regtest |
 | [nostr/examples/agent-treasury.coax](../examples/agent-treasury.coax) | The example |
 | [nostr/examples/checks/agent-treasury.coax](../examples/checks/agent-treasury.coax) | Its independent checks |
 
@@ -1024,6 +1030,70 @@ ky_combine :: (w:KyWallet,all:KyScripts,wit:KyWitnesses,psbt:[]u8,s:[]KySigned,o
 }
 ```
 
+## Over the network
+
+Every record travels as a kind 3188 private artifact
+(contracts.md, "Private artifact envelope"). `nipkeys_carry.coax` seals a
+KEYS record the way NIP-AGENT's carriage seals a definition: the record goes
+inline in the artifact envelope, NIP-44 v2 encrypts it from the sender's key
+to the recipient's, and the event has exactly one `p`, one `h` mailbox and
+`t: oa:artifact:v1`. `kc_open` checks the id and signature, the recipient,
+the decryption and the envelope's schema, in that order, before it hands
+back the record. A PSBT is binary, so it doesn't ride inline: the request's
+`psbt` ArtifactRef names its SHA-256, and the receiver fetches the bytes from
+the artifact store and checks the digest before reading them.
+
+`nostr/tools/treasury.coax` is the network half:
+
+```shell
+treasury agent alice --relay ws://127.0.0.1:PORT --dir STORE --now T --count 2
+treasury coordinator --relay ws://127.0.0.1:PORT --dir STORE --request REQUEST.json --now T --out TX.hex
+```
+
+A key agent authenticates with NIP-42 (the relay shows a 3188 only to its
+recipient and takes writes only from an authenticated connection), subscribes
+to 3188s for its key, opens each request, refuses one whose signer isn't the
+request's `requester`, and runs `ky_sign`. It stores its signed PSBT by
+digest and seals a `openagents.keys-sign-receipt.v1` back to the requester:
+`signed` with the signed PSBT's ArtifactRef, or `refused` with the code.
+It reads on one connection and publishes on another, so waiting for an `OK`
+never swallows a request.
+
+The coordinator seals the request to every key agent and reads receipts for
+this request only (the subscription also returns stored receipts for older
+ones). It reads each signed PSBT back with `ky_signed_read`: one partial
+signature per input, and a rebuild from the original PSBT that must give the
+same bytes, so a signer can't change anything but its own signatures. Then
+`ky_combine` builds the transaction.
+
+[treasury_regtest.py](../../coax/tests/nostr/treasury_regtest.py) runs it
+against Bitcoin Core 32.1 in regtest, on 127.0.0.1:
+
+```text
+coordinator, request 1 (the PSBT the request states):
+  receipt from alice: signed, its PSBT reads back
+  receipt from keyco: signed, its PSBT reads back
+  receipt from enclave: signed, its PSBT reads back
+coordinator, request 2 (a PSBT that pays someone the request does not name):
+  receipt from alice: refused (outputs)
+  receipt from keyco: refused (outputs)
+  receipt from enclave: refused (outputs)
+  fewer than 2 signatures: no transaction
+```
+
+Core's `testmempoolaccept` accepts the first transaction, and a block
+confirms it with the request's outputs. Bitcoin Core, not our code, runs the
+2-of-3 witness script.
+
+Then the coordinator is gone. A new Core descriptor wallet takes the
+descriptor from the wallet record (any key agent's copy), with alice's and
+keyco's account keys in place of their xpubs, and rescans. It finds 79,000
+sat: a new 50,000 sat coin at receive 2 and the spend's 29,000 sat change.
+Its `sendall` signs both with Core's own signer, and a block confirms it.
+Core shares no code with the Coax signer, so the descriptor alone is enough
+to recover the coins. The run's record is
+[2026-11-05-nostr-ch104-treasury-network](../../docs/verification/2026-11-05-nostr-ch104-treasury-network/README.md).
+
 ## The example
 
 The example is
@@ -1384,19 +1454,11 @@ come from the Python reference.
 
 ## Not built
 
-- **The network half of the "Done means" line.** Three key agents sign a
-  2-of-3 spend and a coordinator combines it, and a PSBT whose outputs
-  differ from its request gets no signature from any signer; but the
-  requests and receipts don't yet travel as 3188 artifacts over a Coax
-  relay, and no spend was broadcast or confirmed on signet (that needs a
-  funded signet coin and a node or explorer to broadcast to). The
-  transaction is checked locally instead: Python rebuilds it from its own
-  BIP-143 digests and libsecp256k1 verifies every signature, but no
-  Bitcoin node has run its script.
-- **Recovery with an independent wallet tool.** The scripts are derived
-  from the descriptor alone and match the Python reference, but no
-  coordinator outage was recovered, on signet or with another wallet
-  (none is installed on this machine).
+- **A broadcast on signet.** The spend and the recovery run in regtest,
+  where Bitcoin Core runs the script; signet needs signet coins, and the
+  public faucets hand them out only behind a captcha or a GitHub sign-in.
+  The same tools broadcast through a public signet explorer once a faucet
+  pays the treasury's receive address.
 - **BIP-322 possession proofs** are read and not verified: `ky_admit`
   returns `proven: false`, and nothing here moves coins.
 - **Miniscript spends.** Wallets with a recovery path are admitted (their
@@ -1406,8 +1468,8 @@ come from the Python reference.
   signatures are built and match BIP-341's vectors, but admission still
   refuses `tr` descriptors and the signer signs only `wsh` inputs.
 - **PSBT v2**, MuSig2 and FROST.
-- **Receipts, liveness, rotation and agency-terms bodies**, the 3188
-  transport, a coordinator service (the combination step is built), and MKT settlement. The checks they decide
+- **Liveness, rotation and agency-terms bodies**, a long-running
+  coordinator service (the tool runs one request at a time), and MKT settlement. The checks they decide
   (retired wallets, compromised sweeps, the delay, the hot ceiling) are
   pure functions here.
 - Showing the holder the attributes two keys in a quorum share
@@ -1433,8 +1495,9 @@ it.
   nonce from RFC 6979 so a retry signs the same bytes, and records the
   outcome before the signature exists; a coordinator needs a threshold of
   signatures for the same PSBT to build the transaction.
-- The relay round trip, signet and recovery with another wallet are the
-  next step.
+- Requests and receipts travel as 3188 artifacts over a Coax relay; Bitcoin
+  Core confirms the spend, and recovers the coins from the descriptor with
+  its own wallet. A signet broadcast is the step left.
 
 ## Dependencies
 

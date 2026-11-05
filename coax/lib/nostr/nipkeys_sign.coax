@@ -91,6 +91,21 @@ KySignWork :: struct {k1:[32]u8;c1:[32]u8;k2:[32]u8;c2:[32]u8;data:[37]u8;i:[64]
   #assert ky_combine(w,sc,x,ps[0..<ps.count-1],s[0..<2],out[..])==-1;
   far:=sc;far.s[0]=ky_spk(KY_SPK[3]);#assert ky_combine(w,far,x,ps,s[0..<2],out[..])==-1;
 }
+#test "the coordinator reads Python's signed PSBTs back, and refuses any other change" #steps 2000000000 {
+  w:=ky_wallet_read(KY_WALLET);b:[512]u8;ps:=ky_unhex(KY_PSBT,b[..]);sc:=ky_fixture_scripts();x:=ks_witnesses();
+  r:[3]KySigned;
+  for a:0..<3 {
+    sb:[1024]u8;sp:=ky_unhex(KY_PSBT_SIGNED[a],sb[..]);
+    r[a]=ky_signed_read(ps,sp);s:=ks_signed(a);
+    #assert r[a].code==KyCode.ok && r[a].nin==2 && ky_eq32(r[a].psbt,s.psbt);
+    for k:0..<2 {#assert r[a].p[k].n==s.p[k].n && cast(string)r[a].p[k].pub[..]==cast(string)s.p[k].pub[..] && cast(string)r[a].p[k].sig[0..<s.p[k].n]==cast(string)s.p[k].sig[0..<s.p[k].n];}
+    #assert ky_signed_read(ps,sp[0..<sp.count-1]).code==KyCode.psbt;                    // cut
+    sp[20]^=1;#assert ky_signed_read(ps,sp).code==KyCode.psbt;sp[20]^=1;                // an input's txid byte
+    #assert ky_signed_read(ps,ps).code==KyCode.psbt;                                    // no signatures
+  }
+  out:[2048]u8;n:=ky_combine(w,sc,x,ps,r[0..<2],out[..]);#assert n>0 && bt_hex_is(out[0..<n],KY_FINAL_TX);
+  ev:[512]u8;sb:[1024]u8;#assert ky_signed_read(ky_unhex(KY_PSBT_EVIL,ev[..]),ky_unhex(KY_PSBT_SIGNED[0],sb[..])).code==KyCode.psbt;
+}
 #test "a PSBT whose outputs differ from its request gets no signature from anyone" #steps 1000000000 {
   for a:0..<3 {s:=ks_sign(a,KY_PSBT_EVIL,KY_REQUEST,a);#assert s.code==KyCode.psbt && s.nin==0;}
   for a:0..<3 {s:=ks_sign(a,KY_PSBT_EVIL,KY_REQUEST_EVIL,a);#assert s.code==KyCode.outputs && s.nin==0;}
@@ -349,3 +364,43 @@ ky_combine :: (w:KyWallet,all:KyScripts,wit:KyWitnesses,psbt:[]u8,s:[]KySigned,o
   return bt_put(out,m,u[u.count-4..<u.count]);
 }
 // book:end combine
+
+// book:begin signed_read
+// The coordinator's reading of one key agent's signed PSBT (it arrives by
+// digest, named in the agent's receipt): one PSBT_IN_PARTIAL_SIG per input,
+// a 33-byte key and a signature of at most 73 bytes, and nothing else
+// changed. The last check rebuilds the signed PSBT from `psbt` and the
+// signatures read, and needs the same bytes, so a signer can't slip in a
+// changed output, input or extra field. Returns the KySigned ky_combine
+// takes, or code psbt.
+ky_signed_read :: (psbt:[]u8,signed:[]u8)->KySigned {
+  bad:=KySigned.{code=KyCode.psbt};
+  t:=ky_psbt_read(psbt);
+  if t.code!=KyCode.ok || signed.count>4096 {return bad;}
+  s:=KySigned.{code=KyCode.ok,nin=t.nin};bt_sha(psbt,s.psbt[..]);
+  g:=ky_map(signed,KY_MAGIC.count);
+  if signed.count<KY_MAGIC.count || !g.ok {return bad;}
+  at:=g.end;
+  for k:0..<t.nin {
+    i:=at;got:=0;
+    while true {
+      key:=ky_var(signed,i);if !key.ok {return bad;}
+      if key.value==0 {at=key.next;break;}
+      if key.next>=signed.count {return bad;}
+      v:=ky_var(signed,key.next+key.value);if !v.ok || v.next+v.value>signed.count {return bad;}
+      if key.value==34 && signed[key.next]==0x02 {
+        if got>0 || v.value<9 || v.value>73 {return bad;}
+        for b:0..<33 {s.p[k].pub[b]=signed[key.next+1+b];}
+        for b:0..<v.value {s.p[k].sig[b]=signed[v.next+b];}
+        s.p[k].n=v.value;got+=1;
+      }
+      i=v.next+v.value;
+    }
+    if got!=1 {return bad;}
+  }
+  again:[4096]u8;n:=ky_psbt_signed(psbt,s,again[..]);
+  if n!=signed.count {return bad;}
+  for b:0..<n {if again[b]!=signed[b] {return bad;}}
+  return s;
+}
+// book:end signed_read

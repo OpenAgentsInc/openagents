@@ -1,0 +1,284 @@
+// Chapter 104 over the network: key agents and a coordinator that carry
+// NIP-KEYS signing requests and receipts as kind 3188 private artifacts
+// through a relay (the Coax relay in the chapter's run).
+//
+//   treasury agent ALICE|KEYCO|ENCLAVE --relay URL --dir DIR --now T [--count N]
+//       Subscribes to 3188s for its key, opens each request (NIP-44, the
+//       artifact envelope, the requester's signature), reads the PSBT the
+//       request names from DIR by digest, runs the signer's checks and signs
+//       (ky_sign), stores its signed PSBT in DIR by digest, and seals a
+//       receipt back to the requester. N requests (default 1), then exits.
+//   treasury coordinator --relay URL --dir DIR --request FILE --now T --out TX [--agents N]
+//       Seals the request to every key agent and publishes it, reads their
+//       receipts, reads each signed PSBT back (ky_signed_read), combines a
+//       threshold of them (ky_combine) and writes the final transaction as
+//       hex to TX. Exits 0 with a transaction, 3 when fewer than a
+//       threshold signed.
+//
+// DIR is the separately admitted artifact storage contracts.md asks for
+// binary payloads: files named by the SHA-256 of their bytes. The wallet,
+// enrollments and account keys are the chapter's fixtures (TEST ONLY: keys
+// from SHA-256("chapter 104 <name>")); so are the Nostr keys, from
+// SHA-256("chapter 104 nostr <name>"). Time comes from --now: the tool reads
+// no clock.
+// tool.sh: tls
+// tool.sh: run-steps 250000000
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/net/relay_conn.coax";
+#load "../../coax/lib/nostr/message.coax";
+#load "../../coax/lib/nostr/nipkeys_sign.coax";
+#load "../../coax/lib/nostr/nipkeys_carry.coax";
+#import "Basic";
+
+TR_NAMES :: [4]string.["alice","keyco","enclave","holder"];
+TR_CEILING :: [3]int.[2000,1000,1500];   // each signer's fee ceiling, satoshis
+TR_WORDS :: [43]string.["ok","json","version","field","wallet","holder","revision","network","descriptor","checksum","family","paths",
+  "threshold","timelock","primary","enrollment","key_order","xpub","recipient","times","attestation","operator","sovereign","recovery",
+  "attested_only","weakening","approval","psbt","inputs","outputs","amount","address","change","fee","ceiling","nonce","deadline","locked",
+  "retired","compromised","delay","hot","not_built"];
+tr_word :: (c:KyCode)->string {return TR_WORDS[cast(int)c];}
+
+tr_hex :: (b:[]u8,out:[]u8)->string {
+  hx:="0123456789abcdef";
+  for i:0..<b.count {out[2*i]=hx[cast(int)(b[i]>>4)];out[2*i+1]=hx[cast(int)(b[i]&15)];}
+  return cast(string)out[0..<2*b.count];
+}
+tr_put :: (out:[]u8,n:int,s:string)->int {for i:0..<s.count {out[n+i]=s[i];}return n+s.count;}
+tr_int :: (out:[]u8,n:int,v:int)->int {
+  d:[24]u8;k:=0;x:=v;if x==0 {d[0]=48;k=1;}
+  while x>0 {d[k]=cast,trunc(u8)(48+x%10);x/=10;k+=1;}
+  m:=n;for i:0..<k {out[m]=d[k-1-i];m+=1;}return m;
+}
+// A test-only Nostr key: SHA-256("chapter 104 nostr <name>").
+tr_nostr_key :: (name:string,out:[]u8) {b:[64]u8;n:=tr_put(b[..],0,"chapter 104 nostr ");n=tr_put(b[..],n,name);bt_sha(b[0..<n],out);}
+// Decimal digits, at most twelve (a Unix time has ten): the value, or -1.
+tr_whole :: (text:string)->int {
+  if text.count<1 || text.count>12 {return -1;}
+  v:=0;for c:text {if c<'0' || c>'9' {return -1;}v=v*10+cast(int)(c-'0');}
+  return v;
+}
+tr_fail :: (s:string)->int {tool_errln(s);return 2;}
+tr_rand :: (out:[]u8)->bool {return cxrand_draw(out,out.count)==0;}
+
+// Sends EVENT and waits for its OK; true when accepted.
+tr_publish :: (c:[]RelayConn,ev:string)->bool {
+  f:[16384]u8;n:=nostr_message_write_event(ev,f[..],false);
+  if n<0 || !relay_conn_send(c,cast(string)f[0..<n]) {return false;}
+  while relay_conn_poll(c,10000)==RC_TEXT {
+    m:=nostr_message_read(cast(string)c[0].text[0..<c[0].text_n]);
+    if m.error==NM_OK && m.type==NM_ACCEPT {return m.accepted;}
+  }
+  return false;
+}
+// NIP-42: the relay sends ["AUTH", challenge] first and takes writes only
+// from an authenticated connection. Answers with a kind 22242 signed by
+// `secret`, naming the relay's URL and the challenge; true on OK true.
+tr_auth :: (c:[]RelayConn,url:string,secret:[]u8,now:int)->bool {
+  ch:[128]u8;cn:=-1;
+  while cn<0 && relay_conn_poll(c,10000)==RC_TEXT {
+    text:=cast(string)c[0].text[0..<c[0].text_n];j:[1]Json;json_start(j[..],text);
+    if json_next(j[..])==JSON_ARRAY && json_next(j[..])==JSON_STRING && json_text(j[..])=="AUTH" && json_next(j[..])==JSON_STRING {
+      v:=json_text(j[..]);if v.count<=ch.count {for i:0..<v.count {ch[i]=v[i];}cn=v.count;}
+    }
+  }
+  if cn<0 {return false;}
+  tags:[512]u8;n:=tr_put(tags[..],0,"[[\"relay\",\"");n=tr_put(tags[..],n,url);n=tr_put(tags[..],n,"\"],[\"challenge\",\"");
+  n=tr_put(tags[..],n,cast(string)ch[0..<cn]);n=tr_put(tags[..],n,"\"]]");
+  aux:[32]u8;if !tr_rand(aux[..]) {return false;}
+  sw:[1]NostrSignWork;scratch:[2048]u8;ev:[2048]u8;k:=EVENT_MORE;
+  while k==EVENT_MORE {k=nostr_event_sign_step(secret,aux[..],now,22242,cast(string)tags[0..<n],"",sw[..],scratch[..],ev[..],false);}
+  if k<=0 {return false;}
+  f:[4096]u8;m:=tr_put(f[..],0,"[\"AUTH\",");m=tr_put(f[..],m,cast(string)ev[0..<k]);m=tr_put(f[..],m,"]");
+  if !relay_conn_send(c,cast(string)f[0..<m]) {return false;}
+  while relay_conn_poll(c,10000)==RC_TEXT {
+    r:=nostr_message_read(cast(string)c[0].text[0..<c[0].text_n]);
+    if r.error==NM_OK && r.type==NM_ACCEPT {return r.accepted;}
+  }
+  return false;
+}
+tr_subscribe :: (c:[]RelayConn,me_x:[]u8)->bool {
+  h:[64]u8;q:[256]u8;n:=tr_put(q[..],0,"[\"REQ\",\"keys\",{\"kinds\":[3188],\"#p\":[\"");
+  n=tr_put(q[..],n,tr_hex(me_x,h[..]));n=tr_put(q[..],n,"\"]}]");
+  return relay_conn_send(c,cast(string)q[0..<n]);
+}
+// The next 3188 EVENT on the subscription, copied to out; its length, or -1.
+tr_next :: (c:[]RelayConn,out:[]u8,wait_ms:int)->int {
+  while relay_conn_poll(c,wait_ms)==RC_TEXT {
+    text:=cast(string)c[0].text[0..<c[0].text_n];
+    m:=nostr_message_read(text);
+    if m.error==NM_OK && m.type==NM_EVENT && m.event.to-m.event.from<=out.count {
+      n:=m.event.to-m.event.from;for i:0..<n {out[i]=text[m.event.from+i];}return n;
+    }
+  }
+  return -1;
+}
+// An ArtifactRef for bytes: digest, media type, size (JCS order).
+tr_ref :: (out:[]u8,n:int,d:[]u8,size:int,media:string,schema:string)->int {
+  h:[64]u8;m:=tr_put(out,n,"{\"digest\":\"sha256:");m=tr_put(out,m,tr_hex(d,h[..]));
+  m=tr_put(out,m,"\",\"media_type\":\"");m=tr_put(out,m,media);m=tr_put(out,m,"\"");
+  if schema.count>0 {m=tr_put(out,m,",\"schema\":\"");m=tr_put(out,m,schema);m=tr_put(out,m,"\"");}
+  m=tr_put(out,m,",\"size\":");m=tr_int(out,m,size);return tr_put(out,m,"}");
+}
+tr_store_path :: (dir:string,d:[]u8,out:[]u8)->string {h:[64]u8;return fs_join(dir,tr_hex(d,h[..]),out);}
+// Bytes from the artifact store by their digest ("sha256:<hex>"); -1 when
+// missing or when the bytes don't hash to it.
+tr_fetch :: (dir:string,ref:string,out:[]u8)->int {
+  if ref.count!=71 {return -1;}
+  p:[1024]u8;n:=fs_read(fs_join(dir,ref[7..<71],p[..]),out);
+  if n<0 {return -1;}
+  d:[32]u8;bt_sha(out[0..<n],d[..]);
+  return ifx ky_digest_is(ref,d) then n else -1;
+}
+
+// ---- the key agent
+tr_agent :: (me:int,relay:string,dir:string,now:int,count:int)->int {
+  sec:[32]u8;tr_nostr_key(TR_NAMES[me],sec[..]);mx:[32]u8;
+  if !kc_xonly(sec[..],mx[..]) {return tr_fail("no key");}
+  w:=ky_wallet_read(KY_WALLET);p:=ky_parties();sc:=ky_scripts(w,p.e[..]);wit:=ky_witnesses(w,p.e[..]);wd:=ky_bytes(KY_WALLET_DIGEST);
+  acct:[64]u8;k:=ky_unhex(KY_ACCOUNT_KEY[me],acct[0..<32]);k=ky_unhex(KY_ACCOUNT_CHAIN[me],acct[32..<64]);
+  // Two connections: one only reads the subscription, one only publishes,
+  // so waiting for an OK never swallows a request. Both authenticate:
+  // the relay shows a 3188 only to its recipient.
+  c:[1]RelayConn;sub:[1]RelayConn;
+  if !relay_conn_open(c[..],relay) || !tr_auth(c[..],relay,sec[..],now) {return tr_fail("relay: no connection, or NIP-42 refused");}
+  if !relay_conn_open(sub[..],relay) || !tr_auth(sub[..],relay,sec[..],now) || !tr_subscribe(sub[..],mx[..]) {return tr_fail("relay: no connection, or NIP-42 refused");}
+  h:[64]u8;print("% (%...) listening on %\n",TR_NAMES[me],tr_hex(mx[0..<8],h[..]),relay);
+  ledger:[1]KyLedger;work:[1]KySignWork;kw:[1]KcWork;
+  done:=0;
+  while done<count {
+    ev:[16384]u8;n:=tr_next(sub[..],ev[..],180000);
+    if n<0 {return tr_fail("relay: closed or quiet for 180 s");}
+    body:[16384]u8;o:=kc_open(cast(string)ev[0..<n],sec[..],mx[..],KC_REQUEST,kw[..],body[..]);
+    if o.error!=KC_OK {print("  % refused an artifact: open %\n",TR_NAMES[me],o.error);continue;}
+    done+=1;
+    req:=cast(string)body[0..<o.n];r:=ky_request_read(req);
+    signer_hex:=tr_hex(o.signer[..],h[..]);
+    psbt:[4096]u8;pn:=-1;
+    if r.code==KyCode.ok {pn=tr_fetch(dir,r.psbt,psbt[..]);}
+    s:KySigned;s.code=r.code;
+    if r.code==KyCode.ok && r.requester!=signer_hex {s.code=KyCode.holder;}
+    else if r.code==KyCode.ok && pn<0 {s.code=KyCode.psbt;}
+    else if r.code==KyCode.ok {s=ky_sign(w,wd,sc,wit,p.e[..],me,r,psbt[0..<pn],TR_CEILING[me],now,ledger[..],acct[..],work[..]);}
+    // The receipt: the request's own ref, the outcome, the signed PSBT's ref.
+    rd:[32]u8;bt_sha(body[0..<o.n],rd[..]);
+    rc:[2048]u8;m:=tr_put(rc[..],0,"{\"checks\":[\"");m=tr_put(rc[..],m,tr_word(s.code));m=tr_put(rc[..],m,"\"],\"psbt\":");
+    if s.code==KyCode.ok {
+      signed:[4096]u8;sn:=ky_psbt_signed(psbt[0..<pn],s,signed[..]);
+      sd:[32]u8;bt_sha(signed[0..<sn],sd[..]);path:[1024]u8;
+      if sn<0 || !fs_write(tr_store_path(dir,sd[..],path[..]),cast(string)signed[0..<sn]) {return tr_fail("artifact store: write failed");}
+      m=tr_ref(rc[..],m,sd[..],sn,"application/octet-stream","");m=tr_put(rc[..],m,",\"reason\":null");
+    } else {
+      m=tr_put(rc[..],m,"null,\"reason\":\"");m=tr_put(rc[..],m,tr_word(s.code));m=tr_put(rc[..],m,"\"");
+    }
+    m=tr_put(rc[..],m,",\"request\":");m=tr_ref(rc[..],m,rd[..],req.count,"application/json",KC_REQUEST);
+    m=tr_put(rc[..],m,",\"requires\":[],\"status\":\"");m=tr_put(rc[..],m,ifx s.code==KyCode.ok then "signed" else "refused");
+    m=tr_put(rc[..],m,"\",\"v\":\"");m=tr_put(rc[..],m,KC_RECEIPT);m=tr_put(rc[..],m,"\"}");
+    nonce:[32]u8;aux:[32]u8;mb:[32]u8;mh:[64]u8;
+    if !tr_rand(nonce[..]) || !tr_rand(aux[..]) || !tr_rand(mb[..]) {return tr_fail("no entropy");}
+    out:[16384]u8;
+    en:=kc_seal(cast(string)rc[0..<m],KC_RECEIPT,sec[..],o.signer[..],tr_hex(mb[..],mh[..]),nonce[..],aux[..],now,kw[..],out[..]);
+    if en<0 || !tr_publish(c[..],cast(string)out[0..<en]) {return tr_fail("relay: the receipt was not accepted");}
+    print("  % %: %\n",TR_NAMES[me],ifx s.code==KyCode.ok then "signed" else "refused",tr_word(s.code));
+  }
+  b:=relay_conn_close(c[..],WS_CLOSE_NORMAL);b=relay_conn_close(sub[..],WS_CLOSE_NORMAL);
+  return 0;
+}
+
+// The receipt's status and its signed PSBT's digest ("" when none).
+TrReceipt :: struct {was_signed:bool;psbt:string;reason:string;request:string;}
+tr_receipt :: (text:string)->TrReceipt {
+  r:TrReceipt;j:[1]Json;json_start(j[..],text);
+  if json_next(j[..])!=JSON_OBJECT {return r;}
+  t:=json_next(j[..]);
+  while t==JSON_STRING && j[0].depth==1 {
+    name:=json_text(j[..]);t=json_next(j[..]);
+    if name=="status" && t==JSON_STRING {r.was_signed=json_text(j[..])=="signed";}
+    if name=="reason" && t==JSON_STRING {r.reason=json_text(j[..]);}
+    if (name=="psbt" || name=="request") && t==JSON_OBJECT {
+      t=json_next(j[..]);
+      while t==JSON_STRING {
+        f:=json_text(j[..]);t=json_next(j[..]);
+        if f=="digest" && name=="psbt" {r.psbt=json_text(j[..]);}
+        if f=="digest" && name=="request" {r.request=json_text(j[..]);}
+        t=json_next(j[..]);
+      }
+    } else if t==JSON_OBJECT || t==JSON_ARRAY {
+      d:=j[0].depth;while j[0].depth>=d {t=json_next(j[..]);if t==JSON_END || t==JSON_ERROR {return r;}}
+    }
+    t=json_next(j[..]);
+  }
+  return r;
+}
+
+// ---- the coordinator
+tr_coordinator :: (relay:string,dir:string,request_path:string,now:int,out_path:string,agents:int)->int {
+  sec:[32]u8;tr_nostr_key("holder",sec[..]);hx:[32]u8;
+  if !kc_xonly(sec[..],hx[..]) {return tr_fail("no key");}
+  rb:[16384]u8;rn:=fs_read(request_path,rb[..]);if rn<0 {return tr_fail("no request file");}
+  req:=cast(string)rb[0..<rn];r:=ky_request_read(req);
+  if r.code!=KyCode.ok {return tr_fail("the request does not read");}
+  psbt:[4096]u8;pn:=tr_fetch(dir,r.psbt,psbt[..]);if pn<0 {return tr_fail("the PSBT is not in the artifact store");}
+  w:=ky_wallet_read(KY_WALLET);p:=ky_parties();sc:=ky_scripts(w,p.e[..]);wit:=ky_witnesses(w,p.e[..]);
+  c:[1]RelayConn;sub:[1]RelayConn;                           // publish, and read receipts
+  if !relay_conn_open(c[..],relay) || !tr_auth(c[..],relay,sec[..],now) {return tr_fail("relay: no connection, or NIP-42 refused");}
+  if !relay_conn_open(sub[..],relay) || !tr_auth(sub[..],relay,sec[..],now) || !tr_subscribe(sub[..],hx[..]) {return tr_fail("relay: no connection, or NIP-42 refused");}
+  kw:[1]KcWork;
+  for a:0..<agents {
+    ak:[32]u8;tr_nostr_key(TR_NAMES[a],ak[..]);ax:[32]u8;
+    if !kc_xonly(ak[..],ax[..]) {return tr_fail("no key");}
+    for i:0..<32 {ak[i]=0;}                                  // only its public key is the coordinator's
+    nonce:[32]u8;aux:[32]u8;mb:[32]u8;mh:[64]u8;
+    if !tr_rand(nonce[..]) || !tr_rand(aux[..]) || !tr_rand(mb[..]) {return tr_fail("no entropy");}
+    ev:[16384]u8;en:=kc_seal(req,KC_REQUEST,sec[..],ax[..],tr_hex(mb[..],mh[..]),nonce[..],aux[..],now,kw[..],ev[..]);
+    if en<0 || !tr_publish(c[..],cast(string)ev[0..<en]) {return tr_fail("relay: the request was not accepted");}
+    print("request sealed to % and accepted by the relay\n",TR_NAMES[a]);
+  }
+  got:[3]KySigned;ng:=0;seen:=0;
+  while seen<agents {
+    ev:[16384]u8;n:=tr_next(sub[..],ev[..],60000);
+    if n<0 {break;}
+    body:[8192]u8;o:=kc_open(cast(string)ev[0..<n],sec[..],hx[..],KC_RECEIPT,kw[..],body[..]);
+    if o.error!=KC_OK {continue;}
+    from:=-1;
+    for a:0..<agents {ak:[32]u8;tr_nostr_key(TR_NAMES[a],ak[..]);ax:[32]u8;if kc_xonly(ak[..],ax[..]) && cast(string)ax[..]==cast(string)o.signer[..] {from=a;}}
+    if from<0 {continue;}
+    // A receipt for another request (the subscription also returns stored
+    // ones) is not this request's.
+    rt:=tr_receipt(cast(string)body[0..<o.n]);
+    if !ky_digest_is(rt.request,r.digest) {continue;}
+    seen+=1;
+    if !rt.was_signed {print("receipt from %: refused (%)\n",TR_NAMES[from],rt.reason);continue;}
+    sb:[4096]u8;sn:=tr_fetch(dir,rt.psbt,sb[..]);
+    s:=ifx sn<0 then KySigned.{code=KyCode.psbt} else ky_signed_read(psbt[0..<pn],sb[0..<sn]);
+    print("receipt from %: signed, its PSBT %\n",TR_NAMES[from],ifx s.code==KyCode.ok then "reads back" else "refused");
+    if s.code==KyCode.ok && ng<3 {got[ng]=s;ng+=1;}
+  }
+  b:=relay_conn_close(c[..],WS_CLOSE_NORMAL);b=relay_conn_close(sub[..],WS_CLOSE_NORMAL);
+  tx:[2048]u8;m:=ky_combine(w,sc,wit,psbt[0..<pn],got[0..<ng],tx[..]);
+  if m<0 {print("fewer than % signatures: no transaction\n",w.paths[0].threshold);return 3;}
+  big:[4096]u8;
+  if !fs_write(out_path,tr_hex(tx[0..<m],big[..])) {return tr_fail("could not write the transaction");}
+  print("combined % signers' PSBTs into a % byte transaction\n",ng,m);
+  return 0;
+}
+
+tool_main :: () -> int #export_c {
+  a:[1]Args;
+  if !args_load(a[..]) || args_count(a[..])<1 {return tr_fail("usage: treasury agent NAME|coordinator --relay URL --dir DIR --now T ...");}
+  relay:=args_value(a[..],"--relay","");dir:=args_value(a[..],"--dir","");
+  now:=tr_whole(args_value(a[..],"--now",""));
+  if relay.count==0 || dir.count==0 || now<=0 {return tr_fail("--relay, --dir and --now are required");}
+  mode:=args_at(a[..],0);
+  if mode=="agent" && args_count(a[..])>=2 {
+    name:=args_at(a[..],1);me:=-1;for i:0..<3 {if TR_NAMES[i]==name {me=i;}}
+    if me<0 {return tr_fail("agent: alice, keyco or enclave");}
+    n:=args_whole(args_value(a[..],"--count","1"));
+    return tr_agent(me,relay,dir,now,ifx n>0 then n else 1);
+  }
+  if mode=="coordinator" {
+    k:=args_whole(args_value(a[..],"--agents","3"));
+    return tr_coordinator(relay,dir,args_value(a[..],"--request",""),now,args_value(a[..],"--out",""),ifx k>0 && k<=3 then k else 3);
+  }
+  return tr_fail("usage: treasury agent NAME|coordinator ...");
+}

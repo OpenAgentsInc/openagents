@@ -1,0 +1,67 @@
+{"start":1793886508,"url":"wss://relay.openagents.com","local":"ws://127.0.0.1:18931","period":600}
+{"t":1793886511,"round":1,"filter":{"limit":50},"class":"match","live":50,"local":50,"diff":[]}
+{"t":1793886513,"round":1,"filter":{"kinds":[0],"limit":50},"class":"match","live":2,"local":2,"diff":[]}
+{"t":1793886515,"round":1,"filter":{"kinds":[1],"limit":50},"class":"match","live":16,"local":16,"diff":[]}
+{"t":1793886517,"round":1,"filter":{"kinds":[3],"limit":20},"class":"match","live":0,"local":0,"diff":[]}
+{"t":1793886519,"round":1,"filter":{"kinds":[5],"limit":20},"class":"match","live":6,"local":6,"diff":[]}
+{"t":1793886521,"round":1,"filter":{"kinds":[7],"limit":50},"class":"match","live":0,"local":0,"diff":[]}
+{"t":1793886523,"round":1,"filter":{"kinds":[10002],"limit":20},"class":"match","live":20,"local":20,"diff":[]}
+{"t":1793886526,"round":1,"filter":{"kinds":[30023],"limit":20},"class":"match","live":0,"local":0,"diff":[]}
+{"t":1793886528,"round":1,"filter":{"kinds":[1111],"limit":50},"class":"match","live":50,"local":50,"diff":[]}
+{"t":1793886530,"round":1,"filter":{"kinds":[5000,5001,5050,6000,6001,6050,7000],"limit":50},"class":"match","live":10,"local":10,"diff":[]}
+{"t":1793886532,"round":1,"filter":{"kinds":[9,10,11,12],"limit":50},"class":"match","live":3,"local":3,"diff":[]}
+{"t":1793886534,"round":1,"filter":{"kinds":[30617,1617,1621],"limit":20},"class":"match","live":20,"local":20,"diff":[]}
+{"t":1793886534,"mirror":"08ad4710e1aaf625a72618e11f7a7df44471fbdd218d5acbac3ded782c3b546c","kind":30623,"ok":["OK","08ad4710e1aaf625a72618e11f7a7df44471fbdd218d5acbac3ded782c3b546c",true,"duplicate: already have this event"]}
+{"t":1793886534,"mirror":"250c53707a7c27b2cdb5d61cea2ad7fef8b7f5976bee7297abd3d086398e6e83","kind":30621,"ok":["OK","250c53707a7c27b2cdb5d61cea2ad7fef8b7f5976bee7297abd3d086398e6e83",true,"duplicate: already have this event"]}
+{"t":1793886534,"mirror":"30f373c3700ad86c6f9941fa0f5a66132dea8a680b2ba26cf128ed97914e5047","kind":1621,"ok":["OK","30f373c3700ad86c6f9941fa0f5a66132dea8a680b2ba26cf128ed97914e5047",true,"duplicate: already have this event"]}
+{"t":1793886534,"mirror":"4de71c8eae3e1c1d4abd7311348184b8ad8a65aa94d8e102fe74a7e48877934a","kind":1621,"ok":["OK","4de71c8eae3e1c1d4abd7311348184b8ad8a65aa94d8e102fe74a7e48877934a",true,"duplicate: already have this event"]}
+{"t":1793886534,"mirror":"a50deb7b28fd8c6aca85145b8d18742244a98be9902fa11f05eb506c0fe2fed6","kind":30617,"ok":["OK","a50deb7b28fd8c6aca85145b8d18742244a98be9902fa11f05eb506c0fe2fed6",true,"duplicate: already have this event"]}
+{"t":1793886534,"mirror":"da813b329e80adb01c80a723fb5f4c938983b4089cec43e143db2f200415a713","kind":1621,"ok":["OK","da813b329e80adb01c80a723fb5f4c938983b4089cec43e143db2f200415a713",true,"duplicate: already have this event"]}
+{"t":1793887112,"round":2,"filter":{"limit":50},"class":"match","live":50,"local":50,"diff":[]}
+{"t":1793887114,"round":2,"filter":{"kinds":[0],"limit":50},"class":"match","live":2,"local":2,"diff":[]}
+{"t":1793887116,"round":2,"filter":{"kinds":[1],"limit":50},"class":"match","live":16,"local":16,"diff":[]}
+{"t":1793887118,"round":2,"filter":{"kinds":[3],"limit":20},"class":"match","live":0,"local":0,"diff":[]}
+{"t":1793887120,"round":2,"filter":{"kinds":[5],"limit":20},"class":"match","live":6,"local":6,"diff":[]}
+{"t":1793887122,"round":2,"filter":{"kinds":[7],"limit":50},"class":"match","live":0,"local":0,"diff":[]}
+{"t":1793887124,"round":2,"filter":{"kinds":[10002],"limit":20},"class":"match","live":20,"local":20,"diff":[]}
+{"t":1793887126,"round":2,"filter":{"kinds":[30023],"limit":20},"class":"match","live":0,"local":0,"diff":[]}
+{"t":1793887129,"round":2,"filter":{"kinds":[1111],"limit":50},"class":"match","live":50,"local":50,"diff":[]}
+{"t":1793887131,"round":2,"filter":{"kinds":[5000,5001,5050,6000,6001,6050,7000],"limit":50},"class":"match","live":10,"local":10,"diff":[]}
+{"t":1793887133,"round":2,"filter":{"kinds":[9,10,11,12],"limit":50},"class":"match","live":3,"local":3,"diff":[]}
+{"t":1793887135,"round":2,"filter":{"kinds":[30617,1617,1621],"limit":20},"class":"match","live":20,"local":20,"diff":[]}
+{"t":1793887713,"round":3,"filter":{"limit":50},"class":"match","live":50,"local":50,"diff":[]}
+{"t":1793887715,"round":3,"filter":{"kinds":[0],"limit":50},"class":"match","live":2,"local":2,"diff":[]}
+{"t":1793887717,"round":3,"filter":{"kinds":[1],"limit":50},"class":"match","live":16,"local":16,"diff":[]}
+{"t":1793887719,"round":3,"filter":{"kinds":[3],"limit":20},"class":"match","live":0,"local":0,"diff":[]}
+{"t":1793887721,"round":3,"filter":{"kinds":[5],"limit":20},"class":"match","live":6,"local":6,"diff":[]}
+{"t":1793887723,"round":3,"filter":{"kinds":[7],"limit":50},"class":"match","live":0,"local":0,"diff":[]}
+{"t":1793887725,"round":3,"filter":{"kinds":[10002],"limit":20},"class":"match","live":20,"local":20,"diff":[]}
+{"t":1793887727,"round":3,"filter":{"kinds":[30023],"limit":20},"class":"match","live":0,"local":0,"diff":[]}
+{"t":1793887730,"round":3,"filter":{"kinds":[1111],"limit":50},"class":"match","live":50,"local":50,"diff":[]}
+{"t":1793887732,"round":3,"filter":{"kinds":[5000,5001,5050,6000,6001,6050,7000],"limit":50},"class":"match","live":10,"local":10,"diff":[]}
+{"t":1793887734,"round":3,"filter":{"kinds":[9,10,11,12],"limit":50},"class":"match","live":3,"local":3,"diff":[]}
+{"t":1793887736,"round":3,"filter":{"kinds":[30617,1617,1621],"limit":20},"class":"match","live":20,"local":20,"diff":[]}
+{"t":1793888314,"round":4,"filter":{"limit":50},"class":"match","live":50,"local":50,"diff":[]}
+{"t":1793888316,"round":4,"filter":{"kinds":[0],"limit":50},"class":"match","live":2,"local":2,"diff":[]}
+{"t":1793888318,"round":4,"filter":{"kinds":[1],"limit":50},"class":"match","live":16,"local":16,"diff":[]}
+{"t":1793888320,"round":4,"filter":{"kinds":[3],"limit":20},"class":"match","live":0,"local":0,"diff":[]}
+{"t":1793888322,"round":4,"filter":{"kinds":[5],"limit":20},"class":"match","live":6,"local":6,"diff":[]}
+{"t":1793888325,"round":4,"filter":{"kinds":[7],"limit":50},"class":"match","live":0,"local":0,"diff":[]}
+{"t":1793888327,"round":4,"filter":{"kinds":[10002],"limit":20},"class":"match","live":20,"local":20,"diff":[]}
+{"t":1793888329,"round":4,"filter":{"kinds":[30023],"limit":20},"class":"match","live":0,"local":0,"diff":[]}
+{"t":1793888331,"round":4,"filter":{"kinds":[1111],"limit":50},"class":"match","live":50,"local":50,"diff":[]}
+{"t":1793888333,"round":4,"filter":{"kinds":[5000,5001,5050,6000,6001,6050,7000],"limit":50},"class":"match","live":10,"local":10,"diff":[]}
+{"t":1793888335,"round":4,"filter":{"kinds":[9,10,11,12],"limit":50},"class":"match","live":3,"local":3,"diff":[]}
+{"t":1793888337,"round":4,"filter":{"kinds":[30617,1617,1621],"limit":20},"class":"match","live":20,"local":20,"diff":[]}
+{"t":1793888915,"round":5,"filter":{"limit":50},"class":"match","live":50,"local":50,"diff":[]}
+{"t":1793888917,"round":5,"filter":{"kinds":[0],"limit":50},"class":"match","live":2,"local":2,"diff":[]}
+{"t":1793888919,"round":5,"filter":{"kinds":[1],"limit":50},"class":"match","live":16,"local":16,"diff":[]}
+{"t":1793888921,"round":5,"filter":{"kinds":[3],"limit":20},"class":"match","live":0,"local":0,"diff":[]}
+{"t":1793888923,"round":5,"filter":{"kinds":[5],"limit":20},"class":"match","live":6,"local":6,"diff":[]}
+{"t":1793888926,"round":5,"filter":{"kinds":[7],"limit":50},"class":"match","live":0,"local":0,"diff":[]}
+{"t":1793888928,"round":5,"filter":{"kinds":[10002],"limit":20},"class":"match","live":20,"local":20,"diff":[]}
+{"t":1793888930,"round":5,"filter":{"kinds":[30023],"limit":20},"class":"match","live":0,"local":0,"diff":[]}
+{"t":1793888932,"round":5,"filter":{"kinds":[1111],"limit":50},"class":"match","live":50,"local":50,"diff":[]}
+{"t":1793888934,"round":5,"filter":{"kinds":[5000,5001,5050,6000,6001,6050,7000],"limit":50},"class":"match","live":10,"local":10,"diff":[]}
+{"t":1793888936,"round":5,"filter":{"kinds":[9,10,11,12],"limit":50},"class":"match","live":3,"local":3,"diff":[]}
+{"t":1793888938,"round":5,"filter":{"kinds":[30617,1617,1621],"limit":20},"class":"match","live":20,"local":20,"diff":[]}

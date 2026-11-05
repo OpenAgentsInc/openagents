@@ -1,0 +1,175 @@
+// NIP-KEYS records carried as kind 3188 private artifacts (chapter 104):
+// a signing request sealed to one key agent, and its receipt sealed back to
+// the requester. The envelope is contracts.md "Private artifact envelope",
+// the same one NIP-AGENT's carriage uses (agent/carriage.coax): NIP-44 v2
+// from the sender's key to the recipient's, exactly one p (the recipient),
+// one h (a 64-hex mailbox) and t oa:artifact:v1, and the record inline as
+// JSON whose JCS bytes match the envelope's ArtifactRef.
+//
+// Opening does every check the receiver owes, in order: the NIP-01 id and
+// BIP-340 signature; kind 3188 for exactly this recipient with one mailbox
+// and the topic; NIP-44 v2 decryption; the envelope, with the schema the
+// caller expects. The record itself is then read by its own reader
+// (ky_request_read, or the receipt's fields) and checked by the signer;
+// opening grants nothing.
+//
+// Binary PSBTs don't ride inline: contracts.md requires separately admitted
+// storage for them. The request's `psbt` ArtifactRef names the bytes by
+// digest and size, and the receiver checks both before reading them.
+//
+// The KcWork holds every plaintext byte and the conversation key, and is
+// cleared before every return.
+#load "nip44-key.coax";
+#load "event.coax";
+#load "event_sign.coax";
+#load "../crypto/schnorr_fast.coax";
+#load "envelope.coax";
+#authority;
+
+// book:begin carry
+KC_OK :: cast(u32)0;
+KC_INPUT :: cast(u32)1;      // a key, the mailbox or the work view is not admitted
+KC_EVENT :: cast(u32)2;      // not a NIP-01 event with its own id
+KC_SIGNATURE :: cast(u32)3;
+KC_ARTIFACT :: cast(u32)4;   // not a 3188 private artifact for exactly this recipient
+KC_KEY :: cast(u32)5;        // the recipient secret is refused
+KC_DECRYPT :: cast(u32)6;    // the content does not decrypt for this recipient
+KC_ENVELOPE :: cast(u32)7;   // not an artifact envelope of the expected schema, or its digest or size differ
+KC_ROOM :: cast(u32)8;       // the record does not fit the caller's buffer
+
+KC_REGION :: 131072;
+KC_TOPIC :: "oa:artifact:v1";
+KC_REQUEST :: "openagents.keys-sign-request.v1";
+KC_RECEIPT :: "openagents.keys-sign-receipt.v1";
+
+KcWork :: struct {pre:[KC_REGION]u8;body:[KC_REGION]u8;cipher:[2*KC_REGION]u8;scratch:[KC_REGION]u8;ck:[32]u8;}
+// An opened record: its signer (x-only), the event id, and the inline JSON
+// copied to the caller's buffer at [0, n).
+KcOpened :: struct {error:u32=KC_INPUT;signer:[32]u8;id:[32]u8;n:int;}
+// book:end carry
+
+kc_zero :: (b:[]u8) {for i:0..<b.count {b[i]=0;}}
+kc_clear :: (w:[]KcWork) {kc_zero(w[0].pre[..]);kc_zero(w[0].body[..]);kc_zero(w[0].cipher[..]);kc_zero(w[0].scratch[..]);kc_zero(w[0].ck[..]);}
+kc_hex64 :: (s:string)->bool {
+  if s.count!=64 {return false;}
+  for c:s {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
+  return true;
+}
+// The x-only public key of a secret: signs an empty kind 1 note and reads
+// its pubkey back (one signature; for a key agent's start, not a hot path).
+kc_xonly :: (secret:[]u8,out:[]u8)->bool {
+  if secret.count!=32 || out.count!=32 {return false;}
+  aux:[32]u8;sw:[1]NostrSignWork;scratch:[1024]u8;ev:[1024]u8;k:=EVENT_MORE;
+  while k==EVENT_MORE {k=nostr_event_sign_step(secret,aux[..],0,1,"[]","",sw[..],scratch[..],ev[..],false);}
+  if k<=0 {return false;}
+  pre:[1024]u8;e:=nostr_event_read(cast(string)ev[0..<k],pre[..],false);
+  if e.error!=NE_OK {return false;}
+  for i:0..<32 {out[i]=e.public_key[i];}
+  return true;
+}
+kc_done :: (r:KcOpened,error:u32,w:[]KcWork)->KcOpened {kc_clear(w);out:=r;out.error=error;return out;}
+
+// Exactly one ["p", recipient], one ["h", <64-hex>] and ["t", "oa:artifact:v1"].
+kc_tags :: (tags:string,recipient_hex:string)->bool {
+  decoded:[256]u8;j:[1]Json;json_start(j[..],tags);
+  if json_next(j[..])!=JSON_ARRAY {return false;}
+  ps:=0;hs:=0;topic:=false;
+  t:=json_next(j[..]);
+  while t==JSON_ARRAY {
+    k:=0;name:="";v:=json_next(j[..]);
+    while v==JSON_STRING {
+      n:=json_unescape(json_text(j[..]),decoded[..]);if n<0 {return false;}
+      value:=cast(string)decoded[0..<n];
+      if k==0 {name=ifx value=="p" then "p" else ifx value=="h" then "h" else ifx value=="t" then "t" else "-";}
+      if k==1 {
+        if name=="p" {ps+=1;if value!=recipient_hex {return false;}}
+        if name=="h" {hs+=1;if !kc_hex64(value) {return false;}}
+        if name=="t" && value==KC_TOPIC {topic=true;}
+      }
+      k+=1;v=json_next(j[..]);
+    }
+    if v!=JSON_ARRAY_END {return false;}
+    t=json_next(j[..]);
+  }
+  return t==JSON_ARRAY_END && ps==1 && hs==1 && topic;
+}
+
+// book:begin seal
+// Seals the record `inline_json` (schema `schema`) from sender to
+// recipient_x under mailbox (64 hex). nonce and aux are 32 fresh random
+// bytes each from the host. The signed event JSON goes to out; returns its
+// length, or -1.
+kc_seal :: (inline_json:string,schema:string,sender:[]u8,recipient_x:[]u8,mailbox:string,nonce:[]u8,aux:[]u8,created_at:int,w:[]KcWork,out:[]u8)->int {
+  if sender.count!=32 || recipient_x.count!=32 || nonce.count!=32 || aux.count!=32 || w.count!=1 || !kc_hex64(mailbox) {return -1;}
+  n:=kc_seal_in(inline_json,schema,sender,recipient_x,mailbox,nonce,aux,created_at,w,out);
+  kc_clear(w);return n;
+}
+kc_seal_in :: (inline_json:string,schema:string,sender:[]u8,recipient_x:[]u8,mailbox:string,nonce:[]u8,aux:[]u8,created_at:int,w:[]KcWork,out:[]u8)->int {
+  b:=envelope_build_checked(inline_json,schema,created_at,created_at+30*86400,w[0].scratch[..],w[0].body[..],false);
+  if b.error!=AE_OK {return -1;}
+  ew:[1]EcdhScratch;
+  if nip44_conversation_key_from_keys_checked(sender,recipient_x,ew[..],w[0].ck[..],false)!=NIP44_OK {return -1;}
+  e:=nip44_encrypt_checked(NIP44_COMPAT,w[0].ck[..],nonce,w[0].body[0..<b.written],w[0].cipher[..],w[0].pre[..],false);
+  if e.error!=NIP44_OK {return -1;}
+  rhex:[64]u8;r:=hex_encode_checked(cast(string)recipient_x,rhex[..],false);
+  tags:[256]u8;
+  n:=json_raw(tags[..],0,"[[\"p\",\"");n=json_raw(tags[..],n,cast(string)rhex[..]);n=json_raw(tags[..],n,"\"],[\"h\",\"");
+  n=json_raw(tags[..],n,mailbox);n=json_raw(tags[..],n,"\"],[\"t\",\"oa:artifact:v1\"]]");
+  sw:[1]NostrSignWork;k:=EVENT_MORE;
+  while k==EVENT_MORE {k=nostr_event_sign_step(sender,aux,created_at,3188,cast(string)tags[0..<n],cast(string)w[0].pre[0..<e.written],sw[..],w[0].scratch[..],out,false);}
+  return k;
+}
+// book:end seal
+
+// book:begin open
+// Opens a 3188 for the recipient (secret and x-only key) and expects a
+// record of `schema`; its inline JSON is copied to out.
+kc_open :: (text:string,recipient:[]u8,recipient_x:[]u8,schema:string,w:[]KcWork,out:[]u8)->KcOpened {
+  r:KcOpened;
+  if recipient.count!=32 || recipient_x.count!=32 || w.count!=1 {return r;}
+  e:=nostr_event_read(text,w[0].pre[..],false);
+  if e.error!=NE_OK {return kc_done(r,KC_EVENT,w);}
+  if !nostr_fast_verify_vartime(e.id[..],e.public_key[..],e.signature[..]) {return kc_done(r,KC_SIGNATURE,w);}
+  r.signer=e.public_key;r.id=e.id;
+  rhex:[64]u8;hr:=hex_encode_checked(cast(string)recipient_x,rhex[..],false);
+  if e.kind!=3188 || !kc_tags(text[e.tags_from..<e.tags_to],cast(string)rhex[..]) {return kc_done(r,KC_ARTIFACT,w);}
+  ew:[1]EcdhScratch;peer:=e.public_key;
+  c:=nip44_conversation_key_from_keys_checked(recipient,peer[..],ew[..],w[0].ck[..],false);
+  if c!=NIP44_OK {return kc_done(r,ifx c==NIP44_SECRET then KC_KEY else KC_DECRYPT,w);}
+  n:=json_unescape(text[e.content_from..<e.content_to],w[0].scratch[..]);
+  if n<0 {return kc_done(r,KC_DECRYPT,w);}
+  d:=nip44_decrypt_checked(NIP44_COMPAT,w[0].ck[..],cast(string)w[0].scratch[0..<n],w[0].cipher[..],w[0].body[..],false);
+  if d.error!=NIP44_OK {return kc_done(r,KC_DECRYPT,w);}
+  envelope:=cast(string)w[0].body[0..<d.written];
+  info:=envelope_check_body_checked(envelope,schema,w[0].scratch[..],false);
+  if info.error!=AE_OK {return kc_done(r,KC_ENVELOPE,w);}
+  m:=info.inline_to-info.inline_from;
+  if m>out.count {return kc_done(r,KC_ROOM,w);}
+  for i:0..<m {out[i]=envelope[info.inline_from+i];}
+  r.n=m;
+  return kc_done(r,KC_OK,w);
+}
+// book:end open
+
+#test "the codes are distinct" {
+  #assert KC_OK==0 && KC_INPUT==1 && KC_EVENT==2 && KC_SIGNATURE==3 && KC_ARTIFACT==4 && KC_KEY==5 && KC_DECRYPT==6 && KC_ENVELOPE==7 && KC_ROOM==8;
+}
+#test "a sealed request opens for its recipient only, under its schema" #steps 2000000000 {
+  w:[1]KcWork;a:[32]u8;b:[32]u8;c:[32]u8;bx:[32]u8;ax:[32]u8;cx:[32]u8;
+  for i:0..<32 {a[i]=cast,trunc(u8)(i+1);b[i]=cast,trunc(u8)(i+40);c[i]=cast,trunc(u8)(i+90);}
+  #assert kc_xonly(b[..],bx[..]) && kc_xonly(a[..],ax[..]) && kc_xonly(c[..],cx[..]);
+  nonce:[32]u8;aux:[32]u8;for i:0..<32 {nonce[i]=7;aux[i]=9;}
+  body:="{\"fee_sat\":1000,\"v\":\"openagents.keys-sign-request.v1\"}";
+  mail:="4444444444444444444444444444444444444444444444444444444444444444";
+  ev:[8192]u8;n:=kc_seal(body,KC_REQUEST,a[..],bx[..],mail,nonce[..],aux[..],1793150000,w[..],ev[..]);
+  #assert n>0;
+  got:[512]u8;
+  r:=kc_open(cast(string)ev[0..<n],b[..],bx[..],KC_REQUEST,w[..],got[..]);
+  #assert r.error==KC_OK && cast(string)got[0..<r.n]==body && cast(string)r.signer[..]==cast(string)ax[..];
+  #assert kc_open(cast(string)ev[0..<n],b[..],bx[..],KC_RECEIPT,w[..],got[..]).error==KC_ENVELOPE;
+  #assert kc_open(cast(string)ev[0..<n],c[..],cx[..],KC_REQUEST,w[..],got[..]).error==KC_ARTIFACT;
+  small:[8]u8;
+  #assert kc_open(cast(string)ev[0..<n],b[..],bx[..],KC_REQUEST,w[..],small[..]).error==KC_ROOM;
+  ev[n-3]=cast,trunc(u8)(ifx ev[n-3]==48 then 49 else 48);
+  #assert kc_open(cast(string)ev[0..<n],b[..],bx[..],KC_REQUEST,w[..],got[..]).error==KC_SIGNATURE;
+}

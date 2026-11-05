@@ -1,17 +1,20 @@
 # 103. Replace relay.openagents.com
 
-> **Status: partly implemented.** The importer (now the relay's own
-> `--import`, writing a store it can start from), the freshness checkpoint,
-> the equality check, the shadow comparer and the runbook exist and are
-> checked offline, with synthetic data. The export, the shadow period, the
-> DNS cutover and the rollback rehearsal need the owner's sign-off and have
-> not happened (NEEDS_OWNER.md, "Coax relay cutover").
+> **Status: implemented.** The importer (the relay's own `--import`, writing
+> a store it can start from), the freshness checkpoint, the equality check,
+> the shadow comparer and the runbook exist and are checked offline. The
+> export, the rollback rehearsal and a shadow period ran on 2026-11-05
+> against relay.openagents.com's public answers
+> ([record](../../docs/verification/2026-11-05-coax-relay-cutover/README.md)).
+> The production cutover itself (step 15) is a production deploy and waits
+> in NEEDS_OWNER.md, "Coax relay cutover".
 
 relay.openagents.com still runs the Rust relay from before the reset. This
 chapter builds the tools for phase R3 of coax/nostr.md section 17, moving
 the relay's data and traffic to the Coax relay, and writes down the steps
-that use them. It doesn't touch production: every run in this chapter reads
-a recorded capture.
+that use them. The examples read a recorded capture; the export and the
+shadow period read the live relay only through public REQ and COUNT, as any
+client can.
 
 Part VIII, Nostr in OpenAgents. Result: An importer that checks every id and
 signature in an exported event stream again, an event-set equality check
@@ -486,9 +489,12 @@ so it passes the id check and fails only at BIP-340, with the relay's own
 
 ## The runbook
 
-The steps below are the R3 plan. Steps marked **owner** change production
-or need the owner's sign-off, and are in the workspace's `NEEDS_OWNER.md`.
-Nothing in this chapter has run any of them.
+The steps below are the R3 plan. Steps that change production (making the
+Rust relay read-only, pointing relay.openagents.com at the Coax relay) are
+production deploys and wait in the workspace's `NEEDS_OWNER.md`. The
+export, the shadow period and the rollback rehearsal ran on 2026-11-05;
+[What ran against the live relay](#what-ran-against-the-live-relay-2026-11-05)
+says how.
 
 ### Before: what must be true first
 
@@ -558,7 +564,7 @@ Nothing in this chapter has run any of them.
    `--tombstones N` more, 8,192 without it; 400 bytes each), so an export
    is never incomplete for want of tombstone room.
 
-### Export (owner)
+### Export
 
 4. Take the newest backup unit (`nostr-relay-<stamp>.dump` and its
    manifest) and check its digest against the manifest.
@@ -608,7 +614,7 @@ Nothing in this chapter has run any of them.
    result must be equal, or every difference must be one the owner
    accepted in step 7.
 
-### Shadow period (owner)
+### Shadow period
 
 10. Put both relays behind the proxy: every EVENT goes to both, and the
     Rust relay's answer is the one clients get.
@@ -619,7 +625,7 @@ Nothing in this chapter has run any of them.
 12. At the end, compare the event sets again, with the same `now` on both
     sides.
 
-### Cutover (owner)
+### Cutover (production deploy)
 
 13. Gate, all of them true: the last equality check is equal; the shadow
     period has no unexplained answer; the owner has signed off in
@@ -631,7 +637,7 @@ Nothing in this chapter has run any of them.
 16. Keep the Rust relay running read-only, with its database untouched, as
     the fallback.
 
-### Rollback, rehearsed before step 15 (owner)
+### Rollback, rehearsed before step 15
 
 17. Rehearse on a staging name first: point it at the Coax relay, then
     back at the Rust relay, and check that a client reads and writes
@@ -660,6 +666,42 @@ Nothing in this chapter has run any of them.
     the events after it).
 20. The rollback rehearsal passes when service is restored from the Rust
     relay and the final equality check is equal.
+
+### What ran against the live relay (2026-11-05)
+
+The [record](../../docs/verification/2026-11-05-coax-relay-cutover/README.md)
+has the numbers. In short:
+
+- **Export.** [relay_live_cutover.py](../../coax/tests/nostr/relay_live_cutover.py)
+  `export` reads every event an anonymous reader gets, by pages of 50 walking
+  `until` down: 12,278 lines, 64,881,789 bytes, SHA-256 `d4696a95...`,
+  against COUNT's 12,279. The one left out is a kind 31990 that the Rust
+  relay's own read check now refuses; reading it stops the whole Rust relay
+  process (#12909). The export finds it by COUNT alone, which reads ids only,
+  and reads around its second. Private events (gift wraps, private kinds)
+  need the backup restore of steps 4 to 6.
+- **Import.** `relay --import` reads all 12,278 lines with verdict clean,
+  every signature checked, and `--check-store` prints the same served-set
+  line.
+- **Rollback rehearsal**, on coderos-4080 inside `rust_relay_sandbox.sh`
+  (steps 7 to 9 and 15 to 20 on a staging name): the Rust relay imports the
+  export with `import-jsonl` and the Coax relay with `--import`; both serve
+  the same 12,278 ids. A proxy stands for the staging name: pointed at the
+  Coax relay, a client writes three events through it and reads them back;
+  `relay --export --from BYTE` gives exactly those three; the Rust relay
+  imports them; pointed back at the Rust relay, the client reads them and
+  writes one more. The final sets differ by exactly that write.
+  [relay_rollback_rehearsal.py](../../coax/tests/nostr/relay_rollback_rehearsal.py)
+  checks each step; it passed.
+- **Shadow period** (steps 10 to 12, read side). `relay_live_cutover.py
+  shadow` mirrors every new live event into a Coax relay started from the
+  import and, every 10 minutes, sends twelve REQs (the kinds openagents.com
+  and the agents read) to both relays and classifies each answer pair with
+  chapter 94's classes. Five rounds (60 answer pairs) all matched, with six
+  new live events mirrored; step 12's week of traffic runs again before the
+  cutover.
+  Writes don't go to both relays through a proxy: that changes production
+  routing, so the mirror stands in for it.
 
 ## What the relay doesn't use yet
 
@@ -739,9 +781,9 @@ coax/bin/coax test nostr/examples/checks/relay-cutover.coax
 ### What was run and what was not
 
 Run on 2026-11-01: the checks above, the mutation runs above, and the
-example in debug and release with its transcript. Not run: anything
-against relay.openagents.com or its database, the export, the shadow
-period, the cutover and the rollback rehearsal. They wait for the owner.
+example in debug and release with its transcript. Run on 2026-11-05: the
+export, the import, the rollback rehearsal and a shadow period (above). Not
+run: anything against the relay's database or backups, and the cutover.
 The R1 differential and flood records describe the earlier bounded relay:
 [2026-10-30-coax-relay-r1-rust-differential.md](../../docs/verification/2026-10-30-coax-relay-r1-rust-differential.md)
 and
