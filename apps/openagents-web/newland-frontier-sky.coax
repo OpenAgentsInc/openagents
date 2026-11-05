@@ -432,6 +432,7 @@ fr_planets :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
     g := fr_in(t, FR_EARTH - 2.6, 1.0) * fade; lit_up := 0.4 + 0.6 * fr_in(t, FR_EARTH, 0.5);
     e := fr_body_sky(BODY_EARTH, t);
     v = fr_globe(out, v, c, e, 0.32, t * 0.6, 7, 10, 0.41, white, g * lit_up);
+    v = fr_globe_pay(out, v, c, p, e, 0.32, t, g * lit_up);   // payments across its face
     m := fv_add(e, fv(0.7 * cos(t * 0.9), 0.05, 0.7 * sin(t * 0.9)));
     v = fr_ring3(out, v, c, e, fv(1, 0, 0), fv(0, 0, 1), 0.7, 48, dim, 0.4 * g * lit_up);
     v = fr_globe(out, v, c, m, 0.08, 0, 3, 4, 0, pale, g * lit_up);

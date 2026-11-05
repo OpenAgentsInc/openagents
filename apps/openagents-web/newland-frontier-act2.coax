@@ -241,7 +241,7 @@ fr_many :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
     }
   }
   // computing power: a line up from every phone to where they meet, then to the new tree's crown
-  power := fr_in(t, FR_POWER, 2.2) * fr_out(t, FR_APART, 0.8);
+  power: f32 = 0;   // their power pools in the Pylons now (newland-frontier-pool.coax)
   re := fr_in(t, FR_REPURPOSE, 1.6) * fr_out(t, FR_CYBER + 1.0, 1.4);
   if power > 0 || re > 0 {
     node := ifx re > 0 then fv_add(fr_tree_top(t), fv(0, 1.6, 0)) else FR_NODE;
@@ -487,9 +487,6 @@ fr_nations :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
     a := FR_TAU * f32(n) / 6 + 0.3;
     mid := fv(FR_PLOT.x + 10.5 * cos(a), 0, FR_PLOT.z + 10.5 * sin(a));
     start := FR_NATIONS + 0.35 * f32(n);
-    // the beam down from where the lines meet
-    beam := fr_in(t, start - 0.3, 0.3) * fr_out(t, start + 0.6, 0.6);
-    v = seg(out, v, c, FR_NODE, fv_mix(FR_NODE, mid, clamp(beam * 2, 0, 1)), bright, beam);
     // the border, drawing round
     round := fr_in(t, start, 1.2);
     prev := mid;
@@ -502,14 +499,6 @@ fr_nations :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
       q := fv(mid.x + rr * cos(ang), 0.03, mid.z + rr * sin(ang));
       if s > 0 { v = seg(out, v, c, prev, q, ifx n % 2 == 0 then bright else white, 0.8 * seen); }
       prev = q;
-    }
-    // the city: towers rising
-    for b: 0..<7 {
-      ba := FR_TAU * fr_h(n * 8 + b, 33); br := 1.8 * sqrt(fr_h(n * 8 + b, 34));
-      bx := mid.x + br * cos(ba); bz := mid.z + br * sin(ba);
-      hgt := (0.6 + 2.2 * fr_h(n * 8 + b, 35)) * fr_in(t, start + 0.5 + 0.1 * f32(b), 0.8);
-      if hgt <= 0.01 { continue; }
-      v = box3(out, v, c, bx, bz, 0.22, 0.22, 0, hgt, pale, seen);
     }
     // its flag
     fl := fr_in(t, start + 1.2, 0.5);
@@ -600,6 +589,8 @@ fr_act2 :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
   v = fr_computer(out, v, c, p, t);
   v = fr_nations(out, v, c, p, t);
   v = fr_cyberspace(out, v, c, p, t);
+  v = fr_pool(out, v, c, p, t);
+  v = fr_worlds(out, v, c, p, t);
   v = fr_many(out, v, c, p, t);
   return v;
 }

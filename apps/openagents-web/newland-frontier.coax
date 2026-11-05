@@ -24,7 +24,7 @@ FR_S :: Fv.{x = 15, y = 0, z = 3};         // the open ground east of the places
 FR_SKY :: Fv.{x = 15, y = 20, z = 3};      // the sun, straight up from the open ground: the orbits' middle
 FR_PEOPLE :: 9;
 FR_TOWERS :: 3;
-FR_KEYS :: 33;
+FR_KEYS :: 34;
 
 // ---- the camera: a smooth path through keys (Catmull-Rom), eye and aim, in grid units
 FrKey :: struct { t: f32; eye: Fv; at: Fv; }
@@ -50,7 +50,7 @@ FR_KEY_TABLE :: [FR_KEYS] FrKey.[
     FrKey.{t = 85.6,  eye = Fv.{x = 42, y = 22, z = 32},     at = Fv.{x = 20, y = 0, z = 7}},
     FrKey.{t = 90.8,  eye = Fv.{x = 32, y = 7.5, z = 19},    at = Fv.{x = 21, y = 3.6, z = 8}},
     FrKey.{t = 96.2,  eye = Fv.{x = 28, y = 3.6, z = 14.5},  at = Fv.{x = 21, y = 2.2, z = 8}},
-    FrKey.{t = 101.6, eye = Fv.{x = 34, y = 13, z = 23},     at = Fv.{x = 21, y = 6, z = 8}},
+    FrKey.{t = 101.6, eye = Fv.{x = 35, y = 11, z = 24},     at = Fv.{x = 21, y = 1.5, z = 8}},
     FrKey.{t = 106.6, eye = Fv.{x = 40, y = 26, z = 30},     at = Fv.{x = 20, y = 0, z = 8}},
     FrKey.{t = 111.6, eye = Fv.{x = 29, y = 3.6, z = 15},    at = Fv.{x = 21, y = 1, z = 8}},
     FrKey.{t = 117.6, eye = Fv.{x = 22, y = 9.5, z = 14},    at = Fv.{x = 11, y = 2.0, z = 0.6}},
@@ -58,7 +58,8 @@ FR_KEY_TABLE :: [FR_KEYS] FrKey.[
     FrKey.{t = 128.6, eye = Fv.{x = 31, y = 8, z = 18},      at = Fv.{x = 19, y = 3.5, z = 6}},
     FrKey.{t = 133.6, eye = Fv.{x = 29, y = 11, z = 16},     at = Fv.{x = 18, y = 7, z = 5}},
     FrKey.{t = 137.6, eye = Fv.{x = 23.5, y = 9.2, z = 10.5}, at = Fv.{x = 18, y = 8.3, z = 5}},
-    FrKey.{t = 143.0, eye = Fv.{x = 30, y = 14, z = 20},     at = Fv.{x = 17, y = 4, z = 4}},
+    FrKey.{t = 142.6, eye = Fv.{x = 32, y = 13, z = 20},     at = Fv.{x = 18, y = 9, z = 5}},
+    FrKey.{t = 147.2, eye = Fv.{x = 27, y = 10.5, z = 14.5}, at = Fv.{x = 18, y = 9.4, z = 5}},
     FrKey.{t = 151.0, eye = Fv.{x = 27, y = 7, z = 16},      at = Fv.{x = 15, y = 2.2, z = 3}},
     FrKey.{t = FR_END, eye = Fv.{x = 38, y = 20, z = 32},    at = Fv.{x = 13, y = 1, z = 2}}];
 

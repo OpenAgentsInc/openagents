@@ -25,6 +25,7 @@
 #load "newland-frontier-sky.coax";
 #load "newland-frontier-ruins.coax";
 #load "newland-frontier-act2.coax";
+#load "newland-frontier-pool.coax";
 #load "newland-boot.coax";   // Verse OS's boot sequence over it, when the machine's session asks
 #load "newland-local.coax";  // and the agents on that machine, standing by the spawn
 #load "../../aethyr/budget.coax";

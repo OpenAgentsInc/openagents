@@ -1,0 +1,368 @@
+// Penultimate Frontier: pooled compute and the payments that run between it
+// (newland-frontier-act2.coax draws the crowd this belongs to).
+//
+// - "We together have the computing power": each of the crowd sets out Pylons, one to three, drawn
+//   as the Grid draws its own (machine in newland.coax: a plinth, a unified, GPU or CPU body,
+//   a beam with a spark climbing it). They form from the crowd outward until hundreds stand
+//   over the floor. On "isolated, disconnected" they go dark; when "our computers connect"
+//   they light again.
+// - Payments between them, as the Speedrun HUD's payment storm draws them
+//   (speedrunhud-storm.coax): comets with a white-hot head and a fading tail, Lightning in
+//   Bitcoin orange, Wavelength in cyan, their rate ramping up. Everything is a closed form of
+//   the clock, so any frame draws on its own: payment j leaves at the inverse of the
+//   count, and its route and kind come from hashes of j.
+// - Earth's globe in the sky gets the same: payments arcing across its face.
+// - "We will meet in virtual worlds... the Oasis": worlds bloom over the grid in the sky,
+//   people walk out on it toward them, and a gate of light opens in the middle.
+
+FR_PYLON_TRY :: 1100;
+FR_PYLONS :: 760;
+FR_BUILD :: 97.4;            // "we together have the computing power": the first Pylon
+FR_PAY :: 100.4;             // "which today equals the real power": the first payment
+FR_PAY_MAX :: 520;           // comets drawn at most
+
+// Pylon k's place: a golden-angle spiral over the floor round the crowd, with nothing on the
+// places, the ruins, the new tree or the crowd itself. ok is false for a spot it skips.
+FrPylon :: struct { x: f32; z: f32; fam: int; owner: int; r: f32; ok: bool; }
+fr_pylon_try :: (k: int) -> FrPylon {
+  r := sqrt(4.9 * 4.9 + (18.5 * 18.5 - 4.9 * 4.9) * (f32(k) + 0.5) / f32(FR_PYLON_TRY));
+  a := f32(k) * 2.39996323 + 0.2;
+  x := FR_PLOT.x + r * cos(a); z := FR_PLOT.z + r * sin(a);
+  ok := !(x < 17.2 && z < 7.8);   // the places, the ruins and the new tree
+  ft := fv_sub(fv(x, 0, z), FR_S);
+  if ft.x * ft.x + ft.z * ft.z < 5.2 * 5.2 { ok = false; }
+  fam := cast(int) floor(fr_h(k, 50) * 3);
+  return FrPylon.{x = x, z = z, fam = clamp_i(fam, 0, 2), owner = k % FR_MANY, r = r, ok = ok};
+}
+FrField :: struct { n: int; p: [FR_PYLONS] FrPylon; }
+fr_field :: (f: [] FrField) {
+  f[0].n = 0;
+  for k: 0..<FR_PYLON_TRY {
+    if f[0].n >= FR_PYLONS { break; }
+    q := fr_pylon_try(k);
+    if !q.ok { continue; }
+    f[0].p[f[0].n] = q; f[0].n += 1;
+  }
+}
+// How much Pylon k (of the field, at radius r) stands at t: built outward, dark while they're
+// apart, lit again as their computers connect, gone as the worlds come.
+fr_pylon_seen :: (r: f32, k: int, t: f32) -> f32 {
+  built := fr_in(t, FR_BUILD + 0.4 * (r - 4.9) + 0.3 * fr_h(k, 51), 0.45);
+  dark := fr_out(t, FR_APART + 0.06 * (r - 4.9), 0.5);
+  again := fr_in(t, FR_CYBER - 0.6 + 0.08 * (r - 4.9) + 0.2 * fr_h(k, 52), 0.4) * fr_out(t, FR_VIRTUAL + 0.4 + 0.1 * (r - 4.9), 0.6);
+  return hi(built * dark, again);
+}
+// A Pylon, as the Grid draws one (newland.coax's machine), its beam lit by how busy it is.
+fr_pylon :: (out: [] f32, at: int, c: Cam, p: Pen, q: FrPylon, k: int, t: f32, seen: f32) -> int {
+  if seen <= 0.003 { return at; }
+  v := at;
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); pale := ink(p, INK_PALE); cool := ink(p, INK_COOL);
+  x := q.x; z := q.z;
+  rise := seen;   // it grows up out of its plinth
+  body: f32 = 0.5 * seen;
+  lamp_light := (0.5 + 0.25 * sin(t * 4 + f32(k))) * seen;
+  v = box3(out, v, c, x, z, 0.44, 0.44, 0, 0.001, dim, 0.5 * seen);
+  v = box3(out, v, c, x, z, 0.36, 0.36, PLINTH, PLINTH + 0.001, dim, 0.5 * seen);
+  top: f32 = 0;
+  if q.fam == FAM_UNIFIED {
+    hgt := PLINTH + (0.95 - PLINTH) * rise;
+    v = box3(out, v, c, x, z, 0.14, 0.14, PLINTH, hgt, white, body);
+    if rise > 0.95 {
+      cap := fv(x, 1.22, z); bot := fv(x, 0.95, z);
+      for j: 0..<4 {
+        a0 := f32(j) * 1.5707963 + 0.785; a1 := a0 + 1.5707963;
+        m0 := fv(x + 0.13 * cos(a0), 1.06, z + 0.13 * sin(a0)); m1 := fv(x + 0.13 * cos(a1), 1.06, z + 0.13 * sin(a1));
+        v = seg(out, v, c, m0, m1, white, body); v = seg(out, v, c, m0, cap, white, body); v = seg(out, v, c, m0, bot, white, 0.6 * body);
+      }
+      v = seg(out, v, c, fv(x + 0.04, 0.3, z + 0.141), fv(x + 0.04, 0.85, z + 0.141), pale, lamp_light);
+    }
+    top = 1.22;
+  } else if q.fam == FAM_GPU {
+    hgt := PLINTH + (0.86 - PLINTH) * rise;
+    v = box3(out, v, c, x, z, 0.3, 0.22, PLINTH, hgt, white, body);
+    for b: 0..<5 {
+      y := 0.24 + f32(b) * 0.12;
+      if y > hgt { break; }
+      v = seg(out, v, c, fv(x - 0.25, y, z + 0.221), fv(x + 0.25, y, z + 0.221), pale, lamp_light);
+    }
+    if rise > 0.95 {
+      for f: 0..<2 {
+        fx := x - 0.14 + f32(f) * 0.28;
+        v = loop3(out, v, c, fx, 0.861, z, 0.11, white, 0.6 * body);
+        a := t * 6 + f32(f) + f32(k);
+        v = seg(out, v, c, fv(fx - 0.09 * cos(a), 0.862, z - 0.09 * sin(a)), fv(fx + 0.09 * cos(a), 0.862, z + 0.09 * sin(a)), pale, 0.8 * lamp_light);
+      }
+    }
+    top = 0.86;
+  } else {
+    hgt := PLINTH + (0.52 - PLINTH) * rise;
+    v = box3(out, v, c, x, z, 0.32, 0.3, PLINTH, hgt, white, body);
+    cz := z + 0.301;
+    v = seg(out, v, c, fv(x - 0.1, 0.22, cz), fv(x + 0.1, 0.22, cz), pale, lamp_light);
+    v = seg(out, v, c, fv(x - 0.1, 0.42, cz), fv(x + 0.1, 0.42, cz), pale, lamp_light);
+    if rise > 0.95 {
+      for j: 0..<5 {
+        fz := z - 0.22 + f32(j) * 0.11;
+        v = seg(out, v, c, fv(x - 0.26, 0.6, fz), fv(x + 0.26, 0.6, fz), white, 0.6 * body);
+      }
+    }
+    top = 0.6;
+  }
+  // the beam, its tip and a spark climbing it
+  if rise > 0.95 {
+    h := 0.5 + 1.1 * fr_h(k, 53);
+    beam := white; beam.core = 0.9 * p.d; beam.glow = 6 * p.d;
+    v = seg(out, v, c, fv(x, top, z), fv(x, top + h, z), beam, (0.25 + 0.25 * fr_h(k, 54)) * seen);
+    tip := spot(c, fv(x, top + h, z));
+    if tip.ok && inside(c.clip, tip.x, tip.y) {
+      v = diamond(out, v, tip.x, tip.y, 2.6 * p.d, white, 0.6 * seen * vignette(c, tip.x, tip.y));
+      v = diamond(out, v, tip.x, tip.y, (5.5 + 1.5 * sin(t * 2 + f32(k))) * p.d, cool, 0.35 * seen);
+    }
+    f := fract(t * 0.55 + f32(k) * 0.37);
+    sp := spot(c, fv(x, top + h * f, z));
+    if sp.ok && inside(c.clip, sp.x, sp.y) { v = diamond(out, v, sp.x, sp.y, 2.2 * p.d, ink(p, INK_BLUE), 0.9 * seen * sin(f * 3.1415926)); }
+  }
+  // the first moment it stands: a ring out across the floor
+  rising := t < FR_APART || (t > FR_CYBER - 1 && t < FR_CYBER + 3);
+  if rising && seen > 0 && seen < 1 { v = loop3(out, v, c, x, 0.01, z, 0.3 + 0.9 * seen, ink(p, INK_BRIGHT), 0.5 * (1 - seen)); }
+  return v;
+}
+fr_pylon_tip :: (q: FrPylon, k: int) -> Fv {
+  top := ifx q.fam == FAM_UNIFIED then 1.22f32 else ifx q.fam == FAM_GPU then 0.86f32 else 0.6f32;
+  return fv(q.x, top + 0.5 + 1.1 * fr_h(k, 53), q.z);
+}
+
+// ---- payments: a rate ramping from r0 to r1 a second over [t0, t1], then held; count and its inverse
+FrRate :: struct { t0: f32; t1: f32; r0: f32; k: f32; c1: f32; r1: f32; }
+fr_rate :: (t0: f32, t1: f32, r0: f32, r1: f32) -> FrRate {
+  k := log(r1 / r0) / (t1 - t0);
+  return FrRate.{t0 = t0, t1 = t1, r0 = r0, k = k, c1 = r0 / k * (exp(k * (t1 - t0)) - 1), r1 = r1};
+}
+fr_count :: (q: FrRate, t: f32) -> f32 {
+  if t <= q.t0 { return 0; }
+  if t <= q.t1 { return q.r0 / q.k * (exp(q.k * (t - q.t0)) - 1); }
+  return q.c1 + q.r1 * (t - q.t1);
+}
+fr_launch :: (q: FrRate, n: f32) -> f32 {
+  if n <= q.c1 { return q.t0 + log(1 + n * q.k / q.r0) / q.k; }
+  return q.t1 + (n - q.c1) / q.r1;
+}
+// A comet along a path of points (the head at u of the way, 0 to 1): a white-hot head, a tail
+// fading behind it in its colour; a ring where it lands.
+fr_comet :: (out: [] f32, at: int, c: Cam, p: Pen, path: [] Fv, u: f32, wl: bool, light: f32) -> int {
+  v := at;
+  tail := ink(p, ifx wl then INK_BLUE else INK_BITCOIN); tail.core = 1.6 * p.d; tail.glow = 7 * p.d;
+  n := path.count - 1;
+  reach: f32 = 0.32;
+  steps := 6;
+  prev := fr_path_at(path, u);
+  for s: 1..<steps + 1 {
+    w := u - reach * f32(s) / f32(steps);
+    if w < 0 { break; }
+    q := fr_path_at(path, w);
+    v = seg(out, v, c, q, prev, tail, light * (1 - f32(s - 1) / f32(steps)));
+    prev = q;
+  }
+  h := spot(c, fr_path_at(path, u));
+  if h.ok && inside(c.clip, h.x, h.y) {
+    hot := ink(p, INK_BRIGHT); hot.glow = 7 * p.d;
+    v = diamond(out, v, h.x, h.y, 3.0 * p.d, hot, light);
+  }
+  if n < 0 { return v; }
+  return v;
+}
+fr_path_at :: (path: [] Fv, u: f32) -> Fv {
+  n := path.count - 1;
+  f := clamp(u, 0, 1) * f32(n);
+  i := clamp_i(cast(int) floor(f), 0, n - 1);
+  return fv_mix(path[i], path[i + 1], f - f32(i));
+}
+// The payments over the field between [from, to]: Lightning comets between Pylons' tips, arcing
+// over the floor, Wavelength ones quicker and lower.
+fr_payments :: (out: [] f32, at: int, c: Cam, p: Pen, f: [] FrField, q: FrRate, t: f32, from: f32, to: f32, light: f32) -> int {
+  if t < from || t > to + 1.2 || light <= 0.003 || f[0].n < 2 { return at; }
+  v := at;
+  fly: f32 = 1.05;
+  hi_n := fr_count(q, lo(t, to)); lo_n := fr_count(q, t - fly - 0.35);
+  if hi_n <= lo_n { return v; }
+  stride := clamp_i(cast(int) ((hi_n - lo_n) / f32(FR_PAY_MAX)) + 1, 1, 1000000);
+  j := (cast(int) floor(lo_n / f32(stride))) * stride;
+  path: [9] Fv;
+  while f32(j) < hi_n {
+    if f32(j) < lo_n { j += stride; continue; }
+    launch := fr_launch(q, f32(j));
+    wl := fr_h(j, 60) < 0.32;
+    dur := ifx wl then 0.6f32 else fly;
+    u := (t - launch) / dur;
+    a := cast(int) floor(fr_h(j, 61) * f32(f[0].n)); b := cast(int) floor(fr_h(j, 62) * f32(f[0].n));
+    a = clamp_i(a, 0, f[0].n - 1); b = clamp_i(b, 0, f[0].n - 1);
+    if a == b { b = (b + 7) % f[0].n; }
+    if u >= 0 && u <= 1 + 0.32 {
+      pa := fr_pylon_tip(f[0].p[a], a); pb := fr_pylon_tip(f[0].p[b], b);
+      d := fv_length(fv_sub(pb, pa));
+      lift := (ifx wl then 0.12f32 else 0.26f32) * d;
+      for s: 0..<9 { w := f32(s) / 8; path[s] = fv_add(fv_mix(pa, pb, w), fv(0, lift * 4 * w * (1 - w), 0)); }
+      if u <= 1 {
+        v = fr_comet(out, v, c, p, path[..], u, wl, light);
+      } else {
+        g := (u - 1) / 0.32;   // landed: its Pylon warms, a ring at its tip
+        sp := spot(c, pb);
+        if sp.ok && inside(c.clip, sp.x, sp.y) { v = ring(out, v, sp.x, sp.y, (3 + 12 * g) * p.d, ink(p, ifx wl then INK_BLUE else INK_BITCOIN), light * (1 - g)); }
+      }
+    }
+    j += stride;
+  }
+  return v;
+}
+fr_pool :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
+  if t < FR_BUILD - 0.5 || t > FR_VIRTUAL + 4 { return at; }
+  v := at;
+  f: [1] FrField;
+  fr_field(f[..]);
+  for k: 0..<f[0].n {
+    q := f[0].p[k];
+    seen := fr_pylon_seen(q.r, k, t);
+    v = fr_pylon(out, v, c, p, q, k, t, seen);
+    // while it's built: a spark from its owner's phone to it
+    b0 := FR_BUILD + 0.4 * (q.r - 4.9) + 0.3 * fr_h(k, 51);
+    g := (t - (b0 - 0.5)) / 0.5;
+    if g > 0 && g < 1 && t < FR_APART {
+      from := fv_add(fr_rank(q.owner, 1), fv(0.25, 1.05, 0.25));
+      to := fv(q.x, 0.3, q.z);
+      sp := spot(c, fv_add(fv_mix(from, to, g), fv(0, 1.2 * g * (1 - g), 0)));
+      if sp.ok && inside(c.clip, sp.x, sp.y) { v = diamond(out, v, sp.x, sp.y, 2 * p.d, ink(p, INK_BLUE), 0.9); }
+    }
+  }
+  // payments: first while they pool their power, then again once their computers connect
+  storm := fr_rate(FR_PAY, FR_NATIONS + 2.0, 14, 1100);
+  v = fr_payments(out, v, c, p, f[..], storm, t, FR_PAY, FR_APART + 0.2, fr_out(t, FR_APART, 0.6));
+  again := fr_rate(FR_CYBER, FR_CYBER + 3, 20, 700);
+  v = fr_payments(out, v, c, p, f[..], again, t, FR_CYBER, FR_VIRTUAL, fr_out(t, FR_VIRTUAL, 0.8));
+  return v;
+}
+
+// ---- payments across Earth's face, in the sky (newland-frontier-sky.coax draws the globe)
+fr_globe_pay :: (out: [] f32, at: int, c: Cam, p: Pen, e: Fv, r: f32, t: f32, light: f32) -> int {
+  if light <= 0.003 { return at; }
+  v := at;
+  q := fr_rate(FR_EARTH - 2.6, FR_EARTH - 0.6, 4, 70);
+  hi_n := fr_count(q, t); lo_n := fr_count(q, t - 1.4);
+  j := cast(int) floor(lo_n);
+  path: [13] Fv;
+  while f32(j) < hi_n {
+    launch := fr_launch(q, f32(j));
+    wl := fr_h(j, 70) < 0.3;
+    dur := ifx wl then 0.7f32 else 1.1f32;
+    u := (t - launch) / dur;
+    if u >= 0 && u <= 1.25 {
+      // two points on the sphere, a great circle between them, lifted off the surface
+      a1 := FR_TAU * fr_h(j, 71); z1 := 2 * fr_h(j, 72) - 1;
+      a2 := a1 + (0.6 + 1.6 * fr_h(j, 73)) * (ifx fr_h(j, 74) > 0.5 then 1.0f32 else -1.0f32); z2 := clamp(z1 + 1.2 * (fr_h(j, 75) - 0.5), -0.95, 0.95);
+      s1 := sqrt(1 - z1 * z1); s2 := sqrt(1 - z2 * z2);
+      d1 := fv(s1 * cos(a1), z1, s1 * sin(a1)); d2 := fv(s2 * cos(a2), z2, s2 * sin(a2));
+      for s: 0..<13 {
+        w := f32(s) / 12;
+        dd := unit3(fv_mix(d1, d2, w));
+        path[s] = fv_add(e, fv_times(dd, r * (1.02 + 0.35 * sin(3.1415926 * w))));
+      }
+      if u <= 1 { v = fr_comet(out, v, c, p, path[..], u, wl, light); }
+      else {
+        g := (u - 1) / 0.25;
+        sp := spot(c, path[12]);
+        if sp.ok && inside(c.clip, sp.x, sp.y) { v = ring(out, v, sp.x, sp.y, (2 + 9 * g) * p.d, ink(p, ifx wl then INK_BLUE else INK_BITCOIN), light * (1 - g)); }
+      }
+    }
+    j += 1;
+  }
+  return v;
+}
+
+// ---- "We will meet in virtual worlds... the Oasis": worlds bloom over the grid in the sky
+FR_WORLDS :: 7;
+fr_world_at :: (k: int, t: f32) -> Fv {
+  a := FR_TAU * f32(k) / f32(FR_WORLDS) + 0.15 * (t - FR_VIRTUAL);
+  return fv(FR_NET.x + 6.6 * cos(a), FR_NET.y + 2.4 + 0.7 * sin(2 * a + t * 0.6), FR_NET.z + 6.6 * sin(a));
+}
+fr_worlds :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
+  if t < FR_VIRTUAL - 0.5 || t > FR_VERSE + 4 { return at; }
+  v := at;
+  fade := fr_out(t, FR_VERSE + 0.6, 2.2);
+  white := ink(p, INK_WHITE); pale := ink(p, INK_PALE); bright := ink(p, INK_BRIGHT); blue := ink(p, INK_BLUE); gold := ink(p, INK_BITCOIN);
+  for k: 0..<FR_WORLDS {
+    born := FR_VIRTUAL + 0.55 * f32(k);
+    g := fr_in(t, born, 0.9) * fade;
+    if g <= 0 { continue; }
+    o := fr_world_at(k, t);
+    r := 0.95 * g;
+    v = fr_globe(out, v, c, o, r, t * 0.4 + f32(k), 5, 8, 0.3, ifx k % 2 == 0 then white else pale, 0.75 * g);
+    // what is on each: a tree of light, a ringed planet, a castle, by turns
+    kind := k % 3;
+    if kind == 0 {
+      prev := fv(o.x, o.y - 0.3 * r, o.z);
+      for j: 1..<14 {
+        f := f32(j) / 13; a := f32(j) * 0.9 + t;
+        q := fv(o.x + 0.35 * r * (1 - f) * cos(a), o.y - 0.3 * r + 0.95 * r * f, o.z + 0.35 * r * (1 - f) * sin(a));
+        v = seg(out, v, c, prev, q, bright, g); prev = q;
+      }
+    } else if kind == 1 {
+      for j: 0..<2 { v = fr_ring3(out, v, c, o, fr_rot(fv(1, 0, 0), fv(0, 0, 1), 0.4), fv(0, 0, 1), r * (1.35 + 0.2 * f32(j)), 40, gold, 0.8 * g); }
+    } else {
+      for j: 0..<3 {
+        x := o.x - 0.4 * r + 0.4 * r * f32(j);
+        v = box3(out, v, c, x, o.z, 0.1 * r, 0.1 * r, o.y - 0.2 * r, o.y + (ifx j == 1 then 0.6f32 else 0.35f32) * r, bright, g);
+      }
+    }
+    // a beam down to the grid, and a burst as it blooms
+    v = seg(out, v, c, o, fv(o.x, FR_NET.y, o.z), blue, 0.4 * g);
+    b := (t - born) / 1.2;
+    if b > 0 && b < 1 {
+      sp := spot(c, o);
+      if sp.ok { v = ring(out, v, sp.x, sp.y, (10 + 90 * b) * p.d, bright, (1 - b) * fade); v = ring(out, v, sp.x, sp.y, (6 + 50 * b) * p.d, gold, 0.7 * (1 - b) * fade); }
+    }
+  }
+  // people walking out over the grid in the sky, toward the worlds
+  walkers := fr_in(t, FR_VIRTUAL + 0.3, 1.0) * fade;
+  if walkers > 0 {
+    for i: 0..<36 {
+      a := FR_TAU * fr_h(i, 80);
+      d := 1.2 + 4.8 * fract(fr_h(i, 81) + (t - FR_VIRTUAL) * 0.09);
+      o := fv(FR_NET.x + d * cos(a), FR_NET.y + 0.05, FR_NET.z + d * sin(a));
+      v = fr_stick(out, v, c, o, 1.25, 0.04 * sin(t * 7 + f32(i)), pale, 0.85 * walkers * clamp(6 - d, 0, 1));
+    }
+  }
+  // "the Oasis": a gate of light opening in the middle, rays out of it
+  gate := fr_in(t, FR_VIRTUAL + 6.0, 1.4) * fade;
+  if gate > 0 {
+    o := fv(FR_NET.x, FR_NET.y + 2.3, FR_NET.z);
+    e := unit3(fv_sub(c.eye, o)); side := unit3(cross3(e, fv(0, 1, 0))); up := cross3(side, e);
+    for j: 0..<5 {
+      rr := (0.5 + 0.45 * f32(j)) * gate + 0.06 * sin(t * 3 + f32(j));
+      v = fr_ring3(out, v, c, o, side, up, rr, 48, ifx j % 2 == 0 then bright else gold, gate * (1 - 0.13 * f32(j)));
+    }
+    for j: 0..<24 {
+      a := FR_TAU * f32(j) / 24 + 0.2 * t;
+      d := fv_add(fv_times(side, cos(a)), fv_times(up, sin(a)));
+      r0 := 2.4 * gate; r1 := r0 + (1.2 + 1.4 * fr_h(j, 82)) * (0.6 + 0.4 * sin(t * 2.3 + f32(j)));
+      v = seg(out, v, c, fv_add(o, fv_times(d, r0)), fv_add(o, fv_times(d, r1)), pale, 0.6 * gate);
+    }
+  }
+  return v;
+}
+
+#test "the pooled Pylons stand apart, off the places and the crowd, and payments launch in order" {
+  f: [1] FrField;
+  fr_field(f[..]);
+  #assert f[0].n > 500;
+  for k: 0..<f[0].n {
+    q := f[0].p[k];
+    #assert q.ok && fv_length(fv_sub(fv(q.x, 0, q.z), FR_PLOT)) > 4.8;
+    #assert fr_pylon_seen(q.r, k, FR_BUILD - 1) == 0 && fr_pylon_seen(q.r, k, FR_NATIONS + 2) > 0.99;
+  }
+  for k: 0..<200 {
+    a := f[0].p[k];
+    for j: k + 1..<f[0].n { b := f[0].p[j]; #assert (a.x - b.x) * (a.x - b.x) + (a.z - b.z) * (a.z - b.z) > 0.8 * 0.8; }
+  }
+  q := fr_rate(FR_PAY, FR_NATIONS + 2.0, 14, 1100);
+  last: f32 = 0;
+  for j: 0..<3000 { l := fr_launch(q, f32(j)); #assert l >= last && abs(fr_count(q, l) - f32(j)) < 0.5 + 0.002 * f32(j); last = l; }
+}
