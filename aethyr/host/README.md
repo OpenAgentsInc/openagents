@@ -332,7 +332,17 @@ tolerances remain the graphics conformance inputs.
 
 Audio is authored in Coax. Optional `coaxial_sound_bank`/`_len` exposes
 `NAME ADDRESS BYTES` lines for complete WAV bytes. The host copies those
-bytes before asynchronous decoding. Pack sounds and declared sound-directory
+bytes before asynchronous decoding. A v1 bank also exposes
+`coaxial_sound_bank_capacity(state)` for the actual metadata allocation and
+`coaxial_sound_bank_storage(state)`/`_storage_bytes(state)` for the complete
+immutable WAV allocation. The host admits the metadata view before forming
+it, then uses `host/audio-bank.coax` to admit every complete name/source span
+before copying. Decoded allocation additionally needs the canonical WAV
+plan and a shared `audio-memory.coax` ticket. An admitted name alone does
+not admit a source view or decoded allocation. See
+[`audio-bank.md`](audio-bank.md) and the Linux SDK's
+[`audio-linux.md`](audio-linux.md) for measured ownership APIs.
+Pack sounds and declared sound-directory
 assets share the same name lookup; missing/failed data produces silence,
 not a substituted sound. Audio activation needs the platform's gesture or
 explicit muted/offline test permission. Covering/pausing the world suspends

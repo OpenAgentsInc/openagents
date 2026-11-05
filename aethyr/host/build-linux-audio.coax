@@ -1,0 +1,27 @@
+// Build actual Linux audio effects from explicitly retained Coax C emission.
+// SDK paths are explicit immutable installation identities, never downloads.
+#import "Basic";
+#load "../render/tests/qualification-files.coax";
+#load "../../coax/lib/sys/args.coax";
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])<5||args_count(a[..])>7 {tool_errln("usage: build-linux-audio ROOT EMISSION NEW_OUT PIPEWIRE_DEV PIPEWIRE_LIB [--sanitize] [--memory]");return 2;}
+ for i:5..<args_count(a[..]) {if args_at(a[..],i)!="--sanitize"&&args_at(a[..],i)!="--memory" {return 2;}}
+ if cxtool_os()!=2 {tool_errln("Linux PipeWire SDK required");return 2;}
+ root:=args_at(a[..],0);emission:=args_at(a[..],1);out:=args_at(a[..],2);dev:=args_at(a[..],3);lib:=args_at(a[..],4);sanitize:=args_has(a[..],"--sanitize");memory:=args_has(a[..],"--memory");
+ if !fs_mkdir(out) {return 1;}paths:[24][4096]u8;argv:[64]string;n:=0;
+ for flag:[9]string.["nice","-n10","gcc","-std=gnu11",ifx sanitize then "-O1" else "-O2","-ffp-contract=off","-fno-fast-math","-Wno-unused-function","-Wno-unused-variable"] {argv[n]=flag;n+=1;}
+ argv[n]="-I";argv[n+1]=emission;n+=2;argv[n]="-I";argv[n+1]=fs_join(root,"verse/native",paths[0][..]);n+=2;
+ argv[n]="-I";argv[n+1]=fs_join(dev,"include/pipewire-0.3",paths[1][..]);n+=2;argv[n]="-I";argv[n+1]=fs_join(dev,"include/spa-0.2",paths[2][..]);n+=2;
+ inputs:[1]RtqInputs;
+ for name,i:[2]string.["NativeAudio.c",ifx memory then "HamCheck.c" else "AudioCheck.c"] {argv[n]=fs_join(emission,name,paths[3+i][..]);if !rtq_input_add(inputs[..],argv[n]) {return 1;}n+=1;}
+ for name,i:[7]string.["verse/native/audio-host.c","verse/native/audio-pipewire.c",ifx memory then "aethyr/host/tests/linux-audio-memory-effects.c" else "aethyr/host/tests/linux-audio-effects.c","coax/platform/tool-native.c","coax/platform/process-native.c","coax/platform/store-file-native.c","coax/platform/read-file-native.c"] {argv[n]=fs_join(root,name,paths[5+i][..]);if !rtq_input_add(inputs[..],argv[n]) {return 1;}n+=1;}
+ for name:[4]string.["NativeAudio.h",ifx memory then "HamCheck.h" else "AudioCheck.h","profile.json",ifx memory then "HamCheck.profile.json" else "AudioCheck.profile.json"] {if !rtq_input_add(inputs[..],fs_join(emission,name,paths[12][..])) {return 1;}}
+ if !rtq_input_add(inputs[..],fs_join(root,"verse/native/audio-host.h",paths[12][..])) {return 1;}
+ argv[n]="-L";argv[n+1]=lib;n+=2;argv[n]="-Xlinker";argv[n+1]="-rpath";argv[n+2]="-Xlinker";argv[n+3]=lib;n+=4;
+ for flag:[3]string.["-lpipewire-0.3","-lpthread","-lm"] {argv[n]=flag;n+=1;}
+ if sanitize {for flag:[4]string.["-fsanitize=address,undefined","-fno-sanitize-recover=all","-fno-omit-frame-pointer","-g"] {argv[n]=flag;n+=1;}}
+ bin:=fs_join(out,"check-linux-audio",paths[13][..]);argv[n]="-o";argv[n+1]=bin;n+=2;env:[]string;stdout:[1048576]u8;stderr:[1048576]u8;
+ r:=rtq_command(argv[0..<n],env,proc_now_ms()+120000,out,"link",stdout[..],stderr[..]);if !rtq_ok(r)||!rtq_inputs_match(inputs[..])||!rtq_input_add(inputs[..],bin) {return 1;}
+ record:[262144]u8;o:[1]Jo;jo_start(o[..],record[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.host.linux-audio-build.v1");jo_key(o[..],"sanitized");jo_bool(o[..],sanitize);jo_key(o[..],"inputs");rtq_inputs_json(o[..],inputs[..],"");jo_end(o[..]);
+ if o[0].bad||!fs_write(fs_join(out,"build.json",paths[14][..]),jo_text(o[..])) {return 1;}print("Built actual Linux audio SDK: %\n",bin);return 0;
+}

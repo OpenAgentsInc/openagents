@@ -49,6 +49,17 @@ The word comparator kills 103/103 root mutants, with no equivalents. These
 audio receipts remain separate from Linux output and complete three-host
 qualification; the desktop default remains web.
 
+The Linux audio SDK executes the same Coax PCM/WAV interpreter and bank/
+memory authorities. All 48 frozen bank assets decode byte-identically and
+eleven rendered ranges pass the unchanged sample bound. Actual allocator,
+pointer-span and retained-reference receipts pass normally and instrumented;
+ticket ownership lasts through the final immutable sample reference. Real
+muted PipeWire callbacks negotiate 48 kHz stereo, keep callback/Coax clocks
+held while paused and after close, and publish zero nonzero device-buffer
+samples. The device and retention observer root gates kill 59 and 11 mutants
+without equivalents. These SDK components do not substitute for ordinary
+Vulkan world integration or the complete host/default gates.
+
 The shared lifecycle adapter records monotonic microseconds before handing
 the unchanged delta to the producer. Actual browser, sanitized Linux realm
 SDK and Metal SDK receipts admit the same ten frame/key/blur rows, including

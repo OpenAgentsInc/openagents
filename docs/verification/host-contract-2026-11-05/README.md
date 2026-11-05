@@ -239,7 +239,9 @@ Canonical audio and normal version 1 browser playback now have actual
 receipts in [audio-canonical.md](audio-canonical.md): all 48 generated WAVs
 decode bit-identically, all eleven AudioWorklet/native rendered ranges pass
 the unchanged sample bound, and real muted callback pause/resume and engine
-retirement are observed. Linux output and version 1 clip rendering remain.
+retirement are observed. The Linux SDK now has separately recorded
+[canonical samples, real muted PipeWire output and allocator ownership](audio-linux.md).
+Ordinary Vulkan world/audio integration and version 1 clip rendering remain.
 
 The native Metal receipt/source record, shared lifecycle transitions and
 device-loss/replacement receipts, interactive producer/GPU parity, and

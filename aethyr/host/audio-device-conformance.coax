@@ -1,0 +1,39 @@
+// Actual muted SDK stream observations. Device frames and the shared Coax
+// 1024-frame clock are measured separately, including a partial block.
+#authority;
+HostAudioDeviceObserved :: struct {
+ format:int;muted:int;rate:int;channels:int;
+ initial_callbacks:int;initial_coax:int;
+ running_callbacks:int;running_frames:int;running_coax:int;
+ held_callbacks:int;held_coax:int;
+ resumed_callbacks:int;resumed_frames:int;resumed_coax:int;
+ closed_coax:int;after_close_coax:int;failures:int;node:int;nonzero:int;
+}
+#test "audio device receipt requires actual callbacks exact pause and close ownership" {
+ v:=HostAudioDeviceObserved.{format=1,muted=1,rate=48000,channels=2,running_callbacks=3,running_frames=1536,running_coax=2048,held_callbacks=3,held_coax=2048,resumed_callbacks=5,resumed_frames=2560,resumed_coax=3072,closed_coax=3072,after_close_coax=3072,node=71};
+ #assert had_device(v);
+ for at:0..<18 {q:=v;
+  if at==0 {q.format=0;}if at==1 {q.muted=0;}if at==2 {q.rate=47999;}if at==3 {q.channels=1;}
+  if at==4 {q.initial_callbacks=1;}if at==5 {q.initial_coax=1;}if at==6 {q.running_callbacks=0;}if at==7 {q.running_frames=0;}if at==8 {q.running_coax=1535;}
+  if at==9 {q.held_callbacks=4;}if at==10 {q.held_coax=2049;}if at==11 {q.resumed_callbacks=3;}if at==12 {q.resumed_frames=1536;}
+  if at==13 {q.resumed_coax=2559;}if at==14 {q.closed_coax=3073;}if at==15 {q.after_close_coax=3073;}if at==16 {q.failures=1;}if at==17 {q.node=0;}
+  #assert !had_device(q);
+ }
+ v.resumed_frames=1536;v.resumed_coax=2048;v.closed_coax=2048;v.after_close_coax=2048;#assert !had_device(v);
+}
+#test "muted device receipts observe zero physical SDK buffer samples" {
+ v:=HostAudioDeviceObserved.{format=1,muted=1,rate=48000,channels=2,running_callbacks=1,running_frames=1024,running_coax=1024,held_callbacks=1,held_coax=1024,resumed_callbacks=2,resumed_frames=2048,resumed_coax=2048,closed_coax=2048,after_close_coax=2048,node=1};#assert had_device(v);v.nonzero=1;#assert !had_device(v);
+}
+#test "device clock admits exact and partial blocks but no zero negative or extra block" {
+ #assert had_block_clock(1,1024)&&had_block_clock(1024,1024)&&had_block_clock(1025,2048);
+ #assert !had_block_clock(0,0)&&!had_block_clock(-1,0)&&!had_block_clock(1024,2048)&&!had_block_clock(2049,2048)&&!had_block_clock(1,1023);
+ v:=HostAudioDeviceObserved.{format=1,muted=1,rate=48000,channels=2,running_callbacks=1,running_frames=1,running_coax=1024,held_callbacks=1,held_coax=1024,resumed_callbacks=2,resumed_frames=1025,resumed_coax=2048,closed_coax=2048,after_close_coax=2048,node=1};#assert had_device(v);
+ v.resumed_frames=2048;#assert had_device(v);v.resumed_frames=2049;#assert !had_device(v);
+}
+had_block_clock :: (device:int,coax:int)->bool {return device>0&&coax>=device&&coax-device<1024&&coax%1024==0;}
+had_device :: (v:HostAudioDeviceObserved)->bool #export_c {
+ if v.format!=1||v.muted!=1||v.rate!=48000||v.channels!=2||v.initial_callbacks!=0||v.initial_coax!=0||v.running_callbacks<1||v.failures!=0||v.node<1||v.nonzero!=0 {return false;}
+ if !had_block_clock(v.running_frames,v.running_coax)||v.held_callbacks!=v.running_callbacks||v.held_coax!=v.running_coax {return false;}
+ if v.resumed_callbacks<=v.held_callbacks||v.resumed_frames<=v.running_frames||!had_block_clock(v.resumed_frames,v.resumed_coax) {return false;}
+ return v.closed_coax==v.resumed_coax&&v.after_close_coax==v.closed_coax;
+}
