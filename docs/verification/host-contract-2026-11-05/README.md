@@ -241,6 +241,11 @@ The [shared lifecycle SDK trace](lifecycle.md) now passes the same actual
 ten rows in web, sanitized Linux and Metal. Its semantic and JSON receipt
 gates kill 104/104 and 39/39 root mutants. Physical window integration,
 complete session recovery and ordinary Vulkan display behavior remain exits.
+The separate [actual Wayland availability probe](vulkan-present.md) now
+checks physical fence/image refusal before producer time, actual presentation,
+unused reservation teardown, and validation observed enabled with zero
+errors/warnings. All 18 receipt-authority mutants are killed. Full production
+window/room continuity remains an exit.
 
 The new host lifecycle carrier passes 80/80 root mutants, with no
 equivalents, around the unchanged published session policy. It composes
@@ -254,7 +259,8 @@ no root mutation sites.
 Only a complete three-host result plus #12868's interactive parity allows
 native by default and the one-click web preview.
 
-`tools-check` was run. It reports five existing human-asset Python tools
+`tools-check` was run. It reports the two existing Nostr release/rehearsal
+Python tools and five existing human-asset Python tools
 without Firm-reason headers (`face_rig.py`, `metahuman.py`, `outfits.py`,
 `pack_human.py`, `shape.py`); none belongs to this change. New browser glue
 carries reason 1 and the drivers/server are Coax.

@@ -19,6 +19,7 @@
 extern char **environ;
 static int golden_mode;
 extern uint32_t coaxial_host_contract_version(void) __attribute__((weak));
+extern void coaxial_focus(uint32_t) __attribute__((weak));
 extern uint32_t coaxial_host_lifecycle_version(void) __attribute__((weak));
 extern void coaxial_host_lifecycle_reset(void) __attribute__((weak));
 extern int64_t coaxial_host_lifecycle_event(int32_t,int64_t,int64_t) __attribute__((weak));
@@ -149,11 +150,13 @@ uint32_t rh_frame_input(RealmHost *h, float w, float ht, float scale, float dt, 
 int rh_frame_at(RealmHost *h,float w,float ht,float scale,int64_t us,int64_t pending,int still,uint32_t *vertices){
   if(!coaxial_host_contract_version||coaxial_host_contract_version()!=1||!coaxial_host_lifecycle_version||coaxial_host_lifecycle_version()!=1||!coaxial_host_frame_offer||!coaxial_host_frame_dt)return -1;
   if(!coaxial_host_frame_offer(us,pending))return 0;
-  *vertices=rh_frame_input(h,w,ht,scale,(float)coaxial_host_frame_dt(),still);return 1;
+  // Preserve the requested count for the checked shared-renderer boundary.
+  *vertices=coaxial_frame(h->state,h->vertices,h->uniforms,w,ht,scale,(float)coaxial_host_frame_dt(),still!=0);return 1;
 }
+int rh_host_version(void){return coaxial_host_contract_version?(int)coaxial_host_contract_version():0;}
 int64_t rh_lifecycle_event(RealmHost *h,int kind,int64_t us,int64_t arg){
   if(!coaxial_host_contract_version||coaxial_host_contract_version()!=1||!coaxial_host_lifecycle_event)return 0;
-  int64_t actions=coaxial_host_lifecycle_event(kind,us,arg);if(actions&1)rh_blur(h);return actions;
+  int64_t actions=coaxial_host_lifecycle_event(kind,us,arg);if(actions&1)rh_blur(h);if(kind==2&&coaxial_focus)coaxial_focus(h->state);return actions;
 }
 int64_t rh_lifecycle_info(int field){return coaxial_host_lifecycle_info?coaxial_host_lifecycle_info(field):-1;}
 int rh_asset_data(RealmHost *h, int index, const void *bytes, size_t length) {

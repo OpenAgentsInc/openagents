@@ -1,0 +1,7 @@
+// Real SDK availability observations; all expectations remain Coax.
+#authority;
+#test "present refusal keeps the producer and admitted clock while successful presentation has no validation errors" {
+  v:=[10]int.[0,0,-1,1,1,0,1,0,0,1];#assert hvp_pass(v[..]);
+  for i:0..<10 {saved:=v[i];v[i]+=1;#assert !hvp_pass(v[..]);v[i]=saved;}#assert !hvp_pass(v[0..<9]);long:[11]int;for x,i:v {long[i]=x;}#assert !hvp_pass(long[..]);
+}
+hvp_pass :: (v:[]int)->bool #export_c {expected:=[10]int.[0,0,-1,1,1,0,1,0,0,1];if v.count!=10 {return false;}for x,i:expected {if v[i]!=x {return false;}}return true;}

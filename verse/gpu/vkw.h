@@ -29,6 +29,8 @@ typedef struct {
   void (*moved)(void *user, float x, float y);                // any motion, where it is: the person is there
   int (*key)(int code, int pressed);                          // 0 up, 1 press, 2 held-focus snapshot; return 1 to take it
   int (*button)(void *user,float x,float y,uint32_t code,int pressed); // additional physical mouse buttons
+  int (*focus)(void *user,int focused); // 1: host released input; 0: retain per-key legacy release
+  void (*shown)(void *user,int shown);
 } VkwTo;
 
 typedef struct {
@@ -45,6 +47,7 @@ typedef struct {
   struct xdg_toplevel *toplevel;
   VkSurfaceKHR vk_surface;
   int configured, closed, fullscreen;
+  int suspended;
   int32_t want_w, want_h;   // the last toplevel configure, 0 to choose
   int32_t refresh_mhz;
   double period;            // the output's frame time, in seconds
@@ -62,9 +65,30 @@ static void vkw_ping(void *d, struct xdg_wm_base *wm, uint32_t serial) { (void)d
 static const struct xdg_wm_base_listener vkw_wm_listener = {.ping = vkw_ping};
 static void vkw_xdg_configure(void *d, struct xdg_surface *x, uint32_t serial) { (void)d; xdg_surface_ack_configure(x, serial); vkw_->configured = 1; }
 static const struct xdg_surface_listener vkw_xdg_listener = {.configure = vkw_xdg_configure};
-static void vkw_top_configure(void *d, struct xdg_toplevel *t, int32_t w, int32_t h, struct wl_array *s) { (void)d; (void)t; (void)s; vkw_->want_w = w; vkw_->want_h = h; }
+static void vkw_top_configure(void *d, struct xdg_toplevel *t, int32_t w, int32_t h, struct wl_array *s) {
+  (void)d;(void)t;vkw_->want_w=w;vkw_->want_h=h;
+#ifdef XDG_TOPLEVEL_STATE_SUSPENDED_SINCE_VERSION
+  int suspended=0;uint32_t *state;wl_array_for_each(state,s)if(*state==XDG_TOPLEVEL_STATE_SUSPENDED)suspended=1;
+  if(suspended!=vkw_->suspended){vkw_->suspended=suspended;if(vkw_->to.shown)vkw_->to.shown(vkw_->to.user,!suspended);}
+#else
+  (void)s;
+#endif
+}
 static void vkw_top_close(void *d, struct xdg_toplevel *t) { (void)d; (void)t; vkw_->closed = 1; }
-static const struct xdg_toplevel_listener vkw_top_listener = {.configure = vkw_top_configure, .close = vkw_top_close};
+#ifdef XDG_TOPLEVEL_CONFIGURE_BOUNDS_SINCE_VERSION
+static void vkw_top_bounds(void *d,struct xdg_toplevel *t,int32_t w,int32_t h){(void)d;(void)t;(void)w;(void)h;}
+#endif
+#ifdef XDG_TOPLEVEL_WM_CAPABILITIES_SINCE_VERSION
+static void vkw_top_caps(void *d,struct xdg_toplevel *t,struct wl_array *caps){(void)d;(void)t;(void)caps;}
+#endif
+static const struct xdg_toplevel_listener vkw_top_listener = {.configure = vkw_top_configure, .close = vkw_top_close,
+#ifdef XDG_TOPLEVEL_CONFIGURE_BOUNDS_SINCE_VERSION
+  .configure_bounds=vkw_top_bounds,
+#endif
+#ifdef XDG_TOPLEVEL_WM_CAPABILITIES_SINCE_VERSION
+  .wm_capabilities=vkw_top_caps,
+#endif
+};
 
 static void vkw_geometry(void *d, struct wl_output *o, int32_t x, int32_t y, int32_t pw, int32_t ph, int32_t sub, const char *make, const char *model, int32_t tr) {
   (void)d; (void)o; (void)x; (void)y; (void)pw; (void)ph; (void)sub; (void)make; (void)model; (void)tr;
@@ -80,6 +104,7 @@ static const struct wl_output_listener vkw_output_listener = {.geometry = vkw_ge
 static void vkw_keymap(void *d, struct wl_keyboard *k, uint32_t f, int32_t fd, uint32_t n) { (void)d; (void)k; (void)f; (void)n; close(fd); }
 static void vkw_kb_enter(void *d, struct wl_keyboard *k, uint32_t s, struct wl_surface *w, struct wl_array *keys) {
   (void)d; (void)k; (void)s; (void)w;
+  if(vkw_->to.focus)vkw_->to.focus(vkw_->to.user,1);
   unsigned char actual[KEY_MAX+1] = {0};
   const uint32_t *codes = keys->data;
   for (size_t i=0; i<keys->size/sizeof *codes; i++) if (codes[i]<=KEY_MAX) actual[codes[i]]=1;
@@ -97,9 +122,10 @@ static void vkw_kb_enter(void *d, struct wl_keyboard *k, uint32_t s, struct wl_s
 // Focus gone: every key held is let go, so none sticks while the window is behind another.
 static void vkw_kb_leave(void *d, struct wl_keyboard *k, uint32_t s, struct wl_surface *w) {
   (void)d; (void)k; (void)s; (void)w;
+  int released=vkw_->to.focus?vkw_->to.focus(vkw_->to.user,0):0;
   for (int c = 0; c <= KEY_MAX; c++) {
     if (vkw_->forwarded_down[c]) { if (vkw_->to.key) vkw_->to.key(c, 0); vkw_->forwarded_down[c] = 0; }
-    if (vkw_->keys_down[c]) { realm_key_up(NULL, vkw_->keys_down[c]); vkw_->keys_down[c] = 0; }
+    if (vkw_->keys_down[c]) { if(!released)realm_key_up(NULL, vkw_->keys_down[c]);vkw_->keys_down[c] = 0; }
   }
   vkw_->shift = 0;
 }
@@ -191,7 +217,11 @@ static void vkw_global(void *d, struct wl_registry *r, uint32_t name, const char
   (void)d;
   if (!strcmp(iface, wl_compositor_interface.name)) vkw_->compositor = wl_registry_bind(r, name, &wl_compositor_interface, 4);
   else if (!strcmp(iface, xdg_wm_base_interface.name)) {
-    vkw_->wm = wl_registry_bind(r, name, &xdg_wm_base_interface, 2);
+#ifdef XDG_TOPLEVEL_STATE_SUSPENDED_SINCE_VERSION
+    vkw_->wm = wl_registry_bind(r, name, &xdg_wm_base_interface, version<6?version:6);
+#else
+    vkw_->wm = wl_registry_bind(r, name, &xdg_wm_base_interface, version<2?version:2);
+#endif
     xdg_wm_base_add_listener(vkw_->wm, &vkw_wm_listener, NULL);
   } else if (!strcmp(iface, wl_seat_interface.name) && !vkw_->seat) {
     vkw_->seat = wl_registry_bind(r, name, &wl_seat_interface, version < 5 ? version : 5);

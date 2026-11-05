@@ -103,6 +103,9 @@ static double now_s(void) {
   clock_gettime(CLOCK_MONOTONIC, &t);
   return t.tv_sec + t.tv_nsec / 1e9;
 }
+static int64_t now_us(void){struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return (int64_t)t.tv_sec*1000000+t.tv_nsec/1000;}
+static int to_focus(void *user,int focused){(void)user;if(rh_host_version()!=1)return 0;rh_lifecycle_event(&H,focused?2:3,now_us(),0);return 1;}
+static void to_shown(void *user,int shown){(void)user;rh_lifecycle_event(&H,shown?5:4,now_us(),0);rh_send(&H,shown?602:601,"",0);}
 
 // 16 random hex digits from the kernel.
 static void random_id(char out[17]) {
@@ -512,7 +515,7 @@ int main(int argc, char **argv) {
   rh_deliver(&H, nextra, sizes);
 #endif
   // one frame so the stores exist at their sizes before the spec's buffers are made
-  hud_vertices = produce_frame(320,180,scale,1.0f/60);
+  if(headless||rh_host_version()!=1)hud_vertices = produce_frame(320,180,scale,1.0f/60);
 #ifndef AETHYR_RENDER_TYPED
   if (chdir(dir)) { fprintf(stderr, "vk-realm: no directory %s\n", dir); return 1; }
 #endif
@@ -524,7 +527,7 @@ int main(int argc, char **argv) {
   if (headless) vkc_open(&v);
   else if (windowed) {
     // the window's size, or the draw size, or 1600x900; the realm draws at the window's first size
-    VkwTo wto = {to_pointer_window, to_wheel, NULL, to_moved, vkdesk_key,to_extra_button};
+    VkwTo wto = {to_pointer_window, to_wheel, NULL, to_moved, vkdesk_key,to_extra_button,to_focus,to_shown};
     vkw_open(&v, &win, coaxial_window_title?coaxial_window_title():"Verse", w ? w : 1600, h ? h : 900, fullscreen, wto);
     if(coaxial_window_app_id)xdg_toplevel_set_app_id(win.toplevel,coaxial_window_app_id());
     screen.period = win.period;
@@ -666,7 +669,7 @@ int main(int argc, char **argv) {
           else { why = "the window was closed"; break; }
         }
         // a new size from the compositor: a new swapchain; the realm keeps drawing at its size
-        if (win.want_w > 0 && win.want_h > 0 && ((uint32_t)win.want_w != p.w || (uint32_t)win.want_h != p.h)) vkp_resize(&v, &p, (uint32_t)win.want_w, (uint32_t)win.want_h);
+        if (win.want_w > 0 && win.want_h > 0 && ((uint32_t)win.want_w != p.w || (uint32_t)win.want_h != p.h)) {rh_lifecycle_event(&H,1,now_us(),0);vkp_resize(&v, &p, (uint32_t)win.want_w, (uint32_t)win.want_h);}
       } else {
         if (keyboards_read(NULL)) { why = "Escape was held"; break; }
         mice_read(&mice, (float)w, (float)h, &to);
@@ -679,21 +682,21 @@ int main(int argc, char **argv) {
         int want = phase == 0 ? 'w' : phase == 1 ? 'd' : 'w';
         if (held != want) { if (held) coaxial_key_up(H.state, held, 0); coaxial_key(H.state, want, 0); held = want; }
       }
-      vkp_wait(&v, &p);
+      // Platform/network work continues even when the compositor has no
+      // image or the preceding submission still owns the mutable buffers.
+      touch_activity(t);agents_poll(t);vkdesk_pump(&desk,t);os_requests();
+      vkhands_poll(&hands,t,p.w,p.h,hand_to);rh_net_poll(&H);rh_replay_poll(&H);
+      if(windowed&&win.suspended){struct timespec nap={0,2000000};nanosleep(&nap,NULL);continue;}
+      int affordable=vkp_reserve(&v,&p);
+      if(affordable<0){vkp_resize(&v,&p,p.w,p.h);continue;}
+      if(!affordable){struct timespec nap={0,2000000};nanosleep(&nap,NULL);continue;}
       t = now_s();
       static double benchmark_last;
       double benchmark_interval=benchmark_last?t-benchmark_last:0;benchmark_last=t;
       double benchmark_cpu_start=benchmark_file?benchmark_thread_cpu():0;
-      touch_activity(t);
-      agents_poll(t);
-      vkdesk_pump(&desk, t);
-      os_requests();
-      vkhands_poll(&hands, t, p.w, p.h, hand_to);
       double dt = t - prev;
       prev = t;
-      if (dt > 0.1) dt = 0.1;
-      rh_net_poll(&H);   // the answers that came, before the realm's step
-      rh_replay_poll(&H);
+      if (rh_host_version()!=1&&dt > 0.1) dt = 0.1;
       double replay_s=rh_replay_seconds(),input_started=0;
       static double next_input=40,release_input;
       if(benchmark_file){
@@ -701,7 +704,9 @@ int main(int argc, char **argv) {
         if(replay_s>=next_input&&replay_s<70){input_started=now_s();coaxial_key(H.state,'w',0);release_input=replay_s+.04;next_input+=5;}
         if(release_input>0&&replay_s>=release_input){coaxial_key_up(H.state,'w',0);release_input=0;}
       }
-      hud_vertices = with_cursor(produce_frame((float)w,(float)h,scale,(float)dt));
+      uint32_t requested=0;int offer=rh_frame_at(&H,(float)w,(float)h,scale,now_us(),0,0,&requested);
+      if(!offer){struct timespec nap={0,2000000};nanosleep(&nap,NULL);continue;}
+      hud_vertices = with_cursor(offer<0?produce_frame((float)w,(float)h,scale,(float)dt):requested);
 #ifdef AETHYR_RENDER_TYPED
       if(!rhgr_frame(s,hud_vertices,w,h,0,COAX_RenderTextureFormat_rgba16f,render_error,sizeof render_error)){fprintf(stderr,"vk-realm: %s\n",render_error);return 1;}last[0]=rhgr_screen(s);
 #else

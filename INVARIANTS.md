@@ -66,6 +66,16 @@ old completion. All 21 receipt-authority mutants are killed; source fencing
 passes. Ordinary 8-bit Vulkan parity and complete host qualification remain
 open, so the desktop default remains web.
 
+The Vulkan presenter reserves its actual completed frame slot and WSI image
+before producer advancement, with zero-timeout acquisition. The ordinary
+loop keeps platform/network polling outside that wait; opted-in faces hand
+the shared Coax offer's delta through without another clamp. An unused image
+reservation consumes its acquire semaphore before resize or close. The real
+Wayland SDK probe observes refusal without a producer call or clock change,
+presentation, unused-reservation teardown and validation enabled with zero
+errors/warnings; all 18 receipt mutants are killed. Full production window
+and room-continuity qualification remains separate.
+
 ## The indexed KV arena preserves the durable v1 contract
 
 `coax/lib/bitcoin/kvskip.coax` is an optional native representation behind

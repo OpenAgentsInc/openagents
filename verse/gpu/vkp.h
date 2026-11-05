@@ -20,6 +20,8 @@ typedef struct {
   VkCommandBuffer cmd;
   VkFence fence;
   VkSemaphore acquired;
+  uint32_t reserved_image;
+  int reserved;
   int shoot;            // copy the next presented image into shot
   VkcBuffer shot;       // w*h*4 bytes once shot_ready
   int shot_ready;
@@ -34,6 +36,10 @@ void vkp_open(Vkc *v, Vkp *p, VkSurfaceKHR surface, uint32_t w, uint32_t h);
 void vkp_resize(Vkc *v, Vkp *p, uint32_t w, uint32_t h);
 // Waits for the last frame, so its vertices and push constants can change.
 void vkp_wait(Vkc *v, Vkp *p);
+// Try the actual frame fence and WSI image without blocking. 1 reserves
+// this physical slot, 0 is unavailable, -1 requires swapchain recreation.
+// Call before producer advancement; present consumes this reservation.
+int vkp_reserve(Vkc *v,Vkp *p);
 // Draws the passes into the target, blits it and presents. `before` runs just
 // before the present (a Wayland frame callback rides on its commit). It
 // returns 1 when the swapchain is out of date (resize and draw again), else 0.

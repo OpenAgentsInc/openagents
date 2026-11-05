@@ -54,6 +54,7 @@ uint32_t rh_frame_input(RealmHost *h, float w, float ht, float scale, float dt, 
 // Version1 clock offer: -1 unsupported,0 refused,1 produced (even zero vertices).
 // The SDK caller reports actual affordability before offering producer time.
 int rh_frame_at(RealmHost *h,float w,float ht,float scale,int64_t monotonic_us,int64_t pending,int still,uint32_t *vertices);
+int rh_host_version(void);
 // Shared lifecycle actions; released input is applied to the actual producer.
 int64_t rh_lifecycle_event(RealmHost *h,int kind,int64_t monotonic_us,int64_t arg);
 int64_t rh_lifecycle_info(int field);

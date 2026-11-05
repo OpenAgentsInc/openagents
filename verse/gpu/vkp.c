@@ -71,8 +71,16 @@ void vkp_open(Vkc *v, Vkp *p, VkSurfaceKHR surface, uint32_t w, uint32_t h) {
   CHECK(vkCreateSemaphore(v->dev, &semi, NULL, &p->acquired));
 }
 
+static void consume_reserved(Vkc *v,Vkp *p){
+  if(p->reserved){
+    // Consume the concrete acquire semaphore before retiring its swapchain.
+    VkPipelineStageFlags stage=VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    VkSubmitInfo wait={.sType=VK_STRUCTURE_TYPE_SUBMIT_INFO,.waitSemaphoreCount=1,.pWaitSemaphores=&p->acquired,.pWaitDstStageMask=&stage};
+    CHECK(vkQueueSubmit(v->queue,1,&wait,VK_NULL_HANDLE));p->reserved=0;
+  }
+}
 void vkp_resize(Vkc *v, Vkp *p, uint32_t w, uint32_t h) {
-  CHECK(vkDeviceWaitIdle(v->dev));
+  consume_reserved(v,p);CHECK(vkDeviceWaitIdle(v->dev));
   make_chain(v, p, w, h);
 }
 
@@ -82,6 +90,21 @@ void vkp_wait(Vkc *v, Vkp *p) {
   p->waited = now_s() - t;
   // The shot's copy finished with the frame that took it.
   if (p->shoot == 2) { p->shoot = 0; p->shot_ready = 1; }
+}
+
+int vkp_reserve(Vkc *v,Vkp *p){
+  if(p->reserved)return 1;
+  VkResult ready=vkGetFenceStatus(v->dev,p->fence);
+  if(ready==VK_NOT_READY)return 0;
+  if(ready!=VK_SUCCESS)CHECK(ready);
+  if(p->shoot==2){p->shoot=0;p->shot_ready=1;}
+  double began=now_s();
+  VkResult got=vkAcquireNextImageKHR(v->dev,p->chain,0,p->acquired,VK_NULL_HANDLE,&p->reserved_image);
+  p->acquiring=now_s()-began;
+  if(got==VK_NOT_READY||got==VK_TIMEOUT)return 0;
+  if(got==VK_ERROR_OUT_OF_DATE_KHR)return -1;
+  if(got!=VK_SUCCESS&&got!=VK_SUBOPTIMAL_KHR)CHECK(got);
+  p->reserved=1;return 1;
 }
 
 static void barrier(VkCommandBuffer cmd, VkImage image, VkImageLayout from, VkImageLayout to, VkAccessFlags src, VkAccessFlags dst,
@@ -98,10 +121,13 @@ static int frame(Vkc *v, Vkp *p, void (*record)(VkCommandBuffer, void *), void *
                  VkImageLayout layout, VkPipelineStageFlags stage, VkAccessFlags access, VkFilter filter, void (*before)(void *), void *arg) {
   double t0 = now_s();
   uint32_t image;
-  VkResult got = vkAcquireNextImageKHR(v->dev, p->chain, UINT64_MAX, p->acquired, VK_NULL_HANDLE, &image);
-  p->acquiring = now_s() - t0;
-  if (got == VK_ERROR_OUT_OF_DATE_KHR) return 1;
-  if (got != VK_SUCCESS && got != VK_SUBOPTIMAL_KHR) CHECK(got);
+  if(p->reserved){image=p->reserved_image;p->reserved=0;}
+  else {
+    VkResult got = vkAcquireNextImageKHR(v->dev, p->chain, UINT64_MAX, p->acquired, VK_NULL_HANDLE, &image);
+    p->acquiring = now_s() - t0;
+    if (got == VK_ERROR_OUT_OF_DATE_KHR) return 1;
+    if (got != VK_SUCCESS && got != VK_SUBOPTIMAL_KHR) CHECK(got);
+  }
   CHECK(vkResetFences(v->dev, 1, &p->fence));
 
   VkCommandBuffer cmd = p->cmd;
@@ -168,6 +194,7 @@ int vkp_present(Vkc *v, Vkp *p, void (*record)(VkCommandBuffer, void *), void *u
 }
 
 void vkp_close(Vkc *v, Vkp *p) {
+  consume_reserved(v,p);
   CHECK(vkDeviceWaitIdle(v->dev));
   vkDestroySemaphore(v->dev, p->acquired, NULL);
   vkDestroyFence(v->dev, p->fence, NULL);

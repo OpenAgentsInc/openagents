@@ -1,0 +1,20 @@
+// The actual Wayland/Vulkan SDK must refuse physical frame resources before
+// offering the shared clock or calling the producer. No shader is needed:
+// the SDK target is cleared by a zero-draw render pass.
+#import "Basic";
+#load "lifecycle-conformance.coax";
+#load "present-conformance.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/json/json.coax";
+hvp_open :: ()->int #foreign;hvp_close :: () #foreign;
+hvp_busy :: (busy:bool) #foreign;hvp_offer :: (us:int)->int #foreign;
+hvp_count :: ()->int #foreign;hvp_clock :: ()->int #foreign;
+hvp_present :: ()->int #foreign;hvp_validation :: (kind:int)->int #foreign;
+hvp_reserve_only :: ()->int #foreign;
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=1||hvp_open()!=1 {return 2;}defer {hvp_close();}
+  hvp_busy(true);v:[10]int;v[0]=hvp_offer(0);v[1]=hvp_count();v[2]=hvp_clock();hvp_busy(false);
+  v[3]=hvp_offer(0);v[4]=hvp_count();v[5]=hvp_clock();if hvp_present()!=1 {return 1;}v[6]=hvp_reserve_only();hvp_close();v[7]=hvp_validation(0);v[8]=hvp_validation(1);v[9]=hvp_validation(2);
+  out:[8192]u8;o:[1]Jo;jo_start(o[..],out[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.host.present-affordability.v1");jo_key(o[..],"host");jo_str(o[..],"vulkan");jo_key(o[..],"observations");jo_arr(o[..]);for x:v {jo_int(o[..],x);}jo_end(o[..]);jo_key(o[..],"passed");jo_bool(o[..],hvp_pass(v[..]));jo_end(o[..]);if o[0].bad||!fs_write(args_at(a[..],0),jo_text(o[..])) {return 1;}print("Actual Wayland/Vulkan frame affordability: %\n",hvp_pass(v[..]));return ifx hvp_pass(v[..]) then 0 else 1;
+}
