@@ -59,13 +59,17 @@ FX_SPARK :: 1; FX_PUFF :: 2; FX_BURST :: 3; FX_DOWN :: 4; FX_FIXED :: 5; FX_PULS
 // HEAD a thin fast tracer, CORE a heavy slow bolt (metres a second).
 SHOT_SPEED :: [3] f32.[60, 150, 38];
 
-OUTBOX_CAP :: 256;
+OUTBOX_CAP :: 2048;
 MSG_KEPT :: 4;           // host.js: what the realm's slot kept, on each visit
 ACT_NAVIGATE :: 1;       // host.js: go to the outbox's URL
 ACT_KEEP :: 4;           // host.js: keep the outbox's text in the realm's slot
-SAVE_TAG :: "deadgears-save 2";
+SAVE_TAG :: "deadgears-save 3";
+SAVE_TAG_2 :: "deadgears-save 2";   // before the creatures' memories were kept
 SAVE_TAG_1 :: "deadgears-save 1";   // before the fight was kept mid-wave
 SAVES :: 11;
+SAVE_MINDS :: 20;      // creatures whose memories a line keeps: the ones LEFT names
+SAVE_MIND_ITEMS :: 3;  // what one creature remembers of you: a sight, a sound and a touch
+SAVE_MAX :: SAVES + 2 + SAVE_MINDS * (3 + SAVE_MIND_ITEMS * 5);
 
 KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7; KEY_SHIFT :: -13;
 DG_RUN_BY_DEFAULT :: true;   // aethyr/player.coax RUN_BY_DEFAULT: moving runs, Shift (HOLD_RUN) walks
@@ -272,10 +276,14 @@ say :: (s: [] DeadGears, text: string) {
 }
 
 // ---- the save: one line, kept at each wave and repair, and when you leave
-//   deadgears-save 2 WAVE REPAIRS PHASE HEALTH X Z YAW MODE KILLS LEFT REACTOR SUM
+//   deadgears-save 3 WAVE REPAIRS PHASE HEALTH X Z YAW MODE KILLS LEFT REACTOR STEP N MINDS SUM
 // LEFT has a bit set for each of the wave's creatures still alive (by spawn
-// order), so leaving mid-wave and coming back resumes it. Version 1 lines
-// (without LEFT and REACTOR) still open, at the start of their wave.
+// order), so leaving mid-wave and coming back resumes it. STEP is the fight's
+// step count, and N creatures' memories of you follow, each
+//   SEQ COUNT LATEST_AGE (KIND X Y Z AGE) * COUNT
+// with ages in steps before STEP (#12854). Version 2 lines (no memories) open
+// with every creature knowing nothing; version 1 lines (without LEFT and
+// REACTOR) at the start of their wave.
 // X, Z and YAW in thousandths; SUM checks the rest.
 
 save_sum :: (v: [] int) -> int {
@@ -296,18 +304,73 @@ save_values :: (s: [] DeadGears) -> [SAVES] int {
   v[10] = cast(int) (dg_reactor_health(g) + 0.5);
   return v;
 }
-save_line :: (s: [] DeadGears, out: [] u8) -> int {
+// The values after the tag: save_values, then STEP, N and the memories. Returns how many.
+save_all :: (s: [] DeadGears, out: [] int) -> int {
+  g := game(s);
   v := save_values(s);
+  for i: 0..<SAVES { out[i] = v[i]; }
+  step := g.st[0].step;
+  out[SAVES] = step;
+  k := SAVES + 2; minds := 0;
+  for i: 0..<ecs_high(g.e) {
+    if !alive_mutant(g, i) || g.mutant[i].seq < 0 || g.mutant[i].seq >= SAVE_MINDS { continue; }
+    m := g.mind[i];
+    count := 0;
+    for j: 0..<m.count { if m.items[j].source == MIND_YOU && count < SAVE_MIND_ITEMS { count += 1; } }
+    if count == 0 { continue; }
+    out[k] = g.mutant[i].seq; out[k + 1] = count; out[k + 2] = step - m.latest; k += 3;
+    put_n := 0;
+    for j: 0..<m.count {
+      one := m.items[j];
+      if one.source != MIND_YOU || put_n >= count { continue; }
+      out[k] = cast(int) one.kind;
+      out[k + 1] = cast(int) floor(one.at.x * 1000 + 0.5); out[k + 2] = cast(int) floor(one.at.y * 1000 + 0.5); out[k + 3] = cast(int) floor(one.at.z * 1000 + 0.5);
+      out[k + 4] = step - one.tick; k += 5; put_n += 1;
+    }
+    minds += 1;
+  }
+  out[SAVES + 1] = minds;
+  return k;
+}
+save_line :: (s: [] DeadGears, out: [] u8) -> int {
+  v: [SAVE_MAX] int;
+  k := save_all(s, v[..]);
   n := put(out, 0, SAVE_TAG);
-  for i: 0..<SAVES { n = put(out, n, " "); n = put_int(out, n, v[i]); }
+  for i: 0..<k { n = put(out, n, " "); n = put_int(out, n, v[i]); }
   n = put(out, n, " ");
-  return put_int(out, n, save_sum(v[..]));
+  return put_int(out, n, save_sum(v[0..<k]));
 }
 keep_save :: (s: [] DeadGears) {
   if s[0].golden { return; }
   s[0].out_n = save_line(s, s[0].outbox[..]);
   s[0].action = ACT_KEEP;
   s[0].saves += 1;
+}
+
+// Gives the creatures back what they remembered of you, from a version 3 line's values; false
+// when a memory doesn't fit its caps or its steps. A creature named twice keeps the first.
+restore_minds :: (g: Game, v: [] int) -> bool {
+  step := v[SAVES];
+  g.st[0].step = step;
+  k := SAVES + 2;
+  for c: 0..<v[SAVES + 1] {
+    seq := v[k]; count := v[k + 1]; latest := step - v[k + 2];
+    if v[k + 2] < 0 || latest < 0 { return false; }
+    m: Memory;
+    m.latest = latest;
+    for j: 0..<count {
+      b := k + 3 + j * 5;
+      kind := v[b];
+      if kind < cast(int) StimulusKind.sight || kind > cast(int) StimulusKind.touch || v[b + 4] < 0 || step - v[b + 4] > latest { return false; }
+      m.items[j] = Stimulus.{kind = cast(StimulusKind) kind, source = MIND_YOU, at = world_point(f32(v[b + 1]) / 1000, f32(v[b + 2]) / 1000, f32(v[b + 3]) / 1000), tick = step - v[b + 4]};
+    }
+    m.count = count;
+    for i: 0..<ecs_high(g.e) {
+      if alive_mutant(g, i) && g.mutant[i].seq == seq && g.mind[i].count == 0 { g.mind[i] = m; break; }
+    }
+    k += 3 + count * 5;
+  }
+  return true;
 }
 
 read_int :: (text: string, at: [] int) -> int {
@@ -328,14 +391,28 @@ restore :: (s: [] DeadGears, text: string) -> bool {
   started(s);
   tag := SAVE_TAG;
   values := SAVES;
+  minds := false;
   if text.count < tag.count + 2 { return false; }
-  if text[0..<tag.count] != tag {
-    if text[0..<tag.count] != SAVE_TAG_1 { return false; }
-    values = 9;
-  }
+  if text[0..<tag.count] == tag { minds = true; }
+  else if text[0..<tag.count] == SAVE_TAG_2 { values = SAVES; }
+  else if text[0..<tag.count] == SAVE_TAG_1 { values = 9; }
+  else { return false; }
   at: [1] int; at[0] = tag.count;
-  v: [SAVES] int;
+  v: [SAVE_MAX] int;
   for i: 0..<values { v[i] = read_int(text, at[..]); if at[0] < 0 { return false; } }
+  if minds {
+    // STEP, N, then N memories, each within its caps
+    for i: SAVES..<SAVES + 2 { v[i] = read_int(text, at[..]); if at[0] < 0 { return false; } }
+    if v[SAVES] < 0 || v[SAVES + 1] < 0 || v[SAVES + 1] > SAVE_MINDS { return false; }
+    values = SAVES + 2;
+    for c: 0..<v[SAVES + 1] {
+      for i: values..<values + 3 { v[i] = read_int(text, at[..]); if at[0] < 0 { return false; } }
+      if v[values] < 0 || v[values] >= SAVE_MINDS || v[values + 1] < 1 || v[values + 1] > SAVE_MIND_ITEMS { return false; }
+      items := v[values + 1];
+      for i: values + 3..<values + 3 + items * 5 { v[i] = read_int(text, at[..]); if at[0] < 0 { return false; } }
+      values += 3 + items * 5;
+    }
+  }
   sum := read_int(text, at[..]);
   if at[0] < 0 || sum != save_sum(v[0..<values]) { return false; }
   if values < SAVES { v[9] = -1; v[10] = 100; }
@@ -365,6 +442,7 @@ restore :: (s: [] DeadGears, text: string) -> bool {
   me := me_slot(g);
   g.hp[me] = clamp(f32(v[3]), 1, 100);
   stand_at(s, v3(x, 0, z), f32(v[6]) / 1000);
+  if minds && !restore_minds(g, v[..]) { return false; }
   g.ev[0] = 0;
   s[0].last_phase = phase; s[0].last_wave = at_wave; s[0].deck_hour = -1;
   s[0].restored = true;
@@ -2390,6 +2468,55 @@ tag_end :: () -> int { return SAVE_TAG.count + 1; }
   was: [1] DeadGears;
   #assert restore(was[..], cast(string) old[0..<m]);
   #assert game(was[..]).st[0].wave == 2 && dg_alive_mutants(game(was[..])) == dg_wave_count(2);
+}
+
+#test "a kept line keeps what the creatures remember of you; an older line opens with them knowing nothing" #steps 210000000 {
+  s: [1] DeadGears;
+  started(s[..]);
+  g := game(s[..]);
+  n := frame_at(s[..], 1280, 800, 1, 0.016);
+  for i: 0..<20 { n = frame_at(s[..], 1280, 800, 1, 0.05); }
+  knows := 0;
+  for i: 0..<ecs_high(g.e) { if alive_mutant(g, i) && g.mind[i].count > 0 { knows += 1; } }
+  #assert knows > 0 && g.st[0].step > 0;
+  deadgears_message(s[..], HOST_HIDDEN, "");
+  line := cast(string) s[0].outbox[0..<s[0].out_n];
+  #assert s[0].out_n > SAVE_TAG.count && line[0..<SAVE_TAG.count] == SAVE_TAG;
+  back: [1] DeadGears;
+  #assert restore(back[..], line);
+  h := game(back[..]);
+  #assert h.st[0].step == g.st[0].step;
+  same := 0;
+  for i: 0..<ecs_high(g.e) {
+    if !alive_mutant(g, i) || g.mind[i].count == 0 { continue; }
+    for j: 0..<ecs_high(h.e) {
+      if !alive_mutant(h, j) || h.mutant[j].seq != g.mutant[i].seq { continue; }
+      a := memory_recall(g.mind[i], MIND_SENSES, MIND_YOU, g.st[0].step); b := memory_recall(h.mind[j], MIND_SENSES, MIND_YOU, h.st[0].step);
+      if a.known == b.known && a.age == b.age && a.kind == b.kind && abs(a.at.x - b.at.x) < 0.001 && abs(a.at.z - b.at.z) < 0.001 && h.mind[j].count == g.mind[i].count { same += 1; }
+    }
+  }
+  #assert same == knows;
+  // the same fight as a version 2 line: it opens, and no creature knows where you are
+  v := save_values(s[..]);
+  old: [OUTBOX_CAP] u8;
+  m := put(old[..], 0, SAVE_TAG_2);
+  for i: 0..<SAVES { m = put(old[..], m, " "); m = put_int(old[..], m, v[i]); }
+  m = put(old[..], m, " "); m = put_int(old[..], m, save_sum(v[..]));
+  was: [1] DeadGears;
+  #assert restore(was[..], cast(string) old[0..<m]);
+  w := game(was[..]);
+  #assert w.st[0].step == 0 && dg_alive_mutants(w) == dg_alive_mutants(g);
+  for i: 0..<ecs_high(w.e) { if alive_mutant(w, i) { #assert w.mind[i].count == 0 && !dg_recall(w, i).known; } }
+  // a memory past its caps doesn't open
+  vals: [SAVE_MAX] int;
+  k := save_all(s[..], vals[..]);
+  vals[SAVES + 3] = SAVE_MIND_ITEMS + 1;   // the first memory's COUNT
+  bad: [OUTBOX_CAP] u8;
+  m = put(bad[..], 0, SAVE_TAG);
+  for i: 0..<k { m = put(bad[..], m, " "); m = put_int(bad[..], m, vals[i]); }
+  m = put(bad[..], m, " "); m = put_int(bad[..], m, save_sum(vals[0..<k]));
+  other: [1] DeadGears;
+  #assert !restore(other[..], cast(string) bad[0..<m]);
 }
 
 #test "a cleared wave says repair and keeps; Again starts over" #steps 30000000 {

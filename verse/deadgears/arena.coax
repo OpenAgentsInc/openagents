@@ -222,7 +222,12 @@ Nav :: struct {
   flows: [3] Flow;         // 0 to you (the mutants), 1 where the support engineer heads, 2 to the reactor
   ready: bool;
   bakes: int;
+  // The search budget (#12854): flows a step may bake again, -1 for no limit. A mutant whose goal
+  // needs one past the budget walks straight at it this step; `refused` counts those.
+  budget: int = -1;
+  refused: int;
 }
+NAV_STEP_BAKES :: 2;   // flows the mutants may bake in one step: each is a search of the whole deck
 
 nav_cell_x :: (c: int) -> int { return c % NAV_NX; }
 nav_cell_z :: (c: int) -> int { return c / NAV_NX; }
@@ -340,6 +345,8 @@ nav_head_for :: (n: [] Nav, a: [] Arena, f: int, from: Point, goal: Point) -> Po
   if !n[0].ready || nav_straight(a, from, goal) { return goal; }
   kx := floor(goal.x + 0.5); kz := floor(goal.z + 0.5);
   if kx != n[0].flows[f].key_x || kz != n[0].flows[f].key_z {
+    if n[0].budget == 0 { n[0].refused += 1; return goal; }
+    if n[0].budget > 0 { n[0].budget -= 1; }
     n[0].flows[f].key_x = kx; n[0].flows[f].key_z = kz;
     ok := nav_flow_to(n, f, v3(kx, 0, kz), 80);
   }

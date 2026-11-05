@@ -97,6 +97,9 @@ Mutant :: struct {
   air: f32;        // height a detached part is still dropping from
   part: int = -1;  // a detached head (1) or claw (0)
   seq: int;        // spawn order in the wave
+  // getting stuck (#12854): the nearest it has come to its goal this try, steps since it came
+  // nearer, tries so far, and the goal it is trying for
+  best: f32 = 1000000; since: int; tries: int; aim: Point;
 }
 Cover :: struct { w: f32 = 1; d: f32 = 1; h: f32 = 1; }
 Cargo :: struct { kind: int; held: bool; thrown: bool; }
@@ -130,6 +133,8 @@ State :: struct {
   held: int = -1;
   next_seq: int;
   skip: bool;      // no fighting this step (paused, over, or repairing)
+  step: int;       // fighting steps run: the clock a mutant's memory keeps (#12854)
+  retries: int; stops: int;   // mutants that got stuck and planned again, and that gave up
 }
 
 Event :: struct { kind: int; who: int; n: int; amount: f32; at: Point; to: Point; flag: bool; }
@@ -145,6 +150,7 @@ Store :: struct {
   hp: [DG_CAP] f32; hp_max: [DG_CAP] f32; hurt_at: [DG_CAP] f32; team: [DG_CAP] int; ttl: [DG_CAP] f32;
   mutant: [DG_CAP] Mutant; cover: [DG_CAP] Cover; cargo: [DG_CAP] Cargo; bolt: [DG_CAP] f32; beam: [DG_CAP] Beam;
   radius: [DG_CAP] f32; progress: [DG_CAP] f32;
+  mind: [DG_CAP] Memory;
   st: [1] State; input: [1] Input; clock: [1] Clock;
   arena: [1] Arena; nav: [1] Nav;
   events: [DG_EVENTS] Event; ev: [2] int;
@@ -158,6 +164,7 @@ Game :: struct {
   hp: [] f32; hp_max: [] f32; hurt_at: [] f32; team: [] int; ttl: [] f32;
   mutant: [] Mutant; cover: [] Cover; cargo: [] Cargo; bolt: [] f32; beam: [] Beam;
   radius: [] f32; progress: [] f32;
+  mind: [] Memory;     // what each mutant remembers sensing of you
   st: [] State; input: [] Input; clock: [] Clock;
   arena: [] Arena; nav: [] Nav;
   events: [] Event; ev: [] int;
@@ -173,6 +180,7 @@ dg_bind :: (s: [] Store) -> Game {
   g.hp = s[0].hp[..]; g.hp_max = s[0].hp_max[..]; g.hurt_at = s[0].hurt_at[..]; g.team = s[0].team[..]; g.ttl = s[0].ttl[..];
   g.mutant = s[0].mutant[..]; g.cover = s[0].cover[..]; g.cargo = s[0].cargo[..]; g.bolt = s[0].bolt[..]; g.beam = s[0].beam[..];
   g.radius = s[0].radius[..]; g.progress = s[0].progress[..];
+  g.mind = s[0].mind[..];
   g.st = s[0].st[..]; g.input = s[0].input[..]; g.clock = s[0].clock[..];
   g.arena = s[0].arena[..]; g.nav = s[0].nav[..];
   g.events = s[0].events[..]; g.ev = s[0].ev[..];
@@ -282,6 +290,7 @@ dg_spawn_mutant :: (g: Game, kind: int, x: f32, z: f32, part: int) -> int {
   g.st[0].next_seq += 1;
   g.mutant[i] = m;
   g.scale[i] = m.size;
+  g.mind[i] = Memory.{};   // it knows nothing of you until it senses you
   return e;
 }
 
@@ -981,11 +990,93 @@ ROLE_CHASE :: 0;    // straight at you, round the covers
 ROLE_FLANK :: 1;    // a runner: swings out to your side, then closes
 ROLE_HOLD :: 2;     // the brute: stands off where it sees you and shoots
 ROLE_REACTOR :: 3;  // a crawler: makes for the reactor while you are far from it
+ROLE_IDLE :: 4;     // it doesn't know where you are: it prowls round the reactor, which you defend
+
+// ---- what a mutant knows (#12854): it acts on where it last sensed you, not where you are. It
+// senses you on the fighting step through Aethyr's senses (aethyr/ai/stimulus.coax): sight across
+// the deck at chest height (low cover lets it peek, as you do), your shots within MIND_HEAR, and
+// touch. Out of sight it goes to the spot it last sensed you at, turns there looking for you, and
+// gives up when the memory is MIND_SENSES.forget steps old (4 s): then it prowls round the
+// reactor, the ship's heart you defend (a crawler makes for it to wreck it). Gunfire carries:
+// your shots are heard across the deck. Sensing you again refreshes the memory. A memory keeps SENSE_MEMORY (8)
+// stimuli at most; of you it keeps one of each kind, so 3.
+MIND_SENSES :: Senses.{sight = 40, eye = 1.3, touch = 1.6, forget = 240};
+MIND_HEAR :: 40.0;     // metres your shots are heard: the whole deck
+PROWL_STEPS :: 480;    // steps a prowler keeps to one side of the reactor: 8 s
+MIND_SEARCH :: 1.5;    // metres from the remembered spot at which it stops and looks round (a chaser stops 1.2 m short)
+MIND_TURN :: 3.0;      // radians a second it turns while it looks
+MIND_YOU :: 1;         // your source number in its memory
+
+// Getting stuck: a mutant that comes no nearer its goal (by STUCK_GAIN) for STUCK_STEPS steps
+// plans its way again (a fresh search of the deck); after STUCK_TRIES tries it stops and stands
+// until its goal moves more than STUCK_MOVE metres. Every mutant walks the deck's grid: Dead
+// Gears has no flying or swimming creatures, so no flying or swimming profile is claimed.
+STUCK_STEPS :: 45;     // 0.75 s
+STUCK_GAIN :: 0.05;    // metres
+STUCK_TRIES :: 3;
+STUCK_MOVE :: 1.0;     // metres
+
+// A mutant going for `goal`: when the goal has moved on more than STUCK_MOVE metres, it starts
+// trying again. It walks while it has tries left (tries < STUCK_TRIES).
+dg_aim :: (m: Mutant, goal: Point) -> Mutant {
+  out := m;
+  if flat(goal, m.aim) > f32(STUCK_MOVE) { out.aim = goal; out.best = 1000000; out.since = 0; out.tries = 0; }
+  return out;
+}
+// After mutant slot i walked for `goal` on flow `flow`: came nearer, or one step more stuck. A try
+// that runs out plans again: the flow is searched afresh on its next use.
+dg_progress :: (g: Game, i: int, m: Mutant, flow: int, goal: Point) -> Mutant {
+  out := m;
+  dist := flat(g.pos[i], goal);
+  if dist < out.best - f32(STUCK_GAIN) { out.best = dist; out.since = 0; return out; }
+  out.since += 1;
+  if out.since < STUCK_STEPS { return out; }
+  out.tries += 1; out.since = 0; out.best = 1000000;
+  if out.tries < STUCK_TRIES { g.st[0].retries += 1; g.nav[0].flows[flow].key_x = 1000000000; }
+  else { g.st[0].stops += 1; }
+  return out;
+}
+
+// A wall, rubble or crate dropped on the deck at (x, z): the arena and the walking grid are built
+// again, and every route is searched afresh.
+dg_add_cover :: (g: Game, x: f32, z: f32, w: f32, d: f32, h: f32) -> int {
+  e := new_entity(g, C_POS | C_COVER);
+  if e == ECS_NONE { return e; }
+  g.pos[slot_of(e)] = v3(x, 0, z); g.cover[slot_of(e)] = Cover.{w = w, d = d, h = h};
+  ecs_flush(g.e);
+  build_arena(g);
+  return e;
+}
+
+// Mutant slot i senses you at p this step.
+dg_sense :: (g: Game, i: int, p: Point, firing: bool) {
+  now := g.st[0].step; e := g.pos[i];
+  m := memory_forget(g.mind[i], MIND_SENSES, now);
+  feet := world_point(e.x, 0, e.z); you := world_point(p.x, 0, p.z);
+  seen := sense_sight(MIND_SENSES, arena_colliders(g.arena), feet, world_point(p.x, 1.3, p.z), MIND_YOU, now);
+  if seen.status == SenseStatus.sensed { m = memory_note(m, MIND_SENSES, seen.stimulus).memory; }
+  if firing {
+    heard := sense_sound(MIND_SENSES, feet, you, MIND_HEAR, MIND_YOU, now);
+    if heard.status == SenseStatus.sensed { m = memory_note(m, MIND_SENSES, heard.stimulus).memory; }
+  }
+  felt := sense_touch(MIND_SENSES, feet, you, MIND_YOU, now);
+  if felt.status == SenseStatus.sensed { m = memory_note(m, MIND_SENSES, felt.stimulus).memory; }
+  g.mind[i] = m;
+}
+// What mutant slot i remembers of you now.
+dg_recall :: (g: Game, i: int) -> Recall { return memory_recall(g.mind[i], MIND_SENSES, MIND_YOU, g.st[0].step); }
+// Where mutant slot i believes you are: where it last sensed you, or where it stands if it doesn't know.
+dg_believed :: (g: Game, i: int) -> Point {
+  k := dg_recall(g, i);
+  return ifx k.known then v3(k.at.x, 0, k.at.z) else g.pos[i];
+}
 
 // What mutant slot i is doing now.
 dg_role :: (g: Game, i: int) -> int {
-  m := g.mutant[i]; e := g.pos[i]; p := dg_player_pos(g);
+  m := g.mutant[i]; e := g.pos[i]; p := dg_believed(g, i);
   d := flat(e, p);
+  k := dg_recall(g, i);
+  if !k.known { return ifx m.kind == CRAWLER && m.seq % 2 == 0 then ROLE_REACTOR else ROLE_IDLE; }
   if m.part >= 0 || m.severed { return ROLE_CHASE; }
   if m.kind == HOUND {
     facing := direction(g.input[0].aim_x, g.input[0].aim_z);
@@ -993,14 +1084,14 @@ dg_role :: (g: Game, i: int) -> int {
     if d > 2.6 && ahead > 0.5 { return ROLE_FLANK; }   // in front of you: swing round
     return ROLE_CHASE;
   }
-  if m.kind == BRUTE && d < f32(BRUTE_HOLD) && d > 1.6 && !dg_wall_ray(g, e, p) { return ROLE_HOLD; }
+  if m.kind == BRUTE && k.age == 0 && d < f32(BRUTE_HOLD) && d > 1.6 && !dg_wall_ray(g, e, p) { return ROLE_HOLD; }
   if m.kind == CRAWLER && m.seq % 2 == 0 && flat(p, dg_reactor_pos(g)) > f32(REACTOR_LURE) { return ROLE_REACTOR; }
   return ROLE_CHASE;
 }
 
 // Where mutant slot i heads for its role.
 dg_goal :: (g: Game, i: int, role: int) -> Point {
-  p := dg_player_pos(g); e := g.pos[i];
+  p := dg_believed(g, i); e := g.pos[i];
   if role == ROLE_FLANK {
     facing := direction(g.input[0].aim_x, g.input[0].aim_z);
     side: f32 = ifx g.mutant[i].seq % 2 == 0 then 1.0f32 else -1.0f32;
@@ -1010,6 +1101,12 @@ dg_goal :: (g: Game, i: int, role: int) -> Point {
       if dg_blocked(g, goal.x, goal.z, 0.4) || abs(goal.x) > 14.5 || goal.z < -22 || goal.z > 12 { return p; }
     }
     return goal;
+  }
+  if role == ROLE_IDLE {
+    // round the reactor: its near and far long sides in turn, every PROWL_STEPS steps
+    r := dg_reactor_pos(g);
+    near := (g.st[0].step / PROWL_STEPS + g.mutant[i].seq) % 2 == 0;
+    return v3(clamp(e.x, r.x - 1.2, r.x + 1.2), 0, ifx near then r.z + f32(REACTOR_D) / 2 + 0.6 else r.z - f32(REACTOR_D) / 2 - 0.6);
   }
   if role == ROLE_REACTOR {
     r := dg_reactor_pos(g);
@@ -1042,6 +1139,8 @@ dg_reactor_health :: (g: Game) -> f32 { return g.hp[slot_of(dg_reactor(g))]; }
 
 mutant_system :: (g: Game, dt: f32) {
   if g.st[0].skip { return; }
+  g.st[0].step += 1;
+  g.nav[0].budget = NAV_STEP_BAKES;
   p := dg_player_pos(g);
   firing := g.input[0].firing;
   // The mutants in spawn order, so pushing apart plays the same after a load.
@@ -1057,24 +1156,32 @@ mutant_system :: (g: Game, dt: f32) {
     i := order[o];
     m := g.mutant[i];
     e := g.pos[i];
+    dg_sense(g, i, p, firing);
     m.flash = hi(0, m.flash - dt);
     m.attack -= dt;
     if m.air > 0 { m.air = hi(0, m.air - dt * 3.5); g.mutant[i] = m; continue; }
     if m.stun > 0 { m.stun = hi(0, m.stun - dt); g.mutant[i] = m; continue; }
     m.lunge = hi(0, m.lunge - dt);
-    d := flat(e, p);
-    g.yaw[i] = atan2(p.x - e.x, p.z - e.z);
-    if m.kind == HOUND && d > 1.8 && d < 5 && m.attack <= 0 { m.lunge = 0.4; m.attack = 1.5; }
+    k := dg_recall(g, i);
+    q := dg_believed(g, i);
+    d := flat(e, q);   // to where it believes you are
+    if m.kind == HOUND && k.age == 0 && d > 1.8 && d < 5 && m.attack <= 0 { m.lunge = 0.4; m.attack = 1.5; }
     role := dg_role(g, i);
     goal := dg_goal(g, i, role);
+    looking := k.known && k.age > 0 && d < f32(MIND_SEARCH) && role != ROLE_REACTOR;
+    if k.known && !looking && d > 0.001 { g.yaw[i] = atan2(q.x - e.x, q.z - e.z); }
     if role == ROLE_HOLD {
       g.mutant[i] = m;   // the brute stands and shoots
-    } else if d > 1.2 || role != ROLE_CHASE {
+    } else if looking {
+      g.yaw[i] += f32(MIND_TURN) * dt;   // at the spot it last sensed you: it turns, looking
+      g.mutant[i] = m;
+    } else if (d > 1.2 || role != ROLE_CHASE) && dg_aim(m, goal).tries < STUCK_TRIES {
+      m = dg_aim(m, goal);
       speed := m.speed * (ifx m.severed then 0.38f32 else 1.0f32) * (ifx m.lunge > 0 then 2.0f32 else 1.0f32);
       // Straight at the goal when the way is clear; else round the covers
       // on the walking grid (a runner whose swing is blocked closes on you).
-      flow := ifx role == ROLE_REACTOR then 2 else 0;
-      facing := ifx role == ROLE_FLANK && !nav_straight(g.arena, e, goal) then p else goal;
+      flow := ifx role == ROLE_REACTOR || role == ROLE_IDLE then 2 else 0;
+      facing := ifx role == ROLE_FLANK && !nav_straight(g.arena, e, goal) then q else goal;
       to := nav_head_for(g.nav, g.arena, flow, e, facing);
       x := to.x - e.x; z := to.z - e.z;
       l := sqrt(x * x + z * z);
@@ -1084,6 +1191,10 @@ mutant_system :: (g: Game, dt: f32) {
         walk_body(g, i, x / l * speed * dt, z / l * speed * dt, mutant_radius(m));
         e = g.pos[i];
       }
+      m = dg_progress(g, i, m, flow, goal);
+    } else {
+      m = dg_aim(m, goal);
+      g.mutant[i] = m;   // in reach, or stopped: it stands
     }
     if role == ROLE_REACTOR && dg_at_reactor(g, e, 0.9) {
       if m.attack <= 0 {
@@ -1091,19 +1202,21 @@ mutant_system :: (g: Game, dt: f32) {
         dg_reactor_hit(g, m.damage * 0.5, e);
       }
       g.mutant[i] = m;
-    } else if d < 1.6 && m.attack <= 0 {
+    } else if flat(e, p) < 1.6 && m.attack <= 0 {   // within reach: it feels you there
       m.attack = ifx m.kind == SKITTER then 0.8f32 else 1.2f32;
       g.mutant[i] = m;
       if !g.input[0].dodging { dg_damage(g, m.damage * (ifx g.st[0].cover && !firing then 0.35f32 else 1.0f32), e); }
     } else if dg_brute_aims(g, i) && m.attack <= 0 {
       m.attack = 2.8;
       g.mutant[i] = m;
-      b := dg_spawn_bolt(g, e, v3((p.x - e.x) / d * 7, 0, (p.z - e.z) / d * 7));
+      dp := flat(e, p);   // it sees you: it aims at you
+      b := dg_spawn_bolt(g, e, v3((p.x - e.x) / dp * 7, 0, (p.z - e.z) / dp * 7));
       emit(g, Event.{kind = EV_BOLT_FIRED, at = v3(e.x, 1, e.z)});
     } else {
       g.mutant[i] = m;
     }
   }
+  g.nav[0].budget = -1;   // the support engineer's walking has no budget
 }
 
 bolt_system :: (g: Game, dt: f32) {
@@ -1288,6 +1401,7 @@ dg_copy :: (from: Game, to: Game) {
     to.hp[i] = from.hp[i]; to.hp_max[i] = from.hp_max[i]; to.hurt_at[i] = from.hurt_at[i]; to.team[i] = from.team[i];
     to.ttl[i] = from.ttl[i]; to.mutant[i] = from.mutant[i]; to.cover[i] = from.cover[i]; to.cargo[i] = from.cargo[i];
     to.bolt[i] = from.bolt[i]; to.beam[i] = from.beam[i]; to.radius[i] = from.radius[i]; to.progress[i] = from.progress[i];
+    to.mind[i] = from.mind[i];
   }
   to.st[0] = from.st[0]; to.input[0] = from.input[0]; to.clock[0] = from.clock[0];
   to.arena[0] = from.arena[0]; to.nav[0] = from.nav[0];
@@ -1494,13 +1608,13 @@ repair :: (g: Game) { for k: 0..<51 { tick(g, v3(0, 0, -14.2), false, true, 0, -
   #assert g.st[0].phase == FIGHT && dg_health(g) == 100;
 }
 
-#test "a shooting run clears a wave" #steps 150000000 {
+#test "a shooting run clears a wave" #steps 300000000 {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
   most := fight_wave(g, ME);
   #assert g.st[0].phase == REPAIR && g.st[0].kills == dg_wave_count(1) && dg_health(g) > 0;
 }
 
-#test "three waves to victory" #steps 657000000 {
+#test "three waves to victory" #steps 1300000000 {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
   for round: 0..<3 {
     most := fight_wave(g, ME);
@@ -1607,7 +1721,7 @@ repair :: (g: Game) { for k: 0..<51 { tick(g, v3(0, 0, -14.2), false, true, 0, -
   #assert !dg_lift(g) && !dg_stun(g) && !dg_held_alive(g);
 }
 
-#test "a headshot playthrough has no cap on mutants" #steps 528000000 {
+#test "a headshot playthrough has no cap on mutants" #steps 1100000000 {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
   g.st[0].mode = HEAD;
   g.st[0].ally_time = 1000;
@@ -1757,6 +1871,164 @@ shot_hits :: (g: Game) -> int {
   #assert dg_wall_ray(g, g.pos[slot_of(b)], hide) && dg_role(g, slot_of(b)) != ROLE_HOLD;
 }
 
+// What a mutant knows (#12854): where it last sensed you, not where you are.
+MIND_FROM :: Point.{x = 8, y = 0, z = -16};    // behind the tall cover at (8, -12)
+MIND_SEEN :: Point.{x = 3, y = 0, z = -16};    // where it sees you
+MIND_HIDE :: Point.{x = 8, y = 0, z = -9.8};   // behind the cover, from it and from MIND_SEEN
+
+// A hound held at MIND_FROM sees you at MIND_SEEN for `seen` seconds, then you hide; it runs on
+// frames of frame_dt until `until` seconds. Returns its slot.
+mind_run :: (g: Game, frame_dt: f32, seen: f32, until: f32) -> int {
+  dg_setup(g);
+  g.st[0].ally_time = 1000000;
+  clear_mutants(g);
+  e := spawn_now(g, HOUND, MIND_FROM.x, MIND_FROM.z, -1);
+  i := slot_of(e);
+  g.mutant[i].stun = seen + 0.01;   // held while it watches you
+  g.mutant[i].attack = 1000;
+  t: f32 = 0;
+  frames := 0;
+  while t < until - 0.0001 {
+    me := ifx t < seen - 0.0001 then MIND_SEEN else MIND_HIDE;
+    tick(g, me, false, false, 0, -1, frame_dt);
+    frames += 1;
+    t = f32(frames) * frame_dt;
+  }
+  return i;
+}
+
+#test "a mutant goes where it last saw you, looks round there, and gives up" #steps 400000000 {
+  st: [1] Store; g := dg_bind(st[..]);
+  i := mind_run(g, 0.05, 1, 1);
+  #assert dg_wall_ray(g, MIND_FROM, MIND_HIDE);
+  #assert dg_wall_ray(g, MIND_SEEN, MIND_HIDE);
+  #assert !dg_wall_ray(g, MIND_FROM, MIND_SEEN);
+  k := dg_recall(g, i);
+  #assert k.known && k.kind == StimulusKind.sight && flat(dg_believed(g, i), MIND_SEEN) < 0.01;
+  // you hide: it goes to where it saw you, not to where you are
+  for f: 0..<50 { tick(g, MIND_HIDE, false, false, 0, -1, 0.05); }
+  #assert flat(g.pos[i], MIND_SEEN) < f32(MIND_SEARCH) + 0.3 && flat(g.pos[i], MIND_HIDE) > 5;
+  k = dg_recall(g, i);
+  #assert k.known && k.age > 0 && flat(dg_believed(g, i), MIND_SEEN) < 0.01 && dg_role(g, i) != ROLE_IDLE;
+  // there, it turns looking for you
+  yaw := g.yaw[i];
+  tick(g, MIND_HIDE, false, false, 0, -1, 0.05);
+  #assert abs(g.yaw[i] - yaw) > 0.1 && flat(g.pos[i], MIND_SEEN) < f32(MIND_SEARCH) + 0.3;
+  // after MIND_SENSES.forget steps without sensing you it has forgotten you, and prowls
+  last := g.st[0].step - k.age;
+  while g.st[0].step - last <= MIND_SENSES.forget { tick(g, MIND_HIDE, false, false, 0, -1, 0.05); }
+  #assert !dg_recall(g, i).known && dg_role(g, i) == ROLE_IDLE && g.st[0].step - last <= MIND_SENSES.forget + 3;
+  #assert g.st[0].step - last == MIND_SENSES.forget + 1 || g.st[0].step - last == MIND_SENSES.forget + 2 || g.st[0].step - last == MIND_SENSES.forget + 3;
+  // one step before, it still knew
+  st2: [1] Store; h := dg_bind(st2[..]);
+  j := mind_run(h, 0.05, 1, 1);
+  seen_at := h.st[0].step;
+  while h.st[0].step < seen_at + MIND_SENSES.forget - 3 { tick(h, MIND_HIDE, false, false, 0, -1, 0.05); }
+  #assert dg_recall(h, j).known;
+  // a shot, heard round the cover, tells it where you are now
+  tick(h, MIND_HIDE, true, false, 0, -1, 0.05);
+  k = dg_recall(h, j);
+  #assert k.known && k.age == 0 && flat(dg_believed(h, j), MIND_HIDE) < 0.01;
+}
+
+#test "seeing you again refreshes what a mutant remembers" #steps 200000000 {
+  st: [1] Store; g := dg_bind(st[..]);
+  i := mind_run(g, 0.05, 1, 3);
+  #assert dg_recall(g, i).age > 20;
+  there := v3(g.pos[i].x + 4, 0, g.pos[i].z - 2);
+  #assert !dg_wall_ray(g, g.pos[i], there);
+  tick(g, there, false, false, 0, -1, 0.05);
+  k := dg_recall(g, i);
+  #assert k.known && k.age == 0 && k.kind == StimulusKind.sight && flat(dg_believed(g, i), there) < 0.01;
+  // touch: close enough, it feels you even out of sight
+  m := g.mind[i];
+  #assert m.count <= SENSE_MEMORY && m.count >= 1;
+}
+
+#test "what a mutant remembers is the same at any frame rate" #steps 900000000 {
+  a: [1] Store; ga := dg_bind(a[..]); ia := mind_run(ga, 0.05, 1, 6);
+  b: [1] Store; gb := dg_bind(b[..]); ib := mind_run(gb, 0.025, 1, 6);
+  c: [1] Store; gc := dg_bind(c[..]); ic := mind_run(gc, 0.0125, 1, 6);
+  #assert ga.st[0].step == gb.st[0].step && gb.st[0].step == gc.st[0].step;
+  #assert f32_bits(ga.pos[ia].x) == f32_bits(gb.pos[ib].x) && f32_bits(ga.pos[ia].z) == f32_bits(gb.pos[ib].z);
+  #assert f32_bits(gb.pos[ib].x) == f32_bits(gc.pos[ic].x) && f32_bits(gb.pos[ib].z) == f32_bits(gc.pos[ic].z);
+  ka := dg_recall(ga, ia); kc := dg_recall(gc, ic);
+  #assert ka.known == kc.known && ka.age == kc.age && ga.mind[ia].count == gc.mind[ic].count && ga.mind[ia].latest == gc.mind[ic].latest;
+}
+
+// Inside the tall cover at (-8, -12): out of every mutant's sight, so what it knows is set by hand.
+MIND_INSIDE :: Point.{x = -8, y = 0, z = -12};
+// What a mutant knows of you, set by hand: a sighting at p this step.
+mind_saw :: (g: Game, i: int, p: Point) {
+  g.mind[i] = memory_note(Memory.{}, MIND_SENSES, Stimulus.{kind = StimulusKind.sight, source = MIND_YOU, at = world_point(p.x, 1.3, p.z), tick = g.st[0].step}).memory;
+}
+
+#test "a mutant that can't reach its goal plans again, then stops, and goes when the goal moves" #steps 900000000 {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  g.st[0].ally_time = 1000000;
+  clear_mutants(g);
+  e := spawn_now(g, HOUND, 3, -12, -1);
+  i := slot_of(e);
+  inside := v3(8, 0, -12);   // you, in the tall cover: no way to you
+  #assert dg_blocked(g, inside.x, inside.z, 0.05);
+  last := g.pos[i]; still := 0;
+  for f: 0..<400 {
+    mind_saw(g, i, inside);
+    g.mutant[i].attack = 1000;
+    tick(g, inside, false, false, 0, -1, 0.05);
+    still = ifx flat(g.pos[i], last) < 0.001 then still + 1 else 0;
+    last = g.pos[i];
+  }
+  #assert g.st[0].retries == STUCK_TRIES - 1 && g.st[0].stops == 1 && g.mutant[i].tries == STUCK_TRIES && still > 20;
+  // you come out: it goes again
+  out := v3(3, 0, -6);
+  for f: 0..<60 {
+    mind_saw(g, i, out);
+    g.mutant[i].attack = 1000;
+    tick(g, MIND_INSIDE, false, false, 0, -1, 0.05);
+  }
+  #assert g.mutant[i].tries == 0 && flat(g.pos[i], out) < 1.5 && g.st[0].stops == 1;
+}
+
+#test "rubble dropped on a mutant's way: it plans round it" #steps 400000000 {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  g.st[0].ally_time = 1000000;
+  clear_mutants(g);
+  e := spawn_now(g, HOUND, -12, 2, -1);
+  i := slot_of(e);
+  goal := v3(-12, 0, -6);
+  bakes := g.nav[0].bakes;
+  r := dg_add_cover(g, -12, -2, 4, 0.8, 1.2);   // across the straight way
+  #assert r != ECS_NONE && g.nav[0].bakes == bakes + 1 && dg_blocked(g, -12, -2, 0.05);
+  inside := false; reached := false; f := 0;
+  while f < 200 && !reached {
+    mind_saw(g, i, goal);
+    g.mutant[i].attack = 1000;
+    tick(g, MIND_INSIDE, false, false, 0, -1, 0.05);
+    if dg_blocked(g, g.pos[i].x, g.pos[i].z, 0.05) { inside = true; }
+    reached = flat(g.pos[i], goal) < 1.5;
+    f += 1;
+  }
+  #assert reached && !inside && g.st[0].stops == 0;
+}
+
+#test "mutants searching more routes than a step's budget walk straight, and the step stays in budget" #steps 400000000 {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  g.st[0].ally_time = 1000000;
+  clear_mutants(g);
+  n := 6;
+  ids: [6] int;
+  for k: 0..<n { ids[k] = spawn_now(g, REAVER, -12 + 4 * f32(k), -16, -1); }
+  // each remembers you somewhere else, behind the covers from it
+  for f: 0..<20 {
+    for k: 0..<n { mind_saw(g, slot_of(ids[k]), v3(-12 + 4 * f32(k) + 0.5 * f32(f % 3), 0, 4)); g.mutant[slot_of(ids[k])].attack = 1000; }
+    before := g.nav[0].bakes;
+    tick(g, MIND_INSIDE, false, false, 0, -1, 1.0 / 60.0);
+    #assert g.nav[0].bakes - before <= NAV_STEP_BAKES;
+  }
+  #assert g.nav[0].refused > 0;
+}
+
 #test "crawlers come up from the vents, and go for the reactor when you are far from it" #steps 46000000 {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
   vented := 0;
@@ -1781,6 +2053,7 @@ shot_hits :: (g: Game) -> int {
   // Come close and it turns on you.
   #assert dg_role(g, slot_of(c)) == ROLE_REACTOR;
   g.pos[slot_of(dg_player(g))] = v3(0, 0, -12);
+  dg_sense(g, slot_of(c), v3(0, 0, -12), false);   // it sees you come
   #assert dg_role(g, slot_of(c)) == ROLE_CHASE;
   // Left alone, the crawlers wreck the reactor and the ship is lost.
   g.hp[slot_of(dg_reactor(g))] = 3;
@@ -1903,7 +2176,7 @@ spawn_crowd :: (g: Game) {
   reached := false; inside := false;
   frames := 0;
   while frames < 200 && !reached {
-    tk(g, me);
+    tick(g, me, frames == 0, false, 0, -1, 0.05);   // it hears your first shot, round the cover
     frames += 1;
     if !ecs_alive(g.e, e) { break; }
     reached = dist_to(g, e, me) < 1.7;
