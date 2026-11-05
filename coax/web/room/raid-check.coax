@@ -30,8 +30,28 @@
 // award), then "raids" and exits 0, or "fails" and 1.
 #load "room-socket.coax";
 #load "../../lib/sys/fs.coax";
+#load "capacity-client.coax";
 
 RC_MAX :: 16;
+#test "raid skew injection is explicit and sends only one extra step per ten ticks" {
+  #assert rc_skew(false,"")==0&&rc_skew(true,"0")==0&&rc_skew(true,"1")==1;
+  #assert rc_skew(true,"")== -1&&rc_skew(true,"2")== -1;
+}
+rc_skew::(asked:bool,value:string)->int{if !asked||value=="0"{return 0;}return ifx value=="1" then 1 else -1;}
+#test "raid shaped links distribute at most six sockets per existing proxy" {
+  #assert rc_proxy_port(61262,0)==61262&&rc_proxy_port(61262,5)==61262&&rc_proxy_port(61262,6)==61263&&rc_proxy_port(61262,15)==61264;
+  #assert rc_proxy_port(0,0)==0&&rc_proxy_port(65534,15)== -1&&rc_proxy_port(61262,-1)== -1&&rc_proxy_port(61262,16)== -1;
+}
+rc_proxy_port::(base:int,seat:int)->int{if seat<0||seat>=RC_MAX||base<0||base>65533{return -1;}return ifx base==0 then 0 else base+seat/6;}
+#test "fleet characters are distinct across towns and seats" {
+  a:[32]u8;b:[32]u8;c:[32]u8;
+  #assert rc_identity(1284301,0,a[..])=="p-raidcheck-1284301-0";
+  #assert rc_identity(1284301,0,a[..])!=rc_identity(1284302,0,b[..]);
+  #assert rc_identity(1284301,0,a[..])!=rc_identity(1284301,1,c[..]);
+}
+rc_identity::(room:int,seat:int,out:[]u8)->string{
+  n:=rs_int(out,rs_put(out,0,"p-raidcheck-"),room);n=rs_put(out,n,"-");n=rs_int(out,n,seat);return ifx n<0 then "" else cast(string)out[0..<n];
+}
 rc_max :: (a: int, b: int) -> int { return ifx a > b then a else b; }
 rc_min :: (a: int, b: int) -> int { return ifx a < b then a else b; }
 RC_SEEN :: 128;
@@ -53,6 +73,7 @@ RcHeard :: struct {
   xp_end: int;                                   // XP heard after the raid's outcome (its end award)
   v_xp: int;                                     // its XP as the room's v entry last said (the total)
   bytes: int;                                    // the bytes of every frame it heard
+  timing:[1]CfTiming;peak_raiders:int;peak_pets:int;peak_zones:int;
   m: [1] WireMirror;                             // the rows its D's left, as the page's (its I's HEARD)
   // the siege (#12860): the front's least and most (permille), its samples and those in the band, the
   // sieges begun, the camp's fall (ms after the first siege), the watch at most, the phase now
@@ -155,7 +176,16 @@ rc_hear :: (h: [] RcHeard, me: int, t: string) {
   }
   if !rs_starts(t, "D ") { return; }
   h[0].d += 1;
-  _ := wire_mirror_frame(h[0].m[..], t);
+  frame:=wire_mirror_frame(h[0].m[..], t);
+  if frame.tick>=0&&h[0].m[0].heard==frame.tick&&(frame.f&2)==0{cf_ack(h[0].timing[..],frame.ack,rs_now());}
+  if (rs_num(rs_field(t,3))&2)==0{
+    raiders:=0;pets:=0;zones:=0;
+    for e:0..<WIRE_MIRROR{w:=wire_mirror_get(h[0].m[..],e);if w.id<0{continue;}
+      if w.kind==WK_BEAST&&w.hp>0{if w.p1>=27&&w.p1<=31{raiders+=1;}if w.p1==1&&w.owner>=0{pets+=1;}}
+      if w.kind==WK_ZONE{zones+=1;}
+    }
+    h[0].peak_raiders=rc_max(h[0].peak_raiders,raiders);h[0].peak_pets=rc_max(h[0].peak_pets,pets);h[0].peak_zones=rc_max(h[0].peak_zones,zones);
+  }
   at := 0; sp := 0;
   while at < t.count && sp < 5 { if t[at] == ' ' { sp += 1; } at += 1; }
   while at < t.count {
@@ -195,6 +225,9 @@ tool_main :: () -> int #export_c {
   u: [1024] u8;
   room := ifx args_count(a[..]) > 3 then rs_num(args_at(a[..], 3)) else rs_stamp();
   url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-raid-", room);
+  proxy_b:[24]u8;proxy_text:=proc_getenv("RAID_PROXY_BASE",proxy_b[..]);proxy_base:=ifx proxy_text=="" then 0 else args_whole(proxy_text);
+  if rc_proxy_port(proxy_base,n-1)<0{tool_errln("RAID_PROXY_BASE must leave three permitted adjacent loopback ports");return 2;}
+  skew_b:[8]u8;skew:=rc_skew(proc_has_env("RAID_SKEW"),proc_getenv("RAID_SKEW",skew_b[..]));if skew<0{return 2;}
   klass := ifx args_count(a[..]) > 4 then args_at(a[..], 4) else "druid";
   fight := args_count(a[..]) > 5 && args_at(a[..], 5) == "fight";
   want2 := args_count(a[..]) > 6 && args_at(a[..], 6) == "1";
@@ -204,9 +237,11 @@ tool_main :: () -> int #export_c {
   if capture.count>0 {began:=fs_write(capture,"[");}
   for i: 0..<n {
     ub: [1024] u8; pid: [32] u8; nm: [32] u8;
-    pn := rs_int(pid[..], rs_put(pid[..], 0, "p-raidcheck-"), i);
+    proxy_url:[1024]u8;dial:=url;
+    if proxy_base>0{pb:[64]u8;pn2:=rs_int(pb[..],rs_put(pb[..],0,"ws://127.0.0.1:"),rc_proxy_port(proxy_base,i));dial=rs_url(proxy_url[..],cast(string)pb[0..<pn2],"/api/room/relay/everglade/","pair-raid-",room);}
+    identity:=rc_identity(room,i,pid[..]);pn:=identity.count;
     mn := rs_int(nm[..], rs_put(nm[..], 0, "Raid "), i);
-    ui := rs_ticketed(ub[..], url, cast(string) pid[0..<pn], cast(string) nm[0..<mn]);
+    ui := rs_ticketed(ub[..], dial, cast(string) pid[0..<pn], cast(string) nm[0..<mn]);
     if ui.count == 0 || !relay_conn_open(c[i..<i + 1], ui) { tool_err("raid-check: can't open "); tool_errln(url); print("fails\n"); return 1; }
     hm: [96] u8;
     h[i].wl = klass == "warlock" || (klass == "mix" && i % 2 == 1);
@@ -260,9 +295,10 @@ tool_main :: () -> int #export_c {
       side := ifx ahead > 0 && tick < h[i].aside then cast(int) (h[i].flip * 100) else 0;
       while yaw > 3.14159 { yaw -= 6.28318; }
       while yaw < -3.14159 { yaw += 6.28318; }
-      k := rs_put(m[..], rs_int(m[..], rs_put(m[..], 0, "I "), seq[i]), " ");
-      k = rs_int(m[..], k, side); k = rs_put(m[..], k, " "); k = rs_int(m[..], k, ahead); k = rs_put(m[..], k, " 0 0 "); k = rs_int(m[..], k, cast(int) (yaw * 10000)); k = rs_put(m[..], k, " 1 "); k = rs_int(m[..], k, h[i].m[0].heard);
+      input:=WireIn.{seq=seq[i],kx=side,ky=ahead,theta=yaw,b=WB_RUN,heard=h[i].m[0].heard};k:=wire_put_in(m[..],0,input);
+      cf_input(h[i].timing[..],seq[i],rs_now());
       _ := relay_conn_send(c[i..<i + 1], cast(string) m[0..<k]);
+      if skew==1&&i==0&&tick%10==0{seq[i]+=1;input.seq=seq[i];k=wire_put_in(m[..],0,input);cf_input(h[i].timing[..],seq[i],rs_now());_=relay_conn_send(c[i..<i+1],cast(string)m[0..<k]);}
       // about every 0.6 s, a Starry Wisp at the nearest raider within 18 m (its 60 feet)
       if tick < next[i] || !h[i].me_seen { continue; }
       next[i] = tick + 16 + i % 4;
@@ -307,13 +343,22 @@ tool_main :: () -> int #export_c {
   band := h[0].f_band * 100 / rc_max(h[0].f_n, 1);
   siege_ok := h[0].sieges >= 1 && (expect != "hold" || (band >= 80 && !h[0].fell)) && (expect != "fall" || (h[0].fell && h[0].regroup));
   ok := seen >= 4 && casts > 0 && hits > 0 && earned >= 1 && bad == 0 && rate > 20 && (!want2 || lv2 == n) && siege_ok;
-  out: [2048] u8; o: [1] Jo;
+  out: [8192] u8; o: [1] Jo;
   jo_start(o[..], out[..]);
   jo_obj(o[..]);
   jo_key(o[..], "players"); jo_int(o[..], n);
   jo_key(o[..], "seconds"); jo_int(o[..], ran);
+  jo_key(o[..],"seat0_offered_extra_inputs");jo_int(o[..],ifx skew==1 then tick/10 else 0);
   jo_key(o[..], "least_d_hz"); jo_int(o[..], cast(int) rate);
   jo_key(o[..], "bytes_per_s"); jo_int(o[..], bytes / ran / rc_max(n, 1));   // what a player hears, each player's mean
+  ack_hist:[CF_HIST]int;unknown:=0;backwards:=0;raiders_hi:=0;pets_hi:=0;zones_hi:=0;
+  for i:0..<n{for j:0..<CF_HIST{ack_hist[j]+=h[i].timing[0].hist[j];}unknown+=h[i].timing[0].missing;backwards+=h[i].timing[0].backwards;raiders_hi=rc_max(raiders_hi,h[i].peak_raiders);pets_hi=rc_max(pets_hi,h[i].peak_pets);zones_hi=rc_max(zones_hi,h[i].peak_zones);}
+  jo_key(o[..],"input_to_final_ack_p50_ms");jo_int(o[..],cf_quantile(ack_hist[..],500));
+  jo_key(o[..],"input_to_final_ack_p95_ms");jo_int(o[..],cf_quantile(ack_hist[..],950));
+  jo_key(o[..],"input_to_final_ack_p99_ms");jo_int(o[..],cf_quantile(ack_hist[..],990));
+  jo_key(o[..],"input_to_final_ack_max_ms_or_2000plus");jo_int(o[..],cf_quantile(ack_hist[..],1000));
+  jo_key(o[..],"ack_samples_missing");jo_int(o[..],unknown);jo_key(o[..],"ack_clock_backwards");jo_int(o[..],backwards);
+  jo_key(o[..],"peak_live_raiders_in_a_seat_mirror");jo_int(o[..],raiders_hi);jo_key(o[..],"peak_live_pets_in_a_seat_mirror");jo_int(o[..],pets_hi);jo_key(o[..],"peak_zones_in_a_seat_mirror");jo_int(o[..],zones_hi);
   jo_key(o[..], "front_least"); jo_int(o[..], h[0].f_lo);
   jo_key(o[..], "front_most"); jo_int(o[..], h[0].f_hi);
   jo_key(o[..], "front_band_pct"); jo_int(o[..], band);

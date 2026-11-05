@@ -1,0 +1,13 @@
+// Qualification shapes only; no production cap or admission change.
+#authority;
+#test "capacity fleet slices keep towns and same-encounter seats separate and bounded" {
+  for rooms:[5]int.[1,2,4,8,16]{#assert cf_shape(rooms,16,160);}
+  #assert cf_shape(1,1,30)&&cf_shape(16,16,600);
+  for rooms:[5]int.[0,3,15,17,32]{#assert !cf_shape(rooms,16,160);}
+  #assert !cf_shape(1,0,160)&&!cf_shape(1,17,160)&&!cf_shape(1,16,29)&&!cf_shape(1,16,601);
+  #assert cf_stall_ok(0)&&cf_stall_ok(1)&&cf_stall_ok(1000)&&!cf_stall_ok(-1)&&!cf_stall_ok(1001);
+}
+cf_stall_ok::(ms:int)->bool{return ms>=0&&ms<=1000;}
+cf_shape::(rooms:int,seats:int,secs:int)->bool{
+  return (rooms==1||rooms==2||rooms==4||rooms==8||rooms==16)&&seats>=1&&seats<=16&&secs>=30&&secs<=600;
+}

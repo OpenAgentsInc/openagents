@@ -1,0 +1,2916 @@
+sample_ms=10008
+process generation=1793921802960
+capacity startup ready=1
+observation scope=process report window
+out scope=accepted application frames including websocket framing
+transport kernel bytes including upgrade and controls a second=763815
+transport discarded queued bytes a second=0
+transport refused frame bytes a second=0
+transport refused frames a second=0.0
+observation counter overflow=0
+server ack scope=input heard to final D accepted by socket queue
+server queued ack p50 ms=6
+server queued ack p95 ms=34
+server queued ack samples=2130
+shard=1
+players=32
+ticks a second=30.1
+tick p50 ms=0.61
+tick p95 ms=1.16
+tick p99 ms=1.35
+players p50 ms=0.01
+players p95 ms=0.09
+players p99 ms=0.11
+raiders p50 ms=0.02
+raiders p95 ms=0.02
+raiders p99 ms=0.02
+effects p50 ms=0.03
+effects p95 ms=0.03
+effects p99 ms=0.04
+folk p50 ms=0.02
+folk p95 ms=0.03
+folk p99 ms=0.04
+writing p50 ms=0.19
+writing p95 ms=0.67
+writing p99 ms=0.79
+sending p50 ms=0.10
+sending p95 ms=0.19
+sending p99 ms=0.21
+measuring % of tick=3.09
+queue bytes most=0
+queue age ms most=0
+relevant entities a seat=38.0
+relevant entities most=38
+interest scope=process latest picks
+interest aggregation us=0
+interest seats=32
+interest whole total=1216
+interest whole most=38
+interest health only total=0
+interest health only most=0
+interest blocked total=0
+interest blocked most=0
+interest hidden total=0
+interest hidden most=0
+interest worst|pair-raid-1284302|0|38|0|0|0
+rows sent for their age a second=0.0
+row wait ticks most=0
+rows left for later most=7
+replication scope=process serialized output before relay admission
+rows serialized a second=12957.4
+row text bytes serialized a second=501631
+rows deferred a second=59.8
+rows latest serialized total=432
+rows latest deferred total=0
+replication worst|pair-raid-1284302|0|21|0
+checkpoint pending=0
+checkpoint flying=0
+checkpoint posts=0
+checkpoint retries=0
+checkpoint failures=0
+checkpoint applied=0
+checkpoint duplicates=0
+checkpoint late receipts=0
+checkpoint capacity refusals=0
+checkpoint stale owner refusals=0
+checkpoint resident=0
+checkpoint accepted=0
+checkpoint capture age ms most=0
+checkpoint receipt age ms most=0
+checkpoint paused rooms=0
+checkpoint finalizing=0
+legacy save pending=0
+legacy save flying=0
+legacy save posts=0
+legacy save retries=0
+legacy save failures=0
+legacy save applied=0
+legacy save duplicates=0
+legacy stale owner refusals=0
+legacy save abandoned=0
+legacy save evicted=0
+owner generation most=0
+owner ticket refusals=0
+checkpoint active loss bound ms=30000
+checkpoint healthy recovery target ms=60000
+capacity draining=0
+capacity native slots=16
+capacity live worlds=2
+capacity unused worlds=14
+capacity seated connections=32
+capacity grace holds=0
+capacity initial gates=0
+capacity scope=native world slots and seat state; API placement caps and reservations are separate
+removal bytes a second=0
+removals waiting a second=0.0
+player info bytes a second=162801
+player info waiting a second=84.6
+join pieces bytes a second=0
+join pieces waiting a second=0.0
+cue bytes a second=0
+cues dropped a second=0.0
+outcome bytes a second=0
+outcomes lost a second=0.0
+snapshots after a stall a second=0.00
+towns sent again a second=0.00
+snapshots held for a slow page a second=0.0
+input to ack p50 ms=6
+input to ack p95 ms=34
+joins=32
+join burst bytes=2574
+join burst bytes most=3477
+join burst ms=16
+join burst ms most=31
+rejoins tried=0
+rejoins seated=0
+rejoins same seat=0
+old socket frames dropped=0
+refused no room=0
+refused ticket=0
+refused kicked=0
+refused shard=0
+refused full=0
+refused version=0
+refused engine=0
+refused rules=0
+refused content=0
+refused schema=0
+refused elsewhere=0
+build engine=1 rules=1 content=1 wire=4-4 schema=2
+out bytes a second=763402
+out messages a second=543
+in bytes a second=8002
+in messages a second=243
+out D bytes a second=762958
+out D a second=488
+out W bytes a second=109
+out W a second=3
+out j bytes a second=258
+out j a second=48
+out y bytes a second=76
+out y a second=3
+out D e bytes a second=22
+out D e a second=3
+out D g bytes a second=11755
+out D g a second=247
+out D n bytes a second=146000
+out D n a second=2631
+out D o bytes a second=103
+out D o a second=34
+out D v bytes a second=66026
+out D v a second=2709
+out D w bytes a second=16798
+out D w a second=2709
+out D s players bytes a second=178350
+out D s players a second=6146
+out D s townsfolk bytes a second=308909
+out D s townsfolk a second=6293
+out D s made bytes a second=27107
+out D s made a second=519
+out D header bytes a second=7888
+out D header a second=488
+in H bytes a second=123
+in H a second=3
+in I bytes a second=7880
+in I a second=240
+seat|pair-raid-1284302|0|0|0|38|6|8|-1
+queued ack|pair-raid-1284302|0|6|8
+saved|pair-raid-1284302|0|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284301|0|0|0|38|2|34|-1
+queued ack|pair-raid-1284301|0|2|34
+saved|pair-raid-1284301|0|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284301|1|0|0|38|2|34|-1
+queued ack|pair-raid-1284301|1|2|34
+saved|pair-raid-1284301|1|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284302|1|0|0|38|6|8|-1
+queued ack|pair-raid-1284302|1|6|8
+saved|pair-raid-1284302|1|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284302|2|0|0|38|6|8|-1
+queued ack|pair-raid-1284302|2|6|8
+saved|pair-raid-1284302|2|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284301|2|0|0|38|2|36|-1
+queued ack|pair-raid-1284301|2|2|36
+saved|pair-raid-1284301|2|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284301|3|0|0|38|4|36|-1
+queued ack|pair-raid-1284301|3|4|36
+saved|pair-raid-1284301|3|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284302|3|0|0|38|6|8|-1
+queued ack|pair-raid-1284302|3|6|8
+saved|pair-raid-1284302|3|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284302|4|0|0|38|6|8|-1
+queued ack|pair-raid-1284302|4|6|8
+saved|pair-raid-1284302|4|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284301|4|0|0|38|4|36|-1
+queued ack|pair-raid-1284301|4|4|36
+saved|pair-raid-1284301|4|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284302|5|0|0|38|6|8|-1
+queued ack|pair-raid-1284302|5|6|8
+saved|pair-raid-1284302|5|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284301|5|0|0|38|4|36|-1
+queued ack|pair-raid-1284301|5|4|36
+saved|pair-raid-1284301|5|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284301|6|0|0|38|4|36|-1
+queued ack|pair-raid-1284301|6|4|36
+saved|pair-raid-1284301|6|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284302|6|0|0|38|6|8|-1
+queued ack|pair-raid-1284302|6|6|8
+saved|pair-raid-1284302|6|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284301|7|0|0|38|4|36|-1
+queued ack|pair-raid-1284301|7|4|36
+saved|pair-raid-1284301|7|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284302|7|0|0|38|6|8|-1
+queued ack|pair-raid-1284302|7|6|8
+saved|pair-raid-1284302|7|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284301|8|0|0|38|4|36|-1
+queued ack|pair-raid-1284301|8|4|36
+saved|pair-raid-1284301|8|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284302|8|0|0|38|6|8|-1
+queued ack|pair-raid-1284302|8|6|8
+saved|pair-raid-1284302|8|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284301|9|0|0|38|4|36|-1
+queued ack|pair-raid-1284301|9|4|36
+saved|pair-raid-1284301|9|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284302|9|0|0|38|6|8|-1
+queued ack|pair-raid-1284302|9|6|8
+saved|pair-raid-1284302|9|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284301|10|0|0|38|4|36|-1
+queued ack|pair-raid-1284301|10|4|36
+saved|pair-raid-1284301|10|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284302|10|0|0|38|6|8|-1
+queued ack|pair-raid-1284302|10|6|8
+saved|pair-raid-1284302|10|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284301|11|0|0|38|4|36|-1
+queued ack|pair-raid-1284301|11|4|36
+saved|pair-raid-1284301|11|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284302|11|0|0|38|6|8|-1
+queued ack|pair-raid-1284302|11|6|8
+saved|pair-raid-1284302|11|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284301|12|0|0|38|4|36|-1
+queued ack|pair-raid-1284301|12|4|36
+saved|pair-raid-1284301|12|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284302|12|0|0|38|6|8|-1
+queued ack|pair-raid-1284302|12|6|8
+saved|pair-raid-1284302|12|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284301|13|0|0|38|4|36|-1
+queued ack|pair-raid-1284301|13|4|36
+saved|pair-raid-1284301|13|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284302|13|0|0|38|6|8|-1
+queued ack|pair-raid-1284302|13|6|8
+saved|pair-raid-1284302|13|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284301|14|0|0|38|4|36|-1
+queued ack|pair-raid-1284301|14|4|36
+saved|pair-raid-1284301|14|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284302|14|0|0|38|6|8|-1
+queued ack|pair-raid-1284302|14|6|8
+saved|pair-raid-1284302|14|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284301|15|0|0|38|4|36|-1
+queued ack|pair-raid-1284301|15|4|36
+saved|pair-raid-1284301|15|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284302|15|0|0|38|6|8|-1
+queued ack|pair-raid-1284302|15|6|8
+saved|pair-raid-1284302|15|1|0|0|0|-1|-1|0|0|0|0
+report omitted lines=0
+report generation us=195
+observation measured wall share %=0.051
+observation timing scope=timed observer spans plus report; excludes inline serializer input and transport counters
+
+sample_ms=15017
+process generation=1793921802960
+capacity startup ready=1
+observation scope=process report window
+out scope=accepted application frames including websocket framing
+transport kernel bytes including upgrade and controls a second=763815
+transport discarded queued bytes a second=0
+transport refused frame bytes a second=0
+transport refused frames a second=0.0
+observation counter overflow=0
+server ack scope=input heard to final D accepted by socket queue
+server queued ack p50 ms=6
+server queued ack p95 ms=34
+server queued ack samples=2130
+shard=1
+players=32
+ticks a second=30.1
+tick p50 ms=0.61
+tick p95 ms=1.16
+tick p99 ms=1.35
+players p50 ms=0.01
+players p95 ms=0.09
+players p99 ms=0.11
+raiders p50 ms=0.02
+raiders p95 ms=0.02
+raiders p99 ms=0.02
+effects p50 ms=0.03
+effects p95 ms=0.03
+effects p99 ms=0.04
+folk p50 ms=0.02
+folk p95 ms=0.03
+folk p99 ms=0.04
+writing p50 ms=0.19
+writing p95 ms=0.67
+writing p99 ms=0.79
+sending p50 ms=0.10
+sending p95 ms=0.19
+sending p99 ms=0.21
+measuring % of tick=3.09
+queue bytes most=0
+queue age ms most=0
+relevant entities a seat=38.0
+relevant entities most=38
+interest scope=process latest picks
+interest aggregation us=0
+interest seats=32
+interest whole total=1216
+interest whole most=38
+interest health only total=0
+interest health only most=0
+interest blocked total=0
+interest blocked most=0
+interest hidden total=0
+interest hidden most=0
+interest worst|pair-raid-1284302|0|38|0|0|0
+rows sent for their age a second=0.0
+row wait ticks most=0
+rows left for later most=7
+replication scope=process serialized output before relay admission
+rows serialized a second=12957.4
+row text bytes serialized a second=501631
+rows deferred a second=59.8
+rows latest serialized total=432
+rows latest deferred total=0
+replication worst|pair-raid-1284302|0|21|0
+checkpoint pending=0
+checkpoint flying=0
+checkpoint posts=0
+checkpoint retries=0
+checkpoint failures=0
+checkpoint applied=0
+checkpoint duplicates=0
+checkpoint late receipts=0
+checkpoint capacity refusals=0
+checkpoint stale owner refusals=0
+checkpoint resident=0
+checkpoint accepted=0
+checkpoint capture age ms most=0
+checkpoint receipt age ms most=0
+checkpoint paused rooms=0
+checkpoint finalizing=0
+legacy save pending=0
+legacy save flying=0
+legacy save posts=0
+legacy save retries=0
+legacy save failures=0
+legacy save applied=0
+legacy save duplicates=0
+legacy stale owner refusals=0
+legacy save abandoned=0
+legacy save evicted=0
+owner generation most=0
+owner ticket refusals=0
+checkpoint active loss bound ms=30000
+checkpoint healthy recovery target ms=60000
+capacity draining=0
+capacity native slots=16
+capacity live worlds=2
+capacity unused worlds=14
+capacity seated connections=32
+capacity grace holds=0
+capacity initial gates=0
+capacity scope=native world slots and seat state; API placement caps and reservations are separate
+removal bytes a second=0
+removals waiting a second=0.0
+player info bytes a second=162801
+player info waiting a second=84.6
+join pieces bytes a second=0
+join pieces waiting a second=0.0
+cue bytes a second=0
+cues dropped a second=0.0
+outcome bytes a second=0
+outcomes lost a second=0.0
+snapshots after a stall a second=0.00
+towns sent again a second=0.00
+snapshots held for a slow page a second=0.0
+input to ack p50 ms=6
+input to ack p95 ms=34
+joins=32
+join burst bytes=2574
+join burst bytes most=3477
+join burst ms=16
+join burst ms most=31
+rejoins tried=0
+rejoins seated=0
+rejoins same seat=0
+old socket frames dropped=0
+refused no room=0
+refused ticket=0
+refused kicked=0
+refused shard=0
+refused full=0
+refused version=0
+refused engine=0
+refused rules=0
+refused content=0
+refused schema=0
+refused elsewhere=0
+build engine=1 rules=1 content=1 wire=4-4 schema=2
+out bytes a second=763402
+out messages a second=543
+in bytes a second=8002
+in messages a second=243
+out D bytes a second=762958
+out D a second=488
+out W bytes a second=109
+out W a second=3
+out j bytes a second=258
+out j a second=48
+out y bytes a second=76
+out y a second=3
+out D e bytes a second=22
+out D e a second=3
+out D g bytes a second=11755
+out D g a second=247
+out D n bytes a second=146000
+out D n a second=2631
+out D o bytes a second=103
+out D o a second=34
+out D v bytes a second=66026
+out D v a second=2709
+out D w bytes a second=16798
+out D w a second=2709
+out D s players bytes a second=178350
+out D s players a second=6146
+out D s townsfolk bytes a second=308909
+out D s townsfolk a second=6293
+out D s made bytes a second=27107
+out D s made a second=519
+out D header bytes a second=7888
+out D header a second=488
+in H bytes a second=123
+in H a second=3
+in I bytes a second=7880
+in I a second=240
+seat|pair-raid-1284302|0|0|0|38|6|8|-1
+queued ack|pair-raid-1284302|0|6|8
+saved|pair-raid-1284302|0|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284301|0|0|0|38|2|34|-1
+queued ack|pair-raid-1284301|0|2|34
+saved|pair-raid-1284301|0|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284301|1|0|0|38|2|34|-1
+queued ack|pair-raid-1284301|1|2|34
+saved|pair-raid-1284301|1|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284302|1|0|0|38|6|8|-1
+queued ack|pair-raid-1284302|1|6|8
+saved|pair-raid-1284302|1|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284302|2|0|0|38|6|8|-1
+queued ack|pair-raid-1284302|2|6|8
+saved|pair-raid-1284302|2|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284301|2|0|0|38|2|36|-1
+queued ack|pair-raid-1284301|2|2|36
+saved|pair-raid-1284301|2|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284301|3|0|0|38|4|36|-1
+queued ack|pair-raid-1284301|3|4|36
+saved|pair-raid-1284301|3|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284302|3|0|0|38|6|8|-1
+queued ack|pair-raid-1284302|3|6|8
+saved|pair-raid-1284302|3|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284302|4|0|0|38|6|8|-1
+queued ack|pair-raid-1284302|4|6|8
+saved|pair-raid-1284302|4|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284301|4|0|0|38|4|36|-1
+queued ack|pair-raid-1284301|4|4|36
+saved|pair-raid-1284301|4|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284302|5|0|0|38|6|8|-1
+queued ack|pair-raid-1284302|5|6|8
+saved|pair-raid-1284302|5|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284301|5|0|0|38|4|36|-1
+queued ack|pair-raid-1284301|5|4|36
+saved|pair-raid-1284301|5|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284301|6|0|0|38|4|36|-1
+queued ack|pair-raid-1284301|6|4|36
+saved|pair-raid-1284301|6|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284302|6|0|0|38|6|8|-1
+queued ack|pair-raid-1284302|6|6|8
+saved|pair-raid-1284302|6|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284301|7|0|0|38|4|36|-1
+queued ack|pair-raid-1284301|7|4|36
+saved|pair-raid-1284301|7|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284302|7|0|0|38|6|8|-1
+queued ack|pair-raid-1284302|7|6|8
+saved|pair-raid-1284302|7|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284301|8|0|0|38|4|36|-1
+queued ack|pair-raid-1284301|8|4|36
+saved|pair-raid-1284301|8|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284302|8|0|0|38|6|8|-1
+queued ack|pair-raid-1284302|8|6|8
+saved|pair-raid-1284302|8|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284301|9|0|0|38|4|36|-1
+queued ack|pair-raid-1284301|9|4|36
+saved|pair-raid-1284301|9|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284302|9|0|0|38|6|8|-1
+queued ack|pair-raid-1284302|9|6|8
+saved|pair-raid-1284302|9|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284301|10|0|0|38|4|36|-1
+queued ack|pair-raid-1284301|10|4|36
+saved|pair-raid-1284301|10|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284302|10|0|0|38|6|8|-1
+queued ack|pair-raid-1284302|10|6|8
+saved|pair-raid-1284302|10|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284301|11|0|0|38|4|36|-1
+queued ack|pair-raid-1284301|11|4|36
+saved|pair-raid-1284301|11|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284302|11|0|0|38|6|8|-1
+queued ack|pair-raid-1284302|11|6|8
+saved|pair-raid-1284302|11|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284301|12|0|0|38|4|36|-1
+queued ack|pair-raid-1284301|12|4|36
+saved|pair-raid-1284301|12|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284302|12|0|0|38|6|8|-1
+queued ack|pair-raid-1284302|12|6|8
+saved|pair-raid-1284302|12|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284301|13|0|0|38|4|36|-1
+queued ack|pair-raid-1284301|13|4|36
+saved|pair-raid-1284301|13|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284302|13|0|0|38|6|8|-1
+queued ack|pair-raid-1284302|13|6|8
+saved|pair-raid-1284302|13|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284301|14|0|0|38|4|36|-1
+queued ack|pair-raid-1284301|14|4|36
+saved|pair-raid-1284301|14|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284302|14|0|0|38|6|8|-1
+queued ack|pair-raid-1284302|14|6|8
+saved|pair-raid-1284302|14|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284301|15|0|0|38|4|36|-1
+queued ack|pair-raid-1284301|15|4|36
+saved|pair-raid-1284301|15|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284302|15|0|0|38|6|8|-1
+queued ack|pair-raid-1284302|15|6|8
+saved|pair-raid-1284302|15|1|0|0|0|-1|-1|0|0|0|0
+report omitted lines=0
+report generation us=195
+observation measured wall share %=0.051
+observation timing scope=timed observer spans plus report; excludes inline serializer input and transport counters
+
+sample_ms=20022
+process generation=1793921802960
+capacity startup ready=1
+observation scope=process report window
+out scope=accepted application frames including websocket framing
+transport kernel bytes including upgrade and controls a second=465151
+transport discarded queued bytes a second=0
+transport refused frame bytes a second=0
+transport refused frames a second=0.0
+observation counter overflow=0
+server ack scope=input heard to final D accepted by socket queue
+server queued ack p50 ms=6
+server queued ack p95 ms=34
+server queued ack samples=8381
+shard=1
+players=32
+ticks a second=30.0
+tick p50 ms=0.75
+tick p95 ms=0.89
+tick p99 ms=0.97
+players p50 ms=0.08
+players p95 ms=0.12
+players p99 ms=0.13
+raiders p50 ms=0.02
+raiders p95 ms=0.02
+raiders p99 ms=0.03
+effects p50 ms=0.03
+effects p95 ms=0.03
+effects p99 ms=0.03
+folk p50 ms=0.02
+folk p95 ms=0.03
+folk p99 ms=0.04
+writing p50 ms=0.24
+writing p95 ms=0.32
+writing p99 ms=0.36
+sending p50 ms=0.13
+sending p95 ms=0.16
+sending p99 ms=0.18
+measuring % of tick=2.43
+queue bytes most=0
+queue age ms most=0
+relevant entities a seat=42.8
+relevant entities most=43
+interest scope=process latest picks
+interest aggregation us=0
+interest seats=32
+interest whole total=1392
+interest whole most=44
+interest health only total=0
+interest health only most=0
+interest blocked total=0
+interest blocked most=0
+interest hidden total=0
+interest hidden most=0
+interest worst|pair-raid-1284302|1|44|0|0|0
+rows sent for their age a second=0.0
+row wait ticks most=0
+rows left for later most=0
+replication scope=process serialized output before relay admission
+rows serialized a second=19464.0
+row text bytes serialized a second=426949
+rows deferred a second=8.0
+rows latest serialized total=569
+rows latest deferred total=0
+replication worst|pair-raid-1284302|5|26|0
+checkpoint pending=0
+checkpoint flying=0
+checkpoint posts=0
+checkpoint retries=0
+checkpoint failures=0
+checkpoint applied=0
+checkpoint duplicates=0
+checkpoint late receipts=0
+checkpoint capacity refusals=0
+checkpoint stale owner refusals=0
+checkpoint resident=0
+checkpoint accepted=0
+checkpoint capture age ms most=0
+checkpoint receipt age ms most=0
+checkpoint paused rooms=0
+checkpoint finalizing=0
+legacy save pending=0
+legacy save flying=0
+legacy save posts=1
+legacy save retries=0
+legacy save failures=0
+legacy save applied=32
+legacy save duplicates=0
+legacy stale owner refusals=0
+legacy save abandoned=0
+legacy save evicted=0
+owner generation most=0
+owner ticket refusals=0
+checkpoint active loss bound ms=30000
+checkpoint healthy recovery target ms=60000
+capacity draining=0
+capacity native slots=16
+capacity live worlds=2
+capacity unused worlds=14
+capacity seated connections=32
+capacity grace holds=0
+capacity initial gates=0
+capacity scope=native world slots and seat state; API placement caps and reservations are separate
+removal bytes a second=0
+removals waiting a second=0.0
+player info bytes a second=0
+player info waiting a second=0.0
+join pieces bytes a second=0
+join pieces waiting a second=0.0
+cue bytes a second=0
+cues dropped a second=0.0
+outcome bytes a second=0
+outcomes lost a second=0.0
+snapshots after a stall a second=0.00
+towns sent again a second=0.00
+snapshots held for a slow page a second=0.0
+input to ack p50 ms=6
+input to ack p95 ms=34
+joins=0
+join burst bytes=0
+join burst bytes most=0
+join burst ms=0
+join burst ms most=0
+rejoins tried=0
+rejoins seated=0
+rejoins same seat=0
+old socket frames dropped=0
+refused no room=0
+refused ticket=0
+refused kicked=0
+refused shard=0
+refused full=0
+refused version=0
+refused engine=0
+refused rules=0
+refused content=0
+refused schema=0
+refused elsewhere=0
+build engine=1 rules=1 content=1 wire=4-4 schema=2
+out bytes a second=465151
+out messages a second=958
+in bytes a second=32509
+in messages a second=960
+out D bytes a second=465151
+out D a second=958
+out D g bytes a second=1076
+out D g a second=22
+out D o bytes a second=191
+out D o a second=64
+out D v bytes a second=1245
+out D v a second=51
+out D s players bytes a second=296612
+out D s players a second=13530
+out D s townsfolk bytes a second=142602
+out D s townsfolk a second=5812
+out D s made bytes a second=6326
+out D s made a second=122
+out D header bytes a second=17099
+out D header a second=958
+in I bytes a second=32509
+in I a second=960
+seat|pair-raid-1284302|0|0|0|42|6|8|-1
+queued ack|pair-raid-1284302|0|6|8
+saved|pair-raid-1284302|0|1|0|1793921802960|1|8966|8966|0|1|0|0
+seat|pair-raid-1284301|0|0|0|42|2|34|-1
+queued ack|pair-raid-1284301|0|2|34
+saved|pair-raid-1284301|0|1|0|1793921802960|17|8966|8966|0|17|0|0
+seat|pair-raid-1284301|1|0|0|43|2|34|-1
+queued ack|pair-raid-1284301|1|2|34
+saved|pair-raid-1284301|1|1|0|1793921802960|18|8966|8966|0|18|0|0
+seat|pair-raid-1284302|1|0|0|43|6|8|-1
+queued ack|pair-raid-1284302|1|6|8
+saved|pair-raid-1284302|1|1|0|1793921802960|2|8966|8966|0|2|0|0
+seat|pair-raid-1284302|2|0|0|43|6|8|-1
+queued ack|pair-raid-1284302|2|6|8
+saved|pair-raid-1284302|2|1|0|1793921802960|3|8966|8966|0|3|0|0
+seat|pair-raid-1284301|2|0|0|43|2|34|-1
+queued ack|pair-raid-1284301|2|2|34
+saved|pair-raid-1284301|2|1|0|1793921802960|19|8966|8966|0|19|0|0
+seat|pair-raid-1284301|3|0|0|43|2|34|-1
+queued ack|pair-raid-1284301|3|2|34
+saved|pair-raid-1284301|3|1|0|1793921802960|20|8966|8966|0|20|0|0
+seat|pair-raid-1284302|3|0|0|43|6|8|-1
+queued ack|pair-raid-1284302|3|6|8
+saved|pair-raid-1284302|3|1|0|1793921802960|4|8966|8966|0|4|0|0
+seat|pair-raid-1284302|4|0|0|42|6|8|-1
+queued ack|pair-raid-1284302|4|6|8
+saved|pair-raid-1284302|4|1|0|1793921802960|5|8966|8966|0|5|0|0
+seat|pair-raid-1284301|4|0|0|42|2|34|-1
+queued ack|pair-raid-1284301|4|2|34
+saved|pair-raid-1284301|4|1|0|1793921802960|21|8966|8966|0|21|0|0
+seat|pair-raid-1284302|5|0|0|43|6|8|-1
+queued ack|pair-raid-1284302|5|6|8
+saved|pair-raid-1284302|5|1|0|1793921802960|6|8966|8966|0|6|0|0
+seat|pair-raid-1284301|5|0|0|43|2|34|-1
+queued ack|pair-raid-1284301|5|2|34
+saved|pair-raid-1284301|5|1|0|1793921802960|22|8966|8966|0|22|0|0
+seat|pair-raid-1284301|6|0|0|43|2|34|-1
+queued ack|pair-raid-1284301|6|2|34
+saved|pair-raid-1284301|6|1|0|1793921802960|23|8966|8966|0|23|0|0
+seat|pair-raid-1284302|6|0|0|43|6|8|-1
+queued ack|pair-raid-1284302|6|6|8
+saved|pair-raid-1284302|6|1|0|1793921802960|7|8966|8966|0|7|0|0
+seat|pair-raid-1284301|7|0|0|43|2|34|-1
+queued ack|pair-raid-1284301|7|2|34
+saved|pair-raid-1284301|7|1|0|1793921802960|24|8966|8966|0|24|0|0
+seat|pair-raid-1284302|7|0|0|43|6|8|-1
+queued ack|pair-raid-1284302|7|6|8
+saved|pair-raid-1284302|7|1|0|1793921802960|8|8966|8966|0|8|0|0
+seat|pair-raid-1284301|8|0|0|42|2|34|-1
+queued ack|pair-raid-1284301|8|2|34
+saved|pair-raid-1284301|8|1|0|1793921802960|25|8966|8966|0|25|0|0
+seat|pair-raid-1284302|8|0|0|42|6|8|-1
+queued ack|pair-raid-1284302|8|6|8
+saved|pair-raid-1284302|8|1|0|1793921802960|9|8966|8966|0|9|0|0
+seat|pair-raid-1284301|9|0|0|43|2|34|-1
+queued ack|pair-raid-1284301|9|2|34
+saved|pair-raid-1284301|9|1|0|1793921802960|26|8966|8966|0|26|0|0
+seat|pair-raid-1284302|9|0|0|43|6|8|-1
+queued ack|pair-raid-1284302|9|6|8
+saved|pair-raid-1284302|9|1|0|1793921802960|10|8966|8966|0|10|0|0
+seat|pair-raid-1284301|10|0|0|43|2|34|-1
+queued ack|pair-raid-1284301|10|2|34
+saved|pair-raid-1284301|10|1|0|1793921802960|27|8966|8966|0|27|0|0
+seat|pair-raid-1284302|10|0|0|43|6|8|-1
+queued ack|pair-raid-1284302|10|6|8
+saved|pair-raid-1284302|10|1|0|1793921802960|11|8966|8966|0|11|0|0
+seat|pair-raid-1284301|11|0|0|43|2|34|-1
+queued ack|pair-raid-1284301|11|2|34
+saved|pair-raid-1284301|11|1|0|1793921802960|28|8966|8966|0|28|0|0
+seat|pair-raid-1284302|11|0|0|43|6|8|-1
+queued ack|pair-raid-1284302|11|6|8
+saved|pair-raid-1284302|11|1|0|1793921802960|12|8966|8966|0|12|0|0
+seat|pair-raid-1284301|12|0|0|42|2|34|-1
+queued ack|pair-raid-1284301|12|2|34
+saved|pair-raid-1284301|12|1|0|1793921802960|29|8966|8966|0|29|0|0
+seat|pair-raid-1284302|12|0|0|42|6|8|-1
+queued ack|pair-raid-1284302|12|6|8
+saved|pair-raid-1284302|12|1|0|1793921802960|13|8966|8966|0|13|0|0
+seat|pair-raid-1284301|13|0|0|43|2|34|-1
+queued ack|pair-raid-1284301|13|2|34
+saved|pair-raid-1284301|13|1|0|1793921802960|30|8966|8966|0|30|0|0
+seat|pair-raid-1284302|13|0|0|43|6|8|-1
+queued ack|pair-raid-1284302|13|6|8
+saved|pair-raid-1284302|13|1|0|1793921802960|14|8966|8966|0|14|0|0
+seat|pair-raid-1284301|14|0|0|43|2|34|-1
+queued ack|pair-raid-1284301|14|2|34
+saved|pair-raid-1284301|14|1|0|1793921802960|31|8966|8966|0|31|0|0
+seat|pair-raid-1284302|14|0|0|43|6|8|-1
+queued ack|pair-raid-1284302|14|6|8
+saved|pair-raid-1284302|14|1|0|1793921802960|15|8966|8966|0|15|0|0
+seat|pair-raid-1284301|15|0|0|43|2|34|-1
+queued ack|pair-raid-1284301|15|2|34
+saved|pair-raid-1284301|15|1|0|1793921802960|32|8966|8966|0|32|0|0
+seat|pair-raid-1284302|15|0|0|43|6|8|-1
+queued ack|pair-raid-1284302|15|6|8
+saved|pair-raid-1284302|15|1|0|1793921802960|16|8966|8966|0|16|0|0
+report omitted lines=0
+report generation us=129
+observation measured wall share %=0.057
+observation timing scope=timed observer spans plus report; excludes inline serializer input and transport counters
+
+sample_ms=25026
+process generation=1793921802960
+capacity startup ready=1
+observation scope=process report window
+out scope=accepted application frames including websocket framing
+transport kernel bytes including upgrade and controls a second=465151
+transport discarded queued bytes a second=0
+transport refused frame bytes a second=0
+transport refused frames a second=0.0
+observation counter overflow=0
+server ack scope=input heard to final D accepted by socket queue
+server queued ack p50 ms=6
+server queued ack p95 ms=34
+server queued ack samples=8381
+shard=1
+players=32
+ticks a second=30.0
+tick p50 ms=0.75
+tick p95 ms=0.89
+tick p99 ms=0.97
+players p50 ms=0.08
+players p95 ms=0.12
+players p99 ms=0.13
+raiders p50 ms=0.02
+raiders p95 ms=0.02
+raiders p99 ms=0.03
+effects p50 ms=0.03
+effects p95 ms=0.03
+effects p99 ms=0.03
+folk p50 ms=0.02
+folk p95 ms=0.03
+folk p99 ms=0.04
+writing p50 ms=0.24
+writing p95 ms=0.32
+writing p99 ms=0.36
+sending p50 ms=0.13
+sending p95 ms=0.16
+sending p99 ms=0.18
+measuring % of tick=2.43
+queue bytes most=0
+queue age ms most=0
+relevant entities a seat=42.8
+relevant entities most=43
+interest scope=process latest picks
+interest aggregation us=0
+interest seats=32
+interest whole total=1392
+interest whole most=44
+interest health only total=0
+interest health only most=0
+interest blocked total=0
+interest blocked most=0
+interest hidden total=0
+interest hidden most=0
+interest worst|pair-raid-1284302|1|44|0|0|0
+rows sent for their age a second=0.0
+row wait ticks most=0
+rows left for later most=0
+replication scope=process serialized output before relay admission
+rows serialized a second=19464.0
+row text bytes serialized a second=426949
+rows deferred a second=8.0
+rows latest serialized total=569
+rows latest deferred total=0
+replication worst|pair-raid-1284302|5|26|0
+checkpoint pending=0
+checkpoint flying=0
+checkpoint posts=0
+checkpoint retries=0
+checkpoint failures=0
+checkpoint applied=0
+checkpoint duplicates=0
+checkpoint late receipts=0
+checkpoint capacity refusals=0
+checkpoint stale owner refusals=0
+checkpoint resident=0
+checkpoint accepted=0
+checkpoint capture age ms most=0
+checkpoint receipt age ms most=0
+checkpoint paused rooms=0
+checkpoint finalizing=0
+legacy save pending=0
+legacy save flying=0
+legacy save posts=1
+legacy save retries=0
+legacy save failures=0
+legacy save applied=32
+legacy save duplicates=0
+legacy stale owner refusals=0
+legacy save abandoned=0
+legacy save evicted=0
+owner generation most=0
+owner ticket refusals=0
+checkpoint active loss bound ms=30000
+checkpoint healthy recovery target ms=60000
+capacity draining=0
+capacity native slots=16
+capacity live worlds=2
+capacity unused worlds=14
+capacity seated connections=32
+capacity grace holds=0
+capacity initial gates=0
+capacity scope=native world slots and seat state; API placement caps and reservations are separate
+removal bytes a second=0
+removals waiting a second=0.0
+player info bytes a second=0
+player info waiting a second=0.0
+join pieces bytes a second=0
+join pieces waiting a second=0.0
+cue bytes a second=0
+cues dropped a second=0.0
+outcome bytes a second=0
+outcomes lost a second=0.0
+snapshots after a stall a second=0.00
+towns sent again a second=0.00
+snapshots held for a slow page a second=0.0
+input to ack p50 ms=6
+input to ack p95 ms=34
+joins=0
+join burst bytes=0
+join burst bytes most=0
+join burst ms=0
+join burst ms most=0
+rejoins tried=0
+rejoins seated=0
+rejoins same seat=0
+old socket frames dropped=0
+refused no room=0
+refused ticket=0
+refused kicked=0
+refused shard=0
+refused full=0
+refused version=0
+refused engine=0
+refused rules=0
+refused content=0
+refused schema=0
+refused elsewhere=0
+build engine=1 rules=1 content=1 wire=4-4 schema=2
+out bytes a second=465151
+out messages a second=958
+in bytes a second=32509
+in messages a second=960
+out D bytes a second=465151
+out D a second=958
+out D g bytes a second=1076
+out D g a second=22
+out D o bytes a second=191
+out D o a second=64
+out D v bytes a second=1245
+out D v a second=51
+out D s players bytes a second=296612
+out D s players a second=13530
+out D s townsfolk bytes a second=142602
+out D s townsfolk a second=5812
+out D s made bytes a second=6326
+out D s made a second=122
+out D header bytes a second=17099
+out D header a second=958
+in I bytes a second=32509
+in I a second=960
+seat|pair-raid-1284302|0|0|0|42|6|8|-1
+queued ack|pair-raid-1284302|0|6|8
+saved|pair-raid-1284302|0|1|0|1793921802960|1|8966|8966|0|1|0|0
+seat|pair-raid-1284301|0|0|0|42|2|34|-1
+queued ack|pair-raid-1284301|0|2|34
+saved|pair-raid-1284301|0|1|0|1793921802960|17|8966|8966|0|17|0|0
+seat|pair-raid-1284301|1|0|0|43|2|34|-1
+queued ack|pair-raid-1284301|1|2|34
+saved|pair-raid-1284301|1|1|0|1793921802960|18|8966|8966|0|18|0|0
+seat|pair-raid-1284302|1|0|0|43|6|8|-1
+queued ack|pair-raid-1284302|1|6|8
+saved|pair-raid-1284302|1|1|0|1793921802960|2|8966|8966|0|2|0|0
+seat|pair-raid-1284302|2|0|0|43|6|8|-1
+queued ack|pair-raid-1284302|2|6|8
+saved|pair-raid-1284302|2|1|0|1793921802960|3|8966|8966|0|3|0|0
+seat|pair-raid-1284301|2|0|0|43|2|34|-1
+queued ack|pair-raid-1284301|2|2|34
+saved|pair-raid-1284301|2|1|0|1793921802960|19|8966|8966|0|19|0|0
+seat|pair-raid-1284301|3|0|0|43|2|34|-1
+queued ack|pair-raid-1284301|3|2|34
+saved|pair-raid-1284301|3|1|0|1793921802960|20|8966|8966|0|20|0|0
+seat|pair-raid-1284302|3|0|0|43|6|8|-1
+queued ack|pair-raid-1284302|3|6|8
+saved|pair-raid-1284302|3|1|0|1793921802960|4|8966|8966|0|4|0|0
+seat|pair-raid-1284302|4|0|0|42|6|8|-1
+queued ack|pair-raid-1284302|4|6|8
+saved|pair-raid-1284302|4|1|0|1793921802960|5|8966|8966|0|5|0|0
+seat|pair-raid-1284301|4|0|0|42|2|34|-1
+queued ack|pair-raid-1284301|4|2|34
+saved|pair-raid-1284301|4|1|0|1793921802960|21|8966|8966|0|21|0|0
+seat|pair-raid-1284302|5|0|0|43|6|8|-1
+queued ack|pair-raid-1284302|5|6|8
+saved|pair-raid-1284302|5|1|0|1793921802960|6|8966|8966|0|6|0|0
+seat|pair-raid-1284301|5|0|0|43|2|34|-1
+queued ack|pair-raid-1284301|5|2|34
+saved|pair-raid-1284301|5|1|0|1793921802960|22|8966|8966|0|22|0|0
+seat|pair-raid-1284301|6|0|0|43|2|34|-1
+queued ack|pair-raid-1284301|6|2|34
+saved|pair-raid-1284301|6|1|0|1793921802960|23|8966|8966|0|23|0|0
+seat|pair-raid-1284302|6|0|0|43|6|8|-1
+queued ack|pair-raid-1284302|6|6|8
+saved|pair-raid-1284302|6|1|0|1793921802960|7|8966|8966|0|7|0|0
+seat|pair-raid-1284301|7|0|0|43|2|34|-1
+queued ack|pair-raid-1284301|7|2|34
+saved|pair-raid-1284301|7|1|0|1793921802960|24|8966|8966|0|24|0|0
+seat|pair-raid-1284302|7|0|0|43|6|8|-1
+queued ack|pair-raid-1284302|7|6|8
+saved|pair-raid-1284302|7|1|0|1793921802960|8|8966|8966|0|8|0|0
+seat|pair-raid-1284301|8|0|0|42|2|34|-1
+queued ack|pair-raid-1284301|8|2|34
+saved|pair-raid-1284301|8|1|0|1793921802960|25|8966|8966|0|25|0|0
+seat|pair-raid-1284302|8|0|0|42|6|8|-1
+queued ack|pair-raid-1284302|8|6|8
+saved|pair-raid-1284302|8|1|0|1793921802960|9|8966|8966|0|9|0|0
+seat|pair-raid-1284301|9|0|0|43|2|34|-1
+queued ack|pair-raid-1284301|9|2|34
+saved|pair-raid-1284301|9|1|0|1793921802960|26|8966|8966|0|26|0|0
+seat|pair-raid-1284302|9|0|0|43|6|8|-1
+queued ack|pair-raid-1284302|9|6|8
+saved|pair-raid-1284302|9|1|0|1793921802960|10|8966|8966|0|10|0|0
+seat|pair-raid-1284301|10|0|0|43|2|34|-1
+queued ack|pair-raid-1284301|10|2|34
+saved|pair-raid-1284301|10|1|0|1793921802960|27|8966|8966|0|27|0|0
+seat|pair-raid-1284302|10|0|0|43|6|8|-1
+queued ack|pair-raid-1284302|10|6|8
+saved|pair-raid-1284302|10|1|0|1793921802960|11|8966|8966|0|11|0|0
+seat|pair-raid-1284301|11|0|0|43|2|34|-1
+queued ack|pair-raid-1284301|11|2|34
+saved|pair-raid-1284301|11|1|0|1793921802960|28|8966|8966|0|28|0|0
+seat|pair-raid-1284302|11|0|0|43|6|8|-1
+queued ack|pair-raid-1284302|11|6|8
+saved|pair-raid-1284302|11|1|0|1793921802960|12|8966|8966|0|12|0|0
+seat|pair-raid-1284301|12|0|0|42|2|34|-1
+queued ack|pair-raid-1284301|12|2|34
+saved|pair-raid-1284301|12|1|0|1793921802960|29|8966|8966|0|29|0|0
+seat|pair-raid-1284302|12|0|0|42|6|8|-1
+queued ack|pair-raid-1284302|12|6|8
+saved|pair-raid-1284302|12|1|0|1793921802960|13|8966|8966|0|13|0|0
+seat|pair-raid-1284301|13|0|0|43|2|34|-1
+queued ack|pair-raid-1284301|13|2|34
+saved|pair-raid-1284301|13|1|0|1793921802960|30|8966|8966|0|30|0|0
+seat|pair-raid-1284302|13|0|0|43|6|8|-1
+queued ack|pair-raid-1284302|13|6|8
+saved|pair-raid-1284302|13|1|0|1793921802960|14|8966|8966|0|14|0|0
+seat|pair-raid-1284301|14|0|0|43|2|34|-1
+queued ack|pair-raid-1284301|14|2|34
+saved|pair-raid-1284301|14|1|0|1793921802960|31|8966|8966|0|31|0|0
+seat|pair-raid-1284302|14|0|0|43|6|8|-1
+queued ack|pair-raid-1284302|14|6|8
+saved|pair-raid-1284302|14|1|0|1793921802960|15|8966|8966|0|15|0|0
+seat|pair-raid-1284301|15|0|0|43|2|34|-1
+queued ack|pair-raid-1284301|15|2|34
+saved|pair-raid-1284301|15|1|0|1793921802960|32|8966|8966|0|32|0|0
+seat|pair-raid-1284302|15|0|0|43|6|8|-1
+queued ack|pair-raid-1284302|15|6|8
+saved|pair-raid-1284302|15|1|0|1793921802960|16|8966|8966|0|16|0|0
+report omitted lines=0
+report generation us=129
+observation measured wall share %=0.057
+observation timing scope=timed observer spans plus report; excludes inline serializer input and transport counters
+
+sample_ms=30031
+process generation=1793921802960
+capacity startup ready=1
+observation scope=process report window
+out scope=accepted application frames including websocket framing
+transport kernel bytes including upgrade and controls a second=456986
+transport discarded queued bytes a second=0
+transport refused frame bytes a second=0
+transport refused frames a second=0.0
+observation counter overflow=0
+server ack scope=input heard to final D accepted by socket queue
+server queued ack p50 ms=6
+server queued ack p95 ms=34
+server queued ack samples=8498
+shard=1
+players=32
+ticks a second=30.0
+tick p50 ms=0.86
+tick p95 ms=0.99
+tick p99 ms=1.07
+players p50 ms=0.09
+players p95 ms=0.12
+players p99 ms=0.14
+raiders p50 ms=0.02
+raiders p95 ms=0.02
+raiders p99 ms=0.03
+effects p50 ms=0.03
+effects p95 ms=0.03
+effects p99 ms=0.03
+folk p50 ms=0.03
+folk p95 ms=0.03
+folk p99 ms=0.04
+writing p50 ms=0.29
+writing p95 ms=0.37
+writing p99 ms=0.39
+sending p50 ms=0.15
+sending p95 ms=0.17
+sending p99 ms=0.20
+measuring % of tick=2.48
+queue bytes most=0
+queue age ms most=0
+relevant entities a seat=44.2
+relevant entities most=45
+interest scope=process latest picks
+interest aggregation us=0
+interest seats=32
+interest whole total=1416
+interest whole most=45
+interest health only total=0
+interest health only most=0
+interest blocked total=0
+interest blocked most=0
+interest hidden total=0
+interest hidden most=0
+interest worst|pair-raid-1284302|0|45|0|0|0
+rows sent for their age a second=0.0
+row wait ticks most=0
+rows left for later most=0
+replication scope=process serialized output before relay admission
+rows serialized a second=20919.1
+row text bytes serialized a second=417944
+rows deferred a second=0.4
+rows latest serialized total=714
+rows latest deferred total=0
+replication worst|pair-raid-1284302|2|23|0
+checkpoint pending=0
+checkpoint flying=0
+checkpoint posts=0
+checkpoint retries=0
+checkpoint failures=0
+checkpoint applied=0
+checkpoint duplicates=0
+checkpoint late receipts=0
+checkpoint capacity refusals=0
+checkpoint stale owner refusals=0
+checkpoint resident=0
+checkpoint accepted=0
+checkpoint capture age ms most=0
+checkpoint receipt age ms most=0
+checkpoint paused rooms=0
+checkpoint finalizing=0
+legacy save pending=0
+legacy save flying=0
+legacy save posts=1
+legacy save retries=0
+legacy save failures=0
+legacy save applied=32
+legacy save duplicates=0
+legacy stale owner refusals=0
+legacy save abandoned=0
+legacy save evicted=0
+owner generation most=0
+owner ticket refusals=0
+checkpoint active loss bound ms=30000
+checkpoint healthy recovery target ms=60000
+capacity draining=0
+capacity native slots=16
+capacity live worlds=2
+capacity unused worlds=14
+capacity seated connections=32
+capacity grace holds=0
+capacity initial gates=0
+capacity scope=native world slots and seat state; API placement caps and reservations are separate
+removal bytes a second=22
+removals waiting a second=0.0
+player info bytes a second=0
+player info waiting a second=0.0
+join pieces bytes a second=0
+join pieces waiting a second=0.0
+cue bytes a second=0
+cues dropped a second=0.0
+outcome bytes a second=0
+outcomes lost a second=0.0
+snapshots after a stall a second=0.00
+towns sent again a second=0.00
+snapshots held for a slow page a second=0.0
+input to ack p50 ms=6
+input to ack p95 ms=34
+joins=0
+join burst bytes=0
+join burst bytes most=0
+join burst ms=0
+join burst ms most=0
+rejoins tried=0
+rejoins seated=0
+rejoins same seat=0
+old socket frames dropped=0
+refused no room=0
+refused ticket=0
+refused kicked=0
+refused shard=0
+refused full=0
+refused version=0
+refused engine=0
+refused rules=0
+refused content=0
+refused schema=0
+refused elsewhere=0
+build engine=1 rules=1 content=1 wire=4-4 schema=2
+out bytes a second=456986
+out messages a second=960
+in bytes a second=31013
+in messages a second=962
+out D bytes a second=456986
+out D a second=960
+out D g bytes a second=1538
+out D g a second=32
+out D o bytes a second=192
+out D o a second=64
+out D x bytes a second=22
+out D x a second=2
+out D s players bytes a second=270756
+out D s players a second=13707
+out D s townsfolk bytes a second=160945
+out D s townsfolk a second=7090
+out D s made bytes a second=6297
+out D s made a second=122
+out D header bytes a second=17237
+out D header a second=960
+in I bytes a second=31013
+in I a second=962
+seat|pair-raid-1284302|0|0|0|45|6|8|-1
+queued ack|pair-raid-1284302|0|6|8
+saved|pair-raid-1284302|0|1|0|1793921802960|1|18966|18966|0|1|0|0
+seat|pair-raid-1284301|0|0|0|45|2|36|-1
+queued ack|pair-raid-1284301|0|2|36
+saved|pair-raid-1284301|0|1|0|1793921802960|17|18966|18966|0|17|0|0
+seat|pair-raid-1284301|1|0|0|45|2|36|-1
+queued ack|pair-raid-1284301|1|2|36
+saved|pair-raid-1284301|1|1|0|1793921802960|18|18966|18966|0|18|0|0
+seat|pair-raid-1284302|1|0|0|45|6|8|-1
+queued ack|pair-raid-1284302|1|6|8
+saved|pair-raid-1284302|1|1|0|1793921802960|2|18966|18966|0|2|0|0
+seat|pair-raid-1284302|2|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|2|6|8
+saved|pair-raid-1284302|2|1|0|1793921802960|3|18966|18966|0|3|0|0
+seat|pair-raid-1284301|2|0|0|44|2|36|-1
+queued ack|pair-raid-1284301|2|2|36
+saved|pair-raid-1284301|2|1|0|1793921802960|19|18966|18966|0|19|0|0
+seat|pair-raid-1284301|3|0|0|44|2|36|-1
+queued ack|pair-raid-1284301|3|2|36
+saved|pair-raid-1284301|3|1|0|1793921802960|20|18966|18966|0|20|0|0
+seat|pair-raid-1284302|3|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|3|6|8
+saved|pair-raid-1284302|3|1|0|1793921802960|4|18966|18966|0|4|0|0
+seat|pair-raid-1284302|4|0|0|45|6|8|-1
+queued ack|pair-raid-1284302|4|6|8
+saved|pair-raid-1284302|4|1|0|1793921802960|5|18966|18966|0|5|0|0
+seat|pair-raid-1284301|4|0|0|45|2|36|-1
+queued ack|pair-raid-1284301|4|2|36
+saved|pair-raid-1284301|4|1|0|1793921802960|21|18966|18966|0|21|0|0
+seat|pair-raid-1284302|5|0|0|45|6|8|-1
+queued ack|pair-raid-1284302|5|6|8
+saved|pair-raid-1284302|5|1|0|1793921802960|6|18966|18966|0|6|0|0
+seat|pair-raid-1284301|5|0|0|45|2|36|-1
+queued ack|pair-raid-1284301|5|2|36
+saved|pair-raid-1284301|5|1|0|1793921802960|22|18966|18966|0|22|0|0
+seat|pair-raid-1284301|6|0|0|44|2|36|-1
+queued ack|pair-raid-1284301|6|2|36
+saved|pair-raid-1284301|6|1|0|1793921802960|23|18966|18966|0|23|0|0
+seat|pair-raid-1284302|6|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|6|6|8
+saved|pair-raid-1284302|6|1|0|1793921802960|7|18966|18966|0|7|0|0
+seat|pair-raid-1284301|7|0|0|44|2|36|-1
+queued ack|pair-raid-1284301|7|2|36
+saved|pair-raid-1284301|7|1|0|1793921802960|24|18966|18966|0|24|0|0
+seat|pair-raid-1284302|7|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|7|6|8
+saved|pair-raid-1284302|7|1|0|1793921802960|8|18966|18966|0|8|0|0
+seat|pair-raid-1284301|8|0|0|44|2|36|-1
+queued ack|pair-raid-1284301|8|2|36
+saved|pair-raid-1284301|8|1|0|1793921802960|25|18966|18966|0|25|0|0
+seat|pair-raid-1284302|8|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|8|6|8
+saved|pair-raid-1284302|8|1|0|1793921802960|9|18966|18966|0|9|0|0
+seat|pair-raid-1284301|9|0|0|44|2|36|-1
+queued ack|pair-raid-1284301|9|2|36
+saved|pair-raid-1284301|9|1|0|1793921802960|26|18966|18966|0|26|0|0
+seat|pair-raid-1284302|9|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|9|6|8
+saved|pair-raid-1284302|9|1|0|1793921802960|10|18966|18966|0|10|0|0
+seat|pair-raid-1284301|10|0|0|44|2|36|-1
+queued ack|pair-raid-1284301|10|2|36
+saved|pair-raid-1284301|10|1|0|1793921802960|27|18966|18966|0|27|0|0
+seat|pair-raid-1284302|10|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|10|6|8
+saved|pair-raid-1284302|10|1|0|1793921802960|11|18966|18966|0|11|0|0
+seat|pair-raid-1284301|11|0|0|44|2|36|-1
+queued ack|pair-raid-1284301|11|2|36
+saved|pair-raid-1284301|11|1|0|1793921802960|28|18966|18966|0|28|0|0
+seat|pair-raid-1284302|11|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|11|6|8
+saved|pair-raid-1284302|11|1|0|1793921802960|12|18966|18966|0|12|0|0
+seat|pair-raid-1284301|12|0|0|44|2|36|-1
+queued ack|pair-raid-1284301|12|2|36
+saved|pair-raid-1284301|12|1|0|1793921802960|29|18966|18966|0|29|0|0
+seat|pair-raid-1284302|12|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|12|6|8
+saved|pair-raid-1284302|12|1|0|1793921802960|13|18966|18966|0|13|0|0
+seat|pair-raid-1284301|13|0|0|44|2|36|-1
+queued ack|pair-raid-1284301|13|2|36
+saved|pair-raid-1284301|13|1|0|1793921802960|30|18966|18966|0|30|0|0
+seat|pair-raid-1284302|13|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|13|6|8
+saved|pair-raid-1284302|13|1|0|1793921802960|14|18966|18966|0|14|0|0
+seat|pair-raid-1284301|14|0|0|44|2|36|-1
+queued ack|pair-raid-1284301|14|2|36
+saved|pair-raid-1284301|14|1|0|1793921802960|31|18966|18966|0|31|0|0
+seat|pair-raid-1284302|14|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|14|6|8
+saved|pair-raid-1284302|14|1|0|1793921802960|15|18966|18966|0|15|0|0
+seat|pair-raid-1284301|15|0|0|44|2|36|-1
+queued ack|pair-raid-1284301|15|2|36
+saved|pair-raid-1284301|15|1|0|1793921802960|32|18966|18966|0|32|0|0
+seat|pair-raid-1284302|15|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|15|6|8
+saved|pair-raid-1284302|15|1|0|1793921802960|16|18966|18966|0|16|0|0
+report omitted lines=0
+report generation us=93
+observation measured wall share %=0.065
+observation timing scope=timed observer spans plus report; excludes inline serializer input and transport counters
+
+sample_ms=35039
+process generation=1793921802960
+capacity startup ready=1
+observation scope=process report window
+out scope=accepted application frames including websocket framing
+transport kernel bytes including upgrade and controls a second=456986
+transport discarded queued bytes a second=0
+transport refused frame bytes a second=0
+transport refused frames a second=0.0
+observation counter overflow=0
+server ack scope=input heard to final D accepted by socket queue
+server queued ack p50 ms=6
+server queued ack p95 ms=34
+server queued ack samples=8498
+shard=1
+players=32
+ticks a second=30.0
+tick p50 ms=0.86
+tick p95 ms=0.99
+tick p99 ms=1.07
+players p50 ms=0.09
+players p95 ms=0.12
+players p99 ms=0.14
+raiders p50 ms=0.02
+raiders p95 ms=0.02
+raiders p99 ms=0.03
+effects p50 ms=0.03
+effects p95 ms=0.03
+effects p99 ms=0.03
+folk p50 ms=0.03
+folk p95 ms=0.03
+folk p99 ms=0.04
+writing p50 ms=0.29
+writing p95 ms=0.37
+writing p99 ms=0.39
+sending p50 ms=0.15
+sending p95 ms=0.17
+sending p99 ms=0.20
+measuring % of tick=2.48
+queue bytes most=0
+queue age ms most=0
+relevant entities a seat=44.2
+relevant entities most=45
+interest scope=process latest picks
+interest aggregation us=0
+interest seats=32
+interest whole total=1416
+interest whole most=45
+interest health only total=0
+interest health only most=0
+interest blocked total=0
+interest blocked most=0
+interest hidden total=0
+interest hidden most=0
+interest worst|pair-raid-1284302|0|45|0|0|0
+rows sent for their age a second=0.0
+row wait ticks most=0
+rows left for later most=0
+replication scope=process serialized output before relay admission
+rows serialized a second=20919.1
+row text bytes serialized a second=417944
+rows deferred a second=0.4
+rows latest serialized total=714
+rows latest deferred total=0
+replication worst|pair-raid-1284302|2|23|0
+checkpoint pending=0
+checkpoint flying=0
+checkpoint posts=0
+checkpoint retries=0
+checkpoint failures=0
+checkpoint applied=0
+checkpoint duplicates=0
+checkpoint late receipts=0
+checkpoint capacity refusals=0
+checkpoint stale owner refusals=0
+checkpoint resident=0
+checkpoint accepted=0
+checkpoint capture age ms most=0
+checkpoint receipt age ms most=0
+checkpoint paused rooms=0
+checkpoint finalizing=0
+legacy save pending=0
+legacy save flying=0
+legacy save posts=1
+legacy save retries=0
+legacy save failures=0
+legacy save applied=32
+legacy save duplicates=0
+legacy stale owner refusals=0
+legacy save abandoned=0
+legacy save evicted=0
+owner generation most=0
+owner ticket refusals=0
+checkpoint active loss bound ms=30000
+checkpoint healthy recovery target ms=60000
+capacity draining=0
+capacity native slots=16
+capacity live worlds=2
+capacity unused worlds=14
+capacity seated connections=32
+capacity grace holds=0
+capacity initial gates=0
+capacity scope=native world slots and seat state; API placement caps and reservations are separate
+removal bytes a second=22
+removals waiting a second=0.0
+player info bytes a second=0
+player info waiting a second=0.0
+join pieces bytes a second=0
+join pieces waiting a second=0.0
+cue bytes a second=0
+cues dropped a second=0.0
+outcome bytes a second=0
+outcomes lost a second=0.0
+snapshots after a stall a second=0.00
+towns sent again a second=0.00
+snapshots held for a slow page a second=0.0
+input to ack p50 ms=6
+input to ack p95 ms=34
+joins=0
+join burst bytes=0
+join burst bytes most=0
+join burst ms=0
+join burst ms most=0
+rejoins tried=0
+rejoins seated=0
+rejoins same seat=0
+old socket frames dropped=0
+refused no room=0
+refused ticket=0
+refused kicked=0
+refused shard=0
+refused full=0
+refused version=0
+refused engine=0
+refused rules=0
+refused content=0
+refused schema=0
+refused elsewhere=0
+build engine=1 rules=1 content=1 wire=4-4 schema=2
+out bytes a second=456986
+out messages a second=960
+in bytes a second=31013
+in messages a second=962
+out D bytes a second=456986
+out D a second=960
+out D g bytes a second=1538
+out D g a second=32
+out D o bytes a second=192
+out D o a second=64
+out D x bytes a second=22
+out D x a second=2
+out D s players bytes a second=270756
+out D s players a second=13707
+out D s townsfolk bytes a second=160945
+out D s townsfolk a second=7090
+out D s made bytes a second=6297
+out D s made a second=122
+out D header bytes a second=17237
+out D header a second=960
+in I bytes a second=31013
+in I a second=962
+seat|pair-raid-1284302|0|0|0|45|6|8|-1
+queued ack|pair-raid-1284302|0|6|8
+saved|pair-raid-1284302|0|1|0|1793921802960|1|18966|18966|0|1|0|0
+seat|pair-raid-1284301|0|0|0|45|2|36|-1
+queued ack|pair-raid-1284301|0|2|36
+saved|pair-raid-1284301|0|1|0|1793921802960|17|18966|18966|0|17|0|0
+seat|pair-raid-1284301|1|0|0|45|2|36|-1
+queued ack|pair-raid-1284301|1|2|36
+saved|pair-raid-1284301|1|1|0|1793921802960|18|18966|18966|0|18|0|0
+seat|pair-raid-1284302|1|0|0|45|6|8|-1
+queued ack|pair-raid-1284302|1|6|8
+saved|pair-raid-1284302|1|1|0|1793921802960|2|18966|18966|0|2|0|0
+seat|pair-raid-1284302|2|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|2|6|8
+saved|pair-raid-1284302|2|1|0|1793921802960|3|18966|18966|0|3|0|0
+seat|pair-raid-1284301|2|0|0|44|2|36|-1
+queued ack|pair-raid-1284301|2|2|36
+saved|pair-raid-1284301|2|1|0|1793921802960|19|18966|18966|0|19|0|0
+seat|pair-raid-1284301|3|0|0|44|2|36|-1
+queued ack|pair-raid-1284301|3|2|36
+saved|pair-raid-1284301|3|1|0|1793921802960|20|18966|18966|0|20|0|0
+seat|pair-raid-1284302|3|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|3|6|8
+saved|pair-raid-1284302|3|1|0|1793921802960|4|18966|18966|0|4|0|0
+seat|pair-raid-1284302|4|0|0|45|6|8|-1
+queued ack|pair-raid-1284302|4|6|8
+saved|pair-raid-1284302|4|1|0|1793921802960|5|18966|18966|0|5|0|0
+seat|pair-raid-1284301|4|0|0|45|2|36|-1
+queued ack|pair-raid-1284301|4|2|36
+saved|pair-raid-1284301|4|1|0|1793921802960|21|18966|18966|0|21|0|0
+seat|pair-raid-1284302|5|0|0|45|6|8|-1
+queued ack|pair-raid-1284302|5|6|8
+saved|pair-raid-1284302|5|1|0|1793921802960|6|18966|18966|0|6|0|0
+seat|pair-raid-1284301|5|0|0|45|2|36|-1
+queued ack|pair-raid-1284301|5|2|36
+saved|pair-raid-1284301|5|1|0|1793921802960|22|18966|18966|0|22|0|0
+seat|pair-raid-1284301|6|0|0|44|2|36|-1
+queued ack|pair-raid-1284301|6|2|36
+saved|pair-raid-1284301|6|1|0|1793921802960|23|18966|18966|0|23|0|0
+seat|pair-raid-1284302|6|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|6|6|8
+saved|pair-raid-1284302|6|1|0|1793921802960|7|18966|18966|0|7|0|0
+seat|pair-raid-1284301|7|0|0|44|2|36|-1
+queued ack|pair-raid-1284301|7|2|36
+saved|pair-raid-1284301|7|1|0|1793921802960|24|18966|18966|0|24|0|0
+seat|pair-raid-1284302|7|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|7|6|8
+saved|pair-raid-1284302|7|1|0|1793921802960|8|18966|18966|0|8|0|0
+seat|pair-raid-1284301|8|0|0|44|2|36|-1
+queued ack|pair-raid-1284301|8|2|36
+saved|pair-raid-1284301|8|1|0|1793921802960|25|18966|18966|0|25|0|0
+seat|pair-raid-1284302|8|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|8|6|8
+saved|pair-raid-1284302|8|1|0|1793921802960|9|18966|18966|0|9|0|0
+seat|pair-raid-1284301|9|0|0|44|2|36|-1
+queued ack|pair-raid-1284301|9|2|36
+saved|pair-raid-1284301|9|1|0|1793921802960|26|18966|18966|0|26|0|0
+seat|pair-raid-1284302|9|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|9|6|8
+saved|pair-raid-1284302|9|1|0|1793921802960|10|18966|18966|0|10|0|0
+seat|pair-raid-1284301|10|0|0|44|2|36|-1
+queued ack|pair-raid-1284301|10|2|36
+saved|pair-raid-1284301|10|1|0|1793921802960|27|18966|18966|0|27|0|0
+seat|pair-raid-1284302|10|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|10|6|8
+saved|pair-raid-1284302|10|1|0|1793921802960|11|18966|18966|0|11|0|0
+seat|pair-raid-1284301|11|0|0|44|2|36|-1
+queued ack|pair-raid-1284301|11|2|36
+saved|pair-raid-1284301|11|1|0|1793921802960|28|18966|18966|0|28|0|0
+seat|pair-raid-1284302|11|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|11|6|8
+saved|pair-raid-1284302|11|1|0|1793921802960|12|18966|18966|0|12|0|0
+seat|pair-raid-1284301|12|0|0|44|2|36|-1
+queued ack|pair-raid-1284301|12|2|36
+saved|pair-raid-1284301|12|1|0|1793921802960|29|18966|18966|0|29|0|0
+seat|pair-raid-1284302|12|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|12|6|8
+saved|pair-raid-1284302|12|1|0|1793921802960|13|18966|18966|0|13|0|0
+seat|pair-raid-1284301|13|0|0|44|2|36|-1
+queued ack|pair-raid-1284301|13|2|36
+saved|pair-raid-1284301|13|1|0|1793921802960|30|18966|18966|0|30|0|0
+seat|pair-raid-1284302|13|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|13|6|8
+saved|pair-raid-1284302|13|1|0|1793921802960|14|18966|18966|0|14|0|0
+seat|pair-raid-1284301|14|0|0|44|2|36|-1
+queued ack|pair-raid-1284301|14|2|36
+saved|pair-raid-1284301|14|1|0|1793921802960|31|18966|18966|0|31|0|0
+seat|pair-raid-1284302|14|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|14|6|8
+saved|pair-raid-1284302|14|1|0|1793921802960|15|18966|18966|0|15|0|0
+seat|pair-raid-1284301|15|0|0|44|2|36|-1
+queued ack|pair-raid-1284301|15|2|36
+saved|pair-raid-1284301|15|1|0|1793921802960|32|18966|18966|0|32|0|0
+seat|pair-raid-1284302|15|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|15|6|8
+saved|pair-raid-1284302|15|1|0|1793921802960|16|18966|18966|0|16|0|0
+report omitted lines=0
+report generation us=93
+observation measured wall share %=0.065
+observation timing scope=timed observer spans plus report; excludes inline serializer input and transport counters
+
+sample_ms=40044
+process generation=1793921802960
+capacity startup ready=1
+observation scope=process report window
+out scope=accepted application frames including websocket framing
+transport kernel bytes including upgrade and controls a second=404906
+transport discarded queued bytes a second=0
+transport refused frame bytes a second=0
+transport refused frames a second=0.0
+observation counter overflow=0
+server ack scope=input heard to final D accepted by socket queue
+server queued ack p50 ms=6
+server queued ack p95 ms=34
+server queued ack samples=8391
+shard=1
+players=32
+ticks a second=30.0
+tick p50 ms=1.22
+tick p95 ms=1.81
+tick p99 ms=1.89
+players p50 ms=0.12
+players p95 ms=0.21
+players p99 ms=0.29
+raiders p50 ms=0.02
+raiders p95 ms=0.04
+raiders p99 ms=0.06
+effects p50 ms=0.04
+effects p95 ms=0.05
+effects p99 ms=0.07
+folk p50 ms=0.03
+folk p95 ms=0.05
+folk p99 ms=0.06
+writing p50 ms=0.39
+writing p95 ms=0.62
+writing p99 ms=0.69
+sending p50 ms=0.20
+sending p95 ms=0.31
+sending p99 ms=0.36
+measuring % of tick=2.32
+queue bytes most=0
+queue age ms most=0
+relevant entities a seat=44.2
+relevant entities most=45
+interest scope=process latest picks
+interest aggregation us=1
+interest seats=32
+interest whole total=1416
+interest whole most=45
+interest health only total=0
+interest health only most=0
+interest blocked total=0
+interest blocked most=0
+interest hidden total=0
+interest hidden most=0
+interest worst|pair-raid-1284302|0|45|0|0|0
+rows sent for their age a second=0.0
+row wait ticks most=0
+rows left for later most=0
+replication scope=process serialized output before relay admission
+rows serialized a second=19855.6
+row text bytes serialized a second=366613
+rows deferred a second=0.0
+rows latest serialized total=615
+rows latest deferred total=0
+replication worst|pair-raid-1284302|0|24|0
+checkpoint pending=0
+checkpoint flying=0
+checkpoint posts=0
+checkpoint retries=0
+checkpoint failures=0
+checkpoint applied=0
+checkpoint duplicates=0
+checkpoint late receipts=0
+checkpoint capacity refusals=0
+checkpoint stale owner refusals=0
+checkpoint resident=0
+checkpoint accepted=0
+checkpoint capture age ms most=0
+checkpoint receipt age ms most=0
+checkpoint paused rooms=0
+checkpoint finalizing=0
+legacy save pending=0
+legacy save flying=0
+legacy save posts=1
+legacy save retries=0
+legacy save failures=0
+legacy save applied=32
+legacy save duplicates=0
+legacy stale owner refusals=0
+legacy save abandoned=0
+legacy save evicted=0
+owner generation most=0
+owner ticket refusals=0
+checkpoint active loss bound ms=30000
+checkpoint healthy recovery target ms=60000
+capacity draining=0
+capacity native slots=16
+capacity live worlds=2
+capacity unused worlds=14
+capacity seated connections=32
+capacity grace holds=0
+capacity initial gates=0
+capacity scope=native world slots and seat state; API placement caps and reservations are separate
+removal bytes a second=0
+removals waiting a second=0.0
+player info bytes a second=0
+player info waiting a second=0.0
+join pieces bytes a second=0
+join pieces waiting a second=0.0
+cue bytes a second=0
+cues dropped a second=0.0
+outcome bytes a second=0
+outcomes lost a second=0.0
+snapshots after a stall a second=0.00
+towns sent again a second=0.00
+snapshots held for a slow page a second=0.0
+input to ack p50 ms=6
+input to ack p95 ms=34
+joins=0
+join burst bytes=0
+join burst bytes most=0
+join burst ms=0
+join burst ms most=0
+rejoins tried=0
+rejoins seated=0
+rejoins same seat=0
+old socket frames dropped=0
+refused no room=0
+refused ticket=0
+refused kicked=0
+refused shard=0
+refused full=0
+refused version=0
+refused engine=0
+refused rules=0
+refused content=0
+refused schema=0
+refused elsewhere=0
+build engine=1 rules=1 content=1 wire=4-4 schema=2
+out bytes a second=404906
+out messages a second=960
+in bytes a second=30574
+in messages a second=958
+out D bytes a second=404906
+out D a second=960
+out D g bytes a second=1522
+out D g a second=32
+out D o bytes a second=192
+out D o a second=64
+out D s players bytes a second=226086
+out D s players a second=13546
+out D s townsfolk bytes a second=153385
+out D s townsfolk a second=6191
+out D s made bytes a second=6132
+out D s made a second=118
+out D header bytes a second=17590
+out D header a second=960
+in I bytes a second=30574
+in I a second=958
+seat|pair-raid-1284302|0|0|0|45|6|8|-1
+queued ack|pair-raid-1284302|0|6|8
+saved|pair-raid-1284302|0|1|0|1793921802960|1|28967|28967|0|1|0|0
+seat|pair-raid-1284301|0|0|0|45|4|34|-1
+queued ack|pair-raid-1284301|0|4|34
+saved|pair-raid-1284301|0|1|0|1793921802960|17|28967|28967|0|17|0|0
+seat|pair-raid-1284301|1|0|0|45|4|34|-1
+queued ack|pair-raid-1284301|1|4|34
+saved|pair-raid-1284301|1|1|0|1793921802960|18|28967|28967|0|18|0|0
+seat|pair-raid-1284302|1|0|0|45|6|8|-1
+queued ack|pair-raid-1284302|1|6|8
+saved|pair-raid-1284302|1|1|0|1793921802960|2|28967|28967|0|2|0|0
+seat|pair-raid-1284302|2|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|2|6|8
+saved|pair-raid-1284302|2|1|0|1793921802960|3|28967|28967|0|3|0|0
+seat|pair-raid-1284301|2|0|0|44|4|34|-1
+queued ack|pair-raid-1284301|2|4|34
+saved|pair-raid-1284301|2|1|0|1793921802960|19|28967|28967|0|19|0|0
+seat|pair-raid-1284301|3|0|0|44|4|34|-1
+queued ack|pair-raid-1284301|3|4|34
+saved|pair-raid-1284301|3|1|0|1793921802960|20|28967|28967|0|20|0|0
+seat|pair-raid-1284302|3|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|3|6|8
+saved|pair-raid-1284302|3|1|0|1793921802960|4|28967|28967|0|4|0|0
+seat|pair-raid-1284302|4|0|0|45|6|8|-1
+queued ack|pair-raid-1284302|4|6|8
+saved|pair-raid-1284302|4|1|0|1793921802960|5|28967|28967|0|5|0|0
+seat|pair-raid-1284301|4|0|0|45|4|34|-1
+queued ack|pair-raid-1284301|4|4|34
+saved|pair-raid-1284301|4|1|0|1793921802960|21|28967|28967|0|21|0|0
+seat|pair-raid-1284302|5|0|0|45|6|8|-1
+queued ack|pair-raid-1284302|5|6|8
+saved|pair-raid-1284302|5|1|0|1793921802960|6|28967|28967|0|6|0|0
+seat|pair-raid-1284301|5|0|0|45|4|34|-1
+queued ack|pair-raid-1284301|5|4|34
+saved|pair-raid-1284301|5|1|0|1793921802960|22|28967|28967|0|22|0|0
+seat|pair-raid-1284301|6|0|0|44|4|34|-1
+queued ack|pair-raid-1284301|6|4|34
+saved|pair-raid-1284301|6|1|0|1793921802960|23|28967|28967|0|23|0|0
+seat|pair-raid-1284302|6|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|6|6|8
+saved|pair-raid-1284302|6|1|0|1793921802960|7|28967|28967|0|7|0|0
+seat|pair-raid-1284301|7|0|0|44|4|34|-1
+queued ack|pair-raid-1284301|7|4|34
+saved|pair-raid-1284301|7|1|0|1793921802960|24|28967|28967|0|24|0|0
+seat|pair-raid-1284302|7|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|7|6|8
+saved|pair-raid-1284302|7|1|0|1793921802960|8|28967|28967|0|8|0|0
+seat|pair-raid-1284301|8|0|0|44|4|34|-1
+queued ack|pair-raid-1284301|8|4|34
+saved|pair-raid-1284301|8|1|0|1793921802960|25|28967|28967|0|25|0|0
+seat|pair-raid-1284302|8|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|8|6|8
+saved|pair-raid-1284302|8|1|0|1793921802960|9|28967|28967|0|9|0|0
+seat|pair-raid-1284301|9|0|0|44|4|34|-1
+queued ack|pair-raid-1284301|9|4|34
+saved|pair-raid-1284301|9|1|0|1793921802960|26|28967|28967|0|26|0|0
+seat|pair-raid-1284302|9|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|9|6|8
+saved|pair-raid-1284302|9|1|0|1793921802960|10|28967|28967|0|10|0|0
+seat|pair-raid-1284301|10|0|0|44|4|34|-1
+queued ack|pair-raid-1284301|10|4|34
+saved|pair-raid-1284301|10|1|0|1793921802960|27|28967|28967|0|27|0|0
+seat|pair-raid-1284302|10|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|10|6|8
+saved|pair-raid-1284302|10|1|0|1793921802960|11|28967|28967|0|11|0|0
+seat|pair-raid-1284301|11|0|0|44|4|36|-1
+queued ack|pair-raid-1284301|11|4|34
+saved|pair-raid-1284301|11|1|0|1793921802960|28|28967|28967|0|28|0|0
+seat|pair-raid-1284302|11|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|11|6|8
+saved|pair-raid-1284302|11|1|0|1793921802960|12|28967|28967|0|12|0|0
+seat|pair-raid-1284301|12|0|0|44|4|36|-1
+queued ack|pair-raid-1284301|12|4|36
+saved|pair-raid-1284301|12|1|0|1793921802960|29|28967|28967|0|29|0|0
+seat|pair-raid-1284302|12|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|12|6|8
+saved|pair-raid-1284302|12|1|0|1793921802960|13|28967|28967|0|13|0|0
+seat|pair-raid-1284301|13|0|0|44|4|36|-1
+queued ack|pair-raid-1284301|13|4|36
+saved|pair-raid-1284301|13|1|0|1793921802960|30|28967|28967|0|30|0|0
+seat|pair-raid-1284302|13|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|13|6|8
+saved|pair-raid-1284302|13|1|0|1793921802960|14|28967|28967|0|14|0|0
+seat|pair-raid-1284301|14|0|0|44|4|36|-1
+queued ack|pair-raid-1284301|14|4|36
+saved|pair-raid-1284301|14|1|0|1793921802960|31|28967|28967|0|31|0|0
+seat|pair-raid-1284302|14|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|14|6|8
+saved|pair-raid-1284302|14|1|0|1793921802960|15|28967|28967|0|15|0|0
+seat|pair-raid-1284301|15|0|0|44|4|36|-1
+queued ack|pair-raid-1284301|15|4|36
+saved|pair-raid-1284301|15|1|0|1793921802960|32|28967|28967|0|32|0|0
+seat|pair-raid-1284302|15|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|15|6|8
+saved|pair-raid-1284302|15|1|0|1793921802960|16|28967|28967|0|16|0|0
+report omitted lines=0
+report generation us=128
+observation measured wall share %=0.089
+observation timing scope=timed observer spans plus report; excludes inline serializer input and transport counters
+
+sample_ms=45055
+process generation=1793921802960
+capacity startup ready=1
+observation scope=process report window
+out scope=accepted application frames including websocket framing
+transport kernel bytes including upgrade and controls a second=404906
+transport discarded queued bytes a second=0
+transport refused frame bytes a second=0
+transport refused frames a second=0.0
+observation counter overflow=0
+server ack scope=input heard to final D accepted by socket queue
+server queued ack p50 ms=6
+server queued ack p95 ms=34
+server queued ack samples=8391
+shard=1
+players=32
+ticks a second=30.0
+tick p50 ms=1.22
+tick p95 ms=1.81
+tick p99 ms=1.89
+players p50 ms=0.12
+players p95 ms=0.21
+players p99 ms=0.29
+raiders p50 ms=0.02
+raiders p95 ms=0.04
+raiders p99 ms=0.06
+effects p50 ms=0.04
+effects p95 ms=0.05
+effects p99 ms=0.07
+folk p50 ms=0.03
+folk p95 ms=0.05
+folk p99 ms=0.06
+writing p50 ms=0.39
+writing p95 ms=0.62
+writing p99 ms=0.69
+sending p50 ms=0.20
+sending p95 ms=0.31
+sending p99 ms=0.36
+measuring % of tick=2.32
+queue bytes most=0
+queue age ms most=0
+relevant entities a seat=44.2
+relevant entities most=45
+interest scope=process latest picks
+interest aggregation us=1
+interest seats=32
+interest whole total=1416
+interest whole most=45
+interest health only total=0
+interest health only most=0
+interest blocked total=0
+interest blocked most=0
+interest hidden total=0
+interest hidden most=0
+interest worst|pair-raid-1284302|0|45|0|0|0
+rows sent for their age a second=0.0
+row wait ticks most=0
+rows left for later most=0
+replication scope=process serialized output before relay admission
+rows serialized a second=19855.6
+row text bytes serialized a second=366613
+rows deferred a second=0.0
+rows latest serialized total=615
+rows latest deferred total=0
+replication worst|pair-raid-1284302|0|24|0
+checkpoint pending=0
+checkpoint flying=0
+checkpoint posts=0
+checkpoint retries=0
+checkpoint failures=0
+checkpoint applied=0
+checkpoint duplicates=0
+checkpoint late receipts=0
+checkpoint capacity refusals=0
+checkpoint stale owner refusals=0
+checkpoint resident=0
+checkpoint accepted=0
+checkpoint capture age ms most=0
+checkpoint receipt age ms most=0
+checkpoint paused rooms=0
+checkpoint finalizing=0
+legacy save pending=0
+legacy save flying=0
+legacy save posts=1
+legacy save retries=0
+legacy save failures=0
+legacy save applied=32
+legacy save duplicates=0
+legacy stale owner refusals=0
+legacy save abandoned=0
+legacy save evicted=0
+owner generation most=0
+owner ticket refusals=0
+checkpoint active loss bound ms=30000
+checkpoint healthy recovery target ms=60000
+capacity draining=0
+capacity native slots=16
+capacity live worlds=2
+capacity unused worlds=14
+capacity seated connections=32
+capacity grace holds=0
+capacity initial gates=0
+capacity scope=native world slots and seat state; API placement caps and reservations are separate
+removal bytes a second=0
+removals waiting a second=0.0
+player info bytes a second=0
+player info waiting a second=0.0
+join pieces bytes a second=0
+join pieces waiting a second=0.0
+cue bytes a second=0
+cues dropped a second=0.0
+outcome bytes a second=0
+outcomes lost a second=0.0
+snapshots after a stall a second=0.00
+towns sent again a second=0.00
+snapshots held for a slow page a second=0.0
+input to ack p50 ms=6
+input to ack p95 ms=34
+joins=0
+join burst bytes=0
+join burst bytes most=0
+join burst ms=0
+join burst ms most=0
+rejoins tried=0
+rejoins seated=0
+rejoins same seat=0
+old socket frames dropped=0
+refused no room=0
+refused ticket=0
+refused kicked=0
+refused shard=0
+refused full=0
+refused version=0
+refused engine=0
+refused rules=0
+refused content=0
+refused schema=0
+refused elsewhere=0
+build engine=1 rules=1 content=1 wire=4-4 schema=2
+out bytes a second=404906
+out messages a second=960
+in bytes a second=30574
+in messages a second=958
+out D bytes a second=404906
+out D a second=960
+out D g bytes a second=1522
+out D g a second=32
+out D o bytes a second=192
+out D o a second=64
+out D s players bytes a second=226086
+out D s players a second=13546
+out D s townsfolk bytes a second=153385
+out D s townsfolk a second=6191
+out D s made bytes a second=6132
+out D s made a second=118
+out D header bytes a second=17590
+out D header a second=960
+in I bytes a second=30574
+in I a second=958
+seat|pair-raid-1284302|0|0|0|45|6|8|-1
+queued ack|pair-raid-1284302|0|6|8
+saved|pair-raid-1284302|0|1|0|1793921802960|1|28967|28967|0|1|0|0
+seat|pair-raid-1284301|0|0|0|45|4|34|-1
+queued ack|pair-raid-1284301|0|4|34
+saved|pair-raid-1284301|0|1|0|1793921802960|17|28967|28967|0|17|0|0
+seat|pair-raid-1284301|1|0|0|45|4|34|-1
+queued ack|pair-raid-1284301|1|4|34
+saved|pair-raid-1284301|1|1|0|1793921802960|18|28967|28967|0|18|0|0
+seat|pair-raid-1284302|1|0|0|45|6|8|-1
+queued ack|pair-raid-1284302|1|6|8
+saved|pair-raid-1284302|1|1|0|1793921802960|2|28967|28967|0|2|0|0
+seat|pair-raid-1284302|2|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|2|6|8
+saved|pair-raid-1284302|2|1|0|1793921802960|3|28967|28967|0|3|0|0
+seat|pair-raid-1284301|2|0|0|44|4|34|-1
+queued ack|pair-raid-1284301|2|4|34
+saved|pair-raid-1284301|2|1|0|1793921802960|19|28967|28967|0|19|0|0
+seat|pair-raid-1284301|3|0|0|44|4|34|-1
+queued ack|pair-raid-1284301|3|4|34
+saved|pair-raid-1284301|3|1|0|1793921802960|20|28967|28967|0|20|0|0
+seat|pair-raid-1284302|3|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|3|6|8
+saved|pair-raid-1284302|3|1|0|1793921802960|4|28967|28967|0|4|0|0
+seat|pair-raid-1284302|4|0|0|45|6|8|-1
+queued ack|pair-raid-1284302|4|6|8
+saved|pair-raid-1284302|4|1|0|1793921802960|5|28967|28967|0|5|0|0
+seat|pair-raid-1284301|4|0|0|45|4|34|-1
+queued ack|pair-raid-1284301|4|4|34
+saved|pair-raid-1284301|4|1|0|1793921802960|21|28967|28967|0|21|0|0
+seat|pair-raid-1284302|5|0|0|45|6|8|-1
+queued ack|pair-raid-1284302|5|6|8
+saved|pair-raid-1284302|5|1|0|1793921802960|6|28967|28967|0|6|0|0
+seat|pair-raid-1284301|5|0|0|45|4|34|-1
+queued ack|pair-raid-1284301|5|4|34
+saved|pair-raid-1284301|5|1|0|1793921802960|22|28967|28967|0|22|0|0
+seat|pair-raid-1284301|6|0|0|44|4|34|-1
+queued ack|pair-raid-1284301|6|4|34
+saved|pair-raid-1284301|6|1|0|1793921802960|23|28967|28967|0|23|0|0
+seat|pair-raid-1284302|6|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|6|6|8
+saved|pair-raid-1284302|6|1|0|1793921802960|7|28967|28967|0|7|0|0
+seat|pair-raid-1284301|7|0|0|44|4|34|-1
+queued ack|pair-raid-1284301|7|4|34
+saved|pair-raid-1284301|7|1|0|1793921802960|24|28967|28967|0|24|0|0
+seat|pair-raid-1284302|7|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|7|6|8
+saved|pair-raid-1284302|7|1|0|1793921802960|8|28967|28967|0|8|0|0
+seat|pair-raid-1284301|8|0|0|44|4|34|-1
+queued ack|pair-raid-1284301|8|4|34
+saved|pair-raid-1284301|8|1|0|1793921802960|25|28967|28967|0|25|0|0
+seat|pair-raid-1284302|8|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|8|6|8
+saved|pair-raid-1284302|8|1|0|1793921802960|9|28967|28967|0|9|0|0
+seat|pair-raid-1284301|9|0|0|44|4|34|-1
+queued ack|pair-raid-1284301|9|4|34
+saved|pair-raid-1284301|9|1|0|1793921802960|26|28967|28967|0|26|0|0
+seat|pair-raid-1284302|9|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|9|6|8
+saved|pair-raid-1284302|9|1|0|1793921802960|10|28967|28967|0|10|0|0
+seat|pair-raid-1284301|10|0|0|44|4|34|-1
+queued ack|pair-raid-1284301|10|4|34
+saved|pair-raid-1284301|10|1|0|1793921802960|27|28967|28967|0|27|0|0
+seat|pair-raid-1284302|10|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|10|6|8
+saved|pair-raid-1284302|10|1|0|1793921802960|11|28967|28967|0|11|0|0
+seat|pair-raid-1284301|11|0|0|44|4|36|-1
+queued ack|pair-raid-1284301|11|4|34
+saved|pair-raid-1284301|11|1|0|1793921802960|28|28967|28967|0|28|0|0
+seat|pair-raid-1284302|11|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|11|6|8
+saved|pair-raid-1284302|11|1|0|1793921802960|12|28967|28967|0|12|0|0
+seat|pair-raid-1284301|12|0|0|44|4|36|-1
+queued ack|pair-raid-1284301|12|4|36
+saved|pair-raid-1284301|12|1|0|1793921802960|29|28967|28967|0|29|0|0
+seat|pair-raid-1284302|12|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|12|6|8
+saved|pair-raid-1284302|12|1|0|1793921802960|13|28967|28967|0|13|0|0
+seat|pair-raid-1284301|13|0|0|44|4|36|-1
+queued ack|pair-raid-1284301|13|4|36
+saved|pair-raid-1284301|13|1|0|1793921802960|30|28967|28967|0|30|0|0
+seat|pair-raid-1284302|13|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|13|6|8
+saved|pair-raid-1284302|13|1|0|1793921802960|14|28967|28967|0|14|0|0
+seat|pair-raid-1284301|14|0|0|44|4|36|-1
+queued ack|pair-raid-1284301|14|4|36
+saved|pair-raid-1284301|14|1|0|1793921802960|31|28967|28967|0|31|0|0
+seat|pair-raid-1284302|14|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|14|6|8
+saved|pair-raid-1284302|14|1|0|1793921802960|15|28967|28967|0|15|0|0
+seat|pair-raid-1284301|15|0|0|44|4|36|-1
+queued ack|pair-raid-1284301|15|4|36
+saved|pair-raid-1284301|15|1|0|1793921802960|32|28967|28967|0|32|0|0
+seat|pair-raid-1284302|15|0|0|44|6|8|-1
+queued ack|pair-raid-1284302|15|6|8
+saved|pair-raid-1284302|15|1|0|1793921802960|16|28967|28967|0|16|0|0
+report omitted lines=0
+report generation us=128
+observation measured wall share %=0.089
+observation timing scope=timed observer spans plus report; excludes inline serializer input and transport counters
+
+sample_ms=50065
+process generation=1793921802960
+capacity startup ready=1
+observation scope=process report window
+out scope=accepted application frames including websocket framing
+transport kernel bytes including upgrade and controls a second=785499
+transport discarded queued bytes a second=0
+transport refused frame bytes a second=0
+transport refused frames a second=0.0
+observation counter overflow=0
+server ack scope=input heard to final D accepted by socket queue
+server queued ack p50 ms=6
+server queued ack p95 ms=34
+server queued ack samples=8268
+shard=1
+players=32
+ticks a second=30.0
+tick p50 ms=1.88
+tick p95 ms=3.68
+tick p99 ms=4.39
+players p50 ms=0.15
+players p95 ms=0.29
+players p99 ms=0.50
+raiders p50 ms=0.09
+raiders p95 ms=0.22
+raiders p99 ms=0.31
+effects p50 ms=0.05
+effects p95 ms=0.34
+effects p99 ms=0.82
+folk p50 ms=0.05
+folk p95 ms=0.07
+folk p99 ms=0.10
+writing p50 ms=0.82
+writing p95 ms=1.81
+writing p99 ms=2.30
+sending p50 ms=0.28
+sending p95 ms=0.49
+sending p99 ms=0.61
+measuring % of tick=2.39
+queue bytes most=0
+queue age ms most=0
+relevant entities a seat=98.8
+relevant entities most=100
+interest scope=process latest picks
+interest aggregation us=1
+interest seats=32
+interest whole total=2979
+interest whole most=95
+interest health only total=0
+interest health only most=0
+interest blocked total=0
+interest blocked most=0
+interest hidden total=0
+interest hidden most=0
+interest worst|pair-raid-1284301|0|95|0|0|0
+rows sent for their age a second=0.0
+row wait ticks most=9
+rows left for later most=50
+replication scope=process serialized output before relay admission
+rows serialized a second=28032.5
+row text bytes serialized a second=716648
+rows deferred a second=17540.4
+rows latest serialized total=1117
+rows latest deferred total=373
+replication worst|pair-raid-1284302|4|38|17
+checkpoint pending=0
+checkpoint flying=0
+checkpoint posts=0
+checkpoint retries=0
+checkpoint failures=0
+checkpoint applied=0
+checkpoint duplicates=0
+checkpoint late receipts=0
+checkpoint capacity refusals=0
+checkpoint stale owner refusals=0
+checkpoint resident=0
+checkpoint accepted=0
+checkpoint capture age ms most=0
+checkpoint receipt age ms most=0
+checkpoint paused rooms=0
+checkpoint finalizing=0
+legacy save pending=0
+legacy save flying=0
+legacy save posts=1
+legacy save retries=0
+legacy save failures=0
+legacy save applied=32
+legacy save duplicates=0
+legacy stale owner refusals=0
+legacy save abandoned=0
+legacy save evicted=0
+owner generation most=0
+owner ticket refusals=0
+checkpoint active loss bound ms=30000
+checkpoint healthy recovery target ms=60000
+capacity draining=0
+capacity native slots=16
+capacity live worlds=2
+capacity unused worlds=14
+capacity seated connections=32
+capacity grace holds=0
+capacity initial gates=0
+capacity scope=native world slots and seat state; API placement caps and reservations are separate
+removal bytes a second=274
+removals waiting a second=0.0
+player info bytes a second=0
+player info waiting a second=0.0
+join pieces bytes a second=0
+join pieces waiting a second=0.0
+cue bytes a second=9255
+cues dropped a second=0.0
+outcome bytes a second=10710
+outcomes lost a second=0.0
+snapshots after a stall a second=0.00
+towns sent again a second=0.00
+snapshots held for a slow page a second=0.0
+input to ack p50 ms=6
+input to ack p95 ms=34
+joins=0
+join burst bytes=0
+join burst bytes most=0
+join burst ms=0
+join burst ms most=0
+rejoins tried=0
+rejoins seated=0
+rejoins same seat=0
+old socket frames dropped=0
+refused no room=0
+refused ticket=0
+refused kicked=0
+refused shard=0
+refused full=0
+refused version=0
+refused engine=0
+refused rules=0
+refused content=0
+refused schema=0
+refused elsewhere=0
+build engine=1 rules=1 content=1 wire=4-4 schema=2
+out bytes a second=785499
+out messages a second=954
+in bytes a second=32336
+in messages a second=960
+out D bytes a second=785499
+out D a second=954
+out D e bytes a second=19837
+out D e a second=749
+out D g bytes a second=2198
+out D g a second=45
+out D o bytes a second=251
+out D o a second=70
+out D x bytes a second=274
+out D x a second=30
+out D s players bytes a second=298483
+out D s players a second=13356
+out D s townsfolk bytes a second=136758
+out D s townsfolk a second=5380
+out D s made bytes a second=308702
+out D s made a second=9297
+out D header bytes a second=18997
+out D header a second=954
+in I bytes a second=32336
+in I a second=960
+seat|pair-raid-1284302|0|0|0|99|6|8|-1
+queued ack|pair-raid-1284302|0|6|8
+saved|pair-raid-1284302|0|1|0|1793921802960|1|38966|38966|0|1|0|0
+seat|pair-raid-1284301|0|0|0|100|4|36|-1
+queued ack|pair-raid-1284301|0|4|36
+saved|pair-raid-1284301|0|1|0|1793921802960|17|38966|38966|0|17|0|0
+seat|pair-raid-1284301|1|0|0|100|4|36|-1
+queued ack|pair-raid-1284301|1|4|36
+saved|pair-raid-1284301|1|1|0|1793921802960|18|38966|38966|0|18|0|0
+seat|pair-raid-1284302|1|0|0|99|6|8|-1
+queued ack|pair-raid-1284302|1|6|8
+saved|pair-raid-1284302|1|1|0|1793921802960|2|38966|38966|0|2|0|0
+seat|pair-raid-1284302|2|0|0|99|6|8|-1
+queued ack|pair-raid-1284302|2|6|8
+saved|pair-raid-1284302|2|1|0|1793921802960|3|38966|38966|0|3|0|0
+seat|pair-raid-1284301|2|0|0|100|4|36|-1
+queued ack|pair-raid-1284301|2|4|36
+saved|pair-raid-1284301|2|1|0|1793921802960|19|38966|38966|0|19|0|0
+seat|pair-raid-1284301|3|0|0|99|4|36|-1
+queued ack|pair-raid-1284301|3|4|36
+saved|pair-raid-1284301|3|1|0|1793921802960|20|38966|38966|0|20|0|0
+seat|pair-raid-1284302|3|0|0|98|6|8|-1
+queued ack|pair-raid-1284302|3|6|8
+saved|pair-raid-1284302|3|1|0|1793921802960|4|38966|38966|0|4|0|0
+seat|pair-raid-1284302|4|0|0|99|6|8|-1
+queued ack|pair-raid-1284302|4|6|8
+saved|pair-raid-1284302|4|1|0|1793921802960|5|38966|38966|0|5|0|0
+seat|pair-raid-1284301|4|0|0|100|4|36|-1
+queued ack|pair-raid-1284301|4|4|36
+saved|pair-raid-1284301|4|1|0|1793921802960|21|38966|38966|0|21|0|0
+seat|pair-raid-1284302|5|0|0|99|6|8|-1
+queued ack|pair-raid-1284302|5|6|8
+saved|pair-raid-1284302|5|1|0|1793921802960|6|38966|38966|0|6|0|0
+seat|pair-raid-1284301|5|0|0|100|4|36|-1
+queued ack|pair-raid-1284301|5|4|36
+saved|pair-raid-1284301|5|1|0|1793921802960|22|38966|38966|0|22|0|0
+seat|pair-raid-1284301|6|0|0|99|4|36|-1
+queued ack|pair-raid-1284301|6|4|36
+saved|pair-raid-1284301|6|1|0|1793921802960|23|38966|38966|0|23|0|0
+seat|pair-raid-1284302|6|0|0|98|6|8|-1
+queued ack|pair-raid-1284302|6|6|8
+saved|pair-raid-1284302|6|1|0|1793921802960|7|38966|38966|0|7|0|0
+seat|pair-raid-1284301|7|0|0|99|4|36|-1
+queued ack|pair-raid-1284301|7|4|36
+saved|pair-raid-1284301|7|1|0|1793921802960|24|38966|38966|0|24|0|0
+seat|pair-raid-1284302|7|0|0|98|6|8|-1
+queued ack|pair-raid-1284302|7|6|8
+saved|pair-raid-1284302|7|1|0|1793921802960|8|38966|38966|0|8|0|0
+seat|pair-raid-1284301|8|0|0|99|4|36|-1
+queued ack|pair-raid-1284301|8|4|36
+saved|pair-raid-1284301|8|1|0|1793921802960|25|38966|38966|0|25|0|0
+seat|pair-raid-1284302|8|0|0|98|6|8|-1
+queued ack|pair-raid-1284302|8|6|8
+saved|pair-raid-1284302|8|1|0|1793921802960|9|38966|38966|0|9|0|0
+seat|pair-raid-1284301|9|0|0|99|4|36|-1
+queued ack|pair-raid-1284301|9|4|36
+saved|pair-raid-1284301|9|1|0|1793921802960|26|38966|38966|0|26|0|0
+seat|pair-raid-1284302|9|0|0|98|6|8|-1
+queued ack|pair-raid-1284302|9|6|8
+saved|pair-raid-1284302|9|1|0|1793921802960|10|38966|38966|0|10|0|0
+seat|pair-raid-1284301|10|0|0|99|4|36|-1
+queued ack|pair-raid-1284301|10|4|36
+saved|pair-raid-1284301|10|1|0|1793921802960|27|38966|38966|0|27|0|0
+seat|pair-raid-1284302|10|0|0|98|6|8|-1
+queued ack|pair-raid-1284302|10|6|8
+saved|pair-raid-1284302|10|1|0|1793921802960|11|38966|38966|0|11|0|0
+seat|pair-raid-1284301|11|0|0|99|4|36|-1
+queued ack|pair-raid-1284301|11|4|36
+saved|pair-raid-1284301|11|1|0|1793921802960|28|38966|38966|0|28|0|0
+seat|pair-raid-1284302|11|0|0|98|6|8|-1
+queued ack|pair-raid-1284302|11|6|8
+saved|pair-raid-1284302|11|1|0|1793921802960|12|38966|38966|0|12|0|0
+seat|pair-raid-1284301|12|0|0|99|4|36|-1
+queued ack|pair-raid-1284301|12|4|36
+saved|pair-raid-1284301|12|1|0|1793921802960|29|38966|38966|0|29|0|0
+seat|pair-raid-1284302|12|0|0|98|6|8|-1
+queued ack|pair-raid-1284302|12|6|8
+saved|pair-raid-1284302|12|1|0|1793921802960|13|38966|38966|0|13|0|0
+seat|pair-raid-1284301|13|0|0|99|4|36|-1
+queued ack|pair-raid-1284301|13|4|36
+saved|pair-raid-1284301|13|1|0|1793921802960|30|38966|38966|0|30|0|0
+seat|pair-raid-1284302|13|0|0|98|6|8|-1
+queued ack|pair-raid-1284302|13|6|8
+saved|pair-raid-1284302|13|1|0|1793921802960|14|38966|38966|0|14|0|0
+seat|pair-raid-1284301|14|0|0|99|4|36|-1
+queued ack|pair-raid-1284301|14|4|36
+saved|pair-raid-1284301|14|1|0|1793921802960|31|38966|38966|0|31|0|0
+seat|pair-raid-1284302|14|0|0|98|6|8|-1
+queued ack|pair-raid-1284302|14|6|8
+saved|pair-raid-1284302|14|1|0|1793921802960|15|38966|38966|0|15|0|0
+seat|pair-raid-1284301|15|0|0|99|4|36|-1
+queued ack|pair-raid-1284301|15|4|36
+saved|pair-raid-1284301|15|1|0|1793921802960|32|38966|38966|0|32|0|0
+seat|pair-raid-1284302|15|0|0|98|6|8|-1
+queued ack|pair-raid-1284302|15|6|8
+saved|pair-raid-1284302|15|1|0|1793921802960|16|38966|38966|0|16|0|0
+report omitted lines=0
+report generation us=78
+observation measured wall share %=0.161
+observation timing scope=timed observer spans plus report; excludes inline serializer input and transport counters
+
+sample_ms=55073
+process generation=1793921802960
+capacity startup ready=1
+observation scope=process report window
+out scope=accepted application frames including websocket framing
+transport kernel bytes including upgrade and controls a second=785499
+transport discarded queued bytes a second=0
+transport refused frame bytes a second=0
+transport refused frames a second=0.0
+observation counter overflow=0
+server ack scope=input heard to final D accepted by socket queue
+server queued ack p50 ms=6
+server queued ack p95 ms=34
+server queued ack samples=8268
+shard=1
+players=32
+ticks a second=30.0
+tick p50 ms=1.88
+tick p95 ms=3.68
+tick p99 ms=4.39
+players p50 ms=0.15
+players p95 ms=0.29
+players p99 ms=0.50
+raiders p50 ms=0.09
+raiders p95 ms=0.22
+raiders p99 ms=0.31
+effects p50 ms=0.05
+effects p95 ms=0.34
+effects p99 ms=0.82
+folk p50 ms=0.05
+folk p95 ms=0.07
+folk p99 ms=0.10
+writing p50 ms=0.82
+writing p95 ms=1.81
+writing p99 ms=2.30
+sending p50 ms=0.28
+sending p95 ms=0.49
+sending p99 ms=0.61
+measuring % of tick=2.39
+queue bytes most=0
+queue age ms most=0
+relevant entities a seat=98.8
+relevant entities most=100
+interest scope=process latest picks
+interest aggregation us=1
+interest seats=32
+interest whole total=2979
+interest whole most=95
+interest health only total=0
+interest health only most=0
+interest blocked total=0
+interest blocked most=0
+interest hidden total=0
+interest hidden most=0
+interest worst|pair-raid-1284301|0|95|0|0|0
+rows sent for their age a second=0.0
+row wait ticks most=9
+rows left for later most=50
+replication scope=process serialized output before relay admission
+rows serialized a second=28032.5
+row text bytes serialized a second=716648
+rows deferred a second=17540.4
+rows latest serialized total=1117
+rows latest deferred total=373
+replication worst|pair-raid-1284302|4|38|17
+checkpoint pending=0
+checkpoint flying=0
+checkpoint posts=0
+checkpoint retries=0
+checkpoint failures=0
+checkpoint applied=0
+checkpoint duplicates=0
+checkpoint late receipts=0
+checkpoint capacity refusals=0
+checkpoint stale owner refusals=0
+checkpoint resident=0
+checkpoint accepted=0
+checkpoint capture age ms most=0
+checkpoint receipt age ms most=0
+checkpoint paused rooms=0
+checkpoint finalizing=0
+legacy save pending=0
+legacy save flying=0
+legacy save posts=1
+legacy save retries=0
+legacy save failures=0
+legacy save applied=32
+legacy save duplicates=0
+legacy stale owner refusals=0
+legacy save abandoned=0
+legacy save evicted=0
+owner generation most=0
+owner ticket refusals=0
+checkpoint active loss bound ms=30000
+checkpoint healthy recovery target ms=60000
+capacity draining=0
+capacity native slots=16
+capacity live worlds=2
+capacity unused worlds=14
+capacity seated connections=32
+capacity grace holds=0
+capacity initial gates=0
+capacity scope=native world slots and seat state; API placement caps and reservations are separate
+removal bytes a second=274
+removals waiting a second=0.0
+player info bytes a second=0
+player info waiting a second=0.0
+join pieces bytes a second=0
+join pieces waiting a second=0.0
+cue bytes a second=9255
+cues dropped a second=0.0
+outcome bytes a second=10710
+outcomes lost a second=0.0
+snapshots after a stall a second=0.00
+towns sent again a second=0.00
+snapshots held for a slow page a second=0.0
+input to ack p50 ms=6
+input to ack p95 ms=34
+joins=0
+join burst bytes=0
+join burst bytes most=0
+join burst ms=0
+join burst ms most=0
+rejoins tried=0
+rejoins seated=0
+rejoins same seat=0
+old socket frames dropped=0
+refused no room=0
+refused ticket=0
+refused kicked=0
+refused shard=0
+refused full=0
+refused version=0
+refused engine=0
+refused rules=0
+refused content=0
+refused schema=0
+refused elsewhere=0
+build engine=1 rules=1 content=1 wire=4-4 schema=2
+out bytes a second=785499
+out messages a second=954
+in bytes a second=32336
+in messages a second=960
+out D bytes a second=785499
+out D a second=954
+out D e bytes a second=19837
+out D e a second=749
+out D g bytes a second=2198
+out D g a second=45
+out D o bytes a second=251
+out D o a second=70
+out D x bytes a second=274
+out D x a second=30
+out D s players bytes a second=298483
+out D s players a second=13356
+out D s townsfolk bytes a second=136758
+out D s townsfolk a second=5380
+out D s made bytes a second=308702
+out D s made a second=9297
+out D header bytes a second=18997
+out D header a second=954
+in I bytes a second=32336
+in I a second=960
+seat|pair-raid-1284302|0|0|0|99|6|8|-1
+queued ack|pair-raid-1284302|0|6|8
+saved|pair-raid-1284302|0|1|0|1793921802960|1|38966|38966|0|1|0|0
+seat|pair-raid-1284301|0|0|0|100|4|36|-1
+queued ack|pair-raid-1284301|0|4|36
+saved|pair-raid-1284301|0|1|0|1793921802960|17|38966|38966|0|17|0|0
+seat|pair-raid-1284301|1|0|0|100|4|36|-1
+queued ack|pair-raid-1284301|1|4|36
+saved|pair-raid-1284301|1|1|0|1793921802960|18|38966|38966|0|18|0|0
+seat|pair-raid-1284302|1|0|0|99|6|8|-1
+queued ack|pair-raid-1284302|1|6|8
+saved|pair-raid-1284302|1|1|0|1793921802960|2|38966|38966|0|2|0|0
+seat|pair-raid-1284302|2|0|0|99|6|8|-1
+queued ack|pair-raid-1284302|2|6|8
+saved|pair-raid-1284302|2|1|0|1793921802960|3|38966|38966|0|3|0|0
+seat|pair-raid-1284301|2|0|0|100|4|36|-1
+queued ack|pair-raid-1284301|2|4|36
+saved|pair-raid-1284301|2|1|0|1793921802960|19|38966|38966|0|19|0|0
+seat|pair-raid-1284301|3|0|0|99|4|36|-1
+queued ack|pair-raid-1284301|3|4|36
+saved|pair-raid-1284301|3|1|0|1793921802960|20|38966|38966|0|20|0|0
+seat|pair-raid-1284302|3|0|0|98|6|8|-1
+queued ack|pair-raid-1284302|3|6|8
+saved|pair-raid-1284302|3|1|0|1793921802960|4|38966|38966|0|4|0|0
+seat|pair-raid-1284302|4|0|0|99|6|8|-1
+queued ack|pair-raid-1284302|4|6|8
+saved|pair-raid-1284302|4|1|0|1793921802960|5|38966|38966|0|5|0|0
+seat|pair-raid-1284301|4|0|0|100|4|36|-1
+queued ack|pair-raid-1284301|4|4|36
+saved|pair-raid-1284301|4|1|0|1793921802960|21|38966|38966|0|21|0|0
+seat|pair-raid-1284302|5|0|0|99|6|8|-1
+queued ack|pair-raid-1284302|5|6|8
+saved|pair-raid-1284302|5|1|0|1793921802960|6|38966|38966|0|6|0|0
+seat|pair-raid-1284301|5|0|0|100|4|36|-1
+queued ack|pair-raid-1284301|5|4|36
+saved|pair-raid-1284301|5|1|0|1793921802960|22|38966|38966|0|22|0|0
+seat|pair-raid-1284301|6|0|0|99|4|36|-1
+queued ack|pair-raid-1284301|6|4|36
+saved|pair-raid-1284301|6|1|0|1793921802960|23|38966|38966|0|23|0|0
+seat|pair-raid-1284302|6|0|0|98|6|8|-1
+queued ack|pair-raid-1284302|6|6|8
+saved|pair-raid-1284302|6|1|0|1793921802960|7|38966|38966|0|7|0|0
+seat|pair-raid-1284301|7|0|0|99|4|36|-1
+queued ack|pair-raid-1284301|7|4|36
+saved|pair-raid-1284301|7|1|0|1793921802960|24|38966|38966|0|24|0|0
+seat|pair-raid-1284302|7|0|0|98|6|8|-1
+queued ack|pair-raid-1284302|7|6|8
+saved|pair-raid-1284302|7|1|0|1793921802960|8|38966|38966|0|8|0|0
+seat|pair-raid-1284301|8|0|0|99|4|36|-1
+queued ack|pair-raid-1284301|8|4|36
+saved|pair-raid-1284301|8|1|0|1793921802960|25|38966|38966|0|25|0|0
+seat|pair-raid-1284302|8|0|0|98|6|8|-1
+queued ack|pair-raid-1284302|8|6|8
+saved|pair-raid-1284302|8|1|0|1793921802960|9|38966|38966|0|9|0|0
+seat|pair-raid-1284301|9|0|0|99|4|36|-1
+queued ack|pair-raid-1284301|9|4|36
+saved|pair-raid-1284301|9|1|0|1793921802960|26|38966|38966|0|26|0|0
+seat|pair-raid-1284302|9|0|0|98|6|8|-1
+queued ack|pair-raid-1284302|9|6|8
+saved|pair-raid-1284302|9|1|0|1793921802960|10|38966|38966|0|10|0|0
+seat|pair-raid-1284301|10|0|0|99|4|36|-1
+queued ack|pair-raid-1284301|10|4|36
+saved|pair-raid-1284301|10|1|0|1793921802960|27|38966|38966|0|27|0|0
+seat|pair-raid-1284302|10|0|0|98|6|8|-1
+queued ack|pair-raid-1284302|10|6|8
+saved|pair-raid-1284302|10|1|0|1793921802960|11|38966|38966|0|11|0|0
+seat|pair-raid-1284301|11|0|0|99|4|36|-1
+queued ack|pair-raid-1284301|11|4|36
+saved|pair-raid-1284301|11|1|0|1793921802960|28|38966|38966|0|28|0|0
+seat|pair-raid-1284302|11|0|0|98|6|8|-1
+queued ack|pair-raid-1284302|11|6|8
+saved|pair-raid-1284302|11|1|0|1793921802960|12|38966|38966|0|12|0|0
+seat|pair-raid-1284301|12|0|0|99|4|36|-1
+queued ack|pair-raid-1284301|12|4|36
+saved|pair-raid-1284301|12|1|0|1793921802960|29|38966|38966|0|29|0|0
+seat|pair-raid-1284302|12|0|0|98|6|8|-1
+queued ack|pair-raid-1284302|12|6|8
+saved|pair-raid-1284302|12|1|0|1793921802960|13|38966|38966|0|13|0|0
+seat|pair-raid-1284301|13|0|0|99|4|36|-1
+queued ack|pair-raid-1284301|13|4|36
+saved|pair-raid-1284301|13|1|0|1793921802960|30|38966|38966|0|30|0|0
+seat|pair-raid-1284302|13|0|0|98|6|8|-1
+queued ack|pair-raid-1284302|13|6|8
+saved|pair-raid-1284302|13|1|0|1793921802960|14|38966|38966|0|14|0|0
+seat|pair-raid-1284301|14|0|0|99|4|36|-1
+queued ack|pair-raid-1284301|14|4|36
+saved|pair-raid-1284301|14|1|0|1793921802960|31|38966|38966|0|31|0|0
+seat|pair-raid-1284302|14|0|0|98|6|8|-1
+queued ack|pair-raid-1284302|14|6|8
+saved|pair-raid-1284302|14|1|0|1793921802960|15|38966|38966|0|15|0|0
+seat|pair-raid-1284301|15|0|0|99|4|36|-1
+queued ack|pair-raid-1284301|15|4|36
+saved|pair-raid-1284301|15|1|0|1793921802960|32|38966|38966|0|32|0|0
+seat|pair-raid-1284302|15|0|0|98|6|8|-1
+queued ack|pair-raid-1284302|15|6|8
+saved|pair-raid-1284302|15|1|0|1793921802960|16|38966|38966|0|16|0|0
+report omitted lines=0
+report generation us=78
+observation measured wall share %=0.161
+observation timing scope=timed observer spans plus report; excludes inline serializer input and transport counters
+
+sample_ms=60075
+process generation=1793921802960
+capacity startup ready=1
+observation scope=process report window
+out scope=accepted application frames including websocket framing
+transport kernel bytes including upgrade and controls a second=1021222
+transport discarded queued bytes a second=0
+transport refused frame bytes a second=0
+transport refused frames a second=0.0
+observation counter overflow=0
+server ack scope=input heard to final D accepted by socket queue
+server queued ack p50 ms=6
+server queued ack p95 ms=34
+server queued ack samples=8362
+shard=1
+players=32
+ticks a second=30.0
+tick p50 ms=2.11
+tick p95 ms=2.87
+tick p99 ms=3.29
+players p50 ms=0.13
+players p95 ms=0.21
+players p99 ms=0.30
+raiders p50 ms=0.10
+raiders p95 ms=0.17
+raiders p99 ms=0.27
+effects p50 ms=0.12
+effects p95 ms=0.48
+effects p99 ms=0.71
+folk p50 ms=0.04
+folk p95 ms=0.05
+folk p99 ms=0.08
+writing p50 ms=0.98
+writing p95 ms=1.31
+writing p99 ms=1.53
+sending p50 ms=0.25
+sending p95 ms=0.43
+sending p99 ms=0.49
+measuring % of tick=2.55
+queue bytes most=0
+queue age ms most=0
+relevant entities a seat=84.5
+relevant entities most=86
+interest scope=process latest picks
+interest aggregation us=1
+interest seats=32
+interest whole total=2608
+interest whole most=83
+interest health only total=0
+interest health only most=0
+interest blocked total=0
+interest blocked most=0
+interest hidden total=0
+interest hidden most=0
+interest worst|pair-raid-1284302|0|83|0|0|0
+rows sent for their age a second=0.0
+row wait ticks most=7
+rows left for later most=34
+replication scope=process serialized output before relay admission
+rows serialized a second=36713.4
+row text bytes serialized a second=941339
+rows deferred a second=12298.2
+rows latest serialized total=1156
+rows latest deferred total=32
+replication worst|pair-raid-1284302|5|39|3
+checkpoint pending=0
+checkpoint flying=0
+checkpoint posts=0
+checkpoint retries=0
+checkpoint failures=0
+checkpoint applied=0
+checkpoint duplicates=0
+checkpoint late receipts=0
+checkpoint capacity refusals=0
+checkpoint stale owner refusals=0
+checkpoint resident=0
+checkpoint accepted=0
+checkpoint capture age ms most=0
+checkpoint receipt age ms most=0
+checkpoint paused rooms=0
+checkpoint finalizing=0
+legacy save pending=0
+legacy save flying=0
+legacy save posts=1
+legacy save retries=0
+legacy save failures=0
+legacy save applied=32
+legacy save duplicates=0
+legacy stale owner refusals=0
+legacy save abandoned=0
+legacy save evicted=0
+owner generation most=0
+owner ticket refusals=0
+checkpoint active loss bound ms=30000
+checkpoint healthy recovery target ms=60000
+capacity draining=0
+capacity native slots=16
+capacity live worlds=2
+capacity unused worlds=14
+capacity seated connections=32
+capacity grace holds=0
+capacity initial gates=0
+capacity scope=native world slots and seat state; API placement caps and reservations are separate
+removal bytes a second=1037
+removals waiting a second=0.0
+player info bytes a second=0
+player info waiting a second=0.0
+join pieces bytes a second=0
+join pieces waiting a second=0.0
+cue bytes a second=19299
+cues dropped a second=9.6
+outcome bytes a second=134
+outcomes lost a second=0.0
+snapshots after a stall a second=0.00
+towns sent again a second=0.00
+snapshots held for a slow page a second=0.0
+input to ack p50 ms=6
+input to ack p95 ms=34
+joins=0
+join burst bytes=0
+join burst bytes most=0
+join burst ms=0
+join burst ms most=0
+rejoins tried=0
+rejoins seated=0
+rejoins same seat=0
+old socket frames dropped=0
+refused no room=0
+refused ticket=0
+refused kicked=0
+refused shard=0
+refused full=0
+refused version=0
+refused engine=0
+refused rules=0
+refused content=0
+refused schema=0
+refused elsewhere=0
+build engine=1 rules=1 content=1 wire=4-4 schema=2
+out bytes a second=1021222
+out messages a second=963
+in bytes a second=33570
+in messages a second=964
+out D bytes a second=1021178
+out D a second=960
+out r bytes a second=44
+out r a second=3
+out D e bytes a second=19170
+out D e a second=722
+out D g bytes a second=3976
+out D g a second=78
+out D o bytes a second=352
+out D o a second=70
+out D x bytes a second=1037
+out D x a second=115
+out D s players bytes a second=278084
+out D s players a second=13503
+out D s townsfolk bytes a second=113091
+out D s townsfolk a second=4146
+out D s made bytes a second=586268
+out D s made a second=19065
+out D header bytes a second=19200
+out D header a second=960
+in C bytes a second=123
+in C a second=4
+in I bytes a second=33447
+in I a second=960
+seat|pair-raid-1284302|0|0|0|86|6|8|-1
+queued ack|pair-raid-1284302|0|6|8
+saved|pair-raid-1284302|0|1|0|1793921802960|1|48966|48966|0|1|0|0
+seat|pair-raid-1284301|0|0|0|83|4|34|-1
+queued ack|pair-raid-1284301|0|4|34
+saved|pair-raid-1284301|0|1|0|1793921802960|17|48966|48966|0|17|0|0
+seat|pair-raid-1284301|1|0|0|83|4|36|-1
+queued ack|pair-raid-1284301|1|4|34
+saved|pair-raid-1284301|1|1|0|1793921802960|18|48966|48966|0|18|0|0
+seat|pair-raid-1284302|1|0|0|86|6|8|-1
+queued ack|pair-raid-1284302|1|6|8
+saved|pair-raid-1284302|1|1|0|1793921802960|2|48966|48966|0|2|0|0
+seat|pair-raid-1284302|2|0|0|86|6|8|-1
+queued ack|pair-raid-1284302|2|6|8
+saved|pair-raid-1284302|2|1|0|1793921802960|3|48966|48966|0|3|0|0
+seat|pair-raid-1284301|2|0|0|83|4|36|-1
+queued ack|pair-raid-1284301|2|4|34
+saved|pair-raid-1284301|2|1|0|1793921802960|19|48966|48966|0|19|0|0
+seat|pair-raid-1284301|3|0|0|83|4|36|-1
+queued ack|pair-raid-1284301|3|4|36
+saved|pair-raid-1284301|3|1|0|1793921802960|20|48966|48966|0|20|0|0
+seat|pair-raid-1284302|3|0|0|86|6|8|-1
+queued ack|pair-raid-1284302|3|6|8
+saved|pair-raid-1284302|3|1|0|1793921802960|4|48966|48966|0|4|0|0
+seat|pair-raid-1284302|4|0|0|86|6|8|-1
+queued ack|pair-raid-1284302|4|6|8
+saved|pair-raid-1284302|4|1|0|1793921802960|5|48966|48966|0|5|0|0
+seat|pair-raid-1284301|4|0|0|83|4|36|-1
+queued ack|pair-raid-1284301|4|4|36
+saved|pair-raid-1284301|4|1|0|1793921802960|21|48966|48966|0|21|0|0
+seat|pair-raid-1284302|5|0|0|86|6|8|-1
+queued ack|pair-raid-1284302|5|6|8
+saved|pair-raid-1284302|5|1|0|1793921802960|6|48966|48966|0|6|0|0
+seat|pair-raid-1284301|5|0|0|83|4|36|-1
+queued ack|pair-raid-1284301|5|4|36
+saved|pair-raid-1284301|5|1|0|1793921802960|22|48966|48966|0|22|0|0
+seat|pair-raid-1284301|6|0|0|83|4|36|-1
+queued ack|pair-raid-1284301|6|4|36
+saved|pair-raid-1284301|6|1|0|1793921802960|23|48966|48966|0|23|0|0
+seat|pair-raid-1284302|6|0|0|86|6|8|-1
+queued ack|pair-raid-1284302|6|6|8
+saved|pair-raid-1284302|6|1|0|1793921802960|7|48966|48966|0|7|0|0
+seat|pair-raid-1284301|7|0|0|83|4|36|-1
+queued ack|pair-raid-1284301|7|4|36
+saved|pair-raid-1284301|7|1|0|1793921802960|24|48966|48966|0|24|0|0
+seat|pair-raid-1284302|7|0|0|86|6|8|-1
+queued ack|pair-raid-1284302|7|6|8
+saved|pair-raid-1284302|7|1|0|1793921802960|8|48966|48966|0|8|0|0
+seat|pair-raid-1284301|8|0|0|83|4|36|-1
+queued ack|pair-raid-1284301|8|4|36
+saved|pair-raid-1284301|8|1|0|1793921802960|25|48966|48966|0|25|0|0
+seat|pair-raid-1284302|8|0|0|86|6|8|-1
+queued ack|pair-raid-1284302|8|6|8
+saved|pair-raid-1284302|8|1|0|1793921802960|9|48966|48966|0|9|0|0
+seat|pair-raid-1284301|9|0|0|83|4|36|-1
+queued ack|pair-raid-1284301|9|4|36
+saved|pair-raid-1284301|9|1|0|1793921802960|26|48966|48966|0|26|0|0
+seat|pair-raid-1284302|9|0|0|86|6|8|-1
+queued ack|pair-raid-1284302|9|6|8
+saved|pair-raid-1284302|9|1|0|1793921802960|10|48966|48966|0|10|0|0
+seat|pair-raid-1284301|10|0|0|83|4|36|-1
+queued ack|pair-raid-1284301|10|4|36
+saved|pair-raid-1284301|10|1|0|1793921802960|27|48966|48966|0|27|0|0
+seat|pair-raid-1284302|10|0|0|86|6|8|-1
+queued ack|pair-raid-1284302|10|6|8
+saved|pair-raid-1284302|10|1|0|1793921802960|11|48966|48966|0|11|0|0
+seat|pair-raid-1284301|11|0|0|83|4|36|-1
+queued ack|pair-raid-1284301|11|4|36
+saved|pair-raid-1284301|11|1|0|1793921802960|28|48966|48966|0|28|0|0
+seat|pair-raid-1284302|11|0|0|86|6|8|-1
+queued ack|pair-raid-1284302|11|6|8
+saved|pair-raid-1284302|11|1|0|1793921802960|12|48966|48966|0|12|0|0
+seat|pair-raid-1284301|12|0|0|83|4|36|-1
+queued ack|pair-raid-1284301|12|4|36
+saved|pair-raid-1284301|12|1|0|1793921802960|29|48966|48966|0|29|0|0
+seat|pair-raid-1284302|12|0|0|86|6|8|-1
+queued ack|pair-raid-1284302|12|6|8
+saved|pair-raid-1284302|12|1|0|1793921802960|13|48966|48966|0|13|0|0
+seat|pair-raid-1284301|13|0|0|83|4|36|-1
+queued ack|pair-raid-1284301|13|4|36
+saved|pair-raid-1284301|13|1|0|1793921802960|30|48966|48966|0|30|0|0
+seat|pair-raid-1284302|13|0|0|86|6|8|-1
+queued ack|pair-raid-1284302|13|6|8
+saved|pair-raid-1284302|13|1|0|1793921802960|14|48966|48966|0|14|0|0
+seat|pair-raid-1284301|14|0|0|83|4|36|-1
+queued ack|pair-raid-1284301|14|4|36
+saved|pair-raid-1284301|14|1|0|1793921802960|31|48966|48966|0|31|0|0
+seat|pair-raid-1284302|14|0|0|86|6|8|-1
+queued ack|pair-raid-1284302|14|6|8
+saved|pair-raid-1284302|14|1|0|1793921802960|15|48966|48966|0|15|0|0
+seat|pair-raid-1284301|15|0|0|83|4|36|-1
+queued ack|pair-raid-1284301|15|4|36
+saved|pair-raid-1284301|15|1|0|1793921802960|32|48966|48966|0|32|0|0
+seat|pair-raid-1284302|15|0|0|86|6|8|-1
+queued ack|pair-raid-1284302|15|6|8
+saved|pair-raid-1284302|15|1|0|1793921802960|16|48966|48966|0|16|0|0
+report omitted lines=0
+report generation us=119
+observation measured wall share %=0.160
+observation timing scope=timed observer spans plus report; excludes inline serializer input and transport counters
+

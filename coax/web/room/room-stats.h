@@ -192,6 +192,13 @@ static void st_report(st_buf *o, coax_v_t_RmServer v, int64_t players, int64_t s
   }
   st_line(o, "queue bytes most=%lld", (long long)qb);
   st_line(o, "queue age ms most=%lld", (long long)qm);
+  int64_t inputs[5]={0};rm_st_inputs(v,(coax_v_s64){inputs,5});
+  st_line(o,"input queue scope=process latest pending simulation inputs at report time");
+  st_line(o,"input queued total=%lld",(long long)inputs[0]);
+  st_line(o,"input oldest pending ms=%lld",(long long)inputs[1]);
+  st_line(o,"input queued a seat most=%lld",(long long)inputs[2]);
+  st_line(o,"input credit drops since start=%lld",(long long)inputs[3]);
+  st_line(o,"input unknown clock ages=%lld",(long long)inputs[4]);
   st_line(o, "relevant entities a seat=%.1f", rel_n ? (double)rel_sum / (double)rel_n : 0.0);
   st_line(o, "relevant entities most=%lld", (long long)rel_max);
   /* Additive gauges from the actual production interest picks. No row/byte or

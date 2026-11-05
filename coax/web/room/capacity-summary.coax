@@ -1,0 +1,32 @@
+// Maxima/minima of sampled report-window values. These are never whole-run
+// quantiles. Missing/unknown values stay distinct from a measured zero.
+#import "Basic";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+#load "../../lib/sys/args.coax";
+CS_KEYS::[24]string.["players","ticks a second","tick p50 ms","tick p95 ms","tick p99 ms","writing p95 ms","writing p99 ms","sending p95 ms","server queued ack p95 ms","input oldest pending ms","input queued a seat most","input credit drops since start","queue bytes most","queue age ms most","interest whole most","rows latest deferred total","row wait ticks most","out bytes a second","transport refused frames a second","cues dropped a second","outcomes lost a second","refused full","checkpoint pending","report omitted lines"];
+CsValue::struct{samples:int;unknown:int;lo:f64;hi:f64;}
+#test "capacity summaries retain unknown ages, exact metric identity and window extrema" {
+  v:[1]CsValue;#assert cs_add(v[..],"input oldest pending ms","input oldest pending ms=-1")&&v[0].samples==0&&v[0].unknown==1;
+  #assert cs_add(v[..],"input oldest pending ms","input oldest pending ms=0")&&v[0].samples==1&&v[0].lo==0;
+  #assert cs_add(v[..],"input oldest pending ms","input oldest pending ms=12.5")&&v[0].hi==12.5&&v[0].lo==0;
+  #assert cs_add(v[..],"input oldest pending ms","input oldest pending ms suffix=99")&&v[0].samples==2;
+  #assert !cs_add(v[..],"input oldest pending ms","input oldest pending ms=bad");
+}
+cs_add::(v:[]CsValue,key:string,line:string)->bool{
+  if line.count<=key.count||line[0..<key.count]!=key||line[key.count]!='='{return true;}
+  number:=args_number(line[key.count+1..<line.count]);if !number.ok{return false;}
+  if number.value<0{v[0].unknown+=1;return true;}
+  if v[0].samples==0{v[0].lo=number.value;v[0].hi=number.value;}
+  else{if number.value<v[0].lo{v[0].lo=number.value;}if number.value>v[0].hi{v[0].hi=number.value;}}
+  v[0].samples+=1;return true;
+}
+tool_main::()->int #export_c{
+  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=1{tool_errln("usage: capacity-summary VITALS.log");return 2;}
+  data:[4194304]u8;n:=fs_read(args_at(a[..],0),data[..]);if n<=0||n>=data.count{return 2;}
+  text:=cast(string)data[0..<n];values:[24]CsValue;at:=0;valid:=true;
+  while at<text.count{end:=at;while end<text.count&&text[end]!='\n'{end+=1;}for key,i:CS_KEYS{valid=cs_add(values[i..<i+1],key,text[at..<end])&&valid;}at=end+1;}
+  print("capacity-summary scope=min/max of sampled window values source=% valid=%\n",args_at(a[..],0),valid);
+  for key,i:CS_KEYS{v:=values[i];if v.samples>0{print("% | % | % | % | %\n",key,v.lo,v.hi,v.samples,v.unknown);}else{print("% | unknown | unknown | 0 | %\n",key,v.unknown);}}
+  return ifx valid then 0 else 1;
+}

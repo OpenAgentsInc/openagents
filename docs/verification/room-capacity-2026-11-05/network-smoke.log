@@ -1,0 +1,34 @@
+raid-profile raid-capacity-v1 source=9b1-component-network-harness-smoke seed=1284301 seats=16 seconds=160 class=mix mode=fight expect=any network=100/30/20 consumer=native-socket
+raid dials: event 1 0 3 12 6 1 3 3 31 1 2 1 100 15
+{"players":16,"seconds":160,"least_d_hz":30,"bytes_per_s":28774,"input_to_final_ack_p50_ms":124,"input_to_final_ack_p95_ms":258,"input_to_final_ack_p99_ms":326,"ack_samples_missing":0,"ack_clock_backwards":0,"peak_live_raiders_in_a_seat_mirror":31,"peak_live_pets_in_a_seat_mirror":0,"peak_zones_in_a_seat_mirror":8,"front_least":228,"front_most":681,"front_band_pct":68,"watch_most":24,"sieges":1,"camp_fell_s":-1,"regrouped":0,"expect":"any","least_raiders_seen":273,"kinds_seat0":1052544,"least_raider_casts_heard":517,"least_hits_on_raiders_heard":999,"most_breaks_heard":139,"our_casts":2136,"seats_earned_xp":16,"xp_total":24337,"seats_level_2":15,"phases_seat0":131,"arch_seat0":3,"outcome_seat0":0,"camp":"standing","most_xp_a_seat":4441,"bad":0,"least_xp_a_seat":75,"mode":"fight","class":"mix","xp_cues_missed":0,"xp_seats":"d1690+0 w2525+0 d2724+0 w841+0 d391+0 w1166+0 d4441+0 w512+0 d1737+0 w1591+0 d1508+0 w1091+0 d380+0 w1125+0 d2540+0 w75+0","refused":1244,"refused_cooldown":0,"refused_range":0,"refused_level":0,"refused_other":144,"refused_dead":1099,"refused_busy":1,"refused_slot":0,"players_off_the_square":16}
+fails
+raid vitals: 33 samples, complete=true
+tick p95 at worst: 1300 us
+net-proxy: lost a read down at 866622465 ms, held 253 ms
+net-proxy: lost a read up at 866622726 ms, held 247 ms
+net-proxy: lost a read up at 866623260 ms, held 258 ms
+net-proxy: lost a read down at 866623265 ms, held 247 ms
+net-proxy: lost a read down at 866623332 ms, held 255 ms
+net-proxy: lost a read down at 866623366 ms, held 262 ms
+net-proxy: lost a read up at 866623626 ms, held 248 ms
+net-proxy: lost a read up at 866623661 ms, held 241 ms
+net-proxy: lost a read up at 866620361 ms, held 240 ms
+net-proxy: lost a read up at 866620629 ms, held 255 ms
+net-proxy: lost a read up at 866621096 ms, held 264 ms
+net-proxy: lost a read up at 866621125 ms, held 256 ms
+net-proxy: lost a read down at 866621399 ms, held 239 ms
+net-proxy: lost a read down at 866621565 ms, held 237 ms
+net-proxy: lost a read up at 866621661 ms, held 248 ms
+net-proxy: lost a read up at 866621693 ms, held 260 ms
+net-proxy: lost a read up at 866614260 ms, held 256 ms
+net-proxy: lost a read up at 866614362 ms, held 243 ms
+net-proxy: lost a read down at 866614397 ms, held 256 ms
+net-proxy: lost a read up at 866614663 ms, held 252 ms
+net-proxy: lost a read up at 866615263 ms, held 249 ms
+net-proxy: lost a read up at 866615662 ms, held 258 ms
+net-proxy: lost a read up at 866616360 ms, held 261 ms
+net-proxy: lost a read down at 866616365 ms, held 243 ms
+room: 3601 ticks in 60.0 s, 16 players, 0 frames over the rate limits, 0 queue full, 0 slow sockets closed, 3316 bytes the most waiting
+room: everglade tick parts over the minute (ms): move 56 abilities 10 town 12 spells 14 people 4 rules 21 write 240 send 97, 0 events with no room in their tick
+room: 3600 ticks in 60.0 s, 16 players, 0 frames over the rate limits, 0 queue full, 0 slow sockets closed, 3316 bytes the most waiting
+room: everglade tick parts over the minute (ms): move 83 abilities 81 town 13 spells 57 people 4 rules 61 write 462 send 125, 0 events with no room in their tick

@@ -1,5 +1,25 @@
 // Read production state; never substitute HTTP success, expiry or an ACK for
 // durable acceptance. These exports have no admission or persistence effects.
+#test "capacity input observations use actual pending inputs and preserve unknown clock ages (#12843)" #steps 2000000000 {
+  v:[1]RmServer;k:=rc_test_room(v[..],"pair-input-age",3,false);o:[5]int;
+  v[0].mono_ms=1000;v[0].eg[k].seat[0].q_n=2;v[0].eg[k].seat[0].q[0].at=850;v[0].eg[k].seat[0].q[1].at=920;
+  v[0].eg[k].seat[1].q_n=1;v[0].eg[k].seat[1].q[0].at=950;v[0].eg[k].seat[1].late=4;
+  rm_st_inputs(v[..],o[..]);#assert o[0]==3&&o[1]==150&&o[2]==2&&o[3]==4&&o[4]==0;
+  v[0].eg[k].seat[0].live=false;rm_st_inputs(v[..],o[..]);#assert o[0]==1&&o[1]==50&&o[2]==1;
+  v[0].eg[k].seat[1].q[0].at=1001;rm_st_inputs(v[..],o[..]);#assert o[1]== -1&&o[4]==1;
+  v[0].eg[k].live=false;rm_st_inputs(v[..],o[..]);for q:0..<5{#assert o[q]==0;}
+  o[0]=99;rm_st_inputs(v[..],o[0..<4]);#assert o[0]==99;
+}
+rm_st_inputs::(v:[]RmServer,out:[]int) #export_c {
+  if out.count<5{return;}for q:0..<5{out[q]=0;}
+  for k:0..<EG_ROOMS{if !v[0].eg[k].live{continue;}
+    for s:0..<EG_SEATS{st:=v[0].eg[k].seat[s..<s+1];if !st[0].live{continue;}
+      out[0]+=st[0].q_n;out[2]=rs_max(out[2],st[0].q_n);out[3]+=st[0].late;
+      for q:0..<st[0].q_n{at:=st[0].q[q].at;if at>v[0].mono_ms{out[4]+=1;}else{out[1]=rs_max(out[1],v[0].mono_ms-at);}}
+    }
+  }
+  if out[4]>0{out[1]= -1;}
+}
 #test "capacity observations distinguish native slots, connected seats, grace holds and initial gates (#12840)" #steps 2000000000 {
   v:[1]RmServer;k:=rc_test_room(v[..],"pair-capacity-observe",3,false);o:[6]int;
   v[0].eg[k].seat[1].conn= -1;v[0].eg[k].seat[1].held=true;

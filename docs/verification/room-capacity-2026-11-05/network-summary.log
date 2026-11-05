@@ -1,0 +1,25 @@
+capacity-summary scope=min/max of sampled window values source=/tmp/room-capacity-12843/net-smoke-vitals.log valid=true
+players | 11.0 | 16.0 | 33 | 0
+ticks a second | 30.0 | 30.1 | 33 | 0
+tick p50 ms | 0.01 | 0.91 | 33 | 0
+tick p95 ms | 0.39 | 1.34 | 33 | 0
+tick p99 ms | 0.43 | 1.63 | 33 | 0
+writing p95 ms | 0.13 | 0.33 | 33 | 0
+writing p99 ms | 0.14 | 0.37 | 33 | 0
+sending p95 ms | 0.06 | 0.11 | 33 | 0
+server queued ack p95 ms | 34.0 | 108.0 | 31 | 2
+input oldest pending ms | unknown | unknown | 0 | 0
+input queued a seat most | unknown | unknown | 0 | 0
+input credit drops since start | unknown | unknown | 0 | 0
+queue bytes most | 0.0 | 0.0 | 33 | 0
+queue age ms most | 0.0 | 0.0 | 33 | 0
+interest whole most | 33.0 | 105.0 | 33 | 0
+rows latest deferred total | 0.0 | 782.0 | 33 | 0
+row wait ticks most | 0.0 | 17.0 | 33 | 0
+out bytes a second | 153417.0 | 519083.0 | 33 | 0
+transport refused frames a second | 0.0 | 0.0 | 33 | 0
+cues dropped a second | 0.0 | 0.0 | 33 | 0
+outcomes lost a second | 0.0 | 0.0 | 33 | 0
+refused full | 0.0 | 0.0 | 33 | 0
+checkpoint pending | 0.0 | 0.0 | 33 | 0
+report omitted lines | 0.0 | 0.0 | 33 | 0

@@ -37,6 +37,7 @@
 #load "../../lib/sys/args.coax";
 #load "../../lib/sys/proc.coax";
 #load "../../lib/net/http.coax";
+#load "room-fleet.coax";
 
 RP_WORLD :: "coax/web/room/dev/world-everglade.json";
 RP_KEY :: "OA_ROOM_TICKET_KEY=local-development-room-ticket-key-not-a-secret";   // room-dev.coax DEV_KEY
@@ -290,6 +291,11 @@ rp_raid :: (a: [] Args, dir: string) -> int {
   n := rp_arg(a, 2, 8); secs := rp_arg(a, 3, 160); port := rp_arg(a, 4, 8871);
   if !rp_raid_shape(n,secs) || port < 1 || port > 65535 { tool_errln("room-proof raid: N 1..16, SECONDS 10..600 and PORT 1..65535"); return 2; }
   seedb:[32]u8;seed:=rp_seed(proc_has_env("RAID_SEED"),proc_getenv("RAID_SEED",seedb[..]),proc_now_ms()/1000);
+  netb:[64]u8;net:=proc_getenv("RAID_NET",netb[..]);network:[3]int;proxies:[3]int;proxy_n:=0;proxy_env:[1]Rp;
+  if net!=""{
+    if !rp_profile(net,network[..])||network[0]>1000||network[1]>1000||network[2]>1000||port>65532{return 2;}
+    for extra:0..<4{if rp_taken(port+extra){return 2;}}
+  }
   buildb:[128]u8;build:=proc_getenv("RAID_BUILD",buildb[..]);vpb:[FS_PATH_MAX]u8;vp:=proc_getenv("RAID_VITALS_LOG",vpb[..]);
   if seed<1||(vp.count>0&&build.count==0){tool_errln("room-proof raid: RAID_SEED 1..2147483647; RAID_VITALS_LOG requires RAID_BUILD");return 2;}
   db: [512] u8; dials := proc_getenv("RAID_DIALS", db[..]);
@@ -303,6 +309,13 @@ rp_raid :: (a: [] Args, dir: string) -> int {
   l: [1] RpLog;
   // a press of START acts in the live rooms only, so it waits for the players: build the check first
   b3 := [5] string.["coax/web/tool.sh", "coax/web/room/raid-check.coax", "ws://127.0.0.1:1", "1", "10"]; rp_build("raid-check", b3[..]);
+  if net!=""{
+    probe_args:=[8]string.["coax/web/tool.sh","coax/web/room/net-proxy.coax","1","1","0","0","0","1"];rp_build("net-proxy",probe_args[..]);
+    nt:[3]Rp;for i:0..<3{rp_i(nt[i..<i+1],network[i]);}
+    proxy_n=(n+5)/6;
+    for i:0..<proxy_n{px:[1]Rp;rp_i(px[..],port+1+i);sd:[1]Rp;rp_i(sd[..],seed%999999000+i);pa:=[11]string.["coax/web/tool.sh","coax/web/room/net-proxy.coax",rp_text(px[..]),rp_text(ps[..]),rp_text(nt[0..<1]),rp_text(nt[1..<2]),rp_text(nt[2..<3]),"800","0","-",rp_text(sd[..])];none:[1]string;proxies[i]=rp_start(pa[..],none[0..<0]);}
+    rp_s(proxy_env[..],"RAID_PROXY_BASE=");rp_i(proxy_env[..],port+1);
+  }
   proc_sleep(3000);
   rp_drain(room, l[..]);
   u: [1] Rp; rp_s(u[..], "ws://127.0.0.1:"); rp_i(u[..], port);
@@ -315,16 +328,17 @@ rp_raid :: (a: [] Args, dir: string) -> int {
   if mode.count == 0 { mode = "square"; }
   if level2.count == 0 { level2 = "0"; }
   if expect.count == 0 { expect = "any"; }
-  print("raid-profile raid-capacity-v1 source=% seed=% seats=% seconds=% class=% mode=% expect=% network=loopback consumer=native-socket\n",ifx build.count>0 then build else "unlabeled",seed,n,secs,class,mode,expect);
+  print("raid-profile raid-capacity-v1 source=% seed=% seats=% seconds=% class=% mode=% expect=% network=% consumer=native-socket\n",ifx build.count>0 then build else "unlabeled",seed,n,secs,class,mode,expect,ifx net=="" then "0/0/0" else net);
   print("raid dials: %\n",dials);
   cp: [1] Rp; rp_s(cp[..], dir); rp_s(cp[..], "/room-control.txt");
   press_at := proc_now_ms() + (3 + n / 2) * 1000;
-  ra := [10] string.["coax/web/tool.sh", "coax/web/room/raid-check.coax", rp_text(u[..]), rp_text(nb[..]), rp_text(sb[..]), rp_text(ts[..]), class, mode, level2, expect]; key := [1] string.[RP_KEY];
-  check := rp_start(ra[..], key[..]);
+  ra := [10] string.["coax/web/tool.sh", "coax/web/room/raid-check.coax", rp_text(u[..]), rp_text(nb[..]), rp_text(sb[..]), rp_text(ts[..]), class, mode, level2, expect]; key := [2] string.[RP_KEY,rp_text(proxy_env[..])];
+  check := rp_start(ra[..], key[0..<ifx net=="" then 1 else 2]);
   raided := false; worst: [1] int; worst[0] = -1;
   if check < 0 { tool_errln("room-proof: can't start raid-check"); }
   else { raided = rp_watch(check, room, l[..], "raids", rp_text(cp[..]), rp_text(press[..]), press_at, port, worst[..]); }
   if worst[0] >= 0 { print("tick p95 at worst: % us\n", worst[0]); } else { print("tick p95 at worst: ? us\n"); }
+  for i:0..<proxy_n{pl:[1]RpLog;rp_drain(proxies[i],pl[..]);rp_tail_matching(pl[..],"lost","reads",8);rp_end(proxies[i]);}
   rp_finish_room(room, l[..], "RAID_PROOF_LOG", true);
   return ifx raided then 0 else 1;
 }
@@ -427,15 +441,15 @@ tool_main :: () -> int #export_c {
   a: [1] Args;
   ok := args_load(a[..]);
   verb := args_at(a[..], 0);
-  if !ok || args_count(a[..]) < 2 || (verb != "cast" && verb != "raid" && verb != "transport") {
-    tool_errln("usage: room-proof cast BIN [PORT] [LATENCY_MS] [JITTER_MS] [LOSS_PERMILLE] [ROUNDS] | room-proof raid BIN [N] [SECONDS] [PORT] | room-proof transport BIN [PORT] [PLAYERS] [SECONDS] [PROFILE...]");
+  if !ok || args_count(a[..]) < 2 || (verb != "cast" && verb != "raid" && verb != "transport" && verb != "fleet") {
+    tool_errln("usage: room-proof cast BIN [PORT] [LATENCY_MS] [JITTER_MS] [LOSS_PERMILLE] [ROUNDS] | room-proof raid BIN [N] [SECONDS] [PORT] | room-proof transport BIN [PORT] [PLAYERS] [SECONDS] [PROFILE...] | room-proof fleet BIN TOWNS SECONDS PORT [SEATS_PER_TOWN]");
     return 2;
   }
   tb: [FS_PATH_MAX] u8;
   dir := fs_temp(ifx verb == "cast" then "cast-proof." else ifx verb == "raid" then "raid-proof." else "transport-proof.", tb[..]);
   if dir.count == 0 { tool_errln("room-proof: no temporary directory"); return 1; }
   rc := 0;
-  if verb == "cast" { rc = rp_cast(a[..], dir); } else if verb == "raid" { rc = rp_raid(a[..], dir); } else { rc = rp_transport(a[..], dir); }
+  if verb == "cast" { rc = rp_cast(a[..], dir); } else if verb == "raid" { rc = rp_raid(a[..], dir); } else if verb=="fleet" {rc=cf_run(a[..],dir);} else { rc = rp_transport(a[..], dir); }
   gone := fs_remove(dir);
   return rc;
 }

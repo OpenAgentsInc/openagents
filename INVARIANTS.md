@@ -902,6 +902,15 @@ accepted by the socket queue; it excludes estimated network RTT. The older
 input-to-ACK estimate retains its historical RTT term. Client presentation
 remains a separate measured boundary. Report truncation is explicitly counted.
 
+`rm_st_inputs` (#12843) reads pending simulation inputs at report time. Its
+process total, largest seat queue and oldest pending age are current gauges,
+not maxima between report windows. A timestamp ahead of the monotonic clock
+makes the age unknown (`-1`) and increments the unknown-age count. Credit drops
+are cumulative for the current live seats; they are not cast refusals or
+transport losses. The raid consumer's final whole-D ACK timing matches the
+exact input sequence and ring generation, excludes missing/backward samples,
+and labels its 2000 ms overflow bucket. Neither observer admits gameplay.
+
 Capacity observations distinguish native world slots, connected seats, grace
 holds and initial gates from API placement caps and outstanding player/invite
 reservations. Startup readiness is the condition used by `/ready`. The admin

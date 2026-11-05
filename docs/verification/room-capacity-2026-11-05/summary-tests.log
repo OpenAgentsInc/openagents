@@ -1,0 +1,8 @@
+ok   #test capacity summaries retain unknown ages, exact metric identity and window extrema (1 case, 1110 steps, 0 ms)
+ok   #test arguments copy in, read by index, flag and value (1 case, 264971 steps, 5 ms)
+ok   #test arguments past the limits are dropped and flagged (1 case, 2902532 steps, 18 ms)
+ok   #test numbers: what Number() gives for plain decimals (1 case, 5489 steps, 0 ms)
+ok   #test sizes: WIDTHxHEIGHT (1 case, 1316 steps, 0 ms)
+ok   #test whole numbers (1 case, 409 steps, 0 ms)
+ok   #test paths: what may be pushed, joining (1 case, 798 steps, 0 ms)
+7 checks, 7 passed, 0 failed

@@ -1,0 +1,50 @@
+// Fleet orchestration around the same real fighting-raid consumer, not a new
+// simulation. Each client process owns at most sixteen SDK sockets.
+#load "capacity-profile.coax";
+cf_signal::(h:int,word:string)->bool{
+  pid:[1]Rp;rp_i(pid[..],cxproc_pid(h));argv:=[3]string.["/bin/kill",word,rp_text(pid[..])];out:[128]u8;err:[128]u8;r:=proc_run(argv[..],2000,out[..],err[..]);return r.status==0&&!r.timed_out;
+}
+cf_run::(a:[]Args,dir:string)->int {
+  towns:=rp_arg(a,2,1);secs:=rp_arg(a,3,160);port:=rp_arg(a,4,61261);seats:=rp_arg(a,5,16);
+  if !cf_shape(towns,seats,secs)||port<=0||port>=65536||port==8830||port==8843||port==8872||port==8876||port==8913{return 2;}
+  bb:[128]u8;build:=proc_getenv("RAID_BUILD",bb[..]);vb:[FS_PATH_MAX]u8;vp:=proc_getenv("RAID_VITALS_LOG",vb[..]);sb:[32]u8;seed:=rp_seed(true,proc_getenv("RAID_SEED",sb[..]),0);
+  if build==""||vp==""||seed<1||seed>2147483600{tool_errln("fleet requires RAID_BUILD, RAID_VITALS_LOG and RAID_SEED 1..2147483600");return 2;}
+  stallb:[16]u8;stall_text:=proc_getenv("RAID_STALL_MS",stallb[..]);stall_ms:=ifx stall_text=="" then 0 else args_whole(stall_text);if !cf_stall_ok(stall_ms){return 2;}
+  waiting:[1]Rp;rp_s(waiting[..],RP_DIALS);rp_s(waiting[..]," 0 0\nlevels 1 2\n");
+  press:[1]Rp;rp_s(press[..],RP_DIALS);rp_s(press[..]," 1 0\nlevels 1 2\n");
+  if !rp_control(dir,rp_text(waiting[..])){return 1;}
+  // Build before timing admission. The invalid target opens no live room.
+  build_args:=[5]string.["coax/web/tool.sh","coax/web/room/raid-check.coax","ws://127.0.0.1:1","1","10"];rp_build("raid-check",build_args[..]);
+  pn:[1]Rp;rp_i(pn[..],port);room:=rp_room(args_at(a,1),rp_text(pn[..]),dir);if room<0{return 1;}
+  roomlog:[1]RpLog;proc_sleep(3000);rp_drain(room,roomlog[..]);
+  url:[1]Rp;rp_s(url[..],"ws://127.0.0.1:");rp_i(url[..],port);
+  handles:[16]int;done:[16]bool;marker:[16]bool;good:[16]bool;stamp:[16]Rp;ntext:[1]Rp;rp_i(ntext[..],seats);stext:[1]Rp;rp_i(stext[..],secs);key:=[1]string.[RP_KEY];
+  print("fleet-profile raid-fleet-v1 source=% seed=% towns=% seats_per_town=% players=% seconds=% class=mix mode=fight network=loopback persistence=local-stand-in stall_ms=%\n",build,seed,towns,seats,towns*seats,secs,stall_ms);
+  started:=proc_now_ms();
+  for i:0..<towns{rp_i(stamp[i..<i+1],seed+i);argv:=[10]string.["coax/web/tool.sh","coax/web/room/raid-check.coax",rp_text(url[..]),rp_text(ntext[..]),rp_text(stext[..]),rp_text(stamp[i..<i+1]),"mix","fight","0","any"];handles[i]=rp_start(argv[..],key[..]);if handles[i]<0{done[i]=true;}}
+  ctl:[1]Rp;rp_s(ctl[..],dir);rp_s(ctl[..],"/room-control.txt");pressed:=false;until:=started+secs*1000+90000;next_vitals:=started+11000;left:=towns;
+  vitals:[1]RpLog;samples:=0;complete:=true;http:[1]HttpWork;body:[16384]u8;none:[1]string;vurl:[1]Rp;rp_s(vurl[..],"http://127.0.0.1:");rp_i(vurl[..],port);rp_s(vurl[..],"/api/room/vitals");
+  expected:[1]Rp;rp_s(expected[..],"\nplayers=");rp_i(expected[..],towns*seats);rp_s(expected[..],"\n");stall_done:=stall_ms==0;
+  while left>0&&proc_now_ms()<until{
+    left=0;line:[8192]u8;
+    for i:0..<towns{
+      if done[i]{continue;}left+=1;
+      n:=proc_line(handles[i],0,line[..]);
+      if n>=0{t:=cast(string)line[0..<n];print("fleet-town=% %\n",i,t);if t=="raids"{marker[i]=true;}}
+      if n==PROC_TOO_LONG{complete=false;}
+      if n==PROC_EOF||n==PROC_ERROR{status:=proc_wait(handles[i],1000);good[i]=status==0&&marker[i];done[i]=true;rp_keep_stderr(handles[i],roomlog[..]);ignored_release:=proc_release(handles[i]);}
+    }
+    rp_drain(room,roomlog[..]);now:=proc_now_ms();
+    if now>=next_vitals{next_vitals=now+5000;r:=http_do(http[..],"GET",rp_text(vurl[..]),none[0..<0],"",2000,0,body[..]);text:=cast(string)body[0..<r.n];if r.error==HTTP_OK&&rp_vitals_body(r.code,text){complete=rp_vitals_keep(vitals[..],now-started,text)&&complete;samples+=1;
+      if !pressed&&rp_has(text,rp_text(expected[..])){pressed=fs_write(rp_text(ctl[..]),rp_text(press[..]));print("fleet-start barrier=all-players-in-report elapsed_ms=% players=% written=%\n",now-started,towns*seats,pressed);}
+      if !stall_done&&now-started>=30000&&rp_has(text,rp_text(expected[..])){stopped:=cf_signal(room,"-STOP");proc_sleep(stall_ms);resumed:=cf_signal(room,"-CONT");stall_done=stopped&&resumed;complete=complete&&stall_done;print("fleet-injection barrier=all-players-in-report elapsed_ms=% SIGSTOP=% SIGCONT=% duration_ms=%\n",now-started,stopped,resumed,stall_ms);}
+    }else{complete=false;}}
+    proc_sleep(10);
+  }
+  passed:=complete&&samples>0&&pressed&&stall_done;
+  for i:0..<towns{if !done[i]{rp_end(handles[i]);passed=false;}passed=good[i]&&passed;print("fleet-town=% pass=%\n",i,good[i]);}
+  saved:=fs_write(vp,cast(string)vitals[0].b[0..<vitals[0].n]);passed=saved&&passed;
+  rp_finish_room(room,roomlog[..],"RAID_PROOF_LOG",true);
+  print("fleet-result pass=% towns=% players=% samples=% elapsed_ms=% complete=%\n",passed,towns,towns*seats,samples,proc_now_ms()-started,complete&&saved);
+  return ifx passed then 0 else 1;
+}

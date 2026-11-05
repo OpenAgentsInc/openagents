@@ -61,6 +61,58 @@ host stalls. Phone CPU and browser frame/presentation cost need real client
 measurements. The vitals, overload, checkpoint and fault prerequisites keep
 their own uncompleted gates; fast ticks cannot stand in for them.
 
+## Current qualification harness
+
+`room-proof.coax fleet BIN TOWNS SECONDS PORT [SEATS_PER_TOWN]` runs the same
+mixed-class fighting consumer in **1, 2, 4, 8 or 16 distinct towns** within
+one actual native process. It requires `RAID_BUILD`, `RAID_SEED` and
+`RAID_VITALS_LOG`; `RAID_PROOF_LOG` keeps the native process log. Every town
+has distinct character identities and its own client process, with at most
+sixteen SDK sockets each. START NOW waits for admission. The default fleet
+duration is 160 s; each command ends before 15 minutes. This is local
+stand-in persistence, not a measured Postgres or production-shard capacity.
+
+The raid consumer now measures exact input creation through a received final
+whole-D ACK, retaining missing ring generations and backward clock samples as
+unknown. Its p50/p95/p99 and maximum are millisecond histogram values; the
+last bucket means **2000 ms or longer**. It also counts simultaneous live
+raiders, live player pets and zones in each seat's actual replication mirror.
+Those are observed replication peaks, not global populations or inferred
+simultaneous counts from cumulative entity sightings.
+
+For a sixteen-seat networked encounter, `room-proof.coax raid` accepts
+`RAID_NET=100/30/20` or `250/30/20`. It distributes the actual sockets across
+three existing six-socket proxies rather than increasing their SDK limit.
+All proxy ports are adjacent to the explicitly supplied room port, and each
+proxy receives a recorded seed. The proxy models ordered TCP read holds and
+retransmission; fixed seeds reproduce choices for the same read sequence,
+not operating-system packet boundaries.
+
+`RAID_SKEW=1` offers seat zero one extra input every ten 30 Hz client ticks
+(33 Hz); other seats continue at 30 Hz. `RAID_STALL_MS=400` in fleet mode
+pauses only the process started by this harness after all requested players
+are present in a retained vitals report and 30 s have elapsed, then resumes
+it. The injection reports its actual barrier, elapsed time and signal results.
+The server's existing clock-credit, four-extra-input, fine-heading and cast
+fairness checks remain the correctness oracle; workload measurements report
+their actual ACK tails, drops, refusals and recovery.
+
+Native vitals add pending input counts and oldest pending monotonic age at
+report time. These are latest gauges, not maxima between report windows.
+Unknown backward ages remain `-1`. `capacity-summary.coax VITALS.log` reports
+minima/maxima of sampled window values without converting absent or unknown
+metrics into zero or treating window percentiles as whole-run percentiles.
+
+The optional `RAID_LEVEL2=1` assertion is a stricter combat outcome test:
+everyone must reach level two. Keep that verdict alongside performance
+measurements. Earning XP and preserving progression do not imply identical
+levels for every participant at a fixed time under randomized combat.
+
+The integrated prerequisite issues are now closed, including the
+[fault matrix](../verification/2026-11-05-mmo-fault-matrix.md). Current capacity
+still requires the exact current artifact and consumer profiles below; older
+fae22 and 9b1 component smoke runs retain their own identities.
+
 ## Proposed larger encounter, not yet admitted
 
 Use **32 players in one town** as the next explicit density experiment:
