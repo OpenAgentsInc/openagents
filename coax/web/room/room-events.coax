@@ -340,6 +340,18 @@ ev_start :: (v: [] RmServer, k: int) {
   for s: 0..<EG_SEATS { e[0].earned[s] = false; e[0].pts[s] = 0; }
   ev_phase(v, k, EV_ANNOUNCE, EV_ANNOUNCE_S);
 }
+// The live instances with players in them whose world event is under way (past idle): a deploy
+// waits for them unless forced (room/deploy.sh, /health's "world events running", #12797).
+rm_events_running :: (v: [] RmServer) -> int #export_c {
+  n := 0;
+  for k: 0..<EG_ROOMS {
+    if !v[0].eg[k].live || v[0].ev[k].kind == EV_NONE || v[0].ev[k].phase == EV_IDLE { continue; }
+    seated := false;
+    for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live { seated = true; } }
+    if seated { n += 1; }
+  }
+  return n;
+}
 // An admin's STOP: called off, the raiders and the watch gone, no bonus.
 ev_stop :: (v: [] RmServer, k: int) {
   e := v[0].ev[k..<k + 1];
@@ -873,6 +885,16 @@ ev_test_ticks :: (v: [] RmServer, k: int, n: int) { for q: 0..<n { eg_test_tick(
   // a malformed line changes nothing
   rm_control(v[..], "event 1 0 3 x 6 1 3 3 31 1 2 1 100 15 5 0\n");
   #assert v[0].evc.d.size == 12;
+}
+
+#test "events: a room with players and its raid under way is a world event running; idle, or nobody seated, isn't (#12797)" #steps 4000000000 {
+  v: [1] RmServer;
+  k := ev_test_server(v[..]);
+  #assert rm_events_running(v[..]) == 0;
+  ev_start(v[..], k);
+  #assert v[0].ev[k].phase == EV_ANNOUNCE && rm_events_running(v[..]) == 1;
+  for s: 0..<EG_SEATS { v[0].eg[k].seat[s].live = false; }
+  #assert rm_events_running(v[..]) == 0;
 }
 
 // The phase's end, now: one tick (the room's ticks are cheap, the checks' interpreter is not).

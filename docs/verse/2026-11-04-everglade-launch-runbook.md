@@ -231,8 +231,15 @@ git pull -q --rebase origin main
 coax/web/room/deploy.sh
 ```
 
-`deploy.sh` builds one image and deploys it to `oa-room` and `oa-room-2` to
-`oa-room-6`. It then checks each shard's health and the load balancer rules,
+`deploy.sh` first asks each shard's `/api/room/sK/health` for its world
+events running. If any shard has a raid under way with players in it, the
+script stops with `room: shard K has N world events running: not deploying`.
+Wait for the raid to end, or set `OA_ROOM_DEPLOY_FORCE=1` to deploy anyway.
+
+It builds one image and deploys it to `oa-room` and `oa-room-2` to `oa-room-6`
+one shard at a time. Each shard must answer its health before the next is
+replaced, so only one shard's rooms restart at once. It then checks the load
+balancer rules,
 and runs its own checks through `wss://openagents.com`, retrying for up to
 5 minutes while the rule reaches every edge. Those checks are the room load
 (4 players), `relay-check` (normal and slow), `sim-check`, `bridge-check`,

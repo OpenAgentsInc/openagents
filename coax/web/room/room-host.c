@@ -422,9 +422,9 @@ static void opening(int i) {
       if ((int64_t)conns[j].on > wait_most) wait_most = (int64_t)conns[j].on;
       if (t_now - conns[j].since > wait_ms) wait_ms = t_now - conns[j].since;
     }
-    char body[400]; snprintf(body, sizeof body, "ok %lld players, fanout p50 %lld us p95 %lld us over %lld reads, %lld rate-limited, %lld slow closed, shard %lld, everglade tick p50 %lld us at the 95th %lld us over %lld ticks, waiting %lld bytes most, %lld ms oldest\n",
+    char body[440]; snprintf(body, sizeof body, "ok %lld players, fanout p50 %lld us p95 %lld us over %lld reads, %lld rate-limited, %lld slow closed, shard %lld, everglade tick p50 %lld us at the 95th %lld us over %lld ticks, waiting %lld bytes most, %lld ms oldest, %lld world events running\n",
                              (long long)rm_players(view()), (long long)p50, (long long)p95, (long long)n, (long long)rm_relay_dropped(view()), (long long)slow_closed,
-                             (long long)server->shard, (long long)tp50, (long long)tp95, (long long)tn, (long long)wait_most, (long long)wait_ms);
+                             (long long)server->shard, (long long)tp50, (long long)tp95, (long long)tn, (long long)wait_most, (long long)wait_ms, (long long)rm_events_running(view()));
     http(i, "200 OK", "text/plain", body); return;
   }
   /* --dev: the API's stand-in (local.coax): the world document the room laid, byte for byte */

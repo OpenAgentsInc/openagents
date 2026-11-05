@@ -14,6 +14,10 @@
 # jitter and loss, frame by frame, then the raid. It prints its table either way, and a failure
 # stops the deploy before anything is built or routed.
 #   coax/web/room/deploy.sh
+# A deploy waits for no world event: when a shard's /health says one is running (a live instance
+# with players and its raid under way), it stops before building, unless OA_ROOM_DEPLOY_FORCE=1
+# (#12797). Shards are replaced one at a time, each healthy before the next, so at most one shard's
+# rooms restart at once.
 #
 # Everglade's instances run on shards (#12717): oa-room is shard 1 (with Orbit League's rooms and
 # every other game's relay rooms), oa-room-2 to oa-room-$shards shards 2 to $shards, the same image with
@@ -32,6 +36,14 @@ else echo "room: the drift check fails (its table above): not deploying" >&2; ex
 fi
 export CLOUDSDK_CONFIG="${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}"
 project=openagentsgemini region=us-central1 service=oa-room map=coaxial-openagents-web-staging shards=6
+# no world event under way on any shard (#12797); a shard that doesn't answer has none
+for k in $(seq 1 "$shards"); do
+  h="$(curl -s -m 20 "https://openagents.com/api/room/s$k/health" || true)"
+  running="$(sed -nE 's/.*, ([0-9]+) world events running.*/\1/p' <<<"$h")"
+  if [[ "${running:-0}" -gt 0 && "${OA_ROOM_DEPLOY_FORCE:-0}" != 1 ]]; then
+    echo "room: shard $k has $running world events running: not deploying (OA_ROOM_DEPLOY_FORCE=1 deploys anyway)" >&2; exit 1
+  fi
+done
 g() { gcloud "$@" --project "$project" --quiet; }
 stage="$(mktemp -d)"; trap 'rm -rf "$stage"' EXIT
 mkdir -p "$stage/src"
@@ -55,18 +67,21 @@ gcloud builds submit "$stage" --project "$project" --region "$region" --tag "$im
 # Cloud Run's default the process froze once the last socket closed, and a leaving player's HP never
 # reached the API (#12715). Billed while an instance is up; min 0 still scales to none when idle.
 svc() { if [[ "$1" == 1 ]]; then echo "$service"; else echo "$service-$1"; fi; }
+# one shard at a time, each answering its health before the next is replaced (#12797)
 for k in $(seq 1 "$shards"); do
-  g run deploy "$(svc "$k")" --image "$image" --region "$region" \
+  out="$(g run deploy "$(svc "$k")" --image "$image" --region "$region" \
     --allow-unauthenticated --port 8080 --cpu 1 --memory 512Mi \
     --min-instances 0 --max-instances 1 --concurrency 1000 --timeout 3600 --session-affinity --no-cpu-throttling \
     --set-secrets OA_ROOM_TICKET_KEY=oa-room-ticket-key:latest \
-    --set-env-vars "OA_ROOM_TICKET_REQUIRED=${OA_ROOM_TICKET_REQUIRED:-1},OA_ROOM_SHARD=$k" 2>&1 | grep -E "ERROR|revision" | sed "s/^/shard $k: /" &
+    --set-env-vars "OA_ROOM_TICKET_REQUIRED=${OA_ROOM_TICKET_REQUIRED:-1},OA_ROOM_SHARD=$k" 2>&1)" ||
+    { sed "s/^/shard $k: /" <<<"$out" >&2; echo "room: shard $k's deploy failed: stopping before the next shard" >&2; exit 1; }
+  { grep -E "ERROR|revision" <<<"$out" || true; } | sed "s/^/shard $k: /"
+  url="$(g run services describe "$(svc "$k")" --region "$region" --format 'value(status.url)')"
+  [[ "$(curl -s -m 20 "$url/health")" == ok*"shard $k,"* ]] || { echo "room: $url/health is not shard $k's: stopping before the next shard" >&2; exit 1; }
+  echo "room: $url/health ok"
 done
-wait
 for k in $(seq 1 "$shards"); do
   url="$(g run services describe "$(svc "$k")" --region "$region" --format 'value(status.url)')"
-  [[ "$(curl -s -m 20 "$url/health")" == ok*"shard $k,"* ]] || { echo "room: $url/health is not shard $k's" >&2; exit 1; }
-  echo "room: $url/health ok"
   # The load balancer: a serverless backend for each (a WebSocket lives as long as the service's timeout).
   s="$(svc "$k")"
   g compute network-endpoint-groups describe "$s-neg" --region "$region" >/dev/null 2>&1 ||
