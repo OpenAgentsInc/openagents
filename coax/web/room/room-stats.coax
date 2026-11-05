@@ -106,6 +106,22 @@ rm_st_relevant :: (v: [] RmServer, k: int, s: int) -> int #export_c {
 }
 
 // Seat s's replication counters (everglade-wire.coax WireSeat, #12836) into out: rows sent for their age
+// Current picks, not a second relevance estimate. Process totals/maxima across
+// live, placed seats: count, four sums, four maxima, worst room/seat and its four
+// categories (whole, health-only, blocked, hidden). Largest whole+health wins;
+// ties retain the first room/seat. These are gauges, never transmission counts.
+rm_st_interest :: (v:[]RmServer,out:[]int) #export_c {
+  if out.count<15{return;}for i:0..<15{out[i]=0;}out[9]=-1;out[10]=-1;
+  best:=-1;
+  for k:0..<EG_ROOMS{for s:0..<EG_SEATS{
+    if !rm_eg_seat_live(v,k,s)||!v[0].eg[k].seat[s].placed{continue;}
+    c:[4]int;im_counts(v[0].eg[k].im[..],s,c[..]);out[0]+=1;
+    for i:0..<4{out[1+i]+=c[i];if c[i]>out[5+i]{out[5+i]=c[i];}}
+    if c[0]+c[1]>best{best=c[0]+c[1];out[9]=k;out[10]=s;for i:0..<4{out[11+i]=c[i];}}
+  }}
+}
+
+// Seat s's replication counters (everglade-wire.coax WireSeat, #12836) into out: rows sent for their age
 // so far (WIRE_MAX_AGE), the ticks the oldest changed row still waiting has waited, the rows the last
 // tick left for a later one, and that tick's row bytes; false for no such seat.
 rm_st_wire :: (v: [] RmServer, k: int, s: int, out: [] int) -> bool #export_c {
@@ -139,6 +155,27 @@ rm_st_sign :: (v: [] RmServer, body: string, out: [] u8) -> bool #export_c {
   return true;
 }
 ST_BODY :: 14000;   // the host's report at most (its poster's config holds 16 KB)
+
+#test "stats: interest gauges preserve the actual pick categories and name the worst live placed seat (#12840)" #steps 2000000000 {
+  v:[1]RmServer;k:=rc_test_room(v[..],"pair-interest-stats",2,false);out:[15]int;
+  im:=v[0].eg[k].im[..];
+  im[0].n_full[0]=7;im[0].n_health[0]=3;im[0].n_blocked[0]=2;im[0].n_hidden[0]=5;
+  im[0].n_full[1]=4;im[0].n_health[1]=8;im[0].n_blocked[1]=6;im[0].n_hidden[1]=1;
+  rm_st_interest(v[..],out[..]);
+  #assert out[0]==2&&out[1]==11&&out[2]==11&&out[3]==8&&out[4]==6;
+  #assert out[5]==7&&out[6]==8&&out[7]==6&&out[8]==5;
+  #assert out[9]==k&&out[10]==1&&out[11]==4&&out[12]==8&&out[13]==6&&out[14]==1;
+  v[0].eg[k].seat[1].placed=false;rm_st_interest(v[..],out[..]);#assert out[0]==1&&out[10]==0&&out[1]==7;
+  v[0].eg[k].seat[0].live=false;rm_st_interest(v[..],out[..]);#assert out[0]==0&&out[9]==-1&&out[10]==-1;
+  out[0]=91;rm_st_interest(v[..],out[0..<14]);#assert out[0]==91;
+}
+#test "stats: production replication picks feed the interest gauges (#12840)" #steps 2000000000 {
+  v:[1]RmServer;k:=rc_test_room(v[..],"pair-interest-path",2,false);
+  a:[4]int;b:[4]int;out:[15]int;
+  im_counts(v[0].eg[k].im[..],0,a[..]);im_counts(v[0].eg[k].im[..],1,b[..]);
+  rm_st_interest(v[..],out[..]);#assert out[0]==2;
+  for i:0..<4{#assert out[i+1]==a[i]+b[i];}#assert out[1]>0;
+}
 
 #test "stats: a refused join is counted by its reason, a rejoin by whether it sat (#12791)" {
   v: [1] RmServer;

@@ -766,6 +766,22 @@ matter for launch.
    - Check the phone tier's look and speed (#10908).
    - Play Everglade natively on the 4080's screen.
 
+## Interest selection gauges (#12840, first part)
+
+The native `/api/room/vitals` report includes `interest scope=process latest
+picks`, a live placed-seat count, and `interest {whole,health only,blocked,hidden}
+{total,most}`. These read the actual production pick, not the old distance
+estimate. They are process-wide gauges of each seat's most recent pick, not
+rows delivered or bytes sent. `interest worst|ROOM|SEAT|WHOLE|HEALTH|BLOCKED|HIDDEN`
+names the largest whole-plus-health selection; ties retain the first seat.
+Compare the process totals with the per-category maxima to find concentration.
+No universal alarm threshold is qualified yet; workload capacity determines it.
+
+Durable revision/age/owner/outage reporting, complete row/message accounting,
+client presentation with clock uncertainty, dashboard charts for these new
+fields and instrumentation overhead remain open in #12840. Server ACKs and
+interest picks do not prove either durable acceptance or presentation.
+
 ## What a crash may lose
 
 Room vitals (HP, XP and WANTED) are saved through an outbox in each room

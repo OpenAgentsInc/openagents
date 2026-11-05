@@ -21,6 +21,7 @@
    signed POST /api/playtest/room-stats the admin view reads). */
 #include <netinet/tcp.h>
 #include <sys/socket.h>
+static int64_t now_us(void);   /* host monotonic SDK clock, defined after this include */
 
 #define ST_WINDOW_MS 10000
 #define ST_BODY_CAP 12000     /* under room-stats.coax ST_BODY (what rm_st_sign signs), with room for its escapes in the poster's 16 KB */
@@ -204,6 +205,25 @@ static void st_report(st_buf *o, coax_v_t_RmServer v, int64_t players, int64_t s
   st_line(o, "queue age ms most=%lld", (long long)qm);
   st_line(o, "relevant entities a seat=%.1f", rel_n ? (double)rel_sum / (double)rel_n : 0.0);
   st_line(o, "relevant entities most=%lld", (long long)rel_max);
+  /* Additive gauges from the actual production interest picks. No row/byte or
+     presentation claim: each seat contributes its most recent pick. */
+  int64_t interest_at = now_us();
+  int64_t interest[15] = {0}; rm_st_interest(v, (coax_v_s64){interest, 15});
+  int64_t interest_us = now_us() - interest_at;
+  st_line(o, "interest scope=process latest picks");
+  st_line(o, "interest aggregation us=%lld", (long long)interest_us);
+  st_line(o, "interest seats=%lld", (long long)interest[0]);
+  static const char *interest_names[4] = {"whole", "health only", "blocked", "hidden"};
+  for (int j = 0; j < 4; j++) {
+    st_line(o, "interest %s total=%lld", interest_names[j], (long long)interest[1+j]);
+    st_line(o, "interest %s most=%lld", interest_names[j], (long long)interest[5+j]);
+  }
+  if (interest[9] >= 0) {
+    coax_string code = rm_st_code(v, interest[9]);
+    st_line(o, "interest worst|%.*s|%lld|%lld|%lld|%lld|%lld", (int)code.count, code.data,
+      (long long)interest[10], (long long)interest[11], (long long)interest[12],
+      (long long)interest[13], (long long)interest[14]);
+  }
   int64_t aged = 0, wait_most = 0, left_most = 0;
   for (int i = 0; i < CONNS; i++) {
     aged += st_c[i].aged;

@@ -636,6 +636,16 @@ the engine's script (`data-served`), so a pin carries them; `engine-served
 check` holds a record to a site's bytes. `realm_walkthrough.coax` checks the
 whole route: edit, publish, reload, a later release, fork, refusals.
 
+## Room interest gauges describe picks, not delivery
+
+`room-stats.coax rm_st_interest` (#12840) aggregates the actual last production
+interest pick of each live, placed seat: whole, health-only, blocked and hidden
+categories. Totals and per-category maxima are process-wide gauges; the named
+worst room/seat has the largest whole-plus-health selection, ties first. They
+do not count transmitted rows, accepted saves or presented outcomes. The native
+vitals report labels their scope and keeps existing seat records unchanged.
+Checks: room-stats.coax's category, liveness and production-path cases.
+
 ## An admitted Everglade seat keeps a cast reservation
 
 `coax/web/room/cast-budget.coax` (#12841, `#authority`, mutation-checked)
