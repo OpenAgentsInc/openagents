@@ -400,6 +400,56 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "aethyr/examples/find-candidate-pairs.coax",
+      "chapter": "aethyr/book/ch020-find-the-pairs-that-might-touch.md",
+      "stdout": "aethyr/fixtures/find-candidate-pairs.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "aethyr/examples/particle-neighbors.coax",
+      "chapter": "aethyr/book/ch023-particles-and-their-neighbors.md",
+      "stdout": "aethyr/fixtures/particle-neighbors.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "aethyr/examples/rope-and-cloth.coax",
+      "chapter": "aethyr/book/ch025-cloth-and-rope-from-constraints.md",
+      "stdout": "aethyr/fixtures/rope-and-cloth.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "aethyr/examples/water-column.coax",
+      "chapter": "aethyr/book/ch024-liquids-from-particles.md",
+      "stdout": "aethyr/fixtures/water-column.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "aethyr/examples/smoke-and-vortex.coax",
+      "chapter": "aethyr/book/ch028-smoke-on-a-grid.md",
+      "stdout": "aethyr/fixtures/smoke-and-vortex.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

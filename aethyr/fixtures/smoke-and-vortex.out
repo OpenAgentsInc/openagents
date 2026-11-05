@@ -1,0 +1,9 @@
+Taylor-Green vortex, side 2 pi, nu = 0.01, 1 s at dt 0.05:
+  16 x 16: energy ratio 0.704432 (exact exp(-4 nu t) = 0.960789), fitted nu 0.087591, numerical 0.077591; divergence 0.0; up to 13 CG iterations
+  32 x 32: energy ratio 0.817944 (exact exp(-4 nu t) = 0.960789), fitted nu 0.05024, numerical 0.04024; divergence 0.0; up to 35 CG iterations
+  64 x 64: energy ratio 0.887326 (exact exp(-4 nu t) = 0.960789), fitted nu 0.029886, numerical 0.019886; divergence 0.0; up to 73 CG iterations
+still air under gravity: fastest face 0.0 m/s; pressure difference over 1 m 9.81 Pa per unit density
+smoke: mean height 0.175 m
+  0.4 s: mean height 0.2422 m, divergence 0.0
+  0.8 s: mean height 0.3389 m, divergence 0.0
+  1.2 s: mean height 0.4179 m, divergence 0.0

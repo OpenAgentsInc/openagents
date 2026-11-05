@@ -33,15 +33,15 @@
 - [17. A scene owns the state](ch017-a-scene-owns-the-state.md) — partly implemented
 - [18. Rigid bodies and time steps](ch018-rigid-bodies-and-time-steps.md) — partly implemented
 - [19. Joints in generalized coordinates](ch019-joints-in-generalized-coordinates.md) — design draft
-- [20. Find the pairs that might touch](ch020-find-the-pairs-that-might-touch.md) — design draft
+- [20. Find the pairs that might touch](ch020-find-the-pairs-that-might-touch.md) — partly implemented
 - [21. Find where they touch](ch021-find-where-they-touch.md) — design draft
 - [22. Contact as an optimization](ch022-contact-as-an-optimization.md) — design draft
-- [23. Particles and their neighbors](ch023-particles-and-their-neighbors.md) — design draft
-- [24. Liquids from particles](ch024-liquids-from-particles.md) — design draft
-- [25. Cloth and rope from constraints](ch025-cloth-and-rope-from-constraints.md) — design draft
+- [23. Particles and their neighbors](ch023-particles-and-their-neighbors.md) — partly implemented
+- [24. Liquids from particles](ch024-liquids-from-particles.md) — partly implemented
+- [25. Cloth and rope from constraints](ch025-cloth-and-rope-from-constraints.md) — partly implemented
 - [26. Sand, snow and clay on a grid](ch026-sand-snow-and-clay-on-a-grid.md) — design draft
 - [27. Elastic solids on a mesh](ch027-elastic-solids-on-a-mesh.md) — design draft
-- [28. Smoke on a grid](ch028-smoke-on-a-grid.md) — design draft
+- [28. Smoke on a grid](ch028-smoke-on-a-grid.md) — partly implemented
 - [29. Materials meet](ch029-materials-meet.md) — design draft
 - [30. Contact that holds](ch030-contact-that-holds.md) — design draft
 - [31. Many worlds in one step](ch031-many-worlds-in-one-step.md) — design draft

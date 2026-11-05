@@ -1,0 +1,21 @@
+scene       bodies  pairs  same  box tests: all-pairs  sweep-prune  lbvh
+random  32  0  yes  496  49  368
+random  64  2  yes  2016  193  924
+random  128  10  yes  8128  791  2270
+clustered  32  7  yes  496  70  406
+clustered  64  36  yes  2016  276  1050
+clustered  128  151  yes  8128  1058  3116
+stacked  32  31  yes  496  496  456
+stacked  64  63  yes  2016  2016  1060
+stacked  128  127  yes  8128  8128  2400
+sweep and prune swaps, 128 random bodies drifting:
+  step 0: 3734 swaps, 10 pairs
+  step 1: 7 swaps, 10 pairs
+  step 2: 7 swaps, 10 pairs
+  step 3: 1 swaps, 10 pairs
+  step 4: 4 swaps, 9 pairs
+  step 5: 6 swaps, 9 pairs
+  step 6: 5 swaps, 9 pairs
+  step 7: 5 swaps, 10 pairs
+  step 8: 3 swaps, 10 pairs
+  step 9: 6 swaps, 12 pairs

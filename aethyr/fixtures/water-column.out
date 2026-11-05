@@ -1,0 +1,7 @@
+316 wall samples, 192 fluid particles, h = 0.08 m, c = 30.0 m/s, CFL step 0.0010667 s
+a step of 0.0011 s: refused
+  t = 0.5 s: density error below the surface mean 0.0019, worst 0.0043; kinetic energy 0.0151 J; top particle at y = 0.5962 m
+  t = 1.0 s: density error below the surface mean 0.0035, worst 0.0066; kinetic energy 0.0339 J; top particle at y = 0.5966 m
+  t = 1.5 s: density error below the surface mean 0.0024, worst 0.0055; kinetic energy 0.0395 J; top particle at y = 0.5938 m
+  t = 2.0 s: density error below the surface mean 0.0028, worst 0.0051; kinetic energy 0.0133 J; top particle at y = 0.5913 m
+pressure against height over 152.0 particles: slope -9382.3903 Pa/m, -rho0 g = -9810.0 Pa/m, ratio 0.9564

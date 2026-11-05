@@ -1,0 +1,57 @@
+// Book chapter 24: a column of water in a tank under aethyr/sim/sph.coax's
+// WCSPH profile. 192 fluid particles start on a lattice inside 316 wall
+// samples and settle for 2 s; the example then prints the density error,
+// the kinetic energy left, and the pressure gradient against rho0 g.
+#load "../sim/sph.coax";
+#import "Basic";
+
+r4 :: (x: f64) -> f64 { return floor(x * 10000.0 + 0.5) / 10000.0; }
+
+// book:begin example
+main :: () {
+  p: [1] Pstore; s: [1] Sph; g: [1] Pgrid; n: [1] Pneighbors;
+  a := 0.04;
+  s[0].h = 2.0 * a; s[0].sound = 30.0; s[0].viscosity = 0.03; s[0].gravity = d3(0.0, -9.81, 0.0);
+  s[0].lo = D3_ZERO; s[0].hi = d3(0.4, 0.8, 0.4);
+  // Walls 5 spacings apart hold a 4 x 4 x 12 column.
+  m := sph_lattice_mass(a, s[0].h, s[0].rest);
+  ok := sph_tank(p[..], d3(0.1, 0.1, 0.1), d3(0.1 + 5.0 * a, 0.1 + 14.0 * a, 0.1 + 5.0 * a), a, m);
+  walls := p[0].count;
+  ok = ok && sph_block(p[..], d3(0.1 + a, 0.1 + a, 0.1 + a), 4, 12, 4, a, m);
+  if !ok { print("the tank does not fit\n"); return; }
+  print("% wall samples, % fluid particles, h = % m, c = % m/s, CFL step % s\n", walls, p[0].count - walls, s[0].h, s[0].sound, r4(sph_cfl(s[..]) * 1000.0) / 1000.0);
+  print("a step of 0.0011 s: %\n", ifx sph_step(p[..], s[..], g[..], n[..], 0.0011) == Sph_Refusal.step_too_long then "refused" else "taken");
+
+  dt := 0.001;
+  for k: 0..<2000 {
+    if sph_step(p[..], s[..], g[..], n[..], dt) != Sph_Refusal.none { print("refused at step %\n", k); return; }
+    if k % 500 == 499 {
+      // Density error below the top two spacings; a surface particle has
+      // fewer neighbors, so its estimate is low by construction.
+      worst := 0.0; mean := 0.0; inside := 0; energy := 0.0; top := 0.0;
+      for i: walls..<p[0].count { top = fmax(top, p[0].pos[i].y); energy += 0.5 * p[0].mass[i] * d3_len2(p[0].vel[i]); }
+      for i: walls..<p[0].count {
+        if p[0].pos[i].y > top - 2.0 * a { continue; }
+        e := s[0].density[i] / s[0].rest - 1.0;
+        worst = fmax(worst, abs(e)); mean += e; inside += 1;
+      }
+      print("  t = % s: density error below the surface mean %, worst %; kinetic energy % J; top particle at y = % m\n",
+            r4(cast(f64) (k + 1) * dt), r4(mean / cast(f64) inside), r4(worst), r4(energy), r4(top));
+    }
+  }
+
+  // Least squares of pressure on height, over the particles more than two
+  // spacings below the top one: hydrostatics wants a slope of -rho0 g.
+  top := 0.0;
+  for i: walls..<p[0].count { top = fmax(top, p[0].pos[i].y); }
+  sy := 0.0; sp := 0.0; syy := 0.0; syp := 0.0; count := 0.0;
+  for i: walls..<p[0].count {
+    y := p[0].pos[i].y;
+    if y > top - 2.0 * a { continue; }
+    sy += y; sp += s[0].pressure[i]; syy += y * y; syp += y * s[0].pressure[i]; count += 1.0;
+  }
+  slope := (count * syp - sy * sp) / (count * syy - sy * sy);
+  print("pressure against height over % particles: slope % Pa/m, -rho0 g = % Pa/m, ratio %\n",
+        count, r4(slope), -s[0].rest * 9.81, r4(slope / (-s[0].rest * 9.81)));
+}
+// book:end example

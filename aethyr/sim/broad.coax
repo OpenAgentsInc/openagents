@@ -1,0 +1,451 @@
+// The broad phase (book chapter 20): which pairs of bodies might touch this
+// step. Every body has an axis-aligned box, fattened by its motion over the
+// step and a margin, and a filter (static, a joint's parent link, a
+// collision group and mask). Three methods find the pairs whose boxes
+// overlap and whose filters allow them:
+//
+//   broad-all-pairs-v1     every pair, n (n - 1) / 2 box tests
+//   broad-sweep-prune-v1   endpoints sorted on x by insertion sort; the order
+//                          is kept between steps, so a scene that barely
+//                          moves costs few swaps
+//   broad-lbvh-v1          a linear bounding volume hierarchy built from
+//                          30-bit Morton codes of the box centers (Karras,
+//                          HPG 2012), traversed once per body
+//
+// All three return the same thing: the pairs (i, j) with i < j as keys
+// i * BROAD_BODIES + j, sorted ascending, which is lexicographic order. The
+// contact solver's iteration order depends on that order, so the method is a
+// cost choice and never changes a result. Each call counts the box tests it
+// made, the deterministic part of its cost. CPU only, f64; device kernels are
+// not built yet.
+//   coax/bin/coax test --library aethyr/sim/broad.coax
+#load "../rigid.coax";
+
+BROAD_BODIES :: 128;
+BROAD_PAIRS :: 8128;   // 128 * 127 / 2: every pair of a full set fits
+BROAD_NODES :: 255;    // 127 internal nodes, then 128 leaves
+
+Broad_Method :: enum u8 { all_pairs; sweep_prune; lbvh; }
+
+broad_method_name :: (m: Broad_Method) -> string {
+  if m == Broad_Method.all_pairs { return "broad-all-pairs-v1"; }
+  if m == Broad_Method.sweep_prune { return "broad-sweep-prune-v1"; }
+  return "broad-lbvh-v1";
+}
+
+Box :: struct { lo: D3; hi: D3; }
+
+Broad_Set :: struct {
+  count: int;
+  box: [BROAD_BODIES] Box;
+  fixed: [BROAD_BODIES] bool;    // static: two static bodies never pair
+  parent: [BROAD_BODIES] int;    // the joint's parent link, or -1
+  group: [BROAD_BODIES] u32;     // a pair needs group i & mask j and group j & mask i
+  mask: [BROAD_BODIES] u32;
+  order: [BROAD_BODIES] int;     // sweep and prune's order on x, kept between steps
+}
+
+Broad_Pairs :: struct {
+  count: int;
+  key: [BROAD_PAIRS] int;        // i * BROAD_BODIES + j, i < j, ascending
+  scratch: [BROAD_PAIRS] int;
+  tests: int;                    // box tests made
+  swaps: int;                    // sweep and prune's insertion-sort swaps
+}
+
+// The box a body sweeps over one step of dt: its box at the start and at
+// the end, joined, then widened by margin on every side.
+broad_box :: (center: D3, half: D3, vel: D3, dt: f64, margin: f64) -> Box {
+  a := d3_sub(center, half); b := d3_add(center, half); d := d3_scale(vel, dt);
+  lo := d3(fmin(a.x, a.x + d.x), fmin(a.y, a.y + d.y), fmin(a.z, a.z + d.z));
+  hi := d3(fmax(b.x, b.x + d.x), fmax(b.y, b.y + d.y), fmax(b.z, b.z + d.z));
+  m := d3(margin, margin, margin);
+  return Box.{lo = d3_sub(lo, m), hi = d3_add(hi, m)};
+}
+
+// Adds a body that collides with everything, and returns its index, or -1
+// when the set is full.
+broad_add :: (s: [] Broad_Set, b: Box) -> int {
+  i := s[0].count;
+  if i == BROAD_BODIES { return -1; }
+  s[0].count = i + 1;
+  s[0].box[i] = b; s[0].fixed[i] = false; s[0].parent[i] = -1;
+  s[0].group[i] = 1; s[0].mask[i] = 4294967295;
+  s[0].order[i] = i;
+  return i;
+}
+
+// Closed intervals: boxes that only touch overlap.
+broad_overlap :: (a: Box, b: Box) -> bool {
+  return a.lo.x <= b.hi.x && b.lo.x <= a.hi.x && a.lo.y <= b.hi.y && b.lo.y <= a.hi.y && a.lo.z <= b.hi.z && b.lo.z <= a.hi.z;
+}
+
+// Whether the filters allow i and j to pair at all.
+broad_allowed :: (s: [] Broad_Set, i: int, j: int) -> bool {
+  if s[0].fixed[i] && s[0].fixed[j] { return false; }
+  if s[0].parent[i] == j || s[0].parent[j] == i { return false; }
+  return (s[0].group[i] & s[0].mask[j]) != 0 && (s[0].group[j] & s[0].mask[i]) != 0;
+}
+
+broad_emit :: (out: [] Broad_Pairs, i: int, j: int) {
+  a := ifx i < j then i else j; b := ifx i < j then j else i;
+  out[0].key[out[0].count] = a * BROAD_BODIES + b;
+  out[0].count += 1;
+}
+
+broad_at :: (p: [] Broad_Pairs, in_key: bool, k: int) -> int { return ifx in_key then p[0].key[k] else p[0].scratch[k]; }
+// Bottom-up merge sort of the keys, ascending.
+broad_sort :: (out: [] Broad_Pairs) {
+  n := out[0].count; width := 1; in_key := true;
+  while width < n {
+    lo := 0;
+    while lo < n {
+      mid := ifx lo + width < n then lo + width else n;
+      hi := ifx lo + 2 * width < n then lo + 2 * width else n;
+      a := lo; b := mid; k := lo;
+      while k < hi {
+        take_a := b >= hi || (a < mid && broad_at(out, in_key, a) <= broad_at(out, in_key, b));
+        v := broad_at(out, in_key, ifx take_a then a else b);
+        if take_a { a += 1; } else { b += 1; }
+        if in_key { out[0].scratch[k] = v; } else { out[0].key[k] = v; }
+        k += 1;
+      }
+      lo = hi;
+    }
+    in_key = !in_key; width *= 2;
+  }
+  if !in_key { for k: 0..<n { out[0].key[k] = out[0].scratch[k]; } }
+}
+
+broad_all_pairs :: (s: [] Broad_Set, out: [] Broad_Pairs) {
+  for i: 0..<s[0].count {
+    for j: i + 1..<s[0].count {
+      out[0].tests += 1;
+      if broad_overlap(s[0].box[i], s[0].box[j]) && broad_allowed(s, i, j) { broad_emit(out, i, j); }
+    }
+  }
+}
+
+// Sweep and prune on x. The order is a permutation of the bodies kept in
+// the set; insertion sort restores it by (lo.x, index), so ties break the
+// same way every time and a scene that barely moved needs few swaps.
+broad_before :: (s: [] Broad_Set, a: int, b: int) -> bool {
+  return s[0].box[a].lo.x < s[0].box[b].lo.x || (s[0].box[a].lo.x == s[0].box[b].lo.x && a < b);
+}
+broad_sweep_prune :: (s: [] Broad_Set, out: [] Broad_Pairs) {
+  n := s[0].count;
+  for k: 1..<n {
+    m := k;
+    while m > 0 && broad_before(s, s[0].order[m], s[0].order[m - 1]) {
+      t := s[0].order[m]; s[0].order[m] = s[0].order[m - 1]; s[0].order[m - 1] = t;
+      out[0].swaps += 1; m -= 1;
+    }
+  }
+  for k: 0..<n {
+    i := s[0].order[k];
+    for m: k + 1..<n {
+      j := s[0].order[m];
+      if s[0].box[j].lo.x > s[0].box[i].hi.x { break; }
+      out[0].tests += 1;
+      if broad_overlap(s[0].box[i], s[0].box[j]) && broad_allowed(s, i, j) { broad_emit(out, i, j); }
+    }
+  }
+  broad_sort(out);
+}
+
+// Spreads the low 10 bits of v so two zero bits follow each one.
+broad_spread :: (v: int) -> int {
+  x := v & 1023; r := 0;
+  for b: 0..<10 { r = r | (((x >> b) & 1) << (3 * b)); }
+  return r;
+}
+// The 30-bit Morton code of a point, quantized to 1024 cells per axis of
+// the box `bound`.
+broad_cell :: (t: f64, lo: f64, hi: f64) -> int {
+  if hi <= lo { return 0; }
+  c := cast(int) floor((t - lo) / (hi - lo) * 1024.0);
+  return ifx c < 0 then 0 else ifx c > 1023 then 1023 else c;
+}
+broad_morton :: (p: D3, bound: Box) -> int {
+  x := broad_cell(p.x, bound.lo.x, bound.hi.x);
+  y := broad_cell(p.y, bound.lo.y, bound.hi.y);
+  z := broad_cell(p.z, bound.lo.z, bound.hi.z);
+  return (broad_spread(x) << 2) | (broad_spread(y) << 1) | broad_spread(z);
+}
+// Leading zero bits of a non-negative key in 64.
+broad_clz :: (v: int) -> int {
+  n := 0;
+  for b: 0..<64 { if ((v >> (63 - b)) & 1) != 0 { return n; } n += 1; }
+  return 64;
+}
+Broad_Tree :: struct {
+  key: [BROAD_BODIES] int;         // (code << 7) | body, sorted: unique
+  left: [BROAD_BODIES] int;        // node index: below n - 1 internal, else leaf n - 1 + k
+  right: [BROAD_BODIES] int;
+  box: [BROAD_NODES] Box;
+}
+// Karras's delta: the common prefix of keys i and j, or -1 outside.
+broad_delta :: (t: [] Broad_Tree, n: int, i: int, j: int) -> int {
+  if j < 0 || j >= n { return -1; }
+  return broad_clz(t[0].key[i] ^ t[0].key[j]);
+}
+broad_join :: (a: Box, b: Box) -> Box {
+  return Box.{lo = d3(fmin(a.lo.x, b.lo.x), fmin(a.lo.y, b.lo.y), fmin(a.lo.z, b.lo.z)),
+              hi = d3(fmax(a.hi.x, b.hi.x), fmax(a.hi.y, b.hi.y), fmax(a.hi.z, b.hi.z))};
+}
+// Builds the tree over the set's bodies; n >= 2.
+broad_build :: (s: [] Broad_Set, t: [] Broad_Tree) {
+  n := s[0].count;
+  bound := s[0].box[0];
+  for i: 1..<n { bound = broad_join(bound, s[0].box[i]); }
+  for i: 0..<n {
+    c := d3_scale(d3_add(s[0].box[i].lo, s[0].box[i].hi), 0.5);
+    t[0].key[i] = (broad_morton(c, bound) << 7) | i;
+  }
+  // Insertion sort; the keys are unique.
+  for k: 1..<n {
+    m := k;
+    while m > 0 && t[0].key[m] < t[0].key[m - 1] {
+      x := t[0].key[m]; t[0].key[m] = t[0].key[m - 1]; t[0].key[m - 1] = x; m -= 1;
+    }
+  }
+  for k: 0..<n { t[0].box[n - 1 + k] = s[0].box[t[0].key[k] & 127]; }
+  // Each internal node i covers a range of sorted leaves with i at one end;
+  // its split is where the common prefix first shrinks.
+  for i: 0..<n - 1 {
+    d := ifx broad_delta(t, n, i, i + 1) > broad_delta(t, n, i, i - 1) then 1 else -1;
+    least := broad_delta(t, n, i, i - d);
+    reach := 2;
+    while broad_delta(t, n, i, i + reach * d) > least { reach *= 2; }
+    l := 0; step := reach / 2;
+    while step >= 1 {
+      if broad_delta(t, n, i, i + (l + step) * d) > least { l += step; }
+      step /= 2;
+    }
+    j := i + l * d;
+    node := broad_delta(t, n, i, j);
+    split := 0; div := 2;
+    while true {
+      step = (l + div - 1) / div;
+      if broad_delta(t, n, i, i + (split + step) * d) > node { split += step; }
+      if step <= 1 { break; }
+      div *= 2;
+    }
+    gamma := i + split * d + (ifx d < 0 then -1 else 0);
+    first := ifx i < j then i else j; last := ifx i < j then j else i;
+    t[0].left[i] = ifx first == gamma then n - 1 + gamma else gamma;
+    t[0].right[i] = ifx last == gamma + 1 then n - 1 + gamma + 1 else gamma + 1;
+  }
+  // Boxes from the leaves up: a post-order walk from the root.
+  stack: [BROAD_NODES] int; done: [BROAD_BODIES] bool;
+  top := 1; stack[0] = 0;
+  while top > 0 {
+    v := stack[top - 1];
+    a := t[0].left[v]; b := t[0].right[v];
+    ready := true;
+    if a < n - 1 && !done[a] { stack[top] = a; top += 1; ready = false; }
+    if b < n - 1 && !done[b] { stack[top] = b; top += 1; ready = false; }
+    if ready { t[0].box[v] = broad_join(t[0].box[a], t[0].box[b]); done[v] = true; top -= 1; }
+  }
+}
+broad_lbvh :: (s: [] Broad_Set, out: [] Broad_Pairs) {
+  n := s[0].count;
+  if n < 2 { return; }
+  t: [1] Broad_Tree;
+  broad_build(s, t[..]);
+  stack: [BROAD_NODES] int;
+  for i: 0..<n {
+    top := 1; stack[0] = 0;
+    while top > 0 {
+      top -= 1; v := stack[top];
+      out[0].tests += 1;
+      if !broad_overlap(t[0].box[v], s[0].box[i]) { continue; }
+      if v >= n - 1 {
+        j := t[0].key[v - (n - 1)] & 127;
+        if j > i && broad_allowed(s, i, j) { broad_emit(out, i, j); }
+      } else {
+        stack[top] = t[0].left[v]; stack[top + 1] = t[0].right[v]; top += 2;
+      }
+    }
+  }
+  broad_sort(out);
+}
+
+// The candidate pairs of the set by method m into out[0], which is cleared.
+broad_pairs :: (s: [] Broad_Set, m: Broad_Method, out: [] Broad_Pairs) {
+  out[0].count = 0; out[0].tests = 0; out[0].swaps = 0;
+  if m == Broad_Method.all_pairs { broad_all_pairs(s, out); }
+  else if m == Broad_Method.sweep_prune { broad_sweep_prune(s, out); }
+  else { broad_lbvh(s, out); }
+}
+
+// ---- checks
+
+// The reference, written separately: a pair is out when its boxes are
+// apart on some axis.
+reference_apart :: (a: Box, b: Box) -> bool {
+  if a.hi.x < b.lo.x || b.hi.x < a.lo.x { return true; }
+  if a.hi.y < b.lo.y || b.hi.y < a.lo.y { return true; }
+  return a.hi.z < b.lo.z || b.hi.z < a.lo.z;
+}
+reference_same :: (s: [] Broad_Set, out: [] Broad_Pairs) -> bool {
+  k := 0;
+  for i: 0..<s[0].count {
+    for j: 0..<s[0].count {
+      if j <= i || reference_apart(s[0].box[i], s[0].box[j]) { continue; }
+      if s[0].fixed[i] && s[0].fixed[j] { continue; }
+      if s[0].parent[j] == i || s[0].parent[i] == j { continue; }
+      if (s[0].group[i] & s[0].mask[j]) == 0 || (s[0].mask[i] & s[0].group[j]) == 0 { continue; }
+      if k >= out[0].count || out[0].key[k] != i * BROAD_BODIES + j { return false; }
+      k += 1;
+    }
+  }
+  return k == out[0].count;
+}
+test_unit :: (seed: int, n: int) -> f64 { return cast(f64) (cast(int) (cast(u64) (seed * 2654435761 + n * 40503) % 1000003)) / 1000003.0; }
+test_scene :: (s: [] Broad_Set, n: int, seed: int, spread: f64) {
+  s[0].count = 0;
+  for i: 0..<n {
+    c := d3(test_unit(seed, 3 * i) * spread, test_unit(seed, 3 * i + 1) * spread, test_unit(seed, 3 * i + 2) * spread);
+    h := 0.2 + 0.6 * test_unit(seed + 7, i);
+    _ := broad_add(s, broad_box(c, d3(h, h, h), D3_ZERO, 0.0, 0.0));
+  }
+}
+all_agree :: (s: [] Broad_Set) -> bool {
+  out: [1] Broad_Pairs;
+  for m: 0..<3 {
+    broad_pairs(s, cast(Broad_Method) m, out[..]);
+    if !reference_same(s, out[..]) { return false; }
+  }
+  return true;
+}
+
+#test "every method returns the reference's pairs on random scenes of every size" #steps 400000000 {
+  s: [1] Broad_Set;
+  for n: 0..<40 {
+    test_scene(s[..], n, n + 1, 6.0);
+    #assert all_agree(s[..]);
+  }
+  for seed: 1..<6 {
+    test_scene(s[..], BROAD_BODIES, seed, 20.0); #assert all_agree(s[..]);
+    test_scene(s[..], BROAD_BODIES, seed, 8.0); #assert all_agree(s[..]);
+  }
+  out: [1] Broad_Pairs;
+  test_scene(s[..], 64, 3, 8.0); broad_pairs(s[..], Broad_Method.all_pairs, out[..]);
+  #assert out[0].count > 50 && out[0].count < 1000 && out[0].tests == 64 * 63 / 2;
+}
+
+#test "degenerate scenes: all boxes equal, all on one line, all touching at a face" #steps 200000000 {
+  s: [1] Broad_Set; out: [1] Broad_Pairs;
+  for i: 0..<BROAD_BODIES { _ := broad_add(s[..], broad_box(d3(1.0, 2.0, 3.0), d3(0.5, 0.5, 0.5), D3_ZERO, 0.0, 0.0)); }
+  #assert all_agree(s[..]);
+  for m: 0..<3 { broad_pairs(s[..], cast(Broad_Method) m, out[..]); #assert out[0].count == BROAD_PAIRS; }
+  // A row on x of unit boxes one apart: neighbours touch at a face, and
+  // touching counts.
+  s[0].count = 0;
+  for i: 0..<50 { _ := broad_add(s[..], broad_box(d3(cast(f64) i, 0.0, 0.0), d3(0.5, 0.5, 0.5), D3_ZERO, 0.0, 0.0)); }
+  #assert all_agree(s[..]);
+  broad_pairs(s[..], Broad_Method.lbvh, out[..]); #assert out[0].count == 49 && out[0].key[0] == 1 && out[0].key[48] == 48 * BROAD_BODIES + 49;
+  // The same row, stacked on y instead: every box shares the x interval.
+  s[0].count = 0;
+  for i: 0..<50 { _ := broad_add(s[..], broad_box(d3(0.0, cast(f64) i * 1.01, 0.0), d3(0.5, 0.5, 0.5), D3_ZERO, 0.0, 0.0)); }
+  #assert all_agree(s[..]);
+  broad_pairs(s[..], Broad_Method.sweep_prune, out[..]); #assert out[0].count == 0 && out[0].tests == 50 * 49 / 2;
+  s[0].count = 0;
+  for m: 0..<3 { broad_pairs(s[..], cast(Broad_Method) m, out[..]); #assert out[0].count == 0 && out[0].tests == 0; }
+  _ := broad_add(s[..], broad_box(D3_ZERO, d3(1.0, 1.0, 1.0), D3_ZERO, 0.0, 0.0));
+  for m: 0..<3 { broad_pairs(s[..], cast(Broad_Method) m, out[..]); #assert out[0].count == 0 && out[0].tests == 0; }
+}
+
+#test "a fast body that crosses another within one step is reported" {
+  s: [1] Broad_Set; out: [1] Broad_Pairs;
+  // At 100 m/s for 0.1 s the bullet starts 5 m left of the wall and ends
+  // 5 m right of it: neither end touches, the swept box does.
+  #assert broad_add(s[..], broad_box(d3(-5.0, 0.0, 0.0), d3(0.1, 0.1, 0.1), d3(100.0, 0.0, 0.0), 0.1, 0.0)) == 0;
+  #assert broad_add(s[..], broad_box(D3_ZERO, d3(0.05, 2.0, 2.0), D3_ZERO, 0.1, 0.0)) == 1;
+  for m: 0..<3 { broad_pairs(s[..], cast(Broad_Method) m, out[..]); #assert out[0].count == 1 && out[0].key[0] == 1; }
+  #assert !broad_overlap(broad_box(d3(-5.0, 0.0, 0.0), d3(0.1, 0.1, 0.1), D3_ZERO, 0.1, 0.0), s[0].box[1]);
+  #assert !broad_overlap(broad_box(d3(5.0, 0.0, 0.0), d3(0.1, 0.1, 0.1), D3_ZERO, 0.1, 0.0), s[0].box[1]);
+  // Motion in -x extends the low side; the margin widens both.
+  b := broad_box(d3(1.0, 2.0, 3.0), d3(0.5, 0.5, 0.5), d3(-10.0, 0.0, 4.0), 0.1, 0.25);
+  #assert d3_eq(b.lo, d3(-0.75, 1.25, 2.25)) && d3_eq(b.hi, d3(1.75, 2.75, 4.15));
+  // Boxes a hair apart do not overlap; the margin closes the gap.
+  #assert !broad_overlap(broad_box(D3_ZERO, d3(0.5, 0.5, 0.5), D3_ZERO, 0.0, 0.0), broad_box(d3(1.001, 0.0, 0.0), d3(0.5, 0.5, 0.5), D3_ZERO, 0.0, 0.0));
+  #assert broad_overlap(broad_box(D3_ZERO, d3(0.5, 0.5, 0.5), D3_ZERO, 0.0, 0.001), broad_box(d3(1.001, 0.0, 0.0), d3(0.5, 0.5, 0.5), D3_ZERO, 0.0, 0.0));
+  for axis: 0..<3 {
+    o := d3(ifx axis == 0 then 1.001 else 0.0, ifx axis == 1 then 1.001 else 0.0, ifx axis == 2 then 1.001 else 0.0);
+    a := broad_box(D3_ZERO, d3(0.5, 0.5, 0.5), D3_ZERO, 0.0, 0.0); c := broad_box(o, d3(0.5, 0.5, 0.5), D3_ZERO, 0.0, 0.0);
+    #assert !broad_overlap(a, c) && !broad_overlap(c, a);
+  }
+}
+
+#test "filters: static pairs, joint links and masked groups never appear" {
+  s: [1] Broad_Set; out: [1] Broad_Pairs;
+  for i: 0..<8 { _ := broad_add(s[..], broad_box(D3_ZERO, d3(1.0, 1.0, 1.0), D3_ZERO, 0.0, 0.0)); }
+  s[0].fixed[0] = true; s[0].fixed[1] = true;          // the ground and a wall
+  s[0].parent[3] = 2; s[0].parent[4] = 3;              // a chain 2 - 3 - 4
+  s[0].group[5] = 2; s[0].mask[5] = 2;                 // 5 meets only group 2
+  s[0].group[6] = 2; s[0].mask[6] = 4294967295;
+  s[0].mask[7] = 4294967293;                           // 7 ignores group 2
+  #assert all_agree(s[..]);
+  broad_pairs(s[..], Broad_Method.lbvh, out[..]);
+  for k: 0..<out[0].count {
+    i := out[0].key[k] / BROAD_BODIES; j := out[0].key[k] % BROAD_BODIES;
+    #assert i < j && !(i == 0 && j == 1) && !(i == 2 && j == 3) && !(i == 3 && j == 4);
+    #assert !(j == 5 && i != 6) && !(i == 5 && j != 6) && !(i == 6 && j == 7);
+  }
+  // 28 pairs: minus the static pair, the two links, the 6 for body 5 that
+  // are not 5 - 6, and 6 - 7.
+  #assert out[0].count == 28 - 1 - 2 - 6 - 1;
+  #assert broad_allowed(s[..], 2, 4) && broad_allowed(s[..], 0, 2) && !broad_allowed(s[..], 7, 6) && broad_allowed(s[..], 5, 6);
+  // A full set refuses one more body.
+  full: [1] Broad_Set;
+  for k: 0..<BROAD_BODIES { #assert broad_add(full[..], Box.{}) == k; }
+  #assert broad_add(full[..], Box.{}) == -1 && full[0].count == BROAD_BODIES;
+}
+
+#test "sweep and prune keeps its order: a still scene needs no swaps" {
+  s: [1] Broad_Set; out: [1] Broad_Pairs;
+  test_scene(s[..], 100, 4, 10.0);
+  broad_pairs(s[..], Broad_Method.sweep_prune, out[..]);
+  first := out[0].swaps; #assert first > 1000;
+  broad_pairs(s[..], Broad_Method.sweep_prune, out[..]);
+  #assert out[0].swaps == 0 && reference_same(s[..], out[..]);
+  // Swap two bodies' boxes: the order heals with a few swaps.
+  t := s[0].box[0]; s[0].box[0] = s[0].box[50]; s[0].box[50] = t;
+  broad_pairs(s[..], Broad_Method.sweep_prune, out[..]);
+  #assert out[0].swaps > 0 && out[0].swaps < 200 && reference_same(s[..], out[..]);
+  // Ties on lo.x break by index.
+  #assert broad_before(s[..], 3, 3) == false;
+  s[0].box[3].lo.x = s[0].box[9].lo.x;
+  #assert broad_before(s[..], 3, 9) && !broad_before(s[..], 9, 3);
+}
+
+#test "Morton codes and the merge sort" {
+  #assert broad_spread(1) == 1 && broad_spread(2) == 8 && broad_spread(3) == 9 && broad_spread(1023) == 153391689 && broad_spread(1024) == 0;
+  bound := Box.{lo = D3_ZERO, hi = d3(1.0, 1.0, 1.0)};
+  #assert broad_morton(D3_ZERO, bound) == 0 && broad_morton(d3(1.0, 1.0, 1.0), bound) == 1073741823;
+  #assert broad_morton(d3(1.0, 0.0, 0.0), bound) == 153391689 << 2;
+  #assert broad_morton(d3(-1.0, 2.0, 0.5), bound) == (broad_spread(1023) << 1) | broad_spread(512);
+  #assert broad_cell(0.5, 1.0, 1.0) == 0;
+  #assert broad_clz(1) == 63 && broad_clz(0) == 64 && broad_clz(1 << 40) == 23;
+  out: [1] Broad_Pairs;
+  for n: 0..<70 {
+    out[0].count = n;
+    for k: 0..<n { out[0].key[k] = (k * 37 + 11) % 71; }
+    broad_sort(out[..]);
+    for k: 1..<n { #assert out[0].key[k - 1] < out[0].key[k]; }
+  }
+  out[0].count = 5; out[0].key[0] = 4; out[0].key[1] = 4; out[0].key[2] = 1; out[0].key[3] = 4; out[0].key[4] = 0;
+  broad_sort(out[..]);
+  #assert out[0].key[0] == 0 && out[0].key[1] == 1 && out[0].key[2] == 4 && out[0].key[4] == 4;
+}
+
+#test "the hierarchy prunes: far fewer box tests than all pairs on a sparse scene" {
+  s: [1] Broad_Set; out: [1] Broad_Pairs;
+  test_scene(s[..], BROAD_BODIES, 2, 40.0);
+  broad_pairs(s[..], Broad_Method.all_pairs, out[..]); all := out[0].tests;
+  broad_pairs(s[..], Broad_Method.lbvh, out[..]); #assert out[0].tests * 2 < all;
+  broad_pairs(s[..], Broad_Method.sweep_prune, out[..]); #assert out[0].tests * 4 < all;
+  #assert broad_method_name(Broad_Method.all_pairs) == "broad-all-pairs-v1" && broad_method_name(Broad_Method.sweep_prune) == "broad-sweep-prune-v1" && broad_method_name(Broad_Method.lbvh) == "broad-lbvh-v1";
+}

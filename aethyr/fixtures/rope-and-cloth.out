@@ -1,0 +1,14 @@
+link of compliance 0.01 m/N, 1 kg: spring period 2 pi sqrt(m alpha) = 0.628319 s
+  1 substeps: gauss-seidel 0.628377 s, jacobi 0.628377 s
+  4 substeps: gauss-seidel 0.628322 s, jacobi 0.628322 s
+  16 substeps: gauss-seidel 0.628319 s, jacobi 0.628319 s
+rope, 3 m between ends 2 m apart, after 10 s:
+  pbd-gauss-seidel-f64-v1, 2 colors: middle at y = -1.007435 m (catenary -1.005267), worst gap 0.002169 m, worst stretch 0.000857
+  pbd-jacobi-f64-v1, 2 colors: middle at y = -1.009066 m (catenary -1.005267), worst gap 0.003799 m, worst stretch 0.001714
+cloth: 144 particles, 506 links, 8 colors
+  0.5 s: closest 0.31 m from the center (radius plus thickness 0.31), lowest y -0.105953 m, middle y 0.500777 m
+  1.0 s: closest 0.31 m from the center (radius plus thickness 0.31), lowest y -0.091255 m, middle y 0.501814 m
+  1.5 s: closest 0.31 m from the center (radius plus thickness 0.31), lowest y -0.108547 m, middle y 0.501814 m
+  2.0 s: closest 0.31 m from the center (radius plus thickness 0.31), lowest y -0.109829 m, middle y 0.501814 m
+  2.5 s: closest 0.31 m from the center (radius plus thickness 0.31), lowest y -0.103209 m, middle y 0.501814 m
+  3.0 s: closest 0.31 m from the center (radius plus thickness 0.31), lowest y -0.108533 m, middle y 0.501814 m

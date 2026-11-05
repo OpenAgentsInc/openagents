@@ -1,0 +1,16 @@
+block: 128 added
+block, lattice: too many cells
+block, lattice: 128 particles, 16.0 kg, h = 0.075 m
+  neighbors: min 6, max 18, mean 12.25
+  distance tests: 4192 (all pairs: 16256), overflowed lists: 0
+block: 128 added
+block, jittered: 128 particles, 16.0 kg, h = 0.075 m
+  neighbors: min 4, max 17, mean 9.69
+  distance tests: 4994 (all pairs: 16256), overflowed lists: 0
+ball: 280 added
+ball: 280 particles, 118.125 kg, h = 0.11 m
+  neighbors: min 8, max 18, mean 13.8
+  distance tests: 13072 (all pairs: 78120), overflowed lists: 0
+ball: 280 particles, 118.125 kg, h = 0.2 m
+  neighbors: min 34, max 80, mean 51.09
+  distance tests: 39376 (all pairs: 78120), overflowed lists: 136
