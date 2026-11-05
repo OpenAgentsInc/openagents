@@ -24,6 +24,17 @@ Wk :: struct { b: [16384] u8; n: int; }
 wk_s :: (t: [] Wk, s: string) { for c: s { if t[0].n < t[0].b.count { t[0].b[t[0].n] = c; t[0].n += 1; } } }
 wk_text :: (t: [] Wk) -> string { return cast(string) t[0].b[0..<t[0].n]; }
 wk_join :: (a: string, b: string, t: [] Wk) -> string { t[0].n = 0; wk_s(t, a); wk_s(t, b); return wk_text(t); }
+// Source lists are normally repository-relative. Hash the file, not ROOT/.
+wk_source_path :: (root:string,file:string,out:[]Wk)->string {
+  if file.count>0&&file[0]=='/'{return file;}
+  ignored_path:=wk_join(root,"/",out);wk_s(out,file);return wk_text(out);
+}
+#test "worker source cache hashes each relative file and preserves absolute sources" {
+  p:[1]Wk;
+  #assert wk_source_path("/repo","coax/web/room/room.coax",p[..])=="/repo/coax/web/room/room.coax";
+  #assert wk_source_path("/repo","apps/openagents-web/everglade.coax",p[..])=="/repo/apps/openagents-web/everglade.coax";
+  #assert wk_source_path("/repo","/external/schema.pb",p[..])=="/external/schema.pb";
+}
 
 // The repository's root from this tool's own binary (ROOT/coax/web/build/tools/NAME-HASH, tool.sh).
 wk_root :: (self: string) -> string { r := self; for i: 0..<5 { r = fs_dir(r); } return r; }
@@ -225,8 +236,7 @@ wk_build :: (root: string, coax: string, clang: string, sysroot_dir: string, res
           e := j; while e < list.count && list[e] != ' ' && list[e] != '\n' && list[e] != '\t' { e += 1; }
           if e > j {
             f := list[j..<e]; fp: [1] Wk; hx: [64] u8;
-            h := wk_file_sha(wk_join(root, "/", fp[..]), buf[..], hx[..]);
-            if f.count > 0 && f[0] == '/' { h = wk_file_sha(f, buf[..], hx[..]); }
+            h := wk_file_sha(wk_source_path(root,f,fp[..]),buf[..],hx[..]);
             if h.count == 0 { ok = false; }
             wk_s(kt[..], h); wk_s(kt[..], "  "); wk_s(kt[..], f); wk_s(kt[..], "\n");
           }
