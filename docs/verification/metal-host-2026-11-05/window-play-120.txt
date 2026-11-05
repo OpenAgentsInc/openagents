@@ -1,0 +1,1 @@
+Native window: 120Hz configured/120Hz display, 669frames in6.158239s =108.4725682130882fps, p95interval16.67ms; softwareinput→GPUcompletion p9518.68ms over20events; movedtrue, coveredroomcontinuedtrue, pass:true
