@@ -108,3 +108,34 @@ Already tracked before this analysis: #12783 (replication), #12784 (offline
 as a local server), #12788 (version handshake), #12789 (interest), #12790
 (cast rules), #12791 (observability), #12778 (drift check) and #12711 (load
 test).
+
+## Since this analysis
+
+The tables above are the snapshot at `9d2e7598ef`. On 2026-11-04 these
+landed on main; the issue states are GitHub's at the time of writing.
+
+| Issue | State | Landed |
+| --- | --- | --- |
+| #12783 replication | closed | Wire 3, one row for every entity, deltas against `HEARD`, priority within `WIRE_BUDGET` (edd9601102); `LIFE`, `WARP`, effect rows with `T0` and `DUR`, a socket behind (67b4f62448); old pages on the old wire until 2026-11-12 (0e96c34284). Chapters 91–94. |
+| #12788 version handshake | closed | The hello carries the wire version; another is refused with `r 0 version` (67b4f62448). Wire 4 sends the heading in 0.1 mrad (3370a41ddc). Chapter 98. |
+| #12789 interest | closed | `room-interest.coax`: 32 m cells, in at 110 m and out past 130 m, blocks and hidden entities withheld (b4826d83b2); every channel gated (22c492ffc5). Chapter 97. |
+| #12791 observability | closed | Vitals every 10 s and `/admin/rooms` (b35943120f). Chapter 99. |
+| #12792 reconnect | closed | Seat generations, a 15 s grace hold, old-socket frames dropped (257c85b06d). Chapter 98. |
+| #12793 vitals receipts | closed | A vitals note is saved only when the API's receipt covers it (5016ba0be3). |
+| #12794 WANTED | closed | The room reports WANTED; the page no longer writes it (5016ba0be3, 45bcccd674). |
+| #12795 INVITE | closed | An INVITE holds a seat for two minutes (7c2405f986). |
+| #12784 offline host | closed | The room's tick in a Web Worker behind `?offline=worker` (e8c68921ed, 2b86e8fafc). The default and deleting the page's copy are #12882. Chapter 95. |
+| #12796 admission | open | Admission when every room is full (5fea647468). |
+| #12797 draining | open | A deploy still cuts every socket. |
+| #12778 drift check | open | Three causes removed (f54bb0f001); it doesn't hold at every profile yet. Chapter 100. |
+
+A seat's steps are earned by the server's clock since it sat, so late ticks
+don't leave its queue full (d14d704b62, chapter 89).
+
+What remains for a shared multiplayer engine, beyond Everglade, is tracked
+under the roadmap #12833: one owner per character (#12834), pinned releases
+(#12839), the shared `aethyr/net` contracts (#12845), streamed cells
+(#12847), checkpoints (#12848), handoff (#12850), adjacent owners (#12851),
+NPC senses and navigation (#12854), model decisions (#12855), one host
+lifecycle (#12856), accessibility (#12857) and a WebTransport experiment
+(#12858).

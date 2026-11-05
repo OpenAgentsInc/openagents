@@ -1,12 +1,14 @@
 # 97. Interest without leaks
 
-> **Status: unimplemented — design draft.** Today a seat hears every player
-> in its room, and creatures, zones, townsfolk and events within one radius,
-> `EG_VIEW` 120 m, tested entity by entity for every seat (`eg_near` in
-> `room-everglade.coax`). The same radius serves entry and exit, so an
-> entity at the edge is created and removed repeatedly. A blocked player is
-> hidden by the page, which still receives them. #12789 builds the design
-> below.
+> **Status: partly implemented.** [room-interest.coax](../../coax/web/room/room-interest.coax)
+> picks what each seat may receive each tick from a hashed grid of 32 m
+> cells: entities come in within 110 m and leave past 130 m, per seat and
+> entity pair; your own and room-wide ones are always picked; blocked
+> players and hidden entities are withheld (#12789, commit b4826d83b2). The
+> pick gates every channel a seat is sent: rows, names, WANTED, levels and
+> events, the join's snapshot included, and a blocked pair can't target,
+> harm or heal each other (commit 22c492ffc5). Party channels are a hook:
+> Everglade has no parties yet.
 
 Interest management decides which information each client gets. It saves
 bandwidth and server time, and it is a security boundary: anything sent to

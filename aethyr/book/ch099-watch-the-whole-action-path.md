@@ -1,13 +1,13 @@
 # 99. Watch the whole action path
 
-> **Status: partly implemented.** oa-room's `/health` reports the players,
-> the time to handle one socket's read (p50 and p95), frames the rate limits
-> dropped, slow sockets closed, the shard, and the Everglade tick's p50 and
-> p95 in 0.1 ms buckets (`room-host.c`). Its minute log line splits the
-> tick's time by part (move, abilities, town, spells, people, end, send) and
-> counts events a tick dropped. Bytes by message type, queue age, relevant
-> entities per seat, join bursts and input-to-acknowledgement time on the
-> server are #12791.
+> **Status: partly implemented.** The room server measures its own action
+> path and reports it every 10 s (#12791, commit b35943120f): tick p50, p95
+> and p99 by workload, each socket's send queue bytes and age, bytes and
+> messages a second by frame and entry, relevant entities a seat, the join
+> burst, rejoins, input to acknowledgement per seat, and admission refusals
+> by reason (`room-stats.coax`, `room-stats.h`). `/admin/rooms` shows each
+> with a 10-minute sparkline. Measuring costs 0.35 to 1.1% of the tick in a
+> 16-player local raid.
 
 A player who says "my spell took a second to land" is describing the whole
 action path, not one machine. This chapter adds measurement along that

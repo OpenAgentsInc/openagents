@@ -5,10 +5,12 @@
 > draw frame by frame, on local, 100 ms and 250 ms networks with 30 ms of
 > jitter and 2% loss, with bots in the room
 > ([coax/web/everglade-drift.coax](../../coax/web/everglade-drift.coax),
-> #12778). `coax/web/room/deploy.sh` runs it before every deploy. It still
-> reports drift on several probes, and it fails a deploy only with
-> `OA_ROOM_DRIFT_GATE=1`. Raid bots fight (`raid-check.coax`); the load
-> test's bots walk and cast but don't fight (`load.coax`, #12711).
+> #12778). `coax/web/room/deploy.sh` runs it before every deploy, and it
+> fails a deploy only with `OA_ROOM_DRIFT_GATE=1`. A local room's fixed dice
+> and bots walking clear of your abilities removed three causes of drift
+> (commit f54bb0f001); #12778 stays open until the check holds. Raid bots
+> fight (`raid-check.coax`); the load test's bots walk and cast but don't
+> fight (`load.coax`, #12711).
 
 Every earlier chapter in this part has its own checks. This chapter adds
 the checks that would have caught the failure the part was written after:
@@ -64,6 +66,8 @@ row:
 ```jai
 DR_RUN :: 6;              // frames failing in a row that make a drift
 DR_YAW_JUMP :: 300;       // mrad the camera may turn in one frame
+DR_TURN :: 175;           // mrad (10 degrees) the camera may turn in DR_TURN_MS with no look (a pointer move): only
+DR_TURN_MS :: 1000;       // your look turns it (aethyr/camera.coax verse_orbit_follow), so this is rounding room
 DR_FIX_RATE :: 1;         // corrections over 5 cm a second, at most
 DR_STALL :: 15;           // percent more frames of the town's people walking in place than offline
 ```

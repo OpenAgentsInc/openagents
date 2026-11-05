@@ -3,10 +3,12 @@
 > **Status: partly implemented.** The Everglade room server, oa-room
 > ([coax/web/room/](../../coax/web/room/room.coax)), steps every room's
 > world headless at 30 Hz and starts from every declared default, checked by
-> `bin/room --start-check` (#12774, commit c3e170d689). Offline play still
-> runs a second copy of the game on the page; chapter 95 replaces it with the
-> same server in a local worker (#12784). The shared `aethyr/net/` module
-> this part plans is not extracted yet.
+> `bin/room --start-check` (#12774, commit c3e170d689). The same tick also
+> runs in a Web Worker as the offline host, behind `?offline=worker`
+> (chapter 95, #12784, commits e8c68921ed and 2b86e8fafc); until #12882
+> makes it the default, offline play still runs the page's own copy of the
+> game. The shared `aethyr/net/` module this part plans is not extracted yet
+> (#12845).
 
 Part XII builds a multiplayer engine from an empty server to the full
 Everglade room. Each chapter adds one capability. This chapter adds the

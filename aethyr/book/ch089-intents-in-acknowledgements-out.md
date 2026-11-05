@@ -2,11 +2,14 @@
 
 > **Status: partly implemented.** A page sends one input frame per 30 Hz
 > step, numbered; oa-room queues at most 16 a seat, drops old and repeated
-> ones, steps them only as fast as time passes, and acknowledges the last one
-> it stepped in every state frame (`room-everglade.coax`, #12731). Casts,
-> interactions and rebuilds are refused with a reason (`r SEQ REASON`). A
-> cast waits at most 0.5 s for the inputs sent before it, by the rules of
-> chapter 96 (#12790).
+> ones, and acknowledges the last one it stepped in every state frame
+> (`room-everglade.coax`, #12731). A seat earns its steps by the server's
+> clock since it sat, at most `EG_BANK` (15) owed and `EG_TICK_STEPS` (4) a
+> tick, so ticks that run late don't leave its queue standing full
+> (commit d14d704b62). Since wire 4 the heading `THETA` is sent in 0.1 mrad
+> (`WIRE_FINE`, commit 3370a41ddc). Casts, interactions and rebuilds are
+> refused with a reason (`r SEQ REASON`). A cast waits at most 0.5 s for the
+> inputs sent before it, by the rules of chapter 96 (#12790).
 
 A client never tells the server what happened. It tells the server what its
 player asked for: a move, a cast, a door. The server decides whether and when
@@ -43,11 +46,14 @@ send a stick of 500.
 
 <!-- source: coax/web/room/room-everglade.coax intent-queue -->
 ```jai
-// I SEQ KX KY PX PY THETA B: one step's input, queued for the tick.
+// I SEQ KX KY PX PY THETA B HEARD: one step's input (THETA in WIRE_FINE units), queued for the tick; and the state tick its page
+// heard whole, which is now its page's (wire_seat_ack), and ends its snapshots once it is one of them.
 eg_heard_input :: (v: [] RmServer, k: int, seat: int, text: string) {
+  if v[0].eg[k].seat[seat].old { eg_old_input(v, k, seat, text); return; }   // (room-oldwire.coax)
   r: [1] WireRd; r[0] = wire_rd(text, 1);
   w := wire_read_in(text, r[..]);
-  if !r[0].ok || eg_fields(text) != 8 { return; }
+  if !r[0].ok || eg_fields(text) != 9 { return; }
+  eg_seat_heard(v, k, seat, w.heard);
   st := v[0].eg[k].seat[seat..<seat + 1];
   seq := w.seq;
   n := st[0].q_n;
@@ -58,7 +64,7 @@ eg_heard_input :: (v: [] RmServer, k: int, seat: int, text: string) {
   }
   st[0].q[n] = EgIn.{seq = seq, kx = eg_clamp(w.kx, -100, 100), ky = eg_clamp(w.ky, -100, 100),
                      px = eg_clamp(w.px, -100, 100), py = eg_clamp(w.py, -100, 100),
-                     theta = eg_clamp(eg_round(w.theta * 100.0), -100000, 100000), b = eg_clamp(w.b, 0, 31)};
+                     theta = eg_clamp(eg_round(w.theta * f32(WIRE_FINE)), -40000, 40000), b = eg_clamp(w.b, 0, 31), at = v[0].mono_ms};
   st[0].q_n = n + 1;
 }
 ```

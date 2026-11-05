@@ -128,13 +128,13 @@
 - [88. A seat joins with a signed ticket](ch088-a-seat-joins-with-a-signed-ticket.md) — partly implemented
 - [89. Intents in, acknowledgements out](ch089-intents-in-acknowledgements-out.md) — partly implemented
 - [90. Predict your own movement](ch090-predict-your-own-movement.md) — partly implemented
-- [91. One record for every replicated entity](ch091-one-record-for-every-replicated-entity.md) — design draft
-- [92. Priority under a budget](ch092-priority-under-a-budget.md) — design draft
+- [91. One record for every replicated entity](ch091-one-record-for-every-replicated-entity.md) — partly implemented
+- [92. Priority under a budget](ch092-priority-under-a-budget.md) — partly implemented
 - [93. One interpolation buffer for every remote entity](ch093-one-interpolation-buffer.md) — partly implemented
 - [94. Effects are state, events are cues](ch094-effects-are-state-events-are-cues.md) — partly implemented
-- [95. Offline is a local server](ch095-offline-is-a-local-server.md) — design draft
+- [95. Offline is a local server](ch095-offline-is-a-local-server.md) — partly implemented
 - [96. Casts and combat under latency](ch096-casts-and-combat-under-latency.md) — partly implemented
-- [97. Interest without leaks](ch097-interest-without-leaks.md) — design draft
+- [97. Interest without leaks](ch097-interest-without-leaks.md) — partly implemented
 - [98. Versions, deploys and reconnect](ch098-versions-deploys-and-reconnect.md) — partly implemented
 - [99. Watch the whole action path](ch099-watch-the-whole-action-path.md) — partly implemented
 - [100. Prove the room plays like the game](ch100-prove-the-room-plays-like-the-game.md) — partly implemented

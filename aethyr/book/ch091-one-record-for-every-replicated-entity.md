@@ -1,12 +1,16 @@
 # 91. One record for every replicated entity
 
-> **Status: unimplemented — design draft.** Today each entity kind has its
-> own wire entry and its own send rule in `eg_send`
-> (`coax/web/room/room-everglade.coax`): players (`p`) whenever their entry's
-> hash changes, townsfolk (`f`) only after they move 0.3 m or turn 0.15 rad
-> and with no velocity, creatures and zones (`c`) once or on change. Version
-> 3 of the wire, one record for every entity, is being built under #12783.
-> This chapter is its design.
+> **Status: partly implemented.** Wire 3 (#12783, commit edd9601102) sends
+> every replicated entity, players, townsfolk, creatures, zones and the
+> world's abilities, as one `s ID BACK MASK V...` row
+> ([everglade-wire.coax](../../apps/openagents-web/everglade-wire.coax)):
+> state at a fixed tick with velocity, as a delta against the last tick the
+> page acknowledged (`HEARD`). Rows carry `LIFE` and `WARP` (commit
+> 67b4f62448): an id gone a tick and back is a new life, and a move of more
+> than `WIRE_WARP_M` (3 m) in a tick is a jump, so neither is drawn between.
+> Pages from before wire 3 play on the old per-kind entries until
+> `WIRE_OLD_UNTIL_MS`, 2026-11-12 (`room-oldwire.coax`, commit 0e96c34284).
+> The record is Everglade's; a shared schema for other realms is #12845.
 
 The server has a state for every entity. Every client needs part of it,
 every tick, in as few bytes as can be trusted. This chapter adds one

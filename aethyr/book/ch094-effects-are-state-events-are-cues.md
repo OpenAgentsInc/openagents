@@ -5,10 +5,11 @@
 > cast event is a cue (#12775, commit 26b09b5e11). Every condition drawn or
 > said on the page reads one status state, filled once a frame
 > ([everglade-status.coax](../../apps/openagents-web/everglade-status.coax),
-> #12776, commit c3c2805dc6). The wire doesn't yet carry an effect's start
-> and duration, so a room shows `HELD · HOLD PERSON` without its seconds
-> left; the effect entity `WK_EFFECT` with `T0` and `DUR` comes with
-> #12783.
+> #12776, commit c3c2805dc6). The wire carries effects as `WK_EFFECT` rows
+> with their cause, `T0` and `DUR` (commit 67b4f62448), so a room shows
+> `HELD · HOLD PERSON` with its seconds left (commit 3370a41ddc). Your own
+> lasting abilities show at your press and take the room's entity as that
+> cast (commit f54bb0f001).
 
 A spell that holds a player for 3 s has two parts: the fact that the player
 is held, and the gold rings, the sound and the `HELD` line that show it.

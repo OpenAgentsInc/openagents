@@ -4,8 +4,10 @@
 > checks it at join, so a page cannot claim another player's id
 > ([room-ticket.coax](../../coax/web/room/room-ticket.coax), #12712). The
 > ticket names the room and the shard, and a shard seats only its own
-> tickets (#12717). The join has no protocol version check yet: chapter 98
-> adds it (#12788).
+> tickets (#12717). The hello carries the wire version, and a room refuses
+> any other with `r 0 version` (chapter 98, #12788, commit 67b4f62448). A
+> ticket authenticates a player; it does not yet make one room the only
+> owner of that player's character (#12834).
 
 A server that owns the scene must know who sits in each seat. The page can't
 say so itself: anything a page sends, a player can change. This chapter adds
@@ -50,6 +52,7 @@ Ticket :: struct {
   hp: int = -1;           // the HP it brings back (-1 none)
   shard: int = 1;         // the oa-room shard it was signed for (v2: 1)
   xp: int;                // the XP it brings back (room-events.coax)
+  wanted: int;            // the WANTED level it brings back (1 to 5; 0 none; #12794)
 }
 ```
 

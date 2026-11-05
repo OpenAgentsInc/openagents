@@ -1,11 +1,15 @@
 # 92. Priority under a budget
 
-> **Status: unimplemented — design draft.** Today oa-room sends a seat
-> every changed entry within `EG_VIEW` 120 m each tick and splits a frame
-> that outgrows `EG_CHUNK` 3,740 bytes into parts; nothing chooses what to
-> leave out. A socket's output queue is bounded by bytes (`OUT_MAX`
-> 256 KB in `room-host.c`, past which the socket is closed), not by age. The
-> priority and byte budget are part of #12783's `WireHist`.
+> **Status: partly implemented.** Each tick the server fills one table of
+> rows (`WireHist`, [everglade-wire.coax](../../apps/openagents-web/everglade-wire.coax)),
+> and each seat's rows are cut from it by priority, weight over distance,
+> within `WIRE_BUDGET`, 1,000 bytes a tick (30 KB/s); the seat's own row and
+> its removals go on top (#12783, commit edd9601102). A seat whose socket has
+> more than `EG_BEHIND` (4,096 bytes) waiting gets only its own row that
+> tick, and a socket is closed past `OUT_MAX` (256 KB) waiting or when its
+> output hasn't emptied for `OUT_AGE_MS` (3 s) (`room-host.c`, commit
+> 67b4f62448). Priority doesn't yet accumulate for a row left out, as this
+> chapter designs.
 
 A raid puts 16 players, up to 64 raiders, 38 townsfolk and their spells in
 one square. Chapter 91 says how to write each entity's state. This chapter

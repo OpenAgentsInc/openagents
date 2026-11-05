@@ -4,8 +4,11 @@
 > rooms of 16 seats, 16 rooms to an oa-room process, on 6 Cloud Run shards
 > placed by the API's instance directory (#12705, #12717), with the Cultist
 > Raid of up to 60 standing raiders on the server (#12740). Placement holds
-> 2 rooms a shard today, 192 players in all. The pieces still open are
-> chapters 91, 92, 95, 97 and 98, and the drift check holding (chapter 100).
+> 2 rooms a shard today, 192 players in all. Replication, budgets, interest,
+> the version check, reconnect and vitals have landed (chapters 91, 92, 97,
+> 98 and 99). Still open: offline on the local host by default (chapter 95,
+> #12882), draining a shard on deploy (#12797), and the drift check holding
+> (chapter 100, #12778).
 
 This chapter puts the part together: the full Everglade room, built from
 chapters 86 to 100, at the scale it runs.
@@ -32,14 +35,14 @@ EG_HZ :: 30;
 | Seats | 88 | HMAC seat tickets from the API, 16 a room |
 | Intents | 89 | `I`, `C`, `E`, `R`; refusals with reasons |
 | Prediction | 90 | your movement only; camera from your controls |
-| Replication | 91, 92 | per-kind entries today; one record with a budget next (#12783) |
+| Replication | 91, 92 | one row for every entity, deltas against what the page heard, 1,000 bytes a tick a seat (#12783) |
 | Drawing others | 93 | one adaptive buffer, 80 to 300 ms |
 | Effects | 94 | lasting abilities as entities; one status state |
-| Offline | 95 | the page's own game today; a local worker host next (#12784) |
+| Offline | 95 | a local worker host behind `?offline=worker` (#12784); the default next (#12882) |
 | Combat rules | 96 | range and sight at start and release, a 0.5 s command age, heals before harm |
-| Interest | 97 | one 120 m radius; hysteresis and privacy next (#12789) |
-| Live operations | 98 | rejoin after silence; version check, drain and reconnect next |
-| Measurement | 99 | tick percentiles and time by part |
+| Interest | 97 | 32 m cells, in at 110 m and out past 130 m; blocked and hidden entities never sent (#12789) |
+| Live operations | 98 | a version check, reconnect with a 15 s grace hold; drain next (#12797) |
+| Measurement | 99 | the action path's vitals every 10 s on `/admin/rooms` (#12791) |
 | Proof | 100 | the drift check; bots that fight |
 
 ## Sizing

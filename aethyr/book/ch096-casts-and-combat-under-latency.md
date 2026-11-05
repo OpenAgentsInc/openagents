@@ -57,6 +57,17 @@ CR_SHOW :: 0.9;           // s a refused cast's bar shows its reason icon
 // Everglade's own four's cast bars (verse/rules/srd5.coax srd_spell bar: Meteor Swarm, Thunderbolt,
 // Mega Thunderbolt, Water Orb). Every other cast has none: it is released as it starts.
 CR_BAR :: [4] f32.[2.5, 1.2, 0.5, 0.6];
+// Repair (R; everglade-repair.coax): a broken structure within reach stands again whole after its bar,
+// unless you move or are hurt first; then it waits a while. Its slots: the druid's and the Warlock's R.
+CR_REPAIR_SLOTS :: [2] int.[47, 70];
+CR_REPAIR_BAR :: 1.5;      // s
+CR_REPAIR_EVERY :: 8.0;    // s from one repair to the next
+CR_REPAIR_REACH :: 18.3;   // m (60 feet) from you to what you repair
+CR_REPAIR_MOVE :: 0.6;     // m you may shift on its bar
+// What a Repair names: a group of the town's pieces (a building, a house, a 16 m cell of the palisade or
+// the streets: everglade-spells.coax sp_group), or an admin's placed thing i as CR_REPAIR_PLACED0 + i.
+CR_REPAIR_PLACED0 :: 100000;
+CR_PLACED_MAX :: 64;       // an admin's placed things at most (verse/everglade/edits.coax EG_EDIT_MAX)
 ```
 
 **Command age without a client clock.** The page sends no time and the room

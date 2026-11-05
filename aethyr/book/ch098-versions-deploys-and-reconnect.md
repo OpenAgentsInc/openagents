@@ -1,13 +1,16 @@
 # 98. Versions, deploys and reconnect
 
-> **Status: partly implemented.** Reconnect has three working pieces: a page
-> whose socket goes quiet for 6 s closes it and rejoins with a doubling wait
-> (commit a388b270f9); a player's new socket replaces their silent old one,
-> so no twin stands in the town (86808a350c); and a player back within
-> 2 minutes stands where they were (d1fbd24f6f). The protocol version is
-> defined (`WIRE_VERSION :: 2`) but nothing checks it (#12788). A deploy cuts
-> every socket and loses the rooms' in-memory state (#12797). Socket, session
-> and character share one lifetime (#12792).
+> **Status: partly implemented.** The hello carries the wire version: a
+> room refuses any other with `r 0 version` and closes the socket, and the
+> page reloads once (#12788, commit 67b4f62448); pages from before wire 3
+> play on the old wire until 2026-11-12 (commit 0e96c34284). Reconnect is its
+> own protocol (#12792, commit 257c85b06d): a closed socket's seat is held
+> for `EG_GRACE_MS` (15 s), a rejoin takes it back with its HP, conditions,
+> effects and cooldowns, and each seat has a generation, so frames from a
+> replaced socket are dropped. Room vitals count as saved only when the API's
+> receipt covers them (#12793, commit 5016ba0be3). Still open: a deploy cuts
+> every socket and loses the rooms' in-memory state (#12797), and one owner
+> per character across rooms (#12834).
 
 A live game changes while people play it. A new page release meets an old
 server, a new server meets cached pages, and phones lose their network in
