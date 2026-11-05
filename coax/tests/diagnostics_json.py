@@ -14,6 +14,9 @@ before it recovered (`NAME.before.txt`); a later error that may follow from
 an earlier one carries a note naming it, and reporting stops at 20 errors.
 Without the flag, the text is byte-identical to the `.txt` recorded with the
 release before the flag existed.
+The JSON stream stays pure at any machine load: a build held back by the
+load average or the shared worker budget says so in text only without the
+flag ($COAX_JOBS_LOAD_NOW puts every build over the limit; GitHub #12937).
 """
 
 import json
@@ -35,8 +38,17 @@ NOTE = "this may follow from the error at "
 KEYS = ["schema", "severity", "code", "message", "span", "notes", "fixes"]
 
 
-def coax(*args):
-    return subprocess.run([str(COMPILER), *args], cwd=ROOT, capture_output=True, text=True, timeout=60)
+def coax(*args, env=None):
+    # The JSON runs keep the build-worker notices on, so they prove the stream
+    # stays pure; text runs, compared byte for byte, silence them as
+    # tests/run.sh does (they are for the person at the terminal).
+    run_env = dict(os.environ)
+    if "json" in args:
+        run_env.pop("COAX_JOBS_QUIET", None)
+    else:
+        run_env["COAX_JOBS_QUIET"] = "1"
+    run_env.update(env or {})
+    return subprocess.run([str(COMPILER), *args], cwd=ROOT, capture_output=True, text=True, timeout=60, env=run_env)
 
 
 def timeless(text):
@@ -201,6 +213,24 @@ class DiagnosticsJson(unittest.TestCase):
             (root / "again.coax").write_text('#load "badlex.coax";\n')
             result = coax("check", "--diagnostics", "json", str(root / "main.coax"))
             self.assertEqual([json.loads(line)["code"] for line in result.stderr.splitlines()], ["E0108", "E0201", "E0201"])
+
+    def test_the_json_stream_stays_pure_under_load(self):
+        with tempfile.TemporaryDirectory(prefix="coax-diagnostics-jobs-") as d:
+            # Every build is over the load limit, with a private token pool.
+            env = {"COAX_JOBS_DIR": d, "COAX_JOBS_BUDGET": "4", "COAX_JOBS_LOAD": "1",
+                      "COAX_JOBS_LOAD_NOW": "1000", "COAX_MUTATE_JOBS": "4", "COAX_CHECK_JOBS": "4"}
+            text = subprocess.run([str(COMPILER), "mutate", "tests/diagnostics/survivor.coax"], cwd=ROOT,
+                                  capture_output=True, text=True, timeout=60,
+                                  env={k: v for k, v in {**os.environ, **env}.items() if k != "COAX_JOBS_QUIET"})
+            self.assertIn("coax jobs: the load average is 1000.0, at or above 1 ($COAX_JOBS_LOAD)", text.stderr)
+            result = coax("mutate", "--diagnostics", "json", "tests/diagnostics/survivor.coax", env=env)
+            self.assertEqual(result.stderr, (CASES / "survivor.jsonl").read_text())
+            result = coax("mutate", "--diagnostics", "json", "tests/diagnostics/checker.coax", env=env)
+            self.assertEqual(result.stderr, (CASES / "checker.jsonl").read_text())
+            for name in FAMILIES:
+                with self.subTest(family=name):
+                    result = coax(FAMILIES[name], "--diagnostics", "json", f"tests/diagnostics/{name}.coax", env=env)
+                    self.assertEqual(result.stderr, (CASES / f"{name}.jsonl").read_text())
 
     def test_an_unknown_format_is_refused(self):
         self.assertNotEqual(coax("check", "--diagnostics", "xml", "tests/diagnostics/checker.coax").returncode, 0)

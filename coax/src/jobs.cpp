@@ -32,7 +32,11 @@
 // $COAX_MUTATE_JOBS (mutants), else $COAX_JOBS, else N. The pool decides
 // only how many workers run at once, never what they compute, so every
 // result is the same for every count. A build that can't get the workers
-// it could use says so once on stderr ($COAX_JOBS_QUIET silences it).
+// it could use says so once on stderr ($COAX_JOBS_QUIET silences it), and
+// never under --json or --diagnostics json: there stderr is the machine-
+// readable stream, one JSON object per line, and a text notice would break
+// it (GitHub #12937). $COAX_JOBS_LOAD_NOW stands in for the load average,
+// so a test can put a build over $COAX_JOBS_LOAD at will.
 #include "coax.h"
 
 #include <cerrno>
@@ -325,6 +329,11 @@ static std::vector<JobHolder> job_holders(uint64_t *held_total, uint64_t *over_t
 }
 
 static double job_load() {
+  if (const char *now = getenv("COAX_JOBS_LOAD_NOW"); now && *now) {
+    char *end = nullptr;
+    const double v = strtod(now, &end);
+    if (end && !*end && v >= 0) return v;
+  }
   double load[1] = {0};
   return getloadavg(load, 1) == 1 ? load[0] : 0;
 }
@@ -390,7 +399,7 @@ struct JobSlots {
 
   void tell_wait() {
     JobPool &p = job_pool();
-    if (p.told_wait || !p.shared) return;
+    if (p.told_wait || !p.shared || g_json_errors) return;  // no text in a JSON stream
     p.told_wait = true;
     uint64_t held = 0;
     std::vector<JobHolder> rows = job_holders(&held);
@@ -406,7 +415,7 @@ struct JobSlots {
 
   void tell_load(double load) {
     JobPool &p = job_pool();
-    if (p.told_load) return;
+    if (p.told_load || g_json_errors) return;  // no text in a JSON stream
     p.told_load = true;
     fprintf(stderr, "coax jobs: the load average is %.1f, at or above %.0f ($COAX_JOBS_LOAD); running %zu build worker%s, not up to %llu, until it drops\n",
             load, p.load_limit, slots.size(), slots.size() == 1 ? "" : "s", (unsigned long long)cap);
