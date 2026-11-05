@@ -1590,3 +1590,50 @@ eg_fire_blame :: (by: int, next_by: int, out: [] int) {
   }
   #assert h0 > 0 && h1 == 0;
 }
+// Seat 0's Fireball sets a piece alight, then `casters` other seats each hold a Levitate up far off
+// across the town (their copies run every step); the fire burning on for 12 s: its clock, the pieces
+// alight, their burn times and soot (#12933).
+eg_fire_casters :: (casters: int, out: [] f32) {
+  g: [1] Everglade; dm: [1] DemoWorld;
+  walled := everglade_walls(g[..]);
+  everglade_room_spells_start(g[..], dm[..], "");
+  seats: [EG_ROOM_SEAT_FLOATS * 4] f32; took: [WATCH_YOUS * 2] f32;
+  everglade_room_town(g[..], 1.0 / 30.0, 1000.0, seats[..], 0, took[..]);
+  w := sp_dm(g[..]);
+  at := v3(0, 0, 0); pc := -1;
+  for q: 0..<w[0].n { p := w[0].pieces[q]; if pc < 0 && p.state == DP_STANDING && fi_fuel(p) > 0.5 { at = v3(p.cx, p.y0 + 1, p.cz); pc = q; } }
+  #assert walled >= 0 && pc >= 0;
+  for q: 0..<4 {
+    o := q * EG_ROOM_SEAT_FLOATS; x := at.x + 15 + f32(q) * 60;
+    seats[o] = x; seats[o + 1] = ground_at(g[..], x, at.z); seats[o + 2] = at.z; seats[o + 3] = 2; seats[o + 4] = 100000; seats[o + 5] = 100000;
+  }
+  everglade_room_town(g[..], 1.0 / 30.0, 1000.1, seats[..], 4, took[..]);
+  everglade_room_strike(g[..], 0, WL_SLOT0 + WL_FIREBALL, at.x, at.y + 9, at.z - 2, at.x, at.y, at.z, 7);
+  for t: 0..<20 { _ := everglade_room_spells(g[..], 0.1); }
+  #assert fi_count(g[..]) > 0;
+  for q: 1..<casters + 1 {
+    o := q * EG_ROOM_SEAT_FLOATS;
+    everglade_room_ability_mode(g[..], q, AB_LEVITATE, seats[o], seats[o + 1], seats[o + 2], 0, true, seats[o], seats[o + 1], seats[o + 2], 0);
+    #assert g[0].sp.room_ab[0].seat[q].used;
+  }
+  for t: 0..<20 {
+    everglade_room_abilities(g[..], 0.6);
+    _ := everglade_room_spells(g[..], 0.6);
+  }
+  for q: 1..<casters + 1 { #assert g[0].sp.room_ab[0].seat[q].live[AB_LEVITATE]; }   // they held it up throughout
+  v := fi_of(g[..]);
+  out[0] = v[0].time; out[1] = f32(v[0].n); out[2] = v[0].soot[pc];
+  out[3] = 0; out[4] = 0;
+  for k: 0..<v[0].n { out[3] += v[0].burn[k].t; out[4] += f32(v[0].burn[k].piece); }
+}
+#test "room town: the town's fires burn and spread the same with 0 or 1 casters holding a lasting spell up (#12933)" #steps 60000000000 {
+  a: [5] f32; b: [5] f32;
+  eg_fire_casters(0, a[..]); eg_fire_casters(1, b[..]);
+  #assert a[0] > 13.9 && a[0] < 14.1;   // 20 steps of 0.1 s and 20 of 0.6 s: once a tick
+  for q: 0..<5 { #assert a[q] == b[q]; }
+}
+#test "room town: the town's fires burn and spread the same with 0 or 3 casters holding a lasting spell up (#12933)" #steps 60000000000 {
+  a: [5] f32; c: [5] f32;
+  eg_fire_casters(0, a[..]); eg_fire_casters(3, c[..]);
+  for q: 0..<5 { #assert a[q] == c[q]; }
+}

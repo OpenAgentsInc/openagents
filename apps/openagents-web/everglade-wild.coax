@@ -579,7 +579,10 @@ wd_frame :: (s: [] Everglade, dt: f32) {
   wd_cl_frame(s, dt);
   wd_wf_frame(s, dt);
   wd_fires_frame(s, dt);
-  fi_frame(s, dt);   // the town's pieces alight (everglade-fire.coax)
+  // the town's pieces alight (everglade-fire.coax): the town's own fire, stepped once a frame (a room's
+  // server: once a tick, everglade_room_spells), never again in each seat's copy of the abilities, or the
+  // fires would burn and spread faster for each caster holding a spell up (#12933)
+  if !eg_ra_copying(s) { fi_frame(s, dt); }
   ci_frame(s, dt);
 }
 wd_flick :: (t: f32, k: f32) -> f32 { return 0.8 + 0.2 * sin(t * 17 + k * 2.3) * sin(t * 6.1 + k); }
