@@ -1,0 +1,43 @@
+// Paired native observer qualification, A/B/B/A. Each run is the identical
+// 75-second real-socket workload. /usr/bin/time is the platform CPU/RSS effect;
+// Coax owns ordering, deadlines, parsing, exit checks and retained evidence.
+// HARNESS_BIN is the completed background-check tool, avoiding build cost.
+// coax/web/tool.sh coax/web/room/observer-overhead.coax HARNESS_BIN BASELINE_BIN OBSERVED_BIN OUT_DIR
+#import "Basic";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+#load "../../lib/sys/args.coax";
+#load "../../lib/sys/proc.coax";
+
+oh_trim::(s:string)->string{a:=0;b:=s.count;while a<b&&(s[a]==' '||s[a]=='\t'){a+=1;}while b>a&&(s[b-1]==' '||s[b-1]=='\t'){b-=1;}return s[a..<b];}
+oh_posix::(text:string,key:string)->f64{
+  at:=0;while at<text.count{end:=at;while end<text.count&&text[end]!='\n'{end+=1;}line:=oh_trim(text[at..<end]);at=end+1;
+    if line.count>key.count&&line[0..<key.count]==key&&(line[key.count]==' '||line[key.count]=='\t'){
+      value:=oh_trim(line[key.count+1..<line.count]);n:=args_number(value);if value.count>0&&n.ok&&n.value>=0{return n.value;}}
+  }return -1;
+}
+#test "portable time values require exact keys and complete nonnegative values" {
+  t:="real 75.10\nuser 2.34\nsys 0.56\n";
+  #assert oh_posix(t,"user")==2.34&&oh_posix(t,"sys")==0.56&&oh_posix(t,"real")==75.10;
+  #assert oh_posix(t,"use")== -1&&oh_posix("user -1\n","user")== -1&&oh_posix("user 2x\n","user")== -1&&oh_posix("user \n","user")== -1;
+}
+tool_main::()->int #export_c{
+  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=4{return 2;}
+  harness:=args_at(a[..],0);baseline:=args_at(a[..],1);observed:=args_at(a[..],2);dir:=args_at(a[..],3);
+  if !fs_exists(harness)||!fs_exists(baseline)||!fs_exists(observed)||!fs_mkdir(dir){return 2;}
+  names:=[4]string.["baseline-1","observed-2","observed-3","baseline-4"];none:[1]string;cpu:[4]f64;
+  for round:0..<4{
+    control:=round==0||round==3;argv:=[6]string.["/usr/bin/time","-lp",harness,ifx control then "stress-control" else "stress",ifx control then baseline else observed,"75"];
+    out:[131072]u8;err:[16384]u8;r:=proc_run(argv[..],120000,out[..],err[..]);
+    text:=cast(string)out[0..<r.out_n];timing:=cast(string)err[0..<r.err_n];path:[4200]u8;name:[128]u8;n:=0;
+    for c:names[round]{name[n]=c;n+=1;}for c:".log"{name[n]=c;n+=1;}
+    saved:=fs_write(fs_join(dir,cast(string)name[0..<n],path[..]),text);n-=4;for c:".time.txt"{name[n]=c;n+=1;}
+    saved=saved&&fs_write(fs_join(dir,cast(string)name[0..<n],path[..]),timing);
+    user:=oh_posix(timing,"user");system:=oh_posix(timing,"sys");elapsed:=oh_posix(timing,"real");cpu[round]=user+system;
+    print("observer overhead: run=% profile=% status=% timed_out=% cut=% elapsed_s=% user_s=% system_s=%\n",round+1,names[round],r.status,r.timed_out,r.cut,elapsed,user,system);
+    if !saved||r.status!=0||r.timed_out||r.cut||user<0||system<0||elapsed<70||elapsed>120{return 1;}
+  }
+  base:=(cpu[0]+cpu[3])/2;with:=(cpu[1]+cpu[2])/2;
+  print("observer overhead: workload=ten-native-sockets-75s baseline_mean_cpu_s=% observed_mean_cpu_s=% difference_cpu_s=% difference_percent=%\n",base,with,with-base,ifx base>0 then 100*(with-base)/base else 0);
+  print("scope: complete harness and waited children CPU; paired on this loaded Mac, not isolated server CPU or a fleet bound\n");return 0;
+}
