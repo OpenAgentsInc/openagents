@@ -1,0 +1,43 @@
+// Conservative perspective error for a source AABB in view coordinates.
+// Full-detail children stay pinned and are used on every refusal/missing page.
+#load "parent.coax";
+#authority;
+ParentChoice :: enum u8 { fine; coarse; missing; }
+#test "screen error selection includes the exact threshold and falls back when missing" {
+  #assert projected_error(1,10,10,90)==20;
+  #assert parent_choice(1,10,10,90,20,true)==ParentChoice.coarse;
+  #assert parent_choice(1,10,10,90,19,true)==ParentChoice.fine;
+  #assert parent_choice(1,10,10,90,20,false)==ParentChoice.missing;
+  #assert parent_choice(0,1,0,100,0,true)==ParentChoice.coarse;
+  #assert projected_error(1,1,0,90)==1000000000;
+  #assert parent_choice(1,0,0,90,20,true)==ParentChoice.fine;
+  #assert parent_choice(-1,10,0,90,20,true)==ParentChoice.fine;
+  #assert parent_choice(1,10,-1,90,20,true)==ParentChoice.fine;
+  #assert parent_choice(1,10,0,0,20,true)==ParentChoice.fine;
+  #assert parent_choice(1,10,0,90,-1,true)==ParentChoice.fine;
+  #assert projected_error(1,20,10,90)<projected_error(1,10,10,90);
+}
+#test "perspective rounding is minimally upward and invalid projection cannot become a cut" {
+  v:=projected_error(0.1,3,1,1);exact:=cast(f64)0.1f32*(1+1.0/3.0)/(3-cast(f64)0.1f32);
+  #assert cast(f64)v>=exact && cast(f64)f32_from_bits(f32_bits(v)-1)<exact;
+  #assert projected_error(0,1,0,0)==1000000000;
+  #assert parent_choice(0,0,0,1,1000000000,true)==ParentChoice.fine;
+}
+#test "perspective bound encloses independent projected point displacements" {
+  bound:=projected_error(0.75,10,5,100);
+  for x:[3]f64.[-5,0,5] {for y:[3]f64.[-5,0,5] {for z:[2]f64.[10,20] {
+    for dx:[3]f64.[-0.5,0,0.5] {for dy:[3]f64.[-0.5,0,0.5] {for dz:[3]f64.[-0.5,0,0.5] {
+      if dx*dx+dy*dy+dz*dz<=0.75*0.75 {#assert abs(100*((x+dx)/(z+dz)-x/z))<=cast(f64)bound && abs(100*((y+dy)/(z+dz)-y/z))<=cast(f64)bound;}
+    }}}
+  }}}
+}
+projected_error :: (error:f32,near:f32,radial:f32,focal:f32)->f32 {
+  if !(error>=0 && near>error && radial>=0 && focal>0) {return 1000000000;}
+  exact:=cast(f64)error*cast(f64)focal*(1+cast(f64)radial/cast(f64)near)/(cast(f64)near-cast(f64)error);
+  rounded:=cast(f32)exact;if cast(f64)rounded<exact {return f32_from_bits(f32_bits(rounded)+1);}return rounded;
+}
+parent_choice :: (error:f32,near:f32,radial:f32,focal:f32,tolerance:f32,resident:bool)->ParentChoice {
+  if !(tolerance>=0 && tolerance<1000000000) {return ParentChoice.fine;}
+  if projected_error(error,near,radial,focal)>tolerance {return ParentChoice.fine;}
+  return ifx resident then ParentChoice.coarse else ParentChoice.missing;
+}
