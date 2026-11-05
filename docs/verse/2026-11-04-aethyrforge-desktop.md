@@ -97,8 +97,13 @@ page server, the voice Wasm and a local Parakeet voice host. This is the same
   were stopped without recording/sending audio. It also passed repeated-ticket,
   model-failure recovery and canceled-preparation checks. The permission policy
   killed all four mutants; 137 desktop checks passed.
-- Audio output remains muted through a live zero-gain graph so the microphone's
-  AudioWorklet can process samples. A final Parakeet transcript now starts the
+- Normal launches use Everglade's usual speaker output, SOUND volume/mute
+  control and first-world-interaction audio start. Only automated checks install
+  a live zero-gain graph; the microphone's AudioWorklet remains connected in both
+  modes. The native `--audio-smoke` regression reproduced the old unconditional
+  mute, then passed with normal speaker routing and actual ambience/effect PCM
+  measured before a silent test sink (peak 0.312, no microphone requested).
+  A final Parakeet transcript now starts the
   same automatically routed Coder run/fork as typed input, while the Enter bar
   stays closed and typed drafts remain intact. Recognized words and live reply
   chunks float on the left and remain for five seconds after the turn finishes;

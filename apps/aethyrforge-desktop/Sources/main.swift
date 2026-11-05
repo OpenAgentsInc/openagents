@@ -84,6 +84,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     let inputSmoke = CommandLine.arguments.contains("--input-smoke")
     let sceneSmoke = CommandLine.arguments.contains("--scene-smoke")
     let npcSmoke = CommandLine.arguments.contains("--npc-smoke")
+    let audioSmoke = CommandLine.arguments.contains("--audio-smoke")
     var microphoneReport: URL? {
         guard let i = CommandLine.arguments.firstIndex(of: "--microphone-check"), i + 1 < CommandLine.arguments.count else { return nil }
         return URL(fileURLWithPath: CommandLine.arguments[i + 1])
@@ -96,9 +97,9 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         guard let i = CommandLine.arguments.firstIndex(of: "--frame-profile"), i + 1 < CommandLine.arguments.count else { return nil }
         return URL(fileURLWithPath: CommandLine.arguments[i + 1])
     }
-    var smoke: Bool { npcSmoke || sceneSmoke || inputSmoke || chatSmoke || setupSmoke || voiceSmoke || CommandLine.arguments.contains("--smoke-test") }
+    var smoke: Bool { audioSmoke || npcSmoke || sceneSmoke || inputSmoke || chatSmoke || setupSmoke || voiceSmoke || CommandLine.arguments.contains("--smoke-test") }
     var report: URL? {
-        guard let i = CommandLine.arguments.firstIndex(of: npcSmoke ? "--npc-smoke" : sceneSmoke ? "--scene-smoke" : inputSmoke ? "--input-smoke" : chatSmoke ? "--chat-smoke" : voiceSmoke ? "--voice-smoke" : setupSmoke ? "--setup-smoke" : "--smoke-test"), i + 1 < CommandLine.arguments.count else { return nil }
+        guard let i = CommandLine.arguments.firstIndex(of: audioSmoke ? "--audio-smoke" : npcSmoke ? "--npc-smoke" : sceneSmoke ? "--scene-smoke" : inputSmoke ? "--input-smoke" : chatSmoke ? "--chat-smoke" : voiceSmoke ? "--voice-smoke" : setupSmoke ? "--setup-smoke" : "--smoke-test"), i + 1 < CommandLine.arguments.count else { return nil }
         return URL(fileURLWithPath: CommandLine.arguments[i + 1])
     }
 
@@ -167,8 +168,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
             config.userContentController.addUserScript(WKUserScript(source: "globalThis.__forgeFrameCount=0;const nativeRAF=requestAnimationFrame;globalThis.requestAnimationFrame=f=>nativeRAF(t=>{__forgeFrameCount++;f(t);});", injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
         config.mediaTypesRequiringUserActionForPlayback = []
-        // Keep the audio graph processing microphone samples while muting output.
-        config.userContentController.addUserScript(WKUserScript(source: "globalThis.coaxialAudioTap = c => {const g=c.createGain();g.gain.value=0;g.connect(c.destination);return g;};", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        configureAudioOutput(config, muted: smoke || launchReport != nil || microphoneReport != nil || frameProfileURL != nil)
         if smoke {
             // The native test pumps the callback: WebKit throttles both animation
             // callbacks and page timers in an unordered window.
@@ -337,7 +337,9 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
                     }
                 }
             }
-            if microphoneReport != nil {
+            if audioSmoke {
+                try await audioSmokeCheck()
+            } else if microphoneReport != nil {
                 await inventoryTask?.value
                 try await microphoneCheck()
             } else if npcSmoke {
@@ -677,6 +679,58 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
             windows.append(snapshot)
             try JSONSerialization.data(withJSONObject: ["schema":"aethyrforge.frame-profile.v1","windows":windows], options: [.sortedKeys]).write(to: url, options: .atomic)
         }
+    }
+
+    // Native Web Audio regression check: observe the real realm's mix before
+    // the test-only silent output, and inspect normal configuration separately.
+    func audioSmokeCheck() async throws {
+        guard let report else { throw ShellError.failed("--audio-smoke needs a report path.") }
+        let config = WKWebViewConfiguration()
+        configureAudioOutput(config, muted: false)
+        let normal = WKWebView(frame: .zero, configuration: config)
+        normal.loadHTMLString("<!doctype html><title>Audio configuration check</title>", baseURL: nil)
+        while normal.isLoading { try await Task.sleep(for: .milliseconds(20)) }
+        guard try await normal.evaluateJavaScript("typeof globalThis.coaxialAudioTap === 'undefined'") as? Bool == true else {
+            throw ShellError.failed("Normal desktop configuration still overrides Everglade's speaker output.")
+        }
+        normal.stopLoading()
+        _ = try await web.evaluateJavaScript("""
+        globalThis.__forgeAudioCheck = null;
+        (async()=>{
+          const silent=globalThis.coaxialAudioTap;
+          let meter,sink;
+          globalThis.coaxialAudioTap=c=>{sink=silent(c);meter=c.createAnalyser();meter.fftSize=2048;meter.connect(sink);return meter;};
+          const ctx=coaxial.audio.start();await ctx.resume();
+          const samples=new Float32Array(meter.fftSize);let peak=0,cues=0;
+          const end=performance.now()+5000;
+          while(performance.now()<end){
+            if(!cues)cues=coaxial.audio.probe(-1,0,1,0);
+            meter.getFloatTimeDomainData(samples);for(const s of samples)peak=Math.max(peak,Math.abs(s));
+            await new Promise(r=>setTimeout(r,40));
+          }
+          __forgeAudioCheck={normalOutput:true,context:ctx.state,peak,cues,testOutputGain:sink.gain.value,beds:coaxial.audio.beds(),microphoneRequested:false};
+        })().catch(e=>{__forgeAudioCheck={error:String(e)}});true
+        """)
+        let deadline = Date().addingTimeInterval(15)
+        while Date() < deadline {
+            if try await web.evaluateJavaScript("!!globalThis.__forgeAudioCheck") as? Bool == true { break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        let raw = try await web.evaluateJavaScript("JSON.stringify(__forgeAudioCheck)") as? String ?? "null"
+        guard let state = try JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [String:Any],
+              state["context"] as? String == "running", (state["peak"] as? Double ?? 0) > 0.00001,
+              (state["cues"] as? Int ?? 0) > 0, state["testOutputGain"] as? Double == 0 else {
+            throw ShellError.failed("Everglade did not produce live sound through its silent test output: \(raw)")
+        }
+        try Data(raw.utf8).write(to: report, options: .atomic)
+        stopChildren(); NSApp.terminate(nil)
+    }
+
+    func configureAudioOutput(_ config: WKWebViewConfiguration, muted: Bool) {
+        // Test output stays connected so AudioWorklets run. Ordinary windows
+        // use the realm's normal AudioContext destination and SOUND controls.
+        guard muted else { return }
+        config.userContentController.addUserScript(WKUserScript(source: "globalThis.coaxialAudioTap = c => {const g=c.createGain();g.gain.value=0;g.connect(c.destination);return g;};", injectionTime: .atDocumentStart, forMainFrameOnly: true))
     }
 
     // Exercises the actual WKWebView and packaged stack, without ordering a

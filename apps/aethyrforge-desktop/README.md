@@ -161,7 +161,27 @@ them, the arrows move, `R` rotates, `+`/`-` resize, Delete removes, and `Z`/`Y`
 undo/redo during the session. Saving settles through the local room; this path's
 word “publish” means the local document only. The undo stack is not durable yet.
 
-Audio output is muted. Leave EDIT with DONE/B, then hold TALK/V while speaking.
+Normal launches play Everglade's ambience, footsteps and effects through its
+usual SOUND volume/mute control. Audio starts with the first click, tap or key
+in the world. Automated smoke, launch, microphone and frame-profile checks keep
+a live zero-gain output so they never play through the owner's speakers.
+
+The native audio regression check opens hidden, isolated WebKit views. It checks
+that normal configuration leaves the realm's speaker route alone, then measures
+the actual Everglade mix before the test's zero-gain sink:
+
+```sh
+mkdir -p /tmp/aethyrforge-audio
+apps/aethyrforge-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge \
+  --audio-smoke /tmp/aethyrforge-audio/result.json
+```
+
+This reproduced the unconditional mute before the fix. Afterward it observed a
+running AudioContext, one Coax effect cue, the `ambient-e1` bed and a nonzero
+peak of 0.312 with test output gain 0. No microphone was requested. Logs and
+before/after reports are retained in `/tmp/forge-audio/` (2026-11-04).
+
+Leave EDIT with DONE/B, then hold TALK/V while speaking.
 The first request asks for macOS microphone permission and starts the local
 Parakeet service on a reserved loopback port. macOS permission is checked
 separately from model startup; system dialogs taking key focus do not turn an
