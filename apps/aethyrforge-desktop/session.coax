@@ -4,9 +4,9 @@
 #load "setup.coax";
 #load "startup.coax";
 
-#test "desktop opens the local 5e Everglade in EDIT at the South Gate" {
+#test "desktop opens the local 5e Everglade in play at the South Gate" {
   b: [256] u8;
-  #assert forge_page_url(49152, 49153, b[..]) == "http://127.0.0.1:49152/worlds/everglade?forge&room=pair-aethyrforge&relay=ws://localhost:49153#gate";
+  #assert forge_page_url(49152, 49153, b[..]) == "http://127.0.0.1:49152/worlds/everglade?forge=play&room=pair-aethyrforge&relay=ws://localhost:49153#gate";
   #assert forge_url_byte(49152, 49153, 0) == 'h';
   #assert forge_url_byte(49152, 49153, 128) == -1;
 }
@@ -28,7 +28,7 @@ forge_page_url :: (page: int, room: int, out: [] u8) -> string {
   // pair-* takes the default character. The client's explicit local relay
   // contract accepts ws://localhost:PORT; 127.0.0.1 is not a relay override and
   // would send the WebSocket through the blocking HTTP-only page proxy.
-  for s: [5] string.["http://127.0.0.1:", "", "/worlds/everglade?forge&room=pair-aethyrforge&relay=ws://localhost:", "", "#gate"] {
+  for s: [5] string.["http://127.0.0.1:", "", "/worlds/everglade?forge=play&room=pair-aethyrforge&relay=ws://localhost:", "", "#gate"] {
     if s.count > 0 { for c: s { out[n] = c; n += 1; } }
     else {
       v := ifx n < 32 then page else room; digits: [5] u8; k := 0;

@@ -38,7 +38,9 @@ page server, the voice Wasm and a local Parakeet voice host. This is the same
   visible WKWebView timings, with Coax summarizing the observations. Results and
   scope are in [the performance verification](../verification/aethyrforge-frame-pacing-2026-11-04.md).
 
-- Opens at the South Gate (`#gate`) with EDIT on (`?forge`). The native window
+- Opens at the South Gate (`#gate`) in play mode with the editor closed
+  (`?forge=play`). B/EDIT opens the builder explicitly; launch and reload keep
+  it closed. The native window
   identifies this as local editing. The existing editor's placement, selection,
   movement, rotation, resizing, deletion and in-session undo/redo are available.
   The prototype uses the existing named playtest-room profile
@@ -337,7 +339,7 @@ The tools audit retained 21 unrelated baseline findings.
 ## What you do
 
 1. Open **Aethyrforge.app**, review setup and press **Open Everglade**. The world
-   is at the South Gate, with EDIT on.
+   is at the South Gate in play mode, with the editor closed. B/EDIT opens it.
 2. Hold **Space** (or the mic button) and say what you want:
    - "Put three barrels by the inn door."
    - "Make that crate twice as big."
@@ -481,7 +483,7 @@ The app is experimental:
 
 ## Acceptance
 
-1. Open the app and see Everglade within 10 s, with EDIT on.
+1. Open the app and see Everglade within 10 s, with the editor closed.
 2. Each of the six example sentences in "What you do" produces the right edit, and
    the edit is on screen within 2 s of release.
 3. "Undo that" reverts the last edit. Quitting and reopening keeps every edit.
@@ -498,7 +500,8 @@ The app is experimental:
 Each step lands on `main` working end to end.
 
 1. **The shell and the local stack (implemented):** the app window, the local room
-   and page server, and Everglade with EDIT on. Saving by hand uses the existing
+   and page server, and Everglade in play mode. B/EDIT opens the builder.
+   Saving by hand uses the existing
    editor and local room. Native smoke verification opens a hidden WKWebView,
    waits for a WebGPU scene, places a thing by keyboard and checks its saved
    document; a second launch verifies the saved bytes survive reopening.

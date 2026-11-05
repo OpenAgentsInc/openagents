@@ -772,6 +772,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
             try await Task.sleep(for: .milliseconds(1200))
             _ = try await web.evaluateJavaScript("dispatchEvent(new KeyboardEvent('keyup',{key:'s',code:'KeyS',bubbles:true})); true")
             print("After walking: \(try await web.evaluateJavaScript("coaxial.probe()"))")
+            _ = try await web.evaluateJavaScript("dispatchEvent(new KeyboardEvent('keydown',{key:'b',code:'KeyB',bubbles:true})); dispatchEvent(new KeyboardEvent('keyup',{key:'b',code:'KeyB',bubbles:true})); true")
             // The real editor's '1' command places a thing only while EDIT is on.
             let used = try await web.evaluateJavaScript("(()=>{const e=new KeyboardEvent('keydown',{key:'1',code:'Digit1',bubbles:true,cancelable:true});dispatchEvent(e);dispatchEvent(new KeyboardEvent('keyup',{key:'1',code:'Digit1',bubbles:true}));return e.defaultPrevented;})()")
             print("Placement key consumed: \(used)")
@@ -923,8 +924,9 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
             const pointer=(type,b)=>{const v=box(b),c=document.querySelector('canvas'),scale=c.width/c.clientWidth;dispatchEvent(new PointerEvent(type,{pointerType:'mouse',pointerId:7,clientX:(v[0]+v[2])/2/scale,clientY:(v[1]+v[3])/2/scale,button:0,buttons:type==='pointerup'?0:1,bubbles:true}));};
             try {
               await wait(()=>coaxial.sceneReady&&p(21)>=0&&p(22)>=0);
-              if(p(21,3)<=p(21,1))press('b');
+              if(p(21,6)!==0)throw Error('The editor opened at launch');
               await wait(()=>p(21,3)>p(21,1)&&p(22,3)>p(22,1));
+              press('b');await wait(()=>p(21,6)===1);press('b');await wait(()=>p(21,6)===0);
               const before={a:p(21),b:p(22),boxes:[box(21),box(22)]};
               if(stage===0){
                 if(before.a!==0||before.b!==1)throw Error('Expected a fresh room kit');
@@ -953,7 +955,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
             }
         }
         try await captureCanvas(report)
-        try JSONSerialization.data(withJSONObject:["ok":true,"webkit":true,"shiftDragAndNumberKeys":true,"reloadPreservesAssignment":true,"stages":results],options:[.prettyPrinted,.sortedKeys]).write(to:report,options:.atomic)
+        try JSONSerialization.data(withJSONObject:["ok":true,"webkit":true,"editorClosedOnLaunchAndReload":true,"editorOpensOnlyOnRequest":true,"shiftDragAndNumberKeys":true,"reloadPreservesAssignment":true,"stages":results],options:[.prettyPrinted,.sortedKeys]).write(to:report,options:.atomic)
         stopChildren();NSApp.terminate(nil)
     }
 
@@ -1145,7 +1147,6 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         const result=[];
         try {
         const key=(type,k)=>dispatchEvent(new KeyboardEvent(type,{key:k,code:'Key'+k.toUpperCase(),bubbles:true}));
-        key('keydown','b');key('keyup','b');
         for(let i=0;i<3;i++){
           await coaxial.voice.warm();
           const before=__warmCheck.sockets;

@@ -140,6 +140,7 @@ sp_place :: (s: [] Everglade, b: int) -> int {
 // Read-only observation of the actual bar for local browser/native input checks.
 everglade_bar_probe :: (s:[]Everglade,b:int,field:int)->int #export_c {
   if field==5 {return s[0].sp.armed;}
+  if field==6 {return ifx s[0].ev.editing then 1 else 0;}
   if b<0 || b>SP_REBUILD {return -1;}
   if field==0 {return sp_place(s,b);}
   box:=s[0].sp.boxes[b];

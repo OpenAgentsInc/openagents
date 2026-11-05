@@ -68,10 +68,24 @@ FG_RED_R :: 0.92; FG_RED_G :: 0.48; FG_RED_B :: 0.42;
 
 forge_on :: (s: [] Everglade) -> bool { return s[0].ev.editing && s[0].ev.admin && !s[0].above && s[0].talk < 0 && !s[0].board; }
 
-// ?forge on a local server: edit mode as an admin's, to look at (the server refuses every write).
+#test "?forge=play starts with the builder closed and B opens it only on request" {
+  s:[1]Everglade;s[0].talk=-1;
+  url:="http://127.0.0.1:49152/worlds/everglade?forge=play&room=pair-aethyrforge";
+  forge_facts(s[..],url);
+  #assert s[0].fg.local && s[0].ev.admin && !s[0].ev.editing && !forge_on(s[..]);
+  #assert everglade_edit_key(s[..],'b',true) && forge_on(s[..]);
+  forge_facts(s[..],url);#assert forge_on(s[..]);
+  #assert everglade_edit_key(s[..],'b',true) && !forge_on(s[..]);
+  forge_facts(s[..],url);#assert !s[0].ev.editing;
+}
+
+// Local builder access. Desktop's ?forge=play leaves the editor closed until B/EDIT.
 forge_facts :: (s: [] Everglade, url: string) {
   local := fg_has(url, "://127.0.0.1") || fg_has(url, "://localhost");
-  if local && fg_has(url, "forge") { s[0].fg.local = true; s[0].ev.admin = true; if !s[0].ev.editing { edit_toggle(s); } }
+  if local && fg_has(url, "forge") {
+    s[0].fg.local = true; s[0].ev.admin = true;
+    if !fg_has(url,"forge=play") && !s[0].ev.editing { edit_toggle(s); }
+  }
 }
 fg_has :: (text: string, part: string) -> bool {
   if part.count == 0 || text.count < part.count { return false; }

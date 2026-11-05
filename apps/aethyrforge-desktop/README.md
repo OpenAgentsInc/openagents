@@ -74,8 +74,9 @@ shared CLI and its dictation/Parakeet helpers in `~/.openagents/bin/`, retaining
 older CLI versions under `~/.openagents/versions/`. The app works
 independently of the checkout. No installation to `/Applications` or web deploy.
 
-The app opens `/worlds/everglade?forge&room=pair-aethyrforge&relay=ws://localhost:PORT#gate`
-with EDIT on. The existing named playtest-room profile takes a default character
+The app opens `/worlds/everglade?forge=play&room=pair-aethyrforge&relay=ws://localhost:PORT#gate`
+in play mode with the editor closed. B/EDIT opens the builder when requested;
+launch and reload leave it closed. The existing named playtest-room profile takes a default character
 and skips the first-visit character picker that would otherwise consume EDIT's
 keys while hidden behind its panels. Its servers bind only `127.0.0.1`, on two free ports, and stop on app quit or
 when either server fails. A lock prevents two instances writing the same world.
@@ -268,7 +269,7 @@ running AudioContext, one Coax effect cue, the `ambient-e1` bed and a nonzero
 peak of 0.312 with test output gain 0. No microphone was requested. Logs and
 before/after reports are retained in `/tmp/forge-audio/` (2026-11-04).
 
-Leave EDIT with DONE/B, then hold TALK/V while speaking.
+Hold TALK/V while speaking in play mode. If you opened EDIT, close it with DONE/B first.
 Permission and the local voice connection should already be ready from startup.
 Each hold rechecks macOS permission and reuses the prepared worklet and connection;
 if permission or preparation is still missing, the hold retries them. Consent is checked
@@ -369,6 +370,12 @@ Reports include the first-frame time and child PIDs; matching PNGs show the fram
 Shift-drag two actual room-kit slots, check their rendered bounds, press their
 new number keys, cancel a drag and reload the page to check persistence. It uses
 the normal DOM input listeners and read-only Coax hotbar probes, with audio muted.
+It also requires the editor to be closed at launch and after reload, then checks
+that B opens and closes it when requested.
+The startup follow-up passed 85 session checks and the new `?forge=play` Coax
+regression. Hidden desktop acceptance confirmed closed launch/reload, explicit
+B control and the hotbar checks (`/tmp/forge-start-play/native/result.json`);
+the rebuilt game is 2,033,959 bytes.
 The 2026-11-04 check passed before and after reload: slots 21/22 exchanged
 their rendered bounds, keys 1/2 selected 22/21, a cancelled drag changed nothing,
 and the saved 47-slot permutation remained valid. Two scoped Coax checks cover
