@@ -1,0 +1,55 @@
+// Actual browser fetch and host.js dispatch. Coax owns the cases, physical
+// peer observations, verdict and lifetimes.
+#load "tests/http-redirect-peer.coax";
+#load "../../coax/web/wasm-chrome.coax";
+#load "http-redirect-conformance.coax";
+hdr_copy :: (from:string,to:string)->bool {b:[2097152]u8;n:=fs_read(from,b[..]);return n>=0&&fs_write(to,cast(string)b[0..<n]);}
+hdr_path :: (status:int,target:int,post:int,out:[]u8)->string {o:[1]Jo;jo_start(o[..],out);jo_put(o[..],"/r/");jo_int(o[..],status);jo_put(o[..],"/");jo_int(o[..],target);jo_put(o[..],"/");jo_int(o[..],post);return jo_text(o[..]);}
+#test "physical header projection retains exact field bytes and ignores field order and case" {
+ text:="POST /x HTTP/1.1\r\nHost: localhost\r\nAUTHORIZATION: Test fixture\r\nX-Verse-Player: fixture-player\r\n\r\n";
+ #assert hdr_header(text,"authorization")=="Test fixture"&&hdr_header(text,"X-Verse-Player")=="fixture-player"&&hdr_header(text,"missing")=="";
+}
+hdr_header :: (head:string,key:string)->string {
+ at:=0;while at<head.count {end:=rtq_find(head,"\r\n",at);if end<0 {return "";}line:=head[at..<end];colon:=rtq_find(line,":",0);same:=colon==key.count;for i:0..<key.count {if i>=colon||rto_lower(line[i])!=rto_lower(key[i]) {same=false;}}if same {return rto_trim(line[colon+1..<line.count]);}at=end+2;}return "";
+}
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..]) {return 2;}
+ if args_at(a[..],0)=="--redirect-peer" {if args_count(a[..])!=5 {return 2;}return hdr_peer(args_at(a[..],1),args_at(a[..],2),args_at(a[..],3),args_at(a[..],4));}
+ if args_count(a[..])!=4 {tool_errln("usage: check-http-redirect PINNED_ROOT FIXTURE_DIR SERVICES.wasm NEW_OUT");return 2;}
+ root:=args_at(a[..],0);fixture:=args_at(a[..],1);services:=args_at(a[..],2);dir:=args_at(a[..],3);paths:[10][4096]u8;
+ if !fs_mkdir(dir) {return 1;}site:=fs_join(dir,"site",paths[0][..]);if !fs_mkdir(site)||!fs_mkdir(fs_join(site,"build",paths[1][..])) {return 1;}
+ for name:[2]string.["fixture.wasm","fixture.wgsl"] {if !hdr_copy(fs_join(fixture,name,paths[1][..]),fs_join(site,name,paths[2][..])) {return 1;}}
+ if !hdr_copy(services,fs_join(site,"build/host-services.wasm",paths[1][..])) {return 1;}
+ page:="<!doctype html><meta charset=utf-8><canvas id=coaxial></canvas><script>globalThis.coaxialClip=true</script><script type=module src=/coaxial/host.js data-app=host-contract data-wasm=/fixture.wasm data-wgsl=/fixture.wgsl></script>";
+ if !fs_write(fs_join(site,"index.html",paths[1][..]),page) {return 1;}
+ self:[4096]u8;image:=gp_self(self[..]);portfile:=fs_join(dir,"port.json",paths[3][..]);peerfile:=fs_join(dir,"peer.json",paths[4][..]);p:=proc_new();if p<0 {return 1;}
+ for arg:[6]string.[image,"--redirect-peer",root,site,portfile,peerfile] {if !proc_arg(p,arg) {return 1;}}
+ if proc_start(p)!=0 {return 1;}defer {killed:=proc_kill(p,PROC_SIGTERM);waited:=proc_wait(p,1000);released:=proc_release(p);}
+ buf:[262144]u8;nodes:[32768]JvNode;doc:[1]Jv;port:=-1;deadline:=proc_now_ms()+10000;
+ while proc_now_ms()<deadline {n:=fs_read(portfile,buf[..]);if n>0&&jv_parse(doc[..],cast(string)buf[0..<n],nodes[..]) {port=jv_int(doc[0],jv_at(doc[0],0,0),-1);break;}proc_sleep(20);}if port<1 {return 1;}
+ inputs:[1]RtqInputs;for name:[4]string.["coax/web/host.js","coax/web/http-requests.js","coax/web/services-host.js","coax/web/services-face.c"] {if !rtq_input_add(inputs[..],fs_join(root,name,paths[1][..])) {return 1;}}if !rtq_input_add(inputs[..],services)||!rtq_input_add(inputs[..],image) {return 1;}
+ c:[1]Cdp;if !cdp_launch(c[..],160,90,"coax-http-redirect-") {return 1;}defer {cdp_close(c[..]);}
+ url:[512]u8;param:[2048]u8;o:[1]Jo;
+ jo_start(o[..],url[..]);jo_put(o[..],"http://127.0.0.1:");jo_int(o[..],port);jo_put(o[..],"/");target:=jo_text(o[..]);jo_start(o[..],param[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],target);jo_end(o[..]);if cdp_call(c[..],"Page.navigate",jo_text(o[..]),30000)<0 {return 1;}
+ ready:=false;deadline=proc_now_ms()+30000;while proc_now_ms()<deadline {if wc_eval(c[..],"!!globalThis.coaxial?.ready&&typeof coaxial.hostProbe==='function'")=="true" {ready=true;break;}proc_sleep(50);}if !ready {tool_errln(cdp_error(c[..]));return 1;}
+ script:[32768]u8;jo_start(o[..],script[..]);jo_put(o[..],"(async(cases)=>{const host=[];globalThis.redirectProgress={phase:'host',path:null};for(const p of cases.filter((_,i)=>i%2===0)){coaxial.hostReset();coaxial.send(920,p);redirectProgress.path=p;let end=performance.now()+2500;while(!Array.from({length:Number(coaxial.hostProbe(-1,2))},(_,i)=>Number(coaxial.hostProbe(i,1))).includes(512)&&performance.now()<end)await new Promise(r=>setTimeout(r,20));host.push(Array.from({length:Number(coaxial.hostProbe(-1,2))},(_,i)=>Array.from({length:8},(_,f)=>Number(coaxial.hostProbe(i,f)))));if(!host.at(-1).some(r=>r[0]===4&&r[1]===512))throw Error('missing host reply '+JSON.stringify({progress:redirectProgress,rows:host.at(-1)}))}redirectProgress.phase='sdk';const {openHostServices}=await import('/coaxial/services-host.js'),s=await openHostServices(),{makeHttpRequests}=await import('/coaxial/http-requests.js');const replies=[];let resolve;const f=makeHttpRequests({origin:location.origin,capacity:()=>128,followRedirects:()=>s.httpFollow(1),responseAllowed:status=>s.httpResponse(1,status),player:()=>({key:'fixture-player'}),emit:(id,text)=>{replies.push(text);resolve?.()}});for(let i=0;i<cases.length;i++){await new Promise((r,reject)=>{resolve=r;redirectProgress.path=cases[i];const id=f.request(cases[i],i%2?new TextEncoder().encode('Test fixture\\n{\"x\":1}'):null,i%2?29:4,2000);if(id<0)reject(Error('request refused before fetch '+cases[i]))})}await new Promise(r=>{resolve=r;f.request('/ok',null,4,2000)});return{host,replies,follow:s.httpFollow(1),legacy:s.httpFollow(0),dropped:Number(coaxial.hostProbe(-1,3))}})(");jo_arr(o[..]);
+ statuses:=[5]int.[301,302,303,307,308];for status:statuses {for destination:0..<3 {for post:0..<2 {path:[64]u8;jo_str(o[..],hdr_path(status,destination,post,path[..]));}}}jo_end(o[..]);jo_put(o[..],")");
+ wrapped:[65536]u8;w:[1]Jo;jo_start(w[..],wrapped[..]);jo_put(w[..],"Promise.race([");jo_put(w[..],jo_text(o[..]));jo_put(w[..],",new Promise((_,reject)=>setTimeout(()=>reject(Error('redirect workload deadline '+JSON.stringify(globalThis.redirectProgress))),60000))]).catch(error=>({error:String(error.stack),progress:globalThis.redirectProgress}))");
+ v:=cdp_evaluate(c[..],jo_text(w[..]));if v<0 {tool_errln(cdp_error(c[..]));return 1;}response:[262144]u8;jo_start(o[..],response[..]);jv_write(cdp_doc(c[..]),v,o[..]);if o[0].bad||!fs_write(fs_join(dir,"browser.json",paths[5][..]),jo_text(o[..])) {return 1;}
+ if !rto_get(port,"/finish")||proc_wait(p,5000)!=0 {return 1;}n:=fs_read(peerfile,buf[..]);if n<1||!jv_parse(doc[..],cast(string)buf[0..<n],nodes[..]) {return 1;}
+ peer:=doc[0];requests:=jv_get(peer,0,"requests");peer_host:[15]bool;q:[13]int;q[7]=jv_int(peer,jv_get(peer,0,"landings"),-1);q[8]=jv_int(peer,jv_get(peer,0,"foreign"),-1);q[11]=ifx jv_bool(peer,jv_get(peer,0,"finished")) then 1 else 0;
+ if jv_len(peer,requests)!=45 {tool_errln("physical request count differs");return 1;}
+ for i:0..<15 {row:=jv_at(peer,requests,i);path:[64]u8;peer_host[i]=jv_raw(peer,jv_get(peer,row,"path"))==hdr_path(statuses[i/3],i%3,0,path[..])&&jv_raw(peer,jv_get(peer,row,"method"))=="GET"&&jv_int(peer,jv_get(peer,row,"status"),-1)==statuses[i/3];}
+ header_storage:[16384]u8;body_storage:[512]u8;reply_storage:[128]u8;
+ for i:0..<30 {row:=jv_at(peer,requests,15+i);path:[64]u8;expected:=hdr_path(statuses[i/6],(i/2)%3,i%2,path[..]);post:=i%2==1;head:=rto_string(peer,jv_get(peer,row,"head"),header_storage[..]);
+  same:=jv_raw(peer,jv_get(peer,row,"path"))==expected&&jv_raw(peer,jv_get(peer,row,"method"))==(ifx post then "POST" else "GET")&&jv_int(peer,jv_get(peer,row,"status"),-1)==statuses[i/6];if same {q[1]+=1;}
+  auth:=hdr_header(head,"authorization");player:=hdr_header(head,"x-verse-player");body:=rto_string(peer,jv_get(peer,row,"body"),body_storage[..]);if post {if auth=="Test fixture" {q[3]+=1;}if player=="fixture-player" {q[4]+=1;}if body=="{\"x\":1}" {q[5]+=1;}}else if auth==""&&player==""&&body=="" {q[6]+=1;}
+ }
+ // response storage is distinct from the peer input and remains immutable.
+ if !jv_parse(doc[..],cast(string)response[0..<o[0].n],nodes[..]) {return 1;}
+ d:=doc[0];replies:=jv_get(d,0,"replies");for i:0..<30 {if rto_string(d,jv_at(d,replies,i),reply_storage[..])=="0\n" {q[0]+=1;}}
+ q[9]=ifx jv_len(d,replies)==31&&rto_string(d,jv_at(d,replies,30),reply_storage[..])=="200\nok"&&!jv_bool(d,jv_get(d,0,"follow"))&&jv_bool(d,jv_get(d,0,"legacy")) then 1 else 0;
+ q[10]=ifx jv_int(d,jv_get(d,0,"dropped"),-1)==0 then 1 else 0;hosts:=jv_get(d,0,"host");
+ for i:0..<15 {rows:=jv_at(d,hosts,i);last:=jv_at(d,rows,2);if peer_host[i]&&jv_len(d,hosts)==15&&jv_len(d,rows)==3&&jv_int(d,jv_at(d,last,0),-1)==4&&jv_int(d,jv_at(d,last,1),-1)==512&&jv_int(d,jv_at(d,last,6),-1)==2&&jv_int(d,jv_at(d,last,7),-1)==669875135 {q[2]+=1;}}
+ q[12]=ifx rtq_inputs_match(inputs[..]) then 1 else 0;passed:=hhrc_accept(q[..]);record:[262144]u8;jo_start(o[..],record[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.host.http-redirect.v1");jo_key(o[..],"observations");jo_arr(o[..]);for value:q {jo_int(o[..],value);}jo_end(o[..]);jo_key(o[..],"passed");jo_bool(o[..],passed);jo_key(o[..],"inputs");rtq_inputs_json(o[..],inputs[..],"");jo_end(o[..]);if !fs_write(fs_join(dir,"receipt.json",paths[6][..]),jo_text(o[..])) {return 1;}print("Actual browser redirect refusal: %\n",passed);return ifx passed then 0 else 1;
+}

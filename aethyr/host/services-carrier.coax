@@ -5,3 +5,4 @@
 #load "audio-session.coax";
 #load "inbox-queue.coax";
 #load "render-mode.coax";
+#load "http-redirect.coax";

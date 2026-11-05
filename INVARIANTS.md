@@ -258,6 +258,17 @@ to the admitted current17a cache. This qualifies adapter selection, not the
 remaining ordinary services, public web opt-in or desktop default. See
 `docs/verification/host-contract-2026-11-05/presentation-v1.md`.
 
+Host contract v1 refuses HTTP redirect statuses 301/302/303/307/308 before
+publishing response bytes, including a response without Location. The shared
+`http-redirect.coax` authority selects no-follow; browser effects send no
+request to the destination and return one `0\n` to answer-bearing owners.
+Pre-v1 browser behavior remains version-scoped. Actual 45-request physical
+observations, the retained JSON-projection failure and corrected immutable
+receipt pass the 54-mutant checker; policy kills 17 mutants. The exact
+existing local-room `?re=1` reconnect spelling is admitted by the 60/11
+route gates; other queries refuse. Native/integrated adoption remains
+separate. See `docs/verification/host-contract-2026-11-05/http-redirect.md`.
+
 ## The indexed KV arena preserves the durable v1 contract
 
 `coax/lib/bitcoin/kvskip.coax` is an optional native representation behind

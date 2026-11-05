@@ -24,6 +24,7 @@
 #load "../../coax/lib/net/transport.coax";
 #load "../../aethyr/host/local-http-site.coax";
 #load "../../aethyr/host/http-target.coax";
+#load "../../aethyr/host/http-redirect.coax";
 
 NET_MAX :: 2162688;     // a reply's bytes: the largest inbox (2 MB) and its headers
 NET_REQ :: 1114112;     // a request's bytes: a body of up to 1 MB and its headers
@@ -100,6 +101,7 @@ tool_main :: () -> int #export_c {
   }
   c := ifx plain then cxsock_close(h) else cxtls_close(h);
   if reply.state != 1 { return net_none(outp); }
+  if v1&&!hhr_response(1,reply.status) {return net_none(outp);}
   src := ifx reply.at < 0 then cast(string) dec[0..<reply.n] else cast(string) got[reply.at..<reply.at + reply.n];
   page: [NET_MAX] u8;
   pn := net_answer(page[..], reply.status, src, cap, timeout > 0);

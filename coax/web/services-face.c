@@ -14,6 +14,8 @@ SERVICES_EXPORT("services_line_ptr") uint32_t services_line_ptr(void){return(uin
 SERVICES_EXPORT("services_line_capacity") uint32_t services_line_capacity(void){return sizeof service_line;}
 SERVICES_EXPORT("services_span") uint32_t services_span(uint64_t address,uint64_t capacity,uint64_t count,uint64_t memory_bytes){return htb_copy_span(address,capacity,count,memory_bytes);}
 SERVICES_EXPORT("services_render_presentation") uint32_t services_render_presentation(int64_t version,int64_t profile){return hrm_presentation(version,profile);}
+SERVICES_EXPORT("services_http_follow") uint32_t services_http_follow(int64_t version){return hhr_follow(version);}
+SERVICES_EXPORT("services_http_response") uint32_t services_http_response(int64_t version,int64_t status){return hhr_response(version,status);}
 SERVICES_EXPORT("services_bank_insert") int64_t services_bank_insert(uint32_t count,uint64_t base,uint64_t capacity){if(count>sizeof service_line)return -1;return hab_insert(bank_view(),(coax_string){(const char*)service_line,count},base,capacity);}
 SERVICES_EXPORT("services_bank_source") uint32_t services_bank_source(int64_t id){service_source=hab_source(bank_view(),id);return service_source.valid;}
 SERVICES_EXPORT("services_bank_count") int64_t services_bank_count(void){return service_bank.count;}

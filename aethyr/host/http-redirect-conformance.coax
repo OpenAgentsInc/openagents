@@ -1,0 +1,11 @@
+// Closed physical redirect workload. Other host and transport gates remain
+// separate; a redirect failure is not a successful prefix or another call.
+#authority;
+#test "complete redirect observations require all source requests and no replay" {
+ q:=[13]int.[30,30,15,15,15,15,15,0,0,1,1,1,1];#assert hhrc_accept(q[..]);
+ for i:0..<13 {q[i]+=1;#assert !hhrc_accept(q[..]);q[i]-=2;#assert !hhrc_accept(q[..]);q[i]+=1;}
+ #assert !hhrc_accept(q[0..<12]);long:[14]int;#assert !hhrc_accept(long[..]);
+}
+hhrc_accept :: (q:[]int)->bool #export_c {
+ return q.count==13&&q[0]==30&&q[1]==30&&q[2]==15&&q[3]==15&&q[4]==15&&q[5]==15&&q[6]==15&&q[7]==0&&q[8]==0&&q[9]==1&&q[10]==1&&q[11]==1&&q[12]==1;
+}

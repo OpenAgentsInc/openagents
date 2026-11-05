@@ -241,6 +241,9 @@ and remaining integration scope are in [socket-linux.md](socket-linux.md).
 Worker, or Aethyrforge's existing native room process on explicit development
 IPv4 loopback. Ticketless native admission remains the authority in
 `native-local-policy.coax`; the host cannot broaden it.
+The producer's existing reconnect spelling appends exactly `?re=1` to that
+URI. The shared local route authority admits that spelling and preserves
+the query; adjacent paths, other queries and additional parameters refuse.
 
 HTTP imports are `coaxial_http(url,len,body,body_len,flags)`,
 `coaxial_http_bounded(...,timeout_ms:int64_t)` and
@@ -269,6 +272,18 @@ overflow and network failure produce exactly one `0\n`. Cancellation returns
 aborting, and is silent: no later reply from that owner. Replacing the engine
 cancels all its operations. `coaxial_now_ms()` is monotonic integer
 milliseconds; `coaxial_now_seconds()` is Unix wall seconds. Neither is dt.
+
+Version 1 refuses HTTP redirects. `http-redirect.coax` selects no-follow
+before the request and refuses status 301, 302, 303, 307 or 308 before
+publishing any response bytes, including a redirect without a Location.
+An answer-bearing request receives `0\n`; a beacon remains callback-free.
+The host sends no request to the redirect destination and never replays
+the original method, body, Authorization or player header there. Browser
+fetch uses `redirect: 'error'`; its beacon path uses keepalive fetch because
+`sendBeacon` cannot select redirect behavior. Pre-v1 browser callers keep
+their prior behavior. This explicit v1 rule does not alter other statuses.
+The actual browser workload and remaining native integration are recorded
+in [the redirect qualification](../../docs/verification/host-contract-2026-11-05/http-redirect.md).
 
 ## Asset packs and graphics
 

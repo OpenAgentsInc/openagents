@@ -9,6 +9,8 @@
   for uri:[4]string.["","local:/api/room/relay/everglade/local-2","local:/api/room/relay/other/local-1","ws://127.0.0.1:9170/echo"] {#assert htr_local_target(uri,"ws://127.0.0.1:9170",out[..])== -1;}
   for i:0..<128 {out[i]=37;}#assert htr_local_target("local:/api/room/relay/everglade/local-1","ws://127.0.0.1:9170",out[0..<51])== -1 && out[0]==37;
   #assert htr_local_target("local:/api/room/relay/everglade/local-1","ws://127.0.0.1:9170",out[0..<52])==52 && out[52]==37;
+  #assert htr_local_target("local:/api/room/relay/everglade/local-1?re=1","ws://127.0.0.1:9170",out[0..<56])== -1&&out[52]==37;
+  #assert htr_local_target("local:/api/room/relay/everglade/local-1?re=1","ws://127.0.0.1:9170",out[0..<57])==57&&cast(string)out[0..<57]=="ws://127.0.0.1:9170/api/room/relay/everglade/local-1?re=1"&&out[57]==37;
 }
 htr_local_target :: (uri:string,origin:string,out:[]u8)->int #export_c {
   if !htr_local_uri(uri) || !htr_local_origin(origin) {return -1;}

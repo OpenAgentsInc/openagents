@@ -598,6 +598,8 @@ function answer(id, text) {
   send(HTTP_KIND + id, bytes.length > x.coaxial_inbox_cap() ? text.slice(0, text.indexOf("\n") + 1) : text);
 }
 const httpRequests = makeHttpRequests({emit: answer, capacity: () => engine?.exports.coaxial_inbox_cap() ?? 0,
+  followRedirects:()=>hostServices?.httpFollow(engine?.exports.coaxial_host_contract_version?.()??0)??true,
+  responseAllowed:status=>hostServices?.httpResponse(engine?.exports.coaxial_host_contract_version?.()??0,status)??true,
   policy:()=>hostTransport,player, origin: location.origin, frame: () => frameJpeg(), sendBeacon: navigator.sendBeacon ? (url, body) => navigator.sendBeacon(url, body) : undefined});
 function httpRequest(urlPtr, urlLen, bodyPtr, bodyLen, flags, timeoutMs) {
   let url;

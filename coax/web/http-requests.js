@@ -7,6 +7,8 @@ export function makeHttpRequests({
   origin = globalThis.location?.origin, frame = async () => null,
   setTimer = (fn, ms) => setTimeout(fn, ms), clearTimer = id => clearTimeout(id),
   policy = () => null, now = () => Math.floor(performance.now()),
+  followRedirects = () => true,
+  responseAllowed = () => true,
 } = {}) {
   const slots = new Array(8).fill(null);
   let generation = 0;
@@ -64,6 +66,7 @@ export function makeHttpRequests({
   function request(url, input, flags, timeoutMs) {
     if (typeof url !== 'string' || !url.startsWith('/') || url.startsWith('//')) return -1;
     const shared=policy();
+    const follow=followRedirects();
     if (shared && !shared.httpPath(url)) return -1;
     // Backslashes and controls can normalize an apparent relative path into a
     // different origin. Credentials and explicit auth headers stay same-origin.
@@ -90,7 +93,9 @@ export function makeHttpRequests({
       auth = new TextDecoder().decode(body.subarray(0, nl));
       body = body.slice(nl + 1);
     }
-    if ((flags & 2) && sendBeacon?.(url, new Blob([body || ''], {type: 'application/json'}))) return 0;
+    // sendBeacon has no redirect-mode effect. The versioned refusal path
+    // uses the same no-answer keepalive fetch instead.
+    if ((flags & 2) && follow && sendBeacon?.(url, new Blob([body || ''], {type: 'application/json'}))) return 0;
     const owner=wanted?shared?.httpReserve(flags,bounded,bounded?timeoutMs:0,now(),cap):null;
     const id = wanted ? (shared ? owner?.id ?? -1 : slots.indexOf(null)) : 0;
     if (id < 0) return -1;
@@ -117,9 +122,11 @@ export function makeHttpRequests({
         }
       }
       const response = await fetchEffect(url, {method: post ? 'POST' : 'GET', body: post ? body : undefined,
+        redirect: follow ? 'follow' : 'error',
         credentials: 'same-origin', cache: 'no-store', keepalive: !wanted && originalLength < 60000,
         headers, ...(r ? {signal: r.controller.signal} : {})});
       if (!r || !owns(r)) return;
+      if (!responseAllowed(response.status)) throw Error('HTTP redirect refused by Coax');
       const text = bounded ? await boundedBody(r, response) : `${response.status}\n${await response.text()}`;
       if (text !== null) finish(r, text);
     }).catch(() => { if (r) finish(r, '0\n', true); });

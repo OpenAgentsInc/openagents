@@ -1,0 +1,37 @@
+// Private physical HTTP peer. Coax authors responses and records complete
+// received methods/headers/bodies; this fixture accesses no external site.
+#load "../../tests/render-test-origin.coax";
+hdr_send :: (h:int,status:int,location:string,mime:string,body:string)->bool {
+ header:[8192]u8;o:[1]Jo;jo_start(o[..],header[..]);jo_put(o[..],"HTTP/1.1 ");jo_int(o[..],status);jo_put(o[..]," Fixture\r\nContent-Type: ");jo_put(o[..],mime);jo_put(o[..],"\r\nContent-Length: ");jo_int(o[..],body.count);
+ if location!="" {jo_put(o[..],"\r\nLocation: ");jo_put(o[..],location);}jo_put(o[..],"\r\nConnection: close\r\n\r\n");
+ if o[0].bad||!wp_send(h,jo_text(o[..])) {return false;}at:=0;while at<body.count {end:=ifx body.count-at>65536 then at+65536 else body.count;if !wp_send(h,body[at..<end]) {return false;}at=end;}return true;
+}
+hdr_peer :: (root:string,site:string,portfile:string,report:string)->int {
+ listener:=cxsock_listen(0);foreign:=cxsock_listen(0);if listener<0||foreign<0 {return 1;}
+ defer {closed:=cxsock_close(listener);closed=cxsock_close(foreign);}
+ ports:[128]u8;o:[1]Jo;jo_start(o[..],ports[..]);jo_arr(o[..]);jo_int(o[..],cxsock_port(listener));jo_int(o[..],cxsock_port(foreign));jo_end(o[..]);if !fs_write(portfile,jo_text(o[..])) {return 1;}
+ received:[262144]u8;r:[1]Jo;jo_start(r[..],received[..]);jo_arr(r[..]);landed:=0;foreign_count:=0;finished:=false;deadline:=proc_now_ms()+120000;
+ while !finished&&proc_now_ms()<deadline {
+  other:=cxsock_accept(foreign,0);if other>=0 {foreign_count+=1;saved:=hdr_send(other,200,"","text/plain","foreign");closed:=cxsock_close(other);}
+  h:=cxsock_accept(listener,10);if h<0 {continue;}
+  request:[65536]u8;n:=rto_read_head(h,request[..]);head:=ifx n>0 then rto_head(cast(string)request[0..<n]) else RtoHead.{};
+  if !head.valid||head.body_from+head.length>request.count {closed:=cxsock_close(h);continue;}
+  while n<head.body_from+head.length {count:=cxsock_read(h,1000);if count<1||count>request.count-n {break;}for i:0..<count {request[n+i]=u8(cxsock_byte(h,i));}n+=count;}
+  path:=head.path;status:=200;location:[512]u8;l:[1]Jo;jo_start(l[..],location[..]);body:[2097152]u8;body_n:=0;mime:="text/plain";file:[4096]u8;
+  if path=="/finish" {finished=true;}
+  else if path=="/land" {landed+=1;}
+  else if path.count>5&&path[0..<3]=="/r/" {
+   status=args_whole(path[3..<6]);target:=ifx path.count>7 then path[7] else 255;
+   if target=='0' {jo_put(l[..],"/land");}
+   if target=='1' {jo_put(l[..],"http://127.0.0.1:");jo_int(l[..],cxsock_port(foreign));jo_put(l[..],"/land");}
+   jo_obj(r[..]);jo_key(r[..],"method");jo_str(r[..],head.method);jo_key(r[..],"path");jo_str(r[..],path);jo_key(r[..],"head");jo_str(r[..],cast(string)request[0..<head.body_from]);jo_key(r[..],"body");jo_str(r[..],ifx n==head.body_from+head.length then cast(string)request[head.body_from..<n] else "INCOMPLETE");jo_key(r[..],"status");jo_int(r[..],status);jo_end(r[..]);
+  }else if path=="/ok" {body[0]='o';body[1]='k';body_n=2;}
+  else {
+   from:=ifx path.count>9&&path[0..<9]=="/coaxial/" then fs_join(root,"coax/web",file[..]) else site;
+   relative:=ifx path.count>9&&path[0..<9]=="/coaxial/" then path[9..<path.count] else ifx path=="/" then "index.html" else path[1..<path.count];
+   joined:[4096]u8;name:=fs_join(from,relative,joined[..]);body_n=fs_read(name,body[..]);mime=rto_mime(relative);if relative=="index.html" {mime="text/html";}if body_n<0 {body_n=0;status=404;}
+  }
+  sent:=hdr_send(h,status,jo_text(l[..]),mime,cast(string)body[0..<body_n]);closed:=cxsock_close(h);
+ }
+ jo_end(r[..]);result:[262144]u8;jo_start(o[..],result[..]);jo_obj(o[..]);jo_key(o[..],"requests");jo_raw(o[..],jo_text(r[..]));jo_key(o[..],"landings");jo_int(o[..],landed);jo_key(o[..],"foreign");jo_int(o[..],foreign_count);jo_key(o[..],"finished");jo_bool(o[..],finished);jo_end(o[..]);return ifx !o[0].bad&&!r[0].bad&&fs_write(report,jo_text(o[..]))&&finished then 0 else 1;
+}

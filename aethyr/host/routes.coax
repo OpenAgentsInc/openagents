@@ -13,6 +13,8 @@
 }
 #test "host native local transport has one exact URI and one explicit IPv4 loopback origin" {
   #assert htr_local_uri("local:/api/room/relay/everglade/local-1");
+  #assert htr_local_uri("local:/api/room/relay/everglade/local-1?re=1");
+  for suffix:[10]string.["?re=0","?re=2","?re=01","?re=1&x=1","?x=1&re=1","?re=1#x","?re=1/","?RE=1","?re=1?", "?re=1 "] {base:="local:/api/room/relay/everglade/local-1";text:[128]u8;for c,i:base {text[i]=c;}for c,i:suffix {text[base.count+i]=c;}#assert !htr_local_uri(cast(string)text[0..<base.count+suffix.count]);}
   for uri:[6]string.["local:everglade/local-1","local:/api/room/relay/everglade/local-2","local:/api/room/relay/other/local-1","local:/api/room/relay/everglade/local-1?x","local:/api/room/relay/everglade/local-1/",""] {#assert !htr_local_uri(uri);}
   for origin:[4]string.["ws://127.0.0.1:1","ws://127.0.0.1:1024","ws://127.0.0.1:9999","ws://127.0.0.1:65535"] {#assert htr_local_origin(origin);}
   for origin:[12]string.["ws://127.0.0.1:0","ws://127.0.0.1:65536","ws://127.0.0.1:100000","ws://127.0.0.1:","ws://localhost:1234","ws://127.0.0.2:1234","wss://127.0.0.1:1234","ws://0.0.0.0:1234","ws://127.0.0.1:01234","ws://127.0.0.1:1234/x","ws://127.0.0.1:1234?x","ws://127.0.0.1:12x4"] {#assert !htr_local_origin(origin);}
@@ -24,7 +26,7 @@ htr_http_path :: (url:string)->bool #export_c {
   for c:url {if c<32 || c==127 || c=='\\' {return false;}}
   return true;
 }
-htr_local_uri :: (url:string)->bool #export_c {return url=="local:/api/room/relay/everglade/local-1";}
+htr_local_uri :: (url:string)->bool #export_c {return url=="local:/api/room/relay/everglade/local-1"||url=="local:/api/room/relay/everglade/local-1?re=1";}
 htr_local_origin :: (origin:string)->bool #export_c {
   prefix:="ws://127.0.0.1:";
   if origin.count<prefix.count+1 || origin[0..<prefix.count]!=prefix || origin[prefix.count]=='0' {return false;}

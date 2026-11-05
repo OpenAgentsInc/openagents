@@ -49,6 +49,13 @@ outputs at the same bound, exact companions, EOF/shape and allocation/refusal
 gates normally and instrumented. Ordinary Linux demand and device composition
 remain separate.
 
+The [HTTP redirect component](http-redirect.md) specifies explicit v1
+no-follow semantics and checks 45 actual browser requests, exact original
+headers/bodies and zero destination requests. Corrected immutable raw
+observations retain the initial JSON-projection failure. The local route
+authority also admits the producer's exact existing `?re=1` reconnect URI;
+actual native HTTP adoption and integrated reconnect remain open.
+
 ## Qualified sections
 
 The actual `coax/web/host.js` loads a real Coax fixture realm and generated

@@ -1,0 +1,19 @@
+// Versioned HTTP effect boundary. Browser redirect inspection is opaque;
+// v1 refuses automatic redirects instead of forwarding another request.
+#authority;
+#test "only v1 refuses SDK automatic redirect following" {
+ for version:[5]int.[-1,0,1,2,9223372036854775807] {
+  #assert hhr_follow(version)==(version!=1);
+ }
+}
+#test "v1 redirect status refusal preserves every other status without a prefix" {
+ for status:100..<600 {
+  redirect:=status==301||status==302||status==303||status==307||status==308;
+  #assert hhr_response(1,status)==!redirect;
+  for version:[4]int.[-1,0,2,9223372036854775807] {#assert hhr_response(version,status);}
+ }
+}
+hhr_follow :: (version:int)->bool #export_c {return version!=1;}
+hhr_response :: (version:int,status:int)->bool #export_c {
+ return hhr_follow(version)||(status!=301&&status!=302&&status!=303&&status!=307&&status!=308);
+}
