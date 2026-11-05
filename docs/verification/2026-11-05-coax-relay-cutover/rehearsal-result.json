@@ -1,0 +1,39 @@
+{
+ "rust_import_exit": 0,
+ "coax_import_exit": 0,
+ "check_store_same_served_line": true,
+ "equal_after_import": {
+  "rust": 12278,
+  "coax": 12278,
+  "equal": true,
+  "only_rust": [],
+  "only_coax": [],
+  "digest_rust": "f33ac519ed9428c6a50616381195f658e1dfd8e063a8038bedc8c30cf31497f7",
+  "digest_coax": "f33ac519ed9428c6a50616381195f658e1dfd8e063a8038bedc8c30cf31497f7"
+ },
+ "cutover": {
+  "store_bytes_at_cutover": 64918623,
+  "writes_ok": [
+   true,
+   true,
+   true
+  ],
+  "read_back_through_staging": true
+ },
+ "rollback_export": {
+  "lines": 3,
+  "same_as_written": true
+ },
+ "rust_import_after_exit": 0,
+ "rollback": {
+  "reads_cutover_writes_through_staging": true,
+  "write_ok": true,
+  "reads_new_write": true
+ },
+ "final": {
+  "rust": 12282,
+  "coax": 12281,
+  "rust_is_coax_plus_late_write": true
+ },
+ "passed": true
+}

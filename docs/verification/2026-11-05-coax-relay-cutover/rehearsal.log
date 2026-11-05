@@ -1,0 +1,53 @@
+export /tmp/coax-rust-relay/cut/export.jsonl lines 12278 now 1793849370
+rust import-jsonl export.jsonl exit 0 {"input_lines":12278,"stored":12278,"duplicate":0,"already_removed":0,"ephemeral":0,"expired":0}
+coax relay --import --now 1793849370 --url ws://127.0.0.1:44345 --store --checkpoint --store-capacity 63361 exit 0
+  relay: tombstones: room for 8198 (6 the input can ask for, 8192 more), 3202 KiB
+  relay: import export sha256 d4696a95dbf30302223e2f6a60a361479a2657191bbaa7060c08cba64020cd2c
+  relay: import read 12278 lines, 64881789 bytes; verdict: clean
+  relay: import outcome 0 12278 (stored)
+  relay: import stored 11493 regular, 80 replaceable, 705 addressable; 6 deletion requests and 0 vanish requests retired 0 records; 0 stored events expire
+  relay: import tombstones 6
+  relay: store holds 12278 records (12278 live); the --store file is 64918623 bytes
+  relay: served set at 1793849370: 12278 events, digest e25ff6aa27792e3e22063c6c97cf6dda9c50eb71cf10524b2250e7b7d7624a89 (5 ms)
+  relay: checkpoint written
+  relay: import took 5622 ms (verification 4644 ms, store and file 152 ms); peak memory 223016 KiB
+coax relay --check-store --now 1793849370 --url ws://127.0.0.1:44345 --store --checkpoint --store-capacity 63361 exit 0
+  relay: tombstones: room for 8198 (6 the input can ask for, 8192 more), 3202 KiB
+  relay: checkpoint: store 64918623 of 64918623 bytes, journal 0 of 0 bytes: fresh
+  relay: replayed 12278 saved events: 12278 stored, 0 duplicates or replaced
+  relay: the --store file replayed in 5482 ms; peak memory 159428 KiB
+  relay: served set at 1793849370: 12278 events, digest e25ff6aa27792e3e22063c6c97cf6dda9c50eb71cf10524b2250e7b7d7624a89 (5 ms)
+  50 pages, 2450 events, until 1793359887
+  100 pages, 4893 events, until 1793249440
+  150 pages, 7342 events, until 1792635026
+  200 pages, 9754 events, until 1792611321
+  250 pages, 12158 events, until 1790432377
+  50 pages, 2450 events, until 1793359887
+  100 pages, 4893 events, until 1793249440
+  150 pages, 7342 events, until 1792635026
+  200 pages, 9754 events, until 1792611321
+  250 pages, 12158 events, until 1790432377
+equality after import {"rust": 12278, "coax": 12278, "equal": true, "only_rust": [], "only_coax": [], "digest_rust": "f33ac519ed9428c6a50616381195f658e1dfd8e063a8038bedc8c30cf31497f7", "digest_coax": "f33ac519ed9428c6a50616381195f658e1dfd8e063a8038bedc8c30cf31497f7"}
+cutover {"store_bytes_at_cutover": 64918623, "writes_ok": [true, true, true], "read_back_through_staging": true}
+coax relay --export --from 64918623 --now 1793886475 --url ws://127.0.0.1:44345 --store --checkpoint --store-capacity 63361 exit 0
+  relay: tombstones: room for 8198 (6 the input can ask for, 8192 more), 3202 KiB
+  relay: checkpoint: store 64919805 of 64919805 bytes, journal 0 of 0 bytes: fresh
+  relay: replayed 12281 saved events: 12281 stored, 0 duplicates or replaced
+  relay: the --store file replayed in 5538 ms; peak memory 158996 KiB
+  relay: served set at 1793886475: 12281 events, digest 5b9c1d0032b841a656f88afbedf70d850b73177c6c5f952d588fc382a104c779 (5 ms)
+  relay: export wrote 3 lines, 1173 bytes, sha256 a79be2d71db068cf453bcc335443ea1ec33aa69ec544893dbafc2e5cbd2f91e2, the --store file's frames from byte 64918623 to 64919805
+  relay: export took 37 ms
+rust import-jsonl after-cutover.jsonl exit 0 {"input_lines":3,"stored":3,"duplicate":0,"already_removed":0,"ephemeral":0,"expired":0}
+rollback {"reads_cutover_writes_through_staging": true, "write_ok": true, "reads_new_write": true}
+  50 pages, 2450 events, until 1793359900
+  100 pages, 4897 events, until 1793249440
+  150 pages, 7346 events, until 1792635026
+  200 pages, 9758 events, until 1792611321
+  250 pages, 12162 events, until 1790432377
+  50 pages, 2449 events, until 1793359900
+  100 pages, 4896 events, until 1793249440
+  150 pages, 7345 events, until 1792635026
+  200 pages, 9757 events, until 1792611321
+  250 pages, 12161 events, until 1790432377
+final {"rust": 12282, "coax": 12281, "rust_is_coax_plus_late_write": true}
+PASSED {"rust_import_exit": 0, "coax_import_exit": 0, "check_store_same_served_line": true, "equal_after_import": {"rust": 12278, "coax": 12278, "equal": true, "only_rust": [], "only_coax": [], "digest_rust": "f33ac519ed9428c6a50616381195f658e1dfd8e063a8038bedc8c30cf31497f7", "digest_coax": "f33ac519ed9428c6a50616381195f658e1dfd8e063a8038bedc8c30cf31497f7"}, "cutover": {"store_bytes_at_cutover": 64918623, "writes_ok": [true, true, true], "read_back_through_staging": true}, "rollback_export": {"lines": 3, "same_as_written": true}, "rust_import_after_exit": 0, "rollback": {"reads_cutover_writes_through_staging": true, "write_ok": true, "reads_new_write": true}, "final": {"rust": 12282, "coax": 12281, "rust_is_coax_plus_late_write": true}, "passed": true}
