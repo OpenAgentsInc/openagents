@@ -1696,3 +1696,45 @@ eg_fire_casters :: (casters: int, out: [] f32) {
   #assert burns >= 2 && hurts == burns;
   #assert rules == 0 && w[0].actors[i].mode == WM_DEAD;   // burnt to death, in the rules as in the world
 }
+// Seat 0 lights a tree, seat 1 casts after it (the step's last caster), and the fire spreads from tree to
+// tree: every tree it reaches burns as seat 0's, and what it does is seat 0's crime, never seat 1's (#12935).
+#test "room town: a tree fire spreading to the next tree stays its starter's, not the last caster's (#12935)" #steps 60000000000 {
+  g: [1] Everglade; dm: [1] DemoWorld;
+  walled := everglade_walls(g[..]);
+  everglade_room_spells_start(g[..], dm[..], "");
+  seats: [EG_ROOM_SEAT_FLOATS * 2] f32; took: [WATCH_YOUS * 2] f32;
+  everglade_room_town(g[..], 1.0 / 30.0, 1000.0, seats[..], 0, took[..]);
+  #assert walled >= 0 && g[0].tree_n > 1;
+  // a tree whose crown touches another's, so its fire has somewhere to go
+  v := tf_of(g[..]);
+  lit := -1;
+  for t: 0..<g[0].tree_n {
+    if lit >= 0 { break; }
+    o := t * TREE_FLOATS;
+    for j: 0..<g[0].tree_n {
+      p := j * TREE_FLOATS;
+      if j != t && abs(g[0].trees[p] - g[0].trees[o]) < 3 && abs(g[0].trees[p + 1] - g[0].trees[o + 1]) < 3 { lit = t; break; }
+    }
+  }
+  #assert lit >= 0;
+  o := lit * TREE_FLOATS;
+  // seat 0 by the tree, seat 1 far off
+  seats[0] = g[0].trees[o] + 20; seats[1] = ground_at(g[..], seats[0], g[0].trees[o + 1]); seats[2] = g[0].trees[o + 1]; seats[3] = 2; seats[4] = 100000; seats[5] = 100000;
+  seats[7] = g[0].trees[o] - 120; seats[8] = ground_at(g[..], seats[7], g[0].trees[o + 1]); seats[9] = g[0].trees[o + 1]; seats[10] = 2; seats[11] = 100000; seats[12] = 100000;
+  everglade_room_town(g[..], 1.0 / 30.0, 1000.1, seats[..], 2, took[..]);
+  g[0].sky.rain = 0;
+  // seat 0's fire takes the tree (the step's caster is the watch's player: everglade_room_spells)
+  wt := watch_w(g[..]);
+  wt[0].me = 0;
+  #assert tf_ignite(g[..], lit) && v[0].burn[0].by == 0;
+  g[0].wv.room_by = 1; wt[0].me = 1;   // seat 1 casts after it: the step's last caster
+  wt[0].yous[1].crimes = 0;
+  spread := 0;
+  for t: 0..<2400 {
+    tf_frame(g[..], 0.25);
+    for k: 0..<v[0].n { #assert v[0].burn[k].by == 0; }
+    spread = hi_w(spread, v[0].lit - 1);
+  }
+  #assert spread > 0;   // it reached another tree
+  #assert wt[0].yous[1].crimes == 0;
+}

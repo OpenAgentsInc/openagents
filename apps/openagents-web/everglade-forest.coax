@@ -547,12 +547,18 @@ tf_frame :: (s: [] Everglade, dt: f32) {
         a := f32(TAU) * sp_rand(s);
         way := ifx wl > 0.5 then v3(wx / wl, 0, wz / wl) else ifx tf_angle(s, t) > 0.01 then tf_way(s, t) else v3(cos(a), 0, sin(a));
         tf_topple(s, t, way, 0.12, (0.7 + 0.8 * sp_rand(s)) * tf_size(s, t));
+        was_by := fi_acting(s); fi_as(s, e.by);   // its fall is its starter's crime (#12935)
         tf_crime(s, tf_foot(s, t));
+        fi_as(s, was_by);
       }
     }
     if e.t >= e.spread {
       v[0].burn[k].spread = e.spread + f32(TF_SPREAD) * (0.6 + 0.8 * sp_rand(s)) * (1 + 3 * rain);
+      // what it catches (the next tree, the grass, the town's wood) burns as its starter's, not the
+      // step's last caster's; the raid's fire stays no seat's (#12935)
+      was_by := fi_acting(s); fi_as(s, e.by);
       tf_spread_from(s, k);
+      fi_as(s, was_by);
     }
     // its crown burnt away, the fire smoulders out: a black snag
     if e.t >= e.out && v[0].bare[tf_k(s, t)] >= 1 { tf_drop(s, k); continue; }
