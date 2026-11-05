@@ -13,19 +13,14 @@
 // Redirects are not followed (the realm's API answers where it is asked). VERSE_AUTOMATION, when
 // set, goes as X-Verse-Automation, so the site's analytics and presence leave an automated run
 // out (coax/web/api/player.c); a person playing has none.
+// tool.sh: tls
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/args.coax";
 #load "../../coax/lib/sys/proc.coax";
-
-cxtls_host_push :: (byte: int) -> int #foreign;
-cxtls_connect :: (port: int, timeout_ms: int) -> int #foreign;
-cxtls_write :: (h: int, byte: int) -> int #foreign;
-cxtls_flush :: (h: int, timeout_ms: int) -> int #foreign;
-cxtls_read :: (h: int, timeout_ms: int) -> int #foreign;
-cxtls_byte :: (h: int, i: int) -> int #foreign;
-cxtls_close :: (h: int) -> int #foreign;
+#load "../../coax/lib/net/transport.coax";
+#load "../../aethyr/host/local-http-site.coax";
 
 NET_MAX :: 2162688;     // a reply's bytes: the largest inbox (2 MB) and its headers
 NET_REQ :: 1114112;     // a request's bytes: a body of up to 1 MB and its headers
@@ -42,7 +37,9 @@ tool_main :: () -> int #export_c {
     return 2;
   }
   outp := args_at(a[..], 0);
-  host := args_at(a[..], 1);
+  site := args_at(a[..], 1);
+  plain := hhl_plain(site);
+  host := ifx plain then "127.0.0.1" else site;
   port := args_whole(args_at(a[..], 2));
   flags := args_whole(args_at(a[..], 3));
   path := args_at(a[..], 4);
@@ -62,30 +59,31 @@ tool_main :: () -> int #export_c {
   if rn < 0 { return net_none(outp); }
   deadline := ifx timeout > 0 then timeout else NET_DEADLINE;
   start := cxproc_now_ms();
-  for c: host { r := cxtls_host_push(cast(int) c); }
-  h := cxtls_connect(port, deadline);
+  for c: host { r := ifx plain then cxsock_host_push(cast(int)c) else cxtls_host_push(cast(int)c); }
+  h := ifx plain then cxsock_connect(port,deadline) else cxtls_connect(port, deadline);
   if h < 0 { return net_none(outp); }
-  for i: 0..<rn { if cxtls_write(h, cast(int) req[i]) < 0 { return net_drop(h, outp); } }
-  if cxtls_flush(h, net_left(start, deadline)) < 0 { return net_drop(h, outp); }
+  for i: 0..<rn { w:=ifx plain then cxsock_write(h,cast(int)req[i]) else cxtls_write(h,cast(int)req[i]);if w < 0 {return net_drop_mode(h,outp,plain);} }
+  flushed:=ifx plain then cxsock_flush(h,net_left(start,deadline)) else cxtls_flush(h,net_left(start,deadline));
+  if flushed < 0 {return net_drop_mode(h,outp,plain);}
   got: [NET_MAX] u8; gn := 0;
   dec: [NET_MAX] u8;
   reply: NetReply;
   while true {
     left := net_left(start, deadline);
-    if left <= 0 { return net_drop(h, outp); }
-    k := cxtls_read(h, left);
+    if left <= 0 { return net_drop_mode(h, outp,plain); }
+    k := ifx plain then cxsock_read(h,left) else cxtls_read(h, left);
     if k < 0 {
       // the peer closed: a body with no length ends here (CXTLS_EOF, or Linux's close without close_notify)
       reply = net_reply(cast(string) got[0..<gn], dec[..], true);
       break;
     }
-    if gn + k > got.count { return net_drop(h, outp); }
-    for i: 0..<k { got[gn + i] = cast(u8) cxtls_byte(h, i); }
+    if gn + k > got.count { return net_drop_mode(h, outp,plain); }
+    for i: 0..<k { got[gn + i] = cast(u8)(ifx plain then cxsock_byte(h,i) else cxtls_byte(h, i)); }
     gn += k;
     reply = net_reply(cast(string) got[0..<gn], dec[..], false);
     if reply.state != 0 { break; }
   }
-  c := cxtls_close(h);
+  c := ifx plain then cxsock_close(h) else cxtls_close(h);
   if reply.state != 1 { return net_none(outp); }
   src := ifx reply.at < 0 then cast(string) dec[0..<reply.n] else cast(string) got[reply.at..<reply.at + reply.n];
   page: [NET_MAX] u8;
@@ -106,6 +104,9 @@ net_left :: (start: int, deadline: int) -> int { return deadline - (cxproc_now_m
 net_drop :: (h: int, outp: string) -> int {
   c := cxtls_close(h);
   return net_none(outp);
+}
+net_drop_mode :: (h:int,outp:string,plain:bool)->int {
+  c:=ifx plain then cxsock_close(h) else cxtls_close(h);return net_none(outp);
 }
 net_none :: (outp: string) -> int {
   if !fs_write(outp, "0\n") { return 1; }

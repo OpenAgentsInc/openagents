@@ -20,6 +20,19 @@ extern char **environ;
 static int golden_mode;
 extern uint32_t coaxial_host_contract_version(void) __attribute__((weak));
 extern uint32_t coaxial_host_copy_span(uint64_t, uint64_t, uint64_t, uint64_t) __attribute__((weak));
+extern int32_t rhn_socket_open(const char *,uint32_t) __attribute__((weak));
+extern void rhn_socket_send(int32_t,const void *,uint32_t) __attribute__((weak));
+extern void rhn_socket_close(int32_t) __attribute__((weak));
+extern void rhn_socket_poll(RealmHost *) __attribute__((weak));
+extern void rhn_socket_shutdown(void) __attribute__((weak));
+extern int rhn_http_path(const char *,size_t) __attribute__((weak));
+extern int rhn_utf8(const char *,size_t) __attribute__((weak));
+extern int32_t coaxial_host_http_reserve(int32_t,int32_t,int64_t,int64_t,int64_t) __attribute__((weak));
+extern int64_t coaxial_host_owner(int32_t) __attribute__((weak));
+extern uint32_t coaxial_host_http_chunk(int32_t,int64_t,int64_t,int64_t) __attribute__((weak));
+extern uint32_t coaxial_host_http_finish(int32_t,int64_t,int64_t,int64_t,int32_t,int32_t) __attribute__((weak));
+extern uint32_t coaxial_host_http_cancel(int32_t) __attribute__((weak));
+extern int64_t coaxial_host_delivery(int32_t) __attribute__((weak));
 
 // The face's offsets are 32 bits. Built without PIE, its static data is
 // below 2 GB; malloc stays on the brk heap (no mmap), which follows it; and
@@ -203,7 +216,7 @@ void rh_close(RealmHost *h) {
 // ended. The slots, the same-site rule and the answers are coax/web/http-requests.js's.
 enum { RH_SLOTS = 8, RH_BEACONS = 16, RH_PLAYER = 5, RH_PLACE = 11, RH_BAR = 12, RH_ANSWER = 512,
        RH_UNBOUNDED_MS = 35000 };
-typedef struct { pid_t pid; int64_t deadline; char out[1100], body[1100]; } RhRequest;
+typedef struct { pid_t pid; int64_t deadline,generation,engine; int contract; char out[1100], body[1100]; } RhRequest;
 static struct { int on, port, log; char helper[1024], host[256], dir[1024], name[64]; } net;
 static RhRequest slots[RH_SLOTS], beacons[RH_BEACONS];
 static unsigned serial;
@@ -289,30 +302,33 @@ static void forget(RhRequest *r) {
 }
 static int64_t request(uint32_t url, uint32_t url_len, uint32_t body, uint32_t body_len, int32_t flags, int64_t timeout) {
   if (!net.on) return -1;
+  int contract=coaxial_host_contract_version&&coaxial_host_contract_version()==1;
   const char *u = rh_ptr(url);
-  if (!same_site(u, url_len)) return -1;
+  if(contract){if(!rhn_http_path||!rhn_utf8||!coaxial_host_http_reserve||!coaxial_host_owner||!coaxial_host_http_chunk||!coaxial_host_http_finish||!coaxial_host_http_cancel||!coaxial_host_delivery||!rhn_http_path(u,url_len))return -1;}
+  else if (!same_site(u, url_len)) return -1;
   int wanted = (flags & 4) != 0, beacon = (flags & 2) != 0;
   if (timeout >= 0 && (!wanted || beacon || timeout < 1 || timeout > 2147483647)) return -1;
   RhRequest *r = NULL;
   int id = 0;
   if (wanted) {
-    for (id = 0; id < RH_SLOTS && slots[id].pid; id++) {}
-    if (id == RH_SLOTS) return -1;
+    if(contract){id=coaxial_host_http_reserve(flags,timeout>=0,timeout,mono_ms(),coaxial_inbox_cap());if(id<0)return -1;}
+    else {for (id = 0; id < RH_SLOTS && slots[id].pid; id++) {}if (id == RH_SLOTS) return -1;}
     r = &slots[id];
+    if(contract){r->contract=1;r->generation=coaxial_host_owner(1);r->engine=coaxial_host_owner(2);}
   } else {
     rh_net_poll(NULL);   // reap the beacons that ended
     for (int i = 0; i < RH_BEACONS && !r; i++) if (!beacons[i].pid) r = &beacons[i];
     if (!r) return -1;
   }
   unsigned k = serial++;
-  char path[4001], port[16], fl[16], cap[16], to[24], key[256];
+  char path[4097], port[16], fl[16], cap[16], to[24], key[256];
   memcpy(path, u, url_len);
   path[url_len] = 0;
   snprintf(r->out, sizeof r->out, "%s/.net-%d-%u.answer", net.dir, (int)getpid(), k);
   unlink(r->out);
   if (body_len) {
     snprintf(r->body, sizeof r->body, "%s/.net-%d-%u.body", net.dir, (int)getpid(), k);
-    if (write_all(r->body, rh_ptr(body), body_len)) { forget(r); return -1; }
+    if (write_all(r->body, rh_ptr(body), body_len)) { if(r->contract)coaxial_host_http_cancel(id);forget(r); return -1; }
   }
   snprintf(port, sizeof port, "%d", net.port);
   snprintf(fl, sizeof fl, "%d", (int)flags);
@@ -327,7 +343,7 @@ static int64_t request(uint32_t url, uint32_t url_len, uint32_t body, uint32_t b
   pid_t pid;
   int e = posix_spawn(&pid, net.helper, &fa, NULL, argv, environ);
   posix_spawn_file_actions_destroy(&fa);
-  if (e) { forget(r); return -1; }
+  if (e) {if(r->contract)coaxial_host_http_cancel(id); forget(r); return -1; }
   r->pid = pid;
   r->deadline = mono_ms() + (timeout >= 0 ? timeout : RH_UNBOUNDED_MS);
   if (net.log) fprintf(stderr, "realm-host: request %d: %s %s (flags %d)\n", wanted ? id : -1, flags & 1 ? "POST" : "GET", path, (int)flags);
@@ -350,6 +366,7 @@ int rh_net_open(RealmHost *h, const char *helper, const char *host, int port, co
   return 0;
 }
 void rh_net_poll(RealmHost *h) {
+  if(rhn_socket_poll)rhn_socket_poll(h);
   if (!net.on) return;
   for (int i = 0; i < RH_BEACONS; i++) {
     int st;
@@ -366,24 +383,32 @@ void rh_net_poll(RealmHost *h) {
     if (w == 0) { kill(r->pid, SIGKILL); waitpid(r->pid, &st, 0); }
     size_t n = 0;
     char *text = w > 0 && WIFEXITED(st) && WEXITSTATUS(st) == 0 ? read_all(r->out, &n) : NULL;
-    // free before the answer: the realm may ask again as it reads it
+    int contract=r->contract;int64_t generation=r->generation,engine=r->engine;
+    // Free physical state before the answer. Shared Coax finish also frees
+    // ownership before reentrant realm code can reserve the slot again.
     forget(r);
     if (net.log) {
       const char *nl = text && n ? memchr(text, '\n', n) : NULL;
       int status_n = text && n ? (int)(nl ? nl - text : (ptrdiff_t)n) : 1;
       fprintf(stderr, "realm-host: answer %d: %.*s, %zu bytes%s\n", i, status_n, text && n ? text : "0", n, w == 0 ? " (past its deadline)" : "");
     }
-    if (text && n) rh_send(h, RH_ANSWER + i, text, n);
+    if(contract){
+      int ok=text&&n;coaxial_host_http_chunk(i,generation,engine,(int64_t)n);
+      if(coaxial_host_http_finish(i,generation,engine,mono_ms(),ok,ok&&rhn_utf8(text,n))){
+        int failure=(int)coaxial_host_delivery(2);rh_send(h,(int)coaxial_host_delivery(0),failure?"0\n":text,(size_t)coaxial_host_delivery(1));
+      }
+    }else if (text && n) rh_send(h, RH_ANSWER + i, text, n);
     else rh_send(h, RH_ANSWER + i, "0\n", 2);
     free(text);
   }
 }
 static int32_t cancel(int32_t id) {
   if (id < 0 || id >= RH_SLOTS || !slots[id].pid) return 0;
+  int admitted=slots[id].contract?coaxial_host_http_cancel(id):1;
   kill(slots[id].pid, SIGKILL);
   waitpid(slots[id].pid, NULL, 0);
   forget(&slots[id]);
-  return 1;
+  return admitted;
 }
 void rh_restore(RealmHost *h) {
   if (!net.on || golden_mode) return;
@@ -399,6 +424,7 @@ void rh_restore(RealmHost *h) {
   }
 }
 void rh_net_close(void) {
+  if(rhn_socket_shutdown)rhn_socket_shutdown();
   for (int i = 0; i < RH_SLOTS; i++) if (slots[i].pid) cancel(i);
   for (int i = 0; i < RH_BEACONS; i++) if (beacons[i].pid) { waitpid(beacons[i].pid, NULL, 0); forget(&beacons[i]); }
 }
@@ -414,8 +440,9 @@ static int64_t clock_ms(void) {
 }
 int64_t guard_now_ms(void) { return clock_ms(); }
 double coaxial_measure_ms(void) {struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return (double)t.tv_sec*1000+(double)t.tv_nsec/1000000;}
-// the seconds clock (env.coaxial_now_seconds), on the same clock
-int64_t coaxial_now_seconds(void) { return clock_ms() / 1000; }
+// Unix wall seconds. The explicit deterministic-test override drives both
+// imported clocks, as wasm-run's clock/clock_s fixtures do.
+int64_t coaxial_now_seconds(void) {const char *fake=getenv("VERSE_NATIVE_CLOCK_MS");return fake?atoll(fake)/1000:(int64_t)time(NULL);}
 // byte storage (env.coaxial_storage_*: the browser's IndexedDB): none natively, refused as host.js
 // refuses it where the browser has none (UNAVAILABLE), so the app keeps going without it
 int32_t coaxial_storage_put(int32_t a, int32_t b, uint32_t c, int32_t d, int32_t e, uint32_t f, int32_t g, uint32_t h, int32_t i) {
@@ -492,11 +519,12 @@ void rh_replay_poll(RealmHost *h) {
   }
 }
 int32_t coaxial_socket_open(uint32_t url, uint32_t len) {
+  if(coaxial_host_contract_version && coaxial_host_contract_version()==1 && rhn_socket_open)return rhn_socket_open(rh_ptr(url),len);
   (void)url;(void)len;if(!replay_file||replay_opened)return -1;
   replay_opened=1;return 0;
 }
-void coaxial_socket_send(int32_t id, uint32_t ptr, uint32_t len) { (void)id; (void)ptr; (void)len; }
-void coaxial_socket_close(int32_t id) { (void)id; }
+void coaxial_socket_send(int32_t id, uint32_t ptr, uint32_t len) {if(coaxial_host_contract_version && coaxial_host_contract_version()==1 && rhn_socket_send)rhn_socket_send(id,rh_ptr(ptr),len);}
+void coaxial_socket_close(int32_t id) {if(coaxial_host_contract_version && coaxial_host_contract_version()==1 && rhn_socket_close)rhn_socket_close(id);}
 // The exports host.js calls only when a realm's face has them (x.coaxial_draws?.(...) and
 // the like): a face without them gets these, which say it has none.
 #define NONE __attribute__((weak))

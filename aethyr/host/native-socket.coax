@@ -1,0 +1,66 @@
+// Coax moves bytes through TCP/TLS and interprets only the admitted stream
+// decisions. SDK threads/queues execute effects; transport.coax owns realm
+// callback ownership on the main host thread. No room/game policy lives here.
+#load "socket-stream.coax";
+#load "socket-outbound.coax";
+#load "event-drain.coax";
+#load "../../coax/lib/net/relay_conn.coax";
+hni_lock :: () #foreign;
+hni_unlock :: () #foreign;
+hni_take :: (context:int)->int #foreign;
+hni_size :: (context:int)->int #foreign;
+hni_byte :: (context:int,at:int)->int #foreign;
+hni_done :: (context:int) #foreign;
+hni_emit :: (context:int,event:int,bytes:[]u8) #foreign;
+hni_pause :: (milliseconds:int) #foreign;
+hns_uri :: (uri:string)->bool #export_c {return relay_uri_dial(uri).ok;}
+hns_utf8 :: (bytes:string)->bool #export_c {return ws_utf8(bytes);}
+hns_send :: (context:int,c:[]RelayConn)->bool {
+  total:=hni_size(context);at:=0;payload:[65536]u8;frame:[65550]u8;mask:[4]u8;
+  while true {
+    f:=hso_fragment(total,at,payload.count);if !f.ok {return false;}
+    for i:0..<f.bytes {payload[i]=u8(hni_byte(context,at+i));}
+    hni_lock();drawn:=rc_draw(4,mask[..]);
+    n:=ifx drawn then ws_frame_write(f.op,f.fin,cast(string)payload[0..<f.bytes],mask[..],frame[..]) else -1;
+    sent:=n>0 && rc_put(c,cast(string)frame[0..<n]);hni_unlock();
+    if !sent {return false;}if f.fin {return true;}at+=f.bytes;
+  }
+  return false;
+}
+hns_input :: (context:int,c:[]RelayConn,s:[]HostSocketStream,input:string,out:[]u8)->bool {
+  at:=0;while at<input.count {
+    r:=hss_feed(s,input[at..<input.count],out);at+=r.taken;
+    if r.event==1 {hni_emit(context,1,out[0..<r.bytes]);}
+    else if r.event==3 {hni_emit(context,3,out[0..<0]);}
+    else if r.event==4 {
+      hni_lock();ok:=rc_frame(c,WS_OP_PONG,cast(string)s[0].control[0..<r.bytes]);hni_unlock();
+      if !ok {hni_emit(context,3,out[0..<0]);return false;}
+    }else if r.event==2 {
+      hni_lock();sent:=rc_close_frame(c,rc_close_reply(r.code));hni_unlock();return false;
+    }else if r.event==6 {
+      hni_lock();sent:=rc_close_frame(c,r.code);hni_unlock();hni_emit(context,3,out[0..<0]);return false;
+    }
+  }
+  return true;
+}
+hns_worker :: (context:int,uri:string,out:[]u8) #export_c {
+  c:[1]RelayConn;hni_lock();ok:=relay_conn_open(c[..],uri);hni_unlock();
+  if !ok {hni_emit(context,3,out[0..<0]);hni_emit(context,2,out[0..<0]);return;}
+  hni_emit(context,0,out[0..<0]);s:[1]HostSocketStream;
+  live:=hns_input(context,c[..],s[..],cast(string)c[0].inb[0..<c[0].used],out);c[0].used=0;
+  while live {
+    command:=hni_take(context);
+    if command==2 {
+      hni_lock();sent:=rc_close_frame(c[..],WS_CLOSE_NORMAL);hni_unlock();break;
+    }
+    if command==1 {
+      sent:=hns_send(context,c[..]);hni_done(context);
+      if !sent {hni_emit(context,3,out[0..<0]);break;}
+    }
+    hni_lock();n:=rc_fill(c[..],0);hni_unlock();
+    if n>0 {live=hns_input(context,c[..],s[..],cast(string)c[0].inb[0..<c[0].used],out);c[0].used=0;}
+    else if n!=0 && n!= -2 {if n!= -1 {hni_emit(context,3,out[0..<0]);}break;}
+    if command==0 && n<=0 {hni_pause(2);}
+  }
+  hni_lock();rc_shut(c[..]);hni_unlock();hni_emit(context,2,out[0..<0]);
+}

@@ -72,6 +72,35 @@ checking. `vulkan-core.json` retains its rows and
 C/header pair, executable and output. No GPU/window or audio device is
 opened by this core-only observer.
 
+The opt-in Linux native transport SDK now executes the same real 79-row
+loopback workload. `socket-stream.coax` incrementally validates RFC6455
+headers, fragmentation, controls and complete UTF-8; oversized text is
+drained to its boundary and emits one empty error, and binary messages are
+drained silently. Outgoing text is masked and fragmented in Coax. SDK
+threads copy physical bytes and queue owner-tagged callbacks; the main
+thread applies the shared slot/generation/engine authority before delivery.
+HTTP helper results pass that same ownership, deadline, complete-byte and
+UTF-8 authority. Cancellation revokes ownership before aborting the helper.
+
+The actual Linux transport workload passes normally and with ASan/UBSan,
+including leak checking. `vulkan-transport.json` retains the normal raw
+events; `vulkan-transport-artifacts.sha256` identifies both executables,
+observations, generated Coax C/headers, the HTTP helper and SDK sources.
+Root mutation killed all 205 stream, 24 outgoing-fragment, 14 drain-budget
+and 10 explicit-loopback-site mutants, with no equivalents. The existing
+21 HTTP helper/parser checks also pass. These unchanged gates are retained
+rather than repeated. Ordinary native site hostnames still use verified
+TLS; plaintext HTTP is admitted only for an explicitly configured
+`http://127.0.0.1` development site.
+Focused SDK clock probes also distinguish monotonic milliseconds from Unix
+wall seconds and preserve the explicit deterministic test clock override.
+
+This qualification links `host-sockets.c` through `build-vulkan.coax` and
+the real `realm-host.c` API. The ordinary Vulkan realm packager still needs
+to include the new SDK, and native `local:` room mapping remains an open
+integration exit. Loading the shared facade alone does not opt a legacy
+face into this transport contract.
+
 `browser-core.json`, `browser-transport.json` and
 `browser-replacement.json` retain the actual fixture event rows. Each row
 is `[kind,a,b,c,d,e,byteCount,FNV32]`, as defined by `fixture.coax`.
@@ -128,13 +157,31 @@ Add `--sanitize` to the builder and use a separate output directory for
 the ASan/UBSan image. The Linux ABI retains the existing non-PIE/low-4-GiB
 allocation rule; Metal uses the fixture's explicit native uintptr ABI.
 
+For the real Linux transport workload, add `--transport` to the builder.
+Build `verse/native/net.coax` with `coax/web/tool.sh` and pass that helper's
+compiled executable, plus a private state directory, to the resulting
+observer:
+
+```sh
+coax/web/tool.sh aethyr/host/build-vulkan.coax \
+  "$HOME/.openagents/aethyrforge/host-contract-12869/vulkan-transport" "$COAX" --transport
+"$HOME/.openagents/aethyrforge/host-contract-12869/vulkan-transport/check-vulkan" \
+  "$HOME/.openagents/aethyrforge/host-contract-12869/vulkan-transport/transport.json" \
+  /absolute/path/to/compiled-net-helper \
+  "$HOME/.openagents/aethyrforge/host-contract-12869/vulkan-transport/state"
+```
+
+The observer starts its private Coax server, polls actual health before
+work, then closes its sockets/helpers and server on exit.
+
 ## Required exits still open
 
-The native Metal core run, native transport, shared lifecycle transitions and
+The native Metal receipt/source record, shared lifecycle transitions and
 device-loss/replacement receipts, complete production render graph, and
-muted/offline audio sample comparison remain to be recorded. The older
-Vulkan realm adapter explicitly refuses live sockets and does not execute
-audio; that is a visible gap, not a passing optional capability string.
+muted/offline audio sample comparison remain to be recorded. Ordinary
+Vulkan SDK packaging, native-local socket mapping and audio execution are
+still required; the qualified transport observer does not substitute for
+these product integrations.
 Only a complete three-host result plus #12868's interactive parity allows
 native by default and the one-click web preview.
 

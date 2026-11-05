@@ -1,0 +1,88 @@
+// The native host's bounded, incremental RFC6455 server stream. Oversized
+// text is drained to its message boundary and becomes one empty error;
+// binary is drained without delivery. Neither can publish a text prefix.
+#load "../../coax/lib/net/ws.coax";
+#authority;
+HostSocketStream :: struct {
+  header:[10]u8;header_n:int;reading:bool;left:int;frame_op:int;fin:bool;
+  open:bool;op:int;used:int;overflow:bool;control:[125]u8;control_n:int;dead:bool;
+}
+HostSocketStep :: struct {taken:int;event:int= -1;bytes:int;code:int;}
+#forall "socket UTF8 message survives every header and payload split" cut:0..<9 {
+  s:[1]HostSocketStream;out:[7]u8;b:=[9]u8.[0x81,7,'A',0xc3,0xa9,0xf0,0x9f,0x99,0x82];
+  a:=hss_feed(s[..],cast(string)b[0..<cut],out[..]);#assert a.event== -1 && a.taken==cut;
+  a=hss_feed(s[..],cast(string)b[cut..<9],out[..]);#assert a.event==1 && a.bytes==7 && a.taken==9-cut && cast(string)out[..]=="Aé🙂" && !s[0].open;
+}
+#test "socket streams drain oversized and binary messages, then accept the next text" {
+  s:[1]HostSocketStream;out:[4]u8;big:[130]u8;big[0]=0x81;big[1]=126;big[2]=0;big[3]=126;for i:4..<130 {big[i]='x';}
+  for i:0..<130 {a:=hss_feed(s[..],cast(string)big[i..<i+1],out[..]);#assert a.taken==1 && a.event==(ifx i==129 then 3 else -1) && a.bytes==0;}
+  #assert !s[0].open && !s[0].dead;
+  xp:[256]u8;a:=hss_feed(s[..],wx("%82%02%ff%00%81%02ok",xp[..]),out[..]);#assert a.event==1 && a.bytes==2 && a.taken==8 && cast(string)out[0..<2]=="ok";
+  a=hss_feed(s[..],wx("%01%03abc%89%01p%80%02de",xp[..]),out[..]);#assert a.event==4 && a.bytes==1 && a.taken==8 && s[0].control[0]=='p' && s[0].open;
+  a=hss_feed(s[..],wx("%80%02de",xp[..]),out[..]);#assert a.event==3 && a.bytes==0 && !s[0].open;
+  a=hss_feed(s[..],wx("%81%00%8a%00",xp[..]),out[..]);#assert a.event==1 && a.bytes==0 && a.taken==2;
+  a=hss_feed(s[..],wx("%8a%00",xp[..]),out[..]);#assert a.event==5 && a.bytes==0 && a.taken==2;
+}
+#test "socket fragments preserve text and ignore fragmented binary across controls" {
+  s:[1]HostSocketStream;out:[8]u8;xp:[256]u8;
+  a:=hss_feed(s[..],wx("%01%02ab%89%00%80%02cd",xp[..]),out[..]);#assert a.event==4 && a.taken==6 && s[0].used==2;
+  a=hss_feed(s[..],wx("%80%02cd",xp[..]),out[..]);#assert a.event==1 && a.bytes==4 && cast(string)out[0..<4]=="abcd";
+  a=hss_feed(s[..],wx("%02%03%ff%00%00%80%03%00%ff%00%81%01x",xp[..]),out[0..<0]);#assert a.event==3 && a.taken==13;
+  a=hss_feed(s[..],wx("%81%01x",xp[..]),out[..]);#assert a.event==1 && a.bytes==1 && out[0]=='x';
+}
+#test "socket protocol failures and valid close payloads are terminal" {
+  xp:[256]u8;out:[8]u8;
+  for wire,i:[7]string.["%80%00","%c1%00","%81%80","%09%00","%88%01x","%81%01%ff","%01%00%81%00"] {
+    s:[1]HostSocketStream;a:=hss_feed(s[..],wx(wire,xp[..]),out[..]);#assert a.event==6 && a.code==(ifx i==5 then 1007 else 1002) && s[0].dead;
+    a=hss_feed(s[..],"",out[..]);#assert a.event==6 && a.taken==0;
+  }
+  s:[1]HostSocketStream;a:=hss_feed(s[..],wx("%88%02%03%e8",xp[..]),out[..]);#assert a.event==2 && a.code==1000 && a.bytes==2 && s[0].dead;
+  s[0]=HostSocketStream.{};a=hss_feed(s[..],wx("%88%00",xp[..]),out[..]);#assert a.event==2 && a.code==1005;
+  s[0]=HostSocketStream.{};a=hss_feed(s[..],wx("%81%7f%01%00%00%00%00%00%00%00",xp[..]),out[..]);#assert a.event==6;
+}
+hss_finish :: (s:[]HostSocketStream,out:[]u8)->HostSocketStep {
+  r:=HostSocketStep.{};s[0].reading=false;s[0].header_n=0;
+  if s[0].frame_op>=8 {
+    r.bytes=s[0].control_n;
+    if s[0].frame_op==9 {r.event=4;}else if s[0].frame_op==10 {r.event=5;}else {
+      r.code=ws_close_code(cast(string)s[0].control[0..<r.bytes]);
+      if r.code== -1 {r.event=6;r.code=1002;}else {r.event=2;}s[0].dead=true;
+    }
+    return r;
+  }
+  if !s[0].fin {return r;}s[0].open=false;
+  if s[0].op==1 {
+    if s[0].overflow {r.event=3;}else if !ws_utf8(cast(string)out[0..<s[0].used]) {r.event=6;r.code=1007;s[0].dead=true;}else {r.event=1;r.bytes=s[0].used;}
+  }
+  return r;
+}
+hss_feed :: (s:[]HostSocketStream,input:string,out:[]u8)->HostSocketStep #export_c {
+  r:=HostSocketStep.{};if s[0].dead {r.event=6;return r;}
+  while r.taken<input.count {
+    byte:=input[r.taken];r.taken+=1;
+    if !s[0].reading {
+      s[0].header[s[0].header_n]=byte;s[0].header_n+=1;
+      // An over-capacity frame with a completely admitted header is drained,
+      // not retained. TOO_BIG without header metadata is a refused wire
+      // length (the RFC parser's supported length), never a drain request.
+      frame:=ws_frame_read(cast(string)s[0].header[0..<s[0].header_n],out.count);
+      if (frame.status!=WS_FRAME_OK && frame.status!=WS_FRAME_MORE && frame.status!=WS_FRAME_TOO_BIG) || (frame.status==WS_FRAME_TOO_BIG && frame.header==0) {r.event=6;r.code=1002;s[0].dead=true;return r;}
+      if frame.header==0 {continue;}
+      s[0].reading=true;s[0].left=frame.length;s[0].frame_op=frame.op;s[0].fin=frame.fin;s[0].control_n=0;
+      if frame.op==0 {
+        if !s[0].open {r.event=6;r.code=1002;s[0].dead=true;return r;}
+      }else if frame.op==1 || frame.op==2 {
+        if s[0].open {r.event=6;r.code=1002;s[0].dead=true;return r;}
+        s[0].open=true;s[0].op=frame.op;s[0].used=0;s[0].overflow=false;
+      }
+      if s[0].left>0 {continue;}
+    }else {
+      s[0].left-=1;
+      if s[0].frame_op>=8 {s[0].control[s[0].control_n]=byte;s[0].control_n+=1;}
+      else if s[0].op==1 {if s[0].used<out.count {out[s[0].used]=byte;s[0].used+=1;}else {s[0].overflow=true;}}
+      if s[0].left>0 {continue;}
+    }
+    done:=hss_finish(s,out);if done.event!= -1 {done.taken=r.taken;return done;}
+  }
+  return r;
+}

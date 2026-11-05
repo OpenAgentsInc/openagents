@@ -1,0 +1,14 @@
+// An explicitly configured development site may use plaintext IPv4 loopback.
+// Ordinary native site hostnames continue to require verified platform TLS.
+#authority;
+#test "plaintext HTTP is only the explicitly named loopback site" {
+  #assert hhl_plain("http://127.0.0.1");
+  for s:[11]string.["127.0.0.1","http://localhost","https://127.0.0.1","http://127.0.0.1/","http://127.0.0.1:9170","http://127.0.0.10","http://127.0.0.1@evil","http://evil","HTTP://127.0.0.1","http://127.0.0.1\0",""] {#assert !hhl_plain(s);}
+}
+#forall "each byte of the development site identity is required" at:0..<16 {
+  bytes:[16]u8;for c,i:"http://127.0.0.1" {bytes[i]=c;}bytes[at]+=1;#assert !hhl_plain(cast(string)bytes[..]);
+}
+hhl_plain :: (site:string)->bool #export_c {
+  if site.count!=16 {return false;}
+  for i:0..<16 {if site[i]!="http://127.0.0.1"[i] {return false;}}return true;
+}

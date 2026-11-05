@@ -1,0 +1,11 @@
+// Native effect queue work bound. Arrival/ownership remains transport.coax's.
+#authority;
+#test "effect draining stops at its work and monotonic-time bounds" {
+  #assert htd_continue(0,0,0) && htd_continue(255,100,112);
+  #assert !htd_continue(256,100,112) && !htd_continue(-1,100,100);
+  #assert !htd_continue(0,-1,0) && !htd_continue(0,100,99) && !htd_continue(0,100,113);
+  #assert htd_continue(0,9223372036854775807,9223372036854775807);
+}
+htd_continue :: (handled:int,started:int,now:int)->bool #export_c {
+  return handled>=0 && handled<256 && started>=0 && now>=started && now-started<=12;
+}

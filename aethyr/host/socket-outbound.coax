@@ -1,0 +1,18 @@
+#authority;
+HostSocketFragment :: struct {ok:bool;bytes:int;op:int;fin:bool;}
+#test "socket outbound fragments cover a whole text once, including empty and boundary messages" {
+  f:=hso_fragment(0,0,65536);#assert f.ok && f.bytes==0 && f.op==1 && f.fin;
+  f=hso_fragment(1,0,65536);#assert f.ok && f.bytes==1 && f.op==1 && f.fin;
+  f=hso_fragment(65536,0,65536);#assert f.ok && f.bytes==65536 && f.fin;
+  f=hso_fragment(65537,0,65536);#assert f.ok && f.bytes==65536 && !f.fin;
+  f=hso_fragment(65537,65536,65536);#assert f.ok && f.bytes==1 && f.op==0 && f.fin;
+  f=hso_fragment(9,2,3);#assert f.ok && f.bytes==3 && f.op==0 && !f.fin;
+  #assert !hso_fragment(-1,0,1).ok && !hso_fragment(1,-1,1).ok && !hso_fragment(1,2,1).ok;
+  #assert !hso_fragment(1,1,1).ok && !hso_fragment(0,0,0).ok && !hso_fragment(1,0,-1).ok;
+  f=hso_fragment(9223372036854775807,9223372036854775806,1);#assert f.ok && f.bytes==1 && f.fin;
+}
+hso_fragment :: (total:int,at:int,capacity:int)->HostSocketFragment #export_c {
+  if total<0 || at<0 || at>total || capacity<1 || (at==total && total>0) {return HostSocketFragment.{};}
+  fin:=total-at<=capacity;n:=ifx fin then total-at else capacity;
+  return HostSocketFragment.{ok=true,bytes=n,op=ifx at==0 then 1 else 0,fin=fin};
+}
