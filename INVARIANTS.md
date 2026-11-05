@@ -75,6 +75,22 @@ The bank registry separately caps aggregate copied source bytes at 8 MiB,
 including overlapping spans under distinct names. Refusal changes no row,
 count or byte total; reset releases all. Its sharp root gate kills 101 mutants.
 
+The browser's v1 encoded-audio path now admits source copies before retention,
+preflights Ogg before SDK PCM allocation and admits exact output shape/rate
+before transfer. Required companions use the same Coax reader inside the
+Worklet. Each observed scratch, encoded/decoded, transfer and retained plane
+owns a separate shared ticket. Retirement waits for outstanding owned SDK
+completion as well as Worklet cleanup; it cannot release an uncertain live
+decode early. The actual held-decode trace preserves 31,586 words until
+completion, then both owners and the command queue return to zero. Full
+frozen demand retains 122 assets/7,739,161 words with no allocation refusal.
+Actual default rendered cues/bed/room pass all 262,144 samples at unchanged
+2^-20. Source-copy, receipt and refusal gates kill 19/70/44 root mutants.
+The 105,010-byte audio and 20,024-byte services reactors have exact 24/13
+source joins under the unchanged admitted c224/598 compiler. This qualifies
+small host components, not current realm/graphics/default admission. See
+`docs/verification/host-contract-2026-11-05/browser-opus.md`.
+
 The Linux audio SDK executes the same Coax PCM/WAV interpreter and bank/
 memory authorities. All 48 frozen bank assets decode byte-identically and
 eleven rendered ranges pass the unchanged sample bound. Actual allocator,

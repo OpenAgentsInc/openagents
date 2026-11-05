@@ -1826,7 +1826,7 @@ function prepareContractAudio() {
   contractAudioReady=openCoaxAudio(context,audioOut,async(name,canonical)=>{
     const asset=soundAsset(name);if(!asset)return null;
     if(asset.canonical)return canonical(asset.bytes);
-    return decoded(asset);
+    return asset.bytes?{opus:asset.bytes}:{url:asset.url};
   },{services,memory:contractAudioMemory}).then(adapter=>{if(owner===audioOwner)contractAudio=adapter;return adapter;}).catch(error=>{if(owner===audioOwner){audioFailure=String(error.message);say(`Audio: ${audioFailure}`);}return null;});
 }
 const sounds = new Map();   // name -> a decoding or decoded buffer
@@ -1904,7 +1904,7 @@ function soundAsset(name) {
   const a = assets.find((s) => s.kind === "sound" && s.name === name);
   if (a || !soundDir || !/^[a-z0-9-]{1,48}$/.test(name)) return a;
   const b = { i: assets.length, kind: "sound", name, url: `${soundDir}${name}.ogg` };
-  assets.push(b);
+  if(!hostTransport)assets.push(b);
   return b;
 }
 // The mixed voices' bus (aethyr/audio/mix.coax): the voices and the room's return into a gain the

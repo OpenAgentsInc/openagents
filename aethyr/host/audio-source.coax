@@ -1,0 +1,11 @@
+// Complete compressed/companion copy admission before SDK-owned chunks are retained.
+#authority;
+#test "audio source byte offers preserve exact limits and refuse every invalid extent" {
+ #assert hasb_bytes(0,0,1)==0&&hasb_bytes(0,1,1)==1&&hasb_bytes(1,0,1)==1;
+ #assert hasb_bytes(0,8388608,8388608)==8388608&&hasb_bytes(8388607,1,8388608)==8388608;
+ #assert hasb_bytes(8388608,0,8388608)==8388608;
+ for values:[10][3]int.[[3]int.[-1,0,1],[3]int.[0,-1,1],[3]int.[0,0,0],[3]int.[0,0,-1],[3]int.[0,0,8388609],[3]int.[2,0,1],[3]int.[0,2,1],[3]int.[1,1,1],[3]int.[8388608,1,8388608],[3]int.[0,9223372036854775807,8388608]] {#assert hasb_bytes(values[0],values[1],values[2])== -1;}
+}
+hasb_bytes :: (current:int,incoming:int,limit:int)->int #export_c {
+ if limit<1||limit>8388608||current<0||current>limit||incoming<0||incoming>limit-current {return -1;}return current+incoming;
+}

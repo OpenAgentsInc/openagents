@@ -1,0 +1,16 @@
+// Execute frozen ordinary producer offers through the actual browser audio adapter.
+#load "../../coax/web/wasm-chrome.coax";
+#load "audio-opus-conformance.coax";
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])!=4 {tool_errln("usage: check-browser-opus-demand LOCAL_URL FROZEN_NATIVE_PREFETCH.json ROOM.wav OUTPUT.json");return 2;}
+ c:[1]Cdp;if !cdp_launch(c[..],160,90,"coax-opus-demand-") {return 1;}defer {cdp_close(c[..]);}params:[8192]u8;o:[1]Jo;jo_start(o[..],params[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],args_at(a[..],0));jo_end(o[..]);nav:=cdp_call(c[..],"Page.navigate",jo_text(o[..]),CDP_CALL_MS);
+ bytes:[1048576]u8;n:=fs_read(WC_HOST_FILE,bytes[..]);if n<0||wc_eval(c[..],cast(string)bytes[0..<n])!="ready" {return 1;}
+ for i:0..<2 {n=fs_read(args_at(a[..],i+1),bytes[..]);if n<1||!wc_file(c[..],[2]string.["demand.json","room.wav"][i],cast(string)bytes[0..<n]) {return 1;}}
+ n=fs_read("aethyr/host/tests/audio-opus-demand.js",bytes[..]);if n<0||wc_eval(c[..],cast(string)bytes[0..<n])!="ready" {return 1;}
+ if wc_eval(c[..],"globalThis.hostOpusDemandPending=hostOpusDemand().catch(error=>({error:String(error.stack),stage:globalThis.hostOpusDemandStage}));true")!="true" {return 1;}
+ until:=proc_now_ms()+60000;gesture:=false;while proc_now_ms()<until {if wc_eval(c[..],"globalThis.hostOpusDemandStage==='gesture'")=="true" {gesture=true;break;}proc_sleep(100);}if !gesture {tool_errln("Demand did not reach the gesture boundary.");tool_errln(wc_eval(c[..],"globalThis.hostOpusDemandStage"));return 1;}
+ key:=cdp_call(c[..],"Input.dispatchKeyEvent","{\"type\":\"keyDown\",\"key\":\"a\",\"code\":\"KeyA\",\"windowsVirtualKeyCode\":65}",CDP_CALL_MS);up:=cdp_call(c[..],"Input.dispatchKeyEvent","{\"type\":\"keyUp\",\"key\":\"a\",\"code\":\"KeyA\",\"windowsVirtualKeyCode\":65}",CDP_CALL_MS);
+ value:=cdp_evaluate(c[..],"Promise.race([hostOpusDemandPending,new Promise((_,reject)=>setTimeout(()=>reject(Error('clock fixture timeout')),15000))]).catch(error=>({error:String(error.stack),stage:globalThis.hostOpusDemandStage}))");if value<0 {tool_errln(cdp_error(c[..]));return 1;}d:=cdp_doc(c[..]);rows:[10]int;clock:[9]int;rr:=jv_get(d,value,"rows");cc:=jv_get(d,value,"clock");passed:=jv_len(d,rr)==10&&jv_len(d,cc)==9;
+ for i:0..<10 {rows[i]=jv_int(d,jv_at(d,rr,i),-999);}for i:0..<9 {clock[i]=jv_int(d,jv_at(d,cc,i),-999);}passed=passed&&haoc_demand(rows[..])&&haoc_clock(clock[..]);
+ out:[65536]u8;jo_start(o[..],out[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.host.authored-demand.v1");jo_key(o[..],"observation");jv_write(d,value,o[..]);jo_key(o[..],"passed");jo_bool(o[..],passed);jo_end(o[..]);if o[0].bad||!fs_write(args_at(a[..],3),jo_text(o[..])) {return 1;}print("Actual authored browser demand, allocation and muted device lifecycle: %.\n",passed);return ifx passed then 0 else 1;
+}

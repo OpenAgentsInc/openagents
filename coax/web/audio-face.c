@@ -14,6 +14,10 @@ static coax_t_AudioHostEffect audio_effect;
 static coax_t_AudioWavFilter audio_filter;
 static double audio_filter_words[20480];
 static coax_t_AudioWavPlan audio_wav;
+static coax_t_HostAudioAsset audio_selected;
+static coax_t_HostOpusPlan audio_opus;
+static coax_t_HostPcmAssetPlan audio_pcm;
+static bool audio_name_admitted;
 static bool audio_closed;
 static coax_v_t_AudioPcmHost audio_state_view(void){return (coax_v_t_AudioPcmHost){&audio_state,1};}
 static coax_v_t_HostAudioMemory audio_memory_view(void){return (coax_v_t_HostAudioMemory){&audio_memory,1};}
@@ -49,6 +53,29 @@ AUDIO_EXPORT("audio_decode_wav") int32_t audio_decode_wav(int32_t id,uint32_t by
 }
 AUDIO_EXPORT("audio_wav_channels") uint32_t audio_wav_channels(void){return (uint32_t)audio_wav.channels;}
 AUDIO_EXPORT("audio_wav_frames") int64_t audio_wav_frames(void){return audio_wav.output_frames;}
+AUDIO_EXPORT("audio_select") int32_t audio_select(uint32_t n){
+  if(n>sizeof audio_line)return 0;coax_string name={(const char*)audio_line,n};audio_name_admitted=apv_asset_name(name);audio_selected=hpc_everglade(name);return !audio_name_admitted?0:audio_selected.valid?2:1;
+}
+AUDIO_EXPORT("audio_descriptor") int64_t audio_descriptor(int32_t field){switch(field){case 0:return audio_selected.valid;case 1:return audio_selected.canonical;case 2:return audio_selected.source_bytes;case 3:return audio_selected.frames;case 4:return audio_selected.channels;case 5:return audio_selected.companion_bytes;default:return -1;}}
+AUDIO_EXPORT("audio_source_url_ptr") uint32_t audio_source_url_ptr(void){return (uint32_t)(uintptr_t)audio_selected.source_url.data;}
+AUDIO_EXPORT("audio_source_url_bytes") uint32_t audio_source_url_bytes(void){return (uint32_t)audio_selected.source_url.count;}
+AUDIO_EXPORT("audio_companion_url_ptr") uint32_t audio_companion_url_ptr(void){return (uint32_t)(uintptr_t)audio_selected.companion_url.data;}
+AUDIO_EXPORT("audio_companion_url_bytes") uint32_t audio_companion_url_bytes(void){return (uint32_t)audio_selected.companion_url.count;}
+AUDIO_EXPORT("audio_prepare_opus") uint32_t audio_prepare_opus(int32_t id,uint32_t bytes){
+  audio_opus=hpo_plan((coax_v_u8){NULL,0});int64_t words=ham_words(audio_memory_view(),id);if(!audio_name_admitted||words<1||bytes>(uint64_t)words*sizeof(float))return 0;
+  coax_v_u8 source={(uint8_t*)audio_assets[id],bytes};audio_opus=audio_selected.valid?hpc_source_plan(audio_selected,source):hpo_plan(source);return audio_opus.valid;
+}
+AUDIO_EXPORT("audio_opus_info") int64_t audio_opus_info(int32_t field){switch(field){case 0:return audio_opus.frames;case 1:return audio_opus.channels;case 2:return audio_opus.samples;case 3:return audio_opus.decode_frames;case 4:return audio_opus.decode_samples;default:return -1;}}
+AUDIO_EXPORT("audio_output_matches") uint32_t audio_output_matches(int64_t frames,int64_t channels,double rate){return hpo_output(audio_opus,frames,channels,rate);}
+AUDIO_EXPORT("audio_source_offer") int64_t audio_source_offer(int64_t current,int64_t incoming,int64_t limit){return hasb_bytes(current,incoming,limit);}
+AUDIO_EXPORT("audio_prepare_pcm") uint32_t audio_prepare_pcm(int32_t source_id,uint32_t source_bytes,int32_t pcm_id,uint32_t pcm_bytes){
+  int64_t sw=ham_words(audio_memory_view(),source_id),pw=ham_words(audio_memory_view(),pcm_id);if(sw<1||pw<1||source_bytes>(uint64_t)sw*sizeof(float)||pcm_bytes>(uint64_t)pw*sizeof(float))return 0;
+  audio_pcm=hpc_plan(audio_selected,(coax_v_u8){(uint8_t*)audio_assets[source_id],source_bytes},(coax_v_u8){(uint8_t*)audio_assets[pcm_id],pcm_bytes});return audio_pcm.valid;
+}
+AUDIO_EXPORT("audio_decode_pcm") int32_t audio_decode_pcm(int32_t source_id,uint32_t source_bytes,int32_t pcm_id,uint32_t pcm_bytes){
+  if(!audio_prepare_pcm(source_id,source_bytes,pcm_id,pcm_bytes))return -1;int32_t out=audio_alloc(audio_pcm.samples);if(out<0)return -1;
+  if(!hpc_decode(audio_selected,(coax_v_u8){(uint8_t*)audio_assets[source_id],source_bytes},(coax_v_u8){(uint8_t*)audio_assets[pcm_id],pcm_bytes},(coax_v_f32){audio_assets[out],audio_pcm.samples})){audio_release(out);return -1;}return out;
+}
 AUDIO_EXPORT("audio_command") int32_t audio_command(uint32_t n,int32_t asset,int32_t channels,uint32_t started){
   if(!audio_workspace || n>sizeof audio_line)return -1;int64_t words=ham_words(audio_memory_view(),asset);
   coax_v_f32 samples=words>0?(coax_v_f32){audio_assets[asset],words}:(coax_v_f32){NULL,0};

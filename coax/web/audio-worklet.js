@@ -8,6 +8,7 @@ class AethyrAudio extends AudioWorkletProcessor {
     this.port.onmessage=event=>{const m=event.data;try{let result;
       if(m.op==='install')result=this.bridge.install(m.name,m.samples,m.channels);
       else if(m.op==='install-wav')result=this.bridge.installWav(m.name,m.wav,m.plan);
+      else if(m.op==='install-pcm')result=this.bridge.installPcm(m.name,m.source,m.companion,m.plan,m.nameBytes);
       else if(m.op==='command')result=this.bridge.command(m.line,m.started);
       else if(m.op==='info')result={...this.bridge.info(),callbacks:this.callbacks,deviceFrames:this.deviceFrames,failed:this.failed};
       else if(m.op==='retire'){this.retired=true;result=this.bridge.close();this.block=null;}

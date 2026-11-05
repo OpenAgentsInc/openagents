@@ -357,6 +357,9 @@ plan and a shared `audio-memory.coax` ticket. An admitted name alone does
 not admit a source view or decoded allocation. See
 [`audio-bank.md`](audio-bank.md) and the Linux SDK's
 [`audio-linux.md`](audio-linux.md) for measured ownership APIs.
+The bank's aggregate copied source budget is 8 MiB across 128 identities;
+overlapping spans under different names count separately. Refusal changes
+no existing row or byte total.
 The v1 browser loads the separate `host-services.wasm` reactor before it
 admits any producer view. Its bank registry consumes bounded metadata rows
 through the same `hab_*` authority; a refused row sets aggregate failure
@@ -415,8 +418,14 @@ RIFF, mono/stereo, 22,050 or 48,000 Hz, through the shared zero-phase 64-tap
 rational resampler into 48 kHz PCM. Its measured output extent precedes
 allocation. Everglade's ordinary default instead selects the picked
 `NAME-CAND.ogg` assets from `everglade-bank.coax`; the 48 generated WAVs
-are the `?sfx=synth` profile. Compressed assets use their SDK codec separately;
-they are not canonical-bank sample-parity evidence. Browser immutable PCM
+are the `?sfx=synth` profile. The complete authored catalogue in
+`audio/everglade-pcm-assets.coax` preserves all 153 Ogg candidates. Its 32
+required APC1 companions bind exact source and finite PCM bytes/SHA/shape;
+missing or corrupt required data refuses without SDK fallback. The other
+121 retain SDK decoding after complete metadata/shape admission. Unlisted
+safe names keep their metadata-admitted SDK path. This does not substitute
+synth sounds or erase the recorded original codec failures. The exact
+versioned format and APIs are in `audio/host-pcm-asset.md`. Browser immutable PCM
 has 128 allocation tickets and 8,388,608 binary32 words (32 MiB); allocation
 refusal cannot publish a partial asset. Pre-contract faces retain the
 existing Web Audio graph. Its independent retained observations are not a
@@ -430,6 +439,17 @@ decoder reservation. Validate observed 48 kHz frame/channel shape against
 that plan before publishing PCM; codec refusal publishes no prefix. The
 exact supported framing profile is documented in `audio/host-opus.md`.
 Its metadata gate is separate from actual codec-output conformance.
+The browser now accepts raw source descriptors at its v1 audio boundary.
+`audio-source.coax` admits streamed application-owned copies before retention;
+each encoded input, coded decoder extent, transfer and retained Worklet plane
+has a distinct shared memory ticket before allocation. The actual SDK output
+must pass `hpo_output` before copying. Source plans precede SDK decode, and
+required companions execute the same Coax reader in the Worklet. Dynamic
+directory descriptors are transient, preventing an ever-growing failed-name
+cache. Retiring an engine aborts its concrete readers, waits for owned SDK
+decode completion and Worklet cleanup acknowledgment, releases all PCM
+ownership and closes that concrete context before replacement. SDK hidden
+workspace/platform buffers remain separate from measured application copies.
 
 ## Conformance and the desktop default
 

@@ -1,0 +1,23 @@
+// Real reactor preflight and exact companion output; unchanged SDK codec observations are reused.
+#load "../../coax/web/wasm-chrome.coax";
+#load "../audio/everglade-pcm-assets.coax";
+#load "audio-opus-conformance.coax";
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])!=5 {tool_errln("usage: check-browser-opus LOCAL_URL REPO_ROOT PICKED_BROWSER EXTRA_BROWSER OUTPUT.json");return 2;}
+ c:[1]Cdp;if !cdp_launch(c[..],160,90,"coax-authored-opus-") {return 1;}defer {cdp_close(c[..]);}
+ js:[8192]u8;o:[1]Jo;jo_start(o[..],js[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],args_at(a[..],0));jo_end(o[..]);nav:=cdp_call(c[..],"Page.navigate",jo_text(o[..]),CDP_CALL_MS);
+ glue:[65536]u8;n:=fs_read(WC_HOST_FILE,glue[..]);if n<0||wc_eval(c[..],cast(string)glue[0..<n])!="ready" {return 1;}n=fs_read("aethyr/host/tests/audio-opus.js",glue[..]);if n<0||wc_eval(c[..],cast(string)glue[0..<n])!="ready"||wc_eval(c[..],"hostOpusFixture.open()")!="true" {return 1;}
+ raw:[8388608]u8;expected:[8388608]u8;source:[8388608]u8;packed:[1048576]u8;paths:[3][4096]u8;text:[65536]u8;filename:[256]u8;rows:[6]int;
+ for asset:HPC_EVERGLADE_ASSETS {
+  jo_start(o[..],filename[..]);jo_put(o[..],"apps/openagents-web");jo_put(o[..],asset.source_url);sn:=fs_read(fs_join(args_at(a[..],1),jo_text(o[..]),paths[0][..]),source[..]);if sn<1||!wc_file(c[..],"input.ogg",cast(string)source[0..<sn]) {return 1;}
+  if asset.canonical {jo_start(o[..],filename[..]);jo_put(o[..],"apps/openagents-web");jo_put(o[..],asset.companion_url);pn:=fs_read(fs_join(args_at(a[..],1),jo_text(o[..]),paths[0][..]),packed[..]);if pn<1||!wc_file(c[..],"input.apc",cast(string)packed[0..<pn]) {return 1;}}
+  jo_start(o[..],js[..]);jo_put(o[..],"hostOpusFixture.prepare(");jo_str(o[..],asset.name);jo_put(o[..],")");v:=cdp_evaluate(c[..],jo_text(o[..]));if v<0 {tool_errln(cdp_error(c[..]));return 1;}d:=cdp_doc(c[..]);p:=jv_get(d,v,"plan");rows[0]+=1;
+  if jv_int(d,jv_get(d,p,"frames"),-1)!=asset.frames||jv_int(d,jv_get(d,p,"channels"),-1)!=asset.channels||jv_int(d,jv_get(d,p,"words"),-1)!=asset.frames*asset.channels {rows[4]+=1;}
+  if !asset.canonical {rows[2]+=1;continue;}rows[1]+=1;bytes:=asset.frames*asset.channels*4;
+  jo_start(o[..],filename[..]);jo_put(o[..],asset.name);jo_put(o[..],".f32");en:=fs_read(fs_join(args_at(a[..],2),jo_text(o[..]),paths[1][..]),expected[..]);if en<0 {en=fs_read(fs_join(args_at(a[..],3),jo_text(o[..]),paths[1][..]),expected[..]);}if en!=bytes {return 1;}
+  at:=0;while at<bytes {count:=ifx bytes-at>32768 then 32768 else bytes-at;jo_start(o[..],js[..]);jo_put(o[..],"hostOpusFixture.read(");jo_int(o[..],at);jo_put(o[..],",");jo_int(o[..],count);jo_put(o[..],")");v=cdp_evaluate(c[..],jo_text(o[..]));if v<0 {return 1;}nn:=jv_str(cdp_doc(c[..]),v,text[..]);if nn<0||b64_decode(cast(string)text[0..<nn],raw[at..<at+count])!=count {return 1;}at+=count;}
+  for byte,i:raw[0..<bytes] {if byte!=expected[i] {rows[3]+=1;}}
+ }
+ v:=cdp_evaluate(c[..],"hostOpusFixture.close()");if v<0 {return 1;}rows[5]=jv_int(cdp_doc(c[..]),v,-1);
+ report:[4096]u8;jo_start(o[..],report[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.host.authored-opus.v1");jo_key(o[..],"rows");jo_arr(o[..]);for value:rows {jo_int(o[..],value);}jo_end(o[..]);jo_key(o[..],"passed");jo_bool(o[..],haoc_decode(rows[..]));jo_end(o[..]);if o[0].bad||!fs_write(args_at(a[..],4),jo_text(o[..])) {return 1;}print("Actual browser authored source/companion boundary: %.\n",haoc_decode(rows[..]));return ifx haoc_decode(rows[..]) then 0 else 1;
+}

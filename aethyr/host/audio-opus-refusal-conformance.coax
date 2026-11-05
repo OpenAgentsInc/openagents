@@ -1,0 +1,11 @@
+#authority;
+#test "audio admission faults publish no PCM and late SDK ownership lasts through retirement" {
+ q:=[24]int.[-1,8388608,0,1,0,-1,0,0,-1,0,0,-1,0,0,4,2,1,1,0,-1,0,0,0,1];#assert haof_accept(q[..])&&!haof_accept(q[0..<23]);extra:[25]int;#assert !haof_accept(extra[..]);
+ for i:0..<24 {if i==16||i==17 {continue;}q[i]+=1;#assert !haof_accept(q[..]);q[i]-=1;}
+ q[16]=0;q[17]=0;#assert !haof_accept(q[..]);q[16]=8388608;q[17]=8388608;#assert haof_accept(q[..]);q[16]+=1;q[17]+=1;#assert !haof_accept(q[..]);q[16]=1;q[17]=2;#assert !haof_accept(q[..]);
+}
+haof_accept :: (q:[]int)->bool #export_c {
+ if q.count!=24 {return false;}expected:=[16]int.[-1,8388608,0,1,0,-1,0,0,-1,0,0,-1,0,0,4,2];
+ for value,i:expected {if q[i]!=value {return false;}}for value,i:[6]int.[0,-1,0,0,0,1] {if q[18+i]!=value {return false;}}
+ held:=q[16];if q[17]!=held {return false;}return held>0&&held<=8388608;
+}

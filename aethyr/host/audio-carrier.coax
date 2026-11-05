@@ -2,3 +2,5 @@
 #load "../audio/host-pcm.coax";
 #load "../audio/host-wav.coax";
 #load "audio-memory.coax";
+#load "audio-source.coax";
+#load "../audio/everglade-pcm-assets.coax";

@@ -28,6 +28,24 @@ export class AudioBridge {
     try{new Uint8Array(this.memory.buffer,this.x.audio_asset_ptr(input),bytes.length).set(bytes);if(!this.x.audio_prepare_wav(input,bytes.length))throw new AudioRefusal('Coax refused canonical WAV plan');return {channels:this.x.audio_wav_channels(),frames:Number(this.x.audio_wav_frames()),words:Number(this.x.audio_info(6))};}
     finally{this.x.audio_release(input);}
   }
+  asset(name){const n=this.line(name);if(n<0||!this.x.audio_select(n))throw new AudioRefusal('Coax refused audio asset name');
+    const text=(p,n)=>{const bytes=new Uint8Array(this.memory.buffer,p,n);return this.decoder?this.decoder.decode(bytes):String.fromCharCode(...bytes);};return {pinned:!!this.x.audio_descriptor(0),canonical:!!this.x.audio_descriptor(1),bytes:Number(this.x.audio_descriptor(2)),frames:Number(this.x.audio_descriptor(3)),channels:Number(this.x.audio_descriptor(4)),companionBytes:Number(this.x.audio_descriptor(5)),url:text(this.x.audio_source_url_ptr(),this.x.audio_source_url_bytes()),companionURL:text(this.x.audio_companion_url_ptr(),this.x.audio_companion_url_bytes())};}
+  sourceOffer(current,incoming,limit){return Number(this.x.audio_source_offer(BigInt(current),BigInt(incoming),BigInt(limit)));}
+  planOpus(name,bytes){
+    this.asset(name);const input=this.x.audio_alloc(BigInt(Math.ceil(bytes.length/4)));if(input<0)throw new AudioRefusal('Coax refused Opus plan storage');
+    try{new Uint8Array(this.memory.buffer,this.x.audio_asset_ptr(input),bytes.length).set(bytes);if(!this.x.audio_prepare_opus(input,bytes.length))throw new AudioRefusal('Coax refused Opus source identity or shape');return {frames:Number(this.x.audio_opus_info(0)),channels:Number(this.x.audio_opus_info(1)),words:Number(this.x.audio_opus_info(2)),decodeFrames:Number(this.x.audio_opus_info(3)),decodeWords:Number(this.x.audio_opus_info(4))};}
+    finally{this.x.audio_release(input);}
+  }
+  outputMatches(buffer){return !!this.x.audio_output_matches(BigInt(buffer.length),BigInt(buffer.numberOfChannels),buffer.sampleRate);}
+  installPcm(name,source,companion,expected,nameBytes=name){
+    if(this.assets.has(name))return this.assets.get(name).id;this.asset(nameBytes);let input=-1,packed=-1,output=-1;
+    try{input=this.x.audio_alloc(BigInt(Math.ceil(source.length/4)));packed=this.x.audio_alloc(BigInt(Math.ceil(companion.length/4)));if(input<0||packed<0)throw new AudioRefusal('Coax refused companion input storage');
+      new Uint8Array(this.memory.buffer,this.x.audio_asset_ptr(input),source.length).set(source);new Uint8Array(this.memory.buffer,this.x.audio_asset_ptr(packed),companion.length).set(companion);
+      if(!this.x.audio_prepare_opus(input,source.length)||Number(this.x.audio_opus_info(0))!==expected.frames||Number(this.x.audio_opus_info(1))!==expected.channels||Number(this.x.audio_opus_info(2))!==expected.words)throw new AudioRefusal('Coax refused companion source plan');
+      output=this.x.audio_decode_pcm(input,source.length,packed,companion.length);if(output<0)throw new AudioRefusal('Coax refused complete PCM companion');this.assets.set(name,{id:output,channels:expected.channels});return output;
+    }catch(error){if(output>=0)this.x.audio_release(output);throw error;}
+    finally{if(input>=0)this.x.audio_release(input);if(packed>=0)this.x.audio_release(packed);}
+  }
   installWav(name,bytes,expected){
     if(this.assets.has(name))return this.assets.get(name).id;
     const input=this.x.audio_alloc(BigInt(Math.ceil(bytes.length/4)));if(input<0)throw new AudioRefusal('Coax refused WAV input storage');let output=-1;

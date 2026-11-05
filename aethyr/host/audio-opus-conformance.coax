@@ -1,0 +1,21 @@
+// Actual browser/native observations of the versioned authored audio boundary.
+#authority;
+#test "authored decode receipt requires every identity exact companion bytes and zero cleanup" {
+ q:=[6]int.[153,32,121,0,0,0];#assert haoc_decode(q[..])&&!haoc_decode(q[0..<5]);extra:[7]int;#assert !haoc_decode(extra[..]);
+ for i:0..<6 {q[i]+=1;#assert !haoc_decode(q[..]);q[i]-=1;}
+}
+#test "ordinary demand receipt retains the complete real offer set under unchanged PCM bounds" {
+ q:=[10]int.[122,7739161,7739161,0,0,0,0,66,0,0];#assert haoc_demand(q[..])&&!haoc_demand(q[0..<9]);extra:[11]int;#assert !haoc_demand(extra[..]);
+ for i:0..<10 {q[i]+=1;#assert !haoc_demand(q[..]);q[i]-=1;}
+}
+#test "actual audio clock advances holds while suspended and closes both owners" {
+ q:=[9]int.[1024,8,2048,16,2048,16,0,0,1];#assert haoc_clock(q[..])&&!haoc_clock(q[0..<8]);extra:[10]int;#assert !haoc_clock(extra[..]);
+ q[0]=0;#assert !haoc_clock(q[..]);q[0]=1024;q[1]=0;#assert !haoc_clock(q[..]);q[1]=8;
+ q[2]=1023;q[4]=1023;#assert !haoc_clock(q[..]);q[2]=2048;q[4]=2048;q[3]=7;q[5]=7;#assert !haoc_clock(q[..]);q[3]=16;q[5]=16;
+ for i:4..<9 {q[i]+=1;#assert !haoc_clock(q[..]);q[i]-=1;}
+ q[0]=2048;q[1]=16;#assert haoc_clock(q[..]);
+ for i:0..<6 {q[i]=1;}#assert haoc_clock(q[..]);
+}
+haoc_decode :: (q:[]int)->bool #export_c {if q.count!=6 {return false;}expected:=[6]int.[153,32,121,0,0,0];for value,i:expected {if q[i]!=value {return false;}}return true;}
+haoc_demand :: (q:[]int)->bool #export_c {if q.count!=10 {return false;}expected:=[10]int.[122,7739161,7739161,0,0,0,0,66,0,0];for value,i:expected {if q[i]!=value {return false;}}return true;}
+haoc_clock :: (q:[]int)->bool #export_c {return q.count==9&&q[0]>0&&q[1]>0&&q[2]>=q[0]&&q[3]>=q[1]&&q[4]==q[2]&&q[5]==q[3]&&q[6]==0&&q[7]==0&&q[8]==1;}

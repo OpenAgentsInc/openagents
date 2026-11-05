@@ -33,6 +33,12 @@ exact versioned PCM companions, while 121 retain admitted SDK decoding.
 Format/catalogue qualification and aggregate bank bounds are complete.
 Ordinary browser/Linux/Metal adoption, default demand and device lifecycle
 remain separate exits, alongside current primary and graphics admission.
+The subsequent [browser authored-audio adoption](browser-opus.md) now
+passes actual source/preflight, exact companions, complete frozen demand,
+owned decode retirement and real muted host replacement. Its direct default
+rendered cue comparison passes all 262,144 samples at unchanged 2^-20.
+These small SDK components retain their exact original-compiler/source joins;
+ordinary full host/default admission remains separate.
 
 ## Qualified sections
 
