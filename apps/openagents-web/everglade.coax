@@ -294,6 +294,7 @@ WATER_HITS :: 8;
 RANGER_NAME :: "player/male-ranger";   // its catalog line (C) in the pack
 MSG_PACK :: 605;          // the host's pack progress: "LOADED TOTAL"
 MSG_FACTS :: 600;         // the host's page facts, a line each (now=, player=)
+MSG_NET :: 612;           // the host's network: "1" back online, "0" offline (#12856)
 ACT_PLAYER :: 5;          // host.js: keep the outbox as the browser's playtest player
 OUTBOX :: 1024;
 TALK_NEAR :: 2.8;         // metres: near enough to talk
@@ -1077,6 +1078,9 @@ everglade_message :: (s: [] Everglade, kind: int, text: string) #export_c {
   // isn't reported, since the host says no focus to end it (everglade_blur releases the inputs itself)
   if kind == 601 { _ := net_life(s, LC_HIDDEN); }
   if kind == 602 { _ := net_life(s, LC_SHOWN); }
+  // back online (host.js 612 "1"): a socket from before the change is likely dead; replace it now rather
+  // than wait NET_SILENT_MS to find out. Offline ("0") changes nothing: the socket's close says it.
+  if kind == MSG_NET && text == "1" { _ := net_life(s, LC_NET); }
   if fork_message(s, kind, text) { return; }
   if everglade_voice_message(s, kind, text) { return; }
   if kind == MSG_TEXT { talk_typed(s, text); return; }

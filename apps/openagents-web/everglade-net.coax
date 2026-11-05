@@ -517,7 +517,9 @@ net_life :: (s: [] Everglade, kind: int) -> LifeActions {
   if !net_on(s) { return LifeActions.{}; }
   n := net_of(s);
   a := life_event(n[0].life[..], kind, n[0].mono * WIRE_HZ / 1000, 0);
-  if (a.does & LC_FULL_STATE) != 0 && n[0].sock >= 0 && (n[0].state == NET_OPEN || n[0].state == NET_OPENING) && !n[0].stale {
+  // a long time away (LC_FULL_STATE) or a network change (LC_NEW_SOCKET, LC_NET): a new socket now, the
+  // whole state on the rejoin
+  if (a.does & (LC_FULL_STATE | LC_NEW_SOCKET)) != 0 && n[0].sock >= 0 && (n[0].state == NET_OPEN || n[0].state == NET_OPENING) && !n[0].stale {
     _ := pipe_close(n[0].pipe[..], n[0].sock);
     net_down(n);
     n[0].retry = 0;   // at once: the tab is back
@@ -2750,6 +2752,26 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   na[0].ticket_n = net_copy(na[0].ticket[..], "tk2");
   t += 20; net_step(a[..], t, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
   #assert na[0].state == NET_OPENING && na[0].pipe[0].n >= 1 && na[0].pipe[0].op[0] == PIPE_OPEN;
+}
+#test "net: back online (host.js 612), the page replaces its socket at once and rejoins, unsaid (#12856)" {
+  a: [1] Everglade; na: [1] EgNet;
+  #assert net_test_page(a[..], na[..], 0, "pa", 100);
+  #assert net_test_hear(a[..], 0, "y 0 1 5000100") && net_live(a[..]);
+  net_step(a[..], 200, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  pipe_drained(na[0].pipe[..]);
+  l := net_life(a[..], LC_NET);
+  #assert (l.does & LC_NEW_SOCKET) != 0 && na[0].state == NET_DOWN && !na[0].lost && na[0].want;
+  closed := false;
+  for k: 0..<na[0].pipe[0].n { if na[0].pipe[0].op[k] == PIPE_CLOSE && na[0].pipe[0].id[k] == 0 { closed = true; } }
+  #assert closed;
+  pipe_drained(na[0].pipe[..]);
+  na[0].ticket_n = net_copy(na[0].ticket[..], "tk2");
+  net_step(a[..], 220, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  #assert na[0].state == NET_OPENING && na[0].pipe[0].op[0] == PIPE_OPEN;
+  // while no socket is open, a second change does nothing more
+  pipe_drained(na[0].pipe[..]);
+  _ := net_life(a[..], LC_NET);
+  for k: 0..<na[0].pipe[0].n { #assert na[0].pipe[0].op[k] != PIPE_CLOSE; }
 }
 #test "net: a room lost under you is said, and so is getting back; you stay in the room's game meanwhile, and nothing goes out" {
   a: [1] Everglade; na: [1] EgNet;

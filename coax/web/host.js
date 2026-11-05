@@ -92,7 +92,8 @@
 //       ?clock=T, T from 0 to 1, pins it to fixed:T for shots; ?clock=cycle or real sets it), day (the visitor's
 //       local time of day, 0 midnight to 1)
 //   601 hidden, 602 shown again, 603 the page is being left (the app's beacon goes in that turn),
-//   604 an error the page raised: message, file and line, a line each
+//   604 an error the page raised: message, file and line, a line each,
+//   612 the network: "1" back online (a socket from before is likely dead), "0" offline (#12856)
 // and, on a page with data-drops (drop.js, /projects): files dropped on the page or picked go to
 // /api/drops, private to who dropped them. Message 40 is their state, a line each: "S|signed|signer|
 // dragging|note" (signer: the browser has a Nostr signer), then "F|name|kind|bytes|permille|status|note"
@@ -773,6 +774,9 @@ function pageFacts() {
     .map(([k, v]) => `${k}=${clean(v)}`).join("\n");
 }
 addEventListener("visibilitychange", () => send(document.hidden ? HIDDEN_KIND : SHOWN_KIND));
+const NET_KIND = 612;
+addEventListener("online", () => send(NET_KIND, "1"));
+addEventListener("offline", () => send(NET_KIND, "0"));
 let leaving = false;   // the page is going: a device lost now is not replaced
 addEventListener("pagehide", () => { leaving = true;send(LEAVE_KIND); httpRequests.reset(); });
 addEventListener("pageshow", () => { leaving = false; });
