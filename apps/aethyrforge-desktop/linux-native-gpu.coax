@@ -1,0 +1,4 @@
+// The same Bitcoin Lab shaders, with far-plane background depth for the
+// existing native pass host (the browser clears its depth separately).
+#load "../openagents-web/gpu/bitcoin-lab.coax";
+fgn_bg_vs :: (i:u32,j:u32)->V4 {p:=bitcoin_lab_bg_vs(i,j);p.z=1.0f32;return p;}

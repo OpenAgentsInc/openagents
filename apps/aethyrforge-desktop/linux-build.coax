@@ -1,0 +1,105 @@
+// Native Linux build decisions. Nix supplies C SDK headers/libraries only;
+// application, Coder, HUD and shader arithmetic are Coax.
+fgl_copy :: (from:string,to:string,deadline:int)->bool {
+  b:[4096]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_put(o[..],to);jo_put(o[..],".new");
+  out:[65536]u8;cmd:=[3]string.["cp",from,jo_text(o[..])];return af_run(cmd[..],out[..],deadline)>=0 && fs_rename(jo_text(o[..]),to);
+}
+fgn_words :: (h:int,text:string)->bool {
+  start:=0;for i:0..<text.count+1 {if i==text.count || text[i]==' ' || text[i]=='\n' || text[i]=='\t' {if i>start && !proc_arg(h,text[start..<i]) {return false;}start=i+1;}}return true;
+}
+fgn_cmd :: (args:[]string,deadline:int)->bool {out:[16777216]u8;return af_run(args,out[..],deadline)>=0;}
+fgn_emit :: (args:[]string,path:string,deadline:int)->bool {
+  // Generated constant tables exceed proc_run's 64 KiB line transport.
+  // Keep complete bytes here; never compile a cut generated translation unit.
+  h:=af_start(args);if h<0 {return false;}out:[16777216]u8;line:[1048576]u8;n:=0;ok:=true;
+  while proc_now_ms()<deadline {
+    k:=proc_line(h,1000,line[..]);if k==PROC_TIMEOUT {continue;}if k==PROC_EOF {break;}
+    if k<0 || n+k+1>out.count {ok=false;break;}
+    for i:0..<k {out[n]=line[i];n+=1;}out[n]='\n';n+=1;
+  }
+  status:=proc_wait(h,proc_left(deadline,proc_now_ms()));
+  if !ok || status!=0 {err:[65536]u8;tool_errln(proc_stderr(h,err[..]));}
+  r:=proc_release(h);return ok && status==0 && fs_write(path,cast(string)out[0..<n]);
+}
+fgl_build :: (a:[]Args)->int {
+  if args_count(a)<1 || args_count(a)>2 || (args_count(a)==2 && args_at(a,1)!="--open") {tool_errln("usage: apps/aethyrforge-desktop/build.sh [--open]");return 2;}
+  root:=args_at(a,0);env:[4096]u8;deadline:=proc_now_ms()+840000;p:[1]AfPaths;
+  if proc_getenv("FGL_NATIVE_BUILD",env[..])!="1" {
+    h:=proc_new();for arg:[14]string.["nix-shell","-p","gcc","pkg-config","libdrm","vulkan-headers","vulkan-loader","vulkan-validation-layers","wayland","wayland-scanner","wayland-protocols","--run","exec \"$FGL_BUILD_ENTRY\" ${FGL_OPEN:+\"$FGL_OPEN\"}",""] {if arg!="" {ok:=proc_arg(h,arg);}}
+    b:[8192]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_put(o[..],"FGL_BUILD_ENTRY=");jo_put(o[..],af_path(p[..],root,"apps/aethyrforge-desktop/build.sh"));ok:=proc_env(h,jo_text(o[..]));
+    ok=ok && proc_env(h,"FGL_NATIVE_BUILD=1");if args_count(a)==2 {ok=ok && proc_env(h,"FGL_OPEN=--open");}else {ok=ok && proc_unset(h,"FGL_OPEN");}
+    if !ok || proc_start(h)!=0 {r:=proc_release(h);return 1;}return ifx af_finish(h,deadline) then 0 else 1;
+  }
+  here:=af_path(p[..],root,"apps/aethyrforge-desktop");work:=af_path(p[..],here,"build/native-linux");spec:=af_path(p[..],work,"spec");wl:=af_path(p[..],work,"wl");
+  if !fs_mkdir(spec) || !fs_mkdir(wl) {return 1;}out:[16777216]u8;
+  print("Building native Aethyrforge: Coax Coder + Bitcoin Lab, Wayland + Vulkan…\n");
+  coax:=af_path(p[..],root,"coax/bin/coax");header:=af_path(p[..],work,"linux-native.h");
+  emit:=[6]string.[coax,"c",af_path(p[..],here,"linux-native.coax"),"--library","--header",header];
+  if !fgn_emit(emit[..],af_path(p[..],work,"linux-native.c"),deadline) {return 1;}n:=0;
+  for name:[3]string.["bg","scene","fx"] {
+    stem:[64]u8;buf:[128]u8;v:[1]Jo;jo_start(v[..],stem[..]);jo_put(v[..],name);jo_put(v[..],"_fs.spv");spv:=af_path(p[..],spec,jo_text(v[..]));
+    jo_start(v[..],buf[..]);jo_put(v[..],ifx name=="bg" then "fgn_" else "bitcoin_lab_");jo_put(v[..],name);jo_put(v[..],"_vs");vs:[128]u8;vn:=v[0].n;for i:0..<vn {vs[i]=buf[i];}
+    jo_start(v[..],buf[..]);jo_put(v[..],"bitcoin_lab_");jo_put(v[..],name);jo_put(v[..],"_fs");
+    cmd:=[9]string.[coax,"spirv",af_path(p[..],here,"linux-native-gpu.coax"),"--vertex",cast(string)vs[0..<vn],"--fragment",jo_text(v[..]),"-o",spv];
+    err:[65536]u8;r:=proc_run(cmd[..],60000,out[..],err[..]);if r.started!=0 || r.status!=0 || r.timed_out {tool_errln(cast(string)err[0..<r.err_n]);return 1;}
+    path:[4096]u8;o:[1]Jo;jo_start(o[..],path[..]);jo_put(o[..],spv);jo_put(o[..],".bindings");if !fs_write(jo_text(o[..]),cast(string)err[0..<r.err_n]) {return 1;}
+  }
+  if !fs_write(af_path(p[..],spec,"spec.txt"),"size 1440 900\nlet hud 0\nlet all 1\nbuffer u u.bin\nbuffer mesh s0.bin\nbuffer hud hud.bin\ndraws draws.bin $all\ndepth d frame frame\npass bg_fs.spv bg_vs bg_fs 1 d 0 0 3 always\npass scene_fs.spv scene_vs scene_fs 1 d 0 0 draws keep\npass fx_fs.spv fx_vs fx_fs 1 - 0 0 $hud keep blend=max alpha=max vertices=hud:12\n") {return 1;}
+  zeros:[16]u8;if !fs_write(af_path(p[..],spec,"draws.bin"),cast(string)zeros[..]) {return 1;}
+  cmd:=[3]string.["pkg-config","--variable=pkgdatadir","wayland-protocols"];n=af_run(cmd[..],out[..],deadline);if n<1 {return 1;}
+  while n>0 && (out[n-1]=='\n' || out[n-1]==' ') {n-=1;}protocolbuf:[4096]u8;for i:0..<n {protocolbuf[i]=out[i];}protocol:=cast(string)protocolbuf[0..<n];
+  for name,i:[2]string.["xdg-shell","xdg-decoration-unstable-v1"] {
+    sub:=ifx i==0 then "stable/xdg-shell/xdg-shell.xml" else "unstable/xdg-decoration/xdg-decoration-unstable-v1.xml";
+    xml:=af_path(p[..],protocol,sub);
+    for kind,j:[2]string.["client-header","private-code"] {
+      path:[128]u8;o:[1]Jo;jo_start(o[..],path[..]);jo_put(o[..],name);jo_put(o[..],ifx j==0 then "-client-protocol.h" else "-protocol.c");
+      scan:=[4]string.["wayland-scanner",kind,xml,af_path(p[..],wl,jo_text(o[..]))];if !fgn_cmd(scan[..],deadline) {return 1;}
+    }
+  }
+  // Separate argv entries: pkg-config takes package names, not shell syntax.
+  pcl:=[5]string.["pkg-config","--cflags","--libs","libdrm","wayland-client"];n=af_run(pcl[..],out[..],deadline);if n<0 {return 1;}
+  flagsbuf:[8192]u8;for i:0..<n {flagsbuf[i]=out[i];}sdkflags:=cast(string)flagsbuf[0..<n];
+  h:=proc_new();for arg:[14]string.["cc","-std=gnu11","-O2","-no-pie","-ffp-contract=off","-fno-fast-math","-ffunction-sections","-fdata-sections","-Wl,--gc-sections","-w","-I",work,"-I",wl] {ok:=proc_arg(h,arg);}
+  for inc:[3]string.["verse/native","verse/gpu","verse/kms"] {ok:=proc_arg(h,"-I") && proc_arg(h,af_path(p[..],root,inc));}
+  for src:[14]string.["apps/aethyrforge-desktop/linux-native-face.c","verse/native/realm-host.c","verse/gpu/vk-realm.c","verse/gpu/vk-spec.c","verse/gpu/vks.c","verse/gpu/vkc.c","verse/gpu/vkp.c","verse/gpu/vkd.c","coax/platform/process-native.c","coax/platform/store-file-native.c","os/verse-panel.coax","os/verse-hands.coax","linux-native.c",""] {
+    if src=="" {continue;}path:=af_path(p[..],root,src);
+    if src=="linux-native.c" {path=af_path(p[..],work,src);}
+    if src=="os/verse-panel.coax" || src=="os/verse-hands.coax" {
+      base:=ifx src=="os/verse-panel.coax" then "verse-panel" else "verse-hands";
+      b:[128]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_put(o[..],base);jo_put(o[..],".h");hdr:=af_path(p[..],work,jo_text(o[..]));
+      em:=[6]string.[coax,"c",path,"--library","--header",hdr];nn:=af_run(em[..],out[..],deadline);if nn<0 {r:=proc_release(h);return 1;}
+      jo_start(o[..],b[..]);jo_put(o[..],base);jo_put(o[..],".c");path=af_path(p[..],work,jo_text(o[..]));if !fs_write(path,cast(string)out[0..<nn]) {r:=proc_release(h);return 1;}
+    }
+    ok:=proc_arg(h,path);
+  }
+  for name:[2]string.["xdg-shell-protocol.c","xdg-decoration-unstable-v1-protocol.c"] {ok:=proc_arg(h,af_path(p[..],wl,name));}
+  ok:=fgn_words(h,sdkflags);for arg:[6]string.["-lvulkan","-lpthread","-lm","-o",af_path(p[..],work,"aethyrforge"),""] {if arg!="" {ok=ok && proc_arg(h,arg);}}
+  if !ok || proc_start(h)!=0 {r:=proc_release(h);return 1;}if !af_finish(h,deadline) {return 1;}
+  coderbuild:=[3]string.[af_path(p[..],root,"coax/web/tool.sh"),af_path(p[..],root,"coder/tui/coder.coax"),"--version"];if !fgn_cmd(coderbuild[..],deadline) {return 1;}
+  hashcmd:=[4]string.["shasum","-a","256",coax];if af_run(hashcmd[..],out[..],deadline)<64 {return 1;}
+  cachebuf:[256]u8;o:[1]Jo;jo_start(o[..],cachebuf[..]);jo_put(o[..],"coax/web/build/tools/coder-");jo_put(o[..],cast(string)out[0..<64]);codercache:=af_path(p[..],root,jo_text(o[..]));
+  home:=proc_getenv("HOME",env[..]);base:=af_path(p[..],home,".openagents");runtime:=af_path(p[..],base,"aethyrforge/native-linux");bin:=af_path(p[..],base,"bin");workspace:=af_path(p[..],base,"aethyrforge/workspace");
+  if !fs_mkdir(runtime) || !fs_mkdir(bin) || !fs_mkdir(workspace) {return 1;}
+  if !fgl_copy(af_path(p[..],work,"aethyrforge"),af_path(p[..],bin,"aethyrforge-native"),deadline) || !fgl_copy(codercache,af_path(p[..],bin,"aethyrforge-coder"),deadline) {return 1;}
+  copy:=[4]string.["cp","-a",af_path(p[..],spec,"."),runtime];if !fgn_cmd(copy[..],deadline) {return 1;}
+  if !fgl_copy(af_path(p[..],here,"linux-scene-context.txt"),af_path(p[..],runtime,"bitcoin-lab-context.txt"),deadline) {return 1;}
+  launcher:=af_path(p[..],bin,"aethyrforge");temporary:=af_path(p[..],bin,"aethyrforge.new");
+  if !fs_write(temporary,"#!/bin/sh\n# Firm reason: 5 (thin wrapper around the native Coax Wayland/Vulkan image).\nexec \"$HOME/.openagents/bin/aethyrforge-native\" \"$HOME/.openagents/aethyrforge/native-linux\" - --window --size 1440x900 --seconds inf \"$@\"\n") {return 1;}
+  mode:=[3]string.["chmod","755",temporary];if !fgn_cmd(mode[..],deadline) || !fs_rename(temporary,launcher) {return 1;}
+  unitdir:=af_path(p[..],home,".config/systemd/user");desktopdir:=af_path(p[..],home,".local/share/applications");
+  if !fs_mkdir(unitdir) || !fs_mkdir(desktopdir) {return 1;}
+  unit:[65536]u8;u:[1]Jo;jo_start(u[..],unit[..]);jo_put(u[..],"[Unit]\nDescription=Aethyrforge native desktop — Bitcoin Lab\n[Service]\nType=simple\nKillMode=control-group\nTimeoutStopSec=10\nExecStart=");jo_str(u[..],launcher);jo_put(u[..],"\n");
+  for key:[3]string.["WAYLAND_DISPLAY","XDG_RUNTIME_DIR","PATH"] {
+    valuebuf:[8192]u8;value:=proc_getenv(key,valuebuf[..]);if value=="" {continue;}
+    pair:[16384]u8;q:[1]Jo;jo_start(q[..],pair[..]);jo_put(q[..],key);jo_put(q[..],"=");jo_put(q[..],value);jo_put(u[..],"Environment=");jo_str(u[..],jo_text(q[..]));jo_put(u[..],"\n");
+  }
+  if fs_kind("/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json")==FS_FILE {jo_put(u[..],"Environment=VK_DRIVER_FILES=/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json\n");}
+  if u[0].bad || !fs_write(af_path(p[..],unitdir,"openagents-aethyrforge.service"),jo_text(u[..])) {return 1;}
+  if !fs_write(af_path(p[..],desktopdir,"openagents-aethyrforge.desktop"),"[Desktop Entry]\nType=Application\nName=Aethyrforge\nComment=Native Bitcoin Lab and Coax Coder\nExec=systemctl --user start openagents-aethyrforge.service\nTerminal=false\nCategories=Development;\n") {return 1;}
+  reload:=[3]string.["systemctl","--user","daemon-reload"];if !fgn_cmd(reload[..],deadline) {return 1;}
+  print("Installed native Wayland/Vulkan Aethyrforge at %\n",launcher);
+  if args_count(a)==2 {
+    run:=[4]string.["systemctl","--user","start","openagents-aethyrforge.service"];if !fgn_cmd(run[..],deadline) {return 1;}
+  }
+  return 0;
+}

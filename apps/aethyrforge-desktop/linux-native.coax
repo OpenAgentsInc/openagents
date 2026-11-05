@@ -1,0 +1,134 @@
+// Aethyrforge's native Linux model. The same Bitcoin Lab producer and desktop
+// Coder HUD run as ordinary Coax-generated C in the Wayland/Vulkan host.
+#load "linux-view.coax";
+#load "../openagents-web/bitcoin-lab.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/args.coax";
+FGN_VERTICES :: 144000;
+FGN_EPOCH :: "00000000000000000000000000000000";
+ForgeNative :: struct {
+  lab:[1]BitcoinLab;hud:[1]ForgeLinux;
+  initialized:bool;quit:bool;shift:bool;control:bool;coder:int=-1;last:int;ended:bool;
+  session:[128]u8;sn:int;workspace:[4096]u8;wn:int;image:[4096]u8;imn:int;engine:[16]u8;en:int;context:[4096]u8;cn:int;
+  inbox:[262144]u8;frame:int;px:f32;py:f32;
+}
+#test "native Aethyrforge releases walking when Return opens its shared composer" {
+  s:[1]ForgeNative;s[0].hud[0].ready=true;
+  #assert fgn_key(s[..],119,true,0);#assert s[0].lab[0].keys!=0;
+  #assert fgn_key(s[..],-2,true,0) && s[0].hud[0].opened && s[0].lab[0].keys==0;
+  #assert fgn_key(s[..],-2,false,0) && !s[0].hud[0].held;
+  #assert fgn_key(s[..],104,true,0) && cast(string)s[0].hud[0].draft[0..<s[0].hud[0].dn]=="h";
+  #assert fgn_key(s[..],-13,true,0) && fgn_key(s[..],-2,true,0);
+  #assert cast(string)s[0].hud[0].draft[0..<s[0].hud[0].dn]=="h\n";
+}
+#test "native Aethyrforge owns only valid sessions emitted by its child" {
+  s:[1]ForgeNative;fgn_event(s[..],"{\"kind\":\"session\",\"id\":\"owned_123\",\"engine\":\"echo\"}");
+  #assert cast(string)s[0].session[0..<s[0].sn]=="owned_123";
+  fgn_event(s[..],"{\"kind\":\"session\",\"id\":\"../bad\"}");
+  #assert cast(string)s[0].session[0..<s[0].sn]=="owned_123";
+}
+#test "native Aethyrforge reserves its composer and history without overwriting world vertices" {
+  v:[18*12]f32;for i:0..<18 {v[i*12]=700;v[i*12+1]=600;v[i*12+2]=cast(f32)i;}
+  for i:0..<6 {v[i*12]=100;}for i:12..<18 {v[i*12+1]=800;}
+  #assert fgn_crop(v[..],18,900,1)==6;
+  for i:0..<6 {#assert v[i*12+2]==cast(f32)(i+6);}
+}
+fgn_boot :: (s:[]ForgeNative) #export_c {
+  env:[4096]u8;home:=proc_getenv("HOME",env[..]);p:[4096]u8;
+  workspace:=proc_getenv("AETHYRFORGE_WORKSPACE",p[..]);if workspace=="" {workspace=fs_join(home,".openagents/aethyrforge/workspace",p[..]);}
+  s[0].wn=workspace.count;for i:0..<workspace.count {s[0].workspace[i]=workspace[i];}
+  image:=proc_getenv("AETHYRFORGE_CODER",p[..]);if image=="" {image=fs_join(home,".openagents/bin/aethyrforge-coder",p[..]);}
+  s[0].imn=image.count;for i:0..<image.count {s[0].image[i]=image[i];}
+  engine:=proc_getenv("AETHYRFORGE_ENGINE",p[..]);if engine!="echo" {engine="auto";}
+  s[0].en=engine.count;for i:0..<engine.count {s[0].engine[i]=engine[i];}
+  context:=fs_join(home,".openagents/aethyrforge/native-linux/bitcoin-lab-context.txt",p[..]);s[0].cn=context.count;for i:0..<context.count {s[0].context[i]=context[i];}
+  fgl_init(s[0].hud[..],FGN_EPOCH,cast(string)s[0].workspace[0..<s[0].wn],"Coder ready · Enter to compose",false,0);
+  s[0].initialized=true;
+}
+fgn_event :: (s:[]ForgeNative,line:string) {
+  fgl_event(s[0].hud[..],line);e:=s[0].hud[0].event[0];
+  if e.kind==1 {s[0].sn=e.sn;for i:0..<e.sn {s[0].session[i]=e.session[i];}}
+  if e.kind==7 {s[0].ended=true;}
+}
+fgn_stop :: (s:[]ForgeNative) #export_c {
+  if s[0].coder>=0 {r:=proc_release(s[0].coder);s[0].coder=-1;}
+  s[0].hud[0].busy=false;
+}
+fgn_launch :: (s:[]ForgeNative,text:string)->bool {
+  h:=proc_new();if h<0 {return false;}
+  ok:=proc_arg(h,cast(string)s[0].image[0..<s[0].imn]) && proc_arg(h,ifx s[0].sn==0 then "run" else "fork");
+  if s[0].sn>0 {ok=ok && proc_arg(h,cast(string)s[0].session[0..<s[0].sn]);}
+  ok=ok && proc_arg(h,text) && proc_arg(h,"--cwd") && proc_arg(h,cast(string)s[0].workspace[0..<s[0].wn]);
+  context:=cast(string)s[0].context[0..<s[0].cn];if fs_kind(context)==FS_FILE {ok=ok && proc_arg(h,"--context") && proc_arg(h,context);}
+  for i:0..<3 {value:=ifx i==1 then cast(string)s[0].engine[0..<s[0].en] else fc_launch_option(i);ok=ok && proc_arg(h,value);}
+  if !ok || proc_start(h)!=0 {r:=proc_release(h);return false;}
+  s[0].coder=h;s[0].ended=false;return true;
+}
+fgn_tick :: (s:[]ForgeNative) {
+  if s[0].hud[0].pending {
+    r:=fgl_request(cast(string)s[0].hud[0].request[0..<s[0].hud[0].request_n],FGN_EPOCH,s[0].last,s[0].coder>=0);
+    if r.ok {
+      s[0].last=r.ticket;
+      if r.op==1 {s[0].hud[0].busy=fgn_launch(s,cast(string)r.text[0..<r.n]);fgl_status(s[0].hud[..],ifx s[0].coder>=0 then "Coder is running" else "Coder could not start");}
+      else if r.op==2 {fgn_stop(s);fgn_event(s,"{\"kind\":\"end\",\"ending\":\"stopped\"}");}
+      else if r.op==3 {s[0].sn=0;}
+      else if r.op==4 {s[0].lab[0]=BitcoinLab.{};}
+      else if r.op==5 {s[0].quit=true;}
+    }
+    s[0].hud[0].pending=false;s[0].hud[0].request_n=0;
+  }
+  if s[0].coder<0 {return;}
+  line:[65536]u8;eof:=false;
+  for i:0..<16 {
+    n:=proc_line(s[0].coder,0,line[..]);if n==PROC_TIMEOUT {break;}if n==PROC_EOF {eof=true;break;}
+    if n<0 {fgn_stop(s);fgl_status(s[0].hud[..],"Coder output exceeded the bounded display transport");return;}
+    fgn_event(s,cast(string)line[0..<n]);
+  }
+  if eof && proc_wait(s[0].coder,0)!=PROC_RUNNING {
+    if !s[0].ended {fgn_event(s,"{\"kind\":\"end\",\"ending\":\"exited\"}");}
+    fgn_stop(s);
+  }
+  if s[0].coder>=0 {s[0].hud[0].busy=true;}
+}
+fgn_key :: (s:[]ForgeNative,key:int,down:bool,mods:int)->bool #export_c {
+  if key== -13 {s[0].shift=down;return true;}if key== -14 {s[0].control=down;return true;}
+  bits:=mods | (ifx s[0].shift then 1 else 0) | (ifx s[0].control then 2 else 0);
+  if key== -2 {
+    opened:=s[0].hud[0].opened;used:=fgl_key(s[0].hud[..],key,down,bits);
+    if !opened && s[0].hud[0].opened {lab_blur(s[0].lab[..]);}return used;
+  }
+  if s[0].hud[0].opened {
+    if down && key>=32 && key<=126 && !s[0].control {b:=[1]u8.[cast(u8)key];fgl_text(s[0].hud[..],cast(string)b[..]);return true;}
+    _:=fgl_key(s[0].hud[..],key,down,bits);return true;
+  }
+  return lab_key(s[0].lab[..],key,down,bits);
+}
+fgn_blur :: (s:[]ForgeNative) #export_c {s[0].hud[0].held=false;s[0].shift=false;s[0].control=false;lab_blur(s[0].lab[..]);}
+fgn_pointer :: (s:[]ForgeNative,x:f32,y:f32,phase:int,kind:int,id:int)->bool #export_c {
+  s[0].px=x;s[0].py=y;if s[0].hud[0].opened {return fgl_pointer(s[0].hud[..],x,y,phase);}
+  return lab_pointer(s[0].lab[..],x,y,phase,kind,id);
+}
+fgn_hover :: (s:[]ForgeNative,x:f32,y:f32) #export_c {s[0].px=x;s[0].py=y;}
+fgn_message :: (s:[]ForgeNative,kind:int,n:int) #export_c {
+  if n<0 || n>s[0].inbox.count {return;}
+  if kind==1 {fgl_text(s[0].hud[..],cast(string)s[0].inbox[0..<n]);return;}
+  if n<=256 {for i:0..<n {s[0].lab[0].inbox[i]=s[0].inbox[i];}lab_message(s[0].lab[..],kind,n);}
+}
+fgn_crop :: (out:[]f32,count:int,h:f32,d:f32)->int {
+  kept:=0;
+  for q:0..<count/6 {
+    left:f32=out[q*72];bottom:f32=out[q*72+1];
+    for i:0..<6 {x:=out[q*72+i*12];y:=out[q*72+i*12+1];if x<left {left=x;}if y>bottom {bottom=y;}}
+    if bottom>h-140*d || (left<660*d && bottom>h-380*d) {continue;}
+    for i:0..<72 {out[kept*12+i]=out[q*72+i];}kept+=6;
+  }return kept;
+}
+fgn_frame :: (s:[]ForgeNative,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32)->int #export_c {
+  if !s[0].initialized {fgn_boot(s);}fgn_tick(s);
+  n:=lab_frame(s[0].lab[..],out,u,w,h,d,dt,false);s[0].hud[0].ready=lab_scene_ready(s[0].lab[..]);
+  if s[0].hud[0].opened {n=fgn_crop(out,n,h,d);}
+  overlay:[88]f32;extra:=fgl_frame(s[0].hud[..],out[n*12..<out.count],overlay[..],w,h,d,dt);n+=extra;
+  if s[0].hud[0].opened {p:=HdPen.{d=1,cyan=true,top=0,bottom=h,sans=false};n=hd_line(out,n,s[0].px-7,s[0].py,s[0].px+7,s[0].py,p,0,1);n=hd_line(out,n,s[0].px,s[0].py-7,s[0].px,s[0].py+7,p,0,1);}
+  s[0].frame+=1;return n;
+}

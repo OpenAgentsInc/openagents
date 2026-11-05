@@ -1,4 +1,61 @@
-# Aethyrforge for Mac (experimental)
+# Aethyrforge desktop (experimental)
+
+## Linux: native Wayland and Vulkan
+
+On Linux the same build command produces a native desktop executable with
+Bitcoin Lab loaded. Nix supplies the C SDKs; it does not rebuild the system.
+The window runs the existing Bitcoin Lab Coax producer, its Coax-generated
+SPIR-V, Aethyr's native Vulkan pass host and the shared desktop Coder HUD.
+There is no browser, page server or JavaScript in the Linux runtime.
+
+```sh
+apps/aethyrforge-desktop/build.sh --open
+# Later, use the Aethyrforge desktop launcher, or:
+~/.openagents/bin/aethyrforge
+```
+
+The build installs native images in `~/.openagents/bin/`, renderer files in
+`~/.openagents/aethyrforge/native-linux/`, and a desktop launcher backed by
+`openagents-aethyrforge.service`. Builds replace executable images atomically;
+an existing window can finish using its current image. The installed app runs
+independently of its source checkout. Existing general CLI installations,
+provider logins, models and Mac settings/worlds are preserved.
+
+Enter opens Coder and releases held walking keys. Enter sends; Shift-Enter
+adds a line; Escape closes the composer. Stop cancels this window's own Coder
+child. New starts a new conversation, Reload resets Bitcoin Lab, and Quit
+closes the app and its child. Subsequent turns fork the window's own durable
+Coder session. The default workspace is
+`~/.openagents/aethyrforge/workspace/`; `AETHYRFORGE_WORKSPACE` overrides it.
+Coder uses the existing automatic router/provider logins. No model or
+microphone starts when the window opens.
+
+This initial port uses the native host's existing US keyboard mapping and
+pointer input. Native clipboard/IME, microphone setup and Everglade's editing
+service have not been ported. Bitcoin Lab remains the recorded, validated
+regtest replay with selectable block slabs and transaction/output navigation;
+it does not connect to a live Bitcoin node. Its native renderer uses the
+existing legacy pass host, without claiming canonical renderer adoption.
+
+Focused checks:
+
+```sh
+coax/bin/coax test apps/aethyrforge-desktop/linux-native.coax --only 'native Aethyrforge'
+# A fresh directory isolates Coder's logs/router/memory from the owner's:
+CODER_HOME=/tmp/aethyrforge-coder-check AETHYRFORGE_ENGINE=echo \
+  coax/web/tool.sh apps/aethyrforge-desktop/linux-native-check.coax
+# Actual offscreen Vulkan; --keys opens the real Coax composer:
+~/.openagents/bin/aethyrforge-native ~/.openagents/aethyrforge/native-linux - \
+  --headless 90 --size 1440x900 --keys 2:-2:1,3:-2:0
+```
+
+The admission checks and zero-survivor mutation gate are in
+`linux-policy.coax`. The request envelope stays inside this process's Coax
+state; it is not a command endpoint. The native bridge does scalar ABI and
+window/GPU effects only. Application layout, draft state, input ownership,
+process launch/stop decisions and Coder event interpretation stay in Coax.
+
+## Mac: AppKit and Metal
 
 An AppKit shell around the website's Everglade 5e WebGPU engine in WKWebView,
 with its own local room, page server and local Parakeet voice service. Requires an Apple Silicon Mac running

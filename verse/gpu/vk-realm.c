@@ -79,6 +79,12 @@ static void vt_leave(int to) {
   vt_fd = -1;
 }
 static RealmHost H;
+// Optional native shell effects; ordinary realms keep the existing defaults.
+__attribute__((weak)) const char *coaxial_window_title(void);
+__attribute__((weak)) const char *coaxial_window_app_id(void);
+__attribute__((weak)) int coaxial_should_close(uint32_t state);
+__attribute__((weak)) void coaxial_close(uint32_t state);
+__attribute__((weak)) void coaxial_hover(uint32_t state,float x,float y);
 static volatile sig_atomic_t stopping;
 static void on_signal(int s) { (void)s; stopping = 1; }
 static double now_s(void) {
@@ -237,7 +243,7 @@ static int world_rect(int32_t c[8], uint32_t w, uint32_t h) {
 }
 // The pointer to the desk first, in the screen's pixels: 1 when the desk took it.
 static int pointer_to_desk(float sx, float sy, int phase) { return vkdesk_pointer(sx, sy, phase == 0 ? 1 : phase == 2 ? 0 : -1); }
-static void to_moved(void *user, float x, float y) { (void)user; touched = 1; vkdesk_pointer(x, y, -1); }
+static void to_moved(void *user, float x, float y) { (void)user; touched = 1; vkdesk_pointer(x, y, -1); if(coaxial_hover)coaxial_hover(H.state,window_p&&window_p->w?x*draw_w/window_p->w:x,window_p&&window_p->h?y*draw_h/window_p->h:y); }
 static int to_extra_button(void *user,float x,float y,uint32_t code,int pressed) {
   (void)user;touched=1;return vkdesk_button(x,y,code,pressed);
 }
@@ -497,7 +503,8 @@ int main(int argc, char **argv) {
   else if (windowed) {
     // the window's size, or the draw size, or 1600x900; the realm draws at the window's first size
     VkwTo wto = {to_pointer_window, to_wheel, NULL, to_moved, vkdesk_key,to_extra_button};
-    vkw_open(&v, &win, "Verse", w ? w : 1600, h ? h : 900, fullscreen, wto);
+    vkw_open(&v, &win, coaxial_window_title?coaxial_window_title():"Verse", w ? w : 1600, h ? h : 900, fullscreen, wto);
+    if(coaxial_window_app_id)xdg_toplevel_set_app_id(win.toplevel,coaxial_window_app_id());
     screen.period = win.period;
     vkp_open(&v, &p, win.vk_surface, (uint32_t)win.want_w, (uint32_t)win.want_h);
     if (!w) { w = p.w; h = p.h; }
@@ -624,6 +631,7 @@ int main(int argc, char **argv) {
       double t = now_s();
       if (t - start >= seconds) break;
       if (stopping) { why = "a signal stopped it"; break; }
+      if (coaxial_should_close && coaxial_should_close(H.state)) { why = "the app requested close"; break; }
       if (windowed) {
         vkw_pump(&win);
         if (win.closed) {
@@ -739,6 +747,7 @@ int main(int argc, char **argv) {
     }
   }
   rh_net_close();
+  if(coaxial_close)coaxial_close(H.state);
   rh_close(&H);
   return (vkc_validation_errors || vkc_validation_warnings) ? 1 : travelled ? 3 : 0;
 }

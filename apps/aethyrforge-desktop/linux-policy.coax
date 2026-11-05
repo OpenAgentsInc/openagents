@@ -1,0 +1,64 @@
+// Native effects are admitted here, independently of renderer UI state.
+#load "chat-policy.coax";
+#load "../../coax/lib/json/json.coax";
+#authority;
+FGL_SCHEMA :: "aethyrforge.linux.control.v1";
+FglRequest :: struct {ok:bool;ticket:int;op:int;text:[16384]u8;n:int;}
+#test "Linux conductor binds exact owned page, instance and fresh bounded tickets" {
+  #assert fgl_page("http://127.0.0.1:49152/aethyrforge/","http://127.0.0.1:49152/aethyrforge/");
+  #assert !fgl_page("","x") && !fgl_page("x","") && !fgl_page("x","y");
+  #assert !fgl_page("","");
+  #assert fgl_page("x","x");
+  #assert fgl_epoch("0123456789abcdef0123456789abcdef") && !fgl_epoch("0123456789abcdef0123456789abcdeF");
+  #assert !fgl_epoch("") && !fgl_epoch("0123456789abcdef0123456789abcdef0");
+  #assert fgl_ticket(1,0) && fgl_ticket(2147483647,2147483646);
+  #assert !fgl_ticket(0,-1) && !fgl_ticket(2147483648,0) && !fgl_ticket(7,7) && !fgl_ticket(6,7);
+}
+#forall "Linux epochs accept exactly lowercase hexadecimal bytes" c:0..<128 {
+  b:[32]u8;for i:0..<32 {b[i]='0';}b[17]=cast(u8)c;
+  #assert fgl_epoch(cast(string)b[..])==((c>=48 && c<=57) || (c>=97 && c<=102));
+}
+#test "Linux effects use shared prompt admission and only owned lifecycle operations" {
+  #assert fgl_allowed(1,false,"hello") && !fgl_allowed(1,true,"hello") && !fgl_allowed(1,false," ");
+  #assert fgl_allowed(2,true,"") && !fgl_allowed(2,false,"");
+  #assert fgl_allowed(3,false,"") && !fgl_allowed(3,true,"");
+  #assert fgl_allowed(4,true,"") && fgl_allowed(5,false,"");
+  #assert !fgl_allowed(0,false,"") && !fgl_allowed(6,false,"") && !fgl_allowed(4,false,"x");
+  #assert fgl_op("send")==1 && fgl_op("stop")==2 && fgl_op("new")==3 && fgl_op("reload")==4 && fgl_op("quit")==5 && fgl_op("sh")==0;
+}
+#test "Linux effect decoding rejects foreign epochs, duplicates and incomplete envelopes" {
+  epoch:="00000000000000000000000000000000";
+  good:="{\"schema\":\"aethyrforge.linux.control.v1\",\"epoch\":\"00000000000000000000000000000000\",\"ticket\":1,\"op\":\"send\",\"text\":\"hello\"}";
+  r:=fgl_request(good,epoch,0,false);#assert r.ok && r.ticket==1 && r.op==1 && r.n==5 && cast(string)r.text[0..<r.n]=="hello";
+  #assert !fgl_request(good,epoch,1,false).ok && !fgl_request(good,epoch,0,true).ok;
+  quit:="{\"schema\":\"aethyrforge.linux.control.v1\",\"epoch\":\"00000000000000000000000000000000\",\"ticket\":1,\"op\":\"quit\",\"text\":\"\"}";
+  #assert fgl_request(quit,epoch,0,false).ok;
+  #assert fgl_request("{\"schema\":\"aethyrforge.linux.control.v1\",\"epoch\":\"00000000000000000000000000000000\",\"ticket\":1,\"op\":\"send\",\"text\":\"x\"}",epoch,0,false).ok;
+  padded:[32769]u8;for i:0..<padded.count {padded[i]=' ';}for i:0..<good.count {padded[i]=good[i];}
+  #assert fgl_request(cast(string)padded[0..<32768],epoch,0,false).ok && !fgl_request(cast(string)padded[..],epoch,0,false).ok;
+  padded[good.count]='x';#assert !fgl_request(cast(string)padded[0..<good.count+1],epoch,0,false).ok;
+  #assert !fgl_request(good,"10000000000000000000000000000000",0,false).ok;
+  #assert !fgl_request("{}",epoch,0,false).ok && !fgl_request("[]",epoch,0,false).ok && !fgl_request("bad",epoch,0,false).ok;
+  #assert !fgl_request("{\"schema\":\"aethyrforge.linux.control.v1\",\"epoch\":\"00000000000000000000000000000000\",\"ticket\":1,\"op\":\"quit\",\"text\":\"\",\"extra\":0}",epoch,0,false).ok;
+  #assert !fgl_request("{\"schema\":\"wrong\",\"epoch\":\"00000000000000000000000000000000\",\"ticket\":1,\"op\":\"quit\",\"text\":\"\"}",epoch,0,false).ok;
+  #assert !fgl_request("{\"schema\":\"aethyrforge.linux.control.v1\",\"epoch\":\"00000000000000000000000000000000\",\"ticket\":\"1\",\"op\":\"quit\",\"text\":\"\"}",epoch,0,false).ok;
+}
+fgl_page :: (actual:string,expected:string)->bool {return expected.count>0 && actual==expected;}
+fgl_epoch :: (s:string)->bool {if s.count!=32 {return false;}for c:s {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}return true;}
+fgl_ticket :: (ticket:int,last:int)->bool {return ticket>=1 && ticket<=2147483647 && ticket>last;}
+fgl_op :: (op:string)->int {for s,i:[5]string.["send","stop","new","reload","quit"] {if op==s {return i+1;}}return 0;}
+fgl_allowed :: (op:int,busy:bool,text:string)->bool {
+  if op==1 {return fc_can_send(busy,text);}if text.count!=0 {return false;}
+  if op==2 {return busy;}if op==3 {return !busy;}return op==4 || op==5;
+}
+fgl_request :: (line:string,epoch:string,last:int,busy:bool)->FglRequest {
+  r:FglRequest;if line.count>32768 {return r;}nodes:[32]JvNode;d:[1]Jv;
+  // Public JSON readers already refuse failed parses/nonobjects. Exactly five
+  // children plus the five required named fields also refuse duplicate keys.
+  _:=jv_parse(d[..],line,nodes[..]);if jv_len(d[0],0)!=5 {return r;}
+  v:=d[0];if jv_raw(v,jv_get(v,0,"schema"))!=FGL_SCHEMA || !fgl_epoch(epoch) || jv_raw(v,jv_get(v,0,"epoch"))!=epoch {return r;}
+  r.ticket=jv_int(v,jv_get(v,0,"ticket"),0);r.op=fgl_op(jv_raw(v,jv_get(v,0,"op")));
+  at:=jv_get(v,0,"text");if jv_kind(v,at)!=JV_STRING {return r;}r.n=jv_str(v,at,r.text[..]);
+  if r.n<0 || !fgl_ticket(r.ticket,last) || !fgl_allowed(r.op,busy,cast(string)r.text[0..<r.n]) {return r;}
+  r.ok=true;return r;
+}
