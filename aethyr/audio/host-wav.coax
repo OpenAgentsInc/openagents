@@ -1,0 +1,81 @@
+// Canonical synthesized-bank PCM16 WAV decode and48kHz resampling. Optional
+// compressed media remains an SDK codec effect. A shared64-tap Blackman sinc
+// makes the canonical bank independent of platform decoder/resampler choices.
+#module "aethyr.audio.host.wav";
+#authority;
+APW_PI :: 3.14159265358979323846;
+APW_WORDS :: 20480; // 320 rational phases,64 taps (22050/48000 =147/320)
+AudioWavPlan :: struct {valid:bool;channels:int;rate:int;frames:int;output_frames:int;samples:int;}
+AudioWavFilter :: struct {ready:bool;}
+apw_u16 :: (b:[]u8,at:int)->int {return int(b[at])+(int(b[at+1])<<8);}
+apw_u32 :: (b:[]u8,at:int)->int {return apw_u16(b,at)+(apw_u16(b,at+2)<<16);}
+apw_test_word :: (b:[]u8,at:int,n:int) {for i:0..<4 {b[at+i]=cast,trunc(u8)((n>>(i*8))&255);}}
+apw_test_wav :: (channels:int,rate:int,pcm:[]int,b:[]u8)->[]u8 {
+ for c,i:"RIFF" {b[i]=c;}for c,i:"WAVEfmt " {b[8+i]=c;}for c,i:"data" {b[36+i]=c;}
+ apw_test_word(b,4,36+pcm.count*2);apw_test_word(b,16,16);b[20]=1;b[21]=0;b[22]=u8(channels);b[23]=0;apw_test_word(b,24,rate);apw_test_word(b,28,rate*channels*2);b[32]=u8(channels*2);b[33]=0;b[34]=16;b[35]=0;apw_test_word(b,40,pcm.count*2);
+ for x,i:pcm {b[44+2*i]=cast,trunc(u8)(x&255);b[45+2*i]=cast,trunc(u8)((x>>8)&255);}return b[0..<44+pcm.count*2];
+}
+#test "canonical WAV48k decode preserves stereo signed PCM16 and exact capacity without touching tails" {
+ pcm:=[4]int.[-32768,32767,-1,0];bytes:[52]u8;for i:0..<52 {bytes[i]=255;}wav:=apw_test_wav(2,48000,pcm[..],bytes[..]);p:=apw_plan(wav);#assert p.valid && p.channels==2 && p.rate==48000 && p.frames==2 && p.output_frames==2 && p.samples==4;
+ s:[1]AudioWavFilter;w:[1]f64;out:[5]f32;out[4]=17;#assert !apw_decode(s[..],wav,w[..],out[0..<3]) && apw_decode(s[0..<0],wav,w[0..<0],out[0..<4]);#assert out[0]== -1 && out[1]==32767.0f32/32768 && out[2]== -1.0f32/32768 && out[3]==0 && out[4]==17;
+ #assert apw_u16(wav,44)==32768 && apw_u32(wav,44)==2147450880;
+}
+#test "canonical WAV admission checks complete RIFF format data and supported bank rates before publication" {
+ pcm:=[2]int.[1,-1];bytes:[48]u8;wav:=apw_test_wav(1,22050,pcm[..],bytes[..]);p:=apw_plan(wav);#assert p.valid && p.output_frames==5 && p.samples==5;
+ for at:[15]int.[0,8,12,16,20,22,24,28,32,34,36,40,4,23,35] {keep:=bytes[at];bytes[at]=255;#assert !apw_plan(bytes[..]).valid;bytes[at]=keep;}
+ #assert !apw_plan(bytes[0..<43]).valid && !apw_plan(bytes[0..<47]).valid;
+ empty:[44]u8;zero:[]int;z:=apw_test_wav(1,48000,zero,empty[..]);#assert !apw_plan(z).valid;
+ s:[1]AudioWavFilter;w:[1]f64;out:[5]f32;for i:0..<5 {out[i]=17;}#assert !apw_decode(s[..],wav,w[..],out[..]);for x:out {#assert x==17;}
+ #assert !apw_coefficients(s[..],w[..]) && !s[0].ready;
+ extra:[64]u8;three:=[3]int.[1,2,3];#assert !apw_plan(apw_test_wav(3,48000,three[..],extra[..])).valid;
+ for rate:[3]int.[16000,22051,48001] {#assert !apw_plan(apw_test_wav(1,rate,pcm[..],extra[..])).valid;}
+ large:[2000046]u8;for i:0..<44 {large[i]=bytes[i];}apw_test_word(large[..],24,48000);apw_test_word(large[..],28,96000);apw_test_word(large[..],4,2000036);apw_test_word(large[..],40,2000000);
+ #assert apw_plan(large[0..<2000044]).valid && apw_plan(large[0..<2000044]).frames==1000000;
+ apw_test_word(large[..],4,2000038);apw_test_word(large[..],40,2000002);#assert !apw_plan(large[..]).valid;
+}
+#test "canonical sinc has finite compact support and a symmetric Blackman window" {
+ #assert apw_kernel(0)==0.95 && apw_kernel(32)==0 && apw_kernel(-32)==0 && apw_kernel(33)==0;
+ x:=0.25;want:=sin(0.95*APW_PI*x)/(APW_PI*x)*(0.42+0.5*cos(APW_PI*x/32)+0.08*cos(2*APW_PI*x/32));#assert abs(apw_kernel(x)-want)<0.000000000001 && apw_kernel(x)==apw_kernel(-x);
+ #assert abs(apw_kernel(31.999))>0;
+}
+#test "canonical rational resampling preserves DC and a one-kilohertz and nine-kilohertz tone" #steps 200000000 {
+ s:[1]AudioWavFilter;w:[APW_WORDS]f64;for i:0..<APW_WORDS {w[i]=17;}short_pcm:=[1]int.[1];short_bytes:[46]u8;short_wav:=apw_test_wav(1,22050,short_pcm[..],short_bytes[..]);short_out:[3]f32;#assert !apw_decode(s[..],short_wav,w[..],short_out[..]);
+ #assert apw_coefficients(s[..],w[..]) && s[0].ready;for phase:0..<320 {sum:=0.0;for tap:0..<64 {sum+=w[phase*64+tap];}#assert abs(sum-1)<0.000000000001;}
+ pair:[2]AudioWavFilter;#assert !apw_coefficients(pair[..],w[..]) && !apw_coefficients(pair[0..<0],w[..]);
+ pcm:[512]int;bytes:[1068]u8;out:[1200]f32;
+ for hz:[3]int.[0,1000,9000] {for i:0..<512 {pcm[i]=ifx hz==0 then 16000 else int(16000*sin(2*APW_PI*f64(hz*i)/22050));}wav:=apw_test_wav(1,22050,pcm[..],bytes[..]);p:=apw_plan(wav);#assert p.output_frames==1115 && p.samples==1115;
+  #assert apw_decode(s[..],wav,w[..],out[..]);
+  for i:128..<980 {want:=ifx hz==0 then 16000.0/32768 else 16000.0/32768*sin(2*APW_PI*f64(hz*i)/48000);#assert abs(f64(out[i])-want)<0.001;if hz==0 {#assert out[i]==16000.0f32/32768;}}
+  #assert !apw_decode(pair[..],wav,w[..],out[..]) && !apw_decode(s[..],wav,w[0..<APW_WORDS-1],out[..]);
+ }
+ one:=[1]int.[1000];wav:=apw_test_wav(1,22050,one[..],bytes[..]);p:=apw_plan(wav);#assert p.output_frames==3;
+ #assert apw_decode(s[..],wav,w[..],out[..]) && out[0]>0 && out[1]>0;
+ wav=apw_test_wav(1,22050,pcm[0..<147],bytes[..]);#assert apw_plan(wav).output_frames==320;
+ stereo:=[4]int.[32767,-16384,-32768,8192];wav=apw_test_wav(2,22050,stereo[..],bytes[..]);#assert apw_decode(s[..],wav,w[..],out[0..<10]);
+ for frame:0..<5 {position:=f64(frame*147)/320;center:=int(position);total:=0.0;for tap:0..<64 {total+=apw_kernel(f64(center+tap-31)-position);}for channel:0..<2 {want:=(f64(stereo[channel])*apw_kernel(-position)+f64(stereo[2+channel])*apw_kernel(1-position))/32768/total;#assert abs(f64(out[2*frame+channel])-want)<0.0000001;}}
+}
+apw_plan :: (b:[]u8)->AudioWavPlan #export_c {
+ if b.count<46 {return AudioWavPlan.{};}
+ if cast(string)b[0..<4]!="RIFF" || cast(string)b[8..<16]!="WAVEfmt " || cast(string)b[36..<40]!="data" || apw_u32(b,4)!=b.count-8 || apw_u32(b,16)!=16 || apw_u16(b,20)!=1 || apw_u16(b,34)!=16 || apw_u32(b,40)!=b.count-44 {return AudioWavPlan.{};}
+ channels:=apw_u16(b,22);rate:=apw_u32(b,24);if (channels!=1 && channels!=2) || (rate!=22050 && rate!=48000) {return AudioWavPlan.{};}
+ stride:=2*channels;data:=b.count-44;if data%stride!=0 || apw_u16(b,32)!=stride || apw_u32(b,28)!=rate*stride {return AudioWavPlan.{};}
+ frames:=data/stride;if frames>1000000 {return AudioWavPlan.{};}output:=ifx rate==48000 then frames else (frames*320+146)/147;return AudioWavPlan.{valid=true,channels=channels,rate=rate,frames=frames,output_frames=output,samples=output*channels};
+}
+apw_kernel :: (x:f64)->f64 {
+ if abs(x)>=32 {return 0;}if x==0 {return 0.95;}
+ return sin(0.95*APW_PI*x)/(APW_PI*x)*(0.42+0.5*cos(APW_PI*x/32)+0.08*cos(2*APW_PI*x/32));
+}
+apw_coefficients :: (s:[]AudioWavFilter,w:[]f64)->bool #export_c {
+ if s.count!=1 || w.count<APW_WORDS {return false;}
+ for phase:0..<320 {total:=0.0;for tap:0..<64 {x:=f64(tap-31)-f64(phase)/320;v:=apw_kernel(x);w[phase*64+tap]=v;total+=v;}for tap:0..<64 {w[phase*64+tap]/=total;}}
+ s[0].ready=true;return true;
+}
+apw_sample :: (b:[]u8,index:int)->f64 {bits:=apw_u16(b,44+2*index);value:=ifx bits>=32768 then bits-65536 else bits;return f64(value)/32768;}
+apw_decode :: (s:[]AudioWavFilter,b:[]u8,w:[]f64,out:[]f32)->bool #export_c {
+ p:=apw_plan(b);if !p.valid || out.count<p.samples {return false;}
+ if p.rate==48000 {for i:0..<p.samples {out[i]=f32(apw_sample(b,i));}return true;}
+ if s.count!=1 || !s[0].ready || w.count<APW_WORDS {return false;}
+ for frame:0..<p.output_frames {position:=frame*147;center:=position/320;phase:=position%320;
+  for channel:0..<p.channels {value:=0.0;for tap:0..<64 {at:=center+tap-31;if at>=0 && at<p.frames {value+=apw_sample(b,at*p.channels+channel)*w[phase*64+tap];}}out[frame*p.channels+channel]=f32(value);}
+ }return true;
+}
