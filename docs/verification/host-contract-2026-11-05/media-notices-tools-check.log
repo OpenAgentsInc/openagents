@@ -1,0 +1,2 @@
+coax jobs: the load average is 23.3, at or above 12 ($COAX_JOBS_LOAD); running 1 build worker, not up to 2, until it drops
+tools-check: 1786 tracked tool files (35 of them vendored upstream vectors), 0 new without a reason

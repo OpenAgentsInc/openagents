@@ -1,0 +1,20 @@
+// Adversarial JSON fixture construction, separate from receipt admission.
+#load "../../../coax/lib/json/json.coax";
+hmnj_fixture :: (which:int,bad:bool,out:[]u8)->string {
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"rows");if which==14 {jo_obj(o[..]);}else {jo_arr(o[..]);}
+ for i:0..<7 {
+  if which==14 {jo_key(o[..],"x");}jo_obj(o[..]);jo_key(o[..],"url");if which==1&&i==0 {jo_int(o[..],0);}else {name:=[7]string.["/0","/1","/2","/3","/4","/5","/6"];jo_str(o[..],name[i]);}
+  jo_key(o[..],"ready");if which==2&&i==0 {jo_int(o[..],1);}else {jo_bool(o[..],!bad||i!=0);}
+  jo_key(o[..],"failed");if which==3&&i==0 {jo_str(o[..],"false");}else {jo_bool(o[..],bad&&i==0);}
+  jo_key(o[..],"width");if which==4&&i==0 {jo_str(o[..],"48");}else {jo_int(o[..],ifx bad&&i==0 then 0 else 48);}
+  jo_key(o[..],"height");jo_int(o[..],ifx which==13&&i==0 then 49 else ifx bad&&i==0 then 0 else 48);jo_end(o[..]);
+ }jo_end(o[..]);jo_key(o[..],"advanced");jo_int(o[..],ifx which==15 then 5 else 6);
+ jo_key(o[..],"error");if which==5 {jo_int(o[..],0);}else {jo_str(o[..],ifx which==16 then "refused" else "");}
+ jo_key(o[..],"trace");jo_obj(o[..]);jo_key(o[..],"dropped");if which==6 {jo_str(o[..],"0");}else {jo_int(o[..],0);}
+ jo_key(o[..],"notices");if which==17 {jo_obj(o[..]);jo_key(o[..],"x");}else {jo_arr(o[..]);}if which!=7 {
+  jo_obj(o[..]);jo_key(o[..],"kind");if which==8 {jo_str(o[..],"607");}else {jo_int(o[..],607);}
+  jo_key(o[..],"bytes");if which==18 {jo_obj(o[..]);}else {jo_arr(o[..]);}payload:=ifx bad then "/0 0 0\n/1 48 48\n/2 48 48\n/3 48 48\n/4 48 48\n/5 48 48\n/6 48 48" else "/0 48 48\n/1 48 48\n/2 48 48\n/3 48 48\n/4 48 48\n/5 48 48\n/6 48 48";
+  for b,i:payload {if which==18 {jo_key(o[..],"x");}if which==9&&i==0 {jo_str(o[..],"47");}else {jo_int(o[..],ifx which==10&&i==0 then 256 else ifx which==11&&i==0 then -1 else cast(int)b);}}
+  if which==12 {jo_int(o[..],10);}jo_end(o[..]);jo_end(o[..]);
+ }jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);return jo_text(o[..]);
+}

@@ -106,6 +106,13 @@ existing607 ready/failed message and kills all 131 root mutants. Native
 dispatch follows the producer/encoder return. A missing or refused image
 becomes not-ready with zero notification dimensions, publishes no partial
 texture and leaves unrelated world rendering active through recovery.
+The separate browser reactor projects measured rows through Coax before copying URL
+storage and publishes no truncated notice. Actual delivered browser bytes
+match the formatter for all seven ready images and a failed first image,
+before and after device recovery; six further submissions complete in each
+case. Wrapper, semantic-observation and JSON root gates kill 54, 29 and 61
+mutants without equivalents. These service receipts do not promote the
+disabled presentation iteration or change the desktop default.
 Image byte parity and the separately measured disabled presentation path do
 not enable a desktop default or substitute for the remaining complete host
 services.

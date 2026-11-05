@@ -2,7 +2,7 @@
 // Effects adapter for admitted Coax package/frame/binding plans. Numeric
 // selectors below are renderer transport ABI1; no realm table lives here.
 import {canonicalLayerSide,decodeCanonicalLayer} from './layers-host.js';
-import {decodeCanonicalMedia} from './media-host.js';
+import {decodeCanonicalMedia,prepareCanonicalMedia,formatCanonicalMediaNotice} from './media-host.js';
 const number = (x) => Number(x);
 class RenderRefusal extends Error {}
 // The ledger handle (registry.coax) of a GPU object this host created: its
@@ -118,6 +118,7 @@ export class RenderHost {
       await this.makePipeline(entry);
       if (x.coaxial_render_candidate_pipeline(entry.entry_index, 1) !== 0) throw new RenderRefusal("Coax refused pipeline readiness");
     }
+    if(this.canonicalMedia&&this.pipelines.has(13))await prepareCanonicalMedia();
     if (this.presentationRequested) await this.makePresentationPipeline();
     if (x.coaxial_render_commit() !== 0) throw new RenderRefusal("Coax refused renderer transaction commit");
     this.ready = true;
@@ -359,6 +360,7 @@ export class RenderHost {
   mediaText(address, bytes) { return new TextDecoder().decode(new Uint8Array(this.memory.buffer, address, bytes)); }
   mediaKey(kind, url) { return `${kind} ${url}`; }
   mediaNotify() { this.onMedia?.([...this.mediaCache.values()].map(({ kind, url, ready, failed, width, height }) => ({ kind, url, ready, failed, width, height }))); }
+  mediaNotice(rows,capacity){return formatCanonicalMediaNotice(rows,capacity);}
   mediaAllocate(object, source, width, height) {
     const { x, device } = this;
     if (!x.coaxial_render_media_extent(BigInt(object.kind), BigInt(width), BigInt(height))) throw new RenderRefusal("Coax refused media image extent");

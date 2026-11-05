@@ -246,6 +246,8 @@ const dev = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
 const probe = dev && new URLSearchParams(location.search).has("probe"); // tests: read the frame back
 // Explicit local observation can retain normal animation and simulation.
 const captureRequested = probe || (dev && globalThis.coaxialRenderCapture === true);
+const mediaNoticeTrace = captureRequested ? [] : null;
+let mediaNoticeDropped = 0;
 let probeArmed = probe && !new URLSearchParams(location.search).has("probe-manual");
 // ?probe&at=SECONDS: run the app's clock that far in 0.1 s steps before the
 // probed frame, so a headless browser can see a moment of the animation.
@@ -1092,7 +1094,13 @@ async function loadShadersOnce() {
       presentation: captureRequested && ["float","unorm8-v1"].includes(globalThis.coaxialRenderPresentation) ? globalThis.coaxialRenderPresentation : false,
       canonicalLayers: Boolean(hostTransport) || (captureRequested && globalThis.coaxialCanonicalLayers === true),
       canonicalMedia: Boolean(hostTransport) || (captureRequested && globalThis.coaxialCanonicalMedia === true),
-      onMedia: (rows) => send(MEDIA_KIND, rows.filter((m) => m.ready || m.failed).map((m) => `${m.url} ${m.failed ? 0 : m.width} ${m.failed ? 0 : m.height}`).join("\n")) });
+      onMedia: (rows) => {
+        if(candidate.canonicalMedia){
+          if(engine?.exports!==candidate.x||candidate.mediaCache?.retiring)return;
+          try{const notice=candidate.mediaNotice(rows,engine.exports.coaxial_inbox_cap());send(notice.kind,notice.text);candidate.mediaNoticeError=null;}
+          catch(error){candidate.mediaNoticeError=String(error);console.error('Coax media notice refused',error);}
+        }else send(MEDIA_KIND, rows.filter((m) => m.ready || m.failed).map((m) => `${m.url} ${m.failed ? 0 : m.width} ${m.failed ? 0 : m.height}`).join("\n"));
+      } });
     await candidate.initialize(previous);
     for (const asset of candidate.assetRows) asset.renderOwner = candidate;
     assets.splice(0, assets.length, ...candidate.assetRows);
@@ -2598,6 +2606,10 @@ function send(kind, text = "") {
   const bytes = new TextEncoder().encode(text).subarray(0, x.coaxial_inbox_cap());
   new Uint8Array(memory.buffer, x.coaxial_inbox(arena.state), bytes.length).set(bytes);
   x.coaxial_message(arena.state, kind, bytes.length);
+  if(kind===607&&mediaNoticeTrace){
+    if(mediaNoticeTrace.length<112)mediaNoticeTrace.push({kind,bytes:Array.from(bytes)});
+    else mediaNoticeDropped++;
+  }
   after(false);
 }
 globalThis.coaxial = { send, ready: false, sceneReady: false, facts: () => pageFacts(), probe: () => engine?.exports.coaxial_probe?.(arena.state) ?? 0,
@@ -2648,6 +2660,8 @@ if (dev) {
     return { name: r.name, pending: Number(engine.exports.coaxial_render_upload_pending(r.id)) };
   });
   globalThis.coaxial.renderMediaState = () => [...(gpu?.renderer?.mediaCache?.values() ?? [])].map(({ kind, url, ready, failed, error, width, height }) => ({ kind, url, ready, failed, error, width, height }));
+  globalThis.coaxial.takeMediaNotices = () => ({notices:mediaNoticeTrace?.splice(0)??[],dropped:mediaNoticeDropped});
+  globalThis.coaxial.renderMediaNoticeError = () => gpu?.renderer?.mediaNoticeError??"";
   globalThis.coaxial.reloadEngine = () => fetchEngine(beginEngine());
   globalThis.coaxial.renderSettled = () => gpu?.renderer?.settled;
   globalThis.coaxial.retireRenderer = () => stopEngine();

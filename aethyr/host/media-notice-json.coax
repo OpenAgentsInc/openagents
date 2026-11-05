@@ -1,0 +1,38 @@
+// Closed authored-image fixture: exact delivered byte arrays and readiness.
+#load "media-notice-observations.coax";
+#load "tests/media-notice-json-fixture.coax";
+#authority;
+#test "notice JSON requires complete typed observations and actual delivered bytes" {
+ bytes:[8192]u8;nodes:[2048]JvNode;doc:[1]Jv;
+ for bad:[2]bool.[false,true] {for which:0..<19 {
+  text:=hmnj_fixture(which,bad,bytes[..]);#assert jv_parse(doc[..],text,nodes[..]);
+  #assert hmnj_capture(doc[0],bad)==(which==0);
+ }}
+ for text:[5]string.["{}","[]","{\"rows\":[]}","{\"rows\":[],\"trace\":{}}","{\"rows\":[],\"trace\":{\"notices\":[]}}"] {
+  #assert jv_parse(doc[..],text,nodes[..])&&!hmnj_capture(doc[0],false);
+ }
+}
+#test "notice integer projection retains zero and refuses missing malformed and other kinds" {
+ nodes:[32]JvNode;d:[1]Jv;#assert jv_parse(d[..],"[0,48,607,255,-1,\"0\",false,1.5]",nodes[..]);
+ expected:=[8]int.[0,48,607,255,-1,-1,-1,-1];for i:0..<8 {#assert hmnj_int(d[0],jv_at(d[0],0,i))==expected[i];}#assert hmnj_int(d[0],-1)== -1;
+}
+hmnj_int :: (d:Jv,at:int)->int {return jv_int(d,at,-1);}
+hmnj_capture :: (d:Jv,bad_first:bool)->bool {
+ images:=jv_get(d,0,"rows");trace:=jv_get(d,0,"trace");notices:=jv_get(d,trace,"notices");error:=jv_get(d,0,"error");
+ if jv_kind(d,images)!=JV_ARRAY {return false;}if jv_len(d,images)!=7 {return false;}
+ if jv_kind(d,notices)!=JV_ARRAY {return false;}if jv_len(d,notices)<1 {return false;}
+ if jv_kind(d,error)!=JV_STRING {return false;}if jv_raw(d,error)!="" {return false;}
+ if hmnj_int(d,jv_get(d,0,"advanced"))!=6 {return false;}
+ rows:[7]HostMediaNotice;
+ for i:0..<7 {
+  row:=jv_at(d,images,i);bad:=bad_first&&i==0;
+  if jv_kind(d,jv_get(d,row,"ready"))!=(ifx bad then JV_FALSE else JV_TRUE) {return false;}
+  if jv_kind(d,jv_get(d,row,"failed"))!=(ifx bad then JV_TRUE else JV_FALSE) {return false;}
+  rows[i]=HostMediaNotice.{url=jv_raw(d,jv_get(d,row,"url")),ready=!bad,failed=bad,width=hmnj_int(d,jv_get(d,row,"width")),height=hmnj_int(d,jv_get(d,row,"height"))};
+ }
+ expected:[65536]u8;n:=htn_format(rows[..],expected[..]);
+ last:=jv_at(d,notices,jv_len(d,notices)-1);bytes:=jv_get(d,last,"bytes");
+ if jv_kind(d,bytes)!=JV_ARRAY {return false;}if jv_len(d,bytes)!=n {return false;}
+ for i:0..<jv_len(d,bytes) {if hmnj_int(d,jv_at(d,bytes,i))!=cast(int)expected[i] {return false;}}
+ return hmn_observed(rows[..],hmnj_int(d,jv_get(d,last,"kind")),cast(string)expected[0..<n],hmnj_int(d,jv_get(d,trace,"dropped")),"",bad_first);
+}

@@ -15,5 +15,16 @@ export class MediaBridge {
     const decoded=Number(x.media_decode());if(decoded!==0)throw Error(`Coax refused canonical media decode: ${decoded}`);
     value.data=new Uint8Array(this.memory.buffer,x.media_output_ptr(),value.bytes).slice();return value;
   }
+  notice(rows,capacity){
+    const x=this.x,encode=new TextEncoder();let at=0;x.media_notice_reset();
+    for(const [index,row] of rows.entries()){
+      const url=encode.encode(row.url);
+      if(x.media_notice_row(BigInt(index),BigInt(at),BigInt(url.length),BigInt(row.ready??false),BigInt(row.failed??false),BigInt(row.width??0),BigInt(row.height??0))!==1)throw Error('Coax refused media notice storage');
+      new Uint8Array(this.memory.buffer,x.media_source_ptr()+at,url.length).set(url);at+=url.length;
+    }
+    const bytes=Number(x.media_notice_format(BigInt(rows.length),BigInt(capacity)));
+    if(bytes<0)throw Error('Coax refused complete media notice');
+    return {kind:Number(x.media_notice_kind()),text:new TextDecoder().decode(new Uint8Array(this.memory.buffer,x.media_notice_ptr(),bytes))};
+  }
   close(){this.x.media_close();}
 }

@@ -309,6 +309,17 @@ allocate a texture or notify the replacement engine. Pre-v1 media retains
 its established SDK path. Complete authored-image and actual GPU receipts
 are in [`media-canonical.md`](../../docs/verification/host-contract-2026-11-05/media-canonical.md).
 
+`host/media-notice.coax` owns the 607 payload on every v1 adapter: at most
+112 unique root-relative whitespace-free URLs, successful dimensions in
+1..2048 and failed dimensions forced to zero. Formatting validates the
+complete input and destination capacity before writing any byte. A host
+never truncates a media notice to fit the inbox; refusal publishes no
+partial message. Browser formatting is synchronous after its separate
+reactor is ready, and asynchronous image completion retains the concrete
+engine/media owner. Actual delivered inbox bytes, continued frames and
+recovery observations are recorded in
+[`media-notices.md`](../../docs/verification/host-contract-2026-11-05/media-notices.md).
+
 WGSL, SPIR-V and MSL come from the same checked Coax shader tree. Metal
 reflection version 1 uses separate buffer 0–28, texture 0–127 and sampler
 0–15 namespaces; buffer 29 supplies element counts and buffer 30 is the

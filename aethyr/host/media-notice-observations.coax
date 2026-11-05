@@ -1,0 +1,41 @@
+// Exact delivered607 notice and authored-image readiness observations.
+#load "media-notice.coax";
+#authority;
+#test "media notice observation admits all ready or one explicitly failed authored image" {
+ rows:[8]HostMediaNotice;urls:=[8]string.["/0","/1","/2","/3","/4","/5","/6","/7"];
+ for i:0..<8 {rows[i]=HostMediaNotice.{url=urls[i],ready=true,width=48,height=48};}
+ out:[256]u8;n:=htn_format(rows[0..<7],out[..]);text:=cast(string)out[0..<n];#assert hmn_observed(rows[0..<7],607,text,0,"",false);
+ #assert !hmn_observed(rows[0..<6],607,text,0,"",false)&&!hmn_observed(rows[..],607,text,0,"",false);
+ for kind:[3]int.[606,0,608] {#assert !hmn_observed(rows[0..<7],kind,text,0,"",false);}
+ #assert !hmn_observed(rows[0..<7],607,text,1,"",false)&&!hmn_observed(rows[0..<7],607,text,0,"refused",false);
+ #assert !hmn_observed(rows[0..<7],607,text[0..<n-1],0,"",false);
+ for i:0..<n {saved:=out[i];out[i]^=1;#assert !hmn_observed(rows[0..<7],607,cast(string)out[0..<n],0,"",false);out[i]=saved;}
+ rows[0]=HostMediaNotice.{url="/0",failed=true};n=htn_format(rows[0..<7],out[..]);
+ #assert hmn_observed(rows[0..<7],607,cast(string)out[0..<n],0,"",true)&&!hmn_observed(rows[0..<7],607,cast(string)out[0..<n],0,"",false);
+}
+#forall "media notice observation requires every authored image field independently" changed:0..<7 {
+ rows:[7]HostMediaNotice;urls:=[7]string.["/0","/1","/2","/3","/4","/5","/6"];out:[256]u8;
+ for i:0..<7 {rows[i]=HostMediaNotice.{url=urls[i],ready=true,width=48,height=48};}
+ n:=htn_format(rows[..],out[..]);rows[changed].ready=false;#assert !hmn_observed(rows[..],607,cast(string)out[0..<n],0,"",false);
+ rows[changed].ready=true;rows[changed].failed=true;#assert !hmn_observed(rows[..],607,cast(string)out[0..<n],0,"",false);
+ rows[changed].failed=false;rows[changed].width=47;#assert !hmn_observed(rows[..],607,cast(string)out[0..<n],0,"",false);
+ rows[changed].width=48;rows[changed].height=49;#assert !hmn_observed(rows[..],607,cast(string)out[0..<n],0,"",false);
+}
+#test "failed image observation needs explicit failed zero dimensions and a complete safe notice" {
+ rows:[7]HostMediaNotice;urls:=[7]string.["/0","/1","/2","/3","/4","/5","/6"];out:[256]u8;
+ for i:0..<7 {rows[i]=HostMediaNotice.{url=urls[i],ready=i!=0,failed=i==0,width=ifx i==0 then 0 else 48,height=ifx i==0 then 0 else 48};}
+ n:=htn_format(rows[..],out[..]);text:=cast(string)out[0..<n];#assert hmn_observed(rows[..],607,text,0,"",true);
+ rows[0].ready=true;#assert !hmn_observed(rows[..],607,text,0,"",true);rows[0].ready=false;
+ rows[0].failed=false;#assert !hmn_observed(rows[..],607,text,0,"",true);rows[0].failed=true;
+ rows[0].width=1;#assert !hmn_observed(rows[..],607,text,0,"",true);rows[0].width=0;
+ rows[0].height=1;#assert !hmn_observed(rows[..],607,text,0,"",true);rows[0].height=0;
+ rows[1].url="//bad";#assert !hmn_observed(rows[..],607,text,0,"",true);
+}
+hmn_observed :: (rows:[]HostMediaNotice,kind:int,payload:string,dropped:int,error:string,bad_first:bool)->bool {
+ if rows.count!=7||kind!=htn_kind()||dropped!=0||error!="" {return false;}
+ for row,i:rows {
+  bad:=bad_first&&i==0;
+  if row.ready==bad||row.failed!=bad||row.width!=(ifx bad then 0 else 48)||row.height!=(ifx bad then 0 else 48) {return false;}
+ }
+ expected:[65536]u8;n:=htn_format(rows,expected[..]);return n==payload.count&&payload==cast(string)expected[0..<n];
+}

@@ -7,3 +7,5 @@ async function bridge(){
   const module=await compiled;return decoder??=new MediaBridge(module);
 }
 export async function decodeCanonicalMedia(bytes){return(await bridge()).decode(bytes);}
+export async function prepareCanonicalMedia(){await bridge();}
+export function formatCanonicalMediaNotice(rows,capacity){if(!decoder)throw Error('canonical media reactor is not ready');return decoder.notice(rows,capacity);}

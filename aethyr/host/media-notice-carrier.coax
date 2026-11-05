@@ -1,0 +1,63 @@
+// Scalar transport of measured browser facts into the shared607 formatter.
+// URL views borrow source storage until the synchronous formatting call ends.
+#load "media-notice.coax";
+#authority;
+HostMediaNoticeRows :: struct {rows:[112]HostMediaNotice;}
+HostMediaNoticeOutput :: struct {bytes:[65536]u8;}
+
+#test "notice reset clears every borrowed URL and measured field" {
+ bank:[1]HostMediaNoticeRows;for i:0..<112 {bank[0].rows[i]=HostMediaNotice.{url="/old",ready=true,failed=true,width=48,height=49};}
+ hm_notice_reset(bank[..]);for row:bank[0].rows {#assert row.url==""&&!row.ready&&!row.failed&&row.width==0&&row.height==0;}
+}
+
+#test "notice scalar carrier retains exact measured facts and borrowed URL bytes" {
+ source:=[4]u8.[19,47,120,21];bank:[1]HostMediaNoticeRows;
+ #assert hm_notice_row(bank[..],0,source[..],1,2,1,0,48,13);
+ q:=bank[0].rows[0];#assert q.url=="/x"&&q.ready&&!q.failed&&q.width==48&&q.height==13;
+ source[2]='y';#assert bank[0].rows[0].url=="/y";
+ #assert hm_notice_row(bank[..],111,source[..],4,0,0,1,7,8);
+ q=bank[0].rows[111];#assert q.url==""&&!q.ready&&q.failed&&q.width==7&&q.height==8;
+ out:[32]u8;#assert hm_notice_render(bank[..],1,32,out[..])==8&&cast(string)out[0..<8]=="/y 48 13";
+ #assert hm_notice_render(bank[..],112,32,out[..])== -1;
+}
+#forall "notice scalar refusal leaves existing facts untouched" which:0..<13 {
+ source:=[2]u8.[47,120];bank:[1]HostMediaNoticeRows;bank[0].rows[0]=HostMediaNotice.{url="/kept",ready=true,width=7,height=9};
+ row:=0;at:=0;n:=2;ready:=1;failed:=0;
+ if which==0 {row=-1;}if which==1 {row=112;}if which==2 {at=-1;}if which==3 {n=-1;}if which==4 {at=3;}if which==5 {n=3;}
+ if which==6 {at=1;n=2;}if which==7 {ready=-1;}if which==8 {ready=2;}if which==9 {failed=-1;}if which==10 {failed=2;}if which==11 {at=9223372036854775807;}if which==12 {n=9223372036854775807;}
+ #assert !hm_notice_row(bank[..],row,source[..],at,n,ready,failed,48,13);
+ q:=bank[0].rows[0];#assert q.url=="/kept"&&q.ready&&!q.failed&&q.width==7&&q.height==9;
+}
+#forall "notice formatting checks complete physical row and output capacities atomically" which:0..<6 {
+ bank:[1]HostMediaNoticeRows;bank[0].rows[0]=HostMediaNotice.{url="/x",failed=true};out:[8]u8;for i:0..<8 {out[i]=219;}
+ count:=1;capacity:=6;
+ if which==0 {count=-1;}if which==1 {count=113;}if which==2 {capacity=-1;}if which==3 {capacity=9;}if which==4 {capacity=5;}if which==5 {capacity=0;}
+ #assert hm_notice_render(bank[..],count,capacity,out[..])== -1;for byte:out {#assert byte==219;}
+}
+#test "notice formatting accepts zero rows and the exact one-row output boundary" {
+ bank:[1]HostMediaNoticeRows;bank[0].rows[0]=HostMediaNotice.{url="/x",failed=true};out:[8]u8;out[6]=197;
+ #assert hm_notice_render(bank[..],0,0,out[..])==0&&hm_notice_render(bank[..],1,6,out[..])==6&&cast(string)out[0..<6]=="/x 0 0"&&out[6]==197;
+ bank[0].rows[0].ready=true;#assert hm_notice_render(bank[..],1,8,out[..])== -1;
+}
+#test "notice output projection names the complete actual storage" {
+ out:[1]HostMediaNoticeOutput;view:=hm_notice_output(out[..]);#assert view.count==65536;view[65535]=197;#assert out[0].bytes[65535]==197;
+}
+#test "notice scalar covers source zero and the full exact pending context" {
+ bank:[1]HostMediaNoticeRows;urls:[112][4]u8;out:[1]u8;out[0]=197;
+ for i:0..<112 {
+  urls[i][0]='/';urls[i][1]=cast(u8)('0'+i/100);urls[i][2]=cast(u8)('0'+(i/10)%10);urls[i][3]=cast(u8)('0'+i%10);
+  #assert hm_notice_row(bank[..],i,urls[i][..],0,4,0,0,0,0);
+ }
+ #assert hm_notice_render(bank[..],112,0,out[..])==0&&out[0]==197;
+ #assert hm_notice_row(bank[..],0,urls[0][..],0,0,0,1,7,8)&&bank[0].rows[0].url=="";
+}
+hm_notice_row :: (bank:[]HostMediaNoticeRows,row:int,source:[]u8,at:int,n:int,ready:int,failed:int,width:int,height:int)->bool #export_c {
+ if row<0||row>=HostMediaNoticeRows.{}.rows.count||at<0||n<0||at>source.count||n>source.count-at||(ready!=0&&ready!=1)||(failed!=0&&failed!=1) {return false;}
+ bank[0].rows[row]=HostMediaNotice.{url=cast(string)source[at..<at+n],ready=ready==1,failed=failed==1,width=width,height=height};return true;
+}
+hm_notice_render :: (bank:[]HostMediaNoticeRows,count:int,capacity:int,out:[]u8)->int #export_c {
+ if count<0||count>HostMediaNoticeRows.{}.rows.count||capacity<0||capacity>out.count {return -1;}
+ return htn_format(bank[0].rows[0..<count],out[0..<capacity]);
+}
+hm_notice_output :: (out:[]HostMediaNoticeOutput)->[]u8 #export_c {return out[0].bytes[..];}
+hm_notice_reset :: (bank:[]HostMediaNoticeRows) #export_c {bank[0]=HostMediaNoticeRows.{};}

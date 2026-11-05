@@ -16,6 +16,9 @@ composition failure is retained. The subsequent [canonical still-media
 component](media-canonical.md) corrects native decoding and measures matched
 native/Wasm/Vulkan composition directly within the same allowance. No ordinary
 selector or desktop default is promoted by this component evidence.
+The subsequent [shared media readiness delivery](media-notices.md) checks
+actual browser inbox bytes, continued submissions and recovery for ready
+and failed images using the same Coax607 formatter as native Metal.
 
 This is an **incomplete** conformance record. The normative boundary is
 [`aethyr/host/README.md`](../../../aethyr/host/README.md). Aethyrforge's world
