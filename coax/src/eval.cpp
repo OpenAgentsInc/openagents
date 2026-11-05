@@ -1279,6 +1279,14 @@ struct Evaluator {
         if (e->byte_intrinsic != ByteIntrinsic::none) {
           if(e->byte_intrinsic == ByteIntrinsic::bytes_overlap) {err(e->loc,"E0404","runtime storage overlap cannot execute at compile time");return {};}
           CT_EVAL(a,e->args[0]);Value r;r.type=e->type;
+          if(e->byte_intrinsic == ByteIntrinsic::secure_zero) {
+            if(a.count<0 || (a.count && (!a.agg || a.offset<0 || (uint64_t)a.offset>a.agg->size() || (uint64_t)a.count>a.agg->size()-(uint64_t)a.offset))) {
+              err(e->loc,"E0404","invalid secure_zero view");return {};
+            }
+            Value cleared;cleared.type=a.type->elem;
+            for(int64_t i=0;i<a.count;i++) {if(!tick(e->loc))return {};assign_into((*a.agg)[(size_t)(a.offset+i)],cleared);}
+            return r;
+          }
           if(e->byte_intrinsic == ByteIntrinsic::value_barrier){r.bits=a.bits;return r;}
           if(e->byte_intrinsic == ByteIntrinsic::mul_wide) {
             CT_EVAL(b,e->args[1]);

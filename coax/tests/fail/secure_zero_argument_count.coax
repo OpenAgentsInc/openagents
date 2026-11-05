@@ -1,0 +1,2 @@
+// expect: E0378
+main :: () { secure_zero(); }

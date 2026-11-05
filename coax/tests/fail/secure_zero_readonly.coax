@@ -1,0 +1,3 @@
+// expect: E0378
+clear :: (bytes: [] const u8) { secure_zero(bytes); }
+main :: () { bytes: [2]u8; clear(bytes[..]); }

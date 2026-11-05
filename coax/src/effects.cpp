@@ -57,6 +57,7 @@ struct EffectFacts {
       case ExprKind::run:site(3,e->loc);return;
       case ExprKind::call:
         if(e->builtin_print)site(1,e->loc);
+        if(e->byte_intrinsic==ByteIntrinsic::secure_zero)site(2,e->loc);
         if(e->byte_intrinsic==ByteIntrinsic::bytes_overlap)site(9,e->loc);
         if(e->byte_intrinsic!=ByteIntrinsic::none)site(12,e->loc);
         if(e->intrinsic!=Intrinsic::none)site(7,e->loc);

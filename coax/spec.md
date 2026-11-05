@@ -1,7 +1,7 @@
 # Coax: language specification and implementation plan
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.49.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.50.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated: 2026-10-28. Status: **working bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
@@ -847,6 +847,20 @@ whole-program constant time or secure erasure. `tests/constant_time.py` records
 masked-select native/Wasm evidence. `tests/wrapping.py` checks defined wrap/rotate
 semantics against an independent integer oracle, including actual Wasm execution
 and native sanitizers.
+
+`secure_zero(view)` accepts a writable borrowed view of numeric or `bool` elements and
+returns nothing. It evaluates its argument once and overwrites exactly that
+view's bytes with observable volatile stores in native C and Wasm, even when
+the allocation is dead immediately afterward. An empty view touches nothing.
+It refuses read-only views, strings and views containing aggregate or borrowed descriptors.
+Native callers still supply truthful allocations, alignment, lengths and
+lifetimes. Negative counts, nonempty null pointers and a byte-count overflow
+trap before a store. At compile time it zeroes the same elements and aliases
+observe the change. `defer secure_zero(buffer[..]);` erases the explicit local
+buffer on every ordinary scope exit, including a refused return. The operation
+is a borrowed write, unavailable in device compute. It does not erase hidden
+register/spill copies, operating-system snapshots, or execute after abrupt
+process termination; those are separate lifetime and platform obligations.
 
 The optional [scalar secret-path audit](../tools/coax-nostr/secret-check/README.md)
 uses the actual Coax frontend and typed source-map closure. Its Coax authority

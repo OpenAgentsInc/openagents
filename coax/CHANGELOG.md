@@ -13,6 +13,19 @@ These are compiler versions, separate from inventory, wire and protocol schema
 versions. [`STATUS.md`](STATUS.md) describes current support;
 [`RELEASE.md`](RELEASE.md) describes the release workflow.
 
+## 0.50.0 — Observable Secret Erasure — 2026-11-05
+
+Commit: pending
+
+- Add `secure_zero(view)` for borrowed numeric/bool storage. Emit volatile byte
+  stores on native C and Wasm, retaining cleanup even for dead local buffers;
+  compile-time evaluation performs the same selected-view mutation.
+- Refuse strings, descriptors, aggregates and wrong arity. Count the operation
+  as a borrowed write in effect inspection and reject it from device compute.
+- Use lexical `defer` to make explicit secret-buffer cleanup cover normal and
+  refused returns. Hidden register/spill and operating-system copies remain
+  outside this primitive's contract.
+
 ## 0.49.0 — Read-only Borrowed Views — 2026-11-05
 
 Commit: [`2cebf7d8fe9c8501525a14abf51204484be501da`](https://github.com/OpenAgentsInc/openagents/commit/2cebf7d8fe9c8501525a14abf51204484be501da)

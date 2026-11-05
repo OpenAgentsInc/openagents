@@ -1,9 +1,9 @@
 // Canonical reviewed release/status catalogue. Generate with scripts/coax-release.sh --write.
 #import "Basic";
 #load "release-model.coax";
-IMPLEMENTATION_VERSION :: "0.49.0";
+IMPLEMENTATION_VERSION :: "0.50.0";
 STATUS_SCHEMA_VERSION :: 1;
-CATALOGUE :: [131]ReleaseFeature.[
+CATALOGUE :: [132]ReleaseFeature.[
   ReleaseFeature.{id="keywords.if",section="Keywords",name="`if` `else`",meaning="Conditional",status="works",introduced=""},
   ReleaseFeature.{id="keywords.while",section="Keywords",name="`while`",meaning="Loop",status="works",introduced=""},
   ReleaseFeature.{id="keywords.for",section="Keywords",name="`for` `break` `continue`",meaning="`for i: lo..<hi`, `for x, i: collection`; leave or skip an iteration",status="works",introduced=""},
@@ -69,6 +69,7 @@ CATALOGUE :: [131]ReleaseFeature.[
   ReleaseFeature.{id="intrinsics.rotation",section="Intrinsics",name="`rotl(a, count)` `rotr(a, count)`",meaning="Matching u32/u64 rotation; count reduced modulo the word width",status="works",introduced="0.15.0"},
   ReleaseFeature.{id="intrinsics.mul-wide",section="Intrinsics",name="`mul_wide(a, b)`",meaning="Two u64 operands produce CoaxU64Product with hi/lo halves; native128-bit and portable wasm32 lowering",status="works",introduced="0.16.0"},
   ReleaseFeature.{id="intrinsics.value-barrier",section="Intrinsics",name="`value_barrier(x)`",meaning="u32/u64 identity opaque to native optimization; compiler identity; backend-specific evidence is required for constant-time claims",status="works",introduced=""},
+  ReleaseFeature.{id="intrinsics.secure-zero",section="Intrinsics",name="`secure_zero(view)`",meaning="Observable zero stores to a writable numeric or bool view, native and wasm; compile-time zeroing preserves aliases; explicit buffers only, not hidden compiler or OS copies",status="works",introduced="0.50.0"},
   ReleaseFeature.{id="conversions.cast-t-x",section="Conversions",name="`cast(T) x`",meaning="Convert between numbers, or between an enum and an integer; traps if the value doesn't fit",status="works",introduced=""},
   ReleaseFeature.{id="conversions.cast-trunc-t-x",section="Conversions",name="`cast,trunc(T) x`",meaning="Convert between integer types, keeping the low bits",status="works",introduced=""},
   ReleaseFeature.{id="conversions.t-x",section="Conversions",name="`T(x)` for a number type",meaning="The same as `cast(T) x`: `int(x)`, `f64(x)`, `u8(x)`",status="works",introduced=""},

@@ -20,6 +20,12 @@ ct_select32 :: (bit: u32, a: u32, b: u32) -> u32 #export_c {
   mask := value_barrier(sub_wrap(cast(u32) 0, bit));
   return b ^ ((a ^ b) & mask);
 }
+zero_dead :: (value: u64) -> u64 #export_c {
+  bytes: [32]u8;
+  bytes[0] = cast,trunc(u8) value;
+  defer secure_zero(bytes[..]);
+  return value;
+}
 #assert #run value_barrier(cast(u64) 7) == 7;
 '''
 # conditional branches: arm64 b.cond/cbz/cbnz/tbz/tbnz, x86 jcc (not jmp)
@@ -40,6 +46,25 @@ def disassembly(obj, name):
 CC = os.environ.get('CC') or shutil.which('cc') or shutil.which('clang') or 'cc'
 
 class ConstantTime(unittest.TestCase):
+    def test_dead_local_erasure_survives_optimization_with_a_removed_volatile_control(self):
+        with tempfile.TemporaryDirectory() as directory:
+            d = Path(directory)
+            text = self.build(d, '--release')
+            self.assertIn('volatile unsigned char *p=', text)
+            # Compare the real emitted primitive with an intentionally broken
+            # ordinary-store variant. No observer call keeps either array live.
+            for mode in ('real', 'broken'):
+                source = text if mode == 'real' else text.replace('volatile unsigned char *p=', 'unsigned char *p=')
+                (d/'zero.c').write_text(source)
+                subprocess.run([CC, '-std=c11', '-O2', '-c', str(d/'zero.c'), '-o', str(d/'zero.o')], check=True, capture_output=True)
+                body = disassembly(d/'zero.o', 'zero_dead')
+                self.assertTrue(body.strip())
+                stores = re.findall(r'\b(?:movb\s+\$0x0|strb\s+wzr|stosb)\b', body)
+                if mode == 'real':
+                    self.assertTrue(stores, f'no observable zero store: {body}')
+                else:
+                    self.assertFalse(stores, f'broken control still stores: {body}')
+
     def build(self, d, *mode):
         src = d/'ct.coax'; src.write_text(SOURCE)
         r = subprocess.run([str(COMPILER), 'c', str(src), '--library', '--header', str(d/'ct.h'), *mode], capture_output=True, text=True)

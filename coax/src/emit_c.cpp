@@ -212,6 +212,16 @@ static void coax_show_string(coax_string s) {
 }
 )COAXRT";
 // Emitted only into programs that use value_barrier, so the seeds stay as they are.
+static const char *ZERO_RUNTIME = R"COAXRT(
+/* Observable stores on native and wasm. Allocation/lifetime remain caller
+   premises; an empty view never offsets or dereferences a null pointer. */
+static void coax_secure_zero(void *data, int64_t count, size_t width, int32_t line) {
+  if(count<0 || (uint64_t)count>SIZE_MAX/width || (count && !data))coax_trap("invalid secure_zero view",line);
+  volatile unsigned char *p=(volatile unsigned char *)data;
+  size_t bytes=(size_t)count*width;
+  for(size_t i=0;i<bytes;i++)p[i]=0;
+}
+)COAXRT";
 static const char *BARRIER_RUNTIME = R"COAXRT(/* value_barrier (spec section 9): the value comes back unchanged, and the
    optimizer can't see through it to branch on a secret. Native: an empty asm
    that claims to change the register. wasm32 has no such asm: a call to an
@@ -1097,6 +1107,7 @@ struct Emitter {
   EmitOptions opts;
   bool verification = false;
   bool versioned = false;               // a loop was versioned: the output needs IV_RUNTIME
+  bool erasure = false;                // observable numeric-view stores are used
   int version_depth = 0;                // inside either copy of a versioned loop: no nested versioning
   std::set<const Expr *> unchecked;     // the fast copy's indexes, proven in range by its guard
   const Narrow *n32 = nullptr;          // emitting a Metal kernel's 32-bit body (Narrow)
@@ -1502,6 +1513,11 @@ struct Emitter {
         abort();
       case ExprKind::call: {
         if (e->byte_intrinsic != ByteIntrinsic::none) {
+          if (e->byte_intrinsic == ByteIntrinsic::secure_zero) {
+            erasure=true;
+            std::string v=new_temp(c_type(e->args[0]->type));
+            return "("+v+" = "+ex(e->args[0])+", coax_secure_zero("+v+".data, "+v+".count, sizeof(*"+v+".data), "+std::to_string(e->loc.line)+"))";
+          }
           if (e->byte_intrinsic == ByteIntrinsic::bytes_overlap) {
             std::string a=new_temp(c_type(e->args[0]->type)),b=new_temp(c_type(e->args[1]->type));
             std::string x=ex(e->args[0]); std::string y=ex(e->args[1]);  // in source order (operands of + are unsequenced)
@@ -3541,6 +3557,7 @@ std::string emit_c(const File *file, const EmitOptions &opts) {
   s += "static const char *coax_source_path = \"" + escape_path(file->src->path) + "\";\n";
   s += source_runtime(file);
   if (em.strict_math) s += strict_math_runtime();
+  if (em.erasure) s += ZERO_RUNTIME;
   if (em.barrier) s += BARRIER_RUNTIME;
   if (em.wrapping) s += WRAP_RUNTIME;
   if (em.versioned) s += IV_RUNTIME;
@@ -3676,6 +3693,7 @@ std::string emit_native_checks_c_plan(const File *file, const EmitOptions &opts,
   s += "static const char *coax_source_path = \"" + escape_path(file->src->path) + "\";\n";
   s += source_runtime(file, true);
   if (em.strict_math) s += strict_math_runtime();
+  if (em.erasure) s += ZERO_RUNTIME;
   if (em.barrier) s += BARRIER_RUNTIME;
   if (em.wrapping) s += WRAP_RUNTIME;
   s += "#define COAX_LAYOUT(c, m) _Static_assert(c, m)\n";

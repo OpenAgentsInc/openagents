@@ -3,7 +3,23 @@
 // lib/compiler/checker.coax loads it (#12646).
 #authority;
 CK_intrinsic :: (name:string)->u32 #export_c {names:=[10] string.["sin","cos","tan","exp","log","sqrt","floor","abs","pow","fma"];for x,i:names {if x==name {return cast(u32)(i+1);}}return CK_NONE;}
-CK_byte_intrinsic :: (name:string)->u32 #export_c {names:=[12] string.["bytes_overlap","f32_from_bits","f64_from_bits","f32_bits","f64_bits","value_barrier","add_wrap","sub_wrap","mul_wrap","rotl","rotr","mul_wide"];for x,i:names {if x==name {return cast(u32)(i+1);}}return CK_NONE;}
+CK_byte_intrinsic :: (name:string)->u32 #export_c {names:=[13] string.["bytes_overlap","f32_from_bits","f64_from_bits","f32_bits","f64_bits","value_barrier","add_wrap","sub_wrap","mul_wrap","rotl","rotr","mul_wide","secure_zero"];for x,i:names {if x==name {return cast(u32)(i+1);}}return CK_NONE;}
+#forall "secure zero requires one numeric borrowed view and returns no value" variant:0..<10 {
+ nodes:[8]CK_Node;types:[20]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{current=2,type_count=20}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ for i:0..<16 {types[i]=CK_builtin(i);}
+ elements:=[10]int.[12,14,15,6,2,3,12,12,12,12];
+ types[16]=CK_Type.{kind=CK_Kind.view,elem=elements[variant],name="view",length=ifx variant==9 then 1 else 0};
+ CK_declare(c,"buffer",ifx variant==6 then 3 else 16,CK_Loc.{},"");
+ nodes[2]=CK_Node.{kind=CK_Tag.expr_call,name="secure_zero",head=3,tail=3};
+ nodes[3]=CK_Node.{kind=CK_Tag.expr_ident,name=ifx variant==8 then "missing" else "buffer"};
+ if variant==7 {nodes[2].head=0;nodes[2].tail=0;}
+ result:=CK_call(c,2,CK_Hint.{});
+ #assert CK_byte_intrinsic("secure_zero")==13 && nodes[2].byte_intrinsic==13;
+ if variant<5 {#assert result==1 && state[0].error_count==0;}
+ else {#assert result==0 && state[0].error_count==1;}
+ if variant>=5 && variant<8 {#assert errors[0].code=="E0378";}
+}
 #test "return borrow reused input rebuilds constant bindings actual call lists and procedure statuses" {
  nodes:[64]CK_Node;types:[64]CK_Type;locals:[64]CK_Local;errors:[16]CK_Error;bytes:[4096]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
  nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.constant,name="Text",a=3,next=4};nodes[3]=CK_Node.{kind=CK_Tag.expr_string,name="literal"};nodes[4]=CK_Node.{kind=CK_Tag.proc,name="text",a=5,b=6,next=9};nodes[5]=CK_Node.{kind=CK_Tag.type_named,name="string"};nodes[6]=CK_Node.{kind=CK_Tag.stmt_block,head=7};nodes[7]=CK_Node.{kind=CK_Tag.stmt_return,a=8};nodes[8]=CK_Node.{kind=CK_Tag.expr_ident,name="Text"};nodes[9]=CK_Node.{kind=CK_Tag.proc,name="owned",a=10,b=11};nodes[10]=CK_Node.{kind=CK_Tag.type_named,name="int"};nodes[11]=CK_Node.{kind=CK_Tag.stmt_block,head=12};nodes[12]=CK_Node.{kind=CK_Tag.stmt_return,a=13};nodes[13]=CK_Node.{kind=CK_Tag.expr_int,value=1};

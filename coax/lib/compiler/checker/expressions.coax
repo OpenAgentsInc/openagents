@@ -447,8 +447,14 @@ CK_call :: (c:CK_Context,id:int,want:CK_Hint)->int {
   }
   byte:=CK_byte_intrinsic(e.name);
   if byte!=0 {
-    c.nodes[id].byte_intrinsic=byte;n:=1;if byte==1 || byte>=7 {n=2;}
+    c.nodes[id].byte_intrinsic=byte;n:=1;if byte==1 || (byte>=7 && byte<=12) {n=2;}
     if count!=n {CK_error(c,e.loc,"E0378","wrong byte intrinsic argument count","");return CK_NONE;}
+    if byte==13 {
+      t:=CK_value(c,e.head,CK_Hint.{});if t==0 {return 0;}
+      if c.types[t].kind!=CK_Kind.view || CK_readonly(c,t) {CK_error(c,e.loc,"E0378","secure_zero takes a writable numeric view","secure_zero(buffer[..])");return 0;}
+      if !CK_numeric(c,c.types[t].elem) && c.types[t].elem!=2 {CK_error(c,e.loc,"E0378","secure_zero takes a numeric view","");return 0;}
+      return 1;
+    }
     if byte==12 {
       a:=e.head;while a!=0 {
         t:=CK_value(c,a,CK_Hint.{type=15});if t==0 {return 0;}

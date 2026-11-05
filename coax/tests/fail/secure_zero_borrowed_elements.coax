@@ -1,0 +1,2 @@
+// expect: E0378
+main :: () { values: [2]string; secure_zero(values[..]); }

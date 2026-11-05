@@ -1,1 +1,1 @@
-Current compiler: **coax0 0.49.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.50.0**. Status inventory schema: **1**.
