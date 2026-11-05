@@ -1,6 +1,6 @@
 // Firm reason: 1 (browser host: the glue between the page, a Web Worker and the room server's wasm)
 // The room server's local host (GitHub #12784; Aethyr book chapter 95). Offline Everglade is a one-seat
-// room: the room server's own simulation (coax/web/room/room-worker.c, built by coax/web/room/worker.sh
+// room: the room server's own simulation (coax/web/room/room-worker.c, built by coax/web/room/worker.coax
 // to build/everglade-room.wasm) runs in a Web Worker, and the page's socket to it (a URL local:PATH)
 // is a loopback over postMessage that carries the same text frames a WebSocket to oa-room carries.
 // This file decides nothing: it moves frames, keeps the 30 Hz beat, gives the clock and fetches the

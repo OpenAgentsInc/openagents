@@ -1,0 +1,355 @@
+// Builds the room server's simulation for the browser's local host (GitHub #12784; Aethyr book
+// chapter 95): the units build.sh links for oa-room (room.coax and the city's), turned into C by the
+// same compiler and linked to wasm32 with room-worker.c in place of room-host.c. Offline Everglade
+// runs it in a Web Worker (coax/web/room-worker.js), so offline play is a one-seat room.
+//   coax/web/tool.sh coax/web/room/worker.coax [OUT.wasm]   (default apps/openagents-web/build/everglade-room.wasm)
+// The C of each unit is kept under the SHA-256 of the compiler and the unit's #load closure
+// (COAXIAL_WASM_CACHE, default ~/.cache/coax-wasm; empty for none), so a build whose sources didn't
+// change compiles no Coax. COAXIAL_MODE=dev links at -O1 without LTO, as wasm.sh does.
+#import "Basic";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+#load "../../lib/sys/args.coax";
+#load "../../lib/sys/proc.coax";
+#load "../../lib/crypto/sha256_workspace.coax";
+
+cxproc_self_path :: (out: [] u8) -> int #foreign;
+
+WK_UNITS :: [6] string.["coax/web/room/room.coax", "apps/openagents-web/everglade.coax", "apps/openagents-web/everglade-step.coax", "verse/grid.coax", "verse/everglade/river.coax", "verse/everglade/guard-guide-policy.coax"];
+WK_FILE :: 67108864;      // the largest file read whole (a unit's C, the module)
+WK_NAMES :: 16384;        // exported names a unit's header holds at most
+
+// A text being built.
+Wk :: struct { b: [16384] u8; n: int; }
+wk_s :: (t: [] Wk, s: string) { for c: s { if t[0].n < t[0].b.count { t[0].b[t[0].n] = c; t[0].n += 1; } } }
+wk_text :: (t: [] Wk) -> string { return cast(string) t[0].b[0..<t[0].n]; }
+wk_join :: (a: string, b: string, t: [] Wk) -> string { t[0].n = 0; wk_s(t, a); wk_s(t, b); return wk_text(t); }
+
+// The repository's root from this tool's own binary (ROOT/coax/web/build/tools/NAME-HASH, tool.sh).
+wk_root :: (self: string) -> string { r := self; for i: 0..<5 { r = fs_dir(r); } return r; }
+// A unit's name: its file name without .coax.
+wk_name :: (u: string) -> string { b := fs_base(u); return ifx b.count > 5 && b[b.count - 5..<b.count] == ".coax" then b[0..<b.count - 5] else b; }
+#test "paths" {
+  #assert wk_root("/w/oa/coax/web/build/tools/worker-ab") == "/w/oa";
+  #assert wk_name("verse/everglade/river.coax") == "river" && wk_name("x") == "x";
+}
+
+HEX :: "0123456789abcdef";
+// SHA-256 of bytes, as 64 hex digits into out.
+wk_sha :: (data: [] u8, out: [] u8) -> string {
+  w: [1] ShaOwned; d: [32] u8;
+  ok := so_init(w[..]);
+  i := 0;
+  while i < data.count { e := ifx data.count - i > 1048576 then i + 1048576 else data.count; ok = ok && so_update(w[..], data[i..<e], false); i = e; }
+  ok = ok && so_finish(w[..], d[..], false);
+  for k: 0..<32 { out[2 * k] = HEX[cast(int) (d[k] >> 4)]; out[2 * k + 1] = HEX[cast(int) (d[k] & 15)]; }
+  return cast(string) out[0..<64];
+}
+#test "SHA-256 in hex" {
+  o: [64] u8; e: [1] u8;
+  #assert wk_sha(e[0..<0], o[..]) == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+}
+
+// A file's SHA-256 in hex, or "".
+wk_file_sha :: (path: string, buf: [] u8, out: [] u8) -> string {
+  n := fs_read(path, buf);
+  if n < 0 || n >= buf.count { return ""; }
+  return wk_sha(buf[0..<n], out);
+}
+
+// The exported function names in a C header, as worker.sh's names() found them: a line that starts
+// with a letter or _, holds only letters, digits, _, spaces and * before its first (, and ends there
+// in a space, any *s and a name that starts with a small letter or _.
+WkNames :: struct { b: [1048576] u8; used: int; at: [WK_NAMES] int; len: [WK_NAMES] int; n: int; }
+wk_is_word :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'; }
+wk_line_name :: (line: string) -> string {
+  p := 0;
+  while p < line.count && line[p] != '(' { p += 1; }
+  if p == line.count || p == 0 { return ""; }
+  c0 := line[0];
+  if !((c0 >= 'a' && c0 <= 'z') || (c0 >= 'A' && c0 <= 'Z') || c0 == '_') { return ""; }
+  for i: 0..<p { c := line[i]; if !wk_is_word(c) && c != ' ' && c != '*' { return ""; } }
+  s := p;
+  while s > 0 && wk_is_word(line[s - 1]) { s -= 1; }
+  if s == p || !((line[s] >= 'a' && line[s] <= 'z') || line[s] == '_') { return ""; }
+  k := s;
+  while k > 0 && line[k - 1] == '*' { k -= 1; }
+  if k < 2 || line[k - 1] != ' ' { return ""; }
+  return line[s..<p];
+}
+#test "names in a header" {
+  #assert wk_line_name("int64_t room_tick(int64_t x);") == "room_tick";
+  #assert wk_line_name("const char *name_of(void);") == "name_of";
+  #assert wk_line_name("void ** _x2(void);") == "_x2";
+  #assert wk_line_name("int Upper(void);") == "" && wk_line_name("  int f(void);") == "" && wk_line_name("f(void);") == "";
+  #assert wk_line_name("typedef struct { int a; } t; int g(void);") == "";
+}
+wk_names_add :: (s: [] WkNames, name: string) {
+  for i: 0..<s[0].n { if cast(string) s[0].b[s[0].at[i]..<s[0].at[i] + s[0].len[i]] == name { return; } }
+  if s[0].n >= WK_NAMES || s[0].used + name.count > s[0].b.count { return; }
+  s[0].at[s[0].n] = s[0].used; s[0].len[s[0].n] = name.count;
+  for c: name { s[0].b[s[0].used] = c; s[0].used += 1; }
+  s[0].n += 1;
+}
+wk_names_has :: (s: [] WkNames, name: string) -> bool {
+  for i: 0..<s[0].n { if cast(string) s[0].b[s[0].at[i]..<s[0].at[i] + s[0].len[i]] == name { return true; } }
+  return false;
+}
+wk_names_of :: (header: string, s: [] WkNames) {
+  i := 0;
+  while i < header.count {
+    e := i;
+    while e < header.count && header[e] != '\n' { e += 1; }
+    n := wk_line_name(header[i..<e]);
+    if n.count > 0 { wk_names_add(s, n); }
+    i = e + 1;
+  }
+}
+// The -fno-builtin flag as a lasting string (the argv's strings outlive the loop's texts).
+WK_FLAGS :: [12] string.["-fno-builtin-sin", "-fno-builtin-sinf", "-fno-builtin-cos", "-fno-builtin-cosf", "-fno-builtin-tan", "-fno-builtin-tanf", "-fno-builtin-exp", "-fno-builtin-expf", "-fno-builtin-log", "-fno-builtin-logf", "-fno-builtin-pow", "-fno-builtin-powf"];
+wk_flag :: (f: string) -> string { for x: WK_FLAGS { if x == f { return x; } } return f; }
+
+// Runs argv in dir ("" for here) to its end; its stdout into out (its count), or -1 after printing why.
+wk_run :: (argv: [] string, dir: string, env: [] string, out: [] u8) -> int {
+  h := proc_new();
+  if h < 0 { return -1; }
+  ok := proc_err_ours(h);
+  for a: argv { ok = ok && proc_arg(h, a); }
+  for e: env { ok = ok && proc_env(h, e); }
+  if dir.count > 0 { ok = ok && proc_cwd(h, dir); }
+  if !ok || proc_start(h) != 0 { r := proc_release(h); tool_err("worker: can't run "); tool_errln(argv[0]); return -1; }
+  n := 0; line: [65536] u8;
+  while true {
+    k := proc_line(h, -1, line[..]);
+    if k == PROC_EOF || k == PROC_ERROR { break; }
+    if k < 0 { continue; }
+    if n > 0 && n < out.count { out[n] = '\n'; n += 1; }
+    for i: 0..<k { if n < out.count { out[n] = line[i]; n += 1; } }
+  }
+  st := proc_wait(h, -1); r := proc_release(h);
+  return ifx st == 0 then n else -1 - st;
+}
+// Starts argv in dir with env, stdout to nowhere; the handle or -1.
+wk_start :: (argv: [] string, dir: string, env: [] string) -> int {
+  h := proc_new();
+  if h < 0 { return -1; }
+  ok := proc_err_ours(h);
+  for a: argv { ok = ok && proc_arg(h, a); }
+  for e: env { ok = ok && proc_env(h, e); }
+  if dir.count > 0 { ok = ok && proc_cwd(h, dir); }
+  if !ok || proc_start(h) != 0 { r := proc_release(h); tool_err("worker: can't run "); tool_errln(argv[0]); return -1; }
+  return h;
+}
+// Waits for every handle; whether all exited 0.
+wk_wait_all :: (hs: [] int) -> bool {
+  all := true; line: [65536] u8;
+  for h: hs {
+    if h < 0 { all = false; continue; }
+    while true { k := proc_line(h, -1, line[..]); if k == PROC_EOF || k == PROC_ERROR { break; } }
+    st := proc_wait(h, -1); r := proc_release(h);
+    if st != 0 { all = false; }
+  }
+  return all;
+}
+// Copies a file; whether it was copied.
+wk_copy :: (from: string, to: string, buf: [] u8) -> bool {
+  n := fs_read(from, buf);
+  return n >= 0 && n < buf.count && fs_write(to, cast(string) buf[0..<n]);
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) > 1 { tool_errln("usage: worker.coax [OUT.wasm]"); return 2; }
+  sb: [4096] u8; sn := cxproc_self_path(sb[..]);
+  if sn <= 0 || sn > sb.count { tool_errln("worker: can't find this tool's own path"); return 1; }
+  root := wk_root(cast(string) sb[0..<sn]);
+  // OUT, made absolute with its directory's symlinks resolved, as worker.sh's pwd -P did
+  ob: [1] Wk;
+  if args_count(a[..]) == 1 {
+    o := args_at(a[..], 0);
+    if o.count > 0 && o[0] == '/' { wk_s(ob[..], o); }
+    else { cw: [FS_PATH_MAX] u8; wk_s(ob[..], fs_cwd(cw[..])); wk_s(ob[..], "/"); wk_s(ob[..], o); }
+  } else { wk_s(ob[..], root); wk_s(ob[..], "/apps/openagents-web/build/everglade-room.wasm"); }
+  od := fs_dir(wk_text(ob[..]));
+  if !fs_mkdir(od) && fs_kind(od) <= 0 { tool_err("worker: can't make "); tool_errln(od); return 1; }
+  rb: [FS_PATH_MAX] u8; real := fs_realpath(od, rb[..]);
+  outb: [1] Wk; wk_s(outb[..], ifx real.count > 0 then real else od); wk_s(outb[..], "/"); wk_s(outb[..], fs_base(wk_text(ob[..])));
+  out := wk_text(outb[..]);
+  cb: [4096] u8; coax := proc_getenv("COAX", cb[..]);
+  cxb: [1] Wk; if coax.count == 0 { wk_s(cxb[..], root); wk_s(cxb[..], "/coax/bin/coax"); coax = wk_text(cxb[..]); }
+  // the toolchain as wasm.sh finds it (coax/web/toolchain.sh), and wasm-opt as worker.sh did
+  tc := [3] string.["bash", "-c", "source coax/web/toolchain.sh && printf '%s\\n%s\\n%s\\n%s\\n%s\\n' \"$COAXIAL_CLANG\" \"$COAXIAL_SYSROOT\" \"$COAXIAL_RESOURCES\" \"$PATH\" \"${COAXIAL_WASM_OPT:-$(command -v wasm-opt || true)}\""];
+  none: [1] string;
+  tb: [16384] u8; tn := wk_run(tc[..], root, none[0..<0], tb[..]);
+  if tn < 0 { return 1; }
+  parts: [5] string; k := 0; i := 0;
+  while i <= tn && k < 5 { e := i; while e < tn && tb[e] != '\n' { e += 1; } parts[k] = cast(string) tb[i..<e]; k += 1; i = e + 1; }
+  if k < 4 { tool_errln("worker: coax/web/toolchain.sh gave no toolchain"); return 1; }
+  if k < 5 { parts[4] = ""; }
+  clang := parts[0];
+  pe: [1] Wk; wk_s(pe[..], "PATH="); wk_s(pe[..], parts[3]);
+  env := [1] string.[wk_text(pe[..])];
+  wb: [FS_PATH_MAX] u8; work := fs_temp("coax-room-worker.", wb[..]);
+  if work.count == 0 { tool_errln("worker: no temporary directory"); return 1; }
+  rc := wk_build(root, coax, clang, parts[1], parts[2], parts[4], env[..], work, out);
+  gone := fs_remove(work);
+  return rc;
+}
+
+wk_build :: (root: string, coax: string, clang: string, sysroot_dir: string, res_dir: string, wasm_opt: string, env: [] string, work: string, out: string) -> int {
+  buf: [WK_FILE] u8;
+  // the cache: COAXIAL_WASM_CACHE (empty for none), default ~/.cache/coax-wasm
+  cab: [4096] u8; cache := proc_getenv("COAXIAL_WASM_CACHE", cab[..]);
+  chb: [1] Wk;
+  if !proc_has_env("COAXIAL_WASM_CACHE") { hb: [4096] u8; wk_s(chb[..], proc_getenv("HOME", hb[..])); wk_s(chb[..], "/.cache/coax-wasm"); cache = wk_text(chb[..]); }
+  if cache.count > 0 && !fs_mkdir(cache) && fs_kind(cache) <= 0 { tool_err("worker: can't make "); tool_errln(cache); return 1; }
+  csb: [64] u8; compiler_sum := wk_file_sha(coax, buf[..], csb[..]);
+  if compiler_sum.count == 0 { tool_err("worker: can't read "); tool_errln(coax); return 1; }
+  hs: [6] int; keys: [6] [64] u8; keyed: [6] bool;
+  for ui: 0..<WK_UNITS.count {
+    hs[ui] = -2;
+    u := WK_UNITS[ui]; n := wk_name(u);
+    p1: [1] Wk; p2: [1] Wk;
+    wc := wk_join(work, "/", p1[..]); wk_s(p1[..], n); wk_s(p1[..], ".c"); wc = wk_text(p1[..]);
+    wh := wk_join(work, "/", p2[..]); wk_s(p2[..], n); wk_s(p2[..], ".h"); wh = wk_text(p2[..]);
+    if cache.count > 0 {
+      lb: [262144] u8;
+      la := [4] string.["coax/web/tool.sh", "wasm-size", "sources", u];
+      ln := wk_run(la[..], root, env, lb[..]);
+      if ln > 0 {
+        // the key: the compiler's and the unit's names, then shasum's lines for the closure
+        kt: [1] Wk; wk_s(kt[..], "coax-room-worker-c-1\n"); wk_s(kt[..], compiler_sum); wk_s(kt[..], "\n"); wk_s(kt[..], u); wk_s(kt[..], "\n");
+        list := cast(string) lb[0..<ln]; ok := true; j := 0;
+        while j < list.count {
+          while j < list.count && (list[j] == ' ' || list[j] == '\n' || list[j] == '\t') { j += 1; }
+          e := j; while e < list.count && list[e] != ' ' && list[e] != '\n' && list[e] != '\t' { e += 1; }
+          if e > j {
+            f := list[j..<e]; fp: [1] Wk; hx: [64] u8;
+            h := wk_file_sha(wk_join(root, "/", fp[..]), buf[..], hx[..]);
+            if f.count > 0 && f[0] == '/' { h = wk_file_sha(f, buf[..], hx[..]); }
+            if h.count == 0 { ok = false; }
+            wk_s(kt[..], h); wk_s(kt[..], "  "); wk_s(kt[..], f); wk_s(kt[..], "\n");
+          }
+          j = e;
+        }
+        if ok && kt[0].n < kt[0].b.count {
+          kb: [64] u8; key := wk_sha(kt[0].b[0..<kt[0].n], kb[..]);
+          for x: 0..<64 { keys[ui][x] = key[x]; } keyed[ui] = true;
+          cc: [1] Wk; ch: [1] Wk;
+          wk_s(cc[..], cache); wk_s(cc[..], "/"); wk_s(cc[..], key); wk_s(cc[..], ".c");
+          wk_s(ch[..], cache); wk_s(ch[..], "/"); wk_s(ch[..], key); wk_s(ch[..], ".h");
+          if fs_kind(wk_text(cc[..])) == 1 && fs_kind(wk_text(ch[..])) == 1 && wk_copy(wk_text(cc[..]), wc, buf[..]) && wk_copy(wk_text(ch[..]), wh, buf[..]) {
+            ta := [3] string.["touch", wk_text(cc[..]), wk_text(ch[..])]; tn: [1] u8; t := wk_run(ta[..], "", env, tn[..]);
+            continue;
+          }
+        }
+      }
+    }
+    // (cd ROOT && coax c UNIT --library --header WORK/NAME.h) > WORK/NAME.c
+    ca := [9] string.["/bin/sh", "-c", "exec \"$0\" c \"$1\" --library --header \"$2\" > \"$3\"", coax, u, wh, wc, "", ""];
+    hs[ui] = wk_start(ca[0..<7], root, env);
+  }
+  started: [6] int; ns := 0;
+  for ui: 0..<6 { if hs[ui] != -2 { started[ns] = hs[ui]; ns += 1; } }
+  if !wk_wait_all(started[0..<ns]) { tool_errln("worker: a unit's C failed"); return 1; }
+  // the new C into the cache, each file renamed into place whole
+  for ui: 0..<6 {
+    if hs[ui] == -2 || !keyed[ui] { continue; }
+    key := cast(string) keys[ui][..]; n := wk_name(WK_UNITS[ui]);
+    for ext: [2] string.[".c", ".h"] {
+      from: [1] Wk; wk_s(from[..], work); wk_s(from[..], "/"); wk_s(from[..], n); wk_s(from[..], ext);
+      tmp: [1] Wk; wk_s(tmp[..], cache); wk_s(tmp[..], "/."); wk_s(tmp[..], key); wk_s(tmp[..], ext);
+      fin: [1] Wk; wk_s(fin[..], cache); wk_s(fin[..], "/"); wk_s(fin[..], key); wk_s(fin[..], ext);
+      if !wk_copy(wk_text(from[..]), wk_text(tmp[..]), buf[..]) || !fs_rename(wk_text(tmp[..]), wk_text(fin[..])) { tool_errln("worker: can't keep a unit's C in the cache"); return 1; }
+    }
+  }
+  // The room's unit and the city's both carry apps/openagents-web/analytics.coax's exports (build.sh
+  // makes the room's copies local to it): here the room's are renamed in its object, room_dup_NAME.
+  room_names: [1] WkNames; other: [1] WkNames;
+  for ui: 0..<6 {
+    hp: [1] Wk; wk_s(hp[..], work); wk_s(hp[..], "/"); wk_s(hp[..], wk_name(WK_UNITS[ui])); wk_s(hp[..], ".h");
+    n := fs_read(wk_text(hp[..]), buf[..]);
+    if n < 0 { tool_errln("worker: a unit's header is missing"); return 1; }
+    wk_names_of(cast(string) buf[0..<n], ifx ui == 0 then room_names[..] else other[..]);
+  }
+  renames: [1] Wk; rn := 0;
+  rs: [4096] string; rat: [4096] int; rlen: [4096] int;
+  for i: 0..<room_names[0].n {
+    nm := cast(string) room_names[0].b[room_names[0].at[i]..<room_names[0].at[i] + room_names[0].len[i]];
+    if !wk_names_has(other[..], nm) || rn >= rat.count { continue; }
+    rat[rn] = renames[0].n; wk_s(renames[..], "-D"); wk_s(renames[..], nm); wk_s(renames[..], "=room_dup_"); wk_s(renames[..], nm);
+    rlen[rn] = renames[0].n - rat[rn]; rn += 1;
+  }
+  for i: 0..<rn { rs[i] = cast(string) renames[0].b[rat[i]..<rat[i] + rlen[i]]; }
+  catc: [1] Wk; wk_s(catc[..], work); wk_s(catc[..], "/room-catalog.c");
+  cta := [4] string.["coax/web/tool.sh", "coax/web/room/room-catalog.coax", "apps/openagents-web/realms/everglade/assets/everglade.pack", wk_text(catc[..])];
+  cn: [4096] u8;
+  if wk_run(cta[..], root, env, cn[..]) < 0 { tool_errln("worker: room-catalog failed"); return 1; }
+  mb: [64] u8; mode := proc_getenv("COAXIAL_MODE", mb[..]);
+  if mode.count == 0 { mode = "release"; }
+  dev := mode == "dev";
+  sr: [1] Wk; wk_s(sr[..], "--sysroot="); wk_s(sr[..], sysroot_dir);
+  rd: [1] Wk; wk_s(rd[..], "-resource-dir="); wk_s(rd[..], res_dir);
+  // the C library's sines, exponentials and powers left to room-math.c, which oa-room links too (build.sh, #12893)
+  wi: [1] Wk; wk_s(wi[..], "-I"); wk_s(wi[..], work);
+  hi: [1] Wk; wk_s(hi[..], "-I"); wk_s(hi[..], root); wk_s(hi[..], "/coax/web/room");
+  // the objects, in the link's order: room-math.c (no LTO: it stands in for the C library's
+  // functions, which the link resolves after the bitcode), the room's unit with its renames, the
+  // city's units, room-world.c, the catalog and room-worker.c
+  srcs: [10] [1] Wk; objs: [10] [1] Wk; procs: [10] int;
+  for jb: 0..<10 {
+    if jb == 0 { wk_s(srcs[jb][..], root); wk_s(srcs[jb][..], "/coax/web/room/room-math.c"); }
+    else if jb <= 6 { wk_s(srcs[jb][..], work); wk_s(srcs[jb][..], "/"); wk_s(srcs[jb][..], wk_name(WK_UNITS[jb - 1])); wk_s(srcs[jb][..], ".c"); }
+    else if jb == 7 { wk_s(srcs[jb][..], root); wk_s(srcs[jb][..], "/coax/web/room/room-world.c"); }
+    else if jb == 8 { wk_s(srcs[jb][..], work); wk_s(srcs[jb][..], "/room-catalog.c"); }
+    else { wk_s(srcs[jb][..], root); wk_s(srcs[jb][..], "/coax/web/room/room-worker.c"); }
+    src := wk_text(srcs[jb][..]); stem := fs_base(src); stem = stem[0..<stem.count - 2];
+    wk_s(objs[jb][..], work); wk_s(objs[jb][..], "/"); wk_s(objs[jb][..], stem); wk_s(objs[jb][..], ".o");
+    argv: [4200] string; c := 0;
+    for x: [5] string.[clang, "--target=wasm32-wasip1", wk_text(sr[..]), wk_text(rd[..]), "-std=c11"] { argv[c] = x; c += 1; }
+    argv[c] = ifx dev then "-O1" else "-Os"; c += 1;
+    if !dev && jb != 0 { argv[c] = "-flto"; c += 1; }
+    for x: [3] string.["-ffp-contract=off", "-fno-fast-math", "-w"] { argv[c] = x; c += 1; }
+    for f: [6] string.["sin", "cos", "tan", "exp", "log", "pow"] {
+      b1: [1] Wk; wk_s(b1[..], "-fno-builtin-"); wk_s(b1[..], f);
+      b2: [1] Wk; wk_s(b2[..], "-fno-builtin-"); wk_s(b2[..], f); wk_s(b2[..], "f");
+      argv[c] = wk_flag(wk_text(b1[..])); c += 1; argv[c] = wk_flag(wk_text(b2[..])); c += 1;
+    }
+    if jb == 1 { for i: 0..<rn { argv[c] = rs[i]; c += 1; } }
+    if jb >= 1 && jb <= 6 { argv[c] = wk_text(wi[..]); c += 1; }
+    if jb == 7 || jb == 9 { argv[c] = wk_text(wi[..]); c += 1; argv[c] = wk_text(hi[..]); c += 1; }
+    argv[c] = "-c"; c += 1; argv[c] = src; c += 1; argv[c] = "-o"; c += 1; argv[c] = wk_text(objs[jb][..]); c += 1;
+    procs[jb] = wk_start(argv[0..<c], "", env);
+  }
+  if !wk_wait_all(procs[..]) { tool_errln("worker: a compile failed"); return 1; }
+  outw: [1] Wk; wk_s(outw[..], work); wk_s(outw[..], "/output.wasm");
+  la: [32] string; c := 0;
+  for s: [5] string.[clang, "--target=wasm32-wasip1", wk_text(sr[..]), wk_text(rd[..]), "-mexec-model=reactor"] { la[c] = s; c += 1; }
+  la[c] = "-o"; c += 1; la[c] = wk_text(outw[..]); c += 1;
+  for i: 0..<10 { la[c] = wk_text(objs[i][..]); c += 1; }
+  la[c] = "-Wl,--import-memory,--max-memory=268435456,-z,stack-size=4194304,--export=__heap_base,--gc-sections,--strip-debug"; c += 1;
+  nb: [1] u8;
+  if wk_run(la[0..<c], "", env, nb[..]) < 0 { tool_errln("worker: the link failed"); return 1; }
+  if !dev {
+    if wasm_opt.count > 0 {
+      optw: [1] Wk; wk_s(optw[..], work); wk_s(optw[..], "/optimized.wasm");
+      wo := [5] string.[wasm_opt, wk_text(outw[..]), "-O2", "-o", wk_text(optw[..])];
+      if wk_run(wo[..], "", env, nb[..]) >= 0 { ok := fs_rename(wk_text(optw[..]), wk_text(outw[..])); }
+    }
+    // its budget line (apps/openagents-web/wasm-budgets.txt everglade-room)
+    bn := fs_base(out); bn = ifx bn.count > 5 && bn[bn.count - 5..<bn.count] == ".wasm" then bn[0..<bn.count - 5] else bn;
+    ba := [6] string.["coax/web/tool.sh", "wasm-size", "budget", "apps/openagents-web/wasm-budgets.txt", bn, wk_text(outw[..])];
+    s := wk_run(ba[..], root, env, nb[..]);
+    if s < 0 {
+      bd: [1] Wk; wk_s(bd[..], root); wk_s(bd[..], "/apps/openagents-web/build/");
+      under := out.count >= bd[0].n && out[0..<bd[0].n] == wk_text(bd[..]);
+      if s != -5 || under { return 1; }   // 4: no budget line, allowed outside the app's build
+    }
+  }
+  if !fs_rename(wk_text(outw[..]), out) {
+    n := fs_read(wk_text(outw[..]), buf[..]);
+    if n < 0 || n >= buf.count || !fs_write(out, cast(string) buf[0..<n]) { tool_err("worker: can't write "); tool_errln(out); return 1; }
+  }
+  print("built % (% bytes)\n", out, fs_size(out));
+  return 0;
+}

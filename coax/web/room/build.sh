@@ -19,7 +19,7 @@ for u in "${units[@]}"; do
   n="$(basename "$u" .coax)"
   (cd "$root" && "$coax" c "$u" --library --header "$work/$n.h" > "$work/$n.c")
 done
-# The simulation's floats as the browser's local host computes them (worker.sh, #12893): no fused
+# The simulation's floats as the browser's local host computes them (worker.coax, #12893): no fused
 # a * b + c, and the C library's sines, exponentials and powers left to room-math.c, which both hosts link.
 strict=(-ffp-contract=off -fno-fast-math)
 for f in sin cos tan exp log pow; do strict+=("-fno-builtin-$f" "-fno-builtin-${f}f"); done

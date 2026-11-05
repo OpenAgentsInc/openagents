@@ -754,7 +754,7 @@ call Coax's `sin`, `cos`, `tan`, `exp` and `pow`. So both hosts link
 `coax/web/room/room-math.c` in place of the C library's sines, exponentials,
 logarithms and powers, and build every simulation unit with
 `-ffp-contract=off -fno-fast-math` and `-fno-builtin-NAME` for each
-(`coax/web/room/build.sh`, `worker.sh`, the Dockerfile). The two towns parted
+(`coax/web/room/build.sh`, `worker.coax`, the Dockerfile). The two towns parted
 otherwise: a fall on the edge of a 10-foot band downed a townsperson in one
 host and not the other (#12893). `build.sh` refuses an `oa-room` that still
 imports one of those functions. Checks: `coax/web/room/room-math-check.coax`

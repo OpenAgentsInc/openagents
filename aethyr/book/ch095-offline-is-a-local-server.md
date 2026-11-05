@@ -1,7 +1,7 @@
 # 95. Offline is a local server
 
 > **Status: partly implemented.** The local host runs behind a switch,
-> `?offline=worker` (#12784): `coax/web/room/worker.sh` builds the room
+> `?offline=worker` (#12784): `coax/web/room/worker.coax` builds the room
 > server's units to `build/everglade-room.wasm` with
 > [room-worker.c](../../coax/web/room/room-worker.c) in place of
 > `room-host.c`, both hosts include one tick

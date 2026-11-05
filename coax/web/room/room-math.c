@@ -1,6 +1,6 @@
 /* The room server's sines, exponentials and powers (GitHub #12893), linked into both of its hosts in
    place of the C library's: oa-room (build.sh, the Dockerfile) and the browser's local host
-   (worker.sh). The two C libraries round some inputs differently (macOS's libm and wasi-libc differ
+   (worker.coax). The two C libraries round some inputs differently (macOS's libm and wasi-libc differ
    on about 1 tanf in 8, 1 expf or powf in 150), and the everglade tick (room-tick.c) calls them in
    its steps: the town's lifts, falls and turns came out a little apart in the two hosts, and a fall
    on the edge of a 10-foot band, or a guard's sight on the edge of its cone, then parted the two

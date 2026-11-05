@@ -1,6 +1,6 @@
 /* The room server's local host (GitHub #12784; Aethyr book chapter 95): the same server oa-room runs
    (room.coax, the Everglade rooms of room-everglade.coax and the world of room-world.c), built to
-   wasm32 (worker.sh) and run in the browser by coax/web/room-worker.js, which moves the frames over
+   wasm32 (worker.coax) and run in the browser by coax/web/room-worker.js, which moves the frames over
    a MessagePort where room-host.c moves them over TCP. Offline play is a one-seat room on it: the page
    is always a client, and a step added to the shared tick (room-tick.c) reaches both hosts.
    Every decision is room.coax's. This file starts the server as room-host.c does (every declared
