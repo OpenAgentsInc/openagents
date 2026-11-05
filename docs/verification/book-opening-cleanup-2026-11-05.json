@@ -237,12 +237,14 @@
     "note": "Initial attempt stopped at 840-second command limit while limited to one worker. Completed bounded retry with COAX_JOBS=6, COAX_JOBS_LOAD=28; shared 19-worker budget unchanged."
   },
   "reconciled_main": "35bb19951033743c8de0c9879872e81aba72bcdc",
-  "reconciliation": "Latest main product changes do not intersect the merged world Coax closure or C face. The retained full bootstrap provenance is pinned to its recorded inputs. The later worker-notice change was compiled into a final driver using the unchanged, verified compiler-module C; its diagnostics and erasure integration checks passed. All six books pass structure/navigation/source-listing checks.",
+  "reconciliation": "The incoming Valley Lab declaration extends the collision table; the current frame-input/controller suite passes 302/302 checks. The worker-notice patch was compiled into the final driver using unchanged verified compiler-module C; diagnostics and erasure integration checks passed. The retained full bootstrap provenance and big-world artifact remain pinned to their recorded inputs. The spatial diagnostic fixture change only clears worker notices; its assertions were reviewed and rerun before refreshing the book evidence binding.",
   "final_driver": {
     "worker_notice_patch": "e40fb51ed55731e55cf4c0e3bb5b9e764861378f",
     "binary_sha256": "8d766b2f98f8b9b762e118f1ede2d969788c6e863ba5306405a2ca6eae129e0e",
     "source_fingerprint": "e95865842d949e336b8b5b037eed86e2a98698ca1a97e8daee5e99224bb40887",
     "diagnostics": "14/14 passed with COAX_BIN selecting the rebuilt combined driver",
-    "secure_zero": "Native checked/release transcript and read-only E0378 refusal passed"
+    "secure_zero": "Native checked/release transcript and read-only E0378 refusal passed",
+    "spatial": "spatial_045.py passed with COAX_TEST_COMPILER selecting the rebuilt driver",
+    "current_input": "302/302 checks passed after the Valley Lab collision-table addition"
   }
 }

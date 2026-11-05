@@ -393,7 +393,7 @@
         },
         {
           "path": "coax/tests/spatial_045.py",
-          "sha256": "f0e7c9b844ba60731c4c6b61c384ab190a3fc65432a0608c6bd4fcb3e253dfbd"
+          "sha256": "e2825f2266e7e6de9ca3ee724a95cbe8458f6944c77ba121948239b134c93cb2"
         },
         {
           "path": "coax/tests/spatial/native-qualification.json",

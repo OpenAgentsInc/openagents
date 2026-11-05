@@ -15,7 +15,7 @@ versions. [`STATUS.md`](STATUS.md) describes current support;
 
 ## 0.50.0 — Observable Secret Erasure — 2026-11-05
 
-Commit: [`e9fb111b96fe00ec045f2e1f43c3c848a29826aa`](https://github.com/OpenAgentsInc/openagents/commit/e9fb111b96fe00ec045f2e1f43c3c848a29826aa)
+Commit: [`3266aa2d5c9a14a43ab478a28be4c889a55415f7`](https://github.com/OpenAgentsInc/openagents/commit/3266aa2d5c9a14a43ab478a28be4c889a55415f7)
 
 - Add `secure_zero(view)` for writable borrowed numeric/bool storage. Emit volatile byte
   stores on native C and Wasm, retaining cleanup even for dead local buffers;
