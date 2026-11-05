@@ -1,0 +1,3 @@
+coax jobs: waiting for 1 of 12 build workers held by 15 other coax processes; running 1 now (coax status shows them)
+coax jobs: the load average is 62.8, at or above 12 ($COAX_JOBS_LOAD); running 1 build worker, not up to 2, until it drops
+Actual browser PCM memory: bounded extents, 128 tickets, measured bank views and retained retirement passed.

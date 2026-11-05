@@ -24,8 +24,23 @@ their tools copy it into the fixture's `build/` directory. Frame-origin
 configurations supply that explicit route, or the frame-ownership tool
 accepts `--services REACTOR.wasm` and records the immutable input.
 
-The bridge also exposes the existing PCM reservation/extent primitives for
-subsequent adapter work. Global browser PCM ownership, bounded command
-promises, socket queues and ordinary Vulkan play remain separate exits.
+`openPcmMemory(services)` wraps those existing PCM extent/reservation
+primitives in concrete SDK allocation handles. `allocate(frames,channels)`
+reserves before constructing an exact `Float32Array`; `copy` first requires
+the complete measured sample count. `claim` reserves a plane before a
+separate SDK effect allocates it. Allocation failure releases its ticket.
+Each handle owns one reference, supports `retain`/`release`, and exposes a
+sample view borrowed only while the handle is live. A caller retaining that
+view must retain the handle. Final release ends use and clears the owned
+view before returning its ticket. Retiring the memory owner refuses new
+allocations while existing immutable references keep their exact budget.
+This tracks application-owned references, not JavaScript garbage collector
+or resident-memory timing.
+
+Actual browser allocation/span observations pass the unchanged native
+96-mutant authority and 11-mutant retention authority. Wiring these handles
+through the AudioWorklet and decode pipeline remains separate. Global
+browser PCM ownership, bounded command promises, socket queues and ordinary
+Vulkan play remain open.
 The actual six-mode bank/packet observer kills all 62 root mutants without
 equivalents; its receipt does not establish complete host conformance.

@@ -12,6 +12,7 @@ SERVICES_EXPORT("services_line_capacity") uint32_t services_line_capacity(void){
 SERVICES_EXPORT("services_span") uint32_t services_span(uint64_t address,uint64_t capacity,uint64_t count,uint64_t memory_bytes){return htb_copy_span(address,capacity,count,memory_bytes);}
 SERVICES_EXPORT("services_bank_insert") int64_t services_bank_insert(uint32_t count,uint64_t base,uint64_t capacity){if(count>sizeof service_line)return -1;return hab_insert(bank_view(),(coax_string){(const char*)service_line,count},base,capacity);}
 SERVICES_EXPORT("services_bank_source") uint32_t services_bank_source(int64_t id){service_source=hab_source(bank_view(),id);return service_source.valid;}
+SERVICES_EXPORT("services_bank_count") int64_t services_bank_count(void){return service_bank.count;}
 SERVICES_EXPORT("services_bank_field") uint64_t services_bank_field(int32_t field){switch(field){case 0:return(uint64_t)(uintptr_t)service_source.name.data;case 1:return(uint64_t)service_source.name.count;case 2:return service_source.address;case 3:return(uint64_t)service_source.bytes;default:return 0;}}
 SERVICES_EXPORT("services_reserve") int64_t services_reserve(int64_t words){return ham_reserve(memory_view(),words);}
 SERVICES_EXPORT("services_extent") int64_t services_extent(int64_t frames,int64_t channels){return ham_extent(frames,channels);}

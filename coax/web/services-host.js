@@ -12,5 +12,20 @@ export async function openHostServices(){
  return {span:(address,capacity,count,bytes)=>!!x.services_span(BigInt(address),BigInt(capacity),BigInt(count),BigInt(bytes)),
   bankLine(line,base,capacity){const storage=new Uint8Array(memory.buffer,x.services_line_ptr(),x.services_line_capacity()),written=encoder.encodeInto(line,storage);if(written.read!==line.length)return null;const id=x.services_bank_insert(written.written,BigInt(base),BigInt(capacity));if(id<0n||!x.services_bank_source(id))return null;
    const field=i=>Number(x.services_bank_field(i));return {id:Number(id),name:decoder.decode(new Uint8Array(memory.buffer,field(0),field(1))),address:field(2),bytes:field(3)};},
-  extent:(frames,channels)=>Number(x.services_extent(BigInt(frames),BigInt(channels))),reserve:words=>Number(x.services_reserve(BigInt(words))),release:ticket=>!!x.services_release(BigInt(ticket)),words:()=>Number(x.services_words())};
+  bankCount:()=>Number(x.services_bank_count()),extent:(frames,channels)=>Number(x.services_extent(BigInt(frames),BigInt(channels))),reserve:words=>Number(x.services_reserve(BigInt(words))),release:ticket=>!!x.services_release(BigInt(ticket)),words:()=>Number(x.services_words())};
+}
+// Each handle is one concrete SDK allocation. Its ticket outlives retirement
+// while immutable sample references remain; releasing a borrowed view ends use.
+export function openPcmMemory(services){
+ let retired=false;
+ function grant(frames,channels,make){
+  if(retired)return null;const words=services.extent(frames,channels);if(!words)return null;
+  const ticket=services.reserve(words);if(ticket<0)return null;let samples=null,refs=1;
+  try{if(make)samples=make(words);}catch{services.release(ticket);return null;}
+  return Object.freeze({ticket,words,channels:Number(channels),get samples(){return samples;},
+   retain(){if(!refs)return false;refs++;return true;},release(){if(!refs)return false;if(--refs===0){samples=null;services.release(ticket);}return true;}});
+ }
+ return Object.freeze({claim:(frames,channels)=>grant(frames,channels),allocate:(frames,channels)=>grant(frames,channels,words=>new Float32Array(words)),
+  copy(source,frames,channels){const words=services.extent(frames,channels);if(!words||source.length!==words)return null;const allocation=grant(frames,channels,n=>new Float32Array(n));if(allocation)allocation.samples.set(source);return allocation;},
+  total:()=>services.words(),retire(){retired=true;}});
 }
