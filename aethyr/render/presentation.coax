@@ -1,0 +1,76 @@
+// Optional experiment: draw the complete shared graph into binary16, then
+// sample it once into an opaque normalized display. No caller is opted in.
+#module "aethyr.render.presentation";
+#load "host-bindings.coax";
+#load "resources.coax" as presentation_resources;
+#authority;
+
+RenderPresentation :: struct {
+  status:presentation_resources.RenderResourceStatus;
+  draw:presentation_resources.RenderTargetDescriptor;
+  display:presentation_resources.RenderTargetDescriptor;
+  entry:int=-1;source:RenderTarget;vertices:int;
+  uniform:RenderHostUse;image:RenderHostUse;sample:RenderHostUse;
+  state:RenderPassState;sampler:presentation_resources.RenderSamplerDescriptor;
+  uniforms:[8]f32;
+}
+
+#forall "presentation admits both actual display orders and retains every physical descriptor" order:0..<2 {
+  format:=ifx order==0 then presentation_resources.RenderTextureFormat.rgba8 else presentation_resources.RenderTextureFormat.bgra8;
+  p:=render_presentation(2,321,181,cast(int)format,16384);
+  #assert p.status==presentation_resources.RenderResourceStatus.ok;
+  #assert p.draw.status==presentation_resources.RenderResourceStatus.ok && p.draw.width==321 && p.draw.height==181 && p.draw.format==presentation_resources.RenderTextureFormat.rgba16f;
+  #assert p.display.status==presentation_resources.RenderResourceStatus.ok && p.display.width==321 && p.display.height==181 && p.display.format==format;
+  #assert p.entry==13 && p.source==RenderTarget.screen && p.vertices==6;
+  uses:=[3]RenderHostUse.[p.uniform,p.image,p.sample];
+  for i:0..<3 {
+    expected:=render_host_use(2,13,i);actual:=uses[i];
+    #assert actual.valid && actual.binding_set==expected.binding_set && actual.binding_set==2;
+    #assert actual.use.native_kind==i+1 && actual.use.resource==i && actual.use.slot==i;
+    #assert actual.use.stages==expected.use.stages && actual.use.stride==expected.use.stride;
+    #assert actual.binding.name==expected.binding.name && actual.binding.group==0 && actual.binding.binding==i && actual.binding.kind==expected.binding.kind;
+    #assert actual.binding.stride==expected.binding.stride && actual.binding.uniform_vec4s==expected.binding.uniform_vec4s;
+    #assert actual.source.kind==expected.source.kind && actual.source.index==expected.source.index && actual.source.sampler_name==expected.source.sampler_name && actual.source.buffer_mode==expected.source.buffer_mode;
+  }
+  #assert p.state.valid && p.state.depth==RenderDepth.none && !p.state.depth_write && p.state.bias==0 && p.state.slope==0;
+  #assert p.state.colour==RenderBlend.replace && p.state.alpha==RenderBlend.replace && p.state.outputs==1 && p.state.aux_write;
+  s:=p.sampler;#assert s.status==presentation_resources.RenderResourceStatus.ok && s.address_u==presentation_resources.RenderSamplerAddress.clamp && s.address_v==presentation_resources.RenderSamplerAddress.clamp;
+  #assert !s.min_linear && !s.mag_linear && !s.mip_linear && s.logical_anisotropy==1 && s.physical_anisotropy==1 && s.compare==presentation_resources.RenderSamplerCompare.none;
+  expected:=[8]f32.[-1,1,1,-1,1,0,0,0];for i:0..<8 {#assert f32_bits(p.uniforms[i])==f32_bits(expected[i]);}
+}
+#forall "presentation refuses unsupported catalog or display before publishing any effect" which:0..<6 {
+  profile:=[6]int.[-1,18,1,2,2,2][which];
+  format:=[6]presentation_resources.RenderTextureFormat.[presentation_resources.RenderTextureFormat.rgba8,presentation_resources.RenderTextureFormat.rgba8,presentation_resources.RenderTextureFormat.rgba8,presentation_resources.RenderTextureFormat.rgba16f,presentation_resources.RenderTextureFormat.depth32,presentation_resources.RenderTextureFormat.invalid][which];
+  p:=render_presentation(profile,1,1,cast(int)format,16384);
+  #assert p.status==presentation_resources.RenderResourceStatus.invalid && p.entry == -1 && p.vertices==0 && !p.state.valid;
+  #assert p.draw.width==0 && p.display.height==0 && !p.uniform.valid && !p.image.valid && !p.sample.valid;
+}
+#forall "presentation shares device extent refusal and publishes no partial draw" which:0..<8 {
+  width:=[8]int.[0,-1,1,1,17,1,1,1][which];height:=[8]int.[1,1,0,-1,1,17,1,1][which];limit:=[8]int.[16,16,16,16,16,16,0,16385][which];
+  p:=render_presentation(2,width,height,cast(int)presentation_resources.RenderTextureFormat.bgra8,limit);
+  expected:=ifx which==4 || which==5 then presentation_resources.RenderResourceStatus.capacity else presentation_resources.RenderResourceStatus.invalid;
+  #assert p.status==expected && p.entry == -1 && p.vertices==0 && !p.state.valid && p.draw.width==0 && p.display.height==0;
+}
+#test "presentation exact device limit and other media profile are supported" {
+  p:=render_presentation(13,1,1,cast(int)presentation_resources.RenderTextureFormat.rgba8,1);
+  #assert p.status==presentation_resources.RenderResourceStatus.ok && p.draw.width==1 && p.display.height==1 && p.entry==13;
+}
+#forall "presentation scalar format refuses truncation and preserves the two admitted orders" raw:0..<10 {
+  values:=[10]int.[-1,0,1,2,4,255,256,4294967296,-256,512];value:=values[raw];
+  p:=render_presentation(2,321,181,value,16384);
+  if raw==1 || raw==2 {#assert p.status==presentation_resources.RenderResourceStatus.ok && cast(int)p.display.format==value && p.draw.format==presentation_resources.RenderTextureFormat.rgba16f;}
+  else {#assert p.status==presentation_resources.RenderResourceStatus.invalid && p.entry == -1 && p.vertices==0 && !p.state.valid;}
+}
+
+render_presentation :: (profile:int,width:int,height:int,format:int,maximum:int)->RenderPresentation #export_c {
+  if !render_catalog(profile).features.media || (format!=cast(int)presentation_resources.RenderTextureFormat.rgba8 && format!=cast(int)presentation_resources.RenderTextureFormat.bgra8) {return RenderPresentation.{};}
+  draw:=presentation_resources.render_viewport_desc(width,height,maximum);
+  if draw.status!=presentation_resources.RenderResourceStatus.ok {return RenderPresentation.{status=draw.status};}
+  display:=draw;display.format=ifx format==cast(int)presentation_resources.RenderTextureFormat.rgba8 then presentation_resources.RenderTextureFormat.rgba8 else presentation_resources.RenderTextureFormat.bgra8;
+  return RenderPresentation.{status=presentation_resources.RenderResourceStatus.ok,draw=draw,display=display,
+    entry=13,source=RenderTarget.screen,vertices=render_media_vertex_count(),
+    uniform=render_host_use(profile,13,0),image=render_host_use(profile,13,1),sample=render_host_use(profile,13,2),
+    state=RenderPassState.{valid=true},
+    sampler=presentation_resources.RenderSamplerDescriptor.{status=presentation_resources.RenderResourceStatus.ok,logical_anisotropy=1,physical_anisotropy=1},
+    uniforms=[8]f32.[-1,1,1,-1,1,0,0,0]};
+}

@@ -25,6 +25,7 @@ static coax_t_RenderHostFlatLayout render_layout;
 static coax_t_RenderHostBufferSizes render_sizes;
 static coax_t_RenderBufferView render_buffer_view;
 static coax_t_RenderTargetDescriptor render_target;
+static coax_t_RenderPresentation render_presentation_value;
 static coax_t_RenderSamplerDescriptor render_sampler;
 static coax_t_RenderTextureLayout render_texture_layout;
 static coax_t_RenderSansProfile render_sans;
@@ -314,6 +315,18 @@ RENDER_EXPORT("coaxial_render_target") uint32_t coaxial_render_target(int32_t ta
 RENDER_EXPORT("coaxial_render_target_info") int64_t coaxial_render_target_info(int32_t field){
   switch(field){case 0:return render_target.width;case 1:return render_target.height;case 2:return render_target.format;default:return 0;}
 }
+RENDER_EXPORT("coaxial_render_presentation") uint32_t coaxial_render_presentation(int32_t width,int32_t height,int32_t format,int32_t maximum){
+  render_presentation_value=render_presentation(render_descriptor_profile,width,height,format,maximum);return render_presentation_value.status;
+}
+RENDER_EXPORT("coaxial_render_presentation_info") int64_t coaxial_render_presentation_info(int32_t field){
+  const coax_t_RenderPresentation *p=&render_presentation_value;
+  switch(field){case 0:return p->draw.format;case 1:return p->display.format;case 2:return p->entry;case 3:return p->source;case 4:return p->vertices;
+    case 5:return p->draw.width;case 6:return p->draw.height;case 7:return p->state.depth;case 8:return p->state.depth_write;case 9:return p->state.colour;case 10:return p->state.alpha;
+    case 11:return p->state.outputs;case 12:return p->sampler.address_u;case 13:return p->sampler.address_v;case 14:return p->sampler.min_linear;case 15:return p->sampler.mag_linear;
+    case 16:return p->sampler.mip_linear;case 17:return p->sampler.physical_anisotropy;case 18:return p->sampler.compare;default:return 0;}
+}
+RENDER_EXPORT("coaxial_render_presentation_uniforms") uintptr_t coaxial_render_presentation_uniforms(void){return(uintptr_t)render_presentation_value.uniforms.e;}
+RENDER_EXPORT("coaxial_render_presentation_uniform_bytes") size_t coaxial_render_presentation_uniform_bytes(void){return sizeof render_presentation_value.uniforms.e;}
 RENDER_EXPORT("coaxial_render_clear") float coaxial_render_clear(int32_t field){
   coax_t_RenderHostClear value=aethyr_render_clear();switch(field){case 0:return value.colour.e[0];case 1:return value.colour.e[1];case 2:return value.colour.e[2];case 3:return value.colour.e[3];case 4:return value.depth;default:return 0;}
 }

@@ -27,10 +27,13 @@ RenderBufferObserved :: struct {
 RenderBufferView :: struct {status:RenderResourceStatus;offset:u64;bytes:u64;elements:u64;}
 #load "tests/resources-checks.coax";
 
-render_target_desc_with_limit :: (target:passes.RenderTarget,w:int,h:int,coarse:bool,screen_format:RenderTextureFormat,max_dimension:int)->RenderTargetDescriptor {
+render_viewport_desc :: (w:int,h:int,max_dimension:int)->RenderTargetDescriptor {
  if w<1 || h<1 || max_dimension<1 || max_dimension>16384 {return RenderTargetDescriptor.{};}
  if w>max_dimension || h>max_dimension {return RenderTargetDescriptor.{status=RenderResourceStatus.capacity};}
- r:=RenderTargetDescriptor.{status=RenderResourceStatus.ok,width=w,height=h,format=RenderTextureFormat.rgba16f};
+ return RenderTargetDescriptor.{status=RenderResourceStatus.ok,width=w,height=h,format=RenderTextureFormat.rgba16f};
+}
+render_target_desc_with_limit :: (target:passes.RenderTarget,w:int,h:int,coarse:bool,screen_format:RenderTextureFormat,max_dimension:int)->RenderTargetDescriptor {
+ r:=render_viewport_desc(w,h,max_dimension);if r.status!=RenderResourceStatus.ok {return r;}
  if target==passes.RenderTarget.screen {
   if screen_format==RenderTextureFormat.depth32 || screen_format==RenderTextureFormat.invalid {return RenderTargetDescriptor.{};}
   r.format=screen_format;

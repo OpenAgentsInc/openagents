@@ -62,6 +62,11 @@ first differences are one 8-bit step. This remains a presentation conformance
 gap. Half-float success cannot hide it or authorize a default change.
 No tolerance, allowance, shader or mask was changed.
 
+The subsequent optional [presentation experiment](presentation-experiment.md)
+quantizes all three retained half-float frames once using the same existing
+Coax conversion. It preserves every strict failure and measures the cost
+of changing accumulation precision; it is not a production format switch.
+
 The Metal owner separately records zero channels past tolerance against
 the new half capture, exact pre/post recovery bytes and zero closed-resource
 ledger. Its BGRA8 strict comparison retains eight channels beyond tolerance,
