@@ -171,11 +171,17 @@ rm_directory_due :: (v: [] RmServer) -> int #export_c {
   n = tk_sign(key, "p-0000000000000003", false, "", "everglade-17", 1000000, -1, t[..]);
   k = tk_add(r[..], 0, "GET /api/room/relay/everglade/everglade-17?t="); k = tk_add(r[..], k, cast(string) t[0..<n]); k = tk_add(r[..], k, " HTTP/1.1\r\n\r\n");
   #assert rm_join(v[..], 3, cast(string) r[0..<k]) < 0;
-  // shard 1 takes the v2 ticket
+}
+// Its own check, as a check holds one RmServer (#12899).
+#test "directory: shard 1 seats a v2 ticket (#12717)" #steps 2000000000 {
   w: [1] RmServer;
   rm_init(w[..]);
   rm_clock(w[..], 0, 990000);
+  key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
   rm_ticket_key(w[..], key, true);
+  t: [256] u8; r: [512] u8;
+  n := tk_sign(key, "p-0000000000000003", false, "", "everglade-17", 1000000, -1, t[..]);
+  k := tk_add(r[..], 0, "GET /api/room/relay/everglade/everglade-17?t="); k = tk_add(r[..], k, cast(string) t[0..<n]); k = tk_add(r[..], k, " HTTP/1.1\r\n\r\n");
   #assert w[0].shard == 1 && rm_join(w[..], 0, cast(string) r[0..<k]) == 0;
 }
 

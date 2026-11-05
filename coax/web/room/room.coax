@@ -516,13 +516,19 @@ tk_test_ask_in :: (r: [] u8, t: [] u8, n: int, room: string) -> string {
   n = tk_sign(key, "p-0011223344556677", false, "", "pair-tk", now + 60000, -1, t[..]);
   #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], n)) == 0;
   #assert v[0].eg[k].rules[0].b[0].c[ci].hp == 3;
-  // another server (no note): the ticket's HP
+}
+// Another server (no note): the ticket's HP. Its own check, as a check holds one RmServer (about
+// 16.6M of a check's 33,554,432 value slots; two left 200K, #12899).
+#test "vitals: a server with no note of a player seats them at their ticket's HP" #steps 2000000000 {
   w: [1] RmServer;
+  now := 1762190000000;
+  key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
   rm_init(w[..]); rm_clock(w[..], 0, now); rm_ticket_key(w[..], key, true);
-  n = tk_sign(key, "p-0011223344556677", false, "", "pair-tk", now + 60000, 5, t[..]);
+  t: [256] u8; r: [512] u8;
+  n := tk_sign(key, "p-0011223344556677", false, "", "pair-tk", now + 60000, 5, t[..]);
   #assert rm_join(w[..], 0, tk_test_ask(r[..], t[..], n)) == 0;
   kw := eg_room_at(w[..], w[0].conns[0].relay);
-  #assert w[0].eg[kw].rules[0].b[0].c[ci].hp == 5;
+  #assert w[0].eg[kw].rules[0].b[0].c[E5RR_SEAT].hp == 5;
 }
 #test "control: the API's pvp row reaches the rules, a changed edit stamp is said to every page, and a kicked player goes and can't sit again" #steps 2000000000 {
   v: [1] RmServer;
