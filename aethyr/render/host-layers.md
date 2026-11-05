@@ -5,6 +5,11 @@ decoder, doubled base image, alpha-weighted box mip chain and one
 premultiply/divide round trip. It does not opt any browser host into a new
 asset path. Pre-contract browser image SDK behavior remains separate.
 
+`htx_profile(profile: int) -> HostLayersProfile` selects the authored output
+side: only qualified Everglade profile 2 is currently admitted (`valid=true`,
+`side=512`). Every other catalog returns false/zero. SDKs consume this
+descriptor instead of selecting a side from a decoded image or a constant.
+
 `htx_plan(src: []u8, side: int) -> HostLayerPlan` reads the actual compressed
 image bytes. Status zero admits a square image at `side` or `side/2`; all
 other plans contain zero extents and status `IMG_BAD` (3). The source is at

@@ -6,6 +6,11 @@ HOST_LAYER_SOURCE_BYTES :: 8388608;
 HOST_LAYER_WORK_BYTES :: 4194304;
 HOST_LAYER_SIDE :: 1024;
 HostLayerPlan :: struct {status:int=IMG_BAD;side:int;width:int;height:int;levels:int;bytes:int;work:int;base_offset:int;source_bytes:int;}
+HostLayersProfile :: struct {valid:bool;side:int;}
+
+#forall "canonical profile owns the authored layer side and refuses unqualified catalogs" profile:-1..<19 {
+ p:=htx_profile(profile);#assert p.valid==(profile==2) && p.side==(ifx profile==2 then 512 else 0);
+}
 
 #forall "canonical layer accepts every supported square and publishes full physical extents" half:0..<2 {
  for side:[5]int.[1,2,4,512,1024] {
@@ -59,6 +64,7 @@ htx_layout :: (info:ImgInfo,side:int,source_bytes:int)->HostLayerPlan {
  levels:=img_levels(side,side);bytes:=0;for level:0..<levels {w:=img_side(side,level);bytes+=w*w*4;}
  return HostLayerPlan.{status=IMG_OK,side=side,width=info.w,height=info.h,levels=levels,bytes=bytes,work=info.work,base_offset=ifx info.w==side then 0 else side*side*4,source_bytes=source_bytes};
 }
+htx_profile :: (profile:int)->HostLayersProfile #export_c {return ifx profile==2 then HostLayersProfile.{valid=true,side=512} else HostLayersProfile.{};}
 htx_plan :: (src:[]u8,side:int)->HostLayerPlan #export_c {return htx_layout(img_info(src),side,src.count);}
 htx_decode :: (src:[]u8,side:int,work:[]u8,out:[]u8)->int #export_c {
  p:=htx_plan(src,side);if p.status!=IMG_OK {return p.status;}if work.count<p.work || out.count<p.bytes {return IMG_SMALL;}
