@@ -1,6 +1,7 @@
 # 24. Liquids from particles
 
 > **Status: partly implemented.** [`aethyr/sim/sph.coax`](../../aethyr/sim/sph.coax)
+> (266 mutants: 256 killed, 10 marked equivalent with their reason)
 > runs weakly compressible SPH (profile `wcsph-f64-v1`) on chapter 23's
 > particles on the CPU in f64: the cubic spline kernel, density, Tait
 > pressure, symmetric pressure and viscosity forces, fixed wall samples and

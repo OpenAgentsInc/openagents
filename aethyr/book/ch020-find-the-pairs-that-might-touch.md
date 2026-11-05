@@ -1,6 +1,7 @@
 # 20. Find the pairs that might touch
 
 > **Status: partly implemented.** [`aethyr/sim/broad.coax`](../../aethyr/sim/broad.coax)
+> (589 mutants: 558 killed, 31 marked equivalent with their reason)
 > finds candidate pairs on the CPU in f64 by three named methods (all pairs,
 > sweep and prune, and a linear BVH) behind one filter, and returns the same
 > sorted pair list from each. Its checks compare every method with an

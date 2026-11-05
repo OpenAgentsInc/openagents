@@ -1,6 +1,7 @@
 # 25. Cloth and rope from constraints
 
 > **Status: partly implemented.** [`aethyr/sim/pbd.coax`](../../aethyr/sim/pbd.coax)
+> (441 mutants: 412 killed, 29 marked equivalent with their reason)
 > runs XPBD distance constraints over chapter 23's particle store on the CPU
 > in f64, with a deterministic graph coloring, Gauss–Seidel and Jacobi
 > projection profiles, substeps, damping, and a fixed sphere with thickness

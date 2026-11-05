@@ -1,6 +1,7 @@
 # 26. Sand, snow and clay on a grid
 
 > **Status: partly implemented.** [`aethyr/sim/mpm.coax`](../../aethyr/sim/mpm.coax)
+> (449 mutants: 437 killed, 12 marked equivalent with their reason)
 > runs MLS-MPM with APIC transfers in 2D on a dense grid, on the CPU in f64
 > (profile `mpm-mls-2d-f64-v1`), with neo-Hookean, fixed corotated and
 > Drucker–Prager sand materials. Snow, clay, muscle, 3D, a sparse grid,

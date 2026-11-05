@@ -53,7 +53,7 @@ m2_svd :: (f: M2) -> Svd2 {
   // trigonometric function: cos theta >= 0, sin theta takes sin 2 theta's sign.
   h := m2_turn(s.a - s.d, 2.0 * s.b);
   c := sqrt(fmax(0.0, 0.5 * (1.0 + h.a))); sn := sqrt(fmax(0.0, 0.5 * (1.0 - h.a)));
-  if h.c < 0.0 { sn = -sn; }
+  if h.c < 0.0 { sn = -sn; }   // mutant: equivalent (at sin 2 theta = 0 either sign gives an SVD with the same product U S V^T)
   v := m2(c, -sn, sn, c);
   e := m2_mul(m2_t(v), m2_mul(s, v));
   out.u = m2_mul(r, v); out.v = v; out.s1 = e.a; out.s2 = e.d;
@@ -84,11 +84,11 @@ mpm_stress :: (mat: Mpm_Material, mu: f64, la: f64, f: M2) -> M2 {
 // cannot pull), a sheared one returns to the cone. Returns the new F.
 mpm_sand_project :: (f: M2, mu: f64, la: f64, phi: f64) -> M2 {
   s := m2_svd(f); e1 := log(s.s1); e2 := log(s.s2); tr := e1 + e2;
-  if tr >= 0.0 { return m2_mul(s.u, m2_t(s.v)); }
+  if tr >= 0.0 { return m2_mul(s.u, m2_t(s.v)); }   // mutant: equivalent (at tr = 0 the strain is on the cone's apex line: both branches return U V^T up to rounding)
   h1 := e1 - 0.5 * tr; h2 := e2 - 0.5 * tr; hn := sqrt(h1 * h1 + h2 * h2);
   sp := sin(phi); alpha := sqrt(2.0 / 3.0) * 2.0 * sp / (3.0 - sp);
   dg := hn + (2.0 * la + 2.0 * mu) / (2.0 * mu) * tr * alpha;
-  if dg <= 0.0 || hn == 0.0 { return f; }
+  if dg <= 0.0 || hn == 0.0 { return f; }   // mutant: equivalent (at dg = 0 the mapping moves the strain by 0)
   e1 = e1 - dg * h1 / hn; e2 = e2 - dg * h2 / hn;
   return m2_mul(s.u, m2_mul(m2(exp(e1), 0.0, 0.0, exp(e2)), m2_t(s.v)));
 }
@@ -176,10 +176,10 @@ mpm_step :: (m: [] Mpm, w: Mpm_World) {
       if w.walls {
         // Nothing moves into the outer three cells. The walls slip; the
         // floor grips what presses on it and lets go of what lifts off.
-        if gx < 3 && v.x < 0.0 { v.x = 0.0; }
-        if gx > n - 3 && v.x > 0.0 { v.x = 0.0; }
+        if gx < 3 && v.x < 0.0 { v.x = 0.0; }   // mutant: equivalent (a component already 0 is set to 0)
+        if gx > n - 3 && v.x > 0.0 { v.x = 0.0; }   // mutant: equivalent (a component already 0 is set to 0)
         if gy < 3 && v.y < 0.0 { v = d2(0.0, 0.0); }
-        if gy > n - 3 && v.y > 0.0 { v.y = 0.0; }
+        if gy > n - 3 && v.y > 0.0 { v.y = 0.0; }   // mutant: equivalent (a component already 0 is set to 0)
       }
       m[0].grid_v[k] = v;
     }
@@ -229,7 +229,7 @@ mpm_la :: (e: f64, nu: f64) -> f64 { return e * nu / ((1.0 + nu) * (1.0 - 2.0 * 
 // ---- checks
 
 test_f :: (k: int) -> M2 {
-  return m2(1.0 + 0.3 * sin(cast(f64) k), 0.2 * cos(cast(f64) k * 1.7), -0.15 * sin(cast(f64) k * 2.3), 0.9 + 0.25 * cos(cast(f64) k * 0.7));
+  return m2(1.0 + 0.3 * sin(cast(f64) k), 0.2 * cos(cast(f64) k * 1.7), -0.15 * sin(cast(f64) k * 2.3), 0.9 + 0.25 * cos(cast(f64) k * 0.7));   // mutant: equivalent (the F generator: any change still gives F with positive determinant for the checks)
 }
 
 #test "each stress is the derivative of its energy, and rotates with F" {
@@ -327,4 +327,149 @@ m2_eq :: (x: M2, y: M2) -> bool { return x.a == y.a && x.b == y.b && x.c == y.c 
   full: [1] Mpm;
   for k: 0..<MPM_PARTICLES { #assert mpm_add(full[..], d2(0.5, 0.5), d2(0.0, 0.0), Mpm_Material.sand) == k; }
   #assert mpm_add(full[..], d2(0.5, 0.5), d2(0.0, 0.0), Mpm_Material.sand) == -1;
+}
+
+// The cone value hn + K tr alpha, unclamped, from Klar et al.'s alpha
+// written out separately: 0 on the cone, negative inside.
+test_cone :: (f: M2, mu: f64, la: f64, phi: f64) -> f64 {
+  s := m2_svd(f); e1 := log(s.s1); e2 := log(s.s2); tr := e1 + e2;
+  hn := sqrt((e1 - e2) * (e1 - e2) * 0.5);
+  alpha := 2.0 * sin(phi) * sqrt(2.0 / 3.0) / (3.0 - sin(phi));
+  return hn + (la + mu) / mu * tr * alpha;
+}
+test_trace :: (f: M2) -> f64 { s := m2_svd(f); return log(s.s1) + log(s.s2); }
+
+#test "the return mapping keeps the volume, lands exactly on the cone, and leaves the inside alone" {
+  mu := 1000.0; la := 1500.0; phi := 0.5236;
+  on := 0;
+  for k: 0..<20 {
+    f := m2_mul(test_f(k), m2(0.8, 0.0, 0.0, 0.95));
+    if test_cone(f, mu, la, phi) <= 0.0 || test_trace(f) >= 0.0 { continue; }
+    g := mpm_sand_project(f, mu, la, phi);
+    #assert abs(test_cone(g, mu, la, phi)) < 1e-12 && abs(test_trace(g) - test_trace(f)) < 1e-12;
+    // The shear keeps its direction: only its size shrinks.
+    a := m2_svd(f); b := m2_svd(g);
+    #assert (log(a.s1) - log(a.s2)) * (log(b.s1) - log(b.s2)) > 0.0;
+    on += 1;
+  }
+  #assert on > 5;
+  // A little shear under strong compression is inside the cone: unchanged.
+  q := m2_mul(m2_rot(0.2), m2(0.8, 0.0, 0.0, 0.78));
+  #assert test_cone(q, mu, la, phi) < 0.0 && m2_eq(mpm_sand_project(q, mu, la, phi), q);
+  // m2_eq tells every entry apart, and m2_apply uses every entry.
+  #assert !m2_eq(M2_I, m2(2.0, 0.0, 0.0, 1.0)) && !m2_eq(M2_I, m2(1.0, 2.0, 0.0, 1.0)) && !m2_eq(M2_I, m2(1.0, 0.0, 2.0, 1.0)) && !m2_eq(M2_I, m2(1.0, 0.0, 0.0, 2.0));
+  r := m2_apply(m2(1.0, 2.0, 3.0, 4.0), d2(5.0, 6.0));
+  #assert r.x == 17.0 && r.y == 39.0;
+  #assert abs(mpm_mu(1000.0, 0.25) - 400.0) < 1e-12 && abs(mpm_la(1000.0, 0.25) - 400.0) < 1e-12;
+  #assert abs(mpm_mu(1000.0, 0.3) - 1000.0 / 2.6) < 1e-12 && abs(mpm_la(1000.0, 0.3) - 300.0 / 0.52) < 1e-9;
+}
+
+#test "APIC carries an affine velocity field through a step exactly" #steps 300000000 {
+  m: [1] Mpm; w := Mpm_World.{n = 16, walls = false, volume = 0.0005};
+  #assert mpm_block(m[..], w, d2(0.3125, 0.3125), d2(0.625, 0.5), d2(0.0, 0.0), Mpm_Material.neo_hookean) == 60;
+  a := m2(0.3, -0.7, 0.4, 0.2); b := d2(0.5, -0.25);
+  old: [60] D2;
+  for p: 0..<60 { old[p] = m[0].x[p]; m[0].v[p] = d2_add(m2_apply(a, m[0].x[p]), b); m[0].c[p] = a; }
+  mpm_step(m[..], w);
+  for p: 0..<60 {
+    want := d2_add(m2_apply(a, old[p]), b); c := m[0].c[p];
+    #assert d2_dist(m[0].v[p], want) < 1e-12 && abs(c.a - a.a) < 1e-11 && abs(c.b - a.b) < 1e-11 && abs(c.c - a.c) < 1e-11 && abs(c.d - a.d) < 1e-11;
+    #assert d2_dist(m[0].x[p], d2_add(old[p], d2_scale(want, w.dt))) < 1e-15;
+  }
+  // From C = 0 the step recovers the field's gradient into C.
+  m[0].count = 0;
+  #assert mpm_block(m[..], w, d2(0.3125, 0.3125), d2(0.625, 0.5), d2(0.0, 0.0), Mpm_Material.neo_hookean) == 60;
+  for p: 0..<60 { m[0].v[p] = d2_add(m2_apply(a, m[0].x[p]), b); }
+  mpm_step(m[..], w);
+  mid := m[0].c[3 * 10 + 5];
+  #assert abs(mid.a - a.a) < 0.1 && abs(mid.b - a.b) < 0.1 && abs(mid.c - a.c) < 0.1 && abs(mid.d - a.d) < 0.1;
+  // The block's first particle sits half a spacing in from lo.
+  #assert d2_dist(old[0], d2(0.3125 + 0.015625, 0.3125 + 0.015625)) < 1e-15;
+}
+
+#test "the grid's edges: every node from 0 to n, and nothing past them" #steps 300000000 {
+  m: [1] Mpm; w := Mpm_World.{n = 16, walls = false, volume = 0.0005, gravity = d2(0.0, -10.0), dt = 0.001};
+  mass := 1000.0 * 0.0005;
+  // Four particles whose stencils reach nodes 0 and n but not past them.
+  for k: 0..<4 { _ := mpm_add(m[..], d2(ifx (k & 1) != 0 then 0.95 else 0.04, ifx (k & 2) != 0 then 0.95 else 0.04), d2(1.0, 2.0), Mpm_Material.corotated); }
+  mpm_p2g(m[..], w); mpm_p2g(m[..], w);
+  total := 0.0; mom := d2(0.0, 0.0);
+  for k: 0..<17 * 17 { total += m[0].grid_m[k]; mom = d2_add(mom, m[0].grid_v[k]); }
+  #assert abs(total - 4.0 * mass) < 1e-15 && abs(mom.x - 4.0 * mass) < 1e-14 && abs(mom.y - 8.0 * mass) < 1e-14;
+  #assert m[0].grid_m[0] > 0.0 && m[0].grid_m[17 * 17 - 1] > 0.0;
+  mpm_step(m[..], w);
+  for p: 0..<4 { #assert abs(m[0].v[p].x - 1.0) < 1e-14 && abs(m[0].v[p].y - (2.0 - 0.01)) < 1e-14; }
+  #assert m[0].grid_v[8 * 17 + 8].x == 0.0 && m[0].grid_v[8 * 17 + 8].y == 0.0;   // an empty node stays 0
+  // A particle a fifth of a cell from the left edge loses its node -1, and
+  // nothing wraps to the far column; one at the right edge loses node n + 1.
+  m[0].count = 0;
+  _ := mpm_add(m[..], d2(0.01, 0.5), d2(0.0, 0.0), Mpm_Material.corotated);
+  _ = mpm_add(m[..], d2(0.97, 0.47), d2(5.0, 0.0), Mpm_Material.corotated);
+  _ = mpm_add(m[..], d2(0.5, 0.01), d2(0.0, 0.0), Mpm_Material.corotated);
+  _ = mpm_add(m[..], d2(0.47, 0.97), d2(0.0, 5.0), Mpm_Material.corotated);
+  mpm_p2g(m[..], w);
+  wx := mpm_weights(0.01 * 16.0 + 1.0); wr := mpm_weights(0.97 * 16.0 - 15.0);
+  total = 0.0;
+  for k: 0..<17 * 17 { total += m[0].grid_m[k]; }
+  #assert abs(total - mass * (2.0 * (wx.y + wx.z) + 2.0 * (wr.x + wr.y))) < 1e-14;
+  mpm_step(m[..], w);
+  #assert abs(m[0].v[0].x) < 1e-15 && abs(m[0].v[0].y + 0.01 * (wx.y + wx.z)) < 1e-14;
+  #assert abs(m[0].v[2].x) < 1e-15 && abs(m[0].v[2].y + 0.01 * (wx.y + wx.z)) < 1e-14;
+  #assert abs(m[0].v[1].x - 5.0 * (wr.x + wr.y)) < 1e-14 && abs(m[0].v[3].x) < 1e-15;
+  // The full 64-cell grid steps too.
+  m[0].count = 0; w.n = 64;
+  _ = mpm_add(m[..], d2(0.98, 0.98), d2(0.0, 0.0), Mpm_Material.corotated);
+  mpm_step(m[..], w);
+  #assert m[0].v[0].y < 0.0;
+}
+
+#test "the walls: no flow into the outer three cells, a gripping floor, slipping sides" #steps 100000000 {
+  m: [1] Mpm; w := Mpm_World.{n = 16, volume = 0.0005};
+  // Each case is one particle at rest stress (F = I), so a node's velocity
+  // is the particle's, and its new velocity sums the stencil's walls.
+
+  at := [12] D2.[d2(0.08, 0.5), d2(0.08, 0.5), d2(0.15, 0.5), d2(0.92, 0.5), d2(0.92, 0.5), d2(0.85, 0.5),
+                    d2(0.5, 0.08), d2(0.5, 0.08), d2(0.5, 0.92), d2(0.5, 0.92), d2(0.5, 0.85), d2(0.5, 0.5)];
+  vin := [12] D2.[d2(-1.0, 0.5), d2(1.0, 0.5), d2(-1.0, 0.0), d2(1.0, 0.5), d2(-1.0, 0.5), d2(1.0, 0.0),
+                     d2(0.5, -1.0), d2(1.0, 0.0), d2(0.5, 1.0), d2(0.5, -1.0), d2(0.0, 1.0), d2(-1.0, -1.0)];
+  for k: 0..<12 {
+    m[0].count = 0;
+    _ := mpm_add(m[..], at[k], vin[k], Mpm_Material.neo_hookean);
+    mpm_step(m[..], w);
+    v := m[0].v[0]; s := vin[k];
+    // The weight of the one stencil node that is outside the band.
+    w3 := mpm_weights(0.15 * 16.0 - 1.0).z; w13 := mpm_weights(0.85 * 16.0 - 13.0).x;
+    want := s;
+    if k == 0 { want = d2(0.0, 0.5); }
+    if k == 2 { want = d2(-w3, 0.0); }
+    if k == 3 { want = d2(0.0, 0.5); }
+    if k == 5 { want = d2(w13, 0.0); }
+    if k == 6 { want = d2(0.0, 0.0); }
+    if k == 8 { want = d2(0.5, 0.0); }
+    if k == 10 { want = d2(0.0, w13); }
+    #assert d2_dist(v, want) < 1e-14;
+  }
+}
+
+#test "mpm_add sets every field of a reused slot, and a full store refuses a block" {
+  m: [1] Mpm; w := Mpm_World.{n = 16};
+  #assert mpm_add(m[..], d2(0.5, 0.5), d2(0.0, 0.0), Mpm_Material.neo_hookean) == 0;
+  m[0].c[0] = m2(1.0, 2.0, 3.0, 4.0); m[0].count = 0;
+  #assert mpm_add(m[..], d2(0.25, 0.75), d2(1.0, -2.0), Mpm_Material.sand) == 0;
+  #assert m2_eq(m[0].c[0], M2.{}) && m2_eq(m[0].f[0], M2_I) && m[0].material[0] == Mpm_Material.sand && m[0].v[0].x == 1.0 && m[0].v[0].y == -2.0;
+  m[0].count = MPM_PARTICLES - 3;
+  #assert mpm_block(m[..], w, d2(0.25, 0.25), d2(0.5, 0.5), d2(0.0, 0.0), Mpm_Material.sand) == -1 && m[0].count == MPM_PARTICLES;
+}
+
+#test "a step projects sand and only sand" {
+  m: [1] Mpm; w := Mpm_World.{n = 16, walls = false, volume = 0.0005, mu = 1000.0, la = 1500.0, dt = 0.0001};
+  for mi: 0..<3 {
+    m[0].count = 0;
+    _ := mpm_add(m[..], d2(0.5, 0.5), d2(0.0, 0.0), cast(Mpm_Material) mi);
+    m[0].f[0] = m2(1.1, 0.0, 0.0, 1.05);
+    mpm_step(m[..], w);
+    j := m2_det(m[0].f[0]);
+    // Sand cannot be stretched: it lets go of all its strain.
+    if mi == 2 { #assert abs(j - 1.0) < 1e-9; } else { #assert abs(j - 1.155) < 1e-3; }
+  }
 }

@@ -1,6 +1,7 @@
 # 23. Particles and their neighbors
 
 > **Status: partly implemented.** [`aethyr/sim/particles.coax`](../../aethyr/sim/particles.coax)
+> (344 mutants: 331 killed, 13 marked equivalent with their reason)
 > holds the shared particle store, sorts particles into cells by counting
 > sort and finds fixed-radius neighbors on the CPU in f64, with overflow
 > reported. It samples boxes and spheres into lattices, plain or jittered.

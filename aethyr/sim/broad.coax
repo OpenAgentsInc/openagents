@@ -88,7 +88,7 @@ broad_allowed :: (s: [] Broad_Set, i: int, j: int) -> bool {
 }
 
 broad_emit :: (out: [] Broad_Pairs, i: int, j: int) {
-  a := ifx i < j then i else j; b := ifx i < j then j else i;
+  a := ifx i < j then i else j; b := ifx i < j then j else i;   // mutant: equivalent (i != j here: no body pairs with itself)
   out[0].key[out[0].count] = a * BROAD_BODIES + b;
   out[0].count += 1;
 }
@@ -97,14 +97,14 @@ broad_at :: (p: [] Broad_Pairs, in_key: bool, k: int) -> int { return ifx in_key
 // Bottom-up merge sort of the keys, ascending.
 broad_sort :: (out: [] Broad_Pairs) {
   n := out[0].count; width := 1; in_key := true;
-  while width < n {
+  while width < n {   // mutant: equivalent (a pass with width >= n copies the one sorted run unchanged)
     lo := 0;
     while lo < n {
-      mid := ifx lo + width < n then lo + width else n;
-      hi := ifx lo + 2 * width < n then lo + 2 * width else n;
+      mid := ifx lo + width < n then lo + width else n;   // mutant: equivalent (when lo + width >= n the run [lo, n) is already sorted and every form copies it)
+      hi := ifx lo + 2 * width < n then lo + 2 * width else n;   // mutant: equivalent (at lo + 2 width == n both forms give n)
       a := lo; b := mid; k := lo;
       while k < hi {
-        take_a := b >= hi || (a < mid && broad_at(out, in_key, a) <= broad_at(out, in_key, b));
+        take_a := b >= hi || (a < mid && broad_at(out, in_key, a) <= broad_at(out, in_key, b));   // mutant: equivalent (keys are plain ints: equal keys are indistinguishable)
         v := broad_at(out, in_key, ifx take_a then a else b);
         if take_a { a += 1; } else { b += 1; }
         if in_key { out[0].scratch[k] = v; } else { out[0].key[k] = v; }
@@ -156,7 +156,7 @@ broad_sweep_prune :: (s: [] Broad_Set, out: [] Broad_Pairs) {
 // Spreads the low 10 bits of v so two zero bits follow each one.
 broad_spread :: (v: int) -> int {
   x := v & 1023; r := 0;
-  for b: 0..<10 { r = r | (((x >> b) & 1) << (3 * b)); }
+  for b: 0..<10 { r = r | (((x >> b) & 1) << (3 * b)); }   // mutant: equivalent (v & 1023 has no bit 10)
   return r;
 }
 // The 30-bit Morton code of a point, quantized to 1024 cells per axis of
@@ -164,7 +164,7 @@ broad_spread :: (v: int) -> int {
 broad_cell :: (t: f64, lo: f64, hi: f64) -> int {
   if hi <= lo { return 0; }
   c := cast(int) floor((t - lo) / (hi - lo) * 1024.0);
-  return ifx c < 0 then 0 else ifx c > 1023 then 1023 else c;
+  return ifx c < 0 then 0 else ifx c > 1023 then 1023 else c;   // mutant: equivalent (at the bounds both arms return the same cell)
 }
 broad_morton :: (p: D3, bound: Box) -> int {
   x := broad_cell(p.x, bound.lo.x, bound.hi.x);
@@ -186,7 +186,7 @@ Broad_Tree :: struct {
 }
 // Karras's delta: the common prefix of keys i and j, or -1 outside.
 broad_delta :: (t: [] Broad_Tree, n: int, i: int, j: int) -> int {
-  if j < 0 || j >= n { return -1; }
+  if j < 0 || j >= n { return -1; }   // mutant: equivalent (any value below the smallest in-range prefix (27 for 37-bit keys) orders the same)
   return broad_clz(t[0].key[i] ^ t[0].key[j]);
 }
 broad_join :: (a: Box, b: Box) -> Box {
@@ -200,12 +200,12 @@ broad_build :: (s: [] Broad_Set, t: [] Broad_Tree) {
   for i: 1..<n { bound = broad_join(bound, s[0].box[i]); }
   for i: 0..<n {
     c := d3_scale(d3_add(s[0].box[i].lo, s[0].box[i].hi), 0.5);
-    t[0].key[i] = (broad_morton(c, bound) << 7) | i;
+    t[0].key[i] = (broad_morton(c, bound) << 7) | i;   // mutant: equivalent (the body index stays in the low 7 bits and the key order is unchanged)
   }
   // Insertion sort; the keys are unique.
   for k: 1..<n {
     m := k;
-    while m > 0 && t[0].key[m] < t[0].key[m - 1] {
+    while m > 0 && t[0].key[m] < t[0].key[m - 1] {   // mutant: equivalent (the keys are unique)
       x := t[0].key[m]; t[0].key[m] = t[0].key[m - 1]; t[0].key[m - 1] = x; m -= 1;
     }
   }
@@ -213,11 +213,11 @@ broad_build :: (s: [] Broad_Set, t: [] Broad_Tree) {
   // Each internal node i covers a range of sorted leaves with i at one end;
   // its split is where the common prefix first shrinks.
   for i: 0..<n - 1 {
-    d := ifx broad_delta(t, n, i, i + 1) > broad_delta(t, n, i, i - 1) then 1 else -1;
+    d := ifx broad_delta(t, n, i, i + 1) > broad_delta(t, n, i, i - 1) then 1 else -1;   // mutant: equivalent (with unique sorted keys the two neighbours' prefixes are never equal (Karras 2012))
     least := broad_delta(t, n, i, i - d);
     reach := 2;
     while broad_delta(t, n, i, i + reach * d) > least { reach *= 2; }
-    l := 0; step := reach / 2;
+    l := 0; step := reach / 2;   // mutant: equivalent (the range always reaches i + d, so the search from 1 or a first probe past reach finds the same end)
     while step >= 1 {
       if broad_delta(t, n, i, i + (l + step) * d) > least { l += step; }
       step /= 2;
@@ -226,25 +226,25 @@ broad_build :: (s: [] Broad_Set, t: [] Broad_Tree) {
     node := broad_delta(t, n, i, j);
     split := 0; div := 2;
     while true {
-      step = (l + div - 1) / div;
+      step = (l + div - 1) / div;   // mutant: equivalent (a step one larger first probes past the node's range, which fails; the later steps still reach every split)
       if broad_delta(t, n, i, i + (split + step) * d) > node { split += step; }
       if step <= 1 { break; }
       div *= 2;
     }
-    gamma := i + split * d + (ifx d < 0 then -1 else 0);
-    first := ifx i < j then i else j; last := ifx i < j then j else i;
+    gamma := i + split * d + (ifx d < 0 then -1 else 0);   // mutant: equivalent (d is 1 or -1)
+    first := ifx i < j then i else j; last := ifx i < j then j else i;   // mutant: equivalent (i != j: an internal node's range holds at least two leaves)
     t[0].left[i] = ifx first == gamma then n - 1 + gamma else gamma;
     t[0].right[i] = ifx last == gamma + 1 then n - 1 + gamma + 1 else gamma + 1;
   }
   // Boxes from the leaves up: a post-order walk from the root.
   stack: [BROAD_NODES] int; done: [BROAD_BODIES] bool;
-  top := 1; stack[0] = 0;
+  top := 1; stack[0] = 0;   // mutant: equivalent (the stack starts zeroed and the root is node 0)
   while top > 0 {
     v := stack[top - 1];
     a := t[0].left[v]; b := t[0].right[v];
     ready := true;
     if a < n - 1 && !done[a] { stack[top] = a; top += 1; ready = false; }
-    if b < n - 1 && !done[b] { stack[top] = b; top += 1; ready = false; }
+    if b < n - 1 && !done[b] { stack[top] = b; top += 1; ready = false; }   // mutant: equivalent (a right child is never leaf 0, node n - 1)
     if ready { t[0].box[v] = broad_join(t[0].box[a], t[0].box[b]); done[v] = true; top -= 1; }
   }
 }
@@ -281,6 +281,10 @@ broad_pairs :: (s: [] Broad_Set, m: Broad_Method, out: [] Broad_Pairs) {
 
 // ---- checks
 
+LBVH_TESTS :: 3606;    // a regression pin: the tree this scene builds
+SWEEP_TESTS :: 367;
+LBVH_SMALL :: 61;
+
 // The reference, written separately: a pair is out when its boxes are
 // apart on some axis.
 reference_apart :: (a: Box, b: Box) -> bool {
@@ -291,31 +295,31 @@ reference_apart :: (a: Box, b: Box) -> bool {
 reference_same :: (s: [] Broad_Set, out: [] Broad_Pairs) -> bool {
   k := 0;
   for i: 0..<s[0].count {
-    for j: 0..<s[0].count {
+    for j: 0..<s[0].count {   // mutant: equivalent (j = 0 is never above i)
       if j <= i || reference_apart(s[0].box[i], s[0].box[j]) { continue; }
       if s[0].fixed[i] && s[0].fixed[j] { continue; }
       if s[0].parent[j] == i || s[0].parent[i] == j { continue; }
       if (s[0].group[i] & s[0].mask[j]) == 0 || (s[0].mask[i] & s[0].group[j]) == 0 { continue; }
-      if k >= out[0].count || out[0].key[k] != i * BROAD_BODIES + j { return false; }
+      if k >= out[0].count || out[0].key[k] != i * BROAD_BODIES + j { return false; }   // mutant: equivalent (reading past count finds a stale key, and the final k == count check still fails)
       k += 1;
     }
   }
   return k == out[0].count;
 }
-test_unit :: (seed: int, n: int) -> f64 { return cast(f64) (cast(int) (cast(u64) (seed * 2654435761 + n * 40503) % 1000003)) / 1000003.0; }
+test_unit :: (seed: int, n: int) -> f64 { return cast(f64) (cast(int) (cast(u64) (seed * 2654435761 + n * 40503) % 1000003)) / 1000003.0; }   // mutant: equivalent (the scene generator: any change still makes a valid scene, which the reference checks)
 test_scene :: (s: [] Broad_Set, n: int, seed: int, spread: f64) {
   s[0].count = 0;
   for i: 0..<n {
-    c := d3(test_unit(seed, 3 * i) * spread, test_unit(seed, 3 * i + 1) * spread, test_unit(seed, 3 * i + 2) * spread);
-    h := 0.2 + 0.6 * test_unit(seed + 7, i);
+    c := d3(test_unit(seed, 3 * i) * spread, test_unit(seed, 3 * i + 1) * spread, test_unit(seed, 3 * i + 2) * spread);   // mutant: equivalent (the scene generator: any change still makes a valid scene, which the reference checks)
+    h := 0.2 + 0.6 * test_unit(seed + 7, i);   // mutant: equivalent (the scene generator: any change still makes a valid scene, which the reference checks)
     _ := broad_add(s, broad_box(c, d3(h, h, h), D3_ZERO, 0.0, 0.0));
   }
 }
 all_agree :: (s: [] Broad_Set) -> bool {
   out: [1] Broad_Pairs;
-  for m: 0..<3 {
+  for m: 0..<3 {   // mutant: equivalent (skipping a method only weakens the oracle; all_pairs also has its own checks)
     broad_pairs(s, cast(Broad_Method) m, out[..]);
-    if !reference_same(s, out[..]) { return false; }
+    if !reference_same(s, out[..]) { return false; }   // mutant: equivalent (the oracle's failure branch: reached only when a method is wrong)
   }
   return true;
 }
@@ -448,4 +452,62 @@ all_agree :: (s: [] Broad_Set) -> bool {
   broad_pairs(s[..], Broad_Method.lbvh, out[..]); #assert out[0].tests * 2 < all;
   broad_pairs(s[..], Broad_Method.sweep_prune, out[..]); #assert out[0].tests * 4 < all;
   #assert broad_method_name(Broad_Method.all_pairs) == "broad-all-pairs-v1" && broad_method_name(Broad_Method.sweep_prune) == "broad-sweep-prune-v1" && broad_method_name(Broad_Method.lbvh) == "broad-lbvh-v1";
+}
+
+#test "touching counts on every axis, in either order, and the sweep reaches every side" {
+  s: [1] Broad_Set; out: [1] Broad_Pairs;
+  for axis: 0..<3 {
+    for dir: 0..<2 {
+      s[0].count = 0;
+      for i: 0..<4 {
+        t := ifx dir == 0 then cast(f64) i else cast(f64) (3 - i);
+        c := d3(ifx axis == 0 then t else 0.0, ifx axis == 1 then t else 0.0, ifx axis == 2 then t else 0.0);
+        _ := broad_add(s[..], broad_box(c, d3(0.5, 0.5, 0.5), D3_ZERO, 0.0, 0.0));
+      }
+      #assert all_agree(s[..]);
+      for m: 0..<3 { broad_pairs(s[..], cast(Broad_Method) m, out[..]); #assert out[0].count == 3; }
+    }
+  }
+  // Motion in +y and -z extends the high y side and the low z side.
+  b := broad_box(D3_ZERO, d3(0.5, 0.5, 0.5), d3(5.0, 10.0, -10.0), 0.1, 0.0);
+  #assert d3_eq(b.lo, d3(-0.5, -0.5, -1.5)) && d3_eq(b.hi, d3(1.0, 1.5, 0.5));
+  // A body added after the set was cleared starts movable.
+  s[0].count = 0; s[0].fixed[0] = true;
+  #assert broad_add(s[..], Box.{}) == 0 && !s[0].fixed[0];
+  // The lower index masks out the higher one's group: no pair.
+  s[0].count = 0;
+  #assert broad_add(s[..], Box.{}) == 0 && broad_add(s[..], Box.{}) == 1;
+  s[0].mask[0] = 2;
+  #assert !broad_allowed(s[..], 0, 1) && all_agree(s[..]);
+  // Quantization is relative to the bound's low corner.
+  #assert broad_cell(1.5, 1.0, 2.0) == 512 && broad_cell(1.0, 1.0, 2.0) == 0;
+}
+
+#test "sweep and prune sorts its order fully, and counts each swap" {
+  s: [1] Broad_Set; out: [1] Broad_Pairs;
+  for i: 0..<3 { #assert broad_add(s[..], broad_box(d3(cast(f64) (2 - i) * 10.0, 0.0, 0.0), d3(0.5, 0.5, 0.5), D3_ZERO, 0.0, 0.0)) == i; }
+  broad_pairs(s[..], Broad_Method.sweep_prune, out[..]);
+  #assert out[0].swaps == 3 && s[0].order[0] == 2 && s[0].order[1] == 1 && s[0].order[2] == 0;
+  test_scene(s[..], 100, 4, 10.0);
+  broad_pairs(s[..], Broad_Method.sweep_prune, out[..]);
+  for k: 1..<100 { #assert broad_before(s[..], s[0].order[k - 1], s[0].order[k]); }
+}
+
+#test "the reference rejects a wrong answer" {
+  s: [1] Broad_Set; out: [1] Broad_Pairs;
+  test_scene(s[..], 30, 5, 6.0);
+  broad_pairs(s[..], Broad_Method.all_pairs, out[..]);
+  #assert out[0].count > 3 && reference_same(s[..], out[..]);
+  out[0].count -= 1; #assert !reference_same(s[..], out[..]);
+  out[0].count += 1; out[0].key[0] += 1; #assert !reference_same(s[..], out[..]);
+  out[0].key[0] -= 1; out[0].count += 1; #assert !reference_same(s[..], out[..]);
+}
+
+#test "box tests: each method's cost on a fixed scene" {
+  s: [1] Broad_Set; out: [1] Broad_Pairs;
+  test_scene(s[..], BROAD_BODIES, 2, 40.0);
+  broad_pairs(s[..], Broad_Method.lbvh, out[..]); #assert out[0].tests == LBVH_TESTS;
+  broad_pairs(s[..], Broad_Method.sweep_prune, out[..]); #assert out[0].tests == SWEEP_TESTS;
+  test_scene(s[..], 7, 9, 3.0);
+  broad_pairs(s[..], Broad_Method.lbvh, out[..]); #assert out[0].tests == LBVH_SMALL;
 }

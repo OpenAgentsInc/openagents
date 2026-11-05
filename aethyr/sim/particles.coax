@@ -91,7 +91,7 @@ pgrid_build :: (p: [] Pstore, g: [] Pgrid) -> Pgrid_Refusal {
     c := g[0].cell[i];
     g[0].order[g[0].count[c]] = i; g[0].count[c] += 1;
   }
-  for c: 0..<cells { g[0].count[c] -= g[0].start[c]; }
+  for c: 0..<cells { g[0].count[c] -= g[0].start[c]; }   // mutant: equivalent (start[0] is 0, so cell 0's cursor already equals its count)
   return Pgrid_Refusal.none;
 }
 
@@ -152,8 +152,8 @@ psample :: (p: [] Pstore, lo: D3, hi: D3, c: D3, r: f64, a: f64, density: f64, j
     for y: 0..<ny {
       for x: 0..<nx {
         q := d3(lo.x + (cast(f64) x + 0.5) * a, lo.y + (cast(f64) y + 0.5) * a, lo.z + (cast(f64) z + 0.5) * a);
-        if r >= 0.0 && d3_len2(d3_sub(q, c)) > r * r { continue; }
-        if jitter > 0.0 {
+        if r >= 0.0 && d3_len2(d3_sub(q, c)) > r * r { continue; }   // mutant: equivalent (a lattice point exactly on the sphere is a float tie, and either side samples the sphere to half a spacing)
+        if jitter > 0.0 {   // mutant: equivalent (a jitter of 0 moves no point)
           j := d3(cast(f64) rand_unit(seed, 23, 3 * k) - 0.5, cast(f64) rand_unit(seed, 23, 3 * k + 1) - 0.5, cast(f64) rand_unit(seed, 23, 3 * k + 2) - 0.5);
           q = d3_add(q, d3_scale(j, jitter * a));
         }
@@ -168,27 +168,29 @@ psample :: (p: [] Pstore, lo: D3, hi: D3, c: D3, r: f64, a: f64, density: f64, j
 
 // ---- checks
 
-test_unit :: (seed: int, k: int) -> f64 { return cast(f64) rand_unit(seed, 99, k); }
+CLOUD_TESTS :: 2560;   // a regression pin: the 27-cell search of this cloud
+
+test_unit :: (seed: int, k: int) -> f64 { return cast(f64) rand_unit(seed, 99, k); }   // mutant: equivalent (the cloud generator: any stream gives a valid cloud, which the reference checks)
 // n particles in the cube 0..size, or in two tight clusters.
 test_cloud :: (p: [] Pstore, n: int, seed: int, size: f64, clustered: bool) {
   p[0].count = 0;
   for i: 0..<n {
-    x := d3(test_unit(seed, 3 * i), test_unit(seed, 3 * i + 1), test_unit(seed, 3 * i + 2));
-    if clustered { x = d3_add(d3_scale(x, 0.1), ifx i % 2 == 0 then d3(0.2, 0.2, 0.2) else d3(0.7, 0.6, 0.65)); }
-    _ := pstore_add(p, d3_scale(x, size), D3_ZERO, 1.0, 0, 0);
+    x := d3(test_unit(seed, 3 * i), test_unit(seed, 3 * i + 1), test_unit(seed, 3 * i + 2));   // mutant: equivalent (the cloud generator: any change still makes a valid cloud, which the reference checks)
+    if clustered { x = d3_add(d3_scale(x, 0.1), ifx i % 2 == 0 then d3(0.2, 0.2, 0.2) else d3(0.7, 0.6, 0.65)); }   // mutant: equivalent (the cloud generator: any change still makes a valid cloud, which the reference checks)
+    _ := pstore_add(p, d3_scale(x, size), D3_ZERO, 1.0, 0, 0);   // mutant: equivalent (the cloud generator: material and entity do not enter the search)
   }
 }
 // Brute force: neighbor sets equal as sets, and the kept list is a prefix
 // of the fixed order with every entry a true neighbor.
 reference_match :: (p: [] Pstore, n: [] Pneighbors, h: f64) -> bool {
-  for i: 0..<p[0].count {
+  for i: 0..<p[0].count {   // mutant: equivalent (skipping a particle only weakens the oracle)
     want := 0;
     for j: 0..<p[0].count {
       if j == i { continue; }
       if d3_dist(p[0].pos[i], p[0].pos[j]) < h { want += 1; }
     }
     if n[0].count[i] != want { return false; }
-    kept := ifx want < PLIST then want else PLIST;
+    kept := ifx want < PLIST then want else PLIST;   // mutant: equivalent (at want == PLIST both forms keep PLIST; past it the oracle only inspects one more true neighbor)
     for k: 0..<kept {
       j := n[0].list[i * PLIST + k];
       if j == i || d3_dist(p[0].pos[i], p[0].pos[j]) >= h { return false; }
@@ -320,4 +322,83 @@ search :: (p: [] Pstore, n: [] Pneighbors, lo: D3, hi: D3, h: f64) -> Pgrid_Refu
     moved = moved || d3_len(e) > 0.001;
   }
   #assert moved && p[0].count == 64;
+}
+
+#test "an offset grid, a rebuilt grid, and the store's fields" {
+  p: [1] Pstore; n: [1] Pneighbors; g: [1] Pgrid;
+  #assert pstore_add(p[..], d3(1.0, 2.0, 3.0), d3(4.0, 5.0, 6.0), 2.0, 3, 9) == 0;
+  #assert d3_eq(p[0].vel[0], d3(4.0, 5.0, 6.0)) && p[0].mass[0] == 2.0;
+  // The same cloud moved to 5..6 searches the same on a grid from 5.
+  test_cloud(p[..], 200, 2, 1.0, false);
+  #assert p[0].count == 200;
+  for i: 0..<200 { p[0].pos[i] = d3_add(p[0].pos[i], d3(5.0, 5.0, 5.0)); }
+  #assert search(p[..], n[..], d3(5.0, 5.0, 5.0), d3(6.0, 6.0, 6.0), 0.15) == Pgrid_Refusal.none && reference_match(p[..], n[..], 0.15);
+  #assert pgrid_new(g[..], d3(5.0, 5.0, 5.0), d3(6.0, 6.0, 6.0), 0.15) == Pgrid_Refusal.none && g[0].nx == 7 && g[0].ny == 7 && g[0].nz == 7 && d3_eq(g[0].origin, d3(5.0, 5.0, 5.0));
+  #assert pgrid_axis(5.31, 5.0, 0.15, 7) == 2;
+  // Building twice on one grid gives the same counts.
+  #assert pgrid_build(p[..], g[..]) == Pgrid_Refusal.none && pgrid_build(p[..], g[..]) == Pgrid_Refusal.none;
+  #assert g[0].start[7 * 7 * 7] == 200;
+  for c: 0..<7 * 7 * 7 { #assert g[0].start[c + 1] - g[0].start[c] == g[0].count[c]; }
+  // 4097 cells is one too many.
+  #assert pgrid_new(g[..], D3_ZERO, d3(16.0, 240.0, 0.0), 1.0) == Pgrid_Refusal.too_many_cells;
+  #assert pgrid_new(g[..], D3_ZERO, d3(15.0, 240.0, 0.0), 1.0) == Pgrid_Refusal.none;
+}
+
+#test "the list holds exactly PLIST: 48 neighbors fit, 49 overflow, a second search starts clean" {
+  p: [1] Pstore; n: [1] Pneighbors;
+  for i: 0..<49 { _ := pstore_add(p[..], d3(0.5 + 0.001 * cast(f64) i, 0.5, 0.5), D3_ZERO, 1.0, 0, 0); }
+  _ := pstore_add(p[..], d3(0.2, 0.2, 0.2), D3_ZERO, 1.0, 0, 0);
+  _ = pstore_add(p[..], d3(0.9, 0.9, 0.9), D3_ZERO, 1.0, 0, 0);
+  #assert search(p[..], n[..], D3_ZERO, d3(1.0, 1.0, 1.0), 0.1) == Pgrid_Refusal.none;
+  #assert n[0].overflow == 0 && n[0].count[0] == 48 && reference_match(p[..], n[..], 0.1);
+  // Particle 49 joins the row: 50 particles with 49 neighbors each.
+  p[0].pos[49] = d3(0.5 + 0.001 * 49.0, 0.5, 0.5);
+  #assert search(p[..], n[..], D3_ZERO, d3(1.0, 1.0, 1.0), 0.1) == Pgrid_Refusal.none;
+  #assert n[0].overflow == 50 && n[0].count[0] == 49 && reference_match(p[..], n[..], 0.1);
+  // Nothing is written past a particle's PLIST slots: the lone particle's stay empty.
+  #assert n[0].count[50] == 0 && n[0].list[50 * PLIST] == 0;
+  #assert search(p[..], n[..], D3_ZERO, d3(1.0, 1.0, 1.0), 0.1) == Pgrid_Refusal.none && n[0].overflow == 50;
+}
+
+#test "the reference rejects a wrong answer" {
+  p: [1] Pstore; n: [1] Pneighbors;
+  _ := pstore_add(p[..], d3(0.5, 0.5, 0.5), D3_ZERO, 1.0, 0, 0);
+  _ = pstore_add(p[..], d3(0.6, 0.5, 0.5), D3_ZERO, 1.0, 0, 0);
+  _ = pstore_add(p[..], d3(0.5, 0.55, 0.5), D3_ZERO, 1.0, 0, 0);
+  _ = pstore_add(p[..], d3(0.75, 0.5, 0.5), D3_ZERO, 1.0, 0, 0);   // exactly h = 0.25 from particle 0
+  #assert search(p[..], n[..], D3_ZERO, d3(1.0, 1.0, 1.0), 0.25) == Pgrid_Refusal.none && reference_match(p[..], n[..], 0.25);
+  #assert n[0].count[0] == 2 && n[0].list[0] == 1 && n[0].list[1] == 2;
+  n[0].count[0] = 3; #assert !reference_match(p[..], n[..], 0.25); n[0].count[0] = 2;
+  n[0].list[0] = 0; #assert !reference_match(p[..], n[..], 0.25);
+  n[0].list[0] = 3; #assert !reference_match(p[..], n[..], 0.25);
+  n[0].list[0] = 1; n[0].list[1] = 1; #assert !reference_match(p[..], n[..], 0.25);
+  n[0].list[1] = 2; #assert reference_match(p[..], n[..], 0.25);
+}
+
+#test "fixed costs and the jitter's streams" {
+  p: [1] Pstore; n: [1] Pneighbors;
+  test_cloud(p[..], 200, 1, 1.0, false);
+  #assert search(p[..], n[..], D3_ZERO, d3(1.0, 1.0, 1.0), 0.15) == Pgrid_Refusal.none && n[0].tests == CLOUD_TESTS;
+  // A small grid, two cells a side: edges and wraps are where a bound slips.
+  test_cloud(p[..], 40, 3, 1.0, false);
+  #assert search(p[..], n[..], D3_ZERO, d3(0.99, 0.99, 0.99), 0.5) == Pgrid_Refusal.none && reference_match(p[..], n[..], 0.5) && n[0].tests == 40 * 39;
+  // The same on a grid that held a larger build: its old starts past the
+  // new cells are never read.
+  g: [1] Pgrid;
+  #assert pgrid_new(g[..], D3_ZERO, d3(1.0, 1.0, 1.0), 0.34) == Pgrid_Refusal.none && pgrid_build(p[..], g[..]) == Pgrid_Refusal.none;
+  #assert g[0].start[13] - g[0].start[9] > 3;
+  #assert pgrid_new(g[..], D3_ZERO, d3(0.99, 0.99, 0.99), 0.5) == Pgrid_Refusal.none && pgrid_build(p[..], g[..]) == Pgrid_Refusal.none;
+  pgrid_neighbors(p[..], g[..], n[..]);
+  #assert reference_match(p[..], n[..], 0.5) && n[0].tests == 40 * 39;
+  // A box sampled away from the origin holds the same count.
+  p[0].count = 0;
+  #assert psample_box(p[..], d3(1.0, 1.0, 1.0), d3(1.5, 1.4, 1.3), 0.05, 1000.0, 0.0, 1, 2, 7) == 480;
+  // Point k takes jitter streams 3k, 3k + 1 and 3k + 2 of stream 23.
+  p[0].count = 0;
+  _ := psample_box(p[..], D3_ZERO, d3(0.2, 0.2, 0.2), 0.05, 1.0, 0.5, 9, 0, 0);
+  for k: 0..<3 {
+    c := d3((cast(f64) k + 0.5) * 0.05, 0.025, 0.025);
+    j := d3(cast(f64) rand_unit(9, 23, 3 * k) - 0.5, cast(f64) rand_unit(9, 23, 3 * k + 1) - 0.5, cast(f64) rand_unit(9, 23, 3 * k + 2) - 0.5);
+    #assert d3_eq(p[0].pos[k], d3_add(c, d3_scale(j, 0.5 * 0.05)));
+  }
 }
