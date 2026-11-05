@@ -4,6 +4,18 @@
 HOST_AUDIO_ASSETS :: 128;
 HOST_AUDIO_WORDS :: 8388608;
 HostAudioMemory :: struct {words:[HOST_AUDIO_ASSETS]int;total:int;}
+#test "PCM frame/channel extent admits complete mono and stereo frames within the shared budget" {
+ #assert ham_extent(1,1)==1&&ham_extent(1,2)==2&&ham_extent(8388608,1)==8388608&&ham_extent(4194304,2)==8388608;
+ #assert ham_extent(9,1)==9&&ham_extent(9,2)==18;
+ for frames:[4]int.[-1,0,8388609,9223372036854775807] {#assert ham_extent(frames,1)==0;}
+ for frames:[3]int.[4194305,8388608,9223372036854775807] {#assert ham_extent(frames,2)==0;}
+ for channels:[5]int.[-1,0,3,8388608,9223372036854775807] {#assert ham_extent(1,channels)==0;}
+}
+ham_extent :: (frames:int,channels:int)->int #export_c {
+ if frames<1 || channels<1 || channels>2 {return 0;}
+ if frames>HOST_AUDIO_WORDS/channels {return 0;}
+ return frames*channels;
+}
 #test "audio PCM reservations own exact extents and a released ticket can be reused" {
   s:[1]HostAudioMemory;#assert ham_reserve(s[..],3)==0 && ham_reserve(s[..],7)==1 && s[0].total==10 && ham_words(s[..],0)==3 && ham_words(s[..],1)==7;
   #assert ham_release(s[..],0) && s[0].total==7 && ham_words(s[..],0)==0 && !ham_release(s[..],0);
