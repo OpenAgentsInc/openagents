@@ -149,7 +149,7 @@ watch_frame :: (s: [] Everglade, you: Point, dt: f32, c: FolkClock) {
   s[0].wv.net = net_town(s);
   // the gates: shut at WANTED GATES_AT, the room's word in a room (its doors row), else your own level
   was := s[0].gates_shut;
-  if s[0].wv.net { s[0].gates_shut = net_gates(s) > 0; }
+  if s[0].wv.net { gb := net_gates(s); s[0].gates_shut = gb > 0 && (gb & 1) != 0; fi_gates_heard(s, gb); }   // (its burnt and burning leaves too)
   else { s[0].gates_shut = watch_you(w[..])[0].wanted && watch_you(w[..])[0].level >= GATES_AT && !watch_you(w[..])[0].dead; }
   if s[0].gates_shut != was { sp_say(s, ifx s[0].gates_shut then "THE GATES ARE SHUT" else "THE GATES OPEN", -1, ""); }
   if s[0].wv.net { watch_net_you(w, dt); watch_net_frame(s); watch_net_shouts(s, dt); return; }
@@ -924,8 +924,9 @@ everglade_room_town :: (s: [] Everglade, dt: f32, world: f64, seats: [] f32, n: 
   s[0].gates_shut = shut;
   w[0].me = me;
 }
-// Whether the town's gates are shut (1) or open (0), for the room's doors row (its FORM).
-everglade_room_gates :: (s: [] Everglade) -> int #export_c { return ifx s[0].gates_shut then 1 else 0; }
+// The town's gates for the room's doors row (its FORM): bit 0 shut, then each leaf burnt through and
+// alight (everglade-fire.coax fi_gates_bits).
+everglade_room_gates :: (s: [] Everglade) -> int #export_c { return fi_gates_bits(s); }
 // The live seat nearest (x, z), or -1.
 eg_room_nearest :: (s: [] Everglade, x: f32, z: f32, n: int) -> int {
   best := -1; bd := 1000000000.0f32;

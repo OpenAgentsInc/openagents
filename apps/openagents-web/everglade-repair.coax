@@ -8,9 +8,10 @@
 // In a room the server owns it (coax/web/room/room-casts.coax: its reach, sight, bar, interrupt and
 // wait): the page sends a cast of its R slot at what it faces, runs the bar, and every page stands the
 // same structure up when the server says (e mend CODE). A CODE (everglade-cast-rules.coax) is a group,
-// CR_REPAIR_PLACED0 + a placed thing, or MEND_TREE0 + a tree.
+// CR_REPAIR_PLACED0 + a placed thing, MEND_TREE0 + a tree, or MEND_GATE0 + a gate's shut leaf.
 
 MEND_TREE0 :: 200000;
+MEND_GATE0 :: 300000;     // + a gate: its shut leaf (everglade-fire.coax)
 MEND_NEAR :: 5.0;         // m from what you face (or the room's aim) to the broken thing's box
 MEND_SPARKS :: 46;        // gold flecks of the mending
 
@@ -61,6 +62,13 @@ mend_find :: (s: [] Everglade, from: Point, at: Point) -> int {
     if d >= best || mend_box_gap(from.x, from.z, b.x0, b.z0, b.x1, b.z1) > reach { continue; }
     best = d; code = CR_REPAIR_PLACED0 + i;
   }
+  for g: 0..<EG_GATES {
+    if !fi_gate_hurt(s, g) { continue; }
+    b := fi_gate_box(g, 0);
+    d := mend_box_gap(at.x, at.z, b.x0, b.z0, b.x1, b.z1);
+    if d >= best || mend_box_gap(from.x, from.z, b.x0, b.z0, b.x1, b.z1) > reach { continue; }
+    best = d; code = MEND_GATE0 + g;
+  }
   for t: 0..<s[0].tree_n {
     o := t * TREE_FLOATS;
     tx := s[0].trees[o]; tz := s[0].trees[o + 1];
@@ -74,6 +82,11 @@ mend_find :: (s: [] Everglade, from: Point, at: Point) -> int {
 }
 // Where structure `code` stands: its middle, a little up.
 mend_centre :: (s: [] Everglade, code: int) -> Point {
+  if code >= MEND_GATE0 {
+    g := clamp_i(code - MEND_GATE0, 0, EG_GATES - 1);
+    gx := EG_GATE[g * 4]; gz := EG_GATE[g * 4 + 1];
+    return v3(gx, ground_at(s, gx, gz) + 1.8, gz);
+  }
   if code >= MEND_TREE0 {
     o := (code - MEND_TREE0) * TREE_FLOATS;
     x := s[0].trees[o]; z := s[0].trees[o + 1];
@@ -138,7 +151,8 @@ mend_up :: (s: [] Everglade, code: int) -> bool {
   at := mend_centre(s, code);
   did := false;
   size := 2.0f32;
-  if code >= MEND_TREE0 { did = mend_tree_restore(s, code - MEND_TREE0); size = 3; }
+  if code >= MEND_GATE0 { did = fi_gate_restore(s, code - MEND_GATE0); size = 3; }
+  else if code >= MEND_TREE0 { did = mend_tree_restore(s, code - MEND_TREE0); size = 3; }
   else if code >= CR_REPAIR_PLACED0 { did = pf_restore(s, code - CR_REPAIR_PLACED0); size = 1; }
   else if code < SP_GROUPS {
     w := sp_dm(s);

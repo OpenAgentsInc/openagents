@@ -220,7 +220,7 @@ EgRoom :: struct {
   boat_on: [EG_BOATS] bool; boat_x: [EG_BOATS] f32; boat_y: [EG_BOATS] f32; boat_z: [EG_BOATS] f32; boat_yaw: [EG_BOATS] f32;
   boat_by: [EG_BOATS] int; boat_oar: [EG_BOATS] int; boat_i: [EG_BOATS] int;
   place_stamp: int;                                // the newest place line's STAMP this room laid (room-control.coax "place"; 0 none)
-  gates: int;                                      // 1 while the world has the town's gates shut (rm_eg_gates, WANTED 4: #12794), the row's FORM
+  gates: int;                                      // bit 0 while the world has the town's gates shut (rm_eg_gates, WANTED 4: #12794), then its leaves burnt and alight (#12932): the row's FORM
   folk_by: [E5R_FOLK] int;
   // each person's save against a seat's ability the rules rolled this tick (eg_folk_saved: the world's
   // copy of that ability follows it rather than rolling its own, #12874), 0 none
@@ -983,7 +983,7 @@ rm_eg_boat :: (v: [] RmServer, k: int, n: int, b: [] f32) #export_c {
   rm[0].boat_by[n] = cast(int) b[4]; rm[0].boat_oar[n] = ifx b[5] < 0 then -1 else cast(int) (b[5] * 1000); rm[0].boat_i[n] = cast(int) b[6];
 }
 rm_eg_doors :: (v: [] RmServer, k: int, w: int, bits: int) #export_c { if rm_eg_live(v, k) && w >= 0 && w < WIRE_DOOR_WORDS { v[0].eg[k].doors[w] = bits; } }
-rm_eg_gates :: (v: [] RmServer, k: int, shut: int) #export_c { if rm_eg_live(v, k) { v[0].eg[k].gates = ifx shut > 0 then 1 else 0; } }
+rm_eg_gates :: (v: [] RmServer, k: int, shut: int) #export_c { if rm_eg_live(v, k) { v[0].eg[k].gates = ifx shut > 0 then shut else 0; } }   // its bits: shut, and the leaves burnt or alight (everglade-fire.coax fi_gates_bits)
 // The strikes since the world last heard: q's BY SLOT FX FY FZ AX AY AZ SEED.
 rm_eg_strikes :: (v: [] RmServer, k: int) -> int #export_c { return ifx rm_eg_live(v, k) then v[0].eg[k].strike_n else 0; }
 rm_eg_strike :: (v: [] RmServer, k: int, q: int, out: [] f32) #export_c {
@@ -2295,6 +2295,13 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   rm_eg_gates(v[..], k, 1);
   eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
   for q: 0..<3 { #assert eg_test_ent(box[..], q, doors).form == 1 && eg_test_ent(box[..], q, doors).p1 == 32; }
+  // the south gate's leaf alight, then burnt through (#12932): its pages hear the world's bits whole
+  rm_eg_gates(v[..], k, 1 | (1 << 5));
+  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
+  #assert eg_test_ent(box[..], 0, doors).form == 33;
+  rm_eg_gates(v[..], k, 1 | 2);
+  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
+  #assert eg_test_ent(box[..], 0, doors).form == 3;
   rm_eg_gates(v[..], k, 0);
   eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
   #assert eg_test_ent(box[..], 0, doors).form == 0;

@@ -224,6 +224,7 @@ gate_bodies :: (s: [] Everglade, out: [] f32, at: int, x: f32, z: f32) -> int {
   n := 0;
   for g: 0..<EG_GATES {
     if n + 3 > GATE_BODIES || (at + n + 3) * 7 > out.count { break; }
+    if !fi_gate_up(s, g) { continue; }   // burnt through: the gap is open (everglade-fire.coax)
     gx := EG_GATE[g * 4]; gz := EG_GATE[g * 4 + 1]; half := EG_GATE[g * 4 + 2] * 0.5;
     dx := gx - x; dz := gz - z;
     if dx * dx + dz * dz > f32(GATE_REACH) * f32(GATE_REACH) { continue; }
@@ -239,14 +240,17 @@ gate_bodies :: (s: [] Everglade, out: [] f32, at: int, x: f32, z: f32) -> int {
   }
   return n;
 }
-// Each frame the gates are shut: a timber leaf across each gate's gap, two iron bands across it.
+// Each frame the gates are shut: a timber leaf across each gate's gap, two iron bands across it; a leaf
+// burnt through is gone, and one alight blackens (everglade-fire.coax).
 gates_draw :: (s: [] Everglade) {
   if !s[0].gates_shut { return; }
   for g: 0..<EG_GATES {
     gx := EG_GATE[g * 4]; gz := EG_GATE[g * 4 + 1]; wide := EG_GATE[g * 4 + 2];
     yaw := ifx EG_GATE[g * 4 + 3] > 0.5 then f32(PI) * 0.5 else 0.0f32;
     y0 := ground_at(s, gx, gz);
-    shape(s, SHAPE_BOX, LOOK_WOOD, v3(gx, y0 + f32(GATE_LEAF_H) * 0.5, gz), yaw, 0, wide, f32(GATE_LEAF_H), 0.16, 0.4, 0.28, 0.16);
+    if !fi_gate_up(s, g) { continue; }   // burnt through (everglade-fire.coax): nothing in the gap
+    c := 1 - 0.78 * fi_of(s)[0].gate_soot[g];   // blackening as it burns
+    shape(s, SHAPE_BOX, LOOK_WOOD, v3(gx, y0 + f32(GATE_LEAF_H) * 0.5, gz), yaw, 0, wide, f32(GATE_LEAF_H), 0.16, 0.4 * c, 0.28 * c, 0.16 * c);
     for b: 0..<2 {
       shape(s, SHAPE_BOX, LOOK_MATTE, v3(gx, y0 + 0.9 + 1.8 * f32(b), gz), yaw, 0, wide, 0.14, 0.22, 0.12, 0.12, 0.13);
     }

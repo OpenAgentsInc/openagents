@@ -62,6 +62,10 @@ Fire :: struct {
   embers_t: f32;
   dome_dmg: int; dome_gone: bool; dome_cool: f32;
   shards: [FI_SHARDS] FiShard;
+  // the town's four gates' shut leaves (everglade-doors.coax gates_draw): timber, so they burn
+  gate_on: [EG_GATES] bool;      // alight
+  gate_down: [EG_GATES] bool;    // burnt through: no leaf in the gap until R or a long rest
+  gate_t: [EG_GATES] f32; gate_tick: [EG_GATES] f32; gate_hurt: [EG_GATES] int; gate_soot: [EG_GATES] f32; gate_by: [EG_GATES] int;
 }
 fi_of :: (s: [] Everglade) -> [] Fire { return s[0].sp.fi[..]; }
 // Whose a fire starting now is, in a room: the seat whose fire spreads to it (fi_as), else the
@@ -131,6 +135,7 @@ fi_catch :: (s: [] Everglade, at: Point, r: f32, how: int) -> int {
     if f <= 0 || fi_burning(s, i) || sp_rand(s) >= odds * f { continue; }
     if fi_ignite(s, i) { n += 1; }
   }
+  n += fi_gates_catch(s, at, r, odds);   // and a shut gate's timber leaf
   // a spell's flame catching is a crime; so is the fire it started spreading to a building (at most one
   // in FI_CRIME_EVERY s, so a burning street doesn't heat the watch every second)
   v := fi_of(s);
@@ -147,6 +152,12 @@ fi_douse :: (s: [] Everglade, at: Point, r: f32) -> int {
   w := sp_dm(s);
   v := fi_of(s);
   n := trees;
+  for g: 0..<EG_GATES {
+    if !v[0].gate_on[g] { continue; }
+    b := fi_gate_box(g, ground_at(s, EG_GATE[g * 4], EG_GATE[g * 4 + 1]));
+    dx := clamp(at.x, b.x0, b.x1) - at.x; dz := clamp(at.z, b.z0, b.z1) - at.z;
+    if dx * dx + dz * dz <= r * r { v[0].gate_on[g] = false; n += 1; }
+  }
   k := 0;
   while k < v[0].n {
     p := w[0].pieces[v[0].burn[k].piece];
@@ -242,6 +253,7 @@ fi_frame :: (s: [] Everglade, dt: f32) {
   v[0].time += dt;
   rain := clamp(cast(f32) s[0].sky.rain, 0, 1);
   d := s[0].sp.dice[..];
+  fi_gates_frame(s, dt, rain);
   k := 0;
   broke := false;
   // each fire acts as its starter's (fi_owner): what it catches is theirs, what it breaks their crime
@@ -368,7 +380,7 @@ fi_restore :: (s: [] Everglade, g: int) {
     k += 1;
   }
   for i: 0..<w[0].n { if g < 0 || w[0].pieces[i].group == g { v[0].soot[i] = 0; } }
-  if g < 0 { tf_restore(s); }   // and the forest (everglade-forest.coax)
+  if g < 0 { tf_restore(s); for q: 0..<EG_GATES { _ := fi_gate_restore(s, q); } }   // and the forest (everglade-forest.coax) and the gates
   if g < 0 || g == EG_OBSERVATORY {
     v[0].dome_dmg = 0; v[0].dome_gone = false;
     for q: 0..<FI_SHARDS { v[0].shards[q].live = false; }
@@ -598,3 +610,135 @@ fi_test_piece :: (g: [] Everglade, m: int, x: f32, z: f32) -> int {
 // Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
 
 // Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+
+// ---- the gates' leaves (owner playtest, #12932: "this door is not flammable but needs to be")
+// Shut (everglade-doors.coax gates_draw: WANTED GATES_AT), a gate's gap holds a timber leaf banded in
+// iron: a Large wooden object (SRD Breaking Objects), so a fire spell's flame, the grass fire and
+// burning debris light it as they light the town's wood. It burns as a piece does (FI_KINDLE, then 1d6
+// fire a second) and, burnt through, falls from the gap: the gate stands open whatever the watch says,
+// until R (everglade-repair.coax, a structure of its own) or a long rest puts the leaf back. Opened
+// while it burns, its fire goes out (the leaf swung away). Water douses it. In a room the server burns
+// it, and its pages hear the gates' state in the doors row's FORM (everglade_room_gates).
+FI_GATE_HP :: 27;          // 5d10 (a Large resilient object)
+FiGateBox :: struct { x0: f32; z0: f32; x1: f32; z1: f32; y0: f32; y1: f32; }
+// Gate g's shut leaf, its foot at ground y0.
+fi_gate_box :: (g: int, y0: f32) -> FiGateBox {
+  gx := EG_GATE[g * 4]; gz := EG_GATE[g * 4 + 1]; half := EG_GATE[g * 4 + 2] * 0.5;
+  along_z := EG_GATE[g * 4 + 3] > 0.5;
+  hx := ifx along_z then 0.1f32 else half; hz := ifx along_z then half else 0.1f32;
+  return FiGateBox.{x0 = gx - hx, z0 = gz - hz, x1 = gx + hx, z1 = gz + hz, y0 = y0, y1 = y0 + f32(GATE_LEAF_H)};
+}
+// Whether gate g's leaf stands across its gap: the gates shut and it not burnt through.
+fi_gate_up :: (s: [] Everglade, g: int) -> bool { return s[0].gates_shut && !fi_of(s)[0].gate_down[g]; }
+// Whether gate g's leaf needs R: burnt through, burning, scorched or hurt.
+fi_gate_hurt :: (s: [] Everglade, g: int) -> bool { v := fi_of(s); return v[0].gate_down[g] || v[0].gate_on[g] || v[0].gate_hurt[g] > 0 || v[0].gate_soot[g] > 0; }
+// Flame at `at`, r round, at these odds: the shut leaves it reaches catch. How many.
+fi_gates_catch :: (s: [] Everglade, at: Point, r: f32, odds: f32) -> int {
+  if net_town(s) { return 0; }   // in a room the server lights them (the doors row's FORM)
+  v := fi_of(s);
+  n := 0;
+  for g: 0..<EG_GATES {
+    if !fi_gate_up(s, g) || v[0].gate_on[g] { continue; }
+    b := fi_gate_box(g, ground_at(s, EG_GATE[g * 4], EG_GATE[g * 4 + 1]));
+    if b.y1 < at.y - 1.5 || b.y0 > at.y + 4.5 { continue; }
+    dx := clamp(at.x, b.x0, b.x1) - at.x; dz := clamp(at.z, b.z0, b.z1) - at.z;
+    if dx * dx + dz * dz > r * r || sp_rand(s) >= odds { continue; }
+    v[0].gate_on[g] = true; v[0].gate_t[g] = 0; v[0].gate_tick[g] = f32(FI_KINDLE); v[0].gate_by[g] = fi_owner(s);
+    n += 1;
+  }
+  return n;
+}
+// Each frame: the burning leaves flame, blacken and burn through; a leaf swung open goes out.
+fi_gates_frame :: (s: [] Everglade, dt: f32, rain: f32) {
+  v := fi_of(s);
+  for g: 0..<EG_GATES {
+    if !v[0].gate_on[g] { continue; }
+    if !fi_gate_up(s, g) { v[0].gate_on[g] = false; continue; }
+    v[0].gate_t[g] += dt;
+    v[0].gate_soot[g] = lo(v[0].gate_soot[g] + dt / f32(FI_SOOT), 1);
+    b := fi_gate_box(g, ground_at(s, EG_GATE[g * 4], EG_GATE[g * 4 + 1]));
+    if s[0].started && sp_rand(s) < 0.8 {
+      u := sp_rand(s);
+      at := v3(b.x0 + (b.x1 - b.x0) * u, b.y0 + f32(GATE_LEAF_H) * (0.15 + 0.8 * sp_rand(s)), b.z0 + (b.z1 - b.z0) * u);
+      sp_add_spark(s, at, v3((sp_rand(s) - 0.5) * 0.6, 1.6 + sp_rand(s), (sp_rand(s) - 0.5) * 0.6), 0.5 + 0.4 * sp_rand(s), 0.12 + 0.1 * sp_rand(s), FI_RGB, -0.6);
+      if sp_rand(s) < 0.15 { sp_add_puff(s, v3(at.x, b.y1, at.z), v3(0, 1.2, 0), 0.8, 2.2, 0.25); }
+    }
+    if net_town(s) || v[0].gate_t[g] < v[0].gate_tick[g] { continue; }   // in a room the server burns it through
+    v[0].gate_tick[g] += f32(FI_TICK);
+    if rain > 0.05 && sp_rand(s) < 0.12 * rain { v[0].gate_on[g] = false; continue; }
+    v[0].gate_hurt[g] += srd_sum(s[0].sp.dice[..], FI_DICE, FI_SIDES);
+    if v[0].gate_hurt[g] >= FI_GATE_HP {
+      // burnt through: it falls from the gap in charred timber
+      v[0].gate_down[g] = true; v[0].gate_on[g] = false;
+      s[0].sp.broke += 1;
+      if s[0].started {
+        for q: 0..<18 {
+          u := sp_rand(s);
+          at := v3(b.x0 + (b.x1 - b.x0) * u, b.y0 + f32(GATE_LEAF_H) * sp_rand(s), b.z0 + (b.z1 - b.z0) * u);
+          sp_add_spark(s, at, v3((sp_rand(s) - 0.5) * 2, 1 + sp_rand(s), (sp_rand(s) - 0.5) * 2), 0.8, 0.1, FI_RGB, -0.3);
+        }
+        sp_add_puff(s, v3((b.x0 + b.x1) * 0.5, b.y0 + 1, (b.z0 + b.z1) * 0.5), v3(0, 1.5, 0), 1.6, 3, 0.2);
+      }
+    }
+  }
+}
+// Gate g's leaf whole again (R or a long rest): whether it needed it.
+fi_gate_restore :: (s: [] Everglade, g: int) -> bool {
+  if g < 0 || g >= EG_GATES { return false; }
+  v := fi_of(s);
+  was := fi_gate_hurt(s, g);
+  v[0].gate_on[g] = false; v[0].gate_down[g] = false; v[0].gate_hurt[g] = 0; v[0].gate_soot[g] = 0; v[0].gate_t[g] = 0;
+  return was;
+}
+// The gates for the room's doors row's FORM: bit 0 shut, bit 1 + g gate g burnt through, bit 5 + g alight.
+fi_gates_bits :: (s: [] Everglade) -> int {
+  v := fi_of(s);
+  b := ifx s[0].gates_shut then 1 else 0;
+  for g: 0..<EG_GATES { if v[0].gate_down[g] { b = b | (1 << (1 + g)); } if v[0].gate_on[g] { b = b | (1 << (5 + g)); } }
+  return b;
+}
+// A page in a room: the gates as the room's row says (bits as fi_gates_bits; -1 none heard).
+fi_gates_heard :: (s: [] Everglade, bits: int) {
+  if bits < 0 { return; }
+  v := fi_of(s);
+  for g: 0..<EG_GATES {
+    down := (bits & (1 << (1 + g))) != 0; on := (bits & (1 << (5 + g))) != 0;
+    if on && !v[0].gate_on[g] { v[0].gate_t[g] = 0; v[0].gate_tick[g] = f32(FI_KINDLE); }
+    v[0].gate_on[g] = on;
+    if v[0].gate_down[g] && !down { v[0].gate_soot[g] = 0; v[0].gate_hurt[g] = 0; }   // stood up again
+    v[0].gate_down[g] = down;
+  }
+}
+
+#test "fire: a shut gate's leaf catches from a fire spell, burns through and leaves the gap open; R stands it again; open gates don't catch (#12932)" #steps 4000000000 {
+  g: [1] Everglade;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  gx := EG_GATE[0]; gz := EG_GATE[1];   // the south gate
+  at := v3(gx, ground_at(g[..], gx, gz) + 1.5, gz - 0.5);
+  // open: nothing in the gap to catch
+  g[0].gates_shut = false;
+  #assert fi_gates_catch(g[..], at, 1.5, 1) == 0 && !fi_of(g[..])[0].gate_on[0];
+  // shut: the leaf catches
+  g[0].gates_shut = true;
+  #assert fi_gates_catch(g[..], at, 1.5, 1) == 1 && fi_of(g[..])[0].gate_on[0];
+  out: [64] f32;
+  #assert gate_bodies(g[..], out[..], 0, gx, gz - 1) > 0;   // still in your way as it burns
+  for q: 0..<60 * 40 { fi_gates_frame(g[..], 1.0 / 60, 0); if fi_of(g[..])[0].gate_down[0] { break; } }
+  #assert fi_of(g[..])[0].gate_down[0] && !fi_of(g[..])[0].gate_on[0];
+  #assert !fi_gate_up(g[..], 0) && fi_gate_hurt(g[..], 0);
+  // burnt through: the south gate's gap is open, the others still shut
+  n := gate_bodies(g[..], out[..], 0, gx, gz - 1);
+  for k: 0..<n { #assert abs(out[k * 7 + 2] - gz) > 1 || abs(out[k * 7] - gx) > 4; }
+  // the room's row says the same to its pages
+  bits := fi_gates_bits(g[..]);
+  #assert (bits & 1) == 1 && (bits & 2) == 2 && (bits & (1 << 5)) == 0;
+  // R stands it again
+  #assert mend_find(g[..], v3(gx, at.y, gz - 4), v3(gx, at.y, gz - 1)) == MEND_GATE0;
+  #assert mend_up(g[..], MEND_GATE0) && fi_gate_up(g[..], 0) && !fi_gate_hurt(g[..], 0);
+  // opened while burning: it goes out
+  _ := fi_gates_catch(g[..], at, 1.5, 1);
+  g[0].gates_shut = false;
+  fi_gates_frame(g[..], 0.1, 0);
+  #assert !fi_of(g[..])[0].gate_on[0] && !fi_of(g[..])[0].gate_down[0];
+}
