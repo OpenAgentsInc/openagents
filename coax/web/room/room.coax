@@ -32,6 +32,7 @@
 #load "room-vitals.coax";
 #load "room-checkpoint.coax";
 #load "room-control.coax";
+#load "background-budget.coax";
 #load "room-travel.coax";   // a player's travel between two rooms (#12850)
 #load "native-local-policy.coax";
 #load "room-directory.coax";
@@ -66,6 +67,7 @@ RmRoom :: struct {
   cars: [ROOM_PLAYERS] RigidBody;
 }
 RmServer :: struct {
+  bg:[1]BgBudget;
   forge:RmForge;
   quick_n: int;      // quick matches made: each gets its own room name
   conns: [CONNS] RmConn;

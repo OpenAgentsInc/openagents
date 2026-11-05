@@ -1,0 +1,110 @@
+// Actual native HTTP outage and socket isolation check. All services, ports,
+// process groups and fixtures belong to this invocation. No production calls.
+// coax/web/tool.sh coax/web/room/background-check.coax ROOM_BIN [SECONDS=40]
+// tool.sh: tls
+#load "room-socket.coax";
+#load "../../lib/sys/fs.coax";
+#load "../../lib/net/http.coax";
+
+BcText::struct{b:[8192]u8;n:int;}
+bc_s::(b:[]BcText,s:string){n:=rs_put(b[0].b[..],b[0].n,s);if n<0{b[0].n=0;}else{b[0].n=n;}}
+bc_i::(b:[]BcText,n:int){b[0].n=rs_int(b[0].b[..],b[0].n,n);}
+bc_text::(b:[]BcText)->string{return cast(string)b[0].b[0..<b[0].n];}
+bc_file::(dir:string,name:string,text:string)->bool{b:[4200]u8;return fs_write(fs_join(dir,name,b[..]),text);}
+bc_read::(dir:string,name:string,out:[]u8)->string{b:[4200]u8;n:=fs_read(fs_join(dir,name,b[..]),out);return ifx n>=0 then cast(string)out[0..<n] else "";}
+bc_start::(argv:[]string,env:[]string)->int{
+  h:=proc_new();if h<0{return -1;}ok:=true;for a:argv{ok=ok&&proc_arg(h,a);}for e:env{ok=ok&&proc_env(h,e);}
+  ok=ok&&proc_unset(h,"PORT");if !ok||proc_start(h)!=0{ignored_1:=proc_release(h);return -1;}return h;
+}
+bc_stop::(h:int){if h<0{return;}ignored_2:=proc_kill(h,PROC_SIGTERM);b:[8192]u8;until:=rs_now()+10000;
+  while proc_wait(h,0)==PROC_RUNNING&&rs_now()<until{ignored_3:=proc_line(h,20,b[..]);}ignored_4:=proc_release(h);
+}
+bc_has::(s:string,part:string)->bool{if s.count<part.count{return false;}for i:0..<s.count-part.count+1{if s[i..<i+part.count]==part{return true;}}return false;}
+bc_head::(s:string)->int{if s.count<4{return -1;}for i:0..<s.count-3{if s[i..<i+4]=="\r\n\r\n"{return i+4;}}return -1;}
+bc_length::(head:string)->int{
+  at:=0;while at<head.count{end:=at;while end<head.count&&head[end]!='\n'{end+=1;}line:=head[at..<end];at=end+1;
+    if line.count>15&&http_same(line[0..<15],"Content-Length:"){return rs_num(http_trim(line[15..<line.count]));}}
+  return 0;
+}
+#test "background fixture reads an entire CRLF request before stalling it" {
+  s:="POST /vitals HTTP/1.1\r\nContent-Length: 123\r\n\r\n";
+  #assert bc_head(s)==s.count&&bc_length(s)==123&&bc_length("GET / HTTP/1.1\r\n\r\n")==0&&bc_head("x")== -1;
+}
+bc_reply::(h:int,body:string){b:[1]BcText;bc_s(b[..],"HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: ");bc_i(b[..],body.count);bc_s(b[..],"\r\n\r\n");bc_s(b[..],body);
+  for c:bc_text(b[..]){ignored_5:=cxsock_write(h,cast(int)c);}ignored_6:=cxsock_flush(h,500);ignored_7:=cxsock_close(h);
+}
+BcHttp::struct{h:int=-1;b:[32768]u8;n:int;want:int=-1;head:int;}
+bc_fixture::(dir:string)->int{
+  listen:=cxsock_listen(0);if listen<0{return 2;}b:[24]u8;n:=rs_int(b[..],0,cxsock_port(listen));ignored_8:=bc_file(dir,"port",cast(string)b[0..<n]);
+  conn:[24]BcHttp;mode:[32]u8;world:[2048]u8;wn:=fs_read("coax/web/room/dev/world-everglade.json",world[..]);if wn<=0{return 2;}
+  stop:[4200]u8;stopfile:=fs_join(dir,"stop",stop[..]);
+  while !fs_exists(stopfile){
+    h:=cxsock_accept(listen,2);if h>=0{free:=-1;for i:0..<24{if conn[i].h<0&&free<0{free=i;}}if free<0{ignored_9:=cxsock_close(h);}else{conn[free]=BcHttp.{h=h};}}
+    stalled:=bc_read(dir,"mode",mode[..])=="stall";
+    for i:0..<24{c:=conn[i..<i+1];if c[0].h<0{continue;}
+      got:=cxsock_read(c[0].h,0);if got<0&&got!= -2{ignored_10:=cxsock_close(c[0].h);c[0].h= -1;continue;}
+      if got>0{if c[0].n+got>32768{ignored_11:=cxsock_close(c[0].h);c[0].h= -1;continue;}
+        for q:0..<got{c[0].b[c[0].n+q]=cast,trunc(u8)cxsock_byte(c[0].h,q);}c[0].n+=got;}
+      text:=cast(string)c[0].b[0..<c[0].n];if c[0].want<0{end:=bc_head(text);if end>=0{c[0].head=end;c[0].want=end+bc_length(text[0..<end]);}}
+      if c[0].want<0||c[0].n<c[0].want||stalled{continue;}
+      path:=rs_field(text,1);body:="{}";
+      if path=="/world"{body=cast(string)world[0..<wn];ignored_12:=bc_file(dir,"world_seen","1");}
+      if path=="/control"{body="pvp 0\nedit 1\nlevels 0\n";ignored_13:=bc_file(dir,"control_seen","1");}
+      bc_reply(c[0].h,body);c[0].h= -1;
+    }
+  }
+  for i:0..<24{if conn[i].h>=0{ignored_14:=cxsock_close(conn[i].h);}}ignored_15:=cxsock_close(listen);return 0;
+}
+
+BcPage::struct{c:[1]RelayConn;m:[1]WireMirror;seat:int=-1;seq:int;frames:int;tick:int;last:int;gap:int;busy:int;closed:bool;}
+bc_open::(p:[]BcPage,port:int,room:string,pid:string)->bool{
+  ticket:[256]u8;n:=tk_sign_admin_on("local-development-room-ticket-key-not-a-secret",pid,"Overload",room,0,cxproc_wall_us()/1000+180000,ticket[..]);
+  url:[1]BcText;bc_s(url[..],"ws://localhost:");bc_i(url[..],port);bc_s(url[..],"/api/room/relay/everglade/");bc_s(url[..],room);bc_s(url[..],"?t=");bc_s(url[..],cast(string)ticket[0..<n]);
+  if n<=0||!relay_conn_open(p[0].c[..],bc_text(url[..])){return false;}b:[64]u8;ignored_16:=relay_conn_send(p[0].c[..],cast(string)b[0..<wire_put_pins(b[..],0,WirePins.{})]);
+  return relay_conn_send(p[0].c[..],"H 4 ranger.0.0.0 druid 64 Overload");
+}
+bc_poll::(p:[]BcPage,measure:bool){
+  code:=relay_conn_poll(p[0].c[..],0);while code==RC_TEXT{text:=cast(string)p[0].c[0].text[0..<p[0].c[0].text_n];
+    if rs_starts(text,"y "){p[0].seat=rs_num(rs_field(text,1));}
+    if rs_starts(text,"r ")&&bc_has(text,"busy"){p[0].busy+=1;}
+    if rs_starts(text,"D "){d:=wire_mirror_frame(p[0].m[..],text);if d.tick>p[0].tick{now:=rs_now();if measure&&p[0].last>0&&now-p[0].last>p[0].gap{p[0].gap=now-p[0].last;}p[0].last=now;p[0].frames+=1;p[0].tick=d.tick;}}
+    code=relay_conn_poll(p[0].c[..],0);
+  }if code==RC_FAIL||code==RC_CLOSED{p[0].closed=true;}
+}
+bc_input::(p:[]BcPage){if p[0].closed{return;}p[0].seq+=1;b:[128]u8;n:=wire_put_in(b[..],0,WireIn.{seq=p[0].seq,kx=30,heard=p[0].m[0].heard});ignored_17:=relay_conn_send(p[0].c[..],cast(string)b[0..<n]);}
+bc_get::(port:int,path:string,out:[]u8)->int{url:[1]BcText;bc_s(url[..],"http://127.0.0.1:");bc_i(url[..],port);bc_s(url[..],path);w:[1]HttpWork;none:[1]string;r:=http_do(w[..],"GET",bc_text(url[..]),none[0..<0],"",300,0,out);return ifx r.code==200 then r.n else -1;}
+bc_env::(name:string,port:int,path:string,out:[]BcText)->string{bc_s(out,name);bc_s(out,"=http://127.0.0.1:");bc_i(out,port);bc_s(out,path);return bc_text(out);}
+
+tool_main::()->int #export_c{
+  args:[1]Args;if !args_load(args[..]){return 2;}if args_count(args[..])==2&&args_at(args[..],0)=="fixture"{return bc_fixture(args_at(args[..],1));}
+  if args_count(args[..])<1{return 2;}bin:=args_at(args[..],0);if !fs_exists(bin){tool_errln("ROOM_BIN must name a completed native build");return 2;}secs:=ifx args_count(args[..])>1 then args_whole(args_at(args[..],1)) else 40;if secs<30||secs>90{return 2;}
+  db:[4200]u8;dir:=fs_temp("room-background-",db[..]);if dir==""{return 2;}ignored_18:=bc_file(dir,"mode","healthy");
+  exe:[4200]u8;en:=cxargs_len(0);if en<=0||en>4200{return 2;}for i:0..<en{exe[i]=cast,trunc(u8)cxargs_byte(0,i);}
+  fixture_args:=[3]string.[cast(string)exe[0..<en],"fixture",dir];none:[1]string;fixture:=bc_start(fixture_args[..],none[0..<0]);
+  pb:[24]u8;until:=rs_now()+5000;fp:=0;while fp<=0&&rs_now()<until{fp=rs_num(bc_read(dir,"port",pb[..]));proc_sleep(10);}
+  l:=cxsock_listen(0);port:=cxsock_port(l);ignored_19:=cxsock_close(l);pn:=rs_int(pb[..],0,port);
+  envtext:[6]BcText;names:=[6]string.["OA_ROOM_CONTROL_URL","OA_ROOM_WORLD_URL","OA_ROOM_VITALS_URL","OA_ROOM_CHECKPOINT_URL","OA_ROOM_DIRECTORY_URL","OA_ROOM_STATS_URL"];
+  paths:=[6]string.["/control","/world","/vitals","/checkpoint","/directory","/stats"];env:[7]string;for i:0..<6{env[i]=bc_env(names[i],fp,paths[i],envtext[i..<i+1]);}env[6]="OA_ROOM_TICKET_KEY=local-development-room-ticket-key-not-a-secret";
+  argv:=[5]string.[bin,"--port",cast(string)pb[0..<pn],"--listen","127.0.0.1"];room:=ifx fp>0 then bc_start(argv[..],env[..]) else -1;
+  out:[4096]u8;until=rs_now()+10000;ready:=false;
+  while room>=0&&rs_now()<until{if bc_get(port,"/ready",out[..])>0{ready=true;break;}ignored_20:=proc_line(room,10,out[..]);}
+  page:[2]BcPage;opened:=ready&&bc_open(page[0..<1],port,"pair-overload", "overload-a")&&bc_open(page[1..<2],port,"pair-healthy","overload-b");
+  ignored_21:=bc_file(dir,"mode","stall");start:=rs_now();next:=start;health_at:=start;bad:=0;pending_max:=0;health_ok:=0;casts:=0;
+  while opened&&rs_now()-start<secs*1000{
+    now:=rs_now();for i:0..<2{bc_poll(page[i..<i+1],now-start>2000);}
+    if now>=next{next=now+33;for i:0..<2{bc_input(page[i..<i+1]);}
+      // Area casts and pet summons in one room while another keeps walking.
+      if casts<150&&page[0].seq%6==0{b:[128]u8;n:=wire_put_cast(b[..],0,WireCast.{seq=page[0].seq,slot=ifx casts%3==0 then 32 else 0,ax=0,ay=2,az= -84,tgt= -1});ignored_22:=relay_conn_send(page[0].c[..],cast(string)b[0..<n]);casts+=1;}
+    }
+    if now>=health_at{health_at=now+500;n:=bc_get(port,"/health",out[..]);if n<=0{bad+=1;}else{health_ok+=1;s:=cast(string)out[0..<n];
+      mark:="background pending ";for q:0..<s.count-mark.count+1{if s[q..<q+mark.count]==mark{pending:=rs_num(s[q+mark.count..<s.count]);if pending>pending_max{pending_max=pending;}}}}}
+    ignored_23:=proc_line(room,0,out[..]);proc_sleep(2);
+  }
+  ignored_24:=bc_file(dir,"mode","healthy");recovered:=false;until=rs_now()+12000;
+  while opened&&rs_now()<until{for i:0..<2{bc_poll(page[i..<i+1],true);}n:=bc_get(port,"/health",out[..]);if n>0&&bc_has(cast(string)out[0..<n],"background pending 0/6"){recovered=true;break;}proc_sleep(20);}
+  for i:0..<2{if opened&&!page[i].closed{ignored_25:=relay_conn_close(page[i].c[..],1000);}}
+  bc_stop(room);ignored_26:=bc_file(dir,"stop","1");bc_stop(fixture);ignored_27:=fs_remove(dir);
+  print("background native: ready=% opened=% outage_s=% health_ok=% health_failed=% pending_max=%/6 recovered=%\n",ready,opened,secs,health_ok,bad,pending_max,recovered);
+  print("background native: busy_room_frames=% healthy_room_frames=% healthy_gap_max_ms=% busy_refusals=% closed=%/%\n",page[0].frames,page[1].frames,page[1].gap,page[0].busy,page[0].closed,page[1].closed);
+  return ifx opened&&bad==0&&health_ok>20&&pending_max>0&&pending_max<=6&&recovered&&page[1].frames>secs*20&&page[1].gap<250&&!page[1].closed then 0 else 1;
+}

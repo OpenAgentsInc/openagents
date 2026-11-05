@@ -498,10 +498,12 @@ static void opening(int i) {
       if ((int64_t)conns[j].on > wait_most) wait_most = (int64_t)conns[j].on;
       if (t_now - conns[j].since > wait_ms) wait_ms = t_now - conns[j].since;
     }
-    char body[768]; snprintf(body, sizeof body, "ok %lld players, fanout p50 %lld us p95 %lld us over %lld reads, %lld rate-limited, %lld slow closed, shard %lld, everglade tick p50 %lld us at the 95th %lld us over %lld ticks, waiting %lld bytes most, %lld ms oldest, %lld world events running, %s",
+    char body[1024]; snprintf(body, sizeof body, "ok %lld players, fanout p50 %lld us p95 %lld us over %lld reads, %lld rate-limited, %lld slow closed, shard %lld, everglade tick p50 %lld us at the 95th %lld us over %lld ticks, waiting %lld bytes most, %lld ms oldest, %lld world events running, %s",
                              (long long)rm_players(view()), (long long)p50, (long long)p95, (long long)n, (long long)rm_relay_dropped(view()), (long long)slow_closed,
                              (long long)server->shard, (long long)tp50, (long long)tp95, (long long)tn, (long long)wait_most, (long long)wait_ms, (long long)rm_events_running(view()), drain_word());
     snprintf(body+strlen(body),sizeof body-strlen(body),"checkpoints pending %lld, flying %d, refused %lld, applied %lld, duplicates %lld\n",(long long)rm_checkpoint_pending(view()),server->ck.fly?1:0,(long long)server->ck.refused,(long long)server->ck.applied,(long long)server->ck.duplicates);
+    int pending=0;for(int lane=0;lane<6;lane++)if(server->bg.e[0].slot.e[lane].id>0)pending++;
+    snprintf(body+strlen(body),sizeof body-strlen(body),"background pending %d/6, offered %lld, refused %lld, expired %lld, late %lld, failed %lld\n",pending,(long long)server->bg.e[0].offered,(long long)server->bg.e[0].refused,(long long)server->bg.e[0].expired,(long long)server->bg.e[0].late,(long long)server->bg.e[0].failed);
     http(i, "200 OK", "text/plain", body); return;
   }
   /* --dev: the API's stand-in (local.coax): the world document the room laid, byte for byte */
@@ -557,110 +559,75 @@ static void frames(int i) {
 /* Players' HP between visits (room-vitals.coax, #12715): what rm_vitals_due wrote goes to the API by
    curl, its config on stdin (so the MAC is in no argument list). The curls are started by a small
    poster process forked before the server's memory is taken (a fork of the full server can fail on
-   Cloud Run): the server writes each config to it down a pipe, "LEN\n" then the bytes, and never waits. */
-/* The poster also asks the API's word on the rooms (room-control.coax, #12714): a "G" request's
-   answer comes back down a second pipe, "LEN\n" then the bytes, which the server reads without waiting. */
-/* A "V" request is a vitals post (room-vitals.coax, #12793): "BATCH\n" then the curl config. The poster
-   hands it to a child of its own and goes on; the child waits for curl's answer and writes one message
-   down a third pipe, "BATCH STATUS LEN\n" then the body, in a single write of at most RECEIPT_MSG bytes
-   (under PIPE_BUF, so messages never interleave). STATUS is the HTTP status, 0 when curl got none. */
-#define RECEIPT_MSG 500
-static int poster_fd = -1, answer_fd = -1, receipt_fd = -1;
-static void poster_vitals(const char *req, size_t n, int out) {
-  const char *nl = memchr(req, '\n', n);
-  if (!nl) return;
-  long long batch = strtoll(req, NULL, 10);
-  const char *cfg = nl + 1; size_t cn = n - (size_t)(nl + 1 - req);
-  pid_t pid = fork();
-  if (pid != 0) { if (pid < 0) fprintf(stderr, "room: poster: fork failed: %s\n", strerror(errno)); return; }
-  signal(SIGCHLD, SIG_DFL);   /* this child waits for its curl */
-  int p[2], o[2];
-  char msg[RECEIPT_MSG], body[RECEIPT_MSG];
-  size_t k = 0; int status = 0;
-  if (!pipe(p) && !pipe(o)) {
-    pid_t c = fork();
-    if (c == 0) {
-      dup2(p[0], 0); dup2(o[1], 1);
-      for (int fd = 3; fd < 1024; fd++) close(fd);
-      execlp("curl", "curl", "-K", "-", (char *)NULL);
-      _exit(127);
-    }
-    close(p[0]); close(o[1]);
-    if (c > 0) { ssize_t w = write(p[1], cfg, cn); (void)w; }
-    close(p[1]);
-    static char got[16384]; size_t gn = 0; ssize_t r;
-    while (gn < sizeof got - 1 && (r = read(o[0], got + gn, sizeof got - 1 - gn)) > 0) gn += (size_t)r;
-    close(o[0]);
-    if (c > 0) waitpid(c, NULL, 0);
-    got[gn] = 0;
-    /* curl's write-out puts "\n#HTTP CODE" after the body */
-    char *mark = NULL;
-    for (char *q = strstr(got, "\n#HTTP "); q; q = strstr(q + 1, "\n#HTTP ")) mark = q;
-    if (mark) { status = atoi(mark + 7); k = (size_t)(mark - got); }
-    if (k > sizeof body - 1) k = sizeof body - 1;
-    memcpy(body, got, k);
-  }
-  int hn = snprintf(msg, sizeof msg, "%lld %d %zu\n", batch, status, k);
-  if (hn > 0 && (size_t)hn + k <= sizeof msg) { memcpy(msg + hn, body, k); ssize_t w = write(out, msg, (size_t)hn + k); (void)w; }
-  _exit(0);
-}
-static void poster_run(int in, int back, int receipts) {
-  /* A process-group SIGTERM asks the room to drain. Its network helper must
-     keep delivering the final saves until the room closes this input pipe. */
-  signal(SIGTERM, SIG_IGN);
-  static char cfg[16384], got[16384];
-  FILE *f = fdopen(in, "r");
-  for (;;) {
-    long n; int kind = f ? fgetc(f) : EOF;
-    if (kind == EOF || fscanf(f, "%ld", &n) != 1 || fgetc(f) != '\n' || n <= 0 || n >= (long)sizeof cfg) _exit(0);
-    if (fread(cfg, 1, (size_t)n, f) != (size_t)n) _exit(0);
-    if (kind == 'V') { poster_vitals(cfg, (size_t)n, receipts); continue; }
-    int p[2], o[2] = {-1, -1};
-    if (pipe(p)) continue;
-    if (kind == 'G' && pipe(o)) { close(p[0]); close(p[1]); continue; }
-    pid_t pid = fork();
-    if (pid == 0) {
-      signal(SIGTERM, SIG_DFL);
-      dup2(p[0], 0);
-      if (o[1] >= 0) dup2(o[1], 1);
-      for (int fd = 3; fd < 1024; fd++) close(fd);
-      execlp("curl", "curl", "-K", "-", (char *)NULL);
-      _exit(127);
-    }
-    close(p[0]);
-    if (o[1] >= 0) close(o[1]);
-    if (pid > 0) { ssize_t w = write(p[1], cfg, (size_t)n); (void)w; }
-    else fprintf(stderr, "room: poster: fork failed: %s\n", strerror(errno));
-    close(p[1]);
-    if (o[0] >= 0) {
-      size_t k = 0; ssize_t r;
-      while (k < sizeof got && (r = read(o[0], got + k, sizeof got - k)) > 0) k += (size_t)r;
-      close(o[0]);
-      if (k > 0 && k < sizeof got) {
-        char head[24]; int hn = snprintf(head, sizeof head, "%zu\n", k);
-        if (write(back, head, (size_t)hn) != hn || write(back, got, k) != (ssize_t)k) _exit(0);
+   Cloud Run). The main loop offers an atomic local datagram and never waits. */
+/* The six lanes mirror background-budget.coax. Each has one serial SDK
+   helper, one Coax-owned request identity and an atomic, bounded nonblocking
+   datagram transport. A full SDK queue cannot stop the simulation, a control
+   outage cannot queue behind saves, and no response prefix is published. */
+enum { POST_CONTROL, POST_WORLD, POST_VITALS, POST_CHECKPOINT, POST_DIRECTORY, POST_STATS, POST_LANES };
+#define POST_CAP 16640
+static int poster_fd[POST_LANES] = {-1,-1,-1,-1,-1,-1};
+static coax_v_t_BgBudget background(void) { return (coax_v_t_BgBudget){server->bg.e,1}; }
+static void poster_run(int fd, pid_t owner) {
+  signal(SIGTERM,SIG_IGN); /* final saves continue during a process-group drain */
+  signal(SIGCHLD,SIG_DFL);
+  static char req[POST_CAP+1], got[16384], msg[POST_CAP];
+  while (getppid()==owner) {
+    struct pollfd ready={fd,POLLIN,0};
+    if (poll(&ready,1,250)<=0) continue;
+    ssize_t n=recv(fd,req,sizeof req-1,0); if(n<=0||n>=POST_CAP) continue;req[n]=0;
+    char *nl=memchr(req,'\n',(size_t)n); long long id,batch,at;
+    if(!nl||sscanf(req,"%lld %lld %lld",&id,&batch,&at)!=3)continue;
+    size_t cn=(size_t)n-(size_t)(nl+1-req),gn=0,k=0;int status=0;
+    if(now_ms()-at<15000) {
+      int p[2],o[2];
+      if(!pipe(p)) {
+        if(!pipe(o)) {
+          pid_t child=fork();
+          if(child==0) {
+            signal(SIGTERM,SIG_DFL);dup2(p[0],0);dup2(o[1],1);
+            for(int d=3;d<1024;d++)close(d);
+            execlp("curl","curl","-K","-",(char *)NULL);_exit(127);
+          }
+          close(p[0]);close(o[1]);
+          if(child>0) {size_t sent=0;while(sent<cn){ssize_t w=write(p[1],nl+1+sent,cn-sent);if(w<=0)break;sent+=(size_t)w;}}
+          close(p[1]);ssize_t r;
+          while(gn<sizeof got-1&&(r=read(o[0],got+gn,sizeof got-1-gn))>0)gn+=(size_t)r;
+          close(o[0]);if(child>0)waitpid(child,NULL,0);got[gn]=0;
+          char *mark=NULL;
+          for(char *q=strstr(got,"\n#HTTP ");q;q=strstr(q+1,"\n#HTTP "))mark=q;
+          if(gn<sizeof got-1&&mark){status=atoi(mark+7);k=(size_t)(mark-got);}
+        }else{close(p[0]);close(p[1]);}
       }
     }
+    int hn=snprintf(msg,sizeof msg,"%lld %lld %d %zu\n",id,batch,status,k);
+    if(hn>0&&(size_t)hn+k<=sizeof msg){memcpy(msg+hn,got,k);(void)send(fd,msg,(size_t)hn+k,0);}
   }
+  _exit(0);
 }
 static void poster_start(void) {
-  int p[2], b[2], v[2];
-  if (pipe(p)) { perror("room: poster pipe"); return; }
-  if (pipe(b)) { perror("room: poster pipe"); close(p[0]); close(p[1]); return; }
-  if (pipe(v)) { perror("room: poster pipe"); close(p[0]); close(p[1]); close(b[0]); close(b[1]); return; }
-  pid_t pid = fork();
-  if (pid == 0) { close(p[1]); close(b[0]); close(v[0]); poster_run(p[0], b[1], v[1]); _exit(0); }
-  close(p[0]); close(b[1]); close(v[1]);
-  if (pid < 0) { perror("room: poster"); close(p[1]); close(b[0]); close(v[0]); return; }
-  poster_fd = p[1]; answer_fd = b[0]; receipt_fd = v[0];
-  fcntl(answer_fd, F_SETFL, O_NONBLOCK); fcntl(receipt_fd, F_SETFL, O_NONBLOCK);
+  pid_t owner=getpid();
+  for(int lane=0;lane<POST_LANES;lane++) {
+    int p[2];if(socketpair(AF_UNIX,SOCK_DGRAM,0,p)){perror("room: background socket");continue;}
+    int cap=POST_CAP*2;
+    setsockopt(p[0],SOL_SOCKET,SO_SNDBUF,&cap,sizeof cap);setsockopt(p[1],SOL_SOCKET,SO_SNDBUF,&cap,sizeof cap);
+    fcntl(p[0],F_SETFL,O_NONBLOCK);fcntl(p[1],F_SETFL,O_NONBLOCK);
+    pid_t child=fork();
+    if(child==0){close(p[0]);for(int j=0;j<lane;j++)if(poster_fd[j]>=0)close(poster_fd[j]);poster_run(p[1],owner);}
+    close(p[1]);
+    if(child<0){perror("room: background helper");close(p[0]);continue;}
+    poster_fd[lane]=p[0];
+  }
 }
-static bool poster_send(char kind, const char *cfg, size_t k) {
-  static char msg[16384 + 32];
-  if (poster_fd < 0 || k + 32 > sizeof msg) return false;
-  int hn = snprintf(msg, sizeof msg, "%c%zu\n", kind, k);
-  memcpy(msg + hn, cfg, k);
-  if (write(poster_fd, msg, (size_t)hn + k) != (ssize_t)((size_t)hn + k)) { fprintf(stderr, "room: poster: request dropped\n"); return false; }
+static bool poster_send(int lane, const char *cfg, size_t k, int64_t batch) {
+  static char msg[POST_CAP];
+  if(lane<0||lane>=POST_LANES||poster_fd[lane]<0||k>16383)return false;
+  int64_t at=now_ms(),id=bg_offer(background(),lane,at);if(id<=0)return false;
+  int hn=snprintf(msg,sizeof msg,"%lld %lld %lld\n",(long long)id,(long long)batch,(long long)at);
+  memcpy(msg+hn,cfg,k);
+  if(send(poster_fd[lane],msg,(size_t)hn+k,0)!=(ssize_t)((size_t)hn+k)){
+    (void)bg_finish(background(),lane,id,false,now_ms());return false;
+  }
   return true;
 }
 /* The control ask, every two seconds while the server has a key, and its answers as they come. */
@@ -675,7 +642,7 @@ static void control_ask(void) {
   char cfg[512];
   int k = snprintf(cfg, sizeof cfg, "url = \"%s\"\nheader = \"X-Room-Mac: %.64s\"\nheader = \"X-Room-At: %.*s\"\nsilent\nshow-error\nfail\nmax-time = 5\n",
                    url, (const char *)server->ctl.mac.e, (int)(server->ctl.ask_n - 2), (const char *)server->ctl.ask.e + 2);
-  if (k > 0 && k < (int)sizeof cfg) poster_send('G', cfg, (size_t)k);
+  if(k>0&&k+48<(int)sizeof cfg){k+=snprintf(cfg+k,sizeof cfg-(size_t)k,"write-out = \"\\n#HTTP %%{http_code}\"\n");poster_send(POST_CONTROL,cfg,(size_t)k,0);}
 }
 static const char *api_url(const char *env, const char *path, char *buf, size_t cap);
 /* The realm's published world, asked for at the start and again each time the control says it
@@ -689,53 +656,28 @@ static void world_ask(void) {
     printf("room: the local world (%zu bytes) laid over the rooms\n", dev_world_n);
     return;
   }
+  if(!server->bg.e[0].world_needed||!bg_ready(background(),POST_WORLD,now_ms()))return;
   char ub[512];
   const char *url = api_url("OA_ROOM_WORLD_URL", "/api/playtest/world/everglade", ub, sizeof ub);
   char cfg[512];
-  int k = snprintf(cfg, sizeof cfg, "url = \"%s\"\nsilent\nshow-error\nfail\nmax-time = 10\n", url);
-  if (k > 0 && k < (int)sizeof cfg) poster_send('G', cfg, (size_t)k);
+  int k=snprintf(cfg,sizeof cfg,"url = \"%s\"\nsilent\nshow-error\nfail\nmax-time = 10\nwrite-out = \"\\n#HTTP %%{http_code}\"\n",url);
+  if(k>0&&k<(int)sizeof cfg)poster_send(POST_WORLD,cfg,(size_t)k,0);
 }
-static void control_hear(void) {
-  static int64_t edit_asked = -1;
-  static char buf[32768]; static size_t have;
-  if (answer_fd < 0) return;
-  ssize_t r;
-  while (have < sizeof buf && (r = read(answer_fd, buf + have, sizeof buf - have)) > 0) have += (size_t)r;
-  for (;;) {
-    char *nl = memchr(buf, '\n', have);
-    if (!nl) break;
-    size_t len = (size_t)strtoul(buf, NULL, 10), head = (size_t)(nl - buf) + 1;
-    if (have < head + len) break;
-    /* the world's answer is JSON ({"doc": ...}); the control's is lines */
-    if (len > 0 && buf[head] == '{') { world_edits(buf + head, (int64_t)len); rm_eg_placed_reset(view()); printf("room: the realm's world (%zu bytes) laid over the rooms\n", len); }
-    else {
-      rm_control(view(), (coax_string){buf + head, (int64_t)len});
-      if (server->ctl.edit_known && server->ctl.edit != edit_asked) { edit_asked = server->ctl.edit; world_ask(); }
-    }
-    memmove(buf, buf + head + len, have - head - len); have -= head + len;
-    for (int i = 0; i < CONNS; i++) if (conns[i].fd >= 0 && rm_relay_kicked(view(), i)) conns[i].doomed = true;
-  }
-  if (have == sizeof buf) have = 0;
-}
-/* A signed report to the API (the directory, the stats) through the poster: a curl config with the
-   body. A vitals post (batch >= 0) goes as a "V" request, its answer back as a receipt (receipt_hear). */
-static bool post_report(const char *url, const uint8_t *mac, const uint8_t *body, int64_t n, int64_t batch) {
+/* A signed report's lane keeps telemetry separate from each durable outbox.
+   Every complete HTTP result returns through poster_hear. */
+static bool post_report(int lane, const char *url, const uint8_t *mac, const uint8_t *body, int64_t n, int64_t batch) {
   static char cfg[16384];
-  if (poster_fd < 0) return false;
-  size_t k = 0;
-  if (batch != -1) k = (size_t)snprintf(cfg, sizeof cfg, "%lld\n", (long long)batch);
-  k += (size_t)snprintf(cfg + k, sizeof cfg - k, "url = \"%s\"\nheader = \"X-Room-Mac: %.64s\"\nheader = \"Content-Type: text/plain\"\nsilent\nshow-error\n%s",
-                        url, (const char *)mac,
-                        batch != -1 ? "max-time = 5\nwrite-out = \"\\n#HTTP %{http_code}\"\ndata-binary = \"" : "max-time = 10\noutput = \"/dev/null\"\ndata-binary = \"");
+  size_t k=(size_t)snprintf(cfg,sizeof cfg,"url = \"%s\"\nheader = \"X-Room-Mac: %.64s\"\nheader = \"Content-Type: text/plain\"\nsilent\nshow-error\nmax-time = 5\nwrite-out = \"\\n#HTTP %%{http_code}\"\ndata-binary = \"",url,(const char *)mac);
+  if(k>=sizeof cfg)return false;
   for (int64_t i = 0; i < n && k + 4 < sizeof cfg; i++) {
     char ch = (char)body[i];
     if (ch == '\n') { cfg[k++] = '\\'; cfg[k++] = 'n'; } else { if(ch=='\"'||ch=='\\') cfg[k++]='\\'; cfg[k++]=ch; }
   }
   if (k + 4 >= sizeof cfg) { fprintf(stderr, "room: a report too long to post\n"); return false; }
   k += (size_t)snprintf(cfg + k, sizeof cfg - k, "\"\n");
-  return poster_send(batch != -1 ? 'V' : 'P', cfg, k);
+  return poster_send(lane,cfg,k,batch);
 }
-static void post_signed(const char *url, const uint8_t *mac, const uint8_t *body, int64_t n) { (void)post_report(url, mac, body, n, -1); }
+static void post_signed(int lane,const char *url,const uint8_t *mac,const uint8_t *body,int64_t n){(void)post_report(lane,url,mac,body,n,0);}
 static const char *api_url(const char *env, const char *path, char *buf, size_t cap) {
   const char *u = getenv(env);
   if (u && *u) return u;
@@ -744,7 +686,7 @@ static const char *api_url(const char *env, const char *path, char *buf, size_t 
   return buf;
 }
 /* Players' HP, XP and WANTED between visits (room-vitals.coax, #12715, #12793, #12794): the outbox's
-   next post, and its receipt when it comes. A request the poster's pipe dropped failed at once.
+   next post, and its receipt when it comes. A refused SDK offer fails at once.
    --dev posts only when OA_ROOM_VITALS_URL names an API (the vitals check, coax/web/api/
    tests/room_checks.coax); otherwise the stand-in keeps the room's own notes (room-dev.coax). */
 static void vitals_post(void) {
@@ -754,7 +696,7 @@ static void vitals_post(void) {
   if (dev_dir && !(dev_url && *dev_url)) { rm_vitals_local(view()); return; }
   char buf[512];
   int64_t batch = server->vit.batch;
-  if (!post_report(api_url("OA_ROOM_VITALS_URL", "/api/playtest/room-vitals", buf, sizeof buf), server->vit.mac.e, server->vit.out.e, n, batch))
+  if (!post_report(POST_VITALS,api_url("OA_ROOM_VITALS_URL", "/api/playtest/room-vitals", buf, sizeof buf), server->vit.mac.e, server->vit.out.e, n, batch))
     rm_vitals_answer(view(), batch, 0, (coax_string){"", 0});
 }
 static void checkpoint_post(void) {
@@ -762,27 +704,30 @@ static void checkpoint_post(void) {
   if (dev_dir && !(dev_url && *dev_url)) return;
   int64_t n=rm_checkpoint_due(view()); if(n<=0)return;
   char buf[512];int64_t request=server->ck.request;
-  if(!post_report(api_url("OA_ROOM_CHECKPOINT_URL","/api/playtest/room-checkpoint-v2",buf,sizeof buf),server->ck.mac.e,server->ck.out.e,n,-request-2))
+  if(!post_report(POST_CHECKPOINT,api_url("OA_ROOM_CHECKPOINT_URL","/api/playtest/room-checkpoint-v2",buf,sizeof buf),server->ck.mac.e,server->ck.out.e,n,request))
     rm_checkpoint_answer(view(),request,0,(coax_string){"",0});
 }
-static void receipt_hear(void) {
-  static char buf[8192]; static size_t have;
-  if (receipt_fd < 0) return;
-  ssize_t r;
-  while (have < sizeof buf && (r = read(receipt_fd, buf + have, sizeof buf - have)) > 0) have += (size_t)r;
-  for (;;) {
-    char *nl = memchr(buf, '\n', have);
-    if (!nl) break;
-    long long batch = 0; int status = 0; size_t len = 0;
-    if (sscanf(buf, "%lld %d %zu", &batch, &status, &len) != 3) { have = 0; break; }
-    size_t head = (size_t)(nl - buf) + 1;
-    if (have < head + len) break;
-    if (status < 200 || status >= 300) fprintf(stderr, "room: vitals: post %lld answered %d\n", batch, status);
-    if(batch<=-2) rm_checkpoint_answer(view(),-batch-2,status,(coax_string){buf+head,(int64_t)len});
-    else rm_vitals_answer(view(), batch, status, (coax_string){buf + head, (int64_t)len});
-    memmove(buf, buf + head + len, have - head - len); have -= head + len;
+static void poster_hear(void) {
+  static int64_t edit_asked=-1;static char buf[POST_CAP+1];
+  for(int lane=0;lane<POST_LANES;lane++)for(int tries=0;tries<8;tries++){
+    if(poster_fd[lane]<0)break;
+    ssize_t n=recv(poster_fd[lane],buf,sizeof buf-1,0);if(n<=0)break;if(n>=POST_CAP)continue;buf[n]=0;
+    char *nl=memchr(buf,'\n',(size_t)n);long long id,batch;int status;size_t len;
+    if(!nl||sscanf(buf,"%lld %lld %d %zu",&id,&batch,&status,&len)!=4)continue;
+    size_t head=(size_t)(nl+1-buf);if(len!=(size_t)n-head)continue;
+    bool ok=status>=200&&status<300;
+    if(lane==POST_WORLD)ok=ok&&len>0&&buf[head]=='{';
+    if(!bg_finish(background(),lane,id,ok,now_ms()))continue;
+    coax_string body={buf+head,(int64_t)len};
+    if(lane==POST_CHECKPOINT)rm_checkpoint_answer(view(),batch,status,body);
+    else if(lane==POST_VITALS)rm_vitals_answer(view(),batch,status,body);
+    else if(lane==POST_WORLD&&ok){world_edits(body.data,body.count);rm_eg_placed_reset(view());printf("room: the realm's world (%zu bytes) laid over the rooms\n",len);}
+    else if(lane==POST_CONTROL&&ok){
+      rm_control(view(),body);
+      if(server->ctl.edit_known&&server->ctl.edit!=edit_asked){edit_asked=server->ctl.edit;bg_world_changed(background());}
+      for(int i=0;i<CONNS;i++)if(conns[i].fd>=0&&rm_relay_kicked(view(),i))conns[i].doomed=true;
+    }
   }
-  if (have == sizeof buf) have = 0;
   /* what an answer told the pages (r 0 elsewhere to a fenced seat, #12834; g CODE to a traveller whose
      state is now saved, #12850) goes out before the main loop closes a kicked socket */
   relay_flush();
@@ -802,7 +747,7 @@ static void directory_post(void) {
      (the parties check, coax/web/api/tests/room_checks.coax, #12852) */
   if (n <= 0 || (dev_dir && !(dev_url && *dev_url))) return;
   char buf[512];
-  post_signed(api_url("OA_ROOM_DIRECTORY_URL", "/api/playtest/room-directory", buf, sizeof buf), server->dir.mac.e, server->dir.out.e, n);
+  post_signed(POST_DIRECTORY,api_url("OA_ROOM_DIRECTORY_URL", "/api/playtest/room-directory", buf, sizeof buf), server->dir.mac.e, server->dir.out.e, n);
 }
 
 /* Once a second, off the tick: each seat's relevant entities, and its socket's round trip (room-stats.h). */
@@ -836,11 +781,11 @@ static void stats_window(double secs) {
   memcpy(st_last, body + head, o.n - head + 1);
   if (rm_players(view()) > 0)
     printf("room: vitals: tick p95 %.2f ms, input to ack p95 %lld ms, measuring %.2f%% of the tick\n", p95 / 1000.0, (long long)ack95, cost);
-  if (dev_dir || poster_fd < 0) return;
+  if (dev_dir) return;
   static uint8_t mac[65];
   if (!rm_st_sign(view(), (coax_string){body, (int64_t)o.n}, (coax_v_u8){mac, 64})) return;
   char buf[512];
-  post_signed(api_url("OA_ROOM_STATS_URL", "/api/playtest/room-stats", buf, sizeof buf), mac, (const uint8_t *)body, (int64_t)o.n);
+  post_signed(POST_STATS,api_url("OA_ROOM_STATS_URL", "/api/playtest/room-stats", buf, sizeof buf), mac, (const uint8_t *)body, (int64_t)o.n);
 }
 
 /* The server's memory with every field at its declared default (coax_default_t_RmServer), then rm_init
@@ -1000,7 +945,7 @@ int main(int argc, char **argv) {
       }
       if (now - last_vitals >= 1000) { last_vitals = now; vitals_post(); directory_post(); stats_sample(); }
       if (now - last_stats >= ST_WINDOW_MS) { stats_window((now - last_stats) / 1000.0); last_stats = now; }
-      control_ask(); control_hear(); receipt_hear(); checkpoint_post();
+      control_ask();poster_hear();if(!dev_dir)world_ask();checkpoint_post();
       if (now - last_report >= 60000) { printf("room: %lld ticks in %.1f s, %lld players, %lld frames over the rate limits, %lld queue full, %lld slow sockets closed, %lld bytes the most waiting\n", (long long)ticks, (now - last_report) / 1000.0, (long long)rm_players(view()), (long long)rm_relay_dropped(view()), (long long)rm_relay_queue_full(view()), (long long)slow_closed, (long long)out_peak);
         printf("room: everglade tick parts over the minute (ms):"); for (int q = 0; q < PARTS; q++) { printf(" %s %lld", part_name[q], (long long)(part_us[q] / 1000)); part_us[q] = 0; }
         printf(", %lld events with no room in their tick\n", (long long)rm_eg_dropped(view()));

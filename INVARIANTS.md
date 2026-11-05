@@ -735,6 +735,20 @@ and ability hits keep their existing rules path; they are not coalesced by
 this adapter. Checks cover every seat, repeated reports, invalid inputs,
 take-once behavior and the integrated heal-before-harm order.
 
+The native room's background HTTP effects use six independent lanes
+(`background-budget.coax`): control, world, legacy vitals, complete checkpoints,
+directory and statistics. Each has one serial SDK helper and one admitted Coax
+request identity. The host offers whole bounded datagrams without blocking;
+transport refusal goes back to the durable outbox as failure. Full, failed or
+late requests cannot change another lane's owner. A response at or after its
+15-second deadline cannot apply; a replaced request cannot acknowledge its
+successor. Failed world fetches keep retrying (at least one second apart), and
+an older publication's response cannot clear a newer publication's fetch.
+Helpers survive process-group SIGTERM for final acceptance and stop after their
+parent leaves. Neither admission nor HTTP success substitutes for the complete
+checkpoint receipt. Checks: independent lane, clock, identity and publication
+boundaries; actual native HTTP outage in `background-check.coax`.
+
 ## An Everglade room seats only a page of its own build
 
 A room admits a hello only when the page's engine, rules and world numbers

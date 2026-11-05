@@ -1,0 +1,10 @@
+FAIL #test casts: world damage has a reserved snapshot for every seat, even after repeated delivery (#12841) (543 ms)
+coax/web/room/room-casts.coax:543:49: error[E0406]: assertion failed
+    e5rr_seat_out(v[0].eg[k].rules[..],1,out[..]);#assert out[0]==2;
+                                                  ^
+  note: in #test casts: world damage has a reserved snapshot for every seat, even after repeated delivery (#12841)
+1 of 579 checks (--only 'casts: world damage'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: this compiler is out of date: /Users/christopherdavid/work/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/work/openagents/coax/build.sh

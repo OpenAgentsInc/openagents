@@ -1,0 +1,2 @@
+background native: ready=true opened=true outage_s=35 health_ok=70 health_failed=0 pending_max=4/6 recovered=true
+background native: busy_room_frames=1051 healthy_room_frames=1051 healthy_gap_max_ms=48 busy_refusals=129 closed=false/false
