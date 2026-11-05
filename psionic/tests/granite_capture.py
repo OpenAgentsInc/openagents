@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 3 (runs the reference implementations it records: Hugging Face tokenizers and transformers, and llama.cpp's tokenizer)
 """Opt-in oracle capture for Granite 4.2 8B: Hugging Face `tokenizers` and
 `transformers` over the pinned files, and the packaged llama.cpp tokenizer.
 Writes psionic/fixtures/granite/{tokenizer-vectors,chat-vectors,source}.json.

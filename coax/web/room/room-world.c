@@ -20,7 +20,7 @@
 
 static coax_t_Everglade *world[WORLD_ROOMS];
 static coax_t_DemoWorld *pieces[WORLD_ROOMS];
-extern const int room_catalog_n;               /* room-catalog.c (room-catalog.py): the pack's catalog */
+extern const int room_catalog_n;               /* room-catalog.c (room-catalog.coax): the pack's catalog */
 extern const unsigned char room_catalog[];
 static coax_t_Player seat_p[WORLD_ROOMS][WORLD_SEATS];
 /* The river (verse/everglade/river.coax): one a room, its water and current; each seat's own part of it

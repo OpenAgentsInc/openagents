@@ -43,7 +43,7 @@ for u in "${units[@]:1}"; do names "$work/$(basename "$u" .coax).h" >> "$work/ot
 sort -u "$work/other.syms" -o "$work/other.syms"
 renames=()
 while read -r s; do [[ -n "$s" ]] && renames+=("-D$s=room_dup_$s"); done < <(comm -12 "$work/room.syms" "$work/other.syms")
-python3 "$here/room-catalog.py" "$root/apps/openagents-web/realms/everglade/assets/everglade.pack" "$work/room-catalog.c"
+"$root/coax/web/tool.sh" "$here/room-catalog.coax" "$root/apps/openagents-web/realms/everglade/assets/everglade.pack" "$work/room-catalog.c"
 mode="${COAXIAL_MODE:-release}"
 opt=-Os; lto=(-flto)
 if [[ "$mode" == dev ]]; then opt=-O1; lto=(); fi

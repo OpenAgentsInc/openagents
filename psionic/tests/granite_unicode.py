@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: the classes come from Python's own Unicode database, not from Psionic's tables)
 """Writes psionic/fixtures/granite/unicode.coax: the code point classes of
 GPT-2's split expression, from this Python's unicodedata. Class 1 is
 \\p{L} (Lu Ll Lt Lm Lo), 2 is \\p{N} (Nd Nl No), 4 is \\s (White_Space)."""

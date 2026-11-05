@@ -115,6 +115,14 @@ the same inputs, then deletes it in the same commit that switches callers.
   and went. `tool.sh` links `tls-native.c` for a tool with a
   `// tool.sh: tls` line.
 
+- 2026-11-04 (#12859): `coax/web/room/room-catalog.coax` replaces
+  `room-catalog.py` (the same C bytes from Everglade's pack) in the room's
+  `build.sh`, `worker.sh` and `deploy.sh`; `coax/web/private-guard.coax`
+  replaces `private-guard.py` in `deploy.sh` (the same files refused on the
+  same staged tree). Four files gained a true reason: the Cultist Raid robe
+  scripts run inside Blender (6), Granite's capture runs Hugging Face and
+  llama.cpp (3), and its Unicode table comes from Python's database (2).
+
 ## Keeping it this way
 
 - `coax/web/release.sh` runs `coax/web/tool.sh tools-check` on the release

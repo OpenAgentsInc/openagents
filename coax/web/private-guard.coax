@@ -1,0 +1,120 @@
+// Refuses a staged release that carries a private pack (docs/verse/metahuman-support.md).
+// deploy.sh runs it on the staged site before anything is uploaded:
+//   coax/web/tool.sh private-guard STAGE_DIR
+// A MetaHuman pack reaches visitors only through the broker (coax/web/api/verse_packs.c), a session
+// at a time, never as a file. So the release fails on any file under the site's own private/ directory
+// (where serve.c keeps local packs, /private/NAME.pack), on any .pack under a private/ directory
+// anywhere, and on any VPK1 pack whose catalog names the MetaHuman licence or a MetaHuman body,
+// whatever it is called. A page that merely lives at a path named private (/projects/private/) is not
+// a pack and ships. Each refused file is named on stderr; the exit is 1 when there is one.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/args.coax";
+
+PG_ROWS :: 4096;          // pack entries read, as many as the table could hold
+PG_TEXT :: 65536;         // the head of a catalog that is searched
+PG_DEPTH :: 64;           // directories deep
+
+pg_le32 :: (b: [] u8, at: int) -> int {
+  return cast(int) b[at] | (cast(int) b[at + 1] << 8) | (cast(int) b[at + 2] << 16) | (cast(int) b[at + 3] << 24);
+}
+pg_has :: (s: string, part: string) -> bool {
+  if part.count > s.count { return false; }
+  for i: 0..<s.count - part.count + 1 { if s[i] == part[0] && s[i..<i + part.count] == part { return true; } }
+  return false;
+}
+// Whether a catalog's text names the MetaHuman licence or a MetaHuman body.
+pg_private_catalog :: (text: string) -> bool {
+  start := "human metahuman";
+  return pg_has(text, "licence MetaHuman") || (text.count >= start.count && text[0..<start.count] == start);
+}
+#test "a catalog is private when it names the licence or a MetaHuman body" {
+  #assert pg_private_catalog("pack x\nlicence MetaHuman EULA\n") && pg_private_catalog("human metahuman mayor\n");
+  #assert !pg_private_catalog("pack everglade\nlicence CC0\n") && !pg_private_catalog("a human metahuman\n");
+  #assert !pg_private_catalog("human meta") && !pg_private_catalog("");
+}
+// Whether the path's served place is private: its directories (the last part is the file's name),
+// read from under a leading site/, start with private/; or it is a .pack under any private/.
+pg_private_path :: (rel: string) -> bool {
+  name := fs_base(rel);
+  first := true; site := false; pack := name.count >= 5 && name[name.count - 5..<name.count] == ".pack";
+  i := 0; part := 0;
+  while i < rel.count {
+    e := i;
+    while e < rel.count && rel[e] != '/' { e += 1; }
+    if e >= rel.count { break; }   // the name, not a directory
+    d := rel[i..<e];
+    if part == 0 && d == "site" { site = true; }
+    else if (part == 0 || (part == 1 && site)) && d == "private" { return true; }
+    if d == "private" && pack { return true; }
+    i = e + 1; part += 1;
+  }
+  return false;
+}
+#test "which staged paths are private by where they are" {
+  #assert pg_private_path("private/human.pack") && pg_private_path("site/private/x.html") && pg_private_path("private/a/b.txt");
+  #assert pg_private_path("projects/private/x.pack") && pg_private_path("site/a/private/b/c.pack");
+  #assert !pg_private_path("projects/private/index.html") && !pg_private_path("site/projects/private/index.html");
+  #assert !pg_private_path("private") && !pg_private_path("private.pack") && !pg_private_path("site/a.pack") && !pg_private_path("a/site/private/x.html");
+  #assert !pg_private_path("private.x/a.pack") && pg_private_path("a/private/.pack.pack");
+}
+
+PgBuf :: struct { rows: [48 * PG_ROWS] u8; text: [PG_TEXT] u8; }
+// Whether the file is a VPK1 pack whose catalog (an entry of kind 1) is private.
+pg_private_pack :: (path: string, b: [] PgBuf) -> bool {
+  head: [32] u8;
+  if fs_read_at(path, 0, head[..]) != 32 || cast(string) head[0..<4] != "VPK1" { return false; }
+  n := pg_le32(head[..], 4); table := pg_le32(head[..], 16);
+  if n > PG_ROWS { n = PG_ROWS; }
+  got := fs_read_at(path, table, b[0].rows[0..<48 * n]);
+  if got < 0 { return false; }
+  for k: 0..<got / 48 {
+    if b[0].rows[k * 48] != 1 { continue; }
+    off := pg_le32(b[0].rows[..], k * 48 + 4); size := pg_le32(b[0].rows[..], k * 48 + 8);
+    if size > PG_TEXT { size = PG_TEXT; }
+    t := fs_read_at(path, off, b[0].text[0..<size]);
+    if t > 0 && pg_private_catalog(cast(string) b[0].text[0..<t]) { return true; }
+  }
+  return false;
+}
+
+// Walks dir (rel under the stage), naming each private file; the count of them, or -1 when a
+// directory can't be read (the release can't be checked, so it fails too).
+pg_walk :: (stage: string, rel: string, depth: int, b: [] PgBuf) -> int {
+  if depth > PG_DEPTH { tool_errln("private-guard: too deep"); return -1; }
+  dir: [FS_PATH_MAX] u8;
+  at := ifx rel.count == 0 then stage else fs_join(stage, rel, dir[..]);
+  l: [1] FsList;
+  if fs_list(at, l[..]) < 0 || l[0].full { tool_err("private-guard: can't list "); tool_errln(at); return -1; }
+  bad := 0;
+  for i: 0..<l[0].n {
+    name := fs_entry(l[..], i);
+    sub: [FS_PATH_MAX] u8; full: [FS_PATH_MAX] u8;
+    r := ifx rel.count == 0 then name else fs_join(rel, name, sub[..]);
+    p := fs_join(stage, r, full[..]);
+    if r.count == 0 || p.count == 0 { tool_errln("private-guard: a path is too long"); return -1; }
+    kind := fs_kind(p);
+    if kind == FS_DIR {
+      k := pg_walk(stage, r, depth + 1, b);
+      if k < 0 { return -1; }
+      bad += k;
+    } else if kind == FS_FILE {
+      if pg_private_path(r) || pg_private_pack(p, b) {
+        tool_err("private-guard: "); tool_err(r); tool_errln(" is a private pack or under private/; MetaHumans ship only through the broker");
+        bad += 1;
+      }
+    }
+  }
+  return bad;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: private-guard STAGE_DIR"); return 2; }
+  stage := args_at(a[..], 0);
+  if fs_kind(stage) != FS_DIR { tool_err("private-guard: no directory "); tool_errln(stage); return 2; }
+  b: [1] PgBuf;
+  bad := pg_walk(stage, "", 0, b[..]);
+  return ifx bad == 0 then 0 else 1;
+}

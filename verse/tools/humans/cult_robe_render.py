@@ -1,3 +1,4 @@
+# Firm reason: 6 (runs inside Blender: bpy, bmesh and mathutils exist only as its Python API, with no C API to call through #foreign)
 """Turnarounds of the Cultist Raid's robes (verse/tools/humans/cult_robe.py --render DIR), in Blender.
 
 Each look (Cultist, Fanatic, Warlock, Darian) is drawn the way the pack draws it: its robe, the

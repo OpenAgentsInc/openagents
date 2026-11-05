@@ -1,3 +1,4 @@
+# Firm reason: 6 (runs inside Blender: bpy, bmesh and mathutils exist only as its Python API, with no C API to call through #foreign)
 """The Cultist Raid's robes (Everglade, #12740): hooded robes for Darian Odiodei's cult, made in
 Blender from code only, so the same command makes the same files.
 

@@ -1,0 +1,91 @@
+// Writes room-catalog.c: Everglade's pack catalog (apps/openagents-web/realms/everglade/assets/everglade.pack,
+// its kind-1 entry; verse/tools/pack_realm.py) as C bytes, for the room server's world (room-world.c), whose
+// town breaks with the same pieces' bounds the page's does.
+//   coax/web/tool.sh coax/web/room/room-catalog.coax PACK OUT.c
+#import "Basic";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+#load "../../lib/sys/args.coax";
+
+RC_TABLE_MAX :: 4096;        // pack entries read
+RC_CATALOG_MAX :: 4194304;   // the catalog's bytes
+RC_OUT_MAX :: 20971520;      // the C text (at most 4 bytes a catalog byte, plus lines)
+
+rc_le32 :: (b: [] u8, at: int) -> int {
+  return cast(int) b[at] | (cast(int) b[at + 1] << 8) | (cast(int) b[at + 2] << 16) | (cast(int) b[at + 3] << 24);
+}
+rc_put :: (out: [] u8, at: int, s: string) -> int {
+  if at < 0 || at + s.count > out.count { return -1; }
+  for i: 0..<s.count { out[at + i] = s[i]; }
+  return at + s.count;
+}
+rc_int :: (out: [] u8, at: int, v: int) -> int {
+  digits: [24] u8; n := 0; x := v;
+  if x == 0 { digits[0] = '0'; n = 1; }
+  while x > 0 { digits[n] = cast,trunc(u8) ('0' + x % 10); x /= 10; n += 1; }
+  if at < 0 || at + n > out.count { return -1; }
+  for i: 0..<n { out[at + i] = digits[n - 1 - i]; }
+  return at + n;
+}
+// The C file for catalog bytes cat, into out: its length, or -1 when it doesn't fit.
+// The same text room-catalog.py wrote: 24 bytes a line, a trailing 0 so an empty catalog is still an array.
+rc_c :: (cat: [] u8, out: [] u8) -> int {
+  at := rc_put(out, 0, "/* written by coax/web/room/room-catalog.coax from the Everglade pack: its catalog */\n");
+  at = rc_put(out, at, "const int room_catalog_n = "); at = rc_int(out, at, cat.count);
+  at = rc_put(out, at, ";\nconst unsigned char room_catalog["); at = rc_int(out, at, cat.count + 1);
+  at = rc_put(out, at, "] = {\n");
+  i := 0;
+  while i < cat.count {
+    at = rc_put(out, at, "  ");
+    e := ifx i + 24 < cat.count then i + 24 else cat.count;
+    for k: i..<e {
+      if k > i { at = rc_put(out, at, ","); }
+      at = rc_int(out, at, cast(int) cat[k]);
+    }
+    at = rc_put(out, at, ",\n");
+    i = e;
+  }
+  return rc_put(out, at, "  0};\n");
+}
+#test "the C text for a catalog" {
+  out: [512] u8;
+  three := [3] u8.[7, 0, 255];
+  n := rc_c(three[..], out[..]);
+  #assert cast(string) out[0..<n] == "/* written by coax/web/room/room-catalog.coax from the Everglade pack: its catalog */\nconst int room_catalog_n = 3;\nconst unsigned char room_catalog[4] = {\n  7,0,255,\n  0};\n";
+  one: [1] u8;
+  n = rc_c(one[0..<0], out[..]);
+  #assert cast(string) out[0..<n] == "/* written by coax/web/room/room-catalog.coax from the Everglade pack: its catalog */\nconst int room_catalog_n = 0;\nconst unsigned char room_catalog[1] = {\n  0};\n";
+  many: [25] u8;
+  for i: 0..<25 { many[i] = cast,trunc(u8) i; }
+  n = rc_c(many[..], out[..]);
+  #assert cast(string) out[0..<n] == "/* written by coax/web/room/room-catalog.coax from the Everglade pack: its catalog */\nconst int room_catalog_n = 25;\nconst unsigned char room_catalog[26] = {\n  0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,\n  24,\n  0};\n";
+  small: [8] u8;
+  #assert rc_c(three[..], small[..]) == -1;
+}
+
+RcBuf :: struct { cat: [RC_CATALOG_MAX] u8; out: [RC_OUT_MAX] u8; table: [48 * RC_TABLE_MAX] u8; }
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 2 { tool_errln("usage: room-catalog PACK OUT.c"); return 2; }
+  pack := args_at(a[..], 0); out_path := args_at(a[..], 1);
+  head: [32] u8;
+  if fs_read_at(pack, 0, head[..]) != 32 || cast(string) head[0..<4] != "VPK1" { tool_errln("room-catalog: not a pack"); return 1; }
+  n := rc_le32(head[..], 4); table := rc_le32(head[..], 16);
+  if n > RC_TABLE_MAX { n = RC_TABLE_MAX; }
+  b: [1] RcBuf;
+  rows := b[0].table[0..<48 * n];
+  if fs_read_at(pack, table, rows) != rows.count { tool_errln("room-catalog: the pack's table is short"); return 1; }
+  for i: 0..<n {
+    if rows[48 * i] != 1 { continue; }
+    off := rc_le32(rows, 48 * i + 4); size := rc_le32(rows, 48 * i + 8);
+    if size > RC_CATALOG_MAX { tool_errln("room-catalog: the catalog is too big"); return 1; }
+    cat := b[0].cat[0..<size];
+    if fs_read_at(pack, off, cat) != size { tool_errln("room-catalog: the catalog is short"); return 1; }
+    k := rc_c(cat, b[0].out[..]);
+    if k < 0 || !fs_write(out_path, cast(string) b[0].out[0..<k]) { tool_errln("room-catalog: can't write the C file"); return 1; }
+    return 0;
+  }
+  tool_errln("room-catalog: no catalog");
+  return 1;
+}

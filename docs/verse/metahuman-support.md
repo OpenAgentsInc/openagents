@@ -160,7 +160,7 @@ pack reaches a browser, what that protects against, and what it costs.
    capsule body draws.
 5. **Release.** No pack is ever in git or in a release. The page names
    `private:human`, not a URL. `coax/web/deploy.sh` runs
-   `coax/web/private-guard.py` on the staged site and refuses the release if
+   `coax/web/private-guard.coax` on the staged site and refuses the release if
    it finds any file under a `private/` directory, or any VPK1 pack whose
    catalog names the MetaHuman licence or a MetaHuman body.
 
@@ -955,7 +955,7 @@ It holds no MetaHuman asset and draws with none.
   `~/.openagents/verse/private-build/web/` and only while watching. Never in
   a golden, and nowhere else. Refused, absent or broken, the four parts fail
   quietly and the capsule body draws. The deploy's asset rewrite never
-  matches `private:human`, and `coax/web/private-guard.py` refuses a release
+  matches `private:human`, and `coax/web/private-guard.coax` refuses a release
   with a file under `private/` or any pack whose catalog names the MetaHuman
   licence.
 - Renders of a private pack are never committed, used as goldens or
