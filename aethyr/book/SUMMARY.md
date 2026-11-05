@@ -39,7 +39,7 @@
 - [23. Particles and their neighbors](ch023-particles-and-their-neighbors.md) — partly implemented
 - [24. Liquids from particles](ch024-liquids-from-particles.md) — partly implemented
 - [25. Cloth and rope from constraints](ch025-cloth-and-rope-from-constraints.md) — partly implemented
-- [26. Sand, snow and clay on a grid](ch026-sand-snow-and-clay-on-a-grid.md) — design draft
+- [26. Sand, snow and clay on a grid](ch026-sand-snow-and-clay-on-a-grid.md) — partly implemented
 - [27. Elastic solids on a mesh](ch027-elastic-solids-on-a-mesh.md) — design draft
 - [28. Smoke on a grid](ch028-smoke-on-a-grid.md) — partly implemented
 - [29. Materials meet](ch029-materials-meet.md) — design draft

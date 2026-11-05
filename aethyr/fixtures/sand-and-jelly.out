@@ -1,0 +1,13 @@
+jelly: 625 particles
+  0.1 s: lowest 0.4548 m, mean 0.5485 m
+  0.2 s: lowest 0.3075 m, mean 0.4013 m
+  0.3 s: lowest 0.0622 m, mean 0.1559 m
+  0.4 s: lowest 0.0503 m, mean 0.1486 m
+  0.5 s: lowest 0.2536 m, mean 0.351 m
+  0.6 s: lowest 0.3563 m, mean 0.4552 m
+  0.7 s: lowest 0.3628 m, mean 0.4614 m
+  0.8 s: lowest 0.273 m, mean 0.3694 m
+  0.9 s: lowest 0.0832 m, mean 0.1794 m
+  1.0 s: lowest 0.0402 m, mean 0.1208 m
+sand column, aspect ratio 1.0: 144 particles; after 1 s it reaches 0.1998 m from the wall (runout 0.9978), 0.0629 m tall
+sand column, aspect ratio 2.0: 300 particles; after 1 s it reaches 0.3318 m from the wall (runout 2.3182), 0.0824 m tall

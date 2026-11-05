@@ -450,6 +450,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "aethyr/examples/sand-and-jelly.coax",
+      "chapter": "aethyr/book/ch026-sand-snow-and-clay-on-a-grid.md",
+      "stdout": "aethyr/fixtures/sand-and-jelly.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

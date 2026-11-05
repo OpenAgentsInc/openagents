@@ -52,8 +52,8 @@ marker must agree with it; `python3 psionic/tests/book.py --book aethyr` fails
 when they don't. When an engine-core task lands its chapter, update the
 chapter's registry entry, contents label and table row in the same commit.
 
-There are 14 implemented chapters (1–11 and 65–67), 44
-partly implemented chapters (12–18, 20, 23–25, 28, 39, 51–56, 64, 68, 69, 72, 75, 76, 80, 81, 83 and 86–101), and 43 design drafts. An implemented chapter is
+There are 14 implemented chapters (1–11 and 65–67), 45
+partly implemented chapters (12–18, 20, 23–26, 28, 39, 51–56, 64, 68, 69, 72, 75, 76, 80, 81, 83 and 86–101), and 42 design drafts. An implemented chapter is
 qualified for its named profile; it does not imply that every realm adopted
 it or every backend is supported. For example, chapter 8 qualifies native
 kinematic contacts, not the rigid solver planned in Part IV. Chapters 65–67
@@ -190,7 +190,7 @@ capability of Genesis World 1.4.5 to a Part IV chapter.
 | [23. Particles and their neighbors](ch023-particles-and-their-neighbors.md) | Partly implemented: CPU, f64 (particle store and cell-list neighbors) | Spatial hashing, counting sort and stable scatter, fixed-radius neighbors with reported overflow, and shape sampling; the shared substrate for 24–26. |
 | [24. Liquids from particles](ch024-liquids-from-particles.md) | Partly implemented: CPU, f64 (weakly compressible SPH) | WCSPH then DFSPH liquids with boundary particles; hydrostatic, dam-break and floating checks; gradients refused. |
 | [25. Cloth and rope from constraints](ch025-cloth-and-rope-from-constraints.md) | Partly implemented: CPU, f64 (XPBD distance constraints, two projection profiles) | PBD and XPBD constraints for cloth, rope and soft particles; deterministic graph coloring; catenary and compliance checks; gradients refused until tested. |
-| [26. Sand, snow and clay on a grid](ch026-sand-snow-and-clay-on-a-grid.md) | Unimplemented: design draft | MLS-MPM with APIC; neo-Hookean, snow, Drucker–Prager sand, clay and muscle; a deterministic block-sorted scatter beside the atomic profile; reverse-mode gradients via 32. |
+| [26. Sand, snow and clay on a grid](ch026-sand-snow-and-clay-on-a-grid.md) | Partly implemented: CPU, f64, 2D (MLS-MPM with APIC) | MLS-MPM with APIC; neo-Hookean, snow, Drucker–Prager sand, clay and muscle; a deterministic block-sorted scatter beside the atomic profile; reverse-mode gradients via 32. |
 | [27. Elastic solids on a mesh](ch027-elastic-solids-on-a-mesh.md) | Unimplemented: design draft | Tetrahedral FEM with stable neo-Hookean; explicit (differentiable) and implicit Newton–CG profiles; cantilever and inversion checks. |
 | [28. Smoke on a grid](ch028-smoke-on-a-grid.md) | Partly implemented: CPU, f64, 2D (stable fluids on a MAC grid) | Stable Fluids on a MAC grid: semi-Lagrangian advection, pressure projection by CG or multigrid, scalars and vorticity confinement; Taylor–Green decay check. |
 | [29. Materials meet](ch029-materials-meet.md) | Unimplemented: design draft | Explicit coupling between solver pairs (rigid–SPH, rigid–MPM, rigid–PBD, rigid–FEM, MPM–SPH) with a zero-sum momentum ledger; unsupported pairs refused. |
