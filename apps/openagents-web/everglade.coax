@@ -4531,16 +4531,18 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   ranger_load(d[..]);
   rig := ranger_rig(d[..]);
   worst := 0.0f32;
-  for row: 0..<RANGER_CHECK.count / 9 {
-    c := RANGER_CHECK[row * 9];
-    clip := cast(int) c; at := RANGER_CHECK[row * 9 + 1]; j := cast(int) RANGER_CHECK[row * 9 + 2];
+  check: [1152] f32;   // RANGER_CHECK, packed (9 a row)
+  skin_unhex_f32(check[..], RANGER_CHECK);
+  for row: 0..<check.count / 9 {
+    c := check[row * 9];
+    clip := cast(int) c; at := check[row * 9 + 1]; j := cast(int) check[row * 9 + 2];
     s: [1] Skin;
     s[0] = Skin.{};
     // a fresh character shows its first clip at once; a gait at its own pace moves a second a second
     pace := ifx rig.distance[clip] > 0 then rig.distance[clip] / rig.duration[clip] else 0.0f32;
     skin_advance(rig, s[..], clip, pace, at);
     p := skin_joint(rig, s[..], j);
-    want := v3(RANGER_CHECK[row * 9 + 3], RANGER_CHECK[row * 9 + 4], RANGER_CHECK[row * 9 + 5]);
+    want := v3(check[row * 9 + 3], check[row * 9 + 4], check[row * 9 + 5]);
     worst = hi(worst, length(sub(p, want)));
     pal: [RANGER_JOINTS * 12] f32;
     skin_palette(rig, s[..], pal[..]);
@@ -4549,7 +4551,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
     got := v3(pal[b] * x.x + pal[b + 1] * x.y + pal[b + 2] * x.z + pal[b + 3],
               pal[b + 4] * x.x + pal[b + 5] * x.y + pal[b + 6] * x.z + pal[b + 7],
               pal[b + 8] * x.x + pal[b + 9] * x.y + pal[b + 10] * x.z + pal[b + 11]);
-    worst = hi(worst, length(sub(got, v3(RANGER_CHECK[row * 9 + 6], RANGER_CHECK[row * 9 + 7], RANGER_CHECK[row * 9 + 8]))));
+    worst = hi(worst, length(sub(got, v3(check[row * 9 + 6], check[row * 9 + 7], check[row * 9 + 8]))));
   }
   #assert worst < 0.001;
 }

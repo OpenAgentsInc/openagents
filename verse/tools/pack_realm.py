@@ -485,6 +485,7 @@ CHECK_JOINTS = (0, 13, 20, 26, 33, 45, 60, 74)
 
 def rig_coax(m, c, prefix, triangles):
     """The character's skeleton and clips as Coax constants, for aethyr/skin.coax."""
+    import people   # the tables' packing (people.packed, people.load_line)
     J = c["joints"]
     for j in J:
         if max(abs(v - 1) for v in j["s"]) > 1e-5:
@@ -501,6 +502,8 @@ def rig_coax(m, c, prefix, triangles):
                 for time, value in keys:
                     out.append((time,) + tuple(value))
     def arr(name, kind, values, per_line, fmt):
+        if len(values) > people.PACK_OVER:
+            return people.packed(name, kind, values, fmt) + "\n"
         lines = [", ".join(fmt(v) for v in values[i:i + per_line]) for i in range(0, len(values), per_line)]
         return f"{name} :: [{len(values)}] {kind}.[\n  " + ",\n  ".join(lines) + "\n];\n"
     flat = lambda rows: [v for row in rows for v in row]
@@ -544,7 +547,7 @@ def rig_coax(m, c, prefix, triangles):
            *[f"  {n.split(':')[0].lower()}: [{sizes[n.split(':')[0]]}] {n.split(':')[1]};" for n in ['PARENT:int', 'REST:f32', 'BIND:f32', 'DURATION:f32', 'DISTANCE:f32', 'TRACK_T:int', 'TRACK_R:int', 'KEYS_T:f32', 'KEYS_R:f32']],
            "}",
            f"{P.lower()}_load :: (d: [] {P.title()}) {{",
-           *[f"  d[0].{n.split(':')[0].lower()} = {P}_{n.split(':')[0]};" for n in ['PARENT:int', 'REST:f32', 'BIND:f32', 'DURATION:f32', 'DISTANCE:f32', 'TRACK_T:int', 'TRACK_R:int', 'KEYS_T:f32', 'KEYS_R:f32']],
+           *[people.load_line(n.split(':')[0].lower(), f"{P}_{n.split(':')[0]}", n.split(':')[1], sizes[n.split(':')[0]]) for n in ['PARENT:int', 'REST:f32', 'BIND:f32', 'DURATION:f32', 'DISTANCE:f32', 'TRACK_T:int', 'TRACK_R:int', 'KEYS_T:f32', 'KEYS_R:f32']],
            "}",
            f"{P.lower()}_rig :: (d: [] {P.title()}) -> SkinRig {{",
            f"  return SkinRig.{{joints = {P}_JOINTS, clips = {P}_CLIPS, parent = d[0].parent[..], rest = d[0].rest[..], bind = d[0].bind[..],",

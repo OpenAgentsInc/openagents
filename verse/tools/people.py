@@ -674,6 +674,27 @@ def f9(x):
     return t if any(c in t for c in ".en") else t + ".0"
 
 
+# A table longer than this is packed as text, 8 hex digits a value (its 32 bits: an f32's as its
+# literal parses, an int's two's complement), and unpacked at load (aethyr/skin.coax skin_unhex_*):
+# a literal array costs the compiler a compile-time step an element, a string none (#12904).
+PACK_OVER = 100
+
+
+def packed(name, kind, values, fmt):
+    import struct
+    if kind == "f32":
+        hexes = [struct.pack(">f", float(fmt(v))).hex() for v in values]
+    else:
+        hexes = [struct.pack(">I", int(v) & 0xFFFFFFFF).hex() for v in values]
+    return f"{name} :: \"" + "".join(hexes) + "\";   // " + f"{len(values)} {kind}, packed (aethyr/skin.coax skin_unhex_{kind})"
+
+
+def load_line(field, name, kind, n):
+    if n > PACK_OVER:
+        return f"  skin_unhex_{kind}(d[0].{field}[..], {name});"
+    return f"  d[0].{field} = {name};"
+
+
 def bind_rows(sk):
     return [v for m in sk.ib for r in range(3) for v in m[r]]
 
@@ -725,6 +746,8 @@ def rig_coax(manifest, rig, parts, prefix):
                 keys_t["male"] += [(t,) + tuple(v) for t, v in c["move"]["male"]]
                 keys_t["female"] += [(t,) + tuple(v) for t, v in c["move"]["female"]]
     def arr(name, kind, values, per_line, fmt):
+        if len(values) > PACK_OVER:
+            return packed(name, kind, values, fmt)
         lines = [", ".join(fmt(v) for v in values[i:i + per_line]) for i in range(0, len(values), per_line)]
         return f"{name} :: [{len(values)}] {kind}.[\n  " + ",\n  ".join(lines) + "\n];"
     flat = lambda rows: [v for row in rows for v in row]
@@ -779,8 +802,11 @@ def rig_coax(manifest, rig, parts, prefix):
            f"  keys_t_m: [{4 * len(keys_t['male'])}] f32; keys_t_f: [{4 * len(keys_t['female'])}] f32; keys_r: [{5 * len(kr)}] f32;",
            "}",
            f"{P.lower()}_load :: (d: [] {P.title()}) {{",
-           *[f"  d[0].{n} = {P}_{n.upper()};" for n in ("parent", "rest_m", "rest_f", "bind_m", "bind_f", "duration", "distance",
-                                                        "track_t", "track_r", "keys_t_m", "keys_t_f", "keys_r")],
+           *[load_line(n, f"{P}_{n.upper()}", k, len(v)) for n, k, v in (
+               ("parent", "int", m.parent), ("rest_m", "f32", [0] * 7 * J), ("rest_f", "f32", [0] * 7 * J),
+               ("bind_m", "f32", [0] * 12 * J), ("bind_f", "f32", [0] * 12 * J), ("duration", "f32", cl), ("distance", "f32", cl),
+               ("track_t", "int", tt), ("track_r", "int", tr), ("keys_t_m", "f32", [0] * 4 * len(keys_t["male"])),
+               ("keys_t_f", "f32", [0] * 4 * len(keys_t["female"])), ("keys_r", "f32", [0] * 5 * len(kr)))],
            "}",
            "// Body 0 is the male skeleton, 1 the female; they share the clips' rotations.",
            f"{P.lower()}_rig :: (d: [] {P.title()}, female: bool) -> SkinRig {{",

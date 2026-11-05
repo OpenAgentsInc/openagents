@@ -370,16 +370,18 @@ folk_pose :: (r: SkinRig, f: [] Folk, sk: [] Skin, dt: f32, out: [] f32) {
   d: [1] People;
   people_load(d[..]);
   worst := 0.0f32;
-  for row: 0..<PEOPLE_CHECK.count / 7 {
-    body := cast(int) PEOPLE_CHECK[row * 7]; clip := cast(int) PEOPLE_CHECK[row * 7 + 1];
-    at := PEOPLE_CHECK[row * 7 + 2]; j := cast(int) PEOPLE_CHECK[row * 7 + 3];
+  check: [1596] f32;   // PEOPLE_CHECK, packed (7 a row)
+  skin_unhex_f32(check[..], PEOPLE_CHECK);
+  for row: 0..<check.count / 7 {
+    body := cast(int) check[row * 7]; clip := cast(int) check[row * 7 + 1];
+    at := check[row * 7 + 2]; j := cast(int) check[row * 7 + 3];
     rig := people_rig(d[..], body == 1);
     s: [1] Skin;
     s[0] = Skin.{};
     pace := ifx rig.distance[clip] > 0 then rig.distance[clip] / rig.duration[clip] else 0.0f32;
     skin_advance(rig, s[..], clip, pace, at);
     p := skin_joint(rig, s[..], j);
-    worst = hi(worst, length(sub(p, v3(PEOPLE_CHECK[row * 7 + 4], PEOPLE_CHECK[row * 7 + 5], PEOPLE_CHECK[row * 7 + 6]))));
+    worst = hi(worst, length(sub(p, v3(check[row * 7 + 4], check[row * 7 + 5], check[row * 7 + 6]))));
   }
   #assert worst < 0.001;
 }
