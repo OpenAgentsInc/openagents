@@ -17,7 +17,7 @@ input_identity="$(./provenance.sh fingerprint "$root")"
 mkdir -p bin
 # The C++ driver at -O2: its evaluator runs every #authority check, and -O2 inlines
 # the Value moves and destructors each node costs (#12657). The C seeds stay -O1.
-host_flags=(-std=c++20 -O2 -g -Wall -Wextra -Wno-missing-field-initializers)
+host_flags=(-std=c++20 -O2 -g -ffp-contract=off -Wall -Wextra -Wno-missing-field-initializers)
 if [[ -n "${COAX_HOST_TARGET:-}" ]]; then host_flags+=(-target "$COAX_HOST_TARGET"); fi
 c_flags=(-std=c11 -O1 -g)
 # Extra link flags for the executables (stage0, coax, provenance-check):
@@ -214,6 +214,12 @@ gate "$work/stage0" test changelog-model.coax
 gate "$work/stage0" mutate changelog-model.coax --root-only
 COAX_RELEASE_COMPILER="$PWD/$work/stage0" ../scripts/coax-release.sh --check
 gate "$work/stage0" test lib/compiler/budget.coax
+gate "$work/stage0" test lib/compiler/strict-math.coax --library
+"$work/stage0" c lib/compiler/strict-math.coax --library --header "$work/strict-math.h" > "$work/strict-math.c"
+cmp bootstrap/strict-math.c "$work/strict-math.c"
+cmp bootstrap/strict-math.h "$work/strict-math.h"
+{ printf 'R"COAXSM('; cat "$work/strict-math.c"; printf ')COAXSM"\n'; } > "$work/strict-math.inc"
+cmp bootstrap/strict-math.inc "$work/strict-math.inc"
 gate "$work/stage0" mutate lib/compiler/budget.coax
 "$work/stage0" c lib/compiler/budget.coax --library --header "$work/budget.h" > "$work/budget.c"
 cmp bootstrap/budget.c "$work/budget.c"
@@ -301,6 +307,10 @@ gate "$work/stage0" mutate lib/proto/importer.coax
 "$work/coax" c lib/compiler/compiler.coax --library > "$work/rebuilt.c"
 cmp "$work/proto_importer.c" "$work/rebuilt.c"
 gate "$work/coax" test lib/compiler/budget.coax
+gate "$work/coax" test lib/compiler/strict-math.coax --library
+"$work/coax" c lib/compiler/strict-math.coax --library --header "$work/final-strict-math.h" > "$work/final-strict-math.c"
+cmp bootstrap/strict-math.c "$work/final-strict-math.c"
+cmp bootstrap/strict-math.h "$work/final-strict-math.h"
 "$work/coax" c lib/compiler/budget.coax --library --header "$work/final-budget.h" > "$work/final-budget.c"
 cmp bootstrap/budget.c "$work/final-budget.c"
 cmp bootstrap/budget.h "$work/final-budget.h"

@@ -9,11 +9,8 @@
 r4 :: (x: f32) -> f32 { return cast(f32) floor(x * 10000 + 0.5) / 10000; }
 
 // book:begin example
-// The digest recorded before the pose moved out of aethyr/skin.coax. slerp's sin is the host
-// C library's, and glibc and macOS's libm round some results a step apart, so each has its
-// own recording; glibc rounds sin(4) to 0xbfe837b9dddc1eae, macOS to the next double.
-RECORDED :: [2] int.[3351927923, 1971473565];
-LIBM :: #run ifx f64_bits(sin(4.0)) == 0xbfe837b9dddc1eae then 0 else 1;
+// One digest with Coax's fixed sine, on every CPU host (#12917).
+RECORDED :: 2400183551;
 
 // FNV-1a over 32-bit words, kept in 32 bits.
 mix32 :: (h: int, v: int) -> int { return ((h ^ (v & 4294967295)) * 16777619) & 4294967295; }
@@ -63,7 +60,7 @@ main :: () {
     faded := (s[0].clock - s[0].changed) / SKIN_FADE;
     print("after % frames of % at % m/s: % s into the clip, its fade % done\n", frames[k], RANGER_CLIP_NAME[clips[k]], speeds[k], r4(s[0].time), ifx faded >= 1 then "all" else "not");
   }
-  print("% frames, % joints: palette digest equals its recording for this C library: %\n", n, r.joints, h == RECORDED[LIBM]);
+  print("% frames, % joints: palette digest equals its recording with fixed math: %\n", n, r.joints, h == RECORDED);
   print("bones outside their two poses' lengths: at most % m (frame %, joint %)\n", worst, worst_frame, worst_joint);
   // A motion that turns a joint past its limit is refused with the line and the range, not bent.
   m: [1] Motion;

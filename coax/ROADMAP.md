@@ -815,6 +815,13 @@ stack bound must cover the measured native stack on each claimed target.
 
 ## 18. R15 — Strict math and deterministic jobs
 
+The first CPU scalar slice ships in `lib/compiler/strict-math.coax` (#12917):
+fixed sin/cos/exp/log, shared by evaluation and generated C, with full-range
+trigonometric reduction, subnormal exp/log and one final f32 rounding.
+`tests/strict_math.py` qualifies sampled accuracy independently and compares
+host/mode bits. This does not complete R15: tan/pow, GPU/SIMD profiles, the
+memory model, scheduler and integrators below remain separate work.
+
 Specify atomic ordering and the memory model before exposing concurrent APIs.
 Build the job scheduler, disjoint partitions, `for_parallel`, worker-local
 context/scratch, cancellation and defined reductions on R11 effect and region

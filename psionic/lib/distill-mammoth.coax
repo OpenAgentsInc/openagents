@@ -53,8 +53,9 @@ DmVerdict :: struct {promoted:bool;reason:DmReason;}
     x=dm_features(0.75,0.5);#assert x[0]==log(3.0)/16 && x[2]==x[0] && x[1]==0.5 && x[3]==1;
     x=dm_features(0.25,0.5);#assert abs(x[0]+log(3.0)/16)<1e-16 && x[2]==-x[0];
     // The base reads only x0: z = 16 tanh(x0), so it keeps Elephant's answer.
-    b:=dm_base();none:PtAdapter;q:=pt_forward(b,none,dm_features(0.8,0.5));
-    #assert q.z==16*tb_tanh(log(4.0)/16) && abs(q.p-0.8)<0.002 && q.p<0.8;
+    // An exactly representable probability: 0.75/(1-0.75) is exactly 3.
+    b:=dm_base();none:PtAdapter;q:=pt_forward(b,none,dm_features(0.75,0.5));
+    #assert q.z==16*tb_tanh(log(3.0)/16) && abs(q.p-0.75)<0.002 && q.p<0.75;
     #assert q.h[1]==0 && q.h[2]==0 && q.h[3]==0;
     q=pt_forward(b,none,dm_features(0.5,0.9));#assert q.z==0 && q.p==0.5;
     // A certain answer has no logit; neither does a number outside (0, 1).

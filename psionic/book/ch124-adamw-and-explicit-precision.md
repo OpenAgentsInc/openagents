@@ -505,5 +505,7 @@ step (ulp) in one input moves it anywhere from 5e-6 to 2.5e-5. macOS's libm
 gives sin(4) one step further from zero than glibc's, so with the C library's sine the two
 printed different losses
 ([#12689](https://github.com/OpenAgentsInc/openagents/issues/12689)).
+Coax's CPU intrinsics now use fixed kernels too (#12917); this chapter keeps
+its original bounded math profile and recording.
 [The verification record](../../docs/verification/psionic-ch124-muon-2026-10-31.md)
 records the checks, mutation and native evidence.

@@ -371,13 +371,17 @@ steps. At step 105, `vel.x` differed by one bit, in the step after the
 camera turned.
 
 The walking controller computed its direction with Coax's `sin` and `cos`
-and its camera with `pow`. Coax compiles these to the C library's `sinf`,
+and its camera with `pow`. At the time, Coax compiled these to the C library's `sinf`,
 `cosf` and `powf`. Natively that's macOS's libm, and in the browser it's
 wasi-libc's. For some inputs, the two libraries round differently. The basic
 IEEE operations in this checked profile use the same rounding on both hosts;
 they are not generally exact real arithmetic. Both builds turn off fused
 multiply-add contraction and fast math, and the replay check verifies the
 resulting per-step bits for this scenario.
+
+Coax's CPU `sin`, `cos`, `exp` and `log` now use fixed kernels (#12917).
+The engine keeps its own qualified arithmetic profile and recorded digests;
+`pow` still uses host libm unless the engine calls its explicit `math_pow`.
 
 `aethyr/math.coax` gives `math_sin`, `math_cos` and `math_pow` built only
 from those explicitly rounded operations:

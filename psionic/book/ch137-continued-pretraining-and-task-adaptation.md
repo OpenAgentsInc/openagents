@@ -360,7 +360,7 @@ rehearsal and with one rehearsal window in four:
 // Chapter 128's example plan (psionic/examples/pretrain.coax), unchanged.
 CT_BASE :: NpPlan.{model=NP_MODEL,batch=4,steps=24,warmup=4,warmdown=8,final=0,
     embed=0.03,matrix=0.01,head=0.01,scalar=0.01,beta1=0.8,beta2=0.95,eps=1e-10,clip=1,seed=7,init=1281,budget=1e10};
-CT_DEMO_BASE :: [32]u8.[76,25,188,79,245,21,219,87,186,196,126,234,146,229,237,37,7,31,66,20,220,235,230,208,230,249,132,131,248,229,134,186];
+CT_DEMO_BASE :: [32]u8.[175,207,240,20,83,87,78,187,63,188,63,212,137,2,20,206,206,90,188,1,211,26,19,237,110,73,202,175,184,128,9,207];
 CT_DEMO_RUN :: NpPlan.{model=NP_MODEL,batch=4,steps=8,warmup=2,warmdown=4,final=0,
     embed=0.03,matrix=0.01,head=0.01,scalar=0.01,beta1=0.8,beta2=0.95,eps=1e-10,clip=1,seed=7,init=0,budget=1e10};
 CT_DEMO :: [2]CtPlan.[CtPlan.{base=CT_BASE,digest=CT_DEMO_BASE,run=CT_DEMO_RUN,domain=4},CtPlan.{base=CT_BASE,digest=CT_DEMO_BASE,run=CT_DEMO_RUN,domain=3}];
@@ -376,17 +376,17 @@ psionic/check.sh --only nanochat/continue
 audit over both corpora: 168 documents, 24 held out (sources divisible by 8), 1370 paragraphs, shared paragraphs: 0
 general (chapter 128): 3109 training windows; held out: 34564 tokens, 16 frozen windows
 domain (Coax source, chapter 128's tokenizer): 43 files, 149963 bytes, 125080 tokens, 1954 windows; held out: 7 files, 24689 bytes, 20448 tokens, 16 frozen windows
-base: chapter 128's plan, 24 steps x 4 windows; final checkpoint digest 4c19bc4ff515db57..., the one the plans name: true
-base model: general held-out 4.355480036494545 bits per byte (1008 targets), domain held-out 5.731033721859297 bits per byte (1008 targets)
+base: chapter 128's plan, 24 steps x 4 windows; final checkpoint digest afcff01453574ebb..., the one the plans name: true
+base model: general held-out 4.355480036494546 bits per byte (1008 targets), domain held-out 5.731033721859297 bits per byte (1008 targets)
 promotion rule (frozen before the runs): domain gain at least 0.2, general forgetting at most 0.05 bits per byte
-run 1: 8 steps, 4 domain + 0 rehearsal windows a step, plan 806f7ca82e486b4f...
+run 1: 8 steps, 4 domain + 0 rehearsal windows a step, plan 85cbb99c53e6cb6e...
   step 4: loss 4.674891828797806, gradient norm 0.6441695051676039, rate scale 1.0
-  step 8: loss 4.4771814800154655, gradient norm 0.5514312812826376, rate scale 0.25
-  general 4.494086169903292 (forgetting 0.1386061334087465), domain 5.248352728546574 (gain 0.48268099331272296): failed (forgot)
-run 2: 8 steps, 3 domain + 1 rehearsal windows a step, plan bb954a9a91ab33cb...
-  step 4: loss 4.606333427104724, gradient norm 0.4934549405404174, rate scale 1.0
-  step 8: loss 4.176463844871427, gradient norm 0.4930053370674742, rate scale 0.25
-  general 4.3829080393042155 (forgetting 0.027428002809670282), domain 5.203338591928625 (gain 0.527695129930672): passed (cleared)
+  step 8: loss 4.477181480015466, gradient norm 0.5514312812826377, rate scale 0.25
+  general 4.494086169903292 (forgetting 0.1386061334087456), domain 5.248352728546574 (gain 0.48268099331272296): failed (forgot)
+run 2: 8 steps, 3 domain + 1 rehearsal windows a step, plan a6ae943d291ae8fd...
+  step 4: loss 4.606333427104725, gradient norm 0.49345494054041733, rate scale 1.0
+  step 8: loss 4.176463844871427, gradient norm 0.4930053370674741, rate scale 0.25
+  general 4.3829080393042155 (forgetting 0.027428002809669394), domain 5.203338591928625 (gain 0.527695129930672): passed (cleared)
 run 2, judged on 4 domain windows (252 targets): unverifiable (few_targets)
 a plan naming another checkpoint: digest
 the base's checkpoint after step 12, named by its digest: unfinished

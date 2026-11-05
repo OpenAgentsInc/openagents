@@ -558,7 +558,7 @@ chapter 103: 2400 requests, 1440 training rows, 480 validation rows
 chapter 115: 220 parameters, AdamW on a linear schedule, 4 rows of 8 a step: done, 60 steps, 4 evaluations
   loss at step 1 2.936081, at step 60 2.580775; best held-out loss 2.562791
   tt_step: 60 of 60 losses the same bits; weights and moments the same bits: true
-  weights: sha256 938b9a3e2363dc1f...
+  weights: sha256 7da6905f523d9dd8...
   resumed at step 30 from 5620 bytes: ok; 30 steps, weights and moments the same bits: true
   resume with one tail byte changed: corrupt
   resume as a 61-step run: optimizer

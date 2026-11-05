@@ -1,0 +1,25 @@
+// Native replay of compile-time answers, including f32's one final rounding.
+#import "Basic";
+X :: [12]f64.[-0.0,0.3,1,4,411,670,1647099.0,1647099.1,1e20,1e100,1e300,1.7976931348623157e308];
+answers :: ()->[12][2]u64 {
+    a:[12][2]u64;
+    for i:0..<12 {a[i][0]=f64_bits(sin(X[i]));a[i][1]=f64_bits(cos(X[i]));}
+    return a;
+}
+BITS :: #run answers();
+F32 :: #run f32_bits(sin(4.0f32));
+#assert #run sin(4.0)==-0.7568024953079282;
+#assert #run exp(1.0)==2.7182818284590455;
+#assert #run log(3.0)==1.0986122886681096;
+#assert #run f64_bits(sin(-0.0))==0x8000000000000000;
+#assert #run f64_bits(exp(-745.0))==1;
+main :: () {
+    for i:0..<12 {
+        x:=f64_from_bits(value_barrier(f64_bits(X[i])));
+        #assert f64_bits(sin(x))==BITS[i][0] && f64_bits(cos(x))==BITS[i][1];
+    }
+    x:=f32_from_bits(value_barrier(f32_bits(4.0f32)));#assert f32_bits(sin(x))==F32;
+    a:=f64_from_bits(value_barrier(f64_bits(1.0)));#assert exp(a)==2.7182818284590455;
+    b:=f64_from_bits(value_barrier(f64_bits(3.0)));#assert log(b)==1.0986122886681096;
+    print("fixed math: compile-time and native bits agree\n");
+}

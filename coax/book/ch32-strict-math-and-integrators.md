@@ -4,6 +4,12 @@
 > shown follows [the Coax specification](https://github.com/OpenAgentsInc/openagents/tree/main/coax/spec.md) and may change
 > before it's built. This is roadmap R15 (spec stage 10).
 
+The initial CPU scalar slice is available: `sin`, `cos`, `exp` and `log` now
+share [fixed Coax kernels](../lib/compiler/strict-math.coax) between compile-time
+evaluation and generated C (#12917). They do not use host transcendental libm
+functions. This chapter's full strict profile, jobs and integrators remain
+planned; tan/pow and GPU profiles are separate work.
+
 [Chapter 16](ch16-determinism.md) explains why the same inputs must give the
 same results, and [chapter 14](ch14-jobs.md) treats a job's captures as
 effects. This chapter plans the next step: a memory model, a job scheduler

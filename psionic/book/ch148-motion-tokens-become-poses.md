@@ -492,7 +492,7 @@ every third token from the second, and four tokens in a row from position 5.
 ```
 
 ```text
-hand separation (millionths): 805162 between codes 1 and 2
+hand separation (millionths): 805162 between codes 0 and 1
 hand tokens: 012
 hand distances (millionths): 0 87239 174311
 decoded frame 0: turn (millidegrees) 0, root z (mm) 0

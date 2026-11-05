@@ -87,6 +87,7 @@ unit_pulse() {
 
 unit_python() { python3 tests/crash_reporting.py && python3 tests/compile_time.py && python3 tests/tools.py && python3 tests/state_defaults.py && python3 tests/diagnostics_json.py; }
 unit_native() { python3 tests/native.py; }
+unit_strict_math() { python3 tests/strict_math.py; }
 unit_native_checks() {
   python3 tests/native_checks.py && python3 tests/native_check_baseline.py && python3 tests/native_check_emission.py && python3 tests/native_check_execution.py && python3 tests/native_execution_transport.py && python3 tests/native_check_forall.py && python3 tests/native_report_inputs.py && python3 tests/native_compiler_identity.py && python3 tests/native_check_semantics.py
 }
@@ -239,7 +240,7 @@ unit_spatial() {
 }
 
 # Every unit, in the order the whole suite runs them.
-UNITS=(pass fail examples pulse python native native_checks lexer parser budget strings traversal
+UNITS=(pass fail examples pulse python native strict_math native_checks lexer parser budget strings traversal
   provenance query steps library_checks authority_cache check_reuse parallel_checks job_budget release mutation_schedule
   build_profiles semantic_profiles checker systemone results book sources reflection library_tools
   sequence bounded kept clock debugging nostr constant_time wrapping mul_wide cuda proto_cap proto proto_policy

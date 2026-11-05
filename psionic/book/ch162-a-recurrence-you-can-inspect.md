@@ -27,30 +27,30 @@ kept through each token 0.5, 0.25; token 0's write kept through token 1 0.5
 mixing matrix [0.5, 0.0; 0.5, 1.0]; outputs 2.5, 7.5; carried state 3.75
 13 tokens, 4 heads of width 2 in 2 groups, state width 3:
   log A -4.0: each token keeps between 0.9495932350040605 and 0.9959810650243408 of the state
-    chunk 1: outputs 1.2513778513412177e-08, state 7.813031022152472e-08, snapshots 1.0996067811852583e-07 (13 of them, histories equal true), step bit for bit true
-    chunk 2: outputs 3.325652581098737e-08, state 7.813031022152472e-08, snapshots 7.813031022152472e-08 (7 of them, histories equal true), step bit for bit false
-    chunk 3: outputs 1.2513778513412177e-08, state 7.813031022152472e-08, snapshots 7.813031022152472e-08 (5 of them, histories equal true), step bit for bit false
-    chunk 4: outputs 2.7414939707259833e-08, state 5.320083557025512e-08, snapshots 9.459774075182281e-08 (4 of them, histories equal true), step bit for bit false
-    chunk 5: outputs 1.9705715267881452e-08, state 1.09978593343385e-07, snapshots 1.09978593343385e-07 (3 of them, histories equal true), step bit for bit false
-    chunk 8: outputs 2.7414939707259833e-08, state 4.364375683074684e-08, snapshots 6.17624258403282e-08 (2 of them, histories equal true), step bit for bit false
-    chunk 13: outputs 1.6411539266458774e-08, state 4.364375683074684e-08, snapshots 4.364375683074684e-08 (1 of them, histories equal true), step bit for bit false
-    chunk 64: outputs 1.6411539266458774e-08, state 4.364375683074684e-08, snapshots 4.364375683074684e-08 (1 of them, histories equal true), step bit for bit false
-    whole sequence: outputs 1.6411539266458774e-08, state 4.364375683074684e-08, mixing matrix 1.7488975101453974e-08 (limit 0.000014403773717122286), zero above the diagonal true
+    chunk 1: outputs 1.2513778596678904e-08, state 7.813030999948012e-08, snapshots 1.0996067789648123e-07 (13 of them, histories equal true), step bit for bit true
+    chunk 2: outputs 3.325652581098737e-08, state 7.813030999948012e-08, snapshots 7.813030999948012e-08 (7 of them, histories equal true), step bit for bit false
+    chunk 3: outputs 1.2513778596678904e-08, state 7.813030999948012e-08, snapshots 7.813030999948012e-08 (5 of them, histories equal true), step bit for bit false
+    chunk 4: outputs 2.741493979052656e-08, state 5.320083557025512e-08, snapshots 9.459774097386742e-08 (4 of them, histories equal true), step bit for bit false
+    chunk 5: outputs 1.9705715295637027e-08, state 1.099785931213404e-07, snapshots 1.099785931213404e-07 (3 of them, histories equal true), step bit for bit false
+    chunk 8: outputs 2.741493979052656e-08, state 4.3643756719724536e-08, snapshots 6.176242606237281e-08 (2 of them, histories equal true), step bit for bit false
+    chunk 13: outputs 1.64115392387032e-08, state 4.3643756719724536e-08, snapshots 4.3643756719724536e-08 (1 of them, histories equal true), step bit for bit false
+    chunk 64: outputs 1.64115392387032e-08, state 4.3643756719724536e-08, snapshots 4.3643756719724536e-08 (1 of them, histories equal true), step bit for bit false
+    whole sequence: outputs 1.64115392387032e-08, state 4.3643756719724536e-08, mixing matrix 1.7488975101453974e-08 (limit 0.000014403773717122285), zero above the diagonal true
   log A 1.0: each token keeps between 0.00046375225677373867 and 0.5500948122646999 of the state
-    chunk 1: outputs 1.6093639476633115e-08, state 9.240374937435902e-09, snapshots 2.9118943756234472e-08 (13 of them, histories equal true), step bit for bit true
+    chunk 1: outputs 1.609363944887754e-08, state 9.240374937435902e-09, snapshots 2.9118943756234472e-08 (13 of them, histories equal true), step bit for bit true
     chunk 2: outputs 6.1111742333253005e-09, state 9.240374937435902e-09, snapshots 2.9118943756234472e-08 (7 of them, histories equal true), step bit for bit false
-    chunk 3: outputs 1.6093639476633115e-08, state 9.240374937435902e-09, snapshots 2.9118943756234472e-08 (5 of them, histories equal true), step bit for bit false
-    chunk 4: outputs 6.1111742333253005e-09, state 9.240374937435902e-09, snapshots 2.260044623669799e-08 (4 of them, histories equal true), step bit for bit false
+    chunk 3: outputs 1.609363944887754e-08, state 9.240374937435902e-09, snapshots 2.9118943756234472e-08 (5 of them, histories equal true), step bit for bit false
+    chunk 4: outputs 6.1111742333253005e-09, state 9.240374937435902e-09, snapshots 2.260044618118684e-08 (4 of them, histories equal true), step bit for bit false
     chunk 5: outputs 6.1111742333253005e-09, state 9.240374937435902e-09, snapshots 1.1417310208372555e-08 (3 of them, histories equal true), step bit for bit false
     chunk 8: outputs 6.1111742333253005e-09, state 9.240374937435902e-09, snapshots 9.66735941299035e-09 (2 of them, histories equal true), step bit for bit false
     chunk 13: outputs 6.1111742333253005e-09, state 9.240374937435902e-09, snapshots 9.240374937435902e-09 (1 of them, histories equal true), step bit for bit false
     chunk 64: outputs 6.1111742333253005e-09, state 9.240374937435902e-09, snapshots 9.240374937435902e-09 (1 of them, histories equal true), step bit for bit false
-    whole sequence: outputs 6.1111742333253005e-09, state 9.240374937435902e-09, mixing matrix 1.104397034934479e-08 (limit 0.000013166591813826473), zero above the diagonal true
+    whole sequence: outputs 6.1111742333253005e-09, state 9.240374937435902e-09, mixing matrix 1.104397040485594e-08 (limit 0.000013166591813826473), zero above the diagonal true
 log A 1, head 0's mixing matrix, tokens 0 to 3:
   -0.0361646434134415 0.0 0.0 0.0
-  -0.002786749442908085 -0.06775848766197574 0.0 0.0
-  0.00028853892567490676 -0.0048821442303570205 0.06202647813957964 0.0
-  0.0003761058768097783 0.0453615986105941 0.052925812687482456 0.1420849183647983
+  -0.002786749442908084 -0.06775848766197574 0.0 0.0
+  0.00028853892567490665 -0.00488214423035702 0.06202647813957964 0.0
+  0.0003761058768097782 0.04536159861059409 0.052925812687482456 0.1420849183647983
 resumed at token 8 from a snapshot: outputs, state and history bit for bit true
 request b after request a without a clear: equal to b alone false
 request b after a clear: equal to b alone true

@@ -603,8 +603,8 @@ hand indexer scores 1.5 2.0 2.0 0.75
   attention over keys 1 and 2: sparse 3.0, masked dense 3.0, every key 4.5
 generated: 12 indexer scores equal the oracle's true; keys 2 and 7 tie at 3.9736328125
   k 3: 3 keys, brute force agrees true, sparse = masked dense bit for bit true, = every key false, oracle gap 0.0
-  k 6: 6 keys, brute force agrees true, sparse = masked dense bit for bit true, = every key false, oracle gap 6.910406069286122e-17
-  k 11: 11 keys, brute force agrees true, sparse = masked dense bit for bit true, = every key false, oracle gap 4.640850727473248e-17
+  k 6: 6 keys, brute force agrees true, sparse = masked dense bit for bit true, = every key false, oracle gap 4.6069373795240813e-17
+  k 11: 11 keys, brute force agrees true, sparse = masked dense bit for bit true, = every key false, oracle gap 2.4832221390288397e-17
   k 2048: 12 keys, brute force agrees true, sparse = masked dense bit for bit true, = every key true, oracle gap 2.3532612866991853e-17
 Large 4 map: ok, 72 layers, 63 keep their own KV, 18 NoPE layers, layer 71 reads layer 35
   KV values per token: 36288 shared, 41472 unshared; at 1048576 tokens and 1 byte: 38050725888 and 43486543872 bytes

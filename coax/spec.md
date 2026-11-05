@@ -1459,9 +1459,17 @@ reproduce a different algorithm's floating-point outputs.
 Cross-platform proof includes serializations, replay order, compiler flags,
 SIMD lowering and scheduling. The bootstrap evaluator computes integers, floats,
 bools, strings and aggregates; its float arithmetic matches generated C on the
-same host (one rounding per operation, no fused operations), and math
-intrinsics use the host libm. There is no cross-platform floating-point claim
-yet.
+same host (one rounding per operation, no fused operations). CPU `sin`, `cos`,
+`exp` and `log` now share the fixed Coax implementation in
+`lib/compiler/strict-math.coax` between the evaluator and generated C. The
+profile is round-to-nearest binary64 with gradual underflow and no contraction
+or reassociation; f32 widens exactly, then rounds once. Trigonometric reduction
+covers every finite binary64 input. Native runtime domain/overflow results
+retain IEEE NaNs/infinities; compile-time nonfinite results still fail E0412.
+The algorithms are fixed approximations, not correctly rounded functions.
+`tan` and `pow` still use host libm, and GPU profiles remain target-specific.
+The sampled accuracy and exact host/mode checks in `tests/strict_math.py` do
+not establish whole-program, SIMD or scheduler determinism.
 
 ## 14. Protocol boundaries
 

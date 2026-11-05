@@ -3,7 +3,7 @@ teacher mammoth-1 4570fecb199493c2... on cuda; features from elephant-1 47447589
 recorded time per decision on the RTX 4080: Mammoth 1543.2 ms, Elephant 227.0 ms (medians)
 student before: ab8ddec85f16bd9c... (base 192443657adaf5ec...)
 training KL to Mammoth: 0.021 before, 0.0201 after 400 AdamW steps: ok
-student after: 595f1c3da87eef4a...
+student after: c2444c07c42b1b0a...
 held out, 24 requests (against Mammoth: agree, mean KL; against gold: right, Brier, ECE):
   Elephant      : agree 24 of 24, KL 0.0131, right 24 of 24, Brier 0.0017, ECE 0.0182
   student before: agree 24 of 24, KL 0.012, right 24 of 24, Brier 0.0018, ECE 0.0192

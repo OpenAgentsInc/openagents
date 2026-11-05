@@ -17,7 +17,7 @@ set -euo pipefail
 export LC_ALL=C
 here="$(cd "$(dirname "$0")" && pwd -P)"
 repo="$(cd "$here/.." && pwd -P)"
-seeds=(lexer sources parser checker)
+seeds=(lexer sources parser checker strict-math)
 compare() {  # compare ROOT: build stage0 from ROOT's seeds, emit, compare
   cd "$1/coax"
   local w rc=0 s
@@ -40,6 +40,7 @@ compare() {  # compare ROOT: build stage0 from ROOT's seeds, emit, compare
     if cmp -s "bootstrap/$s.c" "$w/$s.c" && cmp -s "bootstrap/$s.h" "$w/$s.h"; then echo "$s: matches"
     else echo "$s: DIFFERS from what stage0 emits"; diff "bootstrap/$s.c" "$w/$s.c" | head -20 || true; rc=1; fi
   done
+  COAX_TEST_COMPILER="$w/stage0" python3 tests/strict_math.py || rc=1
   rm -rf "$w"
   return $rc
 }
@@ -54,9 +55,11 @@ compare "$repo"
 ctx="$(mktemp -d)"
 trap 'rm -rf "$ctx"' EXIT
 git -C "$repo" ls-files -z -- coax/src coax/bootstrap coax/lib ':(glob)coax/*' | (cd "$repo" && rsync -a --from0 --files-from=- ./ "$ctx/")
+mkdir -p "$ctx/coax/tests"
+cp "$here/tests/strict_math.py" "$here/tests/strict-math.coax" "$ctx/coax/tests/"
 cp "$here/seed-portability.sh" "$ctx/coax/"
 # The working tree's copies, so an uncommitted refresh is what gets checked.
-cmd='apt-get update -qq && apt-get install -y -qq --no-install-recommends gcc g++ libc6-dev > /dev/null && coax/seed-portability.sh --inside'
+cmd='apt-get update -qq && apt-get install -y -qq --no-install-recommends gcc g++ libc6-dev python3 > /dev/null && coax/seed-portability.sh --inside'
 echo 'linux (debian:bookworm-slim GCC):'
 if docker info > /dev/null 2>&1; then
   docker run --rm -v "$ctx:/w" -w /w debian:bookworm-slim bash -c "$cmd /w"
@@ -66,6 +69,7 @@ else
   out="$(CLOUDSDK_CONFIG="${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}" gcloud builds submit "$ctx" --project "$project" --region "$region" \
     --config "$ctx/cloudbuild.yaml" --service-account "projects/$project/serviceAccounts/oa-mvp-automation@$project.iam.gserviceaccount.com" \
     --default-buckets-behavior REGIONAL_USER_OWNED_BUCKET 2>&1)" && rc=0 || rc=$?
-  grep -E '^(lexer|sources|parser|checker): |^[<>] ' <<< "$out" || true
+  if [[ $rc != 0 ]]; then printf '%s\n' "$out" >&2
+  else grep -E '^(lexer|sources|parser|checker|strict-math): |^fixed math: |^[<>] ' <<< "$out" || true; fi
   exit $rc
 fi

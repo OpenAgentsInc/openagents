@@ -35,8 +35,9 @@ DD_BIG :: 1.0e300;
 DD_PARAM_MAX :: 10.0;
 DD_NONE :: DdLimits.{lost=DD_BIG,strike=DD_BIG,item=DD_BIG};
 
-// Checks precede the implementation. Pinned values come from
-// psionic/tests/distance_oracle.py --tests; the rest are worked by hand.
+// Checks precede the implementation. The cases come from
+// psionic/tests/distance_oracle.py --tests; numerical pins use Coax's fixed
+// math (#12917), including the digest-derived subset seed.
 DD_TEST_QUANTIZED :: DdBackend.{seed=4,mix=1,grid=0.25};
 DD_TEST_OTHER :: DdBackend.{seed=5,mix=1,noise=0.002,share=0.5,shift=0.4};
 
@@ -54,7 +55,7 @@ DD_TEST_OTHER :: DdBackend.{seed=5,mix=1,noise=0.002,share=0.5,shift=0.4};
     many:[1025]DdItem;for i:0..<1025 {many[i]=its[i%6];}wide:[8200]f64;
     #assert dd_answer(5,many[0..<1024],DdBackend.{seed=1,mix=1},wide[..])==DdStatus.ok && dd_answer(5,many[..],DdBackend.{seed=1,mix=1},wide[..])==DdStatus.shape;
     left:=[8]f64.[9,9,9,9,9,9,9,9];#assert dd_answer(5,its[0..<1],DdBackend.{seed=1,mix=1},left[..])==DdStatus.ok && left[2]==9 && left[7]==9;
-    #assert dd_answer(5,its[0..<6],DD_TEST_QUANTIZED,a[..])==DdStatus.ok && a[0]==0.8519528019683106 && a[1]==0.1480471980316895;
+    #assert dd_answer(5,its[0..<6],DD_TEST_QUANTIZED,a[..])==DdStatus.ok && a[0]==0.8519528019683106 && a[1]==0.14804719803168948;
     #assert dd_answer(5,its[0..<6],DdBackend.{seed=6,mix=0.6},a[..])==DdStatus.ok && a[0]==0.8498608048327955 && a[9]==0.4492167229721859;
     #assert dd_answer(5,its[0..<6],DdBackend.{seed=2,mix=1,noise=0.0005},a[..])==DdStatus.ok && a[9]==0.2244433619773678;
     #assert dd_answer(5,its[0..<6],DD_TEST_OTHER,a[..])==DdStatus.ok && a[24]==0.18084336025800155 && a[27]==0.3454396637429217;
@@ -108,10 +109,10 @@ DD_TEST_OTHER :: DdBackend.{seed=5,mix=1,noise=0.002,share=0.5,shift=0.4};
     #assert dd_answer(5,its[..],DD_TEST_OTHER,o[..])==DdStatus.ok;
     d:[7]f64;d[6]=9;
     c:=dd_compare(its[..],r[..],q[..],d[..]);#assert c.status==DdStatus.ok && c.agree==5 && c.floored==0 && d[6]==9;
-    want:=[6]f64.[0.17825372970597142,0.17832555586454601,0.04966498576296818,0.0972925136469518,0.07111157135932777,0.23131940899358616];
+    want:=[6]f64.[0.17825372970597142,0.17832555586454601,0.04966498576296818,0.0972925136469518,0.071111571359328,0.2313194089935866];
     for w,i:want {#assert d[i]==w;}
     c=dd_compare(its[..],r[..],o[..],d[0..<6]);#assert c.status==DdStatus.ok && c.agree==6;
-    other:=[6]f64.[0.09725183255496295,0.0008714306162718177,0.0006307382117671789,0.18359215853349453,0.20862411514520662,0.3638073170859104];
+    other:=[6]f64.[0.09725183255496295,0.0008714306162718177,0.0006307382117671789,0.18359215853349453,0.20862411514520685,0.3638073170859104];
     for w,i:other {#assert d[i]==w;}
     #assert dd_compare(its[0..<1],r[..],q[..],d[..]).status==DdStatus.ok;
     many:[1025]DdItem;for i:0..<1025 {many[i]=its[i%6];}wide:[8200]f64;far:[1025]f64;
@@ -197,7 +198,7 @@ DD_TEST_OTHER :: DdBackend.{seed=5,mix=1,noise=0.002,share=0.5,shift=0.4};
     #assert dd_round(its[..],r[..],q[..],98,3,l,out[..]).seed==x.seed^99^98;
     #assert dd_round(its[..],r[..],r[..],99,8,l,out[..]).status==DdStatus.capacity;
     full:[8]int;same:=dd_round(its[..],r[..],r[..],99,8,l,full[..]);
-    #assert same.verdict==DdVerdict.pass && same.mean==0 && same.seed==0x810cf3762111a901;
+    #assert same.verdict==DdVerdict.pass && same.mean==0 && same.seed==2293036011408911420;
     #assert dd_round(its[0..<0],r[..],q[..],99,1,l,out[..]).status==DdStatus.shape && dd_round(its[..],r[..],q[..],99,0,l,out[..]).status==DdStatus.shape;
     #assert dd_round(its[..],r[..],q[..],99,9,l,full[..]).status==DdStatus.shape && dd_round(its[0..<1],r[..],q[..],99,1,l,out[..]).status==DdStatus.ok;
     #assert dd_round(its[..],r[0..<63],q[..],99,3,l,out[..]).status==DdStatus.capacity && dd_round(its[..],r[..],q[0..<63],99,3,l,out[..]).status==DdStatus.capacity;

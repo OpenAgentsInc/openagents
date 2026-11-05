@@ -264,9 +264,17 @@ apps/openagents-ios/build.sh
   `cast(T) x`: checked, float to integer truncates toward zero, f64 to f32
   traps when a finite value doesn't fit. `1.5f32` and `1.5f64` are typed
   literals; a bare `1.5` is untyped.
-- `sin cos tan exp log sqrt floor abs pow` take floats of one type (E0375) and
-  call the C library's `float` or `double` function. Compile-time results
-  must be finite (E0412). There is no cross-platform libm guarantee.
+- `sin cos tan exp log sqrt floor abs pow` take floats of one type (E0375).
+  CPU `sin cos exp log` use [fixed Coax kernels](lib/compiler/strict-math.coax)
+  in both the evaluator and self-contained C output: binary64 arithmetic,
+  round-to-nearest, gradual underflow and no contraction/reassociation; f32
+  widens exactly and rounds once at the end. They cover the full finite
+  input range, preserve signed sine zero, and return IEEE nonfinite values
+  at runtime for domain/overflow cases. Compile-time results must still be
+  finite (E0412). These are fixed approximations, not correctly rounded
+  transcendentals. `tan` and `pow` still use libm; GPU math keeps its separate
+  target profile. Run `tests/run.sh --only strict_math` for the independent
+  Decimal oracle, native/evaluator bit comparisons and sanitizer checks.
 - `len(x)` is `x.count`; `byte_at(s, i)` is `cast(int) s[i]`, bounds-checked.
 - `coax metal FILE` emits Metal Shading Language from the same checked tree:
   f32 and bool values, `if`/`else`, locals and acyclic calls. Loops, strings,

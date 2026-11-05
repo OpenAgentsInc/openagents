@@ -526,13 +526,13 @@ baselines, bits per byte: unigram 4.456933833293177, bigram 3.1062932989428584 (
 step 0: held-out 5.773199928683723 bits per byte over 1008 targets, 1453 bytes
 step 4: loss 5.4614144186952025, gradient norm 0.6689967848387486, rate scale 1.0
 step 8: loss 4.663260642159237, gradient norm 0.4759126980122564, rate scale 1.0
-step 12: loss 4.547918215372782, gradient norm 0.39890044740763503, rate scale 1.0
+step 12: loss 4.547918215372783, gradient norm 0.39890044740763503, rate scale 1.0
 step 12: held-out 4.523625132160234 bits per byte
-step 12: checkpoint, 1156212 bytes, digest 0fcc5d728deb307e...
-step 16: loss 4.466083101037292, gradient norm 0.41770122519190284, rate scale 1.0
-step 20: loss 4.354102946996971, gradient norm 0.4123463332232608, rate scale 0.625
+step 12: checkpoint, 1156212 bytes, digest 0a679353f806191a...
+step 16: loss 4.466083101037293, gradient norm 0.41770122519190284, rate scale 1.0
+step 20: loss 4.354102946996971, gradient norm 0.41234633322326086, rate scale 0.625
 step 24: loss 4.443679361036116, gradient norm 0.336281782618377, rate scale 0.125
-final: held-out 4.355480036494545 bits per byte; bigram 3.1062932989428584 - margin 0.1 = 3.0062932989428583
+final: held-out 4.355480036494546 bits per byte; bigram 3.1062932989428584 - margin 0.1 = 3.0062932989428583
 acceptance (frozen before the run): failed
 resumed at step 12: 12 of 12 losses identical; parameters and moments identical: true
 checkpoint with one bit flipped: corrupt

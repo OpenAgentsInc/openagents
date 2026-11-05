@@ -365,9 +365,9 @@ three steps at the checks' small shape, 4 rows a step; chapter 129's single-devi
   chain, 2 devices: admitted, losses, parameters and moments equal chapter 129's bit for bit: true
   chain, 3 devices: admitted, losses, parameters and moments equal chapter 129's bit for bit: true
   chain, 4 devices: admitted, losses, parameters and moments equal chapter 129's bit for bit: true
-  tree, 1 devices: parameters equal the 1-device tree's bit for bit: true; against chapter 129's, 7 of 220 differ in bits, 0 past the tolerance
-  tree, 2 devices: parameters equal the 1-device tree's bit for bit: true; against chapter 129's, 7 of 220 differ in bits, 0 past the tolerance
-  tree, 4 devices: parameters equal the 1-device tree's bit for bit: true; against chapter 129's, 7 of 220 differ in bits, 0 past the tolerance
+  tree, 1 devices: parameters equal the 1-device tree's bit for bit: true; against chapter 129's, 10 of 220 differ in bits, 0 past the tolerance
+  tree, 2 devices: parameters equal the 1-device tree's bit for bit: true; against chapter 129's, 10 of 220 differ in bits, 0 past the tolerance
+  tree, 4 devices: parameters equal the 1-device tree's bit for bit: true; against chapter 129's, 10 of 220 differ in bits, 0 past the tolerance
 saved at 4 devices after step 2 (ok), resumed at 3 devices: step 3 loss 2.7893926020018047, weights equal the uninterrupted run: true
 ```
 

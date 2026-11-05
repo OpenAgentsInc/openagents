@@ -364,28 +364,28 @@ coax/bin/coax run psionic/examples/nanochat-gradient.coax
 rms backward at (3,4), dy=(1,0): 0.18101933598375616 -0.13576450198781712
 softcap slope where the logit is 9: 0.64
 squared ReLU slope at 1.5 and -0.5: 3.0 0.0
-10216 parameters, tape 4086 values, loss 3.968518078777673
-  resid: 1 of 1 elements reached, gradient norm 0.5547238854915787
-  x0: 1 of 1 elements reached, gradient norm 0.5547238854915787
-  smear_lambda: 1 of 1 elements reached, gradient norm 0.9384955670320144
-  backout: 1 of 1 elements reached, gradient norm 2.5847379792054426e-16
-  wte: 120 of 1536 elements reached, gradient norm 0.8285461604706535
-  q: 576 of 576 elements reached, gradient norm 0.49222699491588084
-  k: 288 of 288 elements reached, gradient norm 0.5501957567118094
+10216 parameters, tape 4086 values, loss 3.9685180787776746
+  resid: 1 of 1 elements reached, gradient norm 0.5547238854915785
+  x0: 1 of 1 elements reached, gradient norm 0.5547238854915785
+  smear_lambda: 1 of 1 elements reached, gradient norm 0.9384955670320141
+  backout: 1 of 1 elements reached, gradient norm 6.349087922075114e-16
+  wte: 120 of 1536 elements reached, gradient norm 0.8285461604706532
+  q: 576 of 576 elements reached, gradient norm 0.4922269949158806
+  k: 288 of 288 elements reached, gradient norm 0.5501957567118086
   v: 288 of 288 elements reached, gradient norm 1.0111452204936258
-  proj: 576 of 576 elements reached, gradient norm 4.17827374410998
-  gate: 12 of 12 elements reached, gradient norm 0.2975719642044178
-  fc: 2304 of 2304 elements reached, gradient norm 13.003973131138064
-  mlp: 2304 of 2304 elements reached, gradient norm 30.599808389769503
-  head: 288 of 1536 elements reached, gradient norm 1.9967925711185905
-  smear_gate: 24 of 24 elements reached, gradient norm 0.013438682417094337
-  value: 60 of 768 elements reached, gradient norm 0.5634314693958872
-  parameter 3: gradient -2.5847379792054426e-16, central difference 0.0
-  parameter 3271: gradient -0.008990245802677743, central difference -0.008990245881079773
-  parameter 7991: gradient 0.04882266530601232, central difference 0.04882266526617939
-  parameter 2216: gradient -0.055362330664180406, central difference -0.055362330608765824
-after step 1: loss 2.663154509005495
-after step 2: loss 2.1171219469141738
+  proj: 576 of 576 elements reached, gradient norm 4.178273744109978
+  gate: 12 of 12 elements reached, gradient norm 0.29757196420441834
+  fc: 2304 of 2304 elements reached, gradient norm 13.003973131138066
+  mlp: 2304 of 2304 elements reached, gradient norm 30.599808389769496
+  head: 288 of 1536 elements reached, gradient norm 1.9967925711185908
+  smear_gate: 24 of 24 elements reached, gradient norm 0.013438682417094307
+  value: 60 of 768 elements reached, gradient norm 0.5634314693958873
+  parameter 3: gradient -6.349087922075114e-16, central difference 0.0
+  parameter 3271: gradient -0.008990245802677776, central difference -0.008990245925488694
+  parameter 7991: gradient 0.04882266530601248, central difference 0.04882266531058831
+  parameter 2216: gradient -0.05536233066418033, central difference -0.05536233074199259
+after step 1: loss 2.6631545090054956
+after step 2: loss 2.117121946914173
 after step 3: loss 1.5515579710662144
 refused: capacity (loss 0.0)
 refused: token (loss 0.0)

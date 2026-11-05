@@ -285,13 +285,6 @@
       "source": "psionic/examples/speak.coax",
       "chapter": "psionic/book/ch155-speak-the-answer.md",
       "stdout": "psionic/fixtures/speak.out",
-      "platform_stdout": {
-        "darwin": "psionic/fixtures/speak.darwin.out"
-      },
-      "platform_tolerance": {
-        "relative": 1e-9,
-        "reason": "macOS's libm rounds some sin, cos, exp and log results a step from glibc's (#12689, #12912), and the examples' last digits follow; this transcript is exact on macOS"
-      },
       "exit_status": 0,
       "modes": [
         "debug",
@@ -372,13 +365,6 @@
       "source": "psionic/examples/kquant.coax",
       "chapter": "psionic/book/ch051-k-quants-and-lattice-quants.md",
       "stdout": "psionic/fixtures/kquant.out",
-      "platform_stdout": {
-        "darwin": "psionic/fixtures/kquant.darwin.out"
-      },
-      "platform_tolerance": {
-        "relative": 1e-9,
-        "reason": "macOS's libm rounds some sin, cos, exp and log results a step from glibc's (#12689, #12912), and the examples' last digits follow; this transcript is exact on macOS"
-      },
       "exit_status": 0,
       "modes": [
         "debug",
@@ -449,13 +435,6 @@
       "source": "psionic/examples/sparse-attention.coax",
       "chapter": "psionic/book/ch086-sparse-attention-and-shared-layers.md",
       "stdout": "psionic/fixtures/sparse-attention.out",
-      "platform_stdout": {
-        "darwin": "psionic/fixtures/sparse-attention.darwin.out"
-      },
-      "platform_tolerance": {
-        "relative": 1e-9,
-        "reason": "macOS's libm rounds some sin, cos, exp and log results a step from glibc's (#12689, #12912), and the examples' last digits follow; this transcript is exact on macOS"
-      },
       "exit_status": 0,
       "modes": [
         "debug",
@@ -780,7 +759,9 @@
       "modes": [
         "debug",
         "release"
-      ]
+      ],
+      "timeout": 120,
+      "timeout_reason": "The intentionally unstable training and single-batch repairs make many fixed-math calls; the unoptimized GCC debug run uses 54 of the default 60 CPU seconds in isolation and can exceed it under load."
     },
     {
       "source": "psionic/examples/choose-next-example.coax",
@@ -1066,13 +1047,6 @@
       "source": "psionic/examples/fast-decision.coax",
       "chapter": "psionic/book/ch222-a-decision-in-milliseconds.md",
       "stdout": "psionic/fixtures/fast-encoder/fast-decision.out",
-      "platform_stdout": {
-        "darwin": "psionic/fixtures/fast-encoder/fast-decision.darwin.out"
-      },
-      "platform_tolerance": {
-        "relative": 1e-9,
-        "reason": "macOS's libm rounds some sin, cos, exp and log results a step from glibc's (#12689, #12912), and the examples' last digits follow; this transcript is exact on macOS"
-      },
       "exit_status": 0,
       "modes": [
         "debug",
@@ -1459,7 +1433,8 @@
       "modes": [
         "debug",
         "release"
-      ]
+      ],
+      "stack_kib": 65536
     },
     {
       "source": "psionic/examples/kernel-search.coax",
@@ -1575,13 +1550,6 @@
       "source": "psionic/examples/causal-decoder.coax",
       "chapter": "psionic/book/ch113-differentiate-a-decoder.md",
       "stdout": "psionic/fixtures/causal-decoder.out",
-      "platform_stdout": {
-        "linux": "psionic/fixtures/causal-decoder.linux.out"
-      },
-      "platform_tolerance": {
-        "relative": 1e-10,
-        "reason": "The decoder's RoPE, softmax and loss call the host's sin, cos, exp and log, and chapter 129's device kernels restate them one for one, so they stay the C library's. macOS's libm gives sin(4) one step further from zero than glibc's, and the two round some exp and log results a step apart (#12689); 90 training steps carry that to the eleventh digit of the held-out loss (1.3e-11 relative)."
-      },
       "exit_status": 0,
       "modes": [
         "debug",
@@ -2460,7 +2428,9 @@
       "modes": [
         "debug",
         "release"
-      ]
+      ],
+      "timeout": 180,
+      "timeout_reason": "The complete serving journey and its authority dependency checks used 140 CPU seconds and 78 wall seconds in the measured Linux GCC debug run."
     },
     {
       "source": "psionic/examples/serve-rollout-refuse.coax",
@@ -2470,7 +2440,9 @@
       "modes": [
         "debug",
         "release"
-      ]
+      ],
+      "timeout": 180,
+      "timeout_reason": "The complete serving journey and its authority dependency checks used 140 CPU seconds and 78 wall seconds in the measured Linux GCC debug run."
     },
     {
       "source": "psionic/examples/serve-meter.coax",
@@ -2666,13 +2638,6 @@
       "source": "psionic/examples/diffusion.coax",
       "chapter": "psionic/book/ch146-noise-diffusion-and-flow.md",
       "stdout": "psionic/fixtures/diffusion.out",
-      "platform_stdout": {
-        "darwin": "psionic/fixtures/diffusion.darwin.out"
-      },
-      "platform_tolerance": {
-        "relative": 1e-9,
-        "reason": "macOS's libm rounds some sin, cos, exp and log results a step from glibc's (#12689, #12912), and the examples' last digits follow; this transcript is exact on macOS"
-      },
       "exit_status": 0,
       "modes": [
         "debug",
@@ -2853,13 +2818,6 @@
       "source": "psionic/examples/train-budget.coax",
       "chapter": "psionic/book/ch116-train-within-a-memory-budget.md",
       "stdout": "psionic/fixtures/train-budget.out",
-      "platform_stdout": {
-        "darwin": "psionic/fixtures/train-budget.darwin.out"
-      },
-      "platform_tolerance": {
-        "relative": 1e-9,
-        "reason": "macOS's libm rounds some sin, cos, exp and log results a step from glibc's (#12689, #12912), and the examples' last digits follow; this transcript is exact on macOS"
-      },
       "exit_status": 0,
       "modes": [
         "debug",
@@ -3267,7 +3225,9 @@
       "modes": [
         "debug",
         "release"
-      ]
+      ],
+      "timeout": 120,
+      "timeout_reason": "Linux GCC native compilation and the classifier journey used 86 CPU seconds and 68 wall seconds in the measured release run."
     },
     {
       "source": "psionic/examples/cnn-classifier.coax",
@@ -3277,7 +3237,9 @@
       "modes": [
         "debug",
         "release"
-      ]
+      ],
+      "timeout": 120,
+      "timeout_reason": "Linux GCC native compilation and the convolutional classifier journey used 70 CPU seconds and 63 wall seconds in the measured release run."
     },
     {
       "source": "psionic/examples/protocols.coax",
@@ -3533,13 +3495,6 @@
       "source": "psionic/examples/deepseek-recipe.coax",
       "chapter": "psionic/book/ch101-mayas-recipe-v41-flash-on-one-card.md",
       "stdout": "psionic/fixtures/deepseek-recipe/deepseek-recipe.out",
-      "platform_stdout": {
-        "darwin": "psionic/fixtures/deepseek-recipe/deepseek-recipe.darwin.out"
-      },
-      "platform_tolerance": {
-        "relative": 1e-9,
-        "reason": "macOS's libm rounds some sin, cos, exp and log results a step from glibc's (#12689, #12912), and the examples' last digits follow; this transcript is exact on macOS"
-      },
       "exit_status": 0,
       "modes": [
         "debug",
@@ -3675,7 +3630,10 @@
       "chapter": "psionic/book/ch254-write-a-network-from-a-specification.md",
       "stdout": "psionic/fixtures/construction/example.out",
       "exit_status": 0,
-      "modes": ["debug", "release"],
+      "modes": [
+        "debug",
+        "release"
+      ],
       "timeout": 180
     },
     {
@@ -3683,7 +3641,10 @@
       "chapter": "psionic/book/ch255-edit-an-original-language-model.md",
       "stdout": "psionic/fixtures/original-edit/example.out",
       "exit_status": 0,
-      "modes": ["debug", "release"],
+      "modes": [
+        "debug",
+        "release"
+      ],
       "run_steps": 2000000,
       "timeout": 180
     },
@@ -3692,7 +3653,10 @@
       "chapter": "psionic/book/ch255-edit-an-original-language-model.md",
       "stdout": "psionic/fixtures/verse-villain/example.out",
       "exit_status": 0,
-      "modes": ["debug", "release"],
+      "modes": [
+        "debug",
+        "release"
+      ],
       "timeout": 180
     }
   ],

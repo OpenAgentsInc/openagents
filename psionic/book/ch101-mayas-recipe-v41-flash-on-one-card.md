@@ -474,12 +474,12 @@ published figures against the arithmetic:
   reference machine: 7880 of 15360 experts on the GPU in this plan; Maya placed 7393
 prompt skip: the last state layer is 20, 19 layers after it, 2414 prompt positions need them
 chapter 51's stand-in cards (declared: KL + 2 SE <= 0.01, agreement - 2 SE >= 0.9):
-  Q8_0: agreement 1.0 (low 1.0), KL 0.00022960896719454973 (high 0.00028397003336496973), promoted true
-  Q6_K: agreement 0.96875 (low 0.9252518409153905), KL 0.002086438434421452 (high 0.0026257607518881446), promoted true
-  Q2_K: agreement 0.578125 (low 0.454660307583757), KL 0.4218520012100292 (high 0.5204050973854987), promoted false
-  Q3_K: agreement 0.8125 (low 0.714921906275025), KL 0.12899541365876996 (high 0.1644972986082705), promoted false
+  Q8_0: agreement 1.0 (low 1.0), KL 0.0002296089671945531 (high 0.00028397003336497206), promoted true
+  Q6_K: agreement 0.96875 (low 0.9252518409153905), KL 0.0020864384344214545 (high 0.00262576075188815), promoted true
+  Q2_K: agreement 0.578125 (low 0.454660307583757), KL 0.42185200121002925 (high 0.5204050973854987), promoted false
+  Q3_K: agreement 0.8125 (low 0.714921906275025), KL 0.12899541365876993 (high 0.16449729860827048), promoted false
   IQ2_XXS: agreement 0.625 (low 0.5039692704310182), KL 0.44785453935220393 (high 0.5665987293326521), promoted false
-  IQ2_S: agreement 0.5625 (low 0.4384804072938473), KL 0.3590652493940362 (high 0.4584122407740423), promoted false
+  IQ2_S: agreement 0.5625 (low 0.4384804072938473), KL 0.3590652493940363 (high 0.45841224077404236), promoted false
   IQ3_XXS: agreement 0.765625 (low 0.6597231116271409), KL 0.1281880105343791 (high 0.15547034577675153), promoted false
   IQ3_S: agreement 0.703125 (low 0.58890475377177), KL 0.10044651668717734 (high 0.12224005832735196), promoted false
 traces ok ok ok ok: 384 tokens, 256 measured

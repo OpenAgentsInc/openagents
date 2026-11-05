@@ -43,7 +43,7 @@
       "chapters": [115],
       "targets": ["cpu"],
       "evidence": [
-        {"path": "psionic/fixtures/tiny-train.out", "line": "held-out: decoder 2.1320579221135967, bigram 2.245995271590946, decoder better by 0.11393734947734924 (frozen margin 0.05)"},
+        {"path": "psionic/fixtures/tiny-train.out", "line": "held-out: decoder 2.132057922113596, bigram 2.245995271590946, decoder better by 0.11393734947735012 (frozen margin 0.05)"},
         {"path": "psionic/fixtures/tiny-train.out", "line": "resumed from step 350 (75908 bytes): 50 of 50 losses identical, weights and moments identical: true"}
       ],
       "gaps": [
@@ -114,7 +114,7 @@
       "chapters": [122],
       "targets": ["cpu"],
       "evidence": [
-        {"path": "psionic/fixtures/resume.out", "line": "loss 2.772588722239781 -> 1.4089266754480803; after resuming at 5, 7 of 7 losses and all 768 values are identical"}
+        {"path": "psionic/fixtures/resume.out", "line": "loss 2.772588722239781 -> 1.4089266754480807; after resuming at 5, 7 of 7 losses and all 768 values are identical"}
       ],
       "gaps": [
         "4,096 values at most"

@@ -367,7 +367,7 @@ rf_two :: (shapes:[]FdShape,colors:[]f64)->RfScene {
     bad=cfg;bad.lr=2;#assert rf_fit(g,fresh[..],m2[..],v2[..],grads[..],cams[..],img[..],s,bg,bad,losses[..])==RfStatus.number;
     np:=fresh;np[3]=0.0/0.0;#assert rf_fit(g,np[..],m2[..],v2[..],grads[..],cams[..],img[..],s,bg,cfg,losses[..])==RfStatus.number;
     many:[33]RfCamera;#assert rf_fit(g,fresh[..],m2[..],v2[..],grads[..],many[..],img[..],s,bg,cfg,losses[..])==RfStatus.limit;
-    #assert losses[0]==0.057704471936021635 && losses[5]==0.034202175319376985 && losses[2]==0.045375479632113726;
+    #assert losses[0]==0.057704471936021635 && losses[5]==0.034202175319376985 && losses[2]==0.04537547963211372;
     for i:0..<108 {#assert fresh[i]==ifx i%4==0 then -1.0 else 0.0;#assert m2[i]==0 && v2[i]==0;}
 }
 #test "occupancy agreement" {
@@ -454,7 +454,7 @@ rf_two :: (shapes:[]FdShape,colors:[]f64)->RfScene {
     #assert o.status==RfStatus.ok && o.params==108 && o.rendered==256 && o.points==4096 && o.inside==330 && o.covered==10 && o.truth_covered==12;
     #assert o.train==16.152104339531856 && o.held==15.303186549707773 && o.grey==16.303967314282357 && o.blank==15.423960864815827;
     #assert o.depth==0.3971652031480951 && o.truth_depth==0.04308919000727277 && o.agree==3766 && o.agree_low==3774;
-    #assert losses[0]==0.0027556864505699696 && losses[19]==0.03438805875451051 && w[0]==-2.2863510219353724;
+    #assert losses[0]==0.0027556864505699696 && losses[19]==0.0343880587545105 && w[0]==-2.286351021935373;
     // Pixel (5, 1) of the first view, green: its ray passes above both shapes.
     #assert images[40]==5.773159728050812e-16;
     bad:=cfg;bad.views=33;#assert rf_run(bad,w[..],m[..],v[..],dw[..],images[..],losses[..]).status==RfStatus.limit;

@@ -34,8 +34,8 @@ line, 2 rows in 4 slots, padding in the loss: batch loss 5.0, gap 0.454545454545
 deadline data, seed 70: 1440 training rows (12 a step in 16 slots), 480 held out, constant predictor 0.4088
 healthy: held-out loss 0.1295 (0.1248 at a tenth of the rate), batch loss 0.2428 -> 0.1703
   buffer 0.0, loss gap 0.0, distinct units 8, repeat 0.0: found nothing
-stale gradients: held-out loss 40.0537 (3.8325 at a tenth of the rate), batch loss 0.718 -> 43.8487
-  buffer 55.3089, loss gap 0.0, distinct units 8, repeat 0.0: found stale gradients
+stale gradients: held-out loss 32.9 (3.8201 at a tenth of the rate), batch loss 0.718 -> 26.8547
+  buffer 26.464, loss gap 0.0, distinct units 8, repeat 0.0: found stale gradients
 shuffled targets: held-out loss 0.4155 (0.4091 at a tenth of the rate), batch loss 0.4463 -> 0.433
   buffer 0.0, loss gap 0.0, distinct units 8, repeat 0.0: found shuffled targets
 padding in the loss: held-out loss 0.1187 (0.1747 at a tenth of the rate), batch loss 0.5563 -> 0.16
@@ -44,7 +44,7 @@ identical units: held-out loss 0.1467 (0.1247 at a tenth of the rate), batch los
   buffer 0.0, loss gap 0.0, distinct units 1, repeat 0.0: found identical units
 dropout at evaluation: held-out loss 0.178 (0.1673 at a tenth of the rate), batch loss 0.2428 -> 0.1703
   buffer 0.0, loss gap 0.0, distinct units 8, repeat 0.6225: found dropout at evaluation
-rate 8: held-out loss 1.3174 (0.1304 at a tenth of the rate), batch loss 0.7832 -> 0.4624
+rate 8: held-out loss 0.6696 (0.1304 at a tenth of the rate), batch loss 0.7835 -> 0.3922
   buffer 0.0, loss gap 0.0, distinct units 8, repeat 0.0: found rate too large
 the healthy run again from the same seeds, as after any repair: the same record bit for bit: true
 overfit one batch of 12, 300 steps, training loss:
@@ -54,7 +54,7 @@ overfit one batch of 12, 300 steps, training loss:
   padding in the loss: 0.0288 (reaches 0.05)
   identical units: 0.0152 (reaches 0.05)
   dropout at evaluation: 0.014 (reaches 0.05)
-  rate 8: 0.0003 (reaches 0.05)
+  rate 8: 0.1416 (does not reach 0.05)
 data seeds 71 to 74: 28 of 28 runs found exactly their planted fault, or nothing when healthy
 a batch of 12 in 8 slots: shape
 512 epochs of 120 batches, 61,440 steps: shape
@@ -323,18 +323,19 @@ with the same batch losses, but its outputs change by 0.6225 on average when
 the same rows are evaluated again.
 
 **Shuffled targets** scores 0.4155 against the constant's 0.4088, and 0.4091
-at a tenth of the rate. **Stale gradients** ends with a batch loss of 43.85,
+at a tenth of the rate. **Stale gradients** ends with a batch loss of 26.85,
 because every step applies the sum of all earlier gradients.
 
 **Overfitting one batch.** Before a full run, train on one small batch until
 the loss is near zero. Here the batch is six late and six on-time training
 rows, trained for 300 steps:
 - the healthy model reaches 0.0193;
-- stale gradients (0.7943) and shuffled targets (0.7685) don't reach 0.05;
-- the other four faults reach it, rate 8 included (0.0003).
+- stale gradients (0.7943), shuffled targets (0.7685) and rate 8 (0.1416)
+  don't reach 0.05;
+- the other three faults reach it.
 
-So this check catches the two faults that stop the optimizer from fitting any
-data. It doesn't catch the ones that only show on held-out rows or in how the
+In this fixed CPU math recording (#12917), the check catches those three
+failures to fit the batch. It doesn't catch the faults that only show on held-out rows or in how the
 loss is computed. Twelve rows with mismatched targets aren't memorized within
 300 steps at this rate.
 

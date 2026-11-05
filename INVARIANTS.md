@@ -1087,22 +1087,40 @@ other state. Checks: `aethyr/replay.coax` ("delayed, duplicate and stale
 events: a live session and its replay agree at every step", "a planted fault
 is found at the step it starts"; mutation 0 survivors).
 
+## CPU scalar transcendental math has one Coax source
+
+CPU `sin`, `cos`, `exp` and `log` use `coax/lib/compiler/strict-math.coax` in
+both evaluation and generated C, including verification C. Its committed C
+seed and embedded text are regenerated from that source and compared during
+bootstrap, never silently refreshed. Private runtime names prevent replacing
+the four kernels through libm symbol interposition. The profile requires nearest
+IEEE binary64 arithmetic, gradual underflow and no contraction/reassociation;
+f32 widens exactly and rounds once. Finite angles use full-range reduction.
+Native IEEE domain/overflow values remain nonfinite, while compile-time
+nonfinite results still fail E0412. These are fixed approximations, not a
+correct-rounding claim. `tan`, `pow` and GPU profiles remain separate.
+
+`coax/tests/strict_math.py` checks independent Decimal references, IEEE edges,
+optimization/evaluator/native bits and ASan/UBSan; `seed-portability.sh --linux`
+also runs it with GCC. Exact book digests use one recording per program,
+without inspecting host-libm bits. See `coax/strict-math.md`.
+
 ## A simulation step uses strict math
 
 A step's state must have the same bits natively and in the browser, so a
-step calls `math_sin`, `math_cos` and `math_pow` from `aethyr/math.coax`,
-never Coax's `sin`, `cos`, `tan`, `exp`, `log` or `pow`: those call the host's
-C library, and macOS's libm and wasi-libc round some inputs differently (a
-recorded walk parted after 105 steps). Drawing may use either. Random draws
+step keeps its qualified `math_sin`, `math_cos` and `math_pow` profile from
+`aethyr/math.coax`. Coax's CPU `sin`, `cos`, `exp` and `log` now have their own
+fixed profile (#12917); `tan` and `pow` still use host libm, and GPU math is
+target-specific. A new deterministic implementation does not silently replace
+the engine's recorded arithmetic. Drawing may use either. Random draws
 in a step come from `aethyr/rand.coax` (seed, stream, counter). Checks:
 `aethyr/math.coax` (sampled comparisons use a scaled tolerance with a near-zero
 floor, not a universal ULP theorem; f64 kernels against pinned Python values;
 mutation 0 survivors) and `coax/web/replay-hosts.coax`
 (the recorded walk's session digests, and the recorded Grid session's digest
 at every step, are equal natively and in wasm). Both sessions must stay
-sharp: each steers while turning through angles where the two C libraries
-round `sinf` and `cosf` differently, so a step that calls `sin` or `cos`
-fails them.
+sharp: each steers while turning through angles where replacing the engine's
+polynomial with another sine/cosine implementation changes the recorded bits.
 
 The math authority keeps the trigonometric angle bound separate from powers.
 `math_pow` accepts finite positive binary32 bases and finite exponents; a zero

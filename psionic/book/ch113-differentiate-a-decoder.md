@@ -237,11 +237,11 @@ main :: () {
 
 ```text
 decoder: 3856 parameters, 2 layers of 2-query/1-key-value-head attention; 24 training and 6 held-out pairs
-step 0: train loss 2.0019668884972965
-step 30: train loss 0.22580630853515607
-step 60: train loss 0.20176667649377125
-step 90: train loss 0.20023256428124206
-held-out loss: 1.0845807076927156
+step 0: train loss 2.001966888497297
+step 30: train loss 0.22580630853515588
+step 60: train loss 0.2017666764937659
+step 90: train loss 0.20023256428124575
+held-out loss: 1.0845807076775476
 prompt 0 1 -> 0 1 0 1 0 1
 prompt 1 2 -> 1 2 1 2 1 2
 held-out prompts continued exactly: 6 of 6
@@ -260,14 +260,12 @@ coax/bin/coax run psionic/examples/causal-decoder.coax
 psionic/check.sh --only decoder
 ```
 
-The [transcript](../fixtures/causal-decoder.out) is exact for the named CPU
-build, in debug and release, on macOS; Linux has
-[its own](../fixtures/causal-decoder.linux.out). RoPE, softmax and the loss
-call the C library's sin, cos, exp and log, and macOS's libm and glibc round a
-few of their results a step (ulp) apart: sin(4) first. Training carries that
-into the last digits of the losses, at most 1.3e-11 relative, and the book
-check holds each transcript within 1e-10 of the other
-([#12689](https://github.com/OpenAgentsInc/openagents/issues/12689)).
+The [transcript](../fixtures/causal-decoder.out) uses one recording for debug
+and release on macOS and Linux. RoPE, softmax and the loss use Coax's fixed
+CPU sin, cos, exp and log (#12917), shared with compile-time evaluation.
+Earlier host-libm differences accumulated through training
+([#12689](https://github.com/OpenAgentsInc/openagents/issues/12689)); the book
+check now requires the same exact transcript on both hosts.
 `check_decoder.sh` also compiles the library to
 C and runs a native harness, plain and under ASan/UBSan, against the Python
 goldens, with central differences for every parameter. Compiling the backward

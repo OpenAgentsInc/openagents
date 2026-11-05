@@ -1,3 +1,5 @@
+// Historical rationale (#12689), before #12917 fixed the CPU intrinsics.
+// This bounded profile retains its original saturation and angle limits.
 // Psionic's strict math: sine, cosine, e^x and ln x in binary64 with the same
 // bits on every host (GitHub #12689). Coax's sin, cos, exp and log call the
 // host's C library, and glibc and macOS's libm round some inputs differently:

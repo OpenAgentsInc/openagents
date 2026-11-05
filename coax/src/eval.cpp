@@ -11,6 +11,28 @@
 #include <map>
 #include <optional>
 
+// The same generated Coax kernels are compiled here and embedded in C output.
+// Keep their rounding explicit even in test harnesses that include main.cpp.
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC push_options
+#pragma GCC optimize ("fp-contract=off")
+#endif
+namespace coax_strict_math {
+#define _Bool bool
+#define _Static_assert static_assert
+#define _Alignof alignof
+#include "../bootstrap/strict-math.c"
+#undef _Alignof
+#undef _Static_assert
+#undef _Bool
+#undef COAX_LAYOUT
+#undef COAX_STR
+#undef COAX_INT_OPS
+}
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC pop_options
+#endif
+
 namespace coax {
 
 CtStorage::CtStorage(std::shared_ptr<CtMemory> memory)
@@ -607,7 +629,7 @@ struct Evaluator {
     }
   }
 
-  // Built-in math. f32 uses the float functions, as the generated C does.
+  // Fixed sin/cos/exp/log: f32 widens exactly, then rounds once, as C does.
   ExprOutcome math(const Expr *e, CtFrame &frame, bool allow_calls) {
     CT_EVAL(first,e->args[0]);double a=first.f,b=0,c=0;
     if (e->args.count >= 2) {CT_EVAL(second,e->args[1]);b=second.f;}
@@ -617,11 +639,11 @@ struct Evaluator {
     float x = (float)a, y = (float)b, z = (float)c;
     double r = 0;
     switch (e->intrinsic) {
-      case Intrinsic::sin: r = f32 ? ::sinf(x) : std::sin(a); break;
-      case Intrinsic::cos: r = f32 ? ::cosf(x) : std::cos(a); break;
+      case Intrinsic::sin: r = coax_strict_math::SM_sin(a); if(f32) r=(float)r; break;
+      case Intrinsic::cos: r = coax_strict_math::SM_cos(a); if(f32) r=(float)r; break;
       case Intrinsic::tan: r = f32 ? ::tanf(x) : std::tan(a); break;
-      case Intrinsic::exp: r = f32 ? ::expf(x) : std::exp(a); break;
-      case Intrinsic::log: r = f32 ? ::logf(x) : std::log(a); break;
+      case Intrinsic::exp: r = coax_strict_math::SM_exp(a); if(f32) r=(float)r; break;
+      case Intrinsic::log: r = coax_strict_math::SM_log(a); if(f32) r=(float)r; break;
       case Intrinsic::sqrt: r = f32 ? ::sqrtf(x) : std::sqrt(a); break;
       case Intrinsic::floor: r = f32 ? ::floorf(x) : std::floor(a); break;
       case Intrinsic::abs: r = f32 ? ::fabsf(x) : std::fabs(a); break;

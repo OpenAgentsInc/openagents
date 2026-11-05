@@ -37,12 +37,8 @@ TT_ORACLE_BIGRAM :: 2.2459952715909473;
 // at the checks' small shape (TT_SMALL): losses, a weight digest's first
 // bytes and the cursor's document and offset after it.
 TT_SHORT_LOSSES :: [3]f64.[2.9360807937186078,2.761001189796394,2.7893926020018047];
-// The digest's bytes depend on the host C library's exp, log, sin and cos
-// (#12689, #12912): glibc's give the first row, macOS's libm the second
-// (TT_LIBM, the same test as chapter 129's GK_LIBM). The losses round the
-// same on both.
-TT_SHORT_DIGEST :: [2][8]u8.[[8]u8.[255,180,157,173,180,165,167,53],[8]u8.[146,71,133,203,219,221,61,13]];
-TT_LIBM :: #run ifx f64_bits(sin(4.0))==0xbfe837b9dddc1eae then 0 else 1;
+// One recording with Coax's fixed exp/log/sin/cos, on every CPU host (#12917).
+TT_SHORT_DIGEST :: [8]u8.[57,136,55,228,209,183,179,128];
 TT_SHORT_CURSOR :: [2]int.[1,60];
 TT_ID_PINS :: [3][4]u8.[[4]u8.[83,121,225,97],[4]u8.[104,203,150,117],[4]u8.[38,247,122,230]];
 
@@ -105,7 +101,7 @@ tt_steps :: (docs:[]PkDoc,tokens:[]u8,run:RsRun,count:int,steps:int,p:[]f64,m:[]
     #assert tt_save(ids,run,p[..],m[..],v[..],bytes[..],pointer[..])==CkStatus.ok;
     kp:=p;km:=m;kv:=v;
     run=tt_steps(f.docs[..],f.tokens[0..<f.n],run,1,3,p[..],m[..],v[..],total[..],la[2..<3]);
-    for k:0..<3 {#assert la[k]==TT_SHORT_LOSSES[k];}d:=tt_digest(p[..]);for i:0..<8 {#assert d[i]==TT_SHORT_DIGEST[TT_LIBM][i];}
+    for k:0..<3 {#assert la[k]==TT_SHORT_LOSSES[k];}d:=tt_digest(p[..]);for i:0..<8 {#assert d[i]==TT_SHORT_DIGEST[i];}
     #assert run.revision==3 && run.state.step==3 && run.cursor.epoch==0 && run.cursor.order==TT_SHORT_CURSOR[0] && run.cursor.offset==TT_SHORT_CURSOR[1];
     // Every refusal leaves the fresh buffers as they were.
     cp:[220]f64;cm:[220]f64;cv:[220]f64;for i:0..<220 {cp[i]=7;cm[i]=7;cv[i]=7;}

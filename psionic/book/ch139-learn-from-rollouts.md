@@ -483,7 +483,7 @@ psionic/check.sh --only nanochat/rollouts
 
 ```text
 problems: 64 training, 4 held out, shared: 0, audit: ok
-start: chapter 136's run, 6 base steps and 10 of 10 tuning steps, record digest 723058b2318e1c94...
+start: chapter 136's run, 6 base steps and 10 of 10 tuning steps, record digest 2e2258fdcb2e52a3...
 start, held-out questions answered greedily with reward 1: 0 of 4 right, 95% interval 0.0 to 0.48990002040399916
 greedy rollouts against chapter 136's sf_ask: 4 of 4 agree in tokens and verdict
 a sampled rollout of the first held-out question, tokens: 320 321 87 104 300 32 105 115 32 49 54 42 53 53 63 322 323 325 42 51 52 57 49 54 48 6 52 326

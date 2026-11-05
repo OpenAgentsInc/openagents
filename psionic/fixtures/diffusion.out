@@ -43,5 +43,5 @@ class 1 from z = (-0.150789, 1.235967): exact end (-0.075395, 2.617983)
   16 steps: Euler error 0.05518, Heun error 0.000951; halving the step divides them by 1.9229 and 3.1964
   32 steps: Euler error 0.028185, Heun error 0.000261; halving the step divides them by 1.9578 and 3.6373
   64 steps: Euler error 0.01425, Heun error 0.000068; halving the step divides them by 1.9779 and 3.8275
-sample 0, seed 7: (0.6705417335151039, 2.131017800549175), bits 4604214922547666393 4611981044286253987
-again: same bits true; seed 8 gives (-0.4610600789839521, 2.078532038495612)
+sample 0, seed 7: (0.6705417335151028, 2.131017800549177), bits 4604214922547666383 4611981044286253992
+again: same bits true; seed 8 gives (-0.46106007898395257, 2.078532038495611)

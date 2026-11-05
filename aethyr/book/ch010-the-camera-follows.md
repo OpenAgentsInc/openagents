@@ -333,9 +333,11 @@ the look, the zoom and the easing, and its shot comes from
 `aethyr/shot.coax`. The eye sits on a line from the pivot at your shoulder.
 As you zoom in past the closest distance, `first` goes from 0 to 1: the
 shoulder offset closes, and the line's start rises to your eyes, 0.12 m in
-front of your face. The orbit only draws, so it keeps the C library's sine
-and cosine, and its shots are the same bits as before the move. A check of
-200,000 random orbits gave no difference in any eye, look-at point or ray.
+front of your face. The orbit only draws. At the time of the move it kept
+the C library's sine and cosine; a check of 200,000 random orbits gave no
+difference in any eye, look-at point or ray. Its source-level `sin` and `cos`
+now use Coax's fixed CPU kernels (#12917). The engine's simulation step keeps
+its separate qualified math profile.
 
 <!-- source: aethyr/shot.coax orbit -->
 ```jai

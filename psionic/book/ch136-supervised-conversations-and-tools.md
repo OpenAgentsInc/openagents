@@ -483,14 +483,14 @@ equations: 2394 training tokens, 37 windows of 64; held out: 601 tokens, 9 windo
 conversations: 256, 8116 tokens, 2650 supervised targets; targets agree with the mask from tokens alone: 256 of 256
 base step 8: loss 3.3308819203681033
 base step 16: loss 2.7833560952587995
-base record: 1279092 bytes, digest 0fa71fbf0e27843f...
+base record: 1279092 bytes, digest 7c9da55165e8e070...
 base: held-out equations 4.04010301064654 bits per byte; 8 questions: 0 exact calls, 0 exact answers, 504 positions read
-tune step 6: loss 3.6748412267622856, gradient norm 1.0993966818246024, rate scale 1.0
-tune step 12: loss 2.978963921750017, gradient norm 0.9517926710514433, rate scale 1.0
-tune step 12: checkpoint, digest 4e3593bae3463fea...
-tune step 18: loss 2.589846376385457, gradient norm 0.5425937531765223, rate scale 1.0
-tune step 24: loss 2.4513006758845246, gradient norm 0.6890203245428601, rate scale 0.16666666666666666
-tuned: held-out equations 4.604901682363932 bits per byte; 8 questions: 0 exact calls, 0 exact answers, 152 positions read
+tune step 6: loss 3.6748412267622856, gradient norm 1.099396681824602, rate scale 1.0
+tune step 12: loss 2.978963921750017, gradient norm 0.9517926710514425, rate scale 1.0
+tune step 12: checkpoint, digest e620cf47d304182e...
+tune step 18: loss 2.5898463763854576, gradient norm 0.5425937531765213, rate scale 1.0
+tune step 24: loss 2.451300675884526, gradient norm 0.6890203245428598, rate scale 0.16666666666666666
+tuned: held-out equations 4.604901682363926 bits per byte; 8 questions: 0 exact calls, 0 exact answers, 152 positions read
 first held-out exchange: <|bos|><|user_start|>What is 16*55?<|user_end|><|assistant_start|><|python_start|>1
 acceptance (frozen before the run): failed
 resumed at step 12: 12 of 12 losses identical; parameters and moments identical: true

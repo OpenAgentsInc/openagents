@@ -16,8 +16,9 @@ Every rule starts from the same 8 random labels and buys 4 more a round until
 it holds 40. The answer comes from
 [chapter 240](ch240-how-far-a-metric-moves-by-itself.md)'s noise floor and
 [chapter 241](ch241-gates-that-can-say-unverifiable.md)'s decision gate, not
-from one number. On this pool all three rules end ahead of random selection,
-but none is clearly beyond the noise floor. The gate says so: unverifiable.
+from one number. On this pool all three rules end ahead of random selection.
+With the fixed CPU math recording, uncertainty narrowly passes the gate;
+diversity and mixture remain unverifiable.
 
 ```shell
 coax/bin/coax run psionic/examples/choose-next-example.coax
@@ -34,20 +35,20 @@ random: held-out accuracy at 8, 16, 24, 32 and 40 labels, mean (sd) over 16 seed
   cost: 92800 training steps, 0 predictions, 0 distances; seeds 1 to 4 sealed: true
 uncertainty, seed 1, labels 9 to 16 (point=label): 156=0.0 96=1.0 59=1.0 51=1.0 44=0.0 195=0.0 228=0.0 105=0.0
 uncertainty: held-out accuracy at 8, 16, 24, 32 and 40 labels, mean (sd) over 16 seeds:
-  0.797 (0.104) 0.882 (0.092) 0.897 (0.073) 0.914 (0.04) 0.927 (0.03)
+  0.797 (0.104) 0.882 (0.092) 0.896 (0.072) 0.911 (0.04) 0.928 (0.03)
   pocket: 24 of 512 bought labels, held-out pocket accuracy 0.138
   cost: 92800 training steps, 27904 predictions, 0 distances; seeds 1 to 4 sealed: true
 diversity: held-out accuracy at 8, 16, 24, 32 and 40 labels, mean (sd) over 16 seeds:
-  0.797 (0.104) 0.885 (0.028) 0.907 (0.034) 0.913 (0.02) 0.923 (0.012)
+  0.797 (0.104) 0.885 (0.028) 0.907 (0.034) 0.913 (0.02) 0.924 (0.012)
   pocket: 17 of 512 bought labels, held-out pocket accuracy 0.038
   cost: 92800 training steps, 0 predictions, 2561280 distances; seeds 1 to 4 sealed: true
 mixture: held-out accuracy at 8, 16, 24, 32 and 40 labels, mean (sd) over 16 seeds:
-  0.797 (0.104) 0.893 (0.035) 0.92 (0.022) 0.93 (0.014) 0.925 (0.034)
-  pocket: 35 of 512 bought labels, held-out pocket accuracy 0.241
+  0.797 (0.104) 0.893 (0.035) 0.925 (0.016) 0.928 (0.012) 0.922 (0.033)
+  pocket: 33 of 512 bought labels, held-out pocket accuracy 0.241
   cost: 92800 training steps, 27904 predictions, 2561280 distances; seeds 1 to 4 sealed: true
-uncertainty against random at 40 labels: gain 0.035 over a floor of 0.025, room 0.108; 33 of 1000 replicates at or under the floor: unverifiable (near the floor)
-diversity against random at 40 labels: gain 0.031 over a floor of 0.025, room 0.108; 144 of 1000 replicates at or under the floor: unverifiable (near the floor)
-mixture against random at 40 labels: gain 0.033 over a floor of 0.025, room 0.108; 29 of 1000 replicates at or under the floor: unverifiable (near the floor)
+uncertainty against random at 40 labels: gain 0.036 over a floor of 0.025, room 0.108; 24 of 1000 replicates at or under the floor: passed (beyond the floor)
+diversity against random at 40 labels: gain 0.032 over a floor of 0.025, room 0.108; 134 of 1000 replicates at or under the floor: unverifiable (near the floor)
+mixture against random at 40 labels: gain 0.03 over a floor of 0.025, room 0.108; 100 of 1000 replicates at or under the floor: unverifiable (near the floor)
 budget 42 in rounds of 4 after 8: budget
 budget 40 from a pool of 32: budget
 1 initial label: budget
@@ -355,15 +356,15 @@ The comparison follows chapters 240 and 241:
 
 **Quality against labels.** From 16 labels on, all three rules are ahead of
 random selection at every budget in the table, and their spread across seeds
-is smaller. At 40 labels random selection reaches 0.892, uncertainty 0.927,
-diversity 0.923 and mixture 0.925.
+is smaller. At 40 labels random selection reaches 0.892, uncertainty 0.928,
+diversity 0.924 and mixture 0.922.
 
-**The verdict.** The mean gains, 0.031 to 0.035, are above the floor of
-0.025. But when the held-out groups are drawn again, 33, 144 and 29 of 1,000
-replicates fall at or under the floor, and clear needs 25 or fewer. All three
-rules are *unverifiable (near the floor)*. On this pool, at this budget and
-with 16 seeds, the chapter can't say that choosing labels beats random
-selection beyond the noise. It can't say that it doesn't, either.
+**The verdict.** The mean gains, 0.030 to 0.036, are above the floor of
+0.025. When the held-out groups are drawn again, 24, 134 and 100 of 1,000
+replicates fall at or under the floor, and clear needs 25 or fewer.
+Uncertainty passes narrowly; diversity and mixture remain *unverifiable
+(near the floor)*. This is the fixed CPU math recording (#12917), for this
+pool, budget and 16 seeds. The decision rule and its threshold stay frozen.
 
 **The pocket.** The pocket holds 15 of the 240 pool points, 6.25 percent. Over
 16 seeds each rule bought 512 labels after the initial ones:
@@ -373,7 +374,7 @@ selection beyond the noise. It can't say that it doesn't, either.
 | random | 38 | 0.428 |
 | uncertainty | 24 | 0.138 |
 | diversity | 17 | 0.038 |
-| mixture | 35 | 0.241 |
+| mixture | 33 | 0.241 |
 
 Uncertainty bought fewer pocket labels than random selection, as expected:
 the model is confident there. Diversity bought fewer still. It looks only at

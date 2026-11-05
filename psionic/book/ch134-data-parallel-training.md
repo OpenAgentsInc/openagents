@@ -391,7 +391,7 @@ overlap model, 3152 values on 4 ranks, 20 ns of backward a value, 25000 bytes a 
     bucket 2 (1024 values): backward done at 22080 ns, all-reduce from 22080 to 27046 ns
     bucket 1 (1024 values): backward done at 42560 ns, all-reduce from 42560 to 47526 ns
     bucket 0 (1024 values): backward done at 63040 ns, all-reduce from 63040 to 68006 ns
-chapter 103's model, 120 rows: chapter 118's loop takes 10 steps, last loss 0.60276473860105
+chapter 103's model, 120 rows: chapter 118's loop takes 10 steps, last loss 0.6027647386010498
   1 ranks, buckets of 1, 5 and 19: parameters and losses equal chapter 118's bit for bit: true
   2 ranks, buckets of 1, 5 and 19: parameters and losses equal chapter 118's bit for bit: true
   3 ranks, buckets of 1, 5 and 19: parameters and losses equal chapter 118's bit for bit: true

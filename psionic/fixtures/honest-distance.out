@@ -12,4 +12,4 @@ worst honest round 0.0073, worst honest item 0.0108: a round is lost above 0.014
   sibling model: of 20,000 rounds 0 passed, 0 lost, 20000 struck
 the limits separate the pairs: true
   a live round with the GPU, f16: items 7, 1 and 3 checked; mean 0.0055, worst 0.0081 -> passed
-  a live round with the quantized copy: items 7, 0 and 2 checked; mean 0.2061, worst 0.2738 -> struck
+  a live round with the quantized copy: items 0, 1 and 4 checked; mean 0.174, worst 0.2738 -> struck

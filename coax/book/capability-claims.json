@@ -149,7 +149,7 @@
         },
         {
           "path": "psionic/lib/transformer/train-kernels.coax",
-          "sha256": "0c230e01ff0db97b1c7b872542b6d71fdd2d948f87a9bb4b95852bf06659eda2"
+          "sha256": "fec352683d50d01cd442d7ae6c7c18a6c80959e07f30796ed3fa2b39577c2d14"
         },
         {
           "path": "psionic/lib/transformer/gpu-train.coax",
@@ -182,7 +182,7 @@
         },
         {
           "path": "psionic/book/examples.json",
-          "sha256": "19dc4db3062b6b9995e3ab90e65dbd90d2151d273921fa2c513f3995c42673eb"
+          "sha256": "066fc0addc5e5b45b27ba59c587f9f2bf9636df235f7c8931ea08811949b75bb"
         },
         {
           "path": "docs/verification/psionic-ch10-2026-10-29.md",
@@ -234,7 +234,7 @@
         },
         {
           "path": "psionic/lib/transformer/train-kernels.coax",
-          "sha256": "0c230e01ff0db97b1c7b872542b6d71fdd2d948f87a9bb4b95852bf06659eda2"
+          "sha256": "fec352683d50d01cd442d7ae6c7c18a6c80959e07f30796ed3fa2b39577c2d14"
         },
         {
           "path": "psionic/lib/transformer/gpu-train.coax",
@@ -267,7 +267,7 @@
         },
         {
           "path": "psionic/book/examples.json",
-          "sha256": "19dc4db3062b6b9995e3ab90e65dbd90d2151d273921fa2c513f3995c42673eb"
+          "sha256": "066fc0addc5e5b45b27ba59c587f9f2bf9636df235f7c8931ea08811949b75bb"
         },
         {
           "path": "docs/verification/psionic-gptoss-device-2026-10-29.md",

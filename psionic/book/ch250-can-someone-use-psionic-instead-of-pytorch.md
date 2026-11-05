@@ -518,7 +518,7 @@ Workflows (psionic/fixtures/pytorch/workflows.json): 9
 3. Tiny decoder language model
    PyTorch: a small decoder-only transformer trained on text, sampled and resumed
    chapters: 115 implemented; targets: cpu
-   psionic/fixtures/tiny-train.out: held-out: decoder 2.1320579221135967, bigram 2.245995271590946, decoder better by 0.11393734947734924 (frozen margin 0.05)
+   psionic/fixtures/tiny-train.out: held-out: decoder 2.132057922113596, bigram 2.245995271590946, decoder better by 0.11393734947735012 (frozen margin 0.05)
    psionic/fixtures/tiny-train.out: resumed from step 350 (75908 bytes): 50 of 50 losses identical, weights and moments identical: true
    not yet: the decoder is written by hand for this chapter: attention and embedding are not public modules
    not yet: 3,152 parameters and a 4,080-symbol corpus
@@ -554,7 +554,7 @@ Workflows (psionic/fixtures/pytorch/workflows.json): 9
 8. Checkpoint and resume
    PyTorch: torch.save and torch.load of the model, optimizer and data order
    chapters: 122 implemented; targets: cpu
-   psionic/fixtures/resume.out: loss 2.772588722239781 -> 1.4089266754480803; after resuming at 5, 7 of 7 losses and all 768 values are identical
+   psionic/fixtures/resume.out: loss 2.772588722239781 -> 1.4089266754480807; after resuming at 5, 7 of 7 losses and all 768 values are identical
    not yet: 4,096 values at most
 9. Data-parallel and fully sharded training
    PyTorch: DistributedDataParallel and FullyShardedDataParallel

@@ -22,14 +22,9 @@ GK_ORACLE_LOSS :: 1.8059255342158516;
 // td_gradients' bits on the checks' rows (two of TD_TINY, two of a shape
 // with no two fields alike): each loss, and the gradient's bits folded by
 // gk_fold (psionic/tests/train-kernels-checks.coax).
-GK_PIN_LOSS :: [4]u64.[4610811984735600285,4609836793812327909,4611158005661823240,4611375483214818035];
-// The gradients' bits depend on the host C library's exp, log, sin and cos
-// (#12689, #12912): glibc's give the first row, macOS's libm the second.
-// The losses happen to round the same on both. GK_LIBM picks the row: glibc
-// rounds sin(4) to 0xbfe837b9dddc1eae, macOS to the next double.
-GK_PIN_GRADS :: [2][4]u64.[[4]u64.[226818329418378778,2892832140653224102,17312059436405755485,916989370725146129],
-    [4]u64.[3023991349979937005,5416991655740249739,11435534676985372805,7838566784252351770]];
-GK_LIBM :: #run ifx f64_bits(sin(4.0))==0xbfe837b9dddc1eae then 0 else 1;
+GK_PIN_LOSS :: [4]u64.[4610811984735600285,4609836793812327909,4611158005661823240,4611375483214818036];
+// One recording with Coax's fixed exp/log/sin/cos, on every CPU host (#12917).
+GK_PIN_GRADS :: [4]u64.[15076386241737623762,2218044931654383937,10685787021122516259,14022465344752742980];
 #load "../../tests/train-kernels-checks.coax";
 
 // book:begin layout
@@ -194,11 +189,11 @@ gk_commit :: (item:int,n:int,stage:[]f64,p:[]f64,m:[]f64,v:[]f64) #export_c {
 // ---- Checks. Their helpers are in psionic/tests/train-kernels-checks.coax.
 #test "both shapes' rows give chapter 113's bits" {
     x:GkTiny;gk_formula(x.p[..]);gk_tiny(x.p[..],x.w[..],x.dw[..],x.g[..],x.loss[..],2);
-    for r:0..<2 {#assert f64_bits(x.loss[r])==GK_PIN_LOSS[r] && gk_fold(x.g[r*204..<r*204+204])==GK_PIN_GRADS[GK_LIBM][r];}
+    for r:0..<2 {#assert f64_bits(x.loss[r])==GK_PIN_LOSS[r] && gk_fold(x.g[r*204..<r*204+204])==GK_PIN_GRADS[r];}
     sh:=GK_ODD;rows:=GK_ODD_ROWS;p:[2160]f64;gk_formula(p[..]);w:[3180]f64;dw:[3180]f64;g:[4320]f64;loss:[2]f64;
     #assert gk_parameters(sh[..])==2160 && gk_work(sh[..])==1590;
     gk_run(sh[..],p[..],rows[..],w[..],dw[..],g[..],loss[..],2);
-    for r:0..<2 {#assert f64_bits(loss[r])==GK_PIN_LOSS[2+r] && gk_fold(g[r*2160..<r*2160+2160])==GK_PIN_GRADS[GK_LIBM][2+r];}
+    for r:0..<2 {#assert f64_bits(loss[r])==GK_PIN_LOSS[2+r] && gk_fold(g[r*2160..<r*2160+2160])==GK_PIN_GRADS[2+r];}
     a:=[2]f64.[1,2];b:=[2]f64.[2,1];#assert gk_fold(a[..])!=gk_fold(b[..]) && gk_fold(a[0..<0])==0 && gk_fold(a[0..<1])==f64_bits(1.0);
 }
 #test "the softmax shift is the first largest value; relu sends -0 to +0" {
