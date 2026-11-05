@@ -928,3 +928,13 @@ zero stdout and no C, header or profile published. Its workers exit. This third
 scoped current-source failure is not retried with unchanged inputs, and does
 not invalidate the earlier separately pinned component receipts. No current
 primary or graphics admission is claimed.
+
+The broader `authored` observer phase also exports every non-synth `SFXB`
+candidate, preserving the adapter's existing authored-name scope beyond the
+current picks. `audio-authored-bank/` retains all 153 source/PCM pairs and
+12,657,718 decoded words, with no missing result or retained allocation after
+each independent export. The source/tool/executable snapshot and every file
+hash accompany `authored.json`; the committed metadata and manifest are
+`audio-authored-bank.json` and `audio-authored-bank.sha256`. Its complete browser
+comparison remains separate from the narrower picked-bank result. No failing
+unselected candidate is removed by choosing a smaller catalogue.

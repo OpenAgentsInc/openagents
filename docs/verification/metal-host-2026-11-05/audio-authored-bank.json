@@ -1,0 +1,1544 @@
+{
+  "bankAssets" : 0,
+  "bankWords" : 0,
+  "closedWords" : 0,
+  "deviceFrames" : 0,
+  "heldAssets" : 0,
+  "heldWords" : 0,
+  "phase" : "authored",
+  "registered" : 48,
+  "rows" : [
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/fire-cast-e1.f32",
+      "memory" : 29042,
+      "name" : "fire-cast-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 29042,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/fire-cast-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/fire-cast-e2.f32",
+      "memory" : 32652,
+      "name" : "fire-cast-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 32652,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/fire-cast-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/fire-cast-e3.f32",
+      "memory" : 32652,
+      "name" : "fire-cast-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 32652,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/fire-cast-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/fire-travel-e1.f32",
+      "memory" : 43427,
+      "name" : "fire-travel-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 43427,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/fire-travel-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/fire-travel-e2.f32",
+      "memory" : 44605,
+      "name" : "fire-travel-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 44605,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/fire-travel-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/fire-travel-e3.f32",
+      "memory" : 42612,
+      "name" : "fire-travel-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 42612,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/fire-travel-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/fire-hit-e1.f32",
+      "memory" : 29135,
+      "name" : "fire-hit-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 29135,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/fire-hit-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/fire-hit-e2.f32",
+      "memory" : 42240,
+      "name" : "fire-hit-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 42240,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/fire-hit-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/fire-hit-e3.f32",
+      "memory" : 35972,
+      "name" : "fire-hit-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 35972,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/fire-hit-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/fireball-e1.f32",
+      "memory" : 87099,
+      "name" : "fireball-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 87099,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/fireball-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/fireball-e2.f32",
+      "memory" : 85293,
+      "name" : "fireball-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 85293,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/fireball-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/fireball-e3.f32",
+      "memory" : 78945,
+      "name" : "fireball-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 78945,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/fireball-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/frost-cast-e1.f32",
+      "memory" : 38400,
+      "name" : "frost-cast-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 38400,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/frost-cast-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/frost-cast-e2.f32",
+      "memory" : 38400,
+      "name" : "frost-cast-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 38400,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/frost-cast-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/frost-cast-e3.f32",
+      "memory" : 38400,
+      "name" : "frost-cast-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 38400,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/frost-cast-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/frost-travel-e1.f32",
+      "memory" : 48000,
+      "name" : "frost-travel-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 48000,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/frost-travel-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/frost-travel-e2.f32",
+      "memory" : 32250,
+      "name" : "frost-travel-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 32250,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/frost-travel-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/frost-travel-e3.f32",
+      "memory" : 48000,
+      "name" : "frost-travel-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 48000,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/frost-travel-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/frost-hit-e1.f32",
+      "memory" : 31989,
+      "name" : "frost-hit-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 31989,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/frost-hit-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/frost-hit-e2.f32",
+      "memory" : 32084,
+      "name" : "frost-hit-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 32084,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/frost-hit-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/frost-hit-e3.f32",
+      "memory" : 28718,
+      "name" : "frost-hit-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 28718,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/frost-hit-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/eldritch-cast-e1.f32",
+      "memory" : 37648,
+      "name" : "eldritch-cast-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 37648,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/eldritch-cast-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/eldritch-cast-e2.f32",
+      "memory" : 38060,
+      "name" : "eldritch-cast-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 38060,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/eldritch-cast-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/eldritch-cast-e3.f32",
+      "memory" : 36643,
+      "name" : "eldritch-cast-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 36643,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/eldritch-cast-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/eldritch-travel-e1.f32",
+      "memory" : 42240,
+      "name" : "eldritch-travel-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 42240,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/eldritch-travel-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/eldritch-travel-e2.f32",
+      "memory" : 42240,
+      "name" : "eldritch-travel-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 42240,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/eldritch-travel-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/eldritch-travel-e3.f32",
+      "memory" : 39617,
+      "name" : "eldritch-travel-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 39617,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/eldritch-travel-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/eldritch-hit-e1.f32",
+      "memory" : 38400,
+      "name" : "eldritch-hit-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 38400,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/eldritch-hit-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/eldritch-hit-e2.f32",
+      "memory" : 38400,
+      "name" : "eldritch-hit-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 38400,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/eldritch-hit-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/eldritch-hit-e3.f32",
+      "memory" : 38400,
+      "name" : "eldritch-hit-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 38400,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/eldritch-hit-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/necro-cast-e1.f32",
+      "memory" : 37789,
+      "name" : "necro-cast-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 37789,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/necro-cast-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/necro-cast-e2.f32",
+      "memory" : 38507,
+      "name" : "necro-cast-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 38507,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/necro-cast-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/necro-cast-e3.f32",
+      "memory" : 39026,
+      "name" : "necro-cast-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 39026,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/necro-cast-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/necro-travel-e1.f32",
+      "memory" : 38772,
+      "name" : "necro-travel-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 38772,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/necro-travel-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/necro-travel-e2.f32",
+      "memory" : 38542,
+      "name" : "necro-travel-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 38542,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/necro-travel-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/necro-travel-e3.f32",
+      "memory" : 42240,
+      "name" : "necro-travel-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 42240,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/necro-travel-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/necro-hit-e1.f32",
+      "memory" : 33873,
+      "name" : "necro-hit-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 33873,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/necro-hit-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/necro-hit-e2.f32",
+      "memory" : 42240,
+      "name" : "necro-hit-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 42240,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/necro-hit-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/necro-hit-e3.f32",
+      "memory" : 42240,
+      "name" : "necro-hit-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 42240,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/necro-hit-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/bolt-cast-e1.f32",
+      "memory" : 28800,
+      "name" : "bolt-cast-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 28800,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/bolt-cast-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/bolt-cast-e2.f32",
+      "memory" : 28800,
+      "name" : "bolt-cast-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 28800,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/bolt-cast-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/bolt-cast-e3.f32",
+      "memory" : 28800,
+      "name" : "bolt-cast-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 28800,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/bolt-cast-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/bolt-travel-e1.f32",
+      "memory" : 32652,
+      "name" : "bolt-travel-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 32652,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/bolt-travel-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/bolt-travel-e2.f32",
+      "memory" : 32652,
+      "name" : "bolt-travel-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 32652,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/bolt-travel-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/bolt-travel-e3.f32",
+      "memory" : 32652,
+      "name" : "bolt-travel-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 32652,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/bolt-travel-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/thunder-e1.f32",
+      "memory" : 113603,
+      "name" : "thunder-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 113603,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/thunder-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/thunder-e2.f32",
+      "memory" : 114317,
+      "name" : "thunder-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 114317,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/thunder-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/thunder-e3.f32",
+      "memory" : 114702,
+      "name" : "thunder-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 114702,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/thunder-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/cone-e1.f32",
+      "memory" : 48568,
+      "name" : "cone-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 48568,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/cone-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/cone-e2.f32",
+      "memory" : 57600,
+      "name" : "cone-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 57600,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/cone-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/cone-e3.f32",
+      "memory" : 41937,
+      "name" : "cone-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 41937,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/cone-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/hex-e1.f32",
+      "memory" : 39989,
+      "name" : "hex-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 39989,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/hex-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/hex-e2.f32",
+      "memory" : 48000,
+      "name" : "hex-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 48000,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/hex-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/hex-e3.f32",
+      "memory" : 38141,
+      "name" : "hex-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 38141,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/hex-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/hold-e1.f32",
+      "memory" : 21392,
+      "name" : "hold-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 21392,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/hold-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/hold-e2.f32",
+      "memory" : 40735,
+      "name" : "hold-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 40735,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/hold-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/hold-e3.f32",
+      "memory" : 57600,
+      "name" : "hold-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 57600,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/hold-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/rebuke-e1.f32",
+      "memory" : 40396,
+      "name" : "rebuke-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 40396,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/rebuke-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/rebuke-e2.f32",
+      "memory" : 42454,
+      "name" : "rebuke-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 42454,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/rebuke-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/rebuke-e3.f32",
+      "memory" : 48000,
+      "name" : "rebuke-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 48000,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/rebuke-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/blight-e1.f32",
+      "memory" : 36953,
+      "name" : "blight-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 36953,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/blight-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/blight-e2.f32",
+      "memory" : 53185,
+      "name" : "blight-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 53185,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/blight-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/blight-e3.f32",
+      "memory" : 57600,
+      "name" : "blight-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 57600,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/blight-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/teleport-e1.f32",
+      "memory" : 35630,
+      "name" : "teleport-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 35630,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/teleport-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/teleport-e2.f32",
+      "memory" : 39138,
+      "name" : "teleport-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 39138,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/teleport-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/teleport-e3.f32",
+      "memory" : 48000,
+      "name" : "teleport-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 48000,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/teleport-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/shield-e1.f32",
+      "memory" : 39801,
+      "name" : "shield-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 39801,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/shield-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/shield-e2.f32",
+      "memory" : 39067,
+      "name" : "shield-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 39067,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/shield-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/shield-e3.f32",
+      "memory" : 48000,
+      "name" : "shield-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 48000,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/shield-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/heal-e1.f32",
+      "memory" : 45869,
+      "name" : "heal-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 45869,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/heal-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/heal-e2.f32",
+      "memory" : 65280,
+      "name" : "heal-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 65280,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/heal-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/heal-e3.f32",
+      "memory" : 48167,
+      "name" : "heal-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 48167,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/heal-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/thunderwave-e1.f32",
+      "memory" : 49721,
+      "name" : "thunderwave-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 49721,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/thunderwave-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/thunderwave-e2.f32",
+      "memory" : 65280,
+      "name" : "thunderwave-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 65280,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/thunderwave-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/thunderwave-e3.f32",
+      "memory" : 65280,
+      "name" : "thunderwave-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 65280,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/thunderwave-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/missile-e1.f32",
+      "memory" : 38400,
+      "name" : "missile-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 38400,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/missile-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/missile-e2.f32",
+      "memory" : 38400,
+      "name" : "missile-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 38400,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/missile-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/missile-e3.f32",
+      "memory" : 38400,
+      "name" : "missile-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 38400,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/missile-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/arcane-cast-e1.f32",
+      "memory" : 28800,
+      "name" : "arcane-cast-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 28800,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/arcane-cast-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/arcane-cast-e2.f32",
+      "memory" : 28800,
+      "name" : "arcane-cast-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 28800,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/arcane-cast-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/arcane-cast-e3.f32",
+      "memory" : 28800,
+      "name" : "arcane-cast-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 28800,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/arcane-cast-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/arcane-hit-e1.f32",
+      "memory" : 16921,
+      "name" : "arcane-hit-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 16921,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/arcane-hit-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/arcane-hit-e2.f32",
+      "memory" : 21854,
+      "name" : "arcane-hit-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 21854,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/arcane-hit-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/arcane-hit-e3.f32",
+      "memory" : 23781,
+      "name" : "arcane-hit-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 23781,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/arcane-hit-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/radiant-e1.f32",
+      "memory" : 50992,
+      "name" : "radiant-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 50992,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/radiant-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/radiant-e2.f32",
+      "memory" : 49420,
+      "name" : "radiant-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 49420,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/radiant-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/radiant-e3.f32",
+      "memory" : 51787,
+      "name" : "radiant-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 51787,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/radiant-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/swing-e1.f32",
+      "memory" : 9769,
+      "name" : "swing-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 9769,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/swing-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/swing-e2.f32",
+      "memory" : 14933,
+      "name" : "swing-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 14933,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/swing-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/swing-e3.f32",
+      "memory" : 17215,
+      "name" : "swing-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 17215,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/swing-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/hit-e1.f32",
+      "memory" : 20009,
+      "name" : "hit-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 20009,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/hit-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/hit-e2.f32",
+      "memory" : 23040,
+      "name" : "hit-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 23040,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/hit-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/hit-e3.f32",
+      "memory" : 23040,
+      "name" : "hit-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 23040,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/hit-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/hit-heavy-e1.f32",
+      "memory" : 32652,
+      "name" : "hit-heavy-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 32652,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/hit-heavy-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/hit-heavy-e2.f32",
+      "memory" : 32652,
+      "name" : "hit-heavy-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 32652,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/hit-heavy-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/hit-heavy-e3.f32",
+      "memory" : 28316,
+      "name" : "hit-heavy-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 28316,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/hit-heavy-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/death-e1.f32",
+      "memory" : 43549,
+      "name" : "death-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 43549,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/death-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/death-e2.f32",
+      "memory" : 57600,
+      "name" : "death-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 57600,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/death-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/death-e3.f32",
+      "memory" : 57600,
+      "name" : "death-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 57600,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/death-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/stand-e1.f32",
+      "memory" : 34793,
+      "name" : "stand-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 34793,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/stand-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/stand-e2.f32",
+      "memory" : 30657,
+      "name" : "stand-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 30657,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/stand-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/stand-e3.f32",
+      "memory" : 35062,
+      "name" : "stand-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 35062,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/stand-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/horn-e1.f32",
+      "memory" : 144000,
+      "name" : "horn-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 144000,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/horn-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/horn-e2.f32",
+      "memory" : 144000,
+      "name" : "horn-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 144000,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/horn-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/horn-e3.f32",
+      "memory" : 114569,
+      "name" : "horn-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 114569,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/horn-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/wall-hit-e1.f32",
+      "memory" : 11732,
+      "name" : "wall-hit-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 11732,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/wall-hit-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/wall-hit-e2.f32",
+      "memory" : 45515,
+      "name" : "wall-hit-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 45515,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/wall-hit-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/wall-hit-e3.f32",
+      "memory" : 45076,
+      "name" : "wall-hit-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 45076,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/wall-hit-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/tower-hit-e1.f32",
+      "memory" : 96000,
+      "name" : "tower-hit-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 96000,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/tower-hit-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/tower-hit-e2.f32",
+      "memory" : 84873,
+      "name" : "tower-hit-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 84873,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/tower-hit-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/tower-hit-e3.f32",
+      "memory" : 80832,
+      "name" : "tower-hit-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 80832,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/tower-hit-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/raid-won-e1.f32",
+      "memory" : 144000,
+      "name" : "raid-won-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 144000,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/raid-won-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/raid-won-e2.f32",
+      "memory" : 100217,
+      "name" : "raid-won-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 100217,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/raid-won-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/raid-won-e3.f32",
+      "memory" : 103669,
+      "name" : "raid-won-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 103669,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/raid-won-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/raid-lost-e1.f32",
+      "memory" : 105966,
+      "name" : "raid-lost-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 105966,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/raid-lost-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/raid-lost-e2.f32",
+      "memory" : 112988,
+      "name" : "raid-lost-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 112988,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/raid-lost-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/raid-lost-e3.f32",
+      "memory" : 97970,
+      "name" : "raid-lost-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 97970,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/raid-lost-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/step-1-e1.f32",
+      "memory" : 18494,
+      "name" : "step-1-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 18494,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/step-1-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/step-1-e2.f32",
+      "memory" : 17913,
+      "name" : "step-1-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 17913,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/step-1-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/step-2-e1.f32",
+      "memory" : 12011,
+      "name" : "step-2-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 12011,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/step-2-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/step-2-e2.f32",
+      "memory" : 16897,
+      "name" : "step-2-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 16897,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/step-2-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/step-3-e1.f32",
+      "memory" : 17426,
+      "name" : "step-3-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 17426,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/step-3-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/step-3-e2.f32",
+      "memory" : 14299,
+      "name" : "step-3-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 14299,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/step-3-e2.ogg"
+    },
+    {
+      "channels" : 2,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/ambient-e1.f32",
+      "memory" : 1920000,
+      "name" : "ambient-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 1920000,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/ambient-e1.ogg"
+    },
+    {
+      "channels" : 2,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/ambient-e2.f32",
+      "memory" : 1920000,
+      "name" : "ambient-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 1920000,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/ambient-e2.ogg"
+    },
+    {
+      "channels" : 2,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/ambient-e3.f32",
+      "memory" : 1920000,
+      "name" : "ambient-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 1920000,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/ambient-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/levitate-e1.f32",
+      "memory" : 61470,
+      "name" : "levitate-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 61470,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/levitate-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/levitate-e2.f32",
+      "memory" : 49416,
+      "name" : "levitate-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 49416,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/levitate-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/levitate-e3.f32",
+      "memory" : 65280,
+      "name" : "levitate-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 65280,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/levitate-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/splash-e1.f32",
+      "memory" : 40606,
+      "name" : "splash-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 40606,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/splash-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/splash-e2.f32",
+      "memory" : 40684,
+      "name" : "splash-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 40684,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/splash-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/splash-e3.f32",
+      "memory" : 48000,
+      "name" : "splash-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 48000,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/splash-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/ice-e1.f32",
+      "memory" : 41342,
+      "name" : "ice-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 41342,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/ice-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/ice-e2.f32",
+      "memory" : 33624,
+      "name" : "ice-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 33624,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/ice-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/ice-e3.f32",
+      "memory" : 35955,
+      "name" : "ice-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 35955,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/ice-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/house-fall-e1.f32",
+      "memory" : 111206,
+      "name" : "house-fall-e1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 111206,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/house-fall-e1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/house-fall-e2.f32",
+      "memory" : 144000,
+      "name" : "house-fall-e2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 144000,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/house-fall-e2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/house-fall-e3.f32",
+      "memory" : 135207,
+      "name" : "house-fall-e3",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 135207,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/house-fall-e3.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/hit-k1.f32",
+      "memory" : 15048,
+      "name" : "hit-k1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 15048,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/hit-k1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/hit-k2.f32",
+      "memory" : 18320,
+      "name" : "hit-k2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 18320,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/hit-k2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/hit-heavy-k1.f32",
+      "memory" : 23325,
+      "name" : "hit-heavy-k1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 23325,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/hit-heavy-k1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/hit-heavy-k2.f32",
+      "memory" : 17457,
+      "name" : "hit-heavy-k2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 17457,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/hit-heavy-k2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/wall-hit-k1.f32",
+      "memory" : 30958,
+      "name" : "wall-hit-k1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 30958,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/wall-hit-k1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/wall-hit-k2.f32",
+      "memory" : 31956,
+      "name" : "wall-hit-k2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 31956,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/wall-hit-k2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/death-k1.f32",
+      "memory" : 25287,
+      "name" : "death-k1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 25287,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/death-k1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/stand-k1.f32",
+      "memory" : 27747,
+      "name" : "stand-k1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 27747,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/stand-k1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/stand-k2.f32",
+      "memory" : 22204,
+      "name" : "stand-k2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 22204,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/stand-k2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/step-1-k1.f32",
+      "memory" : 7822,
+      "name" : "step-1-k1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 7822,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/step-1-k1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/step-1-k2.f32",
+      "memory" : 11181,
+      "name" : "step-1-k2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 11181,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/step-1-k2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/step-2-k1.f32",
+      "memory" : 8204,
+      "name" : "step-2-k1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 8204,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/step-2-k1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/step-2-k2.f32",
+      "memory" : 12261,
+      "name" : "step-2-k2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 12261,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/step-2-k2.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/step-3-k1.f32",
+      "memory" : 8515,
+      "name" : "step-3-k1",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 8515,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/step-3-k1.ogg"
+    },
+    {
+      "channels" : 1,
+      "file" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/step-3-k2.f32",
+      "memory" : 11401,
+      "name" : "step-3-k2",
+      "rate" : 48000,
+      "releasedWords" : 0,
+      "samples" : 11401,
+      "source" : "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/audio-authored-bank\/step-3-k2.ogg"
+    }
+  ],
+  "schema" : "aethyr.metal.audio-prefetch-observed.v1",
+  "worldFrames" : 0
+}
