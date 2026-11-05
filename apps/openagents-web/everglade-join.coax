@@ -97,6 +97,7 @@ jn_facts :: (s: [] Everglade, n: [] EgNet, url: string, realm: string, golden: b
   with := net_query(url, "with");
   j[0].with_n = ifx net_code_ok(with) && with.count <= NET_ID then net_copy(j[0].with[..], with) else 0;
   j[0].from_grid = net_query(url, "from") == "grid" && !golden;
+  pt_facts(n, url, golden);   // ?party=CODE: a friend's party, joined first (everglade-party.coax)
   n[0].code_n = 0;
   j[0].named = false; j[0].list_due = false; j[0].test = false;
   if net_code_ok(code) {
@@ -125,6 +126,12 @@ jn_url :: (n: [] EgNet) {
   m := j[0].base_n;
   if n[0].code_n > 0 { m = wire_put(n[0].url[..], m, cast(string) n[0].code[0..<n[0].code_n]); }
   n[0].url_n = m;
+}
+// Whether the instance came from the realm's list: no link named it, no friend's invite sent you. Its
+// ticket asks for the realm (net_step), so the directory seats you with your party (#12852).
+jn_listed :: (n: [] EgNet) -> bool {
+  j := n[0].join[..];
+  return !j[0].named && j[0].with_n == 0 && !j[0].test && !n[0].local_relay && n[0].realm_n > 0;
 }
 // Whether the socket may open: an instance is chosen and the picker isn't holding it.
 jn_ready :: (n: [] EgNet) -> bool { return n[0].code_n > 0 && !n[0].join[0].hold; }
@@ -272,34 +279,42 @@ jn_button :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, b: Box, word: st
   plate(s, u, b, 0.85, ifx lit_up then 2.0f32 else 1.0f32);
   return draw_text(out, at, word, b.x0 + 16 * k, b.y1 - 14 * k, 9 * k, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
 }
-// INVITE and CHARACTER, left of MAP (mb) on the top row; where the title and FORK leave no room (a
+// INVITE, CHARACTER and PARTY (everglade-party.coax), left of MAP (mb) on the top row; where the title and FORK leave no room (a
 // phone), under MAP, and the right column (HP, WANTED, a phone's chat line) moves down a row.
 join_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, mb: Box, left: f32) -> int {
   if !net_on(s) { return at; }
   n := net_of(s); j := n[0].join[..];
   for b: 0..<JB_N { j[0].boxes[b] = Box.{}; }
   j[0].drop = 0;
+  n[0].party[0].button = Box.{};
   if !jn_shown(s) || j[0].pick_open { return at; }
   k := hi(s[0].dpr, 0.5);
   v := at;
   copied := n[0].mono - j[0].copied_at < JN_COPIED_MS;
   iw := ifx copied then "LINK COPIED" else "INVITE";
-  cw := "CHARACTER";
+  cw := "CHARACTER"; pw := "PARTY";
   bh := mb.y1 - mb.y0;
-  wi := text_width(iw, 9 * k) + 32 * k; wc := text_width(cw, 9 * k) + 32 * k;
+  wi := text_width(iw, 9 * k) + 32 * k; wc := text_width(cw, 9 * k) + 32 * k; wp := text_width(pw, 9 * k) + 32 * k;
   gap := 8 * k;
   // left of MAP and of EDIT and TALK, when an admin or builder has them (everglade-edit.coax, everglade-voice.coax)
   x1 := mb.x0 - edit_button_room(s) - talk_button_room(s) - gap; y0 := mb.y0;
-  if x1 - wi - gap - wc < left + gap {
-    // a second row under MAP, right-aligned
+  party_below := false;   // PARTY on a row of its own, under INVITE
+  if x1 - wi - gap - wc - gap - wp < left + gap {
+    // a second row under MAP, right-aligned; where the three don't fit there either (a phone), PARTY a third
     x1 = mb.x1; y0 = mb.y1 + gap;
     j[0].drop = bh + gap;
+    if x1 - wi - gap - wc - gap - wp < left + gap { party_below = true; j[0].drop = 2 * (bh + gap); }
   }
   ib := Box.{x0 = x1 - wi, y0 = y0, x1 = x1, y1 = y0 + bh};
   cb := Box.{x0 = ib.x0 - gap - wc, y0 = y0, x1 = ib.x0 - gap, y1 = y0 + bh};
+  pb := ifx party_below then Box.{x0 = x1 - wp, y0 = y0 + bh + gap, x1 = x1, y1 = y0 + 2 * bh + gap}
+        else Box.{x0 = cb.x0 - gap - wp, y0 = y0, x1 = cb.x0 - gap, y1 = y0 + bh};
   j[0].boxes[JB_INVITE] = ib; j[0].boxes[JB_CHARACTER] = cb;
+  pty := n[0].party[..];
+  pty[0].button = pb;
   v = jn_button(s, out, u, v, ib, iw, copied || j[0].press == JB_INVITE);
   v = jn_button(s, out, u, v, cb, cw, j[0].press == JB_CHARACTER);
+  v = jn_button(s, out, u, v, pb, pw, pty[0].open || pty[0].press == PB_N);
   return v;
 }
 // The HUD's right column moves down this many px (join_hud's second row).

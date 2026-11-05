@@ -5,7 +5,8 @@
 //              sets, what everyone else may do with them, and oa-room's side of them
 //   invites    an INVITE holds a seat in the inviter's room (#12795; migrations/0125_room_invites.sql)
 //   items      the item ledger: duplicates, conflicts, versions, escrow, owners, outbox, restore (#12849; migrations/0130)
-//   parties    durable parties, their health-only roster, and placement with the party (#12852; migrations/0129_parties.sql)
+//   parties    durable parties, their health-only roster, and placement with the party (#12852; migrations/0129_parties.sql);
+//              its placement rate; with ROOM_BIN, a real room's reports, its crash and restart, and the party service down
 //   stats      the rooms' vitals reports and the admins' room view (#12791; migrations/0123_room_stats.sql)
 //   vitals     room vitals receipts (#12793) and server-owned WANTED (#12794; migrations/0124_room_vital_receipts.sql)
 //   owner      one owner per character through a room process's pause and resume (#12834; ROOM_BIN only)
@@ -477,6 +478,160 @@ rc_parties :: (t: [] Ap) {
   ap_check(t, "party: eight at most: the eighth joins, the ninth is refused (409)", full_n == 7 && eighth == 200 && st == 409, ap_body(t));
   ap_check(t, "party: durable: kept in the database (a restart reads the same rows)",
            ap_sql(t, "select count(*) from verse.party_members m join verse.parties p on p.id = m.party", out[..]) != "0", "");
+  rp_rate(t);
+}
+// The placement rate: RP_TRIALS parties of two, each in a realm of its own whose REALM-1 is empty and
+// whose REALM-2 holds FILL players, the leader among them (1 to 16, 16 full). The other member's ticket asks for
+// the realm: kept with the party when REALM-2 has a seat; when it is full, the ticket names it
+// (party_full) and places them elsewhere. Every trial is counted and the rate printed.
+RP_TRIALS :: 34;
+rp_rate :: (t: [] Ap) {
+  kept := 0; seat_n := 0; named := 0; full_n := 0; failed := 0;
+  rb: [256] u8; pf: [256] u8;
+  for i: 0..<RP_TRIALS {
+    lp: [1] Player; jp: [1] Player;
+    if !ap_player(t, lp[..]) || !ap_player(t, jp[..]) || rp_join_of(t, pl_key(lp[..]), pl_key(jp[..])) != 200 { failed += 1; continue; }
+    realm: [1] Sb; sb(realm[..], "evrt"); sb_int(realm[..], i);
+    fill := 1 + (i * 7) % 16;   // the leader and fill - 1 others: 1 to 16, 16 full
+    body: [1] Sb; sb(body[..], "t "); sb_int(body[..], rc_wall_ms()); sb(body[..], "\ns 1 3\nr "); sb(body[..], sb_text(realm[..])); sb(body[..], "-1 0\nr ");
+    sb(body[..], sb_text(realm[..])); sb(body[..], "-2 "); sb_int(body[..], fill); sb(body[..], " "); sb(body[..], pl_id(lp[..]));
+    for f: 1..<fill { sb(body[..], " p-evrt"); n: [1] Sb; sb_int(n[..], i * 100 + f); for z: n[0].n..<10 { sb_byte(body[..], '0'); } sb(body[..], sb_text(n[..])); }
+    sb(body[..], "\n");
+    if rc_room_post(t, "/api/playtest/room-directory", sb_text(body[..]), "") != 200 { failed += 1; continue; }
+    st := ri_ticket_in(t, pl_key(jp[..]), sb_text(realm[..]), sb_text(realm[..]));
+    b := ap_body(t);
+    want: [1] Sb; sb(want[..], sb_text(realm[..])); sb(want[..], "-2");
+    room := ap_member(b, "room", rb[..]); party_full := ap_member(b, "party_full", pf[..]);
+    if fill < 16 { seat_n += 1; if st == 200 && room == sb_text(want[..]) && party_full == "" { kept += 1; } }
+    else { full_n += 1; if st == 200 && party_full == sb_text(want[..]) && room != sb_text(want[..]) && room != "" { named += 1; } }
+  }
+  print("  rate  party placement: % of % tickets kept with the party while its room had a seat; % of % full rooms named; % trials not run\n", kept, seat_n, named, full_n, failed);
+  ap_check(t, "party: the placement rate: every ticket with a seat in its party's room went there, every full one was named", failed == 0 && kept == seat_n && named == full_n && full_n > 0, "");
+}
+// A member's HP in a roster's body ("" when the member isn't listed; "null" when it has none).
+rp_hp :: (b: string, pid: string, out: [] u8) -> string {
+  p: [1] Sb;
+  for i: 0..<rp_members(b) { if rc_is(b, rp_path(p[..], i, "id"), pid) { return ap_member(b, rp_path(p[..], i, "hp"), out); } }
+  return "";
+}
+// A room process (ROOM_BIN --dev) whose vitals and directory go to this API: its handle; its port in port[0].
+rp_room :: (t: [] Ap, bin: string, work: string, port: [] int, flog: [] FcLog) -> int {
+  pb: [4200] u8; wf: [65536] u8; cb: [4200] u8;
+  world_n := fs_read("coax/web/room/dev/world-everglade.json", wf[..]);
+  ok := world_n > 0 && fs_write(fs_join(work, "world-everglade.json", pb[..]), cast(string) wf[0..<world_n]);
+  ok = ok && fs_write(fs_join(work, "room-control.txt", cb[..]), "levels 1 2\n");
+  l := cxsock_listen(0); port[0] = cxsock_port(l); c := cxsock_close(l);
+  ev: [1] Sb; sb(ev[..], "OA_ROOM_VITALS_URL="); sb(ev[..], t[0].api); sb(ev[..], "/api/playtest/room-vitals");
+  ed: [1] Sb; sb(ed[..], "OA_ROOM_DIRECTORY_URL="); sb(ed[..], t[0].api); sb(ed[..], "/api/playtest/room-directory");
+  envs := [2] string.[sb_text(ev[..]), sb_text(ed[..])];
+  ps: [32] u8;
+  ra := [5] string.[bin, "--port", ap_num(port[0], ps[..]), "--dev", work];
+  h := ifx ok then fc_start(ra[..], envs[..], "") else -1;
+  t0 := proc_now_ms();
+  while h >= 0 && proc_now_ms() - t0 < 2000 { fc_drain(h, flog); proc_sleep(50); }
+  return h;
+}
+// Waits (at most ms, draining the room's log) until q's value is want; whether it was.
+rp_until :: (t: [] Ap, q: string, want: string, room: int, flog: [] FcLog, ms: int) -> bool {
+  out: [4096] u8; deadline := proc_now_ms() + ms;
+  while proc_now_ms() < deadline {
+    if room >= 0 { fc_drain(room, flog); }
+    if ap_sql(t, q, out[..]) == want { return true; }
+    proc_sleep(500);
+  }
+  return false;
+}
+rp_stop :: (h: int, sig: int) { if h < 0 { return; } k := proc_kill(h, sig); w := proc_wait(h, 15000); if w == PROC_RUNNING { k = proc_kill(h, PROC_SIGKILL); w = proc_wait(h, 2000); } r := proc_release(h); }
+// A party with a real room (#12852; ROOM_BIN only). Alice, Bob and Dave are a party; Alice sits in
+// ptyroom-1 on a room process whose vitals and directory reports go to this API:
+//   - Bob's roster has Alice's HP from that room's report, and Dave's ticket for the realm goes to her room;
+//   - the room crashes (SIGKILL): the party is unchanged; a member's seat held there keeps the room in
+//     the directory, so tickets still go to it; with none held, they go elsewhere;
+//   - a new room process: Alice sits again, the roster has her HP again, and Dave goes to her room;
+//   - the party service fails (its functions gone from the database): the roster is refused, but a
+//     ticket for the realm is still made, and Dave sits in the room with it; restored, the roster is whole.
+rc_parties_room :: (t: [] Ap, room_bin_in: string) {
+  out: [4096] u8; hb: [64] u8; rb: [256] u8;
+  ps: [3] Player;
+  for i: 0..<3 { r := ap_player(t, ps[i..<i + 1]); }
+  alice := ps[0..<1]; bob := ps[1..<2]; dave := ps[2..<3];
+  ok := rp_join_of(t, pl_key(alice), pl_key(bob)) == 200 && rp_join_of(t, pl_key(alice), pl_key(dave)) == 200;
+  rootb: [4096] u8; root := fs_cwd(rootb[..]);
+  binb: [1] Sb;
+  if room_bin_in.count > 0 && room_bin_in[0] != '/' { sb(binb[..], root); sb(binb[..], "/"); }
+  sb(binb[..], room_bin_in);
+  wa: [4096] u8; work_a := fs_temp("room-party-a", wa[..]);
+  la: [1] FcLog; pa: [1] int;
+  room := ifx ok then rp_room(t, sb_text(binb[..]), work_a, pa[..], la[..]) else -1;
+  gq: [1] Sb; sb(gq[..], "select verse.room_owner_next('"); sb(gq[..], pl_id(alice)); sb(gq[..], "')");
+  u: [1] Sb; secs: [16] u8; none: [1] string;
+  sa := [4] string.["coax/web/tool.sh", "coax/web/room/owner-seat.coax", ro_url(t, u[..], pa[0], pl_id(alice), "ptyroom-1", rc_num(ap_sql(t, sb_text(gq[..]), out[..]))), ap_num(25, secs[..])];
+  seat := ifx room >= 0 then fc_start(sa[..], none[0..<0], "") else -1;
+  // the room reports her HP and the directory has her in ptyroom-1
+  vq: [1] Sb; sb(vq[..], "select count(*) from verse.room_vitals where who = '"); sb(vq[..], pl_id(alice)); sb(vq[..], "' and hp is not null");
+  dq: [1] Sb; sb(dq[..], "select count(*) from verse.room_instances where code = 'ptyroom-1' and '"); sb(dq[..], pl_id(alice)); sb(dq[..], "' = any (pids)");
+  seen := seat >= 0 && rp_until(t, sb_text(vq[..]), "1", room, la[..], 30000) && rp_until(t, sb_text(dq[..]), "1", room, la[..], 20000);
+  hq: [1] Sb; sb(hq[..], "select hp from verse.room_vitals where who = '"); sb(hq[..], pl_id(alice)); sb(hq[..], "'");
+  st := rp_party(t, pl_key(bob), "", "");
+  b := ap_body(t);
+  v1 := ap_member_int(b, "version", 0);
+  hp := rp_hp(b, pl_id(alice), hb[..]);
+  ap_check(t, "parties (room): a real room's report is Alice's HP in Bob's roster", seen && st == 200 && hp != "" && hp != "null" && hp == ap_sql(t, sb_text(hq[..]), out[..]), b);
+  st = ri_ticket_in(t, pl_key(dave), "ptyroom", "ptyroom");
+  ap_check(t, "parties (room): from the room's own directory report, Dave's ticket for the realm goes to Alice's room", st == 200 && rc_is(ap_body(t), "room", "ptyroom-1"), ap_body(t));
+  // the crash
+  rp_stop(seat, PROC_SIGKILL); rp_stop(room, PROC_SIGKILL);
+  st = rp_party(t, pl_key(bob), "", "");
+  b = ap_body(t);
+  ap_check(t, "parties (room): the room crashed: the party is unchanged (its members, its version)", st == 200 && rp_has(b, pl_id(alice)) && rp_has(b, pl_id(dave)) && ap_member_int(b, "version", 0) == v1, b);
+  // past the directory's wait for a report (15 s; its first report's 25 s), Dave's ticket holds his seat
+  // there and keeps the room in the directory, so the party still goes to it (its shard starts it
+  // again on the next join); with no seat held, a member's ticket goes elsewhere
+  ap_do(t, "update verse.room_instances set at = at - 30000, made_at = made_at - 30000 where code = 'ptyroom-1'");
+  st = ri_ticket_in(t, pl_key(bob), "ptyroom", "ptyroom");
+  ap_check(t, "parties (room): crashed with a seat held, Bob's ticket for the realm still goes to the party's room", st == 200 && rc_is(ap_body(t), "room", "ptyroom-1"), ap_body(t));
+  ap_do(t, "delete from verse.room_holds where code = 'ptyroom-1'");
+  ap_do(t, "update verse.room_instances set at = at - 30000, made_at = made_at - 30000, pids = '{}' where code = 'ptyroom-1'");
+  pq: [1] Sb; sb(pq[..], "select coalesce(code, 'none') from verse.party_room('ptyroom', '"); sb(pq[..], pl_id(alice)); sb(pq[..], "', 16)");
+  ap_check(t, "parties (room): crashed with no seat held, the party has no room to place anyone in", ap_sql(t, sb_text(pq[..]), out[..]) == "none", "");
+  // a new room process, and Alice again
+  wb: [4096] u8; work_b := fs_temp("room-party-b", wb[..]);
+  lb: [1] FcLog; pb: [1] int;
+  room_b := rp_room(t, sb_text(binb[..]), work_b, pb[..], lb[..]);
+  hz: [1] Sb; sb(hz[..], "update verse.room_vitals set hp_at = 0 where who = '"); sb(hz[..], pl_id(alice)); sb(hz[..], "'"); ap_do(t, sb_text(hz[..]));
+  sa[2] = ro_url(t, u[..], pb[0], pl_id(alice), "ptyroom-1", rc_num(ap_sql(t, sb_text(gq[..]), out[..])));
+  sa[3] = ap_num(40, secs[..]);
+  seat_b := ifx room_b >= 0 then fc_start(sa[..], none[0..<0], "") else -1;
+  dlive: [1] Sb; sb(dlive[..], sb_text(dq[..])); sb(dlive[..], " and at > (extract(epoch from clock_timestamp()) * 1000)::bigint - 10000");
+  vnew: [1] Sb; sb(vnew[..], sb_text(vq[..])); sb(vnew[..], " and hp_at > (extract(epoch from clock_timestamp()) * 1000)::bigint - 60000");
+  back := seat_b >= 0 && rp_until(t, sb_text(vnew[..]), "1", room_b, lb[..], 30000) && rp_until(t, sb_text(dlive[..]), "1", room_b, lb[..], 20000);
+  st = rp_party(t, pl_key(bob), "", "");
+  hp = rp_hp(ap_body(t), pl_id(alice), hb[..]);
+  ap_check(t, "parties (room): restarted, the new room's report is Alice's HP in Bob's roster again", back && st == 200 && hp != "" && hp != "null", ap_body(t));
+  st = ri_ticket_in(t, pl_key(dave), "ptyroom", "ptyroom");
+  ap_check(t, "parties (room): restarted, Dave's ticket goes to Alice's room again", st == 200 && rc_is(ap_body(t), "room", "ptyroom-1"), ap_body(t));
+  // the party service fails: its functions are gone from the database
+  ap_do(t, "alter function verse.party_room(text, text, int) rename to party_room_down");
+  ap_do(t, "alter function verse.party_view(text) rename to party_view_down");
+  st = rp_party(t, pl_key(bob), "", "");
+  ap_check(t, "parties (room): the party service down: the roster is refused, not made up", st >= 500, ap_body(t));
+  st = ri_ticket_in(t, pl_key(dave), "ptyroom", "ptyroom");
+  tb: [1024] u8; ticket := ap_member(ap_body(t), "ticket", tb[..]);
+  placed := ap_member(ap_body(t), "room", rb[..]);
+  ap_check(t, "parties (room): the party service down: a ticket for the realm is still made", st == 200 && ticket.count > 0 && placed.count > 0 && ap_kind(ap_body(t), "party_full") == 0, ap_body(t));
+  // Dave sits in the room the ticket names (the API's own ticket, on the running room)
+  du: [1] Sb; sb(du[..], "ws://localhost:"); sb_int(du[..], pb[0]); sb(du[..], "/api/room/relay/everglade/"); sb(du[..], placed); sb(du[..], "?t="); sb(du[..], ticket);
+  sd := [4] string.["coax/web/tool.sh", "coax/web/room/owner-seat.coax", sb_text(du[..]), ap_num(4, secs[..])];
+  sj: [4096] u8;
+  dj := ifx room_b >= 0 then ro_seat_json(fc_start(sd[..], none[0..<0], ""), 30000, sj[..]) else "";
+  ap_check(t, "parties (room): the party service down: Dave sits with that ticket", ap_member_int(dj, "seat", -1) >= 0, dj);
+  ap_do(t, "alter function verse.party_room_down(text, text, int) rename to party_room");
+  ap_do(t, "alter function verse.party_view_down(text) rename to party_view");
+  st = rp_party(t, pl_key(bob), "", "");
+  b = ap_body(t);
+  ap_check(t, "parties (room): the service back: the roster is whole, at the same version", st == 200 && rp_has(b, pl_id(alice)) && rp_has(b, pl_id(dave)) && ap_member_int(b, "version", 0) == v1, b);
+  rp_stop(seat_b, PROC_SIGKILL); rp_stop(room_b, PROC_SIGTERM);
+  g := fs_remove(work_a); g = fs_remove(work_b);
 }
 // A ticket for room in REALM (ri_ticket's, with the realm named).
 ri_ticket_in :: (t: [] Ap, key: string, room: string, realm: string) -> int {
@@ -1340,7 +1495,11 @@ tool_main :: () -> int #export_c {
     if name == "chat" { rc_chat(t[..]); }
     if name == "events" { rc_events(t[..]); }
     if name == "invites" { rc_invites(t[..]); }
-    if name == "parties" { rc_parties(t[..]); }
+    if name == "parties" {
+      rc_parties(t[..]);
+      bb: [4096] u8; bin := proc_getenv("ROOM_BIN", bb[..]);
+      if bin != "" { rc_parties_room(t[..], bin); }
+    }
     if name == "items" { rc_items(t[..]); }
     if name == "checkpoints" { rc_checkpoints(t[..]); }
     if name == "stats" { rc_stats(t[..]); }

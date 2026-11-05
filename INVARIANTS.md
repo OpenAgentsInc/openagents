@@ -755,7 +755,13 @@ either way by a member can't join. Every change of membership or hiding
 raises the party's version, and a roster lasts a minute (`until`). Placement
 by party (`verse.party_room`) never seats anyone past a room's seats: a full
 party room is named to the page (`party_full`) and the page goes elsewhere.
-Checks: `coax/web/api/tests/room_checks.coax` parties.
+A page whose room came from the realm's list asks its ticket for the realm,
+so placement by party applies; a room a link names, or a friend's INVITE,
+stays the player's choice. A failing party service never blocks a ticket:
+placement goes on without the party. The page's PARTY pane shows only what
+the roster carries. Checks: `coax/web/api/tests/room_checks.coax` parties
+(with `ROOM_BIN`, a real room's crash, restart and the service down), and
+`everglade5e.coax` "party:".
 
 ## Inverse physics differentiates the owned solver and exposes ambiguity
 

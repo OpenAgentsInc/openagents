@@ -190,6 +190,15 @@ static int32_t mod_id = -1;
 static bool mod_due;
 static char mod_url[64]; static uint32_t mod_url_n;
 static char mod_body[192]; static uint32_t mod_body_n;
+/* PARTY's roster (GET /api/playtest/party with the player key, everglade-party.coax, #12852): one at a time */
+static int32_t party_id = -1;
+static bool party_due;
+static void party_out(void) {
+  if (!party_due || party_id >= 0 || !has_player) return;
+  party_due = false;
+  party_id = coaxial_http((uint32_t)(uintptr_t)"/api/playtest/party", 19, 0, 0, 4 | 8);   /* a GET, its answer wanted, with the key */
+  if (party_id < 0) party_id = -1;
+}
 static void mod_out(void) {
   if (!mod_due || mod_id >= 0 || !has_player) return;
   mod_due = false;
@@ -248,6 +257,7 @@ static void net_drain(uint32_t state) {
         mod_due = true;
       }
     }
+    else if (p->op.e[k] == 8) party_due = true;
     else if (p->op.e[k] == 6 && len < sizeof rooms_url) { memcpy(rooms_url, &p->buf.e[p->from.e[k]], len); rooms_url_n = len; rooms_due = true; }
   }
   p->n = 0; p->used = 0;
@@ -541,6 +551,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     ticket_out();
     rooms_out();
     mod_out();
+    party_out();
   }
   if (n > 0) {
     // the river's uniform block, after the page's frame has written the rest
@@ -900,6 +911,7 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
   }
   if (ticket_id >= 0 && kind == 512 + ticket_id) { ticket_id = -1; net_ticket(at(state), (coax_string){(const char *)inbox, length}); return; }
   if (mod_id >= 0 && kind == 512 + mod_id) { mod_id = -1; net_moderated(at(state), (coax_string){(const char *)inbox, length}); return; }
+  if (party_id >= 0 && kind == 512 + party_id) { party_id = -1; net_party(at(state), (coax_string){(const char *)inbox, length}); return; }
   if (rooms_id >= 0 && kind == 512 + rooms_id) { rooms_id = -1; net_rooms(at(state), (coax_string){(const char *)inbox, length}); return; }
   if (world_id >= 0 && kind == 512 + world_id) {
     world_id = -1;

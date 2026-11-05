@@ -707,7 +707,10 @@ static void on_term(int sig) { (void)sig; term_asked = 1; }
    (room-directory.coax, coax/web/api/rooms.c, #12717). */
 static void directory_post(void) {
   int64_t n = rm_directory_due(view());
-  if (n <= 0 || dev_dir) return;   /* --dev: the room's own list answers /api/playtest/rooms/ */
+  const char *dev_url = getenv("OA_ROOM_DIRECTORY_URL");
+  /* --dev: the room's own list answers /api/playtest/rooms/, unless OA_ROOM_DIRECTORY_URL names an API
+     (the parties check, coax/web/api/tests/room_checks.coax, #12852) */
+  if (n <= 0 || (dev_dir && !(dev_url && *dev_url))) return;
   char buf[512];
   post_signed(api_url("OA_ROOM_DIRECTORY_URL", "/api/playtest/room-directory", buf, sizeof buf), server->dir.mac.e, server->dir.out.e, n);
 }

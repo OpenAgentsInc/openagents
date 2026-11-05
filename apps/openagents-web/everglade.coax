@@ -1452,6 +1452,7 @@ everglade_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id
   }
   if s[0].board { return board_pointer(s, x, y, phase, id); }
   if join_pointer(s, x, y, phase, id) { return true; }   // INVITE, CHARACTER and its picker (everglade-join.coax)
+  if pt_pointer(s, x, y, phase, id) { return true; }   // PARTY and its pane (everglade-party.coax)
   if md_pointer(s, x, y, phase, id) { return true; }   // a player's nameplate and its pane (everglade-moderate.coax)
   if ege_pointer(s, x, y, phase, id) { return true; }   // an admin's EVENTS and its pane (everglade-events.coax)
   if egs_pointer(s, x, y, phase, id) { return true; }   // SOUND, its slider and MUTE (everglade-sound.coax)
@@ -3999,6 +4000,7 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   if !eg_pane_open(s) { n = watch_hud(s, out, u, n, mb.y1 + 10 * k + join_drop(s)); }   // your HP, WANTED and the watch's shouts (everglade-watch.coax)
   if !eg_pane_open(s) { n = ege_hud(s, out, u, n, mb.y1 + 10 * k + join_drop(s), title_box.y1, title_box.x1); }   // the raid, your level, EVENTS (everglade-events.coax)
   n = md_draw(s, out, u, n, md_top(s, mb.y1 + 10 * k + join_drop(s)));   // a tapped nameplate's BLOCK, REPORT, KICK (everglade-moderate.coax), over the rest
+  n = pt_draw(s, out, u, n, md_top(s, mb.y1 + 10 * k + join_drop(s)));   // PARTY's pane: who is in your party, their HP (everglade-party.coax)
   n = net_bars(s, out, u, n);   // the room's summoned creatures' Hit Points (everglade-net.coax)
   n = st_hud(s, out, u, n);   // Blinded, Deafened; what the beasts say (everglade-storm.coax Speak with Animals)
   s[0].guide.button=Box.{};s[0].guide.drawn=0;

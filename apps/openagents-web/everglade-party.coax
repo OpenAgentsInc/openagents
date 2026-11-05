@@ -1,0 +1,393 @@
+// Your party on the page (#12852; the API's parties: coax/web/api/migrations/0129_parties.sql). Loaded
+// by everglade-net.coax.
+//
+// PARTY, beside INVITE and CHARACTER, opens a pane under the top row: who is in your party and each
+// one's Hit Points, as the API's roster has them (GET /api/playtest/party: health only, from the
+// rooms' own reports; a member no room has reported for ten minutes is AWAY). The roster is asked for
+// as the pane opens and every PT_POLL_MS while it stays open; an answer that doesn't come says so, and
+// the next ask tries again. The pane's buttons:
+//   - PARTY LINK (POST /api/playtest/party/invite): a code one friend joins by for ten minutes (a party
+//     of one is made when you have none). The page's address with ?party=CODE goes to the clipboard.
+//   - LEAVE, in a party (POST /api/playtest/party/leave).
+//   - CLOSE.
+// A page opened with ?party=CODE joins that party (POST /api/playtest/party/join) before it asks for
+// its seat ticket, and a page whose room came from the realm's list asks its ticket for the realm, so
+// the directory seats it with its party while that room has a seat; when it is full, the ticket says
+// so ("party_full") and the page says it, with the room it joins instead.
+//   coax/bin/coax test apps/openagents-web/everglade5e.coax --only "party:"
+
+NET_PIPE_PARTY :: 8;       // the pipe's GET with the player key: its bytes the API path (the face carries it)
+PT_MEMBERS :: 8;           // a party's members at most (the API's verse.party_most)
+PT_CODE :: 40;             // an invite code's bytes at most (the API's are 32 hex)
+PT_POLL_MS :: 5000;        // ms between roster asks while the pane is open
+PT_LATE_MS :: 15000;       // ms an ask may take before the pane says it couldn't reach the party
+PB_LINK :: 0; PB_LEAVE :: 1; PB_CLOSE :: 2; PB_N :: 3;
+PT_ASK_INVITE :: 1; PT_ASK_LEAVE :: 2; PT_ASK_JOIN :: 3;
+
+EgParty :: struct {
+  button: Box;               // PARTY, in the top row (join_hud)
+  open: bool; boxes: [PB_N] Box; pane: Box; press: int = -1; finger: int = -1;
+  // the roster as the API last answered it
+  known: bool; in: bool; version: int; n: int;
+  name: [PT_MEMBERS * NET_NAME] u8; name_n: [PT_MEMBERS] int;
+  hp: [PT_MEMBERS] int; hp_max: [PT_MEMBERS] int; you: [PT_MEMBERS] bool;
+  reading: bool; read_at: int = -1000000; failed: bool;
+  asked: int;                // the POST in flight (PT_ASK_*, 0 none)
+  // ?party=CODE: joined before the seat ticket is asked for
+  join: [PT_CODE] u8; join_n: int; join_due: bool;
+  line: [64] u8; line_n: int;   // the pane's last word on a press
+}
+
+pt_of :: (n: [] EgNet) -> [] EgParty { return n[0].party[..]; }
+pt_hex :: (t: string) -> bool {
+  if t.count < 16 || t.count > PT_CODE { return false; }
+  for ch: t { if !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f')) { return false; } }
+  return true;
+}
+pt_set_line :: (p: [] EgParty, t: string) { p[0].line_n = 0; for ch: t { if p[0].line_n >= 64 { break; } p[0].line[p[0].line_n] = ch; p[0].line_n += 1; } }
+
+// The page facts' part (jn_facts): ?party=CODE, a friend's invite to join.
+pt_facts :: (n: [] EgNet, url: string, golden: bool) {
+  p := pt_of(n);
+  code := net_query(url, "party");
+  p[0].join_n = 0; p[0].join_due = false;
+  if golden || !pt_hex(code) { return; }
+  for i: 0..<code.count { p[0].join[i] = code[i]; }
+  p[0].join_n = code.count; p[0].join_due = true;
+}
+// Whether the seat ticket waits: a friend's invite is joined first, so the directory seats you with them.
+pt_holding :: (n: [] EgNet) -> bool { p := pt_of(n); return p[0].join_due || p[0].asked == PT_ASK_JOIN; }
+
+// Each frame (net_step): the invite joined; the roster asked for while the pane is open.
+pt_step :: (s: [] Everglade, n: [] EgNet) {
+  p := pt_of(n);
+  if p[0].join_due && p[0].asked == 0 && n[0].want {
+    t: [128] u8;
+    k := wire_put(t[..], 0, "/api/playtest/party/join\n{\"code\":\""); k = wire_put(t[..], k, cast(string) p[0].join[0..<p[0].join_n]); k = wire_put(t[..], k, "\"}");
+    if pipe_put(n[0].pipe[..], NET_PIPE_ASK, -1, cast(string) t[0..<k]) { p[0].join_due = false; p[0].asked = PT_ASK_JOIN; }
+  }
+  if !p[0].open { return; }
+  if p[0].reading && n[0].mono - p[0].read_at >= PT_LATE_MS { p[0].reading = false; p[0].failed = true; }
+  if !p[0].reading && n[0].mono - p[0].read_at >= PT_POLL_MS { pt_read(n); }
+}
+pt_read :: (n: [] EgNet) {
+  p := pt_of(n);
+  if pipe_put(n[0].pipe[..], NET_PIPE_PARTY, -1, "/api/playtest/party") { p[0].reading = true; p[0].read_at = n[0].mono; }
+}
+
+// The roster's answer ("200\n{"party":...,"version":V,"until":U,"members":[{"id":..,"name":..,"hp":..,
+// "hp_max":..,"you":..},...]}", or {"party":null}; anything else: not reached).
+net_party :: (s: [] Everglade, answer: string) #export_c {
+  if !net_on(s) { return; }
+  p := pt_of(net_of(s));
+  p[0].reading = false;
+  if answer.count < 5 || answer[0..<4] != "200\n" { p[0].failed = true; return; }
+  pt_take(p, answer[4..<answer.count]);
+}
+pt_take :: (p: [] EgParty, body: string) {
+  p[0].failed = false; p[0].known = true;
+  p[0].in = net_json_field(body, "party") != "null" && net_json_field(body, "party").count > 0;
+  p[0].n = 0;
+  if !p[0].in { return; }
+  p[0].version = net_number(net_json_field(body, "version"));
+  // each member's object, from its "id" to its "you" (last, so a name's bytes can't end it early)
+  a := 0;
+  while a < body.count && p[0].n < PT_MEMBERS {
+    i := pt_find(body, a, "{\"id\":");
+    if i < 0 { break; }
+    e := pt_find(body, i, "\"you\":");
+    if e < 0 { break; }
+    e2 := e; while e2 < body.count && body[e2] != '}' { e2 += 1; }
+    m := body[i..<e2 + ifx e2 < body.count then 1 else 0];
+    q := p[0].n;
+    p[0].name_n[q] = net_copy_name(p[0].name[q * NET_NAME..<(q + 1) * NET_NAME], net_json_field(m, "name"));
+    p[0].hp[q] = ifx net_json_field(m, "hp") == "null" then -1 else net_number(net_json_field(m, "hp"));
+    p[0].hp_max[q] = ifx net_json_field(m, "hp_max") == "null" then -1 else net_number(net_json_field(m, "hp_max"));
+    p[0].you[q] = net_json_field(m, "you") == "true";
+    p[0].n += 1;
+    a = e2;
+  }
+}
+pt_find :: (t: string, from: int, part: string) -> int {
+  if part.count > t.count { return -1; }
+  for i: from..<t.count - part.count + 1 { if t[i..<i + part.count] == part { return i; } }
+  return -1;
+}
+pt_name :: (p: [] EgParty, q: int) -> string { return cast(string) p[0].name[q * NET_NAME..<q * NET_NAME + p[0].name_n[q]]; }
+
+// The API's answer to a press's POST (through net_moderated): true when it was the party's.
+pt_answered :: (s: [] Everglade, answer: string) -> bool {
+  n := net_of(s); p := pt_of(n);
+  asked := p[0].asked;
+  if asked == 0 { return false; }
+  p[0].asked = 0;
+  ok := answer.count > 4 && answer[0..<4] == "200\n";
+  why := net_json_field(answer, "error");
+  if asked == PT_ASK_JOIN {
+    if ok { pt_say(s, "YOU JOINED THE PARTY"); }
+    else if why == "full" { pt_say(s, "THAT PARTY IS FULL"); }
+    else if why == "blocked" { pt_say(s, "YOU CAN'T JOIN THAT PARTY"); }
+    else { pt_say(s, "THAT PARTY LINK HAS RUN OUT"); }
+    return true;
+  }
+  if asked == PT_ASK_INVITE {
+    code := net_json_field(answer, "code");
+    if !ok || !pt_hex(code) { pt_set_line(p, "NO LINK MADE · TRY AGAIN"); return true; }
+    j := n[0].join[..];
+    if s[0].action == 0 {
+      k := jn_put(s[0].outbox[..], 0, cast(string) j[0].page[0..<j[0].page_n]);
+      k = jn_put(s[0].outbox[..], k, "?party="); k = jn_put(s[0].outbox[..], k, code);
+      s[0].out_n = k; s[0].action = JN_ACT_COPY;
+    }
+    pt_set_line(p, "LINK COPIED · FOR ONE FRIEND · 10 MIN");
+    pt_read(n);
+    return true;
+  }
+  if asked == PT_ASK_LEAVE {
+    pt_set_line(p, ifx ok then "YOU LEFT THE PARTY" else "CAN'T LEAVE · TRY AGAIN");
+    pt_read(n);
+    return true;
+  }
+  return true;
+}
+pt_say :: (s: [] Everglade, t: string) { if s[0].started { sp_say(s, t, -1, ""); } }
+
+// The ticket's answer: the party's room was full (party_full), said with the room joined instead.
+pt_ticket :: (s: [] Everglade, answer: string) {
+  full := net_json_field(answer, "party_full");
+  if full.count == 0 { return; }
+  b: [96] u8; k := jn_put(b[..], 0, "YOUR PARTY'S ROOM IS FULL");
+  room := net_json_field(answer, "room");
+  if room.count > 0 && room.count < 32 { k = jn_put(b[..], k, " · JOINING "); k = jn_put(b[..], k, room); }
+  for i: 0..<k { if b[i] >= 'a' && b[i] <= 'z' { b[i] -= 32; } }
+  pt_say(s, cast(string) b[0..<k]);
+}
+
+// ---- the pane
+
+pt_open :: (s: [] Everglade) {
+  n := net_of(s); p := pt_of(n);
+  p[0].open = true; p[0].line_n = 0;
+  n[0].mod[0].open = false;   // one pane at a time
+  if !p[0].reading { pt_read(n); }
+}
+// The pane, under the top row in the middle (top: md_top's): PARTY, a row a member, then a line of
+// what the last press did, and PARTY LINK, LEAVE (in a party) and CLOSE.
+pt_draw :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, top: f32) -> int {
+  if !net_on(s) { return at; }
+  p := pt_of(net_of(s));
+  for b: 0..<PB_N { p[0].boxes[b] = Box.{}; }
+  p[0].pane = Box.{};
+  if !p[0].open { return at; }
+  k := hi(s[0].dpr, 0.5);
+  cap := 9 * k; row_h := 22 * k; gap := 8 * k; bh := 38 * k;
+  words := [PB_N] string.["PARTY LINK", "LEAVE", "CLOSE"];
+  shown := [PB_N] bool.[true, p[0].in, true];
+  brow := 0.0f32;
+  for b: 0..<PB_N { if shown[b] { brow += text_width(words[b], 9 * k) + 32 * k + gap; } }
+  brow -= gap;
+  // the lines: a member each, or what the pane knows
+  lines := ifx p[0].in && p[0].n > 0 then p[0].n else 1;
+  note := "";
+  if p[0].failed { note = "CAN'T REACH YOUR PARTY · TRYING AGAIN"; }
+  else if !p[0].known { note = "ONE MOMENT"; }
+  else if !p[0].in { note = "NOT IN A PARTY · PARTY LINK MAKES ONE"; }
+  extra := ifx p[0].line_n > 0 then 1 else 0;
+  pw := hi(brow, 300 * k);
+  if note.count > 0 { pw = hi(pw, text_width(note, 7 * k) + 32 * k); }
+  if p[0].line_n > 0 { pw = hi(pw, text_width(cast(string) p[0].line[0..<p[0].line_n], 7 * k) + 32 * k); }
+  pw = lo(pw + 32 * k, s[0].width - 32 * k);
+  x0 := (s[0].width - pw) / 2;
+  ph := cap + 28 * k + f32(lines + extra) * row_h + bh + 24 * k;
+  pane := Box.{x0 = x0, y0 = top, x1 = x0 + pw, y1 = top + ph};
+  p[0].pane = pane;
+  plate(s, u, pane, 0.9, 0);
+  gold := ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B); pale := ink(k, 0.85, PARCH_R, PARCH_G, PARCH_B);
+  tx := x0 + 16 * k;
+  v := draw_text(out, at, "PARTY", tx, top + 14 * k + cap, cap, GAP, SPACE, gold, false, false);
+  y := top + cap + 28 * k + 12 * k;
+  if note.count > 0 && !(p[0].in && p[0].n > 0) {
+    v = draw_text(out, v, note, tx, y, 7 * k, GAP, SPACE, pale, false, false);
+    y += row_h;
+  } else {
+    for q: 0..<p[0].n {
+      nm: [64] u8; m := jn_put(nm[..], 0, pt_name(p, q));
+      if p[0].you[q] { m = jn_put(nm[..], m, " (YOU)"); }
+      for i: 0..<m { if nm[i] >= 'a' && nm[i] <= 'z' { nm[i] -= 32; } }
+      v = draw_text(out, v, cast(string) nm[0..<m], tx, y, 7 * k, GAP, SPACE, ifx p[0].you[q] then gold else pale, false, false);
+      hp: [32] u8; h := 0;
+      if p[0].hp[q] >= 0 && p[0].hp_max[q] > 0 { h = jn_put(hp[..], 0, "HP "); h = jn_digits(hp[..], h, p[0].hp[q]); h = jn_put(hp[..], h, "/"); h = jn_digits(hp[..], h, p[0].hp_max[q]); }
+      else { h = jn_put(hp[..], 0, "AWAY"); }
+      hw := text_width(cast(string) hp[0..<h], 7 * k);
+      v = draw_text(out, v, cast(string) hp[0..<h], pane.x1 - 16 * k - hw, y, 7 * k, GAP, SPACE, pale, false, false);
+      y += row_h;
+    }
+  }
+  if p[0].line_n > 0 { v = draw_text(out, v, cast(string) p[0].line[0..<p[0].line_n], tx, y, 7 * k, GAP, SPACE, gold, false, false); }
+  x := x0 + (pw - brow) / 2; by := pane.y1 - bh - 12 * k;
+  for b: 0..<PB_N {
+    if !shown[b] { continue; }
+    bw := text_width(words[b], 9 * k) + 32 * k;
+    box := Box.{x0 = x, y0 = by, x1 = x + bw, y1 = by + bh};
+    p[0].boxes[b] = box;
+    v = jn_button(s, out, u, v, box, words[b], p[0].press == b);
+    x += bw + gap;
+  }
+  return v;
+}
+
+// PARTY opens the pane; while it is up it takes every press (outside it, CLOSE).
+pt_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
+  if !net_on(s) { return false; }
+  p := pt_of(net_of(s));
+  if phase == 0 {
+    if p[0].open {
+      for b: 0..<PB_N { if in_box(p[0].boxes[b], x, y) { p[0].press = b; p[0].finger = id; return true; } }
+      if !in_box(p[0].pane, x, y) { p[0].open = false; p[0].finger = id; p[0].press = -2; }
+      return true;
+    }
+    if in_box(p[0].button, x, y) { p[0].press = PB_N; p[0].finger = id; return true; }
+    return false;
+  }
+  if p[0].finger != id { return p[0].open; }
+  if phase == 1 { return true; }
+  b := p[0].press; p[0].press = -1; p[0].finger = -1;
+  if b == PB_N { if phase == 2 && in_box(p[0].button, x, y) { pt_open(s); } return true; }
+  if b < 0 || phase != 2 || !in_box(p[0].boxes[b], x, y) { return true; }
+  pt_act(s, b);
+  return true;
+}
+pt_act :: (s: [] Everglade, b: int) {
+  n := net_of(s); p := pt_of(n);
+  if b == PB_CLOSE { p[0].open = false; return; }
+  if p[0].asked != 0 { return; }   // one at a time
+  if b == PB_LINK {
+    if pipe_put(n[0].pipe[..], NET_PIPE_ASK, -1, "/api/playtest/party/invite\n{}") { p[0].asked = PT_ASK_INVITE; pt_set_line(p, "MAKING A LINK"); }
+  } else if b == PB_LEAVE && p[0].in {
+    if pipe_put(n[0].pipe[..], NET_PIPE_ASK, -1, "/api/playtest/party/leave\n{}") { p[0].asked = PT_ASK_LEAVE; }
+  }
+}
+
+#test "party: the roster's answer lists each member's name and HP, AWAY with no report, you marked; none and a failure are said" {
+  g: [1] Everglade; nn: [1] EgNet;
+  everglade_attach_net(g[..], nn[..]);
+  p := pt_of(net_of(g[..]));
+  net_party(g[..], "200\n{\"party\":12,\"version\":3,\"until\":99,\"members\":[{\"id\":\"p-a\",\"name\":\"Willow {Salmon}\",\"hp\":7,\"hp_max\":9,\"you\":false},{\"id\":\"p-b\",\"name\":\"Finch\",\"hp\":null,\"hp_max\":null,\"you\":true}]}");
+  #assert p[0].known && p[0].in && p[0].version == 3 && p[0].n == 2 && !p[0].failed;
+  #assert pt_name(p, 0) == "Willow {Salmon}" && p[0].hp[0] == 7 && p[0].hp_max[0] == 9 && !p[0].you[0];
+  #assert pt_name(p, 1) == "Finch" && p[0].hp[1] == -1 && p[0].you[1];
+  net_party(g[..], "200\n{\"party\":null}");
+  #assert p[0].known && !p[0].in && p[0].n == 0;
+  net_party(g[..], "500\n{\"error\":\"no party\"}");
+  #assert p[0].failed;
+}
+
+#test "party: PARTY opens the pane and asks for the roster, again every 5 s while open; PARTY LINK and LEAVE ask the API; outside it closes" {
+  g: [1] Everglade; nn: [1] EgNet;
+  everglade_attach_net(g[..], nn[..]);
+  net_facts(g[..], "url=https://openagents.com/worlds/everglade\nplayer=p-me\nnow=5000000\nnav=0\n", "everglade", false);
+  n := net_of(g[..]); p := pt_of(n);
+  n[0].pipe[0].n = 0;
+  p[0].button = Box.{x0 = 10, y0 = 10, x1 = 60, y1 = 40};
+  n[0].mono = 1000;
+  #assert pt_pointer(g[..], 20, 20, 0, 1) && pt_pointer(g[..], 20, 20, 2, 1) && p[0].open;
+  #assert n[0].pipe[0].n == 1 && n[0].pipe[0].op[0] == NET_PIPE_PARTY && pipe_bytes(n[0].pipe[..], 0) == "/api/playtest/party";
+  net_party(g[..], "200\n{\"party\":12,\"version\":2,\"until\":99,\"members\":[{\"id\":\"p-me\",\"name\":\"Finch\",\"hp\":5,\"hp_max\":9,\"you\":true}]}");
+  n[0].mono = 3000; pt_step(g[..], n);
+  #assert n[0].pipe[0].n == 1;   // not yet
+  n[0].mono = 6100; pt_step(g[..], n);
+  #assert n[0].pipe[0].n == 2;
+  // an ask that never comes back: the pane says so, and asks again
+  n[0].mono = 6100 + PT_LATE_MS; pt_step(g[..], n);
+  #assert p[0].failed && n[0].pipe[0].n == 3;
+  net_party(g[..], "200\n{\"party\":12,\"version\":2,\"until\":99,\"members\":[{\"id\":\"p-me\",\"name\":\"Finch\",\"hp\":5,\"hp_max\":9,\"you\":true}]}");
+  // PARTY LINK: the invite, its answer copies ?party=CODE
+  pt_act(g[..], PB_LINK);
+  #assert p[0].asked == PT_ASK_INVITE && pipe_bytes(n[0].pipe[..], 3) == "/api/playtest/party/invite\n{}";
+  net_moderated(g[..], "200\n{\"party\":12,\"code\":\"0123456789abcdef0123456789abcdef\",\"until\":5}");
+  #assert p[0].asked == 0 && g[0].action == JN_ACT_COPY && cast(string) g[0].outbox[0..<g[0].out_n] == "https://openagents.com/worlds/everglade?party=0123456789abcdef0123456789abcdef";
+  g[0].action = 0;
+  pt_act(g[..], PB_LEAVE);
+  #assert p[0].asked == PT_ASK_LEAVE && jn_has(pipe_bytes(n[0].pipe[..], n[0].pipe[0].n - 1), "/api/playtest/party/leave");
+  net_moderated(g[..], "200\n{\"party\":null}");
+  #assert p[0].asked == 0 && cast(string) p[0].line[0..<p[0].line_n] == "YOU LEFT THE PARTY";
+  // a press outside the pane closes it
+  p[0].pane = Box.{x0 = 100, y0 = 100, x1 = 200, y1 = 200};
+  #assert pt_pointer(g[..], 300, 300, 0, 2) && !p[0].open && pt_pointer(g[..], 300, 300, 2, 2);
+}
+
+#test "party: ?party=CODE joins before the seat ticket is asked for; the answers are said" {
+  g: [1] Everglade; nn: [1] EgNet;
+  everglade_attach_net(g[..], nn[..]);
+  net_facts(g[..], "url=https://openagents.com/worlds/everglade?party=0123456789abcdef0123456789abcdef\nplayer=p-me\nnow=5000000\nnav=0\n", "everglade", false);
+  n := net_of(g[..]); p := pt_of(n);
+  #assert p[0].join_due && pt_holding(n);
+  n[0].pipe[0].n = 0;
+  pt_step(g[..], n);
+  #assert p[0].asked == PT_ASK_JOIN && pt_holding(n) && pipe_bytes(n[0].pipe[..], 0) == "/api/playtest/party/join\n{\"code\":\"0123456789abcdef0123456789abcdef\"}";
+  net_moderated(g[..], "200\n{\"party\":12,\"version\":4}");
+  #assert !pt_holding(n) && p[0].asked == 0;
+  // a code that isn't hex is no invite
+  net_facts(g[..], "url=https://openagents.com/worlds/everglade?party=<script>\nplayer=p-me\nnow=5000000\nnav=0\n", "everglade", false);
+  #assert !pt_holding(n);
+}
+
+#test "party: a room from the realm's list asks its ticket for the realm, and a full party room is said with where you go" {
+  g: [1] Everglade; nn: [1] EgNet;
+  everglade_attach_net(g[..], nn[..]);
+  net_facts(g[..], "url=https://openagents.com/worlds/everglade#market\nplayer=p1\n", "everglade", false);
+  net_test_rooms(g[..]);
+  net_step(g[..], 100, 0, 0, -84, 0, 0, 0, false, 0, false, 0);
+  net_rooms(g[..], "200\n{\"join\":\"everglade-2\"}");
+  pipe_drained(nn[0].pipe[..]);
+  #assert jn_listed(nn[..]);
+  net_step(g[..], 200, 0, 0, -84, 0, 0, 0, false, 0, false, 0);
+  #assert nn[0].pipe[0].op[0] == NET_PIPE_TICKET && jn_has(pipe_bytes(nn[0].pipe[..], 0), "/api/playtest/room-ticket/everglade?realm=everglade&build=");
+  g[0].started = true;
+  net_ticket(g[..], "200\n{\"ticket\":\"v3.x\",\"room\":\"everglade-4\",\"shard\":1,\"party_full\":\"everglade-2\"}");
+  #assert cast(string) nn[0].code[0..<nn[0].code_n] == "everglade-4" && jn_has(cast(string) g[0].sp.news[0..<g[0].sp.news_n], "YOUR PARTY'S ROOM IS FULL · JOINING EVERGLADE-4");
+  // a link's room is its own choice
+  h: [1] Everglade; hn: [1] EgNet;
+  everglade_attach_net(h[..], hn[..]);
+  net_facts(h[..], "url=https://openagents.com/worlds/everglade?room=everglade-2#market\nplayer=p2\n", "everglade", false);
+  net_step(h[..], 100, 0, 0, -84, 0, 0, 0, false, 0, false, 0);
+  #assert !jn_listed(hn[..]) && jn_has(pipe_bytes(hn[0].pipe[..], 0), "/api/playtest/room-ticket/everglade-2?realm=everglade");
+  // playing on the local host from the first frame (#12882): the room's ticket is asked for the realm too
+  o: [1] Everglade; no: [1] EgNet;
+  everglade_attach_net(o[..], no[..]);
+  net_facts(o[..], "url=https://openagents.com/worlds/everglade\nplayer=p3\n", "everglade", false);
+  no[0].mono = 1000;
+  net_ask_room(o[..], no[..]);
+  net_rooms(o[..], "200\n{\"join\":\"everglade-3\"}");
+  pipe_drained(no[0].pipe[..]);
+  net_ask_room(o[..], no[..]);
+  #assert no[0].ticket_asked && no[0].local_host && jn_has(pipe_bytes(no[0].pipe[..], 0), "/api/playtest/room-ticket/everglade?realm=everglade&build=");
+}
+
+#test "party: PARTY sits beside CHARACTER on a desktop and under INVITE on a phone, clear of the title; its pane fits the screen" {
+  g: [1] Everglade; nn: [1] EgNet;
+  everglade_attach_net(g[..], nn[..]);
+  net_facts(g[..], "url=https://openagents.com/worlds/everglade\nplayer=p1\n", "everglade", false);
+  net_test_rooms(g[..]);
+  net_step(g[..], 100, 0, 0, -84, 0, 0, 0, false, 0, false, 0);
+  net_rooms(g[..], "200\n{\"join\":\"everglade-2\"}");
+  out: [8192] f32; u: [8192] f32;
+  g[0].dpr = 1; g[0].width = 1440; g[0].height = 900; g[0].talk = -1;
+  mb := Box.{x0 = 1340, y0 = 16, x1 = 1424, y1 = 54};
+  n := join_hud(g[..], out[..], u[..], 0, mb, 200);
+  pb := nn[0].party[0].button; cb := nn[0].join[0].boxes[JB_CHARACTER];
+  #assert pb.x1 > pb.x0 && pb.x1 < cb.x0 && pb.y0 == cb.y0 && pb.x0 > 200 && join_drop(g[..]) == 0;
+  // a phone (390 CSS px at 3x): the title reaches 150 px; INVITE and CHARACTER under MAP, PARTY a row lower
+  g[0].dpr = 3; g[0].width = 1170; g[0].height = 2532; g[0].touch = true;
+  mb = Box.{x0 = 1170 - 48 - 230, y0 = 48, x1 = 1170 - 48, y1 = 48 + 114};
+  n = join_hud(g[..], out[..], u[..], 0, mb, 450);
+  pb = nn[0].party[0].button; cb = nn[0].join[0].boxes[JB_CHARACTER];
+  ib := nn[0].join[0].boxes[JB_INVITE];
+  #assert cb.x0 >= 450 && pb.x0 >= 450 && pb.y0 > ib.y1 && pb.x1 == ib.x1 && join_drop(g[..]) >= pb.y1 - mb.y1;
+  // the pane with a full party fits inside the phone's width
+  nn[0].party[0].open = true;
+  net_party(g[..], "200\n{\"party\":1,\"version\":2,\"until\":9,\"members\":[{\"id\":\"p-1\",\"name\":\"Willowmere Salmonberry-Ashgrove\",\"hp\":17,\"hp_max\":17,\"you\":true},{\"id\":\"p-2\",\"name\":\"Finch\",\"hp\":null,\"hp_max\":null,\"you\":false}]}");
+  n = pt_draw(g[..], out[..], u[..], 0, 600);
+  pane := nn[0].party[0].pane;
+  #assert pane.x0 >= 0 && pane.x1 <= 1170 && nn[0].party[0].boxes[PB_LEAVE].x1 > 0 && nn[0].party[0].boxes[PB_CLOSE].x1 <= pane.x1;
+}

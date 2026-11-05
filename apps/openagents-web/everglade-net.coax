@@ -42,6 +42,7 @@
 #load "../../aethyr/session/lifecycle.coax";   // focus, hiding and the socket, as every host does them (#12856)
 #load "everglade-join.coax";   // which instance, who you are in it, INVITE (#12716)
 #load "everglade-moderate.coax";   // BLOCK, REPORT and KICK from a nameplate (#12714)
+#load "everglade-party.coax";      // PARTY: your party's roster, its link, joining by one (#12852)
 #load "everglade-events.coax";     // the raid's banner, your level and kit, the admin's EVENTS (#12737)
 
 NET_ENTS :: 256;
@@ -198,6 +199,7 @@ EgNet :: struct {
   feet_y: f32;                                // your feet's height as the face last gave it (net_step's fy)
   join: [1] EgJoin;                           // the instance, the CHARACTER picker and INVITE (everglade-join.coax)
   mod: [1] EgMod;                             // your blocks and the nameplate pane (everglade-moderate.coax)
+  party: [1] EgParty;                         // PARTY and its pane, a friend's party link (everglade-party.coax)
   evp: [1] EgEvents;                          // the room's event, your level and kit (everglade-events.coax)
 }
 
@@ -410,6 +412,7 @@ net_ticket :: (s: [] Everglade, answer: string) #export_c {
         if net_json_field(answer, "full") == "true" && net_json_field(answer, "asked").count > 0 { jn_full(s, n, net_json_field(answer, "by"), net_json_field(answer, "room")); n[0].join[0].with_n = 0; }
         net_restore(s, n, answer);
         md_ticket(n, answer);   // who you block (#12714)
+        pt_ticket(s, answer);   // your party's room was full (#12852)
         jn_ticketed(s, n, answer, had_look);   // a first visit: CHARACTER before you join
         if asking { net_dest_swap(n); }   // kept: the socket goes to the room when CHARACTER is done (net_ask_room)
         return;
@@ -1226,7 +1229,10 @@ net_offset :: (s: [] Everglade, dt: f32) -> Point #export_c {
 // body: the name a guest asks for (everglade-join.coax)
 net_ask_ticket :: (n: [] EgNet) {
   t: [192] u8;
-  k := wire_put(t[..], 0, "/api/playtest/room-ticket/"); k = wire_put(t[..], k, cast(string) n[0].code[0..<n[0].code_n]);
+  // a room from the realm's list, not one you were sent to: the realm, so the directory seats you
+  // with your party while its room has a seat (everglade-party.coax, #12852)
+  k := wire_put(t[..], 0, "/api/playtest/room-ticket/");
+  k = wire_put(t[..], k, ifx jn_listed(n) then cast(string) n[0].realm[0..<n[0].realm_n] else cast(string) n[0].code[0..<n[0].code_n]);
   if n[0].realm_n > 0 { k = wire_put(t[..], k, "?realm="); k = wire_put(t[..], k, cast(string) n[0].realm[0..<n[0].realm_n]); }
   k = jn_ticket_with(n, t[..], k);   // the friend whose invite holds you a seat (everglade-join.coax, #12795)
   // this page's build: the directory places it on a shard that runs it (#12839, migrations/0128_room_builds.sql)
@@ -1246,7 +1252,7 @@ net_ask_room :: (s: [] Everglade, n: [] EgNet) {
   if n[0].ticket_asked || n[0].join[0].list_asked || n[0].mono <= 0 || n[0].mono < n[0].ask_at { return; }
   net_dest_swap(n);
   jn_step(s, n);
-  if jn_ready(n) { net_ask_ticket(n); }
+  if jn_ready(n) && !pt_holding(n) { net_ask_ticket(n); }   // a party link joins first (everglade-party.coax)
   net_dest_swap(n);
 }
 
@@ -1263,6 +1269,7 @@ net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: 
   net_reload(s, n);
   jn_step(s, n);   // no instance yet: the list asked for (everglade-join.coax)
   net_ask_room(s, n);   // on the local host: the room asked for a seat, and gone to when one comes
+  pt_step(s, n);   // a friend's party link joined; the roster while PARTY is open (everglade-party.coax)
   if n[0].want && (n[0].state == NET_OFF || (n[0].state == NET_DOWN && mono >= n[0].retry)) && jn_ready(n) {
     // each open takes a fresh seat ticket (the room refuses a join without one): asked for, then used
     if n[0].ticket_n > 0 || n[0].local_host {
@@ -1271,7 +1278,7 @@ net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: 
       if !n[0].local_host { k = wire_put(u[..], k, "?t="); k = wire_put(u[..], k, cast(string) n[0].ticket[0..<n[0].ticket_n]); }
       if n[0].lost { k = wire_put(u[..], k, ifx n[0].local_host then "?re=1" else "&re=1"); }   // a rejoin after the room was lost: the room counts it (room-stats.coax)
       if pipe_open(n[0].pipe[..], cast(string) u[0..<k]) { n[0].state = NET_OPENING; n[0].sock = -1; if !n[0].local_host { n[0].ticket_n = 0; } }
-    } else if !n[0].ticket_asked {
+    } else if !n[0].ticket_asked && !pt_holding(n) {
       net_ask_ticket(n);
     }
   }
