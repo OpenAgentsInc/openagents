@@ -581,7 +581,7 @@ join_key :: (s: [] Everglade, key: int) -> bool {
   everglade_attach_net(h[..], hn[..]);
   net_facts(h[..], "url=https://openagents.com/worlds/everglade?room=everglade-2&with=p1#market\nplayer=p2\n", "everglade", false);
   net_step(h[..], 100, 0, 0, -84, 0, 0, 0, false, 0, false, 0);
-  #assert jn_has(pipe_bytes(hn[0].pipe[..], 0), "/api/playtest/room-ticket/everglade-2?realm=everglade&with=p1\n");
+  #assert jn_has(pipe_bytes(hn[0].pipe[..], 0), "/api/playtest/room-ticket/everglade-2?realm=everglade&with=p1&build=");
   h[0].started = true;
   net_ticket(h[..], "200\n{\"ticket\":\"v3.x\",\"room\":\"everglade-3\",\"shard\":1,\"full\":true,\"asked\":\"everglade-2\",\"by\":\"Alice\"}");
   #assert jn_has(cast(string) h[0].sp.news[0..<h[0].sp.news_n], "ALICE'S ROOM IS FULL · JOINING EVERGLADE-3");

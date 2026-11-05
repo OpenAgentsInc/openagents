@@ -171,6 +171,16 @@ rl_join :: (v: [] RmServer, conn: int, request: string) -> int {
   seat := -1;
   if v[0].relays[r].limited && tk.ok && tk.pid_n > 0 { seat = rl_take_back(v, r, cast(string) tk.pid[0..<tk.pid_n], tk.owner); }
   back := seat >= 0;
+  // a seat set aside for a player on their way here (room-travel.coax) is theirs: no one else's join takes it
+  if !back && v[0].relays[r].limited {
+    pid := ifx tk.ok then cast(string) tk.pid[0..<tk.pid_n] else "";
+    named := cast(string) code[0..<ns[1]];
+    if trv_free(v, r) - trv_held_for_others(v, named, pid) <= 0 {
+      if rl_people(v, r) == 0 { v[0].relays[r].live = false; }
+      return st_refuse(v, ST_FULL);
+    }
+    if pid.count > 0 { trv_arrived(v, named, pid); }
+  }
   if !back { seat = rl_seat(v, r); }
   if seat < 0 {
     // full: a room nobody is in yet stays closed
@@ -351,8 +361,9 @@ rl_left :: (v: [] RmServer, conn: int) {
       if rl_people(v, c.relay) == 0 { v[0].relays[c.relay].live = false; }
       return;
     }
-    // closed (not kicked), with a ticket naming its player: the seat waits for them (#12792)
-    if !c.kicked && c.ticket.ok && c.ticket.pid_n > 0 { eg_hold(v, k, c.seat); return; }
+    // closed (not kicked), with a ticket naming its player: the seat waits for them (#12792), unless
+    // its page was sent to another room (room-travel.coax): then the seat goes at once
+    if !c.kicked && c.ticket.ok && c.ticket.pid_n > 0 && !eg_travelling(v, k, c.seat) { eg_hold(v, k, c.seat); return; }
   } else if k >= 0 && c.seat >= 0 && c.seat < EG_SEATS {
     // its seat already went (a newer ticket ended it, rl_owner_drop): the others heard l then
     if rl_people(v, c.relay) == 0 { v[0].relays[c.relay].live = false; }

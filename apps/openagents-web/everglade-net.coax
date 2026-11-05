@@ -626,6 +626,7 @@ net_record :: (s: [] Everglade, n: [] EgNet, t: string) {
     }
     return;
   }
+  if c == 'g' { net_go(s, n, wire_word(t, r[..])); return; }
   if c == 'r' {
     seq := wire_num(t, r[..]);
     why := wire_word(t, r[..]);
@@ -1075,7 +1076,9 @@ net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: 
       t: [192] u8;
       k := wire_put(t[..], 0, "/api/playtest/room-ticket/"); k = wire_put(t[..], k, cast(string) n[0].code[0..<n[0].code_n]);
       if n[0].realm_n > 0 { k = wire_put(t[..], k, "?realm="); k = wire_put(t[..], k, cast(string) n[0].realm[0..<n[0].realm_n]); }
-      k = jn_ticket_with(n, t[..], k);   // the friend whose invite holds you a seat (everglade-join.coax, #12795)
+      k = jn_ticket_with(n, t[..], k);
+      // this page's build: the directory places it on a shard that runs it (#12839, migrations/0128_room_builds.sql)
+      if n[0].realm_n > 0 { k = net_put_build(t[..], wire_put(t[..], k, "&build=")); }   // the friend whose invite holds you a seat (everglade-join.coax, #12795)
       k = wire_put(t[..], k, "\n"); k += jn_ticket_body(n, t[k..<t.count]);
       if pipe_put(n[0].pipe[..], NET_PIPE_TICKET, -1, cast(string) t[0..<k]) { n[0].ticket_asked = true; }
     }
@@ -1286,6 +1289,43 @@ net_rebuild :: (s: [] Everglade) -> bool {
   n[0].seq += 1;
   net_send(n, wire_put_rebuild(n[0].out[..], 0, n[0].seq));
   return true;
+}
+// This page's build, "ENGINE.RULES.CONTENT" (WirePins), at `at` in out: the end.
+net_put_build :: (out: [] u8, at: int) -> int {
+  p := WirePins.{};
+  pins := [3] int.[p.engine, p.rules, p.content];
+  k := at;
+  for i: 0..<3 {
+    if i > 0 { k = wire_put(out, k, "."); }
+    d := wire_int(out, k, pins[i]);   // " N": its digits moved over the space
+    for j: k + 1..<d { out[j - 1] = out[j]; }
+    k = d - 1;
+  }
+  return k;
+}
+// Travel to the instance `code` of this realm, asked of the room (#12850, coax/web/room/room-travel.coax):
+// the room sets you aside a seat there and answers "g CODE" (net_go), or refuses with r. False offline.
+net_travel :: (s: [] Everglade, code: string) -> bool #export_c {
+  if !net_open(s) || !net_code_ok(code) { return false; }
+  n := net_of(s);
+  if code == cast(string) n[0].code[0..<n[0].code_n] { return false; }
+  n[0].seq += 1;
+  net_send(n, wire_put_travel(n[0].out[..], 0, n[0].seq, code));
+  return true;
+}
+// "g CODE": the room sent you to the instance CODE. The page leaves this socket, asks the API for a
+// ticket for CODE, and joins it at once; the room's seat for you ends with the close.
+net_go :: (s: [] Everglade, n: [] EgNet, code: string) {
+  if !net_code_ok(code) || n[0].local_host { return; }
+  jn_code(n, code); n[0].join[0].named = true;
+  n[0].ticket_n = 0; n[0].ticket_asked = false;
+  jn_url(n);
+  _ := pipe_close(n[0].pipe[..], n[0].sock);
+  net_down(n);
+  n[0].retry = 0; n[0].tries = 0; n[0].lost = false;
+  b: [64] u8; k := wire_put(b[..], 0, "TRAVELLING TO ");
+  for ch: code { if k >= b.count { break; } b[k] = ifx ch >= 'a' && ch <= 'z' then ch - 32 else ch; k += 1; }
+  net_tell(s, n, cast(string) b[0..<k]);
 }
 // A Long Rest, asked of the room (everglade-events.coax eg_r_mode): false offline.
 net_rest :: (s: [] Everglade) -> bool {
@@ -2146,7 +2186,9 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   everglade_attach_net(a[..], na[..]);
   net_facts(a[..], "url=https://openagents.com/worlds/everglade?room=pair-a\nplayer=pa\nnow=5000000\nnav=0\n", "everglade", false);
   net_step(a[..], 100, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
-  #assert na[0].pipe[0].n == 1 && na[0].pipe[0].op[0] == NET_PIPE_TICKET && jn_has(pipe_bytes(na[0].pipe[..], 0), "/api/playtest/room-ticket/pair-a?realm=everglade\n{}");
+  #assert na[0].pipe[0].n == 1 && na[0].pipe[0].op[0] == NET_PIPE_TICKET && jn_has(pipe_bytes(na[0].pipe[..], 0), "/api/playtest/room-ticket/pair-a?realm=everglade&build=");
+  bt: [64] u8; bk := net_put_build(bt[..], wire_put(bt[..], 0, "&build="));
+  #assert jn_has(pipe_bytes(na[0].pipe[..], 0), cast(string) bt[0..<bk]) && jn_has(pipe_bytes(na[0].pipe[..], 0), "\n{}");
   pipe_drained(na[0].pipe[..]);
   net_step(a[..], 116, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
   #assert na[0].pipe[0].n == 0;   // asked once
@@ -2199,7 +2241,7 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   everglade_attach_net(a[..], na[..]);
   net_facts(a[..], "url=https://openagents.com/worlds/everglade?room=pair-b\nplayer=pa\nnow=5000000\nnav=0\n", "everglade", false);
   net_step(a[..], 100, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
-  #assert jn_has(pipe_bytes(na[0].pipe[..], 0), "/api/playtest/room-ticket/pair-b?realm=everglade\n");
+  #assert jn_has(pipe_bytes(na[0].pipe[..], 0), "/api/playtest/room-ticket/pair-b?realm=everglade&build=");
   pipe_drained(na[0].pipe[..]);
   net_ticket(a[..], "200\n{\"ticket\":\"v3.p-1.0.-.pair-b.2.9.-.ab\",\"id\":\"p-1\",\"room\":\"pair-b\",\"shard\":2}");
   #assert net_room(a[..], "everglade") == "pair-b";
@@ -2209,7 +2251,7 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   net_opened(a[..], 0);
   #assert net_event(a[..], SOCKET_KIND + SOCKET_CLOSED, "");
   net_step(a[..], 140000, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
-  #assert jn_has(pipe_bytes(na[0].pipe[..], 0), "/api/playtest/room-ticket/pair-b?realm=everglade\n");
+  #assert jn_has(pipe_bytes(na[0].pipe[..], 0), "/api/playtest/room-ticket/pair-b?realm=everglade&build=");
   pipe_drained(na[0].pipe[..]);
   // an answer without a placement (an API from before the directory) keeps the path as it was
   net_ticket(a[..], "200\n{\"ticket\":\"v2.x\",\"id\":\"p-1\"}");
@@ -2881,6 +2923,26 @@ net_test_walk :: (jitter: int, lose: int, jump: bool, resend: int) -> NetTestWal
   #assert w.walk > 400 && w.still * 100 < w.walk * 2 && w.err_cm <= 30 && w.bad == 0 && w.back_cm == 0 && w.step_cm <= 4;
 }
 
+#test "net: travel (#12850): T asks the room; g sends the page to the instance with a new ticket, not as a lost room" {
+  a: [1] Everglade; na: [1] EgNet;
+  #assert net_test_page(a[..], na[..], 0, "pa", 100);
+  #assert net_test_hear(a[..], 0, "y 0 1 5000100");
+  pipe_drained(na[0].pipe[..]);
+  o: [64] u8;
+  #assert !net_travel(a[..], "pair-a") && !net_travel(a[..], "Pair B") && net_travel(a[..], "pair-b");
+  #assert jn_has(net_test_sent(na[..], 'T', o[..]), "T ") && jn_has(cast(string) o[..], " pair-b");
+  #assert net_test_hear(a[..], 0, "g pair-b");
+  #assert cast(string) na[0].code[0..<na[0].code_n] == "pair-b" && !net_open(a[..]) && !na[0].lost && na[0].want;
+  #assert cast(string) na[0].said[0..<na[0].said_n] == "TRAVELLING TO PAIR-B";
+  closed := false;
+  for k: 0..<na[0].pipe[0].n { if na[0].pipe[0].op[k] == PIPE_CLOSE && na[0].pipe[0].id[k] == 0 { closed = true; } }
+  #assert closed;
+  pipe_drained(na[0].pipe[..]);
+  // the old socket's close is no longer the page's; the next step asks a ticket for pair-b
+  #assert !net_event(a[..], SOCKET_KIND + SOCKET_CLOSED, "") || !na[0].lost;
+  net_step(a[..], 200, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  #assert na[0].pipe[0].n == 1 && na[0].pipe[0].op[0] == NET_PIPE_TICKET && jn_has(pipe_bytes(na[0].pipe[..], 0), "/api/playtest/room-ticket/pair-b?realm=everglade");
+}
 #test "net: a newer ticket took your character (r 0 elsewhere): the page says so and opens no socket again (#12834)" {
   a: [1] Everglade; na: [1] EgNet;
   #assert net_test_page(a[..], na[..], 0, "pa", 100);

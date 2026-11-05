@@ -30,6 +30,7 @@
 #load "room-ticket.coax";
 #load "room-vitals.coax";
 #load "room-control.coax";
+#load "room-travel.coax";   // a player's travel between two rooms (#12850)
 #load "native-local-policy.coax";
 #load "room-directory.coax";
 #load "room-events.coax";
@@ -89,6 +90,7 @@ RmServer :: struct {
   ev: [EG_ROOMS] EvRoom;                 // each everglade room's event, XP and levels (room-events.coax)
   dev: RmDev;                            // --dev: the API's stand-in for local development (room-dev.coax)
   st: RmStats;                           // refusals and rejoins, for the room view (room-stats.coax)
+  trv: RmTravels;                        // journeys from one room to another in flight (room-travel.coax)
 }
 
 // book:begin server-start
@@ -768,6 +770,82 @@ rl_test_heard2 :: (v: [] RmServer, a: int, ba: [] u8, na: [] int, b: int, bb: []
   // the page again with its ticket of that owner: refused, though no seat of A's is here; a newer one sits
   #assert rm_join(v[..], 2, rl_test_owned(r[..], t[..], key, a, "pair-tk", 7, now)) == -1 && rm_st_refused(v[..], ST_ELSEWHERE) == 1;
   #assert rm_join(v[..], 3, rl_test_owned(r[..], t[..], key, a, "pair-tk", 8, now)) >= 0;
+}
+#test "travel (#12850): a player asks for another room here; a seat there is set aside, their seat cuts over, they're sent, and arrive with no twin" #steps 2000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  now := 1762190000000;
+  rm_clock(v[..], 0, now);
+  key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  rm_ticket_key(v[..], key, true);
+  t: [256] u8; r: [512] u8; box: [8192] u8;
+  a := "p-0011223344556677";
+  #assert rm_join(v[..], 0, rl_test_owned(r[..], t[..], key, a, "pair-a", 3, now)) == 0;
+  #assert rm_join(v[..], 1, rl_test_owned(r[..], t[..], key, "p-8899aabbccddeeff", "pair-a", 2, now)) == 1;
+  #assert rm_join(v[..], 2, rl_test_owned(r[..], t[..], key, "p-c0ffeec0ffeec0ff", "pair-b", 2, now)) == 0;
+  #assert rm_join(v[..], 3, rl_test_owned(r[..], t[..], key, "p-1111222233334444", "pair-c", 2, now)) == 0;
+  ka := eg_room_at(v[..], v[0].conns[0].relay); kb := eg_room_at(v[..], v[0].conns[2].relay);
+  rb := v[0].conns[2].relay; rc := v[0].conns[3].relay;
+  _ := rl_heard_by(v[..], 0, box[..]);
+  // not this realm's, or this room: refused, and A plays on
+  rm_heard(v[..], 0, "T 1 other-1"); rm_heard(v[..], 0, "T 2 pair-a");
+  #assert eg_test_has(rl_heard_by(v[..], 0, box[..]), "r 2 room") && !eg_travelling(v[..], ka, 0);
+  // full: pair-c has one seat, taken
+  v[0].relays[rc].seats = 1;
+  rm_heard(v[..], 0, "T 3 pair-c");
+  #assert eg_test_has(rl_heard_by(v[..], 0, box[..]), "r 3 full") && !eg_travelling(v[..], ka, 0) && rm_travel_stat(v[..], 2) == 1;
+  // pair-b: one seat left, and it is set aside for A; A's intents stop, and its state is posted
+  v[0].relays[rb].seats = 2;
+  rm_vitals_gen(v[..], now - 5000);
+  rm_heard(v[..], 0, "T 4 pair-b");
+  #assert eg_travelling(v[..], ka, 0) && v[0].vit.flush && rv_find(v[..], a) >= 0;
+  // A's page hears g only once the API's receipt covers what was captured
+  #assert !eg_test_has(rl_heard_by(v[..], 0, box[..]), "g pair-b") && rm_vitals_due(v[..]) > 0;
+  #assert !eg_test_has(rl_heard_by(v[..], 0, box[..]), "g pair-b");
+  marks: [16] u8; for i: 0..<v[0].vit.fly_n { marks[i] = 0x61; }
+  b: [128] u8;
+  rm_vitals_answer(v[..], v[0].vit.batch, 200, rv_test_receipt(b[..], now - 5000, v[0].vit.batch, cast(string) marks[0..<v[0].vit.fly_n]));
+  #assert eg_test_has(rl_heard_by(v[..], 0, box[..]), "g pair-b") && rm_travel_stat(v[..], 1) == 1;
+  q := v[0].eg[ka].seat[0].q_n;
+  rm_heard(v[..], 0, "I 1 0 100 0 0 0 0 0");
+  #assert v[0].eg[ka].seat[0].q_n == q && rm_travel_stat(v[..], 6) == 1;
+  // someone else's join to pair-b: the seat is A's
+  #assert rm_join(v[..], 4, rl_test_owned(r[..], t[..], key, "p-5555666677778888", "pair-b", 2, now)) == -1 && rm_st_refused(v[..], ST_FULL) == 1;
+  // A's page leaves: the seat goes at once (B hears l, nothing held)
+  rm_left(v[..], 0);
+  #assert !v[0].eg[ka].seat[0].live && eg_test_has(rl_heard_by(v[..], 1, box[..]), "l 0");
+  // and joins pair-b with its new ticket: the set-aside seat, its HP from this server's note
+  hp := v[0].vit.v[rv_find(v[..], a)].hp;
+  s := rm_join(v[..], 5, rl_test_owned(r[..], t[..], key, a, "pair-b", 4, now));
+  #assert s == 1 && rm_travel_stat(v[..], 4) == 1 && v[0].eg[kb].rules[0].b[0].c[E5RR_SEAT + 1].hp == hp;
+}
+#test "travel (#12850): unsaved, no route; a page that never leaves gets its commands back after TRAVEL_MS, and the set-aside seat lapses" #steps 2000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  now := 1762190000000;
+  rm_clock(v[..], 0, now);
+  key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  rm_ticket_key(v[..], key, true);
+  t: [256] u8; r: [512] u8; box: [8192] u8;
+  a := "p-0011223344556677";
+  #assert rm_join(v[..], 0, rl_test_owned(r[..], t[..], key, a, "pair-a", 3, now)) == 0;
+  #assert rm_join(v[..], 1, rl_test_owned(r[..], t[..], key, "p-c0ffeec0ffeec0ff", "pair-b", 2, now)) == 0;
+  ka := eg_room_at(v[..], v[0].conns[0].relay);
+  v[0].relays[v[0].conns[1].relay].seats = 2;
+  rm_heard(v[..], 0, "T 1 pair-b");
+  #assert eg_travelling(v[..], ka, 0);
+  // a second ask while cut over is dropped, not a second journey; no receipt ever comes (the API is
+  // down, or this room crashed before its post): no route
+  rm_heard(v[..], 0, "T 2 pair-b");
+  #assert rm_travel_stat(v[..], 6) == 1 && rm_travel_stat(v[..], 1) == 0 && !eg_test_has(rl_heard_by(v[..], 0, box[..]), "g ");
+  rm_clock(v[..], TRAVEL_MS, now + TRAVEL_MS);
+  q := v[0].eg[ka].seat[0].q_n;
+  rm_heard(v[..], 0, "I 1 0 100 0 0 0 0 0");
+  #assert !eg_travelling(v[..], ka, 0) && v[0].eg[ka].seat[0].q_n == q + 1 && rm_travel_stat(v[..], 5) == 1;
+  #assert rm_join(v[..], 2, rl_test_owned(r[..], t[..], key, "p-5555666677778888", "pair-b", 2, now)) == 1;
+  // its close now holds the seat for it, as any page's (#12792)
+  rm_left(v[..], 0);
+  #assert eg_held(v[..], ka, 0);
 }
 // Ticks of room k, each draining what conn heard: whether any frame held part.
 rl_test_ticks :: (v: [] RmServer, k: int, ticks: int, conn: int, part: string) -> bool {

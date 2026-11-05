@@ -686,6 +686,9 @@ static void receipt_hear(void) {
     memmove(buf, buf + head + len, have - head - len); have -= head + len;
   }
   if (have == sizeof buf) have = 0;
+  /* what an answer told the pages (r 0 elsewhere to a fenced seat, #12834; g CODE to a traveller whose
+     state is now saved, #12850) goes out before the main loop closes a kicked socket */
+  relay_flush();
 }
 /* SIGTERM (Cloud Run gives 10 s before SIGKILL): every seat's HP, XP and WANTED noted and the outbox
    flushed, then the process exits once every note has a receipt or DRAIN_MS has passed (#12793).
@@ -893,7 +896,11 @@ int main(int argc, char **argv) {
           printf("room: vitals posts %lld (%lld retried, %lld failed), lines applied %lld, already applied %lld, stale %lld, refused %lld, late answers %lld, given up %lld, evicted unsaved %lld, %lld players unsaved now, fenced %lld (%lld seats ended)\n",
                  (long long)rm_vitals_stat(w, 0), (long long)rm_vitals_stat(w, 1), (long long)rm_vitals_stat(w, 2), (long long)rm_vitals_stat(w, 3), (long long)rm_vitals_stat(w, 4),
                  (long long)rm_vitals_stat(w, 5), (long long)rm_vitals_stat(w, 6), (long long)rm_vitals_stat(w, 7), (long long)rm_vitals_stat(w, 8), (long long)rm_vitals_stat(w, 9), (long long)rm_vitals_stat(w, 10),
-                 (long long)rm_vitals_stat(w, 11), (long long)rm_vitals_stat(w, 12)); }
+                 (long long)rm_vitals_stat(w, 11), (long long)rm_vitals_stat(w, 12));
+          /* travel between rooms (#12850, room-travel.coax) */
+          printf("room: travel asked %lld, sent on %lld, full %lld, refused %lld, arrived %lld, called off %lld, intents dropped in a cutover %lld\n",
+                 (long long)rm_travel_stat(w, 0), (long long)rm_travel_stat(w, 1), (long long)rm_travel_stat(w, 2), (long long)rm_travel_stat(w, 3),
+                 (long long)rm_travel_stat(w, 4), (long long)rm_travel_stat(w, 5), (long long)rm_travel_stat(w, 6)); }
         ticks = 0; last_report = now; memcpy(fan_last, fan_now, sizeof fan_now); memset(fan_now, 0, sizeof fan_now); memcpy(tick_last, tick_now, sizeof tick_now); memset(tick_now, 0, sizeof tick_now); }
     }
   }

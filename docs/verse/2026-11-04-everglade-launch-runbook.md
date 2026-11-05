@@ -328,6 +328,30 @@ Supported pairs and rollback limits:
 - Don't roll a room back past a change to `RV_SCHEMA`: every player whose
   ticket carries the newer format is refused until you roll forward.
 
+The directory places a page on a shard that runs its build
+(`migrations/0128_room_builds.sql`). The page asks for its ticket with
+`&build=ENGINE.RULES.CONTENT`, and each shard's build comes from its stats
+line, which it posts every 10 s. While shards run two builds, for example
+during a rollout:
+
+- A new page goes to an instance on a shard of its build, or to a new
+  instance there. It skips an instance on a shard of another build, even one
+  it asks for by name or sat in before.
+- A player already seated plays on in their instance under its build until
+  they leave or the shard drains.
+- A shard that posted no stats for 60 s has an unknown build and takes any
+  page.
+- When no shard runs the page's build, the page is placed as before, the room
+  refuses it with `r 0 version`, and it reloads into the build that is out.
+
+Each saved character also records the build that last saved it
+(`room_vitals.build`, `ENGINE.RULES.CONTENT/SCHEMA`). Before you roll a room
+back, check that no row names a newer schema:
+
+```sql
+select build, count(*) from verse.room_vitals group by build;
+```
+
 After step 3, the vitals next to FPS show `NET x OF y KB/S`: what
 the room sends you a second, against its byte budget (`WIRE_BUDGET`, 1000
 bytes of rows a tick, about 29 KB/s). Locally, a 16-player room measured

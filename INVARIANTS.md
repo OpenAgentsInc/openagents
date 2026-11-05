@@ -601,6 +601,28 @@ rolled back below newer saved data reads none of it. The rule is
 `coax/web/room/room-everglade.coax` `eg_admit`. Checks: compat.coax and
 room-everglade.coax "a hello is admitted against its page's build" (#12839).
 
+The directory places a page that names its build only on a shard that runs
+that build or whose build is unknown (no stats for 60 s), when any shard
+fits; otherwise it places the page as before and the room refuses it
+(`verse.room_pick`, migration 0128). A saved character names the build that
+last saved it (`room_vitals.build`). Checks: `room_checks.coax` builds.
+
+## A character travels between rooms as one body
+
+A player's travel to another room (`T`, `coax/web/room/room-travel.coax`,
+#12850) never puts two bodies in play. When the destination runs on the same
+server, a seat is set aside for that player there first, or the travel is
+refused and the player plays on. The source seat then takes no intents. The
+room sends the page on (`g CODE`) only after the API's receipt covers the
+seat's state at the cutover, so a crash after the route loses nothing. A
+travelling seat's close ends it at once (no seat is held). The destination's
+ticket takes the next owner generation, so the source can't save over it.
+Each step before the destination's join is undone by time: after
+`TRAVEL_MS` without the page leaving, the seat takes commands again and the
+set-aside seat lapses. Checks: `room.coax` "travel (#12850)", `everglade.coax`
+"net: travel", and `room_checks.coax` travel, which kills the source room
+process right after the route.
+
 ## Only a character's newest owner saves its room state
 
 The API is the one directory of owner generations (`verse.room_owners`,
@@ -618,7 +640,9 @@ In the room server, one seat plays a character at a time (`room-relay.coax`,
 an older one than a seat of that character holds on the server is refused
 (`elsewhere`), and a newer one ends the older seats, in the same room (the
 new socket takes the seat over) and in the server's other rooms. A vitals
-line answered `f` with no newer ticket seated ends that owner's seats too.
+line answered `f` with no newer ticket seated ends that owner's seats too,
+and the room then refuses that owner's tickets; a seated character's line
+goes at least every 30 s, changed or not, so a resumed process hears `f`.
 Every socket that loses its seat this way hears `r 0 elsewhere`, and the page
 then opens no socket on its own (`everglade-net.coax` `net_elsewhere`), so
 two pages that rejoin by themselves can't take the character in turns. A

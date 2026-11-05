@@ -385,14 +385,16 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
   // and the ticket names that shard (v3), which seats it and no other. Without it, a v2 ticket for the
   // room asked, which shard 1 seats (a page from before the directory).
   // ?with=PLAYER (#12795): the friend whose invite brought them, whose held seat they take
-  char realm[32] = "", placed[32] = "", asked[32] = "", via[48] = "";
+  // ?build=ENGINE.RULES.CONTENT (#12839): the page's build, placed on a shard that runs it
+  char realm[32] = "", placed[32] = "", asked[32] = "", via[48] = "", build[40] = "";
   int shard = 0; bool full = false;
   snprintf(asked, sizeof asked, "%s", room);
   if (!api_query(q, "with", via, sizeof via)) via[0] = 0;
+  if (!api_query(q, "build", build, sizeof build)) build[0] = 0;
   if (api_query(q, "realm", realm, sizeof realm) && realm[0]) {
     char rn_s[24]; snprintf(rn_s, sizeof rn_s, "%lld", room_rate_n);
     const char *wv[2] = {pid, rn_s};
-    if (!rooms_pick(db, realm, room, pid, via, placed, sizeof placed, &shard, &full)) {
+    if (!rooms_pick(db, realm, room, pid, via, build, placed, sizeof placed, &shard, &full)) {
       // every room full: this player waits; the answer says how many wait, the last wait, and when to ask again
       PGresult *w = PQexecParams(db, "SELECT waiting, last_wait_ms FROM verse.room_wait($1, $2::bigint)", 2, NULL, wv, NULL, NULL, 0);
       long long waiting = 0, last = -1;

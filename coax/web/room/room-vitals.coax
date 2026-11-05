@@ -298,6 +298,7 @@ rm_vitals_answer :: (v: [] RmServer, batch: int, status: int, body: string) #exp
           }
         }
         v[0].vit.fly = false; v[0].vit.tries = 0; v[0].vit.retry_at = 0;
+        trv_route_due(v);   // a journey waiting on this save goes (room-travel.coax)
         return;
       }
     } else if body.count > 8 && body[0..<8] == "{\"kept\":" {
@@ -308,6 +309,7 @@ rm_vitals_answer :: (v: [] RmServer, batch: int, status: int, body: string) #exp
         v[0].vit.applied += 1;
       }
       v[0].vit.fly = false; v[0].vit.tries = 0; v[0].vit.retry_at = 0;
+      trv_route_due(v);
       return;
     }
   }

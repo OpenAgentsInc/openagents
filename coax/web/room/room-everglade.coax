@@ -122,6 +122,7 @@ EgSeat :: struct {
   want_seed: int;                                     // the WANTED level it comes back with, for the world's town (rv_join; 0 none)
   hold_due: bool;                                     // a scripted Hold Person (room-control.coax "hold"): the host's world holds it on the next tick
   born: bool;                                         // a new player in the seat: its next row is a new life (wire_hist_born, #12835)
+  travel_until: int;                                  // cut over for travel until this mono ms (room-travel.coax; 0 none)
   cut: bool;                                          // the world moved it in one jump (rm_eg_cut): its next row is a WARP (#12835)
   place_due: int;                                     // a place line (room-control.coax "place"): beside rowboat place_due - 1 on the next tick (0 none)
   back_hp: int = -1; back_dead: bool;                 // the Hit Points it came back with until its hello built it (rv_join; -1 none)
@@ -400,6 +401,9 @@ eg_heard :: (v: [] RmServer, r: int, seat: int, text: string) {
   if k < 0 || seat < 0 || seat >= EG_SEATS || !v[0].eg[k].seat[seat].live || text.count < 3 || text[1] != ' ' { return; }
   v[0].eg[k].seat[seat].heard_ms = v[0].mono_ms;
   c := text[0];
+  // a seat cut over for travel takes no intents while its page goes (room-travel.coax, #12850)
+  if (c == 'I' || c == 'C' || c == 'E' || c == 'L' || c == 'R' || c == 'T') && eg_travel_drops(v, k, seat) { return; }
+  if c == 'T' { eg_heard_travel(v, k, seat, text); return; }
   if c == 'I' { eg_heard_input(v, k, seat, text); return; }
   if c == 'C' { eg_heard_cast(v, k, seat, text); return; }
   if c == 'P' {   // the page's build, for its hello's admission (#12839)

@@ -28,14 +28,25 @@ static bool code_ok(const char *s, size_t most) {
 
 // The instance for player pid in realm (asked: the instance the page names, or the realm itself to be
 // given one): its code and shard, and whether the asked one was full. via: the player whose invite
-// brought them ("" none), whose held seat they take (migrations/0125_room_invites.sql, #12795). False
-// when there is no seat.
-bool rooms_pick(PGconn *db, const char *realm, const char *asked, const char *pid, const char *via, char *code, size_t cap, int *shard, bool *full) {
+// brought them ("" none), whose held seat they take (migrations/0125_room_invites.sql, #12795). build:
+// the page's build "ENGINE.RULES.CONTENT" ("" unknown), placed on a shard that runs it
+// (migrations/0128_room_builds.sql, #12839). False when there is no seat.
+static bool build_ok(const char *s) {
+  int dots = 0; size_t n = strlen(s);
+  if (!n || n > 32) return false;
+  for (size_t i = 0; i < n; i++) {
+    if (s[i] == '.') { if (!i || s[i - 1] == '.') return false; dots++; }
+    else if (s[i] < '0' || s[i] > '9') return false;
+  }
+  return dots == 2 && s[n - 1] != '.';
+}
+bool rooms_pick(PGconn *db, const char *realm, const char *asked, const char *pid, const char *via, const char *build, char *code, size_t cap, int *shard, bool *full) {
   if (!code_ok(realm, 20) || !code_ok(asked, 24)) return false;
   if (via && via[0] && !code_ok(via, 40)) via = "";
+  if (!build || !build_ok(build)) build = "";
   char seats[8]; snprintf(seats, sizeof seats, "%d", ROOM_SEATS);
-  const char *v[5] = {realm, asked, pid, seats, via ? via : ""};
-  PGresult *r = PQexecParams(db, "SELECT code, shard, was_full FROM verse.room_pick($1, $2, $3, $4::int, $5)", 5, NULL, v, NULL, NULL, 0);
+  const char *v[6] = {realm, asked, pid, seats, via ? via : "", build};
+  PGresult *r = PQexecParams(db, "SELECT code, shard, was_full FROM verse.room_pick($1, $2, $3, $4::int, $5, $6)", 6, NULL, v, NULL, NULL, 0);
   bool ok = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !PQgetisnull(r, 0, 0) && strlen(PQgetvalue(r, 0, 0)) < cap;
   if (PQresultStatus(r) != PGRES_TUPLES_OK) api_log("rooms: %s", PQerrorMessage(db));
   if (ok) {

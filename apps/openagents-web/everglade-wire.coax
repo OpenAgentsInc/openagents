@@ -28,6 +28,7 @@
 //   K PID PID ...                  the players you block, WIRE_BLOCKS at most, the whole list each time
 //                                  ("K -" none): the room sends you nothing of them (#12789)
 //   t MS                           a clock ping
+//   T SEQ CODE                     go to the instance CODE of this realm (#12850, coax/web/room/room-travel.coax)
 // Server to page (the relay's own first: y SS N T, j SS, l SS, t MS T):
 //   W TICK HZ SEED DAY WEATHER BUDGET  the world header, after y, and again to everyone when the weather
 //                                  turns (#12709): the tick now, the tick rate, the room's seed, ms into the
@@ -46,7 +47,9 @@
 //     e stop SS SLOT WHY          a cast the server took ended before its strike (WHY: range, sight, gone,
 //                                  held, dead, left: everglade-cast-rules.coax, #12790); pages drop its strike
 //     w SS LEVEL                   a seat's WANTED level
-//   r SEQ REASON                   an intent of yours refused (a cast: everglade-cast-rules.coax CR_WORDS; R: breaking)
+//   r SEQ REASON                   an intent of yours refused (a cast: everglade-cast-rules.coax CR_WORDS; R: breaking;
+//                                  T: full, room, ticket, busy)
+//   g CODE                         your T was taken: leave this room and join the instance CODE (#12850)
 //
 // The replication model (#12783). Every entity the server replicates (players, townsfolk, creatures,
 // zones, walls, effects) is a row of WIRE_SF whole fields (WS_*), and every row goes out the same way:
@@ -267,6 +270,8 @@ wire_put_rebuilt :: (out: [] u8, at: int) -> int { return wire_put(out, at, "e r
 wire_put_rested :: (out: [] u8, at: int, seat: int) -> int { return wire_int(out, wire_put(out, at, "e rest"), seat); }
 wire_put_edit :: (out: [] u8, at: int, version: int) -> int { return wire_int(out, wire_put(out, at, "e edit"), version); }
 wire_put_wanted :: (out: [] u8, at: int, ss: int, level: int) -> int { return wire_int(out, wire_int(out, wire_put(out, at, "w"), ss), level); }
+wire_put_go :: (out: [] u8, at: int, code: string) -> int { return wire_put(out, wire_put(out, at, "g "), code); }
+wire_put_travel :: (out: [] u8, at: int, seq: int, code: string) -> int { return wire_text(out, wire_int(out, wire_put(out, at, "T"), seq), code); }
 wire_put_refused :: (out: [] u8, at: int, seq: int, reason: string) -> int { return wire_text(out, wire_int(out, wire_put(out, at, "r"), seq), reason); }
 
 // ---- reading (bounded: a missing or bad field sets ok false)
