@@ -1,8 +1,9 @@
 # Valley Lab: build a valley from checked Aethyr primitives
 
 Status: active implementation roadmap, updated 2026-11-05. The initial
-walkable world, procedural asset/indexed baseline, bounded leaves and the first
-hierarchy/simplification fixtures now run locally.
+walkable world, procedural asset/indexed baseline, bounded leaves, ownership
+hierarchy, parent simplification, screen-error cuts and HTTP page stations now
+run locally.
 
 Build **Valley Lab**, an unlisted world at `/worlds/valley-lab`, where a
 visitor can inspect each engine system alone and then watch those same
@@ -160,6 +161,77 @@ Run `coax/web/tool.sh aethyr/tools/valley-hierarchy.coax` for the native report.
 This slice does not simplify the rock, choose levels by screen error, stream
 pages or qualify a shared/native renderer. It establishes the ownership and
 small boundary/error fixtures required before those steps.
+
+## Landed: three consecutive geometry stages
+
+The next three stages are implemented as independently checked Coax modules
+and visible stations. Keys `4`/`5`/`6` and the second row of touch tabs open
+PARENT, LOD and PAGES; their direct links are `#parents`, `#lod`, `#pages`.
+The original walk, asset, full-detail, cluster and hierarchy views remain.
+
+**Parent meshes.** [`parent.coax`](../../aethyr/render/geometry/parent.coax)
+extracts directed external edges from source triangles, identifies a common
+interior apex and retains every boundary vertex and segment. The bounded
+supported class is a strictly convex fan with a horizontal boundary plane.
+Triangle ordering and apex numbering may vary. Unsupported, degenerate or
+nonmanifold input refuses atomically, preserving the full-detail parent.
+The local surface distance is the apex's distance to the boundary plane;
+parent error adds the child's error, rounding upward in f32. This composes
+errors monotonically rather than resetting them at each level.
+
+Two original irregular adjacent patches in
+[`verse/valley/parents.coax`](../../verse/valley/parents.coax) each have six
+source triangles and four parent triangles. Their shared edge has identical
+positions and segmentation in source, mixed and coarse views. `H` cycles
+12 / 10 / 8 drawn triangles. The planar parent has zero error and the bent
+parent has 0.75 m error. The same reducer is attempted on the first two rock
+leaves; their topology is unsupported, so the unchanged rock reference is
+retained. This is explicit refusal, not a claim that the rock was simplified.
+
+**Screen-error cuts.** [`cut.coax`](../../aethyr/render/geometry/cut.coax)
+bounds perspective displacement with
+`focal * error * (1 + radial / near) / (near - error)`.
+The inspector derives near depth and radial extent from the source bounds
+in the actual camera, with a small conservative transform margin. Tolerance
+is in physical framebuffer pixels. Crossing the near plane or invalid bounds
+keeps full detail. `T` cycles 16 / 64 / 256 pixels and the wheel changes
+camera distance. Selection uses actual parent errors; source tessellation
+changes remain separate. A missing requested parent draws pinned full-detail
+children, never a hole. The two-patch frontier has full-source, mixed and
+coarse choices; the general rock hierarchy still has identity parents.
+
+**Page residency.** [`pages.coax`](../../aethyr/render/geometry/pages.coax)
+serializes VGP1 geometry pages, validates bounded decoding and admits only
+bytes matching the expected SHA-256 and current request epoch/ticket. The
+native Coax author writes the two committed `.vgp.hex` files; the existing
+bounded same-origin HTTP effect fetches those real files on demand. The C
+face exposes that transport only; Coax owns requests, interpretation, retry
+cadence, selection, cache ownership, budgets, eviction and fallback.
+
+Each example page has 136 encoded bytes and 120 decoded geometry bytes.
+The two-slot cache allows 256 or 512 logical resident bytes. `B` changes the
+budget; `E` flushes and advances the epoch. Pending requests deduplicate;
+late, corrupted, malformed or over-budget arrivals refuse. LRU eviction
+respects CPU-copy pins and publishes atomically. Pins end after geometry is
+copied to the frame's existing mesh buffer. This does not free or page a new
+GPU heap. The original source and unpaged parent references remain retained
+for isolated comparisons, so cache savings are not total process savings.
+Fixed cache capacity, retained references and HTTP inbox are counted in the
+existing 6 MB CPU arena; host/browser buffers are outside that declaration.
+
+All 474 realm/dependency checks pass. The new authority gates kill 131 parent,
+24 cut and 292 page mutants, with zero survivors. A native SHA-256 oracle
+matches both page files. Actual desktop/phone WebGPU checks cover parent
+savings, distance/threshold cuts, held-page fallback, stale/corrupt responses,
+budget pressure, eviction, and exact unpaged/paged reference pixels. GPU loss
+retains the exact state digest, resident pages and reference pixels. Original
+rock asset hashes and the controller regression continue to pass. See the
+[three-stage receipt](../verification/valley-lab-three-stages-2026-11-05/README.md).
+
+These stages qualify the supported patch family and CPU page cache on the
+initial WebGPU scene/HUD path. They do not complete arbitrary rock reduction,
+a GPU page registry, occlusion/indirect submission, a large streamed valley,
+shared/native renderer qualification or book drafts.
 
 ## What the book gives us
 
@@ -393,21 +465,20 @@ draft's status on the strength of a roadmap.
 
 ## Next implementation task
 
-Build **boundary-locked parent mesh simplification** for a bounded supported
-mesh class, starting with an irregular planar patch and a bent patch that
-share an edge. Identify external/shared edges from topology, preserve their
-positions and segmentation, and produce actual parent vertices/triangles.
-Use an independently checked conservative surface-distance bound; refusing
-an unsupported or nonmanifold patch must preserve the full-detail parent.
-Carry parent errors monotonically through the ownership tree. Only after
-those fixtures prove crack-free mixed-resolution reconstruction should the
-simplifier run on a small rock parent group. Add parent/reference/error
-inspection with actual savings and preserve the original rock asset hashes.
+Build **the first qualified simplified rock parent**. Extend the reducer to
+a bounded nonplanar patch class with multiple interior vertices, preserving
+external/shared edge positions and segmentation. Begin with a small real
+rock parent group, retain unsupported groups at full detail, and establish an
+independently checked conservative surface-distance bound against the original
+triangles. Carry that bound upward and feed the existing screen-error and
+HTTP page path with the resulting real rock parents. Compare silhouettes,
+cracks, selected cuts, page absence and measured triangle/byte savings against
+the pinned original; keep its content hashes unchanged.
 
-Then implement screen-error frontier selection and missing-detail fallback
-against those real parent meshes; paging follows after that. The current
-identity hierarchy and square-fan fixture are explicit baselines, not evidence
-of arbitrary rock simplification or automatic LOD.
+Then scale to a deterministic field of original rocks and qualify actual
+shared-renderer GPU resource ownership and page-upload retirement. Occlusion,
+indirect submission and world-cell streaming follow their own fixtures. The
+current two-patch CPU pager is a checked foundation, not a full Nanite path.
 
 Continue the remaining milestone 0/1 exits alongside that step: saved
 walkthrough/replay, bounded source import and shared-renderer qualification.

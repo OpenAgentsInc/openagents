@@ -7,6 +7,9 @@
 #load "../../verse/valley/rock.coax";
 #load "../../aethyr/render/geometry/hierarchy.coax";
 #load "../../aethyr/render/geometry/fan.coax";
+#load "../../aethyr/render/geometry/cut.coax";
+#load "../../verse/valley/parents.coax";
+#load "../../aethyr/render/geometry/pages.coax";
 
 VALLEY_VERTICES :: 65536;
 VALLEY_MESH :: 16384;
@@ -26,7 +29,10 @@ ValleyLab :: struct {
   rock:[1]Rock;registry:[1]AssetRegistry;rock_ready:bool;divisions:int=16;
   index:[VALLEY_INDICES]u32;index_n:int;
   stage:int;mode:int;orbit:f32=0.65;tilt:f32=0.28;distance:f32=9;
-  inbox:[128]u8;action:int;outbox:[16]u8;out_n:int;
+  parents_ready:bool;sources:[2]ParentMesh;coarse:[2]ParentMesh;page_key:[2]AssetId;page_bytes:[2]int;
+  pages:[1]GeometryPages;parent_level:int;tolerance:f32=16;render_triangles:int;coarse_count:int;pixel_error:[2]f32;
+  lab_tick:int;retry:[2]int;need_page:int= -1;tickets:[2]PageTicket;http:[8]PageTicket;page_url:[128]u8;page_url_n:int;rock_parent_supported:bool;
+  inbox:[GEOMETRY_PAGE_BYTES*2+16]u8;action:int;outbox:[16]u8;out_n:int;
   drag:bool;drag_id:int;drag_x:f32;drag_y:f32;
 
 }
@@ -135,6 +141,21 @@ VALLEY_BOXES :: [19*6]f32.[
   #assert valley_probe(s[..],35)==2 && valley_probe(s[..],36)==750 && budget_ok(s[0].meter[0]);
   #assert valley_key(s[..],104,true) && s[0].level==0 && valley_probe(s[..],35)==4 && valley_probe(s[..],36)==0;
 }
+#test "Valley parent stages render actual reductions preserve the seam and fall back before HTTP" #steps 1000000000 {
+  s:[1]ValleyLab;out:[VALLEY_VERTICES*12]f32;u:[88]f32;valley_lab(s[..],7);
+  #assert cast(string)s[0].outbox[0..<s[0].out_n]=="parents";
+  #assert !s[0].rock_parent_supported && s[0].sources[0].indices==18 && s[0].coarse[1].indices==12;
+  frame:=valley_frame(s[..],out[..],u[..],1280,800,1,0,true);#assert s[0].render_triangles==12;
+  #assert valley_key(s[..],104,true);frame=valley_frame(s[..],out[..],u[..],390,844,1,0,true);#assert s[0].render_triangles==10;
+  #assert valley_key(s[..],104,true);frame=valley_frame(s[..],out[..],u[..],1280,800,1,0,true);#assert s[0].render_triangles==8;
+  valley_lab(s[..],8);s[0].tolerance=0;frame=valley_frame(s[..],out[..],u[..],1280,800,1,0,true);#assert s[0].render_triangles==10;
+  s[0].tolerance=256;frame=valley_frame(s[..],out[..],u[..],1280,800,1,0,true);#assert s[0].render_triangles==8 && s[0].pixel_error[1]>0;
+  valley_lab(s[..],9);frame=valley_frame(s[..],out[..],u[..],390,844,1,0,true);
+  #assert s[0].render_triangles==12 && s[0].need_page>=0 && s[0].pages[0].used==0 && budget_ok(s[0].meter[0]);
+  page:=geometry_page(s[0].coarse[0]);ticket:=s[0].tickets[0];#assert page_arrive(s[0].pages[..],ticket,page.data[0..<page.bytes]);
+  s[0].need_page= -1;frame=valley_frame(s[..],out[..],u[..],1280,800,1,0,true);#assert s[0].render_triangles==10 && s[0].pages[0].used==256;
+  #assert valley_key(s[..],101,true) && s[0].pages[0].used==0;
+}
 #test "Valley walker moves, jumps, lands and releases input on blur" #steps 1000000000 {
   s:[1]ValleyLab;valley_start(s[..]);
   #assert valley_key(s[..],119,true);
@@ -186,6 +207,10 @@ valley_blur :: (s:[]ValleyLab) #export_c {
 }
 valley_key :: (s:[]ValleyLab,key:int,down:bool)->bool #export_c {
   valley_start(s);bit:=0;
+  if down && key>=52 && key<=54 {valley_lab(s,key-45);return true;}
+  if down && s[0].mode>=7 && (key==104 || key==72) {s[0].parent_level=(s[0].parent_level+1)%3;return true;}
+  if down && (key==116 || key==84) {s[0].tolerance=ifx s[0].tolerance==16 then 64 else ifx s[0].tolerance==64 then 256 else 16;return true;}
+  if down && s[0].mode>=7 && (key==101 || key==69 || key==98 || key==66) {if key==98 || key==66 {s[0].pages[0].budget=ifx s[0].pages[0].budget==512 then 256 else 512;}page_reset(s[0].pages[..]);for k:0..<2 {s[0].retry[k]=0;}return true;}
   if down && key>=49 && key<=51 {valley_station(s,key-49);return true;}
   if down && (key==104 || key==72) {valley_level(s);return true;}
   if down && (key==102 || key==70) {valley_fixture(s);return true;}
@@ -211,11 +236,20 @@ valley_pointer :: (s:[]ValleyLab,x:f32,y:f32,phase:int,kind:int,id:int)->bool #e
   valley_start(s);slot:=-1;
   for i:0..<4 {if s[0].active[i] && s[0].ids[i]==id {slot=i;}}
   if phase==0 {
-    if y<132*s[0].d {
+    if y<184*s[0].d {
       cx:=x/s[0].d;cy:=y/s[0].d;
       if cy>=82 && cy<=126 && cx>=16 && cx<322 {valley_station(s,cast(int)((cx-16)/102));}
+      else if cy>=136 && cy<=180 && cx>=16 && cx<322 {valley_lab(s,7+cast(int)((cx-16)/102));}
       else if cy<70 && cx>s[0].width/s[0].d-100 {_:=valley_key(s,114,true);}
       return true;
+    }
+    if s[0].mode>=7 && s[0].width/s[0].d<700 {
+      cx:=x/s[0].d;cy:=y/s[0].d;w:=s[0].width/s[0].d;h:=s[0].height/s[0].d;
+      if cx>=16 && cx<=w-16 && cy>=h-138 && cy<=h-98 {_:=valley_key(s,ifx s[0].mode==9 then 118 else ifx s[0].mode==7 then 104 else 116,true);return true;}
+      if cy>=h-88 && cy<=h-44 {
+        if s[0].mode==9 {cell:=(w-48)/3;for k:0..<3 {left:=16+cast(f32)k*(cell+8);if cx>=left && cx<=left+cell {_:=valley_key(s,[3]int.[116,101,98][k],true);return true;}}}
+        else {if cx>=16 && cx<=w*0.5-16 {_:=valley_key(s,118,true);return true;}if cx>=w*0.5+16 && cx<=w-16 {_:=valley_key(s,116,true);return true;}}
+      }
     }
     if s[0].stage!=0 && s[0].mode==6 && s[0].width/s[0].d<700 && y>=s[0].height-138*s[0].d && y<=s[0].height-98*s[0].d && x>=16*s[0].d && x<=s[0].width-16*s[0].d {valley_fixture(s);return true;}
     if s[0].stage!=0 && s[0].width/s[0].d<700 && y>=s[0].height-88*s[0].d && y<=s[0].height-44*s[0].d {
@@ -305,10 +339,12 @@ valley_frame :: (s:[]ValleyLab,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:
   n=hd_text_fit(out,n,[3]string.["01 / WALKABLE BASIN","02 / ASSET INSPECTOR","03 / INDEXED GEOMETRY"][s[0].stage],20,59,11,w/d-125,pen,1);
   n=hd_text(out,n,"RESET",w/d-84,36,12,pen,0);
   for tab:0..<3 {b:=HudBox.{x=16+cast(f32)tab*102,y=82,width=96,height=44};n=hd_panel(out,n,b,pen,s[0].stage==tab);n=hd_text_fit(out,n,[3]string.["1 WALK","2 ASSETS","3 MESH"][tab],b.x+7,109,11,82,pen,0);}
+  for tab:0..<3 {b:=HudBox.{x=16+cast(f32)tab*102,y=136,width=96,height=44};n=hd_panel(out,n,b,pen,s[0].mode==7+tab);n=hd_text_fit(out,n,[3]string.["4 PARENT","5 LOD","6 PAGES"][tab],b.x+5,163,10,86,pen,0);}
   if s[0].stage!=0 {n=valley_inspector(s,out,n,pen);}
-  if w/d>=700 {n=hd_text(out,n,ifx s[0].stage==0 then "WASD MOVE / SHIFT RUN / SPACE JUMP / 1-3 STATIONS" else "DRAG ORBIT / V VIEW / L DETAIL / C PATH / H LEVEL / F FIXTURE",20,h/d-22,11,pen,0);}
+  if w/d>=700 {n=hd_text(out,n,ifx s[0].stage==0 then "WASD MOVE / SHIFT RUN / SPACE JUMP / 1-3 STATIONS" else "DRAG ORBIT / 4-6 STAGES / H LEVEL / T PIXELS / E FLUSH / B BUDGET",20,h/d-22,11,pen,0);}
   else {n=hd_text_fit(out,n,ifx s[0].stage==0 then "LEFT DRAG MOVE / RIGHT DRAG LOOK / TAP JUMP" else "DRAG ORBIT / TAP VIEW OR DETAIL",16,h/d-22,10,w/d-32,pen,0);}
   if s[0].thumbs.move_on {t:=s[0].thumbs;n=hd_ring(out,n,t.ox/d,t.oy/d,44,44,0,6.2831853,pen,2);n=hd_ring(out,n,t.ox/d+t.pad_x*44,t.oy/d-t.pad_y*44,12,12,0,6.2831853,pen,0);}
+  for k:0..<2 {s[0].pages[0].slot[k].pin=false;}
   s[0].meter[0]=budget_meter(VALLEY_BUDGET);budget_measure(s[0].meter[..],n+s[0].index_n,3,budget_arena_bytes(size_of(ValleyLab),VALLEY_VERTICES,12,88));
   _:=budget_take(s[0].meter[..],BUDGET_STEPS,ifx s[0].stage==0 then s[0].you.clock.ran else 0);#assert budget_ok(s[0].meter[0]);return n;
 }
@@ -318,6 +354,10 @@ valley_probe :: (s:[]ValleyLab,field:int)->int #export_c {
   if field==4 {return s[0].keys;}if field==5 {return s[0].mesh_n;}
   if field==6 {return s[0].stage;}if field==7 {return s[0].mode;}if field==8 {return s[0].rock[0].indices/3;}
   if field==9 {return s[0].rock[0].vertices;}if field==10 {return s[0].rock[0].bytes;}
+  if field==50 {return s[0].render_triangles;}if field==51 {return s[0].coarse_count;}if field==52 {return s[0].pages[0].used;}
+  if field==53 {return s[0].pages[0].arrivals;}if field==54 {return s[0].pages[0].refused;}if field==55 {return s[0].pages[0].requests;}
+  if field==56 {return s[0].pages[0].evictions;}if field==57 {return s[0].pages[0].epoch;}if field==58 {return cast(int)s[0].tolerance;}
+  if field==59 {return cast(int)(s[0].pixel_error[1]*1000);}if field==60 {return ifx s[0].rock_parent_supported then 1 else 0;}
   if field==30 {return s[0].hierarchy[0].count;}if field==31 {return s[0].hierarchy[0].node[s[0].hierarchy[0].root].height;}
   if field==32 {return s[0].level;}if field==33 {return valley_groups(s);}if field==34 {return s[0].fixture;}
   if field==35 {if s[0].fixture==0 {return s[0].rock[0].indices/3;}patch:=valley_patch(s);return patch.indices/3;}
@@ -336,6 +376,7 @@ valley_load_rock :: (s:[]ValleyLab,divisions:int)->bool {
   content:=[1]string.[cast(string)next[0].encoded[0..<next[0].bytes]];ids:=[1]AssetId.[next[0].id];
   if asset_admit(s[0].registry[..],content[..],ids[..])!=ASSET_OK {return false;}
   if s[0].rock_ready {_:=asset_release(s[0].registry[..],s[0].rock[0].id);}
+  s[0].rock_parent_supported=valley_try_rock_parent(next[..],leaves[..]);
   s[0].hierarchy[0]=tree[0];s[0].clusters[0]=leaves[0];s[0].rock[0]=next[0];s[0].divisions=divisions;s[0].rock_ready=true;return true;
 }
 valley_station :: (s:[]ValleyLab,stage:int) {
@@ -347,9 +388,11 @@ valley_station :: (s:[]ValleyLab,stage:int) {
 }
 valley_hash :: (s:[]ValleyLab,n:int) #export_c {
   if n<0 || n>s[0].inbox.count {return;}h:=cast(string)s[0].inbox[0..<n];
+  if h=="parents" {valley_lab(s,7);}if h=="lod" {valley_lab(s,8);}if h=="pages" {valley_lab(s,9);}
   if h=="walk" {valley_station(s,0);}if h=="assets" {valley_station(s,1);}if h=="geometry" {valley_station(s,2);}if h=="clusters" {valley_station(s,2);s[0].mode=5;s[0].cluster_path=true;}if h=="hierarchy" {valley_station(s,2);s[0].mode=6;s[0].fixture=0;s[0].level=1;s[0].cluster_path=true;}
 }
 valley_rock_mesh :: (s:[]ValleyLab,x:f32) {
+  if s[0].mode>=7 {valley_parent_mesh(s);return;}
   if s[0].mode==6 && s[0].fixture!=0 {valley_fan_mesh(s);return;}
   if s[0].cluster_path || s[0].mode>=5 {
     r:=s[0].rock[..];
@@ -393,8 +436,9 @@ valley_number :: (out:[]f32,n:int,label:string,value:int,x:f32,y:f32,pen:HdPen)-
   return hd_text(out,n,cast(string)text[0..<at],x,y,11,pen,0);
 }
 valley_inspector :: (s:[]ValleyLab,out:[]f32,n:int,pen:HdPen)->int {
+  if s[0].mode>=7 {return valley_parent_panel(s,out,n,pen);}
   if s[0].mode==6 {return valley_hierarchy_panel(s,out,n,pen);}
-  width:=s[0].width/s[0].d;height:=s[0].height/s[0].d;y:=ifx width<700 then height-310 else 160.0f32;at:=n;
+  width:=s[0].width/s[0].d;height:=s[0].height/s[0].d;y:=ifx width<700 then height-310 else 198.0f32;at:=n;
   r:=s[0].rock[..];at=hd_text_fit(out,at,"ORIGINAL SANDSTONE / APACHE-2.0",20,y,11,width-40,pen,0);
   at=valley_number(out,at,"VERTICES ",r[0].vertices,20,y+22,pen);
   at=valley_number(out,at,"TRIANGLES ",r[0].indices/3,190,y+22,pen);
@@ -444,7 +488,7 @@ valley_fan_mesh :: (s:[]ValleyLab) {
   }
 }
 valley_hierarchy_panel :: (s:[]ValleyLab,out:[]f32,n:int,pen:HdPen)->int {
-  w:=s[0].width/s[0].d;h:=s[0].height/s[0].d;y:=ifx w<700 then h-310 else 160.0f32;at:=n;
+  w:=s[0].width/s[0].d;h:=s[0].height/s[0].d;y:=ifx w<700 then h-310 else 198.0f32;at:=n;
   at=hd_text(out,at,[3]string.["HIERARCHY / ORIGINAL ROCK","FIXTURE / PLANAR FAN","FIXTURE / BENT FAN"][s[0].fixture],20,y,11,pen,0);
   at=valley_number(out,at,"LEVEL ",s[0].level,20,y+22,pen);
   at=valley_number(out,at,"GROUPS ",valley_groups(s),190,y+22,pen);
@@ -458,5 +502,82 @@ valley_hierarchy_panel :: (s:[]ValleyLab,out:[]f32,n:int,pen:HdPen)->int {
     b:=HudBox.{x=16,y=h-138,width=w-32,height=40};at=hd_panel(out,at,b,pen,false);at=hd_text(out,at,"F / NEXT SOURCE",24,h-112,11,pen,0);
     for k:0..<2 {b=HudBox.{x=16+cast(f32)k*(w*0.5),y=h-88,width=w*0.5-32,height=44};at=hd_panel(out,at,b,pen,false);at=hd_text(out,at,ifx k==0 then "V / VIEW" else "H / LEVEL",b.x+8,b.y+28,11,pen,0);}
   }else {at=hd_text(out,at,"H / LEVEL   F / ROCK - PLANE - BENT",20,y+198,11,pen,0);}
+  return at;
+}
+
+valley_try_rock_parent :: (r:[]Rock,c:[]Clusters)->bool {
+  p:[PARENT_VERTICES]Point;indices:[PARENT_INDICES]u32;ids:[PARENT_VERTICES]u32;n:=0;at:=0;
+  for leaf:c[0].leaf[0..<2] {for k:0..<leaf.triangles*3 {source:=leaf.source[cast(int)leaf.local[k]];found:= -1;
+    for j:0..<n {if ids[j]==source {found=j;}}if found== -1 {found=n;ids[n]=source;p[n]=r[0].p[cast(int)source];n+=1;}indices[at]=cast(u32)found;at+=1;
+  }}
+  result:[1]ParentMesh;return parent_reduce(result[..],p[0..<n],indices[0..<at],0);
+}
+valley_lab :: (s:[]ValleyLab,mode:int) {
+  valley_station(s,2);s[0].mode=mode;s[0].cluster_path=false;s[0].distance=14;
+  name:=[3]string.["parents","lod","pages"][mode-7];for c,k:name {s[0].outbox[k]=c;}s[0].out_n=name.count;s[0].action=3;
+  if !s[0].parents_ready {
+    for k:0..<2 {source:=parent_source(ifx k==0 then 0.0f32 else 0.75f32);s[0].sources[k]=source;
+      #assert parent_reduce(s[0].coarse[k..<k+1],source.p[0..<source.vertices],source.i[0..<source.indices],0);
+      page:=geometry_page(s[0].coarse[k]);s[0].page_key[k]=page.key;s[0].page_bytes[k]=page.bytes;
+    }s[0].pages[0].budget=512;s[0].parents_ready=true;
+  }
+}
+valley_projection :: (s:[]ValleyLab,tile:int)->Point {
+  near:f32=100000;radial:f32=0;offset:=ifx tile==0 then -2.0f32 else 2.0f32;
+  for k:0..<8 {p:=v3(offset+(ifx (k&1)==0 then -2.0f32 else 2.0f32),1.2+(ifx (k&2)==0 then 0.0f32 else ifx tile==0 then 0.0f32 else 0.75f32),ifx (k&4)==0 then -2.0f32 else 1.0f32);
+    view:=sub(p,s[0].eye);near=lo(near,dot(view,s[0].forward));radial=hi(radial,hi(abs(dot(view,s[0].right)),abs(dot(view,s[0].up))));
+  }return v3(near-0.0001,radial+0.0001,s[0].scale);
+}
+valley_parent_mesh :: (s:[]ValleyLab) {
+  s[0].lab_tick+=1;s[0].render_triangles=0;s[0].coarse_count=0;
+  for k:0..<2 {
+    if s[0].retry[k]>0 {s[0].retry[k]-=1;}
+    projection:=valley_projection(s,k);s[0].pixel_error[k]=projected_error(s[0].coarse[k].error,projection.x,projection.y,projection.z);
+    slot:=page_find(s[0].pages[..],s[0].page_key[k]);choice:=parent_choice(s[0].coarse[k].error,projection.x,projection.y,projection.z,s[0].tolerance,s[0].mode!=9 || slot>=0);
+    use_coarse:=ifx s[0].mode==7 then s[0].parent_level>k else choice==ParentChoice.coarse;
+    if s[0].mode==9 && choice==ParentChoice.missing && s[0].retry[k]==0 && s[0].need_page== -1 {
+      ticket:=page_request(s[0].pages[..],s[0].page_key[k],s[0].page_bytes[k]);
+      if ticket.serial>0 {s[0].tickets[k]=ticket;s[0].need_page=k;s[0].retry[k]=120;
+        url:=ifx k==0 then "/assets/valley/parent-0.vgp.hex" else "/assets/valley/parent-1.vgp.hex";
+        for v,j:url {s[0].page_url[j]=v;}s[0].page_url_n=url.count;
+      }
+    }
+    mesh:=s[0].sources[k];if use_coarse {mesh=s[0].coarse[k];s[0].coarse_count+=1;if s[0].mode==9 {mesh=s[0].pages[0].slot[slot].mesh;s[0].pages[0].slot[slot].pin=true;}}
+    s[0].render_triangles+=mesh.indices/3;
+    for triangle:0..<mesh.indices/3 {a:=mesh.p[cast(int)mesh.i[triangle*3]];b:=mesh.p[cast(int)mesh.i[triangle*3+1]];c:=mesh.p[cast(int)mesh.i[triangle*3+2]];
+      normal:=unit_or(cross(sub(b,a),sub(c,a)),v3(0,1,0));colour:=times(ifx use_coarse then v3(0.9,0.48,0.25) else v3(0.3,0.68,0.85),0.45+0.55*hi(0,dot(normal,v3(-0.48,0.8,-0.36))));
+      for corner:0..<3 {valley_vertex(s,add(mesh.p[cast(int)mesh.i[triangle*3+corner]],v3(ifx k==0 then -2.0f32 else 2.0f32,1.2,0)),colour);}
+    }
+  }
+}
+valley_http_started :: (s:[]ValleyLab,id:int) #export_c {
+  if s[0].need_page<0 {return;}ticket:=s[0].tickets[s[0].need_page];if id>=0 && id<8 {s[0].http[id]=ticket;}
+  else {for k:0..<2 {if s[0].pages[0].pending[k].serial==ticket.serial {s[0].pages[0].pending[k]=PageTicket.{};}}}s[0].need_page= -1;
+}
+valley_message :: (s:[]ValleyLab,kind:int,n:int) #export_c {
+  if kind<512 || kind>=520 || n<0 || n>s[0].inbox.count {return;}ticket:=s[0].http[kind-512];s[0].http[kind-512]=PageTicket.{};
+  data:[GEOMETRY_PAGE_BYTES]u8;ok:=n==4+ticket.bytes*2 && ticket.bytes>0 && ticket.bytes<=GEOMETRY_PAGE_BYTES;
+  if ok {ok=s[0].inbox[0]=='2' && s[0].inbox[1]=='0' && s[0].inbox[2]=='0' && s[0].inbox[3]==10;}
+  if ok {for k:0..<ticket.bytes {a:=asset_digit(s[0].inbox[4+k*2]);b:=asset_digit(s[0].inbox[5+k*2]);if a<0 || b<0 {ok=false;break;}data[k]=cast(u8)(a*16+b);}}
+  if ok {ok=page_arrive(s[0].pages[..],ticket,data[0..<ticket.bytes]);}else {s[0].pages[0].refused+=1;}
+  if !ok {for k:0..<2 {if s[0].pages[0].pending[k].serial==ticket.serial {s[0].pages[0].pending[k]=PageTicket.{};}}}
+}
+valley_parent_panel :: (s:[]ValleyLab,out:[]f32,n:int,pen:HdPen)->int {
+  w:=s[0].width/s[0].d;h:=s[0].height/s[0].d;y:=ifx w<700 then h-310 else 198.0f32;at:=n;
+  at=hd_text(out,at,[3]string.["PARENTS / BOUNDARY LOCKED","LOD / CONSERVATIVE PIXEL ERROR","PAGES / HTTP + SHA256"][s[0].mode-7],20,y,11,pen,0);
+  at=valley_number(out,at,"SOURCE TRIANGLES ",12,20,y+22,pen);at=valley_number(out,at,"DRAWN TRIANGLES ",s[0].render_triangles,20,y+44,pen);
+  at=valley_number(out,at,"COARSE PATCHES ",s[0].coarse_count,20,y+66,pen);
+  at=valley_number(out,at,"PIXEL LIMIT ",cast(int)s[0].tolerance,20,y+88,pen);
+  at=valley_number(out,at,"BENT ERROR milli-px ",cast(int)(s[0].pixel_error[1]*1000),20,y+110,pen);
+  if s[0].mode==9 {
+    at=valley_number(out,at,"RESIDENT BYTES ",s[0].pages[0].used,20,y+132,pen);
+    at=valley_number(out,at,"ARRIVALS ",s[0].pages[0].arrivals,20,y+154,pen);
+    if w>=700 {at=valley_number(out,at,"REFUSED ",s[0].pages[0].refused,20,y+176,pen);at=valley_number(out,at,"EVICTIONS ",s[0].pages[0].evictions,20,y+198,pen);at=valley_number(out,at,"BYTE BUDGET ",s[0].pages[0].budget,20,y+220,pen);}
+  }else {at=hd_text(out,at,"SHARED EDGE / SAME SEGMENTATION",20,y+132,10,pen,1);at=hd_text(out,at,"ROCK CLASS UNSUPPORTED / RETAINED",20,y+154,10,pen,0);}
+  if w<700 {
+    b:=HudBox.{x=16,y=h-138,width=w-32,height=40};at=hd_panel(out,at,b,pen,false);at=hd_text(out,at,ifx s[0].mode==9 then "V / VIEW" else ifx s[0].mode==7 then "H / SOURCE - MIXED - COARSE" else "T / PIXEL LIMIT",24,h-112,10,pen,0);
+    if s[0].mode==9 {cell:=(w-48)/3;for k:0..<3 {b=HudBox.{x=16+cast(f32)k*(cell+8),y=h-88,width=cell,height=44};at=hd_panel(out,at,b,pen,false);at=hd_text(out,at,[3]string.["T PIXELS","E FLUSH","B BUDGET"][k],b.x+7,b.y+28,10,pen,0);}}
+    else {for k:0..<2 {b=HudBox.{x=16+cast(f32)k*w*0.5,y=h-88,width=w*0.5-32,height=44};at=hd_panel(out,at,b,pen,false);at=hd_text(out,at,ifx k==0 then "V / VIEW" else "T / PIXELS",b.x+8,b.y+28,10,pen,0);}}
+  }else {at=hd_text(out,at,"H SOURCE/MIXED/COARSE / T PIXELS / E FLUSH / B BUDGET",20,y+264,10,pen,0);}
   return at;
 }

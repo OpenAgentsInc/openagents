@@ -1,0 +1,3 @@
+ok   #test Valley parent stages render actual reductions preserve the seam and fall back before HTTP (1 case, 191532684 steps, 1586 ms)
+1 of 474 checks (--only 'Valley parent stages'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

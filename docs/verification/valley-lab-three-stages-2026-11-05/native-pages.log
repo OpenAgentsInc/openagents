@@ -1,0 +1,3 @@
+coax jobs: the load average is 15.5, at or above 12 ($COAX_JOBS_LOAD); running 1 build worker, not up to 12, until it drops
+parent-0: source_triangles=6 coarse_triangles=4 error=0.0 bytes=136 resident_cost=256 sha256=33160137631ccb3c2602debff7751abc12ca84b183a52cd55c9341e906ce6682
+parent-1: source_triangles=6 coarse_triangles=4 error=0.75 bytes=136 resident_cost=256 sha256=d4383945e7118facff9e839f6c324c042cea80059e331e8cc3a9c390d5afaf04

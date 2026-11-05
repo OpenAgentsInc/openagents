@@ -1,0 +1,4 @@
+PASS Valley clusters desktop: decoded leaf counts/index traffic, cluster-ID readback, exact lit reference region, C path toggle and #clusters link
+PASS Valley hierarchy desktop: real parent cuts/colors, unchanged rock triangles, planar 4->2 error=0, bent 4->2 error=750mm, H/F keyboard controls
+PASS Valley three stages desktop: real topology 12->8, perspective/zoom cuts, HTTP page requests, missing-page 12-triangle fallback, stale/corrupt refusal, 256/512-byte residency, eviction and exact unpaged/paged GPU patch
+FAIL desktop: {\"ready\":true,\"scene\":true,\"pose\":[0,0,-12000,1,0,1320],\"mode\":9,\"hierarchy\":[71,6,1,1,2,2,750],\"captures\":17,\"pages\":[8,2,512,6,4,10,1,5,256,71291,0],\"pageRequests\":10,\"errors\":[\"coaxial: GPU device lost (destroyed: Device was destroyed.); taking a new one\"],\"text\":\"Valley Lab\\n\\nValley Lab\\n\\nGPU device replaced in 8 ms\"}

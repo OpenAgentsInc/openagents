@@ -1,0 +1,163 @@
+// Internal VGP1 mesh pages. Content identity, decoded bytes and admission stay
+// in Coax; the browser only transports the authored hex files over bounded HTTP.
+#load "parent.coax";
+#load "../../assets.coax";
+#authority;
+GEOMETRY_PAGE_BYTES :: 16+PARENT_VERTICES*12+PARENT_INDICES*4;
+GeometryPage :: struct {data:[GEOMETRY_PAGE_BYTES]u8;bytes:int;key:AssetId;}
+PageTicket :: struct {serial:int;epoch:int;key:AssetId;bytes:int;}
+PageSlot :: struct {page:GeometryPage;mesh:ParentMesh;cost:int;stamp:int;pin:bool;}
+GeometryPages :: struct {slot:[2]PageSlot;pending:[2]PageTicket;epoch:int=1;serial:int=1;clock:int;budget:int;used:int;requests:int;arrivals:int;refused:int;evictions:int;}
+
+#test "mesh pages roundtrip actual geometry and reject malformed frames atomically" {
+  m:=ParentMesh.{vertices=3,indices=3,error=0.75};m.p[0]=v3(0,0,0);m.p[1]=v3(0,0,1);m.p[2]=v3(1,0,0);m.i[0]=0;m.i[1]=1;m.i[2]=2;
+  p:=geometry_page(m);out:[1]ParentMesh;#assert p.bytes==64 && page_decode(out[..],p.data[0..<p.bytes]);
+  #assert out[0].vertices==3 && out[0].indices==3 && out[0].error==0.75 && out[0].p[1].z==1 && out[0].p[2].x==1 && out[0].i[2]==2;
+  #assert !page_decode(out[..],p.data[0..<63]);
+  for offset:[6]int.[0,4,8,12,16,52] {bad:=p;
+    page_put(bad.data[..],offset,ifx offset==0 then 0 else ifx offset==4 then 257 else ifx offset==8 then 4 else ifx offset==12 || offset==16 then 0x7f800000 else 3);
+    #assert !page_decode(out[..],bad.data[0..<bad.bytes]);
+  }
+  #assert out[0].vertices==3 && out[0].error==0.75;
+}
+#test "page cache authenticates arrivals fences stale tickets and accounts encoded plus decoded bytes" {
+  m:=ParentMesh.{vertices=3,indices=3};m.p[1]=v3(0,0,1);m.p[2]=v3(1,0,0);m.i[1]=1;m.i[2]=2;
+  p:=geometry_page(m);c:[1]GeometryPages;c[0].budget=112;
+  t:=page_request(c[..],p.key,p.bytes);#assert t.serial==1 && c[0].requests==1;
+  #assert page_request(c[..],p.key,p.bytes).serial==t.serial && c[0].requests==1;
+  bad:=p;bad.data[20]=1;#assert !page_arrive(c[..],t,bad.data[0..<bad.bytes]) && c[0].used==0;
+  #assert page_arrive(c[..],t,p.data[0..<p.bytes]) && c[0].used==112 && c[0].arrivals==1 && page_find(c[..],p.key)==0;
+  #assert !page_arrive(c[..],t,p.data[0..<p.bytes]) && c[0].used==112;
+  page_reset(c[..]);#assert c[0].epoch==2 && c[0].used==0 && !page_arrive(c[..],t,p.data[0..<p.bytes]);
+  c[0].budget=111;t=page_request(c[..],p.key,p.bytes);#assert !page_arrive(c[..],t,p.data[0..<p.bytes]) && c[0].used==0 && c[0].refused==4;
+  #assert page_request(c[..],p.key,0).serial==0 && page_request(c[..],p.key,GEOMETRY_PAGE_BYTES+1).serial==0;
+}
+#test "page eviction refuses pinned victims and publishes all or nothing" {
+  m:=ParentMesh.{vertices=3,indices=3};m.p[1]=v3(0,0,1);m.p[2]=v3(1,0,0);m.i[1]=1;m.i[2]=2;
+  a:=geometry_page(m);m.error=1;b:=geometry_page(m);m.error=2;d:=geometry_page(m);c:[1]GeometryPages;c[0].budget=224;
+  ta:=page_request(c[..],a.key,a.bytes);tb:=page_request(c[..],b.key,b.bytes);#assert page_request(c[..],d.key,d.bytes).serial==0;
+  #assert page_arrive(c[..],ta,a.data[0..<a.bytes]) && page_arrive(c[..],tb,b.data[0..<b.bytes]);
+  c[0].slot[0].pin=true;c[0].slot[1].pin=true;td:=page_request(c[..],d.key,d.bytes);
+  #assert !page_arrive(c[..],td,d.data[0..<d.bytes]) && c[0].used==224 && page_find(c[..],a.key)==0 && c[0].refused==1;
+  c[0].slot[1].pin=false;#assert page_arrive(c[..],td,d.data[0..<d.bytes]) && c[0].evictions==1 && page_find(c[..],b.key)== -1 && page_find(c[..],d.key)==1;
+}
+
+page_number_ok :: (data:[]u8,at:int)->bool {return (page_word(data,at)&0x7f800000)!=0x7f800000;}
+#test "float page words distinguish exponent masks including NaN payload low bits" {
+  b:[4]u8;for word:[5]u32.[0x7f800000,0xff800000,0x7fc00001,0x7fffffff,0xff800001] {page_put(b[..],0,word);#assert !page_number_ok(b[..],0);}
+  page_put(b[..],0,0x3f800001);#assert page_number_ok(b[..],0);
+}
+#test "mesh page roundtrip preserves every coordinate index and retained byte" {
+  m:=ParentMesh.{vertices=4,indices=6,error=100000};m.p[0]=v3(-2,3,4);m.p[1]=v3(5,-6,7);m.p[2]=v3(8,9,-10);m.p[3]=v3(-11,12,13);m.i[0]=2;m.i[1]=0;m.i[2]=1;m.i[3]=3;m.i[4]=1;m.i[5]=0;
+  p:=geometry_page(m);out:[1]ParentMesh;#assert page_decode(out[..],p.data[0..<p.bytes]);
+  for v,k:m.p[0..<m.vertices] {#assert out[0].p[k].x==v.x && out[0].p[k].y==v.y && out[0].p[k].z==v.z;}
+  for v,k:m.i[0..<m.indices] {#assert out[0].i[k]==v;}
+  c:[1]GeometryPages;c[0].budget=1000;t:=page_request(c[..],p.key,p.bytes);#assert t.serial==1 && t.epoch==1 && t.bytes==p.bytes && asset_same(t.key,p.key);
+  #assert page_arrive(c[..],t,p.data[0..<p.bytes]) && c[0].clock==1 && c[0].slot[0].stamp==1;
+  #assert c[0].slot[0].page.bytes==p.bytes && asset_same(c[0].slot[0].page.key,p.key) && c[0].slot[0].mesh.p[3].z==13;
+  for v,k:p.data[0..<p.bytes] {#assert c[0].slot[0].page.data[k]==v;}
+  #assert page_request(c[..],p.key,p.bytes).serial==0;
+  wrong:=t;wrong.serial+=100;#assert !page_arrive(c[..],wrong,p.data[0..<p.bytes]) && c[0].refused==1;
+  bad:=p;page_put(bad.data[..],12,f32_bits(-1));bad.key=asset_id(cast(string)bad.data[0..<bad.bytes]);t=page_request(c[..],bad.key,bad.bytes);
+  #assert !page_arrive(c[..],t,bad.data[0..<bad.bytes]) && c[0].refused==2;
+  c[0].budget=1;#assert !page_arrive(c[..],t,p.data[0..<p.bytes]) && c[0].refused==3;
+  page_reset(c[..]);#assert page_find(c[..],p.key)== -1 && c[0].pending[0].serial==0 && c[0].pending[1].serial==0;
+  empty:=AssetId.{};#assert page_find(c[..],empty)== -1;
+  #assert page_request(c[..],empty,1).serial>0;other:=p.key;other.words[0]+=1;#assert page_request(c[..],other,GEOMETRY_PAGE_BYTES).serial>0;
+}
+#test "decoder maximum counts are inclusive and zero-area or huge finite fields refuse" {
+  m:=ParentMesh.{vertices=PARENT_VERTICES,indices=PARENT_INDICES};for k:0..<m.vertices {m.p[k]=v3(cast(f32)k,1,cast(f32)(k%2));}
+  for k:0..<m.indices {m.i[k]=cast(u32)(k%3);}p:=geometry_page(m);out:[1]ParentMesh;#assert page_decode(out[..],p.data[0..<p.bytes]);
+  for offset:[4]int.[4,8,12,16] {bad:=p;page_put(bad.data[..],offset,ifx offset==4 then 257 else ifx offset==8 then 771 else f32_bits(1000000));#assert !page_decode(out[..],bad.data[0..<bad.bytes]);}
+  for t:[3]int.[0,1,255] {bad:=p;page_put(bad.data[..],16+m.vertices*12+t*12,m.i[t*3+1]);#assert !page_decode(out[..],bad.data[0..<bad.bytes]);}
+}
+#test "cache LRU victim zero ties budget pressure and reset both slots are observable" {
+  m:=ParentMesh.{vertices=3,indices=3};m.p[1]=v3(0,0,1);m.p[2]=v3(1,0,0);m.i[1]=1;m.i[2]=2;
+  a:=geometry_page(m);m.error=1;b:=geometry_page(m);m.error=2;d:=geometry_page(m);c:[1]GeometryPages;c[0].budget=224;
+  ta:=page_request(c[..],a.key,a.bytes);tb:=page_request(c[..],b.key,b.bytes);#assert tb.serial==2;
+  #assert page_arrive(c[..],ta,a.data[0..<a.bytes]) && page_arrive(c[..],tb,b.data[0..<b.bytes]);
+  c[0].slot[1].stamp=c[0].slot[0].stamp;t:=page_request(c[..],d.key,d.bytes);c[0].budget=112;
+  #assert page_arrive(c[..],t,d.data[0..<d.bytes]) && c[0].used==112 && c[0].evictions==2 && page_find(c[..],d.key)==0;
+  ta=page_request(c[..],a.key,a.bytes);tb=page_request(c[..],b.key,b.bytes);page_reset(c[..]);
+  for slot:c[0].slot {#assert slot.cost==0;}for ticket:c[0].pending {#assert ticket.serial==0;}
+}
+
+#test "decoder isolates count length and each float coordinate refusal" {
+  m:=ParentMesh.{vertices=4,indices=3};m.p[0]=v3(1,2,3);m.p[1]=v3(2,3,5);m.p[2]=v3(4,2,1);m.p[3]=v3(1,1,1);m.i[0]=2;m.i[1]=0;m.i[2]=1;p:=geometry_page(m);out:[1]ParentMesh;
+  for offset:[6]int.[16,20,24,52,56,60] {bad:=p;page_put(bad.data[..],offset,0x7f800000);#assert !page_decode(out[..],bad.data[0..<bad.bytes]);}
+  extra:[GEOMETRY_PAGE_BYTES+12]u8;for v,k:p.data[0..<p.bytes] {extra[k]=v;}#assert !page_decode(out[..],extra[0..<p.bytes+1]);
+  page_put(extra[..],8,4);page_put(extra[..],p.bytes,0);#assert !page_decode(out[..],extra[0..<p.bytes+4]);
+  page_put(extra[..],8,0);#assert !page_decode(out[..],extra[0..<64]);
+  full:=ParentMesh.{vertices=256,indices=3};for k:0..<256 {full.p[k]=v3(cast(f32)k,0,cast(f32)(k%2));}full.i[1]=1;full.i[2]=2;q:=geometry_page(full);
+  for v,k:q.data[0..<16+256*12] {extra[k]=v;}page_put(extra[..],4,257);for k:0..<3 {page_put(extra[..],16+257*12+k*4,cast(u32)k);}#assert !page_decode(out[..],extra[0..<16+257*12+12]);
+  full.indices=768;for k:0..<768 {full.i[k]=cast(u32)(k%3);}q=geometry_page(full);for v,k:q.data[0..<q.bytes] {extra[k]=v;}page_put(extra[..],8,771);for k:0..<3 {page_put(extra[..],q.bytes+k*4,cast(u32)k);}#assert !page_decode(out[..],extra[0..<q.bytes+12]);
+}
+#test "pending identity cannot be forged while a valid ticket is held" {
+  m:=ParentMesh.{vertices=3,indices=3};m.p[1]=v3(0,0,1);m.p[2]=v3(1,0,0);m.i[1]=1;m.i[2]=2;p:=geometry_page(m);c:[1]GeometryPages;c[0].budget=112;
+  ticket:=page_request(c[..],p.key,p.bytes);forged:=ticket;forged.serial+=100;
+  #assert !page_arrive(c[..],forged,p.data[0..<p.bytes]) && c[0].used==0 && c[0].refused==1;
+}
+#test "LRU ties evict the first slot and pressure rescans the first free slot" {
+  m:=ParentMesh.{vertices=3,indices=3};m.p[1]=v3(0,0,1);m.p[2]=v3(1,0,0);m.i[1]=1;m.i[2]=2;a:=geometry_page(m);m.error=1;b:=geometry_page(m);m.error=2;d:=geometry_page(m);
+  c:[1]GeometryPages;c[0].budget=224;ta:=page_request(c[..],a.key,a.bytes);tb:=page_request(c[..],b.key,b.bytes);
+  #assert page_arrive(c[..],ta,a.data[0..<a.bytes]) && page_arrive(c[..],tb,b.data[0..<b.bytes]);c[0].slot[1].stamp=c[0].slot[0].stamp;td:=page_request(c[..],d.key,d.bytes);
+  #assert page_arrive(c[..],td,d.data[0..<d.bytes]) && page_find(c[..],d.key)==0 && page_find(c[..],b.key)==1 && page_find(c[..],a.key)== -1;
+  page_reset(c[..]);c[0].budget=112;ta=page_request(c[..],a.key,a.bytes);#assert page_arrive(c[..],ta,a.data[0..<a.bytes]);tb=page_request(c[..],b.key,b.bytes);
+  #assert page_arrive(c[..],tb,b.data[0..<b.bytes]) && page_find(c[..],b.key)==0 && c[0].used==112;
+}
+
+#test "the same page arrival record replays exact ownership and counters" {
+  m:=ParentMesh.{vertices=3,indices=3};m.p[1]=v3(0,0,1);m.p[2]=v3(1,0,0);m.i[1]=1;m.i[2]=2;a:=geometry_page(m);m.error=1;b:=geometry_page(m);expected:=GeometryPages.{};
+  for run:0..<2 {c:[1]GeometryPages;c[0].budget=224;ta:=page_request(c[..],a.key,a.bytes);tb:=page_request(c[..],b.key,b.bytes);
+    #assert page_arrive(c[..],tb,b.data[0..<b.bytes]);page_reset(c[..]);#assert !page_arrive(c[..],ta,a.data[0..<a.bytes]);ta=page_request(c[..],a.key,a.bytes);#assert page_arrive(c[..],ta,a.data[0..<a.bytes]);
+    if run==0 {expected=c[0];}else {
+      #assert c[0].used==expected.used && c[0].epoch==expected.epoch && c[0].serial==expected.serial && c[0].clock==expected.clock && c[0].requests==expected.requests && c[0].arrivals==expected.arrivals && c[0].refused==expected.refused && c[0].evictions==expected.evictions;
+      for slot,k:c[0].slot {#assert slot.cost==expected.slot[k].cost && asset_same(slot.page.key,expected.slot[k].page.key);}
+    }
+  }
+}
+
+page_put :: (out:[]u8,at:int,value:u32) {for k:0..<4 {out[at+k]=cast(u8)((value>>(k*8))&255);}}
+page_word :: (data:[]u8,at:int)->u32 {v:u32=0;for k:0..<4 {v|=cast(u32)data[at+k]<<(k*8);}return v;}
+geometry_page :: (mesh:ParentMesh)->GeometryPage {
+  p:=GeometryPage.{};page_put(p.data[..],0,0x31504756);page_put(p.data[..],4,cast(u32)mesh.vertices);page_put(p.data[..],8,cast(u32)mesh.indices);page_put(p.data[..],12,f32_bits(mesh.error));at:=16;
+  for k:0..<mesh.vertices {for v:[3]f32.[mesh.p[k].x,mesh.p[k].y,mesh.p[k].z] {page_put(p.data[..],at,f32_bits(v));at+=4;}}
+  for k:0..<mesh.indices {page_put(p.data[..],at,mesh.i[k]);at+=4;}p.bytes=at;p.key=asset_id(cast(string)p.data[0..<at]);return p;
+}
+page_decode :: (out:[]ParentMesh,data:[]u8)->bool {
+  if data.count<64 || page_word(data,0)!=0x31504756 {return false;}
+  n:=cast(int)page_word(data,4);indices:=cast(int)page_word(data,8);bits:=page_word(data,12);if !page_number_ok(data,12) {return false;}error:=f32_from_bits(bits);
+  if n>PARENT_VERTICES || indices==0 || indices/3>PARENT_INDICES/3 || indices%3!=0 || data.count!=16+n*12+indices*4 || !(error>=0 && error<1000000) {return false;}
+  m:=ParentMesh.{vertices=n,indices=indices,error=error};at:=16;
+  for k:0..<n {if !page_number_ok(data,at) || !page_number_ok(data,at+4) || !page_number_ok(data,at+8) {return false;}m.p[k]=v3(f32_from_bits(page_word(data,at)),f32_from_bits(page_word(data,at+4)),f32_from_bits(page_word(data,at+8)));at+=12;if !finite3(m.p[k]) {return false;}}
+  for k:0..<indices {m.i[k]=page_word(data,at);at+=4;if cast(int)m.i[k]>=n {return false;}}
+  for t:0..<indices/3 {a:=m.p[cast(int)m.i[t*3]];b:=m.p[cast(int)m.i[t*3+1]];c:=m.p[cast(int)m.i[t*3+2]];area:=cross(sub(b,a),sub(c,a));if dot(area,area)==0 {return false;}}
+  out[0]=m;return true;
+}
+page_find :: (c:[]GeometryPages,key:AssetId)->int {for a,k:c[0].slot {if a.cost!=0 && asset_same(a.page.key,key) {return k;}}return -1;}
+page_request :: (c:[]GeometryPages,key:AssetId,bytes:int)->PageTicket {
+  if bytes<1 || bytes>GEOMETRY_PAGE_BYTES || page_find(c,key)!= -1 {return PageTicket.{};}
+  for t:c[0].pending {if t.serial!=0 && asset_same(t.key,key) {return t;}}
+  for t,k:c[0].pending {if t.serial==0 {ticket:=PageTicket.{serial=c[0].serial,epoch=c[0].epoch,key=key,bytes=bytes};c[0].serial+=1;c[0].pending[k]=ticket;c[0].requests+=1;return ticket;}}
+  return PageTicket.{};
+}
+page_arrive :: (c:[]GeometryPages,t:PageTicket,data:[]u8)->bool {
+  pending:= -1;for a,k:c[0].pending {if a.serial==t.serial && a.serial!=0 {pending=k;}}
+  if pending<0 || t.epoch!=c[0].epoch || t.bytes!=data.count || !asset_same(t.key,c[0].pending[pending].key) || !asset_same(t.key,asset_id(cast(string)data)) {c[0].refused+=1;return false;}
+  mesh:[1]ParentMesh;if !page_decode(mesh[..],data) {c[0].refused+=1;return false;}
+  cost:=data.count+mesh[0].vertices*12+mesh[0].indices*4;if cost>c[0].budget {c[0].refused+=1;return false;}
+  next:=c[0];slot:int;
+  while true {
+    slot= -1;for a,k:next.slot {if a.cost==0 && slot== -1 {slot=k;}}
+    if slot!= -1 && next.used+cost<=next.budget {break;}
+    victim:= -1;for a,k:next.slot {if a.cost!=0 && !a.pin {if victim== -1 || a.stamp<next.slot[victim].stamp {victim=k;}}}
+    if victim== -1 {c[0].refused+=1;return false;}
+    next.used-=next.slot[victim].cost;next.slot[victim]=PageSlot.{};next.evictions+=1;
+  }
+  next.clock+=1;next.slot[slot].cost=cost;next.slot[slot].mesh=mesh[0];next.slot[slot].stamp=next.clock;
+  for v,k:data {next.slot[slot].page.data[k]=v;}next.slot[slot].page.bytes=data.count;next.slot[slot].page.key=t.key;
+  next.used+=cost;next.pending[pending]=PageTicket.{};next.arrivals+=1;c[0]=next;return true;
+}
+page_reset :: (c:[]GeometryPages) {
+  c[0].epoch+=1;c[0].used=0;for k:0..<2 {c[0].slot[k]=PageSlot.{};c[0].pending[k]=PageTicket.{};}
+}

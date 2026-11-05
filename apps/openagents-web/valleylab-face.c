@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #define EXPORT(name) __attribute__((export_name(name)))
 static coax_t_ValleyLab *at(uint32_t p){return (coax_t_ValleyLab *)(uintptr_t)p;}
+__attribute__((import_module("env"),import_name("coaxial_http_bounded"))) extern int32_t valley_fetch(uint32_t,uint32_t,uint32_t,uint32_t,uint32_t,int64_t);
 static coax_v_t_ValleyLab view(uint32_t p){return (coax_v_t_ValleyLab){at(p),1};}
 EXPORT("coaxial_layout") uint32_t layout(void){return sizeof(coax_t_ValleyLab)*1000003u+offsetof(coax_t_ValleyLab,you)*7u+0x564c3032u;}
 EXPORT("coaxial_state_size") uint32_t state_size(void){return sizeof(coax_t_ValleyLab);}
@@ -12,7 +13,7 @@ EXPORT("coaxial_state_init") void state_init(uint32_t p){coax_default_t_ValleyLa
 EXPORT("coaxial_max_vertices") uint32_t max_vertices(void){return 65536;}
 EXPORT("coaxial_vertex_floats") uint32_t vertex_floats(void){return 12;}
 EXPORT("coaxial_uniform_floats") uint32_t uniform_floats(void){return 88;}
-EXPORT("coaxial_frame") uint32_t frame(uint32_t p,uint32_t v,uint32_t u,float w,float h,float d,float dt,uint32_t still){return (uint32_t)valley_frame(view(p),(coax_v_f32){(float *)(uintptr_t)v,65536*12},(coax_v_f32){(float *)(uintptr_t)u,88},w,h,d,dt,still!=0);}
+EXPORT("coaxial_frame") uint32_t frame(uint32_t p,uint32_t v,uint32_t u,float w,float h,float d,float dt,uint32_t still){uint32_t n=(uint32_t)valley_frame(view(p),(coax_v_f32){(float *)(uintptr_t)v,65536*12},(coax_v_f32){(float *)(uintptr_t)u,88},w,h,d,dt,still!=0);if(at(p)->need_page>=0){int32_t id=valley_fetch((uint32_t)(uintptr_t)at(p)->page_url.e,(uint32_t)at(p)->page_url_n,0,0,4,5000);valley_http_started(view(p),id);}return n;}
 EXPORT("coaxial_key") uint32_t key(uint32_t p,int32_t k,int32_t mods){(void)mods;return valley_key(view(p),k,true);}
 EXPORT("coaxial_key_up") uint32_t key_up(uint32_t p,int32_t k,int32_t mods){(void)mods;return valley_key(view(p),k,false);}
 EXPORT("coaxial_pointer") uint32_t pointer(uint32_t p,float x,float y,int32_t phase,int32_t kind,int32_t id){return valley_pointer(view(p),x,y,phase,kind,id);}
@@ -28,9 +29,11 @@ EXPORT("coaxial_store_bytes") uint32_t store_bytes(uint32_t p,int32_t k){return 
 EXPORT("coaxial_guard_probe") int32_t probe(uint32_t p,int32_t f){return (int32_t)valley_probe(view(p),f);}
 
 EXPORT("coaxial_inbox") uint32_t inbox(uint32_t p){return (uint32_t)(uintptr_t)at(p)->inbox.e;}
-EXPORT("coaxial_inbox_cap") uint32_t inbox_cap(void){return 128;}
+EXPORT("coaxial_inbox_cap") uint32_t inbox_cap(void){return sizeof(at(0)->inbox.e);}
 EXPORT("coaxial_hash") void hash(uint32_t p,int32_t n){valley_hash(view(p),n);}
 EXPORT("coaxial_action") int32_t action(uint32_t p){return (int32_t)at(p)->action;}
 EXPORT("coaxial_outbox") uint32_t outbox(uint32_t p){return (uint32_t)(uintptr_t)at(p)->outbox.e;}
 EXPORT("coaxial_outbox_len") uint32_t outbox_len(uint32_t p){return (uint32_t)at(p)->out_n;}
 EXPORT("coaxial_action_done") void done(uint32_t p){at(p)->action=0;at(p)->out_n=0;}
+
+EXPORT("coaxial_message") void message(uint32_t p,int32_t kind,int32_t n){valley_message(view(p),kind,n);}

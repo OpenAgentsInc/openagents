@@ -1,0 +1,2 @@
+parent-0.vgp.hex bytes=136 vertices=6 indices=12 error=0.0 sha256=33160137631ccb3c2602debff7751abc12ca84b183a52cd55c9341e906ce6682
+parent-1.vgp.hex bytes=136 vertices=6 indices=12 error=0.75 sha256=d4383945e7118facff9e839f6c324c042cea80059e331e8cc3a9c390d5afaf04
