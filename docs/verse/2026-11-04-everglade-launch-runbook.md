@@ -822,8 +822,8 @@ truncation; `observation counter overflow` marks degraded counting. The new
 `server queued ack` samples end when the final ACK frame is actually accepted
 by the socket queue and exclude estimated network RTT. The older input-to-ACK
 series keeps its historical RTT estimate; kernel RTT is also displayed
-separately. Client render delay and clock-offset uncertainty remain separate
-#12840 qualification work.
+separately. The opt-in client trace below measures application/render delay
+and retains clock-offset uncertainty separately.
 
 | Reading | Action threshold |
 | --- | --- |
@@ -842,8 +842,9 @@ input and transport counters are outside those spans.
 The older `measuring % of tick` retains its existing denominator. The paired
 queue/save-observer workload is recorded in
 `docs/verification/2026-11-05-room-observer-overhead.md`; its complete-harness
-CPU measurement has a different scope and denominator. Client presentation
-and its clock uncertainty remain open in #12840.
+CPU measurement has a different scope and denominator. The integrated timing
+record is `docs/verification/2026-11-05-room-latency.md`; check its exact compiler
+and source scope before comparing a new build.
 
 The capacity series reports native world slots, live/unused worlds, seated
 connections, grace holds, initial placement gates and startup readiness.
@@ -872,6 +873,35 @@ and the API service's availability must be checked alongside it. The counter's
 independent transaction has a 50 ms PostgreSQL statement timeout and rolls back
 on failure, preserving the already committed reservation and the caller's
 session settings. This bounds a server statement, not network connection time.
+
+For a bounded presentation diagnostic, build the `latency-client` companion,
+add `roomtrace=1` to an owned local Everglade session and run
+`coax/web/tool.sh coax/web/room/latency-browser-check.coax URL OUT.json trace`,
+then `coax/web/tool.sh coax/web/room/latency-summary.coax OUT.json`.
+The driver requires a live ACK/state and 50 completed observations within
+60 seconds. The report separates input queue, movement, remaining simulation,
+serialization, final socket queue, raw browser receipt, application, submission
+and GPU completion. Interpolation delay remains separate. GPU completion is
+not physical display scanout. Native timestamps and browser timestamps have
+different epochs; use the reported intervals for cross-clock comparisons.
+
+Inspect `coaxial.roomTrace()` for the last 64 complete rows and explicit
+expired/refused/missing counts. Any increase requires inspecting socket/device
+retirement, a two-second observation deadline, report delivery and the declared
+100us quantization/100ppm drift/five-second freshness assumptions. Unknown or
+inconsistent clocks stay unknown; signed lower bounds are retained. A local
+50-sample run with any missing/refused observation or JavaScript error needs
+investigation before comparison. Throttled links can legitimately expire
+samples: retain the attempts and interval widths rather than reporting only
+successful latency. A failed 50-sample collection is not a passing run.
+
+The diagnostic sends at most four input samples and one clock sync per second,
+with one input sample in flight. Ordinary sessions allocate no browser observer.
+Optional reports remain included in the complete-byte `?` class. The timing
+record retains normal and 100ms/jitter/loss traces, stale/save-failure evidence,
+the final 658-check room suite and paired CPU measurements. Capacity and frame
+budgets come from qualified workload profiles; these samples define no universal
+latency or fleet-capacity threshold.
 
 ## What a crash may lose
 

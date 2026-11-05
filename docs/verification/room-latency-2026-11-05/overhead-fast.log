@@ -1,0 +1,6 @@
+observer overhead: run=1 profile=baseline-1 status=0 timed_out=false cut=false elapsed_s=83.57 user_s=3.87 system_s=4.5
+observer overhead: run=2 profile=observed-2 status=0 timed_out=false cut=false elapsed_s=83.49 user_s=4.0 system_s=4.56
+observer overhead: run=3 profile=observed-3 status=0 timed_out=false cut=false elapsed_s=83.59 user_s=3.85 system_s=4.11
+observer overhead: run=4 profile=baseline-4 status=0 timed_out=false cut=false elapsed_s=83.59 user_s=4.72 system_s=5.33
+observer overhead: workload=ten-native-sockets-75s baseline_mean_cpu_s=9.21 observed_mean_cpu_s=8.26 difference_cpu_s=-0.9500000000000011 difference_percent=-10.314875135722053
+scope: complete harness and waited children CPU; paired on this loaded Mac, not isolated server CPU or a fleet bound

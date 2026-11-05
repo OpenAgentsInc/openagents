@@ -1,0 +1,2 @@
+wasm-size: everglade-room-fast is 1034761 bytes and has no size budget: add a line "everglade-room-fast BYTES" to apps/openagents-web/wasm-budgets.txt
+built /private/tmp/room-latency-12840/everglade-room-fast.wasm (1034761 bytes)

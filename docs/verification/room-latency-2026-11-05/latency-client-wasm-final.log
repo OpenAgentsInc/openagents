@@ -1,0 +1,1 @@
+wasm.sh: latency-client.wasm: 1.0 s: Coax to C 0.2 s (0/1 cached), clang 0.3 s (1/2 cached), link 0.1 s, wasm-opt 0.1 s; 21910 bytes; report /tmp/room-latency-12840/.c/latency-client.timings.json

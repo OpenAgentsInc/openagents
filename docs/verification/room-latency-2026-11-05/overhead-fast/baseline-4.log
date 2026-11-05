@@ -1,0 +1,135 @@
+stress preflight: all_ten_open=true retries=0 (six attempts per socket; overall 10000 ms deadline)
+stress initial: actor=0 seat=0 position=0.0/-84.0 slot=32
+stress initial: actor=2 seat=2 position=0.0/-84.0 slot=32
+stress initial: actor=4 seat=4 position=0.0/-84.0 slot=20
+stress initial: actor=6 seat=6 position=0.0/-84.0 slot=20
+stress health:
+ok 10 players, fanout p50 100 us p95 100 us over 4620 reads, 5 rate-limited, 1 slow closed, shard 1, everglade tick p50 1600 us at the 95th 3100 us over 465 ticks, waiting 0 bytes most, 0 ms oldest, 2 world events running, drain none
+checkpoints pending 0, flying 0, refused 0, applied 0, duplicates 0
+background pending 0/6, offered 54, refused 16, expired 0, late 1, failed 13
+work process rooms 2, lowest credit 1330 us, largest last tick 1670 us room 0, deferred ticks 36, refused new work 32, retired rooms 0
+world preparation max 33151 us room 15, startup preparation 466777 us, last publication 563 us
+stress observed report:
+shard=1
+players=10
+ticks a second=30.0
+tick p50 ms=1.60
+tick p95 ms=2.93
+tick p99 ms=3.99
+players p50 ms=0.09
+players p95 ms=0.15
+players p99 ms=0.23
+raiders p50 ms=0.12
+raiders p95 ms=0.39
+raiders p99 ms=0.55
+effects p50 ms=0.22
+effects p95 ms=1.52
+effects p99 ms=1.79
+folk p50 ms=0.07
+folk p95 ms=0.14
+folk p99 ms=0.19
+writing p50 ms=0.37
+writing p95 ms=0.57
+writing p99 ms=0.88
+sending p50 ms=0.10
+sending p95 ms=0.17
+sending p99 ms=0.24
+measuring % of tick=0.27
+queue bytes most=0
+queue age ms most=0
+relevant entities a seat=54.6
+relevant entities most=69
+interest scope=process latest picks
+interest aggregation us=1
+interest seats=10
+interest whole total=546
+interest whole most=69
+interest health only total=0
+interest health only most=0
+interest blocked total=0
+interest blocked most=0
+interest hidden total=0
+interest hidden most=0
+interest worst|pair-stress-healthy|0|69|0|0|0
+rows sent for their age a second=0.0
+row wait ticks most=9
+rows left for later most=42
+removal bytes a second=568
+removals waiting a second=0.0
+player info bytes a second=54
+player info waiting a second=0.0
+join pieces bytes a second=0
+join pieces waiting a second=0.0
+cue bytes a second=5616
+cues dropped a second=24.3
+outcome bytes a second=635
+outcomes lost a second=0.0
+snapshots after a stall a second=0.00
+towns sent again a second=0.00
+snapshots held for a slow page a second=0.0
+input to ack p50 ms=16
+input to ack p95 ms=34
+joins=0
+join burst bytes=0
+join burst bytes most=0
+join burst ms=0
+join burst ms most=0
+rejoins tried=0
+rejoins seated=0
+rejoins same seat=0
+old socket frames dropped=0
+refused no room=0
+refused ticket=0
+refused kicked=0
+refused shard=0
+refused full=0
+refused version=0
+refused engine=0
+refused rules=0
+refused content=0
+refused schema=0
+refused elsewhere=0
+build engine=1 rules=1 content=1 wire=4-4 schema=2
+out bytes a second=295711
+out messages a second=295
+in bytes a second=6948
+in messages a second=302
+out D bytes a second=295701
+out D a second=295
+out r bytes a second=10
+out r a second=1
+out D e bytes a second=12858
+out D e a second=576
+out D g bytes a second=1315
+out D g a second=27
+out D o bytes a second=210
+out D o a second=42
+out D w bytes a second=36
+out D w a second=7
+out D x bytes a second=954
+out D x a second=106
+out D s players bytes a second=37303
+out D s players a second=2293
+out D s townsfolk bytes a second=73106
+out D s townsfolk a second=2863
+out D s made bytes a second=174558
+out D s made a second=5800
+out D header bytes a second=5863
+out D header a second=295
+in C bytes a second=301
+in C a second=13
+in I bytes a second=6647
+in I a second=289
+seat|pair-stress-busy|0|0|0|53|16|34|-1
+seat|pair-stress-busy|1|0|0|53|16|34|-1
+seat|pair-stress-busy|2|0|0|53|16|34|-1
+seat|pair-stress-busy|3|0|0|53|16|34|-1
+seat|pair-stress-busy|4|0|0|53|16|34|-1
+seat|pair-stress-busy|5|0|0|53|16|34|-1
+seat|pair-stress-busy|6|0|0|53|16|34|-1
+seat|pair-stress-busy|7|0|0|53|16|34|-1
+seat|pair-stress-healthy|0|0|0|69|16|34|-1
+seat|pair-stress-busy|8|0|0|53|16|34|-1
+stress report profile: legacy-control accepted=true
+stress: seconds=75 opened=true casts_sent=1040 busy=90 peak_pets=8 peak_zones=4 peak_raiders=37 break_frames=212 raid_cast_frames=67
+stress: healthy_frames=2242 healthy_gap_max_ms=229 slow_tick_before=449 slow_tick_after=1646 slow_closed=1 slow_rejoined=true waiting_max_bytes=254446 closed=0 health_ok=150 health_failed=0 pending_max=4/6 recovered=true publication=true

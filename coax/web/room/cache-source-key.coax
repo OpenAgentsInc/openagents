@@ -1,0 +1,30 @@
+// Observe worker.coax's exact content key for an already emitted C unit.
+// This is cache metadata, not a compiler emission receipt or host admission.
+// Run in the same source root used by the actual emission. It copies nothing.
+#import "Basic";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+#load "../../lib/sys/proc-raw.coax";
+#load "../../lib/crypto/sha256-kernel.coax";
+#load "../../lib/json/json.coax";
+#test "room cache key material preserves exact version compiler unit and final newlines" {
+  b:[256]u8;n:=wck_material("compiler","u.coax","hash  u.coax\n",b[..]);
+  #assert cast(string)b[0..<n]=="coax-room-worker-c-1\ncompiler\nu.coax\nhash  u.coax\n";
+  #assert wck_material("compiler","u.coax","hash  u.coax\n",b[0..<1])== -1;
+}
+wck_material::(compiler:string,unit:string,hashes:string,out:[]u8)->int {
+  o:[1]Jo;jo_start(o[..],out);for line:[3]string.["coax-room-worker-c-1",compiler,unit]{jo_put(o[..],line);jo_put(o[..],"\n");}jo_put(o[..],hashes);return ifx o[0].bad then -1 else o[0].n;
+}
+tool_main::()->int #export_c {
+  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=3||args_at(a[..],0).count!=64{tool_errln("usage: cache-source-key COMPILER_SHA UNIT HASH_MANIFEST");return 2;}
+  sources:[65536]u8;err:[65536]u8;none:[1]string;argv:=[4]string.["coax/web/tool.sh","wasm-size","sources",args_at(a[..],1)];
+  r:=proc_run_bytes(argv[..],none[0..<0],60000,sources[..],err[..]);if r.status!=0||r.timed_out||r.cut||r.out_n<1{return 1;}
+  list:=cast(string)sources[0..<r.out_n];hashes:[262144]u8;o:[1]Jo;jo_start(o[..],hashes[..]);at:=0;count:=0;
+  while at<list.count{end:=at;while end<list.count&&list[end]!='\n'{end+=1;}path:=list[at..<end];at=end+1;if path.count==0{continue;}
+    bytes:[4194304]u8;n:=fs_read(path,bytes[..]);hex:[64]u8;if n<0||n>=bytes.count||!S_hex(S_hash(cast(string)bytes[0..<n]),hex[..]){return 1;}
+    jo_put(o[..],cast(string)hex[..]);jo_put(o[..],"  ");jo_put(o[..],path);jo_put(o[..],"\n");count+=1;
+  }
+  if o[0].bad||!fs_write(args_at(a[..],2),jo_text(o[..])){return 1;}material:[262144]u8;n:=wck_material(args_at(a[..],0),args_at(a[..],1),jo_text(o[..]),material[..]);key:[64]u8;
+  if n<0||!S_hex(S_hash(cast(string)material[0..<n]),key[..]){return 1;}
+  print("%\n",cast(string)key[..]);tool_err("observed room-worker cache key; source count=");number:[32]u8;j:[1]Jo;jo_start(j[..],number[..]);jo_int(j[..],count);tool_errln(jo_text(j[..]));return 0;
+}

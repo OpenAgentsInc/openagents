@@ -46,6 +46,8 @@
 #load "room-forge-raid.coax";
 #load "room-stats.coax";   // what the server counts of its own work, for the admins' room view (#12791)
 #load "room-work.coax";
+#load "../../../aethyr/net/latency.coax";
+#load "room-latency.coax";
 
 ROOMS :: 8;
 CONNS :: 512;
@@ -54,6 +56,7 @@ PATH :: "/api/room/orbit-league/";
 QUICK_WAIT :: 10.0;      // a quick match waits this long for players, then bots take the empty seats
 
 RmConn :: struct {
+  latency: [1] LatServer;
   live: bool; room: int = -1; seat: int = -1; echo: int = -1; relay: int = -1;
   // a relay socket's rate limits (room-relay.coax rl_allow): tokens in thousandths, when they were refilled,
   // whether it is over (since when, its last drop), frames dropped, and whether the host should close it

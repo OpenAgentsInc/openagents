@@ -484,10 +484,18 @@ const align = (n, a) => Math.ceil(n / a) * a;
 const SOCKETS = 4, SOCKET_KIND = 256;
 const SOCKET_OPENED = 0, SOCKET_FRAME = 1, SOCKET_CLOSED = 2, SOCKET_ERROR = 3;
 const sockets = new Array(SOCKETS).fill(null);
+// Opt-in measurements do not delay connection, gameplay or rendering. Each
+// concrete socket/engine receives a fresh independent Coax observer.
+const roomTraceEnabled=new URLSearchParams(location.search).get('roomtrace')==='1';
+const roomTraceModule=roomTraceEnabled?import('./latency-host.js'):null;
+const roomTraceRetired=[];
+function retireRoomTrace(ws){if(!ws?.__roomTrace)return;ws.__roomTrace.retire();roomTraceRetired.push(ws.__roomTrace);if(roomTraceRetired.length>4)roomTraceRetired.shift();ws.__roomTrace=null;}
+function roomTraceApplied(ws){const x=engine?.exports;if(ws?.__roomTrace&&x?.coaxial_net_probe)ws.__roomTrace.applied(x.coaxial_net_probe(arena.state,12),x.coaxial_net_probe(arena.state,51),x.coaxial_net_probe(arena.state,11)*1000);}
+function roomTraceSubmitted(queue){const mine=engine,device=gpu?.device,x=mine?.exports;if(!x?.coaxial_net_probe)return;for(const ws of sockets)if(ws?.__coaxialEngine===wanted)ws.__roomTrace?.submitted(queue,x.coaxial_net_probe(arena.state,11)*1000,()=>engine===mine&&gpu?.device===device&&sockets.includes(ws)&&ws.__coaxialEngine===wanted);}
 function resetSockets() {
   for(let id=0;id<sockets.length;id++){
     const ws=sockets[id];sockets[id]=null;
-    if(ws){try{ws.close();}catch{}}
+    if(ws){retireRoomTrace(ws);try{ws.close();}catch{}}
   }
   socketQueue.length=0;socketHead=0;
   if(socketTimer){clearTimeout(socketTimer);socketTimer=0;}
@@ -500,6 +508,8 @@ const utf8 = (ptr, len) => new TextDecoder().decode(new Uint8Array(memory.buffer
 const SOCKET_BUDGET_MS = 12, socketQueue = [];
 let socketHead = 0, socketTimer = 0, socketDrained = 0, socketFrames = 0;
 function socketQueued(ws, id, event, text = "") {
+  if(event===SOCKET_FRAME)ws.__roomTrace?.receive(text);
+  if(event===SOCKET_CLOSED||event===SOCKET_ERROR)retireRoomTrace(ws);
   if (event === SOCKET_FRAME) socketFrames++;
   socketQueue.push([ws, id, event, text]);
   if (!socketTimer) socketTimer = setTimeout(socketIdle, 100);
@@ -537,6 +547,7 @@ function socketEvent(id, event, text = "", ws = null) {
   } else if (bytes.length > x.coaxial_inbox_cap()) { socketEvent(id, SOCKET_ERROR, "",ws); return; }
   new Uint8Array(memory.buffer, x.coaxial_inbox(arena.state), bytes.length).set(bytes);
   x.coaxial_message(arena.state, kind, bytes.length);
+  roomTraceApplied(ws);
   after(false);
 }
 const socketImports = {
@@ -554,6 +565,7 @@ const socketImports = {
     } catch { if(owner)policy.socketClose(owner);return -1; }
     ws.__coaxialPolicy=policy;ws.__coaxialOwner=owner;ws.__coaxialEngine=wanted;
     sockets[id] = ws;
+    if(roomTraceModule)roomTraceModule.then(m=>m.openLatencyObserver()).then(observer=>{if(sockets[id]===ws&&ws.__coaxialEngine===wanted&&ws.readyState<2)ws.__roomTrace=observer;else observer.retire();}).catch(error=>{globalThis.coaxial.roomTraceError=String(error);});
     const mine = () => sockets[id] === ws && ws.__coaxialEngine===wanted;   // a closed socket says nothing more
     ws.onopen = () => mine() && socketQueued(ws, id, SOCKET_OPENED);
     ws.onmessage = (m) => mine() && typeof m.data === "string" && socketQueued(ws, id, SOCKET_FRAME, m.data);
@@ -563,13 +575,14 @@ const socketImports = {
   },
   coaxial_socket_send(id, ptr, len) {
     const ws = sockets[id];
-    if (ws && ws.readyState === 1 && (!ws.__coaxialPolicy || ws.__coaxialPolicy.socketSend(ws.__coaxialOwner))) ws.send(utf8(ptr, len));   // WebSocket.OPEN, or a local socket's
+    if (ws && ws.readyState === 1 && (!ws.__coaxialPolicy || ws.__coaxialPolicy.socketSend(ws.__coaxialOwner))) {const text=utf8(ptr,len),sample=ws.__roomTrace?.before(text);if(sample)ws.send(sample);ws.send(text);}   // WebSocket.OPEN, or a local socket's
   },
   coaxial_socket_close(id) {
     const ws = sockets[id];
     if (!ws) return;
     if(ws.__coaxialPolicy && !ws.__coaxialPolicy.socketClose(ws.__coaxialOwner))return;
     sockets[id] = null;
+    retireRoomTrace(ws);
     ws.close();
     // The app hears it a turn later, never inside its own call.
     setTimeout(() => socketEvent(id, SOCKET_CLOSED,"",ws));
@@ -845,6 +858,7 @@ async function openDevice(made = () => {}) {
   if (!navigator.gpu) return null;
   const adapter = await navigator.gpu.requestAdapter();
   if (!adapter) return null;
+  if(roomTraceEnabled)globalThis.coaxial.gpuAdapterInfo={vendor:adapter.info?.vendor,architecture:adapter.info?.architecture,device:adapter.info?.device,description:adapter.info?.description,fallback:adapter.info?.isFallbackAdapter??adapter.isFallbackAdapter??null};
   // a page with data-timing asks for the GPU's timestamps (message 610), when the adapter has them
   const timing = !!script?.dataset.timing && adapter.features.has("timestamp-query");
   const device = await adapter.requestDevice(timing ? { requiredFeatures: ["timestamp-query"] } : undefined);
@@ -2330,7 +2344,7 @@ function draw(now) {
     try {
       const encodeStart = traceRow ? performance.now() : 0;
       const submitted = gpu.renderer.frame(n, w, h, captureRequested && probeArmed && ++frames >= 1 && !gpu.probed ? (encoder, texture) => readBack(encoder, texture) : null);
-      if (submitted) worldSubmissions++;
+      if (submitted) {worldSubmissions++;roomTraceSubmitted(gpu.device.queue);}
       if (traceRow) {traceRow[2]=performance.now()-encodeStart;traceRow[7]=submitted?1:0;traceRow[9]=gpu.renderer.buffers?.reduce((n,r)=>n+(r.image?r.bytes:0),0)||0;}
       if (submitted && gpu.renderer.readiness === gpu.renderer.ids.readiness.ready) globalThis.coaxial.sceneReady = true;
       if (probe || dev) globalThis.coaxial.renderStatus = { submitted, readiness: gpu.renderer.readiness, refusal: gpu.renderer.lastRefusal, error: gpu.renderer.error?.message, captureArmed: probeArmed, observed: !!gpu.renderer.observation, probed: gpu.probed };
@@ -2476,6 +2490,7 @@ function draw(now) {
   }
   const readback = captureRequested && probeArmed && ++frames >= 1 && !gpu.probed ? readBack(encoder, texture) : null;
   device.queue.submit([encoder.finish()]);
+  roomTraceSubmitted(device.queue);
   globalThis.__evergladeBenchmark?.submitted(device.queue);
   worldSubmissions++;
   if (x.coaxial_frame_admit || hostLifecycle) {
@@ -2655,6 +2670,7 @@ function send(kind, text = "") {
   after(false);
 }
 globalThis.coaxial = { send, ready: false, sceneReady: false, facts: () => pageFacts(), probe: () => engine?.exports.coaxial_probe?.(arena.state) ?? 0,
+  roomTrace:()=>({active:sockets.flatMap(ws=>ws?.__roomTrace?[ws.__roomTrace.snapshot()]:[]),retired:roomTraceRetired.map(x=>x.snapshot()),error:globalThis.coaxial.roomTraceError||null}),
   setWorldPaused, worldLoop: () => ({paused:worldPaused,frames:worldFrames,submissions:worldSubmissions,socketFrames,pending:gpu?.device.__coaxialFrames||0}),
   takeFrameTrace: () => frameTrace?.splice(0) ?? [],
   frameQueue: () => ({pending:gpu?.device.__coaxialFrames||0,bounded:typeof engine?.exports.coaxial_frame_admit==="function"}),

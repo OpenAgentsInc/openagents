@@ -1,0 +1,15 @@
+actual samples=50, bounded history=64, known one-way clock intervals=49 (quantum100us, drift100ppm, freshness5s model)
+expired=7, refused=0, missing=0; GPU completion is not physical scanout
+input-to-completed-render us: p50=187965 p95=373315 max=449309
+server input queue us: p50=13543 p95=41445 max=55467
+movement step us: p50=20 p95=25 max=36
+remaining simulation us: p50=318 p95=428 max=1280
+serialization us: p50=26 p95=41 max=49
+serialization-to-D-queue us: p50=5 p95=9 max=24
+browser dispatch us: p50=7955 p95=15010 max=16589
+application-to-submit us: p50=2640 p95=19645 max=21024
+GPU completion us: p50=38389 p95=53255 max=58936
+interpolation delay us: p50=100000 p95=140000 max=166000
+offset interval width us: p50=112526 p95=444587 max=444699
+uplink us: p50 interval=[-11145,114666] p95 interval=[97565,308368]
+D queue to WebSocket receipt us: p50 interval=[2126,123154] p95 interval=[124627,289732]

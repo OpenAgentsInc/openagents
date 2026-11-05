@@ -1,0 +1,66 @@
+// Optional observation adapters. Socket ownership comes from the production
+// seat lookup; observation state retires with RmConn, never with a seat index.
+#test "latency adapter follows actual input admission and final queued D without altering gameplay (#12840)" #steps 4000000000 {
+  v:[1]RmServer;k:=rc_test_room(v[..],"pair-latency",1,false);b:[256]u8;
+  #assert rm_lt_request(v[..],0,"I 1 0 0 0 0 0",1,1,b[..])== -1;
+  #assert rm_lt_request(v[..],0,"@1 i 1 1 1",1000000,1000001,b[..])==0;
+  #assert rm_lt_active(v[..],k,0)&&!rm_lt_active(v[..],-1,0)&&!rm_lt_active(v[..],k,EG_SEATS);
+  tail:=rm_lt_tail(v[..],0);#assert tail==0;
+  eg_test_input(v[..],1);rm_lt_received(v[..],0,tail,1000010);
+  #assert v[0].conns[0].latency[0].received==1000010&&rm_lt_tail(v[..],0)==1;
+  rm_lt_step(v[..],k,0,1,1000020,1000025);
+  rm_lt_serialized(v[..],k,1000030,1000031,1000035);
+  #assert rm_lt_sent(v[..],0,"D 1 1 2 0",1000040,b[..])==0;
+  #assert rm_lt_sent(v[..],0,"D 1 0 0 0",1000040,b[..])==0;
+  n:=rm_lt_sent(v[..],0,"D 1 1 0 0",1000040,b[..]);m:=lat_decode(cast(string)b[0..<n],true);
+  #assert m.ok&&m.v[0]==1&&m.v[1]==1&&m.v[2]==1&&m.v[4]==1000010&&m.v[10]==1000040;
+  #assert v[0].eg[k].seat[0].ack==0&&v[0].eg[k].seat[0].q_n==1;
+  rm_left(v[..],0);#assert v[0].conns[0].latency[0].last_id==0;
+  #assert rm_lt_request(v[..],0,"@1 p 1 1",1,1,b[..])==0&&rm_lt_tail(v[..],0)== -1;
+}
+#test "latency adapters refuse stale sockets, invalid seats and malformed final snapshots (#12840)" #steps 2000000000 {
+  v:[1]RmServer;k:=rc_test_room(v[..],"pair-latency-stale",1,false);b:[256]u8;
+  #assert rm_lt_request(v[..],0,"@1 p 7 1",1,2,b[..])>0;
+  #assert !rm_lt_active(v[..],k,0)&&rm_lt_tail(v[..],0)== -1;
+  #assert rm_lt_request(v[..],-1,"@1 p 8 1",1000001,1000001,b[..])==0;
+  #assert rm_lt_tail(v[..],CONNS)== -1;
+  rm_lt_step(v[..],-1,0,1,1,1);rm_lt_step(v[..],k,EG_SEATS,1,1,1);
+  rm_lt_serialized(v[..],-1,1,1,1);
+  #assert rm_lt_sent(v[..],0,"D nonsense",1,b[..])==0&&rm_lt_sent(v[..],0,"J 1 1 0 0",1,b[..])==0;
+  v[0].eg[k].seat[0].conn=1;
+  #assert rm_lt_request(v[..],0,"@1 p 8 1",1000001,1000001,b[..])==0;
+  rm_lt_received(v[..],0,0,2);#assert rm_lt_tail(v[..],0)== -1;
+}
+
+rm_lt_request::(v:[]RmServer,conn:int,text:string,received:int,encoded:int,out:[]u8)->int #export_c {
+  if !wire_is(text,"@1"){return -1;}ks:[2]int;if !rm_st_conn(v,conn,ks[..]){return 0;}
+  return lat_request(v[0].conns[conn].latency[0..<1],text,received,encoded,out);
+}
+rm_lt_tail::(v:[]RmServer,conn:int)->int #export_c {
+  if conn<0||conn>=CONNS||v[0].conns[conn].latency[0].id==0{return -1;}
+  ks:[2]int;if !rm_st_conn(v,conn,ks[..]){return -1;}st:=v[0].eg[ks[0]].seat[ks[1]..<ks[1]+1];
+  return ifx st[0].q_n>0 then st[0].q[st[0].q_n-1].seq else st[0].ack;
+}
+rm_lt_received::(v:[]RmServer,conn:int,old_tail:int,now:int) #export_c {
+  tail:=rm_lt_tail(v,conn);if tail>=0{lat_received(v[0].conns[conn].latency[0..<1],old_tail,tail,now);}
+}
+rm_lt_step::(v:[]RmServer,k:int,s:int,seq:int,began:int,ended:int) #export_c {
+  if !rm_lt_active(v,k,s){return;}conn:=v[0].eg[k].seat[s].conn;
+  lat_step(v[0].conns[conn].latency[0..<1],seq,began,ended);
+}
+rm_lt_active::(v:[]RmServer,k:int,s:int)->bool #export_c {
+  if !rm_eg_seat_live(v,k,s){return false;}conn:=v[0].eg[k].seat[s].conn;
+  if conn<0||conn>=CONNS||v[0].conns[conn].latency[0].id==0{return false;}
+  ks:[2]int;return rm_st_conn(v,conn,ks[..])&&ks[0]==k&&ks[1]==s;
+}
+rm_lt_serialized::(v:[]RmServer,k:int,simulation_end:int,began:int,ended:int) #export_c {
+  if !rm_eg_live(v,k){return;}for s:0..<EG_SEATS{if !rm_lt_active(v,k,s){continue;}conn:=v[0].eg[k].seat[s].conn;
+    lat_serialized(v[0].conns[conn].latency[0..<1],simulation_end,began,ended);
+  }
+}
+rm_lt_sent::(v:[]RmServer,conn:int,text:string,now:int,out:[]u8)->int #export_c {
+  if conn<0||conn>=CONNS||v[0].conns[conn].latency[0].id==0{return 0;}
+  ks:[2]int;if !rm_st_conn(v,conn,ks[..])||!wire_is(text,"D"){return 0;}
+  r:[1]WireRd;r[0]=wire_rd(text,1);d:=wire_read_d(text,r[..]);if !r[0].ok||(d.f&2)!=0{return 0;}
+  return lat_queued(v[0].conns[conn].latency[0..<1],d.ack,d.tick,now,out);
+}

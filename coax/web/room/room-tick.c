@@ -12,6 +12,13 @@ static int64_t part_us[PARTS];
 static int64_t room_prepare_us[WORLD_ROOMS];
 static int64_t world_publication_us;
 static const char *part_name[PARTS] = {"move", "abilities", "town", "spells", "people", "rules", "write", "send"};
+/* Only the opt-in native observation adapter consumes these SDK timestamps.
+   The worker shares the same simulation and does not claim remote latency. */
+#ifndef ROOM_LATENCY_STEP
+#define ROOM_LATENCY_ACTIVE(k,s) false
+#define ROOM_LATENCY_STEP(k,s,seq,began,ended) ((void)0)
+#define ROOM_LATENCY_SERIALIZED(k,simulation,began,ended) ((void)0)
+#endif
 // Room k's town for this tick (room-world.c world_town, GitHub #12713): the rules' Hit Points and the
 // crimes since into it, a step against every seat, then the guards' blows, WANTED and where everyone is
 // back to the room (the rules', and what the pages hear).
@@ -153,8 +160,10 @@ static bool everglade_room_tick(int k) {
   for (int s = 0; s < WORLD_SEATS; s++) {
     everglade_place(k, s, pose);
     while (rm_eg_input(view(), k, s, inv)) {
+      int64_t input_began = ROOM_LATENCY_ACTIVE(k,s) ? now_us() : 0;
       if (!world_step(k, s, in, pose)) break;
       rm_eg_moved(view(), k, s, in[0], pose[0], pose[1], pose[2], pose[3], pose[4], pose[5], pose[6], (int64_t)pose[7], (int64_t)pose[8], (int64_t)pose[9]);
+      if(input_began)ROOM_LATENCY_STEP(k,s,in[0],input_began,now_us());
     }
   }
   /* the summoned creatures stand on the ground (a new one is heard once it does) */
@@ -185,6 +194,7 @@ static bool everglade_room_tick(int k) {
   for (int s = 0; s < WORLD_SEATS; s++) if (world_cut_take(k, s)) rm_eg_cut(view(), k, s);
   int64_t tw = now_us(); part_us[PART_RULES] += tw - te;
   rm_eg_send(view(), k);
+  ROOM_LATENCY_SERIALIZED(k,tw,tw,now_us());
   part_us[PART_WRITE] += now_us() - tw;
   rm_work_done(view(), k, now_us() - room_work_start);
   return true;

@@ -256,6 +256,14 @@ static void pump_all(void) {
     if (conns[j].on && now - conns[j].since >= OUT_AGE_MS) { conns[j].doomed = true; slow_closed++; }
   }
 }
+// Optional observation bytes use the same bounded socket queue and byte
+// observer. This reports encoding/queue acceptance, never delivery.
+static void latency_out(int i,const uint8_t *text,int64_t n) {
+  if(n<=0)return;
+  uint8_t out[300];size_t k=ws_build(out,sizeof out,WS_TEXT,text,(size_t)n,false);
+  if(k&&put_out(i,out,k))st_frame_out(text,(size_t)n,1,k);
+  else if(k)fo_refused((coax_v_t_FrameObserved){server->st.frames.e,1},(int64_t)k);
+}
 // The relay's frames (room-relay.coax), each onto the output of the connections it names.
 static void relay_flush(void) {
   int64_t len;
@@ -270,9 +278,13 @@ static void relay_flush(void) {
     int f = st_frame_out(server->rout.e, (size_t)len, to, k);
     if(f>=0&&!(f&2)&&to==1){int64_t at=rm_st_sent_ack(view(),last,(coax_string){(const char *)server->rout.e,len});if(at>=0)st_queued_ack_add(last,now_ms()-at);}
     if (f >= 0 && !(f & 2) && to == 1 && st_c[last].burst == 1) { st_c[last].burst = 2; if (!conns[last].on) st_drained(last, now_us()); }
+    if(to==1){uint8_t trace[256];int64_t n=rm_lt_sent(view(),last,(coax_string){(const char *)server->rout.e,len},now_us(),(coax_v_u8){trace,256});latency_out(last,trace,n);}
     st_cost_us += now_us() - t0;
   }
 }
+#define ROOM_LATENCY_STEP(k,s,seq,began,ended) rm_lt_step(view(),k,s,seq,began,ended)
+#define ROOM_LATENCY_ACTIVE(k,s) rm_lt_active(view(),k,s)
+#define ROOM_LATENCY_SERIALIZED(k,simulation,began,ended) rm_lt_serialized(view(),k,simulation,began,ended)
 #include "room-tick.c"   /* the tick both hosts run (room-worker.c too) */
 static bool rooms_warmed;
 static int64_t rooms_warm_us;
@@ -559,7 +571,10 @@ static void frames(int i) {
     if (r < 0) { c->doomed = true; return; }
     if (f.opcode == WS_TEXT) {
       st_frame_in(f.payload, f.length,f.consumed);
-      rm_heard(view(), i, (coax_string){(const char *)f.payload, (int64_t)f.length});
+      uint8_t trace[256];coax_string text={(const char *)f.payload,(int64_t)f.length};
+      int64_t received=now_us();int64_t observed=rm_lt_request(view(),i,text,received,now_us(),(coax_v_u8){trace,256});
+      if(observed>=0)latency_out(i,trace,observed);
+      else{int64_t tail=rm_lt_tail(view(),i);rm_heard(view(),i,text);rm_lt_received(view(),i,tail,received);}
       relay_flush();
       if (rm_relay_kicked(view(), i)) { c->doomed = true; return; }
     } else if (f.opcode == WS_PING) {

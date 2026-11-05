@@ -1,0 +1,2 @@
+observer overhead: run=1 profile=baseline-1 status=0 timed_out=false cut=false elapsed_s=87.74 user_s=4.86 system_s=5.33
+observer overhead: run=2 profile=observed-2 status=1 timed_out=false cut=false elapsed_s=83.78 user_s=5.15 system_s=5.67

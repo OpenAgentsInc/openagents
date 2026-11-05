@@ -9,6 +9,8 @@
 //   ... [SECONDS] RATE FILE        a slow link (#12903): while FILE exists, what the room sends is read
 // from it at RATE bytes a second at most (64 kbit/s: 8000), so the bytes wait in the room server's
 // socket as they would behind a slow link, and the page hears them that late. A line says each change.
+// Optional final SEED fixes the read-hold generator. It reproduces random
+// choices for the same read sequence, not operating-system TCP read boundaries.
 #import "Basic";
 #load "../../lib/net/socket_foreign.coax";
 #load "../../lib/sys/tool.coax";
@@ -28,6 +30,15 @@ NpWay :: struct {
 }
 NpPair :: struct { live: bool; down: int; up: int; closing: bool; ways: [2] NpWay; }
 NpNet :: struct { latency: int; jitter: int; loss: int; seed: int; reads: [2] int; lost: int; most: int; rate: int; tokens: int; refill_at: int; slow: bool; }
+#test "proxy explicit seed is exact bounded and independent of wall time" {
+  #assert np_seed("0",1,2)==0&&np_seed("5",100,200)==5&&np_seed("999999999",1,2)==999999999;
+  #assert np_seed("-1",1,2)== -1&&np_seed("bad",1,2)== -1&&np_seed("1000000000",1,2)== -1;
+  #assert np_seed("",100,200)==300;
+}
+np_seed::(explicit:string,now:int,listen:int)->int {
+  if explicit.count==0{return (now%2147483648)+listen;}
+  return args_whole(explicit);
+}
 // Whether the room's side may be read now, the link at net.rate bytes a second (0: no limit): its
 // tokens (bytes) refill with the time, up to a tenth of a second's; a read spends what it took.
 np_may_read :: (net: [] NpNet, now: int) -> bool {
@@ -146,10 +157,12 @@ tool_main :: () -> int #export_c {
   if !ok || listen <= 0 || room <= 0 || net[0].latency < 0 || net[0].jitter < 0 || net[0].loss < 0 || net[0].loss > 1000 || seconds <= 0 {
     tool_errln("usage: coax/web/tool.sh coax/web/room/net-proxy.coax LISTEN ROOM [LATENCY_MS] [JITTER_MS] [LOSS_PERMILLE] [SECONDS] [RATE FILE]"); return 2;
   }
-  net[0].seed = (cxsock_now_ms() % 2147483648) + listen;
+  net[0].seed = np_seed(ifx args_count(a[..])>8 then args_at(a[..],8) else "",cxsock_now_ms(),listen);
+  if net[0].seed<0||args_count(a[..])>9{tool_errln("net-proxy: SEED must be a whole number from 0 through 999999999");return 2;}
   l := cxsock_listen(listen);
   if l < 0 { tool_errln("net-proxy: can't listen there"); return 1; }
   print("net-proxy: 127.0.0.1:% to 127.0.0.1:%, round trip % ms, jitter % ms, loss % in 1000\n", listen, room, net[0].latency, net[0].jitter, net[0].loss);
+  print("net-proxy: seed=% rate=% bytes/s; random choices follow observed TCP reads\n",net[0].seed,net[0].rate);
   pairs: [NP_PAIRS] NpPair;
   for k: 0..<NP_PAIRS { pairs[k].down = -1; pairs[k].up = -1; }
   start := cxsock_now_ms(); said := start;

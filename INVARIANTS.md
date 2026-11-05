@@ -895,12 +895,19 @@ The separate opt-in latency observation v1 has no gameplay queue or authority.
 Its bounded kernel observes only a newly queued, exactly stepped input and a
 complete D accepted by the socket queue. Clock synchronization retains an
 offset interval with explicit quantization, drift and freshness assumptions;
-unknown time is never zero. The codec/kernel and clock components are checked
-and mutation-checked (`aethyr/net/latency*.coax`). Client SDK timing hooks and
-complete presentation qualification are still pending; a rendered room smoke
-test alone does not establish end-to-end latency. See
-`docs/protocol/everglade-latency-v1.md` and the pinned candidate record in
-`docs/verification/2026-11-05-room-latency-components.md`.
+unknown time is never zero. The codec/kernel, clock and socket-owned client
+are checked and mutation-checked (`aethyr/net/latency*.coax`). With `roomtrace=1`,
+native and browser SDK hooks record input receipt, exact successful movement,
+simulation and serialization, final D queue acceptance, WebSocket receipt,
+application delivery, render submission and GPU completion. Application needs
+both an ACK covering the input and the complete state tick. The captured
+engine, socket and GPU device must still own the completion. Retirement and
+the two-second deadline clear pending stamps; history holds at most 64 samples.
+Interpolation delay stays separate. GPU completion does not prove physical
+display scanout or that a particular pixel changed. Ordinary sessions allocate
+no client observer. See `docs/protocol/everglade-latency-v1.md` and the scoped
+records in `docs/verification/2026-11-05-room-latency-components.md` and
+`docs/verification/2026-11-05-room-latency.md`.
 
 ## An admitted Everglade seat keeps a cast reservation
 

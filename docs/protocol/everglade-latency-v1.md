@@ -1,8 +1,9 @@
 # Everglade latency observation v1
 
-Implementation status: the codec, bounded server observation kernel and clock
-intervals are checked components. SDK adapters and the complete browser latency
-flow are still being implemented; ordinary sessions do not send this profile.
+Implementation status: the codec, bounded server observation kernel, clock
+intervals, native socket effects and browser application/render/GPU effects
+are integrated. The browser explicitly opts in with `roomtrace=1`. Ordinary
+sessions do not allocate a client observer or send this profile.
 
 This optional profile is separate from the published Everglade session wire.
 Its fixtures and bounds are in
@@ -21,6 +22,12 @@ uncertainty and model; wall clock and simulation tick time are not substitutes.
 A signed lower bound can cross zero when clock uncertainty exceeds the transit.
 That expresses uncertainty, not a physically negative transfer time. An interval
 entirely below zero is inconsistent and refused.
+
+The browser's declared model uses 100us timestamp quantization, 100ppm drift
+and a five-second maximum sync age. These are explicit assumptions, not
+measured bounds on arbitrary remote clocks. The server response timestamp is
+taken at the SDK call into the response codec, before the encoded bytes enter
+the socket queue; its remaining encoding/queue delay stays inside the interval.
 
 The input observation request precedes an ordinary `I` message. Only a newly
 accepted input and the exact successfully stepped sequence qualify. The room
@@ -41,6 +48,18 @@ to 64 entries and exposes missing, expired and refused observations.
 Telemetry is observational. It cannot change gameplay placement, queues, step
 credit or simulation state. An exhausted/late/invalid observation is omitted
 and counted as such, never relabeled as zero latency or durable acceptance.
+
+`coaxial.roomTrace()` exposes completed raw timestamps, interval bounds,
+expired/refused/missing counts and up to four retired socket observers.
+Each concrete socket has a fresh observer. A GPU completion for an old engine,
+device or socket cannot finish its successor's sample. The native encoded
+counter describes report encoding; actual queue bytes remain in the native
+frame observer (optional `@1` frames use its existing `?` message class).
+
+The headless driver and raw-record reader are
+`coax/web/room/latency-browser-check.coax` and `latency-summary.coax`; see the
+source/profile and network-fault record in
+`docs/verification/2026-11-05-room-latency.md`.
 
 The independent fixtures run with
 `coax/web/tool.sh coax/web/room/latency-profile.coax proto/verse/everglade-latency-v1.json`.

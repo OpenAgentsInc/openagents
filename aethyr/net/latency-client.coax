@@ -1,0 +1,199 @@
+// One concrete socket/engine owns one instance. Effects supply monotonic SDK
+// timestamps; this module owns all matching, deadlines and bounded history.
+#module "aethyr.net.latency.client";
+#authority;
+#load "latency.coax";
+#load "latency-clock.coax";
+LTC_ROWS :: 64;
+LTC_FIELDS :: 23;
+LatSample :: struct {id:int;seq:int;tick:int;report:bool;t:[LTC_FIELDS]int;clock:LatClock;}
+LatClient :: struct {
+  live:bool=true;nonce:int;ping:int;ping_at:int;last_ping:int;last_input:int;
+  clock:LatClock;p:LatSample;rows:[LTC_ROWS]LatSample;head:int;count:int;
+  expired:int;refused:int;missing:int;
+}
+
+#test "latency client matches sync, complete state application and its concrete GPU completion" {
+  c:[1]LatClient;b:[256]u8;
+  n:=ltc_before(c[..],"I 1 0 0 0 0 0",1000000,b[..]);#assert cast(string)b[0..<n]=="@1 p 1 1000000";
+  ltc_receive(c[..],"@1 p 1 1000000 2000010 2000020",1000100);#assert c[0].clock.ok;
+  n=ltc_before(c[..],"I 2 0 0 0 0 0",1000200,b[..]);#assert cast(string)b[0..<n]=="@1 i 2 2 1000200";
+  ltc_receive(c[..],"D 42 2 2 0",1000400);#assert c[0].p.tick==0;
+  ltc_receive(c[..],"D 42 2 0 0",1000410);#assert c[0].p.tick==42;
+  ltc_receive(c[..],"@1 d 2 2 42 1000200 2000210 2000220 2000225 2000230 2000231 2000235 2000240",1000420);
+  #assert c[0].p.report&&c[0].p.t[11]==1000410;
+  ltc_applied(c[..],2,41,1000430,100000);#assert c[0].p.t[12]==0;
+  ltc_applied(c[..],1,42,1000430,100000);#assert c[0].p.t[12]==0;
+  ltc_applied(c[..],2,42,1000430,100000);#assert c[0].p.t[12]==1000430;
+  #assert ltc_submit(c[..],1000440,100000)==2;
+  ltc_complete(c[..],1,1000450);#assert c[0].count==0;
+  ltc_complete(c[..],2,1000460);#assert c[0].count==1&&c[0].p.id==0;
+  #assert ltc_value(c[..],0,0)==2&&ltc_value(c[..],0,14)==1000460&&ltc_value(c[..],0,15)==100000&&ltc_value(c[..],0,22)==1;
+  for v,i:[7]int.[999719,1000211,-201,291,-111,381,1]{#assert ltc_value(c[..],0,16+i)==v;}
+}
+#test "latency client retires missing reports and never treats unknown clocks or stale owners as zero" {
+  c:[1]LatClient;b:[256]u8;n:=ltc_before(c[..],"I 1",1,b[..]);n=ltc_before(c[..],"I 2",2,b[..]);
+  #assert c[0].p.id==2;ltc_expire(c[..],2000002);#assert c[0].expired==1&&c[0].p.id==0;
+  n=ltc_before(c[..],"I 3",2000003,b[..]);#assert c[0].ping==3;
+  n=ltc_before(c[..],"I 4",2000004,b[..]);#assert c[0].p.id==4;
+  ltc_receive(c[..],"D 1 4 0 0",2000005);ltc_applied(c[..],4,1,2000006,0);
+  #assert ltc_submit(c[..],2000007,0)==0;
+  ltc_receive(c[..],"@1 d 4 4 1 2000004 3 4 5 6 7 8 9",2000008);
+  #assert ltc_submit(c[..],2000009,0)==4;ltc_complete(c[..],4,2000010);
+  #assert c[0].count==1&&ltc_value(c[..],0,22)==0&&ltc_value(c[..],1,0)== -1&&ltc_value(c[..],0,23)== -1;
+  n=ltc_before(c[..],"I 5",2250004,b[..]);ltc_retire(c[..]);#assert !c[0].live&&c[0].missing==1;
+  ltc_receive(c[..],"D 2 5 0 0",2250005);#assert ltc_before(c[..],"I 6",3250005,b[..])==0&&ltc_submit(c[..],3250005,0)==0;
+}
+#test "latency client refuses uncorrelated and nonmonotonic server reports" {
+  c:[1]LatClient;b:[256]u8;n:=ltc_before(c[..],"I 1",10,b[..]);
+  ltc_receive(c[..],"@1 p 2 10 20 21",30);#assert !c[0].clock.ok;
+  n=ltc_before(c[..],"I 2",31,b[..]);ltc_receive(c[..],"D 4 2 0 0",32);
+  ltc_receive(c[..],"@1 d 2 2 5 31 1 2 3 4 5 6 7",33);#assert !c[0].p.report&&c[0].refused==1;
+  ltc_receive(c[..],"@1 d 2 2 4 31 1 2 3 4 5 6 5",33);#assert !c[0].p.report&&c[0].refused==2;
+  ltc_applied(c[..],2,4,31,0);#assert c[0].p.t[12]==0;
+}
+#test "client timing exact clock, nonce and encoding boundaries preserve state on refusal" {
+  b:[256]u8;c:[1]LatClient;
+  for now:[3]int.[-1,0,LAT_MAX+1]{c[0]=LatClient.{};#assert ltc_before(c[..],"I 1",now,b[..])==0&&c[0].nonce==0;}
+  c[0]=LatClient.{};#assert ltc_before(c[..],"I 1",1,b[..])>0;
+  c[0]=LatClient.{};#assert ltc_before(c[..],"I 1",LAT_MAX,b[..])>0;
+  c[0].p=LatSample.{id=2};c[0].p.t[3]=1;#assert ltc_before(c[..],"I 1",LAT_MAX+1,b[..])==0&&c[0].p.id==2;
+  for text:[5]string.["I","I bad","I 0","I 9007199254740992","J 1"]{c[0]=LatClient.{};#assert ltc_before(c[..],text,1,b[..])==0&&c[0].nonce==0;}
+  c[0]=LatClient.{};#assert ltc_before(c[..],"I 9007199254740991",1,b[..])>0;
+  c[0]=LatClient.{};c[0].nonce=LAT_MAX;#assert ltc_before(c[..],"I 1",1,b[..])==0&&!c[0].live;
+  c[0]=LatClient.{};#assert ltc_before(c[..],"I 1",1,b[0..<1])==0&&c[0].nonce==0&&c[0].ping==0&&c[0].last_ping==0;
+  c[0].last_ping=1;#assert ltc_before(c[..],"I 1",1,b[0..<1])==0&&c[0].nonce==0&&c[0].p.id==0&&c[0].last_input==0;
+  n:=ltc_before(c[..],"I 7",1,b[..]);#assert n>0&&c[0].p.id==1&&c[0].p.t[0]==1&&c[0].p.t[1]==7&&c[0].last_input==1;
+  #assert ltc_before(c[..],"I 8",2,b[..])==0&&c[0].p.id==1;
+  #assert ltc_before(c[..],"I 8",250001,b[..])==0&&c[0].p.id==1;
+  c[0].p=LatSample.{};#assert ltc_before(c[..],"I 8",250000,b[..])==0;
+  #assert ltc_before(c[..],"I 8",250001,b[..])>0&&c[0].p.id==2;
+  c[0]=LatClient.{};c[0].last_ping=1;#assert ltc_before(c[..],"I 1",1000001,b[..])>0&&c[0].ping==1&&c[0].last_ping==1000001;
+}
+#test "client first microsecond and every asynchronous boundary enforce the deadline" {
+  b:[256]u8;
+  for boundary:0..<5{c:[1]LatClient;c[0].last_ping=1;n:=ltc_before(c[..],"I 1",1,b[..]);#assert c[0].p.id==1;
+    ltc_receive(c[..],"D 1 1 1 0",1);#assert c[0].p.tick==1&&c[0].p.t[2]==1;
+    ltc_receive(c[..],"@1 d 1 1 1 1 1 1 1 1 1 1 1",1);#assert c[0].p.report;
+    ltc_applied(c[..],1,1,1,77);#assert c[0].p.t[12]==1&&c[0].p.t[15]==77;
+    #assert ltc_submit(c[..],1,88)==1&&c[0].p.t[15]==88;
+    #assert ltc_submit(c[..],1,99)==0;
+    if boundary==0{n=ltc_before(c[..],"I 2",2000001,b[..]);}
+    if boundary==1{ltc_receive(c[..],"unknown",2000001);}
+    if boundary==2{ltc_applied(c[..],1,1,2000001,0);}
+    if boundary==3{n=ltc_submit(c[..],2000001,0);}
+    if boundary==4{ltc_complete(c[..],1,2000001);}
+    #assert c[0].expired==1&&c[0].p.id==0&&c[0].count==0;
+  }
+  c:[1]LatClient;ltc_expire(c[..],2000000);#assert c[0].expired==0;
+  c[0].last_ping=1;n:=ltc_before(c[..],"I 1",1,b[..]);ltc_expire(c[..],2000000);#assert c[0].p.id==1&&c[0].expired==0;
+  ltc_retire(c[..]);#assert c[0].p.id==0&&c[0].missing==1;ltc_retire(c[..]);#assert c[0].missing==1;
+}
+#test "client refuses absent, reused, backwards and mismatched receipts before their application" {
+  c:[1]LatClient;b:[256]u8;
+  ltc_receive(c[..],"@1 d 1 1 1 1 1 1 1 1 1 1 1",1);#assert c[0].refused==0;
+  ltc_receive(c[..],"D 1 1 0 0",1);#assert c[0].p.tick==0;
+  c[0].last_ping=1;n:=ltc_before(c[..],"I 1",2,b[..]);
+  for text:[3]string.["D bad","D 0 1 0 0","D 1 0 0 0"]{ltc_receive(c[..],text,2);#assert c[0].p.tick==0&&c[0].p.t[11]==0;}
+  ltc_receive(c[..],"D 1 1 0 0",1);#assert c[0].p.tick==0;
+  for text:[5]string.["@1 d 2 1 1 2 1 2 3 4 5 6 7","@1 d 1 2 1 2 1 2 3 4 5 6 7","@1 d 1 1 2 2 1 2 3 4 5 6 7","@1 d 1 1 1 3 1 2 3 4 5 6 7","@1 d 1 1 1 2 1 2 3 4 5 6 7"]{ltc_receive(c[..],text,2);#assert !c[0].p.report;}
+  #assert c[0].refused==5;
+  ltc_receive(c[..],"D 1 1 0 0",2);
+  for text:[4]string.["@1 d 2 1 1 2 1 2 3 4 5 6 7","@1 d 1 2 1 2 1 2 3 4 5 6 7","@1 d 1 1 2 2 1 2 3 4 5 6 7","@1 d 1 1 1 3 1 2 3 4 5 6 7"]{ltc_receive(c[..],text,3);#assert !c[0].p.report;}
+  ltc_receive(c[..],"@1 d 1 1 1 2 9 8 10 11 12 13 14",3);#assert !c[0].p.report&&c[0].refused==10;
+  ltc_receive(c[..],"@1 d 1 1 1 2 1 2 3 4 5 6 7",3);#assert c[0].p.report;
+  ltc_receive(c[..],"@1 d 1 1 1 2 1 2 3 4 5 6 7",4);#assert c[0].refused==10;
+  ltc_applied(c[..],1,1,3,10);ltc_applied(c[..],1,1,4,20);#assert c[0].p.t[12]==3&&c[0].p.t[15]==10;
+}
+#test "client ring keeps exactly the newest64 observations and every scalar uncertainty field" {
+  c:[1]LatClient;
+  for id:1..<67{
+    p:=LatSample.{id=id,seq=id,report=true};p.t[0]=id;p.t[1]=id;p.t[3]=1;p.t[11]=2;p.t[12]=3;
+    c[0].p=p;#assert ltc_submit(c[..],3,100+id)==id;
+    ltc_complete(c[..],id,3);#assert c[0].count==(ifx id<64 then id else 64);
+  }
+  #assert c[0].head==2&&c[0].count==64&&ltc_value(c[..],0,0)==66&&ltc_value(c[..],63,0)==3;
+  #assert ltc_value(c[..],-1,0)== -1&&ltc_value(c[..],64,0)== -1&&ltc_value(c[..],0,-1)== -1;
+  c[0].p=LatSample.{id=1,report=true};c[0].p.t[3]=1;c[0].p.t[12]=1;
+  ltc_complete(c[..],1,1);#assert c[0].count==64;
+  #assert ltc_submit(c[..],0,0)==0;ltc_retire(c[..]);ltc_applied(c[..],1,1,1,0);#assert c[0].p.t[12]==0;
+}
+#test "client clock projection exposes both bounds and refuses impossible single-direction intervals" {
+  c:[1]LatClient;b:[256]u8;n:=ltc_before(c[..],"I 1",1000000,b[..]);
+  ltc_receive(c[..],"@1 p 1 999999 2000010 2000020",1000100);#assert !c[0].clock.ok;
+  ltc_receive(c[..],"@1 p 1 1000000 2000010 2000020",1000100);
+  #assert c[0].clock.lo==999720&&c[0].clock.hi==1000210&&c[0].clock.quantum==100&&c[0].clock.ppm==100&&c[0].ping==0;
+  ltc_receive(c[..],"@1 p 1 1000000 2000010 2000020",1000101);#assert c[0].clock.at==1000100;
+  for bad:0..<2{
+    p:=LatSample.{id=1,seq=1,report=true,clock=c[0].clock};p.t[3]=1000200;p.t[4]=ifx bad==0 then 1000200 else 2000210;p.t[5]=3000000;p.t[10]=ifx bad==1 then 4000000 else 2000240;p.t[11]=1000410;p.t[12]=1000430;p.t[13]=1000440;c[0].p=p;
+    ltc_complete(c[..],1,1000460);#assert ltc_value(c[..],0,22)==0;
+  }
+}
+#test "client idle application and first-microsecond completion preserve their exact markers" {
+  c:[1]LatClient;b:[256]u8;ltc_applied(c[..],1,1,1,99);#assert c[0].p.t[12]==0;
+  c[0].last_ping=1;n:=ltc_before(c[..],"I 1",1,b[..]);ltc_receive(c[..],"D 1 1 0 0",1);
+  ltc_receive(c[..],"@1 d 1 1 1 1 1 1 1 1 1 1 1",1);ltc_applied(c[..],1,1,1,0);
+  #assert ltc_submit(c[..],1,0)==1;
+  ltc_complete(c[..],1,0);#assert c[0].count==0;
+  ltc_complete(c[..],1,1);#assert c[0].count==1&&c[0].p.id==0;
+}
+
+ltc_expire::(c:[]LatClient,now:int) {
+  if c[0].p.id>0&&now-c[0].p.t[3]>=LAT_DEADLINE_US{c[0].p=LatSample.{};c[0].expired+=1;}
+}
+ltc_before::(c:[]LatClient,text:string,now:int,out:[]u8)->int #export_c {
+  if !c[0].live||now<1||now>LAT_MAX||!wire_is(text,"I"){return 0;}ltc_expire(c,now);
+  r:[1]WireRd;r[0]=wire_rd(text,1);seq:=wire_num(text,r[..]);if !r[0].ok||seq<=0||seq>LAT_MAX{return 0;}
+  if c[0].nonce>=LAT_MAX{ltc_retire(c);return 0;}
+  m:=LatMessage.{ok=true,kind=1,count=2};m.v[0]=c[0].nonce+1;m.v[1]=now;
+  if c[0].last_ping==0||now-c[0].last_ping>=LAT_PING_US {
+    n:=lat_encode(m,out);if n!=0{c[0].nonce=m.v[0];c[0].ping=m.v[0];c[0].ping_at=now;c[0].last_ping=now;}return n;
+  }
+  if c[0].p.id>0||(c[0].last_input>0&&now-c[0].last_input<LAT_INPUT_US){return 0;}
+  m.kind=2;m.count=3;m.v[1]=seq;m.v[2]=now;n:=lat_encode(m,out);
+  if n!=0{c[0].nonce=m.v[0];c[0].last_input=now;c[0].p=LatSample.{id=m.v[0],seq=seq,clock=c[0].clock};c[0].p.t[0]=m.v[0];c[0].p.t[1]=seq;c[0].p.t[3]=now;}return n;
+}
+ltc_receive::(c:[]LatClient,text:string,now:int) #export_c {
+  if !c[0].live{return;}ltc_expire(c,now);
+  if wire_is(text,"D")&&c[0].p.id>0&&!c[0].p.report {
+    r:[1]WireRd;r[0]=wire_rd(text,1);d:=wire_read_d(text,r[..]);
+    if r[0].ok&&(d.f&2)==0&&d.ack>=c[0].p.seq&&d.tick>0&&now>=c[0].p.t[3]{c[0].p.tick=d.tick;c[0].p.t[2]=d.tick;c[0].p.t[11]=now;}
+    return;
+  }
+  m:=lat_decode(text,true);if !m.ok{return;}
+  if m.kind==1 {
+    if m.v[0]!=c[0].ping||m.v[1]!=c[0].ping_at{return;}
+    c[0].clock=lc_sync(m.v[1],m.v[2],m.v[3],now,100,100);c[0].ping=0;return;
+  }
+  p:=c[0].p;
+  if p.id==0||p.report{return;}
+  if m.v[0]!=p.id||m.v[1]!=p.seq||m.v[2]!=p.tick||m.v[3]!=p.t[3]||p.t[11]==0{c[0].refused+=1;return;}
+  for i:5..<11{if m.v[i]<m.v[i-1]{c[0].refused+=1;return;}}
+  for i:4..<11{c[0].p.t[i]=m.v[i];}c[0].p.report=true;
+}
+ltc_applied::(c:[]LatClient,ack:int,tick:int,now:int,lag:int) #export_c {
+  ltc_expire(c,now);p:=c[0].p;
+  // Receipt is the active marker; both expiry and retirement clear it.
+  if p.t[11]==0||p.t[12]!=0{return;}
+  if ack>=p.seq&&tick>=p.tick&&now>=p.t[11]{c[0].p.t[12]=now;c[0].p.t[15]=lag;}
+}
+ltc_submit::(c:[]LatClient,now:int,lag:int)->int #export_c {
+  ltc_expire(c,now);p:=c[0].p;
+  if !c[0].live||!p.report||p.t[12]==0||p.t[13]>0||now<p.t[12]{return 0;}
+  c[0].p.t[13]=now;c[0].p.t[15]=lag;return p.id;
+}
+ltc_complete::(c:[]LatClient,id:int,now:int) #export_c {
+  ltc_expire(c,now);p:=c[0].p;
+  if id==0||id!=p.id||p.t[13]==0||now<p.t[13]{return;}
+  p.t[14]=now;b:[2]int;up:[2]int;down:[2]int;
+  if lc_uplink(p.clock,p.t[3],p.t[4],now,up[..])&&lc_downlink(p.clock,p.t[10],p.t[11],now,down[..]){
+    clock_valid:=lc_bounds(p.clock,now,b[..]);
+    p.t[16]=b[0];p.t[17]=b[1];p.t[18]=up[0];p.t[19]=up[1];p.t[20]=down[0];p.t[21]=down[1];p.t[22]=1;
+  }
+  c[0].rows[c[0].head]=p;c[0].head=(c[0].head+1)%LTC_ROWS;c[0].count=ifx c[0].count<LTC_ROWS then c[0].count+1 else LTC_ROWS;c[0].p=LatSample.{};
+}
+ltc_retire::(c:[]LatClient) #export_c {if c[0].p.id>0{c[0].missing+=1;}c[0].p=LatSample.{};c[0].live=false;}
+ltc_value::(c:[]LatClient,row:int,field:int)->int #export_c {
+  if row<0||row>=c[0].count||field<0||field>=LTC_FIELDS{return -1;}
+  return c[0].rows[(c[0].head-1-row+LTC_ROWS)%LTC_ROWS].t[field];
+}
