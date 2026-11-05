@@ -31,7 +31,8 @@ interleaves these per-layer chains level first then array slice. Browser
 effects must upload these bytes directly with `writeTexture`; an image SDK
 copy would apply an extra premultiplication conversion.
 
-The authority's 29 checks and 71 root mutants pass with no survivors or
+The decoder's original 29 checks and 71 root mutants pass; adding the
+profile descriptor gives 30 checks and 75 root mutants, also with no survivors or
 equivalent annotations. These checks include exact capacity boundaries,
 known PNG pixels, doubled levels, translucent bytes and late decode errors.
 This does not qualify actual browser/native image parity: that requires
