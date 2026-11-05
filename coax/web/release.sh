@@ -13,6 +13,9 @@
 # never stop a release; more of them always do, page by page. After the promote
 # the same two checks run on production; a new failure rolls back.
 #
+# The Everglade drift check holds to the same rule: when the release changes Everglade, a drift
+# it fails here stops the release only if production's commit holds it.
+#
 # Everything else is a report and never stops a release: tools-check,
 # the committed shaders against their Coax (wgsl-module --site --check),
 # check-visuals, the release metadata check, the golden walk, 60 FPS, every
@@ -132,6 +135,30 @@ broke=$(new_starts "$out" "$base_starts" "$staging")
 [[ -z "$broke" ]] || { echo "release $commit: STOPPED. pages fail on staging that pass on production; production is untouched:" >&2; echo "$broke" | sed 's/^/  /' >&2; exit 1; }
 echo "  starts     staging $(starts_fails <<< "$out" | sed '/^$/d' | wc -l | tr -d ' ') failing check(s), production $(sed '/^$/d' <<< "$base_starts" | wc -l | tr -d ' '); none new"
 lap starts "$t"
+
+# The Everglade drift check (#12778, coax/web/everglade-drift.coax): a release that changes Everglade's
+# page, its room or the engine under them plays it on this release's build (deploy.sh built the page
+# here). It stops the release when it fails here and holds on production's commit, a drift this
+# release causes; when production's commit fails it too, it is a report.
+everglade='^(apps/openagents-web/everglade|coax/web/room/|coax/web/room-worker\.js|coax/web/host\.js|coax/web/everglade-drift|aethyr/|verse/everglade/|verse/grid\.coax)'
+if [[ -n "$passed" ]] && git -C "$tree" diff --name-only "${passed%% *}" "$full" | grep -Eq "$everglade"; then
+  t=$(now)
+  if (cd "$tree" && coax/web/room/build.sh && coax/web/tool.sh everglade-drift) > "$reports/drift" 2>&1; then echo "  drift      holds"
+  else
+    old="$(mktemp -d)/production"
+    git -C "$repo" worktree add -q --detach "$old" "${passed%% *}"
+    if compiler "$old" > /dev/null &&
+       (cd "$old" && coax/web/room/build.sh && apps/openagents-web/build.sh && coax/web/tool.sh everglade-drift) > "$reports/drift-production" 2>&1; then
+      git -C "$repo" worktree remove --force "$old"
+      echo "release $commit: STOPPED. the Everglade drift check fails here and holds on production's ${passed:0:10}; production is untouched:" >&2
+      grep -E '^DRIFT ' "$reports/drift" | head -20 | sed 's/^/  /' >&2
+      exit 1
+    fi
+    git -C "$repo" worktree remove --force "$old"
+    echo "  report     the Everglade drift check fails here and on production's ${passed:0:10} (not stopping): $(tail -1 "$reports/drift")"
+  fi
+  lap drift "$t"
+fi
 
 $prod || { echo "release $commit: staging only, done in $(secs $(( $(now) - start ))) s"; exit 0; }
 

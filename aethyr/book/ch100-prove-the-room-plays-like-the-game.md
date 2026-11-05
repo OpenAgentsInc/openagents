@@ -5,8 +5,8 @@
 > draw frame by frame, on local, 100 ms and 250 ms networks with 30 ms of
 > jitter and 2% loss, with bots in the room
 > ([coax/web/everglade-drift.coax](../../coax/web/everglade-drift.coax),
-> #12778). `coax/web/room/deploy.sh` runs it before every deploy, and it
-> fails a deploy only with `OA_ROOM_DRIFT_GATE=1`. A local room's fixed dice
+> #12778). `coax/web/room/deploy.sh` runs it before every deploy, and a
+> failure stops the deploy. A local room's fixed dice
 > and bots walking clear of your abilities removed three causes of drift
 > (commit f54bb0f001); #12778 stays open until the check holds. Raid bots
 > fight (`raid-check.coax`); the load test's bots walk and cast but don't
@@ -118,7 +118,7 @@ Idle bots holding sockets measure nothing useful (research doc, section 15).
 ## Acceptance checks
 
 - `coax/web/tool.sh everglade-drift` exits 0 at local, 100 ms and 250 ms, and
-  `OA_ROOM_DRIFT_GATE=1` is the deploy default.
+  a failure stops `coax/web/room/deploy.sh` (no switch skips it).
 - A raid with 16 bots and 60 raiders holds tick p95 under its bound
   (chapter 99).
 

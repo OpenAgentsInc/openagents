@@ -478,9 +478,9 @@ It then prints a table of probes by profile and ends with `holds` or `fails`.
 Both pages' rows, their screenshots at the end of each step and the servers'
 logs are saved in `coax/web/build/everglade-drift/STAMP/`.
 
-`deploy.sh` runs the check before it builds the image. Today the check prints
-its table and the deploy goes on; `OA_ROOM_DRIFT_GATE=1` makes a failure stop
-the deploy, and `OA_ROOM_DRIFT=0` skips the check.
+`deploy.sh` runs the check before it builds the image. It prints its table,
+and a failure stops the deploy; nothing skips it. Fix the drift, or find that
+the check is wrong and fix the check, then deploy again.
 
 On 2026-11-04 (`79a9fa7e90`, local profile) these probes drift:
 
