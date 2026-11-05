@@ -942,8 +942,9 @@ int main(int argc, char **argv) {
     if ((double)now >= next) {
       clock_in();
       int64_t t_tick = now_us();
-      rm_tick(view());
-      if (ticks % 2 == 0) { everglade_tick(); int64_t dt = now_us() - t_tick; tick_add(dt); st_hist_add(&st_work[STW_ALL], dt); st_ticks++; st_tick_us += dt; }
+      /* each realm steps when its profile says (room.coax rm_profile: 0 Orbit League, 1 Everglade) */
+      if (rm_realm_due(view(), 0, ticks)) rm_tick(view());
+      if (rm_realm_due(view(), 1, ticks)) { everglade_tick(); int64_t dt = now_us() - t_tick; tick_add(dt); st_hist_add(&st_work[STW_ALL], dt); st_ticks++; st_tick_us += dt; }
       for (int i = 0; i < CONNS; i++) {
         if (conns[i].fd < 0 || !conns[i].ws) continue;
         int64_t len = rm_state(view(), i);

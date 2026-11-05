@@ -21,8 +21,9 @@
 //   - A hidden entity (IM_HIDDEN: its bearer has the SRD's Invisible condition, RS_INVISIBLE) goes to
 //     its own seat, and to another seat only while im_reveal has revealed it to that seat, for example
 //     after it strikes near them.
-//   - A party member out of range gets the health-only channel (IM_HEALTH). Everglade has no parties
-//     yet: im_party is the hook, and every seat starts in no party. A party member in another room is
+//   - A party member out of range gets the health-only channel (IM_HEALTH), under the party roster's
+//     visibility (aethyr/session/party.coax party_sees: neither blocks the other). Everglade's seats
+//     aren't told their party yet: im_party is the hook, and every seat starts in no party. A party member in another room is
 //     that room's (each map is its own room), so this module can't send it.
 //
 // im_counts gives the counts for the room's vitals (#12791): picked whole, picked health-only, withheld
@@ -262,7 +263,9 @@ im_pick :: (im: [] Interest, s: int, x: f32, z: f32, tick: int, out: [] ImPick) 
   // party members out of range: their health only
   if im[0].party[s] != 0 {
     for q: 0..<IM_SEATS {
-      if q == s || im[0].party[q] != im[0].party[s] || ((im[0].blocks[s] >> q) & 1) != 0 { continue; }
+      // the roster's visibility (aethyr/session/party.coax): the same party, neither blocking the other
+      blocked := ((im[0].blocks[s] >> q) & 1) != 0 || ((im[0].blocks[q] >> s) & 1) != 0;
+      if q == s || !party_sees(im[0].party[q] == im[0].party[s], false, false, blocked) { continue; }
       i = im_find(im, q);   // a player's wire ID is its seat
       if i < 0 || im[0].mark[i] == im[0].mark_n { continue; }
       im[0].visits += 1;
@@ -378,6 +381,14 @@ im_has :: (p: [] ImPick, n: int, id: int) -> int {
   #assert p[im_has(p[..], n, 1)].chan == IM_FULL;
   im_counts(im[..], 0, c[..]);
   #assert c[1] == 1;
+  // a party member who blocks seat 0, or whom it blocks, gets nothing out of range (party_sees)
+  im_block(im[..], 2, 0, true);
+  n = im_pick(im[..], 0, 0, 0, t, p[..]);
+  #assert im_has(p[..], n, 2) < 0;
+  im_block(im[..], 2, 0, false); im_block(im[..], 0, 2, true);
+  n = im_pick(im[..], 0, 0, 0, t, p[..]);
+  #assert im_has(p[..], n, 2) < 0;
+  im_block(im[..], 0, 2, false);
   // in range, the party member is whole again
   im_put(im[..], t, 2, 50, 0, 2, 0);
   n = im_pick(im[..], 0, 0, 0, t, p[..]);

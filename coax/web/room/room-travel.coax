@@ -30,7 +30,7 @@
 // reconnect, and the note has its HP. A crash of this room after the route loses nothing the note
 // didn't post: the route waits for the post's receipt, and the destination's ticket brings the posted
 // HP. A crash before the receipt sends no route: the page rejoins this room as after any drop.
-TRAVEL_MS :: 8000;        // a cutover and a reservation last this long without the page's arrival
+TRAVEL_MS :: TRAVEL_HOLD_MS;   // a cutover and a reservation last this long without the page's arrival (aethyr/session/travel.coax)
 TRAVELS :: 16;            // journeys in flight on one server
 
 RmTravel :: struct {
@@ -53,7 +53,7 @@ RmTravels :: struct {
 }
 
 // Journey j still holds its place.
-trv_live :: (v: [] RmServer, j: int) -> bool { return v[0].trv.t[j].live && v[0].mono_ms < v[0].trv.t[j].until; }
+trv_live :: (v: [] RmServer, j: int) -> bool { return travel_holds(v[0].trv.t[j].live, v[0].trv.t[j].until, v[0].mono_ms); }
 // The reservations in the room called code, for anyone but pid.
 trv_held_for_others :: (v: [] RmServer, code: string, pid: string) -> int {
   n := 0;
@@ -147,10 +147,11 @@ trv_route_due :: (v: [] RmServer) {
   for j: 0..<TRAVELS {
     e := v[0].trv.t[j];
     if !trv_live(v, j) || e.routed { continue; }
+    // its vitals note, then its checkpoint (profile 2): each saved (travel_saved)
     i := rv_find(v, cast(string) e.pid[0..<e.pid_n]);
-    if v[0].tkey_n > 0 && i >= 0 && v[0].vit.v[i].acked < e.rev { continue; }
-    ci:=ck_find(v,cast(string)e.pid[0..<e.pid_n]);
-    if e.checkpoint_rev>0 && (ci<0 || v[0].ck.slot[ci].acked<e.checkpoint_rev) { continue; }
+    if !travel_saved(v[0].tkey_n > 0 && i >= 0, e.rev, ifx i >= 0 then v[0].vit.v[i].acked else 0) { continue; }
+    ci := ck_find(v, cast(string) e.pid[0..<e.pid_n]);
+    if !travel_saved(e.checkpoint_rev > 0, e.checkpoint_rev, ifx ci >= 0 then v[0].ck.slot[ci].acked else -1) { continue; }
     v[0].trv.t[j].routed = true;
     if !v[0].eg[e.k].live || !eg_travelling(v, e.k, e.seat) { continue; }
     b: [64] u8;
@@ -161,15 +162,14 @@ trv_route_due :: (v: [] RmServer) {
 }
 // Seat `seat` of room k is cut over for travel: its page was told to go, and hasn't yet.
 eg_travelling :: (v: [] RmServer, k: int, seat: int) -> bool {
-  u := v[0].eg[k].seat[seat].travel_until;
-  return u > 0 && v[0].mono_ms < u;
+  return travel_cut(v[0].eg[k].seat[seat].travel_until, v[0].mono_ms) == TRAVEL_CUT_HELD;
 }
 // An intent from a seat cut over for travel: dropped while the cutover lasts; past it the journey is
 // called off and the seat takes commands again. Whether it is dropped.
 eg_travel_drops :: (v: [] RmServer, k: int, seat: int) -> bool {
-  u := v[0].eg[k].seat[seat].travel_until;
-  if u == 0 { return false; }
-  if v[0].mono_ms < u { v[0].trv.dropped += 1; return true; }
+  cut := travel_cut(v[0].eg[k].seat[seat].travel_until, v[0].mono_ms);
+  if cut == TRAVEL_CUT_NONE { return false; }
+  if cut == TRAVEL_CUT_HELD { v[0].trv.dropped += 1; return true; }
   v[0].eg[k].seat[seat].travel_until = 0; v[0].trv.aborted += 1;
   return false;
 }

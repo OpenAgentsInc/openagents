@@ -840,6 +840,17 @@ fits; otherwise it places the page as before and the room refuses it
 (`verse.room_pick`, migration 0128). A saved character names the build that
 last saved it (`room_vitals.build`). Checks: `room_checks.coax` builds.
 
+## A room host runs each realm by its declared profile
+
+The room server serves Orbit League and Everglade on one 60 Hz beat, each by
+a profile from `aethyr/net/profile.coax` (`#authority`, mutation-checked):
+its rate (a divisor of the beat), physics steps per world step, trust,
+durability and fairness. Only an authoritative profile may be durable or earn
+steps by the clock; self-asserted presence and small-game lockstep are
+separate profiles and never qualify as authoritative play. The host steps a
+realm only on the beats `net_due` names (`room-host.c`, `room.coax`
+`rm_realm_due`). Checks: `aethyr/net/profile.coax`, `room.coax` "profiles:".
+
 ## A character travels between rooms as one body
 
 A player's travel to another room (`T`, `coax/web/room/room-travel.coax`,
@@ -852,8 +863,10 @@ seat's state at the cutover, so a crash after the route loses nothing. A
 travelling seat's close ends it at once (no seat is held). The destination's
 ticket takes the next owner generation, so the source can't save over it.
 Each step before the destination's join is undone by time: after
-`TRAVEL_MS` without the page leaving, the seat takes commands again and the
-set-aside seat lapses. HP, XP and WANTED travel through the saved note. To a
+`TRAVEL_MS` (`aethyr/session/travel.coax` `TRAVEL_HOLD_MS`) without the page
+leaving, the seat takes commands again and the set-aside seat lapses. The
+room asks the travel contract each of these questions over its own state
+(`travel_admits`, `travel_cut`, `travel_holds`, `travel_saved`). HP, XP and WANTED travel through the saved note. To a
 room on the same server, the character's Temporary Hit Points, spent spell
 slots and limited uses (onto the same build only) and its Repair wait travel
 too, laid on once after its hello there; conditions, auras and zones belong
@@ -989,9 +1002,15 @@ realm naming that member (`?party=`, `verse.party_member_room`, migration
 0134): the ticket places the asker in the member's live room only when both
 are in the same party, neither blocks the other and the member isn't hidden;
 otherwise it says `party_away` and places as usual. The ticket names the one
-room it seats; the roster still never names a room. Checks: `coax/web/api/tests/room_checks.coax` parties
-(with `ROOM_BIN`, a real room's crash, restart and the service down), and
-`everglade5e.coax` "party:".
+room it seats; the roster still never names a room. The rules are one
+contract, `aethyr/session/party.coax` (`#authority`, mutation-checked): the
+API's SQL keeps its durable form, the page takes its member limit from it, and
+the room server's health-only channel for an out-of-range party member asks
+`party_sees`, so a member who blocks the seat, or whom it blocks, gets
+nothing. Checks: `coax/web/api/tests/room_checks.coax` parties
+(with `ROOM_BIN`, a real room's crash, restart and the service down),
+`everglade5e.coax` "party:", `aethyr/session/party.coax` and `room.coax`
+"interest".
 
 ## Inverse physics differentiates the owned solver and exposes ambiguity
 

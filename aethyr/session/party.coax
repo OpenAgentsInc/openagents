@@ -1,0 +1,236 @@
+// A party: a group of players that outlives a room, a session and a restart (GitHub #12852, #12845).
+// The rules every host of a party keeps, over the host's own facts:
+// - Membership. A player is in one party at most. A party has PARTY_MOST members at most. Joining
+//   takes an invite's code, used once and live for PARTY_INVITE_MS; a code that is over or unknown
+//   is gone, a member who blocks the joiner or is blocked by them (either way) refuses the join, and
+//   a full party refuses it. A player who is already a member joins again as a no-op. Joining leaves
+//   the party the player was in. The last member out ends a party.
+// - Versions. Every change to who is in a party or what it shows (a join, a leave, a hide) raises
+//   its version, so a holder of an older roster knows it is stale. A no-op changes nothing.
+// - The roster: health only, never a place, a room or a look. Its asker sees themselves, and each
+//   other member who is neither hidden nor blocked either way. A member's HP shows only while their
+//   room's last report is younger than PARTY_HP_MS; an older one is no HP, not an old one. The roster
+//   lasts PARTY_SEEN_MS, then the holder asks again.
+// - Placement. A player asking for a realm, not a room, sits with their party: the live room with the
+//   fewest taken seats among those another visible member is in, while it has a seat. When every such
+//   room is full, the first of them is named as full and the player is placed elsewhere. Following one
+//   member (#12911) goes to that member's room, under the same visibility and the same seat rule.
+// - Inside a room: a member out of range gets the health-only channel, under the roster's visibility.
+// Hosts: the API keeps the durable book in SQL (coax/web/api/migrations/0129_parties.sql, 0134), the
+// room server's interest asks party_sees (coax/web/room/room-interest.coax), and the page shows the
+// roster (apps/openagents-web/everglade-party.coax). PartyBook below is the bounded model the checks
+// run the rules over.
+//   coax/bin/coax test aethyr/session/party.coax --library
+//   coax/bin/coax mutate aethyr/session/party.coax --library --root-only
+
+#module "aethyr.session.party";
+#authority;
+
+// book:begin party-profile
+PARTY_MOST :: 8;              // members a party holds at most
+PARTY_INVITE_MS :: 600000;    // an invite's code is live this long
+PARTY_SEEN_MS :: 60000;       // a roster lasts this long before its holder asks again
+PARTY_HP_MS :: 600000;        // a room's HP report shows this long
+
+PARTY_OK :: 0;
+PARTY_GONE :: 1;              // no such code, or it is over
+PARTY_BLOCKED :: 2;           // a member and the joiner block each other, either way
+PARTY_FULL :: 3;              // the party has PARTY_MOST members
+PARTY_SAME :: 4;              // already a member: nothing changes
+// book:end party-profile
+
+// book:begin party-rules
+// Why a join by a code is refused, or PARTY_OK (or PARTY_SAME). The checks run in this order.
+party_join_why :: (code_live: bool, already: bool, blocked: bool, members: int) -> int {
+  if !code_live { return PARTY_GONE; }
+  if already { return PARTY_SAME; }
+  if blocked { return PARTY_BLOCKED; }
+  if members >= PARTY_MOST { return PARTY_FULL; }
+  return PARTY_OK;
+}
+// Whether a code made at made_ms is live at now.
+party_code_live :: (made_ms: int, now: int) -> bool { return now < made_ms + PARTY_INVITE_MS; }
+// Whether a party's member shows to an asker: both in the party, and the member is the asker, or
+// neither hidden nor blocked either way.
+party_sees :: (same: bool, you: bool, hidden: bool, blocked: bool) -> bool { return same && (you || (!hidden && !blocked)); }
+// Whether a room's HP report made at hp_at still shows at now.
+party_hp_shown :: (hp_at: int, now: int) -> bool { return hp_at > now - PARTY_HP_MS; }
+
+// Where a party sits: among the rooms another visible member is in (taken seats each, in the host's
+// order), the first with the fewest taken that has a seat. When none has, the first room, full.
+// room -1: no member sits anywhere.
+PartyPlace :: struct { room: int = -1; full: bool; }
+party_place :: (taken: [] int, n: int, seats: int) -> PartyPlace {
+  best := -1;
+  for r: 0..<n { if taken[r] < seats && (best < 0 || taken[r] < taken[best]) { best = r; } }
+  if best >= 0 { return PartyPlace.{room = best}; }
+  if n > 0 { return PartyPlace.{room = 0, full = true}; }
+  return PartyPlace.{};
+}
+// Following one member: their room (taken seats), when they show to the asker and sit somewhere.
+party_follow :: (sees: bool, sits: bool, taken: int, seats: int) -> PartyPlace {
+  if !sees || !sits { return PartyPlace.{}; }
+  return PartyPlace.{room = 0, full = taken >= seats};
+}
+// book:end party-rules
+
+// ---- the bounded book the checks run the rules over
+
+PARTY_PLAYERS :: 12;
+PARTY_SLOTS :: 6;
+
+PartyBook :: struct {
+  of: [PARTY_PLAYERS] int;           // each player's party (index + 1), 0 none
+  hidden: [PARTY_PLAYERS] bool;
+  blocks: [PARTY_PLAYERS] int;       // bit q: this player blocks player q
+  live: [PARTY_SLOTS] bool;
+  version: [PARTY_SLOTS] int;
+  code_party: [PARTY_SLOTS] int;     // one code per slot: its party (index + 1), 0 used or none
+  code_made: [PARTY_SLOTS] int;
+}
+party_members :: (b: [] PartyBook, p: int) -> int {
+  n := 0;
+  for q: 0..<PARTY_PLAYERS { if b[0].of[q] == p + 1 { n += 1; } }
+  return n;
+}
+party_blocked :: (b: [] PartyBook, a: int, c: int) -> bool { return ((b[0].blocks[a] >> c) & 1) != 0 || ((b[0].blocks[c] >> a) & 1) != 0; }
+// Player me leaves their party; the last out ends it.
+party_leave :: (b: [] PartyBook, me: int) {
+  p := b[0].of[me] - 1;
+  if p < 0 { return; }
+  b[0].of[me] = 0; b[0].hidden[me] = false;
+  if party_members(b, p) == 0 { b[0].live[p] = false; b[0].version[p] = 0; }
+  else { b[0].version[p] += 1; }
+}
+// An invite's code (slot k) for me's party, made at now; a party of one is made when me has none.
+// False: no free party.
+party_invite :: (b: [] PartyBook, me: int, k: int, now: int) -> bool {
+  p := b[0].of[me] - 1;
+  if p < 0 {
+    for i: 0..<PARTY_SLOTS { if p < 0 && !b[0].live[i] { p = i; } }
+    if p < 0 { return false; }
+    b[0].live[p] = true; b[0].version[p] = 1; b[0].of[me] = p + 1;
+  }
+  b[0].code_party[k] = p + 1; b[0].code_made[k] = now;
+  return true;
+}
+// Player me joins by the code in slot k at now.
+party_join :: (b: [] PartyBook, me: int, k: int, now: int) -> int {
+  p := b[0].code_party[k] - 1;
+  live := p >= 0 && b[0].live[p] && party_code_live(b[0].code_made[k], now);
+  blocked := false;
+  if live { for q: 0..<PARTY_PLAYERS { if b[0].of[q] == p + 1 && party_blocked(b, q, me) { blocked = true; } } }
+  why := party_join_why(live, live && b[0].of[me] == p + 1, blocked, party_members(b, p));
+  if why != PARTY_OK { return why; }
+  party_leave(b, me);
+  b[0].code_party[k] = 0;
+  b[0].of[me] = p + 1; b[0].version[p] += 1;
+  return PARTY_OK;
+}
+// me's health hidden (on) or shown. False: me is in no party.
+party_hide :: (b: [] PartyBook, me: int, on: bool) -> bool {
+  p := b[0].of[me] - 1;
+  if p < 0 { return false; }
+  if b[0].hidden[me] != on { b[0].hidden[me] = on; b[0].version[p] += 1; }
+  return true;
+}
+// Whether member q is in asker me's roster.
+party_roster_has :: (b: [] PartyBook, me: int, q: int) -> bool {
+  return party_sees(b[0].of[me] != 0 && b[0].of[me] == b[0].of[q], q == me, b[0].hidden[q], party_blocked(b, me, q));
+}
+
+// ---- checks
+
+#test "party: a join is refused for a gone code, a block, or a full party, in that order" {
+  #assert party_join_why(true, false, false, 0) == PARTY_OK && party_join_why(true, false, false, PARTY_MOST - 1) == PARTY_OK;
+  #assert party_join_why(true, false, false, PARTY_MOST) == PARTY_FULL;
+  #assert party_join_why(true, false, true, 1) == PARTY_BLOCKED && party_join_why(true, false, true, PARTY_MOST) == PARTY_BLOCKED;
+  #assert party_join_why(true, true, true, PARTY_MOST) == PARTY_SAME;
+  #assert party_join_why(false, true, true, PARTY_MOST) == PARTY_GONE;
+  #assert party_code_live(1000, 1000) && party_code_live(1000, 1000 + PARTY_INVITE_MS - 1) && !party_code_live(1000, 1000 + PARTY_INVITE_MS);
+  #assert party_hp_shown(5000, 5000 + PARTY_HP_MS - 1) && !party_hp_shown(5000, 5000 + PARTY_HP_MS);
+}
+
+#test "party: the roster shows you, and others neither hidden nor blocked" {
+  #assert party_sees(true, true, true, true) && party_sees(true, false, false, false);
+  #assert !party_sees(true, false, true, false) && !party_sees(true, false, false, true) && !party_sees(false, true, false, false) && !party_sees(false, false, false, false);
+}
+
+#test "party: placement takes the emptiest room with a seat, else names the first full" {
+  t: [4] int;
+  t[0] = 3; t[1] = 1; t[2] = 1; t[3] = 4;
+  a := party_place(t[..], 4, 4);
+  #assert a.room == 1 && !a.full;
+  t[1] = 4; t[2] = 4; t[0] = 4;
+  a = party_place(t[..], 4, 4);
+  #assert a.room == 0 && a.full;
+  t[2] = 3;
+  a = party_place(t[..], 4, 4);
+  #assert a.room == 2 && !a.full;
+  a = party_place(t[..], 1, 4);
+  #assert a.room == 0 && a.full;
+  t[0] = 1; t[1] = 2;
+  a = party_place(t[..], 2, 4);
+  #assert a.room == 0 && !a.full;
+  t[1] = 1;
+  a = party_place(t[..], 2, 4);
+  #assert a.room == 0;
+  a = party_place(t[..], 0, 4);
+  #assert a.room == -1 && !a.full;
+  t[0] = 0;
+  a = party_place(t[..], 1, 4);
+  #assert a.room == 0 && !a.full;
+  f := party_follow(true, true, 3, 4);
+  #assert f.room == 0 && !f.full;
+  f = party_follow(true, true, 4, 4);
+  #assert f.room == 0 && f.full;
+  f = party_follow(false, true, 0, 4);
+  #assert f.room == -1;
+  f = party_follow(true, false, 0, 4);
+  #assert f.room == -1 && !f.full;
+}
+
+#test "party: one party a player, versions rise on each change, the last out ends it" {
+  b: [1] PartyBook;
+  #assert !party_hide(b[..], 0, true);
+  #assert party_invite(b[..], 0, 0, 100) && b[0].of[0] == 1 && b[0].version[0] == 1 && b[0].live[0];
+  #assert party_join(b[..], 1, 0, 200) == PARTY_OK && b[0].of[1] == 1 && b[0].version[0] == 2 && party_members(b[..], 0) == 2;
+  #assert party_join(b[..], 2, 0, 200) == PARTY_GONE;   // used once
+  #assert party_invite(b[..], 0, 1, 300) && b[0].version[0] == 2;   // a code changes no roster
+  #assert party_join(b[..], 1, 1, 300) == PARTY_SAME && b[0].version[0] == 2;
+  #assert party_join(b[..], 2, 1, 300 + PARTY_INVITE_MS) == PARTY_GONE;
+  #assert party_invite(b[..], 1, 1, 400) && b[0].code_made[1] == 400;
+  b[0].blocks[0] = 1 << 3;
+  #assert party_join(b[..], 3, 1, 400) == PARTY_BLOCKED;
+  b[0].blocks[0] = 0; b[0].blocks[3] = 1 << 1;   // the other way
+  #assert party_join(b[..], 3, 1, 400) == PARTY_BLOCKED && b[0].of[3] == 0;
+  b[0].blocks[3] = 0;
+  // a full party
+  for q: 4..<10 { #assert party_invite(b[..], 0, 2, 500) && party_join(b[..], q, 2, 500) == PARTY_OK; }
+  #assert party_members(b[..], 0) == PARTY_MOST && party_join(b[..], 3, 1, 400) == PARTY_FULL;
+  // hide: shown to yourself, not to others; a repeat changes nothing
+  v := b[0].version[0];
+  #assert party_hide(b[..], 1, true) && b[0].version[0] == v + 1 && party_hide(b[..], 1, true) && b[0].version[0] == v + 1;
+  #assert party_roster_has(b[..], 1, 1) && !party_roster_has(b[..], 0, 1) && party_roster_has(b[..], 1, 0) && !party_roster_has(b[..], 10, 0);
+  #assert party_hide(b[..], 1, false) && b[0].version[0] == v + 2 && party_roster_has(b[..], 0, 1);
+  b[0].blocks[4] = 1 << 0;
+  #assert !party_roster_has(b[..], 0, 4) && !party_roster_has(b[..], 4, 0) && party_roster_has(b[..], 4, 5);
+  // joining another party leaves this one; its version rises too
+  #assert party_invite(b[..], 10, 3, 600) && b[0].of[10] == 2 && b[0].version[1] == 1;
+  #assert party_hide(b[..], 4, true);
+  v = b[0].version[0];
+  #assert party_join(b[..], 4, 3, 600) == PARTY_OK && b[0].of[4] == 2 && b[0].version[0] == v + 1 && b[0].version[1] == 2 && !b[0].hidden[4];
+  // the last out ends the party
+  party_leave(b[..], 10); party_leave(b[..], 4);
+  #assert !b[0].live[1] && b[0].version[1] == 0;
+  #assert b[0].of[4] == 0 && b[0].of[10] == 0;
+  party_leave(b[..], 4);   // in none: nothing
+  #assert b[0].of[4] == 0 && !b[0].live[1];
+  #assert !party_roster_has(b[..], 11, 3) && !party_roster_has(b[..], 11, 11);
+  #assert party_join(b[..], 11, 3, 600) == PARTY_GONE;   // its code went with it
+  for q: 0..<PARTY_PLAYERS { #assert b[0].of[q] >= 0 && b[0].of[q] <= PARTY_SLOTS; }
+  // no free party for a seventh
+  c: [1] PartyBook;
+  for q: 0..<PARTY_SLOTS { #assert party_invite(c[..], q, 0, 0); }
+  #assert !party_invite(c[..], PARTY_SLOTS, 0, 0) && c[0].of[PARTY_SLOTS] == 0;
+}
