@@ -7,6 +7,8 @@
      - bytes and messages a second by type, out (each frame's letter, each D entry's, an s row's by
        its id: player, townsfolk or made) and in (each frame's letter)
      - relevant entities per seat (room-stats.coax rm_st_relevant), once a second
+     - replication's age bound per seat (room-stats.coax rm_st_wire, #12836): rows sent for their age,
+       and, sampled once a second, the oldest changed row's wait and the rows a tick left for later
      - the initial-state burst: a socket's bytes from its join to its first whole snapshot, and how
        long until they were all sent
      - rejoins tried and seated, and joins refused by reason (room-stats.coax)
@@ -61,6 +63,8 @@ typedef struct {
   uint16_t ack[ST_ACK_BUCKETS]; uint32_t ack_n;
   int64_t rtt_ms;                /* its round trip, as the kernel has it (-1 unknown) */
   int relevant;
+  int64_t aged_was, aged;        /* rows sent for their age: the seat's count when last sampled, and this window's */
+  int64_t wait_most, left_most;  /* the oldest changed row's wait (ticks) and the rows left for later, most sampled */
 } st_conn;
 static st_conn st_c[CONNS];
 static uint32_t st_ack_all[ST_ACK_BUCKETS], st_ack_all_n;   /* every seat's input-to-ACK this window */
@@ -199,6 +203,15 @@ static void st_report(st_buf *o, coax_v_t_RmServer v, int64_t players, int64_t s
   st_line(o, "queue age ms most=%lld", (long long)qm);
   st_line(o, "relevant entities a seat=%.1f", rel_n ? (double)rel_sum / (double)rel_n : 0.0);
   st_line(o, "relevant entities most=%lld", (long long)rel_max);
+  int64_t aged = 0, wait_most = 0, left_most = 0;
+  for (int i = 0; i < CONNS; i++) {
+    aged += st_c[i].aged;
+    if (st_c[i].wait_most > wait_most) wait_most = st_c[i].wait_most;
+    if (st_c[i].left_most > left_most) left_most = st_c[i].left_most;
+  }
+  st_line(o, "rows sent for their age a second=%.1f", aged / secs);
+  st_line(o, "row wait ticks most=%lld", (long long)wait_most);
+  st_line(o, "rows left for later most=%lld", (long long)left_most);
   st_line(o, "input to ack p50 ms=%lld", (long long)st_ack_q(NULL, st_ack_all, st_ack_all_n, 500));
   st_line(o, "input to ack p95 ms=%lld", (long long)st_ack_q(NULL, st_ack_all, st_ack_all_n, 950));
   st_line(o, "joins=%lld", (long long)st_burst_n);
@@ -250,5 +263,5 @@ static void st_report(st_buf *o, coax_v_t_RmServer v, int64_t players, int64_t s
   st_burst_n = st_burst_bytes_max = st_burst_ms_max = st_burst_bytes_sum = st_burst_ms_sum = 0;
   st_re_tries_was = tries; st_re_ok_was = ok; st_re_seat_was = same; st_stale_was = stale;
   for (int64_t r = 0; r < nr && r < 16; r++) st_refused_was[r] = rm_st_refused(v, r);
-  for (int i = 0; i < CONNS; i++) { st_c[i].q_bytes = st_c[i].q_ms = 0; memset(st_c[i].ack, 0, sizeof st_c[i].ack); st_c[i].ack_n = 0; }
+  for (int i = 0; i < CONNS; i++) { st_c[i].q_bytes = st_c[i].q_ms = 0; st_c[i].aged = st_c[i].wait_most = st_c[i].left_most = 0; memset(st_c[i].ack, 0, sizeof st_c[i].ack); st_c[i].ack_n = 0; }
 }

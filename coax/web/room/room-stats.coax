@@ -74,6 +74,16 @@ rm_st_relevant :: (v: [] RmServer, k: int, s: int) -> int #export_c {
   return c[0] + c[1];
 }
 
+// Seat s's replication counters (everglade-wire.coax WireSeat, #12836) into out: rows sent for their age
+// so far (WIRE_MAX_AGE), the ticks the oldest changed row still waiting has waited, the rows the last
+// tick left for a later one, and that tick's row bytes; false for no such seat.
+rm_st_wire :: (v: [] RmServer, k: int, s: int, out: [] int) -> bool #export_c {
+  if !rm_eg_seat_live(v, k, s) || out.count < 4 { return false; }
+  r := v[0].eg[k].seat[s].rep[0];
+  out[0] = r.aged_all; out[1] = r.oldest; out[2] = r.left; out[3] = r.bytes;
+  return true;
+}
+
 // The X-Room-Mac of body (64 hex into out), with the seat-ticket key; false without one.
 rm_st_sign :: (v: [] RmServer, body: string, out: [] u8) -> bool #export_c {
   if v[0].tkey_n == 0 || out.count < 64 { return false; }

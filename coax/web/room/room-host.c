@@ -709,6 +709,13 @@ static void stats_sample(void) {
     if (conns[i].fd < 0 || !conns[i].ws || !rm_st_conn(view(), i, (coax_v_s64){ks, 2})) continue;
     st_c[i].relevant = (int)rm_st_relevant(view(), ks[0], ks[1]);
     st_c[i].rtt_ms = st_rtt(conns[i].fd);
+    int64_t w[4];
+    if (rm_st_wire(view(), ks[0], ks[1], (coax_v_s64){w, 4})) {
+      st_c[i].aged += w[0] >= st_c[i].aged_was ? w[0] - st_c[i].aged_was : w[0];   /* a new seat counts from 0 */
+      st_c[i].aged_was = w[0];
+      if (w[1] > st_c[i].wait_most) st_c[i].wait_most = w[1];
+      if (w[2] > st_c[i].left_most) st_c[i].left_most = w[2];
+    }
   }
   st_cost_us += now_us() - t0;
 }

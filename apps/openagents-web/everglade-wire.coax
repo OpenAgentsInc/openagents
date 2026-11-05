@@ -946,6 +946,32 @@ wire_test_send :: (st: [] WireSeat, h: [] WireHist, m: [] WireMirror, me: int, b
   #assert st[0].aged == 0;
 }
 
+#test "wire: an effect on you from another player goes the tick it starts and each tick it changes, past a spent budget and while behind (#12836)" #steps 2000000000 {
+  h: [1] WireHist; st: [1] WireSeat; m: [1] WireMirror;
+  // 60 townsfolk walking near you fill a budget of about 2 rows a tick; seat 3, 40 m off, holds you
+  // from tick 20 (Hold Person: its DUR counts down each tick); the room's pick has it on you (WIRE_PICK_OWN)
+  pick: [WIRE_SLOTS] f32;
+  buf: [8192] u8;
+  for t: 1..<91 {
+    wire_hist_begin(h[..], t);
+    wire_test_put(h[..], 0, WireS.{id = 0, kind = WK_PLAYER, hp = 10, max = 10});
+    wire_test_put(h[..], 3, WireS.{id = 3, kind = WK_PLAYER, x = 40, hp = 10, max = 10});
+    for i: 0..<60 { wire_test_put(h[..], 16 + i, WireS.{id = WIRE_ID_FOLK + i, kind = WK_FOLK, x = 2 + f32(i) * 0.2, z = f32(t) * 0.04, vz = 1.2, clip = 1, p1 = i}); }
+    if t >= 20 { wire_test_put(h[..], 90, WireS.{id = WIRE_ID_MADE + 7, kind = WK_EFFECT, owner = WIRE_TGT_SEAT, p1 = 4, p2 = 2, t0 = 20, dur = 200 - t}); }
+    row := t % WIRE_BASES;
+    for q: 0..<WIRE_SLOTS { pick[q] = ifx h[0].id[row * WIRE_SLOTS + q] == 0 then -1.0f32 else (ifx q == 90 then f32(WIRE_PICK_OWN) else 0.0f32); }
+    wire_seat_ack(st[..], h[..], m[0].heard);
+    n := wire_put_d(buf[..], 0, WireD.{tick = t, ack = 0, f = ifx t == 1 then 1 else 0, part = 0});
+    // behind from tick 50 to 60: a budget of 0
+    n += wire_seat_frame_in(st[..], h[..], 0, 0, 0, pick[..], ifx t >= 50 && t < 60 then 0 else 60, buf[n..<buf.count]);
+    _ := wire_mirror_frame(m[..], cast(string) buf[0..<n]);
+    if t >= 20 {
+      w := wire_mirror_of(m[..], WIRE_ID_MADE + 7);
+      #assert w.id == WIRE_ID_MADE + 7 && w.dur == 200 - t && w.t0 == 20 && w.p1 == 4;
+    }
+  }
+}
+
 #test "wire: what goes is sent as x until a tick that held it is heard; a part missing leaves the tick unheard; a snapshot forgets everything first" {
   h: [1] WireHist; st: [1] WireSeat; m: [1] WireMirror;
   wire_hist_begin(h[..], 1);
