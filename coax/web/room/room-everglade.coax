@@ -1004,21 +1004,21 @@ eg_table :: (v: [] RmServer, k: int) {
   out: [E5RR_OUT_FLOATS] f32;
   for q: 0..<EG_SEATS {
     rm[0].cn_n[q] = 0;
-    other := rm[0].seat[q];
-    if !other.live || !other.placed { continue; }
+    other := rm[0].seat[q..<q + 1];   // a view: no copy of the seat (its rep is large)
+    if !other[0].live || !other[0].placed { continue; }
     e5rr_seat_out(rm[0].rules[..], q, out[..]);
-    p := other.pose;
-    g := p.g | (ifx out[4] > 0.5 then WG_DEAD else 0) | (ifx v[0].mono_ms - other.heard_ms > WIRE_AWAY_MS then WG_AWAY else 0);
-    if other.born { wire_hist_born(h, q); rm[0].seat[q].born = false; }
-    if other.cut { wire_hist_cut(h, q); rm[0].seat[q].cut = false; }
+    p := other[0].pose;
+    g := p.g | (ifx out[4] > 0.5 then WG_DEAD else 0) | (ifx v[0].mono_ms - other[0].heard_ms > WIRE_AWAY_MS then WG_AWAY else 0);
+    if other[0].born { wire_hist_born(h, q); rm[0].seat[q].born = false; }
+    if other[0].cut { wire_hist_cut(h, q); rm[0].seat[q].cut = false; }
     wire_hist_put(h, q, WireS.{id = q, kind = WK_PLAYER, x = p.x, y = p.y, z = p.z, yaw = p.yaw, vx = p.vx, vy = p.vy, vz = p.vz, g = g, clip = p.clip,
-                               hp = cast(int) out[0], max = cast(int) out[1], temp = cast(int) out[2], cond = cast(int) out[3] | other.wcond,
+                               hp = cast(int) out[0], max = cast(int) out[1], temp = cast(int) out[2], cond = cast(int) out[3] | other[0].wcond,
                                owner = q, carry = f32(p.carry) / 10000.0}, wire_rel(WK_PLAYER), true, false);
     a := q * EG_ENT;
     tq := eg_ticket(v, k, q);
-    n := wire_put_n(rm[0].cn[a..<a + EG_ENT], 0, WireN.{ss = q, id = ifx tq.ok then cast(string) tq.pid[0..<tq.pid_n] else "-", look = ifx other.look_n > 0 then cast(string) other.look[0..<other.look_n] else "ranger.0.0.0",
-                                    kind = ifx other.klass_n > 0 then cast(string) other.klass[0..<other.klass_n] else "druid",
-                                    flags = other.flags, name = ifx other.name_n > 0 then cast(string) other.name[0..<other.name_n] else "-"});
+    n := wire_put_n(rm[0].cn[a..<a + EG_ENT], 0, WireN.{ss = q, id = ifx tq.ok then cast(string) tq.pid[0..<tq.pid_n] else "-", look = ifx other[0].look_n > 0 then cast(string) other[0].look[0..<other[0].look_n] else "ranger.0.0.0",
+                                    kind = ifx other[0].klass_n > 0 then cast(string) other[0].klass[0..<other[0].klass_n] else "druid",
+                                    flags = other[0].flags, name = ifx other[0].name_n > 0 then cast(string) other[0].name[0..<other[0].name_n] else "-"});
     rm[0].cn_n[q] = n; rm[0].cn_h[q] = eg_hash(cast(string) rm[0].cn[a..<a + n]);
   }
   // the townsfolk outdoors: G their mode, CLIP their clip, P1 who, COND what holds them, Y how high the world's abilities
@@ -1067,23 +1067,23 @@ eg_table :: (v: [] RmServer, k: int) {
   used: [EG_SLOT_ABS] bool;
   for q: 0..<EG_SEATS * RA_ABS { if rm[0].ab_slot[q] > 0 { used[rm[0].ab_slot[q] - 1] = true; } }
   for q: 0..<EG_SEATS {
-    st := rm[0].seat[q];
+    st := rm[0].seat[q..<q + 1];   // a view: no copy of the seat (its rep is large)
     for c: 0..<WE_WATCH {
       f := q * WE_WATCH + c;
-      if !st.live || !st.placed || st.fx_left[c] <= 0 { rm[0].fx_slot[f] = 0; continue; }
+      if !st[0].live || !st[0].placed || st[0].fx_left[c] <= 0 { rm[0].fx_slot[f] = 0; continue; }
       if rm[0].fx_slot[f] > 0 { used[rm[0].fx_slot[f] - 1] = true; }
     }
   }
   for q: 0..<EG_SEATS {
-    st := rm[0].seat[q];
-    if !st.live || !st.placed { continue; }
+    st := rm[0].seat[q..<q + 1];   // a view: no copy of the seat (its rep is large)
+    if !st[0].live || !st[0].placed { continue; }
     for c: 0..<WE_WATCH {
       f := q * WE_WATCH + c;
-      if st.fx_left[c] <= 0 { continue; }
+      if st[0].fx_left[c] <= 0 { continue; }
       if rm[0].fx_slot[f] == 0 { for j: 0..<EG_SLOT_ABS { if !used[j] { used[j] = true; rm[0].fx_slot[f] = j + 1; break; } } }
       if rm[0].fx_slot[f] == 0 { continue; }   // the pool full: it waits
       wire_hist_put(h, EG_SLOT_AB + rm[0].fx_slot[f] - 1, WireS.{id = WIRE_ID_MADE + EG_FX_ID + q * WE_WATCH + c, kind = WK_EFFECT,
-                                                           owner = WIRE_TGT_SEAT + q, p1 = c, p2 = WE_BIT[c], t0 = st.fx_t0[c], dur = st.fx_dur[c]}, wire_rel(WK_EFFECT), true, false);
+                                                           owner = WIRE_TGT_SEAT + q, p1 = c, p2 = WE_BIT[c], t0 = st[0].fx_t0[c], dur = st[0].fx_dur[c]}, wire_rel(WK_EFFECT), true, false);
     }
   }
   ra_table(v, k);   // what the world's abilities hold up (room-abilities.coax)
@@ -1150,9 +1150,9 @@ eg_send :: (v: [] RmServer, k: int, s: int) {
   unseen := eg_im_unseen(v, k, s, pick[..]);
   for q: 0..<EG_SEATS {
     st[0].n_bits[q] = st[0].n_bits[q] & keep; st[0].w_bits[q] = st[0].w_bits[q] & keep;
-    other := v[0].eg[k].seat[q];
+    other := v[0].eg[k].seat[q..<q + 1];   // a view: no copy of the seat (its rep is large)
     // (outside this seat's interest or blocked: nothing of them, sent again when they come in, #12789)
-    if !other.live || !other.placed || ((unseen >> q) & 1) != 0 { st[0].heard_n[q] = 0; st[0].heard_w[q] = 0; continue; }
+    if !other[0].live || !other[0].placed || ((unseen >> q) & 1) != 0 { st[0].heard_n[q] = 0; st[0].heard_w[q] = 0; continue; }
     h := rm[0].cn_h[q];
     if h != st[0].heard_n[q] || (!st[0].n_ok[q] && now - st[0].n_t[q] >= WIRE_RESEND) {
       if h != st[0].heard_n[q] { st[0].n_bits[q] = 0; st[0].n_ok[q] = false; }

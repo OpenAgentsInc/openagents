@@ -384,6 +384,13 @@ WIRE_BASES :: 16;             // ticks back a base may be; a page keeps each ent
 WIRE_ACKS :: 32;              // ticks of sends a seat remembers for HEARD, a bit each
 WIRE_RESEND :: 10;            // ticks a row or an x sent and not yet acknowledged waits before it goes again
 WIRE_BUDGET :: 1000;          // bytes of rows a seat is sent a tick at most (30 KB/s); its own player's row and the x's on top
+// The age bound (#12836): a visible entity whose row changed and has waited WIRE_MAX_AGE ticks goes
+// ahead of the priority order, the oldest first, from WIRE_AGED_BUDGET bytes a tick of its own (not
+// the ordinary budget's). A row is about 30 to 60 bytes, so at least 6 aged rows go a tick, and none
+// of a seat's WIRE_SLOTS waits past WIRE_MAX_AGE + WIRE_SLOTS / 6 ticks (about 2.4 s) while the seat
+// keeps up; a seat behind (budget 0) is sent none (#12837 owns its recovery).
+WIRE_MAX_AGE :: 30;
+WIRE_AGED_BUDGET :: 400;
 WIRE_NEAR :: 10.0;            // m: an entity this far off gains half the priority it would at your feet
 WIRE_MIRROR :: 256;           // entities a page holds
 WIRE_ROW :: 320;              // a row's bytes at most
@@ -641,13 +648,17 @@ WireSeat :: struct {
   gone: [WIRE_SLOTS] s32;     // id + 1 of what is to go (x), until a tick that held the x is acknowledged
   gone_t: [WIRE_SLOTS] int;   // the tick that x last went out, 0 not yet
   acc: [WIRE_SLOTS] f32;      // priority, gained each tick something is left to send
+  since: [WIRE_SLOTS] int;    // the tick its row began waiting to go (changed, not yet sent), 0 none
   heard: int;                 // the newest tick acknowledged
-  bytes: int;                 // this tick's rows' bytes (its own player's in them), for vitals
+  bytes: int;                 // this tick's rows' bytes (its own player's and the aged in them), for vitals
   left: int;                  // rows this tick left for a later one (the budget spent)
+  aged: int;                  // rows this tick that went for their age (WIRE_MAX_AGE), and all of them so far
+  aged_all: int;
+  oldest: int;                // ticks the oldest row still waiting has waited, after this tick
 }
 wire_seat_reset :: (st: [] WireSeat) {
-  for q: 0..<WIRE_SLOTS { st[0].held[q] = 0; st[0].base[q] = 0; st[0].sent[q] = 0; st[0].last[q] = 0; st[0].gone[q] = 0; st[0].gone_t[q] = 0; st[0].acc[q] = 0; }
-  st[0].heard = 0; st[0].bytes = 0; st[0].left = 0;
+  for q: 0..<WIRE_SLOTS { st[0].held[q] = 0; st[0].base[q] = 0; st[0].sent[q] = 0; st[0].last[q] = 0; st[0].gone[q] = 0; st[0].gone_t[q] = 0; st[0].acc[q] = 0; st[0].since[q] = 0; }
+  st[0].heard = 0; st[0].bytes = 0; st[0].left = 0; st[0].aged = 0; st[0].oldest = 0;
 }
 // The page heard tick `heard` whole (I's HEARD): what went out that tick is its own.
 wire_seat_ack :: (st: [] WireSeat, h: [] WireHist, heard: int) {
@@ -671,7 +682,7 @@ wire_seat_put :: (st: [] WireSeat, h: [] WireHist, q: int, out: [] u8, at: int) 
        else wire_put_s(out, at, id1 - 1, 0, zero[..], h[0].f[cur..<cur + WIRE_SF]);
   if cast(int) st[0].held[q] != id1 { st[0].base[q] = 0; st[0].sent[q] = 0; }
   st[0].sent[q] = st[0].sent[q] | (1 << (now % WIRE_ACKS));
-  st[0].last[q] = now; st[0].held[q] = wire_s32(id1); st[0].acc[q] = 0;
+  st[0].last[q] = now; st[0].held[q] = wire_s32(id1); st[0].acc[q] = 0; st[0].since[q] = 0;
   if cast(int) st[0].gone[q] == id1 { st[0].gone[q] = 0; st[0].gone_t[q] = 0; }
   return n;
 }
@@ -716,18 +727,19 @@ wire_seat_frame_in :: (st: [] WireSeat, h: [] WireHist, me: int, px: f32, pz: f3
       n = wire_put_x(out, n, cast(int) st[0].gone[q] - 1);
       st[0].gone_t[q] = now;
     }
-    if !seen || q == me { continue; }
+    if !seen || q == me { st[0].since[q] = 0; continue; }
     cur := (row * WIRE_SLOTS + q) * WIRE_SF;
     // the page has it as it is now: nothing to send
     if cast(int) st[0].held[q] == id1 {
       b := wire_hist_at(h, st[0].base[q], q, id1);
-      if b >= 0 && wire_rows_same(h[0].f[..], b, cur) { st[0].acc[q] = 0; continue; }
+      if b >= 0 && wire_rows_same(h[0].f[..], b, cur) { st[0].acc[q] = 0; st[0].since[q] = 0; continue; }
       // sent as it is now and on its way: it waits for the page's word
       l := wire_hist_at(h, st[0].last[q], q, id1);
       if l >= 0 && now - st[0].last[q] < WIRE_RESEND && wire_rows_same(h[0].f[..], l, cur) { continue; }
     }
     if pk >= f32(WIRE_PICK_OWN) { mine[mn] = q; mn += 1; continue; }
     st[0].acc[q] += h[0].w[q] / (1 + sqrt(d2) / f32(WIRE_NEAR)) + (ifx pk >= f32(WIRE_PICK_ROOM) then pk else 0.0f32);
+    if st[0].since[q] == 0 { st[0].since[q] = now; }
     cand[cn] = q; cn += 1;
   }
   // your own player first, every tick: its row with the ACK is where your page re-runs from
@@ -744,23 +756,46 @@ wire_seat_frame_in :: (st: [] WireSeat, h: [] WireHist, me: int, px: f32, pz: f3
     for i: 0..<m { out[n + i] = e[i]; }
     n += m; wrote += m;
   }
+  // those that waited WIRE_MAX_AGE ticks, the oldest first, from their own bytes
+  pre := wrote;   // the ordinary budget's: your own row and what is on you, as before
+  st[0].aged = 0;
+  if budget > 0 {
+    // (the aged to the front of cand, the oldest first: its order is the priority pass's own after)
+    on := 0;
+    for c: 0..<cn {
+      q := cand[c];
+      if now - st[0].since[q] < WIRE_MAX_AGE { continue; }
+      cand[c] = cand[on];
+      j := on; while j > 0 && st[0].since[cand[j - 1]] > st[0].since[q] { cand[j] = cand[j - 1]; j -= 1; }
+      cand[j] = q; on += 1;
+    }
+    room := WIRE_AGED_BUDGET;
+    for c: 0..<on {
+      m := wire_seat_put_try(st, h, cand[c], e[..], room);
+      if m <= 0 || n + m + 1 > out.count { continue; }
+      if n > 0 { n = wire_sep(out, n); }
+      for i: 0..<m { out[n + i] = e[i]; }
+      n += m; room -= m; st[0].aged += 1;
+    }
+    st[0].aged_all += st[0].aged; wrote += WIRE_AGED_BUDGET - room;
+  }
   // the rest, the highest priority first (by its power of two), as long as each fits the budget
   count: [32] int; start: [32] int; order: [WIRE_SLOTS] int;
   for c: 0..<cn { count[wire_bucket(st[0].acc[cand[c]])] += 1; }
   at := 0;
   for b: 0..<32 { k := 31 - b; start[k] = at; at += count[k]; }
   for c: 0..<cn { k := wire_bucket(st[0].acc[cand[c]]); order[start[k]] = cand[c]; start[k] += 1; }
-  left := 0;
+  left := 0; spent := 0; oldest := 0;
   for c: 0..<cn {
     q := order[c];
-    m := wire_seat_put_try(st, h, q, e[..], budget - wrote);
-    if m <= 0 { left += 1; continue; }
-    if n + m + 1 > out.count { left += 1; continue; }
+    if st[0].last[q] == now { continue; }   // gone for its age
+    m := wire_seat_put_try(st, h, q, e[..], budget - pre - spent);
+    if m <= 0 || n + m + 1 > out.count { left += 1; if now - st[0].since[q] > oldest { oldest = now - st[0].since[q]; } continue; }
     if n > 0 { n = wire_sep(out, n); }
     for i: 0..<m { out[n + i] = e[i]; }
-    n += m; wrote += m;
+    n += m; wrote += m; spent += m;
   }
-  st[0].bytes = wrote; st[0].left = left;
+  st[0].bytes = wrote; st[0].left = left; st[0].oldest = oldest;
   return n;
 }
 // Slot q's row into e, if it is at most `room` bytes (and so sent): its bytes, else 0 and nothing noted.
@@ -768,11 +803,11 @@ wire_seat_put_try :: (st: [] WireSeat, h: [] WireHist, q: int, e: [] u8, room: i
   if room <= 0 { return 0; }
   // written as it would go, then noted only when it fits
   was_held := st[0].held[q]; was_base := st[0].base[q]; was_sent := st[0].sent[q]; was_last := st[0].last[q];
-  was_gone := st[0].gone[q]; was_gone_t := st[0].gone_t[q]; was_acc := st[0].acc[q];
+  was_gone := st[0].gone[q]; was_gone_t := st[0].gone_t[q]; was_acc := st[0].acc[q]; was_since := st[0].since[q];
   m := wire_seat_put(st, h, q, e, 0);
   if m <= room { return m; }
   st[0].held[q] = was_held; st[0].base[q] = was_base; st[0].sent[q] = was_sent; st[0].last[q] = was_last;
-  st[0].gone[q] = was_gone; st[0].gone_t[q] = was_gone_t; st[0].acc[q] = was_acc;
+  st[0].gone[q] = was_gone; st[0].gone_t[q] = was_gone_t; st[0].acc[q] = was_acc; st[0].since[q] = was_since;
   return 0;
 }
 
@@ -870,7 +905,7 @@ wire_test_send :: (st: [] WireSeat, h: [] WireHist, m: [] WireMirror, me: int, b
     wire_seat_ack(st[..], h[..], m[0].heard);
     before := m[0].heard;
     n := wire_test_send(st[..], h[..], m[..], 0, 160, false, t == 1);
-    #assert st[0].bytes <= 160 + 40;   // the budget, and your own row on top
+    #assert st[0].bytes <= 160 + 40 + WIRE_AGED_BUDGET;   // the budget, your own row and the aged on top
     #assert wire_mirror_of(m[..], 0).id == 0;
     for i: 0..<40 {
       w := wire_mirror_of(m[..], WIRE_ID_FOLK + i);
@@ -880,6 +915,35 @@ wire_test_send :: (st: [] WireSeat, h: [] WireHist, m: [] WireMirror, me: int, b
   // the nearest heard most often, the farthest less, and none starved
   #assert heard[0] > heard[39] * 2 && heard[39] >= 3;
   for i: 0..<40 { #assert last_heard[i] >= 70; }
+}
+
+#test "wire: a changed row waits at most WIRE_MAX_AGE ticks before it goes for its age, from bytes of its own; a seat behind is sent none (#12836)" #steps 2000000000 {
+  h: [1] WireHist; st: [1] WireSeat; m: [1] WireMirror;
+  // 60 townsfolk walking, from 2 m to 90 m off, with a budget of about 2 rows a tick: the far ones'
+  // priority alone would leave them waiting seconds
+  waited: [60] int; worst := 0; most := 0;
+  for t: 1..<151 {
+    wire_hist_begin(h[..], t);
+    wire_test_put(h[..], 0, WireS.{id = 0, kind = WK_PLAYER, hp = 10, max = 10});
+    for i: 0..<60 { wire_test_put(h[..], 16 + i, WireS.{id = WIRE_ID_FOLK + i, kind = WK_FOLK, x = 2 + f32(i) * 1.5, z = f32(t) * 0.04, vz = 1.2, clip = 1, p1 = i}); }
+    wire_seat_ack(st[..], h[..], m[0].heard);
+    _ := wire_test_send(st[..], h[..], m[..], 0, 60, false, t == 1);
+    #assert st[0].oldest <= WIRE_MAX_AGE + WIRE_SLOTS / 6;
+    if st[0].oldest > worst { worst = st[0].oldest; }
+    for i: 0..<60 {
+      w := wire_mirror_of(m[..], WIRE_ID_FOLK + i);
+      if w.id >= 0 && abs(w.z - f32(t) * 0.04) < 0.006 { waited[i] = 0; } else { waited[i] += 1; }
+      if waited[i] > most { most = waited[i]; }
+    }
+  }
+  #assert st[0].aged_all > 0 && worst >= WIRE_MAX_AGE;
+  // the 60 at once as they first all come of age (about 7 aged rows a tick of 30 to 60 bytes): 38 ticks
+  #assert most <= WIRE_MAX_AGE + 60 / 6 && most > WIRE_MAX_AGE;
+  // behind (budget 0): nothing for its age either
+  wire_hist_begin(h[..], 151);
+  for i: 0..<60 { wire_test_put(h[..], 16 + i, WireS.{id = WIRE_ID_FOLK + i, kind = WK_FOLK, x = 2 + f32(i) * 2, z = 9, p1 = i}); }
+  _2 := wire_test_send(st[..], h[..], m[..], 0, 0, false, false);
+  #assert st[0].aged == 0;
 }
 
 #test "wire: what goes is sent as x until a tick that held it is heard; a part missing leaves the tick unheard; a snapshot forgets everything first" {
