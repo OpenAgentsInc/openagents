@@ -7,7 +7,8 @@
 //   POST /api/playtest/room-stats         a shard's vitals every 10 s (coax/web/room/room-stats.h), signed
 //                                         alike, for the admins' room view (GET /api/admin/rooms, admin.c)
 //   GET  /api/playtest/rooms/REALM        its public instances and which to join; ?with=PLAYER_ID also
-//                                         names the instance that player sits in
+//                                         names the instance that player sits in ("with_full" when it
+//                                         is full and no invite of theirs holds a seat, #12795)
 // player.c room_ticket asks rooms_pick for the instance and shard when the page names its realm.
 #include "api.h"
 #include <stdio.h>
@@ -26,12 +27,15 @@ static bool code_ok(const char *s, size_t most) {
 }
 
 // The instance for player pid in realm (asked: the instance the page names, or the realm itself to be
-// given one): its code and shard, and whether the asked one was full. False when there is no seat.
-bool rooms_pick(PGconn *db, const char *realm, const char *asked, const char *pid, char *code, size_t cap, int *shard, bool *full) {
+// given one): its code and shard, and whether the asked one was full. via: the player whose invite
+// brought them ("" none), whose held seat they take (migrations/0125_room_invites.sql, #12795). False
+// when there is no seat.
+bool rooms_pick(PGconn *db, const char *realm, const char *asked, const char *pid, const char *via, char *code, size_t cap, int *shard, bool *full) {
   if (!code_ok(realm, 20) || !code_ok(asked, 24)) return false;
+  if (via && via[0] && !code_ok(via, 40)) via = "";
   char seats[8]; snprintf(seats, sizeof seats, "%d", ROOM_SEATS);
-  const char *v[4] = {realm, asked, pid, seats};
-  PGresult *r = PQexecParams(db, "SELECT code, shard, was_full FROM verse.room_pick($1, $2, $3, $4::int)", 4, NULL, v, NULL, NULL, 0);
+  const char *v[5] = {realm, asked, pid, seats, via ? via : ""};
+  PGresult *r = PQexecParams(db, "SELECT code, shard, was_full FROM verse.room_pick($1, $2, $3, $4::int, $5)", 5, NULL, v, NULL, NULL, 0);
   bool ok = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !PQgetisnull(r, 0, 0) && strlen(PQgetvalue(r, 0, 0)) < cap;
   if (PQresultStatus(r) != PGRES_TUPLES_OK) api_log("rooms: %s", PQerrorMessage(db));
   if (ok) {
@@ -41,6 +45,22 @@ bool rooms_pick(PGconn *db, const char *realm, const char *asked, const char *pi
   }
   PQclear(r);
   return ok;
+}
+
+// An INVITE's held seat in room for its friends (#12795), by player pid, who sits in it: 0 and its
+// end in until (wall-clock ms), 1 when pid isn't in the room, 2 when it is full, -1 on an error.
+int rooms_invite(PGconn *db, const char *room, const char *pid, long long *until) {
+  if (!code_ok(room, 24) || !code_ok(pid, 40)) return 1;
+  char seats[8]; snprintf(seats, sizeof seats, "%d", ROOM_SEATS);
+  const char *v[3] = {room, pid, seats};
+  PGresult *r = PQexecParams(db, "SELECT until_ms, why FROM verse.room_invite($1, $2, $3::int)", 3, NULL, v, NULL, NULL, 0);
+  int out = -1;
+  if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) {
+    if (!PQgetisnull(r, 0, 0)) { *until = atoll(PQgetvalue(r, 0, 0)); out = 0; }
+    else out = !strcmp(PQgetvalue(r, 0, 1), "full") ? 2 : 1;
+  } else api_log("room-invite: %s", PQerrorMessage(db));
+  PQclear(r);
+  return out;
 }
 
 // A shard's signed POST (X-Room-Mac: the body's HMAC-SHA256 with the seat-ticket key): true when it

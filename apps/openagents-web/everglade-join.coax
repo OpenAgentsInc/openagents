@@ -21,7 +21,10 @@
 // (everglade-warlock.coax): the room hears it with the hello. Offline, with levels off or as the demo
 // character the Warlock is level 17; in a room whose levels decide it, the room's level (ege_wl_level).
 //
-// INVITE copies the link to your instance (the page's own address with ?room=CODE). ?from=grid (the
+// INVITE copies the link to your instance (the page's own address with ?room=CODE&with=YOU) and asks
+// the API to hold a seat in it for two minutes for whoever comes by it (POST /api/playtest/room-invite,
+// #12795); the friend's ticket names you (&with=) and takes that seat. When the room is full with no
+// seat held, the friend's page says whose room it was before it joins another. ?from=grid (the
 // Grid's gate) plays a short arrival as the page opens; the server's spawn is the road in at the South
 // Gate, facing the town.
 //   coax/bin/coax test apps/openagents-web/everglade5e.coax --only "join:"
@@ -54,6 +57,7 @@ EgJoin :: struct {
   skin: int = 1; dye: int; trim: int;
   pick_open: bool; picked: bool; hold: bool;   // hold: the socket waits for ENTER
   copied_at: int = -1000000;
+  invite_asked: bool;        // INVITE's seat hold was asked for (jn_invited takes the answer)
   boxes: [JB_N] Box; finger: int = -1; press: int = -1;
   drop: f32;                 // px the HUD's right column moved down for this row (a phone)
 }
@@ -148,6 +152,7 @@ net_rooms :: (s: [] Everglade, answer: string) #export_c {
   ok := net_code_ok(join) && join.count > realm.count + 1 && join[0..<realm.count] == realm && join[realm.count] == '-';
   low: [NET_CODE] u8;
   jn_code(n, ifx ok then join else jn_lowest(j, low[..]));
+  if ok && j[0].with_n > 0 && net_json_field(answer, "with_full").count > 0 { jn_full(s, n, "", join); j[0].with_n = 0; }
   n[0].ticket_n = 0;   // a ticket is for one room
   jn_url(n);
 }
@@ -208,8 +213,45 @@ jn_invite :: (s: [] Everglade) {
   if n[0].code_n == 0 || s[0].action != 0 { return; }
   k := jn_put(s[0].outbox[..], 0, cast(string) j[0].page[0..<j[0].page_n]);
   k = jn_put(s[0].outbox[..], k, "?room="); k = jn_put(s[0].outbox[..], k, cast(string) n[0].code[0..<n[0].code_n]);
+  if n[0].pid_n > 0 { k = jn_put(s[0].outbox[..], k, "&with="); k = jn_put(s[0].outbox[..], k, cast(string) n[0].pid[0..<n[0].pid_n]); }
   s[0].out_n = k; s[0].action = JN_ACT_COPY;
   j[0].copied_at = n[0].mono;
+  // a seat held for the friend, where the directory places you (not a test's room or a local one)
+  if n[0].realm_n == 0 || n[0].local_relay || n[0].local_host || j[0].test || n[0].pid_n == 0 { return; }
+  t: [96] u8;
+  m := wire_put(t[..], 0, "/api/playtest/room-invite/"); m = wire_put(t[..], m, cast(string) n[0].code[0..<n[0].code_n]);
+  m = wire_put(t[..], m, "\n{}");
+  if pipe_put(n[0].pipe[..], NET_PIPE_ASK, -1, cast(string) t[0..<m]) { j[0].invite_asked = true; }
+}
+// The API's answer to INVITE's seat hold (through net_moderated): said, and true when it was that.
+jn_invited :: (s: [] Everglade, answer: string) -> bool {
+  n := net_of(s); j := n[0].join[..];
+  if !j[0].invite_asked { return false; }
+  ok := answer.count > 4 && answer[0..<4] == "200\n" && jn_has(answer, "\"until\"");
+  full := answer.count > 4 && answer[0..<4] == "409\n";
+  if !ok && !full && !jn_has(answer, "not in it") { return false; }
+  j[0].invite_asked = false;
+  if s[0].started && ok { sp_say(s, "A SEAT IS HELD FOR YOUR FRIEND · 2 MIN", -1, ""); }
+  if s[0].started && full { sp_say(s, "YOUR ROOM IS FULL · NO SEAT HELD", -1, ""); }
+  return true;
+}
+// The ticket's ask names the friend whose invite brought you (&with=): their held seat is yours.
+jn_ticket_with :: (n: [] EgNet, t: [] u8, at: int) -> int {
+  j := n[0].join[..];
+  if j[0].with_n == 0 || n[0].realm_n == 0 { return at; }
+  k := wire_put(t, at, "&with=");
+  return wire_put(t, k, cast(string) j[0].with[0..<j[0].with_n]);
+}
+// The room you asked for was full (the ticket's "full", or the list's "with_full"): said, with whose it
+// was when the API names them, and the room you join instead.
+jn_full :: (s: [] Everglade, n: [] EgNet, by: string, placed: string) {
+  if !s[0].started { return; }
+  b: [96] u8;
+  k := ifx by.count > 0 then jn_put(b[..], 0, by) else jn_put(b[..], 0, "YOUR FRIEND");
+  k = jn_put(b[..], k, "'S ROOM IS FULL");
+  if placed.count > 0 { k = jn_put(b[..], k, " · JOINING "); k = jn_put(b[..], k, placed); }
+  for i: 0..<k { if b[i] >= 'a' && b[i] <= 'z' { b[i] -= 32; } }
+  sp_say(s, cast(string) b[0..<k], -1, "");
 }
 // The picker is up: the world waits behind it.
 join_picking :: (s: [] Everglade) -> bool { return net_on(s) && net_of(s)[0].join[0].pick_open; }
@@ -520,5 +562,27 @@ join_key :: (s: [] Everglade, key: int) -> bool {
   net_step(g[..], 100, 0, 0, -84, 0, 0, 0, false, 0, false, 0);
   net_rooms(g[..], "200\n{\"join\":\"everglade-2\"}");
   jn_invite(g[..]);
-  #assert g[0].action == JN_ACT_COPY && cast(string) g[0].outbox[0..<g[0].out_n] == "https://openagents.com/worlds/everglade?room=everglade-2";
+  #assert g[0].action == JN_ACT_COPY && cast(string) g[0].outbox[0..<g[0].out_n] == "https://openagents.com/worlds/everglade?room=everglade-2&with=p1";
+}
+#test "join: INVITE holds a seat for the friend, whose ticket names you; a full room is said with whose it was (#12795)" {
+  g: [1] Everglade; nn: [1] EgNet;
+  everglade_attach_net(g[..], nn[..]);
+  net_facts(g[..], "url=https://openagents.com/worlds/everglade#market\nplayer=p1\n", "everglade", false);
+  net_step(g[..], 100, 0, 0, -84, 0, 0, 0, false, 0, false, 0);
+  net_rooms(g[..], "200\n{\"join\":\"everglade-2\"}");
+  pipe_drained(nn[0].pipe[..]);
+  jn_invite(g[..]);
+  #assert nn[0].join[0].invite_asked && nn[0].pipe[0].n == 1 && nn[0].pipe[0].op[0] == NET_PIPE_ASK && pipe_bytes(nn[0].pipe[..], 0) == "/api/playtest/room-invite/everglade-2\n{}";
+  g[0].started = true;
+  net_moderated(g[..], "409\n{\"error\":\"full\"}");
+  #assert !nn[0].join[0].invite_asked && jn_has(cast(string) g[0].sp.news[0..<g[0].sp.news_n], "YOUR ROOM IS FULL");
+  // the friend's page: the link's room and the inviter, in the ticket's ask
+  h: [1] Everglade; hn: [1] EgNet;
+  everglade_attach_net(h[..], hn[..]);
+  net_facts(h[..], "url=https://openagents.com/worlds/everglade?room=everglade-2&with=p1#market\nplayer=p2\n", "everglade", false);
+  net_step(h[..], 100, 0, 0, -84, 0, 0, 0, false, 0, false, 0);
+  #assert jn_has(pipe_bytes(hn[0].pipe[..], 0), "/api/playtest/room-ticket/everglade-2?realm=everglade&with=p1\n");
+  h[0].started = true;
+  net_ticket(h[..], "200\n{\"ticket\":\"v3.x\",\"room\":\"everglade-3\",\"shard\":1,\"full\":true,\"asked\":\"everglade-2\",\"by\":\"Alice\"}");
+  #assert jn_has(cast(string) h[0].sp.news[0..<h[0].sp.news_n], "ALICE'S ROOM IS FULL · JOINING EVERGLADE-3");
 }

@@ -766,6 +766,14 @@ a restart; acceptable).
   `https://openagents.com/worlds/everglade?room=<instance>`. The hash keeps
   its meaning (a place: `#commons`), so `?room=everglade-3#market` puts a
   friend in your instance at the market.
+- INVITE also holds one seat in your instance for two minutes (#12795,
+  `migrations/0125_room_invites.sql`). The link carries `&with=<you>`, the
+  friend's ticket names you, and the friend takes the held seat even when the
+  other 15 are taken. The hold counts against the 16, so a stranger is placed
+  in another instance while it lasts. A press again moves the hold to the
+  instance you are in now and starts its two minutes again. When your
+  instance is full and nothing is held, the friend's page says
+  `ALICE'S ROOM IS FULL · JOINING EVERGLADE-3` before it joins the other room.
 
 Built (#12716, `everglade-join.coax`): the room server answers `?with=PID`
 from the seats' tickets (`rm_rooms`, `"with":"SLUG-N"` when found), so a

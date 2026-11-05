@@ -320,6 +320,7 @@ net_ticket :: (s: [] Everglade, answer: string) #export_c {
         n[0].ticket_n = net_copy(n[0].ticket[..], answer[i + key.count..<e]);
         had_look := (n[0].restored && n[0].saved_look_n > 0) || net_json_field(answer, "look").count > 0;
         net_placed(n, net_json_field(answer, "room"), net_number(net_json_field(answer, "shard")));
+        if net_json_field(answer, "full") == "true" && net_json_field(answer, "asked").count > 0 { jn_full(s, n, net_json_field(answer, "by"), net_json_field(answer, "room")); n[0].join[0].with_n = 0; }
         net_restore(s, n, answer);
         md_ticket(n, answer);   // who you block (#12714)
         jn_ticketed(s, n, answer, had_look);   // a first visit: CHARACTER before you join
@@ -1002,6 +1003,7 @@ net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: 
       t: [192] u8;
       k := wire_put(t[..], 0, "/api/playtest/room-ticket/"); k = wire_put(t[..], k, cast(string) n[0].code[0..<n[0].code_n]);
       if n[0].realm_n > 0 { k = wire_put(t[..], k, "?realm="); k = wire_put(t[..], k, cast(string) n[0].realm[0..<n[0].realm_n]); }
+      k = jn_ticket_with(n, t[..], k);   // the friend whose invite holds you a seat (everglade-join.coax, #12795)
       k = wire_put(t[..], k, "\n"); k += jn_ticket_body(n, t[k..<t.count]);
       if pipe_put(n[0].pipe[..], NET_PIPE_TICKET, -1, cast(string) t[0..<k]) { n[0].ticket_asked = true; }
     }

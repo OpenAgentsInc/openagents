@@ -35,6 +35,10 @@
 //                                             (room_ticket below; coax/web/room/room-ticket.coax checks it);
 //                                             ?realm=R: the instance and shard from the directory (rooms.c),
 //                                             answered as "room" and "shard" (#12717)
+//                                             ?with=P: the friend whose invite holds them a seat (#12795);
+//                                             a full asked room adds "asked" and the friend's name "by"
+//   POST /api/playtest/room-invite/<room>     INVITE: a seat in your room held two minutes for a friend
+//                                             (rooms_invite, migrations/0125_room_invites.sql, #12795)
 //   POST /api/playtest/player/name            {name}: a guest's own name ({"name": ""} the generated one)
 //
 // Who asks: the X-Verse-Player key; a NIP-98 signed request (Authorization:
@@ -320,10 +324,13 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
   // ?realm=REALM (#12717): the directory (rooms.c) gives the instance and the shard that holds it,
   // and the ticket names that shard (v3), which seats it and no other. Without it, a v2 ticket for the
   // room asked, which shard 1 seats (a page from before the directory).
-  char realm[32] = "", placed[32] = "";
+  // ?with=PLAYER (#12795): the friend whose invite brought them, whose held seat they take
+  char realm[32] = "", placed[32] = "", asked[32] = "", via[48] = "";
   int shard = 0; bool full = false;
+  snprintf(asked, sizeof asked, "%s", room);
+  if (!api_query(q, "with", via, sizeof via)) via[0] = 0;
   if (api_query(q, "realm", realm, sizeof realm) && realm[0]) {
-    if (!rooms_pick(db, realm, room, pid, placed, sizeof placed, &shard, &full)) { api_json(q->fd, 503, "{\"error\":\"every room is full: try again in a minute\"}"); return; }
+    if (!rooms_pick(db, realm, room, pid, via, placed, sizeof placed, &shard, &full)) { api_json(q->fd, 503, "{\"error\":\"every room is full: try again in a minute\"}"); return; }
     room = placed;
   }
   struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts);
@@ -357,8 +364,39 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
   if (look[0]) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"look\":\"%s\"", look);
   if (klass[0]) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"class\":\"%s\"", klass);
   if (shard > 0) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"room\":\"%s\",\"shard\":%d%s", room, shard, full ? ",\"full\":true" : "");
+  /* the room asked was full: which, and whose it was when an invite named them (the page says so, #12795) */
+  if (shard > 0 && full) {
+    char by[32] = "", eb[48] = "";
+    if (via[0]) {
+      const char *bv[1] = {via};
+      PGresult *br = PQexecParams(db, "SELECT verse.player_name($1)", 1, NULL, bv, NULL, NULL, 0);
+      if (PQresultStatus(br) == PGRES_TUPLES_OK && PQntuples(br) == 1 && !PQgetisnull(br, 0, 0)) ticket_name(by, sizeof by, PQgetvalue(br, 0, 0));
+      PQclear(br);
+    }
+    esc(eb, sizeof eb, by);
+    sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"asked\":\"%s\"%s%s%s", asked, by[0] ? ",\"by\":\"" : "", eb, by[0] ? "\"" : "");
+  }
   if (blocked[0]) snprintf(st + sn, sizeof st - (size_t)sn, ",\"blocked\":\"%s\"", blocked);
   snprintf(out, sizeof out, "{\"ticket\":\"%s\",\"id\":\"%s\",\"account\":%s,\"admin\":%s,\"name\":\"%s\",\"expires\":%lld%s}", text, pid, account ? "true" : "false", acct == 2 ? "true" : "false", en, expires, st);
+  api_json(q->fd, 200, out);
+}
+
+// INVITE (#12795): one seat in the player's room held for their friends ROOMS_INVITE_MS (two minutes,
+// migrations/0125_room_invites.sql). {"room":R,"until":MS}; 403 not in it, 409 full.
+static void room_invite(const request *q, PGconn *db, const char *key, const char *room) {
+  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST an invite\"}"); return; }
+  if (!key || !key[0]) { api_json(q->fd, 401, "{\"error\":\"a player key\"}"); return; }
+  const char *v[1] = {key};
+  PGresult *r = PQexecParams(db, "SELECT id FROM verse.players WHERE key_sha256 = encode(sha256(convert_to($1, 'UTF8')), 'hex')", 1, NULL, v, NULL, NULL, 0);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { PQclear(r); api_json(q->fd, 403, "{\"error\":\"unknown player key\"}"); return; }
+  char pid[64]; snprintf(pid, sizeof pid, "%s", PQgetvalue(r, 0, 0));
+  PQclear(r);
+  long long until = 0;
+  int got = rooms_invite(db, room, pid, &until);
+  if (got == 1) { api_json(q->fd, 403, "{\"error\":\"not in it\"}"); return; }
+  if (got == 2) { api_json(q->fd, 409, "{\"error\":\"full\"}"); return; }
+  if (got < 0) { api_json(q->fd, 500, "{\"error\":\"no invite\"}"); return; }
+  char out[96]; snprintf(out, sizeof out, "{\"room\":\"%s\",\"until\":%lld}", room, until);
   api_json(q->fd, 200, out);
 }
 
@@ -658,6 +696,7 @@ bool player_route(const request *q) {
   if (q->body_len) { memcpy(body, q->body, q->body_len); body[q->body_len] = 0; }
   else strcpy(body, "{}");
   if (!strncmp(rest, "room-ticket/", 12) && segs == 2) { room_ticket(q, db, key, site, rest + 12, body); free(body); return true; }
+  if (!strncmp(rest, "room-invite/", 12) && segs == 2) { room_invite(q, db, key, rest + 12); free(body); return true; }
   if (!strcmp(rest, "room-state")) { room_state(q, db, key, body); free(body); return true; }
   if (!strcmp(rest, "player/name")) {   // a guest's own name, through the same filter (migrations/0116)
     if (strcmp(q->method, "POST")) { free(body); api_json(q->fd, 405, "{\"error\":\"POST a name\"}"); return true; }
