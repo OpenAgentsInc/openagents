@@ -24,8 +24,8 @@ deadgears 450000
 droprealm 180000
 everglade 1830000
 everglade5e 2040000
-# the room server's simulation for offline play's local host (coax/web/room/worker.sh, #12784): 1,191,635 measured
-everglade-room 1200000
+# the room server's simulation for offline play's local host (coax/web/room/worker.sh, #12784): 1,191,635 measured; 1,206,472 after the WANTED ladder and the rules saves (45bcccd674, a1381c7131)
+everglade-room 1260000
 fairy 660000
 fivelab 590000
 fivemmo 1540000
