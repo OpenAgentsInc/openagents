@@ -23,7 +23,7 @@ coder/tui/coder.sh --engine microcoder   # or codex, psionic, echo (offline)
 coder/tui/coder.sh --theme light         # for a light background; or CODER_THEME=light, or NO_COLOR=1 for none
 coder/tui/coder.sh resume                # this folder's newest session, to continue it; resume claude for Claude Code's
 python3 coder/tui/smoke.py               # the offline smoke, in a pseudo-terminal and then without one
-python3 coder/tui/resize_check.py        # narrow, shorten and widen a working session; no stale rows
+coax/web/tool.sh coder/tui/resize_check.coax   # narrow, shorten and widen a working session; no stale rows
 ```
 
 When Shift-Tab selects Codex, its model and reasoning level sit at the right
@@ -90,7 +90,7 @@ onto more rows before Coder hears of the resize. So the region keeps every
 row's width and the cursor's cell, and its erase moves up by the rows they
 now take, not the rows it drew; a pinned region's floor grows to match, so
 the composer stays on the last row. Without that, a drag left a stale copy
-of the Working row and the rules for every step. `resize_check.py` drags a
+of the Working row and the rules for every step. `resize_check.coax` drags a
 working session's edges in a pseudo-terminal under a reflowing terminal
 model and checks the screen.
 
