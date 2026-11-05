@@ -235,7 +235,11 @@ def execute(cmd, budget):
         # A process over the whole run's budget fails it: stop it there.
         resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
         resource.setrlimit(resource.RLIMIT_CPU, (budget, budget + 5))   # lowering a limit works on macOS too
-    run = subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE, preexec_fn=limits, start_new_session=True)
+    # The shared build-worker pool (coax/src/jobs.cpp) says on stderr when a
+    # busy machine holds back its workers. That notice reports the machine,
+    # not the program, and never changes a result, so a run is quiet about it.
+    env = dict(os.environ, COAX_JOBS_QUIET="1")
+    run = subprocess.Popen(cmd, cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, preexec_fn=limits, start_new_session=True)
     streams = {}
     readers = [threading.Thread(target=lambda k, f: streams.__setitem__(k, f.read()), args=(k, f)) for k, f in (("out", run.stdout), ("err", run.stderr))]
     for reader in readers:

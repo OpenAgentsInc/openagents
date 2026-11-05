@@ -5,6 +5,10 @@
 # Selection is validated in full before a compiler, build or fixture can run.
 set -uo pipefail
 cd "$(dirname "$0")"
+# The shared build-worker pool (coax/src/jobs.cpp) notes on stderr when a busy
+# machine holds back its workers. The note reports the machine, not the
+# example, and a fixture compares stderr, so every run here is quiet about it.
+export COAX_JOBS_QUIET=1
 sources=(examples/*.coax examples/ch12_debug/main.coax)
 units=()
 for src in "${sources[@]}"; do

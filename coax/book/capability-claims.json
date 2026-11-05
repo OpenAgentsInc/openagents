@@ -286,7 +286,7 @@
     {
       "id": "psionic.language.current",
       "document": "psionic/book/PLAN.md",
-      "scope": "Current shared compiler and bounded Psionic consumers, including nominal/formal scalar units and initial concrete native-C affine point/vector types; full transforms, compiler clocks, other targets and full robot migrations remain separate.",
+      "scope": "Current shared compiler and bounded Psionic consumers, including nominal/formal scalar units and initial concrete native-C affine point/vector types; full transforms, compiler clocks, other targets and full robot migrations remain separate. Reviewed after #12867: Metal graphics emission is a graphics path and does not qualify Psionic Metal or WebGPU compute beyond the bounded kernels named.",
       "text_sha256": "5355a62aeec2932ae6bc961b475b423689af0e5bfdbf8545a1415730624bda68",
       "features": [
         {
@@ -353,7 +353,7 @@
         },
         {
           "path": "docs/verse/native-gpu.md",
-          "sha256": "912aee1118864313bf149cdb3a07e5a388d29251f736185c284bdbd6ecf822c6"
+          "sha256": "5138adec0c2427848f14548cf2a425852b87878da8ecb07f3ace552ff646c2ef"
         },
         {
           "path": "coax/QUANTITIES.md",
@@ -442,7 +442,7 @@
     {
       "id": "coax.wgsl.current",
       "document": "coax/book/ch17-gpu.md",
-      "scope": "Bounded direct WGSL graphics emission and the named Everglade source consumer; planned shader syntax, general layouts and Psionic browser compute remain separate.",
+      "scope": "Bounded direct WGSL graphics emission and the named Everglade source consumer; planned shader syntax, general layouts and Psionic browser compute remain separate. Reviewed after #12867: `coax metal --vertex/--fragment` adds a separate Metal graphics writer over the same checked tree; the WGSL path and its refusals are unchanged.",
       "text_sha256": "dc825e0eb306e3779a73f999e9e4cdaca1ae204a5c92b15f7ad241f83d9e9d28",
       "features": [
         {
@@ -457,11 +457,11 @@
         },
         {
           "path": "coax/src/shader.cpp",
-          "sha256": "76b273398011ce8c4418e78217bdfcdedf4aaf5c951f4981e5b575da4aff93c5"
+          "sha256": "a993abeff68ed8688e093e1b9b196e4d45e6568df24ccfc40cd5d2284363e6cc"
         },
         {
           "path": "docs/verse/native-gpu.md",
-          "sha256": "912aee1118864313bf149cdb3a07e5a388d29251f736185c284bdbd6ecf822c6"
+          "sha256": "5138adec0c2427848f14548cf2a425852b87878da8ecb07f3ace552ff646c2ef"
         },
         {
           "path": "verse/everglade/gpu.module",
