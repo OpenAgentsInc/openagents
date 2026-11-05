@@ -602,7 +602,6 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
 // your class, each slot's state and the card; the town's conditions come from the room (e5_take).
 static void e5_frame(cx_face_addr state) {
   coax_v_t_Everglade g = at(state);
-  e5_after(g, e5v());
   if (e5_me(g, (coax_v_f32){e5_me_buf, 8}) > 0) e5r_you(e5r(), e5_me_buf[2], e5_me_buf[3]);
   e5r_class(e5r(), everglade_class(g));   /* the druid or the Warlock (everglade-warlock.coax) */
   e5_take(g, e5v());

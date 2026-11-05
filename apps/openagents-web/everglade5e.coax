@@ -34,14 +34,13 @@ E5_SLOT_FLOATS :: 6;       // everglade5e-rules.coax E5R_SLOT_FLOATS
 E5_HERO_FLOATS :: 32;
 E5_READY :: 0; E5_NO_SLOT :: 1; E5_SPENT :: 2; E5_CANT :: 3;
 E5_COST_NONE :: 0; E5_COST_ACTION :: 1; E5_COST_BONUS :: 2; E5_COST_REACTION :: 3;
-E5_PENDING :: 8;
 E5_RED :: [3] f32.[0.95, 0.32, 0.26];
 E5_GREEN :: [3] f32.[0.45, 0.9, 0.42];
 E5_CONDITION :: [15] string.["BLINDED", "CHARMED", "DEAFENED", "EXHAUSTION", "FRIGHTENED", "GRAPPLED", "INCAPACITATED", "INVISIBLE",
                              "PARALYZED", "PETRIFIED", "POISONED", "PRONE", "RESTRAINED", "STUNNED", "UNCONSCIOUS"];
 E5_COND_BLINDED :: 1;
 // A hash's staged state, for a check or a screenshot ("gate+held"): you held, bound, slowed, and a
-// Meteor Swarm always on its way (its icon's sweep).
+// Meteor Swarm always on its way (its icon's sweep, full).
 E5_FORCE_HELD :: 1; E5_FORCE_BOUND :: 2; E5_FORCE_SLOW :: 4; E5_FORCE_COOL :: 8;
 E5_FORCE_TAIL :: [4] string.["+held", "+bound", "+slowed", "+cool"];
 // The hash (n bytes in `h`) without its staging tails, which set v's force bits: the new length.
@@ -64,8 +63,6 @@ e5_hash :: (v: [] E5, h: [] u8, n: int) -> int #export_c {
 E5 :: struct {
   bar: [E5_SLOTS * E5_SLOT_FLOATS] f32; bar_ok: bool;
   hero: [E5_HERO_FLOATS] f32; hero_ok: bool;
-  // the bar's casts on their way (their icons' sweeps)
-  pend_slot: [E5_PENDING] int; pend_x: [E5_PENDING] f32; pend_z: [E5_PENDING] f32; pend_due: [E5_PENDING] f32; pend_n: int;
   now: f32;
   cond: [WATCH_ACTORS + 1] int;   // the room's conditions: you (none of the page's own), then Everglade's people
   force: int;                // a hash's staged state (e5_hash): E5_FORCE_* bits
@@ -94,7 +91,6 @@ e5_staged :: (s: [] Everglade, v: [] E5) {
   if (f & E5_FORCE_HELD) != 0 && watch_you(w[..])[0].held_t < 1 { watch_you(w[..])[0].held_t = 3; watch_you(w[..])[0].held_saves = 0; }
   if (f & E5_FORCE_BOUND) != 0 { watch_you(w[..])[0].bound_kept = true; if watch_you(w[..])[0].bound_t < 5 { watch_you(w[..])[0].bound_t = 60; } }
   if (f & E5_FORCE_SLOW) != 0 && watch_you(w[..])[0].slow_t < 1 { watch_you(w[..])[0].slow_t = 6; }
-  if (f & E5_FORCE_COOL) != 0 && v[0].pend_n == 0 && v[0].bar_ok { e5_pend(v, SP_METEOR, -100, -100); }
 }
 // In a room your death is the server's too (your p's DEAD bit): you fall and lie, the view darkens
 // and says YOU DIED, and it holds until the server stands you up where you fell (room-events.coax
@@ -136,33 +132,6 @@ e5_before :: (s: [] Everglade, v: [] E5, bar: [] f32, bar_n: int, hero: [] f32, 
   s[0].wv.seen_you.on = false;
 }
 
-// ---- each frame, after Everglade's
-
-// After Everglade's frame: nothing of its casts or harm is the page's to roll. The room (the local
-// host offline, #12882) resolves every cast and every harm; this page's rules keep only your bar.
-e5_after :: (s: [] Everglade, v: [] E5) #export_c { v[0].pend_n = 0; }
-e5_pend :: (v: [] E5, b: int, x: f32, z: f32) {
-  if v[0].pend_n >= E5_PENDING { return; }
-  q := v[0].pend_n;
-  v[0].pend_slot[q] = b; v[0].pend_x[q] = x; v[0].pend_z[q] = z;
-  v[0].pend_due[q] = v[0].now + (ifx b >= WL_SLOT0 then WL_DELAY[clamp_i(b - WL_SLOT0, 0, WL_SLOTS - 1)] else ifx v[0].bar_ok then e5_slot_f(v, b, 4) else 0.0f32);
-  v[0].pend_n += 1;
-}
-// The casts whose strike is now: slot, x, z, 3 floats each. They leave the queue.
-e5_due :: (v: [] E5, out: [] f32) -> int {
-  n := 0; kept := 0;
-  for q: 0..<v[0].pend_n {
-    if v[0].pend_due[q] <= v[0].now && (n + 1) * 3 <= out.count {
-      out[n * 3] = f32(v[0].pend_slot[q]); out[n * 3 + 1] = v[0].pend_x[q]; out[n * 3 + 2] = v[0].pend_z[q];
-      n += 1;
-      continue;
-    }
-    v[0].pend_slot[kept] = v[0].pend_slot[q]; v[0].pend_x[kept] = v[0].pend_x[q]; v[0].pend_z[kept] = v[0].pend_z[q]; v[0].pend_due[kept] = v[0].pend_due[q];
-    kept += 1;
-  }
-  v[0].pend_n = kept;
-  return n;
-}
 // ---- where everyone is, for the rules
 
 // You: x, z, Hit Points, Temporary Hit Points, dead (your Hit Points the room's: e5_before).
@@ -372,15 +341,24 @@ e5_status :: (s: [] Everglade, v: [] E5, out: [] f32, u: [] f32, at: int) -> int
 
 // ---- the bar: a cast on its way, on its icon
 
-// The share of slot b's cast still to go before it strikes (0 none on its way): the latest of its
-// casts in the queue, over the slot's time from press to strike.
-e5_left :: (v: [] E5, b: int) -> f32 {
-  if !v[0].bar_ok || b < 0 || b >= E5_SLOTS { return 0; }
-  whole := e5_slot_f(v, b, 4);
-  if !(whole > 0.05) { return 0; }
+// The share of slot b's cast still to go before it strikes (0 none on its way): your casts of it the
+// room took (its e cast, everglade-net.coax), each striking at its time, over the spell's cast bar.
+// A hash's +cool holds Meteor Swarm's full.
+e5_left :: (s: [] Everglade, v: [] E5, b: int) -> f32 {
+  if b < 0 || b >= SP_SLOTS { return 0; }
+  if (v[0].force & E5_FORCE_COOL) != 0 && b == SP_METEOR { return 1; }
+  if !net_live(s) { return 0; }
+  n := net_of(s);
+  now := net_now(n);
+  whole := srd_spell(SP_SPELL[b]).bar;
   most := 0.0f32;
-  for q: 0..<v[0].pend_n { if v[0].pend_slot[q] == b { most = hi(most, clamp01((v[0].pend_due[q] - v[0].now) / whole)); } }
+  for q: 0..<NET_FX { fx := n[0].fx[q]; if fx.live && fx.caster == n[0].seat && fx.slot == b { most = hi(most, e5_share(fx.t, now, whole)); } }
   return most;
+}
+// What is left of a cast that strikes at server ms `t`, at `now`, of a cast bar `whole` s long.
+e5_share :: (t: int, now: int, whole: f32) -> f32 {
+  if !(whole > 0.05) { return 0; }
+  return clamp01(f32(t - now) / (whole * 1000));
 }
 // For each slot with a cast on its way: its icon's top part again, dimmed, over the icon (the host's
 // "over" line with a brightness and a band, coax/web/host.js), shrinking upward to nothing at the strike.
@@ -389,7 +367,7 @@ E5_DIM :: 30;   // the dimmed part's brightness, in hundredths
 e5_sweeps :: (s: [] Everglade, v: [] E5) {
   m := ifx s[0].sp.media_big.count > 0 then s[0].sp.media_big else s[0].sp.media[..];
   for b: 0..<SP_REBUILD {
-    f := e5_left(v, b);
+    f := e5_left(s, v, b);
     bx := s[0].sp.boxes[b];
     if f <= 0.002 || bx.x1 <= bx.x0 { continue; }
     ic := e5_icon_in(m, s[0].sp.media_n, bx);
@@ -478,18 +456,34 @@ e5_fps_draw :: (s: [] Everglade, v: [] E5, out: [] f32, at: int) -> int {
   // the rules' unit is apart: its E5R_FOLK (everglade5e-rules.coax) and the room's WORLD_FOLK are 47
   #assert WATCH_ACTORS == 47 && WATCH_ACTORS == EG_SPOTS + WATCH_NEW + WATCH_REIN && WATCH_REIN >= ladder_size(WANTED_LEVELS);
 }
-#test "Everglade 5E: a cast on its way dims the top of its icon, shrinking to its strike" {
+#test "Everglade 5E: a cast the room took dims the top of its icon, shrinking to its strike" {
   v: [1] E5;
-  v[0].bar[0 * E5_SLOT_FLOATS + 4] = 3.6;                     // Meteor Swarm strikes 3.6 s on
-  v[0].bar_ok = true;
-  v[0].now = 10;
-  #assert e5_left(v[..], 0) == 0;
-  e5_pend(v[..], 0, 5, 6);
-  v[0].now = 11.8;
-  #assert e5_left(v[..], 0) > 0.49 && e5_left(v[..], 0) < 0.51 && e5_left(v[..], 1) == 0;
-  out: [24] f32;
-  v[0].now = 13.7;
-  #assert e5_due(v[..], out[..]) == 1 && e5_left(v[..], 0) == 0;
+  #assert e5_share(12500, 10000, 2.5) == 1 && e5_share(12500, 11250, 2.5) == 0.5 && e5_share(12500, 13000, 2.5) == 0;
+  #assert e5_share(12500, 10000, 0) == 0;   // no cast bar, no sweep
+  s: [1] Everglade;
+  #assert e5_left(s[..], v[..], SP_METEOR) == 0;   // no room, nothing on its way
+  v[0].force = E5_FORCE_COOL;
+  #assert e5_left(s[..], v[..], SP_METEOR) == 1 && e5_left(s[..], v[..], (SP_METEOR + 1) % SP_SLOTS) == 0;
+  // in a room: your Meteor Swarm the room took (its e cast) sweeps until its strike; another's doesn't
+  v[0].force = 0;
+  a: [1] Everglade; na: [1] EgNet;
+  #assert net_test_page(a[..], na[..], 0, "pa", 100) && net_test_hear(a[..], 0, "y 0 1 5000100");
+  room: [1] NetTestRoom;
+  net_test_world(room[..], 0);
+  #assert net_test_hear(a[..], 0, net_test_frame(room[..])) && net_live(a[..]) && na[0].seat == 0;
+  #assert e5_left(a[..], v[..], SP_METEOR) == 0;
+  net_test_tick(room[..], 1, 0);
+  net_test_sep(room[..]); room[0].n = wire_put_cast_e(room[0].buf[..], room[0].n, WireCastE.{ss = 0, slot = SP_METEOR, ax = 1, az = 1, seed = 7});
+  net_test_sep(room[..]); room[0].n = wire_put_cast_e(room[0].buf[..], room[0].n, WireCastE.{ss = 3, slot = SP_METEOR + 1, ax = 1, az = 1, seed = 7});
+  #assert net_test_hear(a[..], 0, net_test_frame(room[..]));
+  whole := srd_spell(SP_SPELL[SP_METEOR]).bar;
+  t := 0;
+  for q: 0..<NET_FX { if na[0].fx[q].live && na[0].fx[q].slot == SP_METEOR { t = na[0].fx[q].t; } }
+  #assert t > 0 && whole > 0.05;
+  na[0].mono = t - na[0].offset - cast(int) (whole * 500);
+  #assert abs(e5_left(a[..], v[..], SP_METEOR) - 0.5) < 0.01 && e5_left(a[..], v[..], SP_METEOR + 1) == 0;
+  na[0].mono = t - na[0].offset + 10;
+  #assert e5_left(a[..], v[..], SP_METEOR) == 0;
   // the icon's line found in the bar's media, and the dimmed band written after it
   m := "image /worlds/everglade/hotbar/meteor-swarm-72.jpg 100 800 172 872\nimage /worlds/everglade/hotbar/key-0-0-72.jpg 100 800 120 812";
   buf: [400] u8;
