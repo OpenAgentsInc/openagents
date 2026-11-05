@@ -64,12 +64,27 @@ vl_run :: (c:[]Cdp,url:string,phone:bool)->bool {
   // with the default full-detail reference, then inspect cluster-ID pixels.
   if !phone {if !vl_key(c,"l","KeyL",true) || !vl_key(c,"l","KeyL",false) {return false;}}
   if !vl_key(c,"c","KeyC",true) || !vl_key(c,"c","KeyC",false) || !vl_eval(c,"coaxialClipStep(1,60).then(()=>coaxial.guardProbe(7)===5 && coaxial.guardProbe(16)===1 && coaxial.guardProbe(14)>1 && coaxial.guardProbe(5)===1296+coaxial.guardProbe(15) && coaxial.guardProbe(12)===10512)") || !vl_capture(c) {return false;}
-  if !vl_key(c,"v","KeyV",true) || !vl_key(c,"v","KeyV",false) || !vl_eval(c,"coaxialClipStep(1,60).then(()=>coaxial.guardProbe(7)===0 && coaxial.guardProbe(16)===1)") || !vl_capture(c) {return false;}
+  if !vl_key(c,"v","KeyV",true) || !vl_key(c,"v","KeyV",false) || !vl_key(c,"v","KeyV",true) || !vl_key(c,"v","KeyV",false) || !vl_eval(c,"coaxialClipStep(1,60).then(()=>coaxial.guardProbe(7)===0 && coaxial.guardProbe(16)===1)") || !vl_capture(c) {return false;}
   if !vl_eval(c,"valleyPixels[6]===valleyPixels[0] && valleyPixels[5]!==valleyPixels[6] && (()=>{let a=valleyReference,b=coaxial.renderCapture;if(a.width!==b.width||a.height!==b.height)return false;for(let y=Math.floor(a.height*.25);y<Math.floor(a.height*.55);y++)for(let x=Math.floor(a.width*.4);x<Math.floor(a.width*.6);x++)for(let k=0;k<4;k++){let i=(y*a.width+x)*4+k;if(a.bytes[i]!==b.bytes[i])return false}return true})()") {return false;}
   if !vl_key(c,"c","KeyC",true) || !vl_key(c,"c","KeyC",false) || !vl_eval(c,"coaxialClipStep(1,60).then(()=>coaxial.guardProbe(16)===0 && coaxial.guardProbe(5)===3030)") {return false;}
   if !vl_eval(c,"(async()=>{location.hash='clusters';await new Promise(r=>setTimeout(r,100));await coaxialClipStep(1,60);return coaxial.guardProbe(7)===5 && coaxial.guardProbe(16)===1})()") {return false;}
   print("PASS Valley clusters %: decoded leaf counts/index traffic, cluster-ID readback, exact lit reference region, C path toggle and #clusters link\n",ifx phone then "phone" else "desktop");
-  perf:=cdp_evaluate(c,"(async()=>{let samples=[];for(let i=0;i<30;i++){let t=performance.now();await coaxialClipStep(1,60);samples.push(performance.now()-t)}samples.sort((a,b)=>a-b);return JSON.stringify({scope:'30 static cluster-view frames, CPU submission plus GPU queue completion, not GPU timestamps or route FPS',viewport:[innerWidth,innerHeight],triangles:coaxial.guardProbe(8),medianMs:samples[15],p95Ms:samples[28],p99Ms:samples[29]})})()");
+  if !vl_eval(c,"(async()=>{location.hash='hierarchy';await new Promise(r=>setTimeout(r,100));await coaxialClipStep(1,60);return coaxial.guardProbe(7)===6 && coaxial.guardProbe(30)===71 && coaxial.guardProbe(31)===6 && coaxial.guardProbe(32)===1 && coaxial.guardProbe(33)===18 && coaxial.guardProbe(35)===3072 && coaxial.guardProbe(36)===0 && coaxial.guardProbe(12)===10944})()") || !vl_capture(c) {return false;}
+  if !vl_key(c,"h","KeyH",true) || !vl_key(c,"h","KeyH",false) || !vl_eval(c,"coaxialClipStep(1,60).then(()=>coaxial.guardProbe(32)===2 && coaxial.guardProbe(33)===9 && coaxial.guardProbe(35)===3072)") || !vl_capture(c) {return false;}
+  if !vl_eval(c,"valleyPixels[7]!==valleyPixels[8]") {return false;}
+  if !vl_key(c,"f","KeyF",true) || !vl_key(c,"f","KeyF",false) || !vl_eval(c,"coaxialClipStep(1,60).then(()=>coaxial.guardProbe(34)===1 && coaxial.guardProbe(32)===0 && coaxial.guardProbe(35)===4 && coaxial.guardProbe(12)===1740)") || !vl_capture(c) {return false;}
+  if !vl_key(c,"h","KeyH",true) || !vl_key(c,"h","KeyH",false) || !vl_eval(c,"coaxialClipStep(1,60).then(()=>coaxial.guardProbe(35)===2 && coaxial.guardProbe(36)===0 && coaxial.guardProbe(12)===1734)") || !vl_capture(c) {return false;}
+  if phone {
+    if cdp_call(c,"Input.dispatchTouchEvent","{\"type\":\"touchStart\",\"touchPoints\":[{\"x\":100,\"y\":720,\"id\":12}]}",30000)<0 || cdp_call(c,"Input.dispatchTouchEvent","{\"type\":\"touchEnd\",\"touchPoints\":[]}",30000)<0 {return false;}
+  }else {if !vl_key(c,"f","KeyF",true) || !vl_key(c,"f","KeyF",false) {return false;}}
+  if !vl_eval(c,"coaxialClipStep(1,60).then(()=>coaxial.guardProbe(34)===2 && coaxial.guardProbe(35)===4 && coaxial.guardProbe(36)===0)") || !vl_capture(c) {return false;}
+  if phone {
+    if cdp_call(c,"Input.dispatchTouchEvent","{\"type\":\"touchStart\",\"touchPoints\":[{\"x\":270,\"y\":780,\"id\":13}]}",30000)<0 || cdp_call(c,"Input.dispatchTouchEvent","{\"type\":\"touchEnd\",\"touchPoints\":[]}",30000)<0 {return false;}
+  }else {if !vl_key(c,"h","KeyH",true) || !vl_key(c,"h","KeyH",false) {return false;}}
+  if !vl_eval(c,"coaxialClipStep(1,60).then(()=>coaxial.guardProbe(35)===2 && coaxial.guardProbe(36)===750 && coaxial.guardProbe(12)===1734)") || !vl_capture(c) {return false;}
+  if !vl_eval(c,"valleyPixels[9]!==valleyPixels[10] && valleyPixels[11]!==valleyPixels[12] && valleyErrors.length===0") {return false;}
+  print("PASS Valley hierarchy %: real parent cuts/colors, unchanged rock triangles, planar 4->2 error=0, bent 4->2 error=750mm, %\n",ifx phone then "phone" else "desktop",ifx phone then "actual touch source/level controls" else "H/F keyboard controls");
+  perf:=cdp_evaluate(c,"(async()=>{let samples=[];for(let i=0;i<30;i++){let t=performance.now();await coaxialClipStep(1,60);samples.push(performance.now()-t)}samples.sort((a,b)=>a-b);return JSON.stringify({scope:'30 static bent-fan coarse frames, CPU submission plus GPU queue completion, not GPU timestamps or route FPS',viewport:[innerWidth,innerHeight],triangles:coaxial.guardProbe(35),medianMs:samples[15],p95Ms:samples[28],p99Ms:samples[29]})})()");
   if perf<0 {return false;}print("Valley fenced frame observation: %\n",jv_raw(c[0].doc[0],perf));
   print("PASS Valley asset/geometry %: stations, actual index pulling, view modes, three native/Wasm SHA256 matches, bounded replacement and %\n",ifx phone then "phone" else "desktop",ifx phone then "touch station/detail controls" else "keyboard controls");
   if !vl_eval(c,"document.querySelector('meta[name=robots]')?.content==='noindex, nofollow' && valleyErrors.length===0 && coaxial.guardProbe(5)>600") {return false;}
@@ -80,7 +95,7 @@ tool_main :: ()->int #export_c {
   for phone:0..<2 {
     c:[1]Cdp;if !cdp_launch_background(c[..],ifx phone==1 then 390 else 1280,ifx phone==1 then 844 else 800,"valley-lab-check-") {return 1;}
     p:[4096]u8;url:=fs_join(args_at(a[..],0),"worlds/valley-lab",p[..]);ok:=vl_run(c[..],url,phone==1);
-    if !ok {n:=cdp_evaluate(c[..],"JSON.stringify({ready:globalThis.coaxial?.ready,scene:globalThis.coaxial?.sceneReady,pose:Array.from({length:6},(_,i)=>globalThis.coaxial?.guardProbe(i)),errors:globalThis.valleyErrors,text:document.body.innerText.slice(0,300)})");if n>=0 {print("FAIL %: %\n",ifx phone==1 then "phone" else "desktop",jv_raw(c[0].doc[0],n));}}
+    if !ok {n:=cdp_evaluate(c[..],"JSON.stringify({ready:globalThis.coaxial?.ready,scene:globalThis.coaxial?.sceneReady,pose:Array.from({length:6},(_,i)=>globalThis.coaxial?.guardProbe(i)),mode:globalThis.coaxial?.guardProbe(7),hierarchy:Array.from({length:7},(_,i)=>globalThis.coaxial?.guardProbe(30+i)),captures:globalThis.valleyPixels?.length,errors:globalThis.valleyErrors,text:document.body.innerText.slice(0,300)})");if n>=0 {print("FAIL %: %\n",ifx phone==1 then "phone" else "desktop",jv_raw(c[0].doc[0],n));}}
     cdp_close(c[..]);if !ok {return 1;}
   }return 0;
 }

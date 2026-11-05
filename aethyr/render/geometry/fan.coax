@@ -1,0 +1,54 @@
+// A deliberately constrained simplification fixture: an axis-aligned square
+// pyramid fan. Only its interior apex is removed; all four boundary edges stay.
+// It is not an arbitrary mesh simplifier. Callers supply a finite height.
+#load "../../points.coax";
+FAN_SOURCE :: [12]u32.[0,4,1,1,4,2,2,4,3,3,4,0];
+FAN_COARSE :: [6]u32.[0,2,1,0,3,2];
+FanPatch :: struct {p:[5]Point;i:[12]u32;vertices:int;indices:int;error:f32;}
+
+#test "a planar fan simplifies four triangles to two without moving its boundary" {
+  a:=fan_patch(0,false);b:=fan_patch(0,true);
+  #assert a.vertices==5 && a.indices==12 && b.vertices==4 && b.indices==6 && a.error==0 && b.error==0;
+  #assert a.i[0]==0 && a.i[1]==4 && a.i[2]==1 && a.i[9]==3 && a.i[11]==0;
+  #assert b.i[0]==0 && b.i[1]==2 && b.i[2]==1 && b.i[3]==0 && b.i[4]==3 && b.i[5]==2;
+  for k:0..<4 {#assert a.p[k].x==b.p[k].x && a.p[k].y==0 && a.p[k].z==b.p[k].z;}
+  #assert a.p[0].x== -2 && a.p[0].z== -2 && a.p[2].x==2 && a.p[2].z==2;
+}
+#test "fan triangles cover the entire square with positive upward winding" {
+  for simplified:[2]bool.[false,true] {a:=fan_patch(0.75,simplified);area:f32=0;
+    for t:0..<a.indices/3 {for k:0..<3 {#assert cast(int)a.i[t*3+k]<a.vertices;}
+      p:=a.p[cast(int)a.i[t*3]];q:=a.p[cast(int)a.i[t*3+1]];r:=a.p[cast(int)a.i[t*3+2]];
+      up:=cross(sub(q,p),sub(r,p)).y;#assert up==(ifx simplified then 16.0f32 else 8.0f32);area+=up;
+    }#assert area==32;
+  }
+}
+#test "bent fan error bounds both surfaces and is attained at the removed apex" {
+  for height:[5]f32.[-2,-0.75,0,0.75,2] {
+    a:=fan_patch(height,false);b:=fan_patch(height,true);
+    #assert a.p[4].y==height && a.error==0 && b.error==abs(height);
+    // The fan's exact piecewise affine height is h*(1-max(abs(x),abs(z))/2).
+    // Every point on either graph has a point on the other within |h|.
+    // The apex has distance exactly |h| from the simplified plane.
+    for triangle:0..<4 {for u:0..<9 {for v:0..<9-u {
+      p0:=a.p[cast(int)a.i[triangle*3]];p1:=a.p[cast(int)a.i[triangle*3+1]];p2:=a.p[cast(int)a.i[triangle*3+2]];
+      p:=add(times(p0,1-cast(f32)(u+v)/8),add(times(p1,cast(f32)u/8),times(p2,cast(f32)v/8)));
+      #assert abs(p.y)<=b.error && abs(p.y-fan_height(p.x,p.z,height))<0.00001;
+    }}}
+  }
+}
+#test "adjacent mixed-resolution fans retain every point of their shared edge" {
+  a:=fan_patch(0.75,false);b:=fan_patch(-1.5,true);
+  for k:0..<17 {t:=cast(f32)k/16;
+    left:=add(times(a.p[1],1-t),times(a.p[2],t));right:=add(v3(4,0,0),add(times(b.p[0],1-t),times(b.p[3],t)));
+    #assert left.x==right.x && left.y==right.y && left.z==right.z;
+    #assert fan_height(left.x,left.z,0.75)==0 && fan_height(right.x-4,right.z,-1.5)==0;
+  }
+}
+fan_height :: (x:f32,z:f32,height:f32)->f32 {return height*(1-hi(abs(x),abs(z))*0.5);}
+fan_patch :: (height:f32,simplified:bool)->FanPatch {
+  a:=FanPatch.{p=[5]Point.[v3(-2,0,-2),v3(2,0,-2),v3(2,0,2),v3(-2,0,2),v3(0,height,0)],vertices=5};
+  source:=FAN_SOURCE;coarse:=FAN_COARSE;indices:=ifx simplified then coarse[..] else source[..];
+  a.indices=indices.count;for value,k:indices {a.i[k]=value;}
+  if simplified {a.vertices=4;a.error=abs(height);}
+  return a;
+}

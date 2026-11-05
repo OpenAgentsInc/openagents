@@ -1,0 +1,33 @@
+coax jobs: the load average is 13.0, at or above 12 ($COAX_JOBS_LOAD); running 1 build worker, not up to 12, until it drops
+coax: note[E0400]: compile-time steps: 78790452 of 100000000 used (78%), above three quarters of the limit; more than 100000000 fails with E0400
+  top users of compile-time steps:
+    78790452 steps  /Users/christopherdavid/work/oa-valley-hierarchy/aethyr/render/geometry/clusters.coax:54:1  #test 'clusters share repeated corners inside a triangle and retain the exact capacity ceiling'
+  fix: run coax test --only 'clusters share repeated corners inside a triangle and retain the exact capacity ceiling' for what inside the check uses the most; then do less work in it, split it, or give it a larger #steps N
+identity-hierarchy-v1 divisions=8 leaves=9 nodes=17 height=4 triangles=768 error=0 sha256=c39ef513e76cfb373abbb2185e35120cf4a02e13db13f80f92c82e05449bbf64
+  level=0 groups=9 triangles=768 leaves=9
+  level=1 groups=5 triangles=768 leaves=9
+  level=2 groups=3 triangles=768 leaves=9
+  level=3 groups=2 triangles=768 leaves=9
+  level=4 groups=1 triangles=768 leaves=9
+identity-hierarchy-v1 divisions=16 leaves=36 nodes=71 height=6 triangles=3072 error=0 sha256=3669c50bede0c4da9f611f4c658620ffc906ad6839984107838ab73aba37550b
+  level=0 groups=36 triangles=3072 leaves=36
+  level=1 groups=18 triangles=3072 leaves=36
+  level=2 groups=9 triangles=3072 leaves=36
+  level=3 groups=5 triangles=3072 leaves=36
+  level=4 groups=3 triangles=3072 leaves=36
+  level=5 groups=2 triangles=3072 leaves=36
+  level=6 groups=1 triangles=3072 leaves=36
+identity-hierarchy-v1 divisions=32 leaves=204 nodes=407 height=8 triangles=12288 error=0 sha256=4e2053348a34e5a363ee5451b54412daba41bd41813c40d0cd6d8559f2ddd56c
+  level=0 groups=204 triangles=12288 leaves=204
+  level=1 groups=102 triangles=12288 leaves=204
+  level=2 groups=51 triangles=12288 leaves=204
+  level=3 groups=26 triangles=12288 leaves=204
+  level=4 groups=13 triangles=12288 leaves=204
+  level=5 groups=7 triangles=12288 leaves=204
+  level=6 groups=4 triangles=12288 leaves=204
+  level=7 groups=2 triangles=12288 leaves=204
+  level=8 groups=1 triangles=12288 leaves=204
+square-fan-v1 height=0.0 coarse=false vertices=5 triangles=4 exact_error_metres=0.0
+square-fan-v1 height=0.0 coarse=true vertices=4 triangles=2 exact_error_metres=0.0
+square-fan-v1 height=0.75 coarse=false vertices=5 triangles=4 exact_error_metres=0.0
+square-fan-v1 height=0.75 coarse=true vertices=4 triangles=2 exact_error_metres=0.75

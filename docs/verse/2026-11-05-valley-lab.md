@@ -1,7 +1,8 @@
 # Valley Lab: build a valley from checked Aethyr primitives
 
 Status: active implementation roadmap, updated 2026-11-05. The initial
-walkable world, procedural asset/indexed baseline and bounded cluster station now run locally.
+walkable world, procedural asset/indexed baseline, bounded leaves and the first
+hierarchy/simplification fixtures now run locally.
 
 Build **Valley Lab**, an unlisted world at `/worlds/valley-lab`, where a
 visitor can inspect each engine system alone and then watch those same
@@ -114,6 +115,51 @@ cluster-ID pixels on desktop/phone viewports.
 Run the native builder/report with
 `coax/web/tool.sh aethyr/tools/valley-clusters.coax`.
 Evidence is in the [cluster slice receipt](../verification/valley-lab-clusters-2026-11-05/README.md).
+
+## Landed: ownership hierarchy and boundary-preserving fixtures
+
+[`hierarchy.coax`](../../aethyr/render/geometry/hierarchy.coax) builds a bounded
+binary ownership tree above the existing leaves. Every parent owns consecutive
+children, sums their triangles and unions their bounds. An odd tail is promoted
+without duplicating it. Height-limited frontiers partition the leaves exactly
+once, including uneven trees. These are identity parents: they retain the
+original rock triangles and have zero geometric error. The reusable authority
+refuses malformed leaf metadata or insufficient node capacity atomically.
+
+| Rock tessellation | Leaves | Tree nodes | Root height | Triangles at every level |
+| --- | --- | --- | --- | --- |
+| 8 | 9 | 17 | 4 | 768 |
+| 16 | 36 | 71 | 6 | 3,072 |
+| 32 | 204 | 407 | 8 | 12,288 |
+
+`#hierarchy` opens the new inspection view. `H` cycles levels; `F` cycles
+rock, planar patch and bent patch. Parent-group colors come from actual tree
+ownership. Yellow bars show the first frontier group's bounds on the
+rock, or the patch's original bounds. The HUD reports level, groups, source
+and drawn triangles, and geometric error. Phone controls expose VIEW, LEVEL
+and NEXT SOURCE. `L` still changes the rock's source tessellation.
+
+[`fan.coax`](../../aethyr/render/geometry/fan.coax) supplies a deliberately
+constrained square-pyramid patch family. Removing only the interior apex
+reduces four triangles to two and preserves all four boundary edges. A flat
+patch has zero error; the bent patch's 0.75 m apex produces exactly 0.75 m
+symmetric surface-distance error after simplification. This is an analytic
+result for this graph family, not a sampled estimate or a general mesh-error
+metric: vertical matching bounds both directions, and the removed apex
+attains the distance to the simplified plane. Tests also cover negative
+heights, winding/area and adjacent patches at mixed resolutions.
+
+The authority gate kills all 119 hierarchy mutants; the fixture gate kills
+all 10 simplifier mutants. All 451 realm/dependency checks pass. Native reports
+preserve the three original rock hashes. Actual hardware WebGPU checks cover
+parent colors/counts, both patch resolutions/errors, keyboard and phone touch,
+and the existing reference-pixel and controller regressions. Evidence is in
+the [hierarchy receipt](../verification/valley-lab-hierarchy-2026-11-05/README.md).
+Run `coax/web/tool.sh aethyr/tools/valley-hierarchy.coax` for the native report.
+
+This slice does not simplify the rock, choose levels by screen error, stream
+pages or qualify a shared/native renderer. It establishes the ownership and
+small boundary/error fixtures required before those steps.
 
 ## What the book gives us
 
@@ -347,15 +393,21 @@ draft's status on the strength of a roadmap.
 
 ## Next implementation task
 
-Build **the first hierarchy and simplification fixtures** above these checked
-leaves. Start with tiny planar and bent meshes: explicit parent/child ownership,
-conservative parent bounds, deterministic simplification and a measured geometric
-error that is zero for an unchanged mesh. Preserve shared boundaries or prove
-crack-free reconstruction before simplifying the rock. Add a hierarchy-level
-inspection view beside the unchanged full-detail and leaf references; show
-actual triangle counts and error rather than presenting source tessellation
-changes as LOD. Screen-error cuts and paging follow only after hierarchy/error
-fixtures pass. Keep the current rock bytes and reference hashes unchanged.
+Build **boundary-locked parent mesh simplification** for a bounded supported
+mesh class, starting with an irregular planar patch and a bent patch that
+share an edge. Identify external/shared edges from topology, preserve their
+positions and segmentation, and produce actual parent vertices/triangles.
+Use an independently checked conservative surface-distance bound; refusing
+an unsupported or nonmanifold patch must preserve the full-detail parent.
+Carry parent errors monotonically through the ownership tree. Only after
+those fixtures prove crack-free mixed-resolution reconstruction should the
+simplifier run on a small rock parent group. Add parent/reference/error
+inspection with actual savings and preserve the original rock asset hashes.
+
+Then implement screen-error frontier selection and missing-detail fallback
+against those real parent meshes; paging follows after that. The current
+identity hierarchy and square-fan fixture are explicit baselines, not evidence
+of arbitrary rock simplification or automatic LOD.
 
 Continue the remaining milestone 0/1 exits alongside that step: saved
 walkthrough/replay, bounded source import and shared-renderer qualification.

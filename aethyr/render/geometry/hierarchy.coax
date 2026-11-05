@@ -1,0 +1,93 @@
+// Binary ownership above admitted cluster leaves. Parents retain all triangles.
+#load "clusters.coax";
+#authority;
+HIERARCHY_NODES :: CLUSTER_LEAVES*2-1;
+GeometryNode :: struct {
+  left:int= -1;right:int= -1;parent:int= -1;
+  first:int;leaves:int;triangles:int;height:int;low:Point;high:Point;
+}
+GeometryHierarchy :: struct {node:[HIERARCHY_NODES]GeometryNode;count:int;leaves:int;root:int;}
+
+#test "hierarchy owns an odd leaf exactly once and joins conservative bounds" {
+  a:[3]ClusterLeaf;
+  for k:0..<3 {a[k].first=k;a[k].vertices=3;a[k].triangles=1;a[k].low=v3(cast(f32)(k-1),cast(f32)(-k),cast(f32)(k*2));a[k].high=add(a[k].low,v3(1,1,1));}
+  h:[1]GeometryHierarchy;#assert hierarchy_build(h[..],a[..],5);
+  #assert h[0].count==5 && h[0].root==4 && h[0].leaves==3;
+  n:=h[0].node[4];#assert n.left==3 && n.right==2 && n.first==0 && n.leaves==3 && n.triangles==3 && n.height==2 && n.parent== -1;
+  #assert n.low.x== -1 && n.low.y== -2 && n.low.z==0 && n.high.x==2 && n.high.y==1 && n.high.z==5;
+  #assert h[0].node[0].parent==3 && h[0].node[1].parent==3 && h[0].node[2].parent==4 && h[0].node[3].parent==4;
+  #assert hierarchy_owner(h[..],0,0)==0 && hierarchy_owner(h[..],1,1)==3 && hierarchy_owner(h[..],2,1)==2;
+  for leaf:0..<3 {#assert hierarchy_owner(h[..],leaf,2)==4 && hierarchy_owner(h[..],leaf,99)==4;}
+  #assert hierarchy_owner(h[..],-1,0)== -1 && hierarchy_owner(h[..],3,0)== -1 && hierarchy_owner(h[..],0,-1)== -1;
+  #assert !hierarchy_build(h[..],a[..],4) && h[0].count==5 && h[0].node[4].triangles==3;
+}
+#test "hierarchy refuses malformed leaf ranges and capacity without publishing" {
+  a:[1]ClusterLeaf;a[0].vertices=64;a[0].triangles=124;a[0].low=v3(-1,-2,-3);a[0].high=v3(1,2,3);
+  h:[1]GeometryHierarchy;#assert hierarchy_build(h[..],a[..],HIERARCHY_NODES) && h[0].root==0 && h[0].node[0].height==0;
+  #assert !hierarchy_build(h[..],a[..],0) && !hierarchy_build(h[..],a[..],HIERARCHY_NODES+1);
+  #assert !hierarchy_build(h[..],a[0..<0],1);
+  a[0].first=1;#assert !hierarchy_build(h[..],a[..],1);a[0].first=0;
+  for value:[4]int.[0,65,-1,100] {a[0].vertices=value;#assert !hierarchy_build(h[..],a[..],1);}a[0].vertices=3;
+  for value:[3]int.[0,125,-1] {a[0].triangles=value;#assert !hierarchy_build(h[..],a[..],1);}a[0].triangles=1;
+  for axis:0..<3 {a[0].low=v3(-1,-2,-3);a[0].high=v3(1,2,3);
+    if axis==0 {a[0].low.x=2;}if axis==1 {a[0].low.y=3;}if axis==2 {a[0].low.z=4;}
+    #assert !hierarchy_build(h[..],a[..],1);
+  }
+  a[0].low=v3(-1,-2,-3);a[0].high.z=1000000;#assert !hierarchy_build(h[..],a[..],1);
+  a[0].high=v3(1,2,3);a[0].low.x= -1000000;#assert !hierarchy_build(h[..],a[..],1);
+  #assert h[0].count==1 && h[0].node[0].triangles==124;
+}
+#test "hierarchy cuts partition five leaves without overlapping ancestors" {
+  a:[5]ClusterLeaf;first:=0;for k:0..<5 {a[k].first=first;a[k].triangles=k+1;a[k].vertices=3;first+=k+1;}
+  h:[1]GeometryHierarchy;#assert hierarchy_build(h[..],a[..],9) && h[0].count==9;
+  #assert h[0].node[h[0].root].height==3 && h[0].node[h[0].root].triangles==15;
+  for level:0..<4 {covered:=0;triangles:=0;
+    for k:0..<5 {owner:=hierarchy_owner(h[..],k,level);n:=h[0].node[owner];
+      #assert k>=n.first && k<n.first+n.leaves;
+      if n.first==k {covered+=n.leaves;triangles+=n.triangles;}
+    }#assert covered==5 && triangles==15;
+  }
+}
+
+#test "hierarchy reaches the physical leaf ceiling and refuses one more" {
+  a:[CLUSTER_LEAVES+1]ClusterLeaf;for k:0..<a.count {a[k].first=k;a[k].vertices=1;a[k].triangles=1;}
+  h:[1]GeometryHierarchy;
+  #assert hierarchy_build(h[..],a[0..<CLUSTER_LEAVES],HIERARCHY_NODES) && h[0].count==1023;
+  #assert h[0].root==1022 && h[0].node[1022].leaves==512 && h[0].node[1022].height==9;
+  #assert !hierarchy_build(h[..],a[..],HIERARCHY_NODES) && h[0].count==1023;
+}
+
+hierarchy_build :: (out:[]GeometryHierarchy,leaves:[]ClusterLeaf,capacity:int)->bool {
+  if leaves.count<1 || capacity>HIERARCHY_NODES || capacity<leaves.count*2-1 {return false;}
+  first:=0;
+  for a:leaves {
+    if a.first!=first || a.vertices<1 || a.vertices>CLUSTER_VERTICES || a.triangles<1 || a.triangles>CLUSTER_TRIANGLES {return false;}
+    if !finite3(a.low) || !finite3(a.high) || a.low.x>a.high.x || a.low.y>a.high.y || a.low.z>a.high.z {return false;}
+    first+=a.triangles;
+  }
+  next:[1]GeometryHierarchy;active:[CLUSTER_LEAVES]int;
+  for a,k:leaves {next[0].node[k]=GeometryNode.{first=k,leaves=1,triangles=a.triangles,low=a.low,high=a.high};active[k]=k;}
+  next[0].count=leaves.count;next[0].leaves=leaves.count;n:=leaves.count;
+  while n>1 {
+    count:=0;
+    for k:0..<(n+1)/2 {
+      left:=active[k*2];
+      if k*2+1==n {active[count]=left;}
+      else {
+        right:=active[k*2+1];a:=next[0].node[left];b:=next[0].node[right];id:=next[0].count;
+        next[0].node[id]=GeometryNode.{left=left,right=right,first=a.first,leaves=a.leaves+b.leaves,triangles=a.triangles+b.triangles,height=1+a.height,
+          low=v3(lo(a.low.x,b.low.x),lo(a.low.y,b.low.y),lo(a.low.z,b.low.z)),high=v3(hi(a.high.x,b.high.x),hi(a.high.y,b.high.y),hi(a.high.z,b.high.z))};
+        next[0].node[left].parent=id;next[0].node[right].parent=id;next[0].count+=1;active[count]=id;
+      }count+=1;
+    }n=count;
+  }
+  next[0].root=active[0];out[0]=next[0];return true;
+}
+hierarchy_owner :: (h:[]GeometryHierarchy,leaf:int,level:int)->int {
+  if leaf<0 || leaf>=h[0].leaves || level<0 {return -1;}
+  id:=leaf;parent:=h[0].node[id].parent;
+  while parent!= -1 {
+    if h[0].node[parent].height>level {break;}
+    id=parent;parent=h[0].node[id].parent;
+  }return id;
+}

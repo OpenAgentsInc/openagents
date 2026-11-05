@@ -5,7 +5,8 @@
 #load "../../aethyr/ui/draw.coax";
 #load "../../aethyr/budget.coax";
 #load "../../verse/valley/rock.coax";
-#load "../../aethyr/render/geometry/clusters.coax";
+#load "../../aethyr/render/geometry/hierarchy.coax";
+#load "../../aethyr/render/geometry/fan.coax";
 
 VALLEY_VERTICES :: 65536;
 VALLEY_MESH :: 16384;
@@ -20,6 +21,7 @@ ValleyLab :: struct {
   mesh:[VALLEY_MESH*8]f32; mesh_n:int; draws:[4]u32;
   meter:[1]BudgetMeter;
   clusters:[1]Clusters;cluster_path:bool;
+  hierarchy:[1]GeometryHierarchy;level:int=1;fixture:int;
   candidate_rock:[1]Rock; // bounded admission scratch, counted in the frame arena
   rock:[1]Rock;registry:[1]AssetRegistry;rock_ready:bool;divisions:int=16;
   index:[VALLEY_INDICES]u32;index_n:int;
@@ -97,6 +99,42 @@ VALLEY_BOXES :: [19*6]f32.[
   }
   #assert valley_key(s[..],99,true) && !s[0].cluster_path && s[0].mode==0;
 }
+#test "Valley hierarchy cuts retain every rock triangle and fit each detail profile" #steps 2000000000 {
+  s:[1]ValleyLab;out:[VALLEY_VERTICES*12]f32;u:[88]f32;valley_start(s[..]);
+  #assert valley_key(s[..],104,true) && s[0].stage==2 && s[0].mode==6;
+  for detail:[3]int.[8,16,32] {
+    #assert valley_load_rock(s[..],detail);h:=s[0].hierarchy[..];
+    #assert h[0].count==s[0].clusters[0].count*2-1 && h[0].node[h[0].root].triangles==s[0].rock[0].indices/3;
+    for node,id:h[0].node[0..<h[0].count] {
+      if node.left>=0 {a:=h[0].node[node.left];b:=h[0].node[node.right];
+        #assert a.parent==id && b.parent==id && a.first+a.leaves==b.first && node.leaves==a.leaves+b.leaves;
+        #assert node.low.x<=a.low.x && node.low.x<=b.low.x && node.high.y>=a.high.y && node.high.y>=b.high.y;
+      }
+    }
+    previous:=h[0].leaves;
+    for level:0..<h[0].node[h[0].root].height+1 {s[0].level=level;triangles:=0;leaves:=0;groups:=0;
+      for k:0..<h[0].leaves {owner:=hierarchy_owner(h,k,level);node:=h[0].node[owner];
+        if k==node.first {triangles+=node.triangles;leaves+=node.leaves;groups+=1;}
+      }
+      #assert triangles==s[0].rock[0].indices/3 && leaves==h[0].leaves && groups<=previous;previous=groups;
+    }
+    _:=valley_frame(s[..],out[..],u[..],390,844,1,0,true);
+    #assert s[0].mesh_n==1728+s[0].clusters[0].vertices && s[0].index_n==1728+s[0].rock[0].indices && budget_ok(s[0].meter[0]);
+  }
+}
+#test "Valley simplification fixtures expose real counts errors and phone controls" #steps 1000000000 {
+  s:[1]ValleyLab;out:[VALLEY_VERTICES*12]f32;u:[88]f32;
+  valley_start(s[..]);#assert valley_key(s[..],104,true);#assert valley_key(s[..],102,true) && s[0].fixture==1 && s[0].level==0;
+  frame:=valley_frame(s[..],out[..],u[..],390,844,1,0,true);
+  #assert valley_probe(s[..],35)==4 && valley_probe(s[..],36)==0 && s[0].index_n==1740;
+  #assert valley_pointer(s[..],270,780,0,1,10) && s[0].level==1;
+  frame=valley_frame(s[..],out[..],u[..],390,844,1,0,true);
+  #assert valley_probe(s[..],35)==2 && valley_probe(s[..],36)==0 && s[0].index_n==1734;
+  #assert valley_pointer(s[..],100,720,0,1,11) && s[0].fixture==2 && s[0].level==0;
+  #assert valley_key(s[..],104,true);frame=valley_frame(s[..],out[..],u[..],1280,800,1,0,true);
+  #assert valley_probe(s[..],35)==2 && valley_probe(s[..],36)==750 && budget_ok(s[0].meter[0]);
+  #assert valley_key(s[..],104,true) && s[0].level==0 && valley_probe(s[..],35)==4 && valley_probe(s[..],36)==0;
+}
 #test "Valley walker moves, jumps, lands and releases input on blur" #steps 1000000000 {
   s:[1]ValleyLab;valley_start(s[..]);
   #assert valley_key(s[..],119,true);
@@ -149,8 +187,10 @@ valley_blur :: (s:[]ValleyLab) #export_c {
 valley_key :: (s:[]ValleyLab,key:int,down:bool)->bool #export_c {
   valley_start(s);bit:=0;
   if down && key>=49 && key<=51 {valley_station(s,key-49);return true;}
+  if down && (key==104 || key==72) {valley_level(s);return true;}
+  if down && (key==102 || key==70) {valley_fixture(s);return true;}
   if down && (key==99 || key==67) {if s[0].stage==0 {valley_station(s,2);}s[0].cluster_path=!s[0].cluster_path;s[0].mode=ifx s[0].cluster_path then 5 else 0;return true;}
-  if down && (key==118 || key==86) {s[0].mode=(s[0].mode+1)%6;if s[0].mode==5 && s[0].stage==0 {valley_station(s,2);s[0].mode=5;}return true;}
+  if down && (key==118 || key==86) {s[0].mode=(s[0].mode+1)%7;if s[0].mode==5 && s[0].stage==0 {valley_station(s,2);s[0].mode=5;}return true;}
   if down && (key==108 || key==76) {#assert valley_load_rock(s,ifx s[0].divisions==8 then 16 else ifx s[0].divisions==16 then 32 else 8);return true;}
   if s[0].stage!=0 && bit==0 {
     if down && (key== -4 || key== -5) {s[0].orbit+=ifx key== -4 then 0.12f32 else -0.12f32;return true;}
@@ -177,10 +217,11 @@ valley_pointer :: (s:[]ValleyLab,x:f32,y:f32,phase:int,kind:int,id:int)->bool #e
       else if cy<70 && cx>s[0].width/s[0].d-100 {_:=valley_key(s,114,true);}
       return true;
     }
+    if s[0].stage!=0 && s[0].mode==6 && s[0].width/s[0].d<700 && y>=s[0].height-138*s[0].d && y<=s[0].height-98*s[0].d && x>=16*s[0].d && x<=s[0].width-16*s[0].d {valley_fixture(s);return true;}
     if s[0].stage!=0 && s[0].width/s[0].d<700 && y>=s[0].height-88*s[0].d && y<=s[0].height-44*s[0].d {
       cx:=x/s[0].d;w:=s[0].width/s[0].d;
-      if cx>=16 && cx<=w*0.5-16 {s[0].mode=(s[0].mode+1)%6;return true;}
-      if cx>=w*0.5+16 && cx<=w-16 {#assert valley_load_rock(s,ifx s[0].divisions==8 then 16 else ifx s[0].divisions==16 then 32 else 8);return true;}
+      if cx>=16 && cx<=w*0.5-16 {s[0].mode=(s[0].mode+1)%7;return true;}
+      if cx>=w*0.5+16 && cx<=w-16 {if s[0].mode==6 {valley_level(s);return true;}#assert valley_load_rock(s,ifx s[0].divisions==8 then 16 else ifx s[0].divisions==16 then 32 else 8);return true;}
     }
     if s[0].stage!=0 {s[0].drag=true;s[0].drag_id=id;s[0].drag_x=x;s[0].drag_y=y;return true;}
 
@@ -254,6 +295,10 @@ valley_frame :: (s:[]ValleyLab,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:
   }
   valley_rock_mesh(s,ifx s[0].stage==0 then -8.0f32 else 0.0f32);
   if s[0].stage!=0 && s[0].mode==3 {valley_bounds_mesh(s);}
+  if s[0].mode==6 {
+    if s[0].fixture==0 {node:=s[0].hierarchy[0].node[hierarchy_owner(s[0].hierarchy[..],0,s[0].level)];valley_box_bounds(s,node.low,node.high,v3(0.95,0.78,0.2));}
+    else {valley_box_bounds(s,v3(-2,1.2,-2),v3(2,1.2+(ifx s[0].fixture==2 then 0.75f32 else 0.0f32),2),v3(0.95,0.78,0.2));}
+  }
   s[0].draws=[4]u32.[0,cast(u32)s[0].index_n,0x80000000,1];
   pen:=HdPen.{d=d,top=0,bottom=h/d,cyan=false,sans=false};n:=0;
   n=hd_text(out,n,"VALLEY LAB",20,34,18,pen,0);
@@ -261,7 +306,7 @@ valley_frame :: (s:[]ValleyLab,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:
   n=hd_text(out,n,"RESET",w/d-84,36,12,pen,0);
   for tab:0..<3 {b:=HudBox.{x=16+cast(f32)tab*102,y=82,width=96,height=44};n=hd_panel(out,n,b,pen,s[0].stage==tab);n=hd_text_fit(out,n,[3]string.["1 WALK","2 ASSETS","3 MESH"][tab],b.x+7,109,11,82,pen,0);}
   if s[0].stage!=0 {n=valley_inspector(s,out,n,pen);}
-  if w/d>=700 {n=hd_text(out,n,ifx s[0].stage==0 then "WASD MOVE / SHIFT RUN / SPACE JUMP / 1-3 STATIONS" else "DRAG ORBIT / WHEEL ZOOM / V VIEW / L DETAIL / C CLUSTER PATH",20,h/d-22,11,pen,0);}
+  if w/d>=700 {n=hd_text(out,n,ifx s[0].stage==0 then "WASD MOVE / SHIFT RUN / SPACE JUMP / 1-3 STATIONS" else "DRAG ORBIT / V VIEW / L DETAIL / C PATH / H LEVEL / F FIXTURE",20,h/d-22,11,pen,0);}
   else {n=hd_text_fit(out,n,ifx s[0].stage==0 then "LEFT DRAG MOVE / RIGHT DRAG LOOK / TAP JUMP" else "DRAG ORBIT / TAP VIEW OR DETAIL",16,h/d-22,10,w/d-32,pen,0);}
   if s[0].thumbs.move_on {t:=s[0].thumbs;n=hd_ring(out,n,t.ox/d,t.oy/d,44,44,0,6.2831853,pen,2);n=hd_ring(out,n,t.ox/d+t.pad_x*44,t.oy/d-t.pad_y*44,12,12,0,6.2831853,pen,0);}
   s[0].meter[0]=budget_meter(VALLEY_BUDGET);budget_measure(s[0].meter[..],n+s[0].index_n,3,budget_arena_bytes(size_of(ValleyLab),VALLEY_VERTICES,12,88));
@@ -273,7 +318,11 @@ valley_probe :: (s:[]ValleyLab,field:int)->int #export_c {
   if field==4 {return s[0].keys;}if field==5 {return s[0].mesh_n;}
   if field==6 {return s[0].stage;}if field==7 {return s[0].mode;}if field==8 {return s[0].rock[0].indices/3;}
   if field==9 {return s[0].rock[0].vertices;}if field==10 {return s[0].rock[0].bytes;}
-  if field==14 {return s[0].clusters[0].count;}if field==15 {return s[0].clusters[0].vertices;}if field==16 {return ifx s[0].cluster_path || s[0].mode==5 then 1 else 0;}
+  if field==30 {return s[0].hierarchy[0].count;}if field==31 {return s[0].hierarchy[0].node[s[0].hierarchy[0].root].height;}
+  if field==32 {return s[0].level;}if field==33 {return valley_groups(s);}if field==34 {return s[0].fixture;}
+  if field==35 {if s[0].fixture==0 {return s[0].rock[0].indices/3;}patch:=valley_patch(s);return patch.indices/3;}
+  if field==36 {if s[0].fixture==0 {return 0;}patch:=valley_patch(s);return cast(int)(patch.error*1000);}
+  if field==14 {return s[0].clusters[0].count;}if field==15 {return s[0].clusters[0].vertices;}if field==16 {return ifx s[0].cluster_path || s[0].mode>=5 then 1 else 0;}
   if field==11 {return s[0].registry[0].held;}if field==12 {return s[0].index_n;}if field>=20 && field<28 {return cast(int)s[0].rock[0].id.words[field-20];}return s[0].divisions;
 }
 
@@ -282,32 +331,35 @@ valley_load_rock :: (s:[]ValleyLab,divisions:int)->bool {
   if s[0].rock_ready && s[0].divisions==divisions {return true;}
   next:=s[0].candidate_rock[..];if !rock_build(next,divisions,12609) {return false;}
   leaves:[1]Clusters;if !clusters_build(leaves[..],next[0].p[0..<next[0].vertices],next[0].i[0..<next[0].indices],CLUSTER_LEAVES) {return false;}
+  tree:[1]GeometryHierarchy;if !hierarchy_build(tree[..],leaves[0].leaf[0..<leaves[0].count],HIERARCHY_NODES) {return false;}
   if !s[0].rock_ready {s[0].registry[0]=asset_registry(ROCK_MAX_BYTES*2);}
   content:=[1]string.[cast(string)next[0].encoded[0..<next[0].bytes]];ids:=[1]AssetId.[next[0].id];
   if asset_admit(s[0].registry[..],content[..],ids[..])!=ASSET_OK {return false;}
   if s[0].rock_ready {_:=asset_release(s[0].registry[..],s[0].rock[0].id);}
-  s[0].clusters[0]=leaves[0];s[0].rock[0]=next[0];s[0].divisions=divisions;s[0].rock_ready=true;return true;
+  s[0].hierarchy[0]=tree[0];s[0].clusters[0]=leaves[0];s[0].rock[0]=next[0];s[0].divisions=divisions;s[0].rock_ready=true;return true;
 }
 valley_station :: (s:[]ValleyLab,stage:int) {
   valley_start(s);if stage<0 || stage>2 || stage==s[0].stage {return;}
   valley_blur(s);s[0].stage=stage;s[0].orbit=0.65;s[0].tilt=0.28;s[0].distance=9;
-  s[0].cluster_path=false;s[0].mode=ifx stage==2 then 3 else 0;
+  s[0].fixture=0;s[0].cluster_path=false;s[0].mode=ifx stage==2 then 3 else 0;
   name:=[3]string.["walk","assets","geometry"][stage];
   for c,k:name {s[0].outbox[k]=c;}s[0].out_n=name.count;s[0].action=3;
 }
 valley_hash :: (s:[]ValleyLab,n:int) #export_c {
   if n<0 || n>s[0].inbox.count {return;}h:=cast(string)s[0].inbox[0..<n];
-  if h=="walk" {valley_station(s,0);}if h=="assets" {valley_station(s,1);}if h=="geometry" {valley_station(s,2);}if h=="clusters" {valley_station(s,2);s[0].mode=5;s[0].cluster_path=true;}
+  if h=="walk" {valley_station(s,0);}if h=="assets" {valley_station(s,1);}if h=="geometry" {valley_station(s,2);}if h=="clusters" {valley_station(s,2);s[0].mode=5;s[0].cluster_path=true;}if h=="hierarchy" {valley_station(s,2);s[0].mode=6;s[0].fixture=0;s[0].level=1;s[0].cluster_path=true;}
 }
 valley_rock_mesh :: (s:[]ValleyLab,x:f32) {
-  if s[0].cluster_path || s[0].mode==5 {
+  if s[0].mode==6 && s[0].fixture!=0 {valley_fan_mesh(s);return;}
+  if s[0].cluster_path || s[0].mode>=5 {
     r:=s[0].rock[..];
     for a,id:s[0].clusters[0].leaf[0..<s[0].clusters[0].count] {
       base:=s[0].mesh_n;first:=s[0].index_n;
-      colour:=v3(0.2+cast(f32)((id*37+11)%89)/120,0.2+cast(f32)((id*53+31)%83)/115,0.2+cast(f32)((id*71+7)%79)/110);
+      group:=ifx s[0].mode==6 then hierarchy_owner(s[0].hierarchy[..],id,s[0].level) else id;
+      colour:=v3(0.2+cast(f32)((group*37+11)%89)/120,0.2+cast(f32)((group*53+31)%83)/115,0.2+cast(f32)((group*71+7)%79)/110);
       for k:0..<a.vertices {
         source:=cast(int)a.source[k];p:=r[0].p[source];
-        c:=ifx s[0].mode==5 then colour else rock_colour(r[0].n[source],s[0].mode,p.y);
+        c:=ifx s[0].mode>=5 then colour else rock_colour(r[0].n[source],s[0].mode,p.y);
         valley_vertex(s,add(p,v3(x,0,0)),c);s[0].mesh[(s[0].mesh_n-1)*8+7]=0;
       }
       s[0].index_n=first;
@@ -324,7 +376,9 @@ valley_rock_mesh :: (s:[]ValleyLab,x:f32) {
   for k:0..<r[0].indices {#assert s[0].index_n<VALLEY_INDICES;s[0].index[s[0].index_n]=cast(u32)start+r[0].i[k];s[0].index_n+=1;}
 }
 valley_bounds_mesh :: (s:[]ValleyLab) {
-  a:=s[0].rock[0].measured.low;b:=s[0].rock[0].measured.high;c:=v3(0.18,0.72,0.66);
+  valley_box_bounds(s,s[0].rock[0].measured.low,s[0].rock[0].measured.high,v3(0.18,0.72,0.66));
+}
+valley_box_bounds :: (s:[]ValleyLab,a:Point,b:Point,c:Point) {
   for i:0..<8 {p:=v3(ifx (i&1)==0 then a.x else b.x,ifx (i&2)==0 then a.y else b.y,ifx (i&4)==0 then a.z else b.z);
     if (i&1)==0 {valley_box(s,(a.x+b.x)*0.5,p.y-0.0125,p.z,(b.x-a.x)*0.5,0.025,0.0125,c);}
     if (i&2)==0 {valley_box(s,p.x,a.y,p.z,0.0125,b.y-a.y,0.0125,c);}
@@ -339,6 +393,7 @@ valley_number :: (out:[]f32,n:int,label:string,value:int,x:f32,y:f32,pen:HdPen)-
   return hd_text(out,n,cast(string)text[0..<at],x,y,11,pen,0);
 }
 valley_inspector :: (s:[]ValleyLab,out:[]f32,n:int,pen:HdPen)->int {
+  if s[0].mode==6 {return valley_hierarchy_panel(s,out,n,pen);}
   width:=s[0].width/s[0].d;height:=s[0].height/s[0].d;y:=ifx width<700 then height-310 else 160.0f32;at:=n;
   r:=s[0].rock[..];at=hd_text_fit(out,at,"ORIGINAL SANDSTONE / APACHE-2.0",20,y,11,width-40,pen,0);
   at=valley_number(out,at,"VERTICES ",r[0].vertices,20,y+22,pen);
@@ -361,5 +416,47 @@ valley_inspector :: (s:[]ValleyLab,out:[]f32,n:int,pen:HdPen)->int {
     for k:0..<2 {b:=HudBox.{x=16+cast(f32)k*(width*0.5),y=height-88,width=width*0.5-32,height=44};
       at=hd_panel(out,at,b,pen,false);at=hd_text_fit(out,at,ifx k==0 then "V / VIEW" else "L / DETAIL",b.x+8,b.y+28,11,b.width-16,pen,0);}
   }else {at=hd_text(out,at,"FULL DETAIL / NO LOD",20,y+244,11,pen,1);}
+  return at;
+}
+
+// Height-limited ownership forms a nonoverlapping frontier, including odd tails.
+valley_groups :: (s:[]ValleyLab)->int {
+  if s[0].fixture!=0 {return 1;}count:=0;
+  for k:0..<s[0].hierarchy[0].leaves {id:=hierarchy_owner(s[0].hierarchy[..],k,s[0].level);if s[0].hierarchy[0].node[id].first==k {count+=1;}}
+  return count;
+}
+valley_level :: (s:[]ValleyLab) {
+  if s[0].mode!=6 {valley_station(s,2);s[0].mode=6;s[0].cluster_path=true;s[0].level=1;return;}
+  ceiling:=ifx s[0].fixture==0 then s[0].hierarchy[0].node[s[0].hierarchy[0].root].height else 1;
+  s[0].level=(s[0].level+1)%(ceiling+1);
+}
+valley_fixture :: (s:[]ValleyLab) {
+  if s[0].mode!=6 {valley_level(s);}s[0].fixture=(s[0].fixture+1)%3;s[0].level=0;
+}
+valley_patch :: (s:[]ValleyLab)->FanPatch {return fan_patch(ifx s[0].fixture==2 then 0.75f32 else 0.0f32,s[0].level>0);}
+valley_fan_mesh :: (s:[]ValleyLab) {
+  patch:=valley_patch(s);
+  for triangle:0..<patch.indices/3 {
+    a:=patch.p[cast(int)patch.i[triangle*3]];b:=patch.p[cast(int)patch.i[triangle*3+1]];c:=patch.p[cast(int)patch.i[triangle*3+2]];
+    normal:=unit_or(cross(sub(b,a),sub(c,a)),v3(0,1,0));shade:=0.45+0.55*hi(0,dot(normal,v3(-0.48,0.8,-0.36)));
+    colour:=times(ifx s[0].level==0 then v3(0.3,0.68,0.85) else v3(0.9,0.48,0.25),shade);
+    for corner:0..<3 {valley_vertex(s,add(patch.p[cast(int)patch.i[triangle*3+corner]],v3(0,1.2,0)),colour);}
+  }
+}
+valley_hierarchy_panel :: (s:[]ValleyLab,out:[]f32,n:int,pen:HdPen)->int {
+  w:=s[0].width/s[0].d;h:=s[0].height/s[0].d;y:=ifx w<700 then h-310 else 160.0f32;at:=n;
+  at=hd_text(out,at,[3]string.["HIERARCHY / ORIGINAL ROCK","FIXTURE / PLANAR FAN","FIXTURE / BENT FAN"][s[0].fixture],20,y,11,pen,0);
+  at=valley_number(out,at,"LEVEL ",s[0].level,20,y+22,pen);
+  at=valley_number(out,at,"GROUPS ",valley_groups(s),190,y+22,pen);
+  at=valley_number(out,at,"SOURCE TRIANGLES ",ifx s[0].fixture==0 then s[0].rock[0].indices/3 else 4,20,y+44,pen);
+  at=valley_number(out,at,"DRAWN TRIANGLES ",valley_probe(s,35),20,y+66,pen);
+  at=valley_number(out,at,"SURFACE ERROR mm ",valley_probe(s,36),20,y+88,pen);
+  at=hd_text(out,at,ifx s[0].fixture==0 then "YELLOW / FIRST GROUP BOUNDS" else "YELLOW / ORIGINAL SOURCE BOUNDS",20,y+110,10,pen,1);
+  at=hd_text(out,at,ifx s[0].fixture==0 then "IDENTITY PARENTS / FULL DETAIL" else "4 BOUNDARY EDGES PRESERVED",20,y+132,10,pen,0);
+  at=hd_text(out,at,ifx s[0].fixture==0 then "NO ROCK SIMPLIFICATION YET" else "SQUARE FAN FAMILY / EXACT ERROR",20,y+154,10,pen,0);
+  if w<700 {
+    b:=HudBox.{x=16,y=h-138,width=w-32,height=40};at=hd_panel(out,at,b,pen,false);at=hd_text(out,at,"F / NEXT SOURCE",24,h-112,11,pen,0);
+    for k:0..<2 {b=HudBox.{x=16+cast(f32)k*(w*0.5),y=h-88,width=w*0.5-32,height=44};at=hd_panel(out,at,b,pen,false);at=hd_text(out,at,ifx k==0 then "V / VIEW" else "H / LEVEL",b.x+8,b.y+28,11,pen,0);}
+  }else {at=hd_text(out,at,"H / LEVEL   F / ROCK - PLANE - BENT",20,y+198,11,pen,0);}
   return at;
 }

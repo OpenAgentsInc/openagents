@@ -1,0 +1,10 @@
+coax: note[E0400]: compile-time steps: 78790452 of 100000000 used (78%), above three quarters of the limit; more than 100000000 fails with E0400
+  top users of compile-time steps:
+    58083646 steps  aethyr/render/geometry/clusters.coax:62:1  in 'clusters_build' (2 times)
+    7977984 steps  aethyr/points.coax:40:1  in 'lo' (1139712 times)
+    7977984 steps  aethyr/points.coax:41:1  in 'hi' (1139712 times)
+    4558854 steps  aethyr/points.coax:19:1  in 'v3' (759809 times)
+    191880 steps  aethyr/render/geometry/clusters.coax:54:1  #test 'clusters share repeated corners inside a triangle and retain the exact capacity ceiling' itself
+  fix: do less work in 'clusters_build', split the check, or give it a larger budget with a larger #steps N on the check
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+119 mutants, 119 killed, 0 survived
