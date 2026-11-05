@@ -104,7 +104,7 @@ if [[ -x "$coax" ]]; then
     rm "$out/render-assets.pending.json"
   fi
   cp "$face" "$web"/*-face.h "$web"/*-bridge.h "$web/face-address.h" ${faces_too[@]+"${faces_too[@]}"} "$out/"
-  cp "$here"/face.h "$here"/realm-host.h "$here"/realm-host.c "$here"/realm-run.c "$out/"
+  cp "$here"/face.h "$here"/realm-host.h "$here"/realm-host.c "$here"/audio-host.h "$here"/realm-run.c "$out/"
   units="$(cd "$out" && ls ./*.c | grep -v -e face -e realm-host -e realm-run | xargs -n1 basename | tr '\n' ' ')"
   # C the face includes itself (the haunted house's realm-flight.c ...): beside it, not a unit
   for inc in $(grep -o '^#include "[^"]*\.c"' "$face" | cut -d'"' -f2); do cp "$web/$inc" "$out/"; done
