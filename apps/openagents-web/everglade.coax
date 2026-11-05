@@ -472,6 +472,7 @@ Everglade :: struct {
   rig: [1] Ranger; skin: [1] Skin; palette: [PALETTE_FLOATS] f32;
   // the city's people: how each lives, their poses, their rig, the pack's parts and who is shown
   folk: [EG_SPOTS] Folk; people_rig: [1] People;
+  rigs_loaded: bool;   // the two rigs' tables, loaded at the first pose (eg_ranger_rig, eg_people_rig)
   // each one shown's head this frame (for their name over it), and whether they were shown
   heads: [EG_SPOTS] Point; head_on: [EG_SPOTS] bool;
   // a pose for each one shown (a person keeps theirs while shown; one who comes into
@@ -671,9 +672,7 @@ everglade_start :: (s: [] Everglade) {
   s[0].map_finger = -1;
   s[0].near = -1; s[0].talk = -1; s[0].talk_finger = -1; s[0].near_boat = -1;
   s[0].focus = -1; s[0].pick = 0; s[0].thanks = -1; s[0].board_finger = -1; s[0].news = -1; s[0].talk_quest = -1;
-  ranger_load(s[0].rig[..]);
   s[0].skin[0] = Skin.{};
-  people_load(s[0].people_rig[..]);
   for i: 0..<EG_SPOTS { folk_start(s[0].folk[i..<i + 1], i); }
   for k: 0..<PEOPLE_SHOWN { s[0].poses[k] = Skin.{}; s[0].pose_of[k] = -1; }
   rangers_start(s[0].rangers[..]);
@@ -693,6 +692,18 @@ everglade_start :: (s: [] Everglade) {
   watch_page_start(s);
   sky_store(s);   // the sky each place sees, once the town and the woods stand (everglade-sky.coax)
 }
+
+// The rigs' clips (verse/everglade/ranger.coax, people-rig.coax), loaded at the first pose. Only drawing
+// poses anyone, so the room's Everglade, which draws nothing, carries none of their tables (about
+// 240 KB of the room worker's module, coax/web/room/worker.coax).
+eg_rigs_load :: (s: [] Everglade) {
+  if s[0].rigs_loaded { return; }
+  ranger_load(s[0].rig[..]);
+  people_load(s[0].people_rig[..]);
+  s[0].rigs_loaded = true;
+}
+eg_ranger_rig :: (s: [] Everglade) -> SkinRig { eg_rigs_load(s); return ranger_rig(s[0].rig[..]); }
+eg_people_rig :: (s: [] Everglade, female: bool) -> SkinRig { eg_rigs_load(s); return people_rig(s[0].people_rig[..], female); }
 
 // The player's walls (every solid, from the floor up) and the camera's
 // boxes (the palisade, the buildings and the props tall enough to hide
@@ -3010,7 +3021,7 @@ pose_person :: (s: [] Everglade, i: int, k: int, slot: int, dt: f32) {
   w := watch_look(i);
   rein := watch_is_rein(i);
   female := ifx spot then FOLK_FEMALE[i] else WATCH_FEMALE[w];
-  rig := people_rig(s[0].people_rig[..], female);
+  rig := eg_people_rig(s, female);
   at := RANGER_JOINTS * 12 + k * PERSON_ROWS * 4;
   sk := s[0].poses[slot..<slot + 1];
   pal := s[0].palette[at..<at + PEOPLE_JOINTS * 12];
@@ -3231,7 +3242,7 @@ wildlife :: (s: [] Everglade, you: Point, still: bool) {
 // On a still page (a golden, reduced motion), once it has settled into standing idle, it holds the
 // idle's first pose, so every shot of it is the same to the pixel however long the page ran first.
 figure :: (s: [] Everglade, u: [] f32, feet: Point, face: f32, speed: f32, airborne: bool, dt: f32, still: bool) {
-  rig := ranger_rig(s[0].rig[..]);
+  rig := eg_ranger_rig(s);
   dead := s[0].wv.started && watch_you(s[0].wt[..])[0].dead;
   // down: unconscious at 0 Hit Points (death saves) or knocked prone, as the rules have you (the room's
   // COND, everglade-status.coax): you drop onto your back and lie there until you are up again

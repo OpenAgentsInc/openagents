@@ -26,8 +26,8 @@ droprealm 180000
 everglade 1910000
 # /worlds/everglade (everglade5e.coax): 2,032,230 measured 2026-11-04 after #12887; about 5% room
 everglade5e 2140000
-# the room server's simulation for offline play's local host (coax/web/room/worker.coax, #12784): 1,191,635 measured; 1,206,472 after the WANTED ladder and the rules saves (45bcccd674, a1381c7131)
-everglade-room 1260000
+# the room server's simulation for offline play's local host (coax/web/room/worker.coax, #12784): 1,191,635 measured; 1,206,472 after the WANTED ladder and the rules saves (45bcccd674, a1381c7131); 1,257,728 after #12837; 1,002,703 once the rigs' clips load at the first pose (the room poses no one); about 5% room
+everglade-room 1060000
 fairy 660000
 fivelab 590000
 # loads everglade.coax, so carries its growth: 1,461,096 measured (c580b0be3f); 1,549,370 after the rooms' WANTED responders, incoming casts and downed bodies, Long Rest, status words, doors and talk (#12892)

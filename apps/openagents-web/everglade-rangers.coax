@@ -458,7 +458,7 @@ rangers_draw :: (s: [] Everglade, u: [] f32, you: Point, dt: f32, rs: [] RemoteB
     g[0].seat[b] = rs[pick[k]].seat; g[0].skin[b] = Skin.{}; g[0].owed[b] = 0; g[0].walk[b] = 0; g[0].gear[b] = Gear.{};
     g[0].shown[b] = ifx rs[pick[k]].away then f32(REMOTE_AWAY_SHOWN) else 1.0f32;
   }
-  rig := ranger_rig(s[0].rig[..]);
+  rig := eg_ranger_rig(s);
   nears := 0;   // bodies given the whole mesh so far
   for k: 0..<m {
     e := rs[pick[k]];

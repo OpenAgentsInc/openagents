@@ -404,7 +404,7 @@ rp_person_at :: (s: [] Everglade, q: int, npc: int, x: f32, z: f32, yaw: f32, sp
   shooter := npc == RP_VETERAN || npc == RP_SCOUT;
   look := ifx villager then RP_VILLAGER_LOOK[q%6] else (q - 1) % 6;   // a watch or villager look
   female := ifx villager then FOLK_FEMALE[look] else town && WATCH_FEMALE[clamp_i(look, 0, 5)];
-  rig := people_rig(s[0].people_rig[..], female);
+  rig := eg_people_rig(s, female);
   sk := s[0].rp.skins[q..<q + 1];
   sk[0].fade = 0.22;
   // the clip: the fall when dead (held at its end), else running, walking, casting, striking, still
@@ -690,7 +690,7 @@ rp_labels :: (s: [] Everglade, ls: [] Label, c: int, you: Point, k: f32) -> int 
 // phases round the clip's loop (1 all in step, near 0 spread evenly), and into gap the least gap
 // between two phases (0 to 0.5 of the loop).
 rp_test_bunched :: (g: [] Everglade, first: int, n: int, clip: int, gap: [] f32) -> f32 {
-  rig := people_rig(g[0].people_rig[..], false);
+  rig := eg_people_rig(g, false);
   cx: f32 = 0; cz: f32 = 0; least: f32 = 1;
   for a: first..<first + n {
     pa := g[0].rp.skins[a].time / rig.duration[clip];

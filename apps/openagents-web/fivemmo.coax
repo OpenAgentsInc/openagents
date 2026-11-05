@@ -273,7 +273,7 @@ face_target :: (m: [] Mmo, i: int, keep: f32) -> f32 {
 // drawn after the frame from where its hands are).
 pose_actor :: (s: [] Everglade, m: [] Mmo, i: int, dt: f32) {
   l := look_of(m[0].klass[i], i);
-  rig := people_rig(s[0].people_rig[..], l.female);
+  rig := eg_people_rig(s, l.female);
   at := RANGER_JOINTS * 12 + i * PERSON_ROWS * 4;
   sk := s[0].poses[i..<i + 1];
   if s[0].pose_of[i] != 1000 + i { s[0].poses[i] = Skin.{}; s[0].pose_of[i] = 1000 + i; }
