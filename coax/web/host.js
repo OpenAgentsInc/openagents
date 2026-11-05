@@ -220,6 +220,7 @@ import { localRoomSocket } from "./room-worker.js";
 import { startGpui } from "./gpui.js";
 import { startLoading, readBytes } from "./loader.js";
 import { makeHttpRequests } from "./http-requests.js";
+import { makeHostTransport } from "./host-transport.js";
 import { RenderHost } from "./render.js";
 
 const script = document.currentScript || document.querySelector("script[data-app]");
@@ -260,6 +261,7 @@ const probeDo = probe ? new URLSearchParams(location.search).get("do") || "" : "
 // Grown at load to whatever the app's module declares (importedMemoryPages).
 const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024 }); // 8 MiB, at most 64 MiB
 let engine = null;   // { exports, layout }
+let hostTransport = null, reconnectAfterEngine = false;
 let engineBytes = null;   // the running engine's wasm: a rescue save names it (rescueIdentity)
 let engineInstalling = false;
 let arena = null;    // { state, vertices, uniforms, floats, uniformFloats, maxVertices }
@@ -300,9 +302,17 @@ function invalidateScene() {
 }
 function beginEngine() {
   const generation = ++wanted;
-  httpRequests.reset();
+  if(hostTransport){reconnectAfterEngine ||= sockets.some(Boolean);retireTransport();}
+  else {
+    httpRequests.reset();
+    // A pinned/pre-contract face retains its existing live-swap semantics.
+    for(const ws of sockets)if(ws)ws.__coaxialEngine=generation;
+  }
   invalidateScene();
   return generation;
+}
+function retireTransport() {
+  httpRequests.reset();resetSockets();hostTransport?.reset();hostTransport=null;
 }
 const randomScratch = {}; // lazily reserved once, shared by synchronous engine calls
 
@@ -370,6 +380,8 @@ async function loadEngine(bytes, generation) {
   const x = instance.exports;
   random.bind(x);
   x._initialize?.();
+  hostTransport=makeHostTransport(x,memory);
+  if(hostTransport && sockets.some(Boolean)){reconnectAfterEngine=true;resetSockets();}
   if(frameTrace)x.coaxial_frame_parts?.(0,-1);
   const layout = x.coaxial_layout();
   const heapBase = x.__heap_base?.value ?? 0;
@@ -395,6 +407,7 @@ async function loadEngine(bytes, generation) {
   if (golden) x.coaxial_golden?.(1);
   x.coaxial_quality?.(arena.state, golden ? 0 : quality);
   engine = { exports: x, layout };
+  if(reconnectAfterEngine){reconnectAfterEngine=false;send(612,"1");}
   engineBytes = bytes;
   arena.stateSize = stateSize;
   rescueFrom(rescue, rescueId, layout, stateSize);   // a save this realm left when it stopped: put back once its world is in
@@ -461,6 +474,14 @@ const align = (n, a) => Math.ceil(n / a) * a;
 const SOCKETS = 4, SOCKET_KIND = 256;
 const SOCKET_OPENED = 0, SOCKET_FRAME = 1, SOCKET_CLOSED = 2, SOCKET_ERROR = 3;
 const sockets = new Array(SOCKETS).fill(null);
+function resetSockets() {
+  for(let id=0;id<sockets.length;id++){
+    const ws=sockets[id];sockets[id]=null;
+    if(ws){try{ws.close();}catch{}}
+  }
+  socketQueue.length=0;socketHead=0;
+  if(socketTimer){clearTimeout(socketTimer);socketTimer=0;}
+}
 const utf8 = (ptr, len) => new TextDecoder().decode(new Uint8Array(memory.buffer, ptr, len).slice());
 // Socket events wait in arrival order and reach the app inside the frame, a few milliseconds a frame
 // (a relay catching up sends thousands of signed events at once, and the app checks each one's
@@ -485,33 +506,44 @@ function drainSockets(budget = SOCKET_BUDGET_MS) {
     socketQueue[socketHead++] = null;
     if (sockets[id] !== ws) continue;   // the app closed it: what it sent after says nothing
     if (event === SOCKET_CLOSED) sockets[id] = null;
-    try { socketEvent(id, event, text); } catch (e) { say(`${app} socket: ${e.message}`, true); }
+    try { socketEvent(id, event, text, ws); } catch (e) { say(`${app} socket: ${e.message}`, true); }
     if (performance.now() - t0 > budget) break;
   }
   if (socketHead === socketQueue.length) { socketQueue.length = 0; socketHead = 0; }
   else if (socketHead > 4096) { socketQueue.splice(0, socketHead); socketHead = 0; }
 }
 // An event for socket id: its bytes go in the inbox, as typed text does.
-function socketEvent(id, event, text = "") {
-  if (waiting) { waiting.push(() => socketEvent(id, event, text));return; }
+function socketEvent(id, event, text = "", ws = null) {
+  if(ws && (ws.__coaxialEngine!==wanted || (sockets[id] && sockets[id]!==ws)))return;
+  if (waiting) { waiting.push(() => socketEvent(id, event, text, ws));return; }
   const x = engine?.exports;
   if (!x?.coaxial_message) return;
-  const bytes = new TextEncoder().encode(text);
-  if (bytes.length > x.coaxial_inbox_cap()) { socketEvent(id, SOCKET_ERROR, "frame over the inbox cap"); return; }
+  let bytes = new TextEncoder().encode(text);
+  let kind=SOCKET_KIND+4*id+event;
+  if(ws?.__coaxialPolicy){
+    const receipt=ws.__coaxialPolicy.socketEvent(ws.__coaxialOwner,event,bytes.length,x.coaxial_inbox_cap());
+    if(!receipt)return;
+    kind=receipt.kind;if(receipt.failure)bytes=new Uint8Array();
+  } else if (bytes.length > x.coaxial_inbox_cap()) { socketEvent(id, SOCKET_ERROR, "",ws); return; }
   new Uint8Array(memory.buffer, x.coaxial_inbox(arena.state), bytes.length).set(bytes);
-  x.coaxial_message(arena.state, SOCKET_KIND + 4 * id + event, bytes.length);
+  x.coaxial_message(arena.state, kind, bytes.length);
   after(false);
 }
 const socketImports = {
   coaxial_socket_open(ptr, len) {
-    const id = sockets.indexOf(null);
+    const policy=hostTransport,owner=policy?.socketReserve();
+    const id = policy ? owner?.id ?? -1 : sockets.indexOf(null);
     if (id < 0) return -1;
     let ws;
     // local:PATH is the room server's local host, a loopback over postMessage (room-worker.js, #12784)
     const url = utf8(ptr, len);
-    try { ws = url.startsWith("local:") ? localRoomSocket(url, script?.dataset.roomWasm || "/build/everglade-room.wasm") : new WebSocket(url); } catch { return -1; }
+    try {
+      if(policy && url.startsWith("local:") && !policy.localUri(url))throw Error("local route refused");
+      ws = url.startsWith("local:") ? localRoomSocket(url, script?.dataset.roomWasm || "/build/everglade-room.wasm") : new WebSocket(url);
+    } catch { if(owner)policy.socketClose(owner);return -1; }
+    ws.__coaxialPolicy=policy;ws.__coaxialOwner=owner;ws.__coaxialEngine=wanted;
     sockets[id] = ws;
-    const mine = () => sockets[id] === ws;   // a closed socket says nothing more
+    const mine = () => sockets[id] === ws && ws.__coaxialEngine===wanted;   // a closed socket says nothing more
     ws.onopen = () => mine() && socketQueued(ws, id, SOCKET_OPENED);
     ws.onmessage = (m) => mine() && typeof m.data === "string" && socketQueued(ws, id, SOCKET_FRAME, m.data);
     ws.onerror = () => mine() && socketQueued(ws, id, SOCKET_ERROR);
@@ -520,15 +552,16 @@ const socketImports = {
   },
   coaxial_socket_send(id, ptr, len) {
     const ws = sockets[id];
-    if (ws && ws.readyState === 1) ws.send(utf8(ptr, len));   // WebSocket.OPEN, or a local socket's
+    if (ws && ws.readyState === 1 && (!ws.__coaxialPolicy || ws.__coaxialPolicy.socketSend(ws.__coaxialOwner))) ws.send(utf8(ptr, len));   // WebSocket.OPEN, or a local socket's
   },
   coaxial_socket_close(id) {
     const ws = sockets[id];
     if (!ws) return;
+    if(ws.__coaxialPolicy && !ws.__coaxialPolicy.socketClose(ws.__coaxialOwner))return;
     sockets[id] = null;
     ws.close();
     // The app hears it a turn later, never inside its own call.
-    setTimeout(() => socketEvent(id, SOCKET_CLOSED));
+    setTimeout(() => socketEvent(id, SOCKET_CLOSED,"",ws));
   },
 };
 
@@ -541,7 +574,7 @@ function answer(id, text) {
   send(HTTP_KIND + id, bytes.length > x.coaxial_inbox_cap() ? text.slice(0, text.indexOf("\n") + 1) : text);
 }
 const httpRequests = makeHttpRequests({emit: answer, capacity: () => engine?.exports.coaxial_inbox_cap() ?? 0,
-  player, origin: location.origin, frame: () => frameJpeg(), sendBeacon: navigator.sendBeacon ? (url, body) => navigator.sendBeacon(url, body) : undefined});
+  policy:()=>hostTransport,player, origin: location.origin, frame: () => frameJpeg(), sendBeacon: navigator.sendBeacon ? (url, body) => navigator.sendBeacon(url, body) : undefined});
 function httpRequest(urlPtr, urlLen, bodyPtr, bodyLen, flags, timeoutMs) {
   return httpRequests.request(utf8(urlPtr, urlLen), bodyLen ? new Uint8Array(memory.buffer, bodyPtr, bodyLen) : null, flags, timeoutMs);
 }
@@ -1435,6 +1468,10 @@ function deliver(a) {
       const capacity = x.coaxial_asset_capacity?.(arena.state, a.i) ?? 0;
       if (x.coaxial_render_asset_span(at, capacity, a.bytes.length, memory.buffer.byteLength) !== 0) throw Error("Coax refused measured asset destination");
       new Uint8Array(memory.buffer, at, a.bytes.length).set(a.bytes);
+    } else if(x.coaxial_host_copy_span) {
+      const capacity=x.coaxial_asset_capacity?.(arena.state,a.i) ?? 0;
+      if(x.coaxial_host_copy_span(BigInt(at),BigInt(capacity),BigInt(a.bytes.length),BigInt(memory.buffer.byteLength)))new Uint8Array(memory.buffer,at,a.bytes.length).set(a.bytes);
+      else a.failed=true;
     } else if (at) new Uint8Array(memory.buffer, at, a.bytes.length).set(a.bytes);
   }
   x.coaxial_asset_ready?.(arena.state, a.i, a.failed ? 0 : a.size);
@@ -2440,7 +2477,7 @@ function trapped(e) {
   if (!engine) return;
   say(`${app} trapped: ${e.message}`, true);
   const again = restoredFrames >= 0 && restoredFrames < RESCUE_SETTLE;
-  engine = null;globalThis.coaxial.ready = false;
+  retireTransport();engine = null;globalThis.coaxial.ready = false;
   stopped(`THE WORLD STOPPED: ${e.message}`, again ? null : frameHeld?.slice() ?? null, again ? "START OVER" : "");
 }
 // The reload message: what stopped, and one action. With the state to save, the save goes first
@@ -2517,6 +2554,8 @@ globalThis.coaxial = { send, ready: false, sceneReady: false, facts: () => pageF
   fieldProbe: (field = 0) => engine?.exports.coaxial_field_probe?.(arena.state, field) ?? -1 };
 // Headless verification observes effects without exposing renderer policy.
 if (dev) {
+  globalThis.coaxial.hostProbe=(event,field)=>engine?.exports.coaxial_host_probe?.(arena.state,event,field)?.toString() ?? "";
+  globalThis.coaxial.hostReset=()=>engine?.exports.coaxial_host_reset?.(arena.state);
   globalThis.coaxial.hotbarProbe = (slot, field = 0) => engine?.exports.coaxial_hotbar_probe?.(arena.state, slot, field) ?? -1;
   // Read-only transport from the real Grid face for headless journeys.
   // The exported Coax procedures define every observed field.
@@ -2852,6 +2891,7 @@ async function fetchEngine(generation) {
   renderReload = install.catch(() => {});return install;
 }
 function stopEngine() {
+  retireTransport();
   engine = null;
   if (gpu) { gpu.bg = null;gpu.renderer?.destroy();gpu.renderer = null; }
   globalThis.coaxial.ready = false;globalThis.coaxial.sceneReady = false;

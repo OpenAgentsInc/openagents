@@ -1,0 +1,19 @@
+// Small host-ABI fixture only. Production graphics parity uses the real G5
+// sources, resources and complete admitted render plan, not this flat image.
+#load "../../../verse/gpu/shader.coax";
+HfvInput :: struct {a:V4;b:V4;c:V4;}
+HfvVarying :: struct {position:V4;}
+#test "host fixture fullscreen triangle and uniform colour have exact binary values" {
+  #assert hfv_bg_vs(0,0).x== -1 && hfv_bg_vs(0,0).y== -1;
+  #assert hfv_bg_vs(1,0).x==3 && hfv_bg_vs(1,0).y== -1;
+  #assert hfv_bg_vs(2,0).x== -1 && hfv_bg_vs(2,0).y==3;
+  u:[16]f32;u[0]=100;u[15]=115;c:=hfv_bg_fs(v4(0,0,0,1),u[..]);
+  #assert c.x==0.5 && c.y==0.5 && c.z==0.25 && c.w==1;
+}
+hfv_bg_vs :: (vertex:u32,instance:u32)->V4 {
+  x:=ifx vertex==1 then 3.0f32 else -1.0f32;y:=ifx vertex==2 then 3.0f32 else -1.0f32;
+  return v4(x,y,0,1);
+}
+hfv_bg_fs :: (position:V4,u:[]f32)->V4 {return v4((u[0]-36)*0.0078125,(u[15]-51)*0.0078125,0.25,1);}
+hfv_fx_vs :: (vertex:u32,instance:u32,input:HfvInput)->HfvVarying {return HfvVarying.{position=v4(3,3,0,1)};}
+hfv_fx_fs :: (v:HfvVarying)->V4 {return v4(0,0,0,0);}

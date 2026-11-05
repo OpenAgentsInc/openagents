@@ -1,6 +1,7 @@
 // Scalar browser transport for the admitted Coax renderer. Input storage is
 // statically owned; C projects typed receipts and performs no render policy.
 #include "Render.h"
+#include "host-transport-face.c"
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>

@@ -1,5 +1,29 @@
 # Invariants
 
+## Host transport keeps concrete asynchronous owners across every effect
+
+`aethyr/host/transport.coax` owns the four socket and eight response-bearing
+HTTP slots for host contract v1. A callback carries its reserved slot,
+generation and engine epoch; a reused slot cannot inherit an older callback.
+Local close invalidates before returning and its deferred close is delivered
+once only while that owner remains unreplaced. HTTP releases before callback;
+cancellation and engine retirement are silent. A response overflow poisons
+the complete request, never publishes a successful prefix, and bounded
+failure is exactly `0\n`. Deadline and whole-response capacity include the
+status line. Generations and epochs retire rather than wrap.
+
+`routes.coax` admits canonical root-relative HTTP paths and the exact
+development native-local URI/IPv4-loopback origin; SDK normalization must
+still preserve the site's actual origin. `buffers.coax` admits the complete
+measured allocation before copying. The shared renderer carrier loads these
+authorities; C/JavaScript project scalars and execute platform effects. Their
+root gates at `3f1396f5a2` kill 292, 59 and 9 mutants, with zero survivors and
+no equivalents. The written boundary and initial browser observations are
+in `aethyr/host/README.md` and
+`docs/verification/host-contract-2026-11-05/`. Native adapters, production
+GPU/lifecycle and rendered audio retain their separate conformance exits;
+the desktop default stays web until the complete Metal/three-host gates pass.
+
 ## The indexed KV arena preserves the durable v1 contract
 
 `coax/lib/bitcoin/kvskip.coax` is an optional native representation behind

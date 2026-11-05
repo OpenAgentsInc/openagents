@@ -6,6 +6,7 @@ export function makeHttpRequests({
   capacity = () => 65536, player = () => null, sendBeacon,
   origin = globalThis.location?.origin, frame = async () => null,
   setTimer = (fn, ms) => setTimeout(fn, ms), clearTimer = id => clearTimeout(id),
+  policy = () => null, now = () => Math.floor(performance.now()),
 } = {}) {
   const slots = new Array(8).fill(null);
   let generation = 0;
@@ -16,6 +17,12 @@ export function makeHttpRequests({
   }
   function finish(r, text, abort = false) {
     if (!owns(r)) return;
+    if (r.policy) {
+      if (!abort && !r.counted && !r.policy.httpChunk(r.owner,new TextEncoder().encode(text).length)) abort=true;
+      const receipt=r.policy.httpFinish(r.owner,now(),!abort,true);
+      if (!receipt) { release(r);return; }
+      if (receipt.failure) { text='0\n';abort=true; }
+    }
     // Release before calling back: a Coax callback may issue its next request.
     release(r);
     try { emit(r.id, text); }
@@ -23,6 +30,10 @@ export function makeHttpRequests({
   }
   async function boundedBody(r, response) {
     const header = `${response.status}\n`;
+    if (r.policy) {
+      if (!r.policy.httpChunk(r.owner,new TextEncoder().encode(header).length)) throw Error('response header exceeds inbox');
+      r.counted=true;
+    }
     const limit = r.capacity - new TextEncoder().encode(header).length;
     if (limit < 0) throw Error('response header exceeds inbox');
     if (!response.body) return header;
@@ -38,6 +49,7 @@ export function makeHttpRequests({
           await reader.cancel();
           throw Error('response exceeds inbox');
         }
+        if (r.policy && !r.policy.httpChunk(r.owner,chunk.value.byteLength)) { await reader.cancel();throw Error('Coax refused response extent'); }
         total += chunk.value.byteLength;
         chunks.push(chunk.value);
       }
@@ -51,6 +63,8 @@ export function makeHttpRequests({
   }
   function request(url, input, flags, timeoutMs) {
     if (typeof url !== 'string' || !url.startsWith('/') || url.startsWith('//')) return -1;
+    const shared=policy();
+    if (shared && !shared.httpPath(url)) return -1;
     // Backslashes and controls can normalize an apparent relative path into a
     // different origin. Credentials and explicit auth headers stay same-origin.
     try { if (origin && new URL(url, origin).origin !== origin) return -1; }
@@ -70,13 +84,14 @@ export function makeHttpRequests({
       body = body.slice(nl + 1);
     }
     if ((flags & 2) && sendBeacon?.(url, new Blob([body || ''], {type: 'application/json'}))) return 0;
-    const id = wanted ? slots.indexOf(null) : 0;
+    const owner=wanted?shared?.httpReserve(flags,bounded,bounded?timeoutMs:0,now(),cap):null;
+    const id = wanted ? (shared ? owner?.id ?? -1 : slots.indexOf(null)) : 0;
     if (id < 0) return -1;
     const headers = post ? {'Content-Type': 'application/json'} : {};
     const who = flags & 8 ? player() : null;
     if (who) headers['X-Verse-Player'] = who.key;
     if (auth) headers.Authorization = auth;
-    const r = wanted ? {id, generation, controller: new AbortController(), timer: null, capacity: cap} : null;
+    const r = wanted ? {id, generation, controller: new AbortController(), timer: null, capacity: cap, policy:shared,owner,counted:false} : null;
     if (r) {
       slots[id] = r;
       if (bounded) r.timer = setTimer(() => finish(r, '0\n', true), timeoutMs);
@@ -106,6 +121,7 @@ export function makeHttpRequests({
   function cancel(id) {
     if (!Number.isInteger(id) || id < 0 || id >= slots.length || !slots[id]) return 0;
     const r = slots[id];
+    r.policy?.httpCancel(id);
     release(r);
     r.controller.abort();
     return 1;
@@ -115,6 +131,7 @@ export function makeHttpRequests({
     const old = slots.slice();
     slots.fill(null);
     for (const r of old) if (r) {
+      r.policy?.httpCancel(r.id);
       if (r.timer !== null) clearTimer(r.timer);
       r.controller.abort();
     }

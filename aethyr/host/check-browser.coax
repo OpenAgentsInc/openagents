@@ -1,0 +1,89 @@
+// The actual host.js, a real Coax fixture realm and real WebGPU. No visible
+// browser, room/model service, owner clipboard or speaker is used.
+// Prepared directory contains fixture.wasm and fixture.wgsl.
+#load "../../coax/web/wasm-chrome.coax";
+#load "../../coax/lib/crypto/sha256-kernel.coax";
+cb_expect :: (c:[]Cdp,expr:string)->bool {
+  if wc_eval(c,expr)=="true" {return true;}
+  tool_err("browser host differs for ");tool_errln(expr);tool_errln(cdp_error(c));return false;
+}
+cb_spawn :: (argv:[]string)->int {p:=proc_new();if p<0{return -1;}for a:argv {if !proc_arg(p,a){_:=proc_release(p);return -1;}}if proc_start(p)!=0{_:=proc_release(p);return -1;}return p;}
+cb_text :: (c:[]Cdp,expr:string,out:[]u8)->int {n:=cdp_evaluate(c,expr);return ifx n<0 then -1 else jv_str(cdp_doc(c),n,out);}
+cb_copy :: (src:string,dst:string)->bool {b:[16777216]u8;n:=fs_read(src,b[..]);return n>=0 && fs_write(dst,cast(string)b[0..<n]);}
+cb_wait :: (c:[]Cdp,expr:string)->bool {deadline:=proc_now_ms()+5000;while proc_now_ms()<deadline {if wc_eval(c,expr)=="true" {return true;}proc_sleep(25);}return cb_expect(c,expr);}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {tool_errln("usage: check-browser PREPARED_DIRECTORY");return 2;}
+  paths:[10][4096]u8;dir:=fs_realpath(args_at(a[..],0),paths[0][..]);root:=fs_realpath(".",paths[1][..]);site:=fs_join(dir,"browser-site",paths[2][..]);
+  if dir=="" || root=="" || !fs_mkdir(site) {return 1;}
+  for file:[2]string.["fixture.wasm","fixture.wgsl"] {if !cb_copy(fs_join(dir,file,paths[3][..]),fs_join(site,file,paths[4][..])){return 1;}}
+  big:[65]u8;for i:0..<65 {big[i]='z';}
+  page:="<!doctype html><meta charset=utf-8><style>html,body{margin:0;width:160px;height:90px;overflow:hidden}canvas{display:block;width:160px;height:90px;touch-action:none}</style><canvas id=coaxial></canvas><script>globalThis.coaxialClip=true</script><script type=module src=/coaxial/host.js data-app=host-contract data-wasm=/fixture.wasm data-wgsl=/fixture.wgsl data-assets='data:/asset.bin data:/too-big.bin'></script>";
+  if !fs_write(fs_join(site,"index.html",paths[3][..]),page) || !fs_write(fs_join(site,"asset.bin",paths[3][..]),"ABCD") || !fs_write(fs_join(site,"too-big.bin",paths[3][..]),cast(string)big[..]) {return 1;}
+  host:=fs_join(root,"coax/web",paths[3][..]);
+  network:=[3]string.["coax/web/tool.sh","aethyr/host/tests/network.coax","9170"];
+  np:=cb_spawn(network[..]);if np<0 {return 1;}defer {killed:=proc_kill(np,PROC_SIGTERM);waited:=proc_wait(np,2000);released:=proc_release(np);}
+  argv:=[11]string.["coax/web/serve.sh",site,"--host-dir",host,"--listen","127.0.0.1:9169","--static","--cache","0","--api","9170"];
+  p:=cb_spawn(argv[..]);if p<0{return 1;}defer {killed:=proc_kill(p,PROC_SIGTERM);waited:=proc_wait(p,2000);released:=proc_release(p);}
+  waiting:[1]Cdp;body:[4096]u8;server_deadline:=proc_now_ms()+10000;listening:=false;
+  while proc_now_ms()<server_deadline {if cdp_get(waiting[..],9169,"/",body[..])>0 && cdp_get(waiting[..],9170,"/health",body[..])>0 {listening=true;break;}proc_sleep(100);}
+  if !listening {tool_errln(proc_stderr(p,body[..]));return 1;}
+  c:[1]Cdp;if !cdp_launch(c[..],160,90,"coax-host-contract-"){tool_errln(cdp_error(c[..]));return 1;}defer {cdp_close(c[..]);}
+  metrics:=cdp_call(c[..],"Emulation.setDeviceMetricsOverride","{\"width\":160,\"height\":90,\"deviceScaleFactor\":2,\"mobile\":false}",CDP_CALL_MS);
+  navigate:=cdp_call(c[..],"Page.navigate","{\"url\":\"http://127.0.0.1:9169/?probe&probe-manual\"}",CDP_CALL_MS);
+  deadline:=proc_now_ms()+30000;ready:=false;
+  while proc_now_ms()<deadline {
+    if wc_eval(c[..],"!!globalThis.coaxial?.ready && typeof coaxial.hostProbe==='function' && Array.from({length:Number(coaxial.hostProbe(-1,2))},(_,i)=>Number(coaxial.hostProbe(i,0))).filter(k=>k===7).length===2")=="true" {ready=true;break;}
+    proc_sleep(100);
+  }
+  if !ready {tool_errln("browser fixture did not become ready");tool_errln(wc_eval(c[..],"document.body.innerText"));return 1;}
+  probes:=[12]string.[
+    "coaxial.hostProbe(-1,0)==='1' && coaxial.hostProbe(-1,1)==='73' && coaxial.hostProbe(-1,3)==='0'",
+    "globalThis.rows=()=>Array.from({length:Number(coaxial.hostProbe(-1,2))},(_,i)=>Array.from({length:8},(_,f)=>Number(coaxial.hostProbe(i,f))));rows().some(r=>r[0]===7&&r[1]===0&&r[2]===4&&r[6]===4&&r[7]===3541452541) && rows().some(r=>r[0]===7&&r[1]===1&&r[2]===0&&r[6]===0)",
+    "(async()=>{globalThis.assetRows=rows();coaxial.hostReset();coaxial.captureFrame();await coaxialClipStep(2,64);globalThis.frameRows=rows();return frameRows.length===2 && frameRows.every(r=>r[0]===1)})()",
+    "globalThis.bits=n=>new Uint32Array(new Float32Array([n]).buffer)[0];frameRows[0][1]===bits(320) && frameRows[0][2]===bits(180) && frameRows[0][3]===bits(2) && frameRows[0][4]===0 && frameRows[1][4]===bits(1/64) && frameRows.every(r=>r[5]===1)",
+    "coaxial.hostReset();dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowUp',shiftKey:true,ctrlKey:true,altKey:true,metaKey:true}));dispatchEvent(new KeyboardEvent('keyup',{key:'ArrowUp',shiftKey:true,ctrlKey:true,altKey:true,metaKey:true}));dispatchEvent(new KeyboardEvent('keydown',{key:'🙂'}));dispatchEvent(new Event('blur'));rows()[0][1]===-6 && rows()[0][2]===15 && rows()[0][3]===1 && rows()[1][3]===0 && rows()[2][1]===128578 && rows()[3][0]===5 && rows()[3][1]===1 && coaxial.hostProbe(-1,5)==='0'",
+    "document.getElementById('coaxial').dispatchEvent(new WheelEvent('wheel',{deltaY:2,deltaMode:1,cancelable:true}));rows().some(r=>r[0]===6&&r[1]===bits(32))",
+    "for(const t of ['pointerdown','pointerup'])dispatchEvent(new PointerEvent(t,{clientX:12.5,clientY:34.25,pointerType:'mouse',pointerId:17}));rows().filter(r=>r[0]===3).every(r=>r[1]===bits(25)&&r[2]===bits(68.5)&&r[4]===0&&r[5]===17) && rows().filter(r=>r[0]===3).map(r=>r[3]).join(',')==='0,2'",
+    "dispatchEvent(new PointerEvent('pointerdown',{clientX:7,clientY:9,pointerType:'touch',pointerId:19}));dispatchEvent(new PointerEvent('pointercancel',{clientX:0,clientY:0,pointerType:'touch',pointerId:19}));dispatchEvent(new PointerEvent('pointerdown',{clientX:7,clientY:9,pointerType:'mouse',pointerId:20}));rows().filter(r=>r[0]===3).length===4 && rows().filter(r=>r[0]===3&&r[5]===19).every(r=>r[1]===bits(14)&&r[2]===bits(18)&&r[4]===1) && rows().filter(r=>r[0]===3&&r[5]===19)[1][3]===2",
+    "coaxial.send(901,'Aé🙂');rows().some(r=>r[0]===4&&r[1]===901&&r[6]===7&&r[7]===2634860734)",
+    "coaxial.send(901,'x'.repeat(129));rows().some(r=>r[0]===4&&r[1]===901&&r[6]===128&&r[7]===794728389)",
+    "coaxial.send(900,'hash');location.hash==='#host-contract-v1' && rows().filter(r=>r[0]===8&&r[1]===3).length===1",
+    "coaxial.hostProbe(-1,3)==='0'"
+  ];
+  for probe:probes {if !cb_expect(c[..],probe){return 1;}}
+  while proc_now_ms()<deadline && wc_eval(c[..],"!!coaxial.renderCapture")!="true" {proc_sleep(50);}
+  out:[2097152]u8;n:=cb_text(c[..],"JSON.stringify(coaxial.renderCapture)",out[..]);
+  if n<0 || !fs_write(fs_join(dir,"browser-readback.json",paths[4][..]),cast(string)out[0..<n]) {return 1;}
+  if !cb_expect(c[..],"globalThis.C=coaxial.renderCapture;C.width===320&&C.height===180&&C.bytes.length===320*180*4&&C.bytes.every((v,i)=>v===(i%4===3?255:i%4===((C.format==='bgra8unorm')?0:2)?64:128))") {tool_errln(wc_eval(c[..],"JSON.stringify({width:C.width,height:C.height,format:C.format,first:C.bytes.slice(0,16),last:C.bytes.slice(-16)})"));return 1;}
+  n=cb_text(c[..],"JSON.stringify({schema:'aethyr.host.observations.v1',host:'web',scope:'core',assets:assetRows,frames:frameRows,events:rows(),readback:{width:C.width,height:C.height,format:C.format,sha256:C.sha256}})",out[..]);
+  if n<0 || !fs_write(fs_join(dir,"browser-core.json",paths[4][..]),cast(string)out[0..<n]) {return 1;}
+  if !cb_expect(c[..],"coaxial.hostReset();for(let i=0;i<5;i++)coaxial.send(910,'ws://127.0.0.1:9170/echo');rows().filter(r=>r[0]===9&&r[1]===1).map(r=>r[2]).join(',')==='0,1,2,3,-1'") {return 1;}
+  if !cb_wait(c[..],"[256,260,264,268].every(k=>rows().some(r=>r[0]===4&&r[1]===k&&r[6]===0))") {return 1;}
+  if !cb_expect(c[..],"globalThis.orderOK=[0,1,2,3].every(id=>rows().findIndex(r=>r[0]===9&&r[1]===1&&r[2]===id)<rows().findIndex(r=>r[0]===4&&r[1]===256+4*id));coaxial.send(911,'0 Aé🙂');coaxial.send(911,'1 ');coaxial.send(911,'2 first');coaxial.send(911,'2 second');orderOK") {return 1;}
+  if !cb_wait(c[..],"rows().some(r=>r[0]===4&&r[1]===257&&r[6]===7&&r[7]===2634860734)&&rows().some(r=>r[0]===4&&r[1]===261&&r[6]===0)&&rows().filter(r=>r[0]===4&&r[1]===265).map(r=>r[6]).join(',')==='5,6'") {return 1;}
+  if !cb_expect(c[..],"coaxial.send(911,'0 large');true") || !cb_wait(c[..],"rows().some(r=>r[0]===4&&r[1]===259)&&!rows().some(r=>r[0]===4&&r[1]===257&&r[6]>7)") {return 1;}
+  if !cb_expect(c[..],"globalThis.beforeBinary=rows().filter(r=>r[0]===4&&r[1]===257).length;coaxial.send(911,'0 binary');true") {return 1;}
+  proc_sleep(250);if !cb_expect(c[..],"rows().filter(r=>r[0]===4&&r[1]===257).length===beforeBinary") {return 1;}
+  if !cb_expect(c[..],"coaxial.send(912,'1');coaxial.send(910,'ws://127.0.0.1:9170/echo');rows().filter(r=>r[0]===9&&r[1]===1).at(-1)[2]===1") {return 1;}
+  if !cb_wait(c[..],"rows().filter(r=>r[0]===4&&r[1]===260).length===2") || !cb_expect(c[..],"!rows().some(r=>r[0]===4&&r[1]===262)") {return 1;}
+  if !cb_expect(c[..],"coaxial.send(920,'/api/host-contract/ok');rows().filter(r=>r[0]===9&&r[1]===4).at(-1)[2]===0") || !cb_wait(c[..],"rows().some(r=>r[0]===4&&r[1]===512&&r[6]===11&&r[7]===2124975662)") {return 1;}
+  if !cb_expect(c[..],"coaxial.send(920,'/api/host-contract/large');true") || !cb_wait(c[..],"rows().some(r=>r[0]===4&&r[1]===512&&r[6]===2&&r[7]===669875135)") {return 1;}
+  if !cb_expect(c[..],"coaxial.send(920,'/api/host-contract/invalid');true") || !cb_wait(c[..],"rows().filter(r=>r[0]===4&&r[1]===512&&r[6]===2&&r[7]===669875135).length===2") {return 1;}
+  if !cb_expect(c[..],"globalThis.beforeCancel=rows().filter(r=>r[0]===4&&r[1]===512).length;coaxial.send(920,'/api/host-contract/slow');coaxial.send(921,'0');coaxial.send(920,'/api/host-contract/ok');rows().some(r=>r[0]===9&&r[1]===5&&r[2]===1)") {return 1;}
+  if !cb_wait(c[..],"rows().filter(r=>r[0]===4&&r[1]===512).length===beforeCancel+1") {return 1;}
+  proc_sleep(350);if !cb_expect(c[..],"rows().filter(r=>r[0]===4&&r[1]===512).length===beforeCancel+1") {return 1;}
+  if !cb_expect(c[..],"globalThis.beforeBatch=rows().length;for(let i=0;i<9;i++)coaxial.send(920,'/api/host-contract/batch');rows().slice(beforeBatch).filter(r=>r[0]===9&&r[1]===4).map(r=>r[2]).join(',')==='0,1,2,3,4,5,6,7,-1'") {return 1;}
+  if !cb_wait(c[..],"[512,513,514,515,516,517,518,519].every(k=>rows().slice(beforeBatch).some(r=>r[0]===4&&r[1]===k&&r[6]===9&&r[7]===1973628203))") {return 1;}
+  if !cb_expect(c[..],"for(let i=0;i<4;i++)coaxial.send(912,String(i));true") || !cb_wait(c[..],"[258,262,266,270].every(k=>rows().some(r=>r[0]===4&&r[1]===k))") || !cb_expect(c[..],"coaxial.hostProbe(-1,3)==='0'") {return 1;}
+  n=cb_text(c[..],"JSON.stringify({schema:'aethyr.host.observations.v1',host:'web',scope:'transport',events:rows(),dropped:Number(coaxial.hostProbe(-1,3))})",out[..]);
+  if n<0 || !fs_write(fs_join(dir,"browser-transport.json",paths[4][..]),cast(string)out[0..<n]) {return 1;}
+  if !cb_expect(c[..],"coaxial.hostReset();coaxial.send(910,'ws://127.0.0.1:9170/echo');true") || !cb_wait(c[..],"rows().some(r=>r[0]===4&&r[1]===256)") {return 1;}
+  if !cb_expect(c[..],"(async()=>{coaxial.send(920,'/api/host-contract/slow');return await coaxial.reloadEngine()})()") {return 1;}
+  proc_sleep(350);
+  if !cb_expect(c[..],"!rows().some(r=>r[0]===4&&r[1]===512)&&rows().some(r=>r[0]===4&&r[1]===612)&&coaxial.hostProbe(-1,1)==='73'") {return 1;}
+  if !cb_expect(c[..],"coaxial.send(910,'ws://127.0.0.1:9170/echo');rows().filter(r=>r[0]===9&&r[1]===1).at(-1)[2]===0") || !cb_wait(c[..],"rows().filter(r=>r[0]===4&&r[1]===256).length===2") {return 1;}
+  if !cb_expect(c[..],"coaxial.send(912,'0');true") || !cb_wait(c[..],"rows().some(r=>r[0]===4&&r[1]===258)") {return 1;}
+  n=cb_text(c[..],"JSON.stringify({schema:'aethyr.host.observations.v1',host:'web',scope:'replacement',events:rows(),dropped:Number(coaxial.hostProbe(-1,3))})",out[..]);
+  if n<0 || !fs_write(fs_join(dir,"browser-replacement.json",paths[4][..]),cast(string)out[0..<n]) {return 1;}
+  print("Browser host: core dispatch, exact320x180 GPU readback and real loopback socket/HTTP effects passed; raw observations retained in %.\n",dir);return 0;
+}

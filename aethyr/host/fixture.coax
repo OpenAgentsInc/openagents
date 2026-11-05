@@ -1,0 +1,148 @@
+// The host-contract probe is a realm, not a substitute host. Its scalar C
+// face goes through the actual browser/Vulkan/Metal adapter. It retains the
+// values and bytes that adapter delivered; the checker reads these records.
+#module "aethyr.host.fixture";
+#load "transport.coax";
+#load "routes.coax";
+#load "buffers.coax";
+
+HOST_FIXTURE_VERSION :: 1;
+HOST_FIXTURE_EVENTS :: 96;
+HostFixtureEvent :: struct {kind:int;a:int;b:int;c:int;d:int;e:int;bytes:int;hash:u32;}
+HostFixture :: struct {
+  constructed:int=73;frames:int;held:int;action:int;out_n:int;
+  inbox:[128]u8;asset:[64]u8;outbox:[64]u8;
+  events:[HOST_FIXTURE_EVENTS]HostFixtureEvent;count:int;dropped:int;
+  sound_n:int;
+  effect:int;target:int;effect_data:[128]u8;effect_n:int;
+}
+HostFixtureEffect :: struct {op:int;target:int;data:string;}
+
+// Checks precede implementation. These check the recording realm; they do
+// not claim that a platform has delivered these calls or submitted a frame.
+#test "host fixture defaults and exact raw UTF8 bytes survive a message" {
+  s:[1]HostFixture;
+  #assert s[0].constructed==73 && s[0].count==0 && s[0].frames==0;
+  hf_message(s[..],901,"Aé🙂");
+  q:=s[0].events[0];
+  #assert q.kind==4 && q.a==901 && q.bytes==7 && q.hash==hf_hash("Aé🙂") && s[0].count==1;
+  #assert hf_hash("")==2166136261 && hf_hash("a")==3826002220;
+}
+#test "host fixture records physical frame arguments and writes exact output extents" {
+  s:[1]HostFixture;v:[38]f32;u:[18]f32;v[36]=911;u[16]=733;
+  #assert hf_frame(s[..],v[0..<36],u[0..<16],320,180,2,0.015625,false)==3;
+  q:=s[0].events[0];
+  #assert q.kind==1 && q.a==cast(int)f32_bits(320) && q.b==cast(int)f32_bits(180) && q.c==cast(int)f32_bits(2) && q.d==cast(int)f32_bits(0.015625) && q.e==0;
+  #assert s[0].frames==1 && v[0]==0 && v[35]==35 && u[0]==100 && u[15]==115 && v[36]==911 && u[16]==733;
+  #assert hf_frame(s[..],v[0..<35],u[0..<16],1,1,1,0,true)==0 && s[0].frames==1 && s[0].count==1;
+  #assert hf_frame(s[..],v[0..<36],u[0..<15],1,1,1,0,true)==0 && s[0].frames==1;
+}
+#test "host fixture keeps delivered key pointer wheel and blur values" {
+  s:[1]HostFixture;
+  #assert hf_key(s[..],-6,5,true) && hf_key(s[..],-6,4,false);
+  #assert s[0].events[0].kind==2 && s[0].events[0].a== -6 && s[0].events[0].b==5 && s[0].events[0].c==1;
+  #assert s[0].events[1].b==4 && s[0].events[1].c==0 && s[0].held==0;
+  #assert hf_pointer(s[..],12.5,34.25,3,1,19);
+  q:=s[0].events[2];
+  #assert q.kind==3 && q.a==cast(int)f32_bits(12.5) && q.b==cast(int)f32_bits(34.25) && q.c==3 && q.d==1 && q.e==19;
+  _:=hf_key(s[..],87,0,true);hf_blur(s[..]);hf_wheel(s[..],-16);
+  #assert s[0].events[4].kind==5 && s[0].events[4].a==1 && s[0].held==0;
+  #assert s[0].events[5].kind==6 && s[0].events[5].a==cast(int)f32_bits(-16);
+}
+#test "host fixture sees copied asset bytes before ready and acknowledges actions once" {
+  s:[1]HostFixture;
+  for i:0..<4 {s[0].asset[i]=cast(u8)(65+i);}
+  hf_asset_ready(s[..],2,4);
+  q:=s[0].events[0];#assert q.kind==7 && q.a==2 && q.bytes==4 && q.hash==hf_hash("ABCD");
+  hf_asset_ready(s[..],3,65);
+  #assert s[0].events[1].bytes==0 && s[0].events[1].hash==hf_hash("") && s[0].events[1].b==65;
+  hf_message(s[..],900,"hash");#assert s[0].action==3 && cast(string)s[0].outbox[0..<s[0].out_n]=="host-contract-v1";
+  hf_action_done(s[..]);#assert s[0].action==0 && s[0].out_n==0 && s[0].events[3].kind==8 && s[0].events[3].a==3;
+  hf_action_done(s[..]);#assert s[0].events[4].a==0;
+}
+#test "host fixture bounds its observation log and probes absent fields without aliasing" {
+  s:[1]HostFixture;
+  for i:0..<HOST_FIXTURE_EVENTS+2 {hf_message(s[..],100+i,"");}
+  #assert s[0].count==HOST_FIXTURE_EVENTS && s[0].dropped==2 && s[0].events[HOST_FIXTURE_EVENTS-1].a==195;
+  #assert hf_probe(s[..],-1,0)==1 && hf_probe(s[..],-1,1)==73 && hf_probe(s[..],-1,2)==96 && hf_probe(s[..],-1,3)==2;
+  #assert hf_probe(s[..],0,0)==4 && hf_probe(s[..],0,1)==100 && hf_probe(s[..],95,1)==195;
+  #assert hf_probe(s[..],96,0)== -1 && hf_probe(s[..],-2,0)== -1 && hf_probe(s[..],0,8)== -1 && hf_probe(s[..],-1,6)== -1;
+}
+#test "host fixture reset leaves the constructed realm and copied data intact" {
+  s:[1]HostFixture;s[0].asset[0]=19;s[0].frames=7;s[0].held=1;hf_message(s[..],901,"before");
+  hf_reset(s[..]);
+  #assert s[0].constructed==73 && s[0].asset[0]==19 && s[0].frames==7 && s[0].held==1 && s[0].count==0 && s[0].dropped==0;
+}
+#test "host fixture requests actual socket and HTTP imports and records their returned slots" {
+  s:[1]HostFixture;
+  hf_message(s[..],910,"ws://127.0.0.1:9170/echo");q:=hf_take_effect(s[..]);
+  #assert q.op==1 && q.data=="ws://127.0.0.1:9170/echo" && hf_take_effect(s[..]).op==0;
+  hf_result(s[..],q.op,-1);#assert s[0].events[1].kind==9 && s[0].events[1].a==1 && s[0].events[1].b== -1;
+  hf_message(s[..],911,"2 Aé🙂");q=hf_take_effect(s[..]);#assert q.op==2 && q.target==2 && q.data=="Aé🙂";
+  hf_message(s[..],912,"3");q=hf_take_effect(s[..]);#assert q.op==3 && q.target==3;
+  hf_message(s[..],920,"/api/host-contract/ok");q=hf_take_effect(s[..]);#assert q.op==4 && q.data=="/api/host-contract/ok";
+  hf_message(s[..],921,"7");q=hf_take_effect(s[..]);#assert q.op==5 && q.target==7;
+  for text:[4]string.["","4 x","x x","0"] {hf_message(s[..],911,text);#assert hf_take_effect(s[..]).op==0;}
+  hf_message(s[..],912,"4");#assert hf_take_effect(s[..]).op==0;
+  hf_message(s[..],921,"8");#assert hf_take_effect(s[..]).op==0;
+}
+
+hf_hash :: (text:string)->u32 {
+  h:u32=2166136261;
+  for c:text {h=mul_wrap(h^cast(u32)c,cast(u32)16777619);}
+  return h;
+}
+hf_record :: (s:[]HostFixture,q:HostFixtureEvent) {
+  if s[0].count>=HOST_FIXTURE_EVENTS {s[0].dropped+=1;return;}
+  s[0].events[s[0].count]=q;s[0].count+=1;
+}
+hf_frame :: (s:[]HostFixture,v:[]f32,u:[]f32,w:f32,h:f32,dpr:f32,dt:f32,still:bool)->int #export_c {
+  if v.count<36 || u.count<16 {return 0;}
+  hf_record(s,HostFixtureEvent.{kind=1,a=cast(int)f32_bits(w),b=cast(int)f32_bits(h),c=cast(int)f32_bits(dpr),d=cast(int)f32_bits(dt),e=ifx still then 1 else 0});
+  for i:0..<36 {v[i]=cast(f32)i;}for i:0..<16 {u[i]=cast(f32)(100+i);}
+  s[0].frames+=1;return 3;
+}
+hf_key :: (s:[]HostFixture,key:int,mods:int,down:bool)->bool #export_c {
+  hf_record(s,HostFixtureEvent.{kind=2,a=key,b=mods,c=ifx down then 1 else 0});
+  s[0].held=ifx down then 1 else 0;return true;
+}
+hf_pointer :: (s:[]HostFixture,x:f32,y:f32,phase:int,kind:int,id:int)->bool #export_c {
+  hf_record(s,HostFixtureEvent.{kind=3,a=cast(int)f32_bits(x),b=cast(int)f32_bits(y),c=phase,d=kind,e=id});return true;
+}
+hf_message :: (s:[]HostFixture,kind:int,text:string) #export_c {
+  hf_record(s,HostFixtureEvent.{kind=4,a=kind,bytes=text.count,hash=hf_hash(text)});
+  if kind==900 {s[0].action=3;s[0].out_n=16;for c,i:"host-contract-v1" {s[0].outbox[i]=c;}}
+  op:=0;from:=0;target:=0;
+  if kind==910 {op=1;}if kind==920 {op=4;}
+  if kind==911 && text.count>=2 && text[0]>='0' && text[0]<='3' && text[1]==' ' {op=2;target=cast(int)text[0]-'0';from=2;}
+  if kind==912 && text.count==1 && text[0]>='0' && text[0]<='3' {op=3;target=cast(int)text[0]-'0';}
+  if kind==921 && text.count==1 && text[0]>='0' && text[0]<='7' {op=5;target=cast(int)text[0]-'0';}
+  if op!=0 && text.count-from<=128 {
+    s[0].effect=op;s[0].target=target;s[0].effect_n=text.count-from;
+    for i:from..<text.count {s[0].effect_data[i-from]=text[i];}
+  }
+}
+hf_blur :: (s:[]HostFixture) #export_c {hf_record(s,HostFixtureEvent.{kind=5,a=s[0].held});s[0].held=0;}
+hf_wheel :: (s:[]HostFixture,dy:f32) #export_c {hf_record(s,HostFixtureEvent.{kind=6,a=cast(int)f32_bits(dy)});}
+hf_asset_ready :: (s:[]HostFixture,index:int,bytes:int) #export_c {
+  n:=ifx bytes>=0&&bytes<=64 then bytes else 0;
+  hf_record(s,HostFixtureEvent.{kind=7,a=index,b=bytes,bytes=n,hash=hf_hash(cast(string)s[0].asset[0..<n])});
+}
+hf_action_done :: (s:[]HostFixture) #export_c {
+  hf_record(s,HostFixtureEvent.{kind=8,a=s[0].action});s[0].action=0;s[0].out_n=0;
+}
+hf_probe :: (s:[]HostFixture,index:int,field:int)->int #export_c {
+  if index== -1 {
+    if field==0 {return HOST_FIXTURE_VERSION;}if field==1 {return s[0].constructed;}if field==2 {return s[0].count;}
+    if field==3 {return s[0].dropped;}if field==4 {return s[0].frames;}if field==5 {return s[0].held;}return -1;
+  }
+  if index<0 || index>=s[0].count {return -1;}
+  q:=s[0].events[index];
+  if field==0 {return q.kind;}if field==1 {return q.a;}if field==2 {return q.b;}if field==3 {return q.c;}
+  if field==4 {return q.d;}if field==5 {return q.e;}if field==6 {return q.bytes;}if field==7 {return cast(int)q.hash;}return -1;
+}
+hf_reset :: (s:[]HostFixture) #export_c {s[0].count=0;s[0].dropped=0;}
+hf_take_effect :: (s:[]HostFixture)->HostFixtureEffect #export_c {
+  op:=s[0].effect;s[0].effect=0;return HostFixtureEffect.{op=op,target=s[0].target,data=cast(string)s[0].effect_data[0..<s[0].effect_n]};
+}
+hf_result :: (s:[]HostFixture,op:int,result:int) #export_c {hf_record(s,HostFixtureEvent.{kind=9,a=op,b=result});}

@@ -1,0 +1,82 @@
+// A finite private loopback service for actual host conformance effects.
+// HTTP and RFC6455 framing are the existing checked Coax libraries.
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/args.coax";
+#load "../../../coax/lib/sys/proc.coax";
+#load "../../../coax/lib/net/socket_foreign.coax";
+#load "../../../coax/lib/net/ws_server.coax";
+HcnConnection :: struct {h:int=-1;phase:int;used:int;input:[8192]u8;reader:[1]WsReader;message:[4096]u8;due:int;body:[256]u8;body_n:int;}
+#test "host network fixture takes only the exact HTTP request path" {
+  #assert hcn_path("GET /api/host-contract/ok HTTP/1.1\r\n\r\n")=="/api/host-contract/ok";
+  #assert hcn_path("GET /x?y HTTP/1.1\r\n")=="/x?y" && hcn_path("bad")=="";
+}
+hcn_path :: (request:string)->string {
+  if request.count<5 || request[0..<4]!="GET " {return "";}
+  at:=4;while at<request.count && request[at]!=' ' {at+=1;}
+  return request[4..<at];
+}
+hcn_close :: (c:[]HcnConnection) {if c[0].h>=0 {closed:=cxsock_close(c[0].h);}c[0]=HcnConnection.{};}
+hcn_write :: (h:int,bytes:string)->bool {for c:bytes {if cxsock_write(h,cast(int)c)!=0 {return false;}}return cxsock_flush(h,100)==0;}
+hcn_consume :: (c:[]HcnConnection,n:int) {for i:n..<c[0].used {c[0].input[i-n]=c[0].input[i];}c[0].used-=n;}
+hcn_http :: (c:[]HcnConnection,path:string) {
+  text:="";delay:=0;
+  if path=="/health" {text="ok";}
+  if path=="/api/host-contract/ok" {text="Aé🙂";}
+  if path=="/api/host-contract/slow" {text="late";delay=250;}
+  if path=="/api/host-contract/batch" {text="batch";delay=100;}
+  c[0].body_n=text.count;for v,i:text {c[0].body[i]=v;}
+  if path=="/api/host-contract/large" {c[0].body_n=125;for i:0..<125 {c[0].body[i]='x';}}
+  if path=="/api/host-contract/invalid" {c[0].body_n=1;c[0].body[0]=255;}
+  c[0].phase=2;c[0].due=cxsock_now_ms()+delay;
+}
+hcn_step :: (c:[]HcnConnection) {
+  if c[0].h<0 {return;}
+  out:[16384]u8;
+  if c[0].phase==2 {
+    if cxsock_now_ms()<c[0].due {return;}
+    n:=wss_http_write("200 OK","text/plain; charset=utf-8",cast(string)c[0].body[0..<c[0].body_n],out[..]);
+    if n>=0 {sent:=hcn_write(c[0].h,cast(string)out[0..<n]);}hcn_close(c);return;
+  }
+  n:=cxsock_read(c[0].h,0);
+  if n== -1 || n< -2 {hcn_close(c);return;}
+  if n>0 {
+    if n>c[0].input.count-c[0].used {hcn_close(c);return;}
+    for i:0..<n {c[0].input[c[0].used+i]=cast,trunc(u8)cxsock_byte(c[0].h,i);}c[0].used+=n;
+  }
+  if c[0].phase==0 {
+    raw:=cast(string)c[0].input[0..<c[0].used];if ws_find_end(raw)==0 {return;}
+    hello:=wss_request(raw);
+    if hello.status!=WSS_OK {hcn_http(c,hcn_path(raw));return;}
+    count:=wss_accept_write(raw[hello.key_from..<hello.key_to],out[..]);
+    if count<0 || !hcn_write(c[0].h,cast(string)out[0..<count]) {hcn_close(c);return;}
+    hcn_consume(c,hello.consumed);c[0].phase=1;
+  }
+  while c[0].phase==1 && c[0].used>0 {
+    raw:=cast(string)c[0].input[0..<c[0].used];f:=wss_frame_read(raw,4096);
+    if f.status==WS_FRAME_MORE {return;}if f.status!=WS_FRAME_OK {hcn_close(c);return;}
+    count:=wss_unmask(raw,f,out[..]);if count<0 {hcn_close(c);return;}
+    event:=ws_take(c[0].reader[..],f,cast(string)out[0..<count],c[0].message[..]);hcn_consume(c,f.total);
+    if event==WS_EV_CLOSE {count=wss_close_write(1000,out[..]);sent:=hcn_write(c[0].h,cast(string)out[0..<count]);hcn_close(c);return;}
+    if event==WS_EV_MESSAGE {
+      text:=cast(string)c[0].message[0..<c[0].reader[0].used];op:=WS_OP_TEXT;
+      large:[129]u8;for i:0..<129 {large[i]='x';}
+      if text=="large" {text=cast(string)large[..];}
+      if text=="binary" {op=WS_OP_BINARY;}
+      count=wss_frame_write(op,text,out[..]);
+      if count<0 || !hcn_write(c[0].h,cast(string)out[0..<count]) {hcn_close(c);return;}
+    }
+  }
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {return 2;}
+  port:=args_whole(args_at(a[..],0));if port<1024 || port>65535 {return 2;}
+  listener:=cxsock_listen(port);if listener<0 {tool_errln("host network fixture could not bind loopback");return 1;}defer {closed:=cxsock_close(listener);}
+  conns:[15]HcnConnection;deadline:=cxsock_now_ms()+120000;
+  while cxsock_now_ms()<deadline {
+    h:=cxsock_accept(listener,0);
+    if h>=0 {taken:=false;for i:0..<conns.count {if conns[i].h<0 {conns[i]=HcnConnection.{h=h};taken=true;break;}}if !taken {closed:=cxsock_close(h);}}
+    for i:0..<conns.count {hcn_step(conns[i..<i+1]);}proc_sleep(1);
+  }
+  for i:0..<conns.count {hcn_close(conns[i..<i+1]);}return 0;
+}
