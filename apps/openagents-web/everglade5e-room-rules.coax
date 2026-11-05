@@ -22,6 +22,9 @@
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 
 #load "everglade5e-rules.coax";
+#load "everglade-raid-tactics.coax";   // how the cult fights a siege
+#load "everglade-raid-spells.coax";    // what the cult casts (#12747)
+#load "everglade-raid-front.coax";     // the standing siege's front (#12860)
 #load "everglade5e-room-raid.coax";   // the Cultist Raid's raiders, ward stones and leader (#12740)
 #load "everglade-raid-scale.coax";   // the raid's waves for the players present (room-events.coax, the EVENTS pane)
 #load "../../aethyr/forge/npc-document.coax";

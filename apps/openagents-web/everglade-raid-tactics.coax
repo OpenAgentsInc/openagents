@@ -1,6 +1,6 @@
 // How the cult fights a siege (spec docs/verse/2026-11-03-everglade-world-events.md, section 4.3;
-// #12740): the one set of tactics the room server's raid (everglade5e-room-raid.coax) and the page's
-// offline preview (everglade5e-raid.coax) both follow. Pure functions of where things are, in metres:
+// #12740): the tactics the room server's raid (everglade5e-room-raid.coax, offline on the local
+// host too) follows. Pure functions of where things are, in metres:
 //   - squads: the raiders come in squads of RT_SQUAD, and each member has its own place in its
 //     squad's line (rt_siege_pos) and its own place in the town (rt_ring), so no two stand on one spot;
 //     raiders closer than RT_SEP push apart (rt_separate);

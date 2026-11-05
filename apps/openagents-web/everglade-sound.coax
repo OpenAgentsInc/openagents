@@ -409,8 +409,6 @@ egs_mixed :: (s: [] Everglade, out: [] u8, master: f32) -> int {
   return k;
 }
 
-// The raid preview's start (the face, ?raid=preview): its horn.
-everglade_sound_horn :: (s: [] Everglade) #export_c { egs_here(s, SFX_HORN, 0.85); }
 
 // ---- the sounds themselves, rendered once when the host starts audio (the face's coaxial_sound_bank)
 

@@ -3,7 +3,7 @@
 // to verse/everglade/plan.coax and the trunks everglade.coax plants.
 //   coax test apps/openagents-web/everglade-raid-town.coax --only "raid paths"
 #load "everglade.coax";
-#load "everglade5e-rules.coax";
+#load "everglade-raid-tactics.coax";
 
 // Whether RT_BOX's n-th footprint is box i of the plan's src (min x, min z, max x, max z).
 rp_same_box :: (src: [] f32, i: int, n: int) -> bool {

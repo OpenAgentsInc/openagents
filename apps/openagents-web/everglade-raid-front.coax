@@ -1,8 +1,8 @@
 // The Cultist Raid's standing siege (spec docs/verse/2026-11-03-everglade-world-events.md, section 4;
 // #12860): the front between Everglade's watch and Darian Odiodei's cult on the south road, and how
 // each side's strength, reinforcements and the players' help move it. The room server's raid
-// (coax/web/room/room-events.coax, everglade5e-room-raid.coax) and the page's offline preview
-// (everglade5e-raid.coax) both step it. Pure arithmetic on the line's place: no state of its own
+// (coax/web/room/room-events.coax, everglade5e-room-raid.coax) steps it, offline on the local host
+// too (#12908). Pure arithmetic on the line's place: no state of its own
 // but what RfFront holds.
 //
 // The line runs along the road from the cult's camp (RF_CAMP_Z) to the palisade's South Gate

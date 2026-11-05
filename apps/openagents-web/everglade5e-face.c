@@ -620,25 +620,6 @@ static void e5_frame(uint32_t state) {
     int64_t id = e5r_beast(e5r(), q, (coax_v_f32){zb, 6});
     everglade_zombie(g, q, id, zb[0], zb[1], zb[2], id > 0 && zb[5] > 0.5f);
   }
-  /* the Cultist Raid offline, a preview (?raid=preview): its raiders are this battle's (everglade5e-raid.coax),
-     the page draws them and plays their casts (everglade-raid-preview.coax) */
-  if (everglade_raid_on(g)) {
-    static float rb[10];
-    if (!e5r_raid_started(e5r()) && everglade_raid_spot(g, (coax_v_f32){rb, 10}) == 6) { e5r_raid_start(e5r(), rb[0], rb[1], rb[2], rb[3], rb[4], rb[5]); everglade_sound_horn(g); }
-    if (e5r_raid_started(e5r())) {
-      everglade_raid_clock(g, e5r_raid_t(e5r()));
-      if (everglade_raid_you(g, (coax_v_f32){rb, 10}) == 2) e5r_raid_you(e5r(), rb[0], rb[1]);
-      /* the palisade's posts and the stables' pieces down in this page's town: the raid's breaches open only there (#12747), the stables burn down (#12769) */
-      static float wb[1024];   /* the posts and the stables' pieces down */
-      int64_t wn = everglade_raid_wall(g, (coax_v_f32){wb, 1024});
-      if (wn >= 0) { e5r_raid_whole(e5r()); for (int64_t q = 0; q < wn; q++) e5r_raid_broke(e5r(), wb[2 * q], wb[2 * q + 1]); }
-      for (int64_t q = 0; q < 63; q++) {
-        int64_t npc = e5r_raider(e5r(), q, (coax_v_f32){rb, 10});
-        everglade_raider(g, q, npc, rb[0], rb[1], rb[2], rb[3], (int64_t)rb[4], rb[7], rb[8] > 0.5f ? rb[9] : -1.0f);
-      }
-      while (e5r_raid_cast(e5r(), (coax_v_f32){rb, 10})) everglade_raid_cast(g, (int64_t)rb[0], rb[1], rb[2], rb[3], rb[4], (int64_t)rb[5], (int64_t)rb[6]);
-    }
-  }
   /* the saves its rules rolled against your abilities' spells: the page's pushes follow them (#12884) */
   int64_t outn = e5r_out(e5r(), (coax_v_f32){e5_out_buf, 48 * 4});
   int64_t ln = e5r_lines(e5r(), (coax_v_u8){e5_lines_buf, sizeof e5_lines_buf});
