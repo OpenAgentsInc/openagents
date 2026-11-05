@@ -4,8 +4,10 @@ Implementation: [`a419dcf53c`](https://github.com/OpenAgentsInc/openagents/commi
 Qualified on coderos-4080, Linux/NVIDIA RTX 4080, November 4, 2026. Compiler
 SHA-256: `54308753598854075405f995a04eb94f64eeb85f231ee6840a42e77afe6d2e80`.
 The implementation was finally rebased on main at `ef63c33f1e`; owned source
-and artifact hashes remained unchanged (the manifest records the qualified
-pre-rebase revision). No shared engine or
+bytes remained unchanged. Main had removed cancelled automation schemas; the
+shared descriptor was regenerated for that final tree, and all 30 owned
+schemas and published compatibility checks pass. The manifest records both
+descriptor hashes and the qualified pre-rebase revision. No shared engine or
 published explorer/mempool v1 contract was changed.
 
 The Lab now has the same bounded Coax client in the native Wayland/Vulkan

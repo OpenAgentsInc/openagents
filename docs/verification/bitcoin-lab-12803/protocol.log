@@ -1,10 +1,10 @@
 ..............................
 ----------------------------------------------------------------------
-Ran 30 tests in 0.152s
+Ran 30 tests in 0.032s
 
 OK
 Nostr source pins/hashes: 21 alpha packages checked
-owned: compiled 42 schemas
+owned: compiled 30 schemas
 lnd: compiled 17 schemas
 taproot-assets: compiled 11 schemas
 loop: compiled 3 schemas

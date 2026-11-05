@@ -39,9 +39,11 @@
     "coax/lib/bitcoin/txindex-occurrence.coax": "94be58f881313b317a2512433a2d739cd198a9eb2c741287b7582311783f313a",
     "coax/web/bitcoin-source-check.coax": "09047c7dec3de1bbdd1b992b0bfbae2f936927e90d9d6e9d4af02d7186bfa837",
     "docs/protocol/bitcoin-lab-v1.md": "3d320a6e656359ef5a715df829f588f8fa20b188d2956779365c1fa774b00b18",
-    "proto/descriptors/owned.pb": "68dfde9dac8c6b137991f1fd1953a9b96393c73469369150dac266521d747c80",
+    "proto/descriptors/owned.pb": "99e8791e678b4f78b324d8430b96fb9dab4efe05df6c2d912d717a6faedc9d8f",
     "proto/openagents/bitcoin/lab/v1alpha1/lab.proto": "830dc82c48ac144e3f7881cce8bd137692985464a316c125d5d472f18e4ea811"
   },
   "qualified_before_final_rebase": "966e9b637f7d97789f0e26f96ff70c568942243b",
-  "owned_bytes_unchanged_after_rebase": true
+  "generated_descriptor_before_rebase_regeneration": "68dfde9dac8c6b137991f1fd1953a9b96393c73469369150dac266521d747c80",
+  "owned_source_bytes_unchanged_after_rebase": true,
+  "descriptor_note": "Regenerated after rebase to honor main commit 95b00533f5 removing cancelled automation schemas; 30 owned schemas and published compatibility checks pass."
 }
