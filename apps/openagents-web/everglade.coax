@@ -3669,6 +3669,7 @@ labels :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, you: Point) -> int {
   if !overview { c = rp_labels(s, ls[..], c, eye, k); }     // Darian Odiodei's, in a raid, the same (everglade-raid-preview.coax)
   boxes: [(LABELS_MAX + 1) * 4] f32;
   placed := 0;
+  s[0].wv.name_n = 0;
   // the raid's banner (everglade-events.coax) is the first box: no name is drawn over it
   bb := ege_banner_at(s);
   if bb.x1 > bb.x0 { boxes[0] = bb.x0; boxes[1] = bb.y0; boxes[2] = bb.x1; boxes[3] = bb.y1; placed = 1; }
@@ -3697,6 +3698,7 @@ labels :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, you: Point) -> int {
     o := placed * 4;
     boxes[o] = x0; boxes[o + 1] = y - l.cap * 0.3; boxes[o + 2] = x1; boxes[o + 3] = y + l.cap * 1.3;
     placed += 1;
+    if l.person && s[0].wv.name_n < LABELS_MAX { s[0].wv.names[s[0].wv.name_n] = Box.{x0 = x0, y0 = y - l.cap * 1.3, x1 = x1, y1 = y + l.cap * 1.3}; s[0].wv.name_n += 1; }   // the shouts keep clear of it (everglade-watch.coax watch_hud)
     if l.who.count > 0 { md_plate(s, Box.{x0 = x0, y0 = y - l.cap * 1.3, x1 = x1, y1 = y + l.cap * 0.3}, l.who, l.text); }   // a tap opens BLOCK, REPORT, KICK (everglade-moderate.coax)
     r_ := ifx l.gold then f32(GOLD_R) else f32(PARCH_R);
     g_ := ifx l.gold then f32(GOLD_G) else f32(PARCH_G);

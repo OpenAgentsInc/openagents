@@ -43,6 +43,7 @@ WatchView :: struct {
   // (one struct each: a [6] f32 here would be the same C array type as the river library's, in one translation unit)
   at: [WATCH_NEW] NewGuard;
   heads: [WATCH_ACTORS] Point; head_on: [WATCH_ACTORS] bool;
+  names: [LABELS_MAX] Box; name_n: int;   // the names drawn over heads this frame (labels), which the shouts keep clear of
   // each one drawn's sword and shield (12 numbers each), how many
   arms: [WATCH_OBJECTS * 12] f32; arm_group: [WATCH_OBJECTS] int; arm_n: int;
   started: bool;
@@ -151,7 +152,7 @@ watch_frame :: (s: [] Everglade, you: Point, dt: f32, c: FolkClock) {
   if s[0].wv.net { s[0].gates_shut = net_gates(s) > 0; }
   else { s[0].gates_shut = watch_you(w[..])[0].wanted && watch_you(w[..])[0].level >= GATES_AT && !watch_you(w[..])[0].dead; }
   if s[0].gates_shut != was { sp_say(s, ifx s[0].gates_shut then "THE GATES ARE SHUT" else "THE GATES OPEN", -1, ""); }
-  if s[0].wv.net { watch_net_you(w, dt); watch_net_frame(s); return; }
+  if s[0].wv.net { watch_net_you(w, dt); watch_net_frame(s); watch_net_shouts(s, dt); return; }
   watch_you(w[..])[0].face = s[0].face;
   // the realm's switches (realm_rights rows): guards who give chase, and its owner's own invincibility
   e := s[0].ev.ed[..];
@@ -722,7 +723,9 @@ watch_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, top: f32) -> int
     }
   }
   // the shouts: one that would cross a shout already drawn goes above it, so none overlap
-  placed: [WATCH_ACTORS] Box; placed_n := 0;
+  // (the people's names drawn this frame are placed first: a shout goes over a name, never across it)
+  placed: [WATCH_ACTORS + LABELS_MAX] Box; placed_n := 0;
+  for q: 0..<clamp_w(s[0].wv.name_n, 0, LABELS_MAX) { placed[placed_n] = s[0].wv.names[q]; placed_n += 1; }
   for i: 0..<WATCH_ACTORS {
     a := w[0].actors[i];
     if a.shout < 0 || !s[0].wv.head_on[i] { continue; }
@@ -1130,6 +1133,39 @@ watch_net_frame :: (s: [] Everglade) {
   y := watch_you(w[..]);
   level := net_wanted(s);
   y[0].wanted = level > 0; y[0].level = level; y[0].unseen = 0;
+}
+
+// In a room the page steps no one of the town (the server does), so a shout over a head ends here:
+// after SHOUT_FOR as the town's own step ends it, and at once when its speaker is gone from the room's
+// rows, down, dead or calm again (owner playtest, #12931: HELP! and HALT! hung in the air after the chase).
+watch_net_shouts :: (s: [] Everglade, dt: f32) {
+  w := watch_w(s);
+  t := ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32;
+  for i: 0..<WATCH_ACTORS {
+    a := w[0].actors[i..<i + 1];
+    if a[0].shout < 0 { continue; }
+    a[0].shout_t += t;
+    gone := !watch_hurtable(i) || !net_folk(s, i).ok;
+    quiet := a[0].mode == WM_CALM || a[0].mode == WM_DEAD || a[0].mode == WM_DOWN;
+    if gone || quiet || a[0].shout_t > f32(SHOUT_FOR) { a[0].shout = -1; a[0].shout_t = 0; }
+  }
+}
+#test "watch: in a room a shout ends after its time, and at once when its speaker calms, falls or is gone (#12931)" {
+  s: [1] Everglade;
+  w := watch_w(s[..]);
+  g := EG_SPOTS;   // a new guard
+  w[0].actors[g].mode = WM_CHASE; w[0].actors[g].shout = 0; w[0].actors[g].shout_t = 0;
+  // not in the room's rows: gone at once
+  watch_net_shouts(s[..], 0.1);
+  #assert w[0].actors[g].shout == -1;
+  // calm: gone at once
+  w[0].actors[g].shout = 3; w[0].actors[g].mode = WM_CALM;
+  watch_net_shouts(s[..], 0.1);
+  #assert w[0].actors[g].shout == -1;
+  // a name drawn where the shout would go: the shout goes over it, clear of it
+  name := [1] Box.[Box.{x0 = 90, y0 = 190, x1 = 170, y1 = 212}];
+  b := shout_box(name[..], 100, 200, 80, 8);
+  #assert b.y1 <= name[0].y0;
 }
 
 // ---- the room server's town breaking (GitHub #12713): the strikes of Everglade's own four spells
