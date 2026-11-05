@@ -1,8 +1,9 @@
 # Room input-to-render observations
 
-Integrated timing evidence for #12840. This records exact component profiles;
-the new main compiler/crypto changes described below require fresh qualification
-before these artifacts can be called a current-main build.
+Integrated timing evidence for #12840. The final qualification snapshot is
+`9b1abcd3545ebe70bbfb7c6ba53d33c619bd37e0`, including the new compiler/crypto
+inputs. Each artifact keeps its precise component profile below; subsequent
+world/fire changes are not relabelled with these measurements.
 
 ## Measured boundaries
 
@@ -81,7 +82,51 @@ Main subsequently gained observable numeric erasure (`3266aa2d5c`) and used
 3f8 images cannot compile those new sources. Their original receipts do not
 verify against that newer compiler root. These captures retain their pinned
 scope; a normal checked compiler bootstrap is underway rather than rewriting
-receipts or substituting older crypto inputs.
+receipts or substituting older crypto inputs. The completed qualification is
+recorded below.
+
+### New compiler and crypto qualification
+
+The unchanged normal bootstrap completes on both hosts. The Mac attempt was
+stopped at the 15-minute boundary, then resumed using its actual passing gate
+cache. No gate verdict, seed, source input or receipt was rewritten.
+
+- Linux original receipt verifies against snapshot 9b1: fingerprint
+  `8012c3c9473f51f98665796608d9194348a67a97904e07f652a72d53b12fa529`,
+  compiler 0.50.0 SHA-256
+  `5cc82481bf6db529e919a404134b6d18b02c984f443809af7426767af869af9c`.
+  The full room suite passes **659/659**, including the added upstream crypto
+  check, without raising a traversal or check limit.
+- Mac original receipt verifies against the same protected compiler inputs:
+  fingerprint `c82201e2cfff7c937fc0a29bf7010ae1ec75e7ab746ad29548bac7c2db61409e`,
+  compiler 0.50.0 SHA-256
+  `b5872254e02de4b2fb84f039e81f602090f5526301c036c077004294a7e580eb`.
+- The native runtime check uses freshly emitted room C from that Mac
+  bootstrap's retained 0.50 frontend, SHA-256
+  `a0ccee47ec9e8157cee2c854741984727f50fac10489fb9fac5cb31067f1efb8`.
+  Its construction record is retained separately from the final compiler's
+  original receipt. Mandatory compilation checks pass. Room C SHA-256 is
+  `60b4f148118e5c2a2a10189b44a56d69c35ee90fbadc5c537eb4f5e2a6586061`;
+  its header is byte-identical to the preceding qualified header. All 140
+  retained world-source hashes still match snapshot 9b1, so the explicitly
+  pinned world component above is reused. This is a declared component build,
+  not an all-0.50 graphics/default or compiler-emission admission claim.
+- The rebuilt native passes startup defaults and its real headless browser
+  session completes 50/50 samples: all clock intervals known, zero expired,
+  refused or missing observations, and no JavaScript errors. Input-to-GPU
+  completion p50/p95/max is **46.410/63.895/67.565ms**; queue 31.731/32.055ms,
+  movement 15/17us, remaining simulation 151/205us, serialization 14/24us,
+  final queue 3/4us, browser dispatch 0.781/15.736ms, application-to-submission
+  1.195/1.640ms and GPU completion 12.281/13.995ms. Interpolation remains
+  100ms separately; offset interval width is 1.164/2.984ms.
+  Native SHA-256:
+  `19456fe570906a245016d4a71d83f346b1005b34c9acf9ccfff1d7527b65ff21`.
+
+An earlier restart omitted the static server's `--api 61251` flag: the scene
+rendered but no socket opened, and the unchanged live-session gate failed.
+That preflight failure is retained separately; the corrected run above passes.
+All owned browsers and servers close after capture. The fresh compiler clears
+the earlier crypto build refusal without changing the timing protocol.
 
 ## Actual browser data
 
@@ -152,6 +197,8 @@ Build the small observer with
 Serve it beside the pinned page as `/build/latency-client.wasm`, with this
 commit's `host.js` and `latency-host.js`. Start the native room and static server
 on owned permitted loopback ports with copied local development fixtures.
+The static server must include `--api 61251` so the page's player/ticket HTTP
+requests reach that same local room; `relay=` controls its socket separately.
 
 ```
 coax/web/tool.sh coax/web/room/latency-browser-check.coax \
