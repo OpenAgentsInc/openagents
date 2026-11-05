@@ -1,0 +1,403 @@
+// The machine-wide build-worker budget (ax-job-budget, coax/src/jobs.cpp).
+//   coax/web/tool.sh coax/tests/job_budget.coax COMPILER      (run.sh: unit_job_budget)
+// Every case runs on its own token directory ($COAX_JOBS_DIR) with a small budget and no load
+// backoff, so it is the same on a busy machine:
+//   - `coax status` keeps the release catalogue on stdout and adds the budget on stderr;
+//     `coax status --jobs [--json]` prints the budget alone;
+//   - three compiles at once never hold more tokens than the budget, each runs at least one
+//     worker, and a compile that waits says so once;
+//   - a compile killed while it holds tokens frees them at once, and its forked check workers end
+//     within a second, mid-check;
+//   - `coax c` output and the `coax mutate` report are byte-identical at 1, 4 and all cores;
+//   - without a usable token directory a compile still runs, and status says so.
+// Prints a line a case and exits 0 when all hold, 1 otherwise.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/args.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/proc.coax";
+#load "../lib/json/json.coax";
+
+cxproc_read_bytes :: (h: int, timeout_ms: int, out: [] u8) -> int #foreign;
+cxproc_pid_signal :: (pid: int, sig: int) -> int #foreign;
+
+// Eight #authority checks of about a fifth of a second each.
+SLOW :: "#authority;\nspin :: (n: int, k: int) -> int { s := 0; for i: 0..<n { s += (i * k) % 7; } return s; }\n#test \"spin 1\" #steps 400000000 { #assert spin(4000000, 1) >= 0; }\n#test \"spin 2\" #steps 400000000 { #assert spin(4000000, 2) >= 0; }\n#test \"spin 3\" #steps 400000000 { #assert spin(4000000, 3) >= 0; }\n#test \"spin 4\" #steps 400000000 { #assert spin(4000000, 4) >= 0; }\n#test \"spin 5\" #steps 400000000 { #assert spin(4000000, 5) >= 0; }\n#test \"spin 6\" #steps 400000000 { #assert spin(4000000, 6) >= 0; }\n#test \"spin 7\" #steps 400000000 { #assert spin(4000000, 7) >= 0; }\n#test \"spin 8\" #steps 400000000 { #assert spin(4000000, 8) >= 0; }\nmain :: () { }\n";
+// Three #authority checks of several seconds each: a worker still runs one long after its compile
+// is killed unless it ends with its parent.
+LONG :: "#authority;\nspin :: (n: int, k: int) -> int { s := 0; for i: 0..<n { s += (i * k) % 7; } return s; }\n#test \"long 1\" #steps 20000000000 { #assert spin(100000000, 1) >= 0; }\n#test \"long 2\" #steps 20000000000 { #assert spin(100000000, 2) >= 0; }\n#test \"long 3\" #steps 20000000000 { #assert spin(100000000, 3) >= 0; }\nmain :: () { }\n";
+MUTATE :: "\nf :: (x:int)->int { return x+1; }\ng :: (x:int)->int { return x*2; }\nh :: (x:int)->int { if x>2 { return x-1; } return x+1; }\n#test \"first\" { #assert f(2)==3; }\n#test \"second\" { #assert g(3)==6; }\n#forall \"range\" x:0..<5 { #assert f(x)>x; }\n#test \"branch\" { #assert h(1)==2 && h(2)==3 && h(3)==2; }\nmain :: () {}\n";
+
+// The variables a case's environment leaves out (Python's: every COAX_JOBS*, COAX_CHECK_JOBS, COAX_MUTATE_JOBS).
+JB_UNSET :: [8] string.["COAX_JOBS", "COAX_JOBS_DIR", "COAX_JOBS_BUDGET", "COAX_JOBS_LOAD", "COAX_JOBS_RESERVE", "COAX_JOBS_QUIET", "COAX_CHECK_JOBS", "COAX_MUTATE_JOBS"];
+JB_OUT :: 1048576;
+
+// A text being built.
+Jt :: struct { b: [8192] u8; n: int; }
+jt_s :: (t: [] Jt, s: string) { for c: s { if t[0].n < t[0].b.count { t[0].b[t[0].n] = c; t[0].n += 1; } } }
+jt_i :: (t: [] Jt, v: int) {
+  d: [24] u8; k := 0; x := ifx v < 0 then -v else v;
+  if v < 0 { jt_s(t, "-"); }
+  if x == 0 { d[0] = '0'; k = 1; }
+  while x > 0 { d[k] = cast,trunc(u8) ('0' + x % 10); x /= 10; k += 1; }
+  for i: 0..<k { if t[0].n < t[0].b.count { t[0].b[t[0].n] = d[k - 1 - i]; t[0].n += 1; } }
+}
+jt_text :: (t: [] Jt) -> string { return cast(string) t[0].b[0..<t[0].n]; }
+
+has :: (text: string, part: string) -> bool {
+  if part.count > text.count { return false; }
+  for at: 0..<text.count - part.count + 1 { if text[at..<at + part.count] == part { return true; } }
+  return false;
+}
+count_of :: (text: string, part: string) -> int {
+  n := 0;
+  if part.count == 0 || part.count > text.count { return 0; }
+  for at: 0..<text.count - part.count + 1 { if text[at..<at + part.count] == part { n += 1; } }
+  return n;
+}
+#test "parts of a text" {
+  #assert has("a waiting b", "waiting") && !has("ab", "abc") && count_of("x y x", "x") == 2 && count_of("", "x") == 0;
+}
+// Whether text has "waiting for D of 3 build workers held by D other coax process".
+waits_line :: (text: string) -> bool {
+  m := "waiting for ";
+  for at: 0..<(ifx text.count >= m.count then text.count - m.count + 1 else 0) {
+    if text[at..<at + m.count] != m { continue; }
+    i := at + m.count; d := i;
+    while i < text.count && text[i] >= '0' && text[i] <= '9' { i += 1; }
+    if i == d { continue; }
+    m2 := " of 3 build workers held by ";
+    if i + m2.count > text.count || text[i..<i + m2.count] != m2 { continue; }
+    i += m2.count; d = i;
+    while i < text.count && text[i] >= '0' && text[i] <= '9' { i += 1; }
+    m3 := " other coax process";
+    if i > d && i + m3.count <= text.count && text[i..<i + m3.count] == m3 { return true; }
+  }
+  return false;
+}
+#test "the waiting line" {
+  #assert waits_line("coax jobs: waiting for 2 of 3 build workers held by 1 other coax process; running 1");
+  #assert !waits_line("waiting for 2 of 4 build workers held by 1 other coax process") && !waits_line("waiting for x of 3");
+}
+
+// A case's world: its directory, token pool and the compiler.
+Jb :: struct { dir: [1] Jt; pool: [1] Jt; compiler: [1] Jt; caches: int; failed: int; }
+
+// A run's result: the exit status, stdout and the end of stderr.
+JbRun :: struct { status: int = -1; out: [JB_OUT] u8; out_n: int; err: [65536] u8; err_n: int; }
+
+// Starts COMPILER ARGS in the case's directory with its environment and env (NAME=VALUE entries).
+// unset names leave the environment too (as the Python test deleted them from its copy).
+jb_start :: (j: [] Jb, args: [] string, env: [] string, unset: [] string, cache: bool) -> int {
+  h := proc_new();
+  if h < 0 { return -1; }
+  ok := proc_arg(h, jt_text(j[0].compiler[..]));
+  for x: args { ok = ok && proc_arg(h, x); }
+  ok = ok && proc_cwd(h, jt_text(j[0].dir[..]));
+  for u: JB_UNSET { ok = ok && proc_unset(h, u); }
+  pe: [1] Jt; jt_s(pe[..], "COAX_JOBS_DIR="); jt_s(pe[..], jt_text(j[0].pool[..]));
+  base := [3] string.[jt_text(pe[..]), "COAX_JOBS_BUDGET=3", "COAX_JOBS_LOAD=0"];
+  for e: base {
+    keep := true;
+    for x: env { k := 0; while k < x.count && x[k] != '=' { k += 1; } if k < e.count && e[0..<k] == x[0..<k] && e[k] == '=' { keep = false; } }
+    for u: unset { if e.count > u.count && e[0..<u.count] == u && e[u.count] == '=' { keep = false; } }
+    if keep { ok = ok && proc_env(h, e); }
+  }
+  for x: env { ok = ok && proc_env(h, x); }
+  if cache {
+    j[0].caches += 1;
+    ce: [1] Jt; jt_s(ce[..], "COAX_CHECK_CACHE="); jt_s(ce[..], jt_text(j[0].dir[..])); jt_s(ce[..], "/cache-"); jt_i(ce[..], j[0].caches);
+    ok = ok && proc_env(h, jt_text(ce[..]));
+  }
+  if !ok || proc_start(h) != 0 { r := proc_release(h); return -1; }
+  return h;
+}
+// Reads h's stdout to its end into r, waits and releases it.
+jb_finish :: (h: int, r: [] JbRun) {
+  r[0].out_n = 0; r[0].err_n = 0; r[0].status = -1;
+  if h < 0 { return; }
+  chunk: [65536] u8;
+  while true {
+    n := cxproc_read_bytes(h, 600000, chunk[..]);
+    if n <= 0 { break; }
+    for i: 0..<n { if r[0].out_n < r[0].out.count { r[0].out[r[0].out_n] = chunk[i]; r[0].out_n += 1; } }
+  }
+  r[0].status = proc_wait(h, 600000);
+  if r[0].status == PROC_RUNNING { k := proc_kill(h, PROC_SIGKILL); r[0].status = proc_wait(h, 2000); }
+  r[0].err_n = proc_stderr(h, r[0].err[..]).count;
+  d := proc_release(h);
+}
+jb_run :: (j: [] Jb, args: [] string, env: [] string, unset: [] string, cache: bool, r: [] JbRun) {
+  jb_finish(jb_start(j, args, env, unset, cache), r);
+}
+jb_out :: (r: [] JbRun) -> string { return cast(string) r[0].out[0..<r[0].out_n]; }
+jb_err :: (r: [] JbRun) -> string { return cast(string) r[0].err[0..<r[0].err_n]; }
+
+check :: (j: [] Jb, ok: bool, what: string) {
+  if ok { print("  ok   %\n", what); } else { print("  FAIL %\n", what); j[0].failed += 1; }
+}
+
+// The budget as `coax status --jobs --json` reports it.
+JbStatus :: struct { ok: bool; budget: int; held: int; shared: bool; load_limit: int; holders: int = -1; cores: int; reserve: int; over: int; }
+jb_parse_status :: (text: string) -> JbStatus {
+  s: JbStatus;
+  nodes: [4096] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], text, nodes[..]) { return s; }
+  v := d[0];
+  s.budget = jv_int(v, jv_get(v, 0, "budget"), -1); s.held = jv_int(v, jv_get(v, 0, "held"), -1);
+  s.shared = jv_bool(v, jv_get(v, 0, "shared")); s.load_limit = jv_int(v, jv_get(v, 0, "load_limit"), -1);
+  hs := jv_get(v, 0, "holders"); s.holders = ifx jv_kind(v, hs) == JV_ARRAY then jv_len(v, hs) else -1;
+  s.cores = jv_int(v, jv_get(v, 0, "performance_cores"), -1); s.reserve = jv_int(v, jv_get(v, 0, "reserve"), -1);
+  s.over = jv_int(v, jv_get(v, 0, "over_budget"), 0);
+  s.ok = s.budget >= 0 && s.held >= 0;
+  return s;
+}
+#test "the status line read" {
+  s := jb_parse_status("{\"budget\":3,\"held\":1,\"shared\":true,\"load_limit\":0,\"holders\":[{\"pid\":1}],\"performance_cores\":12,\"reserve\":4,\"over_budget\":0}");
+  #assert s.ok && s.budget == 3 && s.held == 1 && s.shared && s.load_limit == 0 && s.holders == 1 && s.cores == 12 && s.reserve == 4;
+  #assert !jb_parse_status("{").ok;
+}
+jb_status :: (j: [] Jb, env: [] string, unset: [] string) -> JbStatus {
+  r: [1] JbRun; a := [3] string.["status", "--jobs", "--json"];
+  jb_run(j, a[..], env, unset, false, r[..]);
+  s := jb_parse_status(jb_out(r[..]));
+  if r[0].status != 0 { s.ok = false; }
+  return s;
+}
+
+// A fresh case: a new directory with the three sources.
+jb_case :: (j: [] Jb, compiler: string) -> bool {
+  j[0] = Jb.{};
+  tb: [FS_PATH_MAX] u8; dir := fs_temp("coax-job-budget-", tb[..]);
+  if dir.count == 0 { return false; }
+  jt_s(j[0].dir[..], dir); jt_s(j[0].pool[..], dir); jt_s(j[0].pool[..], "/pool"); jt_s(j[0].compiler[..], compiler);
+  p: [1] Jt;
+  ok := true;
+  for k: 0..<3 {
+    p[0].n = 0; jt_s(p[..], dir);
+    jt_s(p[..], ifx k == 0 then "/slow.coax" else ifx k == 1 then "/mutate.coax" else "/long.coax");
+    ok = ok && fs_write(jt_text(p[..]), ifx k == 0 then SLOW else ifx k == 1 then MUTATE else LONG);
+  }
+  return ok;
+}
+jb_done :: (j: [] Jb) -> int { gone := fs_remove(jt_text(j[0].dir[..])); return j[0].failed; }
+
+
+test_status :: (compiler: string, root: string) -> int {
+  j: [1] Jb; if !jb_case(j[..], compiler) { return 1; }
+  n0: [1] string;
+  print("status shows the budget\n");
+  s := jb_status(j[..], n0[0..<0], n0[0..<0]);
+  check(j[..], s.ok && s.budget == 3 && s.held == 0 && s.shared && s.load_limit == 0 && s.holders == 0, "status --jobs --json: budget 3, none held, shared, no load limit, no holders");
+  check(j[..], s.cores >= 1, "at least one performance core");
+  r: [1] JbRun; a := [2] string.["status", "--jobs"];
+  jb_run(j[..], a[..], n0[0..<0], n0[0..<0], false, r[..]);
+  check(j[..], has(jb_out(r[..]), "Build workers: 0 of 3 in use by 0 coax processes") && has(jb_out(r[..]), "budget 3 from $COAX_JOBS_BUDGET"), "status --jobs says the budget and where it came from");
+  nb := [1] string.["COAX_JOBS_BUDGET"];
+  d := jb_status(j[..], n0[0..<0], nb[..]);
+  want_reserve := ifx d.cores > 1 then (ifx d.cores / 3 > 1 then d.cores / 3 else 1) else 0;
+  check(j[..], d.ok && d.budget == d.cores - d.reserve && d.reserve == want_reserve, "the default budget is the performance cores less a reserve of a third (at least one)");
+  re := [1] string.["COAX_JOBS_RESERVE=2"];
+  e := jb_status(j[..], re[..], nb[..]);
+  check(j[..], e.ok && e.reserve == (ifx d.cores - 1 < 2 then d.cores - 1 else 2), "$COAX_JOBS_RESERVE sets the reserve");
+  // The catalogue alone on stdout, as the release check compares it; the budget on stderr.
+  fb: [JB_OUT] u8; fp: [1] Jt;
+  jt_s(fp[..], root); jt_s(fp[..], "/coax/STATUS.md"); fn := fs_read(jt_text(fp[..]), fb[..]);
+  pa := [1] string.["status"];
+  jb_run(j[..], pa[..], n0[0..<0], n0[0..<0], false, r[..]);
+  check(j[..], fn >= 0 && jb_out(r[..]) == cast(string) fb[0..<fn] && has(jb_err(r[..]), "Build workers:"), "status: STATUS.md on stdout, the budget on stderr");
+  fp[0].n = 0; jt_s(fp[..], root); jt_s(fp[..], "/coax/release-status.json"); fn = fs_read(jt_text(fp[..]), fb[..]);
+  ja := [2] string.["status", "--json"];
+  jb_run(j[..], ja[..], n0[0..<0], n0[0..<0], false, r[..]);
+  check(j[..], fn >= 0 && jb_out(r[..]) == cast(string) fb[0..<fn], "status --json: release-status.json on stdout");
+  return jb_done(j[..]);
+}
+
+test_concurrent :: (compiler: string) -> int {
+  j: [1] Jb; if !jb_case(j[..], compiler) { return 1; }
+  n0: [1] string;
+  print("concurrent compiles share the budget\n");
+  a := [2] string.["check", "slow.coax"];
+  hs: [3] int; done: [3] bool; st: [3] int;
+  for i: 0..<3 { hs[i] = jb_start(j[..], a[..], n0[0..<0], n0[0..<0], true); }
+  most := 0; most_over := 0; over_budget := false;
+  chunk: [4096] u8; outs: [3] int;
+  while true {
+    running := false;
+    for i: 0..<3 {
+      if done[i] || hs[i] < 0 { continue; }
+      n := cxproc_read_bytes(hs[i], 0, chunk[..]);
+      if n > 0 { outs[i] += n; }
+      w := proc_wait(hs[i], 0);
+      if w == PROC_RUNNING { running = true; } else { st[i] = w; done[i] = true; }
+    }
+    if !running { break; }
+    s := jb_status(j[..], n0[0..<0], n0[0..<0]);
+    if s.held > most { most = s.held; }
+    if s.over > most_over { most_over = s.over; }
+    if s.held > 3 { over_budget = true; }
+    proc_sleep(50);
+  }
+  waits: [3] int; all_ok := true; any_line := false; total := 0;
+  for i: 0..<3 {
+    e: [65536] u8; err := proc_stderr(hs[i], e[..]);
+    waits[i] = count_of(err, "coax jobs: waiting for "); total += waits[i];
+    if waits_line(err) { any_line = true; }
+    if hs[i] < 0 || st[i] != 0 || outs[i] != 0 { all_ok = false; }
+    r := proc_release(hs[i]);
+  }
+  check(j[..], all_ok, "three compiles at once all pass, quietly");
+  check(j[..], !over_budget && most == 3 && most_over <= 3, "never more than the budget held, and all of it used");
+  check(j[..], waits[0] <= 1 && waits[1] <= 1 && waits[2] <= 1 && total >= 1 && any_line, "a compile that waits says so once, naming the budget and its holders");
+  check(j[..], jb_status(j[..], n0[0..<0], n0[0..<0]).held == 0, "nothing held after");
+  return jb_done(j[..]);
+}
+
+// Waits up to 30 s for the case's pool to have all 3 tokens held.
+jb_until_held :: (j: [] Jb) -> int {
+  n0: [1] string;
+  deadline := proc_now_ms() + 30000; held := 0;
+  while proc_now_ms() < deadline { held = jb_status(j[..], n0[0..<0], n0[0..<0]).held; if held >= 3 { break; } proc_sleep(20); }
+  return held;
+}
+
+test_killed_frees :: (compiler: string) -> int {
+  j: [1] Jb; if !jb_case(j[..], compiler) { return 1; }
+  n0: [1] string;
+  print("a killed compile frees its tokens\n");
+  a := [2] string.["check", "slow.coax"];
+  h := jb_start(j[..], a[..], n0[0..<0], n0[0..<0], true);
+  check(j[..], h >= 0 && jb_until_held(j[..]) == 3, "a compile holds the whole budget");
+  // the compile's own process only (its workers are what the next case checks)
+  k := cxproc_pid_signal(proc_pid(h), PROC_SIGKILL);
+  w := proc_wait(h, 30000);
+  check(j[..], jb_status(j[..], n0[0..<0], n0[0..<0]).held == 0, "its tokens are free as soon as it is killed");
+  tp: [1] Jt; jt_s(tp[..], jt_text(j[0].dir[..])); jt_s(tp[..], "/t.json");
+  b := [4] string.["check", "slow.coax", "--timings", jt_text(tp[..])];
+  r: [1] JbRun; jb_run(j[..], b[..], n0[0..<0], n0[0..<0], true, r[..]);
+  check(j[..], r[0].status == 0 && !has(jb_err(r[..]), "waiting"), "a new compile gets every token at once");
+  g := proc_kill(h, PROC_SIGKILL); rr := proc_release(h);   // its orphaned check workers: its own group
+  return jb_done(j[..]);
+}
+
+// Whether a process of group pgid is alive (not a zombie), from ps.
+group_alive :: (pgid: int) -> bool {
+  out: [1048576] u8; err: [1024] u8;
+  a := [4] string.["ps", "-A", "-o", "pgid=,stat="];
+  r := proc_run(a[..], 10000, out[..], err[..]);
+  t := cast(string) out[0..<r.out_n]; i := 0;
+  while i < t.count {
+    e := i; while e < t.count && t[e] != '\n' { e += 1; }
+    line := t[i..<e]; i = e + 1;
+    p := 0; while p < line.count && line[p] == ' ' { p += 1; }
+    v := 0; q := p; while q < line.count && line[q] >= '0' && line[q] <= '9' { v = v * 10 + cast(int) (line[q] - '0'); q += 1; }
+    if q == p || v != pgid { continue; }
+    while q < line.count && line[q] == ' ' { q += 1; }
+    if q < line.count && line[q] != 'Z' { return true; }
+  }
+  return false;
+}
+
+test_killed_ends_workers :: (compiler: string) -> int {
+  j: [1] Jb; if !jb_case(j[..], compiler) { return 1; }
+  n0: [1] string;
+  print("a killed compile ends its check workers\n");
+  a := [2] string.["check", "long.coax"];
+  // its own process group holds only this compile and its workers (proc starts it in one)
+  h := jb_start(j[..], a[..], n0[0..<0], n0[0..<0], true);
+  check(j[..], h >= 0 && jb_until_held(j[..]) == 3, "a compile holds the whole budget");
+  proc_sleep(300);   // the workers are inside their checks
+  pid := proc_pid(h);
+  k := cxproc_pid_signal(pid, PROC_SIGKILL);
+  w := proc_wait(h, 30000);
+  killed := proc_now_ms();
+  while group_alive(pid) && proc_now_ms() - killed < 1000 { proc_sleep(20); }
+  check(j[..], !group_alive(pid), "its check workers end within a second of it");
+  g := proc_kill(h, PROC_SIGKILL); rr := proc_release(h);
+  return jb_done(j[..]);
+}
+
+test_same_results :: (compiler: string, cores: int) -> int {
+  j: [1] Jb; if !jb_case(j[..], compiler) { return 1; }
+  n0: [1] string;
+  print("results are the same for every worker count\n");
+  cb: [1] Jt; jt_s(cb[..], "COAX_JOBS_BUDGET="); jt_i(cb[..], cores);
+  counts := [3] int.[1, 4, cores];
+  first: [1] JbRun; r: [1] JbRun;
+  same_c := true; ok_c := true;
+  for k: 0..<3 {
+    cj: [1] Jt; jt_s(cj[..], "COAX_CHECK_JOBS="); jt_i(cj[..], counts[k]);
+    tp: [1] Jt; jt_s(tp[..], jt_text(j[0].dir[..])); jt_s(tp[..], "/c"); jt_i(tp[..], counts[k]); jt_s(tp[..], ".json");
+    a := [4] string.["c", "slow.coax", "--timings", jt_text(tp[..])];
+    env := [2] string.[jt_text(cj[..]), jt_text(cb[..])];
+    jb_run(j[..], a[..], env[..], n0[0..<0], true, ifx k == 0 then first[..] else r[..]);
+    if k == 0 { ok_c = first[0].status == 0; }
+    else { ok_c = ok_c && r[0].status == 0; same_c = same_c && jb_out(r[..]) == jb_out(first[..]); }
+  }
+  check(j[..], ok_c && same_c, "coax c gives the same C at 1, 4 and all workers");
+  tp: [1] Jt; jt_s(tp[..], jt_text(j[0].dir[..])); jt_s(tp[..], "/c"); jt_i(tp[..], cores); jt_s(tp[..], ".json");
+  tb: [65536] u8; tn := fs_read(jt_text(tp[..]), tb[..]);
+  nodes: [4096] JvNode; d: [1] Jv; way: [256] u8; wn := 0;
+  if tn > 0 && jv_parse(d[..], cast(string) tb[0..<tn], nodes[..]) { wn = jv_str(d[0], jv_get(d[0], 0, "parallel_checks"), way[..]); }
+  wtext := cast(string) way[0..<(ifx wn > 0 then wn else 0)];
+  want := ifx cores > 1 then "parallel" else "sequential";
+  check(j[..], wtext.count >= want.count && wtext[0..<want.count] == want, "with every core the checks ran that way");
+  m1: [1] JbRun; same_m := true;
+  for k: 0..<3 {
+    nj: [1] Jt; jt_i(nj[..], counts[k]);
+    a := [4] string.["mutate", "mutate.coax", "--jobs", jt_text(nj[..])];
+    env := [1] string.[jt_text(cb[..])];
+    jb_run(j[..], a[..], env[..], n0[0..<0], true, ifx k == 0 then m1[..] else r[..]);
+    if k > 0 { same_m = same_m && r[0].status == m1[0].status && jb_out(r[..]) == jb_out(m1[..]); }
+  }
+  check(j[..], same_m && has(jb_out(m1[..]), "mutants,"), "coax mutate gives the same report at 1, 4 and all workers");
+  // $COAX_JOBS and $COAX_MUTATE_JOBS give the same report, and so does a budget of one.
+  envs := [3] string.["COAX_JOBS=4", "COAX_MUTATE_JOBS=4", "COAX_JOBS_BUDGET=1"];
+  same_e := true;
+  for e: envs {
+    a := [2] string.["mutate", "mutate.coax"]; env := [1] string.[e];
+    jb_run(j[..], a[..], env[..], n0[0..<0], true, r[..]);
+    same_e = same_e && r[0].status == m1[0].status && jb_out(r[..]) == jb_out(m1[..]);
+  }
+  check(j[..], same_e, "$COAX_JOBS, $COAX_MUTATE_JOBS and a budget of one give the same report");
+  a := [4] string.["c", "slow.coax", "--jobs", "2"]; env := [1] string.["COAX_JOBS_BUDGET=1"];
+  jb_run(j[..], a[..], env[..], n0[0..<0], true, r[..]);
+  check(j[..], r[0].status == 0 && jb_out(r[..]) == jb_out(first[..]), "--jobs 2 on a budget of one gives the same C");
+  return jb_done(j[..]);
+}
+
+test_no_pool :: (compiler: string) -> int {
+  j: [1] Jb; if !jb_case(j[..], compiler) { return 1; }
+  n0: [1] string;
+  print("no token directory\n");
+  env := [1] string.["COAX_JOBS_DIR=/dev/null/coax-jobs"];
+  s: [1] JbRun; a := [3] string.["status", "--jobs", "--json"];
+  jb_run(j[..], a[..], env[..], n0[0..<0], true, s[..]);
+  st := jb_parse_status(jb_out(s[..]));
+  check(j[..], st.ok && !st.shared, "status says the pool isn't shared");
+  b := [2] string.["status", "--jobs"];
+  jb_run(j[..], b[..], env[..], n0[0..<0], true, s[..]);
+  check(j[..], has(jb_out(s[..]), "no shared pool"), "status --jobs says there is no shared pool");
+  c := [2] string.["c", "slow.coax"]; e2 := [2] string.["COAX_JOBS_DIR=/dev/null/coax-jobs", "COAX_CHECK_JOBS=3"];
+  jb_run(j[..], c[..], e2[..], n0[0..<0], true, s[..]);
+  check(j[..], s[0].status == 0, "a compile still runs");
+  return jb_done(j[..]);
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: job_budget.coax COMPILER   (run from the repository's root or coax/)"); return 2; }
+  compiler := args_at(a[..], 0);
+  // the repository's root: here or one up (run.sh runs from coax/)
+  cw: [FS_PATH_MAX] u8; here := fs_cwd(cw[..]);
+  root := ifx fs_exists("coax/STATUS.md") then here else fs_dir(here);
+  out: [256] u8; err: [256] u8;
+  ga := [2] string.["getconf", "_NPROCESSORS_ONLN"];
+  r := proc_run(ga[..], 10000, out[..], err[..]);
+  cores := args_whole(cast(string) out[0..<r.out_n]);
+  if cores < 1 { cores = 1; }
+  failed := test_status(compiler, root) + test_concurrent(compiler) + test_killed_frees(compiler) + test_killed_ends_workers(compiler) + test_same_results(compiler, cores) + test_no_pool(compiler);
+  if failed > 0 { print("job budget: % failed\n", failed); return 1; }
+  print("job budget: ok\n");
+  return 0;
+}

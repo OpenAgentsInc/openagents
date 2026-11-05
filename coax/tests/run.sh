@@ -102,7 +102,7 @@ unit_library_checks() { web/tool.sh tests/library-checks.coax "$COAX_ABS"; }
 unit_authority_cache() { web/tool.sh tests/authority-cache.coax "$COAX_ABS"; }
 unit_check_reuse() { web/tool.sh tests/check-reuse.coax "$COAX_ABS"; }
 unit_parallel_checks() { web/tool.sh tests/parallel-checks.coax "$COAX_ABS"; }
-unit_job_budget() { COAX_TEST_COMPILER="$COAX_ABS" python3 tests/job_budget.py; }
+unit_job_budget() { web/tool.sh tests/job_budget.coax "$COAX_ABS"; }
 unit_release() { python3 tests/release.py; }
 unit_mutation_schedule() {
   python3 tests/mutation_schedule.py && python3 tests/mutation_parallel.py && python3 tests/mutation_scope.py && python3 tests/evidence.py && python3 tests/bootstrap_mutation_shards.py && tests/mutation-gate.sh

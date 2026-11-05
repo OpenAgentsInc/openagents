@@ -4137,7 +4137,7 @@ runs at least one worker, so no build waits on another; no budget, reserve,
 load backoff or wait is hidden (`coax status`, and one stderr line when a build
 waits); and the pool decides only how many workers run at once, so stdout, the
 C, the mutation report and exit status are the same for every worker count.
-`coax/tests/job_budget.py` tests concurrent processes, a killed holder and
+`coax/tests/job_budget.coax` tests concurrent processes, a killed holder and
 byte-identical output at 1, 4 and all cores.
 
 The evaluator computes number, bool and enum expressions (literals, local

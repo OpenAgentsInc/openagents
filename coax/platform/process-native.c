@@ -601,7 +601,8 @@ int64_t cxproc_wait(int64_t h, int64_t timeout_ms) {
   int64_t deadline = timeout_ms < 0 ? -1 : cxproc_now_ms() + timeout_ms;
   while (!p->reaped) {
     pid_t r = waitpid(p->pid, &p->status, WNOHANG);
-    if (r == p->pid) { p->reaped = 1; break; }
+    /* what it wrote to stderr before it ended is kept, though its stdout was never read */
+    if (r == p->pid) { p->reaped = 1; if (p->err >= 0) drain_stderr(p); break; }
     if (r < 0 && errno != EINTR) return -1;
     if (deadline >= 0 && cxproc_now_ms() >= deadline) return CXPROC_RUNNING;
     struct timespec t = {0, 5 * 1000000}; nanosleep(&t, NULL);
