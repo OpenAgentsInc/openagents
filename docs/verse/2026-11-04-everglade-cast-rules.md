@@ -65,7 +65,9 @@ release's larger slack covers a target that walks during the bar.
   not in the way.
 - The ground blocks it (a hill), and so does any standing piece of the town at least `CR_LOW`
   (1.2 m) tall. Crates, fences and benches don't. A broken piece doesn't.
-- An aim within `CR_NEAR` (2 m) of the caster is always seen.
+- An aim within `CR_NEAR` (2.5 m) of the caster is always seen. A press of an ability you don't
+  point with aims 2 m ahead of you, so it never needs a line of sight: the half metre covers the
+  aim's centimetres on the wire and the server's copy of your pose.
 
 The room's host (`room-host.c`) answers the sight questions with its world before it ends each
 tick. A room with no world, as in unit tests, treats every line as clear.

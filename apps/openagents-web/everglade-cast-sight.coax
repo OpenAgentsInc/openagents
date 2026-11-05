@@ -66,6 +66,15 @@ everglade_room_sight :: (s: [] Everglade, fx: f32, fy: f32, fz: f32, ax: f32, ay
   // within CR_NEAR: seen, even into the house
   #assert cr_sight(g[..], west, add(west, v3(1.5, 0, 0)));
   #assert everglade_room_sight(g[..], west.x, west.y, west.z, east.x, east.y, east.z) == false;
+  // a press (2 m ahead, everglade-net.coax net_press) facing the house's wall at arm's length: the
+  // server has your feet a hair from where the page put the aim, and the aim in whole cm, so its gap
+  // can be a little over 2 m; the press is still seen (#12875: Reverse Gravity refused for sight)
+  face := v3(-22.4, ground_at(g[..], -22.4, z), z);
+  press := v3(-20.4, face.y, z);
+  #assert cr_sight(g[..], v3(face.x - 0.0001, face.y, face.z), press);
+  #assert cr_sight(g[..], v3(face.x - 0.004, face.y, face.z), press);
+  // an aim a metre further, into the house, is still blocked
+  #assert !cr_sight(g[..], face, v3(-19.4, face.y, z));
 }
 
 // ---- a refused cast on your page (spec section 6): its bar cancels and shows a short reason icon for

@@ -14,7 +14,7 @@ CR_EYE :: 1.8;            // m over the caster's feet the line of sight starts
 CR_SHORT :: 1.0;          // m short of the aim it ends: the wall or roof you aim at is not in the way
 CR_AIM_UP :: 0.5;         // m over the aim it ends
 CR_LOW :: 1.2;            // m: a piece lower than this (a crate, a fence, a bench) doesn't block the line
-CR_NEAR :: 2.0;           // m: an aim this close needs no line of sight (a press aims 2 m ahead of you)
+CR_NEAR :: 2.5;           // m: an aim this close needs no line of sight (a press aims 2 m ahead of you; the rest is the wire's cm and your pose)
 
 // ---- time
 CR_WAIT :: 15;            // ticks (0.5 s, the room's EG_BANK) a cast waits for the inputs sent before it
