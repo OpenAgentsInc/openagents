@@ -1711,6 +1711,42 @@ net_probe :: (s: [] Everglade, field: int) -> int #export_c {
   if field == 90 { c := 0; for j: 1..<ST_WHOS { c |= st_cond(s, st_who_of(j)) | (ifx st_down(s, st_who_of(j)) then WC_UNCONSCIOUS else 0); } return c; }
   if field == 91 { return s[0].st_words; }
   if field == 92 { m := 0; if s[0].wv.started { for k: 0..<MISSILES { if s[0].wt[0].missiles[k].live { m += 1; } } } return m; }   // the watch's spells in the air drawn here
+  // the vines check's (coax/web/everglade-vines.coax, #12873): 93 casts Entangle at the most heard
+  // standing guards that fit in its square (at least three, within its range of you; their count, -1
+  // none), 94 the people the vines hold as drawn here, 95 the people the room says are Restrained
+  // (their row's COND) who stand in a live Entangle's square here, 96 those in only one of the two,
+  // 97 a hash of whom the vines hold (the same set on every page)
+  if field == 93 && net_live(s) {
+    you := ab_you(s); h := f32(GV_EN_SIDE) * 0.5 - 0.4;
+    best := 0; at := you;
+    for g: 0..<WATCH_ACTORS {
+      fg := net_folk(s, g);
+      if !watch_is_guard(g) || !fg.ok || fg.mode == WM_DOWN || fg.mode == WM_DEAD || flat_gap(v3(fg.x, 0, fg.z), you) > f32(GV_EN_RANGE) - 4 { continue; }
+      k := 0; sx := 0.0f32; sz := 0.0f32;
+      for j: 0..<WATCH_ACTORS {
+        fj := net_folk(s, j);
+        if !watch_is_guard(j) || !fj.ok || fj.mode == WM_DOWN || fj.mode == WM_DEAD || abs(fj.x - fg.x) > h || abs(fj.z - fg.z) > h { continue; }
+        k += 1; sx += fj.x; sz += fj.z;
+      }
+      if k > best { best = k; at = v3(sx / f32(k), 0, sz / f32(k)); }
+    }
+    if best < 3 { return -1; }
+    at.y = ground_at(s, at.x, at.z);
+    return ifx net_cast(s, SP_SLOTS + AB_ENTANGLE, at, -1) then best else -1;
+  }
+  if field >= 94 && field <= 97 {
+    k := 0; hash := 7;
+    for i: 0..<WATCH_ACTORS {
+      vined := eg_ra_vined(s, i);
+      f := net_folk(s, i);
+      held := f.ok && (f.cond & WC_RESTRAINED) != 0 && eg_ra_in_entangle(s, f.x, f.z);
+      if field == 94 && vined { k += 1; }
+      if field == 95 && held { k += 1; }
+      if field == 96 && vined != held { k += 1; }
+      if vined { hash = (hash * 31 + i + 1) % 1000000007; }
+    }
+    return ifx field == 97 then hash else k;
+  }
   // 59: offline, hold you as a Watch Mage's Hold Person does (3 s, saving each round): 1 when it held
   // you (the drift check's held step; in a room another player's cast holds you)
   if field == 59 {
@@ -2087,6 +2123,30 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   #assert net_test_hear(a[..], 2, net_test_frame(room[..])) && net_fix_due(a[..]);
   #assert net_replay_n(a[..]) == 2;
   #assert abs(net_replay_input(a[..], 0).key_y - 0.5) < 0.001 && abs(net_replay_input(a[..], 1).key_x - 1) < 0.001;
+}
+#test "net: a page in a room has each person in the conditions their row's COND says, and the abilities' holds follow them: Entangle's vines (#12873)" #steps 400000000 {
+  a: [1] Everglade; na: [1] EgNet; room: [1] NetTestRoom;
+  #assert net_test_page(a[..], na[..], 0, "pa", 100) && net_test_hear(a[..], 0, "y 0 1 5000100");
+  net_test_world(room[..], 0);
+  #assert net_test_hear(a[..], 0, net_test_frame(room[..]));
+  // two guards heard, one Restrained by the room's rules; a third not heard
+  g := EG_SPOTS;
+  net_test_tick(room[..], 1, 0);
+  net_test_s(room[..], WireS.{id = NET_FOLK_ID + g, kind = WK_FOLK, x = 1, z = 4, g = WM_CALM, hp = 11, max = 11, cond = WC_RESTRAINED});
+  net_test_s(room[..], WireS.{id = NET_FOLK_ID + g + 1, kind = WK_FOLK, x = 2, z = 4, g = WM_CALM, hp = 11, max = 11});
+  #assert net_test_hear(a[..], 0, net_test_frame(room[..]));
+  net_step(a[..], 200, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  #assert net_folk(a[..], g).ok && net_folk(a[..], g).cond == WC_RESTRAINED;
+  a[0].wv.rules_cond[g + 1] = WC_RESTRAINED; a[0].wv.rules_cond[g + 2] = WC_RESTRAINED;   // a page's own, before
+  watch_net_frame(a[..]);
+  #assert ab_rules_hold(a[..], g, WC_RESTRAINED) == 1 && ab_rules_hold(a[..], g + 1, WC_RESTRAINED) == 0 && ab_rules_hold(a[..], g + 2, WC_RESTRAINED) == 0;
+  // the room lets the first go
+  net_test_tick(room[..], 2, 0);
+  net_test_s(room[..], WireS.{id = NET_FOLK_ID + g, kind = WK_FOLK, x = 1, z = 4, g = WM_CALM, hp = 11, max = 11});
+  #assert net_test_hear(a[..], 0, net_test_frame(room[..]));
+  net_step(a[..], 260, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  watch_net_frame(a[..]);
+  #assert ab_rules_hold(a[..], g, WC_RESTRAINED) == 0;
 }
 #test "net: the server's states two at once, late: another player walking is drawn moving every frame (no stall)" {
   a: [1] Everglade; na: [1] EgNet; room: [1] NetTestRoom;

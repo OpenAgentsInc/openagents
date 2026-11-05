@@ -1,0 +1,137 @@
+// Entangle's vines on two pages (#12873): two headless pages sit in a local room while a bot
+// (coax/web/room/guard-check.coax, room pair-guard-N) strikes a townsperson and the watch comes for
+// it. Once at least three guards stand together, page A casts Entangle on them (net_probe 93). On
+// both pages the vines must hold exactly whom the room says is Restrained in the square (their rows'
+// COND): net_probe 94 the people the vines hold as drawn, 95 the people the room says are Restrained
+// in a live Entangle's square, 96 those in only one of the two, 97 a hash of the vines' set. A cast
+// that restrains no one is cast again (each guard saves on the room's dice).
+//   coax/web/tool.sh coax/web/everglade-vines.coax PAGE_URL [--shots PREFIX] [--seconds S]
+// PAGE_URL is the local room's page with ?relay= and &room=pair-guard-N (coax/web/room/local.sh).
+// Prints a line per check, one JSON line, then holds or fails. Nothing opens on screen.
+#import "Basic";
+#load "../lib/net/cdp.coax";
+
+EV_SHOT :: 25165824;
+EV_CASTS :: 5;           // Entangle casts at most, until one restrains someone
+EV_WATCH_MS :: 12000;    // each cast watched this long
+EV_LAG_MS :: 700;        // the longest a page may disagree with the room (a row's arrival to the next frame)
+
+EvBuf :: struct { b: [8192] u8; n: int; }
+ev_put :: (o: [] EvBuf, s: string) { for k: 0..<s.count { if o[0].n < o[0].b.count { o[0].b[o[0].n] = s[k]; o[0].n += 1; } } }
+ev_text :: (o: [] EvBuf) -> string { return cast(string) o[0].b[0..<o[0].n]; }
+
+ev_int :: (c: [] Cdp, js: string, fallback: int) -> int {
+  v := cdp_evaluate(c, js);
+  return ifx v >= 0 then jv_int(cdp_doc(c), v, fallback) else fallback;
+}
+ev_key :: (c: [] Cdp, down: bool, key: string, code: string, vk: int) {
+  q: [1] EvBuf;
+  ev_put(q[..], "dispatchEvent(new KeyboardEvent('"); ev_put(q[..], ifx down then "keydown" else "keyup");
+  ev_put(q[..], "', {key: '"); ev_put(q[..], key); ev_put(q[..], "', code: '"); ev_put(q[..], code); ev_put(q[..], "', keyCode: ");
+  ev_put(q[..], ifx vk == 13 then "13" else "27"); ev_put(q[..], ", bubbles: true})); 1");
+  _ := ev_int(c, ev_text(q[..]), 0);
+}
+ev_shot :: (c: [] Cdp, prefix: string, name: string) {
+  if prefix.count == 0 { return; }
+  png: [EV_SHOT] u8;
+  p: [1] EvBuf; ev_put(p[..], prefix); ev_put(p[..], "-"); ev_put(p[..], name); ev_put(p[..], ".png");
+  n := cdp_screenshot(c, png[..]);
+  if n > 0 && fs_write(ev_text(p[..]), cast(string) png[0..<n]) { print("  %\n", ev_text(p[..])); }
+}
+ev_check :: (ok: bool, what: string) -> bool { print("% %\n", ifx ok then "ok  " else "FAIL", what); return ok; }
+
+// A page opened at url with the pair check's in-page half, joined (ENTER past the picker).
+ev_open :: (c: [] Cdp, js: string, url: string, name: string) -> bool {
+  if !cdp_launch(c, 1280, 800, name) { tool_err("everglade-vines: "); tool_errln(cdp_error(c)); return false; }
+  params: [131072] u8; o: [1] Jo;
+  _ := cdp_call(c, "Page.enable", "", CDP_CALL_MS);
+  _ = cdp_call(c, "Emulation.setFocusEmulationEnabled", "{\"enabled\":true}", CDP_CALL_MS);
+  jo_start(o[..], params[..]); jo_obj(o[..]); jo_key(o[..], "source"); jo_str(o[..], js); jo_end(o[..]);
+  _ = cdp_call(c, "Page.addScriptToEvaluateOnNewDocument", jo_text(o[..]), CDP_CALL_MS);
+  jo_start(o[..], params[..]); jo_obj(o[..]); jo_key(o[..], "url"); jo_str(o[..], url); jo_end(o[..]);
+  return cdp_call(c, "Page.navigate", jo_text(o[..]), CDP_CALL_MS) >= 0;
+}
+ev_join :: (c: [] Cdp, deadline: int) -> bool {
+  live := false;
+  while !live && proc_now_ms() < deadline {
+    proc_sleep(500);
+    live = ev_int(c, "__eg.live()", 0) == 1;
+    if !live { ev_key(c, true, "Enter", "Enter", 13); ev_key(c, false, "Enter", "Enter", 13); }
+  }
+  if live { proc_sleep(1500); ev_key(c, true, "Escape", "Escape", 27); ev_key(c, false, "Escape", "Escape", 27); }
+  return live;
+}
+
+// One page's watch of a cast.
+EvSeen :: struct { vined_most: int; held_most: int; off_ms: int; off_from: int = -1; samples: int; hash: int; }
+ev_sample :: (c: [] Cdp, e: [] EvSeen, now: int) {
+  v := ev_int(c, "__eg.probe(94)", -1);
+  h := ev_int(c, "__eg.probe(95)", -1);
+  off := ev_int(c, "__eg.probe(96)", -1);
+  e[0].hash = ev_int(c, "__eg.probe(97)", -1);
+  e[0].samples += 1;
+  if v > e[0].vined_most { e[0].vined_most = v; }
+  if h > e[0].held_most { e[0].held_most = h; }
+  if off != 0 {
+    if e[0].off_from < 0 { e[0].off_from = now; }
+    if now - e[0].off_from > e[0].off_ms { e[0].off_ms = now - e[0].off_from; }
+  } else { e[0].off_from = -1; }
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  ok := args_load(a[..]);
+  url := args_at(a[..], 0);
+  shots := args_value(a[..], "--shots", "");
+  secs := args_number(args_value(a[..], "--seconds", "90"));
+  if !ok || url.count == 0 || url[0] == '-' || !secs.ok {
+    tool_errln("usage: coax/web/tool.sh coax/web/everglade-vines.coax PAGE_URL [--shots PREFIX] [--seconds S]"); return 2;
+  }
+  js: [65536] u8;
+  jn := fs_read("coax/web/everglade-pair.js", js[..]);
+  if jn <= 0 { tool_errln("everglade-vines: can't read coax/web/everglade-pair.js (run it from the repository's root)"); return 2; }
+  pa: [1] Cdp; pb: [1] Cdp;
+  if !ev_open(pa[..], cast(string) js[0..<jn], url, "coax-egvines-a-") { print("fails\n"); return 1; }
+  if !ev_open(pb[..], cast(string) js[0..<jn], url, "coax-egvines-b-") { cdp_close(pa[..]); print("fails\n"); return 1; }
+  deadline := proc_now_ms() + 120000;
+  all := ev_check(ev_join(pa[..], deadline) && ev_join(pb[..], deadline), "both pages joined the room");
+  // A casts once three guards stand together within its reach; again while no one is restrained
+  casts := 0; guards := -1; restrained := false;
+  sa: [1] EvSeen; sb: [1] EvSeen;
+  agree := false; hash_a := -1; hash_b := -1;
+  t0 := proc_now_ms();
+  while all && !restrained && casts < EV_CASTS && proc_now_ms() - t0 < cast(int) secs.value * 1000 {
+    proc_sleep(700);
+    g := ev_int(pa[..], "__eg.probe(93)", -1);
+    if g < 3 { continue; }
+    casts += 1; guards = g;
+    print("  cast %: Entangle on % guards\n", casts, g);
+    sa[0] = EvSeen.{}; sb[0] = EvSeen.{};
+    w0 := proc_now_ms();
+    shot := false;
+    while proc_now_ms() - w0 < EV_WATCH_MS {
+      proc_sleep(150);
+      now := proc_now_ms();
+      ev_sample(pa[..], sa[..], now); ev_sample(pb[..], sb[..], now);
+      if !shot && sa[0].vined_most > 0 && now - w0 > 2500 { shot = true; ev_shot(pa[..], shots, "a"); ev_shot(pb[..], shots, "b"); }
+    }
+    print("  page A: vines on up to %, the room's Restrained up to %, out of step at most % ms (% samples)\n", sa[0].vined_most, sa[0].held_most, sa[0].off_ms, sa[0].samples);
+    print("  page B: vines on up to %, the room's Restrained up to %, out of step at most % ms (% samples)\n", sb[0].vined_most, sb[0].held_most, sb[0].off_ms, sb[0].samples);
+    restrained = sa[0].held_most > 0 || sb[0].held_most > 0;
+    // the same set on both, read a few times (each page's newest row)
+    for q: 0..<8 {
+      hash_a = ev_int(pa[..], "__eg.probe(97)", -1); hash_b = ev_int(pb[..], "__eg.probe(97)", -2);
+      if hash_a == hash_b { agree = true; break; }
+      proc_sleep(150);
+    }
+    all = ev_check(sa[0].off_ms <= EV_LAG_MS && sb[0].off_ms <= EV_LAG_MS, "on both pages the vines hold exactly whom the room says is Restrained in the square") && all;
+  }
+  all = ev_check(casts > 0, "A cast Entangle on three or more guards") && all;
+  all = ev_check(restrained && sa[0].vined_most > 0 && sb[0].vined_most > 0, "the room restrained someone, and both pages draw vines on them") && all;
+  all = ev_check(agree, "both pages' vines hold the same people") && all;
+  print("{\"casts\":%,\"guards\":%,\"a_vined\":%,\"a_held\":%,\"a_off_ms\":%,\"b_vined\":%,\"b_held\":%,\"b_off_ms\":%,\"hash_a\":%,\"hash_b\":%}\n",
+        casts, guards, sa[0].vined_most, sa[0].held_most, sa[0].off_ms, sb[0].vined_most, sb[0].held_most, sb[0].off_ms, hash_a, hash_b);
+  cdp_close(pa[..]); cdp_close(pb[..]);
+  print("%\n", ifx all then "holds" else "fails");
+  return ifx all then 0 else 1;
+}

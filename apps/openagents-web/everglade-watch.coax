@@ -1097,6 +1097,9 @@ watch_net_frame :: (s: [] Everglade) {
     if !watch_hurtable(i) { continue; }
     f := net_folk(s, i);
     a := w[0].actors[i..<i + 1];
+    // the room's rules have the town: the abilities' holds (Entangle's vines, the tentacles) follow the
+    // conditions its server reports on each one, none on one not heard (ab_rules_cond, #12873)
+    s[0].wv.rules_on = true; s[0].wv.rules_cond[i] = ifx f.ok then f.cond else 0;
     if !f.ok {
       if watch_is_rein(i) { a[0].homed = false; }
       else if i < EG_SPOTS { s[0].folk[i].indoors = true; s[0].folk[i].walking = false; a[0].mode = WM_CALM; }

@@ -122,6 +122,27 @@ eg_ra_out :: (s: [] Everglade, q: int, was: EgRaYou) {
   r[0].in_copy = 0;
 }
 
+// Whether a live Entangle draws its vines round person i on this page (everglade-grove.coax
+// gv_en_draw): the page's own, or a seat's copy (the vines check, coax/web/everglade-vines.coax, #12873).
+eg_ra_vined :: (s: [] Everglade, i: int) -> bool {
+  if i < 0 || i >= WATCH_ACTORS { return false; }
+  if s[0].sp.gv[0].en_on && s[0].sp.gv[0].en_held[i] { return true; }
+  for q: 0..<EG_RA_SEATS {
+    c := s[0].sp.room_ab[0].seat[q..<q + 1];
+    if c[0].gv[0].en_on && c[0].gv[0].en_held[i] { return true; }
+  }
+  return false;
+}
+// Whether (x, z) is in a live Entangle's square on this page: the page's own, or a seat's copy.
+eg_ra_in_entangle :: (s: [] Everglade, x: f32, z: f32) -> bool {
+  if s[0].sp.gv[0].en_on && gv_in_square(s[0].sp.gv[0].en_at, x, z) { return true; }
+  for q: 0..<EG_RA_SEATS {
+    c := s[0].sp.room_ab[0].seat[q..<q + 1];
+    if c[0].gv[0].en_on && gv_in_square(c[0].gv[0].en_at, x, z) { return true; }
+  }
+  return false;
+}
+
 // What ability k holds up in the Everglade's state now (a copy in it).
 eg_ra_holds :: (s: [] Everglade, k: int) -> bool {
   a := ab_of(s); fr := fr_of(s); td := td_of(s); gv := gv_of(s);
