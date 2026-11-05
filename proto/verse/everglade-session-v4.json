@@ -17,6 +17,7 @@
     {"dir": "page", "head": "R", "fields": ["seq"], "values": [5], "text": "R 5"},
     {"dir": "page", "head": "L", "fields": ["seq"], "values": [6], "text": "L 6"},
     {"dir": "page", "head": "T", "fields": ["seq", "code"], "values": [8, "everglade-2"], "text": "T 8 everglade-2"},
+    {"dir": "page", "head": "O", "fields": ["outcomes"], "values": [5], "text": "O 5"},
     {"dir": "server", "head": "W", "read": true, "fields": ["tick", "hz", "seed", "day", "weather", "budget"], "values": [900, 30, 59365, 120000, 3, 1400], "text": "W 900 30 59365 120000 3 1400"},
     {"dir": "server", "head": "D", "read": true, "fields": ["tick", "ack", "f", "part"], "values": [900, 7, 1, 0], "text": "D 900 7 1 0 "},
     {"dir": "server", "head": "e cast", "read": true, "fields": ["ss", "slot", "ax_cm", "ay_cm", "az_cm", "seed"], "values": [0, 1, 1250, -20, 300, 77], "text": "e cast 0 1 1250 -20 300 77"},
@@ -24,7 +25,9 @@
     {"dir": "server", "head": "e stop", "fields": ["ss", "slot", "why"], "values": [0, 0, "left"], "text": "e stop 0 0 left"},
     {"dir": "server", "head": "w", "fields": ["ss", "level"], "values": [2, 3], "text": "w 2 3"},
     {"dir": "server", "head": "r", "fields": ["seq", "reason"], "values": [8, "full"], "text": "r 8 full"},
-    {"dir": "server", "head": "g", "fields": ["code"], "values": ["everglade-2"], "text": "g everglade-2"}
+    {"dir": "server", "head": "g", "fields": ["code"], "values": ["everglade-2"], "text": "g everglade-2"},
+    {"dir": "server", "head": "o", "fields": ["outcomes"], "values": [7], "text": "o 7"},
+    {"dir": "server", "head": "e town", "fields": [], "values": [], "text": "e town"}
   ],
   "malformed": ["P 1 1", "H", "I 7 0 100 -50 0 15708 1", "C 3 1 1250 -20 300", "E 4 2", "W 900 30 59365 120000 3", "D 900 7 1", "e hit 1003 2005 7", "I 7 0 x -50 0 15708 1 42", "C 3 1 12.5 -20 300 1005"],
   "trailing": "a reader ignores fields past its last; C and e cast read one optional MODE there",

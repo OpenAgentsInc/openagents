@@ -43,6 +43,9 @@ wp_write :: (head: string, f: WpVals, out: [] u8) -> int {
   if head == "w" { return wire_put_wanted(out, 0, wp_int(f.v[0]), wp_int(f.v[1])); }
   if head == "r" { return wire_put_refused(out, 0, wp_int(f.v[0]), f.v[1]); }
   if head == "g" { return wire_put_go(out, 0, f.v[0]); }
+  if head == "O" { return wire_put_missed(out, 0, wp_int(f.v[0])); }      // (#12902)
+  if head == "o" { return wire_put_outcomes(out, 0, wp_int(f.v[0])); }
+  if head == "e town" { return wire_put_town(out, 0); }
   return -1;
 }
 // A field read: text, or a number written out in num (from at[0] on).

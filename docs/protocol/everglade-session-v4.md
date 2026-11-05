@@ -29,7 +29,10 @@ the refusal words for each intent, and the features the profile does not
 support.
 
 To change the wire, raise `WIRE_VERSION` and add a new profile file. Don't
-edit a published profile in place.
+edit a published profile in place, except to add a message that a page or room
+of the same version that doesn't know it ignores. The outcome count `o N`, the
+page's `O N` and `e town` (#12902) were added that way: a room or page from
+before them never sends them and drops them when it hears them.
 
 ## Check
 
