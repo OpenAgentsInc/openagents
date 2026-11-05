@@ -1,0 +1,10 @@
+raid-profile raid-capacity-v1 source=fae22e7101 seed=1284301 seats=16 seconds=160 class=mix mode=fight expect=any network=loopback consumer=native-socket
+raid dials: event 1 0 3 12 6 1 3 3 31 1 2 1 100 15
+{"players":16,"seconds":160,"least_d_hz":30,"bytes_per_s":28148,"front_least":199,"front_most":686,"front_band_pct":66,"watch_most":24,"sieges":1,"camp_fell_s":-1,"regrouped":0,"expect":"any","least_raiders_seen":250,"kinds_seat0":1052544,"least_raider_casts_heard":551,"least_hits_on_raiders_heard":1000,"most_breaks_heard":147,"our_casts":1971,"seats_earned_xp":16,"xp_total":26779,"seats_level_2":16,"phases_seat0":131,"arch_seat0":3,"outcome_seat0":0,"camp":"standing","most_xp_a_seat":4154,"bad":0,"least_xp_a_seat":333,"mode":"fight","class":"mix","xp_cues_missed":0,"xp_seats":"d1976+0 w333+0 d1308+0 w355+0 d4154+0 w375+0 d2623+0 w2226+0 d1916+0 w828+0 d805+0 w1666+0 d3986+0 w1887+0 d1828+0 w513+0","refused":919,"refused_cooldown":0,"refused_range":0,"refused_level":0,"refused_other":128,"refused_dead":791,"refused_busy":0,"refused_slot":0,"players_off_the_square":16}
+raids
+raid vitals: 31 samples, complete=true
+tick p95 at worst: 1400 us
+room: 3601 ticks in 60.0 s, 16 players, 0 frames over the rate limits, 0 queue full, 0 slow sockets closed, 3179 bytes the most waiting
+room: everglade tick parts over the minute (ms): move 46 abilities 8 town 9 spells 12 people 3 rules 16 write 241 send 82, 0 events with no room in their tick
+room: 3600 ticks in 60.0 s, 16 players, 0 frames over the rate limits, 0 queue full, 0 slow sockets closed, 3179 bytes the most waiting
+room: everglade tick parts over the minute (ms): move 88 abilities 156 town 12 spells 54 people 3 rules 58 write 456 send 109, 0 events with no room in their tick

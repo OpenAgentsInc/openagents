@@ -17,6 +17,9 @@
 //     front, #12860) pass to raid-check; RAID_DIALS replaces the API's default dials. The server's
 //     health is read every 5 s and the worst 95th percentile tick is printed. Exits 0 when
 //     raid-check prints "raids". RAID_PROOF_LOG names a file for the room's output.
+//     RAID_SEED fixes the room/raid seed; RAID_BUILD labels the native source. RAID_VITALS_LOG
+//     retains timestamped raw 10 s vitals windows (sampled every 5 s); it requires RAID_BUILD.
+//     Requests outside 1..16 seats or 10..600 seconds fail rather than being silently clamped.
 //
 //   coax/web/tool.sh coax/web/room/room-proof.coax transport BIN [PORT] [PLAYERS] [SECONDS] [PROFILE...]
 //     The WebSocket profile under bad networks (GitHub #12858): the room on PORT (default 8981) with
@@ -84,6 +87,35 @@ rp_p95 :: (body: string) -> int {
   #assert rp_p95("{\"tick\":\"p50 410 us, at the 95th 1290 us\"}") == 1290;
   #assert rp_p95("at the 95th us") == -1 && rp_p95("") == -1 && rp_p95("at the 95th 12 ms") == -1;
   #assert rp_p95("x at the 95th 7 us at the 95th 9 us") == 7;
+}
+#test "raid capacity: a requested encounter is at most sixteen seats and ten minutes" {
+  #assert rp_raid_shape(1,10)&&rp_raid_shape(16,600);
+  #assert !rp_raid_shape(0,160)&&!rp_raid_shape(17,160)&&!rp_raid_shape(8,9)&&!rp_raid_shape(8,601);
+}
+#test "raid capacity: an explicit seed never silently becomes a clock seed" {
+  #assert rp_seed(false,"",17)==17&&rp_seed(true,"1284301",17)==1284301&&rp_seed(true,"2147483647",17)==2147483647;
+  #assert rp_seed(true,"",17)==-1&&rp_seed(true,"bad",17)==-1&&rp_seed(true,"0",17)==-1&&rp_seed(true,"2147483648",17)==-1;
+}
+#test "raid capacity: retain complete vitals windows only, including their sample time" {
+  body:="ticks a second=30\ntick p50 ms=0.1\ntick p95 ms=0.2\ntick p99 ms=0.3\n";
+  #assert rp_vitals_body(200,body)&&!rp_vitals_body(503,body)&&!rp_vitals_body(200,"")&&!rp_vitals_body(200,body[0..<body.count-1]);
+  l:[1]RpLog;
+  #assert rp_vitals_keep(l[..],12000,body)&&rp_has(cast(string)l[0].b[0..<l[0].n],"sample_ms=12000\n")&&rp_has(cast(string)l[0].b[0..<l[0].n],body);
+  l[0].n=RP_LOG-10;n:=l[0].n;#assert !rp_vitals_keep(l[..],12000,body)&&l[0].n==n;
+}
+rp_raid_shape :: (n:int,secs:int)->bool{return n>=1&&n<=16&&secs>=10&&secs<=600;}
+rp_seed :: (asked:bool,s:string,fallback:int)->int {
+  if !asked{return fallback;}if s.count<1||s.count>10{return -1;}n:=0;
+  for c:s{if c<'0'||c>'9'{return -1;}n=n*10+cast(int)(c-'0');if n>2147483647{return -1;}}
+  return ifx n>=1 then n else -1;
+}
+rp_vitals_body :: (code:int,s:string)->bool {
+  return code==200&&s.count>0&&s[s.count-1]=='\n'&&rp_has(s,"ticks a second=")&&rp_has(s,"tick p50 ms=")&&rp_has(s,"tick p95 ms=")&&rp_has(s,"tick p99 ms=");
+}
+rp_vitals_keep :: (l:[]RpLog,elapsed:int,body:string)->bool {
+  if l.count<1||l[0].n+body.count+64>RP_LOG{return false;}
+  stamp:[1]Rp;rp_s(stamp[..],"sample_ms=");rp_i(stamp[..],elapsed);
+  rp_keep(l,rp_text(stamp[..]));rp_keep(l,body);return true;
 }
 // Whether a room output line is one of the reports the proof repeats (the minute's ticks and parts).
 rp_report :: (line: string) -> bool {
@@ -174,6 +206,9 @@ rp_watch :: (check: int, room: int, l: [] RpLog, want: string, ctl: string, pres
   line: [65536] u8; seen := false; next_health := proc_now_ms() + 5000;
   w: [1] HttpWork; body: [16384] u8;
   hu: [1] Rp; rp_s(hu[..], "http://127.0.0.1:"); rp_i(hu[..], port); rp_s(hu[..], "/health");
+  vu:[1]Rp;rp_s(vu[..],"http://127.0.0.1:");rp_i(vu[..],port);rp_s(vu[..],"/api/room/vitals");
+  vb:[FS_PATH_MAX]u8;vp:=proc_getenv("RAID_VITALS_LOG",vb[..]);capture:=port!=0&&vp.count>0;
+  vl:[1]RpLog;samples:=0;capture_ok:=true;begun:=proc_now_ms();
   while true {
     n := proc_line(check, 200, line[..]);
     if n == PROC_EOF || n == PROC_ERROR { break; }
@@ -185,10 +220,16 @@ rp_watch :: (check: int, room: int, l: [] RpLog, want: string, ctl: string, pres
       next_health = now + 5000;
       nh: [1] string; r := http_do(w[..], "GET", rp_text(hu[..]), nh[0..<0], "", 2000, 0, body[..]);
       if r.error == HTTP_OK { p := rp_p95(cast(string) body[0..<r.n]); if p > worst[0] { worst[0] = p; } }
+      if capture {
+        vr:=http_do(w[..],"GET",rp_text(vu[..]),nh[0..<0],"",2000,0,body[..]);
+        text:=cast(string)body[0..<vr.n];
+        if vr.error==HTTP_OK&&rp_vitals_body(vr.code,text){capture_ok=rp_vitals_keep(vl[..],now-begun,text)&&capture_ok;samples+=1;}
+      }
     }
   }
   st := proc_wait(check, 10000); r := proc_release(check);
-  return seen;
+  if capture {capture_ok=fs_write(vp,cast(string)vl[0].b[0..<vl[0].n])&&capture_ok;print("raid vitals: % samples, complete=%\n",samples,capture_ok&&samples>0);}
+  return seen&&(!capture||(capture_ok&&samples>0));
 }
 
 rp_cast :: (a: [] Args, dir: string) -> int {
@@ -245,7 +286,10 @@ rp_tail_matching :: (l: [] RpLog, p1: string, p2: string, count: int) {
 rp_raid :: (a: [] Args, dir: string) -> int {
   bin := args_at(a, 1);
   n := rp_arg(a, 2, 8); secs := rp_arg(a, 3, 160); port := rp_arg(a, 4, 8871);
-  if n < 1 || secs < 1 || port < 1 || port > 65535 { tool_errln("room-proof raid: N, SECONDS and PORT are whole numbers"); return 2; }
+  if !rp_raid_shape(n,secs) || port < 1 || port > 65535 { tool_errln("room-proof raid: N 1..16, SECONDS 10..600 and PORT 1..65535"); return 2; }
+  seedb:[32]u8;seed:=rp_seed(proc_has_env("RAID_SEED"),proc_getenv("RAID_SEED",seedb[..]),proc_now_ms()/1000);
+  buildb:[128]u8;build:=proc_getenv("RAID_BUILD",buildb[..]);vpb:[FS_PATH_MAX]u8;vp:=proc_getenv("RAID_VITALS_LOG",vpb[..]);
+  if seed<1||(vp.count>0&&build.count==0){tool_errln("room-proof raid: RAID_SEED 1..2147483647; RAID_VITALS_LOG requires RAID_BUILD");return 2;}
   db: [512] u8; dials := proc_getenv("RAID_DIALS", db[..]);
   if dials.count == 0 { dials = RP_DIALS; }
   waiting: [1] Rp; rp_s(waiting[..], dials); rp_s(waiting[..], " 0 0\nlevels 1 2\n");
@@ -261,7 +305,7 @@ rp_raid :: (a: [] Args, dir: string) -> int {
   rp_drain(room, l[..]);
   u: [1] Rp; rp_s(u[..], "ws://127.0.0.1:"); rp_i(u[..], port);
   nb: [1] Rp; rp_i(nb[..], n); sb: [1] Rp; rp_i(sb[..], secs);
-  ts: [1] Rp; rp_i(ts[..], proc_now_ms() / 1000);
+  ts: [1] Rp; rp_i(ts[..], seed);
   cb: [64] u8; mb: [64] u8; vb: [64] u8; eb: [64] u8;
   class := proc_getenv("RAID_CLASS", cb[..]); mode := proc_getenv("RAID_MODE", mb[..]);
   level2 := proc_getenv("RAID_LEVEL2", vb[..]); expect := proc_getenv("RAID_EXPECT", eb[..]);
@@ -269,6 +313,8 @@ rp_raid :: (a: [] Args, dir: string) -> int {
   if mode.count == 0 { mode = "square"; }
   if level2.count == 0 { level2 = "0"; }
   if expect.count == 0 { expect = "any"; }
+  print("raid-profile raid-capacity-v1 source=% seed=% seats=% seconds=% class=% mode=% expect=% network=loopback consumer=native-socket\n",ifx build.count>0 then build else "unlabeled",seed,n,secs,class,mode,expect);
+  print("raid dials: %\n",dials);
   cp: [1] Rp; rp_s(cp[..], dir); rp_s(cp[..], "/room-control.txt");
   press_at := proc_now_ms() + (3 + n / 2) * 1000;
   ra := [10] string.["coax/web/tool.sh", "coax/web/room/raid-check.coax", rp_text(u[..]), rp_text(nb[..]), rp_text(sb[..]), rp_text(ts[..]), class, mode, level2, expect]; key := [1] string.[RP_KEY];
