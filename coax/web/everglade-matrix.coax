@@ -1,0 +1,105 @@
+// The four-host measurement, with prepared SDK images and a frozen room fixture.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/proc.coax";
+#load "../lib/json/json.coax";
+
+MxText :: struct {b:[32768]u8;n:int;}
+mx_add :: (o:[]MxText,s:string) {#assert o[0].n+s.count<=o[0].b.count;for c:s {o[0].b[o[0].n]=c;o[0].n+=1;}}
+mx_text :: (o:[]MxText)->string {return cast(string)o[0].b[0..<o[0].n];}
+#test "remote command quoting keeps spaces, quotes and substitutions as literal arguments" {
+  q:[1]MxText;mx_quote(q[..],"a'b $(x) `y`");#assert mx_text(q[..])=="'a'\"'\"'b $(x) `y`'";
+}
+mx_quote :: (o:[]MxText,s:string) {mx_add(o,"'");for c:s {if c=='\'' {mx_add(o,"'\"'\"'");}else {one:=[1]u8.[c];mx_add(o,cast(string)one[..]);}}mx_add(o,"'");}
+mx_command :: (o:[]MxText,args:[]string) {for a,i:args {if i>0 {mx_add(o," ");}mx_quote(o,a);}}
+mx_run :: (args:[]string,deadline:int)->bool {
+  p:=proc_new();if p<0{return false;}for a:args {if !proc_arg(p,a){r:=proc_release(p);return false;}}
+  if proc_start(p)!=0 {r:=proc_release(p);return false;}
+  line:[65536]u8;
+  while proc_now_ms()<deadline {n:=proc_line(p,1000,line[..]);if n==PROC_EOF{break;}if n==PROC_TIMEOUT{continue;}if n<0{break;}print("%\n",cast(string)line[0..<n]);}
+  status:=proc_wait(p,proc_left(deadline,proc_now_ms()));
+  if status==PROC_RUNNING {killed:=proc_kill(p,PROC_SIGTERM);status=proc_wait(p,2000);}
+  if status!=0 {err:[65536]u8;tool_errln(proc_stderr(p,err[..]));}
+  r:=proc_release(p);return status==0;
+}
+mx_remote :: (remote:string,args:[]string,deadline:int)->bool {c:[1]MxText;mx_command(c[..],args);argv:=[3]string.["ssh",remote,mx_text(c[..])];return mx_run(argv[..],deadline);}
+mx_copy :: (from:string,to:string,deadline:int)->bool {argv:=[3]string.["ditto",from,to];return mx_run(argv[..],deadline);}
+mx_join :: (a:string,b:string,storage:[]u8)->string {return fs_join(a,b,storage);}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]){return 2;}
+  prepared:=args_value(a[..],"--prepared","");app:=args_value(a[..],"--app","");out:=args_value(a[..],"--out","");
+  remote:=args_value(a[..],"--remote","coderos-4080");remote_root:=args_value(a[..],"--remote-root","/home/christopherdavid/.openagents/aethyrforge/benchmark-12864");
+  remote_tree:=args_value(a[..],"--remote-worktree","/home/christopherdavid/oa-forge-render-benchmark");
+  if prepared==""||app==""||out=="" {tool_errln("usage: everglade-matrix --prepared ABS_DIR --app ABS_APP --out ABS_DIR [--remote coderos-4080 --remote-root ABS_DIR --remote-worktree ABS_DIR]");return 2;}
+  if !fs_mkdir(out){return 1;}deadline:=proc_now_ms()+840000;
+  paths:[8][4096]u8;fixture:=mx_join(prepared,"fixture16",paths[0][..]);
+  if !fs_mkdir(fixture){return 1;}
+  // The committed, anonymous sixteen-seat fixture is the input to every run.
+  compressed:=mx_join(fixture,"raid.json.gz",paths[1][..]);
+  if !mx_copy("docs/verification/everglade-hosts-2026-11-05/fixture/raid.json.gz",compressed,deadline){return 1;}
+  unzip:=[4]string.["gzip","-d","-f",compressed];if !mx_run(unzip[..],deadline){return 1;}
+  for file:[3]string.["api.json","raid.api","world-everglade.json"] {
+    source:=mx_join("docs/verification/everglade-hosts-2026-11-05/fixture",file,paths[1][..]);target:=mx_join(fixture,file,paths[2][..]);if !mx_copy(source,target,deadline){return 1;}
+  }
+  pack:=[5]string.["coax/web/tool.sh","everglade-benchmark","pack","--out",fixture];if !mx_run(pack[..],deadline){return 1;}
+  // Replace the SDK shells' fixture bytes without rebuilding their product logic.
+  resources:=mx_join(app,"Contents/Resources/web/build/bench",paths[1][..]);
+  for file:[2]string.["raid.json","api.json"] {if !mx_copy(mx_join(fixture,file,paths[2][..]),mx_join(resources,file,paths[3][..]),deadline){return 1;}}
+  sign:=[5]string.["codesign","--force","--sign","-",app];if !mx_run(sign[..],deadline){return 1;}
+  destination:[1]MxText;mx_add(destination[..],remote);mx_add(destination[..],":");mx_add(destination[..],mx_join(remote_root,"fixture/",paths[1][..]));
+  fixture_slash:[1]MxText;mx_add(fixture_slash[..],fixture);mx_add(fixture_slash[..],"/");sync:=[4]string.["rsync","-a",mx_text(fixture_slash[..]),mx_text(destination[..])];if !mx_run(sync[..],deadline){return 1;}
+  cp_wire:=[3]string.["cp",mx_join(remote_root,"fixture/raid.wire",paths[1][..]),mx_join(remote_root,"producer/raid.wire",paths[2][..])];if !mx_remote(remote,cp_wire[..],deadline){return 1;}
+  cp_wire[1]=mx_join(remote_root,"fixture/raid.api",paths[1][..]);cp_wire[2]=mx_join(remote_root,"producer/raid.api",paths[2][..]);if !mx_remote(remote,cp_wire[..],deadline){return 1;}
+  for gpu:0..<2 {
+    label:=ifx gpu==0 then "base" else "gpu";
+    for host:0..<2 {
+      name:[1]MxText;mx_add(name[..],ifx host==0 then "mac-chrome-" else "mac-wk-");mx_add(name[..],label);
+      dir:=mx_join(out,mx_text(name[..]),paths[1][..]);if !fs_mkdir(dir){return 1;}
+      print("Measuring % (40 s warmup, 30 s active siege)…\n",mx_text(name[..]));
+      if host==0 {
+        for file:[3]string.["raid.json","api.json","world-everglade.json"] {
+          from:=mx_join(fixture,file,paths[2][..]);to:=mx_join(dir,file,paths[3][..]);if !mx_copy(from,to,deadline){return 1;}
+        }
+        cmd:=[8]string.["coax/web/tool.sh","everglade-benchmark","chrome","--out",dir,"--port","8990","--no-timestamps"];
+        if !mx_run(cmd[0..<(ifx gpu==0 then 8 else 7)],deadline){return 1;}
+      }else {
+        report:=mx_join(dir,"wk.json",paths[2][..]);cmd:=[10]string.["open","-n","-W",app,"--args","--frame-profile",report,"--frame-benchmark","--bench-no-timestamps",""];
+        if !mx_run(cmd[0..<(ifx gpu==0 then 9 else 8)],deadline)||!fs_exists(report){return 1;}
+      }
+    }
+  }
+  // The remote images are prepared from the same generated C and shader spec.
+  // A native Wayland window is required; Chrome stays headless and muted.
+  for gpu:0..<2 {
+    label:=ifx gpu==0 then "base" else "gpu";
+    for host:0..<2 {
+      name:[1]MxText;mx_add(name[..],ifx host==0 then "linux-native-" else "linux-chrome-");mx_add(name[..],label);
+      dir:=mx_join(out,mx_text(name[..]),paths[1][..]);if !fs_mkdir(dir){return 1;}print("Measuring %…\n",mx_text(name[..]));
+      command:[1]MxText;mx_add(command[..],"cd ");mx_quote(command[..],ifx host==0 then mx_join(remote_root,"producer",paths[2][..]) else remote_tree);mx_add(command[..]," && ");
+      report_name:[1]MxText;mx_add(report_name[..],mx_text(name[..]));mx_add(report_name[..],".json");
+      report:=mx_join(remote_root,mx_text(report_name[..]),paths[3][..]);
+      if host==0 {
+        spec:=mx_join(remote_root,"spec",paths[4][..]);shot:=mx_join(remote_root,"native.ppm",paths[5][..]);
+        cmd:=[28]string.["env","XDG_RUNTIME_DIR=/run/user/1000","WAYLAND_DISPLAY=wayland-1","VK_DRIVER_FILES=/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json","LD_LIBRARY_PATH=/run/opengl-driver/lib","./vk-realm",spec,"everglade.pack","--facts","bench.facts","--window","--size","1280x720","--seconds","80","--replay","raid.wire","--benchmark",report,"--shot",shot,"--shot-at","50","--benchmark-no-timestamps","","","",""];
+        // The screenshot is taken only in the instrumented run, after the baseline.
+        if gpu==0 {cmd[19]="--benchmark-no-timestamps";mx_command(command[..],cmd[0..<20]);}else {mx_command(command[..],cmd[0..<23]);}
+      }else {
+        rf:=mx_join(remote_root,"fixture",paths[4][..]);cmd:=[10]string.["env","COAX_CHECK_JOBS=2","COAX_JOBS=2","coax/web/tool.sh","everglade-benchmark","chrome","--out",rf,"--no-timestamps",""];
+        mx_command(command[..],cmd[0..<(ifx gpu==0 then 9 else 8)]);mx_add(command[..]," && ");
+        cp:=[3]string.["cp",mx_join(rf,"chrome.json",paths[5][..]),report];mx_command(command[..],cp[..]);
+      }
+      ssh:=[3]string.["ssh",remote,mx_text(command[..])];if !mx_run(ssh[..],deadline){return 1;}
+      source:[1]MxText;mx_add(source[..],remote);mx_add(source[..],":");mx_add(source[..],report);
+      target:=mx_join(dir,ifx host==0 then "native.json" else "chrome.json",paths[6][..]);cp:=[4]string.["rsync","-a",mx_text(source[..]),target];if !mx_run(cp[..],deadline){return 1;}
+      if host==1 {
+        source[0].n=0;mx_add(source[..],remote);mx_add(source[..],":");mx_add(source[..],mx_join(remote_root,"fixture/chrome.png",paths[7][..]));cp[2]=mx_text(source[..]);cp[3]=mx_join(dir,"chrome.png",paths[6][..]);if !mx_run(cp[..],deadline){return 1;}
+      }
+    }
+  }
+  for name:[8]string.["mac-chrome-base","mac-wk-base","mac-chrome-gpu","mac-wk-gpu","linux-native-base","linux-chrome-base","linux-native-gpu","linux-chrome-gpu"] {
+    dir:=mx_join(out,name,paths[1][..]);file:=ifx name=="mac-wk-base"||name=="mac-wk-gpu" then "wk.json" else ifx name=="linux-native-base"||name=="linux-native-gpu" then "native.json" else "chrome.json";
+    cmd:=[4]string.["coax/web/tool.sh","everglade-benchmark-stats",mx_join(dir,file,paths[2][..]),mx_join(dir,"summary.json",paths[3][..])];if !mx_run(cmd[..],deadline){return 1;}
+  }
+  print("Four hosts, timestamp controls and raw samples: %\n",out);return 0;
+}

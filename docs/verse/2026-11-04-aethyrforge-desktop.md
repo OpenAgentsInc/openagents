@@ -38,6 +38,14 @@ page server, the voice Wasm and a local Parakeet voice host. This is the same
   visible WKWebView timings, with Coax summarizing the observations. Results and
   scope are in [the performance verification](../verification/aethyrforge-frame-pacing-2026-11-04.md).
 
+- `--frame-benchmark` measures the frozen South Gate siege against Chrome on
+  this Mac and Chrome/native Vulkan on coderos-4080. The same 5E producer,
+  room messages, API replies, quality and camera are used throughout. GPU
+  timestamp controls expose observer overhead; completion-callback latency is
+  explicitly a software proxy. The [four-host record and rerunnable Coax
+  harness](../verification/everglade-hosts-2026-11-05/README.md) preserve raw
+  samples and artifact identities. This does not select a new default renderer.
+
 - Opens at the South Gate (`#gate`) in play mode with the editor closed
   (`?forge=play`). B/EDIT opens the builder explicitly; launch and reload keep
   it closed. The native window

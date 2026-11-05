@@ -352,7 +352,7 @@ async function loadEngine(bytes, generation) {
   if (pages > have) memory.grow(pages - have); // instantiate refuses an imported memory smaller than declared
   const random = prepareRandomImport(memory, module, randomScratch);
   const imports = Object.create(null);
-  imports.env = Object.assign(Object.create(null), { memory, coaxial_now_seconds: () => BigInt(Math.floor(Date.now() / 1000)),
+  imports.env = Object.assign(Object.create(null), { memory, coaxial_measure_ms: () => performance.now(), coaxial_now_seconds: () => BigInt(Math.floor(Date.now() / 1000)),
     coaxial_now_ms: () => BigInt(Math.floor(performance.now())), ...socketImports, ...httpImports, ...random.imports, ...storageImports, ...nip07Imports });
   for (const imp of WebAssembly.Module.imports(module)) {
     if (imp.kind !== "function") continue;
@@ -369,6 +369,7 @@ async function loadEngine(bytes, generation) {
   const x = instance.exports;
   random.bind(x);
   x._initialize?.();
+  if(frameTrace)x.coaxial_frame_parts?.(0,-1);
   const layout = x.coaxial_layout();
   const heapBase = x.__heap_base?.value ?? 0;
   const floats = x.coaxial_vertex_floats(), maxVertices = x.coaxial_max_vertices();
@@ -2078,7 +2079,7 @@ function frame(now) {
   if (traceRow) traceRow[3] = t0 - observedStart;
   try { draw(now); } finally { frameCost = 0.9 * frameCost + 0.1 * (performance.now() - t0); }
   a11yMirror(now);
-  if (traceRow) { traceRow[4] = performance.now() - observedStart;if (traceRow[5] && globalThis.coaxial.sceneReady) {frameTrace.push(traceRow);if(frameTrace.length>600)frameTrace.shift();}traceRow=null; }
+  if (traceRow) { traceRow[14]=performance.now();traceRow[4] = traceRow[14] - observedStart;if (traceRow[5] && globalThis.coaxial.sceneReady) {frameTrace.push(traceRow);if(frameTrace.length>600)frameTrace.shift();}traceRow=null; }
 }
 
 // A controller (a module that exports coaxial_pad): the first pad's left stick (x right, y
@@ -2181,7 +2182,7 @@ function draw(now) {
     if (probeDo && !gpu.probed) runProbe(w, h, dpr);
     const engineStart = traceRow ? performance.now() : 0;
     n = engine.exports.coaxial_frame(trap ? -16 : arena.state, arena.vertices, arena.uniforms, w, h, dpr, dt, still ? 1 : 0);
-    if (traceRow) traceRow[1] = performance.now() - engineStart;
+    if (traceRow) {traceRow[1] = performance.now() - engineStart;for(let i=0;i<3;i++)traceRow[11+i]=engine.exports.coaxial_frame_parts?.(arena.state,i)||0;}
     if (gpu.gpuiOn) gpuiFrame(dpr);
   } catch (e) { trapped(e); return; }
   if (gpu.renderer) {
@@ -2334,6 +2335,7 @@ function draw(now) {
   }
   const readback = captureRequested && probeArmed && ++frames >= 1 && !gpu.probed ? readBack(encoder, texture) : null;
   device.queue.submit([encoder.finish()]);
+  globalThis.__evergladeBenchmark?.submitted(device.queue);
   worldSubmissions++;
   if (x.coaxial_frame_admit) {
     device.__coaxialFrames=(device.__coaxialFrames||0)+1;

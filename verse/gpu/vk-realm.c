@@ -49,6 +49,7 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
+#include <sys/resource.h>
 #include <fcntl.h>
 #include <linux/kd.h>
 #include <linux/vt.h>
@@ -85,6 +86,16 @@ __attribute__((weak)) const char *coaxial_window_app_id(void);
 __attribute__((weak)) int coaxial_should_close(uint32_t state);
 __attribute__((weak)) void coaxial_close(uint32_t state);
 __attribute__((weak)) void coaxial_hover(uint32_t state,float x,float y);
+__attribute__((weak)) double coaxial_frame_parts(uint32_t state,int32_t field);
+__attribute__((weak)) int32_t coaxial_net_probe(uint32_t state,int32_t field);
+static VkQueryPool benchmark_queries;
+static int benchmark_timestamps=1;
+static FILE *benchmark_file;
+static uint64_t benchmark_rows;
+static double benchmark_first,benchmark_begin;
+static double benchmark_cpu_begin,benchmark_replay_begin,benchmark_replay_end;
+static double benchmark_process_cpu(void){struct rusage r;getrusage(RUSAGE_SELF,&r);return r.ru_utime.tv_sec+r.ru_utime.tv_usec/1e6+r.ru_stime.tv_sec+r.ru_stime.tv_usec/1e6;}
+static double benchmark_thread_cpu(void){struct timespec t;clock_gettime(CLOCK_THREAD_CPUTIME_ID,&t);return t.tv_sec+t.tv_nsec/1e9;}
 static volatile sig_atomic_t stopping;
 static void on_signal(int s) { (void)s; stopping = 1; }
 static double now_s(void) {
@@ -333,7 +344,11 @@ static void update(VkSpec *s) {
   vk_spec_let(s, "sparks", coaxial_particle_instances(H.state));
   vk_spec_draws(s, all ? rh_ptr(coaxial_draws(H.state)) : NULL);
 }
-static void record(VkCommandBuffer cmd, void *user) { vk_spec_record(user, cmd); }
+static void record(VkCommandBuffer cmd, void *user) {
+  if(benchmark_queries){vkCmdResetQueryPool(cmd,benchmark_queries,0,2);vkCmdWriteTimestamp(cmd,VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,benchmark_queries,0);}
+  vk_spec_record(user, cmd);
+  if(benchmark_queries)vkCmdWriteTimestamp(cmd,VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,benchmark_queries,1);
+}
 #else
 // The shared executor has completed the frame. Presentation only copies its
 // image; it does not interpret or redraw the graph.
@@ -387,6 +402,7 @@ static void press_keys(const char *keys, int frame) {
 }
 
 int main(int argc, char **argv) {
+  benchmark_begin=now_s();
   if (argc < 3) {
     fprintf(stderr, "usage: vk-realm DIR PACK [--facts FILE] [--extra N,...] [--size WxH] [--scale K] [--golden] [--seconds N] [--demo] [--shot OUT.ppm] [--net DIR] [--origin HOST[:PORT]] [--name NAME] "
                     "[--shot-at S] [--headless FRAMES] [--out OUT.f32] [--page N] [--go FILE] [--keys F:KEY:DOWN,...] [--window] [--fullscreen] [--leave-to VT] [--facts-once FILE] [--activity FILE] [--agents FILE] [--desk DIR [--desk-size WxH] [--desk-mode docked|flat]] [--hands SOCKET]\n");
@@ -399,6 +415,7 @@ int main(int argc, char **argv) {
   int golden = 0, headless = 0, demo = 0, windowed = 0, fullscreen = 0, leave_to = 0, facts_once = 0;
   const char *desk_dir = NULL, *desk_size = NULL, *desk_mode = NULL, *hands_path = NULL;
   const char *net_dir = NULL, *origin = "openagents.com", *name = "everglade", *go = NULL, *keys = "";
+  const char *replay_path=NULL,*benchmark_path=NULL;
   int page = 0;
   int sample_capacity = MAX_FRAMES;
   for (int i = 3; i < argc; i++) {
@@ -407,6 +424,7 @@ int main(int argc, char **argv) {
     else if (!strcmp(a, "--demo")) demo = 1;
     else if (!strcmp(a, "--window")) windowed = 1;
     else if (!strcmp(a, "--fullscreen")) windowed = fullscreen = 1;
+    else if (!strcmp(a,"--benchmark-no-timestamps")) benchmark_timestamps=0;
     else if (!val) { fprintf(stderr, "vk-realm: %s wants a value\n", a); return 2; }
     else if (!strcmp(a, "--facts")) facts = val, i++;
     else if (!strcmp(a, "--facts-once")) facts = val, facts_once = 1, i++;   // read, then removed: facts that must not stay on disk
@@ -433,6 +451,8 @@ int main(int argc, char **argv) {
     else if (!strcmp(a, "--hands")) hands_path = val, i++;                  // the camera daemon's hands socket: your hand as the pointer  // the boot session: hold this VT, show VT N on leaving
     else if (!strcmp(a, "--go")) go = val, i++;      // travel: another realm's slug written here, and it leaves (status 3)
     else if (!strcmp(a, "--keys")) keys = val, i++;  // headless: realm-run's F:KEY:DOWN, a key held or let go at frame F
+    else if (!strcmp(a,"--replay")) replay_path=val,i++;
+    else if (!strcmp(a,"--benchmark")) benchmark_path=val,i++;
     else { fprintf(stderr, "vk-realm: unknown argument %s\n", a); return 2; }
   }
   signal(SIGINT, on_signal);
@@ -441,6 +461,8 @@ int main(int argc, char **argv) {
 
   // The realm: as realm-run starts it (the page's facts, the viewer, the pack's parts).
   rh_open(&H, golden);
+  if(replay_path&&rh_replay_open(replay_path)){fprintf(stderr,"vk-realm: refused room replay\n");return 1;}
+  if(benchmark_path){benchmark_file=fopen(benchmark_path,"w");if(!benchmark_file)return 1;fprintf(benchmark_file,"{\"schema\":\"everglade.native-benchmark.v1\",\"rowColumns\":[\"replay_seconds\",\"frame_interval_ms\",\"controller_river_wall_ms\",\"scene_hud_wall_ms\",\"tail_wall_ms\",\"pre_submit_wall_ms\",\"gpu_span_ms\",\"input_to_gpu_complete_ms\",\"host_encode_cpu_ms\",\"frame_thread_cpu_ms\"],\"rows\":[");if(coaxial_frame_parts)coaxial_frame_parts(H.state,-1);}
   rh_page(&H, page);
 #ifndef AETHYR_RENDER_TYPED
   if (rh_pack(&H, pack)) return 1;
@@ -545,6 +567,10 @@ int main(int argc, char **argv) {
 #endif
 
   static double stepped[MAX_FRAMES], took[MAX_FRAMES], presented[MAX_FRAMES];
+#ifdef AETHYR_RENDER_TYPED
+  if(benchmark_file){fprintf(stderr,"vk-realm: benchmark timestamps require the legacy pass host\n");return 2;}
+#endif
+  if(benchmark_file&&benchmark_timestamps){VkQueryPoolCreateInfo q={.sType=VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,.queryType=VK_QUERY_TYPE_TIMESTAMP,.queryCount=2};if(vkCreateQueryPool(v.dev,&q,NULL,&benchmark_queries)!=VK_SUCCESS)return 1;}
   int frames = 0;
   uint64_t live_frames = 0;
   const char *why = "its time was up";
@@ -629,6 +655,7 @@ int main(int argc, char **argv) {
         frames = keep;
       }
       double t = now_s();
+      if(benchmark_file&&rh_replay_seconds()>=70)break;
       if (t - start >= seconds) break;
       if (stopping) { why = "a signal stopped it"; break; }
       if (coaxial_should_close && coaxial_should_close(H.state)) { why = "the app requested close"; break; }
@@ -654,6 +681,9 @@ int main(int argc, char **argv) {
       }
       vkp_wait(&v, &p);
       t = now_s();
+      static double benchmark_last;
+      double benchmark_interval=benchmark_last?t-benchmark_last:0;benchmark_last=t;
+      double benchmark_cpu_start=benchmark_file?benchmark_thread_cpu():0;
       touch_activity(t);
       agents_poll(t);
       vkdesk_pump(&desk, t);
@@ -663,6 +693,14 @@ int main(int argc, char **argv) {
       prev = t;
       if (dt > 0.1) dt = 0.1;
       rh_net_poll(&H);   // the answers that came, before the realm's step
+      rh_replay_poll(&H);
+      double replay_s=rh_replay_seconds(),input_started=0;
+      static double next_input=40,release_input;
+      if(benchmark_file){
+        if(coaxial_net_probe&&coaxial_net_probe(H.state,0)!=2){coaxial_key(H.state,-2,0);coaxial_key_up(H.state,-2,0);}
+        if(replay_s>=next_input&&replay_s<70){input_started=now_s();coaxial_key(H.state,'w',0);release_input=replay_s+.04;next_input+=5;}
+        if(release_input>0&&replay_s>=release_input){coaxial_key_up(H.state,'w',0);release_input=0;}
+      }
       hud_vertices = with_cursor(produce_frame((float)w,(float)h,scale,(float)dt));
 #ifdef AETHYR_RENDER_TYPED
       if(!rhgr_frame(s,hud_vertices,w,h,0,COAX_RenderTextureFormat_rgba16f,render_error,sizeof render_error)){fprintf(stderr,"vk-realm: %s\n",render_error);return 1;}last[0]=rhgr_screen(s);
@@ -673,7 +711,25 @@ int main(int argc, char **argv) {
       if (go && went_to(go)) { why = "it went to another realm"; travelled = 1; break; }
       double t1 = now_s();
       if (shot && !p.shoot && !p.shot_ready && t - start >= shot_at) p.shoot = 1;
+      double benchmark_encode_start=benchmark_file?benchmark_thread_cpu():0;
       if (vkp_present(&v, &p, record, s, last[0]->image, w, h, NULL, NULL)) { vkp_resize(&v, &p, p.w, p.h); continue; }
+      double benchmark_cpu_end=benchmark_file?benchmark_thread_cpu():0;
+      if(benchmark_file){
+        // A query pool can still hold the preceding frame's available values
+        // until this command buffer executes its reset. Fence this submission
+        // before reading either its timestamps or its input completion time.
+        if(benchmark_timestamps||input_started||!benchmark_first)vkp_wait(&v,&p);
+        uint64_t stamps[2]={0};if(benchmark_timestamps&&vkGetQueryPoolResults(v.dev,benchmark_queries,0,2,sizeof stamps,stamps,sizeof(uint64_t),VK_QUERY_RESULT_64_BIT|VK_QUERY_RESULT_WAIT_BIT)!=VK_SUCCESS)return 1;
+        benchmark_first=benchmark_first?benchmark_first:now_s()-benchmark_begin;
+        if(replay_s>=40&&replay_s<70){
+          if(!benchmark_rows){benchmark_cpu_begin=benchmark_process_cpu();benchmark_replay_begin=replay_s;}benchmark_replay_end=replay_s;
+          fprintf(benchmark_file,"%s[%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f]",benchmark_rows++?",":"",replay_s,benchmark_interval*1000,
+            coaxial_frame_parts?coaxial_frame_parts(H.state,0):0,coaxial_frame_parts?coaxial_frame_parts(H.state,1):0,coaxial_frame_parts?coaxial_frame_parts(H.state,2):0,
+            (t1-t)*1000,(double)(stamps[1]-stamps[0])*v.props.limits.timestampPeriod/1e6,input_started?(now_s()-input_started)*1000:0,
+            (benchmark_cpu_end-benchmark_encode_start)*1000,(benchmark_cpu_end-benchmark_cpu_start)*1000);
+        }
+        double left=1.0/60-(now_s()-t);if(left>0){struct timespec nap={(time_t)left,(long)((left-(time_t)left)*1e9)};nanosleep(&nap,NULL);}
+      }
       stepped[frames] = t1 - t;
       took[frames] = p.waited;
       presented[frames++] = now_s();
@@ -684,6 +740,8 @@ int main(int argc, char **argv) {
   }
 
   // the realm's step and the GPU's time (headless) or the fence wait (on the screen), as medians and 99th percentiles
+  if(benchmark_file){struct rusage usage;getrusage(RUSAGE_SELF,&usage);fprintf(benchmark_file,"],\"firstFrameSeconds\":%.6f,\"peakRSSBytes\":%lld,\"processCPUSeconds\":%.6f,\"measurementSeconds\":%.6f,\"timestampInstrumented\":%s,\"roomSeated\":%s}",benchmark_first,(long long)usage.ru_maxrss*1024,benchmark_process_cpu()-benchmark_cpu_begin,benchmark_replay_end-benchmark_replay_begin,benchmark_timestamps?"true":"false",
+    coaxial_net_probe&&coaxial_net_probe(H.state,0)==2?"true":"false");fclose(benchmark_file);if(benchmark_queries)vkDestroyQueryPool(v.dev,benchmark_queries,NULL);}
   if (!headless) printf("vk-realm: lifetime %llu presented frames; timing sample %d frames\n", (unsigned long long)live_frames, frames);
   static double sorted[MAX_FRAMES];
   int skip = frames > 120 ? 60 : headless ? 1 : 0, n = frames - skip;

@@ -1,0 +1,14 @@
+// Admission for the private benchmark fixture, before native inbox transport.
+#authority;
+#test "replay fixture bounds preserve ordered time and the native inbox limit" {
+  #assert eb_record(0,0,1) && eb_record(33,0,16384) && eb_record(180000,179999,1);
+  #assert !eb_record(-1,0,1) && !eb_record(20,33,1) && !eb_record(33,0,16385) && !eb_record(33,0,0) && !eb_record(180001,0,1);
+}
+eb_record :: (at:int,previous:int,bytes:int)->bool {return at>=previous && at<=180000 && bytes>0 && bytes<=16384;}
+#forall "measured frames belong to the active siege, including exact endpoints" at:0..<5,phase:0..<10 {
+  stamps:=[5]int.[0,39999,40000,70000,70001];active:=[10]bool.[false,false,false,false,false,false,false,true,true,false];
+  expected:=ifx at==2||at==3 then active[phase] else true;#assert eb_sample(stamps[at],phase)==expected;
+}
+#test "fixture lasts through the end of the measured interval" {#assert !eb_duration(71999)&&eb_duration(72000)&&eb_duration(180000);}
+eb_sample :: (at:int,phase:int)->bool {return at<40000||at>70000||phase==7||phase==8;}
+eb_duration :: (last:int)->bool {return last>=72000;}

@@ -1,0 +1,64 @@
+// Build the benchmark's staged, unchanged producer and Vulkan effects on Linux.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/proc.coax";
+
+#test "restaging a producer does not link SDK effects twice" {
+  #assert nb_producer("everglade5e.c") && nb_producer("Grid.c") && !nb_producer("vk-realm.c") && !nb_producer("verse-hands.c");
+}
+nb_producer :: (s:string)->bool {
+  for effect:[11]string.["realm-host.c","realm-run.c","verse-panel.c","verse-hands.c","wl-xdg-shell.c","wl-xdg-decoration.c","vk-realm.c","vk-spec.c","vks.c","vkc.c","vkp.c"] {if s==effect{return false;}}
+  return s!="vkd.c";
+}
+#test "SDK arguments split spaces and lines without shell expansion" {
+  words:[8]string;n:=nb_words(" -I/nix/store/sdk/include\n-lwayland-client  -ldrm ",words[..]);
+  #assert n==3 && words[0]=="-I/nix/store/sdk/include" && words[1]=="-lwayland-client" && words[2]=="-ldrm";
+}
+nb_words :: (s:string,out:[]string)->int {
+  at:=0;n:=0;while at<s.count {while at<s.count && (s[at]==' '||s[at]=='\n'||s[at]=='\t'){at+=1;}from:=at;
+    while at<s.count && s[at]!=' '&&s[at]!='\n'&&s[at]!='\t'{at+=1;}
+    if at>from {if n==out.count{return -1;}out[n]=s[from..<at];n+=1;}
+  }return n;
+}
+nb_run :: (argv:[]string,dir:string,out:[]u8)->int {
+  p:=proc_new();if p<0{return -1;}ok:=proc_cwd(p,dir);for a:argv {ok=ok && proc_arg(p,a);}
+  if !ok||proc_start(p)!=0 {r:=proc_release(p);return -1;}
+  deadline:=proc_now_ms()+600000;n:=0;line:[8192]u8;
+  while true {k:=proc_line(p,proc_left(deadline,proc_now_ms()),line[..]);if k==PROC_EOF {break;}if k<0 {killed:=proc_kill(p,PROC_SIGKILL);r:=proc_release(p);return -1;}
+    if n+k+1>out.count {killed:=proc_kill(p,PROC_SIGKILL);r:=proc_release(p);return -1;}for c:line[0..<k] {out[n]=c;n+=1;}out[n]='\n';n+=1;}
+  status:=proc_wait(p,2000);err:[16384]u8;text:=proc_stderr(p,err[..]);if text.count>0 {tool_errln(text);}r:=proc_release(p);return ifx status==0 then n else -1;
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=2{return 2;}dir:=args_at(a[..],0);math_script:=args_at(a[..],1);
+  out:[1048576]u8;args:[128]string;
+  pkg:=[3]string.["pkg-config","--variable=pkgdatadir","wayland-protocols"];
+  n:=nb_run(pkg[..],dir,out[..]);if n<=0{return 1;}while n>0&&(out[n-1]=='\n'||out[n-1]=='\r'){n-=1;}
+  proto:[4096]u8;for c,i:out[0..<n]{proto[i]=c;}protocols:=cast(string)proto[0..<n];
+  for i:0..<2 {
+    path:[4096]u8;source:=fs_join(protocols,ifx i==0 then "stable/xdg-shell/xdg-shell.xml" else "unstable/xdg-decoration/xdg-decoration-unstable-v1.xml",path[..]);
+    scan:=[4]string.["wayland-scanner","client-header",source,ifx i==0 then "xdg-shell-client-protocol.h" else "xdg-decoration-unstable-v1-client-protocol.h"];
+    if nb_run(scan[..],dir,out[..])<0{return 1;}
+    scan[1]="private-code";scan[3]=ifx i==0 then "wl-xdg-shell.c" else "wl-xdg-decoration.c";if nb_run(scan[..],dir,out[..])<0{return 1;}
+  }
+  cflags_cmd:=[3]string.["pkg-config","--cflags","libdrm"];n=nb_run(cflags_cmd[..],dir,out[..]);if n<0{return 1;}
+  cb:[16384]u8;for c,i:out[0..<n] {cb[i]=c;}cflags:[32]string;nc:=nb_words(cast(string)cb[0..<n],cflags[..]);
+  source_path:[4096]u8;source_file:=fs_join(dir,"sources",source_path[..]);n=fs_read(source_file,out[..]);if n<0{return 1;}
+  sb:[8192]u8;for c,i:out[0..<n]{sb[i]=c;}sources:[64]string;ns:=nb_words(cast(string)sb[0..<n],sources[..]);if ns<1||ns>50||nc<0{return 1;}
+  kept:=0;for i:0..<ns {if nb_producer(sources[i]){sources[kept]=sources[i];kept+=1;}}ns=kept;
+  for name:[5]string.["realm-host.c","verse-panel.c","verse-hands.c","wl-xdg-shell.c","wl-xdg-decoration.c"] {sources[ns]=name;ns+=1;}
+  objects:[64][128]u8;object_names:[64]string;
+  for i:0..<ns {
+    name:=sources[i];for c,k:name {objects[i][k]=c;}objects[i][name.count]='.';objects[i][name.count+1]='o';object_names[i]=cast(string)objects[i][0..<name.count+2];
+    count:=0;for f:[10]string.["gcc","-std=gnu11","-O2","-no-pie","-ffp-contract=off","-fno-fast-math","-w","-I.","-Ikms","-c"] {args[count]=f;count+=1;}
+    for j:0..<nc {args[count]=cflags[j];count+=1;}args[count]=name;args[count+1]="-o";args[count+2]=object_names[i];count+=3;
+    print("compile %\n",name);if nb_run(args[0..<count],dir,out[..])<0{return 1;}
+  }
+  math_cmd:=[3]string.["bash",math_script,dir];n=nb_run(math_cmd[..],dir,out[..]);if n<=0 {tool_errln("Native benchmark requires the same musl math as Wasm.");return 1;}
+  mb:[16384]u8;for c,i:out[0..<n]{mb[i]=c;}math:[128]string;nm:=nb_words(cast(string)mb[0..<n],math[..]);if nm<1{return 1;}
+  count:=0;for f:[16]string.["gcc","-std=gnu11","-O2","-no-pie","-ffp-contract=off","-fno-fast-math","-w","-I.","-Ikms","vk-realm.c","vk-spec.c","vks.c","vkc.c","vkp.c","vkd.c","-o"]{args[count]=f;count+=1;}
+  args[count]="vk-realm";count+=1;for i:0..<nc{args[count]=cflags[i];count+=1;}for i:0..<ns {args[count]=object_names[i];count+=1;}
+  for i:0..<nm {args[count]=math[i];count+=1;}
+  for f:[4]string.["-ldrm","-lwayland-client","-lvulkan","-lm"] {args[count]=f;count+=1;}
+  return ifx nb_run(args[0..<count],dir,out[..])>=0 then 0 else 1;
+}

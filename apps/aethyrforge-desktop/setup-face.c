@@ -59,4 +59,7 @@ uint64_t forge_process_cpu_ns(int32_t pid) {
   if(proc_pid_rusage(pid,RUSAGE_INFO_V2,(rusage_info_t *)&r)!=0 || mach_timebase_info(&t)!=0)return 0;
   return (uint64_t)(((__uint128_t)r.ri_user_time+r.ri_system_time)*t.numer/t.denom);
 }
+uint64_t forge_process_resident_bytes(int32_t pid) {
+  struct rusage_info_v2 r={0};return proc_pid_rusage(pid,RUSAGE_INFO_V2,(rusage_info_t *)&r)==0?r.ri_resident_size:0;
+}
 #endif

@@ -36,10 +36,15 @@ Each one is a coordination failure that one owning process would prevent.
 
 Aethyrforge itself showed two of the same patterns when the owner opened it:
 
-- Everglade keeps simulating and rendering behind the setup pane, so the app
-  pays for a frame loop nobody can see.
-- It renders with WKWebView's WebGPU, which is slower than Chrome's on the same
-  build. Nobody has measured the difference yet.
+- Everglade originally kept simulating and rendering behind the setup pane.
+  #12865 now pauses it after the first real frame; setup/status use the shared
+  native renderer and the measured process CPU drops about 97%.
+- The original claim that WKWebView is slower than Chrome was unmeasured.
+  #12864 compares the same 5E producer and recorded sixteen-bot siege in
+  Chrome/WK on the M5 Max and Chrome/native Vulkan on coderos-4080. The
+  [record and one-command harness](../verification/everglade-hosts-2026-11-05/README.md)
+  separate ordinary cadence from GPU timestamp overhead, and label software
+  completion latency separately from physical input-to-photon latency.
 
 Hashing Parakeet on launch was already removed: launch calls
 `refreshSetup(verify: false)`, and only the Verify button hashes.

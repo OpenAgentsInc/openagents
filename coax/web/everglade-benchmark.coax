@@ -1,0 +1,155 @@
+// The same recorded South Gate room on Chrome, WKWebView and native Vulkan.
+#import "Basic";
+#load "../lib/net/cdp.coax";
+#load "everglade-benchmark-fixture.coax";
+#load "../../apps/openagents-web/everglade-wire.coax";
+eb_spawn :: (argv:[]string)->int {
+  p:=proc_new();if p<0{return -1;}for a:argv {if !proc_arg(p,a){_:=proc_release(p);return -1;}}
+  if proc_start(p)!=0 {_:=proc_release(p);return -1;}return p;
+}
+eb_stop :: (p:int) {if p<0{return;}killed:=proc_kill(p,PROC_SIGTERM);waited:=proc_wait(p,2000);released:=proc_release(p);}
+eb_int :: (c:[]Cdp,js:string)->int {n:=cdp_evaluate(c,js);return ifx n>=0 then jv_int(cdp_doc(c),n,-1) else -1;}
+eb_text :: (c:[]Cdp,js:string,b:[]u8)->string {n:=cdp_evaluate(c,js);if n<0{return "";}k:=jv_str(cdp_doc(c),n,b);return ifx k>=0 then cast(string)b[0..<k] else "";}
+EbBuf :: struct {b:[262144]u8;n:int;}
+eb_add :: (b:[]EbBuf,s:string) {#assert b[0].n+s.count<=b[0].b.count;for c:s {b[0].b[b[0].n]=c;b[0].n+=1;}}
+eb_num :: (b:[]EbBuf,n:int) {o:[1]Jo;t:[64]u8;jo_start(o[..],t[..]);jo_int(o[..],n);eb_add(b,jo_text(o[..]));}
+eb_s :: (b:[]EbBuf)->string {return cast(string)b[0].b[0..<b[0].n];}
+eb_join :: (a:string,b:string,out:[]u8)->string {return fs_join(a,b,out);}
+#test "fixture phase is the raid entry's phase, not its kind or another entity's number" {
+  #assert eb_phase("D 5 0 1 0 ;s 7 8 0;g 1 7 0 0",0)==7;
+  #assert eb_phase("g 1 1 30",7)==1 && eb_phase("y 3 7 8",7)==7;
+}
+eb_phase :: (text:string,previous:int)->int {
+  at:=0;while at<text.count {end:=at;while end<text.count&&text[end]!=';'{end+=1;}entry:=text[at..<end];
+    if entry.count>2&&entry[0]=='g'&&entry[1]==' ' {r:[1]WireRd;r[0]=wire_rd(entry,1);kind:=wire_num(entry,r[..]);phase:=wire_num(entry,r[..]);if r[0].ok{return phase;}}
+    at=end+1;
+  }return previous;
+}
+eb_copy :: (from:string,to:string)->bool {b:[16777216]u8;n:=fs_read(from,b[..]);return n>=0 && fs_write(to,cast(string)b[0..<n]);}
+eb_write32 :: (b:[]u8,at:int,n:int) {for i:0..<4 {b[at+i]=cast,trunc(u8)(n>>(8*i));}}
+#test "resident byte observations parse ps whitespace without swallowing other fields" {
+  #assert eb_rss(" 1234\n")==1263616 && eb_rss("0\n")==0 && eb_rss("")==0;
+}
+eb_rss :: (s:string)->int {at:=0;while at<s.count&&(s[at]==' '||s[at]=='\n'){at+=1;}n:=0;while at<s.count&&s[at]>='0'&&s[at]<='9'{n=n*10+cast(int)s[at]-'0';at+=1;}return n*1024;}
+eb_processes :: (page:[]Cdp,out:[]u8)->string {
+  path:[4096]u8;file:=fs_join(cast(string)page[0].profile[0..<page[0].profile_n],"DevToolsActivePort",path[..]);
+  data:[4096]u8;n:=fs_read(file,data[..]);if n<0{return "[]";}port:=cdp_port_of(cast(string)data[0..<n]);at:=0;while at<n&&data[at]!='\n'{at+=1;}at+=1;e:=at;while e<n&&data[e]!='\n'{e+=1;}
+  url:[1]EbBuf;eb_add(url[..],"ws://127.0.0.1:");eb_num(url[..],port);eb_add(url[..],cast(string)data[at..<e]);
+  browser:[1]Cdp;if !cdp_connect(browser[..],eb_s(url[..])){return "[]";}defer{cdp_close(browser[..]);}
+  r:=cdp_call(browser[..],"SystemInfo.getProcessInfo","",CDP_CALL_MS);if r<0{return "[]";}v:=cdp_doc(browser[..]);rows:=jv_get(v,r,"processInfo");
+  o:[1]Jo;jo_start(o[..],out);jo_arr(o[..]);
+  for i:0..<jv_len(v,rows) {
+    row:=jv_at(v,rows,i);pid:=jv_int(v,jv_get(v,row,"id"),-1);if pid<=0 {continue;}
+    number:[1]EbBuf;eb_num(number[..],pid);cmd:=[5]string.["ps","-o","rss=","-p",eb_s(number[..])];stdout:[128]u8;stderr:[1024]u8;ps:=proc_run(cmd[..],2000,stdout[..],stderr[..]);
+    jo_obj(o[..]);jo_key(o[..],"pid");jo_int(o[..],pid);jo_key(o[..],"type");t:[128]u8;tn:=jv_str(v,jv_get(v,row,"type"),t[..]);jo_str(o[..],ifx tn>0 then cast(string)t[0..<tn] else "unknown");
+    jo_key(o[..],"rssBytes");jo_int(o[..],ifx ps.status==0 then eb_rss(cast(string)stdout[0..<ps.out_n]) else 0);
+    jo_key(o[..],"cpuSeconds");cpu:=jv_raw(v,jv_get(v,row,"cpuTime"));jo_raw(o[..],ifx cpu.count>0 then cpu else "0");jo_end(o[..]);
+  }
+  jo_end(o[..]);return ifx o[0].bad then "[]" else jo_text(o[..]);
+}
+eb_api :: (port:int,dir:string)->bool {
+  paths:=[5]string.["/api/playtest/world/everglade","/api/auth/viewer","/api/playtest/realms/everglade","/api/playtest/realms/everglade/fork?as=lines","/api/playtest/realms/everglade-5e/fork?as=lines"];
+  out:[65536]u8;json:[65536]u8;o:[1]Jo;jo_start(o[..],json[..]);jo_arr(o[..]);
+  b0:[4096]u8;b1:[4096]u8;api:=fs_join(dir,"api.json",b0[..]);bin:=fs_join(dir,"raid.api",b1[..]);h:[12]u8;
+  for c,i:"OA-API01"{h[i]=c;}eb_write32(h[..],8,paths.count);if !fs_write(bin,cast(string)h[..]){return false;}
+  client:[1]Cdp;
+  for path:paths {
+    n:=cdp_get(client[..],port,path,out[..]);wire:[1]EbBuf;eb_add(wire[..],ifx n>=0 then "200\n" else "404\n");if n>=0 {eb_add(wire[..],cast(string)out[0..<n]);}
+    if path.count>256||wire[0].n>16384{return false;}
+    jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],path);jo_key(o[..],"wire");jo_str(o[..],eb_s(wire[..]));jo_end(o[..]);
+    eb_write32(h[..],0,path.count);eb_write32(h[..],4,wire[0].n);
+    if !fs_append(bin,cast(string)h[0..<8])||!fs_append(bin,path)||!fs_append(bin,eb_s(wire[..])){return false;}
+  }
+  jo_end(o[..]);return !o[0].bad && fs_write(api,jo_text(o[..]));
+}
+
+// Private fixture v1: magic, count, last timestamp, then (timestamp, byte length, raw room frame).
+eb_pack :: (json:string,bin:string)->bool {
+  source:[16777216]u8;n:=fs_read(json,source[..]);nodes:[65536]JvNode;j:[1]Jv;
+  if n<0 || !jv_parse(j[..],cast(string)source[0..<n],nodes[..]) {return false;}
+  v:=j[0];count:=jv_len(v,0);if count<300 || count>5400 {return false;}
+  head:[16]u8;for c,i:"OA-RPLY1" {head[i]=c;}eb_write32(head[..],8,count);
+  last:=jv_int(v,jv_at(v,jv_at(v,0,count-1),0),-1);eb_write32(head[..],12,last);
+  if !fs_write(bin,cast(string)head[..]) {return false;}
+  previous:=0;phase:=0;bytes:[16392]u8;
+  for i:0..<count {
+    row:=jv_at(v,0,i);at:=jv_int(v,jv_at(v,row,0),-1);k:=jv_str(v,jv_at(v,row,1),bytes[8..<bytes.count]);
+    if !eb_record(at,previous,k) {tool_errln("Refused replay frame: time or inbox bound.");return false;}
+    phase=eb_phase(cast(string)bytes[8..<k+8],phase);if !eb_sample(at,phase){tool_errln("The measured fixture interval is not an active siege.");return false;}
+    eb_write32(bytes[..],0,at);eb_write32(bytes[..],4,k);if !fs_append(bin,cast(string)bytes[0..<k+8]) {return false;}previous=at;
+  }
+  return eb_duration(last);
+}
+tool_main :: ()->int #export_c {
+  args:[1]Args;if !args_load(args[..]) {return 2;}
+  ignored:=0;ok:=true;
+  mode:=args_at(args[..],0);dir:=args_value(args[..],"--out","/tmp/everglade-benchmark");port:=args_whole(args_value(args[..],"--port","8990"));
+  if (mode!="record" && mode!="chrome" && mode!="pack" && mode!="api") || port<1024 || port>65000 || port==8830 || port==8872 {tool_errln("usage: everglade-benchmark record|chrome|pack|api --out DIR [--port 8990]");return 2;}
+  if !fs_mkdir(dir) {return 1;}
+  p0:[4096]u8;p1:[4096]u8;p2:[4096]u8;p3:[4096]u8;p4:[4096]u8;
+  fixture:=eb_join(dir,"raid.json",p0[..]);binary:=eb_join(dir,"raid.wire",p1[..]);
+  if mode=="pack" {return ifx eb_pack(fixture,binary) then 0 else 1;}
+  world:=eb_join(dir,"world-everglade.json",p2[..]);control:=eb_join(dir,"room-control.txt",p3[..]);
+  if !fs_exists(world) {if !eb_copy("coax/web/room/dev/world-everglade.json",world) {return 1;}}
+  dials:="pvp 0\nedit 1\nlevels 1 2\nevent 1 0 1 16 3 1 3 1 1 1 3 1 300 5 0 0\n";
+  if !fs_write(control,dials) {return 1;}
+  po:[1]EbBuf;eb_num(po[..],port);room_port:=eb_s(po[..]);
+  pp:[1]EbBuf;eb_num(pp[..],port+1);page_port:=eb_s(pp[..]);
+  room_args:=[8]string.["coax/web/room/bin/room","--listen","127.0.0.1","--port",room_port,"--dev",dir,"--no-rooms"];
+  room:=-1;if mode!="chrome" {room=eb_spawn(room_args[0..<(ifx mode=="record" then 7 else 8)]);if room<0{return 1;}}defer {eb_stop(room);}
+  if mode=="api" {proc_sleep(1000);return ifx eb_api(port,dir) then 0 else 1;}
+  listen:[1]EbBuf;eb_add(listen[..],"127.0.0.1:");eb_add(listen[..],page_port);
+  serve_args:=[10]string.["coax/web/serve.sh","apps/openagents-web","--listen",eb_s(listen[..]),"--api",room_port,"--static","--cache","0",""];
+  server:=eb_spawn(serve_args[0..<9]);if server<0 {return 1;}defer {eb_stop(server);}
+  proc_sleep(1200);
+  if mode=="record" {
+    u:[1]EbBuf;eb_add(u[..],"ws://127.0.0.1:");eb_add(u[..],room_port);
+    capture:[1]EbBuf;eb_add(capture[..],"OA_RAID_CAPTURE=");eb_add(capture[..],fixture);
+    bot_args:=[12]string.["env","OA_ROOM_TICKET_KEY=local-development-room-ticket-key-not-a-secret",eb_s(capture[..]),"coax/web/tool.sh","coax/web/room/raid-check.coax",eb_s(u[..]),"16","70","12864","druid","fight","0"];
+    bots:=eb_spawn(bot_args[..]);if bots<0 {return 1;}defer {eb_stop(bots);}
+    proc_sleep(10000);start:[1]EbBuf;eb_add(start[..],"pvp 0\nedit 1\nlevels 1 2\nevent 1 0 1 16 3 1 3 1 1 1 3 1 300 5 1 0\n");
+    if !fs_write(control,eb_s(start[..])) {return 1;}
+    waited:=proc_wait(bots,100000);if waited==PROC_RUNNING {return 1;}
+    return ifx eb_pack(fixture,binary) && eb_api(port,dir) then 0 else 1;
+  }
+  script:[32768]u8;sn:=fs_read("coax/web/everglade-benchmark.js",script[..]);if sn<0 {return 1;}
+  inject:[1]EbBuf;eb_add(inject[..],"globalThis.coaxialBenchmarkOptions={mode:'");eb_add(inject[..],mode);eb_add(inject[..],"',fixture:'/build/bench/raid.json'};\n");
+  if mode=="chrome" {
+    // Browser transport replays the same bytes the native host reads from raid.wire.
+    inject[0].n=0;eb_add(inject[..],"globalThis.coaxialBenchmarkOptions={mode:'replay',fixture:'/build/bench/raid.json',timestamps:");eb_add(inject[..],ifx args_has(args[..],"--no-timestamps") then "false" else "true");eb_add(inject[..],"};\n");
+    ok=fs_mkdir("apps/openagents-web/build/bench");if !ok || !eb_copy(fixture,"apps/openagents-web/build/bench/raid.json") {return 1;}
+    api_path:[4096]u8;if !eb_copy(fs_join(dir,"api.json",api_path[..]),"apps/openagents-web/build/bench/api.json"){return 1;}
+  }
+  eb_add(inject[..],cast(string)script[0..<sn]);
+  launched_at:=proc_now_ms();c:[1]Cdp;if !cdp_launch(c[..],1280,720,"coax-everglade-bench-") {return 1;}defer {cdp_close(c[..]);}
+  params:[262144]u8;o:[1]Jo;jo_start(o[..],params[..]);jo_obj(o[..]);jo_key(o[..],"source");jo_str(o[..],eb_s(inject[..]));jo_end(o[..]);
+  if cdp_call(c[..],"Page.enable","",CDP_CALL_MS)<0 || cdp_call(c[..],"Page.addScriptToEvaluateOnNewDocument",jo_text(o[..]),CDP_CALL_MS)<0 {return 1;}
+  ignored=cdp_call(c[..],"Emulation.setDeviceMetricsOverride","{\"width\":1280,\"height\":720,\"deviceScaleFactor\":1,\"mobile\":false}",CDP_CALL_MS);
+  url:[1]EbBuf;eb_add(url[..],"http://127.0.0.1:");eb_add(url[..],page_port);eb_add(url[..],"/worlds/everglade?forge=play&stage=benchmark-south-gate&quality=high&clock=0.4&style=painterly&");
+  if mode=="record" {eb_add(url[..],"room=pair-raid-12864&relay=ws://localhost:");eb_add(url[..],room_port);}else {eb_add(url[..],"offline=worker");}
+  eb_add(url[..],"#gate");jo_start(o[..],params[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],eb_s(url[..]));jo_end(o[..]);
+  navigating_at:=proc_now_ms();if cdp_call(c[..],"Page.navigate",jo_text(o[..]),CDP_CALL_MS)<0 {return 1;}
+  deadline:=proc_now_ms()+60000;
+  while eb_int(c[..],"globalThis.coaxial?.sceneReady && coaxial.netProbe(0)===2 ? 1:0")!=1 && proc_now_ms()<deadline {
+    ignored=cdp_evaluate(c[..],"dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',bubbles:true}));dispatchEvent(new KeyboardEvent('keyup',{key:'Enter',code:'Enter',bubbles:true}));1");proc_sleep(500);
+  }
+  if eb_int(c[..],"coaxial.sceneReady && coaxial.netProbe(0)===2?1:0")!=1 {
+    debug:[65536]u8;db:[4096]u8;text:=eb_text(c[..],"JSON.stringify({errors:globalThis.__evergladeBenchmark?.errors.slice(0,10),adapter:globalThis.__evergladeBenchmark?.adapter,records:globalThis.__evergladeBenchmark?.records.length,net:globalThis.coaxial?.netProbe?.(0),ready:globalThis.coaxial?.ready,scene:globalThis.coaxial?.sceneReady,render:globalThis.coaxial?.renderStatus,body:document.body.innerText.slice(-2000)})",debug[..]);
+    ok=fs_write(eb_join(dir,"startup-error.json",db[..]),text);tool_errln("Benchmark scene/room not ready (startup-error.json).");return 1;
+  }
+  // Aligned fixture interval: active siege, seconds 40 through 70 after its first socket frame.
+  while eb_int(c[..],"Math.floor(__evergladeBenchmark.replaySeconds())")<40 {proc_sleep(100);}
+  before:[32768]u8;before_text:=eb_processes(c[..],before[..]);measured_at:=proc_now_ms();
+  ignored=cdp_evaluate(c[..],"__evergladeBenchmark.snapshot();1");
+  out_path:=eb_join(dir,"chrome.json",p4[..]);ok=fs_write(out_path,"{\"schema\":\"everglade.benchmark.v1\",\"windows\":[");buf:[524288]u8;
+  for i:0..<6 {ignored=cdp_evaluate(c[..],"__evergladeBenchmark.tap();1");proc_sleep(5000);
+    chunk:=eb_text(c[..],"JSON.stringify(__evergladeBenchmark.snapshot())",buf[..]);if chunk.count<2 {return 1;}
+    if i>0 {ok=ok && fs_append(out_path,",");}ok=ok && fs_append(out_path,chunk);
+  }
+  ok=ok && fs_append(out_path,"],\"processesBefore\":");ok=ok && fs_append(out_path,before_text);
+  after:[32768]u8;after_text:=eb_processes(c[..],after[..]);ok=ok && fs_append(out_path,",\"processesAfter\":");ok=ok && fs_append(out_path,after_text);
+  elapsed:[1]EbBuf;eb_add(elapsed[..],",\"measurementMs\":");eb_num(elapsed[..],proc_now_ms()-measured_at);eb_add(elapsed[..],",\"launchToNavigationMs\":");eb_num(elapsed[..],navigating_at-launched_at);eb_add(elapsed[..],"}");ok=ok && fs_append(out_path,eb_s(elapsed[..]));
+  png:[8388608]u8;pn:=cdp_screenshot(c[..],png[..]);shot_path:[4096]u8;
+  ok=ok && pn>0 && fs_write(eb_join(dir,"chrome.png",shot_path[..]),cast(string)png[0..<pn]);
+  print("Chrome benchmark: %\n",out_path);return ifx ok then 0 else 1;
+}

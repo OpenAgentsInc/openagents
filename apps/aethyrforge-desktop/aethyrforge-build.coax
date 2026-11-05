@@ -156,8 +156,8 @@ tool_main :: () -> int #export_c {
   if af_run(cbc[..],out[..],deadline)<0 {return 1;}
   hud_copy := [3]string.["ditto",af_path(p[..],here,"HUD.metal"),af_path(p[..],res,"HUD.metal")];
   if af_run(hud_copy[..],out[..],deadline)<0 {return 1;}
-  sw := [27] string.["xcrun", "swiftc", "-O", "-target", "arm64-apple-macos26.0", "-import-objc-header", af_path(p[..], here, "face.h"),
-    af_path(p[..], here, "Sources/main.swift"), af_path(p[..], here, "Sources/Setup.swift"), af_path(p[..],here,"Sources/Chat.swift"), af_path(p[..],here,"Sources/SetupProfile.swift"), af_path(p[..],here,"Sources/Offline.swift"), af_path(p[..],root,"apps/shared/zeron/MetalUI.swift"), object, bridge,chat_o,chat_face,"-framework","MetalKit", "-framework", "AppKit", "-framework", "WebKit", "-framework", "AVFoundation", "-o", af_path(p[..], mac, "Aethyrforge")];
+  sw := [28] string.["xcrun", "swiftc", "-O", "-target", "arm64-apple-macos26.0", "-import-objc-header", af_path(p[..], here, "face.h"),
+    af_path(p[..], here, "Sources/main.swift"), af_path(p[..], here, "Sources/Setup.swift"), af_path(p[..],here,"Sources/Chat.swift"), af_path(p[..],here,"Sources/SetupProfile.swift"), af_path(p[..],here,"Sources/Offline.swift"), af_path(p[..],here,"Sources/Benchmark.swift"), af_path(p[..],root,"apps/shared/zeron/MetalUI.swift"), object, bridge,chat_o,chat_face,"-framework","MetalKit", "-framework", "AppKit", "-framework", "WebKit", "-framework", "AVFoundation", "-o", af_path(p[..], mac, "Aethyrforge")];
   if af_run(sw[..], out[..], deadline) < 0 { return 1; }
   for name:[3]string.["Zeron.metal","fonts","NOTICE"] {
     copy:=[3]string.["ditto",af_path(p[..],af_path(p[..],root,"apps/shared/zeron"),name),af_path(p[..],res,name)];

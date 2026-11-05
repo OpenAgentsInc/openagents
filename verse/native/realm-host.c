@@ -391,6 +391,7 @@ static int64_t clock_ms(void) {
   return (int64_t)t.tv_sec * 1000 + t.tv_nsec / 1000000;
 }
 int64_t guard_now_ms(void) { return clock_ms(); }
+double coaxial_measure_ms(void) {struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return (double)t.tv_sec*1000+(double)t.tv_nsec/1000000;}
 // the seconds clock (env.coaxial_now_seconds), on the same clock
 int64_t coaxial_now_seconds(void) { return clock_ms() / 1000; }
 // byte storage (env.coaxial_storage_*: the browser's IndexedDB): none natively, refused as host.js
@@ -406,12 +407,72 @@ int32_t guard_http(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e, i
   return (int32_t)request(a, b, c, d, (int32_t)e, f < 0 ? 0 : f);
 }
 int32_t guard_cancel(int32_t id) { return cancel(id); }
+static int32_t replay_http(uint32_t url,uint32_t len);
 int32_t coaxial_http(uint32_t url, uint32_t url_len, uint32_t body, uint32_t body_len, int32_t flags) {
+  int32_t fixture=replay_http(url,url_len);if(fixture!=-2)return fixture;
   return (int32_t)request(url, url_len, body, body_len, flags, -1);
 }
 // WebSockets (host.js coaxial_socket_*): refused natively, as host.js refuses a URL it cannot
 // open, so a realm that plays with others (Hold the Stair's co-op) plays alone.
-int32_t coaxial_socket_open(uint32_t url, uint32_t len) { (void)url; (void)len; return -1; }
+static FILE *replay_file;
+static uint32_t replay_left,replay_at,replay_size;
+static unsigned char replay_bytes[16384];
+static double replay_clock;
+static int replay_opened,replay_pending;
+static struct {char path[257],wire[16385];uint32_t path_n,wire_n;} replay_api[16];
+static struct {const char *bytes;uint32_t length;int pending;} replay_reply[32];
+static uint32_t replay_api_count;
+static int replay_viewer_sent;
+static int32_t replay_http(uint32_t url,uint32_t len) {
+  if(!replay_api_count)return -2;
+  const char *bytes="404\n";uint32_t n=4;const char *path=rh_ptr(url);
+  for(uint32_t i=0;i<replay_api_count;i++)if(len==replay_api[i].path_n&&!memcmp(path,replay_api[i].path,len)){bytes=replay_api[i].wire;n=replay_api[i].wire_n;break;}
+  for(int i=0;i<32;i++)if(!replay_reply[i].pending){replay_reply[i].bytes=bytes;replay_reply[i].length=n;replay_reply[i].pending=1;return i;}
+  return -1;
+}
+static int replay_read(void) {
+  if(!replay_left)return 0;unsigned char h[8];
+  if(fread(h,1,8,replay_file)!=8)return -1;
+  uint32_t at=le32(h),n=le32(h+4);
+  if(at<replay_at||n==0||n>sizeof replay_bytes||fread(replay_bytes,1,n,replay_file)!=n)return -1;
+  replay_at=at;replay_size=n;replay_left--;replay_pending=1;return 1;
+}
+int rh_replay_open(const char *path) {
+  unsigned char h[16];replay_file=fopen(path,"rb");
+  if(!replay_file||fread(h,1,16,replay_file)!=16||memcmp(h,"OA-RPLY1",8)||le32(h+8)>5400)return 1;
+  replay_left=le32(h+8);
+  char api_path[4096];const char *slash=strrchr(path,'/');size_t prefix=slash?(size_t)(slash-path+1):0;
+  if(prefix+9>=sizeof api_path)return 1;memcpy(api_path,path,prefix);memcpy(api_path+prefix,"raid.api",9);
+  FILE *api=fopen(api_path,"rb");unsigned char ah[12];if(!api||fread(ah,1,12,api)!=12||memcmp(ah,"OA-API01",8))return 1;
+  replay_api_count=le32(ah+8);if(!replay_api_count||replay_api_count>16)return 1;
+  for(uint32_t i=0;i<replay_api_count;i++){
+    if(fread(ah,1,8,api)!=8)return 1;uint32_t u=le32(ah),b=le32(ah+4);
+    if(u>256||b>16384||fread(replay_api[i].path,1,u,api)!=u||fread(replay_api[i].wire,1,b,api)!=b)return 1;
+    replay_api[i].path_n=u;replay_api[i].wire_n=b;
+  }
+  fclose(api);return replay_read()!=1;
+}
+double rh_replay_seconds(void) {return replay_clock? (coaxial_measure_ms()-replay_clock)/1000:0;}
+void rh_replay_poll(RealmHost *h) {
+  if(replay_api_count&&!replay_viewer_sent){
+    replay_viewer_sent=1;
+    for(uint32_t i=0;i<replay_api_count;i++)if(!strcmp(replay_api[i].path,"/api/auth/viewer")&&replay_api[i].wire_n>=4&&!memcmp(replay_api[i].wire,"200\n",4))
+      rh_send(h,RH_VIEWER_KIND,replay_api[i].wire+4,replay_api[i].wire_n-4);
+  }
+  for(int i=0;i<32;i++)if(replay_reply[i].pending){replay_reply[i].pending=0;rh_send(h,512+i,replay_reply[i].bytes,replay_reply[i].length);}
+  if(replay_opened&&!replay_clock)replay_clock=coaxial_measure_ms();
+  if(!replay_clock)return;
+  if(replay_opened==1){rh_send(h,256,"",0);replay_opened=2;}
+  while(replay_pending && replay_at<=coaxial_measure_ms()-replay_clock) {
+    if(replay_size>coaxial_inbox_cap()){fprintf(stderr,"realm-host: replay exceeds inbox\n");exit(1);}
+    rh_send(h,257,(const char*)replay_bytes,replay_size);replay_pending=0;
+    if(replay_read()<0){fprintf(stderr,"realm-host: truncated/refused replay\n");exit(1);}
+  }
+}
+int32_t coaxial_socket_open(uint32_t url, uint32_t len) {
+  (void)url;(void)len;if(!replay_file||replay_opened)return -1;
+  replay_opened=1;return 0;
+}
 void coaxial_socket_send(int32_t id, uint32_t ptr, uint32_t len) { (void)id; (void)ptr; (void)len; }
 void coaxial_socket_close(int32_t id) { (void)id; }
 // The exports host.js calls only when a realm's face has them (x.coaxial_draws?.(...) and

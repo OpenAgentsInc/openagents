@@ -59,6 +59,13 @@ EXPORT("coaxial_frame_admit") int32_t coaxial_frame_admit(int32_t pending) { ret
 IMPORT("coaxial_socket_open") int32_t coaxial_socket_open(uint32_t url, uint32_t len);
 IMPORT("coaxial_socket_send") void coaxial_socket_send(int32_t id, uint32_t ptr, uint32_t len);
 IMPORT("coaxial_socket_close") void coaxial_socket_close(int32_t id);
+IMPORT("coaxial_measure_ms") double coaxial_measure_ms(void);
+static bool frame_measuring;
+static double frame_parts[3];
+EXPORT("coaxial_frame_parts") double coaxial_frame_parts(uint32_t state,int32_t field) {
+  (void)state;if(field==-1){frame_measuring=true;return 1;}
+  return field>=0&&field<3?frame_parts[field]:0;
+}
 
 static coax_t_Player player;
 static coax_t_Sticks sticks;
@@ -361,6 +368,7 @@ static void move_once(uint32_t state, coax_t_Everglade *g, coax_t_EgMoveIn input
 
 EXPORT("coaxial_frame")
 uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, float w, float h, float scale, float dt, uint32_t still) {
+  double measure_start=frame_measuring?coaxial_measure_ms():0;
   start(state);
   frames += 1;
   coax_t_Everglade *g = city(state);
@@ -515,6 +523,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   everglade_guide_begin(at(state), golden);
   if (!e5_rules.started) e5r_start(e5r(), 20261103);
   e5_before(at(state), e5v(), (coax_v_f32){e5_bar_buf, 49 * 6}, e5_bar_n, (coax_v_f32){e5_hero_buf, 32}, e5_hero_n, (float)now);
+  double measure_scene=frame_measuring?coaxial_measure_ms():0;
   int64_t n = everglade_frame(at(state), out, u, w, h, scale, dt, still != 0 || golden, feet.x, feet.y, feet.z, verse_player_face(player),
                            verse_player_act(player), show_vx, show_vz,
                            sticks.move_on, sticks.ox, sticks.oy, sticks.pad_x, sticks.pad_y);
@@ -522,6 +531,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   n = everglade_finish_frame(at(state), out, u);
   e5_frame(state);
   n = e5_finish(at(state), e5v(), out, u, n);
+  double measure_tail=frame_measuring?coaxial_measure_ms():0;
   {
     /* the room's server (everglade-net.coax): the clock, the socket, the world where it is drawn */
     net_step(at(state), (int64_t)guard_now_ms(), feet.x, feet.y, feet.z, verse_player_face(player), show_vx, show_vz,
@@ -565,6 +575,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   static bool entered;
   if (n > 0 && !entered) { entered = true; track_world(tr(), e5_realm(at(state))); track_loaded(tr(), track_cstr("load-engine")); }
   track_drain(&track_state);
+  if(frame_measuring){frame_parts[0]=measure_scene-measure_start;frame_parts[1]=measure_tail-measure_scene;frame_parts[2]=coaxial_measure_ms()-measure_tail;}
   return n < 0 ? 0u : (uint32_t)n;
 }
 

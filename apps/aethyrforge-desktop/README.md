@@ -1,5 +1,12 @@
 # Aethyrforge desktop (experimental)
 
+The four-host Everglade performance matrix, immutable sixteen-bot siege,
+measurement scopes and one-command rerun are in
+[`docs/verification/everglade-hosts-2026-11-05/`](../../docs/verification/everglade-hosts-2026-11-05/README.md).
+The visible muted SDK check uses `--frame-profile REPORT.json --frame-benchmark`;
+`--bench-no-timestamps` selects the control, and `--bench-probe` is a short
+transport/counter diagnostic, not a qualified performance sample.
+
 ## Linux: native Wayland and Vulkan
 
 On Linux the same build command produces a native desktop executable with

@@ -26,6 +26,7 @@
 // Prints one JSON line (each seat's XP, and the part of it after the outcome: the raid's end
 // award), then "raids" and exits 0, or "fails" and 1.
 #load "room-socket.coax";
+#load "../../lib/sys/fs.coax";
 
 RC_MAX :: 16;
 rc_max :: (a: int, b: int) -> int { return ifx a > b then a else b; }
@@ -157,8 +158,24 @@ rc_hear :: (h: [] RcHeard, me: int, t: string) {
     at = e + 1;
   }
 }
-rc_drain :: (c: [] RelayConn, h: [] RcHeard, n: int) {
-  for i: 0..<n { while relay_conn_poll(c[i..<i + 1], 0) == RC_TEXT { rc_hear(h[i..<i + 1], i, cast(string) c[i].text[0..<c[i].text_n]); } }
+#test "raid transport capture preserves quotes and complete multiline frames" {
+  b:[256]u8;row:=rc_capture_row(33,"D 4;name \"Raid\"\n",b[..]);j:[1]Jv;nodes:[8]JvNode;
+  #assert jv_parse(j[..],row,nodes[..]) && jv_int(j[0],jv_at(j[0],0,0),-1)==33;
+  decoded:[64]u8;n:=jv_str(j[0],jv_at(j[0],0,1),decoded[..]);#assert cast(string)decoded[0..<n]=="D 4;name \"Raid\"\n";
+}
+rc_capture_row :: (stamp:int,text:string,out:[]u8)->string {
+  o:[1]Jo;jo_start(o[..],out);jo_arr(o[..]);jo_int(o[..],stamp);jo_str(o[..],text);jo_end(o[..]);return ifx o[0].bad then "" else jo_text(o[..]);
+}
+rc_drain :: (c: [] RelayConn, h: [] RcHeard, n: int,capture:string,started:int,written:[]int) {
+  for i: 0..<n { while relay_conn_poll(c[i..<i + 1], 0) == RC_TEXT {
+    text:=cast(string)c[i].text[0..<c[i].text_n];
+    if i==0 && capture.count>0 {
+      buf:[32768]u8;row:=rc_capture_row(rs_now()-started,text,buf[..]);
+      if row.count==0 {tool_errln("raid-check: capture frame exceeds fixture limit");return;}
+      if written[0]>0 {comma:=fs_append(capture,",");}saved:=fs_append(capture,row);written[0]+=1;
+    }
+    rc_hear(h[i..<i + 1], i,text);
+  } }
 }
 
 tool_main :: () -> int #export_c {
@@ -176,6 +193,8 @@ tool_main :: () -> int #export_c {
   want2 := args_count(a[..]) > 6 && args_at(a[..], 6) == "1";
   expect := ifx args_count(a[..]) > 7 then args_at(a[..], 7) else "any";
   c: [RC_MAX] RelayConn; h: [RC_MAX] RcHeard; seq: [RC_MAX] int; next: [RC_MAX] int;
+  capture_buf:[4096]u8;capture:=proc_getenv("OA_RAID_CAPTURE",capture_buf[..]);written:[1]int;capture_at:=rs_now();
+  if capture.count>0 {began:=fs_write(capture,"[");}
   for i: 0..<n {
     ub: [1024] u8; pid: [32] u8; nm: [32] u8;
     pn := rs_int(pid[..], rs_put(pid[..], 0, "p-raidcheck-"), i);
@@ -187,7 +206,7 @@ tool_main :: () -> int #export_c {
     hn := rs_put(hm[..], rs_put(hm[..], 0, ifx h[i].wl then "H 4 ranger.0.0.0 warlock 0 " else "H 4 ranger.0.0.0 druid 0 "), cast(string) nm[0..<mn]);
     _ := relay_conn_send(c[i..<i + 1], cast(string) hm[0..<hn]);
     t1 := rs_now();
-    while rs_now() - t1 < 300 { rc_drain(c[..], h[..], i + 1); proc_sleep(5); }
+    while rs_now() - t1 < 300 { rc_drain(c[..], h[..], i + 1,capture,capture_at,written[..]); proc_sleep(5); }
   }
   t0 := rs_now(); tick := 0; sent_casts := 0; ended := -1;
   while rs_now() - t0 < secs * 1000 {
@@ -200,7 +219,7 @@ tool_main :: () -> int #export_c {
       h[0].f_n += 1;
       if h[0].f_now >= 500 && h[0].f_now <= 860 { h[0].f_band += 1; }
     }
-    if ended >= 0 && tick - ended > 90 { break; }
+    if capture.count==0 && ended >= 0 && tick - ended > 90 { break; }
     for i: 0..<n {
       seq[i] += 1;
       m: [128] u8;
@@ -247,7 +266,7 @@ tool_main :: () -> int #export_c {
       _ = relay_conn_send(c[i..<i + 1], cast(string) m[0..<k]);
       sent_casts += 1;
     }
-    while rs_now() - t0 < tick * 1000 / 30 { rc_drain(c[..], h[..], n); proc_sleep(2); }
+    while rs_now() - t0 < tick * 1000 / 30 { rc_drain(c[..], h[..], n,capture,capture_at,written[..]); proc_sleep(2); }
   }
   // what all heard
   waves := 1000; climax := 0; seen := 1000; casts := 1000; hits := 1000; breaks := 0; earned := 0; bad := 0; xp := 0; lv2 := 0; d := 1000000; bytes := 0;
@@ -327,5 +346,6 @@ tool_main :: () -> int #export_c {
   print("%\n", jo_text(o[..]));
   print("%\n", ifx ok then "raids" else "fails");
   for i: 0..<n { _ := relay_conn_close(c[i..<i + 1], 500); }
+  if capture.count>0 {finished:=fs_append(capture,"]");}
   return ifx ok then 0 else 1;
 }

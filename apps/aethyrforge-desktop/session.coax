@@ -28,6 +28,10 @@
   #assert forge_offline_url(8830,b[..])=="" && forge_offline_url(65536,b[..])=="";
   small:[32]u8;#assert forge_offline_url(49152,small[..])=="";
 }
+#test "benchmark scene names the same South Gate front fixture" {
+  b:[256]u8;#assert forge_benchmark_url(49152,b[..])=="http://127.0.0.1:49152/worlds/everglade?forge=play&offline=worker&stage=benchmark-south-gate&quality=high&clock=0.4&style=painterly#gate";
+  small:[128]u8;#assert forge_benchmark_url(49152,small[..])=="";
+}
 
 forge_port :: (p: int) -> bool { return p >= 1024 && p <= 65535 && p != 8830 && p != 8872; }
 forge_page_url :: (page: int, room: int, out: [] u8) -> string {
@@ -60,5 +64,11 @@ forge_offline_url :: (page:int,out:[]u8)->string {
   return cast(string)out[0..<n];
 }
 forge_offline_url_byte :: (page:int,index:int)->int #export_c {b:[256]u8;url:=forge_offline_url(page,b[..]);return ifx index>=0 && index<url.count then cast(int)url[index] else -1;}
+forge_benchmark_url :: (page:int,out:[]u8)->string {
+  if out.count<192 {return "";}
+  base:=forge_offline_url(page,out);if base.count==0 {return "";}n:=base.count-5;
+  for c:"&stage=benchmark-south-gate&quality=high&clock=0.4&style=painterly#gate" {out[n]=c;n+=1;}return cast(string)out[0..<n];
+}
+forge_benchmark_url_byte :: (page:int,index:int)->int #export_c {b:[256]u8;url:=forge_benchmark_url(page,b[..]);return ifx index>=0 && index<url.count then cast(int)url[index] else -1;}
 #load "frame-pacing.coax";
 #load "voice-ready.coax";

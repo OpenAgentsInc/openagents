@@ -30,6 +30,8 @@ int32_t fgu_next_cell(void *s);
 int32_t fgu_cell(void *s,int32_t cell,float *out);
 void fgu_cell_ready(void *s,int32_t cell);
 uint64_t forge_process_cpu_ns(int32_t pid);
+uint64_t forge_process_resident_bytes(int32_t pid);
+int64_t forge_benchmark_url_byte(int64_t page,int64_t index);
 void fgs_reset(void);
 int64_t fgs_input_byte(int64_t index, int64_t value);
 int64_t fgs_accept(int64_t kind, int64_t length);

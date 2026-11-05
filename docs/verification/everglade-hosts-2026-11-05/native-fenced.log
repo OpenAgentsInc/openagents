@@ -1,0 +1,8 @@
+vk-realm: NVIDIA GeForce RTX 4080, 15 passes at 1280x720, made in 58 ms
+vk-realm: in a 1271x1428 window at 59.951 Hz, drawn at 1280x720; closing the window or 80 s ends it
+vk-realm: lifetime 4180 presented frames; timing sample 4180 frames
+vk-realm: step median 1.84 ms, 99th 4.05 ms, longest 4.76 ms
+vk-realm: wait median 4.81 ms, 99th 6.93 ms, longest 7.96 ms
+vk-realm: 4120 frames in 69.0 s (59.71 a second) at 59.951 Hz; dropped 0, longest gap 16.8 ms
+vk-realm: frame time median 16.73 ms, 95th 16.80 ms, 99th 16.82 ms
+vk-realm: NVIDIA GeForce RTX 4080, 1280x720, 4180 frames, 434 draws the last; it ended because its time was up

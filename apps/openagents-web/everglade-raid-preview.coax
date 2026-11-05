@@ -92,6 +92,7 @@ rp_facts :: (s: [] Everglade, url: string) {
   if eg_query_is(url, "stage", "darian") { s[0].rp.stage = 4; }
   if eg_query_is(url, "stage", "darian-15") { s[0].rp.stage = 15; }
   if eg_query_is(url, "stage", "front") { s[0].rp.stage = -1; }   // the siege's front from above the South Gate (#12860)
+  if eg_query_is(url,"stage","benchmark-south-gate") {s[0].rp.stage=-2;}
   if !eg_query_is(url, "raid", "preview") { return; }
   s[0].rp.on = true;
   s[0].rp.cine = eg_query_is(url, "cine", "1");
@@ -279,6 +280,7 @@ RP_FRONT_EYE :: Point.{x = 14, y = 13, z = -50};
 RP_FRONT_AT :: Point.{x = -2, y = 0.5, z = -84};
 // The camera: with &cine=1 the flight, then your own (`follow`) from its last key; else yours.
 rp_shot :: (s: [] Everglade, follow: Shot) -> Shot {
+  if s[0].rp.stage == -2 {return Shot.{eye=Point.{x=18,y=18,z=-86},at=Point.{x=0,y=1.4,z=-54}};}
   if s[0].rp.stage < 0 { return Shot.{eye = RP_FRONT_EYE, at = RP_FRONT_AT}; }
   if s[0].rp.stage > 0 && s[0].rp.arch_on {
     // ?stage=darian: from his left, a little above, looking at his chest and staff
@@ -800,6 +802,10 @@ rp_test_bunched :: (g: [] Everglade, first: int, n: int, clip: int, gap: [] f32)
   #assert fs.eye.z > -56 && fs.at.z < -72 && fs.eye.y > 8;
 }
 
+#test "benchmark camera stays outside the South Gate and looks down the army's road" #steps 10000000 {
+  g:[1]Everglade;rp_facts(g[..],"/worlds/everglade?stage=benchmark-south-gate");shot:=rp_shot(g[..],Shot.{});
+  #assert shot.eye.z==-86 && shot.eye.y==18 && shot.at.z==-54 && shot.at.y<2;
+}
 #test "raid preview: every kind of raider draws, a Cult Priest in its own vestment (#12771)" #steps 2000000000 {
   g: [1] Everglade;
   rp_facts(g[..], "/worlds/everglade?raid=preview");

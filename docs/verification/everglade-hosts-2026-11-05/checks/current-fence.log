@@ -1,0 +1,3 @@
+ok   #test a native completion cannot predate the GPU work it claims to fence (1 case, 57 steps, 0 ms)
+1 of 82 checks (--only 'native completion'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

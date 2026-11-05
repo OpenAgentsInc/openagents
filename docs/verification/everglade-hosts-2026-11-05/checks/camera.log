@@ -1,0 +1,4 @@
+ok   #test benchmark camera stays outside the South Gate and looks down the army's road (1 case, 919459 steps, 163 ms)
+1 of 709 checks (--only 'benchmark camera'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: note[E0400]: compile-time steps: 75332 of 100000 used (75%), above three quarters of the limit; more than 100000 fails with E0400

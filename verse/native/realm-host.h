@@ -73,5 +73,9 @@ void rh_net_poll(RealmHost *h);
 void rh_restore(RealmHost *h);
 // Stops what is still running.
 void rh_net_close(void);
+// Benchmark-only replay of already checked room transport records (OA-RPLY1).
+int rh_replay_open(const char *path);
+void rh_replay_poll(RealmHost *h);
+double rh_replay_seconds(void);
 void rh_close(RealmHost *h);
 #endif

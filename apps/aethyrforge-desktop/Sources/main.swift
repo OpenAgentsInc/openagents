@@ -153,9 +153,14 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         NSApp.mainMenu = menu
 
         let config = WKWebViewConfiguration()
+        if benchmarkReportURL != nil,let resources=Bundle.main.resourceURL,
+            let script=try? String(contentsOf:resources.appendingPathComponent("host/everglade-benchmark.js"),encoding:.utf8) {
+            let gpuTimestamps = !CommandLine.arguments.contains("--bench-no-timestamps")
+            config.userContentController.addUserScript(WKUserScript(source:"globalThis.coaxialBenchmarkOptions={mode:'replay',fixture:'/build/bench/raid.json',timestamps:\(gpuTimestamps)};\n"+script,injectionTime:.atDocumentStart,forMainFrameOnly:true))
+        }
         let displayHz = NSScreen.main?.maximumFramesPerSecond ?? 60
         if forge_high_refresh(Int64(displayHz)) { highRefreshEnabled = configureHighRefresh(config.preferences) }
-        let preferredHz = highRefreshEnabled ? displayHz : 60
+        let preferredHz = benchmarkReportURL != nil ? 60 : highRefreshEnabled ? displayHz : 60
         config.userContentController.addUserScript(WKUserScript(source: "globalThis.coaxialPreferredFrameRate=\(preferredHz);globalThis.coaxialMinimumFrameRate=60;", injectionTime: .atDocumentStart, forMainFrameOnly: true))
         if frameProfileURL != nil { config.userContentController.addUserScript(WKUserScript(source: "globalThis.coaxialFrameTrace=true;", injectionTime: .atDocumentStart, forMainFrameOnly: true)) }
         config.userContentController.add(self, name: "forgeVoiceStatus")
@@ -203,6 +208,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         window.minSize = NSSize(width: 900, height: 740)
         let content = NSView(frame: web.frame); content.addSubview(web)
         window.contentView = content; window.center()
+        if benchmarkReportURL != nil {window.minSize=NSSize(width:900,height:500);window.setContentSize(NSSize(width:1280,height:720))}
         notice = NSTextField(labelWithString: "Starting local Everglade…")
         notice.textColor = .white; notice.backgroundColor = .black; notice.drawsBackground = true
         notice.alignment = .center; notice.frame = NSRect(x: 0, y: 0, width: 1280, height: 28)
@@ -280,7 +286,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     func start() async {
         do {
             guard let resources = Bundle.main.resourceURL else { throw ShellError.failed("Missing bundled resources.") }
-            if let report = smoke ? report : microphoneReport ?? setupProfileURL ?? offlineReportURL {
+            if let report = smoke ? report : microphoneReport ?? setupProfileURL ?? offlineReportURL ?? benchmarkReportURL {
                 dataURL = report.deletingLastPathComponent().appendingPathComponent("world")
             } else {
                 let base = fm.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/aethyrforge", isDirectory: true)
@@ -314,7 +320,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
             }
             var bytes: [UInt8] = []
             for i in 0..<256 {
-                let c = offlineMode ? forge_offline_url_byte(Int64(p.1),Int64(i)) : forge_url_byte(Int64(p.1), Int64(r.1), Int64(i))
+                let c = benchmarkReportURL != nil ? forge_benchmark_url_byte(Int64(p.1),Int64(i)) : offlineMode ? forge_offline_url_byte(Int64(p.1),Int64(i)) : forge_url_byte(Int64(p.1), Int64(r.1), Int64(i))
                 if c < 0 { break }; bytes.append(UInt8(c))
             }
             close(r.0); close(p.0)
@@ -689,6 +695,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     }
     // Raw browser and platform observations; the Coax profiler owns statistics.
     func captureFrameProfile(_ url: URL) async throws {
+        if benchmarkReportURL != nil {do{try await renderBenchmark(url)}catch{fail(error.localizedDescription)};return}
         try await Task.sleep(for: .seconds(3))
         _ = try await web.evaluateJavaScript("coaxial.takeFrameTrace();true")
         var windows: [[String: Any]] = []
@@ -840,6 +847,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         setupPane.refresh.title = "Retry startup"; setupPane.update()
         if let report=setupProfileURL {try? Data(message.utf8).write(to:report.appendingPathExtension("error"));fputs("Aethyrforge setup profile: \(message)\n",stderr);exit(1)}
         if let report=offlineReportURL {try? Data(message.utf8).write(to:report.appendingPathExtension("error"));fputs("Aethyrforge offline check: \(message)\n",stderr);exit(1)}
+        if let report=benchmarkReportURL {try? Data(message.utf8).write(to:report.appendingPathExtension("error"));fputs("Aethyrforge benchmark: \(message)\n",stderr);exit(1)}
         if smoke {
             if let report { try? Data("FAILED: \(message)".utf8).write(to: report) }
             fputs("Aethyrforge: \(message)\n", stderr)

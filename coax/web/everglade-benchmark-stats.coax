@@ -1,0 +1,86 @@
+// Pure reduction of recorded samples. All reported duration integers are microseconds.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/json/json.coax";
+
+BsSeries :: struct {v:[8192]f64;n:int;}
+#test "a native completion cannot predate the GPU work it claims to fence" {
+  #assert !bs_gpu_complete(3.0,6.0,true) && bs_gpu_complete(6.0,6.0,true) && bs_gpu_complete(8.0,6.0,true);
+  #assert bs_gpu_complete(3.0,0.0,false);
+}
+bs_gpu_complete :: (input:f64,gpu:f64,instrumented:bool)->bool {return !instrumented||input+0.001>=gpu;}
+#test "nearest-rank percentiles sort observations and retain tails" {
+  s:[1]BsSeries;for x:[5]f64.[50.0,10.0,40.0,20.0,30.0] {bs_add(s[..],x);}
+  #assert bs_rank(s[0],50)==30.0 && bs_rank(s[0],95)==50.0 && bs_rank(s[0],99)==50.0;
+  #assert s[0].n==5 && s[0].v[0]==10.0 && s[0].v[4]==50.0;
+  #assert bs_rank(BsSeries.{},50)==-1.0;
+}
+bs_add :: (s:[]BsSeries,x:f64) {#assert x>=0 && s[0].n<s[0].v.count;i:=s[0].n;while i>0&&s[0].v[i-1]>x{s[0].v[i]=s[0].v[i-1];i-=1;}s[0].v[i]=x;s[0].n+=1;}
+bs_rank :: (s:BsSeries,p:int)->f64 {if s.n==0{return -1.0;}return s.v[(s.n*p+99)/100-1];}
+bs_number :: (v:Jv,n:int)->f64 {r:=args_number(jv_raw(v,n));#assert jv_kind(v,n)==JV_NUMBER && r.ok;return r.value;}
+bs_get :: (v:Jv,n:int,key:string)->f64 {return bs_number(v,jv_get(v,n,key));}
+bs_at :: (v:Jv,n:int,i:int)->f64 {return bs_number(v,jv_at(v,n,i));}
+bs_duration :: (o:[]Jo,key:string,ms:f64) {jo_key(o,key);jo_int(o,cast(int)(ms*1000.0+0.5));}
+bs_series :: (o:[]Jo,name:string,s:BsSeries) {
+  jo_key(o,name);jo_obj(o);jo_key(o,"count");jo_int(o,s.n);
+  if s.n>0 {bs_duration(o,"p50_us",bs_rank(s,50));bs_duration(o,"p95_us",bs_rank(s,95));bs_duration(o,"p99_us",bs_rank(s,99));}
+  jo_end(o);
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=2 {tool_errln("usage: everglade-benchmark-stats INPUT.json OUTPUT.json");return 2;}
+  source:[8388608]u8;nodes:[131072]JvNode;j:[1]Jv;n:=fs_read(args_at(a[..],0),source[..]);
+  if n<0||!jv_parse(j[..],cast(string)source[0..<n],nodes[..]){return 1;}v:=j[0];
+  s:[9]BsSeries;native:=jv_get(v,0,"rows")>=0;
+  names:=[9]string.["frame_interval","controller_river_wall","scene_hud_wall","tail_wall","host_encode_wall_or_thread_cpu","gpu_span","input_to_gpu_complete","frame_wall","frame_thread_cpu"];
+  output:[65536]u8;o:[1]Jo;jo_start(o[..],output[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"everglade.summary.v1");
+  if native {
+    if !jv_bool(v,jv_get(v,0,"roomSeated")){tool_errln("Native replay did not seat.");return 1;}
+    rows:=jv_get(v,0,"rows");for i:0..<jv_len(v,rows) {row:=jv_at(v,rows,i);t:=bs_at(v,row,0);if t<40.0||t>=70.0{continue;}
+      for k:0..<4 {bs_add(s[k..<k+1],bs_at(v,row,k+1));}
+      bs_add(s[4..<5],bs_at(v,row,8));if jv_bool(v,jv_get(v,0,"timestampInstrumented")){bs_add(s[5..<6],bs_at(v,row,6));}
+      input:=bs_at(v,row,7);if input>0 {
+        if !bs_gpu_complete(input,bs_at(v,row,6),jv_bool(v,jv_get(v,0,"timestampInstrumented"))){tool_errln("Native latency predates its GPU completion; refused stale timestamp results.");return 1;}
+        bs_add(s[6..<7],input);
+      }
+      bs_add(s[7..<8],bs_at(v,row,5));bs_add(s[8..<9],bs_at(v,row,9));
+    }
+    bs_duration(o[..],"startup_us",bs_get(v,0,"firstFrameSeconds")*1000.0);
+    jo_key(o[..],"rss_bytes");jo_int(o[..],jv_int(v,jv_get(v,0,"peakRSSBytes"),0));
+    jo_key(o[..],"process_cpu_millipercent_one_core");jo_int(o[..],cast(int)(bs_get(v,0,"processCPUSeconds")/bs_get(v,0,"measurementSeconds")*100000.0+0.5));
+    jo_key(o[..],"timestampInstrumented");jo_raw(o[..],jv_raw(v,jv_get(v,0,"timestampInstrumented")));
+  }else {
+    windows:=jv_get(v,0,"windows");last: f64=-1.0;instrumented:=false;
+    for i:0..<jv_len(v,windows) {w:=jv_at(v,windows,i);
+      if bs_get(v,w,"net")!=2.0||bs_get(v,w,"workers")!=0.0||jv_len(v,jv_get(v,w,"errors"))!=0 {tool_errln("Browser replay lost seat, created a Worker or reported an error.");return 1;}
+      canvas:=jv_get(v,w,"canvas");if bs_at(v,canvas,0)!=1280.0||bs_at(v,canvas,1)!=720.0{tool_errln("Browser canvas changed size.");return 1;}
+      instrumented=jv_bool(v,jv_get(v,w,"timestampInstrumented"));offset:=bs_get(v,w,"replayOffsetMs");
+      submit:=jv_get(v,w,"submissions");for k:0..<jv_len(v,submit) {t:=bs_at(v,submit,k)-offset;if t<40000.0||t>=70000.0{continue;}if last>=0{bs_add(s[0..<1],t-last);}last=t;}
+      gpu:=jv_get(v,w,"gpu");for k:0..<jv_len(v,gpu) {r:=jv_at(v,gpu,k);t:=bs_at(v,r,0)-offset;if t>=40000.0&&t<70000.0 {bs_add(s[5..<6],bs_at(v,r,1));}}
+      input:=jv_get(v,w,"input");for k:0..<jv_len(v,input) {bs_add(s[6..<7],bs_at(v,input,k));}
+      replay_start:=bs_get(v,w,"replayStartMs");trace:=jv_get(v,w,"trace");
+      for k:0..<jv_len(v,trace) {r:=jv_at(v,trace,k);t:=bs_at(v,r,14)-replay_start;if t<40000.0||t>=70000.0||bs_at(v,r,7)!=1.0{continue;}
+        for p:0..<3 {bs_add(s[p+1..<p+2],bs_at(v,r,p+11));}
+        bs_add(s[4..<5],bs_at(v,r,2));bs_add(s[7..<8],bs_at(v,r,4));
+      }
+    }
+    jo_key(o[..],"timestampInstrumented");jo_bool(o[..],instrumented);
+    first:=jv_at(v,windows,0);launch:=jv_get(v,0,"launchToNavigationMs");
+    startup:=ifx launch>=0 then bs_number(v,launch)+bs_get(v,first,"readyAt") else bs_get(v,0,"firstFrameSeconds")*1000.0;
+    bs_duration(o[..],"startup_us",startup);
+    if launch>=0 {
+      before:=jv_get(v,0,"processesBefore");after:=jv_get(v,0,"processesAfter");cpu:f64=0.0;rss:=0;
+      for k:0..<jv_len(v,after) {r:=jv_at(v,after,k);pid:=jv_int(v,jv_get(v,r,"pid"),-1);rss+=jv_int(v,jv_get(v,r,"rssBytes"),0);
+        for q:0..<jv_len(v,before) {b:=jv_at(v,before,q);if jv_int(v,jv_get(v,b,"pid"),-2)==pid {cpu+=bs_get(v,r,"cpuSeconds")-bs_get(v,b,"cpuSeconds");}}
+      }
+      jo_key(o[..],"rss_bytes");jo_int(o[..],rss);jo_key(o[..],"process_cpu_millipercent_one_core");jo_int(o[..],cast(int)(cpu/bs_get(v,0,"measurementMs")*100000000.0+0.5));
+    }else {
+      rss:=jv_int(v,jv_get(v,0,"appResidentBytes"),0)+jv_int(v,jv_get(v,0,"webResidentBytes"),0)+jv_int(v,jv_get(v,0,"gpuResidentBytes"),0);
+      jo_key(o[..],"rss_bytes");jo_int(o[..],rss);jo_key(o[..],"process_cpu_millipercent_one_core");jo_int(o[..],cast(int)((bs_get(v,0,"appCPUPercentOfOneCore")+bs_get(v,0,"webCPUPercentOfOneCore")+bs_get(v,0,"gpuProcessCPUPercentOfOneCore"))*1000.0+0.5));
+    }
+  }
+  // Admission refuses an empty or truncated measurement; latency has six synthetic pulses.
+  if s[0].n<300||s[6].n!=6 {tool_errln("Incomplete frame or input samples.");return 1;}
+  for k:0..<9 {bs_series(o[..],names[k],s[k]);}jo_end(o[..]);
+  return ifx !o[0].bad&&fs_write(args_at(a[..],1),jo_text(o[..])) then 0 else 1;
+}
